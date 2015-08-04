@@ -75,6 +75,8 @@
 #include <linux/aio.h>
 #include <linux/compiler.h>
 #include <linux/sysctl.h>
+#include <linux/sdt.h>
+#include <linux/dtrace_os.h>
 
 #include <asm/pgtable.h>
 #include <asm/pgalloc.h>
@@ -221,6 +223,10 @@ static void account_kernel_stack(struct thread_info *ti, int account)
 
 void free_task(struct task_struct *tsk)
 {
+#ifdef CONFIG_DTRACE
+	put_psinfo(tsk);
+#endif
+
 	account_kernel_stack(tsk->stack, -1);
 	arch_release_thread_info(tsk->stack);
 	free_thread_info(tsk->stack);
@@ -376,6 +382,13 @@ static struct task_struct *dup_task_struct(struct task_struct *orig)
 	tsk->task_frag.page = NULL;
 
 	account_kernel_stack(ti, 1);
+
+#ifdef CONFIG_DTRACE
+	if (likely(tsk->dtrace_psinfo))
+		get_psinfo(tsk);
+
+	dtrace_task_init(tsk);
+#endif
 
 	return tsk;
 
@@ -1592,6 +1605,16 @@ static struct task_struct *copy_process(unsigned long clone_flags,
 	syscall_tracepoint_update(p);
 	write_unlock_irq(&tasklist_lock);
 
+#ifdef CONFIG_DTRACE
+	/*
+	 * We make this call fairly late into the copy_process() handling,
+	 * because we need to ensure that we can look up this task based on
+	 * its pid using find_task_by_vpid().  We also must ensure that the
+	 * tasklist_lock has been released.
+	 */
+	dtrace_task_fork(current, p);
+#endif
+
 	proc_fork_connector(p);
 	cgroup_post_fork(p);
 	if (clone_flags & CLONE_THREAD)
@@ -1738,6 +1761,8 @@ long do_fork(unsigned long clone_flags,
 		}
 
 		put_pid(pid);
+		DTRACE_PROC1(lwp__create, struct task_struct *, p);
+		DTRACE_PROC1(create, struct task_struct *, p);
 	} else {
 		nr = PTR_ERR(p);
 	}

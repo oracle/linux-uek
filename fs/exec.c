@@ -56,6 +56,8 @@
 #include <linux/pipe_fs_i.h>
 #include <linux/oom.h>
 #include <linux/compat.h>
+#include <linux/sdt.h>
+#include <linux/dtrace_os.h>
 
 #include <asm/uaccess.h>
 #include <asm/mmu_context.h>
@@ -1522,6 +1524,7 @@ static int do_execveat_common(int fd, struct filename *filename,
 	current->in_execve = 1;
 
 	file = do_open_execat(fd, filename, flags);
+	DTRACE_PROC1(exec, char *, filename->name);
 	retval = PTR_ERR(file);
 	if (IS_ERR(file))
 		goto out_unmark;
@@ -1586,6 +1589,11 @@ static int do_execveat_common(int fd, struct filename *filename,
 		goto out;
 
 	/* execve succeeded */
+#ifdef CONFIG_DTRACE
+	dtrace_task_cleanup(current);	/* get rid of probes from old ... */
+	dtrace_task_reinit(current);	/* ... be ready for probes from new */
+	dtrace_psinfo_alloc(current);	/* install new psinfo object */
+#endif
 	current->fs->in_exec = 0;
 	current->in_execve = 0;
 	acct_update_integrals(current);
@@ -1595,6 +1603,8 @@ static int do_execveat_common(int fd, struct filename *filename,
 	putname(filename);
 	if (displaced)
 		put_files_struct(displaced);
+
+	DTRACE_PROC(exec__success);
 	return retval;
 
 out:
@@ -1616,6 +1626,7 @@ out_files:
 		reset_files_struct(displaced);
 out_ret:
 	putname(filename);
+	DTRACE_PROC1(exec__failure, int, retval);
 	return retval;
 }
 

@@ -81,6 +81,7 @@
 #include <linux/integrity.h>
 #include <linux/proc_ns.h>
 #include <linux/io.h>
+#include <linux/sdt.h>
 
 #include <asm/io.h>
 #include <asm/bugs.h>
@@ -95,6 +96,11 @@ extern void fork_init(void);
 extern void radix_tree_init(void);
 #ifndef CONFIG_DEBUG_RODATA
 static inline void mark_rodata_ro(void) { }
+#endif
+
+#ifdef CONFIG_DTRACE
+extern void dtrace_os_init(void);
+extern void dtrace_cpu_init(void);
 #endif
 
 /*
@@ -674,6 +680,10 @@ asmlinkage __visible void __init start_kernel(void)
 
 	ftrace_init();
 
+#ifdef CONFIG_DTRACE
+	dtrace_os_init();
+#endif                                                                        
+
 	/* Do the rest non-__init'ed, we're now alive */
 	rest_init();
 }
@@ -992,6 +1002,10 @@ static noinline void __init kernel_init_freeable(void)
 	cad_pid = task_pid(current);
 
 	smp_prepare_cpus(setup_max_cpus);
+
+#ifdef CONFIG_DTRACE
+	dtrace_cpu_init();
+#endif
 
 	do_pre_smp_initcalls();
 	lockup_detector_init();

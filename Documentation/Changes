@@ -21,8 +21,8 @@ running a Linux kernel.  Also, not all tools are necessary on all
 systems; obviously, if you don't have any ISDN hardware, for example,
 you probably needn't concern yourself with isdn4k-utils.
 
-o  GNU C                  3.2                     # gcc --version
-o  GNU make               3.80                    # make --version
+o  Gnu C                  3.2                     # gcc --version
+o  Gnu make               3.81                    # make --version
 o  binutils               2.12                    # ld -v
 o  util-linux             2.10o                   # fdformat --version
 o  module-init-tools      0.9.10                  # depmod -V
@@ -44,6 +44,12 @@ o  grub                   0.93                    # grub --version || grub-insta
 o  mcelog                 0.6                     # mcelog --version
 o  iptables               1.4.2                   # iptables -V
 
+Build-time requirements only, for DTrace:
+
+o  elfutils               0.152                   # eu-readelf --version
+o  pkg-config             0.16                    # pkg-config --version
+o  glib                   2.x                     # pkg-config --exists glib-2.0 && echo present
+o  libdtrace-ctf          0.3
 
 Kernel compilation
 ==================
@@ -393,3 +399,18 @@ NFS-Utils
 ---------
 o  <http://nfs.sourceforge.net/>
 
+elfutils (build-time only)
+--------
+o  <https://fedorahosted.org/elfutils/>
+
+pkg-config (build-time only)
+----------
+o  <http://www.freedesktop.org/wiki/Software/pkg-config>
+
+glib (build-time only: 2.x required, not 3.x)
+----
+o  <http://www.gtk.org/>
+
+libdtrace-ctf (build-time only)
+-------------
+o  <https://oss.oracle.com/git/?p=libdtrace-ctf.git>

@@ -19,6 +19,10 @@
 #include <asm/processor.h>
 #include <linux/osq_lock.h>
 
+#ifdef CONFIG_SMP
+# include <asm/current.h>
+#endif
+
 /*
  * Simple, straightforward mutexes with strict semantics:
  *
@@ -174,5 +178,17 @@ extern int mutex_trylock(struct mutex *lock);
 extern void mutex_unlock(struct mutex *lock);
 
 extern int atomic_dec_and_mutex_lock(atomic_t *cnt, struct mutex *lock);
+
+#if defined(CONFIG_DEBUG_MUTEXES) || defined(CONFIG_SMP)
+static inline int mutex_owned(struct mutex *lock)
+{
+	return mutex_is_locked(lock) && lock->owner == current;
+}
+#else
+static inline int mutex_owned(struct mutex *lock)
+{
+	return mutex_is_locked(lock);
+}
+#endif
 
 #endif /* __LINUX_MUTEX_H */

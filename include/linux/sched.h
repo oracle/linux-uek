@@ -58,6 +58,7 @@ struct sched_param {
 #include <linux/uidgid.h>
 #include <linux/gfp.h>
 #include <linux/magic.h>
+#include <linux/dtrace_psinfo.h>
 
 #include <asm/processor.h>
 
@@ -1713,6 +1714,18 @@ struct task_struct {
 		int order;
 		unsigned int may_oom:1;
 	} memcg_oom;
+#endif
+#ifdef CONFIG_DTRACE
+	uint32_t predcache;
+	ktime_t dtrace_vtime;
+	ktime_t dtrace_start;
+	uint8_t dtrace_stop;
+	uint8_t dtrace_sig;
+	dtrace_psinfo_t *dtrace_psinfo;
+
+	void *dtrace_helpers;
+	uint32_t dtrace_probes;
+	uint64_t dtrace_tp_count;
 #endif
 #ifdef CONFIG_UPROBES
 	struct uprobe_task *utask;

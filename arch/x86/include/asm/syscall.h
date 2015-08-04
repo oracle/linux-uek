@@ -21,7 +21,11 @@
 #include <asm/unistd.h>
 
 typedef void (*sys_call_ptr_t)(void);
+#if defined(CONFIG_DT_SYSTRACE) || defined(CONFIG_DT_SYSTRACE_MODULE)
+extern sys_call_ptr_t sys_call_table[];
+#else
 extern const sys_call_ptr_t sys_call_table[];
+#endif
 
 /*
  * Only the low 32 bits of orig_ax are meaningful, so we return int.

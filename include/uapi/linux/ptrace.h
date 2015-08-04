@@ -49,6 +49,15 @@
 #define PTRACE_GETREGSET	0x4204
 #define PTRACE_SETREGSET	0x4205
 
+/*
+ * Get an fd corresponding to the mapping in which addr is located, and put it
+ * in data. Returns -EBADFD if this mapping has no fd corresponding to it, and
+ * (as usual) -EFAULT if this address is not mapped.
+ *
+ * O_CLOEXEC is set on this fd by default.
+ */
+#define PTRACE_GETMAPFD		0x42A5 /* Oracle addition: out-of-the-way */
+
 #define PTRACE_SEIZE		0x4206
 #define PTRACE_INTERRUPT	0x4207
 #define PTRACE_LISTEN		0x4208

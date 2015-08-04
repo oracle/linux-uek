@@ -1505,6 +1505,20 @@ config EPOLL
 	  Disabling this option will cause the kernel to be built without
 	  support for epoll family of system calls.
 
+config WAITFD
+	bool "Enable waitfd() system call" if EXPERT
+	select ANON_INODES
+	default n
+	help
+	  Enable the waitfd() system call that allows receiving child state
+	  changes from a file descriptor.
+
+          Note: this system call is not upstream: its syscall number is not
+          finalized, and the call itself should only be used by DTrace.
+
+	  If unsure, say N.
+
+
 config SIGNALFD
 	bool "Enable signalfd() system call" if EXPERT
 	select ANON_INODES
@@ -1763,6 +1777,8 @@ config PROFILING
 	help
 	  Say Y here to enable the extended profiling support mechanisms used
 	  by profilers such as OProfile.
+
+source "kernel/dtrace/Kconfig"
 
 #
 # Place an empty function call at each tracepoint site. Can be
