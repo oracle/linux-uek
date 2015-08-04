@@ -599,12 +599,14 @@ static inline unsigned int rds_ib_flush_goal(struct rds_ib_mr_pool *pool, int fr
 /*
  * given an xlist of mrs, put them all into the list_head for more processing
  */
-static void xlist_append_to_list(struct xlist_head *xlist, struct list_head *list)
+static int xlist_append_to_list(struct xlist_head *xlist,
+				struct list_head *list)
 {
 	struct rds_ib_mr *ibmr;
 	struct xlist_head splice;
 	struct xlist_head *cur;
 	struct xlist_head *next;
+	int count = 0;
 
 	splice.next = NULL;
 	xlist_splice(xlist, &splice);
@@ -614,7 +616,9 @@ static void xlist_append_to_list(struct xlist_head *xlist, struct list_head *lis
 		ibmr = list_entry(cur, struct rds_ib_mr, xlist);
 		list_add_tail(&ibmr->unmap_list, list);
 		cur = next;
+		count++;
 	}
+	return count;
 }
 
 /*
@@ -654,7 +658,7 @@ static int rds_ib_flush_mr_pool(struct rds_ib_mr_pool *pool,
 	LIST_HEAD(unmap_list);
 	LIST_HEAD(fmr_list);
 	unsigned long unpinned = 0;
-	unsigned int nfreed = 0, ncleaned = 0, free_goal;
+	unsigned int nfreed = 0, dirty_to_clean = 0, free_goal;
 	int ret = 0;
 
 	if (pool->pool_type == RDS_IB_MR_8K_POOL)
@@ -699,8 +703,8 @@ static int rds_ib_flush_mr_pool(struct rds_ib_mr_pool *pool,
 	/* Get the list of all MRs to be dropped. Ordering matters -
 	 * we want to put drop_list ahead of free_list.
 	 */
-	xlist_append_to_list(&pool->drop_list, &unmap_list);
-	xlist_append_to_list(&pool->free_list, &unmap_list);
+	dirty_to_clean = xlist_append_to_list(&pool->drop_list, &unmap_list);
+	dirty_to_clean += xlist_append_to_list(&pool->free_list, &unmap_list);
 	if (free_all)
 		xlist_append_to_list(&pool->clean_list, &unmap_list);
 
@@ -731,7 +735,6 @@ static int rds_ib_flush_mr_pool(struct rds_ib_mr_pool *pool,
 			kfree(ibmr);
 			nfreed++;
 		}
-		ncleaned++;
 	}
 
 	if (!list_empty(&unmap_list)) {
@@ -757,7 +760,7 @@ static int rds_ib_flush_mr_pool(struct rds_ib_mr_pool *pool,
 	}
 
 	atomic_sub(unpinned, &pool->free_pinned);
-	atomic_sub(ncleaned, &pool->dirty_count);
+	atomic_sub(dirty_to_clean, &pool->dirty_count);
 	atomic_sub(nfreed, &pool->item_count);
 
 out:
