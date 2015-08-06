@@ -613,7 +613,14 @@ static void req_completion(struct nvme_queue *nvmeq, void *ctx,
 			spin_unlock_irqrestore(req->q->queue_lock, flags);
 			return;
 		}
-		req->errors = nvme_error_status(status);
+		if (req->cmd_type == REQ_TYPE_SPECIAL) {
+			if (cmd_rq->ctx == CMD_CTX_CANCELLED)
+				req->errors = -EINTR;
+			else
+				req->errors = status;
+		} else {
+			req->errors = nvme_error_status(status);
+		}
 	} else
 		req->errors = 0;
 
