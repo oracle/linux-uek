@@ -1241,7 +1241,7 @@ static inline void cqm_pick_event_reader(int cpu)
 	cpumask_set_cpu(cpu, &cqm_cpumask);
 }
 
-static void intel_cqm_cpu_prepare(unsigned int cpu)
+static void intel_cqm_cpu_starting(unsigned int cpu)
 {
 	struct intel_cqm_state *state = &per_cpu(cqm_state, cpu);
 	struct cpuinfo_x86 *c = &cpu_data(cpu);
@@ -1282,13 +1282,11 @@ static int intel_cqm_cpu_notifier(struct notifier_block *nb,
 	unsigned int cpu  = (unsigned long)hcpu;
 
 	switch (action & ~CPU_TASKS_FROZEN) {
-	case CPU_UP_PREPARE:
-		intel_cqm_cpu_prepare(cpu);
-		break;
 	case CPU_DOWN_PREPARE:
 		intel_cqm_cpu_exit(cpu);
 		break;
 	case CPU_STARTING:
+		intel_cqm_cpu_starting(cpu);
 		cqm_pick_event_reader(cpu);
 		break;
 	}
@@ -1359,7 +1357,7 @@ static int __init intel_cqm_init(void)
 		goto out;
 
 	for_each_online_cpu(i) {
-		intel_cqm_cpu_prepare(i);
+		intel_cqm_cpu_starting(i);
 		cqm_pick_event_reader(i);
 	}
 
