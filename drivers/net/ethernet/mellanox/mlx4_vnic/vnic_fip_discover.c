@@ -909,7 +909,7 @@ static int fip_free_gw_done(struct fip_discover *discover, enum fip_flush flush)
 	}
 
 	list_for_each_entry(curr_gw, &discover->gw_list, list) {
-		if (curr_gw->flush  != FIP_NO_FLUSH) {
+		if (curr_gw->flush != FIP_NO_FLUSH) {
 			up_read(&discover->l_rwsem);
 			return 0;
 		}

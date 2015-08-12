@@ -69,14 +69,49 @@ void port_fip_discover_restart(struct work_struct *work)
 	    container_of(work, struct vnic_port, discover_restart_task.work);
 	struct fip_discover *discover;
 	struct vnic_login *login;
+	u16 new_index;
+	int flush_needed = list_empty(&port->login_list);
 
 	vnic_dbg_mark();
 	mutex_lock(&port->start_stop_lock);
 	vnic_dbg_mark();
 	mutex_lock(&port->mlock);
+
+	/* If force restart - skip test */
+	if (port->discover_restart_task_data == DISCOVER_RESTART_FORCE)
+		goto flush;
+
 	if (vnic_port_query(port))
 		vnic_warn(port->name, "vnic_port_query failed\n");
 
+	vnic_dbg(port->name, "login list is%sempty\n",
+		 list_empty(&port->login_list) ? " " : " not ");
+	list_for_each_entry(login, &port->login_list, list) {
+		vnic_dbg(port->name,
+			 "Checking login, dev=%s: pkey=0x%x, pkey_index=0x%x\n",
+			 login->dev->name, login->pkey, login->pkey_index);
+		new_index = 0;
+		if (login->pkey && !ib_find_pkey(port->dev->ca,
+						 port->num, login->pkey,
+						 &new_index))
+			flush_needed = flush_needed ||
+				       (new_index != login->pkey_index);
+		else
+			flush_needed = 1;
+		vnic_dbg(port->name, "new_index=0x%x\n", new_index);
+		login->pkey_index = new_index;
+	}
+
+	vnic_info("%s: Flush %sneeded\n", port->name,
+		  flush_needed ? "" : "is not ");
+
+	if (!flush_needed) {
+		mutex_unlock(&port->mlock);
+		goto out;
+	}
+
+flush:
+	vnic_dbg(port->name, "Flushing\n");
 	/* bring vnics links down */
 	list_for_each_entry(login, &port->login_list, list)
 		vnic_mcast_del_all(&login->mcast_tree);
@@ -95,6 +130,9 @@ void port_fip_discover_restart(struct work_struct *work)
 		}
 	}
 out:
+	/* Reset to default behavior */
+	port->discover_restart_task_data = DISCOVER_RESTART_TEST;
+
 	mutex_unlock(&port->start_stop_lock);
 	return;
 }
