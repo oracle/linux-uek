@@ -254,7 +254,7 @@ rm -rf %{buildroot}
   [Orabug: 19005048]
 - Update uid / gid handling in view of namespaces in UEK4 kernels.
   [Orabug: 20456825]
-$endif
+%endif
 %if %{dt_vcode} >= %{dt_0_4_5}
 * Tue Jun 23 2015 Kris Van Hees <kris.van.hees@oracle.com> - 0.4.5-2
 - Validate d_path() argument pointer to avoid crash.
