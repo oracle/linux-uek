@@ -3,6 +3,7 @@
 #ifndef _DTRACE_SDT_H_
 #define	_DTRACE_SDT_H_
 
+#include <linux/module.h>
 #include <asm/dtrace_arch.h>
 
 /*
@@ -21,6 +22,7 @@ extern void *dtrace_sdt_probes __attribute__((weak));
 
 extern void dtrace_sdt_init(void);
 extern void dtrace_sdt_register(struct module *);
+extern void dtrace_sdt_register_module(struct module *);
 extern void dtrace_sdt_exit(void);
 
 /*
