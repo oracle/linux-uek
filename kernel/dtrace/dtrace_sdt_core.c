@@ -9,13 +9,13 @@
 #include <linux/memory.h>
 #include <linux/module.h>
 #include <linux/dtrace_os.h>
+#include <linux/dtrace_sdt.h>
 #include <linux/sdt.h>
 #include <linux/slab.h>
 #include <linux/string.h>
 #include <linux/vmalloc.h>
 #include <asm-generic/bitsperlong.h>
 #include <asm-generic/sections.h>
-#include "dtrace_sdt.h"
 
 const char		*sdt_prefix = "__dtrace_probe_";
 
@@ -125,25 +125,14 @@ static int __init nosdt(char *str)
 
 early_param("nosdt", nosdt);
 
-static int dtrace_mod_notifier(struct notifier_block *nb, unsigned long val,
-			       void *args)
+void dtrace_sdt_register_module(struct module *mp)
 {
-	struct module		*mp = args;
 	int			i, cnt;
 	sdt_probedesc_t		*sdp;
 	asm_instr_t		**addrs;
 
-	/*
-	 * We only need to capture modules in the COMING state, we need a valid
-	 * module structure as argument, and the module needs to actually have
-	 * SDT probes.  If not, ignore...
-	 */
-	if (val != MODULE_STATE_COMING)
-		return NOTIFY_DONE;
-	if (!mp)
-		return NOTIFY_DONE;
 	if (mp->sdt_probec == 0 || mp->sdt_probes == NULL)
-		return NOTIFY_DONE;
+		return;
 
 	/*
 	 * Create a list of addresses (SDT probe locations) that need to be
@@ -154,7 +143,7 @@ static int dtrace_mod_notifier(struct notifier_block *nb, unsigned long val,
 	if (addrs == NULL) {
 		pr_warning("%s: cannot allocate SDT probe address list (%s)\n",
 			   __func__, mp->name);
-		return NOTIFY_DONE;
+		return;
 	}
 
 	for (i = cnt = 0, sdp = mp->sdt_probes; i < mp->sdt_probec;
@@ -178,18 +167,11 @@ static int dtrace_mod_notifier(struct notifier_block *nb, unsigned long val,
 	dtrace_sdt_nop_multi(addrs, cnt);
 
 	vfree(addrs);
-
-	return NOTIFY_DONE;
 }
-
-static struct notifier_block	dtrace_modfix = {
-	.notifier_call = dtrace_mod_notifier,
-};
 
 void dtrace_sdt_init(void)
 {
 	dtrace_sdt_init_arch();
-	register_module_notifier(&dtrace_modfix);
 }
 
 #if defined(CONFIG_DT_DT_PERF) || defined(CONFIG_DT_DT_PERF_MODULE)

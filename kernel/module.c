@@ -53,6 +53,7 @@
 #include <asm/mmu_context.h>
 #include <linux/license.h>
 #include <asm/sections.h>
+#include <linux/dtrace_sdt.h>
 #include <linux/tracepoint.h>
 #include <linux/ftrace.h>
 #include <linux/livepatch.h>
@@ -3569,6 +3570,8 @@ out_unlocked:
 static int complete_formation(struct module *mod, struct load_info *info)
 {
 	int err;
+
+	dtrace_sdt_register_module(mod);
 
 	mutex_lock(&module_mutex);
 
