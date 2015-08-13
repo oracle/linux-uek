@@ -341,7 +341,8 @@ static struct rds_ib_mr *rds_ib_alloc_fmr(struct rds_ib_device *rds_ibdev,
 		 * We're fussy with enforcing the FMR limit, though. If the driver
 		 * tells us we can't use more than N fmrs, we shouldn't start
 		 * arguing with it */
-		if (atomic_inc_return(&pool->item_count) <= pool->max_items)
+		if (atomic_inc_return(&pool->item_count) <=
+					atomic_read(&pool->max_items_soft))
 			break;
 
 		atomic_dec(&pool->item_count);
@@ -379,41 +380,49 @@ static struct rds_ib_mr *rds_ib_alloc_fmr(struct rds_ib_device *rds_ibdev,
 			 IB_ACCESS_REMOTE_ATOMIC),
 			&pool->fmr_attr);
 	if (IS_ERR(ibmr->fmr)) {
+		int total_pool_size;
+		int prev_8k_max;
+		int prev_1m_max;
+
 		err = PTR_ERR(ibmr->fmr);
+		ibmr->fmr = NULL;
+		if (err != -ENOMEM)
+			goto out_no_cigar;
 
 		/* Re-balance the pool sizes to reflect the memory resources
 		 * available to the VM.
 		 */
-		if (err == -ENOMEM) {
-			int total_pool_size =
-				atomic_read(&rds_ibdev->mr_8k_pool->item_count)
-					* (RDS_FMR_8K_MSG_SIZE + 1) +
-				atomic_read(&rds_ibdev->mr_1m_pool->item_count)
-					* RDS_FMR_1M_MSG_SIZE;
+		total_pool_size =
+			atomic_read(&rds_ibdev->mr_8k_pool->item_count)
+				* (RDS_FMR_8K_MSG_SIZE + 1) +
+			atomic_read(&rds_ibdev->mr_1m_pool->item_count)
+				* RDS_FMR_1M_MSG_SIZE;
 
-			if (total_pool_size) {
-				int prev_8k_max = atomic_read(&rds_ibdev->mr_8k_pool->max_items_soft);
-				int prev_1m_max = atomic_read(&rds_ibdev->mr_1m_pool->max_items_soft);
-				atomic_set(&rds_ibdev->mr_8k_pool->max_items_soft, (total_pool_size / 4) / (RDS_FMR_8K_MSG_SIZE + 1));
-				atomic_set(&rds_ibdev->mr_1m_pool->max_items_soft, (total_pool_size * 3 / 4) / RDS_FMR_1M_MSG_SIZE);
-				printk(KERN_ERR "RDS/IB: "
-					"Adjusted 8K FMR pool (%d->%d)\n",
-					prev_8k_max,
-					atomic_read(&rds_ibdev->mr_8k_pool->max_items_soft));
-				printk(KERN_ERR "RDS/IB: "
-					"Adjusted 1K FMR pool (%d->%d)\n",
-					prev_1m_max,
-					atomic_read(&rds_ibdev->mr_1m_pool->max_items_soft));
-				rds_ib_flush_mr_pool(rds_ibdev->mr_8k_pool, 1,
-							NULL);
+		if (!total_pool_size)
+			goto out_no_cigar;
 
-				rds_ib_flush_mr_pool(rds_ibdev->mr_1m_pool, 1,
-							NULL);
-
-				err = -EAGAIN;
-			}
+		prev_8k_max = atomic_read(
+				&rds_ibdev->mr_8k_pool->max_items_soft);
+		prev_1m_max = atomic_read(
+				&rds_ibdev->mr_1m_pool->max_items_soft);
+		atomic_set(&rds_ibdev->mr_8k_pool->max_items_soft,
+			   (total_pool_size / 4) / (RDS_FMR_8K_MSG_SIZE + 1));
+		atomic_set(&rds_ibdev->mr_1m_pool->max_items_soft,
+			   (total_pool_size * 3 / 4) / RDS_FMR_1M_MSG_SIZE);
+		printk(KERN_ERR "RDS/IB: Adjusted 8K FMR pool (%d->%d)\n",
+		       prev_8k_max,
+		       atomic_read(&rds_ibdev->mr_8k_pool->max_items_soft));
+		printk(KERN_ERR "RDS/IB: Adjusted 1M FMR pool (%d->%d)\n",
+		       prev_1m_max,
+		       atomic_read(&rds_ibdev->mr_1m_pool->max_items_soft));
+		if (pool == rds_ibdev->mr_1m_pool) {
+			rds_ib_flush_mr_pool(rds_ibdev->mr_1m_pool, 0, NULL);
+			rds_ib_flush_mr_pool(rds_ibdev->mr_8k_pool, 1, NULL);
+		} else {
+			rds_ib_flush_mr_pool(rds_ibdev->mr_1m_pool, 1, NULL);
+			rds_ib_flush_mr_pool(rds_ibdev->mr_8k_pool, 0, NULL);
 		}
-		ibmr->fmr = NULL;
+		err = -EAGAIN;
 		goto out_no_cigar;
 	}
 
@@ -423,9 +432,8 @@ static struct rds_ib_mr *rds_ib_alloc_fmr(struct rds_ib_device *rds_ibdev,
 	else
 		rds_ib_stats_inc(s_ib_rdma_mr_1m_alloc);
 
-	if (atomic_read(&pool->item_count) >
-		atomic_read(&pool->max_items_soft))
-		atomic_set(&pool->max_items_soft, pool->max_items);
+	if (atomic_read(&pool->item_count) > atomic_read(&pool->max_items_soft))
+		atomic_inc(&pool->max_items_soft);
 
 	return ibmr;
 
@@ -599,12 +607,14 @@ static inline unsigned int rds_ib_flush_goal(struct rds_ib_mr_pool *pool, int fr
 /*
  * given an xlist of mrs, put them all into the list_head for more processing
  */
-static void xlist_append_to_list(struct xlist_head *xlist, struct list_head *list)
+static int xlist_append_to_list(struct xlist_head *xlist,
+				struct list_head *list)
 {
 	struct rds_ib_mr *ibmr;
 	struct xlist_head splice;
 	struct xlist_head *cur;
 	struct xlist_head *next;
+	int count = 0;
 
 	splice.next = NULL;
 	xlist_splice(xlist, &splice);
@@ -614,7 +624,9 @@ static void xlist_append_to_list(struct xlist_head *xlist, struct list_head *lis
 		ibmr = list_entry(cur, struct rds_ib_mr, xlist);
 		list_add_tail(&ibmr->unmap_list, list);
 		cur = next;
+		count++;
 	}
+	return count;
 }
 
 /*
@@ -654,7 +666,7 @@ static int rds_ib_flush_mr_pool(struct rds_ib_mr_pool *pool,
 	LIST_HEAD(unmap_list);
 	LIST_HEAD(fmr_list);
 	unsigned long unpinned = 0;
-	unsigned int nfreed = 0, ncleaned = 0, free_goal;
+	unsigned int nfreed = 0, dirty_to_clean = 0, free_goal;
 	int ret = 0;
 
 	if (pool->pool_type == RDS_IB_MR_8K_POOL)
@@ -699,8 +711,8 @@ static int rds_ib_flush_mr_pool(struct rds_ib_mr_pool *pool,
 	/* Get the list of all MRs to be dropped. Ordering matters -
 	 * we want to put drop_list ahead of free_list.
 	 */
-	xlist_append_to_list(&pool->drop_list, &unmap_list);
-	xlist_append_to_list(&pool->free_list, &unmap_list);
+	dirty_to_clean = xlist_append_to_list(&pool->drop_list, &unmap_list);
+	dirty_to_clean += xlist_append_to_list(&pool->free_list, &unmap_list);
 	if (free_all)
 		xlist_append_to_list(&pool->clean_list, &unmap_list);
 
@@ -731,7 +743,6 @@ static int rds_ib_flush_mr_pool(struct rds_ib_mr_pool *pool,
 			kfree(ibmr);
 			nfreed++;
 		}
-		ncleaned++;
 	}
 
 	if (!list_empty(&unmap_list)) {
@@ -757,7 +768,7 @@ static int rds_ib_flush_mr_pool(struct rds_ib_mr_pool *pool,
 	}
 
 	atomic_sub(unpinned, &pool->free_pinned);
-	atomic_sub(ncleaned, &pool->dirty_count);
+	atomic_sub(dirty_to_clean, &pool->dirty_count);
 	atomic_sub(nfreed, &pool->item_count);
 
 out:
@@ -864,8 +875,10 @@ void *rds_ib_get_mr(struct scatterlist *sg, unsigned long nents,
 	}
 
 	ibmr = rds_ib_alloc_fmr(rds_ibdev, nents);
-	if (IS_ERR(ibmr))
+	if (IS_ERR(ibmr)) {
+		rds_ib_dev_put(rds_ibdev);
 		return ibmr;
+	}
 
 	ret = rds_ib_map_fmr(rds_ibdev, ibmr, sg, nents);
 	if (ret == 0)
