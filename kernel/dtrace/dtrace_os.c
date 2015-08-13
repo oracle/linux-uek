@@ -8,6 +8,7 @@
 #include <linux/binfmts.h>
 #include <linux/dtrace_cpu.h>
 #include <linux/dtrace_os.h>
+#include <linux/dtrace_sdt.h>
 #include <linux/fs.h>
 #include <linux/hardirq.h>
 #include <linux/interrupt.h>
@@ -22,7 +23,6 @@
 #include <linux/workqueue.h>
 #include <linux/mm.h>
 #include <asm/ptrace.h>
-#include "dtrace_sdt.h"
 
 #if defined(CONFIG_DT_FASTTRAP) || defined(CONFIG_DT_FASTTRAP_MODULE)
 # include <linux/uprobes.h>
