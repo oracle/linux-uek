@@ -1227,11 +1227,6 @@ int rds_sendmsg(struct kiocb *iocb, struct socket *sock, struct msghdr *msg,
 
 	rm->m_daddr = daddr;
 
-	/* Parse any control messages the user may have included. */
-	ret = rds_cmsg_send(rs, rm, msg, &allocated_mr);
-	if (ret)
-		goto out;
-
 	if (rm->rdma.op_active)
 		total_payload_len += rm->rdma.op_bytes;
 
@@ -1318,6 +1313,16 @@ int rds_sendmsg(struct kiocb *iocb, struct socket *sock, struct msghdr *msg,
 		ret = -EAGAIN;
 		goto out;
 	}
+
+	if (!rds_conn_up(conn)) {
+		ret = -EAGAIN;
+		goto out;
+	}
+
+	/* Parse any control messages the user may have included. */
+	ret = rds_cmsg_send(rs, rm, msg, &allocated_mr);
+	if (ret)
+		goto out;
 
 	while (!rds_send_queue_rm(rs, conn, rm, rs->rs_bound_port,
 				  dport, &queued)) {
