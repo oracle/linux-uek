@@ -9,6 +9,7 @@ menuconfig DTRACE
 	depends on ARCH_SUPPORTS_DTRACE
 	depends on !DEBUG_LOCK_ALLOC
 	select KALLSYMS
+	select KALLMODSYMS
 	select WAITFD
 	select CTF if (!DT_DISABLE_CTF)
 	help

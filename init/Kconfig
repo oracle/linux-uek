@@ -1434,6 +1434,15 @@ config KALLSYMS_ALL
 
 	   Say N unless you really need all symbols.
 
+config KALLMODSYMS
+	default y
+	bool "Enable support for /proc/kallmodsyms" if EXPERT
+	depends on KALLSYMS
+	help
+	  This option enables the /proc/kallmodsyms file, which maps symbols
+	  to addresses and their associated modules.  This support requires
+	  a fairly recent elfutils.
+
 config PRINTK
 	default y
 	bool "Enable support for printk" if EXPERT
