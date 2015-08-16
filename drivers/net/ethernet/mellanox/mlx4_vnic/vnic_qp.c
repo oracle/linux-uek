@@ -462,8 +462,6 @@ static int set_kernel_sq_size(struct mlx4_ib_dev *dev, struct ib_qp_cap *cap,
 	return 0;
 }
 
-
-
 static enum mlx4_qp_state to_mlx4_state(enum ib_qp_state state)
 {
 	switch (state) {
@@ -491,13 +489,30 @@ static void del_gid_entries(struct mlx4_ib_qp *qp)
 static void destroy_qp_common(struct mlx4_ib_dev *dev, struct mlx4_ib_qp *qp,
 			      struct ib_qp_init_attr *init_attr)
 {
+	struct mlx4_ib_cq *send_cq, *recv_cq;
+	unsigned long flags;
+
 	if (qp->state != IB_QPS_RESET)
 		if (mlx4_qp_modify(dev->dev, NULL, to_mlx4_state(qp->state),
 				   MLX4_QP_STATE_RST, NULL, 0, 0, &qp->mqp))
 			printk(KERN_WARNING "mlx4_ib: modify QP %06x to RESET failed.\n",
 			       qp->mqp.qpn);
 
+	mlx4_ib_get_cqs(qp, &send_cq, &recv_cq);
+
+	spin_lock_irqsave(&dev->reset_flow_resource_lock, flags);
+	mlx4_ib_lock_cqs(send_cq, recv_cq);
+
+	/* del from lists under both locks above to protect reset flow paths */
+	list_del(&qp->qps_list);
+	list_del(&qp->cq_send_list);
+	list_del(&qp->cq_recv_list);
+
 	mlx4_qp_remove(dev->dev, &qp->mqp);
+
+	mlx4_ib_unlock_cqs(send_cq, recv_cq);
+	spin_unlock_irqrestore(&dev->reset_flow_resource_lock, flags);
+
 	mlx4_qp_free(dev->dev, &qp->mqp);
 	mlx4_mtt_cleanup(dev->dev, &qp->mtt);
 	mlx4_qp_release_range(dev->dev, qp->mqp.qpn, 1);
@@ -520,7 +535,6 @@ static int qp_has_rq(struct ib_qp_init_attr *attr)
 	return !attr->srq;
 }
 
-
 static int create_qp_common(struct mlx4_ib_dev *dev, struct ib_pd *pd,
 			    struct ib_qp_init_attr *init_attr,
 			    struct ib_udata *udata, int sqpn, struct mlx4_ib_qp *qp)
@@ -529,6 +543,8 @@ static int create_qp_common(struct mlx4_ib_dev *dev, struct ib_pd *pd,
 	int err;
 	enum mlx4_ib_qp_type qp_type =
 			(enum mlx4_ib_qp_type) init_attr->qp_type;
+	struct mlx4_ib_cq *mcq;
+	unsigned long flags;
 	qp->mlx4_ib_qp_type = qp_type;
 	qp->pri.vid = qp->alt.vid = 0xFFFF;
 	mutex_init(&qp->mutex);
@@ -634,6 +650,23 @@ static int create_qp_common(struct mlx4_ib_dev *dev, struct ib_pd *pd,
 
 	qp->mqp.event = mlx4_ib_qp_event;
 
+	spin_lock_irqsave(&dev->reset_flow_resource_lock, flags);
+	mlx4_ib_lock_cqs(to_mcq(init_attr->send_cq),
+			 to_mcq(init_attr->recv_cq));
+	/* Maintain device to QPs access, needed for further handling
+	 * via reset flow
+	 */
+	list_add_tail(&qp->qps_list, &dev->qp_list);
+	/* Maintain CQ to QPs access, needed for further handling
+	 * via reset flow
+	 */
+	mcq = to_mcq(init_attr->send_cq);
+	list_add_tail(&qp->cq_send_list, &mcq->send_qp_list);
+	mcq = to_mcq(init_attr->recv_cq);
+	list_add_tail(&qp->cq_recv_list, &mcq->recv_qp_list);
+	mlx4_ib_unlock_cqs(to_mcq(init_attr->send_cq),
+			   to_mcq(init_attr->recv_cq));
+	spin_unlock_irqrestore(&dev->reset_flow_resource_lock, flags);
 	return 0;
 
 err_qpn:
