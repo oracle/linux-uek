@@ -334,15 +334,13 @@ out_locked:
  * so that the subsequent region_add call will have all the
  * regions it needs and will not fail.
  *
- * Upon entry, region_chg will also examine the cache of
- * region descriptors associated with the map.  If there
- * not enough descriptors cached, one will be allocated
- * for the in progress add operation.
+ * Upon entry, region_chg will also examine the cache of region descriptors
+ * associated with the map.  If there are not enough descriptors cached, one
+ * will be allocated for the in progress add operation.
  *
- * Returns the number of huge pages that need to be added
- * to the existing reservation map for the range [f, t).
- * This number is greater or equal to zero.  -ENOMEM is
- * returned if a new file_region structure or cache entry
+ * Returns the number of huge pages that need to be added to the existing
+ * reservation map for the range [f, t).  This number is greater or equal to
+ * zero.  -ENOMEM is returned if a new file_region structure or cache entry
  * is needed and can not be allocated.
  */
 static long region_chg(struct resv_map *resv, long f, long t)
