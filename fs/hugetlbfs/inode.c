@@ -85,6 +85,29 @@ static const match_table_t tokens = {
 	{Opt_err,	NULL},
 };
 
+#ifdef CONFIG_NUMA
+static inline void hugetlb_set_vma_policy(struct vm_area_struct *vma,
+					struct inode *inode, pgoff_t index)
+{
+	vma->vm_policy = mpol_shared_policy_lookup(&HUGETLBFS_I(inode)->policy,
+							index);
+}
+
+static inline void hugetlb_drop_vma_policy(struct vm_area_struct *vma)
+{
+	mpol_cond_put(vma->vm_policy);
+}
+#else
+static inline void hugetlb_set_vma_policy(struct vm_area_struct *vma,
+					struct inode *inode, pgoff_t index)
+{
+}
+
+static inline void hugetlb_drop_vma_policy(struct vm_area_struct *vma)
+{
+}
+#endif
+
 static void huge_pagevec_release(struct pagevec *pvec)
 {
 	int i;
@@ -547,9 +570,9 @@ static long hugetlbfs_fallocate(struct file *file, int mode, loff_t offset,
 		goto out;
 
 	/*
-	 * Initialize a pseudo vma that just contains the policy used
-	 * when allocating the huge pages.  The actual policy field
-	 * (vm_policy) is determined based on the index in the loop below.
+	 * Initialize a pseudo vma as this is required by the huge page
+	 * allocation routines.  If NUMA is configured, use page index
+	 * as input to create an allocation policy.
 	 */
 	memset(&pseudo_vma, 0, sizeof(struct vm_area_struct));
 	pseudo_vma.vm_flags = (VM_HUGETLB | VM_MAYSHARE | VM_SHARED);
@@ -575,10 +598,8 @@ static long hugetlbfs_fallocate(struct file *file, int mode, loff_t offset,
 			break;
 		}
 
-		/* Get policy based on index */
-		pseudo_vma.vm_policy =
-			mpol_shared_policy_lookup(&HUGETLBFS_I(inode)->policy,
-							index);
+		/* Set numa allocation policy based on index */
+		hugetlb_set_vma_policy(&pseudo_vma, inode, index);
 
 		/* addr is the offset within the file (zero based) */
 		addr = index * hpage_size;
@@ -593,13 +614,13 @@ static long hugetlbfs_fallocate(struct file *file, int mode, loff_t offset,
 		if (page) {
 			put_page(page);
 			mutex_unlock(&hugetlb_fault_mutex_table[hash]);
-			mpol_cond_put(pseudo_vma.vm_policy);
+			hugetlb_drop_vma_policy(&pseudo_vma);
 			continue;
 		}
 
 		/* Allocate page and add to page cache */
 		page = alloc_huge_page(&pseudo_vma, addr, avoid_reserve);
-		mpol_cond_put(pseudo_vma.vm_policy);
+		hugetlb_drop_vma_policy(&pseudo_vma);
 		if (IS_ERR(page)) {
 			mutex_unlock(&hugetlb_fault_mutex_table[hash]);
 			error = PTR_ERR(page);
