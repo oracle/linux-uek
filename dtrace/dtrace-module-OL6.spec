@@ -13,7 +13,9 @@
 %define variant %{?build_variant:%{build_variant}}%{!?build_variant:-uek}
 
 # Set this to the version of the kernel this module is compiled against.
-%define kver %{?build_kver:%{build_kver}}%{!?build_kver:4.0.4-15.el6uek}
+%define kver %{?build_kver:%{build_kver}}%{!?build_kver:4.1.4-3.el6uek}
+
+%define _signmodules %{?signmodules: %{signmodules}} %{?!signmodules: 1}
 
 # Select the correct source code version based on the kernel version.
 # Failing to pick the correct version can have disasterous effects!
@@ -35,19 +37,19 @@
 %{lua:
 	local kver = rpm.expand("%{kver}")
 
-	if rpm.vercmp(kver, "4.0.0-1") >= 0 then
+	if rpm.vercmp(kver, "4.1.4-3") >= 0 then
 		rpm.define("arches x86_64 sparc64")
 	else
 		rpm.define("arches x86_64")
 	end
 
-	if rpm.vercmp(kver, "4.0.4-15") >= 0 then
+	if rpm.vercmp(kver, "4.1.4-3") >= 0 then
 		rpm.define("srcver 0.5.0")
-		rpm.define("bldrel 1")
+		rpm.define("bldrel 2")
 		rpm.define("dt_vcode "..rpm.expand("%{dt_0_5_0}"))
 	elseif rpm.vercmp(kver, "3.8.13-87") >= 0 then
 		rpm.define("srcver 0.4.5")
-		rpm.define("bldrel 2")
+		rpm.define("bldrel 3")
 		rpm.define("dt_vcode "..rpm.expand("%{dt_0_4_5}"))
 	elseif rpm.vercmp(kver, "3.8.13-69") >= 0 then
 		rpm.define("srcver 0.4.4")
@@ -105,6 +107,11 @@ BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 BuildRequires: kernel%{variant}-devel = %{kver}
 BuildRequires: libdtrace-ctf
 ExclusiveArch: x86_64
+
+%if %{_signmodules}
+Source1: mod-sign.sh
+%define modsign_cmd %{SOURCE1}
+%endif
 
 %description
 DTrace kernel modules.
@@ -198,6 +205,10 @@ cd dtrace
 KSRC=/usr/src/kernels/%{kver}.%{karch}
 make KERNELDIR=$KSRC karch=%{karch} modules
 
+%if %{_signmodules}
+%{modsign_cmd} ${RPM_BUILD_DIR}/%{name}/dtrace
+%endif
+
 %install
 rm -rf %{buildroot}
 mkdir -p %{buildroot}/lib/modules/%{kver}.%{karch}/kernel/drivers/dtrace
@@ -249,13 +260,19 @@ rm -rf %{buildroot}
 
 %changelog
 %if %{dt_vcode} >= %{dt_0_5_0}
-* Tue Jul  6 2015 Kris Van Hees <kris.van.hees@oracle.com> - 0.5.0-1
+* Mon Jul  6 2015 Natalya Naumova <natalya.naumova@oracle.com> - 0.5.0-2
+- modules signing support
+* Mon Aug 10 2015 Kris Van Hees <kris.van.hees@oracle.com> - 0.5.0-1
+- Use kernel-provided SDT trampoline memory area for SPARC64.
+  [Orabug: 21220344]
 - Add support for sparc64.
   [Orabug: 19005048]
 - Update uid / gid handling in view of namespaces in UEK4 kernels.
   [Orabug: 20456825]
 %endif
 %if %{dt_vcode} >= %{dt_0_4_5}
+* Tue Jul  7 2015 Kris Van Hees <kris.van.hees@oracle.com> - 0.4.5-3
+- Synchronize versions with OL7
 * Tue Jun 23 2015 Kris Van Hees <kris.van.hees@oracle.com> - 0.4.5-2
 - Validate d_path() argument pointer to avoid crash.
   [Orabug: 21304207]
@@ -321,8 +338,8 @@ rm -rf %{buildroot}
   [Orabug: 17591351]
 %endif
 %if %{dt_vcode} == %{dt_0_4_0}
-* Thu Oct 17 2013 Nick Alcock <nick.alcock@oracle.com> - 0.4.0-3 
-- fix changelog, no code changes 
+* Thu Oct 17 2013 Nick Alcock <nick.alcock@oracle.com> - 0.4.0-3
+- fix changelog, no code changes
 %endif
 %if %{dt_vcode} >= %{dt_0_4_0}
 * Thu Oct 10 2013 Kris Van Hees <kris.van.hees@oracle.com> - 0.4.0-2
