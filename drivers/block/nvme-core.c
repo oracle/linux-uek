@@ -2478,7 +2478,6 @@ static int nvme_dev_add(struct nvme_dev *dev)
 		return -EIO;
 	}
 
-	nn = le32_to_cpup(&ctrl->nn);
 	dev->oncs = le16_to_cpup(&ctrl->oncs);
 	dev->abort_limit = ctrl->acl + 1;
 	dev->vwc = ctrl->vwc;
