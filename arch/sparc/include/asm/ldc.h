@@ -24,6 +24,9 @@ struct ldc_channel_config {
 	u32			mtu;
 	unsigned int		rx_irq;
 	unsigned int		tx_irq;
+	u64			rx_ino;
+	u64			tx_ino;
+	u64			dev_handle;
 	u8			mode;
 #define LDC_MODE_RAW		0x00
 #define LDC_MODE_UNRELIABLE	0x01
@@ -47,6 +50,8 @@ struct ldc_channel_config {
 #define LDC_STATE_BOUND		0x02
 #define LDC_STATE_READY		0x03
 #define LDC_STATE_CONNECTED	0x04
+
+#define LDC_PACKET_SIZE		64
 
 struct ldc_channel;
 
@@ -72,6 +77,11 @@ int ldc_connect(struct ldc_channel *lp);
 int ldc_disconnect(struct ldc_channel *lp);
 
 int ldc_state(struct ldc_channel *lp);
+void ldc_set_state(struct ldc_channel *lp, u8 state);
+int ldc_mode(struct ldc_channel *lp);
+void ldc_print(struct ldc_channel *lp);
+int ldc_rx_reset(struct ldc_channel *lp);
+void ldc_clr_reset(struct ldc_channel *lp);
 
 /* Read and write operations.  Only valid when the link is up.  */
 int ldc_write(struct ldc_channel *lp, const void *buf,
@@ -136,5 +146,13 @@ void *ldc_alloc_exp_dring(struct ldc_channel *lp, unsigned int len,
 void ldc_free_exp_dring(struct ldc_channel *lp, void *buf,
 		        unsigned int len,
 		        struct ldc_trans_cookie *cookies, int ncookies);
+
+int ldc_tx_space_available(struct ldc_channel *lp, unsigned long size);
+
+int ldc_rx_data_available(struct ldc_channel *lp);
+
+void ldc_enable_hv_intr(struct ldc_channel *lp);
+
+void ldc_disable_hv_intr(struct ldc_channel *lp);
 
 #endif /* _SPARC64_LDC_H */
