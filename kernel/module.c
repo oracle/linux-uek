@@ -3202,7 +3202,9 @@ static int complete_formation(struct module *mod, struct load_info *info)
 {
 	int err;
 
+#ifdef CONFIG_DTRACE
 	dtrace_sdt_register_module(mod);
+#endif
 
 	mutex_lock(&module_mutex);
 
