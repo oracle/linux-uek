@@ -1,9 +1,9 @@
 DTrace Kernel Modules News
 ==========================
 
-Release 0.5.0 (Jul 6th, 2015)
------------------------------
-Kernel release: 4.0.4-15.el6uek
+Release 0.5.0 (Aug 10th, 2015)
+------------------------------
+Kernel release: 4.1.4-4.el6uek
 
 New features:
 
@@ -14,6 +14,18 @@ New features:
    at the kernel level (kuid and kgid).  All uid / gid values reported by
    D subroutines (or obtained from structures) are evaluated based on the
    initial user namespace.
+
+Changes:
+
+ - Accessing kernel memory under NOFAULT protection now implies NOPF (no
+   page fault) as well.  Previously, NOPF was an option that could be set
+   in addition to NOFAULT.
+
+ - Debugging output has been improved (to be enabled at compile time).
+
+ - The datatype formerly known as sdt_instr_t has been renamed asm_instr_t.
+   The rationale behind this change is that it will be used in code beyond
+   the SDT provider and therefore a more generic name is appropriate.
 
 Release 0.4.5 (Jun 17th, 2015)
 ------------------------------
