@@ -703,6 +703,7 @@ xfs_log_mount(
 		if (error) {
 			xfs_warn(mp, "log mount/recovery failed: error %d",
 				error);
+			xlog_recover_cancel(mp->m_log);
 			goto out_destroy_ail;
 		}
 	}
@@ -743,26 +744,35 @@ out:
  * it.
  */
 int
-xfs_log_mount_finish(xfs_mount_t *mp)
-{
+xfs_log_mount_finish(
+	struct xfs_mount	*mp)
+ {
 	int	error = 0;
-	int	readonly = (mp->m_flags & XFS_MOUNT_RDONLY);
 
-	if (!(mp->m_flags & XFS_MOUNT_NORECOVERY)) {
-		if (readonly) {
-			/* Allow unlinked processing to proceed */
-			mp->m_flags &= ~XFS_MOUNT_RDONLY;
-		}
-		error = xlog_recover_finish(mp->m_log);
-		if (!error)
-			xfs_log_work_queue(mp);
-	} else {
+	if (mp->m_flags & XFS_MOUNT_NORECOVERY) {
 		ASSERT(mp->m_flags & XFS_MOUNT_RDONLY);
+		return 0;
 	}
 
+	error = xlog_recover_finish(mp->m_log);
+	if (!error)
+		xfs_log_work_queue(mp);
 
-	if (readonly)
-		mp->m_flags |= XFS_MOUNT_RDONLY;
+	return error;
+}
+
+/*
+ * The mount has failed. Cancel the recovery if it hasn't completed and destroy
+ * the log.
+ */
+int
+xfs_log_mount_cancel(
+	struct xfs_mount	*mp)
+{
+	int			error;
+
+	error = xlog_recover_cancel(mp->m_log);
+	xfs_log_unmount(mp);
 
 	return error;
 }
