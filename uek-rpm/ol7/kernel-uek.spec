@@ -428,7 +428,7 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 # Packages that need to be installed before the kernel is, because the %post
 # scripts use them.
 #
-%define kernel_prereq  fileutils, module-init-tools, initscripts >= 8.11.1-1, kernel-firmware = %{rpmversion}-%{pkg_release}, /sbin/new-kernel-pkg
+%define kernel_prereq  fileutils, module-init-tools, initscripts >= 8.11.1-1, kernel-firmware = %{rpmversion}-%{pkg_release}, %{_sbindir}/new-kernel-pkg
 %define initrd_prereq  dracut-kernel >= 004-242.0.3
 
 #
@@ -455,8 +455,8 @@ Provides: kernel = %{rpmversion}-%{pkg_release}\
 %endif\
 Requires(pre): %{kernel_prereq}\
 Requires(pre): %{initrd_prereq}\
-Requires(post): /sbin/new-kernel-pkg\
-Requires(preun): /sbin/new-kernel-pkg\
+Requires(post): %{_sbindir}/new-kernel-pkg\
+Requires(preun): %{_sbindir}/new-kernel-pkg\
 Conflicts: %{kernel_dot_org_conflicts}\
 Conflicts: %{package_conflicts}\
 %{expand:%%{?kernel%{?1:_%{1}}_conflicts:Conflicts: %%{kernel%{?1:_%{1}}_conflicts}}}\
@@ -1516,8 +1516,8 @@ fi\
 #
 %define kernel_variant_posttrans() \
 %{expand:%%posttrans %{?1}}\
-/sbin/new-kernel-pkg --package kernel%{?1:-%{1}} --mkinitrd --dracut --depmod --update %{KVERREL}%{?1:.%{1}} || exit $?\
-/sbin/new-kernel-pkg --package kernel%{?1:-%{1}} --rpmposttrans %{KVERREL}%{?1:.%{1}} || exit $?\
+%{_sbindir}/new-kernel-pkg --package kernel%{?1:-%{1}} --mkinitrd --dracut --depmod --update %{KVERREL}%{?1:.%{1}} || exit $?\
+%{_sbindir}/new-kernel-pkg --package kernel%{?1:-%{1}} --rpmposttrans %{KVERREL}%{?1:.%{1}} || exit $?\
 if [ -x /sbin/weak-modules ]\
 then\
     /sbin/weak-modules --add-kernel %{KVERREL}%{?1:.%{1}} || exit $?\
@@ -1541,7 +1541,7 @@ fi}\
 if grep --silent '^hwcap 0 nosegneg$' /etc/ld.so.conf.d/kernel-*.conf 2> /dev/null; then\
   sed -i '/^hwcap 0 nosegneg$/ s/0/1/' /etc/ld.so.conf.d/kernel-*.conf\
 fi\
-/sbin/new-kernel-pkg --package kernel%{?-v:-%{-v*}} --install %{KVERREL}%{!-u:%{?-v:.%{-v*}}} || exit $?\
+%{_sbindir}/new-kernel-pkg --package kernel%{?-v:-%{-v*}} --install %{KVERREL}%{!-u:%{?-v:.%{-v*}}} || exit $?\
 ln -sf /lib/firmware/%{rpmversion}-%{pkg_release} /lib/firmware/%{rpmversion}-%{pkg_release}.%{_target_cpu} \
 %{nil}
 
@@ -1551,7 +1551,7 @@ ln -sf /lib/firmware/%{rpmversion}-%{pkg_release} /lib/firmware/%{rpmversion}-%{
 #
 %define kernel_variant_preun() \
 %{expand:%%preun %{?1}}\
-/sbin/new-kernel-pkg --rminitrd --rmmoddep --remove %{KVERREL}%{?1:.%{1}} || exit $?\
+%{_sbindir}/new-kernel-pkg --rminitrd --rmmoddep --remove %{KVERREL}%{?1:.%{1}} || exit $?\
 if [ -x /sbin/weak-modules ]\
 then\
     /sbin/weak-modules --remove-kernel %{KVERREL}%{?1:.%{1}} || exit $?\
