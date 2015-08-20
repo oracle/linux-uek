@@ -533,7 +533,6 @@ Source14: find-provides
 Source16: perf
 Source17: kabitool
 Source18: check-kabi
-Source19: extrakeys.pub
 Source20: x86_energy_perf_policy
 
 Source1000: config-x86_64
