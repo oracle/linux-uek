@@ -866,6 +866,13 @@ static void xs_close(struct rpc_xprt *xprt)
 	xprt_disconnect_done(xprt);
 }
 
+static void xs_inject_disconnect(struct rpc_xprt *xprt)
+{
+	dprintk("RPC:       injecting transport disconnect on xprt=%p\n",
+		xprt);
+	xprt_disconnect_done(xprt);
+}
+
 static void xs_xprt_free(struct rpc_xprt *xprt)
 {
 	xs_free_peer_addresses(xprt);
@@ -2530,6 +2537,7 @@ static struct rpc_xprt_ops xs_udp_ops = {
 	.print_stats		= xs_udp_print_stats,
 	.enable_swap		= xs_enable_swap,
 	.disable_swap		= xs_disable_swap,
+	.inject_disconnect	= xs_inject_disconnect,
 };
 
 static struct rpc_xprt_ops xs_tcp_ops = {
@@ -2548,6 +2556,7 @@ static struct rpc_xprt_ops xs_tcp_ops = {
 	.print_stats		= xs_tcp_print_stats,
 	.enable_swap		= xs_enable_swap,
 	.disable_swap		= xs_disable_swap,
+	.inject_disconnect	= xs_inject_disconnect,
 };
 
 /*
@@ -2567,6 +2576,7 @@ static struct rpc_xprt_ops bc_tcp_ops = {
 	.print_stats		= xs_tcp_print_stats,
 	.enable_swap		= xs_enable_swap,
 	.disable_swap		= xs_disable_swap,
+	.inject_disconnect	= xs_inject_disconnect,
 };
 
 static int xs_init_anyaddr(const int family, struct sockaddr *sap)
