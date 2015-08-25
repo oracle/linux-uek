@@ -2497,7 +2497,7 @@ retry:
 			goto retry;
 		}
 
-		ret = xs_swapper_enable(xprt);
+		ret = xprt_enable_swap(xprt);
 		xprt_put(xprt);
 	}
 	return ret;
@@ -2524,7 +2524,7 @@ retry:
 			goto retry;
 		}
 
-		xs_swapper_disable(xprt);
+		xprt_disable_swap(xprt);
 		xprt_put(xprt);
 	}
 }
