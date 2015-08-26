@@ -47,11 +47,6 @@
 #include "mlx4_ib.h"
 #include "user.h"
 
-static void mlx4_ib_lock_cqs(struct mlx4_ib_cq *send_cq,
-			     struct mlx4_ib_cq *recv_cq);
-static void mlx4_ib_unlock_cqs(struct mlx4_ib_cq *send_cq,
-			       struct mlx4_ib_cq *recv_cq);
-
 enum {
 	MLX4_IB_ACK_REQ_FREQ	= 8,
 };
@@ -941,36 +936,6 @@ static enum mlx4_qp_state to_mlx4_state(enum ib_qp_state state)
 	}
 }
 
-static void mlx4_ib_lock_cqs(struct mlx4_ib_cq *send_cq, struct mlx4_ib_cq *recv_cq)
-	__acquires(&send_cq->lock) __acquires(&recv_cq->lock)
-{
-	if (send_cq == recv_cq) {
-		spin_lock(&send_cq->lock);
-		__acquire(&recv_cq->lock);
-	} else if (send_cq->mcq.cqn < recv_cq->mcq.cqn) {
-		spin_lock(&send_cq->lock);
-		spin_lock_nested(&recv_cq->lock, SINGLE_DEPTH_NESTING);
-	} else {
-		spin_lock(&recv_cq->lock);
-		spin_lock_nested(&send_cq->lock, SINGLE_DEPTH_NESTING);
-	}
-}
-
-static void mlx4_ib_unlock_cqs(struct mlx4_ib_cq *send_cq, struct mlx4_ib_cq *recv_cq)
-	__releases(&send_cq->lock) __releases(&recv_cq->lock)
-{
-	if (send_cq == recv_cq) {
-		__release(&recv_cq->lock);
-		spin_unlock(&send_cq->lock);
-	} else if (send_cq->mcq.cqn < recv_cq->mcq.cqn) {
-		spin_unlock(&recv_cq->lock);
-		spin_unlock(&send_cq->lock);
-	} else {
-		spin_unlock(&send_cq->lock);
-		spin_unlock(&recv_cq->lock);
-	}
-}
-
 static void del_gid_entries(struct mlx4_ib_qp *qp)
 {
 	struct mlx4_ib_gid_entry *ge, *tmp;
@@ -987,25 +952,6 @@ static struct mlx4_ib_pd *get_pd(struct mlx4_ib_qp *qp)
 		return to_mpd(to_mxrcd(qp->ibqp.xrcd)->pd);
 	else
 		return to_mpd(qp->ibqp.pd);
-}
-
-static void get_cqs(struct mlx4_ib_qp *qp,
-		    struct mlx4_ib_cq **send_cq, struct mlx4_ib_cq **recv_cq)
-{
-	switch (qp->ibqp.qp_type) {
-	case IB_QPT_XRC_TGT:
-		*send_cq = to_mcq(to_mxrcd(qp->ibqp.xrcd)->cq);
-		*recv_cq = *send_cq;
-		break;
-	case IB_QPT_XRC_INI:
-		*send_cq = to_mcq(qp->ibqp.send_cq);
-		*recv_cq = *send_cq;
-		break;
-	default:
-		*send_cq = to_mcq(qp->ibqp.send_cq);
-		*recv_cq = to_mcq(qp->ibqp.recv_cq);
-		break;
-	}
 }
 
 static void destroy_qp_common(struct mlx4_ib_dev *dev, struct mlx4_ib_qp *qp,
@@ -1042,7 +988,7 @@ static void destroy_qp_common(struct mlx4_ib_dev *dev, struct mlx4_ib_qp *qp,
 		}
 	}
 
-	get_cqs(qp, &send_cq, &recv_cq);
+	mlx4_ib_get_cqs(qp, &send_cq, &recv_cq);
 
 	spin_lock_irqsave(&dev->reset_flow_resource_lock, flags);
 	mlx4_ib_lock_cqs(send_cq, recv_cq);
@@ -1629,7 +1575,7 @@ static int __mlx4_ib_modify_qp(struct ib_qp *ibqp,
 	}
 
 	pd = get_pd(qp);
-	get_cqs(qp, &send_cq, &recv_cq);
+	mlx4_ib_get_cqs(qp, &send_cq, &recv_cq);
 	context->pd       = cpu_to_be32(pd->pdn);
 	context->cqn_send = cpu_to_be32(send_cq->mcq.cqn);
 	context->cqn_recv = cpu_to_be32(recv_cq->mcq.cqn);

@@ -683,6 +683,58 @@ int mlx4_ib_arm_cq(struct ib_cq *cq, enum ib_cq_notify_flags flags);
 void __mlx4_ib_cq_clean(struct mlx4_ib_cq *cq, u32 qpn, struct mlx4_ib_srq *srq);
 void mlx4_ib_cq_clean(struct mlx4_ib_cq *cq, u32 qpn, struct mlx4_ib_srq *srq);
 
+static inline void mlx4_ib_lock_cqs(struct mlx4_ib_cq *send_cq,
+				    struct mlx4_ib_cq *recv_cq)
+	__acquires(&send_cq->lock) __acquires(&recv_cq->lock)
+{
+	if (send_cq == recv_cq) {
+		spin_lock(&send_cq->lock);
+		__acquire(&recv_cq->lock);
+	} else if (send_cq->mcq.cqn < recv_cq->mcq.cqn) {
+		spin_lock(&send_cq->lock);
+		spin_lock_nested(&recv_cq->lock, SINGLE_DEPTH_NESTING);
+	} else {
+		spin_lock(&recv_cq->lock);
+		spin_lock_nested(&send_cq->lock, SINGLE_DEPTH_NESTING);
+	}
+}
+
+static inline void mlx4_ib_unlock_cqs(struct mlx4_ib_cq *send_cq,
+				      struct mlx4_ib_cq *recv_cq)
+	__releases(&send_cq->lock) __releases(&recv_cq->lock)
+{
+	if (send_cq == recv_cq) {
+		__release(&recv_cq->lock);
+		spin_unlock(&send_cq->lock);
+	} else if (send_cq->mcq.cqn < recv_cq->mcq.cqn) {
+		spin_unlock(&recv_cq->lock);
+		spin_unlock(&send_cq->lock);
+	} else {
+		spin_unlock(&send_cq->lock);
+		spin_unlock(&recv_cq->lock);
+	}
+}
+
+static inline void mlx4_ib_get_cqs(struct mlx4_ib_qp *qp,
+				   struct mlx4_ib_cq **send_cq,
+				    struct mlx4_ib_cq **recv_cq)
+{
+	switch (qp->ibqp.qp_type) {
+	case IB_QPT_XRC_TGT:
+		*send_cq = to_mcq(to_mxrcd(qp->ibqp.xrcd)->cq);
+		*recv_cq = *send_cq;
+		break;
+	case IB_QPT_XRC_INI:
+		*send_cq = to_mcq(qp->ibqp.send_cq);
+		*recv_cq = *send_cq;
+		break;
+	default:
+		*send_cq = to_mcq(qp->ibqp.send_cq);
+		*recv_cq = to_mcq(qp->ibqp.recv_cq);
+		break;
+	}
+}
+
 struct ib_ah *mlx4_ib_create_ah(struct ib_pd *pd, struct ib_ah_attr *ah_attr,
 				struct ib_udata *udata);
 int mlx4_ib_query_ah(struct ib_ah *ibah, struct ib_ah_attr *ah_attr);
