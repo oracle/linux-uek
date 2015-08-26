@@ -391,7 +391,7 @@ static int snd_usb_audio_create(struct usb_interface *intf,
 	chip->card = card;
 	chip->setup = device_setup[idx];
 	chip->autoclock = autoclock;
-	chip->probing = 1;
+	atomic_set(&chip->active, 1); /* avoid autopm during probing */
 	atomic_set(&chip->usage_count, 0);
 	atomic_set(&chip->shutdown, 0);
 
@@ -523,7 +523,7 @@ static int usb_audio_probe(struct usb_interface *intf,
 				goto __error;
 			}
 			chip = usb_chip[i];
-			chip->probing = 1;
+			atomic_inc(&chip->active); /* avoid autopm */
 			break;
 		}
 	}
@@ -583,8 +583,8 @@ static int usb_audio_probe(struct usb_interface *intf,
 
 	usb_chip[chip->index] = chip;
 	chip->num_interfaces++;
-	chip->probing = 0;
 	usb_set_intfdata(intf, chip);
+	atomic_dec(&chip->active);
 	mutex_unlock(&register_mutex);
 	return 0;
 
@@ -592,7 +592,7 @@ static int usb_audio_probe(struct usb_interface *intf,
 	if (chip) {
 		if (!chip->num_interfaces)
 			snd_card_free(chip->card);
-		chip->probing = 0;
+		atomic_dec(&chip->active);
 	}
 	mutex_unlock(&register_mutex);
 	return err;
@@ -688,8 +688,6 @@ int snd_usb_autoresume(struct snd_usb_audio *chip)
 {
 	if (atomic_read(&chip->shutdown))
 		return -EIO;
-	if (chip->probing)
-		return 0;
 	if (atomic_inc_return(&chip->active) == 1)
 		return usb_autopm_get_interface(chip->pm_intf);
 	return 0;
@@ -697,8 +695,6 @@ int snd_usb_autoresume(struct snd_usb_audio *chip)
 
 void snd_usb_autosuspend(struct snd_usb_audio *chip)
 {
-	if (chip->probing)
-		return;
 	if (atomic_dec_and_test(&chip->active))
 		usb_autopm_put_interface(chip->pm_intf);
 }
