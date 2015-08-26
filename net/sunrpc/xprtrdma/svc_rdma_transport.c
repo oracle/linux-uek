@@ -153,17 +153,35 @@ static void svc_rdma_bc_free(struct svc_xprt *xprt)
 }
 #endif	/* CONFIG_SUNRPC_BACKCHANNEL */
 
+static void svc_rdma_init_context(struct svcxprt_rdma *xprt,
+				  struct svc_rdma_op_ctxt *ctxt)
+{
+	ctxt->xprt = xprt;
+	INIT_LIST_HEAD(&ctxt->dto_q);
+	ctxt->count = 0;
+	ctxt->frmr = NULL;
+	atomic_inc(&xprt->sc_ctxt_used);
+}
+
+struct svc_rdma_op_ctxt *svc_rdma_get_context_gfp(struct svcxprt_rdma *xprt,
+						  gfp_t flags)
+{
+	struct svc_rdma_op_ctxt *ctxt;
+
+	ctxt = kmem_cache_alloc(svc_rdma_ctxt_cachep, flags);
+	if (!ctxt)
+		return NULL;
+	svc_rdma_init_context(xprt, ctxt);
+	return ctxt;
+}
+
 struct svc_rdma_op_ctxt *svc_rdma_get_context(struct svcxprt_rdma *xprt)
 {
 	struct svc_rdma_op_ctxt *ctxt;
 
 	ctxt = kmem_cache_alloc(svc_rdma_ctxt_cachep,
 				GFP_KERNEL | __GFP_NOFAIL);
-	ctxt->xprt = xprt;
-	INIT_LIST_HEAD(&ctxt->dto_q);
-	ctxt->count = 0;
-	ctxt->frmr = NULL;
-	atomic_inc(&xprt->sc_ctxt_used);
+	svc_rdma_init_context(xprt, ctxt);
 	return ctxt;
 }
 
