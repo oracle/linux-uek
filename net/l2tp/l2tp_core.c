@@ -1399,8 +1399,8 @@ static int l2tp_tunnel_sock_create(struct net *net,
 		if (cfg->local_ip6 && cfg->peer_ip6) {
 			struct sockaddr_l2tpip6 ip6_addr = {0};
 
-			err = sock_create_kern(AF_INET6, SOCK_DGRAM,
-					  IPPROTO_L2TP, &sock);
+			err = sock_create_kern(&init_net, AF_INET6, SOCK_DGRAM,
+					       IPPROTO_L2TP, &sock);
 			if (err < 0)
 				goto out;
 
@@ -1429,8 +1429,8 @@ static int l2tp_tunnel_sock_create(struct net *net,
 		{
 			struct sockaddr_l2tpip ip_addr = {0};
 
-			err = sock_create_kern(AF_INET, SOCK_DGRAM,
-					  IPPROTO_L2TP, &sock);
+			err = sock_create_kern(&init_net, AF_INET, SOCK_DGRAM,
+					       IPPROTO_L2TP, &sock);
 			if (err < 0)
 				goto out;
 

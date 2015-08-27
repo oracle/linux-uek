@@ -2626,8 +2626,8 @@ int rds_ib_init(void)
 
 	INIT_LIST_HEAD(&rds_ib_devices);
 
-	ret = sock_create_kern(PF_INET, SOCK_STREAM, IPPROTO_TCP,
-				&rds_ib_inet_socket);
+	ret = sock_create_kern(&init_net, PF_INET, SOCK_STREAM, IPPROTO_TCP,
+			       &rds_ib_inet_socket);
 	if (ret < 0) {
 		printk(KERN_ERR "RDS/IB: can't create TCP transport socket (%d).\n", -ret);
 		goto out;
