@@ -278,7 +278,7 @@ void rds_recv_incoming(struct rds_connection *conn, __be32 saddr, __be32 daddr,
 		rdsdebug("handing off to PRE_ROUTING hook\n");
 		/* call down through the hook layers */
 		ret = NF_HOOK(PF_RDS_HOOK, NF_RDS_PRE_ROUTING,
-			      &init_net,
+			      rds_conn_net(conn),
 			      sk, skb, NULL, NULL, rds_recv_ok);
 	}
 	/* if we had a failure to convert, then just assuming to continue as local */
@@ -433,7 +433,7 @@ out:
 
 	/* on error lets take a shot at hook cleanup */
 	NF_HOOK(PF_RDS_HOOK, NF_RDS_FORWARD_ERROR,
-		&init_net,
+		rds_conn_net(conn),
 		sk, inc->i_skb, NULL, NULL, rds_recv_ok);
 
 	/* then hand the request off to normal local processing on the old connection */
