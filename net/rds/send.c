@@ -1240,7 +1240,8 @@ int rds_sendmsg(struct socket *sock, struct msghdr *msg, size_t payload_len)
 			rs->rs_tos == rs->rs_conn->c_tos)
 		conn = rs->rs_conn;
 	else {
-		conn = rds_conn_create_outgoing(rs->rs_bound_addr, daddr,
+		conn = rds_conn_create_outgoing(sock_net(sock->sk),
+						rs->rs_bound_addr, daddr,
 					rs->rs_transport, rs->rs_tos,
 					sock->sk->sk_allocation);
 		if (IS_ERR(conn)) {
@@ -1250,6 +1251,7 @@ int rds_sendmsg(struct socket *sock, struct msghdr *msg, size_t payload_len)
 
 		if (rs->rs_tos && !conn->c_base_conn) {
 			conn->c_base_conn = rds_conn_create_outgoing(
+					sock_net(sock->sk),
 					rs->rs_bound_addr, daddr,
 					rs->rs_transport, 0,
 					sock->sk->sk_allocation);
