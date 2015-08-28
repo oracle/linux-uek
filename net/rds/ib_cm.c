@@ -800,8 +800,9 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 		 (unsigned long long)be64_to_cpu(lguid),
 		 (unsigned long long)be64_to_cpu(fguid));
 
-	conn = rds_conn_create(dp->dp_daddr, dp->dp_saddr, &rds_ib_transport,
-			       dp->dp_tos, GFP_KERNEL);
+	/* RDS/IB is not currently netns aware, thus init_net */
+	conn = rds_conn_create(&init_net, dp->dp_daddr, dp->dp_saddr,
+			       &rds_ib_transport, dp->dp_tos, GFP_KERNEL);
 	if (IS_ERR(conn)) {
 		rdsdebug("rds_conn_create failed (%ld)\n", PTR_ERR(conn));
 		conn = NULL;
@@ -809,7 +810,8 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 	}
 
 	if (dp->dp_tos && !conn->c_base_conn) {
-		conn->c_base_conn = rds_conn_create(dp->dp_daddr, dp->dp_saddr,
+		conn->c_base_conn = rds_conn_create(&init_net,
+					dp->dp_daddr, dp->dp_saddr,
 					&rds_ib_transport, 0, GFP_KERNEL);
 		if (IS_ERR(conn->c_base_conn)) {
 			conn = NULL;
@@ -1084,7 +1086,7 @@ int rds_ib_conn_connect(struct rds_connection *conn)
 	conn->c_route_resolved = 0;
 	/* XXX I wonder what affect the port space has */
 	/* delegate cm event handler to rdma_transport */
-	ic->i_cm_id = rdma_create_id(&init_net,
+	ic->i_cm_id = rdma_create_id(rds_conn_net(conn),
 				     rds_rdma_cm_event_handler, conn,
 				     RDMA_PS_TCP, IB_QPT_RC);
 	if (IS_ERR(ic->i_cm_id)) {
