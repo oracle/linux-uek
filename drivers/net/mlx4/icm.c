@@ -515,10 +515,11 @@ out_free_icm:
 	return NULL;
 }
 
-int mlx4_table_get(struct mlx4_dev *dev, struct mlx4_icm_table *table, int obj,
+int mlx4_table_get(struct mlx4_dev *dev, struct mlx4_icm_table *table, u32 obj,
 		   enum mlx4_mr_flags flags)
 {
-	int i = (obj & (table->num_obj - 1)) / (MLX4_TABLE_CHUNK_SIZE / table->obj_size);
+	u32 i = (obj & (table->num_obj - 1)) /
+			(MLX4_TABLE_CHUNK_SIZE / table->obj_size);
 	int ret = 0;
 	int fmr_flow;
 	gfp_t gfp_mask;
@@ -563,10 +564,12 @@ out:
 	return ret;
 }
 
-void mlx4_table_put(struct mlx4_dev *dev, struct mlx4_icm_table *table, int obj,
+void mlx4_table_put(struct mlx4_dev *dev, struct mlx4_icm_table *table, u32 obj,
 		    enum mlx4_mr_flags flags)
 {
-	int i;
+	u32 i;
+	u64 offset;
+
 	int fmr_flow;
 
 	i = (obj & (table->num_obj - 1)) / (MLX4_TABLE_CHUNK_SIZE / table->obj_size);
@@ -577,12 +580,13 @@ void mlx4_table_put(struct mlx4_dev *dev, struct mlx4_icm_table *table, int obj,
 		goto out;
 
 	fmr_flow = mlx4_fmr_flow(dev, flags);
+	offset = i * MLX4_TABLE_CHUNK_SIZE;
 	if (fmr_flow)
-		mlx4_UNMAP_FMR(dev, table->virt + i * MLX4_TABLE_CHUNK_SIZE,
+		mlx4_UNMAP_FMR(dev, table->virt + offset,
 			       table->icm[i]->chunk_size / MLX4_ICM_PAGE_SIZE,
 			       table->icm[i]);
 	else
-		mlx4_UNMAP_ICM(dev, table->virt + i * MLX4_TABLE_CHUNK_SIZE,
+		mlx4_UNMAP_ICM(dev, table->virt + offset,
 			       table->icm[i]->chunk_size / MLX4_ICM_PAGE_SIZE);
 
 	mlx4_free_icm(dev, table->icm[i], table->coherent, flags);
@@ -593,10 +597,11 @@ out:
 }
 
 void *mlx4_table_find(struct mlx4_dev *dev, struct mlx4_icm_table *table,
-		      int obj, dma_addr_t *dma_handle,
+		      u32 obj, dma_addr_t *dma_handle,
 		      enum mlx4_mr_flags flags)
 {
-	int idx, offset, dma_offset, i;
+	int offset, dma_offset, i;
+	u64 idx;
 	struct mlx4_icm_chunk *chunk;
 	struct mlx4_icm *icm;
 	struct page *page = NULL;
@@ -606,7 +611,7 @@ void *mlx4_table_find(struct mlx4_dev *dev, struct mlx4_icm_table *table,
 
 	mutex_lock(&table->mutex);
 
-	idx = (obj & (table->num_obj - 1)) * table->obj_size;
+	idx = (u64) (obj & (table->num_obj - 1)) * table->obj_size;
 	icm = table->icm[idx / MLX4_TABLE_CHUNK_SIZE];
 	dma_offset = offset = idx % MLX4_TABLE_CHUNK_SIZE;
 
@@ -652,10 +657,11 @@ out:
 }
 
 int mlx4_table_get_range(struct mlx4_dev *dev, struct mlx4_icm_table *table,
-			 int start, int end, enum mlx4_mr_flags flags)
+			 u32 start, u32 end, enum mlx4_mr_flags flags)
 {
 	int inc = MLX4_TABLE_CHUNK_SIZE / table->obj_size;
-	int i, err;
+	int err;
+	u32 i;
 
 	for (i = start; i <= end; i += inc) {
 		err = mlx4_table_get(dev, table, i, flags);
@@ -675,9 +681,9 @@ fail:
 }
 
 void mlx4_table_put_range(struct mlx4_dev *dev, struct mlx4_icm_table *table,
-			  int start, int end, enum mlx4_mr_flags flags)
+			  u32 start, u32 end, enum mlx4_mr_flags flags)
 {
-	int i;
+	u32 i;
 
 	for (i = start; i <= end; i += MLX4_TABLE_CHUNK_SIZE / table->obj_size)
 		mlx4_table_put(dev, table, i, flags);
