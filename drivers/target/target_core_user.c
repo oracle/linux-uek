@@ -25,6 +25,7 @@
 #include <scsi/scsi.h>
 #include <scsi/scsi_host.h>
 #include <linux/uio_driver.h>
+#include <linux/stringify.h>
 #include <net/genetlink.h>
 #include <target/target_core_base.h>
 #include <target/target_core_fabric.h>
@@ -896,7 +897,7 @@ static int tcmu_configure_device(struct se_device *dev)
 	WARN_ON(!PAGE_ALIGNED(udev->data_off));
 	WARN_ON(udev->data_size % PAGE_SIZE);
 
-	info->version = xstr(TCMU_MAILBOX_VERSION);
+	info->version = __stringify(TCMU_MAILBOX_VERSION);
 
 	info->mem[0].name = "tcm-user command & data buffer";
 	info->mem[0].addr = (phys_addr_t) udev->mb_addr;
