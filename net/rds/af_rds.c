@@ -560,7 +560,7 @@ static int rds_create(struct net *net, struct socket *sock, int protocol, int ke
 	    (protocol && IPPROTO_OKA != protocol))
 		return -ESOCKTNOSUPPORT;
 
-	sk = sk_alloc(net, AF_RDS, GFP_KERNEL, &rds_proto);
+	sk = sk_alloc(net, AF_RDS, GFP_KERNEL, &rds_proto, kern);
 	if (!sk)
 		return -ENOMEM;
 
