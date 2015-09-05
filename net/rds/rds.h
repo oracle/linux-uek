@@ -285,6 +285,7 @@ struct rds_incoming {
 	struct sk_buff          *i_skb;
 
 	rds_rdma_cookie_t	i_rdma_cookie;
+	struct timeval		i_rx_tstamp;
 };
 
 struct rds_mr {
