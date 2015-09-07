@@ -409,13 +409,6 @@ static struct rds_ib_mr *rds_ib_alloc_fmr(struct rds_ib_device *rds_ibdev,
 		goto out_no_cigar;
 	}
 
-	memset(ibmr, 0, sizeof(*ibmr));
-
-	INIT_LIST_HEAD(&ibmr->pool_list);
-	spin_lock(&pool->busy_lock);
-	list_add(&ibmr->pool_list, &pool->busy_list);
-	spin_unlock(&pool->busy_lock);
-
 	ibmr->fmr = ib_alloc_fmr(rds_ibdev->pd,
 			(IB_ACCESS_LOCAL_WRITE |
 			 IB_ACCESS_REMOTE_READ |
@@ -468,6 +461,11 @@ static struct rds_ib_mr *rds_ib_alloc_fmr(struct rds_ib_device *rds_ibdev,
 		err = -EAGAIN;
 		goto out_no_cigar;
 	}
+
+	INIT_LIST_HEAD(&ibmr->pool_list);
+	spin_lock(&pool->busy_lock);
+	list_add(&ibmr->pool_list, &pool->busy_list);
+	spin_unlock(&pool->busy_lock);
 
 	ibmr->pool = pool;
 	if (pool->pool_type == RDS_IB_MR_8K_POOL)
