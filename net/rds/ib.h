@@ -437,8 +437,13 @@ struct rds_ib_device {
 	struct rds_ib_port      *ports;
 	struct ib_event_handler event_handler;
 	int			*vector_load;
-	wait_queue_head_t       wait;
-	int                     done;
+
+	/* flag indicating ib_device is under freeing up or is freed up to make
+	 * the race between rds_ib_remove_one() and rds_release() safe.
+	 */
+	atomic_t		free_dev;
+	/* wait until freeing work is done */
+	struct mutex		free_dev_lock;
 };
 
 #define pcidev_to_node(pcidev) pcibus_to_node(pcidev->bus)
@@ -489,6 +494,8 @@ struct rds_ib_statistics {
 	uint64_t        s_ib_rdma_mr_1m_pool_flush;
 	uint64_t        s_ib_rdma_mr_1m_pool_wait;
 	uint64_t        s_ib_rdma_mr_1m_pool_depleted;
+	uint64_t	s_ib_rdma_mr_1m_pool_reuse;
+	uint64_t	s_ib_rdma_mr_8k_pool_reuse;
 	uint64_t	s_ib_atomic_cswp;
 	uint64_t	s_ib_atomic_fadd;
 	uint64_t        s_ib_srq_lows;
