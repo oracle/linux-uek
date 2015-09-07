@@ -60,6 +60,9 @@ struct rds_ib_mr {
 	unsigned int		sg_len;
 	u64			*dma;
 	int			sg_dma_len;
+
+	struct rds_sock		*rs;
+	struct list_head	pool_list;
 };
 
 /*
@@ -83,6 +86,13 @@ struct rds_ib_mr_pool {
 	atomic_t		max_items_soft;
 	unsigned long		max_free_pinned;
 	struct ib_fmr_attr	fmr_attr;
+
+	spinlock_t		busy_lock; /* protect ops on 'busy_list' */
+	/* All in use MRs allocated from this pool are listed here. This list
+	 * helps freeing up in use MRs when a ib_device got removed while it's
+	 * resources are still in use in RDS layer. Protected by busy_lock.
+	 */
+	struct list_head	busy_list;
 };
 
 static int rds_ib_flush_mr_pool(struct rds_ib_mr_pool *pool, int free_all, struct rds_ib_mr **);
@@ -232,6 +242,9 @@ struct rds_ib_mr_pool *rds_ib_create_mr_pool(struct rds_ib_device *rds_ibdev,
 	if (!pool)
 		return ERR_PTR(-ENOMEM);
 
+	spin_lock_init(&pool->busy_lock);
+	INIT_LIST_HEAD(&pool->busy_list);
+
 	pool->pool_type = pool_type;
 	INIT_XLIST_HEAD(&pool->free_list);
 	INIT_XLIST_HEAD(&pool->drop_list);
@@ -266,6 +279,22 @@ void rds_ib_get_mr_info(struct rds_ib_device *rds_ibdev, struct rds_info_rdma_co
 
 void rds_ib_destroy_mr_pool(struct rds_ib_mr_pool *pool)
 {
+	struct rds_ib_mr *ibmr;
+	LIST_HEAD(drp_list);
+
+	/* move MRs in in-use list to drop or free list */
+	spin_lock(&pool->busy_lock);
+	list_splice_init(&pool->busy_list, &drp_list);
+	spin_unlock(&pool->busy_lock);
+
+	/* rds_rdma_drop_keys may drops more than one MRs in one iteration */
+	while (!list_empty(&drp_list)) {
+		ibmr = list_first_entry(&drp_list, struct rds_ib_mr, pool_list);
+		list_del_init(&ibmr->pool_list);
+		if (ibmr->rs)
+			rds_rdma_drop_keys(ibmr->rs);
+	}
+
 	cancel_delayed_work_sync(&pool->flush_worker);
 	rds_ib_flush_mr_pool(pool, 1, NULL);
 	WARN_ON(atomic_read(&pool->item_count));
@@ -296,6 +325,15 @@ static inline struct rds_ib_mr *rds_ib_reuse_fmr(struct rds_ib_mr_pool *pool)
 
 	clear_bit(CLEAN_LIST_BUSY_BIT, flag);
 	preempt_enable();
+	if (ibmr) {
+		if (pool->pool_type == RDS_IB_MR_8K_POOL)
+			rds_ib_stats_inc(s_ib_rdma_mr_8k_pool_reuse);
+		else
+			rds_ib_stats_inc(s_ib_rdma_mr_1m_pool_reuse);
+		spin_lock(&pool->busy_lock);
+		list_add(&ibmr->pool_list, &pool->busy_list);
+		spin_unlock(&pool->busy_lock);
+	}
 	return ibmr;
 }
 
@@ -372,6 +410,11 @@ static struct rds_ib_mr *rds_ib_alloc_fmr(struct rds_ib_device *rds_ibdev,
 	}
 
 	memset(ibmr, 0, sizeof(*ibmr));
+
+	INIT_LIST_HEAD(&ibmr->pool_list);
+	spin_lock(&pool->busy_lock);
+	list_add(&ibmr->pool_list, &pool->busy_list);
+	spin_unlock(&pool->busy_lock);
 
 	ibmr->fmr = ib_alloc_fmr(rds_ibdev->pd,
 			(IB_ACCESS_LOCAL_WRITE |
@@ -812,6 +855,13 @@ void rds_ib_free_mr(void *trans_private, int invalidate)
 
 	rdsdebug("RDS/IB: free_mr nents %u\n", ibmr->sg_len);
 
+	ibmr->rs = NULL;
+
+	/* remove from pool->busy_list or a tmp list(destroy path) */
+	spin_lock(&pool->busy_lock);
+	list_del_init(&ibmr->pool_list);
+	spin_unlock(&pool->busy_lock);
+
 	/* Return it to the pool's free list */
 	if (ibmr->remap_count >= pool->fmr_attr.max_maps)
 		xlist_add(&ibmr->xlist, &ibmr->xlist, &pool->drop_list);
@@ -886,6 +936,7 @@ void *rds_ib_get_mr(struct scatterlist *sg, unsigned long nents,
 	else
 		printk(KERN_WARNING "RDS/IB: map_fmr failed (errno=%d)\n", ret);
 
+	ibmr->rs = rs;
 	ibmr->device = rds_ibdev;
 	rds_ibdev = NULL;
 

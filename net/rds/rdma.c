@@ -149,6 +149,7 @@ void rds_rdma_drop_keys(struct rds_sock *rs)
 	if (rs->rs_transport && rs->rs_transport->flush_mrs)
 		rs->rs_transport->flush_mrs();
 }
+EXPORT_SYMBOL_GPL(rds_rdma_drop_keys);
 
 /*
  * Helper function to pin user pages.
