@@ -217,7 +217,10 @@ static void rds_ib_dev_free(struct work_struct *work)
 		if (rds_ibdev->pd)
 			ib_dealloc_pd(rds_ibdev->pd);
 	}
-	kfree(rds_ibdev->srq);
+	if (rds_ibdev->srq) {
+		rds_ib_srq_exit(rds_ibdev);
+		kfree(rds_ibdev->srq);
+	}
 
 	list_for_each_entry_safe(i_ipaddr, i_next, &rds_ibdev->ipaddr_list, list) {
 		list_del(&i_ipaddr->list);
@@ -2164,12 +2167,11 @@ void rds_ib_add_one(struct ib_device *device)
 		goto put_dev;
 	}
 
-	rds_ibdev->srq = kmalloc(sizeof(struct rds_ib_srq), GFP_KERNEL);
-	if (!rds_ibdev->srq)
-		goto free_attr;
-
 	INIT_LIST_HEAD(&rds_ibdev->ipaddr_list);
 	INIT_LIST_HEAD(&rds_ibdev->conn_list);
+
+	if (rds_ib_srq_init(rds_ibdev))
+		goto put_dev;
 
 	down_write(&rds_ib_devices_lock);
 	list_add_tail_rcu(&rds_ibdev->list, &rds_ib_devices);
@@ -2617,33 +2619,27 @@ int rds_ib_init(void)
 	if (ret)
 		goto out;
 
-	ret = ib_register_client(&rds_ib_client);
-	if (ret)
-		goto out_fmr_exit;
-
 	ret = rds_ib_sysctl_init();
 	if (ret)
-		goto out_ibreg;
+		goto out_fmr_exit;
 
 	ret = rds_ib_recv_init();
 	if (ret)
 		goto out_sysctl;
 
-	ret = rds_ib_srqs_init();
-	if (ret) {
-		printk(KERN_ERR "RDS/IB: Failed to init SRQ\n");
+	ret = ib_register_client(&rds_ib_client);
+	if (ret)
 		goto out_recv;
-	}
 
 	rds_aux_wq = create_singlethread_workqueue("krdsd_aux");
 	if (!rds_aux_wq) {
 		printk(KERN_ERR "RDS/IB: failed to create aux workqueue\n");
-		goto out_srq;
+		goto out_ibreg;
 	}
 
 	ret = rds_trans_register(&rds_ib_transport);
 	if (ret)
-		goto out_srq;
+		goto out_ibreg;
 
 	rds_info_register_func(RDS_INFO_IB_CONNECTIONS, rds_ib_ic_info);
 
@@ -2652,7 +2648,7 @@ int rds_ib_init(void)
 	ret = rds_ib_ip_config_init();
 	if (ret) {
 		printk(KERN_ERR "RDS/IB: failed to init port\n");
-		goto out_srq;
+		goto out_ibreg;
 	}
 
 	rds_ib_ip_failover_groups_init();
@@ -2661,14 +2657,12 @@ int rds_ib_init(void)
 
 	goto out;
 
-out_srq:
-	rds_ib_srqs_exit();
+out_ibreg:
+	rds_ib_unregister_client();
 out_recv:
 	rds_ib_recv_exit();
 out_sysctl:
 	rds_ib_sysctl_exit();
-out_ibreg:
-	rds_ib_unregister_client();
 out_fmr_exit:
 	rds_ib_fmr_exit();
 out:
@@ -2683,7 +2677,6 @@ void rds_ib_exit(void)
 	rds_ib_unregister_client();
 	rds_ib_destroy_nodev_conns();
 	rds_ib_sysctl_exit();
-	rds_ib_srqs_exit();
 	rds_ib_recv_exit();
 	flush_workqueue(rds_aux_wq);
 	destroy_workqueue(rds_aux_wq);
