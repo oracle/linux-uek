@@ -539,6 +539,9 @@ extern struct workqueue_struct *rds_aux_wq;
 extern struct rds_transport rds_ib_transport;
 extern void rds_ib_add_one(struct ib_device *device);
 extern void rds_ib_remove_one(struct ib_device *device, void *client_data);
+void rds_ib_srq_exit(struct rds_ib_device *rds_ibdev);
+int rds_ib_srq_init(struct rds_ib_device *rds_ibdev);
+
 struct rds_ib_device *rds_ib_get_client_data(struct ib_device *device);
 void rds_ib_dev_put(struct rds_ib_device *rds_ibdev);
 extern struct ib_client rds_ib_client;
@@ -608,8 +611,6 @@ void rds_ib_fmr_exit(void);
 /* ib_recv.c */
 int rds_ib_recv_init(void);
 void rds_ib_recv_exit(void);
-int rds_ib_srqs_init(void);
-void rds_ib_srqs_exit(void);
 int rds_ib_recv(struct rds_connection *conn);
 int rds_ib_recv_alloc_caches(struct rds_ib_connection *ic);
 void rds_ib_recv_free_caches(struct rds_ib_connection *ic);
