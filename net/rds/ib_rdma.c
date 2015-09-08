@@ -283,9 +283,9 @@ void rds_ib_destroy_mr_pool(struct rds_ib_mr_pool *pool)
 	LIST_HEAD(drp_list);
 
 	/* move MRs in in-use list to drop or free list */
-	spin_lock(&pool->busy_lock);
+	spin_lock_bh(&pool->busy_lock);
 	list_splice_init(&pool->busy_list, &drp_list);
-	spin_unlock(&pool->busy_lock);
+	spin_unlock_bh(&pool->busy_lock);
 
 	/* rds_rdma_drop_keys may drops more than one MRs in one iteration */
 	while (!list_empty(&drp_list)) {
@@ -330,9 +330,9 @@ static inline struct rds_ib_mr *rds_ib_reuse_fmr(struct rds_ib_mr_pool *pool)
 			rds_ib_stats_inc(s_ib_rdma_mr_8k_pool_reuse);
 		else
 			rds_ib_stats_inc(s_ib_rdma_mr_1m_pool_reuse);
-		spin_lock(&pool->busy_lock);
+		spin_lock_bh(&pool->busy_lock);
 		list_add(&ibmr->pool_list, &pool->busy_list);
-		spin_unlock(&pool->busy_lock);
+		spin_unlock_bh(&pool->busy_lock);
 	}
 	return ibmr;
 }
@@ -463,9 +463,9 @@ static struct rds_ib_mr *rds_ib_alloc_fmr(struct rds_ib_device *rds_ibdev,
 	}
 
 	INIT_LIST_HEAD(&ibmr->pool_list);
-	spin_lock(&pool->busy_lock);
+	spin_lock_bh(&pool->busy_lock);
 	list_add(&ibmr->pool_list, &pool->busy_list);
-	spin_unlock(&pool->busy_lock);
+	spin_unlock_bh(&pool->busy_lock);
 
 	ibmr->pool = pool;
 	if (pool->pool_type == RDS_IB_MR_8K_POOL)
@@ -856,9 +856,9 @@ void rds_ib_free_mr(void *trans_private, int invalidate)
 	ibmr->rs = NULL;
 
 	/* remove from pool->busy_list or a tmp list(destroy path) */
-	spin_lock(&pool->busy_lock);
+	spin_lock_bh(&pool->busy_lock);
 	list_del_init(&ibmr->pool_list);
-	spin_unlock(&pool->busy_lock);
+	spin_unlock_bh(&pool->busy_lock);
 
 	/* Return it to the pool's free list */
 	if (ibmr->remap_count >= pool->fmr_attr.max_maps)
