@@ -792,7 +792,7 @@ CONFIG_RAPIDIO_DISC_TIMEOUT=30
 # CONFIG_RAPIDIO_CPS_XX is not set
 # CONFIG_RAPIDIO_TSI568 is not set
 # CONFIG_RAPIDIO_CPS_GEN2 is not set
-# CONFIG_X86_SYSFB is not set
+CONFIG_X86_SYSFB=y
 
 #
 # Executable file formats / Emulations
