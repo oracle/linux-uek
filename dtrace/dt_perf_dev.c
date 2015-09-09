@@ -126,7 +126,7 @@ static const struct file_operations dt_perf_fops = {
 };
 
 static struct miscdevice dt_perf_dev = {
-	.minor = DT_DEV_DT_TEST_MINOR,
+	.minor = DT_DEV_DT_PERF_MINOR,
 	.name = "dt_perf",
 	.nodename = "dtrace/provider/dt_perf",
 	.fops = &dt_perf_fops,
