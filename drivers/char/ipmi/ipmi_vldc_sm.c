@@ -28,6 +28,9 @@
 #include <linux/file.h>
 #include <linux/fs.h>
 #include <linux/ipmi_msgdefs.h>
+#include <linux/workqueue.h>
+#include <linux/wait.h>
+#include <linux/delay.h>
 #include "ipmi_si_sm.h"
 #include <asm/ldc.h>
 
@@ -35,8 +38,12 @@
 #define VLDC_DEBUG_ENABLE	1 /* Generic messages */
 #define VLDC_DEBUG_MSG		2 /* Prints all request/response buffers */
 #define VLDC_DEBUG_STATES	4 /* Verbose look at state changes */
+#define VLDC_RESET_RETRY_STIME (15 * HZ) /* 15 seconds retry time */
+#define VLDC_RESET_RETRY_LTIME (60 * HZ) /* 30 seconds retry time */
+#define VLDC_RESET_RETRY_SCOUNT 25
 
 static int vldc_debug = VLDC_DEBUG_OFF;
+static struct workqueue_struct *vldc_reset_wq;
 
 #define dprintk(LEVEL, ...) \
 	if (vldc_debug & LEVEL) \
@@ -53,7 +60,9 @@ enum vldc_states {
 	VLDC_STATE_IDLE = 0,
 	VLDC_STATE_XACTION_START,
 	VLDC_STATE_READ_WAIT,
+	VLDC_STATE_RESETTING,
 	VLDC_STATE_RESET,
+	VLDC_STATE_CLEANUP,
 	VLDC_STATE_PRINTME,
 };
 
@@ -99,6 +108,8 @@ typedef struct bmc_vc_recv {
 } bmc_vc_recv_t;
 
 struct si_sm_data {
+	struct work_struct reset_work;
+	wait_queue_head_t cleanup_waitq;
 	enum vldc_states state;
 	unsigned char	write_data[IPMI_MAX_MSG_LENGTH + sizeof(bmc_vc_send_t)];
 	int		write_count;
@@ -108,6 +119,11 @@ struct si_sm_data {
 	struct file     *vldc_filp;
 };
 
+
+static void vldc_cleanup(struct si_sm_data *v);
+static void vldc_fclose(struct si_sm_data *v);
+static int vldc_detect(struct si_sm_data *v);
+static void vldc_reset_work(struct work_struct *w);
 
 static unsigned int vldc_init_data(struct si_sm_data *v, struct si_sm_io *io)
 {
@@ -119,6 +135,13 @@ static unsigned int vldc_init_data(struct si_sm_data *v, struct si_sm_io *io)
 	memset(v, 0, sizeof(struct si_sm_data));
 	v->state = VLDC_STATE_IDLE;
 
+	vldc_reset_wq = alloc_workqueue("ipmi-vldc-reset-wq", WQ_UNBOUND, 1);
+	if (vldc_reset_wq == NULL) {
+		pr_err("%s: Reset workqueue creation failed\n", __func__);
+		return -ENOMEM;
+	}
+	INIT_WORK(&(v->reset_work), vldc_reset_work);
+	init_waitqueue_head(&v->cleanup_waitq);
 	return 0;
 }
 
@@ -201,7 +224,7 @@ static enum si_sm_result vldc_event(struct si_sm_data *vldc, long time)
 
 	if (vldc->state != VLDC_STATE_IDLE && vldc->state < VLDC_STATE_PRINTME) {
 		vldc->timeout -= time;
-		if (vldc->timeout <= 0 && vldc->state < VLDC_STATE_RESET) {
+		if (vldc->timeout <= 0 && vldc->state < VLDC_STATE_RESETTING) {
 			vldc->state = VLDC_STATE_IDLE;
 			return SI_SM_HOSED;
 		}
@@ -246,6 +269,15 @@ static enum si_sm_result vldc_event(struct si_sm_data *vldc, long time)
 			return SI_SM_CALL_WITH_TICK_DELAY;
 		}
 		dprintk(VLDC_DEBUG_MSG, "%s: start xaction, ret=%d\n", __func__, ret);
+		if (ret == -EIO || ret == -EBADF) {
+			pr_debug("%s: state xaction, LOST CONTACT WITH MC?\n",
+				 __func__);
+			vldc->state = VLDC_STATE_RESETTING;
+			if (vldc->vldc_filp != NULL)
+				vldc_fclose(vldc);
+			queue_work(vldc_reset_wq, &(vldc->reset_work));
+			return SI_SM_CALL_WITHOUT_DELAY;
+		}
 		if (ret <= 0) {
 			vldc->state = VLDC_STATE_IDLE;
 			return SI_SM_HOSED;
@@ -260,6 +292,15 @@ static enum si_sm_result vldc_event(struct si_sm_data *vldc, long time)
 			return SI_SM_CALL_WITH_TICK_DELAY;
 		}
 		dprintk(VLDC_DEBUG_MSG, "%s: state read, ret=%d\n", __func__, ret);
+		if (ret == -EIO || ret == -EBADF) {
+			pr_debug("%s: state read, LOST CONTACT WITH MC?\n",
+				 __func__);
+			vldc->state = VLDC_STATE_RESETTING;
+			if (vldc->vldc_filp != NULL)
+				vldc_fclose(vldc);
+			queue_work(vldc_reset_wq, &(vldc->reset_work));
+			return SI_SM_CALL_WITHOUT_DELAY;
+		}
 		if (ret < 0) {
 			vldc->state = VLDC_STATE_IDLE;
 			return SI_SM_HOSED;
@@ -275,6 +316,13 @@ static enum si_sm_result vldc_event(struct si_sm_data *vldc, long time)
 		vldc->state = VLDC_STATE_IDLE;
 		return SI_SM_TRANSACTION_COMPLETE;
 
+	case VLDC_STATE_RESETTING:
+		return SI_SM_HOSED;
+
+	case VLDC_STATE_RESET:
+		vldc->state = VLDC_STATE_IDLE;
+		return SI_SM_CALL_WITHOUT_DELAY;
+
 	default:
 		dprintk(VLDC_DEBUG_MSG, "unknown state %d", vldc->state);
 		vldc->state = VLDC_STATE_IDLE;
@@ -284,12 +332,22 @@ static enum si_sm_result vldc_event(struct si_sm_data *vldc, long time)
 	return SI_SM_HOSED;
 }
 
-static void vldc_cleanup(struct si_sm_data *v)
+static void vldc_fclose(struct si_sm_data *v)
 {
 	if (v && v->vldc_filp) {
 		filp_close(v->vldc_filp, NULL);
 		v->vldc_filp = NULL;
 	}
+}
+static void vldc_cleanup(struct si_sm_data *v)
+{
+	if (vldc_reset_wq) {
+		v->state = VLDC_STATE_CLEANUP;
+		wake_up(&v->cleanup_waitq);
+		flush_workqueue(vldc_reset_wq);
+		destroy_workqueue(vldc_reset_wq);
+	}
+	vldc_fclose(v);
 }
 
 static int vldc_size(void)
@@ -326,7 +384,7 @@ static int vldc_detect(struct si_sm_data *v)
 	struct file *filp;
 
 	if (v->vldc_filp != NULL) {
-		printk(KERN_WARNING "%s: Unexpected error, vldc_filp already set = %p and filecount=%ld\n",
+		pr_warn(KERN_WARNING "%s: Whaaa, vldc_filp already set = %p and filecount=%ld\n",
 		       __func__, v->vldc_filp, file_count(v->vldc_filp));
 	}
 
@@ -341,6 +399,44 @@ static int vldc_detect(struct si_sm_data *v)
 
 	v->vldc_filp = filp;
 	return 0;
+}
+
+static void vldc_reset_work(struct work_struct *work)
+{
+	struct si_sm_data *vldc;
+	int reset_tries = 0;
+	int ret;
+	int reset_retry_time = VLDC_RESET_RETRY_STIME;
+
+	vldc = container_of(work, struct si_sm_data, reset_work);
+
+	if (vldc->state != VLDC_STATE_RESETTING) {
+		pr_err("%s: Invalid state [%d]\n", __func__, vldc->state);
+		return;
+	}
+
+	/* Try in each 10 seconds for reconnection for 25 times.
+	 * If it is unsuccessful, then there is a good chance that something is
+	 * horribly wrong with the ILOM. Increase the timeout to 1 minute
+	 * afterwards.
+	 */
+	while (vldc_detect(vldc) != 0) {
+		ret = wait_event_timeout(vldc->cleanup_waitq,
+					 vldc->state == VLDC_STATE_CLEANUP,
+					 reset_retry_time);
+		if (ret > 0) {
+			pr_info(
+			"%s: clean up requested. Exit the retry process\n",
+			__func__);
+			break;
+		}
+		reset_tries++;
+		if (reset_tries == VLDC_RESET_RETRY_SCOUNT)
+			reset_retry_time = VLDC_RESET_RETRY_LTIME;
+		pr_info("%s: Retry count [%d]\n", __func__, reset_tries);
+	}
+	pr_info("%s: VLDC reset completed\n", __func__);
+	vldc->state = VLDC_STATE_RESET;
 }
 
 struct si_sm_handlers vldc_smi_handlers = {
