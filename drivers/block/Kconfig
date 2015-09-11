@@ -570,6 +570,13 @@ config BLK_DEV_RSXX
 	  To compile this driver as a module, choose M here: the
 	  module will be called rsxx.
 
+config VDS
+	tristate "Sun virtual disk server (VDS)"
+	depends on SUN_LDOMS
+	default m
+	help
+		Support for Sun logical domain disks.
+
 source "drivers/block/oracleasm/Kconfig"
 
 endif # BLK_DEV

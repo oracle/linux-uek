@@ -1037,10 +1037,13 @@ static int pbus_size_mem(struct pci_bus *bus, unsigned long mask,
 			struct resource *r = &dev->resource[i];
 			resource_size_t r_size;
 
+			pci_set_pref_under_pref(r);
 			if (r->parent || ((r->flags & mask) != type &&
 					  (r->flags & mask) != type2 &&
-					  (r->flags & mask) != type3))
+					  (r->flags & mask) != type3)) {
+				pci_clear_pref_under_pref(r);
 				continue;
+			}
 			r_size = resource_size(r);
 #ifdef CONFIG_PCI_IOV
 			/* put SRIOV requested res to the optional list */
@@ -1050,6 +1053,7 @@ static int pbus_size_mem(struct pci_bus *bus, unsigned long mask,
 				r->end = r->start - 1;
 				add_to_list(realloc_head, dev, r, r_size, 0/* don't care */);
 				children_add_size += r_size;
+				pci_clear_pref_under_pref(r);
 				continue;
 			}
 #endif
@@ -1082,6 +1086,7 @@ static int pbus_size_mem(struct pci_bus *bus, unsigned long mask,
 				children_add_align = get_res_add_align(realloc_head, r);
 				add_align = max(add_align, children_add_align);
 			}
+			pci_clear_pref_under_pref(r);
 		}
 	}
 

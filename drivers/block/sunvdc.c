@@ -866,10 +866,18 @@ static int vdc_port_probe(struct vio_dev *vdev, const struct vio_device_id *id)
 	struct vdc_port *port;
 	int err;
 	const u64 *ldc_timeout;
+	u64 node;
 
 	print_version();
 
 	hp = mdesc_grab();
+
+	node = vio_vdev_node(hp, vdev);
+	if (node == MDESC_NODE_NULL) {
+		printk(KERN_ERR PFX "Failed to get vdev MD node.\n");
+		err = -ENXIO;
+		goto err_out_release_mdesc;
+	}
 
 	err = -ENODEV;
 	if ((vdev->dev_no << PARTITION_SHIFT) & ~(u64)MINORMASK) {
@@ -899,7 +907,7 @@ static int vdc_port_probe(struct vio_dev *vdev, const struct vio_device_id *id)
 	 * a readahead I/O first, and once that fails it will try to read a
 	 * single page.
 	 */
-	ldc_timeout = mdesc_get_property(hp, vdev->mp, "vdc-timeout", NULL);
+	ldc_timeout = mdesc_get_property(hp, node, "vdc-timeout", NULL);
 	port->ldc_timeout = ldc_timeout ? *ldc_timeout : 0;
 	setup_timer(&port->ldc_reset_timer, vdc_ldc_reset_timer,
 		    (unsigned long)port);
