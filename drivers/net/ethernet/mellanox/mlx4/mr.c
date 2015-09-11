@@ -999,6 +999,13 @@ static inline int mlx4_check_fmr(struct mlx4_fmr *fmr, u64 *page_list,
 	return 0;
 }
 
+int mlx4_set_fmr_pd(struct mlx4_fmr *fmr, u32 pd)
+{
+	fmr->mr.pd = pd;
+	return 0;
+}
+EXPORT_SYMBOL_GPL(mlx4_set_fmr_pd);
+
 int mlx4_map_phys_fmr(struct mlx4_dev *dev, struct mlx4_fmr *fmr, u64 *page_list,
 		      int npages, u64 iova, u32 *lkey, u32 *rkey)
 {
@@ -1033,6 +1040,12 @@ int mlx4_map_phys_fmr(struct mlx4_dev *dev, struct mlx4_fmr *fmr, u64 *page_list
 	fmr->mpt->lkey   = cpu_to_be32(key);
 	fmr->mpt->length = cpu_to_be64(npages * (1ull << fmr->page_shift));
 	fmr->mpt->start  = cpu_to_be64(iova);
+
+	fmr->mpt->pd_flags = cpu_to_be32(fmr->mr.pd | MLX4_MPT_PD_FLAG_EN_INV);
+	if (fmr->mr.mtt.order >= 0 && fmr->mr.mtt.page_shift == 0) {
+		fmr->mpt->pd_flags |= cpu_to_be32(MLX4_MPT_PD_FLAG_FAST_REG |
+						   MLX4_MPT_PD_FLAG_RAE);
+	}
 
 	/* Make MTT entries are visible before setting MPT status */
 	wmb();

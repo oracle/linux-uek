@@ -46,6 +46,7 @@
 #include <rdma/ib_verbs.h>
 #include <rdma/ib_umem.h>
 #include <rdma/ib_user_verbs.h>
+#include <rdma/ib_fmr_pool.h>
 
 #define INIT_UDATA(udata, ibuf, obuf, ilen, olen)			\
 	do {								\
@@ -165,7 +166,9 @@ struct ib_ucq_object {
 
 extern spinlock_t ib_uverbs_idr_lock;
 extern struct idr ib_uverbs_pd_idr;
+extern struct idr ib_uverbs_shpd_idr;
 extern struct idr ib_uverbs_mr_idr;
+extern struct idr ib_uverbs_fmr_idr;
 extern struct idr ib_uverbs_mw_idr;
 extern struct idr ib_uverbs_ah_idr;
 extern struct idr ib_uverbs_cq_idr;
@@ -250,6 +253,17 @@ IB_UVERBS_DECLARE_CMD(destroy_srq);
 IB_UVERBS_DECLARE_CMD(create_xsrq);
 IB_UVERBS_DECLARE_CMD(open_xrcd);
 IB_UVERBS_DECLARE_CMD(close_xrcd);
+IB_UVERBS_DECLARE_CMD(alloc_shpd);
+IB_UVERBS_DECLARE_CMD(share_pd);
+IB_UVERBS_DECLARE_CMD(reg_mr_relaxed);
+IB_UVERBS_DECLARE_CMD(dereg_mr_relaxed);
+IB_UVERBS_DECLARE_CMD(flush_relaxed_mr);
+
+/* UFMR parameters */
+extern int ufmr_pool1_blocksize;
+extern int ufmr_pool1_nelems;
+extern int ufmr_pool2_blocksize;
+extern int ufmr_pool2_nelems;
 
 #define IB_UVERBS_DECLARE_EX_CMD(name)				\
 	int ib_uverbs_ex_##name(struct ib_uverbs_file *file,	\

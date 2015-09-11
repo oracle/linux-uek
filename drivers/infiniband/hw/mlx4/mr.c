@@ -728,6 +728,14 @@ err_free:
 	return ERR_PTR(err);
 }
 
+int mlx4_ib_set_fmr_pd(struct ib_fmr *ibfmr, struct ib_pd *pd)
+{
+	struct mlx4_ib_fmr *ifmr = to_mfmr(ibfmr);
+	u32 pdn = to_mpd(pd)->pdn;
+
+	return mlx4_set_fmr_pd(&ifmr->mfmr, pdn);
+}
+
 int mlx4_ib_map_phys_fmr(struct ib_fmr *ibfmr, u64 *page_list,
 		      int npages, u64 iova)
 {

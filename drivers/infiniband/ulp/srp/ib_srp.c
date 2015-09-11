@@ -319,6 +319,7 @@ static struct ib_fmr_pool *srp_alloc_fmr_pool(struct srp_target_port *target)
 	fmr_param.pool_size	    = target->scsi_host->can_queue;
 	fmr_param.dirty_watermark   = fmr_param.pool_size / 4;
 	fmr_param.cache		    = 1;
+	fmr_param.relaxed           = 0;
 	fmr_param.max_pages_per_fmr = dev->max_pages_per_mr;
 	fmr_param.page_shift	    = ilog2(dev->mr_page_size);
 	fmr_param.access	    = (IB_ACCESS_LOCAL_WRITE |
@@ -1282,7 +1283,7 @@ static int srp_map_finish_fmr(struct srp_map_state *state,
 	u64 io_addr = 0;
 
 	fmr = ib_fmr_pool_map_phys(ch->fmr_pool, state->pages,
-				   state->npages, io_addr);
+				   state->npages, io_addr, NULL);
 	if (IS_ERR(fmr))
 		return PTR_ERR(fmr);
 
