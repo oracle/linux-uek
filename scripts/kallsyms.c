@@ -28,6 +28,8 @@
 #include <errno.h>
 #include <unistd.h>
 
+#include "../include/generated/autoconf.h"
+
 #ifdef CONFIG_KALLMODSYMS
 #include <libelf.h>
 #include <dwarf.h>
