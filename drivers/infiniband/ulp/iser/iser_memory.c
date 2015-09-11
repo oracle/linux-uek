@@ -464,7 +464,8 @@ int iser_reg_page_vec(struct iscsi_iser_task *iser_task,
 	fmr  = ib_fmr_pool_map_phys(ib_conn->fmr.pool,
 				    page_vec->pages,
 				    page_vec->length,
-				    page_vec->pages[0]);
+				    page_vec->pages[0],
+				    NULL);
 	if (IS_ERR(fmr)) {
 		ret = PTR_ERR(fmr);
 		iser_err("ib_fmr_pool_map_phys failed: %d\n", ret);

@@ -85,6 +85,11 @@ struct mlx4_ib_pd {
 	u32			pdn;
 };
 
+struct mlx4_ib_shpd {
+	struct ib_shpd		ibshpd;
+	u32			pdn;
+};
+
 struct mlx4_ib_xrcd {
 	struct ib_xrcd		ibxrcd;
 	u32			xrcdn;
@@ -573,6 +578,11 @@ static inline struct mlx4_ib_pd *to_mpd(struct ib_pd *ibpd)
 	return container_of(ibpd, struct mlx4_ib_pd, ibpd);
 }
 
+static inline struct mlx4_ib_shpd *to_mshpd(struct ib_shpd *ibshpd)
+{
+	return container_of(ibshpd, struct mlx4_ib_shpd, ibshpd);
+}
+
 static inline struct mlx4_ib_xrcd *to_mxrcd(struct ib_xrcd *ibxrcd)
 {
 	return container_of(ibxrcd, struct mlx4_ib_xrcd, ibxrcd);
@@ -775,6 +785,7 @@ void mlx4_ib_mad_cleanup(struct mlx4_ib_dev *dev);
 
 struct ib_fmr *mlx4_ib_fmr_alloc(struct ib_pd *pd, int mr_access_flags,
 				  struct ib_fmr_attr *fmr_attr);
+int mlx4_ib_set_fmr_pd(struct ib_fmr *ibfmr, struct ib_pd *pd);
 int mlx4_ib_map_phys_fmr(struct ib_fmr *ibfmr, u64 *page_list, int npages,
 			 u64 iova);
 int mlx4_ib_unmap_fmr(struct list_head *fmr_list);

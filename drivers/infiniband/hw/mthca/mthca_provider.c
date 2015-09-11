@@ -1349,6 +1349,10 @@ int mthca_register_device(struct mthca_dev *dev)
 		dev->ib_dev.post_recv     = mthca_tavor_post_receive;
 	}
 
+	dev->ib_dev.alloc_shpd		= NULL;
+	dev->ib_dev.share_pd		= NULL;
+	dev->ib_dev.remove_shpd		= NULL;
+
 	mutex_init(&dev->cap_mask_mutex);
 
 	ret = ib_register_device(&dev->ib_dev, NULL);
