@@ -6807,6 +6807,8 @@ F:	include/linux/libata.h
 
 SERVER ENGINES 10Gbps iSCSI - BladeEngine 2 DRIVER
 M:	Jayamohan Kallickal <jayamohan.kallickal@emulex.com>
+M:      Ketan Mukadam <ketan.mukadam@avagotech.com>
+M:      John Soni Jose <sony.john@avagotech.com>
 L:	linux-scsi@vger.kernel.org
 W:	http://www.emulex.com
 S:	Supported
