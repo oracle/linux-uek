@@ -92,11 +92,11 @@ void pci_bus_remove_resources(struct pci_bus *bus)
 }
 
 static struct pci_bus_region pci_32_bit = {0, 0xffffffffULL};
-#ifdef CONFIG_ARCH_DMA_ADDR_T_64BIT
+#ifdef CONFIG_PCI_BUS_ADDR_T_64BIT
 static struct pci_bus_region pci_64_bit = {0,
-				(dma_addr_t) 0xffffffffffffffffULL};
-static struct pci_bus_region pci_high = {(dma_addr_t) 0x100000000ULL,
-				(dma_addr_t) 0xffffffffffffffffULL};
+				(pci_bus_addr_t) 0xffffffffffffffffULL};
+static struct pci_bus_region pci_high = {(pci_bus_addr_t) 0x100000000ULL,
+				(pci_bus_addr_t) 0xffffffffffffffffULL};
 #endif
 
 /*
@@ -139,6 +139,8 @@ static int pci_bus_alloc_from_region(struct pci_bus *bus, struct resource *res,
 
 	type_mask |= IORESOURCE_TYPE_BITS;
 
+	pci_set_pref_under_pref(res);
+
 	pci_bus_for_each_resource(bus, r, i) {
 		if (!r)
 			continue;
@@ -170,9 +172,14 @@ static int pci_bus_alloc_from_region(struct pci_bus *bus, struct resource *res,
 		/* Ok, try it out.. */
 		ret = allocate_resource(r, res, size, min, max,
 					align, alignf, alignf_data);
-		if (ret == 0)
+		if (ret == 0) {
+			pci_clear_pref_under_pref(res);
 			return 0;
+		}
 	}
+
+	pci_clear_pref_under_pref(res);
+
 	return -ENOMEM;
 }
 
@@ -200,7 +207,7 @@ int pci_bus_alloc_resource(struct pci_bus *bus, struct resource *res,
 					  resource_size_t),
 		void *alignf_data)
 {
-#ifdef CONFIG_ARCH_DMA_ADDR_T_64BIT
+#ifdef CONFIG_PCI_BUS_ADDR_T_64BIT
 	int rc;
 
 	if (res->flags & IORESOURCE_MEM_64) {

@@ -1918,19 +1918,27 @@ static int vnet_port_probe(struct vio_dev *vdev, const struct vio_device_id *id)
 	struct vnet *vp;
 	const u64 *rmac;
 	int len, i, err, switch_port;
+	u64 node;
 
 	print_version();
 
 	hp = mdesc_grab();
 
-	vp = vnet_find_parent(hp, vdev->mp);
+	node = vio_vdev_node(hp, vdev);
+	if (node == MDESC_NODE_NULL) {
+		pr_err("Failed to get vdev MD node.\n");
+		err = -ENXIO;
+		goto err_out_put_mdesc;
+	}
+
+	vp = vnet_find_parent(hp, node);
 	if (IS_ERR(vp)) {
 		pr_err("Cannot find port parent vnet\n");
 		err = PTR_ERR(vp);
 		goto err_out_put_mdesc;
 	}
 
-	rmac = mdesc_get_property(hp, vdev->mp, remote_macaddr_prop, &len);
+	rmac = mdesc_get_property(hp, node, remote_macaddr_prop, &len);
 	err = -ENODEV;
 	if (!rmac) {
 		pr_err("Port lacks %s property\n", remote_macaddr_prop);
@@ -1939,8 +1947,10 @@ static int vnet_port_probe(struct vio_dev *vdev, const struct vio_device_id *id)
 
 	port = kzalloc(sizeof(*port), GFP_KERNEL);
 	err = -ENOMEM;
-	if (!port)
+	if (!port) {
+		pr_err("Cannot allocate vnet_port\n");
 		goto err_out_put_mdesc;
+	}
 
 	for (i = 0; i < ETH_ALEN; i++)
 		port->raddr[i] = (*rmac >> (5 - i) * 8) & 0xff;
@@ -1963,7 +1973,7 @@ static int vnet_port_probe(struct vio_dev *vdev, const struct vio_device_id *id)
 	INIT_LIST_HEAD(&port->list);
 
 	switch_port = 0;
-	if (mdesc_get_property(hp, vdev->mp, "switch-port", NULL) != NULL)
+	if (mdesc_get_property(hp, node, "switch-port", NULL) != NULL)
 		switch_port = 1;
 	port->switch_port = switch_port;
 	port->tso = true;

@@ -62,13 +62,30 @@ static int vio_device_probe(struct device *dev)
 	struct vio_dev *vdev = to_vio_dev(dev);
 	struct vio_driver *drv = to_vio_driver(dev->driver);
 	const struct vio_device_id *id;
-	int error = -ENODEV;
+	int error;
 
-	if (drv->probe) {
-		id = vio_match_device(drv->id_table, vdev);
-		if (id)
-			error = drv->probe(vdev, id);
+	if (!drv->probe)
+		return -ENODEV;
+
+	id = vio_match_device(drv->id_table, vdev);
+	if (!id)
+		return -ENODEV;
+
+	/* alloc irqs (unless the driver specified not to) */
+	if (!drv->no_irq) {
+		if (vdev->tx_irq == 0 && vdev->tx_ino != ~0UL)
+			vdev->tx_irq =
+			    sun4v_build_virq(vdev->dev_handle,
+			    vdev->tx_ino);
+
+		if (vdev->rx_irq == 0 && vdev->rx_ino != ~0UL)
+			vdev->rx_irq =
+			    sun4v_build_virq(vdev->dev_handle,
+			    vdev->rx_ino);
+
 	}
+
+	error = drv->probe(vdev, id);
 
 	return error;
 }
@@ -78,8 +95,16 @@ static int vio_device_remove(struct device *dev)
 	struct vio_dev *vdev = to_vio_dev(dev);
 	struct vio_driver *drv = to_vio_driver(dev->driver);
 
-	if (drv->remove)
+	if (drv->remove) {
+
 		return drv->remove(vdev);
+
+		/*
+		 * Ideally, we would remove/deallocate tx/rx virqs
+		 * here - however, there are currently no support
+		 * routines to do so at the moment. TBD
+		 */
+	}
 
 	return 1;
 }
@@ -163,11 +188,55 @@ static struct device_node *cdev_node;
 static struct vio_dev *root_vdev;
 static u64 cdev_cfg_handle;
 
+static const u64 *vio_cfg_handle(struct mdesc_handle *hp, u64 node)
+{
+	const u64 *cfg_handle;
+	u64 a;
+
+	cfg_handle = NULL;
+	mdesc_for_each_arc(a, hp, node, MDESC_ARC_TYPE_BACK) {
+		u64 target;
+
+		target = mdesc_arc_target(hp, a);
+		cfg_handle = mdesc_get_property(hp, target,
+						"cfg-handle", NULL);
+		if (cfg_handle)
+			break;
+	}
+
+	return cfg_handle;
+}
+
+/*
+ * vio_dev_node
+ * Find the node in the current MD which matches the
+ * given vio_dev. This must be done dynamically since the
+ * node value can change if the MD is updated.
+ * NOTE: the MD must be locked, using mdesc_grab(),
+ * when calling this routine!
+ */
+u64 vio_vdev_node(struct mdesc_handle *hp, struct vio_dev *vdev)
+{
+	u64 node;
+
+	if (vdev == NULL)
+		return MDESC_NODE_NULL;
+
+	node = mdesc_get_node(hp, vdev->node_name, &vdev->md_node_info);
+
+	return node;
+
+}
+EXPORT_SYMBOL(vio_vdev_node);
+
 static void vio_fill_channel_info(struct mdesc_handle *hp, u64 mp,
 				  struct vio_dev *vdev)
 {
 	u64 a;
 
+	vdev->tx_ino = ~0UL;
+	vdev->rx_ino = ~0UL;
+	vdev->channel_id = ~0UL;
 	mdesc_for_each_arc(a, hp, mp, MDESC_ARC_TYPE_FWD) {
 		const u64 *chan_id;
 		const u64 *irq;
@@ -177,18 +246,19 @@ static void vio_fill_channel_info(struct mdesc_handle *hp, u64 mp,
 
 		irq = mdesc_get_property(hp, target, "tx-ino", NULL);
 		if (irq)
-			vdev->tx_irq = sun4v_build_virq(cdev_cfg_handle, *irq);
+			vdev->tx_ino = *irq;
 
 		irq = mdesc_get_property(hp, target, "rx-ino", NULL);
-		if (irq) {
-			vdev->rx_irq = sun4v_build_virq(cdev_cfg_handle, *irq);
+		if (irq)
 			vdev->rx_ino = *irq;
-		}
 
 		chan_id = mdesc_get_property(hp, target, "id", NULL);
 		if (chan_id)
 			vdev->channel_id = *chan_id;
 	}
+
+	vdev->dev_handle = cdev_cfg_handle;
+
 }
 
 int vio_set_intr(unsigned long dev_ino, int state)
@@ -201,14 +271,13 @@ int vio_set_intr(unsigned long dev_ino, int state)
 EXPORT_SYMBOL(vio_set_intr);
 
 static struct vio_dev *vio_create_one(struct mdesc_handle *hp, u64 mp,
-				      struct device *parent)
+	char *node_name, struct device *parent)
 {
-	const char *type, *compat, *bus_id_name;
+	const char *type, *compat;
 	struct device_node *dp;
 	struct vio_dev *vdev;
 	int err, tlen, clen;
 	const u64 *id, *cfg_handle;
-	u64 a;
 
 	type = mdesc_get_property(hp, mp, "device-type", &tlen);
 	if (!type) {
@@ -218,7 +287,7 @@ static struct vio_dev *vio_create_one(struct mdesc_handle *hp, u64 mp,
 			tlen = strlen(type) + 1;
 		}
 	}
-	if (tlen > VIO_MAX_TYPE_LEN) {
+	if (tlen > VIO_MAX_TYPE_LEN || strlen(type) >= VIO_MAX_TYPE_LEN) {
 		printk(KERN_ERR "VIO: Type string [%s] is too long.\n",
 		       type);
 		return NULL;
@@ -226,31 +295,7 @@ static struct vio_dev *vio_create_one(struct mdesc_handle *hp, u64 mp,
 
 	id = mdesc_get_property(hp, mp, "id", NULL);
 
-	cfg_handle = NULL;
-	mdesc_for_each_arc(a, hp, mp, MDESC_ARC_TYPE_BACK) {
-		u64 target;
-
-		target = mdesc_arc_target(hp, a);
-		cfg_handle = mdesc_get_property(hp, target,
-						"cfg-handle", NULL);
-		if (cfg_handle)
-			break;
-	}
-
-	bus_id_name = type;
-	if (!strcmp(type, "domain-services-port"))
-		bus_id_name = "ds";
-
-	/*
-	 * 20 char is the old driver-core name size limit, which is no more.
-	 * This check can probably be removed after review and possible
-	 * adaption of the vio users name length handling.
-	 */
-	if (strlen(bus_id_name) >= 20 - 4) {
-		printk(KERN_ERR "VIO: bus_id_name [%s] is too long.\n",
-		       bus_id_name);
-		return NULL;
-	}
+	cfg_handle = vio_cfg_handle(hp, mp);
 
 	compat = mdesc_get_property(hp, mp, "device-type", &clen);
 	if (!compat) {
@@ -267,7 +312,6 @@ static struct vio_dev *vio_create_one(struct mdesc_handle *hp, u64 mp,
 		return NULL;
 	}
 
-	vdev->mp = mp;
 	memcpy(vdev->type, type, tlen);
 	if (compat)
 		memcpy(vdev->compat, compat, clen);
@@ -275,22 +319,23 @@ static struct vio_dev *vio_create_one(struct mdesc_handle *hp, u64 mp,
 		memset(vdev->compat, 0, sizeof(vdev->compat));
 	vdev->compat_len = clen;
 
-	vdev->channel_id = ~0UL;
-	vdev->tx_irq = ~0;
-	vdev->rx_irq = ~0;
+	vdev->port_id = ~0UL;
+	vdev->tx_irq = 0;
+	vdev->rx_irq = 0;
 
 	vio_fill_channel_info(hp, mp, vdev);
 
 	if (!id) {
-		dev_set_name(&vdev->dev, "%s", bus_id_name);
+		dev_set_name(&vdev->dev, "%s", type);
 		vdev->dev_no = ~(u64)0;
 	} else if (!cfg_handle) {
-		dev_set_name(&vdev->dev, "%s-%llu", bus_id_name, *id);
+		dev_set_name(&vdev->dev, "%s-%llu", type, *id);
 		vdev->dev_no = *id;
 	} else {
-		dev_set_name(&vdev->dev, "%s-%llu-%llu", bus_id_name,
+		dev_set_name(&vdev->dev, "%s-%llu-%llu", type,
 			     *cfg_handle, *id);
 		vdev->dev_no = *cfg_handle;
+		vdev->port_id = *id;
 	}
 
 	vdev->dev.parent = parent;
@@ -312,7 +357,27 @@ static struct vio_dev *vio_create_one(struct mdesc_handle *hp, u64 mp,
 	}
 	vdev->dp = dp;
 
-	printk(KERN_INFO "VIO: Adding device %s\n", dev_name(&vdev->dev));
+	/*
+	 * node_name is NULL for the parent/channel-devices node and
+	 * the parent doesn't require the MD node info.
+	 */
+	if (node_name != NULL) {
+
+		strncpy(vdev->node_name, node_name, VIO_MAX_NAME_LEN);
+
+		err = mdesc_get_node_info(hp, mp, node_name,
+		    &vdev->md_node_info);
+		if (err) {
+			printk(KERN_ERR "VIO: Could not get MD node "
+			    "info %s, err=%d\n", dev_name(&vdev->dev), err);
+			kfree(vdev);
+			return NULL;
+		}
+	}
+
+	printk(KERN_INFO "VIO: Adding device %s (tx_ino = %llx, "
+	    "rx_ino = %llx)\n", dev_name(&vdev->dev), vdev->tx_ino,
+	    vdev->rx_ino);
 
 	err = device_register(&vdev->dev);
 	if (err) {
@@ -328,26 +393,42 @@ static struct vio_dev *vio_create_one(struct mdesc_handle *hp, u64 mp,
 	return vdev;
 }
 
-static void vio_add(struct mdesc_handle *hp, u64 node)
+static void vio_add(struct mdesc_handle *hp, u64 node,
+	const char *node_name)
 {
-	(void) vio_create_one(hp, node, &root_vdev->dev);
+	(void) vio_create_one(hp, node, (char *)node_name, &root_vdev->dev);
 }
+
+struct vio_remove_node_data {
+	struct mdesc_handle *hp;
+	u64 node;
+};
 
 static int vio_md_node_match(struct device *dev, void *arg)
 {
 	struct vio_dev *vdev = to_vio_dev(dev);
+	u64 node;
+	struct vio_remove_node_data *node_data;
 
-	if (vdev->mp == (u64) arg)
+	node_data = (struct vio_remove_node_data *)arg;
+
+	node = vio_vdev_node(node_data->hp, vdev);
+
+	if (node == node_data->node)
 		return 1;
-
-	return 0;
+	else
+		return 0;
 }
 
-static void vio_remove(struct mdesc_handle *hp, u64 node)
+static void vio_remove(struct mdesc_handle *hp, u64 node, const char *node_name)
 {
 	struct device *dev;
+	struct vio_remove_node_data node_data;
 
-	dev = device_find_child(&root_vdev->dev, (void *) node,
+	node_data.hp = hp;
+	node_data.node = node;
+
+	dev = device_find_child(&root_vdev->dev, (void *)&node_data,
 				vio_md_node_match);
 	if (dev) {
 		printk(KERN_INFO "VIO: Removing device %s\n", dev_name(dev));
@@ -368,7 +449,8 @@ static struct mdesc_notifier_client vio_device_notifier = {
  * under "openboot" that we should not mess with as aparently that is
  * reserved exclusively for OBP use.
  */
-static void vio_add_ds(struct mdesc_handle *hp, u64 node)
+static void vio_add_ds(struct mdesc_handle *hp, u64 node,
+	const char *node_name)
 {
 	int found;
 	u64 a;
@@ -385,7 +467,8 @@ static void vio_add_ds(struct mdesc_handle *hp, u64 node)
 	}
 
 	if (found)
-		(void) vio_create_one(hp, node, &root_vdev->dev);
+		(void) vio_create_one(hp, node, (char *)node_name,
+		    &root_vdev->dev);
 }
 
 static struct mdesc_notifier_client vio_ds_notifier = {
@@ -452,7 +535,7 @@ static int __init vio_init(void)
 
 	cdev_cfg_handle = *cfg_handle;
 
-	root_vdev = vio_create_one(hp, root, NULL);
+	root_vdev = vio_create_one(hp, root, NULL, NULL);
 	err = -ENODEV;
 	if (!root_vdev) {
 		printk(KERN_ERR "VIO: Could not create root device.\n");
