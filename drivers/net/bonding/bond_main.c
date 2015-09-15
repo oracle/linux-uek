@@ -2202,8 +2202,8 @@ static bool bond_has_this_ip(struct bonding *bond, __be32 ip)
  * switches in VLAN mode (especially if ports are configured as
  * "native" to a VLAN) might not pass non-tagged frames.
  */
-static void bond_arp_send(struct net_device *slave_dev, int arp_op,
-			  __be32 dest_ip, __be32 src_ip,
+static void bond_arp_send(struct bonding *bond, struct net_device *slave_dev, 
+			  int arp_op, __be32 dest_ip, __be32 src_ip,
 			  struct bond_vlan_tag *tags)
 {
 	struct sk_buff *skb;
@@ -2253,6 +2253,7 @@ static void bond_arp_send(struct net_device *slave_dev, int arp_op,
 
 xmit:
 	arp_xmit(skb);
+	bond->arp_sent = true;
 }
 
 /* Validate the device path between the @start_dev and the @end_dev.
@@ -2317,7 +2318,7 @@ static void bond_arp_send_all(struct bonding *bond, struct slave *slave)
 				net_warn_ratelimited("%s: no route to arp_ip_target %pI4 and arp_validate is set\n",
 						     bond->dev->name,
 						     &targets[i]);
-			bond_arp_send(slave->dev, ARPOP_REQUEST, targets[i],
+			bond_arp_send(bond, slave->dev, ARPOP_REQUEST, targets[i],
 				      0, tags);
 			continue;
 		}
@@ -2343,7 +2344,7 @@ static void bond_arp_send_all(struct bonding *bond, struct slave *slave)
 found:
 		addr = bond_confirm_addr(rt->dst.dev, targets[i], 0);
 		ip_rt_put(rt);
-		bond_arp_send(slave->dev, ARPOP_REQUEST, targets[i],
+		bond_arp_send(bond, slave->dev, ARPOP_REQUEST, targets[i],
 			      addr, tags);
 		kfree(tags);
 	}
@@ -2821,7 +2822,7 @@ static void bond_activebackup_arp_mon(struct work_struct *work)
 
 	should_notify_peers = bond_should_notify_peers(bond);
 
-	if (bond_ab_arp_inspect(bond)) {
+	if (bond->arp_sent && bond_ab_arp_inspect(bond)) {
 		rcu_read_unlock();
 
 		/* Race avoidance with bond_close flush of workqueue */
@@ -2838,6 +2839,7 @@ static void bond_activebackup_arp_mon(struct work_struct *work)
 	}
 
 	should_notify_rtnl = bond_ab_arp_probe(bond);
+	bond->arp_sent = false;
 	rcu_read_unlock();
 
 re_arm:
@@ -4102,6 +4104,7 @@ void bond_setup(struct net_device *bond_dev)
 	bond_dev->hw_features &= ~(NETIF_F_ALL_CSUM & ~NETIF_F_HW_CSUM);
 	bond_dev->hw_features |= NETIF_F_GSO_ENCAP_ALL;
 	bond_dev->features |= bond_dev->hw_features;
+	bond->arp_sent = false;
 }
 
 /* Destroy a bonding device.
