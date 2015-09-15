@@ -583,7 +583,7 @@ static int __init clock_init(void)
 fs_initcall(clock_init);
 
 /* This is gets the master TICK_INT timer going. */
-static unsigned long sparc64_init_timers(void)
+static unsigned long sparc64_init_timers(struct arch_clocksource_data *archdata)
 {
 	struct device_node *dp;
 	unsigned long freq;
@@ -600,13 +600,16 @@ static unsigned long sparc64_init_timers(void)
 			/* Hummingbird, aka Ultra-IIe */
 			tick_ops = &hbtick_operations;
 			freq = of_getintprop_default(dp, "stick-frequency", 0);
+			archdata->vclock_mode = VCLOCK_NONE;
 		} else {
 			tick_ops = &tick_operations;
 			freq = local_cpu_data().clock_tick;
+			archdata->vclock_mode = VCLOCK_TICK;
 		}
 	} else {
 		tick_ops = &stick_operations;
 		freq = of_getintprop_default(dp, "stick-frequency", 0);
+		archdata->vclock_mode = VCLOCK_STICK;
 	}
 
 	return freq;
@@ -790,7 +793,7 @@ static cycle_t clocksource_tick_read(struct clocksource *cs)
 
 void __init time_init(void)
 {
-	unsigned long freq = sparc64_init_timers();
+	unsigned long freq = sparc64_init_timers(&clocksource_tick.archdata);
 
 	tb_ticks_per_usec = freq / USEC_PER_SEC;
 

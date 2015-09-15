@@ -37,6 +37,7 @@ obj-$(CONFIG_SPARC32)   += ioport.o
 obj-y                   += setup_$(BITS).o
 obj-y                   += idprom.o
 obj-y                   += sys_sparc_$(BITS).o
+obj-y                   += vsyscall_gtod.o
 obj-$(CONFIG_SPARC32)   += systbls_32.o
 obj-y                   += time_$(BITS).o
 obj-$(CONFIG_SPARC32)   += windows.o
