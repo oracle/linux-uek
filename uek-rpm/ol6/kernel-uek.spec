@@ -79,9 +79,9 @@ Summary: The Linux kernel
 # kernel-doc
 %define with_doc       1
 # kernel-headers
-%define with_headers   0
+%define with_headers   1
 # dtrace
-%define with_dtrace    0
+%define with_dtrace    1
 # kernel-firmware
 %define with_firmware  1
 # kernel-debuginfo
@@ -265,7 +265,7 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 %define with_sparse 0
 %endif
 
-# Only x86_64 does dtrace
+# x86_64 and sparc64 have dtrace support
 %ifarch x86_64 sparc64
 %define with_dtrace 1
 %endif
