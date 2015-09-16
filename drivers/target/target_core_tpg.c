@@ -832,7 +832,10 @@ int core_tpg_add_lun(
 	}
 
 	spin_lock(&tpg->tpg_lun_lock);
-	lun->lun_access = lun_access;
+	if (dev->dev_flags & DF_READ_ONLY)
+		lun->lun_access = TRANSPORT_LUNFLAGS_READ_ONLY;
+	else
+		lun->lun_access = lun_access;
 	lun->lun_status = TRANSPORT_LUN_STATUS_ACTIVE;
 	spin_unlock(&tpg->tpg_lun_lock);
 
