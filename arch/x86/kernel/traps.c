@@ -841,18 +841,20 @@ void math_state_restore(void)
 {
 	struct task_struct *tsk = current;
 
-	/*
-	 * FIXME:The patch has one known problem when the machine is running baremetal
-	 * (or PVHVM) and when there is low amount of memory. The problem is that the
-	 * applications won't get SIGKILL when the FPU area can't be allocated and
-	 * instead they will continue on running - without any FPU context
-	 * allocated for them. The 'init_fpu(tsk)' can return -ENOMEM and that
-	 * patch does not check that condition. This update will be tracked
-	 * in another bug since the patch alrady fixes two known issues related
-	 * to corruption.
-	 */
-	if (!tsk_used_math(tsk))
-		init_fpu(tsk);
+	if (!tsk_used_math(tsk)) {
+		local_irq_enable();
+		/*
+		 * does a slab alloc which can sleep
+		 */
+		if (init_fpu(tsk)) {
+			/*
+			 * ran out of memory!
+			 */
+			do_group_exit(SIGKILL);
+			return;
+		}
+		local_irq_disable();
+	}
 
 	/* Avoid __kernel_fpu_begin() right after __thread_fpu_begin() */
 	kernel_fpu_disable();
