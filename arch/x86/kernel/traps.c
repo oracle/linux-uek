@@ -837,11 +837,17 @@ asmlinkage __visible void __attribute__((weak)) smp_threshold_interrupt(void)
  * Must be called with kernel preemption disabled (eg with local
  * local interrupts as in the case of do_device_not_available).
  */
+#include <xen/xen.h>
 void math_state_restore(void)
 {
 	struct task_struct *tsk = current;
 
 	if (!tsk_used_math(tsk)) {
+		/*
+		 * See http://bugs.xenproject.org/xen/bug/40
+		 */
+		if (xen_pv_domain())
+			stts();
 		local_irq_enable();
 		/*
 		 * does a slab alloc which can sleep
@@ -854,6 +860,8 @@ void math_state_restore(void)
 			return;
 		}
 		local_irq_disable();
+		if (xen_pv_domain())
+			clts();
 	}
 
 	/* Avoid __kernel_fpu_begin() right after __thread_fpu_begin() */
