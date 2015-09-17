@@ -593,10 +593,13 @@ static int mlx4_eq_int(struct mlx4_dev *dev, struct mlx4_eq *eq)
 			break;
 
 		case MLX4_EVENT_TYPE_CQ_ERROR:
-			mlx4_warn(dev, "CQ %s on CQN %06x\n",
+			mlx4_warn(dev,
+		 "CQ %s on CQN %06x syndrome=0x%x vendor_error_syndrome=0x%x\n",
 				  eqe->event.cq_err.syndrome == 1 ?
 				  "overrun" : "access violation",
-				  be32_to_cpu(eqe->event.cq_err.cqn) & 0xffffff);
+				  be32_to_cpu(eqe->event.cq_err.cqn) & 0xffffff,
+				  eqe->event.cq_err.syndrome,
+				  eqe->event.cq_err.reserved2[2]);
 			if (mlx4_is_master(dev)) {
 				ret = mlx4_get_slave_from_resource_id(dev,
 					RES_CQ,
