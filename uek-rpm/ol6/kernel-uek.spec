@@ -83,7 +83,7 @@ Summary: The Linux kernel
 # dtrace
 %define with_dtrace    1
 # kernel-firmware
-%define with_firmware  1
+%define with_firmware  0
 # kernel-debuginfo
 %define with_debuginfo %{?_without_debuginfo: 0} %{?!_without_debuginfo: 1}
 # kernel-bootwrapper (for creating zImages from kernel + initrd)
@@ -268,6 +268,11 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 # x86_64 and sparc64 have dtrace support
 %ifarch x86_64 sparc64
 %define with_dtrace 1
+%endif
+
+# headers for sparc64 only
+%ifarch sparc64
+%define with_headers 1
 %endif
 
 # Per-arch tweaks
