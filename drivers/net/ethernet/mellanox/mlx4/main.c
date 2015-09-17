@@ -201,7 +201,7 @@ static inline void mlx4_set_num_reserved_uars(struct mlx4_dev *dev,
 static struct mlx4_profile mod_param_profile = {
 	.num_qp         = 19,
 	.num_srq        = 16,
-	.rdmarc_per_qp  = 4,
+	.rdmarc_per_qp  = 7,
 	.num_cq         = 16,
 	.num_mcg        = 13,
 	.num_mpt        = 19,
