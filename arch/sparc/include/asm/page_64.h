@@ -151,4 +151,6 @@ extern unsigned long PAGE_OFFSET;
 
 #include <asm-generic/getorder.h>
 
+#define __HAVE_ARCH_GATE_AREA 1
+
 #endif /* _SPARC64_PAGE_H */
