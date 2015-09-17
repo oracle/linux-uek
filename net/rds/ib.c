@@ -201,23 +201,41 @@ void rds_ib_dev_shutdown(struct rds_ib_device *rds_ibdev)
  * rds_ib_destroy_mr_pool() blocks on a few things and mrs drop references
  * from interrupt context so we push freing off into a work struct in krdsd.
  */
+
+/* free up rds_ibdev->dev related resource. We have to wait until freeing
+ * work is done to avoid the racing with freeing in mlx4_remove_one ->
+ * mlx4_cleanup_mr_table path
+ */
+static void rds_ib_dev_free_dev(struct rds_ib_device *rds_ibdev)
+{
+	mutex_lock(&rds_ibdev->free_dev_lock);
+	if (!atomic_dec_and_test(&rds_ibdev->free_dev))
+		goto out;
+
+	if (rds_ibdev->srq) {
+		rds_ib_srq_exit(rds_ibdev);
+		kfree(rds_ibdev->srq);
+	}
+
+	if (rds_ibdev->mr_8k_pool)
+		rds_ib_destroy_mr_pool(rds_ibdev->mr_8k_pool);
+	if (rds_ibdev->mr_1m_pool)
+		rds_ib_destroy_mr_pool(rds_ibdev->mr_1m_pool);
+	if (rds_ibdev->mr)
+		ib_dereg_mr(rds_ibdev->mr);
+	if (rds_ibdev->pd)
+		ib_dealloc_pd(rds_ibdev->pd);
+out:
+	mutex_unlock(&rds_ibdev->free_dev_lock);
+}
+
 static void rds_ib_dev_free(struct work_struct *work)
 {
 	struct rds_ib_ipaddr *i_ipaddr, *i_next;
 	struct rds_ib_device *rds_ibdev = container_of(work,
 					struct rds_ib_device, free_work);
 
-	if (rds_ibdev->dev) {
-		if (rds_ibdev->mr_8k_pool)
-			rds_ib_destroy_mr_pool(rds_ibdev->mr_8k_pool);
-		if (rds_ibdev->mr_1m_pool)
-			rds_ib_destroy_mr_pool(rds_ibdev->mr_1m_pool);
-		if (rds_ibdev->mr)
-			ib_dereg_mr(rds_ibdev->mr);
-		if (rds_ibdev->pd)
-			ib_dealloc_pd(rds_ibdev->pd);
-	}
-	kfree(rds_ibdev->srq);
+	rds_ib_dev_free_dev(rds_ibdev);
 
 	list_for_each_entry_safe(i_ipaddr, i_next, &rds_ibdev->ipaddr_list, list) {
 		list_del(&i_ipaddr->list);
@@ -227,13 +245,7 @@ static void rds_ib_dev_free(struct work_struct *work)
 	if (rds_ibdev->vector_load)
 		kfree(rds_ibdev->vector_load);
 
-	if (rds_ibdev->dev) {
-		WARN_ON(!waitqueue_active(&rds_ibdev->wait));
-
-		rds_ibdev->done = 1;
-		wake_up(&rds_ibdev->wait);
-	} else
-		kfree(rds_ibdev);
+	kfree(rds_ibdev);
 }
 
 void rds_ib_dev_put(struct rds_ib_device *rds_ibdev)
@@ -311,22 +323,9 @@ void rds_ib_remove_one(struct ib_device *device)
 	 */
 	synchronize_rcu();
 	rds_ib_dev_put(rds_ibdev);
+	/* free up lower layer resource since it may be the last change */
+	rds_ib_dev_free_dev(rds_ibdev);
 	rds_ib_dev_put(rds_ibdev);
-
-	if (!wait_event_timeout(rds_ibdev->wait, rds_ibdev->done, 30*HZ)) {
-		printk(KERN_WARNING "RDS/IB: device cleanup timed out after "
-			" 30 secs (refcount=%d)\n",
-			 atomic_read(&rds_ibdev->refcount));
-		/* when rds_ib_remove_one return, driver's mlx4_ib_removeone
-		 * function destroy ib_device, so we must clear rds_ibdev->dev
-		 * to NULL, or will cause crash when rds connection be released,
-		 * at the moment rds_ib_dev_free through ib_device
-		 * .i.e rds_ibdev->dev to release mr and fmr, reusing the
-		 * released ib_device will cause crash.
-		 */
-		rds_ibdev->dev = NULL;
-	} else
-		kfree(rds_ibdev);
 }
 
 struct ib_client rds_ib_client = {
@@ -2102,11 +2101,11 @@ void rds_ib_add_one(struct ib_device *device)
 	if (!rds_ibdev)
 		goto free_attr;
 
+	atomic_set(&rds_ibdev->free_dev, 1);
+	mutex_init(&rds_ibdev->free_dev_lock);
 	spin_lock_init(&rds_ibdev->spinlock);
 	atomic_set(&rds_ibdev->refcount, 1);
 	INIT_WORK(&rds_ibdev->free_work, rds_ib_dev_free);
-	init_waitqueue_head(&rds_ibdev->wait);
-	rds_ibdev->done = 0;
 
 	rds_ibdev->max_wrs = dev_attr->max_qp_wr;
 	rds_ibdev->max_sge = min(dev_attr->max_sge, RDS_IB_MAX_SGE);
@@ -2170,12 +2169,11 @@ void rds_ib_add_one(struct ib_device *device)
 		goto put_dev;
 	}
 
-	rds_ibdev->srq = kmalloc(sizeof(struct rds_ib_srq), GFP_KERNEL);
-	if (!rds_ibdev->srq)
-		goto free_attr;
-
 	INIT_LIST_HEAD(&rds_ibdev->ipaddr_list);
 	INIT_LIST_HEAD(&rds_ibdev->conn_list);
+
+	if (rds_ib_srq_init(rds_ibdev))
+		goto put_dev;
 
 	down_write(&rds_ib_devices_lock);
 	list_add_tail_rcu(&rds_ibdev->list, &rds_ib_devices);
@@ -2622,33 +2620,27 @@ int rds_ib_init(void)
 	if (ret)
 		goto out;
 
-	ret = ib_register_client(&rds_ib_client);
-	if (ret)
-		goto out_fmr_exit;
-
 	ret = rds_ib_sysctl_init();
 	if (ret)
-		goto out_ibreg;
+		goto out_fmr_exit;
 
 	ret = rds_ib_recv_init();
 	if (ret)
 		goto out_sysctl;
 
-	ret = rds_ib_srqs_init();
-	if (ret) {
-		printk(KERN_ERR "RDS/IB: Failed to init SRQ\n");
+	ret = ib_register_client(&rds_ib_client);
+	if (ret)
 		goto out_recv;
-	}
 
 	rds_aux_wq = create_singlethread_workqueue("krdsd_aux");
 	if (!rds_aux_wq) {
 		printk(KERN_ERR "RDS/IB: failed to create aux workqueue\n");
-		goto out_srq;
+		goto out_ibreg;
 	}
 
 	ret = rds_trans_register(&rds_ib_transport);
 	if (ret)
-		goto out_srq;
+		goto out_ibreg;
 
 	rds_info_register_func(RDS_INFO_IB_CONNECTIONS, rds_ib_ic_info);
 
@@ -2657,7 +2649,7 @@ int rds_ib_init(void)
 	ret = rds_ib_ip_config_init();
 	if (ret) {
 		printk(KERN_ERR "RDS/IB: failed to init port\n");
-		goto out_srq;
+		goto out_ibreg;
 	}
 
 	rds_ib_ip_failover_groups_init();
@@ -2666,14 +2658,12 @@ int rds_ib_init(void)
 
 	goto out;
 
-out_srq:
-	rds_ib_srqs_exit();
+out_ibreg:
+	rds_ib_unregister_client();
 out_recv:
 	rds_ib_recv_exit();
 out_sysctl:
 	rds_ib_sysctl_exit();
-out_ibreg:
-	rds_ib_unregister_client();
 out_fmr_exit:
 	rds_ib_fmr_exit();
 out:
@@ -2688,7 +2678,6 @@ void rds_ib_exit(void)
 	rds_ib_unregister_client();
 	rds_ib_destroy_nodev_conns();
 	rds_ib_sysctl_exit();
-	rds_ib_srqs_exit();
 	rds_ib_recv_exit();
 	flush_workqueue(rds_aux_wq);
 	destroy_workqueue(rds_aux_wq);

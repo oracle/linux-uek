@@ -433,8 +433,13 @@ struct rds_ib_device {
 	struct rds_ib_port      *ports;
 	struct ib_event_handler event_handler;
 	int			*vector_load;
-	wait_queue_head_t       wait;
-	int                     done;
+
+	/* flag indicating ib_device is under freeing up or is freed up to make
+	 * the race between rds_ib_remove_one() and rds_release() safe.
+	 */
+	atomic_t		free_dev;
+	/* wait until freeing work is done */
+	struct mutex		free_dev_lock;
 };
 
 #define pcidev_to_node(pcidev) pcibus_to_node(pcidev->bus)
@@ -485,6 +490,8 @@ struct rds_ib_statistics {
 	uint64_t        s_ib_rdma_mr_1m_pool_flush;
 	uint64_t        s_ib_rdma_mr_1m_pool_wait;
 	uint64_t        s_ib_rdma_mr_1m_pool_depleted;
+	uint64_t	s_ib_rdma_mr_1m_pool_reuse;
+	uint64_t	s_ib_rdma_mr_8k_pool_reuse;
 	uint64_t	s_ib_atomic_cswp;
 	uint64_t	s_ib_atomic_fadd;
 	uint64_t        s_ib_srq_lows;
@@ -535,6 +542,9 @@ extern struct workqueue_struct *rds_aux_wq;
 extern struct rds_transport rds_ib_transport;
 extern void rds_ib_add_one(struct ib_device *device);
 extern void rds_ib_remove_one(struct ib_device *device);
+void rds_ib_srq_exit(struct rds_ib_device *rds_ibdev);
+int rds_ib_srq_init(struct rds_ib_device *rds_ibdev);
+
 struct rds_ib_device *rds_ib_get_client_data(struct ib_device *device);
 void rds_ib_dev_put(struct rds_ib_device *rds_ibdev);
 extern struct ib_client rds_ib_client;
@@ -604,8 +614,6 @@ void rds_ib_fmr_exit(void);
 /* ib_recv.c */
 int rds_ib_recv_init(void);
 void rds_ib_recv_exit(void);
-int rds_ib_srqs_init(void);
-void rds_ib_srqs_exit(void);
 int rds_ib_recv(struct rds_connection *conn);
 int rds_ib_recv_alloc_caches(struct rds_ib_connection *ic);
 void rds_ib_recv_free_caches(struct rds_ib_connection *ic);
