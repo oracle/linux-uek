@@ -45,7 +45,7 @@
 
 	if rpm.vercmp(kver, "4.1.4-3") >= 0 then
 		rpm.define("srcver 0.5.0")
-		rpm.define("bldrel 2")
+		rpm.define("bldrel 3")
 		rpm.define("dt_vcode "..rpm.expand("%{dt_0_5_0}"))
 	elseif rpm.vercmp(kver, "3.8.13-87") >= 0 then
 		rpm.define("srcver 0.4.5")
@@ -106,7 +106,7 @@ Source0: dtrace-module-%{srcver}.tar.bz2
 BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 BuildRequires: kernel%{variant}-devel = %{kver}
 BuildRequires: libdtrace-ctf
-ExclusiveArch: x86_64
+ExclusiveArch: x86_64 sparc64
 
 %if %{_signmodules}
 Source1: mod-sign.sh
@@ -164,7 +164,7 @@ Source0: dtrace-module-%{srcver}.tar.bz2
 BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 BuildRequires: kernel%{variant}-devel = %{kver}
 BuildRequires: libdtrace-ctf
-ExclusiveArch: x86_64
+ExclusiveArch: x86_64 sparc64
 
 %description
 DTrace kernel modules.
@@ -260,7 +260,9 @@ rm -rf %{buildroot}
 
 %changelog
 %if %{dt_vcode} >= %{dt_0_5_0}
-* Mon Jul  6 2015 Natalya Naumova <natalya.naumova@oracle.com> - 0.5.0-2
+* Fri Sep 18 2015 Kris Van Hees <kris.van.hees@oracle.com> - 0.5.0-3
+- Enable building DTrace modules for SPARC64.
+* Mon Aug 10 2015 Natalya Naumova <natalya.naumova@oracle.com> - 0.5.0-2
 - modules signing support
 * Mon Aug 10 2015 Kris Van Hees <kris.van.hees@oracle.com> - 0.5.0-1
 - Use kernel-provided SDT trampoline memory area for SPARC64.
