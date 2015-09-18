@@ -301,6 +301,7 @@ static int o2hb_pop_count(void *map, int count)
 
 enum {
 	O2HB_NEGO_TIMEOUT_MSG = 1,
+	O2HB_NEGO_APPROVE_MSG = 2,
 };
 
 struct o2hb_nego_msg {
@@ -399,7 +400,7 @@ static void o2hb_nego_timeout(struct work_struct *work)
 		container_of(work, struct o2hb_region,
 			     hr_nego_timeout_work.work);
 	unsigned long live_node_bitmap[BITS_TO_LONGS(O2NM_MAX_NODES)];
-	int master_node;
+	int master_node, i;
 
 	o2hb_fill_node_map(live_node_bitmap, sizeof(live_node_bitmap));
 	/* lowest node as master node to make negotiate decision. */
@@ -419,6 +420,17 @@ static void o2hb_nego_timeout(struct work_struct *work)
 		}
 
 		/* approve negotiate timeout request. */
+		o2hb_arm_timeout(reg);
+
+		i = -1;
+		while ((i = find_next_bit(live_node_bitmap,
+				O2NM_MAX_NODES, i + 1)) < O2NM_MAX_NODES) {
+			if (i == master_node)
+				continue;
+
+			o2hb_send_nego_msg(reg->hr_key,
+					O2HB_NEGO_APPROVE_MSG, i);
+		}
 	} else {
 		/* negotiate timeout with master node. */
 		o2hb_send_nego_msg(reg->hr_key, O2HB_NEGO_TIMEOUT_MSG,
@@ -436,6 +448,13 @@ static int o2hb_nego_timeout_handler(struct o2net_msg *msg, u32 len, void *data,
 	if (nego_msg->node_num < O2NM_MAX_NODES)
 		set_bit(nego_msg->node_num, reg->hr_nego_node_bitmap);
 
+	return 0;
+}
+
+static int o2hb_nego_approve_handler(struct o2net_msg *msg, u32 len, void *data,
+				void **ret_data)
+{
+	o2hb_arm_timeout((struct o2hb_region *)data);
 	return 0;
 }
 
@@ -2219,6 +2238,13 @@ static struct config_item *o2hb_heartbeat_group_make_item(struct config_group *g
 			reg, NULL, &reg->hr_handler_list);
 	if (ret)
 		goto free;
+
+	ret = o2net_register_handler(O2HB_NEGO_APPROVE_MSG, reg->hr_key,
+			sizeof(struct o2hb_nego_msg),
+			o2hb_nego_approve_handler,
+			reg, NULL, &reg->hr_handler_list);
+	if (ret)
+		goto free_handler;
 
 	ret = o2hb_debug_region_init(reg, o2hb_debug_dir);
 	if (ret) {
