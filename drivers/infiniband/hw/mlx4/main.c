@@ -766,9 +766,16 @@ static struct ib_pd *mlx4_ib_alloc_pd(struct ib_device *ibdev,
 }
 
 static struct ib_shpd *mlx4_ib_alloc_shpd(struct ib_device *ibdev,
-					  struct ib_pd *pd)
+					  struct ib_pd *pd,
+					  struct ib_udata *udata)
 {
 	struct mlx4_ib_shpd *shpd;
+
+	/*
+	 * Warn if we get udata which is not expected from the
+	 * mellanox provider.
+	 */
+	WARN_ON(udata && udata->inlen > 0);
 
 	shpd = kzalloc(sizeof(*shpd), GFP_KERNEL);
 	if (!shpd)
