@@ -555,7 +555,10 @@ static inline void loop_update_dio(struct loop_device *lo)
 	/*
 	 * UEK kernel will use direct-io whenever possible
 	 */
-	__loop_update_dio(lo, 1);
+	struct address_space *mapping = lo->lo_backing_file->f_mapping;
+	bool supports_dio = mapping->a_ops->direct_IO != NULL;
+
+	__loop_update_dio(lo, supports_dio);
 }
 
 /*
