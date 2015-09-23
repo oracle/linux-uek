@@ -5183,7 +5183,6 @@ lpfc_els_rcv_lcb(struct lpfc_vport *vport, struct lpfc_iocbq *cmdiocb,
 		rjt_err = LSRJT_CMD_UNSUPPORTED;
 		goto rjt;
 	}
-	lcb_context = kmalloc(sizeof(struct lpfc_lcb_context), GFP_KERNEL);
 
 	if (phba->hba_flag & HBA_FCOE_MODE) {
 		rjt_err = LSRJT_CMD_UNSUPPORTED;
@@ -5214,6 +5213,12 @@ lpfc_els_rcv_lcb(struct lpfc_vport *vport, struct lpfc_iocbq *cmdiocb,
 		goto rjt;
 	}
 
+	lcb_context = kmalloc(sizeof(*lcb_context), GFP_KERNEL);
+	if (!lcb_context) {
+		rjt_err = LSRJT_UNABLE_TPC;
+		goto rjt;
+	}
+
 	state = (beacon->lcb_sub_command == LPFC_LCB_ON) ? 1 : 0;
 	lcb_context->sub_command = beacon->lcb_sub_command;
 	lcb_context->type = beacon->lcb_type;
@@ -5224,6 +5229,7 @@ lpfc_els_rcv_lcb(struct lpfc_vport *vport, struct lpfc_iocbq *cmdiocb,
 	if (lpfc_sli4_set_beacon(vport, lcb_context, state)) {
 		lpfc_printf_vlog(ndlp->vport, KERN_ERR,
 				 LOG_ELS, "0193 failed to send mail box");
+		kfree(lcb_context);
 		lpfc_nlp_put(ndlp);
 		rjt_err = LSRJT_UNABLE_TPC;
 		goto rjt;
