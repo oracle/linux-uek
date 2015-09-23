@@ -587,6 +587,7 @@ static int lockd_init_net(struct net *net)
 	INIT_DELAYED_WORK(&ln->grace_period_end, grace_ender);
 	INIT_LIST_HEAD(&ln->lockd_manager.list);
 	spin_lock_init(&ln->nsm_clnt_lock);
+	INIT_LIST_HEAD(&ln->nsm_handles);
 	return 0;
 }
 
