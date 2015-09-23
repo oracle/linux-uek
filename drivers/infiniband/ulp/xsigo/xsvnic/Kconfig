@@ -1,0 +1,5 @@
+config INFINIBAND_XSVNIC
+        tristate "Xsigo Virtual NIC"
+        depends on INFINIBAND_XSCORE
+        ---help---
+          Support for the Xsigo vNIC Functionality.
