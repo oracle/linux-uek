@@ -1,0 +1,4 @@
+source "drivers/infiniband/ulp/xsigo/xscore/Kconfig"
+source "drivers/infiniband/ulp/xsigo/xsvnic/Kconfig"
+source "drivers/infiniband/ulp/xsigo/xsvhba/Kconfig"
+source "drivers/infiniband/ulp/xsigo/xve/Kconfig"

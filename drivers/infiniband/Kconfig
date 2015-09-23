@@ -130,6 +130,8 @@ endif
 
 source "drivers/infiniband/ulp/ipoib/Kconfig"
 
+source "drivers/infiniband/ulp/xsigo/Kconfig"
+
 source "drivers/infiniband/ulp/srp/Kconfig"
 source "drivers/infiniband/ulp/srpt/Kconfig"
 

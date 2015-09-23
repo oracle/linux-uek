@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-2.0
 obj-$(CONFIG_INFINIBAND_IPOIB)		+= ipoib/
+obj-$(CONFIG_INFINIBAND_XSCORE)		+= xsigo/
 obj-$(CONFIG_INFINIBAND_SRP)		+= srp/
 obj-$(CONFIG_INFINIBAND_SRPT)		+= srpt/
 obj-$(CONFIG_INFINIBAND_ISER)		+= iser/
