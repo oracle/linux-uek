@@ -165,7 +165,7 @@ static int vxlan_get_egress_tun_info(struct vport *vport, struct sk_buff *skb,
 {
 	struct vxlan_dev *vxlan = netdev_priv(vport->dev);
 	struct net *net = ovs_dp_get_net(vport->dp);
-	__be16 dst_port = vxlan_dev_dst_port(vxlan);
+	__be16 dst_port = vxlan->cfg.dst_port;
 	__be16 src_port;
 	int port_min;
 	int port_max;

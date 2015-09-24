@@ -150,7 +150,10 @@ struct vxlan_config {
 struct vxlan_dev {
 	struct hlist_node hlist;	/* vni hash table */
 	struct list_head  next;		/* vxlan's per namespace list */
-	struct vxlan_sock *vn_sock;	/* listening socket */
+	struct vxlan_sock *vn4_sock;	/* listening socket for IPv4 */
+#if IS_ENABLED(CONFIG_IPV6)
+	struct vxlan_sock *vn6_sock;	/* listening socket for IPv6 */
+#endif
 	struct net_device *dev;
 	struct net	  *net;		/* netns for packet i/o */
 	struct vxlan_rdst default_dst;	/* default destination */
@@ -179,6 +182,7 @@ struct vxlan_dev {
 #define VXLAN_F_REMCSUM_RX		0x400
 #define VXLAN_F_GBP			0x800
 #define VXLAN_F_REMCSUM_NOPARTIAL	0x1000
+#define VXLAN_F_COLLECT_METADATA	0x2000
 
 /* Flags that are used in the receive path. These flags must match in
  * order for a socket to be shareable
@@ -191,9 +195,14 @@ struct vxlan_dev {
 struct net_device *vxlan_dev_create(struct net *net, const char *name,
 				    u8 name_assign_type, struct vxlan_config *conf);
 
-static inline __be16 vxlan_dev_dst_port(struct vxlan_dev *vxlan)
+static inline __be16 vxlan_dev_dst_port(struct vxlan_dev *vxlan,
+					unsigned short family)
 {
-	return inet_sk(vxlan->vn_sock->sock->sk)->inet_sport;
+#if IS_ENABLED(CONFIG_IPV6)
+	if (family == AF_INET6)
+		return inet_sk(vxlan->vn6_sock->sock->sk)->inet_sport;
+#endif
+	return inet_sk(vxlan->vn4_sock->sock->sk)->inet_sport;
 }
 
 static inline netdev_features_t vxlan_features_check(struct sk_buff *skb,

@@ -987,19 +987,30 @@ static bool vxlan_snoop(struct net_device *dev,
 static bool vxlan_group_used(struct vxlan_net *vn, struct vxlan_dev *dev)
 {
 	struct vxlan_dev *vxlan;
+	unsigned short family = dev->default_dst.remote_ip.sa.sa_family;
 
 	/* The vxlan_sock is only used by dev, leaving group has
 	 * no effect on other vxlan devices.
 	 */
-	if (atomic_read(&dev->vn_sock->refcnt) == 1)
+	if (family == AF_INET && dev->vn4_sock &&
+	    atomic_read(&dev->vn4_sock->refcnt) == 1)
 		return false;
+#if IS_ENABLED(CONFIG_IPV6)
+	if (family == AF_INET6 && dev->vn6_sock &&
+	    atomic_read(&dev->vn6_sock->refcnt) == 1)
+		return false;
+#endif
 
 	list_for_each_entry(vxlan, &vn->vxlan_list, next) {
 		if (!netif_running(vxlan->dev) || vxlan == dev)
 			continue;
 
-		if (vxlan->vn_sock != dev->vn_sock)
+		if (family == AF_INET && vxlan->vn4_sock != dev->vn4_sock)
 			continue;
+#if IS_ENABLED(CONFIG_IPV6)
+		if (family == AF_INET6 && vxlan->vn6_sock != dev->vn6_sock)
+			continue;
+#endif
 
 		if (!vxlan_addr_equal(&vxlan->default_dst.remote_ip,
 				      &dev->default_dst.remote_ip))
@@ -1015,16 +1026,16 @@ static bool vxlan_group_used(struct vxlan_net *vn, struct vxlan_dev *dev)
 	return false;
 }
 
-static void vxlan_sock_release(struct vxlan_dev *vxlan)
+static void __vxlan_sock_release(struct vxlan_sock *vs)
 {
-	struct vxlan_sock *vs = vxlan->vn_sock;
-	struct sock *sk = vs->sock->sk;
-	struct net *net = sock_net(sk);
-	struct vxlan_net *vn = net_generic(net, vxlan_net_id);
+	struct vxlan_net *vn;
 
+	if (!vs)
+		return;
 	if (!atomic_dec_and_test(&vs->refcnt))
 		return;
 
+	vn = net_generic(sock_net(vs->sock->sk), vxlan_net_id);
 	spin_lock(&vn->sock_lock);
 	hlist_del_rcu(&vs->hlist);
 	vxlan_notify_del_rx_port(vs);
@@ -1033,32 +1044,43 @@ static void vxlan_sock_release(struct vxlan_dev *vxlan)
 	queue_work(vxlan_wq, &vs->del_work);
 }
 
+static void vxlan_sock_release(struct vxlan_dev *vxlan)
+{
+	__vxlan_sock_release(vxlan->vn4_sock);
+#if IS_ENABLED(CONFIG_IPV6)
+	__vxlan_sock_release(vxlan->vn6_sock);
+#endif
+}
+
 /* Update multicast group membership when first VNI on
  * multicast address is brought up
  */
 static int vxlan_igmp_join(struct vxlan_dev *vxlan)
 {
-	struct vxlan_sock *vs = vxlan->vn_sock;
-	struct sock *sk = vs->sock->sk;
+	struct sock *sk;
 	union vxlan_addr *ip = &vxlan->default_dst.remote_ip;
 	int ifindex = vxlan->default_dst.remote_ifindex;
 	int ret = -EINVAL;
 
-	lock_sock(sk);
 	if (ip->sa.sa_family == AF_INET) {
 		struct ip_mreqn mreq = {
 			.imr_multiaddr.s_addr	= ip->sin.sin_addr.s_addr,
 			.imr_ifindex		= ifindex,
 		};
 
+		sk = vxlan->vn4_sock->sock->sk;
+		lock_sock(sk);
 		ret = ip_mc_join_group(sk, &mreq);
+		release_sock(sk);
 #if IS_ENABLED(CONFIG_IPV6)
 	} else {
+		sk = vxlan->vn6_sock->sock->sk;
+		lock_sock(sk);
 		ret = ipv6_stub->ipv6_sock_mc_join(sk, ifindex,
 						   &ip->sin6.sin6_addr);
+		release_sock(sk);
 #endif
 	}
-	release_sock(sk);
 
 	return ret;
 }
@@ -1066,27 +1088,30 @@ static int vxlan_igmp_join(struct vxlan_dev *vxlan)
 /* Inverse of vxlan_igmp_join when last VNI is brought down */
 static int vxlan_igmp_leave(struct vxlan_dev *vxlan)
 {
-	struct vxlan_sock *vs = vxlan->vn_sock;
-	struct sock *sk = vs->sock->sk;
+	struct sock *sk;
 	union vxlan_addr *ip = &vxlan->default_dst.remote_ip;
 	int ifindex = vxlan->default_dst.remote_ifindex;
 	int ret = -EINVAL;
 
-	lock_sock(sk);
 	if (ip->sa.sa_family == AF_INET) {
 		struct ip_mreqn mreq = {
 			.imr_multiaddr.s_addr	= ip->sin.sin_addr.s_addr,
 			.imr_ifindex		= ifindex,
 		};
 
+		sk = vxlan->vn4_sock->sock->sk;
+		lock_sock(sk);
 		ret = ip_mc_leave_group(sk, &mreq);
+		release_sock(sk);
 #if IS_ENABLED(CONFIG_IPV6)
 	} else {
+		sk = vxlan->vn6_sock->sock->sk;
+		lock_sock(sk);
 		ret = ipv6_stub->ipv6_sock_mc_drop(sk, ifindex,
 						   &ip->sin6.sin6_addr);
+		release_sock(sk);
 #endif
 	}
-	release_sock(sk);
 
 	return ret;
 }
@@ -1853,7 +1878,7 @@ static void vxlan_xmit_one(struct sk_buff *skb, struct net_device *dev,
 			   struct vxlan_rdst *rdst, bool did_rsc)
 {
 	struct vxlan_dev *vxlan = netdev_priv(dev);
-	struct sock *sk = vxlan->vn_sock->sock->sk;
+	struct sock *sk;
 	struct rtable *rt = NULL;
 	const struct iphdr *old_iph;
 	struct flowi4 fl4;
@@ -1892,6 +1917,9 @@ static void vxlan_xmit_one(struct sk_buff *skb, struct net_device *dev,
 				     vxlan->cfg.port_max, true);
 
 	if (dst->sa.sa_family == AF_INET) {
+		if (!vxlan->vn4_sock)
+			goto drop;
+		sk = vxlan->vn4_sock->sock->sk;
 		memset(&fl4, 0, sizeof(fl4));
 		fl4.flowi4_oif = rdst->remote_ifindex;
 		fl4.flowi4_tos = RT_TOS(tos);
@@ -1948,6 +1976,10 @@ static void vxlan_xmit_one(struct sk_buff *skb, struct net_device *dev,
 		struct dst_entry *ndst;
 		struct flowi6 fl6;
 		u32 flags;
+
+		if (!vxlan->vn6_sock)
+			goto drop;
+		sk = vxlan->vn6_sock->sock->sk;
 
 		memset(&fl6, 0, sizeof(fl6));
 		fl6.flowi6_oif = rdst->remote_ifindex;
@@ -2131,7 +2163,6 @@ static void vxlan_vs_add_dev(struct vxlan_sock *vs, struct vxlan_dev *vxlan)
 	struct vxlan_net *vn = net_generic(vxlan->net, vxlan_net_id);
 	__u32 vni = vxlan->default_dst.remote_vni;
 
-	vxlan->vn_sock = vs;
 	spin_lock(&vn->sock_lock);
 	hlist_add_head_rcu(&vxlan->hlist, vni_head(vs, vni));
 	spin_unlock(&vn->sock_lock);
@@ -2466,14 +2497,13 @@ static struct socket *vxlan_create_sock(struct net *net, bool ipv6,
 }
 
 /* Create new listen socket if needed */
-static struct vxlan_sock *vxlan_socket_create(struct net *net, __be16 port,
-					      u32 flags)
+static struct vxlan_sock *vxlan_socket_create(struct net *net, bool ipv6,
+					      __be16 port, u32 flags)
 {
 	struct vxlan_net *vn = net_generic(net, vxlan_net_id);
 	struct vxlan_sock *vs;
 	struct socket *sock;
 	unsigned int h;
-	bool ipv6 = !!(flags & VXLAN_F_IPV6);
 	struct udp_tunnel_sock_cfg tunnel_cfg;
 
 	vs = kzalloc(sizeof(*vs), GFP_KERNEL);
@@ -2518,11 +2548,10 @@ static struct vxlan_sock *vxlan_socket_create(struct net *net, __be16 port,
 	return vs;
 }
 
-static int vxlan_sock_add(struct vxlan_dev *vxlan)
+static int __vxlan_sock_add(struct vxlan_dev *vxlan, bool ipv6)
 {
 	struct vxlan_net *vn = net_generic(vxlan->net, vxlan_net_id);
 	struct vxlan_sock *vs = NULL;
-	bool ipv6 = vxlan->flags & VXLAN_F_IPV6;
 
 	if (!vxlan->cfg.no_share) {
 		spin_lock(&vn->sock_lock);
@@ -2535,12 +2564,37 @@ static int vxlan_sock_add(struct vxlan_dev *vxlan)
 		spin_unlock(&vn->sock_lock);
 	}
 	if (!vs)
-		vs = vxlan_socket_create(vxlan->net, vxlan->cfg.dst_port,
-					 vxlan->flags);
+		vs = vxlan_socket_create(vxlan->net, ipv6,
+					 vxlan->cfg.dst_port, vxlan->flags);
 	if (IS_ERR(vs))
 		return PTR_ERR(vs);
+#if IS_ENABLED(CONFIG_IPV6)
+	if (ipv6)
+		vxlan->vn6_sock = vs;
+	else
+#endif
+		vxlan->vn4_sock = vs;
 	vxlan_vs_add_dev(vs, vxlan);
 	return 0;
+}
+
+static int vxlan_sock_add(struct vxlan_dev *vxlan)
+{
+	bool ipv6 = vxlan->flags & VXLAN_F_IPV6;
+	bool metadata = vxlan->flags & VXLAN_F_COLLECT_METADATA;
+	int ret = 0;
+
+	vxlan->vn4_sock = NULL;
+#if IS_ENABLED(CONFIG_IPV6)
+	vxlan->vn6_sock = NULL;
+	if (ipv6 || metadata)
+		ret = __vxlan_sock_add(vxlan, true);
+#endif
+	if (!ret && (!ipv6 || metadata))
+		ret = __vxlan_sock_add(vxlan, false);
+	if (ret < 0)
+		vxlan_sock_release(vxlan);
+	return ret;
 }
 
 static int vxlan_dev_configure(struct net *src_net, struct net_device *dev,
@@ -2549,6 +2603,7 @@ static int vxlan_dev_configure(struct net *src_net, struct net_device *dev,
 	struct vxlan_net *vn = net_generic(src_net, vxlan_net_id);
 	struct vxlan_dev *vxlan = netdev_priv(dev);
 	struct vxlan_rdst *dst = &vxlan->default_dst;
+	unsigned short needed_headroom = ETH_HLEN;
 	int err;
 	bool use_ipv6 = false;
 	__be16 default_port = vxlan->cfg.dst_port;
@@ -2564,8 +2619,10 @@ static int vxlan_dev_configure(struct net *src_net, struct net_device *dev,
 		dst->remote_ip.sa.sa_family = AF_INET;
 
 	if (dst->remote_ip.sa.sa_family == AF_INET6 ||
-	    vxlan->cfg.saddr.sa.sa_family == AF_INET6)
+	    vxlan->cfg.saddr.sa.sa_family == AF_INET6) {
 		use_ipv6 = true;
+		vxlan->flags |= VXLAN_F_IPV6;
+	}
 
 	if (conf->remote_ifindex) {
 		struct net_device *lowerdev
@@ -2585,17 +2642,20 @@ static int vxlan_dev_configure(struct net *src_net, struct net_device *dev,
 				pr_info("IPv6 is disabled via sysctl\n");
 				return -EPERM;
 			}
-			vxlan->flags |= VXLAN_F_IPV6;
 		}
 #endif
 
 		if (!conf->mtu)
 			dev->mtu = lowerdev->mtu - (use_ipv6 ? VXLAN6_HEADROOM : VXLAN_HEADROOM);
 
-		dev->needed_headroom = lowerdev->hard_header_len +
-				       (use_ipv6 ? VXLAN6_HEADROOM : VXLAN_HEADROOM);
-	} else if (use_ipv6)
-		vxlan->flags |= VXLAN_F_IPV6;
+		needed_headroom = lowerdev->hard_header_len;
+	}
+
+	if (use_ipv6 || conf->flags & VXLAN_F_COLLECT_METADATA)
+		needed_headroom += VXLAN6_HEADROOM;
+	else
+		needed_headroom += VXLAN_HEADROOM;
+	dev->needed_headroom = needed_headroom;
 
 	memcpy(&vxlan->cfg, conf, sizeof(*conf));
 	if (!vxlan->cfg.dst_port)
