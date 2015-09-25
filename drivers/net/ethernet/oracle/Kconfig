@@ -41,4 +41,16 @@ config HXGE_NAPI
 
           If in doubt, say N.
 
+config SXGE 
+	tristate "SXGE SOL ethernet driver "
+	depends on PCI
+	---help---
+	This driver supports the SXGE SOL 40Gb Ethernet driver.  
+
+config SXGEVF 
+	tristate "SXGEVF SOL ethernet driver "
+	depends on PCI
+	---help---
+	This driver supports the SXGEVF SOL 40Gb Ethernet driver.  
+
 endif # NET_VENDOR_ORACLE

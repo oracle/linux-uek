@@ -1,0 +1,9 @@
+Bug 17478097 - SOL NEM SXGE DRIVER NEEDS TO SUPPORT OVM AUTO-MIGRATION FOR 15 VMS
+For live migration, we only can support up to 15 VMs due to the 
+limitation of TCAM. If there are more than 15 VMs, user has to do it 
+manually. Two options (Details can be found in the User's Guide):
+. User chooses to use live migration, but each SOL NEM sxge port can 
+only be used by up to 15 VMs per blade.
+. User chooses to do it manually, then each SOL NEM sxge port can be 
+used by up to 6k VMs per blade
+ 
