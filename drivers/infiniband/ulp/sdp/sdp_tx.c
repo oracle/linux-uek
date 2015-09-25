@@ -31,6 +31,8 @@
  */
 #include <linux/interrupt.h>
 #include <linux/dma-mapping.h>
+#include <linux/module.h>
+#include <linux/moduleparam.h>
 #include <rdma/ib_verbs.h>
 #include <rdma/rdma_cm.h>
 #include "sdp.h"
@@ -38,7 +40,7 @@
 #define sdp_cnt(var) do { (var)++; } while (0)
 
 SDP_MODPARAM_SINT(sdp_keepalive_probes_sent, 0,
-		"Total number of keepalive probes sent.");
+	"Total number of keepalive probes sent.");
 
 static int sdp_process_tx_cq(struct sdp_sock *ssk);
 
@@ -150,7 +152,8 @@ void sdp_post_send(struct sdp_sock *ssk, struct sk_buff *skb)
 		frags = skb_shinfo(skb)->nr_frags;
 		for (i = 0; i < frags; ++i) {
 			++sge;
-			addr = ib_dma_map_page(dev, skb_shinfo(skb)->frags[i].page,
+			addr = ib_dma_map_page(dev,
+					skb_shinfo(skb)->frags[i].page.p,
 					skb_shinfo(skb)->frags[i].page_offset,
 					skb_shinfo(skb)->frags[i].size,
 					DMA_TO_DEVICE);
@@ -451,6 +454,9 @@ void sdp_post_keepalive(struct sdp_sock *ssk)
 static void sdp_tx_cq_event_handler(struct ib_event *event, void *data)
 {
 }
+
+/* SHAMIR - TODO: remove this!!! */
+#define IB_CQ_VECTOR_LEAST_ATTACHED 0
 
 int sdp_tx_ring_create(struct sdp_sock *ssk, struct ib_device *device)
 {

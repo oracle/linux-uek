@@ -53,7 +53,6 @@ static int sdp_post_srcavail(struct sock *sk, struct tx_srcavail_state *tx_sa)
 	int payload_len;
 	struct page *payload_pg;
 	int off, len;
-	struct ib_umem_chunk *chunk;
 
 	if (ssk->tx_sa) {
 		/* ssk->tx_sa might already be there in a case of
@@ -70,12 +69,9 @@ static int sdp_post_srcavail(struct sock *sk, struct tx_srcavail_state *tx_sa)
 	BUG_ON(!tx_sa);
 	BUG_ON(!tx_sa->fmr || !tx_sa->fmr->fmr->lkey);
 	BUG_ON(!tx_sa->umem);
-	BUG_ON(!tx_sa->umem->chunk_list.next);
+	BUG_ON(!tx_sa->umem->sg_head.sgl);
 
-	chunk = list_entry(tx_sa->umem->chunk_list.next, struct ib_umem_chunk, list);
-	BUG_ON(!chunk->nmap);
-
-	off = tx_sa->umem->offset;
+	off = ib_umem_offset(tx_sa->umem);
 	len = tx_sa->umem->length;
 
 	tx_sa->bytes_sent = tx_sa->bytes_acked = 0;
@@ -93,7 +89,7 @@ static int sdp_post_srcavail(struct sock *sk, struct tx_srcavail_state *tx_sa)
 	/* must have payload inlined in SrcAvail packet in combined mode */
 	payload_len = MIN(tx_sa->umem->page_size - off, len);
 	payload_len = MIN(payload_len, ssk->xmit_size_goal - sizeof(struct sdp_srcah));
-	payload_pg  = sg_page(&chunk->page_list[0]);
+	payload_pg = sg_page(tx_sa->umem->sg_head.sgl);
 	get_page(payload_pg);
 
 	sdp_dbg_data(sk, "payload: off: 0x%x, pg: %p, len: 0x%x\n",
@@ -287,18 +283,12 @@ int sdp_post_sendsm(struct sock *sk)
 	return 0;
 }
 
-static int sdp_update_iov_used(struct sock *sk, struct iovec *iov, int len)
+static int sdp_update_iov_used(struct sock *sk, struct iov_iter *msg_iter,
+			       int len)
 {
 	sdp_dbg_data(sk, "updating consumed 0x%x bytes from iov\n", len);
-	while (len > 0) {
-		if (iov->iov_len) {
-			int copy = min_t(unsigned int, iov->iov_len, len);
-			len -= copy;
-			iov->iov_len -= copy;
-			iov->iov_base += copy;
-		}
-		iov++;
-	}
+
+	iov_iter_advance(msg_iter, len);
 
 	return 0;
 }
@@ -397,8 +387,8 @@ static int sdp_alloc_fmr(struct sock *sk, void *uaddr, size_t len,
 	struct ib_umem *umem;
 	struct ib_device *dev = sdp_sk(sk)->ib_device;
 	u64 *pages;
-	struct ib_umem_chunk *chunk;
-	int n = 0, j, k;
+	struct scatterlist *sg;
+	int n = 0, k, i;
 	int rc = 0;
 	unsigned long max_lockable_bytes;
 
@@ -434,8 +424,8 @@ static int sdp_alloc_fmr(struct sock *sk, void *uaddr, size_t len,
 		goto err_umem_get;
 	}
 
-	sdp_dbg_data(sk, "umem->offset = 0x%x, length = 0x%zx\n",
-		umem->offset, umem->length);
+	sdp_dbg_data(sk, "ib_umem_ofset(umem) = 0x%x, length = 0x%zx\n",
+		ib_umem_offset(umem), umem->length);
 
 	pages = (u64 *) __get_free_page(GFP_KERNEL);
 	if (!pages) {
@@ -443,25 +433,22 @@ static int sdp_alloc_fmr(struct sock *sk, void *uaddr, size_t len,
 		goto err_pages_alloc;
 	}
 
-	list_for_each_entry(chunk, &umem->chunk_list, list) {
-		for (j = 0; j < chunk->nmap; ++j) {
-			unsigned len2;
-			len2 = ib_sg_dma_len(dev,
-					&chunk->page_list[j]) >> PAGE_SHIFT;
+	for_each_sg(umem->sg_head.sgl, sg, umem->npages, i) {
+		unsigned len2;
 
-			SDP_WARN_ON(len2 > len);
-			len -= len2;
+		len2 = ib_sg_dma_len(dev, sg) >> PAGE_SHIFT;
 
-			for (k = 0; k < len2; ++k) {
-				pages[n++] = ib_sg_dma_address(dev,
-						&chunk->page_list[j]) +
-					umem->page_size * k;
-				BUG_ON(n >= SDP_FMR_SIZE);
-			}
+		SDP_WARN_ON(len2 > len);
+		len -= len2;
+		for (k = 0; k < len2; ++k) {
+			pages[n++] = ib_sg_dma_address(dev, sg) +
+						umem->page_size * k;
+			BUG_ON(n >= SDP_FMR_SIZE);
 		}
 	}
 
-	fmr = ib_fmr_pool_map_phys(sdp_sk(sk)->sdp_dev->fmr_pool, pages, n, 0);
+	fmr = ib_fmr_pool_map_phys(sdp_sk(sk)->sdp_dev->fmr_pool, pages, n, 0,
+				   NULL);
 	if (IS_ERR(fmr)) {
 		sdp_dbg_data(sk, "Error allocating fmr: %ld\n", PTR_ERR(fmr));
 		SDPSTATS_COUNTER_INC(fmr_alloc_error);
@@ -518,7 +505,7 @@ static int sdp_post_rdma_read(struct sock *sk, struct rx_srcavail_state *rx_sa,
 
 	ssk->tx_ring.rdma_inflight = rx_sa;
 
-	sge.addr = rx_sa->umem->offset;
+	sge.addr = ib_umem_offset(rx_sa->umem);
 	sge.length = rx_sa->umem->length;
 	sge.lkey = rx_sa->fmr->fmr->lkey;
 
@@ -538,12 +525,14 @@ static int sdp_post_rdma_read(struct sock *sk, struct rx_srcavail_state *rx_sa,
 	return rc;
 }
 
-int sdp_rdma_to_iovec(struct sock *sk, struct iovec *iov, int msg_iovlen,
-	       	struct sk_buff *skb, unsigned long *used, u32 offset)
+int sdp_rdma_to_iter(struct sock *sk, struct iov_iter *msg_iter,
+		struct sk_buff *skb, unsigned long *used, u32 offset)
 {
 	struct sdp_sock *ssk = sdp_sk(sk);
 	struct rx_srcavail_state *rx_sa = RX_SRCAVAIL_STATE(skb);
 	int rc = 0;
+	const struct iovec *iov = msg_iter->iov;
+	int msg_iovlen = msg_iter->nr_segs;
 	int len = *used;
 	int copied;
 	int i = 0;
@@ -591,7 +580,7 @@ int sdp_rdma_to_iovec(struct sock *sk, struct iovec *iov, int msg_iovlen,
 
 	copied = rx_sa->umem->length;
 
-	sdp_update_iov_used(sk, iov, copied);
+	sdp_update_iov_used(sk, msg_iter, copied);
 	atomic_add(copied, &ssk->rcv_nxt);
 	*used = copied;
 	rx_sa->copied += copied;
@@ -630,12 +619,15 @@ static inline int wait_for_sndbuf(struct sock *sk, long *timeo_p)
 	return ret;
 }
 
-static int do_sdp_sendmsg_zcopy(struct sock *sk, struct tx_srcavail_state *tx_sa,
-		struct iovec *iov, long *timeo)
+static int do_sdp_sendmsg_zcopy(struct sock *sk,
+				struct tx_srcavail_state *tx_sa,
+				struct iov_iter *msg_iter, int iov_idx,
+				long *timeo)
 {
 	struct sdp_sock *ssk = sdp_sk(sk);
 	int rc = 0;
 	unsigned long lock_flags;
+	const struct iovec *iov = &msg_iter->iov[iov_idx];
 
 	rc = sdp_alloc_fmr(sk, iov->iov_base, iov->iov_len,
 			&tx_sa->fmr, &tx_sa->umem, IB_ACCESS_REMOTE_READ, sdp_zcopy_thresh);
@@ -694,7 +686,7 @@ static int do_sdp_sendmsg_zcopy(struct sock *sk, struct tx_srcavail_state *tx_sa
 	spin_unlock_irqrestore(&ssk->tx_sa_lock, lock_flags);
 
 err_abort_send:
-	sdp_update_iov_used(sk, iov, tx_sa->bytes_acked);
+	sdp_update_iov_used(sk, msg_iter, tx_sa->bytes_acked);
 
 err_no_tx_slots:
 	sdp_free_fmr(sk, &tx_sa->fmr, &tx_sa->umem);
@@ -703,12 +695,13 @@ err_alloc_fmr:
 	return rc;
 }
 
-int sdp_sendmsg_zcopy(struct kiocb *iocb, struct sock *sk, struct iovec *iov)
+int sdp_sendmsg_zcopy(struct sock *sk, struct iov_iter *msg_iter, int iov_idx)
 {
 	struct sdp_sock *ssk = sdp_sk(sk);
 	int rc = 0;
 	long timeo = SDP_SRCAVAIL_ADV_TIMEOUT;
 	struct tx_srcavail_state *tx_sa;
+	const struct iovec *iov = &msg_iter->iov[iov_idx];
 	size_t bytes_to_copy = iov->iov_len;
 	int copied = 0;
 
@@ -737,7 +730,7 @@ int sdp_sendmsg_zcopy(struct kiocb *iocb, struct sock *sk, struct iovec *iov)
 	do {
 		tx_sa_reset(tx_sa);
 
-		rc = do_sdp_sendmsg_zcopy(sk, tx_sa, iov, &timeo);
+		rc = do_sdp_sendmsg_zcopy(sk, tx_sa, msg_iter, iov_idx, &timeo);
 
 		if (iov->iov_len && iov->iov_len < sdp_zcopy_thresh) {
 			sdp_dbg_data(sk, "0x%zx bytes left, switching to bcopy\n",

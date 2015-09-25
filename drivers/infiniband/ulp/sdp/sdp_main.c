@@ -75,10 +75,13 @@ unsigned int csum_partial_copy_from_user_new (const char *src, char *dst,
 #include <rdma/sdp_socket.h>
 #include "sdp.h"
 #include <linux/delay.h>
+#include <linux/module.h>
 
 MODULE_AUTHOR("Michael S. Tsirkin");
 MODULE_DESCRIPTION("InfiniBand SDP module");
 MODULE_LICENSE("Dual BSD/GPL");
+
+#define ipv6_addr_copy(a, b) (*(a) = *(b))
 
 #ifdef CONFIG_INFINIBAND_SDP_DEBUG
 SDP_MODPARAM_INT(sdp_debug_level, 0, "Enable debug tracing if > 0.");
@@ -88,7 +91,7 @@ SDP_MODPARAM_INT(sdp_data_debug_level, 0,
 		"Enable data path debug tracing if > 0.");
 #endif
 
-SDP_MODPARAM_INT(sdp_apm_enable, 1, "Enable APM.");
+SDP_MODPARAM_INT(sdp_apm_enable, 0, "Enable APM.");
 SDP_MODPARAM_SINT(sdp_fmr_pool_size, 20, "Number of FMRs to allocate for pool");
 SDP_MODPARAM_SINT(sdp_fmr_dirty_wm, 5, "Watermark to flush fmr pool");
 
@@ -160,24 +163,26 @@ static int sdp_get_port(struct sock *sk, unsigned short snum)
 	sdp_add_to_history(sk, __func__);
 
 	if (!ssk->id)
-		ssk->id = rdma_create_id(sdp_cma_handler, sk, RDMA_PS_SDP);
+		ssk->id = rdma_create_id(sdp_cma_handler, sk, RDMA_PS_SDP,
+					 IB_QPT_RC);
 
 	if (!ssk->id)
 	       return -ENOMEM;
 
 #if defined(CONFIG_IPV6) || defined(CONFIG_IPV6_MODULE)
 	if (inet6_sk(sk)) {
-		int addr_type = ipv6_addr_type(&inet6_sk(sk)->rcv_saddr);
+		int addr_type = ipv6_addr_type(&sk->sk_v6_rcv_saddr);
 		if (addr_type == IPV6_ADDR_MAPPED) {
 			addr4->sin_family = AF_INET;
 			addr4->sin_port = htons(snum);
-			addr4->sin_addr.s_addr = inet6_sk(sk)->rcv_saddr.s6_addr32[3];
+			addr4->sin_addr.s_addr =
+				sk->sk_v6_rcv_saddr.s6_addr32[3];
 			addr_len = sizeof(*addr4);
 		} else {
 			addr6->sin6_family = AF_INET6;
 			addr6->sin6_port = htons(snum);
 			addr6->sin6_scope_id = sk->sk_bound_dev_if;
-			ipv6_addr_copy(&addr6->sin6_addr, &inet6_sk(sk)->rcv_saddr);
+			ipv6_addr_copy(&addr6->sin6_addr, &sk->sk_v6_rcv_saddr);
 			addr_len = sizeof(*addr6);
 		}
 	}
@@ -209,7 +214,7 @@ static int sdp_get_port(struct sock *sk, unsigned short snum)
 	}
 
 	src_addr = (struct sockaddr_in *)&(ssk->id->route.addr.src_addr);
-	inet_num(sk) = ntohs(src_addr->sin_port);
+	sdp_inet_num(sk) = ntohs(src_addr->sin_port);
 #ifdef SDP_SOCK_HISTORY
 	sdp_ssk_hist_rename(sk);
 #endif
@@ -511,13 +516,6 @@ static void sdp_destroy_resources(struct sock *sk)
 
 	sk->sk_send_head = NULL;
 	skb_queue_purge(&sk->sk_write_queue);
-        /*
-         * If sendmsg cached page exists, toss it.
-         */
-        if (sk->sk_sndmsg_page) {
-                __free_page(sk->sk_sndmsg_page);
-                sk->sk_sndmsg_page = NULL;
-        }
 
 	id = ssk->id;
 	if (ssk->id) {
@@ -828,10 +826,10 @@ static int sdp_ipv6_connect(struct sock *sk, struct sockaddr_storage *saddr,
 	sk->sk_bound_dev_if = usin->sin6_scope_id;
 
 	src_addr->sin6_family = AF_INET6;
-	src_addr->sin6_port = htons(inet_sport(sk));
+	src_addr->sin6_port = htons(sdp_inet_sport(sk));
 	src_addr->sin6_addr = inet6_sk(sk)->saddr;
 
-	if (ssk->id && (addr_type != ipv6_addr_type(&inet6_sk(sk)->rcv_saddr))) {
+	if (ssk->id && (addr_type != ipv6_addr_type(&sk->sk_v6_rcv_saddr))) {
 		sdp_dbg(sk, "Existing address type is different for the "
 				"requested. rebinding socket\n");
 		rdma_destroy_id(ssk->id);
@@ -841,15 +839,16 @@ static int sdp_ipv6_connect(struct sock *sk, struct sockaddr_storage *saddr,
 	if (!ssk->id) {
 		/* If IPv4 over IPv6, make sure rdma_bind will expect ipv4 address */
 		if (addr_type == IPV6_ADDR_MAPPED)
-			ipv6_addr_set(&inet6_sk(sk)->rcv_saddr, 0, 0, htonl(0x0000FFFF), 0);
+			ipv6_addr_set(&sk->sk_v6_rcv_saddr, 0, 0,
+				      htonl(0x0000FFFF), 0);
 
-		rc = sdp_get_port(sk, htons(inet_sport(sk)));
+		rc = sdp_get_port(sk, htons(sdp_inet_sport(sk)));
 		if (rc)
 			return rc;
-		inet_sport(sk) = htons(inet_num(sk));
+		sdp_inet_sport(sk) = htons(sdp_inet_num(sk));
 	}
 
-	ipv6_addr_copy(&inet6_sk(sk)->daddr, &usin->sin6_addr);
+	ipv6_addr_copy(&sk->sk_v6_daddr, &usin->sin6_addr);
 
 	if (addr_type == IPV6_ADDR_MAPPED) {
 		struct sockaddr_in *addr4 = (struct sockaddr_in *)uaddr;
@@ -889,15 +888,15 @@ static int sdp_ipv4_connect(struct sock *sk, struct sockaddr_storage *saddr,
 		return -EAFNOSUPPORT;
 
 	if (!ssk->id) {
-		rc = sdp_get_port(sk, htons(inet_num(sk)));
+		rc = sdp_get_port(sk, htons(sdp_inet_num(sk)));
 		if (rc)
 			return rc;
-		inet_sport(sk) = htons(inet_num(sk));
+		sdp_inet_sport(sk) = htons(sdp_inet_num(sk));
 	}
 
 	src_addr->sin_family = AF_INET;
-	src_addr->sin_port = htons(inet_sport(sk));
-	src_addr->sin_addr.s_addr = inet_saddr(sk);
+	src_addr->sin_port = htons(sdp_inet_sport(sk));
+	src_addr->sin_addr.s_addr = sdp_inet_saddr(sk);
 
 	sdp_dbg(sk, "%s " NIPQUAD_FMT ":%hu -> " NIPQUAD_FMT ":%hu\n", __func__,
 		NIPQUAD(src_addr->sin_addr.s_addr),
@@ -1277,7 +1276,7 @@ int sdp_init_sock(struct sock *sk)
 	lockdep_set_class(&sk->sk_callback_lock,
 					&ib_sdp_sk_callback_lock_key);
 
-	sk->sk_route_caps |= NETIF_F_SG | NETIF_F_NO_CSUM;
+	sk->sk_route_caps |= NETIF_F_SG | NETIF_F_HW_CSUM;
 
 	skb_queue_head_init(&ssk->rx_ctl_q);
 
@@ -1600,7 +1599,7 @@ static int sdp_recv_urg(struct sock *sk, long timeo,
 
 		if (len > 0) {
 			if (!(flags & MSG_TRUNC))
-				err = memcpy_toiovec(msg->msg_iov, &c, 1);
+				err = memcpy_to_msg(msg, &c, 1);
 			len = 1;
 		} else
 			msg->msg_flags |= MSG_TRUNC;
@@ -1646,10 +1645,8 @@ void sdp_skb_entail(struct sock *sk, struct sk_buff *skb)
                 sdp_sk(sk)->nonagle &= ~TCP_NAGLE_PUSH;
 }
 
-#define TCP_PAGE(sk)	(sk->sk_sndmsg_page)
-#define TCP_OFF(sk)	(sk->sk_sndmsg_off)
 static inline int sdp_bcopy_get(struct sock *sk, struct sk_buff *skb,
-				char __user *from, int copy)
+				struct iov_iter *from, int copy)
 {
 	int err;
 	struct sdp_sock *ssk = sdp_sk(sk);
@@ -1659,7 +1656,7 @@ static inline int sdp_bcopy_get(struct sock *sk, struct sk_buff *skb,
 		/* We have some space in skb head. Superb! */
 		if (copy > skb_tailroom(skb))
 			copy = skb_tailroom(skb);
-		if ((err = skb_add_data(skb, from, copy)) != 0)
+		if (skb_add_data_nocache(sk, skb, from, copy))
 			return SDP_ERR_FAULT;
 	} else {
 		/* Put data in skb->frags */
@@ -1667,6 +1664,10 @@ static inline int sdp_bcopy_get(struct sock *sk, struct sk_buff *skb,
 		int i = skb_shinfo(skb)->nr_frags;
 		struct page *page = TCP_PAGE(sk);
 		int off = TCP_OFF(sk);
+		struct page_frag *pfrag = &sk->sk_frag;
+
+		if (!sk_page_frag_refill(sk, pfrag))
+			return SDP_DO_WAIT_MEM;
 
 		if (skb_can_coalesce(skb, i, page, off) &&
 		    off != PAGE_SIZE) {
@@ -1696,7 +1697,10 @@ static inline int sdp_bcopy_get(struct sock *sk, struct sk_buff *skb,
 
 		if (!page) {
 			/* Allocate new cache page. */
-			page = sk_stream_alloc_page(sk);
+			pfrag = &sk->sk_frag;
+			page = pfrag->page;
+			if (!sk_page_frag_refill(sk, pfrag))
+				return SDP_DO_WAIT_MEM;
 			if (!page)
 				return SDP_DO_WAIT_MEM;
 		}
@@ -1704,16 +1708,8 @@ static inline int sdp_bcopy_get(struct sock *sk, struct sk_buff *skb,
 		/* Time to copy data. We are close to
 		 * the end! */
 		SDPSTATS_COUNTER_ADD(memcpy_count, copy);
-		err = skb_copy_to_page(sk, from, skb, page,
-				       off, copy);
+		err = skb_copy_to_page_nocache(sk, from, skb, page, off, copy);
 		if (err) {
-			/* If this page was new, give it to the
-			 * socket so it does not get leaked.
-			 */
-			if (!TCP_PAGE(sk)) {
-				TCP_PAGE(sk) = page;
-				TCP_OFF(sk) = 0;
-			}
 			return SDP_ERR_ERROR;
 		}
 
@@ -1750,7 +1746,7 @@ int sdp_tx_wait_memory(struct sdp_sock *ssk, long *timeo_p, int *credits_needed)
 	DEFINE_WAIT(wait);
 
 	if (sk_stream_memory_free(sk))
-		current_timeo = vm_wait = (net_random() % (HZ / 5)) + 2;
+		current_timeo = vm_wait = (prandom_u32() % (HZ / 5)) + 2;
 
 	while (1) {
 		set_bit(SOCK_ASYNC_NOSPACE, &sk->sk_socket->flags);
@@ -1839,8 +1835,7 @@ do_interrupted:
 
 /* Like tcp_sendmsg */
 /* TODO: check locking */
-static int sdp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
-		size_t size)
+static int sdp_sendmsg(struct sock *sk, struct msghdr *msg, size_t size)
 {
 	int i;
 	struct sdp_sock *ssk = sdp_sk(sk);
@@ -1848,6 +1843,7 @@ static int sdp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 	int flags;
 	const int size_goal = MIN(ssk->xmit_size_goal, SDP_MAX_PAYLOAD);
 	int err, copied;
+	int iov_num = msg->msg_iter.nr_segs;
 	long timeo;
 	int zcopy_thresh =
 		-1 != ssk->zcopy_thresh ? ssk->zcopy_thresh : sdp_zcopy_thresh;
@@ -1879,12 +1875,13 @@ static int sdp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 	if (sk->sk_err || (sk->sk_shutdown & SEND_SHUTDOWN))
 		goto do_error;
 
-	for (i = 0; i < msg->msg_iovlen; i++) {
-		struct iovec *iov = &msg->msg_iov[i];
+	for (i = 0; i < iov_num; i++) {
+		const struct iovec *iov = &msg->msg_iter.iov[i];
 		int seglen = iov->iov_len;
-		char __user *from = iov->iov_base;
+		struct iov_iter *from = &msg->msg_iter;
 
-		sdp_dbg_data(sk, "Sending iov: 0x%x/0x%zx %p\n", i, msg->msg_iovlen, from);
+		sdp_dbg_data(sk, "Sending iov: 0x%x/0x%zx %p\n", i,
+			     msg->msg_iter.nr_segs, from);
 
 		SDPSTATS_HIST(sendmsg_seglen, seglen);
 
@@ -1894,7 +1891,7 @@ static int sdp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 				ssk->sdp_dev->fmr_pool && !(flags & MSG_OOB)) {
 			int zcopied = 0;
 
-			zcopied = sdp_sendmsg_zcopy(iocb, sk, iov);
+			zcopied = sdp_sendmsg_zcopy(sk, &msg->msg_iter, i);
 
 			if (zcopied < 0) {
 				sdp_dbg_data(sk, "ZCopy send err: %d\n", zcopied);
@@ -1904,7 +1901,6 @@ static int sdp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 
 			copied += zcopied;
 			seglen = iov->iov_len;
-			from = iov->iov_base;
 
 			sdp_dbg_data(sk, "ZCopied: 0x%x/0x%x\n", zcopied, seglen);
 		}
@@ -1943,8 +1939,7 @@ new_segment:
 				 * Check whether we can use HW checksum.
 				 */
 				if (sk->sk_route_caps &
-				    (NETIF_F_IP_CSUM | NETIF_F_NO_CSUM |
-				     NETIF_F_HW_CSUM))
+				    (NETIF_F_IP_CSUM | NETIF_F_HW_CSUM))
 					skb->ip_summed = CHECKSUM_PARTIAL;
 
 				sdp_skb_entail(sk, skb);
@@ -1991,7 +1986,6 @@ new_segment:
 			SDP_SKB_CB(skb)->end_seq += copy;
 			/*unused: skb_shinfo(skb)->gso_segs = 0;*/
 
-			from += copy;
 			copied += copy;
 			seglen -= copy;
 			continue;
@@ -2091,9 +2085,8 @@ int sdp_abort_rx_srcavail(struct sock *sk, int post_sendsm)
 /* Like tcp_recvmsg */
 /* Maybe use skb_recv_datagram here? */
 /* Note this does not seem to handle vectored messages. Relevant? */
-static int sdp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
-		       size_t len, int noblock, int flags,
-		       int *addr_len)
+static int sdp_recvmsg(struct sock *sk, struct msghdr *msg, size_t len,
+		       int noblock, int flags, int *addr_len)
 {
 	struct sk_buff *skb = NULL;
 	struct sdp_sock *ssk = sdp_sk(sk);
@@ -2111,8 +2104,8 @@ static int sdp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 	lock_sock(sk);
 	ssk->cpu = smp_processor_id();
 	sdp_dbg_data(sk, "iovlen: %zd iov_len: 0x%zx flags: 0x%x peek: 0x%x\n",
-			msg->msg_iovlen, msg->msg_iov[0].iov_len, flags,
-			MSG_PEEK);
+			msg->msg_iter.nr_segs, msg->msg_iter.iov[0].iov_len,
+			flags, MSG_PEEK);
 
 	posts_handler_get(ssk);
 
@@ -2345,9 +2338,10 @@ sdp_mid_data:
 		if (!(flags & MSG_TRUNC)) {
 			if (rx_sa && offset >= skb->len) {
 				/* No more payload - start rdma copy */
-				sdp_dbg_data(sk, "RDMA copy of 0x%lx bytes\n", used);
-				err = sdp_rdma_to_iovec(sk, msg->msg_iov, msg->msg_iovlen, skb,
-						&used, offset);
+				sdp_dbg_data(sk, "RDMA copy of 0x%lx bytes\n",
+					     used);
+				err = sdp_rdma_to_iter(sk, &msg->msg_iter, skb,
+						       &used, offset);
 				if (unlikely(err)) {
 					/* ssk->rx_sa might had been freed when
 					 * we slept. */
@@ -2362,11 +2356,12 @@ sdp_mid_data:
 				}
 			} else {
 				sdp_dbg_data(sk, "memcpy 0x%lx bytes +0x%x -> %p\n",
-						used, offset, msg->msg_iov[0].iov_base);
+						used, offset,
+						msg->msg_iter.iov[0].iov_base);
 
-				err = skb_copy_datagram_iovec(skb, offset,
+				err = skb_copy_datagram_msg(skb, offset,
 						/* TODO: skip header? */
-						msg->msg_iov, used);
+							    msg, used);
 				if (rx_sa && !(flags & MSG_PEEK)) {
 					rx_sa->copied += used;
 					rx_sa->reported += used;
@@ -2482,7 +2477,7 @@ static int sdp_listen(struct sock *sk, int backlog)
 		rc = sdp_get_port(sk, 0);
 		if (rc)
 			return rc;
-		inet_sport(sk) = htons(inet_num(sk));
+		sdp_inet_sport(sk) = htons(sdp_inet_num(sk));
 	}
 
 	rc = rdma_listen(ssk->id, backlog);
@@ -2595,7 +2590,7 @@ void sdp_urg(struct sdp_sock *ssk, struct sk_buff *skb)
 		BUG();
 	ssk->urg_data = TCP_URG_VALID | tmp;
 	if (!sock_flag(sk, SOCK_DEAD))
-		sk->sk_data_ready(sk, 0);
+		sk->sk_data_ready(sk);
 }
 
 static struct percpu_counter *sockets_allocated;
@@ -2629,7 +2624,7 @@ struct proto sdp_proto = {
 	.name	     = "SDP",
 };
 
-static struct proto_ops sdp_ipv4_proto_ops = {
+static const struct proto_ops sdp_ipv4_proto_ops = {
 	.family     = PF_INET,
 	.owner      = THIS_MODULE,
 	.release    = inet_release,
@@ -2653,7 +2648,7 @@ static struct proto_ops sdp_ipv4_proto_ops = {
 };
 
 #if defined(CONFIG_IPV6) || defined(CONFIG_IPV6_MODULE)
-static struct proto_ops sdp_ipv6_proto_ops = {
+static const struct proto_ops sdp_ipv6_proto_ops = {
 	.family     = PF_INET6,
 	.owner      = THIS_MODULE,
 	.release    = inet6_release,
@@ -2677,8 +2672,10 @@ static struct proto_ops sdp_ipv6_proto_ops = {
 };
 #endif
 
-static int sdp_create_ipvx_socket(struct net *net, struct socket *sock, int protocol,
-	       	struct proto_ops *proto_ops)
+static int sdp_create_ipvx_socket(struct net *net, struct socket *sock,
+				  int protocol,
+				  const struct proto_ops *proto_ops,
+				  int kern)
 {
 	struct sock *sk;
 	int rc;
@@ -2699,7 +2696,7 @@ static int sdp_create_ipvx_socket(struct net *net, struct socket *sock, int prot
 		return -EPROTONOSUPPORT;
 	}
 
-	sk = sk_alloc(net, PF_INET_SDP, GFP_KERNEL, &sdp_proto);
+	sk = sk_alloc(net, PF_INET_SDP, GFP_KERNEL, &sdp_proto, kern);
 	if (!sk) {
 		sdp_warn(NULL, "SDP: failed to allocate socket.\n");
 		return -ENOMEM;
@@ -2734,17 +2731,19 @@ static int sdp_create_ipvx_socket(struct net *net, struct socket *sock, int prot
 }
 
 #if defined(CONFIG_IPV6) || defined(CONFIG_IPV6_MODULE)
-static int sdp_create_v6_socket(struct net *net, struct socket *sock, int protocol,
-				int kern)
+static int sdp_create_v6_socket(struct net *net, struct socket *sock,
+				int protocol, int kern)
 {
-	return sdp_create_ipvx_socket(net, sock, protocol, &sdp_ipv6_proto_ops);
+	return sdp_create_ipvx_socket(net, sock, protocol, &sdp_ipv6_proto_ops,
+				      kern);
 }
 #endif
 
-static int sdp_create_v4_socket(struct net *net, struct socket *sock, int protocol,
-				int kern)
+static int sdp_create_v4_socket(struct net *net, struct socket *sock,
+				int protocol, int kern)
 {
-	return sdp_create_ipvx_socket(net, sock, protocol, &sdp_ipv4_proto_ops);
+	return sdp_create_ipvx_socket(net, sock, protocol, &sdp_ipv4_proto_ops,
+				      kern);
 }
 
 static void sdp_add_device(struct ib_device *device)
@@ -2910,8 +2909,11 @@ static int __init sdp_init(void)
 	if (!orphan_count)
 		goto no_mem_orphan_count;
 
-	percpu_counter_init(sockets_allocated, 0);
-	percpu_counter_init(orphan_count, 0);
+	/* percpu_counter_init func definition changed in
+	 * git id: 908c7f1949cb7cc6e92ba8f18f2998e87e265b8e
+	 */
+	percpu_counter_init(sockets_allocated, 0, GFP_KERNEL);
+	percpu_counter_init(orphan_count, 0, GFP_KERNEL);
 
 	sdp_proto.sockets_allocated = sockets_allocated;
 	sdp_proto.orphan_count = orphan_count;

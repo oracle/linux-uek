@@ -21,8 +21,8 @@ static inline struct sdp_sock *sdp_sk(const struct sock *sk);
 	printk(level "%s:%d sdp_sock(%5d:%d %d:%d): " format,             \
 	       func, line, \
 	       current->pid, smp_processor_id(), \
-	       (sk) ? inet_num(sk) : -1,                 \
-	       (sk) ? ntohs(inet_dport(sk)) : -1, ## arg); \
+	       (sk) ? sdp_inet_num(sk) : -1,                 \
+	       (sk) ? ntohs(sdp_inet_dport(sk)) : -1, ## arg); \
 	preempt_enable(); \
 } while (0)
 #define sdp_printk(level, sk, format, arg...)                \
@@ -49,8 +49,8 @@ struct sdpprf_log {
 	int 		idx;
 	int 		pid;
 	int 		cpu;
-	int 		sk_num;
-	int 		sk_dport;
+	int		sdpprf_sk_num;
+	int		sdpprf_sk_dport;
 	struct sk_buff 	*skb;
 	char		msg[256];
 
@@ -72,8 +72,8 @@ extern atomic_t sdpprf_log_count;
 	preempt_disable(); \
 	l->idx = idx; \
 	l->pid = current->pid; \
-	l->sk_num = (sk) ? inet_num(sk) : -1;                 \
-	l->sk_dport = (sk) ? ntohs(inet_dport(sk)) : -1; \
+	l->sdpprf_sk_num = (sk) ? sdp_inet_num(sk) : -1;                 \
+	l->sdpprf_sk_dport = (sk) ? ntohs(sdp_inet_dport(sk)) : -1; \
 	l->cpu = smp_processor_id(); \
 	l->skb = s; \
 	snprintf(l->msg, sizeof(l->msg) - 1, format, ## arg); \

@@ -144,7 +144,7 @@ static int sdp_v4_seq_show(struct seq_file *seq, int num, struct sock *sk)
 	char tmpbuf[TMPSZ + 1];
 	unsigned int dest;
 	unsigned int src;
-	int uid;
+	kuid_t uid;
 	unsigned long inode;
 	__u16 destp;
 	__u16 srcp;
@@ -152,15 +152,15 @@ static int sdp_v4_seq_show(struct seq_file *seq, int num, struct sock *sk)
 
 	dest = sdp_inet_daddr(sk);
 	src = sdp_inet_rcv_saddr(sk);
-	destp = ntohs(inet_dport(sk));
-	srcp = ntohs(inet_sport(sk));
+	destp = ntohs(sdp_inet_dport(sk));
+	srcp = ntohs(sdp_inet_sport(sk));
 	uid = sock_i_uid(sk);
 	inode = sock_i_ino(sk);
 	rx_queue = rcv_nxt(sdp_sk(sk)) - sdp_sk(sk)->copied_seq;
 	tx_queue = sdp_sk(sk)->write_seq - sdp_sk(sk)->tx_ring.una_seq;
 
-	sprintf(tmpbuf, "%4d: %08X:%04X %08X:%04X %5d %lu	%08X:%08X %X",
-		num, src, srcp, dest, destp, uid, inode,
+	sprintf(tmpbuf, "%4d: %08X:%04X %08X:%04X %5u %lu	%08X:%08X %X",
+		num, src, srcp, dest, destp, uid.val, inode,
 		rx_queue, tx_queue, sk->sk_state);
 
 	seq_printf(seq, "%-*s\n", TMPSZ - 1, tmpbuf);
@@ -173,33 +173,32 @@ static int sdp_v6_seq_show(struct seq_file *seq, int num, struct sock *sk)
 	char tmpbuf[TMPSZ + 1];
 	struct in6_addr *src;
 	struct in6_addr *dest;
-	int uid;
+	kuid_t uid;
 	unsigned long inode;
 	__u16 destp;
 	__u16 srcp;
 	__u32 rx_queue, tx_queue;
 
-	dest = &inet6_sk(sk)->daddr;
-	src = &inet6_sk(sk)->rcv_saddr;
-	destp = ntohs(inet_dport(sk));
-	srcp = ntohs(inet_sport(sk));
+	dest = &sk->sk_v6_daddr;
+	src = &sk->sk_v6_rcv_saddr;
+	destp = ntohs(sdp_inet_dport(sk));
+	srcp = ntohs(sdp_inet_sport(sk));
 	uid = sock_i_uid(sk);
 	inode = sock_i_ino(sk);
 	rx_queue = rcv_nxt(sdp_sk(sk)) - sdp_sk(sk)->copied_seq;
 	tx_queue = sdp_sk(sk)->write_seq - sdp_sk(sk)->tx_ring.una_seq;
 
 	sprintf(tmpbuf,
-	           "%4d: %08X%08X%08X%08X:%04X %08X%08X%08X%08X:%04X "
-		   "%5d %lu	%08X:%08X %X",
-		   num,
-		   src->s6_addr32[0], src->s6_addr32[1],
-		   src->s6_addr32[2], src->s6_addr32[3],
-		   srcp,
-		   dest->s6_addr32[0], dest->s6_addr32[1],
-		   dest->s6_addr32[2], dest->s6_addr32[3],
-		   destp,
-		   uid, inode,
-		   rx_queue, tx_queue, sk->sk_state);
+		"%4d: %08X%08X%08X%08X:%04X %08X%08X%08X%08X:%04X %5u %lu	%08X:%08X %X",
+		num,
+		src->s6_addr32[0], src->s6_addr32[1],
+		src->s6_addr32[2], src->s6_addr32[3],
+		srcp,
+		dest->s6_addr32[0], dest->s6_addr32[1],
+		dest->s6_addr32[2], dest->s6_addr32[3],
+		destp,
+		uid.val, inode,
+		rx_queue, tx_queue, sk->sk_state);
 
 	seq_printf(seq, "%-*s\n", TMPSZ - 1, tmpbuf);
 
@@ -232,7 +231,7 @@ out:
 
 static int sdp_seq_open(struct inode *inode, struct file *file)
 {
-	struct sdp_seq_afinfo *afinfo = PDE(inode)->data;
+	struct sdp_seq_afinfo *afinfo = PDE_DATA(inode);
 	struct seq_file *seq;
 	struct sdp_iter_state *s;
 	int rc;
@@ -276,7 +275,7 @@ static struct sdp_seq_afinfo sdp_seq_afinfo = {
 };
 
 #ifdef SDPSTATS_ON
-DEFINE_PER_CPU(struct sdpstats, sdpstats);
+DEFINE_PER_CPU(struct sdpstats_t, sdpstats);
 
 static void sdpstats_seq_hist(struct seq_file *seq, char *str, u32 *h, int n,
 		int is_log)
@@ -336,7 +335,7 @@ static void sdpstats_seq_hist(struct seq_file *seq, char *str, u32 *h, int n,
 })
 
 #define __sdpstats_seq_hist(seq, msg, hist, is_log) ({		\
-	int hist_len = ARRAY_SIZE(__get_cpu_var(sdpstats).hist);\
+	int hist_len = ARRAY_SIZE(sdpstats.hist);\
 	memset(h, 0, sizeof(*h) * h_len);			\
 	SDPSTATS_HIST_GET(hist, hist_len, h);	\
 	sdpstats_seq_hist(seq, msg, h, hist_len, is_log);\
@@ -387,13 +386,12 @@ static int sdpstats_seq_show(struct seq_file *seq, void *v)
 	seq_printf(seq, "memcpy_count       \t\t: %u\n",
 		SDPSTATS_COUNTER_GET(memcpy_count));
 
-        for (i = 0; i < ARRAY_SIZE(__get_cpu_var(sdpstats).post_send); i++) {
-                if (mid2str(i)) {
-                        seq_printf(seq, "post_send %-20s\t: %u\n",
-                                        mid2str(i),
-					SDPSTATS_COUNTER_GET(post_send[i]));
-                }
-        }
+	for (i = 0; i < ARRAY_SIZE(sdpstats.post_send); i++) {
+		if (mid2str(i)) {
+			seq_printf(seq, "post_send %-20s\t: %u\n", mid2str(i),
+				   SDPSTATS_COUNTER_GET(post_send[i]));
+		}
+	}
 
 	seq_printf(seq, "\n");
 	seq_printf(seq, "sdp_recvmsg() calls\t\t: %u\n",
@@ -455,7 +453,7 @@ static ssize_t sdpstats_write(struct file *file, const char __user *buf,
 	int i;
 
 	for_each_possible_cpu(i)
-		memset(&per_cpu(sdpstats, i), 0, sizeof(struct sdpstats));
+		memset(&per_cpu(sdpstats, i), 0, sizeof(struct sdpstats_t));
 	printk(KERN_WARNING "Cleared sdp statistics\n");
 
 	return count;
@@ -519,8 +517,8 @@ static int sdpprf_show(struct seq_file *m, void *v)
 	seq_printf(m, "%-6d: [%5lu.%06lu] %-50s - [%d{%d} %d:%d] "
 			"skb: %p %s:%d\n",
 			l->idx, t, usec_rem,
-			l->msg, l->pid, l->cpu, l->sk_num, l->sk_dport,
-			l->skb, l->func, l->line);
+			l->msg, l->pid, l->cpu, l->sdpprf_sk_num,
+			l->sdpprf_sk_dport, l->skb, l->func, l->line);
 out:
 	return 0;
 }
@@ -762,8 +760,8 @@ static struct file_operations ssk_hist_fops = {
 
 static void sdp_ssk_hist_name(char *sk_name, int len, struct sock *sk)
 {
-	int lport = inet_num(sk);
-	int rport = ntohs(inet_dport(sk));
+	int lport = sdp_inet_num(sk);
+	int rport = ntohs(sdp_inet_dport(sk));
 
 	snprintf(sk_name, len, "%05x_%d:%d",
 			sdp_sk(sk)->sk_id, lport, rport);
@@ -842,17 +840,15 @@ int __init sdp_proc_init(void)
 	}
 #endif
 
-	p = proc_net_fops_create(&init_net, sdp_seq_afinfo.name, S_IRUGO,
-				 sdp_seq_afinfo.seq_fops);
-	if (p)
-		p->data = &sdp_seq_afinfo;
-	else
+	p = proc_create_data(sdp_seq_afinfo.name, S_IRUGO, init_net.proc_net,
+				 sdp_seq_afinfo.seq_fops, &sdp_seq_afinfo);
+	if (!p)
 		goto no_mem;
 
 #ifdef SDPSTATS_ON
 
-	stats = proc_net_fops_create(&init_net, PROC_SDP_STATS,
-			S_IRUGO | S_IWUGO, &sdpstats_fops);
+	stats = proc_create(PROC_SDP_STATS, S_IRUGO | S_IWUGO,
+			init_net.proc_net, &sdpstats_fops);
 	if (!stats)
 		goto no_mem_stats;
 
@@ -872,11 +868,11 @@ no_mem_prof:
 #endif
 
 #ifdef SDPSTATS_ON
-	proc_net_remove(&init_net, PROC_SDP_STATS);
+	remove_proc_entry(PROC_SDP_STATS, init_net.proc_net);
 
 no_mem_stats:
 #endif
-	proc_net_remove(&init_net, sdp_seq_afinfo.name);
+	remove_proc_entry(sdp_seq_afinfo.name, init_net.proc_net);
 
 no_mem:
 	return -ENOMEM;
@@ -884,11 +880,11 @@ no_mem:
 
 void sdp_proc_unregister(void)
 {
-	proc_net_remove(&init_net, sdp_seq_afinfo.name);
+	remove_proc_entry(sdp_seq_afinfo.name, init_net.proc_net);
 	memset(sdp_seq_afinfo.seq_fops, 0, sizeof(*sdp_seq_afinfo.seq_fops));
 
 #ifdef SDPSTATS_ON
-	proc_net_remove(&init_net, PROC_SDP_STATS);
+	remove_proc_entry(PROC_SDP_STATS, init_net.proc_net);
 #endif
 #ifdef SDP_PROFILING
 	debugfs_remove(sdp_prof_file);

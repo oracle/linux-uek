@@ -42,15 +42,18 @@
 #endif
 #endif
 
-#define inet_num(sk) inet_sk(sk)->inet_num
-#define inet_sport(sk) inet_sk(sk)->inet_sport
-#define inet_dport(sk) inet_sk(sk)->inet_dport
-#define inet_saddr(sk) inet_sk(sk)->inet_saddr
-#define sdp_inet_daddr(sk) inet_sk(sk)->inet_daddr
-#define sdp_inet_rcv_saddr(sk) inet_sk(sk)->inet_rcv_saddr
+#define sdp_inet_num(sk)        (inet_sk(sk)->inet_num)
+#define sdp_inet_sport(sk)      (inet_sk(sk)->inet_sport)
+#define sdp_inet_dport(sk)      (inet_sk(sk)->inet_dport)
+#define sdp_inet_saddr(sk)      (inet_sk(sk)->inet_saddr)
+#define sdp_inet_daddr(sk)      (inet_sk(sk)->inet_daddr)
+#define sdp_inet_rcv_saddr(sk)  (inet_sk(sk)->inet_rcv_saddr)
 
 #define sdp_sk_sleep(sk) sk_sleep(sk)
 #define sk_ssk(ssk) ((struct sock *)ssk)
+
+#define TCP_PAGE(sk)    (sk->sk_frag.page)
+#define TCP_OFF(sk)     (sk->sk_frag.offset)
 
 /* Interval between sucessive polls in the Tx routine when polling is used
    instead of interrupts (in per-core Tx rings) - should be power of 2 */
@@ -168,7 +171,7 @@ extern struct workqueue_struct *rx_comp_wq;
 extern spinlock_t sdp_large_sockets_lock;
 extern struct ib_client sdp_client;
 #ifdef SDPSTATS_ON
-DECLARE_PER_CPU(struct sdpstats, sdpstats);
+DECLARE_PER_CPU(struct sdpstats_t, sdpstats);
 #endif
 
 enum sdp_mid {
@@ -628,8 +631,10 @@ static inline struct sk_buff *sdp_stream_alloc_skb(struct sock *sk, int size,
 	skb = alloc_skb_fclone(size + sk->sk_prot->max_header, gfp);
 	if (skb) {
 
-		if ((kind == SK_MEM_RECV && sk_rmem_schedule(sk, skb->truesize)) ||
-				(kind == SK_MEM_SEND && sk_wmem_schedule(sk, skb->truesize))) {
+		if ((kind == SK_MEM_RECV &&
+			sk_rmem_schedule(sk, skb, skb->truesize)) ||
+		    (kind == SK_MEM_SEND &&
+			sk_wmem_schedule(sk, skb->truesize))) {
 			/*
 			 * Make sure that we have exactly size bytes
 			 * available to the caller, no more, no less.
@@ -772,7 +777,7 @@ static inline int credit_update_needed(struct sdp_sock *ssk)
 #ifdef SDPSTATS_ON
 
 #define SDPSTATS_MAX_HIST_SIZE 256
-struct sdpstats {
+struct sdpstats_t {
 	u64 rx_bytes;
 	u64 tx_bytes;
 	u32 post_send[256];
@@ -830,15 +835,16 @@ static inline void sdpstats_hist(u32 *h, u32 val, u32 maxidx, int is_log)
 	h[idx]++;
 }
 
-#define SDPSTATS_COUNTER_INC(stat) do { __get_cpu_var(sdpstats).stat++; } while (0)
-#define SDPSTATS_COUNTER_ADD(stat, val) do { __get_cpu_var(sdpstats).stat += val; } while (0)
-#define SDPSTATS_COUNTER_MID_INC(stat, mid) do { __get_cpu_var(sdpstats).stat[mid]++; } \
-	while (0)
+#define SDPSTATS_COUNTER_INC(stat)  this_cpu_inc(sdpstats.stat)
+#define SDPSTATS_COUNTER_ADD(stat, val)	 this_cpu_add(sdpstats.stat, val)
+#define SDPSTATS_COUNTER_MID_INC(stat, mid)  this_cpu_inc(sdpstats.stat[mid])
 #define SDPSTATS_HIST(stat, size) \
-	sdpstats_hist(__get_cpu_var(sdpstats).stat, size, ARRAY_SIZE(__get_cpu_var(sdpstats).stat) - 1, 1)
+	sdpstats_hist(this_cpu_ptr(&sdpstats)->stat, size, \
+		      ARRAY_SIZE(sdpstats.stat) - 1, 1)
 
 #define SDPSTATS_HIST_LINEAR(stat, size) \
-	sdpstats_hist(__get_cpu_var(sdpstats).stat, size, ARRAY_SIZE(__get_cpu_var(sdpstats).stat) - 1, 0)
+	sdpstats_hist(this_cpu_ptr(&sdpstats)->stat, size, \
+		      ARRAY_SIZE(sdpstats.stat) - 1, 0)
 
 #else
 #define SDPSTATS_COUNTER_INC(stat)
@@ -980,14 +986,14 @@ void sdp_handle_disconn(struct sock *sk);
 int sdp_poll_rx_cq(struct sdp_sock *ssk);
 
 /* sdp_zcopy.c */
-int sdp_sendmsg_zcopy(struct kiocb *iocb, struct sock *sk, struct iovec *iov);
+int sdp_sendmsg_zcopy(struct sock *sk, struct iov_iter *msg_iter, int iov_idx);
 int sdp_handle_srcavail(struct sdp_sock *ssk, struct sdp_srcah *srcah);
 void sdp_handle_sendsm(struct sdp_sock *ssk, u32 mseq_ack);
 void sdp_handle_rdma_read_compl(struct sdp_sock *ssk, u32 mseq_ack,
 		u32 bytes_completed);
 int sdp_handle_rdma_read_cqe(struct sdp_sock *ssk);
-int sdp_rdma_to_iovec(struct sock *sk, struct iovec *iov, int msg_iovlen,
-	       	struct sk_buff *skb, unsigned long *used, u32 offset);
+int sdp_rdma_to_iter(struct sock *sk, struct iov_iter *msg_iter,
+		struct sk_buff *skb, unsigned long *used, u32 offset);
 int sdp_post_rdma_rd_compl(struct sock *sk,
 		struct rx_srcavail_state *rx_sa);
 int sdp_post_sendsm(struct sock *sk);

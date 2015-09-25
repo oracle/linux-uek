@@ -52,6 +52,8 @@
 
 #define SDP_MAJV_MINV 0x22
 
+#define ipv6_addr_copy(a, b) (*(a) = *(b))
+
 SDP_MODPARAM_INT(sdp_rx_size, 0x40, "HW rx queue size (max num of credits)."
 		" Must be power of 2.");
 
@@ -185,14 +187,14 @@ static int sdp_connect_handler(struct sock *sk, struct rdma_cm_id *id,
 	if (!h->max_adverts)
 		return -EINVAL;
 
-	child = sk_clone(sk, GFP_KERNEL);
+	child = sk_clone_lock(sk, GFP_KERNEL);
 	if (!child)
 		return -ENOMEM;
 
 	sdp_init_sock(child);
 
 	dst_addr = (struct sockaddr_in *)&id->route.addr.dst_addr;
-	inet_dport(child) = dst_addr->sin_port;
+	sdp_inet_dport(child) = dst_addr->sin_port;
 
 #if defined(CONFIG_IPV6) || defined(CONFIG_IPV6_MODULE)
 	if (inet6_sk(sk)) {
@@ -205,26 +207,29 @@ static int sdp_connect_handler(struct sock *sk, struct rdma_cm_id *id,
 		if ((h->ipv_cap & HH_IPV_MASK) == HH_IPV4) {
 			/* V6 mapped */
 			sdp_inet_daddr(child) = dst_addr->sin_addr.s_addr;
-			ipv6_addr_set(&newnp->daddr, 0, 0, htonl(0x0000FFFF),
-					h->src_addr.ip4.addr);
+			ipv6_addr_set(&child->sk_v6_daddr, 0, 0,
+				      htonl(0x0000FFFF), h->src_addr.ip4.addr);
 
 			ipv6_addr_set(&newnp->saddr, 0, 0, htonl(0x0000FFFF),
 					h->dst_addr.ip4.addr);
 
-			ipv6_addr_copy(&newnp->rcv_saddr, &newnp->saddr);
+			ipv6_addr_copy(&child->sk_v6_rcv_saddr, &newnp->saddr);
 		} else if ((h->ipv_cap & HH_IPV_MASK) == HH_IPV6) {
 			struct sockaddr_in6 *dst_addr6 = (struct sockaddr_in6 *)dst_addr;
 			struct sockaddr_in6 *src_addr6 =
 				(struct sockaddr_in6 *)&id->route.addr.src_addr;
 
-			ipv6_addr_copy(&newnp->daddr, &dst_addr6->sin6_addr);
+			ipv6_addr_copy(&child->sk_v6_daddr,
+				       &dst_addr6->sin6_addr);
+			ipv6_addr_copy(&child->sk_v6_rcv_saddr,
+				       &src_addr6->sin6_addr);
 			ipv6_addr_copy(&newnp->saddr, &src_addr6->sin6_addr);
-			ipv6_addr_copy(&newnp->rcv_saddr, &src_addr6->sin6_addr);
 		} else {
 			sdp_warn(child, "Bad IPV field: 0x%x\n", h->ipv_cap & HH_IPV_MASK);
 		}
 
-		sdp_inet_daddr(child) = inet_saddr(child) = sdp_inet_rcv_saddr(child) = LOOPBACK4_IPV6;
+		sdp_inet_daddr(child) = sdp_inet_saddr(child) =
+			sdp_inet_rcv_saddr(child) = LOOPBACK4_IPV6;
 	} else
 #endif
 	{
@@ -275,7 +280,7 @@ static int sdp_connect_handler(struct sock *sk, struct rdma_cm_id *id,
 
 	/* child->sk_write_space(child); */
 	/* child->sk_data_ready(child, 0); */
-	sk->sk_data_ready(sk, 0);
+	sk->sk_data_ready(sk);
 
 	return 0;
 }
@@ -313,7 +318,7 @@ static int sdp_response_handler(struct sock *sk, struct rdma_cm_id *id,
 	sk_wake_async(sk, 0, POLL_OUT);
 
 	dst_addr = (struct sockaddr_in *)&id->route.addr.dst_addr;
-	inet_dport(sk) = dst_addr->sin_port;
+	sdp_inet_dport(sk) = dst_addr->sin_port;
 	sdp_inet_daddr(sk) = dst_addr->sin_addr.s_addr;
 
 #ifdef SDP_SOCK_HISTORY
@@ -423,11 +428,12 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 		if (sdp_link_layer_ib_only &&
 			rdma_node_get_transport(id->device->node_type) ==
 				RDMA_TRANSPORT_IB &&
-			rdma_port_link_layer(id->device, id->port_num) !=
+			rdma_port_get_link_layer(id->device, id->port_num) !=
 				IB_LINK_LAYER_INFINIBAND) {
 			sdp_dbg(sk, "Link layer is: %d. Only IB link layer "
 				"is allowed\n",
-				rdma_port_link_layer(id->device, id->port_num));
+				rdma_port_get_link_layer(id->device,
+					id->port_num));
 			rc = -ENETUNREACH;
 			break;
 		}
@@ -461,17 +467,18 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 
 			if (src_addr->sa_family == AF_INET) {
 				/* IPv4 over IPv6 */
-				ipv6_addr_set(&inet6_sk(sk)->rcv_saddr, 0, 0, htonl(0xFFFF),
-						addr4->sin_addr.s_addr);
+				ipv6_addr_set(&sk->sk_v6_rcv_saddr, 0, 0,
+					      htonl(0xFFFF),
+					      addr4->sin_addr.s_addr);
 			} else {
-				inet6_sk(sk)->rcv_saddr = addr6->sin6_addr;
+				sk->sk_v6_rcv_saddr = addr6->sin6_addr;
 			}
-			inet6_sk(sk)->saddr = inet6_sk(sk)->rcv_saddr;
+			inet6_sk(sk)->saddr = sk->sk_v6_rcv_saddr;
 		}
 			else
 #endif
 		{
-			inet_saddr(sk) = sdp_inet_rcv_saddr(sk) =
+			sdp_inet_saddr(sk) = sdp_inet_rcv_saddr(sk) =
 				((struct sockaddr_in *)&id->route.addr.src_addr)->sin_addr.s_addr;
 		}
 		memset(&conn_param, 0, sizeof conn_param);
@@ -578,7 +585,7 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 		rc = -ECONNREFUSED;
 		break;
 	case RDMA_CM_EVENT_ESTABLISHED:
-		inet_saddr(sk) = sdp_inet_rcv_saddr(sk) =
+		sdp_inet_saddr(sk) = sdp_inet_rcv_saddr(sk) =
 			((struct sockaddr_in *)&id->route.addr.src_addr)->sin_addr.s_addr;
 		rc = sdp_connected_handler(sk);
 		break;
