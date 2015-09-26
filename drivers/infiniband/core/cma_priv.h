@@ -123,5 +123,13 @@ static inline struct sockaddr *cma_dst_addr(struct rdma_id_private *id_priv)
 	return (struct sockaddr *) &id_priv->id.route.addr.dst_addr;
 }
 
+static __be16 ss_get_port(const struct sockaddr_storage *ss)
+{
+	if (ss->ss_family == AF_INET)
+		return ((struct sockaddr_in *)ss)->sin_port;
+	else if (ss->ss_family == AF_INET6)
+		return ((struct sockaddr_in6 *)ss)->sin6_port;
+	BUG();
+}
 
 #endif /* _CMA_PRIV_H */
