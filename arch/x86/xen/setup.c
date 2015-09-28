@@ -371,7 +371,7 @@ char * __init xen_memory_setup(void)
 	BUG_ON(rc);
 
 	/* Make sure the Xen-supplied memory map is well-ordered. */
-	sanitize_e820_map(map, memmap.nr_entries, &memmap.nr_entries);
+	sanitize_e820_map(map, ARRAY_SIZE(map), &memmap.nr_entries);
 	max_pages = xen_get_max_pages();
 	if (max_pages > max_pfn)
 		extra_pages += max_pages - max_pfn;
