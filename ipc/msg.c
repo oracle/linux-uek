@@ -199,15 +199,6 @@ static int newque(struct ipc_namespace *ns, struct ipc_params *params)
 		return retval;
 	}
 
-	/*
-	 * ipc_addid() locks msq
-	 */
-	id = ipc_addid(&msg_ids(ns), &msq->q_perm, ns->msg_ctlmni);
-	if (id < 0) {
-		security_msg_queue_free(msq);
-		ipc_rcu_putref(msq);
-		return id;
-	}
 
 	msq->q_stime = msq->q_rtime = 0;
 	msq->q_ctime = get_seconds();
@@ -219,6 +210,16 @@ static int newque(struct ipc_namespace *ns, struct ipc_params *params)
 	INIT_LIST_HEAD(&msq->q_senders);
 
 	msg_unlock(msq);
+
+	/*
+	 * ipc_addid() locks msq
+	 */
+	id = ipc_addid(&msg_ids(ns), &msq->q_perm, ns->msg_ctlmni);
+	if (id < 0) {
+		security_msg_queue_free(msq);
+		ipc_rcu_putref(msq);
+		return id;
+	}
 
 	return msq->q_perm.id;
 }

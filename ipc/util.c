@@ -266,6 +266,10 @@ int ipc_addid(struct ipc_ids* ids, struct kern_ipc_perm* new, int size)
 	rcu_read_lock();
 	spin_lock(&new->lock);
 
+	current_euid_egid(&euid, &egid);
+	new->cuid = new->uid = euid;
+	new->gid = new->cgid = egid;
+
 	err = idr_get_new_above(&ids->ipcs_idr, new,
 				(next_id < 0) ? 0 : ipcid_to_idx(next_id), &id);
 	if (err) {
@@ -275,10 +279,6 @@ int ipc_addid(struct ipc_ids* ids, struct kern_ipc_perm* new, int size)
 	}
 
 	ids->in_use++;
-
-	current_euid_egid(&euid, &egid);
-	new->cuid = new->uid = euid;
-	new->gid = new->cgid = egid;
 
 	if (next_id < 0) {
 		new->seq = ids->seq++;
