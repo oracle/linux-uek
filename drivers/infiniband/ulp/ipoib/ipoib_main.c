@@ -2289,10 +2289,6 @@ static ssize_t create_child(struct device *dev,
 {
 	int pkey, child_index;
 	int ret;
-	int ipoib_cm_sg_len;
-
-	ipoib_cm_sg_len = IPOIB_CM_BUF_SIZE - IPOIB_CM_HEAD_SIZE;
-	ipoib_cm_rx_sg = ALIGN(ipoib_cm_sg_len, PAGE_SIZE)/PAGE_SIZE + 1;
 
 	if (parse_child(dev, buf, &pkey, &child_index))
 		return -EINVAL;
@@ -2863,6 +2859,10 @@ EXPORT_SYMBOL(ipoib_get_netdev_pkey);
 static int __init ipoib_init_module(void)
 {
 	int ret;
+	int ipoib_cm_sg_len;
+
+	ipoib_cm_sg_len = IPOIB_CM_BUF_SIZE - IPOIB_CM_HEAD_SIZE;
+	ipoib_cm_rx_sg = ALIGN(ipoib_cm_sg_len, PAGE_SIZE)/PAGE_SIZE + 1;
 
 	if (ipoib_recvq_size <= IPOIB_MAX_QUEUE_SIZE &&
 	    ipoib_recvq_size >= IPOIB_MIN_QUEUE_SIZE) {
