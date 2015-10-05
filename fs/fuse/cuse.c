@@ -497,12 +497,11 @@ static int cuse_channel_open(struct inode *inode, struct file *file)
 	if (!cc)
 		return -ENOMEM;
 
-	fuse_conn_init(&cc->fc);
+	fuse_conn_init(&cc->fc, FUSE_NONE);
 
 	INIT_LIST_HEAD(&cc->list);
 	cc->fc.release = cuse_fc_release;
 
-	cc->fc.connected = 1;
 	cc->fc.initialized = 1;
 	rc = cuse_send_init(cc);
 	if (rc) {
@@ -561,10 +560,18 @@ static ssize_t cuse_class_waiting_show(struct device *dev,
 				       struct device_attribute *attr, char *buf)
 {
 	struct cuse_conn *cc = dev_get_drvdata(dev);
+	int i, val;
+	struct fuse_node *fn;
 
-	return sprintf(buf, "%d\n", atomic_read(&cc->fc.num_waiting));
+	for (i = 0, val = 0; i < cc->fc.nr_nodes; i++) {
+		fn = cc->fc.fn[i];
+		val += atomic_read(&fn->num_waiting);
+	}
+
+	return sprintf(buf, "%d\n", val);
 }
 static DEVICE_ATTR(waiting, 0400, cuse_class_waiting_show, NULL);
+
 
 static ssize_t cuse_class_abort_store(struct device *dev,
 				      struct device_attribute *attr,

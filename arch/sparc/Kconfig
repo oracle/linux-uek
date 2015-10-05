@@ -150,6 +150,9 @@ config PGTABLE_LEVELS
 	default 4 if 64BIT
 	default 3
 
+config ARCH_SUPPORTS_DTRACE
+	def_bool y if SPARC64
+
 source "init/Kconfig"
 
 source "kernel/Kconfig.freezer"

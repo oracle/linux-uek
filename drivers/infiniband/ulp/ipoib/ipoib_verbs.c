@@ -176,7 +176,8 @@ int ipoib_transport_dev_init(struct net_device *dev, struct ib_device *ca)
 		else
 			size += ipoib_recvq_size * ipoib_max_conn_qp;
 	} else
-		goto out_free_wq;
+		if (ret != -ENOSYS)
+			goto out_free_wq;
 
 	priv->recv_cq = ib_create_cq(priv->ca, ipoib_ib_completion, NULL, dev, size, 0);
 	if (IS_ERR(priv->recv_cq)) {
@@ -304,8 +305,7 @@ void ipoib_event(struct ib_event_handler *handler,
 	ipoib_dbg(priv, "Event %d on device %s port %d\n", record->event,
 		  record->device->name, record->element.port_num);
 
-	if (record->event == IB_EVENT_SM_CHANGE ||
-	    record->event == IB_EVENT_CLIENT_REREGISTER) {
+	if (record->event == IB_EVENT_CLIENT_REREGISTER) {
 		queue_work(ipoib_workqueue, &priv->flush_light);
 	} else if (record->event == IB_EVENT_PORT_ERR ||
 		   record->event == IB_EVENT_PORT_ACTIVE ||

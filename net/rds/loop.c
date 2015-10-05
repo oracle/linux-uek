@@ -31,7 +31,6 @@
  *
  */
 #include <linux/kernel.h>
-#include <linux/slab.h>
 #include <linux/in.h>
 
 #include "rds.h"
@@ -61,15 +60,10 @@ static int rds_loop_xmit(struct rds_connection *conn, struct rds_message *rm,
 			 unsigned int hdr_off, unsigned int sg,
 			 unsigned int off)
 {
-	struct scatterlist *sgp = &rm->data.op_sg[sg];
-	int ret = sizeof(struct rds_header) +
-			be32_to_cpu(rm->m_inc.i_hdr.h_len);
-
 	/* Do not send cong updates to loopback */
 	if (rm->m_inc.i_hdr.h_flags & RDS_FLAG_CONG_BITMAP) {
 		rds_cong_map_updated(conn->c_fcong, ~(u64) 0);
-		ret = min_t(int, ret, sgp->length - conn->c_xmit_data_off);
-		goto out;
+		return sizeof(struct rds_header) + RDS_CONG_MAP_BYTES;
 	}
 
 	BUG_ON(hdr_off || sg || off);
@@ -85,8 +79,8 @@ static int rds_loop_xmit(struct rds_connection *conn, struct rds_message *rm,
 			    NULL);
 
 	rds_inc_put(&rm->m_inc);
-out:
-	return ret;
+
+	return sizeof(struct rds_header) + be32_to_cpu(rm->m_inc.i_hdr.h_len);
 }
 
 /*
@@ -121,7 +115,7 @@ static int rds_loop_conn_alloc(struct rds_connection *conn, gfp_t gfp)
 	struct rds_loop_connection *lc;
 	unsigned long flags;
 
-	lc = kzalloc(sizeof(struct rds_loop_connection), gfp);
+	lc = kzalloc(sizeof(struct rds_loop_connection), GFP_KERNEL);
 	if (!lc)
 		return -ENOMEM;
 
@@ -158,6 +152,26 @@ static void rds_loop_conn_shutdown(struct rds_connection *conn)
 {
 }
 
+static int rds_message_skb_local(struct sk_buff *skb)
+{
+	struct rds_nf_hdr *dst, *org;
+
+	/* pull out the headers */
+	dst = rds_nf_hdr_dst(skb);
+	org = rds_nf_hdr_org(skb);
+
+	/* assuming original and dest are exactly the same then it's our own node */
+	if (dst->daddr == org->daddr && dst->saddr == org->saddr &&
+	    dst->sport == org->sport && dst->dport == org->dport) {
+		return 1;
+	}
+	/* otherwise, the sport/dport have likely swapped so consider
+	 * it a different node */
+	else {
+		return 0;
+	}
+}
+
 void rds_loop_exit(void)
 {
 	struct rds_loop_connection *lc, *_lc;
@@ -189,6 +203,8 @@ struct rds_transport rds_loop_transport = {
 	.conn_connect		= rds_loop_conn_connect,
 	.conn_shutdown		= rds_loop_conn_shutdown,
 	.inc_copy_to_user	= rds_message_inc_copy_to_user,
+	.inc_to_skb	        = rds_message_inc_to_skb,
+	.skb_local              = rds_message_skb_local,
 	.inc_free		= rds_loop_inc_free,
 	.t_name			= "loopback",
 };

@@ -535,7 +535,7 @@ static void byt_set_pstate(struct cpudata *cpudata, int pstate)
 
 	val |= vid;
 
-	wrmsrl(MSR_IA32_PERF_CTL, val);
+	wrmsrl_on_cpu(cpudata->cpu, MSR_IA32_PERF_CTL, val);
 }
 
 #define BYT_BCLK_FREQS 5
@@ -678,6 +678,7 @@ static struct cpu_defaults knl_params = {
 		.get_max = core_get_max_pstate,
 		.get_min = core_get_min_pstate,
 		.get_turbo = knl_get_turbo_pstate,
+		.get_scaling = core_get_scaling,
 		.set = core_set_pstate,
 	},
 };
@@ -1156,6 +1157,10 @@ static struct hw_vendor_info vendor_info[] = {
 	{1, "ORACLE", "X4270M3 ", PPC},
 	{1, "ORACLE", "X4270M2 ", PPC},
 	{1, "ORACLE", "X4170M2 ", PPC},
+	{1, "ORACLE", "X4170 M3", PPC},
+	{1, "ORACLE", "X4275 M3", PPC},
+	{1, "ORACLE", "X6-2    ", PPC},
+	{1, "ORACLE", "Sudbury ", PPC},
 	{0, "", ""},
 };
 

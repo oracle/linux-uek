@@ -52,10 +52,11 @@
 
 #include "mlx4_ib.h"
 #include "user.h"
+#include "wc.h"
 
 #define DRV_NAME	MLX4_IB_DRV_NAME
 #define DRV_VERSION	"2.2-1"
-#define DRV_RELDATE	"Feb 2014"
+#define DRV_RELDATE	__DATE__
 
 #define MLX4_IB_FLOW_MAX_PRIO 0xFFF
 #define MLX4_IB_FLOW_QPN_MASK 0xFFFFFF
@@ -113,7 +114,6 @@ static int check_flow_steering_support(struct mlx4_dev *dev)
 			(!eth_num_ports ||
 			 (dev->caps.flags2 & MLX4_DEV_CAP_FLAG2_FS_EN));
 		if (ib_num_ports && mlx4_is_mfunc(dev)) {
-			pr_warn("Device managed flow steering is unavailable for IB port in multifunction env.\n");
 			dmfs = 0;
 		}
 	}
@@ -229,6 +229,7 @@ static int mlx4_ib_query_device(struct ib_device *ibdev,
 	props->max_total_mcast_qp_attach = props->max_mcast_qp_attach *
 					   props->max_mcast_grp;
 	props->max_map_per_fmr = dev->dev->caps.max_fmr_maps;
+	props->max_ah		= INT_MAX;
 
 out:
 	kfree(in_mad);
@@ -242,8 +243,17 @@ mlx4_ib_port_link_layer(struct ib_device *device, u8 port_num)
 {
 	struct mlx4_dev *dev = to_mdev(device)->dev;
 
-	return dev->caps.port_mask[port_num] == MLX4_PORT_TYPE_IB ?
-		IB_LINK_LAYER_INFINIBAND : IB_LINK_LAYER_ETHERNET;
+	if (port_num > MLX4_MAX_PORTS || port_num == 0)
+		return IB_LINK_LAYER_UNSPECIFIED;
+
+	switch (dev->caps.port_mask[port_num]) {
+	case MLX4_PORT_TYPE_IB:
+		return IB_LINK_LAYER_INFINIBAND;
+	case MLX4_PORT_TYPE_ETH:
+		return IB_LINK_LAYER_ETHERNET;
+	}
+
+	return IB_LINK_LAYER_UNSPECIFIED;
 }
 
 static int ib_link_query_port(struct ib_device *ibdev, u8 port,
@@ -643,13 +653,23 @@ static struct ib_ucontext *mlx4_ib_alloc_ucontext(struct ib_device *ibdev,
 
 	if (ibdev->uverbs_abi_ver == MLX4_IB_UVERBS_NO_DEV_CAPS_ABI_VERSION) {
 		resp_v3.qp_tab_size      = dev->dev->caps.num_qps;
-		resp_v3.bf_reg_size      = dev->dev->caps.bf_reg_size;
-		resp_v3.bf_regs_per_page = dev->dev->caps.bf_regs_per_page;
+		if (mlx4_wc_enabled()) {
+			resp_v3.bf_reg_size      = dev->dev->caps.bf_reg_size;
+			resp_v3.bf_regs_per_page = dev->dev->caps.bf_regs_per_page;
+		} else {
+			resp_v3.bf_reg_size      = 0;
+			resp_v3.bf_regs_per_page = 0;
+		}
 	} else {
 		resp.dev_caps	      = dev->dev->caps.userspace_caps;
 		resp.qp_tab_size      = dev->dev->caps.num_qps;
-		resp.bf_reg_size      = dev->dev->caps.bf_reg_size;
-		resp.bf_regs_per_page = dev->dev->caps.bf_regs_per_page;
+		if (mlx4_wc_enabled()) {
+			resp.bf_reg_size      = dev->dev->caps.bf_reg_size;
+			resp.bf_regs_per_page = dev->dev->caps.bf_regs_per_page;
+		} else {
+			resp.bf_reg_size      = 0;
+			resp.bf_regs_per_page = 0;
+		}
 		resp.cqe_size	      = dev->dev->caps.cqe_size;
 	}
 
@@ -705,7 +725,7 @@ static int mlx4_ib_mmap(struct ib_ucontext *context, struct vm_area_struct *vma)
 				       PAGE_SIZE, vma->vm_page_prot))
 			return -EAGAIN;
 	} else if (vma->vm_pgoff == 1 && dev->dev->caps.bf_reg_size != 0) {
-		vma->vm_page_prot = pgprot_writecombine(vma->vm_page_prot);
+		vma->vm_page_prot = pgprot_wc(vma->vm_page_prot);
 
 		if (io_remap_pfn_range(vma, vma->vm_start,
 				       to_mucontext(context)->uar.pfn +
@@ -1492,16 +1512,18 @@ static struct device_attribute *mlx4_class_attributes[] = {
 static void mlx4_addrconf_ifid_eui48(u8 *eui, u16 vlan_id,
 				     struct net_device *dev)
 {
+	u16 id = (vlan_id < 0x1000) ? vlan_id : dev->dev_id;
 	memcpy(eui, dev->dev_addr, 3);
 	memcpy(eui + 5, dev->dev_addr + 3, 3);
-	if (vlan_id < 0x1000) {
-		eui[3] = vlan_id >> 8;
-		eui[4] = vlan_id & 0xff;
-	} else {
+	if (id || vlan_id == 0) {
+		eui[3] = (id >> 8) & 0xff;
+		eui[4] = id & 0xff;
+	} else if (!dev->dev_id) {
 		eui[3] = 0xff;
 		eui[4] = 0xfe;
 	}
-	eui[0] ^= 2;
+	if (vlan_id < 0x1000 || !dev->dev_id)
+		eui[0] ^= 2;
 }
 
 static void update_gids_task(struct work_struct *work)
@@ -1616,6 +1638,15 @@ static int update_gid_table(struct mlx4_ib_dev *dev, int port,
 		}
 	}
 
+	if (found == -1 && !clear && free < 0) {
+		pr_err("GID table of port %d is full. Can't add %pI6\n",
+		       port, gid);
+		return -ENOMEM;
+	}
+	if (found == -1 && clear) {
+		pr_err("%pI6 is not in GID table of port %d\n", gid, port);
+		return -EINVAL;
+	}
 	if (found == -1 && !clear && free >= 0) {
 		dev->iboe.gid_table[port - 1][free] = *gid;
 		need_update = 1;
@@ -1763,6 +1794,10 @@ static void mlx4_ib_update_qps(struct mlx4_ib_dev *ibdev,
 	u64 new_smac = 0;
 	u64 release_mac = MLX4_IB_INVALID_MAC;
 	struct mlx4_ib_qp *qp;
+
+	/* No need to do anything for native */
+	if (!mlx4_is_mfunc(ibdev->dev))
+		return;
 
 	read_lock(&dev_base_lock);
 	new_smac = mlx4_mac_to_u64(dev->dev_addr);
@@ -2070,8 +2105,8 @@ static void mlx4_ib_alloc_eqs(struct mlx4_dev *dev, struct mlx4_ib_dev *ibdev)
 	eq = 0;
 	mlx4_foreach_port(i, dev, MLX4_PORT_TYPE_IB) {
 		for (j = 0; j < eq_per_port; j++) {
-			snprintf(name, sizeof(name), "mlx4-ib-%d-%d@%s",
-				 i, j, dev->persist->pdev->bus->name);
+			snprintf(name, sizeof(name), "mlx4-ib-%d-%d@pci:%s",
+				 i, j, pci_name(dev->persist->pdev));
 			/* Set IRQ for specific name (per ring) */
 			if (mlx4_assign_eq(dev, name, NULL,
 					   &ibdev->eq_table[eq])) {
@@ -2149,10 +2184,12 @@ static void *mlx4_ib_add(struct mlx4_dev *dev)
 	if (mlx4_uar_alloc(dev, &ibdev->priv_uar))
 		goto err_pd;
 
-	ibdev->uar_map = ioremap((phys_addr_t) ibdev->priv_uar.pfn << PAGE_SHIFT,
-				 PAGE_SIZE);
-	if (!ibdev->uar_map)
+	ibdev->priv_uar.map = ioremap(ibdev->priv_uar.pfn << PAGE_SHIFT,
+		PAGE_SIZE);
+
+	if (!ibdev->priv_uar.map)
 		goto err_uar;
+
 	MLX4_INIT_DOORBELL_LOCK(&ibdev->uar_lock);
 
 	ibdev->dev = dev;
@@ -2445,7 +2482,8 @@ err_counter:
 			mlx4_counter_free(ibdev->dev, ibdev->counters[i - 1]);
 
 err_map:
-	iounmap(ibdev->uar_map);
+	iounmap(ibdev->priv_uar.map);
+	mlx4_ib_free_eqs(dev, ibdev);
 
 err_uar:
 	mlx4_uar_free(dev, &ibdev->priv_uar);
@@ -2558,7 +2596,7 @@ static void mlx4_ib_remove(struct mlx4_dev *dev, void *ibdev_ptr)
 	}
 #endif
 
-	iounmap(ibdev->uar_map);
+	iounmap(ibdev->priv_uar.map);
 	for (p = 0; p < ibdev->num_ports; ++p)
 		if (ibdev->counters[p] != -1)
 			mlx4_counter_free(ibdev->dev, ibdev->counters[p]);
@@ -2755,12 +2793,16 @@ static void mlx4_ib_event(struct mlx4_dev *dev, void *ibdev_ptr,
 			IB_LINK_LAYER_INFINIBAND) {
 			mlx4_ib_invalidate_all_guid_record(ibdev, p);
 		}
+		mlx4_ib_info((struct ib_device *) ibdev_ptr,
+			     "Port %d logical link is up\n", p);
 		ibev.event = IB_EVENT_PORT_ACTIVE;
 		break;
 
 	case MLX4_DEV_EVENT_PORT_DOWN:
 		if (p > ibdev->num_ports)
 			return;
+		mlx4_ib_info((struct ib_device *) ibdev_ptr,
+			     "Port %d logical link is down\n", p);
 		ibev.event = IB_EVENT_PORT_ERR;
 		break;
 

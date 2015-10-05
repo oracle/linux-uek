@@ -628,7 +628,7 @@ work_notifysig:				# deal with pending signals and
 	cmpb $USER_RPL, %bl
 	jb resume_kernel
 	xorl %edx, %edx
-	call do_notify_resume
+	call clear_stack_do_notify_resume
 	jmp resume_userspace
 
 #ifdef CONFIG_VM86
@@ -641,6 +641,33 @@ work_notifysig_v86:
 	jmp 1b
 #endif
 END(work_pending)
+
+    # Clear the stack before handling signals
+    ALIGN
+#define STACK_CLEAR_WORDS    0x80
+ENTRY(clear_stack_do_notify_resume)
+    testl $_TIF_SIGPENDING, %ecx
+    jnz do_notify_resume
+
+    push %eax
+    push %ecx
+    push %edi
+
+    movl %esp, %edi
+    subl $4, %edi
+    movl $STACK_CLEAR_WORDS, %ecx
+    xorl %eax, %eax
+
+    std
+    rep stosl
+    cld
+
+    pop %edi
+    pop %ecx
+    pop %eax
+
+    jmp do_notify_resume
+END(clear_stack_do_notify_resume)
 
 	# perform syscall exit tracing
 	ALIGN

@@ -686,7 +686,7 @@ static int ocfs2_direct_IO_zero_extend(struct ocfs2_super *osb,
 
 	if (p_cpos && !(ext_flags & OCFS2_EXT_UNWRITTEN)) {
 		u64 s = i_size_read(inode);
-		sector_t sector = (p_cpos << (osb->s_clustersize_bits - 9)) +
+		sector_t sector = ((u64)p_cpos << (osb->s_clustersize_bits - 9)) +
 			(do_div(s, osb->s_clustersize) >> 9);
 
 		ret = blkdev_issue_zeroout(osb->sb->s_bdev, sector,
@@ -911,7 +911,7 @@ static ssize_t ocfs2_direct_IO_write(struct kiocb *iocb,
 		BUG_ON(!p_cpos || (ext_flags & OCFS2_EXT_UNWRITTEN));
 
 		ret = blkdev_issue_zeroout(osb->sb->s_bdev,
-				p_cpos << (osb->s_clustersize_bits - 9),
+				(u64)p_cpos << (osb->s_clustersize_bits - 9),
 				zero_len_head >> 9, GFP_NOFS, false);
 		if (ret < 0)
 			mlog_errno(ret);
@@ -2176,16 +2176,6 @@ try_again:
 		if (ret)
 			goto out_commit;
 	}
-	/*
-	 * We don't want this to fail in ocfs2_write_end(), so do it
-	 * here.
-	 */
-	ret = ocfs2_journal_access_di(handle, INODE_CACHE(inode), wc->w_di_bh,
-				      OCFS2_JOURNAL_ACCESS_WRITE);
-	if (ret) {
-		mlog_errno(ret);
-		goto out_quota;
-	}
 
 	/*
 	 * Fill our page array first. That way we've grabbed enough so
@@ -2336,7 +2326,7 @@ int ocfs2_write_end_nolock(struct address_space *mapping,
 			   loff_t pos, unsigned len, unsigned copied,
 			   struct page *page, void *fsdata)
 {
-	int i;
+	int i, ret;
 	unsigned from, to, start = pos & (PAGE_CACHE_SIZE - 1);
 	struct inode *inode = mapping->host;
 	struct ocfs2_super *osb = OCFS2_SB(inode->i_sb);
@@ -2386,6 +2376,14 @@ int ocfs2_write_end_nolock(struct address_space *mapping,
 		}
 	}
 
+	ret = ocfs2_journal_access_di(handle, INODE_CACHE(inode), wc->w_di_bh,
+				      OCFS2_JOURNAL_ACCESS_WRITE);
+	if (ret) {
+		copied = ret;
+		mlog_errno(ret);
+		goto out;
+	}
+
 out_write_size:
 	pos += copied;
 	if (pos > i_size_read(inode)) {
@@ -2407,6 +2405,7 @@ out_write_size:
 	 */
 	ocfs2_unlock_pages(wc);
 
+out:
 	ocfs2_commit_trans(osb, handle);
 
 	ocfs2_run_deallocs(osb, &wc->w_dealloc);

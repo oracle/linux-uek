@@ -293,6 +293,7 @@ static const char *resource_str(enum mlx4_resource rt)
 }
 
 static void rem_slave_vlans(struct mlx4_dev *dev, int slave);
+static void rem_slave_qps(struct mlx4_dev *dev, int slave);
 static inline int mlx4_grant_resource(struct mlx4_dev *dev, int slave,
 				      enum mlx4_resource res_type, int count,
 				      int port)
@@ -417,6 +418,11 @@ static inline void initialize_res_quotas(struct mlx4_dev *dev,
 	res_alloc->guaranteed[vf] = num_instances /
 				    (2 * (dev->persist->num_vfs + 1));
 	res_alloc->quota[vf] = (num_instances / 2) + res_alloc->guaranteed[vf];
+
+	/* upstream kernel code required that num_mpts and num_qps be power-of-2 */
+	if (res_type == RES_MPT || res_type == RES_QP)
+		res_alloc->quota[vf] = roundup_pow_of_two(res_alloc->quota[vf]);
+
 	if (vf == mlx4_master_func_num(dev)) {
 		res_alloc->res_free = num_instances;
 		if (res_type == RES_MTT) {
@@ -627,6 +633,15 @@ void mlx4_free_resource_tracker(struct mlx4_dev *dev,
 			mlx4_reset_roce_gids(dev, i);
 			mutex_lock(&priv->mfunc.master.res_tracker.slave_list[i].mutex);
 			rem_slave_vlans(dev, i);
+			/* Free master's qps in case of 'Reset Flow'.
+			 * When the device is non-responsive the master is
+			 * unable to read steering rules mailboxes and
+			 * therefore can't delete those rules and the qp they are
+			 * attached to from the resource tracker.
+			 * Calling rem_slave_qp removes those resources
+			 * unconditionally.
+			 */
+			rem_slave_qps(dev, i);
 			mutex_unlock(&priv->mfunc.master.res_tracker.slave_list[i].mutex);
 		}
 
@@ -3899,6 +3914,9 @@ int mlx4_QP_ATTACH_wrapper(struct mlx4_dev *dev, int slave,
 	int block_loopback = vhcr->in_modifier >> 31;
 	u8 steer_type_mask = 2;
 	enum mlx4_steer_type type = (gid[7] & steer_type_mask) >> 1;
+
+	if (dev->caps.steering_mode != MLX4_STEERING_MODE_B0)
+		return -EINVAL;
 
 	qpn = vhcr->in_modifier & 0xffffff;
 	err = get_res(dev, slave, qpn, RES_QP, &rqp);

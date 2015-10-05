@@ -31,12 +31,37 @@
  *
  */
 #include <linux/kernel.h>
-#include <linux/slab.h>
 #include <net/sock.h>
 #include <linux/in.h>
-#include <linux/export.h>
+#include <linux/ip.h>
+#include <linux/netfilter.h>
 
 #include "rds.h"
+#include "tcp.h"
+
+/* forward prototypes */
+static void
+rds_recv_drop(struct rds_connection *conn, __be32 saddr, __be32 daddr,
+	      struct rds_incoming *inc, gfp_t gfp);
+
+static void
+rds_recv_route(struct rds_connection *conn, struct rds_incoming *inc,
+	       gfp_t gfp);
+
+static void
+rds_recv_forward(struct rds_connection *conn, struct rds_incoming *inc,
+		 gfp_t gfp);
+
+static void
+rds_recv_local(struct rds_connection *conn, __be32 saddr, __be32 daddr,
+	       struct rds_incoming *inc, gfp_t gfp);
+
+static int
+rds_recv_ok(struct sock *sk, struct sk_buff *skb)
+{
+	/* don't do anything here, just continue along */
+	return NF_ACCEPT;
+}
 
 void rds_inc_init(struct rds_incoming *inc, struct rds_connection *conn,
 		  __be32 saddr)
@@ -46,20 +71,33 @@ void rds_inc_init(struct rds_incoming *inc, struct rds_connection *conn,
 	inc->i_conn = conn;
 	inc->i_saddr = saddr;
 	inc->i_rdma_cookie = 0;
+	inc->i_oconn = NULL;
+	inc->i_skb   = NULL;
 }
 EXPORT_SYMBOL_GPL(rds_inc_init);
 
-static void rds_inc_addref(struct rds_incoming *inc)
+void rds_inc_addref(struct rds_incoming *inc)
 {
 	rdsdebug("addref inc %p ref %d\n", inc, atomic_read(&inc->i_refcount));
 	atomic_inc(&inc->i_refcount);
 }
+EXPORT_SYMBOL_GPL(rds_inc_addref);
 
 void rds_inc_put(struct rds_incoming *inc)
 {
 	rdsdebug("put inc %p ref %d\n", inc, atomic_read(&inc->i_refcount));
 	if (atomic_dec_and_test(&inc->i_refcount)) {
 		BUG_ON(!list_empty(&inc->i_item));
+
+		/* free up the skb if any were created */
+		if (NULL != inc->i_skb) {
+			/* wipe out any fragments so they don't get released */
+			skb_shinfo(inc->i_skb)->nr_frags = 0;
+
+			/* and free the whole skb */
+			kfree_skb(inc->i_skb);
+			inc->i_skb = NULL;
+		}
 
 		inc->i_conn->c_trans->inc_free(inc);
 	}
@@ -76,6 +114,10 @@ static void rds_recv_rcvbuf_delta(struct rds_sock *rs, struct sock *sk,
 		return;
 
 	rs->rs_rcv_bytes += delta;
+	if (delta > 0)
+		rds_stats_add(s_recv_bytes_added_to_socket, delta);
+	else
+		rds_stats_add(s_recv_bytes_removed_from_socket, -delta);
 	now_congested = rs->rs_rcv_bytes > rds_sk_rcvbuf(rs);
 
 	rdsdebug("rs %p (%pI4:%u) recv bytes %d buf %d "
@@ -157,6 +199,247 @@ static void rds_recv_incoming_exthdrs(struct rds_incoming *inc, struct rds_sock 
 void rds_recv_incoming(struct rds_connection *conn, __be32 saddr, __be32 daddr,
 		       struct rds_incoming *inc, gfp_t gfp)
 {
+	struct sk_buff *skb;
+	struct rds_sock *rs;
+	struct sock *sk;
+	struct rds_nf_hdr *dst, *org;
+	int    ret;
+
+	rdsdebug(KERN_ALERT "incoming:  conn %p, inc %p, %u.%u.%u.%u : %d -> %u.%u.%u.%u : %d\n",
+		 conn, inc, NIPQUAD(saddr), inc->i_hdr.h_sport, NIPQUAD(daddr), inc->i_hdr.h_dport);
+
+	/* initialize some globals */
+	rs = NULL;
+	sk = NULL;
+
+	/* save off the original connection against which the request arrived */
+	inc->i_oconn = conn;
+	inc->i_skb   = NULL;
+
+	/* lets find a socket to which this request belongs */
+	rs = rds_find_bound(daddr, inc->i_hdr.h_dport);
+
+	/* pass it on locally if there is no socket bound, or if netfilter is
+	 * disabled for this socket */
+	if (NULL == rs || !rs->rs_netfilter_enabled) {
+		/* drop the reference if we had taken one */
+		if (NULL != rs)
+			rds_sock_put(rs);
+
+		rds_recv_local(conn, saddr, daddr, inc, gfp);
+		return;
+	}
+
+	/* otherwise pull out the socket */
+	sk = rds_rs_to_sk(rs);
+
+	/* create an skb with some additional space to store our rds_nf_hdr info */
+	skb = alloc_skb(sizeof(struct rds_nf_hdr) * 2, gfp);
+	if (NULL == skb) {
+		/* if we have allocation problems, then we just need to depart */
+		rdsdebug("failure to allocate space for inc %p, %u.%u.%u.%u -> %u.%d.%u.%u\n",
+			 inc, NIPQUAD(saddr), NIPQUAD(daddr));
+		rds_recv_local(conn, saddr, daddr, inc, gfp);
+		return;
+	}
+
+	/* once we've allocated an skb, also store it in our structures */
+	inc->i_skb = skb;
+
+	/* now pull out the rds headers */
+	dst = rds_nf_hdr_dst(skb);
+	org = rds_nf_hdr_org(skb);
+
+	/* now update our rds_nf_hdr for tracking locations of the request */
+	dst->saddr = saddr;
+	dst->daddr = daddr;
+	dst->sport = inc->i_hdr.h_sport;
+	dst->dport = inc->i_hdr.h_dport;
+	dst->flags = 0;
+
+	/* assign the appropriate protocol if any */
+	if (NULL != sk) {
+		dst->protocol = sk->sk_protocol;
+		dst->sk = sk;
+	} else {
+		dst->protocol = 0;
+		dst->sk = NULL;
+	}
+
+	/* cleanup any references taken */
+	if (NULL != rs)
+		rds_sock_put(rs);
+
+	/* the original info is just a copy */
+	memcpy(org, dst, sizeof(struct rds_nf_hdr));
+
+	/* convert our local data structures in the message to a generalized skb form */
+	if (conn->c_trans->inc_to_skb(inc, skb)) {
+		rdsdebug("handing off to PRE_ROUTING hook\n");
+		/* call down through the hook layers */
+		ret = NF_HOOK(PF_RDS_HOOK, NF_RDS_PRE_ROUTING, sk, skb, NULL, NULL, rds_recv_ok);
+	}
+	/* if we had a failure to convert, then just assuming to continue as local */
+	else {
+		rdsdebug("failed to create skb form, conn %p, inc %p, %u.%u.%u.%u -> %u.%u.%u.%u\n",
+			 conn, inc, NIPQUAD(saddr), NIPQUAD(daddr));
+		ret = 1;
+	}
+
+	/* pull back out the rds headers */
+	dst = rds_nf_hdr_dst(skb);
+	org = rds_nf_hdr_org(skb);
+
+	/* now depending upon we got back we can perform appropriate activities */
+	if (dst->flags & RDS_NF_HDR_FLAG_DONE) {
+		rds_recv_drop(conn, saddr, daddr, inc, gfp);
+	}
+	/* this is the normal good processed state */
+	else if (ret >= 0) {
+		/* check the original header and if changed do the needful */
+		if (dst->saddr == org->saddr && dst->daddr == org->daddr &&
+		    conn->c_trans->skb_local(skb)) {
+			rds_recv_local(conn, saddr, daddr, inc, gfp);
+		}
+		/* the send both case does both a local recv and a reroute */
+		else if (dst->flags & RDS_NF_HDR_FLAG_BOTH) {
+			/* we must be sure to take an extra reference on the inc
+			 * to be sure it doesn't accidentally get freed in between */
+			rds_inc_addref(inc);
+
+			/* send it up the stream locally */
+			rds_recv_local(conn, saddr, daddr, inc, gfp);
+
+			/* and also reroute the request */
+			rds_recv_route(conn, inc, gfp);
+
+			/* since we are done with processing we can drop this additional reference */
+			rds_inc_put(inc);
+
+		}
+		/* anything else is a change in possible destination so pass to route */
+		else
+			rds_recv_route(conn, inc, gfp);
+	}
+	/* we don't really expect an error state from this call that isn't the done above */
+	else {
+		/* we don't really know how to handle this yet - just ignore for now */
+		printk(KERN_ERR "unacceptible state for skb ret %d, conn %p, inc %p, "
+				"%u.%u.%u.%u -> %u.%u.%u.%u\n",
+		       ret, conn, inc, NIPQUAD(saddr), NIPQUAD(daddr));
+	}
+}
+EXPORT_SYMBOL_GPL(rds_recv_incoming);
+
+static void
+rds_recv_drop(struct rds_connection *conn, __be32 saddr, __be32 daddr,
+	      struct rds_incoming *inc, gfp_t gfp)
+{
+	/* drop the existing incoming message */
+	rdsdebug("dropping request on conn %p, inc %p, %u.%u.%u.%u -> %u.%u.%u.%u",
+		 conn, inc, NIPQUAD(saddr), NIPQUAD(daddr));
+}
+
+static void
+rds_recv_route(struct rds_connection *conn, struct rds_incoming *inc,
+	       gfp_t gfp)
+{
+	struct rds_connection *nconn;
+	struct rds_nf_hdr  *dst, *org;
+
+	/* pull out the rds header */
+	dst = rds_nf_hdr_dst(inc->i_skb);
+	org = rds_nf_hdr_org(inc->i_skb);
+
+	/* special case where we are swapping the message back on the same connection */
+	if (dst->saddr == org->daddr && dst->daddr == org->saddr) {
+		nconn = conn;
+	} else {
+		/* reroute to a new conn structure, possibly the same one */
+		nconn = rds_conn_find(dst->saddr, dst->daddr, conn->c_trans,
+				      conn->c_tos);
+	}
+
+	/* cannot find a matching connection so drop the request */
+	if (NULL == nconn) {
+		printk(KERN_ALERT "cannot find matching conn for inc %p, %u.%u.%u.%u -> %u.%u.%u.%u\n",
+		       inc, NIPQUAD(dst->saddr), NIPQUAD(dst->daddr));
+
+		rdsdebug("cannot find matching conn for inc %p, %u.%u.%u.%u -> %u.%u.%u.%u",
+			 inc, NIPQUAD(dst->saddr), NIPQUAD(dst->daddr));
+		rds_recv_drop(conn, dst->saddr, dst->daddr, inc, gfp);
+	}
+	/* this is a request for our local node, but potentially a different source
+	 * either way we process it locally */
+	else if (conn->c_trans->skb_local(inc->i_skb)) {
+		rds_recv_local(nconn, dst->saddr, dst->daddr, inc, gfp);
+	}
+	/* looks like this request is going out to another node */
+	else {
+		rds_recv_forward(nconn, inc, gfp);
+	}
+}
+
+static void
+rds_recv_forward(struct rds_connection *conn, struct rds_incoming *inc,
+		 gfp_t gfp)
+{
+	int len, ret;
+	struct rds_nf_hdr *dst, *org;
+	struct rds_sock *rs;
+	struct sock *sk = NULL;
+
+	/* initialize some bits */
+	rs = NULL;
+
+	/* pull out the destination and original rds headers */
+	dst = rds_nf_hdr_dst(inc->i_skb);
+	org = rds_nf_hdr_org(inc->i_skb);
+
+	/* find the proper output socket - it should be the local one on which we originated */
+	rs = rds_find_bound(dst->saddr, dst->sport);
+	if (!rs) {
+		rdsdebug("failed to find output rds_socket dst %u.%u.%u.%u : %u, inc %p, conn %p\n",
+			 NIPQUAD(dst->daddr), dst->dport, inc, conn);
+		rds_stats_inc(s_recv_drop_no_sock);
+		goto out;
+	}
+
+	/* pull out the actual message len */
+	len = be32_to_cpu(inc->i_hdr.h_len);
+
+	/* now lets see if we can send it all */
+	ret = rds_send_internal(conn, rs, inc->i_skb, gfp);
+	if (len != ret) {
+		rdsdebug("failed to send rds_data dst %u.%u.%u.%u : %u, inc %p, conn %p, len %d != ret %d\n",
+			 NIPQUAD(dst->daddr), dst->dport, inc, conn, len, ret);
+		goto out;
+	}
+
+	if (NULL != rs)
+		rds_sock_put(rs);
+
+	/* all good so we are done */
+	return;
+
+out:
+	/* cleanup any handles */
+	if (NULL != rs) {
+		sk = rds_rs_to_sk(rs);
+		rds_sock_put(rs);
+	}
+
+	/* on error lets take a shot at hook cleanup */
+	NF_HOOK(PF_RDS_HOOK, NF_RDS_FORWARD_ERROR, sk, inc->i_skb, NULL, NULL, rds_recv_ok);
+
+	/* then hand the request off to normal local processing on the old connection */
+	rds_recv_local(inc->i_oconn, org->saddr, org->daddr, inc, gfp);
+}
+
+static void
+rds_recv_local(struct rds_connection *conn, __be32 saddr, __be32 daddr,
+	       struct rds_incoming *inc, gfp_t gfp)
+{
 	struct rds_sock *rs = NULL;
 	struct sock *sk;
 	unsigned long flags;
@@ -195,16 +478,23 @@ void rds_recv_incoming(struct rds_connection *conn, __be32 saddr, __be32 daddr,
 	 * XXX we could spend more on the wire to get more robust failure
 	 * detection, arguably worth it to avoid data corruption.
 	 */
-	if (be64_to_cpu(inc->i_hdr.h_sequence) < conn->c_next_rx_seq &&
-	    (inc->i_hdr.h_flags & RDS_FLAG_RETRANSMITTED)) {
+
+	if (be64_to_cpu(inc->i_hdr.h_sequence) < conn->c_next_rx_seq
+	 && (inc->i_hdr.h_flags & RDS_FLAG_RETRANSMITTED)) {
 		rds_stats_inc(s_recv_drop_old_seq);
 		goto out;
 	}
 	conn->c_next_rx_seq = be64_to_cpu(inc->i_hdr.h_sequence) + 1;
 
 	if (rds_sysctl_ping_enable && inc->i_hdr.h_dport == 0) {
-		rds_stats_inc(s_recv_ping);
-		rds_send_pong(conn, inc->i_hdr.h_sport);
+		if (inc->i_hdr.h_flags & RDS_FLAG_HB_PING) {
+			rds_send_hb(conn, 1);
+		} else if (inc->i_hdr.h_flags & RDS_FLAG_HB_PONG) {
+			conn->c_hb_start = 0;
+		} else {
+			rds_stats_inc(s_recv_ping);
+			rds_send_pong(conn, inc->i_hdr.h_sport);
+		}
 		goto out;
 	}
 
@@ -223,14 +513,26 @@ void rds_recv_incoming(struct rds_connection *conn, __be32 saddr, __be32 daddr,
 	/* serialize with rds_release -> sock_orphan */
 	write_lock_irqsave(&rs->rs_recv_lock, flags);
 	if (!sock_flag(sk, SOCK_DEAD)) {
-		rdsdebug("adding inc %p to rs %p's recv queue\n", inc, rs);
-		rds_stats_inc(s_recv_queued);
-		rds_recv_rcvbuf_delta(rs, sk, inc->i_conn->c_lcong,
+		/* only queue the incoming once. when rds netfilter hook
+		 * is  enabled, the follow code path can cause us to send
+		 * rds_incoming twice to rds_recv_local: rds_recv_incoming
+		 * call NF_HOOK, hook decide to send rds incoming to both,
+		 * local & remote, rds_recv_local queue the inc msg,
+		 * rds_recv_forward fail to send the inc to remote & call
+		 * rds_recv_local again with the same rds inc. calling list
+		 * on alredy added list item w/o calling list_del_init in
+		 * between cause list corruption */
+		if (list_empty(&inc->i_item)) {
+			rdsdebug("adding inc %p to rs %p's recv queue\n",
+				inc, rs);
+			rds_stats_inc(s_recv_queued);
+			rds_recv_rcvbuf_delta(rs, sk, inc->i_conn->c_lcong,
 				      be32_to_cpu(inc->i_hdr.h_len),
 				      inc->i_hdr.h_dport);
-		rds_inc_addref(inc);
-		list_add_tail(&inc->i_item, &rs->rs_recv_queue);
-		__rds_wake_sk_sleep(sk);
+			rds_inc_addref(inc);
+			list_add_tail(&inc->i_item, &rs->rs_recv_queue);
+			__rds_wake_sk_sleep(sk);
+		}
 	} else {
 		rds_stats_inc(s_recv_drop_dead_sock);
 	}
@@ -240,7 +542,6 @@ out:
 	if (rs)
 		rds_sock_put(rs);
 }
-EXPORT_SYMBOL_GPL(rds_recv_incoming);
 
 /*
  * be very careful here.  This is being called as the condition in
@@ -296,7 +597,7 @@ static int rds_still_queued(struct rds_sock *rs, struct rds_incoming *inc,
 int rds_notify_queue_get(struct rds_sock *rs, struct msghdr *msghdr)
 {
 	struct rds_notifier *notifier;
-	struct rds_rdma_notify cmsg = { 0 }; /* fill holes with zero */
+	struct rds_rdma_send_notify cmsg;
 	unsigned int count = 0, max_messages = ~0U;
 	unsigned long flags;
 	LIST_HEAD(copy);
@@ -320,7 +621,7 @@ int rds_notify_queue_get(struct rds_sock *rs, struct msghdr *msghdr)
 	while (!list_empty(&rs->rs_notify_queue) && count < max_messages) {
 		notifier = list_entry(rs->rs_notify_queue.next,
 				struct rds_notifier, n_list);
-		list_move(&notifier->n_list, &copy);
+		list_move_tail(&notifier->n_list, &copy);
 		count++;
 	}
 	spin_unlock_irqrestore(&rs->rs_lock, flags);
@@ -335,10 +636,22 @@ int rds_notify_queue_get(struct rds_sock *rs, struct msghdr *msghdr)
 			cmsg.user_token = notifier->n_user_token;
 			cmsg.status = notifier->n_status;
 
-			err = put_cmsg(msghdr, SOL_RDS, RDS_CMSG_RDMA_STATUS,
+			err = put_cmsg(msghdr, SOL_RDS,
+					RDS_CMSG_RDMA_SEND_STATUS,
 				       sizeof(cmsg), &cmsg);
 			if (err)
 				break;
+		}
+
+		/* If this is the last failed op, re-open the connection for
+		   traffic */
+		if (notifier->n_conn) {
+			spin_lock_irqsave(&notifier->n_conn->c_lock, flags);
+			if (notifier->n_conn->c_pending_flush)
+				notifier->n_conn->c_pending_flush--;
+			else
+				printk(KERN_ERR "rds_notify_queue_get: OOPS!\n");
+			spin_unlock_irqrestore(&notifier->n_conn->c_lock, flags);
 		}
 
 		list_del_init(&notifier->n_list);
@@ -402,13 +715,15 @@ int rds_recvmsg(struct socket *sock, struct msghdr *msg, size_t size,
 	struct rds_sock *rs = rds_sk_to_rs(sk);
 	long timeo;
 	int ret = 0, nonblock = msg_flags & MSG_DONTWAIT;
-	DECLARE_SOCKADDR(struct sockaddr_in *, sin, msg->msg_name);
+	struct sockaddr_in *sin;
 	struct rds_incoming *inc = NULL;
 
 	/* udp_recvmsg()->sock_recvtimeo() gets away without locking too.. */
 	timeo = sock_rcvtimeo(sk, nonblock);
 
 	rdsdebug("size %zu flags 0x%x timeo %ld\n", size, msg_flags, timeo);
+
+	msg->msg_namelen = 0;
 
 	if (msg_flags & MSG_OOB)
 		goto out;
@@ -433,9 +748,10 @@ int rds_recvmsg(struct socket *sock, struct msghdr *msg, size_t size,
 			}
 
 			timeo = wait_event_interruptible_timeout(*sk_sleep(sk),
-					(!list_empty(&rs->rs_notify_queue) ||
-					 rs->rs_cong_notify ||
-					 rds_next_incoming(rs, &inc)), timeo);
+						(!list_empty(&rs->rs_notify_queue)
+						|| rs->rs_cong_notify
+						|| rds_next_incoming(rs, &inc)),
+						timeo);
 			rdsdebug("recvmsg woke inc %p timeo %ld\n", inc,
 				 timeo);
 			if (timeo > 0 || timeo == MAX_SCHEDULE_TIMEOUT)
@@ -481,6 +797,7 @@ int rds_recvmsg(struct socket *sock, struct msghdr *msg, size_t size,
 
 		rds_stats_inc(s_recv_delivered);
 
+		sin = (struct sockaddr_in *)msg->msg_name;
 		if (sin) {
 			sin->sin_family = AF_INET;
 			sin->sin_port = inc->i_hdr.h_sport;
@@ -532,6 +849,7 @@ void rds_inc_info_copy(struct rds_incoming *inc,
 
 	minfo.seq = be64_to_cpu(inc->i_hdr.h_sequence);
 	minfo.len = be32_to_cpu(inc->i_hdr.h_len);
+	minfo.tos = inc->i_conn->c_tos;
 
 	if (flip) {
 		minfo.laddr = daddr;
@@ -547,3 +865,23 @@ void rds_inc_info_copy(struct rds_incoming *inc,
 
 	rds_info_copy(iter, &minfo, sizeof(minfo));
 }
+
+int rds_skb_local(struct sk_buff *skb)
+{
+	struct rds_nf_hdr *dst, *org;
+
+	/* pull out the headers */
+	dst = rds_nf_hdr_dst(skb);
+	org = rds_nf_hdr_org(skb);
+
+	/* just check to see that the destination is still the same */
+	if (dst->daddr == org->daddr && dst->dport == org->dport) {
+		return 1;
+	}
+	/* otherwise, the sport/dport have likely swapped so consider
+	 * it a different node */
+	else {
+		return 0;
+	}
+}
+EXPORT_SYMBOL(rds_skb_local);

@@ -51,7 +51,8 @@ struct ib_ah *create_ib_ah(struct ib_ah_attr *ah_attr,
 	return &ah->ibah;
 }
 
-struct ib_ah *mlx5_ib_create_ah(struct ib_pd *pd, struct ib_ah_attr *ah_attr)
+struct ib_ah *mlx5_ib_create_ah(struct ib_pd *pd, struct ib_ah_attr *ah_attr,
+				struct ib_udata *udata)
 {
 	struct mlx5_ib_ah *ah;
 

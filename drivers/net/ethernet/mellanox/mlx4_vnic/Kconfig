@@ -1,0 +1,14 @@
+config MLX4_VNIC
+	tristate "Mellanox Technologies VNIC support"
+	depends on PCI && INFINIBAND && INFINIBAND_ADDR_TRANS
+	select MLX4_CORE
+	help
+	  Mellanox Technologies VNIC functionality.
+
+
+config MLX4_VNIC_DEBUG
+	bool "Mellanox Technologies VNIC debugging"
+	depends on MLX4_VNIC
+	help
+	  This option causes debugging code to be compiled into
+	  the mlx4_vnic driver.

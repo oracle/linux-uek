@@ -45,6 +45,7 @@
 #include <linux/workqueue.h>
 #include <linux/interrupt.h>
 #include <linux/spinlock.h>
+#include <linux/rwsem.h>
 
 #include <linux/mlx4/device.h>
 #include <linux/mlx4/driver.h>
@@ -55,7 +56,7 @@
 #define DRV_NAME	"mlx4_core"
 #define PFX		DRV_NAME ": "
 #define DRV_VERSION	"2.2-1"
-#define DRV_RELDATE	"Feb, 2014"
+#define DRV_RELDATE	__DATE__
 
 #define MLX4_FS_UDP_UC_EN		(1 << 1)
 #define MLX4_FS_TCP_UC_EN		(1 << 2)
@@ -81,7 +82,6 @@ enum {
 	MLX4_MIN_MGM_LOG_ENTRY_SIZE = 7,
 	MLX4_MAX_MGM_LOG_ENTRY_SIZE = 12,
 	MLX4_MAX_QP_PER_MGM = 4 * ((1 << MLX4_MAX_MGM_LOG_ENTRY_SIZE) / 16 - 2),
-	MLX4_MTT_ENTRY_PER_SEG	= 8,
 };
 
 enum {
@@ -411,7 +411,7 @@ struct mlx4_profile {
 	int			num_cq;
 	int			num_mcg;
 	int			num_mpt;
-	unsigned		num_mtt;
+	unsigned		num_mtt_segs;
 };
 
 struct mlx4_fw {
@@ -613,6 +613,7 @@ struct mlx4_cmd {
 	struct mutex		slave_cmd_mutex;
 	struct semaphore	poll_sem;
 	struct semaphore	event_sem;
+	struct rw_semaphore	switch_sem;
 	int			max_cmds;
 	spinlock_t		context_lock;
 	int			free_head;

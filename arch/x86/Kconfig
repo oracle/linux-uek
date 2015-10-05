@@ -285,6 +285,9 @@ config PGTABLE_LEVELS
 	default 3 if X86_PAE
 	default 2
 
+config ARCH_SUPPORTS_DTRACE
+	def_bool y if X86_64
+
 source "init/Kconfig"
 source "kernel/Kconfig.freezer"
 
@@ -1697,6 +1700,19 @@ config EFI_MIXED
 
 	   If unsure, say N.
 
+config EFI_SECURE_BOOT_SECURELEVEL
+	def_bool n
+	depends on SECURITY_SECURELEVEL
+	depends on EFI
+	prompt "Automatically set securelevel when UEFI Secure Boot is enabled"
+	---help---
+	  UEFI Secure Boot provides a mechanism for ensuring that the
+	  firmware will only load signed bootloaders and kernels. Certain
+	  use cases may also require that the kernel restrict any userspace
+	  mechanism that could insert untrusted code into the kernel.
+	  Say Y here to automatically enable securelevel enforcement
+	  when a system boots with UEFI Secure Boot enabled.
+
 config SECCOMP
 	def_bool y
 	prompt "Enable seccomp to safely compute untrusted bytecode"
@@ -1762,6 +1778,19 @@ config KEXEC_BZIMAGE_VERIFY_SIG
 	select SYSTEM_TRUSTED_KEYRING
 	---help---
 	  Enable bzImage signature verification support.
+
+config KEXEC_AUTO_RESERVE
+	bool "automatically reserve memory for kexec kernel"
+	depends on KEXEC
+	default y
+	---help---
+	  Automatically reserve memory for a kexec kernel, so that you don't
+	  need to specify numbers for the "crashkernel=X@Y" boot option,
+	  instead you can use "crashkernel=auto". To make this work, you need
+	  to have more than 4G memory.
+
+	  On x86_32, 128M is reserved, on x86_64 1/32 of your memory is
+	  reserved, but it will not exceed 4G.
 
 config CRASH_DUMP
 	bool "kernel crash dumps"

@@ -30,6 +30,8 @@
 #include <linux/genhd.h>
 #include <linux/ktime.h>
 #include <trace/events/power.h>
+#include <linux/security.h>
+#include <linux/efi.h>
 
 #include "power.h"
 
@@ -651,6 +653,10 @@ int hibernate(void)
 		return -EPERM;
 	}
 
+	if (get_securelevel() > 0) {
+		return -EPERM;
+	}
+
 	lock_system_sleep();
 	/* The snapshot device should not be opened while we're running */
 	if (!atomic_add_unless(&snapshot_device_available, -1, 0)) {
@@ -743,7 +749,7 @@ static int software_resume(void)
 	/*
 	 * If the user said "noresume".. bail out early.
 	 */
-	if (noresume || !hibernation_available())
+	if (noresume || !hibernation_available() || get_securelevel() > 0)
 		return 0;
 
 	/*
@@ -912,6 +918,11 @@ static ssize_t disk_show(struct kobject *kobj, struct kobj_attribute *attr,
 	if (!hibernation_available())
 		return sprintf(buf, "[disabled]\n");
 
+	if (efi_enabled(EFI_SECURE_BOOT)) {
+		buf += sprintf(buf, "[%s]\n", "disabled");
+		return buf-start;
+	}
+
 	for (i = HIBERNATION_FIRST; i <= HIBERNATION_MAX; i++) {
 		if (!hibernation_modes[i])
 			continue;
@@ -947,6 +958,9 @@ static ssize_t disk_store(struct kobject *kobj, struct kobj_attribute *attr,
 	int mode = HIBERNATION_INVALID;
 
 	if (!hibernation_available())
+		return -EPERM;
+
+	if (get_securelevel() > 0)
 		return -EPERM;
 
 	p = memchr(buf, '\n', n);

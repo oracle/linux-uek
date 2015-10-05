@@ -53,6 +53,8 @@
 #include <linux/oom.h>
 #include <linux/writeback.h>
 #include <linux/shm.h>
+#include <linux/sdt.h>
+#include <linux/dtrace_os.h>
 
 #include <asm/uaccess.h>
 #include <asm/unistd.h>
@@ -729,6 +731,13 @@ void do_exit(long code)
 
 	tsk->exit_code = code;
 	taskstats_exit(tsk, group_dead);
+
+	DTRACE_PROC(lwp__exit);
+	DTRACE_PROC1(exit, int, code & 0x80 ? 3 : code & 0x7f ? 2 : 1);
+
+#ifdef CONFIG_DTRACE
+	dtrace_task_cleanup(tsk);
+#endif
 
 	exit_mm(tsk);
 
@@ -1581,15 +1590,18 @@ SYSCALL_DEFINE5(waitid, int, which, pid_t, upid, struct siginfo __user *,
 	return ret;
 }
 
-SYSCALL_DEFINE4(wait4, pid_t, upid, int __user *, stat_addr,
-		int, options, struct rusage __user *, ru)
+long do_wait4(pid_t upid, int __user *stat_addr,
+	      int options, struct rusage __user *ru)
 {
 	struct wait_opts wo;
 	struct pid *pid = NULL;
 	enum pid_type type;
 	long ret;
 
-	if (options & ~(WNOHANG|WUNTRACED|WCONTINUED|
+	/*
+	 * As for wait4(), except that waitfd() additionally needs WNOWAIT.
+	 */
+	if (options & ~(WNOHANG|WNOWAIT|WUNTRACED|WCONTINUED|
 			__WNOTHREAD|__WCLONE|__WALL))
 		return -EINVAL;
 
@@ -1614,6 +1626,20 @@ SYSCALL_DEFINE4(wait4, pid_t, upid, int __user *, stat_addr,
 	wo.wo_rusage	= ru;
 	ret = do_wait(&wo);
 	put_pid(pid);
+
+	return ret;
+}
+
+SYSCALL_DEFINE4(wait4, pid_t, upid, int __user *, stat_addr,
+		int, options, struct rusage __user *, ru)
+{
+	long ret;
+
+	if (options & ~(WNOHANG|WUNTRACED|WCONTINUED|
+			__WNOTHREAD|__WCLONE|__WALL))
+		return -EINVAL;
+
+	ret = do_wait4(upid, stat_addr, options, ru);
 
 	return ret;
 }

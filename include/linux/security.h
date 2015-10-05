@@ -3165,6 +3165,14 @@ static inline void security_audit_rule_free(void *lsmrule)
 #endif /* CONFIG_SECURITY */
 #endif /* CONFIG_AUDIT */
 
+#ifdef CONFIG_SECURITY_SECURELEVEL
+extern int get_securelevel(void);
+extern int set_securelevel(int new_securelevel);
+#else
+static inline int get_securelevel(void) { return 0; }
+static inline int set_securelevel(int new_securelevel) { return 0; }
+#endif /* CONFIG_SECURELEVEL */
+
 #ifdef CONFIG_SECURITYFS
 
 extern struct dentry *securityfs_create_file(const char *name, umode_t mode,

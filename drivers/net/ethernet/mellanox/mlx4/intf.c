@@ -93,8 +93,14 @@ int mlx4_register_interface(struct mlx4_interface *intf)
 	mutex_lock(&intf_mutex);
 
 	list_add_tail(&intf->list, &intf_list);
-	list_for_each_entry(priv, &dev_list, dev_list)
+	list_for_each_entry(priv, &dev_list, dev_list) {
+		if (mlx4_is_mfunc(&priv->dev) && (intf->flags & MLX4_INTFF_BONDING)) {
+			mlx4_dbg(&priv->dev,
+				 "SRIOV, disabling HA mode for intf proto %d\n", intf->protocol);
+			intf->flags &= ~MLX4_INTFF_BONDING;
+		}
 		mlx4_add_device(intf, priv);
+	}
 
 	mutex_unlock(&intf_mutex);
 
@@ -214,7 +220,7 @@ void mlx4_unregister_device(struct mlx4_dev *dev)
 	list_for_each_entry(intf, &intf_list, list)
 		mlx4_remove_device(intf, priv);
 
-	list_del(&priv->dev_list);
+	list_del_init(&priv->dev_list);
 	dev->persist->interface_state &= ~MLX4_INTERFACE_STATE_UP;
 
 	mutex_unlock(&intf_mutex);

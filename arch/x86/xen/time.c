@@ -105,6 +105,9 @@ void xen_setup_runstate_info(int cpu)
 {
 	struct vcpu_register_runstate_memory_area area;
 
+	if (xen_hvm_domain() && !(xen_feature(XENFEAT_hvm_safe_pvclock)))
+		return;
+
 	area.addr.v = &per_cpu(xen_runstate, cpu);
 
 	if (HYPERVISOR_vcpu_op(VCPUOP_register_runstate_memory_area,

@@ -399,6 +399,7 @@ static struct notifier_block kvm_pv_reboot_nb = {
 	.notifier_call = kvm_pv_reboot_notify,
 };
 
+#ifndef CONFIG_DTRACE
 static u64 kvm_steal_clock(int cpu)
 {
 	u64 steal;
@@ -415,6 +416,7 @@ static u64 kvm_steal_clock(int cpu)
 
 	return steal;
 }
+#endif
 
 void kvm_disable_steal_time(void)
 {
@@ -490,10 +492,12 @@ void __init kvm_guest_init(void)
 	if (kvm_para_has_feature(KVM_FEATURE_ASYNC_PF))
 		x86_init.irqs.trap_init = kvm_apf_trap_init;
 
+#ifndef CONFIG_DTRACE
 	if (kvm_para_has_feature(KVM_FEATURE_STEAL_TIME)) {
 		has_steal_clock = 1;
 		pv_time_ops.steal_clock = kvm_steal_clock;
 	}
+#endif
 
 	if (kvm_para_has_feature(KVM_FEATURE_PV_EOI))
 		apic_set_eoi_write(kvm_guest_apic_eoi_write);

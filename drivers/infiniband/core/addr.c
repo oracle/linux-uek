@@ -452,8 +452,13 @@ struct resolve_cb_context {
 static void resolve_cb(int status, struct sockaddr *src_addr,
 	     struct rdma_dev_addr *addr, void *context)
 {
-	memcpy(((struct resolve_cb_context *)context)->addr, addr, sizeof(struct
-				rdma_dev_addr));
+	if (!status)
+		memcpy(((struct resolve_cb_context *)context)->addr, addr,
+		       sizeof(struct rdma_dev_addr));
+	else
+		memset(
+		((struct resolve_cb_context *)context)->addr->dst_dev_addr,
+				0, sizeof(unsigned char) * MAX_ADDR_LEN);
 	complete(&((struct resolve_cb_context *)context)->comp);
 }
 

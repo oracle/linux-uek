@@ -428,6 +428,19 @@ static int cmd_pending(struct mlx4_dev *dev)
 		 !!(status & swab32(1 << HCR_T_BIT)));
 }
 
+static int get_status(struct mlx4_dev *dev, u32 *status, int *go_bit,
+		      int *t_bit)
+{
+	if (pci_channel_offline(dev->persist->pdev))
+		return -EIO;
+
+	*status = readl(mlx4_priv(dev)->cmd.hcr + HCR_STATUS_OFFSET);
+	*t_bit = !!(*status & swab32(1 << HCR_T_BIT));
+	*go_bit = !!(*status & swab32(1 << HCR_GO_BIT));
+
+	return 0;
+}
+
 static int mlx4_cmd_post(struct mlx4_dev *dev, u64 in_param, u64 out_param,
 			 u32 in_modifier, u8 op_modifier, u16 op, u16 token,
 			 int event)
@@ -436,6 +449,8 @@ static int mlx4_cmd_post(struct mlx4_dev *dev, u64 in_param, u64 out_param,
 	u32 __iomem *hcr = cmd->hcr;
 	int ret = -EIO;
 	unsigned long end;
+	int err, go_bit = 0, t_bit = 0;
+	u32 status = 0;
 
 	mutex_lock(&dev->persist->device_state_mutex);
 	/* To avoid writing to unknown addresses after the device state was
@@ -505,9 +520,15 @@ static int mlx4_cmd_post(struct mlx4_dev *dev, u64 in_param, u64 out_param,
 	ret = 0;
 
 out:
-	if (ret)
-		mlx4_warn(dev, "Could not post command 0x%x: ret=%d, in_param=0x%llx, in_mod=0x%x, op_mod=0x%x\n",
-			  op, ret, in_param, in_modifier, op_modifier);
+	if (ret) {
+		err = get_status(dev, &status, &go_bit, &t_bit);
+		mlx4_warn(dev, "Could not post command 0x%x: ret=%d, "
+			  "in_param=0x%llx, in_mod=0x%x, op_mod=0x%x, "
+			  "get_status err=%d, status_reg=0x%x, go_bit=%d, "
+			  "t_bit=%d, toggle=0x%x\n", op, ret,
+			  in_param, in_modifier, op_modifier, err, status,
+			  go_bit, t_bit, cmd->toggle);
+	}
 	mutex_unlock(&dev->persist->device_state_mutex);
 
 	return ret;
@@ -686,6 +707,11 @@ static int mlx4_cmd_wait(struct mlx4_dev *dev, u64 in_param, u64 *out_param,
 	struct mlx4_cmd *cmd = &mlx4_priv(dev)->cmd;
 	struct mlx4_cmd_context *context;
 	int err = 0;
+	int go_bit = 0, t_bit = 0, stat_err;
+	u32 status = 0;
+
+	if (out_is_imm && !out_param)
+		return -EINVAL;
 
 	down(&cmd->event_sem);
 
@@ -712,8 +738,13 @@ static int mlx4_cmd_wait(struct mlx4_dev *dev, u64 in_param, u64 *out_param,
 
 	if (!wait_for_completion_timeout(&context->done,
 					 msecs_to_jiffies(timeout))) {
-		mlx4_warn(dev, "command 0x%x timed out (go bit not cleared)\n",
-			  op);
+		stat_err = get_status(dev, &status, &go_bit, &t_bit);
+		mlx4_warn(dev, "command 0x%x timed out: in_param=0x%llx, "
+			  "in_mod=0x%x, op_mod=0x%x, get_status err=%d, "
+			  "status_reg=0x%x, go_bit=%d, t_bit=%d, toggle=0x%x\n"
+			  , op, in_param, in_modifier,
+			  op_modifier, stat_err, status, go_bit, t_bit,
+			  mlx4_priv(dev)->cmd.toggle);
 		if (op == MLX4_CMD_NOP) {
 			err = -EBUSY;
 			goto out;
@@ -774,14 +805,20 @@ int __mlx4_cmd(struct mlx4_dev *dev, u64 in_param, u64 *out_param,
 		if (dev->persist->state & MLX4_DEVICE_STATE_INTERNAL_ERROR)
 			return mlx4_internal_err_ret_value(dev, op,
 							  op_modifier);
-		if (mlx4_priv(dev)->cmd.use_events)
-			return mlx4_cmd_wait(dev, in_param, out_param,
-					     out_is_imm, in_modifier,
-					     op_modifier, op, timeout);
-		else
-			return mlx4_cmd_poll(dev, in_param, out_param,
-					     out_is_imm, in_modifier,
-					     op_modifier, op, timeout);
+		else {
+			int ret;
+			down_read(&mlx4_priv(dev)->cmd.switch_sem);
+			if (mlx4_priv(dev)->cmd.use_events)
+				ret = mlx4_cmd_wait(dev, in_param, out_param,
+						    out_is_imm, in_modifier,
+						    op_modifier, op, timeout);
+			else
+				ret = mlx4_cmd_poll(dev, in_param, out_param,
+						    out_is_imm, in_modifier,
+						    op_modifier, op, timeout);
+			up_read(&mlx4_priv(dev)->cmd.switch_sem);
+			return ret;
+		}
 	}
 	return mlx4_slave_cmd(dev, in_param, out_param, out_is_imm,
 			      in_modifier, op_modifier, op, timeout);
@@ -2438,6 +2475,7 @@ int mlx4_cmd_init(struct mlx4_dev *dev)
 	int flags = 0;
 
 	if (!priv->cmd.initialized) {
+		init_rwsem(&priv->cmd.switch_sem);
 		mutex_init(&priv->cmd.slave_cmd_mutex);
 		sema_init(&priv->cmd.poll_sem, 1);
 		priv->cmd.use_events = 0;
@@ -2567,6 +2605,7 @@ int mlx4_cmd_use_events(struct mlx4_dev *dev)
 	if (!priv->cmd.context)
 		return -ENOMEM;
 
+	down_write(&priv->cmd.switch_sem);
 	for (i = 0; i < priv->cmd.max_cmds; ++i) {
 		priv->cmd.context[i].token = i;
 		priv->cmd.context[i].next  = i + 1;
@@ -2591,6 +2630,7 @@ int mlx4_cmd_use_events(struct mlx4_dev *dev)
 
 	down(&priv->cmd.poll_sem);
 	priv->cmd.use_events = 1;
+	up_write(&priv->cmd.switch_sem);
 
 	return err;
 }
@@ -2603,6 +2643,7 @@ void mlx4_cmd_use_polling(struct mlx4_dev *dev)
 	struct mlx4_priv *priv = mlx4_priv(dev);
 	int i;
 
+	down_write(&priv->cmd.switch_sem);
 	priv->cmd.use_events = 0;
 
 	for (i = 0; i < priv->cmd.max_cmds; ++i)
@@ -2611,6 +2652,7 @@ void mlx4_cmd_use_polling(struct mlx4_dev *dev)
 	kfree(priv->cmd.context);
 
 	up(&priv->cmd.poll_sem);
+	up_write(&priv->cmd.switch_sem);
 }
 
 struct mlx4_cmd_mailbox *mlx4_alloc_cmd_mailbox(struct mlx4_dev *dev)

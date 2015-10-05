@@ -1,0 +1,44 @@
+--- find-debuginfo.sh.orig	2014-03-04 19:27:49.318782137 -0700
++++ find-debuginfo.sh	2014-03-05 17:09:21.364094567 -0700
+@@ -65,6 +67,9 @@
+     dwz_max_die_limit=$2
+     shift
+     ;;
++  -g1)
++    strip_g=full
++    ;;
+   -g)
+     strip_g=true
+     ;;
+@@ -125,13 +130,27 @@
+ 
+ strip_to_debug()
+ {
+-  local g=
++  local use_objcopy=false
+   local r=
+   $strip_r && r=--reloc-debug-sections
+-  $strip_g && case "$(file -bi "$2")" in
+-  application/x-sharedlib*) g=-g ;;
++  case "$strip_g" in
++	true) case "$(file -bi "$2")" in
++	        application/x-sharedlib*) use_objcopy=true ;;
++	      esac;;
++        full) use_objcopy=true;;
+   esac
+-  eu-strip --remove-comment $r $g -f "$1" "$2" || exit
++  # Note: eu-strip fails to remove debugging info in files containing
++  # debugging relocations at present. objcopy works fine, so use that.
++  # (This does mean that .comment sections don't get stripped, but this
++  # seems an insignificant problem for now.  When elfutils is fixed this
++  # hack can be removed.)
++  if $use_objcopy; then
++	objcopy --only-keep-debug "$2" "$1" || exit
++	objcopy --strip-debug "$2" "$2.tmp" || exit
++	mv -f "$2.tmp" "$2" || exit
++  else
++	eu-strip --remove-comment $r -f "$1" "$2" || exit
++  fi
+   chmod 444 "$1" || exit
+ }
+ 

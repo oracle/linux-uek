@@ -51,6 +51,7 @@
 #include <asm/mmu_context.h>
 #include <linux/license.h>
 #include <asm/sections.h>
+#include <linux/dtrace_sdt.h>
 #include <linux/tracepoint.h>
 #include <linux/ftrace.h>
 #include <linux/async.h>
@@ -2447,7 +2448,7 @@ static int module_sig_check(struct load_info *info)
 	}
 
 	/* Not having a signature is only an error if we're strict. */
-	if (err == -ENOKEY && !sig_enforce)
+	if ((err == -ENOKEY && !sig_enforce) && (get_securelevel() <= 0))
 		err = 0;
 
 	return err;
@@ -3201,6 +3202,10 @@ static int complete_formation(struct module *mod, struct load_info *info)
 {
 	int err;
 
+#ifdef CONFIG_DTRACE
+	dtrace_sdt_register_module(mod);
+#endif
+
 	mutex_lock(&module_mutex);
 
 	/* Find duplicate symbols (must be called under lock). */
@@ -3593,7 +3598,7 @@ out:
 }
 
 int module_get_kallsym(unsigned int symnum, unsigned long *value, char *type,
-			char *name, char *module_name, int *exported)
+		       char *name, char *module_name, unsigned long *size, int *exported)
 {
 	struct module *mod;
 
@@ -3608,6 +3613,7 @@ int module_get_kallsym(unsigned int symnum, unsigned long *value, char *type,
 				KSYM_NAME_LEN);
 			strlcpy(module_name, mod->name, MODULE_NAME_LEN);
 			*exported = is_exported(name, *value, mod);
+			*size = mod->symtab[symnum].st_size;
 			preempt_enable();
 			return 0;
 		}

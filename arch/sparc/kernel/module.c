@@ -17,6 +17,9 @@
 #include <asm/processor.h>
 #include <asm/spitfire.h>
 #include <asm/cacheflush.h>
+#ifdef CONFIG_DTRACE
+# include <asm/dtrace_arch.h>
+#endif
 
 #include "entry.h"
 
@@ -222,6 +225,22 @@ int module_finalize(const Elf_Ehdr *hdr,
 		__asm__ __volatile__("flush %g6");
 	}
 
+# ifdef CONFIG_DTRACE
+	if (me->sdt_probec > 0)
+		me->pdata = module_alloc(me->sdt_probec * SDT_TRAMP_SIZE *
+					 sizeof(asm_instr_t));
+	else
+		me->pdata = NULL;
+# endif
+
 	return 0;
 }
+
+# ifdef CONFIG_DTRACE
+void module_arch_cleanup(struct module *me)
+{
+	if (me->pdata)
+		module_memfree(me->pdata);
+}
+#endif
 #endif /* CONFIG_SPARC64 */

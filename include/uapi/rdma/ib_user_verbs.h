@@ -297,6 +297,7 @@ struct ib_uverbs_reg_mr_resp {
 	__u32 mr_handle;
 	__u32 lkey;
 	__u32 rkey;
+	__u32 reserved;
 };
 
 struct ib_uverbs_rereg_mr {
@@ -663,6 +664,8 @@ struct ib_uverbs_send_wr {
 			__u32 reserved;
 		} ud;
 	} wr;
+	__u32 xrc_remote_srq_num;
+	__u32 reserved;
 };
 
 struct ib_uverbs_post_send {

@@ -272,7 +272,7 @@ irqfd_wakeup(wait_queue_t *wait, unsigned mode, int sync, void *key)
 
 static void
 irqfd_ptable_queue_proc(struct file *file, wait_queue_head_t *wqh,
-			poll_table *pt)
+			poll_table *pt, unsigned long unused)
 {
 	struct _irqfd *irqfd = container_of(pt, struct _irqfd, pt);
 	add_wait_queue(wqh, &irqfd->wait);

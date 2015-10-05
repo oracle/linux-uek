@@ -1434,6 +1434,15 @@ config KALLSYMS_ALL
 
 	   Say N unless you really need all symbols.
 
+config KALLMODSYMS
+	default y
+	bool "Enable support for /proc/kallmodsyms" if EXPERT
+	depends on KALLSYMS
+	help
+	  This option enables the /proc/kallmodsyms file, which maps symbols
+	  to addresses and their associated modules.  This support requires
+	  a fairly recent elfutils.
+
 config PRINTK
 	default y
 	bool "Enable support for printk" if EXPERT
@@ -1504,6 +1513,20 @@ config EPOLL
 	help
 	  Disabling this option will cause the kernel to be built without
 	  support for epoll family of system calls.
+
+config WAITFD
+	bool "Enable waitfd() system call" if EXPERT
+	select ANON_INODES
+	default n
+	help
+	  Enable the waitfd() system call that allows receiving child state
+	  changes from a file descriptor.
+
+          Note: this system call is not upstream: its syscall number is not
+          finalized, and the call itself should only be used by DTrace.
+
+	  If unsure, say N.
+
 
 config SIGNALFD
 	bool "Enable signalfd() system call" if EXPERT
@@ -1764,6 +1787,8 @@ config PROFILING
 	  Say Y here to enable the extended profiling support mechanisms used
 	  by profilers such as OProfile.
 
+source "kernel/dtrace/Kconfig"
+
 #
 # Place an empty function call at each tracepoint site. Can be
 # dynamically changed for a probe function.
@@ -1792,6 +1817,15 @@ config BASE_SMALL
 	int
 	default 0 if BASE_FULL
 	default 1 if !BASE_FULL
+
+config SYSTEM_BLACKLIST_KEYRING
+	bool "Provide system-wide ring of blacklisted keys"
+	depends on KEYS
+	help
+	  Provide a system keyring to which blacklisted keys can be added.  Keys
+	  in the keyring are considered entirely untrusted.  Keys in this keyring
+	  are used by the module signature checking to reject loading of modules
+	  signed with a blacklisted key.
 
 menuconfig MODULES
 	bool "Enable loadable module support"
@@ -1902,6 +1936,15 @@ config MODULE_SIG_ALL
 
 comment "Do not forget to sign required modules with scripts/sign-file"
 	depends on MODULE_SIG_FORCE && !MODULE_SIG_ALL
+
+config MODULE_SIG_UEFI
+	bool "Allow modules signed with certs stored in UEFI"
+	depends on MODULE_SIG && SYSTEM_BLACKLIST_KEYRING && EFI
+	select EFI_SIGNATURE_LIST_PARSER
+	help
+	  This will import certificates stored in UEFI and allow modules
+	  signed with those to be loaded.  It will also disallow loading
+	  of modules stored in the UEFI dbx variable.
 
 choice
 	prompt "Which hash algorithm should modules be signed with?"

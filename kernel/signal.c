@@ -37,6 +37,7 @@
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/signal.h>
+#include <linux/sdt.h>
 
 #include <asm/param.h>
 #include <asm/uaccess.h>
@@ -1032,8 +1033,11 @@ static int __send_signal(int sig, struct siginfo *info, struct task_struct *t,
 
 	result = TRACE_SIGNAL_IGNORED;
 	if (!prepare_signal(sig, t,
-			from_ancestor_ns || (info == SEND_SIG_FORCED)))
+			    from_ancestor_ns || (info == SEND_SIG_FORCED))) {
+		DTRACE_PROC2(signal__discard, struct task_struct *, t,
+			     int, sig);
 		goto ret;
+	}
 
 	pending = group ? &t->signal->shared_pending : &t->pending;
 	/*
@@ -1119,6 +1123,7 @@ out_set:
 	signalfd_notify(t, sig);
 	sigaddset(&pending->signal, sig);
 	complete_signal(sig, t, group);
+	DTRACE_PROC2(signal__send, struct task_struct *, t, int, sig);
 ret:
 	trace_signal_generate(sig, info, t, group, result);
 	return ret;
@@ -2360,6 +2365,12 @@ relock:
 	}
 	spin_unlock_irq(&sighand->siglock);
 
+	if (signr != 0) {
+		DTRACE_PROC3(signal__handle, int, signr, siginfo_t *,
+			     ksig->ka.sa.sa_handler != SIG_DFL ? NULL :
+			     &ksig->info, void (*)(void),
+			     ksig->ka.sa.sa_handler);
+	}
 	ksig->sig = signr;
 	return ksig->sig > 0;
 }
@@ -2753,12 +2764,15 @@ int copy_siginfo_to_user(siginfo_t __user *to, const siginfo_t *from)
 		 * Other callers might not initialize the si_lsb field,
 		 * so check explicitly for the right codes here.
 		 */
-		if (from->si_code == BUS_MCEERR_AR || from->si_code == BUS_MCEERR_AO)
+		if (from->si_signo == SIGBUS &&
+		    (from->si_code == BUS_MCEERR_AR || from->si_code == BUS_MCEERR_AO))
 			err |= __put_user(from->si_addr_lsb, &to->si_addr_lsb);
 #endif
 #ifdef SEGV_BNDERR
-		err |= __put_user(from->si_lower, &to->si_lower);
-		err |= __put_user(from->si_upper, &to->si_upper);
+		if (from->si_signo == SIGSEGV && from->si_code == SEGV_BNDERR) {
+			err |= __put_user(from->si_lower, &to->si_lower);
+			err |= __put_user(from->si_upper, &to->si_upper);
+		}
 #endif
 		break;
 	case __SI_CHLD:
@@ -2846,8 +2860,10 @@ int do_sigtimedwait(const sigset_t *which, siginfo_t *info,
 	}
 	spin_unlock_irq(&tsk->sighand->siglock);
 
-	if (sig)
+	if (sig) {
+		DTRACE_PROC1(signal__clear, int, sig);
 		return sig;
+	}
 	return timeout ? -EINTR : -EAGAIN;
 }
 
@@ -3022,7 +3038,7 @@ COMPAT_SYSCALL_DEFINE3(rt_sigqueueinfo,
 			int, sig,
 			struct compat_siginfo __user *, uinfo)
 {
-	siginfo_t info;
+	siginfo_t info = {};
 	int ret = copy_siginfo_from_user32(&info, uinfo);
 	if (unlikely(ret))
 		return ret;
@@ -3066,7 +3082,7 @@ COMPAT_SYSCALL_DEFINE4(rt_tgsigqueueinfo,
 			int, sig,
 			struct compat_siginfo __user *, uinfo)
 {
-	siginfo_t info;
+	siginfo_t info = {};
 
 	if (copy_siginfo_from_user32(&info, uinfo))
 		return -EFAULT;
@@ -3138,7 +3154,7 @@ int do_sigaction(int sig, struct k_sigaction *act, struct k_sigaction *oact)
 	return 0;
 }
 
-static int
+int
 do_sigaltstack (const stack_t __user *uss, stack_t __user *uoss, unsigned long sp)
 {
 	stack_t oss;

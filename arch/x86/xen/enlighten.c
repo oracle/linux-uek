@@ -238,12 +238,23 @@ static void xen_vcpu_setup(int cpu)
 void xen_vcpu_restore(void)
 {
 	int cpu;
+	bool vcpuops = true;
+	const struct cpumask *mask;
 
-	for_each_possible_cpu(cpu) {
+	mask = xen_pv_domain() ? cpu_possible_mask : cpu_online_mask;
+
+	/* Only Xen 4.5 and higher supports this. */
+	if (HYPERVISOR_vcpu_op(VCPUOP_is_up, smp_processor_id(), NULL) == -ENOSYS)
+		vcpuops = false;
+
+	for_each_cpu(cpu, mask) {
 		bool other_cpu = (cpu != smp_processor_id());
-		bool is_up = HYPERVISOR_vcpu_op(VCPUOP_is_up, cpu, NULL);
+		bool is_up = false;
 
-		if (other_cpu && is_up &&
+		if (vcpuops)
+			is_up = HYPERVISOR_vcpu_op(VCPUOP_is_up, cpu, NULL);
+
+		if (vcpuops && other_cpu && is_up &&
 		    HYPERVISOR_vcpu_op(VCPUOP_down, cpu, NULL))
 			BUG();
 
@@ -252,7 +263,7 @@ void xen_vcpu_restore(void)
 		if (have_vcpu_info_placement)
 			xen_vcpu_setup(cpu);
 
-		if (other_cpu && is_up &&
+		if (vcpuops && other_cpu && is_up &&
 		    HYPERVISOR_vcpu_op(VCPUOP_up, cpu, NULL))
 			BUG();
 	}
@@ -483,6 +494,7 @@ static void set_aliased_prot(void *v, pgprot_t prot)
 	pte_t pte;
 	unsigned long pfn;
 	struct page *page;
+	unsigned char dummy;
 
 	ptep = lookup_address((unsigned long)v, &level);
 	BUG_ON(ptep == NULL);
@@ -491,6 +503,32 @@ static void set_aliased_prot(void *v, pgprot_t prot)
 	page = pfn_to_page(pfn);
 
 	pte = pfn_pte(pfn, prot);
+
+	/*
+	 * Careful: update_va_mapping() will fail if the virtual address
+	 * we're poking isn't populated in the page tables.  We don't
+	 * need to worry about the direct map (that's always in the page
+	 * tables), but we need to be careful about vmap space.  In
+	 * particular, the top level page table can lazily propagate
+	 * entries between processes, so if we've switched mms since we
+	 * vmapped the target in the first place, we might not have the
+	 * top-level page table entry populated.
+	 *
+	 * We disable preemption because we want the same mm active when
+	 * we probe the target and when we issue the hypercall.  We'll
+	 * have the same nominal mm, but if we're a kernel thread, lazy
+	 * mm dropping could change our pgd.
+	 *
+	 * Out of an abundance of caution, this uses __get_user() to fault
+	 * in the target address just in case there's some obscure case
+	 * in which the target address isn't readable.
+	 */
+
+	preempt_disable();
+
+	pagefault_disable();	/* Avoid warnings due to being atomic. */
+	__get_user(dummy, (unsigned char __user __force *)v);
+	pagefault_enable();
 
 	if (HYPERVISOR_update_va_mapping((unsigned long)v, pte, 0))
 		BUG();
@@ -503,12 +541,25 @@ static void set_aliased_prot(void *v, pgprot_t prot)
 				BUG();
 	} else
 		kmap_flush_unused();
+
+	preempt_enable();
 }
 
 static void xen_alloc_ldt(struct desc_struct *ldt, unsigned entries)
 {
 	const unsigned entries_per_page = PAGE_SIZE / LDT_ENTRY_SIZE;
 	int i;
+
+	/*
+	 * We need to mark the all aliases of the LDT pages RO.  We
+	 * don't need to call vm_flush_aliases(), though, since that's
+	 * only responsible for flushing aliases out the TLBs, not the
+	 * page tables, and Xen will flush the TLB for us if needed.
+	 *
+	 * To avoid confusing future readers: none of this is necessary
+	 * to load the LDT.  The hypervisor only checks this when the
+	 * LDT is faulted in due to subsequent descriptor access.
+	 */
 
 	for(i = 0; i < entries; i += entries_per_page)
 		set_aliased_prot(ldt + i, PAGE_KERNEL_RO);
@@ -1704,8 +1755,8 @@ void __ref xen_hvm_init_shared_info(void)
 	 * in that case multiple vcpus might be online. */
 	for_each_online_cpu(cpu) {
 		/* Leave it to be NULL. */
-		if (cpu >= MAX_VIRT_CPUS)
-			continue;
+		if (cpu >= MAX_VIRT_CPUS && cpu <= NR_CPUS)
+			per_cpu(xen_vcpu, cpu) = NULL; /* Triggers xen_vcpu_setup.*/
 		per_cpu(xen_vcpu, cpu) = &HYPERVISOR_shared_info->vcpu_info[cpu];
 	}
 }
