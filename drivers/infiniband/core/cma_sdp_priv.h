@@ -81,4 +81,12 @@ extern void cma_set_compare_data_sdp(enum rdma_port_space ps,
 
 extern int cma_format_hdr_sdp(void *hdr, struct rdma_id_private *id_priv);
 
+extern void cma_save_ip4_info_sdp(struct rdma_cm_id *id,
+				  struct rdma_cm_id *listen_id,
+				  struct cma_hdr *hdr);
+
+extern void cma_save_ip6_info_sdp(struct rdma_cm_id *id,
+				  struct rdma_cm_id *listen_id,
+				  struct cma_hdr *hdr);
+
 #endif /* _CMA_SDP_PRIV_H */
