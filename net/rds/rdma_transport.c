@@ -443,13 +443,13 @@ int rds_rdma_init(void)
 {
 	int ret;
 
-	ret = rds_rdma_listen_init();
+	ret = rds_ib_init();
 	if (ret)
 		goto out;
 
-	ret = rds_ib_init();
+	ret = rds_rdma_listen_init();
 	if (ret)
-		goto err_ib_init;
+		goto err_rdma_listen_init;
 
 	if (!unload_allowed) {
 		printk(KERN_NOTICE "Module %s locked in memory until next boot\n",
@@ -459,9 +459,13 @@ int rds_rdma_init(void)
 
 	goto out;
 
-err_ib_init:
-	rds_rdma_listen_stop();
+err_rdma_listen_init:
+	/* We need to clean up both ib and iw components. */
+	rds_ib_exit();
 out:
+	/* Either nothing is done successfully or everything succeeds at
+	 * this point.
+	 */
 	return ret;
 }
 module_init(rds_rdma_init);
