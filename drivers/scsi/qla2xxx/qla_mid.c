@@ -360,7 +360,6 @@ qla2x00_do_dpc_vp(scsi_qla_host_t *vha)
 void
 qla2x00_do_dpc_all_vps(scsi_qla_host_t *vha)
 {
-	int ret;
 	struct qla_hw_data *ha = vha->hw;
 	scsi_qla_host_t *vp;
 	unsigned long flags = 0;
@@ -381,7 +380,7 @@ qla2x00_do_dpc_all_vps(scsi_qla_host_t *vha)
 			atomic_inc(&vp->vref_count);
 			spin_unlock_irqrestore(&ha->vport_slock, flags);
 
-			ret = qla2x00_do_dpc_vp(vp);
+			qla2x00_do_dpc_vp(vp);
 
 			spin_lock_irqsave(&ha->vport_slock, flags);
 			atomic_dec(&vp->vref_count);

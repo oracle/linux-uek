@@ -462,12 +462,11 @@ qla8044_flash_lock(scsi_qla_host_t *vha)
 static void
 qla8044_flash_unlock(scsi_qla_host_t *vha)
 {
-	int ret_val;
 	struct qla_hw_data *ha = vha->hw;
 
 	/* Reading FLASH_UNLOCK register unlocks the Flash */
 	qla8044_wr_reg(ha, QLA8044_FLASH_LOCK_ID, 0xFF);
-	ret_val = qla8044_rd_reg(ha, QLA8044_FLASH_UNLOCK);
+	qla8044_rd_reg(ha, QLA8044_FLASH_UNLOCK);
 }
 
 
@@ -2989,7 +2988,7 @@ qla8044_minidump_process_rddfe(struct scsi_qla_host *vha,
 	uint32_t addr1, addr2, value, data, temp, wrVal;
 	uint8_t stride, stride2;
 	uint16_t count;
-	uint32_t poll, mask, data_size, modify_mask;
+	uint32_t poll, mask, modify_mask;
 	uint32_t wait_count = 0;
 
 	uint32_t *data_ptr = *d_ptr;
@@ -3006,7 +3005,6 @@ qla8044_minidump_process_rddfe(struct scsi_qla_host *vha,
 	poll = le32_to_cpu(rddfe->poll);
 	mask = le32_to_cpu(rddfe->mask);
 	modify_mask = le32_to_cpu(rddfe->modify_mask);
-	data_size = le32_to_cpu(rddfe->data_size);
 
 	addr2 = addr1 + stride;
 
@@ -3088,7 +3086,7 @@ qla8044_minidump_process_rdmdio(struct scsi_qla_host *vha,
 	uint8_t stride1, stride2;
 	uint32_t addr3, addr4, addr5, addr6, addr7;
 	uint16_t count, loop_cnt;
-	uint32_t poll, mask;
+	uint32_t mask;
 	uint32_t *data_ptr = *d_ptr;
 
 	qla8044_minidump_entry_rdmdio_t *rdmdio;
@@ -3102,7 +3100,6 @@ qla8044_minidump_process_rdmdio(struct scsi_qla_host *vha,
 	stride2 = le32_to_cpu(rdmdio->stride_2);
 	count = le32_to_cpu(rdmdio->count);
 
-	poll = le32_to_cpu(rdmdio->poll);
 	mask = le32_to_cpu(rdmdio->mask);
 	value2 = le32_to_cpu(rdmdio->value_2);
 
@@ -3162,7 +3159,7 @@ error:
 static uint32_t qla8044_minidump_process_pollwr(struct scsi_qla_host *vha,
 		struct qla8044_minidump_entry_hdr *entry_hdr, uint32_t **d_ptr)
 {
-	uint32_t addr1, addr2, value1, value2, poll, mask, r_value;
+	uint32_t addr1, addr2, value1, value2, poll, r_value;
 	uint32_t wait_count = 0;
 	qla8044_minidump_entry_pollwr_t *pollwr_hdr;
 
@@ -3173,7 +3170,6 @@ static uint32_t qla8044_minidump_process_pollwr(struct scsi_qla_host *vha,
 	value2 = le32_to_cpu(pollwr_hdr->value_2);
 
 	poll = le32_to_cpu(pollwr_hdr->poll);
-	mask = le32_to_cpu(pollwr_hdr->mask);
 
 	while (wait_count < poll) {
 		qla8044_rd_reg_indirect(vha, addr1, &r_value);

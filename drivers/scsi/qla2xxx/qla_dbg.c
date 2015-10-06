@@ -110,7 +110,7 @@ qla27xx_dump_mpi_ram(struct qla_hw_data *ha, uint32_t addr, uint32_t *ram,
 {
 	int rval;
 	uint32_t cnt, stat, timer, dwords, idx;
-	uint16_t mb0, mb1;
+	uint16_t mb0;
 	struct device_reg_24xx __iomem *reg = &ha->iobase->isp24;
 	dma_addr_t dump_dma = ha->gid_list_dma;
 	uint32_t *dump = (uint32_t *)ha->gid_list;
@@ -154,7 +154,7 @@ qla27xx_dump_mpi_ram(struct qla_hw_data *ha, uint32_t addr, uint32_t *ram,
 					    &ha->mbx_cmd_flags);
 
 					mb0 = RD_REG_WORD(&reg->mailbox0);
-					mb1 = RD_REG_WORD(&reg->mailbox1);
+					RD_REG_WORD(&reg->mailbox1);
 
 					WRT_REG_DWORD(&reg->hccr,
 					    HCCRX_CLR_RISC_INT);
@@ -986,7 +986,6 @@ qla24xx_fw_dump(scsi_qla_host_t *vha, int hardware_locked)
 {
 	int		rval;
 	uint32_t	cnt;
-	uint32_t	risc_address;
 	struct qla_hw_data *ha = vha->hw;
 	struct device_reg_24xx __iomem *reg = &ha->iobase->isp24;
 	uint32_t __iomem *dmp_reg;
@@ -994,14 +993,12 @@ qla24xx_fw_dump(scsi_qla_host_t *vha, int hardware_locked)
 	uint16_t __iomem *mbx_reg;
 	unsigned long	flags;
 	struct qla24xx_fw_dump *fw;
-	uint32_t	ext_mem_cnt;
 	void		*nxt;
 	struct scsi_qla_host *base_vha = pci_get_drvdata(ha->pdev);
 
 	if (IS_P3P_TYPE(ha))
 		return;
 
-	risc_address = ext_mem_cnt = 0;
 	flags = 0;
 	ha->fw_dump_cap_flags = 0;
 
@@ -1229,7 +1226,6 @@ qla25xx_fw_dump(scsi_qla_host_t *vha, int hardware_locked)
 {
 	int		rval;
 	uint32_t	cnt;
-	uint32_t	risc_address;
 	struct qla_hw_data *ha = vha->hw;
 	struct device_reg_24xx __iomem *reg = &ha->iobase->isp24;
 	uint32_t __iomem *dmp_reg;
@@ -1237,12 +1233,10 @@ qla25xx_fw_dump(scsi_qla_host_t *vha, int hardware_locked)
 	uint16_t __iomem *mbx_reg;
 	unsigned long	flags;
 	struct qla25xx_fw_dump *fw;
-	uint32_t	ext_mem_cnt;
 	void		*nxt, *nxt_chain;
 	uint32_t	*last_chain = NULL;
 	struct scsi_qla_host *base_vha = pci_get_drvdata(ha->pdev);
 
-	risc_address = ext_mem_cnt = 0;
 	flags = 0;
 	ha->fw_dump_cap_flags = 0;
 
@@ -1547,7 +1541,6 @@ qla81xx_fw_dump(scsi_qla_host_t *vha, int hardware_locked)
 {
 	int		rval;
 	uint32_t	cnt;
-	uint32_t	risc_address;
 	struct qla_hw_data *ha = vha->hw;
 	struct device_reg_24xx __iomem *reg = &ha->iobase->isp24;
 	uint32_t __iomem *dmp_reg;
@@ -1555,12 +1548,10 @@ qla81xx_fw_dump(scsi_qla_host_t *vha, int hardware_locked)
 	uint16_t __iomem *mbx_reg;
 	unsigned long	flags;
 	struct qla81xx_fw_dump *fw;
-	uint32_t	ext_mem_cnt;
 	void		*nxt, *nxt_chain;
 	uint32_t	*last_chain = NULL;
 	struct scsi_qla_host *base_vha = pci_get_drvdata(ha->pdev);
 
-	risc_address = ext_mem_cnt = 0;
 	flags = 0;
 	ha->fw_dump_cap_flags = 0;
 
@@ -1866,8 +1857,7 @@ void
 qla83xx_fw_dump(scsi_qla_host_t *vha, int hardware_locked)
 {
 	int		rval;
-	uint32_t	cnt, reg_data;
-	uint32_t	risc_address;
+	uint32_t	cnt;
 	struct qla_hw_data *ha = vha->hw;
 	struct device_reg_24xx __iomem *reg = &ha->iobase->isp24;
 	uint32_t __iomem *dmp_reg;
@@ -1875,12 +1865,10 @@ qla83xx_fw_dump(scsi_qla_host_t *vha, int hardware_locked)
 	uint16_t __iomem *mbx_reg;
 	unsigned long	flags;
 	struct qla83xx_fw_dump *fw;
-	uint32_t	ext_mem_cnt;
 	void		*nxt, *nxt_chain;
 	uint32_t	*last_chain = NULL;
 	struct scsi_qla_host *base_vha = pci_get_drvdata(ha->pdev);
 
-	risc_address = ext_mem_cnt = 0;
 	flags = 0;
 	ha->fw_dump_cap_flags = 0;
 
@@ -1912,16 +1900,16 @@ qla83xx_fw_dump(scsi_qla_host_t *vha, int hardware_locked)
 
 	WRT_REG_DWORD(&reg->iobase_addr, 0x6000);
 	dmp_reg = &reg->iobase_window;
-	reg_data = RD_REG_DWORD(dmp_reg);
+	RD_REG_DWORD(dmp_reg);
 	WRT_REG_DWORD(dmp_reg, 0);
 
 	dmp_reg = &reg->unused_4_1[0];
-	reg_data = RD_REG_DWORD(dmp_reg);
+	RD_REG_DWORD(dmp_reg);
 	WRT_REG_DWORD(dmp_reg, 0);
 
 	WRT_REG_DWORD(&reg->iobase_addr, 0x6010);
 	dmp_reg = &reg->unused_4_1[2];
-	reg_data = RD_REG_DWORD(dmp_reg);
+	RD_REG_DWORD(dmp_reg);
 	WRT_REG_DWORD(dmp_reg, 0);
 
 	// select PCR and disable ecc checking and correction

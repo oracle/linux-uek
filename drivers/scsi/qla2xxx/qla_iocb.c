@@ -309,7 +309,7 @@ void qla2x00_build_scsi_iocbs_64(srb_t *sp, cmd_entry_t *cmd_pkt,
 int
 qla2x00_start_scsi(srb_t *sp)
 {
-	int		ret, nseg;
+	int		nseg;
 	unsigned long   flags;
 	scsi_qla_host_t	*vha;
 	struct scsi_cmnd *cmd;
@@ -327,7 +327,6 @@ qla2x00_start_scsi(srb_t *sp)
 	char		tag[2];
 
 	/* Setup device pointers. */
-	ret = 0;
 	vha = sp->fcport->vha;
 	ha = vha->hw;
 	reg = &ha->iobase->isp;
@@ -707,7 +706,6 @@ qla24xx_build_scsi_iocbs(srb_t *sp, struct cmd_type_7 *cmd_pkt,
 	struct scsi_cmnd *cmd;
 	struct scatterlist *sg;
 	int i;
-	struct req_que *req;
 
 	cmd = GET_CMD_SP(sp);
 
@@ -722,7 +720,6 @@ qla24xx_build_scsi_iocbs(srb_t *sp, struct cmd_type_7 *cmd_pkt,
 	}
 
 	vha = sp->fcport->vha;
-	req = vha->req;
 
 	/* Set transfer direction */
 	if (cmd->sc_data_direction == DMA_TO_DEVICE) {
@@ -1165,7 +1162,6 @@ qla24xx_build_scsi_crc_2_iocbs(srb_t *sp, struct cmd_type_crc_2 *cmd_pkt,
 	scsi_qla_host_t		*vha;
 	struct scsi_cmnd	*cmd;
 	struct scatterlist	*cur_seg;
-	int			sgc;
 	uint32_t		total_bytes = 0;
 	uint32_t		data_bytes;
 	uint32_t		dif_bytes;
@@ -1182,7 +1178,6 @@ qla24xx_build_scsi_crc_2_iocbs(srb_t *sp, struct cmd_type_crc_2 *cmd_pkt,
 
 	cmd = GET_CMD_SP(sp);
 
-	sgc = 0;
 	/* Update entry type to indicate Command Type CRC_2 IOCB */
 	*((uint32_t *)(&cmd_pkt->entry_type)) =
 	    __constant_cpu_to_le32(COMMAND_TYPE_CRC_2);
@@ -1396,7 +1391,7 @@ crc_queuing_error:
 int
 qla24xx_start_scsi(srb_t *sp)
 {
-	int		ret, nseg;
+	int		nseg;
 	unsigned long   flags;
 	uint32_t	*clr_ptr;
 	uint32_t        index;
@@ -1413,8 +1408,6 @@ qla24xx_start_scsi(srb_t *sp)
 	char		tag[2];
 
 	/* Setup device pointers. */
-	ret = 0;
-
 	qla25xx_set_que(sp, &rsp);
 	req = vha->req;
 
@@ -2048,7 +2041,6 @@ qla2x00_ct_iocb(srb_t *sp, ms_iocb_entry_t *ct_iocb)
 	struct qla_hw_data *ha = vha->hw;
 	struct fc_bsg_job *bsg_job = sp->u.bsg_job;
 	int loop_iterartion = 0;
-	int cont_iocb_prsnt = 0;
 	int entry_count = 1;
 
 	memset(ct_iocb, 0, sizeof(ms_iocb_entry_t));
@@ -2099,7 +2091,6 @@ qla2x00_ct_iocb(srb_t *sp, ms_iocb_entry_t *ct_iocb)
 			    vha->hw->req_q_map[0]);
 			cur_dsd = (uint32_t *) cont_pkt->dseg_0_address;
 			avail_dsds = 5;
-			cont_iocb_prsnt = 1;
 			entry_count++;
 		}
 
@@ -2127,7 +2118,6 @@ qla24xx_ct_iocb(srb_t *sp, struct ct_entry_24xx *ct_iocb)
 	struct qla_hw_data *ha = vha->hw;
 	struct fc_bsg_job *bsg_job = sp->u.bsg_job;
 	int loop_iterartion = 0;
-	int cont_iocb_prsnt = 0;
 	int entry_count = 1;
 
 	ct_iocb->entry_type = CT_IOCB_TYPE;
@@ -2174,7 +2164,6 @@ qla24xx_ct_iocb(srb_t *sp, struct ct_entry_24xx *ct_iocb)
 			    ha->req_q_map[0]);
 			cur_dsd = (uint32_t *) cont_pkt->dseg_0_address;
 			avail_dsds = 5;
-			cont_iocb_prsnt = 1;
 			entry_count++;
 		}
 
@@ -2197,7 +2186,7 @@ qla24xx_ct_iocb(srb_t *sp, struct ct_entry_24xx *ct_iocb)
 int
 qla82xx_start_scsi(srb_t *sp)
 {
-	int		ret, nseg;
+	int		nseg;
 	unsigned long   flags;
 	struct scsi_cmnd *cmd;
 	uint32_t	*clr_ptr;
@@ -2218,7 +2207,6 @@ qla82xx_start_scsi(srb_t *sp)
 	char tag[2];
 
 	/* Setup device pointers. */
-	ret = 0;
 	reg = &ha->iobase->isp82;
 	cmd = GET_CMD_SP(sp);
 	req = vha->req;

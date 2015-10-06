@@ -3031,7 +3031,6 @@ qla2x00_shutdown(struct pci_dev *pdev)
 static void
 qla2x00_delete_all_vps(struct qla_hw_data *ha, scsi_qla_host_t *base_vha)
 {
-	struct Scsi_Host *scsi_host;
 	scsi_qla_host_t *vha;
 	unsigned long flags;
 
@@ -3042,7 +3041,7 @@ qla2x00_delete_all_vps(struct qla_hw_data *ha, scsi_qla_host_t *base_vha)
 		BUG_ON(base_vha->list.next == &ha->vp_list);
 		/* This assumes first entry in ha->vp_list is always base vha */
 		vha = list_first_entry(&base_vha->list, scsi_qla_host_t, list);
-		scsi_host = scsi_host_get(vha->host);
+		scsi_host_get(vha->host);
 
 		spin_unlock_irqrestore(&ha->vport_slock, flags);
 		mutex_unlock(&ha->vport_lock);
@@ -4832,7 +4831,6 @@ qla2x00_disable_board_on_pci_error(struct work_struct *work)
 static int
 qla2x00_do_dpc(void *data)
 {
-	int		rval;
 	scsi_qla_host_t *base_vha;
 	struct qla_hw_data *ha;
 
@@ -5068,7 +5066,7 @@ loop_resync_check:
 			if (!(test_and_set_bit(LOOP_RESYNC_ACTIVE,
 			    &base_vha->dpc_flags))) {
 
-				rval = qla2x00_loop_resync(base_vha);
+				qla2x00_loop_resync(base_vha);
 
 				clear_bit(LOOP_RESYNC_ACTIVE,
 						&base_vha->dpc_flags);
