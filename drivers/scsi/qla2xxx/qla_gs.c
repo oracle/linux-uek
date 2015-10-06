@@ -34,10 +34,10 @@ qla2x00_prep_ms_iocb(scsi_qla_host_t *vha, uint32_t req_size, uint32_t rsp_size)
 	ms_pkt->entry_type = MS_IOCB_TYPE;
 	ms_pkt->entry_count = 1;
 	SET_TARGET_ID(ha, ms_pkt->loop_id, SIMPLE_NAME_SERVER);
-	ms_pkt->control_flags = __constant_cpu_to_le16(CF_READ | CF_HEAD_TAG);
+	ms_pkt->control_flags = cpu_to_le16(CF_READ | CF_HEAD_TAG);
 	ms_pkt->timeout = cpu_to_le16(ha->r_a_tov / 10 * 2);
-	ms_pkt->cmd_dsd_count = __constant_cpu_to_le16(1);
-	ms_pkt->total_dsd_count = __constant_cpu_to_le16(2);
+	ms_pkt->cmd_dsd_count = cpu_to_le16(1);
+	ms_pkt->total_dsd_count = cpu_to_le16(2);
 	ms_pkt->rsp_bytecount = cpu_to_le32(rsp_size);
 	ms_pkt->req_bytecount = cpu_to_le32(req_size);
 
@@ -73,10 +73,10 @@ qla24xx_prep_ms_iocb(scsi_qla_host_t *vha, uint32_t req_size, uint32_t rsp_size)
 
 	ct_pkt->entry_type = CT_IOCB_TYPE;
 	ct_pkt->entry_count = 1;
-	ct_pkt->nport_handle = __constant_cpu_to_le16(NPH_SNS);
+	ct_pkt->nport_handle = cpu_to_le16(NPH_SNS);
 	ct_pkt->timeout = cpu_to_le16(ha->r_a_tov / 10 * 2);
-	ct_pkt->cmd_dsd_count = __constant_cpu_to_le16(1);
-	ct_pkt->rsp_dsd_count = __constant_cpu_to_le16(1);
+	ct_pkt->cmd_dsd_count = cpu_to_le16(1);
+	ct_pkt->rsp_dsd_count = cpu_to_le16(1);
 	ct_pkt->rsp_byte_count = cpu_to_le32(rsp_size);
 	ct_pkt->cmd_byte_count = cpu_to_le32(req_size);
 
@@ -141,7 +141,7 @@ qla2x00_chk_ms_status(scsi_qla_host_t *vha, ms_iocb_entry_t *ms_pkt,
 		case CS_DATA_UNDERRUN:
 		case CS_DATA_OVERRUN:		/* Overrun? */
 			if (ct_rsp->header.response !=
-			    __constant_cpu_to_be16(CT_ACCEPT_RESPONSE)) {
+			    cpu_to_be16(CT_ACCEPT_RESPONSE)) {
 				ql_dbg(ql_dbg_disc + ql_dbg_buffer, vha, 0x2077,
 				    "%s failed rejected request on port_id: "
 				    "%02x%02x%02x Compeltion status 0x%x, "
@@ -1187,10 +1187,10 @@ qla2x00_prep_ms_fdmi_iocb(scsi_qla_host_t *vha, uint32_t req_size,
 	ms_pkt->entry_type = MS_IOCB_TYPE;
 	ms_pkt->entry_count = 1;
 	SET_TARGET_ID(ha, ms_pkt->loop_id, vha->mgmt_svr_loop_id);
-	ms_pkt->control_flags = __constant_cpu_to_le16(CF_READ | CF_HEAD_TAG);
+	ms_pkt->control_flags = cpu_to_le16(CF_READ | CF_HEAD_TAG);
 	ms_pkt->timeout = cpu_to_le16(ha->r_a_tov / 10 * 2);
-	ms_pkt->cmd_dsd_count = __constant_cpu_to_le16(1);
-	ms_pkt->total_dsd_count = __constant_cpu_to_le16(2);
+	ms_pkt->cmd_dsd_count = cpu_to_le16(1);
+	ms_pkt->total_dsd_count = cpu_to_le16(2);
 	ms_pkt->rsp_bytecount = cpu_to_le32(rsp_size);
 	ms_pkt->req_bytecount = cpu_to_le32(req_size);
 
@@ -1227,8 +1227,8 @@ qla24xx_prep_ms_fdmi_iocb(scsi_qla_host_t *vha, uint32_t req_size,
 	ct_pkt->entry_count = 1;
 	ct_pkt->nport_handle = cpu_to_le16(vha->mgmt_svr_loop_id);
 	ct_pkt->timeout = cpu_to_le16(ha->r_a_tov / 10 * 2);
-	ct_pkt->cmd_dsd_count = __constant_cpu_to_le16(1);
-	ct_pkt->rsp_dsd_count = __constant_cpu_to_le16(1);
+	ct_pkt->cmd_dsd_count = cpu_to_le16(1);
+	ct_pkt->rsp_dsd_count = cpu_to_le16(1);
 	ct_pkt->rsp_byte_count = cpu_to_le32(rsp_size);
 	ct_pkt->cmd_byte_count = cpu_to_le32(req_size);
 
@@ -1316,19 +1316,19 @@ qla2x00_fdmi_rhba(scsi_qla_host_t *vha)
 
 	/* Prepare FDMI command arguments -- attribute block, attributes. */
 	memcpy(ct_req->req.rhba.hba_identifier, vha->port_name, WWN_SIZE);
-	ct_req->req.rhba.entry_count = __constant_cpu_to_be32(1);
+	ct_req->req.rhba.entry_count = cpu_to_be32(1);
 	memcpy(ct_req->req.rhba.port_name, vha->port_name, WWN_SIZE);
 	size = 2 * WWN_SIZE + 4 + 4;
 
 	/* Attributes */
 	ct_req->req.rhba.attrs.count =
-	    __constant_cpu_to_be32(FDMI_HBA_ATTR_COUNT);
+	    cpu_to_be32(FDMI_HBA_ATTR_COUNT);
 	entries = ct_req->req.rhba.hba_identifier;
 
 	/* Nodename. */
 	eiter = entries + size;
-	eiter->type = __constant_cpu_to_be16(FDMI_HBA_NODE_NAME);
-	eiter->len = __constant_cpu_to_be16(4 + WWN_SIZE);
+	eiter->type = cpu_to_be16(FDMI_HBA_NODE_NAME);
+	eiter->len = cpu_to_be16(4 + WWN_SIZE);
 	memcpy(eiter->a.node_name, vha->node_name, WWN_SIZE);
 	size += 4 + WWN_SIZE;
 
@@ -1337,7 +1337,7 @@ qla2x00_fdmi_rhba(scsi_qla_host_t *vha)
 
 	/* Manufacturer. */
 	eiter = entries + size;
-	eiter->type = __constant_cpu_to_be16(FDMI_HBA_MANUFACTURER);
+	eiter->type = cpu_to_be16(FDMI_HBA_MANUFACTURER);
 	snprintf(eiter->a.manufacturer, sizeof(eiter->a.manufacturer),
 	    "%s", "QLogic Corporation");
 	alen = strlen(eiter->a.manufacturer);
@@ -1350,7 +1350,7 @@ qla2x00_fdmi_rhba(scsi_qla_host_t *vha)
 
 	/* Serial number. */
 	eiter = entries + size;
-	eiter->type = __constant_cpu_to_be16(FDMI_HBA_SERIAL_NUMBER);
+	eiter->type = cpu_to_be16(FDMI_HBA_SERIAL_NUMBER);
 	if (IS_FWI2_CAPABLE(ha))
 		qla2xxx_get_vpd_field(vha, "SN", eiter->a.serial_num,
 		    sizeof(eiter->a.serial_num));
@@ -1370,7 +1370,7 @@ qla2x00_fdmi_rhba(scsi_qla_host_t *vha)
 
 	/* Model name. */
 	eiter = entries + size;
-	eiter->type = __constant_cpu_to_be16(FDMI_HBA_MODEL);
+	eiter->type = cpu_to_be16(FDMI_HBA_MODEL);
 	snprintf(eiter->a.model, sizeof(eiter->a.model),
 	    "%s", ha->model_number);
 	alen = strlen(eiter->a.model);
@@ -1383,7 +1383,7 @@ qla2x00_fdmi_rhba(scsi_qla_host_t *vha)
 
 	/* Model description. */
 	eiter = entries + size;
-	eiter->type = __constant_cpu_to_be16(FDMI_HBA_MODEL_DESCRIPTION);
+	eiter->type = cpu_to_be16(FDMI_HBA_MODEL_DESCRIPTION);
 	snprintf(eiter->a.model_desc, sizeof(eiter->a.model_desc),
 	    "%s", ha->model_desc);
 	alen = strlen(eiter->a.model_desc);
@@ -1396,7 +1396,7 @@ qla2x00_fdmi_rhba(scsi_qla_host_t *vha)
 
 	/* Hardware version. */
 	eiter = entries + size;
-	eiter->type = __constant_cpu_to_be16(FDMI_HBA_HARDWARE_VERSION);
+	eiter->type = cpu_to_be16(FDMI_HBA_HARDWARE_VERSION);
 	if (!IS_FWI2_CAPABLE(ha)) {
 		snprintf(eiter->a.hw_version, sizeof(eiter->a.hw_version),
 		    "HW:%s", ha->adapter_id);
@@ -1420,7 +1420,7 @@ qla2x00_fdmi_rhba(scsi_qla_host_t *vha)
 
 	/* Driver version. */
 	eiter = entries + size;
-	eiter->type = __constant_cpu_to_be16(FDMI_HBA_DRIVER_VERSION);
+	eiter->type = cpu_to_be16(FDMI_HBA_DRIVER_VERSION);
 	snprintf(eiter->a.driver_version, sizeof(eiter->a.driver_version),
 	    "%s", qla2x00_version_str);
 	alen = strlen(eiter->a.driver_version);
@@ -1433,7 +1433,7 @@ qla2x00_fdmi_rhba(scsi_qla_host_t *vha)
 
 	/* Option ROM version. */
 	eiter = entries + size;
-	eiter->type = __constant_cpu_to_be16(FDMI_HBA_OPTION_ROM_VERSION);
+	eiter->type = cpu_to_be16(FDMI_HBA_OPTION_ROM_VERSION);
 	snprintf(eiter->a.orom_version, sizeof(eiter->a.orom_version),
 	    "%d.%02d", ha->bios_revision[1], ha->bios_revision[0]);
 	alen = strlen(eiter->a.orom_version);
@@ -1446,7 +1446,7 @@ qla2x00_fdmi_rhba(scsi_qla_host_t *vha)
 
 	/* Firmware version */
 	eiter = entries + size;
-	eiter->type = __constant_cpu_to_be16(FDMI_HBA_FIRMWARE_VERSION);
+	eiter->type = cpu_to_be16(FDMI_HBA_FIRMWARE_VERSION);
 	ha->isp_ops->fw_version_str(vha, eiter->a.fw_version,
 	    sizeof(eiter->a.fw_version));
 	alen = strlen(eiter->a.fw_version);
@@ -1533,13 +1533,13 @@ qla2x00_fdmi_rpa(scsi_qla_host_t *vha)
 
 	/* Attributes */
 	ct_req->req.rpa.attrs.count =
-	    __constant_cpu_to_be32(FDMI_PORT_ATTR_COUNT);
+	    cpu_to_be32(FDMI_PORT_ATTR_COUNT);
 	entries = ct_req->req.rpa.port_name;
 
 	/* FC4 types. */
 	eiter = entries + size;
-	eiter->type = __constant_cpu_to_be16(FDMI_PORT_FC4_TYPES);
-	eiter->len = __constant_cpu_to_be16(4 + 32);
+	eiter->type = cpu_to_be16(FDMI_PORT_FC4_TYPES);
+	eiter->len = cpu_to_be16(4 + 32);
 	eiter->a.fc4_types[2] = 0x01;
 	size += 4 + 32;
 
@@ -1550,38 +1550,38 @@ qla2x00_fdmi_rpa(scsi_qla_host_t *vha)
 
 	/* Supported speed. */
 	eiter = entries + size;
-	eiter->type = __constant_cpu_to_be16(FDMI_PORT_SUPPORT_SPEED);
-	eiter->len = __constant_cpu_to_be16(4 + 4);
+	eiter->type = cpu_to_be16(FDMI_PORT_SUPPORT_SPEED);
+	eiter->len = cpu_to_be16(4 + 4);
 	if (IS_CNA_CAPABLE(ha))
-		eiter->a.sup_speed = __constant_cpu_to_be32(
+		eiter->a.sup_speed = cpu_to_be32(
 		    FDMI_PORT_SPEED_10GB);
 	else if (IS_QLA27XX(ha))
-		eiter->a.sup_speed = __constant_cpu_to_be32(
+		eiter->a.sup_speed = cpu_to_be32(
 		    FDMI_PORT_SPEED_32GB|
 		    FDMI_PORT_SPEED_16GB|
 		    FDMI_PORT_SPEED_8GB);
 	else if (IS_QLA2031(ha))
-		eiter->a.sup_speed = __constant_cpu_to_be32(
+		eiter->a.sup_speed = cpu_to_be32(
 		    FDMI_PORT_SPEED_16GB|
 		    FDMI_PORT_SPEED_8GB|
 		    FDMI_PORT_SPEED_4GB);
 	else if (IS_QLA25XX(ha))
-		eiter->a.sup_speed = __constant_cpu_to_be32(
+		eiter->a.sup_speed = cpu_to_be32(
 		    FDMI_PORT_SPEED_8GB|
 		    FDMI_PORT_SPEED_4GB|
 		    FDMI_PORT_SPEED_2GB|
 		    FDMI_PORT_SPEED_1GB);
 	else if (IS_QLA24XX_TYPE(ha))
-		eiter->a.sup_speed = __constant_cpu_to_be32(
+		eiter->a.sup_speed = cpu_to_be32(
 		    FDMI_PORT_SPEED_4GB|
 		    FDMI_PORT_SPEED_2GB|
 		    FDMI_PORT_SPEED_1GB);
 	else if (IS_QLA23XX(ha))
-		eiter->a.sup_speed = __constant_cpu_to_be32(
+		eiter->a.sup_speed = cpu_to_be32(
 		    FDMI_PORT_SPEED_2GB|
 		    FDMI_PORT_SPEED_1GB);
 	else
-		eiter->a.sup_speed = __constant_cpu_to_be32(
+		eiter->a.sup_speed = cpu_to_be32(
 		    FDMI_PORT_SPEED_1GB);
 	size += 4 + 4;
 
@@ -1590,40 +1590,40 @@ qla2x00_fdmi_rpa(scsi_qla_host_t *vha)
 
 	/* Current speed. */
 	eiter = entries + size;
-	eiter->type = __constant_cpu_to_be16(FDMI_PORT_CURRENT_SPEED);
-	eiter->len = __constant_cpu_to_be16(4 + 4);
+	eiter->type = cpu_to_be16(FDMI_PORT_CURRENT_SPEED);
+	eiter->len = cpu_to_be16(4 + 4);
 	switch (ha->link_data_rate) {
 	case PORT_SPEED_1GB:
 		eiter->a.cur_speed =
-		    __constant_cpu_to_be32(FDMI_PORT_SPEED_1GB);
+		    cpu_to_be32(FDMI_PORT_SPEED_1GB);
 		break;
 	case PORT_SPEED_2GB:
 		eiter->a.cur_speed =
-		    __constant_cpu_to_be32(FDMI_PORT_SPEED_2GB);
+		    cpu_to_be32(FDMI_PORT_SPEED_2GB);
 		break;
 	case PORT_SPEED_4GB:
 		eiter->a.cur_speed =
-		    __constant_cpu_to_be32(FDMI_PORT_SPEED_4GB);
+		    cpu_to_be32(FDMI_PORT_SPEED_4GB);
 		break;
 	case PORT_SPEED_8GB:
 		eiter->a.cur_speed =
-		    __constant_cpu_to_be32(FDMI_PORT_SPEED_8GB);
+		    cpu_to_be32(FDMI_PORT_SPEED_8GB);
 		break;
 	case PORT_SPEED_10GB:
 		eiter->a.cur_speed =
-		    __constant_cpu_to_be32(FDMI_PORT_SPEED_10GB);
+		    cpu_to_be32(FDMI_PORT_SPEED_10GB);
 		break;
 	case PORT_SPEED_16GB:
 		eiter->a.cur_speed =
-		    __constant_cpu_to_be32(FDMI_PORT_SPEED_16GB);
+		    cpu_to_be32(FDMI_PORT_SPEED_16GB);
 		break;
 	case PORT_SPEED_32GB:
 		eiter->a.cur_speed =
-		    __constant_cpu_to_be32(FDMI_PORT_SPEED_32GB);
+		    cpu_to_be32(FDMI_PORT_SPEED_32GB);
 		break;
 	default:
 		eiter->a.cur_speed =
-		    __constant_cpu_to_be32(FDMI_PORT_SPEED_UNKNOWN);
+		    cpu_to_be32(FDMI_PORT_SPEED_UNKNOWN);
 		break;
 	}
 	size += 4 + 4;
@@ -1633,8 +1633,8 @@ qla2x00_fdmi_rpa(scsi_qla_host_t *vha)
 
 	/* Max frame size. */
 	eiter = entries + size;
-	eiter->type = __constant_cpu_to_be16(FDMI_PORT_MAX_FRAME_SIZE);
-	eiter->len = __constant_cpu_to_be16(4 + 4);
+	eiter->type = cpu_to_be16(FDMI_PORT_MAX_FRAME_SIZE);
+	eiter->len = cpu_to_be16(4 + 4);
 	eiter->a.max_frame_size = IS_FWI2_CAPABLE(ha) ?
 	    le16_to_cpu(icb24->frame_payload_size) :
 	    le16_to_cpu(ha->init_cb->frame_payload_size);
@@ -1646,7 +1646,7 @@ qla2x00_fdmi_rpa(scsi_qla_host_t *vha)
 
 	/* OS device name. */
 	eiter = entries + size;
-	eiter->type = __constant_cpu_to_be16(FDMI_PORT_OS_DEVICE_NAME);
+	eiter->type = cpu_to_be16(FDMI_PORT_OS_DEVICE_NAME);
 	snprintf(eiter->a.os_dev_name, sizeof(eiter->a.os_dev_name),
 	    "%s:host%lu", QLA2XXX_DRIVER_NAME, vha->host_no);
 	alen = strlen(eiter->a.os_dev_name);
@@ -1659,7 +1659,7 @@ qla2x00_fdmi_rpa(scsi_qla_host_t *vha)
 
 	/* Hostname. */
 	eiter = entries + size;
-	eiter->type = __constant_cpu_to_be16(FDMI_PORT_HOST_NAME);
+	eiter->type = cpu_to_be16(FDMI_PORT_HOST_NAME);
 	p_sysid = utsname();
 	if (p_sysid) {
 		snprintf(eiter->a.host_name, sizeof(eiter->a.host_name),
@@ -1742,19 +1742,19 @@ qla2x00_fdmiv2_rhba(scsi_qla_host_t *vha)
 
 	/* Prepare FDMI command arguments -- attribute block, attributes. */
 	memcpy(ct_req->req.rhba2.hba_identifier, vha->port_name, WWN_SIZE);
-	ct_req->req.rhba2.entry_count = __constant_cpu_to_be32(1);
+	ct_req->req.rhba2.entry_count = cpu_to_be32(1);
 	memcpy(ct_req->req.rhba2.port_name, vha->port_name, WWN_SIZE);
 	size = 2 * WWN_SIZE + 4 + 4;
 
 	/* Attributes */
 	ct_req->req.rhba2.attrs.count =
-	    __constant_cpu_to_be32(FDMIV2_HBA_ATTR_COUNT);
+	    cpu_to_be32(FDMIV2_HBA_ATTR_COUNT);
 	entries = ct_req->req.rhba2.hba_identifier;
 
 	/* Nodename. */
 	eiter = entries + size;
-	eiter->type = __constant_cpu_to_be16(FDMI_HBA_NODE_NAME);
-	eiter->len = __constant_cpu_to_be16(4 + WWN_SIZE);
+	eiter->type = cpu_to_be16(FDMI_HBA_NODE_NAME);
+	eiter->len = cpu_to_be16(4 + WWN_SIZE);
 	memcpy(eiter->a.node_name, vha->node_name, WWN_SIZE);
 	size += 4 + WWN_SIZE;
 
@@ -1763,7 +1763,7 @@ qla2x00_fdmiv2_rhba(scsi_qla_host_t *vha)
 
 	/* Manufacturer. */
 	eiter = entries + size;
-	eiter->type = __constant_cpu_to_be16(FDMI_HBA_MANUFACTURER);
+	eiter->type = cpu_to_be16(FDMI_HBA_MANUFACTURER);
 	snprintf(eiter->a.manufacturer, sizeof(eiter->a.manufacturer),
 	    "%s", "QLogic Corporation");
 	alen = strlen(eiter->a.manufacturer);
@@ -1776,7 +1776,7 @@ qla2x00_fdmiv2_rhba(scsi_qla_host_t *vha)
 
 	/* Serial number. */
 	eiter = entries + size;
-	eiter->type = __constant_cpu_to_be16(FDMI_HBA_SERIAL_NUMBER);
+	eiter->type = cpu_to_be16(FDMI_HBA_SERIAL_NUMBER);
 	if (IS_FWI2_CAPABLE(ha))
 		qla2xxx_get_vpd_field(vha, "SN", eiter->a.serial_num,
 		    sizeof(eiter->a.serial_num));
@@ -1796,7 +1796,7 @@ qla2x00_fdmiv2_rhba(scsi_qla_host_t *vha)
 
 	/* Model name. */
 	eiter = entries + size;
-	eiter->type = __constant_cpu_to_be16(FDMI_HBA_MODEL);
+	eiter->type = cpu_to_be16(FDMI_HBA_MODEL);
 	snprintf(eiter->a.model, sizeof(eiter->a.model),
 	    "%s", ha->model_number);
 	alen = strlen(eiter->a.model);
@@ -1809,7 +1809,7 @@ qla2x00_fdmiv2_rhba(scsi_qla_host_t *vha)
 
 	/* Model description. */
 	eiter = entries + size;
-	eiter->type = __constant_cpu_to_be16(FDMI_HBA_MODEL_DESCRIPTION);
+	eiter->type = cpu_to_be16(FDMI_HBA_MODEL_DESCRIPTION);
 	snprintf(eiter->a.model_desc, sizeof(eiter->a.model_desc),
 	    "%s", ha->model_desc);
 	alen = strlen(eiter->a.model_desc);
@@ -1822,7 +1822,7 @@ qla2x00_fdmiv2_rhba(scsi_qla_host_t *vha)
 
 	/* Hardware version. */
 	eiter = entries + size;
-	eiter->type = __constant_cpu_to_be16(FDMI_HBA_HARDWARE_VERSION);
+	eiter->type = cpu_to_be16(FDMI_HBA_HARDWARE_VERSION);
 	if (!IS_FWI2_CAPABLE(ha)) {
 		snprintf(eiter->a.hw_version, sizeof(eiter->a.hw_version),
 		    "HW:%s", ha->adapter_id);
@@ -1846,7 +1846,7 @@ qla2x00_fdmiv2_rhba(scsi_qla_host_t *vha)
 
 	/* Driver version. */
 	eiter = entries + size;
-	eiter->type = __constant_cpu_to_be16(FDMI_HBA_DRIVER_VERSION);
+	eiter->type = cpu_to_be16(FDMI_HBA_DRIVER_VERSION);
 	snprintf(eiter->a.driver_version, sizeof(eiter->a.driver_version),
 	    "%s", qla2x00_version_str);
 	alen = strlen(eiter->a.driver_version);
@@ -1859,7 +1859,7 @@ qla2x00_fdmiv2_rhba(scsi_qla_host_t *vha)
 
 	/* Option ROM version. */
 	eiter = entries + size;
-	eiter->type = __constant_cpu_to_be16(FDMI_HBA_OPTION_ROM_VERSION);
+	eiter->type = cpu_to_be16(FDMI_HBA_OPTION_ROM_VERSION);
 	snprintf(eiter->a.orom_version, sizeof(eiter->a.orom_version),
 	    "%d.%02d", ha->bios_revision[1], ha->bios_revision[0]);
 	alen = strlen(eiter->a.orom_version);
@@ -1873,7 +1873,7 @@ qla2x00_fdmiv2_rhba(scsi_qla_host_t *vha)
 
 	/* Firmware version */
 	eiter = entries + size;
-	eiter->type = __constant_cpu_to_be16(FDMI_HBA_FIRMWARE_VERSION);
+	eiter->type = cpu_to_be16(FDMI_HBA_FIRMWARE_VERSION);
 	ha->isp_ops->fw_version_str(vha, eiter->a.fw_version,
 	    sizeof(eiter->a.fw_version));
 	alen = strlen(eiter->a.fw_version);
@@ -1886,7 +1886,7 @@ qla2x00_fdmiv2_rhba(scsi_qla_host_t *vha)
 
 	/* OS Name and Version */
 	eiter = entries + size;
-	eiter->type = __constant_cpu_to_be16(FDMI_HBA_OS_NAME_AND_VERSION);
+	eiter->type = cpu_to_be16(FDMI_HBA_OS_NAME_AND_VERSION);
 	p_sysid = utsname();
 	if (p_sysid) {
 		snprintf(eiter->a.os_version, sizeof(eiter->a.os_version),
@@ -1906,13 +1906,13 @@ qla2x00_fdmiv2_rhba(scsi_qla_host_t *vha)
 
 	/* MAX CT Payload Length */
 	eiter = entries + size;
-	eiter->type = __constant_cpu_to_be16(
+	eiter->type = cpu_to_be16(
 	    FDMI_HBA_MAXIMUM_CT_PAYLOAD_LENGTH);
 	eiter->a.max_ct_len = IS_FWI2_CAPABLE(ha) ?
 	    le16_to_cpu(icb24->frame_payload_size) :
 	    le16_to_cpu(ha->init_cb->frame_payload_size);
 	eiter->a.max_ct_len = cpu_to_be32(eiter->a.max_ct_len);
-	eiter->len = __constant_cpu_to_be16(4 + 4);
+	eiter->len = cpu_to_be16(4 + 4);
 	size += 4 + 4;
 
 	ql_dbg(ql_dbg_disc, vha, 0x20af,
@@ -1920,7 +1920,7 @@ qla2x00_fdmiv2_rhba(scsi_qla_host_t *vha)
 
 	/* Node Sybolic Name */
 	eiter = entries + size;
-	eiter->type = __constant_cpu_to_be16(FDMI_HBA_NODE_SYMBOLIC_NAME);
+	eiter->type = cpu_to_be16(FDMI_HBA_NODE_SYMBOLIC_NAME);
 	qla2x00_get_sym_node_name(vha, eiter->a.sym_name,
 	    sizeof(eiter->a.sym_name));
 	alen = strlen(eiter->a.sym_name);
@@ -1933,9 +1933,9 @@ qla2x00_fdmiv2_rhba(scsi_qla_host_t *vha)
 
 	/* Vendor Id */
 	eiter = entries + size;
-	eiter->type = __constant_cpu_to_be16(FDMI_HBA_VENDOR_ID);
-	eiter->a.vendor_id = __constant_cpu_to_be32(0x1077);
-	eiter->len = __constant_cpu_to_be16(4 + 4);
+	eiter->type = cpu_to_be16(FDMI_HBA_VENDOR_ID);
+	eiter->a.vendor_id = cpu_to_be32(0x1077);
+	eiter->len = cpu_to_be16(4 + 4);
 	size += 4 + 4;
 
 	ql_dbg(ql_dbg_disc, vha, 0x2022,
@@ -1943,9 +1943,9 @@ qla2x00_fdmiv2_rhba(scsi_qla_host_t *vha)
 
 	/* Num Ports */
 	eiter = entries + size;
-	eiter->type = __constant_cpu_to_be16(FDMI_HBA_NUM_PORTS);
-	eiter->a.num_ports = __constant_cpu_to_be32(1);
-	eiter->len = __constant_cpu_to_be16(4 + 4);
+	eiter->type = cpu_to_be16(FDMI_HBA_NUM_PORTS);
+	eiter->a.num_ports = cpu_to_be32(1);
+	eiter->len = cpu_to_be16(4 + 4);
 	size += 4 + 4;
 
 	ql_dbg(ql_dbg_disc, vha, 0x20b2,
@@ -1953,7 +1953,7 @@ qla2x00_fdmiv2_rhba(scsi_qla_host_t *vha)
 
 	/* Fabric Name */
 	eiter = entries + size;
-	eiter->type = __constant_cpu_to_be16(FDMI_HBA_FABRIC_NAME);
+	eiter->type = cpu_to_be16(FDMI_HBA_FABRIC_NAME);
 	memcpy(eiter->a.fabric_name, vha->fabric_node_name, WWN_SIZE);
 	eiter->len = cpu_to_be16(4 + WWN_SIZE);
 	size += 4 + WWN_SIZE;
@@ -1963,7 +1963,7 @@ qla2x00_fdmiv2_rhba(scsi_qla_host_t *vha)
 
 	/* BIOS Version */
 	eiter = entries + size;
-	eiter->type = __constant_cpu_to_be16(FDMI_HBA_BOOT_BIOS_NAME);
+	eiter->type = cpu_to_be16(FDMI_HBA_BOOT_BIOS_NAME);
 	snprintf(eiter->a.bios_name, sizeof(eiter->a.bios_name),
 	    "BIOS %d.%02d", ha->bios_revision[1], ha->bios_revision[0]);
 	alen = strlen(eiter->a.bios_name);
@@ -1976,12 +1976,12 @@ qla2x00_fdmiv2_rhba(scsi_qla_host_t *vha)
 
 	/* Vendor Identifier */
 	eiter = entries + size;
-	eiter->type = __constant_cpu_to_be16(FDMI_HBA_TYPE_VENDOR_IDENTIFIER);
+	eiter->type = cpu_to_be16(FDMI_HBA_TYPE_VENDOR_IDENTIFIER);
 	snprintf(eiter->a.vendor_indentifer, sizeof(eiter->a.vendor_indentifer),
 	    "%s", "QLGC");
 	alen = strlen(eiter->a.vendor_indentifer);
 	alen += 4 - (alen & 3);
-	eiter->len = __constant_cpu_to_be16(4 + alen);
+	eiter->len = cpu_to_be16(4 + alen);
 	size += 4 + alen;
 
 	ql_dbg(ql_dbg_disc, vha, 0x20b1,
@@ -2113,13 +2113,13 @@ qla2x00_fdmiv2_rpa(scsi_qla_host_t *vha)
 
 	/* Attributes */
 	ct_req->req.rpa2.attrs.count =
-	    __constant_cpu_to_be32(FDMIV2_PORT_ATTR_COUNT);
+	    cpu_to_be32(FDMIV2_PORT_ATTR_COUNT);
 	entries = ct_req->req.rpa2.port_name;
 
 	/* FC4 types. */
 	eiter = entries + size;
-	eiter->type = __constant_cpu_to_be16(FDMI_PORT_FC4_TYPES);
-	eiter->len = __constant_cpu_to_be16(4 + 32);
+	eiter->type = cpu_to_be16(FDMI_PORT_FC4_TYPES);
+	eiter->len = cpu_to_be16(4 + 32);
 	eiter->a.fc4_types[2] = 0x01;
 	size += 4 + 32;
 
@@ -2130,38 +2130,38 @@ qla2x00_fdmiv2_rpa(scsi_qla_host_t *vha)
 
 	/* Supported speed. */
 	eiter = entries + size;
-	eiter->type = __constant_cpu_to_be16(FDMI_PORT_SUPPORT_SPEED);
-	eiter->len = __constant_cpu_to_be16(4 + 4);
+	eiter->type = cpu_to_be16(FDMI_PORT_SUPPORT_SPEED);
+	eiter->len = cpu_to_be16(4 + 4);
 	if (IS_CNA_CAPABLE(ha))
-		eiter->a.sup_speed = __constant_cpu_to_be32(
+		eiter->a.sup_speed = cpu_to_be32(
 		    FDMI_PORT_SPEED_10GB);
 	else if (IS_QLA27XX(ha))
-		eiter->a.sup_speed = __constant_cpu_to_be32(
+		eiter->a.sup_speed = cpu_to_be32(
 		    FDMI_PORT_SPEED_32GB|
 		    FDMI_PORT_SPEED_16GB|
 		    FDMI_PORT_SPEED_8GB);
 	else if (IS_QLA2031(ha))
-		eiter->a.sup_speed = __constant_cpu_to_be32(
+		eiter->a.sup_speed = cpu_to_be32(
 		    FDMI_PORT_SPEED_16GB|
 		    FDMI_PORT_SPEED_8GB|
 		    FDMI_PORT_SPEED_4GB);
 	else if (IS_QLA25XX(ha))
-		eiter->a.sup_speed = __constant_cpu_to_be32(
+		eiter->a.sup_speed = cpu_to_be32(
 		    FDMI_PORT_SPEED_8GB|
 		    FDMI_PORT_SPEED_4GB|
 		    FDMI_PORT_SPEED_2GB|
 		    FDMI_PORT_SPEED_1GB);
 	else if (IS_QLA24XX_TYPE(ha))
-		eiter->a.sup_speed = __constant_cpu_to_be32(
+		eiter->a.sup_speed = cpu_to_be32(
 		    FDMI_PORT_SPEED_4GB|
 		    FDMI_PORT_SPEED_2GB|
 		    FDMI_PORT_SPEED_1GB);
 	else if (IS_QLA23XX(ha))
-		eiter->a.sup_speed = __constant_cpu_to_be32(
+		eiter->a.sup_speed = cpu_to_be32(
 		    FDMI_PORT_SPEED_2GB|
 		    FDMI_PORT_SPEED_1GB);
 	else
-		eiter->a.sup_speed = __constant_cpu_to_be32(
+		eiter->a.sup_speed = cpu_to_be32(
 		    FDMI_PORT_SPEED_1GB);
 	size += 4 + 4;
 
@@ -2170,40 +2170,40 @@ qla2x00_fdmiv2_rpa(scsi_qla_host_t *vha)
 
 	/* Current speed. */
 	eiter = entries + size;
-	eiter->type = __constant_cpu_to_be16(FDMI_PORT_CURRENT_SPEED);
-	eiter->len = __constant_cpu_to_be16(4 + 4);
+	eiter->type = cpu_to_be16(FDMI_PORT_CURRENT_SPEED);
+	eiter->len = cpu_to_be16(4 + 4);
 	switch (ha->link_data_rate) {
 	case PORT_SPEED_1GB:
 		eiter->a.cur_speed =
-		    __constant_cpu_to_be32(FDMI_PORT_SPEED_1GB);
+		    cpu_to_be32(FDMI_PORT_SPEED_1GB);
 		break;
 	case PORT_SPEED_2GB:
 		eiter->a.cur_speed =
-		    __constant_cpu_to_be32(FDMI_PORT_SPEED_2GB);
+		    cpu_to_be32(FDMI_PORT_SPEED_2GB);
 		break;
 	case PORT_SPEED_4GB:
 		eiter->a.cur_speed =
-		    __constant_cpu_to_be32(FDMI_PORT_SPEED_4GB);
+		    cpu_to_be32(FDMI_PORT_SPEED_4GB);
 		break;
 	case PORT_SPEED_8GB:
 		eiter->a.cur_speed =
-		    __constant_cpu_to_be32(FDMI_PORT_SPEED_8GB);
+		    cpu_to_be32(FDMI_PORT_SPEED_8GB);
 		break;
 	case PORT_SPEED_10GB:
 		eiter->a.cur_speed =
-		    __constant_cpu_to_be32(FDMI_PORT_SPEED_10GB);
+		    cpu_to_be32(FDMI_PORT_SPEED_10GB);
 		break;
 	case PORT_SPEED_16GB:
 		eiter->a.cur_speed =
-		    __constant_cpu_to_be32(FDMI_PORT_SPEED_16GB);
+		    cpu_to_be32(FDMI_PORT_SPEED_16GB);
 		break;
 	case PORT_SPEED_32GB:
 		eiter->a.cur_speed =
-		    __constant_cpu_to_be32(FDMI_PORT_SPEED_32GB);
+		    cpu_to_be32(FDMI_PORT_SPEED_32GB);
 		break;
 	default:
 		eiter->a.cur_speed =
-		    __constant_cpu_to_be32(FDMI_PORT_SPEED_UNKNOWN);
+		    cpu_to_be32(FDMI_PORT_SPEED_UNKNOWN);
 		break;
 	}
 	size += 4 + 4;
@@ -2213,8 +2213,8 @@ qla2x00_fdmiv2_rpa(scsi_qla_host_t *vha)
 
 	/* Max frame size. */
 	eiter = entries + size;
-	eiter->type = __constant_cpu_to_be16(FDMI_PORT_MAX_FRAME_SIZE);
-	eiter->len = __constant_cpu_to_be16(4 + 4);
+	eiter->type = cpu_to_be16(FDMI_PORT_MAX_FRAME_SIZE);
+	eiter->len = cpu_to_be16(4 + 4);
 	eiter->a.max_frame_size = IS_FWI2_CAPABLE(ha) ?
 	    le16_to_cpu(icb24->frame_payload_size) :
 	    le16_to_cpu(ha->init_cb->frame_payload_size);
@@ -2226,7 +2226,7 @@ qla2x00_fdmiv2_rpa(scsi_qla_host_t *vha)
 
 	/* OS device name. */
 	eiter = entries + size;
-	eiter->type = __constant_cpu_to_be16(FDMI_PORT_OS_DEVICE_NAME);
+	eiter->type = cpu_to_be16(FDMI_PORT_OS_DEVICE_NAME);
 	snprintf(eiter->a.os_dev_name, sizeof(eiter->a.os_dev_name),
 	    "%s:host%lu", QLA2XXX_DRIVER_NAME, vha->host_no);
 	alen = strlen(eiter->a.os_dev_name);
@@ -2239,7 +2239,7 @@ qla2x00_fdmiv2_rpa(scsi_qla_host_t *vha)
 
 	/* Hostname. */
 	eiter = entries + size;
-	eiter->type = __constant_cpu_to_be16(FDMI_PORT_HOST_NAME);
+	eiter->type = cpu_to_be16(FDMI_PORT_HOST_NAME);
 	p_sysid = utsname();
 	if (p_sysid) {
 		snprintf(eiter->a.host_name, sizeof(eiter->a.host_name),
@@ -2258,7 +2258,7 @@ qla2x00_fdmiv2_rpa(scsi_qla_host_t *vha)
 
 	/* Node Name */
 	eiter = entries + size;
-	eiter->type = __constant_cpu_to_be16(FDMI_PORT_NODE_NAME);
+	eiter->type = cpu_to_be16(FDMI_PORT_NODE_NAME);
 	memcpy(eiter->a.node_name, vha->node_name, WWN_SIZE);
 	eiter->len = cpu_to_be16(4 + WWN_SIZE);
 	size += 4 + WWN_SIZE;
@@ -2268,7 +2268,7 @@ qla2x00_fdmiv2_rpa(scsi_qla_host_t *vha)
 
 	/* Port Name */
 	eiter = entries + size;
-	eiter->type = __constant_cpu_to_be16(FDMI_PORT_NAME);
+	eiter->type = cpu_to_be16(FDMI_PORT_NAME);
 	memcpy(eiter->a.port_name, vha->port_name, WWN_SIZE);
 	eiter->len = cpu_to_be16(4 + WWN_SIZE);
 	size += 4 + WWN_SIZE;
@@ -2278,7 +2278,7 @@ qla2x00_fdmiv2_rpa(scsi_qla_host_t *vha)
 
 	/* Port Symbolic Name */
 	eiter = entries + size;
-	eiter->type = __constant_cpu_to_be16(FDMI_PORT_SYM_NAME);
+	eiter->type = cpu_to_be16(FDMI_PORT_SYM_NAME);
 	qla2x00_get_sym_node_name(vha, eiter->a.port_sym_name,
 	    sizeof(eiter->a.port_sym_name));
 	alen = strlen(eiter->a.port_sym_name);
@@ -2291,8 +2291,8 @@ qla2x00_fdmiv2_rpa(scsi_qla_host_t *vha)
 
 	/* Port Type */
 	eiter = entries + size;
-	eiter->type = __constant_cpu_to_be16(FDMI_PORT_TYPE);
-	eiter->a.port_type = __constant_cpu_to_be32(NS_NX_PORT_TYPE);
+	eiter->type = cpu_to_be16(FDMI_PORT_TYPE);
+	eiter->a.port_type = cpu_to_be32(NS_NX_PORT_TYPE);
 	eiter->len = cpu_to_be16(4 + 4);
 	size += 4 + 4;
 
@@ -2301,8 +2301,8 @@ qla2x00_fdmiv2_rpa(scsi_qla_host_t *vha)
 
 	/* Class of Service  */
 	eiter = entries + size;
-	eiter->type = __constant_cpu_to_be16(FDMI_PORT_SUPP_COS);
-	eiter->a.port_supported_cos = __constant_cpu_to_be32(FC_CLASS_3);
+	eiter->type = cpu_to_be16(FDMI_PORT_SUPP_COS);
+	eiter->a.port_supported_cos = cpu_to_be32(FC_CLASS_3);
 	eiter->len = cpu_to_be16(4 + 4);
 	size += 4 + 4;
 
@@ -2311,7 +2311,7 @@ qla2x00_fdmiv2_rpa(scsi_qla_host_t *vha)
 
 	/* Port Fabric Name */
 	eiter = entries + size;
-	eiter->type = __constant_cpu_to_be16(FDMI_PORT_FABRIC_NAME);
+	eiter->type = cpu_to_be16(FDMI_PORT_FABRIC_NAME);
 	memcpy(eiter->a.fabric_name, vha->fabric_node_name, WWN_SIZE);
 	eiter->len = cpu_to_be16(4 + WWN_SIZE);
 	size += 4 + WWN_SIZE;
@@ -2321,7 +2321,7 @@ qla2x00_fdmiv2_rpa(scsi_qla_host_t *vha)
 
 	/* FC4_type */
 	eiter = entries + size;
-	eiter->type = __constant_cpu_to_be16(FDMI_PORT_FC4_TYPE);
+	eiter->type = cpu_to_be16(FDMI_PORT_FC4_TYPE);
 	eiter->a.port_fc4_type[0] = 0;
 	eiter->a.port_fc4_type[1] = 0;
 	eiter->a.port_fc4_type[2] = 1;
@@ -2335,8 +2335,8 @@ qla2x00_fdmiv2_rpa(scsi_qla_host_t *vha)
 
 	/* Port State */
 	eiter = entries + size;
-	eiter->type = __constant_cpu_to_be16(FDMI_PORT_STATE);
-	eiter->a.port_state = __constant_cpu_to_be32(1);
+	eiter->type = cpu_to_be16(FDMI_PORT_STATE);
+	eiter->a.port_state = cpu_to_be32(1);
 	eiter->len = cpu_to_be16(4 + 4);
 	size += 4 + 4;
 
@@ -2345,8 +2345,8 @@ qla2x00_fdmiv2_rpa(scsi_qla_host_t *vha)
 
 	/* Number of Ports */
 	eiter = entries + size;
-	eiter->type = __constant_cpu_to_be16(FDMI_PORT_COUNT);
-	eiter->a.num_ports = __constant_cpu_to_be32(1);
+	eiter->type = cpu_to_be16(FDMI_PORT_COUNT);
+	eiter->a.num_ports = cpu_to_be32(1);
 	eiter->len = cpu_to_be16(4 + 4);
 	size += 4 + 4;
 
@@ -2355,7 +2355,7 @@ qla2x00_fdmiv2_rpa(scsi_qla_host_t *vha)
 
 	/* Port Id */
 	eiter = entries + size;
-	eiter->type = __constant_cpu_to_be16(FDMI_PORT_ID);
+	eiter->type = cpu_to_be16(FDMI_PORT_ID);
 	eiter->a.port_id = cpu_to_be32(vha->d_id.b24);
 	eiter->len = cpu_to_be16(4 + 4);
 	size += 4 + 4;
@@ -2535,8 +2535,8 @@ qla24xx_prep_ms_fm_iocb(scsi_qla_host_t *vha, uint32_t req_size,
 	ct_pkt->entry_count = 1;
 	ct_pkt->nport_handle = cpu_to_le16(vha->mgmt_svr_loop_id);
 	ct_pkt->timeout = cpu_to_le16(ha->r_a_tov / 10 * 2);
-	ct_pkt->cmd_dsd_count = __constant_cpu_to_le16(1);
-	ct_pkt->rsp_dsd_count = __constant_cpu_to_le16(1);
+	ct_pkt->cmd_dsd_count = cpu_to_le16(1);
+	ct_pkt->rsp_dsd_count = cpu_to_le16(1);
 	ct_pkt->rsp_byte_count = cpu_to_le32(rsp_size);
 	ct_pkt->cmd_byte_count = cpu_to_le32(req_size);
 

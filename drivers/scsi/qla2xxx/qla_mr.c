@@ -1628,7 +1628,7 @@ qlafx00_fx_disc(scsi_qla_host_t *vha, fc_port_t *fcport, uint8_t fx_type)
 			phost_info = &preg_hsi->hsi;
 			memset(preg_hsi, 0, sizeof(struct register_host_info));
 			phost_info->os_type =
-			    __constant_cpu_to_le32(OS_TYPE_LINUX);
+			    cpu_to_le32(OS_TYPE_LINUX);
 			strncpy(phost_info->sysname,
 			    p_sysid->sysname, SYSNAME_LENGTH);
 			strncpy(phost_info->nodename,
@@ -1646,7 +1646,7 @@ qlafx00_fx_disc(scsi_qla_host_t *vha, fc_port_t *fcport, uint8_t fx_type)
 			strncpy(phost_info->hostdriver,
 			    QLA2XXX_VERSION, VERSION_LENGTH);
 			do_gettimeofday(&tv);
-			preg_hsi->utc = __constant_cpu_to_le64(tv.tv_sec);
+			preg_hsi->utc = cpu_to_le64(tv.tv_sec);
 			ql_dbg(ql_dbg_init, vha, 0x0149,
 			    "ISP%04X: Host registration with firmware\n",
 			    ha->pdev->device);
@@ -3244,7 +3244,7 @@ qlafx00_prep_cont_type1_iocb(struct req_que *req,
 
 	/* Load packet defaults. */
 	*((uint32_t *)(&lcont_pkt->entry_type)) =
-	    __constant_cpu_to_le32(CONTINUE_A64_TYPE_FX00);
+	    cpu_to_le32(CONTINUE_A64_TYPE_FX00);
 
 	return cont_pkt;
 }
@@ -3275,7 +3275,7 @@ qlafx00_build_scsi_iocbs(srb_t *sp, cmd_type_7_fx00_t *cmd_pkt,
 
 	/* No data transfer */
 	if (!scsi_bufflen(cmd) || cmd->sc_data_direction == DMA_NONE) {
-		lcmd_pkt->byte_count = __constant_cpu_to_le32(0);
+		lcmd_pkt->byte_count = cpu_to_le32(0);
 		return;
 	}
 

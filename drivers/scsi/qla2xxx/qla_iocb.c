@@ -107,8 +107,7 @@ qla2x00_prep_cont_type0_iocb(struct scsi_qla_host *vha)
 	cont_pkt = (cont_entry_t *)req->ring_ptr;
 
 	/* Load packet defaults. */
-	*((uint32_t *)(&cont_pkt->entry_type)) =
-	    __constant_cpu_to_le32(CONTINUE_TYPE);
+	*((uint32_t *)(&cont_pkt->entry_type)) = cpu_to_le32(CONTINUE_TYPE);
 
 	return (cont_pkt);
 }
@@ -137,8 +136,8 @@ qla2x00_prep_cont_type1_iocb(scsi_qla_host_t *vha, struct req_que *req)
 
 	/* Load packet defaults. */
 	*((uint32_t *)(&cont_pkt->entry_type)) = IS_QLAFX00(vha->hw) ?
-	    __constant_cpu_to_le32(CONTINUE_A64_TYPE_FX00) :
-	    __constant_cpu_to_le32(CONTINUE_A64_TYPE);
+	    cpu_to_le32(CONTINUE_A64_TYPE_FX00) :
+	    cpu_to_le32(CONTINUE_A64_TYPE);
 
 	return (cont_pkt);
 }
@@ -203,11 +202,11 @@ void qla2x00_build_scsi_iocbs_32(srb_t *sp, cmd_entry_t *cmd_pkt,
 
 	/* Update entry type to indicate Command Type 2 IOCB */
 	*((uint32_t *)(&cmd_pkt->entry_type)) =
-	    __constant_cpu_to_le32(COMMAND_TYPE);
+	    cpu_to_le32(COMMAND_TYPE);
 
 	/* No data transfer */
 	if (!scsi_bufflen(cmd) || cmd->sc_data_direction == DMA_NONE) {
-		cmd_pkt->byte_count = __constant_cpu_to_le32(0);
+		cmd_pkt->byte_count = cpu_to_le32(0);
 		return;
 	}
 
@@ -260,12 +259,11 @@ void qla2x00_build_scsi_iocbs_64(srb_t *sp, cmd_entry_t *cmd_pkt,
 	cmd = GET_CMD_SP(sp);
 
 	/* Update entry type to indicate Command Type 3 IOCB */
-	*((uint32_t *)(&cmd_pkt->entry_type)) =
-	    __constant_cpu_to_le32(COMMAND_A64_TYPE);
+	*((uint32_t *)(&cmd_pkt->entry_type)) = cpu_to_le32(COMMAND_A64_TYPE);
 
 	/* No data transfer */
 	if (!scsi_bufflen(cmd) || cmd->sc_data_direction == DMA_NONE) {
-		cmd_pkt->byte_count = __constant_cpu_to_le32(0);
+		cmd_pkt->byte_count = cpu_to_le32(0);
 		return;
 	}
 
@@ -408,19 +406,19 @@ qla2x00_start_scsi(srb_t *sp)
 		switch (tag[0]) {
 		case HEAD_OF_QUEUE_TAG:
 			cmd_pkt->control_flags =
-			    __constant_cpu_to_le16(CF_HEAD_TAG);
+			    cpu_to_le16(CF_HEAD_TAG);
 			break;
 		case ORDERED_QUEUE_TAG:
 			cmd_pkt->control_flags =
-			    __constant_cpu_to_le16(CF_ORDERED_TAG);
+			    cpu_to_le16(CF_ORDERED_TAG);
 			break;
 		default:
 			cmd_pkt->control_flags =
-			    __constant_cpu_to_le16(CF_SIMPLE_TAG);
+			    cpu_to_le16(CF_SIMPLE_TAG);
 			break;
 		}
 	} else {
-		cmd_pkt->control_flags = __constant_cpu_to_le16(CF_SIMPLE_TAG);
+		cmd_pkt->control_flags = cpu_to_le16(CF_SIMPLE_TAG);
 	}
 
 	/* Load SCSI command packet. */
@@ -593,12 +591,11 @@ qla24xx_build_scsi_type_6_iocbs(srb_t *sp, struct cmd_type_6 *cmd_pkt,
 	cmd = GET_CMD_SP(sp);
 
 	/* Update entry type to indicate Command Type 3 IOCB */
-	*((uint32_t *)(&cmd_pkt->entry_type)) =
-		__constant_cpu_to_le32(COMMAND_TYPE_6);
+	*((uint32_t *)(&cmd_pkt->entry_type)) = cpu_to_le32(COMMAND_TYPE_6);
 
 	/* No data transfer */
 	if (!scsi_bufflen(cmd) || cmd->sc_data_direction == DMA_NONE) {
-		cmd_pkt->byte_count = __constant_cpu_to_le32(0);
+		cmd_pkt->byte_count = cpu_to_le32(0);
 		return 0;
 	}
 
@@ -607,13 +604,11 @@ qla24xx_build_scsi_type_6_iocbs(srb_t *sp, struct cmd_type_6 *cmd_pkt,
 
 	/* Set transfer direction */
 	if (cmd->sc_data_direction == DMA_TO_DEVICE) {
-		cmd_pkt->control_flags =
-		    __constant_cpu_to_le16(CF_WRITE_DATA);
+		cmd_pkt->control_flags = cpu_to_le16(CF_WRITE_DATA);
 		vha->qla_stats.output_bytes += scsi_bufflen(cmd);
 		vha->qla_stats.output_requests++;
 	} else if (cmd->sc_data_direction == DMA_FROM_DEVICE) {
-		cmd_pkt->control_flags =
-		    __constant_cpu_to_le16(CF_READ_DATA);
+		cmd_pkt->control_flags = cpu_to_le16(CF_READ_DATA);
 		vha->qla_stats.input_bytes += scsi_bufflen(cmd);
 		vha->qla_stats.input_requests++;
 	}
@@ -710,12 +705,11 @@ qla24xx_build_scsi_iocbs(srb_t *sp, struct cmd_type_7 *cmd_pkt,
 	cmd = GET_CMD_SP(sp);
 
 	/* Update entry type to indicate Command Type 3 IOCB */
-	*((uint32_t *)(&cmd_pkt->entry_type)) =
-	    __constant_cpu_to_le32(COMMAND_TYPE_7);
+	*((uint32_t *)(&cmd_pkt->entry_type)) = cpu_to_le32(COMMAND_TYPE_7);
 
 	/* No data transfer */
 	if (!scsi_bufflen(cmd) || cmd->sc_data_direction == DMA_NONE) {
-		cmd_pkt->byte_count = __constant_cpu_to_le32(0);
+		cmd_pkt->byte_count = cpu_to_le32(0);
 		return;
 	}
 
@@ -723,13 +717,11 @@ qla24xx_build_scsi_iocbs(srb_t *sp, struct cmd_type_7 *cmd_pkt,
 
 	/* Set transfer direction */
 	if (cmd->sc_data_direction == DMA_TO_DEVICE) {
-		cmd_pkt->task_mgmt_flags =
-		    __constant_cpu_to_le16(TMF_WRITE_DATA);
+		cmd_pkt->task_mgmt_flags = cpu_to_le16(TMF_WRITE_DATA);
 		vha->qla_stats.output_bytes += scsi_bufflen(cmd);
 		vha->qla_stats.output_requests++;
 	} else if (cmd->sc_data_direction == DMA_FROM_DEVICE) {
-		cmd_pkt->task_mgmt_flags =
-		    __constant_cpu_to_le16(TMF_READ_DATA);
+		cmd_pkt->task_mgmt_flags = cpu_to_le16(TMF_READ_DATA);
 		vha->qla_stats.input_bytes += scsi_bufflen(cmd);
 		vha->qla_stats.input_requests++;
 	}
@@ -803,7 +795,7 @@ qla24xx_set_t10dif_tags(srb_t *sp, struct fw_dif_context *pkt,
 	 * match LBA in CDB + N
 	 */
 	case SCSI_PROT_DIF_TYPE2:
-		pkt->app_tag = __constant_cpu_to_le16(0);
+		pkt->app_tag = cpu_to_le16(0);
 		pkt->app_tag_mask[0] = 0x0;
 		pkt->app_tag_mask[1] = 0x0;
 
@@ -834,7 +826,7 @@ qla24xx_set_t10dif_tags(srb_t *sp, struct fw_dif_context *pkt,
 	case SCSI_PROT_DIF_TYPE1:
 		pkt->ref_tag = cpu_to_le32((uint32_t)
 		    (0xffffffff & scsi_get_lba(cmd)));
-		pkt->app_tag = __constant_cpu_to_le16(0);
+		pkt->app_tag = cpu_to_le16(0);
 		pkt->app_tag_mask[0] = 0x0;
 		pkt->app_tag_mask[1] = 0x0;
 
@@ -1179,8 +1171,7 @@ qla24xx_build_scsi_crc_2_iocbs(srb_t *sp, struct cmd_type_crc_2 *cmd_pkt,
 	cmd = GET_CMD_SP(sp);
 
 	/* Update entry type to indicate Command Type CRC_2 IOCB */
-	*((uint32_t *)(&cmd_pkt->entry_type)) =
-	    __constant_cpu_to_le32(COMMAND_TYPE_CRC_2);
+	*((uint32_t *)(&cmd_pkt->entry_type)) = cpu_to_le32(COMMAND_TYPE_CRC_2);
 
 	vha = sp->fcport->vha;
 	ha = vha->hw;
@@ -1188,7 +1179,7 @@ qla24xx_build_scsi_crc_2_iocbs(srb_t *sp, struct cmd_type_crc_2 *cmd_pkt,
 	/* No data transfer */
 	data_bytes = scsi_bufflen(cmd);
 	if (!data_bytes || cmd->sc_data_direction == DMA_NONE) {
-		cmd_pkt->byte_count = __constant_cpu_to_le32(0);
+		cmd_pkt->byte_count = cpu_to_le32(0);
 		return QLA_SUCCESS;
 	}
 
@@ -1197,10 +1188,10 @@ qla24xx_build_scsi_crc_2_iocbs(srb_t *sp, struct cmd_type_crc_2 *cmd_pkt,
 	/* Set transfer direction */
 	if (cmd->sc_data_direction == DMA_TO_DEVICE) {
 		cmd_pkt->control_flags =
-		    __constant_cpu_to_le16(CF_WRITE_DATA);
+		    cpu_to_le16(CF_WRITE_DATA);
 	} else if (cmd->sc_data_direction == DMA_FROM_DEVICE) {
 		cmd_pkt->control_flags =
-		    __constant_cpu_to_le16(CF_READ_DATA);
+		    cpu_to_le16(CF_READ_DATA);
 	}
 
 	if ((scsi_get_prot_op(cmd) == SCSI_PROT_READ_INSERT) ||
@@ -1340,7 +1331,7 @@ qla24xx_build_scsi_crc_2_iocbs(srb_t *sp, struct cmd_type_crc_2 *cmd_pkt,
 	crc_ctx_pkt->blk_size = cpu_to_le16(blk_size);
 	crc_ctx_pkt->prot_opts = cpu_to_le16(fw_prot_opts);
 	crc_ctx_pkt->byte_count = cpu_to_le32(data_bytes);
-	crc_ctx_pkt->guard_seed = __constant_cpu_to_le16(0);
+	crc_ctx_pkt->guard_seed = cpu_to_le16(0);
 	/* Fibre channel byte count */
 	cmd_pkt->byte_count = cpu_to_le32(total_bytes);
 	fcp_dl = (uint32_t *)(crc_ctx_pkt->fcp_cmnd.cdb + 16 +
@@ -1348,13 +1339,12 @@ qla24xx_build_scsi_crc_2_iocbs(srb_t *sp, struct cmd_type_crc_2 *cmd_pkt,
 	*fcp_dl = htonl(total_bytes);
 
 	if (!data_bytes || cmd->sc_data_direction == DMA_NONE) {
-		cmd_pkt->byte_count = __constant_cpu_to_le32(0);
+		cmd_pkt->byte_count = cpu_to_le32(0);
 		return QLA_SUCCESS;
 	}
 	/* Walks data segments */
 
-	cmd_pkt->control_flags |=
-	    __constant_cpu_to_le16(CF_DATA_SEG_DESCR_ENABLE);
+	cmd_pkt->control_flags |= cpu_to_le16(CF_DATA_SEG_DESCR_ENABLE);
 
 	if (!bundling && tot_prot_dsds) {
 		if (qla24xx_walk_and_build_sglist_no_difb(ha, sp,
@@ -1368,7 +1358,7 @@ qla24xx_build_scsi_crc_2_iocbs(srb_t *sp, struct cmd_type_crc_2 *cmd_pkt,
 		/* Walks dif segments */
 		cur_seg = scsi_prot_sglist(cmd);
 		cmd_pkt->control_flags |=
-			__constant_cpu_to_le16(CF_DIF_SEG_DESCR_ENABLE);
+			cpu_to_le16(CF_DIF_SEG_DESCR_ENABLE);
 		cur_dsd = (uint32_t *) &crc_ctx_pkt->u.bundling.dif_address;
 		if (qla24xx_walk_and_build_prot_sglist(ha, sp, cur_dsd,
 		    tot_prot_dsds))
@@ -1716,7 +1706,7 @@ qla24xx_dif_start_scsi(srb_t *sp)
 	cmd_pkt->entry_count = (uint8_t)req_cnt;
 	/* Specify response queue number where completion should happen */
 	cmd_pkt->entry_status = (uint8_t) rsp->id;
-	cmd_pkt->timeout = __constant_cpu_to_le16(0);
+	cmd_pkt->timeout = cpu_to_le16(0);
 	wmb();
 
 	/* Adjust ring index. */
@@ -1994,10 +1984,10 @@ qla24xx_els_iocb(srb_t *sp, struct els_entry_24xx *els_iocb)
         els_iocb->entry_status = 0;
         els_iocb->handle = sp->handle;
         els_iocb->nport_handle = cpu_to_le16(sp->fcport->loop_id);
-        els_iocb->tx_dsd_count = __constant_cpu_to_le16(bsg_job->request_payload.sg_cnt);
+	els_iocb->tx_dsd_count = cpu_to_le16(bsg_job->request_payload.sg_cnt);
 	els_iocb->vp_index = sp->fcport->vha->vp_idx;
         els_iocb->sof_type = EST_SOFI3;
-        els_iocb->rx_dsd_count = __constant_cpu_to_le16(bsg_job->reply_payload.sg_cnt);
+	els_iocb->rx_dsd_count = cpu_to_le16(bsg_job->reply_payload.sg_cnt);
 
 	els_iocb->opcode =
 	    sp->type == SRB_ELS_CMD_RPT ?
@@ -2048,13 +2038,13 @@ qla2x00_ct_iocb(srb_t *sp, ms_iocb_entry_t *ct_iocb)
 	ct_iocb->entry_status = 0;
 	ct_iocb->handle1 = sp->handle;
 	SET_TARGET_ID(ha, ct_iocb->loop_id, sp->fcport->loop_id);
-	ct_iocb->status = __constant_cpu_to_le16(0);
-	ct_iocb->control_flags = __constant_cpu_to_le16(0);
+	ct_iocb->status = cpu_to_le16(0);
+	ct_iocb->control_flags = cpu_to_le16(0);
 	ct_iocb->timeout = 0;
 	ct_iocb->cmd_dsd_count =
-	    __constant_cpu_to_le16(bsg_job->request_payload.sg_cnt);
+	    cpu_to_le16(bsg_job->request_payload.sg_cnt);
 	ct_iocb->total_dsd_count =
-	    __constant_cpu_to_le16(bsg_job->request_payload.sg_cnt + 1);
+	    cpu_to_le16(bsg_job->request_payload.sg_cnt + 1);
 	ct_iocb->req_bytecount =
 	    cpu_to_le32(bsg_job->request_payload.payload_len);
 	ct_iocb->rsp_bytecount =
@@ -2127,13 +2117,13 @@ qla24xx_ct_iocb(srb_t *sp, struct ct_entry_24xx *ct_iocb)
 
 	ct_iocb->nport_handle = cpu_to_le16(sp->fcport->loop_id);
 	ct_iocb->vp_index = sp->fcport->vha->vp_idx;
-        ct_iocb->comp_status = __constant_cpu_to_le16(0);
+	ct_iocb->comp_status = cpu_to_le16(0);
 
 	ct_iocb->cmd_dsd_count =
-            __constant_cpu_to_le16(bsg_job->request_payload.sg_cnt);
+		cpu_to_le16(bsg_job->request_payload.sg_cnt);
         ct_iocb->timeout = 0;
         ct_iocb->rsp_dsd_count =
-            __constant_cpu_to_le16(bsg_job->reply_payload.sg_cnt);
+		cpu_to_le16(bsg_job->reply_payload.sg_cnt);
         ct_iocb->rsp_byte_count =
             cpu_to_le32(bsg_job->reply_payload.payload_len);
         ct_iocb->cmd_byte_count =
@@ -2657,7 +2647,7 @@ qla25xx_build_bidir_iocb(srb_t *sp, struct scsi_qla_host *vha,
 
 	/*Update entry type to indicate bidir command */
 	*((uint32_t *)(&cmd_pkt->entry_type)) =
-		__constant_cpu_to_le32(COMMAND_BIDIRECTIONAL);
+		cpu_to_le32(COMMAND_BIDIRECTIONAL);
 
 	/* Set the transfer direction, in this set both flags
 	 * Also set the BD_WRAP_BACK flag, firmware will take care
@@ -2665,8 +2655,7 @@ qla25xx_build_bidir_iocb(srb_t *sp, struct scsi_qla_host *vha,
 	 */
 	cmd_pkt->wr_dseg_count = cpu_to_le16(bsg_job->request_payload.sg_cnt);
 	cmd_pkt->rd_dseg_count = cpu_to_le16(bsg_job->reply_payload.sg_cnt);
-	cmd_pkt->control_flags =
-			__constant_cpu_to_le16(BD_WRITE_DATA | BD_READ_DATA |
+	cmd_pkt->control_flags = cpu_to_le16(BD_WRITE_DATA | BD_READ_DATA |
 							BD_WRAP_BACK);
 
 	req_data_len = rsp_data_len = bsg_job->request_payload.payload_len;
