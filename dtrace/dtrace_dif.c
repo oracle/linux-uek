@@ -2679,7 +2679,8 @@ static void dtrace_dif_subr(uint_t subr, uint_t rd, uint64_t *regs,
 
 		if (!dtrace_destructive_disallow &&
 		    dtrace_priv_proc_control(state) &&
-		    !dtrace_istoxic(kaddr, size)) {
+		    !dtrace_istoxic(kaddr, size) &&
+		    dtrace_canload(kaddr, size, mstate, vstate)) {
 			DTRACE_CPUFLAG_SET(CPU_DTRACE_NOFAULT);
 			dtrace_copyout(kaddr, uaddr, size, flags);
 			DTRACE_CPUFLAG_CLEAR(CPU_DTRACE_NOFAULT);
@@ -2694,7 +2695,8 @@ static void dtrace_dif_subr(uint_t subr, uint_t rd, uint64_t *regs,
 
 		if (!dtrace_destructive_disallow &&
 		    dtrace_priv_proc_control(state) &&
-		    !dtrace_istoxic(kaddr, size)) {
+		    !dtrace_istoxic(kaddr, size) &&
+		    dtrace_strcanload(kaddr, size, mstate, vstate)) {
 			DTRACE_CPUFLAG_SET(CPU_DTRACE_NOFAULT);
 			dtrace_copyoutstr(kaddr, uaddr, size, flags);
 			DTRACE_CPUFLAG_CLEAR(CPU_DTRACE_NOFAULT);
