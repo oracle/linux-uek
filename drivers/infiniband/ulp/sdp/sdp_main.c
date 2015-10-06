@@ -244,8 +244,6 @@ static void sdp_reset_keepalive_timer(struct sock *sk, unsigned long len)
 {
 	struct sdp_sock *ssk = sdp_sk(sk);
 
-	sdp_dbg(sk, "%s\n", __func__);
-
 	ssk->keepalive_tx_head = ring_head(ssk->tx_ring);
 	ssk->keepalive_rx_head = ring_head(ssk->rx_ring);
 
@@ -269,7 +267,6 @@ static void sdp_keepalive_timer(unsigned long data)
 	struct sock *sk = (struct sock *)data;
 	struct sdp_sock *ssk = sdp_sk(sk);
 
-	sdp_dbg(sk, "%s\n", __func__);
 	SDPSTATS_COUNTER_INC(keepalive_timer);
 
 	/* Only process if the socket is not in use */
@@ -296,8 +293,6 @@ out:
 
 static void sdp_set_keepalive(struct sock *sk, int val)
 {
-	sdp_dbg(sk, "%s %d\n", __func__, val);
-
 	if ((1 << sk->sk_state) & (TCPF_CLOSE | TCPF_LISTEN))
 		return;
 
@@ -963,7 +958,10 @@ static int sdp_disconnect(struct sock *sk, int flags)
 	if (sk->sk_state != TCP_LISTEN) {
 		if (ssk->id) {
 			sdp_sk(sk)->qp_active = 0;
+			/* release soket to insure that sdp_cma_handler won't lockup */
+			release_sock(sk);
 			rc = rdma_disconnect(ssk->id);
+			lock_sock(sk);
 		}
 
 		return rc;
@@ -2773,6 +2771,7 @@ static void sdp_add_device(struct ib_device *device)
 	fmr_param.pool_size	    = sdp_fmr_pool_size;
 	fmr_param.dirty_watermark   = sdp_fmr_dirty_wm;
 	fmr_param.cache		    = 1;
+	fmr_param.relaxed           = 0;
 	fmr_param.max_pages_per_fmr = SDP_FMR_SIZE;
 	fmr_param.page_shift	    = PAGE_SHIFT;
 	fmr_param.access	    = (IB_ACCESS_LOCAL_WRITE |
