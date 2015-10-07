@@ -5020,9 +5020,7 @@ void ixgbe_reset(struct ixgbe_adapter *adapter)
 		ixgbe_ptp_reset(adapter);
 
 	if (hw->phy.ops.set_phy_power) {
-		if (!netif_running(adapter->netdev) && !adapter->wol)
-			hw->phy.ops.set_phy_power(hw, false);
-		else
+		if (netif_running(adapter->netdev) && adapter->wol)
 			hw->phy.ops.set_phy_power(hw, true);
 	}
 }
@@ -5763,8 +5761,6 @@ err_set_queues:
 	ixgbe_free_irq(adapter);
 err_req_irq:
 	ixgbe_free_all_rx_resources(adapter);
-	if (hw->phy.ops.set_phy_power && !adapter->wol)
-		hw->phy.ops.set_phy_power(&adapter->hw, false);
 err_setup_rx:
 	ixgbe_free_all_tx_resources(adapter);
 err_setup_tx:
@@ -5925,8 +5921,6 @@ static int __ixgbe_shutdown(struct pci_dev *pdev, bool *enable_wake)
 	}
 
 	*enable_wake = !!wufc;
-	if (hw->phy.ops.set_phy_power && !*enable_wake)
-		hw->phy.ops.set_phy_power(hw, false);
 
 	ixgbe_release_hw_control(adapter);
 
