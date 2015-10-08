@@ -19,8 +19,8 @@ static struct list_head adapter_list = LIST_HEAD_INIT(adapter_list);
 static u32 adapter_count;
 
 #define DRV_MODULE_NAME		"bnx2i"
-#define DRV_MODULE_VERSION     "2.11.2.0"
-#define DRV_MODULE_RELDATE     "April 30, 2015"
+#define DRV_MODULE_VERSION	"2.11.2.0"
+#define DRV_MODULE_RELDATE	"April 30, 2015"
 
 static char version[] __devinitdata =
 		"QLogic iSCSI Driver " DRV_MODULE_NAME \
@@ -558,15 +558,11 @@ static int __init bnx2i_mod_init(void)
 		p->iothread = NULL;
 	}
 
-	cpu_notifier_register_begin();
-
 	for_each_online_cpu(cpu)
 		bnx2i_percpu_thread_create(cpu);
 
 	/* Initialize per CPU interrupt thread */
-	__register_hotcpu_notifier(&bnx2i_cpu_notifier);
-
-	cpu_notifier_register_done();
+	register_hotcpu_notifier(&bnx2i_cpu_notifier);
 
 	return 0;
 
@@ -606,14 +602,10 @@ static void __exit bnx2i_mod_exit(void)
 	}
 	mutex_unlock(&bnx2i_dev_lock);
 
-	cpu_notifier_register_begin();
+	unregister_hotcpu_notifier(&bnx2i_cpu_notifier);
 
 	for_each_online_cpu(cpu)
 		bnx2i_percpu_thread_destroy(cpu);
-
-	__unregister_hotcpu_notifier(&bnx2i_cpu_notifier);
-
-	cpu_notifier_register_done();
 
 	iscsi_unregister_transport(&bnx2i_iscsi_transport);
 	cnic_unregister_driver2(CNIC_ULP_ISCSI);
