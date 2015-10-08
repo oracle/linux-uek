@@ -430,11 +430,14 @@ static DEFINE_PCI_DEVICE_TABLE(bnx2x_pci_tbl) = {
 	{ PCI_VDEVICE(BROADCOM, PCI_DEVICE_ID_NX2_57810_MF), BCM57810_MF },
 	{ PCI_VDEVICE(BROADCOM, PCI_DEVICE_ID_NX2_57840_O), BCM57840_O },
 	{ PCI_VDEVICE(BROADCOM, PCI_DEVICE_ID_NX2_57840_4_10), BCM57840_4_10 },
+	{ PCI_VDEVICE(QLOGIC,	PCI_DEVICE_ID_NX2_57840_4_10), BCM57840_4_10 },
 	{ PCI_VDEVICE(BROADCOM, PCI_DEVICE_ID_NX2_57840_2_20), BCM57840_2_20 },
 	{ PCI_VDEVICE(BROADCOM, PCI_DEVICE_ID_NX2_57810_VF), BCM57810_VF },
 	{ PCI_VDEVICE(BROADCOM, PCI_DEVICE_ID_NX2_57840_MFO), BCM57840_MFO },
 	{ PCI_VDEVICE(BROADCOM, PCI_DEVICE_ID_NX2_57840_MF), BCM57840_MF },
+	{ PCI_VDEVICE(QLOGIC,	PCI_DEVICE_ID_NX2_57840_MF), BCM57840_MF },
 	{ PCI_VDEVICE(BROADCOM, PCI_DEVICE_ID_NX2_57840_VF), BCM57840_VF },
+	{ PCI_VDEVICE(QLOGIC,	PCI_DEVICE_ID_NX2_57840_VF), BCM57840_VF },
 	{ PCI_VDEVICE(BROADCOM, PCI_DEVICE_ID_NX2_57811), BCM57811 },
 	{ PCI_VDEVICE(BROADCOM, PCI_DEVICE_ID_NX2_57811_MF), BCM57811_MF },
 	{ PCI_VDEVICE(BROADCOM, PCI_DEVICE_ID_NX2_57811_VF), BCM57811_VF },
@@ -2638,7 +2641,7 @@ int bnx2x_initial_phy_init(struct bnx2x *bp, int load_mode)
 		struct link_params *lp = &bp->link_params;
 		lp->loopback_mode = LOOPBACK_XGXS;
 		/* Prefer doing PHY loopback at highest speed, if possible */
-		if (lp->req_line_speed[cfx_idx] < SPEED_10000) {
+		if (lp->req_line_speed[cfx_idx] < SPEED_20000) {
 			if (lp->speed_cap_mask[cfx_idx] &
 			    PORT_HW_CFG_SPEED_CAPABILITY_D0_20G)
 				lp->req_line_speed[cfx_idx] =
@@ -2820,7 +2823,7 @@ static void bnx2x_calc_vn_max(struct bnx2x *bp, int vn,
 	else {
 		u32 maxCfg = bnx2x_extract_max_cfg(bp, vn_cfg);
 
-		if (IS_MF_SI(bp)) {
+		if (IS_MF_PERCENT_BW(bp)) {
 			/* maxCfg in percents of linkspeed */
 			vn_max_rate = (bp->link_vars.line_speed * maxCfg) / 100;
 		} else /* SD modes */
@@ -3516,8 +3519,7 @@ static unsigned long bnx2x_get_q_flags(struct bnx2x *bp,
 	}
 
 #ifdef __VMKLNX__ /* ! BNX2X_UPSTREAM */
-	if (IS_FCOE_FP(fp) && IS_MF_SD(bp) && !(bp->mf_sub_mode ==
-					SUB_MF_MODE_UFP))
+ 	if (IS_FCOE_FP(fp) && IS_MF_SD(bp) && !IS_MF_UFP(bp) && !IS_MF_BD(bp))
 		__set_bit(BNX2X_Q_FLG_REFUSE_OUTBAND_VLAN, &flags);
 #endif
 
@@ -5399,9 +5401,7 @@ static bool bnx2x_check_blocks_with_parity3(struct bnx2x *bp, u32 sig,
 				res = true;
 				break;
 			case AEU_INPUTS_ATTN_BITS_MCP_LATCHED_SCPAD_PARITY:
-				if (print)
-					_print_next_block((*par_num)++,
-							  "MCP SCPAD");
+				(*par_num)++;
 				/* clear latched SCPAD PATIRY from MCP */
 				REG_WR(bp, MISC_REG_AEU_CLR_LATCH_SIGNAL,
 				       1UL << 10);
@@ -5463,6 +5463,7 @@ static bool bnx2x_parity_attn(struct bnx2x *bp, bool *global, bool print,
 	    (sig[3] & HW_PRTY_ASSERT_SET_3) ||
 	    (sig[4] & HW_PRTY_ASSERT_SET_4)) {
 		int par_num = 0;
+
 		DP(NETIF_MSG_HW, "Was parity error: HW block parity attention:\n"
 				 "[0]:0x%08x [1]:0x%08x [2]:0x%08x [3]:0x%08x [4]:0x%08x\n",
 			  sig[0] & HW_PRTY_ASSERT_SET_0,
@@ -5470,9 +5471,18 @@ static bool bnx2x_parity_attn(struct bnx2x *bp, bool *global, bool print,
 			  sig[2] & HW_PRTY_ASSERT_SET_2,
 			  sig[3] & HW_PRTY_ASSERT_SET_3,
 			  sig[4] & HW_PRTY_ASSERT_SET_4);
-		if (print)
-			netdev_err(bp->dev,
-				   "Parity errors detected in blocks: ");
+		if (print) {
+			if (((sig[0] & HW_PRTY_ASSERT_SET_0) ||
+			     (sig[1] & HW_PRTY_ASSERT_SET_1) ||
+			     (sig[2] & HW_PRTY_ASSERT_SET_2) ||
+			     (sig[4] & HW_PRTY_ASSERT_SET_4)) ||
+			     (sig[3] & HW_PRTY_ASSERT_SET_3_WITHOUT_SCPAD)) {
+				netdev_err(bp->dev,
+					   "Parity errors detected in blocks: ");
+			} else {
+				print = false;
+			}
+		}
 		res |= bnx2x_check_blocks_with_parity0(bp,
 			sig[0] & HW_PRTY_ASSERT_SET_0, &par_num, print);
 		res |= bnx2x_check_blocks_with_parity1(bp,
@@ -8971,8 +8981,6 @@ void bnx2x_free_mem_cnic(struct bnx2x *bp)
 			       sizeof(struct host_hc_status_block_e1x));
 
 	BNX2X_PCI_FREE(bp->t2, bp->t2_mapping, SRC_T2_SZ);
-
-	kfree(bp->fc_npiv_tbl);
 }
 
 void bnx2x_free_mem(struct bnx2x *bp)
@@ -9043,10 +9051,6 @@ int bnx2x_alloc_mem_cnic(struct bnx2x *bp)
 
 	if (bnx2x_ilt_mem_op_cnic(bp, ILT_MEMOP_ALLOC))
 		goto alloc_mem_err;
-
-	bp->fc_npiv_tbl = kzalloc(sizeof(*bp->fc_npiv_tbl), GFP_KERNEL);
-	if (!bp->fc_npiv_tbl)
-		BNX2X_ERR("Failed to allocate an FC-NPIV table\n");
 
 	return 0;
 
@@ -9314,7 +9318,7 @@ int bnx2x_set_eth_mac(struct bnx2x *bp, bool set)
 					 BNX2X_ETH_MAC, &ramrod_flags);
 	} else { /* vf */
 		return bnx2x_vfpf_config_mac(bp, bp->dev->dev_addr,
-					     bp->fp->index, true);
+					     bp->fp->index, set);
 	}
 }
 
@@ -10219,7 +10223,8 @@ unload_error:
 	 * function stop ramrod is sent, since as part of this ramrod FW access
 	 * PTP registers.
 	 */
-	bnx2x_stop_ptp(bp);
+	if (bp->flags & PTP_SUPPORTED)
+		bnx2x_stop_ptp(bp);
 #endif
 
 	/* Disable HW interrupts, NAPI */
@@ -13305,7 +13310,7 @@ static int __devinit bnx2x_init_bp(struct bnx2x *bp)
 	mutex_init(&bp->port.phy_mutex);
 	mutex_init(&bp->fw_mb_mutex);
 	mutex_init(&bp->drv_info_mutex);
-	mutex_init(&bp->stats_lock);
+	sema_init(&bp->stats_lock, 1);
 	bp->drv_info_mng_owner = false;
 	INIT_LIST_HEAD(&bp->vlan_reg);
 
@@ -15312,8 +15317,10 @@ static void __devinit bnx2x_set_netdev_features(struct bnx2x *bp,
 			bp->accept_any_vlan = true;
 		else
 			hw_features |= NETIF_F_HW_VLAN_CTAG_FILTER;
+#ifdef CONFIG_BNX2X_SRIOV
 	} else if (bp->acquire_resp.pfdev_info.pf_cap & PFVF_CAP_VLAN_FILTER) {
 		hw_features |= NETIF_F_HW_VLAN_CTAG_FILTER;
+#endif
 	}
 
 #if (LINUX_STARTING_AT_VERSION(2, 6, 26)) /* BNX2X_UPSTREAM */
@@ -15850,9 +15857,10 @@ static int bnx2x_eeh_nic_unload(struct bnx2x *bp)
 	cancel_delayed_work(&bp->period_task);
 #endif
 
-	mutex_lock(&bp->stats_lock);
-	bp->stats_state = STATS_STATE_DISABLED;
-	mutex_unlock(&bp->stats_lock);
+	if (!down_timeout(&bp->stats_lock, HZ / 10)) {
+		bp->stats_state = STATS_STATE_DISABLED;
+		up(&bp->stats_lock);
+	}
 
 	bnx2x_save_statistics(bp);
 

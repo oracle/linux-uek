@@ -83,6 +83,7 @@
 #define SLES11_SP1	0x1101
 #define SLES11_SP2	0x1102
 #define SLES11_SP3	0x1103
+#define SLES12_SP1	0x1201
 #if defined(SLES_DISTRO) && (SLES_DISTRO == SLES11_SP1) && defined(MODULE_ALIAS_NETDEV)
 /* Special SLES11.1 updated kernel 2.6.32.XX */
 #define SLES11_SP1_UP1
@@ -159,12 +160,17 @@ typedef int bool;
 #define false 0
 #define true  1
 #endif
+
+#undef get_page
+#undef put_page
+
+#define get_page(PAGE)
+#define put_page(PAGE)
 #endif
 
 #if (VMWARE_ESX_DDK_VERSION == 50000)
 #define VMKNETDDI_QUEUEOPS_QUEUE_FEAT_RSS	4
 #endif
-
 
 #if (LINUX_PRE_VERSION(2, 6, 20))
 #define __wsum u32
@@ -2501,7 +2507,6 @@ static inline int pci_wait_for_pending_transaction(struct pci_dev *dev)
 #endif
 
 #ifdef _DEFINE_EPROBE_DEFER
-#define EPROBE_DEFER EBUSY
 #else /* BNX2X_UPSTREAM */
 #define SUPPORT_EPROBE_DEFER
 #endif

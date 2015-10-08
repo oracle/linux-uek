@@ -50,8 +50,8 @@
 #define BNX2X_MOD_VER ""
 #endif
 #define DRV_MODULE_NAME         "bnx2x"
-#define DRV_MODULE_VERSION	"1.712.33" BNX2X_MOD_VER
-#define DRV_MODULE_RELDATE	"$DateTime: 2015/05/21 06:06:08 $"
+#define DRV_MODULE_VERSION	"1.713.01" BNX2X_MOD_VER
+#define DRV_MODULE_RELDATE	"$DateTime: 2015/09/07 02:43:09 $"
 #define BNX2X_BC_VER            0x040200
 
 #ifdef __VMKLNX__ /* ! BNX2X_UPSTREAM */
@@ -519,6 +519,7 @@ struct sw_rx_page {
 #else
 	DECLARE_PCI_UNMAP_ADDR(mapping)
 #endif
+	unsigned int	offset;
 };
 #endif /* BYPASS_APP */
 
@@ -544,9 +545,10 @@ union db_prod {
 
 #define PAGES_PER_SGE_SHIFT	0
 #define PAGES_PER_SGE		(1 << PAGES_PER_SGE_SHIFT)
-#define SGE_PAGE_SIZE		PAGE_SIZE
-#define SGE_PAGE_SHIFT		PAGE_SHIFT
-#define SGE_PAGE_ALIGN(addr)	PAGE_ALIGN((typeof(PAGE_SIZE))(addr))
+#define SGE_PAGE_SHIFT		12
+#define SGE_PAGE_SIZE		(1 << SGE_PAGE_SHIFT)
+#define SGE_PAGE_MASK		(~(SGE_PAGE_SIZE - 1))
+#define SGE_PAGE_ALIGN(addr)	(((addr) + SGE_PAGE_SIZE - 1) & SGE_PAGE_MASK)
 #define SGE_PAGES		(SGE_PAGE_SIZE * PAGES_PER_SGE)
 #define TPA_AGG_SIZE		min_t(u32, (min_t(u32, 8, MAX_SKB_FRAGS) * \
 					    SGE_PAGES), 0xffff)
@@ -690,6 +692,12 @@ enum bnx2x_tpa_mode_t {
 	TPA_MODE_GRO
 };
 
+struct bnx2x_alloc_pool {
+	struct page	*page;
+	dma_addr_t	dma;
+	unsigned int	offset;
+};
+
 struct bnx2x_fastpath {
 	struct bnx2x		*bp; /* parent */
 
@@ -777,6 +785,8 @@ struct bnx2x_fastpath {
 	     4 (for the digits and to make it DWORD aligned) */
 #define FP_NAME_SIZE		(sizeof(((struct net_device *)0)->name) + 8)
 	char			name[FP_NAME_SIZE];
+
+	struct bnx2x_alloc_pool page_pool;
 };
 
 #define bnx2x_fp(bp, nr, var)	((bp)->fp[(nr)].var)
@@ -1719,7 +1729,7 @@ struct bnx2x_vlan_entry {
 struct bnx2x {
 #ifndef BNX2X_UPSTREAM /* ! BNX2X_UPSTREAM */
 	u32			version;
-#define BNX2X_DEV_VER 0xb3b30004 /* Change this when the structure changes */
+#define BNX2X_DEV_VER 0xb3b30005 /* Change this when the structure changes */
 #endif
 
 	/* Fields used in the tx and intr/napi performance paths
@@ -2128,7 +2138,6 @@ struct bnx2x {
 	u8			fip_mac[ETH_ALEN];
 	struct mutex		cnic_mutex;
 	struct bnx2x_vlan_mac_obj iscsi_l2_mac_obj;
-	struct bdn_fc_npiv_tbl	*fc_npiv_tbl;
 
 	/* Start index of the "special" (CNIC related) L2 clients */
 	u8				cnic_base_cl_id;
@@ -2144,7 +2153,7 @@ struct bnx2x {
 	int			stats_state;
 
 	/* used for synchronization of concurrent threads statistics handling */
-	struct mutex		stats_lock;
+	struct semaphore	stats_lock;
 
 	/* used by dmae command loader */
 	struct dmae_command	stats_dmae;
@@ -2961,10 +2970,13 @@ void bnx2x_init_tx_ring_one(struct bnx2x_fp_txdata *txdata);
 				 AEU_INPUTS_ATTN_BITS_IGU_PARITY_ERROR | \
 				 AEU_INPUTS_ATTN_BITS_MISC_PARITY_ERROR)
 
-#define HW_PRTY_ASSERT_SET_3 (AEU_INPUTS_ATTN_BITS_MCP_LATCHED_ROM_PARITY | \
-		AEU_INPUTS_ATTN_BITS_MCP_LATCHED_UMP_RX_PARITY | \
-		AEU_INPUTS_ATTN_BITS_MCP_LATCHED_UMP_TX_PARITY | \
-		AEU_INPUTS_ATTN_BITS_MCP_LATCHED_SCPAD_PARITY)
+#define HW_PRTY_ASSERT_SET_3_WITHOUT_SCPAD \
+		(AEU_INPUTS_ATTN_BITS_MCP_LATCHED_ROM_PARITY | \
+		 AEU_INPUTS_ATTN_BITS_MCP_LATCHED_UMP_RX_PARITY | \
+		 AEU_INPUTS_ATTN_BITS_MCP_LATCHED_UMP_TX_PARITY)
+
+#define HW_PRTY_ASSERT_SET_3 (HW_PRTY_ASSERT_SET_3_WITHOUT_SCPAD | \
+			      AEU_INPUTS_ATTN_BITS_MCP_LATCHED_SCPAD_PARITY)
 
 #define HW_PRTY_ASSERT_SET_4 (AEU_INPUTS_ATTN_BITS_PGLUE_PARITY_ERROR | \
 			      AEU_INPUTS_ATTN_BITS_ATC_PARITY_ERROR)
@@ -3111,6 +3123,11 @@ void bnx2x_notify_link_changed(struct bnx2x *bp);
 #define IS_MF_STORAGE_PERSONALITY_ONLY(bp)				\
 			(IS_MF_SD_STORAGE_PERSONALITY_ONLY(bp) ||	\
 			 IS_MF_SI_STORAGE_PERSONALITY_ONLY(bp))
+
+/* Determines whether BW configuration arrives in 100Mb units or in
+ * percentages from actual physical link speed.
+ */
+#define IS_MF_PERCENT_BW(bp) (IS_MF_SI(bp) || IS_MF_UFP(bp) || IS_MF_BD(bp))
 
 #endif /* BYPASS_APP */
 

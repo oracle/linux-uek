@@ -26,11 +26,12 @@
 #include <linux/if_vlan.h>
 #include <linux/interrupt.h>
 #include <linux/ip.h>
-#include <net/tcp.h>
 #if !defined(__VMKLNX__) /* BNX2X_UPSTREAM */
 #include <linux/crash_dump.h>
+#include <net/tcp.h>
 #include <net/ipv6.h>
 #else
+#include <net/tcp.h>
 #include <linux/ipv6.h>
 #endif
 #if (LINUX_VERSION_CODE > KERNEL_VERSION(2, 6, 7)) /* BNX2X_UPSTREAM */
@@ -360,9 +361,9 @@ static u16 bnx2x_free_tx_pkt(struct bnx2x *bp, struct bnx2x_fp_txdata *txdata,
 	if (likely(skb)) {
 		(*pkts_compl)++;
 		(*bytes_compl) += skb->len;
+		dev_kfree_skb_any(skb);
 	}
 
-	dev_kfree_skb_any(skb);
 	tx_buf->first_bd = 0;
 	tx_buf->skb = NULL;
 
@@ -718,34 +719,50 @@ static void bnx2x_set_gro_params(struct sk_buff *skb, u16 parsing_flags,
 static int bnx2x_alloc_rx_sge(struct bnx2x *bp, struct bnx2x_fastpath *fp,
 			      u16 index, gfp_t gfp_mask)
 {
-	struct page *page = alloc_pages(gfp_mask, PAGES_PER_SGE_SHIFT);
 	struct sw_rx_page *sw_buf = &fp->rx_page_ring[index];
 	struct eth_rx_sge *sge = &fp->rx_sge_ring[index];
+	struct bnx2x_alloc_pool *pool = &fp->page_pool;
 	dma_addr_t mapping;
 
-	if (unlikely(page == NULL)) {
-		BNX2X_ERR("Can't alloc sge\n");
-		return -ENOMEM;
-	}
+	if (!pool->page || (PAGE_SIZE - pool->offset) < SGE_PAGE_SIZE) {
+		/* put page reference used by the memory pool, since we
+		 * won't be using this page as the mempool anymore.
+		 */
+		if (pool->page)
+			put_page(pool->page);
+
+		pool->page = alloc_pages(gfp_mask, PAGES_PER_SGE_SHIFT);
+		if (unlikely(!pool->page)) {
+			BNX2X_ERR("Can't alloc sge\n");
+			return -ENOMEM;
+		}
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 34)) /* BNX2X_UPSTREAM */
-	mapping = dma_map_page(&bp->pdev->dev, page, 0,
-			       SGE_PAGES, DMA_FROM_DEVICE);
+		pool->dma = dma_map_page(&bp->pdev->dev, pool->page, 0,
+					 PAGE_SIZE, DMA_FROM_DEVICE);
 #else
-	mapping = pci_map_page(bp->pdev, page, 0,
-			       SGE_PAGES, PCI_DMA_FROMDEVICE);
+		pool->dma = pci_map_page(bp->pdev, pool->page, 0,
+					 PAGE_SIZE, PCI_DMA_FROMDEVICE);
 #endif
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 27)) /* BNX2X_UPSTREAM */
-	if (unlikely(dma_mapping_error(&bp->pdev->dev, mapping))) {
+		if (unlikely(dma_mapping_error(&bp->pdev->dev,
+					       pool->dma))) {
 #else
-	if (unlikely(dma_mapping_error(mapping))) {
+		if (unlikely(dma_mapping_error(pool->dma))) {
 #endif
-		__free_pages(page, PAGES_PER_SGE_SHIFT);
-		BNX2X_ERR("Can't map sge\n");
-		return -ENOMEM;
+			__free_pages(pool->page, PAGES_PER_SGE_SHIFT);
+			pool->page = NULL;
+			BNX2X_ERR("Can't map sge\n");
+			return -ENOMEM;
+		}
+		pool->offset = 0;
 	}
 
-	sw_buf->page = page;
+	get_page(pool->page);
+	sw_buf->page = pool->page;
+	sw_buf->offset = pool->offset;
+
+	mapping = pool->dma + sw_buf->offset;
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 34)) /* BNX2X_UPSTREAM */
 	dma_unmap_addr_set(sw_buf, mapping, mapping);
 #else
@@ -754,6 +771,8 @@ static int bnx2x_alloc_rx_sge(struct bnx2x *bp, struct bnx2x_fastpath *fp,
 
 	sge->addr_hi = cpu_to_le32(U64_HI(mapping));
 	sge->addr_lo = cpu_to_le32(U64_LO(mapping));
+
+	pool->offset += SGE_PAGE_SIZE;
 
 	return 0;
 }
@@ -826,21 +845,24 @@ static int bnx2x_fill_frag_skb(struct bnx2x *bp, struct bnx2x_fastpath *fp,
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 34)) /* BNX2X_UPSTREAM */
 		dma_unmap_page(&bp->pdev->dev,
 			       dma_unmap_addr(&old_rx_pg, mapping),
-			       SGE_PAGES, DMA_FROM_DEVICE);
+			       SGE_PAGE_SIZE, DMA_FROM_DEVICE);
 #else
 		pci_unmap_page(bp->pdev, pci_unmap_addr(&old_rx_pg, mapping),
-			       SGE_PAGES, PCI_DMA_FROMDEVICE);
+			       SGE_PAGE_SIZE, PCI_DMA_FROMDEVICE);
 #endif
 		/* Add one frag and update the appropriate fields in the skb */
 		if (fp->mode == TPA_MODE_LRO)
-			skb_fill_page_desc(skb, j, old_rx_pg.page, 0, frag_len);
+			skb_fill_page_desc(skb, j, old_rx_pg.page,
+					   old_rx_pg.offset, frag_len);
 		else { /* GRO */
 			int rem;
 			int offset = 0;
 			for (rem = frag_len; rem > 0; rem -= gro_size) {
 				int len = rem > gro_size ? gro_size : rem;
 				skb_fill_page_desc(skb, frag_id++,
-						   old_rx_pg.page, offset, len);
+						   old_rx_pg.page,
+						   old_rx_pg.offset + offset,
+						   len);
 #if !defined(__VMKLNX__) /* BNX2X_UPSTREAM */
 				if (offset)
 					get_page(old_rx_pg.page);
@@ -1613,9 +1635,9 @@ u16 bnx2x_get_mf_speed(struct bnx2x *bp)
 		/* Calculate the current MAX line speed limit for the MF
 		 * devices
 		 */
-		if (IS_MF_SI(bp))
+		if (IS_MF_PERCENT_BW(bp))
 			line_speed = (line_speed * maxCfg) / 100;
-		else { /* SD mode */
+		else {
 			u16 vn_max_rate = maxCfg * 100;
 
 			if (vn_max_rate < line_speed)
@@ -1774,9 +1796,6 @@ void __bnx2x_link_report(struct bnx2x *bp)
 			flow = "none";
 		}
 
-#ifdef __VMKLNX__  /* ! BNX2X_UPSTREAM */
-		bp->dev->full_duplex = 1;
-#endif
 		netdev_info(bp->dev, "NIC Link is Up, %d Mbps %s duplex, Flow control: %s\n",
 			    cur_data.line_speed, duplex, flow);
 	}
@@ -3222,67 +3241,6 @@ void bnx2x_set_os_driver_state(struct bnx2x *bp, u32 state)
 	SHMEM2_WR(bp, os_driver_state[BP_FW_MB_IDX(bp)], state);
 }
 
-static void bnx2x_get_fc_npiv(struct bnx2x *bp)
-{
-	u32 offset, entries;
-
-	if (!SHMEM2_HAS(bp, fc_npiv_nvram_tbl_addr[0]))
-		goto out;
-
-	DP(BNX2X_MSG_MCP, "About to read the FC-NPIV table\n");
-
-	offset = SHMEM2_RD(bp, fc_npiv_nvram_tbl_addr[BP_FW_MB_IDX(bp)]);
-	DP(BNX2X_MSG_MCP, "Offset of FC-NPIV in NVRAM: %08xn", offset);
-
-	/* Read the table contents from nvram */
-	if (bnx2x_nvram_read(bp, offset, (u8 *)bp->fc_npiv_tbl,
-			     sizeof(*bp->fc_npiv_tbl))) {
-		BNX2X_ERR("Failed to read FC-NPIV table\n");
-		goto out;
-	}
-
-	/* Since bnx2x_nvram_read() returns data in be32, we need to convert
-	 * the number of entries back to cpu endianess.
-	 */
-	entries = bp->fc_npiv_tbl->fc_npiv_cfg.num_of_npiv;
-	entries = (__force u32)be32_to_cpu((__force __be32)entries);
-	bp->fc_npiv_tbl->fc_npiv_cfg.num_of_npiv = entries;
-
-	DP(BNX2X_MSG_MCP, "Read 0x%08x entries from NVRAM\n",
-	   bp->fc_npiv_tbl->fc_npiv_cfg.num_of_npiv);
-
-	if (bp->fc_npiv_tbl->fc_npiv_cfg.num_of_npiv > 64 ||
-	    !bp->fc_npiv_tbl->fc_npiv_cfg.num_of_npiv) {
-		BNX2X_ERR("FC-NPIV command received with bad length 0x%08x\n",
-			  bp->fc_npiv_tbl->fc_npiv_cfg.num_of_npiv);
-		goto out;
-	}
-
-	/*{
-		struct bdn_npiv_settings *settings;
-		u32 i;
-
-		for (i = 0; i < bp->fc_npiv_tbl->fc_npiv_cfg.num_of_npiv; i++) {
-			settings = &bp->fc_npiv_tbl->settings[i];
-			DP(BNX2X_MSG_MCP, "Line %08x: wwpn %02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x wwnn %02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x\n",
-			   i,
-			   settings->npiv_wwpn[0], settings->npiv_wwpn[1],
-			   settings->npiv_wwpn[2], settings->npiv_wwpn[3],
-			   settings->npiv_wwpn[4], settings->npiv_wwpn[5],
-			   settings->npiv_wwpn[6], settings->npiv_wwpn[7],
-			   settings->npiv_wwnn[0], settings->npiv_wwnn[1],
-			   settings->npiv_wwnn[2], settings->npiv_wwnn[3],
-			   settings->npiv_wwnn[4], settings->npiv_wwnn[5],
-			   settings->npiv_wwnn[6], settings->npiv_wwnn[7]);
-		}
-	}*/
-
-	return;
-out:
-	kfree(bp->fc_npiv_tbl);
-	bp->fc_npiv_tbl = NULL;
-}
-
 int bnx2x_load_cnic(struct bnx2x *bp)
 {
 	int i, rc, port = BP_PORT(bp);
@@ -3297,8 +3255,6 @@ int bnx2x_load_cnic(struct bnx2x *bp)
 			BNX2X_ERR("Unable to allocate bp memory for cnic\n");
 			LOAD_ERROR_EXIT_CNIC(bp, load_error_cnic0);
 		}
-
-		bnx2x_get_fc_npiv(bp);
 	}
 
 	rc = bnx2x_alloc_fp_mem_cnic(bp);
@@ -4958,10 +4914,21 @@ netdev_tx_t bnx2x_start_xmit(struct sk_buff *skb, struct net_device *dev)
 #else /* BNX2X_UPSTREAM */
 	if (skb_vlan_tag_present(skb)) {
 #endif
+ #ifdef __VMKLNX__ /* ! BNX2X_UPSTREAM */
+ 		if (IS_FCOE_FP(txdata->parent_fp) && IS_MF_SD(bp) && IS_MF_BD(bp)) {
+ 			/* Only do vlan tagging if vlan id is not zero */
+ 			if((skb_vlan_tag_get(skb) & 0xFF) != 0)
+ 				goto place_vlan_tagging;
+ 		} else {
+ place_vlan_tagging:
+ #endif
 		tx_start_bd->vlan_or_ethertype =
 		    cpu_to_le16(skb_vlan_tag_get(skb));
 		tx_start_bd->bd_flags.as_bitfield |=
 		    (X_ETH_OUTBAND_VLAN << ETH_TX_BD_FLAGS_VLAN_MODE_SHIFT);
+ #ifdef __VMKLNX__ /* ! BNX2X_UPSTREAM */
+ 		}
+ #endif
 	} else {
 		/* when transmitting in a vf, start bd must hold the ethertype
 		 * for fw to enforce it
@@ -5307,7 +5274,7 @@ void bnx2x_get_c2s_mapping(struct bnx2x *bp, u8 *c2s_map, u8 *c2s_default)
 
 		for (i = 0; i < BNX2X_MAX_PRIORITY; i++)
 			c2s_map[i] = i;
-		c2s_default = 0;
+		*c2s_default = 0;
 
 		return;
 	}

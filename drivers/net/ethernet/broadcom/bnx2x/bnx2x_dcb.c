@@ -2845,7 +2845,8 @@ static int bnx2x_set_admin_app_up(struct bnx2x *bp, u8 idtype, u16 idval, u8 up)
 	return 0;
 }
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 17, 0)) /* BNX2X_UPSTREAM */
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 17, 0)) ||	\
+	SLES_STARTING_AT_VERSION(SLES12_SP1) /* BNX2X_UPSTREAM */
 static int bnx2x_dcbnl_set_app_up(struct net_device *netdev, u8 idtype,
 				 u16 idval, u8 up)
 #else

@@ -1896,7 +1896,7 @@ static int bnx2x_vf_mbx_qfilters(struct bnx2x *bp, struct bnx2x_virtf *vf)
 
 		if (!(bulletin->valid_bitmap & (1 << VLAN_VALID)) &&
 		    bnx2x_esx_vf_any_vlan_allowed(bp, vf->index))
-#else
+#else /* BNX2X_UPSTREAM */
 		if (!(bulletin->valid_bitmap & (1 << VLAN_VALID)) &&
 		    (!(vf->cfg_flags & VF_CFG_VLAN_FILTER) ||
 		     msg->rx_mask & VFPF_RX_MASK_ACCEPT_ANY_VLAN))

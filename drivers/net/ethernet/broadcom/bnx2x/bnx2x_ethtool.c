@@ -67,7 +67,7 @@ static const struct {
 	{ Q_STATS_OFFSET32(rx_skb_alloc_failed),
 					 4, "[%s]: rx_skb_alloc_discard" },
 	{ Q_STATS_OFFSET32(hw_csum_err), 4, "[%s]: rx_csum_offload_errors" },
-
+	{ Q_STATS_OFFSET32(driver_xoff), 4, "[%s]: tx_exhaustion_events" },
 	{ Q_STATS_OFFSET32(total_bytes_transmitted_hi),	8, "[%s]: tx_bytes" },
 /* 10 */{ Q_STATS_OFFSET32(total_unicast_packets_transmitted_hi),
 						8, "[%s]: tx_ucast_packets" },
@@ -143,7 +143,8 @@ static const struct {
 				4, STATS_FLAGS_BOTH, "rx_skb_alloc_discard" },
 	{ STATS_OFFSET32(hw_csum_err),
 				4, STATS_FLAGS_BOTH, "rx_csum_offload_errors" },
-
+	{ STATS_OFFSET32(driver_xoff),
+				4, STATS_FLAGS_BOTH, "tx_exhaustion_events" },
 	{ STATS_OFFSET32(total_bytes_transmitted_hi),
 				8, STATS_FLAGS_BOTH, "tx_bytes" },
 	{ STATS_OFFSET32(tx_stat_ifhcoutbadoctets_hi),
@@ -1815,6 +1816,22 @@ static int bnx2x_nvram_write(struct bnx2x *bp, u32 offset, u8 *data_buf,
 		offset += sizeof(u32);
 		data_buf += sizeof(u32);
 		written_so_far += sizeof(u32);
+
+		/* At end of each 4Kb page, release nvram lock to allow MFW
+		 * chance to take it for its own use.
+		 */
+		if ((cmd_flags & MCPR_NVM_COMMAND_LAST) &&
+		    (written_so_far < buf_size)) {
+			DP(BNX2X_MSG_ETHTOOL | BNX2X_MSG_NVM,
+			   "Releasing NVM lock after offset 0x%x\n",
+			   (u32)(offset - sizeof(u32)));
+			bnx2x_release_nvram_lock(bp);
+			usleep_range(1000, 2000);
+			rc = bnx2x_acquire_nvram_lock(bp);
+			if (rc)
+				return rc;
+		}
+
 		cmd_flags = 0;
 	}
 
@@ -3787,7 +3804,8 @@ static u32 bnx2x_get_rxfh_indir_size(struct net_device *dev)
 #endif
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 36)) || (defined(_HAS_ETHTOOL_EXT_GET_RXF_INDIR)) /* BNX2X_UPSTREAM */
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 16, 0)) /* BNX2X_UPSTREAM */
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 16, 0)) ||	\
+	RHEL_STARTING_AT_VERSION(7, 2) /* BNX2X_UPSTREAM */
 #ifdef _HAS_RSS_HASH_FUNCS /* BNX2X_UPSTREAM */
 static int bnx2x_get_rxfh(struct net_device *dev, u32 *indir, u8 *key,
 			  u8 *hfunc)
@@ -3843,7 +3861,8 @@ static int bnx2x_get_rxfh_indir(struct net_device *dev,
 #endif
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 36)) || (defined(_HAS_ETHTOOL_EXT_SET_RXF_INDIR)) /* BNX2X_UPSTREAM */
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 16, 0)) /* BNX2X_UPSTREAM */
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 16, 0)) ||	\
+	RHEL_STARTING_AT_VERSION(7, 2) /* BNX2X_UPSTREAM */
 #ifdef _HAS_RSS_HASH_FUNCS /* BNX2X_UPSTREAM */
 static int bnx2x_set_rxfh(struct net_device *dev, const u32 *indir,
 			  const u8 *key, const u8 hfunc)
@@ -4121,7 +4140,8 @@ static struct ethtool_ops bnx2x_ethtool_ops = {
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 3, 0)) || SLES_STARTING_AT_VERSION(SLES11_SP3) /* BNX2X_UPSTREAM */
 	.get_rxfh_indir_size	= bnx2x_get_rxfh_indir_size,
 #endif
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 16, 0)) /* BNX2X_UPSTREAM */
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 16, 0)) ||	\
+	RHEL_STARTING_AT_VERSION(7, 2) /* BNX2X_UPSTREAM */
 	.get_rxfh		= bnx2x_get_rxfh,
 	.set_rxfh		= bnx2x_set_rxfh,
 #elif (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 36))
@@ -4268,7 +4288,8 @@ static struct ethtool_ops bnx2x_vf_ethtool_ops = {
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 3, 0)) /* BNX2X_UPSTREAM */
 	.get_rxfh_indir_size	= bnx2x_get_rxfh_indir_size,
 #endif
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 16, 0)) /* BNX2X_UPSTREAM */
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 16, 0)) ||	\
+	RHEL_STARTING_AT_VERSION(7, 2) /* BNX2X_UPSTREAM */
 	.get_rxfh		= bnx2x_get_rxfh,
 	.set_rxfh		= bnx2x_set_rxfh,
 #elif (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 36))

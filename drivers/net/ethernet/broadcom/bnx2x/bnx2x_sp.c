@@ -480,7 +480,7 @@ static void __bnx2x_vlan_mac_h_exec_pending(struct bnx2x *bp,
 	o->head_exe_request = false;
 	o->saved_ramrod_flags = 0;
 	rc = bnx2x_exe_queue_step(bp, &o->exe_queue, &ramrod_flags);
-	if (rc != 0) {
+	if ((rc != 0) && (rc != 1)) {
 		BNX2X_ERR("execution of pending commands failed with rc %d\n",
 			  rc);
 #ifdef BNX2X_STOP_ON_ERROR
@@ -1276,14 +1276,15 @@ static void bnx2x_set_one_vxlan_fltr_e2(struct bnx2x *bp,
 		memset(data, 0, sizeof(*data));
 
 	/* Set a rule header */
-	bnx2x_vlan_mac_set_cmd_hdr_e2(bp, o, add, CLASSIFY_RULE_OPCODE_VXLAN,
-				      &rule_entry->vxlan.header);
+	bnx2x_vlan_mac_set_cmd_hdr_e2(bp, o, add,
+				      CLASSIFY_RULE_OPCODE_IMAC_VNI,
+				      &rule_entry->imac_vni.header);
 
 	/* Set VLAN and MAC themselves */
-	rule_entry->vxlan.vni = vni;
-	bnx2x_set_fw_mac_addr(&rule_entry->vxlan.inner_mac_msb,
-			      &rule_entry->vxlan.inner_mac_mid,
-			      &rule_entry->vxlan.inner_mac_lsb, mac);
+	rule_entry->imac_vni.vni = vni;
+	bnx2x_set_fw_mac_addr(&rule_entry->imac_vni.imac_msb,
+			      &rule_entry->imac_vni.imac_mid,
+			      &rule_entry->imac_vni.imac_lsb, mac);
 
 	/* MOVE: Add a rule that will add this MAC to the target Queue */
 	if (cmd == BNX2X_VLAN_MAC_MOVE) {
@@ -1293,14 +1294,14 @@ static void bnx2x_set_one_vxlan_fltr_e2(struct bnx2x *bp,
 		/* Setup ramrod data */
 		bnx2x_vlan_mac_set_cmd_hdr_e2(bp,
 					      elem->cmd_data.vlan_mac.target_obj,
-					      true, CLASSIFY_RULE_OPCODE_VXLAN,
-					      &rule_entry->vxlan.header);
+					      true, CLASSIFY_RULE_OPCODE_IMAC_VNI,
+					      &rule_entry->imac_vni.header);
 
 		/* Set a VLAN itself */
-		rule_entry->vxlan.vni = vni;
-		bnx2x_set_fw_mac_addr(&rule_entry->vxlan.inner_mac_msb,
-				      &rule_entry->vxlan.inner_mac_mid,
-				      &rule_entry->vxlan.inner_mac_lsb, mac);
+		rule_entry->imac_vni.vni = vni;
+		bnx2x_set_fw_mac_addr(&rule_entry->imac_vni.imac_msb,
+				      &rule_entry->imac_vni.imac_mid,
+				      &rule_entry->imac_vni.imac_lsb, mac);
 	}
 
 	/* Set the ramrod data header */

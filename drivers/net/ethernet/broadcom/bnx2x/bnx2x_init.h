@@ -255,8 +255,7 @@ static inline void bnx2x_map_q_cos(struct bnx2x *bp, u32 q_num, u32 new_cos)
 			REG_WR(bp, reg_addr, reg_bit_map | q_bit_map);
 
 			/* set/clear queue bit in command-queue bit map
-			 * (E2/E3A0 only, valid COS values are 0/1)
-			 */
+			(E2/E3A0 only, valid COS values are 0/1) */
 			if (!(INIT_MODE_FLAGS(bp) & MODE_E3_B0)) {
 				reg_addr = BNX2X_Q_CMDQ_REG_ADDR(pf_q_num);
 				reg_bit_map = REG_RD(bp, reg_addr);
@@ -292,7 +291,8 @@ static inline void bnx2x_dcb_config_qm(struct bnx2x *bp, enum cos_mode mode,
 }
 
 
-/* congestion managment port init api description
+/*
+ * congestion managment port init api description
  * the api works as follows:
  * the driver should pass the cmng_init_input struct, the port_init function
  * will prepare the required internal ram structure which will be passed back
@@ -318,21 +318,24 @@ static inline void bnx2x_dcb_config_qm(struct bnx2x *bp, enum cos_mode mode,
 /* resolution of the rate shaping timer - 400 usec */
 #define RS_PERIODIC_TIMEOUT_USEC 400
 
-/* number of bytes in single QM arbitration cycle -
- * coefficient for calculating the fairness timer
+/*
+ *  number of bytes in single QM arbitration cycle -
+ *  coefficient for calculating the fairness timer
  */
 #define QM_ARB_BYTES 160000
 
 /* resolution of Min algorithm 1:100 */
 #define MIN_RES 100
 
-/* how many bytes above threshold for
- * the minimal credit of Min algorithm
+/*
+ *  how many bytes above threshold for
+ *  the minimal credit of Min algorithm
  */
 #define MIN_ABOVE_THRESH 32768
 
-/* Fairness algorithm integration time coefficient -
- * for calculating the actual Tfair
+/*
+ *  Fairness algorithm integration time coefficient -
+ *  for calculating the actual Tfair
  */
 #define T_FAIR_COEF ((MIN_ABOVE_THRESH + QM_ARB_BYTES) * 8 * MIN_RES)
 
@@ -349,17 +352,18 @@ static inline void bnx2x_init_max(const struct cmng_init_input *input_data,
 	u32 vnic;
 	struct cmng_vnic *vdata = &ram_data->vnic;
 	struct cmng_struct_per_port *pdata = &ram_data->port;
-	/* rate shaping per-port variables
-	 * 100 micro seconds in SDM ticks = 25
-	 * since each tick is 4 microSeconds
+	/*
+	 * rate shaping per-port variables
+	 *  100 micro seconds in SDM ticks = 25
+	 *  since each tick is 4 microSeconds
 	 */
 
 	pdata->rs_vars.rs_periodic_timeout =
 	RS_PERIODIC_TIMEOUT_USEC / SDM_TICKS;
 
 	/* this is the threshold below which no timer arming will occur.
-	 * 1.25 coefficient is for the threshold to be a little bigger
-	 * then the real time to compensate for timer in-accuracy
+	 *  1.25 coefficient is for the threshold to be a little bigger
+	 *  then the real time to compensate for timer in-accuracy
 	 */
 	pdata->rs_vars.rs_threshold =
 	(5 * RS_PERIODIC_TIMEOUT_USEC * r_param)/4;
@@ -369,7 +373,8 @@ static inline void bnx2x_init_max(const struct cmng_init_input *input_data,
 		/* global vnic counter */
 		vdata->vnic_max_rate[vnic].vn_counter.rate =
 		input_data->vnic_max_rate[vnic];
-		/* maximal Mbps for this vnic
+		/*
+		 * maximal Mbps for this vnic
 		 * the quota in each timer period - number of bytes
 		 * transmitted in this period
 		 */
@@ -405,7 +410,8 @@ static inline void bnx2x_init_min(const struct cmng_init_input *input_data,
 	/* this is the resolution of the fairness timer */
 	fair_periodic_timeout_usec = QM_ARB_BYTES / r_param;
 
-	/* fairness per-port variables
+	/*
+	 * fairness per-port variables
 	 * for 10G it is 1000usec. for 1G it is 10000usec.
 	 */
 	tFair = T_FAIR_COEF / input_data->port_rate;
@@ -413,8 +419,9 @@ static inline void bnx2x_init_min(const struct cmng_init_input *input_data,
 	/* this is the threshold below which we won't arm the timer anymore */
 	pdata->fair_vars.fair_threshold = QM_ARB_BYTES;
 
-	/* we multiply by 1e3/8 to get bytes/msec. We don't want the credits
-	 * to pass a credit of the T_FAIR*FAIR_MEM (algorithm resolution)
+	/*
+	 *  we multiply by 1e3/8 to get bytes/msec. We don't want the credits
+	 *  to pass a credit of the T_FAIR*FAIR_MEM (algorithm resolution)
 	 */
 	pdata->fair_vars.upper_bound = r_param * tFair * FAIR_MEM;
 
@@ -432,13 +439,14 @@ static inline void bnx2x_init_min(const struct cmng_init_input *input_data,
 	if (vnicWeightSum > 0) {
 		/* fairness per-vnic variables */
 		for (vnic = 0; vnic < BNX2X_PORT2_MODE_NUM_VNICS; vnic++) {
-			/* this is the credit for each period of the fairness
-			 * algorithm - number of bytes in T_FAIR (this vnic
-			 * share of the port rate)
+			/*
+			 *  this is the credit for each period of the fairness
+			 *  algorithm - number of bytes in T_FAIR (this vnic
+			 *  share of the port rate)
 			 */
 			vdata->vnic_min_rate[vnic].vn_credit_delta =
-				(u32)(input_data->vnic_min_rate[vnic]) * 100 *
-				(T_FAIR_COEF / (8 * 100 * vnicWeightSum));
+				((u32)(input_data->vnic_min_rate[vnic]) * 100 *
+				(T_FAIR_COEF / (8 * 100 * vnicWeightSum)));
 			if (vdata->vnic_min_rate[vnic].vn_credit_delta <
 			    pdata->fair_vars.fair_threshold +
 			    MIN_ABOVE_THRESH) {
@@ -464,18 +472,20 @@ static inline void bnx2x_init_fw_wrr(const struct cmng_init_input *input_data,
 	if (cosWeightSum > 0) {
 
 		for (vnic = 0; vnic < BNX2X_PORT2_MODE_NUM_VNICS; vnic++) {
-			/* Since cos and vnic shouldn't work together the rate
-			 * to divide between the coses is the port rate.
+			/*
+			 *  Since cos and vnic shouldn't work together the rate
+			 *  to divide between the coses is the port rate.
 			 */
 			u32 *ccd = vdata->vnic_min_rate[vnic].cos_credit_delta;
 			for (cos = 0; cos < MAX_COS_NUMBER; cos++) {
-				/* this is the credit for each period of
+				/*
+				 * this is the credit for each period of
 				 * the fairness algorithm - number of bytes
 				 * in T_FAIR (this cos share of the vnic rate)
 				 */
 				ccd[cos] =
-				    (u32)input_data->cos_min_rate[cos] * 100 *
-				    (T_FAIR_COEF / (8 * 100 * cosWeightSum));
+				    ((u32)input_data->cos_min_rate[cos] * 100 *
+				    (T_FAIR_COEF / (8 * 100 * cosWeightSum)));
 				 if (ccd[cos] < pdata->fair_vars.fair_threshold
 						+ MIN_ABOVE_THRESH) {
 					ccd[cos] =
@@ -503,8 +513,9 @@ static inline void bnx2x_init_cmng(const struct cmng_init_input *input_data,
 
 	ram_data->port.flags = input_data->flags;
 
-	/* number of bytes transmitted in a rate of 10Gbps
-	 * in one usec = 1.25KB.
+	/*
+	 *  number of bytes transmitted in a rate of 10Gbps
+	 *  in one usec = 1.25KB.
 	 */
 	r_param = BITS_TO_BYTES(input_data->port_rate);
 	bnx2x_init_max(input_data, r_param, ram_data);

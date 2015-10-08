@@ -943,14 +943,18 @@ static inline void bnx2x_free_rx_sge(struct bnx2x *bp,
 	if (!page)
 		return;
 
+	/* Since many fragments can share the same page, make sure to
+	 * only unmap and free the page once.
+	 */
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 34)) /* BNX2X_UPSTREAM */
-	dma_unmap_page(&bp->pdev->dev, dma_unmap_addr(sw_buf, mapping),
-		       SGE_PAGES, DMA_FROM_DEVICE);
+	dma_unmap_single(&bp->pdev->dev, dma_unmap_addr(sw_buf, mapping),
+			 SGE_PAGE_SIZE, DMA_FROM_DEVICE);
 #else
-	pci_unmap_page(bp->pdev, pci_unmap_addr(sw_buf, mapping),
-		       SGE_PAGES, PCI_DMA_FROMDEVICE);
+	pci_unmap_single(bp->pdev, pci_unmap_addr(sw_buf, mapping),
+			 SGE_PAGE_SIZE, PCI_DMA_FROMDEVICE);
 #endif
-	__free_pages(page, PAGES_PER_SGE_SHIFT);
+
+	put_page(page);
 
 	sw_buf->page = NULL;
 	sge->addr_hi = 0;
@@ -1166,6 +1170,29 @@ static inline void bnx2x_set_fw_mac_addr(__le16 *fw_hi, __le16 *fw_mid,
 	((u8 *)fw_lo)[1]  = mac[4];
 }
 
+static inline void bnx2x_free_rx_mem_pool(struct bnx2x *bp,
+					  struct bnx2x_alloc_pool *pool)
+{
+	if (!pool->page)
+		return;
+
+	/* Page was not fully fragmented.  Unmap unused space */
+	if (pool->offset < PAGE_SIZE) {
+		dma_addr_t dma = pool->dma + pool->offset;
+		int size = PAGE_SIZE - pool->offset;
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 34)) /* BNX2X_UPSTREAM */
+		dma_unmap_single(&bp->pdev->dev, dma, size, DMA_FROM_DEVICE);
+#else
+		pci_unmap_single(bp->pdev, dma, size, PCI_DMA_FROMDEVICE);
+#endif
+	}
+
+	put_page(pool->page);
+
+	pool->page = NULL;
+}
+
 static inline void bnx2x_free_rx_sge_range(struct bnx2x *bp,
 					   struct bnx2x_fastpath *fp, int last)
 {
@@ -1176,6 +1203,8 @@ static inline void bnx2x_free_rx_sge_range(struct bnx2x *bp,
 
 	for (i = 0; i < last; i++)
 		bnx2x_free_rx_sge(bp, fp, i);
+
+	bnx2x_free_rx_mem_pool(bp, &fp->page_pool);
 }
 
 static inline void bnx2x_set_next_page_rx_bd(struct bnx2x_fastpath *fp)
