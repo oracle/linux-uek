@@ -215,14 +215,29 @@ lo_do_transfer(struct loop_device *lo, int cmd,
 }
 
 #ifdef CONFIG_AIO
+static void lo_enospc_error(struct bio *bio)
+{
+	char b[BDEVNAME_SIZE];
+	struct block_device *bdev = bio->bi_bdev;
+	printk_ratelimited(KERN_INFO
+	"lo_enospc_error: ENOSPC noticed on device %s MAJOR:%d MINOR:%d\n",
+		bdevname(bdev, b), MAJOR(bdev->bd_dev), MINOR(bdev->bd_dev));
+}
+
 static void lo_rw_aio_complete(u64 data, long res)
 {
 	struct bio *bio = (struct bio *)(uintptr_t)data;
 
 	if (res > 0)
 		res = 0;
-	else if (res < 0)
+	else if (res < 0) {
+		if (res == -ENOSPC)
+			lo_enospc_error(bio);
+		else
+			printk_ratelimited(KERN_INFO
+			"lo_rw_aio_complete: Error %ld received\n", res);
 		res = -EIO;
+	}
 
 	bio_endio(bio, res);
 }
@@ -273,8 +288,9 @@ static int __do_lo_send_write(struct file *file,
 	set_fs(old_fs);
 	if (likely(bw == len))
 		return 0;
-	printk(KERN_ERR "loop: Write error at byte offset %llu, length %i.\n",
-			(unsigned long long)pos, len);
+	printk(KERN_ERR
+	       "loop: Write error %ld at byte offset %llu, length %i.\n",
+			bw, (unsigned long long)pos, len);
 	if (bw >= 0)
 		bw = -EIO;
 	return bw;
@@ -313,8 +329,9 @@ static int do_lo_send_write(struct loop_device *lo, struct bio_vec *bvec,
 		return __do_lo_send_write(lo->lo_backing_file,
 				page_address(page), bvec->bv_len,
 				pos);
-	printk(KERN_ERR "loop: Transfer error at byte offset %llu, "
-			"length %i.\n", (unsigned long long)pos, bvec->bv_len);
+	printk(KERN_ERR
+	       "loop: Transfer error %d at byte offset %llu, length %i.\n",
+	       ret, (unsigned long long)pos, bvec->bv_len);
 	if (ret > 0)
 		ret = -EIO;
 	return ret;
@@ -479,8 +496,11 @@ static int lo_discard(struct loop_device *lo, struct bio *bio)
 		return -EOPNOTSUPP;
 
 	ret = file->f_op->fallocate(file, mode, pos, bio->bi_size);
-	if (unlikely(ret && ret != -EINVAL && ret != -EOPNOTSUPP))
+	if (unlikely(ret && ret != -EINVAL && ret != -EOPNOTSUPP)) {
+		printk_ratelimited(KERN_INFO
+			       "lo_discard: Error %d received\n", ret);
 		ret = -EIO;
+	}
 	return ret;
 }
 
@@ -569,8 +589,12 @@ static inline void loop_handle_bio(struct loop_device *lo, struct bio *bio)
 
 		if ((bio_rw(bio) == WRITE) && bio->bi_rw & REQ_FUA && !ret) {
 			ret = vfs_fsync(lo->lo_backing_file, 0);
-			if (unlikely(ret && ret != -EINVAL))
+			if (unlikely(ret && ret != -EINVAL)) {
+				printk_ratelimited(KERN_INFO
+				"loop_handle_bio: Error %d received\n",
+						ret);
 				ret = -EIO;
+			}
 		}
 out:
 		bio_endio(bio, ret);
