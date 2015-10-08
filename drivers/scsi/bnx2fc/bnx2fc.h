@@ -57,6 +57,12 @@
 #define DEVINITDATA
 #endif
 
+#if ((!defined(__BNX2FC_UEK__) && defined(__BNX2FC_RHEL__) && (__BNX2FC_RHEL__ < 0x0700)) ||    \
+     (defined(__BNX2FC_SLES__) && (__BNX2FC_SLES__ < 0x1102)))
+#define kthread_create_on_node(threadfn, data, node, namefmt, ...)  \
+	kthread_create(threadfn, data, namefmt, ## __VA_ARGS__)
+#endif
+
 #ifdef __BNX2FC_UEK__
 #define kthread_create(threadfn, data, namefmt, arg...) \
 	kthread_create_on_node(threadfn, data, -1, namefmt, ##arg)
@@ -143,8 +149,8 @@
 #include "bnx2fc_compat_uek3.h"
 
 #define BNX2FC_NAME		"bnx2fc"
-#define BNX2FC_VERSION		"2.9.3"
-#define BNX2FC_RELDATE		"April 30, 2015"
+#define BNX2FC_VERSION		"2.9.6"
+#define BNX2FC_RELDATE		"June 30, 2015"
 
 #define PFX			"bnx2fc: "
 

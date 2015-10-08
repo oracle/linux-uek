@@ -702,7 +702,7 @@ static int bnx2fc_initiate_tmf(struct scsi_cmnd *sc_cmd, u8 tm_flags)
         }
 #else
 	rc = fc_block_scsi_eh(sc_cmd);
-#if (defined(__BNX2FC_SLES__) && (__BNX2FC_SLES__ > 0x1101))
+#if (defined(__BNX2FC_SLES__) && (__BNX2FC_SLES__ > 0x1101 && __BNX2FC_SLES__ < 0x1200))
 	if (rc != SUCCESS)
 #else
 	if (rc)
@@ -1149,7 +1149,7 @@ int bnx2fc_eh_abort(struct scsi_cmnd *sc_cmd)
 #else
 
 	rc = fc_block_scsi_eh(sc_cmd);
-#if (defined(__BNX2FC_SLES__) && (__BNX2FC_SLES__ > 0x1101))
+#if (defined(__BNX2FC_SLES__) && (__BNX2FC_SLES__ > 0x1101 && __BNX2FC_SLES__ < 0x1200))
 	if (rc != SUCCESS)
 #else
 	if (rc)
