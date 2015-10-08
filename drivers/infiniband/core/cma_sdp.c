@@ -172,3 +172,38 @@ int cma_format_hdr_sdp(void *hdr, struct rdma_id_private *id_priv)
 
 	return 0;
 }
+
+void cma_save_ip4_info_sdp(struct rdma_cm_id *id, struct rdma_cm_id *listen_id,
+			   struct cma_hdr *cma_hdr)
+{
+	struct sockaddr_in *ip4;
+	struct sdp_hh *hdr = (struct sdp_hh *)cma_hdr;
+
+	ip4 = (struct sockaddr_in *) &id->route.addr.src_addr;
+	ip4->sin_family = AF_INET;
+	ip4->sin_addr.s_addr = hdr->dst_addr.ip4.addr;
+	ip4->sin_port = ss_get_port(&listen_id->route.addr.src_addr);
+
+	ip4 = (struct sockaddr_in *) &id->route.addr.dst_addr;
+	ip4->sin_family = AF_INET;
+	ip4->sin_addr.s_addr = hdr->src_addr.ip4.addr;
+	ip4->sin_port = hdr->port;
+}
+
+void cma_save_ip6_info_sdp(struct rdma_cm_id *id, struct rdma_cm_id *listen_id,
+			   struct cma_hdr *cma_hdr)
+{
+	struct sockaddr_in6 *ip6;
+	struct sdp_hh *hdr = (struct sdp_hh *)cma_hdr;
+
+	ip6 = (struct sockaddr_in6 *) &id->route.addr.src_addr;
+	ip6->sin6_family = AF_INET6;
+	ip6->sin6_addr = hdr->dst_addr.ip6;
+	ip6->sin6_port = ss_get_port(&listen_id->route.addr.src_addr);
+
+	ip6 = (struct sockaddr_in6 *) &id->route.addr.dst_addr;
+	ip6->sin6_family = AF_INET6;
+	ip6->sin6_addr = hdr->src_addr.ip6;
+	ip6->sin6_port = hdr->port;
+
+}

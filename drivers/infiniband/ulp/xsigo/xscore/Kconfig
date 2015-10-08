@@ -1,0 +1,6 @@
+config INFINIBAND_XSCORE
+	tristate "Xsigo fabric support for InfiniBand devices"
+	depends on NETDEVICES && INET && INFINIBAND
+	---help---
+	  Support for Xsigo fabric for Infiniband devices. This will enable
+          Infiniband data transfer through Xsigo director.
