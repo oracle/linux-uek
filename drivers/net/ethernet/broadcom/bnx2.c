@@ -11,9 +11,8 @@
  * Written by: Michael Chan  (mchan@broadcom.com)
  */
 
-#include "bnx2_compat00.h"
-
 #include <linux/version.h>
+#include "bnx2_compat00.h"
 
 #if (LINUX_VERSION_CODE < 0x020612)
 #include <linux/config.h>
@@ -97,9 +96,8 @@
 #include "bnx2_fw2.h"
 
 #define DRV_MODULE_NAME		"bnx2"
-#define DRV_MODULE_VERSION     "2.2.5o"
-#define DRV_MODULE_RELDATE     "May 1, 2015"
-
+#define DRV_MODULE_VERSION	"2.2.5p"
+#define DRV_MODULE_RELDATE	"Sept 3, 2015"
 
 #define RUN_AT(x) (jiffies + (x))
 

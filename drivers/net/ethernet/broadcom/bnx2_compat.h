@@ -251,11 +251,6 @@ static inline bool pci_is_pcie(struct pci_dev *dev)
 #define __releases(x)
 #endif
 
-#ifndef HAVE_LE32
-typedef u32 __le32;
-typedef u32 __be32;
-#endif
-
 #ifndef USEC_PER_SEC
 #define USEC_PER_SEC	1000000L
 #endif
