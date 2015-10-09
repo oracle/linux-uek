@@ -156,9 +156,17 @@ SYSCALL_DEFINE1(syncfs, int, fd)
 		return -EBADF;
 	sb = f.file->f_dentry->d_sb;
 
+	/*
+	 * If the file system is frozen we can't proceed because we
+	 * could potentially block on frozen file system. This would
+	 * lead to a deadlock, because we'll be holding s_umount which
+	 * has to be taken in order to thaw the file system as well
+	 */
+	sb_start_write(sb);
 	down_read(&sb->s_umount);
 	ret = sync_filesystem(sb);
 	up_read(&sb->s_umount);
+	sb_end_write(sb);
 
 	fdput(f);
 	return ret;
