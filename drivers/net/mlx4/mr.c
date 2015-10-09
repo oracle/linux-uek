@@ -62,6 +62,9 @@
 #define MLX4_MPT_STATUS_SW		0xF0
 #define MLX4_MPT_STATUS_HW		0x00
 
+#define MLX4_MPT_PD_MASK		(0x1FFFFUL)
+#define MLX4_MPT_PD_VF_MASK		(0xFE0000UL)
+
 static u32 mlx4_buddy_alloc(struct mlx4_buddy *buddy, int order)
 {
 	int o;
@@ -1056,7 +1059,7 @@ int mlx4_map_phys_fmr_fbo(struct mlx4_dev *dev, struct mlx4_fmr *fmr,
 			  u64 *page_list, int npages, u64 iova, u32 fbo,
 			  u32 len, u32 *lkey, u32 *rkey, int same_key)
 {
-	u32 key;
+	u32 key, pdflags;
 	int i, err;
 
 	err = mlx4_check_fmr(fmr, page_list, npages, iova);
@@ -1090,7 +1093,11 @@ int mlx4_map_phys_fmr_fbo(struct mlx4_dev *dev, struct mlx4_fmr *fmr,
 	fmr->mpt->first_byte_offset = cpu_to_be32(fbo & 0x001fffff);
 	fmr->mpt->flags2 = (fbo ? MLX4_MPT_FLAG2_FBO_EN : 0);
 
-	fmr->mpt->pd_flags = cpu_to_be32(fmr->mr.pd | MLX4_MPT_PD_FLAG_EN_INV);
+	pdflags = be32_to_cpu(fmr->mpt->pd_flags) &  ~MLX4_MPT_PD_MASK;
+	if (mlx4_is_mfunc(dev))
+		pdflags &= ~MLX4_MPT_PD_VF_MASK;
+	fmr->mpt->pd_flags = cpu_to_be32(pdflags | fmr->mr.pd |
+			MLX4_MPT_PD_FLAG_EN_INV);
 	if (fmr->mr.mtt.order >= 0 && fmr->mr.mtt.page_shift == 0) {
 		fmr->mpt->pd_flags |= cpu_to_be32(MLX4_MPT_PD_FLAG_FAST_REG |
 						   MLX4_MPT_PD_FLAG_RAE);
