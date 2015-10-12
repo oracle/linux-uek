@@ -4017,6 +4017,9 @@ static void rem_slave_qps(struct mlx4_dev *dev, int slave)
 						 &tracker->res_tree[RES_QP]);
 					list_del(&qp->com.list);
 					spin_unlock_irq(mlx4_tlock(dev));
+					__mlx4_qp_release_range(dev, qpn, 1);
+					mlx4_release_resource(dev, slave,
+							      RES_QP, 1, 0);
 					kfree(qp);
 					state = 0;
 					break;
@@ -4088,6 +4091,8 @@ static void rem_slave_srqs(struct mlx4_dev *dev, int slave)
 						 &tracker->res_tree[RES_SRQ]);
 					list_del(&srq->com.list);
 					spin_unlock_irq(mlx4_tlock(dev));
+					mlx4_release_resource(dev, slave,
+							      RES_SRQ, 1, 0);
 					kfree(srq);
 					state = 0;
 					break;
@@ -4154,6 +4159,8 @@ static void rem_slave_cqs(struct mlx4_dev *dev, int slave)
 						 &tracker->res_tree[RES_CQ]);
 					list_del(&cq->com.list);
 					spin_unlock_irq(mlx4_tlock(dev));
+					mlx4_release_resource(dev, slave,
+							      RES_CQ, 1, 0);
 					kfree(cq);
 					state = 0;
 					break;
@@ -4217,6 +4224,8 @@ static void rem_slave_mrs(struct mlx4_dev *dev, int slave)
 						 &tracker->res_tree[RES_MPT]);
 					list_del(&mpt->com.list);
 					spin_unlock_irq(mlx4_tlock(dev));
+					mlx4_release_resource(dev, slave,
+							      RES_MPT, 1, 0);
 					kfree(mpt);
 					state = 0;
 					break;
@@ -4286,6 +4295,8 @@ static void rem_slave_mtts(struct mlx4_dev *dev, int slave)
 						 &tracker->res_tree[RES_MTT]);
 					list_del(&mtt->com.list);
 					spin_unlock_irq(mlx4_tlock(dev));
+					mlx4_release_resource(dev, slave, RES_MTT,
+							      1 << mtt->order, 0);
 					kfree(mtt);
 					state = 0;
 					break;
