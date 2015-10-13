@@ -653,8 +653,12 @@ static void neigh_add_path(struct sk_buff *skb, u8 *daddr,
 					   skb_queue_len(&neigh->queue));
 				goto err_drop;
 			}
-		} else
+		} else {
+			spin_unlock_irqrestore(&priv->lock, flags);
 			ipoib_send(dev, skb, path->ah, IPOIB_QPN(daddr));
+			ipoib_neigh_put(neigh);
+			return;
+		}
 	} else {
 		neigh->ah  = NULL;
 
@@ -721,7 +725,9 @@ static void unicast_arp_send(struct sk_buff *skb, struct net_device *dev,
 		ipoib_dbg(priv, "Send unicast ARP to %04x\n",
 			  be16_to_cpu(path->pathrec.dlid));
 
+		spin_unlock_irqrestore(&priv->lock, flags);
 		ipoib_send(dev, skb, path->ah, IPOIB_QPN(cb->hwaddr));
+		return;
 	} else if ((path->query || !path_rec_start(dev, path)) &&
 		   skb_queue_len(&path->queue) < IPOIB_MAX_PATH_REC_QUEUE) {
 		__skb_queue_tail(&path->queue, skb);
