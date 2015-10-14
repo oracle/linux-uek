@@ -69,7 +69,8 @@ static struct hlist_head *rds_conn_bucket(__be32 laddr, __be32 faddr)
 } while (0)
 
 /* rcu read lock must be held or the connection spinlock */
-static struct rds_connection *rds_conn_lookup(struct hlist_head *head,
+static struct rds_connection *rds_conn_lookup(struct net *net,
+					      struct hlist_head *head,
 					      __be32 laddr, __be32 faddr,
 					      struct rds_transport *trans,
 					      u8 tos)
@@ -79,7 +80,8 @@ static struct rds_connection *rds_conn_lookup(struct hlist_head *head,
 	hlist_for_each_entry_rcu(conn, head, c_hash_node) {
 		if (conn->c_faddr == faddr && conn->c_laddr == laddr &&
 				conn->c_tos == tos &&
-				conn->c_trans == trans) {
+				conn->c_trans == trans &&
+		    net == rds_conn_net(conn)) {
 			ret = conn;
 			break;
 		}
@@ -131,7 +133,7 @@ static struct rds_connection *__rds_conn_create(struct net *net,
 	int ret;
 
 	rcu_read_lock();
-	conn = rds_conn_lookup(head, laddr, faddr, trans, tos);
+	conn = rds_conn_lookup(net, head, laddr, faddr, trans, tos);
 	if (conn
 	 && conn->c_loopback
 	 && conn->c_trans != &rds_loop_transport
@@ -252,7 +254,7 @@ static struct rds_connection *__rds_conn_create(struct net *net,
 		/* Creating normal conn */
 		struct rds_connection *found;
 
-		found = rds_conn_lookup(head, laddr, faddr, trans, tos);
+		found = rds_conn_lookup(net, head, laddr, faddr, trans, tos);
 		if (found) {
 			trans->conn_free(conn->c_transport_data);
 			kmem_cache_free(rds_conn_slab, conn);
@@ -287,14 +289,15 @@ struct rds_connection *rds_conn_create_outgoing(struct net *net,
 }
 EXPORT_SYMBOL_GPL(rds_conn_create_outgoing);
 
-struct rds_connection *rds_conn_find(__be32 laddr, __be32 faddr,
-					struct rds_transport *trans, u8 tos)
+struct rds_connection *rds_conn_find(struct net *net, __be32 laddr,
+				     __be32 faddr, struct rds_transport *trans,
+				     u8 tos)
 {
 	struct rds_connection *conn;
 	struct hlist_head *head = rds_conn_bucket(laddr, faddr);
 
 	rcu_read_lock();
-	conn = rds_conn_lookup(head, laddr, faddr, trans, tos);
+	conn = rds_conn_lookup(net, head, laddr, faddr, trans, tos);
 	rcu_read_unlock();
 
 	return conn;
