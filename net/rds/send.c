@@ -48,7 +48,7 @@
  * it to 0 will restore the old behavior (where we looped until we had
  * drained the queue).
  */
-static int send_batch_count = 64;
+static int send_batch_count = 1024;
 module_param(send_batch_count, int, 0444);
 MODULE_PARM_DESC(send_batch_count, " batch factor when working the send queue");
 
@@ -285,7 +285,7 @@ restart:
 			 * through a lot of messages, lets back off and see
 			 * if anyone else jumps in
 			 */
-			if (batch_count >= 1024)
+			if (batch_count >= send_batch_count)
 				goto over_batch;
 
 			spin_lock_irqsave(&conn->c_lock, flags);
@@ -492,7 +492,7 @@ over_batch:
 		     !list_empty(&conn->c_send_queue)) &&
 		    send_gen == conn->c_send_gen) {
 			rds_stats_inc(s_send_lock_queue_raced);
-			if (batch_count < 1024)
+			if (batch_count < send_batch_count)
 				goto restart;
 			queue_delayed_work(rds_wq, &conn->c_send_w, 1);
 		}
@@ -1259,6 +1259,8 @@ int rds_sendmsg(struct socket *sock, struct msghdr *msg, size_t payload_len)
 				ret = PTR_ERR(conn->c_base_conn);
 				goto out;
 			}
+			rds_rtd(RDS_RTD_CM_EXT, "checking conn %p\n",
+				conn->c_base_conn);
 			rds_conn_connect_if_down(conn->c_base_conn);
 		}
 		rs->rs_conn = conn;
@@ -1302,6 +1304,9 @@ int rds_sendmsg(struct socket *sock, struct msghdr *msg, size_t payload_len)
 		goto out;
 	}
 
+	if (rds_conn_state(conn) == RDS_CONN_DOWN)
+		rds_rtd(RDS_RTD_CM_EXT, "checking conn in down state %p\n",
+			conn);
 	rds_conn_connect_if_down(conn);
 
 	ret = rds_cong_wait(conn->c_fcong, dport, nonblock, rs);
@@ -1412,7 +1417,8 @@ int rds_send_internal(struct rds_connection *conn, struct rds_sock *rs,
 	/* create ourselves a new message to send out the data */
 	rm = rds_message_alloc(ret, gfp);
 	if (!rm) {
-		rdsdebug("failed to allocate response message rs %p", rs);
+		rds_rtd(RDS_RTD_ERR, "failed to allocate resp message rs %p",
+			rs);
 		ret = -ENOMEM;
 		goto out;
 	}
@@ -1464,6 +1470,7 @@ int rds_send_internal(struct rds_connection *conn, struct rds_sock *rs,
 	}
 
 	/* retry the connection if it hasn't actually been made */
+	rds_rtd(RDS_RTD_CM_EXT, "checking conn %p\n", conn);
 	rds_conn_connect_if_down(conn);
 
 	/* simple congestion check */
@@ -1476,7 +1483,7 @@ int rds_send_internal(struct rds_connection *conn, struct rds_sock *rs,
 	/* only take a single pass */
 	if (!rds_send_queue_rm(rs, conn, rm, rs->rs_bound_port,
 			       dst->dport, &queued)) {
-		rdsdebug("cannot block on internal send rs %p", rs);
+		rds_rtd(RDS_RTD_SND, "cannot block on internal send rs %p", rs);
 		rds_stats_inc(s_send_queue_full);
 
 		/* force a requeue of the work for later */
@@ -1534,6 +1541,7 @@ rds_send_pong(struct rds_connection *conn, __be16 dport)
 	rm->m_daddr = conn->c_faddr;
 	rm->data.op_active = 1;
 
+	rds_rtd(RDS_RTD_CM_EXT, "checking conn %p\n", conn);
 	rds_conn_connect_if_down(conn);
 
 	ret = rds_cong_wait(conn->c_fcong, dport, 1, NULL);
