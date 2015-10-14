@@ -17,6 +17,7 @@ typedef struct dtrace_psinfo {
 		struct dtrace_psinfo *next;
 	};
 	char **argv;
+	unsigned long envc;
 	char **envp;
 	char psargs[PR_PSARGS_SZ];
 } dtrace_psinfo_t;
