@@ -1001,7 +1001,11 @@ static inline int mlx4_check_fmr(struct mlx4_fmr *fmr, u64 *page_list,
 int mlx4_map_phys_fmr(struct mlx4_dev *dev, struct mlx4_fmr *fmr, u64 *page_list,
 		      int npages, u64 iova, u32 *lkey, u32 *rkey)
 {
+#ifdef WITHOUT_ORACLE_EXTENSIONS
 	u32 key;
+#else
+	u32 key, pdflags;
+#endif /* WITHOUT_ORACLE_EXTENSIONS */
 	int i, err;
 
 	err = mlx4_check_fmr(fmr, page_list, npages, iova);
@@ -1032,6 +1036,14 @@ int mlx4_map_phys_fmr(struct mlx4_dev *dev, struct mlx4_fmr *fmr, u64 *page_list
 	fmr->mpt->lkey   = cpu_to_be32(key);
 	fmr->mpt->length = cpu_to_be64(npages * (1ull << fmr->page_shift));
 	fmr->mpt->start  = cpu_to_be64(iova);
+
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	pdflags = be32_to_cpu(fmr->mpt->pd_flags) &  ~MLX4_MPT_PD_MASK;
+	if (mlx4_is_mfunc(dev))
+		pdflags &= ~MLX4_MPT_PD_VF_MASK;
+	fmr->mpt->pd_flags = cpu_to_be32(pdflags | fmr->mr.pd |
+			MLX4_MPT_PD_FLAG_EN_INV);
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 	/* Make MTT entries are visible before setting MPT status */
 	wmb();
