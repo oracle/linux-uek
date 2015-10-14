@@ -143,7 +143,7 @@
 	mov	-1, %o0
 	ENDPROC(dtrace_caller)
 
-	ENTRY(dtrace_copyin)
+	ENTRY(dtrace_copyin_arch)
 	tst	%o2
 	bz	2f
 	clr	%g1
@@ -165,9 +165,9 @@
 2:
 	retl
 	nop
-	ENDPROC(dtrace_copyin)
+	ENDPROC(dtrace_copyin_arch)
 
-	ENTRY(dtrace_copyinstr)
+	ENTRY(dtrace_copyinstr_arch)
 	tst	%o2
 	bz	2f
 	clr	%g1
@@ -191,7 +191,7 @@
 2:
 	retl
 	nop
-	ENDPROC(dtrace_copyinstr)
+	ENDPROC(dtrace_copyinstr_arch)
 
 	ENTRY(dtrace_copyout)
 	tst	%o2

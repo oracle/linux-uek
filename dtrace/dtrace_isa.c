@@ -67,6 +67,59 @@ void dtrace_toxic_ranges(void (*func)(uintptr_t, uintptr_t))
 	/* FIXME */
 }
 
+/*
+ * Handle a few special cases where we store information in kernel memory that
+ * in other systems is typically found in userspace.
+ */
+static int dtrace_fake_copyin(intptr_t addr, size_t size)
+{
+	dtrace_psinfo_t	*psinfo = current->dtrace_psinfo;
+	uintptr_t	argv = (uintptr_t)psinfo->argv;
+	unsigned long	argc = psinfo->argc;
+	uintptr_t	envp = (uintptr_t)psinfo->envp;
+	unsigned long	envc = psinfo->envc;
+
+	/*
+	 * Ensure addr is within the argv array (or the envp array):
+	 * 	addr in [argv..argv + argc * sizeof(psinfo->argv[0])[
+	 * Ensure that addr + size is within the same array
+	 *	addr + size in [argv..argv * sizeof(psinfo->argv[0])]
+	 *
+	 * To guard against overflows on (addr + size) we rewrite this basic
+	 * equation:
+	 *	addr + size <= argv + argc * sizeof(psinfo->argv[0])
+	 * into:
+	 *	addr - argv <= argc * sizeof(psinfo->argv[0]) - size
+	 */
+	return (addr >= argv && addr - argv < argc * sizeof(psinfo->argv[0])
+		    && addr - argv <= argc * sizeof(psinfo->argv[0]) - size) ||
+	       (addr >= envp && addr - envp < envc * sizeof(psinfo->envp[0])
+		    && addr - envp <= envc * sizeof(psinfo->envp[0]) - size);
+}
+
+void dtrace_copyin(uintptr_t uaddr, uintptr_t kaddr, size_t size,
+		   volatile uint16_t *flags)
+{
+	if (dtrace_fake_copyin(uaddr, size)) {
+		memcpy((char *)kaddr, (char *)uaddr, size);
+		return;
+	}
+
+	dtrace_copyin_arch(uaddr, kaddr, size, flags);
+}
+
+void dtrace_copyinstr(uintptr_t uaddr, uintptr_t kaddr, size_t size,
+		      volatile uint16_t *flags)
+{
+	if (dtrace_fake_copyin(uaddr, size)) {
+		strncpy((char *)kaddr, (char *)uaddr,
+			 min(size, (size_t)PR_PSARGS_SZ));
+		return;
+	}
+
+	dtrace_copyinstr_arch(uaddr, kaddr, size, flags);
+}
+
 ktime_t dtrace_gethrestime(void)
 {
 	return dtrace_gethrtime();
