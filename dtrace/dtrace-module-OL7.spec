@@ -33,6 +33,7 @@
 %define dt_0_4_3	1027
 %define dt_0_4_4	1028
 %define dt_0_4_5	1029
+%define dt_0_4_6	1030
 %define dt_0_5_0	1280
 %{lua:
 	local kver = rpm.expand("%{kver}")
@@ -45,8 +46,12 @@
 
 	if rpm.vercmp(kver, "4.1.4-3") >= 0 then
 		rpm.define("srcver 0.5.0")
-		rpm.define("bldrel 3")
+		rpm.define("bldrel 4")
 		rpm.define("dt_vcode "..rpm.expand("%{dt_0_5_0}"))
+	elseif rpm.vercmp(kver, "3.8.13-119") >= 0 then
+		rpm.define("srcver 0.4.6")
+		rpm.define("bldrel 1")
+		rpm.define("dt_vcode "..rpm.expand("%{dt_0_4_6}"))
 	elseif rpm.vercmp(kver, "3.8.13-87") >= 0 then
 		rpm.define("srcver 0.4.5")
 		rpm.define("bldrel 3")
@@ -99,9 +104,13 @@ Summary: dtrace module
 Version: %{srcver}
 Release: %{bldrel}.el7
 Provides: dtrace-modules
+%if %{dt_vcode} >= %{dt_0_4_6}
+Requires: at
+%else
+Requires: kernel%{variant} = %{kver}
+%endif
 License: CDDL
 Group: System Environment/Kernel
-Requires: kernel%{variant} = %{kver}
 Source0: dtrace-module-%{srcver}.tar.bz2
 BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 BuildRequires: kernel%{variant}-devel = %{kver}
@@ -123,6 +132,16 @@ Maintainers:
 ------------
 Nick Alcock <nick.alcock@oracle.com>
 Kris Van Hees <kris.van.hees@oracle.com>
+
+%if %{dt_vcode} >= %{dt_0_4_6}
+# If this package is not removed, but its dependent kernel is, schedule
+# a later removal via at, late enough that this yum job is probably over.
+%triggerun -- kernel%{variant} = %{kver}
+
+at now + 4 hours >/dev/null 2>&1 <<'EOF'
+rpm --quiet -e dtrace-modules-%{kver}
+EOF
+%endif
 
 %package -n %{header_pkg}
 Summary:	Header files for communication with the DTrace kernel module.
@@ -150,7 +169,9 @@ Release: %{bldrel}.el7
 Provides: dtrace-kernel-interface = 1
 License: CDDL
 Group: System Environment/Kernel
+%if %{dt_vcode} < %{dt_0_4_6}
 Requires: kernel%{variant} = %{kver}
+%endif
 Source0: dtrace-module-%{srcver}.tar.bz2
 BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 BuildRequires: kernel%{variant}-devel = %{kver}
@@ -251,6 +272,9 @@ rm -rf %{buildroot}
 
 %changelog
 %if %{dt_vcode} >= %{dt_0_5_0}
+* Tue Nov 17 2015 Kris Van Hees <kris.van.hees@oracle.com> - 0.5.0-4
+- Remove explicit dependency on kernel RPM.
+  [Orabug: 21669543]
 * Fri` Sep 18 2015 Kris Van Hees <kris.van.hees@oracle.com> - 0.5.0-3
 - Enable building DTrace modules on SPARC64.
 * Tue Aug 18 2015 Kris Van Hees <kris.van.hees@oracle.com> - 0.5.0-2
@@ -262,11 +286,16 @@ rm -rf %{buildroot}
   [Orabug: 19005048]
 - Update uid / gid handling in view of namespaces in UEK4 kernels.
   [Orabug: 20456825]
+%else
+%if %{dt_vcode} >= %{dt_0_4_6}
+* Tue Nov 17 2015 Kris Van Hees <kris.van.hees@oracle.com> - 0.4.6-1
+- Remove explicit dependency on kernel RPM.
+  [Orabug: 21669543]
+%endif
 %endif
 %if %{dt_vcode} >= %{dt_0_4_5}
 * Mon Jul 6 2015 Natalya Naumova <natalya.naumova@oracle.com> - 0.4.5-3
 - modules signing support
-
 * Tue Jun 23 2015 Kris Van Hees <kris.van.hees@oracle.com> - 0.4.5-2
 - Validate d_path() argument pointer to avoid crash.
   [Orabug: 21304207]
