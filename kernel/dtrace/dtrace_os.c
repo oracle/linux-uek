@@ -113,24 +113,29 @@ void dtrace_psinfo_alloc(struct task_struct *tsk)
 	mm = get_task_mm(tsk);
 	if (mm) {
 		size_t	len = mm->arg_end - mm->arg_start;
-		int	i, envc = 0;
+		int	i = 0;
 		char	*p;
 
 		/*
 		 * Construct the psargs string.
 		 */
-		if (len >= PR_PSARGS_SZ)
-			len = PR_PSARGS_SZ - 1;
+		if (len > 0) {
+			if (len >= PR_PSARGS_SZ)
+				len = PR_PSARGS_SZ - 1;
 
-		i = access_process_vm(tsk, mm->arg_start, psinfo->psargs,
-					len, 0);
+			i = access_process_vm(tsk, mm->arg_start,
+					      psinfo->psargs, len, 0);
+			if (i < len)
+				len = i;
+
+			for (i = 0, --len; i < len; i++) {
+				if (psinfo->psargs[i] == '\0')
+					psinfo->psargs[i] = ' ';
+			}
+		}
+
 		while (i < PR_PSARGS_SZ)
 			psinfo->psargs[i++] = 0;
-
-		for (i = 0; i < len; i++) {
-			if (psinfo->psargs[i] == '\0')
-				psinfo->psargs[i] = ' ';
-		}
 
 		/*
 		 * Determine the number of arguments.
@@ -169,8 +174,9 @@ void dtrace_psinfo_alloc(struct task_struct *tsk)
 		/*
 		 * Determine the number of environment variables.
 		 */
+		psinfo->envc = 0;
 		for (p = (char *)mm->env_start; p < (char *)mm->env_end;
-		     envc++) {
+		     psinfo->envc++) {
 			size_t	l = strnlen_user(p, MAX_ARG_STRLEN);
 
 			if (!l)
@@ -182,7 +188,7 @@ void dtrace_psinfo_alloc(struct task_struct *tsk)
 		/*
 		 * Limit the number of stored environment pointers.
 		 */
-		if ((len = envc) >= PR_ENVP_SZ)
+		if ((len = psinfo->envc) >= PR_ENVP_SZ)
 			len = PR_ENVP_SZ - 1;
 
 		psinfo->envp = kmalloc((len + 1) * sizeof(char *),
@@ -218,6 +224,7 @@ void dtrace_psinfo_alloc(struct task_struct *tsk)
 		psinfo->argc = 0;
 		psinfo->argv = kmalloc(sizeof(char *), GFP_KERNEL);
 		psinfo->argv[0] = NULL;
+		psinfo->envc = 0;
 		psinfo->envp = kmalloc(sizeof(char *), GFP_KERNEL);
 		psinfo->envp[0] = NULL;
 	}
