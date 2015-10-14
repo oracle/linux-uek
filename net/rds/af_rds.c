@@ -325,7 +325,8 @@ static int rds_user_reset(struct rds_sock *rs, char __user *optval, int optlen)
 				sizeof(struct rds_reset)))
 		return -EFAULT;
 
-	conn = rds_conn_find(reset.src.s_addr, reset.dst.s_addr,
+	conn = rds_conn_find(sock_net(rds_rs_to_sk(rs)),
+			     reset.src.s_addr, reset.dst.s_addr,
 			rs->rs_transport, reset.tos);
 
 	if (conn) {
