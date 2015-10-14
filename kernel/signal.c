@@ -2244,6 +2244,11 @@ relock:
 
 		ka = &sighand->action[signr-1];
 
+		DTRACE_PROC3(signal__handle, int, signr, siginfo_t *,
+			     ksig->ka.sa.sa_handler != SIG_DFL ? NULL :
+			     &ksig->info, void (*)(void),
+			     ksig->ka.sa.sa_handler);
+
 		/* Trace actually delivered signals. */
 		trace_signal_deliver(signr, &ksig->info, ka);
 
@@ -2343,12 +2348,6 @@ relock:
 	}
 	spin_unlock_irq(&sighand->siglock);
 
-	if (signr != 0) {
-		DTRACE_PROC3(signal__handle, int, signr, siginfo_t *,
-			     ksig->ka.sa.sa_handler != SIG_DFL ? NULL :
-			     &ksig->info, void (*)(void),
-			     ksig->ka.sa.sa_handler);
-	}
 	ksig->sig = signr;
 	return ksig->sig > 0;
 }
