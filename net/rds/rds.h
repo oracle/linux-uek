@@ -709,7 +709,8 @@ struct rds_connection *rds_conn_create_outgoing(struct net *net,
 						__be32 laddr, __be32 faddr,
 				struct rds_transport *trans,
 				u8 tos, gfp_t gfp);
-struct rds_connection *rds_conn_find(__be32 laddr, __be32 faddr,
+struct rds_connection *rds_conn_find(struct net *net, __be32 laddr,
+				     __be32 faddr,
 					struct rds_transport *trans, u8 tos);
 void rds_conn_shutdown(struct rds_connection *conn, int restart);
 void rds_conn_destroy(struct rds_connection *conn);
