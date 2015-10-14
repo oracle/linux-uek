@@ -360,7 +360,8 @@ rds_recv_route(struct rds_connection *conn, struct rds_incoming *inc,
 		nconn = conn;
 	} else {
 		/* reroute to a new conn structure, possibly the same one */
-		nconn = rds_conn_find(dst->saddr, dst->daddr, conn->c_trans,
+		nconn = rds_conn_find(rds_conn_net(conn),
+				      dst->saddr, dst->daddr, conn->c_trans,
 				      conn->c_tos);
 	}
 
