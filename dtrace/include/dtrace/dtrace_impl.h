@@ -897,13 +897,20 @@ extern uint64_t dtrace_getarg(int, int);
 extern int dtrace_getstackdepth(dtrace_mstate_t *, int);
 extern int dtrace_getustackdepth(void);
 extern ulong_t dtrace_getreg(struct task_struct *, uint_t);
-extern void dtrace_copyin(uintptr_t, uintptr_t, size_t, volatile uint16_t *);
-extern void dtrace_copyout(uintptr_t, uintptr_t, size_t, volatile uint16_t *);
+extern void dtrace_copyin(uintptr_t, uintptr_t, size_t,
+			  volatile uint16_t *);
+extern void dtrace_copyout(uintptr_t, uintptr_t, size_t,
+			   volatile uint16_t *);
 extern void dtrace_copyinstr(uintptr_t, uintptr_t, size_t,
 			     volatile uint16_t *);
 extern void dtrace_copyoutstr(uintptr_t, uintptr_t, size_t,
 			      volatile uint16_t *);
 extern uintptr_t dtrace_caller(int);
+
+extern void dtrace_copyin_arch(uintptr_t, uintptr_t, size_t,
+			       volatile uint16_t *);
+extern void dtrace_copyinstr_arch(uintptr_t, uintptr_t, size_t,
+				  volatile uint16_t *);
 
 extern void pdata_init(dtrace_module_t *, struct module *);
 extern void pdata_cleanup(dtrace_module_t *, struct module *);

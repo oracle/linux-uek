@@ -85,8 +85,8 @@ static int dtrace_copycheck(uintptr_t uaddr, uintptr_t kaddr, size_t size)
 	return 1;
 }
 
-void dtrace_copyin(uintptr_t uaddr, uintptr_t kaddr, size_t size,
-		   volatile uint16_t *flags)
+void dtrace_copyin_arch(uintptr_t uaddr, uintptr_t kaddr, size_t size,
+			volatile uint16_t *flags)
 {
 	if (dtrace_copycheck(uaddr, kaddr, size))
 		dtrace_copy(uaddr, kaddr, size);
@@ -99,8 +99,8 @@ void dtrace_copyout(uintptr_t uaddr, uintptr_t kaddr, size_t size,
 		dtrace_copy(kaddr, uaddr, size);
 }
 
-void dtrace_copyinstr(uintptr_t uaddr, uintptr_t kaddr, size_t size,
-		      volatile uint16_t *flags)
+void dtrace_copyinstr_arch(uintptr_t uaddr, uintptr_t kaddr, size_t size,
+			   volatile uint16_t *flags)
 {
 	if (dtrace_copycheck(uaddr, kaddr, size))
 		dtrace_copystr(uaddr, kaddr, size, flags);
