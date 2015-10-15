@@ -116,22 +116,3 @@ static void do_vfree(struct work_struct *work)
 {
 	vfree(work);
 }
-
-/**
- * kvfree - free an allocation do by kvmalloc
- * @buffer: buffer to free (MAYBE_NULL)
- *
- * Free a buffer allocated by kvmalloc
- */
-void kvfree(void *buffer)
-{
-	if (is_vmalloc_addr(buffer)) {
-		/* Data is no longer valid so just use the allocated space
-		 * as the work_struct
-		 */
-		struct work_struct *work = (struct work_struct *) buffer;
-		INIT_WORK(work, do_vfree);
-		schedule_work(work);
-	} else
-		kfree(buffer);
-}
