@@ -76,7 +76,7 @@ MODULE_PARM_DESC(rds_ib_retry_count, " Number of hw retries before reporting an 
 module_param(rds_ib_apm_enabled, int, 0444);
 MODULE_PARM_DESC(rds_ib_apm_enabled, " APM Enabled");
 module_param(rds_ib_active_bonding_enabled, int, 0444);
-MODULE_PARM_DESC(rds_ib_active_bonding_enabled, " High Availability IP enabled");
+MODULE_PARM_DESC(rds_ib_active_bonding_enabled, " Active Bonding enabled");
 module_param(rds_ib_apm_timeout, int, 0444);
 MODULE_PARM_DESC(rds_ib_apm_timeout, " APM timeout");
 module_param(rds_ib_rnr_retry_count, int, 0444);
@@ -84,7 +84,7 @@ MODULE_PARM_DESC(rds_ib_rnr_retry_count, " QP rnr retry count");
 module_param(rds_ib_apm_fallback, int, 0444);
 MODULE_PARM_DESC(rds_ib_apm_fallback, " APM failback enabled");
 module_param(rds_ib_active_bonding_fallback, int, 0444);
-MODULE_PARM_DESC(rds_ib_active_bonding_fallback, " HAIP failback Enabled");
+MODULE_PARM_DESC(rds_ib_active_bonding_fallback, " Active Bonding failback Enabled");
 module_param(rds_ib_active_bonding_failover_groups, charp, 0444);
 MODULE_PARM_DESC(rds_ib_active_bonding_failover_groups,
 	"<ifname>[,<ifname>]*[;<ifname>[,<ifname>]*]*");
