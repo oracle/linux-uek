@@ -99,9 +99,10 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 	case RDMA_CM_EVENT_ADDR_RESOLVED:
 		rdma_set_service_type(cm_id, conn->c_tos);
 
+#if RDMA_RDS_APM_SUPPORTED
 		if (rds_ib_apm_enabled)
 			rdma_set_timeout(cm_id, rds_ib_apm_timeout);
-
+#endif
 		if (conn->c_tos && conn->c_reconnect) {
 			struct rds_ib_connection *base_ic =
 				conn->c_base_conn->c_transport_data;
@@ -175,6 +176,7 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 		}
 		break;
 
+#if RDMA_RDS_APM_SUPPORTED
 	case RDMA_CM_EVENT_ALT_PATH_LOADED:
 		rdsdebug("RDS: alt path loaded\n");
 		if (conn)
@@ -188,7 +190,7 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 	case RDMA_CM_EVENT_ALT_ROUTE_ERROR:
 		rdsdebug("RDS: alt route resolve error\n");
 		break;
-
+#endif
 	case RDMA_CM_EVENT_ROUTE_ERROR:
 		/* IP might have been moved so flush the ARP entry and retry */
 		page = alloc_page(GFP_HIGHUSER);
@@ -258,8 +260,13 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 	case RDMA_CM_EVENT_ADDR_CHANGE:
 		rdsdebug("ADDR_CHANGE event <%u.%u.%u.%u,%u.%u.%u.%u>\n",
 				NIPQUAD(conn->c_laddr), NIPQUAD(conn->c_faddr));
+#if RDMA_RDS_APM_SUPPORTED
 		if (conn && !rds_ib_apm_enabled)
 			rds_conn_drop(conn);
+#else
+		if (conn)
+			rds_conn_drop(conn);
+#endif
 		break;
 
 	case RDMA_CM_EVENT_DISCONNECTED:

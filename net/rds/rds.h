@@ -23,6 +23,8 @@
 #define RDS_PROTOCOL_MINOR(v)	((v) & 255)
 #define RDS_PROTOCOL(maj, min)	(((maj) << 8) | min)
 
+#define RDMA_RDS_APM_SUPPORTED 0
+
 /*
  * XXX randomly chosen, but at least seems to be unused:
  * #               18464-18768 Unassigned
