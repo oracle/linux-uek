@@ -100,9 +100,9 @@ TRACE_EVENT(req,
 
 TRACE_EVENT(bio,
 
-	TP_PROTO(struct bio *bio, int error, char *action),
+	TP_PROTO(struct bio *bio, char *action),
 
-	TP_ARGS(bio, error, action),
+	TP_ARGS(bio, action),
 
 	TP_STRUCT__entry(
 		__string(action		, action	)
@@ -117,7 +117,7 @@ TRACE_EVENT(bio,
 		__entry->bio		= bio;
 		__entry->dev		= bio->bi_bdev ? bio->bi_bdev->bd_dev : 0;
 		__entry->req		= bio->bi_private;
-		__entry->error	        = error;
+		__entry->error	        = bio->bi_error;
 	),
 
 	TP_printk("%-10s bio=%p dev=%u:%u req=%p error=%d",
