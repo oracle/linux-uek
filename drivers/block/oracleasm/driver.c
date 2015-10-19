@@ -997,7 +997,7 @@ static void asm_finish_io(struct asm_request *r)
 	spin_lock_irqsave(&afi->f_lock, flags);
 
 	if (r->r_bio) {
-		trace_bio(r->r_bio, 0, "freelist");
+		trace_bio(r->r_bio, "freelist");
 		r->r_bio->bi_private = afi->f_bio_free;
 		afi->f_bio_free = r->r_bio;
 		r->r_bio = NULL;
@@ -1084,18 +1084,18 @@ static void asm_end_ioc(struct asm_request *r, unsigned int bytes_done,
 }  /* asm_end_ioc() */
 
 
-static void asm_end_bio_io(struct bio *bio, int error)
+static void asm_end_bio_io(struct bio *bio)
 {
 	struct asm_request *r;
 
-	trace_bio(bio, error, "end_bio_io");
+	trace_bio(bio, "end_bio_io");
 
 	r = bio->bi_private;
 
 	if (atomic_dec_and_test(&r->r_bio_count)) {
 		asm_end_ioc(r, r->r_count - (r->r_bio ?
 					     r->r_bio->bi_iter.bi_size : 0),
-			    error);
+			    bio->bi_error);
 	}
 }  /* asm_end_bio_io() */
 
@@ -1828,7 +1828,7 @@ static void asm_cleanup_bios(struct file *file)
 		afi->f_bio_free = bio->bi_private;
 
 		spin_unlock_irq(&afi->f_lock);
-		trace_bio(bio, 0, "unmap");
+		trace_bio(bio, "unmap");
 		asm_integrity_unmap(bio);
 		bio_unmap_user(bio);
 		spin_lock_irq(&afi->f_lock);
