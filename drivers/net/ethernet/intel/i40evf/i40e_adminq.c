@@ -60,17 +60,6 @@ static void i40e_adminq_init_regs(struct i40e_hw *hw)
 		hw->aq.arq.len  = I40E_VF_ARQLEN1;
 		hw->aq.arq.bal  = I40E_VF_ARQBAL1;
 		hw->aq.arq.bah  = I40E_VF_ARQBAH1;
-	} else {
-		hw->aq.asq.tail = I40E_PF_ATQT;
-		hw->aq.asq.head = I40E_PF_ATQH;
-		hw->aq.asq.len  = I40E_PF_ATQLEN;
-		hw->aq.asq.bal  = I40E_PF_ATQBAL;
-		hw->aq.asq.bah  = I40E_PF_ATQBAH;
-		hw->aq.arq.tail = I40E_PF_ARQT;
-		hw->aq.arq.head = I40E_PF_ARQH;
-		hw->aq.arq.len  = I40E_PF_ARQLEN;
-		hw->aq.arq.bal  = I40E_PF_ARQBAL;
-		hw->aq.arq.bah  = I40E_PF_ARQBAH;
 	}
 }
 
@@ -308,7 +297,7 @@ static i40e_status i40e_config_asq_regs(struct i40e_hw *hw)
 
 	/* set starting point */
 	wr32(hw, hw->aq.asq.len, (hw->aq.num_asq_entries |
-				  I40E_PF_ATQLEN_ATQENABLE_MASK));
+				  I40E_VF_ATQLEN1_ATQENABLE_MASK));
 	wr32(hw, hw->aq.asq.bal, lower_32_bits(hw->aq.asq.desc_buf.pa));
 	wr32(hw, hw->aq.asq.bah, upper_32_bits(hw->aq.asq.desc_buf.pa));
 
@@ -337,7 +326,7 @@ static i40e_status i40e_config_arq_regs(struct i40e_hw *hw)
 
 	/* set starting point */
 	wr32(hw, hw->aq.arq.len, (hw->aq.num_arq_entries |
-				  I40E_PF_ARQLEN_ARQENABLE_MASK));
+				  I40E_VF_ARQLEN1_ARQENABLE_MASK));
 	wr32(hw, hw->aq.arq.bal, lower_32_bits(hw->aq.arq.desc_buf.pa));
 	wr32(hw, hw->aq.arq.bah, upper_32_bits(hw->aq.arq.desc_buf.pa));
 
@@ -607,6 +596,9 @@ i40e_status i40evf_shutdown_adminq(struct i40e_hw *hw)
 
 	/* destroy the locks */
 
+	if (hw->nvm_buff.va)
+		i40e_free_virt_mem(hw, &hw->nvm_buff);
+
 	return ret_code;
 }
 
@@ -841,6 +833,10 @@ i40e_status i40evf_asq_send_command(struct i40e_hw *hw,
 	i40evf_debug_aq(hw, I40E_DEBUG_AQ_COMMAND, (void *)desc, buff,
 			buff_size);
 
+	/* save writeback aq if requested */
+	if (details->wb_desc)
+		*details->wb_desc = *desc_on_ring;
+
 	/* update the error if time out occurred */
 	if ((!cmd_completed) &&
 	    (!details->async && !details->postpone)) {
@@ -899,7 +895,7 @@ i40e_status i40evf_clean_arq_element(struct i40e_hw *hw,
 	mutex_lock(&hw->aq.arq_mutex);
 
 	/* set next_to_use to head */
-	ntu = (rd32(hw, hw->aq.arq.head) & I40E_PF_ARQH_ARQH_MASK);
+	ntu = (rd32(hw, hw->aq.arq.head) & I40E_VF_ARQH1_ARQH_MASK);
 	if (ntu == ntc) {
 		/* nothing to do - shouldn't need to update ring's values */
 		ret_code = I40E_ERR_ADMIN_QUEUE_NO_WORK;
