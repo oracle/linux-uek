@@ -1317,10 +1317,10 @@ int
 qlafx00_configure_devices(scsi_qla_host_t *vha)
 {
 	int  rval;
-	unsigned long flags, save_flags;
+	unsigned long flags;
 	rval = QLA_SUCCESS;
 
-	save_flags = flags = vha->dpc_flags;
+	flags = vha->dpc_flags;
 
 	ql_dbg(ql_dbg_disc, vha, 0x2090,
 	    "Configure devices -- dpc flags =0x%lx\n", flags);
@@ -1869,7 +1869,7 @@ qlafx00_fx_disc(scsi_qla_host_t *vha, fc_port_t *fcport, uint16_t fx_type)
 				fdisc->u.fxiocb.req_addr;
 			phost_info = &preg_hsi->hsi;
 			memset(preg_hsi, 0, sizeof(struct register_host_info));
-			phost_info->os_type = OS_TYPE_LINUX;
+			phost_info->os_type = cpu_to_le32(OS_TYPE_LINUX);
 			strncpy(phost_info->sysname,
 			    p_sysid->sysname, SYSNAME_LENGTH);
 			strncpy(phost_info->nodename,
@@ -1887,7 +1887,7 @@ qlafx00_fx_disc(scsi_qla_host_t *vha, fc_port_t *fcport, uint16_t fx_type)
 			strncpy(phost_info->hostdriver,
 			    QLA2XXX_VERSION, VERSION_LENGTH);
 			do_gettimeofday(&tv);
-			preg_hsi->utc = (uint64_t)tv.tv_sec;
+			preg_hsi->utc = cpu_to_le64(tv.tv_sec);
 			ql_dbg(ql_dbg_init, vha, 0x0149,
 			    "ISP%04X: Host registration with firmware\n",
 			    ha->pdev->device);
@@ -2279,7 +2279,6 @@ qlafx00_status_entry(scsi_qla_host_t *vha, struct rsp_que *rsp, void *pkt)
 	struct sts_entry_fx00 *sts;
 	__le16		comp_status;
 	__le16		scsi_status;
-	uint16_t	ox_id;
 	__le16		lscsi_status;
 	int32_t		resid;
 	uint32_t	sense_len, par_sense_len, rsp_info_len, resid_len,
@@ -2344,7 +2343,6 @@ qlafx00_status_entry(scsi_qla_host_t *vha, struct rsp_que *rsp, void *pkt)
 
 	fcport = sp->fcport;
 
-	ox_id = 0;
 	sense_len = par_sense_len = rsp_info_len = resid_len =
 		fw_resid_len = 0;
 	if (scsi_status & cpu_to_le16((uint16_t)SS_SENSE_LEN_VALID))
@@ -2978,7 +2976,7 @@ qlafx00_prep_cont_type1_iocb(struct req_que *req,
 	cont_pkt = (cont_a64_entry_t *)req->ring_ptr;
 
 	/* Load packet defaults. */
-	lcont_pkt->entry_type = CONTINUE_A64_TYPE_FX00;
+	lcont_pkt->entry_type = cpu_to_le32(CONTINUE_A64_TYPE_FX00);
 
 	return cont_pkt;
 }
@@ -3009,7 +3007,7 @@ qlafx00_build_scsi_iocbs(srb_t *sp, struct cmd_type_7_fx00 *cmd_pkt,
 
 	/* No data transfer */
 	if (!scsi_bufflen(cmd) || cmd->sc_data_direction == DMA_NONE) {
-		lcmd_pkt->byte_count = __constant_cpu_to_le32(0);
+		lcmd_pkt->byte_count = cpu_to_le32(0);
 		return;
 	}
 
@@ -3071,7 +3069,7 @@ qlafx00_build_scsi_iocbs(srb_t *sp, struct cmd_type_7_fx00 *cmd_pkt,
 int
 qlafx00_start_scsi(srb_t *sp)
 {
-	int		ret, nseg;
+	int		nseg;
 	unsigned long   flags;
 	uint32_t        index;
 	uint32_t	handle;
@@ -3088,8 +3086,6 @@ qlafx00_start_scsi(srb_t *sp)
 	struct scsi_lun llun;
 
 	/* Setup device pointers. */
-	ret = 0;
-
 	rsp = ha->rsp_q_map[0];
 	req = vha->req;
 
