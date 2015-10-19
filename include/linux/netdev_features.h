@@ -41,8 +41,7 @@ enum {
 	NETIF_F_TSO_ECN_BIT,		/* ... TCP ECN support */
 	NETIF_F_TSO6_BIT,		/* ... TCPv6 segmentation */
 	NETIF_F_FSO_BIT,		/* ... FCoE segmentation */
-	NETIF_F_GSO_RESERVED1,		/* ... free (fill GSO_MASK to 8 bits) */
-    NETIF_F_GSO_UDP_TUNNEL_BIT,	/* ... UDP TUNNEL with TSO */
+	NETIF_F_GSO_UDP_TUNNEL_BIT,	/* ... UDP TUNNEL with TSO */
 	/**/NETIF_F_GSO_LAST,		/* [can't be last bit, see GSO_MASK] */
 	NETIF_F_GSO_RESERVED2		/* ... free (fill GSO_MASK to 8 bits) */
 		= NETIF_F_GSO_LAST,
