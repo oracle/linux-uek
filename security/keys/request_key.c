@@ -449,6 +449,9 @@ static struct key *construct_key_and_link(struct key_type *type,
 
 	kenter("");
 
+	if (type == &key_type_keyring)
+		return ERR_PTR(-EPERM);
+	
 	user = key_user_lookup(current_fsuid(), current_user_ns());
 	if (!user)
 		return ERR_PTR(-ENOMEM);
