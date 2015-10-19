@@ -232,6 +232,7 @@ int iser_create_fmr_pool(struct ib_conn *ib_conn, unsigned cmds_max)
 	params.pool_size	 = cmds_max * 2;
 	params.dirty_watermark	 = cmds_max;
 	params.cache		 = 0;
+	params.relaxed		 = 0;
 	params.flush_function	 = NULL;
 	params.access		 = (IB_ACCESS_LOCAL_WRITE  |
 				    IB_ACCESS_REMOTE_WRITE |

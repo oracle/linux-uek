@@ -319,6 +319,7 @@ static struct ib_fmr_pool *srp_alloc_fmr_pool(struct srp_target_port *target)
 	fmr_param.pool_size	    = target->scsi_host->can_queue;
 	fmr_param.dirty_watermark   = fmr_param.pool_size / 4;
 	fmr_param.cache		    = 1;
+	fmr_param.relaxed           = 0;
 	fmr_param.max_pages_per_fmr = dev->max_pages_per_mr;
 	fmr_param.page_shift	    = ilog2(dev->mr_page_size);
 	fmr_param.access	    = (IB_ACCESS_LOCAL_WRITE |
@@ -1277,7 +1278,7 @@ static int srp_map_finish_fmr(struct srp_map_state *state,
 	u64 io_addr = 0;
 
 	fmr = ib_fmr_pool_map_phys(ch->fmr_pool, state->pages,
-				   state->npages, io_addr);
+				   state->npages, io_addr, NULL);
 	if (IS_ERR(fmr))
 		return PTR_ERR(fmr);
 
@@ -2761,6 +2762,13 @@ static int srp_sdev_count(struct Scsi_Host *host)
 	return c;
 }
 
+/*
+ * Return values:
+ * < 0 upon failure. Caller is responsible for SRP target port cleanup.
+ * 0 and target->state == SRP_TARGET_REMOVED if asynchronous target port
+ *    removal has been scheduled.
+ * 0 and target->state != SRP_TARGET_REMOVED upon success.
+ */
 static int srp_add_target(struct srp_host *host, struct srp_target_port *target)
 {
 	struct srp_rport_identifiers ids;
@@ -3266,7 +3274,7 @@ static ssize_t srp_create_target(struct device *dev,
 					srp_free_ch_ib(target, ch);
 					srp_free_req_data(target, ch);
 					target->ch_count = ch - target->ch;
-					break;
+					goto connected;
 				}
 			}
 
@@ -3276,6 +3284,7 @@ static ssize_t srp_create_target(struct device *dev,
 		node_idx++;
 	}
 
+connected:
 	target->scsi_host->nr_hw_queues = target->ch_count;
 
 	ret = srp_add_target(host, target);
@@ -3298,6 +3307,8 @@ out:
 	mutex_unlock(&host->add_target_mutex);
 
 	scsi_host_put(target->scsi_host);
+	if (ret < 0)
+		scsi_host_put(target->scsi_host);
 
 	return ret;
 

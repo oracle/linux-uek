@@ -1151,6 +1151,7 @@ struct ib_ucontext {
 	struct ib_device       *device;
 	struct list_head	pd_list;
 	struct list_head	mr_list;
+	struct list_head	fmr_list;
 	struct list_head	mw_list;
 	struct list_head	cq_list;
 	struct list_head	qp_list;
@@ -1200,7 +1201,16 @@ struct ib_udata {
 struct ib_pd {
 	struct ib_device       *device;
 	struct ib_uobject      *uobject;
+	struct ib_shpd         *shpd;    /* global uobj id if this
+					    pd is shared */
 	atomic_t          	usecnt; /* count all resources */
+};
+
+struct ib_shpd {
+	struct ib_device       *device;
+	struct ib_uobject      *uobject;
+	atomic_t		shared; /* count procs sharing the pd*/
+	u64			share_key;
 };
 
 struct ib_xrcd {
@@ -1658,6 +1668,17 @@ struct ib_device {
 	int			   (*destroy_flow)(struct ib_flow *flow_id);
 	int			   (*check_mr_status)(struct ib_mr *mr, u32 check_mask,
 						      struct ib_mr_status *mr_status);
+	struct ib_shpd		  *(*alloc_shpd)(struct ib_device *ibdev,
+						 struct ib_pd *pd);
+	struct ib_pd		  *(*share_pd)(struct ib_device *ibdev,
+					       struct ib_ucontext *context,
+					       struct ib_udata *udata,
+					       struct ib_shpd *shpd);
+	int			   (*remove_shpd)(struct ib_device *ibdev,
+						  struct ib_shpd *shpd,
+						  int atinit);
+	int                        (*set_fmr_pd)(struct ib_fmr *fmr,
+						 struct ib_pd *pd);
 
 	struct ib_dma_mapping_ops   *dma_ops;
 
@@ -1681,6 +1702,15 @@ struct ib_device {
 	u32			     local_dma_lkey;
 	u8                           node_type;
 	u8                           phys_port_cnt;
+	struct ib_pd                *relaxed_pd;
+	struct list_head             relaxed_pool_list;
+};
+
+struct ib_relaxed_pool_data {
+	struct ib_fmr_pool *fmr_pool;
+	u32 access_flags;
+	int max_pages;
+	struct list_head pool_list;
 };
 
 struct ib_client {
@@ -2581,6 +2611,13 @@ int ib_dealloc_mw(struct ib_mw *mw);
 struct ib_fmr *ib_alloc_fmr(struct ib_pd *pd,
 			    int mr_access_flags,
 			    struct ib_fmr_attr *fmr_attr);
+
+/**
+ * ib_set_fmr_pd - set new PD for an FMR
+ * @fmr: The fast memory region to associate with the pd.
+ * @pd: new pd.
+ */
+int ib_set_fmr_pd(struct ib_fmr *fmr, struct ib_pd *pd);
 
 /**
  * ib_map_phys_fmr - Maps a list of physical pages to a fast memory region.

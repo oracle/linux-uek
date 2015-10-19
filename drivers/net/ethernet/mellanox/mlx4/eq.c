@@ -574,7 +574,7 @@ static int mlx4_eq_int(struct mlx4_dev *dev, struct mlx4_eq *eq)
 							continue;
 						mlx4_dbg(dev, "%s: Sending MLX4_PORT_CHANGE_SUBTYPE_DOWN to slave: %d, port:%d\n",
 							 __func__, i, port);
-						s_info = &priv->mfunc.master.vf_oper[slave].vport[port].state;
+						s_info = &priv->mfunc.master.vf_oper[i].vport[port].state;
 						if (IFLA_VF_LINK_STATE_AUTO == s_info->link_state) {
 							eqe->event.port_change.port =
 								cpu_to_be32(
@@ -609,7 +609,7 @@ static int mlx4_eq_int(struct mlx4_dev *dev, struct mlx4_eq *eq)
 							continue;
 						if (i == mlx4_master_func_num(dev))
 							continue;
-						s_info = &priv->mfunc.master.vf_oper[slave].vport[port].state;
+						s_info = &priv->mfunc.master.vf_oper[i].vport[port].state;
 						if (IFLA_VF_LINK_STATE_AUTO == s_info->link_state) {
 							eqe->event.port_change.port =
 								cpu_to_be32(
@@ -628,10 +628,13 @@ static int mlx4_eq_int(struct mlx4_dev *dev, struct mlx4_eq *eq)
 		}
 
 		case MLX4_EVENT_TYPE_CQ_ERROR:
-			mlx4_warn(dev, "CQ %s on CQN %06x\n",
+			mlx4_warn(dev,
+		 "CQ %s on CQN %06x syndrome=0x%x vendor_error_syndrome=0x%x\n",
 				  eqe->event.cq_err.syndrome == 1 ?
 				  "overrun" : "access violation",
-				  be32_to_cpu(eqe->event.cq_err.cqn) & 0xffffff);
+				  be32_to_cpu(eqe->event.cq_err.cqn) & 0xffffff,
+				  eqe->event.cq_err.syndrome,
+				  eqe->event.cq_err.reserved2[2]);
 			if (mlx4_is_master(dev)) {
 				ret = mlx4_get_slave_from_resource_id(dev,
 					RES_CQ,

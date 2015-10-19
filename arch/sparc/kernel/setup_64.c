@@ -570,8 +570,11 @@ static void __init init_sparc64_elf_hwcap(void)
 			    sun4v_chip_type == SUN4V_CHIP_SPARC_M6 ||
 			    sun4v_chip_type == SUN4V_CHIP_SPARC_M7 ||
 			    sun4v_chip_type == SUN4V_CHIP_SPARC64X)
-				cap |= (AV_SPARC_VIS3 | AV_SPARC_HPC |
-					AV_SPARC_FMAF);
+				cap |= (AV_SPARC_FMAF | AV_SPARC_HPC);
+			if (sun4v_chip_type == SUN4V_CHIP_NIAGARA3 ||
+			    sun4v_chip_type == SUN4V_CHIP_NIAGARA4 ||
+			    sun4v_chip_type == SUN4V_CHIP_NIAGARA5)
+				cap |= AV_SPARC_VIS3;
 		}
 	}
 	sparc64_elf_hwcap = cap | mdesc_caps;

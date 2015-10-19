@@ -69,10 +69,6 @@ static systrace_info_t	systrace_info =
 		};
 
 
-/*
- * The stack protector has a tendency to clobber %rax in the prologue.
- */
-__attribute__((__optimize__("no-stack-protector")))
 asmlinkage long systrace_syscall(uintptr_t arg0, uintptr_t arg1, uintptr_t arg2,
 				 uintptr_t arg3, uintptr_t arg4, uintptr_t arg5)
 {
@@ -81,7 +77,7 @@ asmlinkage long systrace_syscall(uintptr_t arg0, uintptr_t arg1, uintptr_t arg2,
 	dtrace_id_t		id;
 	dtrace_syscalls_t	*sc;
 
-	asm volatile("movq %%rax,%0" : "=m"(sysnum));
+	sysnum = syscall_get_nr(current, current_pt_regs());
 
 	sc = &systrace_info.sysent[sysnum];
 

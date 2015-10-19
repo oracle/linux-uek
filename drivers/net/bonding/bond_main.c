@@ -625,6 +625,23 @@ static void bond_set_dev_addr(struct net_device *bond_dev,
 	call_netdevice_notifiers(NETDEV_CHANGEADDR, bond_dev);
 }
 
+static struct slave *bond_get_old_active(struct bonding *bond,
+					 struct slave *new_active)
+{
+	struct slave *slave;
+	struct list_head *iter;
+
+	bond_for_each_slave(bond, slave, iter) {
+		if (slave == new_active)
+			continue;
+
+		if (ether_addr_equal(bond->dev->dev_addr, slave->dev->dev_addr))
+			return slave;
+	}
+
+	return NULL;
+}
+
 /* bond_do_fail_over_mac
  *
  * Perform special MAC address swapping for fail_over_mac settings
@@ -651,6 +668,9 @@ static void bond_do_fail_over_mac(struct bonding *bond,
 		 */
 		if (!new_active)
 			return;
+
+		if (!old_active)
+			old_active = bond_get_old_active(bond, new_active);
 
 		if (old_active) {
 			ether_addr_copy(tmp_mac, new_active->dev->dev_addr);
@@ -1902,6 +1922,7 @@ static int  bond_release_and_destroy(struct net_device *bond_dev,
 		bond_dev->priv_flags |= IFF_DISABLE_NETPOLL;
 		netdev_info(bond_dev, "Destroying bond %s\n",
 			    bond_dev->name);
+		bond_remove_proc_entry(bond);
 		unregister_netdevice(bond_dev);
 	}
 	return ret;
@@ -2202,8 +2223,8 @@ static bool bond_has_this_ip(struct bonding *bond, __be32 ip)
  * switches in VLAN mode (especially if ports are configured as
  * "native" to a VLAN) might not pass non-tagged frames.
  */
-static void bond_arp_send(struct net_device *slave_dev, int arp_op,
-			  __be32 dest_ip, __be32 src_ip,
+static void bond_arp_send(struct bonding *bond, struct net_device *slave_dev, 
+			  int arp_op, __be32 dest_ip, __be32 src_ip,
 			  struct bond_vlan_tag *tags)
 {
 	struct sk_buff *skb;
@@ -2253,6 +2274,7 @@ static void bond_arp_send(struct net_device *slave_dev, int arp_op,
 
 xmit:
 	arp_xmit(skb);
+	bond->arp_sent = true;
 }
 
 /* Validate the device path between the @start_dev and the @end_dev.
@@ -2317,7 +2339,7 @@ static void bond_arp_send_all(struct bonding *bond, struct slave *slave)
 				net_warn_ratelimited("%s: no route to arp_ip_target %pI4 and arp_validate is set\n",
 						     bond->dev->name,
 						     &targets[i]);
-			bond_arp_send(slave->dev, ARPOP_REQUEST, targets[i],
+			bond_arp_send(bond, slave->dev, ARPOP_REQUEST, targets[i],
 				      0, tags);
 			continue;
 		}
@@ -2343,7 +2365,7 @@ static void bond_arp_send_all(struct bonding *bond, struct slave *slave)
 found:
 		addr = bond_confirm_addr(rt->dst.dev, targets[i], 0);
 		ip_rt_put(rt);
-		bond_arp_send(slave->dev, ARPOP_REQUEST, targets[i],
+		bond_arp_send(bond, slave->dev, ARPOP_REQUEST, targets[i],
 			      addr, tags);
 		kfree(tags);
 	}
@@ -2821,7 +2843,7 @@ static void bond_activebackup_arp_mon(struct work_struct *work)
 
 	should_notify_peers = bond_should_notify_peers(bond);
 
-	if (bond_ab_arp_inspect(bond)) {
+	if (bond->arp_sent && bond_ab_arp_inspect(bond)) {
 		rcu_read_unlock();
 
 		/* Race avoidance with bond_close flush of workqueue */
@@ -2838,6 +2860,7 @@ static void bond_activebackup_arp_mon(struct work_struct *work)
 	}
 
 	should_notify_rtnl = bond_ab_arp_probe(bond);
+	bond->arp_sent = false;
 	rcu_read_unlock();
 
 re_arm:
@@ -4102,6 +4125,7 @@ void bond_setup(struct net_device *bond_dev)
 	bond_dev->hw_features &= ~(NETIF_F_ALL_CSUM & ~NETIF_F_HW_CSUM);
 	bond_dev->hw_features |= NETIF_F_GSO_ENCAP_ALL;
 	bond_dev->features |= bond_dev->hw_features;
+	bond->arp_sent = false;
 }
 
 /* Destroy a bonding device.

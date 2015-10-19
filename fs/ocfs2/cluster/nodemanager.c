@@ -29,6 +29,7 @@
 #include "heartbeat.h"
 #include "masklog.h"
 #include "sys.h"
+#include "ver.h"
 
 /* for now we operate under the assertion that there can be only one
  * cluster active at a time.  Changing this will require trickling
@@ -944,6 +945,8 @@ static int __init init_o2nm(void)
 {
 	int ret = -1;
 
+	cluster_print_version();
+
 	ret = o2hb_init();
 	if (ret)
 		goto out;
@@ -981,7 +984,6 @@ out:
 
 MODULE_AUTHOR("Oracle");
 MODULE_LICENSE("GPL");
-MODULE_DESCRIPTION("OCFS2 cluster management");
 
 module_init(init_o2nm)
 module_exit(exit_o2nm)

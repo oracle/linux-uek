@@ -28,7 +28,6 @@
 #include <linux/cpufreq.h>
 #include <linux/percpu.h>
 #include <linux/miscdevice.h>
-#include <linux/rtc.h>
 #include <linux/rtc/m48t59.h>
 #include <linux/kernel_stat.h>
 #include <linux/clockchips.h>
@@ -394,19 +393,6 @@ static struct sparc64_tick_ops hbtick_operations __read_mostly = {
 
 static unsigned long timer_ticks_per_nsec_quotient __read_mostly;
 
-int update_persistent_clock(struct timespec now)
-{
-	struct rtc_device *rtc = rtc_class_open("rtc0");
-	int err = -1;
-
-	if (rtc) {
-		err = rtc_set_mmss(rtc, now.tv_sec);
-		rtc_class_close(rtc);
-	}
-
-	return err;
-}
-
 unsigned long cmos_regs;
 EXPORT_SYMBOL(cmos_regs);
 
@@ -597,7 +583,7 @@ static int __init clock_init(void)
 fs_initcall(clock_init);
 
 /* This is gets the master TICK_INT timer going. */
-static unsigned long sparc64_init_timers(void)
+static unsigned long sparc64_init_timers(struct arch_clocksource_data *archdata)
 {
 	struct device_node *dp;
 	unsigned long freq;
@@ -614,13 +600,16 @@ static unsigned long sparc64_init_timers(void)
 			/* Hummingbird, aka Ultra-IIe */
 			tick_ops = &hbtick_operations;
 			freq = of_getintprop_default(dp, "stick-frequency", 0);
+			archdata->vclock_mode = VCLOCK_NONE;
 		} else {
 			tick_ops = &tick_operations;
 			freq = local_cpu_data().clock_tick;
+			archdata->vclock_mode = VCLOCK_TICK;
 		}
 	} else {
 		tick_ops = &stick_operations;
 		freq = of_getintprop_default(dp, "stick-frequency", 0);
+		archdata->vclock_mode = VCLOCK_STICK;
 	}
 
 	return freq;
@@ -804,7 +793,7 @@ static cycle_t clocksource_tick_read(struct clocksource *cs)
 
 void __init time_init(void)
 {
-	unsigned long freq = sparc64_init_timers();
+	unsigned long freq = sparc64_init_timers(&clocksource_tick.archdata);
 
 	tb_ticks_per_usec = freq / USEC_PER_SEC;
 

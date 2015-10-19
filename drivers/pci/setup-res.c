@@ -116,11 +116,14 @@ int pci_claim_resource(struct pci_dev *dev, int resource)
 		return -EINVAL;
 	}
 
+	pci_set_pref_under_pref(res);
+
 	root = pci_find_parent_resource(dev, res);
 	if (!root) {
 		dev_info(&dev->dev, "can't claim BAR %d %pR: no compatible bridge window\n",
 			 resource, res);
 		res->flags |= IORESOURCE_UNSET;
+		pci_clear_pref_under_pref(res);
 		return -EINVAL;
 	}
 
@@ -129,8 +132,11 @@ int pci_claim_resource(struct pci_dev *dev, int resource)
 		dev_info(&dev->dev, "can't claim BAR %d %pR: address conflict with %s %pR\n",
 			 resource, res, conflict->name, conflict);
 		res->flags |= IORESOURCE_UNSET;
+		pci_clear_pref_under_pref(res);
 		return -EBUSY;
 	}
+
+	pci_clear_pref_under_pref(res);
 
 	return 0;
 }
@@ -250,15 +256,19 @@ static int __pci_assign_resource(struct pci_bus *bus, struct pci_dev *dev,
 static int _pci_assign_resource(struct pci_dev *dev, int resno,
 				resource_size_t size, resource_size_t min_align)
 {
+	struct resource *res = dev->resource + resno;
 	struct pci_bus *bus;
 	int ret;
 
+	pci_set_pref_under_pref(res);
 	bus = dev->bus;
 	while ((ret = __pci_assign_resource(bus, dev, resno, size, min_align))) {
 		if (!bus->parent || !bus->self->transparent)
 			break;
 		bus = bus->parent;
 	}
+
+	pci_clear_pref_under_pref(res);
 
 	return ret;
 }

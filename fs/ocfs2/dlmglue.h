@@ -78,6 +78,8 @@ struct ocfs2_orphan_scan_lvb {
 /* don't block waiting for the downconvert thread, instead return -EAGAIN */
 #define OCFS2_LOCK_NONBLOCK		(0x04)
 
+/* if requested level is <= l_level, ignore BLOCKED flag. */
+#define OCFS2_LOCK_RECURSIVE		(0x08)
 /* Locking subclasses of inode cluster lock */
 enum {
 	OI_LS_NORMAL = 0,

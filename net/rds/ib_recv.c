@@ -376,19 +376,23 @@ out:
 }
 
 static void rds_ib_srq_clear_one(struct rds_ib_srq *srq,
-				struct rds_ib_connection *ic,
 				struct rds_ib_recv_work *recv)
 {
 	if (recv->r_ibinc) {
-		rds_inc_put(&recv->r_ibinc->ii_inc);
+		if (recv->r_ic)
+			rds_inc_put(&recv->r_ibinc->ii_inc);
+		else
+			kmem_cache_free(rds_ib_incoming_slab, recv->r_ibinc);
 		recv->r_ibinc = NULL;
 	}
 	if (recv->r_frag) {
 		ib_dma_unmap_sg(srq->rds_ibdev->dev, &recv->r_frag->f_sg,
 				1, DMA_FROM_DEVICE);
-		rds_ib_frag_free(ic, recv->r_frag);
+		if (recv->r_ic)
+			rds_ib_frag_free(recv->r_ic, recv->r_frag);
+		else
+			kmem_cache_free(rds_ib_frag_slab, recv->r_frag);
 		recv->r_frag = NULL;
-		recv->r_ic = ic;
 		recv->r_posted = 0;
 	}
 }
@@ -1248,8 +1252,9 @@ void rds_ib_recv_cqe_handler(struct rds_ib_connection *ic,
 	struct rds_ib_recv_work *recv;
 	struct rds_ib_device *rds_ibdev = ic->rds_ibdev;
 
-	rdsdebug("wc wr_id 0x%llx status %u byte_len %u imm_data %u\n",
-		 (unsigned long long)wc->wr_id, wc->status, wc->byte_len,
+	rdsdebug("wc wr_id 0x%llx status %u (%s) byte_len %u imm_data %u\n",
+		 (unsigned long long)wc->wr_id, wc->status,
+		 rds_ib_wc_status_str(wc->status), wc->byte_len,
 		 be32_to_cpu(wc->ex.imm_data));
 
 	rds_ib_stats_inc(s_ib_rx_cq_event);
@@ -1269,7 +1274,7 @@ void rds_ib_recv_cqe_handler(struct rds_ib_connection *ic,
 			rds_ib_process_recv(conn, recv, wc->byte_len, state);
 	} else {
 		/* We expect errors as the qp is drained during shutdown */
-		if (rds_conn_up(conn) || rds_conn_connecting(conn))
+		if (rds_conn_up(conn) || rds_conn_connecting(conn)) {
 			rds_ib_conn_error(conn, "recv completion "
 					"<%pI4,%pI4,%d> had "
 					"status %u, disconnecting and "
@@ -1278,6 +1283,9 @@ void rds_ib_recv_cqe_handler(struct rds_ib_connection *ic,
 					&conn->c_faddr,
 					conn->c_tos,
 					wc->status);
+			rds_rtd(RDS_RTD_ERR, "status %u => %s\n", wc->status,
+				rds_ib_wc_status_str(wc->status));
+		}
 	}
 
 	/*
@@ -1342,7 +1350,7 @@ void rds_ib_srq_refill(struct work_struct *work)
 
 				for (wr = &cur->r_wr; wr; wr = wr->next) {
 					recv = container_of(wr, struct rds_ib_recv_work, r_wr);
-					rds_ib_srq_clear_one(srq, recv->r_ic, recv);
+					rds_ib_srq_clear_one(srq, recv);
 				}
 				printk(KERN_ERR "ib_post_srq_recv failed\n");
 				goto out;
@@ -1360,7 +1368,7 @@ void rds_ib_srq_refill(struct work_struct *work)
 
 			for (wr = &cur->r_wr; wr; wr = wr->next) {
 				recv = container_of(wr, struct rds_ib_recv_work, r_wr);
-				rds_ib_srq_clear_one(srq, recv->r_ic, recv);
+				rds_ib_srq_clear_one(srq, recv);
 			}
 			printk(KERN_ERR "ib_post_srq_recv failed\n");
 			goto out;
@@ -1413,7 +1421,7 @@ static void rds_ib_srq_clear_ring(struct rds_ib_device *rds_ibdev)
 
 	for (i = 0, recv = rds_ibdev->srq->s_recvs;
 		i < rds_ibdev->srq->s_n_wr; i++, recv++)
-			rds_ib_srq_clear_one(rds_ibdev->srq, recv->r_ic, recv);
+			rds_ib_srq_clear_one(rds_ibdev->srq, recv);
 }
 
 
@@ -1507,6 +1515,19 @@ int rds_ib_srq_init(struct rds_ib_device *rds_ibdev)
 		}
 	};
 
+	/* This is called in two paths
+	 * 1) during insmod of rds_rdma module
+	 * 2) rds_rdma module is ready, a new ib_device added to kernel
+	 */
+	if (!rds_ib_srq_enabled)
+		return 0;
+
+	rds_ibdev->srq = kmalloc(sizeof(struct rds_ib_srq), GFP_KERNEL);
+	if (!rds_ibdev->srq) {
+		pr_warn("RDS: allocating srq failed\n");
+		return 1;
+	}
+
 	rds_ibdev->srq->rds_ibdev = rds_ibdev;
 
 	rds_ibdev->srq->s_n_wr =  rds_ib_srq_max_wr - 1;
@@ -1554,23 +1575,6 @@ int rds_ib_srq_init(struct rds_ib_device *rds_ibdev)
 	return 0;
 }
 
-int rds_ib_srqs_init(void)
-{
-	struct rds_ib_device *rds_ibdev;
-	int ret;
-
-	if (!rds_ib_srq_enabled)
-		return 0;
-
-	list_for_each_entry(rds_ibdev, &rds_ib_devices, list) {
-		ret = rds_ib_srq_init(rds_ibdev);
-		if (ret)
-			return ret;
-	}
-
-	return 0;
-}
-
 void rds_ib_srq_exit(struct rds_ib_device *rds_ibdev)
 {
 	int ret;
@@ -1592,14 +1596,3 @@ void rds_ib_srq_exit(struct rds_ib_device *rds_ibdev)
 	rds_ibdev->srq->s_recvs = NULL;
 }
 
-void rds_ib_srqs_exit(void)
-{
-	struct rds_ib_device *rds_ibdev;
-
-	if (!rds_ib_srq_enabled)
-		return;
-
-	list_for_each_entry(rds_ibdev, &rds_ib_devices, list) {
-		rds_ib_srq_exit(rds_ibdev);
-	}
-}

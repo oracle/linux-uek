@@ -1448,7 +1448,8 @@ again:
 	}
 
 	if (lockres->l_flags & OCFS2_LOCK_BLOCKED &&
-	    !ocfs2_may_continue_on_blocked_lock(lockres, level)) {
+	    !ocfs2_may_continue_on_blocked_lock(lockres, level) &&
+	    !(arg_flags & OCFS2_LOCK_RECURSIVE)) {
 		/* is the lock is currently blocked on behalf of
 		 * another node */
 		lockres_add_mask_waiter(lockres, &mw, OCFS2_LOCK_BLOCKED, 0);

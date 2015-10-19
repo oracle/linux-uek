@@ -765,10 +765,71 @@ static struct ib_pd *mlx4_ib_alloc_pd(struct ib_device *ibdev,
 	return &pd->ibpd;
 }
 
+static struct ib_shpd *mlx4_ib_alloc_shpd(struct ib_device *ibdev,
+					  struct ib_pd *pd)
+{
+	struct mlx4_ib_shpd *shpd;
+
+	shpd = kzalloc(sizeof(*shpd), GFP_KERNEL);
+	if (!shpd)
+		return ERR_PTR(-ENOMEM);
+
+	shpd->pdn = to_mpd(pd)->pdn;
+
+	return &shpd->ibshpd;
+}
+
+static struct ib_pd *mlx4_ib_share_pd(struct ib_device *ibdev,
+				      struct ib_ucontext *context,
+				      struct ib_udata *udata,
+				      struct ib_shpd *shpd)
+{
+	struct mlx4_ib_pd *pd;
+
+	pd = kzalloc(sizeof(*pd), GFP_KERNEL);
+	if (!pd)
+		return ERR_PTR(-ENOMEM);
+
+	pd->pdn = to_mshpd(shpd)->pdn;
+
+	if (context)
+		if (ib_copy_to_udata(udata, &pd->pdn, sizeof(__u32))) {
+			kfree(pd);
+			return ERR_PTR(-EFAULT);
+		}
+
+	return &pd->ibpd;
+}
+
+static int mlx4_ib_remove_shpd(struct ib_device *ibdev,
+			       struct ib_shpd *shpd, int atinit)
+{
+
+	/*
+	 * if remove shpd is called during shpd creation time itself, then
+	 * pd should not be freed from device. it will be freed when deall_pd
+	 * is called
+	 */
+	if (!atinit)
+		mlx4_pd_free(to_mdev(ibdev)->dev, to_mshpd(shpd)->pdn);
+	kfree(shpd);
+
+	return 0;
+}
+
 static int mlx4_ib_dealloc_pd(struct ib_pd *pd)
 {
-	mlx4_pd_free(to_mdev(pd->device)->dev, to_mpd(pd)->pdn);
-	kfree(pd);
+	struct ib_shpd *shpd = pd->shpd;
+
+	if (shpd) {
+		/*
+		 * if pd is shared, pd number will be freed by remove_shpd call
+		 */
+		kfree(pd);
+	} else {
+		mlx4_pd_free(to_mdev(pd->device)->dev, to_mpd(pd)->pdn);
+		kfree(pd);
+	}
 
 	return 0;
 }
@@ -2234,7 +2295,12 @@ static void *mlx4_ib_add(struct mlx4_dev *dev)
 		(1ull << IB_USER_VERBS_CMD_QUERY_SRQ)		|
 		(1ull << IB_USER_VERBS_CMD_DESTROY_SRQ)		|
 		(1ull << IB_USER_VERBS_CMD_CREATE_XSRQ)		|
-		(1ull << IB_USER_VERBS_CMD_OPEN_QP);
+		(1ull << IB_USER_VERBS_CMD_OPEN_QP)		|
+		(1ull << IB_USER_VERBS_CMD_ALLOC_SHPD)		|
+		(1ull << IB_USER_VERBS_CMD_SHARE_PD)		|
+		(1ull << IB_USER_VERBS_CMD_REG_MR_RELAXED)	|
+		(1ull << IB_USER_VERBS_CMD_DEREG_MR_RELAXED)	|
+		(1ull << IB_USER_VERBS_CMD_FLUSH_RELAXED_MR);
 
 	ibdev->ib_dev.query_device	= mlx4_ib_query_device;
 	ibdev->ib_dev.query_port	= mlx4_ib_query_port;
@@ -2278,6 +2344,10 @@ static void *mlx4_ib_add(struct mlx4_dev *dev)
 	ibdev->ib_dev.attach_mcast	= mlx4_ib_mcg_attach;
 	ibdev->ib_dev.detach_mcast	= mlx4_ib_mcg_detach;
 	ibdev->ib_dev.process_mad	= mlx4_ib_process_mad;
+	ibdev->ib_dev.alloc_shpd	= mlx4_ib_alloc_shpd;
+	ibdev->ib_dev.share_pd		= mlx4_ib_share_pd;
+	ibdev->ib_dev.remove_shpd	= mlx4_ib_remove_shpd;
+	ibdev->ib_dev.set_fmr_pd	= mlx4_ib_set_fmr_pd;
 
 	if (!mlx4_is_slave(ibdev->dev)) {
 		ibdev->ib_dev.alloc_fmr		= mlx4_ib_fmr_alloc;

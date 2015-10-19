@@ -822,15 +822,6 @@ static void cma_save_ib_info(struct rdma_cm_id *id, struct rdma_cm_id *listen_id
 	}
 }
 
-static __be16 ss_get_port(const struct sockaddr_storage *ss)
-{
-	if (ss->ss_family == AF_INET)
-		return ((struct sockaddr_in *)ss)->sin_port;
-	else if (ss->ss_family == AF_INET6)
-		return ((struct sockaddr_in6 *)ss)->sin6_port;
-	BUG();
-}
-
 static void cma_save_ip4_info(struct rdma_cm_id *id, struct rdma_cm_id *listen_id,
 			      struct cma_hdr *hdr)
 {
@@ -867,7 +858,6 @@ static int cma_save_net_info(struct rdma_cm_id *id, struct rdma_cm_id *listen_id
 			     struct ib_cm_event *ib_event)
 {
 	struct cma_hdr *hdr;
-	u8 ip_ver = 0;
 
 	if (listen_id->route.addr.src_addr.ss_family == AF_IB) {
 		if (ib_event->event == IB_CM_REQ_RECEIVED)
@@ -881,12 +871,21 @@ static int cma_save_net_info(struct rdma_cm_id *id, struct rdma_cm_id *listen_id
 	if (hdr->cma_version != CMA_VERSION)
 		return -EINVAL;
 
-	if (listen_id->ps == RDMA_PS_SDP)
-		ip_ver = sdp_get_ip_ver((struct sdp_hh *)hdr);
-	else
-		ip_ver = cma_get_ip_ver(hdr);
+	if (listen_id->ps == RDMA_PS_SDP) {
+		switch (sdp_get_ip_ver((struct sdp_hh *)hdr)) {
+		case 4:
+			cma_save_ip4_info_sdp(id, listen_id, hdr);
+			break;
+		case 6:
+			cma_save_ip6_info_sdp(id, listen_id, hdr);
+			break;
+		default:
+			return -EINVAL;
+		}
+		return 0;
+	}
 
-	switch (ip_ver) {
+	switch (cma_get_ip_ver(hdr)) {
 	case 4:
 		cma_save_ip4_info(id, listen_id, hdr);
 		break;

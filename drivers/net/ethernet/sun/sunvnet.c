@@ -1756,7 +1756,8 @@ static const struct net_device_ops vnet_ops = {
 #endif
 };
 
-static struct vnet *vnet_new(const u64 *local_mac)
+static struct vnet *vnet_new(const u64 *local_mac,
+			     struct vio_dev *vdev)
 {
 	struct net_device *dev;
 	struct vnet *vp;
@@ -1790,6 +1791,8 @@ static struct vnet *vnet_new(const u64 *local_mac)
 			   NETIF_F_HW_CSUM | NETIF_F_SG;
 	dev->features = dev->hw_features;
 
+	SET_NETDEV_DEV(dev, &vdev->dev);
+
 	err = register_netdev(dev);
 	if (err) {
 		pr_err("Cannot register net device, aborting\n");
@@ -1808,7 +1811,8 @@ err_out_free_dev:
 	return ERR_PTR(err);
 }
 
-static struct vnet *vnet_find_or_create(const u64 *local_mac)
+static struct vnet *vnet_find_or_create(const u64 *local_mac,
+					struct vio_dev *vdev)
 {
 	struct vnet *iter, *vp;
 
@@ -1821,7 +1825,7 @@ static struct vnet *vnet_find_or_create(const u64 *local_mac)
 		}
 	}
 	if (!vp)
-		vp = vnet_new(local_mac);
+		vp = vnet_new(local_mac, vdev);
 	mutex_unlock(&vnet_list_mutex);
 
 	return vp;
@@ -1848,7 +1852,8 @@ static void vnet_cleanup(void)
 static const char *local_mac_prop = "local-mac-address";
 
 static struct vnet *vnet_find_parent(struct mdesc_handle *hp,
-						u64 port_node)
+				     u64 port_node,
+				     struct vio_dev *vdev)
 {
 	const u64 *local_mac = NULL;
 	u64 a;
@@ -1869,7 +1874,7 @@ static struct vnet *vnet_find_parent(struct mdesc_handle *hp,
 	if (!local_mac)
 		return ERR_PTR(-ENODEV);
 
-	return vnet_find_or_create(local_mac);
+	return vnet_find_or_create(local_mac, vdev);
 }
 
 static struct ldc_channel_config vnet_ldc_cfg = {
@@ -1918,19 +1923,27 @@ static int vnet_port_probe(struct vio_dev *vdev, const struct vio_device_id *id)
 	struct vnet *vp;
 	const u64 *rmac;
 	int len, i, err, switch_port;
+	u64 node;
 
 	print_version();
 
 	hp = mdesc_grab();
 
-	vp = vnet_find_parent(hp, vdev->mp);
+	node = vio_vdev_node(hp, vdev);
+	if (node == MDESC_NODE_NULL) {
+		pr_err("Failed to get vdev MD node.\n");
+		err = -ENXIO;
+		goto err_out_put_mdesc;
+	}
+
+	vp = vnet_find_parent(hp, node, vdev);
 	if (IS_ERR(vp)) {
 		pr_err("Cannot find port parent vnet\n");
 		err = PTR_ERR(vp);
 		goto err_out_put_mdesc;
 	}
 
-	rmac = mdesc_get_property(hp, vdev->mp, remote_macaddr_prop, &len);
+	rmac = mdesc_get_property(hp, node, remote_macaddr_prop, &len);
 	err = -ENODEV;
 	if (!rmac) {
 		pr_err("Port lacks %s property\n", remote_macaddr_prop);
@@ -1939,8 +1952,10 @@ static int vnet_port_probe(struct vio_dev *vdev, const struct vio_device_id *id)
 
 	port = kzalloc(sizeof(*port), GFP_KERNEL);
 	err = -ENOMEM;
-	if (!port)
+	if (!port) {
+		pr_err("Cannot allocate vnet_port\n");
 		goto err_out_put_mdesc;
+	}
 
 	for (i = 0; i < ETH_ALEN; i++)
 		port->raddr[i] = (*rmac >> (5 - i) * 8) & 0xff;
@@ -1963,7 +1978,7 @@ static int vnet_port_probe(struct vio_dev *vdev, const struct vio_device_id *id)
 	INIT_LIST_HEAD(&port->list);
 
 	switch_port = 0;
-	if (mdesc_get_property(hp, vdev->mp, "switch-port", NULL) != NULL)
+	if (mdesc_get_property(hp, node, "switch-port", NULL) != NULL)
 		switch_port = 1;
 	port->switch_port = switch_port;
 	port->tso = true;

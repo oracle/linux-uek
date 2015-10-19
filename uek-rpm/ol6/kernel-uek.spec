@@ -26,7 +26,7 @@ Summary: The Linux kernel
 # base_sublevel is the kernel version we're starting with and patching
 # on top of -- for example, 2.6.22-rc7-git1 starts with a 2.6.21 base,
 # which yields a base_sublevel of 21.
-%define base_sublevel 6
+%define base_sublevel 9
 
 ## If this is a released kernel ##
 %if 0%{?released_kernel}
@@ -79,9 +79,9 @@ Summary: The Linux kernel
 # kernel-doc
 %define with_doc       1
 # kernel-headers
-%define with_headers   0
+%define with_headers   1
 # dtrace
-%define with_dtrace    0
+%define with_dtrace    1
 # kernel-firmware
 %define with_firmware  0
 # kernel-debuginfo
@@ -265,9 +265,14 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 %define with_sparse 0
 %endif
 
-# Only x86_64 does dtrace
-%ifarch x86_64
+# x86_64 and sparc64 have dtrace support
+%ifarch x86_64 sparc64
 %define with_dtrace 1
+%endif
+
+# headers for sparc64 only
+%ifarch sparc64
+%define with_headers 1
 %endif
 
 # Per-arch tweaks
@@ -447,6 +452,7 @@ Provides: kernel%{?variant}-uname-r = %{KVERREL}%{?1:.%{1}}\
 Provides: oracleasm = 2.0.5\
 %ifnarch sparc64\
 Provides: x86_energy_perf_policy = %{KVERREL}%{?1:.%{1}}\
+Provides: turbostat = %{KVERREL}%{?1:.%{1}}\
 %endif\
 Provides: perf = %{KVERREL}%{?1:.%{1}}\
 #Provides: libperf.a = %{KVERREL}%{?1:.%{1}}\
@@ -534,11 +540,12 @@ Source16: perf
 Source17: kabitool
 Source18: check-kabi
 Source20: x86_energy_perf_policy
+Source21: turbostat
 
 Source1000: config-x86_64
 Source1001: config-x86_64-debug
-#Source1004: config-sparc
-#Source1005: config-sparc-debug
+Source1004: config-sparc
+Source1005: config-sparc-debug
 
 #Source26: Module.kabi_x86_64
 
@@ -1139,6 +1146,16 @@ hwcap 0 nosegneg"
        install -m 755 x86_energy_perf_policy $RPM_BUILD_ROOT/usr/libexec/x86_energy_perf_policy.$KernelVer
        cd ../../../../
     fi
+
+# build tools/power/x86/turbostat:
+    if [ -d tools/power/x86/turbostat ]; then
+       cd tools/power/x86/turbostat
+       make
+# and install it:
+       mkdir -p $RPM_BUILD_ROOT/usr/libexec/
+       install -m 755 turbostat $RPM_BUILD_ROOT/usr/libexec/turbostat.$KernelVer
+       cd ../../../../
+    fi
 %endif
 %endif
 
@@ -1453,6 +1470,10 @@ chmod 0755 $RPM_BUILD_ROOT/usr/sbin/perf
 mkdir -p $RPM_BUILD_ROOT/usr/sbin/
 cp $RPM_SOURCE_DIR/x86_energy_perf_policy $RPM_BUILD_ROOT/usr/sbin/x86_energy_perf_policy
 chmod 0755 $RPM_BUILD_ROOT/usr/sbin/x86_energy_perf_policy
+# turbostat shell wrapper
+mkdir -p $RPM_BUILD_ROOT/usr/sbin/
+cp $RPM_SOURCE_DIR/turbostat $RPM_BUILD_ROOT/usr/sbin/turbostat
+chmod 0755 $RPM_BUILD_ROOT/usr/sbin/turbostat
 %endif
 
 
@@ -1724,6 +1745,8 @@ fi
 %ifnarch sparc64\
 /usr/libexec/x86_energy_perf_policy.%{KVERREL}%{?2:.%{2}}\
 /usr/sbin/x86_energy_perf_policy\
+/usr/libexec/turbostat.%{KVERREL}%{?2:.%{2}}\
+/usr/sbin/turbostat\
 %endif\
 %ghost /boot/initramfs-%{KVERREL}%{?2:.%{2}}.img\
 %{expand:%%files %{?2:%{2}-}devel}\

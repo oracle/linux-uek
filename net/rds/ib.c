@@ -180,6 +180,8 @@ void rds_ib_nodev_connect(void)
 {
 	struct rds_ib_connection *ic;
 
+	rds_rtd(RDS_RTD_CM_EXT, "check & build all connections\n");
+
 	spin_lock(&ib_nodev_conns_lock);
 	list_for_each_entry(ic, &ib_nodev_conns, ib_node)
 		rds_conn_connect_if_down(ic->conn);
@@ -191,6 +193,9 @@ void rds_ib_dev_shutdown(struct rds_ib_device *rds_ibdev)
 	struct rds_ib_connection *ic;
 	unsigned long flags;
 
+	rds_rtd(RDS_RTD_CM_EXT,
+		"calling rds_conn_drop to drop all connections.\n");
+
 	spin_lock_irqsave(&rds_ibdev->spinlock, flags);
 	list_for_each_entry(ic, &rds_ibdev->conn_list, ib_node)
 		rds_conn_drop(ic->conn);
@@ -201,23 +206,41 @@ void rds_ib_dev_shutdown(struct rds_ib_device *rds_ibdev)
  * rds_ib_destroy_mr_pool() blocks on a few things and mrs drop references
  * from interrupt context so we push freing off into a work struct in krdsd.
  */
+
+/* free up rds_ibdev->dev related resource. We have to wait until freeing
+ * work is done to avoid the racing with freeing in mlx4_remove_one ->
+ * mlx4_cleanup_mr_table path
+ */
+static void rds_ib_dev_free_dev(struct rds_ib_device *rds_ibdev)
+{
+	mutex_lock(&rds_ibdev->free_dev_lock);
+	if (!atomic_dec_and_test(&rds_ibdev->free_dev))
+		goto out;
+
+	if (rds_ibdev->srq) {
+		rds_ib_srq_exit(rds_ibdev);
+		kfree(rds_ibdev->srq);
+	}
+
+	if (rds_ibdev->mr_8k_pool)
+		rds_ib_destroy_mr_pool(rds_ibdev->mr_8k_pool);
+	if (rds_ibdev->mr_1m_pool)
+		rds_ib_destroy_mr_pool(rds_ibdev->mr_1m_pool);
+	if (rds_ibdev->mr)
+		ib_dereg_mr(rds_ibdev->mr);
+	if (rds_ibdev->pd)
+		ib_dealloc_pd(rds_ibdev->pd);
+out:
+	mutex_unlock(&rds_ibdev->free_dev_lock);
+}
+
 static void rds_ib_dev_free(struct work_struct *work)
 {
 	struct rds_ib_ipaddr *i_ipaddr, *i_next;
 	struct rds_ib_device *rds_ibdev = container_of(work,
 					struct rds_ib_device, free_work);
 
-	if (rds_ibdev->dev) {
-		if (rds_ibdev->mr_8k_pool)
-			rds_ib_destroy_mr_pool(rds_ibdev->mr_8k_pool);
-		if (rds_ibdev->mr_1m_pool)
-			rds_ib_destroy_mr_pool(rds_ibdev->mr_1m_pool);
-		if (rds_ibdev->mr)
-			ib_dereg_mr(rds_ibdev->mr);
-		if (rds_ibdev->pd)
-			ib_dealloc_pd(rds_ibdev->pd);
-	}
-	kfree(rds_ibdev->srq);
+	rds_ib_dev_free_dev(rds_ibdev);
 
 	list_for_each_entry_safe(i_ipaddr, i_next, &rds_ibdev->ipaddr_list, list) {
 		list_del(&i_ipaddr->list);
@@ -227,13 +250,7 @@ static void rds_ib_dev_free(struct work_struct *work)
 	if (rds_ibdev->vector_load)
 		kfree(rds_ibdev->vector_load);
 
-	if (rds_ibdev->dev) {
-		WARN_ON(!waitqueue_active(&rds_ibdev->wait));
-
-		rds_ibdev->done = 1;
-		wake_up(&rds_ibdev->wait);
-	} else
-		kfree(rds_ibdev);
+	kfree(rds_ibdev);
 }
 
 void rds_ib_dev_put(struct rds_ib_device *rds_ibdev)
@@ -284,8 +301,11 @@ void rds_ib_remove_one(struct ib_device *device)
 	int i;
 
 	rds_ibdev = ib_get_client_data(device, &rds_ib_client);
-	if (!rds_ibdev)
+	if (!rds_ibdev) {
+		rds_rtd(RDS_RTD_ACT_BND, "rds_ibdev is NULL, ib_device %p\n",
+			device);
 		return;
+	}
 
 	if (rds_ib_active_bonding_enabled) {
 		for (i = 1; i <= ip_port_cnt; i++) {
@@ -295,6 +315,9 @@ void rds_ib_remove_one(struct ib_device *device)
 		ib_unregister_event_handler(&rds_ibdev->event_handler);
 	}
 
+	rds_rtd(RDS_RTD_ACT_BND,
+		"calling rds_ib_dev_shutdown, ib_device %p, rds_ibdev %p\n",
+		device, rds_ibdev);
 	rds_ib_dev_shutdown(rds_ibdev);
 
 	/* stop connection attempts from getting a reference to this device. */
@@ -311,22 +334,9 @@ void rds_ib_remove_one(struct ib_device *device)
 	 */
 	synchronize_rcu();
 	rds_ib_dev_put(rds_ibdev);
+	/* free up lower layer resource since it may be the last change */
+	rds_ib_dev_free_dev(rds_ibdev);
 	rds_ib_dev_put(rds_ibdev);
-
-	if (!wait_event_timeout(rds_ibdev->wait, rds_ibdev->done, 30*HZ)) {
-		printk(KERN_WARNING "RDS/IB: device cleanup timed out after "
-			" 30 secs (refcount=%d)\n",
-			 atomic_read(&rds_ibdev->refcount));
-		/* when rds_ib_remove_one return, driver's mlx4_ib_removeone
-		 * function destroy ib_device, so we must clear rds_ibdev->dev
-		 * to NULL, or will cause crash when rds connection be released,
-		 * at the moment rds_ib_dev_free through ib_device
-		 * .i.e rds_ibdev->dev to release mr and fmr, reusing the
-		 * released ib_device will cause crash.
-		 */
-		rds_ibdev->dev = NULL;
-	} else
-		kfree(rds_ibdev);
 }
 
 struct ib_client rds_ib_client = {
@@ -612,6 +622,9 @@ static void rds_ib_conn_drop(struct work_struct *_work)
 		container_of(_work, struct rds_ib_conn_drop_work, work.work);
 	struct rds_connection   *conn = work->conn;
 
+	rds_rtd(RDS_RTD_CM_EXT,
+		"conn: %p, calling rds_conn_drop\n", conn);
+
 	rds_conn_drop(conn);
 
 	kfree(work);
@@ -839,6 +852,10 @@ static int rds_ib_move_ip(char			*from_dev,
 							ic->conn->c_faddr &&
 							ic2->conn->c_faddr ==
 							ic->conn->c_laddr) {
+						    rds_rtd(RDS_RTD_CM_EXT_P,
+							    "conn:%p, tos %d, calling rds_conn_drop\n",
+							    ic2->conn,
+							    ic2->conn->c_tos);
 							rds_conn_drop(ic2->conn);
 						}
 					}
@@ -863,8 +880,12 @@ static int rds_ib_move_ip(char			*from_dev,
 					INIT_DELAYED_WORK(&work->work, rds_ib_conn_drop);
 					queue_delayed_work(rds_aux_wq, &work->work,
 						msecs_to_jiffies(1000 * rds_ib_active_bonding_reconnect_delay));
-				} else
+				} else {
+					rds_rtd(RDS_RTD_CM_EXT,
+						"conn: %p, tos %d, calling rds_conn_drop\n",
+						ic->conn, ic->conn->c_tos);
 					rds_conn_drop(ic->conn);
+				}
 			}
 		}
 		spin_unlock_bh(&rds_ibdev->spinlock);
@@ -1091,11 +1112,10 @@ static void rds_ib_do_failover(u8 from_port, u8 to_port, u8 arp_port,
 
 		if (!to_port) {
 			/* we tried, but did not get a failover port! */
-			rdsdebug("RDS/IB: IP %u.%u.%u.%u failed to "
-				 "migrate from %s: no matching "
-				 "destination port available!\n",
-				 NIPQUAD(ip_config[from_port].ip_addr),
-				 ip_config[from_port].if_name);
+			rds_rtd(RDS_RTD_ERR,
+				"RDS/IB: IP %u.%u.%u.%u failed to migrate from %s: no matching dest port avail!\n",
+				NIPQUAD(ip_config[from_port].ip_addr),
+				ip_config[from_port].if_name);
 			return;
 		}
 	} else {
@@ -1217,9 +1237,9 @@ static void rds_ib_do_failback(u8 port, int event_type)
 		/* Test IP addresses and set them if not already set */
 		ret = rds_ib_testset_ip(port);
 		if (ret) {
-			rdsdebug("RDS/IB: failed to ressurrect "
-				 "port index %u devname %s or one if its aliases\n",
-				 port, ip_config[port].dev->name);
+			rds_rtd(RDS_RTD_ACT_BND,
+				"RDS/IB: failed to ressrt port idx %u dev %s or one of its aliases\n",
+				port, ip_config[port].dev->name);
 		}
 	}
 }
@@ -1337,8 +1357,11 @@ static void rds_ib_event_handler(struct ib_event_handler *handler,
 	u8	port;
 	struct rds_ib_port_ud_work	*work;
 
-	if (!rds_ib_active_bonding_enabled || !ip_port_cnt)
+	if (!rds_ib_active_bonding_enabled || !ip_port_cnt) {
+		rds_rtd(RDS_RTD_ACT_BND, "ip_port_cnt %d, event %d\n",
+			ip_port_cnt, event->event);
 		return;
+	}
 
 	if (event->event != IB_EVENT_PORT_ACTIVE &&
 		event->event != IB_EVENT_PORT_ERR)
@@ -1527,6 +1550,8 @@ static void rds_ib_event_handler(struct ib_event_handler *handler,
 
 		if (this_port_transition == RDSIBP_TRANSITION_UP) {
 			if (rds_ib_active_bonding_fallback) {
+				rds_rtd(RDS_RTD_ACT_BND,
+					"active bonding fallback enabled\n");
 				INIT_DELAYED_WORK(&work->work, rds_ib_failback);
 				queue_delayed_work(rds_wq, &work->work, 0);
 			} else
@@ -1659,8 +1684,10 @@ static void rds_ib_dump_ip_config(void)
 {
 	int	i, j;
 
-	if (!rds_ib_active_bonding_enabled || !ip_port_cnt)
+	if (!rds_ib_active_bonding_enabled || !ip_port_cnt) {
+		rds_rtd(RDS_RTD_ACT_BND, "ip_port_cnt %d\n", ip_port_cnt);
 		return;
+	}
 
 	for (i = 1; i <= ip_port_cnt; i++) {
 		printk(KERN_INFO "RDS/IB: %s/port_%d/%s: "
@@ -1834,8 +1861,10 @@ static int rds_ib_ip_config_init(void)
 	unsigned int            tot_devs = 0;
 	unsigned int            tot_ibdevs = 0;
 
-	if (!rds_ib_active_bonding_enabled)
+	if (!rds_ib_active_bonding_enabled) {
+		rds_rtd(RDS_RTD_ACT_BND, "active bonding not enabled\n");
 		return 0;
+	}
 
 	ip_config = kzalloc(sizeof(struct rds_ib_port) *
 				(ip_port_max + 1), GFP_KERNEL);
@@ -2022,8 +2051,10 @@ void rds_ib_ip_failover_groups_init(void)
 	int i;
 	struct rds_ib_device *rds_ibdev;
 
-	if (!rds_ib_active_bonding_enabled)
+	if (!rds_ib_active_bonding_enabled) {
+		rds_rtd(RDS_RTD_ACT_BND, "active bonding not enabled\n");
 		return;
+	}
 
 	if (rds_ib_active_bonding_failover_groups == NULL) {
 		list_for_each_entry_rcu(rds_ibdev, &rds_ib_devices, list) {
@@ -2093,7 +2124,8 @@ void rds_ib_add_one(struct ib_device *device)
 		return;
 
 	if (ib_query_device(device, dev_attr)) {
-		rdsdebug("Query device failed for %s\n", device->name);
+		rds_rtd(RDS_RTD_ERR, "Query device failed for %s\n",
+			device->name);
 		goto free_attr;
 	}
 
@@ -2102,11 +2134,11 @@ void rds_ib_add_one(struct ib_device *device)
 	if (!rds_ibdev)
 		goto free_attr;
 
+	atomic_set(&rds_ibdev->free_dev, 1);
+	mutex_init(&rds_ibdev->free_dev_lock);
 	spin_lock_init(&rds_ibdev->spinlock);
 	atomic_set(&rds_ibdev->refcount, 1);
 	INIT_WORK(&rds_ibdev->free_work, rds_ib_dev_free);
-	init_waitqueue_head(&rds_ibdev->wait);
-	rds_ibdev->done = 0;
 
 	rds_ibdev->max_wrs = dev_attr->max_qp_wr;
 	rds_ibdev->max_sge = min(dev_attr->max_sge, RDS_IB_MAX_SGE);
@@ -2170,12 +2202,11 @@ void rds_ib_add_one(struct ib_device *device)
 		goto put_dev;
 	}
 
-	rds_ibdev->srq = kmalloc(sizeof(struct rds_ib_srq), GFP_KERNEL);
-	if (!rds_ibdev->srq)
-		goto free_attr;
-
 	INIT_LIST_HEAD(&rds_ibdev->ipaddr_list);
 	INIT_LIST_HEAD(&rds_ibdev->conn_list);
+
+	if (rds_ib_srq_init(rds_ibdev))
+		goto put_dev;
 
 	down_write(&rds_ib_devices_lock);
 	list_add_tail_rcu(&rds_ibdev->list, &rds_ib_devices);
@@ -2321,8 +2352,10 @@ static int rds_ib_netdev_callback(struct notifier_block *self, unsigned long eve
 	struct rds_ib_port_ud_work *work = NULL;
 	int port_transition = RDSIBP_TRANSITION_NOOP;
 
-	if (!rds_ib_active_bonding_enabled)
+	if (!rds_ib_active_bonding_enabled) {
+		rds_rtd(RDS_RTD_ACT_BND, "active bonding not enabled\n");
 		return NOTIFY_DONE;
+	}
 
 	if (event != NETDEV_UP &&
 	    event != NETDEV_DOWN &&
@@ -2569,6 +2602,8 @@ static int rds_ib_netdev_callback(struct notifier_block *self, unsigned long eve
 	switch (port_transition) {
 	case RDSIBP_TRANSITION_UP:
 		if (rds_ib_active_bonding_fallback) {
+			rds_rtd(RDS_RTD_ACT_BND,
+				"active bonding fallback enabled\n");
 			INIT_DELAYED_WORK(&work->work, rds_ib_failback);
 			queue_delayed_work(rds_wq, &work->work, 0);
 		} else
@@ -2622,33 +2657,27 @@ int rds_ib_init(void)
 	if (ret)
 		goto out;
 
-	ret = ib_register_client(&rds_ib_client);
-	if (ret)
-		goto out_fmr_exit;
-
 	ret = rds_ib_sysctl_init();
 	if (ret)
-		goto out_ibreg;
+		goto out_fmr_exit;
 
 	ret = rds_ib_recv_init();
 	if (ret)
 		goto out_sysctl;
 
-	ret = rds_ib_srqs_init();
-	if (ret) {
-		printk(KERN_ERR "RDS/IB: Failed to init SRQ\n");
+	ret = ib_register_client(&rds_ib_client);
+	if (ret)
 		goto out_recv;
-	}
 
 	rds_aux_wq = create_singlethread_workqueue("krdsd_aux");
 	if (!rds_aux_wq) {
 		printk(KERN_ERR "RDS/IB: failed to create aux workqueue\n");
-		goto out_srq;
+		goto out_ibreg;
 	}
 
 	ret = rds_trans_register(&rds_ib_transport);
 	if (ret)
-		goto out_srq;
+		goto out_ibreg;
 
 	rds_info_register_func(RDS_INFO_IB_CONNECTIONS, rds_ib_ic_info);
 
@@ -2657,7 +2686,7 @@ int rds_ib_init(void)
 	ret = rds_ib_ip_config_init();
 	if (ret) {
 		printk(KERN_ERR "RDS/IB: failed to init port\n");
-		goto out_srq;
+		goto out_ibreg;
 	}
 
 	rds_ib_ip_failover_groups_init();
@@ -2666,14 +2695,12 @@ int rds_ib_init(void)
 
 	goto out;
 
-out_srq:
-	rds_ib_srqs_exit();
+out_ibreg:
+	rds_ib_unregister_client();
 out_recv:
 	rds_ib_recv_exit();
 out_sysctl:
 	rds_ib_sysctl_exit();
-out_ibreg:
-	rds_ib_unregister_client();
 out_fmr_exit:
 	rds_ib_fmr_exit();
 out:
@@ -2688,7 +2715,6 @@ void rds_ib_exit(void)
 	rds_ib_unregister_client();
 	rds_ib_destroy_nodev_conns();
 	rds_ib_sysctl_exit();
-	rds_ib_srqs_exit();
 	rds_ib_recv_exit();
 	flush_workqueue(rds_aux_wq);
 	destroy_workqueue(rds_aux_wq);

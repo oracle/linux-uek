@@ -68,6 +68,7 @@
 #include "super.h"
 #include "sysfile.h"
 #include "uptodate.h"
+#include "ver.h"
 #include "xattr.h"
 #include "quota.h"
 #include "refcounttree.h"
@@ -89,7 +90,6 @@ static struct dentry *ocfs2_debugfs_root;
 
 MODULE_AUTHOR("Oracle");
 MODULE_LICENSE("GPL");
-MODULE_DESCRIPTION("OCFS2 cluster file system");
 
 struct mount_options
 {
@@ -1557,8 +1557,8 @@ static int ocfs2_show_options(struct seq_file *s, struct dentry *root)
 		seq_printf(s, ",localflocks,");
 
 	if (osb->osb_cluster_stack[0])
-		seq_printf(s, ",cluster_stack=%.*s", OCFS2_STACK_LABEL_LEN,
-			   osb->osb_cluster_stack);
+		seq_show_option_n(s, "cluster_stack", osb->osb_cluster_stack,
+				  OCFS2_STACK_LABEL_LEN);
 	if (opts & OCFS2_MOUNT_USRQUOTA)
 		seq_printf(s, ",usrquota");
 	if (opts & OCFS2_MOUNT_GRPQUOTA)
@@ -1598,6 +1598,7 @@ static int __init ocfs2_init(void)
 {
 	int status;
 
+	ocfs2_print_version();
 	status = init_ocfs2_uptodate_cache();
 	if (status < 0)
 		goto out1;

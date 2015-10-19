@@ -1249,7 +1249,6 @@ void smp_fill_in_sib_core_maps(void)
 
 	for_each_present_cpu(i)  {
 		unsigned int j;
-
 		for_each_present_cpu(j)  {
 			if (cpu_data(i).sock_id == cpu_data(j).sock_id)
 				cpumask_set_cpu(j, &cpu_core_sib_map[i]);
