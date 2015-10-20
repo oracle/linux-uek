@@ -739,6 +739,44 @@ int pci_claim_bridge_resource(struct pci_dev *bridge, int i)
 	return -EINVAL;
 }
 
+static bool pci_up_path_over_pref_mem64(struct pci_bus *bus)
+{
+	if (pci_is_root_bus(bus))
+		return to_pci_host_bridge(bus->bridge)->has_mem64;
+
+	if (bus->self) {
+		int i;
+		bool found = false;
+		struct resource *res;
+
+		pci_bus_for_each_resource(bus, res, i)
+			if (res->flags & IORESOURCE_MEM_64) {
+				found = true;
+				break;
+			}
+
+		if (!found)
+			return false;
+	}
+
+	return pci_up_path_over_pref_mem64(bus->parent);
+}
+
+int pci_resource_pref_compatible(const struct pci_dev *dev,
+				 struct resource *res)
+{
+	if (res->flags & IORESOURCE_PREFETCH)
+		return res->flags;
+
+	if ((res->flags & IORESOURCE_MEM) &&
+	    (res->flags & IORESOURCE_MEM_64) &&
+	    dev->on_all_pcie_path &&
+	    pci_up_path_over_pref_mem64(dev->bus))
+		return res->flags | IORESOURCE_PREFETCH;
+
+	return res->flags;
+}
+
 /* Check whether the bridge supports optional I/O and
    prefetchable memory ranges. If not, the respective
    base/limit registers must be read-only and read as 0. */
@@ -1036,14 +1074,12 @@ static int pbus_size_mem(struct pci_bus *bus, unsigned long mask,
 		for (i = 0; i < PCI_NUM_RESOURCES; i++) {
 			struct resource *r = &dev->resource[i];
 			resource_size_t r_size;
+			int flags = pci_resource_pref_compatible(dev, r);
 
-			pci_set_pref_under_pref(r);
-			if (r->parent || ((r->flags & mask) != type &&
-					  (r->flags & mask) != type2 &&
-					  (r->flags & mask) != type3)) {
-				pci_clear_pref_under_pref(r);
+			if (r->parent || ((flags & mask) != type &&
+					  (flags & mask) != type2 &&
+					  (flags & mask) != type3))
 				continue;
-			}
 			r_size = resource_size(r);
 #ifdef CONFIG_PCI_IOV
 			/* put SRIOV requested res to the optional list */
@@ -1053,7 +1089,6 @@ static int pbus_size_mem(struct pci_bus *bus, unsigned long mask,
 				r->end = r->start - 1;
 				add_to_list(realloc_head, dev, r, r_size, 0/* don't care */);
 				children_add_size += r_size;
-				pci_clear_pref_under_pref(r);
 				continue;
 			}
 #endif
@@ -1086,7 +1121,6 @@ static int pbus_size_mem(struct pci_bus *bus, unsigned long mask,
 				children_add_align = get_res_add_align(realloc_head, r);
 				add_align = max(add_align, children_add_align);
 			}
-			pci_clear_pref_under_pref(r);
 		}
 	}
 
@@ -1229,6 +1263,10 @@ void __pci_bus_size_bridges(struct pci_bus *bus, struct list_head *realloc_head)
 	struct resource *b_res;
 	int ret;
 
+	if (!pci_is_root_bus(bus) &&
+	    (bus->self->class >> 8) == PCI_CLASS_BRIDGE_PCI)
+		pci_bridge_check_ranges(bus);
+
 	list_for_each_entry(dev, &bus->devices, bus_list) {
 		struct pci_bus *b = dev->subordinate;
 		if (!b)
@@ -1256,7 +1294,6 @@ void __pci_bus_size_bridges(struct pci_bus *bus, struct list_head *realloc_head)
 		break;
 
 	case PCI_CLASS_BRIDGE_PCI:
-		pci_bridge_check_ranges(bus);
 		if (bus->self->is_hotplug_bridge) {
 			additional_io_size  = pci_hotplug_io_size;
 			additional_mem_size = pci_hotplug_mem_size;
@@ -1274,7 +1311,8 @@ void __pci_bus_size_bridges(struct pci_bus *bus, struct list_head *realloc_head)
 		b_res = &bus->self->resource[PCI_BRIDGE_RESOURCES];
 		mask = IORESOURCE_MEM;
 		prefmask = IORESOURCE_MEM | IORESOURCE_PREFETCH;
-		if (b_res[2].flags & IORESOURCE_MEM_64) {
+		if ((b_res[2].flags & IORESOURCE_MEM_64) &&
+		    pci_find_host_bridge(bus)->has_mem64) {
 			prefmask |= IORESOURCE_MEM_64;
 			ret = pbus_size_mem(bus, prefmask, prefmask,
 				  prefmask, prefmask,
@@ -1433,17 +1471,21 @@ static void pci_bridge_release_resources(struct pci_bus *bus,
 	 *	  io port.
 	 *     2. if there is non pref mmio assign fail, release bridge
 	 *	  nonpref mmio.
-	 *     3. if there is 64bit pref mmio assign fail, and bridge pref
+	 *     3. if there is pref mmio assign fail, and host bridge does
+	 *	  have 64bit mmio, release bridge pref mmio.
+	 *     4. if there is 64bit pref mmio assign fail, and bridge pref
 	 *	  is 64bit, release bridge pref mmio.
-	 *     4. if there is pref mmio assign fail, and bridge pref is
+	 *     5. if there is pref mmio assign fail, and bridge pref is
 	 *	  32bit mmio, release bridge pref mmio
-	 *     5. if there is pref mmio assign fail, and bridge pref is not
+	 *     6. if there is pref mmio assign fail, and bridge pref is not
 	 *	  assigned, release bridge nonpref mmio.
 	 */
 	if (type & IORESOURCE_IO)
 		idx = 0;
 	else if (!(type & IORESOURCE_PREFETCH))
 		idx = 1;
+	else if (!pci_find_host_bridge(bus)->has_mem64)
+		idx = 2;
 	else if ((type & IORESOURCE_MEM_64) &&
 		 (b_res[2].flags & IORESOURCE_MEM_64))
 		idx = 2;

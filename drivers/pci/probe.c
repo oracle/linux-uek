@@ -1510,7 +1510,7 @@ static void pci_init_capabilities(struct pci_dev *dev)
 
 static bool pci_up_path_over_pcie(struct pci_bus *bus)
 {
-	if (!bus)
+	if (pci_is_root_bus(bus))
 		return true;
 
 	if (bus->self && !pci_is_pcie(bus->self))
@@ -1524,35 +1524,18 @@ static bool pci_up_path_over_pcie(struct pci_bus *bus)
  * https://www.pcisig.com/specifications/pciexpress/base2/PCIe_Base_r2.1_Errata_08Jun10.pdf
  * page 13, system firmware could put some 64bit non-pref under 64bit pref,
  * on some cases.
- * Let's set pref bit for 64bit mmio when entire path from the host to
- * the adapter is over PCI Express.
+ * Let's mark if entire path from the host to the adapter is over PCI
+ * Express. later will use that compute pref compaitable bit.
  */
-static void set_pcie_64bit_under_pref(struct pci_dev *dev)
+static void pci_set_on_all_pcie_path(struct pci_dev *dev)
 {
-	int i;
-
 	if (!pci_is_pcie(dev))
 		return;
 
 	if (!pci_up_path_over_pcie(dev->bus))
 		return;
 
-	for (i = 0; i < PCI_BRIDGE_RESOURCES; i++) {
-		struct resource *res = &dev->resource[i];
-		enum pci_bar_type type;
-		int reg;
-
-		if (!(res->flags & IORESOURCE_MEM_64))
-			continue;
-
-		if (res->flags & IORESOURCE_PREFETCH)
-			continue;
-
-		reg = pci_resource_bar(dev, i, &type);
-		dev_printk(KERN_DEBUG, &dev->dev, "reg 0x%x %pR + under_pref\n",
-			   reg, res);
-		res->flags |= IORESOURCE_UNDER_PREF;
-	}
+	dev->on_all_pcie_path = 1;
 }
 
 void pci_device_add(struct pci_dev *dev, struct pci_bus *bus)
@@ -1585,8 +1568,8 @@ void pci_device_add(struct pci_dev *dev, struct pci_bus *bus)
 	/* Initialize various capabilities */
 	pci_init_capabilities(dev);
 
-	/* After pcie_cap is assigned and sriov bar is probed */
-	set_pcie_64bit_under_pref(dev);
+	/* After pcie_cap is assigned */
+	pci_set_on_all_pcie_path(dev);
 
 	/*
 	 * Add the device to our list of discovered devices
@@ -2030,6 +2013,13 @@ struct pci_bus *pci_create_root_bus(struct device *parent, int bus,
 		} else
 			bus_addr[0] = '\0';
 		dev_info(&b->dev, "root bus resource %pR%s\n", res, bus_addr);
+
+		if (resource_type(res) == IORESOURCE_MEM) {
+			if ((res->end - offset) > 0xffffffff)
+				bridge->has_mem64 = 1;
+			if ((res->start - offset) > 0xffffffff)
+				res->flags |= IORESOURCE_MEM_64;
+		}
 	}
 
 	down_write(&pci_bus_sem);
