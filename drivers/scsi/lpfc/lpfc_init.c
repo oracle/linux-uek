@@ -11523,6 +11523,7 @@ lpfc_exit(void)
 		free_pages((unsigned long)_dump_buf_dif, _dump_buf_dif_order);
 	}
 	kfree(lpfc_used_cpu);
+	idr_destroy(&lpfc_hba_index);
 }
 
 module_init(lpfc_init);
