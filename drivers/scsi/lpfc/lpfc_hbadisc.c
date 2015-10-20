@@ -4498,7 +4498,7 @@ lpfc_unreg_rpi(struct lpfc_vport *vport, struct lpfc_nodelist *ndlp)
 {
 	struct lpfc_hba *phba = vport->phba;
 	LPFC_MBOXQ_t    *mbox;
-	int rc;
+	int rc, acc_plogi = 1;
 	uint16_t rpi;
 
 	if (ndlp->nlp_flag & NLP_RPI_REGISTERED ||
@@ -4531,14 +4531,20 @@ lpfc_unreg_rpi(struct lpfc_vport *vport, struct lpfc_nodelist *ndlp)
 					mbox->context1 = lpfc_nlp_get(ndlp);
 					mbox->mbox_cmpl =
 						lpfc_sli4_unreg_rpi_cmpl_clr;
+					/*
+					 * accept PLOGIs after unreg_rpi_cmpl
+					 */
+					acc_plogi = 0;
 				} else
 					mbox->mbox_cmpl =
 						lpfc_sli_def_mbox_cmpl;
 			}
 
 			rc = lpfc_sli_issue_mbox(phba, mbox, MBX_NOWAIT);
-			if (rc == MBX_NOT_FINISHED)
+			if (rc == MBX_NOT_FINISHED) {
 				mempool_free(mbox, phba->mbox_mem_pool);
+				acc_plogi = 1;
+			}
 		}
 		lpfc_no_rpi(phba, ndlp);
 
@@ -4546,8 +4552,11 @@ lpfc_unreg_rpi(struct lpfc_vport *vport, struct lpfc_nodelist *ndlp)
 			ndlp->nlp_rpi = 0;
 		ndlp->nlp_flag &= ~NLP_RPI_REGISTERED;
 		ndlp->nlp_flag &= ~NLP_NPR_ADISC;
+		if (acc_plogi)
+			ndlp->nlp_flag &= ~NLP_LOGO_ACC;
 		return 1;
 	}
+	ndlp->nlp_flag &= ~NLP_LOGO_ACC;
 	return 0;
 }
 
