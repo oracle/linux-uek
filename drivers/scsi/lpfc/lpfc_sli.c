@@ -6699,7 +6699,7 @@ lpfc_mbox_timeout(unsigned long ptr)
  * This function checks if any mailbox completions are present on the mailbox
  * completion queue.
  **/
-bool
+static bool
 lpfc_sli4_mbox_completions_pending(struct lpfc_hba *phba)
 {
 
