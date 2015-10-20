@@ -2838,8 +2838,8 @@ static void bond_activebackup_arp_mon(struct work_struct *work)
 		rcu_read_lock();
 	}
 
-	should_notify_rtnl = bond_ab_arp_probe(bond);
 	bond->arp_sent = false;
+	should_notify_rtnl = bond_ab_arp_probe(bond);
 	rcu_read_unlock();
 
 re_arm:
