@@ -10298,7 +10298,7 @@ lpfc_pci_probe_one_s4(struct pci_dev *pdev, const struct pci_device_id *pid)
 	struct lpfc_hba   *phba;
 	struct lpfc_vport *vport = NULL;
 	struct Scsi_Host  *shost = NULL;
-	int error, ret;
+	int error;
 	uint32_t cfg_mode, intr_mode;
 	int adjusted_fcp_io_channel;
 
@@ -10422,7 +10422,7 @@ lpfc_pci_probe_one_s4(struct pci_dev *pdev, const struct pci_device_id *pid)
 
 	/* check for firmware upgrade or downgrade */
 	if (phba->cfg_request_firmware_upgrade)
-		ret = lpfc_sli4_request_firmware_update(phba, INT_FW_UPGRADE);
+		lpfc_sli4_request_firmware_update(phba, INT_FW_UPGRADE);
 
 	/* Check if there are static vports to be created. */
 	lpfc_create_static_vport(phba);
