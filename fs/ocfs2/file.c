@@ -2496,9 +2496,17 @@ static ssize_t ocfs2_file_write_iter(struct kiocb *iocb,
 
 	if (((file->f_flags & O_DSYNC) && !direct_io) ||
 	    IS_SYNC(inode)) {
-		ret = filemap_fdatawrite_range(file->f_mapping,
-					       iocb->ki_pos - written,
-					       iocb->ki_pos - 1);
+		/*
+		 * There is an performance issue when we are doing a flush with
+		 * WB_SYNC_ALL flag. block_write_full_page() will transfer it
+		 * to REQ_SYNC flag on bio. And block layer will skip queue if
+		 * that flag is found. It will affect the performance
+		 * significantly if the disk has a poor iops.
+		 * So try to work around by calling filemap_flush(). This is
+		 * safe because following jbd2 force commit will helps to
+		 * ensure data integrity.
+		 */
+		ret = filemap_flush(file->f_mapping);
 		if (ret < 0)
 			written = ret;
 
@@ -2508,10 +2516,16 @@ static ssize_t ocfs2_file_write_iter(struct kiocb *iocb,
 				written = ret;
 		}
 
-		if (!ret)
-			ret = filemap_fdatawait_range(file->f_mapping,
-						      iocb->ki_pos - written,
-						      iocb->ki_pos - 1);
+		/*
+		 * When journal=order, jbd2 will write and wait all dirty
+		 * pages, no need to do it again.
+		 * And to meet the semantics of O_SYNC or O_DIRECT, we need to
+		 * wait on dirty pages that filemap_flush() miss.
+		 */
+		if (!ret && !ocfs2_should_order_data(inode))
+			ret = filemap_write_and_wait_range(file->f_mapping,
+							   iocb->ki_pos - written,
+							   iocb->ki_pos - 1);
 	}
 
 out:
