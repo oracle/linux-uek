@@ -830,9 +830,10 @@ void fib_add_ifaddr(struct in_ifaddr *ifa)
 
 	if (!ipv4_is_zeronet(prefix) && !(ifa->ifa_flags & IFA_F_SECONDARY) &&
 	    (prefix != addr || ifa->ifa_prefixlen < 32)) {
-		fib_magic(RTM_NEWROUTE,
-			  dev->flags & IFF_LOOPBACK ? RTN_LOCAL : RTN_UNICAST,
-			  prefix, ifa->ifa_prefixlen, prim);
+		if (!(ifa->ifa_flags & IFA_F_NOPREFIXROUTE))
+			fib_magic(RTM_NEWROUTE,
+				  dev->flags & IFF_LOOPBACK ? RTN_LOCAL : RTN_UNICAST,
+				  prefix, ifa->ifa_prefixlen, prim);
 
 		/* Add network specific broadcasts, when it takes a sense */
 		if (ifa->ifa_prefixlen < 31) {
@@ -881,9 +882,10 @@ void fib_del_ifaddr(struct in_ifaddr *ifa, struct in_ifaddr *iprim)
 		}
 	} else if (!ipv4_is_zeronet(any) &&
 		   (any != ifa->ifa_local || ifa->ifa_prefixlen < 32)) {
-		fib_magic(RTM_DELROUTE,
-			  dev->flags & IFF_LOOPBACK ? RTN_LOCAL : RTN_UNICAST,
-			  any, ifa->ifa_prefixlen, prim);
+		if (!(ifa->ifa_flags & IFA_F_NOPREFIXROUTE))
+			fib_magic(RTM_DELROUTE,
+				  dev->flags & IFF_LOOPBACK ? RTN_LOCAL : RTN_UNICAST,
+				  any, ifa->ifa_prefixlen, prim);
 		subnet = 1;
 	}
 
