@@ -19,14 +19,14 @@
  * | Device Discovery             |       0x2016       | 0x2020-0x2022, |
  * |                              |                    | 0x2011-0x2012, |
  * |                              |                    | 0x2099-0x20a4  |
- * | Queue Command and IO tracing |       0x3059       | 0x300b         |
+ * | Queue Command and IO tracing |       0x3075       | 0x300b         |
  * |                              |                    | 0x3027-0x3028  |
  * |                              |                    | 0x303d-0x3041  |
  * |                              |                    | 0x302d,0x3033  |
  * |                              |                    | 0x3036,0x3038  |
  * |                              |                    | 0x303a		|
  * | DPC Thread                   |       0x4023       | 0x4002,0x4013  |
- * | Async Events                 |       0x5087       | 0x502b-0x502f  |
+ * | Async Events                 |       0x508a       | 0x502b-0x502f  |
  * |                              |                    | 0x5047		|
  * |                              |                    | 0x5084,0x5075	|
  * |                              |                    | 0x503d,0x5044  |
@@ -117,7 +117,7 @@ qla27xx_dump_mpi_ram(struct qla_hw_data *ha, uint32_t addr, uint32_t *ram,
 {
 	int rval;
 	uint32_t cnt, stat, timer, dwords, idx;
-	uint16_t mb0, mb1;
+	uint16_t mb0;
 	struct device_reg_24xx __iomem *reg = &ha->iobase->isp24;
 	dma_addr_t dump_dma = ha->gid_list_dma;
 	uint32_t *dump = (uint32_t *)ha->gid_list;
@@ -161,7 +161,7 @@ qla27xx_dump_mpi_ram(struct qla_hw_data *ha, uint32_t addr, uint32_t *ram,
 					    &ha->mbx_cmd_flags);
 
 					mb0 = RD_REG_WORD(&reg->mailbox0);
-					mb1 = RD_REG_WORD(&reg->mailbox1);
+					RD_REG_WORD(&reg->mailbox1);
 
 					WRT_REG_DWORD(&reg->hccr,
 					    HCCRX_CLR_RISC_INT);
@@ -486,7 +486,7 @@ qla25xx_copy_fce(struct qla_hw_data *ha, void *ptr, uint32_t **last_chain)
 		return ptr;
 
 	*last_chain = &fcec->type;
-	fcec->type = __constant_htonl(DUMP_CHAIN_FCE);
+	fcec->type = htonl(DUMP_CHAIN_FCE);
 	fcec->chain_size = htonl(sizeof(struct qla2xxx_fce_chain) +
 	    fce_calc_size(ha->fce_bufs));
 	fcec->size = htonl(fce_calc_size(ha->fce_bufs));
@@ -571,7 +571,7 @@ qla25xx_copy_mqueues(struct qla_hw_data *ha, void *ptr, uint32_t **last_chain)
 		/* Add chain. */
 		q = ptr;
 		*last_chain = &q->type;
-		q->type = __constant_htonl(DUMP_CHAIN_QUEUE);
+		q->type = htonl(DUMP_CHAIN_QUEUE);
 		q->chain_size = htonl(
 		    sizeof(struct qla2xxx_mqueue_chain) +
 		    sizeof(struct qla2xxx_mqueue_header) +
@@ -580,7 +580,7 @@ qla25xx_copy_mqueues(struct qla_hw_data *ha, void *ptr, uint32_t **last_chain)
 
 		/* Add header. */
 		qh = ptr;
-		qh->queue = __constant_htonl(TYPE_REQUEST_QUEUE);
+		qh->queue = htonl(TYPE_REQUEST_QUEUE);
 		qh->number = htonl(que);
 		qh->size = htonl(req->length * sizeof(request_t));
 		ptr += sizeof(struct qla2xxx_mqueue_header);
@@ -599,7 +599,7 @@ qla25xx_copy_mqueues(struct qla_hw_data *ha, void *ptr, uint32_t **last_chain)
 		/* Add chain. */
 		q = ptr;
 		*last_chain = &q->type;
-		q->type = __constant_htonl(DUMP_CHAIN_QUEUE);
+		q->type = htonl(DUMP_CHAIN_QUEUE);
 		q->chain_size = htonl(
 		    sizeof(struct qla2xxx_mqueue_chain) +
 		    sizeof(struct qla2xxx_mqueue_header) +
@@ -608,7 +608,7 @@ qla25xx_copy_mqueues(struct qla_hw_data *ha, void *ptr, uint32_t **last_chain)
 
 		/* Add header. */
 		qh = ptr;
-		qh->queue = __constant_htonl(TYPE_RESPONSE_QUEUE);
+		qh->queue = htonl(TYPE_RESPONSE_QUEUE);
 		qh->number = htonl(que);
 		qh->size = htonl(rsp->length * sizeof(response_t));
 		ptr += sizeof(struct qla2xxx_mqueue_header);
@@ -627,15 +627,15 @@ qla25xx_copy_mq(struct qla_hw_data *ha, void *ptr, uint32_t **last_chain)
 	uint32_t cnt, que_idx;
 	uint8_t que_cnt;
 	struct qla2xxx_mq_chain *mq = ptr;
-	device_reg_t __iomem *reg;
+	device_reg_t *reg;
 
 	if (!ha->mqenable || IS_QLA83XX(ha) || IS_QLA27XX(ha))
 		return ptr;
 
 	mq = ptr;
 	*last_chain = &mq->type;
-	mq->type = __constant_htonl(DUMP_CHAIN_MQ);
-	mq->chain_size = __constant_htonl(sizeof(struct qla2xxx_mq_chain));
+	mq->type = htonl(DUMP_CHAIN_MQ);
+	mq->chain_size = htonl(sizeof(struct qla2xxx_mq_chain));
 
 	que_cnt = ha->max_req_queues > ha->max_rsp_queues ?
 		ha->max_req_queues : ha->max_rsp_queues;
@@ -1039,7 +1039,6 @@ qla24xx_fw_dump(scsi_qla_host_t *vha, int hardware_locked)
 {
 	int		rval;
 	uint32_t	cnt;
-	uint32_t	risc_address;
 	struct qla_hw_data *ha = vha->hw;
 	struct device_reg_24xx __iomem *reg = &ha->iobase->isp24;
 	uint32_t __iomem *dmp_reg;
@@ -1047,7 +1046,6 @@ qla24xx_fw_dump(scsi_qla_host_t *vha, int hardware_locked)
 	uint16_t __iomem *mbx_reg;
 	unsigned long	flags;
 	struct qla24xx_fw_dump *fw;
-	uint32_t	ext_mem_cnt;
 	void		*nxt;
 	void		*nxt_chain;
 	uint32_t	*last_chain = NULL;
@@ -1056,7 +1054,6 @@ qla24xx_fw_dump(scsi_qla_host_t *vha, int hardware_locked)
 	if (IS_P3P_TYPE(ha))
 		return;
 
-	risc_address = ext_mem_cnt = 0;
 	flags = 0;
 	ha->fw_dump_cap_flags = 0;
 
@@ -1294,7 +1291,6 @@ qla25xx_fw_dump(scsi_qla_host_t *vha, int hardware_locked)
 {
 	int		rval;
 	uint32_t	cnt;
-	uint32_t	risc_address;
 	struct qla_hw_data *ha = vha->hw;
 	struct device_reg_24xx __iomem *reg = &ha->iobase->isp24;
 	uint32_t __iomem *dmp_reg;
@@ -1302,12 +1298,10 @@ qla25xx_fw_dump(scsi_qla_host_t *vha, int hardware_locked)
 	uint16_t __iomem *mbx_reg;
 	unsigned long	flags;
 	struct qla25xx_fw_dump *fw;
-	uint32_t	ext_mem_cnt;
 	void		*nxt, *nxt_chain;
 	uint32_t	*last_chain = NULL;
 	struct scsi_qla_host *base_vha = pci_get_drvdata(ha->pdev);
 
-	risc_address = ext_mem_cnt = 0;
 	flags = 0;
 	ha->fw_dump_cap_flags = 0;
 
@@ -1329,7 +1323,7 @@ qla25xx_fw_dump(scsi_qla_host_t *vha, int hardware_locked)
 	}
 	fw = &ha->fw_dump->isp.isp25;
 	qla2xxx_prep_dump(ha, ha->fw_dump);
-	ha->fw_dump->version = __constant_htonl(2);
+	ha->fw_dump->version = htonl(2);
 
 	fw->host_status = htonl(RD_REG_DWORD(&reg->host_status));
 
@@ -1593,8 +1587,8 @@ qla25xx_fw_dump(scsi_qla_host_t *vha, int hardware_locked)
 	nxt_chain = qla25xx_copy_mqueues(ha, nxt_chain, &last_chain);
 	nxt_chain = qla2xxx_copy_atioqueues(ha, nxt_chain, &last_chain);
 	if (last_chain) {
-		ha->fw_dump->version |= __constant_htonl(DUMP_CHAIN_VARIANT);
-		*last_chain |= __constant_htonl(DUMP_CHAIN_LAST);
+		ha->fw_dump->version |= htonl(DUMP_CHAIN_VARIANT);
+		*last_chain |= htonl(DUMP_CHAIN_LAST);
 	}
 
 	/* Adjust valid length. */
@@ -1613,7 +1607,6 @@ qla81xx_fw_dump(scsi_qla_host_t *vha, int hardware_locked)
 {
 	int		rval;
 	uint32_t	cnt;
-	uint32_t	risc_address;
 	struct qla_hw_data *ha = vha->hw;
 	struct device_reg_24xx __iomem *reg = &ha->iobase->isp24;
 	uint32_t __iomem *dmp_reg;
@@ -1621,12 +1614,10 @@ qla81xx_fw_dump(scsi_qla_host_t *vha, int hardware_locked)
 	uint16_t __iomem *mbx_reg;
 	unsigned long	flags;
 	struct qla81xx_fw_dump *fw;
-	uint32_t	ext_mem_cnt;
 	void		*nxt, *nxt_chain;
 	uint32_t	*last_chain = NULL;
 	struct scsi_qla_host *base_vha = pci_get_drvdata(ha->pdev);
 
-	risc_address = ext_mem_cnt = 0;
 	flags = 0;
 	ha->fw_dump_cap_flags = 0;
 
@@ -1914,8 +1905,8 @@ qla81xx_fw_dump(scsi_qla_host_t *vha, int hardware_locked)
 	nxt_chain = qla25xx_copy_mqueues(ha, nxt_chain, &last_chain);
 	nxt_chain = qla2xxx_copy_atioqueues(ha, nxt_chain, &last_chain);
 	if (last_chain) {
-		ha->fw_dump->version |= __constant_htonl(DUMP_CHAIN_VARIANT);
-		*last_chain |= __constant_htonl(DUMP_CHAIN_LAST);
+		ha->fw_dump->version |= htonl(DUMP_CHAIN_VARIANT);
+		*last_chain |= htonl(DUMP_CHAIN_LAST);
 	}
 
 	/* Adjust valid length. */
@@ -1933,8 +1924,7 @@ void
 qla83xx_fw_dump(scsi_qla_host_t *vha, int hardware_locked)
 {
 	int		rval;
-	uint32_t	cnt, reg_data;
-	uint32_t	risc_address;
+	uint32_t	cnt;
 	struct qla_hw_data *ha = vha->hw;
 	struct device_reg_24xx __iomem *reg = &ha->iobase->isp24;
 	uint32_t __iomem *dmp_reg;
@@ -1942,12 +1932,10 @@ qla83xx_fw_dump(scsi_qla_host_t *vha, int hardware_locked)
 	uint16_t __iomem *mbx_reg;
 	unsigned long	flags;
 	struct qla83xx_fw_dump *fw;
-	uint32_t	ext_mem_cnt;
 	void		*nxt, *nxt_chain;
 	uint32_t	*last_chain = NULL;
 	struct scsi_qla_host *base_vha = pci_get_drvdata(ha->pdev);
 
-	risc_address = ext_mem_cnt = 0;
 	flags = 0;
 	ha->fw_dump_cap_flags = 0;
 
@@ -1979,16 +1967,16 @@ qla83xx_fw_dump(scsi_qla_host_t *vha, int hardware_locked)
 
 	WRT_REG_DWORD(&reg->iobase_addr, 0x6000);
 	dmp_reg = &reg->iobase_window;
-	reg_data = RD_REG_DWORD(dmp_reg);
+	RD_REG_DWORD(dmp_reg);
 	WRT_REG_DWORD(dmp_reg, 0);
 
 	dmp_reg = &reg->unused_4_1[0];
-	reg_data = RD_REG_DWORD(dmp_reg);
+	RD_REG_DWORD(dmp_reg);
 	WRT_REG_DWORD(dmp_reg, 0);
 
 	WRT_REG_DWORD(&reg->iobase_addr, 0x6010);
 	dmp_reg = &reg->unused_4_1[2];
-	reg_data = RD_REG_DWORD(dmp_reg);
+	RD_REG_DWORD(dmp_reg);
 	WRT_REG_DWORD(dmp_reg, 0);
 
 	/* select PCR and disable ecc checking and correction */
@@ -2420,8 +2408,8 @@ copy_queue:
 	nxt_chain = qla25xx_copy_mqueues(ha, nxt_chain, &last_chain);
 	nxt_chain = qla2xxx_copy_atioqueues(ha, nxt_chain, &last_chain);
 	if (last_chain) {
-		ha->fw_dump->version |= __constant_htonl(DUMP_CHAIN_VARIANT);
-		*last_chain |= __constant_htonl(DUMP_CHAIN_LAST);
+		ha->fw_dump->version |= htonl(DUMP_CHAIN_VARIANT);
+		*last_chain |= htonl(DUMP_CHAIN_LAST);
 	}
 
 	/* Adjust valid length. */
