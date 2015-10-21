@@ -143,6 +143,11 @@ static u8       excl_ips_cnt;
 static int ip_config_init_phase_flag; /* = 0 */
 static int initial_failovers_iterations; /* = 0 */
 
+static void rds_ib_initial_failovers(struct work_struct *workarg);
+DECLARE_DELAYED_WORK(riif_dlywork, rds_ib_initial_failovers);
+static int timeout_until_initial_failovers;
+
+
 /*
  * rds_detected_linklayer_up
  *
@@ -1538,11 +1543,8 @@ static void rds_ib_event_handler(struct ib_event_handler *handler,
 }
 
 static void
-rds_ib_do_initial_failovers(struct work_struct *workarg)
+rds_ib_do_initial_failovers(void)
 {
-	struct rds_ib_initial_failovers_work *riif_work =
-		container_of(workarg, struct rds_ib_initial_failovers_work,
-			     dlywork.work);
 	unsigned int ii;
 	unsigned int ports_deactivated = 0;
 	int ret = 0;
@@ -1613,15 +1615,11 @@ rds_ib_do_initial_failovers(struct work_struct *workarg)
 	}
 
 	ip_config_init_phase_flag = 0; /* done with initial phase! */
-	kfree(riif_work);
 }
 
 static void
 rds_ib_initial_failovers(struct work_struct *workarg)
 {
-	struct rds_ib_initial_failovers_work *riif_work =
-		container_of(workarg, struct rds_ib_initial_failovers_work,
-			     dlywork.work);
 
 	if (rds_ib_sysctl_trigger_active_bonding == 0) {
 		/*
@@ -1633,12 +1631,11 @@ rds_ib_initial_failovers(struct work_struct *workarg)
 		 * If trigger not set, defer, unless we have
 		 * reached a max timeout!
 		 */
-		if (riif_work->timeout > 0) {
-			INIT_DELAYED_WORK(&riif_work->dlywork,
-					  rds_ib_initial_failovers);
-			riif_work->timeout -= msecs_to_jiffies(100);
+		if (timeout_until_initial_failovers > 0) {
+			timeout_until_initial_failovers -= 
+				msecs_to_jiffies(100);
 			queue_delayed_work(rds_wq,
-					   &riif_work->dlywork,
+					   &riif_dlywork,
 					   msecs_to_jiffies(100));
 			initial_failovers_iterations++;
 			return;
@@ -1658,7 +1655,7 @@ rds_ib_initial_failovers(struct work_struct *workarg)
 		       "failovers(itercount %d)\n",
 		       initial_failovers_iterations);
 	}
-	rds_ib_do_initial_failovers(workarg);
+	rds_ib_do_initial_failovers();
 }
 
 static void rds_ib_dump_ip_config(void)
@@ -1751,7 +1748,6 @@ static void
 sched_initial_failovers(unsigned int tot_devs,
 			unsigned int tot_ibdevs)
 {
-	struct rds_ib_initial_failovers_work *riif_work;
 	unsigned int trigger_delay_max_jiffies;
 	unsigned int trigger_delay_min_jiffies;
 
@@ -1813,28 +1809,15 @@ sched_initial_failovers(unsigned int tot_devs,
 		       rds_ib_active_bonding_trigger_delay_max_msecs);
 	}
 
-	riif_work = kzalloc(sizeof(struct rds_ib_initial_failovers_work),
-			    GFP_KERNEL);
-	if (riif_work == NULL) {
-		printk(KERN_ERR
-		       "RDS/IB: failed to allocate initial failovers work");
-		ip_config_init_phase_flag = 0;
-		return;
-	}
-
 	trigger_delay_max_jiffies =
 		msecs_to_jiffies(rds_ib_active_bonding_trigger_delay_max_msecs);
-	riif_work->timeout = trigger_delay_max_jiffies;
 
 	trigger_delay_min_jiffies =
 		msecs_to_jiffies(rds_ib_active_bonding_trigger_delay_min_msecs);
 
-	INIT_DELAYED_WORK(&riif_work->dlywork, rds_ib_initial_failovers);
-
-	riif_work->timeout = trigger_delay_max_jiffies;
-
+	timeout_until_initial_failovers = trigger_delay_max_jiffies;
 	queue_delayed_work(rds_wq,
-			   &riif_work->dlywork,
+			   &riif_dlywork,
 			   trigger_delay_min_jiffies);
 }
 
