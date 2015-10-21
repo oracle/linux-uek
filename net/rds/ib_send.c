@@ -549,7 +549,7 @@ int rds_ib_xmit(struct rds_connection *conn, struct rds_message *rm,
 	int flow_controlled = 0;
 	int nr_sig = 0;
 
-	BUG_ON(off % RDS_FRAG_SIZE);
+	BUG_ON(off % ic->i_frag_sz);
 	BUG_ON(hdr_off != 0 && hdr_off != sizeof(struct rds_header));
 
 	/* Do not send cong updates to IB loopback */
@@ -563,7 +563,7 @@ int rds_ib_xmit(struct rds_connection *conn, struct rds_message *rm,
 	if (be32_to_cpu(rm->m_inc.i_hdr.h_len) == 0)
 		i = 1;
 	else
-		i = ceil(be32_to_cpu(rm->m_inc.i_hdr.h_len), RDS_FRAG_SIZE);
+		i = ceil(be32_to_cpu(rm->m_inc.i_hdr.h_len), ic->i_frag_sz);
 
 	work_alloc = rds_ib_ring_alloc(&ic->i_send_ring, i, &pos);
 	if (work_alloc == 0) {
@@ -711,8 +711,8 @@ int rds_ib_xmit(struct rds_connection *conn, struct rds_message *rm,
 		/* Set up the data, if present */
 		if (i < work_alloc
 		    && scat != &rm->data.op_sg[rm->data.op_count]) {
-			len = min(RDS_FRAG_SIZE,
-				ib_sg_dma_len(dev, scat) - rm->data.op_dmaoff);
+			len = min((unsigned int)ic->i_frag_sz,
+				  ib_sg_dma_len(dev, scat) - rm->data.op_dmaoff);
 			send->s_wr.num_sge = 2;
 
 			send->s_sge[1].addr = ib_sg_dma_address(dev, scat);
