@@ -2654,6 +2654,9 @@ int rds_ib_init(void)
 
 	sock_net_set(rds_ib_inet_socket->sk, &init_net);
 
+	/* Initialise the RDS IB fragment size */
+	rds_ib_init_frag(RDS_PROTOCOL_VERSION);
+
 	ret = rds_ib_fmr_init();
 	if (ret)
 		goto out;
