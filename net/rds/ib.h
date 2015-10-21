@@ -89,7 +89,7 @@ struct rds_ib_connect_private {
 	__be16			dp_protocol_minor_mask; /* bitmask */
 	u8			dp_tos;
 	u8			dp_reserved1;
-	__be16			dp_reserved2;
+	__be16			dp_frag_sz;
 	__be64			dp_ack_seq;
 	__be32			dp_credit;		/* non-zero enables flow ctl */
 };
@@ -595,6 +595,7 @@ void rds_ib_cm_connect_complete(struct rds_connection *conn,
 void rds_ib_check_migration(struct rds_connection *conn,
 				struct rdma_cm_event *event);
 #endif
+void rds_ib_init_frag(unsigned int version);
 
 #define rds_ib_conn_error(conn, fmt...) \
 	__rds_ib_conn_error(conn, KERN_WARNING "RDS/IB: " fmt)
