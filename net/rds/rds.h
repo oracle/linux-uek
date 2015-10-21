@@ -58,6 +58,7 @@ rdsdebug(char *fmt, ...)
 
 #define RDS_FRAG_SHIFT	12
 #define RDS_FRAG_SIZE	((unsigned int)(1 << RDS_FRAG_SHIFT))
+#define RDS_MAX_FRAG_SIZE	SZ_16K
 
 #define RDS_CONG_MAP_BYTES	(65536 / 8)
 #define RDS_CONG_PAGE_SIZE	(1UL << 12)
