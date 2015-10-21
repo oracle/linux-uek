@@ -139,8 +139,6 @@ static int pci_bus_alloc_from_region(struct pci_bus *bus, struct resource *res,
 
 	type_mask |= IORESOURCE_TYPE_BITS;
 
-	pci_set_pref_under_pref(res);
-
 	pci_bus_for_each_resource(bus, r, i) {
 		if (!r)
 			continue;
@@ -172,14 +170,9 @@ static int pci_bus_alloc_from_region(struct pci_bus *bus, struct resource *res,
 		/* Ok, try it out.. */
 		ret = allocate_resource(r, res, size, min, max,
 					align, alignf, alignf_data);
-		if (ret == 0) {
-			pci_clear_pref_under_pref(res);
+		if (ret == 0)
 			return 0;
-		}
 	}
-
-	pci_clear_pref_under_pref(res);
-
 	return -ENOMEM;
 }
 
@@ -209,8 +202,10 @@ int pci_bus_alloc_resource(struct pci_bus *bus, struct resource *res,
 {
 #ifdef CONFIG_PCI_BUS_ADDR_T_64BIT
 	int rc;
+	unsigned long mmio64 = pci_find_host_bridge(bus)->has_mem64 ?
+				IORESOURCE_MEM_64 : 0;
 
-	if (res->flags & IORESOURCE_MEM_64) {
+	if (res->flags & mmio64) {
 		rc = pci_bus_alloc_from_region(bus, res, size, align, min,
 					       type_mask, alignf, alignf_data,
 					       &pci_high);

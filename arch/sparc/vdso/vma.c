@@ -80,6 +80,8 @@ int __init init_vdso_image(struct vdso_image *image)
 	vvar_data = page_address(p);
 	memset(vvar_data, 0, PAGE_SIZE);
 
+	seqcount_init(&vvar_data->gtod.seq);
+
 	return 0;
  oom:
 	printk(KERN_WARNING "Cannot allocate vdso\n");

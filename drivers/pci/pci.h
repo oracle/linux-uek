@@ -216,17 +216,6 @@ void __pci_bus_assign_resources(const struct pci_bus *bus,
 				struct list_head *fail_head);
 bool pci_bus_clip_resource(struct pci_dev *dev, int idx);
 
-static inline void pci_set_pref_under_pref(struct resource *res)
-{
-	if (res->flags & IORESOURCE_UNDER_PREF)
-		res->flags |= IORESOURCE_PREFETCH;
-}
-static inline void pci_clear_pref_under_pref(struct resource *res)
-{
-	if (res->flags & IORESOURCE_UNDER_PREF)
-		res->flags &= ~IORESOURCE_PREFETCH;
-}
-
 /**
  * pci_ari_enabled - query ARI forwarding status
  * @bus: the PCI bus
@@ -336,4 +325,6 @@ static inline int pci_dev_specific_reset(struct pci_dev *dev, int probe)
 
 struct pci_host_bridge *pci_find_host_bridge(struct pci_bus *bus);
 
+int pci_resource_pref_compatible(const struct pci_dev *dev,
+				 struct resource *res);
 #endif /* DRIVERS_PCI_H */

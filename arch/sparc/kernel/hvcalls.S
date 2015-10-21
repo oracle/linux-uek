@@ -806,6 +806,13 @@ ENTRY(sun4v_reboot_data_set)
 	 nop
 ENDPROC(sun4v_reboot_data_set)
 
+ENTRY(sun4v_guest_suspend)
+	mov	HV_FAST_GUEST_SUSPEND, %o5
+	ta	HV_FAST_TRAP
+	retl
+	 nop
+ENDPROC(sun4v_guest_suspend)
+
 ENTRY(sun4v_vt_get_perfreg)
 	mov	%o1, %o4
 	mov	HV_FAST_VT_GET_PERFREG, %o5

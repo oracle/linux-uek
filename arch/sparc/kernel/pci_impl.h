@@ -99,6 +99,9 @@ struct pci_pbm_info {
 	struct resource			mem_space;
 	struct resource			mem64_space;
 	struct resource			busn;
+	/* offset */
+	resource_size_t			io_offset;
+	resource_size_t			mem_offset;
 
 	/* Base of PCI Config space, can be per-PBM or shared. */
 	unsigned long			config_space;
@@ -163,6 +166,7 @@ void pci_get_pbm_props(struct pci_pbm_info *pbm);
 struct pci_bus *pci_scan_one_pbm(struct pci_pbm_info *pbm,
 				 struct device *parent);
 void pci_determine_mem_io_space(struct pci_pbm_info *pbm);
+void pci_register_legacy_regions(struct pci_pbm_info *pbm);
 
 /* Error reporting support. */
 void pci_scan_for_target_abort(struct pci_pbm_info *, struct pci_bus *);

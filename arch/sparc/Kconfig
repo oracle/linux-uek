@@ -109,6 +109,9 @@ config HAVE_LATENCYTOP_SUPPORT
 config ARCH_HIBERNATION_POSSIBLE
 	def_bool y if SPARC64
 
+config ARCH_SUSPEND_POSSIBLE
+	def_bool y if SPARC64
+
 config AUDIT_ARCH
 	bool
 	default y

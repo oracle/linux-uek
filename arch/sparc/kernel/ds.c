@@ -23,6 +23,11 @@
 #include <linux/random.h>
 #include <linux/init.h>
 #include <linux/smp.h>
+#include <linux/pm.h>
+#include <linux/console.h>
+#include <linux/suspend.h>
+#include <linux/syscore_ops.h>
+#include <linux/stop_machine.h>
 
 #include <asm/hypervisor.h>
 #include <asm/ldc.h>
@@ -483,6 +488,28 @@ struct ds_panic_res {
 	char				reason[1];
 };
 
+struct ds_suspend_req {
+	__u64				req_num;
+	__u64				req_type;
+};
+
+struct ds_suspend_res {
+	__u64				req_num;
+	__u32				result;
+	__u32				rec_result;
+	char				reason[1];
+};
+
+#define	SUSPEND_PRE_SUCCESS		0x0
+#define	SUSPEND_PRE_FAILURE		0x1
+#define	SUSPEND_INVALID_MSG		0x2
+#define	SUSPEND_INPROGRESS		0x3
+#define	SUSPEND_FAILURE			0x4
+#define	SUSPEND_POST_SUCCESS		0x5
+#define	SUSPEND_POST_FAILURE		0x6
+
+#define	SUSPEND_REC_SUCCESS		0x0
+
 struct ds_pri_msg {
 	u64				req_num;
 	u64				type;
@@ -594,6 +621,8 @@ static void ds_dom_shutdown_data_cb(ds_cb_arg_t arg,
 	ds_svc_hdl_t hdl, void *buf, size_t len);
 static void ds_dom_panic_data_cb(ds_cb_arg_t arg,
 	ds_svc_hdl_t hdl, void *buf, size_t len);
+static void ds_dom_suspend_data_cb(ds_cb_arg_t arg,
+	ds_svc_hdl_t hdl, void *buf, size_t len);
 #ifdef CONFIG_HOTPLUG_CPU
 static void ds_dr_cpu_data_cb(ds_cb_arg_t arg,
 	ds_svc_hdl_t hdl, void *buf, size_t len);
@@ -637,7 +666,13 @@ static struct ds_builtin_service ds_primary_builtin_template[] = {
 				   NULL,
 				   ds_dom_panic_data_cb},
 	},
-
+	{
+		.id		= "domain-suspend",
+		.vers		= {DS_CAP_MAJOR, DS_CAP_MINOR},
+		.ops		= {NULL,
+				   NULL,
+				   ds_dom_suspend_data_cb},
+	},
 #ifdef CONFIG_HOTPLUG_CPU
 	{
 		.id		= "dr-cpu",
@@ -1550,6 +1585,103 @@ static void ds_dom_panic_data_cb(ds_cb_arg_t arg,
 	ds_cap_send(handle, &res, sizeof(struct ds_panic_res));
 
 	panic("PANIC requested.\n");
+}
+
+static int suspend_guest(void *data)
+{
+	int err;
+
+	err = syscore_suspend();
+	if (err)
+		return err;
+
+	pr_alert("Suspending the guest...\n");
+	err = sun4v_guest_suspend();
+
+	syscore_resume();
+
+	return err;
+}
+
+/*
+ * Copied from kernel_kexec().
+ * Added freeze_kernel_threads().
+ */
+static int suspend(void)
+{
+	int error = 0;
+
+	lock_system_sleep();
+	pm_prepare_console();
+	error = freeze_processes();
+	if (error)
+		goto restore_console;
+	error = freeze_kernel_threads();
+	if (error)
+		goto thaw_processes;
+	suspend_console();
+	error = dpm_suspend_start(PMSG_FREEZE);
+	if (error)
+		goto resume_console;
+
+	/* At this point, dpm_suspend_start() has been called,
+	 * but *not* dpm_suspend_end(). We *must* call
+	 * dpm_suspend_end() now.  Otherwise, drivers for
+	 * some devices (e.g. interrupt controllers) become
+	 * desynchronized with the actual state of the
+	 * hardware at resume time, and evil weirdness ensues.
+	 */
+	error = dpm_suspend_end(PMSG_FREEZE);
+	if (error)
+		goto resume_devices;
+
+	error = stop_machine(suspend_guest, NULL, NULL);
+
+resume_devices:
+	dpm_resume_start(PMSG_RESTORE);
+	dpm_resume_end(PMSG_RESTORE);
+resume_console:
+	resume_console();
+	thaw_kernel_threads();
+thaw_processes:
+	thaw_processes();
+restore_console:
+	pm_restore_console();
+	unlock_system_sleep();
+
+	return error;
+}
+
+static void ds_dom_suspend_data_cb(ds_cb_arg_t arg,
+		ds_svc_hdl_t handle, void *buf, size_t len)
+{
+	int rv;
+	struct ds_dev *ds = (struct ds_dev *)arg;
+	struct ds_suspend_req *rp;
+	struct ds_suspend_res res;
+
+	dprintk("entered.\n");
+
+	rp = (struct ds_suspend_req *)buf;
+
+	pr_alert("ds-%llu: Suspend request received.\n", ds->id);
+
+	res.req_num = rp->req_num;
+	res.result = SUSPEND_PRE_SUCCESS;
+	res.rec_result = SUSPEND_REC_SUCCESS;
+	res.reason[0] = 0;
+	rv = ds_cap_send(handle, &res, sizeof(struct ds_suspend_res));
+
+	if (rv)
+		pr_err("ds-%llu: ds_cap_send failed err=%d\n", ds->id, rv);
+	else {
+		rv = suspend();
+		dprintk("ds-%llu: rv=%d.\n", ds->id, rv);
+	}
+
+	res.result = rv ? SUSPEND_FAILURE : SUSPEND_POST_SUCCESS;
+	res.rec_result = SUSPEND_REC_SUCCESS;
+	ds_cap_send(handle, &res, sizeof(struct ds_suspend_res));
 }
 
 #ifdef CONFIG_HOTPLUG_CPU

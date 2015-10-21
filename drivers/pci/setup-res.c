@@ -116,14 +116,11 @@ int pci_claim_resource(struct pci_dev *dev, int resource)
 		return -EINVAL;
 	}
 
-	pci_set_pref_under_pref(res);
-
 	root = pci_find_parent_resource(dev, res);
 	if (!root) {
 		dev_info(&dev->dev, "can't claim BAR %d %pR: no compatible bridge window\n",
 			 resource, res);
 		res->flags |= IORESOURCE_UNSET;
-		pci_clear_pref_under_pref(res);
 		return -EINVAL;
 	}
 
@@ -132,11 +129,8 @@ int pci_claim_resource(struct pci_dev *dev, int resource)
 		dev_info(&dev->dev, "can't claim BAR %d %pR: address conflict with %s %pR\n",
 			 resource, res, conflict->name, conflict);
 		res->flags |= IORESOURCE_UNSET;
-		pci_clear_pref_under_pref(res);
 		return -EBUSY;
 	}
-
-	pci_clear_pref_under_pref(res);
 
 	return 0;
 }
@@ -211,6 +205,8 @@ static int __pci_assign_resource(struct pci_bus *bus, struct pci_dev *dev,
 	struct resource *res = dev->resource + resno;
 	resource_size_t min;
 	int ret;
+	unsigned long mmio64 = pci_find_host_bridge(bus)->has_mem64 ?
+				IORESOURCE_MEM_64 : 0;
 
 	min = (res->flags & IORESOURCE_IO) ? PCIBIOS_MIN_IO : PCIBIOS_MIN_MEM;
 
@@ -222,7 +218,7 @@ static int __pci_assign_resource(struct pci_bus *bus, struct pci_dev *dev,
 	 * things differently than they were sized, not everything will fit.
 	 */
 	ret = pci_bus_alloc_resource(bus, res, size, align, min,
-				     IORESOURCE_PREFETCH | IORESOURCE_MEM_64,
+				     IORESOURCE_PREFETCH | mmio64,
 				     pcibios_align_resource, dev);
 	if (ret == 0)
 		return 0;
@@ -231,7 +227,8 @@ static int __pci_assign_resource(struct pci_bus *bus, struct pci_dev *dev,
 	 * If the prefetchable window is only 32 bits wide, we can put
 	 * 64-bit prefetchable resources in it.
 	 */
-	if ((res->flags & (IORESOURCE_PREFETCH | IORESOURCE_MEM_64)) ==
+	if (mmio64 &&
+	    (res->flags & (IORESOURCE_PREFETCH | IORESOURCE_MEM_64)) ==
 	     (IORESOURCE_PREFETCH | IORESOURCE_MEM_64)) {
 		ret = pci_bus_alloc_resource(bus, res, size, align, min,
 					     IORESOURCE_PREFETCH,
@@ -246,7 +243,7 @@ static int __pci_assign_resource(struct pci_bus *bus, struct pci_dev *dev,
 	 * non-prefetchable, the first call already tried the only possibility
 	 * so we don't need to try again.
 	 */
-	if (res->flags & (IORESOURCE_PREFETCH | IORESOURCE_MEM_64))
+	if (res->flags & (IORESOURCE_PREFETCH | mmio64))
 		ret = pci_bus_alloc_resource(bus, res, size, align, min, 0,
 					     pcibios_align_resource, dev);
 
@@ -257,18 +254,18 @@ static int _pci_assign_resource(struct pci_dev *dev, int resno,
 				resource_size_t size, resource_size_t min_align)
 {
 	struct resource *res = dev->resource + resno;
+	int old_flags = res->flags;
 	struct pci_bus *bus;
 	int ret;
 
-	pci_set_pref_under_pref(res);
+	res->flags = pci_resource_pref_compatible(dev, res);
 	bus = dev->bus;
 	while ((ret = __pci_assign_resource(bus, dev, resno, size, min_align))) {
 		if (!bus->parent || !bus->self->transparent)
 			break;
 		bus = bus->parent;
 	}
-
-	pci_clear_pref_under_pref(res);
+	res->flags = old_flags;
 
 	return ret;
 }
