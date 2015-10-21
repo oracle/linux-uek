@@ -290,7 +290,7 @@ static void rds_ib_cm_fill_conn_param(struct rds_connection *conn,
 		dp->dp_protocol_major = RDS_PROTOCOL_MAJOR(protocol_version);
 		dp->dp_protocol_minor = RDS_PROTOCOL_MINOR(protocol_version);
 		dp->dp_protocol_minor_mask = cpu_to_be16(RDS_IB_SUPPORTED_PROTOCOLS);
-		dp->dp_ack_seq = rds_ib_piggyb_ack(ic);
+		dp->dp_ack_seq = cpu_to_be64(rds_ib_piggyb_ack(ic));
 		dp->dp_tos = conn->c_tos;
 
 		/* Advertise flow control */
@@ -820,6 +820,20 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 			conn = NULL;
 			goto out;
 		}
+	}
+
+	/*
+	 * Make sure to have zero lane connection up on both sides,
+	 * to avoid establishing connection on non-ideal path records.
+	 */
+	if (dp->dp_tos && rds_conn_state(conn->c_base_conn) != RDS_CONN_UP) {
+		printk(KERN_INFO "RDS/IB: connection "
+				"<%u.%u.%u.%u,%u.%u.%u.%u,%d> "
+				"incoming REQ with base connection down, retry\n",
+				NIPQUAD(conn->c_laddr),
+				NIPQUAD(conn->c_faddr),
+				conn->c_tos);
+		rds_conn_drop(conn);
 	}
 
 	/*
