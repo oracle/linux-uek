@@ -118,6 +118,7 @@ static struct scsi_host_template fnic_host_template = {
 	.sg_tablesize = FNIC_MAX_SG_DESC_CNT,
 	.max_sectors = 0xffff,
 	.shost_attrs = fnic_attrs,
+	.disable_blk_mq = 1,
 	.use_blk_tags = 1,
 	.track_queue_depth = 1,
 };
