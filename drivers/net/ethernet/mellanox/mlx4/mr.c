@@ -160,8 +160,13 @@ u32 __mlx4_alloc_mtt_range(struct mlx4_dev *dev, int order)
 	seg_order = max_t(int, order - log_mtts_per_seg, 0);
 
 	seg = mlx4_buddy_alloc(&mr_table->mtt_buddy, seg_order);
-	if (seg == -1)
+	if (seg == -1) {
+		printk_once(KERN_NOTICE
+				"[%d]: Exhausted MTT entries, current size=%u. "
+				"Try updating log_num_mtt module parameter\n",
+				task_pid_nr(current), mr_table->mtt_buddy.max_order);
 		return -1;
+	}
 
 	offset = seg * (1 << log_mtts_per_seg);
 
@@ -445,7 +450,15 @@ int __mlx4_mpt_reserve(struct mlx4_dev *dev)
 {
 	struct mlx4_priv *priv = mlx4_priv(dev);
 
-	return mlx4_bitmap_alloc(&priv->mr_table.mpt_bitmap);
+	int ret = mlx4_bitmap_alloc(&priv->mr_table.mpt_bitmap);
+
+	if (ret == -1)
+		printk_once(KERN_NOTICE
+				"[%d]: MR: Exhausted MPT entries, current size=%u. "
+				"Try updating log_num_mpt module parameter\n",
+				task_pid_nr(current), priv->mr_table.mpt_bitmap.max);
+
+	return ret;
 }
 
 static int mlx4_mpt_reserve(struct mlx4_dev *dev)
@@ -1009,7 +1022,7 @@ EXPORT_SYMBOL_GPL(mlx4_set_fmr_pd);
 int mlx4_map_phys_fmr(struct mlx4_dev *dev, struct mlx4_fmr *fmr, u64 *page_list,
 		      int npages, u64 iova, u32 *lkey, u32 *rkey)
 {
-	u32 key;
+	u32 key, pdflags;
 	int i, err;
 
 	err = mlx4_check_fmr(fmr, page_list, npages, iova);
@@ -1041,7 +1054,11 @@ int mlx4_map_phys_fmr(struct mlx4_dev *dev, struct mlx4_fmr *fmr, u64 *page_list
 	fmr->mpt->length = cpu_to_be64(npages * (1ull << fmr->page_shift));
 	fmr->mpt->start  = cpu_to_be64(iova);
 
-	fmr->mpt->pd_flags = cpu_to_be32(fmr->mr.pd | MLX4_MPT_PD_FLAG_EN_INV);
+	pdflags = be32_to_cpu(fmr->mpt->pd_flags) &  ~MLX4_MPT_PD_MASK;
+	if (mlx4_is_mfunc(dev))
+		pdflags &= ~MLX4_MPT_PD_VF_MASK;
+	fmr->mpt->pd_flags = cpu_to_be32(pdflags | fmr->mr.pd |
+			MLX4_MPT_PD_FLAG_EN_INV);
 	if (fmr->mr.mtt.order >= 0 && fmr->mr.mtt.page_shift == 0) {
 		fmr->mpt->pd_flags |= cpu_to_be32(MLX4_MPT_PD_FLAG_FAST_REG |
 						   MLX4_MPT_PD_FLAG_RAE);
