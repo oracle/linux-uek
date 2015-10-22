@@ -907,10 +907,20 @@ static __net_init int ipv4_sysctl_init_net(struct net *net)
 	table = ipv4_net_table;
 	if (!net_eq(net, &init_net)) {
 		int i;
+		struct ctl_table *tmp;
 
-		table = kmemdup(table, sizeof(ipv4_net_table), GFP_KERNEL);
+		table = kmalloc(sizeof(ipv4_net_table) + sizeof(ipv4_table) - 1,
+					GFP_KERNEL);
 		if (!table)
 			goto err_alloc;
+
+		memcpy(table, ipv4_net_table, sizeof(ipv4_net_table));
+		i = ARRAY_SIZE(ipv4_net_table) - 1;
+		memcpy(table + i, ipv4_table, sizeof(ipv4_table));
+		for (tmp = ipv4_table; tmp->procname; tmp++) {
+			table[i].mode = 0444; /* set read-only */
+			i++;
+		}
 
 		/* Update the variables to point into the current struct net */
 		for (i = 0; i < ARRAY_SIZE(ipv4_net_table) - 1; i++)

@@ -415,9 +415,21 @@ static __net_init int sysctl_core_net_init(struct net *net)
 
 	tbl = netns_core_table;
 	if (!net_eq(net, &init_net)) {
-		tbl = kmemdup(tbl, sizeof(netns_core_table), GFP_KERNEL);
+		int cur;
+		struct ctl_table *tmp;
+
+		tbl = kmalloc(sizeof(netns_core_table) + sizeof(net_core_table) - 1,
+						GFP_KERNEL);
 		if (tbl == NULL)
 			goto err_dup;
+
+		memcpy(tbl, netns_core_table, sizeof(netns_core_table));
+		cur = ARRAY_SIZE(netns_core_table) - 1;
+		memcpy(tbl + cur, net_core_table, sizeof(net_core_table));
+		for (tmp = net_core_table; tmp->procname; tmp++) {
+			tbl[cur].mode = 0444; /* set read-only */
+			cur++;
+		}
 
 		tbl[0].data = &net->core.sysctl_somaxconn;
 
