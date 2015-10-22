@@ -670,7 +670,7 @@ struct pci_bus *pci_scan_one_pbm(struct pci_pbm_info *pbm,
 				pbm->mem_offset);
 	if (pbm->mem64_space.flags)
 		pci_add_resource_offset(&resources, &pbm->mem64_space,
-					pbm->mem_offset);
+					pbm->mem64_offset);
 	pbm->busn.start = pbm->pci_first_busno;
 	pbm->busn.end	= pbm->pci_last_busno;
 	pbm->busn.flags	= IORESOURCE_BUS;
@@ -733,6 +733,30 @@ int pcibios_enable_device(struct pci_dev *dev, int mask)
 	return 0;
 }
 
+static resource_size_t get_mem_offset(struct pci_pbm_info *pbm,
+				  resource_size_t bus_addr)
+{
+	resource_size_t start;
+
+	if (pbm->mem_space.flags) {
+		start = bus_addr + pbm->mem_offset;
+
+		if (start >= pbm->mem_space.start &&
+		    start <= pbm->mem_space.end)
+			return pbm->mem_offset;
+	}
+
+	if (pbm->mem64_space.flags) {
+		start = bus_addr + pbm->mem64_offset;
+
+		if (start >= pbm->mem64_space.start &&
+		    start <= pbm->mem64_space.end)
+			return pbm->mem64_offset;
+	}
+
+	return 0;
+}
+
 /* Platform support for /proc/bus/pci/X/Y mmap()s. */
 
 /* If the user uses a host-bridge as the PCI device, he may use
@@ -747,16 +771,20 @@ static int __pci_mmap_make_offset_bus(struct pci_dev *pdev, struct vm_area_struc
 {
 	struct pci_pbm_info *pbm = pdev->dev.archdata.host_controller;
 	unsigned long space_size, user_offset, user_size;
-
-	if (mmap_state == pci_mmap_io) {
-		space_size = resource_size(&pbm->io_space);
-	} else {
-		space_size = resource_size(&pbm->mem_space);
-	}
+	resource_size_t mem_offset = 0;
 
 	/* Make sure the request is in range. */
 	user_offset = vma->vm_pgoff << PAGE_SHIFT;
 	user_size = vma->vm_end - vma->vm_start;
+
+	if (mmap_state == pci_mmap_io) {
+		space_size = resource_size(&pbm->io_space);
+	} else {
+		mem_offset = get_mem_offset(pbm, user_offset);
+		space_size = resource_size(&pbm->mem_space);
+		if (mem_offset != pbm->mem_offset && pbm->mem64_space.flags)
+			space_size = resource_size(&pbm->mem64_space);
+	}
 
 	if (user_offset >= space_size ||
 	    (user_offset + user_size) > space_size)
@@ -766,7 +794,7 @@ static int __pci_mmap_make_offset_bus(struct pci_dev *pdev, struct vm_area_struc
 		vma->vm_pgoff = (pbm->io_offset +
 				 user_offset) >> PAGE_SHIFT;
 	} else {
-		vma->vm_pgoff = (pbm->mem_offset +
+		vma->vm_pgoff = (mem_offset +
 				 user_offset) >> PAGE_SHIFT;
 	}
 
@@ -989,16 +1017,12 @@ void pci_resource_to_user(const struct pci_dev *pdev, int bar,
 			  const struct resource *rp, resource_size_t *start,
 			  resource_size_t *end)
 {
-	struct pci_pbm_info *pbm = pdev->dev.archdata.host_controller;
-	unsigned long offset;
+	struct pci_bus_region region;
 
-	if (rp->flags & IORESOURCE_IO)
-		offset = pbm->io_offset;
-	else
-		offset = pbm->mem_offset;
+	pcibios_resource_to_bus(pdev->bus, &region, (struct resource *)rp);
 
-	*start = rp->start - offset;
-	*end = rp->end - offset;
+	*start = region.start;
+	*end = region.end;
 }
 
 void pcibios_set_master(struct pci_dev *dev)
