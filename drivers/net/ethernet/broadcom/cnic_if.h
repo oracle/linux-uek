@@ -241,7 +241,7 @@ struct cnic_eth_dev {
 					       struct kwqe_16 *[], u32);
 	int		(*drv_ctl)(struct net_device *, struct drv_ctl_info *);
 	int		(*drv_get_fc_npiv_tbl)(struct net_device *,
-					       struct cnic_fc_npiv_tbl *);
+					struct cnic_fc_npiv_tbl *);
 	unsigned long	reserved1[2];
 	union drv_info_to_mcp	*addr_drv_info_to_mcp;
 };

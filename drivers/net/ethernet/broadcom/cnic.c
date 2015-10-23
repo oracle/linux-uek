@@ -5446,7 +5446,7 @@ static void cnic_free_dev(struct cnic_dev *dev)
 }
 
 static int cnic_get_fc_npiv_tbl(struct cnic_dev *dev,
-				struct cnic_fc_npiv_tbl *npiv_tbl)
+    				struct cnic_fc_npiv_tbl *npiv_tbl)
 {
 	struct cnic_local *cp = dev->cnic_priv;
 	struct bnx2x *bp = netdev_priv(dev->netdev);
