@@ -819,10 +819,14 @@ void arch_send_call_function_single_ipi(int cpu)
 
 void __irq_entry smp_call_function_client(int irq, struct pt_regs *regs)
 {
+	struct pt_regs *old_regs;
+
 	clear_softint(1 << irq);
+	old_regs = set_irq_regs(regs);
 	irq_enter();
 	generic_smp_call_function_interrupt();
 	irq_exit();
+	set_irq_regs(old_regs);
 }
 
 void __irq_entry smp_call_function_single_client(int irq, struct pt_regs *regs)
