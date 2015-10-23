@@ -461,6 +461,7 @@ Provides: kernel = %{rpmversion}-%{pkg_release}\
 %endif\
 Requires(pre): %{kernel_prereq}\
 Requires(pre): %{initrd_prereq}\
+Requires(pre): linux-firmware >= 20140911-0.1.git365e80c.0.7\
 Requires(post): /sbin/new-kernel-pkg\
 Requires(preun): /sbin/new-kernel-pkg\
 Conflicts: %{kernel_dot_org_conflicts}\
