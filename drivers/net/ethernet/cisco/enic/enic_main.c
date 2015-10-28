@@ -83,6 +83,11 @@ MODULE_LICENSE("GPL");
 MODULE_VERSION(DRV_VERSION);
 MODULE_DEVICE_TABLE(pci, enic_id_table);
 
+static int disable_vlan0 = 1;
+module_param(disable_vlan0, bool, 0644);
+MODULE_PARM_DESC(disable_vlan0, "Disable VLAN 0");
+
+
 #define ENIC_LARGE_PKT_THRESHOLD		1000
 #define ENIC_MAX_COALESCE_TIMERS		10
 /*  Interrupt moderation table, which will be used to decide the
@@ -1113,9 +1118,10 @@ static void enic_rq_indicate_buf(struct vnic_rq *rq,
 		    ipv4_csum_ok)
 			skb->ip_summed = CHECKSUM_UNNECESSARY;
 
-		if (vlan_stripped)
-			__vlan_hwaccel_put_tag(skb, htons(ETH_P_8021Q), vlan_tci);
-
+                if ((vlan_stripped) && (!(disable_vlan0) || 
+                        (vlan_tci & CQ_ENET_RQ_DESC_VLAN_TCI_VLAN_MASK)))
+                        __vlan_hwaccel_put_tag(skb, htons(ETH_P_8021Q), vlan_tci); 
+ 
 		skb_mark_napi_id(skb, &enic->napi[rq->index]);
 		if (enic_poll_busy_polling(rq) ||
 		    !(netdev->features & NETIF_F_GRO))
