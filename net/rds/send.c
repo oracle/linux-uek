@@ -1133,6 +1133,11 @@ static int rds_cmsg_send(struct rds_sock *rs, struct rds_message *rm,
 			ret = rds_cmsg_rdma_map(rs, rm, cmsg);
 			if (!ret)
 				*allocated_mr = 1;
+			else if (ret == -ENODEV)
+				/* Accomodate the get_mr() case which can fail
+				 * if connection isn't established yet.
+				 */
+				ret = -EAGAIN;
 			break;
 		case RDS_CMSG_ATOMIC_CSWP:
 		case RDS_CMSG_ATOMIC_FADD:
@@ -1152,6 +1157,22 @@ static int rds_cmsg_send(struct rds_sock *rs, struct rds_message *rm,
 	}
 
 	return ret;
+}
+
+static inline unsigned int rds_rdma_bytes(struct msghdr *msg)
+{
+	struct rds_rdma_args *args;
+	struct cmsghdr *cmsg;
+	unsigned int rdma_bytes = 0;
+
+	for_each_cmsghdr(cmsg, msg) {
+		if (cmsg->cmsg_type == RDS_CMSG_RDMA_ARGS) {
+			args = CMSG_DATA(cmsg);
+			rdma_bytes += args->remote_vec.bytes;
+		}
+	}
+
+	return rdma_bytes;
 }
 
 int rds_sendmsg(struct socket *sock, struct msghdr *msg, size_t payload_len)
@@ -1228,13 +1249,11 @@ int rds_sendmsg(struct socket *sock, struct msghdr *msg, size_t payload_len)
 
 	rm->m_daddr = daddr;
 
-	/* Parse any control messages the user may have included. */
-	ret = rds_cmsg_send(rs, rm, msg, &allocated_mr);
-	if (ret)
-		goto out;
-
+	/* For RDMA operation(s), add up rmda bytes to payload to make
+	 * sure its within system QoS threshold limits.
+	 */
 	if (rm->rdma.op_active)
-		total_payload_len += rm->rdma.op_bytes;
+		total_payload_len += rds_rdma_bytes(msg);
 
 	if (rds_check_qos_threshold(rs->rs_tos, total_payload_len)) {
 		ret = -EINVAL;
@@ -1287,6 +1306,15 @@ int rds_sendmsg(struct socket *sock, struct msghdr *msg, size_t payload_len)
 				goto out;
 			}
 		}
+	}
+
+	/* Parse any control messages the user may have included. */
+	ret = rds_cmsg_send(rs, rm, msg, &allocated_mr);
+	if (ret) {
+		/* Trigger connection so that its ready for the next retry */
+		if ( ret ==  -EAGAIN)
+			rds_conn_connect_if_down(conn);
+		goto out;
 	}
 
 	/* Not accepting new sends until all the failed ops have been reaped */
