@@ -2074,6 +2074,13 @@ out:
 	return ret;
 }
 
+static void ocfs2_aiodio_wait(struct inode *inode)
+{
+	wait_queue_head_t *wq = ocfs2_ioend_wq(inode);
+
+	wait_event(*wq, (atomic_read(&OCFS2_I(inode)->ip_unaligned_aio) == 0));
+}
+
 static int ocfs2_is_io_unaligned(struct inode *inode, size_t count, loff_t pos)
 {
 	int blockmask = inode->i_sb->s_blocksize - 1;
@@ -2378,8 +2385,10 @@ relock:
 		 * Wait on previous unaligned aio to complete before
 		 * proceeding.
 		 */
-		mutex_lock(&OCFS2_I(inode)->ip_unaligned_aio);
-		/* Mark the iocb as needing an unlock in ocfs2_dio_end_io */
+		ocfs2_aiodio_wait(inode);
+
+		/* Mark the iocb as needing a decrement in ocfs2_dio_end_io */
+		atomic_inc(&OCFS2_I(inode)->ip_unaligned_aio);
 		ocfs2_iocb_set_unaligned_aio(iocb);
 	}
 
@@ -2417,9 +2426,17 @@ relock:
 
 	if (((file->f_flags & O_DSYNC) && !direct_io) ||
 	    IS_SYNC(inode) || dropped_dio) {
-		ret = filemap_fdatawrite_range(file->f_mapping,
-					       iocb->ki_pos - written,
-					       iocb->ki_pos - 1);
+		/*
+		 * There is an performance issue when we are doing a flush with
+		 * WB_SYNC_ALL flag. block_write_full_page() will transfer it
+		 * to REQ_SYNC flag on bio. And block layer will skip queue if
+		 * that flag is found. It will affect the performance
+		 * significantly if the disk has a poor iops.
+		 * So try to work around by calling filemap_flush(). This is
+		 * safe because following jbd2 force commit will helps to
+		 * ensure data integrity.
+		 */
+		ret = filemap_flush(file->f_mapping);
 		if (ret < 0)
 			written = ret;
 
@@ -2429,16 +2446,22 @@ relock:
 				written = ret;
 		}
 
-		if (!ret)
-			ret = filemap_fdatawait_range(file->f_mapping,
-						      iocb->ki_pos - written,
-						      iocb->ki_pos - 1);
+		/*
+		 * When journal=order, jbd2 will write and wait all dirty
+		 * pages, no need to do it again.
+		 * And to meet the semantics of O_SYNC or O_DIRECT, we need to
+		 * wait on dirty pages that filemap_flush() miss.
+		 */
+		if (!ret && !ocfs2_should_order_data(inode))
+			ret = filemap_write_and_wait_range(file->f_mapping,
+							   iocb->ki_pos - written,
+							   iocb->ki_pos - 1);
 	}
 
 no_sync:
 	if (unaligned_dio) {
 		ocfs2_iocb_clear_unaligned_aio(iocb);
-		mutex_unlock(&OCFS2_I(inode)->ip_unaligned_aio);
+		atomic_dec(&OCFS2_I(inode)->ip_unaligned_aio);
 	}
 
 out:

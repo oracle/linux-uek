@@ -615,6 +615,7 @@ static void ocfs2_dio_end_io(struct kiocb *iocb,
 {
 	struct inode *inode = file_inode(iocb->ki_filp);
 	int level;
+	wait_queue_head_t *wq = ocfs2_ioend_wq(inode);
 
 	/* this io's submitter should not have unlocked this before we could */
 	BUG_ON(!ocfs2_iocb_is_rw_locked(iocb));
@@ -625,7 +626,10 @@ static void ocfs2_dio_end_io(struct kiocb *iocb,
 	if (ocfs2_iocb_is_unaligned_aio(iocb)) {
 		ocfs2_iocb_clear_unaligned_aio(iocb);
 
-		mutex_unlock(&OCFS2_I(inode)->ip_unaligned_aio);
+		if (atomic_dec_and_test(&OCFS2_I(inode)->ip_unaligned_aio) &&
+		    waitqueue_active(wq)) {
+			wake_up_all(wq);
+		}
 	}
 
 	ocfs2_iocb_clear_rw_locked(iocb);
