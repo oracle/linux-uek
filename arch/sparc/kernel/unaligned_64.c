@@ -445,15 +445,15 @@ int handle_ldf_stq(u32 insn, struct pt_regs *regs)
 
 	save_and_clear_fpu();
 	current_thread_info()->xfsr[0] &= ~0x1c000;
-	if (freg & 3) {
-		current_thread_info()->xfsr[0] |= (6 << 14) /* invalid_fp_register */;
-		do_fpother(regs);
-		return 0;
-	}
 	if (insn & 0x200000) {
 		/* STQ */
 		u64 first = 0, second = 0;
 		
+		if (freg & 3) {
+			current_thread_info()->xfsr[0] |= (6 << 14) /* invalid_fp_register */;
+			do_fpother(regs);
+			return 0;
+		}
 		if (current_thread_info()->fpsaved[0] & flag) {
 			first = *(u64 *)&f->regs[freg];
 			second = *(u64 *)&f->regs[freg+2];
