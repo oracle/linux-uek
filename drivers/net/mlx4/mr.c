@@ -435,13 +435,13 @@ int __mlx4_mr_reserve(struct mlx4_dev *dev)
 static int mlx4_fmr_reserve(struct mlx4_dev *dev)
 {
 	struct mlx4_priv *priv = mlx4_priv(dev);
-	int ret = mlx4_bitmap_alloc(&priv->mr_table.mpt_bitmap);;
+	int ret = mlx4_bitmap_alloc(&priv->mr_table.fmr.mpt_bitmap);
 
 	if (ret == -1)
 		printk_once(KERN_NOTICE
 				"[%d]: FMR: Exhausted MPT entries, current size=%u. "
 				"Try updating log_num_mpt module parameter\n",
-				task_pid_nr(current), priv->mr_table.mpt_bitmap.max);
+				task_pid_nr(current), priv->mr_table.fmr.mpt_bitmap.max);
 
 	return ret;
 }
