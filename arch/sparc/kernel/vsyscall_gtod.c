@@ -55,5 +55,15 @@ void update_vsyscall(struct timekeeper *tk)
 	vdata->wall_time_coarse.tv_nsec =
 			(long)(tk->tkr_mono.xtime_nsec >> tk->tkr_mono.shift);
 
+        vdata->monotonic_time_coarse.tv_sec =
+                vdata->wall_time_coarse.tv_sec + tk->wall_to_monotonic.tv_sec;
+        vdata->monotonic_time_coarse.tv_nsec =
+                vdata->wall_time_coarse.tv_nsec + tk->wall_to_monotonic.tv_nsec;
+
+        while (vdata->monotonic_time_coarse.tv_nsec >= NSEC_PER_SEC) {
+                vdata->monotonic_time_coarse.tv_nsec -= NSEC_PER_SEC;
+                vdata->monotonic_time_coarse.tv_sec++;
+        }
+
 	write_seqcount_end(&vdata->seq);
 }
