@@ -26,7 +26,7 @@ Summary: The Linux kernel
 # base_sublevel is the kernel version we're starting with and patching
 # on top of -- for example, 2.6.22-rc7-git1 starts with a 2.6.21 base,
 # which yields a base_sublevel of 21.
-%define base_sublevel 10
+%define base_sublevel 12
 
 ## If this is a released kernel ##
 %if 0%{?released_kernel}
@@ -461,6 +461,7 @@ Provides: kernel = %{rpmversion}-%{pkg_release}\
 %endif\
 Requires(pre): %{kernel_prereq}\
 Requires(pre): %{initrd_prereq}\
+Requires(pre): linux-firmware >= 20140911-0.1.git365e80c.0.7\
 Requires(post): /sbin/new-kernel-pkg\
 Requires(preun): /sbin/new-kernel-pkg\
 Conflicts: %{kernel_dot_org_conflicts}\
