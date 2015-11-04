@@ -214,8 +214,8 @@ int rds_bind(struct socket *sock, struct sockaddr *uaddr, int addr_len)
 		ret = -EADDRNOTAVAIL;
 		rds_remove_bound(rs);
 		if (printk_ratelimit())
-			printk(KERN_INFO "RDS: rds_bind() could not find a transport, "
-				"load rds_tcp or rds_rdma?\n");
+			printk(KERN_INFO "RDS: rds_bind() could not find a transport for %pI4, "
+				"load rds_tcp or rds_rdma?\n", &sin->sin_addr.s_addr);
 		goto out;
 	}
 
