@@ -295,8 +295,8 @@ static struct rds_page_frag *rds_ib_refill_one_frag(struct rds_ib_connection *ic
 			return NULL;
 
 		avail_allocs = atomic_add_unless(&rds_ib_allocation,
-				1, rds_ib_sysctl_max_recv_allocation);
-
+						 ic->i_frag_pages,
+						 rds_ib_sysctl_max_recv_allocation);
 		if (!avail_allocs) {
 			if (test_and_clear_bit(0, &rds_ib_allocation_warn)) {
 				printk(KERN_NOTICE "RDS/IB: WARNING - "
@@ -313,7 +313,7 @@ static struct rds_page_frag *rds_ib_refill_one_frag(struct rds_ib_connection *ic
 					       ic->i_frag_sz, page_mask);
 		if (ret) {
 			kmem_cache_free(rds_ib_frag_slab, frag);
-			atomic_dec(&rds_ib_allocation);
+			atomic_sub(ic->i_frag_pages, &rds_ib_allocation);
 			return NULL;
 		}
 		rds_ib_stats_inc(s_ib_rx_total_frags);
