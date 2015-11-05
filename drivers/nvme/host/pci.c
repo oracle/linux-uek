@@ -2486,7 +2486,7 @@ static int nvme_dev_add(struct nvme_dev *dev)
 	if (ctrl->mdts)
 		dev->max_hw_sectors = 1 << (ctrl->mdts + shift - 9);
 	else
-		 dev->max_hw_sectors = 512 * 1024 / 512;
+		dev->max_hw_sectors = UINT_MAX;
 
 	if ((pdev->vendor == PCI_VENDOR_ID_INTEL) &&
 			(pdev->device == 0x0953) && ctrl->vs[3]) {
