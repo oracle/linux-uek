@@ -175,6 +175,7 @@ static int xve_mcast_join_finish(struct xve_mcast *mcast,
 		priv->qkey = be32_to_cpu(priv->broadcast->mcmember.qkey);
 		spin_unlock_irq(&priv->lock);
 		priv->tx_wr.wr.ud.remote_qkey = priv->qkey;
+
 		set_qkey = 1;
 	}
 
@@ -254,6 +255,9 @@ static int xve_mcast_sendonly_join_complete(int status,
 	struct xve_mcast *mcast = multicast->context;
 	struct net_device *dev = mcast->netdev;
 
+	xve_dbg_mcast(netdev_priv(dev),
+			"Join completion[SD] for %pI6 LID0x%04x (status %d)\n",
+			multicast->rec.mgid.raw, multicast->rec.mlid, status);
 	/* We trap for port events ourselves. */
 	if (status == -ENETRESET)
 		return 0;
@@ -334,8 +338,8 @@ static int xve_mcast_sendonly_join(struct xve_mcast *mcast)
 		rec.flow_label = priv->broadcast->mcmember.flow_label;
 		rec.hop_limit = priv->broadcast->mcmember.hop_limit;
 	}
-	xve_dbg_mcast(priv, "%s Joining send only join mtu %d\n", __func__,
-		      rec.mtu);
+	xve_dbg_mcast(priv, "%s Joining send only join mtu %d rate %d\n",
+			__func__, rec.mtu, rec.rate);
 
 	mcast->mc = ib_sa_join_multicast(&xve_sa_client, priv->ca,
 					 priv->port, &rec,
@@ -363,8 +367,9 @@ static int xve_mcast_join_complete(int status,
 	struct net_device *dev = mcast->netdev;
 	struct xve_dev_priv *priv = netdev_priv(dev);
 
-	xve_dbg_mcast(priv, "join completion for %pI6 (status %d)\n",
-		      mcast->mcmember.mgid.raw, status);
+	priv->bcast_mlid =  be16_to_cpu(multicast->rec.mlid);
+	xve_dbg_mcast(priv, "join completion for %pI6 LID0x%04x (status %d)\n",
+		      mcast->mcmember.mgid.raw, priv->bcast_mlid, status);
 
 	/* We trap for port events ourselves. */
 	if (status == -ENETRESET)
@@ -450,7 +455,7 @@ static void xve_mcast_join(struct net_device *dev, struct xve_mcast *mcast,
 		    IB_SA_MCMEMBER_REC_RATE_SELECTOR |
 		    IB_SA_MCMEMBER_REC_RATE | IB_SA_MCMEMBER_REC_HOP_LIMIT;
 
-		rec.qkey = 0x0;
+		rec.qkey = cpu_to_be32(priv->gw.t_qkey);
 		rec.traffic_class = 0x0;
 		rec.sl = 0x0;
 		rec.flow_label = 0x0;
@@ -462,8 +467,8 @@ static void xve_mcast_join(struct net_device *dev, struct xve_mcast *mcast,
 		rec.rate = mcast_rate;
 	}
 
-	xve_dbg_mcast(priv, "joining MGID %pI6 pkey %d qkey %d\n",
-		      mcast->mcmember.mgid.raw, rec.pkey, rec.qkey);
+	xve_dbg_mcast(priv, "joining MGID %pI6 pkey %d qkey %d rate%d\n",
+		      mcast->mcmember.mgid.raw, rec.pkey, rec.qkey, rec.rate);
 	set_bit(XVE_MCAST_FLAG_BUSY, &mcast->flags);
 	mcast->mc = ib_sa_join_multicast(&xve_sa_client, priv->ca, priv->port,
 					 &rec, comp_mask, GFP_KERNEL,
@@ -650,17 +655,25 @@ static int xve_mcast_leave(struct net_device *dev, struct xve_mcast *mcast)
 	return 0;
 }
 
-void xve_mcast_send(struct net_device *dev, void *mgid, struct sk_buff *skb)
+int xve_mcast_send(struct net_device *dev, void *mgid, struct sk_buff *skb)
 {
 	struct xve_dev_priv *priv = netdev_priv(dev);
 	struct xve_mcast *mcast;
+	int ret = NETDEV_TX_OK;
 
 	if (!test_bit(XVE_FLAG_OPER_UP, &priv->flags) ||
 	    !priv->broadcast ||
 	    !test_bit(XVE_MCAST_FLAG_ATTACHED, &priv->broadcast->flags)) {
 		INC_TX_DROP_STATS(priv, dev);
 		dev_kfree_skb_any(skb);
-		return;
+		return ret;
+	}
+
+	if (xve_is_uplink(priv) && xve_gw_linkup(priv)) {
+		struct sk_buff *nskb = skb_clone(skb, GFP_ATOMIC);
+
+		if (nskb)
+			ret = xve_gw_send(dev, nskb);
 	}
 
 	mcast = __xve_mcast_find(dev, mgid);
@@ -691,6 +704,7 @@ void xve_mcast_send(struct net_device *dev, void *mgid, struct sk_buff *skb)
 		else {
 			INC_TX_DROP_STATS(priv, dev);
 			dev_kfree_skb_any(skb);
+			return ret;
 		}
 
 		if (test_bit(XVE_MCAST_FLAG_BUSY, &mcast->flags)) {
@@ -708,14 +722,14 @@ void xve_mcast_send(struct net_device *dev, void *mgid, struct sk_buff *skb)
 
 out:
 	if (mcast && mcast->ah) {
-		xve_test("%s about to send mcast %02x%02x%02x%02x%02x%02x",
-			 __func__, skb->data[0], skb->data[1], skb->data[2],
-			 skb->data[3], skb->data[4], skb->data[5]);
-		xve_test("ah=%p proto=%02x%02x for %s\n", mcast->ah->ah,
-			 skb->data[12], skb->data[13], dev->name);
-		xve_send(dev, skb, mcast->ah, IB_MULTICAST_QPN);
+		xve_test("%s about to send mcast %pM"
+			, __func__, eth_hdr(skb)->h_dest);
+		xve_test("ah=%p proto=%04x for %s\n",
+			mcast->ah->ah, eth_hdr(skb)->h_proto, dev->name);
+		xve_get_ah_refcnt(mcast->ah);
+		ret = xve_send(dev, skb, mcast->ah, IB_MULTICAST_QPN, 0);
 	}
-
+	return ret;
 }
 
 void xve_mcast_carrier_on_task(struct work_struct *work)

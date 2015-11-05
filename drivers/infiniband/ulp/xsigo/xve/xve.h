@@ -133,6 +133,15 @@
 #define PREFIX_MULTI_ADDR	0x33
 /* ethernet header length */
 #define ETH_HDR_LEN		14
+#define	XVE_EOIB_MAGIC	0x8919
+#define	ETH_P_XVE_CTRL	0x8919
+#define	XVE_EOIB_LEN	4
+
+#define XVE_VNET_MODE_RC 1
+#define XVE_VNET_MODE_UD 2
+
+#define	XVE_MAX_RX_QUEUES	16
+#define	XVE_MAX_TX_QUEUES	16
 
 /* constants */
 enum xve_flush_level {
@@ -142,8 +151,9 @@ enum xve_flush_level {
 };
 
 enum {
-	XVE_UD_HEAD_SIZE = IB_GRH_BYTES + VLAN_ETH_HLEN,
-	XVE_UD_RX_SG = 2,	/* max buffer needed for 4K mtu */
+	XVE_UD_HEAD_SIZE = IB_GRH_BYTES + VLAN_ETH_HLEN + XVE_EOIB_LEN + 2048,
+	XVE_UD_RX_OVN_SG = 2,	/* max buffer needed for 4K mtu */
+	XVE_UD_RX_EDR_SG = 3,	/* max buffer needed for 10K mtu */
 	XVE_CM_MTU = 0x10000 - 0x20,	/* padding to align header to 16 */
 	XVE_CM_BUF_SIZE = XVE_CM_MTU + VLAN_ETH_HLEN,
 	XVE_CM_HEAD_SIZE = XVE_CM_BUF_SIZE % PAGE_SIZE,
@@ -300,6 +310,11 @@ enum {
 	XVE_EVENT_PKEY_CHANGE_COUNTER,
 	XVE_INVALID_EVENT_COUNTER,
 
+	XVE_GW_MCAST_TX,
+	XVE_HBEAT_COUNTER,
+	XVE_LINK_STATUS_COUNTER,
+	XVE_RX_NOGRH,
+
 	XVE_MAX_COUNTERS
 };
 
@@ -400,7 +415,8 @@ enum {
 	DEBUG_CONTINUE_UNLOAD = 0x00002000,
 	DEBUG_MISC_INFO = 0x00004000,
 	DEBUG_IBDEV_INFO = 0x00008000,
-	DEBUG_CM_INFO = 0x00010000
+	DEBUG_CM_INFO = 0x00010000,
+	DEBUG_CTRL_INFO = 0x00020000
 };
 
 #define	XVE_OP_RECV   (1ul << 31)
@@ -433,13 +449,31 @@ enum {
 #define	XVE_OVER_QUOTA			23
 #define	XVE_TSO_CHANGE			24
 #define	XVE_RXBATCH_CHANGE		25
+#define	XVE_VNIC_READY_PENDING		26
+#define	XVE_HBEAT_LOST			27
+#define	XVE_GW_STATE_UP			28
+
 #define MODULE_NAME "XVE"
 #define ALIGN_TO_FF(a) (a & 0xff)
 #define XVE_FWT_ENTRY_VALID 1
 #define XVE_FWT_ENTRY_REFRESH 2
-#define XVE_UD_MTU(ib_mtu)		(ib_mtu - VLAN_ETH_HLEN)
-#define XVE_UD_BUF_SIZE(ib_mtu)	(ib_mtu + IB_GRH_BYTES + VLAN_ETH_HLEN)
-#define XVE_MIN_PACKET_LEN 60
+#define XVE_UD_MTU(ib_mtu)	(ib_mtu - (VLAN_ETH_HLEN + XVE_EOIB_LEN))
+#define XVE_UD_BUF_SIZE(ib_mtu)	(ib_mtu + IB_GRH_BYTES + \
+				(VLAN_ETH_HLEN + XVE_EOIB_LEN))
+#define XVE_MIN_PACKET_LEN 64
+
+enum xcm_type {
+	XSMP_XCM_OVN,
+	XSMP_XCM_NOUPLINK,
+	XSMP_XCM_UPLINK
+};
+
+#define	xve_is_uplink(priv) ((priv)->vnic_type == XSMP_XCM_UPLINK)
+#define	xve_is_ovn(priv) ((priv)->vnic_type == XSMP_XCM_OVN)
+#define	xve_is_edr(priv) (!xve_is_ovn(priv))
+#define xve_gw_linkup(priv) test_bit(XVE_GW_STATE_UP, &(priv)->state)
+#define xve_ud_rx_sg(priv) (xve_is_edr(priv) ? XVE_UD_RX_EDR_SG : \
+				XVE_UD_RX_OVN_SG)
 
 /*Extern declarations */
 extern int xve_debug_level;
@@ -447,6 +481,7 @@ extern int xve_cm_single_qp;
 extern u32 xve_hash_salt;
 extern int xve_sendq_size;
 extern int xve_recvq_size;
+extern int xve_max_send_cqe;
 extern struct ib_sa_client xve_sa_client;
 extern u32 xve_counters[];
 extern struct workqueue_struct *xve_taskqueue;
@@ -481,11 +516,12 @@ struct xve_mcast {
 
 struct xve_rx_buf {
 	struct sk_buff *skb;
-	u64 mapping[XVE_UD_RX_SG];
+	u64 mapping[XVE_UD_RX_EDR_SG];
 };
 
 struct xve_tx_buf {
 	struct sk_buff *skb;
+	struct xve_ah *ah;
 	u64 mapping[MAX_SKB_FRAGS + 1];
 };
 
@@ -591,6 +627,46 @@ struct xve_fwt_s {
 	unsigned num;
 };
 
+#define XVE_VNIC_HBEAT	1
+#define	XVE_VNIC_LINK_STATE 2
+
+#define	XVE_HBEAT_LOSS_THRES	3
+struct xve_keep_alive {
+	uint32_t pvi_id;
+	uint32_t type;
+	uint64_t tca_hbeat_cnt;
+	uint32_t uplink_status;
+} __packed;
+
+struct xve_gw_info {
+	union ib_gid	t_gid;
+	u32 t_ctrl_qp;
+	u32 t_data_qp;
+	u32 t_qkey;
+	u16 t_pkey;
+};
+
+struct xve_eoib_hdr {
+	union {
+		struct { /* CX */
+			__u8 encap_data;
+			__u8 seg_off;
+			__be16 seg_id;
+		};
+		struct { /* PSIF */
+			__be16 magic;
+			__be16 tss_mask_sz;
+		};
+	};
+} __packed;
+
+
+struct xve_rx_cm_info {
+	struct ib_sge		rx_sge[XVE_CM_RX_SG];
+	struct ib_recv_wr       rx_wr;
+};
+
+
 /*
  * Device private locking: network stack tx_lock protects members used
  * in TX fast path, lock protects everything else.  lock nests inside
@@ -608,8 +684,12 @@ struct xve_dev_priv {
 	struct ib_qp *qp;
 	union ib_gid local_gid;
 	union ib_gid bcast_mgid;
+	__be16       bcast_mlid;
 	u16 local_lid;
 	u32 qkey;
+
+	/* Device attributes */
+	struct ib_device_attr dev_attr;
 
 	/* Netdev related attributes */
 	struct net_device *netdev;
@@ -636,6 +716,9 @@ struct xve_dev_priv {
 	unsigned long jiffies;
 	struct xve_fwt_s xve_fwt;
 	int aging_delay;
+	void *pci;
+	uint32_t hb_interval;
+	uint64_t last_hbeat;
 
 	struct xve_cm_dev_priv cm;
 	unsigned int cm_supported;
@@ -650,8 +733,10 @@ struct xve_dev_priv {
 	unsigned int mcast_mtu;
 	unsigned int max_ib_mtu;
 	char mode[64];
-
 	/* TX and RX Ring attributes */
+	int xve_recvq_size;
+	int xve_sendq_size;
+	int xve_max_send_cqe;
 	struct xve_rx_buf *rx_ring;
 	struct xve_tx_buf *tx_ring;
 	unsigned tx_head;
@@ -661,7 +746,8 @@ struct xve_dev_priv {
 	struct ib_send_wr tx_wr;
 	struct ib_wc send_wc[MAX_SEND_CQE];
 	struct ib_recv_wr rx_wr;
-	struct ib_sge rx_sge[XVE_UD_RX_SG];
+	/* Allocate EDR SG for now */
+	struct ib_sge rx_sge[XVE_UD_RX_EDR_SG];
 	struct ib_wc ibwc[XVE_NUM_WC];
 	struct ib_cq *recv_cq;
 	struct ib_cq *send_cq;
@@ -674,9 +760,12 @@ struct xve_dev_priv {
 	u64 resource_id;
 	u64 mac;
 	u32 net_id;
+	u32 install_flag;
 	u16 mp_flag;
-	char vnet_mode;
+	u8 vnet_mode;
+	u8 vnic_type;
 	char xve_name[XVE_MAX_NAME_SIZE];
+	struct xve_gw_info gw;
 
 	/* Proc related attributes */
 	struct proc_dir_entry *nic_dir;
@@ -696,7 +785,7 @@ struct xve_ah {
 	struct ib_ah *ah;
 	struct list_head list;
 	struct kref ref;
-	unsigned last_send;
+	atomic_t refcnt;
 };
 
 struct ib_packed_grh {
@@ -724,7 +813,10 @@ struct xve_path {
 	struct rb_node rb_node;
 	struct list_head list;
 	int valid;
+	int index;
 	struct sk_buff_head queue;
+	struct sk_buff_head uplink_queue;
+	atomic_t users;
 };
 
 struct xve_work {
@@ -790,14 +882,6 @@ struct icmp6_ndp {
 		dev->stats.rx_bytes += len;			\
 	} while (0)
 
-#define SET_FLUSH_BIT(priv, bit)				\
-	do {							\
-		unsigned long flags;				\
-		spin_lock_irqsave(&priv->lock, flags);		\
-		set_bit(bit, &priv->state);			\
-		spin_unlock_irqrestore(&priv->lock, flags);	\
-	} while (0)
-
 #define PRINT(level, x, fmt, arg...)				\
 	printk(level "%s: " fmt, MODULE_NAME, ##arg)
 #define XSMP_ERROR(fmt, arg...)					\
@@ -807,18 +891,18 @@ struct icmp6_ndp {
 		((struct xve_dev_priv *) priv)->netdev->name,	\
 		## arg)
 #define xve_warn(priv, format, arg...)				\
-	xve_printk(KERN_WARNING, priv, format , ## arg)
+	xve_printk(KERN_WARNING, priv, format, ## arg)
 
 #define XSMP_INFO(fmt, arg...)					\
 	do {							\
 		if (xve_debug_level & DEBUG_XSMP_INFO)		\
-			PRINT(KERN_DEBUG, "XSMP", fmt , ## arg);\
+			PRINT(KERN_DEBUG, "XSMP", fmt, ## arg);\
 	} while (0)
 
 #define xve_test(fmt, arg...)					\
 	do {							\
 		if (xve_debug_level & DEBUG_TEST_INFO)		\
-			PRINT(KERN_DEBUG, "DEBUG", fmt , ## arg); \
+			PRINT(KERN_DEBUG, "DEBUG", fmt, ## arg); \
 	} while (0)
 
 #define xve_dbg_data(priv, format, arg...)			\
@@ -827,10 +911,16 @@ struct icmp6_ndp {
 			xve_printk(KERN_DEBUG, priv, format,	\
 			## arg);				\
 	} while (0)
+#define xve_dbg_ctrl(priv, format, arg...)			\
+	do {							\
+		if (xve_debug_level & DEBUG_CTRL_INFO)		\
+			xve_printk(KERN_DEBUG, priv, format,	\
+			## arg);				\
+	} while (0)
 #define xve_dbg_mcast(priv, format, arg...)			\
 	do {							\
 		if (xve_debug_level & DEBUG_MCAST_INFO)		\
-			xve_printk(KERN_ERR, priv, format , ## arg); \
+			xve_printk(KERN_ERR, priv, format, ## arg); \
 	} while (0)
 #define xve_debug(level, priv, format, arg...)				\
 	do {								\
@@ -899,6 +989,8 @@ static inline void xve_send_skb(struct xve_dev_priv *priv, struct sk_buff *skb)
 
 	if (netdev->features & NETIF_F_LRO)
 		lro_receive_skb(&priv->lro.lro_mgr, skb, NULL);
+	else if (netdev->features & NETIF_F_GRO)
+		napi_gro_receive(&priv->napi, skb);
 	else
 		netif_receive_skb(skb);
 
@@ -1018,8 +1110,11 @@ static inline void skb_put_frags(struct sk_buff *skb, unsigned int hdr_space,
 
 		if (length == 0) {
 			/* don't need this page */
-			skb_fill_page_desc(toskb, i, skb_frag_page(frag),
-					   0, PAGE_SIZE);
+			if (toskb)
+				skb_fill_page_desc(toskb, i, skb_frag_page(frag)
+						, 0, PAGE_SIZE);
+			else
+				__free_page(skb_shinfo(skb)->frags[i].page.p);
 			--skb_shinfo(skb)->nr_frags;
 		} else {
 			size = min_t(unsigned, length, (unsigned)PAGE_SIZE);
@@ -1046,11 +1141,20 @@ static inline void xve_put_ah(struct xve_ah *ah)
 	kref_put(&ah->ref, xve_free_ah);
 }
 
+static inline void xve_put_ah_refcnt(struct xve_ah *address)
+{
+	atomic_dec(&address->refcnt);
+}
+static inline void xve_get_ah_refcnt(struct xve_ah *address)
+{
+	atomic_inc(&address->refcnt);
+}
+
 int xve_open(struct net_device *dev);
 int xve_add_pkey_attr(struct net_device *dev);
 
-void xve_send(struct net_device *dev, struct sk_buff *skb,
-	      struct xve_ah *address, u32 qpn);
+int xve_send(struct net_device *dev, struct sk_buff *skb,
+	      struct xve_ah *address, u32 qpn, int type);
 int poll_tx(struct xve_dev_priv *priv);
 int xve_xsmp_send_oper_state(struct xve_dev_priv *priv, u64 vid, int state);
 void handle_carrier_state(struct xve_dev_priv *priv, char state);
@@ -1096,7 +1200,7 @@ void xve_remove_fwt_entry(struct xve_dev_priv *priv,
 void xve_fwt_entry_free(struct xve_dev_priv *priv,
 			struct xve_fwt_entry *fwt_entry);
 
-void xve_mcast_send(struct net_device *dev, void *mgid, struct sk_buff *skb);
+int xve_mcast_send(struct net_device *dev, void *mgid, struct sk_buff *skb);
 void xve_advert_mcast_join(struct xve_dev_priv *priv);
 int xve_mcast_start_thread(struct net_device *dev);
 int xve_mcast_stop_thread(struct net_device *dev, int flush);
@@ -1129,7 +1233,7 @@ int xve_send_hbeat(struct xve_dev_priv *xvep);
 void xve_xsmp_handle_oper_req(xsmp_cookie_t xsmp_hndl, u64 resource_id);
 
 /*CM */
-void xve_cm_send(struct net_device *dev, struct sk_buff *skb,
+int xve_cm_send(struct net_device *dev, struct sk_buff *skb,
 		 struct xve_cm_ctx *tx);
 int xve_cm_dev_open(struct net_device *dev);
 void xve_cm_dev_stop(struct net_device *dev);
@@ -1163,9 +1267,11 @@ void xve_prepare_skb(struct xve_dev_priv *priv, struct sk_buff *skb);
 void xve_tables_exit(void);
 void xve_remove_one(struct xve_dev_priv *priv);
 struct xve_path *__path_find(struct net_device *netdev, void *gid);
-extern int xve_add_proc_entry(struct xve_dev_priv *vp);
+int xve_add_proc_entry(struct xve_dev_priv *vp);
 void xve_remove_proc_entry(struct xve_dev_priv *vp);
-extern int xve_change_rxbatch(struct xve_dev_priv *xvep, int flag);
+int xve_gw_send(struct net_device *priv, struct sk_buff *skb);
+struct xve_path *xve_get_gw_path(struct net_device *dev);
+void xve_set_oper_up_state(struct xve_dev_priv *priv);
 
 static inline int xve_continue_unload(void)
 {
@@ -1179,7 +1285,7 @@ static inline int xve_get_misc_info(void)
 
 static inline int xg_vlan_tx_tag_present(struct sk_buff *skb)
 {
-	struct vlan_ethhdr *veth = (struct vlan_ethhdr *)(skb->data);
+	struct vlan_ethhdr *veth = vlan_eth_hdr(skb);
 
 	return veth->h_vlan_proto == htons(ETH_P_8021Q);
 }

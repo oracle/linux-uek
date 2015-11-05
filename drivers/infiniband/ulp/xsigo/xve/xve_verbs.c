@@ -67,8 +67,8 @@ int xve_mcast_attach(struct net_device *dev, u16 mlid, union ib_gid *mgid,
 	ret = ib_attach_mcast(priv->qp, mgid, mlid);
 	if (ret)
 		xve_warn(priv,
-			 "failed to attach to multicast group, ret = %d\n",
-			 ret);
+			"failed to attach to multicast group, ret = %d\n",
+			ret);
 
 out:
 	kfree(qp_attr);
@@ -82,8 +82,10 @@ int xve_init_qp(struct net_device *dev)
 	struct ib_qp_attr qp_attr;
 	int attr_mask;
 
-	if (!test_bit(XVE_PKEY_ASSIGNED, &priv->flags))
+	if (!test_bit(XVE_PKEY_ASSIGNED, &priv->flags)) {
+		xve_warn(priv, "PKEY not assigned\n");
 		return -1;
+	}
 
 	qp_attr.qp_state = IB_QPS_INIT;
 	qp_attr.qkey = 0;
@@ -130,22 +132,21 @@ int xve_transport_dev_init(struct net_device *dev, struct ib_device *ca)
 	struct xve_dev_priv *priv = netdev_priv(dev);
 	struct ib_qp_init_attr init_attr = {
 		.cap = {
-			.max_send_wr = xve_sendq_size,
-			.max_recv_wr = xve_recvq_size,
+			.max_send_wr = priv->xve_sendq_size,
+			.max_recv_wr = priv->xve_recvq_size,
 			.max_send_sge = 1,
-			.max_recv_sge = XVE_UD_RX_SG},
+			.max_recv_sge = xve_ud_rx_sg(priv)},
 		.sq_sig_type = IB_SIGNAL_ALL_WR,
 		.qp_type = IB_QPT_UD
 	};
-
-	int ret, size;
-	int i;
 	struct ethtool_coalesce *coal;
+	int ret, size, max_sge;
+	int i;
 
 	priv->pd = ib_alloc_pd(priv->ca);
 	if (IS_ERR(priv->pd)) {
 		pr_warn("%s: failed to allocate PD for %s\n",
-			ca->name, priv->xve_name);
+				ca->name, priv->xve_name);
 		return -ENODEV;
 	}
 
@@ -155,16 +156,18 @@ int xve_transport_dev_init(struct net_device *dev, struct ib_device *ca)
 		goto out_free_pd;
 	}
 
-	size = xve_recvq_size + 1;
+	size = priv->xve_recvq_size + 1;
 	ret = xve_cm_dev_init(dev);
 	if (ret != 0) {
 		pr_err("%s Failed for %s [ret %d ]\n", __func__,
-		       priv->xve_name, ret);
+				priv->xve_name, ret);
 		goto out_free_mr;
 	}
-	size += xve_sendq_size;
-	size += xve_recvq_size + 1;	/* 1 extra for rx_drain_qp */
 
+	size += priv->xve_sendq_size;
+	size = priv->xve_recvq_size + 1;	/* 1 extra for rx_drain_qp */
+
+	/* Create Receive CompletionQueue */
 	priv->recv_cq =
 	    ib_create_cq(priv->ca, xve_ib_completion, NULL, dev, size, 0);
 	if (IS_ERR(priv->recv_cq)) {
@@ -173,8 +176,9 @@ int xve_transport_dev_init(struct net_device *dev, struct ib_device *ca)
 		goto out_free_mr;
 	}
 
+	/* Create Send CompletionQueue */
 	priv->send_cq = ib_create_cq(priv->ca, xve_send_comp_handler, NULL,
-				     dev, xve_sendq_size, 0);
+				     dev, priv->xve_sendq_size, 0);
 	if (IS_ERR(priv->send_cq)) {
 		pr_warn("%s: failed to create send CQ for %s\n",
 			ca->name, priv->xve_name);
@@ -197,11 +201,19 @@ int xve_transport_dev_init(struct net_device *dev, struct ib_device *ca)
 	init_attr.send_cq = priv->send_cq;
 	init_attr.recv_cq = priv->recv_cq;
 
+	if (priv->hca_caps & IB_DEVICE_MANAGED_FLOW_STEERING)
+		init_attr.create_flags |= IB_QP_CREATE_NETIF_QP;
+
 	if (priv->hca_caps & IB_DEVICE_BLOCK_MULTICAST_LOOPBACK)
 		init_attr.create_flags |= IB_QP_CREATE_BLOCK_MULTICAST_LOOPBACK;
 
-	if (dev->features & NETIF_F_SG)
-		init_attr.cap.max_send_sge = MAX_SKB_FRAGS + 1;
+	if (dev->features & NETIF_F_SG) {
+		/* As Titan Card supports less than MAX SKB we need to check */
+		max_sge = priv->dev_attr.max_sge;
+		if (max_sge >= (MAX_SKB_FRAGS + 1))
+			max_sge = MAX_SKB_FRAGS + 1;
+		init_attr.cap.max_send_sge = max_sge;
+	}
 
 	priv->qp = ib_create_qp(priv->pd, &init_attr);
 	if (IS_ERR(priv->qp)) {
@@ -221,7 +233,7 @@ int xve_transport_dev_init(struct net_device *dev, struct ib_device *ca)
 		priv->rx_sge[0].length = XVE_UD_HEAD_SIZE;
 		priv->rx_sge[1].length = PAGE_SIZE;
 		priv->rx_sge[1].lkey = priv->mr->lkey;
-		priv->rx_wr.num_sge = XVE_UD_RX_SG;
+		priv->rx_wr.num_sge = xve_ud_rx_sg(priv);
 	} else {
 		priv->rx_sge[0].length = XVE_UD_BUF_SIZE(priv->max_ib_mtu);
 		priv->rx_wr.num_sge = 1;
@@ -249,34 +261,36 @@ out_free_pd:
 void xve_transport_dev_cleanup(struct net_device *dev)
 {
 	struct xve_dev_priv *priv = netdev_priv(dev);
-	int ret = 0;
+	int ret;
 
+	/* Destroy QP */
 	if (priv->qp) {
-		if (ib_destroy_qp(priv->qp))
-			xve_warn(priv, "ib_qp_destroy failed\n");
+		ret = ib_destroy_qp(priv->qp);
+		if (ret)
+			xve_warn(priv,
+				"ib_qp_destroy failed (ret = %d)\n", ret);
+
 		priv->qp = NULL;
 		clear_bit(XVE_PKEY_ASSIGNED, &priv->flags);
 	}
+
 	ret = ib_destroy_cq(priv->send_cq);
 	if (ret)
 		xve_warn(priv, "%s ib_destroy_cq (sendq) failed ret=%d\n",
-			 __func__, ret);
+				__func__, ret);
 
 	ret = ib_destroy_cq(priv->recv_cq);
 	if (ret)
 		xve_warn(priv, "%s ib_destroy_cq failed ret=%d\n",
-			 __func__, ret);
+				__func__, ret);
 
 	xve_cm_dev_cleanup(dev);
 
-	ret = ib_dereg_mr(priv->mr);
-	if (ret)
-		xve_warn(priv, "%s ib_dereg_mr failed ret=%d\n", __func__, ret);
+	if (ib_dereg_mr(priv->mr))
+		xve_warn(priv, "ib_dereg_mr failed\n");
 
-	ret = ib_dealloc_pd(priv->pd);
-	if (ret)
-		xve_warn(priv, "%s ib_dealloc_pd failed ret=%d\n",
-			 __func__, ret);
+	if (ib_dealloc_pd(priv->pd))
+		xve_warn(priv, "ib_dealloc_pd failed\n");
 }
 
 void xve_event(struct ib_event_handler *handler, struct ib_event *record)
@@ -293,32 +307,32 @@ void xve_event(struct ib_event_handler *handler, struct ib_event *record)
 
 	switch (record->event) {
 	case IB_EVENT_SM_CHANGE:
-		priv->counters[XVE_SM_CHANGE_COUNTER]++;
-		xve_queue_work(priv, XVE_WQ_START_FLUSHLIGHT);
-		break;
+			priv->counters[XVE_SM_CHANGE_COUNTER]++;
+			xve_queue_work(priv, XVE_WQ_START_FLUSHLIGHT);
+			break;
 	case IB_EVENT_CLIENT_REREGISTER:
-		priv->counters[XVE_CLIENT_REREGISTER_COUNTER]++;
-		set_bit(XVE_FLAG_DONT_DETACH_MCAST, &priv->flags);
-		xve_queue_work(priv, XVE_WQ_START_FLUSHLIGHT);
-		break;
+			priv->counters[XVE_CLIENT_REREGISTER_COUNTER]++;
+			set_bit(XVE_FLAG_DONT_DETACH_MCAST, &priv->flags);
+			xve_queue_work(priv, XVE_WQ_START_FLUSHLIGHT);
+			break;
 	case IB_EVENT_PORT_ERR:
-		priv->counters[XVE_EVENT_PORT_ERR_COUNTER]++;
-		xve_queue_work(priv, XVE_WQ_START_FLUSHNORMAL);
-		break;
+			priv->counters[XVE_EVENT_PORT_ERR_COUNTER]++;
+			xve_queue_work(priv, XVE_WQ_START_FLUSHNORMAL);
+			break;
 	case IB_EVENT_PORT_ACTIVE:
-		priv->counters[XVE_EVENT_PORT_ACTIVE_COUNTER]++;
-		xve_queue_work(priv, XVE_WQ_START_FLUSHNORMAL);
-		break;
+			priv->counters[XVE_EVENT_PORT_ACTIVE_COUNTER]++;
+			xve_queue_work(priv, XVE_WQ_START_FLUSHNORMAL);
+			break;
 	case IB_EVENT_LID_CHANGE:
-		priv->counters[XVE_EVENT_LID_CHANGE_COUNTER]++;
-		xve_queue_work(priv, XVE_WQ_START_FLUSHNORMAL);
-		break;
+			priv->counters[XVE_EVENT_LID_CHANGE_COUNTER]++;
+			xve_queue_work(priv, XVE_WQ_START_FLUSHNORMAL);
+			break;
 	case IB_EVENT_PKEY_CHANGE:
-		priv->counters[XVE_EVENT_PKEY_CHANGE_COUNTER]++;
-		xve_queue_work(priv, XVE_WQ_START_FLUSHHEAVY);
-		break;
+			priv->counters[XVE_EVENT_PKEY_CHANGE_COUNTER]++;
+			xve_queue_work(priv, XVE_WQ_START_FLUSHHEAVY);
+			break;
 	default:
-		priv->counters[XVE_INVALID_EVENT_COUNTER]++;
-		break;
+			priv->counters[XVE_INVALID_EVENT_COUNTER]++;
+			break;
 	}
 }

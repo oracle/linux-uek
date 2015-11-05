@@ -81,14 +81,15 @@ static int xve_cm_post_receive_srq(struct net_device *netdev, int id)
 {
 	struct xve_dev_priv *priv = netdev_priv(netdev);
 	struct ib_recv_wr *bad_wr;
+	struct ib_recv_wr *wr = &priv->cm.rx_wr;
 	int i, ret;
 
-	priv->cm.rx_wr.wr_id = id | XVE_OP_CM | XVE_OP_RECV;
+	wr->wr_id = id | XVE_OP_CM | XVE_OP_RECV;
 
 	for (i = 0; i < priv->cm.num_frags; ++i)
 		priv->cm.rx_sge[i].addr = priv->cm.srq_ring[id].mapping[i];
 
-	ret = ib_post_srq_recv(priv->cm.srq, &priv->cm.rx_wr, &bad_wr);
+	ret = ib_post_srq_recv(priv->cm.srq, wr, &bad_wr);
 	if (unlikely(ret)) {
 		xve_warn(priv, "post srq failed for buf %d (%d)\n", id, ret);
 		xve_cm_dma_unmap_rx(priv, priv->cm.num_frags - 1,
@@ -171,7 +172,7 @@ static void xve_cm_free_rx_ring(struct net_device *dev,
 	struct xve_dev_priv *priv = netdev_priv(dev);
 	int i;
 
-	for (i = 0; i < xve_recvq_size; ++i) {
+	for (i = 0; i < priv->xve_recvq_size; ++i) {
 		if (rx_ring[i].skb) {
 			xve_cm_dma_unmap_rx(priv, XVE_CM_RX_SG - 1,
 					    rx_ring[i].mapping);
@@ -463,7 +464,7 @@ void xve_cm_handle_rx_wc(struct net_device *dev, struct ib_wc *wc)
 	xve_dbg_data(priv, "cm recv completion: id %d, status: %d\n",
 		     wr_id, wc->status);
 
-	if (unlikely(wr_id >= xve_recvq_size)) {
+	if (unlikely(wr_id >= priv->xve_recvq_size)) {
 		if (wr_id ==
 		    (XVE_CM_RX_DRAIN_WRID & ~(XVE_OP_CM | XVE_OP_RECV))) {
 			spin_lock_irqsave(&priv->lock, flags);
@@ -475,7 +476,7 @@ void xve_cm_handle_rx_wc(struct net_device *dev, struct ib_wc *wc)
 		} else
 			xve_warn(priv,
 				 "cm recv completion event with wrid %d (> %d)\n",
-				 wr_id, xve_recvq_size);
+				 wr_id, priv->xve_recvq_size);
 		return;
 	}
 
@@ -619,12 +620,13 @@ static void xve_cm_tx_buf_free(struct xve_dev_priv *priv,
 	memset(tx_req, 0, sizeof(struct xve_cm_buf));
 }
 
-void xve_cm_send(struct net_device *dev, struct sk_buff *skb,
+int xve_cm_send(struct net_device *dev, struct sk_buff *skb,
 		 struct xve_cm_ctx *tx)
 {
 	struct xve_dev_priv *priv = netdev_priv(dev);
 	struct xve_cm_buf *tx_req;
 	u64 addr;
+	int ret = NETDEV_TX_OK;
 
 	if (unlikely(skb->len > tx->mtu + VLAN_ETH_HLEN)) {
 		xve_warn(priv,
@@ -633,7 +635,7 @@ void xve_cm_send(struct net_device *dev, struct sk_buff *skb,
 		INC_TX_DROP_STATS(priv, dev);
 		INC_TX_ERROR_STATS(priv, dev);
 		dev_kfree_skb_any(skb);
-		return;
+		return ret;
 	}
 
 	xve_dbg_data(priv,
@@ -647,25 +649,27 @@ void xve_cm_send(struct net_device *dev, struct sk_buff *skb,
 	 * means we have to make sure everything is properly recorded and
 	 * our state is consistent before we call post_send().
 	 */
-	tx_req = &tx->tx_ring[tx->tx_head & (xve_sendq_size - 1)];
+	tx_req = &tx->tx_ring[tx->tx_head & (priv->xve_sendq_size - 1)];
 	tx_req->skb = skb;
 	addr = ib_dma_map_single(priv->ca, skb->data, skb->len, DMA_TO_DEVICE);
 	if (unlikely(ib_dma_mapping_error(priv->ca, addr))) {
 		INC_TX_ERROR_STATS(priv, dev);
 		dev_kfree_skb_any(skb);
 		memset(tx_req, 0, sizeof(struct xve_cm_buf));
-		return;
+		return ret;
 	}
 	tx_req->mapping[0] = addr;
 
-	if (unlikely(post_send(priv, tx, tx->tx_head & (xve_sendq_size - 1),
+	if (unlikely(post_send(priv, tx, tx->tx_head &
+			       (priv->xve_sendq_size - 1),
 			       addr, skb->len))) {
 		xve_warn(priv, "post_send failed\n");
 		INC_TX_ERROR_STATS(priv, dev);
 		xve_cm_tx_buf_free(priv, tx_req);
 	} else {
+		dev->trans_start = jiffies;
 		++tx->tx_head;
-		if (++priv->tx_outstanding == xve_sendq_size) {
+		if (++priv->tx_outstanding == priv->xve_sendq_size) {
 			xve_dbg_data(priv,
 				     "TX ring 0x%x full, stopping kernel net queue\n",
 				     tx->qp->qp_num);
@@ -678,10 +682,11 @@ void xve_cm_send(struct net_device *dev, struct sk_buff *skb,
 		}
 	}
 	priv->send_hbeat_flag = 0;
-
+	return ret;
 }
 
-void xve_cm_handle_tx_wc(struct net_device *dev, struct ib_wc *wc)
+void xve_cm_handle_tx_wc(struct net_device *dev,
+		struct ib_wc *wc)
 {
 	struct xve_dev_priv *priv = netdev_priv(dev);
 	struct xve_cm_ctx *tx = wc->qp->qp_context;
@@ -691,18 +696,18 @@ void xve_cm_handle_tx_wc(struct net_device *dev, struct ib_wc *wc)
 	xve_dbg_data(priv, "cm send completion: id %d, status: %d\n",
 		     wr_id, wc->status);
 
-	if (unlikely(wr_id >= xve_sendq_size)) {
+	if (unlikely(wr_id >= priv->xve_sendq_size)) {
 		xve_warn(priv, "cm send completion event with wrid %d (> %d)\n",
-			 wr_id, xve_sendq_size);
+			 wr_id, priv->xve_sendq_size);
 		return;
 	}
 
 	tx_req = &tx->tx_ring[wr_id];
 	xve_cm_tx_buf_free(priv, tx_req);
-	++tx->tx_tail;
 
 	netif_tx_lock(dev);
-	if (unlikely(--priv->tx_outstanding == xve_sendq_size >> 1) &&
+	++tx->tx_tail;
+	if (unlikely(--priv->tx_outstanding == priv->xve_sendq_size >> 1) &&
 	    netif_queue_stopped(dev) &&
 	    test_bit(XVE_FLAG_ADMIN_UP, &priv->flags)) {
 		priv->counters[XVE_TX_WAKE_UP_COUNTER]++;
@@ -893,7 +898,7 @@ static struct ib_qp *xve_cm_create_tx_qp(struct net_device *dev,
 		.send_cq = priv->recv_cq,
 		.recv_cq = priv->recv_cq,
 		.srq = priv->cm.srq,
-		.cap.max_send_wr = xve_sendq_size,
+		.cap.max_send_wr = priv->xve_sendq_size,
 		.cap.max_send_sge = 1,
 		.sq_sig_type = IB_SIGNAL_ALL_WR,
 		.qp_type = IB_QPT_RC,
@@ -976,13 +981,13 @@ static int xve_cm_tx_init(struct xve_cm_ctx *p, struct ib_sa_path_rec *pathrec)
 	struct xve_dev_priv *priv = netdev_priv(p->netdev);
 	int ret;
 
-	p->tx_ring = vmalloc(xve_sendq_size * sizeof(*p->tx_ring));
+	p->tx_ring = vmalloc(priv->xve_sendq_size * sizeof(*p->tx_ring));
 	if (!p->tx_ring) {
 		xve_warn(priv, "failed to allocate tx ring\n");
 		ret = -ENOMEM;
 		goto err_tx;
 	}
-	memset(p->tx_ring, 0, xve_sendq_size * sizeof(*p->tx_ring));
+	memset(p->tx_ring, 0, priv->xve_sendq_size * sizeof(*p->tx_ring));
 
 	p->qp = xve_cm_create_tx_qp(p->netdev, p);
 	if (IS_ERR(p->qp)) {
@@ -1048,7 +1053,8 @@ static void xve_cm_tx_destroy(struct xve_cm_ctx *p)
 		/* Wait for all sends to complete */
 		if (!netif_carrier_ok(priv->netdev)
 		    && unlikely(priv->tx_outstanding > MAX_SEND_CQE))
-			while (poll_tx(priv)); /* nothing */
+			while (poll_tx(priv))
+				; /* nothing */
 
 		begin = jiffies;
 		while ((int)p->tx_tail - (int)p->tx_head < 0) {
@@ -1067,14 +1073,17 @@ timeout:
 
 	spin_lock_irqsave(&priv->lock, flags);
 	while ((int)p->tx_tail - (int)p->tx_head < 0) {
-		tx_req = &p->tx_ring[p->tx_tail & (xve_sendq_size - 1)];
+		tx_req = &p->tx_ring[p->tx_tail & (priv->xve_sendq_size - 1)];
+
+
 		++p->tx_tail;
 		spin_unlock_irqrestore(&priv->lock, flags);
 
 		xve_cm_tx_buf_free(priv, tx_req);
 		netif_tx_lock_bh(p->netdev);
-		if (unlikely(--priv->tx_outstanding == xve_sendq_size >> 1) &&
-		    netif_queue_stopped(p->netdev) &&
+		if (unlikely(--priv->tx_outstanding ==
+					(priv->xve_sendq_size >> 1))
+		    && netif_queue_stopped(p->netdev) &&
 		    test_bit(XVE_FLAG_ADMIN_UP, &priv->flags)) {
 			priv->counters[XVE_TX_WAKE_UP_COUNTER]++;
 			netif_wake_queue(p->netdev);
@@ -1211,7 +1220,6 @@ void xve_cm_tx_start(struct work_struct *work)
 	spin_unlock_irqrestore(&priv->lock, flags);
 	netif_tx_unlock_bh(dev);
 	xve_put_ctx(priv);
-
 }
 
 static void __xve_cm_tx_reap(struct xve_dev_priv *priv)
@@ -1296,7 +1304,7 @@ static void xve_cm_create_srq(struct net_device *dev, int max_sge)
 	struct xve_dev_priv *priv = netdev_priv(dev);
 	struct ib_srq_init_attr srq_init_attr = {
 		.attr = {
-			 .max_wr = xve_recvq_size,
+			 .max_wr = priv->xve_recvq_size,
 			 .max_sge = max_sge}
 	};
 
@@ -1310,17 +1318,17 @@ static void xve_cm_create_srq(struct net_device *dev, int max_sge)
 	}
 
 	priv->cm.srq_ring =
-	    vmalloc(xve_recvq_size * sizeof(*priv->cm.srq_ring));
+	    vmalloc(priv->xve_recvq_size * sizeof(*priv->cm.srq_ring));
 	if (!priv->cm.srq_ring) {
 		pr_warn("%s: failed to allocate CM SRQ ring (%d entries)\n",
-			priv->ca->name, xve_recvq_size);
+			priv->ca->name, priv->xve_recvq_size);
 		ib_destroy_srq(priv->cm.srq);
 		priv->cm.srq = NULL;
 		return;
 	}
 
 	memset(priv->cm.srq_ring, 0,
-	       xve_recvq_size * sizeof(*priv->cm.srq_ring));
+	       priv->xve_recvq_size * sizeof(*priv->cm.srq_ring));
 }
 
 int xve_cm_dev_init(struct net_device *dev)
@@ -1342,6 +1350,8 @@ int xve_cm_dev_init(struct net_device *dev)
 		pr_warn("ib_query_device() failed with %d\n", ret);
 		return ret;
 	}
+
+	priv->dev_attr = attr;
 
 	/* Based on the admin mtu from the chassis */
 	attr.max_srq_sge =
@@ -1366,7 +1376,7 @@ int xve_cm_dev_init(struct net_device *dev)
 	xve_cm_init_rx_wr(dev, &priv->cm.rx_wr, priv->cm.rx_sge);
 
 	if (xve_cm_has_srq(dev)) {
-		for (i = 0; i < xve_recvq_size; ++i) {
+		for (i = 0; i < priv->xve_recvq_size; ++i) {
 			if (!xve_cm_alloc_rx_skb(dev, priv->cm.srq_ring, i,
 						 priv->cm.num_frags - 1,
 						 priv->cm.

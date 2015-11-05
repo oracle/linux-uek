@@ -142,6 +142,10 @@ static char *counter_name[XVE_MAX_COUNTERS] = {
 	"ib lid_active count:\t\t",
 	"ib pkey_change count:\t\t",
 	"ib invalid count:\t\t",
+	"uplink unicast:\t\t\t",
+	"Heartbeat Count:\t\t",
+	"Link State message count:\t",
+	"RX frames without GRH\t\t",
 };
 
 static char *misc_counter_name[XVE_MISC_MAX_COUNTERS] = {
@@ -438,6 +442,7 @@ static int xve_proc_read_device(struct seq_file *m, void *data)
 	tmp_buf[0] = 0;
 	print_mgid_buf(tmp_buf, bcast_mgid_token);
 	seq_printf(m, "Bcast Mgid:\t\t\t%s\n", tmp_buf);
+	seq_printf(m, "Bcast Mlid:\t\t\t0x%04x\n", vp->bcast_mlid);
 
 	tmp_buf[0] = 0;
 	print_mgid_buf(tmp_buf, local_gid_token);
@@ -574,6 +579,14 @@ static int xve_proc_read_device(struct seq_file *m, void *data)
 		seq_printf(m, "WQ Failed:\t\t\t%ld\n", vp->work_queue_failed);
 
 	seq_printf(m, "Counters cleared count:\t\t%u\n", vp->counters_cleared);
+
+	if (xve_is_uplink(vp)) {
+		seq_printf(m, "Time since last heart beat: %llu sec\n",
+				(jiffies-vp->last_hbeat)/HZ);
+		seq_printf(m, "TCA info:\t\t\tGID: %pI6\tQPN: %u\n",
+				&vp->gw.t_gid.raw, vp->gw.t_data_qp);
+	}
+
 	vp->next_page = 1;
 out:
 	return 0;
@@ -588,9 +601,9 @@ static ssize_t xve_proc_write_device(struct file *file,
 	int ret;
 
 	ret = sscanf(buffer, "%s", action);
-	if (ret != 1) {
+	if (ret != 1)
 		return -EINVAL;
-	}
+
 	if ((strlen(action) == 1) && (atoi(action) == 0)) {
 		/* Clear counters */
 		memset(vp->counters, 0, sizeof(vp->counters));
@@ -634,30 +647,29 @@ static ssize_t xve_proc_write_device_counters(struct file *file,
 	struct xve_dev_priv *vp = PDE_DATA(file_inode(file));
 	int newval, ret;
 	char    *buf = (char *) __get_free_page(GFP_USER);
-	if (!buf) {
-		return -ENOMEM;
-	}
 
-        if (copy_from_user(buf, buffer, count - 1)) {
+	if (!buf)
+		return -ENOMEM;
+
+	if (copy_from_user(buf, buffer, count - 1))
 		goto out;
-	}
+
 	buf[count] = '\0';
 
 	ret = kstrtoint(buf, 0, &newval);
-        if (ret != 0) {
-                return -EINVAL;
-        }
+	if (ret != 0)
+		return -EINVAL;
 
-        if (newval == 0) {
-                /* Clear counters */
-                memset(vp->counters, 0, sizeof(vp->counters));
-                vp->counters_cleared++;
-        }
-        return count;
+	if (newval == 0) {
+		/* Clear counters */
+		memset(vp->counters, 0, sizeof(vp->counters));
+		vp->counters_cleared++;
+	}
+	return count;
 
 out:
-        free_page((unsigned long)buf);
-        return -EINVAL;
+	free_page((unsigned long)buf);
+	return -EINVAL;
 }
 
 static int xve_proc_open_device_counters(struct inode *inode, struct file *file)
@@ -809,19 +821,19 @@ static ssize_t xve_proc_write_debug(struct file *file,
 {
 	int newval, ret;
 	char	*buf = (char *) __get_free_page(GFP_USER);
-	if (!buf) {
-		return -ENOMEM;
-	}
 
-	if (copy_from_user(buf, buffer, count - 1)) {
+	if (!buf)
+		return -ENOMEM;
+
+	if (copy_from_user(buf, buffer, count - 1))
 		goto out;
-	}
+
 	buf[count] = '\0';
 
 	ret = kstrtoint(buf, 0, &newval);
-	if (ret != 0) {
+	if (ret != 0)
 		return -EINVAL;
-	}
+
 	xve_debug_level = newval;
 	return count;
 
