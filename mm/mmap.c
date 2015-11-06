@@ -2204,6 +2204,7 @@ int expand_upwards(struct vm_area_struct *vma, unsigned long address)
 {
 	struct vm_area_struct *next;
 	unsigned long gap_addr;
+	struct mm_struct *mm = vma->vm_mm;
 	int error = 0;
 
 	if (!(vma->vm_flags & VM_GROWSUP))
@@ -2259,10 +2260,10 @@ int expand_upwards(struct vm_area_struct *vma, unsigned long address)
 				 * So, we reuse mm->page_table_lock to guard
 				 * against concurrent vma expansions.
 				 */
-				spin_lock(&vma->vm_mm->page_table_lock);
+				spin_lock(&mm->page_table_lock);
 				if (vma->vm_flags & VM_LOCKED)
-					vma->vm_mm->locked_vm += grow;
-				vm_stat_account(vma->vm_mm, vma->vm_flags,
+					mm->locked_vm += grow;
+				vm_stat_account(mm, vma->vm_flags,
 						vma->vm_file, grow);
 				anon_vma_interval_tree_pre_update_vma(vma);
 				vma->vm_end = address;
@@ -2270,8 +2271,8 @@ int expand_upwards(struct vm_area_struct *vma, unsigned long address)
 				if (vma->vm_next)
 					vma_gap_update(vma->vm_next);
 				else
-					vma->vm_mm->highest_vm_end = vm_end_gap(vma);
-				spin_unlock(&vma->vm_mm->page_table_lock);
+					mm->highest_vm_end = vm_end_gap(vma);
+				spin_unlock(&mm->page_table_lock);
 
 				perf_event_mmap(vma);
 			}
@@ -2279,7 +2280,7 @@ int expand_upwards(struct vm_area_struct *vma, unsigned long address)
 	}
 	anon_vma_unlock_write(vma->anon_vma);
 	khugepaged_enter_vma_merge(vma, vma->vm_flags);
-	validate_mm(vma->vm_mm);
+	validate_mm(mm);
 	return error;
 }
 #endif /* CONFIG_STACK_GROWSUP || CONFIG_IA64 */
@@ -2292,6 +2293,7 @@ int expand_downwards(struct vm_area_struct *vma,
 {
 	struct vm_area_struct *prev;
 	unsigned long gap_addr;
+	struct mm_struct *mm = vma->vm_mm;
 	int error;
 
 	address &= PAGE_MASK;
@@ -2343,17 +2345,17 @@ int expand_downwards(struct vm_area_struct *vma,
 				 * So, we reuse mm->page_table_lock to guard
 				 * against concurrent vma expansions.
 				 */
-				spin_lock(&vma->vm_mm->page_table_lock);
+				spin_lock(&mm->page_table_lock);
 				if (vma->vm_flags & VM_LOCKED)
-					vma->vm_mm->locked_vm += grow;
-				vm_stat_account(vma->vm_mm, vma->vm_flags,
+					mm->locked_vm += grow;
+				vm_stat_account(mm, vma->vm_flags,
 						vma->vm_file, grow);
 				anon_vma_interval_tree_pre_update_vma(vma);
 				vma->vm_start = address;
 				vma->vm_pgoff -= grow;
 				anon_vma_interval_tree_post_update_vma(vma);
 				vma_gap_update(vma);
-				spin_unlock(&vma->vm_mm->page_table_lock);
+				spin_unlock(&mm->page_table_lock);
 
 				perf_event_mmap(vma);
 			}
@@ -2361,7 +2363,7 @@ int expand_downwards(struct vm_area_struct *vma,
 	}
 	anon_vma_unlock_write(vma->anon_vma);
 	khugepaged_enter_vma_merge(vma, vma->vm_flags);
-	validate_mm(vma->vm_mm);
+	validate_mm(mm);
 	return error;
 }
 
