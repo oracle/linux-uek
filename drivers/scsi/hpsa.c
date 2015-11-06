@@ -6702,7 +6702,7 @@ static int controller_reset_failed(struct CfgTable __iomem *cfgtable)
 /* This does a hard reset of the controller using PCI power management
  * states or the using the doorbell register.
  */
-static int hpsa_kdump_hard_reset_controller(struct pci_dev *pdev)
+static int hpsa_kdump_hard_reset_controller(struct pci_dev *pdev, u32 board_id)
 {
 	u64 cfg_offset;
 	u32 cfg_base_addr;
@@ -6713,7 +6713,6 @@ static int hpsa_kdump_hard_reset_controller(struct pci_dev *pdev)
 	int rc;
 	struct CfgTable __iomem *cfgtable;
 	u32 use_doorbell;
-	u32 board_id;
 	u16 command_register;
 
 	/* For controllers as old as the P600, this is very nearly
@@ -6729,11 +6728,6 @@ static int hpsa_kdump_hard_reset_controller(struct pci_dev *pdev)
 	 * using the doorbell register.
 	 */
 
-	rc = hpsa_lookup_board_id(pdev, &board_id);
-	if (rc < 0) {
-		dev_warn(&pdev->dev, "Board ID not found\n");
-		return rc;
-	}
 	if (!ctlr_is_resettable(board_id)) {
 		dev_warn(&pdev->dev, "Controller not resettable\n");
 		return -ENODEV;
@@ -7378,7 +7372,7 @@ static void hpsa_hba_inquiry(struct ctlr_info *h)
 	}
 }
 
-static int hpsa_init_reset_devices(struct pci_dev *pdev)
+static int hpsa_init_reset_devices(struct pci_dev *pdev, u32 board_id)
 {
 	int rc, i;
 	void __iomem *vaddr;
@@ -7414,7 +7408,7 @@ static int hpsa_init_reset_devices(struct pci_dev *pdev)
 	iounmap(vaddr);
 
 	/* Reset the controller with a PCI power-cycle or via doorbell */
-	rc = hpsa_kdump_hard_reset_controller(pdev);
+	rc = hpsa_kdump_hard_reset_controller(pdev, board_id);
 
 	/* -ENOTSUPP here means we cannot reset the controller
 	 * but it's already (and still) up and running in
@@ -7889,11 +7883,18 @@ static int hpsa_init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 	struct ctlr_info *h;
 	int try_soft_reset = 0;
 	unsigned long flags;
+	u32 board_id;
 
 	if (number_of_controllers == 0)
 		printk(KERN_INFO DRIVER_NAME "\n");
 
-	rc = hpsa_init_reset_devices(pdev);
+	rc = hpsa_lookup_board_id(pdev, &board_id);
+	if (rc < 0) {
+		dev_warn(&pdev->dev, "Board ID not found\n");
+		return rc;
+	}
+
+	rc = hpsa_init_reset_devices(pdev, board_id);
 	if (rc) {
 		if (rc != -ENOTSUPP)
 			return rc;
