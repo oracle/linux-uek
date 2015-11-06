@@ -6898,6 +6898,7 @@ static void fail_all_outstanding_cmds(struct ctlr_info *h)
 		if (refcount > 1) {
 			c->err_info->CommandStatus = CMD_CTLR_LOCKUP;
 			finish_cmd(c);
+			atomic_dec(&h->commands_outstanding);
 			failcount++;
 		}
 		cmd_free(h, c);
