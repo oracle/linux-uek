@@ -1,6 +1,7 @@
 #ifndef _LINUX_MM_TYPES_H
 #define _LINUX_MM_TYPES_H
 
+#include <linux/uek_kabi.h>
 #include <linux/auxvec.h>
 #include <linux/types.h>
 #include <linux/threads.h>
@@ -313,6 +314,12 @@ struct vm_area_struct {
 #ifdef CONFIG_NUMA
 	struct mempolicy *vm_policy;	/* NUMA policy for the VMA */
 #endif
+        /* Oracle inc use only 
+         * The following padding has been inserted before ABI freeze to
+         * allow extending the structure while preserving ABI.
+         */
+        UEK_KABI_RESERVED(1)
+        UEK_KABI_RESERVED(2)
 };
 
 struct core_thread {

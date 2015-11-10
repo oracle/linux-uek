@@ -22,6 +22,7 @@
 #include <linux/smp.h>
 #include <linux/rcupdate.h>
 #include <linux/percpu-refcount.h>
+#include <linux/uek_kabi.h>
 
 #include <asm/scatterlist.h>
 
@@ -307,6 +308,14 @@ struct queue_limits {
 	unsigned char		cluster;
 	unsigned char		discard_zeroes_data;
 	unsigned char		raid_partial_stripes_expensive;
+         /* Oracle inc use only
+          *
+          * The following padding has been inserted before ABI freeze to
+          * allow extending the structure while preserving ABI.
+          */
+
+        UEK_KABI_RESERVED(1)
+        UEK_KABI_RESERVED(2)
 };
 
 struct request_queue {
@@ -1613,6 +1622,12 @@ struct block_device_operations {
 	int (*getgeo)(struct block_device *, struct hd_geometry *);
 	/* this callback is with swap_lock and sometimes page table lock held */
 	void (*swap_slot_free_notify) (struct block_device *, unsigned long);
+         /* Oracle inc use only
+          *
+          * The following padding has been inserted before ABI freeze to
+          * allow extending the structure while preserving ABI.
+          */
+	int  (*uek_reserved1) (struct block_device *, unsigned long);
 	struct module *owner;
 };
 

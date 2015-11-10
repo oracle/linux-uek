@@ -7,6 +7,7 @@
 #include <linux/blkdev.h>
 #include <scsi/scsi.h>
 #include <linux/atomic.h>
+#include <linux/uek_kabi.h>
 
 struct device;
 struct request_queue;
@@ -197,6 +198,13 @@ struct scsi_device {
 
 	struct scsi_dh_data	*scsi_dh_data;
 	enum scsi_device_state sdev_state;
+         /* Oracle inc use only
+          *
+          * The following padding has been inserted before ABI freeze to
+          * allow extending the structure while preserving ABI.
+          */
+        UEK_KABI_RESERVED(1)
+        UEK_KABI_RESERVED(2)
 	unsigned long		sdev_data[0];
 } __attribute__((aligned(sizeof(unsigned long))));
 

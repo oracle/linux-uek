@@ -1,6 +1,8 @@
 #ifndef _SCSI_DISK_H
 #define _SCSI_DISK_H
 
+#include <linux/uek_kabi.h>
+
 /*
  * More than enough for everybody ;)  The huge number of majors
  * is a leftover from 16bit dev_t days, we don't really need that
@@ -93,6 +95,14 @@ struct scsi_disk {
 	unsigned	lbpvpd : 1;
 	unsigned	ws10 : 1;
 	unsigned	ws16 : 1;
+         /* Oracle inc use only
+          *
+          * The following padding has been inserted before ABI freeze to
+          * allow extending the structure while preserving ABI.
+          */
+
+        UEK_KABI_RESERVED(1)
+        UEK_KABI_RESERVED(2)
 };
 #define to_scsi_disk(obj) container_of(obj,struct scsi_disk,dev)
 
