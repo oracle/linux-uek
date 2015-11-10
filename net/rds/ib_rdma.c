@@ -320,10 +320,6 @@ static inline struct rds_ib_mr *rds_ib_reuse_fmr(struct rds_ib_mr_pool *pool)
 	clear_bit(CLEAN_LIST_BUSY_BIT, flag);
 	preempt_enable();
 	if (ibmr) {
-		if (pool->pool_type == RDS_IB_MR_8K_POOL)
-			rds_ib_stats_inc(s_ib_rdma_mr_8k_pool_reuse);
-		else
-			rds_ib_stats_inc(s_ib_rdma_mr_1m_pool_reuse);
 		spin_lock_bh(&pool->busy_lock);
 		list_add(&ibmr->pool_list, &pool->busy_list);
 		spin_unlock_bh(&pool->busy_lock);
