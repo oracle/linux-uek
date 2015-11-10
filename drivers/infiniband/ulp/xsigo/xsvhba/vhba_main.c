@@ -71,25 +71,25 @@ MODULE_VERSION(DRIVER_VERSION);
  ***********************************/
 
 int cmds_per_lun = 16;
-module_param(cmds_per_lun, int, S_IRWXU);
+module_param(cmds_per_lun, int, 0644);
 
 int vhba_multiple_q = 1;
-module_param(vhba_multiple_q, int, S_IRWXU);
+module_param(vhba_multiple_q, int, 0644);
 
 int vhba_max_transfer_size = VHBA_DEFAULT_TRANSFER_SIZE;
-module_param(vhba_max_transfer_size, int, S_IRWXU);
+module_param(vhba_max_transfer_size, int, 0644);
 
 int vhba_max_q_depth = VHBA_MAX_VH_Q_DEPTH;
-module_param(vhba_max_q_depth, int, S_IRWXU);
+module_param(vhba_max_q_depth, int, 0644);
 
 int vhba_debug = 0x200001;
 module_param(vhba_debug, int, 0644);
 
 int vhba_max_scsi_retry = VHBA_MAX_SCSI_RETRY;
-module_param(vhba_max_scsi_retry, int, S_IRWXU);
+module_param(vhba_max_scsi_retry, int, 0644);
 
 int vhba_default_scsi_timeout = VHBA_DEFAULT_SCSI_TIMEOUT;
-module_param(vhba_default_scsi_timeout, int, S_IRWXU);
+module_param(vhba_default_scsi_timeout, int, 0644);
 
 int vhba_wait_in_boot = 1;
 module_param(vhba_wait_in_boot, int, 0644);
