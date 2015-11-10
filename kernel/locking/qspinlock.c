@@ -338,6 +338,7 @@ queue:
 	 * p,*,* -> n,*,*
 	 */
 	old = xchg_tail(lock, tail);
+	next = NULL;
 
 	/*
 	 * if there was a previous node; link it and wait until reaching the
@@ -398,10 +399,12 @@ queue:
 	}
 
 	/*
-	 * contended path; wait for next, release.
+	 * contended path; wait for next if not observed yet, release.
 	 */
-	while (!(next = READ_ONCE(node->next)))
-		cpu_relax();
+	if (!next) {
+		while (!(next = READ_ONCE(node->next)))
+			cpu_relax();
+	}
 
 	arch_mcs_spin_unlock_contended(&next->locked);
 
