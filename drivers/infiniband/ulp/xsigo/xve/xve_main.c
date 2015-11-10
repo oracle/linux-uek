@@ -56,6 +56,10 @@ MODULE_PARM_DESC(send_queue_size, "Number of descriptors in send queue");
 module_param_named(recv_queue_size, xve_recvq_size, int, 0444);
 MODULE_PARM_DESC(recv_queue_size, "Number of descriptors in receive queue");
 
+int xve_max_send_cqe __read_mostly = MAX_SEND_CQE;
+module_param_named(max_send_cqe, xve_max_send_cqe, int, 0444);
+MODULE_PARM_DESC(max_send_cqe, "Threshold for polling send completion queue");
+
 static int napi_weight = 128;
 module_param(napi_weight, int, 0644);
 
@@ -98,8 +102,41 @@ int xve_do_arp = 1;
 module_param_named(do_arp, xve_do_arp, int, 0644);
 MODULE_PARM_DESC(do_arp, "Enable/Disable ARP for NIC MTU less than IB-MTU");
 
+int xve_ignore_hbeat_loss;
+module_param_named(ignore_hb_loss, xve_ignore_hbeat_loss, int, 0644);
+MODULE_PARM_DESC(ignore_hb_loss, "Ignore heart beat loss on edr based vNICs with uplink");
+
+int xve_enable_offload;
+module_param_named(enable_offload, xve_enable_offload, int, 0444);
+MODULE_PARM_DESC(enable_offload, "Enable stateless offload");
+
+unsigned long xve_tca_subnet;
+module_param(xve_tca_subnet, ulong, 0444);
+MODULE_PARM_DESC(xve_tca_subnet, "tca subnet prefix");
+
+unsigned long xve_tca_guid;
+module_param(xve_tca_guid, ulong, 0444);
+MODULE_PARM_DESC(xve_tca_guid, "TCA GUID");
+
+unsigned int xve_tca_data_qp;
+module_param(xve_tca_data_qp, uint, 0444);
+MODULE_PARM_DESC(xve_tca_data_qp, "tca data qp number");
+
+unsigned int xve_tca_pkey;
+module_param(xve_tca_pkey, uint, 0444);
+MODULE_PARM_DESC(xve_tca_pkey, "tca pkey");
+
+unsigned int xve_tca_qkey;
+module_param(xve_tca_qkey, uint, 0444);
+MODULE_PARM_DESC(xve_tca_qkey, "tca qkey");
+
+unsigned int xve_ud_mode;
+module_param(xve_ud_mode, uint, 0444);
+MODULE_PARM_DESC(xve_ud_mode, "Always use UD mode irrespective of xsmp.vnet_mode value");
+
 static void xve_send_msg_to_xsigod(xsmp_cookie_t xsmp_hndl, void *data,
 				   int len);
+static void path_free(struct net_device *netdev, struct xve_path *path);
 
 struct xve_path_iter {
 	struct net_device *dev;
@@ -148,9 +185,15 @@ int xve_open(struct net_device *netdev)
 	priv->counters[XVE_OPEN_COUNTER]++;
 
 	spin_lock_irqsave(&priv->lock, flags);
+	if (test_bit(XVE_VNIC_READY_PENDING, &priv->state)) {
+		spin_unlock_irqrestore(&priv->lock, flags);
+		return -EAGAIN;
+	}
 	set_bit(XVE_FLAG_ADMIN_UP, &priv->flags);
 	set_bit(XVE_OPER_UP, &priv->state);
 	set_bit(XVE_OS_ADMIN_UP, &priv->state);
+	if (xve_is_uplink(priv))
+		set_bit(XVE_GW_STATE_UP, &priv->state);
 	priv->port_speed = xve_calc_speed(priv);
 	spin_unlock_irqrestore(&priv->lock, flags);
 
@@ -192,6 +235,8 @@ static int xve_stop(struct net_device *netdev)
 
 	xve_ib_dev_down(netdev, 0);
 	xve_ib_dev_stop(netdev, 0);
+	xve_xsmp_send_oper_state(priv, priv->resource_id,
+			 XSMP_XVE_OPER_DOWN);
 
 	pr_info("XVE: %s Finished Stopping interface %s\n", __func__,
 		priv->xve_name);
@@ -289,6 +334,17 @@ static int xve_ioctl(struct net_device *netdev, struct ifreq *ifr, int cmd)
 	return ret;
 }
 
+inline void xve_get_path(struct xve_path *path)
+{
+	atomic_inc(&path->users);
+}
+
+inline void xve_put_path(struct xve_path *path)
+{
+	if (atomic_dec_and_test(&path->users))
+		path_free(path->dev, path);
+}
+
 struct xve_path *__path_find(struct net_device *netdev, void *gid)
 {
 	struct xve_dev_priv *priv = netdev_priv(netdev);
@@ -338,6 +394,7 @@ static int __path_add(struct net_device *netdev, struct xve_path *path)
 	rb_insert_color(&path->rb_node, &priv->path_tree);
 
 	list_add_tail(&path->list, &priv->path_list);
+	xve_get_path(path);
 
 	return 0;
 }
@@ -368,6 +425,9 @@ static void path_free(struct net_device *netdev, struct xve_path *path)
 	while ((skb = __skb_dequeue(&path->queue)))
 		dev_kfree_skb_irq(skb);
 
+	while ((skb = __skb_dequeue(&path->uplink_queue)))
+		dev_kfree_skb_irq(skb);
+
 	spin_lock_irqsave(&priv->lock, flags);
 	if (xve_cmtx_get(path)) {
 		spin_unlock_irqrestore(&priv->lock, flags);
@@ -390,12 +450,19 @@ static void xve_flood_all_paths(struct net_device *dev, struct sk_buff *skb)
 	struct xve_dev_priv *priv = netdev_priv(dev);
 	struct xve_path *path;
 	struct sk_buff *nskb;
+	int ret = 0;
 
 	list_for_each_entry(path, &priv->path_list, list) {
 		if (xve_cmtx_get(path) && xve_cm_up(path)) {
 			nskb = skb_clone(skb, GFP_ATOMIC);
-			if (nskb)
-				xve_cm_send(dev, nskb, xve_cmtx_get(path));
+			if (nskb) {
+				ret = xve_cm_send(dev, nskb,
+						xve_cmtx_get(path));
+				if (ret == NETDEV_TX_BUSY)
+					xve_warn(priv,
+						"send queue full so dropping packet %s\n",
+							priv->xve_name);
+			}
 		}
 	}
 }
@@ -464,7 +531,7 @@ void xve_flush_single_path_by_gid(struct net_device *dev, union ib_gid *gid)
 
 	wait_for_completion(&path->done);
 	list_del(&path->list);
-	path_free(dev, path);
+	xve_put_path(path);
 }
 
 void xve_flush_single_path(struct net_device *dev, struct xve_path *path)
@@ -480,9 +547,10 @@ static void path_rec_completion(int status,
 	struct xve_dev_priv *priv = netdev_priv(dev);
 	struct xve_ah *ah = NULL;
 	struct xve_ah *old_ah = NULL;
-	struct sk_buff_head skqueue;
+	struct sk_buff_head skqueue, uplink_skqueue;
 	struct sk_buff *skb;
 	unsigned long flags;
+	int ret;
 
 	if (!status) {
 		priv->counters[XVE_PATHREC_RESP_COUNTER]++;
@@ -496,12 +564,14 @@ static void path_rec_completion(int status,
 	}
 
 	skb_queue_head_init(&skqueue);
+	skb_queue_head_init(&uplink_skqueue);
 
 	if (!status) {
 		struct ib_ah_attr av;
 
 		if (!ib_init_ah_from_path(priv->ca, priv->port, pathrec, &av)) {
 			av.ah_flags = IB_AH_GRH;
+			av.grh.dgid = path->pathrec.dgid;
 			ah = xve_create_ah(dev, priv->pd, &av);
 		}
 	}
@@ -523,6 +593,8 @@ static void path_rec_completion(int status,
 
 		while ((skb = __skb_dequeue(&path->queue)))
 			__skb_queue_tail(&skqueue, skb);
+		while ((skb = __skb_dequeue(&path->uplink_queue)))
+			__skb_queue_tail(&uplink_skqueue, skb);
 		path->valid = 1;
 	}
 
@@ -535,15 +607,28 @@ static void path_rec_completion(int status,
 		xve_put_ah(old_ah);
 
 	while ((skb = __skb_dequeue(&skqueue))) {
-		skb->dev = dev;
+		if (xve_is_edr(priv)) {
+			skb_pull(skb, sizeof(struct xve_eoib_hdr));
+			skb_reset_mac_header(skb);
+		}
 		if (dev_queue_xmit(skb)) {
 			xve_warn(priv,
-				 "dev_queue_xmit failed to requeue pkt for %s\n",
-				 priv->xve_name);
+				"dev_queue_xmit failed to requeue pkt for %s\n",
+				priv->xve_name);
 		} else {
 			xve_test("%s Succefully completed path for %s\n",
 				 __func__, priv->xve_name);
 		}
+	}
+	while ((skb = __skb_dequeue(&uplink_skqueue))) {
+		skb->dev = dev;
+		xve_get_ah_refcnt(path->ah);
+		/* Sending the queued GATEWAY Packet */
+		ret = xve_send(dev, skb, path->ah, priv->gw.t_data_qp, 1);
+		if (ret == NETDEV_TX_BUSY) {
+			xve_warn(priv, "send queue full full, dropping packet for %s\n",
+					priv->xve_name);
+			}
 	}
 }
 
@@ -562,6 +647,7 @@ static struct xve_path *path_rec_create(struct net_device *dev, void *gid)
 	path->dev = dev;
 
 	skb_queue_head_init(&path->queue);
+	skb_queue_head_init(&path->uplink_queue);
 
 	INIT_LIST_HEAD(&path->fwt_list);
 
@@ -621,45 +707,180 @@ static int path_rec_start(struct net_device *dev, struct xve_path *path)
 		xve_warn(priv, "ib_sa_path_rec_get failed: %d for %s\n",
 			 path->query_id, priv->xve_name);
 		path->query = NULL;
-		complete(&path->done);
+		complete_all(&path->done);
 		return path->query_id;
 	}
 	priv->counters[XVE_PATHREC_QUERY_COUNTER]++;
 	return 0;
 }
 
-static void xve_path_lookup(struct sk_buff *skb, struct net_device *dev,
-			    struct xve_fwt_entry *fwt_entry, int *ok)
+inline struct xve_path*
+xve_fwt_get_path(struct xve_fwt_entry *fwt)
+{
+	if (!fwt->path)
+		return NULL;
+
+	xve_get_path(fwt->path);
+	return fwt->path;
+}
+
+struct xve_path*
+xve_find_path_by_gid(struct xve_dev_priv *priv,
+		union ib_gid *gid)
+{
+	struct xve_path *path;
+
+	path = __path_find(priv->netdev, gid->raw);
+	if (!path) {
+		xve_debug(DEBUG_TABLE_INFO, priv, "%s Unable to find path\n",
+			  __func__);
+		path = path_rec_create(priv->netdev, gid->raw);
+		if (!path)
+			return NULL;
+		__path_add(priv->netdev, path);
+	}
+	xve_get_path(path);
+
+	return path;
+}
+
+static struct xve_path*
+xve_path_lookup(struct net_device *dev,
+			struct xve_fwt_entry *fwt_entry)
 {
 	struct xve_dev_priv *priv = netdev_priv(dev);
 	struct xve_fwt_s *xve_fwt = &priv->xve_fwt;
 	struct xve_path *path;
 	unsigned long flags = 0;
 
-	path = __path_find(dev, fwt_entry->dgid.raw);
-	if (!path) {
-		xve_debug(DEBUG_TABLE_INFO, priv, "%s Unable to find path\n",
-			  __func__);
-		path = path_rec_create(dev, fwt_entry->dgid.raw);
-		if (!path)
-			goto err_drop;
-		__path_add(dev, path);
-	}
-
 	xve_debug(DEBUG_TABLE_INFO, priv, "%s Adding  FWT to list %p\n",
 		  __func__, fwt_entry);
+	path = xve_find_path_by_gid(priv, &fwt_entry->dgid);
+	if (!path)
+		return NULL;
+
 	spin_lock_irqsave(&xve_fwt->lock, flags);
 	fwt_entry->path = path;
 	list_add_tail(&fwt_entry->list, &path->fwt_list);
 	spin_unlock_irqrestore(&xve_fwt->lock, flags);
 	if (!path->ah) {
-		if (!path->query && path_rec_start(dev, path))
-			goto err_drop;
+		if (!path->query && path_rec_start(dev, path)) {
+			xve_put_path(path);
+			return NULL;
+		}
 	}
-	*ok = 1;
-	return;
-err_drop:
-	*ok = 0;
+
+	return path;
+}
+
+struct xve_path *
+xve_get_gw_path(struct net_device *dev)
+{
+	struct xve_dev_priv *priv = netdev_priv(dev);
+	struct xve_path	*path;
+
+	if (!priv->gw.t_data_qp)
+		return NULL;
+
+	path = xve_find_path_by_gid(priv, &priv->gw.t_gid);
+
+	if (!path->ah && !path->query)
+		path_rec_start(priv->netdev, path);
+
+	return path;
+}
+
+int xve_gw_send(struct net_device *dev, struct sk_buff *skb)
+{
+	struct xve_dev_priv *priv = netdev_priv(dev);
+	struct xve_gw_info *gwp = &priv->gw;
+	struct xve_path	*path;
+	int ret = NETDEV_TX_OK;
+
+	path = xve_get_gw_path(dev);
+	if (!path)
+		return NETDEV_TX_BUSY;
+
+	if (path->ah) {
+		xve_dbg_data(priv, "Sending unicast copy to gw ah:%p dqpn:%u\n",
+				path->ah, gwp->t_data_qp);
+		xve_get_ah_refcnt(path->ah);
+		/* Sending Packet to GATEWAY */
+		ret = xve_send(dev, skb, path->ah, priv->gw.t_data_qp, 1);
+	} else if (skb_queue_len(&path->uplink_queue) <
+			XVE_MAX_PATH_REC_QUEUE) {
+		xve_dbg_data(priv, "gw ah not found - queue len: %u\n",
+				skb_queue_len(&path->uplink_queue));
+		priv->counters[XVE_TX_QUEUE_PKT]++;
+		__skb_queue_tail(&path->uplink_queue, skb);
+	} else {
+		xve_dbg_data(priv,
+			"No path found to gw - droping the unicast packet\n");
+		dev_kfree_skb_any(skb);
+		INC_TX_DROP_STATS(priv, dev);
+		goto out;
+	}
+	priv->counters[XVE_GW_MCAST_TX]++;
+
+out:
+	xve_put_path(path);
+	return ret;
+}
+
+int xve_add_eoib_header(struct xve_dev_priv *priv, struct sk_buff *skb)
+{
+	struct xve_eoib_hdr *eoibp;
+	int len = sizeof(*eoibp);
+
+	if (skb_headroom(skb) < len) {
+		struct sk_buff *skb_new;
+
+		skb_new = skb_realloc_headroom(skb, len);
+		if (!skb_new)
+			return -1;
+
+		kfree_skb(skb);
+		skb = skb_new;
+	}
+	eoibp = (struct xve_eoib_hdr *) skb_push(skb, len);
+
+	skb_set_mac_header(skb, len);
+	if (!xve_enable_offload) {
+		eoibp->magic = cpu_to_be16(XVE_EOIB_MAGIC);
+		eoibp->tss_mask_sz = 0;
+		return 0;
+	}
+	/* encap_data = (VNIC_EOIB_HDR_VER << 4) | (VNIC_EOIB_HDR_SIG << 6)
+		From net/ethernet/mellanox/mlx4_vnic/vnic_data_tx.c */
+	eoibp->encap_data = 0x3 << 6;
+	eoibp->seg_off = eoibp->seg_id = 0;
+#define VNIC_EOIB_HDR_UDP_CHK_OK        0x2
+#define VNIC_EOIB_HDR_TCP_CHK_OK        0x1
+#define VNIC_EOIB_HDR_IP_CHK_OK         0x1
+
+#define VNIC_EOIB_HDR_SET_IP_CHK_OK(eoib_hdr)   (eoib_hdr->encap_data = \
+		(eoib_hdr->encap_data & 0xFC) | VNIC_EOIB_HDR_IP_CHK_OK)
+#define VNIC_EOIB_HDR_SET_TCP_CHK_OK(eoib_hdr)  (eoib_hdr->encap_data = \
+		(eoib_hdr->encap_data & 0xF3) | (VNIC_EOIB_HDR_TCP_CHK_OK << 2))
+#define VNIC_EOIB_HDR_SET_UDP_CHK_OK(eoib_hdr)  (eoib_hdr->encap_data = \
+		(eoib_hdr->encap_data & 0xF3) | (VNIC_EOIB_HDR_UDP_CHK_OK << 2))
+
+	switch (ntohs(skb->protocol)) {
+	case ETH_P_IP: {
+		struct iphdr *ip_h = ip_hdr(skb);
+
+		VNIC_EOIB_HDR_SET_IP_CHK_OK(eoibp);
+		if (ip_h->protocol == IPPROTO_TCP)
+			VNIC_EOIB_HDR_SET_TCP_CHK_OK(eoibp);
+		else if (ip_h->protocol == IPPROTO_UDP)
+			VNIC_EOIB_HDR_SET_UDP_CHK_OK(eoibp);
+		break;
+	}
+
+	case ETH_P_IPV6:
+		break;
+	}
+	return 0;
 }
 
 static int xve_start_xmit(struct sk_buff *skb, struct net_device *dev)
@@ -667,17 +888,15 @@ static int xve_start_xmit(struct sk_buff *skb, struct net_device *dev)
 	struct sk_buff *bcast_skb = NULL;
 	struct xve_dev_priv *priv = netdev_priv(dev);
 	struct xve_fwt_entry *fwt_entry = NULL;
-	struct xve_path *path;
+	struct xve_path *path = NULL;
 	unsigned long flags;
 	int ret = NETDEV_TX_OK, len = 0;
-	char *smac;
 	u8 skb_need_tofree = 0, inc_drop_cnt = 0, queued_pkt = 0;
 	u16 vlan_tag = 0;
 
 	spin_lock_irqsave(&priv->lock, flags);
 	if (!test_bit(XVE_OPER_UP, &priv->state)) {
 		ret = NETDEV_TX_BUSY;
-		inc_drop_cnt = 1;
 		priv->counters[XVE_TX_DROP_OPER_DOWN_COUNT]++;
 		goto unlock;
 	}
@@ -687,27 +906,34 @@ static int xve_start_xmit(struct sk_buff *skb, struct net_device *dev)
 		if (skb_padto(skb, XVE_MIN_PACKET_LEN)) {
 			inc_drop_cnt = 1;
 			priv->counters[XVE_TX_SKB_ALLOC_ERROR_COUNTER]++;
-			ret = NETDEV_TX_BUSY;
+			ret = NETDEV_TX_OK;
 			goto unlock;
 		}
 		skb->len = XVE_MIN_PACKET_LEN;
 	}
 
-	len = skb->len;
-	smac = skb->data + ETH_ALEN;
-
+	skb_reset_mac_header(skb);
 	if (xg_vlan_tx_tag_present(skb))
 		vlan_get_tag(skb, &vlan_tag);
 
-	fwt_entry = xve_fwt_lookup(&priv->xve_fwt, skb->data, vlan_tag, 0);
+	if (xve_is_edr(priv) &&
+			xve_add_eoib_header(priv, skb)) {
+		skb_need_tofree = inc_drop_cnt = 1;
+		priv->counters[XVE_TX_DROP_OPER_DOWN_COUNT]++;
+		goto unlock;
+	}
+	len = skb->len;
+
+	fwt_entry = xve_fwt_lookup(&priv->xve_fwt, eth_hdr(skb)->h_dest,
+			vlan_tag, 0);
 	if (!fwt_entry) {
-		if (is_multicast_ether_addr(skb->data)) {
-			xve_mcast_send(dev, (void *)priv->bcast_mgid.raw, skb);
+		if (is_multicast_ether_addr(eth_hdr(skb)->h_dest)) {
+			ret = xve_mcast_send(dev,
+					(void *)priv->bcast_mgid.raw, skb);
 			priv->counters[XVE_TX_MCAST_PKT]++;
 			goto stats;
 		} else {
 			/*
-			 * XXX Viswa Need to change this
 			 * Since this is a unicast packet and we do not have
 			 * an L2 table entry
 			 * We need to do the following
@@ -721,23 +947,23 @@ static int xve_start_xmit(struct sk_buff *skb, struct net_device *dev)
 			 * Do not ARP if if user does not want to for less
 			 * than IB-MTU
 			 */
-			if (xve_do_arp
+			if (!xve_is_edr(priv) && (xve_do_arp
 			    || (priv->netdev->mtu >
-				XVE_UD_MTU(priv->max_ib_mtu)))
+				XVE_UD_MTU(priv->max_ib_mtu))))
 
 				bcast_skb = xve_generate_query(priv, skb);
-			if (bcast_skb != NULL)
-				xve_mcast_send(dev,
-					       (void *)priv->bcast_mgid.raw,
-					       bcast_skb);
+				if (bcast_skb != NULL)
+					ret = xve_mcast_send(dev,
+						       (void *)priv->bcast_mgid.
+						       raw, bcast_skb);
 			/*
 			 * Now send the original packet also to over broadcast
 			 * Later add counters for flood mode
 			 */
-			if (len < XVE_UD_MTU(priv->max_ib_mtu)) {
-				xve_mcast_send(dev,
-					       (void *)priv->bcast_mgid.raw,
-					       skb);
+			if (xve_is_edr(priv) ||
+					len < XVE_UD_MTU(priv->max_ib_mtu)) {
+				ret = xve_mcast_send(dev,
+				       (void *)priv->bcast_mgid.raw, skb);
 				priv->counters[XVE_TX_MCAST_FLOOD_UD]++;
 			} else {
 				if (xve_flood_rc) {
@@ -756,20 +982,18 @@ static int xve_start_xmit(struct sk_buff *skb, struct net_device *dev)
 		}
 	}
 
-	if (!fwt_entry->path) {
-		int ok;
-
+	path = xve_fwt_get_path(fwt_entry);
+	if (!path) {
 		priv->counters[XVE_PATH_NOT_FOUND]++;
 		xve_debug(DEBUG_SEND_INFO, priv,
 			  "%s Unable to find neigbour doing a path lookup\n",
 			  __func__);
-		xve_path_lookup(skb, dev, fwt_entry, &ok);
-		if (!ok) {
+		path = xve_path_lookup(dev, fwt_entry);
+		if (!path) {
 			skb_need_tofree = inc_drop_cnt = 1;
 			goto free_fwt_ctx;
 		}
 	} else {
-		path = fwt_entry->path;
 		if (!path->ah) {
 			priv->counters[XVE_AH_NOT_FOUND]++;
 			xve_debug(DEBUG_SEND_INFO, priv,
@@ -782,11 +1006,9 @@ static int xve_start_xmit(struct sk_buff *skb, struct net_device *dev)
 		}
 	}
 
-	path = fwt_entry->path;
-
 	if (xve_cmtx_get(path)) {
 		if (xve_cm_up(path)) {
-			xve_cm_send(dev, skb, xve_cmtx_get(path));
+			ret = xve_cm_send(dev, skb, xve_cmtx_get(path));
 			update_cm_tx_rate(xve_cmtx_get(path), len);
 			priv->counters[XVE_TX_RC_COUNTER]++;
 			goto stats;
@@ -794,7 +1016,8 @@ static int xve_start_xmit(struct sk_buff *skb, struct net_device *dev)
 	} else if (path->ah) {
 		xve_debug(DEBUG_SEND_INFO, priv, "%s path ah is %p\n",
 			  __func__, path->ah);
-		xve_send(dev, skb, path->ah, fwt_entry->dqpn);
+		xve_get_ah_refcnt(path->ah);
+		ret = xve_send(dev, skb, path->ah, fwt_entry->dqpn, 0);
 		priv->counters[XVE_TX_UD_COUNTER]++;
 		goto stats;
 	}
@@ -815,6 +1038,8 @@ stats:
 	INC_TX_BYTE_STATS(priv, dev, len);
 	priv->counters[XVE_TX_COUNTER]++;
 free_fwt_ctx:
+	if (path)
+		xve_put_path(path);
 	xve_fwt_put_ctx(&priv->xve_fwt, fwt_entry);
 unlock:
 	if (inc_drop_cnt)
@@ -849,21 +1074,21 @@ int xve_dev_init(struct net_device *dev, struct ib_device *ca, int port)
 	struct xve_dev_priv *priv = netdev_priv(dev);
 
 	/* Allocate RX/TX "rings" to hold queued skbs */
-	priv->rx_ring = kcalloc(xve_recvq_size, sizeof(*priv->rx_ring),
+	priv->rx_ring = kcalloc(priv->xve_recvq_size, sizeof(*priv->rx_ring),
 				GFP_KERNEL);
 	if (!priv->rx_ring) {
 		pr_warn("%s: failed to allocate RX ring (%d entries)\n",
-			ca->name, xve_recvq_size);
+			ca->name, priv->xve_recvq_size);
 		goto out;
 	}
 
-	priv->tx_ring = vmalloc(xve_sendq_size * sizeof(*priv->tx_ring));
+	priv->tx_ring = vmalloc(priv->xve_sendq_size * sizeof(*priv->tx_ring));
 	if (!priv->tx_ring) {
 		pr_warn("%s: failed to allocate TX ring (%d entries)\n",
-			ca->name, xve_sendq_size);
+			ca->name, priv->xve_sendq_size);
 		goto out_rx_ring_cleanup;
 	}
-	memset(priv->tx_ring, 0, xve_sendq_size * sizeof(*priv->tx_ring));
+	memset(priv->tx_ring, 0, priv->xve_sendq_size * sizeof(*priv->tx_ring));
 
 	/* priv->tx_head, tx_tail & tx_outstanding are already 0 */
 
@@ -1001,7 +1226,7 @@ void handle_carrier_state(struct xve_dev_priv *priv, char state)
 struct sk_buff *xve_generate_query(struct xve_dev_priv *priv,
 				   struct sk_buff *skb)
 {
-	struct vlan_ethhdr *veth = (struct vlan_ethhdr *)(skb->data);
+	struct vlan_ethhdr *veth = vlan_eth_hdr(skb);
 
 	if ((xg_vlan_tx_tag_present(skb)
 	     && veth->h_vlan_encapsulated_proto == htons(ETH_P_IP))
@@ -1046,7 +1271,7 @@ struct sk_buff *xve_create_arp(struct xve_dev_priv *priv,
 		struct vlan_ethhdr *veth;
 
 		vlan_get_tag(skb_pkt, &vlan_tci);
-		veth = (struct vlan_ethhdr *)(skb->data);
+		veth = vlan_eth_hdr(skb);
 		veth->h_vlan_proto = htons(ETH_P_8021Q);
 		/* now, the TCI */
 		veth->h_vlan_TCI = htons(vlan_tci);
@@ -1176,7 +1401,7 @@ struct sk_buff *xve_create_ndp(struct xve_dev_priv *priv,
 		struct vlan_ethhdr *veth;
 
 		vlan_get_tag(skb_pkt, &vlan_tci);
-		veth = (struct vlan_ethhdr *)(skb->data);
+		veth = vlan_eth_hdr(skb);
 		veth->h_vlan_proto = htons(ETH_P_8021Q);
 		/* now, the TCI */
 		veth->h_vlan_TCI = htons(vlan_tci);
@@ -1284,9 +1509,6 @@ int xve_send_hbeat(struct xve_dev_priv *priv)
 	skb->protocol = htons(ETH_P_RARP);
 
 	ret = xve_start_xmit(skb, priv->netdev);
-	if (ret)
-		dev_kfree_skb_any(skb);
-
 	return 0;
 }
 
@@ -1370,7 +1592,23 @@ static int xve_state_machine(struct xve_dev_priv *priv)
 	if (test_bit(XVE_OPER_UP, &priv->state) &&
 	    test_bit(XVE_OS_ADMIN_UP, &priv->state) &&
 	    !test_bit(XVE_DELETING, &priv->state)) {
+		/* Heart beat loss */
+		if (xve_is_uplink(priv) &&
+			!xve_ignore_hbeat_loss &&
+			time_after(jiffies, (unsigned long)priv->last_hbeat +
+				XVE_HBEAT_LOSS_THRES*priv->hb_interval)) {
+			unsigned long flags = 0;
 
+			xve_warn(priv, "Heart Beat Loss: %lu:%lu\n", jiffies,
+				(unsigned long)priv->last_hbeat +
+				3*priv->hb_interval*HZ);
+
+			xve_flush_paths(priv->netdev);
+			spin_lock_irqsave(&priv->lock, flags);
+			xve_set_oper_down(priv);
+			set_bit(XVE_HBEAT_LOST, &priv->state);
+			spin_unlock_irqrestore(&priv->lock, flags);
+		}
 		priv->counters[XVE_STATE_MACHINE_UP]++;
 		if (!test_bit(XVE_OPER_REP_SENT, &priv->state))
 			(void)xve_xsmp_handle_oper_req(priv->xsmp_hndl,
@@ -1392,7 +1630,8 @@ static int xve_state_machine(struct xve_dev_priv *priv)
 
 		if (priv->send_hbeat_flag) {
 			poll_tx(priv);
-			xve_send_hbeat(priv);
+			if (xve_is_ovn(priv))
+				xve_send_hbeat(priv);
 		}
 		priv->send_hbeat_flag = 1;
 	}
@@ -1478,7 +1717,46 @@ static void xve_set_netdev(struct net_device *dev)
 	INIT_DELAYED_WORK(&priv->mcast_leave_task, xve_mcast_leave_task);
 	INIT_DELAYED_WORK(&priv->mcast_join_task, xve_mcast_join_task);
 	INIT_DELAYED_WORK(&priv->stale_task, xve_cm_stale_task);
+}
 
+void
+xve_set_ovn_features(struct xve_dev_priv *priv)
+{
+	priv->netdev->features |=
+	    NETIF_F_HIGHDMA | NETIF_F_GRO;
+
+	if (!xve_no_tx_checksum_offload) {
+		priv->netdev->features |= NETIF_F_IP_CSUM;
+		set_bit(XVE_FLAG_CSUM, &priv->flags);
+	}
+
+	if (priv->lro_mode && lro) {
+		priv->netdev->features |= NETIF_F_LRO;
+		xve_lro_setup(priv);
+	} else {
+		priv->lro_mode = 0;
+	}
+}
+
+void
+xve_set_edr_features(struct xve_dev_priv *priv)
+{
+	priv->netdev->hw_features =
+		NETIF_F_HIGHDMA | NETIF_F_SG | NETIF_F_GRO;
+
+	if (xve_enable_offload) {
+		if (priv->hca_caps & IB_DEVICE_UD_IP_CSUM)
+			priv->netdev->hw_features |=
+				NETIF_F_IP_CSUM | NETIF_F_RXCSUM;
+
+		if (priv->hca_caps & IB_DEVICE_UD_TSO)
+			priv->netdev->hw_features |= NETIF_F_TSO;
+
+	}
+	priv->netdev->features |= priv->netdev->hw_features;
+
+	/* Reserve extra space for EoIB header */
+	priv->netdev->hard_header_len += sizeof(struct xve_eoib_hdr);
 }
 
 int xve_set_dev_features(struct xve_dev_priv *priv, struct ib_device *hca)
@@ -1487,43 +1765,27 @@ int xve_set_dev_features(struct xve_dev_priv *priv, struct ib_device *hca)
 	int result = -ENOMEM;
 
 	priv->netdev->watchdog_timeo = 1000 * HZ;
-	priv->netdev->tx_queue_len = xve_sendq_size * 2;
-	priv->netdev->features |=
-	    NETIF_F_HIGHDMA | NETIF_F_SG | NETIF_F_IP_CSUM;
-	set_bit(XVE_FLAG_CSUM, &priv->flags);
+	priv->netdev->tx_queue_len = priv->xve_sendq_size * 2;
 
-	if (lro)
-		priv->lro_mode = 1;
-	/* 1 -RC , 2 -UD */
-	if (priv->vnet_mode == 1) {
+	priv->lro_mode = 1;
+	if (priv->vnet_mode == XVE_VNET_MODE_RC) {
 		pr_info("XVE: %s Setting RC mode for %s\n", __func__,
 			priv->xve_name);
 		strcpy(priv->mode, "connected(RC)");
-		/* Turn off checksum offload If the module parameter is set */
-		/* TBD if the chassis sends a CHECK SUM BIT */
-		if (xve_no_tx_checksum_offload) {
-			priv->netdev->features &= ~NETIF_F_IP_CSUM;
-			clear_bit(XVE_FLAG_CSUM, &priv->flags);
-		}
-
 		set_bit(XVE_FLAG_ADMIN_CM, &priv->flags);
-		priv->netdev->features &= ~(NETIF_F_TSO | NETIF_F_SG);
-		priv->tx_wr.send_flags &= ~IB_SEND_IP_CSUM;
 		priv->cm_supported = 1;
-	} else {		/* UD */
-		/* MTU will be reset when mcast join happens */
+	} else {/* UD */
+		pr_info("XVE: %s Setting UD mode for %s\n", __func__,
+			priv->xve_name);
 		strcpy(priv->mode, "datagram(UD)");
+
+		/* MTU will be reset when mcast join happens */
 		if (priv->netdev->mtu > XVE_UD_MTU(priv->max_ib_mtu))
 			priv->netdev->mtu = XVE_UD_MTU(priv->max_ib_mtu);
-		priv->lro_mode = 1;
-		priv->cm_supported = 0;
-
+		priv->lro_mode = 0;
 	}
+
 	priv->mcast_mtu = priv->admin_mtu = priv->netdev->mtu;
-
-	if (priv->lro_mode)
-		priv->netdev->features |= NETIF_F_LRO;
-
 	xg_setup_pseudo_device(priv->netdev, hca);
 
 	SET_NETDEV_OPS(priv->netdev, &xve_netdev_ops);
@@ -1531,7 +1793,6 @@ int xve_set_dev_features(struct xve_dev_priv *priv, struct ib_device *hca)
 	netif_napi_add(priv->netdev, &priv->napi, xve_poll, napi_weight);
 	if (xve_esx_preregister_setup(priv->netdev))
 		return -EINVAL;
-	xve_lro_setup(priv);
 
 	xve_set_netdev(priv->netdev);
 
@@ -1539,20 +1800,25 @@ int xve_set_dev_features(struct xve_dev_priv *priv, struct ib_device *hca)
 
 	if (!device_attr) {
 		pr_warn("%s: allocation of %zu bytes failed\n",
-			hca->name, sizeof(*device_attr));
+				hca->name, sizeof(*device_attr));
 		return result;
 	}
 
 	result = ib_query_device(hca, device_attr);
 	if (result) {
 		pr_warn("%s: ib_query_device failed (ret = %d)\n",
-			hca->name, result);
+				hca->name, result);
 		kfree(device_attr);
 		return result;
 	}
 	priv->hca_caps = device_attr->device_cap_flags;
-
 	kfree(device_attr);
+
+	xve_lro_setup(priv);
+	if (xve_is_ovn(priv))
+		xve_set_ovn_features(priv);
+	else
+		xve_set_edr_features(priv);
 
 	return 0;
 }
@@ -1720,7 +1986,7 @@ int xve_xsmp_send_oper_state(struct xve_dev_priv *priv, u64 vid, int state)
 	return ret;
 }
 
-static void xve_set_oper_up_state(struct xve_dev_priv *priv)
+void xve_set_oper_up_state(struct xve_dev_priv *priv)
 {
 	unsigned long flags = 0;
 
@@ -1750,6 +2016,7 @@ static int handle_admin_state_change(struct xve_dev_priv *priv,
 			  __func__, priv->xve_name);
 		if (test_bit(XVE_CHASSIS_ADMIN_UP, &priv->state)) {
 			priv->counters[XVE_ADMIN_DOWN_COUNTER]++;
+			netif_carrier_off(priv->netdev);
 			clear_bit(XVE_CHASSIS_ADMIN_UP, &priv->state);
 			set_bit(XVE_SEND_ADMIN_STATE, &priv->state);
 		}
@@ -1795,13 +2062,55 @@ static int xve_xsmp_send_ack(struct xve_dev_priv *priv,
 	xmsgp->code = 0;
 	xmsgp->vn_mtu = cpu_to_be16(priv->admin_mtu);
 	xmsgp->net_id = cpu_to_be32(priv->net_id);
-	pr_info("XVE: %s ACK back with admin mtu ", __func__);
+	if (priv->vnic_type != XSMP_XCM_OVN) {
+		xmsgp->hca_subnet_prefix =
+			cpu_to_be64(priv->local_gid.global.subnet_prefix);
+		xmsgp->hca_ctrl_qp = 0;
+		xmsgp->hca_data_qp = cpu_to_be32(priv->qp->qp_num);
+		xmsgp->hca_qkey = cpu_to_be32(priv->qkey);
+		xmsgp->hca_pkey = cpu_to_be16(priv->pkey);
+		xmsgp->tca_subnet_prefix =
+			cpu_to_be64(priv->gw.t_gid.global.subnet_prefix);
+		xmsgp->tca_guid =
+			cpu_to_be64(priv->gw.t_gid.global.interface_id);
+		xmsgp->tca_ctrl_qp = cpu_to_be32(priv->gw.t_ctrl_qp);
+		xmsgp->tca_data_qp = cpu_to_be32(priv->gw.t_data_qp);
+		xmsgp->tca_pkey = cpu_to_be16(priv->gw.t_pkey);
+		xmsgp->tca_qkey = cpu_to_be16(priv->gw.t_qkey);
+	}
+	pr_info("XVE: %s ACK back with admin mtu ",  __func__);
 	pr_info("%d for %s", xmsgp->vn_mtu, priv->xve_name);
 	pr_info("[netid %d ]\n", xmsgp->net_id);
 
 	memcpy(msg + sizeof(*m_header), xmsgp, sizeof(*xmsgp));
 
 	return xve_xsmp_send_msg(xsmp_hndl, msg, total_len);
+}
+
+static void
+xve_update_gw_info(struct xve_dev_priv *priv, struct xve_xsmp_msg *xmsgp)
+{
+	struct xve_gw_info *gwp = &priv->gw;
+
+	gwp->t_gid.global.subnet_prefix =
+		xve_tca_subnet ? cpu_to_be64(xve_tca_subnet) :
+		xmsgp->tca_subnet_prefix;
+
+	gwp->t_gid.global.interface_id =
+		xve_tca_guid ? cpu_to_be64(xve_tca_guid) :
+		xmsgp->tca_guid;
+	gwp->t_ctrl_qp = be32_to_cpu(xmsgp->tca_ctrl_qp);
+	gwp->t_data_qp = xve_tca_data_qp ? (xve_tca_data_qp)
+		: be32_to_cpu(xmsgp->tca_data_qp);
+	gwp->t_pkey = xve_tca_pkey ? (xve_tca_pkey)
+		: be16_to_cpu(xmsgp->tca_pkey);
+	gwp->t_qkey = xve_tca_qkey ? (xve_tca_qkey)
+		: be16_to_cpu(xmsgp->tca_qkey);
+	xve_dbg_ctrl(priv, "GW INFO gid:%pI6, lid: %hu\n",
+			&gwp->t_gid.raw, be32_to_cpu(xmsgp->tca_lid));
+	xve_dbg_ctrl(priv, "qpn: %u, pkey: 0x%x, qkey: 0x%x\n",
+			gwp->t_data_qp, gwp->t_pkey,
+			gwp->t_qkey);
 }
 
 /*
@@ -1819,13 +2128,14 @@ static int xve_xsmp_install(xsmp_cookie_t xsmp_hndl, struct xve_xsmp_msg *xmsgp,
 	int result = -ENOMEM;
 	struct ib_device *hca;
 	u8 port;
+	__be16 pkey_be;
 	__be32 net_id_be;
 	u8 ecode = 0;
 
 	if (xve_check_for_hca(xsmp_hndl) != 0) {
 		pr_info("Warning !!!!! Unsupported HCA card for xve ");
 		pr_info("interface - %s XSF feature is only ", xmsgp->xve_name);
-		pr_info("supported on Connect-X HCA cards !!!!!!!");
+		pr_info("supported on Connect-X and PSIF HCA cards !!!!!!!");
 		ret = -EEXIST;
 		goto dup_error;
 	}
@@ -1869,11 +2179,12 @@ static int xve_xsmp_install(xsmp_cookie_t xsmp_hndl, struct xve_xsmp_msg *xmsgp,
 	}
 
 	netdev =
-	    alloc_netdev(sizeof(*priv), xve_name, NET_NAME_UNKNOWN, &xve_setup);
+		alloc_netdev(sizeof(*priv), xve_name, NET_NAME_UNKNOWN,
+				&xve_setup);
 	if (netdev == NULL) {
 		XSMP_ERROR("%s: alloc_netdev error name: %s, VID=0x%llx\n",
-			   __func__, xmsgp->xve_name,
-			   be64_to_cpu(xmsgp->resource_id));
+				__func__, xmsgp->xve_name,
+				be64_to_cpu(xmsgp->resource_id));
 		ret = -ENOMEM;
 		ecode = XVE_NACK_ALLOCATION_ERROR;
 		goto dup_error;
@@ -1882,23 +2193,70 @@ static int xve_xsmp_install(xsmp_cookie_t xsmp_hndl, struct xve_xsmp_msg *xmsgp,
 
 	pr_info("XVE: %s Installing xve %s - ", __func__, xmsgp->xve_name);
 	pr_info("resource id %llx", be64_to_cpu(xmsgp->resource_id));
-	pr_info("priv DS %p\n", priv);
+	pr_info("priv DS %p\n",  priv);
 
 	xcpm_get_xsmp_session_info(xsmp_hndl, &priv->xsmp_info);
 	hca = priv->xsmp_info.ib_device;
 	port = xscore_port_num(priv->xsmp_info.port);
 	/* Parse PVI parameters */
-	priv->vnet_mode = (xmsgp->vnet_mode);
+	priv->vnet_mode = xve_ud_mode ? XVE_VNET_MODE_UD :
+		(xmsgp->vnet_mode);
 	priv->net_id = be32_to_cpu(xmsgp->net_id);
 	priv->netdev->mtu = be16_to_cpu(xmsgp->vn_mtu);
 	priv->resource_id = be64_to_cpu(xmsgp->resource_id);
 	priv->mp_flag = be16_to_cpu(xmsgp->mp_flag);
+	priv->install_flag = be32_to_cpu(xmsgp->install_flag);
 	priv->xsmp_hndl = xsmp_hndl;
 	priv->sm_delay = 1000;
 	priv->aging_delay = xve_aging_timeout * HZ;
 	strcpy(priv->xve_name, xmsgp->xve_name);
 	strcpy(priv->proc_name, priv->xve_name);
 	net_id_be = cpu_to_be32(priv->net_id);
+	/* Parse Uvnic properties */
+	/* For legacy PVI's XSMP will not have vnic_type field so
+	   value is zero */
+	priv->vnic_type = xmsgp->vnic_type;
+	/* Make Send and Recv Queue parmaters Per Vnic */
+	priv->xve_sendq_size = xve_sendq_size;
+	priv->xve_recvq_size = xve_recvq_size;
+	priv->xve_max_send_cqe = xve_max_send_cqe;
+
+	if (priv->vnic_type == XSMP_XCM_UPLINK) {
+		/* For G/W mode set higher values */
+		priv->xve_sendq_size = 8192;
+		priv->xve_recvq_size = 8192;
+		priv->xve_max_send_cqe = 512;
+		priv->gw.t_gid.global.subnet_prefix =
+			xve_tca_subnet ? cpu_to_be64(xve_tca_subnet) :
+			be64_to_cpu(xmsgp->tca_subnet_prefix);
+
+		priv->gw.t_gid.global.interface_id =
+			xve_tca_guid ? cpu_to_be64(xve_tca_guid) :
+			be64_to_cpu(xmsgp->tca_guid);
+		priv->gw.t_ctrl_qp = be32_to_cpu(xmsgp->tca_ctrl_qp);
+		priv->gw.t_data_qp = xve_tca_data_qp ? xve_tca_data_qp :
+			be32_to_cpu(xmsgp->tca_data_qp);
+		priv->gw.t_pkey = xve_tca_pkey ? xve_tca_pkey :
+			be16_to_cpu(xmsgp->tca_pkey);
+		/* FIXME: xmsgp->tca_qkey is u16.need to fix in osdn */
+		priv->gw.t_qkey = xve_tca_qkey ? xve_tca_qkey :
+			be16_to_cpu(xmsgp->tca_qkey);
+		xve_dbg_ctrl(priv,
+			"GW prefix:%llx guid:%llx, lid: %hu sl: %hu TDQP%x TCQP:%x\n",
+				priv->gw.t_gid.global.subnet_prefix,
+				priv->gw.t_gid.global.interface_id,
+				be16_to_cpu(xmsgp->tca_lid),
+				be16_to_cpu(xmsgp->service_level),
+				priv->gw.t_data_qp, priv->gw.t_ctrl_qp);
+	}
+	/* Pkey */
+	priv->pkey = xve_tca_pkey ? xve_tca_pkey :
+		be16_to_cpu(xmsgp->tca_pkey);
+	if (priv->pkey == 0)
+		priv->pkey |= 0x8000;
+	/* Qkey For EDR vnic's*/
+	priv->gw.t_qkey = xve_tca_qkey ? xve_tca_qkey :
+		be16_to_cpu(xmsgp->tca_qkey);
 
 	/* Always set chassis ADMIN up by default */
 	set_bit(XVE_CHASSIS_ADMIN_UP, &priv->state);
@@ -1906,30 +2264,52 @@ static int xve_xsmp_install(xsmp_cookie_t xsmp_hndl, struct xve_xsmp_msg *xmsgp,
 	if (!ib_query_port(hca, port, &priv->port_attr))
 		priv->max_ib_mtu = ib_mtu_enum_to_int(priv->port_attr.max_mtu);
 	else {
-		pr_warn("%s: ib_query_port %d failed\n", hca->name, port);
+		pr_warn("%s: ib_query_port %d failed\n",
+		       hca->name, port);
 		goto device_init_failed;
 	}
+
+	pr_info("XVE: %s adding vnic %s ",
+			__func__, priv->xve_name);
+	pr_info("net_id %d vnet_mode %d type%d",
+			priv->net_id, priv->vnet_mode, priv->vnic_type);
+	pr_info("port %d net_id_be %d\n", port, net_id_be);
 
 	memcpy(priv->bcast_mgid.raw, bcast_mgid, sizeof(union ib_gid));
-	pr_info("XVE: %s adding vnic %s ", __func__, priv->xve_name);
-	pr_info("net_id %d vnet_mode %d", priv->net_id, priv->vnet_mode);
-	pr_info("port %d net_id_be %d\n", port, net_id_be);
-	memcpy(&priv->bcast_mgid.raw[4], &net_id_be, sizeof(net_id_be));
-
-	result = ib_query_pkey(hca, port, 0, &priv->pkey);
-	if (result) {
-		pr_warn("%s: ib_query_pkey port %d failed (ret = %d)\n",
-			hca->name, port, result);
-		goto device_init_failed;
+	if (xve_is_edr(priv)) {
+		result = ib_find_pkey(hca, port, priv->pkey, &priv->pkey_index);
+		if (result != 0)
+			pr_warn("%s : ib_find_pkey %d failed %d in %s\n",
+					hca->name, port, result, __func__);
+		/* EDR MGID format: FF15:101C:P:0:0:0:0:N
+		 * Where, P is the P_Key, N is the NetID. */
+		pkey_be = cpu_to_be16(priv->pkey);
+		priv->bcast_mgid.raw[0] = 0xFF;
+		priv->bcast_mgid.raw[1] = 0x15;
+		priv->bcast_mgid.raw[2] = 0x10;
+		priv->bcast_mgid.raw[3] = 0x1C;
+		memcpy(&priv->bcast_mgid.raw[4], &pkey_be, 2);
+		memcpy(&priv->bcast_mgid.raw[12], &net_id_be,
+				sizeof(net_id_be));
+	} else {
+		memcpy(&priv->bcast_mgid.raw[4], &net_id_be, sizeof(net_id_be));
+		result = ib_query_pkey(hca, port, 0, &priv->pkey);
+		if (result) {
+			pr_warn("%s: ib_query_pkey port %d failed (ret = %d)\n",
+					hca->name, port, result);
+			goto device_init_failed;
+		}
+		/*
+		 * Set the full membership bit, so that we join the right
+		 * broadcast group, etc.
+		 */
+		priv->pkey |= 0x8000;
 	}
+
+	pr_info("MGID: %pI6 pkey%d\n", &priv->bcast_mgid.raw, priv->pkey);
 
 	if (xve_set_dev_features(priv, hca))
 		goto device_init_failed;
-	/*
-	 * Set the full membership bit, so that we join the right
-	 * broadcast group, etc.
-	 */
-	priv->pkey |= 0x8000;
 
 	result = ib_query_gid(hca, port, 0, &priv->local_gid);
 
@@ -1990,7 +2370,10 @@ static int xve_xsmp_install(xsmp_cookie_t xsmp_hndl, struct xve_xsmp_msg *xmsgp,
 	list_add_tail(&priv->list, &xve_dev_list);
 	mutex_unlock(&xve_mutex);
 
-	xve_send_msg_to_xsigod(xsmp_hndl, data, len);
+	if (xve_is_ovn(priv))
+		xve_send_msg_to_xsigod(xsmp_hndl, data, len);
+	else
+		set_bit(XVE_VNIC_READY_PENDING, &priv->state);
 
 	queue_sm_work(priv, 0);
 
@@ -2004,7 +2387,7 @@ send_ack:
 			   __func__, xmsgp->xve_name,
 			   be64_to_cpu(xmsgp->resource_id));
 	}
-	if (update_state) {
+	if (update_state && priv->vnic_type == XSMP_XCM_OVN) {
 		printk
 		    ("XVE: %s Sending Oper state to  chassis for %s id %llx\n",
 		     __func__, priv->xve_name, priv->resource_id);
@@ -2109,40 +2492,92 @@ static void xve_xsmp_send_stats(xsmp_cookie_t xsmp_hndl, u8 *data, int length)
 static int xve_xsmp_update(xsmp_cookie_t xsmp_hndl, struct xve_xsmp_msg *xmsgp)
 {
 	u32 bitmask = be32_to_cpu(xmsgp->bitmask);
-	struct xve_dev_priv *xvep;
+	struct xve_dev_priv *priv;
 	int ret = 0;
-	int send_ack = 1;
+	int send_ack = 0;
 
-	xvep = xve_get_xve_by_vid(be64_to_cpu(xmsgp->resource_id));
-	if (!xvep) {
+	priv = xve_get_xve_by_vid(be64_to_cpu(xmsgp->resource_id));
+	if (!priv) {
 		XSMP_ERROR("%s: request for invalid vid: 0x%llx\n",
 			   __func__, be64_to_cpu(xmsgp->resource_id));
 		return -EINVAL;
 	}
 
-	XSMP_INFO("%s: VNIC: %s bit mask: 0x%x\n", __func__, xvep->xve_name,
+	XSMP_INFO("%s: VNIC: %s bit mask: 0x%x\n", __func__, priv->xve_name,
 		  bitmask);
 
-	mutex_lock(&xvep->mutex);
+	mutex_lock(&priv->mutex);
 
-	if (bitmask & XVE_UPDATE_ADMIN_STATE) {
-		ret = handle_admin_state_change(xvep, xmsgp);
+	if (bitmask & XVE_UPDATE_ADMIN_STATE)
 		/*
 		 * Ack will be sent once QP's are brought down
 		 */
-		send_ack = 0;
+		ret = handle_admin_state_change(priv, xmsgp);
+	if (bitmask & XVE_UPDATE_MTU)
+		xve_modify_mtu(priv->netdev, be16_to_cpu(xmsgp->vn_mtu));
+
+	if (bitmask & XVE_UPDATE_XT_STATE_DOWN &&
+			xve_is_uplink(priv)) {
+		clear_bit(XVE_GW_STATE_UP, &priv->state);
+		if (netif_carrier_ok(priv->netdev))
+			handle_carrier_state(priv, 0);
+	}
+	if (bitmask & XVE_UPDATE_XT_CHANGE && xve_is_uplink(priv)) {
+		xve_update_gw_info(priv, xmsgp);
+		if (!netif_carrier_ok(priv->netdev))
+			handle_carrier_state(priv, 1);
+		send_ack = 1;
 	}
 
 	if (send_ack) {
-		ret = xve_xsmp_send_ack(xvep, xmsgp);
-		if (ret)
+		ret = xve_xsmp_send_ack(priv, xmsgp);
+		if (ret) {
 			XSMP_ERROR("%s: xve_xsmp_send_ack error name: %s\n"
-				   "VID=0x%llx\n", __func__, xmsgp->xve_name,
-				   be64_to_cpu(xmsgp->resource_id));
+				"VID=0x%llx\n", __func__, xmsgp->xve_name,
+				be64_to_cpu(xmsgp->resource_id));
+		}
 	}
-	mutex_unlock(&xvep->mutex);
+	mutex_unlock(&priv->mutex);
 
 	return ret;
+}
+
+static int
+xve_xsmp_vnic_ready(xsmp_cookie_t xsmp_hndl, struct xve_xsmp_msg *xmsgp,
+	void *data, int len)
+{
+	struct xve_dev_priv *priv;
+	unsigned long flags;
+int ret;
+
+	priv = xve_get_xve_by_vid(be64_to_cpu(xmsgp->resource_id));
+	if (!priv) {
+		XSMP_INFO("XVE: %s priv not found for %s\n",
+			  __func__, xmsgp->xve_name);
+		return -1;
+	}
+	pr_info("XVE VNIC_READY: vnic_type: %u, subnet_prefix: %llx\n",
+			priv->vnic_type, priv->gw.t_gid.global.subnet_prefix);
+	pr_info("ctrl_qp: %u, data_qp: %u, pkey: %x, qkey: %x\n",
+			priv->gw.t_ctrl_qp, priv->gw.t_data_qp,
+			priv->gw.t_pkey, priv->gw.t_qkey);
+
+	xve_send_msg_to_xsigod(xsmp_hndl, data, len);
+	spin_lock_irqsave(&priv->lock, flags);
+	clear_bit(XVE_VNIC_READY_PENDING, &priv->state);
+	spin_unlock_irqrestore(&priv->lock, flags);
+
+	ret = xve_xsmp_send_ack(priv, xmsgp);
+	if (ret) {
+		XSMP_ERROR("%s: xve_xsmp_send_ack error name: %s, VID=0x%llx\n",
+			   __func__, xmsgp->xve_name,
+			   be64_to_cpu(xmsgp->resource_id));
+	}
+
+	(void) xve_xsmp_handle_oper_req(priv->xsmp_hndl,
+	    priv->resource_id);
+
+	return 0;
 }
 
 /*
@@ -2192,6 +2627,9 @@ static void handle_xve_xsmp_messages(xsmp_cookie_t xsmp_hndl, u8 *data,
 	case XSMP_XVE_INSTALL:
 		xve_counters[XVE_VNIC_INSTALL_COUNTER]++;
 		xve_xsmp_install(xsmp_hndl, xmsgp, data, length);
+		break;
+	case XSMP_VNIC_READY:
+		xve_xsmp_vnic_ready(xsmp_hndl, xmsgp, data, length);
 		break;
 	case XSMP_XVE_DELETE:
 		xve_counters[XVE_VNIC_DEL_COUNTER]++;
@@ -2379,7 +2817,7 @@ static int __init xve_init_module(void)
 
 	xve_sendq_size = roundup_pow_of_two(xve_sendq_size);
 	xve_sendq_size = min(xve_sendq_size, XVE_MAX_QUEUE_SIZE);
-	xve_sendq_size = max(xve_sendq_size, max(2 * MAX_SEND_CQE,
+	xve_sendq_size = max(xve_sendq_size, max(2 * xve_max_send_cqe,
 						 XVE_MIN_QUEUE_SIZE));
 	/*
 	 * When copying small received packets, we only copy from the

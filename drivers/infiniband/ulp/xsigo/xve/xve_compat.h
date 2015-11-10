@@ -35,6 +35,10 @@
 #define	XVE_OP_CM     (1ul << 30)
 
 #include <net/icmp.h>
+
+/* for kernel >= 3.8 */
+#define random32 prandom_u32
+
 static inline void skb_pkt_type(struct sk_buff *skb, unsigned char type)
 {
 	skb->pkt_type = type;
@@ -54,7 +58,7 @@ static inline void xg_skb_push(struct sk_buff *skb, unsigned int len)
 
 static inline unsigned xve_random32(struct xve_dev_priv *priv)
 {
-	return (prandom_u32() & 0xffffff);
+	return random32() & 0xffffff;
 }
 
 static inline struct proc_dir_entry *xg_create_proc_entry(const char *name,
