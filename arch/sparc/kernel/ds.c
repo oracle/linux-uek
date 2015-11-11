@@ -39,10 +39,16 @@
 #include "kernel.h"
 
 /*
- * Def to enable kernel timer bug workaround.
+ * Def to enable timer bug workaround.
  * See additional comments below.
  */
-#define DS_KERNEL_TIMER_BUG_WAR 1
+#define DS_TIMER_BUG_WAR 1
+
+/*
+ * Def to enable ioctl to inject a PRI update
+ * event for testing purposes.
+ */
+#define	DS_PRI_TEST 1
 
 /*
  * Theory of operation:
@@ -103,10 +109,14 @@ MODULE_VERSION(DRV_MODULE_VERSION);
 
 #define	DS_DEFAULT_BUF_SIZE	4096
 #define	DS_DEFAULT_MTU		4096
+/*
+ * The SP DS needs a huge buffer to handle PRI update messages.
+ * The largest contiguous buffer the kernel seems to allow is 8MB.
+ */
+#define	DS_DEFAULT_SP_BUF_SIZE	(8*1024*1024)
+#define	DS_DEFAULT_SP_MTU	(8*1024*1024)
 
 #define	DS_PRIMARY_ID		0
-
-#define DS_INVALID_HANDLE	0xFFFFFFFFFFFFFFFFUL
 
 /*
  * The DS spec mentions that a DS handle is just any random number.
@@ -142,7 +152,9 @@ static DEFINE_SPINLOCK(ds_data_lock); /* protect ds_data */
 /* Timeout to wait for responses for sp-token and var-config DS requests */
 #define	DS_RESPONSE_TIMEOUT	10	/* in seconds */
 
-#ifdef DS_KERNEL_TIMER_BUG_WAR
+#define	DS_LDC_READ_DELAY_CNT	10000	/* each CNT will wait 10ms */
+
+#ifdef DS_TIMER_BUG_WAR
 /*
  * Define a partial type for ldc_channel so the compiler knows
  * how to indirect ds->lp->lock. This must match the definition in ldc.c
@@ -152,7 +164,7 @@ struct ldc_channel {
 	/* Protects all operations that depend upon channel state.  */
 	spinlock_t                      lock;
 };
-#endif /* DS_KERNEL_TIMER_BUG_WAR */
+#endif /* DS_TIMER_BUG_WAR */
 
 /*
  * DS device structure. There is one of these probed/created per
@@ -175,9 +187,6 @@ struct ds_dev {
 	/* flag to indicate if this ds_dev is active */
 	bool			active;
 
-	/* flag to indicate if this is a domain DS (versus the SP DS) */
-	bool			is_domain;
-
 	/* LDC connection info for this ds_dev */
 	struct ldc_channel	*lp;
 	u8			hs_state;
@@ -190,6 +199,7 @@ struct ds_dev {
 	/* LDC receive data buffer for this ds_dev */
 	u8			*rcv_buf;
 	int			rcv_buf_len;
+	u32			mtu;
 
 	/* service registration timer */
 	struct timer_list	ds_reg_tmr;
@@ -510,14 +520,6 @@ struct ds_suspend_res {
 
 #define	SUSPEND_REC_SUCCESS		0x0
 
-struct ds_pri_msg {
-	u64				req_num;
-	u64				type;
-#define DS_PRI_REQUEST			0x00
-#define DS_PRI_DATA			0x01
-#define DS_PRI_UPDATE			0x02
-};
-
 struct ds_var_hdr {
 	u32				type;
 #define DS_VAR_SET_REQ			0x00
@@ -772,6 +774,28 @@ static int __init ldoms_debug_level_setup(char *level_str)
 
 }
 __setup(LDOMS_DEBUG_LEVEL_SETUP, ldoms_debug_level_setup);
+
+static void *ds_zalloc_pages(unsigned long size, gfp_t alloc_flags)
+{
+	unsigned long order;
+	void *buf;
+
+	order = get_order(size);
+	buf = (void *) __get_free_pages(alloc_flags, order);
+
+	if (buf)
+		memset(buf, 0, PAGE_SIZE << order);
+
+	return buf;
+}
+
+static void ds_free_pages(void *buf, unsigned long size)
+{
+	if (!buf)
+		return;
+
+	free_pages((unsigned long)buf, get_order(size));
+}
 
 static void ds_reset(struct ds_dev *ds)
 {
@@ -1231,7 +1255,7 @@ int ds_cap_init(ds_capability_t *cap, ds_ops_t *ops, u32 flags,
 	struct ds_service_info *svc_info = NULL;
 	unsigned long data_flags = 0;
 	unsigned long ds_flags = 0;
-	bool is_domain;
+	bool found;
 
 	dprintk("entered.\n");
 
@@ -1256,27 +1280,25 @@ int ds_cap_init(ds_capability_t *cap, ds_ops_t *ops, u32 flags,
 		return -EINVAL;
 	}
 
-	is_domain = ((flags & DS_TARGET_IS_DOMAIN) != 0);
-
 	/* Find the ds_dev associated with domain_hdl. */
+	found = false;
 	spin_lock_irqsave(&ds_data_lock, data_flags);
-	ds = NULL;
 	list_for_each_entry(ds, &ds_data.ds_dev_list, list) {
 
 		LOCK_DS_DEV(ds, ds_flags)
 
-		if ((is_domain && ds->is_domain && ds->handle == domain_hdl) ||
-		    (!is_domain && !ds->is_domain))
+		if (ds->handle == domain_hdl) {
+			found = true;
 			break;
+		}
 
 		UNLOCK_DS_DEV(ds, ds_flags)
 	}
 	spin_unlock_irqrestore(&ds_data_lock, data_flags);
 
-	if (ds == NULL) {
-		pr_err("%s: Error: dom_hdl %llu (domain=%d) DS "
-		    "port not found\n", __func__, domain_hdl,
-		    ((flags & DS_TARGET_IS_DOMAIN) != 0));
+	if (!found) {
+		pr_err("%s: Error: dom_hdl %llu DS port not found\n",
+		    __func__, domain_hdl);
 		return -ENODEV;
 	}
 
@@ -1903,6 +1925,8 @@ static void __cpuinit ds_dr_cpu_data_cb(ds_cb_arg_t arg,
 }
 #endif /* CONFIG_HOTPLUG_CPU */
 
+static DEFINE_MUTEX(ds_ioctl_req_sptoken_mutex);
+static DEFINE_MUTEX(ds_ioctl_hv_pri_mutex);
 static DEFINE_MUTEX(ds_var_mutex);
 static DECLARE_COMPLETION(ds_var_config_cb_complete);
 static DEFINE_MUTEX(ds_var_complete_mutex);
@@ -3370,29 +3394,44 @@ static void ds_exec_reg_timer(unsigned long data)
 	struct ds_service_info *svc_info;
 	int rv;
 
-#ifdef DS_KERNEL_TIMER_BUG_WAR
+#ifdef DS_TIMER_BUG_WAR
 	/*
-	 * There appears to be a bug in the UEK kernel where
-	 * timers can execute on a CPU where local interrupts
-	 * have been disabled. Deadlocks have been observed
-	 * where the DS registration timer (ds_reg_tmr) can
+	 * There appears to be a bug (someplace) which allows
+	 * this timer to execute on a CPU while another thread
+	 * is also executing on the same CPU while holding a common lock.
+	 * Specifically, deadlocks have been observed
+	 * where this DS registration timer (ds_reg_tmr) can
 	 * execute on a CPU, interrupting a thread on the CPU
 	 * which is holding the ds->ds_lock or the ds->lp->lock
 	 * resulting in a deadlock when the timer attempts
-	 * to grab the lock. As a workaround, the timer handler will
-	 * first check if the locks are held and if so, simply
-	 * reschedule the timer and exit (without grabbing the
-	 * locks - thus avoiding the deadlock). the kernel needs
-	 * to be fixed at some point since executing timers
-	 * on CPUs with local interrupts disabled is a violation
-	 * of spin_lock_irqsave() semantics.
+	 * to grab the lock. As a workaround until this is fixed,
+	 * the timer handler will first check if the locks are held and
+	 * if so, simply reschedule the timer and exit (without grabbing
+	 * the locks - thus avoiding the deadlock). This is a simple
+	 * workaround and has no negative side effects and thus simply
+	 * makes the code more robust in the face of bugs.
+	 * It is unclear at this time whether this is a kernel
+	 * bug (which is supposed to prevent a timer from executing
+	 * on a CPU where local interrupt have been disabled via
+	 * spin_lock_irqsave) or this driver is indirectly sleeping
+	 * (thus being scheduled out) while holding a lock (which could
+	 * also cause this problem). TBD.
 	 */
+
 	if (spin_is_locked(&ds->ds_lock) || spin_is_locked(&ds->lp->lock)) {
+		/*
+		 * NOTE: We are accessing the ds_dev here here without
+		 * grabbing the lock. Potentially dangerous if the timer
+		 * happened to fire after the ds_dev is removed (which
+		 * can happen if the corresponding guest ldom is removed).
+		 * We make sure to call del_timer() in the remove code *before*
+		 * we remove the ds_dev to prevent this scenario.
+		 */
 		mod_timer(&ds->ds_reg_tmr,
 		    jiffies + msecs_to_jiffies(DS_REG_TIMER_FREQ));
 		return;
 	}
-#endif /* DS_KERNEL_TIMER_BUG_WAR */
+#endif /* DS_TIMER_BUG_WAR */
 
 	LOCK_DS_DEV(ds, flags)
 
@@ -3719,10 +3758,53 @@ static void ds_up(struct ds_dev *ds)
 		    ds->id, rv);
 }
 
+static int ds_read_ldc_msg(struct ds_dev *ds, unsigned char *buf,
+	unsigned int size)
+{
+	unsigned int bytes_left;
+	unsigned int bytes_read;
+	unsigned int read_size;
+	unsigned int delay_cnt;
+	int rv;
+
+	bytes_left = size;
+	bytes_read = 0;
+	delay_cnt = 0;
+	while (bytes_left) {
+
+		read_size = min_t(int, bytes_left, ds->mtu);
+
+		rv = ldc_read(ds->lp, (void *)(buf + bytes_read), read_size);
+
+		if (delay_cnt++ < DS_LDC_READ_DELAY_CNT &&
+		    (rv == -EAGAIN || rv == 0)) {
+			/*
+			 * For huge messages (such as PRI Update),
+			 * give the other end of the LDC a chance to
+			 * populate data to the LDC.
+			 */
+			mdelay(10);
+			continue;
+		}
+
+		if (rv <= 0)
+			break;
+
+		bytes_left -= rv;
+		bytes_read += rv;
+	}
+
+	if (rv < 0)
+		return rv;
+	else
+		return bytes_read;
+}
+
 static void ds_event(void *arg, int event)
 {
 	struct ds_dev *ds = arg;
 	unsigned long flags;
+	unsigned long buf_size;
 	int rv;
 
 	dprintk("ds-%llu: CPU[%d] event received = %d\n", ds->id,
@@ -3759,6 +3841,8 @@ static void ds_event(void *arg, int event)
 
 		rv = ldc_read(ds->lp, ds->rcv_buf, sizeof(*tag));
 
+		dprintk("ds-%llu: ldc_read 1 returns rv=%d\n", ds->id, rv);
+
 		if (unlikely(rv < 0)) {
 			if (rv == -ECONNRESET)
 				ds_reset(ds);
@@ -3771,24 +3855,38 @@ static void ds_event(void *arg, int event)
 		tag = (struct ds_msg_tag *)ds->rcv_buf;
 
 		/* Make sure the read won't overrun our buffer */
-		if (tag->len > (DS_DEFAULT_BUF_SIZE -
-		    sizeof(struct ds_msg_tag))) {
-			pr_err("ds-%llu: %s: msg tag length too big.\n",
-			    ds->id, __func__);
+		if (ds->handle == DS_SP_DMN_HANDLE)
+			buf_size = DS_DEFAULT_SP_BUF_SIZE;
+		else
+			buf_size = DS_DEFAULT_BUF_SIZE;
+
+		if (tag->len > (buf_size - sizeof(struct ds_msg_tag))) {
+			pr_err("ds-%llu: %s: received msg length %d too big.\n",
+			    ds->id, __func__, tag->len);
 			ds_reset(ds);
 			break;
 		}
 
-		rv = ldc_read(ds->lp, tag + 1, tag->len);
+		rv = ds_read_ldc_msg(ds, (unsigned char *)(tag + 1),
+		    tag->len);
+
+		dprintk("ds-%llu: ldc_read 2 returns rv=%d\n", ds->id, rv);
 
 		if (unlikely(rv < 0)) {
 			if (rv == -ECONNRESET)
 				ds_reset(ds);
+			else
+				dprintk("ds-%llu: ldc_read_ldc_msg "
+				    "returned err=%d\n", ds->id, rv);
+
 			break;
 		}
 
-		if (rv < tag->len)
+		if (rv < tag->len) {
+			dprintk("ds-%llu: ldc_read returned %d bytes "
+			    "< taglen=%d\n", ds->id, rv, tag->len);
 			break;
+		}
 
 		if (tag->type < DS_DATA) {
 			dprintk("ds-%llu: hs data received (%d bytes)\n",
@@ -3824,6 +3922,226 @@ static void ds_event(void *arg, int event)
 	spin_unlock_irqrestore(&ds->ds_lock, flags);
 }
 
+static void *kpri_buf_cache_align16;
+unsigned long kpri_buf_cache_len;
+
+static int ds_get_hv_pri(const void __user *uarg)
+{
+	ds_ioctl_pri_get_t pri_get_arg;
+	unsigned long hv_ret;
+	unsigned long pri_len;
+	void *kpri_buf;
+	void *kpri_buf_align16;
+	int rv;
+
+	/* Get (and validate) userland args */
+	if (uarg == NULL || copy_from_user(&pri_get_arg, uarg,
+	    sizeof(ds_ioctl_pri_get_t)) != 0) {
+		rv = -EFAULT;
+		goto error_out1;
+	}
+
+	if (tlb_type != hypervisor) {
+		rv = -ENXIO;
+		goto error_out1;
+	}
+
+	if (kpri_buf_cache_align16) {
+		/* Use the cached PRI len if set. */
+		pri_len = kpri_buf_cache_len;
+	} else {
+		/* Get the len of the PRI from the HV */
+		pri_len = 0UL;
+		hv_ret = sun4v_mach_pri(0ULL, &pri_len);
+		/* NOTE - the HV returns HV_EINVAL when getting the size here */
+		if (hv_ret != HV_EOK && hv_ret != HV_EINVAL) {
+			dprintk("ds: sun4v_mach_pri 1 failed: rv = %lu "
+			    "pri_len = %lu\n", hv_ret, pri_len);
+			rv = -EIO;
+			goto error_out1;
+		}
+	}
+
+	dprintk("PRI len=%lu bytes\n", pri_len);
+
+	/*
+	 * If the passed in buflen == 0, just return the pri len.
+	 * This allows the caller to get proper len to alloc the buffer.
+	 * Also, if the pri_len is 0, just return success.
+	 */
+	if (pri_get_arg.buflen == 0 || pri_len == 0) {
+		if (put_user(pri_len, (u64 __user *)(pri_get_arg.pri_lenp))
+		    != 0) {
+			rv = -EFAULT;
+			goto error_out1;
+		}
+		return 0;
+	}
+
+	/* Ensure the user supplied buffer is large enough for the PRI */
+	if (pri_get_arg.buflen < pri_len) {
+		dprintk("Supplied buffer for PRI too small (%llu)\n",
+		    pri_get_arg.buflen);
+		rv = -EINVAL;
+		goto error_out1;
+	}
+
+	if (!kpri_buf_cache_align16) {
+		/* Allocate a contiguous 16 byte aligned buffer for the PRI */
+		kpri_buf = kzalloc(pri_len+15, GFP_KERNEL);
+		if (kpri_buf == NULL) {
+			rv = -ENOMEM;
+			goto error_out1;
+		}
+
+		/* align the buffer on 16 byte boundary */
+		kpri_buf_align16 = (void *)(((unsigned long)kpri_buf+15)
+		    & ~0x0FUL);
+
+		hv_ret = sun4v_mach_pri(__pa(kpri_buf_align16), &pri_len);
+		if (hv_ret != HV_EOK) {
+			dprintk("ds: sun4v_mach_pri 2 failed: rv = %lu\n",
+			    hv_ret);
+			rv = -EIO;
+			kfree(kpri_buf);
+			goto error_out1;
+		}
+
+		/* cache the PRI for future use */
+		if (!kpri_buf_cache_align16) {
+			/*
+			 * NOTE - we don't bother retaining the
+			 * original kpri_buf * because we don't
+			 * ever free the PRI buffer once it's cached.
+			 */
+			kpri_buf_cache_align16 = kpri_buf_align16;
+			kpri_buf_cache_len = pri_len;
+		}
+
+		/*
+		 * Double check again that the user supplied buffer
+		 * is large enough for the PRI since the PRI could have
+		 * changed since we first checked.
+		 */
+		if (pri_get_arg.buflen < pri_len) {
+			dprintk("Supplied buffer for PRI too small (%llu)\n",
+			    pri_get_arg.buflen);
+			rv = -EINVAL;
+			goto error_out1;
+		}
+	}
+
+	/* populate the pri_len to the user */
+	if (put_user(kpri_buf_cache_len,
+	    (u64 __user *)(pri_get_arg.pri_lenp)) != 0) {
+		rv = -EFAULT;
+		goto error_out1;
+	}
+
+	/* populate the PRI to the user buffer */
+	if (copy_to_user((void __user *)(pri_get_arg.bufp),
+	    kpri_buf_cache_align16, pri_len) != 0) {
+		rv = -EFAULT;
+		goto error_out1;
+	}
+
+	dprintk("ds: get PRI SUCCESS\n");
+
+	return 0;
+
+error_out1:
+
+	dprintk("ds: failed to get PRI rv = %d\n", rv);
+
+	return rv;
+}
+
+#ifdef DS_PRI_TEST
+/* PRI protocol data structures */
+struct ds_pri_hdr {
+	uint64_t	seq_num;
+	uint64_t	type;
+#define	DS_PRI_REQUEST	0
+#define	DS_PRI_DATA	1
+#define	DS_PRI_UPDATE	2
+};
+
+static int ds_set_pri(void)
+{
+	struct ds_dev *ds;
+	struct ds_service_info *svc_info;
+	unsigned long data_flags = 0;
+	unsigned long ds_flags = 0;
+	bool found;
+	struct ds_pri_hdr pri_update;
+	int msglen;
+	struct ds_data_req *hdr;
+	size_t buflen;
+	int rv;
+
+	/* find the SP DS (if present ) */
+	spin_lock_irqsave(&ds_data_lock, data_flags);
+	found = false;
+	list_for_each_entry(ds, &ds_data.ds_dev_list, list) {
+
+		LOCK_DS_DEV(ds, ds_flags)
+
+		if (ds->handle == DS_SP_DMN_HANDLE) {
+			found = true;
+			break;
+		}
+
+		UNLOCK_DS_DEV(ds, ds_flags)
+	}
+	spin_unlock_irqrestore(&ds_data_lock, data_flags);
+
+	if (!found) {
+		pr_err("%s: failed to SP DS.\n", __func__);
+		return -ENODEV;
+	}
+
+	/* find the provider service on the SP DS for "pri" service */
+	svc_info = ds_find_service_provider_id(ds, "pri");
+	if (svc_info == NULL) {
+		pr_err("%s: failed to find SP DS pri service.\n", __func__);
+		UNLOCK_DS_DEV(ds, ds_flags)
+		return -ENODEV;
+	}
+	if (!svc_info->is_connected) {
+		pr_err("%s: Error: pri service not connected\n", __func__);
+		UNLOCK_DS_DEV(ds, ds_flags)
+		return -EIO;
+	}
+
+	/* submit a dummy PRI Update event on the SP DS */
+	pri_update.seq_num = 1;  /* not used for PRI_UPDATE messages */
+	pri_update.type = DS_PRI_UPDATE;
+	buflen = sizeof(struct ds_pri_hdr);
+
+	/* build the data packet containing the data */
+	msglen = sizeof(struct ds_data_req) + buflen;
+	hdr = kzalloc(msglen, GFP_KERNEL);
+	if (hdr == NULL) {
+		pr_err("%s: failed to alloc mem for PRI data msg.\n",
+		    __func__);
+		UNLOCK_DS_DEV(ds, ds_flags)
+		return -ENOMEM;
+	}
+	hdr->tag.type = DS_DATA;
+	hdr->tag.len = sizeof(struct ds_data_req_payload) + buflen;
+	hdr->payload.handle = svc_info->con_handle;
+	(void) memcpy(hdr->payload.data, (void *)&pri_update, buflen);
+
+	rv = ds_submit_data_cb(ds, (struct ds_msg_tag *)hdr, DS_DTYPE_LDC_REQ);
+	if (rv < 0)
+		pr_err("%s: ds_submit_data_cb failed.\n ", __func__);
+
+	UNLOCK_DS_DEV(ds, ds_flags)
+
+	return rv;
+}
+#endif /* DS_PRI_TEST */
+
 static long ds_fops_ioctl(struct file *filp, unsigned int cmd,
 		unsigned long arg)
 {
@@ -3841,7 +4159,7 @@ static long ds_fops_ioctl(struct file *filp, unsigned int cmd,
 
 	switch (cmd) {
 	case DS_SPTOK_GET:
-		pr_info("%s Getting sp-token\n", __func__);
+		dprintk("%s: Getting sp-token\n", __func__);
 		uarg = (ds_ioctl_sptok_data_t __user *)arg;
 		if (get_user(major_version, &uarg->major_version) != 0 ||
 		    get_user(minor_version, &uarg->minor_version) != 0 ||
@@ -3856,8 +4174,15 @@ static long ds_fops_ioctl(struct file *filp, unsigned int cmd,
 			    __func__, major_version, minor_version);
 			return -EINVAL;
 		}
+
+		/* Only allow one thread at a time to request a SP token */
+		mutex_lock(&ds_ioctl_req_sptoken_mutex);
+
 		rv = ldom_req_sp_token(service_name, &sp_token_result,
 		    &sp_token_data);
+
+		mutex_unlock(&ds_ioctl_req_sptoken_mutex);
+
 		if (!rv && sp_token_result == DS_SP_TOKEN_RES_OK) {
 			dprintk("Copying sp token to userland\n");
 			if (copy_to_user(&uarg->sp_tok,
@@ -3867,6 +4192,30 @@ static long ds_fops_ioctl(struct file *filp, unsigned int cmd,
 			}
 		}
 		break;
+
+	case DS_PRI_GET:
+
+		dprintk("%s: Getting HV PRI\n", __func__);
+
+		/* Only allow one thread at a time to access the HV PRI */
+		mutex_lock(&ds_ioctl_hv_pri_mutex);
+
+		rv = ds_get_hv_pri((const void __user *)arg);
+
+		mutex_unlock(&ds_ioctl_hv_pri_mutex);
+
+		break;
+
+#ifdef DS_PRI_TEST
+	case DS_PRI_SET:
+
+		dprintk("%s: Initiating PRI Update\n", __func__);
+
+		rv = ds_set_pri();
+
+		break;
+#endif
+
 	default:
 		pr_err("%s Invalid cmd (%d)\n", __func__, cmd);
 		rv = -EINVAL;
@@ -3879,7 +4228,6 @@ static int ds_probe(struct vio_dev *vdev, const struct vio_device_id *id)
 {
 	struct ldc_channel_config ds_cfg = {
 		.event		= ds_event,
-		.mtu		= DS_DEFAULT_MTU,
 		.mode		= LDC_MODE_STREAM,
 	};
 	struct mdesc_handle *hp;
@@ -3932,28 +4280,63 @@ static int ds_probe(struct vio_dev *vdev, const struct vio_device_id *id)
 	val = mdesc_get_property(hp, node, "ldc-ids", NULL);
 	is_sp = (val != NULL);
 
-	val = mdesc_get_property(hp, node, "vlds-remote-domain-handle",
-	    NULL);
-	if (val == NULL) {
-		/* Not all DS ports have a handle (such as the SP DS port). */
-		ds->handle = DS_INVALID_HANDLE;
+	if (is_sp) {
+		/*
+		 * The SP DS node doesn't have a vlds-remote-domain-handle
+		 * property, so we assign a well-known handle which will not
+		 * be used by other domains. This allows the SP DS to be used
+		 * seemlessly via interfaces that were originially designed
+		 * to work solely with domain DS devices.
+		 */
+		ds->handle = DS_SP_DMN_HANDLE;
 	} else {
-		ds->handle = *val;
+		val = mdesc_get_property(hp, node, "vlds-remote-domain-handle",
+		    NULL);
+		if (val == NULL) {
+			mdesc_release(hp);
+			rv = -ENXIO;
+			goto out_free_ds;
+		} else if (*val == DS_SP_DMN_HANDLE) {
+			/*
+			 * Catch domain handle conflict with SP here.
+			 * Should not happen - but just in case...
+			 */
+			pr_err("%s: domain handle (0x%llx) conflict with SP!\n",
+			    __func__, *val);
+			mdesc_release(hp);
+			rv = -ENXIO;
+			goto out_free_ds;
+		} else {
+			ds->handle = *val;
+		}
 	}
 
 	mdesc_release(hp);
 
-	/* If this is not the SP DS, then this is a domain DS */
-	ds->is_domain = !is_sp;
+	/* allocate receive buffers */
+	if (is_sp) {
+		ds->rcv_buf = ds_zalloc_pages(DS_DEFAULT_SP_BUF_SIZE,
+		    GFP_KERNEL);
+		if (unlikely(!ds->rcv_buf))
+			goto out_free_ds;
 
-	ds->rcv_buf = kzalloc(DS_DEFAULT_BUF_SIZE, GFP_KERNEL);
-	if (unlikely(!ds->rcv_buf))
-		goto out_free_ds;
+		ds->rcv_buf_len = DS_DEFAULT_SP_BUF_SIZE;
 
-	ds->rcv_buf_len = DS_DEFAULT_BUF_SIZE;
+		ds_cfg.mtu = DS_DEFAULT_SP_MTU;
 
+	} else {
+		ds->rcv_buf = kzalloc(DS_DEFAULT_BUF_SIZE,
+		    GFP_KERNEL);
+		if (unlikely(!ds->rcv_buf))
+			goto out_free_ds;
+
+		ds->rcv_buf_len = DS_DEFAULT_BUF_SIZE;
+
+		ds_cfg.mtu = DS_DEFAULT_MTU;
+	}
+
+	ds->mtu = ds_cfg.mtu;
 	ds->hs_state = DS_HS_LDC_DOWN;
-
 	ds_cfg.debug = 0;
 	ds_cfg.tx_irq = vdev->tx_irq;
 	ds_cfg.rx_irq = vdev->rx_irq;
@@ -4024,7 +4407,10 @@ out_free_ldc:
 	ldc_free(ds->lp);
 
 out_free_rcv_buf:
-	kfree(ds->rcv_buf);
+	if (is_sp)
+		ds_free_pages(ds->rcv_buf, DS_DEFAULT_SP_BUF_SIZE);
+	else
+		kfree(ds->rcv_buf);
 
 out_free_ds:
 	kfree(ds);
@@ -4064,7 +4450,7 @@ static int ds_remove(struct vio_dev *vdev)
 	list_del(&ds->list);
 	ds_data.num_ds_dev_list--;
 
-	del_timer(&ds->ds_reg_tmr);
+	del_timer_sync(&ds->ds_reg_tmr);
 
 	ds_remove_services(ds);
 
@@ -4076,7 +4462,10 @@ static int ds_remove(struct vio_dev *vdev)
 
 	ldc_free(ds->lp);
 
-	kfree(ds->rcv_buf);
+	if (ds->handle == DS_SP_DMN_HANDLE)
+		ds_free_pages(ds->rcv_buf, DS_DEFAULT_SP_BUF_SIZE);
+	else
+		kfree(ds->rcv_buf);
 
 	/* free any entries left on the callout list */
 	list_for_each_entry_safe(qhdrp, tmp, &ds->callout_list, list) {

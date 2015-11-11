@@ -161,7 +161,7 @@ static struct mdesc_handle * __init mdesc_memblock_alloc(unsigned int mdesc_size
 	return hp;
 }
 
-static void __init mdesc_memblock_free(struct mdesc_handle *hp)
+static void mdesc_memblock_free(struct mdesc_handle *hp)
 {
 	unsigned int alloc_size;
 	unsigned long start;
@@ -171,7 +171,8 @@ static void __init mdesc_memblock_free(struct mdesc_handle *hp)
 
 	alloc_size = PAGE_ALIGN(hp->handle_size);
 	start = __pa(hp);
-	free_bootmem_late(start, alloc_size);
+
+	(void) memblock_free(start, alloc_size);
 }
 
 static struct mdesc_mem_ops memblock_mdesc_ops = {

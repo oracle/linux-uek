@@ -4338,7 +4338,8 @@ hub_port_init (struct usb_hub *hub, struct usb_device *udev, int port1,
 	for (i = 0; i < GET_DESCRIPTOR_TRIES; (++i, msleep(100))) {
 		bool did_new_scheme = false;
 
-		if (use_new_scheme(udev, retry_counter)) {
+		if (use_new_scheme(udev, retry_counter) &&
+		    !(hcd->driver->flags & HCD_USB3)) {
 			struct usb_device_descriptor *buf;
 			int r = 0;
 

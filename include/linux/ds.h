@@ -78,6 +78,5 @@ extern int ds_cap_send(ds_svc_hdl_t hdl, void *buf, size_t buflen);
 
 #define DS_CAP_IS_CLIENT	0x0001 /* client service */
 #define DS_CAP_IS_PROVIDER	0x0002 /* provider service */
-#define DS_TARGET_IS_DOMAIN	0x0004 /* domain target */
 
 #endif /* _DS_H */

@@ -8,8 +8,8 @@
 #include <linux/ioctl.h>
 #include <linux/types.h>
 
-#define	VLDS_DEV_DIR	"/dev/vlds"
-
+#define	VLDS_DEV_DIR		"/dev/vlds"
+#define	VLDS_SP_DEV_NAME	"sp" /* SP DS device name */
 #define	VLDS_DEV_DOMAIN_FILENAME_TAG	"host:"
 
 /* String arguments to ioctl */
@@ -35,11 +35,16 @@ typedef struct vlds_svc_reg_arg {
 	u64	vlds_hdlp;	/* DS Service Handle ptr. (returned) */
 	u64	vlds_capp;	/* DS Capability Structure ptr. */
 	u64	vlds_reg_flags;	/* DS reg flags */
+	u64	vlds_svc_reg_idp; /* DS Service Registration ID (returned) */
+				  /* NOTE: reg_id is optional (can be NULL) */
 } vlds_svc_reg_arg_t;
 
-/* vlds_reg_flags */
+/* vlds_reg_flags (common to Solaris) */
 #define	VLDS_REG_CLIENT		0x01	/* Register as client */
-#define	VLDS_REG_EVENT		0x02	/* Event driven service - not polled */
+
+/* vlds_reg_flags (Linux-specific) */
+#define	VLDS_REG_EVENT		0x200	/* Event driven registration */
+#define	VLDS_REG_EXCLUSIVE	0x400	/* Service is NOT shareable */
 
 typedef struct vlds_unreg_hdl_arg {
 	u64	vlds_hdl;	/* DS Service Handle */
@@ -63,7 +68,7 @@ typedef struct vlds_send_msg_arg {
 	u64	vlds_bufp;	/* buffer */
 	u64	vlds_buflen;	/* message length/buffer size */
 } vlds_send_msg_arg_t;
-#define VLDS_MAX_SENDBUF_LEN	65535 /* 64k max buf size */
+#define VLDS_MAX_SENDBUF_LEN	(32 * 1024 * 1024) /* 32 Meg max buf size */
 
 typedef struct vlds_recv_msg_arg {
 	u64	vlds_hdl;	/* DS Service Handle */
