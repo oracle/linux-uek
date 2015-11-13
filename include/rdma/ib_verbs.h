@@ -608,6 +608,7 @@ enum ib_qp_type {
 enum ib_qp_create_flags {
 	IB_QP_CREATE_IPOIB_UD_LSO		= 1 << 0,
 	IB_QP_CREATE_BLOCK_MULTICAST_LOOPBACK	= 1 << 1,
+	IB_QP_CREATE_USE_GFP_NOIO               = 1 << 7,
 	IB_QP_CREATE_VENDOR_SPECIFIC_0		= 1 << 31,
 };
 
