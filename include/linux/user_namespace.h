@@ -6,6 +6,7 @@
 #include <linux/ns_common.h>
 #include <linux/sched.h>
 #include <linux/err.h>
+#include <linux/uek_kabi.h>
 
 #define UID_GID_MAP_MAX_EXTENTS 5
 
@@ -39,6 +40,13 @@ struct user_namespace {
 	struct key		*persistent_keyring_register;
 	struct rw_semaphore	persistent_keyring_register_sem;
 #endif
+         /* Oracle use only
+          *
+          * The following padding has been inserted before ABI freeze to
+          * allow extending the structure while preserve ABI.
+          */
+        UEK_KABI_EXTEND(bool                    may_mount_sysfs)
+        UEK_KABI_EXTEND(bool                    may_mount_proc)
 };
 
 extern struct user_namespace init_user_ns;

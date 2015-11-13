@@ -34,6 +34,7 @@
 #include <linux/dma-mapping.h>
 #include <linux/netdev_features.h>
 #include <linux/sched.h>
+#include <linux/uek_kabi.h>
 #include <net/flow_keys.h>
 
 /* A. Checksumming of received packets by device.
@@ -607,6 +608,7 @@ struct sk_buff {
 	__u8			csum_valid:1;
 	__u8			csum_complete_sw:1;
 	__u8			csum_level:2;
+	__u8			csum_pad:1;
 	__u8			csum_bad:1;
 
 #ifdef CONFIG_IPV6_NDISC_NODETYPE
@@ -675,6 +677,13 @@ struct sk_buff {
 				*data;
 	unsigned int		truesize;
 	atomic_t		users;
+         /* Oracle inc use only
+          *
+          * The following padding has been inserted before ABI freeze to
+          * allow extending the structure while preserving ABI.
+          */
+        UEK_KABI_RESERVED(1)
+        UEK_KABI_RESERVED(2)
 };
 
 #ifdef __KERNEL__

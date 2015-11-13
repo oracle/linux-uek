@@ -62,6 +62,7 @@
 #include <linux/filter.h>
 #include <linux/rculist_nulls.h>
 #include <linux/poll.h>
+#include <linux/uek_kabi.h>
 
 #include <linux/atomic.h>
 #include <net/dst.h>
@@ -440,6 +441,14 @@ struct sock {
 	int			(*sk_backlog_rcv)(struct sock *sk,
 						  struct sk_buff *skb);
 	void                    (*sk_destruct)(struct sock *sk);
+        /* Oracle specific
+         * padding inserted before ABI freeze to
+         * allow extending the structure while preserving ABI. Feel free
+         * to replace reserved slots with required structure field
+         * additions of your backport.
+         */
+        UEK_KABI_RESERVED(1)
+        UEK_KABI_RESERVED(2)
 };
 
 #define __sk_user_data(sk) ((*((void __rcu **)&(sk)->sk_user_data)))

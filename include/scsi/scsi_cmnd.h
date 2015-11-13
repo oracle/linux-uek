@@ -6,6 +6,7 @@
 #include <linux/list.h>
 #include <linux/types.h>
 #include <linux/timer.h>
+#include <linux/uek_kabi.h>
 #include <linux/scatterlist.h>
 #include <scsi/scsi_device.h>
 
@@ -138,6 +139,13 @@ struct scsi_cmnd {
 	int flags;		/* Command flags */
 
 	unsigned char tag;	/* SCSI-II queued command tag */
+         /* Oracle inc use only
+          *
+          * The following padding has been inserted before ABI freeze to
+          * allow extending the structure while preserving ABI.
+          */
+         UEK_KABI_RESERVED(3)
+         UEK_KABI_RESERVED(4)
 };
 
 /*
