@@ -169,13 +169,7 @@ int xve_aging_task_machine(struct xve_dev_priv *priv)
 				    && ((jiffies - fwt_entry->last_refresh) >=
 					priv->aging_delay)) {
 					pr_info("XVE: %s MAC ", priv->xve_name);
-					pr_info("%02x:%02x:%02x:%02x:%02x:%02x",
-						ALIGN_TO_FF(smac[0]),
-						ALIGN_TO_FF(smac[1]),
-						ALIGN_TO_FF(smac[2]),
-						ALIGN_TO_FF(smac[3]),
-						ALIGN_TO_FF(smac[4]),
-						ALIGN_TO_FF(smac[5]));
+					pr_info("%pM", smac);
 					pr_info(" vlan %d Aged out\n",
 						fwt_entry->vlan);
 					/*
@@ -255,6 +249,10 @@ void xve_fwt_insert(struct xve_dev_priv *priv, struct xve_cm_ctx *ctx,
 	struct xve_path *path;
 	char from[64], to[64];
 
+	if (xve_is_uplink(priv) &&
+			!memcmp(&gid->raw, &priv->gw.t_gid.raw, sizeof(*gid)))
+		qpn = priv->gw.t_data_qp;
+
 	fwt_entry = xve_fwt_lookup(xve_fwt, smac, vlan, 1);
 	if (fwt_entry) {
 		if (unlikely
@@ -262,11 +260,8 @@ void xve_fwt_insert(struct xve_dev_priv *priv, struct xve_cm_ctx *ctx,
 		     (fwt_entry->dgid.raw, gid->raw, sizeof(union ib_gid)))) {
 			print_mgid_buf(from, (char *)fwt_entry->dgid.raw);
 			print_mgid_buf(to, (char *)gid->raw);
-			pr_info("XVE: %s MAC %02x:%02x:%02x:%02x:%02x:%02x ",
-				priv->xve_name, ALIGN_TO_FF(smac[0]),
-				ALIGN_TO_FF(smac[1]), ALIGN_TO_FF(smac[2]),
-				ALIGN_TO_FF(smac[3]), ALIGN_TO_FF(smac[4]),
-				ALIGN_TO_FF(smac[5]));
+			pr_info("XVE: %s MAC %pM ",
+			     priv->xve_name, smac);
 			pr_info(" vlan %d moved from GID %s to GID %s\n",
 				fwt_entry->vlan, from, to);
 
@@ -306,13 +301,9 @@ void xve_fwt_insert(struct xve_dev_priv *priv, struct xve_cm_ctx *ctx,
 		}
 		memset(fwt_entry, 0, sizeof(struct xve_fwt_entry));
 		print_mgid_buf(from, (char *)gid->raw);
-		pr_info("XVE: %s MAC %02x:%02x:%02x:%02x:%02x:%02x",
-			priv->xve_name, ALIGN_TO_FF(smac[0]),
-			ALIGN_TO_FF(smac[1]),
-			ALIGN_TO_FF(smac[2]), ALIGN_TO_FF(smac[3]),
-			ALIGN_TO_FF(smac[4]), ALIGN_TO_FF(smac[5]));
-		pr_info("vlan %d learned from GID %s, mode: %s Fwt %p\n",
-			vlan, from, qpn ? "UD" : "RC", fwt_entry);
+		pr_info("XVE: %s MAC %pM", priv->xve_name, smac);
+		pr_info("vlan %d learned from GID %s, mode: %s QPN %x Fwt %p\n",
+			vlan, from, qpn ? "UD" : "RC", qpn, fwt_entry);
 		priv->counters[XVE_MAC_LEARN_COUNTER]++;
 		memcpy(fwt_entry->dgid.raw, gid->raw, sizeof(union ib_gid));
 		fwt_entry->dqpn = qpn;
@@ -408,7 +399,7 @@ void xve_prepare_skb(struct xve_dev_priv *priv, struct sk_buff *skb)
 	skb->protocol = eth_type_trans(skb, priv->netdev);
 	skb->dev = priv->netdev;
 	skb_pkt_type(skb, PACKET_HOST);
-	if (test_bit(XVE_FLAG_CSUM, &priv->flags))
+	if (xve_is_ovn(priv) && test_bit(XVE_FLAG_CSUM, &priv->flags))
 		skb->ip_summed = CHECKSUM_UNNECESSARY;
 	skb->truesize = skb->len + sizeof(struct sk_buff);
 }

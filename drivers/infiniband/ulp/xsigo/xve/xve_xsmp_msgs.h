@@ -61,6 +61,10 @@ enum xve_xsmp_cmd_type {
 	XSMP_XVE_HA_INFO,
 	XSMP_XVE_ISCSI_INFO,
 
+	XSMP_XSF_FWD_TABLE,
+	XSMP_XSF_L2_TABLE,
+	XSMP_VNIC_READY,
+
 	XSMP_XVE_TYPE_MAX,
 };
 
@@ -86,13 +90,13 @@ struct xve_xsmp_msg {
 			u8 xve_name[XVE_MAX_NAME_SIZE];
 			u16 service_level;	/* SL value for this vnic */
 			u16 fc_active;	/* 1: enable, 0:
-					 * disable host rate control */
+					* disable host rate control */
 			u16 cir;	/* committed rate in mbps */
 			u16 pir;	/* peak rate in mbps */
 			u32 cbs;	/* committed burst size in bytes */
 			u32 pbs;	/* peak burst size in bytes */
 			u8 vm_index;	/* the index used by vmware
-					 * for persistence */
+					* for persistence */
 			u8 _reserved;
 			u16 mp_flag;
 			u8 mp_group[XVE_MP_GROUP_NAME_MAX];
@@ -101,6 +105,21 @@ struct xve_xsmp_msg {
 			/* for virtual network */
 			u32 net_id;
 			u8 vnet_mode;
+
+			u8 vnic_type;
+
+			u64 tca_subnet_prefix;
+			u32 tca_ctrl_qp;
+			u32 tca_data_qp;
+			u16 tca_pkey;
+			u16 tca_qkey;
+
+			/* host must fill these in INSTALL ACK */
+			u64 hca_subnet_prefix;
+			u32 hca_ctrl_qp;
+			u32 hca_data_qp;
+			u16 hca_pkey;
+			u16 hca_qkey;
 		} __packed;
 		u8 bytes[512];
 	};
@@ -257,7 +276,7 @@ struct xve_iscsi_msg {
 #define XVE_UPDATE_QOS		(1 << 7)
 #define XVE_UPDATE_ACL		(1 << 8)
 #define XVE_UPDATE_MP_FLAG		(1 << 10)
-#define XVE_XT_STATE_DOWN		(1 << 30)
+#define XVE_UPDATE_XT_STATE_DOWN	(1 << 30)
 #define XVE_UPDATE_XT_CHANGE		(1 << 31)
 
 /* mp_flag */
