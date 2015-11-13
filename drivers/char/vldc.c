@@ -126,14 +126,14 @@ static bool vldc_will_write_block(struct vldc_dev *vldc, size_t count)
 
 static int vldc_ldc_send(struct vldc_dev *vldc, void *data, int len)
 {
-	int err, limit = 1000;
+	int err, limit = 100;
 
 	err = -EINVAL;
 	while (limit-- > 0) {
 		err = ldc_write(vldc->lp, data, len);
 		if (!err || (err != -EAGAIN))
 			break;
-		udelay(1);
+		mdelay(100);
 	}
 
 	return err;
@@ -163,40 +163,6 @@ static ssize_t vldc_fops_write(struct file *filp, const char __user *ubuf,
 	/*
 	 * If the device has been released/closed
 	 * or has been reset, exit with error.
-	 */
-	if (atomic_read(&vldc->is_released)) {
-		rv = -ENODEV;
-		goto done;
-	}
-
-	if (atomic_read(&vldc->is_reset_asserted)) {
-		rv = -EIO;
-		goto done;
-	}
-
-	if (vldc_will_write_block(vldc, count) &&
-	    (filp->f_flags & O_NONBLOCK)) {
-		rv = -EAGAIN;
-		goto done;
-	}
-
-	/*
-	 * Loop here waiting for write space to become available.
-	 * NOTE: we can't wait on an event here because there is no event
-	 * to indicate that write space has become available.
-	 */
-	while (vldc_will_write_block(vldc, count)) {
-		msleep_interruptible(VLDC_WRITE_BLOCK_SLEEP_DELAY);
-		if (signal_pending(current)) {
-			/* task caught a signal during the sleep - abort. */
-			rv = -EINTR;
-			goto done;
-		}
-	}
-
-	/*
-	 * Check again if the device has been released/closed
-	 * or has been reset while we were waiting.
 	 */
 	if (atomic_read(&vldc->is_released)) {
 		rv = -ENODEV;
@@ -304,35 +270,6 @@ static ssize_t vldc_fops_read(struct file *filp, char __user *ubuf,
 		goto done;
 	}
 
-	if (vldc_will_read_block(vldc) && (filp->f_flags & O_NONBLOCK)) {
-		rv = -EAGAIN;
-		goto done;
-	}
-
-	/*
-	 * NOTE: this will only wait if the vldc_will_read_block
-	 * initially returns true
-	 */
-	rv = wait_event_interruptible(vldc->waitqueue,
-				      !vldc_will_read_block(vldc));
-	if (rv < 0)
-		goto done;
-
-	/*
-	 * Check again if the device has been released/closed
-	 * or has been reset while we were waiting
-	 */
-	if (atomic_read(&vldc->is_released)) {
-		/* device was released, exit */
-		rv = -ENODEV;
-		goto done;
-	}
-
-	if (atomic_read(&vldc->is_reset_asserted)) {
-		rv = -EIO;
-		goto done;
-	}
-
 	nbytes_left = count; /* number of bytes left to read */
 	ubufp = (char *)ubuf;
 
@@ -343,7 +280,10 @@ static ssize_t vldc_fops_read(struct file *filp, char __user *ubuf,
 		if (atomic_read(&vldc->mode) == LDC_MODE_RAW)
 			size = max_t(int, LDC_PACKET_SIZE, nbytes_left);
 		else
-			size = min_t(int, atomic_read(&vldc->mtu), nbytes_left);
+			size = nbytes_left;
+
+		/* limit read to vldc->mtu */
+		size = min_t(int, atomic_read(&vldc->mtu), size);
 
 		rv = ldc_read(vldc->lp, vldc->rx_buf, size);
 
@@ -433,6 +373,7 @@ static long vldc_read_cookie(struct vldc_dev *vldc, u64 src_addr, u64 dst_addr,
 	char *ubufp;
 	u32 nbytes_read;
 	u32 nbytes_left;
+	u32 size;
 
 	dprintk("entered.\n");
 
@@ -462,11 +403,6 @@ static long vldc_read_cookie(struct vldc_dev *vldc, u64 src_addr, u64 dst_addr,
 		goto done;
 	}
 
-	if (unlikely(len > VLDC_MAX_COOKIE)) {
-		rv = -E2BIG;
-		goto done;
-	}
-
 	rv = 0;
 	nbytes_left = (u32)len; /* number of bytes left to read */
 	ubufp = (char *)src_addr;
@@ -474,11 +410,14 @@ static long vldc_read_cookie(struct vldc_dev *vldc, u64 src_addr, u64 dst_addr,
 	/* copy in len bytes or until LDC has no more read data (or error) */
 	while (nbytes_left > 0) {
 
+		/* limit read to size VLDC_MAX_COOKIE */
+		size = min_t(int, VLDC_MAX_COOKIE, nbytes_left);
+
 		cookie.cookie_addr = dst_addr;
-		cookie.cookie_size = nbytes_left;
+		cookie.cookie_size = size;
 
 		rv = ldc_copy(vldc->lp, LDC_COPY_IN, vldc->cookie_read_buf,
-			      nbytes_left, 0, &cookie, 1);
+			      size, 0, &cookie, 1);
 
 		dprintk("(%s) ldc_copy() returns %d\n", vldc->name, rv);
 
@@ -518,6 +457,7 @@ static long vldc_write_cookie(struct vldc_dev *vldc, u64 src_addr, u64 dst_addr,
 	char *ubufp;
 	u32 nbytes_written;
 	u32 nbytes_left;
+	u32 size;
 
 	dprintk("entered.\n");
 
@@ -547,11 +487,6 @@ static long vldc_write_cookie(struct vldc_dev *vldc, u64 src_addr, u64 dst_addr,
 		goto done;
 	}
 
-	if (unlikely(len > VLDC_MAX_COOKIE)) {
-		rv = -E2BIG;
-		goto done;
-	}
-
 	rv = 0;
 	nbytes_left = (u32)len; /* number of bytes left to write */
 	ubufp = (char *)src_addr;
@@ -559,17 +494,20 @@ static long vldc_write_cookie(struct vldc_dev *vldc, u64 src_addr, u64 dst_addr,
 	/* copy in len bytes or until LDC has no more read data (or error) */
 	while (nbytes_left > 0) {
 
+		/* limit write to VLDC_MAX_COOKIE */
+		size = min_t(int, VLDC_MAX_COOKIE, nbytes_left);
+
 		if (copy_from_user(vldc->cookie_write_buf,
-		    ubufp, nbytes_left) != 0) {
+		    ubufp, size) != 0) {
 			rv = -EFAULT;
 			goto done;
 		}
 
 		cookie.cookie_addr = dst_addr;
-		cookie.cookie_size = nbytes_left;
+		cookie.cookie_size = size;
 
 		rv = ldc_copy(vldc->lp, LDC_COPY_OUT, vldc->cookie_write_buf,
-			      nbytes_left, 0, &cookie, 1);
+			      size, 0, &cookie, 1);
 
 		dprintk("(%s) ldc_copy() returns %d\n", vldc->name, rv);
 

@@ -40,13 +40,9 @@ module_param(vldsdbg_level, uint, S_IRUGO|S_IWUSR);
 
 #define VLDS_MINOR_BASE 0
 #define VLDS_MAX_DEVS	65535 /* need one per guest domain - max is 2^20 */
-#define VLDS_MAX_MSG_SIZE (256 * 1024)
 
 #define	VLDS_SP_INT_NAME	DS_SP_NAME /* SP DS internal name */
-#define	VLDS_SP_DEV_NAME	"sp" /* SP DS device name */
 #define VLDS_PATH_MAX		256
-
-#define VLDS_INVALID_HANDLE	0xFFFFFFFFFFFFFFFFUL
 
 static char driver_version[] = DRV_NAME ".c:v" DRV_VERSION "\n";
 
@@ -55,7 +51,7 @@ if (vldsdbg_level > 0)\
 	printk(KERN_ERR "%s: %s: " fmt, DRV_NAME, __func__, ##args);\
 } while (0)
 
-/* Global driver data struct for data common to all devices */
+/* Global driver data struct for common data */
 struct vlds_driver_data {
 	struct list_head	vlds_dev_list; /* list of all vlds devices */
 	int			num_vlds_dev_list;
@@ -65,6 +61,7 @@ struct vlds_driver_data {
 struct vlds_driver_data vlds_data;
 static DEFINE_MUTEX(vlds_data_mutex); /* protect vlds_data */
 
+/* VLDS device */
 struct vlds_dev {
 	/* link into the global driver data dev list */
 	struct list_head	list;
@@ -74,16 +71,34 @@ struct vlds_dev {
 	dev_t			devt;
 	char			*int_name; /* internal name for device */
 	struct device		*device;
-	u64			domain_handle; /* only valid for domain dev */
+	u64			domain_handle;
+
+	/* open reference count */
+	u64			ref_cnt;
+
+	/* flag to indicate that the device has been removed */
+	bool			removed;
 
 	/* list of all services for this vlds device */
 	struct list_head	service_info_list;
-
 };
 
-/* we maintain a global vlds_dev for the SP device */
+/* for convenience, alias to the vlds_dev for the SP device */
 struct vlds_dev *sp_vlds;
+#define	IS_SP_VLDS(vlds_dev)	((vlds_dev) == sp_vlds)
 
+/*
+ * Service info to describe a service and process(es) using the service.
+ * Services can be regsitered as shared (the default) or exclusive.
+ * Exclusive services can only be registered by the initial
+ * process which registers it. Multiple processes can
+ * register a shared service.  Data received for a service in
+ * shared mode will be multiplexed to all the processes that are registered
+ * for the service. Therefore, processes could receive data messages which
+ * are responses to requests from other processes. Therefore, processes using
+ * shared services must be careful to only process messages intended for them
+ * (by using/checking sequence numbers encoded in the message for example).
+ */
 struct vlds_service_info {
 	/* link into the vlds_dev service info list */
 	struct list_head	list;
@@ -91,35 +106,62 @@ struct vlds_service_info {
 	/* name/id of the service */
 	char			*name;
 
+	/* state of the service connection with ds */
 	u64			state;
 
-	u64			flags;
+	/* client service (or provider) */
+	bool			is_client;
 
-	/* the thread group id which is using this service */
-	pid_t			tgid;
+	/* exclusive service? */
+	bool			is_exclusive;
 
 	/* unique handle assigned to this service */
 	u64			handle;
 
+	/* version that was registered */
+	vlds_ver_t		reg_vers;
+
 	/* version that was negotiated */
 	vlds_ver_t		neg_vers;
 
-	/* Queue of received data messages for this service */
-	struct list_head	msg_queue;
-	u64			msg_queue_size;
+	/* next service registration ID to use */
+	u32			next_svc_reg_id;
+
+	/* the list of processes (thread group ids) using this service */
+	struct list_head	tgid_list;
 
 };
-#define VLDS_SVC_IS_CLIENT(svc) ((svc)->flags & VLDS_REG_CLIENT)
-#define VLDS_SVC_IS_EVENT(svc) ((svc)->flags & VLDS_REG_EVENT)
+#define VLDS_SVC_IS_CLIENT(svc) ((svc)->is_client)
+#define VLDS_SVC_IS_EXCL(svc) ((svc)->is_exclusive)
+
+struct vlds_tgid_info {
+	/* link into the vlds_service_info tgid list */
+	struct list_head	list;
+
+	/* thread group id for associated process */
+	pid_t			tgid;
+
+	/* service reg ID assigned to this process/svc */
+	u32			svc_reg_id;
+
+	/* does the process expect events for this service? */
+	bool			event_reg;
+
+	/* Queue of received data messages for this service/process */
+	struct list_head	msg_queue;
+
+	/* number of messages on the queue - used to limit the # of messages */
+	u64			msg_queue_size;
+};
+#define VLDS_MAX_MSG_LIST_NUM		32
 
 struct vlds_msg_data {
-	/* link into the vlds_service_info message queue */
+	/* link into the vlds_tgid_info message queue */
 	struct list_head	list;
 
 	size_t			size;  /* message data size */
 	u8			data[0]; /* message data */
 };
-#define VLDS_MAX_MSG_LIST_NUM		16
 
 /*
  * If a process registers an event fd, we create an
@@ -169,7 +211,7 @@ static int vlds_add_event_info(pid_t tgid, int fd)
 {
 	struct vlds_event_info *event_info;
 
-	dprintk("called\n");
+	dprintk("entered\n");
 
 	event_info = kzalloc(sizeof(struct vlds_event_info), GFP_KERNEL);
 	if (unlikely(event_info == NULL)) {
@@ -219,7 +261,7 @@ static void vlds_remove_event_info(pid_t tgid)
 	struct vlds_event *next;
 	bool found;
 
-	dprintk("called\n");
+	dprintk("entered\n");
 
 	found = false;
 	list_for_each_entry(event_info, &vlds_event_info_list, list) {
@@ -327,6 +369,29 @@ static int vlds_add_event(pid_t tgid, struct vlds_service_info *svc_info,
 
 }
 
+/* vlds_dev_mutex must be held */
+static void vlds_add_event_all(struct vlds_dev *vlds,
+	struct vlds_service_info *svc_info, u64 type, vlds_ver_t *neg_vers)
+{
+	struct vlds_tgid_info *tgid_info;
+	int rv;
+
+	list_for_each_entry(tgid_info, &svc_info->tgid_list, list) {
+
+		/* Only add an event if it's an event registration */
+		if (!tgid_info->event_reg)
+			continue;
+
+		rv = vlds_add_event(tgid_info->tgid, svc_info,
+		    type, neg_vers);
+		if (rv) {
+			/* just give an error if we failed to add the event */
+			pr_err("%s: Failed to create event (type = %llu)\n",
+			    vlds->int_name, type);
+		}
+	}
+}
+
 static struct vlds_event *vlds_get_event(struct vlds_event_info *event_info)
 {
 
@@ -357,26 +422,114 @@ static void vlds_remove_event(struct vlds_event_info *event_info,
 	kfree(event);
 }
 
-static void vlds_remove_svc_events(struct vlds_service_info *svc_info)
+/* remove all events for a tgid/service */
+static void vlds_remove_svc_events_tgid(struct vlds_service_info *svc_info,
+	struct vlds_tgid_info *tgid_info)
 {
 	struct vlds_event_info *event_info;
 	struct vlds_event *event;
 	struct vlds_event *next;
+	int rv;
+
+	if (!tgid_info->event_reg)
+		return;
 
 	mutex_lock(&vlds_event_info_list_mutex);
 
-	list_for_each_entry(event_info, &vlds_event_info_list, list) {
-
+	event_info = NULL;
+	rv = vlds_get_event_info(tgid_info->tgid, &event_info);
+	if (rv == 0 && event_info != NULL) {
 		list_for_each_entry_safe(event, next, &event_info->event_list,
 		    list) {
-			if (event->svc_info == svc_info) {
-				list_del(&event->list);
-				kfree(event);
-			}
+			if (event->svc_info == svc_info)
+				vlds_remove_event(event_info, event);
 		}
 	}
 
 	mutex_unlock(&vlds_event_info_list_mutex);
+}
+
+/* vlds_dev_mutex must be held */
+static void vlds_free_msg_queue(struct vlds_tgid_info *tgid_info)
+{
+	struct vlds_msg_data *msg_data;
+	struct vlds_msg_data *next;
+
+	list_for_each_entry_safe(msg_data, next, &tgid_info->msg_queue,
+	    list) {
+
+		list_del(&msg_data->list);
+
+		kfree(msg_data);
+
+		tgid_info->msg_queue_size--;
+	}
+}
+
+
+/* vlds_dev_mutex must be held */
+static struct vlds_tgid_info *vlds_get_tgid_info(
+	struct vlds_service_info *svc_info, pid_t tgid)
+{
+	struct vlds_tgid_info *tgid_info;
+
+	list_for_each_entry(tgid_info, &svc_info->tgid_list, list)
+		if (tgid_info->tgid == tgid)
+			return tgid_info;
+
+	return NULL;
+}
+
+/* vlds_dev_mutex must be held */
+static int vlds_get_primary_tgid(struct vlds_service_info *svc_info,
+	pid_t *tgid)
+{
+	struct vlds_tgid_info *tgid_info;
+
+	tgid_info = list_first_entry(&svc_info->tgid_list,
+	    struct vlds_tgid_info, list);
+
+	if (tgid_info == NULL)
+		return -ENODEV;
+
+	*tgid = tgid_info->tgid;
+
+	return 0;
+}
+
+/* vlds_dev_mutex must be held */
+static int vlds_add_tgid_info(struct vlds_service_info *svc_info,
+	pid_t tgid, bool event_reg, struct vlds_tgid_info **tgid_info)
+{
+	struct vlds_tgid_info *new_tgid_info;
+
+	new_tgid_info = kzalloc(sizeof(struct vlds_tgid_info), GFP_KERNEL);
+	if (unlikely(new_tgid_info == NULL))
+		return -ENOMEM;
+
+	new_tgid_info->tgid = tgid;
+	new_tgid_info->svc_reg_id = svc_info->next_svc_reg_id++;
+	new_tgid_info->event_reg = event_reg;
+	INIT_LIST_HEAD(&new_tgid_info->msg_queue);
+	new_tgid_info->msg_queue_size = 0;
+
+	list_add_tail(&new_tgid_info->list, &svc_info->tgid_list);
+
+	*tgid_info = new_tgid_info;
+
+	return 0;
+
+}
+
+/* vlds_dev_mutex must be held */
+static void vlds_remove_tgid_info(struct vlds_tgid_info *tgid_info)
+{
+	/* remove all the messages queued on this tgid_info */
+	vlds_free_msg_queue(tgid_info);
+
+	list_del(&tgid_info->list);
+
+	kfree(tgid_info);
 }
 
 static struct vlds_service_info *vlds_get_svc_info(struct vlds_dev *vlds,
@@ -407,18 +560,24 @@ static struct vlds_service_info *vlds_get_svc_info_hdl(struct vlds_dev *vlds,
 	return NULL;
 }
 
-/* Add a message to a service message queue */
-static int vlds_add_msg(struct vlds_service_info *svc_info, void *buf,
-	size_t buflen)
+static void vlds_remove_svc_info(struct vlds_service_info *svc_info)
+{
+	list_del(&svc_info->list);
+	kfree(svc_info->name);
+	kfree(svc_info);
+}
+
+static int vlds_add_msg(struct vlds_tgid_info *tgid_info,
+	void *buf, size_t buflen)
 {
 	struct vlds_msg_data *msg_data;
 
 	/* check if we've reached the max num of queued messages */
-	if (svc_info->msg_queue_size > VLDS_MAX_MSG_LIST_NUM)
+	if (tgid_info->msg_queue_size > VLDS_MAX_MSG_LIST_NUM)
 		return -ENOSPC;
 
 	/* make sure the message size isn't too large */
-	if (buflen > VLDS_MAX_MSG_SIZE)
+	if (buflen > VLDS_MAX_SENDBUF_LEN)
 		return -EFBIG;
 
 	/* we don't allow enqueing zero length messages */
@@ -435,30 +594,68 @@ static int vlds_add_msg(struct vlds_service_info *svc_info, void *buf,
 	msg_data->size = buflen;
 
 	/* add it to the queue */
-	list_add_tail(&msg_data->list, &svc_info->msg_queue);
+	list_add_tail(&msg_data->list, &tgid_info->msg_queue);
 
-	svc_info->msg_queue_size++;
+	tgid_info->msg_queue_size++;
 
 	return 0;
 }
 
+/* vlds_dev_mutex must be held */
+static void vlds_add_msg_all(struct vlds_dev *vlds,
+	struct vlds_service_info *svc_info, void *buf, size_t buflen)
+{
+	struct vlds_tgid_info *tgid_info;
+	int rv;
+
+	list_for_each_entry(tgid_info, &svc_info->tgid_list, list) {
+
+		rv = vlds_add_msg(tgid_info, buf, buflen);
+		if (rv) {
+			if (rv == -ENOSPC)
+				dprintk("%s: service %s: message queue "
+				    "overflow! (tgid=%u)\n", vlds->int_name,
+				    svc_info->name, tgid_info->tgid);
+			else if (rv == -EFBIG)
+				dprintk("%s: service %s: message too large "
+				    "(%lu bytes)! (tgid=%u)\n",
+				    vlds->int_name, svc_info->name, buflen,
+				    tgid_info->tgid);
+			else
+				dprintk("%s: service %s: failed to add message "
+				    "(err = %d)! (tgid=%u)\n", vlds->int_name,
+				    svc_info->name, rv, tgid_info->tgid);
+		}
+	}
+}
+
 /*
- * Get a message (data and size) from a service message queue.
+ * Get a message (data and size) from a service/tgid message queue.
  * NOTE: the message remains on the queue.
  */
-static struct vlds_msg_data *vlds_get_msg(struct vlds_service_info *svc_info)
+static struct vlds_msg_data *vlds_get_msg(struct vlds_service_info *svc_info,
+	pid_t tgid)
 {
+	struct vlds_tgid_info *tgid_info;
 	struct vlds_msg_data *msg_data;
+	bool found;
 
-	if (list_empty(&svc_info->msg_queue)) {
-		/*
-		 * TBD: Block instead of return here
-		 * (unless NONBLOCK flag specified).
-		 */
-		return NULL;
+	/* find the tgid_info associated with the process */
+	found = false;
+	list_for_each_entry(tgid_info, &svc_info->tgid_list, list) {
+		if (tgid_info->tgid == tgid) {
+			found = true;
+			break;
+		}
 	}
 
-	msg_data = list_first_entry(&svc_info->msg_queue, struct vlds_msg_data,
+	if (!found)
+		return NULL;
+
+	if (list_empty(&tgid_info->msg_queue))
+		return NULL;
+
+	msg_data = list_first_entry(&tgid_info->msg_queue, struct vlds_msg_data,
 	    list);
 
 	BUG_ON(msg_data == NULL);
@@ -466,11 +663,29 @@ static struct vlds_msg_data *vlds_get_msg(struct vlds_service_info *svc_info)
 	return msg_data;
 }
 
-/* Dequeue a message from a service message queue. */
+/* Dequeue a message from a service/tgid message queue. */
 static void vlds_dequeue_msg(struct vlds_service_info *svc_info,
-	struct vlds_msg_data *msg_data)
+	pid_t tgid, struct vlds_msg_data *msg_data)
 {
-	if (msg_data == NULL || list_empty(&svc_info->msg_queue))
+	struct vlds_tgid_info *tgid_info;
+	bool found;
+
+	if (msg_data == NULL)
+		return;
+
+	/* find the tgid_info associated with the process */
+	found = false;
+	list_for_each_entry(tgid_info, &svc_info->tgid_list, list) {
+		if (tgid_info->tgid == tgid) {
+			found = true;
+			break;
+		}
+	}
+
+	if (!found)
+		return;
+
+	if (list_empty(&tgid_info->msg_queue))
 		return;
 
 	/* Check here that the message is actually on the queue? TBD */
@@ -479,35 +694,17 @@ static void vlds_dequeue_msg(struct vlds_service_info *svc_info,
 
 	kfree(msg_data);
 
-	svc_info->msg_queue_size--;
-}
-
-static void vlds_free_msg_queue(struct vlds_service_info *svc_info)
-{
-	struct vlds_msg_data *msg_data;
-	struct vlds_msg_data *next;
-
-	list_for_each_entry_safe(msg_data, next, &svc_info->msg_queue,
-	    list) {
-
-		list_del(&msg_data->list);
-
-		kfree(msg_data);
-
-		svc_info->msg_queue_size--;
-	}
-
+	tgid_info->msg_queue_size--;
 }
 
 /*
- * Callback ops
+ * Service callback ops
  */
 static void
 vlds_ds_reg_cb(ds_cb_arg_t arg, ds_svc_hdl_t hdl, ds_ver_t *ver)
 {
 	struct vlds_dev *vlds;
 	struct vlds_service_info *svc_info;
-	int rv;
 
 	dprintk("entered.\n");
 
@@ -528,20 +725,13 @@ vlds_ds_reg_cb(ds_cb_arg_t arg, ds_svc_hdl_t hdl, ds_ver_t *ver)
 	svc_info->state = VLDS_HDL_STATE_CONNECTED;
 
 	/*
-	 * if the service requires events,
-	 * add an event to the process's event_info queue
+	 * For every process that has registered this service
+	 * in EVENT mode, register an event.
 	 */
-	if (VLDS_SVC_IS_EVENT(svc_info)) {
-		rv = vlds_add_event(svc_info->tgid, svc_info,
-		    VLDS_EVENT_TYPE_REG, &svc_info->neg_vers);
-		if (rv) {
-			/* just give an error if we failed to add the event */
-			pr_err("%s: failed to create registration event "
-			    "(%llx)\n", vlds->int_name, hdl);
-		}
-	}
+	vlds_add_event_all(vlds, svc_info, VLDS_EVENT_TYPE_REG,
+	    &svc_info->neg_vers);
 
-	dprintk("%s: service %s registered version (%u.%u) hdl=%llx\n",
+	dprintk("%s: service %s register version (%u.%u) hdl=%llx\n",
 	    vlds->int_name, svc_info->name, svc_info->neg_vers.vlds_major,
 	    svc_info->neg_vers.vlds_minor, hdl);
 
@@ -554,7 +744,6 @@ vlds_ds_unreg_cb(ds_cb_arg_t arg, ds_svc_hdl_t hdl)
 {
 	struct vlds_dev *vlds;
 	struct vlds_service_info *svc_info;
-	int rv;
 
 	dprintk("entered.\n");
 
@@ -575,20 +764,12 @@ vlds_ds_unreg_cb(ds_cb_arg_t arg, ds_svc_hdl_t hdl)
 	svc_info->state = VLDS_HDL_STATE_DISCONNECTED;
 
 	/*
-	 * if the service requires events,
-	 * add an event to the process's event_info queue
+	 * For every process that has registered this service
+	 * in EVENT mode, register an event.
 	 */
-	if (VLDS_SVC_IS_EVENT(svc_info)) {
-		rv = vlds_add_event(svc_info->tgid, svc_info,
-		    VLDS_EVENT_TYPE_UNREG, NULL);
-		if (rv) {
-			/* just give an error if we failed to add the event */
-			pr_err("%s: failed to create unregistration event "
-			    "(%llx)\n", vlds->int_name, hdl);
-		}
-	}
+	vlds_add_event_all(vlds, svc_info, VLDS_EVENT_TYPE_UNREG, NULL);
 
-	dprintk("%s: service %s unregistered hdl=%llx\n",
+	dprintk("%s: service %s unregister hdl=%llx\n",
 	    vlds->int_name, svc_info->name, hdl);
 
 	mutex_unlock(&vlds->vlds_mutex);
@@ -600,7 +781,6 @@ vlds_ds_data_cb(ds_cb_arg_t arg, ds_svc_hdl_t hdl, void *buf, size_t buflen)
 {
 	struct vlds_dev *vlds;
 	struct vlds_service_info *svc_info;
-	int rv;
 
 	dprintk("entered.\n");
 
@@ -616,41 +796,21 @@ vlds_ds_data_cb(ds_cb_arg_t arg, ds_svc_hdl_t hdl, void *buf, size_t buflen)
 		return;
 	}
 
-	/* received data is assumed to be 1 complete message */
-	rv = vlds_add_msg(svc_info, buf, buflen);
-	if (rv) {
-		if (rv == -ENOSPC)
-			dprintk("%s: service %s: message queue overflow!\n",
-			    vlds->int_name, svc_info->name);
-		else if (rv == -EFBIG)
-			dprintk("%s: service %s: message too large "
-			    "(%lu bytes)!\n", vlds->int_name, svc_info->name,
-			    buflen);
-		else
-			dprintk("%s: service %s: failed to add message "
-			    "(err = %d)!\n", vlds->int_name,
-			    svc_info->name, rv);
-
-		mutex_unlock(&vlds->vlds_mutex);
-
-		return;
-	}
+	/*
+	 * For every process that has registered this service
+	 * populate the message into the msg queue.
+	 * NOTE - received data is assumed to be 1 complete message.
+	 * No partial message support.
+	 */
+	vlds_add_msg_all(vlds, svc_info, buf, buflen);
 
 	/*
-	 * if the service requires events,
-	 * add an event to the process's event_info queue
+	 * For every process that has registered this service
+	 * in EVENT mode, register an event.
 	 */
-	if (VLDS_SVC_IS_EVENT(svc_info)) {
-		rv = vlds_add_event(svc_info->tgid, svc_info,
-		    VLDS_EVENT_TYPE_DATA, NULL);
-		if (rv) {
-			/* just give an error if we failed to add the event */
-			pr_err("%s: failed to create data event (%llx)\n",
-			    vlds->int_name, hdl);
-		}
-	}
+	vlds_add_event_all(vlds, svc_info, VLDS_EVENT_TYPE_DATA, NULL);
 
-	dprintk("%s: %s service: Received %lu bytes hdl=%llx\n",
+	dprintk("%s: service %s: Received %lu bytes hdl=%llx\n",
 	    vlds->int_name, svc_info->name, buflen, hdl);
 
 	mutex_unlock(&vlds->vlds_mutex);
@@ -669,17 +829,20 @@ static int vlds_svc_reg(struct vlds_dev *vlds, const void __user *uarg)
 
 	vlds_svc_reg_arg_t svc_reg;
 	vlds_cap_t cap;
-	char *svc_str;
+	char svc_str[VLDS_MAX_NAMELEN + 1];
 	bool is_client_reg;
+	bool is_excl_reg;
+	bool is_event_reg;
 	ds_capability_t dscap;
 	u32 flags;
 	ds_svc_hdl_t ds_hdl;
-	int rv;
+	pid_t tgid;
 	struct vlds_service_info *svc_info;
+	struct vlds_tgid_info *tgid_info;
+	int rv;
 
 	dprintk("entered.\n");
 
-	svc_str = NULL;
 	svc_info = NULL;
 
 	/* Get (and validate) userland args */
@@ -696,6 +859,15 @@ static int vlds_svc_reg(struct vlds_dev *vlds, const void __user *uarg)
 		goto error_out1;
 	}
 
+	/* If present, validate svc reg id */
+	if (svc_reg.vlds_svc_reg_idp) {
+		if (!access_ok(VERIFY_WRITE,
+		    (void __user *)svc_reg.vlds_svc_reg_idp, sizeof(u32))) {
+			rv = -EFAULT;
+			goto error_out1;
+		}
+	}
+
 	if (copy_from_user(&cap, (const void __user *)svc_reg.vlds_capp,
 	    sizeof(vlds_cap_t)) != 0) {
 		rv = -EFAULT;
@@ -710,38 +882,124 @@ static int vlds_svc_reg(struct vlds_dev *vlds, const void __user *uarg)
 	}
 
 	/* get the service string from userland */
-	svc_str = kzalloc(cap.vlds_service.vlds_strlen + 1, GFP_KERNEL);
-	if (unlikely(svc_str == NULL)) {
-		rv = -ENOMEM;
-		goto error_out1;
-	}
-
 	if (copy_from_user(svc_str,
 	    (const void __user *)cap.vlds_service.vlds_strp,
 	    cap.vlds_service.vlds_strlen) != 0) {
 		rv = -EFAULT;
 		goto error_out1;
 	}
+	svc_str[cap.vlds_service.vlds_strlen] = '\0';
 
 	is_client_reg = (svc_reg.vlds_reg_flags & VLDS_REG_CLIENT);
+	is_excl_reg = (svc_reg.vlds_reg_flags & VLDS_REG_EXCLUSIVE);
+	is_event_reg = (svc_reg.vlds_reg_flags & VLDS_REG_EVENT);
+	tgid = task_tgid_vnr(current);
 
 	mutex_lock(&vlds->vlds_mutex);
 
-	/* Check if the service is already being used */
+	/* Check if the service is already registered */
 	svc_info = vlds_get_svc_info(vlds, svc_str, is_client_reg);
 	if (svc_info != NULL) {
-		/* This service is already in use */
-		rv = -EBUSY;
-		svc_info = NULL;
-		goto error_out2;
+
+		/* make sure this process didn't already register it */
+		if (vlds_get_tgid_info(svc_info, tgid)) {
+			rv = -EBUSY;
+			svc_info = NULL;
+			goto error_out2;
+		}
+
+		/*
+		 * Enforce exclusive registration here:
+		 * Another process has already registered this service.
+		 * If this process is attempting to register it exclusive
+		 * or the service is already registered exclusive, deny
+		 * the request.
+		 */
+		if (is_excl_reg || VLDS_SVC_IS_EXCL(svc_info)) {
+			rv = -EBUSY;
+			svc_info = NULL;
+			goto error_out2;
+		}
+
+		/*
+		 * Make sure the registration versions match.
+		 * i.e. cannot register shared service with different
+		 * versions.
+		 */
+		if (svc_info->reg_vers.vlds_major !=
+		    cap.vlds_vers.vlds_major || svc_info->reg_vers.vlds_minor !=
+		    cap.vlds_vers.vlds_minor) {
+			rv = -EINVAL;
+			svc_info = NULL;
+			goto error_out2;
+		}
+
+		/* populate the service handle to the user */
+		if (put_user(svc_info->handle,
+		    (u64 __user *)(svc_reg.vlds_hdlp)) != 0) {
+			rv = -EFAULT;
+			svc_info = NULL;
+			goto error_out2;
+		}
+
+		/*
+		 * The service is already registered in shared mode,
+		 * just add another tgid to the service.
+		 */
+		rv = vlds_add_tgid_info(svc_info, tgid, is_event_reg,
+		    &tgid_info);
+		if (unlikely(rv != 0)) {
+			svc_info = NULL;
+			goto error_out2;
+		}
+
+		/* Populate (optional) svc reg ID to the user */
+		if (svc_reg.vlds_svc_reg_idp) {
+			if (put_user(tgid_info->svc_reg_id,
+			    (u32 __user *)(svc_reg.vlds_svc_reg_idp)) != 0) {
+				vlds_remove_tgid_info(tgid_info);
+				rv = -EFAULT;
+				svc_info = NULL;
+				goto error_out2;
+			}
+		}
+
+		/*
+		 * If it's an event based registration and the service has
+		 * already been connected/registered with ds, enqueue a reg
+		 * event for the process - since it will probably expect one.
+		 */
+		if (is_event_reg &&
+		    svc_info->state == VLDS_HDL_STATE_CONNECTED) {
+			rv = vlds_add_event(tgid, svc_info,
+			    VLDS_EVENT_TYPE_REG, &svc_info->neg_vers);
+			if (rv) {
+				/* just give an error if add event fails */
+				pr_err("%s: Failed to create registration "
+				    "event (%llx)\n", vlds->int_name,
+				    svc_info->handle);
+			}
+		}
+
+		dprintk("%s: registered tgid %u with service %s (client = %u) "
+		    "(hdl = %llx)\n", vlds->int_name, tgid, svc_str,
+		    VLDS_SVC_IS_CLIENT(svc_info), svc_info->handle);
+
+		mutex_unlock(&vlds->vlds_mutex);
+
+		return 0;
 	}
+
+	/*
+	 * This is a new service registration.
+	 */
 
 	/* init the ds capability structure */
 	dscap.svc_id = svc_str;
 	dscap.vers.major = (u64)cap.vlds_vers.vlds_major;
 	dscap.vers.minor = (u64)cap.vlds_vers.vlds_minor;
 
-	/* The svc_info will be passed back as an arg to the cb */
+	/* The vlds_dev will be passed back as an arg to the callbacks */
 	vlds_ds_ops.cb_arg = (void *)vlds;
 
 	flags = 0x0;
@@ -750,20 +1008,16 @@ static int vlds_svc_reg(struct vlds_dev *vlds, const void __user *uarg)
 	else
 		flags |= DS_CAP_IS_PROVIDER;
 
-	if (vlds != sp_vlds)
-		flags |= DS_TARGET_IS_DOMAIN;
-
 	ds_hdl = 0;
 	rv = ds_cap_init(&dscap, &vlds_ds_ops, flags, vlds->domain_handle,
 	    &ds_hdl);
 	if (rv || ds_hdl == 0) {
-		dprintk("%s: ds_cap_init failed for %s service\n",
+		dprintk("%s: ds_cap_init failed for service %s\n",
 		    vlds->int_name, svc_str);
 		goto error_out2;
 	}
 
-	if (copy_to_user((void __user *)(svc_reg.vlds_hdlp), (u64 *)&ds_hdl,
-	    sizeof(u64)) != 0) {
+	if (put_user(ds_hdl, (u64 __user *)(svc_reg.vlds_hdlp)) != 0) {
 		(void) ds_cap_fini(ds_hdl);
 		rv = -EFAULT;
 		goto error_out2;
@@ -771,26 +1025,49 @@ static int vlds_svc_reg(struct vlds_dev *vlds, const void __user *uarg)
 
 	/* create a service info for the new service */
 	svc_info = kzalloc(sizeof(struct vlds_service_info), GFP_KERNEL);
-	if (unlikely(svc_str == NULL)) {
+	if (unlikely(svc_info == NULL)) {
 		(void) ds_cap_fini(ds_hdl);
 		rv = -ENOMEM;
 		goto error_out2;
 	}
 
-	svc_info->name = svc_str;
+	svc_info->name = kmemdup(svc_str, (strlen(svc_str) + 1), GFP_KERNEL);
+	if (unlikely(svc_info->name == NULL)) {
+		(void) ds_cap_fini(ds_hdl);
+		rv = -ENOMEM;
+		goto error_out2;
+	}
 	svc_info->state = VLDS_HDL_STATE_NOT_YET_CONNECTED;
-	svc_info->flags = svc_reg.vlds_reg_flags;
-	svc_info->tgid = task_tgid_vnr(current);
+	svc_info->is_client = is_client_reg;
+	svc_info->is_exclusive = is_excl_reg;
+	svc_info->next_svc_reg_id = 1;  /* start at 1 */
+	INIT_LIST_HEAD(&svc_info->tgid_list);
 	svc_info->handle = (u64)ds_hdl;
-	INIT_LIST_HEAD(&svc_info->msg_queue);
-	svc_info->msg_queue_size = 0;
+	svc_info->reg_vers = cap.vlds_vers;
+
+	rv = vlds_add_tgid_info(svc_info, tgid, is_event_reg,
+	    &tgid_info);
+	if (unlikely(rv != 0)) {
+		(void) ds_cap_fini(ds_hdl);
+		goto error_out2;
+	}
+
+	/* Populate (optional) svc reg ID to the user */
+	if (svc_reg.vlds_svc_reg_idp) {
+		if (put_user(tgid_info->svc_reg_id,
+		    (u32 __user *)(svc_reg.vlds_svc_reg_idp)) != 0) {
+			vlds_remove_tgid_info(tgid_info);
+			rv = -EFAULT;
+			goto error_out2;
+		}
+	}
 
 	/* add the service_info to the vlds device */
 	list_add_tail(&svc_info->list, &vlds->service_info_list);
 
-	dprintk("%s: registered %s service (client = %llu) "
-	    "(hdl = %llx) (tgid = %u) with ds\n", vlds->int_name, svc_str,
-	    VLDS_SVC_IS_CLIENT(svc_info), svc_info->handle, svc_info->tgid);
+	dprintk("%s: registered new service %s (client = %u) "
+	    "(hdl = %llx) (tgid = %u)\n", vlds->int_name, svc_str,
+	    VLDS_SVC_IS_CLIENT(svc_info), svc_info->handle, tgid);
 
 	mutex_unlock(&vlds->vlds_mutex);
 
@@ -802,13 +1079,10 @@ error_out2:
 
 error_out1:
 
-	dprintk("%s: failed to register service rv = %d\n", vlds->int_name, rv);
+	dprintk("Failed to register service rv = %d\n", rv);
 
 	if (svc_info)
 		kfree(svc_info);
-
-	if (svc_str)
-		kfree(svc_str);
 
 	return rv;
 }
@@ -817,6 +1091,8 @@ static int vlds_unreg_hdl(struct vlds_dev *vlds, const void __user *uarg)
 {
 	vlds_unreg_hdl_arg_t unreg;
 	struct vlds_service_info *svc_info;
+	struct vlds_tgid_info *tgid_info;
+	pid_t tgid;
 	int rv;
 
 	dprintk("entered.\n");
@@ -828,6 +1104,8 @@ static int vlds_unreg_hdl(struct vlds_dev *vlds, const void __user *uarg)
 		goto error_out1;
 	}
 
+	tgid = task_tgid_vnr(current);
+
 	mutex_lock(&vlds->vlds_mutex);
 
 	svc_info = vlds_get_svc_info_hdl(vlds, unreg.vlds_hdl);
@@ -836,26 +1114,57 @@ static int vlds_unreg_hdl(struct vlds_dev *vlds, const void __user *uarg)
 		goto error_out2;
 	}
 
-	/* unregister the service from ds */
+	tgid_info = vlds_get_tgid_info(svc_info, tgid);
+	if (tgid_info == NULL) {
+		/* This process doesn't have the service registered */
+		rv = -ENODEV;
+		goto error_out2;
+	}
+
+	/*
+	 * There may be more than one process that has the
+	 * service registered. So, remove the tgid_info for this
+	 * process (which is unregistering the hdl) and if the
+	 * number of processes using the service goes to zero,
+	 * then unregister the service with ds and remove the
+	 * service_info entirely.
+	 */
+	vlds_remove_svc_events_tgid(svc_info, tgid_info);
+	vlds_remove_tgid_info(tgid_info);
+
+	if (!list_empty(&svc_info->tgid_list)) {
+
+		/* there are still other process(es) using the service */
+		dprintk("%s: unregistered tgid %u from service %s "
+		    "(client = %u) (hdl = %llx)\n", vlds->int_name, tgid,
+		    svc_info->name, VLDS_SVC_IS_CLIENT(svc_info),
+		    unreg.vlds_hdl);
+
+		mutex_unlock(&vlds->vlds_mutex);
+
+		return 0;
+	}
+
+	/* this was the last process using the service */
+
+	/*
+	 * Unregister the service from ds.
+	 * NOTE - once we call ds_cap_fini(), we should NOT get
+	 * any more callbacks for the service (including an unreg
+	 * event)!
+	 */
 	rv = ds_cap_fini(unreg.vlds_hdl);
 	if (rv) {
-		dprintk("%s: ds_cap_fini failed for %s service ",
+		dprintk("%s: ds_cap_fini failed for service %s\n",
 		    vlds->int_name, svc_info->name);
 		goto error_out2;
 	}
 
-	dprintk("%s: unregistered %s service (client = %llu) "
-	    "(hdl = %llx) with ds\n", vlds->int_name, svc_info->name,
+	dprintk("%s: unregistered service %s (client = %u) "
+	    "(hdl = %llx)\n", vlds->int_name, svc_info->name,
 	    VLDS_SVC_IS_CLIENT(svc_info), unreg.vlds_hdl);
 
-	list_del(&svc_info->list);
-
-	/* remove any events referencing this svc_info */
-	vlds_remove_svc_events(svc_info);
-
-	kfree(svc_info->name);
-	vlds_free_msg_queue(svc_info);
-	kfree(svc_info);
+	vlds_remove_svc_info(svc_info);
 
 	mutex_unlock(&vlds->vlds_mutex);
 
@@ -867,8 +1176,7 @@ error_out2:
 
 error_out1:
 
-	dprintk("%s: failed to unregister service rv = %d\n",
-	    vlds->int_name, rv);
+	dprintk("Failed to unregister service rv = %d\n", rv);
 
 	return rv;
 }
@@ -877,13 +1185,12 @@ static int vlds_hdl_lookup(struct vlds_dev *vlds, const void __user *uarg)
 {
 	vlds_hdl_lookup_arg_t hdl_lookup;
 	struct vlds_service_info *svc_info;
-	char *svc_str;
+	char svc_str[VLDS_MAX_NAMELEN + 1];
 	u64 num_hdls;
+	pid_t tgid;
 	int rv;
 
 	dprintk("entered.\n");
-
-	svc_str = NULL;
 
 	/* Get (and validate) userland args */
 	if (uarg == NULL || copy_from_user(&hdl_lookup, uarg,
@@ -898,8 +1205,6 @@ static int vlds_hdl_lookup(struct vlds_dev *vlds, const void __user *uarg)
 		goto error_out1;
 	}
 
-	/* get the service string */
-
 	/* make sure the service strlen is sane */
 	if (hdl_lookup.vlds_service.vlds_strlen == 0 ||
 	    hdl_lookup.vlds_service.vlds_strlen > VLDS_MAX_NAMELEN) {
@@ -908,18 +1213,14 @@ static int vlds_hdl_lookup(struct vlds_dev *vlds, const void __user *uarg)
 	}
 
 	/* get the service string from userland */
-	svc_str = kzalloc(hdl_lookup.vlds_service.vlds_strlen + 1, GFP_KERNEL);
-	if (unlikely(svc_str == NULL)) {
-		rv = -ENOMEM;
-		goto error_out1;
-	}
-
 	if (copy_from_user(svc_str,
 	    (const void __user *)hdl_lookup.vlds_service.vlds_strp,
 	    hdl_lookup.vlds_service.vlds_strlen) != 0) {
 		rv = -EFAULT;
 		goto error_out1;
 	}
+
+	tgid = task_tgid_vnr(current);
 
 	mutex_lock(&vlds->vlds_mutex);
 
@@ -929,8 +1230,14 @@ static int vlds_hdl_lookup(struct vlds_dev *vlds, const void __user *uarg)
 		goto error_out2;
 	}
 
-	if (copy_to_user((void __user *)(hdl_lookup.vlds_hdlsp),
-	    &svc_info->handle, sizeof(u64)) != 0) {
+	if (!vlds_get_tgid_info(svc_info, tgid)) {
+		/* This process doesn't have the service registered */
+		rv = -ENODEV;
+		goto error_out2;
+	}
+
+	if (put_user(svc_info->handle,
+	    (u64 __user *)(hdl_lookup.vlds_hdlsp)) != 0) {
 		rv = -EFAULT;
 		goto error_out2;
 	}
@@ -955,10 +1262,7 @@ error_out2:
 
 error_out1:
 
-	dprintk("%s: failed to lookup handle rv = %d\n", vlds->int_name, rv);
-
-	if (svc_str)
-		kfree(svc_str);
+	dprintk("Failed to lookup handle rv = %d\n", rv);
 
 	return rv;
 
@@ -976,30 +1280,37 @@ static int vlds_dmn_lookup(struct vlds_dev *vlds, const void __user *uarg)
 		goto error_out1;
 	}
 
+	mutex_lock(&vlds->vlds_mutex);
+
 	/* make sure the string buffer size is sane */
 	if (dmn_lookup.vlds_dname.vlds_strlen < (strlen(vlds->int_name) + 1)) {
 		rv = -EINVAL;
-		goto error_out1;
+		goto error_out2;
 	}
 
 	if (put_user(vlds->domain_handle,
 	    (u64 __user *)(dmn_lookup.vlds_dhdlp)) != 0) {
 		rv = -EFAULT;
-		goto error_out1;
+		goto error_out2;
 	}
 
 	if (copy_to_user((void __user *)(dmn_lookup.vlds_dname.vlds_strp),
 	    vlds->int_name, (strlen(vlds->int_name) + 1)) != 0) {
 		rv = -EFAULT;
-		goto error_out1;
+		goto error_out2;
 	}
+
+	mutex_unlock(&vlds->vlds_mutex);
 
 	return 0;
 
+error_out2:
+
+	mutex_unlock(&vlds->vlds_mutex);
+
 error_out1:
 
-	dprintk("%s: failed to lookup domain info. rv = %d\n",
-	    vlds->int_name, rv);
+	dprintk("Failed to lookup domain info. rv = %d\n", rv);
 
 	return rv;
 }
@@ -1009,6 +1320,7 @@ static int vlds_hdl_get_state(struct vlds_dev *vlds, const void __user *uarg)
 	vlds_hdl_get_state_arg_t hdl_get_state;
 	struct vlds_service_info *svc_info;
 	vlds_hdl_state_t hdl_state;
+	pid_t tgid;
 	int rv;
 
 	/* Get (and validate) userland args */
@@ -1018,10 +1330,18 @@ static int vlds_hdl_get_state(struct vlds_dev *vlds, const void __user *uarg)
 		goto error_out1;
 	}
 
+	tgid = task_tgid_vnr(current);
+
 	mutex_lock(&vlds->vlds_mutex);
 
 	svc_info = vlds_get_svc_info_hdl(vlds, hdl_get_state.vlds_hdl);
 	if (svc_info == NULL) {
+		rv = -ENODEV;
+		goto error_out2;
+	}
+
+	if (!vlds_get_tgid_info(svc_info, tgid)) {
+		/* This process doesn't have the service registered */
 		rv = -ENODEV;
 		goto error_out2;
 	}
@@ -1050,7 +1370,7 @@ error_out2:
 
 error_out1:
 
-	dprintk("%s: failed to get handle state rv = %d\n", vlds->int_name, rv);
+	dprintk("Failed to get handle state rv = %d\n", rv);
 
 	return rv;
 
@@ -1061,6 +1381,8 @@ static int vlds_send_msg(struct vlds_dev *vlds, const void __user *uarg)
 	vlds_send_msg_arg_t send_msg;
 	struct vlds_service_info *svc_info;
 	u8 *send_buf;
+	pid_t tgid;
+	pid_t primary_tgid;
 	int rv;
 
 	dprintk("entered.\n");
@@ -1080,6 +1402,8 @@ static int vlds_send_msg(struct vlds_dev *vlds, const void __user *uarg)
 		goto error_out1;
 	}
 
+	tgid = task_tgid_vnr(current);
+
 	mutex_lock(&vlds->vlds_mutex);
 
 	svc_info = vlds_get_svc_info_hdl(vlds, send_msg.vlds_hdl);
@@ -1088,10 +1412,37 @@ static int vlds_send_msg(struct vlds_dev *vlds, const void __user *uarg)
 		goto error_out2;
 	}
 
+	/* make sure this process has the service registered */
+	if (!vlds_get_tgid_info(svc_info, tgid)) {
+		rv = -ENODEV;
+		goto error_out2;
+	}
+
 	/* make sure we are in connected state before sending the data */
 	if (svc_info->state != VLDS_HDL_STATE_CONNECTED) {
 		rv = -EIO;
 		goto error_out2;
+	}
+
+	/*
+	 * The SP DS does not handle multiple outstanding messages
+	 * in the LDC tx queue. So, as a workaround, we only allow
+	 * the primary process (i.e. the process which first registered
+	 * the service) to send messages. Non-primary proceses are in
+	 * "read-only" mode - i.e. they can receive messages only. This
+	 * is basically a workaround for libpri and prevents the situation
+	 * where multiple processes are using libpri and attempt to
+	 * send a PRI request message at the same time. We return a -EPERM
+	 * to read-only processes - which libpri knows how to handle.
+	 */
+	if (IS_SP_VLDS(vlds)) {
+
+		rv = vlds_get_primary_tgid(svc_info, &primary_tgid);
+
+		if (rv != 0 || primary_tgid != tgid) {
+			rv = -EPERM;
+			goto error_out2;
+		}
 	}
 
 	send_buf = kzalloc(send_msg.vlds_buflen, GFP_KERNEL);
@@ -1108,12 +1459,7 @@ static int vlds_send_msg(struct vlds_dev *vlds, const void __user *uarg)
 
 	rv = ds_cap_send(send_msg.vlds_hdl, send_buf, send_msg.vlds_buflen);
 	if (rv) {
-
-		/*
-		 * TBD: If rv == -EAGAIN, block here trying again in loop
-		 * (unless NONBLOCK flag specified).
-		 */
-		dprintk("%s: ds_cap_send failed for %s service (rv=%d)\n",
+		dprintk("%s: ds_cap_send failed for service %s (rv=%d)\n",
 		    vlds->int_name, svc_info->name, rv);
 		goto error_out2;
 	}
@@ -1133,7 +1479,7 @@ error_out2:
 
 error_out1:
 
-	dprintk("%s: failed to send msg rv = %d\n", vlds->int_name, rv);
+	dprintk("Failed to send msg rv = %d\n", rv);
 
 	if (send_buf != NULL)
 		kfree(send_buf);
@@ -1148,8 +1494,9 @@ static int vlds_recv_msg(struct vlds_dev *vlds, const void __user *uarg)
 	struct vlds_service_info *svc_info;
 	u8 *msg;
 	size_t msglen;
-	int rv;
+	pid_t tgid;
 	struct vlds_msg_data *msg_data;
+	int rv;
 
 	/* Get (and validate) userland args */
 	if (uarg == NULL || copy_from_user(&recv_msg, uarg,
@@ -1163,6 +1510,8 @@ static int vlds_recv_msg(struct vlds_dev *vlds, const void __user *uarg)
 		goto error_out1;
 	}
 
+	tgid = task_tgid_vnr(current);
+
 	mutex_lock(&vlds->vlds_mutex);
 
 	svc_info = vlds_get_svc_info_hdl(vlds, recv_msg.vlds_hdl);
@@ -1171,7 +1520,13 @@ static int vlds_recv_msg(struct vlds_dev *vlds, const void __user *uarg)
 		goto error_out2;
 	}
 
-	msg_data =  vlds_get_msg(svc_info);
+	/* make sure this process has the service registered */
+	if (!vlds_get_tgid_info(svc_info, tgid)) {
+		rv = -ENODEV;
+		goto error_out2;
+	}
+
+	msg_data =  vlds_get_msg(svc_info, tgid);
 	if (msg_data == NULL) {
 		msg = NULL;
 		msglen = 0;
@@ -1233,7 +1588,7 @@ static int vlds_recv_msg(struct vlds_dev *vlds, const void __user *uarg)
 		 * We successfully copied the data to user,
 		 * so dequeue the message
 		 */
-		vlds_dequeue_msg(svc_info, msg_data);
+		vlds_dequeue_msg(svc_info, tgid, msg_data);
 
 		dprintk("%s: recv msg hdl = %llx (len=%lu) SUCCESS\n",
 		    vlds->int_name, recv_msg.vlds_hdl, msglen);
@@ -1249,8 +1604,7 @@ error_out2:
 
 error_out1:
 
-	dprintk("%s: failed to recv msg rv = %d\n",
-	    vlds->int_name, rv);
+	dprintk("Failed to recv msg rv = %d\n", rv);
 
 	return rv;
 }
@@ -1260,6 +1614,8 @@ static int vlds_set_event_fd(struct vlds_dev *vlds, const void __user *uarg)
 	vlds_set_event_fd_arg_t set_event_fd;
 	int rv;
 	pid_t tgid;
+
+	dprintk("entered.\n");
 
 	/* Get (and validate) userland args */
 	if (uarg == NULL || copy_from_user(&set_event_fd, uarg,
@@ -1285,15 +1641,11 @@ static int vlds_set_event_fd(struct vlds_dev *vlds, const void __user *uarg)
 	if (rv)
 		goto error_out1;
 
-	dprintk("%s: vlds_set_event_fd: SUCCESS\n", vlds->int_name);
-
 	return 0;
-
 
 error_out1:
 
-	dprintk("%s: failed to set event fd: rv = %d\n",
-	    vlds->int_name, rv);
+	dprintk("Failed to set event fd: rv = %d\n", rv);
 
 	return rv;
 }
@@ -1301,6 +1653,8 @@ error_out1:
 static int vlds_unset_event_fd(struct vlds_dev *vlds, const void __user *uarg)
 {
 	pid_t tgid;
+
+	dprintk("entered.\n");
 
 	tgid = task_tgid_vnr(current);
 
@@ -1310,10 +1664,7 @@ static int vlds_unset_event_fd(struct vlds_dev *vlds, const void __user *uarg)
 
 	mutex_unlock(&vlds_event_info_list_mutex);
 
-	dprintk("%s: vlds_unset_event_fd: SUCCESS\n", vlds->int_name);
-
 	return 0;
-
 }
 
 static int vlds_get_next_event(struct vlds_dev *vlds, const void __user *uarg)
@@ -1324,9 +1675,10 @@ static int vlds_get_next_event(struct vlds_dev *vlds, const void __user *uarg)
 	struct vlds_msg_data *msg_data;
 	u8 *msg;
 	size_t msglen;
+	pid_t tgid;
 	int rv;
 
-	dprintk("called\n");
+	dprintk("entered\n");
 
 	/* Get (and validate) userland args */
 	if (uarg == NULL || copy_from_user(&next_event, uarg,
@@ -1377,15 +1729,14 @@ static int vlds_get_next_event(struct vlds_dev *vlds, const void __user *uarg)
 		goto error_out1;
 	}
 
-	/* user arg is valid, get the next event */
+	tgid = task_tgid_vnr(current);
 
 	mutex_lock(&vlds->vlds_mutex);
 
 	mutex_lock(&vlds_event_info_list_mutex);
 
-
 	event_info = NULL;
-	rv = vlds_get_event_info(task_tgid_vnr(current), &event_info);
+	rv = vlds_get_event_info(tgid, &event_info);
 	if (rv || event_info == NULL) {
 		/*
 		 * Process didn't register an event fd!
@@ -1429,10 +1780,10 @@ static int vlds_get_next_event(struct vlds_dev *vlds, const void __user *uarg)
 
 	/*
 	 * if it's a data type event, populate the data buffer
-	 * with next message from the service
+	 * with next queued message from the service
 	 */
 	if (event->type == VLDS_EVENT_TYPE_DATA) {
-		msg_data =  vlds_get_msg(event->svc_info);
+		msg_data =  vlds_get_msg(event->svc_info, tgid);
 		if (msg_data == NULL || msg_data->size == 0) {
 			rv = -EIO;
 			goto error_out2;
@@ -1465,7 +1816,7 @@ static int vlds_get_next_event(struct vlds_dev *vlds, const void __user *uarg)
 		}
 
 		/* we copied the data to user, so dequeue the message */
-		vlds_dequeue_msg(event->svc_info, msg_data);
+		vlds_dequeue_msg(event->svc_info, tgid, msg_data);
 	}
 
 	/* We successfully transferred the event, remove it from the list */
@@ -1486,8 +1837,7 @@ error_out2:
 error_out1:
 
 	if (rv != -ENOENT)
-		dprintk("%s: failed to get next event: rv = %d\n",
-		    vlds->int_name, rv);
+		dprintk("Failed to get next event: rv = %d\n", rv);
 
 	return rv;
 }
@@ -1505,75 +1855,140 @@ static int vlds_fops_open(struct inode *inode, struct file *filp)
 	 */
 	vlds = container_of(inode->i_cdev, struct vlds_dev, cdev);
 
+	if (vlds == NULL)
+		return -ENXIO;
+
+	mutex_lock(&vlds->vlds_mutex);
+
+	if (vlds->removed) {
+		mutex_unlock(&vlds->vlds_mutex);
+		return -ENXIO;
+	}
+
+	vlds->ref_cnt++;
+
+	/* tuck away the vlds_dev for other fops to use */
 	filp->private_data = vlds;
+
+	mutex_unlock(&vlds->vlds_mutex);
 
 	return 0;
 }
 
+/* vlds_dev mutex must be held here! */
 static void vlds_unreg_all(struct vlds_dev *vlds)
 {
 
 	struct vlds_service_info *svc_info;
 	struct vlds_service_info *next;
+	struct vlds_tgid_info *tgid_info;
+	struct vlds_tgid_info *tgid_next;
 
 	if (vlds == NULL)
 		return;
 
-	mutex_lock(&vlds->vlds_mutex);
-
 	list_for_each_entry_safe(svc_info, next, &vlds->service_info_list,
 	    list) {
 
+		list_for_each_entry_safe(tgid_info, tgid_next,
+		    &svc_info->tgid_list, list) {
+
+			vlds_remove_svc_events_tgid(svc_info, tgid_info);
+			vlds_remove_tgid_info(tgid_info);
+
+		}
+
+		/*
+		 * Unregister the service from ds.
+		 * NOTE - once we call ds_cap_fini(), we should NOT get
+		 * any more callbacks for the service (including an unreg
+		 * event)!
+		 */
 		(void) ds_cap_fini(svc_info->handle);
 
-		dprintk("%s: unregistered %s service (client = %llu) "
-		    "(hdl = %llx) with ds\n", vlds->int_name,
+		dprintk("%s: unregistered service %s (client = %u) "
+		    "(hdl = %llx)\n", vlds->int_name,
 		    svc_info->name, VLDS_SVC_IS_CLIENT(svc_info),
 		    svc_info->handle);
 
-		list_del(&svc_info->list);
-		vlds_remove_svc_events(svc_info);
-		kfree(svc_info->name);
-		vlds_free_msg_queue(svc_info);
-		kfree(svc_info);
-
+		vlds_remove_svc_info(svc_info);
 	}
-
-	mutex_unlock(&vlds->vlds_mutex);
 
 }
 
+/* vlds_dev mutex must be held! */
 static void vlds_unreg_all_tgid(struct vlds_dev *vlds, pid_t tgid)
 {
 
 	struct vlds_service_info *svc_info;
 	struct vlds_service_info *next;
-
-	mutex_lock(&vlds->vlds_mutex);
+	struct vlds_tgid_info *tgid_info;
+	struct vlds_tgid_info *tgid_next;
 
 	list_for_each_entry_safe(svc_info, next, &vlds->service_info_list,
 	    list) {
 
-		if (svc_info->tgid == tgid) {
+		/*
+		 * Check if the tgid is registered for this service and if
+		 * so, remove the tgid from the list. The the tgid list becomes
+		 * empty, it was the last process using the service, so remove
+		 * the service.
+		 */
+		list_for_each_entry_safe(tgid_info, tgid_next,
+		    &svc_info->tgid_list, list) {
+
+			if (tgid_info->tgid != tgid)
+				continue;
+
+			vlds_remove_svc_events_tgid(svc_info, tgid_info);
+			vlds_remove_tgid_info(tgid_info);
+		}
+
+		/* If no more processes using the service, remove it */
+		if (list_empty(&svc_info->tgid_list)) {
 
 			(void) ds_cap_fini(svc_info->handle);
 
-			dprintk("%s: unregistered %s service "
-			    "(client = %llu) (hdl = %llx) with ds\n",
+			dprintk("%s: unregistered service %s "
+			    "(client = %u) (hdl = %llx)\n",
 			    vlds->int_name, svc_info->name,
-			    VLDS_SVC_IS_CLIENT(svc_info), svc_info->handle);
+			    VLDS_SVC_IS_CLIENT(svc_info),
+			    svc_info->handle);
 
-			list_del(&svc_info->list);
-
-			kfree(svc_info->name);
-			vlds_free_msg_queue(svc_info);
-			kfree(svc_info);
+			vlds_remove_svc_info(svc_info);
 		}
-
 	}
 
-	mutex_unlock(&vlds->vlds_mutex);
+}
 
+/* data_mutex and vlds_dev mutex must be held here! */
+static void vlds_free_vlds_dev(struct vlds_dev *vlds)
+{
+	if (vlds == NULL)
+		return;
+
+	pr_info("Removing (%s)\n", vlds->int_name);
+
+	/*
+	 * Unregister all the services associated with this vlds.
+	 * NOTE - once we call ds_cap_fini() out of vlds_unreg_all,
+	 * we should NOT get any more callbacks for the services
+	 * (including an unreg event) - which is required since
+	 * the vlds_dev is the callback arg and we are about to
+	 * free it below!
+	 */
+	vlds_unreg_all(vlds);
+
+	/* remove vlds_dev from the global list */
+	list_del(&vlds->list);
+	vlds_data.num_vlds_dev_list--;
+
+	/* free it */
+	kfree(vlds->int_name);
+	mutex_destroy(&vlds->vlds_mutex);
+	kfree(vlds);
+
+	return;
 }
 
 static int vlds_fops_release(struct inode *inode, struct file *filp)
@@ -1588,27 +2003,43 @@ static int vlds_fops_release(struct inode *inode, struct file *filp)
 
 	vlds = filp->private_data;
 
-	if (vlds == NULL) {
-		/* This should not happen, but... */
-		pr_err("vlds_fops_release: ERROR- failed to get "
-		    "associated vlds_dev\n");
-		return 0;
-	}
+	if (vlds == NULL)
+		return -ENXIO;
 
 	tgid = task_tgid_vnr(current);
+
+	/*
+	 * Since we may have to remove the vlds_dev
+	 * if this is the last release/close, we need
+	 * to lock down the vlds_data and the vlds_dev.
+	 */
+	mutex_lock(&vlds_data_mutex);
+
+	mutex_lock(&vlds->vlds_mutex);
 
 	dprintk("%s: unregistering all events and services for tgid = %u\n",
 	    vlds->int_name, tgid);
 
-	/* Remove all events queued for this tgid */
-	mutex_lock(&vlds_event_info_list_mutex);
-
-	vlds_remove_event_info(tgid);
-
-	mutex_unlock(&vlds_event_info_list_mutex);
-
-	/* Close all services used by this process */
+	/*
+	 * Unreg all services used by this process on this vlds_dev.
+	 * Also, remove any events queued for these services.
+	 */
 	vlds_unreg_all_tgid(vlds, tgid);
+
+	vlds->ref_cnt--;
+
+	/*
+	 * If this is the last reference to the removed
+	 * vlds device, remove the vlds_dev completely.
+	 */
+	if (vlds->removed && vlds->ref_cnt == 0) {
+		vlds_free_vlds_dev(vlds);
+		/* vlds is freed at this point. Don't access it! */
+	} else {
+		mutex_unlock(&vlds->vlds_mutex);
+	}
+
+	mutex_unlock(&vlds_data_mutex);
 
 	return 0;
 }
@@ -1622,6 +2053,18 @@ static long vlds_fops_ioctl(struct file *filp, unsigned int cmd,
 	rv = 0;
 
 	vlds = filp->private_data;
+
+	if (vlds == NULL)
+		return -ENXIO;
+
+	mutex_lock(&vlds->vlds_mutex);
+
+	if (vlds->removed) {
+		mutex_unlock(&vlds->vlds_mutex);
+		return -ENXIO;
+	}
+
+	mutex_unlock(&vlds->vlds_mutex);
 
 	switch (cmd) {
 
@@ -1699,6 +2142,34 @@ static const struct file_operations vlds_fops = {
 	.release	= vlds_fops_release,
 	.unlocked_ioctl	= vlds_fops_ioctl,
 };
+
+/*
+ * Return whether there is a SP DS port present in the MD.
+ * A domain-services-port MD node with a ldc-ids property indicates
+ * the presence of a SP DS.
+ */
+static bool vlds_sp_ds_present(void)
+{
+	struct mdesc_handle *hp;
+	u64 node;
+	const u64 *val;
+	bool sp_present;
+
+	hp = mdesc_grab();
+
+	sp_present = false;
+	mdesc_for_each_node_by_name(hp, node, "domain-services-port") {
+		val = mdesc_get_property(hp, node, "ldc-ids", NULL);
+		if (val != NULL) {
+			sp_present = true;
+			break;
+		}
+	}
+
+	mdesc_release(hp);
+
+	return sp_present;
+}
 
 static int vlds_get_next_avail_minor(void)
 {
@@ -1783,6 +2254,9 @@ static int vlds_alloc_vlds_dev(char *int_name, char *dev_name,
 	dprintk("%s: dev_t=%s\n", vlds->int_name, format_dev_t(devt_buf,
 		vlds->devt));
 	dprintk("%s: domain_handle = %llu\n", vlds->int_name, domain_handle);
+
+	vlds->ref_cnt = 0;
+	vlds->removed = false;
 
 	/* create/add the associated cdev */
 	cdev_init(&vlds->cdev, &vlds_fops);
@@ -1925,28 +2399,6 @@ error:
 	return rv;
 }
 
-static int vlds_free_vlds_dev(struct vlds_dev *vlds)
-{
-
-	dprintk("entered. (%s)\n", vlds->int_name);
-
-	/* Unregister all the services associated with this vlds. */
-	vlds_unreg_all(vlds);
-
-	mutex_lock(&vlds_data_mutex);
-	list_del(&vlds->list);
-	vlds_data.num_vlds_dev_list--;
-	mutex_unlock(&vlds_data_mutex);
-
-	device_destroy(vlds_data.chrdev_class, vlds->devt);
-	cdev_del(&vlds->cdev);
-	kfree(vlds->int_name);
-	mutex_destroy(&vlds->vlds_mutex);
-	kfree(vlds);
-
-	return 0;
-}
-
 static int vlds_remove(struct vio_dev *vdev)
 {
 	int rv;
@@ -1959,12 +2411,32 @@ static int vlds_remove(struct vio_dev *vdev)
 	if (vlds == NULL) {
 		dprintk("failed to get vlds_dev from vio_dev.\n");
 		rv = -ENXIO;
-	} else {
-		dprintk("removing (%s)\n", vlds->int_name);
-		rv = vlds_free_vlds_dev(vlds);
 	}
 
-	return rv;
+	/* lock things down while we try to remove the vlds device */
+	mutex_lock(&vlds_data_mutex);
+	mutex_lock(&vlds->vlds_mutex);
+
+	/* Cleanup the associated cdev, /sys and /dev entry */
+	device_destroy(vlds_data.chrdev_class, vlds->devt);
+	cdev_del(&vlds->cdev);
+
+	/*
+	 * If there are still outstanding references (opens)
+	 * on this device, then set a flag and remove it on
+	 * last close/release.
+	 */
+	if (vlds->ref_cnt > 0) {
+		vlds->removed = true;
+		mutex_unlock(&vlds->vlds_mutex);
+	} else {
+		vlds_free_vlds_dev(vlds);
+		/* vlds is freed at this point. Don't access it! */
+	}
+
+	mutex_unlock(&vlds_data_mutex);
+
+	return 0;
 }
 
 static const struct vio_device_id vlds_match[] = {
@@ -2031,18 +2503,21 @@ static int __init vlds_init(void)
 		goto error;
 	}
 
-	/* set callback to create devices under /dev/ds directory */
+	/* set callback to create devices under /dev/vlds directory */
 	vlds_data.chrdev_class->devnode = vlds_devnode;
 
 	/*
-	 * Add a device for the SP directly since there is no
-	 * vlds-port MD node for the SP and we need one to provide
+	 * If there is a SP DS present on the system (in the MD),
+	 * add a device for the SP directly since there is no
+	 * vlds-port MD node for the SP and this driver provides
 	 * access to SP domain services.
 	 */
-	rv = vlds_alloc_vlds_dev(VLDS_SP_INT_NAME, VLDS_SP_DEV_NAME,
-	    NULL, VLDS_INVALID_HANDLE, &sp_vlds);
-	if (rv != 0)
-		dprintk("Failed to create SP vlds device (%d)\n", rv);
+	if (vlds_sp_ds_present()) {
+		rv = vlds_alloc_vlds_dev(VLDS_SP_INT_NAME, VLDS_SP_DEV_NAME,
+		    NULL, DS_SP_DMN_HANDLE, &sp_vlds);
+		if (rv != 0)
+			dprintk("Failed to create SP vlds device (%d)\n", rv);
+	}
 
 	rv = vio_register_driver(&vlds_driver);
 	if (rv != 0) {
@@ -2068,7 +2543,20 @@ static void __exit vlds_exit(void)
 	dprintk("entered.\n");
 
 	/* remove the SP vlds */
-	vlds_free_vlds_dev(sp_vlds);
+	if (sp_vlds) {
+
+		mutex_lock(&vlds_data_mutex);
+		mutex_lock(&sp_vlds->vlds_mutex);
+
+		/* Cleanup the associated cdev, /sys and /dev entry */
+		device_destroy(vlds_data.chrdev_class, sp_vlds->devt);
+		cdev_del(&sp_vlds->cdev);
+
+		vlds_free_vlds_dev(sp_vlds);
+		sp_vlds = NULL;
+
+		mutex_unlock(&vlds_data_mutex);
+	}
 
 	/*
 	 * Note - vio_unregister_driver() will invoke a call to

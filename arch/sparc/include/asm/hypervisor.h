@@ -2930,6 +2930,13 @@ unsigned long sun4v_ncs_request(unsigned long request,
 #define HV_FAST_FIRE_GET_PERFREG	0x120
 #define HV_FAST_FIRE_SET_PERFREG	0x121
 
+#define	HV_FAST_MACH_PRI		0x170
+
+#ifndef __ASSEMBLY__
+unsigned long sun4v_mach_pri(unsigned long buffer_ra,
+			     unsigned long *buffer_size);
+#endif
+
 #define HV_FAST_REBOOT_DATA_SET		0x172
 
 #ifndef __ASSEMBLY__
