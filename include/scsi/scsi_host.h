@@ -8,6 +8,7 @@
 #include <linux/mutex.h>
 #include <linux/seq_file.h>
 #include <linux/blk-mq.h>
+#include <linux/uek_kabi.h>
 #include <scsi/scsi.h>
 
 struct request_queue;
@@ -735,7 +736,24 @@ struct Scsi_Host {
 	 * Needed just in case we have virtual hosts.
 	 */
 	struct device *dma_dev;
-
+/* FOR Oracle USE ONLY
+ *          
+ *         The following padding has been inserted before ABI freeze to
+ *         allow extending the structure while preserve ABI.
+ *         
+ */
+        UEK_KABI_RESERVED_P(1)
+        UEK_KABI_RESERVED_P(2)
+        UEK_KABI_RESERVED_P(3)
+        UEK_KABI_RESERVED_P(4)
+        UEK_KABI_RESERVED_P(5)
+        UEK_KABI_RESERVED_P(6)
+        unsigned int scsi_mq_reserved1;
+        unsigned int scsi_mq_reserved2;
+        void *scsi_mq_reserved3;
+        void *scsi_mq_reserved4;
+        atomic_t scsi_mq_reserved5;
+        atomic_t scsi_mq_reserved6;
 	/*
 	 * We should ensure that this is aligned, both for better performance
 	 * and also because some compilers (m68k) don't automatically force
