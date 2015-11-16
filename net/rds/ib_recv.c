@@ -985,7 +985,7 @@ static void rds_ib_cong_recv(struct rds_connection *conn,
 		uint64_t *src, *dst;
 		unsigned int k;
 
-		to_copy = min(RDS_FRAG_SIZE - frag_off, PAGE_SIZE - map_off);
+		to_copy = min(RDS_FRAG_SIZE - frag_off, RDS_CONG_PAGE_SIZE - map_off);
 		BUG_ON(to_copy & 7); /* Must be 64bit aligned. */
 
 		addr = kmap_atomic(sg_page(&frag->f_sg));
@@ -1003,7 +1003,7 @@ static void rds_ib_cong_recv(struct rds_connection *conn,
 		copied += to_copy;
 
 		map_off += to_copy;
-		if (map_off == PAGE_SIZE) {
+		if (map_off == RDS_CONG_PAGE_SIZE) {
 			map_off = 0;
 			map_page++;
 		}
