@@ -60,9 +60,11 @@ rdsdebug(char *fmt, ...)
 #define RDS_FRAG_SIZE	((unsigned int)(1 << RDS_FRAG_SHIFT))
 
 #define RDS_CONG_MAP_BYTES	(65536 / 8)
+#define RDS_CONG_PAGE_SIZE	(1UL << 12)
 #define RDS_CONG_MAP_LONGS	(RDS_CONG_MAP_BYTES / sizeof(unsigned long))
-#define RDS_CONG_MAP_PAGES	(PAGE_ALIGN(RDS_CONG_MAP_BYTES) / PAGE_SIZE)
-#define RDS_CONG_MAP_PAGE_BITS	(PAGE_SIZE * 8)
+#define RDS_CONG_MAP_PAGES	(PAGE_ALIGN(RDS_CONG_MAP_BYTES) / RDS_CONG_PAGE_SIZE)
+#define RDS_CONG_MAP_PAGE_BITS	(RDS_CONG_PAGE_SIZE * 8)
+#define RDS_CONG_MAP_SGE	1
 
 struct rds_cong_map {
 	struct rb_node		m_rb_node;
@@ -769,7 +771,6 @@ struct rds_message *rds_message_alloc(unsigned int nents, gfp_t gfp);
 struct scatterlist *rds_message_alloc_sgs(struct rds_message *rm, int nents);
 int rds_message_copy_from_user(struct rds_message *rm, struct iov_iter *from,
 			       gfp_t gfp);
-struct rds_message *rds_message_map_pages(unsigned long *page_addrs, unsigned int total_len);
 void rds_message_populate_header(struct rds_header *hdr, __be16 sport,
 				 __be16 dport, u64 seq);
 int rds_message_add_extension(struct rds_header *hdr,
