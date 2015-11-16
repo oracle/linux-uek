@@ -287,31 +287,6 @@ struct scatterlist *rds_message_alloc_sgs(struct rds_message *rm, int nents)
 	return sg_ret;
 }
 
-struct rds_message *rds_message_map_pages(unsigned long *page_addrs, unsigned int total_len)
-{
-	struct rds_message *rm;
-	unsigned int i;
-	int num_sgs = ceil(total_len, PAGE_SIZE);
-	int extra_bytes = num_sgs * sizeof(struct scatterlist);
-
-	rm = rds_message_alloc(extra_bytes, GFP_NOWAIT);
-	if (!rm)
-		return ERR_PTR(-ENOMEM);
-
-	set_bit(RDS_MSG_PAGEVEC, &rm->m_flags);
-	rm->m_inc.i_hdr.h_len = cpu_to_be32(total_len);
-	rm->data.op_nents = ceil(total_len, PAGE_SIZE);
-	rm->data.op_sg = rds_message_alloc_sgs(rm, num_sgs);
-
-	for (i = 0; i < rm->data.op_nents; ++i) {
-		sg_set_page(&rm->data.op_sg[i],
-				virt_to_page(page_addrs[i]),
-				PAGE_SIZE, 0);
-	}
-
-	return rm;
-}
-
 int rds_message_copy_from_user(struct rds_message *rm, struct iov_iter *from,
 			       gfp_t gfp)
 {
