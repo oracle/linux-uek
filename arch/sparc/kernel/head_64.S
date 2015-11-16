@@ -435,6 +435,9 @@ sun4v_chip_type:
 	cmp	%g2, '7'
 	be,pt	%xcc, 5f
 	 mov	SUN4V_CHIP_SPARC_M7, %g4
+	cmp	%g2, '8'
+	be,pt	%xcc, 5f
+	 mov	SUN4V_CHIP_SPARC_M8, %g4
 	cmp	%g2, 'N'
 	be,pt	%xcc, 5f
 	 mov	SUN4V_CHIP_SPARC_SN, %g4
