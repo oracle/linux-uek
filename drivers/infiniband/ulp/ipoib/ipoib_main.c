@@ -821,18 +821,21 @@ unref:
 static void ipoib_timeout(struct net_device *dev)
 {
 	struct ipoib_dev_priv *priv = netdev_priv(dev);
+	unsigned long flags;
 
 	ipoib_warn(priv, "transmit timeout: latency %d msecs\n",
 		   jiffies_to_msecs(jiffies - dev->trans_start));
 	ipoib_warn(priv, "queue stopped %d, tx_head %u, tx_tail %u, tx_outstanding %u ipoib_sendq_size: %d \n",
 		   netif_queue_stopped(dev),priv->tx_head, priv->tx_tail, priv->tx_outstanding, ipoib_sendq_size);
 
+	spin_lock_irqsave(&priv->lock, flags);
 	if (unlikely(priv->tx_outstanding < ipoib_sendq_size >> 1) &&
 	    netif_queue_stopped(dev) &&
 	    test_bit(IPOIB_FLAG_ADMIN_UP, &priv->flags)) {
 		ipoib_warn(priv, "%s: waking the queue\n", __func__);
 		netif_wake_queue(dev);
 	}
+	spin_unlock_irqrestore(&priv->lock, flags);
 
 	/* XXX reset QP, etc. */
 }

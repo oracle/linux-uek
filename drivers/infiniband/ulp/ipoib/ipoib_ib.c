@@ -410,6 +410,7 @@ static void ipoib_ib_handle_tx_wc(struct net_device *dev, struct ib_wc *wc)
 	struct ipoib_dev_priv *priv = netdev_priv(dev);
 	unsigned int wr_id = wc->wr_id;
 	struct ipoib_tx_buf *tx_req;
+	unsigned long flags;
 
 	ipoib_dbg_data(priv, "send completion: id %d, status: %d\n",
 		       wr_id, wc->status);
@@ -430,10 +431,13 @@ static void ipoib_ib_handle_tx_wc(struct net_device *dev, struct ib_wc *wc)
 	dev_kfree_skb_any(tx_req->skb);
 
 	++priv->tx_tail;
+
+	spin_lock_irqsave(&priv->lock, flags);
 	if (unlikely(--priv->tx_outstanding <= ipoib_sendq_size >> 1) &&
 	    netif_queue_stopped(dev) &&
 	    test_bit(IPOIB_FLAG_ADMIN_UP, &priv->flags))
 		netif_wake_queue(dev);
+	spin_unlock_irqrestore(&priv->lock, flags);
 
 	if (wc->status != IB_WC_SUCCESS &&
 	    wc->status != IB_WC_WR_FLUSH_ERR)
@@ -622,8 +626,9 @@ void ipoib_send(struct net_device *dev, struct sk_buff *skb,
 {
 	struct ipoib_dev_priv *priv = netdev_priv(dev);
 	struct ipoib_tx_buf *tx_req;
-	int hlen;
+	int hlen, rc;
 	void *phead;
+	unsigned long flags;
 
 	if (skb_is_gso(skb)) {
 		hlen = skb_transport_offset(skb) + tcp_hdrlen(skb);
@@ -673,22 +678,32 @@ void ipoib_send(struct net_device *dev, struct sk_buff *skb,
 	else
 		priv->tx_wr.send_flags &= ~IB_SEND_IP_CSUM;
 
+	spin_lock_irqsave(&priv->lock, flags);
 	if (++priv->tx_outstanding == ipoib_sendq_size) {
 		ipoib_dbg(priv, "TX ring full, stopping kernel net queue\n");
-		if (ib_req_notify_cq(priv->send_cq, IB_CQ_NEXT_COMP))
-			ipoib_warn(priv, "request notify on send CQ failed\n");
 		netif_stop_queue(dev);
+	}
+	spin_unlock_irqrestore(&priv->lock, flags);
+	if (netif_queue_stopped(dev)) {
+		rc = ib_req_notify_cq(priv->send_cq,
+			IB_CQ_NEXT_COMP | IB_CQ_REPORT_MISSED_EVENTS);
+		if (rc < 0)
+			ipoib_warn(priv, "request notify on send CQ failed\n");
+		else if (rc)
+			ipoib_send_comp_handler(priv->send_cq, dev);
 	}
 
 	if (unlikely(post_send(priv, priv->tx_head & (ipoib_sendq_size - 1),
 			       address->ah, qpn, tx_req, phead, hlen))) {
 		ipoib_warn(priv, "post_send failed\n");
 		++dev->stats.tx_errors;
+		spin_lock_irqsave(&priv->lock, flags);
 		--priv->tx_outstanding;
-		ipoib_dma_unmap_tx(priv->ca, tx_req);
-		dev_kfree_skb_any(skb);
 		if (netif_queue_stopped(dev))
 			netif_wake_queue(dev);
+		spin_unlock_irqrestore(&priv->lock, flags);
+		ipoib_dma_unmap_tx(priv->ca, tx_req);
+		dev_kfree_skb_any(skb);
 	} else {
 		dev->trans_start = jiffies;
 
@@ -926,6 +941,7 @@ int ipoib_ib_dev_stop(struct net_device *dev, int flush)
 	unsigned long begin;
 	struct ipoib_tx_buf *tx_req;
 	int i;
+	unsigned long flags;
 
 	if (test_and_clear_bit(IPOIB_FLAG_INITIALIZED, &priv->flags))
 		napi_disable(&priv->napi);
@@ -966,7 +982,9 @@ int ipoib_ib_dev_stop(struct net_device *dev, int flush)
 				ipoib_dma_unmap_tx(priv->ca, tx_req);
 				dev_kfree_skb_any(tx_req->skb);
 				++priv->tx_tail;
+				spin_lock_irqsave(&priv->lock, flags);
 				--priv->tx_outstanding;
+				spin_unlock_irqrestore(&priv->lock, flags);
 			}
 
 			for (i = 0; i < ipoib_recvq_size; ++i) {
