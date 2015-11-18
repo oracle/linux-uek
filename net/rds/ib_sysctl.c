@@ -62,6 +62,7 @@ static unsigned long rds_ib_sysctl_max_unsig_wr_max = 64;
 
 unsigned int rds_ib_sysctl_flow_control = 0;
 unsigned int rds_ib_sysctl_active_bonding = 1;
+unsigned int rds_ib_sysctl_disable_unmap_fmr_cpu; /* = 0 */
 
 /*
  * sysctl to trigger active bonding when set to 1
@@ -126,6 +127,13 @@ static struct ctl_table rds_ib_sysctl_table[] = {
 		.procname       = "trigger_active_bonding",
 		.data           = &rds_ib_sysctl_trigger_active_bonding,
 		.maxlen         = sizeof(rds_ib_sysctl_trigger_active_bonding),
+		.mode           = 0644,
+		.proc_handler   = &proc_dointvec,
+	},
+	{
+		.procname       = "disable_unmap_fmr_cpu_assignment",
+		.data           = &rds_ib_sysctl_disable_unmap_fmr_cpu,
+		.maxlen         = sizeof(rds_ib_sysctl_disable_unmap_fmr_cpu),
 		.mode           = 0644,
 		.proc_handler   = &proc_dointvec,
 	},
