@@ -694,5 +694,6 @@ extern unsigned long rds_ib_sysctl_max_recv_allocation;
 extern unsigned int rds_ib_sysctl_flow_control;
 extern unsigned int rds_ib_sysctl_active_bonding;
 extern unsigned int rds_ib_sysctl_trigger_active_bonding;
+extern unsigned int rds_ib_sysctl_disable_unmap_fmr_cpu;
 
 #endif
