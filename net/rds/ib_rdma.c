@@ -85,6 +85,7 @@ struct rds_ib_mr_pool {
 	unsigned long		max_items;
 	atomic_t		max_items_soft;
 	unsigned long		max_free_pinned;
+	unsigned                unmap_fmr_cpu;
 	struct ib_fmr_attr	fmr_attr;
 
 	spinlock_t		busy_lock; /* protect ops on 'busy_list' */
@@ -227,6 +228,22 @@ void rds_ib_destroy_nodev_conns(void)
 		rds_conn_destroy(ic->conn);
 }
 
+static unsigned int get_unmap_fmr_cpu(struct rds_ib_device *rds_ibdev,
+				      int pool_type)
+{
+	int index;
+	int ib_node = rdsibdev_to_node(rds_ibdev);
+
+	/* always returns a CPU core that is closer to
+	 * IB device first if possible. As for now, the
+	 * first two cpu cores are returned. For numa
+	 * or non-numa system, cpumask_local_spread
+	 * will take care of it.
+	 */
+	index = pool_type == RDS_IB_MR_8K_POOL ? 0 : 1;
+	return cpumask_local_spread(index, ib_node);
+}
+
 struct rds_ib_mr_pool *rds_ib_create_mr_pool(struct rds_ib_device *rds_ibdev,
 						int pool_type)
 {
@@ -250,9 +267,11 @@ struct rds_ib_mr_pool *rds_ib_create_mr_pool(struct rds_ib_device *rds_ibdev,
 	if (pool_type == RDS_IB_MR_1M_POOL) {
 		pool->fmr_attr.max_pages = RDS_FMR_1M_MSG_SIZE + 1;
 		pool->max_items = rds_ibdev->max_1m_fmrs;
+		pool->unmap_fmr_cpu = get_unmap_fmr_cpu(rds_ibdev, pool_type);
 	} else /* pool_type == RDS_IB_MR_8K_POOL */ {
 		pool->fmr_attr.max_pages = RDS_FMR_8K_MSG_SIZE + 1;
 		pool->max_items = rds_ibdev->max_8k_fmrs;
+		pool->unmap_fmr_cpu = get_unmap_fmr_cpu(rds_ibdev, pool_type);
 	}
 	pool->max_free_pinned =
 		pool->max_items * pool->fmr_attr.max_pages / 4;
@@ -344,6 +363,7 @@ static struct rds_ib_mr *rds_ib_alloc_fmr(struct rds_ib_device *rds_ibdev,
 {
 	struct rds_ib_mr_pool *pool;
 	struct rds_ib_mr *ibmr = NULL;
+	unsigned int unmap_fmr_cpu = 0;
 	int err = 0, iter = 0;
 
 	if (npages <= RDS_FMR_8K_MSG_SIZE)
@@ -351,9 +371,12 @@ static struct rds_ib_mr *rds_ib_alloc_fmr(struct rds_ib_device *rds_ibdev,
 	else
 		pool = rds_ibdev->mr_1m_pool;
 
+	unmap_fmr_cpu = rds_ib_sysctl_disable_unmap_fmr_cpu ?
+		WORK_CPU_UNBOUND : pool->unmap_fmr_cpu;
 	if (atomic_read(&pool->dirty_count) >=
 		atomic_read(&pool->max_items_soft) / 10)
-		queue_delayed_work(rds_ib_fmr_wq, &pool->flush_worker, 10);
+		queue_delayed_work_on(unmap_fmr_cpu,
+				      rds_ib_fmr_wq, &pool->flush_worker, 10);
 
 	while (1) {
 		ibmr = rds_ib_reuse_fmr(pool);
@@ -840,6 +863,8 @@ void rds_ib_free_mr(void *trans_private, int invalidate)
 	struct rds_ib_mr *ibmr = trans_private;
 	struct rds_ib_device *rds_ibdev = ibmr->device;
 	struct rds_ib_mr_pool *pool = ibmr->pool;
+	unsigned int unmap_fmr_cpu = rds_ib_sysctl_disable_unmap_fmr_cpu ?
+				     WORK_CPU_UNBOUND : pool->unmap_fmr_cpu;
 
 	rdsdebug("RDS/IB: free_mr nents %u\n", ibmr->sg_len);
 
@@ -863,7 +888,8 @@ void rds_ib_free_mr(void *trans_private, int invalidate)
 	if (atomic_read(&pool->free_pinned) >= pool->max_free_pinned
 	 || atomic_read(&pool->dirty_count) >=
 		atomic_read(&pool->max_items_soft) / 5)
-		queue_delayed_work(rds_ib_fmr_wq, &pool->flush_worker, 10);
+		queue_delayed_work_on(unmap_fmr_cpu,
+				      rds_ib_fmr_wq, &pool->flush_worker, 10);
 
 	if (invalidate) {
 		if (likely(!in_interrupt())) {
@@ -871,8 +897,8 @@ void rds_ib_free_mr(void *trans_private, int invalidate)
 		} else {
 			/* We get here if the user created a MR marked
 			 * as use_once and invalidate at the same time. */
-			queue_delayed_work(rds_ib_fmr_wq,
-					   &pool->flush_worker, 10);
+			queue_delayed_work_on(unmap_fmr_cpu, rds_ib_fmr_wq,
+					      &pool->flush_worker, 10);
 		}
 	}
 
