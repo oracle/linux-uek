@@ -855,6 +855,8 @@ static inline void blk_set_queue_congested(struct request_queue *q, int sync)
 	set_bdi_congested(&q->backing_dev_info, sync);
 }
 
+extern int blk_queue_enter(struct request_queue *q, gfp_t gfp);
+extern void blk_queue_exit(struct request_queue *q);
 extern void blk_start_queue(struct request_queue *q);
 extern void blk_stop_queue(struct request_queue *q);
 extern void blk_sync_queue(struct request_queue *q);
