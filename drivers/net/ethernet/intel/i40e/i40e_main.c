@@ -6266,6 +6266,7 @@ static void i40e_clean_adminq_subtask(struct i40e_pf *pf)
 			break;
 		case i40e_aqc_opc_nvm_erase:
 		case i40e_aqc_opc_nvm_update:
+		case i40e_aqc_opc_oem_post_update:
 			i40e_debug(&pf->hw, I40E_DEBUG_NVM, "ARQ NVM operation completed\n");
 			break;
 		default:
