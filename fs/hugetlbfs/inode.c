@@ -369,10 +369,25 @@ static void remove_inode_hugepages(struct inode *inode, loff_t lstart,
 			lookup_nr = end - next;
 
 		/*
-		 * This pagevec_lookup() may return pages past 'end',
-		 * so we must check for page->index > end.
+		 * When no more pages are found, take different action for
+		 * hole punch and truncate.
+		 *
+		 * For hole punch, this indicates we have removed each page
+		 * within the range and are done.  Note that pages may have
+		 * been faulted in after being removed in the hole punch case.
+		 * This is OK as long as each page in the range was removed
+		 * once.
+		 *
+		 * For truncate, we need to make sure all pages within the
+		 * range are removed when exiting this routine.  We could
+		 * have raced with a fault that brought in a page after it
+		 * was first removed.  Check the range again until no pages
+		 * are found.
 		 */
 		if (!pagevec_lookup(&pvec, mapping, next, lookup_nr)) {
+			if (!truncate_op)
+				break;
+
 			if (next == start)
 				break;
 			next = start;
@@ -383,19 +398,23 @@ static void remove_inode_hugepages(struct inode *inode, loff_t lstart,
 			struct page *page = pvec.pages[i];
 			u32 hash;
 
+			/*
+			 * The page (index) could be beyond end.  This is
+			 * only possible in the punch hole case as end is
+			 * LLONG_MAX for truncate.
+			 */
+			if (page->index >= end) {
+				next = end;	/* we are done */
+				break;
+			}
+			next = page->index;
+
 			hash = hugetlb_fault_mutex_hash(h, current->mm,
 							&pseudo_vma,
 							mapping, next, 0);
 			mutex_lock(&hugetlb_fault_mutex_table[hash]);
 
 			lock_page(page);
-			if (page->index >= end) {
-				unlock_page(page);
-				mutex_unlock(&hugetlb_fault_mutex_table[hash]);
-				next = end;	/* we are done */
-				break;
-			}
-
 			/*
 			 * If page is mapped, it was faulted in after being
 			 * unmapped.  Do nothing in this race case.  In the
@@ -424,15 +443,13 @@ static void remove_inode_hugepages(struct inode *inode, loff_t lstart,
 				}
 			}
 
-			if (page->index > next)
-				next = page->index;
-
 			++next;
 			unlock_page(page);
 
 			mutex_unlock(&hugetlb_fault_mutex_table[hash]);
 		}
 		huge_pagevec_release(&pvec);
+		cond_resched();
 	}
 
 	if (truncate_op)
@@ -648,9 +665,6 @@ static long hugetlbfs_fallocate(struct file *file, int mode, loff_t offset,
 	if (!(mode & FALLOC_FL_KEEP_SIZE) && offset + len > inode->i_size)
 		i_size_write(inode, offset + len);
 	inode->i_ctime = CURRENT_TIME;
-	spin_lock(&inode->i_lock);
-	inode->i_private = NULL;
-	spin_unlock(&inode->i_lock);
 out:
 	mutex_unlock(&inode->i_mutex);
 	return error;
