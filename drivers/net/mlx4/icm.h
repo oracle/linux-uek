@@ -86,8 +86,8 @@ struct mlx4_icm *mlx4_alloc_icm(struct mlx4_dev *dev, int npages,
 void mlx4_free_icm(struct mlx4_dev *dev, struct mlx4_icm *icm, int coherent,
 		   enum mlx4_mr_flags flags);
 
-int mlx4_table_get(struct mlx4_dev *dev, struct mlx4_icm_table *table, u32 obj,
-		   enum mlx4_mr_flags flags);
+int mlx4_table_get(struct mlx4_dev *dev, struct mlx4_icm_table *table, int obj,
+                   enum mlx4_mr_flags flags, int gfp);
 void mlx4_table_put(struct mlx4_dev *dev, struct mlx4_icm_table *table, u32 obj,
 		    enum mlx4_mr_flags flags);
 int mlx4_table_get_range(struct mlx4_dev *dev, struct mlx4_icm_table *table,

@@ -522,7 +522,7 @@ static int create_qp_common(struct mlx4_ib_dev *dev, struct ib_pd *pd,
 			goto err;
 
 		if (!init_attr->srq && init_attr->qp_type != IB_QPT_XRC) {
-			err = mlx4_db_alloc(dev->dev, &qp->db, 0);
+			err = mlx4_db_alloc(dev->dev, &qp->db, 0, GFP_KERNEL);
 			if (err)
 				goto err;
 
@@ -538,7 +538,8 @@ static int create_qp_common(struct mlx4_ib_dev *dev, struct ib_pd *pd,
 		} else
 			qp->bf.uar = &dev->priv_uar;
 
-		if (mlx4_buf_alloc(dev->dev, qp->buf_size, PAGE_SIZE * 2, &qp->buf)) {
+		if (mlx4_buf_alloc(dev->dev, qp->buf_size,
+					   PAGE_SIZE * 2, &qp->buf, GFP_KERNEL)) {
 			err = -ENOMEM;
 			goto err_db;
 		}
@@ -550,7 +551,7 @@ static int create_qp_common(struct mlx4_ib_dev *dev, struct ib_pd *pd,
 			goto err_buf;
 		}
 
-		err = mlx4_buf_write_mtt(dev->dev, &qp->mtt, &qp->buf);
+		err = mlx4_buf_write_mtt(dev->dev, &qp->mtt, &qp->buf, GFP_KERNEL);
 		if (err) {
 			mlx4_ib_dbg("mlx4_buf_write_mtt error (%d)", err);
 			goto err_mtt;
@@ -572,7 +573,7 @@ static int create_qp_common(struct mlx4_ib_dev *dev, struct ib_pd *pd,
 
 	qpn = sqpn;
 
-	err = mlx4_qp_alloc(dev->dev, qpn, &qp->mqp);
+	err = mlx4_qp_alloc(dev->dev, qpn, &qp->mqp, GFP_KERNEL);
 	if (err)
 		goto err_qpn;
 

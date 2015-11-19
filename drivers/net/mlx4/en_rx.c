@@ -856,7 +856,7 @@ static int mlx4_en_config_rss_qp(struct mlx4_en_priv *priv, int qpn,
 		return -ENOMEM;
 	}
 
-	err = mlx4_qp_alloc(mdev->dev, qpn, qp);
+	err = mlx4_qp_alloc(mdev->dev, qpn, qp, GFP_KERNEL);
 	if (err) {
 		en_err(priv, "Failed to allocate qp #%x\n", qpn);
 		goto out;
@@ -939,7 +939,7 @@ int mlx4_en_config_rss_steer(struct mlx4_en_priv *priv)
 	}
 
 	/* Configure RSS indirection qp */
-	err = mlx4_qp_alloc(mdev->dev, priv->base_qpn, &rss_map->indir_qp);
+	err = mlx4_qp_alloc(mdev->dev, priv->base_qpn, &rss_map->indir_qp, GFP_KERNEL);
 	if (err) {
 		en_err(priv, "Failed to allocate RSS indirection QP\n");
 		goto rss_err;

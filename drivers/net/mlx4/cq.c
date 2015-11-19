@@ -202,12 +202,12 @@ int __mlx4_cq_alloc_icm(struct mlx4_dev *dev, int *cqn)
 	if (*cqn == -1)
 		return -ENOMEM;
 
-	err = mlx4_table_get(dev, &cq_table->table, *cqn, MLX4_MR_FLAG_NONE);
+	err = mlx4_table_get(dev, &cq_table->table, *cqn, MLX4_MR_FLAG_NONE, GFP_KERNEL);
 	if (err)
 		goto err_out;
 
 	err = mlx4_table_get(dev, &cq_table->cmpt_table, *cqn,
-			     MLX4_MR_FLAG_NONE);
+			     MLX4_MR_FLAG_NONE, GFP_KERNEL);
 	if (err)
 		goto err_put;
 	return 0;

@@ -515,8 +515,8 @@ out_free_icm:
 	return NULL;
 }
 
-int mlx4_table_get(struct mlx4_dev *dev, struct mlx4_icm_table *table, u32 obj,
-		   enum mlx4_mr_flags flags)
+int mlx4_table_get(struct mlx4_dev *dev, struct mlx4_icm_table *table, int obj,
+		   enum mlx4_mr_flags flags, int gfp)
 {
 	u32 i = (obj & (table->num_obj - 1)) /
 			(MLX4_TABLE_CHUNK_SIZE / table->obj_size);
@@ -532,7 +532,7 @@ int mlx4_table_get(struct mlx4_dev *dev, struct mlx4_icm_table *table, u32 obj,
 	}
 
 	fmr_flow = mlx4_fmr_flow(dev, flags);
-	gfp_mask = (table->lowmem ? GFP_KERNEL : GFP_HIGHUSER) | __GFP_NOWARN;
+	gfp_mask = (table->lowmem ? gfp : GFP_HIGHUSER) | __GFP_NOWARN;
 
 	table->icm[i] = fmr_flow ?
 			mlx4_alloc_fmr(dev, MLX4_TABLE_CHUNK_PAGES, gfp_mask) :
@@ -664,7 +664,7 @@ int mlx4_table_get_range(struct mlx4_dev *dev, struct mlx4_icm_table *table,
 	u32 i;
 
 	for (i = start; i <= end; i += inc) {
-		err = mlx4_table_get(dev, table, i, flags);
+		err = mlx4_table_get(dev, table, i, flags, GFP_KERNEL);
 		if (err)
 			goto fail;
 	}

@@ -532,7 +532,7 @@ int __mlx4_mr_alloc_icm(struct mlx4_dev *dev, u32 index,
 	if (fmr_flow)
 		index -= dev->caps.fmr_dmpt_base_idx;
 
-	return mlx4_table_get(dev, icm_table, index, flags);
+	return mlx4_table_get(dev, icm_table, index, flags, GFP_KERNEL);
 }
 
 int mlx4_mr_alloc_icm(struct mlx4_dev *dev, u32 index, enum mlx4_mr_flags flags)
@@ -814,13 +814,13 @@ int mlx4_write_mtt(struct mlx4_dev *dev, struct mlx4_mtt *mtt,
 EXPORT_SYMBOL_GPL(mlx4_write_mtt);
 
 int mlx4_buf_write_mtt(struct mlx4_dev *dev, struct mlx4_mtt *mtt,
-		       struct mlx4_buf *buf)
+		       struct mlx4_buf *buf, gfp_t gfp)
 {
 	u64 *page_list;
 	int err;
 	int i;
 
-	page_list = kmalloc(buf->npages * sizeof *page_list, GFP_KERNEL);
+	page_list = kmalloc(buf->npages * sizeof *page_list, gfp);
 	if (!page_list)
 		return -ENOMEM;
 
