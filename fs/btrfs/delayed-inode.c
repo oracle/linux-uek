@@ -652,8 +652,12 @@ static int btrfs_delayed_inode_reserve_metadata(
 			goto out;
 
 		ret = btrfs_block_rsv_migrate(src_rsv, dst_rsv, num_bytes);
-		if (!WARN_ON(ret))
+		if (!ret)
 			goto out;
+
+		if (btrfs_test_opt(root, ENOSPC_DEBUG))
+			WARN(1, KERN_DEBUG
+			     "btrfs: block rsv migrate returned %d\n", ret);
 
 		/*
 		 * Ok this is a problem, let's just steal from the global rsv
