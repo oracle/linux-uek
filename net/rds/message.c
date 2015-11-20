@@ -63,7 +63,10 @@ static void rds_message_purge(struct rds_message *rm)
 	for (i = 0; i < rm->data.op_nents; i++) {
 		rdsdebug("putting data page %p\n", (void *)sg_page(&rm->data.op_sg[i]));
 		/* XXX will have to put_page for page refs */
-		__free_page(sg_page(&rm->data.op_sg[i]));
+		(rm->data.op_sg[i].length <= PAGE_SIZE) ?
+			__free_page(sg_page(&rm->data.op_sg[i])) :
+			__free_pages(sg_page(&rm->data.op_sg[i]),
+				     get_order(rm->data.op_sg[i].length));
 	}
 	rm->data.op_nents = 0;
 
