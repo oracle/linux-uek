@@ -6,7 +6,6 @@
 #define __LINUX_BLK_TYPES_H
 
 #include <linux/types.h>
-#include <linux/uek_kabi.h>
 
 struct bio_set;
 struct bio;

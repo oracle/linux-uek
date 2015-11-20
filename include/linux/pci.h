@@ -33,6 +33,7 @@
 #include <uapi/linux/pci.h>
 
 #include <linux/pci_ids.h>
+#include <linux/uek_kabi.h>
 
 /*
  * The PCI interface treats multi-function devices as independent
@@ -382,6 +383,14 @@ struct pci_dev {
 	phys_addr_t rom; /* Physical address of ROM if it's not from the BAR */
 	size_t romlen; /* Length of ROM if it's not from the BAR */
 	char *driver_override; /* Driver name to force a match */
+/*
+ *     Oracle Specific Extension to accomodate future upstream changes to this structure
+ *     yet maintain KABI.  For Oracle internal use only!
+ */
+        UEK_KABI_EXTEND(u8   uek_reserved1) 
+        UEK_KABI_EXTEND(u16   uek_reserved2) 
+        UEK_KABI_EXTEND(unsigned int   uek_reserved3) 
+        UEK_KABI_EXTEND(u64   uek_reserved4) 
 };
 
 static inline struct pci_dev *pci_physfn(struct pci_dev *dev)
@@ -392,7 +401,6 @@ static inline struct pci_dev *pci_physfn(struct pci_dev *dev)
 #endif
 	return dev;
 }
-
 struct pci_dev *pci_alloc_dev(struct pci_bus *bus);
 
 #define	to_pci_dev(n) container_of(n, struct pci_dev, dev)
@@ -666,6 +674,10 @@ struct pci_driver {
 	const struct pci_error_handlers *err_handler;
 	struct device_driver	driver;
 	struct pci_dynids dynids;
+/* Extension to accomodate future upstream changes to this structure
+ * yet maintain KABI.  For Oracle internal use only!
+ */
+        int (*uek_reserved)(struct pci_dev *dev);
 };
 
 #define	to_pci_driver(drv) container_of(drv, struct pci_driver, driver)
