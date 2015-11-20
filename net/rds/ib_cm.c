@@ -163,15 +163,13 @@ void rds_ib_cm_connect_complete(struct rds_connection *conn, struct rdma_cm_even
 		}
 	}
 
-	printk(KERN_NOTICE
-		"RDS/IB: conn %p i_cm_id %p connected <%pI4,%pI4,%d> version %u.%u%s\n",
-		conn, ic->i_cm_id,
-		&conn->c_laddr,
-		&conn->c_faddr,
-		conn->c_tos,
-		RDS_PROTOCOL_MAJOR(conn->c_version),
-		RDS_PROTOCOL_MINOR(conn->c_version),
-		ic->i_flowctl ? ", flow control" : "");
+	printk(KERN_NOTICE "RDS/IB: %s conn %p i_cm_id %p connected <%pI4,%pI4,%d> version %u.%u%s\n",
+	       ic->i_active_side ? "Active " : "Passive",
+	       conn, ic->i_cm_id,
+	       &conn->c_laddr, &conn->c_faddr, conn->c_tos,
+	       RDS_PROTOCOL_MAJOR(conn->c_version),
+	       RDS_PROTOCOL_MINOR(conn->c_version),
+	       ic->i_flowctl ? ", flow control" : "");
 
 	/* The connection might have been dropped under us*/
 	if (!ic->i_cm_id) {
