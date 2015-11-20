@@ -35,6 +35,7 @@
 %define dt_0_4_5	1029
 %define dt_0_4_6	1030
 %define dt_0_5_0	1280
+%define dt_0_5_1	1281
 %{lua:
 	local kver = rpm.expand("%{kver}")
 
@@ -44,7 +45,11 @@
 		rpm.define("arches x86_64")
 	end
 
-	if rpm.vercmp(kver, "4.1.4-3") >= 0 then
+	if rpm.vercmp(kver, "4.1.12-24") >= 0 then
+		rpm.define("srcver 0.5.1")
+		rpm.define("bldrel 1")
+		rpm.define("dt_vcode "..rpm.expand("%{dt_0_5_1}"))
+	elseif rpm.vercmp(kver, "4.1.4-3") >= 0 then
 		rpm.define("srcver 0.5.0")
 		rpm.define("bldrel 4")
 		rpm.define("dt_vcode "..rpm.expand("%{dt_0_5_0}"))
@@ -280,10 +285,16 @@ rm -rf %{buildroot}
 %endif
 
 %changelog
-%if %{dt_vcode} >= %{dt_0_5_0}
-* Tue Nov 17 2015 Kris Van Hees <kris.van.hees@oracle.com> - 0.5.0-4
+%if %{dt_vcode} >= %{dt_0_5_1}
+* Tue Nov 17 2015 Kris Van Hees <kris.van.hees@oracle.com> - 0.5.1-1
 - Remove explicit dependency on kernel RPM.
   [Orabug: 21669543]
+- Ensure safety checks are enforced on copyout() and copyoutstr().
+  [Orabug: 21930954]
+- Fix device file minor number for dt_perf.
+  [Orabug: 21814949]
+%endif
+%if %{dt_vcode} >= %{dt_0_5_0}
 * Fri Sep 18 2015 Kris Van Hees <kris.van.hees@oracle.com> - 0.5.0-3
 - Enable building DTrace modules for SPARC64.
 * Mon Aug 10 2015 Natalya Naumova <natalya.naumova@oracle.com> - 0.5.0-2
@@ -300,6 +311,10 @@ rm -rf %{buildroot}
 * Tue Nov 17 2015 Kris Van Hees <kris.van.hees@oracle.com> - 0.4.6-1
 - Remove explicit dependency on kernel RPM.
   [Orabug: 21669543]
+- Ensure safety checks are enforced on copyout() and copyoutstr().
+  [Orabug: 21930954]
+- Fix device file minor number for dt_perf.
+  [Orabug: 21814949]
 %endif
 %endif
 %if %{dt_vcode} >= %{dt_0_4_5}
