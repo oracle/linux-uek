@@ -1,6 +1,22 @@
 DTrace Kernel Modules News
 ==========================
 
+Release 0.5.1 (Nov 17th, 2015)
+------------------------------
+Kernel release: 4.1.12-24.el6uek
+
+Bugfixes:
+
+ - When copyout() or copyoutstr() is used in a D script, safety checks are now
+   enforced to protect against unprivileged memory accesses.
+
+ - The DTrace modules package no longer prevents automated kernel RPM removal
+   when the install limit is reached.
+
+ - It is now possible to access the envp and argv arrays in the psinfo for a
+   task using copyin().  This is the convention across DTrace-capable systems.
+
+
 Release 0.5.0 (Aug 10th, 2015)
 ------------------------------
 Kernel release: 4.1.4-4.el6uek
@@ -10,7 +26,7 @@ New features:
  - DTrace is now supported on the sparc64 architecture for the following
    providers: dtrace, profile, syscall, and SDT.
 
- - The uid / gid handling has been updated to accomodate namespace support
+ - The uid / gid handling has been updated to accommodate namespace support
    at the kernel level (kuid and kgid).  All uid / gid values reported by
    D subroutines (or obtained from structures) are evaluated based on the
    initial user namespace.
@@ -26,6 +42,7 @@ Changes:
  - The datatype formerly known as sdt_instr_t has been renamed asm_instr_t.
    The rationale behind this change is that it will be used in code beyond
    the SDT provider and therefore a more generic name is appropriate.
+
 
 Release 0.4.5 (Jun 17th, 2015)
 ------------------------------
