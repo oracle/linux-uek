@@ -4414,7 +4414,7 @@ qla2x00_get_thermal_temp(scsi_qla_host_t *vha, uint16_t *temp)
 		if (rval == QLA_SUCCESS)
 			goto done;
 
-		ql_log(ql_log_warn, vha, 0x10c9,
+		ql_dbg(ql_dbg_mbx, vha, 0x10c9,
 		    "Thermal not supported through I2C bus, trying alternate "
 		    "method (ISP access).\n");
 		ha->thermal_support &= ~THERMAL_SUPPORT_I2C;
