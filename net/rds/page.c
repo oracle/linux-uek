@@ -127,11 +127,11 @@ int rds_page_remainder_alloc(struct scatterlist *scat, unsigned long bytes,
 
 	/* jump straight to allocation if we're trying for a huge page */
 	if (bytes >= PAGE_SIZE) {
-		page = alloc_page(gfp);
+		page = alloc_pages(gfp, get_order(bytes));
 		if (!page) {
 			ret = -ENOMEM;
 		} else {
-			sg_set_page(scat, page, PAGE_SIZE, 0);
+			sg_set_page(scat, page, bytes, 0);
 			ret = 0;
 		}
 		goto out;
