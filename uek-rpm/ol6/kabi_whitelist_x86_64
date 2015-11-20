@@ -1,3 +1,4 @@
+[oll6_x86_64_whitelist]
 	___pskb_trim
 	__alloc_pages_nodemask
 	__alloc_percpu
