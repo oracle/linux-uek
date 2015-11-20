@@ -104,7 +104,7 @@ Summary: The Linux kernel
 %define with_kabichk 0
 %define fancy_debuginfo 0
 %else
-%define with_kabichk 0
+%define with_kabichk 1
 %define fancy_debuginfo 0
 %endif
 
@@ -545,8 +545,10 @@ Source1001: config-x86_64-debug
 #Source1004: config-sparc
 #Source1005: config-sparc-debug
 
-#Source26: Module.kabi_x86_64
+Source25: Module.kabi_x86_64debug
+Source26: Module.kabi_x86_64
 
+Source200: kabi_whitelist_x86_64debug
 Source201: kabi_whitelist_x86_64
 Source202: ksplice_signing_key.x509
 
