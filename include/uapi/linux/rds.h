@@ -243,6 +243,7 @@ struct rds_info_rdma_connection {
 	uint8_t         tos;
 	uint8_t         sl;
 	uint32_t        cache_allocs;
+	uint32_t	frag;
 };
 
 /*
