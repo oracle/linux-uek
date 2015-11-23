@@ -289,7 +289,7 @@ rm -rf %{buildroot}
 * Tue Nov 17 2015 Kris Van Hees <kris.van.hees@oracle.com> - 0.5.0-4
 - Remove explicit dependency on kernel RPM.
   [Orabug: 21669543]
-* Fri` Sep 18 2015 Kris Van Hees <kris.van.hees@oracle.com> - 0.5.0-3
+* Fri Sep 18 2015 Kris Van Hees <kris.van.hees@oracle.com> - 0.5.0-3
 - Enable building DTrace modules on SPARC64.
 * Tue Aug 18 2015 Kris Van Hees <kris.van.hees@oracle.com> - 0.5.0-2
 - Synchronize versions with OL6.
