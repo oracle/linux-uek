@@ -160,6 +160,36 @@ static struct workqueue_struct *ixgbe_wq;
 static bool ixgbe_is_sfp(struct ixgbe_hw *hw);
 static bool ixgbe_check_cfg_remove(struct ixgbe_hw *hw, struct pci_dev *pdev);
 
+static s32 ixgbe_reset_phy_lpmode(struct ixgbe_hw *hw)
+{
+	u32 status;
+	u16 reg;
+	bool reset;
+
+
+	reset = true;
+	/* Bail if we don't have copper phy */
+	if (hw->mac.ops.get_media_type(hw) != ixgbe_media_type_copper)
+		return 0;
+
+	status = hw->phy.ops.read_reg(hw, IXGBE_MDIO_VENDOR_SPECIFIC_1_CONTROL,
+				      IXGBE_MDIO_VENDOR_SPECIFIC_1_DEV_TYPE,
+				      &reg);
+	if (status)
+		return status;
+
+	if (reset) {
+		reg &= ~IXGBE_MDIO_PHY_SET_LOW_POWER_MODE;
+	} else {
+		reg |= IXGBE_MDIO_PHY_SET_LOW_POWER_MODE;
+	}
+
+	status = hw->phy.ops.write_reg(hw, IXGBE_MDIO_VENDOR_SPECIFIC_1_CONTROL,
+				       IXGBE_MDIO_VENDOR_SPECIFIC_1_DEV_TYPE,
+				       reg);
+	return status;
+}
+
 static int ixgbe_read_pci_cfg_word_parent(struct ixgbe_hw *hw,
 					  u32 reg, u16 *value)
 {
@@ -5770,7 +5800,7 @@ static void ixgbe_up_complete(struct ixgbe_adapter *adapter)
 	/* enable the optics for 82599 SFP+ fiber */
 	if (hw->mac.ops.enable_tx_laser)
 		hw->mac.ops.enable_tx_laser(hw);
-	ixgbe_set_phy_power(hw, true);
+	ixgbe_reset_phy_lpmode(hw);		
 
 	smp_mb__before_atomic();
 	clear_bit(__IXGBE_DOWN, &adapter->state);
@@ -5907,10 +5937,7 @@ void ixgbe_reset(struct ixgbe_adapter *adapter)
 		ixgbe_ptp_reset(adapter);
 #endif
 
-	if (!netif_running(adapter->netdev) && !adapter->wol)
-		ixgbe_set_phy_power(hw, false);
-	else
-		ixgbe_set_phy_power(hw, true);
+	ixgbe_reset_phy_lpmode(hw);
 }
 
 /**
@@ -6951,10 +6978,7 @@ static int __ixgbe_shutdown(struct pci_dev *pdev, bool *enable_wake)
 		break;
 	}
 
-	*enable_wake = !!wufc;
-	if (!*enable_wake)
-		ixgbe_set_phy_power(hw, false);
-
+	ixgbe_reset_phy_lpmode(hw);
 	ixgbe_release_hw_control(adapter);
 
 	if (!test_and_set_bit(__IXGBE_DISABLED, &adapter->state))
