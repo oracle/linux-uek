@@ -1922,19 +1922,26 @@ static void nvme_reset_work(struct work_struct *work)
 	return;
 
  out:
-	nvme_remove_dead_ctrl(dev, result);
+	nvme_remove_dead_ctrl(dev);
 }
 
-static int nvme_remove_dead_ctrl(void *arg)
+static void nvme_remove_dead_ctrl_work(struct work_struct *work)
 {
-	struct nvme_dev *dev = (struct nvme_dev *)arg;
+	struct nvme_dev *dev = container_of(work, struct nvme_dev, remove_work);
 	struct pci_dev *pdev = to_pci_dev(dev->dev);
 
 	nvme_kill_queues(&dev->ctrl);
 	if (pci_get_drvdata(pdev))
 		pci_stop_and_remove_bus_device_locked(pdev);
 	nvme_put_ctrl(&dev->ctrl);
-	return 0;
+}
+
+static void nvme_remove_dead_ctrl(struct nvme_dev *dev)
+{
+	dev_warn(dev->dev, "Removing after probe failure\n");
+	kref_get(&dev->ctrl.kref);
+	if (!schedule_work(&dev->remove_work))
+		nvme_put_ctrl(&dev->ctrl);
 }
 
 static int nvme_reset(struct nvme_dev *dev)
