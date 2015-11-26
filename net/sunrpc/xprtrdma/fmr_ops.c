@@ -54,7 +54,7 @@ fmr_op_open(struct rpcrdma_ia *ia, struct rpcrdma_ep *ep,
 			       __func__, PTR_ERR(mr));
 			return -ENOMEM;
 		}
-		ia->ri_dma_lkey = ia->ri_dma_mr->lkey;
+		ia->ri_dma_lkey = mr->lkey;
 		ia->ri_dma_mr = mr;
 	}
 
