@@ -131,7 +131,7 @@ bool freeze_task(struct task_struct *p)
 	 * freezer_should_skip() sees !PF_FREEZE_SKIP and freezes the task
 	 * normally.
 	 */
-	if (freezer_should_skip(p))
+	if (!test_tsk_thread_flag(p, TIF_KSPLICE_FREEZING) && freezer_should_skip(p))
 		return false;
 
 	spin_lock_irqsave(&freezer_lock, flags);
