@@ -144,6 +144,7 @@ void efi_sync_low_kernel_mappings(void)
 
 int efi_setup_page_tables(unsigned long pa_memmap, unsigned num_pages)
 {
+	unsigned long pfn;
 	pgd_t *pgd;
 
 	if (efi_enabled(EFI_OLD_MEMMAP))
@@ -158,7 +159,8 @@ int efi_setup_page_tables(unsigned long pa_memmap, unsigned num_pages)
 	 * and ident-map those pages containing the map before calling
 	 * phys_efi_set_virtual_address_map().
 	 */
-	if (kernel_map_pages_in_pgd(pgd, pa_memmap, pa_memmap, num_pages, _PAGE_NX)) {
+	pfn = pa_memmap >> PAGE_SHIFT;
+	if (kernel_map_pages_in_pgd(pgd, pfn, pa_memmap, num_pages, _PAGE_NX)) {
 		pr_err("Error ident-mapping new memmap (0x%lx)!\n", pa_memmap);
 		return 1;
 	}
@@ -179,16 +181,14 @@ void efi_cleanup_page_tables(unsigned long pa_memmap, unsigned num_pages)
 static void __init __map_region(efi_memory_desc_t *md, u64 va)
 {
 	pgd_t *pgd = (pgd_t *)__va(real_mode_header->trampoline_pgd);
-	unsigned long pf = 0, size;
-	u64 end;
+	unsigned long flags = 0;
+	unsigned long pfn;
 
 	if (!(md->attribute & EFI_MEMORY_WB))
-		pf |= _PAGE_PCD;
+		flags |= _PAGE_PCD;
 
-	size = md->num_pages << PAGE_SHIFT;
-	end  = va + size;
-
-	if (kernel_map_pages_in_pgd(pgd, md->phys_addr, va, md->num_pages, pf))
+	pfn = md->phys_addr >> PAGE_SHIFT;
+	if (kernel_map_pages_in_pgd(pgd, pfn, va, md->num_pages, flags))
 		pr_warn("Error mapping PA 0x%llx -> VA 0x%llx!\n",
 			   md->phys_addr, va);
 }
