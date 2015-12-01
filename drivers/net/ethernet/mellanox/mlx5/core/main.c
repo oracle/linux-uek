@@ -455,6 +455,9 @@ static int set_hca_ctrl(struct mlx5_core_dev *dev)
 	struct mlx5_reg_host_endianess he_out;
 	int err;
 
+	if (!mlx5_core_is_pf(dev))
+		return 0;
+
 	memset(&he_in, 0, sizeof(he_in));
 	he_in.he = MLX5_SET_HOST_ENDIANNESS;
 	err = mlx5_core_access_reg(dev, &he_in,  sizeof(he_in),
@@ -1053,6 +1056,12 @@ static int mlx5_load_one(struct mlx5_core_dev *dev, struct mlx5_priv *priv)
 	mlx5_init_srq_table(dev);
 	mlx5_init_mr_table(dev);
 
+	err = mlx5_sriov_init(dev);
+	if (err) {
+		dev_err(&pdev->dev, "sriov init failed %d\n", err);
+		goto err_sriov;
+	}
+
 	err = mlx5_register_device(dev);
 	if (err) {
 		dev_err(&pdev->dev, "mlx5_register_device failed %d\n", err);
@@ -1068,6 +1077,10 @@ out:
 	mutex_unlock(&dev->intf_state_mutex);
 
 	return 0;
+
+err_sriov:
+	if (mlx5_sriov_cleanup(dev))
+		dev_err(&dev->pdev->dev, "sriov cleanup failed\n");
 
 err_reg_dev:
 	mlx5_cleanup_mr_table(dev);
@@ -1123,6 +1136,13 @@ out_err:
 static int mlx5_unload_one(struct mlx5_core_dev *dev, struct mlx5_priv *priv)
 {
 	int err = 0;
+
+	err = mlx5_sriov_cleanup(dev);
+	if (err) {
+		dev_warn(&dev->pdev->dev, "%s: sriov cleanup failed - abort\n",
+			 __func__);
+		return err;
+	}
 
 	mutex_lock(&dev->intf_state_mutex);
 	if (dev->interface_state == MLX5_INTERFACE_STATE_DOWN) {
@@ -1196,6 +1216,7 @@ static int init_one(struct pci_dev *pdev,
 		return -ENOMEM;
 	}
 	priv = &dev->priv;
+	priv->pci_dev_data = id->driver_data;
 
 	pci_set_drvdata(pdev, dev);
 
@@ -1366,12 +1387,12 @@ static const struct pci_error_handlers mlx5_err_handler = {
 };
 
 static const struct pci_device_id mlx5_core_pci_table[] = {
-	{ PCI_VDEVICE(MELLANOX, 0x1011) }, /* Connect-IB */
-	{ PCI_VDEVICE(MELLANOX, 0x1012) }, /* Connect-IB VF */
-	{ PCI_VDEVICE(MELLANOX, 0x1013) }, /* ConnectX-4 */
-	{ PCI_VDEVICE(MELLANOX, 0x1014) }, /* ConnectX-4 VF */
-	{ PCI_VDEVICE(MELLANOX, 0x1015) }, /* ConnectX-4LX */
-	{ PCI_VDEVICE(MELLANOX, 0x1016) }, /* ConnectX-4LX VF */
+	{ PCI_VDEVICE(MELLANOX, 0x1011) },			/* Connect-IB */
+	{ PCI_VDEVICE(MELLANOX, 0x1012), MLX5_PCI_DEV_IS_VF},	/* Connect-IB VF */
+	{ PCI_VDEVICE(MELLANOX, 0x1013) },			/* ConnectX-4 */
+	{ PCI_VDEVICE(MELLANOX, 0x1014), MLX5_PCI_DEV_IS_VF},	/* ConnectX-4 VF */
+	{ PCI_VDEVICE(MELLANOX, 0x1015) },			/* ConnectX-4LX */
+	{ PCI_VDEVICE(MELLANOX, 0x1016), MLX5_PCI_DEV_IS_VF},	/* ConnectX-4LX VF */
 	{ 0, }
 };
 
@@ -1382,7 +1403,8 @@ static struct pci_driver mlx5_core_driver = {
 	.id_table       = mlx5_core_pci_table,
 	.probe          = init_one,
 	.remove         = remove_one,
-	.err_handler	= &mlx5_err_handler
+	.err_handler	= &mlx5_err_handler,
+	.sriov_configure   = mlx5_core_sriov_configure,
 };
 
 static int __init init(void)
