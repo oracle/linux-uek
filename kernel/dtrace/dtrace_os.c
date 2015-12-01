@@ -125,14 +125,20 @@ void dtrace_psinfo_alloc(struct task_struct *tsk)
 
 			i = access_process_vm(tsk, mm->arg_start,
 					      psinfo->psargs, len, 0);
-			if (i < len)
-				len = i;
 
-			for (i = 0, --len; i < len; i++) {
-				if (psinfo->psargs[i] == '\0')
-					psinfo->psargs[i] = ' ';
+			if (i > 0) {
+				if (i < len)
+					len = i;
+
+				for (i = 0, --len; i < len; i++) {
+					if (psinfo->psargs[i] == '\0')
+						psinfo->psargs[i] = ' ';
+				}
 			}
 		}
+
+		if (i < 0)
+			i = 0;
 
 		while (i < PR_PSARGS_SZ)
 			psinfo->psargs[i++] = 0;
