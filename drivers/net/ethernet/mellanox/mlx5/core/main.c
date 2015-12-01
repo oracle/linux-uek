@@ -50,6 +50,9 @@
 #include <linux/mlx5/mlx5_ifc.h>
 #include "mlx5_core.h"
 #include "kcompat.h"
+#ifdef CONFIG_MLX5_CORE_EN
+#include "eswitch.h"
+#endif
 
 MODULE_AUTHOR("Eli Cohen <eli@mellanox.com>");
 MODULE_DESCRIPTION("Mellanox Connect-IB, ConnectX-4 core driver");
@@ -1056,6 +1059,14 @@ static int mlx5_load_one(struct mlx5_core_dev *dev, struct mlx5_priv *priv)
 	mlx5_init_srq_table(dev);
 	mlx5_init_mr_table(dev);
 
+#ifdef CONFIG_MLX5_CORE_EN
+	err = mlx5_eswitch_init(dev);
+	if (err) {
+		dev_err(&pdev->dev, "eswitch init failed %d\n", err);
+		goto err_reg_dev;
+	}
+#endif
+
 	err = mlx5_sriov_init(dev);
 	if (err) {
 		dev_err(&pdev->dev, "sriov init failed %d\n", err);
@@ -1082,6 +1093,9 @@ err_sriov:
 	if (mlx5_sriov_cleanup(dev))
 		dev_err(&dev->pdev->dev, "sriov cleanup failed\n");
 
+#ifdef CONFIG_MLX5_CORE_EN
+	mlx5_eswitch_cleanup(dev->priv.eswitch);
+#endif
 err_reg_dev:
 	mlx5_cleanup_mr_table(dev);
 	mlx5_cleanup_srq_table(dev);
@@ -1151,6 +1165,10 @@ static int mlx5_unload_one(struct mlx5_core_dev *dev, struct mlx5_priv *priv)
 		goto out;
 	}
 	mlx5_unregister_device(dev);
+#ifdef CONFIG_MLX5_CORE_EN
+	mlx5_eswitch_cleanup(dev->priv.eswitch);
+#endif
+
 	mlx5_cleanup_mr_table(dev);
 	mlx5_cleanup_srq_table(dev);
 	mlx5_cleanup_qp_table(dev);
