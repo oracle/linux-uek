@@ -647,7 +647,7 @@ END(work_pending)
 #define STACK_CLEAR_WORDS    0x80
 ENTRY(clear_stack_do_notify_resume)
     testl $_TIF_SIGPENDING, %ecx
-    jnz do_notify_resume
+    jz do_notify_resume
 
     push %eax
     push %ecx

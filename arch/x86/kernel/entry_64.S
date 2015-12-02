@@ -1749,7 +1749,7 @@ END(ignore_sysret)
 #define STACK_CLEAR_WORDS    0x80
 ENTRY(clear_stack_do_notify_resume)
     testl $_TIF_SIGPENDING, %edx
-    jnz do_notify_resume
+    jz do_notify_resume
 
     pushq %rdi
 
