@@ -981,6 +981,12 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 	conn->c_connection_start = get_seconds();
 
 	rds_ib_set_flow_control(conn, be32_to_cpu(dp->dp_credit));
+	/* Use ic->i_flowctl as the first post credit to enable
+	 * IB transport flow control. This first post credit is
+	 * deducted after advertise the credit to the remote
+	 * connection.
+	 */
+	atomic_set(&ic->i_credits, IB_SET_POST_CREDITS(ic->i_flowctl));
 
 	/* If the peer gave us the last packet it saw, process this as if
 	 * we had received a regular ACK. */
@@ -1054,6 +1060,12 @@ int rds_ib_cm_initiate_connect(struct rdma_cm_id *cm_id)
 
 	rds_ib_set_protocol(conn, RDS_PROTOCOL_4_1);
 	ic->i_flowctl = rds_ib_sysctl_flow_control;	/* advertise flow control */
+	/* Use ic->i_flowctl as the first post credit to enable
+	 * IB transport flow control. This first post credit is
+	 * deducted after advertise the credit to the remote
+	 * connection.
+	 */
+	atomic_set(&ic->i_credits, IB_SET_POST_CREDITS(ic->i_flowctl));
 
 	pr_debug("RDS/IB: Initiate conn <%pI4, %pI4,%d> with Frags <init,ic>: {%d,%d}\n",
 		 &conn->c_laddr, &conn->c_faddr, conn->c_tos,
