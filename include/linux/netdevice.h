@@ -1250,6 +1250,7 @@ struct net_device_ops {
  * @IFF_MACSEC: device is a MACsec device
  * @IFF_FAILOVER: device is a failover master device
  * @IFF_FAILOVER_SLAVE: device is lower dev of a failover master device
+ * @IFF_TEAM: device is a team device
  */
 enum netdev_priv_flags {
 	IFF_802_1Q_VLAN			= 1<<0,
@@ -1281,6 +1282,7 @@ enum netdev_priv_flags {
 	IFF_MACSEC			= 1<<27,
 	IFF_FAILOVER			= 1<<28,
 	IFF_FAILOVER_SLAVE		= 1<<29,
+	IFF_TEAM			= 1<<24,
 };
 
 #define IFF_802_1Q_VLAN			IFF_802_1Q_VLAN
@@ -1312,6 +1314,7 @@ enum netdev_priv_flags {
 #define IFF_MACSEC			IFF_MACSEC
 #define IFF_FAILOVER			IFF_FAILOVER
 #define IFF_FAILOVER_SLAVE		IFF_FAILOVER_SLAVE
+#define IFF_TEAM			IFF_TEAM
 
 /**
  *	struct net_device - The DEVICE structure.
@@ -3900,6 +3903,11 @@ static inline bool netif_is_failover(const struct net_device *dev)
 static inline bool netif_is_failover_slave(const struct net_device *dev)
 {
 	return dev->priv_flags & IFF_FAILOVER_SLAVE;
+}
+
+static inline bool netif_is_team_master(struct net_device *dev)
+{
+	return dev->priv_flags & IFF_TEAM;
 }
 
 /* This device needs to keep skb dst for qdisc enqueue or ndo_start_xmit() */
