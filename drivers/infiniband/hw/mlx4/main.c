@@ -1958,12 +1958,14 @@ static void mlx4_ib_event(struct mlx4_dev *dev, void *ibdev_ptr,
 		if (dev->caps.sqp_demux) {
 			invalidate_all_guid_record(ibdev, port);
 		}
-		printk(KERN_ERR "mlx4_ib_event MLX4_DEV_EVENT_PORT_UP (port:%d)\n", port);
+		printk(KERN_ERR "(mlx4 %s) mlx4_ib_event MLX4_DEV_EVENT_PORT_UP (port:%d)\n",
+				pci_name(dev->pdev), port);
 		ibev.event = IB_EVENT_PORT_ACTIVE;
 		break;
 
 	case MLX4_DEV_EVENT_PORT_DOWN:
-		printk(KERN_ERR "mlx4_ib_event MLX4_DEV_EVENT_PORT_DOWN (port:%d)\n", port);
+		printk(KERN_ERR "(mlx4 %s) mlx4_ib_event MLX4_DEV_EVENT_PORT_DOWN (port:%d)\n",
+				pci_name(dev->pdev), port);
 		if (port > ibdev->num_ports)
 			return;
 		ibev.event = IB_EVENT_PORT_ERR;
