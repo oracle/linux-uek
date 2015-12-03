@@ -781,7 +781,7 @@ static int iser_drain_tx_cq(struct iser_device  *device)
 				iser_err("expected opcode %d got %d\n",
 					IB_WC_SEND, wc.opcode);
 		} else {
-			iser_err("tx id %llx status %d vend_err %x\n",
+			iser_err("tx id %llx status %d vend_err 0x%x\n",
 				wc.wr_id, wc.status, wc.vendor_err);
 			atomic_dec(&ib_conn->post_send_buf_count);
 			iser_handle_comp_error(tx_desc, ib_conn);
@@ -817,7 +817,7 @@ static void iser_cq_tasklet_fn(unsigned long data)
 					IB_WC_RECV, wc.opcode);
 		} else {
 			if (wc.status != IB_WC_WR_FLUSH_ERR)
-				iser_err("rx id %llx status %d vend_err %x\n",
+				iser_err("rx id %llx status %d vend_err 0x%x\n",
 					wc.wr_id, wc.status, wc.vendor_err);
 			ib_conn->post_recv_buf_count--;
 			iser_handle_comp_error(NULL, ib_conn);

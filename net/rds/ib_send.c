@@ -308,7 +308,7 @@ void rds_ib_send_cqe_handler(struct rds_ib_connection *ic, struct ib_wc *wc)
 	if (wc->status != IB_WC_SUCCESS && rds_conn_up(conn)) {
 		rds_ib_conn_error(conn,
 			"send completion <%u.%u.%u.%u,%u.%u.%u.%u,%d> status "
-			"%u vendor_err %u, disconnecting and reconnecting\n",
+			"%u vendor_err 0x%x, disconnecting and reconnecting\n",
 			NIPQUAD(conn->c_laddr),
 			NIPQUAD(conn->c_faddr),
 			conn->c_tos, wc->status, wc->vendor_err);

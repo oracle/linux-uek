@@ -228,7 +228,7 @@ static void xve_ib_handle_rx_wc(struct net_device *dev, struct ib_wc *wc)
 	if (unlikely(wc->status != IB_WC_SUCCESS)) {
 		if (wc->status != IB_WC_WR_FLUSH_ERR)
 			xve_warn(priv, "failed recv event "
-				 "(status=%d, wrid=%d vend_err %x)\n",
+				 "(status=%d, wrid=%d vend_err 0x%x)\n",
 				 wc->status, wr_id, wc->vendor_err);
 		xve_ud_dma_unmap_rx(priv, priv->rx_ring[wr_id].mapping);
 		dev_kfree_skb_any(skb);
@@ -387,7 +387,7 @@ static void xve_ib_handle_tx_wc(struct net_device *dev, struct ib_wc *wc)
 
 	if (wc->status != IB_WC_SUCCESS && wc->status != IB_WC_WR_FLUSH_ERR)
 		xve_warn(priv, "failed send event "
-			 "(status=%d, wrid=%d vend_err %x)\n",
+			 "(status=%d, wrid=%d vend_err 0x%x)\n",
 			 wc->status, wr_id, wc->vendor_err);
 }
 
