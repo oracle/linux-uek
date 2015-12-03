@@ -108,7 +108,8 @@ static void catas_reset(struct work_struct *work)
 				pci_name(pdev), ret);
 		else {
 			dev  = pci_get_drvdata(pdev);
-			mlx4_dbg(dev, "Reset succeeded\n");
+			mlx4_notice(dev, "mlx4 %s: Reset succeeded\n",
+					pci_name(pdev));
 		}
 	}
 	mutex_unlock(&drv_mutex);

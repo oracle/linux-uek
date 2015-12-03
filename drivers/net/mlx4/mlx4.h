@@ -206,6 +206,8 @@ do { \
 
 #define mlx4_err(mdev, format, arg...) \
 	dev_err(&mdev->pdev->dev, format, ## arg)
+#define mlx4_notice(mdev, format, arg...) \
+	dev_notice(&mdev->pdev->dev, format, ## arg)
 #define mlx4_info(mdev, format, arg...) \
 	dev_info(&mdev->pdev->dev, format, ## arg)
 #define mlx4_warn(mdev, format, arg...) \
