@@ -142,32 +142,16 @@ static int ipoib_vlan_add_common(struct net_device *pdev,
 
 	down_write(&ppriv->vlan_rwsem);
 
-	if (child_name_buf == NULL) {
-		/*
-		 * If child name is not provided, we generate one using
-		 * name of parent, pkey and child index.
-		 *
-		 * First ensure this isn't a duplicate. We check all of the
-		 * child interfaces to make sure the Pkey AND the child index
-		 * don't match.
-		 * (Note: another "named child" with default child index 0 can
-		 * already exist with same pkey so we allow that! A duplicate
-		 * name with child_index 0 will be detected by failure of
-		 * register_netdevice() with EEXIST -
-		 * same as for "named child" where interface name is
-		 * explicitly provided and not generated here!)
-		 */
-		if (child_index != 0) {
-			list_for_each_entry(priv, &ppriv->child_intfs, list) {
-				if (priv->pkey == pkey &&
-				    priv->child_index == child_index) {
-					result = -ENOTUNIQ;
-					priv = NULL;
-					goto out;
-				}
-			}
+	list_for_each_entry(priv, &ppriv->child_intfs, list) {
+		if (priv->pkey == pkey &&
+		    priv->child_index == child_index) {
+			result = -ENOTUNIQ;
+			priv = NULL;
+			goto out;
 		}
+	}
 
+	if (child_name_buf == NULL) {
 		/*
 		 * for the case of non-legacy and same pkey childs we wanted
 		 * to use a notation of ibN.pkey:index and ibN:index but this
