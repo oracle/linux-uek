@@ -414,8 +414,9 @@ try_again:
 	posted = IB_GET_POST_CREDITS(oldval);
 	avail = IB_GET_SEND_CREDITS(oldval);
 
-	rdsdebug("rds_ib_send_grab_credits(%u): credits=%u posted=%u\n",
-			wanted, avail, posted);
+	rds_rtd(RDS_RTD_FLOW_CNTRL,
+		"rds_ib_send_grab_credits(%u): credits=%u posted=%u\n",
+		wanted, avail, posted);
 
 	/* The last credit must be used to send a credit update. */
 	if (avail && !posted)
@@ -458,10 +459,12 @@ void rds_ib_send_add_credits(struct rds_connection *conn, unsigned int credits)
 	if (credits == 0)
 		return;
 
-	rdsdebug("rds_ib_send_add_credits(%u): current=%u%s\n",
-			credits,
-			IB_GET_SEND_CREDITS(atomic_read(&ic->i_credits)),
-			test_bit(RDS_LL_SEND_FULL, &conn->c_flags) ? ", ll_send_full" : "");
+	rds_rtd(RDS_RTD_FLOW_CNTRL,
+		"rds_ib_send_add_credits(%u): current=%u%s\n",
+		credits,
+		IB_GET_SEND_CREDITS(atomic_read(&ic->i_credits)),
+		test_bit(RDS_LL_SEND_FULL, &conn->c_flags) ?
+		", ll_send_full" : "");
 
 	atomic_add(IB_SET_SEND_CREDITS(credits), &ic->i_credits);
 	if (test_and_clear_bit(RDS_LL_SEND_FULL, &conn->c_flags))
@@ -493,6 +496,8 @@ void rds_ib_advertise_credits(struct rds_connection *conn, unsigned int posted)
 	 * credits and has to throttle.
 	 * For the time being, 16 seems to be a good compromise.
 	 */
+	rds_rtd(RDS_RTD_FLOW_CNTRL, "ic->i_credits %u\n",
+		IB_GET_POST_CREDITS(atomic_read(&ic->i_credits)));
 	if (IB_GET_POST_CREDITS(atomic_read(&ic->i_credits)) >= 16)
 		set_bit(IB_ACK_REQUESTED, &ic->i_ack_flags);
 }
