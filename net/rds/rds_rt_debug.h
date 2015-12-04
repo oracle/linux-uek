@@ -20,6 +20,7 @@ enum {
 
 	RDS_RTD_SND			= 1 << 14,	/* 0x4000 */
 	RDS_RTD_SND_EXT			= 1 << 15,	/* 0x8000 */
+	RDS_RTD_FLOW_CNTRL		= 1 << 16,	/* 0x10000 */
 
 	/* bit 20 ~ 31 are module specific bits */
 	RDS_RTD_CORE			= 1 << 20,	/* 0x100000   */
