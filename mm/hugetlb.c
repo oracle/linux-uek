@@ -481,13 +481,15 @@ retry:
 	spin_lock(&resv->lock);
 	list_for_each_entry_safe(rg, trg, head, link) {
 		/*
-		 * file_region ranges are normally of the form [from, to).
-		 * However, there may be a "placeholder" entry in the map
-		 * which is of the form (from, to) with from == to.  Check
-		 * for placeholder entries as well.
+		 * Skip regions before the range to be deleted.  file_region
+		 * ranges are normally of the form [from, to).  However, there
+		 * may be a "placeholder" entry in the map which is of the form
+		 * (from, to) with from == to.  Check for placeholder entries
+		 * at the beginning of the range to be deleted.
 		 */
-		if (rg->to <= f && rg->to != rg->from)
+		if (rg->to <= f && (rg->to != rg->from || rg->to != f))
 			continue;
+
 		if (rg->from >= t)
 			break;
 
