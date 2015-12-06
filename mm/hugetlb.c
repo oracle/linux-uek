@@ -367,8 +367,10 @@ retry_locked:
 		spin_unlock(&resv->lock);
 
 		trg = kmalloc(sizeof(*trg), GFP_KERNEL);
-		if (!trg)
+		if (!trg) {
+			kfree(nrg);
 			return -ENOMEM;
+		}
 
 		spin_lock(&resv->lock);
 		list_add(&trg->link, &resv->region_cache);
@@ -478,7 +480,13 @@ static long region_del(struct resv_map *resv, long f, long t)
 retry:
 	spin_lock(&resv->lock);
 	list_for_each_entry_safe(rg, trg, head, link) {
-		if (rg->to <= f)
+		/*
+		 * file_region ranges are normally of the form [from, to).
+		 * However, there may be a "placeholder" entry in the map
+		 * which is of the form (from, to) with from == to.  Check
+		 * for placeholder entries as well.
+		 */
+		if (rg->to <= f && rg->to != rg->from)
 			continue;
 		if (rg->from >= t)
 			break;
