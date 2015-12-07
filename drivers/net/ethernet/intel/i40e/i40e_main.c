@@ -9102,9 +9102,11 @@ struct i40e_vsi *i40e_vsi_setup(struct i40e_pf *pf, u8 type,
 		ret = i40e_config_netdev(vsi);
 		if (ret)
 			goto err_netdev;
+#if defined(CONFIG_SPARC) || defined(CONFIG_OF)
 		ret = i40e_macaddr_init(vsi, pf->hw.mac.addr);
 		if (ret)
 			goto err_netdev;
+#endif
 		ret = register_netdev(vsi->netdev);
 		if (ret)
 			goto err_netdev;
