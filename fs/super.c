@@ -514,10 +514,17 @@ void iterate_supers(void (*f)(struct super_block *, void *), void *arg)
 		sb->s_count++;
 		spin_unlock(&sb_lock);
 
+		/*
+		 * Whatever we're going to do to the file system we have to
+		 * make sure that we'll not end up blocking on frozen file
+		 * system.
+		 */
+		sb_start_write(sb);
 		down_read(&sb->s_umount);
 		if (sb->s_root && (sb->s_flags & MS_BORN))
 			f(sb, arg);
 		up_read(&sb->s_umount);
+		sb_end_write(sb);
 
 		spin_lock(&sb_lock);
 		if (p)
