@@ -85,6 +85,42 @@ static DEFINE_MUTEX(loop_devices_mutex);
 static int max_part;
 static int part_shift;
 
+static void __lo_print_error(struct bio *bio, int error,
+			     const char *func, int line)
+{
+	char b[BDEVNAME_SIZE];
+	char dev_info[64];
+	char err_buf[64];
+	struct block_device *bdev;
+
+	if (bio) {
+		bdev = bio->bi_bdev;
+		snprintf(dev_info, sizeof(dev_info),
+			 "Device %s MAJOR:%d MINOR:%d",
+		bdevname(bdev, b), MAJOR(bdev->bd_dev), MINOR(bdev->bd_dev));
+	} else
+		snprintf(dev_info, sizeof(dev_info), "%s",
+			 "Device Info Unavailable");
+
+	/* Special ENOSPC and EDQUOT as they are common in Dom0 */
+	if (error == -ENOSPC)
+		snprintf(err_buf, sizeof(err_buf), "ERROR:%d - %s.",
+			 error, "No space left on device");
+	else if (error == -EDQUOT)
+		snprintf(err_buf, sizeof(err_buf), "ERROR:%d - %s.",
+			 error, "Quota exceeded");
+	else
+		snprintf(err_buf, sizeof(err_buf), "ERROR:%d received.",
+			 error);
+
+	if (printk_ratelimit())
+		printk(KERN_INFO
+		       "%s:%d:%s %s\n", func, line, err_buf, dev_info);
+}
+
+#define lo_print_error(bio, error) \
+	__lo_print_error(bio, error, __func__, __LINE__)
+
 /*
  * Transfer functions
  */
@@ -277,8 +313,10 @@ void lo_rw_aio_complete(u64 data, long res)
 
 	if (res > 0)
 		res = 0;
-	else if (res < 0)
+	else if (res < 0) {
+		lo_print_error(bio, res);
 		res = -EIO;
+	}
 
 	bio_endio(bio, res);
 }
@@ -328,8 +366,9 @@ static int __do_lo_send_write(struct file *file,
 	set_fs(old_fs);
 	if (likely(bw == len))
 		return 0;
-	printk(KERN_ERR "loop: Write error at byte offset %llu, length %i.\n",
-			(unsigned long long)pos, len);
+	printk(KERN_ERR
+	       "loop: Write error %zd at byte offset %llu, length %i.\n",
+		bw, (unsigned long long)pos, len);
 	if (bw >= 0)
 		bw = -EIO;
 	return bw;
@@ -376,8 +415,9 @@ static int do_lo_send_write(struct loop_device *lo, struct bio_vec *bvec,
 		return __do_lo_send_write(lo->lo_backing_file,
 				page_address(page), bvec->bv_len,
 				pos);
-	printk(KERN_ERR "loop: Transfer error at byte offset %llu, "
-			"length %i.\n", (unsigned long long)pos, bvec->bv_len);
+	printk(KERN_ERR
+	       "loop: Transfer %d error at byte offset %llu, length %i.\n",
+	       ret, (unsigned long long)pos, bvec->bv_len);
 	if (ret > 0)
 		ret = -EIO;
 	return ret;
@@ -520,6 +560,7 @@ static int do_bio_filebacked(struct loop_device *lo, struct bio *bio)
 		if (bio->bi_rw & REQ_FLUSH) {
 			ret = vfs_fsync(file, 0);
 			if (unlikely(ret && ret != -EINVAL)) {
+				lo_print_error(bio, ret);
 				ret = -EIO;
 				goto out;
 			}
@@ -530,6 +571,7 @@ static int do_bio_filebacked(struct loop_device *lo, struct bio *bio)
 		if ((bio->bi_rw & REQ_FUA) && !ret) {
 			ret = vfs_fsync(file, 0);
 			if (unlikely(ret && ret != -EINVAL))
+				lo_print_error(bio, ret);
 				ret = -EIO;
 		}
 	} else
