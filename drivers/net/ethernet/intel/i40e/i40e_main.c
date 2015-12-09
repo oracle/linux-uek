@@ -6836,15 +6836,15 @@ static void i40e_reset_and_rebuild(struct i40e_pf *pf, bool reinit)
 		}
 	}
 
-	msleep(75);
-	ret = i40e_aq_set_link_restart_an(&pf->hw, true, NULL);
-	if (ret) {
-                        dev_info(&pf->pdev->dev, "link restart failed, err %s aq_err %s\n",
-                                 i40e_stat_str(&pf->hw, ret),
-                                 i40e_aq_str(&pf->hw,
-                                             pf->hw.aq.asq_last_status));
+	if (pf->flags & I40E_FLAG_RESTART_AUTONEG) {
+		msleep(75);
+		ret = i40e_aq_set_link_restart_an(&pf->hw, true, NULL);
+		if (ret)
+			dev_info(&pf->pdev->dev, "link restart failed, err %s aq_err %s\n",
+				 i40e_stat_str(&pf->hw, ret),
+				 i40e_aq_str(&pf->hw,
+					     pf->hw.aq.asq_last_status));
 	}
-
 	/* reinit the misc interrupt */
 	if (pf->flags & I40E_FLAG_MSIX_ENABLED)
 		ret = i40e_setup_misc_vector(pf);
@@ -8312,6 +8312,12 @@ static int i40e_sw_init(struct i40e_pf *pf)
 		pf->hw.fdir_shared_filter_count =
 				 pf->hw.func_caps.fd_filters_best_effort;
 	}
+
+	if (((pf->hw.mac.type == I40E_MAC_X710) ||
+	     (pf->hw.mac.type == I40E_MAC_XL710)) &&
+	    (((pf->hw.aq.fw_maj_ver == 4) && (pf->hw.aq.fw_min_ver < 33)) ||
+	    (pf->hw.aq.fw_maj_ver < 4)))
+		pf->flags |= I40E_FLAG_RESTART_AUTONEG;
 
 	if (pf->hw.func_caps.vmdq) {
 		pf->num_vmdq_vsis = I40E_DEFAULT_NUM_VMDQ_VSI;
@@ -10750,15 +10756,15 @@ static int i40e_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 			 i40e_stat_str(&pf->hw, err),
 			 i40e_aq_str(&pf->hw, pf->hw.aq.asq_last_status));
 
-	msleep(75);
-	err = i40e_aq_set_link_restart_an(&pf->hw, true, NULL);
-	if (err) {
-		dev_info(&pf->pdev->dev, "link restart failed, err %s aq_err %s\n",
-                                 i40e_stat_str(&pf->hw, err),
-                                 i40e_aq_str(&pf->hw,
-                                             pf->hw.aq.asq_last_status));
+	if (pf->flags & I40E_FLAG_RESTART_AUTONEG) {
+		msleep(75);
+		err = i40e_aq_set_link_restart_an(&pf->hw, true, NULL);
+		if (err)
+			dev_info(&pf->pdev->dev, "link restart failed, err %s aq_err %s\n",
+				 i40e_stat_str(&pf->hw, err),
+				 i40e_aq_str(&pf->hw,
+					     pf->hw.aq.asq_last_status));
 	}
-
 	/* The main driver is (mostly) up and happy. We need to set this state
 	 * before setting up the misc vector or we get a race and the vector
 	 * ends up disabled forever.
