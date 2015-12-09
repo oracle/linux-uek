@@ -394,7 +394,7 @@ static ssize_t vcc_sysfs_break_store(struct device *device,
 
 	if (sscanf(buf, "%ud", &brk) != 1 || brk != 1)
 		rv = -EINVAL;
-	else if (vcc_send_ctl(vcc, VCC_CTL_HUP) < 0)
+	else if (vcc_send_ctl(vcc, VCC_CTL_BREAK) < 0)
 		vcc_kick_tx(vcc);
 
 	spin_unlock_irqrestore(&vcc->lock, flags);
@@ -561,7 +561,7 @@ static int vcc_remove(struct vio_dev *vdev)
 	spin_unlock_irqrestore(&vcc->lock, flags);
 
 	if (tty)
-		tty_hangup(tty);
+		tty_vhangup(tty);
 
 	tty_unregister_device(vcc_tty_driver, vdev->port_id);
 
