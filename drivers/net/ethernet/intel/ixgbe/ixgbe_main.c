@@ -51,6 +51,7 @@
 #include <linux/prefetch.h>
 #include <scsi/fc/fc_fcoe.h>
 #include <net/vxlan.h>
+#include <xen/xen.h>
 
 #ifdef CONFIG_OF
 #include <linux/of_net.h>
@@ -5793,7 +5794,7 @@ static int ixgbe_open(struct net_device *netdev)
 	else
 		queues = adapter->num_tx_queues;
 
-	err = netif_set_real_num_tx_queues(netdev, queues);
+	err = netif_set_real_num_tx_queues(netdev, xen_initial_domain() ? 1 : queues);
 	if (err)
 		goto err_set_queues;
 
