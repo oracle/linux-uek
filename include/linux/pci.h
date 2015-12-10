@@ -33,7 +33,6 @@
 #include <uapi/linux/pci.h>
 
 #include <linux/pci_ids.h>
-#include <linux/uek_kabi.h>
 
 /*
  * The PCI interface treats multi-function devices as independent
@@ -380,14 +379,6 @@ struct pci_dev {
 	phys_addr_t rom; /* Physical address of ROM if it's not from the BAR */
 	size_t romlen; /* Length of ROM if it's not from the BAR */
 	char *driver_override; /* Driver name to force a match */
-/*
- *     Oracle Specific Extension to accomodate future upstream changes to this structure
- *     yet maintain KABI.  For Oracle internal use only!
- */
-        UEK_KABI_EXTEND(u8   uek_reserved1) 
-        UEK_KABI_EXTEND(u16   uek_reserved2) 
-        UEK_KABI_EXTEND(unsigned int   uek_reserved3) 
-        UEK_KABI_EXTEND(u64   uek_reserved4) 
 };
 
 static inline struct pci_dev *pci_physfn(struct pci_dev *dev)

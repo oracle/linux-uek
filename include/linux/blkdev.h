@@ -308,12 +308,11 @@ struct queue_limits {
 	unsigned char		cluster;
 	unsigned char		discard_zeroes_data;
 	unsigned char		raid_partial_stripes_expensive;
-         /* Oracle inc use only
-          *
-          * The following padding has been inserted before ABI freeze to
-          * allow extending the structure while preserving ABI.
-          */
-
+  /* Oracle inc use only
+   *
+   * The following padding has been inserted before ABI freeze to
+   * allow extending the structure while preserving ABI.
+   */
         UEK_KABI_RESERVED(1)
         UEK_KABI_RESERVED(2)
 };
