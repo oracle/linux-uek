@@ -114,7 +114,6 @@ MODULE_VERSION(DRV_MODULE_VERSION);
  * The largest contiguous buffer the kernel seems to allow is 8MB.
  */
 #define	DS_DEFAULT_SP_BUF_SIZE	(8*1024*1024)
-#define	DS_DEFAULT_SP_MTU	(8*1024*1024)
 
 #define	DS_PRIMARY_ID		0
 
@@ -198,7 +197,7 @@ struct ds_dev {
 
 	/* LDC receive data buffer for this ds_dev */
 	u8			*rcv_buf;
-	int			rcv_buf_len;
+	u64			rcv_buf_len;
 	u32			mtu;
 
 	/* service registration timer */
@@ -4321,9 +4320,6 @@ static int ds_probe(struct vio_dev *vdev, const struct vio_device_id *id)
 			goto out_free_ds;
 
 		ds->rcv_buf_len = DS_DEFAULT_SP_BUF_SIZE;
-
-		ds_cfg.mtu = DS_DEFAULT_SP_MTU;
-
 	} else {
 		ds->rcv_buf = kzalloc(DS_DEFAULT_BUF_SIZE,
 		    GFP_KERNEL);
@@ -4331,11 +4327,11 @@ static int ds_probe(struct vio_dev *vdev, const struct vio_device_id *id)
 			goto out_free_ds;
 
 		ds->rcv_buf_len = DS_DEFAULT_BUF_SIZE;
-
-		ds_cfg.mtu = DS_DEFAULT_MTU;
 	}
 
+	ds_cfg.mtu = DS_DEFAULT_MTU;
 	ds->mtu = ds_cfg.mtu;
+
 	ds->hs_state = DS_HS_LDC_DOWN;
 	ds_cfg.debug = 0;
 	ds_cfg.tx_irq = vdev->tx_irq;

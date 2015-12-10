@@ -87,6 +87,10 @@ struct vlds_dev {
 struct vlds_dev *sp_vlds;
 #define	IS_SP_VLDS(vlds_dev)	((vlds_dev) == sp_vlds)
 
+/* Control device to provide non-device specific operations */
+struct vlds_dev *ctrl_vlds;
+#define	IS_CTRL_VLDS(vlds_dev)	((vlds_dev) == ctrl_vlds)
+
 /*
  * Service info to describe a service and process(es) using the service.
  * Services can be regsitered as shared (the default) or exclusive.
@@ -2064,6 +2068,19 @@ static long vlds_fops_ioctl(struct file *filp, unsigned int cmd,
 		return -ENXIO;
 	}
 
+	if (IS_CTRL_VLDS(vlds)) {
+		/*
+		 * For the control device,
+		 * we only allow the following operations.
+		 */
+		if (cmd != VLDS_IOCTL_SET_EVENT_FD &&
+		    cmd != VLDS_IOCTL_UNSET_EVENT_FD &&
+		    cmd != VLDS_IOCTL_GET_NEXT_EVENT) {
+			mutex_unlock(&vlds->vlds_mutex);
+			return -EINVAL;
+		}
+	}
+
 	mutex_unlock(&vlds->vlds_mutex);
 
 	switch (cmd) {
@@ -2506,6 +2523,12 @@ static int __init vlds_init(void)
 	/* set callback to create devices under /dev/vlds directory */
 	vlds_data.chrdev_class->devnode = vlds_devnode;
 
+	/* Create the control device */
+	rv = vlds_alloc_vlds_dev(VLDS_CTRL_DEV_NAME, VLDS_CTRL_DEV_NAME,
+	    NULL, VLDS_INVALID_HANDLE, &ctrl_vlds);
+	if (rv != 0)
+		dprintk("Failed to create control vlds device (%d)\n", rv);
+
 	/*
 	 * If there is a SP DS present on the system (in the MD),
 	 * add a device for the SP directly since there is no
@@ -2554,6 +2577,21 @@ static void __exit vlds_exit(void)
 
 		vlds_free_vlds_dev(sp_vlds);
 		sp_vlds = NULL;
+
+		mutex_unlock(&vlds_data_mutex);
+	}
+
+	if (ctrl_vlds) {
+
+		mutex_lock(&vlds_data_mutex);
+		mutex_lock(&ctrl_vlds->vlds_mutex);
+
+		/* Cleanup the associated cdev, /sys and /dev entry */
+		device_destroy(vlds_data.chrdev_class, ctrl_vlds->devt);
+		cdev_del(&ctrl_vlds->cdev);
+
+		vlds_free_vlds_dev(ctrl_vlds);
+		ctrl_vlds = NULL;
 
 		mutex_unlock(&vlds_data_mutex);
 	}
