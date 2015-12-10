@@ -86,6 +86,39 @@ static DEFINE_MUTEX(loop_index_mutex);
 static int max_part;
 static int part_shift;
 
+static void __lo_print_error(struct bio *bio, int error,
+			     const char *func, int line)
+{
+	char b[BDEVNAME_SIZE];
+	char dev_info[64];
+	char err_buf[64];
+
+	if (bio) {
+		snprintf(dev_info, sizeof(dev_info),
+			 "Device %s MAJOR:%d MINOR:%d",
+		bio_devname(bio, b), MAJOR(bio_dev(bio)), MINOR(bio_dev(bio)));
+	} else
+		snprintf(dev_info, sizeof(dev_info), "%s",
+			 "Device Info Unavailable");
+
+	/* Special ENOSPC and EDQUOT as they are common in Dom0 */
+	if (error == -ENOSPC)
+		snprintf(err_buf, sizeof(err_buf), "ERROR:%d - %s.",
+			 error, "No space left on device");
+	else if (error == -EDQUOT)
+		snprintf(err_buf, sizeof(err_buf), "ERROR:%d - %s.",
+			 error, "Quota exceeded");
+	else
+		snprintf(err_buf, sizeof(err_buf), "ERROR:%d received.",
+			 error);
+
+	printk_ratelimited(KERN_INFO "%s:%d:%s %s\n", func, line,
+			   err_buf, dev_info);
+}
+
+#define lo_print_error(bio, error) \
+	__lo_print_error(bio, error, __func__, __LINE__)
+
 static int transfer_xor(struct loop_device *lo, int cmd,
 			struct page *raw_page, unsigned raw_off,
 			struct page *loop_page, unsigned loop_off,
@@ -276,8 +309,8 @@ static int lo_write_bvec(struct file *file, struct bio_vec *bvec, loff_t *ppos)
 		return 0;
 
 	printk_ratelimited(KERN_ERR
-		"loop: Write error at byte offset %llu, length %i.\n",
-		(unsigned long long)*ppos, bvec->bv_len);
+		"loop: Write error %zd at byte offset %llu, length %i.\n",
+		bw, (unsigned long long)*ppos, bvec->bv_len);
 	if (bw >= 0)
 		bw = -EIO;
 	return bw;
@@ -432,8 +465,10 @@ static int lo_discard(struct loop_device *lo, struct request *rq, loff_t pos)
 	}
 
 	ret = file->f_op->fallocate(file, mode, pos, blk_rq_bytes(rq));
-	if (unlikely(ret && ret != -EINVAL && ret != -EOPNOTSUPP))
+	if (unlikely(ret && ret != -EINVAL && ret != -EOPNOTSUPP)) {
+		lo_print_error(rq->bio, ret);
 		ret = -EIO;
+	}
  out:
 	return ret;
 }
@@ -442,8 +477,10 @@ static int lo_req_flush(struct loop_device *lo, struct request *rq)
 {
 	struct file *file = lo->lo_backing_file;
 	int ret = vfs_fsync(file, 0);
-	if (unlikely(ret && ret != -EINVAL))
+	if (unlikely(ret && ret != -EINVAL)) {
+		lo_print_error(rq->bio, ret);
 		ret = -EIO;
+	}
 
 	return ret;
 }
@@ -477,6 +514,11 @@ static void lo_rw_aio_complete(struct kiocb *iocb, long ret, long ret2)
 	struct loop_cmd *cmd = container_of(iocb, struct loop_cmd, iocb);
 
 	cmd->ret = ret;
+	if (ret < 0) {
+		struct request *rq = cmd->rq;
+
+		lo_print_error(rq->bio, ret);
+	}
 	lo_rw_aio_do_completion(cmd);
 }
 
