@@ -44,6 +44,7 @@
 #include <linux/io.h>
 #include <linux/reboot.h>
 #include <linux/bcd.h>
+#include <linux/security.h>
 
 #include <asm/setup.h>
 #include <asm/efi.h>
@@ -77,6 +78,41 @@ static int __init setup_add_efi_memmap(char *arg)
 	return 0;
 }
 early_param("add_efi_memmap", setup_add_efi_memmap);
+
+static int __init efi_secure_boot_enabled(void)
+{
+	efi_guid_t var_guid = EFI_GLOBAL_VARIABLE_GUID;
+	static efi_char16_t sb_var[] = {
+		'S', 'e', 'c', 'u', 'r', 'e', 'B', 'o', 'o', 't', 0 };
+	static efi_char16_t sm_var[] = {
+		'S', 'e', 't', 'u', 'p', 'M', 'o', 'd', 'e', 0 };
+	u8 sb, setup;
+	unsigned long datasize = sizeof(sb);
+	efi_status_t status;
+
+	if (boot_params.secure_boot)
+		return 1;
+
+	status = efi.get_variable((efi_char16_t*)sb_var,
+				&var_guid, NULL, &datasize, &sb);
+
+	if (status != EFI_SUCCESS)
+		return 0;
+
+	if (sb == 0)
+		return 0;
+
+	status = efi.get_variable((efi_char16_t*)sm_var,
+				&var_guid, NULL, &datasize, &setup);
+
+	if (status != EFI_SUCCESS)
+		return 0;
+
+	if (setup == 1)
+		return 0;
+
+	return 1;
+}
 
 static efi_status_t __init phys_efi_set_virtual_address_map(
 	unsigned long memory_map_size,
@@ -434,6 +470,17 @@ static int __init efi_memmap_init(void)
 	set_bit(EFI_MEMMAP, &efi.flags);
 
 	return 0;
+}
+
+void __init efi_secure_boot_init(void)
+{
+	if (!efi_secure_boot_enabled())
+		return;
+
+	boot_params.secure_boot = 1;
+#ifdef CONFIG_EFI_SECURE_BOOT_SECURELEVEL
+	set_securelevel(1);
+#endif
 }
 
 void __init efi_init(void)
