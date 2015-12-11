@@ -5,7 +5,6 @@
 #include <linux/netdevice.h>
 #include <linux/skbuff.h>
 #include <linux/types.h>
-#include <linux/uek_kabi.h>
 #include <linux/u64_stats_sync.h>
 #include <net/dsfield.h>
 #include <net/gro_cells.h>
@@ -85,13 +84,6 @@ struct ip_tunnel {
 	unsigned int		prl_count;	/* # of entries in PRL */
 	int			ip_tnl_net_id;
 	struct gro_cells	gro_cells;
-         /* Oracle inc use only
-          *
-          * The following padding has been inserted before ABI freeze to
-          * allow extending the structure while preserving ABI.
-          */
-        UEK_KABI_RESERVED(1)
-        UEK_KABI_RESERVED(2)
 };
 
 #define TUNNEL_CSUM		__cpu_to_be16(0x01)

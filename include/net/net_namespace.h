@@ -28,7 +28,6 @@
 #include <net/netns/xfrm.h>
 #include <net/netns/mpls.h>
 #include <linux/ns_common.h>
-#include <linux/uek_kabi.h>
 
 struct user_namespace;
 struct proc_dir_entry;
@@ -134,18 +133,6 @@ struct net {
 #endif
 	struct sock		*diag_nlsk;
 	atomic_t		fnhe_genid;
-         /* Oracle use only
-          *
-          * The following padding has been inserted before ABI freeze to
-          * allow extending the structure while preserving ABI.
-          */
-        UEK_KABI_EXTEND(int              sysctl_ip_no_pmtu_disc)
-        UEK_KABI_EXTEND(int              sysctl_ip_fwd_use_pmtu)
-        /* upstream has this as part of netns_ipv4 */
-        UEK_KABI_EXTEND(struct local_ports ipv4_sysctl_local_ports)
-        UEK_KABI_EXTEND(spinlock_t       nsid_lock)
-        /* upstream has this as part of netns_ipv4 */
-        UEK_KABI_EXTEND(struct sock  * __percpu *ipv4_tcp_sk)
 };
 
 #include <linux/seq_file_net.h>

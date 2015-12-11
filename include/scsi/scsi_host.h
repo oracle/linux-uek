@@ -760,7 +760,7 @@ struct Scsi_Host {
 	 * alignment to a long boundary.
 	 */
 	unsigned long hostdata[0]  /* Used for storage of host specific stuff */
-		__attribute__ ((aligned (sizeof(unsigned long))));
+	        __attribute__ ((aligned (sizeof(unsigned long))));
 };
 
 #define		class_to_shost(d)	\
