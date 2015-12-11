@@ -68,6 +68,8 @@ rds_recv_ok(struct net *net, struct sock *sk, struct sk_buff *skb)
 void rds_inc_init(struct rds_incoming *inc, struct rds_connection *conn,
 		  __be32 saddr)
 {
+	int i;
+
 	atomic_set(&inc->i_refcount, 1);
 	INIT_LIST_HEAD(&inc->i_item);
 	inc->i_conn = conn;
@@ -77,6 +79,9 @@ void rds_inc_init(struct rds_incoming *inc, struct rds_connection *conn,
 	inc->i_skb   = NULL;
 	inc->i_rx_tstamp.tv_sec = 0;
 	inc->i_rx_tstamp.tv_usec = 0;
+
+	for (i = 0; i < RDS_RX_MAX_TRACES; i++)
+		inc->i_rx_lat_trace[i] = 0;
 }
 EXPORT_SYMBOL_GPL(rds_inc_init);
 
@@ -558,6 +563,7 @@ rds_recv_local(struct rds_connection *conn, __be32 saddr, __be32 daddr,
 				do_gettimeofday(&inc->i_rx_tstamp);
 			rds_inc_addref(inc);
 			list_add_tail(&inc->i_item, &rs->rs_recv_queue);
+			inc->i_rx_lat_trace[RDS_MSG_RX_END] = local_clock();
 			__rds_wake_sk_sleep(sk);
 		}
 	} else {
@@ -730,7 +736,7 @@ static int rds_cmsg_recv(struct rds_incoming *inc, struct msghdr *msg,
 		ret = put_cmsg(msg, SOL_RDS, RDS_CMSG_RDMA_DEST,
 				sizeof(inc->i_rdma_cookie), &inc->i_rdma_cookie);
 		if (ret)
-			return ret;
+			goto out;
 	}
 
 	if ((inc->i_rx_tstamp.tv_sec != 0) &&
@@ -739,10 +745,30 @@ static int rds_cmsg_recv(struct rds_incoming *inc, struct msghdr *msg,
 			       sizeof(struct timeval),
 			       &inc->i_rx_tstamp);
 		if (ret)
-			return ret;
+			goto out;
 	}
 
-	return 0;
+	if (rs->rs_rx_traces) {
+		struct rds_cmsg_rx_trace t;
+		int i, j;
+
+		inc->i_rx_lat_trace[RDS_MSG_RX_CMSG] = local_clock();
+		t.rx_traces =  rs->rs_rx_traces;
+		for (i = 0; i < rs->rs_rx_traces; i++) {
+			j = rs->rs_rx_trace[i];
+			t.rx_trace_pos[j] = j;
+			t.rx_trace[j] = inc->i_rx_lat_trace[j + 1] -
+					  inc->i_rx_lat_trace[j];
+		}
+
+		ret = put_cmsg(msg, SOL_RDS, RDS_CMSG_RXPATH_LATENCY,
+				sizeof(t), &t);
+		if (ret)
+			goto out;
+	}
+
+out:
+	return ret;
 }
 
 int rds_recvmsg(struct socket *sock, struct msghdr *msg, size_t size,
