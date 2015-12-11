@@ -271,6 +271,11 @@ struct rds_ext_header_rdma_bytes {
 };
 
 #define __RDS_EXTHDR_MAX	16 /* for now */
+#define RDS_RX_MAX_TRACES	(RDS_MSG_RX_DGRAM_TRACE_MAX + 1)
+#define	RDS_MSG_RX_HDR		0
+#define	RDS_MSG_RX_START	1
+#define	RDS_MSG_RX_END		2
+#define	RDS_MSG_RX_CMSG		3
 
 struct rds_incoming {
 	atomic_t		i_refcount;
@@ -286,6 +291,7 @@ struct rds_incoming {
 
 	rds_rdma_cookie_t	i_rdma_cookie;
 	struct timeval		i_rx_tstamp;
+	u64			i_rx_lat_trace[RDS_RX_MAX_TRACES];
 };
 
 struct rds_mr {
@@ -596,6 +602,10 @@ struct rds_sock {
 	int                     rs_netfilter_enabled;
 
 	u8                      rs_tos;
+
+	/* Socket receive path trace points*/
+	u8			rs_rx_traces;
+	u8			rs_rx_trace[RDS_MSG_RX_DGRAM_TRACE_MAX];
 };
 
 static inline struct rds_sock *rds_sk_to_rs(const struct sock *sk)
