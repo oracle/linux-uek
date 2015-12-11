@@ -768,7 +768,8 @@ ssize_t ib_uverbs_alloc_shpd(struct ib_uverbs_file *file,
 	down_write(&shuobj->mutex);
 
 	/* alloc shared pd from device driver */
-	shpd = file->device->ib_dev->alloc_shpd(file->device->ib_dev, pd);
+	shpd = file->device->ib_dev->alloc_shpd(file->device->ib_dev, pd,
+						&udata);
 	if (IS_ERR(shpd)) {
 		ret = PTR_ERR(shpd);
 		goto err_shobj;

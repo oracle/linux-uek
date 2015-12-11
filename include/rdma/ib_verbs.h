@@ -1669,7 +1669,12 @@ struct ib_device {
 	int			   (*check_mr_status)(struct ib_mr *mr, u32 check_mask,
 						      struct ib_mr_status *mr_status);
 	struct ib_shpd		  *(*alloc_shpd)(struct ib_device *ibdev,
-						 struct ib_pd *pd);
+						 struct ib_pd *pd
+#ifndef __GENKSYMS__
+						 ,
+						 struct ib_udata *udata
+#endif
+						 );
 	struct ib_pd		  *(*share_pd)(struct ib_device *ibdev,
 					       struct ib_ucontext *context,
 					       struct ib_udata *udata,
