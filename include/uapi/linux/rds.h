@@ -75,6 +75,12 @@
 #define	RDS_TRANS_COUNT	3
 #define	RDS_TRANS_NONE	(~0)
 
+/* Socket option to tap receive path latency
+ *	SO_RDS: SO_RDS_MSG_RXPATH_LATENCY
+ *	Format used struct rds_rx_trace_so
+ */
+#define SO_RDS_MSG_RXPATH_LATENCY	10
+
 /*
  * ioctl commands for SOL_RDS
 */
@@ -85,6 +91,25 @@
 #define IPPROTO_OKA (142)
 
 typedef u_int8_t         rds_tos_t;
+
+/* RDS message Receive Path Latency points */
+enum rds_message_rxpath_latency {
+	RDS_MSG_RX_HDR_TO_DGRAM_START = 0,
+	RDS_MSG_RX_DGRAM_REASSEMBLE,
+	RDS_MSG_RX_DGRAM_DELIVERED,
+	RDS_MSG_RX_DGRAM_TRACE_MAX
+};
+
+struct rds_rx_trace_so {
+	u8 rx_traces;
+	u8 rx_trace_pos[RDS_MSG_RX_DGRAM_TRACE_MAX];
+};
+
+struct rds_cmsg_rx_trace {
+	u8 rx_traces;
+	u8 rx_trace_pos[RDS_MSG_RX_DGRAM_TRACE_MAX];
+	u64 rx_trace[RDS_MSG_RX_DGRAM_TRACE_MAX];
+};
 
 /*
  * Control message types for SOL_RDS.
@@ -104,6 +129,12 @@ typedef u_int8_t         rds_tos_t;
  *	the same as for the GET_MR setsockopt.
  * RDS_CMSG_RDMA_SEND_STATUS (recvmsg)
  *	Returns the status of a completed RDMA/async send operation.
+ * RDS_CMSG_RXPATH_LATENCY(recvmsg)
+ *	Returns rds message latencies in various stages of receive
+ *	path in nS. Its set per socket using SO_RDS_MSG_RXPATH_LATENCY
+ *	socket option. Legitimate points are defined in
+ *	enum rds_message_rxpath_latency. More points can be added in
+ *	future. CSMG format is struct rds_cmsg_rx_trace.
  */
 #define RDS_CMSG_RDMA_ARGS		1
 #define RDS_CMSG_RDMA_DEST		2
@@ -115,6 +146,7 @@ typedef u_int8_t         rds_tos_t;
 #define RDS_CMSG_MASKED_ATOMIC_FADD     8
 #define RDS_CMSG_MASKED_ATOMIC_CSWP     9
 #define RDS_CMSG_ASYNC_SEND             10
+#define RDS_CMSG_RXPATH_LATENCY		11
 
 #define RDS_INFO_FIRST			10000
 #define RDS_INFO_COUNTERS		10000
