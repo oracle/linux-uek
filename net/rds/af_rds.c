@@ -383,6 +383,31 @@ static int rds_enable_recvtstamp(struct sock *sk, char __user *optval,
 	return 0;
 }
 
+static int rds_recv_track_latency(struct rds_sock *rs, char __user *optval,
+				 int optlen)
+{
+	struct rds_rx_trace_so trace;
+	int i;
+
+	if (optlen != sizeof(struct rds_rx_trace_so))
+		return -EFAULT;
+
+	if (copy_from_user(&trace, (struct rds_rx_trace_so *)optval, sizeof(trace)))
+		return -EFAULT;
+
+	rs->rs_rx_traces = trace.rx_traces;
+	for (i = 0; i < rs->rs_rx_traces; i++) {
+		if (trace.rx_trace_pos[i] > RDS_MSG_RX_DGRAM_TRACE_MAX) {
+			rs->rs_rx_traces = 0;
+			return -EFAULT;
+		}
+		rs->rs_rx_trace[i] = trace.rx_trace_pos[i];
+	}
+
+	return 0;
+}
+
+
 static int rds_setsockopt(struct socket *sock, int level, int optname,
 			  char __user *optval, unsigned int optlen)
 {
@@ -425,6 +450,9 @@ static int rds_setsockopt(struct socket *sock, int level, int optname,
 		lock_sock(sock->sk);
 		ret = rds_enable_recvtstamp(sock->sk, optval, optlen);
 		release_sock(sock->sk);
+		break;
+	case SO_RDS_MSG_RXPATH_LATENCY:
+		ret = rds_recv_track_latency(rs, optval, optlen);
 		break;
 	default:
 		ret = -ENOPROTOOPT;
@@ -576,6 +604,7 @@ static int __rds_create(struct socket *sock, struct sock *sk, int protocol)
 	rs->rs_tos = 0;
 	rs->rs_conn = 0;
 	rs->rs_netfilter_enabled = 0;
+	rs->rs_rx_traces = 0;
 
 	if (rs->rs_bound_addr)
 		printk(KERN_CRIT "bound addr %x at create\n", rs->rs_bound_addr);
