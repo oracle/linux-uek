@@ -638,9 +638,9 @@ asmlinkage __visible void __init start_kernel(void)
 #ifdef CONFIG_X86
 	if (efi_enabled(EFI_RUNTIME_SERVICES))
 		efi_enter_virtual_mode();
-#endif
 	if (efi_enabled(EFI_RUNTIME_SERVICES))
 		efi_secure_boot_init();
+#endif
 #ifdef CONFIG_X86_ESPFIX64
 	/* Should be run before the first non-init thread is created */
 	init_espfix_bsp();
