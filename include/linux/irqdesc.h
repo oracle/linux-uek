@@ -1,6 +1,8 @@
 #ifndef _LINUX_IRQDESC_H
 #define _LINUX_IRQDESC_H
 
+#include <linux/rcupdate.h>
+
 /*
  * Core internal functions to deal with irq descriptors
  *
@@ -43,6 +45,7 @@ struct pt_regs;
  *			IRQF_NO_SUSPEND set
  * @force_resume_depth:	number of irqactions on a irq descriptor with
  *			IRQF_FORCE_RESUME set
+ * @rcu:		rcu head for delayed free
  * @dir:		/proc/irq/ procfs entry
  * @name:		flow handler name for /proc/interrupts output
  */
@@ -87,6 +90,9 @@ struct irq_desc {
 	int			parent_irq;
 	struct module		*owner;
 	const char		*name;
+#ifdef CONFIG_SPARSE_IRQ
+	struct rcu_head		rcu;
+#endif
 } ____cacheline_internodealigned_in_smp;
 
 extern struct mutex sparse_irq_lock;
