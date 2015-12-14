@@ -1,7 +1,7 @@
 /*
  * vds_main.c: LDOM Virtual Disk Server.
  *
- * Copyright (C) 2014 Oracle. All rights reserved.
+ * Copyright (C) 2014, 2015 Oracle. All rights reserved.
  */
 
 #include "vds.h"
@@ -24,11 +24,42 @@ MODULE_VERSION(DRV_MOD_VERSION);
 				 1 << VD_OP_GET_EFI |		\
 				 1 << VD_OP_SET_EFI |		\
 				 1 << VD_OP_FLUSH)
+
 /*
- * XXX The recommended value is 0 but that creates threads
- * which scale with ncpu and because of some apparent
- * flow control issues cause scsi timeouts so limit to
- * 1 thread for now.
+ * Request ordering is managed through the following:
+ *
+ * - ioq kernel workqueue
+ * - io_list internal driver queue
+ * - wait driver waitqueue
+ * - vds_io_wait() blocks until the caller is at the head of the io_list
+ * - vds_io_done() deletes the caller from io_list and wakes up blocked threads
+ *
+ * A client request is added in interrupt context to the ioq kernel workqueue
+ * and the io_list internal driver queue. A request is executed at process
+ * context in a kernel worker thread.  The workqueue ensures that requests
+ * are scheduled for execution in order of arrival.
+ *
+ * Once actually executing, an IO request proceeds immediately, e.g. reading
+ * or writing a disk block, and then calls vds_io_wait() before responding
+ * to the client in order to serialize client responses regardless of the
+ * order in which requests are actually completed.
+ *
+ * A FLUSH request however calls vds_io_wait() first in order to ensure that
+ * all proceeding requests are completed and then calls the backend's flush
+ * method in order to flush any outstanding IO buffers to disk. Note that
+ * FLUSH request does not enforce any ordering on a potential request that
+ * might have arrived after the FLUSH request.
+ *
+ * A control event (reset or handshake) also calls vds_io_wait() first in
+ * order to serialize them with respect to each other as well as IO operations.
+ * For example, reset processing calls the backend's fini method which could
+ * conceivably block when the backend is closed.  The serialization should
+ * ensure that a following handshake initiates only after the reset is done.
+ *
+ * XXX The recommended value for the size of the kernel workqueue is 0 but
+ * that creates threads which scale with ncpu and because of some apparent
+ * flow control issues cause intermittent scsi timeouts and LDC aborts so
+ * limit to 1 thread for now.
  */
 int vds_wq = 1;
 int vds_dbg;
@@ -166,7 +197,7 @@ static struct vio_driver_ops vds_vio_ops = {
 	.handshake_complete	= vds_handshake_complete,
 };
 
-static void vds_reset(struct vio_driver_state *vio);
+static void vds_reset(struct vds_io *io);
 static void vds_evt_reset(struct vio_driver_state *vio);
 
 static int vds_dring_done(struct vds_io *io)
@@ -178,6 +209,7 @@ static int vds_dring_done(struct vds_io *io)
 	struct vio_disk_desc *desc;
 	int rv;
 	int idx;
+	int reset = 1;
 
 	desc = io->desc_buf;
 	desc->status = io->error;
@@ -208,30 +240,30 @@ static int vds_dring_done(struct vds_io *io)
 	rv = ldc_put_dring_entry(vio->lp, io->desc_buf, dr->entry_size,
 				  (idx * dr->entry_size), dr->cookies,
 				  dr->ncookies);
-	if (rv != dr->entry_size)
-		goto reset;
 
-	/*
-	 * If we successfully responded to the request (ack or nack),
-	 * then return the actual IO operation return value, otherwise
-	 * reset the connection.
-	 */
-	pkt->tag.stype = io->ack;
-	rv = vio_ldc_send(vio, pkt, sizeof(*pkt));
-	if (rv > 0) {
-		rv = io->error;
-		vds_io_free(io);
-		vdsdbg(DATA, "DRING RET %d\n", rv);
-		return rv;
+	if (rv == dr->entry_size) {
+		/*
+		 * If we successfully responded to the request (ack or nack),
+		 * then return the actual IO operation return value, otherwise
+		 * reset the connection.
+		 */
+		pkt->tag.stype = io->ack;
+		rv = vio_ldc_send(vio, pkt, sizeof(*pkt));
+		if (rv > 0) {
+			rv = io->error;
+			reset = 0;
+		}
 	}
 
-reset:
-	vdsmsg(err, "Reset VDS LDC rv[%d]\n", rv);
-	vds_reset(vio);
-	vds_io_free(io);
+	if (reset) {
+		vdsmsg(err, "Reset VDS LDC rv[%d]\n", rv);
+		vds_reset(io);
+		rv = -ECONNRESET;
+	}
 
-	vdsdbg(DATA, "DRING RESET\n");
-	return -ECONNRESET;
+	vdsdbg(DATA, "DRING %s\n", reset ? "RESET" : "OK");
+
+	return rv;
 }
 
 static int vds_desc_done(struct vds_io *io)
@@ -266,13 +298,13 @@ static int vds_desc_done(struct vds_io *io)
 	rv = vio_ldc_send(vio, pkt, io->msglen);
 	if (rv <= 0) {
 		vdsmsg(err, "Reset VDS LDC rv[%d]\n", rv);
-		vds_reset(vio);
+		vds_reset(io);
 		rv = -ECONNRESET;
 	} else {
 		rv = io->error;
 	}
 
-	vds_io_free(io);
+	vdsdbg(DATA, "DESC %s\n", rv == -ECONNRESET ? "RESET" : "OK");
 	return rv;
 }
 
@@ -330,13 +362,15 @@ static void vds_bh_hs(struct work_struct *work)
 	if (io->flags & VDS_IO_INIT)
 		err = vds_be_init(port);
 
+	vds_io_wait(io);
+
 	if (!err)
 		err = vio_control_pkt_engine(vio, port->msgbuf);
 
 	if (err)
 		vdsmsg(err, "%s: handshake failed (%d)\n", port->path, err);
 
-	vds_io_free(io);
+	vds_io_done(io);
 }
 
 /*
@@ -384,7 +418,7 @@ static void vds_bh_io(struct work_struct *work)
 		err = vd_op_set_efi(io);
 		break;
 	case VD_OP_FLUSH:
-		err = vd_op_flush(vio);
+		err = vd_op_flush(io);
 		break;
 	default:
 		err = -ENOTSUPP;
@@ -394,16 +428,21 @@ static void vds_bh_io(struct work_struct *work)
 	if (io->ack == VIO_SUBTYPE_ACK && err != 0 && io->error == 0)
 		io->error = err > 0 ? err : -err;
 
+	vds_io_wait(io);
+
 	if (port->xfer_mode == VIO_DRING_MODE)
 		(void) vds_dring_done(io);
 	else if (port->xfer_mode == VIO_DESC_MODE)
 		(void) vds_desc_done(io);
 	else
 		BUG();
+
+	vds_io_done(io);
 }
 
-static void vds_reset(struct vio_driver_state *vio)
+static void vds_reset(struct vds_io *io)
 {
+	struct vio_driver_state *vio = io->vio;
 	struct vds_port *port = to_vds_port(vio);
 	unsigned long flags;
 	int err;
@@ -411,6 +450,8 @@ static void vds_reset(struct vio_driver_state *vio)
 	vdsdbg(HS, "%s\n", port->path);
 
 	BUG_ON(in_interrupt());
+
+	io->flags |= VDS_IO_FINI;
 
 	vds_vio_lock(vio, flags);
 	vds_be_fini(port);
@@ -434,6 +475,7 @@ static void vds_reset(struct vio_driver_state *vio)
 
 done:
 	vds_vio_unlock(vio, flags);
+	vdsdbg(HS, "%s done\n", port->path);
 }
 
 static void vds_bh_reset(struct work_struct *work)
@@ -441,9 +483,10 @@ static void vds_bh_reset(struct work_struct *work)
 	struct vds_io *io = container_of(work, struct vds_io, vds_work);
 	struct vio_driver_state *vio = io->vio;
 
-	vds_io_free(io);
-	vds_reset(vio);
+	vds_io_wait(io);
+	vds_reset(io);
 	ldc_enable_hv_intr(vio->lp);
+	vds_io_done(io);
 }
 
 static int vds_dring_io(struct vio_driver_state *vio)
@@ -616,7 +659,6 @@ static void vds_evt_reset(struct vio_driver_state *vio)
 		return;
 
 	ldc_disable_hv_intr(vio->lp);
-	io->flags |= VDS_IO_FINI;
 
 	vds_io_enq(io);
 }
@@ -844,17 +886,14 @@ static int vds_port_probe(struct vio_dev *vdev, const struct vio_device_id *id)
 	port->geom = kzalloc(roundup(sizeof(*port->geom), 8), GFP_KERNEL);
 	port->part = kzalloc(sizeof(*port->part) * VDS_MAXPART, GFP_KERNEL);
 
-	/*
-	 * The io and reset work queues are separate because the
-	 * io work queue is flushed during reset which would hang
-	 * if reset itself was scheduled on the io queue.
-	 */
 	port->ioq = alloc_workqueue("vds_io", WQ_UNBOUND, vds_wq);
-	port->rtq = alloc_ordered_workqueue("vds_reset", 0);
-	if (!port->ioq || !port->rtq) {
+	if (!port->ioq) {
 		err = -ENXIO;
 		goto free_path;
 	}
+
+	INIT_LIST_HEAD(&port->io_list);
+	init_waitqueue_head(&port->wait);
 
 	mutex_init(&port->label_lock);
 

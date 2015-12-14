@@ -1,7 +1,7 @@
 /*
  * vds_blk.c: LDOM Virtual Disk Server.
  *
- * Copyright (C) 2014 Oracle. All rights reserved.
+ * Copyright (C) 2014, 2015 Oracle. All rights reserved.
  */
 
 #include "vds.h"
@@ -186,7 +186,7 @@ static int vds_blk_flush(struct vds_port *port)
 {
 	struct block_device *bdev = port->be_data;
 
-	return blkdev_issue_flush(bdev, GFP_KERNEL, NULL);
+	return bdev ? blkdev_issue_flush(bdev, GFP_KERNEL, NULL) : 0;
 }
 
 struct vds_be_ops vds_blk_ops = {

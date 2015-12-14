@@ -1,7 +1,7 @@
 /*
  * vds_io.h: LDOM Virtual Disk Server.
  *
- * Copyright (C) 2014 Oracle. All rights reserved.
+ * Copyright (C) 2014, 2015 Oracle. All rights reserved.
  */
 
 struct vds_port;
@@ -35,6 +35,7 @@ struct vds_io {
 	struct page *pages;
 	struct completion event;
 	struct work_struct vds_work;
+	struct list_head list;
 	char buf[0];
 };
 
@@ -48,6 +49,8 @@ struct vds_io *vds_io_alloc(struct vio_driver_state *vio,
 			    void (*func)(struct work_struct *));
 void vds_io_free(struct vds_io *io);
 void vds_io_enq(struct vds_io *io);
+void vds_io_wait(struct vds_io *io);
+void vds_io_done(struct vds_io *io);
 
 void *vds_get(struct vds_port *port, sector_t offset, u64 size);
 int vds_clear(struct vds_port *port, sector_t offset, u64 size);
@@ -63,5 +66,5 @@ int vd_op_get_geom(struct vds_io *io);
 int vd_op_set_geom(struct vds_io *io);
 int vd_op_get_efi(struct vds_io *io);
 int vd_op_set_efi(struct vds_io *io);
-int vd_op_flush(struct vio_driver_state *vio);
+int vd_op_flush(struct vds_io *io);
 int vd_op_rw(struct vds_io *io);
