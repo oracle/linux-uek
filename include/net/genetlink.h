@@ -114,6 +114,7 @@ static inline void genl_info_net_set(struct genl_info *info, struct net *net)
  * @flags: flags
  * @policy: attribute validation policy
  * @doit: standard command callback
+ * @start: start callback for dumps
  * @dumpit: callback for dumpers
  * @done: completion callback for dumps
  * @ops_list: operations list
@@ -128,6 +129,9 @@ struct genl_ops {
 	u8			cmd;
 	u8			internal_flags;
 	u8			flags;
+#ifndef __GENKSYMS__
+	int                    (*start)(struct netlink_callback *cb);
+#endif
 };
 
 int __genl_register_family(struct genl_family *family);

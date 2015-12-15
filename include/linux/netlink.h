@@ -132,6 +132,9 @@ struct netlink_callback {
 	u16			min_dump_alloc;
 	unsigned int		prev_seq, seq;
 	long			args[6];
+#ifndef __GENKSYMS__
+	int			(*start)(struct netlink_callback *);
+#endif
 };
 
 struct netlink_notify {
@@ -149,6 +152,9 @@ struct netlink_dump_control {
 	void *data;
 	struct module *module;
 	u16 min_dump_alloc;
+#ifndef __GENKSYMS__
+	int (*start)(struct netlink_callback *);
+#endif
 };
 
 extern int __netlink_dump_start(struct sock *ssk, struct sk_buff *skb,
