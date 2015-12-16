@@ -1810,10 +1810,20 @@ static void perf_callchain_user_32(struct perf_callchain_entry *entry,
 void
 perf_callchain_user(struct perf_callchain_entry *entry, struct pt_regs *regs)
 {
+	u64 saved_fault_address = current_thread_info()->fault_address;
+	u8  saved_fault_code = get_thread_fault_code();
+	u8  saved_asi;
+
 	perf_callchain_store(entry, regs->tpc);
 
 	if (!current->mm)
 		return;
+
+	/* Make sure we are setup to access user memory */
+	__asm__ __volatile__ ("rd %%asi, %0\n" : "=r" (saved_asi));
+	if (saved_asi != ASI_AIUS)
+		__asm__ __volatile__ (
+			"wr %%g0, %0, %%asi\n" : : "i" (ASI_AIUS));
 
 	flushw_user();
 
@@ -1825,4 +1835,11 @@ perf_callchain_user(struct perf_callchain_entry *entry, struct pt_regs *regs)
 		perf_callchain_user_64(entry, regs);
 
 	pagefault_enable();
+
+	if (saved_asi != ASI_AIUS)
+		__asm__ __volatile__ (
+			"wr %%g0, %0, %%asi\n" : : "r" (saved_asi));
+
+	set_thread_fault_code(saved_fault_code);
+	current_thread_info()->fault_address = saved_fault_address;
 }
