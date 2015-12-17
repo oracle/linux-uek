@@ -498,8 +498,7 @@ void rds_ib_advertise_credits(struct rds_connection *conn, unsigned int posted)
 	 */
 	rds_rtd(RDS_RTD_FLOW_CNTRL, "ic->i_credits %u\n",
 		IB_GET_POST_CREDITS(atomic_read(&ic->i_credits)));
-	if (IB_GET_POST_CREDITS(atomic_read(&ic->i_credits)) >= 16)
-		set_bit(IB_ACK_REQUESTED, &ic->i_ack_flags);
+	set_bit(IB_ACK_REQUESTED, &ic->i_ack_flags);
 }
 
 static inline int rds_ib_set_wr_signal_state(struct rds_ib_connection *ic,
