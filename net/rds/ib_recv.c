@@ -574,6 +574,11 @@ void rds_ib_recv_refill(struct rds_connection *conn, int prefill, int can_wait)
 	struct rds_ib_recv_work *recv;
 	struct ib_recv_wr *failed_wr;
 	unsigned int posted = 0;
+	unsigned int flowctl_credits = 0;
+	/* For the time being, 16 seems to be a good starting number to
+	 * perform flow control update.
+	 */
+	unsigned int flow_cntl_log2_cnt = 16;
 	int ret = 0;
 	int must_wake = 0;
 	int ring_low = 0;
@@ -632,6 +637,27 @@ void rds_ib_recv_refill(struct rds_connection *conn, int prefill, int can_wait)
 		}
 
 		posted++;
+		if (ic->i_flowctl) {
+			flowctl_credits++;
+			/* Decide whether to send an update to the peer now.
+			 * If we would send a credit update for every single
+			 * buffer we post, we would end up with an ACK
+			 * storm (ACK arrives,consumes buffer, we refill
+			 * the ring, send ACK to remote advertising the
+			 * newly posted buffer... ad inf)
+			 *
+			 * Performance pretty much depends on how often we send
+			 * credit updates - too frequent updates mean lots of
+			 * ACKs. Too infrequent updates, and the peer will run
+			 * out of credits and has to throttle.
+			 * For the time being, incremental cnt << 4 is used.
+			 */
+			if (flowctl_credits == flow_cntl_log2_cnt) {
+				rds_ib_advertise_credits(conn, flowctl_credits);
+				flow_cntl_log2_cnt <<= 4;
+				flowctl_credits = 0;
+			}
+		}
 
 		if ((posted > 128 && need_resched()) || posted > 8192) {
 			must_wake = 1;
@@ -644,8 +670,8 @@ void rds_ib_recv_refill(struct rds_connection *conn, int prefill, int can_wait)
 	ring_empty = rds_ib_ring_empty(&ic->i_recv_ring);
 
 	/* We're doing flow control - update the window. */
-	if (ic->i_flowctl && posted)
-		rds_ib_advertise_credits(conn, posted);
+	if (ic->i_flowctl && flowctl_credits)
+		rds_ib_advertise_credits(conn, flowctl_credits);
 
 	if (ret)
 		rds_ib_ring_unalloc(&ic->i_recv_ring, 1);
