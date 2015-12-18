@@ -1732,6 +1732,8 @@ struct ib_device {
 	u32			     local_dma_lkey;
 	u8                           node_type;
 	u8                           phys_port_cnt;
+	struct ib_device_attr        attrs;
+
 	struct ib_pd                *relaxed_pd;
 	struct list_head             relaxed_pool_list;
 };
