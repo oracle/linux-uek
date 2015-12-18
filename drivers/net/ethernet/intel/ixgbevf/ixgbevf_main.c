@@ -268,7 +268,7 @@ static void ixgbevf_tx_timeout_reset(struct ixgbevf_adapter *adapter)
 {
 	/* Do the reset outside of interrupt context */
 	if (!test_bit(__IXGBEVF_DOWN, &adapter->state)) {
-		adapter->flags |= IXGBEVF_FLAG_RESET_REQUESTED;
+		set_bit(__IXGBEVF_RESET_REQUESTED, &adapter->state);
 		ixgbevf_service_event_schedule(adapter);
 	}
 }
@@ -1982,7 +1982,7 @@ static int ixgbevf_configure_dcb(struct ixgbevf_adapter *adapter)
 		hw->mbx.timeout = 0;
 
 		/* wait for watchdog to come around and bail us out */
-		adapter->flags |= IXGBEVF_FLAG_QUEUE_RESET_REQUESTED;
+		set_bit(__IXGBEVF_QUEUE_RESET_REQUESTED, &adapter->state);
 	}
 
 	return 0;
@@ -2750,10 +2750,8 @@ static void ixgbevf_service_timer(unsigned long data)
 
 static void ixgbevf_reset_subtask(struct ixgbevf_adapter *adapter)
 {
-	if (!(adapter->flags & IXGBEVF_FLAG_RESET_REQUESTED))
+	if (!test_and_clear_bit(__IXGBEVF_RESET_REQUESTED, &adapter->state))
 		return;
-
-	adapter->flags &= ~IXGBEVF_FLAG_RESET_REQUESTED;
 
 	/* If we're already down or resetting, just bail */
 	if (test_bit(__IXGBEVF_DOWN, &adapter->state) ||
@@ -2822,7 +2820,7 @@ static void ixgbevf_watchdog_update_link(struct ixgbevf_adapter *adapter)
 
 	/* if check for link returns error we will need to reset */
 	if (err && time_after(jiffies, adapter->last_reset + (10 * HZ))) {
-		adapter->flags |= IXGBEVF_FLAG_RESET_REQUESTED;
+		set_bit(__IXGBEVF_RESET_REQUESTED, &adapter->state);
 		link_up = false;
 	}
 
@@ -3223,10 +3221,9 @@ static void ixgbevf_queue_reset_subtask(struct ixgbevf_adapter *adapter)
 {
 	struct net_device *dev = adapter->netdev;
 
-	if (!(adapter->flags & IXGBEVF_FLAG_QUEUE_RESET_REQUESTED))
+	if (!test_and_clear_bit(__IXGBEVF_QUEUE_RESET_REQUESTED,
+				&adapter->state))
 		return;
-
-	adapter->flags &= ~IXGBEVF_FLAG_QUEUE_RESET_REQUESTED;
 
 	/* if interface is down do nothing */
 	if (test_bit(__IXGBEVF_DOWN, &adapter->state) ||
