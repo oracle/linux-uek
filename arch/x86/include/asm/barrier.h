@@ -43,9 +43,6 @@
 #define set_mb(var, value) do { var = value; barrier(); } while (0)
 #endif /* SMP */
 
-#define read_barrier_depends()		do { } while (0)
-#define smp_read_barrier_depends()	do { } while (0)
-
 #if defined(CONFIG_X86_PPRO_FENCE)
 
 /*
@@ -101,5 +98,6 @@ static __always_inline void rdtsc_barrier(void)
 	alternative_2("", "mfence", X86_FEATURE_MFENCE_RDTSC,
 			  "lfence", X86_FEATURE_LFENCE_RDTSC);
 }
+#include <asm-generic/barrier.h>
 
 #endif /* _ASM_X86_BARRIER_H */
