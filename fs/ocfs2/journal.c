@@ -14,7 +14,6 @@
 #include <linux/kthread.h>
 #include <linux/time.h>
 #include <linux/random.h>
-#include <linux/delay.h>
 #include <linux/writeback.h>
 
 #include <cluster/masklog.h>
@@ -2366,7 +2365,7 @@ static int __ocfs2_wait_on_mount(struct ocfs2_super *osb, int quota)
 
 static int ocfs2_commit_thread(void *arg)
 {
-	int status;
+	int status = 0;
 	struct ocfs2_super *osb = arg;
 	struct ocfs2_journal *journal = osb->journal;
 
@@ -2380,21 +2379,25 @@ static int ocfs2_commit_thread(void *arg)
 		wait_event_interruptible(osb->checkpoint_event,
 					 atomic_read(&journal->j_num_trans)
 					 || kthread_should_stop());
+		if (status < 0) {
+			/* As we can not terminate by ourself, just enter an
+			 * empty loop to wait for stop.
+			 */
+			continue;
+		}
 
 		status = ocfs2_commit_cache(osb);
 		if (status < 0) {
-			static unsigned long abort_warn_time;
-
-			/* Warn about this once per minute */
-			if (printk_timed_ratelimit(&abort_warn_time, 60*HZ))
-				mlog(ML_ERROR, "status = %d, journal is "
-						"already aborted.\n", status);
 			/*
-			 * After ocfs2_commit_cache() fails, j_num_trans has a
-			 * non-zero value.  Sleep here to avoid a busy-wait
-			 * loop.
+			 * journal can not recover from abort state, there is
+			 * no need to keep commit cache. So we should either
+			 * change to readonly(local mount) or just panic
+			 * (cluster mount).
+			 * We should also clear j_num_trans to prevent further
+			 * commit.
 			 */
-			msleep_interruptible(1000);
+			atomic_set(&journal->j_num_trans, 0);
+			ocfs2_abort(osb->sb, "Detected aborted journal");
 		}
 
 		if (kthread_should_stop() && atomic_read(&journal->j_num_trans)){
