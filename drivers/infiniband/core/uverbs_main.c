@@ -1053,10 +1053,18 @@ static void ib_uverbs_add_one(struct ib_device *device)
 	if (device_create_file(uverbs_dev->dev, &dev_attr_abi_version))
 		goto err_class;
 
-	device->relaxed_pd = ib_alloc_pd(device);
-	if (IS_ERR(device->relaxed_pd)) {
-		device->relaxed_pd = NULL;
-		goto err_class;
+	device->relaxed_pd = NULL;
+	/*
+	 * Allocate pd if not a usnic device node
+	 * (For usnic devices we do lazy allocation of pd)
+	 */
+	if (device->node_type != RDMA_NODE_USNIC &&
+	    device->node_type != RDMA_NODE_USNIC_UDP) {
+		device->relaxed_pd = ib_alloc_pd(device);
+		if (IS_ERR(device->relaxed_pd)) {
+			device->relaxed_pd = NULL;
+			goto err_class;
+		}
 	}
 
 	ib_set_client_data(device, &uverbs_client, uverbs_dev);
@@ -1097,8 +1105,11 @@ static void ib_uverbs_remove_one(struct ib_device *device)
 		kfree(pos);
 	}
 
-	ret = ib_dealloc_pd(device->relaxed_pd);
-	device->relaxed_pd = NULL;
+	/* free pd if allocated! */
+	if (device->relaxed_pd) {
+		ret = ib_dealloc_pd(device->relaxed_pd);
+		device->relaxed_pd = NULL;
+	}
 
 	dev_set_drvdata(uverbs_dev->dev, NULL);
 	device_destroy(uverbs_class, uverbs_dev->cdev.dev);
