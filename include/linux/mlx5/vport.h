@@ -85,4 +85,7 @@ int mlx5_modify_nic_vport_vlans(struct mlx5_core_dev *dev,
 				u16 vlans[],
 				int list_size);
 
+int mlx5_nic_vport_enable_roce(struct mlx5_core_dev *mdev);
+int mlx5_nic_vport_disable_roce(struct mlx5_core_dev *mdev);
+
 #endif /* __MLX5_VPORT_H__ */
