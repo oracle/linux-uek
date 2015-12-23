@@ -68,6 +68,19 @@ u8 mlx5_query_vport_state(struct mlx5_core_dev *mdev, u8 opmod, u16 vport)
 }
 EXPORT_SYMBOL_GPL(mlx5_query_vport_state);
 
+static int mlx5_query_nic_vport_context(struct mlx5_core_dev *mdev, u32 *out,
+                                       int outlen)
+{
+       u32 in[MLX5_ST_SZ_DW(query_nic_vport_context_in)];
+
+       memset(in, 0, sizeof(in));
+
+       MLX5_SET(query_nic_vport_context_in, in, opcode,
+                MLX5_CMD_OP_QUERY_NIC_VPORT_CONTEXT);
+
+       return mlx5_cmd_exec_check_status(mdev, in, sizeof(in), out, outlen);
+}
+
 u8 mlx5_query_vport_admin_state(struct mlx5_core_dev *mdev, u8 opmod, u16 vport)
 {
 	u32 out[MLX5_ST_SZ_DW(query_vport_state_out)] = {0};
@@ -106,23 +119,6 @@ int mlx5_modify_vport_admin_state(struct mlx5_core_dev *mdev, u8 opmod,
 }
 EXPORT_SYMBOL(mlx5_modify_vport_admin_state);
 
-static int mlx5_query_nic_vport_context(struct mlx5_core_dev *mdev, u16 vport,
-					u32 *out, int outlen)
-{
-	u32 in[MLX5_ST_SZ_DW(query_nic_vport_context_in)];
-
-	memset(in, 0, sizeof(in));
-
-	MLX5_SET(query_nic_vport_context_in, in, opcode,
-		 MLX5_CMD_OP_QUERY_NIC_VPORT_CONTEXT);
-
-	MLX5_SET(query_nic_vport_context_in, in, vport_number, vport);
-	if (vport)
-		MLX5_SET(query_nic_vport_context_in, in, other_vport, 1);
-
-	return mlx5_cmd_exec_check_status(mdev, in, sizeof(in), out, outlen);
-}
-
 static int mlx5_modify_nic_vport_context(struct mlx5_core_dev *mdev, void *in,
 					 int inlen)
 {
@@ -150,13 +146,10 @@ int mlx5_query_nic_vport_mac_address(struct mlx5_core_dev *mdev,
 	out_addr = MLX5_ADDR_OF(query_nic_vport_context_out, out,
 				nic_vport_context.permanent_address);
 
-	err = mlx5_query_nic_vport_context(mdev, vport, out, outlen);
-	if (err)
-		goto out;
+	err = mlx5_query_nic_vport_context(mdev, out, outlen);
+	if (!err)   
+		ether_addr_copy(addr, &out_addr[2]);
 
-	ether_addr_copy(addr, &out_addr[2]);
-
-out:
 	kvfree(out);
 	return err;
 }
@@ -703,7 +696,7 @@ int mlx5_query_nic_vport_promisc(struct mlx5_core_dev *mdev,
 	if (!out)
 		return -ENOMEM;
 
-	err = mlx5_query_nic_vport_context(mdev, vport, out, outlen);
+	err = mlx5_query_nic_vport_context(mdev, out, outlen);
 	if (err)
 		goto out;
 
