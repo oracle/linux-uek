@@ -455,6 +455,7 @@ static void ocrdma_init_gid_table(struct ocrdma_dev *dev)
 static struct ocrdma_dev *ocrdma_add(struct be_dev_info *dev_info)
 {
 	int status = 0, i;
+	u8 lstate = 0;
 	struct ocrdma_dev *dev;
 
 	dev = (struct ocrdma_dev *)ib_alloc_device(sizeof(struct ocrdma_dev));
@@ -484,6 +485,11 @@ static struct ocrdma_dev *ocrdma_add(struct be_dev_info *dev_info)
 	status = ocrdma_register_device(dev);
 	if (status)
 		goto alloc_err;
+
+	/* Query Link state and update */
+	status = ocrdma_mbx_get_link_speed(dev, NULL, &lstate);
+	if (!status)
+		ocrdma_update_link_state(dev, lstate);
 
 	for (i = 0; i < ARRAY_SIZE(ocrdma_attributes); i++)
 		if (device_create_file(&dev->ibdev.dev, ocrdma_attributes[i]))
@@ -549,7 +555,7 @@ static void ocrdma_remove(struct ocrdma_dev *dev)
 	call_rcu(&dev->rcu, ocrdma_remove_free);
 }
 
-static int ocrdma_open(struct ocrdma_dev *dev)
+static int ocrdma_dispatch_port_active(struct ocrdma_dev *dev)
 {
 	struct ib_event port_event;
 
@@ -560,7 +566,7 @@ static int ocrdma_open(struct ocrdma_dev *dev)
 	return 0;
 }
 
-static int ocrdma_close(struct ocrdma_dev *dev)
+static int ocrdma_dispatch_port_error(struct ocrdma_dev *dev)
 {
 	struct ib_event err_event;
 
@@ -573,7 +579,7 @@ static int ocrdma_close(struct ocrdma_dev *dev)
 
 static void ocrdma_shutdown(struct ocrdma_dev *dev)
 {
-	ocrdma_close(dev);
+	ocrdma_dispatch_port_error(dev);
 	ocrdma_remove(dev);
 }
 
@@ -584,16 +590,26 @@ static void ocrdma_shutdown(struct ocrdma_dev *dev)
 static void ocrdma_event_handler(struct ocrdma_dev *dev, u32 event)
 {
 	switch (event) {
-	case BE_DEV_UP:
-		ocrdma_open(dev);
-		break;
-	case BE_DEV_DOWN:
-		ocrdma_close(dev);
-		break;
 	case BE_DEV_SHUTDOWN:
 		ocrdma_shutdown(dev);
 		break;
+	default:
+		break;
 	}
+}
+
+void ocrdma_update_link_state(struct ocrdma_dev *dev, u8 lstate)
+{
+	if (!(dev->flags & OCRDMA_FLAGS_LINK_STATUS_INIT)) {
+		dev->flags |= OCRDMA_FLAGS_LINK_STATUS_INIT;
+		if (!lstate)
+			return;
+	}
+
+	if (!lstate)
+		ocrdma_dispatch_port_error(dev);
+	else
+		ocrdma_dispatch_port_active(dev);
 }
 
 static struct ocrdma_driver ocrdma_drv = {
