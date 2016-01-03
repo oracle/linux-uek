@@ -1870,6 +1870,9 @@ static void bnxt_init_ring_struct(struct bnxt *bp)
 		ring->vmem_size = 0;
 
 		rxr = bnapi->rx_ring;
+		if (!rxr)
+			goto skip_rx;
+
 		ring = &rxr->rx_ring_struct;
 		ring->nr_pages = bp->rx_nr_pages;
 		ring->page_size = HW_RXBD_RING_SIZE;
@@ -1886,7 +1889,11 @@ static void bnxt_init_ring_struct(struct bnxt *bp)
 		ring->vmem_size = SW_RXBD_AGG_RING_SIZE * bp->rx_agg_nr_pages;
 		ring->vmem = (void **)&rxr->rx_agg_ring;
 
+skip_rx:
 		txr = bnapi->tx_ring;
+		if (!txr)
+			continue;
+
 		ring = &txr->tx_ring_struct;
 		ring->nr_pages = bp->tx_nr_pages;
 		ring->page_size = HW_RXBD_RING_SIZE;
@@ -2403,13 +2410,17 @@ static void bnxt_clear_ring_indices(struct bnxt *bp)
 		cpr->cp_raw_cons = 0;
 
 		txr = bnapi->tx_ring;
-		txr->tx_prod = 0;
-		txr->tx_cons = 0;
+		if (txr) {
+			txr->tx_prod = 0;
+			txr->tx_cons = 0;
+		}
 
 		rxr = bnapi->rx_ring;
-		rxr->rx_prod = 0;
-		rxr->rx_agg_prod = 0;
-		rxr->rx_sw_agg_prod = 0;
+		if (rxr) {
+			rxr->rx_prod = 0;
+			rxr->rx_agg_prod = 0;
+			rxr->rx_sw_agg_prod = 0;
+		}
 	}
 }
 
@@ -5018,6 +5029,9 @@ static void bnxt_dump_tx_sw_state(struct bnxt_napi *bnapi)
 	struct bnxt_tx_ring_info *txr = bnapi->tx_ring;
 	int i = bnapi->index;
 
+	if (!txr)
+		return;
+
 	netdev_info(bnapi->bp->dev, "[%d]: tx{fw_ring: %d prod: %x cons: %x}\n",
 		    i, txr->tx_ring_struct.fw_ring_id, txr->tx_prod,
 		    txr->tx_cons);
@@ -5027,6 +5041,9 @@ static void bnxt_dump_rx_sw_state(struct bnxt_napi *bnapi)
 {
 	struct bnxt_rx_ring_info *rxr = bnapi->rx_ring;
 	int i = bnapi->index;
+
+	if (!rxr)
+		return;
 
 	netdev_info(bnapi->bp->dev, "[%d]: rx{fw_ring: %d prod: %x} rx_agg{fw_ring: %d agg_prod: %x sw_agg_prod: %x}\n",
 		    i, rxr->rx_ring_struct.fw_ring_id, rxr->rx_prod,
