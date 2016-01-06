@@ -668,7 +668,7 @@ void del_gendisk(struct gendisk *disk)
 	blk_unregister_region(disk_devt(disk), disk->minors);
 
 	if (disk->bb) {
-		badblocks_free(disk->bb);
+		badblocks_exit(disk->bb);
 		kfree(disk->bb);
 	}
 
