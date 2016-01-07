@@ -46,6 +46,28 @@ struct iommu_batch {
 static DEFINE_PER_CPU(struct iommu_batch, iommu_batch);
 static int iommu_batch_initialized;
 
+
+unsigned long iommu_getbypass(unsigned long ra,
+			      unsigned long attr,
+			      unsigned long *io_addr_p)
+{
+	struct iommu_batch *p = this_cpu_ptr(&iommu_batch);
+	struct pci_pbm_info *pbm = p->dev->archdata.host_controller;
+	unsigned long devhandle = pbm->devhandle;
+	unsigned long ret;
+
+	ret = pci_sun4v_iommu_getbypass(devhandle, ra, attr, io_addr_p);
+
+	printk(KERN_ERR "iommu_getbypass: devhandle 0x%lx ra 0x%lx prot 0x%lx dma 0x%lx\n",
+			devhandle, ra, attr, *io_addr_p);
+
+	if (ret)
+		printk(KERN_ERR "iommu_getbypass: err 0x%lx\n", ret);
+
+	return ret;
+}
+EXPORT_SYMBOL(iommu_getbypass);
+
 /* Interrupts must be disabled.  */
 static inline void iommu_batch_start(struct device *dev, unsigned long prot, unsigned long entry)
 {
@@ -232,6 +254,42 @@ static void dma_4v_free_coherent(struct device *dev, size_t size, void *cpu,
 		free_pages((unsigned long)cpu, order);
 }
 
+static dma_addr_t dma_4v_map_page_bypass(struct device *dev, struct page *page,
+					 unsigned long offset, size_t sz,
+					 enum dma_data_direction direction,
+					 struct dma_attrs *attrs)
+{
+	struct pci_pbm_info *pbm;
+	unsigned long devhandle;
+	unsigned long ra;
+	unsigned long prot;
+	unsigned long dma_addr;
+
+	BUG_ON(!dev);
+	pbm = dev->archdata.host_controller;
+	BUG_ON(!pbm);
+	devhandle = pbm->devhandle;
+
+	if (unlikely(direction == DMA_NONE))
+		goto bad;
+
+	prot = HV_PCI_MAP_ATTR_READ;
+
+	if (direction != DMA_TO_DEVICE)
+		prot |= HV_PCI_MAP_ATTR_WRITE;
+
+
+	ra = __pa(page_address(page) + offset);
+
+	if (pci_sun4v_iommu_getbypass(devhandle, ra, prot, &dma_addr))
+		goto bad;
+
+	return dma_addr;
+
+bad:
+	return DMA_ERROR_CODE;
+}
+
 static dma_addr_t dma_4v_map_page(struct device *dev, struct page *page,
 				  unsigned long offset, size_t sz,
 				  enum dma_data_direction direction,
@@ -243,6 +301,9 @@ static dma_addr_t dma_4v_map_page(struct device *dev, struct page *page,
 	u32 bus_addr, ret;
 	unsigned long prot;
 	long entry;
+
+	return dma_4v_map_page_bypass(dev, page, offset, sz,
+					      direction, attrs);
 
 	iommu = dev->archdata.iommu;
 
@@ -302,6 +363,9 @@ static void dma_4v_unmap_page(struct device *dev, dma_addr_t bus_addr,
 	long entry;
 	u32 devhandle;
 
+	/* no need to un-map bypass dma address */
+	return;
+
 	if (unlikely(direction == DMA_NONE)) {
 		if (printk_ratelimit())
 			WARN_ON(1);
@@ -320,6 +384,45 @@ static void dma_4v_unmap_page(struct device *dev, dma_addr_t bus_addr,
 	iommu_tbl_range_free(&iommu->tbl, bus_addr, npages, DMA_ERROR_CODE);
 }
 
+static int dma_4v_map_sg_bypass(struct device *dev, struct scatterlist *sglist,
+				int nelems, enum dma_data_direction direction,
+				struct dma_attrs *attrs)
+{
+	struct pci_pbm_info *pbm;
+	unsigned long devhandle;
+	unsigned long ra;
+	unsigned long prot;
+	unsigned long dma_addr;
+	struct scatterlist *s;
+	int i;
+
+	BUG_ON(!dev);
+	pbm = dev->archdata.host_controller;
+	BUG_ON(!pbm);
+	devhandle = pbm->devhandle;
+
+	if (unlikely(direction == DMA_NONE))
+		goto bad;
+
+	prot = HV_PCI_MAP_ATTR_READ;
+
+	if (direction != DMA_TO_DEVICE)
+		prot |= HV_PCI_MAP_ATTR_WRITE;
+
+	for_each_sg(sglist, s, nelems, i) {
+		ra = (unsigned long) SG_ENT_PHYS_ADDRESS(s);
+		if (pci_sun4v_iommu_getbypass(devhandle, ra, prot, &dma_addr))
+			goto bad;
+		s->dma_address = dma_addr;
+		s->dma_length = s->length;
+	}
+
+	return nelems;
+
+bad:
+	return 0;
+}
+
 static int dma_4v_map_sg(struct device *dev, struct scatterlist *sglist,
 			 int nelems, enum dma_data_direction direction,
 			 struct dma_attrs *attrs)
@@ -333,6 +436,9 @@ static int dma_4v_map_sg(struct device *dev, struct scatterlist *sglist,
 	struct iommu *iommu;
 	unsigned long base_shift;
 	long err;
+
+	return dma_4v_map_sg_bypass(dev, sglist, nelems,
+					    direction, attrs);
 
 	BUG_ON(direction == DMA_NONE);
 
@@ -473,6 +579,9 @@ static void dma_4v_unmap_sg(struct device *dev, struct scatterlist *sglist,
 	struct iommu *iommu;
 	unsigned long flags, entry;
 	u32 devhandle;
+
+	/* no need to un-map bypass dma address */
+	return;
 
 	BUG_ON(direction == DMA_NONE);
 

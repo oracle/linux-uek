@@ -56,6 +56,24 @@ ENTRY(pci_sun4v_iommu_getmap)
 	 mov	%o0, %o0
 ENDPROC(pci_sun4v_iommu_getmap)
 
+
+	/* %o0: devhandle
+	 * %o1: r_addr
+	 * %o2: io_attributes
+	 * %o3: &io_addr
+	 *
+	 * returns: %o0: status
+	 */
+ENTRY(pci_sun4v_iommu_getbypass)
+	mov	HV_FAST_PCI_IOMMU_GETBYPASS, %o5
+	ta	HV_FAST_TRAP
+	brnz	%o0, 1f
+	stx	%o1, [%o3]
+1:	retl
+	nop
+ENDPROC(pci_sun4v_iommu_getbypass)
+
+
 	/* %o0: devhandle
 	 * %o1:	pci_device
 	 * %o2:	pci_config_offset
