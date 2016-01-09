@@ -161,6 +161,7 @@ struct disk_part_tbl {
 };
 
 struct disk_events;
+struct badblocks;
 
 struct gendisk {
 	/* major, first_minor and minors are input parameters only,
@@ -200,6 +201,9 @@ struct gendisk {
 	struct blk_integrity *integrity;
 #endif
 	int node_id;
+#ifndef __GENKSYMS__
+	struct badblocks *bb;
+#endif
 };
 
 static inline struct gendisk *part_to_disk(struct hd_struct *part)
@@ -420,6 +424,11 @@ extern void add_disk(struct gendisk *disk);
 extern void del_gendisk(struct gendisk *gp);
 extern struct gendisk *get_gendisk(dev_t dev, int *partno);
 extern struct block_device *bdget_disk(struct gendisk *disk, int partno);
+int disk_alloc_badblocks(struct gendisk *disk);
+extern int disk_check_badblocks(struct gendisk *disk, sector_t s, int sectors,
+		   sector_t *first_bad, int *bad_sectors);
+extern int disk_set_badblocks(struct gendisk *disk, sector_t s, int sectors);
+extern int disk_clear_badblocks(struct gendisk *disk, sector_t s, int sectors);
 
 extern void set_device_ro(struct block_device *bdev, int flag);
 extern void set_disk_ro(struct gendisk *disk, int flag);
