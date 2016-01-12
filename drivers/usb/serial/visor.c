@@ -586,6 +586,10 @@ static int treo_attach(struct usb_serial *serial)
 		return 0;
 
 	dbg("%s", __func__);
+	if (serial->num_bulk_in < 2 || serial->num_interrupt_in < 2) {
+		dev_err(&serial->interface->dev, "missing endpoints\n");
+		return -ENODEV;
+	}
 
 	/*
 	* It appears that Treos and Kyoceras want to use the
