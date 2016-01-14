@@ -1813,8 +1813,8 @@ static ssize_t o2hb_region_dev_write(struct o2hb_region *reg,
 	}
 	++live_threshold;
 	atomic_set(&reg->hr_steady_iterations, live_threshold);
-	/* unsteady_iterations is double the steady_iterations */
-	atomic_set(&reg->hr_unsteady_iterations, (live_threshold << 1));
+	/* unsteady_iterations is triple the steady_iterations */
+	atomic_set(&reg->hr_unsteady_iterations, (live_threshold * 3));
 
 	hb_task = kthread_run(o2hb_thread, reg, "o2hb-%s",
 			      reg->hr_item.ci_name);
