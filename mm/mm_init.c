@@ -203,3 +203,11 @@ static int __init mm_sysfs_init(void)
 	return 0;
 }
 postcore_initcall(mm_sysfs_init);
+
+static int __init mm_build_check(void)
+{
+	CHECK_VM_AREA_STRUCT_RESERVED_UNION_SIZE_1();
+
+	return 0;
+}
+core_initcall(mm_build_check);

@@ -247,6 +247,16 @@ struct vm_region {
 						* this region */
 };
 
+#ifdef CONFIG_USERFAULTFD
+#define NULL_VM_UFFD_CTX ((struct vm_userfaultfd_ctx) { NULL, })
+struct vm_userfaultfd_ctx {
+	struct userfaultfd_ctx *ctx;
+};
+#else /* CONFIG_USERFAULTFD */
+#define NULL_VM_UFFD_CTX ((struct vm_userfaultfd_ctx) {})
+struct vm_userfaultfd_ctx {};
+#endif /* CONFIG_USERFAULTFD */
+
 /*
  * This struct defines a memory VMM memory area. There is one of these
  * per VM-area/task.  A VM area is any part of the process virtual memory
@@ -313,7 +323,29 @@ struct vm_area_struct {
 #ifdef CONFIG_NUMA
 	struct mempolicy *vm_policy;	/* NUMA policy for the VMA */
 #endif
+
+        /* Oracle inc use only
+         * The following padding has been inserted before ABI freeze to
+         * allow extending the structure while preserving ABI.
+         */
+#ifndef __GENKSYMS__
+	/* userfaultfd feature using UEK_KABI_RESERVED(1) */
+	union {
+		UEK_KABI_RESERVED(1)
+		struct vm_userfaultfd_ctx vm_userfaultfd_ctx;
+	};
+#else
+        UEK_KABI_RESERVED(1)
+#endif
+        UEK_KABI_RESERVED(2)
 };
+
+/*
+ * Make sure the size of  struct vm_userfaultfd_ctx is not greater than
+ * the size UEK_KABI_RESERVED.  They are in an unnamed union.
+ */
+#define CHECK_VM_AREA_STRUCT_RESERVED_UNION_SIZE_1() \
+	BUILD_BUG_ON(sizeof(struct vm_userfaultfd_ctx) > sizeof(unsigned long))
 
 struct core_thread {
 	struct task_struct *task;
