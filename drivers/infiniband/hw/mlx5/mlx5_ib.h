@@ -55,6 +55,9 @@ pr_err("%s:%s:%d:(pid %d): " format, (dev)->ib_dev.name, __func__,	\
 pr_warn("%s:%s:%d:(pid %d): " format, (dev)->ib_dev.name, __func__,	\
 	__LINE__, current->pid, ##arg)
 
+#define MLX5_IB_DEFAULT_UIDX 0xffffff
+#define MLX5_USER_ASSIGNED_UIDX_MASK __mlx5_mask(qpc, user_index)
+
 enum {
 	MLX5_IB_MMAP_CMD_SHIFT	= 8,
 	MLX5_IB_MMAP_CMD_MASK	= 0xff,
@@ -85,6 +88,18 @@ enum mlx5_ib_mad_ifc_flags {
 	MLX5_MAD_IFC_NET_VIEW		= 4,
 };
 
+<<<<<<< HEAD
+=======
+enum {
+	MLX5_CROSS_CHANNEL_UUAR         = 0,
+};
+
+enum {
+	MLX5_CQE_VERSION_V0,
+	MLX5_CQE_VERSION_V1,
+};
+
+>>>>>>> cfb5e08... IB/mlx5: Add CQE version 1 support to user QPs and SRQs
 struct mlx5_ib_ucontext {
 	struct ib_ucontext	ibucontext;
 	struct list_head	db_page_list;
@@ -93,6 +108,7 @@ struct mlx5_ib_ucontext {
 	 */
 	struct mutex		db_page_mutex;
 	struct mlx5_uuar_info	uuari;
+	u8			cqe_version;
 };
 
 static inline struct mlx5_ib_ucontext *to_mucontext(struct ib_ucontext *ibucontext)
@@ -673,4 +689,30 @@ static inline int is_qp1(enum ib_qp_type qp_type)
 #define MLX5_MAX_UMR_SHIFT 16
 #define MLX5_MAX_UMR_PAGES (1 << MLX5_MAX_UMR_SHIFT)
 
+<<<<<<< HEAD
+=======
+static inline u32 check_cq_create_flags(u32 flags)
+{
+	/*
+	 * It returns non-zero value for unsupported CQ
+	 * create flags, otherwise it returns zero.
+	 */
+	return (flags & ~IB_CQ_FLAGS_IGNORE_OVERRUN);
+}
+
+static inline int verify_assign_uidx(u8 cqe_version, u32 cmd_uidx,
+				     u32 *user_index)
+{
+	if (cqe_version) {
+		if ((cmd_uidx == MLX5_IB_DEFAULT_UIDX) ||
+		    (cmd_uidx & ~MLX5_USER_ASSIGNED_UIDX_MASK))
+			return -EINVAL;
+		*user_index = cmd_uidx;
+	} else {
+		*user_index = MLX5_IB_DEFAULT_UIDX;
+	}
+
+	return 0;
+}
+>>>>>>> cfb5e08... IB/mlx5: Add CQE version 1 support to user QPs and SRQs
 #endif /* MLX5_IB_H */
