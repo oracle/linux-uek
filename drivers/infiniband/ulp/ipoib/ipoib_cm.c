@@ -785,6 +785,7 @@ void ipoib_cm_send(struct net_device *dev, struct sk_buff *skb, struct ipoib_cm_
 	struct ipoib_tx_buf *tx_req;
 	u64 addr = 0;
 	int rc;
+	unsigned long flags;
 
 	if (unlikely(skb->len > tx->mtu)) {
 		ipoib_warn(priv, "packet len %d (> %d) too long to send, dropping\n",
@@ -820,11 +821,28 @@ void ipoib_cm_send(struct net_device *dev, struct sk_buff *skb, struct ipoib_cm_
 		}
 	}
 
+	spin_lock_irqsave(&priv->lock, flags);
+	if (++priv->tx_outstanding == ipoib_sendq_size) {
+		ipoib_dbg(priv, "TX ring 0x%x full, stopping kernel net queue\n",
+			  tx->qp->qp_num);
+		netif_stop_queue(dev);
+	}
+	spin_unlock_irqrestore(&priv->lock, flags);
+
+	if (netif_queue_stopped(dev)) {
+		rc = ib_req_notify_cq(priv->send_cq,
+			IB_CQ_NEXT_COMP | IB_CQ_REPORT_MISSED_EVENTS);
+		if (rc < 0)
+			ipoib_warn(priv, "request notify on send CQ failed\n");
+		else if (rc)
+			ipoib_send_comp_handler(priv->send_cq, dev);
+	}
+
 	if (skb_shinfo(skb)->nr_frags) {
 		if (unlikely(ipoib_dma_map_tx(priv->ca, tx_req))) {
 			++dev->stats.tx_errors;
 			dev_kfree_skb_any(skb);
-			return;
+			goto dec_outstanding;
 		}
 		rc = post_send_sg(priv, tx, tx->tx_head &
 				  (ipoib_sendq_size - 1),
@@ -835,7 +853,7 @@ void ipoib_cm_send(struct net_device *dev, struct sk_buff *skb, struct ipoib_cm_
 		if (unlikely(ib_dma_mapping_error(priv->ca, addr))) {
 			++dev->stats.tx_errors;
 			dev_kfree_skb_any(skb);
-			return;
+			goto dec_outstanding;
 		}
 
 		tx_req->mapping[0] = addr;
@@ -851,22 +869,20 @@ void ipoib_cm_send(struct net_device *dev, struct sk_buff *skb, struct ipoib_cm_
 		++dev->stats.tx_errors;
 		ipoib_cm_dma_unmap_tx(priv, tx_req);
 		dev_kfree_skb_any(skb);
+		goto dec_outstanding;
 	} else {
 		dev->trans_start = jiffies;
 		++tx->tx_head;
-
-		if (++priv->tx_outstanding == ipoib_sendq_size) {
-			ipoib_dbg(priv, "TX ring 0x%x full, stopping kernel net queue\n",
-				  tx->qp->qp_num);
-			netif_stop_queue(dev);
-			rc = ib_req_notify_cq(priv->send_cq,
-				IB_CQ_NEXT_COMP | IB_CQ_REPORT_MISSED_EVENTS);
-			if (rc < 0)
-				ipoib_warn(priv, "request notify on send CQ failed\n");
-			else if (rc)
-				ipoib_send_comp_handler(priv->send_cq, dev);
-		}
 	}
+
+	return;
+
+dec_outstanding:
+	spin_lock_irqsave(&priv->lock, flags);
+	--priv->tx_outstanding;
+	if (netif_queue_stopped(dev))
+		netif_wake_queue(dev);
+	spin_unlock_irqrestore(&priv->lock, flags);
 }
 
 void ipoib_cm_handle_tx_wc(struct net_device *dev, struct ib_wc *wc)
@@ -899,10 +915,13 @@ void ipoib_cm_handle_tx_wc(struct net_device *dev, struct ib_wc *wc)
 	netif_tx_lock(dev);
 
 	++tx->tx_tail;
+
+	spin_lock_irqsave(&priv->lock, flags);
 	if (unlikely(--priv->tx_outstanding == ipoib_sendq_size >> 1) &&
 	    netif_queue_stopped(dev) &&
 	    test_bit(IPOIB_FLAG_ADMIN_UP, &priv->flags))
 		netif_wake_queue(dev);
+	spin_unlock_irqrestore(&priv->lock, flags);
 
 	if (wc->status != IB_WC_SUCCESS &&
 	    wc->status != IB_WC_WR_FLUSH_ERR) {
