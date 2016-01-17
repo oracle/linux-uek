@@ -753,7 +753,7 @@ struct ib_cq *mlx5_ib_create_cq(struct ib_device *ibdev, int entries,
 	int uninitialized_var(index);
 	int uninitialized_var(inlen);
 	int cqe_size;
-	int irqn;
+	unsigned int irqn;
 	int eqn;
 	int err;
 
