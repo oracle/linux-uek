@@ -131,11 +131,16 @@ void _systrace_disable(void *arg, dtrace_id_t id, void *parg)
 {
 	int			sysnum = SYSTRACE_SYSNUM((uintptr_t)parg);
 	dtrace_syscalls_t	*sc = &systrace_info->sysent[sysnum];
-	int			enabled = sc->stsy_entry != DTRACE_IDNONE ||
-					  sc->stsy_return != DTRACE_IDNONE;
+	int			enabled =
+				(sc->stsy_entry != DTRACE_IDNONE ? 1 : 0) +
+				(sc->stsy_return != DTRACE_IDNONE ? 1 : 0);
 	dt_sys_call_t		intercept = get_intercept(sysnum);
 
-	if (enabled)
+	/*
+	 * Every syscall can have 2 probes associated with it.  We need to keep
+	 * the interceptor in place until the last probe is getting disabled.
+	 */
+	if (enabled == 1)
 		(void)cmpxchg((uint32_t *)sc->stsy_tblent, (uint32_t)intercept,
 			      (uint32_t)sc->stsy_underlying);
 
