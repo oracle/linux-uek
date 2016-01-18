@@ -85,6 +85,11 @@ void dtrace_os_init(void)
 				SLAB_HWCACHE_ALIGN|SLAB_PANIC|SLAB_NOTRACK,
 				NULL);
 
+	/*
+	 * We need to set up a psinfo structure for PID 0 (swapper).
+	 */
+	dtrace_psinfo_alloc(&init_task);
+
 	dtrace_sdt_init();
 	dtrace_sdt_register(dtrace_kmod);
 }
