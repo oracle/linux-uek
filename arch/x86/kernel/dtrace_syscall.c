@@ -115,7 +115,7 @@ EXPORT_SYMBOL(dtrace_syscalls_init);
 
 long dtrace_sys_clone(unsigned long clone_flags, unsigned long newsp,
 		      int __user *parent_tidptr, int __user *child_tidptr,
-		      int tls_val)
+		      long tls)
 {
 	long			rc = 0;
 	dtrace_id_t		id;
@@ -126,13 +126,13 @@ long dtrace_sys_clone(unsigned long clone_flags, unsigned long newsp,
 	if ((id = sc->stsy_entry) != DTRACE_IDNONE)
 		(*systrace_probe)(id, clone_flags, newsp,
 				  (uintptr_t)parent_tidptr,
-				  (uintptr_t)child_tidptr, tls_val, 0);
+				  (uintptr_t)child_tidptr, tls, 0);
 
 	/*
 	 * FIXME: Add stop functionality for DTrace.
 	 */
 
-	rc = do_fork(clone_flags, newsp, 0, parent_tidptr, child_tidptr);
+	rc = _do_fork(clone_flags, newsp, 0, parent_tidptr, child_tidptr, tls);
 
 	if ((id = sc->stsy_return) != DTRACE_IDNONE)
 		(*systrace_probe)(id, (uintptr_t)rc, (uintptr_t)rc,
@@ -156,7 +156,7 @@ long dtrace_sys_fork(void)
 	 * FIXME: Add stop functionality for DTrace.
 	 */
 
-	rc = do_fork(SIGCHLD, 0, 0, NULL, NULL);
+	rc = _do_fork(SIGCHLD, 0, 0, NULL, NULL, 0);
 
 	if ((id = sc->stsy_return) != DTRACE_IDNONE)
 		(*systrace_probe)(id, (uintptr_t)rc, (uintptr_t)rc,
@@ -180,7 +180,7 @@ long dtrace_sys_vfork(void)
 	 * FIXME: Add stop functionality for DTrace.
 	 */
 
-	rc = do_fork(CLONE_VFORK | CLONE_VM | SIGCHLD, 0, 0, NULL, NULL);
+	rc = _do_fork(CLONE_VFORK | CLONE_VM | SIGCHLD, 0, 0, NULL, NULL, 0);
 
 	if ((id = sc->stsy_return) != DTRACE_IDNONE)
 		(*systrace_probe)(id, (uintptr_t)rc, (uintptr_t)rc,
