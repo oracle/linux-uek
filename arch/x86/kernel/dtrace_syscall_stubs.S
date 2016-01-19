@@ -2,7 +2,7 @@
  * FILE:        dtrace_stubs_x86_64.S
  * DESCRIPTION: Dynamic Tracing: Syscall tracing stubs (arch-specific)
  *
- * Copyright (C) 2010-2014 Oracle Corporation
+ * Copyright (C) 2010-2016 Oracle Corporation
  */
 
 #include <linux/linkage.h>
@@ -10,7 +10,7 @@
 #include <asm/cache.h>
 #include <asm/errno.h>
 #include <asm/dwarf2.h>
-#include <asm/calling.h>
+#include "../entry/calling.h"
 #include <asm/asm-offsets.h>
 #include <asm/msr.h>
 #include <asm/unistd.h>
