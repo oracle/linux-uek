@@ -2243,10 +2243,14 @@ relock:
 
 		ka = &sighand->action[signr-1];
 
-		DTRACE_PROC3(signal__handle, int, signr, siginfo_t *,
-			     ksig->ka.sa.sa_handler != SIG_DFL ? NULL :
-			     &ksig->info, void (*)(void),
-			     ksig->ka.sa.sa_handler);
+		DTRACE_PROC3(signal__handle,
+			     int, signal->group_exit_code
+						? signal->group_exit_code
+						: signr,
+			     siginfo_t *, ksig->ka.sa.sa_handler != SIG_DFL
+						? NULL
+						: &ksig->info,
+			     void (*)(void), ksig->ka.sa.sa_handler);
 
 		/* Trace actually delivered signals. */
 		trace_signal_deliver(signr, &ksig->info, ka);
