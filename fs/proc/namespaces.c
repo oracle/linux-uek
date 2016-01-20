@@ -125,7 +125,7 @@ static void *proc_ns_follow_link(struct dentry *dentry, struct nameidata *nd)
 	if (!task)
 		goto out;
 
-	if (!ptrace_may_access(task, PTRACE_MODE_READ))
+	if (!ptrace_may_access(task, PTRACE_MODE_READ_FSCREDS))
 		goto out_put_task;
 
 	ns_path.dentry = proc_ns_get_dentry(sb, task, ei->ns_ops);
@@ -158,13 +158,13 @@ static int proc_ns_readlink(struct dentry *dentry, char __user *buffer, int bufl
 	if (!task)
 		goto out;
 
-	if (!ptrace_may_access(task, PTRACE_MODE_READ))
-		goto out_put_task;
+	if (!ptrace_may_access(task, PTRACE_MODE_READ_FSCREDS))
+		goto out;
 
 	len = -ENOENT;
 	ns = ns_ops->get(task);
 	if (!ns)
-		goto out_put_task;
+		goto out;
 
 	snprintf(name, sizeof(name), "%s:[%u]", ns_ops->name, ns_ops->inum(ns));
 	len = strlen(name);
@@ -175,7 +175,6 @@ static int proc_ns_readlink(struct dentry *dentry, char __user *buffer, int bufl
 		len = -EFAULT;
 
 	ns_ops->put(ns);
-out_put_task:
 	put_task_struct(task);
 out:
 	return len;
