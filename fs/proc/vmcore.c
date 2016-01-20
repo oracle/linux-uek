@@ -738,7 +738,7 @@ static int __init update_note_header_size_elf64(const Elf64_Ehdr *ehdr_ptr)
 		kfree(notes_section);
 		phdr_ptr->p_memsz = real_sz;
 		if (real_sz == 0) {
-			pr_warn("Warning: Zero PT_NOTE entries found\n");
+			pr_warn_once("Warning: Zero PT_NOTE entries found\n");
 		}
 	}
 
