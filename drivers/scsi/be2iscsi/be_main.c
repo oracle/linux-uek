@@ -5653,6 +5653,7 @@ static int beiscsi_dev_probe(struct pci_dev *pcidev,
 		goto free_port;
 	}
 	mgmt_get_port_name(&phba->ctrl, phba);
+	beiscsi_get_params(phba);
 
 	if (enable_msix)
 		find_num_cpus(phba);
@@ -5670,7 +5671,6 @@ static int beiscsi_dev_probe(struct pci_dev *pcidev,
 	}
 
 	phba->shost->max_id = phba->params.cxns_per_ctrl;
-	beiscsi_get_params(phba);
 	phba->shost->can_queue = phba->params.ios_per_ctrl;
 	ret = beiscsi_init_port(phba);
 	if (ret < 0) {
