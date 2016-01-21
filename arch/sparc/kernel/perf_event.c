@@ -862,8 +862,7 @@ static u64 sparc_perf_event_update(struct perf_event *event,
 				   struct hw_perf_event *hwc, int idx)
 {
 	int shift = 64 - 32;
-	u64 prev_raw_count, new_raw_count;
-	s64 delta;
+	u64 prev_raw_count, new_raw_count, delta;
 
 again:
 	prev_raw_count = local64_read(&hwc->prev_count);
