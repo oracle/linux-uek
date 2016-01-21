@@ -1369,6 +1369,20 @@ static int vnet_start_xmit(struct sk_buff *skb, struct net_device *dev)
 			dext->ipv4_lso_mss = skb_shinfo(port->tx_bufs[txi].skb)
 					     ->gso_size;
 			dext->flags |= VNET_PKT_IPV4_LSO;
+
+			/*
+  			 * HACK: packets going out a physical NIC are dropped
+ 			 * by Solaris unless all of these are set. We:
+ 			 * 1) have already generated fullcksum
+ 			 * 2) have already generated IPv4 header cksum
+ 			 * 3) are not generating a hash
+ 			 * ...which is why these flags should NOT be set.
+ 			 */
+ 			if (port->switch_port) {
+ 				dext->flags |= VNET_PKT_HCK_FULLCKSUM;
+ 				dext->flags |= VNET_PKT_HCK_IPV4_HDRCKSUM;
+ 				dext->flags |= VNET_PKT_HASH;
+ 			}
 		}
 		if (vio_version_after_eq(&port->vio, 1, 8) &&
 		    !port->switch_port) {
