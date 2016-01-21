@@ -781,10 +781,145 @@ static const struct sparc_pmu niagara4_pmu = {
 	.num_pic_regs	= 4,
 };
 
+static const struct perf_event_map sparc_m7_perfmon_event_map[] = {
+	[PERF_COUNT_HW_CPU_CYCLES] = { (26 << 6) },
+	[PERF_COUNT_HW_INSTRUCTIONS] = { (3 << 6) | 0x3f },
+	[PERF_COUNT_HW_CACHE_REFERENCES] = { (3 << 6) | 0x04 },
+	[PERF_COUNT_HW_CACHE_MISSES] = { (16 << 6) | 0x07 },
+	[PERF_COUNT_HW_BRANCH_INSTRUCTIONS] = { (4 << 6) | 0x01 },
+	[PERF_COUNT_HW_BRANCH_MISSES] = { (25 << 6) | 0x0f },
+};
+
+static const struct perf_event_map *sparc_m7_event_map(int event_id)
+{
+	return &sparc_m7_perfmon_event_map[event_id];
+}
+
+static const cache_map_t sparc_m7_cache_map = {
+[C(L1D)] = {
+	[C(OP_READ)] = {
+		/* data local L1 hit */
+		[C(RESULT_ACCESS)] = { (23 << 6) | 0x01 },
+		/* L1 data cache miss */
+		[C(RESULT_MISS)] = { (16 << 6) | 0x07 },
+	},
+	[C(OP_WRITE)] = {
+		/* data local L1 hit */
+		[C(RESULT_ACCESS)] = { (23 << 6) | 0x01 },
+		/* L1 data cache miss */
+		[C(RESULT_MISS)] = { (16 << 6) | 0x07 },
+	},
+	[C(OP_PREFETCH)] = {
+		/* total data (hardware) prefetches */
+		[C(RESULT_ACCESS)] = { (18 << 6) | 0x03 },
+		[C(RESULT_MISS)] = { CACHE_OP_UNSUPPORTED },
+	},
+},
+[C(L1I)] = {
+	[C(OP_READ)] = {
+		/* instruction local L1 hit */
+		[C(RESULT_ACCESS)] = { (11 << 6) | 0x01 },
+		/* instruction local L1 miss */
+		[C(RESULT_MISS)] = { (11 << 6) | 0x3e },
+	},
+	[ C(OP_WRITE) ] = {
+		[ C(RESULT_ACCESS) ] = { CACHE_OP_NONSENSE },
+		[ C(RESULT_MISS)   ] = { CACHE_OP_NONSENSE },
+	},
+	[ C(OP_PREFETCH) ] = {
+		/* total number of instruction prefetches */
+		[ C(RESULT_ACCESS) ] = { (13 << 6) | 0x01 },
+		[ C(RESULT_MISS)   ] = { CACHE_OP_UNSUPPORTED },
+	},
+},
+[C(LL)] = {
+	[C(OP_READ)] = {
+		/* data local L2 + L3 hit */
+		[C(RESULT_ACCESS)] = { (23 << 6) | 0x06 },
+		/* data local L2 + L3 misses */
+		[C(RESULT_MISS)] = { (23 << 6) | 0x3c },
+
+	},
+	[C(OP_WRITE)] = {
+		/* data local L2 + L3 hit */
+		[C(RESULT_ACCESS)] = { (23 << 6) | 0x06 },
+		/* data local L2 + L3 misses */
+		[C(RESULT_MISS)] = { (23 << 6) | 0x3c },
+	},
+	[C(OP_PREFETCH)] = {
+		/* L3 (hardware) hit */
+		[C(RESULT_ACCESS)] = { (21 << 6) | 0x03 },
+		[C(RESULT_MISS)] = { CACHE_OP_UNSUPPORTED },
+	},
+},
+[C(DTLB)] = {
+	[C(OP_READ)] = {
+		[C(RESULT_ACCESS)] = { CACHE_OP_UNSUPPORTED },
+		/* all dtlb misses */
+		[C(RESULT_MISS)] = { (17 << 6) | 0x3f },
+	},
+	[ C(OP_WRITE) ] = {
+		[ C(RESULT_ACCESS) ] = { CACHE_OP_UNSUPPORTED },
+		/* all dtlb misses */
+		[ C(RESULT_MISS)   ] = { (17 << 6) | 0x3f },
+	},
+	[ C(OP_PREFETCH) ] = {
+		[ C(RESULT_ACCESS) ] = { CACHE_OP_UNSUPPORTED },
+		[ C(RESULT_MISS)   ] = { CACHE_OP_UNSUPPORTED },
+	},
+},
+[C(ITLB)] = {
+	[C(OP_READ)] = {
+		[C(RESULT_ACCESS)] = { CACHE_OP_UNSUPPORTED },
+		/* all itlb misses */
+		[C(RESULT_MISS)] = { (6 << 6) | 0x3f },
+	},
+	[ C(OP_WRITE) ] = {
+		[ C(RESULT_ACCESS) ] = { CACHE_OP_UNSUPPORTED },
+		[ C(RESULT_MISS)   ] = { CACHE_OP_UNSUPPORTED },
+	},
+	[ C(OP_PREFETCH) ] = {
+		[ C(RESULT_ACCESS) ] = { CACHE_OP_UNSUPPORTED },
+		[ C(RESULT_MISS)   ] = { CACHE_OP_UNSUPPORTED },
+	},
+},
+[C(BPU)] = {
+	[C(OP_READ)] = {
+		[C(RESULT_ACCESS)] = { CACHE_OP_UNSUPPORTED },
+		/* branch mispredict */
+		[C(RESULT_MISS)] = { (25 << 6) | 0x0f },
+	},
+	[ C(OP_WRITE) ] = {
+		[ C(RESULT_ACCESS) ] = { CACHE_OP_UNSUPPORTED },
+		/* branch mispredict */
+		[ C(RESULT_MISS)   ] = { (25 << 6) | 0x0f },
+	},
+	[ C(OP_PREFETCH) ] = {
+		[ C(RESULT_ACCESS) ] = { CACHE_OP_UNSUPPORTED },
+		/* branch mispredict */
+		[ C(RESULT_MISS)   ] = { (25 << 6) | 0x0f },
+	},
+},
+[C(NODE)] = {
+	[C(OP_READ)] = {
+		[C(RESULT_ACCESS)] = { CACHE_OP_UNSUPPORTED },
+		[C(RESULT_MISS)  ] = { CACHE_OP_UNSUPPORTED },
+	},
+	[ C(OP_WRITE) ] = {
+		[ C(RESULT_ACCESS) ] = { CACHE_OP_UNSUPPORTED },
+		[ C(RESULT_MISS)   ] = { CACHE_OP_UNSUPPORTED },
+	},
+	[ C(OP_PREFETCH) ] = {
+		[ C(RESULT_ACCESS) ] = { CACHE_OP_UNSUPPORTED },
+		[ C(RESULT_MISS)   ] = { CACHE_OP_UNSUPPORTED },
+	},
+},
+};
+
 static const struct sparc_pmu sparc_m7_pmu = {
-	.event_map	= niagara4_event_map,
-	.cache_map	= &niagara4_cache_map,
-	.max_events	= ARRAY_SIZE(niagara4_perfmon_event_map),
+	.event_map	= sparc_m7_event_map,
+	.cache_map	= &sparc_m7_cache_map,
+	.max_events	= ARRAY_SIZE(sparc_m7_perfmon_event_map),
 	.read_pmc	= sparc_vt_read_pmc,
 	.write_pmc	= sparc_vt_write_pmc,
 	.upper_shift	= 5,
