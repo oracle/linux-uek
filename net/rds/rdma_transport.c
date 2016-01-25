@@ -126,6 +126,7 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 			mutex_unlock(&conn->c_base_conn->c_cm_lock);
 
 			if (ret) {
+				conn->c_drop_source = 40;
 				rds_conn_drop(conn);
 				ret = 0;
 			}
@@ -150,6 +151,7 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 				ibic = conn->c_transport_data;
 				if (ibic && ibic->i_cm_id == cm_id)
 					ibic->i_cm_id = NULL;
+				conn->c_drop_source = 41;
 				rds_conn_drop(conn);
 			}
 		} else if (conn->c_to_index < (RDS_RDMA_RESOLVE_TO_MAX_INDEX-1))
@@ -168,8 +170,10 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 			ibic = conn->c_transport_data;
 			if (ibic && ibic->i_cm_id == cm_id)
 				ret = trans->cm_initiate_connect(cm_id);
-			else
+			else {
+				conn->c_drop_source = 42;
 				rds_conn_drop(conn);
+			}
 		}
 		break;
 
@@ -204,6 +208,7 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 			__free_page(page);
 		}
 
+		conn->c_drop_source = 43;
 		rds_conn_drop(conn);
 		break;
 
@@ -212,15 +217,19 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 		break;
 
 	case RDMA_CM_EVENT_ADDR_ERROR:
-		if (conn)
+		if (conn) {
+			conn->c_drop_source = 44;
 			rds_conn_drop(conn);
+		}
 		break;
 
 	case RDMA_CM_EVENT_CONNECT_ERROR:
 	case RDMA_CM_EVENT_UNREACHABLE:
 	case RDMA_CM_EVENT_DEVICE_REMOVAL:
-		if (conn)
+		if (conn) {
+			conn->c_drop_source = 45;
 			rds_conn_drop(conn);
+		}
 		break;
 
 	case RDMA_CM_EVENT_REJECTED:
@@ -237,6 +246,7 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 				if (!conn->c_tos) {
 					conn->c_proposed_version =
 						RDS_PROTOCOL_COMPAT_VERSION;
+					conn->c_drop_source = 46;
 					rds_conn_drop(conn);
 				} else  {
 					if (conn->c_loopback)
@@ -248,22 +258,27 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 							&conn->c_reject_w,
 							msecs_to_jiffies(10));
 				}
-			} else
+			} else {
+				conn->c_drop_source = 47;
 				rds_conn_drop(conn);
+			}
 		}
 		break;
 
 	case RDMA_CM_EVENT_ADDR_CHANGE:
 		rdsdebug("ADDR_CHANGE event <%u.%u.%u.%u,%u.%u.%u.%u>\n",
 				NIPQUAD(conn->c_laddr), NIPQUAD(conn->c_faddr));
-		if (conn && !rds_ib_apm_enabled)
+		if (conn && !rds_ib_apm_enabled) {
+			conn->c_drop_source = 48;
 			rds_conn_drop(conn);
+		}
 		break;
 
 	case RDMA_CM_EVENT_DISCONNECTED:
 		rdsdebug("DISCONNECT event - dropping connection "
 			"%pI4->%pI4\n", &conn->c_laddr,
 			 &conn->c_faddr);
+		conn->c_drop_source = 49;
 		rds_conn_drop(conn);
 		break;
 
@@ -273,6 +288,7 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 				"dropping connection "
 				"%pI4->%pI4\n", &conn->c_laddr,
 				 &conn->c_faddr);
+			conn->c_drop_source = 50;
 			rds_conn_drop(conn);
 		} else
 			printk(KERN_INFO "TIMEWAIT_EXIT event - conn=NULL\n");

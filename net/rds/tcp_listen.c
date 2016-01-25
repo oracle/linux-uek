@@ -85,6 +85,7 @@ static int rds_tcp_accept_one(struct socket *sock)
 			rds_tcp_stats_inc(s_tcp_listen_closed_stale);
 		else
 			rds_tcp_stats_inc(s_tcp_connect_raced);
+		conn->c_drop_source = 141;
 		rds_conn_drop(conn);
 		ret = 0;
 		goto out;

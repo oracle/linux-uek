@@ -596,6 +596,7 @@ void rds_ib_recv_refill(struct rds_connection *conn, int prefill, gfp_t gfp)
 			 recv->r_ibinc, sg_page(&recv->r_frag->f_sg),
 			 (long) sg_dma_address(&recv->r_frag->f_sg), ret);
 		if (ret) {
+			conn->c_drop_source = 60;
 			rds_ib_conn_error(conn, "recv post on "
 			       "%pI4 returned %d, disconnecting and "
 			       "reconnecting\n", &conn->c_faddr,
@@ -878,6 +879,7 @@ static void rds_ib_send_ack(struct rds_ib_connection *ic, unsigned int adv_credi
 
 		rds_ib_stats_inc(s_ib_ack_send_failure);
 
+		ic->conn->c_drop_source = 61;
 		rds_ib_conn_error(ic->conn, "sending ack failed\n");
 	} else
 		rds_ib_stats_inc(s_ib_ack_sent);
@@ -1054,6 +1056,7 @@ static void rds_ib_process_recv(struct rds_connection *conn,
 		 data_len);
 
 	if (data_len < sizeof(struct rds_header)) {
+		conn->c_drop_source = 62;
 		rds_ib_conn_error(conn, "incoming message "
 		       "from %pI4 didn't inclue a "
 		       "header, disconnecting and "
@@ -1067,6 +1070,7 @@ static void rds_ib_process_recv(struct rds_connection *conn,
 
 	/* Validate the checksum. */
 	if (!rds_message_verify_checksum(ihdr)) {
+		conn->c_drop_source = 63;
 		rds_ib_conn_error(conn, "incoming message "
 		       "from %pI4 has corrupted header - "
 		       "forcing a reconnect\n",
@@ -1130,6 +1134,7 @@ static void rds_ib_process_recv(struct rds_connection *conn,
 		 || hdr->h_len != ihdr->h_len
 		 || hdr->h_sport != ihdr->h_sport
 		 || hdr->h_dport != ihdr->h_dport) {
+			conn->c_drop_source = 64;
 			rds_ib_conn_error(conn,
 				"fragment header mismatch; forcing reconnect\n");
 			return;
@@ -1290,7 +1295,8 @@ void rds_ib_recv_cqe_handler(struct rds_ib_connection *ic,
 			rds_ib_process_recv(conn, recv, wc->byte_len, state);
 	} else {
 		/* We expect errors as the qp is drained during shutdown */
-		if (rds_conn_up(conn) || rds_conn_connecting(conn))
+		if (rds_conn_up(conn) || rds_conn_connecting(conn)) {
+			conn->c_drop_source = 65;
 			rds_ib_conn_error(conn, "recv completion "
 					"<%pI4,%pI4,%d> had "
 					"status %u, disconnecting and "
@@ -1299,6 +1305,7 @@ void rds_ib_recv_cqe_handler(struct rds_ib_connection *ic,
 					&conn->c_faddr,
 					conn->c_tos,
 					wc->status);
+		}
 	}
 
 	/*

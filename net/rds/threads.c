@@ -177,6 +177,7 @@ void rds_connect_worker(struct work_struct *work)
 		 * drop the connection if it doesn't work out after a while
 		 */
 		conn->c_connection_start = get_seconds();
+		conn->c_drop_source = 0;
 
 		ret = conn->c_trans->conn_connect(conn);
 		rdsdebug("conn %p for %pI4 to %pI4 dispatched, ret %d\n",
@@ -185,8 +186,10 @@ void rds_connect_worker(struct work_struct *work)
 		if (ret) {
 			if (rds_conn_transition(conn, RDS_CONN_CONNECTING, RDS_CONN_DOWN)) {
 				rds_queue_reconnect(conn);
-			} else
+			} else {
+				conn->c_drop_source = 6;
 				rds_conn_error(conn, "RDS: connect failed\n");
+			}
 		}
 	}
 }
@@ -270,6 +273,7 @@ void rds_hb_worker(struct work_struct *work)
 				NIPQUAD(conn->c_laddr),
 				NIPQUAD(conn->c_faddr), conn->c_tos,
 				conn->c_hb_start, now);
+				conn->c_drop_source = 7;
 				rds_conn_drop(conn);
 			return;
 		}
@@ -286,6 +290,7 @@ void rds_reconnect_timeout(struct work_struct *work)
 	 * reconnect.
 	 */
 	if (!rds_conn_up(conn)) {
+		conn->c_drop_source = 8;
 		rds_conn_drop(conn);
 		conn->c_reconnect_racing = 0;
 	}

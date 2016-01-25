@@ -175,8 +175,10 @@ void rds_ib_dev_shutdown(struct rds_ib_device *rds_ibdev)
 	unsigned long flags;
 
 	spin_lock_irqsave(&rds_ibdev->spinlock, flags);
-	list_for_each_entry(ic, &rds_ibdev->conn_list, ib_node)
+	list_for_each_entry(ic, &rds_ibdev->conn_list, ib_node) {
+		ic->conn->c_drop_source = 80;
 		rds_conn_drop(ic->conn);
+	}
 	spin_unlock_irqrestore(&rds_ibdev->spinlock, flags);
 }
 
@@ -592,6 +594,7 @@ static void rds_ib_conn_drop(struct work_struct *_work)
 		container_of(_work, struct rds_ib_conn_drop_work, work.work);
 	struct rds_connection   *conn = work->conn;
 
+	conn->c_drop_source = 81;
 	rds_conn_drop(conn);
 
 	kfree(work);
@@ -818,6 +821,7 @@ static int rds_ib_move_ip(char			*from_dev,
 							ic->conn->c_faddr &&
 							ic2->conn->c_faddr ==
 							ic->conn->c_laddr) {
+							ic2->conn->c_drop_source = 82;
 							rds_conn_drop(ic2->conn);
 						}
 					}
@@ -842,8 +846,10 @@ static int rds_ib_move_ip(char			*from_dev,
 					INIT_DELAYED_WORK(&work->work, rds_ib_conn_drop);
 					queue_delayed_work(rds_aux_wq, &work->work,
 						msecs_to_jiffies(1000 * rds_ib_active_bonding_reconnect_delay));
-				} else
+				} else {
+					ic->conn->c_drop_source = 83;
 					rds_conn_drop(ic->conn);
+				}
 			}
 		}
 		spin_unlock_bh(&rds_ibdev->spinlock);
