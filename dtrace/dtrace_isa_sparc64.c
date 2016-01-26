@@ -178,7 +178,7 @@ ulong_t dtrace_getreg(struct task_struct *task, uint_t reg)
 
 			DTRACE_CPUFLAG_SET(CPU_DTRACE_NOFAULT);
 
-			if (reg < REG_L7)
+			if (reg <= REG_L7)
 				val = dtrace_fulword(&rw->locals[reg - REG_L0]);
 			else
 				val = dtrace_fulword(&rw->locals[reg - REG_I0]);
