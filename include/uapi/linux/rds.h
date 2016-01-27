@@ -244,6 +244,8 @@ struct rds_info_rdma_connection {
 	uint8_t         sl;
 	uint32_t        cache_allocs;
 	uint32_t	frag;
+	uint16_t        flow_ctl_post_credit;
+	uint16_t        flow_ctl_send_credit;
 };
 
 /*
