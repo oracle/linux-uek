@@ -1384,7 +1384,7 @@ out:
 	return err;
 }
 
-static int ixgbe_link_mbps(struct ixgbe_adapter *adapter)
+int ixgbe_link_mbps(struct ixgbe_adapter *adapter)
 {
 	switch (adapter->link_speed) {
 	case IXGBE_LINK_SPEED_100_FULL:
