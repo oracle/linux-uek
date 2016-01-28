@@ -57,10 +57,8 @@
 #include <xen/interface/memory.h>
 #include <xen/interface/grant_table.h>
 
-#define XENNET_DEFAULT_MQ	8
-
 /* Module parameters */
-static unsigned int xennet_max_queues = XENNET_DEFAULT_MQ;
+static unsigned int xennet_max_queues;
 module_param_named(max_queues, xennet_max_queues, uint, 0644);
 MODULE_PARM_DESC(max_queues,
 		 "Maximum number of queues per virtual interface");
@@ -2138,7 +2136,7 @@ static int __init netif_init(void)
 	 * specified a value.
 	 */
 	if (xennet_max_queues == 0)
-		xennet_max_queues = XENNET_DEFAULT_MQ;
+		xennet_max_queues = num_online_cpus();
 
 	return xenbus_register_frontend(&netfront_driver);
 }
