@@ -197,28 +197,32 @@ fi
 
 		 for (i = 1; i <= NF; i++) {
 		     prb = $i;
-		     pn = fun":"prb;
-		     ad = addl(baseaddr, poffst[pn]);
+		     pn = fun ":" prb;
 
-		     if (arch == "x86" || arch == "x86_64")
-			 ad = subl(ad, 1);
+		     for (j = 0; j < pidcnt[pn]; j++) {
+			 pid = pn"-"j;
+		         ad = addl(baseaddr, poffst[pid]);
 
-		     if (lfn != "kmod") {
-			 printf "\tPTR\t0x%s\n", ad;
-			 printf "\tPTR\t%d\n", length(prb);
-			 printf "\tPTR\t%d\n", length(fun);
-			 printf "\t.asciz\t\042%s\042\n", prb;
-			 printf "\t.asciz\t\042%s\042\n", fun;
-			 print "\tALGN";
-		     } else {
-			 if (probec == 0)
-			     print "static sdt_probedesc_t\t_sdt_probes[] = {";
+			 if (arch == "x86" || arch == "x86_64")
+			     ad = subl(ad, 1);
 
-			 printf "  {\042%s\042, \042%s\042, 0x%s },\n", \
-				prb, fun, ad;
+			 if (lfn != "kmod") {
+			     printf "\tPTR\t0x%s\n", ad;
+			     printf "\tPTR\t%d\n", length(prb);
+			     printf "\tPTR\t%d\n", length(fun);
+			     printf "\t.asciz\t\042%s\042\n", prb;
+			     printf "\t.asciz\t\042%s\042\n", fun;
+			     print "\tALGN";
+			 } else {
+			     if (probec == 0)
+				 print "static sdt_probedesc_t\t_sdt_probes[] = {";
+
+			     printf "  {\042%s\042, \042%s\042, 0x%s },\n", \
+				    prb, fun, ad;
+			 }
+
+			probec++;
 		     }
-
-		     probec++;
 		 }
 	     }
 
@@ -238,8 +242,12 @@ fi
 	     sub(/^0+/, "", $2);
 	     pn = fun":"$4;
 
-	     probes[fun] = $4 " " probes[fun];
-	     poffst[pn] = subl($2, addr);
+	     if (!pidcnt[pn])
+		 probes[fun] = $4 " " probes[fun];
+
+	     pid = pn"-"int(pidcnt[pn]);
+	     pidcnt[pn]++;
+	     poffst[pid] = subl($2, addr);
 
 	     next;
 	 }
