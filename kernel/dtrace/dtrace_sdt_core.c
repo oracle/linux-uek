@@ -20,7 +20,8 @@
 const char		*sdt_prefix = "__dtrace_probe_";
 
 static int sdt_probe_set(sdt_probedesc_t *sdp, char *name, char *func,
-			 uintptr_t addr, asm_instr_t **paddr)
+			 uintptr_t addr, asm_instr_t **paddr,\
+			 sdt_probedesc_t *prv)
 {
 	if ((sdp->sdpd_name = kstrdup(name, GFP_KERNEL)) == NULL) {
 		kfree(sdp);
@@ -34,8 +35,13 @@ static int sdt_probe_set(sdt_probedesc_t *sdp, char *name, char *func,
 	}
 
 	sdp->sdpd_offset = addr;
+	sdp->sdpd_next = NULL;
 
 	*paddr = (asm_instr_t *)addr;
+
+	if (prv && strcmp(prv->sdpd_name, sdp->sdpd_name) == 0
+		&& strcmp(prv->sdpd_func, sdp->sdpd_func) == 0)
+		prv->sdpd_next = sdp;
 
 	return 0;
 }
@@ -96,7 +102,8 @@ void dtrace_sdt_register(struct module *mp)
 		char	*func = pi->name + pi->name_len + 1;
 
 		if (sdt_probe_set(&sdps[cnt], pi->name, func, pi->addr,
-				  &addrs[cnt]))
+				  &addrs[cnt],
+				  cnt > 0 ? &sdps[cnt - 1] : NULL))
 			pr_warning("%s: failed to add SDT probe %s\n",
 				   __func__, pi->name);
 		else
