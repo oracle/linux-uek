@@ -41,6 +41,12 @@
 static char *con_write_page;
 static char *con_read_page;
 
+#ifdef CONFIG_SERIAL_SUNHV_POLLING
+static struct timer_list con_timer;
+static unsigned long con_interrupt_timeout;
+#endif
+
+
 static int hung_up = 0;
 
 static void transmit_chars_putchar(struct uart_port *port, struct circ_buf *xmit)
@@ -229,6 +235,19 @@ static irqreturn_t sunhv_interrupt(int irq, void *dev_id)
 
 	return IRQ_HANDLED;
 }
+
+#ifdef CONFIG_SERIAL_SUNHV_POLLING
+static void sun4v_timer_poll(unsigned long data)
+{
+	struct uart_port *port = (struct uart_port *)data;
+
+	if (!port)
+		return;
+
+	(void) sunhv_interrupt(0, port);
+	mod_timer(&con_timer, jiffies + con_interrupt_timeout);
+}
+#endif
 
 /* port->lock is not held.  */
 static unsigned int sunhv_tx_empty(struct uart_port *port)
@@ -574,6 +593,24 @@ static int hv_probe(struct platform_device *op)
 	if (err)
 		goto out_remove_port;
 
+#ifdef CONFIG_SERIAL_SUNHV_POLLING
+	/*
+	 * If "qcn" is in compatible then this is running on legion
+	 * and probably needs polling.
+	 */
+	if (of_device_is_compatible(op->dev.of_node, "qcn")) {
+		printk(KERN_INFO "%s%u: polling\n", sunhv_console.name,
+		       port->line);
+		init_timer(&con_timer);
+		con_timer.function = sun4v_timer_poll;
+		con_timer.data = (unsigned long)port;
+		con_interrupt_timeout = 6;
+		mod_timer(&con_timer, jiffies + con_interrupt_timeout);
+	} else {
+		con_interrupt_timeout = 0;
+	}
+#endif
+
 	platform_set_drvdata(op, port);
 
 	return 0;
@@ -599,6 +636,11 @@ out_free_port:
 static int hv_remove(struct platform_device *dev)
 {
 	struct uart_port *port = platform_get_drvdata(dev);
+
+#ifdef CONFIG_SERIAL_SUNHV_POLLING
+	if (con_interrupt_timeout)
+		del_timer_sync(&con_timer);
+#endif
 
 	free_irq(port->irq, port);
 
