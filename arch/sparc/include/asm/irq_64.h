@@ -91,6 +91,10 @@ void arch_trigger_all_cpu_backtrace(bool);
 
 extern void *hardirq_stack[NR_CPUS];
 extern void *softirq_stack[NR_CPUS];
+
+extern int sun4v_alloc_mondo_queues(int);
+extern void sun4v_free_mondo_queues(int);
+
 #define __ARCH_HAS_DO_SOFTIRQ
 
 #define NO_IRQ		0xffffffff

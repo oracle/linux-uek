@@ -40,6 +40,7 @@
 
 #include <asm/irq.h>
 #include <asm/irq_regs.h>
+#include <asm/irq_64.h>
 #include <asm/page.h>
 #include <asm/pgtable.h>
 #include <asm/oplib.h>
@@ -322,6 +323,7 @@ static void ldom_startcpu_cpuid(unsigned int cpu, unsigned long thread_reg,
 		tte_data  += 0x400000;
 	}
 
+	sun4v_alloc_mondo_queues(cpu);
 	trampoline_ra = kimage_addr_to_ra(hv_cpu_startup);
 
 	hv_err = sun4v_cpu_start(cpu, trampoline_ra,
@@ -1385,6 +1387,7 @@ void __cpu_die(unsigned int cpu)
 			hv_err = sun4v_cpu_stop(cpu);
 			if (hv_err == HV_EOK) {
 				set_cpu_present(cpu, false);
+				sun4v_free_mondo_queues(cpu);
 				break;
 			}
 		} while (--limit > 0);

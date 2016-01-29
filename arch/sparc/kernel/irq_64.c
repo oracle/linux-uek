@@ -1010,19 +1010,81 @@ void notrace sun4v_register_mondo_queues(int this_cpu)
  * size.  The base real address must be aligned to the size of the
  * region.  Thus, an 8KB queue must be 8KB aligned, for example.
  */
-static void __init alloc_one_queue(unsigned long *pa_ptr, unsigned long qmask)
+static int alloc_one_queue(unsigned long *pa_ptr, unsigned long qmask)
 {
 	unsigned long size = PAGE_ALIGN(qmask + 1);
 	unsigned long order = get_order(size);
 	unsigned long p;
 
-	p = __get_free_pages(GFP_KERNEL, order);
+	p = __get_free_pages(GFP_KERNEL | __GFP_COMP, order);
 	if (!p) {
-		prom_printf("SUN4V: Error, cannot allocate queue.\n");
-		prom_halt();
+		pr_err("SUN4V: Error, cannot allocate queue.\n");
+		return -ENOMEM;
 	}
 
 	*pa_ptr = __pa(p);
+	return 0;
+}
+
+static void free_one_queue(unsigned long *pa_ptr, unsigned long qmask)
+{
+	unsigned long size = PAGE_ALIGN(qmask + 1);
+	unsigned long order = get_order(size);
+	unsigned long p = *pa_ptr;
+
+	__free_pages(pfn_to_page(p >> PAGE_SHIFT), order);
+}
+
+/* Allocate mondo and error queues for a cpu.  */
+int sun4v_alloc_mondo_queues(int cpu)
+{
+	int err;
+	struct trap_per_cpu *tb = &trap_block[cpu];
+
+	err = alloc_one_queue(&tb->cpu_mondo_pa, tb->cpu_mondo_qmask);
+	if (err)
+		return err;
+	err = alloc_one_queue(&tb->dev_mondo_pa, tb->dev_mondo_qmask);
+	if (err)
+		goto cpu_mondo;
+	err = alloc_one_queue(&tb->resum_mondo_pa, tb->resum_qmask);
+	if (err)
+		goto dev_mondo;
+	err = alloc_one_queue(&tb->resum_kernel_buf_pa, tb->resum_qmask);
+	if (err)
+		goto resum_mondo;
+	err = alloc_one_queue(&tb->nonresum_mondo_pa,
+				    tb->nonresum_qmask);
+	if (err)
+		goto resum_kernel_buf;
+	err = alloc_one_queue(&tb->nonresum_kernel_buf_pa,
+				    tb->nonresum_qmask);
+	if (!err)
+		return 0;
+
+	free_one_queue(&tb->nonresum_mondo_pa, tb->nonresum_qmask);
+resum_kernel_buf:
+	free_one_queue(&tb->resum_kernel_buf_pa, tb->resum_qmask);
+resum_mondo:
+	free_one_queue(&tb->resum_mondo_pa, tb->resum_qmask);
+dev_mondo:
+	free_one_queue(&tb->dev_mondo_pa, tb->dev_mondo_qmask);
+cpu_mondo:
+	free_one_queue(&tb->cpu_mondo_pa, tb->cpu_mondo_qmask);
+
+	return err;
+}
+
+void sun4v_free_mondo_queues(int cpu)
+{
+	struct trap_per_cpu *tb = &trap_block[cpu];
+
+	free_one_queue(&tb->cpu_mondo_pa, tb->cpu_mondo_qmask);
+	free_one_queue(&tb->dev_mondo_pa, tb->dev_mondo_qmask);
+	free_one_queue(&tb->resum_mondo_pa, tb->resum_qmask);
+	free_one_queue(&tb->resum_kernel_buf_pa, tb->resum_qmask);
+	free_one_queue(&tb->nonresum_mondo_pa, tb->nonresum_qmask);
+	free_one_queue(&tb->nonresum_kernel_buf_pa, tb->nonresum_qmask);
 }
 
 static void __init init_cpu_send_mondo_info(struct trap_per_cpu *tb)
@@ -1043,21 +1105,17 @@ static void __init init_cpu_send_mondo_info(struct trap_per_cpu *tb)
 #endif
 }
 
-/* Allocate mondo and error queues for all possible cpus.  */
+/* Allocate mondo and error queues for all present cpus.  */
 static void __init sun4v_init_mondo_queues(void)
 {
-	int cpu;
+	int cpu, rv;
 
-	for_each_possible_cpu(cpu) {
-		struct trap_per_cpu *tb = &trap_block[cpu];
-
-		alloc_one_queue(&tb->cpu_mondo_pa, tb->cpu_mondo_qmask);
-		alloc_one_queue(&tb->dev_mondo_pa, tb->dev_mondo_qmask);
-		alloc_one_queue(&tb->resum_mondo_pa, tb->resum_qmask);
-		alloc_one_queue(&tb->resum_kernel_buf_pa, tb->resum_qmask);
-		alloc_one_queue(&tb->nonresum_mondo_pa, tb->nonresum_qmask);
-		alloc_one_queue(&tb->nonresum_kernel_buf_pa,
-				tb->nonresum_qmask);
+	for_each_present_cpu(cpu) {
+		rv = sun4v_alloc_mondo_queues(cpu);
+		if (rv) {
+			prom_printf("SUN4V: Can't allocate queues (%d).\n", rv);
+			prom_halt();
+		}
 	}
 }
 
