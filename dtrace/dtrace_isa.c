@@ -263,6 +263,7 @@ unsigned long dtrace_getufpstack(uint64_t *pcstack, uint64_t *fpstack,
 	     sp++) {
 		struct vm_area_struct	*code_vma;
 		unsigned long		addr;
+		int			copyret;
 
 		/*
 		 * Recheck for faultedness and pin at page boundaries.
@@ -278,14 +279,11 @@ unsigned long dtrace_getufpstack(uint64_t *pcstack, uint64_t *fpstack,
 				break;
 		}
 
-		DTRACE_CPUFLAG_SET(CPU_DTRACE_NOFAULT);
-		get_user(addr, sp);
-		DTRACE_CPUFLAG_CLEAR(CPU_DTRACE_NOFAULT);
-
-		if (DTRACE_CPUFLAG_ISSET(CPU_DTRACE_FAULT)) {
-			DTRACE_CPUFLAG_CLEAR(CPU_DTRACE_BADADDR);
+		pagefault_disable();
+		copyret = copy_from_user(&addr, sp, sizeof(addr));
+		pagefault_enable();
+		if (copyret)
 			break;
-		}
 
 		if (addr == fpc)
 			continue;
