@@ -31,6 +31,7 @@
 #include <linux/smp.h>
 #include <linux/uaccess.h>
 #include <asm/cacheflush.h>
+#include <asm/ptrace.h>
 #include <asm/stacktrace.h>
 
 #include "dtrace.h"
@@ -232,8 +233,10 @@ unsigned long dtrace_getufpstack(uint64_t *pcstack, uint64_t *fpstack,
 
 #ifdef CONFIG_X86_64
 	tos = current_user_stack_pointer();
+#elif defined(STACK_BIAS)
+	tos = user_stack_pointer(current_pt_regs()) + STACK_BIAS;
 #else
-	tos = user_stack_pointer(current_pt_regs());
+#error Not x86-64 nor a stack-biased platform, porting needed
 #endif
 	stack_vma = find_user_vma(p, mm, NULL, (unsigned long) tos, 0);
 	if (!stack_vma ||
