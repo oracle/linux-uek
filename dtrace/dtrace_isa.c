@@ -21,7 +21,7 @@
  *
  * CDDL HEADER END
  *
- * Copyright 2010, 2011, 2012, 2013, 2014 Oracle, Inc.  All rights reserved.
+ * Copyright 2010 -- 2016 Oracle, Inc.  All rights reserved.
  * Use is subject to license terms.
  */
 
@@ -257,7 +257,7 @@ unsigned long dtrace_getufpstack(uint64_t *pcstack, uint64_t *fpstack,
 	 * Otherwise, loop until we run out of stack.
 	 */
 	for (sp = (unsigned long *)tos;
-	     sp <= (unsigned long *)bos &&
+	     sp <= ((unsigned long *)bos - sizeof(unsigned long)) &&
 		     ((pcstack && pcstack_limit > 0) ||
 		      !pcstack);
 	     sp++) {
