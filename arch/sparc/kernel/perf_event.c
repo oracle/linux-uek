@@ -68,6 +68,7 @@
 #define MAX_HWEVENTS			4
 #define MAX_PCRS			4
 #define MAX_PERIOD			((1UL << 32) - 1)
+#define MAX_COUNT			((1UL << 32) - 1)
 
 #define PIC_UPPER_INDEX			0
 #define PIC_LOWER_INDEX			1
@@ -859,9 +860,9 @@ static inline void sparc_pmu_disable_event(struct cpu_hw_events *cpuc, struct hw
 }
 
 static u64 sparc_perf_event_update(struct perf_event *event,
-				   struct hw_perf_event *hwc, int idx)
+				   struct hw_perf_event *hwc, int idx,
+				   bool overflow)
 {
-	int shift = 64 - 32;
 	u64 prev_raw_count, new_raw_count, delta;
 
 again:
@@ -872,8 +873,9 @@ again:
 			     new_raw_count) != prev_raw_count)
 		goto again;
 
-	delta = (new_raw_count << shift) - (prev_raw_count << shift);
-	delta >>= shift;
+	if (overflow)
+		new_raw_count |= (1UL << 32);
+	delta = new_raw_count - (prev_raw_count & MAX_COUNT);
 
 	local64_add(delta, &event->count);
 	local64_sub(delta, &hwc->period_left);
@@ -923,7 +925,7 @@ static void read_in_all_counters(struct cpu_hw_events *cpuc)
 		if (cpuc->current_idx[i] != PIC_NO_INDEX &&
 		    cpuc->current_idx[i] != cp->hw.idx) {
 			sparc_perf_event_update(cp, &cp->hw,
-						cpuc->current_idx[i]);
+						cpuc->current_idx[i], false);
 			cpuc->current_idx[i] = PIC_NO_INDEX;
 		}
 	}
@@ -1090,7 +1092,7 @@ static void sparc_pmu_stop(struct perf_event *event, int flags)
 	}
 
 	if (!(event->hw.state & PERF_HES_UPTODATE) && (flags & PERF_EF_UPDATE)) {
-		sparc_perf_event_update(event, &event->hw, idx);
+		sparc_perf_event_update(event, &event->hw, idx, false);
 		event->hw.state |= PERF_HES_UPTODATE;
 	}
 }
@@ -1136,7 +1138,7 @@ static void sparc_pmu_read(struct perf_event *event)
 	int idx = active_event_index(cpuc, event);
 	struct hw_perf_event *hwc = &event->hw;
 
-	sparc_perf_event_update(event, hwc, idx);
+	sparc_perf_event_update(event, hwc, idx, false);
 }
 
 static atomic_t active_events = ATOMIC_INIT(0);
@@ -1622,7 +1624,7 @@ static int __kprobes perf_event_nmi_handler(struct notifier_block *self,
 			pcr_ops->write_pcr(idx, cpuc->pcr[idx]);
 
 		hwc = &event->hw;
-		val = sparc_perf_event_update(event, hwc, idx);
+		val = sparc_perf_event_update(event, hwc, idx, true);
 		if (val & (1ULL << 31))
 			continue;
 
