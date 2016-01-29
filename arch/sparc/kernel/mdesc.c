@@ -1181,6 +1181,7 @@ static void *fill_in_one_cpu(struct mdesc_handle *hp, u64 mp, int cpuid,
 		}
 	}
 
+	c->sock_id = -1;
 	c->core_id = 0;
 	c->proc_id = -1;
 

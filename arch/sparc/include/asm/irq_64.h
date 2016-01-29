@@ -61,7 +61,7 @@ unsigned int irq_alloc(unsigned int dev_handle, unsigned int dev_ino);
 void irq_free(unsigned int irq);
 
 void __init init_IRQ(void);
-void fixup_irqs(void);
+void fixup_irqs(cpumask_t *, bool);
 
 static inline void set_softint(unsigned long bits)
 {

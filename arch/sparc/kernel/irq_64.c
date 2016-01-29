@@ -865,9 +865,26 @@ void do_softirq_own_stack(void)
 }
 
 #ifdef CONFIG_HOTPLUG_CPU
-void fixup_irqs(void)
+static void fixup_affinity(cpumask_t *affinity, cpumask_t *mask, bool enabled)
+{
+	if (enabled)
+		cpumask_or(affinity, affinity, mask);
+	else {
+		cpumask_and(affinity, affinity, mask);
+		if (cpumask_empty(affinity)) {
+			pr_warn("IRQ mapped to cpu not in affinity list\n");
+			cpumask_set_cpu(cpumask_first(cpu_online_mask),
+					affinity);
+		}
+	}
+}
+
+void fixup_irqs(cpumask_t *mask, bool enabled)
 {
 	unsigned int irq;
+
+	if (!enabled)
+		cpumask_complement(mask, mask);
 
 	for (irq = 0; irq < NR_IRQS; irq++) {
 		struct irq_desc *desc = irq_to_desc(irq);
@@ -879,6 +896,7 @@ void fixup_irqs(void)
 		data = irq_desc_get_irq_data(desc);
 		raw_spin_lock_irqsave(&desc->lock, flags);
 		if (desc->action && !irqd_is_per_cpu(data)) {
+			fixup_affinity(data->affinity, mask, enabled);
 			if (data->chip->irq_set_affinity)
 				data->chip->irq_set_affinity(data,
 							     data->affinity,
@@ -887,7 +905,8 @@ void fixup_irqs(void)
 		raw_spin_unlock_irqrestore(&desc->lock, flags);
 	}
 
-	tick_ops->disable_irq();
+	if (!enabled)
+		tick_ops->disable_irq();
 }
 #endif
 

@@ -598,6 +598,9 @@ struct dr_cpu_resp_entry {
 
 	u32				str_off;
 };
+
+static DEFINE_MUTEX(ds_dr_cpu_mutex);
+
 #endif /* CONFIG_HOTPLUG_CPU */
 
 
@@ -1830,15 +1833,16 @@ static int __cpuinit dr_cpu_configure(struct ds_dev *ds,
 			pr_err("ds-%llu: CPU startup failed err=%d\n", ds->id,
 				err);
 			dr_cpu_mark(resp, cpu, ncpus, res, stat);
+			cpumask_clear_cpu(cpu, mask);
 		}
 	}
+
+	/* Redistribute IRQs, taking into account the new cpus.  */
+	fixup_irqs(mask, true);
 
 	ds_cap_send(handle, resp, resp_len);
 
 	kfree(resp);
-
-	/* Redistribute IRQs, taking into account the new cpus.  */
-	fixup_irqs();
 
 	return 0;
 }
@@ -1914,6 +1918,7 @@ static void __cpuinit ds_dr_cpu_data_cb(ds_cb_arg_t arg,
 			cpumask_set_cpu(cpu_list[i], &mask);
 	}
 
+	mutex_lock(&ds_dr_cpu_mutex);
 	if (tag->type == DR_CPU_CONFIGURE)
 		err = dr_cpu_configure(ds, handle, req_num, &mask);
 	else
@@ -1921,6 +1926,7 @@ static void __cpuinit ds_dr_cpu_data_cb(ds_cb_arg_t arg,
 
 	if (err)
 		__dr_cpu_send_error(ds, handle, tag);
+	mutex_unlock(&ds_dr_cpu_mutex);
 }
 #endif /* CONFIG_HOTPLUG_CPU */
 
@@ -2734,7 +2740,7 @@ void ldom_power_off(void)
 
 static int ds_handle_data_nack(struct ds_dev *ds, struct ds_msg_tag *pkt)
 {
-	int rv;
+	int rv = 0;
 	struct ds_data_nack *data_nack;
 
 	dprintk("entered.\n");
@@ -2772,7 +2778,6 @@ static int ds_handle_data_nack(struct ds_dev *ds, struct ds_msg_tag *pkt)
 		 */
 		pr_err("ds-%llu: received UNKNOWN data NACK for "
 			"handle %llx\n", ds->id, data_nack->payload.handle);
-		rv = 0;
 
 		break;
 	};
@@ -3764,7 +3769,7 @@ static int ds_read_ldc_msg(struct ds_dev *ds, unsigned char *buf,
 	unsigned int bytes_read;
 	unsigned int read_size;
 	unsigned int delay_cnt;
-	int rv;
+	int rv = 0;
 
 	bytes_left = size;
 	bytes_read = 0;

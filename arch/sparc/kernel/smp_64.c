@@ -1231,11 +1231,9 @@ void __init smp_setup_processor_id(void)
 
 void smp_fill_in_sib_core_maps(void)
 {
-	unsigned int i;
+	unsigned int i, j;
 
 	for_each_present_cpu(i) {
-		unsigned int j;
-
 		cpumask_clear(&cpu_core_map[i]);
 		if (cpu_data(i).core_id == 0) {
 			cpumask_set_cpu(i, &cpu_core_map[i]);
@@ -1243,14 +1241,18 @@ void smp_fill_in_sib_core_maps(void)
 		}
 
 		for_each_present_cpu(j) {
-			if (cpu_data(i).core_id ==
-			    cpu_data(j).core_id)
+			if (cpu_data(i).core_id == cpu_data(j).core_id)
 				cpumask_set_cpu(j, &cpu_core_map[i]);
 		}
 	}
 
 	for_each_present_cpu(i)  {
-		unsigned int j;
+		cpumask_clear(&cpu_core_sib_map[i]);
+		if (cpu_data(i).sock_id == -1) {
+			cpumask_set_cpu(i, &cpu_core_sib_map[i]);
+			continue;
+		}
+
 		for_each_present_cpu(j)  {
 			if (cpu_data(i).sock_id == cpu_data(j).sock_id)
 				cpumask_set_cpu(j, &cpu_core_sib_map[i]);
@@ -1258,8 +1260,6 @@ void smp_fill_in_sib_core_maps(void)
 	}
 
 	for_each_present_cpu(i) {
-		unsigned int j;
-
 		cpumask_clear(&per_cpu(cpu_sibling_map, i));
 		if (cpu_data(i).proc_id == -1) {
 			cpumask_set_cpu(i, &per_cpu(cpu_sibling_map, i));
@@ -1267,9 +1267,9 @@ void smp_fill_in_sib_core_maps(void)
 		}
 
 		for_each_present_cpu(j) {
-			if (cpu_data(i).proc_id ==
-			    cpu_data(j).proc_id)
-				cpumask_set_cpu(j, &per_cpu(cpu_sibling_map, i));
+			if (cpu_data(i).proc_id == cpu_data(j).proc_id)
+				cpumask_set_cpu(j, &per_cpu(cpu_sibling_map,
+						i));
 		}
 	}
 }
@@ -1290,6 +1290,7 @@ int __cpu_up(unsigned int cpu, struct task_struct *tidle)
 			 */
 			if (tlb_type != hypervisor)
 				smp_synchronize_one_tick(cpu);
+			cpu_map_rebuild();
 		}
 	}
 	return ret;
@@ -1336,10 +1337,18 @@ int __cpu_disable(void)
 	int cpu = smp_processor_id();
 	cpuinfo_sparc *c;
 	int i;
+	cpumask_var_t mask;
+
+	if (!zalloc_cpumask_var(&mask, GFP_ATOMIC))
+		return -ENOMEM;
 
 	for_each_cpu(i, &cpu_core_map[cpu])
 		cpumask_clear_cpu(cpu, &cpu_core_map[i]);
 	cpumask_clear(&cpu_core_map[cpu]);
+
+	for_each_cpu(i, &cpu_core_sib_map[cpu])
+		cpumask_clear_cpu(cpu, &cpu_core_sib_map[i]);
+	cpumask_clear(&cpu_core_sib_map[cpu]);
 
 	for_each_cpu(i, &per_cpu(cpu_sibling_map, cpu))
 		cpumask_clear_cpu(cpu, &per_cpu(cpu_sibling_map, i));
@@ -1347,21 +1356,23 @@ int __cpu_disable(void)
 
 	c = &cpu_data(cpu);
 
+	c->sock_id = -1;
 	c->core_id = 0;
 	c->proc_id = -1;
 
+	/*
+	 * Offline before fixup.
+	 * See irq_choose_cpu(), cpu_map_rebuild().
+	 */
+	set_cpu_online(cpu, false);
 	smp_wmb();
+	local_irq_disable();		/* don't process further interrupts */
+	cpu_map_rebuild();
 
 	/* Make sure no interrupts point to this cpu.  */
-	fixup_irqs();
-
-	local_irq_enable();
-	mdelay(1);
-	local_irq_disable();
-
-	set_cpu_online(cpu, false);
-
-	cpu_map_rebuild();
+	cpumask_set_cpu(cpu, mask);
+	fixup_irqs(mask, false);	/* cpu should alreay be offlined */
+	free_cpumask_var(mask);
 
 	return 0;
 }
