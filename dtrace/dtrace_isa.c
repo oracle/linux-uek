@@ -230,13 +230,8 @@ unsigned long dtrace_getufpstack(uint64_t *pcstack, uint64_t *fpstack,
 		goto out;
 	atomic_inc(&mm->mm_users);
 
-	/*
-	 * The following construct can be replaced with:
-	 * 	tos = current_user_stack_pointer();
-	 * once support for 4.0 is no longer necessary.
-	 */
 #ifdef CONFIG_X86_64
-	tos = current_pt_regs()->sp;
+	tos = current_user_stack_pointer();
 #else
 	tos = user_stack_pointer(current_pt_regs());
 #endif
