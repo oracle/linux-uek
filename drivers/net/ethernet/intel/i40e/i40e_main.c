@@ -10471,7 +10471,7 @@ static int i40e_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 	if (hw->aq.api_maj_ver == I40E_FW_API_VERSION_MAJOR &&
 	    hw->aq.api_min_ver > I40E_FW_API_VERSION_MINOR)
 		dev_info(&pdev->dev,
-			 "The driver for the device detected a newer version of the NVM image than expected. Please install the most recent version of the network driver.\n");
+			 "The driver for the device detected a newer version of the NVM image than expected.\n");
 	else if (hw->aq.api_maj_ver < I40E_FW_API_VERSION_MAJOR ||
 		 hw->aq.api_min_ver < (I40E_FW_API_VERSION_MINOR - 1))
 		dev_info(&pdev->dev,
