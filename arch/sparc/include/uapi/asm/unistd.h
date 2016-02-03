@@ -418,7 +418,7 @@
 #define __NR_execveat		350
 #define __NR_waitfd		351
 
-#define NR_syscalls		351
+#define NR_syscalls		352
 
 /* Bitmask values returned from kern_features system call.  */
 #define KERN_FEATURE_MIXED_MODE_STACK	0x00000001
