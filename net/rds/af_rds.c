@@ -437,6 +437,34 @@ static int rds_recv_track_latency(struct rds_sock *rs, char __user *optval,
 }
 
 
+static int rds_set_config_uuid(struct rds_sock *rs, char __user *optval,
+			       int optlen)
+{
+	return rds_set_bool_option(&rs->rs_uuid_en, optval, optlen);
+}
+
+static int rds_get_config_uuid(struct rds_sock *rs, char __user *optval,
+			       int *optlen)
+{
+	struct rds_uuid_args args;
+
+	memset(&args, 0, sizeof(args));
+	args.uuid_en = rs->rs_uuid_en;
+	args.drop_cnt = rs->rs_uuid_drop_cnt;
+	if (rs->rs_conn) {
+		args.acl_en = rs->rs_conn->c_acl_en;
+		memcpy(args.uuid, rs->rs_conn->c_uuid, sizeof(args.uuid));
+	}
+
+	if (copy_to_user(optval, &args, sizeof(args)))
+		return -EFAULT;
+
+	if (put_user(sizeof(args), optlen))
+		return -EFAULT;
+
+	return 0;
+}
+
 static int rds_setsockopt(struct socket *sock, int level, int optname,
 			  char __user *optval, unsigned int optlen)
 {
@@ -482,6 +510,9 @@ static int rds_setsockopt(struct socket *sock, int level, int optname,
 		break;
 	case SO_RDS_MSG_RXPATH_LATENCY:
 		ret = rds_recv_track_latency(rs, optval, optlen);
+		break;
+	case RDS_CONFIG_UUID:
+		ret = rds_set_config_uuid(rs, optval, optlen);
 		break;
 	default:
 		ret = -ENOPROTOOPT;
@@ -533,6 +564,9 @@ static int rds_getsockopt(struct socket *sock, int level, int optname,
 			ret = -EFAULT;
 		else
 			ret = 0;
+		break;
+	case RDS_CONFIG_UUID:
+		ret = rds_get_config_uuid(rs, optval, optlen);
 		break;
 	default:
 		break;
