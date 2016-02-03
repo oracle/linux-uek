@@ -2448,20 +2448,13 @@ static void nvme_dev_scan(struct work_struct *work)
 {
 	struct nvme_dev *dev = container_of(work, struct nvme_dev, scan_work);
 	struct nvme_id_ctrl *ctrl;
-	dma_addr_t dma_addr;
 
 	if (!dev->tagset.tags)
 		return;
-
-	ctrl = dma_alloc_coherent(dev->dev, 4096, &dma_addr, GFP_KERNEL);
-	if (!ctrl)
+	if (nvme_identify_ctrl(dev, &ctrl))
 		return;
-	if (nvme_identify(dev, 0, 1, dma_addr)) {
-		dma_free_coherent(dev->dev, 4096, ctrl, dma_addr);
-		return;
-	}
 	nvme_scan_namespaces(dev, le32_to_cpup(&ctrl->nn));
-	dma_free_coherent(dev->dev, 4096, ctrl, dma_addr);
+	kfree(ctrl);
 }
 
 /*
