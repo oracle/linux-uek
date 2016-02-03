@@ -928,7 +928,7 @@ static int nvme_queue_rq(struct blk_mq_hw_ctx *hctx,
 
 	nvme_set_info(cmd, iod, req_completion);
 	spin_lock_irq(&nvmeq->q_lock);
-	if (req->cmd_type == REQ_TYPE_DRV_PRIV)
+	if (req->cmd_type == REQ_TYPE_SPECIAL)
 		nvme_submit_priv(nvmeq, req, iod);
 	else if (req->cmd_flags & REQ_DISCARD)
 		nvme_submit_discard(nvmeq, ns, req, iod);
@@ -1026,7 +1026,7 @@ int __nvme_submit_sync_cmd(struct request_queue *q, struct nvme_command *cmd,
 	if (IS_ERR(req))
 		return PTR_ERR(req);
 
-	req->cmd_type = REQ_TYPE_DRV_PRIV;
+	req->cmd_type = REQ_TYPE_SPECIAL; 
 	req->__data_len = 0;
 	req->__sector = (sector_t) -1;
 	req->bio = req->biotail = NULL;
