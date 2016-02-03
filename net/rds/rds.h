@@ -1036,6 +1036,7 @@ extern unsigned long rds_sysctl_trace_flags;
 extern unsigned int  rds_sysctl_trace_level;
 extern unsigned int  rds_sysctl_shutdown_trace_start_time;
 extern unsigned int  rds_sysctl_shutdown_trace_end_time;
+extern unsigned int rds_sysctl_uuid_tx_no_drop;
 
 /* threads.c */
 int rds_threads_init(void);
