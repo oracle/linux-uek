@@ -879,6 +879,11 @@ int rds_recvmsg(struct socket *sock, struct msghdr *msg, size_t size,
 			goto out;
 		}
 
+		if (rds_cmsg_uuid(rs, inc, msg)) {
+			ret = -EFAULT;
+			goto out;
+		}
+
 		rds_stats_inc(s_recv_delivered);
 
 		sin = (struct sockaddr_in *)msg->msg_name;
