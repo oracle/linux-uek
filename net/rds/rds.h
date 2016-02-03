@@ -289,6 +289,9 @@ struct rds_connection {
 
 	enum rds_conn_drop_src	c_drop_source;
 	struct list_head	c_laddr_node;
+
+	unsigned char		c_acl_init;
+	unsigned char		c_acl_en;
 };
 
 static inline
