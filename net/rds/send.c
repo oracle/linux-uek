@@ -167,6 +167,27 @@ static void release_in_xmit(struct rds_connection *conn)
 		wake_up_all(&conn->c_waitq);
 }
 
+static int rds_match_uuid(struct rds_connection *conn, struct rds_message *rm)
+{
+	int ret = 0;
+
+	if (!conn->c_acl_en || !rm->uuid.enable) {
+		rdsdebug("uuid is not enabled acl_en=%d uuid_en=%d val=%s\n",
+			 conn->c_acl_en, rm->uuid.enable, rm->uuid.value);
+		return 0;
+	}
+
+	ret = memcmp(conn->c_uuid, rm->uuid.value, sizeof(conn->c_uuid));
+
+	if (!ret && rm->m_rs)
+		rm->m_rs->rs_uuid_sent_cnt++;
+
+	if (ret && rds_sysctl_uuid_tx_no_drop)
+		return 0;
+
+	return ret;
+}
+
 /*
  * We're making the concious trade-off here to only send one message
  * down the connection at a time.
@@ -265,6 +286,12 @@ restart:
 			}
 			rm->data.op_active = 1;
 
+			if (conn->c_acl_en) {
+				memcpy(rm->uuid.value, conn->c_uuid,
+				       RDS_UUID_MAXLEN);
+				rm->uuid.enable = 1;
+			}
+
 			conn->c_xmit_rm = rm;
 		}
 
@@ -322,9 +349,11 @@ restart:
 					&rm->m_flags))) {
 				spin_lock_irqsave(&conn->c_lock, flags);
 				if (test_and_clear_bit(RDS_MSG_ON_CONN,
-					&rm->m_flags))
+					&rm->m_flags)) {
+					rm->m_status = RDS_RDMA_SEND_DROPPED;
 					list_move_tail(&rm->m_conn_item,
 						&to_be_dropped);
+				}
 				spin_unlock_irqrestore(&conn->c_lock, flags);
 				continue;
 			}
@@ -344,6 +373,20 @@ restart:
 			}
 
 			conn->c_xmit_rm = rm;
+		}
+
+		/* If fail uuid match, drop the message */
+		if (rds_match_uuid(conn, rm)) {
+			spin_lock_irqsave(&conn->c_lock, flags);
+			if (test_and_clear_bit(RDS_MSG_ON_CONN, &rm->m_flags)) {
+				rm->m_status = RDS_RDMA_SEND_ACCVIO;
+				list_move_tail(&rm->m_conn_item,
+					       &to_be_dropped);
+			}
+			spin_unlock_irqrestore(&conn->c_lock, flags);
+			conn->c_xmit_rm = 0;
+			rm->m_rs->rs_uuid_drop_cnt++;
+			continue;
 		}
 
 		/* The transport either sends the whole rdma or none of it */
@@ -468,7 +511,7 @@ over_batch:
 			rds_message_unmapped(rm);
 			rds_message_put(rm);
 		}
-		rds_send_remove_from_sock(&to_be_dropped, RDS_RDMA_SEND_DROPPED);
+		rds_send_remove_from_sock(&to_be_dropped, rm->m_status);
 	}
 
 	/*
@@ -1065,6 +1108,11 @@ static int rds_rm_size(struct msghdr *msg, int data_len)
 			size += sizeof(struct scatterlist);
 			break;
 
+		case RDS_CMSG_UUID:
+			cmsg_groups |= 1;
+			size += sizeof(struct scatterlist);
+			break;
+
 		default:
 			return -EINVAL;
 		}
@@ -1100,6 +1148,17 @@ static int rds_cmsg_asend(struct rds_sock *rs, struct rds_message *rm,
 	rm->data.op_notifier->n_user_token = args->user_token;
 	rm->data.op_notifier->n_status = RDS_RDMA_SEND_SUCCESS;
 	rm->data.op_async = 1;
+
+	return 0;
+}
+
+static int rds_cmsg_uuid(struct rds_sock *rs, struct rds_message *rm,
+			 struct cmsghdr *cmsg)
+{
+	struct rds_uuid_args *args = CMSG_DATA(cmsg);
+
+	/* Copy uuid to rm */
+	memcpy(rm->uuid.value, args->uuid, RDS_UUID_MAXLEN);
 
 	return 0;
 }
@@ -1146,6 +1205,10 @@ static int rds_cmsg_send(struct rds_sock *rs, struct rds_message *rm,
 
 		case RDS_CMSG_ASYNC_SEND:
 			ret = rds_cmsg_asend(rs, rm, cmsg);
+			break;
+
+		case RDS_CMSG_UUID:
+			ret = rds_cmsg_uuid(rs, rm, cmsg);
 			break;
 
 		default:
@@ -1248,6 +1311,7 @@ int rds_sendmsg(struct socket *sock, struct msghdr *msg, size_t payload_len)
 	rm->data.op_active = 1;
 
 	rm->m_daddr = daddr;
+	rm->uuid.enable = rs->rs_uuid_en;
 
 	/* For RDMA operation(s), add up rmda bytes to payload to make
 	 * sure its within system QoS threshold limits.
@@ -1314,6 +1378,11 @@ int rds_sendmsg(struct socket *sock, struct msghdr *msg, size_t payload_len)
 		/* Trigger connection so that its ready for the next retry */
 		if ( ret ==  -EAGAIN)
 			rds_conn_connect_if_down(conn);
+		goto out;
+	}
+
+	if (conn->c_acl_init && rds_match_uuid(conn, rm)) {
+		ret = -EFAULT;
 		goto out;
 	}
 
@@ -1584,6 +1653,11 @@ rds_send_pong(struct rds_connection *conn, __be16 dport)
 	conn->c_next_tx_seq++;
 	spin_unlock_irqrestore(&conn->c_lock, flags);
 
+	if (conn->c_acl_en) {
+		memcpy(rm->uuid.value, conn->c_uuid, RDS_UUID_MAXLEN);
+		rm->uuid.enable = 1;
+	}
+
 	rds_stats_inc(s_send_queued);
 	rds_stats_inc(s_send_pong);
 
@@ -1634,6 +1708,11 @@ rds_send_hb(struct rds_connection *conn, int response)
 
 	conn->c_next_tx_seq++;
 	spin_unlock_irqrestore(&conn->c_lock, flags);
+
+	if (conn->c_acl_en) {
+		memcpy(rm->uuid.value, conn->c_uuid, RDS_UUID_MAXLEN);
+		rm->uuid.enable = 1;
+	}
 
 	ret = rds_send_xmit(conn);
 	if (ret == -ENOMEM || ret == -EAGAIN)
