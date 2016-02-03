@@ -289,6 +289,10 @@ struct rds_connection {
 
 	enum rds_conn_drop_src	c_drop_source;
 	struct list_head	c_laddr_node;
+
+	unsigned char		c_acl_init;
+	unsigned char		c_acl_en;
+	u_int8_t		c_uuid[RDS_UUID_MAXLEN];
 };
 
 static inline
@@ -495,6 +499,7 @@ struct rds_message {
 	u64			m_ack_seq;
 	__be32			m_daddr;
 	unsigned long		m_flags;
+	unsigned int		m_status;
 
 	/* Never access m_rs without holding m_rs_lock.
 	 * Lock nesting is
@@ -562,6 +567,10 @@ struct rds_message {
 			unsigned int		op_dmaoff;
 			struct scatterlist	*op_sg;
 		} data;
+		struct rm_uuid_op {
+			u_int8_t		value[RDS_UUID_MAXLEN];
+			u_int8_t		enable;
+		} uuid;
 	};
 };
 
@@ -719,6 +728,12 @@ struct rds_sock {
 	/* Socket receive path trace points*/
 	u8			rs_rx_traces;
 	u8			rs_rx_trace[RDS_MSG_RX_DGRAM_TRACE_MAX];
+
+	/* UUID specific fields */
+	unsigned char		rs_uuid_en;
+	unsigned int		rs_uuid_drop_cnt;
+	unsigned int		rs_uuid_sent_cnt;
+	unsigned int		rs_uuid_recv_cnt;
 };
 
 static inline struct rds_sock *rds_sk_to_rs(const struct sock *sk)
