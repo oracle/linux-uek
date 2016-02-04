@@ -21,6 +21,7 @@
 #include <linux/reboot.h>
 #include <linux/gfp.h>
 #include <linux/context_tracking.h>
+#include <linux/kexec.h>
 
 #include <asm/smp.h>
 #include <asm/delay.h>
@@ -2386,6 +2387,8 @@ static inline struct reg_window *kernel_stack_up(struct reg_window *rw)
 	return (struct reg_window *) (fp + STACK_BIAS);
 }
 
+static int crashing_cpu;
+
 void __noreturn die_if_kernel(char *str, struct pt_regs *regs)
 {
 	static int die_counter;
@@ -2427,6 +2430,8 @@ void __noreturn die_if_kernel(char *str, struct pt_regs *regs)
 		}
 		user_instruction_dump ((unsigned int __user *) regs->tpc);
 	}
+	crashing_cpu = smp_processor_id();
+	crash_kexec(regs);
 	if (panic_on_oops)
 		panic("Fatal exception");
 	if (regs->tstate & TSTATE_PRIV)
