@@ -1,6 +1,30 @@
 DTrace Kernel Modules News
 ==========================
 
+Release 0.5.2 (Feb 3rd, 2016)
+-----------------------------
+Kernel release: 4.1.12-33.el6uek
+
+Bugfixes:
+
+ - When both entry and return probes were enabled for a system call, upon
+   disabling the first, the function pointer in the system call table got
+   reset to its default value even though the 2nd probe might still be
+   active.  This could cause race conditions in the state of the system
+   call probing.
+
+ - Access to the SPARC64 R_L7 register was consistenly failing due to an
+   off-by-one bug.
+
+ - It was possible to read past the beginning of the stack for a user
+   process.  The mechanism for reading stack slots also got updated to
+   increase efficiency, consistency and reliability across architectures.
+
+ - While reading the stack of a userspace process, the stack bias was not
+   being applied for architectures that need it, causing an abundance of
+   essentially invalid values to polute the result.
+
+
 Release 0.5.1 (Nov 17th, 2015)
 ------------------------------
 Kernel release: 4.1.12-24.el6uek

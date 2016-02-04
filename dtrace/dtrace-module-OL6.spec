@@ -13,7 +13,7 @@
 %define variant %{?build_variant:%{build_variant}}%{!?build_variant:-uek}
 
 # Set this to the version of the kernel this module is compiled against.
-%define kver %{?build_kver:%{build_kver}}%{!?build_kver:4.1.4-3.el6uek}
+%define kver %{?build_kver:%{build_kver}}%{!?build_kver:4.1.12-33.el6uek}
 
 %define _signmodules %{?signmodules: %{signmodules}} %{?!signmodules: 1}
 
@@ -36,6 +36,7 @@
 %define dt_0_4_6	1030
 %define dt_0_5_0	1280
 %define dt_0_5_1	1281
+%define dt_0_5_2	1282
 %{lua:
 	local kver = rpm.expand("%{kver}")
 
@@ -45,7 +46,11 @@
 		rpm.define("arches x86_64")
 	end
 
-	if rpm.vercmp(kver, "4.1.12-24") >= 0 then
+	if rpm.vercmp(kver, "4.1.12-33") >= 0 then
+		rpm.define("srcver 0.5.2")
+		rpm.define("bldrel 1")
+		rpm.define("dt_vcode "..rpm.expand("%{dt_0_5_2}"))
+	elseif rpm.vercmp(kver, "4.1.12-24") >= 0 then
 		rpm.define("srcver 0.5.1")
 		rpm.define("bldrel 1")
 		rpm.define("dt_vcode "..rpm.expand("%{dt_0_5_1}"))
@@ -285,6 +290,16 @@ rm -rf %{buildroot}
 %endif
 
 %changelog
+%if %{dt_vcode} >= %{dt_0_5_2}
+* Thu Feb  4 2016 Kris Van Hees <kris.van.hees@oracle.com> - 0.5.2-1
+- Correct probe disable/enable mechanism for syscalls.
+  [Orabug: 22352636]
+- Fix access to uregs[I_R7] for sparc64.
+  (Nick Alcock) [Orabug: 22602870]
+- Use a more efficient, consistent, and reliable mechanism to read user
+  stack locations.
+  (Nick Alcock) [Orabug: 22629102]
+%endif
 %if %{dt_vcode} >= %{dt_0_5_1}
 * Tue Nov 17 2015 Kris Van Hees <kris.van.hees@oracle.com> - 0.5.1-1
 - Remove explicit dependency on kernel RPM.
