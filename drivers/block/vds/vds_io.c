@@ -1,7 +1,7 @@
 /*
  * vds_io.c: LDOM Virtual Disk Server.
  *
- * Copyright (C) 2014 Oracle. All rights reserved.
+ * Copyright (C) 2014, 2015 Oracle. All rights reserved.
  */
 
 #include "vds.h"
@@ -107,6 +107,8 @@ struct vds_io *vds_io_alloc(struct vio_driver_state *vio,
 	if (func)
 		INIT_WORK(&io->vds_work, func);
 
+	INIT_LIST_HEAD(&io->list);
+
 	return io;
 
 err:
@@ -159,14 +161,75 @@ void vds_io_enq(struct vds_io *io)
 	struct vio_driver_state *vio = io->vio;
 	struct vds_port *port = to_vds_port(vio);
 
-	vdsdbg(WQ, "cpu=%d\n", smp_processor_id());
+	vdsdbg(WQ, "io=%p cpu=%d first=%p\n", io, smp_processor_id(),
+	       list_first_entry_or_null(&port->io_list, struct vds_io, list));
 
 	BUG_ON(!in_interrupt());
 
+	list_add_tail(&io->list, &port->io_list);
+	queue_work(port->ioq, &io->vds_work);
+}
+
+void vds_io_wait(struct vds_io *io)
+{
+	struct vio_driver_state *vio = io->vio;
+	struct vds_port *port = to_vds_port(vio);
+	DEFINE_WAIT(wait);
+	unsigned long flags;
+	struct vds_io *first;
+
+	BUG_ON(in_interrupt());
+
+	vdsdbg(WQ, "io=%p cpu=%d first=%p\n", io, smp_processor_id(),
+	       list_first_entry_or_null(&port->io_list, struct vds_io, list));
+
+	while (1) {
+		prepare_to_wait(&port->wait, &wait, TASK_INTERRUPTIBLE);
+
+		vds_vio_lock(vio, flags);
+		first = list_first_entry_or_null(&port->io_list, struct vds_io,
+			list);
+		vds_vio_unlock(vio, flags);
+
+		/*
+		 * If the queue is empty or this is the first request
+		 * on the queue, we can proceed.
+		 */
+		if (first == NULL || first == io) {
+			finish_wait(&port->wait, &wait);
+			break;
+		}
+
+		schedule();
+		finish_wait(&port->wait, &wait);
+	}
+}
+
+void vds_io_done(struct vds_io *io)
+{
+	struct vio_driver_state *vio = io->vio;
+	struct vds_port *port = to_vds_port(vio);
+	unsigned long flags;
+
+	vdsdbg(WQ, "io=%p cpu=%d first=%p\n", io, smp_processor_id(),
+	       list_first_entry_or_null(&port->io_list, struct vds_io, list));
+
+	/*
+	 * Dequeue the request.
+	 *
+	 * If this is a reset, discard the internal IO queue.
+	 * This means that any request which was scheduled from the
+	 * kernel workqueue AFTER the reset will execute but no response
+	 * will be sent to the client.
+	 */
+	vds_vio_lock(vio, flags);
+	list_del(&io->list);
 	if (io->flags & VDS_IO_FINI)
-		queue_work(port->rtq, &io->vds_work);
+		INIT_LIST_HEAD(&port->io_list);
 	else
-		queue_work(port->ioq, &io->vds_work);
+		wake_up(&port->wait);
+	vds_vio_unlock(vio, flags);
+	vds_io_free(io);
 }
 
 static int vds_io_rw(struct vds_io *io)
@@ -440,15 +503,23 @@ done:
 	return rv;
 }
 
-int vd_op_flush(struct vio_driver_state *vio)
+int vd_op_flush(struct vds_io *io)
 {
 	int rv;
+	struct vio_driver_state *vio = io->vio;
 	struct vds_port *port = to_vds_port(vio);
 
-	if (port->be_ops) {
-		flush_workqueue(port->ioq);
+	/*
+	 * Wait until this the first request on the internal IO queue.
+	 * This will act as a barrier to ensure all preceding IO requests
+	 * have completed and responses have been sent to the client.
+	 * This does not affect any request queued after the flush.
+	 */
+	vdsdbg(FLUSH, "VD_OP_FLUSH\n");
+	vds_io_wait(io);
+	if (port->be_ops)
 		rv = port->be_ops->flush(port);
-	} else
+	else
 		rv = -EIO;
 
 	vdsdbg(FLUSH, "VD_OP_FLUSH rv=%d\n", rv);
@@ -613,7 +684,6 @@ done:
 
 void vds_be_fini(struct vds_port *port)
 {
-	flush_workqueue(port->ioq);
 	vds_label_fini(port);
 	if (port->be_ops) {
 		port->be_ops->fini(port);

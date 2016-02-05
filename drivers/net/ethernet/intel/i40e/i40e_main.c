@@ -1656,6 +1656,13 @@ static void i40e_vsi_setup_queue_map(struct i40e_vsi *vsi,
 			vsi->num_queue_pairs = pf->num_lan_msix;
 	}
 
+#ifdef CONFIG_SPARC
+	if (vsi->num_queue_pairs > 32) {
+		dev_warn(&pf->pdev->dev, "default QP is %d, limiting QP to 32\n",
+			 vsi->num_queue_pairs);
+		vsi->num_queue_pairs = 32;
+	}
+#endif
 	/* Scheduler section valid can only be set for ADD VSI */
 	if (is_add) {
 		sections |= I40E_AQ_VSI_PROP_SCHED_VALID;

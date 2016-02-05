@@ -68,6 +68,7 @@
 #define MAX_HWEVENTS			4
 #define MAX_PCRS			4
 #define MAX_PERIOD			((1UL << 32) - 1)
+#define MAX_COUNT			((1UL << 32) - 1)
 
 #define PIC_UPPER_INDEX			0
 #define PIC_LOWER_INDEX			1
@@ -859,11 +860,10 @@ static inline void sparc_pmu_disable_event(struct cpu_hw_events *cpuc, struct hw
 }
 
 static u64 sparc_perf_event_update(struct perf_event *event,
-				   struct hw_perf_event *hwc, int idx)
+				   struct hw_perf_event *hwc, int idx,
+				   bool overflow)
 {
-	int shift = 64 - 32;
-	u64 prev_raw_count, new_raw_count;
-	s64 delta;
+	u64 prev_raw_count, new_raw_count, delta;
 
 again:
 	prev_raw_count = local64_read(&hwc->prev_count);
@@ -873,8 +873,9 @@ again:
 			     new_raw_count) != prev_raw_count)
 		goto again;
 
-	delta = (new_raw_count << shift) - (prev_raw_count << shift);
-	delta >>= shift;
+	if (overflow)
+		new_raw_count |= (1UL << 32);
+	delta = new_raw_count - (prev_raw_count & MAX_COUNT);
 
 	local64_add(delta, &event->count);
 	local64_sub(delta, &hwc->period_left);
@@ -924,7 +925,7 @@ static void read_in_all_counters(struct cpu_hw_events *cpuc)
 		if (cpuc->current_idx[i] != PIC_NO_INDEX &&
 		    cpuc->current_idx[i] != cp->hw.idx) {
 			sparc_perf_event_update(cp, &cp->hw,
-						cpuc->current_idx[i]);
+						cpuc->current_idx[i], false);
 			cpuc->current_idx[i] = PIC_NO_INDEX;
 		}
 	}
@@ -1091,7 +1092,7 @@ static void sparc_pmu_stop(struct perf_event *event, int flags)
 	}
 
 	if (!(event->hw.state & PERF_HES_UPTODATE) && (flags & PERF_EF_UPDATE)) {
-		sparc_perf_event_update(event, &event->hw, idx);
+		sparc_perf_event_update(event, &event->hw, idx, false);
 		event->hw.state |= PERF_HES_UPTODATE;
 	}
 }
@@ -1137,7 +1138,7 @@ static void sparc_pmu_read(struct perf_event *event)
 	int idx = active_event_index(cpuc, event);
 	struct hw_perf_event *hwc = &event->hw;
 
-	sparc_perf_event_update(event, hwc, idx);
+	sparc_perf_event_update(event, hwc, idx, false);
 }
 
 static atomic_t active_events = ATOMIC_INIT(0);
@@ -1623,7 +1624,7 @@ static int __kprobes perf_event_nmi_handler(struct notifier_block *self,
 			pcr_ops->write_pcr(idx, cpuc->pcr[idx]);
 
 		hwc = &event->hw;
-		val = sparc_perf_event_update(event, hwc, idx);
+		val = sparc_perf_event_update(event, hwc, idx, true);
 		if (val & (1ULL << 31))
 			continue;
 
@@ -1810,10 +1811,20 @@ static void perf_callchain_user_32(struct perf_callchain_entry *entry,
 void
 perf_callchain_user(struct perf_callchain_entry *entry, struct pt_regs *regs)
 {
+	u64 saved_fault_address = current_thread_info()->fault_address;
+	u8  saved_fault_code = get_thread_fault_code();
+	u8  saved_asi;
+
 	perf_callchain_store(entry, regs->tpc);
 
 	if (!current->mm)
 		return;
+
+	/* Make sure we are setup to access user memory */
+	__asm__ __volatile__ ("rd %%asi, %0\n" : "=r" (saved_asi));
+	if (saved_asi != ASI_AIUS)
+		__asm__ __volatile__ (
+			"wr %%g0, %0, %%asi\n" : : "i" (ASI_AIUS));
 
 	flushw_user();
 
@@ -1825,4 +1836,11 @@ perf_callchain_user(struct perf_callchain_entry *entry, struct pt_regs *regs)
 		perf_callchain_user_64(entry, regs);
 
 	pagefault_enable();
+
+	if (saved_asi != ASI_AIUS)
+		__asm__ __volatile__ (
+			"wr %%g0, %0, %%asi\n" : : "r" (saved_asi));
+
+	set_thread_fault_code(saved_fault_code);
+	current_thread_info()->fault_address = saved_fault_address;
 }

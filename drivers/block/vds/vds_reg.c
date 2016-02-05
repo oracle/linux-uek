@@ -1,7 +1,7 @@
 /*
  * vds_reg.c: LDOM Virtual Disk Server.
  *
- * Copyright (C) 2014 Oracle. All rights reserved.
+ * Copyright (C) 2014, 2015 Oracle. All rights reserved.
  */
 
 #include "vds.h"
@@ -54,9 +54,9 @@ static int vds_reg_rw(struct vds_io *io)
 	off = to_bytes(io->offset);
 
 	if (io->rw & WRITE)
-		iosz = file->f_op->write(file, addr, io->size, &off);
+		iosz = __vfs_write(file, addr, io->size, &off);
 	else
-		iosz = file->f_op->read(file, addr, io->size, &off);
+		iosz = __vfs_read(file, addr, io->size, &off);
 
 	if (iosz != io->size) {
 		vdsmsg(err, "file IO failed: iosz=%ld\n", iosz);
@@ -70,7 +70,7 @@ static int vds_reg_flush(struct vds_port *port)
 {
 	struct file *file = port->be_data;
 
-	return vfs_fsync(file, 0);
+	return file ? vfs_fsync(file, 0) : 0;
 }
 
 struct vds_be_ops vds_reg_ops = {

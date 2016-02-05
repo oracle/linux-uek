@@ -10,7 +10,9 @@
 
 #define	VLDS_DEV_DIR		"/dev/vlds"
 #define	VLDS_SP_DEV_NAME	"sp" /* SP DS device name */
+#define	VLDS_CTRL_DEV_NAME	"ctrl" /* Control DS device name */
 #define	VLDS_DEV_DOMAIN_FILENAME_TAG	"host:"
+#define	VLDS_INVALID_HANDLE	0xFFFFFFFFFFFFFFFFUL
 
 /* String arguments to ioctl */
 typedef struct vlds_string_arg {

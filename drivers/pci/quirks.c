@@ -2120,7 +2120,7 @@ DECLARE_PCI_FIXUP_FINAL(PCI_VENDOR_ID_VIA, 0x324e, quirk_via_cx700_pci_parking_c
 static void quirk_megaraid_sas_limit_vpd(struct pci_dev *dev)
 {
 	if (dev->vpd)
-		dev->vpd->len = 0x80;
+		dev->vpd->len = 0;
 }
 
 DECLARE_PCI_FIXUP_FINAL(PCI_VENDOR_ID_LSI_LOGIC, 0x0060,

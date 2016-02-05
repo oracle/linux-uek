@@ -114,7 +114,6 @@ MODULE_VERSION(DRV_MODULE_VERSION);
  * The largest contiguous buffer the kernel seems to allow is 8MB.
  */
 #define	DS_DEFAULT_SP_BUF_SIZE	(8*1024*1024)
-#define	DS_DEFAULT_SP_MTU	(8*1024*1024)
 
 #define	DS_PRIMARY_ID		0
 
@@ -198,7 +197,7 @@ struct ds_dev {
 
 	/* LDC receive data buffer for this ds_dev */
 	u8			*rcv_buf;
-	int			rcv_buf_len;
+	u64			rcv_buf_len;
 	u32			mtu;
 
 	/* service registration timer */
@@ -1488,7 +1487,7 @@ int ds_cap_send(ds_svc_hdl_t hdl, void *buf, size_t buflen)
 
 	/* build the data packet containing the data */
 	msglen = sizeof(struct ds_data_req) + buflen;
-	hdr = kzalloc(msglen, GFP_KERNEL);
+	hdr = kzalloc(msglen, GFP_ATOMIC);
 	if (hdr == NULL) {
 		pr_err("ds-%llu: %s: failed to alloc mem for data msg.\n",
 		    ds->id, __func__);
@@ -2180,11 +2179,11 @@ static struct ds_service_info *ds_add_service_provider(struct ds_dev *ds,
 
 	dprintk("entered.\n");
 
-	svc_info = kzalloc(sizeof(struct ds_service_info), GFP_KERNEL);
+	svc_info = kzalloc(sizeof(struct ds_service_info), GFP_ATOMIC);
 	if (unlikely(svc_info == NULL))
 		return NULL;
 
-	svc_info->id = kmemdup(id, (strlen(id) + 1), GFP_KERNEL);
+	svc_info->id = kmemdup(id, (strlen(id) + 1), GFP_ATOMIC);
 	svc_info->vers = vers;
 	svc_info->ops = *ops;
 	svc_info->is_client = false;
@@ -2231,11 +2230,11 @@ static struct ds_service_info *ds_add_service_client(struct ds_dev *ds,
 
 	dprintk("entered.\n");
 
-	svc_info = kzalloc(sizeof(struct ds_service_info), GFP_KERNEL);
+	svc_info = kzalloc(sizeof(struct ds_service_info), GFP_ATOMIC);
 	if (unlikely(svc_info == NULL))
 		return NULL;
 
-	svc_info->id = kmemdup(id, (strlen(id) + 1), GFP_KERNEL);
+	svc_info->id = kmemdup(id, (strlen(id) + 1), GFP_ATOMIC);
 	svc_info->vers = vers;
 	svc_info->ops = *ops;
 	svc_info->is_client = true;
@@ -4120,7 +4119,7 @@ static int ds_set_pri(void)
 
 	/* build the data packet containing the data */
 	msglen = sizeof(struct ds_data_req) + buflen;
-	hdr = kzalloc(msglen, GFP_KERNEL);
+	hdr = kzalloc(msglen, GFP_ATOMIC);
 	if (hdr == NULL) {
 		pr_err("%s: failed to alloc mem for PRI data msg.\n",
 		    __func__);
@@ -4321,9 +4320,6 @@ static int ds_probe(struct vio_dev *vdev, const struct vio_device_id *id)
 			goto out_free_ds;
 
 		ds->rcv_buf_len = DS_DEFAULT_SP_BUF_SIZE;
-
-		ds_cfg.mtu = DS_DEFAULT_SP_MTU;
-
 	} else {
 		ds->rcv_buf = kzalloc(DS_DEFAULT_BUF_SIZE,
 		    GFP_KERNEL);
@@ -4331,11 +4327,11 @@ static int ds_probe(struct vio_dev *vdev, const struct vio_device_id *id)
 			goto out_free_ds;
 
 		ds->rcv_buf_len = DS_DEFAULT_BUF_SIZE;
-
-		ds_cfg.mtu = DS_DEFAULT_MTU;
 	}
 
+	ds_cfg.mtu = DS_DEFAULT_MTU;
 	ds->mtu = ds_cfg.mtu;
+
 	ds->hs_state = DS_HS_LDC_DOWN;
 	ds_cfg.debug = 0;
 	ds_cfg.tx_irq = vdev->tx_irq;
@@ -4383,12 +4379,6 @@ static int ds_probe(struct vio_dev *vdev, const struct vio_device_id *id)
 		ds_add_builtin_services(ds, ds_sp_builtin_template,
 		    ARRAY_SIZE(ds_sp_builtin_template));
 
-	/* add the ds_dev to the global ds_data device list */
-	spin_lock_irqsave(&ds_data_lock, flags);
-	list_add_tail(&ds->list, &ds_data.ds_dev_list);
-	ds_data.num_ds_dev_list++;
-	spin_unlock_irqrestore(&ds_data_lock, flags);
-
 	/*
 	 * begin the process of registering services.
 	 * Note - we do this here to allow loopback services
@@ -4400,6 +4390,12 @@ static int ds_probe(struct vio_dev *vdev, const struct vio_device_id *id)
 	    ds->id, ds->handle, vdev->channel_id);
 
 	UNLOCK_DS_DEV(ds, ds_flags)
+
+	/* add the ds_dev to the global ds_data device list */
+	spin_lock_irqsave(&ds_data_lock, flags);
+	list_add_tail(&ds->list, &ds_data.ds_dev_list);
+	ds_data.num_ds_dev_list++;
+	spin_unlock_irqrestore(&ds_data_lock, flags);
 
 	return rv;
 

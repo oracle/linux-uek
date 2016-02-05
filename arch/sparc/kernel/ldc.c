@@ -86,7 +86,8 @@ static struct ldc_version ver_arr[] = {
 };
 
 #define LDC_DEFAULT_MTU			(4 * LDC_PACKET_SIZE)
-#define LDC_DEFAULT_NUM_ENTRIES		(PAGE_SIZE / LDC_PACKET_SIZE)
+#define LDC_MTU_MSGS			(4)
+#define LDC_MIN_NUM_ENTRIES		(512)
 
 struct ldc_channel;
 
@@ -1157,6 +1158,7 @@ struct ldc_channel *ldc_alloc(unsigned long id,
 	const struct ldc_mode_ops *mops;
 	unsigned long dummy1, dummy2, hv_err;
 	u8 mss, *mssbuf;
+	u32 num_entries;
 	int err;
 
 	err = -ENODEV;
@@ -1234,11 +1236,26 @@ struct ldc_channel *ldc_alloc(unsigned long id,
 
 	lp->event_arg = event_arg;
 
-	/* XXX allow setting via ldc_channel_config to override defaults
-	 * XXX or use some formula based upon mtu
-	 */
-	lp->tx_num_entries = LDC_DEFAULT_NUM_ENTRIES;
-	lp->rx_num_entries = LDC_DEFAULT_NUM_ENTRIES;
+	/* calculate the number of rx/tx queue entries */
+	num_entries = (lp->cfg.mtu * LDC_MTU_MSGS) / mss;
+
+	/* round num_entries up to nearest power of 2 - per spec */
+	if ((num_entries & (num_entries - 1)) != 0) {
+
+		uint64_t	tmp = 1;
+
+		while (num_entries) {
+			num_entries >>= 1; tmp <<= 1;
+		}
+		num_entries = tmp;
+	}
+
+	/* guarantee a minimum number of queue entries */
+	if (num_entries < LDC_MIN_NUM_ENTRIES)
+		num_entries = LDC_MIN_NUM_ENTRIES;
+
+	lp->tx_num_entries = num_entries;
+	lp->rx_num_entries = num_entries;
 
 	err = alloc_queue("TX", lp->tx_num_entries,
 			  &lp->tx_base, &lp->tx_ra);

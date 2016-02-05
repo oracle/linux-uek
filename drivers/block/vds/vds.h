@@ -1,7 +1,7 @@
 /*
  * vds.h: LDOM Virtual Disk Server.
  *
- * Copyright (C) 2014 Oracle. All rights reserved.
+ * Copyright (C) 2014, 2015 Oracle. All rights reserved.
  */
 
 #include <linux/module.h>
@@ -18,6 +18,7 @@
 #include <linux/namei.h>
 #include <linux/device-mapper.h>
 #include <linux/sysfs.h>
+#include <linux/wait.h>
 
 #include <asm/vio.h>
 #include <asm/ldc.h>
@@ -52,7 +53,8 @@ struct vds_port {
 	struct vio_disk_geom	*geom;
 	struct vio_disk_vtoc	*vtoc;
 	struct workqueue_struct	*ioq;
-	struct workqueue_struct	*rtq;
+	struct list_head	io_list;
+	wait_queue_head_t	wait;
 };
 
 #define	VDS_PORT_SEQ		0x1
