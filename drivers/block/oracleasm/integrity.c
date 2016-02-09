@@ -71,10 +71,10 @@ u32 asm_integrity_format(struct block_device *bdev)
 	if (bi->tag_size)
 		format |= ASM_IFMT_DISK | ASM_IFMT_ATO;
 
-	if (!strcmp(bi->name, "T10-DIF-TYPE1-CRC"))
+	if (!strcmp(bi->profile->name, "T10-DIF-TYPE1-CRC"))
 		return format;
 
-	if (!strcmp(bi->name, "T10-DIF-TYPE1-IP"))
+	if (!strcmp(bi->profile->name, "T10-DIF-TYPE1-IP"))
 		return format | ASM_IFMT_IP_CHECKSUM;
 
 	return 0;
