@@ -72,6 +72,7 @@ module_param(nvme_io_queues, uint, 0);
 MODULE_PARM_DESC(nvme_io_queues, "set the number of nvme io queues");
 
 static LIST_HEAD(dev_list);
+static DEFINE_SPINLOCK(dev_list_lock);
 static struct task_struct *nvme_thread;
 static struct workqueue_struct *nvme_workq;
 static wait_queue_head_t nvme_kthread_wait;
