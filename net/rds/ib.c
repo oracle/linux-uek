@@ -53,18 +53,11 @@
 unsigned int rds_ib_fmr_1m_pool_size = RDS_FMR_1M_POOL_SIZE;
 unsigned int rds_ib_fmr_8k_pool_size = RDS_FMR_8K_POOL_SIZE;
 unsigned int rds_ib_retry_count = RDS_IB_DEFAULT_RETRY_COUNT;
-#if RDMA_RDS_APM_SUPPORTED
-unsigned int rds_ib_apm_enabled = 0;
-unsigned int rds_ib_apm_fallback = 1;
-#endif
 unsigned int rds_ib_active_bonding_enabled = 0;
 unsigned int rds_ib_active_bonding_fallback = 1;
 unsigned int rds_ib_active_bonding_reconnect_delay = 1;
 unsigned int rds_ib_active_bonding_trigger_delay_max_msecs; /* = 0; */
 unsigned int rds_ib_active_bonding_trigger_delay_min_msecs; /* = 0; */
-#if RDMA_RDS_APM_SUPPORTED
-unsigned int rds_ib_apm_timeout = RDS_IB_DEFAULT_TIMEOUT;
-#endif
 unsigned int rds_ib_rnr_retry_count = RDS_IB_DEFAULT_RNR_RETRY_COUNT;
 #if IB_RDS_CQ_VECTOR_SUPPORTED
 unsigned int rds_ib_cq_balance_enabled = 1;
@@ -79,22 +72,10 @@ module_param(rds_ib_fmr_8k_pool_size, int, 0444);
 MODULE_PARM_DESC(rds_ib_fmr_8k_pool_size, " Max number of 8k fmr per HCA");
 module_param(rds_ib_retry_count, int, 0444);
 MODULE_PARM_DESC(rds_ib_retry_count, " Number of hw retries before reporting an error");
-#if RDMA_RDS_APM_SUPPORTED
-module_param(rds_ib_apm_enabled, int, 0444);
-MODULE_PARM_DESC(rds_ib_apm_enabled, " APM Enabled");
-#endif
 module_param(rds_ib_active_bonding_enabled, int, 0444);
 MODULE_PARM_DESC(rds_ib_active_bonding_enabled, " Active Bonding enabled");
-#if RDMA_RDS_APM_SUPPORTED
-module_param(rds_ib_apm_timeout, int, 0444);
-MODULE_PARM_DESC(rds_ib_apm_timeout, " APM timeout");
-#endif
 module_param(rds_ib_rnr_retry_count, int, 0444);
 MODULE_PARM_DESC(rds_ib_rnr_retry_count, " QP rnr retry count");
-#if RDMA_RDS_APM_SUPPORTED
-module_param(rds_ib_apm_fallback, int, 0444);
-MODULE_PARM_DESC(rds_ib_apm_fallback, " APM failback enabled");
-#endif
 module_param(rds_ib_active_bonding_fallback, int, 0444);
 MODULE_PARM_DESC(rds_ib_active_bonding_fallback, " Active Bonding failback Enabled");
 module_param(rds_ib_active_bonding_failover_groups, charp, 0444);
@@ -374,21 +355,11 @@ static int rds_ib_conn_info_visitor(struct rds_connection *conn,
 		struct rdma_dev_addr *dev_addr;
 
 		ic = conn->c_transport_data;
-#if RDMA_RDS_APM_SUPPORTED
-		if (rds_ib_apm_enabled) {
-			memcpy((union ib_gid *) &iinfo->src_gid,
-				&ic->i_cur_path.p_sgid, sizeof(union ib_gid));
-			memcpy((union ib_gid *) &iinfo->dst_gid,
-				&ic->i_cur_path.p_dgid, sizeof(union ib_gid));
-		} else
-#endif
-		{
-			dev_addr = &ic->i_cm_id->route.addr.dev_addr;
-			rdma_addr_get_sgid(dev_addr,
-				(union ib_gid *) &iinfo->src_gid);
-			rdma_addr_get_dgid(dev_addr,
-				(union ib_gid *) &iinfo->dst_gid);
-		}
+		dev_addr = &ic->i_cm_id->route.addr.dev_addr;
+		rdma_addr_get_sgid(dev_addr,
+			(union ib_gid *) &iinfo->src_gid);
+		rdma_addr_get_dgid(dev_addr,
+			(union ib_gid *) &iinfo->dst_gid);
 
 		rds_ibdev = ic->rds_ibdev;
 		iinfo->max_send_wr = ic->i_send_ring.w_nr;
@@ -811,16 +782,6 @@ static int rds_ib_move_ip(char			*from_dev,
 		spin_lock_bh(&rds_ibdev->spinlock);
 		list_for_each_entry(ic, &rds_ibdev->conn_list, ib_node) {
 			if (ic->conn->c_laddr == addr) {
-#if RDMA_RDS_APM_SUPPORTED
-				if (rds_ib_apm_enabled) {
-					if (!memcmp(
-						&ic->i_cur_path.p_sgid,
-						&ip_config[to_port].gid,
-						sizeof(union ib_gid))) {
-						continue;
-					}
-				}
-#endif
 				/* if local connection, update the ARP cache */
 				if (ic->conn->c_loopback) {
 					for (i = 1; i <= ip_port_cnt; i++) {
@@ -2763,9 +2724,6 @@ struct rds_transport rds_ib_transport = {
 	.sync_mr		= rds_ib_sync_mr,
 	.free_mr		= rds_ib_free_mr,
 	.flush_mrs		= rds_ib_flush_mrs,
-#if RDMA_RDS_APM_SUPPORTED
-	.check_migration        = rds_ib_check_migration,
-#endif
 	.t_owner		= THIS_MODULE,
 	.t_name			= "infiniband",
 	.t_type			= RDS_TRANS_IB
