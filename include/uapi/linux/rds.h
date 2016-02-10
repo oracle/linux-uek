@@ -70,7 +70,6 @@
 
 /* supported values for SO_RDS_TRANSPORT */
 #define	RDS_TRANS_IB	0
-#define	RDS_TRANS_IWARP	1
 #define	RDS_TRANS_TCP	2
 #define	RDS_TRANS_COUNT	3
 #define	RDS_TRANS_NONE	(~0)
