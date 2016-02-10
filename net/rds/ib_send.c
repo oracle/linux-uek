@@ -350,8 +350,7 @@ void rds_ib_send_cqe_handler(struct rds_ib_connection *ic, struct ib_wc *wc)
 			conn->c_tos, wc->status, wc->vendor_err);
 		rds_rtd(RDS_RTD_ERR, "status %u => %s\n", wc->status,
 			rds_ib_wc_status_str(wc->status));
-	} else
-		ic->i_last_migration = 0;
+	}
 }
 
 /*
