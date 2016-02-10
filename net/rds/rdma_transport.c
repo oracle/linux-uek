@@ -44,8 +44,6 @@
 
 #define RDS_REJ_CONSUMER_DEFINED 28
 
-static struct rdma_cm_id *rds_listen_id;
-
 int unload_allowed __read_mostly;
 
 module_param_named(module_unload_allowed, unload_allowed, int, 0444);
@@ -394,21 +392,11 @@ static int rds_rdma_listen_init(void)
 
 	rdsdebug("cm %p listening on port %u\n", cm_id, RDS_PORT);
 
-	rds_listen_id = cm_id;
 	cm_id = NULL;
 out:
 	if (cm_id)
 		rdma_destroy_id(cm_id);
 	return ret;
-}
-
-static void rds_rdma_listen_stop(void)
-{
-	if (rds_listen_id) {
-		rdsdebug("cm %p\n", rds_listen_id);
-		rdma_destroy_id(rds_listen_id);
-		rds_listen_id = NULL;
-	}
 }
 
 #define MODULE_NAME "rds_rdma"
@@ -434,7 +422,7 @@ int rds_rdma_init(void)
 	goto out;
 
 err_rdma_listen_init:
-	/* We need to clean up both ib and iw components. */
+	/* We need to clean up both ib components. */
 	rds_ib_exit();
 out:
 	/* Either nothing is done successfully or everything succeeds at
@@ -446,8 +434,6 @@ module_init(rds_rdma_init);
 
 void rds_rdma_exit(void)
 {
-	/* stop listening first to ensure no new connections are attempted */
-	rds_rdma_listen_stop();
 	/* cancel initial ib failover work if still active*/
 	cancel_delayed_work_sync(&riif_dlywork);
 	rds_ib_exit();
@@ -455,6 +441,6 @@ void rds_rdma_exit(void)
 module_exit(rds_rdma_exit);
 
 MODULE_AUTHOR("Oracle Corporation <rds-devel@oss.oracle.com>");
-MODULE_DESCRIPTION("RDS: IB/iWARP transport");
+MODULE_DESCRIPTION("RDS: IB transport");
 MODULE_LICENSE("Dual BSD/GPL");
 
