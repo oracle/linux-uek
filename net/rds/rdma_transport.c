@@ -43,8 +43,6 @@
 
 #define RDS_REJ_CONSUMER_DEFINED 28
 
-static struct rdma_cm_id *rds_iw_listen_id;
-
 int unload_allowed __read_mostly;
 
 module_param_named(module_unload_allowed, unload_allowed, int, 0444);
@@ -95,9 +93,7 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 	rdsdebug("conn %p id %p handling event %u (%s)\n", conn, cm_id,
 		 event->event, rds_cm_event_str(event->event));
 
-	if (cm_id->device->node_type == RDMA_NODE_RNIC)
-		trans = &rds_iw_transport;
-	else
+	if (cm_id->device->node_type == RDMA_NODE_IB_CA)
 		trans = &rds_ib_transport;
 
 	/* Prevent shutdown from tearing down the connection
@@ -398,21 +394,11 @@ static int rds_rdma_listen_init(void)
 
 	rdsdebug("cm %p listening on port %u\n", cm_id, RDS_PORT);
 
-	rds_iw_listen_id = cm_id;
 	cm_id = NULL;
 out:
 	if (cm_id)
 		rdma_destroy_id(cm_id);
 	return ret;
-}
-
-static void rds_rdma_listen_stop(void)
-{
-	if (rds_iw_listen_id) {
-		rdsdebug("cm %p\n", rds_iw_listen_id);
-		rdma_destroy_id(rds_iw_listen_id);
-		rds_iw_listen_id = NULL;
-	}
 }
 
 #define MODULE_NAME "rds_rdma"
@@ -421,13 +407,9 @@ int rds_rdma_init(void)
 {
 	int ret;
 
-	ret = rds_iw_init();
-	if (ret)
-		goto out;
-
 	ret = rds_ib_init();
 	if (ret)
-		goto err_ib_init;
+		goto out;
 
 	ret = rds_rdma_listen_init();
 	if (ret)
@@ -442,13 +424,8 @@ int rds_rdma_init(void)
 	goto out;
 
 err_rdma_listen_init:
-	/* We need to clean up both ib and iw components. */
+	/* We need to clean up both ib components. */
 	rds_ib_exit();
-err_ib_init:
-	/* Only rds_iw_init() completes at this point, so we don't have to
-	 * do anything with rds_ib_exit().
-	 */
-	rds_iw_exit();
 out:
 	/* Either nothing is done successfully or everything succeeds at
 	 * this point.
@@ -459,16 +436,13 @@ module_init(rds_rdma_init);
 
 void rds_rdma_exit(void)
 {
-	/* stop listening first to ensure no new connections are attempted */
-	rds_rdma_listen_stop();
 	/* cancel initial ib failover work if still active*/
 	cancel_delayed_work_sync(&riif_dlywork);
 	rds_ib_exit();
-	rds_iw_exit();
 }
 module_exit(rds_rdma_exit);
 
 MODULE_AUTHOR("Oracle Corporation <rds-devel@oss.oracle.com>");
-MODULE_DESCRIPTION("RDS: IB/iWARP transport");
+MODULE_DESCRIPTION("RDS: IB transport");
 MODULE_LICENSE("Dual BSD/GPL");
 
