@@ -302,41 +302,7 @@ void rds_ib_cm_connect_complete(struct rds_connection *conn, struct rdma_cm_even
 	if (dp && dp->dp_ack_seq)
 		rds_send_drop_acked(conn, be64_to_cpu(dp->dp_ack_seq), NULL);
 
-#if RDMA_RDS_APM_SUPPORTED
-	if (rds_ib_apm_enabled) {
-		struct rdma_dev_addr *dev_addr;
-
-		dev_addr = &ic->i_cm_id->route.addr.dev_addr;
-
-		if (!ic->conn->c_reconnect) {
-			rdma_addr_get_sgid(dev_addr,
-				(union ib_gid *)&ic->i_pri_path.p_sgid);
-			rdma_addr_get_dgid(dev_addr,
-				(union ib_gid *)&ic->i_pri_path.p_dgid);
-			printk(KERN_NOTICE "RDS/IB: connection "
-				"<%pI4,%pI4,%d> primary path "
-				"<"RDS_IB_GID_FMT","RDS_IB_GID_FMT">\n",
-				&conn->c_laddr,
-				&conn->c_faddr,
-				conn->c_tos,
-				RDS_IB_GID_ARG(ic->i_pri_path.p_sgid),
-				RDS_IB_GID_ARG(ic->i_pri_path.p_dgid));
-		}
-		rdma_addr_get_sgid(dev_addr,
-			(union ib_gid *)&ic->i_cur_path.p_sgid);
-		rdma_addr_get_dgid(dev_addr,
-			(union ib_gid *)&ic->i_cur_path.p_dgid);
-	}
-#endif
-
 	rds_connect_complete(conn);
-
-#if RDMA_RDS_APM_SUPPORTED
-        if (ic->i_last_migration) {
-                rds_ib_stats_inc(s_ib_failed_apm);
-                ic->i_last_migration = 0;
-        }
-#endif
 }
 
 static void rds_ib_cm_fill_conn_param(struct rds_connection *conn,
@@ -564,6 +530,7 @@ static void rds_ib_qp_event_handler(struct ib_event *event, void *data)
 		complete(&ic->i_last_wqe_complete);
 		break;
 	case IB_EVENT_PATH_MIG:
+#if 0
 		memcpy(&ic->i_cur_path.p_sgid,
 			&ic->i_cm_id->route.path_rec[ic->i_alt_path_index].sgid,
 			sizeof(union ib_gid));
@@ -597,6 +564,7 @@ static void rds_ib_qp_event_handler(struct ib_event *event, void *data)
 				RDS_IB_GID_ARG(ic->i_cur_path.p_dgid));
 		}
 		ic->i_last_migration = get_seconds();
+#endif
 
 		break;
 	case IB_EVENT_PATH_MIG_ERR:
@@ -1020,23 +988,12 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 		event->param.conn.initiator_depth,
 		ib_init_frag_size);
 
-#if RDMA_RDS_APM_SUPPORTED
-	if (rds_ib_apm_enabled)
-		rdma_set_timeout(cm_id, rds_ib_apm_timeout);
-#endif
 	/* rdma_accept() calls rdma_reject() internally if it fails */
 	err = rdma_accept(cm_id, &conn_param);
 	if (err) {
 		conn->c_drop_source = DR_IB_RDMA_ACCEPT_FAIL;
 		rds_ib_conn_error(conn, "rdma_accept failed (%d)\n", err);
 	}
-#if RDMA_RDS_APM_SUPPORTED
-	else if (rds_ib_apm_enabled && !conn->c_loopback) {
-		err = rdma_enable_apm(cm_id, RDMA_ALT_PATH_BEST);
-		if (err)
-			printk(KERN_WARNING "RDS/IB: APM couldn't be enabled for passive side: %d\n", err);
-	}
-#endif
 
 out:
 	if (conn)
@@ -1054,14 +1011,6 @@ int rds_ib_cm_initiate_connect(struct rdma_cm_id *cm_id)
 	struct rdma_conn_param conn_param;
 	struct rds_ib_connect_private dp;
 	int ret;
-
-#if RDMA_RDS_APM_SUPPORTED
-	if (rds_ib_apm_enabled && !conn->c_loopback) {
-		ret = rdma_enable_apm(cm_id, RDMA_ALT_PATH_BEST);
-		if (ret)
-			printk(KERN_WARNING "RDS/IB: APM couldn't be enabled for active side: %d\n", ret);
-	}
-#endif
 
 	rds_ib_set_protocol(conn, RDS_PROTOCOL_4_1);
 	ic->i_flowctl = rds_ib_sysctl_flow_control;	/* advertise flow control */
@@ -1116,11 +1065,6 @@ static void rds_ib_migrate(struct work_struct *_work)
 	struct rdma_cm_id *cm_id = ic->i_cm_id;
 	int ret = 0;
 
-#if RDMA_RDS_APM_SUPPORTED
-	if (!rds_ib_apm_fallback)
-		return;
-#endif
-
 	if (!ic->i_active_side) {
 		ret = ib_query_qp(cm_id->qp, &qp_attr, IB_QP_PATH_MIG_STATE,
 				&qp_init_attr);
@@ -1147,67 +1091,6 @@ static void rds_ib_migrate(struct work_struct *_work)
 		}
 	}
 }
-
-#if RDMA_RDS_APM_SUPPORTED
-void rds_ib_check_migration(struct rds_connection *conn,
-			struct rdma_cm_event *event)
-{
-	struct rds_ib_connection *ic = conn->c_transport_data;
-	union ib_gid sgid;
-	union ib_gid dgid;
-	struct ib_qp_init_attr qp_init_attr;
-	struct ib_qp_attr qp_attr;
-	struct rdma_cm_id *cm_id = ic->i_cm_id;
-	int err;
-
-	if (!rds_ib_apm_enabled || !rds_conn_up(ic->conn))
-		return ;
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 12, 0)
-	ic->i_alt_path_index = event->param.ud.alt_path_index;
-
-	memcpy(&sgid, &cm_id->route.path_rec[event->param.ud.alt_path_index].
-		sgid, sizeof(union ib_gid));
-	memcpy(&dgid, &cm_id->route.path_rec[event->param.ud.alt_path_index].
-		dgid, sizeof(union ib_gid));
-#else /* LINUX_VERSION >= 4.12.0 */
-	return;
-#endif /* LINUX_VERSION >= 4.12.0 */
-
-	printk(KERN_NOTICE
-		"RDS/IB: connection "
-		"<%pI4,%pI4,%d> loaded alternate path "
-		"<"RDS_IB_GID_FMT","RDS_IB_GID_FMT">\n",
-		&conn->c_laddr,
-		&conn->c_faddr,
-		conn->c_tos,
-		RDS_IB_GID_ARG(sgid), RDS_IB_GID_ARG(dgid));
-
-	err = ib_query_qp(cm_id->qp, &qp_attr, IB_QP_ALT_PATH, &qp_init_attr);
-	if (err) {
-		printk(KERN_ERR "RDS/IB: ib_query_qp failed (%d)\n", err);
-		return;
-	}
-	qp_attr.alt_timeout = rds_ib_apm_timeout;
-	err = ib_modify_qp(cm_id->qp, &qp_attr, IB_QP_ALT_PATH);
-	if (err) {
-		printk(KERN_ERR "RDS/IB: ib_modify_qp failed (%d)\n", err);
-		return;
-	}
-
-	if (!memcmp(&ic->i_pri_path.p_sgid, &sgid, sizeof(union ib_gid)) &&
-		!memcmp(&ic->i_pri_path.p_dgid, &dgid, sizeof(union ib_gid))) {
-		if (memcmp(&ic->i_cur_path.p_sgid, &ic->i_pri_path.p_sgid,
-				sizeof(union ib_gid)) ||
-			memcmp(&ic->i_cur_path.p_dgid, &ic->i_pri_path.p_dgid,
-				sizeof(union ib_gid))) {
-
-			ic->i_migrate_w.ic = ic;
-			queue_delayed_work(rds_wq, &ic->i_migrate_w.work, 0);
-		}
-	}
-}
-#endif
 
 int rds_ib_conn_connect(struct rds_connection *conn)
 {
