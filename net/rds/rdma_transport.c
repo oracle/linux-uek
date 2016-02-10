@@ -72,12 +72,6 @@ static char *rds_cm_event_strings[] = {
 	RDS_CM_EVENT_STRING(MULTICAST_ERROR),
 	RDS_CM_EVENT_STRING(ADDR_CHANGE),
 	RDS_CM_EVENT_STRING(TIMEWAIT_EXIT),
-#if RDMA_RDS_APM_SUPPORTED
-	RDS_CM_EVENT_STRING(ALT_ROUTE_RESOLVED),
-	RDS_CM_EVENT_STRING(ALT_ROUTE_ERROR),
-	RDS_CM_EVENT_STRING(LOAD_ALT_PATH),
-	RDS_CM_EVENT_STRING(ALT_PATH_LOADED),
-#endif
 #undef RDS_CM_EVENT_STRING
 };
 
@@ -126,11 +120,6 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 
 	case RDMA_CM_EVENT_ADDR_RESOLVED:
 		rdma_set_service_type(cm_id, conn->c_tos);
-
-#if RDMA_RDS_APM_SUPPORTED
-		if (rds_ib_apm_enabled)
-			rdma_set_timeout(cm_id, rds_ib_apm_timeout);
-#endif
 
 		if (conn->c_tos && conn->c_reconnect) {
 			struct rds_ib_connection *base_ic =
@@ -216,22 +205,6 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 			}
 		}
 		break;
-
-#if RDMA_RDS_APM_SUPPORTED
-	case RDMA_CM_EVENT_ALT_PATH_LOADED:
-		rdsdebug("RDS: alt path loaded\n");
-		if (conn)
-			trans->check_migration(conn, event);
-		break;
-
-	case RDMA_CM_EVENT_ALT_ROUTE_RESOLVED:
-		rdsdebug("RDS: alt route resolved\n");
-		break;
-
-	case RDMA_CM_EVENT_ALT_ROUTE_ERROR:
-		rdsdebug("RDS: alt route resolve error\n");
-		break;
-#endif
 
 	case RDMA_CM_EVENT_ROUTE_ERROR:
 		/* IP might have been moved so flush the ARP entry and retry */
@@ -335,16 +308,6 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 			"ADDR_CHANGE event <%pI4,%pI4>\n",
 			&conn->c_laddr,
 			&conn->c_faddr);
-#if RDMA_RDS_APM_SUPPORTED
-		if (conn && !rds_ib_apm_enabled) {
-			rds_rtd(RDS_RTD_CM,
-				"ADDR_CHANGE: calling rds_conn_drop <%pI4,%pI4,%d>\n",
-				&conn->c_laddr, &conn->c_faddr,
-				conn->c_tos);
-			conn->c_drop_source = DR_IB_ADDR_CHANGE;
-			rds_conn_drop(conn);
-		}
-#else
 		if (conn) {
 			rds_rtd(RDS_RTD_CM,
 				"ADDR_CHANGE: calling rds_conn_drop <%pI4,%pI4,%d>\n",
@@ -353,7 +316,6 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 			conn->c_drop_source = DR_IB_ADDR_CHANGE;
 			rds_conn_drop(conn);
 		}
-#endif
 		break;
 
 	case RDMA_CM_EVENT_DISCONNECTED:
