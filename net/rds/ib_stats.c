@@ -80,7 +80,6 @@ static char *rds_ib_stat_names[] = {
 	"ib_srq_lows",
 	"ib_srq_refills",
 	"ib_srq_empty_refills",
-	"ib_apm_reconnect",
 	"ib_recv_cache_added",
 	"ib_recv_cache_removed",
 };
