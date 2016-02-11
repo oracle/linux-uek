@@ -80,7 +80,7 @@ static int xve_set_coalesce(struct net_device *dev,
 	ret = ib_modify_cq(priv->recv_cq, coal->rx_max_coalesced_frames,
 			   coal->rx_coalesce_usecs);
 
-	if (ret && ret != -ENOSYS) {
+	if (ret) {
 		xve_warn(priv, "failed modifying CQ (%d)\n", ret);
 		return ret;
 	}

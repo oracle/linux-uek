@@ -180,13 +180,12 @@ int xve_aging_task_machine(struct xve_dev_priv *priv)
 					spin_lock_irqsave(&priv->lock, flags);
 					xve_remove_fwt_entry(priv, fwt_entry);
 					path = fwt_entry->path;
-					if (path) {
+					if (path)
 						memcpy(dgid.raw,
-						       path->pathrec.dgid.raw,
-						       sizeof(dgid));
-						if (list_empty(&path->fwt_list))
-							is_list_empty = 1;
-					}
+							path->pathrec.dgid.raw,
+							sizeof(dgid));
+					if (path && list_empty(&path->fwt_list))
+						is_list_empty = 1;
 					spin_unlock_irqrestore(&priv->lock,
 							       flags);
 					if (xve_age_path && is_list_empty)
@@ -401,7 +400,6 @@ void xve_prepare_skb(struct xve_dev_priv *priv, struct sk_buff *skb)
 	skb_pkt_type(skb, PACKET_HOST);
 	if (xve_is_ovn(priv) && test_bit(XVE_FLAG_CSUM, &priv->flags))
 		skb->ip_summed = CHECKSUM_UNNECESSARY;
-	skb->truesize = skb->len + sizeof(struct sk_buff);
 }
 
 void xve_tables_exit(void)

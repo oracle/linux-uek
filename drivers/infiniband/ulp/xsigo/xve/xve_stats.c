@@ -62,6 +62,7 @@ static char *counter_name[XVE_MAX_COUNTERS] = {
 	"state_machine count:\t\t",
 	"state_machine_up count:\t\t",
 	"state_machine_down count:\t",
+	"state_machine_ibclear count:\t",
 	"napi_poll_count:\t\t",
 	"short_tx_pkt_count:\t\t",
 	"tx_skb_count:\t\t\t",
@@ -116,9 +117,12 @@ static char *counter_name[XVE_MAX_COUNTERS] = {
 	"mac aged match not found:\t",
 	"mac aged still in use:\t\t",
 	"mac moved count:\t\t",
+	"mcast not ready count:\t\t",
 	"mcast join task count:\t\t",
 	"mcast leave task count:\t\t",
 	"mcast carrier task count:\t",
+	"mcast attach count:\t\t",
+	"mcast detach count:\t\t",
 	"tx ud count:\t\t\t",
 	"tx rc count:\t\t\t",
 	"tx mcast count:\t\t\t",
@@ -143,7 +147,7 @@ static char *counter_name[XVE_MAX_COUNTERS] = {
 	"ib pkey_change count:\t\t",
 	"ib invalid count:\t\t",
 	"uplink unicast:\t\t\t",
-	"Heartbeat Count:\t\t",
+	"Heartbeat Count(0x8919):\t\t",
 	"Link State message count:\t",
 	"RX frames without GRH\t\t",
 };
@@ -188,8 +192,8 @@ static char *misc_counter_name[XVE_MISC_MAX_COUNTERS] = {
 #define XS_RXBATCHING_ON	"rbatch on"
 #define XS_RXBATCHING_OFF	"rbatch off"
 
-struct proc_dir_entry *proc_root_xve = NULL;
-struct proc_dir_entry *proc_root_xve_dev = NULL;
+struct proc_dir_entry *proc_root_xve;
+struct proc_dir_entry *proc_root_xve_dev;
 
 static int xve_proc_open_device(struct inode *inode, struct file *file);
 static int xve_proc_read_device(struct seq_file *m, void *data);
@@ -319,18 +323,16 @@ static int xve_proc_l2_read_device(struct seq_file *m, void *data)
 				print_mgid_buf(tmp_buf,
 					       (char *)(fwt_entry->dgid.raw));
 				if (fwt_entry->path) {
+					u32 rx_rate = 0;
+
 					tx = xve_cmtx_get(fwt_entry->path);
 					rx = xve_cmrx_get(fwt_entry->path);
-					if (tx) {
-						u32 rx_rate = 0;
-
-						if (test_bit
-						    (XVE_FLAG_OPER_UP,
+					if (test_bit(XVE_FLAG_OPER_UP,
 						     &tx->flags))
-							cmstr = "Connected";
-						if (rx)
-							rx_rate =
-							    rx->stats.rx_rate;
+						cmstr = "Connected";
+					if (rx)
+						rx_rate = rx->stats.rx_rate;
+					if (tx) {
 						seq_printf(m,
 							   "%d\t%d\t%d\t%2x:%2x:%2x:%2x:%2x:%2x\t%s\t%s\t%x\t%s\t%d\t%d\n",
 							   j, fwt_entry->vlan,
@@ -454,6 +456,8 @@ static int xve_proc_read_device(struct seq_file *m, void *data)
 	seq_printf(m, "Admin mtu:\t\t\t%d\n", vp->admin_mtu);
 	seq_printf(m, "MCAST mtu:\t\t\t%d\n", vp->mcast_mtu);
 	seq_printf(m, "IB MAX MTU: \t\t\t%d\n", vp->max_ib_mtu);
+	seq_printf(m, "SG for UD:\t\t\t%d\n", xve_ud_need_sg(vp->max_ib_mtu));
+	seq_printf(m, "Max SG supported(HCA):\t\t%d\n", vp->dev_attr.max_sge);
 
 	seq_printf(m, "Receive Queue size: \t\t%d\n", xve_recvq_size);
 	seq_printf(m, "Transmit Queue size: \t\t%d\n", xve_sendq_size);

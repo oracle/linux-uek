@@ -87,6 +87,30 @@ static void xve_ud_dma_unmap_rx(struct xve_dev_priv *priv,
 	}
 }
 
+
+static void xve_ud_skb_put_frags(struct xve_dev_priv *priv,
+		struct sk_buff *skb,
+		unsigned int length)
+{
+	if (xve_ud_need_sg(priv->max_ib_mtu)) {
+		skb_frag_t *frag = &skb_shinfo(skb)->frags[0];
+		unsigned int size;
+		/*
+		 * There is only two buffers needed for max_payload = 4K,
+		 * first buf size is XVE_UD_HEAD_SIZE
+		 */
+		skb->tail += XVE_UD_HEAD_SIZE;
+		skb->len  += length;
+
+		size = length - XVE_UD_HEAD_SIZE;
+
+		skb_frag_size_set(frag, size);
+		skb->data_len += size;
+		skb->truesize += PAGE_SIZE;
+	} else
+		skb_put(skb, length);
+}
+
 static int xve_ib_post_receive(struct net_device *dev, int id)
 {
 	struct xve_dev_priv *priv = netdev_priv(dev);
@@ -114,11 +138,16 @@ static struct sk_buff *xve_alloc_rx_skb(struct net_device *dev, int id)
 	struct sk_buff *skb;
 	int buf_size, align;
 	u64 *mapping;
+	int tailroom;
 
-	if (xve_ud_need_sg(priv->max_ib_mtu))
+	if (xve_ud_need_sg(priv->max_ib_mtu)) {
+		/* reserve some tailroom for IP/TCP headers */
 		buf_size = XVE_UD_HEAD_SIZE;
-	else
+		tailroom = 128;
+	} else {
 		buf_size = XVE_UD_BUF_SIZE(priv->max_ib_mtu);
+		tailroom = 0;
+	}
 
 	/*
 	 * Eth header is 14 bytes, IB will leave a 40 byte gap for a GRH
@@ -127,7 +156,7 @@ static struct sk_buff *xve_alloc_rx_skb(struct net_device *dev, int id)
 	 * 4-byte EoIB header.
 	 */
 	align = xve_is_ovn(priv) ? 10 : 6;
-	skb = xve_dev_alloc_skb(priv, buf_size + align);
+	skb = xve_dev_alloc_skb(priv, buf_size + tailroom + align);
 	if (unlikely(!skb))
 		return NULL;
 
@@ -207,7 +236,8 @@ void xve_process_link_state(struct xve_dev_priv *priv,
 		set_bit(XVE_GW_STATE_UP, &priv->state);
 		priv->hb_interval = 30*HZ;
 
-		if (!netif_carrier_ok(priv->netdev))
+		if ((!netif_carrier_ok(priv->netdev)) ||
+			(!test_bit(XVE_OPER_UP, &priv->flags)))
 			xve_link_up(priv);
 	} else {
 		clear_bit(XVE_GW_STATE_UP, &priv->state);
@@ -323,7 +353,7 @@ xve_ib_handle_rx_wc(struct net_device *dev, struct ib_wc *wc)
 		     wc->byte_len, wc->slid);
 
 	xve_ud_dma_unmap_rx(priv, mapping);
-	skb_put_frags(skb, XVE_UD_HEAD_SIZE, wc->byte_len, NULL);
+	xve_ud_skb_put_frags(priv, skb,  wc->byte_len);
 	grhhdr = (struct ib_packed_grh *)(skb->data);
 	/* This will print packet when driver is in Debug Mode */
 	dumppkt(skb->data, skb->len, "UD Packet Dump");
@@ -507,18 +537,14 @@ int poll_tx(struct xve_dev_priv *priv)
 	do {
 		n = ib_poll_cq(priv->send_cq, MAX_SEND_CQE, priv->send_wc);
 		/* handle multiple WC's in one call */
-		if (likely(n > 0)) {
-			for (i = 0; i < n; ++i)
-				xve_ib_handle_tx_wc(priv->netdev,
-						    priv->send_wc + i);
-			tot += n;
-		} else if (n == 0) {
-			break;
-		} else {
+		for (i = 0; i < n; ++i)
+			xve_ib_handle_tx_wc(priv->netdev,
+					priv->send_wc + i);
+		if (n < 0) {
 			xve_warn(priv, "%s ib_poll_cq() failed, rc %d\n",
-				 __func__, n);
+					__func__, n);
 		}
-
+		tot += n;
 	} while (n == MAX_SEND_CQE);
 
 	return tot;
