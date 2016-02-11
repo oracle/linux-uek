@@ -69,6 +69,8 @@ int xve_mcast_attach(struct net_device *dev, u16 mlid, union ib_gid *mgid,
 		xve_warn(priv,
 			"failed to attach to multicast group, ret = %d\n",
 			ret);
+	else
+		priv->counters[XVE_MCAST_ATTACH]++;
 
 out:
 	kfree(qp_attr);
@@ -312,7 +314,10 @@ void xve_event(struct ib_event_handler *handler, struct ib_event *record)
 			break;
 	case IB_EVENT_CLIENT_REREGISTER:
 			priv->counters[XVE_CLIENT_REREGISTER_COUNTER]++;
-			set_bit(XVE_FLAG_DONT_DETACH_MCAST, &priv->flags);
+			/* As EDR uvnic needs a Heart beat restart Multicast*/
+			if (!priv->vnic_type)
+				set_bit(XVE_FLAG_DONT_DETACH_MCAST,
+						&priv->flags);
 			xve_queue_work(priv, XVE_WQ_START_FLUSHLIGHT);
 			break;
 	case IB_EVENT_PORT_ERR:

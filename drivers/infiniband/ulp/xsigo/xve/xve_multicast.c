@@ -497,8 +497,10 @@ void xve_mcast_join_task(struct work_struct *work)
 	struct net_device *dev = priv->netdev;
 	struct ib_port_attr attr;
 
-	if (!test_bit(XVE_MCAST_RUN, &priv->flags))
+	if (!test_bit(XVE_MCAST_RUN, &priv->flags)) {
+		priv->counters[XVE_MCAST_NOTREADY]++;
 		return;
+	}
 
 	if (!ib_query_port(priv->ca, priv->port, &attr))
 		priv->local_lid = attr.lid;
@@ -595,8 +597,10 @@ int xve_mcast_start_thread(struct net_device *dev)
 	    || !test_bit(XVE_CHASSIS_ADMIN_UP, &priv->state))
 		return -ENOTCONN;
 
-	xve_dbg_mcast(priv, "%s Starting  mcast thread for  state[%ld ]\n",
-		      __func__, priv->flags);
+	xve_dbg_mcast(priv, "%s Starting  mcast thread for  state[%ld:%d:%d]\n",
+			__func__, priv->flags,
+			test_bit(XVE_MCAST_RUN, &priv->flags),
+			test_bit(XVE_MCAST_RUN_GC, &priv->flags));
 
 	mutex_lock(&mcast_mutex);
 	if (!test_and_set_bit(XVE_MCAST_RUN, &priv->flags))
@@ -640,12 +644,15 @@ static int xve_mcast_leave(struct net_device *dev, struct xve_mcast *mcast)
 
 		/* Remove ourselves from the multicast group */
 		if (priv->qp) {
-			if (!test_bit(XVE_FLAG_DONT_DETACH_MCAST, &priv->flags))
+			if (!test_bit(XVE_FLAG_DONT_DETACH_MCAST,
+				&priv->flags)) {
 				ret =
 				    ib_detach_mcast(priv->qp,
 						    &mcast->mcmember.mgid,
 						    be16_to_cpu(mcast->
 								mcmember.mlid));
+				priv->counters[XVE_MCAST_DETACH]++;
+			}
 		}
 		if (ret)
 			xve_warn(priv, "ib_detach_mcast failed (result = %d)\n",

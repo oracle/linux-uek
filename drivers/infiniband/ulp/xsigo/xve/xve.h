@@ -151,7 +151,7 @@ enum xve_flush_level {
 };
 
 enum {
-	XVE_UD_HEAD_SIZE = IB_GRH_BYTES + VLAN_ETH_HLEN + XVE_EOIB_LEN + 2048,
+	XVE_UD_HEAD_SIZE = IB_GRH_BYTES + VLAN_ETH_HLEN + XVE_EOIB_LEN,
 	XVE_UD_RX_OVN_SG = 2,	/* max buffer needed for 4K mtu */
 	XVE_UD_RX_EDR_SG = 3,	/* max buffer needed for 10K mtu */
 	XVE_CM_MTU = 0x10000 - 0x20,	/* padding to align header to 16 */
@@ -223,6 +223,7 @@ enum {
 	XVE_STATE_MACHINE,
 	XVE_STATE_MACHINE_UP,
 	XVE_STATE_MACHINE_DOWN,
+	XVE_STATE_MACHINE_IBCLEAR,
 	XVE_NAPI_POLL_COUNTER,
 	XVE_SHORT_PKT_COUNTER,
 	XVE_TX_COUNTER,
@@ -279,9 +280,12 @@ enum {
 	XVE_MAC_STILL_INUSE,
 	XVE_MAC_MOVED_COUNTER,
 
+	XVE_MCAST_NOTREADY,
 	XVE_MCAST_JOIN_TASK,
 	XVE_MCAST_LEAVE_TASK,
 	XVE_MCAST_CARRIER_TASK,
+	XVE_MCAST_ATTACH,
+	XVE_MCAST_DETACH,
 
 	XVE_TX_UD_COUNTER,
 	XVE_TX_RC_COUNTER,
@@ -886,6 +890,8 @@ struct icmp6_ndp {
 	printk(level "%s: " fmt, MODULE_NAME, ##arg)
 #define XSMP_ERROR(fmt, arg...)					\
 	PRINT(KERN_ERR, "XSMP", fmt, ##arg)
+#define DRV_PRINT(fmt, arg...)                                  \
+	PRINT(KERN_INFO, "DRV", fmt, ##arg)
 #define xve_printk(level, priv, format, arg...)			\
 	printk(level "%s: " format,				\
 		((struct xve_dev_priv *) priv)->netdev->name,	\
@@ -1091,42 +1097,6 @@ static inline void xve_put_ctx(struct xve_dev_priv *priv)
 	atomic_dec(&priv->ref_cnt);
 }
 
-/* Adjust length of skb with fragments to match received data */
-static inline void skb_put_frags(struct sk_buff *skb, unsigned int hdr_space,
-				 unsigned int length, struct sk_buff *toskb)
-{
-	int i, num_frags;
-	unsigned int size;
-
-	/* put header into skb */
-	size = min(length, hdr_space);
-	skb->tail += size;
-	skb->len += size;
-	length -= size;
-
-	num_frags = skb_shinfo(skb)->nr_frags;
-	for (i = 0; i < num_frags; i++) {
-		skb_frag_t *frag = &skb_shinfo(skb)->frags[i];
-
-		if (length == 0) {
-			/* don't need this page */
-			if (toskb)
-				skb_fill_page_desc(toskb, i, skb_frag_page(frag)
-						, 0, PAGE_SIZE);
-			else
-				__free_page(skb_shinfo(skb)->frags[i].page.p);
-			--skb_shinfo(skb)->nr_frags;
-		} else {
-			size = min_t(unsigned, length, (unsigned)PAGE_SIZE);
-
-			frag->size = size;
-			skb->data_len += size;
-			skb->truesize += size;
-			skb->len += size;
-			length -= size;
-		}
-	}
-}
 
 /* functions */
 int xve_poll(struct napi_struct *napi, int budget);

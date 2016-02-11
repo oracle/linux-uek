@@ -448,6 +448,44 @@ static void xve_cm_free_rx_reap_list(struct net_device *dev)
 	}
 }
 
+
+/* Adjust length of skb with fragments to match received data */
+static inline void skb_put_frags(struct sk_buff *skb, unsigned int hdr_space,
+				 unsigned int length, struct sk_buff *toskb)
+{
+	int i, num_frags;
+	unsigned int size;
+
+	/* put header into skb */
+	size = min(length, hdr_space);
+	skb->tail += size;
+	skb->len += size;
+	length -= size;
+
+	num_frags = skb_shinfo(skb)->nr_frags;
+	for (i = 0; i < num_frags; i++) {
+		skb_frag_t *frag = &skb_shinfo(skb)->frags[i];
+
+		if (length == 0) {
+			/* don't need this page */
+			if (toskb)
+				skb_fill_page_desc(toskb, i, skb_frag_page(frag)
+						, 0, PAGE_SIZE);
+			else
+				__free_page(skb_shinfo(skb)->frags[i].page.p);
+			--skb_shinfo(skb)->nr_frags;
+		} else {
+			size = min_t(unsigned, length, (unsigned)PAGE_SIZE);
+
+			frag->size = size;
+			skb->data_len += size;
+			skb->truesize += size;
+			skb->len += size;
+			length -= size;
+		}
+	}
+}
+
 void xve_cm_handle_rx_wc(struct net_device *dev, struct ib_wc *wc)
 {
 	struct xve_dev_priv *priv = netdev_priv(dev);
@@ -982,7 +1020,7 @@ static int xve_cm_tx_init(struct xve_cm_ctx *p, struct ib_sa_path_rec *pathrec)
 	int ret;
 
 	p->tx_ring = vmalloc(priv->xve_sendq_size * sizeof(*p->tx_ring));
-	if (!p->tx_ring) {
+	if (IS_ERR(p->tx_ring)) {
 		xve_warn(priv, "failed to allocate tx ring\n");
 		ret = -ENOMEM;
 		goto err_tx;
@@ -1310,8 +1348,7 @@ static void xve_cm_create_srq(struct net_device *dev, int max_sge)
 
 	priv->cm.srq = ib_create_srq(priv->pd, &srq_init_attr);
 	if (IS_ERR(priv->cm.srq)) {
-		if (PTR_ERR(priv->cm.srq) != -ENOSYS)
-			pr_warn("%s: failed to allocate SRQ, error %ld\n",
+		pr_warn("%s: failed to allocate SRQ, error %ld\n",
 				priv->ca->name, PTR_ERR(priv->cm.srq));
 		priv->cm.srq = NULL;
 		return;
@@ -1337,6 +1374,9 @@ int xve_cm_dev_init(struct net_device *dev)
 	int i, ret;
 	struct ib_device_attr attr;
 
+	if (!priv->cm_supported)
+		return 0;
+
 	INIT_LIST_HEAD(&priv->cm.passive_ids);
 	INIT_LIST_HEAD(&priv->cm.reap_list);
 	INIT_LIST_HEAD(&priv->cm.start_list);
@@ -1350,8 +1390,6 @@ int xve_cm_dev_init(struct net_device *dev)
 		pr_warn("ib_query_device() failed with %d\n", ret);
 		return ret;
 	}
-
-	priv->dev_attr = attr;
 
 	/* Based on the admin mtu from the chassis */
 	attr.max_srq_sge =
@@ -1407,7 +1445,7 @@ void xve_cm_dev_cleanup(struct net_device *dev)
 	struct xve_dev_priv *priv = netdev_priv(dev);
 	int ret;
 
-	if (!priv->cm.srq)
+	if (!priv->cm_supported || !priv->cm.srq)
 		return;
 
 	xve_debug(DEBUG_CM_INFO, priv, "%s Cleanup xve CM\n", __func__);
