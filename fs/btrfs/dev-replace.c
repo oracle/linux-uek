@@ -321,10 +321,6 @@ int btrfs_dev_replace_start(struct btrfs_root *root,
 		return -EINVAL;
 	}
 
-	if ((args->start.srcdevid == 0 && args->start.srcdev_name[0] == '\0') ||
-	    args->start.tgtdev_name[0] == '\0')
-		return -EINVAL;
-
 	/*
 	 * Here we commit the transaction to make sure commit_total_bytes
 	 * of all the devices are updated.
