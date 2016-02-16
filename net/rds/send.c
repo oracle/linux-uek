@@ -846,7 +846,7 @@ void rds_send_drop_acked(struct rds_connection *conn, u64 ack,
 		if (!rds_send_is_acked(rm, ack, is_acked))
 			break;
 
-		list_move_tail(&rm->m_conn_item, &list);
+		list_move(&rm->m_conn_item, &list);
 		clear_bit(RDS_MSG_ON_CONN, &rm->m_flags);
 	}
 
