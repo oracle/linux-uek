@@ -26,8 +26,6 @@
 #define RDS_PROTOCOL_MINOR(v)	((v) & 255)
 #define RDS_PROTOCOL(maj, min)	(((maj) << 8) | min)
 
-#define IB_RDS_CQ_VECTOR_SUPPORTED 0
-
 /*
  * XXX randomly chosen, but at least seems to be unused:
  * #               18464-18768 Unassigned
