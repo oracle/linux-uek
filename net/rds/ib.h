@@ -562,9 +562,6 @@ extern unsigned int rds_ib_retry_count;
 extern unsigned int rds_ib_rnr_retry_count;
 extern unsigned int rds_ib_active_bonding_enabled;
 extern unsigned int rds_ib_active_bonding_fallback;
-#if IB_RDS_CQ_VECTOR_SUPPORTED
-extern unsigned int rds_ib_cq_balance_enabled;
-#endif
 
 extern spinlock_t ib_nodev_conns_lock;
 extern struct list_head ib_nodev_conns;
