@@ -59,9 +59,6 @@ unsigned int rds_ib_active_bonding_reconnect_delay = 1;
 unsigned int rds_ib_active_bonding_trigger_delay_max_msecs; /* = 0; */
 unsigned int rds_ib_active_bonding_trigger_delay_min_msecs; /* = 0; */
 unsigned int rds_ib_rnr_retry_count = RDS_IB_DEFAULT_RNR_RETRY_COUNT;
-#if IB_RDS_CQ_VECTOR_SUPPORTED
-unsigned int rds_ib_cq_balance_enabled = 1;
-#endif
 static char *rds_ib_active_bonding_failover_groups = NULL;
 unsigned int rds_ib_active_bonding_arps = RDS_IB_DEFAULT_NUM_ARPS;
 static char *rds_ib_active_bonding_excl_ips = "169.254/16,172.10/16";
@@ -90,10 +87,6 @@ module_param(rds_ib_active_bonding_trigger_delay_min_msecs, int, 0444);
 MODULE_PARM_DESC(rds_ib_active_bonding_trigger_delay_min_msecs,
 		 " Active Bonding Min delay before active "
 		 "bonding is triggered(msecs)");
-#if IB_RDS_CQ_VECTOR_SUPPORTED
-module_param(rds_ib_cq_balance_enabled, int, 0444);
-MODULE_PARM_DESC(rds_ib_cq_balance_enabled, " CQ load balance Enabled");
-#endif
 module_param(rds_ib_active_bonding_arps, int, 0444);
 MODULE_PARM_DESC(rds_ib_active_bonding_arps, " Num ARPs to be sent when IP moved");
 module_param(rds_ib_active_bonding_excl_ips, charp, 0444);
