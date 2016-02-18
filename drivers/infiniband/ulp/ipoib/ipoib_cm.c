@@ -773,6 +773,14 @@ void ipoib_cm_send(struct net_device *dev, struct sk_buff *skb, struct ipoib_cm_
 		return;
 	}
 
+	if ((tx->tx_head - tx->tx_tail) >= ipoib_cm_sendq_size) {
+		++dev->stats.tx_dropped;
+		dev_kfree_skb_any(skb);
+		ipoib_dbg_data(priv, "dropping packet: length %d connection 0x%x\n",
+				skb->len, tx->qp->qp_num);
+		return;
+	}
+
 	ipoib_dbg_data(priv, "sending packet: head 0x%x length %d connection 0x%x\n",
 		       tx->tx_head, skb->len, tx->qp->qp_num);
 
@@ -783,7 +791,7 @@ void ipoib_cm_send(struct net_device *dev, struct sk_buff *skb, struct ipoib_cm_
 	 * means we have to make sure everything is properly recorded and
 	 * our state is consistent before we call post_send().
 	 */
-	tx_req = &tx->tx_ring[tx->tx_head & (ipoib_sendq_size - 1)];
+	tx_req = &tx->tx_ring[tx->tx_head & (ipoib_cm_sendq_size - 1)];
 	tx_req->skb = skb;
 	if ((skb->ip_summed == CHECKSUM_PARTIAL) && cm_ibcrc_as_csum &&
 	    !(tx->caps & IPOIB_CM_CAPS_IBCRC_AS_CSUM))
@@ -814,7 +822,7 @@ void ipoib_cm_send(struct net_device *dev, struct sk_buff *skb, struct ipoib_cm_
 			goto dec_outstanding;
 		}
 		rc = post_send_sg(priv, tx, tx->tx_head &
-				  (ipoib_sendq_size - 1),
+				  (ipoib_cm_sendq_size - 1),
 				  skb, sg_tx_req.mapping);
 	} else {
 		addr = ib_dma_map_single(priv->ca, skb->data, skb->len,
@@ -826,7 +834,7 @@ void ipoib_cm_send(struct net_device *dev, struct sk_buff *skb, struct ipoib_cm_
 		}
 		tx_req->mapping = addr;
 
-		rc = post_send(priv, tx, tx->tx_head & (ipoib_sendq_size - 1),
+		rc = post_send(priv, tx, tx->tx_head & (ipoib_cm_sendq_size - 1),
 			       addr, skb->len);
 	}
 
@@ -862,9 +870,9 @@ void ipoib_cm_handle_tx_wc(struct net_device *dev, struct ib_wc *wc)
 	ipoib_dbg_data(priv, "cm send completion: id %d, status: %d\n",
 		       wr_id, wc->status);
 
-	if (unlikely(wr_id >= ipoib_sendq_size)) {
+	if (unlikely(wr_id >= ipoib_cm_sendq_size)) {
 		ipoib_warn(priv, "cm send completion event with wrid %d (> %d)\n",
-			   wr_id, ipoib_sendq_size);
+			   wr_id, ipoib_cm_sendq_size);
 		return;
 	}
 
@@ -1124,7 +1132,7 @@ static struct ib_qp *ipoib_cm_create_tx_qp(struct net_device *dev, struct ipoib_
 		.send_cq		= priv->recv_cq,
 		.recv_cq		= priv->recv_cq,
 		.srq			= priv->cm.srq,
-		.cap.max_send_wr	= ipoib_sendq_size,
+		.cap.max_send_wr	= ipoib_cm_sendq_size,
 		.cap.max_send_sge	= 1,
 		.sq_sig_type		= IB_SIGNAL_ALL_WR,
 		.qp_type		= IB_QPT_RC,
@@ -1221,14 +1229,14 @@ static int ipoib_cm_tx_init(struct ipoib_cm_tx *p, u32 qpn,
 	struct ipoib_dev_priv *priv = netdev_priv(p->dev);
 	int ret;
 
-	p->tx_ring = __vmalloc(ipoib_sendq_size * sizeof *p->tx_ring,
+	p->tx_ring = __vmalloc(ipoib_cm_sendq_size * sizeof *p->tx_ring,
 			GFP_NOIO, PAGE_KERNEL);
 	if (!p->tx_ring) {
 		ipoib_warn(priv, "failed to allocate tx ring\n");
 		ret = -ENOMEM;
 		goto err_tx;
 	}
-	memset(p->tx_ring, 0, ipoib_sendq_size * sizeof *p->tx_ring);
+	memset(p->tx_ring, 0, ipoib_cm_sendq_size * sizeof *p->tx_ring);
 
 	p->qp = ipoib_cm_create_tx_qp(p->dev, p);
 	if (IS_ERR(p->qp)) {

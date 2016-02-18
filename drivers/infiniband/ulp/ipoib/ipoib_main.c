@@ -56,6 +56,15 @@ MODULE_LICENSE("Dual BSD/GPL");
 
 int ipoib_sendq_size __read_mostly = IPOIB_TX_RING_SIZE;
 int ipoib_recvq_size __read_mostly = IPOIB_RX_RING_SIZE;
+/* Number 8 below is inline with current Exadata-ZFS deployment.
+ * We usually have 2 ZFS heads in current deployment.
+ * Considering this, maximum four connections can go bad (assuming
+ * unlikely scenario where all connections went bad simultaneously)
+ * With CM connection workqueue size, which is 1/8th of port limit,
+ * as defined below; we should hold good.
+ * Orabug: 22287489
+ */
+int ipoib_cm_sendq_size __read_mostly = IPOIB_TX_RING_SIZE / 8;
 int unload_allowed __read_mostly = 1;
 
 module_param_named(module_unload_allowed, unload_allowed, int, 0444);
@@ -2256,7 +2265,17 @@ static int __init ipoib_init_module(void)
 	ipoib_sendq_size = min(ipoib_sendq_size, IPOIB_MAX_QUEUE_SIZE);
 	ipoib_sendq_size = max(ipoib_sendq_size, max(2 * MAX_SEND_CQE,
 						     IPOIB_MIN_QUEUE_SIZE));
+
 #ifdef CONFIG_INFINIBAND_IPOIB_CM
+	if (ipoib_sendq_size < ipoib_cm_sendq_size) {
+		/* This is to avoid buffer overflows in connected mode */
+		printk(KERN_ERR "%s: minimum expected value for "
+				"module parameter ipoib_sendq_size=%d\n",
+				MODULE_NAME,
+				(roundup_pow_of_two(ipoib_cm_sendq_size >> 1) + 1));
+		return -EINVAL;
+	}
+
 	ipoib_max_conn_qp = min(ipoib_max_conn_qp, IPOIB_CM_MAX_CONN_QP);
 #endif
 

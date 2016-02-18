@@ -839,6 +839,7 @@ static inline void ipoib_unregister_debugfs(void) { }
 
 extern int ipoib_sendq_size;
 extern int ipoib_recvq_size;
+extern int ipoib_cm_sendq_size;
 
 extern struct ib_sa_client ipoib_sa_client;
 
