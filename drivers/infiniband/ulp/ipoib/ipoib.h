@@ -77,7 +77,7 @@ enum {
 	/* +1 to accommodate residual data in the last SG element */
 	IPOIB_CM_RX_SG	  = ALIGN(IPOIB_CM_BUF_SIZE, PAGE_SIZE)/PAGE_SIZE+1,
 	IPOIB_RX_RING_SIZE	  = 2048,	/* per Orabug 19606645 */
-	IPOIB_TX_RING_SIZE	  = 512,
+	IPOIB_TX_RING_SIZE	  = 2048,
 	IPOIB_MAX_QUEUE_SIZE	  = 8192,
 	IPOIB_MIN_QUEUE_SIZE	  = 2,
 	IPOIB_CM_MAX_CONN_QP	  = 4096,
