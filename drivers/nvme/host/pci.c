@@ -119,6 +119,7 @@ struct nvme_dev {
 	unsigned long flags;
 
 #define NVME_CTRL_RESETTING    0
+#define NVME_CTRL_REMOVING     1
 
 	struct nvme_ctrl ctrl;
 	struct completion ioq_wait;
@@ -285,6 +286,17 @@ static int nvme_init_request(void *data, struct request *req,
 	return 0;
 }
 
+static void nvme_queue_scan(struct nvme_dev *dev)
+{
+	/*
+	 * Do not queue new scan work when a controller is reset during
+	 * removal.
+	 */
+	if (test_bit(NVME_CTRL_REMOVING, &dev->flags))
+		return;
+	queue_work(nvme_workq, &dev->scan_work);
+}
+
 static void nvme_complete_async_event(struct nvme_dev *dev,
 		struct nvme_completion *cqe)
 {
@@ -302,7 +314,7 @@ static void nvme_complete_async_event(struct nvme_dev *dev,
 	switch (result & 0xff07) {
 	case NVME_AER_NOTICE_NS_CHANGED:
 		dev_info(dev->ctrl.device, "rescanning\n");
-		queue_work(nvme_workq, &dev->scan_work);
+		nvme_queue_scan(dev);
 	default:
 		dev_warn(dev->ctrl.device, "async event result %08x\n", result);
 	}
@@ -1703,8 +1715,7 @@ static int nvme_dev_add(struct nvme_dev *dev)
 		/* Free previously allocated queues that are no longer usable */
 		nvme_free_queues(dev, dev->online_queues);
 	}
-
-	queue_work(nvme_workq, &dev->scan_work);
+	nvme_queue_scan(dev);
 	return 0;
 }
 
@@ -2097,7 +2108,7 @@ static void nvme_remove(struct pci_dev *pdev)
 	struct nvme_dev *dev = pci_get_drvdata(pdev);
 
 	del_timer_sync(&dev->watchdog_timer);
-
+	set_bit(NVME_CTRL_REMOVING, &dev->flags);
 	pci_set_drvdata(pdev, NULL);
 	flush_work(&dev->async_work);
 	flush_work(&dev->reset_work);
