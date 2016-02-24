@@ -66,6 +66,7 @@ struct nvme_ctrl {
 	struct mutex namespaces_mutex;
 	struct device *device;	/* char device */
 	struct list_head node;
+	struct ida ns_ida;
 
 	char name[12];
 	char serial[20];
@@ -97,6 +98,7 @@ struct nvme_ns {
 	struct request_queue *queue;
 	struct gendisk *disk;
 	struct kref kref;
+	int instance;
 
 	u8 eui[8];
 	u8 uuid[16];
