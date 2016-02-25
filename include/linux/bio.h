@@ -294,7 +294,7 @@ static inline void bio_get(struct bio *bio)
 {
 	bio->bi_flags |= (1 << BIO_REFFED);
 	smp_mb__before_atomic();
-	atomic_inc(&bio->__bi_cnt);
+	atomic_inc(&bio->bi_cnt);
 }
 
 static inline void bio_cnt_set(struct bio *bio, unsigned int count)
@@ -303,7 +303,7 @@ static inline void bio_cnt_set(struct bio *bio, unsigned int count)
 		bio->bi_flags |= (1 << BIO_REFFED);
 		smp_mb__before_atomic();
 	}
-	atomic_set(&bio->__bi_cnt, count);
+	atomic_set(&bio->bi_cnt, count);
 }
 
 enum bip_flags {

@@ -270,8 +270,8 @@ void bio_init(struct bio *bio)
 {
 	memset(bio, 0, sizeof(*bio));
 	bio->bi_flags = 1 << BIO_UPTODATE;
-	atomic_set(&bio->__bi_remaining, 1);
-	atomic_set(&bio->__bi_cnt, 1);
+	atomic_set(&bio->bi_remaining, 1);
+	atomic_set(&bio->bi_cnt, 1);
 }
 EXPORT_SYMBOL(bio_init);
 
@@ -293,7 +293,7 @@ void bio_reset(struct bio *bio)
 
 	memset(bio, 0, BIO_RESET_BYTES);
 	bio->bi_flags = flags | (1 << BIO_UPTODATE);
-	atomic_set(&bio->__bi_remaining, 1);
+	atomic_set(&bio->bi_remaining, 1);
 }
 EXPORT_SYMBOL(bio_reset);
 
@@ -311,7 +311,7 @@ static inline void bio_inc_remaining(struct bio *bio)
 {
 	bio->bi_flags |= (1 << BIO_CHAIN);
 	smp_mb__before_atomic();
-	atomic_inc(&bio->__bi_remaining);
+	atomic_inc(&bio->bi_remaining);
 }
 
 /**
@@ -538,12 +538,12 @@ void bio_put(struct bio *bio)
 	if (!bio_flagged(bio, BIO_REFFED))
 		bio_free(bio);
 	else {
-		BIO_BUG_ON(!atomic_read(&bio->__bi_cnt));
+		BIO_BUG_ON(!atomic_read(&bio->bi_cnt));
 
 		/*
 		 * last put frees it
 		 */
-		if (atomic_dec_and_test(&bio->__bi_cnt))
+		if (atomic_dec_and_test(&bio->bi_cnt))
 			bio_free(bio);
 	}
 }
@@ -1759,15 +1759,15 @@ EXPORT_SYMBOL(bio_flush_dcache_pages);
 static inline bool bio_remaining_done(struct bio *bio)
 {
 	/*
-	 * If we're not chaining, then ->__bi_remaining is always 1 and
+	 * If we're not chaining, then ->bi_remaining is always 1 and
 	 * we always end io on the first invocation.
 	 */
 	if (!bio_flagged(bio, BIO_CHAIN))
 		return true;
 
-	BUG_ON(atomic_read(&bio->__bi_remaining) <= 0);
+	BUG_ON(atomic_read(&bio->bi_remaining) <= 0);
 
-	if (atomic_dec_and_test(&bio->__bi_remaining)) {
+	if (atomic_dec_and_test(&bio->bi_remaining)) {
 		clear_bit(BIO_CHAIN, &bio->bi_flags);
 		return true;
 	}
