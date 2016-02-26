@@ -3516,6 +3516,7 @@ typedef struct scsi_qla_host {
 		uint32_t	delete_progress:1;
 
 		uint32_t	fw_tgt_reported:1;
+		uint32_t	bbcr_enable:1;
 	} flags;
 
 	atomic_t	loop_state;
@@ -3633,6 +3634,7 @@ typedef struct scsi_qla_host {
 
 	atomic_t	vref_count;
 	struct qla8044_reset_template reset_tmplt;
+	uint16_t	bbcr;
 } scsi_qla_host_t;
 
 struct qla27xx_image_status {
