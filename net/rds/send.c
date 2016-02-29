@@ -1159,20 +1159,25 @@ static int rds_cmsg_send(struct rds_sock *rs, struct rds_message *rm,
 	return ret;
 }
 
-static inline unsigned int rds_rdma_bytes(struct msghdr *msg)
+static inline int rds_rdma_bytes(struct msghdr *msg, size_t *rdma_bytes)
 {
 	struct rds_rdma_args *args;
 	struct cmsghdr *cmsg;
-	unsigned int rdma_bytes = 0;
 
 	for_each_cmsghdr(cmsg, msg) {
+		if (!CMSG_OK(msg, cmsg))
+			return -EINVAL;
+
+		if (cmsg->cmsg_level != SOL_RDS)
+			continue;
+
 		if (cmsg->cmsg_type == RDS_CMSG_RDMA_ARGS) {
 			args = CMSG_DATA(cmsg);
-			rdma_bytes += args->remote_vec.bytes;
+			*rdma_bytes += args->remote_vec.bytes;
 		}
 	}
 
-	return rdma_bytes;
+	return 0;
 }
 
 int rds_sendmsg(struct socket *sock, struct msghdr *msg, size_t payload_len)
@@ -1188,7 +1193,7 @@ int rds_sendmsg(struct socket *sock, struct msghdr *msg, size_t payload_len)
 	int queued = 0, allocated_mr = 0;
 	int nonblock = msg->msg_flags & MSG_DONTWAIT;
 	long timeo = sock_sndtimeo(sk, nonblock);
-	size_t total_payload_len = payload_len;
+	size_t total_payload_len = payload_len, rdma_payload_len = 0;
 
 	/* Mirror Linux UDP mirror of BSD error message compatibility */
 	/* XXX: Perhaps MSG_MORE someday */
@@ -1222,6 +1227,15 @@ int rds_sendmsg(struct socket *sock, struct msghdr *msg, size_t payload_len)
 	}
 	release_sock(sk);
 
+	ret = rds_rdma_bytes(msg, &rdma_payload_len);
+	if (ret)
+		goto out;
+
+	if (max_t(size_t, payload_len, rdma_payload_len) > RDS_MAX_MSG_SIZE) {
+		ret = -EMSGSIZE;
+		goto out;
+	}
+
 	if (payload_len > rds_sk_sndbuf(rs)) {
 		ret = -EMSGSIZE;
 		goto out;
@@ -1252,8 +1266,7 @@ int rds_sendmsg(struct socket *sock, struct msghdr *msg, size_t payload_len)
 	/* For RDMA operation(s), add up rmda bytes to payload to make
 	 * sure its within system QoS threshold limits.
 	 */
-	if (rm->rdma.op_active)
-		total_payload_len += rds_rdma_bytes(msg);
+	total_payload_len += rdma_payload_len;
 
 	if (rds_check_qos_threshold(rs->rs_tos, total_payload_len)) {
 		ret = -EINVAL;
