@@ -449,6 +449,7 @@ static int xve_proc_read_device(struct seq_file *m, void *data)
 	tmp_buf[0] = 0;
 	print_mgid_buf(tmp_buf, local_gid_token);
 
+	seq_printf(m, "Type:\t\t\t\t%s\n", (vp->vnic_type) ? "EDR" : "Legacy");
 	seq_printf(m, "Local gid:\t\t\t%s\n", tmp_buf);
 	seq_printf(m, "MAC addr:\t\t\t0x%Lx\n", vp->mac);
 	seq_printf(m, "VID:\t\t\t\t0x%Lx\n", vp->resource_id);

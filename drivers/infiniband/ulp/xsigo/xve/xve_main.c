@@ -1605,9 +1605,10 @@ static int xve_state_machine(struct xve_dev_priv *priv)
 
 			xve_flush_paths(priv->netdev);
 			spin_lock_irqsave(&priv->lock, flags);
-			xve_set_oper_down(priv);
+			/* Disjoin from multicast Group */
 			set_bit(XVE_HBEAT_LOST, &priv->state);
 			spin_unlock_irqrestore(&priv->lock, flags);
+			xve_queue_work(priv, XVE_WQ_START_FLUSHNORMAL);
 		}
 		priv->counters[XVE_STATE_MACHINE_UP]++;
 		if (!test_bit(XVE_OPER_REP_SENT, &priv->state))
