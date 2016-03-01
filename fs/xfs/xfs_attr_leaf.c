@@ -822,8 +822,10 @@ xfs_attr_shortform_list(xfs_attr_list_context_t *context)
 			if (context->seen_enough)
 				break;
 
-			if (error)
+			if (error) {
+				kmem_free(sbuf);
 				return error;
+			}
 			sfe = XFS_ATTR_SF_NEXTENTRY(sfe);
 		}
 		trace_xfs_attr_list_sf_all(context);
@@ -2703,8 +2705,7 @@ xfs_attr3_leaf_list_int(
 				args.rmtblkno = be32_to_cpu(name_rmt->valueblk);
 				args.rmtblkcnt = XFS_B_TO_FSB(args.dp->i_mount, valuelen);
 				retval = xfs_attr_rmtval_get(&args);
-				if (retval)
-					return retval;
+				if (!retval)
 				retval = context->put_listent(context,
 						entry->flags,
 						name_rmt->name,
