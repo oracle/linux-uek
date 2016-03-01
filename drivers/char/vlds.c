@@ -1,7 +1,7 @@
 /*
  * vlds.c: Sun4v LDOMs Virtual Domain Services Driver
  *
- * Copyright (C) 2015 Oracle. All rights reserved.
+ * Copyright (C) 2015, 2016 Oracle. All rights reserved.
  */
 #include <linux/cdev.h>
 #include <linux/device.h>
@@ -289,47 +289,11 @@ static void vlds_remove_event_info(pid_t tgid)
 
 }
 
-static int vlds_add_event(pid_t tgid, struct vlds_service_info *svc_info,
-	u64 type, vlds_ver_t *neg_vers)
+static int vlds_signal_event(pid_t tgid, int fd)
 {
-	struct vlds_event_info *event_info;
-	struct vlds_event *event;
-	struct task_struct *utask;
 	struct file *efd_file;
 	struct eventfd_ctx *efd_ctx;
-	int rv;
-
-	mutex_lock(&vlds_event_info_list_mutex);
-
-	event_info = NULL;
-	rv = vlds_get_event_info(tgid, &event_info);
-	if (rv || event_info == NULL) {
-		/*
-		 * If we failed to find an event_info, it probably just
-		 * means the process did not register for events in favor
-		 * of using polling - which is valid.
-		 */
-		mutex_unlock(&vlds_event_info_list_mutex);
-		return 0;
-	}
-
-	event = kzalloc(sizeof(struct vlds_event), GFP_KERNEL);
-	if (unlikely(event == NULL)) {
-		dprintk("failed to allocate event for "
-		    "service %llx\n", svc_info->handle);
-		mutex_unlock(&vlds_event_info_list_mutex);
-		return -ENOMEM;
-	} else {
-		event->type = type;
-		event->svc_info = svc_info;
-		if (neg_vers != NULL)
-			event->neg_vers = *neg_vers;
-
-		list_add_tail(&event->list,
-		    &event_info->event_list);
-	}
-
-	mutex_unlock(&vlds_event_info_list_mutex);
+	struct task_struct *utask;
 
 	/*
 	 * Signal the process that there is an event pending
@@ -347,8 +311,8 @@ static int vlds_add_event(pid_t tgid, struct vlds_service_info *svc_info,
 		return -EIO;
 	}
 
-	/* Get the file corresponding to event_info->fd */
-	efd_file = fcheck_files(utask->files, event_info->fd);
+	/* Get the file corresponding to fd */
+	efd_file = fcheck_files(utask->files, fd);
 	if (!efd_file) {
 		rcu_read_unlock();
 		return -EIO;
@@ -369,12 +333,89 @@ static int vlds_add_event(pid_t tgid, struct vlds_service_info *svc_info,
 
 	rcu_read_unlock();
 
+	return 0;
+}
+
+/* vlds_dev_mutex must be held */
+static void vlds_add_event_all(struct vlds_dev *vlds, u64 type)
+{
+	struct vlds_event_info *event_info;
+	struct vlds_event *event;
+	int rv;
+
+	mutex_lock(&vlds_event_info_list_mutex);
+
+	list_for_each_entry(event_info, &vlds_event_info_list, list) {
+
+		event = kzalloc(sizeof(struct vlds_event), GFP_KERNEL);
+		if (unlikely(event == NULL)) {
+			dprintk("failed to allocate event %llu for tgid=%u\n",
+			    type, event_info->tgid);
+		} else {
+			event->type = type;
+			list_add_tail(&event->list,
+			    &event_info->event_list);
+		}
+
+		rv = vlds_signal_event(event_info->tgid, event_info->fd);
+		if (rv) {
+			/* just give an error if we failed to add the event */
+			pr_err("%s: Failed to create %llu event for tgid=%u\n",
+			    vlds->int_name, type, event_info->tgid);
+		}
+	}
+
+	mutex_unlock(&vlds_event_info_list_mutex);
+}
+
+static int vlds_add_svc_event(pid_t tgid, struct vlds_service_info *svc_info,
+	u64 type, vlds_ver_t *neg_vers)
+{
+	struct vlds_event_info *event_info;
+	struct vlds_event *event;
+	int rv;
+
+	mutex_lock(&vlds_event_info_list_mutex);
+
+	event_info = NULL;
+	rv = vlds_get_event_info(tgid, &event_info);
+	if (rv || event_info == NULL) {
+		/*
+		 * If we failed to find an event_info, it probably just
+		 * means the process did not register for events in favor
+		 * of using polling - which is valid.
+		 */
+		mutex_unlock(&vlds_event_info_list_mutex);
+		return 0;
+	}
+
+	event = kzalloc(sizeof(struct vlds_event), GFP_KERNEL);
+	if (unlikely(event == NULL)) {
+		if (svc_info)
+			dprintk("failed to allocate event for "
+			    "service %llx\n", svc_info->handle);
+		mutex_unlock(&vlds_event_info_list_mutex);
+		return -ENOMEM;
+	}
+
+	event->type = type;
+	event->svc_info = svc_info;
+	if (neg_vers != NULL)
+		event->neg_vers = *neg_vers;
+
+	list_add_tail(&event->list,
+	    &event_info->event_list);
+
+	rv = vlds_signal_event(tgid, event_info->fd);
+
+	mutex_unlock(&vlds_event_info_list_mutex);
+
 	return rv;
 
 }
 
 /* vlds_dev_mutex must be held */
-static void vlds_add_event_all(struct vlds_dev *vlds,
+static void vlds_add_event_svc_all(struct vlds_dev *vlds,
 	struct vlds_service_info *svc_info, u64 type, vlds_ver_t *neg_vers)
 {
 	struct vlds_tgid_info *tgid_info;
@@ -386,7 +427,7 @@ static void vlds_add_event_all(struct vlds_dev *vlds,
 		if (!tgid_info->event_reg)
 			continue;
 
-		rv = vlds_add_event(tgid_info->tgid, svc_info,
+		rv = vlds_add_svc_event(tgid_info->tgid, svc_info,
 		    type, neg_vers);
 		if (rv) {
 			/* just give an error if we failed to add the event */
@@ -445,7 +486,7 @@ static void vlds_remove_svc_events_tgid(struct vlds_service_info *svc_info,
 	if (rv == 0 && event_info != NULL) {
 		list_for_each_entry_safe(event, next, &event_info->event_list,
 		    list) {
-			if (event->svc_info == svc_info)
+			if (event->svc_info && event->svc_info == svc_info)
 				vlds_remove_event(event_info, event);
 		}
 	}
@@ -732,7 +773,7 @@ vlds_ds_reg_cb(ds_cb_arg_t arg, ds_svc_hdl_t hdl, ds_ver_t *ver)
 	 * For every process that has registered this service
 	 * in EVENT mode, register an event.
 	 */
-	vlds_add_event_all(vlds, svc_info, VLDS_EVENT_TYPE_REG,
+	vlds_add_event_svc_all(vlds, svc_info, VLDS_EVENT_TYPE_REG,
 	    &svc_info->neg_vers);
 
 	dprintk("%s: service %s register version (%u.%u) hdl=%llx\n",
@@ -771,7 +812,7 @@ vlds_ds_unreg_cb(ds_cb_arg_t arg, ds_svc_hdl_t hdl)
 	 * For every process that has registered this service
 	 * in EVENT mode, register an event.
 	 */
-	vlds_add_event_all(vlds, svc_info, VLDS_EVENT_TYPE_UNREG, NULL);
+	vlds_add_event_svc_all(vlds, svc_info, VLDS_EVENT_TYPE_UNREG, NULL);
 
 	dprintk("%s: service %s unregister hdl=%llx\n",
 	    vlds->int_name, svc_info->name, hdl);
@@ -812,7 +853,7 @@ vlds_ds_data_cb(ds_cb_arg_t arg, ds_svc_hdl_t hdl, void *buf, size_t buflen)
 	 * For every process that has registered this service
 	 * in EVENT mode, register an event.
 	 */
-	vlds_add_event_all(vlds, svc_info, VLDS_EVENT_TYPE_DATA, NULL);
+	vlds_add_event_svc_all(vlds, svc_info, VLDS_EVENT_TYPE_DATA, NULL);
 
 	dprintk("%s: service %s: Received %lu bytes hdl=%llx\n",
 	    vlds->int_name, svc_info->name, buflen, hdl);
@@ -975,7 +1016,7 @@ static int vlds_svc_reg(struct vlds_dev *vlds, const void __user *uarg)
 		 */
 		if (is_event_reg &&
 		    svc_info->state == VLDS_HDL_STATE_CONNECTED) {
-			rv = vlds_add_event(tgid, svc_info,
+			rv = vlds_add_svc_event(tgid, svc_info,
 			    VLDS_EVENT_TYPE_REG, &svc_info->neg_vers);
 			if (rv) {
 				/* just give an error if add event fails */
@@ -1761,10 +1802,12 @@ static int vlds_get_next_event(struct vlds_dev *vlds, const void __user *uarg)
 	}
 
 	/* populate the return event handle */
-	if (put_user(event->svc_info->handle,
-	    (u64 __user *)(next_event.vlds_hdlp)) != 0) {
-		rv = -EFAULT;
-		goto error_out2;
+	if (event->svc_info) {
+		if (put_user(event->svc_info->handle,
+		    (u64 __user *)(next_event.vlds_hdlp)) != 0) {
+			rv = -EFAULT;
+			goto error_out2;
+		}
 	}
 
 	/* populate the return event type */
@@ -2404,6 +2447,11 @@ static int vlds_probe(struct vio_dev *vdev, const struct vio_device_id *vio_did)
 
 	dev_set_drvdata(&vdev->dev, vlds);
 
+	mutex_lock(&vlds->vlds_mutex);
+	/* Register a device update event */
+	vlds_add_event_all(vlds, VLDS_EVENT_TYPE_DEVICE_UPDATE);
+	mutex_unlock(&vlds->vlds_mutex);
+
 	dprintk("%s: Probe successfful: cfg_handle=%llu, id=%llu\n",
 	    vlds->int_name, vdev->dev_no, *id);
 
@@ -2437,6 +2485,9 @@ static int vlds_remove(struct vio_dev *vdev)
 	/* Cleanup the associated cdev, /sys and /dev entry */
 	device_destroy(vlds_data.chrdev_class, vlds->devt);
 	cdev_del(&vlds->cdev);
+
+	/* Register a device update event */
+	vlds_add_event_all(vlds, VLDS_EVENT_TYPE_DEVICE_UPDATE);
 
 	/*
 	 * If there are still outstanding references (opens)
