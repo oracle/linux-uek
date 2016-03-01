@@ -721,8 +721,10 @@ xfs_attr_shortform_list(xfs_attr_list_context_t *context)
 					sbp->namelen,
 					sbp->valuelen,
 					&sbp->name[sbp->namelen]);
-		if (error)
+		if (error) {
+			kmem_free(sbuf);
 			return error;
+		}
 		if (context->seen_enough)
 			break;
 		cursor->offset++;
