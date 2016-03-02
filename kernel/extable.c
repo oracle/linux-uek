@@ -21,6 +21,7 @@
 #include <linux/ftrace.h>
 #include <linux/mutex.h>
 #include <linux/init.h>
+#include <linux/mm.h>
 
 #include <asm/sections.h>
 #include <asm/uaccess.h>
@@ -57,6 +58,36 @@ const struct exception_table_entry *search_exception_tables(unsigned long addr)
 	if (!e)
 		e = search_module_extables(addr);
 	return e;
+}
+
+/*
+ * VirtualBox dynamically adds kernel executable code to the module
+ * and vmalloc areas.  As a UEK specific workaround, look for pages
+ * in these areas that are executable.  The longer term solution is
+ * to have VirtualBox register a routine to validate kernel executable
+ * code it adds.  However, this will need more use cases from kernel
+ * code in the mainline linux tree.
+ */
+static inline int vmalloc_or_module_exec_page(unsigned long vaddr)
+{
+	int ret = 0;
+
+#ifdef CONFIG_X86
+	/*
+	 * The following code (lookup_address) is not available on
+	 * all architectures.  This is only needed on x86, as this
+	 * is the only architecture supported by VirtualBox.
+	 */
+	if (is_vmalloc_or_module_addr((void *)vaddr)) {
+		unsigned int level;
+		pte_t *pte = lookup_address(vaddr, &level);
+
+		if (pte && pte_present(*pte) && pte_exec(*pte))
+			ret = 1;
+	}
+#endif
+
+	return ret;
 }
 
 static inline int init_kernel_text(unsigned long addr)
@@ -115,6 +146,13 @@ int __kernel_text_address(unsigned long addr)
 	 */
 	if (init_kernel_text(addr))
 		return 1;
+
+	/*
+	 * UEK specific workaround for VirtualBox
+	 */
+	if (vmalloc_or_module_exec_page(addr))
+		return 1;
+
 	return 0;
 }
 
@@ -124,7 +162,12 @@ int kernel_text_address(unsigned long addr)
 		return 1;
 	if (is_module_text_address(addr))
 		return 1;
-	return is_ftrace_trampoline(addr);
+	if (is_ftrace_trampoline(addr))
+		return 1;
+	/*
+	 * UEK specific workaround for VirtualBox
+	 */
+	return vmalloc_or_module_exec_page(addr);
 }
 
 /*
