@@ -569,7 +569,7 @@ static int fuse_show_options(struct seq_file *m, struct dentry *root)
 	if (sb->s_bdev && sb->s_blocksize != FUSE_DEFAULT_BLKSIZE)
 		seq_printf(m, ",blksize=%lu", sb->s_blocksize);
 	if (fc->numa_on)
-		seq_puts(m, "numa");
+		seq_puts(m, ",numa");
 	return 0;
 }
 
