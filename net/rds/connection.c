@@ -322,6 +322,7 @@ void rds_conn_shutdown(struct rds_connection *conn, int restart)
 		mutex_lock(&conn->c_cm_lock);
 		if (!rds_conn_transition(conn, RDS_CONN_UP, RDS_CONN_DISCONNECTING)
 		 && !rds_conn_transition(conn, RDS_CONN_ERROR, RDS_CONN_DISCONNECTING)) {
+			conn->c_drop_source = 2;
 			rds_conn_error(conn, "shutdown called in state %d\n",
 					atomic_read(&conn->c_state));
 			mutex_unlock(&conn->c_cm_lock);
@@ -343,6 +344,7 @@ void rds_conn_shutdown(struct rds_connection *conn, int restart)
 			 * Quite reproduceable with loopback connections.
 			 * Mostly harmless.
 			 */
+			conn->c_drop_source = 3;
 			rds_conn_error(conn,
 				"%s: failed to transition to state DOWN, "
 				"current state is %d\n",
@@ -398,6 +400,7 @@ void rds_conn_destroy(struct rds_connection *conn)
 	synchronize_rcu();
 
 	/* shut the connection down */
+	conn->c_drop_source = 4;
 	rds_conn_drop(conn);
 	flush_work(&conn->c_down_w);
 
@@ -610,6 +613,94 @@ void rds_conn_exit(void)
 				 rds_conn_message_info_retrans);
 }
 
+char *conn_drop_reason_str(u8 reason)
+{
+	/* Here is distribution of drop reason:
+	 *
+	 * 0-19: rds-core
+	 *
+	 * 20-119: IB
+	 * 20-39: ib_cm
+	 * 40-59: event handling
+	 * 60-79: data path
+	 * 80-119: special features like active bonding
+	 *
+	 * 120-139: iWARP
+	 *
+	 * 140-159: TCP
+	 *
+	 * 160-255: any other future additions
+	 *
+	 */
+	switch (reason) {
+	case 1: return "user reset";
+	case 2: return "invalid connection state";
+	case 3: return "failure to move to DOWN state";
+	case 4: return "connection destroy";
+	case 5: return "zero lane went down";
+	case 6: return "conn_connect failure";
+	case 7: return "hb timeout";
+	case 8: return "reconnect timeout";
+
+	case 20: return "race between ESTABLISHED event and drop";
+	case 21: return "conn is not in CONNECTING state";
+	case 22: return "qp event";
+	case 23: return "base conn down";
+	case 24: return "incoming REQ in CONN_UP state";
+	case 25: return "incoming REQ in CONNECTING state";
+	case 26: return "setup_qp failure";
+	case 27: return "rdma_accept failure";
+	case 28: return "setup_qp failure";
+	case 29: return "rdma_connect failure";
+
+	case 40: return "rdma_set_ib_paths failure";
+	case 41: return "resolve_route failure";
+	case 42: return "detected rdma_cm_id mismatch";
+	case 43: return "ROUTE_ERROR event";
+	case 44: return "ADDR_ERROR event";
+	case 45: return "CONNECT_ERROR or UNREACHABLE or DEVICE_REMOVE event";
+	case 46: return "CONSUMER_DEFINED reject";
+	case 47: return "REJECTED event";
+	case 48: return "ADDR_CHANGE event";
+	case 49: return "DISCONNECTED event";
+	case 50: return "TIMEWAIT_EXIT event";
+
+	case 60: return "post_recv failure";
+	case 61: return "send_ack failure";
+	case 62: return "no header in incoming msg";
+	case 63: return "corrupted header in incoming msg";
+	case 64: return "fragment header mismatch";
+	case 65: return "recv completion error";
+	case 66: return "send completion error";
+	case 67: return "post_send failure";
+
+	case 80: return "rds_rdma module unload";
+	case 81: return "active bonding failover";
+	case 82: return "corresponding loopback conn drop";
+	case 83: return "active bonding failback";
+
+	case 120: return "qp_event";
+	case 121: return "incoming REQ in connecting state";
+	case 122: return "setup_qp failure";
+	case 123: return "rdma_accept failure";
+	case 124: return "setup_qp failure";
+	case 125: return "rdma_connect failure";
+
+	case 130: return "post_recv failure";
+	case 131: return "send_ack failure";
+	case 132: return "no header in incoming msg";
+	case 133: return "corrupted header in incoming msg";
+	case 134: return "fragment header mismatch";
+	case 135: return "recv completion error";
+	case 136: return "send completion error";
+
+	case 140: return "sk_state to TCP_CLOSE";
+	case 141: return "tcp_send failure";
+
+	default: return "unknown reason";
+	}
+}
+
 static void rds_conn_probe_lanes(struct rds_connection *conn)
 {
 	struct hlist_head *head =
@@ -632,6 +723,7 @@ static void rds_conn_probe_lanes(struct rds_connection *conn)
 				       &tmp->c_faddr,
 				       tmp->c_tos);
 
+				conn->c_drop_source = 5;
 				rds_conn_drop(tmp);
 			}
 		}
@@ -653,10 +745,11 @@ void rds_conn_drop(struct rds_connection *conn)
 		conn->c_reconnect_err = 0;
 		conn->c_reconnect_racing = 0;
 		printk(KERN_INFO "RDS/IB: connection "
-			"<%pI4,%pI4,%d> dropped\n",
+			"<%pI4,%pI4,%d> dropped due to '%s'\n",
 			&conn->c_laddr,
 			&conn->c_faddr,
-			conn->c_tos);
+			conn->c_tos,
+			conn_drop_reason_str(conn->c_drop_source));
 
 		if (conn->c_tos == 0)
 			rds_conn_probe_lanes(conn);
