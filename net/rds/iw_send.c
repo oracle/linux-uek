@@ -293,6 +293,7 @@ void rds_iw_send_cq_comp_handler(struct ib_cq *cq, void *context)
 
 		/* We expect errors as the qp is drained during shutdown */
 		if (wc.status != IB_WC_SUCCESS && rds_conn_up(conn)) {
+			conn->c_drop_source = 136;
 			rds_iw_conn_error(conn,
 				"send completion on %pI4 "
 				"had status %u, disconnecting and reconnecting\n",
