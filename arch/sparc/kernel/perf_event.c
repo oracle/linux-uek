@@ -739,6 +739,10 @@ static void sparc_vt_write_pmc(int idx, u64 val)
 	u64 pcr;
 
 	pcr = pcr_ops->read_pcr(idx);
+
+	/* stop the counter */
+	pcr_ops->write_pcr(idx, PCR_N4_PICNPT);
+
 	/* ensure ov and ntc are reset */
 	pcr &= ~(PCR_N4_OV | PCR_N4_NTC);
 
