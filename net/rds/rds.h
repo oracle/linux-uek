@@ -907,6 +907,8 @@ extern unsigned int  rds_sysctl_max_unacked_bytes;
 extern unsigned int  rds_sysctl_ping_enable;
 extern unsigned long rds_sysctl_trace_flags;
 extern unsigned int  rds_sysctl_trace_level;
+extern unsigned int  rds_sysctl_shutdown_trace_start_time;
+extern unsigned int  rds_sysctl_shutdown_trace_end_time;
 
 /* threads.c */
 int rds_threads_init(void);

@@ -313,7 +313,16 @@ void rds_reconnect_timeout(struct work_struct *work)
 void rds_shutdown_worker(struct work_struct *work)
 {
 	struct rds_connection *conn = container_of(work, struct rds_connection, c_down_w);
+	unsigned long now = get_seconds();
 
+	if ((now - conn->c_reconnect_start > rds_sysctl_shutdown_trace_start_time) &&
+	    (now - conn->c_reconnect_start < rds_sysctl_shutdown_trace_end_time))
+		pr_info("RDS/IB: connection <%pI4,%pI4,%d> "
+				"shutdown init due to '%s'\n",
+				&conn->c_laddr,
+				&conn->c_faddr,
+				conn->c_tos,
+				conn_drop_reason_str(conn->c_drop_source));
 
 	/* if racing is detected, lower IP backs off and let the higher IP
 	 * drives the reconnect (one-sided reconnect)
