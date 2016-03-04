@@ -152,6 +152,7 @@ out:
 			printk(KERN_WARNING "RDS/tcp: send to %pI4 "
 			       "returned %d, disconnecting and reconnecting\n",
 			       &conn->c_faddr, ret);
+			conn->c_drop_source = 141;
 			rds_conn_drop(conn);
 		}
 	}
