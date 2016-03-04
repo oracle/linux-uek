@@ -53,6 +53,17 @@ enum nvme_quirks {
 	 * specific Identify field.
 	 */
 	NVME_QUIRK_STRIPE_SIZE			= (1 << 0),
+	/*
+	 * The controller doesn't handle Identify value others than 0 or 1
+	 * correctly.
+	 */
+	NVME_QUIRK_IDENTIFY_CNS			= (1 << 1),
+
+	/*
+	 * The controller deterministically returns O's on reads to discarded
+	 * logical blocks.
+	 */
+	NVME_QUIRK_DISCARD_ZEROES		= (1 << 2),
 };
 
 enum nvme_ctrl_state {
