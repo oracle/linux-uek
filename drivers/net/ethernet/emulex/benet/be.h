@@ -546,6 +546,7 @@ struct be_adapter {
 	u8 recovery_retries;
 	u8 err_flags;
 	u32 flags;
+	bool pcicfg_mapped;     /* pcicfg obtained via pci_iomap() */
 	u32 cmd_privileges;
 	/* Ethtool knobs and info */
 	char fw_ver[FW_VER_LEN];
