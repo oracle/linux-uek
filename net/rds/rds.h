@@ -176,6 +176,7 @@ struct rds_connection {
 
 	unsigned int		c_reconnect_racing;
 	unsigned int		c_route_resolved;
+	u8                      c_drop_source;
 };
 
 static inline
@@ -733,6 +734,7 @@ void rds_for_each_conn_info(struct socket *sock, unsigned int len,
 			  struct rds_info_lengths *lens,
 			  int (*visitor)(struct rds_connection *, void *),
 			  size_t item_len);
+char *conn_drop_reason_str(u8 reason);
 void __rds_conn_error(struct rds_connection *conn, const char *, ...)
 				__attribute__ ((format (printf, 2, 3)));
 #define rds_conn_error(conn, fmt...) \
