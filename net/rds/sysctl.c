@@ -49,6 +49,9 @@ unsigned int  rds_sysctl_max_unacked_bytes = (16 << 20);
 
 unsigned int rds_sysctl_ping_enable = 1;
 
+unsigned int rds_sysctl_shutdown_trace_start_time;
+unsigned int rds_sysctl_shutdown_trace_end_time;
+
 /*
  * We have official values, but must maintain the sysctl interface for existing
  * software that expects to find these values here.
@@ -109,6 +112,20 @@ static struct ctl_table rds_sysctl_rds_table[] = {
 		.maxlen         = sizeof(int),
 		.mode           = 0644,
 		.proc_handler   = proc_dointvec,
+	},
+	{
+		.procname       = "shutdown_trace_start_time",
+		.data           = &rds_sysctl_shutdown_trace_start_time,
+		.maxlen         = sizeof(int),
+		.mode           = 0644,
+		.proc_handler   = &proc_dointvec,
+	},
+	{
+		.procname       = "shutdown_trace_end_time",
+		.data           = &rds_sysctl_shutdown_trace_end_time,
+		.maxlen         = sizeof(int),
+		.mode           = 0644,
+		.proc_handler   = &proc_dointvec,
 	},
 	{ }
 };
