@@ -178,6 +178,7 @@ void rds_ib_cm_connect_complete(struct rds_connection *conn, struct rdma_cm_even
 		rds_rtd(RDS_RTD_CM,
 			"ic->i_cm_id is NULL, ic: %p, calling rds_conn_drop\n",
 			ic);
+		conn->c_drop_source = 20;
 		rds_conn_drop(conn);
 		return;
 	}
@@ -188,6 +189,7 @@ void rds_ib_cm_connect_complete(struct rds_connection *conn, struct rdma_cm_even
 		rds_rtd(RDS_RTD_CM,
 			"conn is in connecting state, conn: %p, calling rds_conn_drop\n",
 			conn);
+		conn->c_drop_source = 21;
 		rds_conn_drop(conn);
 		return;
 	}
@@ -531,6 +533,7 @@ static void rds_ib_qp_event_handler(struct ib_event *event, void *data)
 			"Fatal QP Event %u (%s) - connection %pI4->%pI4 tos %d, reconnecting\n",
 			event->event, rds_ib_event_str(event->event),
 			&conn->c_laddr,	&conn->c_faddr, conn->c_tos);
+		conn->c_drop_source = 22;
 		rds_conn_drop(conn);
 		break;
 	}
@@ -841,6 +844,7 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 				&conn->c_laddr,
 				&conn->c_faddr,
 				conn->c_tos);
+		conn->c_drop_source = 23;
 		rds_conn_drop(conn);
 	}
 
@@ -863,6 +867,7 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 		if (rds_conn_state(conn) == RDS_CONN_UP) {
 			rds_rtd(RDS_RTD_CM_EXT_P,
 				"incoming connect while connecting\n");
+			conn->c_drop_source = 24;
 			rds_conn_drop(conn);
 			rds_ib_stats_inc(s_ib_listen_closed_stale);
 		} else if (rds_conn_state(conn) == RDS_CONN_CONNECTING) {
@@ -884,6 +889,7 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 					&conn->c_laddr,
 					&conn->c_faddr,
 					conn->c_tos);
+				conn->c_drop_source = 25;
 				rds_conn_drop(conn);
 				rds_ib_stats_inc(s_ib_listen_closed_stale);
 			} else {
@@ -922,6 +928,7 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 
 	err = rds_ib_setup_qp(conn);
 	if (err) {
+		conn->c_drop_source = 26;
 		rds_ib_conn_error(conn, "rds_ib_setup_qp failed (%d)\n", err);
 		goto out;
 	}
@@ -936,8 +943,10 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 #endif
 	/* rdma_accept() calls rdma_reject() internally if it fails */
 	err = rdma_accept(cm_id, &conn_param);
-	if (err)
+	if (err) {
+		conn->c_drop_source = 27;
 		rds_ib_conn_error(conn, "rdma_accept failed (%d)\n", err);
+	}
 #if RDMA_RDS_APM_SUPPORTED
 	else if (rds_ib_apm_enabled && !conn->c_loopback) {
 		err = rdma_enable_apm(cm_id, RDMA_ALT_PATH_BEST);
@@ -976,6 +985,7 @@ int rds_ib_cm_initiate_connect(struct rdma_cm_id *cm_id)
 
 	ret = rds_ib_setup_qp(conn);
 	if (ret) {
+		conn->c_drop_source = 28;
 		rds_ib_conn_error(conn, "rds_ib_setup_qp failed (%d)\n", ret);
 		goto out;
 	}
@@ -983,8 +993,10 @@ int rds_ib_cm_initiate_connect(struct rdma_cm_id *cm_id)
 	rds_ib_cm_fill_conn_param(conn, &conn_param, &dp,
 				conn->c_proposed_version, UINT_MAX, UINT_MAX);
 	ret = rdma_connect(cm_id, &conn_param);
-	if (ret)
+	if (ret) {
+		conn->c_drop_source = 29;
 		rds_ib_conn_error(conn, "rdma_connect failed (%d)\n", ret);
+	}
 
 out:
 	/* Beware - returning non-zero tells the rdma_cm to destroy
