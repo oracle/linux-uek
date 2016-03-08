@@ -4057,6 +4057,7 @@ static void qlcnic_83xx_mailbox_worker(struct work_struct *work)
 	struct list_head *head = &mbx->cmd_q;
 	struct qlcnic_hardware_context *ahw;
 	struct qlcnic_cmd_args *cmd = NULL;
+	unsigned long flags;
 
 	ahw = adapter->ahw;
 
@@ -4066,7 +4067,9 @@ static void qlcnic_83xx_mailbox_worker(struct work_struct *work)
 			return;
 		}
 
+		spin_lock_irqsave(&mbx->aen_lock, flags);
 		mbx->rsp_status = QLC_83XX_MBX_RESPONSE_WAIT;
+		spin_unlock_irqrestore(&mbx->aen_lock, flags);
 
 		spin_lock(&mbx->queue_lock);
 
