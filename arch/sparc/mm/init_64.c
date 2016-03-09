@@ -402,57 +402,83 @@ static void __init sun4v_xl_hugepage_pte_branch_patch(void)
 		: "r" (insn));
 }
 
+static int __init setup_xl_hugepage(unsigned int hugepage_shift)
+{
+	unsigned short hv_pgsz_idx;
+	unsigned int hv_pgsz_mask;
+	int rc = 0;
+
+	switch (hugepage_shift) {
+	case XLHPAGE_16GB_SHIFT:
+		xl_hugepage_pte = _PAGE_SZ16GB_4V;
+		hv_pgsz_mask = HV_PGSZ_MASK_16GB;
+		hv_pgsz_idx = HV_PGSZ_IDX_16GB;
+		break;
+	case XLHPAGE_2GB_SHIFT:
+		xl_hugepage_pte = _PAGE_SZ2GB_4V;
+		hv_pgsz_mask = HV_PGSZ_MASK_2GB;
+		hv_pgsz_idx = HV_PGSZ_IDX_2GB;
+		break;
+	default:
+		goto out;
+	}
+
+	if ((hv_pgsz_mask & cpu_pgsz_mask) == 0U) {
+		pr_warn("hugepagesz=%luM not supported by MMU.\n",
+			(1UL << (hugepage_shift - 20)));
+		goto out;
+	}
+
+	if (xl_hugepage_shift) {
+		pr_warn("hugepagesz=%luM in use and hugepagesz=%luM"
+			" ignored.\n",
+			(1UL << (xl_hugepage_shift - 20)),
+			(1UL << (hugepage_shift - 20)));
+		goto out;
+	}
+
+	xl_hugepage_shift = hugepage_shift;
+	sun4v_xl_hugepage_hash_patch();
+	sun4v_xl_hugepage_pte_size_patch();
+	sun4v_xl_hugepage_pte_branch_patch();
+	hv_establish_xl_hugepage_tsb_descriptor(hv_pgsz_idx, hv_pgsz_mask);
+	hugetlb_add_hstate(xl_hugepage_shift - PAGE_SHIFT);
+	rc = 1;
+out:
+	return rc;
+}
+
 static int __init setup_hugepagesz(char *string)
 {
-	unsigned int hugepage_shift, hv_pgsz_mask;
 	unsigned long long xl_hugepage_size;
-	unsigned short hv_pgsz_idx;
+	int rc = 0;
 
 	if (tlb_type != hypervisor)
 		goto out;
 
 	xl_hugepage_size = memparse(string, &string);
-	/* Validate the xl_hugepage_size.*/
-	if (!is_power_of_2(xl_hugepage_size))
-		goto bad;
 
-	/* Now determine whether the size is good for xl_hugepage_size.
-	 * One the chip must support it and two, for now, it must be >= 2Gb.
-	 */
-	hugepage_shift = ilog2(xl_hugepage_size);
-	switch (hugepage_shift) {
-	case 34U:
-		hv_pgsz_mask = HV_PGSZ_MASK_16GB;
-		hv_pgsz_idx = HV_PGSZ_IDX_16GB;
-		xl_hugepage_pte = _PAGE_SZ16GB_4V;
+	switch (xl_hugepage_size) {
+	case 1UL << XLHPAGE_16GB_SHIFT:
+	case 1UL << XLHPAGE_2GB_SHIFT:
+	{
+		unsigned int hugepage_shift = ilog2(xl_hugepage_size);
+
+		rc = setup_xl_hugepage(hugepage_shift);
 		break;
-	case 31U:
-		hv_pgsz_mask = HV_PGSZ_MASK_2GB;
-		hv_pgsz_idx = HV_PGSZ_IDX_2GB;
-		xl_hugepage_pte = _PAGE_SZ2GB_4V;
-		break;
+	}
 	default:
-		hv_pgsz_mask = 0U;
-		hv_pgsz_idx = HV_PGSZ_IDX_8K;
+		pr_warn("hugepage size(0x%llx) not supported.\n",
+			xl_hugepage_size);
+		break;
+	case HPAGE_SIZE:
+		hugetlb_add_hstate(HUGETLB_PAGE_ORDER);
+		rc = 1;
 		break;
 	}
 
-	if ((hv_pgsz_mask & cpu_pgsz_mask) == 0U)
-		goto bad;
-
-	xl_hugepage_shift = hugepage_shift;
-	xl_hugepage_size = 1UL << hugepage_shift;
-	sun4v_xl_hugepage_hash_patch();
-	sun4v_xl_hugepage_pte_size_patch();
-	sun4v_xl_hugepage_pte_branch_patch();
-	hv_establish_xl_hugepage_tsb_descriptor(hv_pgsz_idx, hv_pgsz_mask);
-	hugetlb_add_hstate(HUGETLB_PAGE_ORDER);
-	hugetlb_add_hstate(xl_hugepage_shift - PAGE_SHIFT);
-	goto out;
-bad:
-	pr_warn("Invalid xl_hugepage_size=0x%llx.\n", xl_hugepage_size);
 out:
-	return 0;
+	return rc;
 }
 __setup("hugepagesz=", setup_hugepagesz);
 #endif	/* CONFIG_HUGETLB_PAGE */

@@ -202,16 +202,13 @@ static unsigned int sun4v_tte_to_shift(pte_t entry)
 
 	switch (hugepage_tte) {
 	case _PAGE_SZ16GB_4V:
-		hugepage_shift = 34U;
+		hugepage_shift = XLHPAGE_16GB_SHIFT;
 		break;
 	case _PAGE_SZ2GB_4V:
-		hugepage_shift = 31U;
-		break;
-	case _PAGE_SZ256MB_4V:
-		hugepage_shift = 28U;
+		hugepage_shift = XLHPAGE_2GB_SHIFT;
 		break;
 	case _PAGE_SZ4MB_4V:
-		hugepage_shift = 22U;
+		hugepage_shift = REAL_HPAGE_SHIFT;
 		break;
 	default:
 		WARN_ONCE(1, "hugepage_shift: hugepage_tte=0x%lx\n",
@@ -267,11 +264,11 @@ static pte_t hugepage_shift_to_tte(pte_t entry, unsigned int hugepage_shift)
 
 	switch (hugepage_shift) {
 	/* 16Gb */
-	case 34U:
+	case XLHPAGE_16GB_SHIFT:
 		sun4v_hugepage_size = _PAGE_SZ16GB_4V;
 		break;
 	/* 2Gb */
-	case 31U:
+	case XLHPAGE_2GB_SHIFT:
 		sun4v_hugepage_size = _PAGE_SZ2GB_4V;
 		break;
 	default:
