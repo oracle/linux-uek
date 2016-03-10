@@ -179,6 +179,7 @@ void rds_connect_worker(struct work_struct *work)
 		 * drop the connection if it doesn't work out after a while
 		 */
 		conn->c_connection_start = get_seconds();
+		conn->c_drop_source = 0;
 
 		ret = conn->c_trans->conn_connect(conn);
 		rds_rtd(RDS_RTD_CM_EXT,
@@ -190,8 +191,10 @@ void rds_connect_worker(struct work_struct *work)
 				rds_rtd(RDS_RTD_CM_EXT,
 					"reconnecting..., conn %p\n", conn);
 				rds_queue_reconnect(conn);
-			} else
+			} else {
+				conn->c_drop_source = 6;
 				rds_conn_error(conn, "RDS: connect failed\n");
+			}
 		}
 	} else {
 		rds_rtd(RDS_RTD_CM,
@@ -280,7 +283,8 @@ void rds_hb_worker(struct work_struct *work)
 				"RDS/IB: connection <%u.%u.%u.%u,%u.%u.%u.%u,%d> timed out (0x%lx,0x%lx)..discon and recon\n",
 				NIPQUAD(conn->c_laddr),	NIPQUAD(conn->c_faddr),
 				conn->c_tos, conn->c_hb_start, now);
-				rds_conn_drop(conn);
+			conn->c_drop_source = 7;
+			rds_conn_drop(conn);
 			return;
 		}
 		queue_delayed_work(rds_wq, &conn->c_hb_w, HZ);
@@ -300,6 +304,7 @@ void rds_reconnect_timeout(struct work_struct *work)
 			"conn not up, calling rds_conn_drop <%u.%u.%u.%u,%u.%u.%u.%u,%d>\n",
 			NIPQUAD(conn->c_laddr),	NIPQUAD(conn->c_faddr),
 			conn->c_tos);
+		conn->c_drop_source = 8;
 		rds_conn_drop(conn);
 		conn->c_reconnect_racing = 0;
 	}
@@ -308,7 +313,16 @@ void rds_reconnect_timeout(struct work_struct *work)
 void rds_shutdown_worker(struct work_struct *work)
 {
 	struct rds_connection *conn = container_of(work, struct rds_connection, c_down_w);
+	unsigned long now = get_seconds();
 
+	if ((now - conn->c_reconnect_start > rds_sysctl_shutdown_trace_start_time) &&
+	    (now - conn->c_reconnect_start < rds_sysctl_shutdown_trace_end_time))
+		pr_info("RDS/IB: connection <%u.%u.%u.%u,%u.%u.%u.%u,%d> "
+				"shutdown init due to '%s'\n",
+				NIPQUAD(conn->c_laddr),
+				NIPQUAD(conn->c_faddr),
+				conn->c_tos,
+				conn_drop_reason_str(conn->c_drop_source));
 
 	/* if racing is detected, lower IP backs off and let the higher IP
 	 * drives the reconnect (one-sided reconnect)

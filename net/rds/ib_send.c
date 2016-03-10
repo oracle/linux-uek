@@ -341,6 +341,7 @@ void rds_ib_send_cqe_handler(struct rds_ib_connection *ic, struct ib_wc *wc)
 
 	/* We expect errors as the qp is drained during shutdown */
 	if (wc->status != IB_WC_SUCCESS && rds_conn_up(conn)) {
+		conn->c_drop_source = 66;
 		rds_ib_conn_error(conn,
 			"send completion <%u.%u.%u.%u,%u.%u.%u.%u,%d> status "
 			"%u vendor_err %u, disconnecting and reconnecting\n",
@@ -807,6 +808,7 @@ int rds_ib_xmit(struct rds_connection *conn, struct rds_message *rm,
 			prev->s_op = NULL;
 		}
 
+		ic->conn->c_drop_source = 67;
 		rds_ib_conn_error(ic->conn, "ib_post_send failed\n");
 		goto out;
 	}
@@ -968,7 +970,7 @@ int rds_ib_xmit_rdma(struct rds_connection *conn, struct rm_rdma_op *op)
 		send->s_queued = jiffies;
 		send->s_op = NULL;
 
-		if (!op->op_remote_complete)
+		if (!op->op_remote_complete && !op->op_notify)
 			nr_sig += rds_ib_set_wr_signal_state(ic, send, op->op_notify);
 
 		send->s_wr.opcode = op->op_write ? IB_WR_RDMA_WRITE : IB_WR_RDMA_READ;
