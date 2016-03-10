@@ -37,7 +37,7 @@
 #include "be_hw.h"
 #include "be_roce.h"
 
-#define DRV_VER			"10.6.0.4"
+#define DRV_VER			"11.0.0.0"
 #define DRV_NAME		"be2net"
 #define BE_NAME			"Emulex BladeEngine2"
 #define BE3_NAME		"Emulex BladeEngine3"
@@ -89,6 +89,10 @@
 #define BE3_MAX_TX_QS		16
 #define BE3_MAX_EVT_QS		16
 #define BE3_SRIOV_MAX_EVT_QS	8
+#define SH_VF_MAX_NIC_EQS	3	/* Skyhawk VFs can have a max of 4 EQs
+					 * and at least 1 is granted to either
+					 * SURF/DPDK
+					 */
 
 #define MAX_RSS_IFACES		15
 #define MAX_RX_QS		32
@@ -110,6 +114,8 @@
 
 #define	RSS_INDIR_TABLE_LEN	128
 #define RSS_HASH_KEY_LEN	40
+
+#define BE_UNKNOWN_PHY_STATE	0xFF
 
 struct be_dma_mem {
 	void *va;
@@ -386,12 +392,16 @@ enum vf_state {
 #define BE_FLAGS_QNQ_ASYNC_EVT_RCVD		BIT(7)
 #define BE_FLAGS_VXLAN_OFFLOADS			BIT(8)
 #define BE_FLAGS_SETUP_DONE			BIT(9)
-#define BE_FLAGS_EVT_INCOMPATIBLE_SFP		BIT(10)
+#define BE_FLAGS_PHY_MISCONFIGURED		BIT(10)
 #define BE_FLAGS_ERR_DETECTION_SCHEDULED	BIT(11)
 #define BE_FLAGS_OS2BMC				BIT(12)
 
 #define BE_UC_PMAC_COUNT			30
 #define BE_VF_UC_PMAC_COUNT			2
+
+#define MAX_ERR_RECOVERY_RETRY_COUNT		3
+#define ERR_DETECTION_DELAY			1000
+#define ERR_RECOVERY_RETRY_DELAY		30000
 
 /* Ethtool set_dump flags */
 #define LANCER_INITIATE_FW_DUMP			0x1
@@ -521,7 +531,7 @@ struct be_adapter {
 	struct be_drv_stats drv_stats;
 	struct be_aic_obj aic_obj[MAX_EVT_QS];
 	u8 vlan_prio_bmap;	/* Available Priority BitMap */
-	u16 recommended_prio;	/* Recommended Priority */
+	u16 recommended_prio_bits;/* Recommended Priority bits in vlan tag */
 	struct be_dma_mem rx_filter; /* Cmd DMA mem for rx-filter */
 
 	struct be_dma_mem stats_cmd;
@@ -530,6 +540,7 @@ struct be_adapter {
 	u16 work_counter;
 
 	struct delayed_work be_err_detection_work;
+	u8 recovery_retries;
 	u8 err_flags;
 	u32 flags;
 	u32 cmd_privileges;
@@ -546,10 +557,6 @@ struct be_adapter {
 	u16 vlans_added;
 
 	u32 beacon_state;	/* for set_phys_id */
-
-	bool eeh_error;
-	bool fw_timeout;
-	bool hw_error;
 
 	u32 port_num;
 	char port_name;
@@ -574,6 +581,8 @@ struct be_adapter {
 	struct be_resources pool_res;	/* resources available for the port */
 	struct be_resources res;	/* resources available for the func */
 	u16 num_vfs;			/* Number of VFs provisioned by PF */
+	u8 pf_num;			/* Numbering used by FW, starts at 0 */
+	u8 vf_num;			/* Numbering used by FW, starts at 1 */
 	u8 virtfn;
 	struct be_vf_cfg *vf_cfg;
 	bool be3_native;
@@ -591,12 +600,12 @@ struct be_adapter {
 	u32 msg_enable;
 	int be_get_temp_freq;
 	struct be_hwmon hwmon_info;
-	u8 pf_number;
-	u8 pci_func_num;
 	struct rss_info rss_info;
 	/* Filters for packets that need to be sent to BMC */
 	u32 bmc_filt_mask;
+	u32 fat_dump_len;
 	u16 serial_num[CNTL_SERIAL_NUM_WORDS];
+	u8 phy_state; /* state of sfp optics (functional, faulted, etc.,) */
 };
 
 #define be_physfn(adapter)		(!adapter->virtfn)
