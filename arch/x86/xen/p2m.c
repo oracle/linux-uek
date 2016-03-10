@@ -178,12 +178,6 @@
 #include "multicalls.h"
 #include "xen-ops.h"
 
-#define PMDS_PER_MID_PAGE	(P2M_MID_PER_PAGE / PTRS_PER_PTE)
-
-unsigned long *xen_p2m_addr __read_mostly;
-EXPORT_SYMBOL_GPL(xen_p2m_addr);
-unsigned long xen_p2m_size __read_mostly;
-EXPORT_SYMBOL_GPL(xen_p2m_size);
 unsigned long xen_max_p2m_pfn __read_mostly;
 
 /* Placeholders for holes in the address space */
