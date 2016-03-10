@@ -10694,6 +10694,12 @@ static int i40e_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 	hw->bus.func = PCI_FUNC(pdev->devfn);
 	pf->instance = pfs_found;
 
+	/* set up the locks for the AQ, do this only once in probe
+	 * and destroy them only once in remove
+	 */
+	mutex_init(&hw->aq.asq_mutex);
+	mutex_init(&hw->aq.arq_mutex);
+
 	if (debug != -1) {
 		pf->msg_enable = pf->hw.debug_mask;
 		pf->msg_enable = debug;
@@ -10738,12 +10744,6 @@ static int i40e_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 
 	/* set up a default setting for link flow control */
 	pf->hw.fc.requested_mode = I40E_FC_NONE;
-
-	/* set up the locks for the AQ, do this only once in probe
-	 * and destroy them only once in remove
-	 */
-	mutex_init(&hw->aq.asq_mutex);
-	mutex_init(&hw->aq.arq_mutex);
 
 	err = i40e_init_adminq(hw);
 	if (err) {
@@ -11126,7 +11126,6 @@ err_init_lan_hmc:
 	kfree(pf->qp_pile);
 err_sw_init:
 err_adminq_setup:
-	(void)i40e_shutdown_adminq(hw);
 err_pf_reset:
 	iounmap(hw->hw_addr);
 err_ioremap:
