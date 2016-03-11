@@ -1,5 +1,5 @@
 /*
- * Copyright(c) 2013-2015 Intel Corporation. All rights reserved.
+ * Copyright(c) 2013-2016 Intel Corporation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of version 2 of the GNU General Public License as
@@ -53,10 +53,29 @@ struct nd_pfn *to_nd_pfn(struct device *dev)
 }
 EXPORT_SYMBOL(to_nd_pfn);
 
+static struct nd_pfn *to_nd_pfn_safe(struct device *dev)
+{
+	/*
+	 * pfn device attributes are re-used by dax device instances, so we
+	 * need to be careful to correct device-to-nd_pfn conversion.
+	 */
+	if (is_nd_pfn(dev))
+		return to_nd_pfn(dev);
+
+	if (is_nd_dax(dev)) {
+		struct nd_dax *nd_dax = to_nd_dax(dev);
+
+		return &nd_dax->nd_pfn;
+	}
+
+	WARN_ON(1);
+	return NULL;
+}
+
 static ssize_t mode_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
-	struct nd_pfn *nd_pfn = to_nd_pfn(dev);
+	struct nd_pfn *nd_pfn = to_nd_pfn_safe(dev);
 
 	switch (nd_pfn->mode) {
 	case PFN_MODE_RAM:
@@ -71,7 +90,7 @@ static ssize_t mode_show(struct device *dev,
 static ssize_t mode_store(struct device *dev,
 		struct device_attribute *attr, const char *buf, size_t len)
 {
-	struct nd_pfn *nd_pfn = to_nd_pfn(dev);
+	struct nd_pfn *nd_pfn = to_nd_pfn_safe(dev);
 	ssize_t rc = 0;
 
 	device_lock(dev);
@@ -106,7 +125,7 @@ static DEVICE_ATTR_RW(mode);
 static ssize_t align_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
-	struct nd_pfn *nd_pfn = to_nd_pfn(dev);
+	struct nd_pfn *nd_pfn = to_nd_pfn_safe(dev);
 
 	return sprintf(buf, "%lx\n", nd_pfn->align);
 }
@@ -134,7 +153,7 @@ static ssize_t __align_store(struct nd_pfn *nd_pfn, const char *buf)
 static ssize_t align_store(struct device *dev,
 		struct device_attribute *attr, const char *buf, size_t len)
 {
-	struct nd_pfn *nd_pfn = to_nd_pfn(dev);
+	struct nd_pfn *nd_pfn = to_nd_pfn_safe(dev);
 	ssize_t rc;
 
 	device_lock(dev);
@@ -152,7 +171,7 @@ static DEVICE_ATTR_RW(align);
 static ssize_t uuid_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
-	struct nd_pfn *nd_pfn = to_nd_pfn(dev);
+	struct nd_pfn *nd_pfn = to_nd_pfn_safe(dev);
 
 	if (nd_pfn->uuid)
 		return sprintf(buf, "%pUb\n", nd_pfn->uuid);
@@ -162,7 +181,7 @@ static ssize_t uuid_show(struct device *dev,
 static ssize_t uuid_store(struct device *dev,
 		struct device_attribute *attr, const char *buf, size_t len)
 {
-	struct nd_pfn *nd_pfn = to_nd_pfn(dev);
+	struct nd_pfn *nd_pfn = to_nd_pfn_safe(dev);
 	ssize_t rc;
 
 	device_lock(dev);
@@ -178,7 +197,7 @@ static DEVICE_ATTR_RW(uuid);
 static ssize_t namespace_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
-	struct nd_pfn *nd_pfn = to_nd_pfn(dev);
+	struct nd_pfn *nd_pfn = to_nd_pfn_safe(dev);
 	ssize_t rc;
 
 	nvdimm_bus_lock(dev);
@@ -191,7 +210,7 @@ static ssize_t namespace_show(struct device *dev,
 static ssize_t namespace_store(struct device *dev,
 		struct device_attribute *attr, const char *buf, size_t len)
 {
-	struct nd_pfn *nd_pfn = to_nd_pfn(dev);
+	struct nd_pfn *nd_pfn = to_nd_pfn_safe(dev);
 	ssize_t rc;
 
 	device_lock(dev);
@@ -206,6 +225,60 @@ static ssize_t namespace_store(struct device *dev,
 }
 static DEVICE_ATTR_RW(namespace);
 
+static ssize_t resource_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	struct nd_pfn *nd_pfn = to_nd_pfn_safe(dev);
+	ssize_t rc;
+
+	device_lock(dev);
+	if (dev->driver) {
+		struct nd_pfn_sb *pfn_sb = nd_pfn->pfn_sb;
+		u64 offset = __le64_to_cpu(pfn_sb->dataoff);
+		struct nd_namespace_common *ndns = nd_pfn->ndns;
+		u32 start_pad = __le32_to_cpu(pfn_sb->start_pad);
+		struct nd_namespace_io *nsio = to_nd_namespace_io(&ndns->dev);
+
+		rc = sprintf(buf, "%#llx\n", (unsigned long long) nsio->res.start
+				+ start_pad + offset);
+	} else {
+		/* no address to convey if the pfn instance is disabled */
+		rc = -ENXIO;
+	}
+	device_unlock(dev);
+
+	return rc;
+}
+static DEVICE_ATTR_RO(resource);
+
+static ssize_t size_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	struct nd_pfn *nd_pfn = to_nd_pfn_safe(dev);
+	ssize_t rc;
+
+	device_lock(dev);
+	if (dev->driver) {
+		struct nd_pfn_sb *pfn_sb = nd_pfn->pfn_sb;
+		u64 offset = __le64_to_cpu(pfn_sb->dataoff);
+		struct nd_namespace_common *ndns = nd_pfn->ndns;
+		u32 start_pad = __le32_to_cpu(pfn_sb->start_pad);
+		u32 end_trunc = __le32_to_cpu(pfn_sb->end_trunc);
+		struct nd_namespace_io *nsio = to_nd_namespace_io(&ndns->dev);
+
+		rc = sprintf(buf, "%llu\n", (unsigned long long)
+				resource_size(&nsio->res) - start_pad
+				- end_trunc - offset);
+	} else {
+		/* no size to convey if the pfn instance is disabled */
+		rc = -ENXIO;
+	}
+	device_unlock(dev);
+
+	return rc;
+}
+static DEVICE_ATTR_RO(size);
+
 static struct attribute *nd_pfn_attributes[] = {
 	&dev_attr_mode.attr,
 	&dev_attr_namespace.attr,
@@ -214,7 +287,7 @@ static struct attribute *nd_pfn_attributes[] = {
 	NULL,
 };
 
-static struct attribute_group nd_pfn_attribute_group = {
+struct attribute_group nd_pfn_attribute_group = {
 	.attrs = nd_pfn_attributes,
 };
 
@@ -225,15 +298,31 @@ static const struct attribute_group *nd_pfn_attribute_groups[] = {
 	NULL,
 };
 
-static struct device *__nd_pfn_create(struct nd_region *nd_region,
+struct device *nd_pfn_devinit(struct nd_pfn *nd_pfn,
 		struct nd_namespace_common *ndns)
+{
+	struct device *dev = &nd_pfn->dev;
+
+	if (!nd_pfn)
+		return NULL;
+
+	nd_pfn->mode = PFN_MODE_NONE;
+	nd_pfn->align = HPAGE_SIZE;
+	dev = &nd_pfn->dev;
+	device_initialize(&nd_pfn->dev);
+	if (ndns && !__nd_attach_ndns(&nd_pfn->dev, ndns, &nd_pfn->ndns)) {
+		dev_dbg(&ndns->dev, "%s failed, already claimed by %s\n",
+				__func__, dev_name(ndns->claim));
+		put_device(dev);
+		return NULL;
+	}
+	return dev;
+}
+
+static struct nd_pfn *nd_pfn_alloc(struct nd_region *nd_region)
 {
 	struct nd_pfn *nd_pfn;
 	struct device *dev;
-
-	/* we can only create pages for contiguous ranged of pmem */
-	if (!is_nd_pmem(&nd_region->dev))
-		return NULL;
 
 	nd_pfn = kzalloc(sizeof(*nd_pfn), GFP_KERNEL);
 	if (!nd_pfn)
@@ -245,29 +334,27 @@ static struct device *__nd_pfn_create(struct nd_region *nd_region,
 		return NULL;
 	}
 
-	nd_pfn->mode = PFN_MODE_NONE;
-	nd_pfn->align = HPAGE_SIZE;
 	dev = &nd_pfn->dev;
 	dev_set_name(dev, "pfn%d.%d", nd_region->id, nd_pfn->id);
-	dev->parent = &nd_region->dev;
-	dev->type = &nd_pfn_device_type;
 	dev->groups = nd_pfn_attribute_groups;
-	device_initialize(&nd_pfn->dev);
-	if (ndns && !__nd_attach_ndns(&nd_pfn->dev, ndns, &nd_pfn->ndns)) {
-		dev_dbg(&ndns->dev, "%s failed, already claimed by %s\n",
-				__func__, dev_name(ndns->claim));
-		put_device(dev);
-		return NULL;
-	}
-	return dev;
+	dev->type = &nd_pfn_device_type;
+	dev->parent = &nd_region->dev;
+
+	return nd_pfn;
 }
 
 struct device *nd_pfn_create(struct nd_region *nd_region)
 {
-	struct device *dev = __nd_pfn_create(nd_region, NULL);
+	struct nd_pfn *nd_pfn;
+	struct device *dev;
 
-	if (dev)
-		__nd_device_register(dev);
+	if (!is_nd_pmem(&nd_region->dev))
+		return NULL;
+
+	nd_pfn = nd_pfn_alloc(nd_region);
+	dev = nd_pfn_devinit(nd_pfn, NULL);
+
+	__nd_device_register(dev);
 	return dev;
 }
 
@@ -364,7 +451,8 @@ int nd_pfn_probe(struct nd_namespace_common *ndns, void *drvdata)
 		return -ENODEV;
 
 	nvdimm_bus_lock(&ndns->dev);
-	dev = __nd_pfn_create(nd_region, ndns);
+	nd_pfn = nd_pfn_alloc(nd_region);
+	pfn_dev = nd_pfn_devinit(nd_pfn, ndns);
 	nvdimm_bus_unlock(&ndns->dev);
 	if (!dev)
 		return -ENOMEM;
