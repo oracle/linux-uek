@@ -1341,13 +1341,13 @@ void rds_ib_recv_cqe_handler(struct rds_ib_connection *ic,
 		if (rds_conn_up(conn) || rds_conn_connecting(conn)) {
 			conn->c_drop_source = 65;
 			rds_ib_conn_error(conn, "recv completion "
-					"<%pI4,%pI4,%d> had "
-					"status %u, disconnecting and "
+					"<%pI4,%pI4,%d> had status %u "
+					"vendor_err %u, disconnecting and "
 					"reconnecting\n",
 					&conn->c_laddr,
 					&conn->c_faddr,
 					conn->c_tos,
-					wc->status);
+					wc->status, wc->vendor_err);
 			rds_rtd(RDS_RTD_ERR, "status %u => %s\n", wc->status,
 				rds_ib_wc_status_str(wc->status));
 		}
