@@ -1,7 +1,7 @@
 /*
  * vds_blk.c: LDOM Virtual Disk Server.
  *
- * Copyright (C) 2014, 2015 Oracle. All rights reserved.
+ * Copyright (C) 2014, 2016 Oracle. All rights reserved.
  */
 
 #include "vds.h"
@@ -116,6 +116,11 @@ static int vds_blk_rw(struct vds_io *io)
 	 */
 	while (resid) {
 		bio = bio_alloc(GFP_NOIO, npages);
+		if (!bio) {
+			vdsmsg(err, "bio_alloc failed: npages=%d\n", npages);
+			err = -EIO;
+			break;
+		}
 		bio->bi_iter.bi_sector = offset + (size - resid);
 		bio->bi_bdev = bdev;
 		bio->bi_end_io = vds_blk_end_io;
