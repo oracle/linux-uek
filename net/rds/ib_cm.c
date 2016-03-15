@@ -34,9 +34,11 @@
 #include <linux/in.h>
 #include <linux/vmalloc.h>
 #include <linux/version.h>
+#include <linux/kconfig.h>
 #include <asm-generic/sizes.h>
 #include <rdma/rdma_cm_ib.h>
 #include <rdma/ib_cache.h>
+#include <rdma/ib_cm.h>
 
 #include "rds.h"
 #include "ib.h"
@@ -193,6 +195,58 @@ static inline void rds_ib_init_ic_frag(struct rds_ib_connection *ic)
 		ic->i_frag_sz = ib_init_frag_size;
 }
 
+#ifdef CONFIG_RDS_ACL
+
+/*
+*  0 - all good
+*  1 - acl is not enabled
+* -1 - acl match failed
+*/
+static int rds_ib_match_acl(struct rdma_cm_id *cm_id, __be32 saddr)
+{
+	struct ib_cm_acl *acl = 0;
+	struct ib_cm_acl_elem *acl_elem = 0;
+	__be64 fguid = cm_id->route.path_rec->dgid.global.interface_id;
+	__be64 fsubnet = cm_id->route.path_rec->dgid.global.subnet_prefix;
+	struct ib_cm_dpp dpp;
+	u32 addr; 
+
+	ib_cm_dpp_init(&dpp, cm_id->device, cm_id->port_num,
+		       ntohs(cm_id->route.path_rec->pkey));
+	acl = ib_cm_dpp_acl_lookup(&dpp);
+	if (!acl)
+		goto out;
+
+	if (!acl->enabled)
+		return 0;
+
+	acl_elem = ib_cm_acl_lookup(acl, be64_to_cpu(fsubnet),
+				    be64_to_cpu(fguid));
+	if (!acl_elem) {
+		pr_err_ratelimited("RDS/IB: GUID ib_cm_acl_lookup() failed\n");
+		goto out;
+	}
+
+	addr = be32_to_cpu(saddr);
+	if (!addr)
+		goto out;
+
+	acl_elem = ib_cm_acl_lookup_uuid_ip(acl, acl_elem->uuid, addr);
+	if (!acl_elem) {
+		pr_err_ratelimited("RDS/IB: IP %pI4 ib_cm_acl_lookup_uuid_ip() failed\n",
+				   &saddr);
+		goto out;
+	}
+
+	return 1;
+out:
+	pr_err_ratelimited("RDS/IB: %s failed due to ACLs. Check ACLs\n",
+			    __func__);
+	return -1;
+}
+
+#endif /* CONFIG_RDS_ACL */
+
 /*
  * Connection established.
  * We get here for both outgoing and incoming connection.
@@ -232,13 +286,14 @@ void rds_ib_cm_connect_complete(struct rds_connection *conn, struct rdma_cm_even
 		}
 	}
 
-	printk(KERN_NOTICE "RDS/IB: %s conn %p i_cm_id %p, frag %dKB, connected <%pI4,%pI4,%d> version %u.%u%s\n",
+	printk(KERN_NOTICE "RDS/IB: %s conn %p i_cm_id %p, frag %dKB, connected <%pI4,%pI4,%d> version %u.%u%s%s\n",
 	       ic->i_active_side ? "Active " : "Passive",
 	       conn, ic->i_cm_id, ic->i_frag_sz / SZ_1K,
 	       &conn->c_laddr, &conn->c_faddr, conn->c_tos,
 	       RDS_PROTOCOL_MAJOR(conn->c_version),
 	       RDS_PROTOCOL_MINOR(conn->c_version),
-	       ic->i_flowctl ? ", flow control" : "");
+	       ic->i_flowctl ? ", flow control" : "",
+	       conn->c_acl_en ? ", ACL Enabled" : "");
 
 	/* The connection might have been dropped under us*/
 	if (!ic->i_cm_id) {
@@ -830,6 +885,7 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 	struct rdma_conn_param conn_param;
 	u32 version;
 	int err = 1, destroy = 1;
+	int acl_ret = 0;
 
 	/* Check whether the remote protocol version matches ours. */
 	version = rds_ib_protocol_compatible(event);
@@ -845,6 +901,21 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 		(unsigned long long)be64_to_cpu(fguid),
 		dp->dp_tos);
 
+#ifdef CONFIG_RDS_ACL
+
+	acl_ret = rds_ib_match_acl(cm_id, dp->dp_saddr);
+	if (acl_ret < 0) {
+		rdma_reject(cm_id, &acl_ret, sizeof(int));
+		rdsdebug("RDS: IB: rds_ib_match_acl failed\n");
+		goto out;
+	}
+
+#else /* !CONFIG_RDS_ACL */
+
+	acl_ret = 0;
+
+#endif /* !CONFIG_RDS_ACL */
+
 	/* RDS/IB is not currently netns aware, thus init_net */
 	conn = rds_conn_create(&init_net, dp->dp_daddr, dp->dp_saddr,
 			       &rds_ib_transport, dp->dp_tos, GFP_KERNEL);
@@ -857,6 +928,9 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 
 	rds_ib_set_protocol(conn, version);
 	rds_ib_set_frag_size(conn, be16_to_cpu(dp->dp_frag_sz));
+
+	conn->c_acl_en = acl_ret;
+	conn->c_acl_init = 1;
 
 	if (dp->dp_tos && !conn->c_base_conn) {
 		conn->c_base_conn = rds_conn_create(&init_net,
@@ -1026,6 +1100,26 @@ int rds_ib_cm_initiate_connect(struct rdma_cm_id *cm_id)
 	struct rdma_conn_param conn_param;
 	struct rds_ib_connect_private dp;
 	int ret;
+
+#ifdef CONFIG_RDS_ACL
+
+	ret = rds_ib_match_acl(ic->i_cm_id, conn->c_faddr);
+	if (ret < 0) {
+		pr_err("RDS: IB: active conn=%p, <%pI4,%pI4,%d> destroyed due ACL violation\n",
+			conn, &conn->c_laddr, &conn->c_faddr,
+			conn->c_tos);
+		rds_ib_conn_destroy_init(conn);
+		return 0;
+	}
+
+#else /* !CONFIG_RDS_ACL */
+
+	ret = 0;
+
+#endif /* !CONFIG_RDS_ACL */
+
+	conn->c_acl_en = ret;
+	conn->c_acl_init = 1;
 
 	rds_ib_set_protocol(conn, RDS_PROTOCOL_4_1);
 	ic->i_flowctl = rds_ib_sysctl_flow_control;	/* advertise flow control */
