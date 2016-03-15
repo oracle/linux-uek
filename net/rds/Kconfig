@@ -19,6 +19,11 @@ config RDS_TCP
 	  Allow RDS to use TCP as a transport.
 	  This transport does not support RDMA operations.
 
+config RDS_ACL
+	bool "RDS support for ACL"
+	depends on RDS
+	default n
+
 config RDS_DEBUG
         bool "RDS debugging messages"
 	depends on RDS
