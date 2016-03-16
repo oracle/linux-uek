@@ -1157,14 +1157,6 @@ void __init setup_arch(char **cmdline_p)
 
 	io_delay_init();
 
-#ifdef CONFIG_EFI_SECURE_BOOT_SECURELEVEL
-	if (boot_params.secure_boot) {
-		set_bit(EFI_SECURE_BOOT, &efi.flags);
-		set_securelevel(1);
-		pr_info("Secure boot enabled\n");
-	}
-#endif
-
 	/*
 	 * Parse the ACPI tables for possible boot-time SMP configuration.
 	 */
