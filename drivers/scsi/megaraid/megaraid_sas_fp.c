@@ -66,7 +66,15 @@ MODULE_PARM_DESC(lb_pending_cmds, "Change raid-1 load balancing outstanding "
 
 #define ABS_DIFF(a, b)   (((a) > (b)) ? ((a) - (b)) : ((b) - (a)))
 #define MR_LD_STATE_OPTIMAL 3
+
+#ifdef FALSE
+#undef FALSE
+#endif
 #define FALSE 0
+
+#ifdef TRUE
+#undef TRUE
+#endif
 #define TRUE 1
 
 #define SPAN_DEBUG 0
@@ -733,14 +741,12 @@ static u8 mr_spanset_get_phy_params(struct megasas_instance *instance, u32 ld,
 	u8      physArm, span;
 	u64     row;
 	u8	retval = TRUE;
-	u8	do_invader = 0;
 	u64	*pdBlock = &io_info->pdBlock;
 	__le16	*pDevHandle = &io_info->devHandle;
 	u32	logArm, rowMod, armQ, arm;
+	struct fusion_context *fusion;
 
-	if ((instance->pdev->device == PCI_DEVICE_ID_LSI_INVADER ||
-		instance->pdev->device == PCI_DEVICE_ID_LSI_FURY))
-		do_invader = 1;
+	fusion = instance->ctrl_context;
 
 	/*Get row and span from io_info for Uneven Span IO.*/
 	row	    = io_info->start_row;
@@ -771,7 +777,8 @@ static u8 mr_spanset_get_phy_params(struct megasas_instance *instance, u32 ld,
 	else {
 		*pDevHandle = cpu_to_le16(MR_PD_INVALID);
 		if ((raid->level >= 5) &&
-			(!do_invader  || (do_invader &&
+			((fusion->adapter_type == THUNDERBOLT_SERIES)  ||
+			((fusion->adapter_type == INVADER_SERIES) &&
 			(raid->regTypeReqOnRead != REGION_TYPE_UNUSED))))
 			pRAID_Context->regLockFlags = REGION_TYPE_EXCLUSIVE;
 		else if (raid->level == 1) {
@@ -815,13 +822,12 @@ u8 MR_GetPhyParams(struct megasas_instance *instance, u32 ld, u64 stripRow,
 	u8          physArm, span;
 	u64         row;
 	u8	    retval = TRUE;
-	u8          do_invader = 0;
 	u64	    *pdBlock = &io_info->pdBlock;
 	__le16	    *pDevHandle = &io_info->devHandle;
+	struct fusion_context *fusion;
 
-	if ((instance->pdev->device == PCI_DEVICE_ID_LSI_INVADER ||
-		instance->pdev->device == PCI_DEVICE_ID_LSI_FURY))
-		do_invader = 1;
+	fusion = instance->ctrl_context;
+
 
 	row =  mega_div64_32(stripRow, raid->rowDataSize);
 
@@ -867,7 +873,8 @@ u8 MR_GetPhyParams(struct megasas_instance *instance, u32 ld, u64 stripRow,
 		/* set dev handle as invalid. */
 		*pDevHandle = cpu_to_le16(MR_PD_INVALID);
 		if ((raid->level >= 5) &&
-			(!do_invader  || (do_invader &&
+			((fusion->adapter_type == THUNDERBOLT_SERIES)  ||
+			((fusion->adapter_type == INVADER_SERIES) &&
 			(raid->regTypeReqOnRead != REGION_TYPE_UNUSED))))
 			pRAID_Context->regLockFlags = REGION_TYPE_EXCLUSIVE;
 		else if (raid->level == 1) {
@@ -901,6 +908,7 @@ MR_BuildRaidContext(struct megasas_instance *instance,
 		    struct RAID_CONTEXT *pRAID_Context,
 		    struct MR_DRV_RAID_MAP_ALL *map, u8 **raidLUN)
 {
+	struct fusion_context *fusion;
 	struct MR_LD_RAID  *raid;
 	u32         ld, stripSize, stripe_mask;
 	u64         endLba, endStrip, endRow, start_row, start_strip;
@@ -921,6 +929,7 @@ MR_BuildRaidContext(struct megasas_instance *instance,
 	isRead = io_info->isRead;
 	io_info->IoforUnevenSpan = 0;
 	io_info->start_span	= SPAN_INVALID;
+	fusion = instance->ctrl_context;
 
 	ld = MR_TargetIdToLdGet(ldTgtId, map);
 	raid = MR_LdRaidGet(ld, map);
@@ -1011,6 +1020,8 @@ MR_BuildRaidContext(struct megasas_instance *instance,
 	/* assume this IO needs the full row - we'll adjust if not true */
 	regSize             = stripSize;
 
+	io_info->do_fp_rlbypass = raid->capability.fpBypassRegionLock;
+
 	/* Check if we can send this I/O via FastPath */
 	if (raid->capability.fpCapable) {
 		if (isRead)
@@ -1084,8 +1095,7 @@ MR_BuildRaidContext(struct megasas_instance *instance,
 		cpu_to_le16(raid->fpIoTimeoutForLd ?
 			    raid->fpIoTimeoutForLd :
 			    map->raidMap.fpPdIoTimeoutSec);
-	if ((instance->pdev->device == PCI_DEVICE_ID_LSI_INVADER) ||
-		(instance->pdev->device == PCI_DEVICE_ID_LSI_FURY))
+	if (fusion->adapter_type == INVADER_SERIES)
 		pRAID_Context->regLockFlags = (isRead) ?
 			raid->regTypeReqOnRead : raid->regTypeReqOnWrite;
 	else
@@ -1190,10 +1200,6 @@ void mr_update_span_set(struct MR_DRV_RAID_MAP_ALL *map,
 						span_row_width +=
 							MR_LdSpanPtrGet
 							(ld, count, map)->spanRowDataSize;
-						printk(KERN_INFO "megasas:"
-							"span %x rowDataSize %x\n",
-							count, MR_LdSpanPtrGet
-							(ld, count, map)->spanRowDataSize);
 					}
 				}
 

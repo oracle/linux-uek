@@ -1112,6 +1112,8 @@ qla2x00_get_adapter_id(scsi_qla_host_t *vha, uint16_t *id, uint8_t *al_pa,
 		mcp->in_mb |= MBX_13|MBX_12|MBX_11|MBX_10;
 	if (IS_FWI2_CAPABLE(vha->hw))
 		mcp->in_mb |= MBX_19|MBX_18|MBX_17|MBX_16;
+	if (IS_QLA27XX(vha->hw))
+		mcp->in_mb |= MBX_15;
 	mcp->tov = MBX_TOV_SECONDS;
 	mcp->flags = 0;
 	rval = qla2x00_mailbox_command(vha, mcp);
@@ -1163,6 +1165,9 @@ qla2x00_get_adapter_id(scsi_qla_host_t *vha, uint16_t *id, uint8_t *al_pa,
 				    wwn_to_u64(vha->port_name));
 			}
 		}
+
+		if (IS_QLA27XX(vha->hw))
+			vha->bbcr = mcp->mb[15];
 	}
 
 	return rval;
@@ -2520,7 +2525,7 @@ qla2x00_get_link_status(scsi_qla_host_t *vha, uint16_t loop_id,
 	int rval;
 	mbx_cmd_t mc;
 	mbx_cmd_t *mcp = &mc;
-	uint32_t *siter, *diter, dwords;
+	uint32_t *iter, dwords;
 	struct qla_hw_data *ha = vha->hw;
 
 	ql_dbg(ql_dbg_mbx + ql_dbg_verbose, vha, 0x1084,
@@ -2560,10 +2565,11 @@ qla2x00_get_link_status(scsi_qla_host_t *vha, uint16_t loop_id,
 			/* Copy over data -- firmware data is LE. */
 			ql_dbg(ql_dbg_mbx + ql_dbg_verbose, vha, 0x1086,
 			    "Done %s.\n", __func__);
-			dwords = offsetof(struct link_statistics, unused1) / 4;
-			siter = diter = &stats->link_fail_cnt;
-			while (dwords--)
-				*diter++ = le32_to_cpu(*siter++);
+			dwords = offsetof(struct link_statistics,
+					link_up_cnt) / 4;
+			iter = &stats->link_fail_cnt;
+			for ( ; dwords--; iter++)
+				le32_to_cpus(iter);
 		}
 	} else {
 		/* Failed. */
@@ -2580,7 +2586,7 @@ qla24xx_get_isp_stats(scsi_qla_host_t *vha, struct link_statistics *stats,
 	int rval;
 	mbx_cmd_t mc;
 	mbx_cmd_t *mcp = &mc;
-	uint32_t *siter, *diter, dwords;
+	uint32_t *iter, dwords;
 
 	ql_dbg(ql_dbg_mbx + ql_dbg_verbose, vha, 0x1088,
 	    "Entered %s.\n", __func__);
@@ -2609,9 +2615,9 @@ qla24xx_get_isp_stats(scsi_qla_host_t *vha, struct link_statistics *stats,
 			    "Done %s.\n", __func__);
 			/* Copy over data -- firmware data is LE. */
 			dwords = sizeof(struct link_statistics) / 4;
-			siter = diter = &stats->link_fail_cnt;
-			while (dwords--)
-				*diter++ = le32_to_cpu(*siter++);
+			iter = &stats->link_fail_cnt;
+			for ( ; dwords--; iter++)
+				le32_to_cpus(iter);
 		}
 	} else {
 		/* Failed. */
@@ -3377,6 +3383,9 @@ qla24xx_report_id_acquisition(scsi_qla_host_t *vha,
 		    "port id %02x%02x%02x.\n", vp_idx, MSB(stat),
 		    rptid_entry->port_id[2], rptid_entry->port_id[1],
 		    rptid_entry->port_id[0]);
+
+		/* buffer to buffer credit flag */
+		vha->flags.bbcr_enable = (rptid_entry->bbcr & 0xf) != 0;
 
 		/* FA-WWN is only for physical port */
 		if (!vp_idx) {
