@@ -794,6 +794,8 @@ void ipoib_cm_send(struct net_device *dev, struct sk_buff *skb, struct ipoib_cm_
 		ipoib_cm_skb_too_long(dev, skb, tx->mtu - IPOIB_ENCAP_LEN);
 		return;
 	}
+	if (ipoib_linearize_skb(dev, skb, priv, tx->max_send_sge) < 0)
+		return;
 
 	ipoib_dbg_data(priv, "sending packet: head 0x%x length %d connection 0x%x\n",
 		       tx->tx_head, skb->len, tx->qp->qp_num);
@@ -1152,7 +1154,8 @@ static struct ib_qp *ipoib_cm_create_tx_qp(struct net_device *dev, struct ipoib_
 	struct ib_qp *tx_qp;
 
 	if (dev->features & NETIF_F_SG)
-		attr.cap.max_send_sge = MAX_SKB_FRAGS + 1;
+		attr.cap.max_send_sge =
+			min_t(u32, priv->max_sge, MAX_SKB_FRAGS + 1);
 
 	tx_qp = ib_create_qp(priv->pd, &attr);
 	if (PTR_ERR(tx_qp) == -EINVAL) {
@@ -1161,6 +1164,7 @@ static struct ib_qp *ipoib_cm_create_tx_qp(struct net_device *dev, struct ipoib_
 		attr.create_flags &= ~IB_QP_CREATE_USE_GFP_NOIO;
 		tx_qp = ib_create_qp(priv->pd, &attr);
 	}
+	tx->max_send_sge = attr.cap.max_send_sge;
 	return tx_qp;
 }
 
@@ -1714,6 +1718,7 @@ int ipoib_cm_dev_init(struct net_device *dev)
 
 	ipoib_dbg(priv, "max_srq_sge=%d\n", attr.max_srq_sge);
 
+	priv->max_sge = attr.max_sge;
 	attr.max_srq_sge = min_t(int, IPOIB_CM_RX_SG, attr.max_srq_sge);
 	ipoib_cm_create_srq(dev, attr.max_srq_sge);
 	if (ipoib_cm_has_srq(dev)) {
