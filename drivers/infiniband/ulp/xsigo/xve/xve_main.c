@@ -1077,14 +1077,14 @@ int xve_dev_init(struct net_device *dev, struct ib_device *ca, int port)
 	priv->rx_ring = kcalloc(priv->xve_recvq_size, sizeof(*priv->rx_ring),
 				GFP_KERNEL);
 	if (!priv->rx_ring) {
-		pr_warn("%s: failed to allocate RX ring (%d entries)\n",
+		DRV_PRINT("%s:failed to allocate RX ring (%d entries)\n",
 			ca->name, priv->xve_recvq_size);
 		goto out;
 	}
 
 	priv->tx_ring = vmalloc(priv->xve_sendq_size * sizeof(*priv->tx_ring));
 	if (!priv->tx_ring) {
-		pr_warn("%s: failed to allocate TX ring (%d entries)\n",
+		DRV_PRINT("%s:failed to allocate TX ring (%d entries)\n",
 			ca->name, priv->xve_sendq_size);
 		goto out_rx_ring_cleanup;
 	}
@@ -1605,9 +1605,10 @@ static int xve_state_machine(struct xve_dev_priv *priv)
 
 			xve_flush_paths(priv->netdev);
 			spin_lock_irqsave(&priv->lock, flags);
-			xve_set_oper_down(priv);
+			/* Disjoin from multicast Group */
 			set_bit(XVE_HBEAT_LOST, &priv->state);
 			spin_unlock_irqrestore(&priv->lock, flags);
+			xve_queue_work(priv, XVE_WQ_START_FLUSHNORMAL);
 		}
 		priv->counters[XVE_STATE_MACHINE_UP]++;
 		if (!test_bit(XVE_OPER_REP_SENT, &priv->state))
@@ -1761,7 +1762,7 @@ xve_set_edr_features(struct xve_dev_priv *priv)
 
 int xve_set_dev_features(struct xve_dev_priv *priv, struct ib_device *hca)
 {
-	struct ib_device_attr *device_attr;
+	struct ib_device_attr device_attr;
 	int result = -ENOMEM;
 
 	priv->netdev->watchdog_timeo = 1000 * HZ;
@@ -1796,23 +1797,15 @@ int xve_set_dev_features(struct xve_dev_priv *priv, struct ib_device *hca)
 
 	xve_set_netdev(priv->netdev);
 
-	device_attr = kmalloc(sizeof(*device_attr), GFP_KERNEL);
-
-	if (!device_attr) {
-		pr_warn("%s: allocation of %zu bytes failed\n",
-				hca->name, sizeof(*device_attr));
-		return result;
-	}
-
-	result = ib_query_device(hca, device_attr);
+	result = ib_query_device(hca, &device_attr);
 	if (result) {
 		pr_warn("%s: ib_query_device failed (ret = %d)\n",
 				hca->name, result);
-		kfree(device_attr);
 		return result;
 	}
-	priv->hca_caps = device_attr->device_cap_flags;
-	kfree(device_attr);
+
+	priv->dev_attr = device_attr;
+	priv->hca_caps = device_attr.device_cap_flags;
 
 	xve_lro_setup(priv);
 	if (xve_is_ovn(priv))
@@ -1969,8 +1962,8 @@ int xve_xsmp_send_oper_state(struct xve_dev_priv *priv, u64 vid, int state)
 	int ret;
 	char *str = state == XSMP_XVE_OPER_UP ? "UP" : "DOWN";
 
-	pr_info("XVE: %s Sending OPER state [%d]  to %s\n",
-		__func__, state, priv->xve_name);
+	pr_info("XVE: %s Sending OPER state [%d:%s]  to %s\n",
+		__func__, state, str, priv->xve_name);
 	if (state == XSMP_XVE_OPER_UP) {
 		set_bit(XVE_OPER_REP_SENT, &priv->state);
 		set_bit(XVE_PORT_LINK_UP, &priv->state);

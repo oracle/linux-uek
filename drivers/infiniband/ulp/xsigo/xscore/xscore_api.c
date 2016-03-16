@@ -393,7 +393,9 @@ static int xs_post_recv(struct xscore_conn_ctx *ctx, int offset, int n,
 				ret = -ENOMEM;
 		}
 
-		if (ret == ENOMEM) {
+		if (ret == -ENOMEM) {
+			IB_ERROR("%s Memory errors i%d ret%d",
+				 __func__, i, ret);
 			if (fillholes)
 				return ret;
 			goto partial_failure;
@@ -701,6 +703,9 @@ static int xscore_poll_recv(struct xscore_conn_ctx *ctx)
 			err++;
 			break;
 		}
+		if (wc.status)
+			IB_ERROR("%s completion error wr_id%d status %d\n",
+					__func__, i, wc.status);
 		desc = &ctx->rx_ring[i];
 		if (desc->page) {
 			for (j = 0; j < (desc->size / PAGE_SIZE); ++j)
@@ -719,7 +724,6 @@ static int xscore_poll_recv(struct xscore_conn_ctx *ctx)
 		size = wc.byte_len;
 
 		xscore_reset_rxdescriptor(desc);
-
 		/*
 		 * Call completion callback, pass buffer size
 		 * and client arg and status
@@ -1443,8 +1447,9 @@ static void handle_cm_rep(struct xscore_conn_ctx *ctx)
 
 	if (ctx->features & XSCORE_RDMA_SUPPORT) {
 		attr_mask |= IB_QP_MAX_DEST_RD_ATOMIC;
-		qp_attr.max_dest_rd_atomic = min (ctx->port->xs_dev->dev_attr.max_qp_rd_atom,
-						rdma_responder_resources);
+		qp_attr.max_dest_rd_atomic =
+			min(ctx->port->xs_dev->dev_attr.max_qp_rd_atom,
+					rdma_responder_resources);
 	} else {
 		qp_attr.max_dest_rd_atomic = 4;
 	}
