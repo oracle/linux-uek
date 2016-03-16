@@ -548,7 +548,11 @@ static int alua_rtpg(struct scsi_device *sdev, struct alua_dh_data *h)
 			goto retry;
 		}
 
-		err = alua_check_sense(sdev, &sense_hdr);
+		if (sense_hdr.sense_key == UNIT_ATTENTION)
+			err = ADD_TO_MLQUEUE;
+		else
+			err = alua_check_sense(sdev, &sense_hdr);
+ 
 		if (err == ADD_TO_MLQUEUE && time_before(jiffies, expiry))
 			goto retry;
 		sdev_printk(KERN_INFO, sdev,
