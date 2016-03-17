@@ -859,7 +859,7 @@ static inline void *____cache_alloc_node(struct kmem_cache *cachep,
 
 static inline gfp_t gfp_exact_node(gfp_t flags)
 {
-	return flags;
+	return flags & ~__GFP_NOFAIL;
 }
 
 #else	/* CONFIG_NUMA */
@@ -1035,7 +1035,8 @@ static inline int cache_free_alien(struct kmem_cache *cachep, void *objp)
  */
 static inline gfp_t gfp_exact_node(gfp_t flags)
 {
-	return (flags | __GFP_THISNODE | __GFP_NOWARN) & ~__GFP_WAIT;
+	return (flags | __GFP_THISNODE | __GFP_NOWARN | __GFP_NO_KSWAPD) &
+			~__GFP_WAIT;
 }
 #endif
 

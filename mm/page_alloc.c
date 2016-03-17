@@ -2698,14 +2698,6 @@ __alloc_pages_slowpath(gfp_t gfp_mask, unsigned int order,
 		return NULL;
 	}
 
-	/*
-	 * If this allocation cannot block and it is for a specific node, then
-	 * fail early.  There's no need to wakeup kswapd or retry for a
-	 * speculative node-specific allocation.
-	 */
-	if (IS_ENABLED(CONFIG_NUMA) && (gfp_mask & __GFP_THISNODE) && !wait)
-		goto nopage;
-
 retry:
 	if (!(gfp_mask & __GFP_NO_KSWAPD))
 		wake_all_kswapds(order, ac);
