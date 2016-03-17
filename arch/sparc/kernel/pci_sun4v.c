@@ -44,6 +44,13 @@ static struct vpci_version vpci_versions[] = {
 	{ .major = 1, .minor = 1 },
 };
 
+/*
+ * We don't use version 1 of the SDIO/IOV hypervisor API group because
+ * it was deprecated before it was ever used on Linux.
+ */
+static unsigned long iov_major = 2;
+static unsigned long iov_minor;
+
 #define PGLIST_NENTS	(PAGE_SIZE / sizeof(u64))
 
 struct iommu_batch {
@@ -1010,6 +1017,63 @@ static void pci_sun4v_msi_init(struct pci_pbm_info *pbm)
 }
 #endif /* !(CONFIG_PCI_MSI) */
 
+static ssize_t
+pci_sun4v_iov_ready_store(struct device *dev, struct device_attribute *attr,
+			 const char *buf, size_t count)
+{
+	struct pci_pbm_info *pbm;
+	struct pci_dev *pdev;
+	unsigned int device;
+	unsigned int func;
+	unsigned long err;
+	unsigned long val;
+	unsigned int bus;
+	ssize_t result;
+
+	result = kstrtoul(buf, 0, &val);
+	if (result < 0)
+		return result;
+
+	pdev = to_pci_dev(dev);
+	bus = pdev->bus->number;
+	device = PCI_SLOT(pdev->devfn);
+	func = PCI_FUNC(pdev->devfn);
+
+	pbm = pdev->bus->sysdata;
+
+	err = pci_sun4v_iov_dev_ready(pbm->devhandle,
+				      HV_PCI_DEVICE_BUILD(bus, device, func),
+				      val);
+
+	switch (err) {
+
+	case HV_EOK:
+		return count;
+
+	case HV_EINVAL:
+		return -EINVAL;
+
+	case HV_ENOACCESS:
+		return -EACCES;
+
+	default:
+		return -err;
+
+	}
+}
+
+static struct device_attribute pci_sun4v_iov_ready_attr =
+		__ATTR(iov_ready, S_IWUSR, NULL, pci_sun4v_iov_ready_store);
+
+static struct attribute *pci_sun4v_dev_attrs[] = {
+	&pci_sun4v_iov_ready_attr.attr,
+	NULL,
+};
+
+static const struct attribute_group pci_sun4v_dev_attr_group = {
+	.attrs = pci_sun4v_dev_attrs,
+};
+
 static int pci_sun4v_pbm_init(struct pci_pbm_info *pbm,
 			      struct platform_device *op, u32 devhandle)
 {
@@ -1028,6 +1092,8 @@ static int pci_sun4v_pbm_init(struct pci_pbm_info *pbm,
 	pbm->devhandle = devhandle;
 
 	pbm->name = dp->full_name;
+
+	pbm->sysfs_dev_attr_group = &pci_sun4v_dev_attr_group;
 
 	printk("%s: SUN4V PCI Bus Module\n", pbm->name);
 	printk("%s: On NUMA node %d\n", pbm->name, pbm->numa_node);
@@ -1050,6 +1116,41 @@ static int pci_sun4v_pbm_init(struct pci_pbm_info *pbm,
 	return 0;
 }
 
+static int pci_sun4v_hvapi_register(void)
+{
+	int i, err = -ENODEV;
+
+	for (i = 0; i < ARRAY_SIZE(vpci_versions); i++) {
+		vpci_major = vpci_versions[i].major;
+		vpci_minor = vpci_versions[i].minor;
+
+		err = sun4v_hvapi_register(HV_GRP_PCI, vpci_major,
+		    &vpci_minor);
+		if (!err)
+			break;
+	}
+
+	if (err) {
+		pr_err(PFX "Could not register hvapi, err=%d\n", err);
+		return err;
+	}
+	pr_info(PFX "Registered hvapi major[%lu] minor[%lu]\n",
+	    vpci_major, vpci_minor);
+
+	err = sun4v_hvapi_register(HV_GRP_SDIO, iov_major, &iov_minor);
+	if (err) {
+		pr_err(PFX "Could not register IOV hvapi, err=%d\n", err);
+		/* don't return an error if we fail to register the
+		 * SDIO/IOV group, but SDIO/IOV hcalls won't be available.
+		 */
+	} else {
+		pr_info(PFX "Registered IOV hvapi major[%lu] minor[%lu]\n",
+			iov_major, iov_minor);
+	}
+
+	return 0;
+}
+
 static int pci_sun4v_probe(struct platform_device *op)
 {
 	const struct linux_prom64_registers *regs;
@@ -1058,27 +1159,14 @@ static int pci_sun4v_probe(struct platform_device *op)
 	struct device_node *dp;
 	struct iommu *iommu;
 	u32 devhandle;
-	int i, err = -ENODEV;
+	int i, err;
 
 	dp = op->dev.of_node;
 
 	if (!hvapi_negotiated++) {
-		for (i = 0; i < ARRAY_SIZE(vpci_versions); i++) {
-			vpci_major = vpci_versions[i].major;
-			vpci_minor = vpci_versions[i].minor;
-
-			err = sun4v_hvapi_register(HV_GRP_PCI, vpci_major,
-						   &vpci_minor);
-			if (!err)
-				break;
-		}
-
-		if (err) {
-			pr_err(PFX "Could not register hvapi, err=%d\n", err);
+		err = pci_sun4v_hvapi_register();
+		if (err)
 			return err;
-		}
-		pr_info(PFX "Registered hvapi major[%lu] minor[%lu]\n",
-			vpci_major, vpci_minor);
 
 		dma_ops = &sun4v_dma_ops;
 	}

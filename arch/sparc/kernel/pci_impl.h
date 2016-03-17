@@ -149,6 +149,9 @@ struct pci_pbm_info {
 	/* IOMMU state, potentially shared by both PBM segments. */
 	struct iommu			*iommu;
 
+	/* Architecture-specific sysfs device attributes. */
+	const struct attribute_group	*sysfs_dev_attr_group;
+
 	/* Now things for the actual PCI bus probes. */
 	unsigned int			pci_first_busno;
 	unsigned int			pci_last_busno;
