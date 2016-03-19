@@ -355,10 +355,8 @@ xfs_end_bio(
 	int			error)
 {
 	xfs_ioend_t		*ioend = bio->bi_private;
-	ASSERT(atomic_read(&bio->bi_cnt) >= 1);
 
-	if (!ioend->io_error && !test_bit(BIO_UPTODATE, &bio->bi_flags))
-		ioend->io_error = error;
+	ioend->io_error = test_bit(BIO_UPTODATE, &bio->bi_flags) ? 0 : error;
 
 	/* Toss bio and pass work off to an xfsdatad thread */
 	bio->bi_private = NULL;
