@@ -195,6 +195,38 @@ void rds_ib_recv_free_caches(struct rds_ib_connection *ic)
 	}
 }
 
+/* Called from rds_ib_conn_shutdown path on the way
+ * towards connection destroy or reconnect
+ */
+void rds_ib_recv_purge_frag_cache(struct rds_ib_connection *ic)
+{
+	struct rds_ib_cache_head *head;
+	struct rds_page_frag *frag, *frag_tmp;
+	LIST_HEAD(list);
+	int cpu;
+
+	rds_ib_cache_xfer_to_ready(&ic->i_cache_frags);
+	rds_ib_cache_splice_all_lists(&ic->i_cache_frags, &list);
+	atomic_set(&ic->i_cache_allocs, 0);
+
+	list_for_each_entry_safe(frag, frag_tmp, &list, f_cache_entry) {
+		list_del(&frag->f_cache_entry);
+		WARN_ON(!list_empty(&frag->f_item));
+		kmem_cache_free(rds_ib_frag_slab, frag);
+		rds_ib_stats_add(s_ib_recv_added_to_cache, ic->i_frag_sz);
+		rds_ib_stats_add(s_ib_recv_removed_from_cache, ic->i_frag_sz);
+	}
+
+	for_each_possible_cpu(cpu) {
+		head = per_cpu_ptr(ic->i_cache_frags.percpu, cpu);
+		head->first = NULL;
+		head->count = 0;
+	}
+
+	ic->i_cache_frags.xfer = NULL;
+	ic->i_cache_frags.ready = NULL;
+}
+
 /* fwd decl */
 static void rds_ib_recv_cache_put(struct list_head *new_item,
 				  struct rds_ib_refill_cache *cache);
