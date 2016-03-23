@@ -327,6 +327,7 @@ static int rds_user_reset(struct rds_sock *rs, char __user *optval, int optlen)
 {
 	struct rds_reset reset;
 	struct rds_connection *conn;
+	LIST_HEAD(s_addr_conns);
 
 	if (optlen != sizeof(struct rds_reset))
 		return -EINVAL;
@@ -334,6 +335,23 @@ static int rds_user_reset(struct rds_sock *rs, char __user *optval, int optlen)
 	if (copy_from_user(&reset, (struct rds_reset __user *)optval,
 				sizeof(struct rds_reset)))
 		return -EFAULT;
+
+	/* Reset all conns associated with source addr */
+	if (reset.dst.s_addr ==  0) {
+		pr_info("RDS: Reset ALL conns for Source %pI4\n",
+			 &reset.src.s_addr);
+
+		rds_conn_laddr_list(reset.src.s_addr, &s_addr_conns);
+		if (list_empty(&s_addr_conns))
+			goto done;
+
+		list_for_each_entry(conn, &s_addr_conns, c_laddr_node)
+			if (conn) {
+				conn->c_drop_source = 1;
+				rds_conn_drop(conn);
+			}
+		goto done;
+	}
 
 	conn = rds_conn_find(sock_net(rds_rs_to_sk(rs)),
 			     reset.src.s_addr, reset.dst.s_addr,
@@ -347,7 +365,7 @@ static int rds_user_reset(struct rds_sock *rs, char __user *optval, int optlen)
 		conn->c_drop_source = DR_USER_RESET;
 		rds_conn_drop(conn);
 	}
-
+done:
 	return 0;
 }
 
