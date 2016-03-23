@@ -288,6 +288,7 @@ struct rds_connection {
 	unsigned int		c_route_resolved;
 
 	enum rds_conn_drop_src	c_drop_source;
+	struct list_head	c_laddr_node;
 };
 
 static inline
@@ -841,6 +842,7 @@ void rds_conn_shutdown(struct rds_connection *conn, int restart);
 void rds_conn_destroy(struct rds_connection *conn);
 void rds_conn_reset(struct rds_connection *conn);
 void rds_conn_drop(struct rds_connection *conn);
+void rds_conn_laddr_list(__be32 laddr, struct list_head *laddr_conns);
 void rds_conn_connect_if_down(struct rds_connection *conn);
 void rds_for_each_conn_info(struct socket *sock, unsigned int len,
 			  struct rds_info_iterator *iter,
