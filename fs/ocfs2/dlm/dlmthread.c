@@ -267,7 +267,7 @@ static void dlm_run_purge_list(struct dlm_ctxt *dlm,
 			     lockres->lockname.name,
 			     !unused, lockres->state,
 			     lockres->inflight_assert_workers);
-			list_move_tail(&dlm->purge_list, &lockres->purge);
+			list_move_tail(&lockres->purge, &dlm->purge_list);
 			spin_unlock(&lockres->spinlock);
 			continue;
 		}
