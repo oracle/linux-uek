@@ -1491,6 +1491,9 @@ static int do_ebt_get_ctl(struct sock *sk, int cmd, void __user *user, int *len)
 		return -EFAULT;
 
 	t = find_table_lock(sock_net(sk), tmp.name, &ret, &ebt_mutex);
+
+	tmp.name[sizeof(tmp.name) - 1] = '\0';
+
 	if (!t)
 		return ret;
 
@@ -2310,6 +2313,9 @@ static int compat_do_ebt_get_ctl(struct sock *sk, int cmd,
 		return -EFAULT;
 
 	t = find_table_lock(sock_net(sk), tmp.name, &ret, &ebt_mutex);
+
+	tmp.name[sizeof(tmp.name) - 1] = '\0';
+
 	if (!t)
 		return ret;
 
