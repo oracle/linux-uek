@@ -305,7 +305,6 @@ static void amd_get_topology_early(struct cpuinfo_x86 *c)
 #ifdef CONFIG_X86_HT
 static void amd_get_topology(struct cpuinfo_x86 *c)
 {
-	u32 cores_per_cu = 1;
 	u8 node_id;
 	int cpu = smp_processor_id();
 
@@ -317,9 +316,8 @@ static void amd_get_topology(struct cpuinfo_x86 *c)
 		node_id = ecx & 7;
 
 		/* get compute unit information */
-		cores_per_cu = ((ebx >> 8) & 3) + 1;
-		c->x86_max_cores /= cores_per_cu;
-		c->compute_unit_id = ebx & 0xff;
+		c->x86_max_cores /= smp_num_siblings;
+		c->cpu_core_id = ebx & 0xff;
 	} else if (cpu_has(c, X86_FEATURE_NODEID_MSR)) {
 		u64 value;
 
@@ -330,19 +328,16 @@ static void amd_get_topology(struct cpuinfo_x86 *c)
 
 	/* fixup multi-node processor information */
 	if (nodes_per_socket > 1) {
-		u32 cores_per_node;
 		u32 cus_per_node;
 
 		set_cpu_cap(c, X86_FEATURE_AMD_DCM);
 		cus_per_node = c->x86_max_cores / nodes_per_socket;
-		cores_per_node = cus_per_node * cores_per_cu;
 
 		/* store NodeID, use llc_shared_map to store sibling info */
 		per_cpu(cpu_llc_id, cpu) = node_id;
 
 		/* core id has to be in the [0 .. cores_per_node - 1] range */
-		c->cpu_core_id %= cores_per_node;
-		c->compute_unit_id %= cus_per_node;
+		c->cpu_core_id %= cus_per_node;
 	}
 }
 #endif
