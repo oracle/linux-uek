@@ -31,12 +31,12 @@ enum {
 	RDS_RTD_TCP			= 1 << 28,	/* 0x10000000 */
 };
 
-#define rds_rtd_printk(level, format, arg...)		\
-	printk(level "RDS_RTD %s:%d: " format, __func__, __LINE__, ## arg)
+#define rds_rtd_printk(format, arg...)		\
+	trace_printk("%d: " format, __LINE__, ## arg)
 
 #define rds_rtd(enabling_bit, format, arg...)				       \
 	do {  if (likely(!(enabling_bit & kernel_rds_rt_debug_bitmap))) break; \
-		 rds_rtd_printk(KERN_INFO, format, ## arg);		       \
+		 rds_rtd_printk(format, ## arg);		       \
 	} while (0)
 
 #endif /* _RDS_RT_DEBUG_H */
