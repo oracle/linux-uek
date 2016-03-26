@@ -2379,6 +2379,11 @@ static void apic_pm_activate(void)
 	apic_pm_state.active = 1;
 }
 
+void apic_pm_deactivate(void)
+{
+	apic_pm_state.active = 0;
+}
+
 static int __init init_lapic_sysfs(void)
 {
 	/* XXX: remove suspend/resume procs if !apic_pm_state.active? */
@@ -2394,6 +2399,7 @@ core_initcall(init_lapic_sysfs);
 #else	/* CONFIG_PM */
 
 static void apic_pm_activate(void) { }
+void apic_pm_deactivate(void) { }
 
 #endif	/* CONFIG_PM */
 
