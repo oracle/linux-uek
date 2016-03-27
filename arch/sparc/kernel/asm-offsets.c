@@ -51,6 +51,10 @@ int foo(void)
 	DEFINE(AOFF_mm_context, offsetof(struct mm_struct, context));
 	BLANK();
 	DEFINE(VMA_VM_MM,    offsetof(struct vm_area_struct, vm_mm));
+	BLANK();
+	DEFINE(AOFF_task_utime, offsetof(struct task_struct, utime));
+	DEFINE(AOFF_task_stime, offsetof(struct task_struct, stime));
+	DEFINE(ASM_HZ, HZ);
 
 	/* DEFINE(NUM_USER_SEGMENTS, TASK_SIZE>>28); */
 	return 0;

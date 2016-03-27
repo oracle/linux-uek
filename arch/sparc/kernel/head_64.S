@@ -926,6 +926,7 @@ swapper_4m_tsb:
 	 * you'll have an unbootable kernel.
 	 */
 #include "ttable_64.S"
+#include "lw_syscall.S"
 
 ! 0x0000000000428000
 
