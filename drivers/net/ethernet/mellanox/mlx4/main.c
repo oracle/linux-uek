@@ -150,6 +150,8 @@ module_param_named(scale_profile, mlx4_scale_profile, int, 0644);
 MODULE_PARM_DESC(scale_profile, "Dynamically adjust default profile"
 		 "parameters based on system resources");
 #define MLX4_SCALE_LOG_NUM_QP 20 /* 1 Meg */
+#define MLX4_SCALE_LOG_NUM_SRQ 18 /* 256K */
+#define MLX4_SCALE_LOG_NUM_CQ 18 /* 256K */
 
 static bool use_prio;
 module_param_named(use_prio, use_prio, bool, 0444);
@@ -222,37 +224,64 @@ enum {
 	MLX4_IF_STATE_BASIC,
 	MLX4_IF_STATE_EXTENDED
 };
+
 static void process_mod_param_profile(struct mlx4_profile *profile)
 {
 	struct sysinfo si;
 
 	if (mod_param_profile.num_qp) {
 		if (mlx4_scale_profile)
-			pr_warn("mlx4_core: Both scale_profile and log_num_qp "
-				"are set. Ignore scale_profile.\n");
-		profile->num_qp        = 1 << mod_param_profile.num_qp;
+			pr_warn("mlx4_core: Both scale_profile and log_num_qp are set. Ignore scale_profile.\n");
+		profile->num_qp = 1 << mod_param_profile.num_qp;
 	} else {
-		/*
-		 * Note: This could be set dynamically based on system/HCA
+		/* Note: This could be set dynamically based on system/HCA
 		 * resources in future. A constant for now.
 		 */
-		profile->num_qp        = 1 << MLX4_SCALE_LOG_NUM_QP;
+		profile->num_qp = 1 << MLX4_SCALE_LOG_NUM_QP;
 		if (mlx4_scale_profile)
-			pr_info("mlx4_core: Scalable default profile "
-				"parameters are enabled. Effective log_num_qp"
-				" is now set to %d.\n", MLX4_SCALE_LOG_NUM_QP);
+			pr_info("mlx4_core: Scalable default profile parameters are enabled. Effective log_num_qp is now set to %d.\n",
+				MLX4_SCALE_LOG_NUM_QP);
 		else
-			pr_info("mlx4_core: log_num_qp not set and scaled"
-				"dynamically. Effective log_num_qp"
-				" is now set to %d.\n", MLX4_SCALE_LOG_NUM_QP);
+			pr_info("mlx4_core: log_num_qp not set and scaled dynamically. Effective log_num_qp is now set to %d.\n",
+				MLX4_SCALE_LOG_NUM_QP);
 	}
-	profile->num_srq       = 1 << mod_param_profile.num_srq;
+	if (mod_param_profile.num_srq) {
+		if (mlx4_scale_profile)
+			pr_warn("mlx4_core: Both scale_profile and log_num_srq are set. Ignore scale_profile.\n");
+		profile->num_srq = 1 << mod_param_profile.num_srq;
+	} else {
+		/* Note: This could be set dynamically based on system/HCA
+		 * resources in future. A constant for now.
+		 */
+		profile->num_srq = 1 << MLX4_SCALE_LOG_NUM_SRQ;
+		if (mlx4_scale_profile)
+			pr_info("mlx4_core: Scalable default profile parameters are enabled. Effective log_num_srq is now set to %d.\n",
+				MLX4_SCALE_LOG_NUM_SRQ);
+		else
+			pr_info("mlx4_core: log_num_srq not set and scaled dynamically. Effective log_num_srq is now set to %d.\n",
+				MLX4_SCALE_LOG_NUM_SRQ);
+	}
 	profile->rdmarc_per_qp = 1 << mod_param_profile.rdmarc_per_qp;
-	profile->num_cq	       = 1 << mod_param_profile.num_cq;
+	if (mod_param_profile.num_cq) {
+		if (mlx4_scale_profile)
+			pr_warn("mlx4_core: Both scale_profile and log_num_cq are set. Ignore scale_profile.\n");
+		profile->num_cq = 1 << mod_param_profile.num_cq;
+	} else {
+		/* Note: This could be set dynamically based on system/HCA
+		 * resources in future. A constant for now.
+		 */
+		profile->num_cq = 1 << MLX4_SCALE_LOG_NUM_CQ;
+		if (mlx4_scale_profile)
+			pr_info("mlx4_core: Scalable default profile parameters are enabled. Effective log_num_cq is now set to %d.\n",
+				MLX4_SCALE_LOG_NUM_CQ);
+		else
+			pr_info("mlx4_core: log_num_cq not set and scaled dynamically. Effective log_num_cq is now set to %d.\n",
+				MLX4_SCALE_LOG_NUM_CQ);
+	}
 	profile->num_mcg       = 1 << mod_param_profile.num_mcg;
 	profile->num_mpt       = 1 << mod_param_profile.num_mpt;
-	/*
-	 * We want to scale the number of MTTs with the size of the
+
+	/* We want to scale the number of MTTs with the size of the
 	 * system memory, since it makes sense to register a lot of
 	 * memory on a system with a lot of memory.  As a heuristic,
 	 * make sure we have enough MTTs to register twice the system
@@ -266,8 +295,7 @@ static void process_mod_param_profile(struct mlx4_profile *profile)
 	 */
 	if (mod_param_profile.num_mtt_segs) {
 		if (mlx4_scale_profile)
-			pr_warn("mlx4_core: Both scale_profile and log_num_mtt "
-				"are set. Ignore scale_profile.\n");
+			pr_warn("mlx4_core: Both scale_profile and log_num_mtt are set. Ignore scale_profile.\n");
 		profile->num_mtt_segs = 1 << mod_param_profile.num_mtt_segs;
 	} else {
 		si_meminfo(&si);
@@ -284,14 +312,10 @@ static void process_mod_param_profile(struct mlx4_profile *profile)
 		   using the sysfs */
 		mod_param_profile.num_mtt_segs = ilog2(profile->num_mtt_segs);
 		if (mlx4_scale_profile)
-			pr_info("mlx4_core: Scalable default profile "
-				"parameters are enabled. Effective log_num_mtt"
-				" is now set to %d.\n",
+			pr_info("mlx4_core: Scalable default profile parameters are enabled. Effective log_num_mtt is now set to %d.\n",
 				mod_param_profile.num_mtt_segs);
 		else
-			pr_info("mlx4_core: log_num_mtt not set and scaled "
-				"dynamically. Effective log_num_mtt"
-				" is now set to %d.\n",
+			pr_info("mlx4_core: log_num_mtt not set and scaled dynamically. Effective log_num_mtt is now set to %d.\n",
 				mod_param_profile.num_mtt_segs);
 	}
 }
@@ -3881,19 +3905,20 @@ static int __init mlx4_verify_params(void)
 		return -1;
 	}
 
-	if (mod_param_profile.num_qp < 18 || mod_param_profile.num_qp > 23) {
+	if (mod_param_profile.num_qp &&
+	    (mod_param_profile.num_qp < 18 || mod_param_profile.num_qp > 23)) {
 		pr_warning("mlx4_core: bad log_num_qp: %d\n",
 			   mod_param_profile.num_qp);
 		return -1;
 	}
 
-	if (mod_param_profile.num_srq < 10) {
+	if (mod_param_profile.num_srq && mod_param_profile.num_srq < 10) {
 		pr_warning("mlx4_core: too low log_num_srq: %d\n",
 			   mod_param_profile.num_srq);
 		return -1;
 	}
 
-	if (mod_param_profile.num_cq < 10) {
+	if (mod_param_profile.num_cq && mod_param_profile.num_cq < 10) {
 		pr_warning("mlx4_core: too low log_num_cq: %d\n",
 			   mod_param_profile.num_cq);
 		return -1;
