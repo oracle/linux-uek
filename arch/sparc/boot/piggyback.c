@@ -246,7 +246,7 @@ int main(int argc,char **argv)
 		if (lseek(image, 4, 0) < 0)
 			die("lseek");
 		/* a_text */
-		st4(buffer, align(end + 32 + 8191) - (start & ~0x3fffffUL) +
+		st4(buffer, align(end + 32) - (start & ~0x3fffffUL) +
 		            s.st_size);
 		/* a_data */
 		st4(buffer + 4, 0);
