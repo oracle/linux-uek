@@ -87,7 +87,7 @@ MODULE_PARM_DESC(max_persistent_grants,
  * Maximum order of pages to be used for the shared ring between front and
  * backend, 4KB page granularity is used.
  */
-unsigned int xen_blkif_max_ring_order = XENBUS_MAX_RING_PAGE_ORDER;
+unsigned int xen_blkif_max_ring_order = XENBUS_MAX_RING_GRANT_ORDER;
 module_param_named(max_ring_page_order, xen_blkif_max_ring_order, int, S_IRUGO);
 MODULE_PARM_DESC(max_ring_page_order, "Maximum order of pages to be used for the shared ring");
 /*
@@ -959,13 +959,16 @@ static int xen_blkbk_parse_indirect(struct blkif_request *req,
 			segments = kmap_atomic(pages[n/SEGS_PER_INDIRECT_FRAME]->page);
 		}
 		i = n % SEGS_PER_INDIRECT_FRAME;
+
 		pending_req->segments[n]->gref = segments[i].gref;
+
 		first_sect = READ_ONCE(segments[i].first_sect);
 		last_sect = READ_ONCE(segments[i].last_sect);
-		if (last_sect >= (PAGE_SIZE >> 9) || last_sect < first_sect) {
+		if (last_sect >= (XEN_PAGE_SIZE >> 9) || last_sect < first_sect) {
 			rc = -EINVAL;
 			goto unmap;
 		}
+
 		seg[n].nsec = last_sect - first_sect + 1;
 		seg[n].offset = first_sect << 9;
 		preq->nr_sects += seg[n].nsec;
@@ -1212,6 +1215,7 @@ static int dispatch_rw_block_io(struct xen_blkif *blkif,
 
 	req_operation = req->operation == BLKIF_OP_INDIRECT ?
 			req->u.indirect.indirect_op : req->operation;
+
 	if ((req->operation == BLKIF_OP_INDIRECT) &&
 	    (req_operation != BLKIF_OP_READ) &&
 	    (req_operation != BLKIF_OP_WRITE)) {
@@ -1270,7 +1274,7 @@ static int dispatch_rw_block_io(struct xen_blkif *blkif,
 			seg[i].nsec = req->u.rw.seg[i].last_sect -
 				req->u.rw.seg[i].first_sect + 1;
 			seg[i].offset = (req->u.rw.seg[i].first_sect << 9);
-			if ((req->u.rw.seg[i].last_sect >= (PAGE_SIZE >> 9)) ||
+			if ((req->u.rw.seg[i].last_sect >= (XEN_PAGE_SIZE >> 9)) ||
 			    (req->u.rw.seg[i].last_sect <
 			     req->u.rw.seg[i].first_sect))
 				goto fail_response;
@@ -1447,10 +1451,10 @@ static int __init xen_blkif_init(void)
 	if (!xen_domain())
 		return -ENODEV;
 
-	if (xen_blkif_max_ring_order > XENBUS_MAX_RING_PAGE_ORDER) {
+	if (xen_blkif_max_ring_order > XENBUS_MAX_RING_GRANT_ORDER) {
 		pr_info("Invalid max_ring_order (%d), will use default max: %d.\n",
-			xen_blkif_max_ring_order, XENBUS_MAX_RING_PAGE_ORDER);
-		xen_blkif_max_ring_order = XENBUS_MAX_RING_PAGE_ORDER;
+			xen_blkif_max_ring_order, XENBUS_MAX_RING_GRANT_ORDER);
+		xen_blkif_max_ring_order = XENBUS_MAX_RING_GRANT_ORDER;
 	}
 
 	rc = xen_blkif_interface_init();

@@ -1,6 +1,7 @@
 #include <linux/types.h>
 #include <linux/tick.h>
 
+#include <xen/xen.h>
 #include <xen/interface/xen.h>
 #include <xen/grant_table.h>
 #include <xen/events.h>
@@ -101,10 +102,20 @@ static void xen_vcpu_notify_suspend(void *data)
 
 void xen_arch_resume(void)
 {
+	int cpu;
+
 	on_each_cpu(xen_vcpu_notify_restore, NULL, 1);
+
+	for_each_online_cpu(cpu)
+		xen_pmu_init(cpu);
 }
 
 void xen_arch_suspend(void)
 {
+	int cpu;
+
+	for_each_online_cpu(cpu)
+		xen_pmu_finish(cpu);
+
 	on_each_cpu(xen_vcpu_notify_suspend, NULL, 1);
 }
