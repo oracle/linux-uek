@@ -1682,6 +1682,12 @@ static int __kprobes perf_event_nmi_handler(struct notifier_block *self,
 		int idx = cpuc->current_idx[i];
 		struct hw_perf_event *hwc;
 		u64 val;
+		u64 pcr = pcr_ops->read_pcr(idx);
+
+		/* If this 'event' didn't cause the interrupt just continue */
+		if ((pcr & (sparc_pmu->irq_bit | PCR_N4_OV)) !=
+			(sparc_pmu->irq_bit | PCR_N4_OV))
+			continue;
 
 		if (sparc_pmu->irq_bit &&
 		    sparc_pmu->num_pcrs > 1)
