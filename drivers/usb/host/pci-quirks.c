@@ -1003,6 +1003,14 @@ static void quirk_usb_handoff_xhci(struct pci_dev *pdev)
 		ext_cap_offset = xhci_find_next_cap_offset(base, ext_cap_offset);
 	} while (1);
 
+	/* Auto handoff never worked for these devices. Force it and continue */
+	if ((pdev->vendor == PCI_VENDOR_ID_TI && pdev->device == 0x8241) ||
+			(pdev->vendor == PCI_VENDOR_ID_RENESAS
+			 && pdev->device == 0x0014)) {
+		val = (val | XHCI_HC_OS_OWNED) & ~XHCI_HC_BIOS_OWNED;
+		writel(val, base + ext_cap_offset);
+	}
+
 	/* If the BIOS owns the HC, signal that the OS wants it, and wait */
 	if (val & XHCI_HC_BIOS_OWNED) {
 		writel(val | XHCI_HC_OS_OWNED, base + ext_cap_offset);
