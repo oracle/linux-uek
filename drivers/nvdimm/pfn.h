@@ -29,7 +29,12 @@ struct nd_pfn_sb {
 	__le64 dataoff;
 	__le64 npfns;
 	__le32 mode;
-	u8 padding[4012];
+	/* minor-version-1 additions for section alignment */
+	__le32 start_pad;
+	__le32 end_trunc;
+	/* minor-version-2 record the base alignment of the mapping */
+	__le32 align;
+	u8 padding[4000];
 	__le64 checksum;
 };
 #endif /* __NVDIMM_PFN_H */
