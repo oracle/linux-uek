@@ -8738,6 +8738,12 @@ __lpfc_sli_issue_iocb_s4(struct lpfc_hba *phba, uint32_t ring_number,
 	 */
 	wqe = (union lpfc_wqe *)&wqe128;
 
+	/*
+	 * The WQE can be either 64 or 128 bytes,
+	 * so allocate space on the stack assuming the largest.
+	 */
+	wqe = (union lpfc_wqe *)&wqe128;
+
 	if (piocb->sli4_xritag == NO_XRI) {
 		if (piocb->iocb.ulpCommand == CMD_ABORT_XRI_CN ||
 		    piocb->iocb.ulpCommand == CMD_CLOSE_XRI_CN)
