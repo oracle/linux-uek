@@ -1491,6 +1491,7 @@ static int digi_startup(struct usb_serial *serial)
 
 	int i;
 	struct digi_port *priv;
+	struct device *dev = &serial->interface->dev;
 	struct digi_serial *serial_priv;
 
 	dbg("digi_startup: TOP");
@@ -1525,6 +1526,23 @@ static int digi_startup(struct usb_serial *serial)
 		init_waitqueue_head(&serial->port[i]->write_wait);
 
 		usb_set_serial_port_data(serial->port[i], priv);
+	}
+
+	/* check whether the device has the expected number of endpoints */
+	if (serial->num_port_pointers < serial->type->num_ports + 1) {
+		dev_err(dev, "OOB endpoints missing\n");
+		return -ENODEV;
+	}
+
+	for (i = 0; i < serial->type->num_ports + 1 ; i++) {
+		if (!serial->port[i]->read_urb) {
+			dev_err(dev, "bulk-in endpoint missing\n");
+			return -ENODEV;
+		}
+		if (!serial->port[i]->write_urb) {
+			dev_err(dev, "bulk-out endpoint missing\n");
+			return -ENODEV;
+		}
 	}
 
 	/* allocate serial private structure */
