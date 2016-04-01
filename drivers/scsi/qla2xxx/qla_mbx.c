@@ -2528,15 +2528,16 @@ qla2x00_get_link_status(scsi_qla_host_t *vha, uint16_t loop_id,
 	int rval;
 	mbx_cmd_t mc;
 	mbx_cmd_t *mcp = &mc;
-	uint32_t *iter, dwords;
+	uint32_t *iter = (void *)stats;
+	ushort dwords = offsetof(typeof(*stats), link_up_cnt)/sizeof(*iter);
 	struct qla_hw_data *ha = vha->hw;
 
 	ql_dbg(ql_dbg_mbx + ql_dbg_verbose, vha, 0x1084,
 	    "Entered %s.\n", __func__);
 
 	mcp->mb[0] = MBC_GET_LINK_STATUS;
-	mcp->mb[2] = MSW(stats_dma);
-	mcp->mb[3] = LSW(stats_dma);
+	mcp->mb[2] = MSW(LSD(stats_dma));
+	mcp->mb[3] = LSW(LSD(stats_dma));
 	mcp->mb[6] = MSW(MSD(stats_dma));
 	mcp->mb[7] = LSW(MSD(stats_dma));
 	mcp->out_mb = MBX_7|MBX_6|MBX_3|MBX_2|MBX_0;
@@ -2565,12 +2566,9 @@ qla2x00_get_link_status(scsi_qla_host_t *vha, uint16_t loop_id,
 			    "Failed=%x mb[0]=%x.\n", rval, mcp->mb[0]);
 			rval = QLA_FUNCTION_FAILED;
 		} else {
-			/* Copy over data -- firmware data is LE. */
+			/* Re-endianize - firmware data is le32. */
 			ql_dbg(ql_dbg_mbx + ql_dbg_verbose, vha, 0x1086,
 			    "Done %s.\n", __func__);
-			dwords = offsetof(struct link_statistics,
-					link_up_cnt) / 4;
-			iter = &stats->link_fail_cnt;
 			for ( ; dwords--; iter++)
 				le32_to_cpus(iter);
 		}
@@ -2584,7 +2582,7 @@ qla2x00_get_link_status(scsi_qla_host_t *vha, uint16_t loop_id,
 
 int
 qla24xx_get_isp_stats(scsi_qla_host_t *vha, struct link_statistics *stats,
-    dma_addr_t stats_dma)
+    dma_addr_t stats_dma, uint options)
 {
 	int rval;
 	mbx_cmd_t mc;
@@ -2601,7 +2599,7 @@ qla24xx_get_isp_stats(scsi_qla_host_t *vha, struct link_statistics *stats,
 	mcp->mb[7] = LSW(MSD(stats_dma));
 	mcp->mb[8] = sizeof(struct link_statistics) / 4;
 	mcp->mb[9] = vha->vp_idx;
-	mcp->mb[10] = 0;
+	mcp->mb[10] = options;
 	mcp->out_mb = MBX_10|MBX_9|MBX_8|MBX_7|MBX_6|MBX_3|MBX_2|MBX_0;
 	mcp->in_mb = MBX_2|MBX_1|MBX_0;
 	mcp->tov = MBX_TOV_SECONDS;
@@ -2616,7 +2614,7 @@ qla24xx_get_isp_stats(scsi_qla_host_t *vha, struct link_statistics *stats,
 		} else {
 			ql_dbg(ql_dbg_mbx + ql_dbg_verbose, vha, 0x108a,
 			    "Done %s.\n", __func__);
-			/* Copy over data -- firmware data is LE. */
+			/* Re-endianize - firmware data is le32. */
 			dwords = sizeof(struct link_statistics) / 4;
 			iter = &stats->link_fail_cnt;
 			for ( ; dwords--; iter++)
