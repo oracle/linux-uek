@@ -278,6 +278,9 @@ int xt_check_entry_offsets(const void *base, const char *elems,
 			   unsigned int target_offset,
 			   unsigned int next_offset);
 
+void *xt_copy_counters_from_user(const void __user *user, unsigned int len,
+				 struct xt_counters_info *info, bool compat);
+
 /**
  * xt_recseq - recursive seqcount for netfilter use
  * 
