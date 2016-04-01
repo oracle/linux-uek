@@ -456,7 +456,7 @@ extern void xt_proto_fini(struct net *net, u_int8_t af);
 extern struct xt_table_info *xt_alloc_table_info(unsigned int size);
 extern void xt_free_table_info(struct xt_table_info *info);
 
-int xt_check_entry_offsets(const void *base,
+int xt_check_entry_offsets(const void *base, const char *elems,
 			   unsigned int target_offset,
 			   unsigned int next_offset);
 
@@ -619,7 +619,7 @@ extern void xt_compat_target_from_user(struct xt_entry_target *t,
 				       void **dstptr, unsigned int *size);
 extern int xt_compat_target_to_user(const struct xt_entry_target *t,
 				    void __user **dstptr, unsigned int *size);
-int xt_compat_check_entry_offsets(const void *base,
+int xt_compat_check_entry_offsets(const void *base, const char *elems,
 				  unsigned int target_offset,
 				  unsigned int next_offset);
 
