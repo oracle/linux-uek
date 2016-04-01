@@ -928,35 +928,66 @@ struct mdesc_mlgroup {
 static struct mdesc_mlgroup *mlgroups;
 static int num_mlgroups;
 
-static int scan_pio_for_cfg_handle(struct mdesc_handle *md, u64 pio,
-				   u32 cfg_handle)
+/* given a latency node, find the numa node by finding a cpu id and looking
+ * up the numa node. return ENODEV if none.
+ */
+static int scan_lg_for_cpu(struct mdesc_handle *md, u64 ln, int cnt)
 {
 	u64 arc;
+	int res;
+	u64 target;
+	const u64 *val;
+	const char *name;
 
-	mdesc_for_each_arc(arc, md, pio, MDESC_ARC_TYPE_FWD) {
-		u64 target = mdesc_arc_target(md, arc);
-		const u64 *val;
+	/* protect against infinite recursion given a bad MD */
+	if (cnt > 10)
+		return -ENODEV;
 
-		val = mdesc_get_property(md, target,
-					 "cfg-handle", NULL);
-		if (val && *val == cfg_handle)
-			return 0;
+	/* we can find iodevices directly via back pointers or if not, then thru
+	 * arbitrary number of "group"s of cpus or groups via fwd or back
+	 * pointers
+	 */
+	mdesc_for_each_arc(arc, md, ln, MDESC_ARC_TYPE_BACK) {
+		target = mdesc_arc_target(md, arc);
+		name = mdesc_node_name(md, target);
+
+		if (strcmp(name, "cpu"))
+			continue;
+
+		val = mdesc_get_property(md, target, "id", NULL);
+		if (val >= 0)
+			return cpu_to_node(*val);
 	}
+
+	/* back pointers for CPU groups in lt node */
+	mdesc_for_each_arc(arc, md, ln, MDESC_ARC_TYPE_BACK) {
+		target = mdesc_arc_target(md, arc);
+		name = mdesc_node_name(md, target);
+
+		if (strcmp(name, "group"))
+			continue;
+
+		res = scan_lg_for_cpu(md, target, ++cnt);
+		if (res >= 0)
+			return res;
+	}
+
 	return -ENODEV;
 }
 
-static int scan_arcs_for_cfg_handle(struct mdesc_handle *md, u64 grp,
-				    u32 cfg_handle)
+static u64 scan_lt_grp(struct mdesc_handle *md, u64 grp, char *grp_nm)
 {
-	u64 arc, candidate, best_latency = ~(u64)0;
+	u64 best_latency = ULLONG_MAX;
+	u64 io_numa_nodes = 0ULL;
+	u64 arc;
+	int nid;
 
-	candidate = MDESC_NODE_NULL;
 	mdesc_for_each_arc(arc, md, grp, MDESC_ARC_TYPE_FWD) {
 		u64 target = mdesc_arc_target(md, arc);
 		const char *name = mdesc_node_name(md, target);
 		const u64 *val;
 
-		if (strcmp(name, "pio-latency-group"))
+		if (strcmp(name, grp_nm))
 			continue;
 
 		val = mdesc_get_property(md, target, "latency", NULL);
@@ -964,24 +995,61 @@ static int scan_arcs_for_cfg_handle(struct mdesc_handle *md, u64 grp,
 			continue;
 
 		if (*val < best_latency) {
-			candidate = target;
-			best_latency = *val;
+			nid = scan_lg_for_cpu(md, target, 0);
+			if (nid >= 0) {
+				io_numa_nodes = (1 << nid);
+				best_latency = *val;
+			}
+
+		/* find crossbar connected NUMA nodes */
+		} else if (*val == best_latency) {
+			nid = scan_lg_for_cpu(md, target, 0);
+			if (nid >= 0)
+				io_numa_nodes |= (1 << nid);
 		}
 	}
 
-	if (candidate == MDESC_NODE_NULL)
-		return -ENODEV;
-
-	return scan_pio_for_cfg_handle(md, candidate, cfg_handle);
+	return io_numa_nodes;
 }
 
+static u64 find_iodevice(struct mdesc_handle *md, u64 grp, u32 cfg_hndl)
+{
+	u64 target;
+	u64 arc;
+
+	mdesc_for_each_arc(arc, md, grp, MDESC_ARC_TYPE_BACK) {
+		const u64 *val;
+		const char *name;
+
+		target = mdesc_arc_target(md, arc);
+		name = mdesc_node_name(md, target);
+
+		if (strcmp(name, "iodevice"))
+			continue;
+
+		val = mdesc_get_property(md, target, "cfg-handle", NULL);
+		if (val && *val == cfg_hndl)
+			return *val;
+	}
+
+	return 0;
+}
+
+static unsigned short node_alloc_cnt[MAX_NUMNODES];
+
+/* this should only be called once for each root complex as it attempts to
+ * balance RCs across nodes if the are connected to multiple (the norm
+ * for T7 systems.) Note -1 is NOT an error but indicates ALL nodes.
+ */
 int of_node_to_nid(struct device_node *dp)
 {
 	const struct linux_prom64_registers *regs;
 	struct mdesc_handle *md;
+	int cur, best, ndcnt;
 	u32 cfg_handle;
-	int count, nid;
+	u64 nids = 0;
 	u64 grp;
+	int i;
 
 	/* This is the right thing to do on currently supported
 	 * SUN4U NUMA platforms as well, as the PCI controller does
@@ -998,19 +1066,41 @@ int of_node_to_nid(struct device_node *dp)
 
 	md = mdesc_grab();
 
-	count = 0;
-	nid = -1;
 	mdesc_for_each_node_by_name(md, grp, "group") {
-		if (!scan_arcs_for_cfg_handle(md, grp, cfg_handle)) {
-			nid = count;
-			break;
-		}
-		count++;
+		if (!find_iodevice(md, grp, cfg_handle))
+			continue;
+
+		nids = scan_lt_grp(md, grp, "pio-latency-group");
+		if (!nids)
+			nids = scan_lt_grp(md, grp, "interrupt-latency-group");
+		break;
 	}
 
 	mdesc_release(md);
 
-	return nid;
+	if (!nids)
+		return -1;
+
+	/* balance the number of root complexes assigned to each node if RC
+	 * is connected to multiple nodes (the norm for T7)
+	 */
+	ndcnt = 0;
+	best = -1;
+	cur = INT_MAX;
+	for (i = 0; i < num_node_masks; i++)
+		if (nids & (1 << i)) {
+			if (cur > node_alloc_cnt[i]) {
+				cur = node_alloc_cnt[i];
+				best = i;
+			}
+			ndcnt++;
+		}
+
+	if (ndcnt == 0 || ndcnt == num_node_masks)
+		return -1;
+
+	node_alloc_cnt[best]++;
+	return best;
 }
 
 static void __init add_node_ranges(void)
