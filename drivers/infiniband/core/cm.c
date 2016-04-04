@@ -1792,12 +1792,87 @@ static void cm_process_routed_req(struct cm_req_msg *req_msg, struct ib_wc *wc)
 	}
 }
 
+static char const cm_drop_reason_desc[4][32] = {
+	"N/A",
+	"No GRH",
+	"grh.guid != mad.guid",
+	"acl drop"
+};
+
+enum cm_drop_reason {
+	CM_DROP_ACCEPT,
+	CM_DROP_NO_GRH,
+	CM_DROP_INV_MAD_GUID,
+	CM_DROP_ACL
+};
+
+static enum cm_drop_reason cm_acl_filter(struct cm_work *work)
+{
+	struct cm_req_msg *req_msg;
+	struct ib_grh *grh;
+	struct ib_cm_dpp dpp;
+	struct ib_cm_acl *acl;
+	u64 subnet_prefix = 0, guid = 0;
+	struct ib_wc *wc;
+	enum cm_drop_reason drop = CM_DROP_ACCEPT;
+
+	req_msg = (struct cm_req_msg *)work->mad_recv_wc->recv_buf.mad;
+	grh = (struct ib_grh *)work->mad_recv_wc->recv_buf.grh;
+	wc = (struct ib_wc *)work->mad_recv_wc->wc;
+
+	ib_cm_dpp_init(&dpp, work->port->cm_dev->ib_device,
+		       work->port->port_num, be16_to_cpu(req_msg->pkey));
+	ib_cm_dpp_dbg("CM Request from interface", &dpp);
+	acl = ib_cm_dpp_acl_lookup(&dpp);
+	if (acl && acl->enabled) {
+		if (!(wc->wc_flags & IB_WC_GRH))
+			drop = CM_DROP_NO_GRH;
+		else if (grh->sgid.global.interface_id !=
+			 req_msg->primary_local_gid.global.interface_id)
+			drop = CM_DROP_INV_MAD_GUID;
+		else {
+			subnet_prefix = be64_to_cpu(req_msg->
+						    primary_local_gid.global.
+						    subnet_prefix);
+			guid = be64_to_cpu(req_msg->primary_local_gid.global.
+					   interface_id);
+			if (!ib_cm_acl_lookup(acl, subnet_prefix, guid))
+				drop = CM_DROP_ACL;
+		}
+
+		if (drop) {
+			pr_debug("Blocked CM request, reason=%s\n",
+				 cm_drop_reason_desc[drop]);
+			pr_debug("\tgrh.sgid=(0x%llx,0x%llx), grh.dgid=(0x%llx,0x%llx)\n",
+				 be64_to_cpu(grh->sgid.global.subnet_prefix),
+				 be64_to_cpu(grh->sgid.global.interface_id),
+				 be64_to_cpu(grh->dgid.global.subnet_prefix),
+				 be64_to_cpu(grh->dgid.global.interface_id));
+			pr_debug("\tlocal=(0x%llx,0x%llx), remote=(0x%llx,0x%llx)\n",
+				 be64_to_cpu(req_msg->primary_local_gid.global.
+					     subnet_prefix),
+				 be64_to_cpu(req_msg->primary_local_gid.global.
+					     interface_id),
+				 be64_to_cpu(req_msg->primary_remote_gid.global.
+					     subnet_prefix),
+				 be64_to_cpu(req_msg->primary_remote_gid.global.
+					     interface_id));
+		}
+	}
+
+	return drop;
+}
+
 static int cm_req_handler(struct cm_work *work)
 {
 	struct ib_cm_id *cm_id;
 	struct cm_id_private *cm_id_priv, *listen_cm_id_priv;
 	struct cm_req_msg *req_msg;
-	int ret;
+	int ret = 0;
+
+	ret = cm_acl_filter(work);
+	if (ret)
+		return -EINVAL;
 
 	req_msg = (struct cm_req_msg *)work->mad_recv_wc->recv_buf.mad;
 

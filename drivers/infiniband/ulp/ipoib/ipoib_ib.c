@@ -40,6 +40,7 @@
 
 #include <linux/ip.h>
 #include <linux/tcp.h>
+#include <net/arp.h>
 
 #include "ipoib.h"
 
@@ -173,13 +174,50 @@ static int ipoib_ib_post_receives(struct net_device *dev)
 	return 0;
 }
 
+static inline int ipoib_is_valid_arp_address(struct net_device *dev,
+					     struct sk_buff *skb,
+					     __be64 interface_id)
+{
+	struct ipoib_dev_priv *priv = netdev_priv(dev);
+	union ib_gid *sgid;
+
+	sgid = (union ib_gid *)(skb->data + sizeof(struct arphdr) + 4);
+
+	if (sgid->global.interface_id != interface_id) {
+		ipoib_dbg(priv, "Invalid ARP: sguid=0x%llx, arp.sguid=0x%llx\n",
+			  be64_to_cpu(interface_id),
+			  be64_to_cpu(sgid->global.interface_id));
+		return 0;
+	}
+
+	return 1;
+}
+
+static char const ipoib_drop_reason_desc[5][32] = {
+	"N/A",
+	"No GRH",
+	"grh.guid != arp.guid",
+	"acl",
+	"non CM packet"
+};
+
+enum ipoib_drop_reason {
+	IPOIB_DROP_ACCEPT,
+	IPOIB_DROP_NO_GRH,
+	IPOIB_DROP_INV_ARP_GUID,
+	IPOIB_DROP_ACL,
+	IPOIB_DROP_NON_CM_PACKRT
+};
+
 static void ipoib_ib_handle_rx_wc(struct net_device *dev, struct ib_wc *wc)
 {
 	struct ipoib_dev_priv *priv = netdev_priv(dev);
 	unsigned int wr_id = wc->wr_id & ~IPOIB_OP_RECV;
 	struct sk_buff *skb;
 	u64 mapping[IPOIB_UD_RX_SG];
-	union ib_gid *dgid;
+	union ib_gid *dgid, *sgid;
+	enum ipoib_drop_reason drop = IPOIB_DROP_ACCEPT;
+	u64 subnet_prefix = 0, guid = 0;
 
 	ipoib_dbg_data(priv, "recv completion: id %d, status: %d\n",
 		       wr_id, wc->status);
@@ -190,7 +228,7 @@ static void ipoib_ib_handle_rx_wc(struct net_device *dev, struct ib_wc *wc)
 		return;
 	}
 
-	skb  = priv->rx_ring[wr_id].skb;
+	skb = priv->rx_ring[wr_id].skb;
 
 	if (unlikely(wc->status != IB_WC_SUCCESS)) {
 		if (wc->status != IB_WC_WR_FLUSH_ERR)
@@ -231,6 +269,7 @@ static void ipoib_ib_handle_rx_wc(struct net_device *dev, struct ib_wc *wc)
 
 	/* First byte of dgid signals multicast when 0xff */
 	dgid = &((struct ib_grh *)skb->data)->dgid;
+	sgid = &((struct ib_grh *)skb->data)->sgid;
 
 	if (!(wc->wc_flags & IB_WC_GRH) || dgid->raw[0] != 0xff)
 		skb->pkt_type = PACKET_HOST;
@@ -250,12 +289,46 @@ static void ipoib_ib_handle_rx_wc(struct net_device *dev, struct ib_wc *wc)
 	++dev->stats.rx_packets;
 	dev->stats.rx_bytes += skb->len;
 
+	if (unlikely(be16_to_cpu(skb->protocol) == ETH_P_ARP)) {
+		if (priv->acl.enabled) {
+			subnet_prefix = be64_to_cpu(sgid->global.subnet_prefix);
+			guid = be64_to_cpu(sgid->global.interface_id);
+			if (!(wc->wc_flags & IB_WC_GRH))
+				drop = IPOIB_DROP_NO_GRH;
+			else if (!ipoib_is_valid_arp_address(dev, skb,
+					sgid->global.interface_id))
+				drop = IPOIB_DROP_INV_ARP_GUID;
+			else if (!ib_cm_acl_lookup(&priv->acl, subnet_prefix,
+						   guid))
+				drop = IPOIB_DROP_ACL;
+			if (drop) {
+				goto drop;
+				priv->arp_blocked++;
+			}
+		}
+		priv->arp_accepted++;
+	} else
+		if (priv->acl.enabled) {
+			priv->ud_blocked++;
+			drop = IPOIB_DROP_NON_CM_PACKRT;
+			goto drop;
+		}
+
 	skb->dev = dev;
 	if ((dev->features & NETIF_F_RXCSUM) &&
 			likely(wc->wc_flags & IB_WC_IP_CSUM_OK))
 		skb->ip_summed = CHECKSUM_UNNECESSARY;
 
 	napi_gro_receive(&priv->napi, skb);
+
+	goto repost;
+
+drop:
+	ipoib_dbg(priv, "Blocking packet (%s) from 0x%llx 0x%llx\n",
+		  ipoib_drop_reason_desc[drop], subnet_prefix, guid);
+	dev_kfree_skb_any(skb);
+	++dev->stats.rx_dropped;
+	goto repost;
 
 repost:
 	if (unlikely(ipoib_ib_post_receive(dev, wr_id)))

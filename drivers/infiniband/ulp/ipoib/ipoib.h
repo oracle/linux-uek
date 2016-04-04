@@ -415,6 +415,9 @@ struct ipoib_dev_priv {
 	/* Device specific; obtained from query_device */
 	unsigned max_sge;
 	struct ib_cm_acl acl;
+	int arp_blocked;
+	int arp_accepted;
+	int ud_blocked;
 };
 
 struct ipoib_ah {
