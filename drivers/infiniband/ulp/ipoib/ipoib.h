@@ -429,6 +429,9 @@ struct ipoib_dev_priv {
 	bool sm_fullmember_sendonly_support;
 	const struct net_device_ops	*rn_ops;
 	struct ib_cm_acl acl;
+	int arp_blocked;
+	int arp_accepted;
+	int ud_blocked;
 };
 
 struct ipoib_ah {
