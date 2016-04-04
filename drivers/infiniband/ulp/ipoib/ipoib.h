@@ -129,6 +129,19 @@ enum {
 
 #define IPOIB_QPN_MASK ((__force u32) cpu_to_be32(0xFFFFFF))
 
+/* AC ioctl commands */
+#define IPOIBACIOCTLSTART	(SIOCDEVPRIVATE)
+#define IPOIBSTATUSGET		(IPOIBACIOCTLSTART + 0)
+#define IPOIBSTATUSSET		(IPOIBACIOCTLSTART + 1)
+#define IPOIBACLINSTSZ		(IPOIBACIOCTLSTART + 2)
+#define IPOIBACLINSTGET		(IPOIBACIOCTLSTART + 3)
+#define IPOIBACLINSTADD		(IPOIBACIOCTLSTART + 4)
+#define IPOIBACLINSTDEL		(IPOIBACIOCTLSTART + 5)
+#define IPOIBACLSZ		(IPOIBACIOCTLSTART + 6)
+#define IPOIBACLGET		(IPOIBACIOCTLSTART + 7)
+#define IPOIBACLADD		(IPOIBACIOCTLSTART + 8)
+#define IPOIBACLDEL		(IPOIBACIOCTLSTART + 9)
+
 /* structs */
 
 struct ipoib_header {
@@ -480,6 +493,27 @@ struct ipoib_neigh {
 	unsigned long       alive;
 };
 
+/* ACL ioctl API */
+struct ipoib_ioctl_req_data {
+	char	acl_enabled;
+	u32	sz;
+	u32	from_idx;
+	u64	*guids;
+	u64	*subnet_prefixes;
+	u32	*ips;
+	char	*uuids;
+	char	instance_name[INSTANCE_ACL_ID_SZ];
+	char	*instances_names;
+};
+
+struct ipoib_ioctl_req {
+	union {
+		char	frn_name[IFNAMSIZ];
+	} ifr_ifrn;
+
+	struct ipoib_ioctl_req_data *req_data;
+};
+
 #define IPOIB_UD_MTU(ib_mtu)		(ib_mtu - IPOIB_ENCAP_LEN)
 #define IPOIB_UD_BUF_SIZE(ib_mtu)	(ib_mtu + IB_GRH_BYTES)
 
@@ -528,6 +562,7 @@ static inline void ipoib_put_ah(struct ipoib_ah *ah)
 int ipoib_open(struct net_device *dev);
 int ipoib_add_pkey_attr(struct net_device *dev);
 int ipoib_add_umcast_attr(struct net_device *dev);
+int ipoib_do_ioctl(struct net_device *dev, struct ifreq *ifr, int cmd);
 
 void ipoib_send(struct net_device *dev, struct sk_buff *skb,
 		struct ipoib_ah *address, u32 qpn);
