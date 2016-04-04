@@ -42,6 +42,7 @@
 #include <linux/kref.h>
 #include <linux/if_infiniband.h>
 #include <linux/mutex.h>
+#include <linux/radix-tree.h>
 
 #include <net/neighbour.h>
 #include <net/sch_generic.h>
@@ -115,6 +116,8 @@ enum {
 	IPOIB_NON_CHILD		  = 0,
 	IPOIB_LEGACY_CHILD	  = 1,
 	IPOIB_RTNL_CHILD	  = 2,
+
+	ACL_BATCH_SZ		  = 100,
 };
 
 #define	IPOIB_OP_RECV   (1ul << 31)
@@ -322,6 +325,19 @@ struct ipoib_qp_state_validate {
 	struct ipoib_dev_priv   *priv;
 };
 
+#define DRIVER_ACL_NAME "_main_"
+#define INSTANCE_ACL_ID_SZ 80
+struct ipoib_instance_acl {
+	char			name[INSTANCE_ACL_ID_SZ];
+	struct ib_cm_acl	acl;
+};
+
+struct ipoib_instances_acls {
+	struct radix_tree_root	instances; /* list of ipoib_instance_acl */
+	size_t			list_count;
+	struct mutex		lock;
+};
+
 /*
  * Device private locking: network stack tx_lock protects members used
  * in TX fast path, lock protects everything else.  lock nests inside
@@ -415,6 +431,8 @@ struct ipoib_dev_priv {
 	/* Device specific; obtained from query_device */
 	unsigned max_sge;
 	struct ib_cm_acl acl;
+	/* Used to diaplay instance ACLs, no actual use in driver */
+	struct ipoib_instances_acls instances_acls;
 	int arp_blocked;
 	int arp_accepted;
 	int ud_blocked;
@@ -464,6 +482,9 @@ struct ipoib_neigh {
 
 #define IPOIB_UD_MTU(ib_mtu)		(ib_mtu - IPOIB_ENCAP_LEN)
 #define IPOIB_UD_BUF_SIZE(ib_mtu)	(ib_mtu + IB_GRH_BYTES)
+
+void print_acl_instances_to_buf(char *buf, size_t sz,
+				struct ipoib_dev_priv *priv);
 
 void ipoib_neigh_dtor(struct ipoib_neigh *neigh);
 static inline void ipoib_neigh_put(struct ipoib_neigh *neigh)
@@ -600,8 +621,14 @@ int ipoib_set_dev_features(struct ipoib_dev_priv *priv, struct ib_device *hca);
 /* We don't support UC connections at the moment */
 #define IPOIB_CM_SUPPORTED(ha)   (ha[0] & (IPOIB_FLAGS_RC))
 
+int ipoib_create_acl_sysfs(struct net_device *dev);
 void ipoib_init_acl(struct net_device *dev);
 void ipoib_clean_acl(struct net_device *dev);
+int ipoib_create_instance_acl(const char *name, struct net_device *dev);
+int ipoib_delete_instance_acl(const char *name, struct net_device *dev);
+struct ib_cm_acl *ipoib_get_instance_acl(const char *name,
+					 struct net_device *dev);
+
 #ifdef CONFIG_INFINIBAND_IPOIB_CM
 
 extern int ipoib_max_conn_qp;
