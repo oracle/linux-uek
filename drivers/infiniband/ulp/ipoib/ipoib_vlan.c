@@ -79,6 +79,8 @@ int __ipoib_vlan_add(struct ipoib_dev_priv *ppriv, struct ipoib_dev_priv *priv,
 		goto err;
 	}
 
+	ipoib_init_acl(priv->dev);
+
 	result = register_netdevice(priv->dev);
 	if (result) {
 		ipoib_warn(priv, "failed to initialize; error %i", result);

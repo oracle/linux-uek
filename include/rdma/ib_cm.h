@@ -35,6 +35,8 @@
 #if !defined(IB_CM_H)
 #define IB_CM_H
 
+#include <linux/spinlock.h>
+
 #include <rdma/ib_mad.h>
 #include <rdma/ib_sa.h>
 
@@ -274,6 +276,86 @@ struct ib_cm_event {
 #define CM_SIDR_REP_ATTR_ID	cpu_to_be16(0x0018)
 #define CM_LAP_ATTR_ID		cpu_to_be16(0x0019)
 #define CM_APR_ATTR_ID		cpu_to_be16(0x001A)
+
+/**
+ * This struct is used to hold unique IB interface identifiers
+ */
+struct ib_cm_dpp {
+	struct ib_device	*device;
+	u8			port;
+	u16			pkey;
+};
+
+static inline void ib_cm_dpp_init(struct ib_cm_dpp *dpp,
+				  struct ib_device *device, u8 port, u16 pkey)
+{
+	dpp->device = device;
+	dpp->port = port;
+	dpp->pkey = pkey;
+}
+
+static inline void ib_cm_dpp_copy(struct ib_cm_dpp *ddpp,
+				  struct ib_cm_dpp *sdpp)
+{
+	ddpp->device = sdpp->device;
+	ddpp->port = sdpp->port;
+	ddpp->pkey = sdpp->pkey;
+}
+
+static inline bool ib_cm_dpp_compare(struct ib_cm_dpp *dpp1,
+				     struct ib_cm_dpp *dpp2)
+{
+	return ((dpp1->device == dpp2->device) && (dpp1->port == dpp2->port) &&
+		(dpp1->pkey == dpp2->pkey));
+}
+
+static inline void ib_cm_dpp_dbg(char *msg, struct ib_cm_dpp *dpp)
+{
+	pr_debug("%s: %s, %d, 0x%x\n", msg, dpp->device->name, dpp->port,
+		 dpp->pkey);
+}
+
+#define UUID_SZ 64
+struct ib_cm_acl_elem {
+	struct rb_node	node;
+	u64		guid;
+	u64		subnet_prefix;
+	u32		ip;
+	char		uuid[UUID_SZ];
+	int		ref_count;
+};
+
+struct ib_cm_acl {
+	bool		enabled;
+	struct rb_root	allowed_list;
+	ssize_t		list_count;
+	spinlock_t	lock;
+};
+
+void ib_cm_acl_init(struct ib_cm_acl *acl);
+int ib_cm_acl_insert(struct ib_cm_acl *acl, u64 subnet_prefix, u64 guid, u32 ip,
+		     const char *uuid);
+struct ib_cm_acl_elem *ib_cm_acl_lookup(struct ib_cm_acl *acl,
+					u64 subnet_prefix, u64 guid);
+struct ib_cm_acl_elem *ib_cm_acl_lookup_uuid_ip(struct ib_cm_acl *acl,
+						char *uuid, u32 ip);
+int ib_cm_acl_delete(struct ib_cm_acl *acl, u64 subnet_prefix, u64 guid);
+void ib_cm_acl_scan(struct ib_cm_acl *acl, struct ib_cm_acl_elem **list,
+		    ssize_t *list_count);
+void ib_cm_acl_clean(struct ib_cm_acl *acl);
+
+/**
+ * This table map dpp to acl
+ */
+struct ib_cm_dpp_acl {
+	struct list_head	list;
+	struct ib_cm_dpp	dpp;
+	struct ib_cm_acl	*acl;
+};
+
+int ib_cm_register_acl(struct ib_cm_acl *acl, struct ib_cm_dpp *dpp);
+struct ib_cm_acl *ib_cm_dpp_acl_lookup(struct ib_cm_dpp *dpp);
+void ib_cm_unregister_acl(struct ib_cm_acl *acl);
 
 /**
  * ib_cm_handler - User-defined callback to process communication events.
