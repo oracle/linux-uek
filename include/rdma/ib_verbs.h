@@ -225,6 +225,12 @@ enum ib_mtu {
 	IB_MTU_4096 = 5
 };
 
+static inline int ib_gid_cmp(union ib_gid *gid1, union ib_gid *gid2)
+{
+	return (gid1->global.subnet_prefix == gid2->global.subnet_prefix) &&
+	       (gid1->global.interface_id == gid2->global.interface_id);
+}
+
 static inline int ib_mtu_enum_to_int(enum ib_mtu mtu)
 {
 	switch (mtu) {
