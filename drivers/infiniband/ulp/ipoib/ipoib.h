@@ -51,6 +51,7 @@
 #include <rdma/ib_verbs.h>
 #include <rdma/ib_pack.h>
 #include <rdma/ib_sa.h>
+#include <rdma/ib_cm.h>
 #include <linux/sched.h>
 /* constants */
 
@@ -427,6 +428,7 @@ struct ipoib_dev_priv {
 	unsigned max_send_sge;
 	bool sm_fullmember_sendonly_support;
 	const struct net_device_ops	*rn_ops;
+	struct ib_cm_acl acl;
 };
 
 struct ipoib_ah {
@@ -642,6 +644,8 @@ void ipoib_set_dev_features(struct ipoib_dev_priv *priv, struct ib_device *hca);
 /* We don't support UC connections at the moment */
 #define IPOIB_CM_SUPPORTED(ha)   (ha[0] & (IPOIB_FLAGS_RC))
 
+void ipoib_init_acl(struct net_device *dev);
+void ipoib_clean_acl(struct net_device *dev);
 #ifdef CONFIG_INFINIBAND_IPOIB_CM
 
 extern int ipoib_max_conn_qp;
@@ -828,6 +832,8 @@ do {							\
 	if (__ratelimit(&_rs))				\
 		ipoib_printk(KERN_WARNING, priv, format , ## arg);\
 } while (0)
+#define ipoib_err(priv, format, arg...)		\
+	ipoib_printk(KERN_ERR, priv, format, ## arg)
 
 extern int ipoib_sendq_size;
 extern int ipoib_recvq_size;

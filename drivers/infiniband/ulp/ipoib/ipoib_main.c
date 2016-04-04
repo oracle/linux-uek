@@ -153,7 +153,7 @@ int ipoib_open(struct net_device *dev)
 {
 	struct ipoib_dev_priv *priv = ipoib_priv(dev);
 
-	ipoib_dbg(priv, "bringing up interface\n");
+	ipoib_dbg(priv, "bringing up interface %s\n", dev->name);
 
 	netif_carrier_off(dev);
 
@@ -1788,6 +1788,7 @@ void ipoib_dev_cleanup(struct net_device *dev)
 
 	/* Delete any child interfaces first */
 	list_for_each_entry_safe(cpriv, tcpriv, &priv->child_intfs, list) {
+		ipoib_clean_acl(cpriv->dev);
 		/* Stop GC on child */
 		set_bit(IPOIB_STOP_NEIGH_GC, &cpriv->flags);
 		cancel_delayed_work(&cpriv->neigh_reap_task);
@@ -1796,6 +1797,8 @@ void ipoib_dev_cleanup(struct net_device *dev)
 	unregister_netdevice_many(&head);
 
 	ipoib_neigh_hash_uninit(dev);
+
+	ipoib_clean_acl(priv->dev);
 
 	ipoib_ib_dev_cleanup(dev);
 
@@ -2427,6 +2430,8 @@ static struct net_device *ipoib_add_port(const char *format,
 	INIT_IB_EVENT_HANDLER(&priv->event_handler,
 			      priv->ca, ipoib_event);
 	ib_register_event_handler(&priv->event_handler);
+
+	ipoib_init_acl(priv->dev);
 
 	result = register_netdev(priv->dev);
 	if (result) {
