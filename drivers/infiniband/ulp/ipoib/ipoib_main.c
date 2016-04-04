@@ -1706,11 +1706,15 @@ static int ipoib_ioctl(struct net_device *dev, struct ifreq *ifr,
 		       int cmd)
 {
 	struct ipoib_dev_priv *priv = ipoib_priv(dev);
+	int rc;
 
-	if (!priv->rn_ops->ndo_do_ioctl)
-		return -EOPNOTSUPP;
+	if (priv->rn_ops->ndo_do_ioctl) {
+		rc = priv->rn_ops->ndo_do_ioctl(dev, ifr, cmd);
+		if (rc)
+			return rc;
+	}
 
-	return priv->rn_ops->ndo_do_ioctl(dev, ifr, cmd);
+	return ipoib_do_ioctl(dev, ifr, cmd);
 }
 
 int ipoib_dev_init(struct net_device *dev, struct ib_device *ca, int port)
