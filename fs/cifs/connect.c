@@ -526,8 +526,8 @@ incomplete_rcv:
 			} else if (length == -ERESTARTSYS ||
 				   length == -EAGAIN ||
 				   length == -EINTR) {
-				msleep(1); /* minimum sleep to prevent looping,
-					      allowing socket to clear and app
+				usleep_range(1000, 2000);
+					   /* allowing socket to clear and app
 					      threads to set tcpStatus
 					      CifsNeedReconnect if server hung*/
 				length = 0;
