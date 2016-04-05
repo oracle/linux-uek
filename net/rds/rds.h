@@ -311,6 +311,16 @@ static inline u32 rds_rdma_cookie_offset(rds_rdma_cookie_t cookie)
 	return cookie >> 32;
 }
 
+static inline void set_bit_le(int nr, void *addr)
+{
+	set_bit(nr ^ BITOP_LE_SWIZZLE, addr);
+}
+
+static inline void clear_bit_le(int nr, void *addr)
+{
+	clear_bit(nr ^ BITOP_LE_SWIZZLE, addr);
+}
+
 /* atomic operation types */
 #define RDS_ATOMIC_TYPE_CSWP		0
 #define RDS_ATOMIC_TYPE_FADD		1
