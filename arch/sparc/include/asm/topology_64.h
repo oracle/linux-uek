@@ -41,7 +41,7 @@ int __node_distance(int, int);
 #endif /* !(CONFIG_NUMA) */
 
 #ifdef CONFIG_SMP
-#define topology_physical_package_id(cpu)	(cpu_data(cpu).proc_id)
+#define topology_physical_package_id(cpu)	(cpu_data(cpu).sock_id)
 #define topology_core_id(cpu)			(cpu_data(cpu).core_id)
 #define topology_core_cpumask(cpu)		(&cpu_core_sib_map[cpu])
 #define topology_thread_cpumask(cpu)		(&per_cpu(cpu_sibling_map, cpu))
