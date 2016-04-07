@@ -792,6 +792,7 @@ static void fill_in_one_cache(cpuinfo_sparc *c, struct mdesc_handle *hp, u64 mp)
 	const u64 *line_size = mdesc_get_property(hp, mp, "line-size", NULL);
 	const char *type;
 	int type_len;
+	u64 a;
 
 	type = mdesc_get_property(hp, mp, "type", &type_len);
 
@@ -811,20 +812,21 @@ static void fill_in_one_cache(cpuinfo_sparc *c, struct mdesc_handle *hp, u64 mp)
 		c->ecache_line_size = *line_size;
 		break;
 
+	case 3:
+		c->l3_cache_size = *size;
+		c->l3_cache_line_size = *line_size;
+		break;
+
 	default:
 		break;
 	}
 
-	if (*level == 1) {
-		u64 a;
+	mdesc_for_each_arc(a, hp, mp, MDESC_ARC_TYPE_FWD) {
+		u64 target = mdesc_arc_target(hp, a);
+		const char *name = mdesc_node_name(hp, target);
 
-		mdesc_for_each_arc(a, hp, mp, MDESC_ARC_TYPE_FWD) {
-			u64 target = mdesc_arc_target(hp, a);
-			const char *name = mdesc_node_name(hp, target);
-
-			if (!strcmp(name, "cache"))
-				fill_in_one_cache(c, hp, target);
-		}
+		if (!strcmp(name, "cache"))
+			fill_in_one_cache(c, hp, target);
 	}
 }
 
