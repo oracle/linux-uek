@@ -760,6 +760,17 @@ static struct ctl_table ipv4_table[] = {
 		.proc_handler	= proc_dointvec_minmax,
 		.extra1		= &one
 	},
+#ifdef CONFIG_IP_ROUTE_MULTIPATH
+	{
+		.procname	= "fib_multipath_use_neigh",
+		.data		= &sysctl_fib_multipath_use_neigh,
+		.maxlen		= sizeof(int),
+		.mode		= 0644,
+		.proc_handler	= proc_dointvec_minmax,
+		.extra1		= &zero,
+		.extra2		= &one,
+	},
+#endif
 	{ }
 };
 

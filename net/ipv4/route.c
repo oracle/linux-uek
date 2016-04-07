@@ -188,6 +188,12 @@ const __u8 ip_tos2prio[16] = {
 };
 EXPORT_SYMBOL(ip_tos2prio);
 
+#ifdef CONFIG_IP_ROUTE_MULTIPATH
+int sysctl_fib_multipath_use_neigh = 0;
+EXPORT_SYMBOL(sysctl_fib_multipath_use_neigh);
+
+#endif
+
 static DEFINE_PER_CPU(struct rt_cache_stat, rt_cache_stat);
 #define RT_CACHE_STAT_INC(field) raw_cpu_inc(rt_cache_stat.field)
 

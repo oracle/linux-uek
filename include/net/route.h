@@ -44,6 +44,10 @@
 #define RT_CONN_FLAGS(sk)   (RT_TOS(inet_sk(sk)->tos) | sock_flag(sk, SOCK_LOCALROUTE))
 #define RT_CONN_FLAGS_TOS(sk,tos)   (RT_TOS(tos) | sock_flag(sk, SOCK_LOCALROUTE))
 
+#ifdef CONFIG_IP_ROUTE_MULTIPATH
+extern int sysctl_fib_multipath_use_neigh;
+#endif
+
 struct fib_nh;
 struct fib_info;
 struct uncached_list;
