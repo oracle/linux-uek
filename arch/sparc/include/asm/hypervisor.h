@@ -3015,6 +3015,7 @@ unsigned long sun4v_m7_set_perfreg(unsigned long reg_num,
 #define HV_GRP_KT_CPU			0x0209
 #define HV_GRP_VT_CPU			0x020c
 #define HV_GRP_T5_CPU			0x0211
+#define HV_GRP_SONOMA_EPSC		0x0241
 #define HV_GRP_DIAG			0x0300
 
 #ifndef __ASSEMBLY__
