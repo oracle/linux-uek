@@ -1904,6 +1904,9 @@ static void nvme_reset_work(struct work_struct *work)
 	if (dev->bar)
 		nvme_dev_disable(dev, false);
 
+	if (test_bit(NVME_CTRL_REMOVING, &dev->flags))
+		goto out;
+
 	set_bit(NVME_CTRL_RESETTING, &dev->flags);
 
 	result = nvme_dev_map(dev);
@@ -2100,7 +2103,6 @@ static void nvme_remove(struct pci_dev *pdev)
 {
 	struct nvme_dev *dev = pci_get_drvdata(pdev);
 
-	del_timer_sync(&dev->watchdog_timer);
 	set_bit(NVME_CTRL_REMOVING, &dev->flags);
 	pci_set_drvdata(pdev, NULL);
 	flush_work(&dev->async_work);
