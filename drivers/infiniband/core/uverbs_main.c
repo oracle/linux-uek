@@ -48,6 +48,8 @@
 
 #include <asm/uaccess.h>
 
+#include <rdma/ib.h>
+
 #include "uverbs.h"
 
 MODULE_AUTHOR("Roland Dreier");
@@ -744,6 +746,9 @@ static ssize_t ib_uverbs_write(struct file *filp, const char __user *buf,
 	ssize_t ret;
 	u64 dividend;
 	u32 divisor;
+
+	if (WARN_ON_ONCE(!ib_safe_file_access(filp)))
+		return -EACCES;
 
 	if (count < sizeof hdr)
 		return -EINVAL;
