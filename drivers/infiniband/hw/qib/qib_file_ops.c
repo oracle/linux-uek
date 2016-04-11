@@ -44,6 +44,8 @@
 #include <asm/pgtable.h>
 #include <linux/delay.h>
 
+#include <rdma/ib.h>
+
 #include "qib.h"
 #include "qib_common.h"
 #include "qib_user_sdma.h"
@@ -1965,6 +1967,9 @@ static ssize_t qib_write(struct file *fp, const char __user *data,
 	struct qib_cmd cmd;
 	ssize_t ret = 0;
 	void *dest;
+
+	if (WARN_ON_ONCE(!ib_safe_file_access(fp)))
+		return -EACCES;
 
 	if (count < sizeof(cmd.type)) {
 		ret = -EINVAL;
