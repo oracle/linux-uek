@@ -1606,6 +1606,9 @@ rds_send_hb(struct rds_connection *conn, int response)
 	unsigned long flags;
 	int ret = 0;
 
+	if (conn->c_trans->t_type == RDS_TRANS_TCP)
+		return 0;
+
 	rm = rds_message_alloc(0, GFP_ATOMIC);
 	if (!rm)
 		return -ENOMEM;
