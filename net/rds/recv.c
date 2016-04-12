@@ -56,7 +56,7 @@ rds_recv_forward(struct rds_connection *conn, struct rds_incoming *inc,
 
 static void
 rds_recv_local(struct rds_connection *conn, __be32 saddr, __be32 daddr,
-	       struct rds_incoming *inc, gfp_t gfp);
+	       struct rds_incoming *inc, gfp_t gfp, struct rds_sock *rs);
 
 static int
 rds_recv_ok(struct net *net, struct sock *sk, struct sk_buff *skb)
@@ -231,11 +231,12 @@ void rds_recv_incoming(struct rds_connection *conn, __be32 saddr, __be32 daddr,
 	/* pass it on locally if there is no socket bound, or if netfilter is
 	 * disabled for this socket */
 	if (NULL == rs || !rs->rs_netfilter_enabled) {
+		rds_recv_local(conn, saddr, daddr, inc, gfp, rs);
+
 		/* drop the reference if we had taken one */
 		if (NULL != rs)
 			rds_sock_put(rs);
 
-		rds_recv_local(conn, saddr, daddr, inc, gfp);
 		return;
 	}
 
@@ -249,7 +250,10 @@ void rds_recv_incoming(struct rds_connection *conn, __be32 saddr, __be32 daddr,
 		rds_rtd(RDS_RTD_ERR,
 			"failure to allocate space for inc %p, %pI4 -> %pI4 tos %d\n",
 			inc, &saddr, &daddr, conn->c_tos);
-		rds_recv_local(conn, saddr, daddr, inc, gfp);
+		rds_recv_local(conn, saddr, daddr, inc, gfp, rs);
+		/* drop the reference if we had taken one */
+		if (NULL != rs)
+			rds_sock_put(rs);
 		return;
 	}
 
@@ -279,6 +283,7 @@ void rds_recv_incoming(struct rds_connection *conn, __be32 saddr, __be32 daddr,
 	/* cleanup any references taken */
 	if (NULL != rs)
 		rds_sock_put(rs);
+	rs = NULL;
 
 	/* the original info is just a copy */
 	memcpy(org, dst, sizeof(struct rds_nf_hdr));
@@ -312,7 +317,7 @@ void rds_recv_incoming(struct rds_connection *conn, __be32 saddr, __be32 daddr,
 		/* check the original header and if changed do the needful */
 		if (dst->saddr == org->saddr && dst->daddr == org->daddr &&
 		    conn->c_trans->skb_local(skb)) {
-			rds_recv_local(conn, saddr, daddr, inc, gfp);
+			rds_recv_local(conn, saddr, daddr, inc, gfp, NULL);
 		}
 		/* the send both case does both a local recv and a reroute */
 		else if (dst->flags & RDS_NF_HDR_FLAG_BOTH) {
@@ -321,7 +326,7 @@ void rds_recv_incoming(struct rds_connection *conn, __be32 saddr, __be32 daddr,
 			rds_inc_addref(inc);
 
 			/* send it up the stream locally */
-			rds_recv_local(conn, saddr, daddr, inc, gfp);
+			rds_recv_local(conn, saddr, daddr, inc, gfp, NULL);
 
 			/* and also reroute the request */
 			rds_recv_route(conn, inc, gfp);
@@ -386,7 +391,7 @@ rds_recv_route(struct rds_connection *conn, struct rds_incoming *inc,
 	/* this is a request for our local node, but potentially a different source
 	 * either way we process it locally */
 	else if (conn->c_trans->skb_local(inc->i_skb)) {
-		rds_recv_local(nconn, dst->saddr, dst->daddr, inc, gfp);
+		rds_recv_local(nconn, dst->saddr, dst->daddr, inc, gfp, NULL);
 	}
 	/* looks like this request is going out to another node */
 	else {
@@ -453,17 +458,17 @@ out:
 		sk, inc->i_skb, NULL, NULL, rds_recv_ok);
 
 	/* then hand the request off to normal local processing on the old connection */
-	rds_recv_local(inc->i_oconn, org->saddr, org->daddr, inc, gfp);
+	rds_recv_local(inc->i_oconn, org->saddr, org->daddr, inc, gfp, NULL);
 }
 
 static void
 rds_recv_local(struct rds_connection *conn, __be32 saddr, __be32 daddr,
-	       struct rds_incoming *inc, gfp_t gfp)
+	       struct rds_incoming *inc, gfp_t gfp, struct rds_sock *rs)
 {
-	struct rds_sock *rs = NULL;
 	struct sock *sk;
 	unsigned long flags;
 	u64 inc_hdr_h_sequence = 0;
+	bool rs_local = (!rs);
 
 	inc->i_conn = conn;
 	inc->i_rx_jiffies = jiffies;
@@ -528,7 +533,8 @@ rds_recv_local(struct rds_connection *conn, __be32 saddr, __be32 daddr,
 		goto out;
 	}
 
-	rs = rds_find_bound(daddr, inc->i_hdr.h_dport);
+	if (!rs)
+		rs = rds_find_bound(daddr, inc->i_hdr.h_dport);
 	if (!rs) {
 		rds_stats_inc(s_recv_drop_no_sock);
 		goto out;
@@ -572,7 +578,7 @@ rds_recv_local(struct rds_connection *conn, __be32 saddr, __be32 daddr,
 	write_unlock_irqrestore(&rs->rs_recv_lock, flags);
 
 out:
-	if (rs)
+	if (rs_local && rs)
 		rds_sock_put(rs);
 }
 
