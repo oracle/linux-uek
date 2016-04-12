@@ -228,6 +228,10 @@ static int rds_ioctl(struct socket *sock, unsigned int cmd, unsigned long arg)
 		if (get_user(tos, (rds_tos_t __user *)arg))
 			return -EFAULT;
 
+		if (rs->rs_transport &&
+		    rs->rs_transport->t_type == RDS_TRANS_TCP)
+			tos = 0;
+
 		spin_lock_bh(&rds_sock_lock);
 		if (rs->rs_tos || rs->rs_conn) {
 			spin_unlock_bh(&rds_sock_lock);
