@@ -947,6 +947,8 @@ EXPORT_SYMBOL_GPL(nvme_shutdown_ctrl);
 static void nvme_set_queue_limits(struct nvme_ctrl *ctrl,
 		struct request_queue *q)
 {
+	bool vwc = false;
+
 	if (ctrl->max_hw_sectors) {
 		u32 max_segments =
 			(ctrl->max_hw_sectors / (ctrl->page_size >> 9)) + 1;
@@ -957,7 +959,8 @@ static void nvme_set_queue_limits(struct nvme_ctrl *ctrl,
 	if (ctrl->stripe_size)
 		blk_queue_chunk_sectors(q, ctrl->stripe_size >> 9);
 	if (ctrl->vwc & NVME_CTRL_VWC_PRESENT)
-		blk_queue_flush(q, REQ_FLUSH | REQ_FUA);
+		vwc = true;
+	blk_queue_write_cache(q, vwc, vwc);
 }
 
 /*
