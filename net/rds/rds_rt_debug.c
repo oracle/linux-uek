@@ -35,9 +35,9 @@
 #include "rds.h"
 #include "rds_rt_debug.h"
 
-u32 kernel_rds_rt_debug_bitmap;
+u32 kernel_rds_rt_debug_bitmap = 0x488B;
 EXPORT_SYMBOL(kernel_rds_rt_debug_bitmap);
 
 module_param_named(rds_rt_debug_bitmap, kernel_rds_rt_debug_bitmap, uint, 0644);
-MODULE_PARM_DESC(rds_rt_debug_bitmap, "RDS Runtime Debug Message Enabling Bitmap [default 0]");
+MODULE_PARM_DESC(rds_rt_debug_bitmap, "RDS Runtime Debug Message Enabling Bitmap [default 0x488B]");
 
