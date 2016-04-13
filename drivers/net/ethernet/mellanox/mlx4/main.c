@@ -181,7 +181,8 @@ static atomic_t pf_loading = ATOMIC_INIT(0);
      see mlx4_buddy_init -> bitmap_zero which gets int.
 */
 #define MLX4_MAX_LOG_NUM_MTT 30
-static struct mlx4_profile mod_param_profile = {
+
+static struct mlx4_profile default_profile = {
 	.num_qp         = 19,
 	.num_srq        = 16,
 	.rdmarc_per_qp  = 7,
@@ -191,34 +192,39 @@ static struct mlx4_profile mod_param_profile = {
 	.num_mtt_segs   = 0, /* max(20, 2*MTTs for host memory)) */
 };
 
+static struct mlx4_profile mod_param_profile = {
+	.num_qp         = 0,	/* 0=>scale_profile or default 19 */
+	.num_srq        = 0,	/* 0=>scale_profile or default 16 */
+	.rdmarc_per_qp  = 4,
+	.num_cq         = 0,	/* 0=>scale_profile or default 16 */
+	.num_mcg        = 13,
+	.num_mpt        = 19,
+	.num_mtt_segs   = 0, /* max(20, 2*MTTs for host memory)) */
+};
+
 module_param_named(log_num_qp, mod_param_profile.num_qp, int, 0444);
-MODULE_PARM_DESC(log_num_qp, "log maximum number of QPs per HCA (default: 19)");
+MODULE_PARM_DESC(log_num_qp, "log maximum number of QPs per HCA (scale_profile determined value or default: 19)");
 
 module_param_named(log_num_srq, mod_param_profile.num_srq, int, 0444);
-MODULE_PARM_DESC(log_num_srq, "log maximum number of SRQs per HCA "
-		 "(default: 16)");
+MODULE_PARM_DESC(log_num_srq, "log maximum number of SRQs per HCA (scale_profile determined value or default: 16)");
 
 module_param_named(log_rdmarc_per_qp, mod_param_profile.rdmarc_per_qp, int,
 		   0444);
-MODULE_PARM_DESC(log_rdmarc_per_qp, "log number of RDMARC buffers per QP "
-		 "(default: 4)");
+MODULE_PARM_DESC(log_rdmarc_per_qp, "log number of RDMARC buffers per QP (default: 4)");
 
 module_param_named(log_num_cq, mod_param_profile.num_cq, int, 0444);
-MODULE_PARM_DESC(log_num_cq, "log maximum number of CQs per HCA (default: 16)");
+MODULE_PARM_DESC(log_num_cq, "log maximum number of CQs per HCA (scale_profile determined value or default: 16)");
 
 module_param_named(log_num_mcg, mod_param_profile.num_mcg, int, 0444);
-MODULE_PARM_DESC(log_num_mcg, "log maximum number of multicast groups per HCA "
-		 "(default: 13)");
+MODULE_PARM_DESC(log_num_mcg, "log maximum number of multicast groups per HCA (default: 13)");
 
 module_param_named(log_num_mpt, mod_param_profile.num_mpt, int, 0444);
 MODULE_PARM_DESC(log_num_mpt,
-		 "log maximum number of memory protection table entries per "
-		 "HCA (default: 19)");
+		 "log maximum number of memory protection table entries per HCA (default: 19)");
 
 module_param_named(log_num_mtt, mod_param_profile.num_mtt_segs, int, 0444);
 MODULE_PARM_DESC(log_num_mtt,
-		 "log maximum number of memory translation table segments per "
-		 "HCA (default: max(20, 2*MTTs for register all of the host memory limited to 30))");
+		 "log maximum number of memory translation table segments per HCA (default: max(20, 2*MTTs for register all of the host memory limited to 30))");
 
 enum {
 	MLX4_IF_STATE_BASIC,
@@ -234,52 +240,74 @@ static void process_mod_param_profile(struct mlx4_profile *profile)
 			pr_warn("mlx4_core: Both scale_profile and log_num_qp are set. Ignore scale_profile.\n");
 		profile->num_qp = 1 << mod_param_profile.num_qp;
 	} else {
-		/* Note: This could be set dynamically based on system/HCA
-		 * resources in future. A constant for now.
-		 */
-		profile->num_qp = 1 << MLX4_SCALE_LOG_NUM_QP;
-		if (mlx4_scale_profile)
+		if (mlx4_scale_profile) {
+			/* Note: This could be set dynamically based on
+			 * system/HCA resources in future. A constant for now.
+			 */
+			profile->num_qp = 1 << MLX4_SCALE_LOG_NUM_QP;
 			pr_info("mlx4_core: Scalable default profile parameters are enabled. Effective log_num_qp is now set to %d.\n",
 				MLX4_SCALE_LOG_NUM_QP);
-		else
-			pr_info("mlx4_core: log_num_qp not set and scaled dynamically. Effective log_num_qp is now set to %d.\n",
-				MLX4_SCALE_LOG_NUM_QP);
+			/* set in mod_param also for sysfs viewing */
+			mod_param_profile.num_qp = MLX4_SCALE_LOG_NUM_QP;
+		} else {
+			profile->num_qp = 1 << default_profile.num_qp;
+			pr_info("mlx4_core: log_num_qp not set and using driver default. Effective profile log_num_qp is now set to %d.\n",
+				default_profile.num_qp);
+			/* set in mod_param also for sysfs viewing */
+			mod_param_profile.num_qp = default_profile.num_qp;
+		}
 	}
+
 	if (mod_param_profile.num_srq) {
 		if (mlx4_scale_profile)
 			pr_warn("mlx4_core: Both scale_profile and log_num_srq are set. Ignore scale_profile.\n");
 		profile->num_srq = 1 << mod_param_profile.num_srq;
 	} else {
-		/* Note: This could be set dynamically based on system/HCA
-		 * resources in future. A constant for now.
-		 */
-		profile->num_srq = 1 << MLX4_SCALE_LOG_NUM_SRQ;
-		if (mlx4_scale_profile)
+		if (mlx4_scale_profile) {
+			/* Note: This could be set dynamically based on
+			 * system/HCA resources in future. A constant for now.
+			 */
+			profile->num_srq = 1 << MLX4_SCALE_LOG_NUM_SRQ;
 			pr_info("mlx4_core: Scalable default profile parameters are enabled. Effective log_num_srq is now set to %d.\n",
 				MLX4_SCALE_LOG_NUM_SRQ);
-		else
-			pr_info("mlx4_core: log_num_srq not set and scaled dynamically. Effective log_num_srq is now set to %d.\n",
-				MLX4_SCALE_LOG_NUM_SRQ);
+			/* set in mod_param also for sysfs viewing */
+			mod_param_profile.num_srq = MLX4_SCALE_LOG_NUM_SRQ;
+		} else {
+			profile->num_srq = 1 << default_profile.num_srq;
+			pr_info("mlx4_core: log_num_srq not set and using driver default. Effective log_num_srq is now set to %d.\n",
+				default_profile.num_srq);
+			/* set in mod_param also for sysfs viewing */
+			mod_param_profile.num_srq = default_profile.num_srq;
+		}
 	}
+
 	profile->rdmarc_per_qp = 1 << mod_param_profile.rdmarc_per_qp;
+
 	if (mod_param_profile.num_cq) {
 		if (mlx4_scale_profile)
 			pr_warn("mlx4_core: Both scale_profile and log_num_cq are set. Ignore scale_profile.\n");
 		profile->num_cq = 1 << mod_param_profile.num_cq;
 	} else {
-		/* Note: This could be set dynamically based on system/HCA
-		 * resources in future. A constant for now.
-		 */
-		profile->num_cq = 1 << MLX4_SCALE_LOG_NUM_CQ;
-		if (mlx4_scale_profile)
+		if (mlx4_scale_profile) {
+			/* Note: This could be set dynamically based on
+			 * system/HCA resources in future. A constant for now.
+			 */
+			profile->num_cq = 1 << MLX4_SCALE_LOG_NUM_CQ;
 			pr_info("mlx4_core: Scalable default profile parameters are enabled. Effective log_num_cq is now set to %d.\n",
 				MLX4_SCALE_LOG_NUM_CQ);
-		else
-			pr_info("mlx4_core: log_num_cq not set and scaled dynamically. Effective log_num_cq is now set to %d.\n",
-				MLX4_SCALE_LOG_NUM_CQ);
+			/* set in mod_param also for sysfs viewing */
+			mod_param_profile.num_cq = MLX4_SCALE_LOG_NUM_CQ;
+		} else {
+			profile->num_cq = 1 << default_profile.num_cq;
+			pr_info("mlx4_core: log_num_cq not set and using driver default. Effective log_num_cq is now set to %d.\n",
+				default_profile.num_cq);
+			/* set in mod_param also for sysfs viewing */
+			mod_param_profile.num_cq = default_profile.num_cq;
+		}
 	}
-	profile->num_mcg       = 1 << mod_param_profile.num_mcg;
-	profile->num_mpt       = 1 << mod_param_profile.num_mpt;
+
+	profile->num_mcg = 1 << mod_param_profile.num_mcg;
+	profile->num_mpt = 1 << mod_param_profile.num_mpt;
 
 	/* We want to scale the number of MTTs with the size of the
 	 * system memory, since it makes sense to register a lot of
