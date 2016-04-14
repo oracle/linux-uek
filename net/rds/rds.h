@@ -26,6 +26,13 @@
 #define RDS_PROTOCOL_MINOR(v)	((v) & 255)
 #define RDS_PROTOCOL(maj, min)	(((maj) << 8) | min)
 
+/* Reject reason codes.
+ * 0401 below indicates 4.1 version.
+ * 0020 indicates type of reject.
+ * Reserving earlier ones for version mismatch or other reasons.
+ */
+#define RDS_ACL_FAILURE		0x04010020
+
 /*
  * XXX randomly chosen, but at least seems to be unused:
  * #               18464-18768 Unassigned
