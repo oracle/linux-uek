@@ -905,8 +905,10 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 
 	acl_ret = rds_ib_match_acl(cm_id, dp->dp_saddr);
 	if (acl_ret < 0) {
-		rdma_reject(cm_id, &acl_ret, sizeof(int));
-		rdsdebug("RDS: IB: rds_ib_match_acl failed\n");
+		int reject_reason = RDS_ACL_FAILURE;
+
+		rdma_reject(cm_id, &reject_reason, sizeof(int));
+		rdsdebug("RDS: IB: passive: rds_ib_match_acl failed\n");
 		goto out;
 	}
 
