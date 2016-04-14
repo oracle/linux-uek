@@ -290,6 +290,14 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 							&conn->c_reject_w,
 							msecs_to_jiffies(10));
 				}
+			} else if (event->status == RDS_REJ_CONSUMER_DEFINED &&
+				   (*err) == RDS_ACL_FAILURE) {
+				/* Rejection due to ACL violation */
+				pr_err("RDS: IB: conn=%p, <%u.%u.%u.%u,%u.%u.%u.%u,%d> destroyed due to ACL violation\n",
+						conn, NIPQUAD(conn->c_laddr),
+						NIPQUAD(conn->c_faddr),
+						conn->c_tos);
+				rds_ib_conn_destroy_init(conn);
 			} else {
 				rds_rtd(RDS_RTD_ERR,
 					"Rejected: *err %d status %d calling rds_conn_drop <%u.%u.%u.%u,%u.%u.%u.%u,%d>\n",
