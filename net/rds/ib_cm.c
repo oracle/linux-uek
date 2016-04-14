@@ -221,17 +221,13 @@ void rds_ib_cm_connect_complete(struct rds_connection *conn, struct rdma_cm_even
 
 	if (conn->c_version < RDS_PROTOCOL_VERSION) {
 		if (conn->c_version != RDS_PROTOCOL_COMPAT_VERSION) {
-			/*
-			   * BUG: destroying connection here can deadlock with
-			   * the CM event handler on the c_cm_lock.
-			*/
 			printk(KERN_NOTICE "RDS/IB: Connection to"
 				" %pI4 version %u.%u failed,"
 				" no longer supported\n",
 				&conn->c_faddr,
 				RDS_PROTOCOL_MAJOR(conn->c_version),
 				RDS_PROTOCOL_MINOR(conn->c_version));
-			rds_conn_destroy(conn);
+			rds_ib_conn_destroy_init(conn);
 			return;
 		}
 	}
@@ -971,6 +967,31 @@ out:
 	return destroy;
 }
 
+void rds_ib_conn_destroy_worker(struct work_struct *_work)
+{
+	struct rds_ib_conn_destroy_work    *work =
+		container_of(_work, struct rds_ib_conn_destroy_work, work.work);
+	struct rds_connection   *conn = work->conn;
+
+	rds_conn_destroy(conn);
+
+	kfree(work);
+}
+
+void rds_ib_conn_destroy_init(struct rds_connection *conn)
+{
+	struct rds_ib_conn_destroy_work *work;
+
+	work = kzalloc(sizeof *work, GFP_ATOMIC);
+	if (!work) {
+		pr_err("RDS/IB: failed to allocate connection destroy work\n");
+		return;
+	}
+
+	work->conn = conn;
+	INIT_DELAYED_WORK(&work->work, rds_ib_conn_destroy_worker);
+	queue_delayed_work(rds_aux_wq, &work->work, 0);
+}
 
 int rds_ib_cm_initiate_connect(struct rdma_cm_id *cm_id)
 {
