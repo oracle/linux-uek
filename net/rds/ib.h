@@ -53,7 +53,7 @@ extern struct rw_semaphore rds_ib_devices_lock;
 extern struct list_head rds_ib_devices;
 
 /*
- * IB posts RDS_FRAG_SIZE fragments of pages to the receive queues to
+ * IB posts i_frag_sz fragments of pages to the receive queues to
  * try and minimize the amount of memory tied up both the device and
  * socket receive queues.
  */
@@ -89,7 +89,7 @@ struct rds_ib_connect_private {
 	__be16			dp_protocol_minor_mask; /* bitmask */
 	u8			dp_tos;
 	u8			dp_reserved1;
-	__be16			dp_reserved2;
+	__be16			dp_frag_sz;
 	__be64			dp_ack_seq;
 	__be32			dp_credit;		/* non-zero enables flow ctl */
 };
@@ -215,6 +215,8 @@ struct rds_ib_connection {
 
 	/* Protocol version specific information */
 	unsigned int		i_flowctl:1;	/* enable/disable flow ctl */
+	u16			i_frag_sz;	/* IB fragment size */
+	int8_t			i_frag_pages:1;
 
 	/* Batched completions */
 	unsigned int		i_unsignaled_wrs;
@@ -589,6 +591,7 @@ void rds_ib_cm_connect_complete(struct rds_connection *conn,
 void rds_ib_check_migration(struct rds_connection *conn,
 				struct rdma_cm_event *event);
 #endif
+void rds_ib_init_frag(unsigned int version);
 
 #define rds_ib_conn_error(conn, fmt...) \
 	__rds_ib_conn_error(conn, KERN_WARNING "RDS/IB: " fmt)
@@ -615,6 +618,7 @@ void rds_ib_recv_exit(void);
 int rds_ib_recv(struct rds_connection *conn);
 int rds_ib_recv_alloc_caches(struct rds_ib_connection *ic);
 void rds_ib_recv_free_caches(struct rds_ib_connection *ic);
+void rds_ib_recv_purge_frag_cache(struct rds_ib_connection *ic);
 void rds_ib_recv_refill(struct rds_connection *conn, int prefill, gfp_t gfp);
 void rds_ib_inc_free(struct rds_incoming *inc);
 int rds_ib_inc_copy_to_user(struct rds_incoming *inc, struct iov_iter *to);
@@ -686,5 +690,6 @@ extern unsigned long rds_ib_sysctl_max_recv_allocation;
 extern unsigned int rds_ib_sysctl_flow_control;
 extern unsigned int rds_ib_sysctl_active_bonding;
 extern unsigned int rds_ib_sysctl_trigger_active_bonding;
+extern unsigned int rds_ib_sysctl_disable_unmap_fmr_cpu;
 
 #endif

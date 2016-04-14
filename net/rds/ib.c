@@ -366,6 +366,7 @@ static int rds_ib_conn_info_visitor(struct rds_connection *conn,
 	if (ic) {
 		iinfo->tos = conn->c_tos;
 		iinfo->sl = ic->i_sl;
+		iinfo->frag = ic->i_frag_sz;
 	}
 
 	if (rds_conn_state(conn) == RDS_CONN_UP) {
@@ -2657,6 +2658,9 @@ int rds_ib_init(void)
 	}
 
 	sock_net_set(rds_ib_inet_socket->sk, &init_net);
+
+	/* Initialise the RDS IB fragment size */
+	rds_ib_init_frag(RDS_PROTOCOL_VERSION);
 
 	ret = rds_ib_fmr_init();
 	if (ret)
