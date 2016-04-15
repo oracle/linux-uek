@@ -2671,17 +2671,6 @@ blk_eh_timer_return megasas_reset_timer(struct scsi_cmnd *scmd)
 }
 
 /**
- * megasas_reset_device -	Device reset handler entry point
- */
-static int megasas_reset_device(struct scsi_cmnd *scmd)
-{
-	/*
-	 * First wait for all commands to complete
-	 */
-	return megasas_generic_reset(scmd);
-}
-
-/**
  * megasas_reset_bus_host -	Bus & host reset handler entry point
  */
 static int megasas_reset_bus_host(struct scsi_cmnd *scmd)
@@ -2698,6 +2687,50 @@ static int megasas_reset_bus_host(struct scsi_cmnd *scmd)
 		ret = megasas_reset_fusion(scmd->device->host, 1);
 	else
 		ret = megasas_generic_reset(scmd);
+
+	return ret;
+}
+
+/**
+ * megasas_task_abort - Issues task abort request to firmware
+ *			(supported only for fusion adapters)
+ * @scmd:		SCSI command pointer
+ */
+static int megasas_task_abort(struct scsi_cmnd *scmd)
+{
+	int ret;
+	struct megasas_instance *instance;
+
+	instance = (struct megasas_instance *)scmd->device->host->hostdata;
+
+	if (instance->ctrl_context)
+		ret = megasas_task_abort_fusion(scmd);
+	else {
+		sdev_printk(KERN_NOTICE, scmd->device, "TASK ABORT not supported\n");
+		ret = FAILED;
+	}
+
+	return ret;
+}
+
+/**
+ * megasas_reset_target:  Issues target reset request to firmware
+ *                        (supported only for fusion adapters)
+ * @scmd:                 SCSI command pointer
+ */
+static int megasas_reset_target(struct scsi_cmnd *scmd)
+{
+	int ret;
+	struct megasas_instance *instance;
+
+	instance = (struct megasas_instance *)scmd->device->host->hostdata;
+
+	if (instance->ctrl_context)
+		ret = megasas_reset_target_fusion(scmd);
+	else {
+		sdev_printk(KERN_NOTICE, scmd->device, "TARGET RESET not supported\n");
+		ret = FAILED;
+	}
 
 	return ret;
 }
@@ -2970,8 +3003,8 @@ static struct scsi_host_template megasas_template = {
 	.slave_alloc = megasas_slave_alloc,
 	.slave_destroy = megasas_slave_destroy,
 	.queuecommand = megasas_queue_command,
-	.eh_device_reset_handler = megasas_reset_device,
-	.eh_bus_reset_handler = megasas_reset_bus_host,
+	.eh_target_reset_handler = megasas_reset_target,
+	.eh_abort_handler = megasas_task_abort,
 	.eh_host_reset_handler = megasas_reset_bus_host,
 	.eh_timed_out = megasas_reset_timer,
 	.shost_attrs = megaraid_host_attrs,
@@ -5614,13 +5647,6 @@ static int megasas_io_attach(struct megasas_instance *instance)
 	host->max_lun = MEGASAS_MAX_LUN;
 	host->max_cmd_len = 16;
 
-	/* Fusion only supports host reset */
-	if (instance->ctrl_context) {
-		host->hostt->eh_device_reset_handler = NULL;
-		host->hostt->eh_bus_reset_handler = NULL;
-		host->hostt->eh_target_reset_handler = megasas_reset_target_fusion;
-		host->hostt->eh_abort_handler = megasas_task_abort_fusion;
-	}
 	error = scsi_init_shared_tag_map(host, host->can_queue);
 	if (error) {
 		dev_err(&instance->pdev->dev,
