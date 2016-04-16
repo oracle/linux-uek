@@ -185,7 +185,7 @@ void rds_loop_exit(void)
 
 	list_for_each_entry_safe(lc, _lc, &tmp_list, loop_node) {
 		WARN_ON(lc->conn->c_passive);
-		rds_conn_destroy(lc->conn);
+		rds_conn_destroy(lc->conn, 1);
 	}
 }
 
