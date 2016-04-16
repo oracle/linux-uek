@@ -1386,6 +1386,11 @@ int rds_sendmsg(struct socket *sock, struct msghdr *msg, size_t payload_len)
 		goto out;
 	}
 
+	if (test_bit(RDS_DESTROY_PENDING, &conn->c_flags)) {
+		ret = -EAGAIN;
+		goto out;
+	}
+
 	/* Not accepting new sends until all the failed ops have been reaped */
 	if (rds_async_send_enabled && conn->c_pending_flush) {
 		ret = -EAGAIN;
