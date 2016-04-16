@@ -1049,7 +1049,7 @@ void rds_ib_conn_destroy_worker(struct work_struct *_work)
 		container_of(_work, struct rds_ib_conn_destroy_work, work.work);
 	struct rds_connection   *conn = work->conn;
 
-	rds_conn_destroy(conn);
+	rds_conn_destroy(conn, 0);
 
 	kfree(work);
 }
