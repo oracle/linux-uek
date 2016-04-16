@@ -251,8 +251,8 @@ static void rds_tcp_destroy_conns(void)
 
 	list_for_each_entry_safe(tc, _tc, &tmp_list, t_tcp_node) {
 		if (tc->conn->c_passive)
-			rds_conn_destroy(tc->conn->c_passive);
-		rds_conn_destroy(tc->conn);
+			rds_conn_destroy(tc->conn->c_passive, 1);
+		rds_conn_destroy(tc->conn, 1);
 	}
 }
 
@@ -434,8 +434,8 @@ static void rds_tcp_kill_sock(struct net *net)
 		sk->sk_prot->disconnect(sk, 0);
 		tcp_done(sk);
 		if (tc->conn->c_passive)
-			rds_conn_destroy(tc->conn->c_passive);
-		rds_conn_destroy(tc->conn);
+			rds_conn_destroy(tc->conn->c_passive, 1);
+		rds_conn_destroy(tc->conn, 1);
 	}
 }
 
