@@ -135,6 +135,7 @@ enum {
 #define RDS_RECONNECT_PENDING	1
 #define RDS_IN_XMIT		2
 #define RDS_RECV_REFILL		3
+#define RDS_DESTROY_PENDING	4
 
 #define RDS_RDMA_RESOLVE_TO_MAX_INDEX   5
 #define RDS_ADDR_RES_TM_INDEX_MAX 5
@@ -849,7 +850,7 @@ struct rds_connection *rds_conn_find(struct net *net, __be32 laddr,
 				     __be32 faddr,
 					struct rds_transport *trans, u8 tos);
 void rds_conn_shutdown(struct rds_connection *conn, int restart);
-void rds_conn_destroy(struct rds_connection *conn);
+void rds_conn_destroy(struct rds_connection *conn, int shutdown);
 void rds_conn_reset(struct rds_connection *conn);
 void rds_conn_drop(struct rds_connection *conn);
 void rds_conn_laddr_list(__be32 laddr, struct list_head *laddr_conns);
