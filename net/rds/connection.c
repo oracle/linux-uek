@@ -402,14 +402,17 @@ void rds_conn_shutdown(struct rds_connection *conn, int restart)
  * the conn has been shutdown that no one else is referencing the connection.
  * We can only ensure this in the rmmod path in the current code.
  */
-void rds_conn_destroy(struct rds_connection *conn)
+void rds_conn_destroy(struct rds_connection *conn, int shutdown)
 {
 	struct rds_message *rm, *rtmp;
 	unsigned long flags;
+	LIST_HEAD(to_be_dropped);
 
 	rds_rtd(RDS_RTD_CM, "freeing conn %p <%pI4,%pI4,%d>\n",
 		conn, &conn->c_laddr, &conn->c_faddr,
 		conn->c_tos);
+
+	set_bit(RDS_DESTROY_PENDING, &conn->c_flags);
 
 	/* Ensure conn will not be scheduled for reconnect */
 	spin_lock_irq(&rds_conn_lock);
@@ -437,10 +440,18 @@ void rds_conn_destroy(struct rds_connection *conn)
 	list_for_each_entry_safe(rm, rtmp,
 				 &conn->c_send_queue,
 				 m_conn_item) {
-		list_del_init(&rm->m_conn_item);
-		BUG_ON(!list_empty(&rm->m_sock_item));
-		rds_message_put(rm);
+		if (shutdown) {
+			list_del_init(&rm->m_conn_item);
+			BUG_ON(!list_empty(&rm->m_sock_item));
+			rds_message_put(rm);
+		} else {
+			list_move_tail(&rm->m_conn_item, &to_be_dropped);
+		}
 	}
+
+	if (!list_empty(&to_be_dropped))
+		rds_send_remove_from_sock(&to_be_dropped, RDS_RDMA_SEND_DROPPED);
+
 	if (conn->c_xmit_rm)
 		rds_message_put(conn->c_xmit_rm);
 
