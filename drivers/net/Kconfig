@@ -181,6 +181,7 @@ config VXLAN
 
 config MACSEC
 	tristate "IEEE 802.1AE MAC-level encryption (MACsec)"
+	select CRYPTO
 	select CRYPTO_AES
 	select CRYPTO_GCM
 	---help---
