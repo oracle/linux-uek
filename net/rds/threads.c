@@ -139,7 +139,10 @@ void rds_queue_reconnect(struct rds_connection *conn)
 	set_bit(RDS_RECONNECT_PENDING, &conn->c_flags);
 	if (conn->c_reconnect_jiffies == 0) {
 		conn->c_reconnect_jiffies = rds_sysctl_reconnect_min_jiffies;
-		queue_delayed_work(rds_wq, &conn->c_conn_w, 0);
+		if (conn->c_loopback)
+			queue_delayed_work(rds_local_wq, &conn->c_conn_w, 0);
+		else
+			queue_delayed_work(rds_wq, &conn->c_conn_w, 0);
 		return;
 	}
 
