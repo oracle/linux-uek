@@ -1416,7 +1416,7 @@ static int atl2_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 
 	err = -EIO;
 
-	netdev->hw_features = NETIF_F_SG | NETIF_F_HW_VLAN_RX;
+	netdev->hw_features = NETIF_F_HW_VLAN_RX;
 	netdev->features |= (NETIF_F_HW_VLAN_TX | NETIF_F_HW_VLAN_RX);
 
 	/* Init PHY as early as possible due to power saving issue  */
