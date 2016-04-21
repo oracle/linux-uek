@@ -762,8 +762,8 @@ static int rds_cmsg_recv(struct rds_incoming *inc, struct msghdr *msg,
 		t.rx_traces =  rs->rs_rx_traces;
 		for (i = 0; i < rs->rs_rx_traces; i++) {
 			j = rs->rs_rx_trace[i];
-			t.rx_trace_pos[j] = j;
-			t.rx_trace[j] = inc->i_rx_lat_trace[j + 1] -
+			t.rx_trace_pos[i] = j;
+			t.rx_trace[i] = inc->i_rx_lat_trace[j + 1] -
 					  inc->i_rx_lat_trace[j];
 		}
 
