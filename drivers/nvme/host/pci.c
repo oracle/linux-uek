@@ -285,7 +285,7 @@ static void nvme_queue_scan(struct nvme_dev *dev)
 	 * Do not queue new scan work when a controller is reset during
 	 * removal.
 	 */
-	if (dev->ctrl.state != NVME_CTRL_DELETING)
+	if (dev->ctrl.state == NVME_CTRL_LIVE)
 		queue_work(nvme_workq, &dev->scan_work);
 }
 
@@ -1700,7 +1700,6 @@ static int nvme_dev_add(struct nvme_dev *dev)
 		/* Free previously allocated queues that are no longer usable */
 		nvme_free_queues(dev, dev->online_queues);
 	}
-	nvme_queue_scan(dev);
 	return 0;
 }
 
@@ -1940,6 +1939,9 @@ static void nvme_reset_work(struct work_struct *work)
 		dev_warn(dev->ctrl.device, "failed to mark controller live\n");
 		goto out;
 	}
+
+	if (dev->online_queues > 1)
+		nvme_queue_scan(dev);
 	return;
 
  out:
