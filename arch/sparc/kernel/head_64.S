@@ -884,7 +884,6 @@ sparc64_boot_end:
 #include "misctrap.S"
 #include "syscalls.S"
 #include "helpers.S"
-#include "hvcalls.S"
 #include "sun4v_tlb_miss.S"
 #include "sun4v_ivec.S"
 #include "ktlb.S"
@@ -931,6 +930,7 @@ swapper_4m_tsb:
 ! 0x0000000000428000
 
 #include "systbls_64.S"
+#include "hvcalls.S"
 
 	.data
 	.align	8

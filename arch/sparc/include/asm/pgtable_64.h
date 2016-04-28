@@ -375,6 +375,9 @@ static inline pgprot_t pgprot_noncached(pgprot_t prot)
 #define pgprot_noncached pgprot_noncached
 
 #if defined(CONFIG_HUGETLB_PAGE) || defined(CONFIG_TRANSPARENT_HUGEPAGE)
+extern pte_t arch_make_huge_pte(pte_t entry, struct vm_area_struct *vma,
+				struct page *page, int writable);
+#define	arch_make_huge_pte arch_make_huge_pte
 static inline pte_t pte_mkhuge(pte_t pte)
 {
 	unsigned long mask;

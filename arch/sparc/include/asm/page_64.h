@@ -25,13 +25,15 @@
 #define HPAGE_MASK		(~(HPAGE_SIZE - 1UL))
 #define HUGETLB_PAGE_ORDER	(HPAGE_SHIFT - PAGE_SHIFT)
 #define HAVE_ARCH_HUGETLB_UNMAPPED_AREA
+#define HUGE_MAX_HSTATE		2
 #endif
 
 #ifndef __ASSEMBLY__
 
 #if defined(CONFIG_HUGETLB_PAGE) || defined(CONFIG_TRANSPARENT_HUGEPAGE)
 struct pt_regs;
-void hugetlb_setup(struct pt_regs *regs);
+void hugetlb_setup(struct pt_regs *regs, unsigned int tsb_index);
+extern unsigned int xl_hugepage_shift;
 #endif
 
 #define WANT_PAGE_VIRTUAL

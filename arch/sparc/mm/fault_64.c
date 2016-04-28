@@ -22,6 +22,8 @@
 #include <linux/kdebug.h>
 #include <linux/percpu.h>
 #include <linux/context_tracking.h>
+#include <linux/hugetlb.h>
+#include <linux/dtrace_os.h>
 
 #include <asm/page.h>
 #include <asm/pgtable.h>
@@ -279,10 +281,63 @@ static void noinline __kprobes bogus_32bit_fault_tpc(struct pt_regs *regs)
 	show_regs(regs);
 }
 
+#if defined(CONFIG_HUGETLB_PAGE) || defined(CONFIG_TRANSPARENT_HUGEPAGE)
+/* Put this here until there are more consumers.*/
+static unsigned long hugepage_pte_counts_to_pages(mm_context_t *mm_context)
+{
+	unsigned long hugepages_to_pages = 0UL;
+
+	if (xl_hugepage_shift)
+		hugepages_to_pages = xl_hugepage_pte_count(mm_context) <<
+			(xl_hugepage_shift - PAGE_SHIFT);
+	hugepages_to_pages = hugepages_to_pages +
+		(hugepage_pte_count(mm_context) << (HPAGE_SHIFT - PAGE_SHIFT));
+
+	return hugepages_to_pages;
+}
+
+static void sparc64_hugetlb_tsb_fault(struct pt_regs *regs,
+				      struct mm_struct *mm,
+				      unsigned int hugepage_shift)
+{
+	unsigned int hugepage_pte_idx, hugepage_idx;
+	unsigned long mm_rss;
+
+	if (hugepage_shift == xl_hugepage_shift)
+		hugepage_idx = MM_TSB_XLHUGE;
+	else
+		hugepage_idx = MM_TSB_HUGE;
+
+	hugepage_pte_idx =
+		hugepage_size_to_pte_count_idx(1UL << hugepage_shift);
+
+	mm_rss = mm->context.huge_pte_count[hugepage_pte_idx];
+	if (unlikely(mm_rss >
+	     mm->context.tsb_block[hugepage_idx].tsb_rss_limit)) {
+		if (mm->context.tsb_block[hugepage_idx].tsb)
+			tsb_grow(mm, hugepage_idx, mm_rss);
+		else
+			hugetlb_setup(regs, hugepage_idx);
+
+	}
+}
+#else
+static unsigned long hugepage_pte_counts_to_pages(mm_context_t *mm_context)
+{
+	return 0UL;
+}
+static void sparc64_hugetlb_tsb_fault(struct pt_regs *regs,
+				      struct mm_struct *mm,
+				      unsigned int hugepage_shift)
+{
+}
+#endif	/* CONFIG_HUGETLB_PAGE || CONFIG_TRANSPARENT_HUGEPAGE */
+
 asmlinkage void __kprobes do_sparc64_fault(struct pt_regs *regs)
 {
 	enum ctx_state prev_state = exception_enter();
 	struct mm_struct *mm = current->mm;
+	unsigned int hugepage_shift;
 	struct vm_area_struct *vma;
 	unsigned int insn = 0;
 	int si_code, fault_code, fault;
@@ -476,26 +531,18 @@ good_area:
 			goto retry;
 		}
 	}
+	if (is_vm_hugetlb_page(vma))
+		hugepage_shift = huge_page_shift(hstate_vma(vma));
+	else
+		hugepage_shift = HPAGE_SHIFT;
 	up_read(&mm->mmap_sem);
 
 	mm_rss = get_mm_rss(mm);
-#if defined(CONFIG_HUGETLB_PAGE) || defined(CONFIG_TRANSPARENT_HUGEPAGE)
-	mm_rss -= (mm->context.huge_pte_count * (HPAGE_SIZE / PAGE_SIZE));
-#endif
+	mm_rss =  mm_rss - hugepage_pte_counts_to_pages(&mm->context);
 	if (unlikely(mm_rss >
 		     mm->context.tsb_block[MM_TSB_BASE].tsb_rss_limit))
 		tsb_grow(mm, MM_TSB_BASE, mm_rss);
-#if defined(CONFIG_HUGETLB_PAGE) || defined(CONFIG_TRANSPARENT_HUGEPAGE)
-	mm_rss = mm->context.huge_pte_count;
-	if (unlikely(mm_rss >
-		     mm->context.tsb_block[MM_TSB_HUGE].tsb_rss_limit)) {
-		if (mm->context.tsb_block[MM_TSB_HUGE].tsb)
-			tsb_grow(mm, MM_TSB_HUGE, mm_rss);
-		else
-			hugetlb_setup(regs);
-
-	}
-#endif
+	sparc64_hugetlb_tsb_fault(regs, mm, hugepage_shift);
 exit_exception:
 	exception_exit(prev_state);
 	return;
