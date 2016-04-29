@@ -2729,6 +2729,7 @@ struct sk_buff *skb_segment(struct sk_buff *skb, netdev_features_t features)
 	struct sk_buff *fskb = skb_shinfo(skb)->frag_list;
 	unsigned int mss = skb_shinfo(skb)->gso_size;
 	unsigned int doffset = skb->data - skb_mac_header(skb);
+	struct sk_buff *frag_skb = skb;
 	unsigned int offset = doffset;
 	unsigned int headroom;
 	unsigned int len;
@@ -2762,6 +2763,7 @@ struct sk_buff *skb_segment(struct sk_buff *skb, netdev_features_t features)
 			BUG_ON(fskb->len != len);
 
 			pos += len;
+			frag_skb = fskb;
 			nskb = skb_clone(fskb, GFP_ATOMIC);
 			fskb = fskb->next;
 
@@ -2825,6 +2827,10 @@ struct sk_buff *skb_segment(struct sk_buff *skb, netdev_features_t features)
 						 skb_put(nskb, hsize), hsize);
 
 		while (pos < offset + len && i < nfrags) {
+
+			if (unlikely(skb_orphan_frags(frag_skb, GFP_ATOMIC)))
+				goto err;
+
 			*frag = skb_shinfo(skb)->frags[i];
 			__skb_frag_ref(frag);
 			size = skb_frag_size(frag);
@@ -2853,6 +2859,7 @@ struct sk_buff *skb_segment(struct sk_buff *skb, netdev_features_t features)
 			BUG_ON(pos + fskb->len != offset + len);
 
 			pos += fskb->len;
+			frag_skb = fskb;
 			fskb = fskb->next;
 
 			if (fskb2->next) {
