@@ -430,6 +430,12 @@ static int rds_ib_laddr_check(struct net *net, __be32 addr)
 	struct rdma_cm_id *cm_id;
 	struct sockaddr_in sin;
 
+	/* Link-local addresses don't play well with IB */
+	if (ipv4_is_linklocal_169(addr)) {
+		pr_info_ratelimited("RDS/IB: Link local address %pI4 NOT SUPPORTED\n", &addr);
+		return -EADDRNOTAVAIL;
+	}
+
 	/* Create a CMA ID and try to bind it. This catches both
 	 * IB and iWARP capable NICs.
 	 */
