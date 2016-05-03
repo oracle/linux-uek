@@ -204,10 +204,8 @@ int pci_bus_alloc_resource(struct pci_bus *bus, struct resource *res,
 {
 #ifdef CONFIG_PCI_BUS_ADDR_T_64BIT
 	int rc;
-	unsigned long mmio64 = pci_find_host_bridge(bus)->has_mem64 ?
-				IORESOURCE_MEM_64 : 0;
 
-	if (res->flags & mmio64) {
+	if (res->flags & IORESOURCE_MEM_64) {
 		rc = pci_bus_alloc_from_region(bus, res, size, align, min,
 					       type_mask, alignf, alignf_data,
 					       &pci_high);
