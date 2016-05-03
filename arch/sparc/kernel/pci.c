@@ -477,7 +477,7 @@ static void of_scan_pci_bridge(struct pci_pbm_info *pbm,
 		pci_read_bridge_bases(bus);
 		goto after_ranges;
 	}
-	i = 3;
+	i = 1;
 	for (; len >= 32; len -= 32, ranges += 8) {
 		u64 start;
 
@@ -509,12 +509,6 @@ static void of_scan_pci_bridge(struct pci_pbm_info *pbm,
 				       " for bridge %s\n", node->full_name);
 				continue;
 			}
-		} else if ((flags & IORESOURCE_PREFETCH) &&
-			   !bus->resource[2]->flags) {
-			res = bus->resource[2];
-		} else if (((flags & (IORESOURCE_MEM | IORESOURCE_PREFETCH)) ==
-			    IORESOURCE_MEM) && !bus->resource[1]->flags) {
-			res = bus->resource[1];
 		} else {
 			if (i >= PCI_NUM_RESOURCES - PCI_BRIDGE_RESOURCES) {
 				printk(KERN_ERR "PCI: too many memory ranges"
