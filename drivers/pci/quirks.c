@@ -432,6 +432,24 @@ static void quirk_amd_nl_class(struct pci_dev *pdev)
 DECLARE_PCI_FIXUP_HEADER(PCI_VENDOR_ID_AMD, PCI_DEVICE_ID_AMD_NL_USB,
 		quirk_amd_nl_class);
 
+/*
+ * Let's make the southbridge information explicit instead
+ * of having to worry about people probing the ACPI areas,
+ * for example.. (Yes, it happens, and if you read the wrong
+ * ACPI register it will put the machine to sleep with no
+ * way of waking it up again. Bummer).
+ *
+ * ALI M7101: Two IO regions pointed to by words at
+ *	0xE0 (64 bytes of ACPI registers)
+ *	0xE2 (32 bytes of SMB registers)
+ */
+static void quirk_ali7101_acpi(struct pci_dev *dev)
+{
+	quirk_io_region(dev, 0xE0, 64, PCI_BRIDGE_RESOURCES, "ali7101 ACPI");
+	quirk_io_region(dev, 0xE2, 32, PCI_BRIDGE_RESOURCES+1, "ali7101 SMB");
+}
+DECLARE_PCI_FIXUP_HEADER(PCI_VENDOR_ID_AL,	PCI_DEVICE_ID_AL_M7101,		quirk_ali7101_acpi);
+
 static void piix4_io_quirk(struct pci_dev *dev, const char *name, unsigned int port, unsigned int enable)
 {
 	u32 devres;
