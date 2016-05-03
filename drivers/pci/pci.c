@@ -414,7 +414,6 @@ EXPORT_SYMBOL_GPL(pci_find_ht_capability);
 struct resource *pci_find_parent_resource(const struct pci_dev *dev,
 					  struct resource *res)
 {
-	int flags = pci_resource_pref_compatible(dev, res);
 	const struct pci_bus *bus = dev->bus;
 	struct resource *r;
 	int i;
@@ -429,7 +428,7 @@ struct resource *pci_find_parent_resource(const struct pci_dev *dev,
 			 * not, the allocator made a mistake.
 			 */
 			if (r->flags & IORESOURCE_PREFETCH &&
-			    !(flags & IORESOURCE_PREFETCH))
+			    !(res->flags & IORESOURCE_PREFETCH))
 				return NULL;
 
 			/*

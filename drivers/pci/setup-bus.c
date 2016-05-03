@@ -739,20 +739,6 @@ int pci_claim_bridge_resource(struct pci_dev *bridge, int i)
 	return -EINVAL;
 }
 
-int pci_resource_pref_compatible(const struct pci_dev *dev,
-				 struct resource *res)
-{
-	if (res->flags & IORESOURCE_PREFETCH)
-		return res->flags;
-
-	if ((res->flags & IORESOURCE_MEM) &&
-	    (res->flags & IORESOURCE_MEM_64) &&
-	    dev->on_all_pcie_path)
-		return res->flags | IORESOURCE_PREFETCH;
-
-	return res->flags;
-}
-
 /* Check whether the bridge supports optional I/O and
    prefetchable memory ranges. If not, the respective
    base/limit registers must be read-only and read as 0. */
@@ -1050,11 +1036,10 @@ static int pbus_size_mem(struct pci_bus *bus, unsigned long mask,
 		for (i = 0; i < PCI_NUM_RESOURCES; i++) {
 			struct resource *r = &dev->resource[i];
 			resource_size_t r_size;
-			int flags = pci_resource_pref_compatible(dev, r);
 
-			if (r->parent || ((flags & mask) != type &&
-					  (flags & mask) != type2 &&
-					  (flags & mask) != type3))
+			if (r->parent || ((r->flags & mask) != type &&
+					  (r->flags & mask) != type2 &&
+					  (r->flags & mask) != type3))
 				continue;
 			r_size = resource_size(r);
 #ifdef CONFIG_PCI_IOV

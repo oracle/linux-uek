@@ -250,19 +250,15 @@ static int __pci_assign_resource(struct pci_bus *bus, struct pci_dev *dev,
 static int _pci_assign_resource(struct pci_dev *dev, int resno,
 				resource_size_t size, resource_size_t min_align)
 {
-	struct resource *res = dev->resource + resno;
-	int old_flags = res->flags;
 	struct pci_bus *bus;
 	int ret;
 
-	res->flags = pci_resource_pref_compatible(dev, res);
 	bus = dev->bus;
 	while ((ret = __pci_assign_resource(bus, dev, resno, size, min_align))) {
 		if (!bus->parent || !bus->self->transparent)
 			break;
 		bus = bus->parent;
 	}
-	res->flags = old_flags;
 
 	return ret;
 }
