@@ -393,7 +393,6 @@ static void pci_register_iommu_region(struct pci_pbm_info *pbm)
 void pci_determine_mem_io_space(struct pci_pbm_info *pbm)
 {
 	const struct linux_prom_pci_ranges *pbm_ranges;
-	resource_size_t mem64_offset = 0;
 	int i, saw_mem, saw_io;
 	int num_pbm_ranges;
 
@@ -411,16 +410,13 @@ void pci_determine_mem_io_space(struct pci_pbm_info *pbm)
 
 	for (i = 0; i < num_pbm_ranges; i++) {
 		const struct linux_prom_pci_ranges *pr = &pbm_ranges[i];
-		unsigned long a, size, region_a;
+		unsigned long a, size;
 		u32 parent_phys_hi, parent_phys_lo;
-		u32 child_phys_mid, child_phys_lo;
 		u32 size_hi, size_lo;
 		int type;
 
 		parent_phys_hi = pr->parent_phys_hi;
 		parent_phys_lo = pr->parent_phys_lo;
-		child_phys_mid = pr->child_phys_mid;
-		child_phys_lo = pr->child_phys_lo;
 		if (tlb_type == hypervisor)
 			parent_phys_hi &= 0x0fffffff;
 
@@ -430,8 +426,6 @@ void pci_determine_mem_io_space(struct pci_pbm_info *pbm)
 		type = (pr->child_phys_hi >> 24) & 0x3;
 		a = (((unsigned long)parent_phys_hi << 32UL) |
 		     ((unsigned long)parent_phys_lo  <<  0UL));
-		region_a = (((unsigned long)child_phys_mid << 32UL) |
-		     ((unsigned long)child_phys_lo  <<  0UL));
 		size = (((unsigned long)size_hi << 32UL) |
 			((unsigned long)size_lo  <<  0UL));
 
@@ -446,7 +440,6 @@ void pci_determine_mem_io_space(struct pci_pbm_info *pbm)
 			pbm->io_space.start = a;
 			pbm->io_space.end = a + size - 1UL;
 			pbm->io_space.flags = IORESOURCE_IO;
-			pbm->io_offset = a - region_a;
 			saw_io = 1;
 			break;
 
@@ -455,7 +448,6 @@ void pci_determine_mem_io_space(struct pci_pbm_info *pbm)
 			pbm->mem_space.start = a;
 			pbm->mem_space.end = a + size - 1UL;
 			pbm->mem_space.flags = IORESOURCE_MEM;
-			pbm->mem_offset = a - region_a;
 			saw_mem = 1;
 			break;
 
@@ -464,7 +456,6 @@ void pci_determine_mem_io_space(struct pci_pbm_info *pbm)
 			pbm->mem64_space.start = a;
 			pbm->mem64_space.end = a + size - 1UL;
 			pbm->mem64_space.flags = IORESOURCE_MEM;
-			mem64_offset = a - region_a;
 			saw_mem = 1;
 			break;
 
@@ -480,23 +471,14 @@ void pci_determine_mem_io_space(struct pci_pbm_info *pbm)
 		prom_halt();
 	}
 
-	if (pbm->io_space.flags)
-		printk("%s: PCI IO %pR offset %llx\n",
-		       pbm->name, &pbm->io_space, pbm->io_offset);
-	if (pbm->mem_space.flags)
-		printk("%s: PCI MEM %pR offset %llx\n",
-		       pbm->name, &pbm->mem_space, pbm->mem_offset);
-	if (pbm->mem64_space.flags) {
-		if (pbm->mem_space.flags) {
-			if (mem64_offset != pbm->mem_offset)
-				panic("mem offset %llx != mem64 offset %llx\n",
-					pbm->mem_offset, mem64_offset);
-		} else
-			pbm->mem_offset = mem64_offset;
-
-		printk("%s: PCI MEM64 %pR offset %llx\n",
-		       pbm->name, &pbm->mem64_space, pbm->mem_offset);
-	}
+	printk("%s: PCI IO[%llx] MEM[%llx]",
+	       pbm->name,
+	       pbm->io_space.start,
+	       pbm->mem_space.start);
+	if (pbm->mem64_space.flags)
+		printk(" MEM64[%llx]",
+		       pbm->mem64_space.start);
+	printk("\n");
 
 	pbm->io_space.name = pbm->mem_space.name = pbm->name;
 	pbm->mem64_space.name = pbm->name;

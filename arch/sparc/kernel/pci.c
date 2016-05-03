@@ -660,12 +660,12 @@ struct pci_bus *pci_scan_one_pbm(struct pci_pbm_info *pbm,
 	printk("PCI: Scanning PBM %s\n", node->full_name);
 
 	pci_add_resource_offset(&resources, &pbm->io_space,
-				pbm->io_offset);
+				pbm->io_space.start);
 	pci_add_resource_offset(&resources, &pbm->mem_space,
-				pbm->mem_offset);
+				pbm->mem_space.start);
 	if (pbm->mem64_space.flags)
 		pci_add_resource_offset(&resources, &pbm->mem64_space,
-					pbm->mem_offset);
+					pbm->mem_space.start);
 	pbm->busn.start = pbm->pci_first_busno;
 	pbm->busn.end	= pbm->pci_last_busno;
 	pbm->busn.flags	= IORESOURCE_BUS;
@@ -768,10 +768,10 @@ static int __pci_mmap_make_offset_bus(struct pci_dev *pdev, struct vm_area_struc
 		return -EINVAL;
 
 	if (mmap_state == pci_mmap_io) {
-		vma->vm_pgoff = (pbm->io_offset +
+		vma->vm_pgoff = (pbm->io_space.start +
 				 user_offset) >> PAGE_SHIFT;
 	} else {
-		vma->vm_pgoff = (pbm->mem_offset +
+		vma->vm_pgoff = (pbm->mem_space.start +
 				 user_offset) >> PAGE_SHIFT;
 	}
 
@@ -998,9 +998,9 @@ void pci_resource_to_user(const struct pci_dev *pdev, int bar,
 	unsigned long offset;
 
 	if (rp->flags & IORESOURCE_IO)
-		offset = pbm->io_offset;
+		offset = pbm->io_space.start;
 	else
-		offset = pbm->mem_offset;
+		offset = pbm->mem_space.start;
 
 	*start = rp->start - offset;
 	*end = rp->end - offset;

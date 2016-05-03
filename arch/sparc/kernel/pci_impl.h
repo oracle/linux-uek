@@ -110,9 +110,6 @@ struct pci_pbm_info {
 	struct resource			mem_space;
 	struct resource			mem64_space;
 	struct resource			busn;
-	/* offset */
-	resource_size_t			io_offset;
-	resource_size_t			mem_offset;
 
 	/* Base of PCI Config space, can be per-PBM or shared. */
 	unsigned long			config_space;
