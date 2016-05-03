@@ -739,29 +739,6 @@ int pci_claim_bridge_resource(struct pci_dev *bridge, int i)
 	return -EINVAL;
 }
 
-static bool pci_up_path_over_pref_mem64(struct pci_bus *bus)
-{
-	if (pci_is_root_bus(bus))
-		return true;
-
-	if (bus->self) {
-		int i;
-		bool found = false;
-		struct resource *res;
-
-		pci_bus_for_each_resource(bus, res, i)
-			if (res->flags & IORESOURCE_MEM_64) {
-				found = true;
-				break;
-			}
-
-		if (!found)
-			return false;
-	}
-
-	return pci_up_path_over_pref_mem64(bus->parent);
-}
-
 int pci_resource_pref_compatible(const struct pci_dev *dev,
 				 struct resource *res)
 {
@@ -770,8 +747,7 @@ int pci_resource_pref_compatible(const struct pci_dev *dev,
 
 	if ((res->flags & IORESOURCE_MEM) &&
 	    (res->flags & IORESOURCE_MEM_64) &&
-	    dev->on_all_pcie_path &&
-	    pci_up_path_over_pref_mem64(dev->bus))
+	    dev->on_all_pcie_path)
 		return res->flags | IORESOURCE_PREFETCH;
 
 	return res->flags;
@@ -1263,10 +1239,6 @@ void __pci_bus_size_bridges(struct pci_bus *bus, struct list_head *realloc_head)
 	struct resource *b_res;
 	int ret;
 
-	if (!pci_is_root_bus(bus) &&
-	    (bus->self->class >> 8) == PCI_CLASS_BRIDGE_PCI)
-		pci_bridge_check_ranges(bus);
-
 	list_for_each_entry(dev, &bus->devices, bus_list) {
 		struct pci_bus *b = dev->subordinate;
 		if (!b)
@@ -1294,6 +1266,7 @@ void __pci_bus_size_bridges(struct pci_bus *bus, struct list_head *realloc_head)
 		break;
 
 	case PCI_CLASS_BRIDGE_PCI:
+		pci_bridge_check_ranges(bus);
 		if (bus->self->is_hotplug_bridge) {
 			additional_io_size  = pci_hotplug_io_size;
 			additional_mem_size = pci_hotplug_mem_size;
