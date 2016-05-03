@@ -83,11 +83,10 @@ static unsigned long of_bus_pci_get_flags(const u32 *addr, unsigned long flags)
 	case 0x01:
 		flags |= IORESOURCE_IO;
 		break;
+
 	case 0x02: /* 32 bits */
-		flags |= IORESOURCE_MEM;
-		break;
 	case 0x03: /* 64 bits */
-		flags |= IORESOURCE_MEM | IORESOURCE_MEM_64;
+		flags |= IORESOURCE_MEM;
 		break;
 	}
 	if (w & 0x40000000)
