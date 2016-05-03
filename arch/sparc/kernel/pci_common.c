@@ -363,7 +363,7 @@ static void pci_register_region(struct pci_pbm_info *pbm, const char *name,
 	}
 }
 
-void pci_register_legacy_regions(struct pci_pbm_info *pbm)
+static void pci_register_legacy_regions(struct pci_pbm_info *pbm)
 {
 	/* VGA Video RAM. */
 	pci_register_region(pbm, "Video RAM area", 0xa0000UL, 0x20000UL);
@@ -498,6 +498,7 @@ void pci_determine_mem_io_space(struct pci_pbm_info *pbm)
 	if (pbm->mem64_space.flags)
 		request_resource(&iomem_resource, &pbm->mem64_space);
 
+	pci_register_legacy_regions(pbm);
 	pci_register_iommu_region(pbm);
 }
 

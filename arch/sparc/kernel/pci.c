@@ -690,7 +690,6 @@ struct pci_bus *pci_scan_one_pbm(struct pci_pbm_info *pbm,
 	pci_bus_register_of_sysfs(bus);
 
 	pci_claim_bus_resources(bus);
-	pci_register_legacy_regions(pbm);
 	pci_bus_add_devices(bus);
 
 	list_for_each_entry(child, &bus->children, node)
