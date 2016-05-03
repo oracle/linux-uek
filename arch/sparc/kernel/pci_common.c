@@ -328,49 +328,41 @@ void pci_get_pbm_props(struct pci_pbm_info *pbm)
 	}
 }
 
-static void pci_register_region(struct pci_pbm_info *pbm, const char *name,
-				resource_size_t rstart, resource_size_t size)
+static void pci_register_legacy_regions(struct resource *io_res,
+					struct resource *mem_res)
 {
-	struct resource *res, *conflict;
-	struct resource *mem_res = &pbm->mem_space;
-	resource_size_t offset = pbm->mem_offset;
-	resource_size_t mem_rstart, mem_rend;
-	resource_size_t rend = rstart + size - 1UL;
+	struct resource *p;
 
-	if (!mem_res->flags)
-		return;
-
-	mem_rstart = mem_res->start - offset;
-	mem_rend = mem_res->end - offset;
-
-	/* contain checking */
-	if (!(mem_rstart <= rstart && mem_rend >= rend))
-		return;
-
-	res = kzalloc(sizeof(*res), GFP_KERNEL);
-	if (!res)
-		return;
-
-	res->name = name;
-	res->flags = IORESOURCE_MEM | IORESOURCE_BUSY;
-	res->start = rstart + offset;
-	res->end = rend + offset;
-	conflict = request_resource_conflict(mem_res, res);
-	if (conflict) {
-		printk(KERN_DEBUG "PCI: %s can't claim %s %pR: address conflict with %s %pR\n",
-			pbm->name, res->name, res, conflict->name, conflict);
-		kfree(res);
-	}
-}
-
-static void pci_register_legacy_regions(struct pci_pbm_info *pbm)
-{
 	/* VGA Video RAM. */
-	pci_register_region(pbm, "Video RAM area", 0xa0000UL, 0x20000UL);
+	p = kzalloc(sizeof(*p), GFP_KERNEL);
+	if (!p)
+		return;
 
-	pci_register_region(pbm, "System ROM",     0xf0000UL, 0x10000UL);
+	p->name = "Video RAM area";
+	p->start = mem_res->start + 0xa0000UL;
+	p->end = p->start + 0x1ffffUL;
+	p->flags = IORESOURCE_BUSY;
+	request_resource(mem_res, p);
 
-	pci_register_region(pbm, "Video ROM",      0xc0000UL,  0x8000UL);
+	p = kzalloc(sizeof(*p), GFP_KERNEL);
+	if (!p)
+		return;
+
+	p->name = "System ROM";
+	p->start = mem_res->start + 0xf0000UL;
+	p->end = p->start + 0xffffUL;
+	p->flags = IORESOURCE_BUSY;
+	request_resource(mem_res, p);
+
+	p = kzalloc(sizeof(*p), GFP_KERNEL);
+	if (!p)
+		return;
+
+	p->name = "Video ROM";
+	p->start = mem_res->start + 0xc0000UL;
+	p->end = p->start + 0x7fffUL;
+	p->flags = IORESOURCE_BUSY;
+	request_resource(mem_res, p);
 }
 
 static void pci_register_iommu_region(struct pci_pbm_info *pbm)
@@ -378,8 +370,24 @@ static void pci_register_iommu_region(struct pci_pbm_info *pbm)
 	const u32 *vdma = of_get_property(pbm->op->dev.of_node, "virtual-dma",
 					  NULL);
 
-	if (vdma)
-		pci_register_region(pbm, "IOMMU", vdma[0], vdma[1]);
+	if (vdma) {
+		struct resource *rp = kzalloc(sizeof(*rp), GFP_KERNEL);
+
+		if (!rp) {
+			pr_info("%s: Cannot allocate IOMMU resource.\n",
+				pbm->name);
+			return;
+		}
+		rp->name = "IOMMU";
+		rp->start = pbm->mem_space.start + (unsigned long) vdma[0];
+		rp->end = rp->start + (unsigned long) vdma[1] - 1UL;
+		rp->flags = IORESOURCE_BUSY;
+		if (request_resource(&pbm->mem_space, rp)) {
+			pr_info("%s: Unable to request IOMMU resource.\n",
+				pbm->name);
+			kfree(rp);
+		}
+	}
 }
 
 void pci_determine_mem_io_space(struct pci_pbm_info *pbm)
@@ -498,7 +506,8 @@ void pci_determine_mem_io_space(struct pci_pbm_info *pbm)
 	if (pbm->mem64_space.flags)
 		request_resource(&iomem_resource, &pbm->mem64_space);
 
-	pci_register_legacy_regions(pbm);
+	pci_register_legacy_regions(&pbm->io_space,
+				    &pbm->mem_space);
 	pci_register_iommu_region(pbm);
 }
 
