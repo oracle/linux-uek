@@ -328,56 +328,39 @@ void pci_get_pbm_props(struct pci_pbm_info *pbm)
 	}
 }
 
-static int pci_register_region_one(struct pci_pbm_info *pbm, const char *name,
-				struct resource *mem_res,
-				resource_size_t mem_offset,
+static void pci_register_region(struct pci_pbm_info *pbm, const char *name,
 				resource_size_t rstart, resource_size_t size)
 {
 	struct resource *res, *conflict;
+	struct resource *mem_res = &pbm->mem_space;
+	resource_size_t offset = pbm->mem_offset;
 	resource_size_t mem_rstart, mem_rend;
 	resource_size_t rend = rstart + size - 1UL;
 
 	if (!mem_res->flags)
-		return -1;
+		return;
 
-	mem_rstart = mem_res->start - mem_offset;
-	mem_rend = mem_res->end - mem_offset;
+	mem_rstart = mem_res->start - offset;
+	mem_rend = mem_res->end - offset;
 
 	/* contain checking */
 	if (!(mem_rstart <= rstart && mem_rend >= rend))
-		return -1;
+		return;
 
 	res = kzalloc(sizeof(*res), GFP_KERNEL);
 	if (!res)
-		return 0;
+		return;
 
 	res->name = name;
 	res->flags = IORESOURCE_MEM | IORESOURCE_BUSY;
-	res->start = rstart + mem_offset;
-	res->end = rend + mem_offset;
+	res->start = rstart + offset;
+	res->end = rend + offset;
 	conflict = request_resource_conflict(mem_res, res);
 	if (conflict) {
 		printk(KERN_DEBUG "PCI: %s can't claim %s %pR: address conflict with %s %pR\n",
 			pbm->name, res->name, res, conflict->name, conflict);
 		kfree(res);
 	}
-
-	return 0;
-}
-
-static void pci_register_region(struct pci_pbm_info *pbm, const char *name,
-				resource_size_t rstart, resource_size_t size)
-{
-	int ret;
-
-	ret = pci_register_region_one(pbm, name, &pbm->mem_space,
-				      pbm->mem_offset, rstart, size);
-
-	if (!ret)
-		return;
-
-	pci_register_region_one(pbm, name, &pbm->mem64_space,
-				pbm->mem64_offset, rstart, size);
 }
 
 void pci_register_legacy_regions(struct pci_pbm_info *pbm)
@@ -402,6 +385,7 @@ static void pci_register_iommu_region(struct pci_pbm_info *pbm)
 void pci_determine_mem_io_space(struct pci_pbm_info *pbm)
 {
 	const struct linux_prom_pci_ranges *pbm_ranges;
+	resource_size_t mem64_offset = 0;
 	int i, saw_mem, saw_io;
 	int num_pbm_ranges;
 
@@ -472,7 +456,7 @@ void pci_determine_mem_io_space(struct pci_pbm_info *pbm)
 			pbm->mem64_space.start = a;
 			pbm->mem64_space.end = a + size - 1UL;
 			pbm->mem64_space.flags = IORESOURCE_MEM;
-			pbm->mem64_offset = a - region_a;
+			mem64_offset = a - region_a;
 			saw_mem = 1;
 			break;
 
@@ -494,16 +478,17 @@ void pci_determine_mem_io_space(struct pci_pbm_info *pbm)
 	if (pbm->mem_space.flags)
 		printk("%s: PCI MEM %pR offset %llx\n",
 		       pbm->name, &pbm->mem_space, pbm->mem_offset);
-	if (pbm->mem64_space.flags && pbm->mem_space.flags) {
-		if (pbm->mem64_space.start <= pbm->mem_space.end)
-			pbm->mem64_space.start = pbm->mem_space.end + 1;
-		if (pbm->mem64_space.start > pbm->mem64_space.end)
-			pbm->mem64_space.flags = 0;
-	}
+	if (pbm->mem64_space.flags) {
+		if (pbm->mem_space.flags) {
+			if (mem64_offset != pbm->mem_offset)
+				panic("mem offset %llx != mem64 offset %llx\n",
+					pbm->mem_offset, mem64_offset);
+		} else
+			pbm->mem_offset = mem64_offset;
 
-	if (pbm->mem64_space.flags)
 		printk("%s: PCI MEM64 %pR offset %llx\n",
-		       pbm->name, &pbm->mem64_space, pbm->mem64_offset);
+		       pbm->name, &pbm->mem64_space, pbm->mem_offset);
+	}
 
 	pbm->io_space.name = pbm->mem_space.name = pbm->name;
 	pbm->mem64_space.name = pbm->name;
