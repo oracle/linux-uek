@@ -2068,13 +2068,6 @@ struct pci_bus *pci_create_root_bus(struct device *parent, int bus,
 		} else
 			bus_addr[0] = '\0';
 		dev_info(&b->dev, "root bus resource %pR%s\n", res, bus_addr);
-
-		if (resource_type(res) == IORESOURCE_MEM) {
-			if ((res->end - offset) > 0xffffffff)
-				bridge->has_mem64 = 1;
-			if ((res->start - offset) > 0xffffffff)
-				res->flags |= IORESOURCE_MEM_64;
-		}
 	}
 
 	down_write(&pci_bus_sem);
