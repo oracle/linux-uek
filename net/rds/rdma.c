@@ -200,11 +200,6 @@ static int __rds_rdma_map(struct rds_sock *rs, struct rds_get_mr_args *args,
 		goto out;
 	}
 
-	if ((nr_pages << PAGE_SHIFT) > RDS_MAX_MSG_SIZE) {
-		ret = -EMSGSIZE;
-		goto out;
-	}
-
 	rdsdebug("RDS: get_mr addr %llx len %llu nr_pages %u\n",
 		args->vec.addr, args->vec.bytes, nr_pages);
 
