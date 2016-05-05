@@ -453,9 +453,9 @@ static void vds_reset(struct vds_io *io)
 
 	io->flags |= VDS_IO_FINI;
 
-	vds_vio_lock(vio, flags);
 	vds_be_fini(port);
 
+	vds_vio_lock(vio, flags);
 	vio_link_state_change(vio, LDC_EVENT_RESET);
 	vio->desc_buf_len = 0;
 
@@ -895,6 +895,7 @@ static int vds_port_probe(struct vio_dev *vdev, const struct vio_device_id *id)
 	INIT_LIST_HEAD(&port->io_list);
 	init_waitqueue_head(&port->wait);
 
+	init_rwsem(&port->be_lock);
 	mutex_init(&port->label_lock);
 
 	dev_set_drvdata(&vdev->dev, port);
