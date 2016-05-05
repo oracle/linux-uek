@@ -2153,13 +2153,13 @@ void rds_ib_add_one(struct ib_device *device)
 
 	rds_ibdev->fmr_max_remaps = dev_attr->max_map_per_fmr?: 32;
 
-	rds_ibdev->max_1m_fmrs = dev_attr->max_fmr ?
-		min_t(unsigned int, dev_attr->max_fmr,
+	rds_ibdev->max_1m_fmrs = dev_attr->max_mr ?
+		min_t(unsigned int, dev_attr->max_mr,
 			rds_ib_fmr_1m_pool_size) :
 			rds_ib_fmr_1m_pool_size;
 
-	rds_ibdev->max_8k_fmrs = dev_attr->max_fmr ?
-		min_t(unsigned int, dev_attr->max_fmr,
+	rds_ibdev->max_8k_fmrs = dev_attr->max_mr ?
+		min_t(unsigned int, dev_attr->max_mr,
 			rds_ib_fmr_8k_pool_size) :
 			rds_ib_fmr_8k_pool_size;
 
