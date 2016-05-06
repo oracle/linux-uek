@@ -161,7 +161,7 @@ void dtrace_sdt_register_module(struct module *mp)
 		 * instruction.  We verify that the offset won't put us beyond
 		 * the module core, just to be safe.
 		 */
-		sdp->sdpd_offset += (uintptr_t)mp->module_core;
+                sdp->sdpd_offset += (uintptr_t)mp->core_layout.base;
 		if (!within_module_core(sdp->sdpd_offset, mp)) {
 			pr_warning("%s: SDT probe outside module core %s\n",
 				   __func__, mp->name);
