@@ -78,7 +78,7 @@ void dtrace_os_init(void)
 	atomic_inc(&dtrace_kmod->refcnt);
 	dtrace_kmod->pdata = (char *)dtrace_kmod +
 				ALIGN(sizeof(struct module), 8);
-	dtrace_kmod->core_size = DTRACE_PDATA_MAXSIZE;
+	dtrace_kmod->core_layout.size = DTRACE_PDATA_MAXSIZE;
 
 	psinfo_cachep = kmem_cache_create("psinfo_cache",
 				sizeof(dtrace_psinfo_t), 0,
