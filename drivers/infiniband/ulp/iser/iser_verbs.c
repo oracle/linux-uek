@@ -1174,7 +1174,7 @@ static void iser_handle_wc(struct ib_wc *wc)
 		}
 	} else {
 		if (wc->status != IB_WC_WR_FLUSH_ERR)
-			iser_err("wr id %llx status %d vend_err %x\n",
+			iser_err("wr id %llx status %d vend_err 0x%x\n",
 				 wc->wr_id, wc->status, wc->vendor_err);
 		else
 			iser_dbg("flush error: wr id %llx\n", wc->wr_id);

@@ -541,7 +541,7 @@ void xve_cm_handle_rx_wc(struct net_device *dev, struct ib_wc *wc)
 		if (!test_bit(XVE_DELETING, &priv->state)) {
 			pr_err("%s: cm recv error", priv->xve_name);
 			pr_err("(status=%d, wrid=%d", wc->status, wr_id);
-			pr_err("vend_err %x)\n", wc->vendor_err);
+			pr_err("vend_err 0x%x)\n", wc->vendor_err);
 		}
 		INC_RX_DROP_STATS(priv, dev);
 		goto repost;
@@ -754,7 +754,7 @@ void xve_cm_handle_tx_wc(struct net_device *dev,
 
 	if (wc->status != IB_WC_SUCCESS && wc->status != IB_WC_WR_FLUSH_ERR) {
 		pr_err("%s: failed cm send event ", priv->xve_name);
-		pr_err("(status=%d, wrid=%d vend_err %x)\n",
+		pr_err("(status=%d, wrid=%d vend_err 0x%x)\n",
 		       wc->status, wr_id, wc->vendor_err);
 		xve_cm_destroy_tx_deferred(tx);
 	}
