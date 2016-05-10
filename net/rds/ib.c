@@ -584,27 +584,6 @@ static int rds_ib_addr_exist(struct net_device *ndev,
 	return found;
 }
 
-static void rds_ib_update_arp_cache(struct net_device      *out_dev,
-					unsigned char      *dev_addr,
-					__be32             ip_addr)
-{
-	int ret = 0;
-	struct neighbour *neigh;
-
-	neigh = __neigh_lookup_errno(&arp_tbl, &ip_addr, out_dev);
-	if (!IS_ERR(neigh)) {
-		ret = neigh_update(neigh, dev_addr, NUD_STALE,
-				   NEIGH_UPDATE_F_OVERRIDE |
-				   NEIGH_UPDATE_F_ADMIN,
-				   0);
-		if (ret)
-			printk(KERN_ERR "RDS/IB: neigh_update failed (%d) "
-				"for out_dev %s IP %pI4\n",
-				ret, out_dev->name, &ip_addr);
-		neigh_release(neigh);
-	}
-}
-
 static void rds_ib_conn_drop(struct work_struct *_work)
 {
 	struct rds_ib_conn_drop_work    *work =
@@ -655,9 +634,9 @@ static int rds_ib_move_ip(char			*from_dev,
 	char			to_dev2[2*IFNAMSIZ + 1];
 	char                    *tmp_str;
 	int			ret = 0;
-	u8			active_port, i, j, port = 0;
+	u8			active_port;
 	struct in_device	*in_dev;
-	struct rds_ib_connection *ic, *ic2;
+	struct rds_ib_connection *ic;
 	struct rds_ib_device *rds_ibdev;
 	struct rds_ib_conn_drop_work *work;
 	struct rds_ib_addr_change_work *work_addrchange;
@@ -786,62 +765,6 @@ static int rds_ib_move_ip(char			*from_dev,
 		spin_lock_bh(&rds_ibdev->spinlock);
 		list_for_each_entry(ic, &rds_ibdev->conn_list, ib_node) {
 			if (ic->conn->c_laddr == addr) {
-				/* if local connection, update the ARP cache */
-				if (ic->conn->c_loopback) {
-					for (i = 1; i <= ip_port_cnt; i++) {
-						if (ip_config[i].ip_addr ==
-							ic->conn->c_faddr) {
-							port = i;
-							break;
-						}
-
-						for (j = 0; j < ip_config[i].alias_cnt; j++) {
-							if (ip_config[i].aliases[j].ip_addr == ic->conn->c_faddr) {
-								port = i;
-								break;
-							}
-						}
-					}
-
-					BUG_ON(!port);
-
-					rds_ib_update_arp_cache(
-						ip_config[from_port].dev,
-						ip_config[port].dev->dev_addr,
-						ic->conn->c_faddr);
-
-					rds_ib_update_arp_cache(
-						ip_config[to_port].dev,
-						ip_config[port].dev->dev_addr,
-						ic->conn->c_faddr);
-
-					rds_ib_update_arp_cache(
-						ip_config[from_port].dev,
-						ip_config[to_port].dev->dev_addr,
-						ic->conn->c_laddr);
-
-					rds_ib_update_arp_cache(
-						ip_config[to_port].dev,
-						ip_config[to_port].dev->dev_addr,
-						ic->conn->c_laddr);
-
-					list_for_each_entry(ic2,
-						&rds_ibdev->conn_list,
-							ib_node) {
-						if (ic2->conn->c_laddr ==
-							ic->conn->c_faddr &&
-							ic2->conn->c_faddr ==
-							ic->conn->c_laddr) {
-							rds_rtd(RDS_RTD_CM_EXT_P,
-								"conn:%p, tos %d, calling rds_conn_drop\n",
-								ic2->conn,
-								ic2->conn->c_tos);
-							ic2->conn->c_drop_source = DR_IB_LOOPBACK_CONN_DROP;
-							rds_conn_drop(ic2->conn);
-						}
-					}
-				}
-
 				/*
 				 * For failover from HW PORT event, do
 				 * delayed connection drop, else call
