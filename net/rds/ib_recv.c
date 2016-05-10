@@ -1342,7 +1342,7 @@ void rds_ib_recv_cqe_handler(struct rds_ib_connection *ic,
 			conn->c_drop_source = DR_IB_RECV_COMP_ERR;
 			rds_ib_conn_error(conn, "recv completion "
 					"<%pI4,%pI4,%d> had status %u "
-					"vendor_err %u, disconnecting and "
+					"vendor_err 0x%x, disconnecting and "
 					"reconnecting\n",
 					&conn->c_laddr,
 					&conn->c_faddr,
