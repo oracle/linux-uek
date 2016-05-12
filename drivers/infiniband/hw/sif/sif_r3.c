@@ -465,13 +465,19 @@ static int outstanding_wqes(struct sif_dev *sdev, struct sif_qp *qp, u16 *head)
 
 int pre_process_wa4074(struct sif_dev *sdev, struct sif_qp *qp)
 {
-	struct sif_sq *sq = get_sif_sq(sdev, qp->qp_idx);
+	struct sif_sq *sq = get_sq(sdev, qp);
 	struct psif_sq_entry *sqe;
 	u16 head;
 	int len;
 
 	if (qp->flags & SIF_QPF_NO_EVICT)
 		return 0; /* do-not-evict QPs don't have any SQs */
+
+	if (unlikely(!sq)) {
+		sif_log(sdev, SIF_INFO, "sq not defined for qp %d (type %s)",
+			qp->qp_idx, string_enum_psif_qp_trans(qp->type));
+		return -1;
+	}
 
 	len = outstanding_wqes(sdev, qp, &head);
 	if (len <= 0)
@@ -491,8 +497,8 @@ int pre_process_wa4074(struct sif_dev *sdev, struct sif_qp *qp)
  */
 int post_process_wa4074(struct sif_dev *sdev, struct sif_qp *qp)
 {
-	struct sif_sq *sq = get_sif_sq(sdev, qp->qp_idx);
-	struct sif_sq_sw *sq_sw = get_sif_sq_sw(sdev, qp->qp_idx);
+	struct sif_sq *sq = get_sq(sdev, qp);
+	struct sif_sq_sw *sq_sw = sq ? get_sif_sq_sw(sdev, qp->qp_idx) : NULL;
 	struct psif_query_qp lqqp;
 	bool last_seq_set = false;
 	u16 last_seq, fence_seq;
@@ -500,8 +506,13 @@ int post_process_wa4074(struct sif_dev *sdev, struct sif_qp *qp)
 	int ret = 0;
 	bool need_gen_fence_completion = true;
 	struct sif_cq *cq = (sq && sq->cq_idx >= 0) ? get_sif_cq(sdev, sq->cq_idx) : NULL;
-	struct sif_cq_sw *cq_sw = get_sif_cq_sw(sdev, cq->index);
+	struct sif_cq_sw *cq_sw = cq ? get_sif_cq_sw(sdev, cq->index) : NULL;
 
+	if (unlikely(!sq || !cq)) {
+		sif_log(sdev, SIF_INFO, "sq/cq not defined for qp %d (type %s)",
+			qp->qp_idx, string_enum_psif_qp_trans(qp->type));
+		return -1;
+	}
 
 	/* if flush SQ is in progress, set FLUSH_SQ_IN_FLIGHT.
 	 */
@@ -772,7 +783,7 @@ err_sq_flush:
 static u16 walk_and_update_cqes(struct sif_dev *sdev, struct sif_qp *qp, u16 head, u16 end)
 {
 	struct sif_sq *sq = get_sif_sq(sdev, qp->qp_idx);
-	struct sif_cq *cq = (sq && sq->cq_idx >= 0) ? get_sif_cq(sdev, sq->cq_idx) : NULL;
+	struct sif_cq *cq = sq->cq_idx >= 0 ? get_sif_cq(sdev, sq->cq_idx) : NULL;
 	struct sif_cq_sw *cq_sw = get_sif_cq_sw(sdev, cq->index);
 	volatile struct psif_cq_entry *cqe;
 	u16 last_seq = 0, updated_seq;
@@ -833,7 +844,7 @@ static u16 walk_and_update_cqes(struct sif_dev *sdev, struct sif_qp *qp, u16 hea
 static u16 cq_walk_wa4074(struct sif_dev *sdev, struct sif_qp *qp, bool *last_seq_set)
 {
 	struct sif_sq *sq = get_sif_sq(sdev, qp->qp_idx);
-	struct sif_cq *cq = (sq && sq->cq_idx >= 0) ? get_sif_cq(sdev, sq->cq_idx) : NULL;
+	struct sif_cq *cq = sq->cq_idx >= 0 ? get_sif_cq(sdev, sq->cq_idx) : NULL;
 	struct sif_cq_sw *cq_sw = get_sif_cq_sw(sdev, cq->index);
 	volatile struct psif_cq_entry *cqe;
 	u32 seqno, polled_value;

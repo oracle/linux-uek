@@ -384,13 +384,18 @@ static int handle_send_wc(struct sif_dev *sdev, struct sif_cq *cq,
 		struct ib_wc *wc, struct psif_cq_entry *cqe, bool qp_is_destroyed)
 {
 	/* send queue descriptor aligned with qp */
-	int sq_idx = cqe->qp;
+	struct sif_sq *sq = get_sif_sq(sdev, cqe->qp);
+	struct sif_sq_sw *sq_sw = sq ? get_sif_sq_sw(sdev, cqe->qp): NULL;
 	int ret;
-	struct sif_sq *sq = get_sif_sq(sdev, sq_idx);
-	struct sif_sq_sw *sq_sw = get_sif_sq_sw(sdev, sq_idx);
 
 	/* This is a full 32 bit seq.num */
 	u32 sq_seq_num = cqe->wc_id.sq_id.sq_seq_num;
+
+	if (unlikely(!sq)) {
+		sif_log(sdev, SIF_INFO,
+			"sq doesn't exists for qp %d", cqe->qp);
+		return -EFAULT;
+	}
 
 	if (qp_is_destroyed) {
 		wc->wr_id = cqe->wc_id.rq_id;
@@ -457,7 +462,7 @@ static int handle_recv_wc(struct sif_dev *sdev, struct sif_cq *cq, struct ib_wc 
 		(wc->status != IB_WC_SUCCESS)) {
 		struct sif_qp *qp = to_sqp(wc->qp);
 
-		if (is_regular_qp(qp) && !rq->is_srq
+		if (rq && !rq->is_srq
 			&& IB_QPS_ERR == get_qp_state(qp)) {
 			if (sif_flush_rq(sdev, rq, qp, rq_len))
 				sif_log(sdev, SIF_INFO,
@@ -567,13 +572,13 @@ static int handle_wc(struct sif_dev *sdev, struct sif_cq *cq,
 		 */
 
 		/* WA #3850: generate LAST_WQE event on SRQ*/
-		struct sif_rq *rq = get_sif_rq(sdev, qp->rq_idx);
+		struct sif_rq *rq = get_rq(sdev, qp);
 
 		int log_level =
 			(wc->status == IB_WC_WR_FLUSH_ERR) ? SIF_WCE_V : SIF_WCE;
 
 
-		if (!qp_is_destroyed && is_regular_qp(qp) && rq->is_srq) {
+		if (!qp_is_destroyed && rq && rq->is_srq) {
 			if (fatal_err(qp->ibqp.qp_type, wc)) {
 				struct ib_event ibe = {
 					.device = &sdev->ib_dev,

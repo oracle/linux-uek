@@ -37,8 +37,8 @@ int sif_post_send(struct ib_qp *ibqp, struct ib_send_wr *wr,
 {
 	struct sif_dev *sdev = to_sdev(ibqp->device);
 	struct sif_qp *qp = to_sqp(ibqp);
-	struct sif_sq *sq = get_sif_sq(sdev, qp->qp_idx);
-	struct sif_sq_sw *sq_sw = get_sif_sq_sw(sdev, qp->qp_idx);
+	struct sif_sq *sq = get_sq(sdev, qp);
+	struct sif_sq_sw *sq_sw = sq ? get_sif_sq_sw(sdev, qp->qp_idx) : NULL;
 	unsigned long flags;
 	bool doorbell_mode;
 	bool last;
@@ -46,6 +46,12 @@ int sif_post_send(struct ib_qp *ibqp, struct ib_send_wr *wr,
 	const int nmbr_wrs_to_bulk_process = 32;
 	int ret = 0;
 	int n;
+
+	if (unlikely(!sq)) {
+		sif_log(sdev, SIF_INFO, "sq not defined for qp %d (type %s)",
+			qp->qp_idx, string_enum_psif_qp_trans(qp->type));
+		return -EINVAL;
+	}
 
 	sif_log(sdev, SIF_SND, "on qp_idx %d wr 0x%p ibv type %d",
 		qp->qp_idx, wr, wr->opcode);
@@ -617,13 +623,12 @@ static int get_gsi_qp_idx(struct sif_qp *qp)
 int sif_post_recv(struct ib_qp *ibqp, struct ib_recv_wr *wr,
 		  struct ib_recv_wr **bad_wr)
 {
-	struct sif_qp *qp = to_sqp(ibqp);
-	struct sif_rq *rq;
 	struct sif_dev *sdev = to_sdev(ibqp->device);
 	struct sif_eps *es = &sdev->es[sdev->mbox_epsc];
+	struct sif_qp *qp = to_sqp(ibqp);
+	struct sif_rq *rq = NULL;
 	bool need_pma_pxy_qp = eps_version_ge(es, 0, 57)
 		&& (qp->qp_idx == 1 || qp->qp_idx == 3);
-
 
 	sif_log(sdev, SIF_RCV, "Enter: wr_id 0x%llx qp_idx %d",
 		wr->wr_id, qp->qp_idx);
@@ -634,12 +639,17 @@ int sif_post_recv(struct ib_qp *ibqp, struct ib_recv_wr *wr,
 			wr->wr_id, qp->qp_idx);
 	}
 
+	rq = get_rq(sdev, qp);
+	if (unlikely(!rq)) {
+		sif_log(sdev, SIF_INFO, "rq not defined for qp_idx %d (type %s)",
+			qp->qp_idx, string_enum_psif_qp_trans(qp->type));
+		return -EINVAL;
+	}
+
 	if (qp->last_set_state == IB_QPS_RESET) {
 		sif_log(sdev, SIF_INFO, "Invalid QP state (IB_QPS_RESET)");
 		return -EINVAL;
 	}
-
-	rq = get_sif_rq(sdev, qp->rq_idx);
 
 	if (wr->num_sge > rq->sg_entries) {
 		sif_log(sdev, SIF_INFO, "qp only supports %d receive sg entries - wr has %d",
@@ -741,7 +751,7 @@ err_post_recv:
 	*bad_wr = wr;
 
 	/* WA #622, Check if QP in ERROR, flush RQ */
-	if (!rq->is_srq && is_regular_qp(qp) && qp->last_set_state == IB_QPS_ERR) {
+	if (!rq->is_srq && qp->last_set_state == IB_QPS_ERR) {
 		if (sif_flush_rq(sdev, rq, qp, atomic_read(&rq_sw->length)))
 			sif_log(sdev, SIF_INFO, "failed to flush RQ %d", rq->index);
 	}

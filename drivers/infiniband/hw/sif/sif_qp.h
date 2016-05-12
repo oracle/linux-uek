@@ -158,10 +158,36 @@ static inline int psif_supported_trans(enum psif_qp_trans type)
 	return type != PSIF_QP_TRANSPORT_RSVD1;
 }
 
-static inline bool is_regular_qp(struct sif_qp *qp)
+static inline bool is_xini_qp(struct sif_qp *qp)
 {
-	return (qp->type != PSIF_QP_TRANSPORT_MANSP1 &&
-		qp->type != PSIF_QP_TRANSPORT_XRC);
+	return qp->ibqp.qp_type == IB_QPT_XRC_INI;
+}
+
+static inline bool is_xtgt_qp(struct sif_qp *qp)
+{
+	return qp->ibqp.qp_type == IB_QPT_XRC_TGT;
+}
+
+static inline bool is_xrc_qp(struct sif_qp *qp)
+{
+	return qp->type == PSIF_QP_TRANSPORT_XRC;
+}
+
+static inline bool is_reliable_qp(enum psif_qp_trans type)
+{
+	return type == PSIF_QP_TRANSPORT_RC || type == PSIF_QP_TRANSPORT_XRC;
+}
+
+static inline bool multipacket_qp(enum psif_qp_trans type)
+{
+	switch (type) {
+	case PSIF_QP_TRANSPORT_RC:
+	case PSIF_QP_TRANSPORT_UC:
+	case PSIF_QP_TRANSPORT_XRC:
+		return true;
+	default:
+		return false;
+	}
 }
 
 static inline bool is_epsa_tunneling_qp(enum ib_qp_type type)
@@ -249,5 +275,7 @@ static inline bool ib_legal_path_mtu(enum ib_mtu mtu)
 	return (mtu >= IB_MTU_256) && (mtu <= IB_MTU_4096);
 }
 
+struct sif_sq *get_sq(struct sif_dev *sdev, struct sif_qp *qp);
+struct sif_rq *get_rq(struct sif_dev *sdev, struct sif_qp *qp);
 
 #endif

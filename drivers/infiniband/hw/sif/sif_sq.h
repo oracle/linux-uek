@@ -67,7 +67,4 @@ int sif_sq_cmpl_unmap_sq(struct sif_dev *sdev, struct sif_sq *sq);
 void sif_dfs_print_sq_hw(struct seq_file *s, struct sif_dev *sdev, loff_t pos);
 void sif_dfs_print_sq_cmpl(struct seq_file *s, struct sif_dev *sdev, loff_t pos);
 
-bool multipacket_qp(enum psif_qp_trans type);
-bool reliable_qp(enum psif_qp_trans type);
-
 #endif

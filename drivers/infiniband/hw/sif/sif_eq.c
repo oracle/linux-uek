@@ -628,9 +628,9 @@ static void handle_event_work(struct work_struct *work)
 	case IB_EVENT_QP_LAST_WQE_REACHED: {
 		struct ib_qp *ibqp = ew->ibe.element.qp;
 		struct sif_qp *qp = to_sqp(ibqp);
+		struct sif_rq *rq = get_rq(sdev, qp);
 
-		if (is_regular_qp(qp)) {
-			struct sif_rq *rq = get_sif_rq(sdev, qp->rq_idx);
+		if (rq) {
 			struct sif_rq_sw *rq_sw = get_sif_rq_sw(sdev, rq->index);
 
 			/* WA #3850:if SRQ, generate LAST_WQE event */
@@ -658,6 +658,10 @@ static void handle_event_work(struct work_struct *work)
 	case IB_EVENT_COMM_EST: {
 		struct ib_qp *ibqp = ew->ibe.element.qp;
 		struct sif_qp *qp = to_sqp(ibqp);
+
+		/* Avoid MAD layer reporting of fatal error */
+		if ((ibqp->qp_type == IB_QPT_GSI) && (ew->ibe.event == IB_EVENT_COMM_EST))
+			break;
 
 		if (ibqp->event_handler)
 			ibqp->event_handler(&ew->ibe, ibqp->qp_context);
