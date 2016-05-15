@@ -583,6 +583,8 @@ void ipoib_send(struct net_device *dev, struct sk_buff *skb,
 		phead = NULL;
 		hlen  = 0;
 	}
+	if (ipoib_linearize_skb(dev, skb, priv, priv->max_send_sge) < 0)
+		return;
 
 	ipoib_dbg_data(priv, "sending packet, length=%d address=%p qpn=0x%06x\n",
 		       skb->len, address, qpn);

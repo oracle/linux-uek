@@ -260,6 +260,8 @@ struct ipoib_cm_tx {
 	unsigned long	     flags;
 	u32		     mtu;
 	u16		     caps;
+	/* Used when checking for need to linearize SKBs with many frags */
+	unsigned             max_send_sge;
 };
 
 struct ipoib_cm_rx_buf {
@@ -407,6 +409,10 @@ struct ipoib_dev_priv {
 	int	hca_caps;
 	struct ipoib_ethtool_st ethtool;
 	struct timer_list poll_timer;
+	/* Used when checking for need to linearize SKBs with many frags */
+	unsigned max_send_sge;
+	/* Device specific; obtained from query_device */
+	unsigned max_sge;
 };
 
 struct ipoib_ah {
@@ -765,10 +771,14 @@ static inline int ipoib_register_debugfs(void) { return 0; }
 static inline void ipoib_unregister_debugfs(void) { }
 #endif
 
+#define ipoib_dev_name(priv) (((struct ipoib_dev_priv *) priv)->dev->name)
 #define ipoib_printk(level, priv, format, arg...)	\
-	printk(level "%s: " format, ((struct ipoib_dev_priv *) priv)->dev->name , ## arg)
+	printk(level "%s: " format, ipoib_dev_name(priv), ## arg)
 #define ipoib_warn(priv, format, arg...)		\
 	ipoib_printk(KERN_WARNING, priv, format , ## arg)
+
+#define ipoib_warn_ratelimited(priv, format, arg...) \
+	pr_warn_ratelimited("%s: " format, ipoib_dev_name(priv), ## arg)
 
 extern int ipoib_sendq_size;
 extern int ipoib_recvq_size;
@@ -809,5 +819,36 @@ extern int ipoib_debug_level;
 #define IPOIB_QPN(ha) (be32_to_cpup((__be32 *) ha) & 0xffffff)
 
 extern const char ipoib_driver_version[];
+
+static inline int ipoib_linearize_skb(struct net_device *dev,
+				      struct sk_buff *skb,
+				      struct ipoib_dev_priv *priv,
+				      unsigned max_send_sge)
+{
+	unsigned usable_sge = max_send_sge - !!skb_headlen(skb);
+
+	if (skb_shinfo(skb)->nr_frags > usable_sge) {
+		if (skb_linearize(skb) < 0) {
+			ipoib_warn_ratelimited(priv,
+					       "skb could not be linearized\n");
+			++dev->stats.tx_dropped;
+			++dev->stats.tx_errors;
+			dev_kfree_skb_any(skb);
+			return -1;
+		}
+
+		/* skb_linearize returned ok but still not reducing nr_frags */
+		if (skb_shinfo(skb)->nr_frags > usable_sge) {
+			ipoib_warn_ratelimited(priv,
+					       "too many frags after skb linearize\n");
+			++dev->stats.tx_dropped;
+			++dev->stats.tx_errors;
+			dev_kfree_skb_any(skb);
+			return -1;
+		}
+	}
+	return 0;
+
+}
 
 #endif /* _IPOIB_H */
