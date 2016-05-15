@@ -1431,8 +1431,8 @@ config WATCHDOG_SUN4V
 	select WATCHDOG_CORE
 	depends on SPARC64
 	help
-	  Say Y here to support the hypervisor watchdog capability provided
-	  by Oracle VM for SPARC.
+	  Say Y here to support the hypervisor watchdog capability embedded
+	  in the SPARC sun4v architecture.
 
 	  To compile this driver as a module, choose M here. The module will
 	  be called sun4v_wdt.

@@ -23,18 +23,15 @@
 #include <asm/hypervisor.h>
 #include <asm/mdesc.h>
 
-#define WDT_TIMEOUT_MS			60000	/* 60 seconds */
-#define WDT_MAX_TIMEOUT_MS		180000	/* 180 seconds */
-#define WDT_MIN_TIMEOUT_MS		1000	/* 1 second */
+#define WDT_TIMEOUT			60
+#define WDT_MAX_TIMEOUT			31536000
+#define WDT_MIN_TIMEOUT			1
 #define WDT_DEFAULT_RESOLUTION_MS	1000	/* 1 second */
 
-static unsigned int wdt_max_timeout_ms = WDT_MAX_TIMEOUT_MS;
-static unsigned int wdt_resolution_ms = WDT_DEFAULT_RESOLUTION_MS;
-
-static unsigned int timeout_ms = WDT_TIMEOUT_MS;
-module_param(timeout_ms, uint, S_IRUGO);
-MODULE_PARM_DESC(timeout_ms, "Watchdog timeout in ms (default="
-	__MODULE_STRING(WDT_TIMEOUT_MS) ")");
+static unsigned int timeout;
+module_param(timeout, uint, 0);
+MODULE_PARM_DESC(timeout, "Watchdog timeout in seconds (default="
+	__MODULE_STRING(WDT_TIMEOUT) ")");
 
 static bool nowayout = WATCHDOG_NOWAYOUT;
 module_param(nowayout, bool, S_IRUGO);
@@ -52,7 +49,12 @@ static int sun4v_wdt_ping(struct watchdog_device *wdd)
 {
 	int hverr;
 
-	hverr = sun4v_mach_set_watchdog(wdd->timeout, NULL);
+	/*
+	 * HV watchdog timer will round up the timeout
+	 * passed in to the nearest multiple of the
+	 * watchdog resolution in milliseconds.
+	 */
+	hverr = sun4v_mach_set_watchdog(wdd->timeout * 1000, NULL);
 	if (hverr == HV_EINVAL)
 		return -EINVAL;
 
@@ -62,13 +64,15 @@ static int sun4v_wdt_ping(struct watchdog_device *wdd)
 static int sun4v_wdt_set_timeout(struct watchdog_device *wdd,
 				 unsigned int timeout)
 {
-	wdd->timeout = timeout - (timeout % wdt_resolution_ms);
+	wdd->timeout = timeout;
 
 	return 0;
 }
 
 static const struct watchdog_info sun4v_wdt_ident = {
-	.options =	WDIOF_SETTIMEOUT | WDIOF_MAGICCLOSE,
+	.options =	WDIOF_SETTIMEOUT |
+			WDIOF_MAGICCLOSE |
+			WDIOF_KEEPALIVEPING,
 	.identity =	"sun4v hypervisor watchdog",
 	.firmware_version = 0,
 };
@@ -84,26 +88,18 @@ static struct watchdog_ops sun4v_wdt_ops = {
 static struct watchdog_device wdd = {
 	.info = &sun4v_wdt_ident,
 	.ops = &sun4v_wdt_ops,
-	.min_timeout = WDT_MIN_TIMEOUT_MS,
+	.min_timeout = WDT_MIN_TIMEOUT,
+	.max_timeout = WDT_MAX_TIMEOUT,
+	.timeout = WDT_TIMEOUT,
 };
-
-static int hvapi_registered;
 
 static int __init sun4v_wdt_init(void)
 {
 	struct mdesc_handle *handle;
 	u64 node;
 	const u64 *value;
-	int ret = 0;
+	int err = 0;
 	unsigned long major = 1, minor = 1;
-
-	if (sun4v_hvapi_register(HV_GRP_CORE, major, &minor) != 0)
-		return -ENODEV;
-	if (minor < 1) {
-		sun4v_hvapi_unregister(HV_GRP_CORE);
-		return -ENODEV;
-	}
-	hvapi_registered = 1;
 
 	/*
 	 * There are 2 properties that can be set from the control
@@ -111,9 +107,8 @@ static int __init sun4v_wdt_init(void)
 	 * watchdog-resolution
 	 * watchdog-max-timeout
 	 *
-	 * If there is no handle returned, this is no sun4v system
-	 * so it's correct to return -ENODEV. Same for missing of the
-	 * platform node.
+	 * We can expect a handle to be returned otherwise something
+	 * serious is wrong. Correct to return -ENODEV here.
 	 */
 
 	handle = mdesc_grab();
@@ -121,70 +116,70 @@ static int __init sun4v_wdt_init(void)
 		return -ENODEV;
 
 	node = mdesc_node_by_name(handle, MDESC_NODE_NULL, "platform");
-	if (node == MDESC_NODE_NULL) {
-		mdesc_release(handle);
-		return -ENODEV;
-	}
+	err = -ENODEV;
+	if (node == MDESC_NODE_NULL)
+		goto out_release;
 
+	/*
+	 * This is a safe way to validate if we are on the right
+	 * platform.
+	 */
+	if (sun4v_hvapi_register(HV_GRP_CORE, major, &minor))
+		goto out_hv_unreg;
+
+	/* Allow value of watchdog-resolution up to 1s (default) */
 	value = mdesc_get_property(handle, node, "watchdog-resolution", NULL);
+	err = -EINVAL;
 	if (value) {
-		wdt_resolution_ms = *value;
-		if (wdt_resolution_ms == 0 ||
-		    wdt_resolution_ms > WDT_DEFAULT_RESOLUTION_MS)
-			wdt_resolution_ms = WDT_DEFAULT_RESOLUTION_MS;
+		if (*value == 0 ||
+		    *value > WDT_DEFAULT_RESOLUTION_MS)
+			goto out_hv_unreg;
 	}
 
 	value = mdesc_get_property(handle, node, "watchdog-max-timeout", NULL);
 	if (value) {
-		wdt_max_timeout_ms = *value;
 		/*
-		 * If the property is defined to be smaller than default
-		 * then set it to default.
+		 * If the property value (in ms) is smaller than
+		 * min_timeout, return -EINVAL.
 		 */
-		if (wdt_max_timeout_ms < WDT_MIN_TIMEOUT_MS) {
-			mdesc_release(handle);
-			return -EINVAL;
-		}
+		if (*value < wdd.min_timeout * 1000)
+			goto out_hv_unreg;
+
+		/*
+		 * If the property value is smaller than
+		 * default max_timeout  then set watchdog max_timeout to
+		 * the value of the property in seconds.
+		 */
+		if (*value < wdd.max_timeout * 1000)
+			wdd.max_timeout = *value  / 1000;
 	}
 
-	mdesc_release(handle);
-
-	if (timeout_ms < WDT_MIN_TIMEOUT_MS)
-		timeout_ms = WDT_MIN_TIMEOUT_MS;
-	if (timeout_ms > WDT_MAX_TIMEOUT_MS)
-		timeout_ms = WDT_MAX_TIMEOUT_MS;
-	if (timeout_ms > wdt_max_timeout_ms)
-		timeout_ms = wdt_max_timeout_ms;
-
-	/*
-	 * round to nearest smaller value
-	 */
-	wdt_max_timeout_ms -= wdt_max_timeout_ms % wdt_resolution_ms;
-	timeout_ms -= timeout_ms % wdt_resolution_ms;
-
-	wdd.max_timeout = wdt_max_timeout_ms;
-	wdd.timeout = timeout_ms;
+	watchdog_init_timeout(&wdd, timeout, NULL);
 
 	watchdog_set_nowayout(&wdd, nowayout);
 
-	ret = watchdog_register_device(&wdd);
-	if (ret) {
-		pr_err("Failed to register watchdog device\n");
-		return ret;
-	}
+	err = watchdog_register_device(&wdd);
+	if (err)
+		goto out_hv_unreg;
 
-	pr_info("initialized (timeout_ms=%dms, nowayout=%d)\n",
+	pr_info("initialized (timeout=%ds, nowayout=%d)\n",
 		 wdd.timeout, nowayout);
 
-	return 0;
-}
+	mdesc_release(handle);
 
+	return 0;
+
+out_hv_unreg:
+	sun4v_hvapi_unregister(HV_GRP_CORE);
+
+out_release:
+	mdesc_release(handle);
+	return err;
+}
 
 static void __exit sun4v_wdt_exit(void)
 {
-	if (hvapi_registered)
-		sun4v_hvapi_unregister(HV_GRP_CORE);
-	sun4v_wdt_stop(&wdd);
+	sun4v_hvapi_unregister(HV_GRP_CORE);
 	watchdog_unregister_device(&wdd);
 }
 
@@ -194,4 +189,3 @@ module_exit(sun4v_wdt_exit);
 MODULE_AUTHOR("Wim Coekaerts <wim.coekaerts@oracle.com>");
 MODULE_DESCRIPTION("sun4v watchdog driver");
 MODULE_LICENSE("GPL");
-MODULE_ALIAS("sun4v_wdt");

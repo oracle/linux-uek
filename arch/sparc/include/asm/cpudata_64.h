@@ -19,14 +19,19 @@ typedef struct {
 
 	/* Dcache line 2, rarely used */
 	unsigned int	dcache_size;
-	unsigned int	dcache_line_size;
 	unsigned int	icache_size;
-	unsigned int	icache_line_size;
 	unsigned int	ecache_size;
-	unsigned int	ecache_line_size;
-	unsigned short	sock_id;
+	unsigned int	l3_cache_size;
+
+	unsigned short	icache_line_size;
+	unsigned short	dcache_line_size;
+	unsigned short	ecache_line_size;
+	unsigned short	l3_cache_line_size;
+
+	unsigned short	sock_id;	/* physical package */
 	unsigned short	core_id;
-	int		proc_id;
+	unsigned short	max_cache_id;	/* gorupings of highest shared cache */
+	unsigned short	proc_id;	/* strand (aka HW thread) id */
 } cpuinfo_sparc;
 
 DECLARE_PER_CPU(cpuinfo_sparc, __cpu_data);

@@ -18,6 +18,10 @@ unsigned long pci_sun4v_iommu_getmap(unsigned long devhandle,
 				     unsigned long tsbid,
 				     unsigned long *io_attributes,
 				     unsigned long *real_address);
+extern unsigned long pci_sun4v_iommu_getbypass(unsigned long dev_hdl,
+					       unsigned long ra,
+					       unsigned long attr,
+					       unsigned long *io_addr_p);
 unsigned long pci_sun4v_config_get(unsigned long devhandle,
 				   unsigned long pci_device,
 				   unsigned long config_offset,

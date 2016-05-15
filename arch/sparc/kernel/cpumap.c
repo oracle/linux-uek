@@ -55,6 +55,14 @@ struct cpuinfo_tree {
 
 static struct cpuinfo_tree *cpuinfo_tree;
 
+int dbgcit;	/* cpuinfo tree debug */
+
+#define	citdbg(fmt, args...)					\
+	do {							\
+		if (dbgcit)					\
+			pr_info("%s " fmt, __func__, ##args);	\
+	} while (0)
+
 static u16 cpu_distribution_map[NR_CPUS];
 static DEFINE_SPINLOCK(cpu_map_lock);
 
@@ -92,6 +100,104 @@ static const int generic_iterate_method[] = {
 };
 
 
+/*
+ * The cpuinfo tree is rebuilt during a cpu hotplug operation, either
+ * directly through cpu_map_rebuild() or indirectly through map_to_cpu(),
+ * the latter case happening if the number of online cpus is different
+ * than the number of cpus in the tree.
+ *
+ * There were three paths to tree rebuild originally as depicted below,
+ * one during cpu hot-add, one during cpu hot-remove, and during irq enable.
+ * In addition, __cpu_up() now directly calls cpu_map_rebuild() during
+ * hot-add processing.
+ *
+ * The tree can be accessed however when enabling interrupts.  This is not
+ * an issue for hot-remove since cpu_map_rebuild() is called with all cpus
+ * paused and interrupts disabled during a stop_machine() call.  This may
+ * be an issue however for hot-add since __cpu_up() and fixup_irqs() are
+ * called with other cpus running and interrupts enabled.
+ *
+ * There is no issue however if simple_map_to_cpu() is used.
+ *
+ *	+irq_enable()
+ *	|
+ *	| +dr_cpu_configure()
+ *	| |
+ *	| +->fixup_irqs()
+ *	|   |
+ *	|   +->irq_set_affinity()
+ *	|   |
+ *	+---+->irq_choose_cpu()
+ *	       |
+ *	       +->map_to_cpu()
+ *		  |
+ *		  +------------>_map_to_cpu()
+ *				|
+ *	   +--------------------+->_cpu_map_rebuild()
+ *	   |			   |
+ *	   |			   +->build_cpuinfo_tree()
+ *	+--+->cpu_map_rebuild()
+ *	|  |
+ *	|  +__cpu_disable()
+ *	|
+ *	+__cpu_up()
+ *
+ *
+ * set_proc_ids() iteraters through all "exec-unit" nodes and calls
+ * mark_proc_ids() to assign the same proc_id to all cpus pointing to
+ * the "exec-unit" unit.  This means that if a core has multiple
+ * pipelines shared by all strands in the core, each strand would be
+ * assigned a proc_id twice, the second overwriting the first and thus
+ * hiding one of the pipelines.  On a T5 where each core has two pipelines
+ * the number of reported pipelines is fact half of what they should be.
+ * The increment_rover() algorithm subsequently doesn't work on all platforms.
+ *
+ *
+ * iterate_cpu() and increment_rover() assume that all cpus between
+ * start_index and end_index of a CPUINFO_LVL_PROC are always present.
+ * This means that if a cpu in the middle of that range has been offlined
+ * iterate_cpu() can actually return and offline cpu as the target for
+ * interrupt redistribution which leads to subsequent system hangs.
+ * To deal with problem, iterate_cpu() was called multiple times until
+ * an online cpu was returned.
+ *
+ * The following code in map_to_cpu() can lead to an infinite loop in
+ * case of the cpuinfo_tree because if _map_to_cpu() causes the tree
+ * to be rebuilt, it can return the same offline cpu as before leading
+ * to the infinite loop:
+ *
+ *	while (unlikely(!cpu_online(mapped_cpu)))
+ *		mapped_cpu = _map_to_cpu(index);
+ *
+ *
+ * enumerate_cpuinfo_nodes() assumes that node ids at each level of the tree
+ * are monotonically increasing which is not necessarily the case for
+ * ldoms, e.g. lower cpu ids can have higher core ids. If this assumption
+ * is broken, the number of calculated nodes can be less that the number
+ * of actual nodes required to represent the cpu topology. This can lead to
+ * data corruption when the tree is iterated.  Testing showed illegal index
+ * values in iterate_cpu() and subsequent panics and hangs.
+ * Using bitmaps for nodes, core, and procs fixed the illegal index problem
+ * and significanly reduced the number of the panics.  However, one of those
+ * panics still happens, with less frequency but consistenly, sometime during
+ * or after when sched domains are rebuilt as part of hotplug processing.
+ * No panic happens when the cpuinfo_tree method is bypassed and the default
+ * simple_map_to_cpu() method is used.
+ *
+ *
+ * Furthermore, no documentation exists to show actual measured benefits
+ * of the cpuinfo tree.  For all those reasons, ldoms defaults to
+ * simple_map_to_cpu().
+ */
+#ifdef	CONFIG_SUN_LDOMS
+/*
+ * Default to simple_map_to_cpu() for LDoms.
+ */
+static inline struct cpuinfo_tree *build_cpuinfo_tree(void)
+{
+	return NULL;
+}
+#else
 static int cpuinfo_id(int cpu, int level)
 {
 	int id;
@@ -124,6 +230,14 @@ static int enumerate_cpuinfo_nodes(struct cpuinfo_level *tree_level)
 {
 	int prev_id[CPUINFO_LVL_MAX];
 	int i, n, num_nodes;
+#ifdef	DBGCIT
+	int c, m;
+	cpumask_t node_mask, core_mask, proc_mask;
+
+	cpumask_clear(&node_mask);
+	cpumask_clear(&core_mask);
+	cpumask_clear(&proc_mask);
+#endif
 
 	for (i = CPUINFO_LVL_ROOT; i < CPUINFO_LVL_MAX; i++) {
 		struct cpuinfo_level *lv = &tree_level[i];
@@ -139,23 +253,41 @@ static int enumerate_cpuinfo_nodes(struct cpuinfo_level *tree_level)
 			continue;
 
 		n = cpuinfo_id(i, CPUINFO_LVL_NODE);
+#ifdef	DBGCIT
+		m = n;
+		if (!cpumask_test_cpu(n, &node_mask)) {
+			cpumask_set_cpu(n, &node_mask);
+#else
 		if (n > prev_id[CPUINFO_LVL_NODE]) {
+#endif
 			tree_level[CPUINFO_LVL_NODE].num_nodes++;
 			prev_id[CPUINFO_LVL_NODE] = n;
 			num_nodes++;
 		}
 		n = cpuinfo_id(i, CPUINFO_LVL_CORE);
+#ifdef	DBGCIT
+		c = n;
+		if (!cpumask_test_cpu(n, &core_mask)) {
+			cpumask_set_cpu(n, &core_mask);
+#else
 		if (n > prev_id[CPUINFO_LVL_CORE]) {
+#endif
 			tree_level[CPUINFO_LVL_CORE].num_nodes++;
 			prev_id[CPUINFO_LVL_CORE] = n;
 			num_nodes++;
 		}
 		n = cpuinfo_id(i, CPUINFO_LVL_PROC);
+#ifdef	DBGCIT
+		if (!cpumask_test_cpu(n, &proc_mask)) {
+			cpumask_set_cpu(n, &proc_mask);
+#else
 		if (n > prev_id[CPUINFO_LVL_PROC]) {
+#endif
 			tree_level[CPUINFO_LVL_PROC].num_nodes++;
 			prev_id[CPUINFO_LVL_PROC] = n;
 			num_nodes++;
 		}
+		citdbg("cpu=%d pid=%d cid=%d nid=%d\n", i, n, c, m);
 	}
 
 	tree_level[CPUINFO_LVL_ROOT].num_nodes = 1;
@@ -172,6 +304,11 @@ static int enumerate_cpuinfo_nodes(struct cpuinfo_level *tree_level)
 	tree_level[CPUINFO_LVL_PROC].start_index = n;
 	n += tree_level[CPUINFO_LVL_PROC].num_nodes;
 	tree_level[CPUINFO_LVL_PROC].end_index   = n - 1;
+
+	for (i = CPUINFO_LVL_ROOT; i < CPUINFO_LVL_MAX; i++)
+		citdbg("level=%d nodes=%d start=%d end=%d\n",
+		       i, tree_level[i].num_nodes, tree_level[i].start_index,
+		       tree_level[i].end_index);
 
 	return num_nodes;
 }
@@ -195,6 +332,7 @@ static struct cpuinfo_tree *build_cpuinfo_tree(void)
 
 	new_tree = kzalloc(sizeof(struct cpuinfo_tree) +
 	                   (sizeof(struct cpuinfo_node) * n), GFP_ATOMIC);
+	citdbg("num_nodes=%d new_tree=%p\n", n, new_tree);
 	if (!new_tree)
 		return NULL;
 
@@ -270,6 +408,10 @@ static struct cpuinfo_tree *build_cpuinfo_tree(void)
 					node->child_end =
 					    level_rover[level + 1] - 1;
 				}
+				citdbg("l=%d r=%d s=%d e=%d p=%d\n",
+					level, level_rover[level],
+					node->child_start, node->child_end,
+					node->parent_index);
 
 				/* Initialize the next node in the same level */
 				n = ++level_rover[level];
@@ -292,6 +434,7 @@ static struct cpuinfo_tree *build_cpuinfo_tree(void)
 
 	return new_tree;
 }
+#endif
 
 static void increment_rover(struct cpuinfo_tree *t, int node_index,
                             int root_index, const int *rover_inc_table)
@@ -338,6 +481,10 @@ static int iterate_cpu(struct cpuinfo_tree *t, unsigned int root_index)
 	for (level = t->nodes[root_index].level; level < CPUINFO_LVL_MAX;
 	     level++) {
 		new_index = t->nodes[index].rover;
+		if (new_index < 0 || (new_index >= t->total_nodes &&
+		    level != CPUINFO_LVL_PROC))
+			citdbg("index=%d new_index=%d total=%d level=%d\n",
+				 index, new_index, t->total_nodes, level);
 		if (rover_inc_table[level] & ROVER_INC_ON_VISIT)
 			increment_rover(t, index, root_index, rover_inc_table);
 
@@ -363,8 +510,25 @@ static void _cpu_map_rebuild(void)
 	 * to check if the CPU is online, as that is done when the cpuinfo
 	 * tree is being built.
 	 */
-	for (i = 0; i < cpuinfo_tree->nodes[0].num_cpus; i++)
+	for (i = 0; i < cpuinfo_tree->nodes[0].num_cpus; i++) {
+#ifdef	DBGCIT
+		int cpu;
+		int j = 0;
+
+		do {
+			cpu = iterate_cpu(cpuinfo_tree, 0);
+			if (cpu_online(cpu))
+				break;
+		} while (++j < num_possible_cpus());
+
+		if (j)
+			citdbg("offline=%d\n", j);
+		BUG_ON(!cpu_online(cpu));
+		cpu_distribution_map[i] = cpu;
+#else
 		cpu_distribution_map[i] = iterate_cpu(cpuinfo_tree, 0);
+#endif
+	}
 }
 
 /* Fallback if the cpuinfo tree could not be built.  CPU mapping is linear
@@ -402,9 +566,16 @@ static int _map_to_cpu(unsigned int index)
 	root_node = &cpuinfo_tree->nodes[0];
 #ifdef CONFIG_HOTPLUG_CPU
 	if (unlikely(root_node->num_cpus != num_online_cpus())) {
+		citdbg("cpus=%d online=%d\n",
+		       root_node->num_cpus, num_online_cpus());
 		_cpu_map_rebuild();
 		if (!cpuinfo_tree)
 			return simple_map_to_cpu(index);
+
+#ifdef	DBGCIT
+		/* update root_node if cpuinfo_tree has changed */
+		root_node = &cpuinfo_tree->nodes[0];
+#endif
 	}
 #endif
 	return cpu_distribution_map[index % root_node->num_cpus];
@@ -419,8 +590,12 @@ int map_to_cpu(unsigned int index)
 	mapped_cpu = _map_to_cpu(index);
 
 #ifdef CONFIG_HOTPLUG_CPU
+#ifdef	DBGCIT
+	BUG_ON(!cpu_online(cpu));
+#else
 	while (unlikely(!cpu_online(mapped_cpu)))
 		mapped_cpu = _map_to_cpu(index);
+#endif
 #endif
 	spin_unlock_irqrestore(&cpu_map_lock, flag);
 	return mapped_cpu;

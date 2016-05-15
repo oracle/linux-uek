@@ -82,6 +82,10 @@ config SPARC64
 	select ARCH_SUPPORTS_ATOMIC_RMW
 	select ARCH_CLOCKSOURCE_DATA
 
+config ARCH_DMA_ADDR_T_64BIT
+	bool
+	default y if SPARC64
+
 config ARCH_DEFCONFIG
 	string
 	default "arch/sparc/configs/sparc32_defconfig" if SPARC32

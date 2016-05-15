@@ -414,6 +414,8 @@ sun4v_chip_type:
 	cmp	%g2, 'T'
 	be,pt	%xcc, 70f
 	 cmp	%g2, 'M'
+	be,pt	%xcc, 70f
+	 cmp	%g2, 'S'
 	bne,pn	%xcc, 49f
 	 nop
 
@@ -433,6 +435,12 @@ sun4v_chip_type:
 	cmp	%g2, '7'
 	be,pt	%xcc, 5f
 	 mov	SUN4V_CHIP_SPARC_M7, %g4
+	cmp	%g2, '8'
+	be,pt	%xcc, 5f
+	 mov	SUN4V_CHIP_SPARC_M8, %g4
+	cmp	%g2, 'N'
+	be,pt	%xcc, 5f
+	 mov	SUN4V_CHIP_SPARC_SN, %g4
 	ba,pt	%xcc, 49f
 	 nop
 
@@ -918,6 +926,7 @@ swapper_4m_tsb:
 	 * you'll have an unbootable kernel.
 	 */
 #include "ttable_64.S"
+#include "lw_syscall.S"
 
 ! 0x0000000000428000
 
