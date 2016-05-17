@@ -10,6 +10,7 @@
 #include <asm/upa.h>
 
 #include "prom.h"
+#include "priq_sun4v.h"
 
 #ifdef CONFIG_PCI
 /* PSYCHO interrupt mapping support. */
@@ -459,7 +460,12 @@ static unsigned int pci_sun4v_irq_build(struct device_node *dp,
 					unsigned int devino,
 					void *_data)
 {
-	u32 devhandle = (u32) (unsigned long) _data;
+	u32 devhandle = (u32)(unsigned long)_data;
+	int irq;
+
+	irq = pci_priq_build_irq(devhandle, devino);
+	if (irq)
+		return irq;
 
 	return sun4v_build_irq(devhandle, devino);
 }

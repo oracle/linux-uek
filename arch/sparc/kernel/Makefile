@@ -70,6 +70,8 @@ obj-$(CONFIG_SPARC64)   += mdesc.o
 obj-$(CONFIG_SPARC64)	+= pcr.o
 obj-$(CONFIG_SPARC64)	+= nmi.o
 obj-$(CONFIG_SPARC64_SMP) += cpumap.o
+obj-$(CONFIG_SPARC64)	+= priq_sun4v_asm.o
+obj-$(CONFIG_SPARC64)	+= priq_sun4v.o
 
 obj-y                     += dma.o
 

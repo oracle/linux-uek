@@ -47,6 +47,7 @@
 #include "cpumap.h"
 #include "kstack.h"
 #include "pci_impl.h"
+#include "priq_sun4v.h"
 
 struct ino_bucket *ivector_table;
 unsigned long ivector_table_pa;
@@ -892,6 +893,8 @@ void __irq_entry handler_irq(int pil, struct pt_regs *regs)
 
 	orig_sp = set_hardirq_stack();
 
+	cpu_handle_priqs();
+
 	while (bucket_pa) {
 		unsigned long next_pa;
 		unsigned int irq;
@@ -1248,6 +1251,7 @@ void __init init_IRQ(void)
 	irq_ivector_init();
 	map_prom_timers();
 	kill_prom_timer();
+	sun4v_priq();
 
 	if (tlb_type == hypervisor)
 		sun4v_init_mondo_queues();

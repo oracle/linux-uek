@@ -55,6 +55,7 @@
 #include <asm/pcr.h>
 
 #include "cpumap.h"
+#include "priq_sun4v.h"
 #include "kernel.h"
 
 DEFINE_PER_CPU(cpumask_t, cpu_sibling_map) = CPU_MASK_NONE;
@@ -132,6 +133,8 @@ void smp_callin(void)
 
 	/* idle thread is expected to have preempt disabled */
 	preempt_disable();
+
+	priq_percpu_setup(cpuid);
 
 	local_irq_enable();
 

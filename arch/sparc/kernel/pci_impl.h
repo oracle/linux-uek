@@ -50,6 +50,8 @@ struct sparc64_msiq_ops {
 
 void sparc64_pbm_msi_init(struct pci_pbm_info *pbm,
 			  const struct sparc64_msiq_ops *ops);
+void sparc64_pbm_free_msi(struct pci_pbm_info *pbm, int msi_num);
+int sparc64_pbm_alloc_msi(struct pci_pbm_info *pbm);
 
 struct sparc64_msiq_cookie {
 	struct pci_pbm_info *pbm;
@@ -172,12 +174,18 @@ extern struct pci_pbm_info *pci_pbm_root;
 
 extern int pci_num_pbms;
 
+static inline struct pci_pbm_info *get_pbm(struct pci_dev *pdev)
+{
+	return pdev->dev.archdata.host_controller;
+}
+
 /* PCI bus scanning and fixup support. */
 void pci_get_pbm_props(struct pci_pbm_info *pbm);
 struct pci_bus *pci_scan_one_pbm(struct pci_pbm_info *pbm,
 				 struct device *parent);
 void pci_determine_mem_io_space(struct pci_pbm_info *pbm);
 void pci_register_legacy_regions(struct pci_pbm_info *pbm);
+void pci_priq_msi_init(struct pci_pbm_info *pbm);
 
 /* Error reporting support. */
 void pci_scan_for_target_abort(struct pci_pbm_info *, struct pci_bus *);
