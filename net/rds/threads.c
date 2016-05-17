@@ -182,7 +182,7 @@ void rds_connect_worker(struct work_struct *work)
 		 * drop the connection if it doesn't work out after a while
 		 */
 		conn->c_connection_start = get_seconds();
-		conn->c_drop_source = 0;
+		conn->c_drop_source = DR_DEFAULT;
 
 		ret = conn->c_trans->conn_connect(conn);
 		rds_rtd(RDS_RTD_CM_EXT,
@@ -195,7 +195,7 @@ void rds_connect_worker(struct work_struct *work)
 					"reconnecting..., conn %p\n", conn);
 				rds_queue_reconnect(conn);
 			} else {
-				conn->c_drop_source = 6;
+				conn->c_drop_source = DR_CONN_CONNECT_FAIL;
 				rds_conn_error(conn, "RDS: connect failed\n");
 			}
 		}
@@ -286,7 +286,7 @@ void rds_hb_worker(struct work_struct *work)
 				"RDS/IB: connection <%pI4,%pI4,%d> timed out (0x%lx,0x%lx)..discon and recon\n",
 				&conn->c_laddr, &conn->c_faddr,
 				conn->c_tos, conn->c_hb_start, now);
-			conn->c_drop_source = 7;
+			conn->c_drop_source = DR_HB_TIMEOUT;
 			rds_conn_drop(conn);
 			return;
 		}
@@ -307,7 +307,7 @@ void rds_reconnect_timeout(struct work_struct *work)
 			"conn not up, calling rds_conn_drop <%pI4,%pI4,%d>\n",
 			&conn->c_laddr, &conn->c_faddr,
 			conn->c_tos);
-		conn->c_drop_source = 8;
+		conn->c_drop_source = DR_RECONNECT_TIMEOUT;
 		rds_conn_drop(conn);
 		conn->c_reconnect_racing = 0;
 	}
