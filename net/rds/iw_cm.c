@@ -160,7 +160,7 @@ static void rds_iw_qp_event_handler(struct ib_event *event, void *data)
 			"- connection %pI4->%pI4, reconnecting\n",
 			event->event, &conn->c_laddr,
 			&conn->c_faddr);
-		conn->c_drop_source = 120;
+		conn->c_drop_source = DR_IW_QP_EVENT;
 		rds_conn_drop(conn);
 		break;
 	}
@@ -416,7 +416,7 @@ int rds_iw_cm_handle_connect(struct rdma_cm_id *cm_id,
 	if (!rds_conn_transition(conn, RDS_CONN_DOWN, RDS_CONN_CONNECTING)) {
 		if (rds_conn_state(conn) == RDS_CONN_UP) {
 			rdsdebug("incoming connect while connecting\n");
-			conn->c_drop_source = 121;
+			conn->c_drop_source = DR_IW_REQ_WHILE_CONNECTING;
 			rds_conn_drop(conn);
 			rds_iw_stats_inc(s_iw_listen_closed_stale);
 		} else
@@ -453,7 +453,7 @@ int rds_iw_cm_handle_connect(struct rdma_cm_id *cm_id,
 
 	err = rds_iw_setup_qp(conn);
 	if (err) {
-		conn->c_drop_source = 122;
+		conn->c_drop_source = DR_IW_PAS_SETUP_QP_FAIL;
 		rds_iw_conn_error(conn, "rds_iw_setup_qp failed (%d)\n", err);
 		goto out;
 	}
@@ -464,7 +464,7 @@ int rds_iw_cm_handle_connect(struct rdma_cm_id *cm_id,
 	err = rdma_accept(cm_id, &conn_param);
 	mutex_unlock(&conn->c_cm_lock);
 	if (err) {
-		conn->c_drop_source = 123;
+		conn->c_drop_source = DR_IW_RDMA_ACCEPT_FAIL;
 		rds_iw_conn_error(conn, "rdma_accept failed (%d)\n", err);
 		goto out;
 	}
@@ -492,7 +492,7 @@ int rds_iw_cm_initiate_connect(struct rdma_cm_id *cm_id)
 
 	ret = rds_iw_setup_qp(conn);
 	if (ret) {
-		conn->c_drop_source = 124;
+		conn->c_drop_source = DR_IW_ACT_SETUP_QP_FAIL;
 		rds_iw_conn_error(conn, "rds_iw_setup_qp failed (%d)\n", ret);
 		goto out;
 	}
@@ -501,7 +501,7 @@ int rds_iw_cm_initiate_connect(struct rdma_cm_id *cm_id)
 
 	ret = rdma_connect(cm_id, &conn_param);
 	if (ret) {
-		conn->c_drop_source = 125;
+		conn->c_drop_source = DR_IW_RDMA_CONNECT_FAIL;
 		rds_iw_conn_error(conn, "rdma_connect failed (%d)\n", ret);
 	}
 out:

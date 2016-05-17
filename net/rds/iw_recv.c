@@ -252,7 +252,7 @@ int rds_iw_recv_refill(struct rds_connection *conn, gfp_t kptr_gfp,
 			 recv->r_iwinc, recv->r_frag->f_page,
 			 (long) recv->r_frag->f_mapped, ret);
 		if (ret) {
-			conn->c_drop_source = 130;
+			conn->c_drop_source = DR_IW_POST_RECV_FAIL;
 			rds_iw_conn_error(conn, "recv post on "
 			       "%pI4 returned %d, disconnecting and "
 			       "reconnecting\n", &conn->c_faddr,
@@ -455,7 +455,7 @@ static void rds_iw_send_ack(struct rds_iw_connection *ic, unsigned int adv_credi
 
 		rds_iw_stats_inc(s_iw_ack_send_failure);
 
-		ic->conn->c_drop_source = 131;
+		ic->conn->c_drop_source = DR_IW_SEND_ACK_FAIL;
 		rds_iw_conn_error(ic->conn, "sending ack failed\n");
 	} else
 		rds_iw_stats_inc(s_iw_ack_sent);
@@ -646,7 +646,7 @@ static void rds_iw_process_recv(struct rds_connection *conn,
 		 byte_len);
 
 	if (byte_len < sizeof(struct rds_header)) {
-		conn->c_drop_source = 132;
+		conn->c_drop_source = DR_IW_HEADER_MISSING;
 		rds_iw_conn_error(conn, "incoming message "
 		       "from %pI4 didn't inclue a "
 		       "header, disconnecting and "
@@ -660,7 +660,7 @@ static void rds_iw_process_recv(struct rds_connection *conn,
 
 	/* Validate the checksum. */
 	if (!rds_message_verify_checksum(ihdr)) {
-		conn->c_drop_source = 133;
+		conn->c_drop_source = DR_IW_HEADER_CORRUPTED;
 		rds_iw_conn_error(conn, "incoming message "
 		       "from %pI4 has corrupted header - "
 		       "forcing a reconnect\n",
@@ -723,7 +723,7 @@ static void rds_iw_process_recv(struct rds_connection *conn,
 		 || hdr->h_len != ihdr->h_len
 		 || hdr->h_sport != ihdr->h_sport
 		 || hdr->h_dport != ihdr->h_dport) {
-			conn->c_drop_source = 134;
+			conn->c_drop_source = DR_IW_FRAG_HEADER_MISMATCH;
 			rds_iw_conn_error(conn,
 				"fragment header mismatch; forcing reconnect\n");
 			return;
@@ -808,7 +808,7 @@ static inline void rds_poll_cq(struct rds_iw_connection *ic,
 			if (wc.status == IB_WC_SUCCESS) {
 				rds_iw_process_recv(conn, recv, wc.byte_len, state);
 			} else {
-				conn->c_drop_source = 135;
+				conn->c_drop_source = DR_IW_RECV_COMP_ERR;
 				rds_iw_conn_error(conn, "recv completion on "
 				       "%pI4 had status %u, disconnecting and "
 				       "reconnecting\n", &conn->c_faddr,

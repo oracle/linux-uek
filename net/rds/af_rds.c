@@ -344,7 +344,7 @@ static int rds_user_reset(struct rds_sock *rs, char __user *optval, int optlen)
 				"<%u.%u.%u.%u,%u.%u.%u.%u,%d>\n",
 				NIPQUAD(reset.src.s_addr),
 				NIPQUAD(reset.dst.s_addr), conn->c_tos);
-		conn->c_drop_source = 1;
+		conn->c_drop_source = DR_USER_RESET;
 		rds_conn_drop(conn);
 	}
 
