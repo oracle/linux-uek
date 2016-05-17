@@ -220,7 +220,7 @@ struct rds_ib_connection {
 	/* Protocol version specific information */
 	unsigned int		i_flowctl:1;	/* enable/disable flow ctl */
 	u16			i_frag_sz;	/* IB fragment size */
-	int8_t			i_frag_pages:1;
+	int8_t			i_frag_pages;
 
 	/* Batched completions */
 	unsigned int		i_unsignaled_wrs;
