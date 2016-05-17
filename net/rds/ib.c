@@ -198,7 +198,7 @@ void rds_ib_dev_shutdown(struct rds_ib_device *rds_ibdev)
 
 	spin_lock_irqsave(&rds_ibdev->spinlock, flags);
 	list_for_each_entry(ic, &rds_ibdev->conn_list, ib_node) {
-		ic->conn->c_drop_source = 80;
+		ic->conn->c_drop_source = DR_IB_UMMOD;
 		rds_conn_drop(ic->conn);
 	}
 	spin_unlock_irqrestore(&rds_ibdev->spinlock, flags);
@@ -633,7 +633,7 @@ static void rds_ib_conn_drop(struct work_struct *_work)
 	rds_rtd(RDS_RTD_CM_EXT,
 		"conn: %p, calling rds_conn_drop\n", conn);
 
-	conn->c_drop_source = 81;
+	conn->c_drop_source = DR_IB_ACTIVE_BOND_FAILOVER;
 	rds_conn_drop(conn);
 
 	kfree(work);
@@ -865,7 +865,7 @@ static int rds_ib_move_ip(char			*from_dev,
 								"conn:%p, tos %d, calling rds_conn_drop\n",
 								ic2->conn,
 								ic2->conn->c_tos);
-							ic2->conn->c_drop_source = 82;
+							ic2->conn->c_drop_source = DR_IB_LOOPBACK_CONN_DROP;
 							rds_conn_drop(ic2->conn);
 						}
 					}
@@ -894,7 +894,7 @@ static int rds_ib_move_ip(char			*from_dev,
 					rds_rtd(RDS_RTD_CM_EXT,
 						"conn: %p, tos %d, calling rds_conn_drop\n",
 						ic->conn, ic->conn->c_tos);
-					ic->conn->c_drop_source = 83;
+					ic->conn->c_drop_source = DR_IB_ACTIVE_BOND_FAILBACK;
 					rds_conn_drop(ic->conn);
 				}
 			}
