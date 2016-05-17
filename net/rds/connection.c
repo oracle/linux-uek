@@ -322,7 +322,7 @@ void rds_conn_shutdown(struct rds_connection *conn, int restart)
 		mutex_lock(&conn->c_cm_lock);
 		if (!rds_conn_transition(conn, RDS_CONN_UP, RDS_CONN_DISCONNECTING)
 		 && !rds_conn_transition(conn, RDS_CONN_ERROR, RDS_CONN_DISCONNECTING)) {
-			conn->c_drop_source = 2;
+			conn->c_drop_source = DR_INV_CONN_STATE;
 			rds_conn_error(conn, "shutdown called in state %d\n",
 					atomic_read(&conn->c_state));
 			mutex_unlock(&conn->c_cm_lock);
@@ -344,7 +344,7 @@ void rds_conn_shutdown(struct rds_connection *conn, int restart)
 			 * Quite reproduceable with loopback connections.
 			 * Mostly harmless.
 			 */
-			conn->c_drop_source = 3;
+			conn->c_drop_source = DR_DOWN_TRANSITION_FAIL;
 			rds_conn_error(conn,
 				"%s: failed to transition to state DOWN, "
 				"current state is %d\n",
@@ -400,7 +400,7 @@ void rds_conn_destroy(struct rds_connection *conn)
 	synchronize_rcu();
 
 	/* shut the connection down */
-	conn->c_drop_source = 4;
+	conn->c_drop_source = DR_CONN_DESTROY;
 	rds_conn_drop(conn);
 	flush_work(&conn->c_down_w);
 
@@ -613,92 +613,70 @@ void rds_conn_exit(void)
 				 rds_conn_message_info_retrans);
 }
 
-char *conn_drop_reason_str(u8 reason)
+static char *conn_drop_reasons[] = {
+	[DR_DEFAULT]			= "unknown reason (default_state)",
+	[DR_USER_RESET]			= "user reset",
+	[DR_INV_CONN_STATE]		= "invalid connection state",
+	[DR_DOWN_TRANSITION_FAIL]	= "failure to move to DOWN state",
+	[DR_CONN_DESTROY]		= "connection destroy",
+	[DR_ZERO_LANE_DOWN]		= "zero lane went down",
+	[DR_CONN_CONNECT_FAIL]		= "conn_connect failure",
+	[DR_HB_TIMEOUT]			= "hb timeout",
+	[DR_RECONNECT_TIMEOUT]		= "reconnect timeout",
+	[DR_IB_CONN_DROP_RACE]		= "race between ESTABLISHED event and drop",
+	[DR_IB_NOT_CONNECTING_STATE]	= "conn is not in CONNECTING state",
+	[DR_IB_QP_EVENT]		= "qp event",
+	[DR_IB_BASE_CONN_DOWN]		= "base conn down",
+	[DR_IB_REQ_WHILE_CONN_UP]	= "incoming REQ in CONN_UP state",
+	[DR_IB_REQ_WHILE_CONNECTING]	= "incoming REQ in CONNECTING state",
+	[DR_IB_PAS_SETUP_QP_FAIL]	= "passive setup_qp failure",
+	[DR_IB_RDMA_ACCEPT_FAIL]	= "rdma_accept failure",
+	[DR_IB_ACT_SETUP_QP_FAIL]	= "active setup_qp failure",
+	[DR_IB_RDMA_CONNECT_FAIL]	= "rdma_connect failure",
+	[DR_IB_SET_IB_PATH_FAIL]	= "rdma_set_ib_paths failure",
+	[DR_IB_RESOLVE_ROUTE_FAIL]	= "resolve_route failure",
+	[DR_IB_RDMA_CM_ID_MISMATCH]	= "detected rdma_cm_id mismatch",
+	[DR_IB_ROUTE_ERR]		= "ROUTE_ERROR event",
+	[DR_IB_ADDR_ERR]		= "ADDR_ERROR event",
+	[DR_IB_CONNECT_ERR]		= "CONNECT_ERROR or UNREACHABLE or DEVICE_REMOVE event",
+	[DR_IB_CONSUMER_DEFINED_REJ]	= "CONSUMER_DEFINED reject",
+	[DR_IB_REJECTED_EVENT]		= "REJECTED event",
+	[DR_IB_ADDR_CHANGE]		= "ADDR_CHANGE event",
+	[DR_IB_DISCONNECTED_EVENT]	= "DISCONNECTED event",
+	[DR_IB_TIMEWAIT_EXIT]		= "TIMEWAIT_EXIT event",
+	[DR_IB_POST_RECV_FAIL]		= "post_recv failure",
+	[DR_IB_SEND_ACK_FAIL]		= "send_ack failure",
+	[DR_IB_HEADER_MISSING]		= "no header in incoming msg",
+	[DR_IB_HEADER_CORRUPTED]	= "corrupted header in incoming msg",
+	[DR_IB_FRAG_HEADER_MISMATCH]	= "fragment header mismatch",
+	[DR_IB_RECV_COMP_ERR]		= "recv completion error",
+	[DR_IB_SEND_COMP_ERR]		= "send completion error",
+	[DR_IB_POST_SEND_FAIL]		= "post_send failure",
+	[DR_IB_UMMOD]			= "rds_rdma module unload",
+	[DR_IB_ACTIVE_BOND_FAILOVER]	= "active bonding failover",
+	[DR_IB_LOOPBACK_CONN_DROP]	= "corresponding loopback conn drop",
+	[DR_IB_ACTIVE_BOND_FAILBACK]	= "active bonding failback",
+	[DR_IW_QP_EVENT]		= "qp_event",
+	[DR_IW_REQ_WHILE_CONNECTING]	= "incoming REQ in connecting state",
+	[DR_IW_PAS_SETUP_QP_FAIL]	= "passive setup_qp failure",
+	[DR_IW_RDMA_ACCEPT_FAIL]	= "rdma_accept failure",
+	[DR_IW_ACT_SETUP_QP_FAIL]	= "active setup_qp failure",
+	[DR_IW_RDMA_CONNECT_FAIL]	= "rdma_connect failure",
+	[DR_IW_POST_RECV_FAIL]		= "post_recv failure",
+	[DR_IW_SEND_ACK_FAIL]		= "send_ack failure",
+	[DR_IW_HEADER_MISSING]		= "no header in incoming msg",
+	[DR_IW_HEADER_CORRUPTED]	= "corrupted header in incoming msg",
+	[DR_IW_FRAG_HEADER_MISMATCH]	= "fragment header mismatch",
+	[DR_IW_RECV_COMP_ERR]		= "recv completion error",
+	[DR_IW_SEND_COMP_ERR]		= "send completion error",
+	[DR_TCP_STATE_CLOSE]		= "sk_state to TCP_CLOSE",
+	[DR_TCP_SEND_FAIL]		= "tcp_send failure",
+};
+
+char *conn_drop_reason_str(enum rds_conn_drop_src reason)
 {
-	/* Here is distribution of drop reason:
-	 *
-	 * 0-19: rds-core
-	 *
-	 * 20-119: IB
-	 * 20-39: ib_cm
-	 * 40-59: event handling
-	 * 60-79: data path
-	 * 80-119: special features like active bonding
-	 *
-	 * 120-139: iWARP
-	 *
-	 * 140-159: TCP
-	 *
-	 * 160-255: any other future additions
-	 *
-	 */
-	switch (reason) {
-	case 1: return "user reset";
-	case 2: return "invalid connection state";
-	case 3: return "failure to move to DOWN state";
-	case 4: return "connection destroy";
-	case 5: return "zero lane went down";
-	case 6: return "conn_connect failure";
-	case 7: return "hb timeout";
-	case 8: return "reconnect timeout";
-
-	case 20: return "race between ESTABLISHED event and drop";
-	case 21: return "conn is not in CONNECTING state";
-	case 22: return "qp event";
-	case 23: return "base conn down";
-	case 24: return "incoming REQ in CONN_UP state";
-	case 25: return "incoming REQ in CONNECTING state";
-	case 26: return "setup_qp failure";
-	case 27: return "rdma_accept failure";
-	case 28: return "setup_qp failure";
-	case 29: return "rdma_connect failure";
-
-	case 40: return "rdma_set_ib_paths failure";
-	case 41: return "resolve_route failure";
-	case 42: return "detected rdma_cm_id mismatch";
-	case 43: return "ROUTE_ERROR event";
-	case 44: return "ADDR_ERROR event";
-	case 45: return "CONNECT_ERROR or UNREACHABLE or DEVICE_REMOVE event";
-	case 46: return "CONSUMER_DEFINED reject";
-	case 47: return "REJECTED event";
-	case 48: return "ADDR_CHANGE event";
-	case 49: return "DISCONNECTED event";
-	case 50: return "TIMEWAIT_EXIT event";
-
-	case 60: return "post_recv failure";
-	case 61: return "send_ack failure";
-	case 62: return "no header in incoming msg";
-	case 63: return "corrupted header in incoming msg";
-	case 64: return "fragment header mismatch";
-	case 65: return "recv completion error";
-	case 66: return "send completion error";
-	case 67: return "post_send failure";
-
-	case 80: return "rds_rdma module unload";
-	case 81: return "active bonding failover";
-	case 82: return "corresponding loopback conn drop";
-	case 83: return "active bonding failback";
-
-	case 120: return "qp_event";
-	case 121: return "incoming REQ in connecting state";
-	case 122: return "setup_qp failure";
-	case 123: return "rdma_accept failure";
-	case 124: return "setup_qp failure";
-	case 125: return "rdma_connect failure";
-
-	case 130: return "post_recv failure";
-	case 131: return "send_ack failure";
-	case 132: return "no header in incoming msg";
-	case 133: return "corrupted header in incoming msg";
-	case 134: return "fragment header mismatch";
-	case 135: return "recv completion error";
-	case 136: return "send completion error";
-
-	case 140: return "sk_state to TCP_CLOSE";
-	case 141: return "tcp_send failure";
-
-	default: return "unknown reason";
-	}
+	return rds_str_array(conn_drop_reasons,
+			     ARRAY_SIZE(conn_drop_reasons), reason);
 }
 
 static void rds_conn_probe_lanes(struct rds_connection *conn)
@@ -723,7 +701,7 @@ static void rds_conn_probe_lanes(struct rds_connection *conn)
 				       &tmp->c_faddr,
 				       tmp->c_tos);
 
-				conn->c_drop_source = 5;
+				conn->c_drop_source = DR_ZERO_LANE_DOWN;
 				rds_conn_drop(tmp);
 			}
 		}
