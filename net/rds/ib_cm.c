@@ -1407,9 +1407,6 @@ void rds_ib_conn_shutdown(struct rds_connection *conn)
 
 	reinit_completion(&ic->i_last_wqe_complete);
 
-	/* Purge the ic->i_cache_frags */
-	rds_ib_recv_purge_frag_cache(ic);
-
 	ic->i_active_side = 0;
 }
 
