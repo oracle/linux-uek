@@ -135,6 +135,80 @@ enum {
 #define RDS_RDMA_RESOLVE_TO_MAX_INDEX   5
 #define RDS_ADDR_RES_TM_INDEX_MAX 5
 
+enum rds_conn_drop_src {
+	/* rds-core */
+	DR_DEFAULT,
+	DR_USER_RESET,
+	DR_INV_CONN_STATE,
+	DR_DOWN_TRANSITION_FAIL,
+	DR_CONN_DESTROY,
+	DR_ZERO_LANE_DOWN,
+	DR_CONN_CONNECT_FAIL,
+	DR_HB_TIMEOUT,
+	DR_RECONNECT_TIMEOUT,
+
+	/* ib_cm  */
+	DR_IB_CONN_DROP_RACE,
+	DR_IB_NOT_CONNECTING_STATE,
+	DR_IB_QP_EVENT,
+	DR_IB_BASE_CONN_DOWN,
+	DR_IB_REQ_WHILE_CONN_UP,
+	DR_IB_REQ_WHILE_CONNECTING,
+	DR_IB_PAS_SETUP_QP_FAIL,
+	DR_IB_RDMA_ACCEPT_FAIL,
+	DR_IB_ACT_SETUP_QP_FAIL,
+	DR_IB_RDMA_CONNECT_FAIL,
+
+	/* event handling */
+	DR_IB_SET_IB_PATH_FAIL,
+	DR_IB_RESOLVE_ROUTE_FAIL,
+	DR_IB_RDMA_CM_ID_MISMATCH,
+	DR_IB_ROUTE_ERR,
+	DR_IB_ADDR_ERR,
+	DR_IB_CONNECT_ERR,
+	DR_IB_CONSUMER_DEFINED_REJ,
+	DR_IB_REJECTED_EVENT,
+	DR_IB_ADDR_CHANGE,
+	DR_IB_DISCONNECTED_EVENT,
+	DR_IB_TIMEWAIT_EXIT,
+
+	/* data path */
+	DR_IB_POST_RECV_FAIL,
+	DR_IB_SEND_ACK_FAIL,
+	DR_IB_HEADER_MISSING,
+	DR_IB_HEADER_CORRUPTED,
+	DR_IB_FRAG_HEADER_MISMATCH,
+	DR_IB_RECV_COMP_ERR,
+	DR_IB_SEND_COMP_ERR,
+	DR_IB_POST_SEND_FAIL,
+
+	/* special features like active bonding */
+	DR_IB_UMMOD,
+	DR_IB_ACTIVE_BOND_FAILOVER,
+	DR_IB_LOOPBACK_CONN_DROP,
+	DR_IB_ACTIVE_BOND_FAILBACK,
+
+	/* iWARP */
+	DR_IW_QP_EVENT,
+	DR_IW_REQ_WHILE_CONNECTING,
+	DR_IW_PAS_SETUP_QP_FAIL,
+	DR_IW_RDMA_ACCEPT_FAIL,
+	DR_IW_ACT_SETUP_QP_FAIL,
+	DR_IW_RDMA_CONNECT_FAIL,
+
+	DR_IW_POST_RECV_FAIL,
+	DR_IW_SEND_ACK_FAIL,
+	DR_IW_HEADER_MISSING,
+	DR_IW_HEADER_CORRUPTED,
+	DR_IW_FRAG_HEADER_MISMATCH,
+	DR_IW_RECV_COMP_ERR,
+	DR_IW_SEND_COMP_ERR,
+
+	/* TCP */
+	DR_TCP_STATE_CLOSE,
+	DR_TCP_SEND_FAIL,
+};
+
 struct rds_connection {
 	struct hlist_node	c_hash_node;
 	__be32			c_laddr;
@@ -215,7 +289,8 @@ struct rds_connection {
 
 	unsigned int		c_reconnect_racing;
 	unsigned int		c_route_resolved;
-	u8                      c_drop_source;
+
+	enum rds_conn_drop_src	c_drop_source;
 };
 
 static inline
@@ -773,7 +848,7 @@ void rds_for_each_conn_info(struct socket *sock, unsigned int len,
 			  struct rds_info_lengths *lens,
 			  int (*visitor)(struct rds_connection *, void *),
 			  size_t item_len);
-char *conn_drop_reason_str(u8 reason);
+char *conn_drop_reason_str(enum rds_conn_drop_src reason);
 void __rds_conn_error(struct rds_connection *conn, const char *, ...)
 				__attribute__ ((format (printf, 2, 3)));
 #define rds_conn_error(conn, fmt...) \
