@@ -162,7 +162,7 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 					"ADDR_RESOLVED: ret %d, calling rds_conn_drop <%pI4,%pI4,%d>\n",
 					ret, &conn->c_laddr,
 					&conn->c_faddr, conn->c_tos);
-				conn->c_drop_source = 40;
+				conn->c_drop_source = DR_IB_SET_IB_PATH_FAIL;
 				rds_conn_drop(conn);
 				ret = 0;
 			}
@@ -187,7 +187,7 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 				ibic = conn->c_transport_data;
 				if (ibic && ibic->i_cm_id == cm_id)
 					ibic->i_cm_id = NULL;
-				conn->c_drop_source = 41;
+				conn->c_drop_source = DR_IB_RESOLVE_ROUTE_FAIL;
 				rds_conn_drop(conn);
 			}
 		} else if (conn->c_to_index < (RDS_RDMA_RESOLVE_TO_MAX_INDEX-1))
@@ -211,7 +211,7 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 					"ROUTE_RESOLVED: calling rds_conn_drop, conn %p <%pI4,%pI4,%d>\n",
 					conn, &conn->c_laddr,
 					&conn->c_faddr, conn->c_tos);
-				conn->c_drop_source = 42;
+				conn->c_drop_source = DR_IB_RDMA_CM_ID_MISMATCH;
 				rds_conn_drop(conn);
 			}
 		}
@@ -255,7 +255,7 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 				"ROUTE_ERROR: conn %p, calling rds_conn_drop <%pI4,%pI4,%d>\n",
 				conn, &conn->c_laddr,
 				&conn->c_faddr, conn->c_tos);
-			conn->c_drop_source = 43;
+			conn->c_drop_source = DR_IB_ROUTE_ERR;
 			rds_conn_drop(conn);
 		}
 		break;
@@ -270,7 +270,7 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 				"ADDR_ERROR: conn %p, calling rds_conn_drop <%pI4,%pI4,%d>\n",
 				conn, &conn->c_laddr,
 				&conn->c_faddr, conn->c_tos);
-			conn->c_drop_source = 44;
+			conn->c_drop_source = DR_IB_ADDR_ERR;
 			rds_conn_drop(conn);
 		}
 		break;
@@ -283,7 +283,7 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 				"CONN/UNREACHABLE/RMVAL ERR: conn %p, calling rds_conn_drop <%pI4,%pI4,%d>\n",
 				conn, &conn->c_laddr,
 				&conn->c_faddr, conn->c_tos);
-			conn->c_drop_source = 45;
+			conn->c_drop_source = DR_IB_CONNECT_ERR;
 			rds_conn_drop(conn);
 		}
 		break;
@@ -305,7 +305,7 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 				if (!conn->c_tos) {
 					conn->c_proposed_version =
 						RDS_PROTOCOL_COMPAT_VERSION;
-					conn->c_drop_source = 46;
+					conn->c_drop_source = DR_IB_CONSUMER_DEFINED_REJ;
 					rds_conn_drop(conn);
 				} else  {
 					if (conn->c_loopback)
@@ -324,7 +324,7 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 					&conn->c_laddr,
 					&conn->c_faddr,
 					conn->c_tos);
-				conn->c_drop_source = 47;
+				conn->c_drop_source = DR_IB_REJECTED_EVENT;
 				rds_conn_drop(conn);
 			}
 		}
@@ -341,7 +341,7 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 				"ADDR_CHANGE: calling rds_conn_drop <%pI4,%pI4,%d>\n",
 				&conn->c_laddr, &conn->c_faddr,
 				conn->c_tos);
-			conn->c_drop_source = 48;
+			conn->c_drop_source = DR_IB_ADDR_CHANGE;
 			rds_conn_drop(conn);
 		}
 #else
@@ -350,7 +350,7 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 				"ADDR_CHANGE: calling rds_conn_drop <%pI4,%pI4,%d>\n",
 				&conn->c_laddr, &conn->c_faddr,
 				conn->c_tos);
-			conn->c_drop_source = 48;
+			conn->c_drop_source = DR_IB_ADDR_CHANGE;
 			rds_conn_drop(conn);
 		}
 #endif
@@ -360,7 +360,7 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 		rds_rtd(RDS_RTD_CM,
 			"DISCONNECT event - dropping connection %pI4->%pI4 tos %d\n",
 			&conn->c_laddr, &conn->c_faddr,	conn->c_tos);
-		conn->c_drop_source = 49;
+		conn->c_drop_source = DR_IB_DISCONNECTED_EVENT;
 		rds_conn_drop(conn);
 		break;
 
@@ -370,7 +370,7 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 				"dropping connection "
 				"%pI4->%pI4\n", &conn->c_laddr,
 				 &conn->c_faddr);
-			conn->c_drop_source = 50;
+			conn->c_drop_source = DR_IB_TIMEWAIT_EXIT;
 			rds_conn_drop(conn);
 		} else
 			printk(KERN_INFO "TIMEWAIT_EXIT event - conn=NULL\n");
