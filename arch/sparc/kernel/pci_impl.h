@@ -137,6 +137,13 @@ struct pci_pbm_info {
 	void				*msi_queues;
 	unsigned long			*msi_bitmap;
 	unsigned int			*msi_irq_table;
+
+	/* msi.data -> msieq id */
+	unsigned int                    *msi_msiqid_table;
+
+	/* msieq_id -> corresponding irq */
+	unsigned int                    *msiqid_irq_table;
+
 	int (*setup_msi_irq)(unsigned int *irq_p, struct pci_dev *pdev,
 			     struct msi_desc *entry);
 	void (*teardown_msi_irq)(unsigned int irq, struct pci_dev *pdev);

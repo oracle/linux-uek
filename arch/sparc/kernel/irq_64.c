@@ -46,6 +46,7 @@
 #include "entry.h"
 #include "cpumap.h"
 #include "kstack.h"
+#include "pci_impl.h"
 
 struct ino_bucket *ivector_table;
 unsigned long ivector_table_pa;
@@ -564,8 +565,12 @@ static void sun4v_virq_enable(struct irq_data *data)
 }
 
 static int sun4v_virt_set_affinity(struct irq_data *data,
-				    const struct cpumask *mask, bool force)
+				   const struct cpumask *mask, bool force)
 {
+	int msi;
+	unsigned int msiqid;
+	struct irq_desc *mdesc;
+	struct pci_pbm_info *pbm;
 	unsigned long dev_handle = irq_data_to_handle(data);
 	unsigned long dev_ino = irq_data_to_ino(data);
 	unsigned long cpuid;
@@ -578,6 +583,27 @@ static int sun4v_virt_set_affinity(struct irq_data *data,
 		printk(KERN_ERR "sun4v_vintr_set_target(%lx,%lx,%lu): "
 		       "err(%d)\n",
 		       dev_handle, dev_ino, cpuid, err);
+
+	pbm = (struct pci_pbm_info *)data->msi_desc;
+	if (!pbm)
+		return 0;
+
+	/* get the msiqid */
+	for (msiqid = 0; msiqid < pbm->msiq_num; msiqid++)
+		if (pbm->msiqid_irq_table[msiqid] == data->irq)
+			break;
+
+	if (msiqid >= pbm->msiq_num) {
+		pr_err("sun4v_virt_set_affinity can't set related affinities\n");
+		return 0;
+	}
+
+	/* set affinities of "related" msiq_irq's */
+	for (msi = 0; msi < pbm->msi_num; msi++)
+		if (pbm->msi_msiqid_table[msi] == msiqid) {
+			mdesc = irq_to_desc(pbm->msi_irq_table[msi]);
+			cpumask_copy(mdesc->irq_data.affinity, mask);
+		}
 
 	return 0;
 }
