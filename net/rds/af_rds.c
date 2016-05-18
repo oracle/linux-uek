@@ -55,6 +55,12 @@ module_param(rds_qos_threshold_action, int, 0444);
 MODULE_PARM_DESC(rds_qos_threshold_action,
 	"0=Ignore,1=Error,2=Statistic,3=Error_Statistic");
 
+u32 kernel_rds_rt_debug_bitmap = 0x488B;
+EXPORT_SYMBOL(kernel_rds_rt_debug_bitmap);
+module_param_named(rds_rt_debug_bitmap, kernel_rds_rt_debug_bitmap, uint, 0644);
+MODULE_PARM_DESC(rds_rt_debug_bitmap,
+		 "RDS Runtime Debug Message Enabling Bitmap [default 0x488B]");
+
 static unsigned long rds_qos_threshold_tbl[256];
 
 char *rds_str_array(char **array, size_t elements, size_t index)
