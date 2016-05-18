@@ -199,7 +199,9 @@ struct crypto_ahash {
 		      unsigned int keylen);
 
 	unsigned int reqsize;
+#ifndef __GENKSYMS__
 	bool has_setkey;
+#endif
 	struct crypto_tfm base;
 };
 
