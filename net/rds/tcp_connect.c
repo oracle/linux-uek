@@ -47,7 +47,7 @@ void rds_tcp_state_change(struct sock *sk)
 	struct inet_connection_sock *icsk = inet_csk(sk);
 	struct tcp_sock *tsock = tcp_sk(sk);
 
-	read_lock(&sk->sk_callback_lock);
+	read_lock_bh(&sk->sk_callback_lock);
 	cp = sk->sk_user_data;
 	if (!cp) {
 		state_change = sk->sk_state_change;
@@ -98,7 +98,7 @@ void rds_tcp_state_change(struct sock *sk)
 		break;
 	}
 out:
-	read_unlock(&sk->sk_callback_lock);
+	read_unlock_bh(&sk->sk_callback_lock);
 	state_change(sk);
 }
 
