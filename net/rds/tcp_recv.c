@@ -474,7 +474,7 @@ void rds_tcp_data_ready(struct sock *sk)
 
 	rdsdebug("data ready sk %p\n", sk);
 
-	read_lock(&sk->sk_callback_lock);
+	read_lock_bh(&sk->sk_callback_lock);
 	cp = sk->sk_user_data;
 	if (!cp) { /* check for teardown race */
 		ready = sk->sk_data_ready;
@@ -488,7 +488,7 @@ void rds_tcp_data_ready(struct sock *sk)
 	if (rds_tcp_read_sock(cp, GFP_ATOMIC) == -ENOMEM)
 		rds_cond_queue_recv_work(cp, 0);
 out:
-	read_unlock(&sk->sk_callback_lock);
+	read_unlock_bh(&sk->sk_callback_lock);
 	ready(sk);
 }
 
