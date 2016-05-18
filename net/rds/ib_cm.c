@@ -177,6 +177,9 @@ static void rds_ib_set_frag_size(struct rds_connection *conn, u16 dp_frag)
 	}
 
 	ic->i_frag_pages =  ic->i_frag_sz / PAGE_SIZE;
+	if (!ic->i_frag_pages)
+		ic->i_frag_pages = 1;
+
 	pr_debug("RDS/IB: conn <%pI4, %pI4,%d>, Frags <init,ic,dp>: {%d,%d,%d}, updated {%d -> %d}\n",
 		 &conn->c_laddr, &conn->c_faddr, conn->c_tos,
 		 ib_init_frag_size / SZ_1K, ic->i_frag_sz / SZ_1K, dp_frag /  SZ_1K,
@@ -270,8 +273,10 @@ void rds_ib_cm_connect_complete(struct rds_connection *conn, struct rdma_cm_even
 	 */
 	rds_ib_send_init_ring(ic);
 
-	if (!rds_ib_srq_enabled)
+	if (!rds_ib_srq_enabled) {
+		rds_ib_recv_rebuild_caches(ic);
 		rds_ib_recv_init_ring(ic);
+	}
 
 	/* Post receive buffers - as a side effect, this will update
 	 * the posted credit count. */
