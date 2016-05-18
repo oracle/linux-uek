@@ -122,6 +122,68 @@ extern "C" {
 	    (uintptr_t)(arg6), (uintptr_t)(arg7), (uintptr_t)(arg8));	\
 }
 
+/* This counts the number of args */
+#define DTRACE_NARGS_SEQ(_1,_2,_3,_4,_5,_6,_7,_8,_9,_10,_11,_12,_13,_14,_15,_16,_17,_18,N,...) N
+#define DTRACE_NARGS(...) DTRACE_NARGS_SEQ(__VA_ARGS__, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1)
+
+/* This will let macros expand before concating them */
+#define DTRACE_PRIMITIVE_CAT(x, y) x ## y
+#define DTRACE_CAT(x, y) DTRACE_PRIMITIVE_CAT(x, y)
+
+/* This will call a macro on each argument passed in */
+#define DTRACE_APPLY(macro, ...) DTRACE_CAT(DTRACE_APPLY_, DTRACE_NARGS(__VA_ARGS__))(macro, __VA_ARGS__)
+#define DTRACE_APPLY_1(m, x1) m(x1)
+#define DTRACE_APPLY_2(m, x1, x2) m(x1), m(x2)
+#define DTRACE_APPLY_3(m, x1, x2, x3) m(x1), m(x2), m(x3)
+#define DTRACE_APPLY_4(m, x1, x2, x3, x4) m(x1), m(x2), m(x3), m(x4)
+#define DTRACE_APPLY_5(m, x1, x2, x3, x4, x5) m(x1), m(x2), m(x3), m(x4), m(x5)
+#define DTRACE_APPLY_6(m, x1, x2, x3, x4, x5, x6) m(x1), m(x2), m(x3), m(x4), m(x5), m(x6)
+#define DTRACE_APPLY_7(m, x1, x2, x3, x4, x5, x6, x7) m(x1), m(x2), m(x3), m(x4), m(x5), m(x6), m(x7)
+#define DTRACE_APPLY_8(m, x1, x2, x3, x4, x5, x6, x7, x8) m(x1), m(x2), m(x3), m(x4), m(x5), m(x6), m(x7), m(x8)
+
+/*
+ * Without investigation I went ahead and assumed the most arguments that could
+ * be passed would be 8, but this is purely arbitrary. However, inexplicably
+ * there are existing tracepoints that pass as many as 18 arguments!
+ */
+
+#define DTRACE_APPLY_9(m, x1, x2, x3, x4, x5, x6, x7, x8, ...) m(x1), m(x2), m(x3), m(x4), m(x5), m(x6), m(x7), m(x8)
+#define DTRACE_APPLY_10(m, x1, x2, x3, x4, x5, x6, x7, x8, ...) m(x1), m(x2), m(x3), m(x4), m(x5), m(x6), m(x7), m(x8)
+#define DTRACE_APPLY_11(m, x1, x2, x3, x4, x5, x6, x7, x8, ...) m(x1), m(x2), m(x3), m(x4), m(x5), m(x6), m(x7), m(x8)
+#define DTRACE_APPLY_12(m, x1, x2, x3, x4, x5, x6, x7, x8, ...) m(x1), m(x2), m(x3), m(x4), m(x5), m(x6), m(x7), m(x8)
+#define DTRACE_APPLY_13(m, x1, x2, x3, x4, x5, x6, x7, x8, ...) m(x1), m(x2), m(x3), m(x4), m(x5), m(x6), m(x7), m(x8)
+#define DTRACE_APPLY_14(m, x1, x2, x3, x4, x5, x6, x7, x8, ...) m(x1), m(x2), m(x3), m(x4), m(x5), m(x6), m(x7), m(x8)
+#define DTRACE_APPLY_15(m, x1, x2, x3, x4, x5, x6, x7, x8, ...) m(x1), m(x2), m(x3), m(x4), m(x5), m(x6), m(x7), m(x8)
+#define DTRACE_APPLY_16(m, x1, x2, x3, x4, x5, x6, x7, x8, ...) m(x1), m(x2), m(x3), m(x4), m(x5), m(x6), m(x7), m(x8)
+#define DTRACE_APPLY_17(m, x1, x2, x3, x4, x5, x6, x7, x8, ...) m(x1), m(x2), m(x3), m(x4), m(x5), m(x6), m(x7), m(x8)
+#define DTRACE_APPLY_18(m, x1, x2, x3, x4, x5, x6, x7, x8, ...) m(x1), m(x2), m(x3), m(x4), m(x5), m(x6), m(x7), m(x8)
+
+/*
+ * Convert everything to the appropriate integral type, unless too large to fit
+ * into any of them, in which case its address is taken instead.
+ */
+
+#define DTRACE_UINTPTR_CAST_EACH(x) ({					\
+  union {								\
+    typeof((x)) __val;							\
+    unsigned char __c;							\
+    unsigned short __s;							\
+    unsigned int __i;							\
+    unsigned long __l;							\
+    unsigned long long __ll; } __u = { .__val = (x) };			\
+  __builtin_choose_expr(sizeof(__u.__val) == sizeof(__u.__c), __u.__c,	\
+  __builtin_choose_expr(sizeof(__u.__val) == sizeof(__u.__s), __u.__s, 	\
+  __builtin_choose_expr(sizeof(__u.__val) == sizeof(__u.__i), __u.__i, 	\
+  __builtin_choose_expr(sizeof(__u.__val) == sizeof(__u.__l), __u.__l, 	\
+  __builtin_choose_expr(sizeof(__u.__val) == sizeof(__u.__ll), __u.__ll,\
+  (uintptr_t)&(__u.__val))))));})
+#define DTRACE_UINTPTR_EACH(x) uintptr_t
+
+#define DTRACE_PROBE_TRACEPOINT(name, args...) {			\
+	extern void __dtrace_probe_##name(DTRACE_APPLY(DTRACE_UINTPTR_EACH, args)); \
+	__dtrace_probe_##name(DTRACE_APPLY(DTRACE_UINTPTR_CAST_EACH, args));	\
+}
+
 typedef struct sdt_probedesc {
 	char			*sdpd_name;	/* probe name */
 	char			*sdpd_func;	/* probe function */
@@ -150,6 +212,7 @@ typedef struct sdt_probedesc {
 #define	DTRACE_PROBE8(name, type1, arg1, type2, arg2, type3, arg3,	\
 	type4, arg4, type5, arg5, type6, arg6, type7, arg7, type8, arg8) \
 							DTRACE_PROBE(name)
+#define DTRACE_PROBE_TRACEPOINT(name, args...)
 
 #endif /* CONFIG_DTRACE */
 
