@@ -166,6 +166,14 @@ static void rds_ib_cache_splice_all_lists(struct rds_ib_refill_cache *cache,
 	}
 }
 
+/* Detach and free frags */
+static void rds_ib_recv_free_frag(struct rds_page_frag *frag)
+{
+	rdsdebug("RDS/IB: frag %p page %p\n", frag, sg_page(&frag->f_sg));
+	list_del_init(&frag->f_item);
+	__free_pages(sg_page(&frag->f_sg), get_order(frag->f_sg.length));
+}
+
 void rds_ib_recv_free_caches(struct rds_ib_connection *ic)
 {
 	struct rds_ib_incoming *inc;
@@ -191,40 +199,36 @@ void rds_ib_recv_free_caches(struct rds_ib_connection *ic)
 	list_for_each_entry_safe(frag, frag_tmp, &list, f_cache_entry) {
 		list_del(&frag->f_cache_entry);
 		WARN_ON(!list_empty(&frag->f_item));
+		rds_ib_recv_free_frag(frag);
+		atomic_sub(ic->i_frag_pages, &rds_ib_allocation);
 		kmem_cache_free(rds_ib_frag_slab, frag);
+		atomic_sub(ic->i_frag_sz / 1024, &ic->i_cache_allocs);
+		rds_ib_stats_add(s_ib_recv_removed_from_cache, ic->i_frag_sz);
 	}
 }
 
-/* Called from rds_ib_conn_shutdown path on the way
- * towards connection destroy or reconnect
+/* Called form rds_ib_conn_complete() and takes action only
+ * if new connection needs different frag size than what is used.
  */
-void rds_ib_recv_purge_frag_cache(struct rds_ib_connection *ic)
+void rds_ib_recv_rebuild_caches(struct rds_ib_connection *ic)
 {
-	struct rds_ib_cache_head *head;
-	struct rds_page_frag *frag, *frag_tmp;
-	LIST_HEAD(list);
-	int cpu;
-
-	rds_ib_cache_xfer_to_ready(&ic->i_cache_frags);
-	rds_ib_cache_splice_all_lists(&ic->i_cache_frags, &list);
-	atomic_set(&ic->i_cache_allocs, 0);
-
-	list_for_each_entry_safe(frag, frag_tmp, &list, f_cache_entry) {
-		list_del(&frag->f_cache_entry);
-		WARN_ON(!list_empty(&frag->f_item));
-		kmem_cache_free(rds_ib_frag_slab, frag);
-		rds_ib_stats_add(s_ib_recv_added_to_cache, ic->i_frag_sz);
-		rds_ib_stats_add(s_ib_recv_removed_from_cache, ic->i_frag_sz);
+	/* init it with the used frag size */
+	if (!ic->i_frag_cache_sz) {
+		ic->i_frag_cache_sz = ic->i_frag_sz;
+		return;
 	}
 
-	for_each_possible_cpu(cpu) {
-		head = per_cpu_ptr(ic->i_cache_frags.percpu, cpu);
-		head->first = NULL;
-		head->count = 0;
-	}
+	/* check if existing cache can be re-used */
+	if (ic->i_frag_cache_sz == ic->i_frag_sz)
+		return;
 
-	ic->i_cache_frags.xfer = NULL;
-	ic->i_cache_frags.ready = NULL;
+	/* Now re-build the caches */
+	rds_ib_recv_free_caches(ic);
+	rds_ib_recv_alloc_caches(ic);
+
+	pr_debug("RDS/IB: Rebuild caches for ic %p i_cm_id %p, frag{%d->%d}\n",
+		 ic, ic->i_cm_id, ic->i_frag_cache_sz, ic->i_frag_sz);
+	ic->i_frag_cache_sz = ic->i_frag_sz;
 }
 
 /* fwd decl */
