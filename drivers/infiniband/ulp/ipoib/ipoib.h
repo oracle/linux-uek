@@ -71,6 +71,7 @@ enum {
 	IPOIB_CM_BUF_SIZE	  = IPOIB_CM_MTU  + IPOIB_ENCAP_LEN,
 	IPOIB_CM_HEAD_SIZE	  = IPOIB_CM_BUF_SIZE % PAGE_SIZE,
 	IPOIB_CM_RX_SG		  = ALIGN(IPOIB_CM_BUF_SIZE, PAGE_SIZE) / PAGE_SIZE,
+	IPOIB_CM_MAX_BAD_CONNS	  = 8, /* Keep network interface queue running even with 4 bad connections */
 	IPOIB_RX_RING_SIZE	  = 256,
 	IPOIB_TX_RING_SIZE	  = 128,
 	IPOIB_MAX_QUEUE_SIZE	  = 8192,
@@ -782,6 +783,7 @@ static inline void ipoib_unregister_debugfs(void) { }
 
 extern int ipoib_sendq_size;
 extern int ipoib_recvq_size;
+extern int ipoib_cm_sendq_size;
 
 extern struct ib_sa_client ipoib_sa_client;
 
