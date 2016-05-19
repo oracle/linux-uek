@@ -106,7 +106,8 @@ vmlinux.o: FORCE
 # Declare generated files as targets for modpost
 $(modules:.ko=.mod.c): __modpost ;
 
-# Step 5), compile all *.mod.c files (includes the generation of SDT data)
+# Step 5), compile all *.mod.c files (includes the generation of SDT data
+# and SDT stubs)
 
 # modname is set to make c_flags define KBUILD_MODNAME
 modname = $(notdir $(@:.mod.o=))
@@ -115,6 +116,9 @@ quiet_cmd_cc_o_c = CC      $@
       cmd_cc_o_c = $(CC) $(c_flags) $(KBUILD_CFLAGS_MODULE) $(CFLAGS_MODULE) \
 		   -I$(dir $@) -c -o $@ $<
 
+quiet_cmd_as_o_S = AS      $@
+      cmd_as_o_S = $(CC) $(a_flags) -c -o $@ $<
+
 ifdef CONFIG_DTRACE
 
 sdtgen = $(srctree)/scripts/dtrace_sdt.sh
@@ -122,15 +126,29 @@ sdtgen = $(srctree)/scripts/dtrace_sdt.sh
 quiet_cmd_sdtinfo = SDTINF  $@
       cmd_sdtinfo = $(sdtgen) sdtinfo $@ $< kmod
 
+quiet_cmd_sdtstub = SDTSTB  $@
+      cmd_sdtstub = $(sdtgen) sdtstub $@ $<
+
 $(modules:.ko=.sdtinfo.c): %.sdtinfo.c: %.o
 	$(call cmd,sdtinfo)
 
+$(modules:.ko=.sdtstub.S) : %.sdtstub.S: %.o
+	$(call cmd,sdtstub)
+
 $(modules:.ko=.mod.o): %.mod.o: %.mod.c %.sdtinfo.c FORCE
 	$(call if_changed_dep,cc_o_c)
+
+$(modules:.ko=.sdtstub.o): %.sdtstub.o: %.sdtstub.S
+	$(call if_changed,as_o_S)
+
+module-sdt-modular-prereq = %.sdtstub.o
+
 else
 
 $(modules:.ko=.mod.o): %.mod.o: %.mod.c FORCE
 	$(call if_changed_dep,cc_o_c)
+
+module-sdt-modular-prereq =
 
 endif
 
@@ -268,7 +286,7 @@ quiet_cmd_ld_ko_o = LD [M]  $@
         $(OBJCOPY) $(module-ctf-flags) $@.tmp $@ && rm -f $@.tmp ;	\
        	$(if $(ARCH_POSTLINK), $(MAKE) -f $(ARCH_POSTLINK) $@, true)
 
-$(modules): %.ko : %.o %.mod.o $(module-ctfs-modular-prereq) FORCE
+$(modules): %.ko : %.o %.mod.o $(module-sdt-modular-prereq) $(module-ctfs-modular-prereq) FORCE
 	$(call cmd_touch_ctf)
 	+$(call if_changed,ld_ko_o)
 
