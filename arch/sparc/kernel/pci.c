@@ -661,6 +661,7 @@ struct pci_bus *pci_scan_one_pbm(struct pci_pbm_info *pbm,
 	LIST_HEAD(resources);
 	struct device_node *node = pbm->op->dev.of_node;
 	struct pci_bus *bus;
+	struct pci_bus *child;
 
 	printk("PCI: Scanning PBM %s\n", node->full_name);
 
@@ -690,6 +691,10 @@ struct pci_bus *pci_scan_one_pbm(struct pci_pbm_info *pbm,
 	pci_claim_bus_resources(bus);
 	pci_register_legacy_regions(pbm);
 	pci_bus_add_devices(bus);
+
+	list_for_each_entry(child, &bus->children, node)
+		pcie_bus_configure_settings(child);
+
 	return bus;
 }
 
