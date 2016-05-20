@@ -123,9 +123,17 @@ extern const struct cpumask *cpu_coregroup_mask(int cpu);
 #define topology_core_id(cpu)			(cpu_data(cpu).cpu_core_id)
 
 #ifdef CONFIG_SMP
+extern int __max_smt_threads;
+
+static inline int topology_max_smt_threads(void)
+{
+	return __max_smt_threads;
+}
+
 bool topology_is_primary_thread(unsigned int cpu);
 bool topology_smt_supported(void);
 #else
+static inline int topology_max_smt_threads(void) { return 1; }
 static inline bool topology_is_primary_thread(unsigned int cpu) { return true; }
 static inline bool topology_smt_supported(void) { return false; }
 #endif
