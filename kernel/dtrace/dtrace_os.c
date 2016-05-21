@@ -31,8 +31,6 @@
 /*---------------------------------------------------------------------------*\
 (* OS SPECIFIC DTRACE SETUP                                                  *)
 \*---------------------------------------------------------------------------*/
-#define DTRACE_PDATA_MAXSIZE	2048
-
 struct module		*dtrace_kmod = NULL;
 EXPORT_SYMBOL(dtrace_kmod);
 
