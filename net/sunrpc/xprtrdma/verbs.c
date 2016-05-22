@@ -861,7 +861,7 @@ rpcrdma_ep_create(struct rpcrdma_ep *ep, struct rpcrdma_ia *ia,
 		ep->rep_remote_cma.responder_resources =
 						devattr->max_qp_rd_atom;
 
-	ep->rep_remote_cma.retry_count = 7;
+	ep->rep_remote_cma.retry_count = 6;
 	ep->rep_remote_cma.flow_control = 0;
 	ep->rep_remote_cma.rnr_retry_count = 0;
 
