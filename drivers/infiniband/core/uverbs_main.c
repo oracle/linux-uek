@@ -48,6 +48,8 @@
 
 #include <asm/uaccess.h>
 
+#include <rdma/ib.h>
+
 #include "uverbs.h"
 
 MODULE_AUTHOR("Roland Dreier");
@@ -699,7 +701,10 @@ static ssize_t ib_uverbs_write(struct file *filp, const char __user *buf,
 	struct ib_uverbs_cmd_hdr hdr;
 	__u32 flags;
 
-	if (count < sizeof(hdr)) {
+	if (WARN_ON_ONCE(!ib_safe_file_access(filp)))
+		return -EACCES;
+
+	if (count < sizeof hdr) {
 		pr_debug("ib_uverbs_write: header too short\n");
 		return -EINVAL;
 	}
