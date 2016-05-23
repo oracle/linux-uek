@@ -21,7 +21,7 @@
  *
  * CDDL HEADER END
  *
- * Copyright 2010, 2011, 2012 Oracle, Inc.  All rights reserved.
+ * Copyright 2010-2016 Oracle, Inc.  All rights reserved.
  * Use is subject to license terms.
  */
 
@@ -61,7 +61,9 @@
  *	ret
  *	 restore
  */
-#define SDT_TRAMP_SIZE		11
+#if SDT_TRAMP_SIZE < 11
+# error SDT_TRAMP_SIZE is less than the required 11 instructions.
+#endif
 
 #define SA(x)			((long)ALIGN((x), 4))
 #define MINFRAME		STACKFRAME_SZ
@@ -162,10 +164,6 @@ int sdt_provide_module_arch(void *arg, struct module *mp)
 
 void sdt_cleanup_module(void *dmy, struct module *mp)
 {
-	if (PDATA(mp)->sdt_tab) {
-		vfree(PDATA(mp)->sdt_tab);
-		PDATA(mp)->sdt_tab = NULL;
-	}
 }
 
 void sdt_enable_arch(sdt_probe_t *sdp, dtrace_id_t id, void *arg)
@@ -183,15 +181,6 @@ int sdt_dev_init_arch(void)
 	return 0;
 }
 
-static void module_del_sdt_tab(void *dmy, struct module *mp)
-{
-	if (PDATA(mp)->sdt_tab) {
-		vfree(PDATA(mp)->sdt_tab);
-		PDATA(mp)->sdt_tab = NULL;
-	}
-}
-
 void sdt_dev_exit_arch(void)
 {
-	dtrace_for_each_module(module_del_sdt_tab, NULL);
 }

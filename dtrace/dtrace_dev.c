@@ -21,7 +21,7 @@
  *
  * CDDL HEADER END
  *
- * Copyright 2010-2014 Oracle, Inc.  All rights reserved.
+ * Copyright 2010-2016 Oracle, Inc.  All rights reserved.
  * Use is subject to license terms.
  */
 
@@ -1384,6 +1384,12 @@ int dtrace_dev_init(void)
 	dtrace_provider_id_t	id;
 	int			rc = 0;
 	struct cred		*cred;
+
+	/*
+	 * Sanity check to ensure that the memory allocated by the kernel is
+	 * sufficient for what PDATA needs.
+	 */
+	ASSERT(sizeof(dtrace_module_t) < DTRACE_PDATA_SIZE);
 
 	/*
 	 * Register the device for the DTrace core.
