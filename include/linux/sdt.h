@@ -122,6 +122,8 @@ extern "C" {
 	    (uintptr_t)(arg6), (uintptr_t)(arg7), (uintptr_t)(arg8));	\
 }
 
+#ifdef CONFIG_DT_SDT_PERF
+
 /* This counts the number of args */
 #define DTRACE_NARGS_SEQ(_1,_2,_3,_4,_5,_6,_7,_8,_9,_10,_11,_12,_13,_14,_15,_16,_17,_18,N,...) N
 #define DTRACE_NARGS(...) DTRACE_NARGS_SEQ(__VA_ARGS__, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1)
@@ -183,6 +185,12 @@ extern "C" {
 	extern void __dtrace_probe_##name(DTRACE_APPLY(DTRACE_UINTPTR_EACH, args)); \
 	__dtrace_probe_##name(DTRACE_APPLY(DTRACE_UINTPTR_CAST_EACH, args));	\
 }
+
+#else
+
+#define DTRACE_PROBE_TRACEPOINT(name, args...)
+
+#endif
 
 typedef struct sdt_probedesc {
 	char			*sdpd_name;	/* probe name */

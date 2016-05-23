@@ -46,6 +46,14 @@ config DT_SDT
 	help
 	  To be written.
 
+config DT_SDT_PERF
+	bool "DTrace perf-events Probes"
+	default y
+        depends on DT_SDT
+        select TRACEPOINTS
+	help
+	  To be written.
+
 config DT_SYSTRACE
 	tristate "System Call Tracing"
 	default m
