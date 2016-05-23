@@ -1386,12 +1386,6 @@ int dtrace_dev_init(void)
 	struct cred		*cred;
 
 	/*
-	 * Sanity check to ensure that the memory allocated by the kernel is
-	 * sufficient for what PDATA needs.
-	 */
-	ASSERT(sizeof(dtrace_module_t) < DTRACE_PDATA_SIZE);
-
-	/*
 	 * Register the device for the DTrace core.
 	 */
 	rc = misc_register(&dtrace_dev);

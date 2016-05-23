@@ -116,6 +116,12 @@ uint64_t sdt_getarg(void *arg, dtrace_id_t id, void *parg, int argno,
 
 int sdt_dev_init_arch(void)
 {
+	/*
+	 * Sanity check to ensure that the memory allocated by the kernel is
+	 * sufficient for what PDATA needs.
+	 */
+	ASSERT(sizeof(dtrace_module_t) < DTRACE_PDATA_SIZE);
+
 	return dtrace_invop_add(sdt_invop);
 }
 

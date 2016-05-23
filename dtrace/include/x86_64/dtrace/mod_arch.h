@@ -25,6 +25,8 @@
  * Use is subject to license terms.
  */
 
+#include <asm/dtrace_arch.h>
+
 /*
  * Structure to hold DTrace specific information about modules (including the
  * core kernel module).  Note that each module (and the main kernel) already
