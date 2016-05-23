@@ -22,7 +22,7 @@
  *
  * CDDL HEADER END
  *
- * Copyright 2010-2014 Oracle, Inc.  All rights reserved.
+ * Copyright 2010-2016 Oracle, Inc.  All rights reserved.
  * Use is subject to license terms.
  */
 
@@ -109,6 +109,14 @@ static dtrace_pattr_t iscsi_attr = {
 { DTRACE_STABILITY_EVOLVING, DTRACE_STABILITY_EVOLVING, DTRACE_CLASS_ISA },
 };
 
+static dtrace_pattr_t perf_attr = {
+{ DTRACE_STABILITY_EVOLVING, DTRACE_STABILITY_EVOLVING, DTRACE_CLASS_ISA },
+{ DTRACE_STABILITY_PRIVATE, DTRACE_STABILITY_PRIVATE, DTRACE_CLASS_UNKNOWN },
+{ DTRACE_STABILITY_PRIVATE, DTRACE_STABILITY_PRIVATE, DTRACE_CLASS_UNKNOWN },
+{ DTRACE_STABILITY_PRIVATE, DTRACE_STABILITY_PRIVATE, DTRACE_CLASS_ISA },
+{ DTRACE_STABILITY_EVOLVING, DTRACE_STABILITY_EVOLVING, DTRACE_CLASS_ISA },
+};
+
 DT_PROVIDER_POPS(sdt)
 
 static dtrace_pops_t sdt_pops = {
@@ -153,6 +161,7 @@ dtrace_mprovider_t sdt_providers[] = {
   { "fc", "__fc_", &fc_attr, DTRACE_PRIV_KERNEL, &sdt_pops, 0 },
   { "srp", "__srp_", &fc_attr, DTRACE_PRIV_KERNEL, &sdt_pops, 0 },
   { "sysevent", "__sysevent_", &stab_attr, DTRACE_PRIV_KERNEL, &sdt_pops, 0 },
+  { "perf", "__perf_", &perf_attr, DTRACE_PRIV_KERNEL, &sdt_pops, 0 },
   { "sdt", NULL, &sdt_attr, DTRACE_PRIV_KERNEL, &sdt_pops, 0 },
   { NULL }
 };
