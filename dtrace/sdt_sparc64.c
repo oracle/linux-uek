@@ -178,6 +178,12 @@ void sdt_disable_arch(sdt_probe_t *sdp, dtrace_id_t id, void *arg)
 
 int sdt_dev_init_arch(void)
 {
+	/*
+	 * Sanity check to ensure that the memory allocated by the kernel is
+	 * sufficient for what PDATA needs.
+	 */
+	ASSERT(sizeof(dtrace_module_t) < DTRACE_PDATA_SIZE);
+
 	return 0;
 }
 
