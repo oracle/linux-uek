@@ -182,8 +182,8 @@ extern "C" {
 #define DTRACE_UINTPTR_EACH(x) uintptr_t
 
 #define DTRACE_PROBE_TRACEPOINT(name, args...) {			\
-	extern void __dtrace_probe_##name(DTRACE_APPLY(DTRACE_UINTPTR_EACH, args)); \
-	__dtrace_probe_##name(DTRACE_APPLY(DTRACE_UINTPTR_CAST_EACH, args));	\
+	extern void __dtrace_probe___perf_##name(DTRACE_APPLY(DTRACE_UINTPTR_EACH, args)); \
+	__dtrace_probe___perf_##name(DTRACE_APPLY(DTRACE_UINTPTR_CAST_EACH, args));	\
 }
 
 #else
