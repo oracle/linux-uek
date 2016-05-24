@@ -811,6 +811,10 @@ unsigned long sun4v_mmu_map_perm_addr(unsigned long vaddr,
  * to be kept consistent.
  */
 #define HV_FAST_MMU_UNMAP_PERM_ADDR	0x28
+#ifndef __ASSEMBLY__
+extern unsigned long sun4v_mmu_unmap_perm_addr(unsigned long vaddr,
+			unsigned long nucleus, unsigned long flags);
+#endif
 
 /* mmu_tsb_ctx0_info()
  * TRAP:	HV_FAST_TRAP

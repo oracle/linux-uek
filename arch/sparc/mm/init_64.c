@@ -27,6 +27,8 @@
 #include <linux/memblock.h>
 #include <linux/mmzone.h>
 #include <linux/gfp.h>
+#include <linux/kexec.h>
+#include <linux/crash_dump.h>
 
 #include <asm/head.h>
 #include <asm/page.h>
@@ -50,6 +52,7 @@
 #include <asm/cpudata.h>
 #include <asm/setup.h>
 #include <asm/irq.h>
+#include <asm/kexec.h>
 
 #include "init_64.h"
 
@@ -187,6 +190,116 @@ unsigned long sparc64_kern_pri_nuc_bits __read_mostly;
 unsigned long sparc64_kern_sec_context __read_mostly;
 
 int num_kernel_image_mappings;
+
+#ifdef CONFIG_KEXEC
+/*
+ * Here we capture the shim information and do any required transformations.
+ */
+static void __init load_shim_kernel_info(void)
+{
+	struct sparc64_kexec_shim *shimp = kexec_launched_shim();
+	pte_t pte;
+
+	if (!sparc64_kexec_kernel())
+		return;
+
+	pte_val(pte) = shimp->kernel.tte[0];
+	prom_boot_mapping_phys_low = pte_pfn(pte) << PAGE_SHIFT;
+	num_kernel_image_mappings = shimp->kernel.nr_tte;
+}
+
+/* The initrd is normally physically contigous when loaded by the boot loader.
+ * For the kexec case --load this would be difficult to achieve but yes
+ * possible. Instead we make the transformation to phsyically contigous when
+ * required with memblock.
+ */
+static struct kexec_region initrd_region __initdata;
+
+static int __init load_shim_initrd_info(void)
+{
+	struct sparc64_kexec_shim *shimp = kexec_launched_shim();
+	unsigned long order_size = (1UL << 22UL);
+	unsigned long nr;
+
+	/* If not kexec kernel or kexec with --load-panic then do nothing. */
+	if (!sparc64_kexec_kernel() || !shimp->initrd.nr_tte)
+		return 0;
+
+	for (nr = 0UL; nr != shimp->initrd.nr_tte; nr++) {
+		memblock_reserve(shimp->initrd.tte[nr], order_size);
+		initrd_region.tte[nr] = shimp->initrd.tte[nr];
+	}
+
+	initrd_region.nr_tte = nr;
+	return 1;
+}
+
+static void __init move_shim_initrd(void)
+{
+	unsigned long size = PAGE_ALIGN(sparc_ramdisk_size);
+	unsigned long max_size = (1UL << 22UL);
+	unsigned long paddr, nr;
+	void *addr;
+
+	if (!initrd_region.nr_tte)
+		return;
+
+	paddr = memblock_alloc(size, max_size);
+	if (!paddr) {
+		prom_printf("move_shim_initrd: memblock alloc failed\n");
+		prom_halt();
+	}
+	addr = __va(paddr);
+
+	for (nr = 0UL; nr != initrd_region.nr_tte; nr++, addr += max_size) {
+		unsigned long csize = min_t(unsigned long, size, max_size);
+
+		memcpy(addr, __va(initrd_region.tte[nr]), csize);
+		memblock_free(initrd_region.tte[nr], max_size);
+		size = size - csize;
+	}
+
+	initrd_start = (unsigned long) __va(paddr);
+	initrd_end = initrd_start + sparc_ramdisk_size;
+}
+
+static void __init kexec_unmap_shim(void)
+{
+	unsigned long hverror;
+
+	if (!sparc64_kexec_kernel())
+		goto out;
+
+	hverror = sun4v_mmu_unmap_perm_addr(KEXEC_BASE, 0UL, HV_MMU_DMMU) |
+		sun4v_mmu_unmap_perm_addr(KEXEC_BASE, 0UL, HV_MMU_IMMU);
+	if (hverror)
+		pr_err("kexec_unmap_shim: MMU op failed for %ld\n", hverror);
+	/* We should be finished and hopefully without issues. */
+	sparc64_kexec_finished();
+out:
+	return;
+}
+#else /* CONFIG_KEXEC */
+static void __init load_shim_kernel_info(void) {}
+static int __init load_shim_initrd_info(void) { return 0; }
+static void __init move_shim_initrd(void) {}
+static void kexec_unmap_shim(void) {}
+#endif /* CONFIG_KEXEC */
+
+#ifdef CONFIG_CRASH_DUMP
+static void __init sparc64_reserve_elfcorehdr(void)
+{
+	unsigned long elfcorehdr_size;
+
+	if (is_kdump_kernel()) {
+		elfcorehdr_size = sparc_crash_base + sparc_crash_size -
+				  elfcorehdr_addr;
+		memblock_reserve(elfcorehdr_addr, elfcorehdr_size);
+	}
+}
+#else
+static void __init sparc64_reserve_elfcorehdr(void) {}
+#endif /* CONFIG_CRASH_DUMP */
 
 #ifdef CONFIG_DEBUG_DCFLUSH
 atomic_t dcpage_flushes = ATOMIC_INIT(0);
@@ -749,6 +862,10 @@ static void __init remap_kernel(void)
 
 	kern_locked_tte_data = tte_data;
 
+	/* For a kexec kernel we are already pinned. */
+	if (sparc64_kexec_kernel())
+		return;
+
 	/* Now lock us into the TLBs via Hypervisor or OBP. */
 	if (tlb_type == hypervisor) {
 		for (i = 0; i < num_kernel_image_mappings; i++) {
@@ -928,6 +1045,8 @@ static void __init find_ramdisk(unsigned long phys_base)
 		 */
 		ramdisk_image -= KERNBASE;
 		ramdisk_image += phys_base;
+		if (load_shim_initrd_info())
+			return;
 
 		numadbg("Found ramdisk at physical address 0x%lx, size %u\n",
 			ramdisk_image, sparc_ramdisk_size);
@@ -940,6 +1059,51 @@ static void __init find_ramdisk(unsigned long phys_base)
 		initrd_start += PAGE_OFFSET;
 		initrd_end += PAGE_OFFSET;
 	}
+#endif
+}
+
+static void __init reserve_crashkernel(void)
+{
+#ifdef CONFIG_KEXEC
+	unsigned long total_mem;
+	unsigned long long crash_size, crash_base;
+	unsigned long long alignment = REAL_HPAGE_SIZE;
+	int ret;
+
+	total_mem = memblock_phys_mem_size();
+
+	ret = parse_crashkernel(boot_command_line, total_mem,
+		&crash_size, &crash_base);
+
+	if (ret)
+		return;
+
+	if (crash_base <= 0)
+		crash_base = memblock_find_in_range(alignment, ULLONG_MAX,
+			crash_size, alignment);
+	else {
+		unsigned long start;
+
+		start = memblock_find_in_range(crash_base,
+			crash_base + crash_size, crash_size, alignment);
+		crash_base = start;
+	}
+
+	if (!crash_base) {
+		pr_err("crashkernel reservation failed.\n");
+		return;
+	}
+
+	memblock_reserve(crash_base, crash_size);
+
+	pr_info("Reserving %ldMB of memory at %ldMB for crashkernel (System RAM: %ldMB)\n",
+		(unsigned long) (crash_size >> 20),
+		(unsigned long) (crash_base >> 20),
+		(unsigned long) (total_mem >> 20));
+
+	crashk_res.start = crash_base;
+	crashk_res.end = crash_base + crash_size - 1;
+	insert_resource(&iomem_resource, &crashk_res);
 #endif
 }
 
@@ -1656,7 +1820,8 @@ static unsigned long __init bootmem_init(unsigned long phys_base)
 	unsigned long end_pfn;
 
 	end_pfn = memblock_end_of_DRAM() >> PAGE_SHIFT;
-	max_pfn = max_low_pfn = end_pfn;
+	end_pfn = max(end_pfn, max_pfn);
+	max_low_pfn = end_pfn;
 	min_low_pfn = (phys_base >> PAGE_SHIFT);
 
 	if (bootmem_init_numa() < 0)
@@ -2325,7 +2490,7 @@ static void __init reduce_memory(phys_addr_t limit_ram)
 
 void __init paging_init(void)
 {
-	unsigned long end_pfn, shift, phys_base;
+	unsigned long end_pfn, shift, phys_base, phys_end;
 	unsigned long real_end, i;
 	int node;
 
@@ -2356,6 +2521,7 @@ void __init paging_init(void)
 
 	BUILD_BUG_ON(NR_CPUS > 4096);
 
+	load_shim_kernel_info();
 	kern_base = (prom_boot_mapping_phys_low >> ILOG2_4MB) << ILOG2_4MB;
 	kern_size = (unsigned long)&_end - (unsigned long)KERNBASE;
 
@@ -2411,15 +2577,35 @@ void __init paging_init(void)
 	read_obp_memory("available", &pavail[0], &pavail_ents);
 	read_obp_memory("available", &pavail[0], &pavail_ents);
 
+#ifdef CONFIG_KEXEC
+	/* Sanity check */
+	if (sparc_crash_base && !sparc_crash_size) {
+		printk(KERN_WARNING
+		       "sparc_crash_base defined, but not sparc_crash_size\n");
+		sparc_crash_base = 0;
+	}
+#endif
+
 	phys_base = 0xffffffffffffffffUL;
+	phys_end = 0;
 	for (i = 0; i < pavail_ents; i++) {
 		phys_base = min(phys_base, pavail[i].phys_addr);
-		memblock_add(pavail[i].phys_addr, pavail[i].reg_size);
+		phys_end = max(phys_end,
+			       pavail[i].phys_addr + pavail[i].reg_size);
+		if (!sparc_crash_base)
+			memblock_add(pavail[i].phys_addr, pavail[i].reg_size);
 	}
+	max_pfn = phys_end >> PAGE_SHIFT;
+
+	if (sparc_crash_base)
+		memblock_add(sparc_crash_base, sparc_crash_size);
 
 	memblock_reserve(kern_base, kern_size);
+	sparc64_reserve_elfcorehdr();
 
 	find_ramdisk(phys_base);
+
+	reserve_crashkernel();
 
 	if (cmdline_memory_size)
 		reduce_memory(cmdline_memory_size);
@@ -2448,7 +2634,11 @@ void __init paging_init(void)
 	/* Ok, we can use our TLB miss and window trap handlers safely.  */
 	setup_tba();
 
+	kexec_unmap_shim();
+
 	__flush_tlb_all();
+
+	move_shim_initrd();
 
 	prom_build_devicetree();
 	of_populate_present_mask();
@@ -3099,6 +3289,31 @@ void hugetlb_setup(struct pt_regs *regs, unsigned int tsb_index)
 	}
 }
 #endif
+
+#ifdef CONFIG_KEXEC
+static int __init kexec_grab_obp_tranlations(void)
+{
+	unsigned int count;
+	struct sparc64_kexec_shim *shimp = kexec_shim();
+
+	/* The last entry is the NULL terminator */
+	if (prom_trans_ents >= (KEXEC_OBP_TRANSLATION - 1)) {
+		pr_err("kexec_grab_obp_tranlations: EXCEEDS kexec limit\n");
+		goto out;
+	}
+
+	for (count = 0; count < prom_trans_ents; count++) {
+		shimp->obp_translations[count].va = prom_trans[count].virt;
+		shimp->obp_translations[count].size = prom_trans[count].size;
+		shimp->obp_translations[count].tte = prom_trans[count].data;
+	}
+
+	shimp->obp_translations[count].va = 0UL;
+out:
+	return 0;
+}
+device_initcall(kexec_grab_obp_tranlations);
+#endif /* CONFIG_KEXEC */
 
 static struct resource code_resource = {
 	.name	= "Kernel code",

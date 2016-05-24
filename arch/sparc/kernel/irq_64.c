@@ -251,6 +251,38 @@ out:
 	return 0;
 }
 
+/* This bitmap is for early boot chip handler IRQ cookie checking.
+ * It is required by kexec because the cookies already exist.
+ * Legacy devhandle|devino IRQ isn't sufficient to discriminate an
+ * IRQ because it could be shared and transformed this way by DT
+ * swizzle handling.
+ * So for kexec we'll detect with a bitmap first. Should the bit be
+ * set, then the cookie has already been created by the current kernel.
+ * The bitmap is limited to a devhandle|devino maximum NR_COOKIE_BITS.
+ */
+#define NR_COOKIE_BITS	(1UL << 16UL)
+DECLARE_BITMAP(cookie_bitmap, NR_COOKIE_BITS);
+
+static int test_cookie(unsigned int devhandle, unsigned int devino)
+{
+	int nr = (int) (devhandle | devino);
+
+	if (nr >= NR_COOKIE_BITS) {
+		pr_debug("test_cookie: exceeded bitmap size (%d).\n", nr);
+		return 0;
+	}
+	return test_bit(nr, cookie_bitmap);
+}
+
+static void set_cookie(unsigned int devhandle, unsigned int devino)
+{
+	int nr = (int) (devhandle | devino);
+
+	if (nr >= NR_COOKIE_BITS)
+		return;
+	set_bit(nr, cookie_bitmap);
+}
+
 static unsigned int cookie_exists(u32 devhandle, unsigned int devino)
 {
 	unsigned long hv_err, cookie;
@@ -264,6 +296,8 @@ static unsigned int cookie_exists(u32 devhandle, unsigned int devino)
 	}
 
 	if (cookie & ((1UL << 63UL))) {
+		if (!test_cookie(devhandle, devino))
+			goto out;
 		cookie = ~cookie;
 		bucket = (struct ino_bucket *) __va(cookie);
 		irq = bucket->__irq;
@@ -685,6 +719,8 @@ static unsigned long cookie_assign(unsigned int irq, u32 devhandle,
 	hv_error = sun4v_vintr_set_cookie(devhandle, devino, cookie);
 	if (hv_error)
 		pr_err("HV vintr set cookie failed = %ld\n", hv_error);
+	else
+		set_cookie(devhandle, devino);
 
 	return hv_error;
 }
