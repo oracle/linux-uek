@@ -13,7 +13,7 @@
 %define variant %{?build_variant:%{build_variant}}%{!?build_variant:-uek}
 
 # Set this to the version of the kernel this module is compiled against.
-%define kver %{?build_kver:%{build_kver}}%{!?build_kver:4.1.12-33.el6uek}
+%define kver %{?build_kver:%{build_kver}}%{!?build_kver:4.1.12-43.el6uek}
 
 %define _signmodules %{?signmodules: %{signmodules}} %{?!signmodules: 1}
 
@@ -37,6 +37,7 @@
 %define dt_0_5_0	1280
 %define dt_0_5_1	1281
 %define dt_0_5_2	1282
+%define dt_0_5_3	1283
 %{lua:
 	local kver = rpm.expand("%{kver}")
 
@@ -46,7 +47,11 @@
 		rpm.define("arches x86_64")
 	end
 
-	if rpm.vercmp(kver, "4.1.12-33") >= 0 then
+	if rpm.vercmp(kver, "4.1.12-43") >= 0 then
+		rpm.define("srcver 0.5.3")
+		rpm.define("bldrel 1")
+		rpm.define("dt_vcode "..rpm.expand("%{dt_0_5_3}"))
+	elseif rpm.vercmp(kver, "4.1.12-33") >= 0 then
 		rpm.define("srcver 0.5.2")
 		rpm.define("bldrel 1")
 		rpm.define("dt_vcode "..rpm.expand("%{dt_0_5_2}"))
@@ -58,10 +63,10 @@
 		rpm.define("srcver 0.5.0")
 		rpm.define("bldrel 4")
 		rpm.define("dt_vcode "..rpm.expand("%{dt_0_5_0}"))
-	elseif rpm.vercmp(kver, "3.8.13-119") >= 0 then
-		rpm.define("srcver 0.4.6")
-		rpm.define("bldrel 1")
-		rpm.define("dt_vcode "..rpm.expand("%{dt_0_4_6}"))
+--	elseif rpm.vercmp(kver, "3.8.13-119") >= 0 then
+--		rpm.define("srcver 0.4.6")
+--		rpm.define("bldrel 1")
+--		rpm.define("dt_vcode "..rpm.expand("%{dt_0_4_6}"))
 	elseif rpm.vercmp(kver, "3.8.13-87") >= 0 then
 		rpm.define("srcver 0.4.5")
 		rpm.define("bldrel 3")
@@ -290,6 +295,15 @@ rm -rf %{buildroot}
 %endif
 
 %changelog
+%if %{dt_vcode} >= %{dt_0_5_3}
+* Mon May 23 2016 Kris Van Hees <kris.van.hees@oracle.com> - 0.5.3-1
+- Provider 'perf' added to SDT for perf events.
+  (Nick Alcock) [Orabug: 23004534]
+- Fix to ensure that pdata and sdt_tab handling works across module reloads.
+  [Orabug: 23331667]
+- Moving pdata size assertion checking to arch-specific code.
+  (Nick Alcock) [Orabug: 23331667]
+%endif
 %if %{dt_vcode} >= %{dt_0_5_2}
 * Thu Feb  4 2016 Kris Van Hees <kris.van.hees@oracle.com> - 0.5.2-1
 - Correct probe disable/enable mechanism for syscalls.
