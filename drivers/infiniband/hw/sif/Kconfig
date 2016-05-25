@@ -1,0 +1,5 @@
+config INFINIBAND_SIF
+	tristate "Oracle Infiniband HCA support"
+	depends on PCI && 64BIT && HAS_DMA
+	---help---
+	  Low level driver for Oracle's family of Infiniband HCAs
