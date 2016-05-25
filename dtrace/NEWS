@@ -1,6 +1,26 @@
 DTrace Kernel Modules News
 ==========================
 
+Release 0.5.3 (May 25th, 2016)
+------------------------------
+Kernel release: 4.1.12-43.el6uek
+
+New features:
+
+ - It is now possible to have perf-events presented as DTrace SDT probes.
+   This feature is turned on by default in the kernel.  The probes will
+   appear with the same names as the perf-events and are grouped under the
+   new 'perf' SDT provider.
+
+   In its current implementation, the perf-events DTrace probes do not offer
+   argument type informtation as is seen with standard DTrace SDT probes.
+
+Bugfixes:
+
+ - On sparc64, it was possible to crash the system by unloading and reloading
+   the sdt DTrace multi-provider module due to the handling of memory that is
+   set aside for SDT probe trampolines.  This bug has been fixed.
+
 Release 0.5.2 (Feb 3rd, 2016)
 -----------------------------
 Kernel release: 4.1.12-33.el6uek
