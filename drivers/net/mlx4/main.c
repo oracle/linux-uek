@@ -100,6 +100,10 @@ static int sr_iov;
 module_param(sr_iov, int, 0444);
 MODULE_PARM_DESC(sr_iov, "enable #sr_iov functions if sr_iov > 0");
 
+static int disable_background_init;
+module_param(disable_background_init, int, 0444);
+MODULE_PARM_DESC(disable_background_init, "disable mlx4_core parallel background init when set > 0");
+
 static int probe_vf;
 module_param(probe_vf, int, 0444);
 MODULE_PARM_DESC(probe_vf, "number of vfs to probe by pf driver (sr_iov > 0)");
@@ -183,7 +187,7 @@ module_param_named(log_mtts_per_seg, log_mtts_per_seg, int, 0444);
 MODULE_PARM_DESC(log_mtts_per_seg, "Log2 number of MTT entries per segment (1-7)");
 
 static void __mlx4_init_parallel_one(struct work_struct *);
-static int __mlx4_init_one_common(struct pci_dev *,
+static int __mlx4_init_one_background(struct pci_dev *,
 				  const struct pci_device_id *);
 
 static int mlx4_scale_profile = 1;
@@ -2311,10 +2315,13 @@ static int __devinit mlx4_init_one(struct pci_dev *pdev,
 		++mlx4_version_printed;
 	}
 
-	return __mlx4_init_one_common(pdev, id);
+	if (disable_background_init)
+		return __mlx4_init_one(pdev, id);
+	else
+		return __mlx4_init_one_background(pdev, id);
 }
 
-static int __mlx4_init_one_common(struct pci_dev *pdev,
+static int __mlx4_init_one_background(struct pci_dev *pdev,
 	const struct pci_device_id *id)
 {
 	int node, cpu;
@@ -2322,7 +2329,7 @@ static int __mlx4_init_one_common(struct pci_dev *pdev,
 
 	work = kmalloc(sizeof *work, GFP_KERNEL);
 	if (!work) {
-		printk(KERN_ERR "mlx4_init_one_common: failed to allocate "
+		printk(KERN_ERR "mlx4_init_one_background: failed to allocate "
 		       "parallel load work.\n");
 		return -ENOMEM;
 	}
@@ -2431,7 +2438,10 @@ int mlx4_restart_one(struct pci_dev *pdev)
 
 	mlx4_remove_one(pdev);
 
-	return __mlx4_init_one_common(pdev, NULL);
+	if (disable_background_init)
+		return __mlx4_init_one(pdev, NULL);
+	else
+		return __mlx4_init_one_background(pdev, NULL);
 }
 
 
