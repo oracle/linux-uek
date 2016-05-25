@@ -29,14 +29,15 @@ static __init pteval_t create_mapping_protection(efi_memory_desc_t *md)
 	if (type == EFI_MEMORY_MAPPED_IO)
 		return PROT_DEVICE_nGnRE;
 
-	if (WARN_ONCE(!PAGE_ALIGNED(md->phys_addr),
-		      "UEFI Runtime regions are not aligned to 64 KB -- buggy firmware?"))
+	if (!PAGE_ALIGNED(md->phys_addr)) {
+		pr_warn_once("UEFI Runtime regions insufficiently aligned for strict permissions\n");
 		/*
 		 * If the region is not aligned to the page size of the OS, we
 		 * can not use strict permissions, since that would also affect
 		 * the mapping attributes of the adjacent regions.
 		 */
 		return pgprot_val(PAGE_KERNEL_EXEC);
+	}
 
 	/* R-- */
 	if ((attr & (EFI_MEMORY_XP | EFI_MEMORY_RO)) ==
