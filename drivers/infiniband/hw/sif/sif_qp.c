@@ -238,7 +238,7 @@ struct sif_qp *create_qp(struct sif_dev *sdev,
 	if ((flags & IB_QP_CREATE_IPOIB_UD_LSO) &&
 		init_attr->cap.max_inline_data < min_tso_inline) {
 		sif_log(sdev, SIF_INFO,
-			"Create LSO QP; qp_%d max_sge %d inline_size %d qp_type %d; modifing max_inline_size to %d",
+			"Create LSO QP; qp_%d max_sge %d inline_size %d qp_type %d; modifying max_inline_size to %d",
 			index, init_attr->cap.max_send_sge, init_attr->cap.max_inline_data,
 			init_attr->qp_type, min_tso_inline);
 		init_attr->cap.max_inline_data = min_tso_inline;
