@@ -336,9 +336,9 @@ static bool huge_pte_at_handle_sentinel(pte_t *sentinel_pte, pte_t *pte,
 }
 
 static bool __set_huge_pte_at(struct mm_struct *mm, unsigned long addr,
-			      pte_t *pte, pte_t entry, pte_t *sentinel_pte)
+			      pte_t *pte, pte_t entry, pte_t *sentinel_pte,
+			      unsigned int hugepage_shift)
 {
-	unsigned int hugepage_shift = tte_to_shift(entry);
 	bool rc = true;
 
 	if (hugepage_shift != REAL_HPAGE_SHIFT) {
@@ -348,23 +348,22 @@ static bool __set_huge_pte_at(struct mm_struct *mm, unsigned long addr,
 					entry);
 		huge_pte_at_flush_update(mm, addr, pte, orig, sentinel_pte);
 	} else
-		set_pte_at(mm, addr, pte, entry);
+		*pte = entry;
 
 	return rc;
 }
 
 static void __clear_huge_pte_at(struct mm_struct *mm, unsigned long addr,
-				pte_t *pte, pte_t *sentinel_pte)
+				pte_t *pte, pte_t *sentinel_pte,
+				unsigned int hugepage_shift)
 {
-	unsigned int hugepage_shift = tte_to_shift(*pte);
-
 	if (hugepage_shift != REAL_HPAGE_SHIFT) {
 		pte_t orig = *pte;
 
 		*pte = __pte(0UL);
 		huge_pte_at_flush_update(mm, addr, pte, orig, sentinel_pte);
 	} else
-		pte_clear(mm, addr, pte);
+		*pte = __pte(0UL);
 }
 
 static bool set_huge_pte_range_at(struct mm_struct *mm, pmd_t *pmd,
@@ -374,20 +373,37 @@ static bool set_huge_pte_range_at(struct mm_struct *mm, pmd_t *pmd,
 	pte_t *pte = pte_offset_map(pmd, addr);
 	pte_t *lpte = pte + PTRS_PER_PTE;
 	pte_t entry = *pentry;
+	pte_t orig = *(pte_t *)pte;
 	bool rc = true;
+	unsigned long orig_addr = addr;
+	unsigned int hugepage_shift;
+
+	if (set_at)
+		hugepage_shift = tte_to_shift(entry);
+	else
+		hugepage_shift = tte_to_shift(*pte);
 
 	for (; pte < lpte; pte++, addr = addr + PAGE_SIZE) {
 		if (set_at) {
 			rc = __set_huge_pte_at(mm, addr, pte, entry,
-							sentinel_pte);
+					sentinel_pte, hugepage_shift);
 			if (!rc)
 				break;
 			pte_val(entry) = pte_val(entry) + PAGE_SIZE;
 		} else
-			__clear_huge_pte_at(mm, addr, pte, sentinel_pte);
+			__clear_huge_pte_at(mm, addr, pte, sentinel_pte,
+					hugepage_shift);
 	}
 	if (set_at)
 		*pentry = entry;
+
+	if (hugepage_shift == REAL_HPAGE_SHIFT) {
+		/* Issue TLB flush at REAL_HPAGE_SIZE boundaries */
+		maybe_tlb_batch_add(mm, orig_addr, pte, orig, 0);
+		maybe_tlb_batch_add(mm, orig_addr + REAL_HPAGE_SIZE,
+					pte, orig, 0);
+	}
+
 	return rc;
 }
 
