@@ -411,6 +411,11 @@ static inline bool is_default_hugetlb_pte(pte_t pte)
 	return (pte_val(pte) & mask) == mask;
 }
 
+static inline bool is_hugetlb_pmd(pmd_t pmd)
+{
+	return !!(pmd_val(pmd) & _PAGE_PMD_HUGE);
+}
+
 #ifdef CONFIG_TRANSPARENT_HUGEPAGE
 static inline pmd_t pmd_mkhuge(pmd_t pmd)
 {

@@ -439,7 +439,7 @@ static void __update_mmu_tsb_insert(struct mm_struct *mm, unsigned long tsb_inde
 }
 
 #ifdef CONFIG_HUGETLB_PAGE
-unsigned int xl_hugepage_shift;
+unsigned int xl_hugepage_shift = HPAGE_SHIFT;
 static unsigned long xl_hugepage_pte;
 
 static bool is_xl_hugetlb_pte(pte_t pte)
@@ -608,10 +608,12 @@ void update_mmu_cache(struct vm_area_struct *vma, unsigned long address, pte_t *
 
 #if defined(CONFIG_HUGETLB_PAGE) || defined(CONFIG_TRANSPARENT_HUGEPAGE)
 	if (mm->context.huge_pte_count[MM_PTES_HUGE] &&
-			is_default_hugetlb_pte(pte))
+			is_default_hugetlb_pte(pte)) {
+		/* We are fabricating 8MB pages using 4MB real hw pages */
+		pte_val(pte) |= (address & (1UL << REAL_HPAGE_SHIFT));
 		__update_mmu_tsb_insert(mm, MM_TSB_HUGE, REAL_HPAGE_SHIFT,
 					address, pte_val(pte));
-	else if (mm->context.huge_pte_count[MM_PTES_XLHUGE] &&
+	} else if (mm->context.huge_pte_count[MM_PTES_XLHUGE] &&
 			is_xl_hugetlb_pte(pte))
 		__update_mmu_tsb_insert(mm, MM_TSB_XLHUGE, xl_hugepage_shift,
 			address, pte_val(pte));
