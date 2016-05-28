@@ -176,6 +176,9 @@ static void rds_ib_set_frag_size(struct rds_connection *conn, u16 dp_frag)
 	}
 
 	ic->i_frag_pages =  ic->i_frag_sz / PAGE_SIZE;
+	if (!ic->i_frag_pages)
+		ic->i_frag_pages = 1;
+
 	pr_debug("RDS/IB: conn <%pI4, %pI4,%d>, Frags <init,ic,dp>: {%d,%d,%d}, updated {%d -> %d}\n",
 		 &conn->c_laddr, &conn->c_faddr, conn->c_tos,
 		 ib_init_frag_size / SZ_1K, ic->i_frag_sz / SZ_1K, dp_frag /  SZ_1K,
@@ -245,7 +248,7 @@ void rds_ib_cm_connect_complete(struct rds_connection *conn, struct rdma_cm_even
 		rds_rtd(RDS_RTD_CM,
 			"ic->i_cm_id is NULL, ic: %p, calling rds_conn_drop\n",
 			ic);
-		conn->c_drop_source = 20;
+		conn->c_drop_source = DR_IB_CONN_DROP_RACE;
 		rds_conn_drop(conn);
 		return;
 	}
@@ -256,7 +259,7 @@ void rds_ib_cm_connect_complete(struct rds_connection *conn, struct rdma_cm_even
 		rds_rtd(RDS_RTD_CM,
 			"conn is in connecting state, conn: %p, calling rds_conn_drop\n",
 			conn);
-		conn->c_drop_source = 21;
+		conn->c_drop_source = DR_IB_NOT_CONNECTING_STATE;
 		rds_conn_drop(conn);
 		return;
 	}
@@ -269,8 +272,10 @@ void rds_ib_cm_connect_complete(struct rds_connection *conn, struct rdma_cm_even
 	 */
 	rds_ib_send_init_ring(ic);
 
-	if (!rds_ib_srq_enabled)
+	if (!rds_ib_srq_enabled) {
+		rds_ib_recv_rebuild_caches(ic);
 		rds_ib_recv_init_ring(ic);
+	}
 
 	/* Post receive buffers - as a side effect, this will update
 	 * the posted credit count. */
@@ -296,41 +301,7 @@ void rds_ib_cm_connect_complete(struct rds_connection *conn, struct rdma_cm_even
 	if (dp && dp->dp_ack_seq)
 		rds_send_drop_acked(conn, be64_to_cpu(dp->dp_ack_seq), NULL);
 
-#if RDMA_RDS_APM_SUPPORTED
-	if (rds_ib_apm_enabled) {
-		struct rdma_dev_addr *dev_addr;
-
-		dev_addr = &ic->i_cm_id->route.addr.dev_addr;
-
-		if (!ic->conn->c_reconnect) {
-			rdma_addr_get_sgid(dev_addr,
-				(union ib_gid *)&ic->i_pri_path.p_sgid);
-			rdma_addr_get_dgid(dev_addr,
-				(union ib_gid *)&ic->i_pri_path.p_dgid);
-			printk(KERN_NOTICE "RDS/IB: connection "
-				"<%u.%u.%u.%u,%u.%u.%u.%u,%d> primary path "
-				"<"RDS_IB_GID_FMT","RDS_IB_GID_FMT">\n",
-				NIPQUAD(conn->c_laddr),
-				NIPQUAD(conn->c_faddr),
-				conn->c_tos,
-				RDS_IB_GID_ARG(ic->i_pri_path.p_sgid),
-				RDS_IB_GID_ARG(ic->i_pri_path.p_dgid));
-		}
-		rdma_addr_get_sgid(dev_addr,
-			(union ib_gid *)&ic->i_cur_path.p_sgid);
-		rdma_addr_get_dgid(dev_addr,
-			(union ib_gid *)&ic->i_cur_path.p_dgid);
-	}
-#endif
-
 	rds_connect_complete(conn);
-
-#if RDMA_RDS_APM_SUPPORTED
-        if (ic->i_last_migration) {
-                rds_ib_stats_inc(s_ib_failed_apm);
-                ic->i_last_migration = 0;
-        }
-#endif
 }
 
 static void rds_ib_cm_fill_conn_param(struct rds_connection *conn,
@@ -558,6 +529,7 @@ static void rds_ib_qp_event_handler(struct ib_event *event, void *data)
 		complete(&ic->i_last_wqe_complete);
 		break;
 	case IB_EVENT_PATH_MIG:
+#if 0
 		memcpy(&ic->i_cur_path.p_sgid,
 			&ic->i_cm_id->route.path_rec[ic->i_alt_path_index].sgid,
 			sizeof(union ib_gid));
@@ -591,6 +563,7 @@ static void rds_ib_qp_event_handler(struct ib_event *event, void *data)
 				RDS_IB_GID_ARG(ic->i_cur_path.p_dgid));
 		}
 		ic->i_last_migration = get_seconds();
+#endif
 
 		break;
 	case IB_EVENT_PATH_MIG_ERR:
@@ -601,32 +574,10 @@ static void rds_ib_qp_event_handler(struct ib_event *event, void *data)
 			"Fatal QP Event %u (%s) - connection %pI4->%pI4 tos %d, reconnecting\n",
 			event->event, rds_ib_event_str(event->event),
 			&conn->c_laddr,	&conn->c_faddr, conn->c_tos);
-		conn->c_drop_source = 22;
+		conn->c_drop_source = DR_IB_QP_EVENT;
 		rds_conn_drop(conn);
 		break;
 	}
-}
-
-static int rds_ib_find_least_loaded_vector(struct rds_ib_device *rds_ibdev)
-{
-	int i;
-	int index = rds_ibdev->dev->num_comp_vectors - 1;
-	int min = rds_ibdev->vector_load[rds_ibdev->dev->num_comp_vectors - 1];
-
-#if IB_RDS_CQ_VECTOR_SUPPORTED
-	if (!rds_ib_cq_balance_enabled)
-		return IB_CQ_VECTOR_LEAST_ATTACHED;
-#endif
-
-	for (i = rds_ibdev->dev->num_comp_vectors - 1; i >= 0; i--) {
-		if (rds_ibdev->vector_load[i] < min) {
-			index = i;
-			min = rds_ibdev->vector_load[i];
-		}
-	}
-
-	rds_ibdev->vector_load[index]++;
-	return index;
 }
 
 /*
@@ -661,41 +612,28 @@ static int rds_ib_setup_qp(struct rds_connection *conn)
 	ic->i_pd = rds_ibdev->pd;
 	ic->i_mr = rds_ibdev->mr;
 
-	ic->i_scq_vector = rds_ib_find_least_loaded_vector(rds_ibdev);
 	ic->i_scq = ib_create_cq(dev, rds_ib_cq_comp_handler_send,
 				rds_ib_cq_event_handler, conn,
-				ic->i_send_ring.w_nr + 1,
-				ic->i_scq_vector);
+				ic->i_send_ring.w_nr + 1, 0);
 	if (IS_ERR(ic->i_scq)) {
 		ret = PTR_ERR(ic->i_scq);
 		ic->i_scq = NULL;
 		rdsdebug("ib_create_cq send failed: %d\n", ret);
-#if IB_RDS_CQ_VECTOR_SUPPORTED
-		if (ic->i_scq_vector != IB_CQ_VECTOR_LEAST_ATTACHED)
-			rds_ibdev->vector_load[ic->i_scq_vector]--;
-#endif
 		goto out;
 	}
 
-	ic->i_rcq_vector = rds_ib_find_least_loaded_vector(rds_ibdev);
 	if (rds_ib_srq_enabled)
 		ic->i_rcq = ib_create_cq(dev, rds_ib_cq_comp_handler_recv,
 					rds_ib_cq_event_handler, conn,
-					rds_ib_srq_max_wr - 1,
-					ic->i_rcq_vector);
+					rds_ib_srq_max_wr - 1, 0);
 	else
 		ic->i_rcq = ib_create_cq(dev, rds_ib_cq_comp_handler_recv,
 					rds_ib_cq_event_handler, conn,
-					ic->i_recv_ring.w_nr,
-					ic->i_rcq_vector);
+					ic->i_recv_ring.w_nr, 0);
 	if (IS_ERR(ic->i_rcq)) {
 		ret = PTR_ERR(ic->i_rcq);
 		ic->i_rcq = NULL;
 		rdsdebug("ib_create_cq recv failed: %d\n", ret);
-#if IB_RDS_CQ_VECTOR_SUPPORTED
-		if (ic->i_scq_vector != IB_CQ_VECTOR_LEAST_ATTACHED)
-			rds_ibdev->vector_load[ic->i_rcq_vector]--;
-#endif
 		goto out;
 	}
 
@@ -908,7 +846,7 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 				NIPQUAD(conn->c_laddr),
 				NIPQUAD(conn->c_faddr),
 				conn->c_tos);
-		conn->c_drop_source = 23;
+		conn->c_drop_source = DR_IB_BASE_CONN_DOWN;
 		rds_conn_drop(conn);
 	}
 
@@ -931,7 +869,7 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 		if (rds_conn_state(conn) == RDS_CONN_UP) {
 			rds_rtd(RDS_RTD_CM_EXT_P,
 				"incoming connect while connecting\n");
-			conn->c_drop_source = 24;
+			conn->c_drop_source = DR_IB_REQ_WHILE_CONN_UP;
 			rds_conn_drop(conn);
 			rds_ib_stats_inc(s_ib_listen_closed_stale);
 		} else if (rds_conn_state(conn) == RDS_CONN_CONNECTING) {
@@ -953,7 +891,7 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 					NIPQUAD(conn->c_laddr),
 					NIPQUAD(conn->c_faddr),
 					conn->c_tos);
-				conn->c_drop_source = 25;
+				conn->c_drop_source = DR_IB_REQ_WHILE_CONNECTING;
 				rds_conn_drop(conn);
 				rds_ib_stats_inc(s_ib_listen_closed_stale);
 			} else {
@@ -997,7 +935,7 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 
 	err = rds_ib_setup_qp(conn);
 	if (err) {
-		conn->c_drop_source = 26;
+		conn->c_drop_source = DR_IB_PAS_SETUP_QP_FAIL;
 		rds_ib_conn_error(conn, "rds_ib_setup_qp failed (%d)\n", err);
 		goto out;
 	}
@@ -1007,23 +945,12 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 		event->param.conn.initiator_depth,
 		ib_init_frag_size);
 
-#if RDMA_RDS_APM_SUPPORTED
-	if (rds_ib_apm_enabled)
-		rdma_set_timeout(cm_id, rds_ib_apm_timeout);
-#endif
 	/* rdma_accept() calls rdma_reject() internally if it fails */
 	err = rdma_accept(cm_id, &conn_param);
 	if (err) {
-		conn->c_drop_source = 27;
+		conn->c_drop_source = DR_IB_RDMA_ACCEPT_FAIL;
 		rds_ib_conn_error(conn, "rdma_accept failed (%d)\n", err);
 	}
-#if RDMA_RDS_APM_SUPPORTED
-	else if (rds_ib_apm_enabled && !conn->c_loopback) {
-		err = rdma_enable_apm(cm_id, RDMA_ALT_PATH_BEST);
-		if (err)
-			printk(KERN_WARNING "RDS/IB: APM couldn't be enabled for passive side: %d\n", err);
-	}
-#endif
 
 out:
 	if (conn)
@@ -1042,14 +969,6 @@ int rds_ib_cm_initiate_connect(struct rdma_cm_id *cm_id)
 	struct rds_ib_connect_private dp;
 	int ret;
 
-#if RDMA_RDS_APM_SUPPORTED
-	if (rds_ib_apm_enabled && !conn->c_loopback) {
-		ret = rdma_enable_apm(cm_id, RDMA_ALT_PATH_BEST);
-		if (ret)
-			printk(KERN_WARNING "RDS/IB: APM couldn't be enabled for active side: %d\n", ret);
-	}
-#endif
-
 	rds_ib_set_protocol(conn, RDS_PROTOCOL_4_1);
 	ic->i_flowctl = rds_ib_sysctl_flow_control;	/* advertise flow control */
 	/* Use ic->i_flowctl as the first post credit to enable
@@ -1065,7 +984,7 @@ int rds_ib_cm_initiate_connect(struct rdma_cm_id *cm_id)
 
 	ret = rds_ib_setup_qp(conn);
 	if (ret) {
-		conn->c_drop_source = 28;
+		conn->c_drop_source = DR_IB_ACT_SETUP_QP_FAIL;
 		rds_ib_conn_error(conn, "rds_ib_setup_qp failed (%d)\n", ret);
 		goto out;
 	}
@@ -1075,7 +994,7 @@ int rds_ib_cm_initiate_connect(struct rdma_cm_id *cm_id)
 				ib_init_frag_size);
 	ret = rdma_connect(cm_id, &conn_param);
 	if (ret) {
-		conn->c_drop_source = 29;
+		conn->c_drop_source = DR_IB_RDMA_CONNECT_FAIL;
 		rds_ib_conn_error(conn, "rdma_connect failed (%d)\n", ret);
 	}
 
@@ -1103,11 +1022,6 @@ static void rds_ib_migrate(struct work_struct *_work)
 	struct rdma_cm_id *cm_id = ic->i_cm_id;
 	int ret = 0;
 
-#if RDMA_RDS_APM_SUPPORTED
-	if (!rds_ib_apm_fallback)
-		return;
-#endif
-
 	if (!ic->i_active_side) {
 		ret = ib_query_qp(cm_id->qp, &qp_attr, IB_QP_PATH_MIG_STATE,
 				&qp_init_attr);
@@ -1134,63 +1048,6 @@ static void rds_ib_migrate(struct work_struct *_work)
 		}
 	}
 }
-
-#if RDMA_RDS_APM_SUPPORTED
-void rds_ib_check_migration(struct rds_connection *conn,
-			struct rdma_cm_event *event)
-{
-	struct rds_ib_connection *ic = conn->c_transport_data;
-	union ib_gid sgid;
-	union ib_gid dgid;
-	struct ib_qp_init_attr qp_init_attr;
-	struct ib_qp_attr qp_attr;
-	struct rdma_cm_id *cm_id = ic->i_cm_id;
-	int err;
-
-	if (!rds_ib_apm_enabled || !rds_conn_up(ic->conn))
-		return ;
-
-	ic->i_alt_path_index = event->param.ud.alt_path_index;
-
-	memcpy(&sgid, &cm_id->route.path_rec[event->param.ud.alt_path_index].
-		sgid, sizeof(union ib_gid));
-	memcpy(&dgid, &cm_id->route.path_rec[event->param.ud.alt_path_index].
-		dgid, sizeof(union ib_gid));
-
-	printk(KERN_NOTICE
-		"RDS/IB: connection "
-		"<%u.%u.%u.%u,%u.%u.%u.%u,%d> loaded alternate path "
-		"<"RDS_IB_GID_FMT","RDS_IB_GID_FMT">\n",
-		NIPQUAD(conn->c_laddr),
-		NIPQUAD(conn->c_faddr),
-		conn->c_tos,
-		RDS_IB_GID_ARG(sgid), RDS_IB_GID_ARG(dgid));
-
-	err = ib_query_qp(cm_id->qp, &qp_attr, IB_QP_ALT_PATH, &qp_init_attr);
-	if (err) {
-		printk(KERN_ERR "RDS/IB: ib_query_qp failed (%d)\n", err);
-		return;
-	}
-	qp_attr.alt_timeout = rds_ib_apm_timeout;
-	err = ib_modify_qp(cm_id->qp, &qp_attr, IB_QP_ALT_PATH);
-	if (err) {
-		printk(KERN_ERR "RDS/IB: ib_modify_qp failed (%d)\n", err);
-		return;
-	}
-
-	if (!memcmp(&ic->i_pri_path.p_sgid, &sgid, sizeof(union ib_gid)) &&
-		!memcmp(&ic->i_pri_path.p_dgid, &dgid, sizeof(union ib_gid))) {
-		if (memcmp(&ic->i_cur_path.p_sgid, &ic->i_pri_path.p_sgid,
-				sizeof(union ib_gid)) ||
-			memcmp(&ic->i_cur_path.p_dgid, &ic->i_pri_path.p_dgid,
-				sizeof(union ib_gid))) {
-
-			ic->i_migrate_w.ic = ic;
-			queue_delayed_work(rds_wq, &ic->i_migrate_w.work, 0);
-		}
-	}
-}
-#endif
 
 int rds_ib_conn_connect(struct rds_connection *conn)
 {
@@ -1293,23 +1150,11 @@ void rds_ib_conn_shutdown(struct rds_connection *conn)
 		if (ic->i_cm_id->qp)
 			rdma_destroy_qp(ic->i_cm_id);
 
-		if (ic->i_rcq) {
-#if IB_RDS_CQ_VECTOR_SUPPORTED
-			if (ic->rds_ibdev &&
-				ic->i_rcq_vector != IB_CQ_VECTOR_LEAST_ATTACHED)
-				ic->rds_ibdev->vector_load[ic->i_rcq_vector]--;
-#endif
+		if (ic->i_rcq)
 			ib_destroy_cq(ic->i_rcq);
-		}
 
-		if (ic->i_scq) {
-#if IB_RDS_CQ_VECTOR_SUPPORTED
-			if (ic->rds_ibdev &&
-				ic->i_scq_vector != IB_CQ_VECTOR_LEAST_ATTACHED)
-				ic->rds_ibdev->vector_load[ic->i_scq_vector]--;
-#endif
+		if (ic->i_scq)
 			ib_destroy_cq(ic->i_scq);
-		}
 
 		/* then free the resources that ib callbacks use */
 		if (ic->i_send_hdrs)

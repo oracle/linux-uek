@@ -633,7 +633,7 @@ void ipoib_cm_handle_rx_wc(struct net_device *dev, struct ib_wc *wc)
 
 	if (unlikely(wc->status != IB_WC_SUCCESS)) {
 		ipoib_dbg(priv, "cm recv error "
-			   "(status=%d, wrid=%d vend_err %x)\n",
+			   "(status=%d, wrid=%d vend_err 0x%x)\n",
 			   wc->status, wr_id, wc->vendor_err);
 		++dev->stats.rx_dropped;
 		if (has_srq)
@@ -932,11 +932,11 @@ void ipoib_cm_handle_tx_wc(struct net_device *dev, struct ib_wc *wc)
 		/*IB_WC_RNR_RETRY_EXC_ERR error is part of the life cycle, so don't make waves.*/
 		if (IB_WC_RNR_RETRY_EXC_ERR != wc->status)
 			ipoib_warn(priv, "%s: failed cm send event "
-				   "(status=%d, wrid=%d vend_err %x)\n",
+				   "(status=%d, wrid=%d vend_err 0x%x)\n",
 				   __func__, wc->status, wr_id, wc->vendor_err);
 		else
 			ipoib_dbg(priv, "%s: failed cm send event "
-				   "(status=%d, wrid=%d vend_err %x)\n",
+				   "(status=%d, wrid=%d vend_err 0x%x)\n",
 				   __func__, wc->status, wr_id, wc->vendor_err);
 
 		spin_lock_irqsave(&priv->lock, flags);

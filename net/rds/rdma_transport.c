@@ -43,8 +43,6 @@
 
 #define RDS_REJ_CONSUMER_DEFINED 28
 
-static struct rdma_cm_id *rds_iw_listen_id;
-
 int unload_allowed __read_mostly;
 
 module_param_named(module_unload_allowed, unload_allowed, int, 0444);
@@ -71,12 +69,6 @@ static char *rds_cm_event_strings[] = {
 	RDS_CM_EVENT_STRING(MULTICAST_ERROR),
 	RDS_CM_EVENT_STRING(ADDR_CHANGE),
 	RDS_CM_EVENT_STRING(TIMEWAIT_EXIT),
-#if RDMA_RDS_APM_SUPPORTED
-	RDS_CM_EVENT_STRING(ALT_ROUTE_RESOLVED),
-	RDS_CM_EVENT_STRING(ALT_ROUTE_ERROR),
-	RDS_CM_EVENT_STRING(LOAD_ALT_PATH),
-	RDS_CM_EVENT_STRING(ALT_PATH_LOADED),
-#endif
 #undef RDS_CM_EVENT_STRING
 };
 
@@ -101,9 +93,7 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 	rdsdebug("conn %p id %p handling event %u (%s)\n", conn, cm_id,
 		 event->event, rds_cm_event_str(event->event));
 
-	if (cm_id->device->node_type == RDMA_NODE_RNIC)
-		trans = &rds_iw_transport;
-	else
+	if (cm_id->device->node_type == RDMA_NODE_IB_CA)
 		trans = &rds_ib_transport;
 
 	/* Prevent shutdown from tearing down the connection
@@ -130,11 +120,6 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 
 	case RDMA_CM_EVENT_ADDR_RESOLVED:
 		rdma_set_service_type(cm_id, conn->c_tos);
-
-#if RDMA_RDS_APM_SUPPORTED
-		if (rds_ib_apm_enabled)
-			rdma_set_timeout(cm_id, rds_ib_apm_timeout);
-#endif
 
 		if (conn->c_tos && conn->c_reconnect) {
 			struct rds_ib_connection *base_ic =
@@ -166,7 +151,7 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 					"ADDR_RESOLVED: ret %d, calling rds_conn_drop <%u.%u.%u.%u,%u.%u.%u.%u,%d>\n",
 					ret, NIPQUAD(conn->c_laddr),
 					NIPQUAD(conn->c_faddr), conn->c_tos);
-				conn->c_drop_source = 40;
+				conn->c_drop_source = DR_IB_SET_IB_PATH_FAIL;
 				rds_conn_drop(conn);
 				ret = 0;
 			}
@@ -191,7 +176,7 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 				ibic = conn->c_transport_data;
 				if (ibic && ibic->i_cm_id == cm_id)
 					ibic->i_cm_id = NULL;
-				conn->c_drop_source = 41;
+				conn->c_drop_source = DR_IB_RESOLVE_ROUTE_FAIL;
 				rds_conn_drop(conn);
 			}
 		} else if (conn->c_to_index < (RDS_RDMA_RESOLVE_TO_MAX_INDEX-1))
@@ -215,27 +200,11 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 					"ROUTE_RESOLVED: calling rds_conn_drop, conn %p <%u.%u.%u.%u,%u.%u.%u.%u,%d>\n",
 					conn, NIPQUAD(conn->c_laddr),
 					NIPQUAD(conn->c_faddr), conn->c_tos);
-				conn->c_drop_source = 42;
+				conn->c_drop_source = DR_IB_RDMA_CM_ID_MISMATCH;
 				rds_conn_drop(conn);
 			}
 		}
 		break;
-
-#if RDMA_RDS_APM_SUPPORTED
-	case RDMA_CM_EVENT_ALT_PATH_LOADED:
-		rdsdebug("RDS: alt path loaded\n");
-		if (conn)
-			trans->check_migration(conn, event);
-		break;
-
-	case RDMA_CM_EVENT_ALT_ROUTE_RESOLVED:
-		rdsdebug("RDS: alt route resolved\n");
-		break;
-
-	case RDMA_CM_EVENT_ALT_ROUTE_ERROR:
-		rdsdebug("RDS: alt route resolve error\n");
-		break;
-#endif
 
 	case RDMA_CM_EVENT_ROUTE_ERROR:
 		/* IP might have been moved so flush the ARP entry and retry */
@@ -259,7 +228,7 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 				"ROUTE_ERROR: conn %p, calling rds_conn_drop <%u.%u.%u.%u,%u.%u.%u.%u,%d>\n",
 				conn, NIPQUAD(conn->c_laddr),
 				NIPQUAD(conn->c_faddr), conn->c_tos);
-			conn->c_drop_source = 43;
+			conn->c_drop_source = DR_IB_ROUTE_ERR;
 			rds_conn_drop(conn);
 		}
 		break;
@@ -274,7 +243,7 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 				"ADDR_ERROR: conn %p, calling rds_conn_drop <%u.%u.%u.%u,%u.%u.%u.%u,%d>\n",
 				conn, NIPQUAD(conn->c_laddr),
 				NIPQUAD(conn->c_faddr), conn->c_tos);
-			conn->c_drop_source = 44;
+			conn->c_drop_source = DR_IB_ADDR_ERR;
 			rds_conn_drop(conn);
 		}
 		break;
@@ -287,7 +256,7 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 				"CONN/UNREACHABLE/RMVAL ERR: conn %p, calling rds_conn_drop <%u.%u.%u.%u,%u.%u.%u.%u,%d>\n",
 				conn, NIPQUAD(conn->c_laddr),
 				NIPQUAD(conn->c_faddr), conn->c_tos);
-			conn->c_drop_source = 45;
+			conn->c_drop_source = DR_IB_CONNECT_ERR;
 			rds_conn_drop(conn);
 		}
 		break;
@@ -309,7 +278,7 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 				if (!conn->c_tos) {
 					conn->c_proposed_version =
 						RDS_PROTOCOL_COMPAT_VERSION;
-					conn->c_drop_source = 46;
+					conn->c_drop_source = DR_IB_CONSUMER_DEFINED_REJ;
 					rds_conn_drop(conn);
 				} else  {
 					if (conn->c_loopback)
@@ -328,7 +297,7 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 					NIPQUAD(conn->c_laddr),
 					NIPQUAD(conn->c_faddr),
 					conn->c_tos);
-				conn->c_drop_source = 47;
+				conn->c_drop_source = DR_IB_REJECTED_EVENT;
 				rds_conn_drop(conn);
 			}
 		}
@@ -339,32 +308,21 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 			"ADDR_CHANGE event <%u.%u.%u.%u,%u.%u.%u.%u>\n",
 			NIPQUAD(conn->c_laddr),
 			NIPQUAD(conn->c_faddr));
-#if RDMA_RDS_APM_SUPPORTED
-		if (conn && !rds_ib_apm_enabled) {
-			rds_rtd(RDS_RTD_CM,
-				"ADDR_CHANGE: calling rds_conn_drop <%u.%u.%u.%u,%u.%u.%u.%u,%d>\n",
-				NIPQUAD(conn->c_laddr),	NIPQUAD(conn->c_faddr),
-				conn->c_tos);
-			conn->c_drop_source = 48;
-			rds_conn_drop(conn);
-		}
-#else
 		if (conn) {
 			rds_rtd(RDS_RTD_CM,
 				"ADDR_CHANGE: calling rds_conn_drop <%u.%u.%u.%u,%u.%u.%u.%u,%d>\n",
 				NIPQUAD(conn->c_laddr),	NIPQUAD(conn->c_faddr),
 				conn->c_tos);
-			conn->c_drop_source = 48;
+			conn->c_drop_source = DR_IB_ADDR_CHANGE;
 			rds_conn_drop(conn);
 		}
-#endif
 		break;
 
 	case RDMA_CM_EVENT_DISCONNECTED:
 		rds_rtd(RDS_RTD_CM,
 			"DISCONNECT event - dropping connection %pI4->%pI4 tos %d\n",
 			&conn->c_laddr, &conn->c_faddr,	conn->c_tos);
-		conn->c_drop_source = 49;
+		conn->c_drop_source = DR_IB_DISCONNECTED_EVENT;
 		rds_conn_drop(conn);
 		break;
 
@@ -374,7 +332,7 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 				"dropping connection "
 				"%pI4->%pI4\n", &conn->c_laddr,
 				 &conn->c_faddr);
-			conn->c_drop_source = 50;
+			conn->c_drop_source = DR_IB_TIMEWAIT_EXIT;
 			rds_conn_drop(conn);
 		} else
 			printk(KERN_INFO "TIMEWAIT_EXIT event - conn=NULL\n");
@@ -436,21 +394,11 @@ static int rds_rdma_listen_init(void)
 
 	rdsdebug("cm %p listening on port %u\n", cm_id, RDS_PORT);
 
-	rds_iw_listen_id = cm_id;
 	cm_id = NULL;
 out:
 	if (cm_id)
 		rdma_destroy_id(cm_id);
 	return ret;
-}
-
-static void rds_rdma_listen_stop(void)
-{
-	if (rds_iw_listen_id) {
-		rdsdebug("cm %p\n", rds_iw_listen_id);
-		rdma_destroy_id(rds_iw_listen_id);
-		rds_iw_listen_id = NULL;
-	}
 }
 
 #define MODULE_NAME "rds_rdma"
@@ -459,13 +407,9 @@ int rds_rdma_init(void)
 {
 	int ret;
 
-	ret = rds_iw_init();
-	if (ret)
-		goto out;
-
 	ret = rds_ib_init();
 	if (ret)
-		goto err_ib_init;
+		goto out;
 
 	ret = rds_rdma_listen_init();
 	if (ret)
@@ -480,13 +424,8 @@ int rds_rdma_init(void)
 	goto out;
 
 err_rdma_listen_init:
-	/* We need to clean up both ib and iw components. */
+	/* We need to clean up both ib components. */
 	rds_ib_exit();
-err_ib_init:
-	/* Only rds_iw_init() completes at this point, so we don't have to
-	 * do anything with rds_ib_exit().
-	 */
-	rds_iw_exit();
 out:
 	/* Either nothing is done successfully or everything succeeds at
 	 * this point.
@@ -497,16 +436,13 @@ module_init(rds_rdma_init);
 
 void rds_rdma_exit(void)
 {
-	/* stop listening first to ensure no new connections are attempted */
-	rds_rdma_listen_stop();
 	/* cancel initial ib failover work if still active*/
 	cancel_delayed_work_sync(&riif_dlywork);
 	rds_ib_exit();
-	rds_iw_exit();
 }
 module_exit(rds_rdma_exit);
 
 MODULE_AUTHOR("Oracle Corporation <rds-devel@oss.oracle.com>");
-MODULE_DESCRIPTION("RDS: IB/iWARP transport");
+MODULE_DESCRIPTION("RDS: IB transport");
 MODULE_LICENSE("Dual BSD/GPL");
 

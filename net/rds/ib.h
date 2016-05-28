@@ -216,7 +216,8 @@ struct rds_ib_connection {
 	/* Protocol version specific information */
 	unsigned int		i_flowctl:1;	/* enable/disable flow ctl */
 	u16			i_frag_sz;	/* IB fragment size */
-	int8_t			i_frag_pages;
+	u16			i_frag_cache_sz;
+	u8			i_frag_pages;
 
 	/* Batched completions */
 	unsigned int		i_unsignaled_wrs;
@@ -226,13 +227,16 @@ struct rds_ib_connection {
 
 	struct completion       i_last_wqe_complete;
 
+#if 0
 	/* APM support */
-	struct rds_ib_migrate_work	i_migrate_w;
 	struct rds_ib_path      i_pri_path;
 	struct rds_ib_path      i_cur_path;
 	unsigned int            i_alt_path_index;
-	unsigned int		i_active_side;
 	unsigned long		i_last_migration;
+#endif
+	/* Active Bonding */
+	struct rds_ib_migrate_work	i_migrate_w;
+	unsigned int		i_active_side;
 
 	int			i_scq_vector;
 	int			i_rcq_vector;
@@ -497,7 +501,6 @@ struct rds_ib_statistics {
 	uint64_t        s_ib_srq_lows;
 	uint64_t        s_ib_srq_refills;
 	uint64_t        s_ib_srq_empty_refills;
-	uint64_t	s_ib_failed_apm;
 	uint64_t	s_ib_recv_added_to_cache;
 	uint64_t	s_ib_recv_removed_from_cache;
 };
@@ -553,18 +556,8 @@ extern unsigned int rds_ib_fmr_1m_pool_size;
 extern unsigned int rds_ib_fmr_8k_pool_size;
 extern unsigned int rds_ib_retry_count;
 extern unsigned int rds_ib_rnr_retry_count;
-#if RDMA_RDS_APM_SUPPORTED
-extern unsigned int rds_ib_apm_enabled;
-extern unsigned int rds_ib_apm_fallback;
-#endif
 extern unsigned int rds_ib_active_bonding_enabled;
 extern unsigned int rds_ib_active_bonding_fallback;
-#if RDMA_RDS_APM_SUPPORTED
-extern unsigned int rds_ib_apm_timeout;
-#endif
-#if IB_RDS_CQ_VECTOR_SUPPORTED
-extern unsigned int rds_ib_cq_balance_enabled;
-#endif
 
 extern spinlock_t ib_nodev_conns_lock;
 extern struct list_head ib_nodev_conns;
@@ -587,10 +580,6 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 int rds_ib_cm_initiate_connect(struct rdma_cm_id *cm_id);
 void rds_ib_cm_connect_complete(struct rds_connection *conn,
 				struct rdma_cm_event *event);
-#if RDMA_RDS_APM_SUPPORTED
-void rds_ib_check_migration(struct rds_connection *conn,
-				struct rdma_cm_event *event);
-#endif
 void rds_ib_init_frag(unsigned int version);
 
 #define rds_ib_conn_error(conn, fmt...) \
@@ -618,7 +607,7 @@ void rds_ib_recv_exit(void);
 int rds_ib_recv(struct rds_connection *conn);
 int rds_ib_recv_alloc_caches(struct rds_ib_connection *ic);
 void rds_ib_recv_free_caches(struct rds_ib_connection *ic);
-void rds_ib_recv_purge_frag_cache(struct rds_ib_connection *ic);
+void rds_ib_recv_rebuild_caches(struct rds_ib_connection *ic);
 void rds_ib_recv_refill(struct rds_connection *conn, int prefill, gfp_t gfp);
 void rds_ib_inc_free(struct rds_incoming *inc);
 int rds_ib_inc_copy_to_user(struct rds_incoming *inc, struct iov_iter *to);

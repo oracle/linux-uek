@@ -77,6 +77,8 @@ static int debug_level = 0;
 	printk(level "CMA: %p: %s: " format, ((struct rdma_id_priv *) priv) , __func__, ## arg)
 
 #define cma_dbg(priv, format, arg...)		\
+	do { if (debug_level) cma_pr(KERN_DEBUG, priv, format, ## arg); } while (0)
+#define cma_info(priv, format, arg...)     \
 	do { if (debug_level) cma_pr(KERN_INFO, priv, format, ## arg); } while (0)
 
 #define cma_warn(priv, format, arg...)		\
@@ -1067,7 +1069,7 @@ static int cma_rep_recv(struct rdma_id_private *id_priv)
 	if (ret)
 		goto reject;
 
-	cma_dbg(id_priv, "sending RTU local_id=%u remote_id=%u \n",
+	cma_info(id_priv, "sending RTU local_id=%u remote_id=%u\n",
 			id_priv->cm_id.ib->local_id,
 			id_priv->cm_id.ib->remote_id);
 	ret = ib_send_cm_rtu(id_priv->cm_id.ib, NULL, 0);
@@ -1322,7 +1324,7 @@ static int cma_req_handler(struct ib_cm_id *cm_id, struct ib_cm_event *ib_event)
 	int offset, ret;
 
 	listen_id = cm_id->context;
-	cma_dbg(listen_id, "received %s local_id=%u remote_id=%u \n",
+	cma_info(listen_id, "received %s local_id=%u remote_id=%u\n",
 			cm_event_str(ib_event->event),
 			cm_id->local_id, cm_id->remote_id);
 
@@ -2908,7 +2910,7 @@ static int cma_connect_ib(struct rdma_id_private *id_priv,
 	req.max_cm_retries = CMA_MAX_CM_RETRIES;
 	req.srq = id_priv->srq ? 1 : 0;
 
-	cma_dbg(id_priv, "sending REQ local_id=%u remote_id=%u qp_num=%u\n",
+	cma_info(id_priv, "sending REQ local_id=%u remote_id=%u qp_num=%u\n",
 			id_priv->cm_id.ib->local_id,
 			id_priv->cm_id.ib->remote_id,
 			id_priv->qp_num);
@@ -3027,7 +3029,7 @@ static int cma_accept_ib(struct rdma_id_private *id_priv,
 	rep.flow_control = conn_param->flow_control;
 	rep.rnr_retry_count = min_t(u8, 7, conn_param->rnr_retry_count);
 	rep.srq = id_priv->srq ? 1 : 0;
-	cma_dbg(id_priv, "sending REP local_id=%u remote_id=%u qp_num=%u\n",
+	cma_info(id_priv, "sending REP local_id=%u remote_id=%u qp_num=%u\n",
 			id_priv->cm_id.ib->local_id,
 			id_priv->cm_id.ib->remote_id,
 			id_priv->qp_num);
@@ -3175,7 +3177,7 @@ int rdma_reject(struct rdma_cm_id *id, const void *private_data,
 			ret = cma_send_sidr_rep(id_priv, IB_SIDR_REJECT, 0,
 						private_data, private_data_len);
 		else {
-			cma_dbg(id_priv, "sending REJ local_id=%u remote_id=%u \n",
+			cma_info(id_priv, "sending REJ local_id=%u remote_id=%u\n",
 					id_priv->cm_id.ib->local_id,
 					id_priv->cm_id.ib->remote_id);
 			ret = ib_send_cm_rej(id_priv->cm_id.ib,
@@ -3210,12 +3212,12 @@ int rdma_disconnect(struct rdma_cm_id *id)
 		if (ret)
 			goto out;
 		/* Initiate or respond to a disconnect. */
-		cma_dbg(id_priv, "attempt disconnect\n");
+		cma_info(id_priv, "attempt disconnect\n");
 		if (ib_send_cm_dreq(id_priv->cm_id.ib, NULL, 0)) {
 			if (!(ib_send_cm_drep(id_priv->cm_id.ib, NULL, 0)))
-				cma_dbg(id_priv, "DREP sent\n");
+				cma_info(id_priv, "DREP sent\n");
 		} else {
-			cma_dbg(id_priv, "DREQ sent\n");
+			cma_info(id_priv, "DREQ sent\n");
 		}
 		break;
 	case RDMA_TRANSPORT_IWARP:

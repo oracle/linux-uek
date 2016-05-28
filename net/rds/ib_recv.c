@@ -166,6 +166,14 @@ static void rds_ib_cache_splice_all_lists(struct rds_ib_refill_cache *cache,
 	}
 }
 
+/* Detach and free frags */
+static void rds_ib_recv_free_frag(struct rds_page_frag *frag)
+{
+	rdsdebug("RDS/IB: frag %p page %p\n", frag, sg_page(&frag->f_sg));
+	list_del_init(&frag->f_item);
+	__free_pages(sg_page(&frag->f_sg), get_order(frag->f_sg.length));
+}
+
 void rds_ib_recv_free_caches(struct rds_ib_connection *ic)
 {
 	struct rds_ib_incoming *inc;
@@ -191,40 +199,36 @@ void rds_ib_recv_free_caches(struct rds_ib_connection *ic)
 	list_for_each_entry_safe(frag, frag_tmp, &list, f_cache_entry) {
 		list_del(&frag->f_cache_entry);
 		WARN_ON(!list_empty(&frag->f_item));
+		rds_ib_recv_free_frag(frag);
+		atomic_sub(ic->i_frag_pages, &rds_ib_allocation);
 		kmem_cache_free(rds_ib_frag_slab, frag);
+		atomic_sub(ic->i_frag_sz / 1024, &ic->i_cache_allocs);
+		rds_ib_stats_add(s_ib_recv_removed_from_cache, ic->i_frag_sz);
 	}
 }
 
-/* Called from rds_ib_conn_shutdown path on the way
- * towards connection destroy or reconnect
+/* Called form rds_ib_conn_complete() and takes action only
+ * if new connection needs different frag size than what is used.
  */
-void rds_ib_recv_purge_frag_cache(struct rds_ib_connection *ic)
+void rds_ib_recv_rebuild_caches(struct rds_ib_connection *ic)
 {
-	struct rds_ib_cache_head *head;
-	struct rds_page_frag *frag, *frag_tmp;
-	LIST_HEAD(list);
-	int cpu;
-
-	rds_ib_cache_xfer_to_ready(&ic->i_cache_frags);
-	rds_ib_cache_splice_all_lists(&ic->i_cache_frags, &list);
-	atomic_set(&ic->i_cache_allocs, 0);
-
-	list_for_each_entry_safe(frag, frag_tmp, &list, f_cache_entry) {
-		list_del(&frag->f_cache_entry);
-		WARN_ON(!list_empty(&frag->f_item));
-		kmem_cache_free(rds_ib_frag_slab, frag);
-		rds_ib_stats_add(s_ib_recv_added_to_cache, ic->i_frag_sz);
-		rds_ib_stats_add(s_ib_recv_removed_from_cache, ic->i_frag_sz);
+	/* init it with the used frag size */
+	if (!ic->i_frag_cache_sz) {
+		ic->i_frag_cache_sz = ic->i_frag_sz;
+		return;
 	}
 
-	for_each_possible_cpu(cpu) {
-		head = per_cpu_ptr(ic->i_cache_frags.percpu, cpu);
-		head->first = NULL;
-		head->count = 0;
-	}
+	/* check if existing cache can be re-used */
+	if (ic->i_frag_cache_sz == ic->i_frag_sz)
+		return;
 
-	ic->i_cache_frags.xfer = NULL;
-	ic->i_cache_frags.ready = NULL;
+	/* Now re-build the caches */
+	rds_ib_recv_free_caches(ic);
+	rds_ib_recv_alloc_caches(ic);
+
+	pr_debug("RDS/IB: Rebuild caches for ic %p i_cm_id %p, frag{%d->%d}\n",
+		 ic, ic->i_cm_id, ic->i_frag_cache_sz, ic->i_frag_sz);
+	ic->i_frag_cache_sz = ic->i_frag_sz;
 }
 
 /* fwd decl */
@@ -633,7 +637,7 @@ void rds_ib_recv_refill(struct rds_connection *conn, int prefill, gfp_t gfp)
 			 recv->r_ibinc, sg_page(&recv->r_frag->f_sg),
 			 (long) sg_dma_address(&recv->r_frag->f_sg), ret);
 		if (ret) {
-			conn->c_drop_source = 60;
+			conn->c_drop_source = DR_IB_POST_RECV_FAIL;
 			rds_ib_conn_error(conn, "recv post on "
 			       "%pI4 returned %d, disconnecting and "
 			       "reconnecting\n", &conn->c_faddr,
@@ -923,7 +927,7 @@ static void rds_ib_send_ack(struct rds_ib_connection *ic, unsigned int adv_credi
 
 		rds_ib_stats_inc(s_ib_ack_send_failure);
 
-		ic->conn->c_drop_source = 61;
+		ic->conn->c_drop_source = DR_IB_SEND_ACK_FAIL;
 		rds_ib_conn_error(ic->conn, "sending ack failed\n");
 	} else
 		rds_ib_stats_inc(s_ib_ack_sent);
@@ -1101,7 +1105,7 @@ static void rds_ib_process_recv(struct rds_connection *conn,
 		 data_len);
 
 	if (data_len < sizeof(struct rds_header)) {
-		conn->c_drop_source = 62;
+		conn->c_drop_source = DR_IB_HEADER_MISSING;
 		rds_ib_conn_error(conn, "incoming message "
 		       "from %pI4 didn't inclue a "
 		       "header, disconnecting and "
@@ -1115,7 +1119,7 @@ static void rds_ib_process_recv(struct rds_connection *conn,
 
 	/* Validate the checksum. */
 	if (!rds_message_verify_checksum(ihdr)) {
-		conn->c_drop_source = 63;
+		conn->c_drop_source = DR_IB_HEADER_CORRUPTED;
 		rds_ib_conn_error(conn, "incoming message "
 		       "from %pI4 has corrupted header - "
 		       "forcing a reconnect\n",
@@ -1183,7 +1187,7 @@ static void rds_ib_process_recv(struct rds_connection *conn,
 		 || hdr->h_len != ihdr->h_len
 		 || hdr->h_sport != ihdr->h_sport
 		 || hdr->h_dport != ihdr->h_dport) {
-			conn->c_drop_source = 64;
+			conn->c_drop_source = DR_IB_FRAG_HEADER_MISMATCH;
 			rds_ib_conn_error(conn,
 				"fragment header mismatch; forcing reconnect\n");
 			return;
@@ -1344,15 +1348,15 @@ void rds_ib_recv_cqe_handler(struct rds_ib_connection *ic,
 	} else {
 		/* We expect errors as the qp is drained during shutdown */
 		if (rds_conn_up(conn) || rds_conn_connecting(conn)) {
-			conn->c_drop_source = 65;
+			conn->c_drop_source = DR_IB_RECV_COMP_ERR;
 			rds_ib_conn_error(conn, "recv completion "
-					"<%pI4,%pI4,%d> had "
-					"status %u, disconnecting and "
+					"<%pI4,%pI4,%d> had status %u "
+					"vendor_err 0x%x, disconnecting and "
 					"reconnecting\n",
 					&conn->c_laddr,
 					&conn->c_faddr,
 					conn->c_tos,
-					wc->status);
+					wc->status, wc->vendor_err);
 			rds_rtd(RDS_RTD_ERR, "status %u => %s\n", wc->status,
 				rds_ib_wc_status_str(wc->status));
 		}

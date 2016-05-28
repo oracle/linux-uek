@@ -11,7 +11,6 @@
 #include <uapi/linux/rds.h>
 
 #include "info.h"
-#include "rds_rt_debug.h"
 
 /*
  * RDS Network protocol version
@@ -25,9 +24,6 @@
 #define RDS_PROTOCOL_MAJOR(v)	((v) >> 8)
 #define RDS_PROTOCOL_MINOR(v)	((v) & 255)
 #define RDS_PROTOCOL(maj, min)	(((maj) << 8) | min)
-
-#define IB_RDS_CQ_VECTOR_SUPPORTED 0
-#define RDMA_RDS_APM_SUPPORTED 0
 
 /*
  * XXX randomly chosen, but at least seems to be unused:
@@ -50,6 +46,43 @@ rdsdebug(char *fmt, ...)
 {
 }
 #endif
+
+extern u32 kernel_rds_rt_debug_bitmap;
+enum {
+	/* bit 0 ~ 19 are feature related bits */
+	RDS_RTD_ERR			= 1 << 0,	/* 0x1    */
+	RDS_RTD_ERR_EXT			= 1 << 1,	/* 0x2    */
+
+	RDS_RTD_CM			= 1 << 3,	/* 0x8    */
+	RDS_RTD_CM_EXT			= 1 << 4,	/* 0x10   */
+	RDS_RTD_CM_EXT_P		= 1 << 5,	/* 0x20   */
+
+	RDS_RTD_ACT_BND			= 1 << 7,	/* 0x80   */
+	RDS_RTD_ACT_BND_EXT		= 1 << 8,	/* 0x100  */
+
+	RDS_RTD_RCV			= 1 << 11,	/* 0x800  */
+	RDS_RTD_RCV_EXT			= 1 << 12,	/* 0x1000 */
+
+	RDS_RTD_SND			= 1 << 14,	/* 0x4000 */
+	RDS_RTD_SND_EXT			= 1 << 15,	/* 0x8000 */
+	RDS_RTD_FLOW_CNTRL		= 1 << 16,	/* 0x10000 */
+
+	/* bit 20 ~ 31 are module specific bits */
+	RDS_RTD_CORE			= 1 << 20,	/* 0x100000   */
+	RDS_RTD_RDMA_IB			= 1 << 23,	/* 0x800000   */
+
+	/* the following are placeholders for now */
+	RDS_RTD_RDMA_IW			= 1 << 26,	/* 0x4000000  */
+	RDS_RTD_TCP			= 1 << 28,	/* 0x10000000 */
+};
+
+#define rds_rtd_printk(format, arg...)		\
+	trace_printk("%d: " format, __LINE__, ## arg)
+
+#define rds_rtd(enabling_bit, format, arg...)				     \
+	do { if (likely(!(enabling_bit & kernel_rds_rt_debug_bitmap))) break;\
+		 rds_rtd_printk(format, ## arg);			     \
+	} while (0)
 
 /* XXX is there one of these somewhere? */
 #define ceil(x, y) \
@@ -97,6 +130,80 @@ enum {
 
 #define RDS_RDMA_RESOLVE_TO_MAX_INDEX   5
 #define RDS_ADDR_RES_TM_INDEX_MAX 5
+
+enum rds_conn_drop_src {
+	/* rds-core */
+	DR_DEFAULT,
+	DR_USER_RESET,
+	DR_INV_CONN_STATE,
+	DR_DOWN_TRANSITION_FAIL,
+	DR_CONN_DESTROY,
+	DR_ZERO_LANE_DOWN,
+	DR_CONN_CONNECT_FAIL,
+	DR_HB_TIMEOUT,
+	DR_RECONNECT_TIMEOUT,
+
+	/* ib_cm  */
+	DR_IB_CONN_DROP_RACE,
+	DR_IB_NOT_CONNECTING_STATE,
+	DR_IB_QP_EVENT,
+	DR_IB_BASE_CONN_DOWN,
+	DR_IB_REQ_WHILE_CONN_UP,
+	DR_IB_REQ_WHILE_CONNECTING,
+	DR_IB_PAS_SETUP_QP_FAIL,
+	DR_IB_RDMA_ACCEPT_FAIL,
+	DR_IB_ACT_SETUP_QP_FAIL,
+	DR_IB_RDMA_CONNECT_FAIL,
+
+	/* event handling */
+	DR_IB_SET_IB_PATH_FAIL,
+	DR_IB_RESOLVE_ROUTE_FAIL,
+	DR_IB_RDMA_CM_ID_MISMATCH,
+	DR_IB_ROUTE_ERR,
+	DR_IB_ADDR_ERR,
+	DR_IB_CONNECT_ERR,
+	DR_IB_CONSUMER_DEFINED_REJ,
+	DR_IB_REJECTED_EVENT,
+	DR_IB_ADDR_CHANGE,
+	DR_IB_DISCONNECTED_EVENT,
+	DR_IB_TIMEWAIT_EXIT,
+
+	/* data path */
+	DR_IB_POST_RECV_FAIL,
+	DR_IB_SEND_ACK_FAIL,
+	DR_IB_HEADER_MISSING,
+	DR_IB_HEADER_CORRUPTED,
+	DR_IB_FRAG_HEADER_MISMATCH,
+	DR_IB_RECV_COMP_ERR,
+	DR_IB_SEND_COMP_ERR,
+	DR_IB_POST_SEND_FAIL,
+
+	/* special features like active bonding */
+	DR_IB_UMMOD,
+	DR_IB_ACTIVE_BOND_FAILOVER,
+	DR_IB_LOOPBACK_CONN_DROP,
+	DR_IB_ACTIVE_BOND_FAILBACK,
+
+	/* iWARP */
+	DR_IW_QP_EVENT,
+	DR_IW_REQ_WHILE_CONNECTING,
+	DR_IW_PAS_SETUP_QP_FAIL,
+	DR_IW_RDMA_ACCEPT_FAIL,
+	DR_IW_ACT_SETUP_QP_FAIL,
+	DR_IW_RDMA_CONNECT_FAIL,
+
+	DR_IW_POST_RECV_FAIL,
+	DR_IW_SEND_ACK_FAIL,
+	DR_IW_HEADER_MISSING,
+	DR_IW_HEADER_CORRUPTED,
+	DR_IW_FRAG_HEADER_MISMATCH,
+	DR_IW_RECV_COMP_ERR,
+	DR_IW_SEND_COMP_ERR,
+
+	/* TCP */
+	DR_TCP_STATE_CLOSE,
+	DR_TCP_SEND_FAIL,
+};
 
 struct rds_connection {
 	struct hlist_node	c_hash_node;
@@ -178,7 +285,8 @@ struct rds_connection {
 
 	unsigned int		c_reconnect_racing;
 	unsigned int		c_route_resolved;
-	u8                      c_drop_source;
+
+	enum rds_conn_drop_src	c_drop_source;
 };
 
 static inline
@@ -736,7 +844,7 @@ void rds_for_each_conn_info(struct socket *sock, unsigned int len,
 			  struct rds_info_lengths *lens,
 			  int (*visitor)(struct rds_connection *, void *),
 			  size_t item_len);
-char *conn_drop_reason_str(u8 reason);
+char *conn_drop_reason_str(enum rds_conn_drop_src reason);
 void __rds_conn_error(struct rds_connection *conn, const char *, ...)
 				__attribute__ ((format (printf, 2, 3)));
 #define rds_conn_error(conn, fmt...) \

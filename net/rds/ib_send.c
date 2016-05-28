@@ -341,17 +341,16 @@ void rds_ib_send_cqe_handler(struct rds_ib_connection *ic, struct ib_wc *wc)
 
 	/* We expect errors as the qp is drained during shutdown */
 	if (wc->status != IB_WC_SUCCESS && rds_conn_up(conn)) {
-		conn->c_drop_source = 66;
+		conn->c_drop_source = DR_IB_SEND_COMP_ERR;
 		rds_ib_conn_error(conn,
 			"send completion <%u.%u.%u.%u,%u.%u.%u.%u,%d> status "
-			"%u vendor_err %u, disconnecting and reconnecting\n",
+			"%u vendor_err 0x%x, disconnecting and reconnecting\n",
 			NIPQUAD(conn->c_laddr),
 			NIPQUAD(conn->c_faddr),
 			conn->c_tos, wc->status, wc->vendor_err);
 		rds_rtd(RDS_RTD_ERR, "status %u => %s\n", wc->status,
 			rds_ib_wc_status_str(wc->status));
-	} else
-		ic->i_last_migration = 0;
+	}
 }
 
 /*
@@ -812,7 +811,7 @@ int rds_ib_xmit(struct rds_connection *conn, struct rds_message *rm,
 			prev->s_op = NULL;
 		}
 
-		ic->conn->c_drop_source = 67;
+		ic->conn->c_drop_source = DR_IB_POST_SEND_FAIL;
 		rds_ib_conn_error(ic->conn, "ib_post_send failed\n");
 		goto out;
 	}

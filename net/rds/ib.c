@@ -53,22 +53,12 @@
 unsigned int rds_ib_fmr_1m_pool_size = RDS_FMR_1M_POOL_SIZE;
 unsigned int rds_ib_fmr_8k_pool_size = RDS_FMR_8K_POOL_SIZE;
 unsigned int rds_ib_retry_count = RDS_IB_DEFAULT_RETRY_COUNT;
-#if RDMA_RDS_APM_SUPPORTED
-unsigned int rds_ib_apm_enabled = 0;
-unsigned int rds_ib_apm_fallback = 1;
-#endif
 unsigned int rds_ib_active_bonding_enabled = 0;
 unsigned int rds_ib_active_bonding_fallback = 1;
 unsigned int rds_ib_active_bonding_reconnect_delay = 1;
 unsigned int rds_ib_active_bonding_trigger_delay_max_msecs; /* = 0; */
 unsigned int rds_ib_active_bonding_trigger_delay_min_msecs; /* = 0; */
-#if RDMA_RDS_APM_SUPPORTED
-unsigned int rds_ib_apm_timeout = RDS_IB_DEFAULT_TIMEOUT;
-#endif
 unsigned int rds_ib_rnr_retry_count = RDS_IB_DEFAULT_RNR_RETRY_COUNT;
-#if IB_RDS_CQ_VECTOR_SUPPORTED
-unsigned int rds_ib_cq_balance_enabled = 1;
-#endif
 static char *rds_ib_active_bonding_failover_groups = NULL;
 unsigned int rds_ib_active_bonding_arps = RDS_IB_DEFAULT_NUM_ARPS;
 static char *rds_ib_active_bonding_excl_ips = "169.254/16,172.10/16";
@@ -79,22 +69,10 @@ module_param(rds_ib_fmr_8k_pool_size, int, 0444);
 MODULE_PARM_DESC(rds_ib_fmr_8k_pool_size, " Max number of 8k fmr per HCA");
 module_param(rds_ib_retry_count, int, 0444);
 MODULE_PARM_DESC(rds_ib_retry_count, " Number of hw retries before reporting an error");
-#if RDMA_RDS_APM_SUPPORTED
-module_param(rds_ib_apm_enabled, int, 0444);
-MODULE_PARM_DESC(rds_ib_apm_enabled, " APM Enabled");
-#endif
 module_param(rds_ib_active_bonding_enabled, int, 0444);
 MODULE_PARM_DESC(rds_ib_active_bonding_enabled, " Active Bonding enabled");
-#if RDMA_RDS_APM_SUPPORTED
-module_param(rds_ib_apm_timeout, int, 0444);
-MODULE_PARM_DESC(rds_ib_apm_timeout, " APM timeout");
-#endif
 module_param(rds_ib_rnr_retry_count, int, 0444);
 MODULE_PARM_DESC(rds_ib_rnr_retry_count, " QP rnr retry count");
-#if RDMA_RDS_APM_SUPPORTED
-module_param(rds_ib_apm_fallback, int, 0444);
-MODULE_PARM_DESC(rds_ib_apm_fallback, " APM failback enabled");
-#endif
 module_param(rds_ib_active_bonding_fallback, int, 0444);
 MODULE_PARM_DESC(rds_ib_active_bonding_fallback, " Active Bonding failback Enabled");
 module_param(rds_ib_active_bonding_failover_groups, charp, 0444);
@@ -109,10 +87,6 @@ module_param(rds_ib_active_bonding_trigger_delay_min_msecs, int, 0444);
 MODULE_PARM_DESC(rds_ib_active_bonding_trigger_delay_min_msecs,
 		 " Active Bonding Min delay before active "
 		 "bonding is triggered(msecs)");
-#if IB_RDS_CQ_VECTOR_SUPPORTED
-module_param(rds_ib_cq_balance_enabled, int, 0444);
-MODULE_PARM_DESC(rds_ib_cq_balance_enabled, " CQ load balance Enabled");
-#endif
 module_param(rds_ib_active_bonding_arps, int, 0444);
 MODULE_PARM_DESC(rds_ib_active_bonding_arps, " Num ARPs to be sent when IP moved");
 module_param(rds_ib_active_bonding_excl_ips, charp, 0444);
@@ -198,7 +172,7 @@ void rds_ib_dev_shutdown(struct rds_ib_device *rds_ibdev)
 
 	spin_lock_irqsave(&rds_ibdev->spinlock, flags);
 	list_for_each_entry(ic, &rds_ibdev->conn_list, ib_node) {
-		ic->conn->c_drop_source = 80;
+		ic->conn->c_drop_source = DR_IB_UMMOD;
 		rds_conn_drop(ic->conn);
 	}
 	spin_unlock_irqrestore(&rds_ibdev->spinlock, flags);
@@ -374,21 +348,11 @@ static int rds_ib_conn_info_visitor(struct rds_connection *conn,
 		struct rdma_dev_addr *dev_addr;
 
 		ic = conn->c_transport_data;
-#if RDMA_RDS_APM_SUPPORTED
-		if (rds_ib_apm_enabled) {
-			memcpy((union ib_gid *) &iinfo->src_gid,
-				&ic->i_cur_path.p_sgid, sizeof(union ib_gid));
-			memcpy((union ib_gid *) &iinfo->dst_gid,
-				&ic->i_cur_path.p_dgid, sizeof(union ib_gid));
-		} else
-#endif
-		{
-			dev_addr = &ic->i_cm_id->route.addr.dev_addr;
-			rdma_addr_get_sgid(dev_addr,
-				(union ib_gid *) &iinfo->src_gid);
-			rdma_addr_get_dgid(dev_addr,
-				(union ib_gid *) &iinfo->dst_gid);
-		}
+		dev_addr = &ic->i_cm_id->route.addr.dev_addr;
+		rdma_addr_get_sgid(dev_addr,
+			(union ib_gid *) &iinfo->src_gid);
+		rdma_addr_get_dgid(dev_addr,
+			(union ib_gid *) &iinfo->dst_gid);
 
 		rds_ibdev = ic->rds_ibdev;
 		iinfo->max_send_wr = ic->i_send_ring.w_nr;
@@ -429,6 +393,12 @@ static int rds_ib_laddr_check(struct net *net, __be32 addr)
 	int ret;
 	struct rdma_cm_id *cm_id;
 	struct sockaddr_in sin;
+
+	/* Link-local addresses don't play well with IB */
+	if (ipv4_is_linklocal_169(addr)) {
+		pr_info_ratelimited("RDS/IB: Link local address %pI4 NOT SUPPORTED\n", &addr);
+		return -EADDRNOTAVAIL;
+	}
 
 	/* Create a CMA ID and try to bind it. This catches both
 	 * IB and iWARP capable NICs.
@@ -502,7 +472,7 @@ static void rds_ib_send_gratuitous_arp(struct net_device	*out_dev,
 
 	/* Send multiple ARPs to improve reliability */
 	for (i = 0; i < rds_ib_active_bonding_arps; i++) {
-		arp_send(ARPOP_REPLY, ETH_P_ARP,
+		arp_send(ARPOP_REQUEST, ETH_P_ARP,
 			ip_addr, out_dev,
 			ip_addr, NULL,
 			dev_addr, NULL);
@@ -632,7 +602,7 @@ static void rds_ib_conn_drop(struct work_struct *_work)
 	rds_rtd(RDS_RTD_CM_EXT,
 		"conn: %p, calling rds_conn_drop\n", conn);
 
-	conn->c_drop_source = 81;
+	conn->c_drop_source = DR_IB_ACTIVE_BOND_FAILOVER;
 	rds_conn_drop(conn);
 
 	kfree(work);
@@ -804,16 +774,6 @@ static int rds_ib_move_ip(char			*from_dev,
 		spin_lock_bh(&rds_ibdev->spinlock);
 		list_for_each_entry(ic, &rds_ibdev->conn_list, ib_node) {
 			if (ic->conn->c_laddr == addr) {
-#if RDMA_RDS_APM_SUPPORTED
-				if (rds_ib_apm_enabled) {
-					if (!memcmp(
-						&ic->i_cur_path.p_sgid,
-						&ip_config[to_port].gid,
-						sizeof(union ib_gid))) {
-						continue;
-					}
-				}
-#endif
 				/* if local connection, update the ARP cache */
 				if (ic->conn->c_loopback) {
 					for (i = 1; i <= ip_port_cnt; i++) {
@@ -864,7 +824,7 @@ static int rds_ib_move_ip(char			*from_dev,
 								"conn:%p, tos %d, calling rds_conn_drop\n",
 								ic2->conn,
 								ic2->conn->c_tos);
-							ic2->conn->c_drop_source = 82;
+							ic2->conn->c_drop_source = DR_IB_LOOPBACK_CONN_DROP;
 							rds_conn_drop(ic2->conn);
 						}
 					}
@@ -893,7 +853,7 @@ static int rds_ib_move_ip(char			*from_dev,
 					rds_rtd(RDS_RTD_CM_EXT,
 						"conn: %p, tos %d, calling rds_conn_drop\n",
 						ic->conn, ic->conn->c_tos);
-					ic->conn->c_drop_source = 83;
+					ic->conn->c_drop_source = DR_IB_ACTIVE_BOND_FAILBACK;
 					rds_conn_drop(ic->conn);
 				}
 			}
@@ -2762,9 +2722,6 @@ struct rds_transport rds_ib_transport = {
 	.sync_mr		= rds_ib_sync_mr,
 	.free_mr		= rds_ib_free_mr,
 	.flush_mrs		= rds_ib_flush_mrs,
-#if RDMA_RDS_APM_SUPPORTED
-	.check_migration        = rds_ib_check_migration,
-#endif
 	.t_owner		= THIS_MODULE,
 	.t_name			= "infiniband",
 	.t_type			= RDS_TRANS_IB
