@@ -13,7 +13,7 @@ menuconfig DTRACE
 	select WAITFD
 	select CTF if (!DT_DISABLE_CTF)
 	help
-	  The DTrace dynamic tracing framework.
+	  To be written.
 
 if DTRACE
 
@@ -21,7 +21,7 @@ config DT_CORE
 	tristate "DTrace core"
 	default m
 	help
-	  The core of DTrace: needed for all providers.
+	  To be written.
 
 if DT_CORE
 
@@ -31,22 +31,20 @@ config DT_FASTTRAP
 	depends on ARCH_SUPPORTS_UPROBES
 	select UPROBE_EVENT
 	help
-	  Userspace tracing, providing the kernel support needed for tracing
-	  userspace programs.  Currently, only statically defined probes
-	  (USDT) are supported.
+	  To be written.
 
 config DT_PROFILE
 	tristate "Profile Interrupt Tracing"
 	default m
 	help
-	  The profile and tick providers, firing probes at specific intervals.
+	  To be written.
 
 config DT_SDT
 	tristate "Statically Defined Tracing"
 	default m
 	select KALLSYMS
 	help
-	  Statically defined tracepoints in the kernel.
+	  To be written.
 
 config DT_SDT_PERF
 	bool "DTrace perf-events Probes"
@@ -54,8 +52,7 @@ config DT_SDT_PERF
         depends on DT_SDT
         select TRACEPOINTS
 	help
-	  Provides the perf provider, containing a DTrace probe for each
-	  perf-events tracepoint in the system.
+	  To be written.
 
 config DT_SYSTRACE
 	tristate "System Call Tracing"
@@ -63,20 +60,19 @@ config DT_SYSTRACE
 	select FTRACE
 	select FTRACE_SYSCALLS
 	help
-	  Provides DTrace probes at the entry and exit of all system calls,
-	  in the syscall provider.
+	  To be written.
 
 config DT_DT_TEST
 	tristate "DTrace Test Probe"
 	default m
 	help
-	  A test provider used by the testsuite.
+	  To be written.
 
 config DT_DT_PERF
 	tristate "DTrace Performance Test Probe"
 	default m
 	help
-	  A test provider used for performance testing.
+	  To be written.
 
 config DT_DEBUG
 	bool "DTrace debugging"
