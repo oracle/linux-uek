@@ -750,6 +750,10 @@ int sif_fixup_cqes(struct sif_cq *cq, struct sif_sq *sq, struct sif_qp *qp)
 		struct psif_cq_entry lcqe;
 		uint64_t wr_id_host_order = 0;
 
+		/* TBD - maybe should hide this as a function in sif_r3.c */
+		if ((test_bit(CQ_POLLING_NOT_ALLOWED, &cq_sw->flags)))
+			break;
+
 		cqe = get_cq_entry(cq, seqno);
 		polled_value = get_psif_cq_entry__seq_num(cqe);
 

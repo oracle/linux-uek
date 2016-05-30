@@ -2153,6 +2153,14 @@ int destroy_qp(struct sif_dev *sdev, struct sif_qp *qp)
 		struct sif_cq *recv_cq = rq ? get_sif_cq(sdev, cq_idx) : NULL;
 
 		if (send_cq) {
+			ret = post_process_wa4074(sdev, qp);
+			if (ret) {
+				sif_log(sdev, SIF_INFO,
+					"post_process_wa4074 failed for qp %d send cq %d with error %d",
+					qp->qp_idx, sq->cq_idx, ret);
+				goto fixup_failed;
+			}
+
 			nfixup = sif_fixup_cqes(send_cq, sq, qp);
 			if (nfixup < 0) {
 				sif_log(sdev, SIF_INFO,
