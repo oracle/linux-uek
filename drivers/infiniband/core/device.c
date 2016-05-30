@@ -46,9 +46,9 @@ MODULE_AUTHOR("Roland Dreier");
 MODULE_DESCRIPTION("core kernel InfiniBand API");
 MODULE_LICENSE("Dual BSD/GPL");
 
-int unload_allowed __read_mostly = 1;
+int unload_allowed __initdata = 1;
 
-module_param_named(module_unload_allowed, unload_allowed, int, 0444);
+module_param_named(module_unload_allowed, unload_allowed, int, 0);
 MODULE_PARM_DESC(module_unload_allowed, "Allow this module to be unloaded or not (default 1 for YES)");
 
 struct ib_client_data {

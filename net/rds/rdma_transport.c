@@ -43,9 +43,9 @@
 
 #define RDS_REJ_CONSUMER_DEFINED 28
 
-int unload_allowed __read_mostly;
+int unload_allowed __initdata;
 
-module_param_named(module_unload_allowed, unload_allowed, int, 0444);
+module_param_named(module_unload_allowed, unload_allowed, int, 0);
 MODULE_PARM_DESC(module_unload_allowed, "Allow this module to be unloaded or not (default 0 for NO)");
 
 int rds_rdma_resolve_to_ms[] = {1000, 1000, 2000, 4000, 5000};
