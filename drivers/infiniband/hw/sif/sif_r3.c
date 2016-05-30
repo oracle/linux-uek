@@ -470,6 +470,9 @@ int pre_process_wa4074(struct sif_dev *sdev, struct sif_qp *qp)
 	u16 head;
 	int len;
 
+	if (qp->flags & SIF_QPF_NO_EVICT)
+		return 0; /* do-not-evict QPs don't have any SQs */
+
 	len = outstanding_wqes(sdev, qp, &head);
 	if (len <= 0)
 		return -1;
