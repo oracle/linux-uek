@@ -659,8 +659,15 @@ static void handle_event_work(struct work_struct *work)
 		struct ib_qp *ibqp = ew->ibe.element.qp;
 		struct sif_qp *qp = to_sqp(ibqp);
 
-		/* Avoid MAD layer reporting of fatal error */
-		if ((ibqp->qp_type == IB_QPT_GSI) && (ew->ibe.event == IB_EVENT_COMM_EST))
+		/* IB spec o11-5.1.1 says suppress COMM_EST event for UD & RAW QP types.
+		 * Also, avoid sending COMM_EST to MAD layer (it reports fatal error).
+		 */
+		if ((ew->ibe.event == IB_EVENT_COMM_EST)
+			&& ((ibqp->qp_type == IB_QPT_GSI)
+			|| (ibqp->qp_type == IB_QPT_UD)
+			|| (ibqp->qp_type == IB_QPT_RAW_IPV6)
+			|| (ibqp->qp_type == IB_QPT_RAW_ETHERTYPE)
+			|| (ibqp->qp_type == IB_QPT_RAW_PACKET)))
 			break;
 
 		if (ibqp->event_handler)
