@@ -243,6 +243,39 @@ err_alloc:
 }
 
 
+static int find_recv_cqes_in_cq(struct sif_dev *sdev, struct sif_cq *cq, struct sif_qp *qp)
+{
+	struct sif_cq_sw *cq_sw = get_sif_cq_sw(sdev, cq->index);
+	volatile struct psif_cq_entry *cqe;
+	u32 seqno;
+	u32 polled_value;
+	int n = 0;
+	unsigned long flags = 0;
+
+	spin_lock_irqsave(&cq->lock, flags);
+
+	for (seqno = cq_sw->next_seq;; ++seqno) {
+		cqe = get_cq_entry(cq, seqno);
+		polled_value = get_psif_cq_entry__seq_num(cqe);
+
+		/* More CQEs to check? */
+		if (seqno != polled_value)
+			break;
+
+		/* Look only for this QP */
+		if (get_psif_cq_entry__qp(cqe) != qp->qp_idx)
+			continue;
+
+		/* Receive completion? */
+		if (get_psif_cq_entry__opcode(cqe) & PSIF_WC_OPCODE_RECEIVE_SEND)
+			++n;
+	}
+
+	spin_unlock_irqrestore(&cq->lock, flags);
+
+	return n;
+}
+
 /* Invalidate the RQ cache and flush a desired amount of
  * the remaining entries in the given receive queue.
  * @target_qp indicates the value of the local_qp field in the generated
@@ -385,15 +418,43 @@ flush_rq_again:
 		 */
 		len = atomic_read(&rq_sw->length);
 		if (real_len < len) {
-			int nfixup;
-			u32 cq_idx = get_psif_qp_core__rcv_cq_indx(&target_qp->d.state);
-			struct sif_cq *cq = rq ? get_sif_cq(sdev, cq_idx) : NULL;
+			struct psif_qp lqps;
 
-			nfixup = sif_fixup_cqes(cq, NULL, target_qp);
-			sif_log(sdev, SIF_RQ,
-				"RQ %d: updating calculated entries from %d to %d - %d (%d)",
-				rq->index, real_len, len, nfixup, len - nfixup);
-			real_len = len - nfixup;
+			copy_conv_to_sw(&lqps, &target_qp->d, sizeof(lqps));
+
+			/* from Brian - This is a scenario where the first packet is received,
+			 * the RQ is claimed but the Last packet is not received after the QP
+			 * is in Error. Then, nothing will come up the pipe to complete the
+			 * Received and it will be dangling.
+			 */
+			if ((lqps.state.expected_opcode != NO_OPERATION_IN_PROGRESS) &&
+			    (lqps.state.committed_received_psn + 1 == lqps.state.expected_psn)) {
+				int entries;
+				struct sif_cq *cq = get_sif_cq(sdev, lqps.state.rcv_cq_indx);
+				struct sif_cq_sw *cq_sw;
+				unsigned long timeout;
+
+				if (!cq) {
+					sif_log(sdev, SIF_RQ,
+						"recevied cq is NULL");
+					goto error;
+				}
+				cq_sw = get_sif_cq_sw(sdev, cq->index);
+
+				/* wait for 1 second to ensure that all the completions are back */
+				timeout = jiffies + HZ;
+				do {
+					cpu_relax();
+				} while (time_is_after_jiffies(timeout));
+
+				/* use the software counter (rq_sw->length) */
+				entries = find_recv_cqes_in_cq(sdev, cq, target_qp);
+				len = atomic_read(&rq_sw->length);
+				sif_log(sdev, SIF_RQ,
+					"RQ %d: updating calculated entries from %d to %d - %d (%d)",
+					rq->index, real_len, len, entries, len - entries);
+				real_len = real_len < len ? len - entries : real_len;
+			}
 		}
 		set_bit(FLUSH_RQ_FIRST_TIME, &rq_sw->flags);
 	}
