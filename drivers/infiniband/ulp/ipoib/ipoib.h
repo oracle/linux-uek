@@ -42,6 +42,7 @@
 #include <linux/kref.h>
 #include <linux/if_infiniband.h>
 #include <linux/mutex.h>
+#include <linux/radix-tree.h>
 
 #include <net/neighbour.h>
 #include <net/sch_generic.h>
@@ -51,6 +52,7 @@
 #include <rdma/ib_verbs.h>
 #include <rdma/ib_pack.h>
 #include <rdma/ib_sa.h>
+#include <rdma/ib_cm.h>
 #include <linux/sched.h>
 
 /* constants */
@@ -114,6 +116,8 @@ enum {
 	IPOIB_NON_CHILD		  = 0,
 	IPOIB_LEGACY_CHILD	  = 1,
 	IPOIB_RTNL_CHILD	  = 2,
+
+	ACL_BATCH_SZ		  = 100,
 };
 
 #define	IPOIB_OP_RECV   (1ul << 31)
@@ -124,6 +128,19 @@ enum {
 #endif
 
 #define IPOIB_QPN_MASK ((__force u32) cpu_to_be32(0xFFFFFF))
+
+/* AC ioctl commands */
+#define IPOIBACIOCTLSTART	(SIOCDEVPRIVATE)
+#define IPOIBSTATUSGET		(IPOIBACIOCTLSTART + 0)
+#define IPOIBSTATUSSET		(IPOIBACIOCTLSTART + 1)
+#define IPOIBACLINSTSZ		(IPOIBACIOCTLSTART + 2)
+#define IPOIBACLINSTGET		(IPOIBACIOCTLSTART + 3)
+#define IPOIBACLINSTADD		(IPOIBACIOCTLSTART + 4)
+#define IPOIBACLINSTDEL		(IPOIBACIOCTLSTART + 5)
+#define IPOIBACLSZ		(IPOIBACIOCTLSTART + 6)
+#define IPOIBACLGET		(IPOIBACIOCTLSTART + 7)
+#define IPOIBACLADD		(IPOIBACIOCTLSTART + 8)
+#define IPOIBACLDEL		(IPOIBACIOCTLSTART + 9)
 
 /* structs */
 
@@ -321,6 +338,19 @@ struct ipoib_qp_state_validate {
 	struct ipoib_dev_priv   *priv;
 };
 
+#define DRIVER_ACL_NAME "_main_"
+#define INSTANCE_ACL_ID_SZ 80
+struct ipoib_instance_acl {
+	char			name[INSTANCE_ACL_ID_SZ];
+	struct ib_cm_acl	acl;
+};
+
+struct ipoib_instances_acls {
+	struct radix_tree_root	instances; /* list of ipoib_instance_acl */
+	size_t			list_count;
+	struct mutex		lock;
+};
+
 /*
  * Device private locking: network stack tx_lock protects members used
  * in TX fast path, lock protects everything else.  lock nests inside
@@ -413,6 +443,12 @@ struct ipoib_dev_priv {
 	unsigned max_send_sge;
 	/* Device specific; obtained from query_device */
 	unsigned max_sge;
+	struct ib_cm_acl acl;
+	/* Used to diaplay instance ACLs, no actual use in driver */
+	struct ipoib_instances_acls instances_acls;
+	int arp_blocked;
+	int arp_accepted;
+	int ud_blocked;
 };
 
 struct ipoib_ah {
@@ -457,8 +493,32 @@ struct ipoib_neigh {
 	unsigned long       alive;
 };
 
+/* ACL ioctl API */
+struct ipoib_ioctl_req_data {
+	char	acl_enabled;
+	u32	sz;
+	u32	from_idx;
+	u64	*guids;
+	u64	*subnet_prefixes;
+	u32	*ips;
+	char	*uuids;
+	char	instance_name[INSTANCE_ACL_ID_SZ];
+	char	*instances_names;
+};
+
+struct ipoib_ioctl_req {
+	union {
+		char	frn_name[IFNAMSIZ];
+	} ifr_ifrn;
+
+	struct ipoib_ioctl_req_data *req_data;
+};
+
 #define IPOIB_UD_MTU(ib_mtu)		(ib_mtu - IPOIB_ENCAP_LEN)
 #define IPOIB_UD_BUF_SIZE(ib_mtu)	(ib_mtu + IB_GRH_BYTES)
+
+void print_acl_instances_to_buf(char *buf, size_t sz,
+				struct ipoib_dev_priv *priv);
 
 void ipoib_neigh_dtor(struct ipoib_neigh *neigh);
 static inline void ipoib_neigh_put(struct ipoib_neigh *neigh)
@@ -502,6 +562,7 @@ static inline void ipoib_put_ah(struct ipoib_ah *ah)
 int ipoib_open(struct net_device *dev);
 int ipoib_add_pkey_attr(struct net_device *dev);
 int ipoib_add_umcast_attr(struct net_device *dev);
+int ipoib_do_ioctl(struct net_device *dev, struct ifreq *ifr, int cmd);
 
 void ipoib_send(struct net_device *dev, struct sk_buff *skb,
 		struct ipoib_ah *address, u32 qpn);
@@ -594,6 +655,14 @@ int ipoib_set_dev_features(struct ipoib_dev_priv *priv, struct ib_device *hca);
 
 /* We don't support UC connections at the moment */
 #define IPOIB_CM_SUPPORTED(ha)   (ha[0] & (IPOIB_FLAGS_RC))
+
+int ipoib_create_acl_sysfs(struct net_device *dev);
+void ipoib_init_acl(struct net_device *dev);
+void ipoib_clean_acl(struct net_device *dev);
+int ipoib_create_instance_acl(const char *name, struct net_device *dev);
+int ipoib_delete_instance_acl(const char *name, struct net_device *dev);
+struct ib_cm_acl *ipoib_get_instance_acl(const char *name,
+					 struct net_device *dev);
 
 #ifdef CONFIG_INFINIBAND_IPOIB_CM
 
@@ -776,6 +845,8 @@ static inline void ipoib_unregister_debugfs(void) { }
 	printk(level "%s: " format, ipoib_dev_name(priv), ## arg)
 #define ipoib_warn(priv, format, arg...)		\
 	ipoib_printk(KERN_WARNING, priv, format , ## arg)
+#define ipoib_err(priv, format, arg...)		\
+	ipoib_printk(KERN_ERR, priv, format, ## arg)
 
 #define ipoib_warn_ratelimited(priv, format, arg...) \
 	pr_warn_ratelimited("%s: " format, ipoib_dev_name(priv), ## arg)

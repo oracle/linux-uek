@@ -25,6 +25,13 @@
 #define RDS_PROTOCOL_MINOR(v)	((v) & 255)
 #define RDS_PROTOCOL(maj, min)	(((maj) << 8) | min)
 
+/* Reject reason codes.
+ * 0401 below indicates 4.1 version.
+ * 0020 indicates type of reject.
+ * Reserving earlier ones for version mismatch or other reasons.
+ */
+#define RDS_ACL_FAILURE		0x04010020
+
 /*
  * XXX randomly chosen, but at least seems to be unused:
  * #               18464-18768 Unassigned
@@ -127,6 +134,7 @@ enum {
 #define RDS_RECONNECT_PENDING	1
 #define RDS_IN_XMIT		2
 #define RDS_RECV_REFILL		3
+#define RDS_DESTROY_PENDING	4
 
 #define RDS_RDMA_RESOLVE_TO_MAX_INDEX   5
 #define RDS_ADDR_RES_TM_INDEX_MAX 5
@@ -287,6 +295,11 @@ struct rds_connection {
 	unsigned int		c_route_resolved;
 
 	enum rds_conn_drop_src	c_drop_source;
+	struct list_head	c_laddr_node;
+
+	unsigned char		c_acl_init;
+	unsigned char		c_acl_en;
+	u_int8_t		c_uuid[RDS_UUID_MAXLEN];
 };
 
 static inline
@@ -493,6 +506,7 @@ struct rds_message {
 	u64			m_ack_seq;
 	__be32			m_daddr;
 	unsigned long		m_flags;
+	unsigned int		m_status;
 
 	/* Never access m_rs without holding m_rs_lock.
 	 * Lock nesting is
@@ -560,6 +574,10 @@ struct rds_message {
 			unsigned int		op_dmaoff;
 			struct scatterlist	*op_sg;
 		} data;
+		struct rm_uuid_op {
+			u_int8_t		value[RDS_UUID_MAXLEN];
+			u_int8_t		enable;
+		} uuid;
 	};
 };
 
@@ -717,6 +735,12 @@ struct rds_sock {
 	/* Socket receive path trace points*/
 	u8			rs_rx_traces;
 	u8			rs_rx_trace[RDS_MSG_RX_DGRAM_TRACE_MAX];
+
+	/* UUID specific fields */
+	unsigned char		rs_uuid_en;
+	unsigned int		rs_uuid_drop_cnt;
+	unsigned int		rs_uuid_sent_cnt;
+	unsigned int		rs_uuid_recv_cnt;
 };
 
 static inline struct rds_sock *rds_sk_to_rs(const struct sock *sk)
@@ -835,9 +859,10 @@ struct rds_connection *rds_conn_find(struct net *net, __be32 laddr,
 				     __be32 faddr,
 					struct rds_transport *trans, u8 tos);
 void rds_conn_shutdown(struct rds_connection *conn, int restart);
-void rds_conn_destroy(struct rds_connection *conn);
+void rds_conn_destroy(struct rds_connection *conn, int shutdown);
 void rds_conn_reset(struct rds_connection *conn);
 void rds_conn_drop(struct rds_connection *conn);
+void rds_conn_laddr_list(__be32 laddr, struct list_head *laddr_conns);
 void rds_conn_connect_if_down(struct rds_connection *conn);
 void rds_for_each_conn_info(struct socket *sock, unsigned int len,
 			  struct rds_info_iterator *iter,
@@ -1018,6 +1043,7 @@ extern unsigned long rds_sysctl_trace_flags;
 extern unsigned int  rds_sysctl_trace_level;
 extern unsigned int  rds_sysctl_shutdown_trace_start_time;
 extern unsigned int  rds_sysctl_shutdown_trace_end_time;
+extern unsigned int rds_sysctl_uuid_tx_no_drop;
 
 /* threads.c */
 int rds_threads_init(void);
