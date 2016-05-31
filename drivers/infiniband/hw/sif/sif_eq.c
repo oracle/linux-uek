@@ -230,7 +230,7 @@ static int sif_eq_table_init(struct sif_dev *sdev, struct sif_eps *es, u16 eq_id
 	eqe = (struct psif_eq_entry *)get_eq_entry(eq, 0);
 	set_psif_eq_entry__seq_num(eqe, eq->entries);
 
-	sif_log(sdev, SIF_INFO,
+	sif_log(sdev, SIF_INIT,
 		"Event queue %d: entry cnt %d (min.req.%d), ext sz %d, extent %d, sw_index_interval %d",
 		eq_idx, tp->entry_cnt, min_entries, tp->ext_sz, extent, eq->sw_index_interval);
 	sif_log(sdev, SIF_INIT,	" - table sz 0x%lx %s sif_base 0x%llx",

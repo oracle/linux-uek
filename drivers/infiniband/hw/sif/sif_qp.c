@@ -2469,9 +2469,9 @@ void sif_dfs_print_qp(struct seq_file *s, struct sif_dev *sdev,
 		else
 			seq_puts(s, "\t[GSI_QP_P2]\n");
 	else if (qp->ibqp.qp_type == IB_QPT_XRC_TGT)
-			seq_puts(s, "\t[RECV]\n");
+		seq_puts(s, "\t[RECV]\n");
 	else if (qp->ibqp.qp_type == IB_QPT_XRC_INI)
-			seq_puts(s, "\t[SEND]\n");
+		seq_puts(s, "\t[SEND]\n");
 	else
 		seq_puts(s, "\n");
 }

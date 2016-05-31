@@ -411,21 +411,20 @@ extern ulong sif_trace_mask;
 	do { \
 		sif_log_trace(class, format, ## arg);	\
 		if (unlikely((sif_debug_mask) & (class))) {		\
-			const char *cl = #class;\
 			dev_info(&(sdev)->pdev->dev,	\
-				   "[%d] %5s %s: " format "\n", \
-				   current->pid, &cl[4], __func__,      \
+				   "[%d] " format "\n", \
+				   current->pid, \
 				   ## arg); \
 		} \
 	} while (0)
 
 #define sif_logi(ibdev, class, format, arg...)	\
 	do { \
+		sif_log_trace(class, format, ## arg);	\
 		if (unlikely((sif_debug_mask) & (class))) {		\
-			const char *cl = #class;\
 			dev_info((ibdev)->dma_device,     \
-				   "[%d] %5s %s: " format "\n", \
-				   current->pid, &cl[4], __func__,      \
+				   "[%d] " format "\n", \
+				   current->pid, \
 				   ## arg); \
 		} \
 	} while (0)
@@ -433,8 +432,8 @@ extern ulong sif_trace_mask;
 #define sif_log0(class, format, arg...)	\
 	do { \
 		if (unlikely((sif_debug_mask) & (class)))	\
-			pr_info("pid [%d] %s: " format "\n", \
-				current->pid, __func__,	     \
+			pr_info("sif [%d] " format "\n", \
+				current->pid, \
 				## arg);		     \
 	} while (0)
 

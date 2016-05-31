@@ -151,7 +151,7 @@ static int sif_ki_spqp_init(struct sif_dev *sdev)
 	}
 
 	if (i)
-		sif_log(sdev, SIF_INFO, "Created %d INVALIDATE_KEY stencil QPs", i);
+		sif_log(sdev, SIF_INIT, "Created %d INVALIDATE_KEY stencil QPs", i);
 bm_failed:
 	if (ret)
 		kfree(sdev->ki_spqp.spqp);

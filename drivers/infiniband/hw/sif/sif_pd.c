@@ -204,7 +204,7 @@ static void sif_cb_init(struct sif_dev *sdev)
 		else {
 			sdev->bw_cb_cnt = rsp.data;
 			sdev->lat_cb_cnt = rsp.info;
-			sif_log(sdev, SIF_INFO, "Got %ld bw_cbs and %ld lat_cbs",
+			sif_log(sdev, SIF_INIT, "Got %ld bw_cbs and %ld lat_cbs",
 				sdev->bw_cb_cnt, sdev->lat_cb_cnt);
 		}
 	}

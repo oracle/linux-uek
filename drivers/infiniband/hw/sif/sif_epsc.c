@@ -234,7 +234,7 @@ static int sif_eps_api_version_ok(struct sif_dev *sdev, enum psif_mbox_type eps_
 	struct sif_eps *es = &sdev->es[eps_num];
 
 	/* Validate that we have compatible versions */
-	sif_log(sdev, SIF_INFO, "Connected to SIF version %d.%d,  EPS%s version %d.%d",
+	sif_log(sdev, SIF_INFO_V, "Connected to SIF version %d.%d,  EPS%s API version %d.%d",
 		es->ver.psif_major, es->ver.psif_minor,
 		eps_name(sdev, eps_num),
 		es->ver.epsc_major, es->ver.epsc_minor);
@@ -312,9 +312,9 @@ static int sif_eps_firmware_version_ok(struct sif_dev *sdev, enum psif_mbox_type
 				break;
 		}
 	}
-	sif_log(sdev, SIF_INFO, "EPSC firmware image revision string %s",
+	sif_log(sdev, SIF_INFO_V, "EPSC firmware image revision string %s",
 		es->ver.fw_version[FWV_EPS_REV_STRING]);
-	sif_log(sdev, SIF_INFO, "EPSC firmware version tag:\n%s",
+	sif_log(sdev, SIF_INFO_V, "EPSC firmware version tag:\n%s",
 		es->ver.fw_version[FWV_EPS_GIT_LAST_COMMIT]);
 	if (es->ver.fw_version[FWV_EPS_GIT_STATUS][0] != '\0')
 		sif_log(sdev, SIF_INFO,	" *** epsfw git status at build time: ***\n%s",
@@ -327,7 +327,7 @@ static int sif_eps_firmware_version_ok(struct sif_dev *sdev, enum psif_mbox_type
 	if (vs[0] == 'R' && es->ver.fw_minor == 0)
 		es->ver.fw_minor = 1;
 
-	sif_log(sdev, SIF_INFO, "EPSC interpreted firmware revision: %hu.%hu",
+	sif_log(sdev, SIF_INIT, "EPSC firmware revision: %hu.%hu",
 		es->ver.fw_major, es->ver.fw_minor);
 	return 0;
 }
@@ -832,7 +832,7 @@ eps_reset:
 		es->ver.seq_set_proto = get.x.data;
 
 proto_probing_done:
-	sif_log(sdev, SIF_INFO, "In contact with EPS%s with initial mailbox negotiation protocol v.%d",
+	sif_log(sdev, SIF_INFO_V, "In contact with EPS%s with initial mailbox negotiation protocol v.%d",
 		eps_name(sdev, eps_num), es->ver.seq_set_proto);
 	if (!es->ver.seq_set_proto)
 		sif_log(sdev, SIF_INFO,

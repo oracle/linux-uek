@@ -284,7 +284,7 @@ static int sif_hw_allocate_flush_qp(struct sif_dev *sdev)
 	}
 
 	sdev->flush_qp = qp->qp_idx;
-	sif_log(sdev, SIF_INFO, "Allocated flush-retry qp, index %d", sdev->flush_qp);
+	sif_log(sdev, SIF_QPE, "Allocated flush-retry qp, index %d", sdev->flush_qp);
 
 	return ret;
 
