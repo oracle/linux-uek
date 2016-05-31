@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015 Oracle Corporation
+ * Copyright (C) 2015, 2016 Oracle. All rights reserved.
  */
 
 #ifndef _UAPI_VLDS_H
@@ -97,8 +97,8 @@ typedef struct vlds_set_event_fd_arg {
 } vlds_set_event_fd_arg_t;
 
 typedef struct vlds_get_next_event_arg {
-	u64	vlds_hdlp;	/* Event Service Handle (returned) */
-	u64	vlds_event_typep; /* Reg, Unreg or Data event? (returned) */
+	u64	vlds_hdlp;	/* Reg/Unreg/Data Service Handle (returned) */
+	u64	vlds_event_typep; /* Event type (returned) */
 	u64	neg_versp;	/* reg event negotiated version (returned) */
 	u64	vlds_bufp;	/* data event msg buffer (returned) */
 	u64	vlds_buflen;	/* data event msg buffer size */
@@ -108,6 +108,7 @@ typedef struct vlds_get_next_event_arg {
 #define	VLDS_EVENT_TYPE_REG			0x0
 #define	VLDS_EVENT_TYPE_UNREG			0x1
 #define	VLDS_EVENT_TYPE_DATA			0x2
+#define	VLDS_EVENT_TYPE_DEVICE_UPDATE		0x3
 
 #define VLDS_IOCTL_BASE		'D'
 

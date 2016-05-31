@@ -119,6 +119,9 @@
 typedef unsigned long elf_greg_t;
 #define ELF_NGREG 36
 typedef elf_greg_t elf_gregset_t[ELF_NGREG];
+extern void sparc64_elf_core_copy_regs(elf_gregset_t dst, struct pt_regs *regs);
+#define ELF_CORE_COPY_REGS(DEST, REGS)			\
+	sparc64_elf_core_copy_regs((DEST), (REGS));
 
 typedef struct {
 	unsigned long	pr_regs[32];

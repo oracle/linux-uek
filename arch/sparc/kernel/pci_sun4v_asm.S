@@ -378,3 +378,15 @@ ENTRY(pci_sun4v_msg_setvalid)
 	 mov	%o0, %o0
 ENDPROC(pci_sun4v_msg_setvalid)
 
+	/* %o0: devhandle
+	 * %o1:	pci_device
+	 * %o2:	ready_flag
+	 *
+	 * returns %o0:	status
+	 */
+ENTRY(pci_sun4v_iov_dev_ready)
+	mov	HV_FAST_PCI_IOV_DEV_READY, %o5
+	ta	HV_FAST_TRAP
+	retl
+	 mov	%o0, %o0
+ENDPROC(pci_sun4v_iov_dev_ready)

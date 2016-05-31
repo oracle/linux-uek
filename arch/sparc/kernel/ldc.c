@@ -1394,6 +1394,16 @@ int ldc_bind(struct ldc_channel *lp)
 
 	lp->tx_acked = lp->tx_head;
 
+	hv_err = sun4v_ldc_rx_get_state(lp->id,
+					&lp->rx_head,
+					&lp->rx_tail,
+					&lp->chan_state);
+	if (hv_err)
+		goto out_unmap_rx;
+
+	ldc_rx_reset(lp);
+	lp->rx_head = lp->rx_tail;
+
 	lp->hs_state = LDC_HS_OPEN;
 	ldc_set_state(lp, LDC_STATE_BOUND);
 

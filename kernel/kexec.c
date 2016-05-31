@@ -639,7 +639,7 @@ static int kimage_is_destination_range(struct kimage *image,
 	return 0;
 }
 
-static struct page *kimage_alloc_pages(gfp_t gfp_mask, unsigned int order)
+struct page *kimage_alloc_pages(gfp_t gfp_mask, unsigned int order)
 {
 	struct page *pages;
 
@@ -1064,12 +1064,21 @@ static struct page *kimage_alloc_page(struct kimage *image,
 	return page;
 }
 
+int __weak kimage_arch_load_normal_segment(struct kimage *image,
+			struct kexec_segment *segment,
+			int *arch_status,
+			int (*add_phys_addr)(struct kimage *image,
+					     unsigned long page))
+{
+	return -ENOENT;
+}
+
 static int kimage_load_normal_segment(struct kimage *image,
 					 struct kexec_segment *segment)
 {
 	unsigned long maddr;
 	size_t ubytes, mbytes;
-	int result;
+	int result, arch_status;
 	unsigned char __user *buf = NULL;
 	unsigned char *kbuf = NULL;
 
@@ -1085,6 +1094,14 @@ static int kimage_load_normal_segment(struct kimage *image,
 	result = kimage_set_destination(image, maddr);
 	if (result < 0)
 		goto out;
+
+	/* Should the arch handle this segment load, then use the arch status.*/
+	result = kimage_arch_load_normal_segment(image, segment, &arch_status,
+			kimage_add_page);
+	if (!result) {
+		result = arch_status;
+		goto out;
+	}
 
 	while (mbytes) {
 		struct page *page;

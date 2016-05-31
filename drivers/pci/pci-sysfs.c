@@ -1369,6 +1369,14 @@ error:
 	return retval;
 }
 
+void __weak pcibios_create_sysfs_dev_files(struct pci_dev *dev)
+{
+}
+
+void __weak pcibios_remove_sysfs_dev_files(struct pci_dev *dev)
+{
+}
+
 int __must_check pci_create_sysfs_dev_files(struct pci_dev *pdev)
 {
 	int retval;
@@ -1421,6 +1429,8 @@ int __must_check pci_create_sysfs_dev_files(struct pci_dev *pdev)
 		goto err_rom_file;
 
 	pci_create_firmware_label_files(pdev);
+
+	pcibios_create_sysfs_dev_files(pdev);
 
 	return 0;
 
@@ -1489,6 +1499,7 @@ void pci_remove_sysfs_dev_files(struct pci_dev *pdev)
 
 	pci_remove_firmware_label_files(pdev);
 
+	pcibios_remove_sysfs_dev_files(pdev);
 }
 
 static int __init pci_sysfs_init(void)

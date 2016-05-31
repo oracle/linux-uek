@@ -1054,6 +1054,31 @@ static int __init pcibios_init(void)
 }
 subsys_initcall(pcibios_init);
 
+void pcibios_create_sysfs_dev_files(struct pci_dev *dev)
+{
+	int err;
+	struct pci_pbm_info *pbm;
+
+	pbm = dev->bus->sysdata;
+	if (!pbm || !pbm->sysfs_dev_attr_group)
+		return;
+
+	err = sysfs_create_group(&dev->dev.kobj, pbm->sysfs_dev_attr_group);
+	if (err)
+		pr_err("Failed to create sysfs entries, err=%d\n", err);
+}
+
+void pcibios_remove_sysfs_dev_files(struct pci_dev *dev)
+{
+	struct pci_pbm_info *pbm;
+
+	pbm = dev->bus->sysdata;
+	if (!pbm || !pbm->sysfs_dev_attr_group)
+		return;
+
+	sysfs_remove_group(&dev->dev.kobj, pbm->sysfs_dev_attr_group);
+}
+
 #ifdef CONFIG_SYSFS
 
 #define SLOT_NAME_SIZE  11  /* Max decimal digits + null in u32 */

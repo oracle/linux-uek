@@ -811,6 +811,10 @@ unsigned long sun4v_mmu_map_perm_addr(unsigned long vaddr,
  * to be kept consistent.
  */
 #define HV_FAST_MMU_UNMAP_PERM_ADDR	0x28
+#ifndef __ASSEMBLY__
+extern unsigned long sun4v_mmu_unmap_perm_addr(unsigned long vaddr,
+			unsigned long nucleus, unsigned long flags);
+#endif
 
 /* mmu_tsb_ctx0_info()
  * TRAP:	HV_FAST_TRAP
@@ -2334,6 +2338,29 @@ unsigned long sun4v_vintr_set_target(unsigned long dev_handle,
  * devhandle and msgtype.
  */
 #define HV_FAST_PCI_MSG_SETVALID	0xd3
+
+/* pci_iov_dev_ready()
+ * TRAP:	HV_FAST_TRAP
+ * FUNCTION:	HV_FAST_PCI_IOV_DEV_READY
+ * ARG0:	devhandle
+ * ARG1:	pci_device
+ * ARG2:	ready_flag
+ * RET0:	status
+ * ERRORS:	EINVAL		Invalid devhandle or pci_device or ready_flag
+ *		ENOACCESS	No access, the caller does not own this root
+ *				complex or device
+ *
+ * Indicate that the PCI device pci_device in the root complex specified
+ * by devhandle is ready or no longer ready to be shared with other domains.
+ * Making an endpoint ready, makes the endpoint and all nodes between it and
+ * the root complex ready.
+ *
+ * Valid values for ready_flag:
+ *	0	Not ready
+ *	1	Ready
+ *	2	Disabled
+ */
+#define HV_FAST_PCI_IOV_DEV_READY	0xf7
 
 /* Logical Domain Channel services.  */
 

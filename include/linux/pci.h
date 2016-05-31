@@ -1669,6 +1669,8 @@ int pcibios_set_pcie_reset_state(struct pci_dev *dev,
 				 enum pcie_reset_state state);
 int pcibios_add_device(struct pci_dev *dev);
 void pcibios_release_device(struct pci_dev *dev);
+void pcibios_create_sysfs_dev_files(struct pci_dev *dev);
+void pcibios_remove_sysfs_dev_files(struct pci_dev *dev);
 void pcibios_penalize_isa_irq(int irq, int active);
 
 #ifdef CONFIG_HIBERNATE_CALLBACKS

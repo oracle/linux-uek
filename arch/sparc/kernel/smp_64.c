@@ -357,7 +357,9 @@ static int smp_boot_one_cpu(unsigned int cpu, struct task_struct *idle)
 
 	if (tlb_type == hypervisor) {
 #if defined(CONFIG_SUN_LDOMS) && defined(CONFIG_HOTPLUG_CPU)
-		if (ldom_domaining_enabled)
+		unsigned long hverror = sun4v_cpu_state(cpu);
+
+		if (ldom_domaining_enabled || (hverror == HV_CPU_STATE_STOPPED))
 			ldom_startcpu_cpuid(cpu,
 					    (unsigned long) cpu_new_thread,
 					    &descr);
@@ -821,10 +823,14 @@ void arch_send_call_function_single_ipi(int cpu)
 
 void __irq_entry smp_call_function_client(int irq, struct pt_regs *regs)
 {
+	struct pt_regs *old_regs;
+
 	clear_softint(1 << irq);
+	old_regs = set_irq_regs(regs);
 	irq_enter();
 	generic_smp_call_function_interrupt();
 	irq_exit();
+	set_irq_regs(old_regs);
 }
 
 void __irq_entry smp_call_function_single_client(int irq, struct pt_regs *regs)
