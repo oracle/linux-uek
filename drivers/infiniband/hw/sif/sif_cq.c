@@ -385,7 +385,7 @@ static int handle_send_wc(struct sif_dev *sdev, struct sif_cq *cq,
 {
 	/* send queue descriptor aligned with qp */
 	struct sif_sq *sq = get_sif_sq(sdev, cqe->qp);
-	struct sif_sq_sw *sq_sw = sq ? get_sif_sq_sw(sdev, cqe->qp): NULL;
+	struct sif_sq_sw *sq_sw = sq ? get_sif_sq_sw(sdev, cqe->qp) : NULL;
 	int ret;
 
 	/* This is a full 32 bit seq.num */

@@ -17,7 +17,7 @@
 struct sif_dev;
 
 int sif_elog_init(struct sif_dev *sdev, enum psif_mbox_type eps_num);
-int sif_elog_deinit(struct sif_dev *sdev, enum psif_mbox_type eps_num);
+void sif_elog_deinit(struct sif_dev *sdev, enum psif_mbox_type eps_num);
 
 void sif_elog_intr(struct sif_dev *sdev, enum psif_mbox_type eps_num);
 

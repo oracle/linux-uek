@@ -616,9 +616,10 @@ int post_process_wa4074(struct sif_dev *sdev, struct sif_qp *qp)
 		if (last_seq != fence_seq) {
 			sif_log(sdev, SIF_INFO, "last seq (%x) is different than fenced completion (%x)!",
 				last_seq, fence_seq);
-			/* As the Fenced completion cannot be guaranteed to be the last, software still needs to
-			 * walk and update the CQ to avoid unexpected completion/duplicated completion
-			 * even thought the last completion is the CQ is not generated fenced completion.
+			/* As the Fenced completion cannot be guaranteed to be the last, software
+			 * still needs to walk and update the CQ to avoid unexpected
+			 * completion/duplicated completion even thought the last completion is
+			 * the CQ is not generated fenced completion.
 			 */
 		}
 

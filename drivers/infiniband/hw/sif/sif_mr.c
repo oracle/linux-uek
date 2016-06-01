@@ -413,26 +413,6 @@ int sif_dereg_mr(struct ib_mr *ibmr)
 	return 0;
 }
 
-struct ib_mr *sif_alloc_fast_reg_mr(struct ib_pd *ibpd, int max_page_list_len)
-{
-	sif_logi(ibpd->device, SIF_FMR, "Not implemented");
-	return ERR_PTR(-EOPNOTSUPP);
-}
-
-struct ib_fast_reg_page_list *sif_alloc_fast_reg_page_list(struct ib_device
-							   *ibdev,
-							   int page_list_len)
-{
-	sif_logi(ibdev, SIF_FMR, "Not implemented");
-	return ERR_PTR(-EOPNOTSUPP);
-}
-
-void sif_free_fast_reg_page_list(struct ib_fast_reg_page_list *pl)
-{
-	sif_logi(pl->device, SIF_FMR, "Not implemented");
-}
-
-
 /* Line printer for debugfs file */
 void sif_dfs_print_key(struct seq_file *s, struct sif_dev *sdev, loff_t pos)
 {

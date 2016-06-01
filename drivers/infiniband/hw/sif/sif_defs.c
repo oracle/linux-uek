@@ -73,7 +73,6 @@ enum psif_wr_type ib2sif_wr_op(enum ib_wr_opcode op, bool is_dr)
 	case IB_WR_SEND_WITH_INV:
 	case IB_WR_RDMA_READ_WITH_INV:
 	case IB_WR_LOCAL_INV:
-	case IB_WR_FAST_REG_MR:
 	default:
 		break;
 	}

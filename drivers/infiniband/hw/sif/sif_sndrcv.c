@@ -1034,6 +1034,7 @@ static int prep_send_lso(struct sif_qp *qp, struct ib_send_wr *wr, struct psif_c
 	struct psif_sq_entry *sqe;
 	struct psif_rq_scatter *sge;
 	const int stencil_sge = 1;
+	int ud_hlen;
 
 	sq = get_sif_sq(sdev, qp->qp_idx);
 	sqe = get_sq_entry(sq, sqe_seq);
@@ -1046,6 +1047,7 @@ static int prep_send_lso(struct sif_qp *qp, struct ib_send_wr *wr, struct psif_c
 		return -EINVAL;
 	}
 
+	ud_hlen = wr->wr.ud.hlen;
 	wqe->wr.details.send.ud.mss = wr->wr.ud.mss;
 
 	la->addr   = get_sqe_dma(sq, sqe_seq) + sq->sgl_offset;
@@ -1054,12 +1056,12 @@ static int prep_send_lso(struct sif_qp *qp, struct ib_send_wr *wr, struct psif_c
 
 	/* copy stencil to payload-area in send_queue */
 	p8 = (u8 *)wr->wr.ud.header;
-	memcpy((u8 *)sqe->payload, p8, wr->wr.ud.hlen);
+	memcpy((u8 *)sqe->payload, p8, ud_hlen);
 
 	sge[0].base_addr = get_sqe_dma(sq, sqe_seq)
 		+ offsetof(struct psif_sq_entry, payload) + mr_uv2dma(sdev, la->lkey);
 	sge[0].lkey = sq->sg_mr->index;
-	sge[0].length = wr->wr.ud.hlen;
+	sge[0].length = ud_hlen;
 	la->length += sge[0].length;
 
 	sif_log(sdev, SIF_SND,

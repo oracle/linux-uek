@@ -543,12 +543,6 @@ pfail_ioremap2:
 pfail_bar2:
 	iounmap(sdev->cb_base);
 pfail_ioremap0:
-#ifdef CONFIG_X86
-	if (sdev->cbu_mtrr >= 0)
-		mtrr_del(sdev->cbu_mtrr,
-			pci_resource_start(pdev, SIF_CBU_BAR),
-			pci_resource_len(pdev, SIF_CBU_BAR));
-#endif
 	pci_release_region(pdev, SIF_MSIX_BAR);
 pfail_bar0:
 	return err;
@@ -563,12 +557,6 @@ static void sif_bar_deinit(struct pci_dev *pdev)
 	iounmap(sdev->msi_base);
 	pci_release_region(pdev, 2);
 	iounmap(sdev->cb_base);
-#ifdef CONFIG_X86
-	if (sdev->cbu_mtrr >= 0)
-		mtrr_del(sdev->cbu_mtrr,
-			pci_resource_start(pdev, SIF_CBU_BAR),
-			pci_resource_len(pdev, SIF_CBU_BAR));
-#endif
 	pci_release_region(pdev, 0);
 }
 

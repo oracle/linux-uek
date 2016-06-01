@@ -523,7 +523,7 @@ static int sif_create_pma_qp(struct ib_pd *ibpd,
 	qp->ibqp.device = &sdev->ib_dev;
 	qp->ibqp.real_qp = &qp->ibqp;
 	qp->ibqp.uobject = NULL;
-        qp->ibqp.qp_type = IB_QPT_GSI;
+	qp->ibqp.qp_type = IB_QPT_GSI;
 	atomic_set(&qp->ibqp.usecnt, 0);
 	qp->ibqp.event_handler = init_attr->event_handler;
 	qp->ibqp.qp_context = init_attr->qp_context;
@@ -953,7 +953,7 @@ int modify_qp(struct sif_dev *sdev, struct sif_qp *qp,
 		switch (cmd.flush) {
 		case FLUSH_RQ:
 			if (unlikely(!rq)) {
-				ret =-EINVAL;
+				ret = -EINVAL;
 				sif_log(sdev, SIF_INFO,
 					"flush requested for qp(type %s) with no rq defined",
 					string_enum_psif_qp_trans(qp->type));
@@ -965,7 +965,7 @@ int modify_qp(struct sif_dev *sdev, struct sif_qp *qp,
 			return ret;
 		case FLUSH_SQ:
 			if (unlikely(!sq)) {
-				ret =-EINVAL;
+				ret = -EINVAL;
 				sif_log(sdev, SIF_INFO,
 					"flush requested for qp(type %s) with no sq defined",
 					string_enum_psif_qp_trans(qp->type));
