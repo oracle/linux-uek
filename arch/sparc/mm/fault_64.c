@@ -23,6 +23,7 @@
 #include <linux/percpu.h>
 #include <linux/context_tracking.h>
 #include <linux/dtrace_os.h>
+#include <linux/hugetlb.h>
 
 #include <asm/page.h>
 #include <asm/pgtable.h>
