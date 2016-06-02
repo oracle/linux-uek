@@ -2,7 +2,7 @@
  * ds.c: Sun4v LDOMs Domain Services Driver
  *
  * Copyright (C) 2007, 2008 David S. Miller <davem@davemloft.net>
- * Copyright (C) 2015 Oracle. All rights reserved.
+ * Copyright (C) 2015, 2016 Oracle. All rights reserved.
  */
 #include <linux/ds.h>
 #include <linux/ioctl.h>
@@ -899,6 +899,7 @@ struct ds_callout_data_entry {
 struct ds_callout_reg_entry {
 	struct ds_callout_entry_hdr	hdr;
 	u64				hdl;
+	ds_ver_t			neg_vers;
 };
 
 static struct ds_service_info *ds_callout_data_get_service(
@@ -1116,7 +1117,7 @@ static void ds_do_callout_processing(void)
 			reg_cb = svc_info->ops.ds_reg_cb;
 			unreg_cb = svc_info->ops.ds_unreg_cb;
 			cb_arg = svc_info->ops.cb_arg;
-			neg_vers = svc_info->neg_vers;
+			neg_vers = rentry->neg_vers;
 
 			UNLOCK_DS_DEV(ds, ds_flags)
 
@@ -1174,7 +1175,8 @@ static int ds_callout_thread(void *__unused)
 	return 0;
 }
 
-static int ds_submit_reg_cb(struct ds_dev *ds, u64 hdl, u8 type)
+static int ds_submit_reg_cb(struct ds_dev *ds, u64 hdl, ds_ver_t *neg_vers,
+			    u8 type)
 {
 	struct ds_callout_reg_entry *rentry;
 	gfp_t alloc_flags;
@@ -1192,6 +1194,8 @@ static int ds_submit_reg_cb(struct ds_dev *ds, u64 hdl, u8 type)
 	rentry->hdr.type = type;
 	rentry->hdr.ds = ds;
 	rentry->hdl = hdl;
+	if (neg_vers)
+		rentry->neg_vers = *neg_vers;
 
 	list_add_tail(&rentry->hdr.list, &ds->callout_list);
 	ds->co_ref_cnt++;
@@ -2292,7 +2296,8 @@ static void ds_connect_service_client(struct ds_dev *ds, u64 handle,
 	client_svc_info->is_connected = true;
 
 	/* submit the register callback */
-	(void) ds_submit_reg_cb(ds, client_svc_info->handle, DS_QTYPE_REG);
+	(void) ds_submit_reg_cb(ds, client_svc_info->handle,
+				&client_svc_info->neg_vers, DS_QTYPE_REG);
 }
 
 static void ds_disconnect_service_client(struct ds_dev *ds,
@@ -2324,7 +2329,8 @@ static void ds_disconnect_service_client(struct ds_dev *ds,
 	client_svc_info->svc_reg_timeout = ds_get_service_timeout();
 
 	/* submit the unregister callback */
-	(void) ds_submit_reg_cb(ds, client_svc_info->handle, DS_QTYPE_UNREG);
+	(void) ds_submit_reg_cb(ds, client_svc_info->handle, NULL,
+				DS_QTYPE_UNREG);
 
 	/* if it was a loopback connection, disconnect the peer */
 	if (peer_svc_info)
@@ -2345,8 +2351,8 @@ static void ds_connect_service_provider(struct ds_dev *ds, u64 handle,
 	provider_svc_info->is_connected = true;
 
 	/* submit the register callback */
-	(void) ds_submit_reg_cb(ds, provider_svc_info->handle, DS_QTYPE_REG);
-
+	(void) ds_submit_reg_cb(ds, provider_svc_info->handle,
+				&provider_svc_info->neg_vers, DS_QTYPE_REG);
 }
 
 static void ds_disconnect_service_provider(struct ds_dev *ds,
@@ -2378,7 +2384,8 @@ static void ds_disconnect_service_provider(struct ds_dev *ds,
 	provider_svc_info->svc_reg_timeout = ds_get_service_timeout();
 
 	/* submit the unregister callback */
-	(void) ds_submit_reg_cb(ds, provider_svc_info->handle, DS_QTYPE_UNREG);
+	(void) ds_submit_reg_cb(ds, provider_svc_info->handle, NULL,
+				DS_QTYPE_UNREG);
 
 	/* if it was a loopback connection, disconnect the peer */
 	if (peer_svc_info)
@@ -2420,8 +2427,10 @@ static int ds_connect_loopback_service(struct ds_dev *ds,
 	peer_svc_info->is_connected = true;
 
 	/* submit the register callbacks */
-	(void) ds_submit_reg_cb(ds, svc_info->handle, DS_QTYPE_REG);
-	(void) ds_submit_reg_cb(ds, peer_svc_info->handle, DS_QTYPE_REG);
+	(void) ds_submit_reg_cb(ds, svc_info->handle,
+				&svc_info->neg_vers, DS_QTYPE_REG);
+	(void) ds_submit_reg_cb(ds, peer_svc_info->handle,
+				&peer_svc_info->neg_vers, DS_QTYPE_REG);
 
 	return 0;
 }
@@ -4536,7 +4545,7 @@ static int __init ds_init(void)
 {
 	unsigned long hv_ret, major, minor;
 	struct task_struct *callout_task;
-	int		err;
+	int err;
 
 	/* set the default ldoms debug level */
 	dsdbg_level = ldoms_debug_level;
