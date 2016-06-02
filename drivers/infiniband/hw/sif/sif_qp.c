@@ -171,6 +171,14 @@ struct sif_qp *create_qp(struct sif_dev *sdev,
 	u32 max_sge;
 	int min_tso_inline;
 
+	/* In limited mode QPs are not usable and possibly hazardous as nothing is set up
+	 * avoid any creation of any such:
+	 */
+	if (unlikely(sdev->limited_mode)) {
+		sif_log(sdev, SIF_INFO, "limited mode does not support QP creation!");
+		return ERR_PTR(-ENODEV);
+	}
+
 	if (init_attr->send_cq)
 		send_cq = to_scq(init_attr->send_cq);
 	if (init_attr->recv_cq)

@@ -36,6 +36,9 @@ int sif_r3_init(struct sif_dev *sdev)
 	int ret;
 	bool dne_qp_alloc = false;
 
+	if (sdev->limited_mode)
+		return 0;
+
 	if (eps_fw_version_lt(&sdev->es[sdev->mbox_epsc], 0, 58)) {
 		ret = sif_hw_allocate_dne_qp(sdev);
 		if (ret)
