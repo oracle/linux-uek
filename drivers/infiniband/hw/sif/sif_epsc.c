@@ -1071,15 +1071,17 @@ static inline int __eps_process_cqe(struct sif_dev *sdev, enum psif_mbox_type ep
 		es->first_seq = (es->first_seq + 1) & ~CSR_ONLINE_MASK;
 		ret++;
 	}
-	if (ret < 0)
+	if (ret < 0) {
 		sif_log(sdev, SIF_INFO, "failed with status %d", ret);
-	else if (ret > 0) {
+		return ret;
+	}
+
+	if (ret > 0) {
 		sif_log(sdev, SIF_EPS,
 			"processed %d (%d with resp) requests - first_seq 0x%x, oustanding %d",
 			ret, rsp_cnt, es->first_seq, atomic_read(&es->cur_reqs));
 		mb();
 	}
-
 	__sif_eps_send_keep_alive(sdev, eps_num, false);
 
 	return ret;
@@ -1137,7 +1139,8 @@ static int __sif_post_eps_wr(struct sif_dev *sdev, enum psif_mbox_type eps_num,
 	int ret = 0;
 	bool waiting = false;
 
-	es->timeout = jiffies + timeout;
+	if (unlikely(lreq->opcode != EPSC_KEEP_ALIVE))
+		es->timeout = jiffies + timeout;
 restart:
 
 	if (atomic_read(&es->cur_reqs)) {
@@ -1279,7 +1282,6 @@ int sif_eps_poll_cqe(struct sif_dev *sdev, enum psif_mbox_type eps_num,
 	ulong timeout = sdev->min_resp_ticks * 8;
 	int npolled = 0;
 
-	es->timeout = jiffies + timeout;
 	while (seq_num != get_eps_mailbox_seq_num(lcqe->rsp)) {
 		ret = eps_process_cqe(sdev, eps_num);
 		if (ret < 0)
