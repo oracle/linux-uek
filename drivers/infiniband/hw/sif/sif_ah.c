@@ -154,13 +154,13 @@ void sif_dfs_print_ah(struct seq_file *s, struct sif_dev *sdev,
 		loff_t pos)
 {
 	if (unlikely(pos < 0))
-		seq_puts(s, "# Index  Port    PD Rem.lid\n");
+		seq_puts(s, "# Index  Port    PD Rem.lid  IPD\n");
 	else {
 		struct psif_ah *ah_p = get_ah(sdev, pos);
 		struct psif_ah lah;
 
 		copy_conv_to_sw(&lah, ah_p, sizeof(struct psif_ah));
-		seq_printf(s, "%7lld %5d %5d %7d\n",
-			pos, lah.port + 1, lah.pd, lah.remote_lid);
+		seq_printf(s, "%7lld %5d %5d %7d%5d\n",
+			pos, lah.port + 1, lah.pd, lah.remote_lid, lah.ipd);
 	}
 }

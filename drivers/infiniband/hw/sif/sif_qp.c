@@ -2393,6 +2393,8 @@ void sif_dfs_print_qp(struct seq_file *s, struct sif_dev *sdev,
 		loff_t pos)
 {
 	struct sif_qp *qp;
+	struct sif_sq *sq;
+	struct sif_rq *rq;
 	volatile struct psif_qp *qps;
 	struct psif_qp lqps;
 
@@ -2408,17 +2410,26 @@ void sif_dfs_print_qp(struct seq_file *s, struct sif_dev *sdev,
 	if (pos <= 3 && atomic_read(&sdev->sqp_usecnt[pos]) != 1)
 		return;
 
+	sq = get_sq(sdev, qp);
+	rq = get_rq(sdev, qp);
+
 	seq_printf(s, "%llu\t%d\t", pos,	qp->last_set_state);
 
-	if (qp->rq_idx == -1)
+	if (!rq)
 		seq_puts(s, "[none]");
 	else
 		seq_printf(s, "%u", lqps.state.rcv_cq_indx);
 
-	seq_printf(s, "\t%u\t", lqps.state.send_cq_indx);
-
-	if (qp->rq_idx == -1)
+	if (!sq)
 		seq_puts(s, "[none]");
+	else
+		seq_printf(s, "\t%u\t", lqps.state.send_cq_indx);
+
+	if (!rq)
+		if (!sq)
+			seq_puts(s, "\t[none]");
+		else
+			seq_puts(s, "[none]");
 	else
 		seq_printf(s, "%u", lqps.state.rq_indx);
 
@@ -2457,6 +2468,10 @@ void sif_dfs_print_qp(struct seq_file *s, struct sif_dev *sdev,
 			seq_puts(s, "\t[GSI_QP_P1]\n");
 		else
 			seq_puts(s, "\t[GSI_QP_P2]\n");
+	else if (qp->ibqp.qp_type == IB_QPT_XRC_TGT)
+			seq_puts(s, "\t[RECV]\n");
+	else if (qp->ibqp.qp_type == IB_QPT_XRC_INI)
+			seq_puts(s, "\t[SEND]\n");
 	else
 		seq_puts(s, "\n");
 }
