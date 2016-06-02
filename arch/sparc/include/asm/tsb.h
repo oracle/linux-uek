@@ -199,23 +199,16 @@ extern struct tsb_phys_patch_entry __tsb_phys_patch, __tsb_phys_patch_end;
 	 * if it is a HUGE PMD or a normal one.  If it is not valid
 	 * then jump to FAIL_LABEL.  If it is a HUGE PMD, and it
 	 * translates to a valid PTE, branch to PTE_LABEL.
-	 *
-	 * We have to propagate the 4MB bit of the virtual address
-	 * because we are fabricating 8MB pages using 4MB hw pages.
 	 */
 #if defined(CONFIG_HUGETLB_PAGE) || defined(CONFIG_TRANSPARENT_HUGEPAGE)
 #define USER_PGTABLE_CHECK_PMD_HUGE(VADDR, REG1, REG2, FAIL_LABEL, PTE_LABEL) \
 	brz,pn		REG1, FAIL_LABEL;		\
 	 sethi		%uhi(_PAGE_PMD_HUGE), REG2;	\
 	sllx		REG2, 32, REG2;			\
-	andcc		REG1, REG2, %g0;		\
 	be,pt		%xcc, 700f;			\
-	 sethi		%hi(4 * 1024 * 1024), REG2;	\
-	brgez,pn	REG1, FAIL_LABEL;		\
-	 andn		REG1, REG2, REG1;		\
-	and		VADDR, REG2, REG2;		\
+	 andcc		REG1, REG2, %g0;		\
 	brlz,pt		REG1, PTE_LABEL;		\
-	 or		REG1, REG2, REG1;		\
+	 andn		REG1, REG2, REG1;		\
 700:
 #else
 #define USER_PGTABLE_CHECK_PMD_HUGE(VADDR, REG1, REG2, FAIL_LABEL, PTE_LABEL) \

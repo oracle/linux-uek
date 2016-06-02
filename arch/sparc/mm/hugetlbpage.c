@@ -173,7 +173,7 @@ pte_t *huge_pte_alloc(struct mm_struct *mm, unsigned long addr,
 
 		if (!pmd)
 			goto fail;
-		if (size == HPAGE_SIZE) {
+		if (size != (1UL << XLHPAGE_16GB_SHIFT)) {
 			rpte = (pte_t *)pmd;
 			break;
 		}
@@ -275,6 +275,7 @@ static pte_t hugepage_shift_to_tte(pte_t entry, unsigned int hugepage_shift)
 	/* 2Gb */
 	case XLHPAGE_2GB_SHIFT:
 		sun4v_hugepage_size = _PAGE_SZ2GB_4V;
+		pte_val(entry) |= _PAGE_PMD_HUGE;
 		break;
 	/* 8Mb */
 	case HPAGE_SHIFT:
@@ -312,9 +313,11 @@ static void huge_pte_at_flush_update(struct mm_struct *mm, unsigned long addr,
 
 static void form_sentinel(pte_t *sentinel_pte, pte_t entry, pte_t *pte)
 {
-	pte_t sentinel = __pte(_PAGE_VALID | _PAGE_E_4V |
-		(pte_val(entry) & _PAGE_SZALL_4V) | __pa(pte));
+	pte_t sentinel = __pte(_PAGE_VALID | _PAGE_SPECIAL_4V |
+		_PAGE_PMD_HUGE | (pte_val(entry) & _PAGE_SZALL_4V) |
+		__pa(pte));
 
+	BUG_ON(__pa(pte) & _PAGE_SZALL_4V);
 	*sentinel_pte = sentinel;
 }
 
@@ -327,7 +330,7 @@ static bool huge_pte_at_handle_sentinel(pte_t *sentinel_pte, pte_t *pte,
 	 * only update the sentinel.
 	 */
 	if (pte_val(orig) & _PAGE_VALID) {
-		if ((pte_val(orig) & _PAGE_E_4V) == 0UL)
+		if ((pte_val(orig) & _PAGE_SPECIAL_4V) == 0UL)
 			*pte = entry;
 		rc = false;
 	} else if (pte_val(*sentinel_pte) & _PAGE_VALID) {
@@ -578,7 +581,7 @@ pte_t *huge_pte_offset(struct mm_struct *mm, unsigned long addr)
 		pud = pud_offset(pgd, addr);
 		if (!pud_none(*pud)) {
 			pmd = pmd_offset(pud, addr);
-			if (xl_hugepage_shift == HPAGE_SHIFT)
+			if (xl_hugepage_shift != XLHPAGE_16GB_SHIFT)
 				pte = (pte_t *)pmd;
 			else if (!pmd_none(*pmd))
 				pte = pte_offset_map(pmd, addr);

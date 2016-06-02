@@ -156,6 +156,15 @@ tsb_miss_page_table_walk_sun4v_fastpath:
 	bne,pt		%xcc, 60f
 	 nop
 
+	/* It is the default huge page (8M). We have to propagate
+	 * the 4MB bit of the virtual address because we are
+	 * fabricating 8MB pages using 4MB hw pages.
+	 */
+	sethi		%hi(4 * 1024 * 1024), %g2
+	andn		%g5, %g2, %g5
+	and		%g4, %g2, %g2
+	or		%g5, %g2, %g5
+
 	/* It is a huge page, use huge page TSB entry address we
 	 * calculated above.  If the huge page TSB has not been
 	 * allocated, setup a trap stack and call hugetlb_setup()

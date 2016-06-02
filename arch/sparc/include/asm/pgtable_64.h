@@ -401,7 +401,7 @@ static inline unsigned long __pte_default_huge_mask(void)
 
 static inline pte_t pte_mkhuge(pte_t pte)
 {
-	return __pte(pte_val(pte) | __pte_default_huge_mask());
+	return pte;
 }
 
 static inline bool is_default_hugetlb_pte(pte_t pte)

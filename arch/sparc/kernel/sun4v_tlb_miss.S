@@ -223,11 +223,13 @@ sun4v_tsb_miss_common:
 	 */
 	.global sun4v_xl_hugepages
 sun4v_xl_hugepages:
-	andcc	%g5, _PAGE_E_4V, %g0
+	sethi	%uhi(_PAGE_SPECIAL_4V), %g2
+	sllx	%g2, 32, %g2
+	andcc	%g5, %g2, %g0
 	be,pt	%xcc, 10f
-	sethi	%uhi(_PAGE_VALID), %g1;
+	sethi	%uhi(_PAGE_VALID | _PAGE_SPECIAL_4V), %g1;
 	sllx	%g1, 32, %g1
-	or	%g1, _PAGE_SZALL_4V | _PAGE_E_4V, %g1
+	or	%g1, _PAGE_SZALL_4V, %g1
 	andn	%g5, %g1, %g1
 	ldxa	[%g1 + %g0] ASI_PHYS_USE_EC, %g5
 	brgez,pn %g5, tsb_do_fault
