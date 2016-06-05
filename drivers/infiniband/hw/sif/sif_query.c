@@ -161,8 +161,9 @@ static int epsc_query_port(struct sif_dev *sdev, u8 port, struct psif_epsc_port_
 int sif_calc_ipd(struct sif_dev	 *sdev, u8 port, enum ib_rate static_rate, u8 *ipd)
 {
 	int path = ib_rate_to_mult(static_rate);
-	int link, ret;
-	struct ib_port_attr lpa;
+	int link;
+	u8 active_speed = sdev->port[port - 1].active_speed;
+	u8 active_width = sdev->port[port - 1].active_width;
 
 	if (static_rate == IB_RATE_PORT_CURRENT) {
 		*ipd = 0;
@@ -175,13 +176,13 @@ int sif_calc_ipd(struct sif_dev	 *sdev, u8 port, enum ib_rate static_rate, u8 *i
 		return -EINVAL;
 	}
 
-	ret = sif_query_port(&sdev->ib_dev, port, &lpa);
-	if (unlikely(ret != 0)) {
-		sif_log(sdev, SIF_INFO, "Failed to query port %u\n", port);
-		return ret;
+	if (unlikely(active_speed < (u8)IB_SPEED_SDR || active_width < (u8)IB_WIDTH_1X)) {
+		sif_log(sdev, SIF_INFO, "Failed to use cached port attributes for port %u\n", port);
+		return -EDEADLK;
 	}
+
 	/* 2^active_width * active_speed */
-	link = (1 << lpa.active_width)*lpa.active_speed;
+	link = (1 << active_width)*active_speed;
 
 	if (path >= link)
 		*ipd = 0;
