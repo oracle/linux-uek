@@ -3788,28 +3788,27 @@ static void be_calculate_vf_res(struct be_adapter *adapter, u16 num_vfs,
 	struct be_resources res_mod = {0};
 	u16 num_vf_qs = 1;
 
-	/* Distribute the queue resources among the PF and it's VFs
-	 * Do not distribute queue resources in multi-channel configuration.
-	 */
-	if (num_vfs && !be_is_mc(adapter)) {
-		 /* Divide the rx queues evenly among the VFs and the PF, capped
-		  * at VF-EQ-count. Any remainder queues belong to the PF.
-		  */
+	/* Distribute the queue resources among the PF and it's VFs */
+	if (num_vfs) {
+		/* Divide the rx queues evenly among the VFs and the PF, capped
+		 * at VF-EQ-count. Any remainder queues belong to the PF.
+		 */
 		num_vf_qs = min(SH_VF_MAX_NIC_EQS,
 				res.max_rss_qs / (num_vfs + 1));
 
-		/* Skyhawk-R chip supports only MAX_RSS_IFACES RSS capable
-		 * interfaces per port. Provide RSS on VFs, only if number
-		 * of VFs requested is less than MAX_RSS_IFACES limit.
+		/* Skyhawk-R chip supports only MAX_PORT_RSS_TABLES
+		 * RSS Tables per port. Provide RSS on VFs, only if number of
+		 * VFs requested is less than it's PF Pool's RSS Tables limit.
 		 */
-		if (num_vfs >= MAX_RSS_IFACES)
+		if (num_vfs >= be_max_pf_pool_rss_tables(adapter))
 			num_vf_qs = 1;
 	}
 
 	/* Resource with fields set to all '1's by GET_PROFILE_CONFIG cmd,
 	 * which are modifiable using SET_PROFILE_CONFIG cmd.
 	 */
-	be_cmd_get_profile_config(adapter, &res_mod, RESOURCE_MODIFIABLE, 0);
+	be_cmd_get_profile_config(adapter, &res_mod, NULL, ACTIVE_PROFILE_TYPE,
+				  RESOURCE_MODIFIABLE, 0);
 
 	/* If RSS IFACE capability flags are modifiable for a VF, set the
 	 * capability flag as valid and set RSS and DEFQ_RSS IFACE flags if
@@ -3907,7 +3906,8 @@ static int be_vfs_if_create(struct be_adapter *adapter)
 
 	for_all_vfs(adapter, vf_cfg, vf) {
 		if (!BE3_chip(adapter)) {
-			status = be_cmd_get_profile_config(adapter, &res,
+			status = be_cmd_get_profile_config(adapter, &res, NULL,
+							   ACTIVE_PROFILE_TYPE,
 							   RESOURCE_LIMITS,
 							   vf + 1);
 			if (!status) {
@@ -4092,8 +4092,9 @@ static void BEx_get_resources(struct be_adapter *adapter,
 		/* On a SuperNIC profile, the driver needs to use the
 		 * GET_PROFILE_CONFIG cmd to query the per-function TXQ limits
 		 */
-		be_cmd_get_profile_config(adapter, &super_nic_res,
-					  RESOURCE_LIMITS, 0);
+		be_cmd_get_profile_config(adapter, &super_nic_res, NULL,
+					  ACTIVE_PROFILE_TYPE, RESOURCE_LIMITS,
+					  0);
 		/* Some old versions of BE3 FW don't report max_tx_qs value */
 		res->max_tx_qs = super_nic_res.max_tx_qs ? : BE3_MAX_TX_QS;
 	} else {
@@ -4132,12 +4133,38 @@ static void be_setup_init(struct be_adapter *adapter)
 		adapter->cmd_privileges = MIN_PRIVILEGES;
 }
 
+/* HW supports only MAX_PORT_RSS_TABLES RSS Policy Tables per port.
+ * However, this HW limitation is not exposed to the host via any SLI cmd.
+ * As a result, in the case of SRIOV and in particular multi-partition configs
+ * the driver needs to calcuate a proportional share of RSS Tables per PF-pool
+ * for distribution between the VFs. This self-imposed limit will determine the
+ * no: of VFs for which RSS can be enabled.
+ */
+void be_calculate_pf_pool_rss_tables(struct be_adapter *adapter)
+{
+	struct be_port_resources port_res = {0};
+	u8 rss_tables_on_port;
+	u16 max_vfs = be_max_vfs(adapter);
+
+	be_cmd_get_profile_config(adapter, NULL, &port_res, SAVED_PROFILE_TYPE,
+				  RESOURCE_LIMITS, 0);
+
+	rss_tables_on_port = MAX_PORT_RSS_TABLES - port_res.nic_pfs;
+
+	/* Each PF Pool's RSS Tables limit =
+	 * PF's Max VFs / Total_Max_VFs on Port * RSS Tables on Port
+	 */
+	adapter->pool_res.max_rss_tables =
+		max_vfs * rss_tables_on_port / port_res.max_vfs;
+}
+
 static int be_get_sriov_config(struct be_adapter *adapter)
 {
 	struct be_resources res = {0};
 	int max_vfs, old_vfs;
 
-	be_cmd_get_profile_config(adapter, &res, RESOURCE_LIMITS, 0);
+	be_cmd_get_profile_config(adapter, &res, NULL, ACTIVE_PROFILE_TYPE,
+				  RESOURCE_LIMITS, 0);
 
 	/* Some old versions of BE3 FW don't report max_vfs value */
 	if (BE3_chip(adapter) && !res.max_vfs) {
@@ -4161,6 +4188,12 @@ static int be_get_sriov_config(struct be_adapter *adapter)
 		adapter->num_vfs = old_vfs;
 	}
 
+	if (skyhawk_chip(adapter) && be_max_vfs(adapter) && !old_vfs) {
+		be_calculate_pf_pool_rss_tables(adapter);
+		dev_info(&adapter->pdev->dev,
+			 "RSS can be enabled for all VFs if num_vfs <= %d\n",
+			 be_max_pf_pool_rss_tables(adapter));
+	}
 	return 0;
 }
 
@@ -4275,15 +4308,6 @@ static int be_get_config(struct be_adapter *adapter)
 			dev_info(&adapter->pdev->dev,
 				 "Using profile 0x%x\n", profile_id);
 	}
-
-	status = be_get_resources(adapter);
-	if (status)
-		return status;
-
-	adapter->pmac_id = kcalloc(be_max_uc(adapter),
-				   sizeof(*adapter->pmac_id), GFP_KERNEL);
-	if (!adapter->pmac_id)
-		return -ENOMEM;
 
 	return 0;
 }
@@ -4485,12 +4509,21 @@ static int be_setup(struct be_adapter *adapter)
 			return status;
 	}
 
-	if (!BE2_chip(adapter) && be_physfn(adapter))
-		be_alloc_sriov_res(adapter);
-
 	status = be_get_config(adapter);
 	if (status)
 		goto err;
+
+	if (!BE2_chip(adapter) && be_physfn(adapter))
+		be_alloc_sriov_res(adapter);
+
+	status = be_get_resources(adapter);
+	if (status)
+		goto err;
+
+	adapter->pmac_id = kcalloc(be_max_uc(adapter),
+				   sizeof(*adapter->pmac_id), GFP_KERNEL);
+	if (!adapter->pmac_id)
+		return -ENOMEM;
 
 	status = be_msix_enable(adapter);
 	if (status)
