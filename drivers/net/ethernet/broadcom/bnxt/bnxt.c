@@ -289,7 +289,9 @@ static netdev_tx_t bnxt_start_xmit(struct sk_buff *skb, struct net_device *dev)
 			cpu_to_le32(DB_KEY_TX_PUSH | DB_LONG_TX_PUSH | prod);
 		txr->tx_prod = prod;
 
+		tx_buf->is_push = 1;
 		netdev_tx_sent_queue(txq, skb->len);
+		wmb();	/* Sync is_push and byte queue before pushing data */
 
 		push_len = (length + sizeof(*tx_push) + 7) / 8;
 		if (push_len > 16) {
@@ -301,7 +303,6 @@ static netdev_tx_t bnxt_start_xmit(struct sk_buff *skb, struct net_device *dev)
 					 push_len);
 		}
 
-		tx_buf->is_push = 1;
 		goto tx_done;
 	}
 
