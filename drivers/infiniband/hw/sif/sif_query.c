@@ -46,7 +46,6 @@ int sif_query_device(struct ib_device *ibdev, struct ib_device_attr *props)
 {
 	int ret;
 	struct sif_dev *sdev = to_sdev(ibdev);
-	struct sif_eps *es = &sdev->es[sdev->mbox_epsc];
 	struct psif_epsc_device_attr ldev;
 
 	ret = epsc_query_device(sdev, &ldev);
@@ -54,8 +53,7 @@ int sif_query_device(struct ib_device *ibdev, struct ib_device_attr *props)
 		return ret;
 
 	memset(props, 0, sizeof(*props));
-	/* TBD: x.y.z - 16 bit per sublevel - we use x.y.0 for now */
-	props->fw_ver = (u64)es->ver.fw_major << 32 | (u64)es->ver.fw_minor << 16;
+	props->fw_ver = ldev.fw_ver;
 	props->sys_image_guid = cpu_to_be64(ldev.sys_image_guid);
 	props->max_mr_size = ~0ull;
 	props->page_size_cap = 0xfffffe00; /* TBD: Sensible value? Use what Mellanox uses */
