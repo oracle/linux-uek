@@ -5294,6 +5294,8 @@ static int i40e_handle_lldp_event(struct i40e_pf *pf,
 		i40e_service_event_schedule(pf);
 	} else {
 		i40e_pf_unquiesce_all_vsi(pf);
+		/* Notify the client for the DCB changes */
+		i40e_notify_client_of_l2_param_changes(pf->vsi[pf->lan_vsi]);
 	}
 
 exit:
