@@ -313,6 +313,10 @@ static int sif_probe(struct pci_dev *pdev,
 	if (err)
 		goto pfail_bar;
 
+	 /* This must be done before events reception - see Orabug: 23540257 */
+	if (PSIF_REVISION(sdev) <= 3)
+		sif_r3_pre_init(sdev);
+
 	if (xen_pv_domain()) {
 		/* The Xen PV domain may return huge pages that are misaligned
 		 * in DMA space, see Orabug: 21690736.

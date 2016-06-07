@@ -31,6 +31,12 @@ static int outstanding_wqes(struct sif_dev *sdev, struct sif_qp *qp, u16 *head);
 static u16 cq_walk_wa4074(struct sif_dev *sdev, struct sif_qp *qp, bool *last_seq_set);
 static u16 walk_and_update_cqes(struct sif_dev *sdev, struct sif_qp *qp, u16 head, u16 end);
 
+void sif_r3_pre_init(struct sif_dev *sdev)
+{
+	/* Init the flush_retry qp lock */
+	mutex_init(&sdev->flush_lock);
+}
+
 int sif_r3_init(struct sif_dev *sdev)
 {
 	int ret;
@@ -46,8 +52,6 @@ int sif_r3_init(struct sif_dev *sdev)
 		dne_qp_alloc = true;
 	}
 
-	/* Init the flush_retry qp lock */
-	mutex_init(&sdev->flush_lock);
 	ret = sif_hw_allocate_flush_qp(sdev);
 	if (ret)
 		goto flush_retry_failed;

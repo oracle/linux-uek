@@ -14,6 +14,7 @@
 #ifndef _SIF_R3_H
 #define _SIF_R3_H
 
+void sif_r3_pre_init(struct sif_dev *sdev);
 int sif_r3_init(struct sif_dev *sdev);
 void sif_r3_deinit(struct sif_dev *sdev);
 
