@@ -147,6 +147,7 @@ void rds_send_reset(struct rds_connection *conn)
 	}
 	spin_unlock_irqrestore(&conn->c_lock, flags);
 }
+EXPORT_SYMBOL_GPL(rds_send_reset);
 
 static int acquire_in_xmit(struct rds_connection *conn)
 {
