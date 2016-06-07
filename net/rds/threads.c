@@ -77,9 +77,9 @@ EXPORT_SYMBOL_GPL(rds_wq);
 struct workqueue_struct *rds_local_wq;
 EXPORT_SYMBOL_GPL(rds_local_wq);
 
-void rds_connect_complete(struct rds_connection *conn)
+void rds_connect_path_complete(struct rds_connection *conn, int curr)
 {
-	if (!rds_conn_transition(conn, RDS_CONN_CONNECTING, RDS_CONN_UP)) {
+	if (!rds_conn_transition(conn, curr, RDS_CONN_UP)) {
 		printk(KERN_WARNING "%s: Cannot transition to state UP"
 				", current state is %d\n",
 				__func__,
@@ -106,6 +106,12 @@ void rds_connect_complete(struct rds_connection *conn)
 	conn->c_reconnect = 1;
 	conn->c_proposed_version = RDS_PROTOCOL_VERSION;
 	conn->c_route_to_base = 0;
+}
+EXPORT_SYMBOL_GPL(rds_connect_path_complete);
+
+void rds_connect_complete(struct rds_connection *conn)
+{
+	rds_connect_path_complete(conn, RDS_CONN_CONNECTING);
 }
 EXPORT_SYMBOL_GPL(rds_connect_complete);
 
