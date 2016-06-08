@@ -295,8 +295,8 @@ struct sif_dev {
 	u32 dne_qp;
 
 	/* Support for WA#3714 */
-	u32 flush_qp;
-	struct mutex flush_lock;
+	u32 flush_qp[2];
+	struct mutex flush_lock[2];
 
 	/* Support for PMA proxy QP (indexes for port 1 and 2) bug #3357 */
 	u32 pma_qp_idxs[2];

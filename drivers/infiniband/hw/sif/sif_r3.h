@@ -24,8 +24,8 @@ int sif_r3_init(struct sif_dev *sdev);
 void sif_r3_deinit(struct sif_dev *sdev);
 
 /* WA for #3714 */
-int reset_qp_flush_retry(struct sif_dev *sdev);
-void sif_r3_recreate_flush_qp(struct sif_dev *sdev);
+int reset_qp_flush_retry(struct sif_dev *sdev, u8 flush_idx);
+void sif_r3_recreate_flush_qp(struct sif_dev *sdev, u8 flush_idx);
 
 /* WA for #4074 */
 int pre_process_wa4074(struct sif_dev *sdev, struct sif_qp *qp);

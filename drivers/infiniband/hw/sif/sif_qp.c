@@ -2292,10 +2292,10 @@ static int reset_qp(struct sif_dev *sdev, struct sif_qp *qp)
 		&& IS_PSIF(sdev) /* Next check if there is a retry outstanding */
 		&& (get_psif_qp_core__retry_tag_committed(&qp->d.state) !=
 			get_psif_qp_core__retry_tag_err(&qp->d.state))
-		&& (qp->qp_idx != sdev->flush_qp);
+		&& (qp->qp_idx != sdev->flush_qp[qp->port - 1]);
 
 	if (need_wa_3714) {
-		ret = reset_qp_flush_retry(sdev);
+		ret = reset_qp_flush_retry(sdev, qp->port - 1);
 		if (ret < 0)
 			sif_log(sdev, SIF_INFO,	"Flush_retry special handling failed with ret %d", ret);
 
@@ -2455,7 +2455,10 @@ void sif_dfs_print_qp(struct seq_file *s, struct sif_dev *sdev,
 	else if (qp->flags & SIF_QPF_NO_EVICT)
 		seq_puts(s, "\t[no_evict]\n");
 	else if (qp->flags & SIF_QPF_FLUSH_RETRY)
-		seq_puts(s, "\t[flush_retry]\n");
+		if (qp->port == 1)
+			seq_puts(s, "\t[flush_retry_p1]\n");
+		else
+			seq_puts(s, "\t[flush_retry_p2]\n");
 	else if (qp->flags & SIF_QPF_KI_STENCIL)
 		seq_puts(s, "\t[ki_stencil]\n");
 	else if (qp->flags & SIF_QPF_PMA_PXY)

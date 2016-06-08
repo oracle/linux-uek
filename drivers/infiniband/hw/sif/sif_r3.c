@@ -22,8 +22,8 @@
 #include "psif_hw_setget.h"
 
 /* Declared below: */
-static void sif_hw_free_flush_qp(struct sif_dev *sdev);
-static int sif_hw_allocate_flush_qp(struct sif_dev *sdev);
+static void sif_hw_free_flush_qp(struct sif_dev *sdev, u8 flush_idx);
+static int sif_hw_allocate_flush_qp(struct sif_dev *sdev, u8 flush_idx);
 static int sif_hw_allocate_dne_qp(struct sif_dev *sdev);
 static void sif_hw_free_dne_qp(struct sif_dev *sdev);
 
@@ -34,12 +34,15 @@ static u16 walk_and_update_cqes(struct sif_dev *sdev, struct sif_qp *qp, u16 hea
 void sif_r3_pre_init(struct sif_dev *sdev)
 {
 	/* Init the flush_retry qp lock */
-	mutex_init(&sdev->flush_lock);
+	u8 flush_idx;
+	for (flush_idx = 0; flush_idx < 2; ++flush_idx)
+		mutex_init(&sdev->flush_lock[flush_idx]);
 }
 
 int sif_r3_init(struct sif_dev *sdev)
 {
 	int ret;
+	u8 flush_idx;
 	bool dne_qp_alloc = false;
 
 	if (sdev->limited_mode)
@@ -51,10 +54,11 @@ int sif_r3_init(struct sif_dev *sdev)
 			return ret;
 		dne_qp_alloc = true;
 	}
-
-	ret = sif_hw_allocate_flush_qp(sdev);
-	if (ret)
-		goto flush_retry_failed;
+	for (flush_idx = 0; flush_idx < 2; ++flush_idx) {
+		ret = sif_hw_allocate_flush_qp(sdev, flush_idx);
+		if (ret)
+			goto flush_retry_failed;
+	}
 
 	return 0;
 flush_retry_failed:
@@ -66,7 +70,10 @@ flush_retry_failed:
 
 void sif_r3_deinit(struct sif_dev *sdev)
 {
-	sif_hw_free_flush_qp(sdev);
+	u8 flush_idx;
+	for (flush_idx = 0; flush_idx < 2; ++flush_idx)
+		sif_hw_free_flush_qp(sdev, flush_idx);
+
 	if (eps_fw_version_lt(&sdev->es[sdev->mbox_epsc], 0, 58))
 		sif_hw_free_dne_qp(sdev);
 }
@@ -144,11 +151,12 @@ static void sif_hw_free_dne_qp(struct sif_dev *sdev)
 }
 
 
-static int sif_hw_allocate_flush_qp(struct sif_dev *sdev)
+static int sif_hw_allocate_flush_qp(struct sif_dev *sdev, u8 flush_idx)
 {
 	int ret = 0;
 	struct sif_qp *qp = NULL;
 	struct sif_cq *cq = NULL;
+	u8 port = flush_idx + 1;
 
 	struct ib_qp_init_attr init_attr = {
 		.event_handler = NULL,
@@ -180,7 +188,7 @@ static int sif_hw_allocate_flush_qp(struct sif_dev *sdev)
 	struct ib_qp_attr qp_attr = {
 		.qp_state = IB_QPS_INIT,
 		.pkey_index = 0,
-		.port_num = 1,
+		.port_num = port,
 		.qp_access_flags =
 		IB_ACCESS_REMOTE_WRITE |
 		IB_ACCESS_REMOTE_READ |
@@ -193,9 +201,9 @@ static int sif_hw_allocate_flush_qp(struct sif_dev *sdev)
 	if (sdev->limited_mode)
 		return 0;
 
-	ret = sif_query_port(&sdev->ib_dev, 1, &lpa);
+	ret = sif_query_port(&sdev->ib_dev, port, &lpa);
 	if (unlikely(ret)) {
-		sif_log(sdev, SIF_INFO, "Failed to query port 1");
+		sif_log(sdev, SIF_INFO, "Failed to query port %d", port);
 		goto err_query_port;
 	}
 
@@ -204,7 +212,7 @@ static int sif_hw_allocate_flush_qp(struct sif_dev *sdev)
 		init_attr.cap.max_send_wr + init_attr.cap.max_recv_wr,
 		1, SIFPX_OFF, false);
 	if (IS_ERR(cq)) {
-		sif_log(sdev, SIF_INFO, "Failed to create CQ for flush_retry QP");
+		sif_log(sdev, SIF_INFO, "Failed to create CQ for flush_retry QP port %d", port);
 		return -EINVAL;
 	}
 	init_attr.send_cq = &cq->ibcq;
@@ -214,7 +222,7 @@ static int sif_hw_allocate_flush_qp(struct sif_dev *sdev)
 	/* QP */
 	qp = create_qp(sdev, &init_attr, &sif_attr);
 	if (IS_ERR(qp)) {
-		sif_log(sdev, SIF_INFO, "Failed to create flush_retry QP");
+		sif_log(sdev, SIF_INFO, "Failed to create flush_retry QP port %d", port);
 		ret = -EINVAL;
 		goto err_create_qp;
 	}
@@ -229,7 +237,7 @@ static int sif_hw_allocate_flush_qp(struct sif_dev *sdev)
 	qp->ibqp.pd = &sdev->pd->ibpd;
 	qp->ibqp.qp_type = init_attr.qp_type;
 	qp->type = sif_attr.qp_type;
-	qp->port = 1;
+	qp->port = port;
 	qp->flags = SIF_QPF_FLUSH_RETRY;
 
 	ret = sif_modify_qp(&qp->ibqp, &qp_attr, qp_attr_mask, NULL);
@@ -246,7 +254,7 @@ static int sif_hw_allocate_flush_qp(struct sif_dev *sdev)
 	qp_attr.max_dest_rd_atomic = 1;
 	qp_attr.min_rnr_timer = 1;
 	qp_attr.ah_attr.dlid = lpa.lid;
-	qp_attr.ah_attr.port_num = 1;
+	qp_attr.ah_attr.port_num = port;
 	qp_attr_mask =
 		IB_QP_STATE |
 		IB_QP_AV |
@@ -283,8 +291,8 @@ static int sif_hw_allocate_flush_qp(struct sif_dev *sdev)
 		goto err_modify_qp;
 	}
 
-	sdev->flush_qp = qp->qp_idx;
-	sif_log(sdev, SIF_QPE, "Allocated flush-retry qp, index %d", sdev->flush_qp);
+	sdev->flush_qp[flush_idx] = qp->qp_idx;
+	sif_log(sdev, SIF_INFO, "Allocated flush-retry qp port %d, index %d", port, sdev->flush_qp[flush_idx]);
 
 	return ret;
 
@@ -293,43 +301,43 @@ err_modify_qp:
 err_create_qp:
 	destroy_cq(cq);
 err_query_port:
-	sdev->flush_qp = 0;
-	sif_log(sdev, SIF_INFO, "Allocated flush-retry qp failed");
+	sdev->flush_qp[flush_idx] = 0;
+	sif_log(sdev, SIF_INFO, "Allocated flush-retry qp port %d failed", port);
 
 	return ret;
 }
 
-static void sif_hw_free_flush_qp(struct sif_dev *sdev)
+static void sif_hw_free_flush_qp(struct sif_dev *sdev, u8 flush_idx)
 {
 	struct sif_qp *qp = NULL;
 	struct sif_sq *sq = NULL;
 	struct sif_cq *cq = NULL;
 
-	if (sdev->flush_qp) {
-		qp = get_sif_qp(sdev, sdev->flush_qp);
-		sq = get_sif_sq(sdev, sdev->flush_qp);
+	if (sdev->flush_qp[flush_idx]) {
+		qp = get_sif_qp(sdev, sdev->flush_qp[flush_idx]);
+		sq = get_sif_sq(sdev, sdev->flush_qp[flush_idx]);
 		cq = get_sif_cq(sdev, sq->cq_idx);
 
 		destroy_qp(sdev, qp);
 		destroy_cq(cq);
-		sdev->flush_qp = 0;
+		sdev->flush_qp[flush_idx] = 0;
 
 		sif_log(sdev, SIF_QP, "destroy_qp %d success", qp->qp_idx);
 	}
 }
 
-void sif_r3_recreate_flush_qp(struct sif_dev *sdev)
+void sif_r3_recreate_flush_qp(struct sif_dev *sdev, u8 flush_idx)
 {
 	/* For simplicity we just destroy the old
 	 * and allocate a new flush_retry qp.
 	 */
-	mutex_lock(&sdev->flush_lock);
-	sif_hw_free_flush_qp(sdev);
-	sif_hw_allocate_flush_qp(sdev);
-	mutex_unlock(&sdev->flush_lock);
+	mutex_lock(&sdev->flush_lock[flush_idx]);
+	sif_hw_free_flush_qp(sdev, flush_idx);
+	sif_hw_allocate_flush_qp(sdev, flush_idx);
+	mutex_unlock(&sdev->flush_lock[flush_idx]);
 }
 
-int reset_qp_flush_retry(struct sif_dev *sdev)
+int reset_qp_flush_retry(struct sif_dev *sdev, u8 flush_idx)
 {
 	struct sif_qp *qp = NULL;
 	struct psif_query_qp lqqp;
@@ -358,17 +366,20 @@ int reset_qp_flush_retry(struct sif_dev *sdev)
 	int count;
 	unsigned long timeout = sdev->min_resp_ticks;
 	unsigned long timeout_real;
+	u8 port = flush_idx + 1;
 
 	/* Get access to the flush_retry QP */
-	mutex_lock(&sdev->flush_lock);
+	mutex_lock(&sdev->flush_lock[flush_idx]);
 
-	if (!sdev->flush_qp) {
-		sif_log(sdev, SIF_INFO, "special handling WA_3714 failed: flush_qp does not exist");
+	if (!sdev->flush_qp[flush_idx]) {
+		sif_log(sdev, SIF_INFO,
+			"special handling WA_3714 failed: flush_qp port %d does not exist",
+			port);
 		ret = -EINVAL;
 		goto err_flush_qp;
 	}
 
-	qp = get_sif_qp(sdev, sdev->flush_qp);
+	qp = get_sif_qp(sdev, sdev->flush_qp[flush_idx]);
 
 	/* Query flush_retry QP */
 	ret = epsc_query_qp(qp, &lqqp);
@@ -440,18 +451,18 @@ int reset_qp_flush_retry(struct sif_dev *sdev)
 	}
 
 	sdev->wa_stats.wa3714[0]++;
-	mutex_unlock(&sdev->flush_lock);
+	mutex_unlock(&sdev->flush_lock[flush_idx]);
 	return ret;
 fail:
 	sdev->wa_stats.wa3714[1]++;
-	sif_hw_free_flush_qp(sdev);
-	sif_hw_allocate_flush_qp(sdev);
-	mutex_unlock(&sdev->flush_lock);
+	sif_hw_free_flush_qp(sdev, flush_idx);
+	sif_hw_allocate_flush_qp(sdev, flush_idx);
+	mutex_unlock(&sdev->flush_lock[flush_idx]);
 	return ret;
 
 err_flush_qp:
 	sdev->wa_stats.wa3714[1]++;
-	mutex_unlock(&sdev->flush_lock);
+	mutex_unlock(&sdev->flush_lock[flush_idx]);
 	return ret;
 }
 

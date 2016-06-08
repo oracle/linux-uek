@@ -588,9 +588,8 @@ static void handle_event_work(struct work_struct *work)
 			ib_event2str(ew->ibe.event));
 
 		if ((ew->ibe.event == IB_EVENT_LID_CHANGE)
-			&& (ew->ibe.element.port_num == 1)
 			&& (PSIF_REVISION(sdev) <= 3))
-			sif_r3_recreate_flush_qp(sdev);
+			sif_r3_recreate_flush_qp(sdev, ew->ibe.element.port_num - 1);
 		goto out;
 	}
 
@@ -683,8 +682,8 @@ static void handle_event_work(struct work_struct *work)
 		break;
 	}
 	case IB_EVENT_LID_CHANGE:
-		if (ew->ibe.element.port_num == 1 && PSIF_REVISION(sdev) <= 3)
-			sif_r3_recreate_flush_qp(sdev);
+		if (PSIF_REVISION(sdev) <= 3)
+			sif_r3_recreate_flush_qp(sdev, ew->ibe.element.port_num - 1);
 	case IB_EVENT_PORT_ERR:
 	case IB_EVENT_CLIENT_REREGISTER:
 	case IB_EVENT_PORT_ACTIVE:
