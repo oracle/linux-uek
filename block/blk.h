@@ -27,8 +27,10 @@ struct blk_flush_queue {
 	 * flush_rq shares tag with this rq, both can't be active
 	 * at the same time
 	 */
-	struct request		*orig_rq;
 	spinlock_t		mq_flush_lock;
+#ifndef __GENKSYMS__
+	struct request		*orig_rq;
+#endif
 };
 
 extern struct kmem_cache *blk_requestq_cachep;
