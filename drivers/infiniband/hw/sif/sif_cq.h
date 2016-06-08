@@ -47,8 +47,6 @@ struct sif_cq {
 	atomic_t error_cnt;   /* No. of error completions observed on this cq */
 	atomic_t timeout_cnt; /* No. of completion timeouts observed on this cq */
 	atomic_t event_cnt;   /* No. of completion events observed for this cq (will wrap..) */
-	u32 log_cnt;  /* Number of suppressed log messages since last print */
-	unsigned long next_logtime;  /* timeout for when to print next message */
 	struct sif_rq *xsrq; /* The XRC SRQ using this completion queue (see #3521) */
 	struct sif_pqp *pqp; /* The PQP using this completion queue (for dfs reporting..) */
 };

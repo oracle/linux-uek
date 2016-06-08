@@ -456,40 +456,16 @@ extern ulong sif_trace_mask;
 		} \
 	} while (0)
 
-#define sif_log_cq(cq, class, format, arg...)	\
+#define sif_log_rlim(sdev, class, format, arg...)	\
 	do { \
-		if (unlikely((sif_debug_mask) & (class))) {  \
-			struct sif_dev *sdev = \
-				container_of(cq->ibcq.device, struct sif_dev, ib_dev); \
-			if (time_before((cq)->next_logtime, jiffies)) {	\
-				(cq)->next_logtime = jiffies + max(1000ULL, sdev->min_resp_ticks); \
-			} else { \
-				(cq)->log_cnt++;	\
-				  continue;	\
-			} \
-			dev_info(&sdev->pdev->dev, \
-				   "pid [%d] %s (suppressed %d): " format "\n", \
-				current->pid, __func__, (cq)->log_cnt,	\
-				   ## arg); \
-			(cq)->log_cnt = 0;  \
+		sif_log_trace(class, format, ## arg);	\
+		if (unlikely((sif_debug_mask) & (class) && printk_ratelimit())) { \
+			dev_info(&sdev->pdev->dev,	\
+				"[%d] " format "\n",	\
+				current->pid,		\
+				## arg);		\
 		} \
 	} while (0)
-
-#define sif_log_perf(sdev, class, format, arg...)	\
-	do { \
-		if (unlikely((sif_debug_mask) & (class))) {  \
-			if ((sdev)->jiffies_sampling_cnt % sif_perf_sampling_threshold) { \
-				(sdev)->jiffies_sampling_cnt++;		\
-				continue;				\
-			} \
-			dev_info(&(sdev)->pdev->dev,  \
-				   "pid [%d] %s: " format "\n", \
-				   current->pid, __func__,	   \
-				   ## arg);			   \
-		}						   \
-	} while (0)
-
-
 
 /* some convenience pointer conversion macros: */
 #define to_sdev(ibdev)  container_of((ibdev), struct sif_dev, ib_dev)

@@ -108,11 +108,6 @@ uint sif_cb_max = 100;
 module_param_named(cb_max, sif_cb_max, uint, S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(cb_max, "Upper limit on no. of CBs.");
 
-/* TBD - This is a debug feature to evaluate performance. */
-ushort sif_perf_sampling_threshold = 100;
-module_param_named(perf_sampling_threshold, sif_perf_sampling_threshold, ushort, S_IRUGO | S_IWUSR);
-MODULE_PARM_DESC(perf_sampling_threshold, "The performance measurement based on every N samples");
-
 uint sif_fmr_cache_flush_threshold = 512;
 module_param_named(fmr_cache_flush_threshold, sif_fmr_cache_flush_threshold, uint, S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(fmr_cache_flush_threshold, "PF limit for when to use fast-path full MMU flush for FMR unmap");

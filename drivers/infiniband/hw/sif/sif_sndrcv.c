@@ -547,8 +547,8 @@ int sif_post_send_single(struct ib_qp *ibqp, struct ib_send_wr *wr, bool *use_db
 	 */
 	qp->traffic_patterns.mask = (qp->traffic_patterns.mask << 1) |
 		HEUR_TX_DIRECTION;
-	sif_log_perf(sdev, SIF_PERF_V, "qp:traffic_pattern %x",
-		     qp->traffic_patterns.mask);
+	sif_log_rlim(sdev, SIF_PERF_V, "qp:traffic_pattern %x",
+		qp->traffic_patterns.mask);
 	/* If the traffic pattern shows that it's not latency sensitive,
 	 * use SQ mode by ringing the doorbell.
 	 * In a latency sensitive traffic pattern, a SEND should

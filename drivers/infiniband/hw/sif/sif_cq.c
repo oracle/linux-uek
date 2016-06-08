@@ -256,7 +256,6 @@ struct sif_cq *create_cq(struct sif_pd *pd, int entries,
 		comp_vector : sif_get_eq_channel(sdev, cq);
 	cq->eq_idx = cq->cq_hw.int_channel + 2;
 
-	cq->next_logtime = jiffies;
 	init_completion(&cq->cleanup_ok);
 	cq->cq_hw.mmu_cntx = cq->mmu_ctx.mctx;
 
@@ -832,7 +831,7 @@ int sif_poll_cq(struct ib_cq *ibcq, int num_entries, struct ib_wc *wc)
 	seqno = cq_sw->next_seq;
 	cqe = get_cq_entry(cq, seqno);
 
-	sif_log_cq(cq, SIF_POLL, "cq %d (requested %d entries), next_seq %d %s",
+	sif_log_rlim(sdev, SIF_POLL, "cq %d (requested %d entries), next_seq %d %s",
 		cq->index, num_entries, cq_sw->next_seq, (wc ? "" : "(peek)"));
 
 	while (npolled < num_entries) {
@@ -880,7 +879,7 @@ handle_failed:
 		sif_log(sdev, SIF_CQ, "done - %d completions - seq_no of next entry: %d",
 			npolled, polled_value);
 	else
-		sif_log_cq(cq, SIF_POLL, "no completions polled - seq_no of next entry: %d",
+		sif_log_rlim(sdev, SIF_POLL, "no completions polled - seq_no of next entry: %d",
 			polled_value);
 	return !ret ? npolled : ret;
 }
