@@ -44,7 +44,9 @@ struct blk_mq_tags {
 	struct list_head page_list;
 
 	int alloc_policy;
+#ifndef __GENKSYMS__
 	cpumask_var_t cpumask;
+#endif
 };
 
 
