@@ -56,12 +56,10 @@ MODULE_VERSION(DRV_MOD_VERSION);
  * conceivably block when the backend is closed.  The serialization should
  * ensure that a following handshake initiates only after the reset is done.
  *
- * XXX The recommended value for the size of the kernel workqueue is 0 but
- * that creates threads which scale with ncpu and because of some apparent
- * flow control issues cause intermittent scsi timeouts and LDC aborts so
- * limit to 1 thread for now.
+ * The recommended value for the size of the kernel workqueue is 0;
+ * it creates threads which scale with ncpu.
  */
-int vds_wq = 1;
+int vds_wq;
 int vds_dbg;
 int vds_dbg_ldc;
 int vds_dbg_vio;
