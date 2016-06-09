@@ -215,7 +215,7 @@ static int rds_ib_match_acl(struct rdma_cm_id *cm_id, __be32 saddr)
 		       ntohs(cm_id->route.path_rec->pkey));
 	acl = ib_cm_dpp_acl_lookup(&dpp);
 	if (!acl)
-		goto out;
+		return 0;
 
 	if (!acl->enabled)
 		return 0;
