@@ -2284,7 +2284,6 @@ static int reset_qp(struct sif_dev *sdev, struct sif_qp *qp)
 	/* WA 3714 special handling */
 	need_wa_3714 = (PSIF_REVISION(sdev) <= 3)
 		&& IS_PSIF(sdev) /* Next check if there is a retry outstanding */
-		&& !qp->flush_sq_done_wa4074
 		&& (get_psif_qp_core__retry_tag_committed(&qp->d.state) !=
 			get_psif_qp_core__retry_tag_err(&qp->d.state))
 		&& (qp->qp_idx != sdev->flush_qp);
