@@ -20,6 +20,7 @@
 #include "sif_query.h"
 #include "sif_qp.h"
 #include "sif_defs.h"
+#include "sif_r3.h"
 
 /* A 'reference' element to identify each table type
  */
@@ -41,6 +42,7 @@ struct sif_dfs {
 	struct sif_dfs_ref sd_eq;
 	struct sif_dfs_ref sd_irq_ch;
 	struct sif_dfs_ref sd_ipoffload;
+	struct sif_dfs_ref sd_wa_stats;
 };
 
 /* A simple iterator */
@@ -437,6 +439,57 @@ static const struct file_operations table_fops_rw = {
 	.release = sif_seq_release
 };
 
+/**** support for workaround statistics */
+
+static int r_open(struct inode *inode, struct file *file)
+{
+	if (!try_module_get(THIS_MODULE))
+		return -EIO;
+
+	file->private_data = inode->i_private;
+	return 0;
+};
+
+static int r_release(struct inode *inode, struct file *file)
+{
+	module_put(THIS_MODULE);
+	return 0;
+}
+
+static ssize_t rwa_read(struct file *file, char __user *buf, size_t sz, loff_t *off)
+{
+	struct sif_dev *sdev = ((struct sif_dfs_ref *)file->private_data)->sdev;
+	size_t len = 0;
+	struct xchar xc;
+	size_t dump_size = 12000; /* enough space for allocating the workaround statistics dump */
+	char *dump;
+
+	if (*off > 0)
+		return 0;
+
+	dump = kmalloc(dump_size, GFP_KERNEL);
+	if (!dump) {
+		sif_log0(SIF_INFO, "Error allocating temp.storage for wa statistics");
+		return -ENOMEM;
+	}
+
+	memset(dump, 0, dump_size*sizeof(char));
+	xc.buf = dump;
+
+	sif_dfs_print_wa_stats(sdev, xc.buf);
+
+	len = simple_read_from_buffer(buf, sz, off, dump, strlen(dump));
+	kfree(dump);
+
+	return len;
+}
+
+static const struct file_operations wa_fops = {
+	.owner   = THIS_MODULE,
+	.open    = r_open,
+	.read    = rwa_read,
+	.release = r_release,
+};
 
 /* Setup/teardown */
 
@@ -495,6 +548,15 @@ int sif_dfs_register(struct sif_dev *sdev)
 		sif_log(sdev, SIF_INFO, "Unable to set up debugfs file for ipoffload qp stat");
 		return -ENOMEM;
 	}
+	/* Single file for the wa statistics */
+	sdr = &sdev->dfs->sd_wa_stats;
+	sdr->sdev = sdev;
+	df = debugfs_create_file("wa_stats", S_IRUGO, sdev->dfs->root,
+				(void *)sdr, &wa_fops);
+	if (!df) {
+		sif_log(sdev, SIF_INFO, "Unable to set up debugfs file for wa stat");
+		return -ENOMEM;
+	}
 	/* Single file for the int channel coalescing settings */
 	sdr = &sdev->dfs->sd_irq_ch;
 	sdr->sdev = sdev;
@@ -546,17 +608,6 @@ void sif_dfs_unregister(struct sif_dev *sdev)
 
 /**** support for raw QP state dump */
 
-
-static int rqp_open(struct inode *inode, struct file *file)
-{
-	if (!try_module_get(THIS_MODULE))
-		return -EIO;
-
-	file->private_data = inode->i_private;
-	return 0;
-};
-
-
 static ssize_t rqp_read(struct file *file, char __user *buf, size_t sz, loff_t *off)
 {
 	struct sif_qp *qp = (struct sif_qp *)file->private_data;
@@ -597,21 +648,12 @@ static ssize_t rqp_read(struct file *file, char __user *buf, size_t sz, loff_t *
 	return len;
 }
 
-
-static int rqp_release(struct inode *inode, struct file *file)
-{
-	module_put(THIS_MODULE);
-	return 0;
-}
-
-
 static const struct file_operations qp_fops = {
 	.owner   = THIS_MODULE,
-	.open    = rqp_open,
+	.open    = r_open,
 	.read    = rqp_read,
-	.release = rqp_release,
+	.release = r_release,
 };
-
 
 /* TBD: Ref.cnt or other protection probably needed to protect agains "take down" while
  * a query is in progress

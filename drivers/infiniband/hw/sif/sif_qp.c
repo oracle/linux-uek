@@ -808,7 +808,7 @@ int modify_qp_hw_wa_qp_retry(struct sif_dev *sdev, struct sif_qp *qp,
 		.qp_state        = IB_QPS_ERR
 	};
 
-	bool need_wa_3713 = PSIF_REVISION(sdev) <= 3
+	bool need_wa_3714 = PSIF_REVISION(sdev) <= 3
 		&& IS_PSIF(sdev)
 		&& qp_attr_mask & IB_QP_STATE && qp_attr->qp_state == IB_QPS_RESET;
 
@@ -820,7 +820,7 @@ int modify_qp_hw_wa_qp_retry(struct sif_dev *sdev, struct sif_qp *qp,
 
 	int ret = 0;
 
-	if (need_wa_3713 || need_wa_4074) {
+	if (need_wa_3714 || need_wa_4074) {
 		if (qp->type != PSIF_QP_TRANSPORT_MANSP1 && !is_xtgt_qp(qp))
 			ret = pre_process_wa4074(sdev, qp);
 
@@ -830,8 +830,8 @@ int modify_qp_hw_wa_qp_retry(struct sif_dev *sdev, struct sif_qp *qp,
 		}
 	}
 
-	if (need_wa_3713) {
-		/* Workaround for bug #3713 part 2 - see #3714 */
+	if (need_wa_3714) {
+		/* WA#3714 part 2 - see bug #3714 */
 		ret = modify_qp_hw(sdev, qp, &mod_attr, IB_QP_STATE);
 		if (ret)
 			sif_log(sdev, SIF_INFO, "implicit modify qp %d to ERR failed - ignoring",
@@ -840,7 +840,7 @@ int modify_qp_hw_wa_qp_retry(struct sif_dev *sdev, struct sif_qp *qp,
 
 	ret = modify_qp_hw(sdev, qp, qp_attr, qp_attr_mask);
 
-	if (need_wa_3713 || need_wa_4074) {
+	if (need_wa_3714 || need_wa_4074) {
 		struct ib_qp_attr attr = {
 			.qp_state = IB_QPS_RESET
 		};
@@ -2273,7 +2273,7 @@ static int reset_qp(struct sif_dev *sdev, struct sif_qp *qp)
 	volatile struct psif_qp *qps = &qp->d;
 	struct sif_rq *rq = get_rq(sdev, qp);
 	struct sif_sq *sq = get_sq(sdev, qp);
-	bool need_wa_3713 = 0;
+	bool need_wa_3714 = 0;
 
 	/* Bring down order needed by rev2 according to bug #3480 */
 	int ret = poll_wait_for_qp_writeback(sdev, qp);
@@ -2281,15 +2281,15 @@ static int reset_qp(struct sif_dev *sdev, struct sif_qp *qp)
 	if (ret)
 		goto failed;
 
-	/* WA 3713 special handling */
-	need_wa_3713 = (PSIF_REVISION(sdev) <= 3)
+	/* WA 3714 special handling */
+	need_wa_3714 = (PSIF_REVISION(sdev) <= 3)
 		&& IS_PSIF(sdev) /* Next check if there is a retry outstanding */
 		&& !qp->flush_sq_done_wa4074
 		&& (get_psif_qp_core__retry_tag_committed(&qp->d.state) !=
 			get_psif_qp_core__retry_tag_err(&qp->d.state))
 		&& (qp->qp_idx != sdev->flush_qp);
 
-	if (need_wa_3713) {
+	if (need_wa_3714) {
 		ret = reset_qp_flush_retry(sdev);
 		if (ret < 0)
 			sif_log(sdev, SIF_INFO,	"Flush_retry special handling failed with ret %d", ret);

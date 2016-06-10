@@ -363,7 +363,7 @@ int reset_qp_flush_retry(struct sif_dev *sdev)
 	mutex_lock(&sdev->flush_lock);
 
 	if (!sdev->flush_qp) {
-		sif_log(sdev, SIF_INFO, "special handling WA_3713 failed: flush_qp does not exist");
+		sif_log(sdev, SIF_INFO, "special handling WA_3714 failed: flush_qp does not exist");
 		ret = -EINVAL;
 		goto err_flush_qp;
 	}
@@ -439,15 +439,18 @@ int reset_qp_flush_retry(struct sif_dev *sdev)
 		}
 	}
 
+	sdev->wa_stats.wa3714[0]++;
 	mutex_unlock(&sdev->flush_lock);
 	return ret;
 fail:
+	sdev->wa_stats.wa3714[1]++;
 	sif_hw_free_flush_qp(sdev);
 	sif_hw_allocate_flush_qp(sdev);
 	mutex_unlock(&sdev->flush_lock);
 	return ret;
 
 err_flush_qp:
+	sdev->wa_stats.wa3714[1]++;
 	mutex_unlock(&sdev->flush_lock);
 	return ret;
 }
@@ -899,4 +902,16 @@ static u16 cq_walk_wa4074(struct sif_dev *sdev, struct sif_qp *qp, bool *last_se
 
 	spin_unlock_irqrestore(&cq->lock, flags);
 	return last_seq;
+}
+
+void sif_dfs_print_wa_stats(struct sif_dev *sdev, char *buf)
+{
+	/* Header */
+	sprintf(buf, "#%7s %10s %10s %20s\n", "WA", "ok", "err", "desc");
+	/* Content */
+	sprintf(buf + strlen(buf), "#%8s %9llu %10llu %20s\n",
+		"WA3714",
+		sdev->wa_stats.wa3714[0],
+		sdev->wa_stats.wa3714[1],
+		"Destroying QPs with a retry in progress");
 }

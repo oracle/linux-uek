@@ -33,6 +33,8 @@
 
 #include "sif_verbs.h"
 
+#include "sif_r3.h"
+
 #define PCI_VENDOR_ID_SUN	0x108e
 #define PCI_DEVICE_ID_PSIF_PF	0x2088
 #define PCI_DEVICE_ID_PSIF_VF	0x2089
@@ -292,7 +294,7 @@ struct sif_dev {
 	/* Support for workaround for #3552 - feature_mask create_do_not_evict_qp: */
 	u32 dne_qp;
 
-	/* Support for workaround for #3713 */
+	/* Support for WA#3714 */
 	u32 flush_qp;
 	struct mutex flush_lock;
 
@@ -331,6 +333,8 @@ struct sif_dev {
 	/* PSIF is degraded */
 	bool degraded;
 
+	/* Owned by sif_r3.c - wa support */
+	struct sif_wa_stats wa_stats;
 };
 
 /* TBD: These should probably come from common pci headers
