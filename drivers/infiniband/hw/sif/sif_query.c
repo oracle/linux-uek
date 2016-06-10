@@ -76,10 +76,11 @@ int sif_query_device(struct ib_device *ibdev, struct ib_device_attr *props)
 		IB_DEVICE_XRC |
 		IB_DEVICE_BLOCK_MULTICAST_LOOPBACK;
 
-	/* returns max_sge SIF_HW_MAX_SEND_SGE -1 for IPoIB connected mode.
-	 */
-	props->max_sge = (sif_find_kernel_ulp_caller() == IPOIB_CM_ULP) ?
-		SIF_HW_MAX_SEND_SGE - 1 : SIF_HW_MAX_SEND_SGE;
+	/* returns max_sge SIF_HW_MAX_SEND_SGE -1 for IPoIB datagram mode */
+	/* TBD: Add test for uvnic */
+	props->max_sge = SIF_HW_MAX_SEND_SGE -
+			 (sif_find_kernel_ulp_caller() == IPOIB_ULP);
+
 	props->max_sge_rd = ldev.max_sge_rd;
 	props->max_cq = sdev->ba[cq_sw].entry_cnt;
 	props->max_cqe = SIF_SW_MAX_CQE;
