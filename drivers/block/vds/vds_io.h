@@ -42,6 +42,7 @@ struct vds_io {
 #define	VDS_IO_CACHE		0x1
 #define	VDS_IO_INIT		0x2
 #define	VDS_IO_FINI		0x4
+#define	VDS_IO_DROP		0x8
 
 int vds_io_init(void);
 void vds_io_fini(void);

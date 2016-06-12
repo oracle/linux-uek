@@ -56,10 +56,15 @@ MODULE_VERSION(DRV_MOD_VERSION);
  * conceivably block when the backend is closed.  The serialization should
  * ensure that a following handshake initiates only after the reset is done.
  *
+ * Out of order execution bypasses vds_io_wait() except for FLUSH. This means
+ * that a request may start later but complete and respond to the client
+ * earlier than other requests.
+ *
  * The recommended value for the size of the kernel workqueue is 0;
  * it creates threads which scale with ncpu.
  */
 int vds_wq;
+int vds_ooo;	/* out of order execution default value */
 int vds_dbg;
 int vds_dbg_ldc;
 int vds_dbg_vio;
@@ -68,12 +73,19 @@ module_param(vds_dbg, uint, 0664);
 module_param(vds_dbg_ldc, uint, 0664);
 module_param(vds_dbg_vio, uint, 0664);
 module_param(vds_wq, uint, 0664);
+module_param(vds_ooo, uint, 0664);
 
 /* Ordered from largest major to lowest */
 static struct vio_version vds_versions[] = {
+	{ .major = 1, .minor = 3 },
 	{ .major = 1, .minor = 1 },
 	{ .major = 1, .minor = 0 },
 };
+
+static inline int vds_version_supp(struct vds_port *port, u16 major, u16 minor)
+{
+	return port->vio.ver.major == major && port->vio.ver.minor >= minor;
+}
 
 static void vds_handshake_complete(struct vio_driver_state *vio)
 {
@@ -148,10 +160,7 @@ static int vds_handle_attr(struct vio_driver_state *vio, void *arg)
 		 * Set the maximum expected message length to
 		 * accommodate in-band-descriptor messages with all
 		 * their cookies.
-		 */
-		vio->desc_buf_len = max_inband_msglen;
-
-		/*
+		 *
 		 * Reallocate before responding to the message since
 		 * the next request in the handshake will use this size
 		 * and a small msgbuf would make the ldc read fail.
@@ -360,13 +369,16 @@ static void vds_bh_hs(struct work_struct *work)
 	if (io->flags & VDS_IO_INIT)
 		err = vds_be_init(port);
 
-	vds_io_wait(io);
+	vds_io_wait(io);	/* handshake is always in order */
 
 	if (!err)
 		err = vio_control_pkt_engine(vio, port->msgbuf);
 
 	if (err)
 		vdsmsg(err, "%s: handshake failed (%d)\n", port->path, err);
+
+	if (vds_version_supp(port, 1, 3))
+		vds_ooo = 1;
 
 	vds_io_done(io);
 }
@@ -426,9 +438,12 @@ static void vds_bh_io(struct work_struct *work)
 	if (io->ack == VIO_SUBTYPE_ACK && err != 0 && io->error == 0)
 		io->error = err > 0 ? err : -err;
 
-	vds_io_wait(io);
+	if (!vds_ooo)
+		vds_io_wait(io);
 
-	if (port->xfer_mode == VIO_DRING_MODE)
+	if (io->flags & VDS_IO_DROP)
+		;
+	else if (port->xfer_mode == VIO_DRING_MODE)
 		(void) vds_dring_done(io);
 	else if (port->xfer_mode == VIO_DESC_MODE)
 		(void) vds_desc_done(io);
@@ -436,11 +451,10 @@ static void vds_bh_io(struct work_struct *work)
 		BUG();
 
 	/*
-	 * If there was a reset then the IO request has been
-	 * converted to a reset request queued to be executed.
+	 * Any request, including one that was converted
+	 * to a reset ends up here to be completed.
 	 */
-	if (!(io->flags & VDS_IO_FINI))
-		vds_io_done(io);
+	vds_io_done(io);
 }
 
 static void vds_reset(struct vds_io *io)
@@ -474,7 +488,6 @@ static void vds_reset(struct vds_io *io)
 
 	vds_vio_lock(vio, flags);
 	vio_link_state_change(vio, LDC_EVENT_RESET);
-	vio->desc_buf_len = 0;
 
 	port->flags = 0;
 	kfree(port->msgbuf);
@@ -500,10 +513,17 @@ static void vds_bh_reset(struct work_struct *work)
 	struct vds_io *io = container_of(work, struct vds_io, vds_work);
 	struct vio_driver_state *vio = io->vio;
 
-	vds_io_wait(io);
+	if (!vds_ooo)
+		vds_io_wait(io);
 	vds_reset(io);
-	ldc_enable_hv_intr(vio->lp);
 	vds_io_done(io);
+
+	/*
+	 * Enable LDC interrupt after the request completion
+	 * so that no new requests are queued while the IO
+	 * queue is discarded during reset processing.
+	 */
+	ldc_enable_hv_intr(vio->lp);
 }
 
 static int vds_dring_io(struct vio_driver_state *vio)
@@ -806,7 +826,7 @@ static void vds_event(void *arg, int event)
 
 static struct ldc_channel_config vds_ldc_cfg = {
 	.event		= vds_event,
-	.mtu		= 64,
+	.mtu		= 256,
 	.mode		= LDC_MODE_UNRELIABLE,
 };
 

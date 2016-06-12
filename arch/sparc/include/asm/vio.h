@@ -310,6 +310,8 @@ struct vio_dring_state {
 	void			*base;
 	u64			snd_nxt;
 	u64			rcv_nxt;
+	unsigned long		*txmap;
+	unsigned long		nr_txmap;
 	u32			entry_size;
 	u32			num_entries;
 	u32			prod;
