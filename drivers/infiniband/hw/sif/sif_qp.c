@@ -2212,22 +2212,22 @@ int destroy_qp(struct sif_dev *sdev, struct sif_qp *qp)
 			nfixup = sif_fixup_cqes(send_cq, sq, qp);
 			if (nfixup < 0) {
 				sif_log(sdev, SIF_INFO,
-					"sif_fixup_cqes: on qp %d send cq %d failed with error %d",
+					"fixup cqes on qp %d send cq %d failed with error %d",
 					qp->qp_idx, sq->cq_idx, nfixup);
 				goto fixup_failed;
 			}
-			sif_log(sdev, SIF_QP, "sif_fixup_cqes: fixed %d CQEs in sq.cq %d",
+			sif_log(sdev, SIF_QP, "fixup cqes fixed %d CQEs in sq.cq %d",
 				nfixup, sq->cq_idx);
 		}
 		if (recv_cq && recv_cq != send_cq) {
 			nfixup = sif_fixup_cqes(recv_cq, sq, qp);
 			if (nfixup < 0) {
 				sif_log(sdev, SIF_INFO,
-					"sif_fixup_cqes: on qp %d recv cq %d failed with error %d",
+					"fixup cqes on qp %d recv cq %d failed with error %d",
 					qp->qp_idx, cq_idx, nfixup);
 				goto fixup_failed;
 			}
-			sif_log(sdev, SIF_QP, "sif_fixup_cqes: fixed %d CQEs in rq.cq %d",
+			sif_log(sdev, SIF_QP, "fixup cqes fixed %d CQEs in rq.cq %d",
 				nfixup, cq_idx);
 
 		}
