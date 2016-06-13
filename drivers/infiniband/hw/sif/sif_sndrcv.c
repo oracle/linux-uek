@@ -1049,6 +1049,12 @@ static int prep_send_lso(struct sif_qp *qp, struct ib_send_wr *wr, struct psif_c
 
 	ud_hlen = wr->wr.ud.hlen;
 	wqe->wr.details.send.ud.mss = wr->wr.ud.mss;
+	/* Check if stencil is larger than max_inline_data */
+	if (ud_hlen > qp->max_inline_data) {
+		sif_log(sdev, SIF_INFO, "attempt to post lso wr with too big header  %d > %d",
+			ud_hlen, qp->max_inline_data);
+		return -EINVAL;
+	}
 
 	la->addr   = get_sqe_dma(sq, sqe_seq) + sq->sgl_offset;
 	la->lkey = sq->sg_mr->index;
