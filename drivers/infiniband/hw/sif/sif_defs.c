@@ -503,7 +503,7 @@ const char *ib_event2str(enum ib_event_type e)
 static inline enum kernel_ulp_type find_ulp_type_from_address(void *ptr)
 {
 	if (ptr) {
-#if defined(__x86_64__) || defined(__sparc__)
+#if defined(__x86_64__) || defined(__sparc__) || defined(__aarch64__)
 		char symbol_name[100];
 
 		snprintf(symbol_name, sizeof(symbol_name), "%ps", ptr);
