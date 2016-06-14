@@ -313,7 +313,7 @@ struct queue_limits {
    * The following padding has been inserted before ABI freeze to
    * allow extending the structure while preserving ABI.
    */
-        UEK_KABI_RESERVED(1)
+	UEK_KABI_USE2(1, unsigned int max_dev_sectors, unsigned int unuse)
         UEK_KABI_RESERVED(2)
 };
 
