@@ -313,13 +313,6 @@ err_reg_mr:
 	return ERR_PTR(ret);
 }
 
-int sif_query_mr(struct ib_mr *ibmr, struct ib_mr_attr *mr_attr)
-{
-	sif_logi(ibmr->device, SIF_MR, "Not implemented");
-	return -EOPNOTSUPP;
-}
-
-
 /* If the MMU is involved (not pass-through mode)
  * PSIF MR deregistration is asyncronous and five-step (see #2002):
  *  1) Invalidate associated dma validation entry but first
