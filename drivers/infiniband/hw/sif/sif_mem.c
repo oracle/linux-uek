@@ -579,6 +579,7 @@ struct sif_mem *sif_mem_create_umem(struct sif_dev *sdev,
 	return mem;
 }
 
+
 /* Create a sif_mem object from a phys array of length @num_phys
  * The phys array is owned by caller:
  */

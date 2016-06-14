@@ -168,7 +168,6 @@ err_create_mem:
 	return (void *)mr;
 }
 
-
 struct ib_mr *sif_reg_phys_mr(struct ib_pd *ibpd,
 			      struct ib_phys_buf *phys_buf_array,
 			      int num_phys_buf,
@@ -206,7 +205,6 @@ alloc_mr_failed:
 param_err:
 	return (void *)mr;
 }
-
 
 int sif_rereg_phys_mr(struct ib_mr *ibmr, int mr_rereg_mask,
 		      struct ib_pd *ibpd,

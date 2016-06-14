@@ -190,8 +190,8 @@ enum psif_wc_opcode ib2sif_wc_opcode(enum ib_wc_opcode opcode)
 		return PSIF_WC_OPCODE_RECEIVE_SEND;
 	case IB_WC_RECV_RDMA_WITH_IMM:
 		return PSIF_WC_OPCODE_RECEIVE_RDMA_WR_IMM;
-	case IB_WC_BIND_MW:
 	case IB_WC_LOCAL_INV:
+	case IB_WC_BIND_MW:
 	case IB_WC_FAST_REG_MR:
 		break;
 	}
