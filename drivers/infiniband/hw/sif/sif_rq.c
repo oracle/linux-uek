@@ -151,6 +151,7 @@ int alloc_rq(struct sif_dev *sdev, struct sif_pd *pd,
 	}
 
 	rq->sg_entries = sg_entries;
+	init_completion(&rq->can_destroy);
 	atomic_set(&rq->refcnt, 1);
 
 	/* Initialize hw part of descriptor */
@@ -327,209 +328,216 @@ int sif_flush_rq(struct sif_dev *sdev, struct sif_rq *rq, struct sif_qp *target_
 	if (len == 0)
 		goto error;
 
-	sif_log(sdev, SIF_INFO_V, "flushing %d entries out of %d/%d entries remaining",
-		len, atomic_read(&rq_sw->length), rq->entries);
+	if (atomic_add_unless(&rq->refcnt, 1, 0)) {
+		sif_log(sdev, SIF_INFO_V, "flushing %d entries out of %d/%d entries remaining",
+			len, atomic_read(&rq_sw->length), rq->entries);
 
-	/* Workaround #622 v2 step 1: ModifyQP to RESET
-	 * The QP must be in the RESET state to avoid race condition.
-	 * sif_flush_rq will only be called when the QP is
-	 * in ERROR state. As for now, keeping the same coding style to
-	 * check whether the qp flags SIF_QPF_HW_OWNED is clear.
-	 * If it is clear, it means that the QP is in the shadowed
-	 * software error state (actual hw state is in RESET).
-	 *
-	 * TBD - Should we add new PSIF_QP_STATE_SHADOWED_ERROR state,
-	 * at least to me it is more readable?
-	 */
-	mutex_lock(&target_qp->lock);
-	/* qp lock must be held to make sure not other thread is trying to do modify_qp_hw to RESET */
-	mqp_type = sif_modify_qp_is_ok(target_qp, target_qp->last_set_state, IB_QPS_RESET, IB_QP_STATE);
-
-	if (mqp_type == SIF_MQP_HW) {
-		struct ib_qp_attr attr = {
-			.qp_state = IB_QPS_ERR
-		};
-
-		ret = modify_qp_hw_wa_qp_retry(sdev, target_qp, &attr, IB_QP_STATE);
-
-		if (ret)
-			sif_log(sdev, SIF_INFO, "qp %d RESET failed, ret %d",
-				target_qp->qp_idx, ret);
-
-	}
-	mutex_unlock(&target_qp->lock);
-
-	/* Workaround #622 v2 step 2: Invalidate RQ
-	 * Invalidation of an RQ causes PSIF to flush it's caches for that RQ.
-	 * If PSIF finds the RQ invalid, it will attempt to fetch it.
-	 * It is then required to be valid (otherwise it will be interpreted as an error
-	 * by PSIF (see #2134). So software cannot rely upon the completion of the invalidate
-	 * to signal that the descriptor can be re-used, instead it will have to
-	 * verify by checking the final write-back of the descriptor, which will have
-	 * valid set to 0 by PSIF. In the general case we handle this lazy and check before we
-	 * try to re-use. The request is posted with no completion requested as we
-	 * do not need the completion:
-	 */
-	if (!(test_bit(RQ_IS_INVALIDATED, &rq_sw->flags))) {
-		ret = sif_invalidate_rq_hw(sdev, rq->index, PCM_POST);
-		if (ret) {
-			sif_log(sdev, SIF_INFO,
-				"Invalidate rq_hw failed, status %d", ret);
-			goto error;
-		}
-		set_bit(RQ_IS_INVALIDATED, &rq_sw->flags);
-	}
-
-	/* Make sure the RQ is sofware owned: */
-	ret = poll_wait_for_rq_writeback(sdev, rq);
-	if (ret)
-		goto error;
-
-	/* The RQ is now software owned and the (after a successful invalidate) so we
-	 * should be able to trust rq_hw::head_indx - better than scanning the CQ
-	 * for unprocessed elements:
-	 * Note that only the lowest 14 bits of the sequence number in head_indx is
-	 * valid:
-	 */
-flush_rq_again:
-	head = get_psif_rq_hw__head_indx(&rq->d);
-	tail = rq_sw->next_seq;
-	real_len = rq_length(rq, head, tail & ((1 << 14) - 1)) & ((1 << 14) - 1);
-
-	/* Workaround #622 v2 step 3: Check the last completion on the CQ
-	 * The rq_sw->length is used to track the length of a queue
-	 * with #posted - #completed. If the calculated real_len is
-	 * smaller than the len, it means that a completion is missing.
-	 * Instead of loooping RQ to find rqe of the completed wc_id, the
-	 * rq_sw->length represents the #posted - #completed, and nfixup
-	 * represents the remaining completions after the QP moved to RESET.
-	 * Thus, the number of flush-in error that must be generated is
-	 * rq_sw->length - nfixup.
-	 */
-	if (!(test_bit(FLUSH_RQ_FIRST_TIME, &rq_sw->flags))) {
-		/* need to use a flag to differentiate between the first call of
-		 * sif_flush_rq or the subsequent call. The race condition where
-		 * HW acquired a RWQE but does not generate a completion can
-		 * only happen at the first call of sif_flush_rq. This is because
-		 * the QP state is moved to RESET.
-		 * Besides, if the generated completion arrived later and
-		 * FLUSH_RQ_IN_FLIGHT is set, the test of real_len < len
-		 * might be true.
+		/* Workaround #622 v2 step 1: ModifyQP to RESET
+		 * The QP must be in the RESET state to avoid race condition.
+		 * sif_flush_rq will only be called when the QP is
+		 * in ERROR state. As for now, keeping the same coding style to
+		 * check whether the qp flags SIF_QPF_HW_OWNED is clear.
+		 * If it is clear, it means that the QP is in the shadowed
+		 * software error state (actual hw state is in RESET).
+		 *
+		 * TBD - Should we add new PSIF_QP_STATE_SHADOWED_ERROR state,
+		 * at least to me it is more readable?
 		 */
-		len = atomic_read(&rq_sw->length);
-		if (real_len < len) {
-			struct psif_qp lqps;
+		mutex_lock(&target_qp->lock);
+		/* qp lock must be held to make sure not other thread is trying to
+		 * do modify_qp_hw to RESET.
+		 */
+		mqp_type = sif_modify_qp_is_ok(target_qp, target_qp->last_set_state,
+					       IB_QPS_RESET, IB_QP_STATE);
 
-			copy_conv_to_sw(&lqps, &target_qp->d, sizeof(lqps));
+		if (mqp_type == SIF_MQP_HW) {
+			struct ib_qp_attr attr = {
+				.qp_state = IB_QPS_ERR
+			};
 
-			/* from Brian - This is a scenario where the first packet is received,
-			 * the RQ is claimed but the Last packet is not received after the QP
-			 * is in Error. Then, nothing will come up the pipe to complete the
-			 * Received and it will be dangling.
-			 */
-			if ((lqps.state.expected_opcode != NO_OPERATION_IN_PROGRESS) &&
-			    (lqps.state.committed_received_psn + 1 == lqps.state.expected_psn)) {
-				int entries;
-				struct sif_cq *cq = get_sif_cq(sdev, lqps.state.rcv_cq_indx);
-				struct sif_cq_sw *cq_sw;
-				unsigned long timeout;
+			ret = modify_qp_hw_wa_qp_retry(sdev, target_qp, &attr, IB_QP_STATE);
 
-				if (!cq) {
-					sif_log(sdev, SIF_RQ,
-						"recevied cq is NULL");
-					goto error;
-				}
-				cq_sw = get_sif_cq_sw(sdev, cq->index);
+			if (ret)
+				sif_log(sdev, SIF_INFO, "qp %d RESET failed, ret %d",
+					target_qp->qp_idx, ret);
 
-				/* wait for 1 second to ensure that all the completions are back */
-				timeout = jiffies + HZ;
-				do {
-					cpu_relax();
-				} while (time_is_after_jiffies(timeout));
+		}
+		mutex_unlock(&target_qp->lock);
 
-				/* use the software counter (rq_sw->length) */
-				entries = find_recv_cqes_in_cq(sdev, cq, target_qp);
-				len = atomic_read(&rq_sw->length);
-				sif_log(sdev, SIF_RQ,
-					"RQ %d: updating calculated entries from %d to %d - %d (%d)",
-					rq->index, real_len, len, entries, len - entries);
-				real_len = real_len < len ? len - entries : real_len;
+		/* Workaround #622 v2 step 2: Invalidate RQ
+		 * Invalidation of an RQ causes PSIF to flush it's caches for that RQ.
+		 * If PSIF finds the RQ invalid, it will attempt to fetch it.
+		 * It is then required to be valid (otherwise it will be interpreted as an error
+		 * by PSIF (see #2134). So software cannot rely upon the completion of the invalidate
+		 * to signal that the descriptor can be re-used, instead it will have to
+		 * verify by checking the final write-back of the descriptor, which will have
+		 * valid set to 0 by PSIF. In the general case we handle this lazy and check before we
+		 * try to re-use. The request is posted with no completion requested as we
+		 * do not need the completion:
+		 */
+		if (!(test_bit(RQ_IS_INVALIDATED, &rq_sw->flags))) {
+			ret = sif_invalidate_rq_hw(sdev, rq->index, PCM_POST);
+			if (ret) {
+				sif_log(sdev, SIF_INFO,
+					"Invalidate rq_hw failed, status %d", ret);
+				goto free_rq_error;
 			}
+			set_bit(RQ_IS_INVALIDATED, &rq_sw->flags);
 		}
-		set_bit(FLUSH_RQ_FIRST_TIME, &rq_sw->flags);
-	}
 
-	/* Now find the actual 32 bit seq.no */
-	head = tail - real_len;
-
-	sif_log(sdev, SIF_RQ,
-		"RQ %d not empty: sz %d, head %d, next_seq %d, %d/%d entries at exit",
-		rq->index, rq->entries, head, tail, len, real_len);
-
-	if (!real_len)
-		goto error;
-
-	/* Workaround #622 v2 step 4: generate flush in error completion
-	 * Generate flushed in error completions:
-	 * these give no pqp completions but may in theory fail
-	 */
-	while (real_len > 0) {
-		sif_log(sdev, SIF_PQP, "rq %d, len %d", rq->index, real_len);
-		ret = sif_gen_rq_flush_cqe(sdev, rq, head, target_qp);
+		/* Make sure the RQ is sofware owned: */
+		ret = poll_wait_for_rq_writeback(sdev, rq);
 		if (ret)
-			sif_log(sdev, SIF_INFO, "rq %d, len %d, sif_gen_rq_flush_cqe returned %d",
-				rq->index, real_len, ret);
-		if (ret == -EAGAIN) {
-			ret = gen_pqp_cqe(&lcqe);
-			if (ret < 0)
-				goto error;
-			ret = poll_cq_waitfor(&lcqe);
-			if (ret < 0)
-				goto error;
-			lcqe.written = false;
-			continue;
+			goto free_rq_error;
+
+		/* The RQ is now software owned and the (after a successful invalidate) so we
+		 * should be able to trust rq_hw::head_indx - better than scanning the CQ
+		 * for unprocessed elements:
+		 * Note that only the lowest 14 bits of the sequence number in head_indx is
+		 * valid:
+		 */
+flush_rq_again:
+		head = get_psif_rq_hw__head_indx(&rq->d);
+		tail = rq_sw->next_seq;
+		real_len = rq_length(rq, head, tail & ((1 << 14) - 1)) & ((1 << 14) - 1);
+
+		/* Workaround #622 v2 step 3: Check the last completion on the CQ
+		 * The rq_sw->length is used to track the length of a queue
+		 * with #posted - #completed. If the calculated real_len is
+		 * smaller than the len, it means that a completion is missing.
+		 * Instead of loooping RQ to find rqe of the completed wc_id, the
+		 * rq_sw->length represents the #posted - #completed, and nfixup
+		 * represents the remaining completions after the QP moved to RESET.
+		 * Thus, the number of flush-in error that must be generated is
+		 * rq_sw->length - nfixup.
+		 */
+		if (!(test_bit(FLUSH_RQ_FIRST_TIME, &rq_sw->flags))) {
+			/* need to use a flag to differentiate between the first call of
+			 * sif_flush_rq or the subsequent call. The race condition where
+			 * HW acquired a RWQE but does not generate a completion can
+			 * only happen at the first call of sif_flush_rq. This is because
+			 * the QP state is moved to RESET.
+			 * Besides, if the generated completion arrived later and
+			 * FLUSH_RQ_IN_FLIGHT is set, the test of real_len < len
+			 * might be true.
+			 */
+			len = atomic_read(&rq_sw->length);
+			if (real_len < len) {
+				struct psif_qp lqps;
+
+				copy_conv_to_sw(&lqps, &target_qp->d, sizeof(lqps));
+
+				/* from Brian - This is a scenario where the first packet is received,
+				 * the RQ is claimed but the Last packet is not received after the QP
+				 * is in Error. Then, nothing will come up the pipe to complete the
+				 * Received and it will be dangling.
+				 */
+				if ((lqps.state.expected_opcode != NO_OPERATION_IN_PROGRESS) &&
+				    (lqps.state.committed_received_psn + 1 == lqps.state.expected_psn)) {
+					int entries;
+					struct sif_cq *cq = get_sif_cq(sdev, lqps.state.rcv_cq_indx);
+					struct sif_cq_sw *cq_sw;
+					unsigned long timeout;
+
+					if (!cq) {
+						sif_log(sdev, SIF_RQ,
+							"recevied cq is NULL");
+						goto free_rq_error;
+					}
+					cq_sw = get_sif_cq_sw(sdev, cq->index);
+
+					/* wait for 1 second to ensure that all the completions are back */
+					timeout = jiffies + HZ;
+					do {
+						cpu_relax();
+					} while (time_is_after_jiffies(timeout));
+
+					/* use the software counter (rq_sw->length) */
+					entries = find_recv_cqes_in_cq(sdev, cq, target_qp);
+					len = atomic_read(&rq_sw->length);
+					sif_log(sdev, SIF_RQ,
+						"RQ %d: updating calculated entries from %d to %d - %d (%d)",
+						rq->index, real_len, len, entries, len - entries);
+					real_len = real_len < len ? len - entries : real_len;
+				}
+			}
+			set_bit(FLUSH_RQ_FIRST_TIME, &rq_sw->flags);
 		}
-		if (ret < 0)
-			goto error;
-		real_len--;
-		head++;
+
+		/* Now find the actual 32 bit seq.no */
+		head = tail - real_len;
+
+		sif_log(sdev, SIF_RQ,
+			"RQ %d not empty: sz %d, head %d, next_seq %d, %d/%d entries at exit",
+			rq->index, rq->entries, head, tail, len, real_len);
+
+		if (!real_len)
+			goto free_rq_error;
+
+		/* Workaround #622 v2 step 4: generate flush in error completion
+		 * Generate flushed in error completions:
+		 * these give no pqp completions but may in theory fail
+		 */
+		while (real_len > 0) {
+			sif_log(sdev, SIF_PQP, "rq %d, len %d", rq->index, real_len);
+			ret = sif_gen_rq_flush_cqe(sdev, rq, head, target_qp);
+			if (ret)
+				sif_log(sdev, SIF_INFO, "rq %d, len %d, sif_gen_rq_flush_cqe returned %d",
+					rq->index, real_len, ret);
+			if (ret == -EAGAIN) {
+				ret = gen_pqp_cqe(&lcqe);
+				if (ret < 0)
+					goto free_rq_error;
+				ret = poll_cq_waitfor(&lcqe);
+				if (ret < 0)
+					goto free_rq_error;
+				lcqe.written = false;
+				continue;
+			}
+			if (ret < 0)
+				goto free_rq_error;
+			real_len--;
+			head++;
+		}
+
+		/* Finally generate a sync.completion for us on the PQP itself
+		 * to allow us to wait for the whole to complete:
+		 */
+		ret = gen_pqp_cqe(&lcqe);
+		if (ret < 0) {
+			sif_log(sdev, SIF_INFO, "rq %d, cqe %p gen_pqp_cqe returned %d",
+				rq->index, &lcqe, ret);
+			goto free_rq_error;
+		}
+
+		ret = poll_cq_waitfor(&lcqe);
+		if (ret < 0) {
+			sif_log(sdev, SIF_INFO, "rq %d, cqe %p poll_cq_waitfor returned %d",
+				rq->index, &lcqe, ret);
+			goto free_rq_error;
+		}
+
+		sif_log(sdev, SIF_INFO_V, "RQ %d: received completion on cq %d seq 0x%x - done",
+			rq->index, rq->cq_idx, lcqe.cqe.seq_num);
+
+		/* Make sure hardware pointer reflects the flushed situation */
+		set_psif_rq_hw__head_indx(&rq->d, head);
+		wmb();
+
+		/* if FLUSH_RQ_IN_FLIGHT is set, it means another party is trying to
+		 * flush the rq at the same time. This should be retried
+		 * once as no more than one asynchronous event will be generated if
+		 * QP is in ERROR state. This is to take care of a scenario where
+		 * QP is modified to ERROR explicitly and at the same time received
+		 * the asynchronous event. Nevertheless, the RQ entry changes in between
+		 * of these two scenario that can trigger flush rq.
+		 */
+		if (test_and_clear_bit(FLUSH_RQ_IN_FLIGHT, &rq_sw->flags))
+			goto flush_rq_again;
+free_rq_error:
+		if (atomic_dec_and_test(&rq->refcnt))
+			complete(&rq->can_destroy);
 	}
-
-	/* Finally generate a sync.completion for us on the PQP itself
-	 * to allow us to wait for the whole to complete:
-	 */
-	ret = gen_pqp_cqe(&lcqe);
-	if (ret < 0) {
-		sif_log(sdev, SIF_INFO, "rq %d, cqe %p gen_pqp_cqe returned %d",
-			rq->index, &lcqe, ret);
-		goto error;
-	}
-
-	ret = poll_cq_waitfor(&lcqe);
-	if (ret < 0) {
-		sif_log(sdev, SIF_INFO, "rq %d, cqe %p poll_cq_waitfor returned %d",
-			rq->index, &lcqe, ret);
-		goto error;
-	}
-
-	sif_log(sdev, SIF_INFO_V, "RQ %d: received completion on cq %d seq 0x%x - done",
-		rq->index, rq->cq_idx, lcqe.cqe.seq_num);
-
-	/* Make sure hardware pointer reflects the flushed situation */
-	set_psif_rq_hw__head_indx(&rq->d, head);
-	wmb();
-
-	/* if FLUSH_RQ_IN_FLIGHT is set, it means another party is trying to
-	 * flush the rq at the same time. This should be retried
-	 * once as no more than one asynchronous event will be generated if
-	 * QP is in ERROR state. This is to take care of a scenario where
-	 * QP is modified to ERROR explicitly and at the same time received
-	 * the asynchronous event. Nevertheless, the RQ entry changes in between
-	 * of these two scenario that can trigger flush rq.
-	 */
-	if (test_and_clear_bit(FLUSH_RQ_IN_FLIGHT, &rq_sw->flags))
-		goto flush_rq_again;
-
 error:
 	clear_bit(FLUSH_RQ_IN_PROGRESS, &rq_sw->flags);
 	return ret = ret > 0 ? 0 : ret;
@@ -539,18 +547,24 @@ error:
 int free_rq(struct sif_dev *sdev, int rq_idx)
 {
 	struct sif_rq *rq;
-	int stat;
 
 	rq = get_sif_rq(sdev, rq_idx);
 	sif_log(sdev, SIF_RQ, "entry %d", rq_idx);
 
-	stat = atomic_dec_and_test(&rq->refcnt);
-	if (!stat) {
+	if (!rq->is_srq) {
+		if (atomic_dec_and_test(&rq->refcnt))
+			complete(&rq->can_destroy);
+		wait_for_completion(&rq->can_destroy);
+		goto clean_rq;
+	}
+
+	if (!atomic_dec_and_test(&rq->refcnt)) {
 		sif_log(sdev, SIF_RQ, "rq %d still in use - ref.cnt %d",
 			rq_idx, atomic_read(&rq->refcnt));
 		return -EBUSY;
 	}
 
+clean_rq:
 	sif_release_rq(sdev, rq->index);
 	return 0;
 }

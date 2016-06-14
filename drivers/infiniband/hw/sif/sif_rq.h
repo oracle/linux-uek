@@ -26,6 +26,7 @@ struct sif_rq {
 	bool is_srq; /* Set if this is a shared receive queue */
 	int xrc_domain; /* If != 0: This is an XRC SRQ member of this domain idx */
 	atomic_t refcnt; /* Ref.count for usage as a shared receive queue */
+	struct completion can_destroy; /* use refcnt to synchronization in !srq case */
 	u16 entries;      /* Allocated entries */
 	u16 entries_user; /* Entries reported to user (entries -1 if max) */
 	u32 sg_entries; /* Max receive scatter/gather configured for this rq */
