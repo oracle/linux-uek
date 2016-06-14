@@ -325,6 +325,12 @@ int destroy_cq(struct sif_cq *cq)
 		atomic_add(miss_cnt, &sdev->cq_miss_cnt);
 		atomic_add(miss_occ, &sdev->cq_miss_occ);
 	}
+
+	/* Wait for any in-progress event queue entry for this CQ to be finished */
+	if (atomic_dec_and_test(&cq->refcnt))
+		complete(&cq->cleanup_ok);
+	wait_for_completion(&cq->cleanup_ok);
+
 	ret = sif_invalidate_cq_hw(sdev, index, PCM_WAIT);
 	if (ret) {
 		sif_log(sdev, SIF_INFO,
@@ -346,11 +352,6 @@ int sif_release_cq(struct sif_dev *sdev, int index)
 	struct sif_cq *cq = get_sif_cq(sdev, index);
 	struct sif_pd *pd = cq->pd;
 	struct sif_cq_sw *cq_sw = get_sif_cq_sw(sdev, index);
-
-	/* Wait for any in-progress event queue entry for this CQ to be finished */
-	if (atomic_dec_and_test(&cq->refcnt))
-		complete(&cq->cleanup_ok);
-	wait_for_completion(&cq->cleanup_ok);
 
 	/* Make sure any completions on the cq TLB invalidate
 	 * for priv.qp does arrive before the cq is destroyed..
@@ -906,6 +907,10 @@ int sif_req_notify_cq(struct ib_cq *ibcq, enum ib_cq_notify_flags flags)
 
 	if (flags & IB_CQ_SOLICITED)
 		wr.se = 1;
+
+	/* If a CQ is not valid, do not rearm the CQ. */
+	if (!get_psif_cq_hw__valid(&cq->d))
+		return 0;
 
 	/* We should never miss events in psif so we have no need for a separate
 	 *  handling of IB_CQ_REPORT_MISSED_EVENTS - ignore it.
