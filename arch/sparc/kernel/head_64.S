@@ -461,6 +461,9 @@ sun4v_chip_type:
 	cmp	%g2, '7'
 	be,pt	%xcc, 5f
 	 mov	SUN4V_CHIP_SPARC_S7, %g4
+	cmp	%g2, '8'
+	be,pt	%xcc, 5f
+	 mov	SUN4V_CHIP_SPARC_S8, %g4
 	ba,pt	%xcc, 49f
 	 nop
 91:	sethi	%hi(prom_cpu_compatible), %g1

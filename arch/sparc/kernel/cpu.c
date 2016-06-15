@@ -518,6 +518,12 @@ static void __init sun4v_cpu_probe(void)
 		sparc_pmu_type = "sparc-s7";
 		break;
 
+	case SUN4V_CHIP_SPARC_S8:
+		sparc_cpu_type = "SPARC-S8 (Sonoma2)";
+		sparc_fpu_type = "SPARC-S8 integrated FPU";
+		sparc_pmu_type = "sparc-s8";
+		break;
+
 	case SUN4V_CHIP_SPARC64X:
 		sparc_cpu_type = "SPARC64-X";
 		sparc_fpu_type = "SPARC64-X integrated FPU";
