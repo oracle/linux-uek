@@ -31,6 +31,8 @@
 #include <linux/workqueue.h>
 #include <linux/wait.h>
 #include <linux/delay.h>
+#include <linux/vldc.h>
+#include <linux/sched.h>
 #include "ipmi_si_sm.h"
 #include <asm/ldc.h>
 
@@ -41,6 +43,7 @@
 #define VLDC_RESET_RETRY_STIME (15 * HZ) /* 15 seconds retry time */
 #define VLDC_RESET_RETRY_LTIME (60 * HZ) /* 30 seconds retry time */
 #define VLDC_RESET_RETRY_SCOUNT 25
+#define INVALID_IPMI_DEV -1
 
 static int vldc_debug = VLDC_DEBUG_OFF;
 static struct workqueue_struct *vldc_reset_wq;
@@ -77,8 +80,7 @@ enum vldc_states {
 #define	VC_RECV_NONDATA_SIZE		11
 #define	VC_RECV_MAX_PAYLOAD_SIZE	(BMC_VC_MAX_RESPONSE_SIZE - VC_RECV_NONDATA_SIZE)
 
-#define VLDC_IPMI_SYSFS "/sys/class/vldc/ipmi/mode"
-#define VLDC_IPMI_DEV   "/dev/vldc/ipmi"
+#define VLDC_IPMI_DEV "ipmi"
 
 #define VLDC_NORMAL_TIMEOUT	5	/* seconds */
 #define	VC_MAGIC_NUM	0x4B59554E
@@ -116,24 +118,19 @@ struct si_sm_data {
 	unsigned char	read_data[IPMI_MAX_MSG_LENGTH];
 	int		read_count;
 	long		timeout;
-	struct file     *vldc_filp;
+	int		vldc_handle;
 };
 
-
 static void vldc_cleanup(struct si_sm_data *v);
-static void vldc_fclose(struct si_sm_data *v);
 static int vldc_detect(struct si_sm_data *v);
 static void vldc_reset_work(struct work_struct *w);
 
 static unsigned int vldc_init_data(struct si_sm_data *v, struct si_sm_io *io)
 {
-	extern int vldc_dummy_var;
-
-	/* force a module dependency on vldc, which must */
-	/* be loaded in order for us to function */
-	v->state = vldc_dummy_var;
+	pr_info("%s\n", __func__);
 	memset(v, 0, sizeof(struct si_sm_data));
 	v->state = VLDC_STATE_IDLE;
+	v->vldc_handle = INVALID_IPMI_DEV;
 
 	vldc_reset_wq = alloc_workqueue("ipmi-vldc-reset-wq", WQ_UNBOUND, 1);
 	if (vldc_reset_wq == NULL) {
@@ -244,7 +241,8 @@ static enum si_sm_result vldc_event(struct si_sm_data *vldc, long time)
 		}
 
 		/* try to purge any residual data in the channel */
-		ret = kernel_read(vldc->vldc_filp, 0, vldc->read_data, IPMI_MAX_MSG_LENGTH);
+		ret = vldc_read(vldc->vldc_handle, vldc->read_data,
+			       IPMI_MAX_MSG_LENGTH, NULL);
 		if (ret > 0) {
 			/* huh, some leftover crud? */
 			rcv = (bmc_vc_recv_t *) vldc->read_data;
@@ -263,7 +261,8 @@ static enum si_sm_result vldc_event(struct si_sm_data *vldc, long time)
 		return SI_SM_IDLE;
 
 	case VLDC_STATE_XACTION_START:
-		ret = kernel_write(vldc->vldc_filp, vldc->write_data, vldc->write_count, 0);
+		ret = vldc_write(vldc->vldc_handle, vldc->write_data,
+				vldc->write_count, NULL);
 		if (ret == -EAGAIN) {
 			last_printed = VLDC_STATE_PRINTME;
 			return SI_SM_CALL_WITH_TICK_DELAY;
@@ -273,8 +272,10 @@ static enum si_sm_result vldc_event(struct si_sm_data *vldc, long time)
 			pr_debug("%s: state xaction, LOST CONTACT WITH MC?\n",
 				 __func__);
 			vldc->state = VLDC_STATE_RESETTING;
-			if (vldc->vldc_filp != NULL)
-				vldc_fclose(vldc);
+			if (vldc->vldc_handle >= 0) {
+				vldc_close(vldc->vldc_handle);
+				vldc->vldc_handle = INVALID_IPMI_DEV;
+			}
 			queue_work(vldc_reset_wq, &(vldc->reset_work));
 			return SI_SM_CALL_WITHOUT_DELAY;
 		}
@@ -286,7 +287,8 @@ static enum si_sm_result vldc_event(struct si_sm_data *vldc, long time)
 		return SI_SM_CALL_WITH_TICK_DELAY;
 
 	case VLDC_STATE_READ_WAIT:
-		ret = kernel_read(vldc->vldc_filp, 0, vldc->read_data, IPMI_MAX_MSG_LENGTH);
+		ret = vldc_read(vldc->vldc_handle, vldc->read_data,
+			       IPMI_MAX_MSG_LENGTH, NULL);
 		if (ret == -EAGAIN || ret == 0) {
 			last_printed = VLDC_STATE_PRINTME;
 			return SI_SM_CALL_WITH_TICK_DELAY;
@@ -296,8 +298,10 @@ static enum si_sm_result vldc_event(struct si_sm_data *vldc, long time)
 			pr_debug("%s: state read, LOST CONTACT WITH MC?\n",
 				 __func__);
 			vldc->state = VLDC_STATE_RESETTING;
-			if (vldc->vldc_filp != NULL)
-				vldc_fclose(vldc);
+			if (vldc->vldc_handle >= 0) {
+				vldc_close(vldc->vldc_handle);
+				vldc->vldc_handle = INVALID_IPMI_DEV;
+			}
 			queue_work(vldc_reset_wq, &(vldc->reset_work));
 			return SI_SM_CALL_WITHOUT_DELAY;
 		}
@@ -332,13 +336,6 @@ static enum si_sm_result vldc_event(struct si_sm_data *vldc, long time)
 	return SI_SM_HOSED;
 }
 
-static void vldc_fclose(struct si_sm_data *v)
-{
-	if (v && v->vldc_filp) {
-		filp_close(v->vldc_filp, NULL);
-		v->vldc_filp = NULL;
-	}
-}
 static void vldc_cleanup(struct si_sm_data *v)
 {
 	if (vldc_reset_wq) {
@@ -347,7 +344,8 @@ static void vldc_cleanup(struct si_sm_data *v)
 		flush_workqueue(vldc_reset_wq);
 		destroy_workqueue(vldc_reset_wq);
 	}
-	vldc_fclose(v);
+	vldc_close(v->vldc_handle);
+	v->vldc_handle = INVALID_IPMI_DEV;
 }
 
 static int vldc_size(void)
@@ -355,49 +353,24 @@ static int vldc_size(void)
 	return sizeof(struct si_sm_data);
 }
 
-static int set_vldc_stream_mode(void)
-{
-	struct file *filp;
-	int ret = 0;
-
-	filp = filp_open(VLDC_IPMI_SYSFS, O_RDWR, 0);
-	if (IS_ERR(filp)) {
-		printk(KERN_ALERT "%s: open of %s failed, vldc module may not be loaded\n", __func__, VLDC_IPMI_SYSFS);
-		ret =  PTR_ERR(filp);
-	} else {
-		/* set stream mode on channel, ie, echo "3" >/sys/class/vldc/ipmi/mode */
-		char cmd[12];
-		sprintf(cmd, "%d\n", LDC_MODE_STREAM);
-		if (kernel_write(filp, cmd, strlen(cmd), 0) == strlen(cmd)) {
-			ret = 0;
-		} else {
-			printk(KERN_ALERT "%s: vldc sysfs ipmi write returned %d, could not set stream mode\n", __func__, ret);
-			ret = -EIO;
-		}
-		filp_close(filp, NULL);
-	}
-	return ret;
-}
-
 static int vldc_detect(struct si_sm_data *v)
 {
-	struct file *filp;
+	int dev_handle;
 
-	if (v->vldc_filp != NULL) {
-		pr_warn(KERN_WARNING "%s: Whaaa, vldc_filp already set = %p and filecount=%ld\n",
-		       __func__, v->vldc_filp, file_count(v->vldc_filp));
+	if (v->vldc_handle >= 0) {
+		pr_warn("%s: Whaaa, vldc_flip already set = %d\n",
+		       __func__, v->vldc_handle);
 	}
 
-	if (set_vldc_stream_mode() != 0)
-		return -ENODEV;
-
-	filp = filp_open(VLDC_IPMI_DEV, O_RDWR | O_NONBLOCK, 0);
-	if (IS_ERR(filp)) {
-		printk(KERN_ALERT "%s: filp_open failed for %s, vldc module may not be loaded\n", __func__, VLDC_IPMI_DEV);
-		return PTR_ERR(filp);
+	dev_handle = vldc_open(VLDC_IPMI_DEV, VLDC_MODE_STREAM);
+	if (dev_handle < 0) {
+		pr_err("%s: vldc device open failed, vldc module may not be loaded\n",
+		      __func__);
+		return dev_handle;
 	}
 
-	v->vldc_filp = filp;
+	v->vldc_handle = dev_handle;
+	pr_info("%s: Successfully opened %s\n", __func__, VLDC_IPMI_DEV);
 	return 0;
 }
 
