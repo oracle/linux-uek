@@ -512,8 +512,12 @@ static int rds_ib_srq_prefill_one(struct rds_ib_device *rds_ibdev,
 	if (!recv->r_frag)
 		goto out;
 	sg_init_table(&recv->r_frag->f_sg, 1);
-	ret = rds_page_remainder_alloc(&recv->r_frag->f_sg,
-			recv->r_ic->i_frag_sz, page_mask);
+	if (recv->r_ic)
+		ret = rds_page_remainder_alloc(&recv->r_frag->f_sg,
+				recv->r_ic->i_frag_sz, page_mask);
+	else
+		ret = rds_page_remainder_alloc(&recv->r_frag->f_sg,
+				RDS_FRAG_SIZE, page_mask);
 	if (ret) {
 		kmem_cache_free(rds_ib_frag_slab, recv->r_frag);
 		goto out;
@@ -1590,6 +1594,8 @@ int rds_ib_srq_init(struct rds_ib_device *rds_ibdev)
 	 */
 	if (!rds_ib_srq_enabled)
 		return 0;
+
+	pr_warn("RDS/IB: SRQ support is experimental\n");
 
 	rds_ibdev->srq = kmalloc(sizeof(struct rds_ib_srq), GFP_KERNEL);
 	if (!rds_ibdev->srq) {
