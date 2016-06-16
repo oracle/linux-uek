@@ -35,3 +35,23 @@ static inline void csum_replace_by_diff(__sum16 *sum, __wsum diff)
 {
 	*sum = csum_fold(csum_add(diff, ~csum_unfold(*sum)));
 }
+
+struct udp_tunnel_info {
+	unsigned short type;
+	sa_family_t sa_family;
+	__be16 port;
+};
+
+enum udp_parsable_tunnel_type {
+        UDP_TUNNEL_TYPE_VXLAN,          /* RFC 7348 */
+        UDP_TUNNEL_TYPE_GENEVE,         /* draft-ietf-nvo3-geneve */
+        UDP_TUNNEL_TYPE_VXLAN_GPE,      /* draft-ietf-nvo3-vxlan-gpe */
+};
+
+#define NETDEV_UDP_TUNNEL_PUSH_INFO	0x001C
+static inline void udp_tunnel_get_rx_info(struct net_device *dev)
+{
+	ASSERT_RTNL();
+	call_netdevice_notifiers(NETDEV_UDP_TUNNEL_PUSH_INFO, dev);
+}
+
