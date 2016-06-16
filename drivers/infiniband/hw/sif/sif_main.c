@@ -31,13 +31,12 @@
 #include "psif_hw_csr.h"
 #include "version.h"
 #include <xen/xen.h>
+#include "versioninfo.h"
 
-
-#define PSIF_VERSION_STR "0.1.0.6+"
 
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("Oracle SIF Infiniband HCA driver");
-MODULE_VERSION(PSIF_VERSION_STR);
+MODULE_VERSION(TITAN_RELEASE);
 MODULE_AUTHOR("Knut Omang");
 
 /* The device(s) we support */
