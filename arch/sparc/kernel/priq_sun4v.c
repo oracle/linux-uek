@@ -1021,10 +1021,8 @@ static void unbind_priq_msi(struct priq *priq, struct priq_irq *priq_msi)
 	hverror = pci_priq_msi_info(priq_msi->devhandle, priq_msi->msidata,
 				    priq_msi->bdf, &info);
 
-	if (hverror == HV_EUNBOUND) {
-		pr_err("%s: attempt to unbind unbound MSI\n", __func__);
+	if (hverror == HV_EUNBOUND)
 		return;
-	}
 
 	if (hverror) {
 		pr_err("%s: Failed to obtain priq msi info, hverror(%ld).\n",
