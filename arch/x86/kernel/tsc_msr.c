@@ -80,7 +80,7 @@ static int match_cpu(u8 family, u8 model)
  *
  * Returns the calibration value or 0 if MSR calibration failed.
  */
-unsigned long try_msr_calibrate_tsc(void)
+unsigned long cpu_khz_from_msr(void)
 {
 	u32 lo, hi, ratio, freq_id, freq;
 	unsigned long res;
