@@ -154,22 +154,8 @@ void dtrace_sdt_register_module(struct module *mp)
 	}
 
 	for (i = cnt = 0, sdp = mp->sdt_probes; i < mp->sdt_probec;
-	     i++, sdp++) {
-		/*
-		 * Fix-up the offset to reflect the relocated address of the
-		 * probe.  We subtract 1 to put us at the beginning of the call
-		 * instruction.  We verify that the offset won't put us beyond
-		 * the module core, just to be safe.
-		 */
-                sdp->sdpd_offset += (uintptr_t)mp->core_layout.base;
-		if (!within_module_core(sdp->sdpd_offset, mp)) {
-			pr_warning("%s: SDT probe outside module core %s\n",
-				   __func__, mp->name);
-			continue;
-		}
-
+	     i++, sdp++)
 		addrs[cnt++] = (asm_instr_t *)sdp->sdpd_offset;
-	}
 
 	dtrace_sdt_nop_multi(addrs, cnt);
 
