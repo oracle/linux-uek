@@ -328,41 +328,46 @@ void pci_get_pbm_props(struct pci_pbm_info *pbm)
 	}
 }
 
-static void pci_register_legacy_regions(struct resource *io_res,
-					struct resource *mem_res)
+static void pci_register_region(struct pci_bus *bus, const char *name,
+				resource_size_t rstart, resource_size_t size)
 {
-	struct resource *p;
+	struct resource *res, *conflict, *bus_res;
+	struct pci_bus_region region;
 
+	res = kzalloc(sizeof(*res), GFP_KERNEL);
+	if (!res)
+		return;
+
+	res->flags = IORESOURCE_MEM;
+
+	region.start = rstart;
+	region.end = rstart + size - 1UL;
+	pcibios_bus_to_resource(bus, res, &region);
+	bus_res = pci_find_bus_resource(bus, res);
+	if (!bus_res) {
+		kfree(res);
+		return;
+	}
+
+	res->name = name;
+	res->flags |= IORESOURCE_BUSY;
+	conflict = request_resource_conflict(bus_res, res);
+	if (conflict) {
+		dev_printk(KERN_DEBUG, &bus->dev,
+			" can't claim %s %pR: address conflict with %s %pR\n",
+			res->name, res, conflict->name, conflict);
+		kfree(res);
+	}
+}
+
+void pci_register_legacy_regions(struct pci_bus *bus)
+{
 	/* VGA Video RAM. */
-	p = kzalloc(sizeof(*p), GFP_KERNEL);
-	if (!p)
-		return;
+	pci_register_region(bus, "Video RAM area", 0xa0000UL, 0x20000UL);
 
-	p->name = "Video RAM area";
-	p->start = mem_res->start + 0xa0000UL;
-	p->end = p->start + 0x1ffffUL;
-	p->flags = IORESOURCE_BUSY;
-	request_resource(mem_res, p);
+	pci_register_region(bus, "System ROM",     0xf0000UL, 0x10000UL);
 
-	p = kzalloc(sizeof(*p), GFP_KERNEL);
-	if (!p)
-		return;
-
-	p->name = "System ROM";
-	p->start = mem_res->start + 0xf0000UL;
-	p->end = p->start + 0xffffUL;
-	p->flags = IORESOURCE_BUSY;
-	request_resource(mem_res, p);
-
-	p = kzalloc(sizeof(*p), GFP_KERNEL);
-	if (!p)
-		return;
-
-	p->name = "Video ROM";
-	p->start = mem_res->start + 0xc0000UL;
-	p->end = p->start + 0x7fffUL;
-	p->flags = IORESOURCE_BUSY;
-	request_resource(mem_res, p);
+	pci_register_region(bus, "Video ROM",      0xc0000UL,  0x8000UL);
 }
 
 static void pci_register_iommu_region(struct pci_pbm_info *pbm)
@@ -504,8 +509,6 @@ void pci_determine_mem_io_space(struct pci_pbm_info *pbm)
 	if (pbm->mem64_space.flags)
 		request_resource(&iomem_resource, &pbm->mem64_space);
 
-	pci_register_legacy_regions(&pbm->io_space,
-				    &pbm->mem_space);
 	pci_register_iommu_region(pbm);
 }
 

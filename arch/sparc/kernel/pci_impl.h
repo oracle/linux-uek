@@ -195,6 +195,7 @@ void pci_get_pbm_props(struct pci_pbm_info *pbm);
 struct pci_bus *pci_scan_one_pbm(struct pci_pbm_info *pbm,
 				 struct device *parent);
 void pci_determine_mem_io_space(struct pci_pbm_info *pbm);
+void pci_register_legacy_regions(struct pci_bus *bus);
 void pci_priq_msi_init(struct pci_pbm_info *pbm);
 
 /* Error reporting support. */
