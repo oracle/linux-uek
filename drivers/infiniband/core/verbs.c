@@ -924,16 +924,32 @@ out:
 }
 EXPORT_SYMBOL(ib_resolve_eth_l2_attrs);
 
+const u8 ib_rnr_timeout_sif[32] = {
+	0, 18, 20, 21, 22, 23, 24, 25,
+	26, 27, 28, 29, 30, 31, 0, 0,
+	0, 0, 0, 0, 0, 0, 0, 0,
+	0, 0, 0, 0, 0, 0, 0, 0
+};
 
 int ib_modify_qp(struct ib_qp *qp,
 		 struct ib_qp_attr *qp_attr,
 		 int qp_attr_mask)
 {
+	u8 idx = qp_attr->min_rnr_timer;
 	int ret;
 
 	ret = ib_resolve_eth_l2_attrs(qp, qp_attr, &qp_attr_mask);
 	if (ret)
 		return ret;
+
+	if ((qp_attr_mask & IB_QP_STATE) &&
+		(qp_attr->qp_state == IB_QPS_INIT) &&
+		(qp_attr->qp_access_flags & IB_GUID_RNR_TWEAK))
+		qp->qp_flag |= IB_GUID_RNR_TWEAK;
+
+	if ((qp->qp_flag & IB_GUID_RNR_TWEAK) &&
+		(qp_attr_mask & IB_QP_MIN_RNR_TIMER))
+		qp_attr->min_rnr_timer = ib_rnr_timeout_sif[idx];
 
 	return qp->device->modify_qp(qp->real_qp, qp_attr, qp_attr_mask, NULL);
 }

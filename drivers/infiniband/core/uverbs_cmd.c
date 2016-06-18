@@ -2734,6 +2734,13 @@ out:
 	return ret ? ret : in_len;
 }
 
+const u8 ib_uverbs_rnr_timeout_sif[32] = {
+	0, 18, 20, 21, 22, 23, 24, 25,
+	26, 27, 28, 29, 30, 31, 0, 0,
+	0, 0, 0, 0, 0, 0, 0, 0,
+	0, 0, 0, 0, 0, 0, 0, 0
+};
+
 ssize_t ib_uverbs_modify_qp(struct ib_uverbs_file *file,
 			    const char __user *buf, int in_len,
 			    int out_len)
@@ -2810,6 +2817,16 @@ ssize_t ib_uverbs_modify_qp(struct ib_uverbs_file *file,
 		ret = ib_resolve_eth_l2_attrs(qp, attr, &cmd.attr_mask);
 		if (ret)
 			goto release_qp;
+
+		if ((cmd.attr_mask & IB_QP_STATE) &&
+			(attr->qp_state == IB_QPS_INIT) &&
+			(attr->qp_access_flags & IB_GUID_RNR_TWEAK))
+			qp->qp_flag |= IB_GUID_RNR_TWEAK;
+
+		if ((qp->qp_flag & IB_GUID_RNR_TWEAK) &&
+			(cmd.attr_mask & IB_QP_MIN_RNR_TIMER))
+			attr->min_rnr_timer = ib_uverbs_rnr_timeout_sif[attr->min_rnr_timer];
+
 		ret = qp->device->modify_qp(qp, attr, cmd.attr_mask, &udata);
 	} else {
 		ret = ib_modify_qp(qp, attr, cmd.attr_mask);

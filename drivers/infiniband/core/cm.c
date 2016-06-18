@@ -52,6 +52,7 @@
 #include <rdma/ib_cache.h>
 #include <rdma/ib_cm.h>
 #include "cm_msgs.h"
+#include "core_priv.h"
 
 MODULE_AUTHOR("Sean Hefty");
 MODULE_DESCRIPTION("InfiniBand CM");
@@ -1054,6 +1055,10 @@ static void cm_cleanup_timewait(struct cm_timewait_info *timewait_info)
 		rb_erase(&timewait_info->remote_qp_node, &cm.remote_qp_table);
 		timewait_info->inserted_remote_qp = 0;
 	}
+
+	/* Clean-up the overloaded MBIT */
+	if (timewait_info->remote_ca_guid & IB_GUID_MBIT)
+		timewait_info->remote_ca_guid &= ~IB_GUID_MBIT;
 }
 
 static struct cm_timewait_info * cm_create_timewait_info(__be32 local_id)
@@ -1275,19 +1280,46 @@ static void cm_format_mad_hdr(struct ib_mad_hdr *hdr,
 	hdr->tid	   = tid;
 }
 
+#define SIF_DEVICES		6
+const u32 sif_family_vendor_part_id[SIF_DEVICES] = {
+	0x2088, 0x2089, 0x2188, 0x2189, 0x2198, 0x2199};
+
+static inline bool is_vendor_sif_family(u32 part_id)
+{
+	int i;
+
+	for (i = 0; i < SIF_DEVICES; i++) {
+		if (part_id == sif_family_vendor_part_id[i])
+			return true;
+	}
+	return false;
+}
+
 static void cm_format_req(struct cm_req_msg *req_msg,
 			  struct cm_id_private *cm_id_priv,
 			  struct ib_cm_req_param *param)
 {
 	struct ib_sa_path_rec *pri_path = param->primary_path;
 	struct ib_sa_path_rec *alt_path = param->alternate_path;
+	struct ib_device_attr attr;
+	u32 vendor_part_id;
+
+	if (ib_query_device(cm_id_priv->id.device, &attr))
+		vendor_part_id = 0;
+	else
+		vendor_part_id = attr.vendor_part_id;
 
 	cm_format_mad_hdr(&req_msg->hdr, CM_REQ_ATTR_ID,
 			  cm_form_tid(cm_id_priv, CM_MSG_SEQUENCE_REQ));
 
 	req_msg->local_comm_id = cm_id_priv->id.local_id;
 	req_msg->service_id = param->service_id;
-	req_msg->local_ca_guid = cm_id_priv->id.device->node_guid;
+
+	if (is_vendor_sif_family(vendor_part_id))
+		req_msg->local_ca_guid = cm_id_priv->id.device->node_guid | IB_GUID_MBIT;
+	else
+		req_msg->local_ca_guid = cm_id_priv->id.device->node_guid;
+
 	cm_req_set_local_qpn(req_msg, cpu_to_be32(param->qp_num));
 	cm_req_set_init_depth(req_msg, param->initiator_depth);
 	cm_req_set_remote_resp_timeout(req_msg,
@@ -1962,6 +1994,14 @@ static void cm_format_rep(struct cm_rep_msg *rep_msg,
 			  struct cm_id_private *cm_id_priv,
 			  struct ib_cm_rep_param *param)
 {
+	struct ib_device_attr attr;
+	u32 vendor_part_id;
+
+	if (ib_query_device(cm_id_priv->id.device, &attr))
+		vendor_part_id = 0;
+	else
+		vendor_part_id = attr.vendor_part_id;
+
 	cm_format_mad_hdr(&rep_msg->hdr, CM_REP_ATTR_ID, cm_id_priv->tid);
 	rep_msg->local_comm_id = cm_id_priv->id.local_id;
 	rep_msg->remote_comm_id = cm_id_priv->id.remote_id;
@@ -1971,7 +2011,11 @@ static void cm_format_rep(struct cm_rep_msg *rep_msg,
 				    cm_id_priv->av.port->cm_dev->ack_delay);
 	cm_rep_set_failover(rep_msg, param->failover_accepted);
 	cm_rep_set_rnr_retry_count(rep_msg, param->rnr_retry_count);
-	rep_msg->local_ca_guid = cm_id_priv->id.device->node_guid;
+
+	if (is_vendor_sif_family(vendor_part_id))
+		rep_msg->local_ca_guid = cm_id_priv->id.device->node_guid | IB_GUID_MBIT;
+	else
+		rep_msg->local_ca_guid = cm_id_priv->id.device->node_guid;
 
 	if (cm_id_priv->qp_type != IB_QPT_XRC_TGT) {
 		rep_msg->initiator_depth = param->initiator_depth;
@@ -3826,6 +3870,9 @@ static int cm_init_qp_init_attr(struct cm_id_private *cm_id_priv,
 {
 	unsigned long flags;
 	int ret;
+	u64 remote_guid;
+
+	remote_guid = cm_id_priv->timewait_info->remote_ca_guid;
 
 	spin_lock_irqsave(&cm_id_priv->lock, flags);
 	switch (cm_id_priv->id.state) {
@@ -3840,7 +3887,12 @@ static int cm_init_qp_init_attr(struct cm_id_private *cm_id_priv,
 	case IB_CM_ESTABLISHED:
 		*qp_attr_mask = IB_QP_STATE | IB_QP_ACCESS_FLAGS |
 				IB_QP_PKEY_INDEX | IB_QP_PORT;
+
 		qp_attr->qp_access_flags = IB_ACCESS_REMOTE_WRITE;
+
+		if (remote_guid & IB_GUID_MBIT)
+			qp_attr->qp_access_flags |= IB_GUID_RNR_TWEAK;
+
 		if (cm_id_priv->responder_resources)
 			qp_attr->qp_access_flags |= IB_ACCESS_REMOTE_READ |
 						    IB_ACCESS_REMOTE_ATOMIC;
@@ -4302,4 +4354,3 @@ static void __exit ib_cm_cleanup(void)
 
 module_init(ib_cm_init);
 module_exit(ib_cm_cleanup);
-

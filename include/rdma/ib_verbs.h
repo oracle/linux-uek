@@ -1281,6 +1281,9 @@ struct ib_qp {
 	void		       *qp_context;
 	u32			qp_num;
 	enum ib_qp_type		qp_type;
+#ifndef __GENKSYMS__
+	int			qp_flag;
+#endif
 };
 
 struct ib_mr {
