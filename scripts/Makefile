@@ -7,6 +7,7 @@
 # conmakehash:   Create chartable
 # conmakehash:	 Create arrays for initializing the kernel console tables
 # docproc:       Used in Documentation/DocBook
+# kmodsdt:       Post-process module .o files for SDT probes
 
 HOST_EXTRACFLAGS += -I$(srctree)/tools/include
 
@@ -16,6 +17,7 @@ hostprogs-$(CONFIG_VT)           += conmakehash
 hostprogs-$(BUILD_C_RECORDMCOUNT) += recordmcount
 hostprogs-$(CONFIG_BUILDTIME_EXTABLE_SORT) += sortextable
 hostprogs-$(CONFIG_ASN1)	 += asn1_compiler
+hostprogs-$(CONFIG_DTRACE)	 += kmodsdt
 
 HOSTCFLAGS_sortextable.o = -I$(srctree)/tools/include
 HOSTCFLAGS_asn1_compiler.o = -I$(srctree)/include
@@ -30,6 +32,11 @@ kallsyms-objs   += eu_simple.o
 HOSTCFLAGS_eu_simple.o := -I$(srctree)/scripts
 HOSTCFLAGS_kallsyms.o := $(shell pkg-config --cflags glib-2.0) -I$(srctree)/scripts
 HOSTLOADLIBES_kallsyms := $(shell pkg-config --libs glib-2.0) -ldw
+endif
+
+ifeq ($(CONFIG_DTRACE),y)
+HOSTCFLAGS_kmodsdt.o := -I$(srctree)/include/generated
+HOSTLOADLIBES_kmodsdt := -lelf
 endif
 
 # The following hostprogs-y programs are only build on demand
