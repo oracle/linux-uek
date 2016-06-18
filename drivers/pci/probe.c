@@ -1580,6 +1580,36 @@ static void pci_init_capabilities(struct pci_dev *dev)
 	pci_enable_acs(dev);
 }
 
+static bool pci_up_path_over_pcie(struct pci_bus *bus)
+{
+	if (pci_is_root_bus(bus))
+		return true;
+
+	if (bus->self && !pci_is_pcie(bus->self))
+		return false;
+
+	return pci_up_path_over_pcie(bus->parent);
+}
+
+/*
+ * According to
+ * https://www.pcisig.com/specifications/pciexpress/base2/PCIe_Base_r2.1_Errata_08Jun10.pdf
+ * page 13, system firmware could put some 64bit non-pref under 64bit pref,
+ * on some cases.
+ * Let's mark if entire path from the host to the adapter is over PCI
+ * Express. later will use that compute pref compaitable bit.
+ */
+static void pci_set_on_all_pcie_path(struct pci_dev *dev)
+{
+	if (!pci_is_pcie(dev))
+		return;
+
+	if (!pci_up_path_over_pcie(dev->bus))
+		return;
+
+	dev->on_all_pcie_path = 1;
+}
+
 void pci_device_add(struct pci_dev *dev, struct pci_bus *bus)
 {
 	int ret;
@@ -1609,6 +1639,9 @@ void pci_device_add(struct pci_dev *dev, struct pci_bus *bus)
 
 	/* Initialize various capabilities */
 	pci_init_capabilities(dev);
+
+	/* After pcie_cap is assigned */
+	pci_set_on_all_pcie_path(dev);
 
 	/*
 	 * Add the device to our list of discovered devices

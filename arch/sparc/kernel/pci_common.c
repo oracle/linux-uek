@@ -343,7 +343,7 @@ static void pci_register_region(struct pci_bus *bus, const char *name,
 	region.start = rstart;
 	region.end = rstart + size - 1UL;
 	pcibios_bus_to_resource(bus, res, &region);
-	bus_res = pci_find_bus_resource(bus, res);
+	bus_res = pci_find_bus_resource(bus, res, res->flags);
 	if (!bus_res) {
 		kfree(res);
 		return;
