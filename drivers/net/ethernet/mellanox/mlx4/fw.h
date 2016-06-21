@@ -38,6 +38,20 @@
 #include "mlx4.h"
 #include "icm.h"
 
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+#define MLX4_CMD_MAD_DEMUX_GET_ATTR_OFFSET              0x00
+#define MLX4_CMD_MAD_DEMUX_SET_ATTR_OFFSET              0x10
+#define MLX4_CMD_MAD_DEMUX_GETRESP_ATTR_OFFSET          0x20
+#define MLX4_CMD_MAD_DEMUX_TRAP_ATTR_OFFSET             0x40
+#define MLX4_CMD_MAD_DEMUX_TRAP_REPRESS_ATTR_OFFSET	0x70
+
+#define SMP_GET_NODE_INFO_MASK_BIT			0x04
+#define SMP_GET_PORT_INFO_MASK_BIT			0x20
+
+#define SMP_GET_PORT_NODE_INFO_MASK_BITS	(SMP_GET_PORT_INFO_MASK_BIT | \
+						SMP_GET_NODE_INFO_MASK_BIT)
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
+
 struct mlx4_mod_stat_cfg {
 	u8 log_pg_sz;
 	u8 log_pg_sz_m;
