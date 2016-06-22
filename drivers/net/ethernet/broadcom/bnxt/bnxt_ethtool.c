@@ -655,6 +655,108 @@ u32 _bnxt_fw_to_ethtool_adv_spds(u16 fw_speeds, u8 fw_pause)
 	return speed_mask;
 }
 
+#ifdef HAVE_ETHTOOL_GLINKSETTINGS_25G
+#define BNXT_FW_TO_ETHTOOL_SPDS(fw_speeds, fw_pause, lk_ksettings, name)\
+{									\
+	if ((fw_speeds) & BNXT_LINK_SPEED_MSK_100MB)			\
+		ethtool_link_ksettings_add_link_mode(lk_ksettings, name,\
+						     100baseT_Full);	\
+	if ((fw_speeds) & BNXT_LINK_SPEED_MSK_1GB)			\
+		ethtool_link_ksettings_add_link_mode(lk_ksettings, name,\
+						     1000baseT_Full);	\
+	if ((fw_speeds) & BNXT_LINK_SPEED_MSK_10GB)			\
+		ethtool_link_ksettings_add_link_mode(lk_ksettings, name,\
+						     10000baseT_Full);	\
+	if ((fw_speeds) & BNXT_LINK_SPEED_MSK_25GB)			\
+		ethtool_link_ksettings_add_link_mode(lk_ksettings, name,\
+						     25000baseCR_Full);	\
+	if ((fw_speeds) & BNXT_LINK_SPEED_MSK_40GB)			\
+		ethtool_link_ksettings_add_link_mode(lk_ksettings, name,\
+						     40000baseCR4_Full);\
+	if ((fw_speeds) & BNXT_LINK_SPEED_MSK_50GB)			\
+		ethtool_link_ksettings_add_link_mode(lk_ksettings, name,\
+						     50000baseCR2_Full);\
+	if ((fw_pause) & BNXT_LINK_PAUSE_RX) {				\
+		ethtool_link_ksettings_add_link_mode(lk_ksettings, name,\
+						     Pause);		\
+		if (!((fw_pause) & BNXT_LINK_PAUSE_TX))			\
+			ethtool_link_ksettings_add_link_mode(		\
+					lk_ksettings, name, Asym_Pause);\
+	} else if ((fw_pause) & BNXT_LINK_PAUSE_TX) {			\
+		ethtool_link_ksettings_add_link_mode(lk_ksettings, name,\
+						     Asym_Pause);	\
+	}								\
+}
+
+#define BNXT_ETHTOOL_TO_FW_SPDS(fw_speeds, lk_ksettings, name)		\
+{									\
+	if (ethtool_link_ksettings_test_link_mode(lk_ksettings, name,	\
+						  100baseT_Full) ||	\
+	    ethtool_link_ksettings_test_link_mode(lk_ksettings, name,	\
+						  100baseT_Half))	\
+		(fw_speeds) |= BNXT_LINK_SPEED_MSK_100MB;		\
+	if (ethtool_link_ksettings_test_link_mode(lk_ksettings, name,	\
+						  1000baseT_Full) ||	\
+	    ethtool_link_ksettings_test_link_mode(lk_ksettings, name,	\
+						  1000baseT_Half))	\
+		(fw_speeds) |= BNXT_LINK_SPEED_MSK_1GB;			\
+	if (ethtool_link_ksettings_test_link_mode(lk_ksettings, name,	\
+						  10000baseT_Full))	\
+		(fw_speeds) |= BNXT_LINK_SPEED_MSK_10GB;		\
+	if (ethtool_link_ksettings_test_link_mode(lk_ksettings, name,	\
+						  25000baseCR_Full))	\
+		(fw_speeds) |= BNXT_LINK_SPEED_MSK_25GB;		\
+	if (ethtool_link_ksettings_test_link_mode(lk_ksettings, name,	\
+						  40000baseCR4_Full))	\
+		(fw_speeds) |= BNXT_LINK_SPEED_MSK_40GB;		\
+	if (ethtool_link_ksettings_test_link_mode(lk_ksettings, name,	\
+						  50000baseCR2_Full))	\
+		(fw_speeds) |= BNXT_LINK_SPEED_MSK_50GB;		\
+}
+
+static void bnxt_fw_to_ethtool_advertised_spds(struct bnxt_link_info *link_info,
+				struct ethtool_link_ksettings *lk_ksettings)
+{
+	u16 fw_speeds = link_info->auto_link_speeds;
+	u8 fw_pause = 0;
+
+	if (link_info->autoneg & BNXT_AUTONEG_FLOW_CTRL)
+		fw_pause = link_info->auto_pause_setting;
+
+	BNXT_FW_TO_ETHTOOL_SPDS(fw_speeds, fw_pause, lk_ksettings, advertising);
+}
+
+static void bnxt_fw_to_ethtool_lp_adv(struct bnxt_link_info *link_info,
+				struct ethtool_link_ksettings *lk_ksettings)
+{
+	u16 fw_speeds = link_info->lp_auto_link_speeds;
+	u8 fw_pause = 0;
+
+	if (link_info->autoneg & BNXT_AUTONEG_FLOW_CTRL)
+		fw_pause = link_info->lp_pause;
+
+	BNXT_FW_TO_ETHTOOL_SPDS(fw_speeds, fw_pause, lk_ksettings,
+				lp_advertising);
+}
+
+static void bnxt_fw_to_ethtool_support_spds(struct bnxt_link_info *link_info,
+				struct ethtool_link_ksettings *lk_ksettings)
+{
+	u16 fw_speeds = link_info->support_speeds;
+
+	BNXT_FW_TO_ETHTOOL_SPDS(fw_speeds, 0, lk_ksettings, supported);
+
+	ethtool_link_ksettings_add_link_mode(lk_ksettings, supported, Pause);
+	ethtool_link_ksettings_add_link_mode(lk_ksettings, supported,
+					     Asym_Pause);
+
+	if (link_info->support_auto_speeds)
+		ethtool_link_ksettings_add_link_mode(lk_ksettings, supported,
+						     Autoneg);
+}
+
+#else
+
 static u32 bnxt_fw_to_ethtool_advertised_spds(struct bnxt_link_info *link_info)
 {
 	u16 fw_speeds = link_info->auto_link_speeds;
@@ -696,6 +798,7 @@ static u32 bnxt_fw_to_ethtool_support_adv_spds(struct bnxt_link_info *link_info)
 		supported |= SUPPORTED_Pause | SUPPORTED_Asym_Pause;
 	return supported;
 }
+#endif
 
 u32 bnxt_fw_to_ethtool_speed(u16 fw_link_speed)
 {
@@ -720,6 +823,69 @@ u32 bnxt_fw_to_ethtool_speed(u16 fw_link_speed)
 		return SPEED_UNKNOWN;
 	}
 }
+
+#ifdef HAVE_ETHTOOL_GLINKSETTINGS_25G
+static int bnxt_get_link_ksettings(struct net_device *dev,
+				   struct ethtool_link_ksettings *lk_ksettings)
+{
+	struct bnxt *bp = netdev_priv(dev);
+	struct bnxt_link_info *link_info = &bp->link_info;
+	struct ethtool_link_settings *base = &lk_ksettings->base;
+	u32 ethtool_speed;
+
+	ethtool_link_ksettings_zero_link_mode(lk_ksettings, supported);
+	bnxt_fw_to_ethtool_support_spds(link_info, lk_ksettings);
+
+	ethtool_link_ksettings_zero_link_mode(lk_ksettings, advertising);
+	if (link_info->autoneg) {
+		bnxt_fw_to_ethtool_advertised_spds(link_info, lk_ksettings);
+		ethtool_link_ksettings_add_link_mode(lk_ksettings,
+						     advertising, Autoneg);
+		base->autoneg = AUTONEG_ENABLE;
+		if (link_info->phy_link_status == BNXT_LINK_LINK)
+			bnxt_fw_to_ethtool_lp_adv(link_info, lk_ksettings);
+		ethtool_speed = bnxt_fw_to_ethtool_speed(link_info->link_speed);
+		if (!netif_carrier_ok(dev))
+			base->duplex = DUPLEX_UNKNOWN;
+		else if (link_info->duplex & BNXT_LINK_DUPLEX_FULL)
+			base->duplex = DUPLEX_FULL;
+		else
+			base->duplex = DUPLEX_HALF;
+	} else {
+		base->autoneg = AUTONEG_DISABLE;
+		ethtool_speed =
+			bnxt_fw_to_ethtool_speed(link_info->req_link_speed);
+		base->duplex = DUPLEX_HALF;
+		if (link_info->req_duplex == BNXT_LINK_DUPLEX_FULL)
+			base->duplex = DUPLEX_FULL;
+	}
+	base->speed = ethtool_speed;
+
+	base->port = PORT_NONE;
+	if (link_info->media_type == PORT_PHY_QCFG_RESP_MEDIA_TYPE_TP) {
+		base->port = PORT_TP;
+		ethtool_link_ksettings_add_link_mode(lk_ksettings, supported,
+						     TP);
+		ethtool_link_ksettings_add_link_mode(lk_ksettings, advertising,
+						     TP);
+	} else {
+		ethtool_link_ksettings_add_link_mode(lk_ksettings, supported,
+						     FIBRE);
+		ethtool_link_ksettings_add_link_mode(lk_ksettings, advertising,
+						     FIBRE);
+
+		if (link_info->media_type == PORT_PHY_QCFG_RESP_MEDIA_TYPE_DAC)
+			base->port = PORT_DA;
+		else if (link_info->media_type ==
+			 PORT_PHY_QCFG_RESP_MEDIA_TYPE_FIBRE)
+			base->port = PORT_FIBRE;
+	}
+	base->phy_address = link_info->phy_addr;
+
+	return 0;
+}
+
+#else
 
 static int bnxt_get_settings(struct net_device *dev, struct ethtool_cmd *cmd)
 {
@@ -783,6 +949,7 @@ static int bnxt_get_settings(struct net_device *dev, struct ethtool_cmd *cmd)
 
 	return 0;
 }
+#endif
 
 static u32 bnxt_get_fw_speed(struct net_device *dev, u16 ethtool_speed)
 {
@@ -853,6 +1020,69 @@ u16 bnxt_get_fw_auto_link_speeds(u32 advertising)
 	return fw_speed_mask;
 }
 
+#ifdef HAVE_ETHTOOL_GLINKSETTINGS_25G
+static int bnxt_set_link_ksettings(struct net_device *dev,
+			   const struct ethtool_link_ksettings *lk_ksettings)
+{
+	struct bnxt *bp = netdev_priv(dev);
+	struct bnxt_link_info *link_info = &bp->link_info;
+	const struct ethtool_link_settings *base = &lk_ksettings->base;
+	u32 speed, fw_advertising = 0;
+	bool set_pause = false;
+	int rc = 0;
+
+	if (!BNXT_SINGLE_PF(bp))
+		return -EOPNOTSUPP;
+
+	if (base->autoneg == AUTONEG_ENABLE) {
+		BNXT_ETHTOOL_TO_FW_SPDS(fw_advertising, lk_ksettings,
+					advertising);
+		link_info->autoneg |= BNXT_AUTONEG_SPEED;
+		if (!fw_advertising)
+			link_info->advertising = link_info->support_auto_speeds;
+		else
+			link_info->advertising = fw_advertising;
+		/* any change to autoneg will cause link change, therefore the
+		 * driver should put back the original pause setting in autoneg
+		 */
+		set_pause = true;
+	} else {
+		u16 fw_speed;
+		u8 phy_type = link_info->phy_type;
+
+		if (phy_type == PORT_PHY_QCFG_RESP_PHY_TYPE_BASET  ||
+		    phy_type == PORT_PHY_QCFG_RESP_PHY_TYPE_BASETE ||
+		    link_info->media_type == PORT_PHY_QCFG_RESP_MEDIA_TYPE_TP) {
+			netdev_err(dev, "10GBase-T devices must autoneg\n");
+			rc = -EINVAL;
+			goto set_setting_exit;
+		}
+		if (base->duplex == DUPLEX_HALF) {
+			netdev_err(dev, "HALF DUPLEX is not supported!\n");
+			rc = -EINVAL;
+			goto set_setting_exit;
+		}
+		speed = base->speed;
+		fw_speed = bnxt_get_fw_speed(dev, speed);
+		if (!fw_speed) {
+			rc = -EINVAL;
+			goto set_setting_exit;
+		}
+		link_info->req_link_speed = fw_speed;
+		link_info->req_duplex = BNXT_LINK_DUPLEX_FULL;
+		link_info->autoneg = 0;
+		link_info->advertising = 0;
+	}
+
+	if (netif_running(dev))
+		rc = bnxt_hwrm_set_link_setting(bp, set_pause, false);
+
+set_setting_exit:
+	return rc;
+}
+
+#else
+
 static int bnxt_set_settings(struct net_device *dev, struct ethtool_cmd *cmd)
 {
 	int rc = 0;
@@ -862,7 +1092,7 @@ static int bnxt_set_settings(struct net_device *dev, struct ethtool_cmd *cmd)
 	bool set_pause = false;
 
 	if (!BNXT_SINGLE_PF(bp))
-		return rc;
+		return -EOPNOTSUPP;
 
 	if (cmd->autoneg == AUTONEG_ENABLE) {
 		u32 supported_spds =
@@ -897,6 +1127,7 @@ static int bnxt_set_settings(struct net_device *dev, struct ethtool_cmd *cmd)
 		if (phy_type == PORT_PHY_QCFG_RESP_PHY_TYPE_BASET  ||
 		    phy_type == PORT_PHY_QCFG_RESP_PHY_TYPE_BASETE ||
 		    link_info->media_type == PORT_PHY_QCFG_RESP_MEDIA_TYPE_TP) {
+
 			netdev_err(dev, "10GBase-T devices must autoneg\n");
 			rc = -EINVAL;
 			goto set_setting_exit;
@@ -928,6 +1159,7 @@ static int bnxt_set_settings(struct net_device *dev, struct ethtool_cmd *cmd)
 set_setting_exit:
 	return rc;
 }
+#endif
 
 static void bnxt_get_pauseparam(struct net_device *dev,
 				struct ethtool_pauseparam *epause)
@@ -1656,8 +1888,13 @@ static int bnxt_get_module_eeprom(struct net_device *dev,
 }
 
 const struct ethtool_ops bnxt_ethtool_ops = {
+#ifdef HAVE_ETHTOOL_GLINKSETTINGS_25G
+	.get_link_ksettings	= bnxt_get_link_ksettings,
+	.set_link_ksettings	= bnxt_set_link_ksettings,
+#else
 	.get_settings		= bnxt_get_settings,
 	.set_settings		= bnxt_set_settings,
+#endif
 	.get_pauseparam		= bnxt_get_pauseparam,
 	.set_pauseparam		= bnxt_set_pauseparam,
 	.get_drvinfo		= bnxt_get_drvinfo,
