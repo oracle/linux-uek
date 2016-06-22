@@ -3846,6 +3846,23 @@ static void check_enqueue_throttle(struct cfs_rq *cfs_rq)
 		throttle_cfs_rq(cfs_rq);
 }
 
+static void sync_throttle(struct task_group *tg, int cpu)
+{
+	struct cfs_rq *pcfs_rq, *cfs_rq;
+
+	if (!cfs_bandwidth_used())
+		return;
+
+	if (!tg->parent)
+		return;
+
+	cfs_rq = tg->cfs_rq[cpu];
+	pcfs_rq = tg->parent->cfs_rq[cpu];
+
+	cfs_rq->throttle_count = pcfs_rq->throttle_count;
+	pcfs_rq->throttled_clock_task = rq_clock_task(cpu_rq(cpu));
+}
+
 /* conditionally throttle active cfs_rq's from put_prev_entity() */
 static bool check_cfs_rq_runtime(struct cfs_rq *cfs_rq)
 {
@@ -3998,6 +4015,7 @@ static inline u64 cfs_rq_clock_task(struct cfs_rq *cfs_rq)
 static void account_cfs_rq_runtime(struct cfs_rq *cfs_rq, u64 delta_exec) {}
 static bool check_cfs_rq_runtime(struct cfs_rq *cfs_rq) { return false; }
 static void check_enqueue_throttle(struct cfs_rq *cfs_rq) {}
+static inline void sync_throttle(struct task_group *tg, int cpu) {}
 static __always_inline void return_cfs_rq_runtime(struct cfs_rq *cfs_rq) {}
 
 static inline int cfs_rq_throttled(struct cfs_rq *cfs_rq)
@@ -8275,6 +8293,20 @@ err:
 	return 0;
 }
 
+void online_fair_sched_group(struct task_group *tg)
+{
+	struct rq *rq;
+	int i;
+
+	for_each_possible_cpu(i) {
+		rq = cpu_rq(i);
+
+		raw_spin_lock_irq(&rq->lock);
+		sync_throttle(tg, i);
+		raw_spin_unlock_irq(&rq->lock);
+	}
+}
+
 void unregister_fair_sched_group(struct task_group *tg, int cpu)
 {
 	struct rq *rq = cpu_rq(cpu);
@@ -8370,6 +8402,8 @@ int alloc_fair_sched_group(struct task_group *tg, struct task_group *parent)
 {
 	return 1;
 }
+
+void online_fair_sched_group(struct task_group *tg) { }
 
 void unregister_fair_sched_group(struct task_group *tg, int cpu) { }
 
