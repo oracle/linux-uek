@@ -267,6 +267,15 @@ struct arraycache_init {
 	void *entries[BOOT_CPUCACHE_ENTRIES];
 };
 
+struct kmem_list3_ct {
+#ifdef CONFIG_SLABINFO
+	unsigned long num_slabs_partial;
+	unsigned long num_slabs_full;
+	unsigned long num_slabs_free;
+#endif
+	unsigned long free_objects;
+};
+
 /*
  * The slab lists for all objects.
  */
@@ -274,7 +283,11 @@ struct kmem_list3 {
 	struct list_head slabs_partial;	/* partial list first, better asm code */
 	struct list_head slabs_full;
 	struct list_head slabs_free;
+#ifdef __GENKSYMS__
 	unsigned long free_objects;
+#else
+	struct kmem_list3_ct *ctp;
+#endif
 	unsigned int free_limit;
 	unsigned int colour_next;	/* Per-node cache coloring */
 	spinlock_t list_lock;
@@ -289,6 +302,7 @@ struct kmem_list3 {
  */
 #define NUM_INIT_LISTS (3 * MAX_NUMNODES)
 static struct kmem_list3 __initdata initkmem_list3[NUM_INIT_LISTS];
+static struct kmem_list3_ct initkmem_list3_ct[NUM_INIT_LISTS] __initdata;
 #define	CACHE_CACHE 0
 #define	SIZE_AC MAX_NUMNODES
 #define	SIZE_L3 (2 * MAX_NUMNODES)
@@ -329,6 +343,11 @@ static int slab_early_init = 1;
 #define INDEX_AC index_of(sizeof(struct arraycache_init))
 #define INDEX_L3 index_of(sizeof(struct kmem_list3))
 
+static struct kmem_list3_ct *alloc_list3_ct(gfp_t gfp, int nodeid)
+{
+	return kzalloc_node(sizeof(struct kmem_list3_ct), gfp, nodeid);
+}
+
 static void kmem_list3_init(struct kmem_list3 *parent)
 {
 	INIT_LIST_HEAD(&parent->slabs_full);
@@ -336,11 +355,27 @@ static void kmem_list3_init(struct kmem_list3 *parent)
 	INIT_LIST_HEAD(&parent->slabs_free);
 	parent->shared = NULL;
 	parent->alien = NULL;
+	parent->ctp = NULL;
 	parent->colour_next = 0;
 	spin_lock_init(&parent->list_lock);
-	parent->free_objects = 0;
 	parent->free_touched = 0;
 }
+
+#ifdef CONFIG_SLABINFO
+#define LIST3_INC_PARTIAL(x)	((x)->num_slabs_partial++)
+#define LIST3_INC_FULL(x)	((x)->num_slabs_full++)
+#define LIST3_INC_FREE(x)	((x)->num_slabs_free++)
+#define LIST3_DEC_PARTIAL(x)	((x)->num_slabs_partial--)
+#define LIST3_DEC_FULL(x)	((x)->num_slabs_full--)
+#define LIST3_DEC_FREE(x)	((x)->num_slabs_free--)
+#else
+#define LIST3_INC_PARTIAL(x)	do { } while (0)
+#define LIST3_INC_FULL(x)	do { } while (0)
+#define LIST3_INC_FREE(x)	do { } while (0)
+#define LIST3_DEC_PARTIAL(x)	do { } while (0)
+#define LIST3_DEC_FULL(x)	do { } while (0)
+#define LIST3_DEC_FREE(x)	do { } while (0)
+#endif
 
 #define MAKE_LIST(cachep, listp, slab, nodeid)				\
 	do {								\
@@ -1108,6 +1143,11 @@ static int init_cache_nodelists_node(int node)
 			if (!l3)
 				return -ENOMEM;
 			kmem_list3_init(l3);
+			l3->ctp = alloc_list3_ct(GFP_KERNEL, node);
+			if (!l3->ctp) {
+				kfree(l3);
+				return -ENOMEM;
+			}
 			l3->next_reap = jiffies + REAPTIMEOUT_LIST3 +
 			    ((unsigned long)cachep) % REAPTIMEOUT_LIST3;
 
@@ -1189,7 +1229,7 @@ free_array_cache:
 		l3 = cachep->nodelists[node];
 		if (!l3)
 			continue;
-		drain_freelist(cachep, l3, l3->free_objects);
+		drain_freelist(cachep, l3, l3->ctp->free_objects);
 	}
 }
 
@@ -1351,7 +1391,7 @@ static int __meminit drain_cache_nodelists_node(int node)
 		if (!l3)
 			continue;
 
-		drain_freelist(cachep, l3, l3->free_objects);
+		drain_freelist(cachep, l3, l3->ctp->free_objects);
 
 		if (!list_empty(&l3->slabs_full) ||
 		    !list_empty(&l3->slabs_partial)) {
@@ -1412,6 +1452,11 @@ static void __init init_list(struct kmem_cache *cachep, struct kmem_list3 *list,
 	 */
 	spin_lock_init(&ptr->list_lock);
 
+	ptr->ctp = alloc_list3_ct(GFP_NOWAIT, nodeid);
+	BUG_ON(!ptr->ctp);
+	BUG_ON(!list->ctp);
+	memcpy(ptr->ctp, list->ctp, sizeof(struct kmem_list3_ct));
+
 	MAKE_ALL_LISTS(cachep, ptr, nodeid);
 	cachep->nodelists[nodeid] = ptr;
 }
@@ -1426,6 +1471,7 @@ static void __init set_up_list3s(struct kmem_cache *cachep, int index)
 
 	for_each_online_node(node) {
 		cachep->nodelists[node] = &initkmem_list3[index + node];
+		cachep->nodelists[node]->ctp = &initkmem_list3_ct[index + node];
 		cachep->nodelists[node]->next_reap = jiffies +
 		    REAPTIMEOUT_LIST3 +
 		    ((unsigned long)cachep) % REAPTIMEOUT_LIST3;
@@ -2006,6 +2052,7 @@ static void __kmem_cache_destroy(struct kmem_cache *cachep)
 		if (l3) {
 			kfree(l3->shared);
 			free_alien_cache(l3->alien);
+			kfree(l3->ctp);
 			kfree(l3);
 		}
 	}
@@ -2121,6 +2168,9 @@ static int __init_refok setup_cpu_cache(struct kmem_cache *cachep, gfp_t gfp)
 						gfp, node);
 				BUG_ON(!cachep->nodelists[node]);
 				kmem_list3_init(cachep->nodelists[node]);
+				cachep->nodelists[node]->ctp =
+				    alloc_list3_ct(gfp, node);
+				BUG_ON(!cachep->nodelists[node]->ctp);
 			}
 		}
 	}
@@ -2542,7 +2592,8 @@ static int drain_freelist(struct kmem_cache *cache,
 		 * Safe to drop the lock. The slab is no longer linked
 		 * to the cache.
 		 */
-		l3->free_objects -= cache->num;
+		l3->ctp->free_objects -= cache->num;
+		LIST3_DEC_FREE(l3->ctp);
 		spin_unlock_irq(&l3->list_lock);
 		slab_destroy(cache, slabp);
 		nr_freed++;
@@ -2565,7 +2616,7 @@ static int __cache_shrink(struct kmem_cache *cachep)
 		if (!l3)
 			continue;
 
-		drain_freelist(cachep, l3, l3->free_objects);
+		drain_freelist(cachep, l3, l3->ctp->free_objects);
 
 		ret += !list_empty(&l3->slabs_full) ||
 			!list_empty(&l3->slabs_partial);
@@ -2874,8 +2925,9 @@ static int cache_grow(struct kmem_cache *cachep,
 
 	/* Make slab active. */
 	list_add_tail(&slabp->list, &(l3->slabs_free));
+	LIST3_INC_FREE(l3->ctp);
 	STATS_INC_GROWN(cachep);
-	l3->free_objects += cachep->num;
+	l3->ctp->free_objects += cachep->num;
 	spin_unlock(&l3->list_lock);
 	return 1;
 opps1:
@@ -3041,10 +3093,20 @@ retry:
 		/* Get slab alloc is to come from. */
 		entry = l3->slabs_partial.next;
 		if (entry == &l3->slabs_partial) {
+			/* No partial slabs available! Let's get a free slab. */
 			l3->free_touched = 1;
 			entry = l3->slabs_free.next;
-			if (entry == &l3->slabs_free)
+			if (entry == &l3->slabs_free) {
+				/* No free slabs! We have to grow the cache. */
 				goto must_grow;
+			} else {
+				/*
+				 * We have a free slab! Below, we'll move this
+				 * slab from slabs_free to slabs_partial.
+				 */
+				LIST3_INC_PARTIAL(l3->ctp);
+				LIST3_DEC_FREE(l3->ctp);
+			}
 		}
 
 		slabp = list_entry(entry, struct slab, list);
@@ -3070,14 +3132,21 @@ retry:
 
 		/* move slabp to correct slabp list: */
 		list_del(&slabp->list);
-		if (slabp->free == BUFCTL_END)
+		if (slabp->free == BUFCTL_END) {
 			list_add(&slabp->list, &l3->slabs_full);
-		else
+			/*
+			 * Since this slab was moved to the slabs_full list,
+			 * we have to undo the counter increment of
+			 * slabs_partial that we did earlier.
+			 */
+			LIST3_INC_FULL(l3->ctp);
+			LIST3_DEC_PARTIAL(l3->ctp);
+		} else
 			list_add(&slabp->list, &l3->slabs_partial);
 	}
 
 must_grow:
-	l3->free_objects -= ac->avail;
+	l3->ctp->free_objects -= ac->avail;
 alloc_done:
 	spin_unlock(&l3->list_lock);
 
@@ -3265,7 +3334,8 @@ retry:
 
 		if (cpuset_zone_allowed_hardwall(zone, flags) &&
 			cache->nodelists[nid] &&
-			cache->nodelists[nid]->free_objects) {
+			cache->nodelists[nid]->ctp &&
+			cache->nodelists[nid]->ctp->free_objects) {
 				obj = ____cache_alloc_node(cache,
 					flags | GFP_THISNODE, nid);
 				if (obj)
@@ -3333,10 +3403,20 @@ retry:
 	spin_lock(&l3->list_lock);
 	entry = l3->slabs_partial.next;
 	if (entry == &l3->slabs_partial) {
+		/* No partial slabs available! Let's get a free slab. */
 		l3->free_touched = 1;
 		entry = l3->slabs_free.next;
-		if (entry == &l3->slabs_free)
+		if (entry == &l3->slabs_free) {
+			/* No free slabs! We have to grow the cache. */
 			goto must_grow;
+		} else {
+			/*
+			 * We have a free slab! Below, we'll move this
+			 * slab from slabs_free to slabs_partial.
+			 */
+			LIST3_INC_PARTIAL(l3->ctp);
+			LIST3_DEC_FREE(l3->ctp);
+		}
 	}
 
 	slabp = list_entry(entry, struct slab, list);
@@ -3351,12 +3431,20 @@ retry:
 
 	obj = slab_get_obj(cachep, slabp, nodeid);
 	check_slabp(cachep, slabp);
-	l3->free_objects--;
+	l3->ctp->free_objects--;
 	/* move slabp to correct slabp list: */
 	list_del(&slabp->list);
 
-	if (slabp->free == BUFCTL_END)
+	if (slabp->free == BUFCTL_END) {
 		list_add(&slabp->list, &l3->slabs_full);
+		/*
+		 * Since this slab was moved to the slabs_full list,
+		 * we have to undo the counter increment of
+		 * slabs_partial that we did earlier.
+		 */
+		LIST3_INC_FULL(l3->ctp);
+		LIST3_DEC_PARTIAL(l3->ctp);
+	}
 	else
 		list_add(&slabp->list, &l3->slabs_partial);
 
@@ -3520,18 +3608,27 @@ static void free_block(struct kmem_cache *cachep, void **objpp, int nr_objects,
 
 		slabp = virt_to_slab(objp);
 		l3 = cachep->nodelists[node];
+		/*
+		 * Check which list this slab belonged to,
+		 * before the object is freed.
+		 */
+		if (slabp->free == BUFCTL_END)
+			LIST3_DEC_FULL(l3->ctp);
+		else
+			LIST3_DEC_PARTIAL(l3->ctp);
+
 		list_del(&slabp->list);
 		check_spinlock_acquired_node(cachep, node);
 		check_slabp(cachep, slabp);
 		slab_put_obj(cachep, slabp, objp, node);
 		STATS_DEC_ACTIVE(cachep);
-		l3->free_objects++;
+		l3->ctp->free_objects++;
 		check_slabp(cachep, slabp);
 
 		/* fixup slab chains */
 		if (slabp->inuse == 0) {
-			if (l3->free_objects > l3->free_limit) {
-				l3->free_objects -= cachep->num;
+			if (l3->ctp->free_objects > l3->free_limit) {
+				l3->ctp->free_objects -= cachep->num;
 				/* No need to drop any previously held
 				 * lock here, even if we have a off-slab slab
 				 * descriptor it is guaranteed to come from
@@ -3541,6 +3638,7 @@ static void free_block(struct kmem_cache *cachep, void **objpp, int nr_objects,
 				slab_destroy(cachep, slabp);
 			} else {
 				list_add(&slabp->list, &l3->slabs_free);
+				LIST3_INC_FREE(l3->ctp);
 			}
 		} else {
 			/* Unconditionally move a slab to the end of the
@@ -3548,6 +3646,7 @@ static void free_block(struct kmem_cache *cachep, void **objpp, int nr_objects,
 			 * other objects to be freed, too.
 			 */
 			list_add_tail(&slabp->list, &l3->slabs_partial);
+			LIST3_INC_PARTIAL(l3->ctp);
 		}
 	}
 }
@@ -3855,6 +3954,7 @@ static int alloc_kmemlist(struct kmem_cache *cachep, gfp_t gfp)
 	struct kmem_list3 *l3;
 	struct array_cache *new_shared;
 	struct array_cache **new_alien = NULL;
+	struct kmem_list3_ct *new_ctp = NULL;
 
 	for_each_online_node(node) {
 
@@ -3897,10 +3997,19 @@ static int alloc_kmemlist(struct kmem_cache *cachep, gfp_t gfp)
 			free_alien_cache(new_alien);
 			continue;
 		}
+
+		new_ctp = alloc_list3_ct(gfp, node);
+		if (!new_ctp) {
+			free_alien_cache(new_alien);
+			kfree(new_shared);
+			goto fail;
+		}
+
 		l3 = kmalloc_node(sizeof(struct kmem_list3), gfp, node);
 		if (!l3) {
 			free_alien_cache(new_alien);
 			kfree(new_shared);
+			kfree(new_ctp);
 			goto fail;
 		}
 
@@ -3909,6 +4018,7 @@ static int alloc_kmemlist(struct kmem_cache *cachep, gfp_t gfp)
 				((unsigned long)cachep) % REAPTIMEOUT_LIST3;
 		l3->shared = new_shared;
 		l3->alien = new_alien;
+		l3->ctp = new_ctp;
 		l3->free_limit = (1 + nr_cpus_node(node)) *
 					cachep->batchcount + cachep->num;
 		cachep->nodelists[node] = l3;
@@ -3925,6 +4035,7 @@ fail:
 
 				kfree(l3->shared);
 				free_alien_cache(l3->alien);
+				kfree(l3->ctp);
 				kfree(l3);
 				cachep->nodelists[node] = NULL;
 			}
@@ -4214,32 +4325,27 @@ static int s_show(struct seq_file *m, void *p)
 		check_irq_on();
 		spin_lock_irq(&l3->list_lock);
 
-		list_for_each_entry(slabp, &l3->slabs_full, list) {
-			if (slabp->inuse != cachep->num && !error)
-				error = "slabs_full accounting error";
-			active_objs += cachep->num;
-			active_slabs++;
-		}
+		active_slabs += l3->ctp->num_slabs_partial +
+				l3->ctp->num_slabs_full;
+		num_slabs += l3->ctp->num_slabs_free +
+				l3->ctp->num_slabs_partial +
+				l3->ctp->num_slabs_full;
+
+		active_objs += (l3->ctp->num_slabs_full * cachep->num);
+
 		list_for_each_entry(slabp, &l3->slabs_partial, list) {
 			if (slabp->inuse == cachep->num && !error)
 				error = "slabs_partial inuse accounting error";
 			if (!slabp->inuse && !error)
 				error = "slabs_partial/inuse accounting error";
 			active_objs += slabp->inuse;
-			active_slabs++;
 		}
-		list_for_each_entry(slabp, &l3->slabs_free, list) {
-			if (slabp->inuse && !error)
-				error = "slabs_free/inuse accounting error";
-			num_slabs++;
-		}
-		free_objects += l3->free_objects;
+		free_objects += l3->ctp->free_objects;
 		if (l3->shared)
 			shared_avail += l3->shared->avail;
 
 		spin_unlock_irq(&l3->list_lock);
 	}
-	num_slabs += active_slabs;
 	num_objs = num_slabs * cachep->num;
 	if (num_objs - active_objs != free_objects && !error)
 		error = "free_objects accounting error";
