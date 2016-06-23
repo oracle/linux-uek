@@ -490,6 +490,8 @@ int pre_process_wa4074(struct sif_dev *sdev, struct sif_qp *qp)
 	struct psif_sq_entry *sqe;
 	u16 head;
 	int len;
+	struct sif_cq *cq = (sq && sq->cq_idx >= 0) ? get_sif_cq(sdev, sq->cq_idx) : NULL;
+	struct sif_cq_sw *cq_sw = cq ? get_sif_cq_sw(sdev, cq->index) : NULL;
 
 	if (qp->flags & SIF_QPF_NO_EVICT)
 		return 0; /* do-not-evict QPs don't have any SQs */
@@ -510,6 +512,9 @@ int pre_process_wa4074(struct sif_dev *sdev, struct sif_qp *qp)
 		set_psif_wr__checksum(&sqe->wr, 0);
 		len--;
 	}
+	if (cq)
+		set_bit(CQ_POLLING_NOT_ALLOWED, &cq_sw->flags);
+
 	return 0;
 }
 
