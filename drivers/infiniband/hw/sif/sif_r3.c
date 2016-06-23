@@ -490,6 +490,7 @@ int pre_process_wa4074(struct sif_dev *sdev, struct sif_qp *qp)
 	struct psif_sq_entry *sqe;
 	u16 head;
 	int len;
+	unsigned long flags;
 	struct sif_cq *cq = (sq && sq->cq_idx >= 0) ? get_sif_cq(sdev, sq->cq_idx) : NULL;
 	struct sif_cq_sw *cq_sw = cq ? get_sif_cq_sw(sdev, cq->index) : NULL;
 
@@ -506,12 +507,14 @@ int pre_process_wa4074(struct sif_dev *sdev, struct sif_qp *qp)
 	if (len <= 0)
 		return -1;
 
+	spin_lock_irqsave(&sq->lock, flags);
 	while (len) {
 		head++;
 		sqe = get_sq_entry(sq, head);
-		set_psif_wr__checksum(&sqe->wr, 0);
+		set_psif_wr__checksum(&sqe->wr, ~get_psif_wr__checksum(&sqe->wr));
 		len--;
 	}
+	spin_unlock_irqrestore(&sq->lock, flags);
 	if (cq)
 		set_bit(CQ_POLLING_NOT_ALLOWED, &cq_sw->flags);
 
@@ -527,7 +530,8 @@ int post_process_wa4074(struct sif_dev *sdev, struct sif_qp *qp)
 	struct sif_sq_sw *sq_sw = sq ? get_sif_sq_sw(sdev, qp->qp_idx) : NULL;
 	struct psif_qp lqqp;
 	bool last_seq_set = false;
-	u16 last_seq, fence_seq;
+	u16 last_seq, fence_seq, last_gen_seq;
+	unsigned long flags;
 	DECLARE_SIF_CQE_POLL(sdev, lcqe);
 	int ret = 0;
 	bool need_gen_fence_completion = true;
@@ -663,10 +667,19 @@ int post_process_wa4074(struct sif_dev *sdev, struct sif_qp *qp)
 		goto check_in_flight_and_return;
 	}
 
-	sif_log(sdev, SIF_WCE_V, "generate completion from %x to %x",
-		last_seq, sq_sw->last_seq);
 flush_sq_again:
-	for (; (!GREATER_16(last_seq, sq_sw->last_seq)); ++last_seq) {
+	/* We need lock here to retrieve the sq_sw->last_seq
+	 * to make sure that post_send with sq_sw->last_seq is
+	 * completed before generating a sq_flush_cqe.
+	 */
+	spin_lock_irqsave(&sq->lock, flags);
+	last_gen_seq = sq_sw->last_seq;
+	spin_unlock_irqrestore(&sq->lock, flags);
+
+	sif_log(sdev, SIF_WCE_V, "generate completion from %x to %x",
+		last_seq, last_gen_seq);
+
+	for (; (!GREATER_16(last_seq, last_gen_seq)); ++last_seq) {
 		sif_log(sdev, SIF_WCE_V, "generate completion %x",
 			last_seq);
 
@@ -713,11 +726,8 @@ flush_sq_again:
 	sq_sw->trusted_seq = last_seq;
 
 check_in_flight_and_return:
-	if (test_and_clear_bit(FLUSH_SQ_IN_FLIGHT, &sq_sw->flags)) {
-		sif_log(sdev, SIF_WCE_V, "in-flight:generate completion from %x to %x",
-			last_seq, sq_sw->last_seq);
+	if (test_and_clear_bit(FLUSH_SQ_IN_FLIGHT, &sq_sw->flags))
 		goto flush_sq_again;
-	}
 
 err_post_wa4074:
 	clear_bit(CQ_POLLING_NOT_ALLOWED, &cq_sw->flags);
