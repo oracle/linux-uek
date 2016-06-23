@@ -774,7 +774,7 @@ int sif_fixup_cqes(struct sif_cq *cq, struct sif_sq *sq, struct sif_qp *qp)
 		copy_conv_to_sw(&lcqe, cqe, sizeof(lcqe));
 
 		/* Receive completion? */
-		if (lcqe.opcode & 0x80) {
+		if (lcqe.opcode & PSIF_WC_OPCODE_RECEIVE_SEND) {
 			struct sif_post_mortem_qp_info_in_cqe *post_mortem_info =
 				(struct sif_post_mortem_qp_info_in_cqe *) cqe->reserved + 0;
 

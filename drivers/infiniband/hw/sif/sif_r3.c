@@ -525,7 +525,7 @@ int post_process_wa4074(struct sif_dev *sdev, struct sif_qp *qp)
 {
 	struct sif_sq *sq = get_sq(sdev, qp);
 	struct sif_sq_sw *sq_sw = sq ? get_sif_sq_sw(sdev, qp->qp_idx) : NULL;
-	struct psif_query_qp lqqp;
+	struct psif_qp lqqp;
 	bool last_seq_set = false;
 	u16 last_seq, fence_seq;
 	DECLARE_SIF_CQE_POLL(sdev, lcqe);
@@ -564,18 +564,13 @@ int post_process_wa4074(struct sif_dev *sdev, struct sif_qp *qp)
 		goto flush_sq_again;
 	}
 
-	ret = epsc_query_qp(qp, &lqqp);
-	if (ret) {
-		sif_log(sdev, SIF_INFO, "epsc_query_qp failed, ret %d", ret);
-		goto err_post_wa4074;
-	}
-
+	copy_conv_to_sw(&lqqp, &qp->d, sizeof(lqqp));
 	last_seq = sq_sw->last_seq;
 
 	set_bit(CQ_POLLING_NOT_ALLOWED, &cq_sw->flags);
 
 	sif_log(sdev, SIF_WCE_V, "sq_retry_seq %x sq_seq %x last_seq %x head_seq %x",
-		lqqp.qp.retry_sq_seq, lqqp.qp.sq_seq, sq_sw->last_seq, sq_sw->head_seq);
+		lqqp.state.retry_sq_seq, lqqp.state.sq_seq, sq_sw->last_seq, sq_sw->head_seq);
 
 	/* need_gen_fence_completion is used to flush any cqes in the pipeline.
 	 * If this is a good case, no fence completion is needed.
@@ -584,9 +579,9 @@ int post_process_wa4074(struct sif_dev *sdev, struct sif_qp *qp)
 	 * retry_sq_seq + 1 == sq_seq && !flush_started.
 	 */
 
-	need_gen_fence_completion = ((lqqp.qp.retry_tag_committed != lqqp.qp.retry_tag_err) ||
-				     (lqqp.qp.retry_sq_seq + 1 != lqqp.qp.sq_seq) ||
-				     (lqqp.qp.flush_started));
+	need_gen_fence_completion = ((lqqp.state.retry_tag_committed != lqqp.state.retry_tag_err) ||
+				     (lqqp.state.retry_sq_seq + 1 != lqqp.state.sq_seq) ||
+				     (lqqp.state.flush_started));
 
 	if (need_gen_fence_completion) {
 
@@ -647,7 +642,7 @@ int post_process_wa4074(struct sif_dev *sdev, struct sif_qp *qp)
 		}
 
 	sif_log(sdev, SIF_WCE_V, "after: sq_retry_seq %x sq_seq %x last_seq %x head_seq %x",
-		lqqp.qp.retry_sq_seq, lqqp.qp.sq_seq, sq_sw->last_seq, sq_sw->head_seq);
+		lqqp.state.retry_sq_seq, lqqp.state.sq_seq, sq_sw->last_seq, sq_sw->head_seq);
 
 	}
 	last_seq = walk_and_update_cqes(sdev, qp, sq_sw->head_seq + 1, sq_sw->last_seq);
@@ -732,80 +727,6 @@ err_post_wa4074:
 	return ret = ret > 0 ? 0 : ret;
 }
 
-/* This is called from teardown (user modify QP->ERR) as well as
- * any subsequent WQEs posted to SQ.
- */
-int sq_flush_wa4074(struct sif_dev *sdev, struct sif_qp *qp)
-{
-	struct sif_sq *sq = get_sif_sq(sdev, qp->qp_idx);
-	struct sif_sq_sw *sq_sw = get_sif_sq_sw(sdev, qp->qp_idx);
-	struct sif_cq *cq = (sq && sq->cq_idx >= 0) ? get_sif_cq(sdev, sq->cq_idx) : NULL;
-	struct sif_cq_sw *cq_sw = get_sif_cq_sw(sdev, cq->index);
-	u16 last_seq;
-	int flushed = 0;
-	DECLARE_SIF_CQE_POLL(sdev, lcqe);
-	int ret = 0;
-
-	sif_log(sdev, SIF_INFO_V, "last_seq %x head_seq %x",
-		sq_sw->last_seq, sq_sw->head_seq);
-
-	set_bit(CQ_POLLING_NOT_ALLOWED, &cq_sw->flags);
-
-	last_seq = walk_and_update_cqes(sdev, qp, sq_sw->head_seq + 1, sq_sw->last_seq);
-
-	clear_bit(CQ_POLLING_NOT_ALLOWED, &cq_sw->flags);
-
-	if (last_seq > sq_sw->last_seq)
-		goto err_sq_flush;
-
-	for (; last_seq <= sq_sw->last_seq; ++last_seq) {
-
-		ret = sif_gen_sq_flush_cqe(sdev, sq, last_seq, qp->qp_idx, true);
-		if (ret)
-			sif_log(sdev, SIF_INFO,
-				"sq %d, last_seq %x, sif_gen_sq_flush_cqe returned %d",
-				sq->index, last_seq, ret);
-
-		if (ret == -EAGAIN) {
-			ret = gen_pqp_cqe(&lcqe);
-			if (ret < 0)
-				goto err_sq_flush;
-
-			ret = poll_cq_waitfor(&lcqe);
-			if (ret < 0)
-				goto err_sq_flush;
-
-			lcqe.written = false;
-			continue;
-		}
-
-		if (ret < 0)
-			goto err_sq_flush;
-		++flushed;
-	}
-
-	/* Generate a sync.completion for us on the PQP itself
-	 * to allow us to wait for the whole to complete:
-	 */
-	ret = gen_pqp_cqe(&lcqe);
-	if (ret < 0) {
-		sif_log(sdev, SIF_INFO, "SQ %d, gen_pqp_cqe ret %d", sq->index, ret);
-		goto err_sq_flush;
-	}
-	ret = poll_cq_waitfor(&lcqe);
-	if (ret < 0) {
-		sif_log(sdev, SIF_INFO, "SQ %d, poll_cq_waitfor failed, ret %d",
-			sq->index, ret);
-		goto err_sq_flush;
-	}
-
-	sif_log(sdev, SIF_INFO_V, "SQ %d: recv'd completion on cq %d seq 0x%x - done, ret %d",
-		sq->index, sq->cq_idx, lcqe.cqe.seq_num, ret);
-
-err_sq_flush:
-	return ret = ret > 0 ? 0 : ret;
-}
-
 /* Walk the CQ, update the cqe from head to end and return the last_seq */
 static u16 walk_and_update_cqes(struct sif_dev *sdev, struct sif_qp *qp, u16 head, u16 end)
 {
@@ -837,7 +758,7 @@ static u16 walk_and_update_cqes(struct sif_dev *sdev, struct sif_qp *qp, u16 hea
 
 		copy_conv_to_sw(&lcqe, cqe, sizeof(lcqe));
 
-		if (!(lcqe.opcode & IB_WC_RECV)) {
+		if (!(lcqe.opcode & PSIF_WC_OPCODE_RECEIVE_SEND)) {
 			last_seq = lcqe.wc_id.sq_id.sq_seq_num;
 			sif_log(sdev, SIF_WCE_V, "last_seq %x updated_seq %x lcqe.seq_num %x",
 				last_seq, updated_seq, lcqe.seq_num);
@@ -896,7 +817,7 @@ static u16 cq_walk_wa4074(struct sif_dev *sdev, struct sif_qp *qp, bool *last_se
 
 		copy_conv_to_sw(&lcqe, cqe, sizeof(lcqe));
 
-		if (!(lcqe.opcode & IB_WC_RECV)) {
+		if (!(lcqe.opcode & PSIF_WC_OPCODE_RECEIVE_SEND)) {
 			last_seq = lcqe.wc_id.sq_id.sq_seq_num;
 
 			if (!(*last_seq_set))
