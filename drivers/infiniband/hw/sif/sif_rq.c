@@ -303,6 +303,7 @@ int sif_flush_rq(struct sif_dev *sdev, struct sif_rq *rq, struct sif_qp *target_
 	struct sif_rq_sw *rq_sw = get_sif_rq_sw(sdev, rq->index);
 	int ret = 0;
 	u32 head, tail;
+	unsigned long flags;
 	enum sif_mqp_type mqp_type = SIF_MQP_SW;
 	DECLARE_SIF_CQE_POLL(sdev, lcqe);
 
@@ -397,6 +398,7 @@ int sif_flush_rq(struct sif_dev *sdev, struct sif_rq *rq, struct sif_qp *target_
 		 * valid:
 		 */
 flush_rq_again:
+		spin_lock_irqsave(&rq->lock, flags);
 		head = get_psif_rq_hw__head_indx(&rq->d);
 		tail = rq_sw->next_seq;
 		real_len = rq_length(rq, head, tail & ((1 << 14) - 1)) & ((1 << 14) - 1);
@@ -442,6 +444,7 @@ flush_rq_again:
 					if (!cq) {
 						sif_log(sdev, SIF_RQ,
 							"recevied cq is NULL");
+						spin_unlock_irqrestore(&rq->lock, flags);
 						goto free_rq_error;
 					}
 					cq_sw = get_sif_cq_sw(sdev, cq->index);
@@ -463,6 +466,7 @@ flush_rq_again:
 			}
 			set_bit(FLUSH_RQ_FIRST_TIME, &rq_sw->flags);
 		}
+		spin_unlock_irqrestore(&rq->lock, flags);
 
 		/* Now find the actual 32 bit seq.no */
 		head = tail - real_len;
