@@ -1220,10 +1220,12 @@ static void perf_stop_nmi_watchdog(void *unused)
 
 static void perf_event_grab_pmc(void)
 {
-	if (atomic_inc_not_zero(&active_events))
-		return;
-
 	mutex_lock(&pmc_grab_mutex);
+	if (atomic_inc_not_zero(&active_events)) {
+		mutex_unlock(&pmc_grab_mutex);
+		return;
+	}
+
 	if (atomic_read(&active_events) == 0) {
 		if (atomic_read(&nmi_active) > 0) {
 			on_each_cpu(perf_stop_nmi_watchdog, NULL, 1);
@@ -1241,6 +1243,15 @@ static void perf_event_release_pmc(void)
 			on_each_cpu(start_nmi_watchdog, NULL, 1);
 		mutex_unlock(&pmc_grab_mutex);
 	}
+
+	/* If the active_events count goes negative then
+	 * perf_event_grab_pmc() will not disable the watchdog correctly
+	 * and we end up with the watchdog 'corrupting' a performance
+	 * counter whilst it is being used to count some other event
+	 */
+	WARN(atomic_read(&active_events) < 0,
+		"cpu%d: active_events count is negative !\n",
+		smp_processor_id());
 }
 
 static const struct perf_event_map *sparc_map_cache_event(u64 config)
