@@ -718,6 +718,8 @@ struct rds_sock {
 	/* Socket receive path trace points*/
 	u8			rs_rx_traces;
 	u8			rs_rx_trace[RDS_MSG_RX_DGRAM_TRACE_MAX];
+
+	bool			rs_large_page;
 };
 
 static inline struct rds_sock *rds_sk_to_rs(const struct sock *sk)
@@ -879,7 +881,7 @@ rds_conn_connecting(struct rds_connection *conn)
 struct rds_message *rds_message_alloc(unsigned int nents, gfp_t gfp);
 struct scatterlist *rds_message_alloc_sgs(struct rds_message *rm, int nents);
 int rds_message_copy_from_user(struct rds_message *rm, struct iov_iter *from,
-			       gfp_t gfp);
+			       gfp_t gfp, bool n);
 void rds_message_populate_header(struct rds_header *hdr, __be16 sport,
 				 __be16 dport, u64 seq);
 int rds_message_add_extension(struct rds_header *hdr,
@@ -911,7 +913,7 @@ static inline int rds_message_verify_checksum(const struct rds_header *hdr)
 
 /* page.c */
 int rds_page_remainder_alloc(struct scatterlist *scat, unsigned long bytes,
-			     gfp_t gfp);
+			     gfp_t gfp, bool n);
 int rds_page_copy_user(struct page *page, unsigned long offset,
 		       void __user *ptr, unsigned long bytes,
 		       int to_user);
