@@ -1189,6 +1189,7 @@ int rds_sendmsg(struct socket *sock, struct msghdr *msg, size_t payload_len)
 	int nonblock = msg->msg_flags & MSG_DONTWAIT;
 	long timeo = sock_sndtimeo(sk, nonblock);
 	size_t total_payload_len = payload_len;
+	bool large_page;
 
 	/* Mirror Linux UDP mirror of BSD error message compatibility */
 	/* XXX: Perhaps MSG_MORE someday */
@@ -1215,6 +1216,7 @@ int rds_sendmsg(struct socket *sock, struct msghdr *msg, size_t payload_len)
 	}
 
 	lock_sock(sk);
+	large_page = rs->rs_large_page;
 	if (daddr == 0 || rs->rs_bound_addr == 0) {
 		release_sock(sk);
 		ret = -ENOTCONN; /* XXX not a great errno */
@@ -1241,7 +1243,8 @@ int rds_sendmsg(struct socket *sock, struct msghdr *msg, size_t payload_len)
 	/* Attach data to the rm */
 	if (payload_len) {
 		rm->data.op_sg = rds_message_alloc_sgs(rm, ceil(payload_len, PAGE_SIZE));
-		ret = rds_message_copy_from_user(rm, &msg->msg_iter, GFP_KERNEL);
+		ret = rds_message_copy_from_user(rm, &msg->msg_iter, GFP_KERNEL,
+						 large_page);
 		if (ret)
 			goto out;
 	}
