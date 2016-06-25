@@ -291,7 +291,7 @@ struct scatterlist *rds_message_alloc_sgs(struct rds_message *rm, int nents)
 }
 
 int rds_message_copy_from_user(struct rds_message *rm, struct iov_iter *from,
-			       gfp_t gfp)
+			       gfp_t gfp, bool large_page)
 {
 	unsigned long to_copy, nbytes;
 	unsigned long sg_off;
@@ -310,7 +310,8 @@ int rds_message_copy_from_user(struct rds_message *rm, struct iov_iter *from,
 		if (!sg_page(sg)) {
 			ret = rds_page_remainder_alloc(sg, iov_iter_count(from),
 						       GFP_ATOMIC == gfp ?
-						       gfp : GFP_HIGHUSER);
+						       gfp : GFP_HIGHUSER,
+						       large_page);
 
 			if (ret)
 				return ret;
