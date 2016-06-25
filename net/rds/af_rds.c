@@ -616,6 +616,7 @@ static int __rds_create(struct socket *sock, struct sock *sk, int protocol)
 	rs->rs_conn = 0;
 	rs->rs_netfilter_enabled = 0;
 	rs->rs_rx_traces = 0;
+	rs->rs_large_page = true;
 
 	if (rs->rs_bound_addr)
 		printk(KERN_CRIT "bound addr %x at create\n", rs->rs_bound_addr);

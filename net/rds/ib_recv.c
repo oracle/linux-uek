@@ -346,7 +346,7 @@ static struct rds_page_frag *rds_ib_refill_one_frag(struct rds_ib_connection *ic
 
 		sg_init_table(&frag->f_sg, 1);
 		ret = rds_page_remainder_alloc(&frag->f_sg,
-					       ic->i_frag_sz, page_mask);
+					       ic->i_frag_sz, page_mask, true);
 		if (ret) {
 			kmem_cache_free(rds_ib_frag_slab, frag);
 			atomic_sub(ic->i_frag_pages, &rds_ib_allocation);
@@ -514,10 +514,10 @@ static int rds_ib_srq_prefill_one(struct rds_ib_device *rds_ibdev,
 	sg_init_table(&recv->r_frag->f_sg, 1);
 	if (recv->r_ic)
 		ret = rds_page_remainder_alloc(&recv->r_frag->f_sg,
-				recv->r_ic->i_frag_sz, page_mask);
+				recv->r_ic->i_frag_sz, page_mask, true);
 	else
 		ret = rds_page_remainder_alloc(&recv->r_frag->f_sg,
-				RDS_FRAG_SIZE, page_mask);
+				RDS_FRAG_SIZE, page_mask, true);
 	if (ret) {
 		kmem_cache_free(rds_ib_frag_slab, recv->r_frag);
 		goto out;
