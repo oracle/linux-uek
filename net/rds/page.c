@@ -116,22 +116,31 @@ EXPORT_SYMBOL_GPL(rds_page_copy_user);
  * reference until they are done with the region.
  */
 int rds_page_remainder_alloc(struct scatterlist *scat, unsigned long bytes,
-			     gfp_t gfp)
+			     gfp_t gfp, bool large_page)
 {
 	struct rds_page_remainder *rem;
 	unsigned long flags;
 	struct page *page;
 	int ret;
+	unsigned int order, size;
 
 	gfp |= __GFP_HIGHMEM;
 
 	/* jump straight to allocation if we're trying for a huge page */
 	if (bytes >= PAGE_SIZE) {
-		page = alloc_pages(gfp, get_order(bytes));
+		if (large_page) {
+			order =  get_order(bytes);
+			size = bytes;
+		} else {
+			order =  0;
+			size = PAGE_SIZE;
+		}
+
+		page = alloc_pages(gfp, order);
 		if (!page) {
 			ret = -ENOMEM;
 		} else {
-			sg_set_page(scat, page, bytes, 0);
+			sg_set_page(scat, page, size, 0);
 			ret = 0;
 		}
 		goto out;
