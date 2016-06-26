@@ -91,24 +91,6 @@ static struct rds_connection *rds_conn_lookup(struct net *net,
 	return ret;
 }
 
-void rds_conn_laddr_list(__be32 laddr, struct list_head *laddr_conns)
-{
-	struct rds_connection *conn;
-	struct hlist_head *head;
-	int i;
-
-	rcu_read_lock();
-
-	for (i = 0, head = rds_conn_hash; i < ARRAY_SIZE(rds_conn_hash);
-	     i++, head++) {
-		hlist_for_each_entry_rcu(conn, head, c_hash_node)
-			if (conn->c_laddr == laddr)
-				list_add(&conn->c_laddr_node, laddr_conns);
-	}
-
-	rcu_read_unlock();
-}
-
 /*
  * This is called by transports as they're bringing down a connection.
  * It clears partial message state so that the transport can start sending
@@ -402,17 +384,14 @@ void rds_conn_shutdown(struct rds_connection *conn, int restart)
  * the conn has been shutdown that no one else is referencing the connection.
  * We can only ensure this in the rmmod path in the current code.
  */
-void rds_conn_destroy(struct rds_connection *conn, int shutdown)
+void rds_conn_destroy(struct rds_connection *conn)
 {
 	struct rds_message *rm, *rtmp;
 	unsigned long flags;
-	LIST_HEAD(to_be_dropped);
 
 	rds_rtd(RDS_RTD_CM, "freeing conn %p <%pI4,%pI4,%d>\n",
 		conn, &conn->c_laddr, &conn->c_faddr,
 		conn->c_tos);
-
-	set_bit(RDS_DESTROY_PENDING, &conn->c_flags);
 
 	/* Ensure conn will not be scheduled for reconnect */
 	spin_lock_irq(&rds_conn_lock);
@@ -440,18 +419,10 @@ void rds_conn_destroy(struct rds_connection *conn, int shutdown)
 	list_for_each_entry_safe(rm, rtmp,
 				 &conn->c_send_queue,
 				 m_conn_item) {
-		if (shutdown) {
-			list_del_init(&rm->m_conn_item);
-			BUG_ON(!list_empty(&rm->m_sock_item));
-			rds_message_put(rm);
-		} else {
-			list_move_tail(&rm->m_conn_item, &to_be_dropped);
-		}
+		list_del_init(&rm->m_conn_item);
+		BUG_ON(!list_empty(&rm->m_sock_item));
+		rds_message_put(rm);
 	}
-
-	if (!list_empty(&to_be_dropped))
-		rds_send_remove_from_sock(&to_be_dropped, RDS_RDMA_SEND_ACCVIO);
-
 	if (conn->c_xmit_rm)
 		rds_message_put(conn->c_xmit_rm);
 
