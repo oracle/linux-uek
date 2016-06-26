@@ -225,7 +225,7 @@ void rds_ib_destroy_nodev_conns(void)
 	spin_unlock_irq(&ib_nodev_conns_lock);
 
 	list_for_each_entry_safe(ic, _ic, &tmp_list, ib_node)
-		rds_conn_destroy(ic->conn, 1);
+		rds_conn_destroy(ic->conn);
 }
 
 static unsigned int get_unmap_fmr_cpu(struct rds_ib_device *rds_ibdev,
