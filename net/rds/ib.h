@@ -410,11 +410,6 @@ struct rds_ib_conn_drop_work {
 	struct rds_connection          *conn;
 };
 
-struct rds_ib_conn_destroy_work {
-	struct delayed_work             work;
-	struct rds_connection          *conn;
-};
-
 struct rds_ib_addr_change_work {
 	struct delayed_work             work;
 	__be32                          addr;
@@ -590,7 +585,6 @@ int rds_ib_cm_initiate_connect(struct rdma_cm_id *cm_id);
 void rds_ib_cm_connect_complete(struct rds_connection *conn,
 				struct rdma_cm_event *event);
 void rds_ib_init_frag(unsigned int version);
-void rds_ib_conn_destroy_init(struct rds_connection *conn);
 
 #define rds_ib_conn_error(conn, fmt...) \
 	__rds_ib_conn_error(conn, KERN_WARNING "RDS/IB: " fmt)
