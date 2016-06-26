@@ -52,9 +52,6 @@ unsigned int rds_sysctl_ping_enable = 1;
 unsigned int rds_sysctl_shutdown_trace_start_time;
 unsigned int rds_sysctl_shutdown_trace_end_time;
 
-/*  Do not drop packets on transmit */
-unsigned int rds_sysctl_uuid_tx_no_drop = 1;
-
 /*
  * We have official values, but must maintain the sysctl interface for existing
  * software that expects to find these values here.
@@ -126,13 +123,6 @@ static struct ctl_table rds_sysctl_rds_table[] = {
 	{
 		.procname       = "shutdown_trace_end_time",
 		.data           = &rds_sysctl_shutdown_trace_end_time,
-		.maxlen         = sizeof(int),
-		.mode           = 0644,
-		.proc_handler   = &proc_dointvec,
-	},
-	{
-		.procname	= "uuid_tx_no_drop",
-		.data		= &rds_sysctl_uuid_tx_no_drop,
 		.maxlen         = sizeof(int),
 		.mode           = 0644,
 		.proc_handler   = &proc_dointvec,
