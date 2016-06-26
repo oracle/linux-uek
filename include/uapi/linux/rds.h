@@ -67,7 +67,6 @@
 #define RDS_GET_MR_FOR_DEST		7
 #define RDS_CONN_RESET                  8
 #define SO_RDS_TRANSPORT		9
-#define RDS_CONFIG_UUID			11
 
 /* supported values for SO_RDS_TRANSPORT */
 #define	RDS_TRANS_IB	0
@@ -147,7 +146,6 @@ struct rds_cmsg_rx_trace {
 #define RDS_CMSG_MASKED_ATOMIC_CSWP     9
 #define RDS_CMSG_ASYNC_SEND             10
 #define RDS_CMSG_RXPATH_LATENCY		11
-#define RDS_CMSG_UUID			12
 
 #define RDS_INFO_FIRST			10000
 #define RDS_INFO_COUNTERS		10000
@@ -347,20 +345,11 @@ struct rds_rdma_send_notify {
 	int32_t		status;
 };
 
-#define RDS_UUID_MAXLEN 64
-struct rds_uuid_args {
-	u_int8_t	uuid[RDS_UUID_MAXLEN];
-	unsigned int	uuid_en;
-	unsigned int	acl_en;
-	unsigned int drop_cnt;
-};
-
 #define RDS_RDMA_SEND_SUCCESS	0
 #define RDS_RDMA_REMOTE_ERROR	1
 #define RDS_RDMA_SEND_CANCELED	2
 #define RDS_RDMA_SEND_DROPPED	3
 #define RDS_RDMA_SEND_OTHER_ERROR	4
-#define RDS_RDMA_SEND_ACCVIO	5
 
 /*
  * Common set of flags for all RDMA related structs
