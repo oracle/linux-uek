@@ -777,21 +777,6 @@ out:
 	return ret;
 }
 
-static int rds_cmsg_uuid(struct rds_sock *rs, struct rds_incoming *inc,
-			 struct msghdr *msghdr)
-{
-	struct rds_uuid_args args;
-
-	if (!inc->i_conn->c_acl_en || !rs->rs_uuid_en)
-		return 0;
-
-	memcpy(args.uuid, inc->i_conn->c_uuid, sizeof(inc->i_conn->c_uuid));
-	args.acl_en = inc->i_conn->c_acl_en;
-	args.uuid_en = rs->rs_uuid_en;
-
-	return put_cmsg(msghdr, SOL_RDS, RDS_CMSG_UUID, sizeof(args), &args);
-}
-
 int rds_recvmsg(struct socket *sock, struct msghdr *msg, size_t size,
 		int msg_flags)
 {
@@ -875,11 +860,6 @@ int rds_recvmsg(struct socket *sock, struct msghdr *msg, size_t size,
 		}
 
 		if (rds_cmsg_recv(inc, msg, rs)) {
-			ret = -EFAULT;
-			goto out;
-		}
-
-		if (rds_cmsg_uuid(rs, inc, msg)) {
 			ret = -EFAULT;
 			goto out;
 		}
