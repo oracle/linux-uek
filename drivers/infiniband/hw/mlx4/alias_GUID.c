@@ -72,45 +72,6 @@ struct mlx4_next_alias_guid_work {
 static int get_low_record_time_index(struct mlx4_ib_dev *dev, u8 port,
 				     int *resched_delay_sec);
 
-/*
- * Generate GUID by changing the fourth byte to be the GUID index in the
- * port GUID table.
- *
- * For example:
- * 	00:02:C9:03:YY:XX:XX:XX
- * Where:
- * 	00:02:C9:03 - Mellanox prefix GUID
- * 	YY          - is the GUID index in the GUID table
- * 	XX:XX:XX    - rest of the original GUID
- */
-__be64 generate_guid(struct mlx4_ib_dev *dev, int port_num, int record_index)
-{
-	static union ib_gid gid = {.raw={0}};
-	__be64 gen_guid = 0;
-	static int queried_port = 1;
-
-	/* If the gid of this port was not already queried -
-	   query and act accordingly */
-	if ((!gid.global.interface_id || (queried_port != port_num)) &&
-	    dev->ib_dev.query_gid(&dev->ib_dev, port_num, 0, &gid))
-		goto exit;
-
-	if (mlx4_ib_guid_gen_magic < 0x64)
-		goto exit;
-
-	queried_port = port_num;
-	gen_guid = gid.global.interface_id;
-	((u8 *)(&gen_guid))[4] = mlx4_ib_guid_gen_magic +
-				 (record_index % NUM_ALIAS_GUID_IN_REC);
-
-	pr_debug("record: %d, port_guid: 0x%llx generated: 0x%llx",
-		 record_index, be64_to_cpu(gid.global.interface_id),
-	         be64_to_cpu(gen_guid));
-
-exit:
-	return gen_guid;
-}
-
 void mlx4_ib_update_cache_on_guid_change(struct mlx4_ib_dev *dev, int block_num,
 					 u8 port_num, u8 *p_data)
 {
@@ -871,7 +832,6 @@ int mlx4_ib_init_alias_guid_service(struct mlx4_ib_dev *dev)
 	int ret = 0;
 	int i, j;
 	union ib_gid gid;
-	__be64 gen_guid;
 
 	if (!mlx4_is_master(dev->dev))
 		return 0;
@@ -908,19 +868,6 @@ int mlx4_ib_init_alias_guid_service(struct mlx4_ib_dev *dev)
 		if (mlx4_ib_sm_guid_assign)
 			for (j = 1; j < NUM_ALIAS_GUID_PER_PORT; j++)
 				mlx4_set_admin_guid(dev->dev, 0, j, i + 1);
-		else {
-			for (j = 0; j < NUM_ALIAS_GUID_PER_PORT; j++) {
-				gen_guid = generate_guid(dev, i + 1, j);
-				if (!gen_guid)
-					continue;
-				mlx4_set_admin_guid(dev->dev, gen_guid, j,
-						    i + 1);
-				*(__be64 *)&dev->sriov.alias_guid.ports_guid[i].
-					all_rec_per_port[j].
-					all_recs[(j % 8) * GUID_REC_SIZE] =
-						gen_guid;
-			}
-		}
 		for (j = 0 ; j < NUM_ALIAS_GUID_REC_IN_PORT; j++)
 			invalidate_guid_record(dev, i + 1, j);
 
