@@ -71,9 +71,6 @@ enum {
 /*module param to indicate if SM assigns the alias_GUID*/
 extern int mlx4_ib_sm_guid_assign;
 
-/*module param for generating even GUIDs, Oracle only*/
-extern int mlx4_ib_guid_gen_magic;
-
 #define MLX4_IB_UC_STEER_QPN_ALIGN 1
 #define MLX4_IB_UC_MAX_NUM_QPS     (256 * 1024)
 struct mlx4_ib_ucontext {
