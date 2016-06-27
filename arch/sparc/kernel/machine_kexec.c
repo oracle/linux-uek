@@ -190,10 +190,13 @@ static void destroy_nucleus_tsb(void)
 		       hverror);
 }
 
+static int crashing_cpu;
+
 void machine_crash_shutdown(struct pt_regs *regs)
 {
 	unsigned long msecs;
 
+	crashing_cpu = smp_processor_id();
 	if (atomic_read(&nmi_active) > 0)
 		stop_nmi_watchdog(NULL);
 	atomic_set(&kexec_strand_wait, num_online_cpus() - 1);

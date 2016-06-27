@@ -2387,12 +2387,12 @@ static inline struct reg_window *kernel_stack_up(struct reg_window *rw)
 	return (struct reg_window *) (fp + STACK_BIAS);
 }
 
-static int crashing_cpu;
-
 void __noreturn die_if_kernel(char *str, struct pt_regs *regs)
 {
 	static int die_counter;
 	int count = 0;
+
+	bust_spinlocks(1);
 	
 	/* Amuse the user. */
 	printk(
@@ -2430,8 +2430,8 @@ void __noreturn die_if_kernel(char *str, struct pt_regs *regs)
 		}
 		user_instruction_dump ((unsigned int __user *) regs->tpc);
 	}
-	crashing_cpu = smp_processor_id();
 	crash_kexec(regs);
+	bust_spinlocks(0);
 	if (panic_on_oops)
 		panic("Fatal exception");
 	if (regs->tstate & TSTATE_PRIV)
