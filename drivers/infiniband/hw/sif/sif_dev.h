@@ -599,7 +599,7 @@ extern ulong sif_feature_mask;
 #define SIFF_no_huge_pages		  0x80
 
 /* Use stencil pqp for invalidation of FMR keys */
-#define SIFF_disable_stencil_invalidate	  0x100
+#define SIFF_disable_stencil_invalidate	 0x100
 
 /* Force disable vpci iommu trapping (to operate as on real hardware..) */
 #define SIFF_disable_vpci_iommu		 0x400
@@ -616,11 +616,14 @@ extern ulong sif_feature_mask;
 /* Check all event queues on all interrupts */
 #define SIFF_check_all_eqs_on_intr	0x8000
 
+/* Make all vlinks behave in sync with the correspondinding external port */
+#define SIFF_vlink_connect	       0x10000
+
 /* Don't allocate vcbs in a round robin fashion */
-#define SIFF_alloc_cb_round_robin 0x20000
+#define SIFF_alloc_cb_round_robin      0x20000
 
 /* Don't allocate from all other queues (except cb and qp) in a round robin fashion */
-#define SIFF_disable_alloc_round_robin    0x40000
+#define SIFF_disable_alloc_round_robin 0x40000
 
 /* Default on rev1 is to force rnr_retry_init to 0 - this feature
  * forces it to 7 (infinite retry) instead:
@@ -668,7 +671,7 @@ extern ulong sif_feature_mask;
 /* Configure PSIF to use the opposite base page size (e.g. 8K on x86 and 4K on sparc) */
 #define SIFF_toggle_page_size        0x40000000
 
-#define SIFF_all_features	     0x7ffeddfb
+#define SIFF_all_features	     0x7fffddfb
 
 #define sif_feature(x) (sif_feature_mask & (SIFF_##x))
 
