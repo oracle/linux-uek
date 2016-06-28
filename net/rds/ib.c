@@ -61,7 +61,7 @@ unsigned int rds_ib_active_bonding_trigger_delay_min_msecs; /* = 0; */
 unsigned int rds_ib_rnr_retry_count = RDS_IB_DEFAULT_RNR_RETRY_COUNT;
 static char *rds_ib_active_bonding_failover_groups = NULL;
 unsigned int rds_ib_active_bonding_arps = RDS_IB_DEFAULT_NUM_ARPS;
-static char *rds_ib_active_bonding_excl_ips = "169.254/16,172.10/16";
+static char *rds_ib_active_bonding_excl_ips = "169.254/16";
 
 module_param(rds_ib_fmr_1m_pool_size, int, 0444);
 MODULE_PARM_DESC(rds_ib_fmr_1m_pool_size, " Max number of 1m fmr per HCA");
