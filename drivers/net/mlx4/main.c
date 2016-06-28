@@ -1557,6 +1557,7 @@ static int mlx4_config_mad_demux(struct mlx4_dev *dev)
 {
 	struct mlx4_cmd_mailbox *mailbox;
 	int err = 0;
+	u32 get_attr_mask;
 
 	/* Check if mad_demux is supported */
 	if (!(dev->caps.mad_demux & 0x01))
@@ -1579,7 +1580,21 @@ static int mlx4_config_mad_demux(struct mlx4_dev *dev)
                 goto out;
 	}
 
-	/* Config mad_demux */
+	/* Config mad_demux to handle pi and ni queries if not already
+	 * handling
+	 */
+	MLX4_GET(get_attr_mask, mailbox->buf,
+		 MLX4_CMD_MAD_DEMUX_GET_ATTR_OFFSET);
+	if ((get_attr_mask & SMP_GET_PORT_NODE_INFO_MASK_BITS) !=
+	    SMP_GET_PORT_NODE_INFO_MASK_BITS){
+		get_attr_mask |= SMP_GET_PORT_NODE_INFO_MASK_BITS;
+		MLX4_PUT(mailbox->buf, get_attr_mask,
+			 MLX4_CMD_MAD_DEMUX_GET_ATTR_OFFSET);
+	};
+
+	/* Config mad_demux to handle remaining MADs returned by the
+	 * query above
+	 */
 	err = mlx4_cmd(dev, mailbox->dma, 0x01 /* subn class */,
 		       MLX4_CMD_MAD_DEMUX_CONFIG, MLX4_CMD_MAD_DEMUX,
 		       MLX4_CMD_TIME_CLASS_B, 1);
@@ -1588,6 +1603,27 @@ static int mlx4_config_mad_demux(struct mlx4_dev *dev)
 			  "configure");
 		goto out;
 	}
+
+	/* Read back current config to verify */
+	err = mlx4_cmd_box(dev, 0, mailbox->dma, 0x01 /* subn class */,
+			   MLX4_CMD_MAD_DEMUX_QUERY_STATE, MLX4_CMD_MAD_DEMUX,
+			   MLX4_CMD_TIME_CLASS_B, 1);
+	if (err) {
+		mlx4_warn(dev, "Failed in mlx4_cmd_box of MLX4_CMD_MAD_DEMUX, "
+			  "query state");
+		goto out;
+	}
+
+	MLX4_GET(get_attr_mask, mailbox->buf,
+		 MLX4_CMD_MAD_DEMUX_GET_ATTR_OFFSET);
+	if ((get_attr_mask & SMP_GET_PORT_NODE_INFO_MASK_BITS) ==
+	    SMP_GET_PORT_NODE_INFO_MASK_BITS)
+		mlx4_info(dev, "sm port and node info query - "
+			  "offload successful\n");
+	else
+		mlx4_warn(dev, "sm port and node info query - "
+			  "offload failed\n");
+
 	dev->is_internal_sma = 1;
 
 out:	

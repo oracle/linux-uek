@@ -44,9 +44,6 @@ enum {
 	MLX4_COMMAND_INTERFACE_NEW_PORT_CMDS	= 3,
 };
 
-extern void __buggy_use_of_MLX4_GET(void);
-extern void __buggy_use_of_MLX4_PUT(void);
-
 static int enable_qos;
 module_param(enable_qos, bool, 0444);
 MODULE_PARM_DESC(enable_qos, "Enable Quality of Service support in the HCA (default: off)");
@@ -54,30 +51,6 @@ MODULE_PARM_DESC(enable_qos, "Enable Quality of Service support in the HCA (defa
 static int mlx4_pre_t11_mode = 0;
 module_param_named(enable_pre_t11_mode, mlx4_pre_t11_mode, int, 0644);
 MODULE_PARM_DESC(enable_pre_t11_mode, "For FCoXX, enable pre-t11 mode if non-zero (default: 0)");
-
-#define MLX4_GET(dest, source, offset)				      \
-	do {							      \
-		void *__p = (char *) (source) + (offset);	      \
-		switch (sizeof (dest)) {			      \
-		case 1: (dest) = *(u8 *) __p;	    break;	      \
-		case 2: (dest) = be16_to_cpup(__p); break;	      \
-		case 4: (dest) = be32_to_cpup(__p); break;	      \
-		case 8: (dest) = be64_to_cpup(__p); break;	      \
-		default: __buggy_use_of_MLX4_GET();		      \
-		}						      \
-	} while (0)
-
-#define MLX4_PUT(dest, source, offset)				      \
-	do {							      \
-		void *__d = ((char *) (dest) + (offset));	      \
-		switch (sizeof(source)) {			      \
-		case 1: *(u8 *) __d = (source);		       break; \
-		case 2:	*(__be16 *) __d = cpu_to_be16(source); break; \
-		case 4:	*(__be32 *) __d = cpu_to_be32(source); break; \
-		case 8:	*(__be64 *) __d = cpu_to_be64(source); break; \
-		default: __buggy_use_of_MLX4_PUT();		      \
-		}						      \
-	} while (0)
 
 static void dump_dev_cap_flags(struct mlx4_dev *dev, u64 flags)
 {

@@ -171,12 +171,59 @@ struct mlx4_init_ib_param {
 	u64 si_guid;
 };
 
+#define MLX4_CMD_MAD_DEMUX_GET_ATTR_OFFSET	0x00
+
+#define SMP_GET_NODE_INFO_MASK_BIT		0x04
+#define SMP_GET_PORT_INFO_MASK_BIT		0x20
+
+#define SMP_GET_PORT_NODE_INFO_MASK_BITS       (SMP_GET_PORT_INFO_MASK_BIT | \
+						SMP_GET_NODE_INFO_MASK_BIT)
+
 struct mlx4_set_ib_param {
 	int set_si_guid;
 	int reset_qkey_viol;
 	u64 si_guid;
 	u32 cap_mask;
 };
+
+extern void __buggy_use_of_MLX4_GET(void);
+extern void __buggy_use_of_MLX4_PUT(void);
+
+#define MLX4_GET(dest, source, offset)				\
+	do {							\
+		void *__p = (char *) (source) + (offset);	\
+		switch (sizeof(dest)) {				\
+		case 1:						\
+			(dest) = *(u8 *) __p;       break;	\
+		case 2:						\
+			(dest) = be16_to_cpup(__p); break;	\
+		case 4:						\
+			(dest) = be32_to_cpup(__p); break;	\
+		case 8:						\
+			(dest) = be64_to_cpup(__p); break;	\
+		default:					\
+			__buggy_use_of_MLX4_GET();		\
+		}						\
+	} while (0)
+
+#define MLX4_PUT(dest, source, offset)					\
+	do {								\
+		void *__d = ((char *) (dest) + (offset));		\
+		switch (sizeof(source)) {				\
+		case 1:							\
+			*(u8 *)     __d = (source);            break;	\
+		case 2:							\
+			*(__be16 *) __d = cpu_to_be16(source); break;	\
+		case 4:							\
+			*(__be32 *) __d = cpu_to_be32(source); break;	\
+		case 8:							\
+			*(__be64 *) __d = cpu_to_be64(source); break;	\
+		default:						\
+			__buggy_use_of_MLX4_PUT();			\
+		}							\
+	} while (0)
+
+
 
 int mlx4_QUERY_DEV_CAP(struct mlx4_dev *dev, struct mlx4_dev_cap *dev_cap);
 int mlx4_QUERY_SLAVE_CAP(struct mlx4_dev *dev, struct mlx4_caps *caps);
