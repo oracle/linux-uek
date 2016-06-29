@@ -55,6 +55,7 @@ __attribute_const__ int ib_rate_to_mult(enum ib_rate rate)
 	case IB_RATE_5_GBPS:   return  2;
 	case IB_RATE_10_GBPS:  return  4;
 	case IB_RATE_20_GBPS:  return  8;
+	case IB_RATE_25_GBPS:  return 10;
 	case IB_RATE_30_GBPS:  return 12;
 	case IB_RATE_40_GBPS:  return 16;
 	case IB_RATE_60_GBPS:  return 24;
@@ -72,6 +73,7 @@ __attribute_const__ enum ib_rate mult_to_ib_rate(int mult)
 	case 2:  return IB_RATE_5_GBPS;
 	case 4:  return IB_RATE_10_GBPS;
 	case 8:  return IB_RATE_20_GBPS;
+	case 10: return IB_RATE_25_GBPS;
 	case 12: return IB_RATE_30_GBPS;
 	case 16: return IB_RATE_40_GBPS;
 	case 24: return IB_RATE_60_GBPS;
