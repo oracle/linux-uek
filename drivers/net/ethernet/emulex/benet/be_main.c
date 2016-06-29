@@ -3249,8 +3249,9 @@ static void be_msix_disable(struct be_adapter *adapter)
 
 static int be_msix_enable(struct be_adapter *adapter)
 {
-	int i, num_vec;
+	unsigned int i, max_roce_eqs;
 	struct device *dev = &adapter->pdev->dev;
+	int num_vec;
 
 	/* If RoCE is supported, program the max number of vectors that
 	 * could be used for NIC and RoCE, else, just program the number
