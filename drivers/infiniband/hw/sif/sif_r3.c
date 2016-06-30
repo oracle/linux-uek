@@ -738,7 +738,6 @@ err_post_wa4074:
 	clear_bit(CQ_POLLING_NOT_ALLOWED, &cq_sw->flags);
 	clear_bit(FLUSH_SQ_IN_FLIGHT, &sq_sw->flags);
 	clear_bit(FLUSH_SQ_IN_PROGRESS, &sq_sw->flags);
-	qp->flush_sq_done_wa4074 = true;
 	return ret = ret > 0 ? 0 : ret;
 }
 

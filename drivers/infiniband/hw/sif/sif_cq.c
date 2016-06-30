@@ -462,8 +462,12 @@ static int handle_recv_wc(struct sif_dev *sdev, struct sif_cq *cq, struct ib_wc 
 		(wc->status != IB_WC_SUCCESS)) {
 		struct sif_qp *qp = to_sqp(wc->qp);
 
+		/* As QP is in ERROR, the only scenario that
+		 * rq shouldn't be flushed by SW is when the QP
+		 * is in RESET state.
+		 */
 		if (rq && !rq->is_srq
-			&& IB_QPS_ERR == get_qp_state(qp)) {
+		    && !test_bit(SIF_QPS_IN_RESET, &qp->persistent_state)) {
 			if (sif_flush_rq(sdev, rq, qp, rq_len))
 				sif_log(sdev, SIF_INFO,
 					"failed to flush RQ %d", rq->index);

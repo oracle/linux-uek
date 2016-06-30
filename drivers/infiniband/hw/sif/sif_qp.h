@@ -81,6 +81,11 @@ struct sif_qp_init_attr {
 	int sq_hdl_sz;
 };
 
+
+enum qp_persistent_state {
+	SIF_QPS_IN_RESET  = 0,
+};
+
 struct sif_qp {
 	volatile struct psif_qp d;	/* Hardware QPSC entry */
 	struct ib_qp ibqp ____cacheline_internodealigned_in_smp;
@@ -124,8 +129,7 @@ struct sif_qp {
 
 	int srq_idx;			/* WA #3952: Track SRQ for modify_srq(used only for pQP) */
 	atomic64_t arm_srq_holdoff_time;/* Wait-time,if the pQP is held for a prev modify_srq */
-
-	bool flush_sq_done_wa4074;	/* WA #4074: Track if QP state changes are already applied */
+	unsigned long persistent_state; /* the atomic flag to determine the QP reset */
 
 	u64 ipoib_tx_csum_l3;
 	u64 ipoib_tx_csum_l4;

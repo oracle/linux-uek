@@ -463,6 +463,7 @@ struct sif_qp *create_qp(struct sif_dev *sdev,
 	copy_conv_to_hw(&qp->d, &qpi, sizeof(struct psif_qp));
 
 	mutex_init(&qp->lock); /* TBD: Sync scheme! */
+	set_bit(SIF_QPS_IN_RESET, &qp->persistent_state);
 
 	/* Users should see qp 0/1 even though qp 0/1 is mapped to qp 2/3 for
 	 * port 2
@@ -478,7 +479,6 @@ struct sif_qp *create_qp(struct sif_dev *sdev,
 		qp->ibqp.qp_type = IB_QPT_UD;
 	}
 
-	qp->flush_sq_done_wa4074 = false;
 
 	ret = sif_dfs_add_qp(sdev, qp);
 	if (ret)
@@ -1034,9 +1034,11 @@ sif_mqp_ret:
 	 */
 	switch (new_state) {
 	case IB_QPS_RESET:
+		set_bit(SIF_QPS_IN_RESET, &qp->persistent_state);
 		qp->flags &= ~SIF_QPF_HW_OWNED;
 		break;
 	case IB_QPS_RTR:
+		clear_bit(SIF_QPS_IN_RESET, &qp->persistent_state);
 		qp->flags |= SIF_QPF_HW_OWNED;
 		break;
 	default:
@@ -1814,6 +1816,10 @@ int sif_query_qp(struct ib_qp *ibqp, struct ib_qp_attr *qp_attr,
 	bool use_hw = false;
 	struct sif_qp *qp = to_sqp(ibqp);
 	struct sif_dev *sdev = to_sdev(ibqp->device);
+	int ret;
+
+	/* Take QP lock to avoid any race condition on updates to last_set_state: */
+	mutex_lock(&qp->lock);
 
 	sif_logi(ibqp->device, SIF_QP, "last_set_state %d", qp->last_set_state);
 
@@ -1826,33 +1832,21 @@ int sif_query_qp(struct ib_qp *ibqp, struct ib_qp_attr *qp_attr,
 		 * ibv_query_qp might report wrong state when in state IBV_QPS_ERR
 		 * Query must be done based on current ownership (towards HW only if HW owned)
 		 */
-		if (PSIF_REVISION(sdev) <= 3 || qp->flush_sq_done_wa4074)
+		if (PSIF_REVISION(sdev) <= 3)
 			use_hw = (qp->flags & SIF_QPF_HW_OWNED);
 		else
 			use_hw = true;
 		break;
 	}
 
-	return use_hw ?
+	ret = use_hw ?
 		sif_query_qp_hw(ibqp, qp_attr, qp_attr_mask, qp_init_attr) :
 		sif_query_qp_sw(ibqp, qp_attr, qp_attr_mask, qp_init_attr);
-}
 
-enum ib_qp_state get_qp_state(struct sif_qp *qp)
-{
-	struct ib_qp *ibqp = &qp->ibqp;
-	struct ib_qp_init_attr init_attr;
-	struct ib_qp_attr attr;
+	mutex_unlock(&qp->lock);
 
-	memset(&attr, 0, sizeof(attr));
-	memset(&init_attr, 0, sizeof(init_attr));
+	return ret;
 
-	if (sif_query_qp(ibqp, &attr, IB_QP_STATE, &init_attr)) {
-		sif_logi(ibqp->device, SIF_INFO,
-			"query_qp failed for qp %d", ibqp->qp_num);
-		return -1;
-	}
-	return attr.qp_state;
 }
 
 static void get_qp_path_sw(struct sif_qp *qp, struct ib_qp_attr *qp_attr, bool alternate)
@@ -2067,13 +2061,10 @@ static int sif_query_qp_hw(struct ib_qp *ibqp, struct ib_qp_attr *qp_attr,
 	struct sif_sq *sq = get_sq(sdev, qp);
 	struct psif_query_qp lqqp;
 
-	/* Take QP lock to avoid any race condition on updates to last_set_state: */
-	mutex_lock(&qp->lock);
 
 	ret = epsc_query_qp(qp, &lqqp);
 	if (!ret)
 		qp->last_set_state = sif2ib_qp_state(lqqp.qp.state);
-	mutex_unlock(&qp->lock);
 
 	if (ret)
 		return ret;
@@ -2392,7 +2383,6 @@ failed:
 	 */
 	set_psif_qp_core__xmit_psn(&qps->state, 0);
 	set_psif_qp_core__last_acked_psn(&qps->state, 0xffffff);
-	qp->flush_sq_done_wa4074 = false;
 
 	return ret;
 }
