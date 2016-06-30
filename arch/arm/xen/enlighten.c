@@ -41,6 +41,10 @@ struct shared_info *HYPERVISOR_shared_info = (void *)&xen_dummy_shared_info;
 DEFINE_PER_CPU(struct vcpu_info *, xen_vcpu);
 static struct vcpu_info __percpu *xen_vcpu_info;
 
+/* Linux <-> Xen vCPU id mapping */
+DEFINE_PER_CPU(int, xen_vcpu_id) = -1;
+EXPORT_PER_CPU_SYMBOL(xen_vcpu_id);
+
 /* These are unused until we support booting "pre-ballooned" */
 unsigned long xen_released_pages;
 struct xen_memory_region xen_extra_mem[XEN_EXTRA_MEM_MAX_REGIONS] __initdata;
@@ -160,6 +164,9 @@ static void xen_percpu_init(void)
 
 	pr_info("Xen: initializing cpu%d\n", cpu);
 	vcpup = per_cpu_ptr(xen_vcpu_info, cpu);
+
+	/* Direct vCPU id mapping for ARM guests. */
+	per_cpu(xen_vcpu_id, cpu) = cpu;
 
 	info.mfn = virt_to_gfn(vcpup);
 	info.offset = xen_offset_in_page(vcpup);
@@ -308,7 +315,13 @@ static int __init xen_guest_init(void)
 	if (xen_vcpu_info == NULL)
 		return -ENOMEM;
 
-	if (gnttab_setup_auto_xlat_frames(grant_frames)) {
+	/* Direct vCPU id mapping for ARM guests. */
+	per_cpu(xen_vcpu_id, 0) = 0;
+
+	xen_auto_xlat_grant_frames.count = gnttab_max_grant_frames();
+	if (xen_xlate_map_ballooned_pages(&xen_auto_xlat_grant_frames.pfn,
+					  &xen_auto_xlat_grant_frames.vaddr,
+					  xen_auto_xlat_grant_frames.count)) {
 		free_percpu(xen_vcpu_info);
 		return -ENOMEM;
 	}
