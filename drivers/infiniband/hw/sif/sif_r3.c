@@ -273,7 +273,7 @@ static int sif_hw_allocate_flush_qp(struct sif_dev *sdev, u8 flush_idx)
 	memset(&qp_attr, 0, sizeof(qp_attr));
 	qp_attr.qp_state = IB_QPS_RTS;
 	qp_attr.sq_psn = 0;
-	qp_attr.timeout = 6;
+	qp_attr.timeout = 0;
 	qp_attr.retry_cnt = 7;
 	qp_attr.rnr_retry = 7;
 	qp_attr.max_rd_atomic = 1;
@@ -446,6 +446,11 @@ int reset_qp_flush_retry(struct sif_dev *sdev, u8 flush_idx)
 			for (sts = 0; sts < count; sts++)
 				sif_log(sdev, SIF_INFO, "wr_id %lld status %d opcode %d",
 					wcs[sts].wr_id, wcs[sts].status, wcs[sts].opcode);
+			ret = epsc_query_qp(qp, &lqqp);
+			if (ret)
+				sif_log(sdev, SIF_INFO, "epsc_query_qp failed with status %d", ret);
+
+			sif_logs(SIF_INFO, write_struct_psif_query_qp(NULL, 0, &lqqp));
 			goto fail;
 		}
 	}
