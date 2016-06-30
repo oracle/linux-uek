@@ -433,7 +433,7 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 # Packages that need to be installed before the kernel is, because the %post
 # scripts use them.
 #
-%define kernel_prereq  fileutils, module-init-tools, initscripts >= 8.11.1-1, kernel-firmware = %{rpmversion}-%{pkg_release}, /sbin/new-kernel-pkg, ql23xx-firmware
+%define kernel_prereq  fileutils, module-init-tools, initscripts >= 8.11.1-1, kernel-firmware = %{rpmversion}-%{pkg_release}, /sbin/new-kernel-pkg
 %define initrd_prereq  dracut-kernel >= 004-242.0.3
 
 #
