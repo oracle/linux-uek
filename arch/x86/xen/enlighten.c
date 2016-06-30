@@ -207,8 +207,9 @@ static void xen_vcpu_setup(int cpu)
 		if (per_cpu(xen_vcpu, cpu) == &per_cpu(xen_vcpu_info, cpu))
 			return;
 	}
-	if (cpu < MAX_VIRT_CPUS)
-		per_cpu(xen_vcpu,cpu) = &HYPERVISOR_shared_info->vcpu_info[cpu];
+	if (xen_vcpu_nr(cpu) < MAX_VIRT_CPUS)
+		per_cpu(xen_vcpu, cpu) =
+			&HYPERVISOR_shared_info->vcpu_info[xen_vcpu_nr(cpu)];
 
 	if (!have_vcpu_info_placement) {
 		if (cpu >= MAX_VIRT_CPUS)
@@ -1808,7 +1809,7 @@ void __ref xen_hvm_init_shared_info(void)
 		/* Leave it to be NULL. */
 		if (cpu >= MAX_VIRT_CPUS && cpu <= NR_CPUS)
 			per_cpu(xen_vcpu, cpu) = NULL; /* Triggers xen_vcpu_setup.*/
-		per_cpu(xen_vcpu, cpu) = &HYPERVISOR_shared_info->vcpu_info[cpu];
+		per_cpu(xen_vcpu, cpu) = &HYPERVISOR_shared_info->vcpu_info[xen_vcpu_nr(cpu)];
 	}
 }
 
