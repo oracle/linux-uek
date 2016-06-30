@@ -231,8 +231,6 @@ static const struct clock_event_device xen_timerop_clockevent = {
 	.set_next_event = xen_timerop_set_next_event,
 };
 
-
-
 static void xen_vcpuop_set_mode(enum clock_event_mode mode,
 				struct clock_event_device *evt)
 {
@@ -242,16 +240,15 @@ static void xen_vcpuop_set_mode(enum clock_event_mode mode,
 	case CLOCK_EVT_MODE_PERIODIC:
 		WARN_ON(1);	/* unsupported */
 		break;
-
 	case CLOCK_EVT_MODE_ONESHOT:
-		if (HYPERVISOR_vcpu_op(VCPUOP_stop_periodic_timer, cpu, NULL))
+		if (HYPERVISOR_vcpu_op(VCPUOP_stop_periodic_timer, xen_vcpu_nr(cpu), NULL))
 			BUG();
 		break;
 
 	case CLOCK_EVT_MODE_UNUSED:
 	case CLOCK_EVT_MODE_SHUTDOWN:
-		if (HYPERVISOR_vcpu_op(VCPUOP_stop_singleshot_timer, cpu, NULL) ||
-		    HYPERVISOR_vcpu_op(VCPUOP_stop_periodic_timer, cpu, NULL))
+		if (HYPERVISOR_vcpu_op(VCPUOP_stop_singleshot_timer, xen_vcpu_nr(cpu), NULL) ||
+		    HYPERVISOR_vcpu_op(VCPUOP_stop_periodic_timer, xen_vcpu_nr(cpu), NULL))
 			BUG();
 		break;
 	case CLOCK_EVT_MODE_RESUME:
@@ -272,7 +269,8 @@ static int xen_vcpuop_set_next_event(unsigned long delta,
 	/* Get an event anyway, even if the timeout is already expired */
 	single.flags = 0;
 
-	ret = HYPERVISOR_vcpu_op(VCPUOP_set_singleshot_timer, cpu, &single);
+	ret = HYPERVISOR_vcpu_op(VCPUOP_set_singleshot_timer, xen_vcpu_nr(cpu),
+				 &single);
 	BUG_ON(ret != 0);
 
 	return ret;
@@ -370,7 +368,8 @@ void xen_timer_resume(void)
 		return;
 
 	for_each_online_cpu(cpu) {
-		if (HYPERVISOR_vcpu_op(VCPUOP_stop_periodic_timer, cpu, NULL))
+		if (HYPERVISOR_vcpu_op(VCPUOP_stop_periodic_timer,
+				       xen_vcpu_nr(cpu), NULL))
 			BUG();
 	}
 }
@@ -390,7 +389,8 @@ static void __init xen_time_init(void)
 
 	clocksource_register_hz(&xen_clocksource, NSEC_PER_SEC);
 
-	if (HYPERVISOR_vcpu_op(VCPUOP_stop_periodic_timer, cpu, NULL) == 0) {
+	if (HYPERVISOR_vcpu_op(VCPUOP_stop_periodic_timer, xen_vcpu_nr(cpu),
+			       NULL) == 0) {
 		/* Successfully turned off 100Hz tick, so we have the
 		   vcpuop-based timer interface */
 		printk(KERN_DEBUG "Xen: using vcpuop timer interface\n");
