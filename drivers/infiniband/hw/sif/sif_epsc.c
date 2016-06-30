@@ -1511,7 +1511,11 @@ static int __sif_eps_send_keep_alive(struct sif_dev *sdev, enum psif_mbox_type e
 	int ret = 0;
 
 	if (sif_eps_keep_alive_timeout(es) || force) {
-		sif_log(sdev, SIF_INFO, "Sending keep-alive (force=%i)", force);
+		sif_log(sdev, SIF_INTR, "Sending keep-alive (force=%i)", force);
+		if (force)
+			atomic64_inc(&sdev->wa_stats.wa4059[SND_INTR_KEEP_ALIVE_WA4059_CNT]);
+		else
+			atomic64_inc(&sdev->wa_stats.wa4059[SND_THREAD_KEEP_ALIVE_WA4059_CNT]);
 
 		/* prevent infinite loop with __sif_post_eps_wr */
 		es->last_req_posted = jiffies;
