@@ -235,10 +235,15 @@ struct sif_qp *create_qp(struct sif_dev *sdev,
 	/*
 	 * We add a sge (with the stencil) when sending with TSO. The stencil is stored at
 	 * the beginning of the inline-area. TSO implies checksumming which again has
-	 * a requirement that no inline can be used. It is therefore necessary to check that we have at least
-	 * 64 bytes of inline-buffering.
+	 * a requirement that no inline can be used. 
+	 * To be able to accomodate as large L3/L4-headers as possible we allocate 192
+	 * bytes for inlining;
+	 * entry size 512 bytes
+	 * 16*16 bytes sge
+	 * request 64 bytes
+	 * inline_bufer = 512 - 256 -64 = 192
 	 */
-	min_tso_inline = 64;
+	min_tso_inline = 192;
 	if (flags & IB_QP_CREATE_IPOIB_UD_LSO) {
 		if (init_attr->cap.max_inline_data < min_tso_inline) {
 			sif_log(sdev, SIF_INFO,
