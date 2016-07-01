@@ -468,7 +468,7 @@ static int handle_recv_wc(struct sif_dev *sdev, struct sif_cq *cq, struct ib_wc 
 		 */
 		if (rq && !rq->is_srq
 		    && !test_bit(SIF_QPS_IN_RESET, &qp->persistent_state)) {
-			if (sif_flush_rq(sdev, rq, qp, rq_len))
+			if (sif_flush_rq_wq(sdev, rq, qp, rq_len))
 				sif_log(sdev, SIF_INFO,
 					"failed to flush RQ %d", rq->index);
 		}

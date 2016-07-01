@@ -22,6 +22,8 @@
 #include "sif_defs.h"
 #include <linux/seq_file.h>
 
+static void sif_flush_rq(struct work_struct *work);
+
 int poll_wait_for_rq_writeback(struct sif_dev *sdev, struct sif_rq *rq)
 {
 	unsigned long timeout = sdev->min_resp_ticks;
@@ -277,6 +279,30 @@ static int find_recv_cqes_in_cq(struct sif_dev *sdev, struct sif_cq *cq, struct 
 	return n;
 }
 
+
+int sif_flush_rq_wq(struct sif_dev *sdev, struct sif_rq *rq, struct sif_qp *target_qp,
+		    int max_flushed_in_err)
+{
+	struct flush_rq_work *work;
+
+	work = kzalloc(sizeof(*work), GFP_ATOMIC);
+	if (!work)
+		return -ENOMEM;
+
+
+	memset(work, 0, sizeof(*work));
+	work->qp = target_qp;
+	work->sdev = sdev;
+	work->rq = rq;
+	work->entries = max_flushed_in_err;
+
+	INIT_WORK(&work->ws, sif_flush_rq);
+
+	queue_work(sdev->misc_wq, &work->ws);
+
+	return 0;
+}
+
 /* Invalidate the RQ cache and flush a desired amount of
  * the remaining entries in the given receive queue.
  * @target_qp indicates the value of the local_qp field in the generated
@@ -296,10 +322,14 @@ static int find_recv_cqes_in_cq(struct sif_dev *sdev, struct sif_cq *cq, struct 
  * Note: No locking of the RQ is neccessary as there are multiple trigger points
  * for flushing RQEs within OFED verbs model.
  */
-int sif_flush_rq(struct sif_dev *sdev, struct sif_rq *rq, struct sif_qp *target_qp,
-		int max_flushed_in_err)
+static void sif_flush_rq(struct work_struct *work)
 {
 	int len, real_len;
+	struct flush_rq_work *rq_work = container_of(work, struct flush_rq_work, ws);
+	struct sif_dev *sdev = rq_work->sdev;
+	struct sif_qp *target_qp = rq_work->qp;
+	struct sif_rq *rq = rq_work->rq;
+	int max_flushed_in_err = rq_work->entries;
 	struct sif_rq_sw *rq_sw = get_sif_rq_sw(sdev, rq->index);
 	int ret = 0;
 	u32 head, tail;
@@ -311,7 +341,7 @@ int sif_flush_rq(struct sif_dev *sdev, struct sif_rq *rq, struct sif_qp *target_
 	 */
 	if (test_bit(FLUSH_RQ_IN_PROGRESS, &rq_sw->flags)) {
 		set_bit(FLUSH_RQ_IN_FLIGHT, &rq_sw->flags);
-		return ret;
+		goto done;
 	}
 
 	/* if race condition happened while trying to flush RQ,
@@ -319,7 +349,7 @@ int sif_flush_rq(struct sif_dev *sdev, struct sif_rq *rq, struct sif_qp *target_
 	 */
 	if (test_and_set_bit(FLUSH_RQ_IN_PROGRESS, &rq_sw->flags)) {
 		set_bit(FLUSH_RQ_IN_FLIGHT, &rq_sw->flags);
-		return ret;
+		goto done;
 	}
 
 	if (!sif_feature(disable_rq_flush))
@@ -544,7 +574,8 @@ free_rq_error:
 	}
 error:
 	clear_bit(FLUSH_RQ_IN_PROGRESS, &rq_sw->flags);
-	return ret = ret > 0 ? 0 : ret;
+done:
+	kfree(rq_work);
 }
 
 

@@ -253,6 +253,12 @@ static int sif_probe(struct pci_dev *pdev,
 		err = -ENOMEM;
 		goto wq_fail;
 	}
+	sdev->misc_wq = create_singlethread_workqueue("sif_misc_wq");
+	if (!sdev->misc_wq) {
+		sif_log(sdev, SIF_INFO, "Failed to allocate sif misc work queue");
+		err = -ENOMEM;
+		goto wq_fail;
+	}
 
 	err = sif_set_check_max_payload(sdev);
 	if (err)
@@ -420,7 +426,9 @@ static void sif_remove(struct pci_dev *dev)
 	pci_clear_master(dev);
 	pci_disable_device(dev);
 	flush_workqueue(sdev->wq);
+	flush_workqueue(sdev->misc_wq);
 	destroy_workqueue(sdev->wq);
+	destroy_workqueue(sdev->misc_wq);
 	sif_log(sdev, SIF_INFO, "removed device %s", sdev->ib_dev.name);
 	ib_dealloc_device(&sdev->ib_dev);
 }

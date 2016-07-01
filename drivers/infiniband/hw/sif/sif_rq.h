@@ -36,6 +36,14 @@ struct sif_rq {
 	struct sif_mem *mem; /* Allocated queue memory */
 };
 
+struct flush_rq_work {
+	struct work_struct ws;
+	struct sif_dev *sdev;
+	struct sif_rq *rq;
+	struct sif_qp *qp;
+	int entries;
+};
+
 static inline struct sif_rq *to_srq(struct ib_srq *ibsrq)
 {
 	return container_of(ibsrq, struct sif_rq, ibsrq);
@@ -58,7 +66,7 @@ int alloc_rq(struct sif_dev *sdev, struct sif_pd *pd,
  * @target_qp indicates the value of the local_qp field in the generated
  * completion but is not interpreted by SIF in any way.
  */
-int sif_flush_rq(struct sif_dev *sdev, struct sif_rq *rq,
+int sif_flush_rq_wq(struct sif_dev *sdev, struct sif_rq *rq,
 		struct sif_qp *target_qp, int max_flushed_in_err);
 
 int free_rq(struct sif_dev *sdev, int rq_idx);

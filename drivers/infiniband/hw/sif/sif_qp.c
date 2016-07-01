@@ -969,7 +969,7 @@ int modify_qp(struct sif_dev *sdev, struct sif_qp *qp,
 					"flush requested for qp(type %s) with no rq defined",
 					string_enum_psif_qp_trans(qp->type));
 			} else {
-				ret = sif_flush_rq(sdev, rq, qp, rq->entries);
+				ret = sif_flush_rq_wq(sdev, rq, qp, rq->entries);
 				if (ret)
 					sif_log(sdev, SIF_INFO, "failed to flush RQ %d", rq->index);
 			}
@@ -1068,7 +1068,7 @@ sif_mqp_ret:
 				qp->ibqp.event_handler(&ibe, qp->ibqp.qp_context);
 			} else if (!rq->is_srq) {
 				/* WA #622: if reqular RQ, flush */
-				ret = sif_flush_rq(sdev, rq, qp, rq->entries);
+				ret = sif_flush_rq_wq(sdev, rq, qp, rq->entries);
 				if (ret) {
 					sif_log(sdev, SIF_INFO, "failed to flush RQ %d",
 						rq->index);

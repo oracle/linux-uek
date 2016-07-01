@@ -752,7 +752,7 @@ err_post_recv:
 
 	/* WA #622, Check if QP in ERROR, flush RQ */
 	if (!rq->is_srq && qp->last_set_state == IB_QPS_ERR) {
-		if (sif_flush_rq(sdev, rq, qp, atomic_read(&rq_sw->length)))
+		if (sif_flush_rq_wq(sdev, rq, qp, atomic_read(&rq_sw->length)))
 			sif_log(sdev, SIF_INFO, "failed to flush RQ %d", rq->index);
 	}
 

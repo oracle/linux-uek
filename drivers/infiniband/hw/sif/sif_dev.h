@@ -335,6 +335,7 @@ struct sif_dev {
 
 	/* Owned by sif_r3.c - wa support */
 	struct sif_wa_stats wa_stats;
+	struct workqueue_struct *misc_wq; /* Used to flush send/receive queue */
 };
 
 /* TBD: These should probably come from common pci headers
