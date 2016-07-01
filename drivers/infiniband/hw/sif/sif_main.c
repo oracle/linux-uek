@@ -31,6 +31,7 @@
 #include "psif_hw_csr.h"
 #include "version.h"
 #include <xen/xen.h>
+#include <linux/crash_dump.h>
 #include "versioninfo.h"
 
 
@@ -296,20 +297,22 @@ static int sif_probe(struct pci_dev *pdev,
 	if (PSIF_REVISION(sdev) <= 3)
 		sif_r3_pre_init(sdev);
 
-	if (xen_pv_domain()) {
+	if (xen_pv_domain() || is_kdump_kernel()) {
 		/* The Xen PV domain may return huge pages that are misaligned
 		 * in DMA space, see Orabug: 21690736.
 		 * Also we have to turn off the inline sge optimization, as it assumes
 		 * that (guest) physical and DMA addresses are equal, which is not
 		 * the case for the PV domain - see Orabug: 23012335.
+		 * Also use the same sizes for the kdump environment
+		 * - see Orabug: 23729807
 		 */
 		sif_log(sdev, SIF_INFO, "xen pv domain: Restricting resource allocation..");
 		sif_feature_mask |= SIFF_no_huge_pages | SIFF_disable_inline_first_sge;
-		sif_qp_size = min(sif_qp_size, 0x1000U);
-		sif_mr_size = min(sif_mr_size, 0x1000U);
-		sif_ah_size = min(sif_ah_size, 0x1000U);
+		sif_qp_size = min(sif_qp_size, 0x800U);
+		sif_mr_size = min(sif_mr_size, 0x800U);
+		sif_ah_size = min(sif_ah_size, 0x800U);
 		sif_cq_size = min(sif_cq_size, 0x1000U);
-		sif_rq_size = min(sif_rq_size, 0x1000U);
+		sif_rq_size = min(sif_rq_size, 0x800U);
 		sif_max_pqp_wr = min(sif_max_pqp_wr, 0x1000U);
 	}
 
