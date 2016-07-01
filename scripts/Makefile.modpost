@@ -14,7 +14,7 @@
 # 2) modpost is then used to
 # 3)  create one <module>.mod.c file pr. module
 # 4)  create one Module.symvers file with CRC for all exported symbols
-# 5) compile all <module>.mod.c files
+# 5) compute SDT offsets, generate SDT stubs, and compile all .mod.c files
 # 6) generate CTF for the entire kernel, or for the module alone if this is
 #    a build of an external module
 # 7) final link of the module to a <module.ko> file
@@ -129,10 +129,13 @@ quiet_cmd_sdtinfo = SDTINF  $@
 quiet_cmd_sdtstub = SDTSTB  $@
       cmd_sdtstub = $(sdtgen) sdtstub $@ $<
 
-$(modules:.ko=.sdtinfo.c): %.sdtinfo.c: %.o
+# We depend on the .mod.c file to ensure that modpost runs before sdtinfo.
+$(modules:.ko=.sdtinfo.c): %.sdtinfo.c: %.o %.mod.c
 	$(call cmd,sdtinfo)
 
-$(modules:.ko=.sdtstub.S) : %.sdtstub.S: %.o
+# We depend on the sdtinfo file because info generation rewrites the .o,
+# while sdtstubs reads it.
+$(modules:.ko=.sdtstub.S) : %.sdtstub.S: %.o %.sdtinfo.c
 	$(call cmd,sdtstub)
 
 $(modules:.ko=.mod.o): %.mod.o: %.mod.c %.sdtinfo.c FORCE
@@ -216,7 +219,7 @@ define add-ctf-filelists-cmd
 	$(foreach file,$(1),$(call add-ctf-filelist-cmd,$(file)))
 endef
 
-$(ctf-filelist): $(builtins) $(modules:.ko=.o)
+$(ctf-filelist): $(builtins) $(modules:.ko=.o) | $(modules:.ko=.sdtinfo.c)
 	@rm -f $(ctf-filelist);
 	@mkdir -p $(ctf-dir);
 	$(call add-ctf-filelists-cmd,$^)
@@ -224,6 +227,8 @@ $(ctf-filelist): $(builtins) $(modules:.ko=.o)
 # We depend upon a stamp file in lieu of the builtin modules' CTF files, because
 # the names of the generated CTF files for the builtins are so variable.
 # (Standalone modules get their own per-module stamp files.)
+# The stamp file then depends on the .o files for the modules, and on the
+# sdtinfo files (for the same reason that the sdtstub does).
 $(ctf-stamp): $(ctf-filelist)
 	$(call if_changed,ctf)
 	@shopt -s nullglob; \
