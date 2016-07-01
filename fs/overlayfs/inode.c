@@ -96,6 +96,7 @@ int ovl_permission(struct inode *inode, int mask)
 	bool is_upper;
 	struct dentry *realdentry = ovl_entry_real(oe, &is_upper);
 	struct inode *realinode;
+	const struct cred *old_cred;
 	int err;
 
 	if (ovl_is_default_permissions(inode)) {
@@ -149,7 +150,19 @@ int ovl_permission(struct inode *inode, int mask)
 			return -EROFS;
 	}
 
-	return __inode_permission(realinode, mask);
+	/*
+	 * Check overlay inode with the creds of task and underlying inode
+	 * with creds of mounter
+	 */
+	err = generic_permission(inode, mask);
+	if (err)
+		return err;
+
+	old_cred = ovl_override_creds(inode->i_sb);
+	err = __inode_permission(realinode, mask);
+	revert_creds(old_cred);
+
+	return err;
 }
 
 
@@ -342,9 +355,6 @@ out:
 struct posix_acl *ovl_get_acl(struct inode *inode, int type)
 {
 	struct inode *realinode = ovl_inode_real(inode);
-
-	if (!realinode)
-		return ERR_PTR(-ENOENT);
 
 	if (!IS_POSIXACL(realinode))
 		return NULL;
