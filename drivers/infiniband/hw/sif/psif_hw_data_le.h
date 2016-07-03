@@ -1849,6 +1849,52 @@ struct psif_eq_entry {
 } PSIF_PACKED_ALIGNED32; /* struct psif_eq_entry [64 byte] */
 
 /**
+ * \brief Definition of struct returned by EPSC_QUERY_EXTERNAL_PORT_INFO
+ * \details
+ * This struct is returning several attributes of the external IB port. The vHCA IB portnumber
+ * is set in the index field. Values returned maches description in PortInfo (See IB specification
+ * 1.3 vol1 chapter 14.2.5.6), except for active speed which will return values as defined in
+ * psif_port_speed.
+ * \par Width
+ *      64 bit
+ * \par Used in
+ * the parameter for the PSIF_QUERY sub-operation EPSC_QUERY_PORT_INFO - vHCA IB portnumber set in index field
+ * \par Classification
+ *      internal, development
+ */
+
+struct psif_epsc_query_external_port_info {
+	/**< Reserved */
+
+	u16	noname:8;
+	/**< Number of operational Data VLs */
+
+	u16	operational_vls:4;
+	/**< Active MTU of external port (values will match psif_epsc_path_mtu_t */
+
+	u16	active_mtu:4;
+	/**< IB LinkWidthActive of external port */
+
+	u16	active_width:8;
+	/**< IB LinkSpeedActive of external port */
+
+	enum psif_port_speed	active_speed:8;
+
+	/**< Physical port state of IB port */
+
+	u16	port_physical_state:4;
+	/**< IB port state of external port values will match psif_epsc_port_state_t */
+
+	u16	port_state:4;
+	/**< IB port number of external port (on the IB device above) */
+
+	u16	portnumber:8;
+	/**< LID of the IB device connected to the external port */
+
+	u16	lid;
+} PSIF_PACKED_ALIGNED; /* struct psif_epsc_query_external_port_info [ 8 byte] */
+
+/**
  * CSR Query port structure
  */
 struct psif_epsc_port_attr {

@@ -1215,6 +1215,8 @@ const char *string_enum_psif_epsc_degrade_cause(enum psif_epsc_degrade_cause val
 		return "DEGRADE_CAUSE_FLAG_MODIFY_QP_TIMEOUT";
 	case DEGRADE_CAUSE_FLAG_VIRTMODE_RECONF:
 		return "DEGRADE_CAUSE_FLAG_VIRTMODE_RECONF";
+	case DEGRADE_CAUSE_FLAG_MCAST_LACK_OF_CREDIT:
+		return "DEGRADE_CAUSE_FLAG_MCAST_LACK_OF_CREDIT";
 	case PSIF_EPSC_DEGRADE_CAUSE_FIELD_MAX:
 		return "PSIF_EPSC_DEGRADE_CAUSE_FIELD_MAX";
 	default:
@@ -1788,6 +1790,10 @@ const char *string_enum_psif_epsc_query_op(enum psif_epsc_query_op val)
 		return "EPSC_QUERY_CREDIT_MODE";
 	case EPSC_QUERY_CPLD_VERSION:
 		return "EPSC_QUERY_CPLD_VERSION";
+	case EPSC_QUERY_EXTERNAL_PORT_INFO:
+		return "EPSC_QUERY_EXTERNAL_PORT_INFO";
+	case EPSC_QUERY_HW_REVISION:
+		return "EPSC_QUERY_HW_REVISION";
 	case EPSC_QUERY_LAST:
 		return "EPSC_QUERY_LAST";
 	case PSIF_EPSC_QUERY_OP_FIELD_MAX:
