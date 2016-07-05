@@ -31,13 +31,13 @@
 #include "psif_hw_csr.h"
 #include "version.h"
 #include <xen/xen.h>
+#include <linux/crash_dump.h>
+#include "versioninfo.h"
 
-
-#define PSIF_VERSION_STR "0.1.0.6+"
 
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("Oracle SIF Infiniband HCA driver");
-MODULE_VERSION(PSIF_VERSION_STR);
+MODULE_VERSION(TITAN_RELEASE);
 MODULE_AUTHOR("Knut Omang");
 
 /* The device(s) we support */
@@ -61,43 +61,19 @@ static int sif_probe(struct pci_dev *pdev,
 			       const struct pci_device_id *id);
 static void sif_remove(struct pci_dev *dev);
 
-static int sif_suspend(struct pci_dev *dev, pm_message_t state)
-{
-	struct sif_dev *sdev = pci_get_drvdata(dev);
-
-	sif_log(sdev, SIF_INFO, " ");
-	return 0;
-}
-
-static int sif_resume(struct pci_dev *dev)
-{
-	struct sif_dev *sdev = pci_get_drvdata(dev);
-
-	sif_log(sdev, SIF_INFO, " ");
-	return 0;
-}
-
-static void sif_shutdown(struct pci_dev *dev)
-{
-	struct sif_dev *sdev = pci_get_drvdata(dev);
-
-	sif_log(sdev, SIF_INFO, " ");
-}
 
 static struct pci_driver sif_driver = {
 	.name = "sif",
 	.id_table = pci_table,
 	.probe =	sif_probe,
 	.remove =	sif_remove,
-	.suspend =	sif_suspend,
-	.resume =	sif_resume,
-	.shutdown =	sif_shutdown,
 	.sriov_configure = sif_vf_enable,
 };
 
 /* Driver parameters: */
 
-ulong sif_debug_mask = 0x3;
+ulong sif_debug_mask = 0x1;
+
 module_param_named(debug_mask, sif_debug_mask, ulong, S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(debug_mask, "Selective enabling of debugging output to the system log");
 
@@ -131,11 +107,6 @@ MODULE_PARM_DESC(cq_eq_max, "Upper limit on no. of EQs to distribute completion 
 uint sif_cb_max = 100;
 module_param_named(cb_max, sif_cb_max, uint, S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(cb_max, "Upper limit on no. of CBs.");
-
-/* TBD - This is a debug feature to evaluate performance. */
-ushort sif_perf_sampling_threshold = 100;
-module_param_named(perf_sampling_threshold, sif_perf_sampling_threshold, ushort, S_IRUGO | S_IWUSR);
-MODULE_PARM_DESC(perf_sampling_threshold, "The performance measurement based on every N samples");
 
 uint sif_fmr_cache_flush_threshold = 512;
 module_param_named(fmr_cache_flush_threshold, sif_fmr_cache_flush_threshold, uint, S_IRUGO | S_IWUSR);
@@ -255,6 +226,8 @@ static int sif_probe(struct pci_dev *pdev,
 	/* TBD: Zeroed memory from ib_alloc_device? */
 	struct sif_dev *sdev =
 	    (struct sif_dev *)ib_alloc_device(sizeof(struct sif_dev));
+	struct sif_eps *es;
+
 	if (!sdev) {
 		err = -ENOMEM;
 		goto pfail_ib_alloc;
@@ -270,13 +243,20 @@ static int sif_probe(struct pci_dev *pdev,
 
 	pci_set_drvdata(pdev, sdev);
 	sif_log(sdev, SIF_INFO,
-		"%s found, device id 0x%x, subsystem id 0x%x, revision %d, at 0x%p",
+		"%s found, device id 0x%x, subsystem id 0x%x, rev.%d",
 		get_product_str(sdev), PSIF_DEVICE(sdev),
-		PSIF_SUBSYSTEM(sdev), PSIF_REVISION(sdev), sdev);
+		PSIF_SUBSYSTEM(sdev), PSIF_REVISION(sdev));
+
 
 	sdev->wq = create_singlethread_workqueue(sdev->ib_dev.name);
 	if (!sdev->wq) {
 		sif_log(sdev, SIF_INFO, "Failed to allocate kernel work queue");
+		err = -ENOMEM;
+		goto wq_fail;
+	}
+	sdev->misc_wq = create_singlethread_workqueue("sif_misc_wq");
+	if (!sdev->misc_wq) {
+		sif_log(sdev, SIF_INFO, "Failed to allocate sif misc work queue");
 		err = -ENOMEM;
 		goto wq_fail;
 	}
@@ -313,20 +293,26 @@ static int sif_probe(struct pci_dev *pdev,
 	if (err)
 		goto pfail_bar;
 
-	if (xen_pv_domain()) {
+	 /* This must be done before events reception - see Orabug: 23540257 */
+	if (PSIF_REVISION(sdev) <= 3)
+		sif_r3_pre_init(sdev);
+
+	if (xen_pv_domain() || is_kdump_kernel()) {
 		/* The Xen PV domain may return huge pages that are misaligned
 		 * in DMA space, see Orabug: 21690736.
 		 * Also we have to turn off the inline sge optimization, as it assumes
 		 * that (guest) physical and DMA addresses are equal, which is not
 		 * the case for the PV domain - see Orabug: 23012335.
+		 * Also use the same sizes for the kdump environment
+		 * - see Orabug: 23729807
 		 */
 		sif_log(sdev, SIF_INFO, "xen pv domain: Restricting resource allocation..");
 		sif_feature_mask |= SIFF_no_huge_pages | SIFF_disable_inline_first_sge;
-		sif_qp_size = min(sif_qp_size, 0x1000U);
-		sif_mr_size = min(sif_mr_size, 0x1000U);
-		sif_ah_size = min(sif_ah_size, 0x1000U);
+		sif_qp_size = min(sif_qp_size, 0x800U);
+		sif_mr_size = min(sif_mr_size, 0x800U);
+		sif_ah_size = min(sif_ah_size, 0x800U);
 		sif_cq_size = min(sif_cq_size, 0x1000U);
-		sif_rq_size = min(sif_rq_size, 0x1000U);
+		sif_rq_size = min(sif_rq_size, 0x800U);
 		sif_max_pqp_wr = min(sif_max_pqp_wr, 0x1000U);
 	}
 
@@ -389,7 +375,12 @@ static int sif_probe(struct pci_dev *pdev,
 	sif_dfs_link_to_ibdev(sdev);
 
 
-	sif_log(sdev, SIF_INFO, "Successfully probed and set up device");
+	es = &sdev->es[sdev->mbox_epsc];
+	sif_log(sdev, SIF_INFO, "Enabled %s (hardware v%d.%d - firmware v%d.%d (api v%d.%d))",
+		sdev->ib_dev.name,
+		es->ver.psif_major, es->ver.psif_minor,
+		es->ver.fw_major, es->ver.fw_minor,
+		es->ver.epsc_major, es->ver.epsc_minor);
 	return 0;
 pfail_ibreg:
 	sif_r3_deinit(sdev);
@@ -423,7 +414,7 @@ static void sif_remove(struct pci_dev *dev)
 {
 	struct sif_dev *sdev = pci_get_drvdata(dev);
 
-	sif_log0(SIF_INIT, "Enter: sif_remove");
+	sif_log(sdev, SIF_INIT, "Enter: sif_remove");
 
 	sif_vf_disable(sdev);
 
@@ -438,9 +429,11 @@ static void sif_remove(struct pci_dev *dev)
 	pci_clear_master(dev);
 	pci_disable_device(dev);
 	flush_workqueue(sdev->wq);
+	flush_workqueue(sdev->misc_wq);
 	destroy_workqueue(sdev->wq);
+	destroy_workqueue(sdev->misc_wq);
+	sif_log(sdev, SIF_INFO, "removed device %s", sdev->ib_dev.name);
 	ib_dealloc_device(&sdev->ib_dev);
-	sif_log0(SIF_INIT, "exit sif_remove");
 }
 
 static int sif_bar_init(struct pci_dev *pdev)
@@ -543,12 +536,6 @@ pfail_ioremap2:
 pfail_bar2:
 	iounmap(sdev->cb_base);
 pfail_ioremap0:
-#ifdef CONFIG_X86
-	if (sdev->cbu_mtrr >= 0)
-		mtrr_del(sdev->cbu_mtrr,
-			pci_resource_start(pdev, SIF_CBU_BAR),
-			pci_resource_len(pdev, SIF_CBU_BAR));
-#endif
 	pci_release_region(pdev, SIF_MSIX_BAR);
 pfail_bar0:
 	return err;
@@ -563,12 +550,6 @@ static void sif_bar_deinit(struct pci_dev *pdev)
 	iounmap(sdev->msi_base);
 	pci_release_region(pdev, 2);
 	iounmap(sdev->cb_base);
-#ifdef CONFIG_X86
-	if (sdev->cbu_mtrr >= 0)
-		mtrr_del(sdev->cbu_mtrr,
-			pci_resource_start(pdev, SIF_CBU_BAR),
-			pci_resource_len(pdev, SIF_CBU_BAR));
-#endif
 	pci_release_region(pdev, 0);
 }
 
@@ -580,20 +561,7 @@ static int __init sif_init(void)
 {
 	int stat = 0;
 
-	sif_log0(SIF_INFO, "**** Oracle development driver - internal use only! ****");
-	sif_log0(SIF_INFO, "%s - build user %s at %s", sif_version.git_repo,
-		sif_version.build_user, sif_version.build_git_time);
-	sif_log0(SIF_INFO, "sifdrv git tag:\n%s", sif_version.last_commit);
-	if (sif_version.git_status[0] != '\0')
-		sif_log0(SIF_INFO, " *** sifdrv git status at build time: ***\n%s", sif_version.git_status);
-	sif_log0(SIF_INFO, "psifapi git tag:\n%s", sif_version.last_psifapi_commit);
-	if (sif_version.git_psifapi_status[0] != '\0')
-		sif_log0(SIF_INFO, " *** psifapi git status at build time ***\n%s",
-			sif_version.git_psifapi_status);
-
-	sif_log0(SIF_INIT, "hw header release \"%s\"", PSIF_RELEASE_STR);
-	sif_log0(SIF_INIT, "built for PSIF version %d.%d, EPSC API version %d.%d",
-		PSIF_MAJOR_VERSION, PSIF_MINOR_VERSION, EPSC_MAJOR_VERSION, EPSC_MINOR_VERSION);
+	sif_log0(SIF_INFO, "SIF - driver for Oracle's Infiniband HCAs");
 	sif_log0(SIF_INIT, "sif debug mask 0x%lx", sif_debug_mask);
 	if (sif_feature_mask) {
 		u64 undef = sif_feature_mask & ~SIFF_all_features;

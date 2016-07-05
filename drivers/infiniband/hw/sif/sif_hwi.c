@@ -151,7 +151,7 @@ static int sif_ki_spqp_init(struct sif_dev *sdev)
 	}
 
 	if (i)
-		sif_log(sdev, SIF_INFO, "Created %d INVALIDATE_KEY stencil QPs", i);
+		sif_log(sdev, SIF_INIT, "Created %d INVALIDATE_KEY stencil QPs", i);
 bm_failed:
 	if (ret)
 		kfree(sdev->ki_spqp.spqp);
@@ -287,7 +287,7 @@ static void setup_sl2tsl_map(struct sif_dev *sdev)
 			for (qosl = QOSL_HIGH_BANDWIDTH; qosl <= QOSL_LOW_LATENCY; ++qosl)
 				sdev->sl2tsl[sl][port][qosl] = port ? TSL_DATA_1 : TSL_DATA;
 
-	if (eps_fw_version_lt(&sdev->es[sdev->mbox_epsc], 0, 56)) {
+	if (eps_fw_version_lt(&sdev->es[sdev->mbox_epsc], 0, 57)) {
 		sif_log(sdev, SIF_INFO, "Setting up TSL per port (0.50 <= fw <= 0.56)");
 		return;
 	}

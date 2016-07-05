@@ -22,8 +22,8 @@
 #include "psif_hw_setget.h"
 
 /* Declared below: */
-static void sif_hw_free_flush_qp(struct sif_dev *sdev);
-static int sif_hw_allocate_flush_qp(struct sif_dev *sdev);
+static void sif_hw_free_flush_qp(struct sif_dev *sdev, u8 flush_idx);
+static int sif_hw_allocate_flush_qp(struct sif_dev *sdev, u8 flush_idx);
 static int sif_hw_allocate_dne_qp(struct sif_dev *sdev);
 static void sif_hw_free_dne_qp(struct sif_dev *sdev);
 
@@ -31,10 +31,22 @@ static int outstanding_wqes(struct sif_dev *sdev, struct sif_qp *qp, u16 *head);
 static u16 cq_walk_wa4074(struct sif_dev *sdev, struct sif_qp *qp, bool *last_seq_set);
 static u16 walk_and_update_cqes(struct sif_dev *sdev, struct sif_qp *qp, u16 head, u16 end);
 
+void sif_r3_pre_init(struct sif_dev *sdev)
+{
+	/* Init the flush_retry qp lock */
+	u8 flush_idx;
+	for (flush_idx = 0; flush_idx < 2; ++flush_idx)
+		mutex_init(&sdev->flush_lock[flush_idx]);
+}
+
 int sif_r3_init(struct sif_dev *sdev)
 {
 	int ret;
+	u8 flush_idx;
 	bool dne_qp_alloc = false;
+
+	if (sdev->limited_mode)
+		return 0;
 
 	if (eps_fw_version_lt(&sdev->es[sdev->mbox_epsc], 0, 58)) {
 		ret = sif_hw_allocate_dne_qp(sdev);
@@ -42,12 +54,11 @@ int sif_r3_init(struct sif_dev *sdev)
 			return ret;
 		dne_qp_alloc = true;
 	}
-
-	/* Init the flush_retry qp lock */
-	mutex_init(&sdev->flush_lock);
-	ret = sif_hw_allocate_flush_qp(sdev);
-	if (ret)
-		goto flush_retry_failed;
+	for (flush_idx = 0; flush_idx < 2; ++flush_idx) {
+		ret = sif_hw_allocate_flush_qp(sdev, flush_idx);
+		if (ret)
+			goto flush_retry_failed;
+	}
 
 	return 0;
 flush_retry_failed:
@@ -59,7 +70,10 @@ flush_retry_failed:
 
 void sif_r3_deinit(struct sif_dev *sdev)
 {
-	sif_hw_free_flush_qp(sdev);
+	u8 flush_idx;
+	for (flush_idx = 0; flush_idx < 2; ++flush_idx)
+		sif_hw_free_flush_qp(sdev, flush_idx);
+
 	if (eps_fw_version_lt(&sdev->es[sdev->mbox_epsc], 0, 58))
 		sif_hw_free_dne_qp(sdev);
 }
@@ -137,11 +151,12 @@ static void sif_hw_free_dne_qp(struct sif_dev *sdev)
 }
 
 
-static int sif_hw_allocate_flush_qp(struct sif_dev *sdev)
+static int sif_hw_allocate_flush_qp(struct sif_dev *sdev, u8 flush_idx)
 {
 	int ret = 0;
 	struct sif_qp *qp = NULL;
 	struct sif_cq *cq = NULL;
+	u8 port = flush_idx + 1;
 
 	struct ib_qp_init_attr init_attr = {
 		.event_handler = NULL,
@@ -173,7 +188,7 @@ static int sif_hw_allocate_flush_qp(struct sif_dev *sdev)
 	struct ib_qp_attr qp_attr = {
 		.qp_state = IB_QPS_INIT,
 		.pkey_index = 0,
-		.port_num = 1,
+		.port_num = port,
 		.qp_access_flags =
 		IB_ACCESS_REMOTE_WRITE |
 		IB_ACCESS_REMOTE_READ |
@@ -186,9 +201,9 @@ static int sif_hw_allocate_flush_qp(struct sif_dev *sdev)
 	if (sdev->limited_mode)
 		return 0;
 
-	ret = sif_query_port(&sdev->ib_dev, 1, &lpa);
+	ret = sif_query_port(&sdev->ib_dev, port, &lpa);
 	if (unlikely(ret)) {
-		sif_log(sdev, SIF_INFO, "Failed to query port 1");
+		sif_log(sdev, SIF_INFO, "Failed to query port %d", port);
 		goto err_query_port;
 	}
 
@@ -197,7 +212,7 @@ static int sif_hw_allocate_flush_qp(struct sif_dev *sdev)
 		init_attr.cap.max_send_wr + init_attr.cap.max_recv_wr,
 		1, SIFPX_OFF, false);
 	if (IS_ERR(cq)) {
-		sif_log(sdev, SIF_INFO, "Failed to create CQ for flush_retry QP");
+		sif_log(sdev, SIF_INFO, "Failed to create CQ for flush_retry QP port %d", port);
 		return -EINVAL;
 	}
 	init_attr.send_cq = &cq->ibcq;
@@ -207,7 +222,7 @@ static int sif_hw_allocate_flush_qp(struct sif_dev *sdev)
 	/* QP */
 	qp = create_qp(sdev, &init_attr, &sif_attr);
 	if (IS_ERR(qp)) {
-		sif_log(sdev, SIF_INFO, "Failed to create flush_retry QP");
+		sif_log(sdev, SIF_INFO, "Failed to create flush_retry QP port %d", port);
 		ret = -EINVAL;
 		goto err_create_qp;
 	}
@@ -222,7 +237,7 @@ static int sif_hw_allocate_flush_qp(struct sif_dev *sdev)
 	qp->ibqp.pd = &sdev->pd->ibpd;
 	qp->ibqp.qp_type = init_attr.qp_type;
 	qp->type = sif_attr.qp_type;
-	qp->port = 1;
+	qp->port = port;
 	qp->flags = SIF_QPF_FLUSH_RETRY;
 
 	ret = sif_modify_qp(&qp->ibqp, &qp_attr, qp_attr_mask, NULL);
@@ -239,7 +254,7 @@ static int sif_hw_allocate_flush_qp(struct sif_dev *sdev)
 	qp_attr.max_dest_rd_atomic = 1;
 	qp_attr.min_rnr_timer = 1;
 	qp_attr.ah_attr.dlid = lpa.lid;
-	qp_attr.ah_attr.port_num = 1;
+	qp_attr.ah_attr.port_num = port;
 	qp_attr_mask =
 		IB_QP_STATE |
 		IB_QP_AV |
@@ -258,7 +273,7 @@ static int sif_hw_allocate_flush_qp(struct sif_dev *sdev)
 	memset(&qp_attr, 0, sizeof(qp_attr));
 	qp_attr.qp_state = IB_QPS_RTS;
 	qp_attr.sq_psn = 0;
-	qp_attr.timeout = 6;
+	qp_attr.timeout = 0;
 	qp_attr.retry_cnt = 7;
 	qp_attr.rnr_retry = 7;
 	qp_attr.max_rd_atomic = 1;
@@ -276,8 +291,8 @@ static int sif_hw_allocate_flush_qp(struct sif_dev *sdev)
 		goto err_modify_qp;
 	}
 
-	sdev->flush_qp = qp->qp_idx;
-	sif_log(sdev, SIF_INFO, "Allocated flush-retry qp, index %d", sdev->flush_qp);
+	sdev->flush_qp[flush_idx] = qp->qp_idx;
+	sif_log(sdev, SIF_INFO, "Allocated flush-retry qp port %d, index %d", port, sdev->flush_qp[flush_idx]);
 
 	return ret;
 
@@ -286,43 +301,43 @@ err_modify_qp:
 err_create_qp:
 	destroy_cq(cq);
 err_query_port:
-	sdev->flush_qp = 0;
-	sif_log(sdev, SIF_INFO, "Allocated flush-retry qp failed");
+	sdev->flush_qp[flush_idx] = 0;
+	sif_log(sdev, SIF_INFO, "Allocated flush-retry qp port %d failed", port);
 
 	return ret;
 }
 
-static void sif_hw_free_flush_qp(struct sif_dev *sdev)
+static void sif_hw_free_flush_qp(struct sif_dev *sdev, u8 flush_idx)
 {
 	struct sif_qp *qp = NULL;
 	struct sif_sq *sq = NULL;
 	struct sif_cq *cq = NULL;
 
-	if (sdev->flush_qp) {
-		qp = get_sif_qp(sdev, sdev->flush_qp);
-		sq = get_sif_sq(sdev, sdev->flush_qp);
+	if (sdev->flush_qp[flush_idx]) {
+		qp = get_sif_qp(sdev, sdev->flush_qp[flush_idx]);
+		sq = get_sif_sq(sdev, sdev->flush_qp[flush_idx]);
 		cq = get_sif_cq(sdev, sq->cq_idx);
 
 		destroy_qp(sdev, qp);
 		destroy_cq(cq);
-		sdev->flush_qp = 0;
+		sdev->flush_qp[flush_idx] = 0;
 
 		sif_log(sdev, SIF_QP, "destroy_qp %d success", qp->qp_idx);
 	}
 }
 
-void sif_r3_recreate_flush_qp(struct sif_dev *sdev)
+void sif_r3_recreate_flush_qp(struct sif_dev *sdev, u8 flush_idx)
 {
 	/* For simplicity we just destroy the old
 	 * and allocate a new flush_retry qp.
 	 */
-	mutex_lock(&sdev->flush_lock);
-	sif_hw_free_flush_qp(sdev);
-	sif_hw_allocate_flush_qp(sdev);
-	mutex_unlock(&sdev->flush_lock);
+	mutex_lock(&sdev->flush_lock[flush_idx]);
+	sif_hw_free_flush_qp(sdev, flush_idx);
+	sif_hw_allocate_flush_qp(sdev, flush_idx);
+	mutex_unlock(&sdev->flush_lock[flush_idx]);
 }
 
-int reset_qp_flush_retry(struct sif_dev *sdev)
+int reset_qp_flush_retry(struct sif_dev *sdev, u8 flush_idx)
 {
 	struct sif_qp *qp = NULL;
 	struct psif_query_qp lqqp;
@@ -351,17 +366,20 @@ int reset_qp_flush_retry(struct sif_dev *sdev)
 	int count;
 	unsigned long timeout = sdev->min_resp_ticks;
 	unsigned long timeout_real;
+	u8 port = flush_idx + 1;
 
 	/* Get access to the flush_retry QP */
-	mutex_lock(&sdev->flush_lock);
+	mutex_lock(&sdev->flush_lock[flush_idx]);
 
-	if (!sdev->flush_qp) {
-		sif_log(sdev, SIF_INFO, "special handling WA_3713 failed: flush_qp does not exist");
+	if (!sdev->flush_qp[flush_idx]) {
+		sif_log(sdev, SIF_INFO,
+			"special handling WA_3714 failed: flush_qp port %d does not exist",
+			port);
 		ret = -EINVAL;
 		goto err_flush_qp;
 	}
 
-	qp = get_sif_qp(sdev, sdev->flush_qp);
+	qp = get_sif_qp(sdev, sdev->flush_qp[flush_idx]);
 
 	/* Query flush_retry QP */
 	ret = epsc_query_qp(qp, &lqqp);
@@ -428,20 +446,28 @@ int reset_qp_flush_retry(struct sif_dev *sdev)
 			for (sts = 0; sts < count; sts++)
 				sif_log(sdev, SIF_INFO, "wr_id %lld status %d opcode %d",
 					wcs[sts].wr_id, wcs[sts].status, wcs[sts].opcode);
+			ret = epsc_query_qp(qp, &lqqp);
+			if (ret)
+				sif_log(sdev, SIF_INFO, "epsc_query_qp failed with status %d", ret);
+
+			sif_logs(SIF_INFO, write_struct_psif_query_qp(NULL, 0, &lqqp));
 			goto fail;
 		}
 	}
 
-	mutex_unlock(&sdev->flush_lock);
+	sdev->wa_stats.wa3714[0]++;
+	mutex_unlock(&sdev->flush_lock[flush_idx]);
 	return ret;
 fail:
-	sif_hw_free_flush_qp(sdev);
-	sif_hw_allocate_flush_qp(sdev);
-	mutex_unlock(&sdev->flush_lock);
+	sdev->wa_stats.wa3714[1]++;
+	sif_hw_free_flush_qp(sdev, flush_idx);
+	sif_hw_allocate_flush_qp(sdev, flush_idx);
+	mutex_unlock(&sdev->flush_lock[flush_idx]);
 	return ret;
 
 err_flush_qp:
-	mutex_unlock(&sdev->flush_lock);
+	sdev->wa_stats.wa3714[1]++;
+	mutex_unlock(&sdev->flush_lock[flush_idx]);
 	return ret;
 }
 
@@ -465,21 +491,38 @@ static int outstanding_wqes(struct sif_dev *sdev, struct sif_qp *qp, u16 *head)
 
 int pre_process_wa4074(struct sif_dev *sdev, struct sif_qp *qp)
 {
-	struct sif_sq *sq = get_sif_sq(sdev, qp->qp_idx);
+	struct sif_sq *sq = get_sq(sdev, qp);
 	struct psif_sq_entry *sqe;
 	u16 head;
 	int len;
+	unsigned long flags;
+	struct sif_cq *cq = (sq && sq->cq_idx >= 0) ? get_sif_cq(sdev, sq->cq_idx) : NULL;
+	struct sif_cq_sw *cq_sw = cq ? get_sif_cq_sw(sdev, cq->index) : NULL;
+
+	if (qp->flags & SIF_QPF_NO_EVICT)
+		return 0; /* do-not-evict QPs don't have any SQs */
+
+	if (unlikely(!sq)) {
+		sif_log(sdev, SIF_INFO, "sq not defined for qp %d (type %s)",
+			qp->qp_idx, string_enum_psif_qp_trans(qp->type));
+		return -1;
+	}
 
 	len = outstanding_wqes(sdev, qp, &head);
 	if (len <= 0)
 		return -1;
 
+	spin_lock_irqsave(&sq->lock, flags);
 	while (len) {
 		head++;
 		sqe = get_sq_entry(sq, head);
-		set_psif_wr__checksum(&sqe->wr, 0);
+		set_psif_wr__checksum(&sqe->wr, ~get_psif_wr__checksum(&sqe->wr));
 		len--;
 	}
+	spin_unlock_irqrestore(&sq->lock, flags);
+	if (cq)
+		set_bit(CQ_POLLING_NOT_ALLOWED, &cq_sw->flags);
+
 	return 0;
 }
 
@@ -488,17 +531,23 @@ int pre_process_wa4074(struct sif_dev *sdev, struct sif_qp *qp)
  */
 int post_process_wa4074(struct sif_dev *sdev, struct sif_qp *qp)
 {
-	struct sif_sq *sq = get_sif_sq(sdev, qp->qp_idx);
-	struct sif_sq_sw *sq_sw = get_sif_sq_sw(sdev, qp->qp_idx);
-	struct psif_query_qp lqqp;
+	struct sif_sq *sq = get_sq(sdev, qp);
+	struct sif_sq_sw *sq_sw = sq ? get_sif_sq_sw(sdev, qp->qp_idx) : NULL;
+	struct psif_qp lqqp;
 	bool last_seq_set = false;
-	u16 last_seq, fence_seq;
+	u16 last_seq, fence_seq, last_gen_seq;
+	unsigned long flags;
 	DECLARE_SIF_CQE_POLL(sdev, lcqe);
 	int ret = 0;
 	bool need_gen_fence_completion = true;
 	struct sif_cq *cq = (sq && sq->cq_idx >= 0) ? get_sif_cq(sdev, sq->cq_idx) : NULL;
-	struct sif_cq_sw *cq_sw = get_sif_cq_sw(sdev, cq->index);
+	struct sif_cq_sw *cq_sw = cq ? get_sif_cq_sw(sdev, cq->index) : NULL;
 
+	if (unlikely(!sq || !cq)) {
+		sif_log(sdev, SIF_INFO, "sq/cq not defined for qp %d (type %s)",
+			qp->qp_idx, string_enum_psif_qp_trans(qp->type));
+		return -1;
+	}
 
 	/* if flush SQ is in progress, set FLUSH_SQ_IN_FLIGHT.
 	 */
@@ -524,18 +573,13 @@ int post_process_wa4074(struct sif_dev *sdev, struct sif_qp *qp)
 		goto flush_sq_again;
 	}
 
-	ret = epsc_query_qp(qp, &lqqp);
-	if (ret) {
-		sif_log(sdev, SIF_INFO, "epsc_query_qp failed, ret %d", ret);
-		goto err_post_wa4074;
-	}
-
+	copy_conv_to_sw(&lqqp, &qp->d, sizeof(lqqp));
 	last_seq = sq_sw->last_seq;
 
 	set_bit(CQ_POLLING_NOT_ALLOWED, &cq_sw->flags);
 
 	sif_log(sdev, SIF_WCE_V, "sq_retry_seq %x sq_seq %x last_seq %x head_seq %x",
-		lqqp.qp.retry_sq_seq, lqqp.qp.sq_seq, sq_sw->last_seq, sq_sw->head_seq);
+		lqqp.state.retry_sq_seq, lqqp.state.sq_seq, sq_sw->last_seq, sq_sw->head_seq);
 
 	/* need_gen_fence_completion is used to flush any cqes in the pipeline.
 	 * If this is a good case, no fence completion is needed.
@@ -544,9 +588,9 @@ int post_process_wa4074(struct sif_dev *sdev, struct sif_qp *qp)
 	 * retry_sq_seq + 1 == sq_seq && !flush_started.
 	 */
 
-	need_gen_fence_completion = ((lqqp.qp.retry_tag_committed != lqqp.qp.retry_tag_err) ||
-				     (lqqp.qp.retry_sq_seq + 1 != lqqp.qp.sq_seq) ||
-				     (lqqp.qp.flush_started));
+	need_gen_fence_completion = ((lqqp.state.retry_tag_committed != lqqp.state.retry_tag_err) ||
+				     (lqqp.state.retry_sq_seq + 1 != lqqp.state.sq_seq) ||
+				     (lqqp.state.flush_started));
 
 	if (need_gen_fence_completion) {
 
@@ -599,14 +643,15 @@ int post_process_wa4074(struct sif_dev *sdev, struct sif_qp *qp)
 		if (last_seq != fence_seq) {
 			sif_log(sdev, SIF_INFO, "last seq (%x) is different than fenced completion (%x)!",
 				last_seq, fence_seq);
-			/* As the Fenced completion cannot be guaranteed to be the last, software still needs to
-			 * walk and update the CQ to avoid unexpected completion/duplicated completion
-			 * even thought the last completion is the CQ is not generated fenced completion.
+			/* As the Fenced completion cannot be guaranteed to be the last, software
+			 * still needs to walk and update the CQ to avoid unexpected
+			 * completion/duplicated completion even thought the last completion is
+			 * the CQ is not generated fenced completion.
 			 */
 		}
 
 	sif_log(sdev, SIF_WCE_V, "after: sq_retry_seq %x sq_seq %x last_seq %x head_seq %x",
-		lqqp.qp.retry_sq_seq, lqqp.qp.sq_seq, sq_sw->last_seq, sq_sw->head_seq);
+		lqqp.state.retry_sq_seq, lqqp.state.sq_seq, sq_sw->last_seq, sq_sw->head_seq);
 
 	}
 	last_seq = walk_and_update_cqes(sdev, qp, sq_sw->head_seq + 1, sq_sw->last_seq);
@@ -627,10 +672,19 @@ int post_process_wa4074(struct sif_dev *sdev, struct sif_qp *qp)
 		goto check_in_flight_and_return;
 	}
 
-	sif_log(sdev, SIF_WCE_V, "generate completion from %x to %x",
-		last_seq, sq_sw->last_seq);
 flush_sq_again:
-	for (; (!GREATER_16(last_seq, sq_sw->last_seq)); ++last_seq) {
+	/* We need lock here to retrieve the sq_sw->last_seq
+	 * to make sure that post_send with sq_sw->last_seq is
+	 * completed before generating a sq_flush_cqe.
+	 */
+	spin_lock_irqsave(&sq->lock, flags);
+	last_gen_seq = sq_sw->last_seq;
+	spin_unlock_irqrestore(&sq->lock, flags);
+
+	sif_log(sdev, SIF_WCE_V, "generate completion from %x to %x",
+		last_seq, last_gen_seq);
+
+	for (; (!GREATER_16(last_seq, last_gen_seq)); ++last_seq) {
 		sif_log(sdev, SIF_WCE_V, "generate completion %x",
 			last_seq);
 
@@ -677,91 +731,13 @@ flush_sq_again:
 	sq_sw->trusted_seq = last_seq;
 
 check_in_flight_and_return:
-	if (test_and_clear_bit(FLUSH_SQ_IN_FLIGHT, &sq_sw->flags)) {
-		sif_log(sdev, SIF_WCE_V, "in-flight:generate completion from %x to %x",
-			last_seq, sq_sw->last_seq);
+	if (test_and_clear_bit(FLUSH_SQ_IN_FLIGHT, &sq_sw->flags))
 		goto flush_sq_again;
-	}
 
 err_post_wa4074:
 	clear_bit(CQ_POLLING_NOT_ALLOWED, &cq_sw->flags);
 	clear_bit(FLUSH_SQ_IN_FLIGHT, &sq_sw->flags);
 	clear_bit(FLUSH_SQ_IN_PROGRESS, &sq_sw->flags);
-	qp->flush_sq_done_wa4074 = true;
-	return ret = ret > 0 ? 0 : ret;
-}
-
-/* This is called from teardown (user modify QP->ERR) as well as
- * any subsequent WQEs posted to SQ.
- */
-int sq_flush_wa4074(struct sif_dev *sdev, struct sif_qp *qp)
-{
-	struct sif_sq *sq = get_sif_sq(sdev, qp->qp_idx);
-	struct sif_sq_sw *sq_sw = get_sif_sq_sw(sdev, qp->qp_idx);
-	struct sif_cq *cq = (sq && sq->cq_idx >= 0) ? get_sif_cq(sdev, sq->cq_idx) : NULL;
-	struct sif_cq_sw *cq_sw = get_sif_cq_sw(sdev, cq->index);
-	u16 last_seq;
-	int flushed = 0;
-	DECLARE_SIF_CQE_POLL(sdev, lcqe);
-	int ret = 0;
-
-	sif_log(sdev, SIF_INFO_V, "last_seq %x head_seq %x",
-		sq_sw->last_seq, sq_sw->head_seq);
-
-	set_bit(CQ_POLLING_NOT_ALLOWED, &cq_sw->flags);
-
-	last_seq = walk_and_update_cqes(sdev, qp, sq_sw->head_seq + 1, sq_sw->last_seq);
-
-	clear_bit(CQ_POLLING_NOT_ALLOWED, &cq_sw->flags);
-
-	if (last_seq > sq_sw->last_seq)
-		goto err_sq_flush;
-
-	for (; last_seq <= sq_sw->last_seq; ++last_seq) {
-
-		ret = sif_gen_sq_flush_cqe(sdev, sq, last_seq, qp->qp_idx, true);
-		if (ret)
-			sif_log(sdev, SIF_INFO,
-				"sq %d, last_seq %x, sif_gen_sq_flush_cqe returned %d",
-				sq->index, last_seq, ret);
-
-		if (ret == -EAGAIN) {
-			ret = gen_pqp_cqe(&lcqe);
-			if (ret < 0)
-				goto err_sq_flush;
-
-			ret = poll_cq_waitfor(&lcqe);
-			if (ret < 0)
-				goto err_sq_flush;
-
-			lcqe.written = false;
-			continue;
-		}
-
-		if (ret < 0)
-			goto err_sq_flush;
-		++flushed;
-	}
-
-	/* Generate a sync.completion for us on the PQP itself
-	 * to allow us to wait for the whole to complete:
-	 */
-	ret = gen_pqp_cqe(&lcqe);
-	if (ret < 0) {
-		sif_log(sdev, SIF_INFO, "SQ %d, gen_pqp_cqe ret %d", sq->index, ret);
-		goto err_sq_flush;
-	}
-	ret = poll_cq_waitfor(&lcqe);
-	if (ret < 0) {
-		sif_log(sdev, SIF_INFO, "SQ %d, poll_cq_waitfor failed, ret %d",
-			sq->index, ret);
-		goto err_sq_flush;
-	}
-
-	sif_log(sdev, SIF_INFO_V, "SQ %d: recv'd completion on cq %d seq 0x%x - done, ret %d",
-		sq->index, sq->cq_idx, lcqe.cqe.seq_num, ret);
-
-err_sq_flush:
 	return ret = ret > 0 ? 0 : ret;
 }
 
@@ -769,7 +745,7 @@ err_sq_flush:
 static u16 walk_and_update_cqes(struct sif_dev *sdev, struct sif_qp *qp, u16 head, u16 end)
 {
 	struct sif_sq *sq = get_sif_sq(sdev, qp->qp_idx);
-	struct sif_cq *cq = (sq && sq->cq_idx >= 0) ? get_sif_cq(sdev, sq->cq_idx) : NULL;
+	struct sif_cq *cq = sq->cq_idx >= 0 ? get_sif_cq(sdev, sq->cq_idx) : NULL;
 	struct sif_cq_sw *cq_sw = get_sif_cq_sw(sdev, cq->index);
 	volatile struct psif_cq_entry *cqe;
 	u16 last_seq = 0, updated_seq;
@@ -796,7 +772,7 @@ static u16 walk_and_update_cqes(struct sif_dev *sdev, struct sif_qp *qp, u16 hea
 
 		copy_conv_to_sw(&lcqe, cqe, sizeof(lcqe));
 
-		if (!(lcqe.opcode & IB_WC_RECV)) {
+		if (!(lcqe.opcode & PSIF_WC_OPCODE_RECEIVE_SEND)) {
 			last_seq = lcqe.wc_id.sq_id.sq_seq_num;
 			sif_log(sdev, SIF_WCE_V, "last_seq %x updated_seq %x lcqe.seq_num %x",
 				last_seq, updated_seq, lcqe.seq_num);
@@ -830,7 +806,7 @@ static u16 walk_and_update_cqes(struct sif_dev *sdev, struct sif_qp *qp, u16 hea
 static u16 cq_walk_wa4074(struct sif_dev *sdev, struct sif_qp *qp, bool *last_seq_set)
 {
 	struct sif_sq *sq = get_sif_sq(sdev, qp->qp_idx);
-	struct sif_cq *cq = (sq && sq->cq_idx >= 0) ? get_sif_cq(sdev, sq->cq_idx) : NULL;
+	struct sif_cq *cq = sq->cq_idx >= 0 ? get_sif_cq(sdev, sq->cq_idx) : NULL;
 	struct sif_cq_sw *cq_sw = get_sif_cq_sw(sdev, cq->index);
 	volatile struct psif_cq_entry *cqe;
 	u32 seqno, polled_value;
@@ -855,7 +831,7 @@ static u16 cq_walk_wa4074(struct sif_dev *sdev, struct sif_qp *qp, bool *last_se
 
 		copy_conv_to_sw(&lcqe, cqe, sizeof(lcqe));
 
-		if (!(lcqe.opcode & IB_WC_RECV)) {
+		if (!(lcqe.opcode & PSIF_WC_OPCODE_RECEIVE_SEND)) {
 			last_seq = lcqe.wc_id.sq_id.sq_seq_num;
 
 			if (!(*last_seq_set))
@@ -877,4 +853,16 @@ static u16 cq_walk_wa4074(struct sif_dev *sdev, struct sif_qp *qp, bool *last_se
 
 	spin_unlock_irqrestore(&cq->lock, flags);
 	return last_seq;
+}
+
+void sif_dfs_print_wa_stats(struct sif_dev *sdev, char *buf)
+{
+	/* Header */
+	sprintf(buf, "#%7s %10s %10s %20s\n", "WA", "ok", "err", "desc");
+	/* Content */
+	sprintf(buf + strlen(buf), "#%8s %9llu %10llu %20s\n",
+		"WA3714",
+		sdev->wa_stats.wa3714[0],
+		sdev->wa_stats.wa3714[1],
+		"Destroying QPs with a retry in progress");
 }

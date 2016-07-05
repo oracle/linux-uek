@@ -23,7 +23,7 @@
 #include "psif_hw_data.h"
 
 /* Do this the brute force way, since structs are used in user-space */
-#if defined(__x86_64__) || defined(__sparc__)
+#if defined(__x86_64__) || defined(__sparc__) || defined(__aarch64__)
 #define SIF_CACHE_BYTES 64
 #else
 #define SIF_CACHE_BYTES 64

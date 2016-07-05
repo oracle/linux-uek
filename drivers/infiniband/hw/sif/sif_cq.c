@@ -256,7 +256,6 @@ struct sif_cq *create_cq(struct sif_pd *pd, int entries,
 		comp_vector : sif_get_eq_channel(sdev, cq);
 	cq->eq_idx = cq->cq_hw.int_channel + 2;
 
-	cq->next_logtime = jiffies;
 	init_completion(&cq->cleanup_ok);
 	cq->cq_hw.mmu_cntx = cq->mmu_ctx.mctx;
 
@@ -325,6 +324,12 @@ int destroy_cq(struct sif_cq *cq)
 		atomic_add(miss_cnt, &sdev->cq_miss_cnt);
 		atomic_add(miss_occ, &sdev->cq_miss_occ);
 	}
+
+	/* Wait for any in-progress event queue entry for this CQ to be finished */
+	if (atomic_dec_and_test(&cq->refcnt))
+		complete(&cq->cleanup_ok);
+	wait_for_completion(&cq->cleanup_ok);
+
 	ret = sif_invalidate_cq_hw(sdev, index, PCM_WAIT);
 	if (ret) {
 		sif_log(sdev, SIF_INFO,
@@ -346,11 +351,6 @@ int sif_release_cq(struct sif_dev *sdev, int index)
 	struct sif_cq *cq = get_sif_cq(sdev, index);
 	struct sif_pd *pd = cq->pd;
 	struct sif_cq_sw *cq_sw = get_sif_cq_sw(sdev, index);
-
-	/* Wait for any in-progress event queue entry for this CQ to be finished */
-	if (atomic_dec_and_test(&cq->refcnt))
-		complete(&cq->cleanup_ok);
-	wait_for_completion(&cq->cleanup_ok);
 
 	/* Make sure any completions on the cq TLB invalidate
 	 * for priv.qp does arrive before the cq is destroyed..
@@ -384,13 +384,18 @@ static int handle_send_wc(struct sif_dev *sdev, struct sif_cq *cq,
 		struct ib_wc *wc, struct psif_cq_entry *cqe, bool qp_is_destroyed)
 {
 	/* send queue descriptor aligned with qp */
-	int sq_idx = cqe->qp;
+	struct sif_sq *sq = get_sif_sq(sdev, cqe->qp);
+	struct sif_sq_sw *sq_sw = sq ? get_sif_sq_sw(sdev, cqe->qp) : NULL;
 	int ret;
-	struct sif_sq *sq = get_sif_sq(sdev, sq_idx);
-	struct sif_sq_sw *sq_sw = get_sif_sq_sw(sdev, sq_idx);
 
 	/* This is a full 32 bit seq.num */
 	u32 sq_seq_num = cqe->wc_id.sq_id.sq_seq_num;
+
+	if (unlikely(!sq)) {
+		sif_log(sdev, SIF_INFO,
+			"sq doesn't exists for qp %d", cqe->qp);
+		return -EFAULT;
+	}
 
 	if (qp_is_destroyed) {
 		wc->wr_id = cqe->wc_id.rq_id;
@@ -457,9 +462,13 @@ static int handle_recv_wc(struct sif_dev *sdev, struct sif_cq *cq, struct ib_wc 
 		(wc->status != IB_WC_SUCCESS)) {
 		struct sif_qp *qp = to_sqp(wc->qp);
 
-		if (is_regular_qp(qp) && !rq->is_srq
-			&& IB_QPS_ERR == get_qp_state(qp)) {
-			if (sif_flush_rq(sdev, rq, qp, rq_len))
+		/* As QP is in ERROR, the only scenario that
+		 * rq shouldn't be flushed by SW is when the QP
+		 * is in RESET state.
+		 */
+		if (rq && !rq->is_srq
+		    && !test_bit(SIF_QPS_IN_RESET, &qp->persistent_state)) {
+			if (sif_flush_rq_wq(sdev, rq, qp, rq_len))
 				sif_log(sdev, SIF_INFO,
 					"failed to flush RQ %d", rq->index);
 		}
@@ -567,13 +576,13 @@ static int handle_wc(struct sif_dev *sdev, struct sif_cq *cq,
 		 */
 
 		/* WA #3850: generate LAST_WQE event on SRQ*/
-		struct sif_rq *rq = get_sif_rq(sdev, qp->rq_idx);
+		struct sif_rq *rq = get_rq(sdev, qp);
 
 		int log_level =
 			(wc->status == IB_WC_WR_FLUSH_ERR) ? SIF_WCE_V : SIF_WCE;
 
 
-		if (!qp_is_destroyed && is_regular_qp(qp) && rq->is_srq) {
+		if (!qp_is_destroyed && rq && rq->is_srq) {
 			if (fatal_err(qp->ibqp.qp_type, wc)) {
 				struct ib_event ibe = {
 					.device = &sdev->ib_dev,
@@ -750,6 +759,10 @@ int sif_fixup_cqes(struct sif_cq *cq, struct sif_sq *sq, struct sif_qp *qp)
 		struct psif_cq_entry lcqe;
 		uint64_t wr_id_host_order = 0;
 
+		/* TBD - maybe should hide this as a function in sif_r3.c */
+		if ((test_bit(CQ_POLLING_NOT_ALLOWED, &cq_sw->flags)))
+			break;
+
 		cqe = get_cq_entry(cq, seqno);
 		polled_value = get_psif_cq_entry__seq_num(cqe);
 
@@ -765,7 +778,7 @@ int sif_fixup_cqes(struct sif_cq *cq, struct sif_sq *sq, struct sif_qp *qp)
 		copy_conv_to_sw(&lcqe, cqe, sizeof(lcqe));
 
 		/* Receive completion? */
-		if (lcqe.opcode & 0x80) {
+		if (lcqe.opcode & PSIF_WC_OPCODE_RECEIVE_SEND) {
 			struct sif_post_mortem_qp_info_in_cqe *post_mortem_info =
 				(struct sif_post_mortem_qp_info_in_cqe *) cqe->reserved + 0;
 
@@ -822,7 +835,7 @@ int sif_poll_cq(struct ib_cq *ibcq, int num_entries, struct ib_wc *wc)
 	seqno = cq_sw->next_seq;
 	cqe = get_cq_entry(cq, seqno);
 
-	sif_log_cq(cq, SIF_POLL, "cq %d (requested %d entries), next_seq %d %s",
+	sif_log_rlim(sdev, SIF_POLL, "cq %d (requested %d entries), next_seq %d %s",
 		cq->index, num_entries, cq_sw->next_seq, (wc ? "" : "(peek)"));
 
 	while (npolled < num_entries) {
@@ -870,7 +883,7 @@ handle_failed:
 		sif_log(sdev, SIF_CQ, "done - %d completions - seq_no of next entry: %d",
 			npolled, polled_value);
 	else
-		sif_log_cq(cq, SIF_POLL, "no completions polled - seq_no of next entry: %d",
+		sif_log_rlim(sdev, SIF_POLL, "no completions polled - seq_no of next entry: %d",
 			polled_value);
 	return !ret ? npolled : ret;
 }
@@ -897,6 +910,10 @@ int sif_req_notify_cq(struct ib_cq *ibcq, enum ib_cq_notify_flags flags)
 
 	if (flags & IB_CQ_SOLICITED)
 		wr.se = 1;
+
+	/* If a CQ is not valid, do not rearm the CQ. */
+	if (!get_psif_cq_hw__valid(&cq->d))
+		return 0;
 
 	/* We should never miss events in psif so we have no need for a separate
 	 *  handling of IB_CQ_REPORT_MISSED_EVENTS - ignore it.

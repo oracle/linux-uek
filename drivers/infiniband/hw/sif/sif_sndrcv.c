@@ -37,8 +37,8 @@ int sif_post_send(struct ib_qp *ibqp, struct ib_send_wr *wr,
 {
 	struct sif_dev *sdev = to_sdev(ibqp->device);
 	struct sif_qp *qp = to_sqp(ibqp);
-	struct sif_sq *sq = get_sif_sq(sdev, qp->qp_idx);
-	struct sif_sq_sw *sq_sw = get_sif_sq_sw(sdev, qp->qp_idx);
+	struct sif_sq *sq = get_sq(sdev, qp);
+	struct sif_sq_sw *sq_sw = sq ? get_sif_sq_sw(sdev, qp->qp_idx) : NULL;
 	unsigned long flags;
 	bool doorbell_mode;
 	bool last;
@@ -46,6 +46,12 @@ int sif_post_send(struct ib_qp *ibqp, struct ib_send_wr *wr,
 	const int nmbr_wrs_to_bulk_process = 32;
 	int ret = 0;
 	int n;
+
+	if (unlikely(!sq)) {
+		sif_log(sdev, SIF_INFO, "sq not defined for qp %d (type %s)",
+			qp->qp_idx, string_enum_psif_qp_trans(qp->type));
+		return -EINVAL;
+	}
 
 	sif_log(sdev, SIF_SND, "on qp_idx %d wr 0x%p ibv type %d",
 		qp->qp_idx, wr, wr->opcode);
@@ -541,8 +547,8 @@ int sif_post_send_single(struct ib_qp *ibqp, struct ib_send_wr *wr, bool *use_db
 	 */
 	qp->traffic_patterns.mask = (qp->traffic_patterns.mask << 1) |
 		HEUR_TX_DIRECTION;
-	sif_log_perf(sdev, SIF_PERF_V, "qp:traffic_pattern %x",
-		     qp->traffic_patterns.mask);
+	sif_log_rlim(sdev, SIF_PERF_V, "qp:traffic_pattern %x",
+		qp->traffic_patterns.mask);
 	/* If the traffic pattern shows that it's not latency sensitive,
 	 * use SQ mode by ringing the doorbell.
 	 * In a latency sensitive traffic pattern, a SEND should
@@ -617,13 +623,12 @@ static int get_gsi_qp_idx(struct sif_qp *qp)
 int sif_post_recv(struct ib_qp *ibqp, struct ib_recv_wr *wr,
 		  struct ib_recv_wr **bad_wr)
 {
-	struct sif_qp *qp = to_sqp(ibqp);
-	struct sif_rq *rq;
 	struct sif_dev *sdev = to_sdev(ibqp->device);
 	struct sif_eps *es = &sdev->es[sdev->mbox_epsc];
+	struct sif_qp *qp = to_sqp(ibqp);
+	struct sif_rq *rq = NULL;
 	bool need_pma_pxy_qp = eps_version_ge(es, 0, 57)
 		&& (qp->qp_idx == 1 || qp->qp_idx == 3);
-
 
 	sif_log(sdev, SIF_RCV, "Enter: wr_id 0x%llx qp_idx %d",
 		wr->wr_id, qp->qp_idx);
@@ -634,12 +639,17 @@ int sif_post_recv(struct ib_qp *ibqp, struct ib_recv_wr *wr,
 			wr->wr_id, qp->qp_idx);
 	}
 
+	rq = get_rq(sdev, qp);
+	if (unlikely(!rq)) {
+		sif_log(sdev, SIF_INFO, "rq not defined for qp_idx %d (type %s)",
+			qp->qp_idx, string_enum_psif_qp_trans(qp->type));
+		return -EINVAL;
+	}
+
 	if (qp->last_set_state == IB_QPS_RESET) {
 		sif_log(sdev, SIF_INFO, "Invalid QP state (IB_QPS_RESET)");
 		return -EINVAL;
 	}
-
-	rq = get_sif_rq(sdev, qp->rq_idx);
 
 	if (wr->num_sge > rq->sg_entries) {
 		sif_log(sdev, SIF_INFO, "qp only supports %d receive sg entries - wr has %d",
@@ -741,8 +751,8 @@ err_post_recv:
 	*bad_wr = wr;
 
 	/* WA #622, Check if QP in ERROR, flush RQ */
-	if (!rq->is_srq && is_regular_qp(qp) && qp->last_set_state == IB_QPS_ERR) {
-		if (sif_flush_rq(sdev, rq, qp, atomic_read(&rq_sw->length)))
+	if (!rq->is_srq && qp->last_set_state == IB_QPS_ERR) {
+		if (sif_flush_rq_wq(sdev, rq, qp, atomic_read(&rq_sw->length)))
 			sif_log(sdev, SIF_INFO, "failed to flush RQ %d", rq->index);
 	}
 
@@ -1024,6 +1034,7 @@ static int prep_send_lso(struct sif_qp *qp, struct ib_send_wr *wr, struct psif_c
 	struct psif_sq_entry *sqe;
 	struct psif_rq_scatter *sge;
 	const int stencil_sge = 1;
+	int ud_hlen;
 
 	sq = get_sif_sq(sdev, qp->qp_idx);
 	sqe = get_sq_entry(sq, sqe_seq);
@@ -1036,7 +1047,14 @@ static int prep_send_lso(struct sif_qp *qp, struct ib_send_wr *wr, struct psif_c
 		return -EINVAL;
 	}
 
+	ud_hlen = wr->wr.ud.hlen;
 	wqe->wr.details.send.ud.mss = wr->wr.ud.mss;
+	/* Check if stencil is larger than max_inline_data */
+	if (ud_hlen > qp->max_inline_data) {
+		sif_log(sdev, SIF_INFO, "attempt to post lso wr with too big header  %d > %d",
+			ud_hlen, qp->max_inline_data);
+		return -EINVAL;
+	}
 
 	la->addr   = get_sqe_dma(sq, sqe_seq) + sq->sgl_offset;
 	la->lkey = sq->sg_mr->index;
@@ -1044,12 +1062,12 @@ static int prep_send_lso(struct sif_qp *qp, struct ib_send_wr *wr, struct psif_c
 
 	/* copy stencil to payload-area in send_queue */
 	p8 = (u8 *)wr->wr.ud.header;
-	memcpy((u8 *)sqe->payload, p8, wr->wr.ud.hlen);
+	memcpy((u8 *)sqe->payload, p8, ud_hlen);
 
 	sge[0].base_addr = get_sqe_dma(sq, sqe_seq)
 		+ offsetof(struct psif_sq_entry, payload) + mr_uv2dma(sdev, la->lkey);
 	sge[0].lkey = sq->sg_mr->index;
-	sge[0].length = wr->wr.ud.hlen;
+	sge[0].length = ud_hlen;
 	la->length += sge[0].length;
 
 	sif_log(sdev, SIF_SND,

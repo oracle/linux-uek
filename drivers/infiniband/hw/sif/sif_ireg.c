@@ -767,11 +767,7 @@ int sif_register_ib_device(struct sif_dev *sdev)
 		(1ull << IB_USER_VERBS_CMD_REG_MR) |
 		(1ull << IB_USER_VERBS_CMD_REG_SMR) |
 		(1ull << IB_USER_VERBS_CMD_REREG_MR) |
-		(1ull << IB_USER_VERBS_CMD_QUERY_MR) |
 		(1ull << IB_USER_VERBS_CMD_DEREG_MR) |
-		(1ull << IB_USER_VERBS_CMD_ALLOC_MW) |
-		(1ull << IB_USER_VERBS_CMD_BIND_MW) |
-		(1ull << IB_USER_VERBS_CMD_DEALLOC_MW) |
 		(1ull << IB_USER_VERBS_CMD_CREATE_COMP_CHANNEL) |
 		(1ull << IB_USER_VERBS_CMD_CREATE_CQ) |
 		(1ull << IB_USER_VERBS_CMD_RESIZE_CQ) |
@@ -849,7 +845,6 @@ int sif_register_ib_device(struct sif_dev *sdev)
 	dev->rereg_phys_mr = sif_rereg_phys_mr;
 	dev->reg_user_mr = sif_reg_user_mr;
 	dev->dereg_mr = sif_dereg_mr;
-	dev->query_mr = sif_query_mr;
 
 	dev->alloc_fmr = sif_alloc_fmr;
 	dev->map_phys_fmr = sif_map_phys_fmr;

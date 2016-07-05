@@ -1,4 +1,4 @@
-ccflags-y +=  \
+ccflags-y +=  -DSIF_TRACE_MASK \
   -Wno-packed-bitfield-compat -Werror
 
 obj-$(CONFIG_INFINIBAND_SIF) := sif.o

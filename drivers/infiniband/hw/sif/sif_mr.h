@@ -41,7 +41,6 @@ struct ib_mr *sif_reg_user_mr(struct ib_pd *ibpd, u64 start, u64 length,
 			      u64 virt_addr, int mr_access_flags,
 			      struct ib_udata *udata);
 
-int sif_query_mr(struct ib_mr *ibmr, struct ib_mr_attr *mr_attr);
 int sif_dereg_mr(struct ib_mr *ibmr);
 
 struct ib_mr *sif_alloc_fast_reg_mr(struct ib_pd *ibpd, int max_page_list_len);

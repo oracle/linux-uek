@@ -77,6 +77,18 @@ static int sif_create_pma_qp(struct ib_pd *ibpd,
 			struct ib_qp_init_attr *init_attr,
 			struct sif_qp_init_attr sif_attr);
 
+struct sif_sq *get_sq(struct sif_dev *sdev, struct sif_qp *qp)
+{
+	return is_xtgt_qp(qp) ? NULL : get_sif_sq(sdev, qp->qp_idx);
+}
+
+/* Get RQ associated to QP */
+struct sif_rq *get_rq(struct sif_dev *sdev, struct sif_qp *qp)
+{
+	return is_xrc_qp(qp) || qp->type == PSIF_QP_TRANSPORT_MANSP1 ?
+			NULL : get_sif_rq(sdev, qp->rq_idx);
+}
+
 static int poll_wait_for_qp_writeback(struct sif_dev *sdev, struct sif_qp *qp)
 {
 	unsigned long timeout = sdev->min_resp_ticks;
@@ -143,9 +155,9 @@ struct sif_qp *create_qp(struct sif_dev *sdev,
 			struct sif_qp_init_attr *sif_attr)
 {
 	struct sif_qp *qp, *rqp = NULL;
-	struct sif_sq *sq;
-	struct psif_qp qpi;
+	struct sif_sq *sq = NULL;
 	struct sif_rq *rq = NULL;
+	struct psif_qp qpi;
 	struct sif_pd *pd = sif_attr->pd;
 
 	int ret = 0;
@@ -159,6 +171,14 @@ struct sif_qp *create_qp(struct sif_dev *sdev,
 	u32 max_sge;
 	int min_tso_inline;
 
+	/* In limited mode QPs are not usable and possibly hazardous as nothing is set up
+	 * avoid any creation of any such:
+	 */
+	if (unlikely(sdev->limited_mode)) {
+		sif_log(sdev, SIF_INFO, "limited mode does not support QP creation!");
+		return ERR_PTR(-ENODEV);
+	}
+
 	if (init_attr->send_cq)
 		send_cq = to_scq(init_attr->send_cq);
 	if (init_attr->recv_cq)
@@ -168,9 +188,13 @@ struct sif_qp *create_qp(struct sif_dev *sdev,
 	max_sge =
 		sif_attr->qp_type == PSIF_QP_TRANSPORT_UD ? SIF_SW_MAX_UD_SEND_SGE : SIF_HW_MAX_SEND_SGE;
 
+	/* We need to be able to add sge for stencil with LSO */
+	max_sge -= !!(flags & IB_QP_CREATE_IPOIB_UD_LSO);
+
 	if (init_attr->cap.max_send_sge > max_sge) {
-		sif_log(sdev, SIF_INFO, "illegal max send sge %d, SIF only supports %d",
-			init_attr->cap.max_send_sge, max_sge);
+		sif_log(sdev, SIF_INFO, "illegal max send sge %d, SIF only supports %d %s",
+			init_attr->cap.max_send_sge, max_sge,
+			flags & IB_QP_CREATE_IPOIB_UD_LSO ? "with LSO" : "");
 		return ERR_PTR(-EINVAL);
 	}
 
@@ -211,17 +235,24 @@ struct sif_qp *create_qp(struct sif_dev *sdev,
 	/*
 	 * We add a sge (with the stencil) when sending with TSO. The stencil is stored at
 	 * the beginning of the inline-area. TSO implies checksumming which again has
-	 * a requirement that no inline can be used. It is therefore necessary to check that we have at least
-	 * 64 bytes of inline-buffering.
+	 * a requirement that no inline can be used. 
+	 * To be able to accomodate as large L3/L4-headers as possible we allocate 192
+	 * bytes for inlining;
+	 * entry size 512 bytes
+	 * 16*16 bytes sge
+	 * request 64 bytes
+	 * inline_bufer = 512 - 256 -64 = 192
 	 */
-	min_tso_inline = 64;
-	if ((flags & IB_QP_CREATE_IPOIB_UD_LSO) &&
-		init_attr->cap.max_inline_data < min_tso_inline) {
-		sif_log(sdev, SIF_INFO,
-			"Create LSO QP; qp_%d max_sge %d inline_size %d qp_type %d; modifing max_inline_size to %d",
-			index, init_attr->cap.max_send_sge, init_attr->cap.max_inline_data,
-			init_attr->qp_type, min_tso_inline);
-		init_attr->cap.max_inline_data = min_tso_inline;
+	min_tso_inline = 192;
+	if (flags & IB_QP_CREATE_IPOIB_UD_LSO) {
+		if (init_attr->cap.max_inline_data < min_tso_inline) {
+			sif_log(sdev, SIF_INFO,
+				"Create LSO QP; qp_%d max_sge %d inline_size %d qp_type %d; modifying max_inline_size to %d",
+				index, init_attr->cap.max_send_sge, init_attr->cap.max_inline_data,
+				init_attr->qp_type, min_tso_inline);
+			init_attr->cap.max_inline_data = min_tso_inline;
+		}
+		init_attr->cap.max_send_sge ++;
 	}
 
 	if (init_attr->qp_type == IB_QPT_RC || init_attr->qp_type == IB_QPT_XRC_INI) {
@@ -280,10 +311,8 @@ struct sif_qp *create_qp(struct sif_dev *sdev,
 		sif_log(sdev, SIF_QP, "qpn %d, qp 0x%p [no send cq] (type %s) port %d, pd %d",
 			index, qp, string_enum_psif_qp_trans(qp->type), qp->port, pd->idx);
 
-	/* The PQP does not have any receive queue, neither does the XRC qp
-	 * where RQs are selected per work request via wr.xrc_hdr.xrqd_id
-	 */
-	if (is_regular_qp(qp)) {
+	/* The PQP and XRC QPs do not have receive queues */
+	if (qp->type != PSIF_QP_TRANSPORT_MANSP1 && qp->type != PSIF_QP_TRANSPORT_XRC) {
 		if (init_attr->srq) {
 			rq = to_srq(init_attr->srq);
 			if (atomic_add_unless(&rq->refcnt, 1, 0)) {
@@ -327,29 +356,30 @@ struct sif_qp *create_qp(struct sif_dev *sdev,
 			rq->cq_idx = recv_cq->index;
 	}
 
+	if (init_attr->qp_type != IB_QPT_XRC_TGT) {
+		/* sq always gets same index as QP.. */
+		ret = sif_alloc_sq(sdev, pd, qp, &init_attr->cap,
+				sif_attr->user_mode, sif_attr->sq_hdl_sz);
+		if (ret < 0) {
+			rqp = ERR_PTR(ret);
+			goto err_sq_fail;
+		}
 
-	/* sq always gets same index as QP.. */
-	ret = sif_alloc_sq(sdev, pd, qp, &init_attr->cap,
-			sif_attr->user_mode, sif_attr->sq_hdl_sz);
-	if (ret < 0) {
-		rqp = ERR_PTR(ret);
-		goto err_sq_fail;
+		/* Store send completion queue index default since
+		 * for psif send cq number is a parameter in the work request
+		 */
+		sq = get_sif_sq(sdev, qp->qp_idx);
+		sq->cq_idx = send_cq ? send_cq->index : (u32)-1; /* XRC recv only */
+		sq->complete_all = init_attr->sq_sig_type == IB_SIGNAL_ALL_WR ? 1 : 0;
+
+		/* Adjust requested values based on what we got: */
+		init_attr->cap.max_send_wr = sq->entries;
 	}
-
-	/* Store send completion queue index default since
-	 * for psif send cq number is a parameter in the work request
-	 */
-	sq = get_sif_sq(sdev, qp->qp_idx);
-	sq->cq_idx = send_cq ? send_cq->index : (u32)-1; /* XRC recv only */
-	sq->complete_all = init_attr->sq_sig_type == IB_SIGNAL_ALL_WR ? 1 : 0;
-
-	/* Adjust requested values based on what we got: */
-	init_attr->cap.max_send_wr = sq->entries;
 
 	/* Initialization of qp state via local copy */
 	memset(&qpi, 0, sizeof(struct psif_qp));
 
-	if (multipacket_qp(qp->type)) {
+	if (is_reliable_qp(qp->type) && init_attr->qp_type != IB_QPT_XRC_TGT) {
 		qpi.state.sq_clog2_extent = order_base_2(sq->extent);
 		qpi.state.sq_clog2_size = order_base_2(sq->entries);
 	}
@@ -433,6 +463,7 @@ struct sif_qp *create_qp(struct sif_dev *sdev,
 	copy_conv_to_hw(&qp->d, &qpi, sizeof(struct psif_qp));
 
 	mutex_init(&qp->lock); /* TBD: Sync scheme! */
+	set_bit(SIF_QPS_IN_RESET, &qp->persistent_state);
 
 	/* Users should see qp 0/1 even though qp 0/1 is mapped to qp 2/3 for
 	 * port 2
@@ -448,7 +479,6 @@ struct sif_qp *create_qp(struct sif_dev *sdev,
 		qp->ibqp.qp_type = IB_QPT_UD;
 	}
 
-	qp->flush_sq_done_wa4074 = false;
 
 	ret = sif_dfs_add_qp(sdev, qp);
 	if (ret)
@@ -500,9 +530,19 @@ static int sif_create_pma_qp(struct ib_pd *ibpd,
 	qp->port = init_attr->port_num;
 	sdev->pma_qp_idxs[qp->port - 1] = qp->qp_idx;
 
-	/* Make dfs and query_qp happy: */
+	/* Init ibqp side of things */
 	qp->ibqp.device = &sdev->ib_dev;
+	qp->ibqp.real_qp = &qp->ibqp;
+	qp->ibqp.uobject = NULL;
+	qp->ibqp.qp_type = IB_QPT_GSI;
+	atomic_set(&qp->ibqp.usecnt, 0);
+	qp->ibqp.event_handler = init_attr->event_handler;
+	qp->ibqp.qp_context = init_attr->qp_context;
+	qp->ibqp.recv_cq = init_attr->recv_cq;
+	qp->ibqp.srq = init_attr->srq;
 	qp->ibqp.pd = &sdev->pd->ibpd;
+	qp->ibqp.send_cq = init_attr->send_cq;
+	qp->ibqp.xrcd = NULL;
 
 	/* Set back IB_QPT_GSI */
 	init_attr->qp_type = IB_QPT_GSI;
@@ -663,19 +703,22 @@ struct ib_qp *sif_create_qp(struct ib_pd *ibpd,
 
 	if (udata) {
 		struct sif_create_qp_resp_ext resp;
-		struct sif_sq *sq = get_sif_sq(sdev, qp->qp_idx);
+		struct sif_sq *sq = (init_attr->qp_type != IB_QPT_XRC_TGT) ?
+					get_sif_sq(sdev, qp->qp_idx) : NULL;
+		struct sif_rq *rq = get_rq(sdev, qp);
 		int rv;
 
 		memset(&resp, 0, sizeof(resp));
 		resp.qp_idx = qp->qp_idx;
-		resp.sq_extent = sq->extent;
-		resp.sq_sgl_offset = sq->sgl_offset;
-		resp.sq_mr_idx = sq->sg_mr ? sq->sg_mr->index : 0;
-		resp.sq_dma_handle = sif_mem_dma(sq->mem, 0);
-		if (init_attr->qp_type != IB_QPT_XRC_INI && init_attr->qp_type != IB_QPT_XRC_TGT) {
-			/* XRC qps do not have any rq */
-			struct sif_rq *rq = get_sif_rq(sdev, qp->rq_idx);
 
+		if (sq) {
+			resp.sq_extent = sq->extent;
+			resp.sq_sgl_offset = sq->sgl_offset;
+			resp.sq_mr_idx = sq->sg_mr ? sq->sg_mr->index : 0;
+			resp.sq_dma_handle = sif_mem_dma(sq->mem, 0);
+		}
+
+		if (rq) {
 			resp.rq_idx = qp->rq_idx;
 			resp.rq_extent = rq->extent;
 		}
@@ -717,9 +760,6 @@ enum sif_mqp_type sif_modify_qp_is_ok(struct sif_qp *qp, enum ib_qp_state cur_st
 	int ret;
 	enum rdma_link_layer ll = IB_LINK_LAYER_INFINIBAND;
 
-	/* PSIF treats XRC just as any other RC QP */
-	if (type == IB_QPT_XRC_INI || type == IB_QPT_XRC_TGT)
-		type = IB_QPT_RC;
 	ret = ((qp->type == PSIF_QP_TRANSPORT_MANSP1 || is_epsa_tunneling_qp(type)) ? 1 :
 		ib_modify_qp_is_ok(cur_state, next_state, type, mask, ll));
 	if (!ret)
@@ -779,7 +819,7 @@ int modify_qp_hw_wa_qp_retry(struct sif_dev *sdev, struct sif_qp *qp,
 		.qp_state        = IB_QPS_ERR
 	};
 
-	bool need_wa_3713 = PSIF_REVISION(sdev) <= 3
+	bool need_wa_3714 = PSIF_REVISION(sdev) <= 3
 		&& IS_PSIF(sdev)
 		&& qp_attr_mask & IB_QP_STATE && qp_attr->qp_state == IB_QPS_RESET;
 
@@ -791,8 +831,8 @@ int modify_qp_hw_wa_qp_retry(struct sif_dev *sdev, struct sif_qp *qp,
 
 	int ret = 0;
 
-	if (need_wa_3713 || need_wa_4074) {
-		if (qp->type != PSIF_QP_TRANSPORT_MANSP1)
+	if (need_wa_3714 || need_wa_4074) {
+		if (qp->type != PSIF_QP_TRANSPORT_MANSP1 && !is_xtgt_qp(qp))
 			ret = pre_process_wa4074(sdev, qp);
 
 		if (ret) {
@@ -801,8 +841,8 @@ int modify_qp_hw_wa_qp_retry(struct sif_dev *sdev, struct sif_qp *qp,
 		}
 	}
 
-	if (need_wa_3713) {
-		/* Workaround for bug #3713 part 2 - see #3714 */
+	if (need_wa_3714) {
+		/* WA#3714 part 2 - see bug #3714 */
 		ret = modify_qp_hw(sdev, qp, &mod_attr, IB_QP_STATE);
 		if (ret)
 			sif_log(sdev, SIF_INFO, "implicit modify qp %d to ERR failed - ignoring",
@@ -811,7 +851,7 @@ int modify_qp_hw_wa_qp_retry(struct sif_dev *sdev, struct sif_qp *qp,
 
 	ret = modify_qp_hw(sdev, qp, qp_attr, qp_attr_mask);
 
-	if (need_wa_3713 || need_wa_4074) {
+	if (need_wa_3714 || need_wa_4074) {
 		struct ib_qp_attr attr = {
 			.qp_state = IB_QPS_RESET
 		};
@@ -828,7 +868,7 @@ int modify_qp_hw_wa_qp_retry(struct sif_dev *sdev, struct sif_qp *qp,
 
 		qp->flags &= ~SIF_QPF_HW_OWNED;
 
-		if (qp->type != PSIF_QP_TRANSPORT_MANSP1)
+		if (qp->type != PSIF_QP_TRANSPORT_MANSP1 && !is_xtgt_qp(qp))
 			ret = post_process_wa4074(sdev, qp);
 
 		if (ret)
@@ -902,16 +942,17 @@ int modify_qp(struct sif_dev *sdev, struct sif_qp *qp,
 {
 	int ret = 0;
 	struct ib_qp *ibqp = &qp->ibqp;
+	struct sif_rq *rq = get_rq(sdev, qp);
+	struct sif_sq *sq = get_sq(sdev, qp);
 	enum ib_qp_state cur_state, new_state;
 	enum sif_mqp_type mqp_type = SIF_MQP_IGN;
 
 	sif_log(sdev, SIF_QP, "Enter: qpn %d qp_idx %d mask 0x%x",
 		ibqp->qp_num, qp->qp_idx, qp_attr_mask);
 
-	/* WA #622, RQ flush from error completion in userspace */
-	if (udata && is_regular_qp(qp)) {
+	/* WA for Bug 622, RQ flush from error completion in userspace */
+	if (udata) {
 		struct sif_modify_qp_ext cmd;
-		struct sif_rq *rq = get_sif_rq(sdev, qp->rq_idx);
 
 		ret = ib_copy_from_udata(&cmd, udata, sizeof(cmd));
 		if (ret) {
@@ -922,15 +963,28 @@ int modify_qp(struct sif_dev *sdev, struct sif_qp *qp,
 
 		switch (cmd.flush) {
 		case FLUSH_RQ:
-			ret = sif_flush_rq(sdev, rq, qp, rq->entries);
-			if (ret)
-				sif_log(sdev, SIF_INFO, "failed to flush RQ %d",
-					rq->index);
+			if (unlikely(!rq)) {
+				ret = -EINVAL;
+				sif_log(sdev, SIF_INFO,
+					"flush requested for qp(type %s) with no rq defined",
+					string_enum_psif_qp_trans(qp->type));
+			} else {
+				ret = sif_flush_rq_wq(sdev, rq, qp, rq->entries);
+				if (ret)
+					sif_log(sdev, SIF_INFO, "failed to flush RQ %d", rq->index);
+			}
 			return ret;
 		case FLUSH_SQ:
-			ret = post_process_wa4074(sdev, qp);
-			if (ret)
-				sif_log(sdev, SIF_INFO, "failed to flush SQ %d", qp->qp_idx);
+			if (unlikely(!sq)) {
+				ret = -EINVAL;
+				sif_log(sdev, SIF_INFO,
+					"flush requested for qp(type %s) with no sq defined",
+					string_enum_psif_qp_trans(qp->type));
+			} else {
+				ret = post_process_wa4074(sdev, qp);
+				if (ret)
+					sif_log(sdev, SIF_INFO, "failed to flush SQ %d", qp->qp_idx);
+			}
 			return ret;
 		default:
 			break;
@@ -943,6 +997,9 @@ int modify_qp(struct sif_dev *sdev, struct sif_qp *qp,
 		qp_attr->cur_qp_state : qp->last_set_state;
 
 	new_state = qp_attr_mask & IB_QP_STATE ? qp_attr->qp_state : cur_state;
+
+	sif_log(sdev, SIF_QP, "qpn %d qp_idx %d requested state 0x%x cur state 0x%x",
+		ibqp->qp_num, qp->qp_idx, new_state, cur_state);
 
 	if (!fail_on_same_state && cur_state == qp_attr->qp_state) {
 		/* Silently ignore.. (used at destroy time) */
@@ -977,9 +1034,11 @@ sif_mqp_ret:
 	 */
 	switch (new_state) {
 	case IB_QPS_RESET:
+		set_bit(SIF_QPS_IN_RESET, &qp->persistent_state);
 		qp->flags &= ~SIF_QPF_HW_OWNED;
 		break;
 	case IB_QPS_RTR:
+		clear_bit(SIF_QPS_IN_RESET, &qp->persistent_state);
 		qp->flags |= SIF_QPF_HW_OWNED;
 		break;
 	default:
@@ -997,9 +1056,7 @@ sif_mqp_ret:
 	 */
 	switch (new_state) {
 	case IB_QPS_ERR:
-		if (is_regular_qp(qp)) {
-			struct sif_rq *rq = get_sif_rq(sdev, qp->rq_idx);
-
+		if (rq) {
 			/* WA #3850:if SRQ, generate LAST_WQE event */
 			if (rq->is_srq && qp->ibqp.event_handler) {
 				struct ib_event ibe = {
@@ -1009,9 +1066,9 @@ sif_mqp_ret:
 				};
 
 				qp->ibqp.event_handler(&ibe, qp->ibqp.qp_context);
-			} else if (rq && !rq->is_srq) {
+			} else if (!rq->is_srq) {
 				/* WA #622: if reqular RQ, flush */
-				ret = sif_flush_rq(sdev, rq, qp, rq->entries);
+				ret = sif_flush_rq_wq(sdev, rq, qp, rq->entries);
 				if (ret) {
 					sif_log(sdev, SIF_INFO, "failed to flush RQ %d",
 						rq->index);
@@ -1329,6 +1386,16 @@ static int modify_qp_hw(struct sif_dev *sdev, struct sif_qp *qp,
 		    qp->qp_idx, qp_attr->dest_qp_num);
 	}
 
+	/* PSIF requires additional attributes to transition XRC-QP to RTS */
+	if (is_xrc_qp(qp) && qp_attr->qp_state == IB_QPS_RTS) {
+		ctrl_attr->error_retry_count = 1;
+		mct->data.error_retry_count = 7;
+		ctrl_attr->rnr_retry_count = 1;
+		mct->data.rnr_retry_count = 7;
+		ctrl_attr->max_outstanding = 1;
+		mct->data.max_outstanding = 16;
+	}
+
 ok_modify_qp_sw:
 
 	/*
@@ -1373,10 +1440,8 @@ ok_modify_qp_sw:
 		if (ret)
 			goto err_modify_qp;
 
-		if (reliable_qp(qp->type)
-			&& (qp_attr_mask & IB_QP_STATE)) {
-			if ((qp->last_set_state == IB_QPS_INIT)
-				&& (qp_attr->qp_state == IB_QPS_RTR)) {
+		if (!is_xtgt_qp(qp) && is_reliable_qp(qp->type) && (qp_attr_mask & IB_QP_STATE)) {
+			if ((qp->last_set_state == IB_QPS_INIT) && (qp_attr->qp_state == IB_QPS_RTR)) {
 				/* Map the new send queue into the global sq_cmpl PSIF
 				 * only address map, see #944
 				 */
@@ -1386,8 +1451,7 @@ ok_modify_qp_sw:
 
 				qp->sq_cmpl_map_valid = true;
 
-			} else if ((qp->sq_cmpl_map_valid)
-				&& (qp_attr->qp_state == IB_QPS_RESET)) {
+			} else if ((qp->sq_cmpl_map_valid) && (qp_attr->qp_state == IB_QPS_RESET)) {
 				/* Unmap the send queue from the global sq_cmpl PSIF */
 				ret = sif_sq_cmpl_unmap_sq(sdev, get_sif_sq(sdev, qp->qp_idx));
 				if (ret)
@@ -1752,6 +1816,10 @@ int sif_query_qp(struct ib_qp *ibqp, struct ib_qp_attr *qp_attr,
 	bool use_hw = false;
 	struct sif_qp *qp = to_sqp(ibqp);
 	struct sif_dev *sdev = to_sdev(ibqp->device);
+	int ret;
+
+	/* Take QP lock to avoid any race condition on updates to last_set_state: */
+	mutex_lock(&qp->lock);
 
 	sif_logi(ibqp->device, SIF_QP, "last_set_state %d", qp->last_set_state);
 
@@ -1764,33 +1832,21 @@ int sif_query_qp(struct ib_qp *ibqp, struct ib_qp_attr *qp_attr,
 		 * ibv_query_qp might report wrong state when in state IBV_QPS_ERR
 		 * Query must be done based on current ownership (towards HW only if HW owned)
 		 */
-		if (PSIF_REVISION(sdev) <= 3 || qp->flush_sq_done_wa4074)
+		if (PSIF_REVISION(sdev) <= 3)
 			use_hw = (qp->flags & SIF_QPF_HW_OWNED);
 		else
 			use_hw = true;
 		break;
 	}
 
-	return use_hw ?
+	ret = use_hw ?
 		sif_query_qp_hw(ibqp, qp_attr, qp_attr_mask, qp_init_attr) :
 		sif_query_qp_sw(ibqp, qp_attr, qp_attr_mask, qp_init_attr);
-}
 
-enum ib_qp_state get_qp_state(struct sif_qp *qp)
-{
-	struct ib_qp *ibqp = &qp->ibqp;
-	struct ib_qp_init_attr init_attr;
-	struct ib_qp_attr attr;
+	mutex_unlock(&qp->lock);
 
-	memset(&attr, 0, sizeof(attr));
-	memset(&init_attr, 0, sizeof(init_attr));
+	return ret;
 
-	if (sif_query_qp(ibqp, &attr, IB_QP_STATE, &init_attr)) {
-		sif_logi(ibqp->device, SIF_INFO,
-			"query_qp failed for qp %d", ibqp->qp_num);
-		return -1;
-	}
-	return attr.qp_state;
 }
 
 static void get_qp_path_sw(struct sif_qp *qp, struct ib_qp_attr *qp_attr, bool alternate)
@@ -1838,12 +1894,9 @@ static int sif_query_qp_sw(struct ib_qp *ibqp, struct ib_qp_attr *qp_attr,
 	struct sif_dev *sdev = to_sdev(ibqp->device);
 	struct sif_qp *qp = to_sqp(ibqp);
 	volatile struct psif_qp *qps = &qp->d;
-	struct sif_rq *rq = NULL;
-	struct sif_sq *sq = get_sif_sq(sdev, qp->qp_idx);
+	struct sif_rq *rq = get_rq(sdev, qp);
+	struct sif_sq *sq = get_sq(sdev, qp);
 	int ret = 0;
-
-	if (qp->type != PSIF_QP_TRANSPORT_XRC)
-		rq = get_sif_rq(sdev, qp->rq_idx);
 
 	/* Mellanox almost completely ignores the mask on both
 	 * input and output and reports all attributes regardlessly..
@@ -1890,8 +1943,11 @@ static int sif_query_qp_sw(struct ib_qp *ibqp, struct ib_qp_attr *qp_attr,
 		qp_init_attr->cap.max_recv_wr     = rq->entries_user;
 		qp_init_attr->cap.max_recv_sge    = rq->sg_entries;
 	}
-	qp_init_attr->cap.max_send_wr     = sq->entries;
-	qp_init_attr->cap.max_send_sge    = sq->sg_entries;
+
+	if (sq) {
+		qp_init_attr->cap.max_send_wr     = sq->entries;
+		qp_init_attr->cap.max_send_sge    = sq->sg_entries;
+	}
 	qp_init_attr->cap.max_inline_data = qp->max_inline_data;
 
 	/* TBD: What to do with this:
@@ -2001,23 +2057,17 @@ static int sif_query_qp_hw(struct ib_qp *ibqp, struct ib_qp_attr *qp_attr,
 	int ret = 0;
 	struct sif_qp *qp = to_sqp(ibqp);
 	struct sif_dev *sdev = to_sdev(ibqp->device);
-	struct sif_rq *rq = NULL;
-	struct sif_sq *sq = get_sif_sq(sdev, qp->qp_idx);
+	struct sif_rq *rq = get_rq(sdev, qp);
+	struct sif_sq *sq = get_sq(sdev, qp);
 	struct psif_query_qp lqqp;
 
-	/* Take QP lock to avoid any race condition on updates to last_set_state: */
-	mutex_lock(&qp->lock);
 
 	ret = epsc_query_qp(qp, &lqqp);
 	if (!ret)
 		qp->last_set_state = sif2ib_qp_state(lqqp.qp.state);
-	mutex_unlock(&qp->lock);
 
 	if (ret)
 		return ret;
-
-	if (qp->type != PSIF_QP_TRANSPORT_XRC)
-		rq = get_sif_rq(sdev, qp->rq_idx);
 
 	/* Mellanox almost completely ignores the mask on both
 	 * input and output and reports all attributes regardlessly..
@@ -2064,8 +2114,11 @@ static int sif_query_qp_hw(struct ib_qp *ibqp, struct ib_qp_attr *qp_attr,
 		qp_init_attr->cap.max_recv_wr     = rq->entries_user;
 		qp_init_attr->cap.max_recv_sge    = rq->sg_entries;
 	}
-	qp_init_attr->cap.max_send_wr     = sq->entries;
-	qp_init_attr->cap.max_send_sge    = sq->sg_entries;
+
+	if (sq) {
+		qp_init_attr->cap.max_send_wr     = sq->entries;
+		qp_init_attr->cap.max_send_sge    = sq->sg_entries;
+	}
 	qp_init_attr->cap.max_inline_data = qp->max_inline_data;
 
 	/* TBD: What to do with these..
@@ -2114,7 +2167,7 @@ int destroy_qp(struct sif_dev *sdev, struct sif_qp *qp)
 	struct ib_qp_attr mod_attr = {
 		.qp_state        = IB_QPS_RESET
 	};
-	struct sif_rq *rq = NULL;
+	struct sif_rq *rq = get_rq(sdev, qp);
 	bool reuse_ok = true;
 
 	/* See bug #3496 */
@@ -2132,9 +2185,6 @@ int destroy_qp(struct sif_dev *sdev, struct sif_qp *qp)
 
 	sif_log(sdev, SIF_QP, "## Enter qp_idx %d", index);
 
-	if (is_regular_qp(qp))
-		rq = get_sif_rq(sdev, qp->rq_idx);
-
 	/* make sure event handling is performed before reset the qp.*/
 	if (atomic_dec_and_test(&qp->refcnt))
 		complete(&qp->can_destroy);
@@ -2147,31 +2197,39 @@ int destroy_qp(struct sif_dev *sdev, struct sif_qp *qp)
 
 	if (!(qp->flags & SIF_QPF_USER_MODE)) {
 		int nfixup;
-		struct sif_sq *sq = get_sif_sq(sdev, qp->qp_idx);
+		struct sif_sq *sq = get_sq(sdev, qp);
 		u32 cq_idx = get_psif_qp_core__rcv_cq_indx(&qp->d.state);
 		struct sif_cq *send_cq = (sq && sq->cq_idx >= 0) ? get_sif_cq(sdev, sq->cq_idx) : NULL;
 		struct sif_cq *recv_cq = rq ? get_sif_cq(sdev, cq_idx) : NULL;
 
 		if (send_cq) {
+			ret = post_process_wa4074(sdev, qp);
+			if (ret) {
+				sif_log(sdev, SIF_INFO,
+					"post_process_wa4074 failed for qp %d send cq %d with error %d",
+					qp->qp_idx, sq->cq_idx, ret);
+				goto fixup_failed;
+			}
+
 			nfixup = sif_fixup_cqes(send_cq, sq, qp);
 			if (nfixup < 0) {
 				sif_log(sdev, SIF_INFO,
-					"sif_fixup_cqes: on qp %d send cq %d failed with error %d",
+					"fixup cqes on qp %d send cq %d failed with error %d",
 					qp->qp_idx, sq->cq_idx, nfixup);
 				goto fixup_failed;
 			}
-			sif_log(sdev, SIF_QP, "sif_fixup_cqes: fixed %d CQEs in sq.cq %d",
+			sif_log(sdev, SIF_QP, "fixup cqes fixed %d CQEs in sq.cq %d",
 				nfixup, sq->cq_idx);
 		}
 		if (recv_cq && recv_cq != send_cq) {
 			nfixup = sif_fixup_cqes(recv_cq, sq, qp);
 			if (nfixup < 0) {
 				sif_log(sdev, SIF_INFO,
-					"sif_fixup_cqes: on qp %d recv cq %d failed with error %d",
+					"fixup cqes on qp %d recv cq %d failed with error %d",
 					qp->qp_idx, cq_idx, nfixup);
 				goto fixup_failed;
 			}
-			sif_log(sdev, SIF_QP, "sif_fixup_cqes: fixed %d CQEs in rq.cq %d",
+			sif_log(sdev, SIF_QP, "fixup cqes fixed %d CQEs in rq.cq %d",
 				nfixup, cq_idx);
 
 		}
@@ -2194,9 +2252,12 @@ fixup_failed:
 	sif_free_sq(sdev, qp);
 
 	if (rq) {
-		ret = free_rq(sdev, qp->rq_idx);
-		if (ret && (ret != -EBUSY || !rq->is_srq))
-			return ret;
+		if (rq->is_srq)
+			atomic_dec(&rq->refcnt);
+		else
+			ret = free_rq(sdev, qp->rq_idx);
+			if (ret && ret != -EBUSY)
+				return ret;
 	}
 
 	if (index > 3 && reuse_ok)
@@ -2212,9 +2273,9 @@ fixup_failed:
 static int reset_qp(struct sif_dev *sdev, struct sif_qp *qp)
 {
 	volatile struct psif_qp *qps = &qp->d;
-	struct sif_rq *rq = NULL;
-	struct sif_sq *sq = get_sif_sq(sdev, qp->qp_idx);
-	bool need_wa_3713 = 0;
+	struct sif_rq *rq = get_rq(sdev, qp);
+	struct sif_sq *sq = get_sq(sdev, qp);
+	bool need_wa_3714 = 0;
 
 	/* Bring down order needed by rev2 according to bug #3480 */
 	int ret = poll_wait_for_qp_writeback(sdev, qp);
@@ -2222,19 +2283,15 @@ static int reset_qp(struct sif_dev *sdev, struct sif_qp *qp)
 	if (ret)
 		goto failed;
 
-	if (is_regular_qp(qp))
-		rq = get_sif_rq(sdev, qp->rq_idx);
-
-	/* WA 3713 special handling */
-	need_wa_3713 = (PSIF_REVISION(sdev) <= 3)
+	/* WA 3714 special handling */
+	need_wa_3714 = (PSIF_REVISION(sdev) <= 3)
 		&& IS_PSIF(sdev) /* Next check if there is a retry outstanding */
-		&& !qp->flush_sq_done_wa4074
 		&& (get_psif_qp_core__retry_tag_committed(&qp->d.state) !=
 			get_psif_qp_core__retry_tag_err(&qp->d.state))
-		&& (qp->qp_idx != sdev->flush_qp);
+		&& (qp->qp_idx != sdev->flush_qp[qp->port - 1]);
 
-	if (need_wa_3713) {
-		ret = reset_qp_flush_retry(sdev);
+	if (need_wa_3714) {
+		ret = reset_qp_flush_retry(sdev, qp->port - 1);
 		if (ret < 0)
 			sif_log(sdev, SIF_INFO,	"Flush_retry special handling failed with ret %d", ret);
 
@@ -2244,9 +2301,12 @@ static int reset_qp(struct sif_dev *sdev, struct sif_qp *qp)
 	/* if the send queue scheduler is running, wait for
 	 * it to terminate:
 	 */
-	ret = sif_flush_sqs(sdev, sq);
-	if (ret)
-		goto failed;
+	ret = 0;
+	if (qp->ibqp.qp_type != IB_QPT_XRC_TGT) {
+		ret = sif_flush_sqs(sdev, sq);
+		if (ret)
+			goto failed;
+	}
 
 	sif_logs(SIF_DUMP,
 		write_struct_psif_qp(NULL, 1, (struct psif_qp *)&qp->d));
@@ -2259,7 +2319,7 @@ failed:
 	}
 
 	/* Reset the SQ pointers */
-	if (!qp->ibqp.xrcd) {
+	if (!is_xtgt_qp(qp)) {
 		struct sif_sq_sw *sq_sw = get_sif_sq_sw(sdev, qp->qp_idx);
 
 		memset(sq_sw, 0, sizeof(*sq_sw));
@@ -2323,7 +2383,6 @@ failed:
 	 */
 	set_psif_qp_core__xmit_psn(&qps->state, 0);
 	set_psif_qp_core__last_acked_psn(&qps->state, 0xffffff);
-	qp->flush_sq_done_wa4074 = false;
 
 	return ret;
 }
@@ -2334,6 +2393,8 @@ void sif_dfs_print_qp(struct seq_file *s, struct sif_dev *sdev,
 		loff_t pos)
 {
 	struct sif_qp *qp;
+	struct sif_sq *sq;
+	struct sif_rq *rq;
 	volatile struct psif_qp *qps;
 	struct psif_qp lqps;
 
@@ -2349,17 +2410,26 @@ void sif_dfs_print_qp(struct seq_file *s, struct sif_dev *sdev,
 	if (pos <= 3 && atomic_read(&sdev->sqp_usecnt[pos]) != 1)
 		return;
 
+	sq = get_sq(sdev, qp);
+	rq = get_rq(sdev, qp);
+
 	seq_printf(s, "%llu\t%d\t", pos,	qp->last_set_state);
 
-	if (qp->rq_idx == -1)
+	if (!rq)
 		seq_puts(s, "[none]");
 	else
 		seq_printf(s, "%u", lqps.state.rcv_cq_indx);
 
-	seq_printf(s, "\t%u\t", lqps.state.send_cq_indx);
-
-	if (qp->rq_idx == -1)
+	if (!sq)
 		seq_puts(s, "[none]");
+	else
+		seq_printf(s, "\t%u\t", lqps.state.send_cq_indx);
+
+	if (!rq)
+		if (!sq)
+			seq_puts(s, "\t[none]");
+		else
+			seq_puts(s, "[none]");
 	else
 		seq_printf(s, "%u", lqps.state.rq_indx);
 
@@ -2380,7 +2450,10 @@ void sif_dfs_print_qp(struct seq_file *s, struct sif_dev *sdev,
 	else if (qp->flags & SIF_QPF_NO_EVICT)
 		seq_puts(s, "\t[no_evict]\n");
 	else if (qp->flags & SIF_QPF_FLUSH_RETRY)
-		seq_puts(s, "\t[flush_retry]\n");
+		if (qp->port == 1)
+			seq_puts(s, "\t[flush_retry_p1]\n");
+		else
+			seq_puts(s, "\t[flush_retry_p2]\n");
 	else if (qp->flags & SIF_QPF_KI_STENCIL)
 		seq_puts(s, "\t[ki_stencil]\n");
 	else if (qp->flags & SIF_QPF_PMA_PXY)
@@ -2398,6 +2471,10 @@ void sif_dfs_print_qp(struct seq_file *s, struct sif_dev *sdev,
 			seq_puts(s, "\t[GSI_QP_P1]\n");
 		else
 			seq_puts(s, "\t[GSI_QP_P2]\n");
+	else if (qp->ibqp.qp_type == IB_QPT_XRC_TGT)
+		seq_puts(s, "\t[RECV]\n");
+	else if (qp->ibqp.qp_type == IB_QPT_XRC_INI)
+		seq_puts(s, "\t[SEND]\n");
 	else
 		seq_puts(s, "\n");
 }

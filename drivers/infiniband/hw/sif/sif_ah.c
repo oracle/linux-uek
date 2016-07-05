@@ -18,7 +18,7 @@
 #include "sif_defs.h"
 #include "sif_base.h"
 #include "sif_ah.h"
-
+#include "sif_query.h"
 
 struct ib_ah *sif_create_ah(struct ib_pd *ibpd, struct ib_ah_attr *ah_attr,
 			struct ib_udata *udata)
@@ -31,6 +31,7 @@ struct ib_ah *sif_create_ah(struct ib_pd *ibpd, struct ib_ah_attr *ah_attr,
 	volatile struct psif_ah *ah_p;
 	struct psif_ah lah;
 	int index;
+	u8 ipd = 0;
 
 	sif_log(sdev, SIF_AH, "for pd %d", pd->idx);
 
@@ -55,11 +56,13 @@ struct ib_ah *sif_create_ah(struct ib_pd *ibpd, struct ib_ah_attr *ah_attr,
 	lah.pd = pd->idx;
 	lah.remote_lid = ah_attr->dlid;
 	lah.local_lid_path = ah_attr->src_path_bits;
-	lah.ipd = ah_attr->static_rate;  /* TBD: Encoding + is this right? */
 	lah.loopback =
 		(sdev->port[lah.port].lid | lah.local_lid_path) == ah_attr->dlid ?
 		LOOPBACK : NO_LOOPBACK;
 
+	/* If sif_calc_ipd() fails, we use zero */
+	sif_calc_ipd(sdev, ah_attr->port_num, (enum ib_rate)ah_attr->static_rate, &ipd);
+	lah.ipd = ipd;
 
 	if (ah_attr->ah_flags & IB_AH_GRH) {
 		lah.use_grh = USE_GRH;
@@ -132,6 +135,7 @@ int sif_query_ah(struct ib_ah *ibah, struct ib_ah_attr *ah_attr)
 	copy_conv_to_sw(&lah, &ah->d, sizeof(lah));
 	ah_attr->sl = lah.sl;
 	ah_attr->port_num = lah.port + 1;
+	/* TBD: Convert from delay to rate */
 	ah_attr->static_rate = lah.ipd;
 	ah_attr->dlid = lah.remote_lid;
 
@@ -154,13 +158,13 @@ void sif_dfs_print_ah(struct seq_file *s, struct sif_dev *sdev,
 		loff_t pos)
 {
 	if (unlikely(pos < 0))
-		seq_puts(s, "# Index  Port    PD Rem.lid\n");
+		seq_puts(s, "# Index  Port    PD Rem.lid  IPD\n");
 	else {
 		struct psif_ah *ah_p = get_ah(sdev, pos);
 		struct psif_ah lah;
 
 		copy_conv_to_sw(&lah, ah_p, sizeof(struct psif_ah));
-		seq_printf(s, "%7lld %5d %5d %7d\n",
-			pos, lah.port + 1, lah.pd, lah.remote_lid);
+		seq_printf(s, "%7lld %5d %5d %7d%5d\n",
+			pos, lah.port + 1, lah.pd, lah.remote_lid, lah.ipd);
 	}
 }

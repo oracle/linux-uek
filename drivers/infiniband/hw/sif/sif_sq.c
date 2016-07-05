@@ -19,6 +19,7 @@
 #include "sif_mmu.h"
 #include "sif_pt.h"
 #include "sif_mr.h"
+#include "sif_qp.h"
 #include "sif_sq.h"
 #include "sif_hwi.h"
 #include "psif_hw_setget.h"
@@ -157,7 +158,7 @@ int sif_alloc_sq(struct sif_dev *sdev, struct sif_pd *pd,
 	 * For simplicity we impose the same for reliable QPs as their SQs
 	 * have to be page aligned to ensure proper access from SQ_CMPL:
 	 */
-	need_page_aligned = user_mode || reliable_qp(qp->type);
+	need_page_aligned = user_mode || is_reliable_qp(qp->type);
 
 	if (need_page_aligned && (alloc_sz & ~PAGE_MASK))
 		alloc_sz = (alloc_sz + ~PAGE_MASK) & PAGE_MASK;
@@ -333,25 +334,25 @@ int sif_flush_sqs(struct sif_dev *sdev, struct sif_sq *sq)
 
 void sif_free_sq(struct sif_dev *sdev, struct sif_qp *qp)
 {
-	struct sif_sq *sq;
+	struct sif_sq *sq = get_sq(sdev, qp);
 	volatile struct psif_sq_hw *sq_hw_p;
 	volatile struct psif_sq_sw *sq_sw_p;
 
-	int index = qp->qp_idx;
+	if (is_xtgt_qp(qp))
+		return;
 
-	sq = get_sif_sq(sdev, index);
 	sif_log(sdev, SIF_SQ, "idx %d", sq->index);
 
-	sq_sw_p = get_sq_sw(sdev, index);
+	sq_sw_p = get_sq_sw(sdev, qp->qp_idx);
 	sq_hw_p = &sq->d;
 
-	if (reliable_qp(qp->type) && qp->sq_cmpl_map_valid)
+	if (is_reliable_qp(qp->type) && qp->sq_cmpl_map_valid)
 		sif_sq_cmpl_unmap_sq(sdev, sq);
 
 	sif_unmap_ctx(sdev, &sq->mmu_ctx);
 
 	/* We clear the whole sq field including sq_hw below */
-	sif_clear_sq_sw(sdev, index);
+	sif_clear_sq_sw(sdev, qp->qp_idx);
 
 	if (sq->sg_mr)
 		dealloc_mr(sdev, sq->sg_mr);
@@ -480,7 +481,7 @@ void sif_dfs_print_sq_cmpl(struct seq_file *s, struct sif_dev *sdev, loff_t pos)
 		return;
 
 	/* Only QPs with multipacket support is mapped here; */
-	if (!reliable_qp(qp->type))
+	if (!is_reliable_qp(qp->type))
 		return;
 
 	if (sif_pt_entry(ctx->pt, virt_base, &dma_start, &val))
@@ -494,25 +495,4 @@ void sif_dfs_print_sq_cmpl(struct seq_file *s, struct sif_dev *sdev, loff_t pos)
 		seq_printf(s, "%pad", &val);
 	}
 	seq_puts(s, "]\n");
-}
-
-
-bool multipacket_qp(enum psif_qp_trans type)
-{
-	switch (type) {
-	case PSIF_QP_TRANSPORT_RC:
-	case PSIF_QP_TRANSPORT_UC:
-	case PSIF_QP_TRANSPORT_XRC:
-		return true;
-	default:
-		return false;
-	}
-}
-
-
-bool reliable_qp(enum psif_qp_trans type)
-{
-	return
-		type == PSIF_QP_TRANSPORT_RC ||
-		type == PSIF_QP_TRANSPORT_XRC;
 }

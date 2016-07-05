@@ -53,6 +53,7 @@ int sif_vf_enable(struct pci_dev *dev, int num_vfs)
 		sdev->num_vfs = num_vfs;
 	} else
 		pci_disable_sriov(sdev->pdev);
+	return num_vfs;
 sriov_failed:
 	return ret;
 }

@@ -48,7 +48,6 @@ int sif_pt_init(void)
 	pt_page_cache = KMEM_CACHE(sif_pt_page, 0);
 	if (!pt_page_cache)
 		return -ENOMEM;
-	sif_log0(SIF_INFO, "order PAGE_SIZE = %d", order_base_2(PAGE_SIZE));
 	return 0;
 }
 

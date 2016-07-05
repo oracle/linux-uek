@@ -51,18 +51,17 @@ struct sif_device_modify {
 };
 
 
-/* Extension bits in the qp create mask to ib_create_qp
- */
+/* Extension bits in the qp create mask to ib_create_qp    */
+/* Note that we use bits below IB_QP_CREATE_RESERVED_START */
 enum sif_qp_create_flags {
-	IB_QP_CREATE_EOIB            = 1 << 4,  /* Indicate that this is an Ethernet over IB QP */
-	IB_QP_CREATE_RSS             = 1 << 5,  /* Enable receive side scaling */
-	IB_QP_CREATE_HDR_SPLIT       = 1 << 6,  /* Enable header/data split for offloading */
-	IB_QP_CREATE_RCV_DYNAMIC_MTU = 1 << 7,  /* Enable receive side dynamic mtu */
-	IB_QP_CREATE_PROXY           = 1 << 8,  /* Enable a special EPSA proxy */
-	IB_QP_NO_CSUM		     = 1 << 9,  /* No csum for qp, wqe.wr.csum = qp.magic */
-	IB_QP_CREATE_SND_DYNAMIC_MTU = 1 << 10,  /* Enable receive side dynamic mtu */
+	IB_QP_CREATE_EOIB            = IB_QP_CREATE_RESERVED_END     ,  /* Indicate that this is an Ethernet over IB QP */
+	IB_QP_CREATE_RSS             = IB_QP_CREATE_RESERVED_END >> 1,  /* Enable receive side scaling */
+	IB_QP_CREATE_HDR_SPLIT       = IB_QP_CREATE_RESERVED_END >> 2,  /* Enable header/data split for offloading */
+	IB_QP_CREATE_RCV_DYNAMIC_MTU = IB_QP_CREATE_RESERVED_END >> 3,  /* Enable receive side dynamic mtu */
+	IB_QP_CREATE_PROXY           = IB_QP_CREATE_RESERVED_END >> 4,  /* Enable a special EPSA proxy */
+	IB_QP_NO_CSUM		     = IB_QP_CREATE_RESERVED_END >> 5,  /* No csum for qp, wqe.wr.csum = qp.magic */
+	IB_QP_CREATE_SND_DYNAMIC_MTU = IB_QP_CREATE_RESERVED_END >> 6,  /* Enable receive side dynamic mtu */
 };
-
 
 /* Extension bits in the qp attr mask to ib_modify_qp
  * TBD: Not implemented yet

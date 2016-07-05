@@ -234,7 +234,7 @@ static int sif_eps_api_version_ok(struct sif_dev *sdev, enum psif_mbox_type eps_
 	struct sif_eps *es = &sdev->es[eps_num];
 
 	/* Validate that we have compatible versions */
-	sif_log(sdev, SIF_INFO, "Connected to SIF version %d.%d,  EPS%s version %d.%d",
+	sif_log(sdev, SIF_INFO_V, "Connected to SIF version %d.%d,  EPS%s API version %d.%d",
 		es->ver.psif_major, es->ver.psif_minor,
 		eps_name(sdev, eps_num),
 		es->ver.epsc_major, es->ver.epsc_minor);
@@ -312,9 +312,9 @@ static int sif_eps_firmware_version_ok(struct sif_dev *sdev, enum psif_mbox_type
 				break;
 		}
 	}
-	sif_log(sdev, SIF_INFO, "EPSC firmware image revision string %s",
+	sif_log(sdev, SIF_INFO_V, "EPSC firmware image revision string %s",
 		es->ver.fw_version[FWV_EPS_REV_STRING]);
-	sif_log(sdev, SIF_INFO, "EPSC firmware version tag:\n%s",
+	sif_log(sdev, SIF_INFO_V, "EPSC firmware version tag:\n%s",
 		es->ver.fw_version[FWV_EPS_GIT_LAST_COMMIT]);
 	if (es->ver.fw_version[FWV_EPS_GIT_STATUS][0] != '\0')
 		sif_log(sdev, SIF_INFO,	" *** epsfw git status at build time: ***\n%s",
@@ -327,7 +327,7 @@ static int sif_eps_firmware_version_ok(struct sif_dev *sdev, enum psif_mbox_type
 	if (vs[0] == 'R' && es->ver.fw_minor == 0)
 		es->ver.fw_minor = 1;
 
-	sif_log(sdev, SIF_INFO, "EPSC interpreted firmware revision: %hu.%hu",
+	sif_log(sdev, SIF_INIT, "EPSC firmware revision: %hu.%hu",
 		es->ver.fw_major, es->ver.fw_minor);
 	return 0;
 }
@@ -717,6 +717,11 @@ int sif_eps_init(struct sif_dev *sdev, enum sif_tab_type type)
 	sif_log(sdev, SIF_INFO, "Configure for big endian host");
 	lconfig.big_endian = 1;
 #endif
+	if (!sdev->is_vf && sif_feature(vlink_connect)) {
+		sif_log(sdev, SIF_INIT, "Associate all vlink state info with state of external port");
+		lconfig.vlink_connect = 1;
+	}
+
 	lconfig.sparc_pages = (sdev->mi.page_size == 0x2000) ? 1 : 0;
 	if (rsp_tp->mem->mem_type != SIFMT_BYPASS) {
 		sif_log(sdev, SIF_INFO,
@@ -832,7 +837,7 @@ eps_reset:
 		es->ver.seq_set_proto = get.x.data;
 
 proto_probing_done:
-	sif_log(sdev, SIF_INFO, "In contact with EPS%s with initial mailbox negotiation protocol v.%d",
+	sif_log(sdev, SIF_INFO_V, "In contact with EPS%s with initial mailbox negotiation protocol v.%d",
 		eps_name(sdev, eps_num), es->ver.seq_set_proto);
 	if (!es->ver.seq_set_proto)
 		sif_log(sdev, SIF_INFO,
@@ -1071,15 +1076,17 @@ static inline int __eps_process_cqe(struct sif_dev *sdev, enum psif_mbox_type ep
 		es->first_seq = (es->first_seq + 1) & ~CSR_ONLINE_MASK;
 		ret++;
 	}
-	if (ret < 0)
+	if (ret < 0) {
 		sif_log(sdev, SIF_INFO, "failed with status %d", ret);
-	else if (ret > 0) {
+		return ret;
+	}
+
+	if (ret > 0) {
 		sif_log(sdev, SIF_EPS,
 			"processed %d (%d with resp) requests - first_seq 0x%x, oustanding %d",
 			ret, rsp_cnt, es->first_seq, atomic_read(&es->cur_reqs));
 		mb();
 	}
-
 	__sif_eps_send_keep_alive(sdev, eps_num, false);
 
 	return ret;
@@ -1137,7 +1144,8 @@ static int __sif_post_eps_wr(struct sif_dev *sdev, enum psif_mbox_type eps_num,
 	int ret = 0;
 	bool waiting = false;
 
-	es->timeout = jiffies + timeout;
+	if (unlikely(lreq->opcode != EPSC_KEEP_ALIVE))
+		es->timeout = jiffies + timeout;
 restart:
 
 	if (atomic_read(&es->cur_reqs)) {
@@ -1279,7 +1287,6 @@ int sif_eps_poll_cqe(struct sif_dev *sdev, enum psif_mbox_type eps_num,
 	ulong timeout = sdev->min_resp_ticks * 8;
 	int npolled = 0;
 
-	es->timeout = jiffies + timeout;
 	while (seq_num != get_eps_mailbox_seq_num(lcqe->rsp)) {
 		ret = eps_process_cqe(sdev, eps_num);
 		if (ret < 0)

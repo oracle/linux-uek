@@ -15,8 +15,6 @@
 #define __SIF_MW_H
 
 struct ib_mw *sif_alloc_mw(struct ib_pd *ibpd);
-int sif_bind_mw(struct ib_qp *ibqp, struct ib_mw *ibmw,
-		struct ib_mw_bind *mw_bind);
 int sif_dealloc_mw(struct ib_mw *ibmw);
 
 #endif

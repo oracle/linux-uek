@@ -190,7 +190,7 @@ int sif_unmap_phys_fmr_list(struct list_head *fmr_list)
 			goto out;
 		cnt++;
 	}
-	sif_log(sdev, SIF_INFO_V, "done with %d invalidates to MMU_VALID", cnt);
+	sif_log(sdev, SIF_FMR, "done with %d invalidates to MMU_VALID", cnt);
 
 	cnt = 0;
 	list_for_each_entry(ib_fmr, fmr_list, list) {
@@ -200,7 +200,7 @@ int sif_unmap_phys_fmr_list(struct list_head *fmr_list)
 				&(to_sfmr(ib_fmr))->mr->mmu_ctx, mode);
 		cnt++;
 	}
-	sif_log(sdev, SIF_INFO_V, "done with %d unmap_fmr_ctxs", cnt);
+	sif_log(sdev, SIF_FMR, "done with %d unmap_fmr_ctxs", cnt);
 key_to_invalid:
 	cnt = 0;
 
@@ -212,7 +212,7 @@ key_to_invalid:
 			goto out;
 		cnt++;
 	}
-	sif_log(sdev, SIF_INFO_V, "done invalidating %d fmr keys%s",
+	sif_log(sdev, SIF_FMR, "done invalidating %d fmr keys%s",
 		cnt, (spqp ? " (stencil)" : ""));
 
 	if (flush_all) {
@@ -227,7 +227,7 @@ key_to_invalid:
 		cnt++;
 	}
 	ms = jiffies_to_msecs(jiffies - start_time);
-	sif_log_perf(sdev, SIF_PERF_V, "done unmapping %d fmrs in %u ms", cnt, ms);
+	sif_log_rlim(sdev, SIF_PERF_V, "done unmapping %d fmrs in %u ms", cnt, ms);
 out:
 	if (spqp)
 		sif_release_ki_spqp(spqp);

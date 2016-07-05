@@ -21,13 +21,6 @@ struct ib_mw *sif_alloc_mw(struct ib_pd *ibpd)
 	return ERR_PTR(-EOPNOTSUPP);
 }
 
-int sif_bind_mw(struct ib_qp *ibqp,
-		struct ib_mw *ibmw, struct ib_mw_bind *mw_bind)
-{
-	sif_logi(ibqp->device, SIF_INFO, "Not implemented");
-	return -EOPNOTSUPP;
-}
-
 int sif_dealloc_mw(struct ib_mw *ibmw)
 {
 	sif_logi(ibmw->device, SIF_INFO, "Not implemented");

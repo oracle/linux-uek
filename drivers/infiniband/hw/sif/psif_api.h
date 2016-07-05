@@ -43,7 +43,7 @@ typedef uint64_t __be64;
  * Update when new operations are added or otherwise
  * backward compatible changes are made
  */
-#define EPSC_MINOR_VERSION 1
+#define EPSC_MINOR_VERSION 5
 
 /*
  * Macros for EPSC API #if checking in code

@@ -50,13 +50,13 @@ enum psif_enum_extent {
 	PSIF_EVENT_EXTENT	 = 0x13u,
 	PSIF_TSU_ERROR_TYPES_EXTENT	 = 0x8cu,
 	PSIF_EPS_CORE_ID_EXTENT	 = 0x5u,
-	PSIF_EPSC_QUERY_NUM_VFS_MODE_EXTENT	 = 0x3u,
+	PSIF_EPSC_QUERY_PERSISTENT_EXTENT	 = 0x3u,
+	PSIF_PORT_SPEED_EXTENT	 = 0x21u,
 	PSIF_EPSC_PORT_STATE_EXTENT	 = 0x6u,
 	PSIF_EPSC_PATH_MTU_EXTENT	 = 0x8u,
-	PSIF_PORT_SPEED_EXTENT	 = 0x21u,
 	PSIF_EPSC_LOG_MODE_EXTENT	 = 0x11u,
 	PSIF_EPSC_LOG_LEVEL_EXTENT	 = 0x8u,
-	PSIF_EPSC_DEGRADE_CAUSE_EXTENT	 = 0x6u,
+	PSIF_EPSC_DEGRADE_CAUSE_EXTENT	 = 0x7u,
 	PSIF_EPSC_ATOMIC_CAP_EXTENT	 = 0x3u,
 	PSIF_EPSC_CSR_STATUS_EXTENT	 = 0x100u,
 	PSIF_EPSC_CSR_OPCODE_EXTENT	 = 0x50u,
@@ -66,7 +66,7 @@ enum psif_enum_extent {
 	PSIF_EPSC_CSR_MODIFY_PORT_FLAGS_EXTENT	 = 0x11u,
 	PSIF_EPSC_CSR_EPSA_COMMAND_EXTENT	 = 0x4u,
 	PSIF_EPSA_COMMAND_EXTENT	 = 0xcu,
-	PSIF_EPSC_QUERY_OP_EXTENT	 = 0x54u,
+	PSIF_EPSC_QUERY_OP_EXTENT	 = 0x56u,
 	PSIF_EPSC_CSR_UPDATE_OPCODE_EXTENT	 = 0x8u,
 	PSIF_EPSC_FLASH_SLOT_EXTENT	 = 0x6u,
 	PSIF_EPSC_UPDATE_SET_EXTENT	 = 0x5u,
@@ -724,22 +724,36 @@ enum psif_eps_core_id {
 }; /* enum psif_eps_core_id [ 4 bits] */
 
 /**
- * \brief Discriminator for the PSIF_QUER sub-operation EPSC_QUERY_NUM_VFS
+ * \brief Discriminator for PSIF_QUERY of persistent values
  * \details
  * \par Width
  *      32 bit
  * \par Used in
- * the parameter for the PSIF_QUERY sub-operation EPSC_QUERY_NUM_VFS - set in the index field
+ * the parameter for the PSIF_QUERY sub-operation EPSC_QUERY_NUM_VFS and EPS_QUERY_JUMBO - set in the index field
  * \par Classification
  *      driver
  */
-enum psif_epsc_query_num_vfs_mode {
-	EPSC_QUERY_NUM_VFS_MODE_CURRENT,
-	EPSC_QUERY_NUM_VFS_MODE_PERSISTENT,
-	EPSC_QUERY_NUM_VFS_MODE_HW_CAP,
+enum psif_epsc_query_persistent {
+	EPSC_QUERY_PERSISTENT_STORED,
+	EPSC_QUERY_PERSISTENT_ACTIVE,
+	EPSC_QUERY_PERSISTENT_HW_CAP,
 	/* Padding out to required bits allocated */
-	PSIF_EPSC_QUERY_NUM_VFS_MODE_FIELD_MAX	 = 0x7fffffffu
-}; /* enum psif_epsc_query_num_vfs_mode [32 bits] */
+	PSIF_EPSC_QUERY_PERSISTENT_FIELD_MAX	 = 0x7fffffffu
+}; /* enum psif_epsc_query_persistent [32 bits] */
+
+/*
+ * Should match definitions in ib_verbs.h
+ */
+enum psif_port_speed {
+	PSIF_SPEED_SDR	 = 0x1u,
+	PSIF_SPEED_DDR	 = 0x2u,
+	PSIF_SPEED_QDR	 = 0x4u,
+	PSIF_SPEED_FDR10	 = 0x8u,
+	PSIF_SPEED_FDR	 = 0x10u,
+	PSIF_SPEED_EDR	 = 0x20u,
+	/* Padding out to required bits allocated */
+	PSIF_PORT_SPEED_FIELD_MAX	 = 0xffu
+}; /* enum psif_port_speed [ 8 bits] */
 
 /**
  * \brief Port state
@@ -815,20 +829,6 @@ enum psif_epsc_path_mtu {
 	PSIF_EPSC_PATH_MTU_FIELD_MAX	 = 0x7fffffffu
 }; /* enum psif_epsc_path_mtu [32 bits] */
 
-/*
- * Should match definitions in ib_verbs.h
- */
-enum psif_port_speed {
-	PSIF_SPEED_SDR	 = 0x1u,
-	PSIF_SPEED_DDR	 = 0x2u,
-	PSIF_SPEED_QDR	 = 0x4u,
-	PSIF_SPEED_FDR10	 = 0x8u,
-	PSIF_SPEED_FDR	 = 0x10u,
-	PSIF_SPEED_EDR	 = 0x20u,
-	/* Padding out to required bits allocated */
-	PSIF_PORT_SPEED_FIELD_MAX	 = 0xffu
-}; /* enum psif_port_speed [ 8 bits] */
-
 
 enum psif_epsc_log_mode {
 /* Logging completely disabled */
@@ -890,6 +890,9 @@ enum psif_epsc_degrade_cause {
 /**< degrade cause: Virtualization mode reconfigured, reset needed */
 
 	DEGRADE_CAUSE_FLAG_VIRTMODE_RECONF,
+/**< degrade cause: no credits for sending multicast packets */
+
+	DEGRADE_CAUSE_FLAG_MCAST_LACK_OF_CREDIT,
 	/* Padding out to required bits allocated */
 	PSIF_EPSC_DEGRADE_CAUSE_FIELD_MAX	 = 0x1fu
 }; /* enum psif_epsc_degrade_cause [ 5 bits] */
@@ -1583,8 +1586,12 @@ enum psif_epsc_query_op {
 	EPSC_QUERY_CREDIT_MODE	 = 0x50u,
 	/** Query version on onboard CPLD (Titan only Other platforms will return EPSC_ENODATA) */
 	EPSC_QUERY_CPLD_VERSION	 = 0x51u,
+	/** Query portinfo on exernal port (defined in psif_epsc_query_external_port_info_t) */
+	EPSC_QUERY_EXTERNAL_PORT_INFO	 = 0x53u,
+	/* Query the HW revision of the board */
+	EPSC_QUERY_HW_REVISION	 = 0x54u,
 	/* EOF marker - must be last and highest in this enum type. */
-	EPSC_QUERY_LAST	 = 0x53u,
+	EPSC_QUERY_LAST	 = 0x55u,
 	/* Padding out to required bits allocated */
 	PSIF_EPSC_QUERY_OP_FIELD_MAX	 = 0x7fffffffu
 }; /* enum psif_epsc_query_op [32 bits] */

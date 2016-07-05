@@ -33,6 +33,8 @@
 
 #include "sif_verbs.h"
 
+#include "sif_r3.h"
+
 #define PCI_VENDOR_ID_SUN	0x108e
 #define PCI_DEVICE_ID_PSIF_PF	0x2088
 #define PCI_DEVICE_ID_PSIF_VF	0x2089
@@ -292,9 +294,9 @@ struct sif_dev {
 	/* Support for workaround for #3552 - feature_mask create_do_not_evict_qp: */
 	u32 dne_qp;
 
-	/* Support for workaround for #3713 */
-	u32 flush_qp;
-	struct mutex flush_lock;
+	/* Support for WA#3714 */
+	u32 flush_qp[2];
+	struct mutex flush_lock[2];
 
 	/* Support for PMA proxy QP (indexes for port 1 and 2) bug #3357 */
 	u32 pma_qp_idxs[2];
@@ -331,6 +333,9 @@ struct sif_dev {
 	/* PSIF is degraded */
 	bool degraded;
 
+	/* Owned by sif_r3.c - wa support */
+	struct sif_wa_stats wa_stats;
+	struct workqueue_struct *misc_wq; /* Used to flush send/receive queue */
 };
 
 /* TBD: These should probably come from common pci headers
@@ -411,21 +416,20 @@ extern ulong sif_trace_mask;
 	do { \
 		sif_log_trace(class, format, ## arg);	\
 		if (unlikely((sif_debug_mask) & (class))) {		\
-			const char *cl = #class;\
 			dev_info(&(sdev)->pdev->dev,	\
-				   "[%d] %5s %s: " format "\n", \
-				   current->pid, &cl[4], __func__,      \
+				   "[%d] " format "\n", \
+				   current->pid, \
 				   ## arg); \
 		} \
 	} while (0)
 
 #define sif_logi(ibdev, class, format, arg...)	\
 	do { \
+		sif_log_trace(class, format, ## arg);	\
 		if (unlikely((sif_debug_mask) & (class))) {		\
-			const char *cl = #class;\
 			dev_info((ibdev)->dma_device,     \
-				   "[%d] %5s %s: " format "\n", \
-				   current->pid, &cl[4], __func__,      \
+				   "[%d] " format "\n", \
+				   current->pid, \
 				   ## arg); \
 		} \
 	} while (0)
@@ -433,8 +437,8 @@ extern ulong sif_trace_mask;
 #define sif_log0(class, format, arg...)	\
 	do { \
 		if (unlikely((sif_debug_mask) & (class)))	\
-			pr_info("pid [%d] %s: " format "\n", \
-				current->pid, __func__,	     \
+			pr_info("sif [%d] " format "\n", \
+				current->pid, \
 				## arg);		     \
 	} while (0)
 
@@ -453,40 +457,16 @@ extern ulong sif_trace_mask;
 		} \
 	} while (0)
 
-#define sif_log_cq(cq, class, format, arg...)	\
+#define sif_log_rlim(sdev, class, format, arg...)	\
 	do { \
-		if (unlikely((sif_debug_mask) & (class))) {  \
-			struct sif_dev *sdev = \
-				container_of(cq->ibcq.device, struct sif_dev, ib_dev); \
-			if (time_before((cq)->next_logtime, jiffies)) {	\
-				(cq)->next_logtime = jiffies + max(1000ULL, sdev->min_resp_ticks); \
-			} else { \
-				(cq)->log_cnt++;	\
-				  continue;	\
-			} \
-			dev_info(&sdev->pdev->dev, \
-				   "pid [%d] %s (suppressed %d): " format "\n", \
-				current->pid, __func__, (cq)->log_cnt,	\
-				   ## arg); \
-			(cq)->log_cnt = 0;  \
+		sif_log_trace(class, format, ## arg);	\
+		if (unlikely((sif_debug_mask) & (class) && printk_ratelimit())) { \
+			dev_info(&sdev->pdev->dev,	\
+				"[%d] " format "\n",	\
+				current->pid,		\
+				## arg);		\
 		} \
 	} while (0)
-
-#define sif_log_perf(sdev, class, format, arg...)	\
-	do { \
-		if (unlikely((sif_debug_mask) & (class))) {  \
-			if ((sdev)->jiffies_sampling_cnt % sif_perf_sampling_threshold) { \
-				(sdev)->jiffies_sampling_cnt++;		\
-				continue;				\
-			} \
-			dev_info(&(sdev)->pdev->dev,  \
-				   "pid [%d] %s: " format "\n", \
-				   current->pid, __func__,	   \
-				   ## arg);			   \
-		}						   \
-	} while (0)
-
-
 
 /* some convenience pointer conversion macros: */
 #define to_sdev(ibdev)  container_of((ibdev), struct sif_dev, ib_dev)
@@ -620,7 +600,7 @@ extern ulong sif_feature_mask;
 #define SIFF_no_huge_pages		  0x80
 
 /* Use stencil pqp for invalidation of FMR keys */
-#define SIFF_disable_stencil_invalidate	  0x100
+#define SIFF_disable_stencil_invalidate	 0x100
 
 /* Force disable vpci iommu trapping (to operate as on real hardware..) */
 #define SIFF_disable_vpci_iommu		 0x400
@@ -637,11 +617,14 @@ extern ulong sif_feature_mask;
 /* Check all event queues on all interrupts */
 #define SIFF_check_all_eqs_on_intr	0x8000
 
+/* Make all vlinks behave in sync with the correspondinding external port */
+#define SIFF_vlink_connect	       0x10000
+
 /* Don't allocate vcbs in a round robin fashion */
-#define SIFF_alloc_cb_round_robin 0x20000
+#define SIFF_alloc_cb_round_robin      0x20000
 
 /* Don't allocate from all other queues (except cb and qp) in a round robin fashion */
-#define SIFF_disable_alloc_round_robin    0x40000
+#define SIFF_disable_alloc_round_robin 0x40000
 
 /* Default on rev1 is to force rnr_retry_init to 0 - this feature
  * forces it to 7 (infinite retry) instead:
@@ -689,7 +672,7 @@ extern ulong sif_feature_mask;
 /* Configure PSIF to use the opposite base page size (e.g. 8K on x86 and 4K on sparc) */
 #define SIFF_toggle_page_size        0x40000000
 
-#define SIFF_all_features	     0x7ffeddfb
+#define SIFF_all_features	     0x7fffddfb
 
 #define sif_feature(x) (sif_feature_mask & (SIFF_##x))
 

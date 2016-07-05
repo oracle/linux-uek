@@ -73,7 +73,6 @@ enum psif_wr_type ib2sif_wr_op(enum ib_wr_opcode op, bool is_dr)
 	case IB_WR_SEND_WITH_INV:
 	case IB_WR_RDMA_READ_WITH_INV:
 	case IB_WR_LOCAL_INV:
-	case IB_WR_FAST_REG_MR:
 	default:
 		break;
 	}
@@ -191,8 +190,8 @@ enum psif_wc_opcode ib2sif_wc_opcode(enum ib_wc_opcode opcode)
 		return PSIF_WC_OPCODE_RECEIVE_SEND;
 	case IB_WC_RECV_RDMA_WITH_IMM:
 		return PSIF_WC_OPCODE_RECEIVE_RDMA_WR_IMM;
-	case IB_WC_BIND_MW:
 	case IB_WC_LOCAL_INV:
+	case IB_WC_BIND_MW:
 	case IB_WC_FAST_REG_MR:
 		break;
 	}
@@ -504,7 +503,7 @@ const char *ib_event2str(enum ib_event_type e)
 static inline enum kernel_ulp_type find_ulp_type_from_address(void *ptr)
 {
 	if (ptr) {
-#if defined(__x86_64__) || defined(__sparc__)
+#if defined(__x86_64__) || defined(__sparc__) || defined(__aarch64__)
 		char symbol_name[100];
 
 		snprintf(symbol_name, sizeof(symbol_name), "%ps", ptr);

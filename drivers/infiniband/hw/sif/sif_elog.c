@@ -137,7 +137,7 @@ int sif_elog_init(struct sif_dev *sdev, enum psif_mbox_type eps_num)
 	return misc_register(logdev);
 }
 
-int sif_elog_deinit(struct sif_dev *sdev, enum psif_mbox_type eps_num)
+void sif_elog_deinit(struct sif_dev *sdev, enum psif_mbox_type eps_num)
 {
-	return misc_deregister(&sdev->es[eps_num].logdev);
+	misc_deregister(&sdev->es[eps_num].logdev);
 }

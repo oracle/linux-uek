@@ -432,7 +432,7 @@ static int init_blocks(struct sif_dev *sdev, enum sif_tab_type type)
 		 */
 		int bitmap_bytes = (((tp->entry_per_block + 7) >> 3) + 7) & ~7;
 
-		sif_log(sdev, SIF_INFO,
+		sif_log(sdev, SIF_INIT,
 			"%s uses two-level alloc: entry_per_block %d, block_cnt %d bitmap_bytes %d",
 			sif_table_name(type), tp->entry_per_block, tp->block_cnt,
 				bitmap_bytes);
@@ -549,7 +549,7 @@ int sif_table_init(struct sif_dev *sdev, enum sif_tab_type type)
 	if (tp->alloc_rr)
 		tp->last_used = tp->block_cnt - 1; /* Next will be the first entry */
 
-	sif_log(sdev, SIF_INFO,	"%s(%d): entry cnt %d, entry sz %d, ext sz %d, extent %d, [%s]",
+	sif_log(sdev, SIF_INIT,	"%s(%d): entry cnt %d, entry sz %d, ext sz %d, extent %d, [%s]",
 		base_layout[type].desc, type, tp->entry_cnt, base_layout[type].entry_sz, tp->ext_sz,
 		extent, (base_layout[type].wr_access ? "writable" : "readonly"));
 	sif_log(sdev, SIF_INIT,	" - table sz 0x%lx %s sif_base 0x%llx csr off 0x%lx",

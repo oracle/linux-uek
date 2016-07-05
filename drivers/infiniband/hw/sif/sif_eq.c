@@ -230,7 +230,7 @@ static int sif_eq_table_init(struct sif_dev *sdev, struct sif_eps *es, u16 eq_id
 	eqe = (struct psif_eq_entry *)get_eq_entry(eq, 0);
 	set_psif_eq_entry__seq_num(eqe, eq->entries);
 
-	sif_log(sdev, SIF_INFO,
+	sif_log(sdev, SIF_INIT,
 		"Event queue %d: entry cnt %d (min.req.%d), ext sz %d, extent %d, sw_index_interval %d",
 		eq_idx, tp->entry_cnt, min_entries, tp->ext_sz, extent, eq->sw_index_interval);
 	sif_log(sdev, SIF_INIT,	" - table sz 0x%lx %s sif_base 0x%llx",
@@ -588,9 +588,8 @@ static void handle_event_work(struct work_struct *work)
 			ib_event2str(ew->ibe.event));
 
 		if ((ew->ibe.event == IB_EVENT_LID_CHANGE)
-			&& (ew->ibe.element.port_num == 1)
 			&& (PSIF_REVISION(sdev) <= 3))
-			sif_r3_recreate_flush_qp(sdev);
+			sif_r3_recreate_flush_qp(sdev, ew->ibe.element.port_num - 1);
 		goto out;
 	}
 
@@ -628,9 +627,9 @@ static void handle_event_work(struct work_struct *work)
 	case IB_EVENT_QP_LAST_WQE_REACHED: {
 		struct ib_qp *ibqp = ew->ibe.element.qp;
 		struct sif_qp *qp = to_sqp(ibqp);
+		struct sif_rq *rq = get_rq(sdev, qp);
 
-		if (is_regular_qp(qp)) {
-			struct sif_rq *rq = get_sif_rq(sdev, qp->rq_idx);
+		if (rq) {
 			struct sif_rq_sw *rq_sw = get_sif_rq_sw(sdev, rq->index);
 
 			/* WA #3850:if SRQ, generate LAST_WQE event */
@@ -643,7 +642,7 @@ static void handle_event_work(struct work_struct *work)
 				ibqp->event_handler(&ibe, ibqp->qp_context);
 			} else {
 				/* WA #622: if reqular RQ, flush */
-				if (sif_flush_rq(sdev, rq, qp, atomic_read(&rq_sw->length)))
+				if (sif_flush_rq_wq(sdev, rq, qp, atomic_read(&rq_sw->length)))
 					sif_log(sdev, SIF_INFO, "failed to flush RQ %d",
 						rq->index);
 			}
@@ -659,6 +658,17 @@ static void handle_event_work(struct work_struct *work)
 		struct ib_qp *ibqp = ew->ibe.element.qp;
 		struct sif_qp *qp = to_sqp(ibqp);
 
+		/* IB spec o11-5.1.1 says suppress COMM_EST event for UD & RAW QP types.
+		 * Also, avoid sending COMM_EST to MAD layer (it reports fatal error).
+		 */
+		if ((ew->ibe.event == IB_EVENT_COMM_EST)
+			&& ((ibqp->qp_type == IB_QPT_GSI)
+			|| (ibqp->qp_type == IB_QPT_UD)
+			|| (ibqp->qp_type == IB_QPT_RAW_IPV6)
+			|| (ibqp->qp_type == IB_QPT_RAW_ETHERTYPE)
+			|| (ibqp->qp_type == IB_QPT_RAW_PACKET)))
+			break;
+
 		if (ibqp->event_handler)
 			ibqp->event_handler(&ew->ibe, ibqp->qp_context);
 
@@ -672,8 +682,8 @@ static void handle_event_work(struct work_struct *work)
 		break;
 	}
 	case IB_EVENT_LID_CHANGE:
-		if (ew->ibe.element.port_num == 1 && PSIF_REVISION(sdev) <= 3)
-			sif_r3_recreate_flush_qp(sdev);
+		if (PSIF_REVISION(sdev) <= 3)
+			sif_r3_recreate_flush_qp(sdev, ew->ibe.element.port_num - 1);
 	case IB_EVENT_PORT_ERR:
 	case IB_EVENT_CLIENT_REREGISTER:
 	case IB_EVENT_PORT_ACTIVE:

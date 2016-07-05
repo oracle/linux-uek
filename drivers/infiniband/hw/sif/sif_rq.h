@@ -26,6 +26,7 @@ struct sif_rq {
 	bool is_srq; /* Set if this is a shared receive queue */
 	int xrc_domain; /* If != 0: This is an XRC SRQ member of this domain idx */
 	atomic_t refcnt; /* Ref.count for usage as a shared receive queue */
+	struct completion can_destroy; /* use refcnt to synchronization in !srq case */
 	u16 entries;      /* Allocated entries */
 	u16 entries_user; /* Entries reported to user (entries -1 if max) */
 	u32 sg_entries; /* Max receive scatter/gather configured for this rq */
@@ -33,6 +34,14 @@ struct sif_rq {
 	u32 extent;
 	u16 srq_limit;
 	struct sif_mem *mem; /* Allocated queue memory */
+};
+
+struct flush_rq_work {
+	struct work_struct ws;
+	struct sif_dev *sdev;
+	struct sif_rq *rq;
+	struct sif_qp *qp;
+	int entries;
 };
 
 static inline struct sif_rq *to_srq(struct ib_srq *ibsrq)
@@ -57,7 +66,7 @@ int alloc_rq(struct sif_dev *sdev, struct sif_pd *pd,
  * @target_qp indicates the value of the local_qp field in the generated
  * completion but is not interpreted by SIF in any way.
  */
-int sif_flush_rq(struct sif_dev *sdev, struct sif_rq *rq,
+int sif_flush_rq_wq(struct sif_dev *sdev, struct sif_rq *rq,
 		struct sif_qp *target_qp, int max_flushed_in_err);
 
 int free_rq(struct sif_dev *sdev, int rq_idx);

@@ -168,7 +168,6 @@ err_create_mem:
 	return (void *)mr;
 }
 
-
 struct ib_mr *sif_reg_phys_mr(struct ib_pd *ibpd,
 			      struct ib_phys_buf *phys_buf_array,
 			      int num_phys_buf,
@@ -206,7 +205,6 @@ alloc_mr_failed:
 param_err:
 	return (void *)mr;
 }
-
 
 int sif_rereg_phys_mr(struct ib_mr *ibmr, int mr_rereg_mask,
 		      struct ib_pd *ibpd,
@@ -315,13 +313,6 @@ err_reg_mr:
 	return ERR_PTR(ret);
 }
 
-int sif_query_mr(struct ib_mr *ibmr, struct ib_mr_attr *mr_attr)
-{
-	sif_logi(ibmr->device, SIF_MR, "Not implemented");
-	return -EOPNOTSUPP;
-}
-
-
 /* If the MMU is involved (not pass-through mode)
  * PSIF MR deregistration is asyncronous and five-step (see #2002):
  *  1) Invalidate associated dma validation entry but first
@@ -412,26 +403,6 @@ int sif_dereg_mr(struct ib_mr *ibmr)
 	sif_log(sdev, SIF_MR, "Exit: success");
 	return 0;
 }
-
-struct ib_mr *sif_alloc_fast_reg_mr(struct ib_pd *ibpd, int max_page_list_len)
-{
-	sif_logi(ibpd->device, SIF_FMR, "Not implemented");
-	return ERR_PTR(-EOPNOTSUPP);
-}
-
-struct ib_fast_reg_page_list *sif_alloc_fast_reg_page_list(struct ib_device
-							   *ibdev,
-							   int page_list_len)
-{
-	sif_logi(ibdev, SIF_FMR, "Not implemented");
-	return ERR_PTR(-EOPNOTSUPP);
-}
-
-void sif_free_fast_reg_page_list(struct ib_fast_reg_page_list *pl)
-{
-	sif_logi(pl->device, SIF_FMR, "Not implemented");
-}
-
 
 /* Line printer for debugfs file */
 void sif_dfs_print_key(struct seq_file *s, struct sif_dev *sdev, loff_t pos)

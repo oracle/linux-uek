@@ -46,7 +46,6 @@ int sif_query_device(struct ib_device *ibdev, struct ib_device_attr *props)
 {
 	int ret;
 	struct sif_dev *sdev = to_sdev(ibdev);
-	struct sif_eps *es = &sdev->es[sdev->mbox_epsc];
 	struct psif_epsc_device_attr ldev;
 
 	ret = epsc_query_device(sdev, &ldev);
@@ -54,8 +53,7 @@ int sif_query_device(struct ib_device *ibdev, struct ib_device_attr *props)
 		return ret;
 
 	memset(props, 0, sizeof(*props));
-	/* TBD: x.y.z - 16 bit per sublevel - we use x.y.0 for now */
-	props->fw_ver = (u64)es->ver.fw_major << 32 | (u64)es->ver.fw_minor << 16;
+	props->fw_ver = ldev.fw_ver;
 	props->sys_image_guid = cpu_to_be64(ldev.sys_image_guid);
 	props->max_mr_size = ~0ull;
 	props->page_size_cap = 0xfffffe00; /* TBD: Sensible value? Use what Mellanox uses */
@@ -78,10 +76,11 @@ int sif_query_device(struct ib_device *ibdev, struct ib_device_attr *props)
 		IB_DEVICE_XRC |
 		IB_DEVICE_BLOCK_MULTICAST_LOOPBACK;
 
-	/* returns max_sge SIF_HW_MAX_SEND_SGE -1 for IPoIB connected mode.
-	 */
-	props->max_sge = (sif_find_kernel_ulp_caller() == IPOIB_CM_ULP) ?
-		SIF_HW_MAX_SEND_SGE - 1 : SIF_HW_MAX_SEND_SGE;
+	/* returns max_sge SIF_HW_MAX_SEND_SGE -1 for IPoIB datagram mode */
+	/* TBD: Add test for uvnic */
+	props->max_sge = SIF_HW_MAX_SEND_SGE -
+			 (sif_find_kernel_ulp_caller() == IPOIB_ULP);
+
 	props->max_sge_rd = ldev.max_sge_rd;
 	props->max_cq = sdev->ba[cq_sw].entry_cnt;
 	props->max_cqe = SIF_SW_MAX_CQE;
@@ -161,8 +160,9 @@ static int epsc_query_port(struct sif_dev *sdev, u8 port, struct psif_epsc_port_
 int sif_calc_ipd(struct sif_dev	 *sdev, u8 port, enum ib_rate static_rate, u8 *ipd)
 {
 	int path = ib_rate_to_mult(static_rate);
-	int link, ret;
-	struct ib_port_attr lpa;
+	int link;
+	u8 active_speed = sdev->port[port - 1].active_speed;
+	u8 active_width = sdev->port[port - 1].active_width;
 
 	if (static_rate == IB_RATE_PORT_CURRENT) {
 		*ipd = 0;
@@ -175,13 +175,13 @@ int sif_calc_ipd(struct sif_dev	 *sdev, u8 port, enum ib_rate static_rate, u8 *i
 		return -EINVAL;
 	}
 
-	ret = sif_query_port(&sdev->ib_dev, port, &lpa);
-	if (unlikely(ret != 0)) {
-		sif_log(sdev, SIF_INFO, "Failed to query port %u\n", port);
-		return ret;
+	if (unlikely(active_speed < (u8)IB_SPEED_SDR || active_width < (u8)IB_WIDTH_1X)) {
+		sif_log(sdev, SIF_INFO, "Failed to use cached port attributes for port %u\n", port);
+		return -EDEADLK;
 	}
+
 	/* 2^active_width * active_speed */
-	link = (1 << lpa.active_width)*lpa.active_speed;
+	link = (1 << active_width)*active_speed;
 
 	if (path >= link)
 		*ipd = 0;
