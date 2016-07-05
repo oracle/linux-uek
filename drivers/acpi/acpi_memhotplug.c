@@ -362,7 +362,7 @@ static void acpi_memory_device_remove(struct acpi_device *device)
 	acpi_memory_device_free(mem_device);
 }
 
-static bool __initdata acpi_no_memhotplug;
+bool __initdata acpi_no_memhotplug;
 
 void __init acpi_memory_hotplug_init(void)
 {

@@ -1050,6 +1050,9 @@ void __init xen_pvmmu_arch_setup(void)
 	xen_enable_syscall();
 }
 
+#ifdef CONFIG_ACPI_HOTPLUG_MEMORY
+extern bool acpi_no_memhotplug;
+#endif
 /* This function is not called for HVM domains */
 void __init xen_arch_setup(void)
 {
@@ -1075,5 +1078,8 @@ void __init xen_arch_setup(void)
 	fiddle_vdso();
 #ifdef CONFIG_NUMA
 	numa_off = 1;
+#endif
+#ifdef CONFIG_ACPI_HOTPLUG_MEMORY
+	 acpi_no_memhotplug = true;
 #endif
 }
