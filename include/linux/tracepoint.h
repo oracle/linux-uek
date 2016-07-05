@@ -20,6 +20,7 @@
 #include <linux/cpumask.h>
 #include <linux/rcupdate.h>
 #include <linux/static_key.h>
+#include <linux/sdt.h>
 
 struct module;
 struct tracepoint;
@@ -181,6 +182,7 @@ extern void syscall_unregfunc(void);
 	extern struct tracepoint __tracepoint_##name;			\
 	static inline void trace_##name(proto)				\
 	{								\
+		DTRACE_PROBE_TRACEPOINT(name, args);			\
 		if (static_key_false(&__tracepoint_##name.key))		\
 			__DO_TRACE(&__tracepoint_##name,		\
 				TP_PROTO(data_proto),			\
@@ -242,7 +244,9 @@ extern void syscall_unregfunc(void);
 #else /* !CONFIG_TRACEPOINTS */
 #define __DECLARE_TRACE(name, proto, args, cond, data_proto, data_args) \
 	static inline void trace_##name(proto)				\
-	{ }								\
+	{								\
+		DTRACE_PROBE_TRACEPOINT(name, args);			\
+	}								\
 	static inline void trace_##name##_rcuidle(proto)		\
 	{ }								\
 	static inline int						\
