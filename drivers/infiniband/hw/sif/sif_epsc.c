@@ -737,9 +737,10 @@ int sif_eps_init(struct sif_dev *sdev, enum sif_tab_type type)
 	sif_log(sdev, SIF_INFO, "Configure for big endian host");
 	lconfig.big_endian = 1;
 #endif
-	if (!sdev->is_vf && sif_feature(vlink_connect)) {
-		sif_log(sdev, SIF_INIT, "Associate all vlink state info with state of external port");
-		lconfig.vlink_connect = 1;
+	lconfig.vlink_connect = 1;
+	if (!sdev->is_vf && sif_feature(vlink_disconnect)) {
+		sif_log(sdev, SIF_INIT, "Disassociate all vlink state info from state of external port");
+		lconfig.vlink_connect = 0;
 	}
 
 	lconfig.sparc_pages = (sdev->mi.page_size == 0x2000) ? 1 : 0;

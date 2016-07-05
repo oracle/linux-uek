@@ -619,8 +619,10 @@ extern ulong sif_feature_mask;
 /* Check all event queues on all interrupts */
 #define SIFF_check_all_eqs_on_intr	0x8000
 
-/* Make all vlinks behave in sync with the correspondinding external port */
-#define SIFF_vlink_connect	       0x10000
+/* Default behavior is: Make all vlinks behave in sync with the correspondinding external port.
+ * This flag turns off this behavior and the vlink state becomes unrelated to physical link.
+ */
+#define SIFF_vlink_disconnect	    0x10000
 
 /* Don't allocate vcbs in a round robin fashion */
 #define SIFF_alloc_cb_round_robin      0x20000
