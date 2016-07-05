@@ -1566,7 +1566,6 @@ out:
 
 no_open:
 	res = nfs_lookup(dir, dentry, lookup_flags);
-	err = PTR_ERR(res);
 	if (!res) {
 		inode = d_inode(dentry);
 		if ((lookup_flags & LOOKUP_DIRECTORY) && inode &&
@@ -1581,8 +1580,7 @@ no_open:
 		}
 	}
 	if (IS_ERR(res))
-		goto out;
-
+		return PTR_ERR(res);
 	return finish_no_open(file, res);
 }
 EXPORT_SYMBOL_GPL(nfs_atomic_open);
