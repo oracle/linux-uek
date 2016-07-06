@@ -28,6 +28,8 @@
 static void __maps__insert(struct maps *maps, struct map *map);
 static void __maps__insert_name(struct maps *maps, struct map *map);
 
+bool include_sysv_lookup = false;
+
 static inline int is_anon_memory(const char *filename, u32 flags)
 {
 	return flags & MAP_HUGETLB ||
@@ -39,7 +41,7 @@ static inline int is_anon_memory(const char *filename, u32 flags)
 static inline int is_no_dso_memory(const char *filename)
 {
 	return !strncmp(filename, "[stack", 6) ||
-	       !strncmp(filename, "/SYSV",5)   ||
+	       (!include_sysv_lookup && !strncmp(filename, "/SYSV", 5)) ||
 	       !strcmp(filename, "[heap]");
 }
 

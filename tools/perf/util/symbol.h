@@ -93,6 +93,7 @@ static inline int __symbol__join_symfs(char *bf, size_t size, const char *path)
 
 extern int vmlinux_path__nr_entries;
 extern char **vmlinux_path;
+extern bool include_sysv_lookup;
 
 static inline void *symbol__priv(struct symbol *sym)
 {
