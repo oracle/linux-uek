@@ -16,6 +16,7 @@ enum map_type {
 #define MAP__NR_TYPES (MAP__VARIABLE + 1)
 
 extern const char *map_type__name[MAP__NR_TYPES];
+extern bool include_sysv_lookup;
 
 struct dso;
 struct ip_callchain;

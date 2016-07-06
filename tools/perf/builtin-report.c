@@ -618,6 +618,8 @@ int cmd_report(int argc, const char **argv, const char *prefix __maybe_unused)
 		    "input file name"),
 	OPT_INCR('v', "verbose", &verbose,
 		    "be more verbose (show symbol address, etc)"),
+        OPT_BOOLEAN('l', "sysv-lookup", &include_sysv_lookup,
+                    "do symbol lookup in SYSV memory"),
 	OPT_BOOLEAN('D', "dump-raw-trace", &dump_trace,
 		    "dump raw trace in ASCII"),
 	OPT_STRING('k', "vmlinux", &symbol_conf.vmlinux_name,
