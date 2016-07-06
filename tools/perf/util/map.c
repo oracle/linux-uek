@@ -25,6 +25,8 @@
 #include "srccode.h"
 #include "ui/ui.h"
 
+bool include_sysv_lookup;
+
 static void __maps__insert(struct maps *maps, struct map *map);
 
 static inline int is_android_lib(const char *filename)
