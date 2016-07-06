@@ -184,9 +184,8 @@ struct sif_qp *create_qp(struct sif_dev *sdev,
 	if (init_attr->recv_cq)
 		recv_cq = to_scq(init_attr->recv_cq);
 
-	/* Software need to support more than max hw send sge for UD - see #1883 */
-	max_sge =
-		sif_attr->qp_type == PSIF_QP_TRANSPORT_UD ? SIF_SW_MAX_UD_SEND_SGE : SIF_HW_MAX_SEND_SGE;
+
+	max_sge = SIF_HW_MAX_SEND_SGE;
 
 	/* We need to be able to add sge for stencil with LSO */
 	max_sge -= !!(flags & IB_QP_CREATE_IPOIB_UD_LSO);

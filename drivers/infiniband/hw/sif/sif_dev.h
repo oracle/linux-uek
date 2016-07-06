@@ -93,8 +93,6 @@
 #define SIF_BASE_ADDR_EQ_START(queue) \
 	(SIF_BASE_ADDR_START(queue) + (1ULL << SIF_SQ_CMPL_SHIFT))
 
-/* TBD: Software emulation of UD send SGEs - hardware is limited to 16 */
-#define SIF_SW_MAX_UD_SEND_SGE 32
 #define SIF_HW_MAX_SEND_SGE 16
 
 /* This defines the defaults for implicit timers within the driver */
