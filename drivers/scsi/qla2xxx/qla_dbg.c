@@ -2665,29 +2665,24 @@ ql_dump_regs(uint32_t level, scsi_qla_host_t *vha, int32_t id)
 
 void
 ql_dump_buffer(uint32_t level, scsi_qla_host_t *vha, int32_t id,
-	uint8_t *b, uint32_t size)
+	uint8_t *buf, uint size)
 {
-	uint32_t cnt;
-	uint8_t c;
+	uint cnt;
 
 	if (!ql_mask_match(level))
 		return;
 
-	ql_dbg(level, vha, id, " 0   1   2   3   4   5   6   7   8   "
-	    "9  Ah  Bh  Ch  Dh  Eh  Fh\n");
-	ql_dbg(level, vha, id, "----------------------------------"
-	    "----------------------------\n");
-
-	ql_dbg(level, vha, id, " ");
-	for (cnt = 0; cnt < size;) {
-		c = *b++;
-		printk("%02x", (uint32_t) c);
-		cnt++;
-		if (!(cnt % 16))
+	ql_dbg(level, vha, id,
+	    "%-+5d  0  1  2  3  4  5  6  7  8  9  A  B  C  D  E  F\n", size);
+	ql_dbg(level, vha, id,
+	    "----- -----------------------------------------------\n");
+	for (cnt = 0; cnt < size; cnt++, buf++) {
+		if (cnt % 16 == 0)
+			ql_dbg(level, vha, id, "%04x:", cnt & ~0xFU);
+		printk(" %02x", *buf);
+		if (cnt % 16 == 15)
 			printk("\n");
-		else
-			printk("  ");
 	}
-	if (cnt % 16)
-		ql_dbg(level, vha, id, "\n");
+	if (cnt % 16 != 0)
+		printk("\n");
 }
