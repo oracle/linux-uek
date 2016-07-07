@@ -28,7 +28,7 @@
  * | Async Events                 |       0x508a       | 0x502b-0x502f  |
  * |                              |                    | 0x5084,0x5075	|
  * |                              |                    | 0x503d,0x5044  |
- * |                              |                    | 0x507b,0x505f	|
+ * |                              |                    | 0x505f		|
  * | Timer Routines               |       0x6012       |                |
  * | User Space Interactions      |       0x70e3       | 0x7018,0x702e  |
  * |				  |		       | 0x7020,0x7024  |
