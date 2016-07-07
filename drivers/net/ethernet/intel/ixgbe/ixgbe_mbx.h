@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel 10 Gigabit PCI Express Linux driver
-  Copyright(c) 1999 - 2013 Intel Corporation.
+  Copyright(c) 1999 - 2016 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -102,6 +102,8 @@ enum ixgbe_pfvf_api_rev {
 #define IXGBE_VF_GET_RETA	0x0a	/* VF request for RETA */
 #define IXGBE_VF_GET_RSS_KEY	0x0b	/* get RSS key */
 
+#define IXGBE_VF_UPDATE_XCAST_MODE	0x0c
+
 /* length of permanent address message returned from PF */
 #define IXGBE_VF_PERMADDR_MSG_LEN 4
 /* word in permanent address message with the current multicast type */
@@ -121,6 +123,6 @@ s32 ixgbe_check_for_rst(struct ixgbe_hw *, u16);
 void ixgbe_init_mbx_params_pf(struct ixgbe_hw *);
 #endif /* CONFIG_PCI_IOV */
 
-extern struct ixgbe_mbx_operations mbx_ops_generic;
+extern const struct ixgbe_mbx_operations mbx_ops_generic;
 
 #endif /* _IXGBE_MBX_H_ */
