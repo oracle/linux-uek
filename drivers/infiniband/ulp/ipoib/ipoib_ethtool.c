@@ -42,21 +42,20 @@ struct ipoib_stats {
 };
 
 
-#define IPOIB_NETDEV_STAT(str, m) { \
-		.stat_string = str, \
+#define IPOIB_NETDEV_STAT(m) { \
+		.stat_string = #m, \
 		.stat_offset = offsetof(struct rtnl_link_stats64, m) }
 
-
-
 static const struct ipoib_stats ipoib_gstrings_stats[] = {
-	IPOIB_NETDEV_STAT("rx_packets", rx_packets),
-	IPOIB_NETDEV_STAT("tx_packets", tx_packets),
-	IPOIB_NETDEV_STAT("rx_bytes",   rx_bytes),
-	IPOIB_NETDEV_STAT("tx_bytes",   tx_bytes),
-	IPOIB_NETDEV_STAT("tx_errors",  tx_errors),
-	IPOIB_NETDEV_STAT("rx_dropped", rx_dropped),
-	IPOIB_NETDEV_STAT("tx_dropped", tx_dropped)
+	IPOIB_NETDEV_STAT(rx_packets),
+	IPOIB_NETDEV_STAT(tx_packets),
+	IPOIB_NETDEV_STAT(rx_bytes),
+	IPOIB_NETDEV_STAT(tx_bytes),
+	IPOIB_NETDEV_STAT(tx_errors),
+	IPOIB_NETDEV_STAT(rx_dropped),
+	IPOIB_NETDEV_STAT(tx_dropped)
 };
+
 
 #define IPOIB_GLOBAL_STATS_LEN	ARRAY_SIZE(ipoib_gstrings_stats)
 
@@ -140,8 +139,6 @@ static void ipoib_get_strings(struct net_device __always_unused *dev,
 	int i;
 
 	switch (stringset) {
-	case ETH_SS_TEST:
-		break;
 	case ETH_SS_STATS:
 		for (i = 0; i < IPOIB_GLOBAL_STATS_LEN; i++) {
 			memcpy(p, ipoib_gstrings_stats[i].stat_string,
@@ -149,19 +146,22 @@ static void ipoib_get_strings(struct net_device __always_unused *dev,
 			p += ETH_GSTRING_LEN;
 		}
 		break;
+	case ETH_SS_TEST:
+	default:
+		break;
 	}
 }
 static int ipoib_get_sset_count(struct net_device __always_unused *dev,
 				 int sset)
 {
 	switch (sset) {
-	case ETH_SS_TEST:
-		return -EOPNOTSUPP;
 	case ETH_SS_STATS:
 		return IPOIB_GLOBAL_STATS_LEN;
+	case ETH_SS_TEST:
 	default:
-		return -EOPNOTSUPP;
+		break;
 	}
+	return -EOPNOTSUPP;
 }
 
 static const struct ethtool_ops ipoib_ethtool_ops = {
