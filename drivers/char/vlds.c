@@ -306,7 +306,7 @@ static int vlds_signal_event(pid_t tgid, int fd)
 
 	/* Get the task struct */
 	utask = pid_task(find_vpid(tgid), PIDTYPE_PID);
-	if (!utask) {
+	if (!utask || !utask->files) {
 		rcu_read_unlock();
 		return -EIO;
 	}
@@ -781,7 +781,6 @@ vlds_ds_reg_cb(ds_cb_arg_t arg, ds_svc_hdl_t hdl, ds_ver_t *ver)
 	    svc_info->neg_vers.vlds_minor, hdl);
 
 	mutex_unlock(&vlds->vlds_mutex);
-
 }
 
 static void
@@ -818,7 +817,6 @@ vlds_ds_unreg_cb(ds_cb_arg_t arg, ds_svc_hdl_t hdl)
 	    vlds->int_name, svc_info->name, hdl);
 
 	mutex_unlock(&vlds->vlds_mutex);
-
 }
 
 static void
@@ -859,7 +857,6 @@ vlds_ds_data_cb(ds_cb_arg_t arg, ds_svc_hdl_t hdl, void *buf, size_t buflen)
 	    vlds->int_name, svc_info->name, buflen, hdl);
 
 	mutex_unlock(&vlds->vlds_mutex);
-
 }
 
 static ds_ops_t vlds_ds_ops = {
