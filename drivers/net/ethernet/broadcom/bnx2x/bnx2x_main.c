@@ -5280,14 +5280,14 @@ static void bnx2x_handle_classification_eqe(struct bnx2x *bp,
 {
 	unsigned long ramrod_flags = 0;
 	int rc = 0;
-	u32 cid = elem->message.data.eth_event.echo & BNX2X_SWCID_MASK;
+	u32 echo = le32_to_cpu(elem->message.data.eth_event.echo);
+	u32 cid = echo & BNX2X_SWCID_MASK;
 	struct bnx2x_vlan_mac_obj *vlan_mac_obj;
 
 	/* Always push next commands out, don't wait here */
 	__set_bit(RAMROD_CONT, &ramrod_flags);
 
-	switch (le32_to_cpu((__force __le32)elem->message.data.eth_event.echo)
-			    >> BNX2X_SWCID_SHIFT) {
+	switch (echo >> BNX2X_SWCID_SHIFT) {
 	case BNX2X_FILTER_MAC_PENDING:
 		DP(BNX2X_MSG_SP, "Got SETUP_MAC completions\n");
 		if (CNIC_LOADED(bp) && (cid == BNX2X_ISCSI_ETH_CID(bp)))
@@ -5308,8 +5308,7 @@ static void bnx2x_handle_classification_eqe(struct bnx2x *bp,
 		bnx2x_handle_mcast_eqe(bp);
 		return;
 	default:
-		BNX2X_ERR("Unsupported classification command: %d\n",
-			  elem->message.data.eth_event.echo);
+		BNX2X_ERR("Unsupported classification command: 0x%x\n", echo);
 		return;
 	}
 
@@ -5478,9 +5477,6 @@ static void bnx2x_eq_int(struct bnx2x *bp)
 			goto next_spqe;
 		}
 
-		/* elem CID originates from FW; actually LE */
-		cid = SW_CID((__force __le32)
-			     elem->message.data.cfc_del_event.cid);
 		opcode = elem->message.opcode;
 
 		/* handle eq element */
@@ -5503,6 +5499,10 @@ static void bnx2x_eq_int(struct bnx2x *bp)
 			 * we may want to verify here that the bp state is
 			 * HALTING
 			 */
+
+			/* elem CID originates from FW; actually LE */
+			cid = SW_CID(elem->message.data.cfc_del_event.cid);
+
 			DP(BNX2X_MSG_SP,
 			   "got delete ramrod for MULTI[%d]\n", cid);
 
@@ -5596,10 +5596,8 @@ static void bnx2x_eq_int(struct bnx2x *bp)
 		      BNX2X_STATE_OPENING_WAIT4_PORT):
 		case (EVENT_RING_OPCODE_RSS_UPDATE_RULES |
 		      BNX2X_STATE_CLOSING_WAIT4_HALT):
-			cid = elem->message.data.eth_event.echo &
-				BNX2X_SWCID_MASK;
 			DP(BNX2X_MSG_SP, "got RSS_UPDATE ramrod. CID %d\n",
-			   cid);
+			   SW_CID(elem->message.data.eth_event.echo));
 			rss_raw->clear_pending(rss_raw);
 			break;
 
@@ -5684,7 +5682,7 @@ static void bnx2x_sp_task(struct work_struct *work)
 		if (status & BNX2X_DEF_SB_IDX) {
 			struct bnx2x_fastpath *fp = bnx2x_fcoe_fp(bp);
 
-		if (FCOE_INIT(bp) &&
+			if (FCOE_INIT(bp) &&
 			    (bnx2x_has_rx_work(fp) || bnx2x_has_tx_work(fp))) {
 				/* Prevent local bottom-halves from running as
 				 * we are going to change the local NAPI list.
@@ -10139,8 +10137,8 @@ static void __bnx2x_del_vxlan_port(struct bnx2x *bp, u16 port)
 		DP(BNX2X_MSG_SP, "Invalid vxlan port\n");
 		return;
 	}
-	bp->vxlan_dst_port--;
-	if (bp->vxlan_dst_port)
+	bp->vxlan_dst_port_count--;
+	if (bp->vxlan_dst_port_count)
 		return;
 
 	if (netif_running(bp->dev)) {
@@ -12368,8 +12366,10 @@ static int bnx2x_init_bp(struct bnx2x *bp)
 
 	if (SHMEM2_HAS(bp, dcbx_lldp_params_offset) &&
 	    SHMEM2_HAS(bp, dcbx_lldp_dcbx_stat_offset) &&
+	    SHMEM2_HAS(bp, dcbx_en) &&
 	    SHMEM2_RD(bp, dcbx_lldp_params_offset) &&
-	    SHMEM2_RD(bp, dcbx_lldp_dcbx_stat_offset)) {
+	    SHMEM2_RD(bp, dcbx_lldp_dcbx_stat_offset) &&
+	    SHMEM2_RD(bp, dcbx_en[BP_PORT(bp)])) {
 		bnx2x_dcbx_set_state(bp, true, BNX2X_DCBX_ENABLED_ON_NEG_ON);
 		bnx2x_dcbx_init_params(bp);
 	} else {
@@ -12830,52 +12830,71 @@ static int __bnx2x_vlan_configure_vid(struct bnx2x *bp, u16 vid, bool add)
 	return rc;
 }
 
-int bnx2x_vlan_reconfigure_vid(struct bnx2x *bp)
+static int bnx2x_vlan_configure_vid_list(struct bnx2x *bp)
 {
 	struct bnx2x_vlan_entry *vlan;
 	int rc = 0;
 
-	if (!bp->vlan_cnt) {
-		DP(NETIF_MSG_IFUP, "No need to re-configure vlan filters\n");
-		return 0;
-	}
-
+	/* Configure all non-configured entries */
 	list_for_each_entry(vlan, &bp->vlan_reg, link) {
-		/* Prepare for cleanup in case of errors */
-		if (rc) {
-			vlan->hw = false;
-			continue;
-		}
-
-		if (!vlan->hw)
+		if (vlan->hw)
 			continue;
 
-		DP(NETIF_MSG_IFUP, "Re-configuring vlan 0x%04x\n", vlan->vid);
+		if (bp->vlan_cnt >= bp->vlan_credit)
+			return -ENOBUFS;
 
 		rc = __bnx2x_vlan_configure_vid(bp, vlan->vid, true);
 		if (rc) {
-			BNX2X_ERR("Unable to configure VLAN %d\n", vlan->vid);
-			vlan->hw = false;
-			rc = -EINVAL;
-			continue;
+			BNX2X_ERR("Unable to config VLAN %d\n", vlan->vid);
+			return rc;
 		}
+
+		DP(NETIF_MSG_IFUP, "HW configured for VLAN %d\n", vlan->vid);
+		vlan->hw = true;
+		bp->vlan_cnt++;
 	}
 
-	return rc;
+	return 0;
+}
+
+static void bnx2x_vlan_configure(struct bnx2x *bp, bool set_rx_mode)
+{
+	bool need_accept_any_vlan;
+
+	need_accept_any_vlan = !!bnx2x_vlan_configure_vid_list(bp);
+
+	if (bp->accept_any_vlan != need_accept_any_vlan) {
+		bp->accept_any_vlan = need_accept_any_vlan;
+		DP(NETIF_MSG_IFUP, "Accept all VLAN %s\n",
+		   bp->accept_any_vlan ? "raised" : "cleared");
+		if (set_rx_mode) {
+			if (IS_PF(bp))
+				bnx2x_set_rx_mode_inner(bp);
+			else
+				bnx2x_vfpf_storm_rx_mode(bp);
+		}
+	}
+}
+
+int bnx2x_vlan_reconfigure_vid(struct bnx2x *bp)
+{
+	struct bnx2x_vlan_entry *vlan;
+
+	/* The hw forgot all entries after reload */
+	list_for_each_entry(vlan, &bp->vlan_reg, link)
+		vlan->hw = false;
+	bp->vlan_cnt = 0;
+
+	/* Don't set rx mode here. Our caller will do it. */
+	bnx2x_vlan_configure(bp, false);
+
+	return 0;
 }
 
 static int bnx2x_vlan_rx_add_vid(struct net_device *dev, __be16 proto, u16 vid)
 {
 	struct bnx2x *bp = netdev_priv(dev);
 	struct bnx2x_vlan_entry *vlan;
-	bool hw = false;
-	int rc = 0;
-
-	if (!netif_running(bp->dev)) {
-		DP(NETIF_MSG_IFUP,
-		   "Ignoring VLAN configuration the interface is down\n");
-		return -EFAULT;
-	}
 
 	DP(NETIF_MSG_IFUP, "Adding VLAN %d\n", vid);
 
@@ -12883,93 +12902,47 @@ static int bnx2x_vlan_rx_add_vid(struct net_device *dev, __be16 proto, u16 vid)
 	if (!vlan)
 		return -ENOMEM;
 
-	bp->vlan_cnt++;
-	if (bp->vlan_cnt > bp->vlan_credit && !bp->accept_any_vlan) {
-		DP(NETIF_MSG_IFUP, "Accept all VLAN raised\n");
-		bp->accept_any_vlan = true;
-		if (IS_PF(bp))
-			bnx2x_set_rx_mode_inner(bp);
-		else
-			bnx2x_vfpf_storm_rx_mode(bp);
-	} else if (bp->vlan_cnt <= bp->vlan_credit) {
-		rc = __bnx2x_vlan_configure_vid(bp, vid, true);
-		hw = true;
-	}
-
 	vlan->vid = vid;
-	vlan->hw = hw;
+	vlan->hw = false;
+	list_add_tail(&vlan->link, &bp->vlan_reg);
 
-	if (!rc) {
-		list_add(&vlan->link, &bp->vlan_reg);
-	} else {
-		bp->vlan_cnt--;
-		kfree(vlan);
-	}
+	if (netif_running(dev))
+		bnx2x_vlan_configure(bp, true);
 
-	DP(NETIF_MSG_IFUP, "Adding VLAN result %d\n", rc);
-
-	return rc;
+	return 0;
 }
 
 static int bnx2x_vlan_rx_kill_vid(struct net_device *dev, __be16 proto, u16 vid)
 {
 	struct bnx2x *bp = netdev_priv(dev);
 	struct bnx2x_vlan_entry *vlan;
+	bool found = false;
 	int rc = 0;
-
-	if (!netif_running(bp->dev)) {
-		DP(NETIF_MSG_IFUP,
-		   "Ignoring VLAN configuration the interface is down\n");
-		return -EFAULT;
-	}
 
 	DP(NETIF_MSG_IFUP, "Removing VLAN %d\n", vid);
 
-	if (!bp->vlan_cnt) {
-		BNX2X_ERR("Unable to kill VLAN %d\n", vid);
-		return -EINVAL;
-	}
-
 	list_for_each_entry(vlan, &bp->vlan_reg, link)
-		if (vlan->vid == vid)
+		if (vlan->vid == vid) {
+			found = true;
 			break;
+		}
 
-	if (vlan->vid != vid) {
+	if (!found) {
 		BNX2X_ERR("Unable to kill VLAN %d - not found\n", vid);
 		return -EINVAL;
 	}
 
-	if (vlan->hw)
+	if (netif_running(dev) && vlan->hw) {
 		rc = __bnx2x_vlan_configure_vid(bp, vid, false);
+		DP(NETIF_MSG_IFUP, "HW deconfigured for VLAN %d\n", vid);
+		bp->vlan_cnt--;
+	}
 
 	list_del(&vlan->link);
 	kfree(vlan);
 
-	bp->vlan_cnt--;
-
-	if (bp->vlan_cnt <= bp->vlan_credit && bp->accept_any_vlan) {
-		/* Configure all non-configured entries */
-		list_for_each_entry(vlan, &bp->vlan_reg, link) {
-			if (vlan->hw)
-				continue;
-
-			rc = __bnx2x_vlan_configure_vid(bp, vlan->vid, true);
-			if (rc) {
-				BNX2X_ERR("Unable to config VLAN %d\n",
-					  vlan->vid);
-				continue;
-			}
-			DP(NETIF_MSG_IFUP, "HW configured for VLAN %d\n",
-			   vlan->vid);
-			vlan->hw = true;
-		}
-		DP(NETIF_MSG_IFUP, "Accept all VLAN Removed\n");
-		bp->accept_any_vlan = false;
-		if (IS_PF(bp))
-			bnx2x_set_rx_mode_inner(bp);
-		else
-			bnx2x_vfpf_storm_rx_mode(bp);
-	}
+	if (netif_running(dev))
+		bnx2x_vlan_configure(bp, true);
 
 	DP(NETIF_MSG_IFUP, "Removing VLAN result %d\n", rc);
 
@@ -13004,9 +12977,6 @@ static const struct net_device_ops bnx2x_netdev_ops = {
 	.ndo_fcoe_get_wwn	= bnx2x_fcoe_get_wwn,
 #endif
 
-#ifdef CONFIG_NET_RX_BUSY_POLL
-	.ndo_busy_poll		= bnx2x_low_latency_recv,
-#endif
 	.ndo_get_phys_port_id	= bnx2x_get_phys_port_id,
 	.ndo_set_vf_link_state	= bnx2x_set_vf_link_state,
 	.ndo_features_check	= bnx2x_features_check,
@@ -13876,14 +13846,14 @@ static int bnx2x_init_one(struct pci_dev *pdev,
 		bp->doorbells = bnx2x_vf_doorbells(bp);
 		rc = bnx2x_vf_pci_alloc(bp);
 		if (rc)
-			goto init_one_exit;
+			goto init_one_freemem;
 	} else {
 		doorbell_size = BNX2X_L2_MAX_CID(bp) * (1 << BNX2X_DB_SHIFT);
 		if (doorbell_size > pci_resource_len(pdev, 2)) {
 			dev_err(&bp->pdev->dev,
 				"Cannot map doorbells, bar size too small, aborting\n");
 			rc = -ENOMEM;
-			goto init_one_exit;
+			goto init_one_freemem;
 		}
 		bp->doorbells = ioremap_nocache(pci_resource_start(pdev, 2),
 						doorbell_size);
@@ -13892,19 +13862,19 @@ static int bnx2x_init_one(struct pci_dev *pdev,
 		dev_err(&bp->pdev->dev,
 			"Cannot map doorbell space, aborting\n");
 		rc = -ENOMEM;
-		goto init_one_exit;
+		goto init_one_freemem;
 	}
 
 	if (IS_VF(bp)) {
 		rc = bnx2x_vfpf_acquire(bp, tx_count, rx_count);
 		if (rc)
-			goto init_one_exit;
+			goto init_one_freemem;
 	}
 
 	/* Enable SRIOV if capability found in configuration space */
 	rc = bnx2x_iov_init_one(bp, int_mode, BNX2X_MAX_NUM_OF_VFS);
 	if (rc)
-		goto init_one_exit;
+		goto init_one_freemem;
 
 	/* calc qm_cid_count */
 	bp->qm_cid_count = bnx2x_set_qm_cid_count(bp);
@@ -13923,7 +13893,7 @@ static int bnx2x_init_one(struct pci_dev *pdev,
 	rc = bnx2x_set_int_mode(bp);
 	if (rc) {
 		dev_err(&pdev->dev, "Cannot set interrupts\n");
-		goto init_one_exit;
+		goto init_one_freemem;
 	}
 	BNX2X_DEV_INFO("set interrupts successfully\n");
 
@@ -13931,7 +13901,7 @@ static int bnx2x_init_one(struct pci_dev *pdev,
 	rc = register_netdev(dev);
 	if (rc) {
 		dev_err(&pdev->dev, "Cannot register net device\n");
-		goto init_one_exit;
+		goto init_one_freemem;
 	}
 	BNX2X_DEV_INFO("device name after netdev register %s\n", dev->name);
 
@@ -13963,6 +13933,9 @@ static int bnx2x_init_one(struct pci_dev *pdev,
 		bnx2x_set_os_driver_state(bp, OS_DRIVER_STATE_DISABLED);
 
 	return 0;
+
+init_one_freemem:
+	bnx2x_free_mem_bp(bp);
 
 init_one_exit:
 	bnx2x_disable_pcie_error_reporting(bp);
@@ -14819,6 +14792,10 @@ static int bnx2x_get_fc_npiv(struct net_device *dev,
 	}
 
 	offset = SHMEM2_RD(bp, fc_npiv_nvram_tbl_addr[BP_PORT(bp)]);
+	if (!offset) {
+		DP(BNX2X_MSG_MCP, "No FC-NPIV in NVRAM\n");
+		goto out;
+	}
 	DP(BNX2X_MSG_MCP, "Offset of FC-NPIV in NVRAM: %08x\n", offset);
 
 	/* Read the table contents from nvram */

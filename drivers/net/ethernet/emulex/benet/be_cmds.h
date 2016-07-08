@@ -666,10 +666,13 @@ enum be_if_flags {
 					 BE_IF_FLAGS_VLAN_PROMISCUOUS |\
 					 BE_IF_FLAGS_MCAST_PROMISCUOUS)
 
-#define BE_IF_EN_FLAGS	(BE_IF_FLAGS_BROADCAST | BE_IF_FLAGS_PASS_L3L4_ERRORS |\
-			BE_IF_FLAGS_MULTICAST | BE_IF_FLAGS_UNTAGGED)
+#define BE_IF_FILT_FLAGS_BASIC (BE_IF_FLAGS_BROADCAST | \
+				BE_IF_FLAGS_PASS_L3L4_ERRORS | \
+				BE_IF_FLAGS_UNTAGGED)
 
-#define BE_IF_ALL_FILT_FLAGS	(BE_IF_EN_FLAGS | BE_IF_FLAGS_ALL_PROMISCUOUS)
+#define BE_IF_ALL_FILT_FLAGS	(BE_IF_FILT_FLAGS_BASIC | \
+				 BE_IF_FLAGS_MULTICAST | \
+				 BE_IF_FLAGS_ALL_PROMISCUOUS)
 
 /* An RX interface is an object with one or more MAC addresses and
  * filtering capabilities. */
@@ -1553,7 +1556,9 @@ struct be_cmd_resp_acpi_wol_magic_config_v1 {
 	u8 rsvd0[2];
 	u8 wol_settings;
 	u8 rsvd1[5];
-	u32 rsvd2[295];
+	u32 rsvd2[288];
+	u8 magic_mac[6];
+	u8 rsvd3[22];
 } __packed;
 
 #define BE_GET_WOL_CAP			2
@@ -2125,6 +2130,9 @@ struct be_cmd_req_set_ext_fat_caps {
 #define IMM_SHIFT				6	/* Immediate */
 #define NOSV_SHIFT				7	/* No save */
 
+#define MISSION_NIC				1
+#define MISSION_RDMA				8
+
 struct be_res_desc_hdr {
 	u8 desc_type;
 	u8 desc_len;
@@ -2241,6 +2249,7 @@ struct be_cmd_req_get_profile_config {
 	struct be_cmd_req_hdr hdr;
 	u8 rsvd;
 #define ACTIVE_PROFILE_TYPE			0x2
+#define SAVED_PROFILE_TYPE			0x0
 #define QUERY_MODIFIABLE_FIELDS_TYPE		BIT(3)
 	u8 type;
 	u16 rsvd1;
@@ -2446,7 +2455,9 @@ int be_cmd_query_port_name(struct be_adapter *adapter);
 int be_cmd_get_func_config(struct be_adapter *adapter,
 			   struct be_resources *res);
 int be_cmd_get_profile_config(struct be_adapter *adapter,
-			      struct be_resources *res, u8 query, u8 domain);
+			      struct be_resources *res,
+			      struct be_port_resources *port_res,
+			      u8 profile_type, u8 query, u8 domain);
 int be_cmd_get_active_profile(struct be_adapter *adapter, u16 *profile);
 int be_cmd_get_if_id(struct be_adapter *adapter, struct be_vf_cfg *vf_cfg,
 		     int vf_num);
@@ -2458,4 +2469,4 @@ int be_cmd_set_vxlan_port(struct be_adapter *adapter, __be16 port);
 int be_cmd_manage_iface(struct be_adapter *adapter, u32 iface, u8 op);
 int be_cmd_set_sriov_config(struct be_adapter *adapter,
 			    struct be_resources res, u16 num_vfs,
-			    u16 num_vf_qs);
+			    struct be_resources *vft_res);

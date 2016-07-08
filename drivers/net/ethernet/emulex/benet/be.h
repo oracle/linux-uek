@@ -72,6 +72,9 @@
 #define BE_MAX_MTU              (BE_MAX_JUMBO_FRAME_SIZE -	\
 				 (ETH_HLEN + ETH_FCS_LEN))
 
+/* Accommodate for QnQ configurations where VLAN insertion is enabled in HW */
+#define BE_MAX_GSO_SIZE		(65535 - 2 * VLAN_HLEN)
+
 #define BE_NUM_VLANS_SUPPORTED	64
 #define BE_MAX_EQD		128u
 #define	BE_MAX_TX_FRAG_COUNT	30
@@ -94,7 +97,8 @@
 					 * SURF/DPDK
 					 */
 
-#define MAX_RSS_IFACES		15
+#define MAX_PORT_RSS_TABLES	15
+#define MAX_NIC_FUNCS		16
 #define MAX_RX_QS		32
 #define MAX_EVT_QS		32
 #define MAX_TX_QS		32
@@ -124,27 +128,27 @@ struct be_dma_mem {
 };
 
 struct be_queue_info {
-	struct be_dma_mem dma_mem;
-	u16 len;
-	u16 entry_size;	/* Size of an element in the queue */
-	u16 id;
-	u16 tail, head;
-	bool created;
+	u32 len;
+	u32 entry_size;	/* Size of an element in the queue */
+	u32 tail, head;
 	atomic_t used;	/* Number of valid elements in the queue */
+	u32 id;
+	struct be_dma_mem dma_mem;
+	bool created;
 };
 
-static inline u32 MODULO(u16 val, u16 limit)
+static inline u32 MODULO(u32 val, u32 limit)
 {
 	BUG_ON(limit & (limit - 1));
 	return val & (limit - 1);
 }
 
-static inline void index_adv(u16 *index, u16 val, u16 limit)
+static inline void index_adv(u32 *index, u32 val, u32 limit)
 {
 	*index = MODULO((*index + val), limit);
 }
 
-static inline void index_inc(u16 *index, u16 limit)
+static inline void index_inc(u32 *index, u32 limit)
 {
 	*index = MODULO((*index + 1), limit);
 }
@@ -169,7 +173,7 @@ static inline void queue_head_inc(struct be_queue_info *q)
 	index_inc(&q->head, q->len);
 }
 
-static inline void index_dec(u16 *index, u16 limit)
+static inline void index_dec(u32 *index, u32 limit)
 {
 	*index = MODULO((*index - 1), limit);
 }
@@ -441,6 +445,17 @@ struct be_resources {
 	u16 max_evt_qs;
 	u32 if_cap_flags;
 	u32 vf_if_cap_flags;	/* VF if capability flags */
+	u32 flags;
+	/* Calculated PF Pool's share of RSS Tables. This is not enforced by
+	 * the FW, but is a self-imposed driver limitation.
+	 */
+	u16 max_rss_tables;
+};
+
+/* These are port-wide values */
+struct be_port_resources {
+	u16 max_vfs;
+	u16 nic_pfs;
 };
 
 #define be_is_os2bmc_enabled(adapter) (adapter->flags & BE_FLAGS_OS2BMC)
@@ -543,6 +558,7 @@ struct be_adapter {
 	u8 recovery_retries;
 	u8 err_flags;
 	u32 flags;
+	bool pcicfg_mapped;     /* pcicfg obtained via pci_iomap() */
 	u32 cmd_privileges;
 	/* Ethtool knobs and info */
 	char fw_ver[FW_VER_LEN];
@@ -630,6 +646,8 @@ struct be_adapter {
 #define be_max_rxqs(adapter)		(adapter->res.max_rx_qs)
 #define be_max_eqs(adapter)		(adapter->res.max_evt_qs)
 #define be_if_cap_flags(adapter)	(adapter->res.if_cap_flags)
+#define be_max_pf_pool_rss_tables(adapter)	\
+				(adapter->pool_res.max_rss_tables)
 
 static inline u16 be_max_qs(struct be_adapter *adapter)
 {
