@@ -491,7 +491,7 @@ irqreturn_t qlcnic_83xx_clear_legacy_intr(struct qlcnic_adapter *adapter)
 
 static inline void qlcnic_83xx_notify_mbx_response(struct qlcnic_mailbox *mbx)
 {
-	atomic_set(&mbx->rsp_status, QLC_83XX_MBX_RESPONSE_ARRIVED);
+	mbx->rsp_status = QLC_83XX_MBX_RESPONSE_ARRIVED;
 	complete(&mbx->completion);
 }
 
@@ -510,7 +510,7 @@ static void qlcnic_83xx_poll_process_aen(struct qlcnic_adapter *adapter)
 	if (event &  QLCNIC_MBX_ASYNC_EVENT) {
 		__qlcnic_83xx_process_aen(adapter);
 	} else {
-		if (atomic_read(&mbx->rsp_status) != rsp_status)
+		if (mbx->rsp_status != rsp_status)
 			qlcnic_83xx_notify_mbx_response(mbx);
 	}
 out:
@@ -918,8 +918,6 @@ int qlcnic_83xx_alloc_mbx_args(struct qlcnic_cmd_args *mbx,
 				mbx->req.arg = NULL;
 				return -ENOMEM;
 			}
-			memset(mbx->req.arg, 0, sizeof(u32) * mbx->req.num);
-			memset(mbx->rsp.arg, 0, sizeof(u32) * mbx->rsp.num);
 			temp = adapter->ahw->fw_hal_version << 29;
 			mbx->req.arg[0] = (type | (mbx->req.num << 16) | temp);
 			mbx->cmd_op = type;
@@ -1025,7 +1023,7 @@ static void qlcnic_83xx_process_aen(struct qlcnic_adapter *adapter)
 		if (event &  QLCNIC_MBX_ASYNC_EVENT) {
 			__qlcnic_83xx_process_aen(adapter);
 		} else {
-			if (atomic_read(&mbx->rsp_status) != rsp_status)
+			if (mbx->rsp_status != rsp_status)
 				qlcnic_83xx_notify_mbx_response(mbx);
 		}
 	}
@@ -2355,7 +2353,7 @@ static irqreturn_t qlcnic_83xx_handle_aen(int irq, void *data)
 	if (event &  QLCNIC_MBX_ASYNC_EVENT) {
 		__qlcnic_83xx_process_aen(adapter);
 	} else {
-		if (atomic_read(&mbx->rsp_status) != rsp_status)
+		if (mbx->rsp_status != rsp_status)
 			qlcnic_83xx_notify_mbx_response(mbx);
 		else
 			adapter->stats.mbx_spurious_intr++;
@@ -4054,12 +4052,12 @@ static void qlcnic_83xx_mailbox_worker(struct work_struct *work)
 	struct qlcnic_mailbox *mbx = container_of(work, struct qlcnic_mailbox,
 						  work);
 	struct qlcnic_adapter *adapter = mbx->adapter;
-	struct qlcnic_mbx_ops *mbx_ops = mbx->ops;
+	const struct qlcnic_mbx_ops *mbx_ops = mbx->ops;
 	struct device *dev = &adapter->pdev->dev;
-	atomic_t *rsp_status = &mbx->rsp_status;
 	struct list_head *head = &mbx->cmd_q;
 	struct qlcnic_hardware_context *ahw;
 	struct qlcnic_cmd_args *cmd = NULL;
+	unsigned long flags;
 
 	ahw = adapter->ahw;
 
@@ -4069,7 +4067,9 @@ static void qlcnic_83xx_mailbox_worker(struct work_struct *work)
 			return;
 		}
 
-		atomic_set(rsp_status, QLC_83XX_MBX_RESPONSE_WAIT);
+		spin_lock_irqsave(&mbx->aen_lock, flags);
+		mbx->rsp_status = QLC_83XX_MBX_RESPONSE_WAIT;
+		spin_unlock_irqrestore(&mbx->aen_lock, flags);
 
 		spin_lock(&mbx->queue_lock);
 
@@ -4104,7 +4104,7 @@ static void qlcnic_83xx_mailbox_worker(struct work_struct *work)
 	}
 }
 
-static struct qlcnic_mbx_ops qlcnic_83xx_mbx_ops = {
+static const struct qlcnic_mbx_ops qlcnic_83xx_mbx_ops = {
 	.enqueue_cmd    = qlcnic_83xx_enqueue_mbx_cmd,
 	.dequeue_cmd    = qlcnic_83xx_dequeue_mbx_cmd,
 	.decode_resp    = qlcnic_83xx_decode_mbx_rsp,
