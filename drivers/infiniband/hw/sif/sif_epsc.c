@@ -641,6 +641,7 @@ int sif_eps_init(struct sif_dev *sdev, enum sif_tab_type type)
 	size_t bsz;
 	size_t config_cycle_count = sizeof(struct psif_epsc_csr_config)/sizeof(u32);
 	bool restarted_reset = false;
+	ulong cpu_eqs;
 
 	/* Max mailbox exchange protocol version supported by this driver */
 	u16 mailbox_seq_version_to_use = 2;
@@ -935,8 +936,11 @@ proto_probing_done:
 	if (sif_cq_eq_max < 1)
 		sif_cq_eq_max = 1; /* Adjust - need at least 1 completion event queue */
 
-	/* We only allocate resources for these */
-	es->eqs.cnt = min_t(ulong, es->eqs.max_cnt, sif_cq_eq_max + 2);
+	/* Limit the number of eqs we allocate resources for to the
+	 * cq_eq_max module parameter setting and the number of CPUs in the system:
+	 */
+	cpu_eqs = min_t(ulong, sif_cq_eq_max, num_present_cpus());
+	es->eqs.cnt = min_t(ulong, es->eqs.max_cnt, cpu_eqs + 2);
 
 	ret = sif_eps_api_version_ok(sdev, eps_num);
 	if (ret)

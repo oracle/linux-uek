@@ -100,7 +100,7 @@ module_param_named(ki_spqp_size, sif_ki_spqp_size, uint, S_IRUGO);
 MODULE_PARM_DESC(ki_spqp_size, "Number of privileged QPs for key invalidate stencils to set up");
 
 /* pqp_size ==  cq_eq_max */
-uint sif_cq_eq_max = 12;
+uint sif_cq_eq_max = 46;
 module_param_named(cq_eq_max, sif_cq_eq_max, uint, S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(cq_eq_max, "Upper limit on no. of EQs to distribute completion events among");
 
