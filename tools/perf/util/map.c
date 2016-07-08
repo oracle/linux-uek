@@ -16,6 +16,7 @@
 #include "machine.h"
 #include <linux/string.h>
 
+bool include_sysv_lookup = false;
 const char *map_type__name[MAP__NR_TYPES] = {
 	[MAP__FUNCTION] = "Functions",
 	[MAP__VARIABLE] = "Variables",
@@ -31,7 +32,7 @@ static inline int is_anon_memory(const char *filename)
 static inline int is_no_dso_memory(const char *filename)
 {
 	return !strncmp(filename, "[stack", 6) ||
-	       !strncmp(filename, "/SYSV",5)   ||
+	       (!include_sysv_lookup && !strncmp(filename, "/SYSV", 5)) ||
 	       !strcmp(filename, "[heap]");
 }
 
