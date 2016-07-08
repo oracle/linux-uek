@@ -152,6 +152,7 @@ MODULE_PARM_DESC(scale_profile, "Dynamically adjust default profile"
 #define MLX4_SCALE_LOG_NUM_QP 20 /* 1 Meg */
 #define MLX4_SCALE_LOG_NUM_SRQ 18 /* 256K */
 #define MLX4_SCALE_LOG_NUM_CQ 18 /* 256K */
+#define MLX4_SCALE_LOG_RDMARC_PER_QP 7 /* 128 */
 
 static bool use_prio;
 module_param_named(use_prio, use_prio, bool, 0444);
@@ -185,7 +186,7 @@ static atomic_t pf_loading = ATOMIC_INIT(0);
 static struct mlx4_profile default_profile = {
 	.num_qp         = 19,
 	.num_srq        = 16,
-	.rdmarc_per_qp  = 7,
+	.rdmarc_per_qp  = 4,
 	.num_cq         = 16,
 	.num_mcg        = 13,
 	.num_mpt        = 19,
@@ -195,7 +196,7 @@ static struct mlx4_profile default_profile = {
 static struct mlx4_profile mod_param_profile = {
 	.num_qp         = 0,	/* 0=>scale_profile or default 19 */
 	.num_srq        = 0,	/* 0=>scale_profile or default 16 */
-	.rdmarc_per_qp  = 4,
+	.rdmarc_per_qp  = 0,	/* 0=>scale_profile or default 4 */
 	.num_cq         = 0,	/* 0=>scale_profile or default 16 */
 	.num_mcg        = 13,
 	.num_mpt        = 19,
@@ -281,7 +282,33 @@ static void process_mod_param_profile(struct mlx4_profile *profile)
 		}
 	}
 
-	profile->rdmarc_per_qp = 1 << mod_param_profile.rdmarc_per_qp;
+	if (mod_param_profile.rdmarc_per_qp) {
+		if (mlx4_scale_profile)
+			pr_warn("mlx4_core: Both scale_profile and log_rdmarc_per_qp are set. Ignore scale_profile.\n");
+		profile->rdmarc_per_qp = 1 << mod_param_profile.rdmarc_per_qp;
+	} else {
+		if (mlx4_scale_profile) {
+			/* Note: This could be set dynamically based on
+			 * system/HCA resources in future. A constant for now.
+			 */
+			profile->rdmarc_per_qp =
+				1 << MLX4_SCALE_LOG_RDMARC_PER_QP;
+			pr_info("mlx4_core: Scalable default profile parameters are enabled. Effective log_rdmarc_per_qp is now set to %d.\n",
+				MLX4_SCALE_LOG_RDMARC_PER_QP);
+			/* set in mod_param also for sysfs viewing */
+			mod_param_profile.rdmarc_per_qp =
+				MLX4_SCALE_LOG_RDMARC_PER_QP;
+		} else {
+			profile->rdmarc_per_qp =
+				1 << default_profile.rdmarc_per_qp;
+			pr_info("mlx4_core: log_rdmarc_per_qp not set and using driver default. Effective log_rdmarc_per_qp is now set to %d.\n",
+				default_profile.rdmarc_per_qp);
+			/* set in mod_param also for sysfs viewing */
+			mod_param_profile.rdmarc_per_qp =
+				default_profile.rdmarc_per_qp;
+		}
+	}
+
 
 	if (mod_param_profile.num_cq) {
 		if (mlx4_scale_profile)
