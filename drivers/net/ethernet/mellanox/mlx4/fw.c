@@ -2541,10 +2541,6 @@ out:
 static int mlx4_check_smp_firewall_active(struct mlx4_dev *dev,
 					  struct mlx4_cmd_mailbox *mailbox)
 {
-#define MLX4_CMD_MAD_DEMUX_SET_ATTR_OFFSET		0x10
-#define MLX4_CMD_MAD_DEMUX_GETRESP_ATTR_OFFSET		0x20
-#define MLX4_CMD_MAD_DEMUX_TRAP_ATTR_OFFSET		0x40
-#define MLX4_CMD_MAD_DEMUX_TRAP_REPRESS_ATTR_OFFSET	0x70
 
 	u32 set_attr_mask, getresp_attr_mask;
 	u32 trap_attr_mask, traprepress_attr_mask;
@@ -2581,6 +2577,7 @@ int mlx4_config_mad_demux(struct mlx4_dev *dev)
 	struct mlx4_cmd_mailbox *mailbox;
 	int secure_host_active;
 	int err;
+	u32 get_attr_mask;
 
 	/* Check if mad_demux is supported */
 	if (!(dev->caps.flags2 & MLX4_DEV_CAP_FLAG2_MAD_DEMUX))
@@ -2604,14 +2601,43 @@ int mlx4_config_mad_demux(struct mlx4_dev *dev)
 
 	secure_host_active = mlx4_check_smp_firewall_active(dev, mailbox);
 
-	/* Config mad_demux to handle all MADs returned by the query above */
+	/* Config hca to handle pi and ni queries if not already handling */
+	MLX4_GET(get_attr_mask, mailbox->buf,
+		 MLX4_CMD_MAD_DEMUX_GET_ATTR_OFFSET);
+	if ((get_attr_mask & SMP_GET_PORT_NODE_INFO_MASK_BITS) !=
+	   SMP_GET_PORT_NODE_INFO_MASK_BITS){
+		get_attr_mask |= SMP_GET_PORT_NODE_INFO_MASK_BITS;
+		MLX4_PUT(mailbox->buf, get_attr_mask,
+			 MLX4_CMD_MAD_DEMUX_GET_ATTR_OFFSET);
+	};
+
+	/* Config mad_demux to handle remaining MADs returned by the query above */
 	err = mlx4_cmd(dev, mailbox->dma, 0x01 /* subn mgmt class */,
 		       MLX4_CMD_MAD_DEMUX_CONFIG, MLX4_CMD_MAD_DEMUX,
 		       MLX4_CMD_TIME_CLASS_B, MLX4_CMD_NATIVE);
 	if (err) {
-		mlx4_warn(dev, "MLX4_CMD_MAD_DEMUX: configure failed (%d)\n", err);
+		mlx4_warn(dev, "MLX4_CMD_MAD_DEMUX: configure failed (%d)\n",
+			  err);
 		goto out;
 	}
+
+	/* Read back current config to verify */
+	err = mlx4_cmd_box(dev, 0, mailbox->dma, 0x01 /* subn mgmt class */,
+			   MLX4_CMD_MAD_DEMUX_QUERY_STATE, MLX4_CMD_MAD_DEMUX,
+			   MLX4_CMD_TIME_CLASS_B, MLX4_CMD_NATIVE);
+	if (err) {
+		mlx4_warn(dev, "MLX4_CMD_MAD_DEMUX: query state failed (%d)\n",
+			  err);
+		goto out;
+	}
+
+	MLX4_GET(get_attr_mask, mailbox->buf,
+		 MLX4_CMD_MAD_DEMUX_GET_ATTR_OFFSET);
+	if ((get_attr_mask & SMP_GET_PORT_NODE_INFO_MASK_BITS) ==
+	    SMP_GET_PORT_NODE_INFO_MASK_BITS)
+		mlx4_info(dev, "sm port and node info query - offload successful\n");
+	else
+		mlx4_warn(dev, "sm port and node info query - offload failed\n");
 
 	if (secure_host_active)
 		mlx4_warn(dev, "HCA operating in secure-host mode. SMP firewall activated.\n");

@@ -62,6 +62,17 @@ MODULE_VERSION(DRV_VERSION);
 int ipoib_sendq_size __read_mostly = IPOIB_TX_RING_SIZE;
 int ipoib_recvq_size __read_mostly = IPOIB_RX_RING_SIZE;
 int unload_allowed __read_mostly = 1;
+/* IPOIB_CM_MAX_BAD_CONNS default value (8) is inline with current
+ * Exadata-ZFS deployment.
+ * We usually have 2 ZFS heads in current deployment.
+ * Considering this, maximum four connections can go bad (assuming
+ * unlikely scenario where all connections went bad simultaneously)
+ * With CM connection workqueue size, which is 1/8th of port limit,
+ * as defined below; we should hold good.
+ * Orabug: 22287489
+ */
+int ipoib_cm_sendq_size __read_mostly = IPOIB_TX_RING_SIZE / IPOIB_CM_MAX_BAD_CONNS;
+int ipoib_cm_max_bad_conns = IPOIB_CM_MAX_BAD_CONNS;
 
 module_param_named(module_unload_allowed, unload_allowed, int, 0444);
 MODULE_PARM_DESC(module_unload_allowed, "Allow this module to be unloaded or not (default 1 for YES)");
@@ -70,6 +81,8 @@ module_param_named(send_queue_size, ipoib_sendq_size, int, 0444);
 MODULE_PARM_DESC(send_queue_size, "Number of descriptors in send queue");
 module_param_named(recv_queue_size, ipoib_recvq_size, int, 0444);
 MODULE_PARM_DESC(recv_queue_size, "Number of descriptors in receive queue");
+module_param_named(cm_max_bad_conns, ipoib_cm_max_bad_conns, int, 0444);
+MODULE_PARM_DESC(cm_max_bad_conns, "Continue data transfer with other nodes upto certain no of bad connections (Default 8 indicates, data transfer will continue with 4 bad connections)");
 
 #ifdef CONFIG_INFINIBAND_IPOIB_DEBUG
 int ipoib_debug_level;
@@ -2023,6 +2036,13 @@ static int __init ipoib_init_module(void)
 	}
 
 #ifdef CONFIG_INFINIBAND_IPOIB_CM
+	if (ipoib_cm_max_bad_conns <= 0) {
+		pr_err("invalid value for cm_max_bad_conns %d, seting to default %d\n",
+				ipoib_cm_max_bad_conns, IPOIB_CM_MAX_BAD_CONNS);
+		ipoib_cm_max_bad_conns = IPOIB_CM_MAX_BAD_CONNS;
+	}
+
+	ipoib_cm_sendq_size = ipoib_sendq_size / ipoib_cm_max_bad_conns;
 	ipoib_max_conn_qp = min(ipoib_max_conn_qp, IPOIB_CM_MAX_CONN_QP);
 #endif
 
