@@ -768,10 +768,15 @@ void vio_port_up(struct vio_driver_state *vio)
 
 	spin_lock_irqsave(&vio->lock, flags);
 
-	state = ldc_state(vio->lp);
-
 	err = 0;
-	if (state == LDC_STATE_INIT) {
+	if (vio->lp)
+		state = ldc_state(vio->lp);
+	else {
+		state = LDC_STATE_INVALID;
+		err = -EINVAL;
+	}
+
+	if (!err && (state == LDC_STATE_INIT)) {
 		err = ldc_bind(vio->lp);
 		if (err)
 			printk(KERN_WARNING "%s: Port %lu bind failed, "

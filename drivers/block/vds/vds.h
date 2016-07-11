@@ -60,6 +60,7 @@ struct vds_port {
 };
 
 #define	VDS_PORT_SEQ		0x1
+#define	VDS_PORT_FINI		0x2
 
 static inline struct vds_port *to_vds_port(struct vio_driver_state *vio)
 {

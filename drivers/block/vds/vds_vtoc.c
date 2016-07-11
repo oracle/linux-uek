@@ -273,6 +273,11 @@ int vds_vtoc_get(struct vds_port *port)
 	struct dk_label *label;
 	struct vio_disk_vtoc *vtoc = port->vtoc;
 
+	if (!vtoc) {
+		vdsmsg(err, "NULL vtoc pointer\n");
+		return -EINVAL;
+	}
+
 	rv = vds_vtoc_get_label(port, &label);
 	if (!label)
 		return rv;

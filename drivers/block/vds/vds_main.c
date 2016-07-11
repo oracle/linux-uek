@@ -186,7 +186,7 @@ static int vds_handle_attr(struct vio_driver_state *vio, void *arg)
 	       pkt->vdisk_size, pkt->vdisk_block_size,
 	       pkt->max_xfer_size, pkt->operations);
 
-	return vio_ldc_send(&port->vio, pkt, sizeof(*pkt));
+	return vio_ldc_send(vio, pkt, sizeof(*pkt));
 }
 
 static struct vio_driver_ops vds_vio_ops = {
@@ -435,7 +435,12 @@ static void vds_bh_io(struct work_struct *work)
 	else
 		BUG();
 
-	vds_io_done(io);
+	/*
+	 * If there was a reset then the IO request has been
+	 * converted to a reset request queued to be executed.
+	 */
+	if (!(io->flags & VDS_IO_FINI))
+		vds_io_done(io);
 }
 
 static void vds_reset(struct vds_io *io)
@@ -449,11 +454,18 @@ static void vds_reset(struct vds_io *io)
 
 	BUG_ON(in_interrupt());
 
+	vds_vio_lock(vio, flags);
+
+	/*
+	 * No point resetting the channel if the port is being shutdown.
+	 */
+	if (port->flags & VDS_PORT_FINI)
+		goto done;
+
 	io->flags |= VDS_IO_FINI;
 
 	vds_be_fini(port);
 
-	vds_vio_lock(vio, flags);
 	vio_link_state_change(vio, LDC_EVENT_RESET);
 	vio->desc_buf_len = 0;
 
@@ -899,12 +911,12 @@ static int vds_port_probe(struct vio_dev *vdev, const struct vio_device_id *id)
 	dev_set_drvdata(&vdev->dev, port);
 
 	err = sysfs_create_group(&vdev->dev.kobj, &vds_attribute_group);
-	if (err)
-		goto free_path;
+	if (!err) {
+		vio_port_up(vio);
+		return 0;
+	}
 
-	vio_port_up(vio);
-
-	return 0;
+	destroy_workqueue(port->ioq);
 
 free_path:
 	kfree(port->path);
@@ -924,16 +936,72 @@ free_port:
 	return err;
 }
 
+static void vds_port_fini(struct vds_port *port)
+{
+	struct vio_driver_state *vio = &port->vio;
+	struct list_head *pos, *tmp;
+	struct vds_io *io;
+
+	BUG_ON(ldc_state(vio->lp) == LDC_STATE_CONNECTED);
+
+	/*
+	 * Shutdown the backend and then issue a final flush request
+	 * to make sure all outstanding IO is complete.
+	 *
+	 * The LDC was disconnected before this call so there will
+	 * be no further incoming requests. There may still be
+	 * requests in progress which may generate some resets since
+	 * responding to the client will fail.  The reset will be ignored
+	 * however since the port is in the FINI state so by the time
+	 * the flush is processed there should be no further requests
+	 * on the IO queue.  Strictly speaking, we should assert that
+	 * absolutely no requests are on the queue but ignoring a potential
+	 * reset at this point should be harmless.
+	 */
+	io = vds_io_alloc(vio, NULL);
+	if (io) {
+		(void) vd_op_flush(io);
+		vds_io_done(io);
+		list_for_each_safe(pos, tmp, &port->io_list) {
+			io = list_entry(pos, struct vds_io, list);
+			BUG_ON(!(io->flags & VDS_IO_FINI));
+			vds_io_done(io);
+		}
+	}
+	vds_be_fini(port);
+}
+
 static int vds_port_remove(struct vio_dev *vdev)
 {
 	struct vds_port *port = dev_get_drvdata(&vdev->dev);
 	struct vio_driver_state *vio = &port->vio;
+	unsigned long flags;
 
 	if (!port)
 		return 0;
 
+	/*
+	 * Disconnect the LDC so no further requests are received
+	 * and then shutdown the port.
+	 */
+	vds_vio_lock(vio, flags);
 	del_timer_sync(&vio->timer);
 	ldc_disconnect(vio->lp);	/* XXX vds_port_down() */
+	port->flags |= VDS_PORT_FINI;
+	vds_vio_unlock(vio, flags);
+
+	vds_port_fini(port);
+	destroy_workqueue(port->ioq);
+
+	/*
+	 * At this point there should be no other outstanding IO
+	 * and all client responses have been completed, either
+	 * successfully or failed with a reset due to the LDC being
+	 * disconnected, so that vdc_ldc_send() will never be called
+	 * again and the LDC can be freed.  Without this guaranteed
+	 * vio_ldc_send() can panic since it unconditionally dereference
+	 * vio->lp.
+	 */
 	vio_ldc_free(vio);
 	sysfs_remove_group(&vdev->dev.kobj, &vds_attribute_group);
 	dev_set_drvdata(&vdev->dev, NULL);

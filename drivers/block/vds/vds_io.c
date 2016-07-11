@@ -29,7 +29,7 @@ int vds_io_init(void)
 	 * The size of the cache object accomdate the largest possible
 	 * IO transfer initiated from either dring or descriptor mode.
 	 */
-	max_cookies = (roundup(VDS_MAX_XFER_SIZE, PAGE_SIZE) / PAGE_SIZE) + 1;
+	max_cookies = (roundup(VDS_MAX_XFER_SIZE, PAGE_SIZE) / PAGE_SIZE) + 2;
 	max_cookies = max(max_cookies, VIO_MAX_RING_COOKIES);
 	max_entry = max_cookies * sizeof(struct ldc_trans_cookie);
 
@@ -40,6 +40,7 @@ int vds_io_init(void)
 	vds_ioc_size = sizeof(struct vds_io) +
 		       max(max_dring_mode, max_desc_mode);
 
+	BUG_ON(vds_io_cache);
 	vds_io_cache = kmem_cache_create(vds_ioc_name, vds_ioc_size, 0,
 					 0, NULL);
 	if (!vds_io_cache) {
@@ -52,7 +53,9 @@ int vds_io_init(void)
 
 void vds_io_fini(void)
 {
+	BUG_ON(!vds_io_cache);
 	kmem_cache_destroy(vds_io_cache);
+	vds_io_cache = NULL;
 }
 
 /*
@@ -84,6 +87,7 @@ struct vds_io *vds_io_alloc(struct vio_driver_state *vio,
 	vdsdbg(MEM, "size=%d ioc_size=%d\n", size, vds_ioc_size);
 
 	if (size <= vds_ioc_size) {
+		BUG_ON(!vds_io_cache);
 		io = kmem_cache_zalloc(vds_io_cache, GFP_ATOMIC);
 
 		if (!io)
@@ -122,6 +126,7 @@ err:
 void vds_io_free(struct vds_io *io)
 {
 	if (io->flags & VDS_IO_CACHE) {
+		BUG_ON(!vds_io_cache);
 		kmem_cache_free(vds_io_cache, io);
 	} else {
 		kfree(io->msgbuf);
