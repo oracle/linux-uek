@@ -1230,8 +1230,7 @@ void xve_fwt_put_ctx(struct xve_fwt_s *xve_fwt,
 struct xve_fwt_entry *xve_fwt_list(struct xve_fwt_s *xve_fwt, int val);
 bool xve_fwt_entry_valid(struct xve_fwt_s *xve_fwt,
 			 struct xve_fwt_entry *fwt_entry);
-void xve_flush_l2_entries(struct net_device *netdev, struct xve_path *path,
-			  int do_lock);
+void xve_flush_l2_entries(struct net_device *netdev, struct xve_path *path);
 int xve_aging_task_machine(struct xve_dev_priv *priv);
 void xve_prepare_skb(struct xve_dev_priv *priv, struct sk_buff *skb);
 void xve_tables_exit(void);

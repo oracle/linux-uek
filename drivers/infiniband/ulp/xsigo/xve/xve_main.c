@@ -136,8 +136,6 @@ MODULE_PARM_DESC(xve_ud_mode, "Always use UD mode irrespective of xsmp.vnet_mode
 
 static void xve_send_msg_to_xsigod(xsmp_cookie_t xsmp_hndl, void *data,
 				   int len);
-static void path_free(struct net_device *netdev, struct xve_path *path);
-
 struct xve_path_iter {
 	struct net_device *dev;
 	struct xve_path path;
@@ -339,10 +337,39 @@ inline void xve_get_path(struct xve_path *path)
 	atomic_inc(&path->users);
 }
 
-inline void xve_put_path(struct xve_path *path)
+inline void xve_put_path(struct xve_path *path, int do_lock)
 {
-	if (atomic_dec_and_test(&path->users))
-		path_free(path->dev, path);
+	struct xve_dev_priv *priv;
+	struct net_device *netdev;
+	struct sk_buff *skb;
+	unsigned long flags = 0;
+
+	if (atomic_dec_and_test(&path->users)) {
+		netdev = path->dev;
+		priv = netdev_priv(netdev);
+		while ((skb = __skb_dequeue(&path->queue)))
+			dev_kfree_skb_irq(skb);
+
+		while ((skb = __skb_dequeue(&path->uplink_queue)))
+			dev_kfree_skb_irq(skb);
+
+		if (do_lock)
+			spin_lock_irqsave(&priv->lock, flags);
+		if (xve_cmtx_get(path)) {
+			if (do_lock)
+				spin_unlock_irqrestore(&priv->lock, flags);
+			xve_cm_destroy_tx_deferred(xve_cmtx_get(path));
+			if (do_lock)
+				spin_lock_irqsave(&priv->lock, flags);
+		}
+		xve_flush_l2_entries(netdev, path);
+		if (path->ah)
+			xve_put_ah(path->ah);
+		if (do_lock)
+			spin_unlock_irqrestore(&priv->lock, flags);
+
+		kfree(path);
+	}
 }
 
 struct xve_path *__path_find(struct net_device *netdev, void *gid)
@@ -399,47 +426,14 @@ static int __path_add(struct net_device *netdev, struct xve_path *path)
 	return 0;
 }
 
-void xve_flush_l2_entries(struct net_device *netdev, struct xve_path *path,
-			  int do_lock)
+void xve_flush_l2_entries(struct net_device *netdev, struct xve_path *path)
 {
 	struct xve_dev_priv *priv = netdev_priv(netdev);
 	struct xve_fwt_entry *fwt_entry, *tn;
-	unsigned long flags = 0;
-
-	if (do_lock)
-		spin_lock_irqsave(&priv->lock, flags);
 
 	list_for_each_entry_safe(fwt_entry, tn, &path->fwt_list, list)
 		xve_fwt_entry_destroy(priv, fwt_entry);
 
-	if (do_lock)
-		spin_unlock_irqrestore(&priv->lock, flags);
-}
-
-static void path_free(struct net_device *netdev, struct xve_path *path)
-{
-	struct xve_dev_priv *priv = netdev_priv(netdev);
-	struct sk_buff *skb;
-	unsigned long flags;
-
-	while ((skb = __skb_dequeue(&path->queue)))
-		dev_kfree_skb_irq(skb);
-
-	while ((skb = __skb_dequeue(&path->uplink_queue)))
-		dev_kfree_skb_irq(skb);
-
-	spin_lock_irqsave(&priv->lock, flags);
-	if (xve_cmtx_get(path)) {
-		spin_unlock_irqrestore(&priv->lock, flags);
-		xve_cm_destroy_tx_deferred(xve_cmtx_get(path));
-		spin_lock_irqsave(&priv->lock, flags);
-	}
-	xve_flush_l2_entries(netdev, path, 0);
-	spin_unlock_irqrestore(&priv->lock, flags);
-
-	if (path->ah)
-		xve_put_ah(path->ah);
-	kfree(path);
 }
 
 /*
@@ -531,7 +525,7 @@ void xve_flush_single_path_by_gid(struct net_device *dev, union ib_gid *gid)
 
 	wait_for_completion(&path->done);
 	list_del(&path->list);
-	xve_put_path(path);
+	xve_put_path(path, 1);
 }
 
 void xve_flush_single_path(struct net_device *dev, struct xve_path *path)
@@ -601,10 +595,10 @@ static void path_rec_completion(int status,
 	path->query = NULL;
 	complete(&path->done);
 
-	spin_unlock_irqrestore(&priv->lock, flags);
-
 	if (old_ah)
 		xve_put_ah(old_ah);
+	spin_unlock_irqrestore(&priv->lock, flags);
+
 
 	while ((skb = __skb_dequeue(&skqueue))) {
 		if (xve_is_edr(priv)) {
@@ -765,7 +759,7 @@ xve_path_lookup(struct net_device *dev,
 	spin_unlock_irqrestore(&xve_fwt->lock, flags);
 	if (!path->ah) {
 		if (!path->query && path_rec_start(dev, path)) {
-			xve_put_path(path);
+			xve_put_path(path, 0);
 			return NULL;
 		}
 	}
@@ -823,7 +817,7 @@ int xve_gw_send(struct net_device *dev, struct sk_buff *skb)
 	priv->counters[XVE_GW_MCAST_TX]++;
 
 out:
-	xve_put_path(path);
+	xve_put_path(path, 0);
 	return ret;
 }
 
@@ -1039,7 +1033,7 @@ stats:
 	priv->counters[XVE_TX_COUNTER]++;
 free_fwt_ctx:
 	if (path)
-		xve_put_path(path);
+		xve_put_path(path, 0);
 	xve_fwt_put_ctx(&priv->xve_fwt, fwt_entry);
 unlock:
 	if (inc_drop_cnt)
@@ -1599,11 +1593,10 @@ static int xve_state_machine(struct xve_dev_priv *priv)
 				XVE_HBEAT_LOSS_THRES*priv->hb_interval)) {
 			unsigned long flags = 0;
 
-			xve_warn(priv, "Heart Beat Loss: %lu:%lu\n", jiffies,
-				(unsigned long)priv->last_hbeat +
+			xve_warn(priv, "Heart Beat Loss: %lu:%lu\n",
+				jiffies, (unsigned long)priv->last_hbeat +
 				3*priv->hb_interval*HZ);
 
-			xve_flush_paths(priv->netdev);
 			spin_lock_irqsave(&priv->lock, flags);
 			/* Disjoin from multicast Group */
 			set_bit(XVE_HBEAT_LOST, &priv->state);
@@ -1745,6 +1738,8 @@ xve_set_edr_features(struct xve_dev_priv *priv)
 	priv->netdev->hw_features =
 		NETIF_F_HIGHDMA | NETIF_F_SG | NETIF_F_GRO;
 
+	priv->lro_mode = 1;
+
 	if (xve_enable_offload) {
 		if (priv->hca_caps & IB_DEVICE_UD_IP_CSUM)
 			priv->netdev->hw_features |=
@@ -1755,6 +1750,13 @@ xve_set_edr_features(struct xve_dev_priv *priv)
 
 	}
 	priv->netdev->features |= priv->netdev->hw_features;
+
+	if (priv->lro_mode && lro) {
+		priv->netdev->features |= NETIF_F_LRO;
+		xve_lro_setup(priv);
+	} else {
+		priv->lro_mode = 0;
+	}
 
 	/* Reserve extra space for EoIB header */
 	priv->netdev->hard_header_len += sizeof(struct xve_eoib_hdr);

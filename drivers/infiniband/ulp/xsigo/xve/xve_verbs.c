@@ -231,7 +231,7 @@ int xve_transport_dev_init(struct net_device *dev, struct ib_device *ca)
 	priv->tx_wr.send_flags = IB_SEND_SIGNALED;
 
 	priv->rx_sge[0].lkey = priv->mr->lkey;
-	if (xve_ud_need_sg(priv->max_ib_mtu)) {
+	if (xve_ud_need_sg(priv->admin_mtu)) {
 		priv->rx_sge[0].length = XVE_UD_HEAD_SIZE;
 		priv->rx_sge[1].length = PAGE_SIZE;
 		priv->rx_sge[1].lkey = priv->mr->lkey;

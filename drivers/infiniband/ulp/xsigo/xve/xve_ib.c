@@ -64,17 +64,14 @@ void xve_free_ah(struct kref *kref)
 {
 	struct xve_ah *ah = container_of(kref, struct xve_ah, ref);
 	struct xve_dev_priv *priv = netdev_priv(ah->dev);
-	unsigned long flags;
 
-	spin_lock_irqsave(&priv->lock, flags);
 	list_add_tail(&ah->list, &priv->dead_ahs);
-	spin_unlock_irqrestore(&priv->lock, flags);
 }
 
 static void xve_ud_dma_unmap_rx(struct xve_dev_priv *priv,
 				u64 mapping[XVE_UD_RX_EDR_SG])
 {
-	if (xve_ud_need_sg(priv->max_ib_mtu)) {
+	if (xve_ud_need_sg(priv->admin_mtu)) {
 		ib_dma_unmap_single(priv->ca, mapping[0], XVE_UD_HEAD_SIZE,
 				    DMA_FROM_DEVICE);
 		ib_dma_unmap_page(priv->ca, mapping[1], PAGE_SIZE,
@@ -92,7 +89,7 @@ static void xve_ud_skb_put_frags(struct xve_dev_priv *priv,
 		struct sk_buff *skb,
 		unsigned int length)
 {
-	if (xve_ud_need_sg(priv->max_ib_mtu)) {
+	if (xve_ud_need_sg(priv->admin_mtu)) {
 		skb_frag_t *frag = &skb_shinfo(skb)->frags[0];
 		unsigned int size;
 		/*
@@ -140,7 +137,7 @@ static struct sk_buff *xve_alloc_rx_skb(struct net_device *dev, int id)
 	u64 *mapping;
 	int tailroom;
 
-	if (xve_ud_need_sg(priv->max_ib_mtu)) {
+	if (xve_ud_need_sg(priv->admin_mtu)) {
 		/* reserve some tailroom for IP/TCP headers */
 		buf_size = XVE_UD_HEAD_SIZE;
 		tailroom = 128;
@@ -168,7 +165,7 @@ static struct sk_buff *xve_alloc_rx_skb(struct net_device *dev, int id)
 	if (unlikely(ib_dma_mapping_error(priv->ca, mapping[0])))
 		goto error;
 
-	if (xve_ud_need_sg(priv->max_ib_mtu)) {
+	if (xve_ud_need_sg(priv->admin_mtu)) {
 		struct page *page = xve_alloc_page(GFP_ATOMIC);
 
 		if (!page)
@@ -585,7 +582,6 @@ int xve_poll(struct napi_struct *napi, int budget)
 	    container_of(napi, struct xve_dev_priv, napi);
 	struct net_device *dev = priv->netdev;
 	int done, n, t;
-	unsigned long flags = 0;
 
 	done = 0;
 
@@ -603,9 +599,25 @@ int xve_poll(struct napi_struct *napi, int budget)
 poll_more:
 	while (done < budget) {
 		int max = (budget - done);
+		int i;
 
 		t = min(XVE_NUM_WC, max);
-		n = poll_rx(priv, t, &done, 0);
+
+		n = ib_poll_cq(priv->recv_cq, t, priv->ibwc);
+		for (i = 0; i < n; i++) {
+			struct ib_wc *wc = priv->ibwc + i;
+
+			if (wc->wr_id & XVE_OP_RECV) {
+				++done;
+				if (wc->wr_id & XVE_OP_CM)
+					xve_cm_handle_rx_wc(priv->netdev,
+							wc);
+				else
+					xve_ib_handle_rx_wc(priv->netdev,
+							wc);
+			} else
+				xve_cm_handle_tx_wc(priv->netdev, wc);
+		}
 		if (n != t)
 			break;
 	}
@@ -616,31 +628,20 @@ poll_more:
 
 		napi_complete(napi);
 		clear_bit(XVE_OVER_QUOTA, &priv->state);
-	} else {
-		set_bit(XVE_OVER_QUOTA, &priv->state);
-		priv->counters[XVE_RX_QUOTA_EXCEEDED_COUNTER]++;
-		return done;
-	}
-
-	spin_lock_irqsave(&priv->lock, flags);
-	if (test_bit(XVE_OS_ADMIN_UP, &priv->state) &&
-	    test_bit(XVE_CHASSIS_ADMIN_UP, &priv->state) &&
-	    (test_bit(XVE_OPER_UP, &priv->state) ||
-		test_bit(XVE_HBEAT_LOST, &priv->state)) &&
-	    !test_bit(XVE_DELETING, &priv->state)) {
-		set_bit(XVE_INTR_ENABLED, &priv->state);
-		if (unlikely
-		    (ib_req_notify_cq
-		     (priv->recv_cq,
-		      IB_CQ_NEXT_COMP | IB_CQ_REPORT_MISSED_EVENTS))
-		    && napi_reschedule(napi)) {
-			priv->counters[XVE_NAPI_RESCHEDULE_COUNTER]++;
-			spin_unlock_irqrestore(&priv->lock, flags);
-			goto poll_more;
+		if (test_bit(XVE_OS_ADMIN_UP, &priv->state) &&
+				test_bit(XVE_CHASSIS_ADMIN_UP, &priv->state) &&
+				(test_bit(XVE_OPER_UP, &priv->state) ||
+				 test_bit(XVE_HBEAT_LOST, &priv->state)) &&
+				!test_bit(XVE_DELETING, &priv->state)) {
+			set_bit(XVE_INTR_ENABLED, &priv->state);
+			if (unlikely(ib_req_notify_cq(priv->recv_cq,
+				IB_CQ_NEXT_COMP | IB_CQ_REPORT_MISSED_EVENTS))
+				&& napi_reschedule(napi)) {
+				priv->counters[XVE_NAPI_RESCHEDULE_COUNTER]++;
+				goto poll_more;
+			}
 		}
 	}
-	spin_unlock_irqrestore(&priv->lock, flags);
-
 	return done;
 }
 
@@ -724,7 +725,8 @@ static inline int post_send(struct xve_dev_priv *priv,
 
 	return ib_post_send(priv->qp, &priv->tx_wr, &bad_wr);
 }
-/* type argument is used to differentiate between the GATEWAY
+/* Always called with priv->lock held
+ * type argument is used to differentiate between the GATEWAY
  * and UVNIC packet.
  * 1 -> GATEWAY PACKET
  * 0 -> normal UVNIC PACKET
@@ -747,7 +749,6 @@ int xve_send(struct net_device *dev, struct sk_buff *skb,
 				 __func__, dev->stats.tx_dropped,
 				 dev->name);
 			INC_TX_DROP_STATS(priv, dev);
-			INC_TX_ERROR_STATS(priv, dev);
 			xve_put_ah_refcnt(address);
 			dev_kfree_skb_any(skb);
 			return ret;
@@ -759,7 +760,6 @@ int xve_send(struct net_device *dev, struct sk_buff *skb,
 			xve_warn(priv, "send,dropping %ld packets %s\n",
 					dev->stats.tx_dropped, dev->name);
 			INC_TX_DROP_STATS(priv, dev);
-			INC_TX_ERROR_STATS(priv, dev);
 			xve_put_ah_refcnt(address);
 			dev_kfree_skb_any(skb);
 			return ret;
@@ -771,33 +771,6 @@ int xve_send(struct net_device *dev, struct sk_buff *skb,
 	xve_dbg_data(priv,
 		     "%s sending packet, length=%d address=%p qpn=0x%06x\n",
 		     __func__, skb->len, address, qpn);
-
-	if (++priv->tx_outstanding  == priv->xve_sendq_size) {
-		if (type != 1) {
-			/* UVNIC PACKET */
-			xve_dbg_data(priv,
-				     "%s TX ring full, stopping kernel net queue\n",
-				     __func__);
-			if (ib_req_notify_cq(priv->send_cq, IB_CQ_NEXT_COMP))
-				xve_warn(priv, "%s Req notify on send CQ failed\n",
-						__func__);
-			priv->counters[XVE_TX_RING_FULL_COUNTER]++;
-			priv->counters[XVE_TX_QUEUE_STOP_COUNTER]++;
-			netif_stop_queue(dev);
-		} else {
-			/* GATEWAY PACKET */
-			xve_dbg_data(priv,
-				"%s TX ring full, Dropping the Gateway Packet\n",
-					__func__);
-			xve_put_ah_refcnt(address);
-			dev_kfree_skb(skb);
-			poll_tx(priv);
-			INC_TX_DROP_STATS(priv, dev);
-			priv->counters[XVE_TX_SKB_FREE_COUNTER]++;
-			priv->counters[XVE_TX_RING_FULL_COUNTER]++;
-			return ret;
-		}
-	}
 	/*
 	 * We put the skb into the tx_ring _before_ we call post_send()
 	 * because it's entirely possible that the completion handler will
@@ -815,24 +788,50 @@ int xve_send(struct net_device *dev, struct sk_buff *skb,
 		memset(tx_req, 0, sizeof(struct xve_tx_buf));
 		return ret;
 	}
+
+	/* Queue almost full */
+	if (++priv->tx_outstanding == priv->xve_sendq_size) {
+		xve_dbg_data(priv,
+				"%s stop queue head%d out%d tail%d type%d",
+				__func__, priv->tx_head, priv->tx_tail,
+				priv->tx_outstanding, type);
+		if (ib_req_notify_cq(priv->send_cq, IB_CQ_NEXT_COMP))
+			xve_warn(priv, "%s Req notify on send CQ failed\n",
+					__func__);
+		priv->counters[XVE_TX_QUEUE_STOP_COUNTER]++;
+		netif_stop_queue(dev);
+	}
+
+	if (netif_queue_stopped(dev)) {
+		int rc;
+
+		rc = ib_req_notify_cq(priv->send_cq,
+				IB_CQ_NEXT_COMP | IB_CQ_REPORT_MISSED_EVENTS);
+		if (rc < 0)
+			xve_warn(priv, "request notify on send CQ failed\n");
+		else if (rc)
+			poll_tx(priv);
+	 }
+	skb_orphan(skb);
+	skb_dst_drop(skb);
 	if (unlikely(post_send(priv, priv->tx_head & (priv->xve_sendq_size - 1),
 			       address->ah, qpn, tx_req, phead, hlen))) {
-		xve_warn(priv, "%s post_send failed\n", __func__);
-		INC_TX_ERROR_STATS(priv, dev);
+		xve_warn(priv, "%s post_send failed head%d tail%d out%d type%d\n",
+				__func__, priv->tx_head, priv->tx_tail,
+				priv->tx_outstanding, type);
 		--priv->tx_outstanding;
 		priv->counters[XVE_TX_RING_FULL_COUNTER]++;
 		xve_put_ah_refcnt(address);
-		xve_free_txbuf_memory(priv, tx_req);
 		if (netif_queue_stopped(dev)) {
 			priv->counters[XVE_TX_WAKE_UP_COUNTER]++;
 			netif_wake_queue(dev);
 		}
-	} else {
+		xve_free_txbuf_memory(priv, tx_req);
+	} else
 		++priv->tx_head;
-		skb_orphan(skb);
-	}
+
 	priv->send_hbeat_flag = 0;
-	if (unlikely(priv->tx_outstanding > priv->xve_max_send_cqe))
+	if (unlikely(priv->tx_outstanding > MAX_SEND_CQE))
 		poll_tx(priv);
 	return ret;
 }
