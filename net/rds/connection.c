@@ -215,6 +215,9 @@ static struct rds_connection *__rds_conn_create(struct net *net,
 	}
 
 	conn->c_trans = trans;
+	conn->c_reconnect_retry = rds_sysctl_reconnect_retry_ms;
+	conn->c_reconnect_retry_count = 0;
+
 	if (conn->c_loopback)
 		conn->c_wq = rds_local_wq;
 	else
