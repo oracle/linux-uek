@@ -1623,7 +1623,15 @@ static int xve_state_machine(struct xve_dev_priv *priv)
 		handle_action_flags(priv);
 
 		if (priv->send_hbeat_flag) {
-			poll_tx(priv);
+			unsigned long flags = 0;
+
+			if (unlikely(priv->tx_outstanding > MAX_SEND_CQE)) {
+				netif_tx_lock(priv->netdev);
+				spin_lock_irqsave(&priv->lock, flags);
+				poll_tx(priv);
+				spin_unlock_irqrestore(&priv->lock, flags);
+				netif_tx_unlock(priv->netdev);
+			 }
 			if (xve_is_ovn(priv))
 				xve_send_hbeat(priv);
 		}
