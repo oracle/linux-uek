@@ -145,12 +145,17 @@ struct sk_filter
 	struct sock_filter     	insns[0];
 };
 
+int sk_filter_trim_cap(struct sock *sk, struct sk_buff *skb, unsigned int cap);
+static inline int sk_filter(struct sock *sk, struct sk_buff *skb)
+{
+	return sk_filter_trim_cap(sk, skb, 1);
+}
+
 static inline unsigned int sk_filter_len(const struct sk_filter *fp)
 {
 	return fp->len * sizeof(struct sock_filter) + sizeof(*fp);
 }
 
-extern int sk_filter(struct sock *sk, struct sk_buff *skb);
 extern unsigned int sk_run_filter(const struct sk_buff *skb,
 				  const struct sock_filter *filter);
 extern int sk_attach_filter(struct sock_fprog *fprog, struct sock *sk);
