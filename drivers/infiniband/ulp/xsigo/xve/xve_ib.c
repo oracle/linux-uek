@@ -831,7 +831,7 @@ int xve_send(struct net_device *dev, struct sk_buff *skb,
 		++priv->tx_head;
 
 	priv->send_hbeat_flag = 0;
-	if (unlikely(priv->tx_outstanding > MAX_SEND_CQE))
+	if (unlikely(priv->tx_outstanding > SENDQ_LOW_WMARK))
 		poll_tx(priv);
 	return ret;
 }

@@ -1625,7 +1625,7 @@ static int xve_state_machine(struct xve_dev_priv *priv)
 		if (priv->send_hbeat_flag) {
 			unsigned long flags = 0;
 
-			if (unlikely(priv->tx_outstanding > MAX_SEND_CQE)) {
+			if (unlikely(priv->tx_outstanding > SENDQ_LOW_WMARK)) {
 				netif_tx_lock(priv->netdev);
 				spin_lock_irqsave(&priv->lock, flags);
 				poll_tx(priv);
@@ -1735,9 +1735,8 @@ xve_set_ovn_features(struct xve_dev_priv *priv)
 	if (priv->lro_mode && lro) {
 		priv->netdev->features |= NETIF_F_LRO;
 		xve_lro_setup(priv);
-	} else {
+	} else
 		priv->lro_mode = 0;
-	}
 }
 
 void
@@ -1762,9 +1761,8 @@ xve_set_edr_features(struct xve_dev_priv *priv)
 	if (priv->lro_mode && lro) {
 		priv->netdev->features |= NETIF_F_LRO;
 		xve_lro_setup(priv);
-	} else {
+	} else
 		priv->lro_mode = 0;
-	}
 
 	/* Reserve extra space for EoIB header */
 	priv->netdev->hard_header_len += sizeof(struct xve_eoib_hdr);
