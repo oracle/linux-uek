@@ -2778,7 +2778,9 @@ static void ixgbevf_reset_subtask(struct ixgbevf_adapter *adapter)
 
 	adapter->tx_timeout_count++;
 
+	rtnl_lock();
 	ixgbevf_reinit_locked(adapter);
+	rtnl_unlock();
 }
 
 /**
