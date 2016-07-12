@@ -141,6 +141,9 @@ enum {
 #define RDS_RDMA_RESOLVE_TO_MAX_INDEX   5
 #define RDS_ADDR_RES_TM_INDEX_MAX 5
 
+/* Bits for c_reconn_flags */
+#define RDS_RECONNECT_TIMEDOUT	0
+
 enum rds_conn_drop_src {
 	/* rds-core */
 	DR_DEFAULT,
@@ -273,6 +276,9 @@ struct rds_connection {
 	possible_net_t		c_net;
 
 	/* Re-connect stall diagnostics */
+	unsigned long		c_reconn_flags;
+	unsigned long		c_reconnect_retry;
+	unsigned int		c_reconnect_retry_count;
 	unsigned long           c_reconnect_start;
 	unsigned int            c_reconnect_drops;
 	int                     c_reconnect_warn;
@@ -1040,6 +1046,8 @@ extern unsigned long rds_sysctl_trace_flags;
 extern unsigned int  rds_sysctl_trace_level;
 extern unsigned int  rds_sysctl_shutdown_trace_start_time;
 extern unsigned int  rds_sysctl_shutdown_trace_end_time;
+extern unsigned long rds_sysctl_reconnect_retry_ms;
+extern unsigned int rds_sysctl_reconnect_max_retries;
 
 /* threads.c */
 int rds_threads_init(void);
