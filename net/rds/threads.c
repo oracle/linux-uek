@@ -91,6 +91,8 @@ void rds_connect_path_complete(struct rds_connection *conn, int curr)
 		conn, &conn->c_laddr, &conn->c_faddr, conn->c_tos);
 
 	conn->c_reconnect_jiffies = 0;
+	conn->c_reconnect_retry = rds_sysctl_reconnect_retry_ms;
+	conn->c_reconnect_retry_count = 0;
 	set_bit(0, &conn->c_map_queued);
 	queue_delayed_work(conn->c_wq, &conn->c_send_w, 0);
 	queue_delayed_work(conn->c_wq, &conn->c_recv_w, 0);
@@ -138,7 +140,8 @@ void rds_queue_reconnect(struct rds_connection *conn)
 		conn->c_reconnect_jiffies);
 
 	set_bit(RDS_RECONNECT_PENDING, &conn->c_flags);
-	if (conn->c_reconnect_jiffies == 0) {
+	if (conn->c_reconnect_jiffies == 0 ||
+	    test_and_clear_bit(RDS_RECONNECT_TIMEDOUT, &conn->c_reconn_flags)) {
 		conn->c_reconnect_jiffies = rds_sysctl_reconnect_min_jiffies;
 		queue_delayed_work(conn->c_wq, &conn->c_conn_w, 0);
 		return;
@@ -284,15 +287,28 @@ void rds_reconnect_timeout(struct work_struct *work)
 	struct rds_connection *conn =
 		container_of(work, struct rds_connection, c_reconn_w.work);
 
-	/* if the higher IP has not reconnected, reset back to two-sided
-	 * reconnect.
-	 */
+	if (conn->c_reconnect_retry_count > rds_sysctl_reconnect_max_retries) {
+		pr_info("RDS: connection <%pI4,%pI4,%d> reconnect retries(%d) exceeded, stop retry\n",
+			&conn->c_laddr, &conn->c_faddr, conn->c_tos,
+			conn->c_reconnect_retry_count);
+		return;
+	}
+
 	if (!rds_conn_up(conn)) {
-		rds_rtd(RDS_RTD_CM,
-			"conn not up, calling rds_conn_drop <%pI4,%pI4,%d>\n",
-			&conn->c_laddr, &conn->c_faddr,
-			conn->c_tos);
-		rds_conn_drop(conn, DR_RECONNECT_TIMEOUT);
+		if (rds_conn_up(conn) == RDS_CONN_DISCONNECTING) {
+			queue_delayed_work(conn->c_wq, &conn->c_reconn_w,
+					   msecs_to_jiffies(100));
+		} else {
+			conn->c_reconnect_retry_count++;
+			rds_rtd(RDS_RTD_CM,
+				"conn <%pI4,%pI4,%d> not up, retry(%d)\n",
+				&conn->c_laddr, &conn->c_faddr, conn->c_tos,
+				conn->c_reconnect_retry_count);
+			queue_delayed_work(conn->c_wq, &conn->c_reconn_w,
+					   msecs_to_jiffies(conn->c_reconnect_retry));
+			set_bit(RDS_RECONNECT_TIMEDOUT, &conn->c_reconn_flags);
+			rds_conn_drop(conn, DR_RECONNECT_TIMEOUT);
+		}
 	}
 }
 
