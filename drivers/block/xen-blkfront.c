@@ -46,6 +46,7 @@
 #include <linux/scatterlist.h>
 #include <linux/bitmap.h>
 #include <linux/list.h>
+#include <linux/delay.h>
 
 #include <xen/xen.h>
 #include <xen/xenbus.h>
@@ -190,6 +191,8 @@ struct blkfront_info
 	struct mutex mutex;
 	struct xenbus_device *xbdev;
 	struct gendisk *gd;
+	u16 sector_size;
+	unsigned int physical_sector_size;
 	int vdevice;
 	blkif_vdev_t handle;
 	enum blkif_state connected;
@@ -211,6 +214,11 @@ struct blkfront_info
 	/* Save uncomplete reqs and bios for migration. */
 	struct list_head requests;
 	struct bio_list bio_list;
+	/* For dynamic configuration. */
+	unsigned int reconfiguring:1;
+	int new_max_indirect_segments;
+	int new_max_ring_page_order;
+	int new_max_queues;
 };
 
 static unsigned int nr_minors;
@@ -914,9 +922,45 @@ static struct blk_mq_ops blkfront_mq_ops = {
 	.map_queue = blk_mq_map_queue,
 };
 
+static void blkif_set_queue_limits(struct blkfront_info *info)
+{
+	struct request_queue *rq = info->rq;
+	struct gendisk *gd = info->gd;
+	unsigned int segments = info->max_indirect_segments ? :
+				BLKIF_MAX_SEGMENTS_PER_REQUEST;
+
+	queue_flag_set_unlocked(QUEUE_FLAG_VIRT, rq);
+
+	if (info->feature_discard) {
+		queue_flag_set_unlocked(QUEUE_FLAG_DISCARD, rq);
+		blk_queue_max_discard_sectors(rq, get_capacity(gd));
+		rq->limits.discard_granularity = info->discard_granularity;
+		rq->limits.discard_alignment = info->discard_alignment;
+		if (info->feature_secdiscard)
+			queue_flag_set_unlocked(QUEUE_FLAG_SECDISCARD, rq);
+	}
+
+	/* Hard sector size and max sectors impersonate the equiv. hardware. */
+	blk_queue_logical_block_size(rq, info->sector_size);
+	blk_queue_physical_block_size(rq, info->physical_sector_size);
+	blk_queue_max_hw_sectors(rq, (segments * XEN_PAGE_SIZE) / 512);
+
+	/* Each segment in a request is up to an aligned page in size. */
+	blk_queue_segment_boundary(rq, PAGE_SIZE - 1);
+	blk_queue_max_segment_size(rq, PAGE_SIZE);
+
+	/* Ensure a merged request will fit in a single I/O ring slot. */
+	blk_queue_max_segments(rq, segments / GRANTS_PER_PSEG);
+
+	/* Make sure buffer addresses are sector-aligned. */
+	blk_queue_dma_alignment(rq, 511);
+
+	/* Make sure we don't use bounce buffers. */
+	blk_queue_bounce_limit(rq, BLK_BOUNCE_ANY);
+}
+
 static int xlvbd_init_blk_queue(struct gendisk *gd, u16 sector_size,
-				unsigned int physical_sector_size,
-				unsigned int segments)
+				unsigned int physical_sector_size)
 {
 	struct request_queue *rq;
 	struct blkfront_info *info = gd->private_data;
@@ -948,37 +992,11 @@ static int xlvbd_init_blk_queue(struct gendisk *gd, u16 sector_size,
 	}
 
 	rq->queuedata = info;
-	queue_flag_set_unlocked(QUEUE_FLAG_VIRT, rq);
-
-	if (info->feature_discard) {
-		queue_flag_set_unlocked(QUEUE_FLAG_DISCARD, rq);
-		blk_queue_max_discard_sectors(rq, get_capacity(gd));
-		rq->limits.discard_granularity = info->discard_granularity;
-		rq->limits.discard_alignment = info->discard_alignment;
-		if (info->feature_secdiscard)
-			queue_flag_set_unlocked(QUEUE_FLAG_SECDISCARD, rq);
-	}
-
-	/* Hard sector size and max sectors impersonate the equiv. hardware. */
-	blk_queue_logical_block_size(rq, sector_size);
-	blk_queue_physical_block_size(rq, physical_sector_size);
-	blk_queue_max_hw_sectors(rq, (segments * XEN_PAGE_SIZE) / 512);
-
-	/* Each segment in a request is up to an aligned page in size. */
-	blk_queue_segment_boundary(rq, PAGE_SIZE - 1);
-	blk_queue_max_segment_size(rq, PAGE_SIZE);
-
-	/* Ensure a merged request will fit in a single I/O ring slot. */
-	blk_queue_max_segments(rq, segments / GRANTS_PER_PSEG);
-
-	/* Make sure buffer addresses are sector-aligned. */
-	blk_queue_dma_alignment(rq, 511);
-
-	/* Make sure we don't use bounce buffers. */
-	blk_queue_bounce_limit(rq, BLK_BOUNCE_ANY);
-
-	gd->queue = rq;
-
+	info->rq = gd->queue = rq;
+	info->gd = gd;
+	info->sector_size = sector_size;
+	info->physical_sector_size = physical_sector_size;
+	blkif_set_queue_limits(info);
 	return 0;
 }
 
@@ -1142,15 +1160,10 @@ static int xlvbd_alloc_gendisk(blkif_sector_t capacity,
 	gd->driverfs_dev = &(info->xbdev->dev);
 	set_capacity(gd, capacity);
 
-	if (xlvbd_init_blk_queue(gd, sector_size, physical_sector_size,
-				 info->max_indirect_segments ? :
-				 BLKIF_MAX_SEGMENTS_PER_REQUEST)) {
+	if (xlvbd_init_blk_queue(gd, sector_size, physical_sector_size)) {
 		del_gendisk(gd);
 		goto release;
 	}
-
-	info->rq = gd->queue;
-	info->gd = gd;
 
 	xlvbd_flush(info);
 
@@ -1321,7 +1334,7 @@ free_shadow:
 			rinfo->ring_ref[i] = GRANT_INVALID_REF;
 		}
 	}
-	free_pages((unsigned long)rinfo->ring.sring, get_order(info->nr_ring_pages * PAGE_SIZE));
+	free_pages((unsigned long)rinfo->ring.sring, get_order(info->nr_ring_pages * XEN_PAGE_SIZE));
 	rinfo->ring.sring = NULL;
 
 	if (rinfo->irq)
@@ -1343,6 +1356,31 @@ static void blkif_free(struct blkfront_info *info, int suspend)
 	for (i = 0; i < info->nr_rings; i++)
 		blkif_free_ring(&info->rinfo[i]);
 
+	/* Remove old xenstore nodes. */
+	if (info->nr_ring_pages > 1)
+		xenbus_rm(XBT_NIL, info->xbdev->nodename, "ring-page-order");
+
+	if (info->nr_rings == 1) {
+		if (info->nr_ring_pages == 1) {
+			xenbus_rm(XBT_NIL, info->xbdev->nodename, "ring-ref");
+		} else {
+			for (i = 0; i < info->nr_ring_pages; i++) {
+				char ring_ref_name[RINGREF_NAME_LEN];
+
+				snprintf(ring_ref_name, RINGREF_NAME_LEN, "ring-ref%u", i);
+				xenbus_rm(XBT_NIL, info->xbdev->nodename, ring_ref_name);
+			}
+		}
+	} else {
+		xenbus_rm(XBT_NIL, info->xbdev->nodename, "multi-queue-num-queues");
+
+		for (i = 0; i < info->nr_rings; i++) {
+			char queuename[QUEUE_NAME_LEN];
+
+			snprintf(queuename, QUEUE_NAME_LEN, "queue-%u", i);
+			xenbus_rm(XBT_NIL, info->xbdev->nodename, queuename);
+		}
+	}
 	kfree(info->rinfo);
 	info->rinfo = NULL;
 	info->nr_rings = 0;
@@ -1764,6 +1802,10 @@ static int talk_to_blkback(struct xenbus_device *dev,
 		info->nr_ring_pages = 1;
 	else {
 		ring_page_order = min(xen_blkif_max_ring_order, max_page_order);
+		if (info->new_max_ring_page_order) {
+			BUG_ON(info->new_max_ring_page_order > max_page_order);
+			ring_page_order = info->new_max_ring_page_order;
+		}
 		info->nr_ring_pages = 1 << ring_page_order;
 	}
 
@@ -1887,6 +1929,10 @@ static int negotiate_mq(struct blkfront_info *info)
 		backend_max_queues = 1;
 
 	info->nr_rings = min(backend_max_queues, xen_blkif_max_queues);
+	if (info->new_max_queues) {
+		BUG_ON(info->new_max_queues > backend_max_queues);
+		info->nr_rings = info->new_max_queues;
+	}
 	/* We need at least one ring. */
 	if (!info->nr_rings)
 		info->nr_rings = 1;
@@ -2014,7 +2060,7 @@ static int blkif_recover(struct blkfront_info *info)
 
 	blkfront_gather_backend_features(info);
 	segs = info->max_indirect_segments ? : BLKIF_MAX_SEGMENTS_PER_REQUEST;
-	blk_queue_max_segments(info->rq, segs);
+	blk_queue_max_segments(info->rq, segs / GRANTS_PER_PSEG);
 
 	for (r_index = 0; r_index < info->nr_rings; r_index++) {
 		struct blkfront_ring_info *rinfo = &info->rinfo[r_index];
@@ -2133,9 +2179,11 @@ static int blkfront_resume(struct xenbus_device *dev)
 		return err;
 
 	err = talk_to_blkback(dev, info);
-	if (!err)
+	if (!err) {
 		blk_mq_update_nr_hw_queues(&info->tag_set, info->nr_rings);
-
+		/* Reset limits changed by blk-mq. */
+		blkif_set_queue_limits(info);
+	}
 	/*
 	 * We have to wait for the backend to switch to
 	 * connected state, since we want to read which
@@ -2344,10 +2392,226 @@ static void blkfront_gather_backend_features(struct blkfront_info *info)
 			    NULL);
 	if (err)
 		info->max_indirect_segments = 0;
-	else
+	else {
 		info->max_indirect_segments = min(indirect_segments,
 						  xen_blkif_max_segments);
+		if (info->new_max_indirect_segments) {
+			BUG_ON(info->new_max_indirect_segments > indirect_segments);
+			info->max_indirect_segments = info->new_max_indirect_segments;
+		}
+	}
 }
+
+static ssize_t max_ring_page_order_show(struct device *dev,
+					struct device_attribute *attr, char *page)
+{
+	struct blkfront_info *info = dev_get_drvdata(dev);
+
+	return sprintf(page, "%u\n", get_order(info->nr_ring_pages * XEN_PAGE_SIZE));
+}
+
+static ssize_t max_indirect_segs_show(struct device *dev,
+				      struct device_attribute *attr, char *page)
+{
+	struct blkfront_info *info = dev_get_drvdata(dev);
+
+	return sprintf(page, "%u\n", info->max_indirect_segments);
+}
+
+static ssize_t max_queues_show(struct device *dev,
+			       struct device_attribute *attr, char *page)
+{
+	struct blkfront_info *info = dev_get_drvdata(dev);
+
+	return sprintf(page, "%u\n", info->nr_rings);
+}
+
+static ssize_t dynamic_reconfig_device(struct blkfront_info *info, ssize_t count)
+{
+	unsigned int i;
+	int err = -EBUSY;
+
+	/*
+	 * Make sure no migration in parallel, device lock is actually a
+	 * mutex.
+	 */
+	if (!device_trylock(&info->xbdev->dev)) {
+		pr_err("Fail to acquire dev:%s lock, may be in migration.\n",
+			dev_name(&info->xbdev->dev));
+		return err;
+	}
+
+	/*
+	 * Prevent new requests and guarantee no uncompleted reqs.
+	 */
+	blk_mq_freeze_queue(info->rq);
+	if (part_in_flight(&info->gd->part0))
+		goto out;
+
+	/*
+	 * Front 				Backend
+	 * Switch to XenbusStateClosed
+	 *					frontend_changed():
+	 *					 case XenbusStateClosed:
+	 *						xen_blkif_disconnect()
+	 *						Switch to XenbusStateClosed
+	 * blkfront_resume():
+	 *					frontend_changed():
+	 *						reconnect
+	 * Wait until XenbusStateConnected
+	 */
+	info->reconfiguring = true;
+	xenbus_switch_state(info->xbdev, XenbusStateClosed);
+
+	/* Poll every 100ms, 1 minute timeout. */
+	for (i = 0; i < 600; i++) {
+		/*
+		 * Wait backend enter XenbusStateClosed, blkback_changed()
+		 * will clear reconfiguring.
+		 */
+		if (!info->reconfiguring)
+			goto resume;
+		schedule_timeout_interruptible(msecs_to_jiffies(100));
+	}
+	goto out;
+
+resume:
+	if (blkfront_resume(info->xbdev))
+		goto out;
+
+	/* Poll every 100ms, 1 minute timeout. */
+	for (i = 0; i < 600; i++) {
+		/* Wait blkfront enter StateConnected which is done by blkif_recover(). */
+		if (info->xbdev->state == XenbusStateConnected) {
+			err = count;
+			goto out;
+		}
+		schedule_timeout_interruptible(msecs_to_jiffies(100));
+	}
+
+out:
+	blk_mq_unfreeze_queue(info->rq);
+	device_unlock(&info->xbdev->dev);
+
+	return err;
+}
+
+static ssize_t max_indirect_segs_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t count)
+{
+	ssize_t ret;
+	unsigned int max_segs = 0, backend_max_segs = 0;
+	struct blkfront_info *info = dev_get_drvdata(dev);
+	int err;
+
+	ret = kstrtouint(buf, 10, &max_segs);
+	if (ret < 0)
+		return ret;
+
+	if (max_segs == info->max_indirect_segments)
+		return count;
+
+	err = xenbus_gather(XBT_NIL, info->xbdev->otherend,
+			    "feature-max-indirect-segments", "%u", &backend_max_segs,
+			    NULL);
+	if (err) {
+		pr_err("Backend %s doesn't support feature-indirect-segments.\n",
+			info->xbdev->otherend);
+		return -EOPNOTSUPP;
+	}
+
+	if (max_segs > backend_max_segs) {
+		pr_err("Invalid max indirect segment (%u), backend-max: %u.\n",
+			max_segs, backend_max_segs);
+		return -EINVAL;
+	}
+
+	info->new_max_indirect_segments = max_segs;
+
+	return dynamic_reconfig_device(info, count);
+}
+
+static ssize_t max_ring_page_order_store(struct device *dev,
+				 struct device_attribute *attr,
+				 const char *buf, size_t count)
+{
+	ssize_t ret;
+	unsigned int max_order = 0, backend_max_order = 0;
+	struct blkfront_info *info = dev_get_drvdata(dev);
+	int err;
+
+	ret = kstrtouint(buf, 10, &max_order);
+	if (ret < 0)
+		return ret;
+
+	if ((1 << max_order) == info->nr_ring_pages)
+		return count;
+
+	if (max_order > XENBUS_MAX_RING_GRANT_ORDER) {
+		pr_err("Invalid max_ring_page_order (%u), max: %u.\n",
+				max_order, XENBUS_MAX_RING_GRANT_ORDER);
+		return -EINVAL;
+	}
+
+	err = xenbus_scanf(XBT_NIL, info->xbdev->otherend,
+			   "max-ring-page-order", "%u", &backend_max_order);
+	if (err != 1) {
+		pr_err("Backend %s doesn't support feature multi-page-ring.\n",
+			info->xbdev->otherend);
+		return -EOPNOTSUPP;
+	}
+	if (max_order > backend_max_order) {
+		pr_err("Invalid max_ring_page_order (%u), backend supports max: %u.\n",
+			max_order, backend_max_order);
+		return -EINVAL;
+	}
+	info->new_max_ring_page_order = max_order;
+
+	return dynamic_reconfig_device(info, count);
+}
+
+static ssize_t max_queues_store(struct device *dev,
+				struct device_attribute *attr,
+				const char *buf, size_t count)
+{
+	ssize_t ret;
+	unsigned int max_queues = 0, backend_max_queues = 0;
+	struct blkfront_info *info = dev_get_drvdata(dev);
+	int err;
+
+	ret = kstrtouint(buf, 10, &max_queues);
+	if (ret < 0)
+		return ret;
+
+	if (max_queues == info->nr_rings)
+		return count;
+
+	if (max_queues > num_online_cpus()) {
+		pr_err("Invalid max_queues (%u), can't bigger than online cpus: %u.\n",
+			max_queues, num_online_cpus());
+		return -EINVAL;
+	}
+
+	err = xenbus_scanf(XBT_NIL, info->xbdev->otherend,
+			   "multi-queue-max-queues", "%u", &backend_max_queues);
+	if (err != 1) {
+		pr_err("Backend %s doesn't support block multi queue.\n",
+			info->xbdev->otherend);
+		return -EOPNOTSUPP;
+	}
+	if (max_queues > backend_max_queues) {
+		pr_err("Invalid max_queues (%u), backend supports max: %u.\n",
+			max_queues, backend_max_queues);
+		return -EINVAL;
+	}
+	info->new_max_queues = max_queues;
+
+	return dynamic_reconfig_device(info, count);
+}
+
+static DEVICE_ATTR_RW(max_queues);
+static DEVICE_ATTR_RW(max_ring_page_order);
+static DEVICE_ATTR_RW(max_indirect_segs);
 
 /*
  * Invoked when the backend is finally 'ready' (and has told produced
@@ -2435,6 +2699,22 @@ static void blkfront_connect(struct blkfront_info *info)
 		return;
 	}
 
+	err = device_create_file(&info->xbdev->dev, &dev_attr_max_ring_page_order);
+	if (err)
+		goto fail;
+
+	err = device_create_file(&info->xbdev->dev, &dev_attr_max_indirect_segs);
+	if (err) {
+		device_remove_file(&info->xbdev->dev, &dev_attr_max_ring_page_order);
+		goto fail;
+	}
+
+	err = device_create_file(&info->xbdev->dev, &dev_attr_max_queues);
+	if (err) {
+		device_remove_file(&info->xbdev->dev, &dev_attr_max_ring_page_order);
+		device_remove_file(&info->xbdev->dev, &dev_attr_max_indirect_segs);
+		goto fail;
+	}
 	xenbus_switch_state(info->xbdev, XenbusStateConnected);
 
 	/* Kick pending requests. */
@@ -2445,6 +2725,12 @@ static void blkfront_connect(struct blkfront_info *info)
 	add_disk(info->gd);
 
 	info->is_ready = 1;
+	return;
+
+fail:
+	blkif_free(info, 0);
+	xlvbd_release_gendisk(info);
+	return;
 }
 
 /**
@@ -2492,8 +2778,12 @@ static void blkback_changed(struct xenbus_device *dev,
 		break;
 
 	case XenbusStateClosed:
-		if (dev->state == XenbusStateClosed)
+		if (dev->state == XenbusStateClosed) {
+			/* Clear reconfiguring. */
+			if (info->reconfiguring)
+				info->reconfiguring = false;
 			break;
+		}
 		/* Missed the backend's Closing state -- fallthrough */
 	case XenbusStateClosing:
 		if (info)
