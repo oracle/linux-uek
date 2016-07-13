@@ -3224,6 +3224,21 @@ static int selinux_inode_copy_up(struct dentry *src, struct cred **new)
 	return 0;
 }
 
+static int selinux_inode_copy_up_xattr(const char *name)
+{
+	/* The copy_up hook above sets the initial context on an inode, but we
+	 * don't then want to overwrite it by blindly copying all the lower
+	 * xattrs up.  Instead, we have to filter out SELinux-related xattrs.
+	 */
+	if (strcmp(name, XATTR_NAME_SELINUX) == 0)
+		return 1; /* Discard */
+	/*
+	 * Any other attribute apart from SELINUX is not claimed, supported
+	 * by selinux.
+	 */
+	return -EOPNOTSUPP;
+}
+
 /* file security operations */
 
 static int selinux_revalidate_file_permission(struct file *file, int mask)
@@ -5943,6 +5958,7 @@ static struct security_operations selinux_ops = {
 	.inode_listsecurity =		selinux_inode_listsecurity,
 	.inode_getsecid =		selinux_inode_getsecid,
 	.inode_copy_up =		selinux_inode_copy_up,
+	.inode_copy_up_xattr =		selinux_inode_copy_up_xattr,
 
 	.file_permission =		selinux_file_permission,
 	.file_alloc_security =		selinux_file_alloc_security,
