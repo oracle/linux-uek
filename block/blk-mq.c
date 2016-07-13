@@ -563,23 +563,9 @@ void blk_mq_abort_requeue_list(struct request_queue *q)
 }
 EXPORT_SYMBOL(blk_mq_abort_requeue_list);
 
-static inline bool is_flush_request(struct request *rq,
-		struct blk_flush_queue *fq, unsigned int tag)
-{
-	return ((rq->cmd_flags & REQ_FLUSH_SEQ) &&
-			fq->flush_rq->tag == tag);
-}
-
 struct request *blk_mq_tag_to_rq(struct blk_mq_tags *tags, unsigned int tag)
 {
-	struct request *rq = tags->rqs[tag];
-	/* mq_ctx of flush rq is always cloned from the corresponding req */
-	struct blk_flush_queue *fq = blk_get_flush_queue(rq->q, rq->mq_ctx);
-
-	if (!is_flush_request(rq, fq, tag))
-		return rq;
-
-	return fq->flush_rq;
+	return tags->rqs[tag];
 }
 EXPORT_SYMBOL(blk_mq_tag_to_rq);
 
@@ -1508,7 +1494,6 @@ static struct blk_mq_tags *blk_mq_init_rq_map(struct blk_mq_tag_set *set,
 			i++;
 		}
 	}
-
 	return tags;
 
 fail:
@@ -1769,6 +1754,7 @@ static void blk_mq_map_swqueue(struct request_queue *q,
 		hctx = q->mq_ops->map_queue(q, i);
 
 		cpumask_set_cpu(i, hctx->cpumask);
+		cpumask_set_cpu(i, hctx->tags->cpumask);
 		ctx->index_hw = hctx->nr_ctx;
 		hctx->ctxs[hctx->nr_ctx++] = ctx;
 	}
@@ -2220,6 +2206,12 @@ static int blk_mq_alloc_rq_maps(struct blk_mq_tag_set *set)
 	return 0;
 }
 
+struct cpumask *blk_mq_tags_cpumask(struct blk_mq_tags *tags)
+{
+	return tags->cpumask;
+}
+EXPORT_SYMBOL_GPL(blk_mq_tags_cpumask);
+
 /*
  * Alloc a tag set to be associated with one or more request queues.
  * May fail with EINVAL for various error conditions. May adjust the
@@ -2284,9 +2276,11 @@ void blk_mq_free_tag_set(struct blk_mq_tag_set *set)
 {
 	int i;
 
-	for (i = 0; i < nr_cpu_ids; i++) {
-		if (set->tags[i])
+	for (i = 0; i < set->nr_hw_queues; i++) {
+		if (set->tags[i]) {
 			blk_mq_free_rq_map(set, set->tags[i], i);
+			free_cpumask_var(set->tags[i]->cpumask);
+		}
 	}
 
 	kfree(set->tags);
