@@ -666,19 +666,23 @@ static void handle_event_work(struct work_struct *work)
 			|| (ibqp->qp_type == IB_QPT_UD)
 			|| (ibqp->qp_type == IB_QPT_RAW_IPV6)
 			|| (ibqp->qp_type == IB_QPT_RAW_ETHERTYPE)
-			|| (ibqp->qp_type == IB_QPT_RAW_PACKET)))
+			|| (ibqp->qp_type == IB_QPT_RAW_PACKET))) {
+			if (atomic_dec_and_test(&qp->refcnt))
+				complete(&qp->can_destroy);
 			break;
+		}
 
-		if (ibqp->event_handler)
+		if (ibqp->event_handler) {
 			ibqp->event_handler(&ew->ibe, ibqp->qp_context);
+		} else {
+			sif_log(sdev, SIF_INFO,
+				"Unhandled event of type %s received, qp %d",
+				ib_event2str(ew->ibe.event), qp->qp_idx);
+		}
 
 		if (atomic_dec_and_test(&qp->refcnt))
 			complete(&qp->can_destroy);
 
-		if (!ibqp->event_handler)
-			sif_log(sdev, SIF_INFO,
-				"Unhandled event of type %s received, qp %d",
-				ib_event2str(ew->ibe.event), qp->qp_idx);
 		break;
 	}
 	case IB_EVENT_LID_CHANGE:
