@@ -318,6 +318,16 @@ static inline void security_free_mnt_opts(struct security_mnt_opts *opts)
  *	@name name of the last path component used to create file
  *	@ctx pointer to place the pointer to the resulting context in.
  *	@ctxlen point to place the length of the resulting context.
+ * @dentry_create_files_as:
+ *	Compute a context for a dentry as the inode is not yet available
+ *	and set that context in passed in creds so that new files are
+ *	created using that context. Context is calculated using the
+ *	passed in creds and not the creds of the caller.
+ *	@dentry dentry to use in calculating the context.
+ *	@mode mode used to determine resource type.
+ *	@name name of the last path component used to create file
+ *	@old creds which should be used for context calculation
+ *	@new creds to modify
  *
  *
  * Security hooks for inode operations.
@@ -1531,6 +1541,10 @@ struct security_operations {
 	int (*dentry_init_security) (struct dentry *dentry, int mode,
 					struct qstr *name, void **ctx,
 					u32 *ctxlen);
+	int (*dentry_create_files_as)(struct dentry *dentry, int mode,
+					struct qstr *name,
+					const struct cred *old,
+					struct cred *new);
 
 
 #ifdef CONFIG_SECURITY_PATH
@@ -1836,6 +1850,10 @@ int security_sb_parse_opts_str(char *options, struct security_mnt_opts *opts);
 int security_dentry_init_security(struct dentry *dentry, int mode,
 					struct qstr *name, void **ctx,
 					u32 *ctxlen);
+int security_dentry_create_files_as(struct dentry *dentry, int mode,
+					struct qstr *name,
+					const struct cred *old,
+					struct cred *new);
 
 int security_inode_alloc(struct inode *inode);
 void security_inode_free(struct inode *inode);
@@ -2180,6 +2198,14 @@ static inline int security_dentry_init_security(struct dentry *dentry,
 						 u32 *ctxlen)
 {
 	return -EOPNOTSUPP;
+}
+
+static inline int security_dentry_create_files_as(struct dentry *dentry,
+						  int mode, struct qstr *name,
+						  const struct cred *old,
+						  struct cred *new)
+{
+	return 0;
 }
 
 
