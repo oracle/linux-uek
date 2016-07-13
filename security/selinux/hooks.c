@@ -2777,6 +2777,27 @@ static int selinux_dentry_init_security(struct dentry *dentry, int mode,
 	return security_sid_to_context(newsid, (char **)ctx, ctxlen);
 }
 
+static int selinux_dentry_create_files_as(struct dentry *dentry, int mode,
+					  struct qstr *name,
+					  const struct cred *old,
+					  struct cred *new)
+{
+	u32 newsid;
+	int rc;
+	struct task_security_struct *tsec;
+
+	rc = selinux_determine_inode_label(old->security,
+					   d_inode(dentry->d_parent), name,
+					   inode_mode_to_security_class(mode),
+					   &newsid);
+	if (rc)
+		return rc;
+
+	tsec = new->security;
+	tsec->create_sid = newsid;
+	return 0;
+}
+
 static int selinux_inode_init_security(struct inode *inode, struct inode *dir,
 				       const struct qstr *qstr,
 				       const char **name,
@@ -5932,6 +5953,7 @@ static struct security_operations selinux_ops = {
 	.sb_parse_opts_str = 		selinux_parse_opts_str,
 
 	.dentry_init_security =		selinux_dentry_init_security,
+	.dentry_create_files_as =	selinux_dentry_create_files_as,
 
 	.inode_alloc_security =		selinux_inode_alloc_security,
 	.inode_free_security =		selinux_inode_free_security,
