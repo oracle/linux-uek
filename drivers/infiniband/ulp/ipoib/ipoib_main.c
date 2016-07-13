@@ -132,7 +132,7 @@ int ipoib_open(struct net_device *dev)
 {
 	struct ipoib_dev_priv *priv = netdev_priv(dev);
 
-	ipoib_dbg(priv, "bringing up interface\n");
+	ipoib_dbg(priv, "bringing up interface %s\n", dev->name);
 
 	netif_carrier_off(dev);
 
@@ -1394,6 +1394,7 @@ void ipoib_dev_cleanup(struct net_device *dev)
 
 	/* Delete any child interfaces first */
 	list_for_each_entry_safe(cpriv, tcpriv, &priv->child_intfs, list) {
+		ipoib_clean_acl(cpriv->dev);
 		/* Stop GC on child */
 		set_bit(IPOIB_STOP_NEIGH_GC, &cpriv->flags);
 		cancel_delayed_work(&cpriv->neigh_reap_task);
@@ -1406,6 +1407,8 @@ void ipoib_dev_cleanup(struct net_device *dev)
 	 * work queue
 	 */
 	ipoib_neigh_hash_uninit(dev);
+
+	ipoib_clean_acl(priv->dev);
 
 	ipoib_ib_dev_cleanup(dev);
 
@@ -1430,6 +1433,7 @@ static const struct net_device_ops ipoib_netdev_ops = {
 	.ndo_tx_timeout		 = ipoib_timeout,
 	.ndo_set_rx_mode	 = ipoib_set_mcast_list,
 	.ndo_get_iflink		 = ipoib_get_iflink,
+	.ndo_do_ioctl		 = ipoib_do_ioctl,
 };
 
 void ipoib_setup(struct net_device *dev)
@@ -1857,6 +1861,8 @@ static struct net_device *ipoib_add_port(const char *format,
 		goto event_failed;
 	}
 
+	ipoib_init_acl(priv->dev);
+
 	result = register_netdev(priv->dev);
 	if (result) {
 		printk(KERN_WARNING "%s: couldn't register ipoib port %d; error %d\n",
@@ -1882,7 +1888,9 @@ static struct net_device *ipoib_add_port(const char *format,
 		goto sysfs_failed;
 	if (device_create_file(&priv->dev->dev, &dev_attr_delete_named_child))
 		goto sysfs_failed;
-
+	if (ipoib_debug_level)
+		if (ipoib_create_acl_sysfs(priv->dev))
+			goto sysfs_failed;
 
 	return priv->dev;
 

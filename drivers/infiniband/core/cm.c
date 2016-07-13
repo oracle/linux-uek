@@ -52,6 +52,7 @@
 #include <rdma/ib_cache.h>
 #include <rdma/ib_cm.h>
 #include "cm_msgs.h"
+#include "core_priv.h"
 
 MODULE_AUTHOR("Sean Hefty");
 MODULE_DESCRIPTION("InfiniBand CM");
@@ -85,6 +86,7 @@ static struct ib_cm {
 	__be32 random_id_operand;
 	struct list_head timewait_list;
 	struct workqueue_struct *wq;
+	struct list_head dpp_acl_map;
 } cm;
 
 /* Counter indexes ordered by attribute ID */
@@ -752,6 +754,271 @@ static void cm_free_work(struct cm_work *work)
 	kfree(work);
 }
 
+void ib_cm_acl_init(struct ib_cm_acl *acl)
+{
+	acl->enabled = 0;
+	acl->allowed_list = RB_ROOT;
+	acl->list_count = 0;
+	spin_lock_init(&acl->lock);
+}
+EXPORT_SYMBOL(ib_cm_acl_init);
+
+int ib_cm_acl_insert(struct ib_cm_acl *acl, u64 subnet_prefix, u64 guid, u32 ip,
+		     const char *uuid)
+{
+	struct ib_cm_acl_elem *elem;
+	struct rb_node **new, *parent = NULL;
+	int rc = 0;
+	unsigned long flags;
+
+	spin_lock_irqsave(&acl->lock, flags);
+
+	new = &(acl->allowed_list.rb_node);
+
+	while (*new) {
+		elem = rb_entry(*new, struct ib_cm_acl_elem, node);
+
+		parent = *new;
+		if ((guid == elem->guid) &&
+		    (subnet_prefix == elem->subnet_prefix)) {
+			elem->ref_count++;
+			goto exist;
+		}
+
+		if (subnet_prefix == elem->subnet_prefix)
+			if (guid > elem->guid)
+				new = &((*new)->rb_right);
+			else
+				new = &((*new)->rb_left);
+		else if (subnet_prefix > elem->subnet_prefix)
+			new = &((*new)->rb_right);
+		else
+			new = &((*new)->rb_left);
+	}
+
+	elem = kmalloc(sizeof(struct ib_cm_acl_elem), GFP_ATOMIC);
+	if (!elem)
+		goto err_nomem;
+	elem->guid = guid;
+	elem->subnet_prefix = subnet_prefix;
+	elem->ip = ip;
+	memcpy(elem->uuid, uuid, UUID_SZ);
+	elem->ref_count = 1;
+	rb_link_node(&elem->node, parent, new);
+	rb_insert_color(&elem->node, &acl->allowed_list);
+	acl->list_count++;
+
+	goto out;
+
+err_nomem:;
+	rc = -ENOMEM;
+
+exist:
+
+out:
+	spin_unlock_irqrestore(&acl->lock, flags);
+	return rc;
+}
+EXPORT_SYMBOL(ib_cm_acl_insert);
+
+struct ib_cm_acl_elem *_ib_cm_acl_lookup(struct ib_cm_acl *acl,
+					 u64 subnet_prefix, u64 guid)
+{
+	struct rb_node *node;
+	struct ib_cm_acl_elem *elem;
+
+	node = acl->allowed_list.rb_node;
+
+	while (node) {
+		elem = rb_entry(node, struct ib_cm_acl_elem, node);
+		if ((guid == elem->guid) &&
+		    (subnet_prefix == elem->subnet_prefix))
+			return elem;
+
+		if (subnet_prefix == elem->subnet_prefix)
+			if (guid > elem->guid)
+				node = node->rb_right;
+			else
+				node = node->rb_left;
+		else if (subnet_prefix > elem->subnet_prefix)
+			node = node->rb_right;
+		else
+			node = node->rb_left;
+	}
+
+	return NULL;
+}
+
+struct ib_cm_acl_elem *ib_cm_acl_lookup(struct ib_cm_acl *acl,
+					u64 subnet_prefix, u64 guid)
+{
+	struct ib_cm_acl_elem *elem;
+	unsigned long flags;
+
+	spin_lock_irqsave(&acl->lock, flags);
+	elem = _ib_cm_acl_lookup(acl, subnet_prefix, guid);
+	spin_unlock_irqrestore(&acl->lock, flags);
+
+	return elem;
+}
+EXPORT_SYMBOL(ib_cm_acl_lookup);
+
+struct ib_cm_acl_elem *ib_cm_acl_lookup_uuid_ip(struct ib_cm_acl *acl,
+						char *uuid, u32 ip)
+{
+	struct ib_cm_acl_elem *elem, *ret = NULL;
+	struct rb_node *node;
+	unsigned long flags;
+
+	spin_lock_irqsave(&acl->lock, flags);
+	node = rb_first(&acl->allowed_list);
+	while (node) {
+		elem = container_of(node, struct ib_cm_acl_elem, node);
+		if ((ip == elem->ip) && (!memcmp(uuid, elem->uuid, UUID_SZ))) {
+			ret = elem;
+			goto out;
+		}
+		node = rb_next(node);
+	}
+
+out:
+	spin_unlock_irqrestore(&acl->lock, flags);
+
+	return ret;
+}
+EXPORT_SYMBOL(ib_cm_acl_lookup_uuid_ip);
+
+int ib_cm_acl_delete(struct ib_cm_acl *acl, u64 subnet_prefix, u64 guid)
+{
+	struct ib_cm_acl_elem *elem;
+	int ref_count = 0;
+	unsigned long flags;
+
+	spin_lock_irqsave(&acl->lock, flags);
+	elem = _ib_cm_acl_lookup(acl, subnet_prefix, guid);
+	if (elem) {
+		elem->ref_count--;
+		ref_count = elem->ref_count;
+		if (elem->ref_count == 0) {
+			rb_erase(&elem->node, &acl->allowed_list);
+			kfree(elem);
+			acl->list_count--;
+		}
+	}
+	spin_unlock_irqrestore(&acl->lock, flags);
+	return ref_count;
+}
+EXPORT_SYMBOL(ib_cm_acl_delete);
+
+void ib_cm_acl_scan(struct ib_cm_acl *acl, struct ib_cm_acl_elem **list,
+		    ssize_t *list_count)
+{
+	struct ib_cm_acl_elem *elem, *list_elem;
+	struct rb_node *node;
+	unsigned long flags;
+
+	spin_lock_irqsave(&acl->lock, flags);
+	*list = kmalloc_array(acl->list_count, sizeof(struct ib_cm_acl_elem),
+			      GFP_ATOMIC);
+	if (!*list) {
+		*list_count = 0;
+		spin_unlock_irqrestore(&acl->lock, flags);
+		pr_crit("Fail to allocate memory for acl_scan\n");
+		return;
+	}
+	list_elem = *list;
+	node = rb_first(&acl->allowed_list);
+	while (node) {
+		elem = container_of(node, struct ib_cm_acl_elem, node);
+		list_elem->guid = elem->guid;
+		list_elem->subnet_prefix = elem->subnet_prefix;
+		list_elem->ip = elem->ip;
+		memcpy(list_elem->uuid, elem->uuid, UUID_SZ);
+		list_elem->ref_count = elem->ref_count;
+		list_elem++;
+		node = rb_next(node);
+	}
+
+	*list_count = acl->list_count;
+	spin_unlock_irqrestore(&acl->lock, flags);
+}
+EXPORT_SYMBOL(ib_cm_acl_scan);
+
+void ib_cm_acl_clean(struct ib_cm_acl *acl)
+{
+	struct ib_cm_acl_elem *elem;
+	struct rb_node *node, *curr;
+	unsigned long flags;
+
+	spin_lock_irqsave(&acl->lock, flags);
+	node = rb_first(&acl->allowed_list);
+	while (node) {
+		curr = node;
+		node = rb_next(node);
+		elem = container_of(curr, struct ib_cm_acl_elem, node);
+		rb_erase(curr, &acl->allowed_list);
+		kfree(elem);
+	}
+
+	acl->list_count = 0;
+	spin_unlock_irqrestore(&acl->lock, flags);
+}
+EXPORT_SYMBOL(ib_cm_acl_clean);
+
+int ib_cm_register_acl(struct ib_cm_acl *acl, struct ib_cm_dpp *dpp)
+{
+	struct ib_cm_dpp_acl *dpp_acl;
+
+	dpp_acl = kzalloc(sizeof(struct ib_cm_dpp_acl), GFP_KERNEL);
+	if (unlikely(!dpp_acl))
+		return -ENOMEM;
+
+	ib_cm_dpp_dbg("Registering ACL", dpp);
+
+	ib_cm_dpp_copy(&dpp_acl->dpp, dpp);
+	dpp_acl->acl = acl;
+	list_add(&dpp_acl->list, &cm.dpp_acl_map);
+
+	return 0;
+}
+EXPORT_SYMBOL(ib_cm_register_acl);
+
+struct ib_cm_acl *ib_cm_dpp_acl_lookup(struct ib_cm_dpp *dpp)
+{
+	struct ib_cm_dpp_acl *dpp_acl;
+
+	list_for_each_entry(dpp_acl, &cm.dpp_acl_map, list) {
+		if (ib_cm_dpp_compare(&dpp_acl->dpp, dpp))
+			return dpp_acl->acl;
+	}
+
+	return NULL;
+}
+EXPORT_SYMBOL(ib_cm_dpp_acl_lookup);
+
+void ib_cm_unregister_acl(struct ib_cm_acl *acl)
+{
+	struct ib_cm_dpp_acl *dpp_acl, *tmp;
+
+	list_for_each_entry_safe(dpp_acl, tmp, &cm.dpp_acl_map, list) {
+		if (dpp_acl->acl == acl) {
+			ib_cm_dpp_dbg("Unregistering ACL", &dpp_acl->dpp);
+			list_del(&dpp_acl->list);
+			kfree(dpp_acl);
+		}
+	}
+}
+EXPORT_SYMBOL(ib_cm_unregister_acl);
+
+static void ib_cm_dpp_acl_cleanup(void)
+{
+	struct ib_cm_dpp_acl *dpp_acl;
+
+	list_for_each_entry(dpp_acl, &cm.dpp_acl_map, list) {
+		kfree(dpp_acl);
+	}
+}
+
 static inline int cm_convert_to_ms(int iba_time)
 {
 	/* approximate conversion to ms from 4.096us x 2^iba_time */
@@ -788,6 +1055,10 @@ static void cm_cleanup_timewait(struct cm_timewait_info *timewait_info)
 		rb_erase(&timewait_info->remote_qp_node, &cm.remote_qp_table);
 		timewait_info->inserted_remote_qp = 0;
 	}
+
+	/* Clean-up the overloaded MBIT */
+	if (timewait_info->remote_ca_guid & IB_GUID_MBIT)
+		timewait_info->remote_ca_guid &= ~IB_GUID_MBIT;
 }
 
 static struct cm_timewait_info * cm_create_timewait_info(__be32 local_id)
@@ -1014,19 +1285,46 @@ static void cm_format_mad_hdr(struct ib_mad_hdr *hdr,
 	hdr->tid	   = tid;
 }
 
+#define SIF_DEVICES		6
+const u32 sif_family_vendor_part_id[SIF_DEVICES] = {
+	0x2088, 0x2089, 0x2188, 0x2189, 0x2198, 0x2199};
+
+static inline bool is_vendor_sif_family(u32 part_id)
+{
+	int i;
+
+	for (i = 0; i < SIF_DEVICES; i++) {
+		if (part_id == sif_family_vendor_part_id[i])
+			return true;
+	}
+	return false;
+}
+
 static void cm_format_req(struct cm_req_msg *req_msg,
 			  struct cm_id_private *cm_id_priv,
 			  struct ib_cm_req_param *param)
 {
 	struct ib_sa_path_rec *pri_path = param->primary_path;
 	struct ib_sa_path_rec *alt_path = param->alternate_path;
+	struct ib_device_attr attr;
+	u32 vendor_part_id;
+
+	if (ib_query_device(cm_id_priv->id.device, &attr))
+		vendor_part_id = 0;
+	else
+		vendor_part_id = attr.vendor_part_id;
 
 	cm_format_mad_hdr(&req_msg->hdr, CM_REQ_ATTR_ID,
 			  cm_form_tid(cm_id_priv, CM_MSG_SEQUENCE_REQ));
 
 	req_msg->local_comm_id = cm_id_priv->id.local_id;
 	req_msg->service_id = param->service_id;
-	req_msg->local_ca_guid = cm_id_priv->id.device->node_guid;
+
+	if (is_vendor_sif_family(vendor_part_id))
+		req_msg->local_ca_guid = cm_id_priv->id.device->node_guid | IB_GUID_MBIT;
+	else
+		req_msg->local_ca_guid = cm_id_priv->id.device->node_guid;
+
 	cm_req_set_local_qpn(req_msg, cpu_to_be32(param->qp_num));
 	cm_req_set_init_depth(req_msg, param->initiator_depth);
 	cm_req_set_remote_resp_timeout(req_msg,
@@ -1531,12 +1829,87 @@ static void cm_process_routed_req(struct cm_req_msg *req_msg, struct ib_wc *wc)
 	}
 }
 
+static char const cm_drop_reason_desc[4][32] = {
+	"N/A",
+	"No GRH",
+	"grh.guid != mad.guid",
+	"acl drop"
+};
+
+enum cm_drop_reason {
+	CM_DROP_ACCEPT,
+	CM_DROP_NO_GRH,
+	CM_DROP_INV_MAD_GUID,
+	CM_DROP_ACL
+};
+
+static enum cm_drop_reason cm_acl_filter(struct cm_work *work)
+{
+	struct cm_req_msg *req_msg;
+	struct ib_grh *grh;
+	struct ib_cm_dpp dpp;
+	struct ib_cm_acl *acl;
+	u64 subnet_prefix = 0, guid = 0;
+	struct ib_wc *wc;
+	enum cm_drop_reason drop = CM_DROP_ACCEPT;
+
+	req_msg = (struct cm_req_msg *)work->mad_recv_wc->recv_buf.mad;
+	grh = (struct ib_grh *)work->mad_recv_wc->recv_buf.grh;
+	wc = (struct ib_wc *)work->mad_recv_wc->wc;
+
+	ib_cm_dpp_init(&dpp, work->port->cm_dev->ib_device,
+		       work->port->port_num, be16_to_cpu(req_msg->pkey));
+	ib_cm_dpp_dbg("CM Request from interface", &dpp);
+	acl = ib_cm_dpp_acl_lookup(&dpp);
+	if (acl && acl->enabled) {
+		if (!(wc->wc_flags & IB_WC_GRH))
+			drop = CM_DROP_NO_GRH;
+		else if (grh->sgid.global.interface_id !=
+			 req_msg->primary_local_gid.global.interface_id)
+			drop = CM_DROP_INV_MAD_GUID;
+		else {
+			subnet_prefix = be64_to_cpu(req_msg->
+						    primary_local_gid.global.
+						    subnet_prefix);
+			guid = be64_to_cpu(req_msg->primary_local_gid.global.
+					   interface_id);
+			if (!ib_cm_acl_lookup(acl, subnet_prefix, guid))
+				drop = CM_DROP_ACL;
+		}
+
+		if (drop) {
+			pr_debug("Blocked CM request, reason=%s\n",
+				 cm_drop_reason_desc[drop]);
+			pr_debug("\tgrh.sgid=(0x%llx,0x%llx), grh.dgid=(0x%llx,0x%llx)\n",
+				 be64_to_cpu(grh->sgid.global.subnet_prefix),
+				 be64_to_cpu(grh->sgid.global.interface_id),
+				 be64_to_cpu(grh->dgid.global.subnet_prefix),
+				 be64_to_cpu(grh->dgid.global.interface_id));
+			pr_debug("\tlocal=(0x%llx,0x%llx), remote=(0x%llx,0x%llx)\n",
+				 be64_to_cpu(req_msg->primary_local_gid.global.
+					     subnet_prefix),
+				 be64_to_cpu(req_msg->primary_local_gid.global.
+					     interface_id),
+				 be64_to_cpu(req_msg->primary_remote_gid.global.
+					     subnet_prefix),
+				 be64_to_cpu(req_msg->primary_remote_gid.global.
+					     interface_id));
+		}
+	}
+
+	return drop;
+}
+
 static int cm_req_handler(struct cm_work *work)
 {
 	struct ib_cm_id *cm_id;
 	struct cm_id_private *cm_id_priv, *listen_cm_id_priv;
 	struct cm_req_msg *req_msg;
-	int ret;
+	int ret = 0;
+
+	ret = cm_acl_filter(work);
+	if (ret)
+		return -EINVAL;
 
 	req_msg = (struct cm_req_msg *)work->mad_recv_wc->recv_buf.mad;
 
@@ -1626,6 +1999,14 @@ static void cm_format_rep(struct cm_rep_msg *rep_msg,
 			  struct cm_id_private *cm_id_priv,
 			  struct ib_cm_rep_param *param)
 {
+	struct ib_device_attr attr;
+	u32 vendor_part_id;
+
+	if (ib_query_device(cm_id_priv->id.device, &attr))
+		vendor_part_id = 0;
+	else
+		vendor_part_id = attr.vendor_part_id;
+
 	cm_format_mad_hdr(&rep_msg->hdr, CM_REP_ATTR_ID, cm_id_priv->tid);
 	rep_msg->local_comm_id = cm_id_priv->id.local_id;
 	rep_msg->remote_comm_id = cm_id_priv->id.remote_id;
@@ -1635,7 +2016,11 @@ static void cm_format_rep(struct cm_rep_msg *rep_msg,
 				    cm_id_priv->av.port->cm_dev->ack_delay);
 	cm_rep_set_failover(rep_msg, param->failover_accepted);
 	cm_rep_set_rnr_retry_count(rep_msg, param->rnr_retry_count);
-	rep_msg->local_ca_guid = cm_id_priv->id.device->node_guid;
+
+	if (is_vendor_sif_family(vendor_part_id))
+		rep_msg->local_ca_guid = cm_id_priv->id.device->node_guid | IB_GUID_MBIT;
+	else
+		rep_msg->local_ca_guid = cm_id_priv->id.device->node_guid;
 
 	if (cm_id_priv->qp_type != IB_QPT_XRC_TGT) {
 		rep_msg->initiator_depth = param->initiator_depth;
@@ -3493,6 +3878,9 @@ static int cm_init_qp_init_attr(struct cm_id_private *cm_id_priv,
 {
 	unsigned long flags;
 	int ret;
+	u64 remote_guid;
+
+	remote_guid = cm_id_priv->timewait_info->remote_ca_guid;
 
 	spin_lock_irqsave(&cm_id_priv->lock, flags);
 	switch (cm_id_priv->id.state) {
@@ -3507,7 +3895,12 @@ static int cm_init_qp_init_attr(struct cm_id_private *cm_id_priv,
 	case IB_CM_ESTABLISHED:
 		*qp_attr_mask = IB_QP_STATE | IB_QP_ACCESS_FLAGS |
 				IB_QP_PKEY_INDEX | IB_QP_PORT;
+
 		qp_attr->qp_access_flags = IB_ACCESS_REMOTE_WRITE;
+
+		if (remote_guid & IB_GUID_MBIT)
+			qp_attr->qp_access_flags |= IB_GUID_RNR_TWEAK;
+
 		if (cm_id_priv->responder_resources)
 			qp_attr->qp_access_flags |= IB_ACCESS_REMOTE_READ |
 						    IB_ACCESS_REMOTE_ATOMIC;
@@ -3916,6 +4309,7 @@ static int __init ib_cm_init(void)
 	idr_init(&cm.local_id_table);
 	get_random_bytes(&cm.random_id_operand, sizeof cm.random_id_operand);
 	INIT_LIST_HEAD(&cm.timewait_list);
+	INIT_LIST_HEAD(&cm.dpp_acl_map);
 
 	ret = class_register(&cm_class);
 	if (ret) {
@@ -3947,6 +4341,8 @@ static void __exit ib_cm_cleanup(void)
 {
 	struct cm_timewait_info *timewait_info, *tmp;
 
+	ib_cm_dpp_acl_cleanup();
+
 	spin_lock_irq(&cm.lock);
 	list_for_each_entry(timewait_info, &cm.timewait_list, list)
 		cancel_delayed_work(&timewait_info->work.work);
@@ -3966,4 +4362,3 @@ static void __exit ib_cm_cleanup(void)
 
 module_init(ib_cm_init);
 module_exit(ib_cm_cleanup);
-

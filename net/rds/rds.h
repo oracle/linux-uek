@@ -25,6 +25,13 @@
 #define RDS_PROTOCOL_MINOR(v)	((v) & 255)
 #define RDS_PROTOCOL(maj, min)	(((maj) << 8) | min)
 
+/* Reject reason codes.
+ * 0401 below indicates 4.1 version.
+ * 0020 indicates type of reject.
+ * Reserving earlier ones for version mismatch or other reasons.
+ */
+#define RDS_ACL_FAILURE		0x04010020
+
 /*
  * XXX randomly chosen, but at least seems to be unused:
  * #               18464-18768 Unassigned
@@ -127,6 +134,7 @@ enum {
 #define RDS_RECONNECT_PENDING	1
 #define RDS_IN_XMIT		2
 #define RDS_RECV_REFILL		3
+#define RDS_DESTROY_PENDING	4
 
 #define RDS_RDMA_RESOLVE_TO_MAX_INDEX   5
 #define RDS_ADDR_RES_TM_INDEX_MAX 5
@@ -287,6 +295,10 @@ struct rds_connection {
 	unsigned int		c_route_resolved;
 
 	enum rds_conn_drop_src	c_drop_source;
+	struct list_head	c_laddr_node;
+
+	unsigned char		c_acl_init;
+	unsigned char		c_acl_en;
 };
 
 static inline
@@ -837,9 +849,10 @@ struct rds_connection *rds_conn_find(struct net *net, __be32 laddr,
 				     __be32 faddr,
 					struct rds_transport *trans, u8 tos);
 void rds_conn_shutdown(struct rds_connection *conn, int restart);
-void rds_conn_destroy(struct rds_connection *conn);
+void rds_conn_destroy(struct rds_connection *conn, int shutdown);
 void rds_conn_reset(struct rds_connection *conn);
 void rds_conn_drop(struct rds_connection *conn);
+void rds_conn_laddr_list(__be32 laddr, struct list_head *laddr_conns);
 void rds_conn_connect_if_down(struct rds_connection *conn);
 void rds_for_each_conn_info(struct socket *sock, unsigned int len,
 			  struct rds_info_iterator *iter,

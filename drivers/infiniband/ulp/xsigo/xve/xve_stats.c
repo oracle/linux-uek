@@ -457,11 +457,11 @@ static int xve_proc_read_device(struct seq_file *m, void *data)
 	seq_printf(m, "Admin mtu:\t\t\t%d\n", vp->admin_mtu);
 	seq_printf(m, "MCAST mtu:\t\t\t%d\n", vp->mcast_mtu);
 	seq_printf(m, "IB MAX MTU: \t\t\t%d\n", vp->max_ib_mtu);
-	seq_printf(m, "SG for UD:\t\t\t%d\n", xve_ud_need_sg(vp->max_ib_mtu));
+	seq_printf(m, "SG UD Mode:\t\t\t%d\n", xve_ud_need_sg(vp->admin_mtu));
 	seq_printf(m, "Max SG supported(HCA):\t\t%d\n", vp->dev_attr.max_sge);
 
-	seq_printf(m, "Receive Queue size: \t\t%d\n", xve_recvq_size);
-	seq_printf(m, "Transmit Queue size: \t\t%d\n", xve_sendq_size);
+	seq_printf(m, "Receive Queue size: \t\t%d\n", vp->xve_recvq_size);
+	seq_printf(m, "Transmit Queue size: \t\t%d\n", vp->xve_sendq_size);
 
 	if (vp->cm_supported) {
 		seq_printf(m, "Num of cm frags: \t\t%d\n", vp->cm.num_frags);

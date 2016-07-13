@@ -38,6 +38,10 @@
 
 #include <rdma/ib_verbs.h>
 
+/* Used for a HCA workaound and overloads qp_access_flags(int) */
+#define IB_GUID_RNR_TWEAK		(1 << 12)
+#define IB_GUID_MBIT			(1ULL << 56)
+
 int  ib_device_register_sysfs(struct ib_device *device,
 			      int (*port_callback)(struct ib_device *,
 						   u8, struct kobject *));

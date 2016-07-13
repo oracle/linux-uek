@@ -142,7 +142,7 @@ int xve_transport_dev_init(struct net_device *dev, struct ib_device *ca)
 		.qp_type = IB_QPT_UD
 	};
 	struct ethtool_coalesce *coal;
-	int ret, size, max_sge;
+	int ret, size, max_sge = MAX_SKB_FRAGS + 1;
 	int i;
 
 	priv->pd = ib_alloc_pd(priv->ca);
@@ -223,7 +223,7 @@ int xve_transport_dev_init(struct net_device *dev, struct ib_device *ca)
 		goto out_free_send_cq;
 	}
 
-	for (i = 0; i < MAX_SKB_FRAGS + 1; ++i)
+	for (i = 0; i < max_sge; ++i)
 		priv->tx_sge[i].lkey = priv->mr->lkey;
 
 	priv->tx_wr.opcode = IB_WR_SEND;
@@ -231,7 +231,7 @@ int xve_transport_dev_init(struct net_device *dev, struct ib_device *ca)
 	priv->tx_wr.send_flags = IB_SEND_SIGNALED;
 
 	priv->rx_sge[0].lkey = priv->mr->lkey;
-	if (xve_ud_need_sg(priv->max_ib_mtu)) {
+	if (xve_ud_need_sg(priv->admin_mtu)) {
 		priv->rx_sge[0].length = XVE_UD_HEAD_SIZE;
 		priv->rx_sge[1].length = PAGE_SIZE;
 		priv->rx_sge[1].lkey = priv->mr->lkey;
