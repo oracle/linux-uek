@@ -145,6 +145,7 @@ $(modules:.ko=.sdtstub.o): %.sdtstub.o: %.sdtstub.S
 	$(call if_changed,as_o_S)
 
 module-sdt-modular-prereq = %.sdtstub.o
+sdtinfo-prereq = $(modules:.ko=.sdtinfo.c)
 
 else
 
@@ -152,6 +153,7 @@ $(modules:.ko=.mod.o): %.mod.o: %.mod.c FORCE
 	$(call if_changed_dep,cc_o_c)
 
 module-sdt-modular-prereq =
+sdtinfo-prereq =
 
 endif
 
@@ -219,7 +221,7 @@ define add-ctf-filelists-cmd
 	$(foreach file,$(1),$(call add-ctf-filelist-cmd,$(file)))
 endef
 
-$(ctf-filelist): $(builtins) $(modules:.ko=.o) | $(modules:.ko=.sdtinfo.c)
+$(ctf-filelist): $(builtins) $(modules:.ko=.o) | $(sdtinfo-prereq)
 	@rm -f $(ctf-filelist);
 	@mkdir -p $(ctf-dir);
 	$(call add-ctf-filelists-cmd,$^)
@@ -228,7 +230,7 @@ $(ctf-filelist): $(builtins) $(modules:.ko=.o) | $(modules:.ko=.sdtinfo.c)
 # the names of the generated CTF files for the builtins are so variable.
 # (Standalone modules get their own per-module stamp files.)
 # The stamp file then depends on the .o files for the modules, and on the
-# sdtinfo files (for the same reason that the sdtstub does).
+# sdtinfo files, if any (for the same reason that the sdtstub does).
 $(ctf-stamp): $(ctf-filelist)
 	$(call if_changed,ctf)
 	@shopt -s nullglob; \
