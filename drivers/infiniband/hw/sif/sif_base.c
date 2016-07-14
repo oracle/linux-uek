@@ -57,12 +57,12 @@ MODULE_PARM_DESC(type##_size, "Size of the " #type " descriptor table")
  *  e.g. for instance qp_size=2048 or ah_size=100
  * (all sizes will be rounded up to a power of two value)
  */
-add_qsz_parameter(mr, key, 524288);
+add_qsz_parameter(mr, key, 4194304);
 add_qsz_parameter(epsc, epsc_csr_req, 2048);
-add_qsz_parameter(qp, qp, 131072);
-add_qsz_parameter(rq, rq_hw, 131072);
-add_qsz_parameter(cq, cq_hw, 131072);
-add_qsz_parameter(ah, ah, 524288);
+add_qsz_parameter(qp, qp, 1048576);
+add_qsz_parameter(rq, rq_hw, 1048576);
+add_qsz_parameter(cq, cq_hw, 524288);
+add_qsz_parameter(ah, ah, 262144);
 add_qsz_parameter(sq_ring, sq_ring, 262144);
 add_qsz_parameter(sq_tvl, sq_tvl, 128);
 
