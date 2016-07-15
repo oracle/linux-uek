@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015, 2016, Oracle and/or its affiliates.  All rights reserved.
+ * Copyright (c) 2015, 2016, Oracle and/or its affiliates. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2
@@ -2779,16 +2779,16 @@ union psif_epsc_vimma_ctrl_cmd {
  *       external
  */
 struct psif_epsc_csr_vimma_ctrl {
-	/* VIMMA sub-opcodes triggered by EPSC_VIMMA_CTRL */
+	/** VIMMA sub-opcodes triggered by EPSC_VIMMA_CTRL */
 	enum psif_epsc_vimma_ctrl_opcode	opcode:32;
 
 	/* length of DMA response buffer pinned in host memory */
 	u32	length;
-	/* Size 5*64 bits: union of the params for the various opcodes */
+	/** Size 5*64 bits: union of the params for the various opcodes */
 	union psif_epsc_vimma_ctrl_cmd	u;
-	/* Size 64 bits */
+	/** Size 64 bits */
 	struct psif_mmu_cntx	mmu_cntx;
-	/* Place to DMA back longer responses during retrieval */
+	/** Place to DMA back longer responses during retrieval */
 	u64	host_addr;
 	/* Summing up to 11 * u64 which is total and max */
 	u64	reserved[3];

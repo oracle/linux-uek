@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015, 2016, Oracle and/or its affiliates.  All rights reserved.
+ * Copyright (c) 2015, 2016, Oracle and/or its affiliates. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2
@@ -43,7 +43,7 @@ typedef uint64_t __be64;
  * Update when new operations are added or otherwise
  * backward compatible changes are made
  */
-#define EPSC_MINOR_VERSION 5
+#define EPSC_MINOR_VERSION 6
 
 /*
  * Macros for EPSC API #if checking in code
@@ -55,7 +55,7 @@ typedef uint64_t __be64;
  * Macro to conver 16 bit sequence number to 64 bit wire format
  */
 #define EPSC_STATUS_16_to_64(s) ((((u64)(s)) <<  0) | (((u64)(s)) << 16) | \
-								(((u64)(s)) << 32) | ((((u64)s)) << 48))
+                                (((u64)(s)) << 32) | ((((u64)s)) << 48))
 /*
  * Macros to force layout to match HW implementation
  */

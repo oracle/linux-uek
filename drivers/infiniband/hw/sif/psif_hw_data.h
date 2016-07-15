@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015, 2016, Oracle and/or its affiliates.  All rights reserved.
+ * Copyright (c) 2015, 2016, Oracle and/or its affiliates. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2
@@ -70,7 +70,7 @@ enum psif_enum_extent {
 	PSIF_EPSC_CSR_UPDATE_OPCODE_EXTENT	 = 0x8u,
 	PSIF_EPSC_FLASH_SLOT_EXTENT	 = 0x6u,
 	PSIF_EPSC_UPDATE_SET_EXTENT	 = 0x5u,
-	PSIF_EPSC_CSR_UF_CTRL_OPCODE_EXTENT	 = 0x9u,
+	PSIF_EPSC_CSR_UF_CTRL_OPCODE_EXTENT	 = 0xbu,
 	PSIF_EPSC_VIMMA_CTRL_OPCODE_EXTENT	 = 0x8u,
 	PSIF_EPSC_VIMMA_ADMMODE_EXTENT	 = 0x2u,
 	PSIF_EPSC_CSR_PMA_COUNTERS_ENUM_EXTENT	 = 0x17u,
@@ -1661,6 +1661,10 @@ enum psif_epsc_csr_uf_ctrl_opcode {
 	EPSC_UF_CTRL_GET_HIGHEST_QP_IDX,
 	/** Reset the highest QP number cache for the given UF */
 	EPSC_UF_CTRL_RESET_HIGHEST_QP_IDX,
+	/** Retrieve the current UF settings for SMP enable */
+	EPSC_UF_CTRL_GET_SMP_ENABLE,
+	/** Retrieve the current UF settings for vlink connect */
+	EPSC_UF_CTRL_GET_VLINK_CONNECT,
 	/* Padding out to required bits allocated */
 	PSIF_EPSC_CSR_UF_CTRL_OPCODE_FIELD_MAX	 = 0x7fffffffu
 }; /* enum psif_epsc_csr_uf_ctrl_opcode [32 bits] */
@@ -1741,10 +1745,19 @@ enum psif_epsc_vimma_ctrl_opcode {
 	PSIF_EPSC_VIMMA_CTRL_OPCODE_FIELD_MAX	 = 0x7fffffffu
 }; /* enum psif_epsc_vimma_ctrl_opcode [32 bits] */
 
-
+/** \brief IB admin modes supported by VIMMA
+ * \details
+ * VIMMA IB admin mode defines the way the VF will be configured
+ * by the fabric, either by SM alone, or by SM/VIMM combo.
+ * \par Classification
+ *     external
+ */
 enum psif_epsc_vimma_admmode {
+	/** SM only mode is default and behaves according to IBTA standard */
 	EPSC_VIMMA_CTRL_IB_ADM_MODE_SM_STANDARD,
-	/* VFP used as short for VM Fabric Profile */
+	/** VFP mode requires support of a VIMM service in the fabric.
+	 * VFP = VM Fabric Profile
+	 */
 	EPSC_VIMMA_CTRL_IB_ADM_MODE_VM_FABRIC_PROFILE,
 	/* Padding out to required bits allocated */
 	PSIF_EPSC_VIMMA_ADMMODE_FIELD_MAX	 = 0xffffu

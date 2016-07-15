@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015, 2016, Oracle and/or its affiliates.  All rights reserved.
+ * Copyright (c) 2015, 2016, Oracle and/or its affiliates. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2
@@ -1920,6 +1920,10 @@ const char *string_enum_psif_epsc_csr_uf_ctrl_opcode(enum psif_epsc_csr_uf_ctrl_
 		return "EPSC_UF_CTRL_GET_HIGHEST_QP_IDX";
 	case EPSC_UF_CTRL_RESET_HIGHEST_QP_IDX:
 		return "EPSC_UF_CTRL_RESET_HIGHEST_QP_IDX";
+	case EPSC_UF_CTRL_GET_SMP_ENABLE:
+		return "EPSC_UF_CTRL_GET_SMP_ENABLE";
+	case EPSC_UF_CTRL_GET_VLINK_CONNECT:
+		return "EPSC_UF_CTRL_GET_VLINK_CONNECT";
 	case PSIF_EPSC_CSR_UF_CTRL_OPCODE_FIELD_MAX:
 		return "PSIF_EPSC_CSR_UF_CTRL_OPCODE_FIELD_MAX";
 	default:
