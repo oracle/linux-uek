@@ -947,7 +947,10 @@ static int dispatch_eq(struct sif_eq *eq)
 			     leqe.event_status_communication_established ||
 			     leqe.event_status_path_migrated ||
 			     leqe.event_status_srq_limit_reached ||
-			     leqe.event_status_srq_catastrophic_error)) {
+			     leqe.event_status_srq_catastrophic_error ||
+			     /* Affiliated async. error on XRC TGTQP mapped to IB_EVENT_QP_FATAL */
+			     leqe.event_status_invalid_xrceth ||
+			     leqe.event_status_xrc_domain_violation)) {
 			struct sif_qp *sif_qp_elem = safe_get_sif_qp(sdev, leqe.qp);
 			bool is_srq_event = (leqe.event_status_srq_limit_reached ||
 					      leqe.event_status_srq_catastrophic_error);
@@ -996,7 +999,9 @@ static int dispatch_eq(struct sif_eq *eq)
 			nevents += handle_event(eq, port_elem, IB_EVENT_CLIENT_REREGISTER);
 		if (leqe.event_status_port_active)
 			nevents += handle_event(eq, port_elem, IB_EVENT_PORT_ACTIVE);
-		if (leqe.event_status_local_work_queue_catastrophic_error) {
+		if (leqe.event_status_local_work_queue_catastrophic_error ||
+			leqe.event_status_xrc_domain_violation ||
+			leqe.event_status_invalid_xrceth) {
 			nevents += handle_event(eq, qp_elem, IB_EVENT_QP_FATAL);
 			dump_eq_entry(SIF_INFO, "Got Fatal error", &leqe);
 		}
@@ -1033,8 +1038,6 @@ static int dispatch_eq(struct sif_eq *eq)
 
 		/* TBD: These are the ones that do not map directly to IB errors */
 		check_for_psif_event(event_status_port_changed);
-		check_for_psif_event(event_status_invalid_xrceth);
-		check_for_psif_event(event_status_xrc_domain_violation);
 
 		if (!nevents) {
 			sif_log(eq->ba.sdev, SIF_INTR, "eq %d: Warning: No events found for seq 0x%x",
