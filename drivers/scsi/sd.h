@@ -101,7 +101,7 @@ struct scsi_disk {
           * allow extending the structure while preserving ABI.
           */
 
-        UEK_KABI_RESERVED(1)
+	UEK_KABI_USE2(1, u32 opt_xfer_blocks, u32 unuse);
         UEK_KABI_RESERVED(2)
 };
 #define to_scsi_disk(obj) container_of(obj,struct scsi_disk,dev)
