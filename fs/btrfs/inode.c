@@ -66,6 +66,13 @@ struct btrfs_iget_args {
 	struct btrfs_root *root;
 };
 
+struct btrfs_dio_data {
+	u64 outstanding_extents;
+	u64 reserve;
+	u64 unsubmitted_oe_range_start;
+	u64 unsubmitted_oe_range_end;
+};
+
 static const struct inode_operations btrfs_dir_inode_operations;
 static const struct inode_operations btrfs_symlink_inode_operations;
 static const struct inode_operations btrfs_dir_ro_inode_operations;
@@ -7453,6 +7460,27 @@ static struct extent_map *create_pinned_em(struct inode *inode, u64 start,
 	return em;
 }
 
+static void adjust_dio_outstanding_extents(struct inode *inode,
+					   struct btrfs_dio_data *dio_data,
+					   const u64 len)
+{
+	unsigned num_extents;
+
+	num_extents = (unsigned) div64_u64(len + BTRFS_MAX_EXTENT_SIZE - 1,
+					   BTRFS_MAX_EXTENT_SIZE);
+	/*
+	 * If we have an outstanding_extents count still set then we're
+	 * within our reservation, otherwise we need to adjust our inode
+	 * counter appropriately.
+	 */
+	if (dio_data->outstanding_extents) {
+		dio_data->outstanding_extents -= num_extents;
+	} else {
+		spin_lock(&BTRFS_I(inode)->lock);
+		BTRFS_I(inode)->outstanding_extents += num_extents;
+		spin_unlock(&BTRFS_I(inode)->lock);
+	}
+}
 
 static int btrfs_get_blocks_direct(struct inode *inode, sector_t iblock,
 				   struct buffer_head *bh_result, int create)
@@ -7460,10 +7488,10 @@ static int btrfs_get_blocks_direct(struct inode *inode, sector_t iblock,
 	struct extent_map *em;
 	struct btrfs_root *root = BTRFS_I(inode)->root;
 	struct extent_state *cached_state = NULL;
+	struct btrfs_dio_data *dio_data = NULL;
 	u64 start = iblock << inode->i_blkbits;
 	u64 lockstart, lockend;
 	u64 len = bh_result->b_size;
-	u64 *outstanding_extents = NULL;
 	int unlock_bits = EXTENT_LOCKED;
 	int ret = 0;
 
@@ -7481,7 +7509,7 @@ static int btrfs_get_blocks_direct(struct inode *inode, sector_t iblock,
 		 * that anything that needs to check if there's a transction doesn't get
 		 * confused.
 		 */
-		outstanding_extents = current->journal_info;
+		dio_data = current->journal_info;
 		current->journal_info = NULL;
 	}
 
@@ -7489,8 +7517,11 @@ static int btrfs_get_blocks_direct(struct inode *inode, sector_t iblock,
 	 * If this errors out it's because we couldn't invalidate pagecache for
 	 * this range and we need to fallback to buffered.
 	 */
-	if (lock_extent_direct(inode, lockstart, lockend, &cached_state, create))
-		return -ENOTBLK;
+	if (lock_extent_direct(inode, lockstart, lockend, &cached_state,
+			       create)) {
+		ret = -ENOTBLK;
+		goto err;
+	}
 
 	em = btrfs_get_extent(inode, NULL, 0, start, len, 0);
 	if (IS_ERR(em)) {
@@ -7608,21 +7639,12 @@ unlock:
 		if (start + len > i_size_read(inode))
 			i_size_write(inode, start + len);
 
-		/*
-		 * If we have an outstanding_extents count still set then we're
-		 * within our reservation, otherwise we need to adjust our inode
-		 * counter appropriately.
-		 */
-		if (*outstanding_extents) {
-			(*outstanding_extents)--;
-		} else {
-			spin_lock(&BTRFS_I(inode)->lock);
-			BTRFS_I(inode)->outstanding_extents++;
-			spin_unlock(&BTRFS_I(inode)->lock);
-		}
-
-		current->journal_info = outstanding_extents;
+		adjust_dio_outstanding_extents(inode, dio_data, len);
 		btrfs_free_reserved_data_space(inode, len);
+		WARN_ON(dio_data->reserve < len);
+		dio_data->reserve -= len;
+		dio_data->unsubmitted_oe_range_end = start + len;
+		current->journal_info = dio_data;
 	}
 
 	/*
@@ -7645,8 +7667,17 @@ unlock:
 unlock_err:
 	clear_extent_bit(&BTRFS_I(inode)->io_tree, lockstart, lockend,
 			 unlock_bits, 1, 0, &cached_state, GFP_NOFS);
-	if (outstanding_extents)
-		current->journal_info = outstanding_extents;
+err:
+	if (dio_data)
+		current->journal_info = dio_data;
+	/*
+	 * Compensate the delalloc release we do in btrfs_direct_IO() when we
+	 * write less data then expected, so that we don't underflow our inode's
+	 * outstanding extents counter.
+	 */
+	if (create && dio_data)
+		adjust_dio_outstanding_extents(inode, dio_data, len);
+
 	return ret;
 }
 
@@ -7937,23 +7968,22 @@ static void btrfs_endio_direct_read(struct bio *bio, int err)
 	bio_put(bio);
 }
 
-static void btrfs_endio_direct_write(struct bio *bio, int err)
+static void btrfs_endio_direct_write_update_ordered(struct inode *inode,
+						    const u64 offset,
+						    const u64 bytes,
+						    const int uptodate)
 {
-	struct btrfs_dio_private *dip = bio->bi_private;
-	struct inode *inode = dip->inode;
 	struct btrfs_root *root = BTRFS_I(inode)->root;
 	struct btrfs_ordered_extent *ordered = NULL;
-	u64 ordered_offset = dip->logical_offset;
-	u64 ordered_bytes = dip->bytes;
-	struct bio *dio_bio;
+	u64 ordered_offset = offset;
+	u64 ordered_bytes = bytes;
 	int ret;
 
-	if (err)
-		goto out_done;
 again:
 	ret = btrfs_dec_test_first_ordered_pending(inode, &ordered,
 						   &ordered_offset,
-						   ordered_bytes, !err);
+						   ordered_bytes,
+						   uptodate);
 	if (!ret)
 		goto out_test;
 
@@ -7966,14 +7996,22 @@ out_test:
 	 * our bio might span multiple ordered extents.  If we haven't
 	 * completed the accounting for the whole dio, go back and try again
 	 */
-	if (ordered_offset < dip->logical_offset + dip->bytes) {
-		ordered_bytes = dip->logical_offset + dip->bytes -
-			ordered_offset;
+	if (ordered_offset < offset + bytes) {
+		ordered_bytes = offset + bytes - ordered_offset;
 		ordered = NULL;
 		goto again;
 	}
-out_done:
-	dio_bio = dip->dio_bio;
+}
+
+static void btrfs_endio_direct_write(struct bio *bio, int err)
+{
+	struct btrfs_dio_private *dip = bio->bi_private;
+	struct bio *dio_bio = dip->dio_bio;
+
+	btrfs_endio_direct_write_update_ordered(dip->inode,
+						dip->logical_offset,
+						dip->bytes,
+						!err);
 
 	kfree(dip);
 
@@ -8240,9 +8278,8 @@ out_err:
 static void btrfs_submit_direct(int rw, struct bio *dio_bio,
 				struct inode *inode, loff_t file_offset)
 {
-	struct btrfs_root *root = BTRFS_I(inode)->root;
-	struct btrfs_dio_private *dip;
-	struct bio *io_bio;
+	struct btrfs_dio_private *dip = NULL;
+	struct bio *io_bio = NULL;
 	struct btrfs_io_bio *btrfs_bio;
 	int skip_sum;
 	int write = rw & REQ_WRITE;
@@ -8259,7 +8296,7 @@ static void btrfs_submit_direct(int rw, struct bio *dio_bio,
 	dip = kzalloc(sizeof(*dip), GFP_NOFS);
 	if (!dip) {
 		ret = -ENOMEM;
-		goto free_io_bio;
+		goto free_ordered;
 	}
 
 	dip->private = dio_bio->bi_private;
@@ -8281,31 +8318,67 @@ static void btrfs_submit_direct(int rw, struct bio *dio_bio,
 		dip->subio_endio = btrfs_subio_endio_read;
 	}
 
+	/*
+	 * Reset the range for unsubmitted ordered extents (to a 0 length range)
+	 * even if we fail to submit a bio, because in such case we do the
+	 * corresponding error handling below and it must not be done a second
+	 * time by btrfs_direct_IO().
+	 */
+	if (write) {
+		struct btrfs_dio_data *dio_data = current->journal_info;
+
+		dio_data->unsubmitted_oe_range_end = dip->logical_offset +
+			dip->bytes;
+		dio_data->unsubmitted_oe_range_start =
+			dio_data->unsubmitted_oe_range_end;
+	}
+
 	ret = btrfs_submit_direct_hook(rw, dip, skip_sum);
 	if (!ret)
 		return;
 
 	if (btrfs_bio->end_io)
 		btrfs_bio->end_io(btrfs_bio, ret);
-free_io_bio:
-	bio_put(io_bio);
 
 free_ordered:
 	/*
-	 * If this is a write, we need to clean up the reserved space and kill
-	 * the ordered extent.
+	 * If we arrived here it means either we failed to submit the dip
+	 * or we either failed to clone the dio_bio or failed to allocate the
+	 * dip. If we cloned the dio_bio and allocated the dip, we can just
+	 * call bio_endio against our io_bio so that we get proper resource
+	 * cleanup if we fail to submit the dip, otherwise, we must do the
+	 * same as btrfs_endio_direct_[write|read] because we can't call these
+	 * callbacks - they require an allocated dip and a clone of dio_bio.
 	 */
-	if (write) {
-		struct btrfs_ordered_extent *ordered;
-		ordered = btrfs_lookup_ordered_extent(inode, file_offset);
-		if (!test_bit(BTRFS_ORDERED_PREALLOC, &ordered->flags) &&
-		    !test_bit(BTRFS_ORDERED_NOCOW, &ordered->flags))
-			btrfs_free_reserved_extent(root, ordered->start,
-						   ordered->disk_len, 1);
-		btrfs_put_ordered_extent(ordered);
-		btrfs_put_ordered_extent(ordered);
+	if (io_bio && dip) {
+		bio_endio(io_bio, ret);
+		/*
+		 * The end io callbacks free our dip, do the final put on io_bio
+		 * and all the cleanup and final put for dio_bio (through
+		 * dio_end_io()).
+		 */
+		dip = NULL;
+		io_bio = NULL;
+	} else {
+		if (write)
+			btrfs_endio_direct_write_update_ordered(inode,
+						file_offset,
+						dio_bio->bi_iter.bi_size,
+						0);
+		else
+			unlock_extent(&BTRFS_I(inode)->io_tree, file_offset,
+			      file_offset + dio_bio->bi_iter.bi_size - 1);
+
+		clear_bit(BIO_UPTODATE, &dio_bio->bi_flags);
+		/*
+		 * Releases and cleans up our dio_bio, no need to bio_put()
+		 * nor bio_endio()/bio_io_error() against dio_bio.
+		 */
+		dio_end_io(dio_bio, ret);
 	}
-	bio_endio(dio_bio, ret);
+	if (io_bio)
+		bio_put(io_bio);
+	kfree(dip);
 }
 
 static ssize_t check_direct_IO(struct btrfs_root *root, struct kiocb *iocb,
@@ -8346,7 +8419,8 @@ static ssize_t btrfs_direct_IO(struct kiocb *iocb, struct iov_iter *iter,
 {
 	struct file *file = iocb->ki_filp;
 	struct inode *inode = file->f_mapping->host;
-	u64 outstanding_extents = 0;
+	struct btrfs_root *root = BTRFS_I(inode)->root;
+	struct btrfs_dio_data dio_data = { 0 };
 	size_t count = 0;
 	int flags = 0;
 	bool wakeup = true;
@@ -8384,7 +8458,7 @@ static ssize_t btrfs_direct_IO(struct kiocb *iocb, struct iov_iter *iter,
 		ret = btrfs_delalloc_reserve_space(inode, count);
 		if (ret)
 			goto out;
-		outstanding_extents = div64_u64(count +
+		dio_data.outstanding_extents = div64_u64(count +
 						BTRFS_MAX_EXTENT_SIZE - 1,
 						BTRFS_MAX_EXTENT_SIZE);
 
@@ -8393,7 +8467,10 @@ static ssize_t btrfs_direct_IO(struct kiocb *iocb, struct iov_iter *iter,
 		 * do the accounting properly if we go over the number we
 		 * originally calculated.  Abuse current->journal_info for this.
 		 */
-		current->journal_info = &outstanding_extents;
+		dio_data.reserve = round_up(count, root->sectorsize);
+		dio_data.unsubmitted_oe_range_start = (u64)offset;
+		dio_data.unsubmitted_oe_range_end = (u64)offset;
+		current->journal_info = &dio_data;
 	} else if (test_bit(BTRFS_INODE_READDIO_NEED_LOCK,
 				     &BTRFS_I(inode)->runtime_flags)) {
 		inode_dio_end(inode);
@@ -8407,9 +8484,24 @@ static ssize_t btrfs_direct_IO(struct kiocb *iocb, struct iov_iter *iter,
 				   btrfs_submit_direct, flags);
 	if (iov_iter_rw(iter) == WRITE) {
 		current->journal_info = NULL;
-		if (ret < 0 && ret != -EIOCBQUEUED)
-			btrfs_delalloc_release_space(inode, count);
-		else if (ret >= 0 && (size_t)ret < count)
+		if (ret < 0 && ret != -EIOCBQUEUED) {
+			if (dio_data.reserve)
+				btrfs_delalloc_release_space(inode,
+							dio_data.reserve);
+			/*
+			 * On error we might have left some ordered extents
+			 * without submitting corresponding bios for them, so
+			 * cleanup them up to avoid other tasks getting them
+			 * and waiting for them to complete forever.
+			 */
+			if (dio_data.unsubmitted_oe_range_start <
+			    dio_data.unsubmitted_oe_range_end)
+				btrfs_endio_direct_write_update_ordered(inode,
+					dio_data.unsubmitted_oe_range_start,
+					dio_data.unsubmitted_oe_range_end -
+					dio_data.unsubmitted_oe_range_start,
+					0);
+		} else if (ret >= 0 && (size_t)ret < count)
 			btrfs_delalloc_release_space(inode,
 						     count - (size_t)ret);
 	}
