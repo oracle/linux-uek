@@ -10170,6 +10170,7 @@ lpfc_sli_sum_iocb(struct lpfc_vport *vport, uint16_t tgt_id, uint64_t lun_id,
 	struct lpfc_iocbq *iocbq;
 	int sum, i;
 
+	spin_lock_irq(&phba->hbalock);
 	for (i = 1, sum = 0; i <= phba->sli.last_iotag; i++) {
 		iocbq = phba->sli.iocbq_lookup[i];
 
@@ -10177,6 +10178,7 @@ lpfc_sli_sum_iocb(struct lpfc_vport *vport, uint16_t tgt_id, uint64_t lun_id,
 						ctx_cmd) == 0)
 			sum++;
 	}
+	spin_unlock_irq(&phba->hbalock);
 
 	return sum;
 }
