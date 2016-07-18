@@ -219,6 +219,7 @@ struct sif_eq {
 	u32 mask;	     /* entries - 1 for modulo using & */
 	struct sif_mem *mem;   /* Ref. to ba.mem to implement macro patterns */
 	int intr_vec;          /* Index into s->entries[..] for the interrupt vector used */
+	bool requested;	       /* Whether the irq has been requested or not on this eq */
 	u32 sw_index_interval; /* No. of events we can receive before the sw index must be updated */
 	u32 sw_index_next_update; /* Next scheduled update point */
 	atomic_t intr_cnt;   /* Number of interrupts for the interrupt vector for this eq */

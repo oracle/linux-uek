@@ -26,6 +26,8 @@
 #include <linux/seq_file.h>
 
 static int sif_map_irq(struct sif_eq *eq);
+static int sif_request_irq(struct sif_eq *eq);
+
 static int sif_irq_coalesce(struct sif_eq *eq);
 
 static void sif_unmap_irq(struct sif_eq *eq);
@@ -83,6 +85,17 @@ int sif_eq_init(struct sif_dev *sdev, struct sif_eps *es, struct psif_epsc_csr_r
 	}
 
 	eqb->cnt = cnt;
+
+	if (cnt) {
+		/* Request irq for the EPS interrupt queue only - all the rest
+		 * of the interrupts can be enabled explicitly using sif_eq_request_irq_all
+		 * when we are ready to process events of all kinds.
+		 * See Orabug: 24296729
+		 */
+		ret = sif_request_irq(&eq[0]);
+		if (ret)
+			goto eqi_failed;
+	}
 	return 0;
 
 eqi_failed:
@@ -92,6 +105,22 @@ eqi_failed:
 	return ret;
 }
 
+/* Request irq for all eqs still not requested for */
+int sif_eq_request_irq_all(struct sif_eps *es)
+{
+	int ret;
+	int i;
+
+	for (i = 0; i < es->eqs.cnt; i++) {
+		struct sif_eq *eq = &es->eqs.eq[i];
+		if (!eq->requested) {
+			ret = sif_request_irq(eq);
+			if (ret)
+				return ret;
+		}
+	}
+	return 0;
+}
 
 static void sif_eq_deinit_tables(struct sif_dev *sdev, struct sif_eps *es)
 {
@@ -256,7 +285,7 @@ static int sif_eq_table_init(struct sif_dev *sdev, struct sif_eps *es, u16 eq_id
 		goto err_map_ctx;
 	}
 
-	/* Allocate an irq index */
+	/* Allocate an irq index (but do not yet enable interrupts on it) */
 	ret = sif_map_irq(eq);
 	if (ret)
 		goto err_map_irq;
@@ -382,14 +411,11 @@ opcode_not_available:
 	return -1;
 }
 
-/* Interrupt handling for a single event queue */
+/* Set up interrupt handling for a single event queue (but do not enable interrupts) */
 static int sif_map_irq(struct sif_eq *eq)
 {
-	int irq;
-	int ret;
 	int vector_num;
 	struct sif_dev *s = eq->ba.sdev;
-	int flags = (s->intr_cnt !=  s->intr_req) ? IRQF_SHARED : 0;
 	const char *en;
 
 	spin_lock(&s->msix_lock);
@@ -405,7 +431,6 @@ static int sif_map_irq(struct sif_eq *eq)
 		return -ENOMEM;
 	}
 
-	irq = s->msix_entries[vector_num].vector;
 	en = eps_name(s, eq->eps->eps_num);
 
 	if (eq->index)
@@ -413,20 +438,33 @@ static int sif_map_irq(struct sif_eq *eq)
 	else
 		snprintf(eq->name, SIF_EQ_NAME_LEN, "sif%d-EPS%s", 0, en);
 
+	sif_log(s, SIF_INFO_V, "Allocated irq %d for EPS%s, eq %d, name %s",
+		s->msix_entries[vector_num].vector, en,	eq->index, eq->name);
+	eq->intr_vec = vector_num;
+	return 0;
+}
+
+
+static int sif_request_irq(struct sif_eq *eq)
+{
+	int irq;
+	int vector_num = eq->intr_vec;
+	struct sif_dev *s = eq->ba.sdev;
+	int ret = 0;
+	int flags = (s->intr_cnt !=  s->intr_req) ? IRQF_SHARED : 0;
+
+	irq = s->msix_entries[vector_num].vector;
 	ret = request_irq(irq, &sif_intr, flags, eq->name, eq);
 	if (ret)
 		return ret;
-	sif_log(s, SIF_INFO_V, "Allocated irq %d for EPS%s, eq %d, name %s", irq, en,
-		eq->index, eq->name);
-	eq->intr_vec = vector_num;
 
+	eq->requested = true;
 	ret = irq_set_affinity_hint(irq, eq->affinity_mask);
-	if (ret) {
+	if (ret)
 		sif_log(s, SIF_INFO_V, "set affinity hint for irq %d, failed", irq);
-		return ret;
-	}
-	return 0;
+	return ret;
 }
+
 
 static void sif_unmap_irq(struct sif_eq *eq)
 {
@@ -434,8 +472,10 @@ static void sif_unmap_irq(struct sif_eq *eq)
 	int irq = s->msix_entries[eq->intr_vec].vector;
 
 	free_cpumask_var(eq->affinity_mask);
-	irq_set_affinity_hint(irq, NULL);
-	free_irq(irq, eq);
+	if (eq->requested) {
+		irq_set_affinity_hint(irq, NULL);
+		free_irq(irq, eq);
+	}
 	spin_lock(&s->msix_lock);
 	clear_bit(eq->intr_vec, s->intr_used);
 	spin_unlock(&s->msix_lock);

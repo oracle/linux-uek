@@ -44,6 +44,9 @@ void sif_eq_deinit(struct sif_dev *sdev, struct sif_eps *es);
 int sif_enable_msix(struct sif_dev *s);
 int sif_disable_msix(struct sif_dev *sdev);
 
+/* Request irq for all eqs still not requested for */
+int sif_eq_request_irq_all(struct sif_eps *es);
+
 /* Printer for debugfs eq file */
 void sif_dfs_print_eq(struct seq_file *s, struct sif_dev *sdev, loff_t pos);
 

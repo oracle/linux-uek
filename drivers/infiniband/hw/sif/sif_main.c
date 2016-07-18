@@ -365,6 +365,12 @@ static int sif_probe(struct pci_dev *pdev,
 			goto pfail_r3_init;
 	}
 
+	es = &sdev->es[sdev->mbox_epsc];
+
+	err = sif_eq_request_irq_all(es);
+	if (err)
+		goto pfail_ibreg;
+
 	/* Successful device init */
 
 	err = sif_register_ib_device(sdev);
@@ -375,7 +381,6 @@ static int sif_probe(struct pci_dev *pdev,
 	sif_dfs_link_to_ibdev(sdev);
 
 
-	es = &sdev->es[sdev->mbox_epsc];
 	sif_log(sdev, SIF_INFO, "Enabled %s (hardware v%d.%d - firmware v%d.%d (api v%d.%d))",
 		sdev->ib_dev.name,
 		es->ver.psif_major, es->ver.psif_minor,
