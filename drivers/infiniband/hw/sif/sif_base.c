@@ -752,6 +752,7 @@ int sif_write_invalidate(struct sif_pqp *pqp, enum sif_tab_type type, int index,
 	struct sif_sq *sq;
 	struct psif_cq_entry *cqe;
 	bool self_destruct;
+	bool dyn_lcqe = false;
 	struct sif_dev *sdev = to_sdev(pqp->qp->ibqp.device);
 
 	self_destruct = (type == cq_hw) && (index == pqp->cq->index);
@@ -819,9 +820,21 @@ int sif_write_invalidate(struct sif_pqp *pqp, enum sif_tab_type type, int index,
 		sts = sif_pqp_write_send(pqp, &wr, NULL, p_mode);
 		if (sts != -EAGAIN)
 			return sts;
-		/* In the EAGAIN case, fall through to post a new request with completion
-		 * to be able to use the quota beyond lowpri_lim
+		/* In the EAGAIN case, post a new (synchronous) request with completion
+		 * to be able to use the quota beyond lowpri_lim.
+		 * Note that here lcqe is NULL so we need to dynamically allocate and initialize
+		 * one:
 		 */
+		BUG_ON(lcqe);
+		sif_log(sdev, SIF_INFO_V, "pqp %d: async post made sync due to almost full PQP",
+			index);
+		lcqe = kzalloc(sizeof(*lcqe), GFP_KERNEL);
+		if (!lcqe)
+			return -ENOMEM;
+		/* See DECLARE_SIF_CQE_POLL */
+		lcqe->cqe.status = PSIF_WC_STATUS_FIELD_MAX;
+		lcqe->pqp = get_pqp(sdev);
+		dyn_lcqe = true;
 	}
 
 	wr.completion = 1;
@@ -830,6 +843,11 @@ int sif_write_invalidate(struct sif_pqp *pqp, enum sif_tab_type type, int index,
 	if (ncompleted < 0) {
 		sif_log(sdev, SIF_INFO, "pqp request failed with errno %d", ncompleted);
 		return ncompleted;
+	}
+
+	if (dyn_lcqe) {
+		kfree(lcqe);
+		return 0;
 	}
 
 	/* Note that we operate on 3 different indices here! */

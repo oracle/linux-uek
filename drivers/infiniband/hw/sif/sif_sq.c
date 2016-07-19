@@ -311,7 +311,7 @@ int sif_flush_sqs(struct sif_dev *sdev, struct sif_sq *sq)
 		if (sq_next != prev_sq_next) {
 			/* Reset timeout */
 			timeout = jiffies + sdev->min_resp_ticks * 2;
-			sif_log(sdev, SIF_INFO_V, "sq %d: sq_next moved from %d -> %d",
+			sif_log(sdev, SIF_SQ, "sq %d: sq_next moved from %d -> %d",
 				sq->index, prev_sq_next, sq_next);
 		} else if (time_is_before_jiffies(timeout)) {
 			if (sif_feature(pcie_trigger))
