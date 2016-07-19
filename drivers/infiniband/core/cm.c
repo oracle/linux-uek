@@ -3872,8 +3872,6 @@ static int cm_init_qp_init_attr(struct cm_id_private *cm_id_priv,
 	int ret;
 	u64 remote_guid;
 
-	remote_guid = cm_id_priv->timewait_info->remote_ca_guid;
-
 	spin_lock_irqsave(&cm_id_priv->lock, flags);
 	switch (cm_id_priv->id.state) {
 	case IB_CM_REQ_SENT:
@@ -3890,6 +3888,7 @@ static int cm_init_qp_init_attr(struct cm_id_private *cm_id_priv,
 
 		qp_attr->qp_access_flags = IB_ACCESS_REMOTE_WRITE;
 
+		remote_guid = cm_id_priv->timewait_info->remote_ca_guid;
 		if (remote_guid & IB_GUID_MBIT)
 			qp_attr->qp_access_flags |= IB_GUID_RNR_TWEAK;
 
