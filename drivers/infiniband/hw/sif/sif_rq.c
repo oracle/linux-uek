@@ -646,8 +646,11 @@ void sif_dfs_print_rq_hw(struct seq_file *s, struct sif_dev *sdev, loff_t pos)
 
 	seq_printf(s, "%7llu %5u %8u %8u %9u %8u %8u %7u", pos,
 		head, tail, rq->entries, qlen, rq->sg_entries, rq_sw->next_seq, rq->srq_limit);
-	if (rq->is_srq & rq->xrc_domain)
-		seq_puts(s, "\t[XRC-SRQ]\n");
+	if (rq->is_srq & rq->xrc_domain) {
+		seq_puts(s, "\t[XRCSRQ -> CQ:");
+		seq_printf(s, "%u", rq->cq_idx);
+		seq_puts(s, "]\n");
+	}
 	else if (rq->is_srq)
 		seq_puts(s, "\t[SRQ]\n");
 	else
