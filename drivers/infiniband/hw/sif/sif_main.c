@@ -67,6 +67,7 @@ static struct pci_driver sif_driver = {
 	.id_table = pci_table,
 	.probe =	sif_probe,
 	.remove =	sif_remove,
+	.shutdown =	sif_remove,
 	.sriov_configure = sif_vf_enable,
 };
 
