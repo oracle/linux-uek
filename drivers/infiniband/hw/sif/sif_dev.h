@@ -286,6 +286,7 @@ struct sif_dev {
 	struct sif_idr pd_refs;   /* Mgmt of sif_pd allocations */
 	struct sif_spqp_pool ki_spqp; /* Stencil PQPs for key invalidates */
 	/* Misc settings */
+	struct completion ready_for_events; /* Set when we are ready to receive events from sif */
 	bool registered;	/* Set when we are registered with the verbs layer */
 	u64 min_resp_ticks;   /* expected min. hw resp.time in ticks */
 

@@ -223,6 +223,7 @@ static int sif_probe(struct pci_dev *pdev,
 			       const struct pci_device_id *id)
 {
 	int err = 0;
+	char tmp[IB_DEVICE_NAME_MAX+6];
 
 	/* TBD: Zeroed memory from ib_alloc_device? */
 	struct sif_dev *sdev =
@@ -239,6 +240,7 @@ static int sif_probe(struct pci_dev *pdev,
 	sdev->fw_vfs = -1; /* #of VFS enabled in firmware not known yet */
 	sdev->ib_dev.dma_device = &pdev->dev;
 	sdev->limited_mode = sif_feature(force_limited_mode) ? true : false;
+	init_completion(&sdev->ready_for_events);
 
 	strlcpy(sdev->ib_dev.name, "sif%d", IB_DEVICE_NAME_MAX);
 
@@ -255,7 +257,12 @@ static int sif_probe(struct pci_dev *pdev,
 		err = -ENOMEM;
 		goto wq_fail;
 	}
-	sdev->misc_wq = create_singlethread_workqueue("sif_misc_wq");
+
+	/* Hold back wq event processing until everything is up */
+
+
+	sprintf(tmp, "%s_misc", sdev->ib_dev.name);
+	sdev->misc_wq = create_singlethread_workqueue(tmp);
 	if (!sdev->misc_wq) {
 		sif_log(sdev, SIF_INFO, "Failed to allocate sif misc work queue");
 		err = -ENOMEM;

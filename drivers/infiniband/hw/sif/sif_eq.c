@@ -623,14 +623,7 @@ static void handle_event_work(struct work_struct *work)
 	atomic_inc(&ew->eq->work_cnt);
 
 	if (unlikely(!sdev->registered)) {
-		sif_log(sdev, SIF_INFO,
-			"Event of type %s received before verbs framework is up - ignoring",
-			ib_event2str(ew->ibe.event));
-
-		if ((ew->ibe.event == IB_EVENT_LID_CHANGE)
-			&& (PSIF_REVISION(sdev) <= 3))
-			sif_r3_recreate_flush_qp(sdev, ew->ibe.element.port_num - 1);
-		goto out;
+		wait_for_completion_interruptible(&sdev->ready_for_events);
 	}
 
 	switch (ew->ibe.event) {
@@ -741,9 +734,8 @@ static void handle_event_work(struct work_struct *work)
 		sif_log(sdev, SIF_INFO, "Unhandled event type %d", ew->ibe.event);
 		break;
 	}
-out:
 	kfree(ew);
-	}
+}
 
 /* Generic event handler - @eqe contains little endian copy of event triggering the call
  * ib_dispatch_event dispatches directly so we have to defer the actual dispatch
