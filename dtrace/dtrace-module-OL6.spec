@@ -47,9 +47,9 @@
 		rpm.define("arches x86_64")
 	end
 
-	if rpm.vercmp(kver, "4.1.12-43") >= 0 then
+	if rpm.vercmp(kver, "4.1.12-61") >= 0 then
 		rpm.define("srcver 0.5.3")
-		rpm.define("bldrel 1")
+		rpm.define("bldrel 2")
 		rpm.define("dt_vcode "..rpm.expand("%{dt_0_5_3}"))
 	elseif rpm.vercmp(kver, "4.1.12-33") >= 0 then
 		rpm.define("srcver 0.5.2")
@@ -296,6 +296,8 @@ rm -rf %{buildroot}
 
 %changelog
 %if %{dt_vcode} >= %{dt_0_5_3}
+* Wed Jul 20 2016 Nick Alcock <nick.alcock@oracle.com> - 0.5.3-2
+- Re-enable 0.5.3 release after bugfix [Orabug: 23344927]
 * Mon May 23 2016 Kris Van Hees <kris.van.hees@oracle.com> - 0.5.3-1
 - Provider 'perf' added to SDT for perf events.
   (Nick Alcock) [Orabug: 23004534]
