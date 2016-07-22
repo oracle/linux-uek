@@ -143,11 +143,6 @@ struct rds_ib_path {
 	union ib_gid    p_dgid;
 };
 
-struct rds_ib_migrate_work {
-	struct delayed_work             work;
-	struct rds_ib_connection        *ic;
-};
-
 struct rds_ib_rx_work {
 	struct delayed_work             work;
 	struct rds_ib_connection        *ic;
@@ -231,15 +226,7 @@ struct rds_ib_connection {
 
 	struct completion       i_last_wqe_complete;
 
-#if 0
-	/* APM support */
-	struct rds_ib_path      i_pri_path;
-	struct rds_ib_path      i_cur_path;
-	unsigned int            i_alt_path_index;
-	unsigned long		i_last_migration;
-#endif
 	/* Active Bonding */
-	struct rds_ib_migrate_work	i_migrate_w;
 	unsigned int		i_active_side;
 
 	int			i_scq_vector;
