@@ -580,47 +580,6 @@ static void rds_ib_qp_event_handler(struct ib_event *event, void *data)
 	case IB_EVENT_QP_LAST_WQE_REACHED:
 		complete(&ic->i_last_wqe_complete);
 		break;
-	case IB_EVENT_PATH_MIG:
-#if 0
-		memcpy(&ic->i_cur_path.p_sgid,
-			&ic->i_cm_id->route.path_rec[ic->i_alt_path_index].sgid,
-			sizeof(union ib_gid));
-
-		memcpy(&ic->i_cur_path.p_dgid,
-			&ic->i_cm_id->route.path_rec[ic->i_alt_path_index].dgid,
-			sizeof(union ib_gid));
-
-		if (!memcmp(&ic->i_pri_path.p_sgid, &ic->i_cur_path.p_sgid,
-				sizeof(union ib_gid)) &&
-			!memcmp(&ic->i_pri_path.p_dgid, &ic->i_cur_path.p_dgid,
-				sizeof(union ib_gid))) {
-			printk(KERN_NOTICE
-				"RDS/IB: connection "
-				"<%pI4,%pI4,%d> migrated back to path "
-				"<"RDS_IB_GID_FMT","RDS_IB_GID_FMT">\n",
-				&conn->c_laddr,
-				&conn->c_faddr,
-				conn->c_tos,
-				RDS_IB_GID_ARG(ic->i_cur_path.p_sgid),
-				RDS_IB_GID_ARG(ic->i_cur_path.p_dgid));
-		} else {
-			printk(KERN_NOTICE
-				"RDS/IB: connection "
-				"<%pI4,%pI4,%d> migrated over to path "
-				"<"RDS_IB_GID_FMT","RDS_IB_GID_FMT">\n",
-				&conn->c_laddr,
-				&conn->c_faddr,
-				conn->c_tos,
-				RDS_IB_GID_ARG(ic->i_cur_path.p_sgid),
-				RDS_IB_GID_ARG(ic->i_cur_path.p_dgid));
-		}
-		ic->i_last_migration = get_seconds();
-#endif
-
-		break;
-	case IB_EVENT_PATH_MIG_ERR:
-		rds_rtd(RDS_RTD_ERR, "RDS: Path migration error\n");
-		break;
 	default:
 		rds_rtd(RDS_RTD_ERR,
 			"Fatal QP Event %u (%s) - connection %pI4->%pI4 tos %d, reconnecting\n",
@@ -1165,44 +1124,6 @@ out:
 	return ret;
 }
 
-static void rds_ib_migrate(struct work_struct *_work)
-{
-	struct rds_ib_migrate_work *work =
-		container_of(_work, struct rds_ib_migrate_work, work.work);
-	struct rds_ib_connection *ic = work->ic;
-	struct ib_qp_attr qp_attr;
-	struct ib_qp_init_attr  qp_init_attr;
-	enum ib_mig_state path_mig_state;
-	struct rdma_cm_id *cm_id = ic->i_cm_id;
-	int ret = 0;
-
-	if (!ic->i_active_side) {
-		ret = ib_query_qp(cm_id->qp, &qp_attr, IB_QP_PATH_MIG_STATE,
-				&qp_init_attr);
-		if (ret) {
-			printk(KERN_ERR "RDS/IB: failed to query QP\n");
-			return;
-		}
-
-		path_mig_state = qp_attr.path_mig_state;
-		if (!path_mig_state) {
-			printk(KERN_NOTICE
-				"RDS/IB: Migration in progress..skip\n");
-			return;
-		}
-
-		qp_attr.path_mig_state = 0;
-		ret = ib_modify_qp(cm_id->qp, &qp_attr, IB_QP_PATH_MIG_STATE);
-		if (ret) {
-			printk(KERN_ERR "RDS/IB: failed to modify QP from %s"
-				" to  MIGRATED state\n",
-				(!path_mig_state) ? "MIGRATED" :
-				(path_mig_state == 1) ? "REARM" :
-			(path_mig_state == 2) ? "ARMED" : "UNKNOWN");
-		}
-	}
-}
-
 int rds_ib_conn_connect(struct rds_connection *conn)
 {
 	struct rds_ib_connection *ic = conn->c_transport_data;
@@ -1443,7 +1364,6 @@ int rds_ib_conn_alloc(struct rds_connection *conn, gfp_t gfp)
 
 	init_completion(&ic->i_last_wqe_complete);
 
-	INIT_DELAYED_WORK(&ic->i_migrate_w.work, rds_ib_migrate);
 	INIT_DELAYED_WORK(&ic->i_rx_w.work, rds_ib_rx_handler);
 
 	spin_lock_irqsave(&ib_nodev_conns_lock, flags);
