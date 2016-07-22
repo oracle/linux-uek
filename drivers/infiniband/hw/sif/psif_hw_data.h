@@ -65,13 +65,13 @@ enum psif_enum_extent {
 	PSIF_EPSC_CSR_MODIFY_DEVICE_FLAGS_EXTENT	 = 0x3u,
 	PSIF_EPSC_CSR_MODIFY_PORT_FLAGS_EXTENT	 = 0x11u,
 	PSIF_EPSC_CSR_EPSA_COMMAND_EXTENT	 = 0x4u,
-	PSIF_EPSA_COMMAND_EXTENT	 = 0xcu,
-	PSIF_EPSC_QUERY_OP_EXTENT	 = 0x56u,
+	PSIF_EPSA_COMMAND_EXTENT	 = 0xdu,
+	PSIF_EPSC_QUERY_OP_EXTENT	 = 0x57u,
 	PSIF_EPSC_CSR_UPDATE_OPCODE_EXTENT	 = 0x8u,
 	PSIF_EPSC_FLASH_SLOT_EXTENT	 = 0x6u,
 	PSIF_EPSC_UPDATE_SET_EXTENT	 = 0x5u,
 	PSIF_EPSC_CSR_UF_CTRL_OPCODE_EXTENT	 = 0xbu,
-	PSIF_EPSC_VIMMA_CTRL_OPCODE_EXTENT	 = 0x8u,
+	PSIF_EPSC_VIMMA_CTRL_OPCODE_EXTENT	 = 0x9u,
 	PSIF_EPSC_VIMMA_ADMMODE_EXTENT	 = 0x2u,
 	PSIF_EPSC_CSR_PMA_COUNTERS_ENUM_EXTENT	 = 0x17u,
 	PSIF_EPSC_CSR_ATOMIC_OP_EXTENT	 = 0x4u,
@@ -1359,6 +1359,8 @@ enum psif_epsa_command {
 	EPSA_SKJM_MEMACC,
 	EPSA_GET_PROXY_QP_SQ_KEY,
 	EPSA_GENERIC_CMD,
+	/** Get exported runtime symbols */
+	EPSA_GET_EXPORTED_SYMBOL_MAP,
 	/* Padding out to required bits allocated */
 	PSIF_EPSA_COMMAND_FIELD_MAX	 = 0x7fffffffu
 }; /* enum psif_epsa_command [32 bits] */
@@ -1576,7 +1578,7 @@ enum psif_epsc_query_op {
 	EPSC_QUERY_PA_UPPER_TWELVE	 = 0x4du,
 	/** Number of VFs configured - valid values limited to power-of-two.
 	 * For BARE_METAL mode, number of VFs is -1 i.e. not applicable.
-	 * PSIF_QUERY index as defined in psif_epsc_query_num_vfs_mode
+	 * PSIF_QUERY index as defined in enum psif_epsc_query_num_vfs_mode
 	 * PSIF_SET   index = #VFs for next restart
 	 */
 	EPSC_QUERY_NUM_VFS	 = 0x4fu,
@@ -1586,12 +1588,14 @@ enum psif_epsc_query_op {
 	EPSC_QUERY_CREDIT_MODE	 = 0x50u,
 	/** Query version on onboard CPLD (Titan only Other platforms will return EPSC_ENODATA) */
 	EPSC_QUERY_CPLD_VERSION	 = 0x51u,
-	/** Query portinfo on exernal port (defined in psif_epsc_query_external_port_info_t) */
+	/** Query portinfo on exernal port (defined in struct psif_epsc_query_external_port_info) */
 	EPSC_QUERY_EXTERNAL_PORT_INFO	 = 0x53u,
-	/* Query the HW revision of the board */
+	/** Query the HW revision of the board */
 	EPSC_QUERY_HW_REVISION	 = 0x54u,
+	/** Query the PSIF on-chip temperature (defined in struct psif_epsc_query_on_chip_temp) */
+	EPSC_QUERY_ON_CHIP_TEMP	 = 0x55u,
 	/* EOF marker - must be last and highest in this enum type. */
-	EPSC_QUERY_LAST	 = 0x55u,
+	EPSC_QUERY_LAST	 = 0x56u,
 	/* Padding out to required bits allocated */
 	PSIF_EPSC_QUERY_OP_FIELD_MAX	 = 0x7fffffffu
 }; /* enum psif_epsc_query_op [32 bits] */
@@ -1741,6 +1745,8 @@ enum psif_epsc_vimma_ctrl_opcode {
 	EPSC_VIMMA_CTRL_SET_VFP_VHCA_DEREGISTER,
 	/* no DMA or DMA if multiple UFs */
 	EPSC_VIMMA_CTRL_SET_ADMIN_MODE,
+	/* reset all UFs FSM */
+	EPSC_VIMMA_CTRL_RESET,
 	/* Padding out to required bits allocated */
 	PSIF_EPSC_VIMMA_CTRL_OPCODE_FIELD_MAX	 = 0x7fffffffu
 }; /* enum psif_epsc_vimma_ctrl_opcode [32 bits] */

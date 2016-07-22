@@ -1854,7 +1854,7 @@ struct psif_eq_entry {
  * This struct is returning several attributes of the external IB port. The vHCA IB portnumber
  * is set in the index field. Values returned maches description in PortInfo (See IB specification
  * 1.3 vol1 chapter 14.2.5.6), except for active speed which will return values as defined in
- * psif_port_speed.
+ * enum psif_port_speed.
  * \par Width
  *      64 bit
  * \par Used in
