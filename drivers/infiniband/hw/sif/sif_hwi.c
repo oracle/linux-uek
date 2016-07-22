@@ -437,6 +437,7 @@ int sif_hw_init(struct sif_dev *sdev)
 	if (ret)
 		goto chip_init_failed;
 
+	/* Configure all the base tables with the EPSC */
 	ret = sif_base_init(sdev);
 	if (ret)
 		goto base_failed;

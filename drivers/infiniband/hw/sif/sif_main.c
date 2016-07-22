@@ -109,6 +109,10 @@ uint sif_cb_max = 100;
 module_param_named(cb_max, sif_cb_max, uint, S_IRUGO);
 MODULE_PARM_DESC(cb_max, "Upper limit on no. of CBs of each type to reserve for the kernel");
 
+int sif_vf_max = -1;
+module_param_named(vf_max, sif_vf_max, int, S_IRUGO);
+MODULE_PARM_DESC(vf_max, "Number of VFs to request firmware to configure, -1 = use driver defaults");
+
 uint sif_fmr_cache_flush_threshold = 512;
 module_param_named(fmr_cache_flush_threshold, sif_fmr_cache_flush_threshold, uint, S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(fmr_cache_flush_threshold, "PF limit for when to use fast-path full MMU flush for FMR unmap");

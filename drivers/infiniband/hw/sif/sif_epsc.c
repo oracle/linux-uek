@@ -32,6 +32,7 @@
 #include "sif_defs.h"
 #include <linux/bitmap.h>
 #include <linux/seq_file.h>
+#include <xen/xen.h>
 
 #define CSR_ONLINE_MASK 0x8000
 
@@ -695,6 +696,24 @@ int sif_eps_init(struct sif_dev *sdev, enum sif_tab_type type)
 	memset(&lrsp, 0x6a, sizeof(struct psif_epsc_csr_rsp));
 	lcqe.rsp = &lrsp;
 	lcqe.need_complete = false;
+
+	if (!sdev->is_vf) {
+		/* PF only: If sif_vf_max is >= 0, enable that number of VFs.
+		 * If vf_max == -1: enable Exadata mode as follows:
+		 *    if Xen PV domain automatically enable all VFs,
+		 *    otherwise enable no VFs - only physical function.
+		 * If vf_max == -2: Default to NVRAM settings from firmware
+		 *    = bw comp mode.
+		 */
+		if (sif_vf_max >= 0)
+			lconfig.num_ufs = min_t(int, pci_sriov_get_totalvfs(sdev->pdev),sif_vf_max) + 1;
+		else if (sif_vf_max == -2)
+			lconfig.num_ufs = 0; /* Use firmware defaults */
+		else if (xen_pv_domain())
+			lconfig.num_ufs = pci_sriov_get_totalvfs(sdev->pdev) + 1;
+		else
+			lconfig.num_ufs = 1;
+	}
 
 	lconfig.hwapi_major_ver = PSIF_MAJOR_VERSION;
 	lconfig.hwapi_minor_ver = PSIF_MINOR_VERSION;

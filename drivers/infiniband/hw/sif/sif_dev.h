@@ -705,6 +705,9 @@ extern uint sif_ki_spqp_size;
 /* Max number of collect buffers supported */
 extern uint sif_cb_max;
 
+/* Number of VFs to request firmware to configure, 0 = use driver defaults */
+extern int sif_vf_max;
+
 /* Initialized in init */
 extern struct kmem_cache *compl_cache;
 
