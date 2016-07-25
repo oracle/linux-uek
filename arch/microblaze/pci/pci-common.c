@@ -318,12 +318,15 @@ int pci_mmap_page_range(struct pci_dev *dev, struct vm_area_struct *vma,
 {
 	resource_size_t offset =
 		((resource_size_t)vma->vm_pgoff) << PAGE_SHIFT;
-	struct resource *rp;
 	int ret;
 
-	rp = __pci_mmap_make_offset(dev, &offset, mmap_state);
-	if (rp == NULL)
-		return -EINVAL;
+	if (mmap_state == pci_mmap_io) {
+		struct pci_controller *hose = pci_bus_to_host(dev->bus);
+
+		/* hose should never be NULL */
+		offset += hose->io_base_phys -
+			 ((unsigned long)hose->io_base_virt - _IO_BASE);
+	}
 
 	vma->vm_pgoff = offset >> PAGE_SHIFT;
 	vma->vm_page_prot = __pci_mmap_set_pgprot(dev, rp,

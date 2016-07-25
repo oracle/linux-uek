@@ -876,10 +876,6 @@ int pci_mmap_page_range(struct pci_dev *dev, struct vm_area_struct *vma,
 {
 	int ret;
 
-	ret = __pci_mmap_make_offset(dev, vma, mmap_state);
-	if (ret < 0)
-		return ret;
-
 	__pci_mmap_set_pgprot(dev, vma, mmap_state);
 
 	vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);

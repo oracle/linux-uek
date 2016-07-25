@@ -9,6 +9,7 @@
 #include <linux/slab.h>
 #include <linux/module.h>
 #include <linux/proc_fs.h>
+#include <linux/sched.h>
 #include <linux/seq_file.h>
 #include <linux/capability.h>
 #include <linux/security.h>
@@ -234,23 +235,67 @@ static long proc_bus_pci_ioctl(struct file *file, unsigned int cmd,
 }
 
 #ifdef HAVE_PCI_MMAP
+
+static int pci_user_to_resource(struct pci_dev *dev, resource_size_t *offset,
+				int flags)
+{
+	int i;
+
+	for (i = 0; i < PCI_ROM_RESOURCE; i++) {
+		resource_size_t start, end;
+		struct resource *res = &dev->resource[i];
+
+		if (!(res->flags & flags))
+			continue;
+
+		if (pci_resource_len(dev, i) == 0)
+			continue;
+
+		/*
+		 * here *offset is PAGE_SIZE aligned from caller.
+		 * need align start/end for io port resource that is
+		 * usually not PAGE_SIZE aligned.
+		 * that means we let it go if they falls in same page.
+		 */
+		pci_resource_to_user(dev, i, res, &start, &end);
+		if ((start & PAGE_MASK) <= *offset &&
+		     *offset <= (end & PAGE_MASK)) {
+			*offset = res->start + (*offset - start);
+			return i;
+		}
+	}
+
+	return -ENODEV;
+}
+
 static int proc_bus_pci_mmap(struct file *file, struct vm_area_struct *vma)
 {
 	struct pci_dev *dev = PDE_DATA(file_inode(file));
 	struct pci_filp_private *fpriv = file->private_data;
-	int i, ret;
+	resource_size_t offset;
+	int i, ret, flags;
 
 	if (!capable(CAP_SYS_RAWIO) || (get_securelevel() > 0))
 		return -EPERM;
 
-	/* Make sure the caller is mapping a real resource for this device */
-	for (i = 0; i < PCI_ROM_RESOURCE; i++) {
-		if (pci_mmap_fits(dev, i, vma,  PCI_MMAP_PROCFS))
-			break;
-	}
-
-	if (i >= PCI_ROM_RESOURCE)
+	offset = vma->vm_pgoff << PAGE_SHIFT;
+	if (fpriv->mmap_state == pci_mmap_mem)
+		flags = IORESOURCE_MEM;
+	else
+		flags = IORESOURCE_IO;
+	i = pci_user_to_resource(dev, &offset, flags);
+	if (i < 0)
 		return -ENODEV;
+
+	vma->vm_pgoff = offset >> PAGE_SHIFT;
+	if (!pci_mmap_fits(dev, i, vma, fpriv->mmap_state, PCI_MMAP_PROCFS)) {
+		WARN(1, "process \"%s\" tried to map 0x%08lx bytes at page 0x%08lx on %s BAR %d (start 0x%16Lx, size 0x%16Lx)\n",
+			current->comm, vma->vm_end-vma->vm_start, vma->vm_pgoff,
+			pci_name(dev), i,
+			(u64)pci_resource_start(dev, i),
+			(u64)pci_resource_len(dev, i));
+		return -EINVAL;
+	}
 
 	ret = pci_mmap_page_range(dev, vma,
 				  fpriv->mmap_state,

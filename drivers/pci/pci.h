@@ -28,7 +28,7 @@ enum pci_mmap_api {
 	PCI_MMAP_PROCFS	/* mmap on /proc/bus/pci/<BDF> */
 };
 int pci_mmap_fits(struct pci_dev *pdev, int resno, struct vm_area_struct *vmai,
-		  enum pci_mmap_api mmap_api);
+		  enum pci_mmap_state mmap_type, enum pci_mmap_api mmap_api);
 #endif
 int pci_probe_reset_function(struct pci_dev *dev);
 

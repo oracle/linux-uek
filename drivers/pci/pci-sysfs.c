@@ -971,22 +971,28 @@ void pci_remove_legacy_files(struct pci_bus *b)
 #ifdef HAVE_PCI_MMAP
 
 int pci_mmap_fits(struct pci_dev *pdev, int resno, struct vm_area_struct *vma,
+		  enum pci_mmap_state mmap_type,
 		  enum pci_mmap_api mmap_api)
 {
 	unsigned long nr, start, size, pci_start = 0;
+	int flags;
 
 	if (pci_resource_len(pdev, resno) == 0)
 		return 0;
+
+	if (mmap_type == pci_mmap_mem)
+		flags = IORESOURCE_MEM;
+	else
+		flags = IORESOURCE_IO;
+
+	if (!(pci_resource_flags(pdev, resno) & flags))
+		return 0;
+
 	nr = vma_pages(vma);
 	start = vma->vm_pgoff;
 	size = ((pci_resource_len(pdev, resno) - 1) >> PAGE_SHIFT) + 1;
-	if (mmap_api == PCI_MMAP_PROCFS) {
-		resource_size_t user_start, user_end;
-
-		pci_resource_to_user(pdev, resno, &pdev->resource[resno],
-					&user_start, &user_end);
-		pci_start = user_start >> PAGE_SHIFT;
-	}
+	pci_start = (mmap_api == PCI_MMAP_PROCFS) ?
+			pci_resource_start(pdev, resno) >> PAGE_SHIFT : 0;
 	if (start >= pci_start && start < pci_start + size &&
 			start + nr <= pci_start + size)
 		return 1;
@@ -1009,7 +1015,6 @@ static int pci_mmap_resource(struct kobject *kobj, struct bin_attribute *attr,
 						       struct device, kobj));
 	struct resource *res = attr->private;
 	enum pci_mmap_state mmap_type;
-	resource_size_t start, end;
 	int i;
 
 	if (get_securelevel() > 0)
@@ -1024,7 +1029,8 @@ static int pci_mmap_resource(struct kobject *kobj, struct bin_attribute *attr,
 	if (res->flags & IORESOURCE_MEM && iomem_is_exclusive(res->start))
 		return -EINVAL;
 
-	if (!pci_mmap_fits(pdev, i, vma, PCI_MMAP_SYSFS)) {
+	mmap_type = res->flags & IORESOURCE_MEM ? pci_mmap_mem : pci_mmap_io;
+	if (!pci_mmap_fits(pdev, i, vma, mmap_type, PCI_MMAP_SYSFS)) {
 		WARN(1, "process \"%s\" tried to map 0x%08lx bytes at page 0x%08lx on %s BAR %d (start 0x%16Lx, size 0x%16Lx)\n",
 			current->comm, vma->vm_end-vma->vm_start, vma->vm_pgoff,
 			pci_name(pdev), i,
@@ -1033,13 +1039,7 @@ static int pci_mmap_resource(struct kobject *kobj, struct bin_attribute *attr,
 		return -EINVAL;
 	}
 
-	/* pci_mmap_page_range() expects the same kind of entry as coming
-	 * from /proc/bus/pci/ which is a "user visible" value. If this is
-	 * different from the resource itself, arch will do necessary fixup.
-	 */
-	pci_resource_to_user(pdev, i, res, &start, &end);
-	vma->vm_pgoff += start >> PAGE_SHIFT;
-	mmap_type = res->flags & IORESOURCE_MEM ? pci_mmap_mem : pci_mmap_io;
+	vma->vm_pgoff += res->start >> PAGE_SHIFT;
 	return pci_mmap_page_range(pdev, vma, mmap_type, write_combine);
 }
 

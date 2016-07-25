@@ -366,11 +366,18 @@ int pci_mmap_page_range(struct pci_dev *dev, struct vm_area_struct *vma,
 			enum pci_mmap_state mmap_state,
 			int write_combine)
 {
+	unsigned long offset = vma->vm_pgoff << PAGE_SHIFT;
 	int ret;
 
-	ret = __pci_mmap_make_offset(dev, vma, mmap_state);
-	if (ret < 0)
-		return ret;
+	if (mmap_state == pci_mmap_io) {
+		struct pci_controller *pci_ctrl =
+					 (struct pci_controller *)dev->sysdata;
+
+		/* pci_ctrl should never be NULL */
+		offset += pci_ctrl->io_space.start - pci_ctrl->io_space.base;
+	}
+
+	vma->vm_pgoff = offset >> PAGE_SHIFT;
 
 	__pci_mmap_set_pgprot(dev, vma, mmap_state, write_combine);
 
