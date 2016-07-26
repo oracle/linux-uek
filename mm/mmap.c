@@ -805,6 +805,9 @@ int vma_adjust(struct vm_area_struct *vma, unsigned long start,
 		}
 	}
 
+again:
+	vma_adjust_trans_huge(vma, start, end, adjust_next);
+
 	if (file) {
 		mapping = file->f_mapping;
 		root = &mapping->i_mmap;
@@ -824,8 +827,6 @@ int vma_adjust(struct vm_area_struct *vma, unsigned long start,
 			__vma_link_file(insert);
 		}
 	}
-again:
-	vma_adjust_trans_huge(vma, start, end, adjust_next);
 
 	anon_vma = vma->anon_vma;
 	if (!anon_vma && adjust_next)
