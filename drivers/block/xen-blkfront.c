@@ -2691,7 +2691,7 @@ static void blkfront_connect(struct blkfront_info *info)
 	if (err) {
 		xenbus_dev_fatal(info->xbdev, err, "xlvbd_add at %s",
 				 info->xbdev->otherend);
-		return;
+		goto fail;
 	}
 
 	err = device_create_file(&info->xbdev->dev, &dev_attr_max_ring_page_order);
