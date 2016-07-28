@@ -464,8 +464,15 @@ static void vds_reset(struct vds_io *io)
 
 	io->flags |= VDS_IO_FINI;
 
+	/*
+	 * The FS layer asserts interrupts to be enabled and the
+	 * fini call may cause IO activity so drop the lock before.
+	 * Backend access is protected by a separate lock.
+	 */
+	vds_vio_unlock(vio, flags);
 	vds_be_fini(port);
 
+	vds_vio_lock(vio, flags);
 	vio_link_state_change(vio, LDC_EVENT_RESET);
 	vio->desc_buf_len = 0;
 
