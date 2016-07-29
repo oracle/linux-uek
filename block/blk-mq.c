@@ -2016,6 +2016,7 @@ struct request_queue *blk_mq_init_allocated_queue(struct blk_mq_tag_set *set,
 	blk_mq_init_cpu_queues(q, set->nr_hw_queues);
 
 	get_online_cpus();
+
 	mutex_lock(&all_q_mutex);
 	list_add_tail(&q->all_q_node, &all_q_list);
 	mutex_unlock(&all_q_mutex);
@@ -2023,7 +2024,6 @@ struct request_queue *blk_mq_init_allocated_queue(struct blk_mq_tag_set *set,
 	blk_mq_add_queue_tag_set(set, q);
 	blk_mq_map_swqueue(q, cpu_online_mask);
 
-	mutex_unlock(&all_q_mutex);
 	put_online_cpus();
 
 	return q;
