@@ -861,6 +861,7 @@ static void macsec_decrypt_done(struct crypto_async_request *base, int err)
 	struct net_device *dev = skb->dev;
 	struct macsec_dev *macsec = macsec_priv(dev);
 	struct macsec_rx_sa *rx_sa = macsec_skb_cb(skb)->rx_sa;
+	struct macsec_rx_sc *rx_sc = rx_sa->sc;
 	int len, ret;
 	u32 pn;
 
@@ -889,6 +890,7 @@ static void macsec_decrypt_done(struct crypto_async_request *base, int err)
 
 out:
 	macsec_rxsa_put(rx_sa);
+	macsec_rxsc_put(rx_sc);
 	dev_put(dev);
 }
 
@@ -1103,6 +1105,7 @@ static rx_handler_result_t macsec_handle_frame(struct sk_buff **pskb)
 
 	list_for_each_entry_rcu(macsec, &rxd->secys, secys) {
 		struct macsec_rx_sc *sc = find_rx_sc(&macsec->secy, sci);
+		sc = sc ? macsec_rxsc_get(sc) : NULL;
 
 		if (sc) {
 			secy = &macsec->secy;
@@ -1177,8 +1180,10 @@ static rx_handler_result_t macsec_handle_frame(struct sk_buff **pskb)
 
 	if (IS_ERR(skb)) {
 		/* the decrypt callback needs the reference */
-		if (PTR_ERR(skb) != -EINPROGRESS)
+		if (PTR_ERR(skb) != -EINPROGRESS) {
 			macsec_rxsa_put(rx_sa);
+			macsec_rxsc_put(rx_sc);
+		}
 		rcu_read_unlock();
 		*pskb = NULL;
 		return RX_HANDLER_CONSUMED;
@@ -1194,6 +1199,8 @@ deliver:
 
 	if (rx_sa)
 		macsec_rxsa_put(rx_sa);
+	macsec_rxsc_put(rx_sc);
+
 	count_rx(dev, skb->len);
 
 	rcu_read_unlock();
@@ -1204,6 +1211,7 @@ deliver:
 drop:
 	macsec_rxsa_put(rx_sa);
 drop_nosa:
+	macsec_rxsc_put(rx_sc);
 	rcu_read_unlock();
 drop_direct:
 	kfree_skb(skb);
