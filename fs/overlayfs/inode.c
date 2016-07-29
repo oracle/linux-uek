@@ -210,7 +210,9 @@ static int ovl_readlink(struct dentry *dentry, char __user *buf, int bufsiz)
 
 static bool ovl_is_private_xattr(const char *name)
 {
-	return strncmp(name, OVL_XATTR_PRE_NAME, OVL_XATTR_PRE_LEN) == 0;
+#define OVL_XATTR_PRE_NAME OVL_XATTR_PREFIX "."
+	return strncmp(name, OVL_XATTR_PRE_NAME,
+		       sizeof(OVL_XATTR_PRE_NAME) - 1) == 0;
 }
 
 int ovl_setxattr(struct dentry *dentry, const char *name,
@@ -223,10 +225,6 @@ int ovl_setxattr(struct dentry *dentry, const char *name,
 	err = ovl_want_write(dentry);
 	if (err)
 		goto out;
-
-	err = -EPERM;
-	if (ovl_is_private_xattr(name))
-		goto out_drop_write;
 
 	err = ovl_copy_up(dentry);
 	if (err)
@@ -435,7 +433,7 @@ static const struct inode_operations ovl_file_inode_operations = {
 	.setattr	= ovl_setattr,
 	.permission	= ovl_permission,
 	.getattr	= ovl_getattr,
-	.setxattr	= ovl_setxattr,
+	.setxattr	= generic_setxattr,
 	.getxattr	= ovl_getxattr,
 	.listxattr	= ovl_listxattr,
 	.removexattr	= ovl_removexattr,
@@ -449,7 +447,7 @@ static const struct inode_operations ovl_symlink_inode_operations = {
 	.put_link	= ovl_put_link,
 	.readlink	= ovl_readlink,
 	.getattr	= ovl_getattr,
-	.setxattr	= ovl_setxattr,
+	.setxattr	= generic_setxattr,
 	.getxattr	= ovl_getxattr,
 	.listxattr	= ovl_listxattr,
 	.removexattr	= ovl_removexattr,
