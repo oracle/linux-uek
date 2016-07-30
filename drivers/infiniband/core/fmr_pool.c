@@ -285,7 +285,7 @@ static int ib_fmr_cleanup_thread(void *pool_ptr)
 			time_left = 1;
 
 			atomic_inc(&pool->flush_ser);
-			wake_up_interruptible(&pool->force_wait);
+			wake_up(&pool->force_wait);
 
 			if (pool->flush_function)
 				pool->flush_function(pool, pool->flush_arg);
@@ -548,9 +548,7 @@ int ib_flush_fmr_pool(struct ib_fmr_pool *pool)
 	serial = atomic_inc_return(&pool->req_ser);
 	wake_up_process(pool->thread);
 
-	if (wait_event_interruptible(pool->force_wait,
-				     atomic_read(&pool->flush_ser) - serial >= 0))
-		return -EINTR;
+	wait_event(pool->force_wait, atomic_read(&pool->flush_ser) - serial >= 0);
 
 	return 0;
 }
