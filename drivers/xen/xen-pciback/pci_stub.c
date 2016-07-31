@@ -604,11 +604,13 @@ static const struct pci_device_id pcistub_ids[] = {
 };
 
 #define PCI_NODENAME_MAX 40
+#define PCI_DEVICENAME_MAX 14
 static void kill_domain_by_device(struct pcistub_device *psdev)
 {
 	struct xenbus_transaction xbt;
 	int err;
 	char nodename[PCI_NODENAME_MAX];
+	char devicename[PCI_DEVICENAME_MAX];
 
 	BUG_ON(!psdev);
 	snprintf(nodename, PCI_NODENAME_MAX, "/local/domain/0/backend/pci/%d/0",
@@ -619,7 +621,7 @@ again:
 	if (err) {
 		dev_err(&psdev->dev->dev,
 			"error %d when start xenbus transaction\n", err);
-		return;
+		goto hide_dev;
 	}
 	/*PV AER handlers will set this flag*/
 	xenbus_printf(xbt, nodename, "aerState" , "aerfail");
@@ -629,7 +631,31 @@ again:
 			goto again;
 		dev_err(&psdev->dev->dev,
 			"error %d when end xenbus transaction\n", err);
+	}
+
+hide_dev:
+	snprintf(devicename, PCI_DEVICENAME_MAX, "%04x:%02x:%02x.%x",
+		 pci_domain_nr(psdev->dev->bus),
+		 psdev->dev->bus->number,
+		 PCI_SLOT(psdev->dev->devfn), PCI_FUNC(psdev->dev->devfn));
+
+dev_again:
+	err = xenbus_transaction_start(&xbt);
+	if (err) {
+		dev_err(&psdev->dev->dev,
+			"error %d when start xenbus transaction\n", err);
 		return;
+	}
+
+	xenbus_printf(xbt, nodename, "aerFailedSBDF" , devicename);
+	err = xenbus_transaction_end(xbt, 0);
+	if (err) {
+		if (err == -EAGAIN) {
+			cond_resched();
+			goto dev_again;
+		}
+		dev_err(&psdev->dev->dev,
+			"error %d when end xenbus transaction\n", err);
 	}
 }
 
