@@ -153,8 +153,9 @@ int alloc_rq(struct sif_dev *sdev, struct sif_pd *pd,
 	}
 
 	rq->sg_entries = sg_entries;
-	init_completion(&rq->can_destroy);
+	init_completion(&rq->can_reset);
 	atomic_set(&rq->refcnt, 1);
+	atomic_set(&rq->flush_in_progress, 1);
 
 	/* Initialize hw part of descriptor */
 	memset(&lrq_hw, 0, sizeof(lrq_hw));
@@ -359,7 +360,7 @@ static void sif_flush_rq(struct work_struct *work)
 	if (len == 0)
 		goto error;
 
-	if (atomic_add_unless(&rq->refcnt, 1, 0)) {
+	if (atomic_add_unless(&rq->flush_in_progress, 1, 0)) {
 		sif_log(sdev, SIF_INFO_V, "flushing %d entries out of %d/%d entries remaining",
 			len, atomic_read(&rq_sw->length), rq->entries);
 
@@ -569,8 +570,8 @@ flush_rq_again:
 		if (test_and_clear_bit(FLUSH_RQ_IN_FLIGHT, &rq_sw->flags))
 			goto flush_rq_again;
 free_rq_error:
-		if (atomic_dec_and_test(&rq->refcnt))
-			complete(&rq->can_destroy);
+		if (atomic_dec_and_test(&rq->flush_in_progress))
+			complete(&rq->can_reset);
 	}
 error:
 	clear_bit(FLUSH_RQ_IN_PROGRESS, &rq_sw->flags);
@@ -581,17 +582,10 @@ done:
 
 int free_rq(struct sif_dev *sdev, int rq_idx)
 {
-	struct sif_rq *rq;
+	struct sif_rq *rq = get_sif_rq(sdev, rq_idx);
+	struct sif_rq_sw *rq_sw = get_sif_rq_sw(sdev, rq_idx);
 
-	rq = get_sif_rq(sdev, rq_idx);
 	sif_log(sdev, SIF_RQ, "entry %d", rq_idx);
-
-	if (!rq->is_srq) {
-		if (atomic_dec_and_test(&rq->refcnt))
-			complete(&rq->can_destroy);
-		wait_for_completion(&rq->can_destroy);
-		goto clean_rq;
-	}
 
 	if (!atomic_dec_and_test(&rq->refcnt)) {
 		sif_log(sdev, SIF_RQ, "rq %d still in use - ref.cnt %d",
@@ -599,7 +593,13 @@ int free_rq(struct sif_dev *sdev, int rq_idx)
 		return -EBUSY;
 	}
 
-clean_rq:
+	/* Reset rq pointers, for srq and the error path in create_qp.
+	 * This also means that rq_sw will be reset twice in the
+	 * happy path for !srq.
+	 */
+	memset(rq_sw, 0, sizeof(*rq_sw));
+	set_psif_rq_hw__head_indx(&rq->d, 0);
+
 	sif_release_rq(sdev, rq->index);
 	return 0;
 }
@@ -646,8 +646,11 @@ void sif_dfs_print_rq_hw(struct seq_file *s, struct sif_dev *sdev, loff_t pos)
 
 	seq_printf(s, "%7llu %5u %8u %8u %9u %8u %8u %7u", pos,
 		head, tail, rq->entries, qlen, rq->sg_entries, rq_sw->next_seq, rq->srq_limit);
-	if (rq->is_srq & rq->xrc_domain)
-		seq_puts(s, "\t[XRC-SRQ]\n");
+	if (rq->is_srq & rq->xrc_domain) {
+		seq_puts(s, "\t[XRCSRQ -> CQ:");
+		seq_printf(s, "%u", rq->cq_idx);
+		seq_puts(s, "]\n");
+	}
 	else if (rq->is_srq)
 		seq_puts(s, "\t[SRQ]\n");
 	else

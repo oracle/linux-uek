@@ -799,130 +799,6 @@ int sif_multicast_detach(struct ib_qp *ibqp, union ib_gid *gid, u16 lid)
 	return sif_epsc_wr(sdev, &req, &rsp);
 }
 
-
-/* Workaround to emulate extra send sg entries from software:
- * We use the available inline space and copy the first fitting
- * xsg = wr->num_sge - hw_max + 1 entries into this space:
- */
-static int prep_sw_sg(struct sif_qp *qp, struct ib_send_wr *wr, struct psif_cb *wqe,
-		struct psif_wr_local *la, u32 sqe_seq)
-{
-	struct sif_dev *sdev = to_sdev(qp->ibqp.device);
-	struct sif_sq *sq = get_sif_sq(sdev, qp->qp_idx);
-	struct psif_sq_entry *sqe = get_sq_entry(sq, sqe_seq);
-	void *sgl_start = sq_sgl_offset(sq, sqe);
-	struct psif_rq_scatter *sge = sq->tmp_sge;
-	int i;
-	int xsg = wr->num_sge - SIF_HW_MAX_SEND_SGE + 1;
-	int xi = -1;
-	int pi = 0;
-	u32 xcnt = 0;
-	u32 len = 0;
-	int ret;
-	u32 xlen = 0;
-	u64 addr = 0;
-	int space = qp->max_inline_data;
-
-	la->addr = get_sqe_dma(sq, sqe_seq) + sq->sgl_offset;
-	la->lkey = sq->sg_mr->index;
-
-	for (i = 0; i < wr->num_sge; i++) {
-		if (i == xsg)
-			space -= 256; /* We can no longer use the inline bytes */
-		xlen += wr->sg_list[i].length;
-		sif_log(sdev, SIF_SND, "xsg %d, xlen 0x%x space 0x%x", xsg, xlen, space);
-		if (xcnt < xsg) {
-			xcnt++;
-			if (xcnt < xsg)
-				continue;
-		}
-		if (xlen <= space) {
-			xi = i - xsg + 1;
-			break;
-		}
-		xlen -= wr->sg_list[i - xsg].length;
-	}
-	if (xi < 0) {
-		/* If our worst case calculations are right, this should not happen.. */
-		sif_log(sdev, SIF_INFO, "Failed to find sg entries to collapse into inline space!");
-		return -ENOMEM;
-	}
-	if (xi == 0) {
-		ret = prep_inline_part(qp, wr, xsg, wqe, la, sqe_seq, false);
-		if (ret < 0)
-			return ret;
-	} else {
-		/* TBD: We can consider merging xsg + 1 entries into two
-		 * sg entries, one containing the first entries, but for now
-		 * keep it simple and just not use the first 256 bytes:
-		 */
-		u8 *dbuf = ((u8 *)sqe->payload);
-		int copy = 0;
-
-		for (i = xi; i < xi + xsg; i++) {
-			u32 lkey = wr->sg_list[i].lkey;
-
-			len = wr->sg_list[i].length;
-			addr = wr->sg_list[i].addr;
-			if (len > 0) {
-				struct psif_key *key = safe_get_key(sdev, lkey);
-
-				if (!key || PSIF_DMA_KEY_INVALID == get_psif_key__lkey_state(key)) {
-					sif_log(sdev, SIF_INFO,
-						"Attempt to do inline copying from an invalid MR with lkey %d at addr 0x%llx",
-						wr->sg_list[i].lkey, addr);
-					return -EPERM;
-				}
-			}
-
-			ret = copy_sg(qp, &dbuf[copy], addr, len);
-			if (ret < 0)
-				return ret;
-			copy += len;
-		}
-	}
-
-	la->length = 0;
-	for (i = 0; i < wr->num_sge; i++) {
-		u32 lkey;
-		u32 offset = i ? 256 : 0;
-
-		if (i == xi) {
-			sge[pi].lkey = sq->sg_mr->index;
-			sge[pi].base_addr =
-				get_sqe_dma(sq, sqe_seq) +
-				offsetof(struct psif_sq_entry, payload) + offset;
-			sge[pi].length = xlen;
-			la->length += xlen;
-			i += xsg - 1;
-			sif_log(sdev, SIF_SND,
-			"sg_list[%d]: sge entry: dma addr 0x%llx, len = %d, lkey %d",
-			pi, sge[pi].base_addr, sge[pi].length, sge[pi].lkey);
-			pi++;
-			continue;
-		}
-		lkey = wr->sg_list[i].lkey;
-		sge[pi].base_addr = wr->sg_list[i].addr
-			+ mr_uv2dma(sdev, lkey);
-		sge[pi].lkey      = wr->sg_list[i].lkey;
-		sge[pi].length    = wr->sg_list[i].length;
-		la->length += sge[pi].length;
-		sif_log(sdev, SIF_SND,
-			"sg_list[%d]: sge entry: dma addr 0x%llx, len = %d, lkey %d",
-			pi, sge[pi].base_addr, sge[pi].length, sge[pi].lkey);
-		pi++;
-	}
-	sif_log(sdev, SIF_SND,
-		"ready with sgl_start %p, sg list addr 0x%llx, message len %d, lkey %d, sge %p",
-		sgl_start, la->addr, la->length, la->lkey, sge);
-
-	copy_conv_to_hw(sgl_start, sge,
-			sizeof(struct psif_rq_scatter) * SIF_HW_MAX_SEND_SGE);
-	wqe->wr.num_sgl = SIF_HW_MAX_SEND_SGE - 1;
-	return la->length;
-}
-
-
 static int prep_send(struct sif_qp *qp, struct ib_send_wr *wr, struct psif_cb *wqe,
 		bool inlined, struct psif_wr_local *la, u32 sqe_seq)
 {
@@ -987,7 +863,8 @@ static int prep_send(struct sif_qp *qp, struct ib_send_wr *wr, struct psif_cb *w
 			"single sge user addr 0x%llx dma addr 0x%llx, message len %d, key %d",
 			wr->sg_list[0].addr, la->addr, la->length, lkey);
 	} else if (unlikely(wr->num_sge > SIF_HW_MAX_SEND_SGE)) {
-		return prep_sw_sg(qp, wr, wqe, la, sqe_seq);
+		sif_log(sdev, SIF_SND, "num_sge > %d", SIF_HW_MAX_SEND_SGE);
+		return 0;
 	} else {
 		struct sif_sq *sq = get_sif_sq(sdev, qp->qp_idx);
 		struct psif_sq_entry *sqe = get_sq_entry(sq, sqe_seq);

@@ -4,13 +4,13 @@
 
 struct sif_version sif_version = {
 .git_repo = "sifdrv [origin/master]",
-.last_commit = "titan_1.0.0.1 transform filters: Replace 'automatically generated'",
+.last_commit = "titan_1.0.0.2 pqp: Be less aggressive in invoking cond_resched()",
 .git_status = """?? drivers/\n"
 ,
-.build_git_time = "Sun, 03 Jul 2016 12:44:15 +0000",
+.build_git_time = "Tue, 26 Jul 2016 15:46:06 +0000",
 .build_user = "komang",
 
 .git_psifapi_repo = "psifapi [origin/master]",
-.last_psifapi_commit = "titan_1.0.0.1 EPSC_API_VERSION(2,5) - EPSC_QUERY_HW_REVISION",
+.last_psifapi_commit = "titan_1.0.0.2 EPSC_API_VERSION(2,8) - New EPSC_QUERY_ON_CHIP_TEMP",
 .git_psifapi_status = "",
 };

@@ -169,15 +169,13 @@ int sif_unmap_phys_fmr_list(struct list_head *fmr_list)
 				sdev->ki_spqp.pool_sz);
 	}
 
-	if (!sdev->is_vf && sdev->num_vfs == 0) {
-		/* Check if we should do a brute force whole MMU caches flush (PF only) */
-		list_for_each_entry(ib_fmr, fmr_list, list) {
-			cnt++;
-			if (cnt >= sif_fmr_cache_flush_threshold) {
-				ret = sif_post_flush_tlb(sdev, false);
-				flush_all = true;
-				goto key_to_invalid;
-			}
+	/* Check if we should do a brute force whole MMU caches flush */
+	list_for_each_entry(ib_fmr, fmr_list, list) {
+		cnt++;
+		if (cnt >= sif_fmr_cache_flush_threshold) {
+			ret = sif_post_flush_tlb(sdev, true);
+			flush_all = true;
+			goto key_to_invalid;
 		}
 	}
 

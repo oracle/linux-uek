@@ -93,8 +93,6 @@
 #define SIF_BASE_ADDR_EQ_START(queue) \
 	(SIF_BASE_ADDR_START(queue) + (1ULL << SIF_SQ_CMPL_SHIFT))
 
-/* TBD: Software emulation of UD send SGEs - hardware is limited to 16 */
-#define SIF_SW_MAX_UD_SEND_SGE 32
 #define SIF_HW_MAX_SEND_SGE 16
 
 /* This defines the defaults for implicit timers within the driver */
@@ -221,6 +219,7 @@ struct sif_eq {
 	u32 mask;	     /* entries - 1 for modulo using & */
 	struct sif_mem *mem;   /* Ref. to ba.mem to implement macro patterns */
 	int intr_vec;          /* Index into s->entries[..] for the interrupt vector used */
+	bool requested;	       /* Whether the irq has been requested or not on this eq */
 	u32 sw_index_interval; /* No. of events we can receive before the sw index must be updated */
 	u32 sw_index_next_update; /* Next scheduled update point */
 	atomic_t intr_cnt;   /* Number of interrupts for the interrupt vector for this eq */
@@ -287,6 +286,7 @@ struct sif_dev {
 	struct sif_idr pd_refs;   /* Mgmt of sif_pd allocations */
 	struct sif_spqp_pool ki_spqp; /* Stencil PQPs for key invalidates */
 	/* Misc settings */
+	struct completion ready_for_events; /* Set when we are ready to receive events from sif */
 	bool registered;	/* Set when we are registered with the verbs layer */
 	u64 min_resp_ticks;   /* expected min. hw resp.time in ticks */
 

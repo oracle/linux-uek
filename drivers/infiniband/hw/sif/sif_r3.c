@@ -292,7 +292,7 @@ static int sif_hw_allocate_flush_qp(struct sif_dev *sdev, u8 flush_idx)
 	}
 
 	sdev->flush_qp[flush_idx] = qp->qp_idx;
-	sif_log(sdev, SIF_INFO, "Allocated flush-retry qp port %d, index %d", port, sdev->flush_qp[flush_idx]);
+	sif_log(sdev, SIF_QP, "Allocated flush-retry qp port %d, index %d", port, sdev->flush_qp[flush_idx]);
 
 	return ret;
 
@@ -455,18 +455,18 @@ int reset_qp_flush_retry(struct sif_dev *sdev, u8 flush_idx)
 		}
 	}
 
-	sdev->wa_stats.wa3714[0]++;
+	atomic64_inc(&sdev->wa_stats.wa3714[FLUSH_RETRY_WA3714_CNT]);
 	mutex_unlock(&sdev->flush_lock[flush_idx]);
 	return ret;
 fail:
-	sdev->wa_stats.wa3714[1]++;
+	atomic64_inc(&sdev->wa_stats.wa3714[FLUSH_RETRY_WA3714_ERR_CNT]);
 	sif_hw_free_flush_qp(sdev, flush_idx);
 	sif_hw_allocate_flush_qp(sdev, flush_idx);
 	mutex_unlock(&sdev->flush_lock[flush_idx]);
 	return ret;
 
 err_flush_qp:
-	sdev->wa_stats.wa3714[1]++;
+	atomic64_inc(&sdev->wa_stats.wa3714[FLUSH_RETRY_WA3714_ERR_CNT]);
 	mutex_unlock(&sdev->flush_lock[flush_idx]);
 	return ret;
 }
@@ -519,9 +519,12 @@ int pre_process_wa4074(struct sif_dev *sdev, struct sif_qp *qp)
 		set_psif_wr__checksum(&sqe->wr, ~get_psif_wr__checksum(&sqe->wr));
 		len--;
 	}
+	atomic64_add(len, &sdev->wa_stats.wa4074[WRS_CSUM_CORR_WA4074_CNT]);
 	spin_unlock_irqrestore(&sq->lock, flags);
 	if (cq)
 		set_bit(CQ_POLLING_NOT_ALLOWED, &cq_sw->flags);
+
+	atomic64_inc(&sdev->wa_stats.wa4074[PRE_WA4074_CNT]);
 
 	return 0;
 }
@@ -694,6 +697,8 @@ flush_sq_again:
 				"sq %d, last_seq %x, sif_gen_sq_flush_cqe returned %d",
 				sq->index, last_seq, ret);
 
+		atomic64_inc(&sdev->wa_stats.wa4074[RCV_SND_GEN_WA4074_CNT]);
+
 		if (ret == -EAGAIN) {
 			ret = gen_pqp_cqe(&lcqe);
 			if (ret < 0)
@@ -738,6 +743,12 @@ err_post_wa4074:
 	clear_bit(CQ_POLLING_NOT_ALLOWED, &cq_sw->flags);
 	clear_bit(FLUSH_SQ_IN_FLIGHT, &sq_sw->flags);
 	clear_bit(FLUSH_SQ_IN_PROGRESS, &sq_sw->flags);
+
+	if (ret < 0)
+		atomic64_inc(&sdev->wa_stats.wa4074[POST_WA4074_ERR_CNT]);
+	else
+		atomic64_inc(&sdev->wa_stats.wa4074[POST_WA4074_CNT]);
+
 	return ret = ret > 0 ? 0 : ret;
 }
 
@@ -781,7 +792,7 @@ static u16 walk_and_update_cqes(struct sif_dev *sdev, struct sif_qp *qp, u16 hea
 				if (GREATER_16(updated_seq, end)) {
 					/* A scenario might be that an additional CQE
 					 * must be generated to flush all the HW
-					 * generated completions. Thus, igore the polling the cqe.
+					 * generated completions. Thus, ignore the polling of the cqe.
 					 */
 					lcqe.seq_num = ~lcqe.seq_num;
 					sif_log(sdev, SIF_WCE_V, "corrupt: lcqe.seq_num %x",
@@ -799,6 +810,7 @@ static u16 walk_and_update_cqes(struct sif_dev *sdev, struct sif_qp *qp, u16 hea
 		sq->index, cq->index, n);
 
 	spin_unlock_irqrestore(&cq->lock, flags);
+
 	return updated_seq;
 }
 
@@ -857,12 +869,25 @@ static u16 cq_walk_wa4074(struct sif_dev *sdev, struct sif_qp *qp, bool *last_se
 
 void sif_dfs_print_wa_stats(struct sif_dev *sdev, char *buf)
 {
-	/* Header */
-	sprintf(buf, "#%7s %10s %10s %20s\n", "WA", "ok", "err", "desc");
-	/* Content */
-	sprintf(buf + strlen(buf), "#%8s %9llu %10llu %20s\n",
-		"WA3714",
-		sdev->wa_stats.wa3714[0],
-		sdev->wa_stats.wa3714[1],
-		"Destroying QPs with a retry in progress");
+	/* Header WA#3714 */
+	sprintf(buf, "\nWA3714: Destroying QPs with a retry in progress\n");
+	/* Content WA#3714 */
+	sprintf(buf + strlen(buf), "%s: %lu\n%s: %lu\n",
+		"ok", atomic64_read(&sdev->wa_stats.wa3714[FLUSH_RETRY_WA3714_CNT]),
+		"err", atomic64_read(&sdev->wa_stats.wa3714[FLUSH_RETRY_WA3714_ERR_CNT]));
+	/* Header WA#4074 */
+	sprintf(buf + strlen(buf), "\nWA4074: Duplicate flushed in error completions\n");
+	/* Content WA#4074 */
+	sprintf(buf + strlen(buf), "%s: %lu\n%s: %lu\n%s: %lu\n%s: %lu\n%s: %lu\n",
+		"pre-ok", atomic64_read(&sdev->wa_stats.wa4074[PRE_WA4074_CNT]),
+		"post-ok", atomic64_read(&sdev->wa_stats.wa4074[POST_WA4074_CNT]),
+		"post-err", atomic64_read(&sdev->wa_stats.wa4074[POST_WA4074_ERR_CNT]),
+		"wr-csum-corr", atomic64_read(&sdev->wa_stats.wa4074[WRS_CSUM_CORR_WA4074_CNT]),
+		"rcv-snd-gen", atomic64_read(&sdev->wa_stats.wa4074[RCV_SND_GEN_WA4074_CNT]));
+	/* Header WA#4059 */
+	sprintf(buf + strlen(buf), "\nWA4059: Mailbox writes from host to EPS sometimes get misplaced\n");
+	/* Content WA#4059 */
+	sprintf(buf + strlen(buf), "%s: %lu\n%s: %lu\n",
+		"keep-alive-int", atomic64_read(&sdev->wa_stats.wa4059[SND_INTR_KEEP_ALIVE_WA4059_CNT]),
+		"keep-alive-thread", atomic64_read(&sdev->wa_stats.wa4059[SND_THREAD_KEEP_ALIVE_WA4059_CNT]));
 }

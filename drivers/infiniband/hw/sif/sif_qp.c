@@ -184,9 +184,8 @@ struct sif_qp *create_qp(struct sif_dev *sdev,
 	if (init_attr->recv_cq)
 		recv_cq = to_scq(init_attr->recv_cq);
 
-	/* Software need to support more than max hw send sge for UD - see #1883 */
-	max_sge =
-		sif_attr->qp_type == PSIF_QP_TRANSPORT_UD ? SIF_SW_MAX_UD_SEND_SGE : SIF_HW_MAX_SEND_SGE;
+
+	max_sge = SIF_HW_MAX_SEND_SGE;
 
 	/* We need to be able to add sge for stencil with LSO */
 	max_sge -= !!(flags & IB_QP_CREATE_IPOIB_UD_LSO);
@@ -2347,9 +2346,23 @@ failed:
 		if (ret)
 			return ret;
 
+		/* Make sure the in-progress rq flush has
+		 * completed before reset the rq tail
+		 * and head.
+		 */
+		if (atomic_dec_and_test(&rq->flush_in_progress))
+			complete(&rq->can_reset);
+		wait_for_completion(&rq->can_reset);
+
 		/* Reset pointers */
 		memset(rq_sw, 0, sizeof(*rq_sw));
 		set_psif_rq_hw__head_indx(&rq->d, 0);
+
+		/* reset the flush_in_progress, if the qp is reset
+		 * and the qp can be reused again.
+		 * Thus, reset the flush_in_progress to 1.
+		 */
+		atomic_set(&rq->flush_in_progress, 1);
 	}
 
 	mb();

@@ -635,6 +635,7 @@ int poll_cq_waitfor(struct sif_cqe *lcqe)
 	struct sif_cq *cq = pqp->cq;
 	struct sif_dev *sdev = to_sdev(cq->ibcq.device);
 	int ret = 0;
+	int waitcnt = 0;
 	volatile bool *written = &lcqe->written;
 	u64 min_resp_ticks = sdev->min_resp_ticks;
 
@@ -651,6 +652,7 @@ int poll_cq_waitfor(struct sif_cqe *lcqe)
 		} else if (ret < 0)
 			break;
 		else if (ret == 0) {
+			waitcnt++;
 			if (time_is_before_jiffies(pqp->timeout)) {
 				if (sif_feature(pcie_trigger))
 					force_pcie_link_retrain(sdev);
@@ -666,7 +668,11 @@ int poll_cq_waitfor(struct sif_cqe *lcqe)
 				ret = -ETIMEDOUT;
 				break;
 			}
-			if (!in_interrupt()) /* TBD: Fix this as well */
+
+			/* Allow some pure busy wait before we attempt to reschedule/relax */
+			if (waitcnt < 10)
+				continue;
+			if (!irqs_disabled())
 				cond_resched();
 			else
 				cpu_relax();
@@ -713,7 +719,7 @@ static int poll_cq_waitfor_any(struct sif_pqp *pqp, struct sif_cqe *first_err)
 				ret = -ETIMEDOUT;
 				break;
 			}
-			if (!in_interrupt()) /* TBD: Fix this as well */
+			if (!irqs_disabled())
 				cond_resched();
 			else
 				cpu_relax();

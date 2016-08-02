@@ -905,6 +905,7 @@ int sif_register_ib_device(struct sif_dev *sdev)
 	sdev->ib_dev.local_dma_lkey = sdev->dma_mr->index;
 
 	sdev->registered = true;
+	complete(&sdev->ready_for_events);
 	sif_log(sdev, SIF_VERBS_V, "%s registered with IB", sdev->ib_dev.name);
 	return 0;
 

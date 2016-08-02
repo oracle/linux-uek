@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015, 2016, Oracle and/or its affiliates.  All rights reserved.
+ * Copyright (c) 2015, 2016, Oracle and/or its affiliates. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2
@@ -1607,6 +1607,8 @@ const char *string_enum_psif_epsa_command(enum psif_epsa_command val)
 		return "EPSA_GET_PROXY_QP_SQ_KEY";
 	case EPSA_GENERIC_CMD:
 		return "EPSA_GENERIC_CMD";
+	case EPSA_GET_EXPORTED_SYMBOL_MAP:
+		return "EPSA_GET_EXPORTED_SYMBOL_MAP";
 	case PSIF_EPSA_COMMAND_FIELD_MAX:
 		return "PSIF_EPSA_COMMAND_FIELD_MAX";
 	default:
@@ -1794,6 +1796,8 @@ const char *string_enum_psif_epsc_query_op(enum psif_epsc_query_op val)
 		return "EPSC_QUERY_EXTERNAL_PORT_INFO";
 	case EPSC_QUERY_HW_REVISION:
 		return "EPSC_QUERY_HW_REVISION";
+	case EPSC_QUERY_ON_CHIP_TEMP:
+		return "EPSC_QUERY_ON_CHIP_TEMP";
 	case EPSC_QUERY_LAST:
 		return "EPSC_QUERY_LAST";
 	case PSIF_EPSC_QUERY_OP_FIELD_MAX:
@@ -1920,6 +1924,10 @@ const char *string_enum_psif_epsc_csr_uf_ctrl_opcode(enum psif_epsc_csr_uf_ctrl_
 		return "EPSC_UF_CTRL_GET_HIGHEST_QP_IDX";
 	case EPSC_UF_CTRL_RESET_HIGHEST_QP_IDX:
 		return "EPSC_UF_CTRL_RESET_HIGHEST_QP_IDX";
+	case EPSC_UF_CTRL_GET_SMP_ENABLE:
+		return "EPSC_UF_CTRL_GET_SMP_ENABLE";
+	case EPSC_UF_CTRL_GET_VLINK_CONNECT:
+		return "EPSC_UF_CTRL_GET_VLINK_CONNECT";
 	case PSIF_EPSC_CSR_UF_CTRL_OPCODE_FIELD_MAX:
 		return "PSIF_EPSC_CSR_UF_CTRL_OPCODE_FIELD_MAX";
 	default:
@@ -1953,6 +1961,8 @@ const char *string_enum_psif_epsc_vimma_ctrl_opcode(enum psif_epsc_vimma_ctrl_op
 		return "EPSC_VIMMA_CTRL_SET_VFP_VHCA_DEREGISTER";
 	case EPSC_VIMMA_CTRL_SET_ADMIN_MODE:
 		return "EPSC_VIMMA_CTRL_SET_ADMIN_MODE";
+	case EPSC_VIMMA_CTRL_RESET:
+		return "EPSC_VIMMA_CTRL_RESET";
 	case PSIF_EPSC_VIMMA_CTRL_OPCODE_FIELD_MAX:
 		return "PSIF_EPSC_VIMMA_CTRL_OPCODE_FIELD_MAX";
 	default:
