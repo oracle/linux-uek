@@ -461,7 +461,7 @@ Provides: kernel = %{rpmversion}-%{pkg_release}\
 %endif\
 Requires(pre): %{kernel_prereq}\
 Requires(pre): %{initrd_prereq}\
-Requires(pre): linux-firmware >= 20160616-44.git43e96a1e.0.8\
+Requires(pre): linux-firmware >= 20160616-44.git43e96a1e.0.10\
 Requires(post): /sbin/new-kernel-pkg\
 Requires(preun): /sbin/new-kernel-pkg\
 Conflicts: %{kernel_dot_org_conflicts}\
