@@ -236,6 +236,7 @@ struct sif_compl; /* Declared in sif_cq.h */
 
 struct sif_dev {
 	struct ib_device ib_dev;
+	struct device *hwmon_dev;
 	struct sif_verbs sv;
 	struct pci_dev *pdev;
 	struct sif_dfs *dfs;    /* Optional debugfs info, if enabled in kernel */
