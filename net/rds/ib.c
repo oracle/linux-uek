@@ -581,20 +581,16 @@ static int rds_ib_addr_exist(struct net_device *ndev,
 	return found;
 }
 
-static void rds_ib_notify_addr_change(struct work_struct *_work)
+static void rds_ib_notify_addr_change(__be32 addr)
 {
-	struct rds_ib_addr_change_work  *work =
-		container_of(_work, struct rds_ib_addr_change_work, work.work);
-	struct sockaddr_in      sin;
-	int ret;
+	struct sockaddr_in sin;
 
 	sin.sin_family = AF_INET;
-	sin.sin_addr.s_addr = work->addr;
+	sin.sin_addr.s_addr = addr;
 	sin.sin_port = 0;
-
-	ret = rdma_notify_addr_change((struct sockaddr *)&sin);
-
-	kfree(work);
+	if (rdma_notify_addr_change((struct sockaddr *)&sin))
+		pr_err("RDS/IP: %pI4 address change notification failed\n",
+		       &addr);
 }
 
 static int rds_ib_move_ip(char			*from_dev,
@@ -619,8 +615,6 @@ static int rds_ib_move_ip(char			*from_dev,
 	u8			active_port;
 	struct in_device	*in_dev;
 	struct rds_ib_device *rds_ibdev;
-	struct rds_ib_conn_drop_work *work;
-	struct rds_ib_addr_change_work *work_addrchange;
 
 	page = alloc_page(GFP_HIGHUSER);
 	if (!page) {
@@ -743,14 +737,7 @@ static int rds_ib_move_ip(char			*from_dev,
 		if (!rds_ibdev)
 			goto out;
 
-		work_addrchange = kzalloc(sizeof *work, GFP_ATOMIC);
-		if (!work_addrchange) {
-			printk(KERN_WARNING "RDS/IP: failed to allocate work\n");
-			goto out;
-		}
-		work_addrchange->addr = addr;
-		INIT_DELAYED_WORK(&work_addrchange->work, rds_ib_notify_addr_change);
-		queue_delayed_work(rds_wq, &work_addrchange->work, 10);
+		rds_ib_notify_addr_change(addr);
 	}
 
 out:
