@@ -552,6 +552,12 @@ int post_process_wa4074(struct sif_dev *sdev, struct sif_qp *qp)
 		return -1;
 	}
 
+	if (qp->flags & SIF_QPF_HW_OWNED) {
+		sif_log(sdev, SIF_INFO, "qp %d is not in SHADOWED ERR state yet",
+			qp->qp_idx);
+		return ret;
+	}
+
 	/* if flush SQ is in progress, set FLUSH_SQ_IN_FLIGHT.
 	 */
 	if (test_bit(FLUSH_SQ_IN_PROGRESS, &sq_sw->flags)) {
