@@ -38,6 +38,7 @@
 enum sq_sw_state {
 	FLUSH_SQ_IN_PROGRESS = 0,
 	FLUSH_SQ_IN_FLIGHT   = 1,
+	FLUSH_SQ_FIRST_TIME  = 2,
 };
 
 struct sif_sq_sw {
@@ -47,6 +48,7 @@ struct sif_sq_sw {
 	__u16 head_seq;         /* Last sq seq.number seen in a compl (req. cq->lock) */
 	__u16 trusted_seq;	/* Last next_seq that was either generate or exist in the cq */
 	__u8 tsl;               /* Valid after transition to RTR */
+	bool need_flush;        /* user level flag to indicate SQ needs flushing*/
 	unsigned long flags;    /* Flags, using unsigned long due to test_set/test_and_set_bit */
 };
 
@@ -69,8 +71,6 @@ struct sif_rq_sw {
 
 enum cq_sw_state {
 	CQ_POLLING_NOT_ALLOWED = 0,
-	CQ_POLLING_IGNORED_SEQ = 1,
-	FLUSH_SQ_FIRST_TIME    = 2,
 };
 
 struct sif_cq_sw {

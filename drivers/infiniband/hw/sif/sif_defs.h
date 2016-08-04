@@ -36,6 +36,8 @@ struct xchar {
 };
 
 #define GREATER_16(a, b) ((s16)((s16)(a) - (s16)(b)) > 0)
+#define LESS_OR_EQUAL_16(a, b) (!(GREATER_16((a), (b))))
+#define PSIF_WC_STATUS_DUPL_COMPL_ERR (PSIF_WC_STATUS_FIELD_MAX - 1)
 
 
 #define XFILE struct xchar

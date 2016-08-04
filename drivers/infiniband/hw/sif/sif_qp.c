@@ -863,6 +863,12 @@ int modify_qp_hw_wa_qp_retry(struct sif_dev *sdev, struct sif_qp *qp,
 			}
 			/* Restore QP SW state to ERROR */
 			qp->last_set_state = qp->tracked_state = IB_QPS_ERR;
+			if (qp->flags & SIF_QPF_USER_MODE) {
+				struct sif_sq *sq = get_sq(sdev, qp);
+				struct sif_sq_sw *sq_sw = sq ? get_sif_sq_sw(sdev, qp->qp_idx) : NULL;
+				if (sq_sw)
+					sq_sw->need_flush = true;
+			}
 		}
 
 		qp->flags &= ~SIF_QPF_HW_OWNED;
@@ -974,6 +980,8 @@ int modify_qp(struct sif_dev *sdev, struct sif_qp *qp,
 			}
 			return ret;
 		case FLUSH_SQ:
+			sif_log(sdev, SIF_WCE_V, "user trying to flush SQ %d", qp->qp_idx);
+
 			if (unlikely(!sq)) {
 				ret = -EINVAL;
 				sif_log(sdev, SIF_INFO,
