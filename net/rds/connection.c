@@ -340,9 +340,9 @@ void rds_conn_shutdown(struct rds_connection *conn, int restart)
 		mutex_lock(&conn->c_cm_lock);
 		if (!rds_conn_transition(conn, RDS_CONN_UP, RDS_CONN_DISCONNECTING)
 		 && !rds_conn_transition(conn, RDS_CONN_ERROR, RDS_CONN_DISCONNECTING)) {
-			conn->c_drop_source = DR_INV_CONN_STATE;
-			rds_conn_error(conn, "shutdown called in state %d\n",
-					atomic_read(&conn->c_state));
+			pr_warn("RDS: shutdown called in state %d\n",
+				atomic_read(&conn->c_state));
+			rds_conn_drop(conn, DR_INV_CONN_STATE);
 			mutex_unlock(&conn->c_cm_lock);
 			return;
 		}
@@ -362,12 +362,9 @@ void rds_conn_shutdown(struct rds_connection *conn, int restart)
 			 * Quite reproduceable with loopback connections.
 			 * Mostly harmless.
 			 */
-			conn->c_drop_source = DR_DOWN_TRANSITION_FAIL;
-			rds_conn_error(conn,
-				"%s: failed to transition to state DOWN, "
-				"current state is %d\n",
-				__func__,
-				atomic_read(&conn->c_state));
+			pr_warn("RDS: %s: failed to transition to state DOWN, current state is %d\n",
+				__func__, atomic_read(&conn->c_state));
+			rds_conn_drop(conn, DR_DOWN_TRANSITION_FAIL);
 			return;
 		}
 	}
@@ -421,8 +418,7 @@ void rds_conn_destroy(struct rds_connection *conn, int shutdown)
 	synchronize_rcu();
 
 	/* shut the connection down */
-	conn->c_drop_source = DR_CONN_DESTROY;
-	rds_conn_drop(conn);
+	rds_conn_drop(conn, DR_CONN_DESTROY);
 	flush_work(&conn->c_down_w);
 
 	/* now that conn down worker is flushed; there cannot be any
@@ -725,13 +721,12 @@ static void rds_conn_probe_lanes(struct rds_connection *conn)
 			else if (rds_conn_connecting(tmp) && (tmp->c_route_resolved == 0)) {
 				printk(KERN_INFO "RDS/IB: connection "
 				       "<%pI4,%pI4,%d> "
-				       "connecting, force reset ",
+				       "connecting, force reset\n",
 				       &tmp->c_laddr,
 				       &tmp->c_faddr,
 				       tmp->c_tos);
 
-				conn->c_drop_source = DR_ZERO_LANE_DOWN;
-				rds_conn_drop(tmp);
+				rds_conn_drop(tmp, DR_ZERO_LANE_DOWN);
 			}
 		}
 	}
@@ -741,10 +736,11 @@ static void rds_conn_probe_lanes(struct rds_connection *conn)
 /*
  * Force a disconnect
  */
-void rds_conn_drop(struct rds_connection *conn)
+void rds_conn_drop(struct rds_connection *conn, int reason)
 {
 	unsigned long now = get_seconds();
 
+	conn->c_drop_source = reason;
 	if (rds_conn_state(conn) == RDS_CONN_UP) {
 		conn->c_reconnect_start = now;
 		conn->c_reconnect_warn = 1;
@@ -756,7 +752,7 @@ void rds_conn_drop(struct rds_connection *conn)
 			&conn->c_laddr,
 			&conn->c_faddr,
 			conn->c_tos,
-			conn_drop_reason_str(conn->c_drop_source));
+			conn_drop_reason_str(reason));
 
 		if (conn->c_tos == 0)
 			rds_conn_probe_lanes(conn);
@@ -812,18 +808,3 @@ void rds_conn_connect_if_down(struct rds_connection *conn)
 	}
 }
 EXPORT_SYMBOL_GPL(rds_conn_connect_if_down);
-
-/*
- * An error occurred on the connection
- */
-void
-__rds_conn_error(struct rds_connection *conn, const char *fmt, ...)
-{
-	va_list ap;
-
-	va_start(ap, fmt);
-	vprintk(fmt, ap);
-	va_end(ap);
-
-	rds_conn_drop(conn);
-}
