@@ -556,7 +556,8 @@ static void rds_tcp_sysctl_reset(struct net *net)
 		if (net != c_net || !tc->t_sock)
 			continue;
 
-		rds_conn_drop(tc->conn); /* reconnect with new parameters */
+		/* reconnect with new parameters */
+		rds_conn_drop(tc->conn, DR_USER_RESET);
 	}
 	spin_unlock_irq(&rds_tcp_conn_lock);
 }

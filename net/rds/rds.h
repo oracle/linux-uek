@@ -853,7 +853,7 @@ struct rds_connection *rds_conn_find(struct net *net, __be32 laddr,
 void rds_conn_shutdown(struct rds_connection *conn, int restart);
 void rds_conn_destroy(struct rds_connection *conn, int shutdown);
 void rds_conn_reset(struct rds_connection *conn);
-void rds_conn_drop(struct rds_connection *conn);
+void rds_conn_drop(struct rds_connection *conn, int reason);
 void rds_conn_laddr_list(__be32 laddr, struct list_head *laddr_conns);
 void rds_conn_connect_if_down(struct rds_connection *conn);
 void rds_for_each_conn_info(struct socket *sock, unsigned int len,
@@ -862,10 +862,6 @@ void rds_for_each_conn_info(struct socket *sock, unsigned int len,
 			  int (*visitor)(struct rds_connection *, void *),
 			  size_t item_len);
 char *conn_drop_reason_str(enum rds_conn_drop_src reason);
-void __rds_conn_error(struct rds_connection *conn, const char *, ...)
-				__attribute__ ((format (printf, 2, 3)));
-#define rds_conn_error(conn, fmt...) \
-	__rds_conn_error(conn, KERN_WARNING "RDS: " fmt)
 
 static inline int
 rds_conn_transition(struct rds_connection *conn, int old, int new)
