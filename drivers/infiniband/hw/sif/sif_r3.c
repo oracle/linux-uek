@@ -694,6 +694,12 @@ flush_sq_again:
 		last_seq, last_gen_seq);
 
 	for (; (!GREATER_16(last_seq, last_gen_seq)); ++last_seq) {
+		if (unlikely(cq->entries < ((u32) (last_seq - sq_sw->head_seq)))) {
+			sif_log(sdev, SIF_INFO, "cq (%d) is  full! (len = %d, used = %d)",
+				cq->index, cq->entries, last_seq - sq_sw->head_seq - 1 );
+			goto err_post_wa4074;
+		}
+
 		sif_log(sdev, SIF_WCE_V, "generate completion %x",
 			last_seq);
 

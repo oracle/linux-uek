@@ -336,6 +336,7 @@ static void sif_flush_rq(struct work_struct *work)
 	u32 head, tail;
 	unsigned long flags;
 	enum sif_mqp_type mqp_type = SIF_MQP_SW;
+	struct sif_cq *cq = rq ? get_sif_cq(sdev, rq->cq_idx) : NULL;
 	DECLARE_SIF_CQE_POLL(sdev, lcqe);
 
 	/* if flush RQ is in progress, set FLUSH_RQ_IN_FLIGHT.
@@ -468,7 +469,6 @@ flush_rq_again:
 				if ((lqps.state.expected_opcode != NO_OPERATION_IN_PROGRESS) &&
 				    (lqps.state.committed_received_psn + 1 == lqps.state.expected_psn)) {
 					int entries;
-					struct sif_cq *cq = get_sif_cq(sdev, lqps.state.rcv_cq_indx);
 					struct sif_cq_sw *cq_sw;
 					unsigned long timeout;
 
@@ -514,7 +514,14 @@ flush_rq_again:
 		 * these give no pqp completions but may in theory fail
 		 */
 		while (real_len > 0) {
+			if (unlikely(cq->entries < ((u32) atomic_read(&rq_sw->length)))) {
+				sif_log(sdev, SIF_INFO, "cq (%d) is full! (len = %d, used = %d)",
+					cq->index, cq->entries, atomic_read(&rq_sw->length));
+				goto free_rq_error;
+			}
+
 			sif_log(sdev, SIF_PQP, "rq %d, len %d", rq->index, real_len);
+
 			ret = sif_gen_rq_flush_cqe(sdev, rq, head, target_qp);
 			if (ret)
 				sif_log(sdev, SIF_INFO, "rq %d, len %d, sif_gen_rq_flush_cqe returned %d",
