@@ -273,14 +273,9 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 					rds_conn_drop(conn,
 						DR_IB_CONSUMER_DEFINED_REJ);
 				} else  {
-					if (conn->c_loopback)
-						queue_delayed_work(rds_local_wq,
-							&conn->c_reject_w,
-							msecs_to_jiffies(10));
-					else
-						queue_delayed_work(rds_wq,
-							&conn->c_reject_w,
-							msecs_to_jiffies(10));
+					queue_delayed_work(conn->c_wq,
+							   &conn->c_reject_w,
+							   msecs_to_jiffies(10));
 				}
 			} else if (event->status == RDS_REJ_CONSUMER_DEFINED &&
 				   (*err) == RDS_ACL_FAILURE) {
