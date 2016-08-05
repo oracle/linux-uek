@@ -348,7 +348,7 @@ static int rds_user_reset(struct rds_sock *rs, char __user *optval, int optlen)
 		list_for_each_entry(conn, &s_addr_conns, c_laddr_node)
 			if (conn) {
 				conn->c_drop_source = 1;
-				rds_conn_drop(conn);
+				rds_conn_drop(conn, DR_USER_RESET);
 			}
 		goto done;
 	}
@@ -362,8 +362,7 @@ static int rds_user_reset(struct rds_sock *rs, char __user *optval, int optlen)
 				"<%pI4,%pI4,%d>\n",
 				&reset.src.s_addr,
 				&reset.dst.s_addr, conn->c_tos);
-		conn->c_drop_source = DR_USER_RESET;
-		rds_conn_drop(conn);
+		rds_conn_drop(conn, DR_USER_RESET);
 	}
 done:
 	return 0;
