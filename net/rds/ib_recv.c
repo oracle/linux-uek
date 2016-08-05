@@ -636,11 +636,9 @@ void rds_ib_recv_refill(struct rds_connection *conn, int prefill, int can_wait)
 			 recv->r_ibinc, sg_page(&recv->r_frag->f_sg),
 			 (long) sg_dma_address(&recv->r_frag->f_sg), ret);
 		if (ret) {
-			conn->c_drop_source = DR_IB_POST_RECV_FAIL;
-			rds_ib_conn_error(conn, "recv post on "
-			       "%pI4 returned %d, disconnecting and "
-			       "reconnecting\n", &conn->c_faddr,
-			       ret);
+			rds_conn_drop(conn, DR_IB_POST_RECV_FAIL);
+			pr_warn("RDS/IB: recv post on %pI4 returned %d, disconnecting and reconnecting\n",
+				&conn->c_faddr, ret);
 			break;
 		}
 
@@ -925,9 +923,7 @@ static void rds_ib_send_ack(struct rds_ib_connection *ic, unsigned int adv_credi
 		set_bit(IB_ACK_REQUESTED, &ic->i_ack_flags);
 
 		rds_ib_stats_inc(s_ib_ack_send_failure);
-
-		ic->conn->c_drop_source = DR_IB_SEND_ACK_FAIL;
-		rds_ib_conn_error(ic->conn, "sending ack failed\n");
+		rds_conn_drop(ic->conn, DR_IB_SEND_ACK_FAIL);
 	} else
 		rds_ib_stats_inc(s_ib_ack_sent);
 }
@@ -1104,12 +1100,9 @@ static void rds_ib_process_recv(struct rds_connection *conn,
 		 data_len);
 
 	if (data_len < sizeof(struct rds_header)) {
-		conn->c_drop_source = DR_IB_HEADER_MISSING;
-		rds_ib_conn_error(conn, "incoming message "
-		       "from %pI4 didn't inclue a "
-		       "header, disconnecting and "
-		       "reconnecting\n",
-		       &conn->c_faddr);
+		rds_conn_drop(conn, DR_IB_HEADER_MISSING);
+		pr_warn("RDS/IB: incoming message from %pI4 didn't inclue a header, disconnecting and reconnecting\n",
+			&conn->c_faddr);
 		return;
 	}
 	data_len -= sizeof(struct rds_header);
@@ -1118,11 +1111,9 @@ static void rds_ib_process_recv(struct rds_connection *conn,
 
 	/* Validate the checksum. */
 	if (!rds_message_verify_checksum(ihdr)) {
-		conn->c_drop_source = DR_IB_HEADER_CORRUPTED;
-		rds_ib_conn_error(conn, "incoming message "
-		       "from %pI4 has corrupted header - "
-		       "forcing a reconnect\n",
-		       &conn->c_faddr);
+		rds_conn_drop(conn, DR_IB_HEADER_CORRUPTED);
+		pr_warn("RDS/IB: incoming message from %pI4 has corrupted header - forcing a reconnect\n",
+			&conn->c_faddr);
 		rds_stats_inc(s_recv_drop_bad_checksum);
 		return;
 	}
@@ -1186,9 +1177,7 @@ static void rds_ib_process_recv(struct rds_connection *conn,
 		 || hdr->h_len != ihdr->h_len
 		 || hdr->h_sport != ihdr->h_sport
 		 || hdr->h_dport != ihdr->h_dport) {
-			conn->c_drop_source = DR_IB_FRAG_HEADER_MISMATCH;
-			rds_ib_conn_error(conn,
-				"fragment header mismatch; forcing reconnect\n");
+			rds_conn_drop(conn, DR_IB_FRAG_HEADER_MISMATCH);
 			return;
 		}
 	}
@@ -1347,15 +1336,10 @@ void rds_ib_recv_cqe_handler(struct rds_ib_connection *ic,
 	} else {
 		/* We expect errors as the qp is drained during shutdown */
 		if (rds_conn_up(conn) || rds_conn_connecting(conn)) {
-			conn->c_drop_source = DR_IB_RECV_COMP_ERR;
-			rds_ib_conn_error(conn, "recv completion "
-					"<%pI4,%pI4,%d> had status %u "
-					"vendor_err 0x%x, disconnecting and "
-					"reconnecting\n",
-					&conn->c_laddr,
-					&conn->c_faddr,
-					conn->c_tos,
-					wc->status, wc->vendor_err);
+			pr_warn("RDS/IB: recv completion <%pI4,%pI4,%d> had status %u vendor_err 0x%x, disconnecting and reconnecting\n",
+				&conn->c_laddr, &conn->c_faddr, conn->c_tos,
+				wc->status, wc->vendor_err);
+			rds_conn_drop(conn, DR_IB_RECV_COMP_ERR);
 			rds_rtd(RDS_RTD_ERR, "status %u => %s\n", wc->status,
 				rds_ib_wc_status_str(wc->status));
 		}
