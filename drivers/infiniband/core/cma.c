@@ -2306,7 +2306,7 @@ int rdma_notify_addr_change(struct sockaddr *addr)
 	struct rdma_id_private *id_priv;
 	struct sockaddr *src_addr;
 	struct cma_ndev_work *work;
-	int     ret;
+	int ret = 0;
 
 	mutex_lock(&lock);
 	list_for_each_entry(cma_dev, &dev_list, list) {
