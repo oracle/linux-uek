@@ -85,10 +85,7 @@ void rds_connect_path_complete(struct rds_connection *conn, int curr)
 				__func__,
 				atomic_read(&conn->c_state));
 		atomic_set(&conn->c_state, RDS_CONN_ERROR);
-		if (conn->c_loopback)
-			queue_work(rds_local_wq, &conn->c_down_w);
-		else
-			queue_work(rds_wq, &conn->c_down_w);
+		queue_work(conn->c_wq, &conn->c_down_w);
 		return;
 	}
 
@@ -145,10 +142,7 @@ void rds_queue_reconnect(struct rds_connection *conn)
 	set_bit(RDS_RECONNECT_PENDING, &conn->c_flags);
 	if (conn->c_reconnect_jiffies == 0) {
 		conn->c_reconnect_jiffies = rds_sysctl_reconnect_min_jiffies;
-		if (conn->c_loopback)
-			queue_delayed_work(rds_local_wq, &conn->c_conn_w, 0);
-		else
-			queue_delayed_work(rds_wq, &conn->c_conn_w, 0);
+		queue_delayed_work(conn->c_wq, &conn->c_conn_w, 0);
 		return;
 	}
 
@@ -158,19 +152,12 @@ void rds_queue_reconnect(struct rds_connection *conn)
 		rand % conn->c_reconnect_jiffies, conn->c_reconnect_jiffies,
 		conn, &conn->c_laddr, &conn->c_faddr, conn->c_tos);
 
-	if (conn->c_loopback) {
-		if (conn->c_laddr >= conn->c_faddr)
-			queue_delayed_work(rds_local_wq, &conn->c_conn_w,
-				rand % conn->c_reconnect_jiffies);
-		else
-			queue_delayed_work(rds_local_wq, &conn->c_conn_w,
-				msecs_to_jiffies(100));
-	} else if (conn->c_laddr >= conn->c_faddr)
-			queue_delayed_work(rds_wq, &conn->c_conn_w,
-			   rand % conn->c_reconnect_jiffies);
+	if (conn->c_laddr >= conn->c_faddr)
+		queue_delayed_work(conn->c_wq, &conn->c_conn_w,
+				   rand % conn->c_reconnect_jiffies);
 	else
-			queue_delayed_work(rds_wq, &conn->c_conn_w,
-					msecs_to_jiffies(100));
+		queue_delayed_work(conn->c_wq, &conn->c_conn_w,
+				   msecs_to_jiffies(100));
 
 	conn->c_reconnect_jiffies = min(conn->c_reconnect_jiffies * 2,
 					rds_sysctl_reconnect_max_jiffies);
@@ -339,12 +326,8 @@ void rds_shutdown_worker(struct work_struct *work)
 			conn, &conn->c_laddr, &conn->c_faddr,
 			conn->c_tos);
 		rds_conn_shutdown(conn, 0);
-		if (conn->c_loopback)
-			queue_delayed_work(rds_local_wq, &conn->c_reconn_w,
-					   msecs_to_jiffies(5000));
-		else
-			queue_delayed_work(rds_wq, &conn->c_reconn_w,
-					   msecs_to_jiffies(5000));
+		queue_delayed_work(conn->c_wq, &conn->c_reconn_w,
+				   msecs_to_jiffies(5000));
 	} else {
 		rds_rtd(RDS_RTD_CM,
 			"calling rds_conn_shutdown, conn %p:1 <%pI4,%pI4,%d>\n",
