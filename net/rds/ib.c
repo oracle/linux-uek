@@ -169,8 +169,7 @@ void rds_ib_dev_shutdown(struct rds_ib_device *rds_ibdev)
 
 	spin_lock_irqsave(&rds_ibdev->spinlock, flags);
 	list_for_each_entry(ic, &rds_ibdev->conn_list, ib_node) {
-		ic->conn->c_drop_source = DR_IB_UMMOD;
-		rds_conn_drop(ic->conn);
+		rds_conn_drop(ic->conn, DR_IB_UMMOD);
 	}
 	spin_unlock_irqrestore(&rds_ibdev->spinlock, flags);
 }
