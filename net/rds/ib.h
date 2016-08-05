@@ -565,7 +565,6 @@ void rds_ib_conn_shutdown(struct rds_connection *conn);
 void rds_ib_state_change(struct sock *sk);
 int rds_ib_listen_init(void);
 void rds_ib_listen_stop(void);
-void __rds_ib_conn_error(struct rds_connection *conn, const char *, ...);
 int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 			     struct rdma_cm_event *event);
 int rds_ib_cm_initiate_connect(struct rdma_cm_id *cm_id);
@@ -573,9 +572,6 @@ void rds_ib_cm_connect_complete(struct rds_connection *conn,
 				struct rdma_cm_event *event);
 void rds_ib_init_frag(unsigned int version);
 void rds_ib_conn_destroy_init(struct rds_connection *conn);
-
-#define rds_ib_conn_error(conn, fmt...) \
-	__rds_ib_conn_error(conn, KERN_WARNING "RDS/IB: " fmt)
 
 /* ib_rdma.c */
 int rds_ib_update_ipaddr(struct rds_ib_device *rds_ibdev, __be32 ipaddr);
