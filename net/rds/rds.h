@@ -245,6 +245,7 @@ struct rds_connection {
 	struct rds_transport	*c_trans;
 	void			*c_transport_data;
 
+	struct workqueue_struct *c_wq;
 	atomic_t		c_state;
 	unsigned long		c_send_gen;
 	unsigned long		c_flags;
