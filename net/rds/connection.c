@@ -215,6 +215,10 @@ static struct rds_connection *__rds_conn_create(struct net *net,
 	}
 
 	conn->c_trans = trans;
+	if (conn->c_loopback)
+		conn->c_wq = rds_local_wq;
+	else
+		conn->c_wq = rds_wq;
 
 	ret = trans->conn_alloc(conn, gfp);
 	if (ret) {
@@ -781,11 +785,7 @@ void rds_conn_drop(struct rds_connection *conn, int reason)
 		conn, &conn->c_laddr, &conn->c_faddr,
 		conn->c_tos);
 
-	if (conn->c_loopback)
-		queue_work(rds_local_wq, &conn->c_down_w);
-	else
-		queue_work(rds_wq, &conn->c_down_w);
-
+	queue_work(conn->c_wq, &conn->c_down_w);
 }
 EXPORT_SYMBOL_GPL(rds_conn_drop);
 
@@ -801,10 +801,7 @@ void rds_conn_connect_if_down(struct rds_connection *conn)
 			"queueing connect work, conn %p, <%pI4,%pI4,%d>\n",
 			conn, &conn->c_laddr, &conn->c_faddr,
 			conn->c_tos);
-		if (conn->c_loopback)
-			queue_delayed_work(rds_local_wq, &conn->c_conn_w, 0);
-		else
-			queue_delayed_work(rds_wq, &conn->c_conn_w, 0);
+		queue_delayed_work(conn->c_wq, &conn->c_conn_w, 0);
 	}
 }
 EXPORT_SYMBOL_GPL(rds_conn_connect_if_down);
