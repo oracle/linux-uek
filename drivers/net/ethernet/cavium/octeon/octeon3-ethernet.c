@@ -38,6 +38,8 @@
 #include <linux/if_vlan.h>
 #include <linux/rio_drv.h>
 #include <linux/rio_ids.h>
+#include <linux/net_tstamp.h>
+#include <linux/ptp_clock_kernel.h>
 
 #include <asm/octeon/octeon.h>
 #include <asm/octeon/cvmx-helper-cfg.h>
@@ -48,6 +50,7 @@
 #include <asm/octeon/cvmx-fpa3.h>
 #include <asm/octeon/cvmx-srio.h>
 #include <asm/octeon/cvmx-app-config.h>
+#include <asm/octeon/cvmx-bgxx-defs.h>
 
 #include <asm/octeon/cvmx-fpa-defs.h>
 #include <asm/octeon/cvmx-sso-defs.h>
@@ -198,6 +201,7 @@ struct octeon3_ethernet {
 	struct net_device *netdev;
 	enum octeon3_mac_type mac_type;
 	struct octeon3_rx rx_cxt[MAX_RX_CONTEXTS];
+	struct ptp_clock *ptp_clock;
 	int num_rx_cxt;
 	int pki_laura;
 	int pki_pkind;
@@ -207,6 +211,8 @@ struct octeon3_ethernet {
 	int port_index;
 	int rx_buf_count;
 	int tx_complete_grp;
+	int rx_timestamp_hw:1;
+	int tx_timestamp_hw:1;
 	spinlock_t stat_lock;
 	cvm_oct_callback_t intercept_cb;
 	u64 srio_tx_header;
@@ -663,6 +669,19 @@ static int octeon3_eth_replenish_all(struct octeon3_ethernet_node *oen)
 	return pending;
 }
 
+static int octeon3_eth_tx_complete_hwtstamp(struct sk_buff *skb)
+{
+	struct skb_shared_hwtstamps	shts;
+	u64				ts;
+
+	ts = *((u64 *)(skb->cb) + 1);
+	memset(&shts, 0, sizeof(shts));
+	shts.hwtstamp = ns_to_ktime(ts);
+	skb_tstamp_tx(skb, &shts);
+
+	return 0;
+}
+
 static int octeon3_eth_tx_complete_worker(void *data)
 {
 	union cvmx_sso_grpx_aq_cnt aq_cnt;
@@ -701,6 +720,9 @@ static int octeon3_eth_tx_complete_worker(void *data)
 				    atomic64_read(&tx_priv->tx_backlog) < MAX_TX_QUEUE_DEPTH)
 					netif_wake_queue(tx_netdev);
 				skb = container_of((void *)work, struct sk_buff, cb);
+				if (unlikely(tx_priv->tx_timestamp_hw) && 
+				    unlikely(skb_shinfo(skb)->tx_flags & SKBTX_IN_PROGRESS))
+					    octeon3_eth_tx_complete_hwtstamp(skb);
 				dev_kfree_skb(skb);
 			}
 
@@ -1201,6 +1223,15 @@ static int octeon3_eth_rx_one(struct octeon3_rx *rx, bool is_async,
 
 	if (likely(priv->netdev->flags & IFF_UP)) {
 		skb_checksum_none_assert(skb);
+		if (unlikely(priv->rx_timestamp_hw)) {
+			/* The first 8 bytes are the timestamp */
+			u64 ts = *(u64 *)skb->data;
+			struct skb_shared_hwtstamps *shts;
+
+			shts = skb_hwtstamps(skb);
+			shts->hwtstamp = ns_to_ktime(ts);
+			__skb_pull(skb, 8);
+		}
 
 #if IS_ENABLED(CONFIG_OCTEON3_ETHERNET_SRIO)
 		if (priv->mac_type == SRIO_MAC) {
@@ -1400,12 +1431,38 @@ static void ethtool_get_drvinfo(struct net_device *netdev,
 	strcpy(info->bus_info, "Builtin");
 }
 
+static int ethtool_get_ts_info(struct net_device *ndev,
+				      struct ethtool_ts_info *info)
+{
+	struct octeon3_ethernet *priv = netdev_priv(ndev);
+
+	if (!octeon_has_feature(OCTEON_FEATURE_PTP))
+		return 0;
+
+	info->so_timestamping = SOF_TIMESTAMPING_TX_HARDWARE |
+		SOF_TIMESTAMPING_RX_HARDWARE |
+		SOF_TIMESTAMPING_RAW_HARDWARE;
+
+	if (priv->ptp_clock)
+		info->phc_index = ptp_clock_index(priv->ptp_clock);
+	else
+		info->phc_index = -1;
+
+	info->tx_types = (1 << HWTSTAMP_TX_OFF) | (1 << HWTSTAMP_TX_ON);
+
+	info->rx_filters = (1 << HWTSTAMP_FILTER_NONE) |
+		(1 << HWTSTAMP_FILTER_ALL);
+
+	return 0;
+}
+
 static const struct ethtool_ops octeon3_ethtool_ops = {
 	.get_drvinfo = ethtool_get_drvinfo,
 	.get_link_ksettings = bgx_port_ethtool_get_settings,
 	.set_link_ksettings = bgx_port_ethtool_set_settings,
 	.nway_reset = bgx_port_ethtool_nway_reset,
 	.get_link = ethtool_op_get_link,
+	.get_ts_info = ethtool_get_ts_info,
 };
 
 static int octeon3_eth_ndo_change_mtu(struct net_device *netdev, int new_mtu)
@@ -1902,6 +1959,7 @@ static int octeon3_eth_ndo_start_xmit(struct sk_buff *skb, struct net_device *ne
 	unsigned int scr_off = CVMX_PKO_LMTLINE * CVMX_CACHE_LINE_SIZE;
 	unsigned int ret_off = scr_off;
 	union cvmx_pko_send_hdr send_hdr;
+	union cvmx_pko_send_ext send_ext;
 	union cvmx_pko_buf_ptr buf_ptr;
 	union cvmx_pko_send_work send_work;
 	union cvmx_pko_send_mem send_mem;
@@ -1920,7 +1978,7 @@ static int octeon3_eth_ndo_start_xmit(struct sk_buff *skb, struct net_device *ne
 	bool can_recycle_skb = false;
 	int gaura = 0;
 	atomic64_t *buffers_needed = NULL;
-	void **buf;
+	void **buf = NULL;
 	unsigned int mss;
 
 	frag_count = 0;
@@ -2056,6 +2114,19 @@ static int octeon3_eth_ndo_start_xmit(struct sk_buff *skb, struct net_device *ne
 	cvmx_scratch_write64(scr_off, send_hdr.u64);
 	scr_off += sizeof(send_hdr);
 
+	/* Request packet to be ptp timestamped */
+	if ((unlikely(skb_shinfo(skb)->tx_flags & SKBTX_HW_TSTAMP)) &&
+	    unlikely(priv->tx_timestamp_hw) && likely(!can_recycle_skb)) {
+		skb_shinfo(skb)->tx_flags |= SKBTX_IN_PROGRESS;
+		send_ext.u64 = 0;
+		send_ext.s.subdc4 = CVMX_PKO_SENDSUBDC_EXT;
+		send_ext.s.ra = 1;
+		send_ext.s.tstmp = 1;
+		send_ext.s.markptr = ETH_HLEN;
+		cvmx_scratch_write64(scr_off, send_ext.u64);
+		scr_off += sizeof(send_ext);
+	}
+
 	/* Add the tso descriptor if needed */
 	mss = skb_shinfo(skb)->gso_size;
 	if (mss) {
@@ -2102,6 +2173,19 @@ static int octeon3_eth_ndo_start_xmit(struct sk_buff *skb, struct net_device *ne
 	send_mem.s.addr = virt_to_phys(&priv->tx_backlog);
 	cvmx_scratch_write64(scr_off, send_mem.u64);
 	scr_off += sizeof(buf_ptr);
+
+	/* Write the ptp timestamp in the skb itself */
+	if ((unlikely(skb_shinfo(skb)->tx_flags & SKBTX_HW_TSTAMP)) &&
+	    unlikely(priv->tx_timestamp_hw) && likely(!can_recycle_skb)) {
+		send_mem.u64 = 0;
+		send_mem.s.wmem = 1;
+		send_mem.s.subdc4 = CVMX_PKO_SENDSUBDC_MEM;
+		send_mem.s.dsz = MEMDSZ_B64;
+		send_mem.s.alg = MEMALG_SETTSTMP;
+		send_mem.s.addr = virt_to_phys(&work[1]);
+		cvmx_scratch_write64(scr_off, send_mem.u64);
+		scr_off += sizeof(send_mem);
+	}
 
 	if (likely(can_recycle_skb)) {
 		cvmx_pko_send_free_t	send_free;
@@ -2223,6 +2307,154 @@ static int octeon3_eth_set_mac_address(struct net_device *netdev, void *addr)
 	return 0;
 }
 
+static int octeon3_bgx_hwtstamp(struct net_device *netdev, int en)
+{
+	struct octeon3_ethernet		*priv = netdev_priv(netdev);
+	cvmx_xiface_t			xiface;
+	cvmx_bgxx_gmp_gmi_rxx_frm_ctl_t	frmctl;
+	cvmx_bgxx_smux_rx_frm_ctl_t	xfrmctl;
+
+	xiface = cvmx_helper_xiface_to_node_interface(priv->xiface);
+	switch (cvmx_helper_interface_get_mode(priv->xiface)) {
+	case CVMX_HELPER_INTERFACE_MODE_GMII:
+	case CVMX_HELPER_INTERFACE_MODE_RGMII:
+	case CVMX_HELPER_INTERFACE_MODE_SGMII:
+		frmctl.u64 = cvmx_read_csr_node(priv->numa_node,
+			CVMX_BGXX_GMP_GMI_RXX_FRM_CTL(priv->port_index,
+			xiface.interface));
+		frmctl.s.ptp_mode = en;
+		cvmx_write_csr_node(priv->numa_node,
+			CVMX_BGXX_GMP_GMI_RXX_FRM_CTL(priv->port_index,
+			xiface.interface), frmctl.u64);
+		break;
+
+	case CVMX_HELPER_INTERFACE_MODE_XAUI:
+	case CVMX_HELPER_INTERFACE_MODE_RXAUI:
+	case CVMX_HELPER_INTERFACE_MODE_10G_KR:
+	case CVMX_HELPER_INTERFACE_MODE_XLAUI:
+	case CVMX_HELPER_INTERFACE_MODE_40G_KR4:
+	case CVMX_HELPER_INTERFACE_MODE_XFI:
+		xfrmctl.u64 = cvmx_read_csr_node(priv->numa_node,
+			CVMX_BGXX_SMUX_RX_FRM_CTL(priv->port_index,
+			xiface.interface));
+		xfrmctl.s.ptp_mode = en;
+		cvmx_write_csr_node(priv->numa_node,
+			CVMX_BGXX_SMUX_RX_FRM_CTL(priv->port_index,
+			xiface.interface), xfrmctl.u64);
+		break;
+
+	default:
+		/* No timestamp support*/
+		return -EOPNOTSUPP;
+	}
+
+	return 0;
+}
+
+static int octeon3_pki_hwtstamp(struct net_device *netdev, int en)
+{
+	struct octeon3_ethernet		*priv = netdev_priv(netdev);
+	struct cvmx_pki_port_config	pki_prt_cfg;
+	int				val = en ? 8 : 0;
+	int				ipd_port;
+
+	ipd_port = cvmx_helper_get_ipd_port(priv->xiface, priv->port_index);
+
+	cvmx_pki_get_port_config(ipd_port, &pki_prt_cfg);
+	pki_prt_cfg.pkind_cfg.fcs_skip = val;
+	pki_prt_cfg.pkind_cfg.inst_skip = val;
+	pki_prt_cfg.pkind_cfg.l2_scan_offset = val;
+	cvmx_pki_set_port_config(ipd_port, &pki_prt_cfg);
+
+	return 0;
+}
+
+static int octeon3_ioctl_hwtstamp(struct net_device *netdev,
+				  struct ifreq *rq, int cmd)
+{
+	struct octeon3_ethernet		*priv = netdev_priv(netdev);
+	union cvmx_mio_ptp_clock_cfg	ptp;
+	struct hwtstamp_config		config;
+	int				en;
+
+	if (!octeon_has_feature(OCTEON_FEATURE_PTP)) {
+		netdev_err(netdev, "Error: PTP clock not supported\n");
+		return -EOPNOTSUPP;
+	}
+
+	/* The PTP block should be enabled */
+	ptp.u64 = octeon_read_ptp_csr(CVMX_MIO_PTP_CLOCK_CFG);
+	if (!ptp.s.ptp_en) {
+		netdev_err(netdev, "Error: PTP clock not enabled\n");
+		return -EOPNOTSUPP;
+	}
+
+	if (copy_from_user(&config, rq->ifr_data, sizeof(config)))
+		return -EFAULT;
+
+	if (config.flags) /* reserved for future extensions */
+		return -EINVAL;
+
+	switch (config.tx_type) {
+	case HWTSTAMP_TX_OFF:
+		priv->tx_timestamp_hw = 0;
+		break;
+	case HWTSTAMP_TX_ON:
+		priv->tx_timestamp_hw = 1;
+		break;
+	default:
+		return -ERANGE;
+	}
+
+	switch (config.rx_filter) {
+	case HWTSTAMP_FILTER_NONE:
+		priv->rx_timestamp_hw = 0;
+		en = 0;
+		break;
+	case HWTSTAMP_FILTER_ALL:
+	case HWTSTAMP_FILTER_SOME:
+	case HWTSTAMP_FILTER_PTP_V1_L4_EVENT:
+	case HWTSTAMP_FILTER_PTP_V1_L4_SYNC:
+	case HWTSTAMP_FILTER_PTP_V1_L4_DELAY_REQ:
+	case HWTSTAMP_FILTER_PTP_V2_L4_EVENT:
+	case HWTSTAMP_FILTER_PTP_V2_L4_SYNC:
+	case HWTSTAMP_FILTER_PTP_V2_L4_DELAY_REQ:
+	case HWTSTAMP_FILTER_PTP_V2_L2_EVENT:
+	case HWTSTAMP_FILTER_PTP_V2_L2_SYNC:
+	case HWTSTAMP_FILTER_PTP_V2_L2_DELAY_REQ:
+	case HWTSTAMP_FILTER_PTP_V2_EVENT:
+	case HWTSTAMP_FILTER_PTP_V2_SYNC:
+	case HWTSTAMP_FILTER_PTP_V2_DELAY_REQ:
+		priv->rx_timestamp_hw = 1;
+		en = 1;
+		break;
+	default:
+		return -ERANGE;
+	}
+
+	octeon3_bgx_hwtstamp(netdev, en);
+	octeon3_pki_hwtstamp(netdev, en);
+
+	return 0;
+}
+
+static int octeon3_ioctl(struct net_device *netdev, struct ifreq *ifr, int cmd)
+{
+	int rc;
+
+	switch (cmd) {
+	case SIOCSHWTSTAMP:
+		rc = octeon3_ioctl_hwtstamp(netdev, ifr, cmd);
+		break;
+
+	default:
+		rc = bgx_port_do_ioctl(netdev, ifr, cmd);
+		break;
+	}
+
+	return rc;
+}
+
 static const struct net_device_ops octeon3_eth_netdev_ops = {
 	.ndo_init		= octeon3_eth_bgx_ndo_init,
 	.ndo_uninit		= octeon3_eth_ndo_uninit,
@@ -2233,7 +2465,7 @@ static const struct net_device_ops octeon3_eth_netdev_ops = {
 	.ndo_set_rx_mode	= bgx_port_set_rx_filtering,
 	.ndo_set_mac_address	= octeon3_eth_set_mac_address,
 	.ndo_change_mtu		= octeon3_eth_ndo_change_mtu,
-	.ndo_do_ioctl		= bgx_port_do_ioctl,
+	.ndo_do_ioctl		= octeon3_ioctl,
 };
 
 #if IS_ENABLED(CONFIG_OCTEON3_ETHERNET_SRIO)
