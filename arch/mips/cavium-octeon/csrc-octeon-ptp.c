@@ -39,7 +39,7 @@ int __init ptp_clock_init(void)
 	union cvmx_mio_ptp_clock_cfg ptp_clock_cfg;
 
 	/* Chips prior to CN6XXX don't support the PTP clock source */
-	if (!OCTEON_IS_MODEL(OCTEON_CN6XXX) && !OCTEON_IS_MODEL(OCTEON_CNF7XXX))
+	if (!octeon_has_feature(OCTEON_FEATURE_PTP))
 		return 0;
 
 	/* FIXME: Remove this when PTP is implemented in the simulator */
