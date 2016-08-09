@@ -176,7 +176,7 @@ xfs_setfilesize_ioend(
 
 	/* we abort the update if there was an IO error */
 	if (ioend->io_error) {
-		xfs_trans_cancel(tp);
+		xfs_trans_cancel(tp, 0);
 		return ioend->io_error;
 	}
 
