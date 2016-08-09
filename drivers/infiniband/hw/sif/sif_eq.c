@@ -1094,14 +1094,14 @@ void sif_dfs_print_eq(struct seq_file *s, struct sif_dev *sdev,
 			"#   niu = (index of) next software index update\n#\n"
 			"#   ni = Number of events seen\n"
 			"#   wi = Number of events handled in work queue\n"
-			"# Name\tindex\tentries\textent\tn.seq\tvector#\tIRQ#\t"
-			"#ni\t#wi\tsii\tniu\n");
+			"# Name    index   entries  ext.%9s vec# IRQ# %9s %9s %9s %9s\n",
+			"n.seq", "#ni", "#wi", "sii", "niu");
 		return;
 	}
 
 	eq = &sdev->es[sdev->mbox_epsc].eqs.eq[pos];
 
-	seq_printf(s, "%-12s%u\t%u\t%u\t%u\t%d\t%d\t%u\t%u\t%u\t%u\n",
+	seq_printf(s, "%-12s%3u %9u %4u %9u %4d %4d %9u %9u %9u %9u\n",
 		eq->name, eq->index, eq->entries, eq->extent, eq->next_seq, eq->intr_vec,
 		sdev->msix_entries[eq->intr_vec].vector,
 		atomic_read(&eq->intr_cnt), atomic_read(&eq->work_cnt),
