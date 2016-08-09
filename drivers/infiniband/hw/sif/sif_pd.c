@@ -252,14 +252,10 @@ struct sif_cb *alloc_cb(struct sif_dev *sdev, bool lat_cb)
 
 	if (unlikely(lat_cb)) {
 		idx = sif_alloc_lat_cb_idx(sdev);
-		if (idx < 0) {
-			sif_log(sdev, SIF_INFO, "Unable to allocate lat_cb - trying bw_cb instead");
-			lat_cb = false;
-		} else
-			cb->cb = get_lat_cb(sdev, idx);
-	}
-
-	if (likely(!lat_cb)) {
+		if (idx < 0)
+			goto err_index;
+		cb->cb = get_lat_cb(sdev, idx);
+	} else {
 		idx = sif_alloc_bw_cb_idx(sdev);
 		if (idx < 0)
 			goto err_index;
@@ -308,7 +304,7 @@ struct sif_cb *sif_cb_from_uc(struct sif_ucontext *uc, u32 index)
 int sif_cb_write(struct sif_qp *qp, struct psif_wr *wqe, int cp_len)
 {
 	unsigned long flags;
-	struct sif_cb *cb = get_cb(qp);
+	struct sif_cb *cb = get_cb(qp, wqe);
 
 	if (!spin_trylock_irqsave(&cb->lock, flags))
 		return -EBUSY;
@@ -332,7 +328,7 @@ void sif_doorbell_write(struct sif_qp *qp, struct psif_wr *wqe, bool start)
 {
 	unsigned long flags;
 	u16 doorbell_offset = start ? SQS_START_DOORBELL : SQS_STOP_DOORBELL;
-	struct sif_cb *cb = get_cb(qp);
+	struct sif_cb *cb = get_cb(qp, wqe);
 	struct sif_dev *sdev = to_sdev(qp->ibqp.pd->device);
 
 	sif_log(sdev, SIF_QP, "%s sqs for qp %d sq_seq %d", (start ? "start" : "stop"),
@@ -354,10 +350,10 @@ void sif_doorbell_write(struct sif_qp *qp, struct psif_wr *wqe, bool start)
 void sif_doorbell_from_sqe(struct sif_qp *qp, u16 seq, bool start)
 {
 	u16 doorbell_offset = start ? SQS_START_DOORBELL : SQS_STOP_DOORBELL;
-	struct sif_cb *cb = get_cb(qp);
 	struct sif_dev *sdev = to_sdev(qp->ibqp.pd->device);
 	struct sif_sq *sq = get_sif_sq(sdev, qp->qp_idx);
 	u64 *wqe = (u64 *)get_sq_entry(sq, seq);
+	struct sif_cb *cb = get_cb(qp, (struct psif_wr *)wqe);
 
 	/* Pick the 1st 8 bytes directly from the sq entry: */
 	wmb();

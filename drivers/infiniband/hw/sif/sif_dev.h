@@ -281,7 +281,7 @@ struct sif_dev {
 	struct sif_cb **kernel_cb[2]; /* cb's for the kernel (bw and low latency per cpu) */
 	int pqp_cnt;		  /* Number of PQPs set up */
 	atomic_t next_pqp;	  /* Used for round robin assignment of pqp */
-	int kernel_cb_cnt;	  /* Number of pairs of CBs set up for the kernel */
+	int kernel_cb_cnt[2];	  /* Number of CBs set up for the kernel for each kind */
 	struct sif_idr xrcd_refs; /* Mgmt of sif_xrcd allocations */
 	struct sif_idr pd_refs;   /* Mgmt of sif_pd allocations */
 	struct sif_spqp_pool ki_spqp; /* Stencil PQPs for key invalidates */

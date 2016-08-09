@@ -423,13 +423,17 @@ struct sif_pqp *get_next_pqp(struct sif_dev *sdev)
 	return pqp;
 }
 
-struct sif_cb *get_cb(struct sif_qp *qp)
+struct sif_cb *get_cb(struct sif_qp *qp, struct psif_wr *wr)
 {
 	struct sif_dev *sdev = to_sdev(qp->ibqp.pd->device);
 	unsigned int cpu = smp_processor_id();
-	return sdev->kernel_cb[qp->qosl][cpu % sdev->kernel_cb_cnt];
-}
+	enum psif_tsu_qos cb_type = qp->qosl;
+	/* Only use low latency CBs for the frequently occuring notify events (REARM) */
+	if (cb_type == QOSL_LOW_LATENCY && wr->op != PSIF_WR_REARM_CMPL_EVENT)
+		cb_type = QOSL_HIGH_BANDWIDTH;
 
+	return sdev->kernel_cb[cb_type][cpu % sdev->kernel_cb_cnt[cb_type]];
+}
 
 inline bool pqp_req_gets_completion(struct sif_pqp *pqp, struct psif_wr *wr, enum post_mode mode)
 {

@@ -177,13 +177,14 @@ static void sif_hw_kernel_cb_fini(struct sif_dev *sdev)
 {
 	int i;
 
-	while (sdev->kernel_cb_cnt > 0) {
-		int j = sdev->kernel_cb_cnt - 1;
+	for (i = 0; i < 2; i++) {
+		while (sdev->kernel_cb_cnt[i] > 0) {
+			int j = sdev->kernel_cb_cnt[i] - 1;
 
-		for (i = 0; i < 2; i++)
 			if (sdev->kernel_cb[i][j])
 				release_cb(sdev, sdev->kernel_cb[i][j]);
-		sdev->kernel_cb_cnt--;
+			sdev->kernel_cb_cnt[i]--;
+		}
 	}
 	for (i = 0; i < 2; i++)
 		kfree(sdev->kernel_cb[i]);
@@ -193,7 +194,7 @@ static void sif_hw_kernel_cb_fini(struct sif_dev *sdev)
 
 static int sif_hw_kernel_cb_init(struct sif_dev *sdev)
 {
-	int i;
+	int i, j;
 	uint n_cbs = min(sif_cb_max, num_present_cpus());
 
 	if (!n_cbs)
@@ -205,19 +206,25 @@ static int sif_hw_kernel_cb_init(struct sif_dev *sdev)
 			goto alloc_failed;
 	}
 
-	for (i = 0; i < n_cbs; i++) {
-		sdev->kernel_cb[0][i] = alloc_cb(sdev, false);
-		if (!sdev->kernel_cb[0][i])
+	for (i = 0; i < 2; i++) {
+		for (j = 0; j < n_cbs; j++) {
+			sdev->kernel_cb[i][j] = alloc_cb(sdev, i);
+			if (!sdev->kernel_cb[i][j]) {
+				sif_log(sdev, SIF_INFO,
+					"Failed to allocate more than %d of %d requested %s CBs",
+					j, n_cbs,
+					(QOSL_LOW_LATENCY ? "low latency" : "high bandwidth"));
+				break;
+			}
+		}
+		/* Require at least one collect buffer of each kind */
+		if (j == 0)
 			goto alloc_failed;
-		sdev->kernel_cb[1][i] = alloc_cb(sdev, true);
-		if (!sdev->kernel_cb[1][i])
-			goto alloc_failed;
+		sdev->kernel_cb_cnt[i] = j;
 	}
-	sdev->kernel_cb_cnt = i;
 	return 0;
 
 alloc_failed:
-	sdev->kernel_cb_cnt = i;
 	sif_hw_kernel_cb_fini(sdev);
 	return -ENOMEM;
 }
