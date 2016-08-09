@@ -184,11 +184,15 @@ int sif_remove_shpd(struct ib_device *ibdev,
 /* Obtain information about lat_cb and bw_cb resources
  * We cannot use the ba structs yet as they are not initialized at this point:
  */
-static void sif_cb_init(struct sif_dev *sdev)
+void sif_cb_init(struct sif_dev *sdev)
 {
 	struct psif_epsc_csr_req req;
 	struct psif_epsc_csr_rsp rsp;
 	struct sif_eps *es = &sdev->es[sdev->mbox_epsc];
+
+	/* To work with very old fw assume at least 4 lat_cb and some bw_cbs */
+	sdev->lat_cb_cnt = 4;
+	sdev->bw_cb_cnt = 128;
 
 	/* EPSC supports the new requests starting from v.0.36 */
 	if (eps_version_ge(es, 0, 37)) {
@@ -198,16 +202,25 @@ static void sif_cb_init(struct sif_dev *sdev)
 		req.opcode = EPSC_QUERY;
 		req.u.query.data.op = EPSC_QUERY_CAP_VCB_LO;
 		req.u.query.info.op = EPSC_QUERY_CAP_VCB_HI;
-		ret = sif_epsc_wr(sdev, &req, &rsp);
-		if (ret)
+		ret = sif_epsc_wr_poll(sdev, &req, &rsp);
+		if (ret) {
 			sif_log(sdev, SIF_INFO, "Request for VCB info failed with %d", ret);
-		else {
+		} else {
 			sdev->bw_cb_cnt = rsp.data;
 			sdev->lat_cb_cnt = rsp.info;
 			sif_log(sdev, SIF_INIT, "Got %ld bw_cbs and %ld lat_cbs",
 				sdev->bw_cb_cnt, sdev->lat_cb_cnt);
 		}
 	}
+
+	/* estimate what fraction of the hardware resources we got based on the
+	 * number of collect buffers reserved and use this to scale down
+	 * configured base address ranges:
+	 */
+	sdev->res_frac = max(1UL, CBU_NUM_VCB / (sdev->bw_cb_cnt + sdev->lat_cb_cnt));
+	if (sdev->res_frac > 1)
+		sif_log(sdev, SIF_INFO, "Scaling down default queue sizes by a factor %ld",
+			sdev->res_frac);
 }
 
 
@@ -221,20 +234,13 @@ void sif_cb_table_init(struct sif_dev *sdev, enum sif_tab_type type)
 
 	/* Update table values with EPSC data: */
 	if (type == bw_cb) {
-		sif_cb_init(sdev);
-		if (sdev->bw_cb_cnt) {
-			tp->entry_cnt = sdev->bw_cb_cnt;
-			tp->table_sz = tp->ext_sz * tp->entry_cnt;
-		}
+		tp->entry_cnt = sdev->bw_cb_cnt;
+		tp->table_sz = tp->ext_sz * tp->entry_cnt;
 		tp->sif_off = sdev->cb_base;
 	} else {
-		/* lat_cb */
-		if (sdev->lat_cb_cnt) {
-			tp->entry_cnt = sdev->lat_cb_cnt;
-			tp->table_sz = tp->ext_sz * tp->entry_cnt;
-			tp->sif_off = sdev->cb_base + sdev->ba[bw_cb].table_sz;
-		} else
-			tp->entry_cnt = 0;
+		tp->entry_cnt = sdev->lat_cb_cnt;
+		tp->table_sz = tp->ext_sz * tp->entry_cnt;
+		tp->sif_off = sdev->cb_base + sdev->ba[bw_cb].table_sz;
 	}
 
 	tp->mem = sif_mem_create_ref(sdev, SIFMT_NOMEM, tp->sif_base,

@@ -972,6 +972,8 @@ proto_probing_done:
 	if (ret)
 		goto epsc_failed;
 
+	sif_cb_init(sdev);
+
 #if defined(CONFIG_ARCH_DMA_ADDR_T_64BIT) && defined(__sparc__)
 	/* The kernel is currently using iommu bypass mode in the sparc iommu, and
 	 * the PSIF MMU requires a fixed configuration of the upper 12 bits of the

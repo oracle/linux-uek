@@ -264,8 +264,9 @@ struct sif_dev {
 	/* Interrupt allocation */
 	size_t intr_req;  /* Number of irqs requested */
 	size_t intr_cnt;  /* Number of irqs allocated */
-	size_t bw_cb_cnt;   /* No.of virtual collect buffers available */
-	size_t lat_cb_cnt;   /* No.of virtual collect buffers available */
+	size_t bw_cb_cnt;   /* No.of bandwidth optimized virtual collect buffers available */
+	size_t lat_cb_cnt;  /* No.of latency optimized virtual collect buffers available */
+	size_t res_frac;   /* Fraction of the available hardware resources allocated to this UF */
 	size_t msix_entries_sz; /* Size of the allocated msix_entries array */
 	spinlock_t msix_lock;	/* Protects intr_used */
 	struct msix_entry *msix_entries; /* MSI-X vector info */
