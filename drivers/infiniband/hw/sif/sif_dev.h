@@ -417,8 +417,8 @@ extern ulong sif_trace_mask;
 		sif_log_trace(class, format, ## arg);	\
 		if (unlikely((sif_debug_mask) & (class))) {		\
 			dev_info(&(sdev)->pdev->dev,	\
-				   "[%d] " format "\n", \
-				   current->pid, \
+				   "[%d] %s: " format "\n", \
+				   current->pid, __func__,  \
 				   ## arg); \
 		} \
 	} while (0)
@@ -428,8 +428,8 @@ extern ulong sif_trace_mask;
 		sif_log_trace(class, format, ## arg);	\
 		if (unlikely((sif_debug_mask) & (class))) {		\
 			dev_info((ibdev)->dma_device,     \
-				   "[%d] " format "\n", \
-				   current->pid, \
+				   "[%d] %s: " format "\n", \
+				   current->pid, __func__,  \
 				   ## arg); \
 		} \
 	} while (0)
@@ -462,8 +462,8 @@ extern ulong sif_trace_mask;
 		sif_log_trace(class, format, ## arg);	\
 		if (unlikely((sif_debug_mask) & (class) && printk_ratelimit())) { \
 			dev_info(&sdev->pdev->dev,	\
-				"[%d] " format "\n",	\
-				current->pid,		\
+				"[%d] %s: " format "\n",\
+				current->pid, __func__,	\
 				## arg);		\
 		} \
 	} while (0)
