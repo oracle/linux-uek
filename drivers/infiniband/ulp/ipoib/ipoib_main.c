@@ -61,7 +61,6 @@ MODULE_VERSION(DRV_VERSION);
 
 int ipoib_sendq_size __read_mostly = IPOIB_TX_RING_SIZE;
 int ipoib_recvq_size __read_mostly = IPOIB_RX_RING_SIZE;
-int unload_allowed __read_mostly = 1;
 /* IPOIB_CM_MAX_BAD_CONNS default value (8) is inline with current
  * Exadata-ZFS deployment.
  * We usually have 2 ZFS heads in current deployment.
@@ -73,8 +72,9 @@ int unload_allowed __read_mostly = 1;
  */
 int ipoib_cm_sendq_size __read_mostly = IPOIB_TX_RING_SIZE / IPOIB_CM_MAX_BAD_CONNS;
 int ipoib_cm_max_bad_conns = IPOIB_CM_MAX_BAD_CONNS;
+int unload_allowed __initdata = 1;
 
-module_param_named(module_unload_allowed, unload_allowed, int, 0444);
+module_param_named(module_unload_allowed, unload_allowed, int, 0);
 MODULE_PARM_DESC(module_unload_allowed, "Allow this module to be unloaded or not (default 1 for YES)");
 
 module_param_named(send_queue_size, ipoib_sendq_size, int, 0444);

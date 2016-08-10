@@ -42,6 +42,9 @@
 #include <linux/io-mapping.h>
 #include <linux/delay.h>
 #include <linux/kmod.h>
+#include <linux/topology.h>
+#include <linux/cpumask.h>
+#include <linux/device.h>
 
 #include <linux/mlx4/device.h>
 #include <linux/mlx4/doorbell.h>
@@ -65,8 +68,8 @@ MODULE_PARM_DESC(debug_level, "Enable debug tracing if > 0");
 
 #endif /* CONFIG_MLX4_DEBUG */
 
-int unload_allowed __read_mostly;
-module_param_named(module_unload_allowed, unload_allowed, int, 0444);
+int unload_allowed __initdata;
+module_param_named(module_unload_allowed, unload_allowed, int, 0);
 MODULE_PARM_DESC(module_unload_allowed, "Allow this module to be unloaded or not (default 0 for NO)");
 
 #ifdef CONFIG_PCI_MSI
@@ -231,6 +234,28 @@ enum {
 	MLX4_IF_STATE_BASIC,
 	MLX4_IF_STATE_EXTENDED
 };
+
+enum {
+	MLX4_DEV_UNINITIALIZED,
+	MLX4_DEV_INITIALIZING,
+	MLX4_DEV_INITIALIZED
+};
+
+struct mlx4_drv_load_work {
+	struct work_struct work;
+	struct pci_dev *pdev;
+	int pci_dev_data;
+	struct mlx4_priv *priv;
+	u8 state;
+	int err;
+	struct list_head list_node;
+};
+
+static LIST_HEAD(mlx4_dl_work_list);
+
+/* Used for parallel init work list
+ */
+static DEFINE_MUTEX(mlx4_dl_work_list_mutex);
 
 static void process_mod_param_profile(struct mlx4_profile *profile)
 {
@@ -3566,11 +3591,121 @@ err_disable_pdev:
 	return err;
 }
 
+static void __mlx4_init_parallel_one(struct work_struct *_work)
+{
+	int err = 0;
+	struct mlx4_drv_load_work *work =
+		container_of(_work, struct mlx4_drv_load_work, work);
+
+	err = __mlx4_init_one(work->pdev, work->pci_dev_data, work->priv);
+
+	if (err) {
+		kfree(work->priv->dev.persist);
+		kfree(work->priv);
+	} else {
+		pci_save_state(work->pdev);
+	}
+
+	work->err = err;
+	work->state = MLX4_DEV_INITIALIZED;
+	driver_deferred_probe_trigger();
+}
+
+static int __mlx4_init_create_pwork(struct pci_dev *pdev, int pci_dev_data,
+				    struct mlx4_priv *priv)
+{
+	int err = 0;
+	int node, cpu;
+	struct mlx4_drv_load_work *mlx4_work;
+	struct cpumask tmp_mask;
+
+	node = dev_to_node(&pdev->dev);
+	if (node >= 0) {
+		cpu = cpumask_next_and(get_cpu(), cpumask_of_node(node),
+				       cpu_online_mask);
+		if (cpu_to_node(cpu) != node)
+			cpu = cpumask_any_and(cpumask_of_node(node),
+					      cpu_online_mask);
+	} else {
+		cpumask_xor(&tmp_mask, cpu_online_mask, cpumask_of(get_cpu()));
+		cpu = cpumask_next_and(prandom_u32_max(nr_cpu_ids),
+				       cpu_online_mask, &tmp_mask);
+	}
+
+	if (cpu >= nr_cpu_ids)
+		return -EINVAL;
+
+	mlx4_work = kmalloc(sizeof(*mlx4_work), GFP_KERNEL);
+	if (!mlx4_work)
+		return -ENOMEM;
+
+	mlx4_work->pdev = pdev;
+	mlx4_work->pci_dev_data = pci_dev_data;
+	mlx4_work->priv = priv;
+	mlx4_work->err = 0;
+	mlx4_work->state = MLX4_DEV_INITIALIZING;
+
+	INIT_LIST_HEAD(&mlx4_work->list_node);
+	mutex_lock(&mlx4_dl_work_list_mutex);
+	list_add_tail(&mlx4_work->list_node,
+		      &mlx4_dl_work_list);
+	mutex_unlock(&mlx4_dl_work_list_mutex);
+
+	INIT_WORK(&mlx4_work->work, __mlx4_init_parallel_one);
+	schedule_work_on(cpu, &mlx4_work->work);
+
+	return err;
+}
+
+static int mlx4_init_work_in_flight(struct pci_dev *pdev, int *found)
+{
+	int ret = 0;
+	struct mlx4_drv_load_work *mlx4_work;
+	struct list_head *list_itr;
+
+	/* Check to see if parallel Init has been started before */
+	mutex_lock(&mlx4_dl_work_list_mutex);
+	list_for_each(list_itr, &mlx4_dl_work_list) {
+		mlx4_work = list_entry(list_itr, struct mlx4_drv_load_work,
+				       list_node);
+		if (pdev == mlx4_work->pdev) {
+			switch (mlx4_work->state) {
+			case MLX4_DEV_INITIALIZING:
+				ret = -EPROBE_DEFER;
+				break;
+			case MLX4_DEV_INITIALIZED:
+				ret =  mlx4_work->err;
+				pci_set_drvdata(pdev,
+						mlx4_work->priv->dev.persist);
+				list_del(list_itr);
+				kfree(mlx4_work);
+				break;
+			case MLX4_DEV_UNINITIALIZED:
+				WARN_ONCE(1, "incorrectly initialized\n");
+			default:
+				ret = -EINVAL;
+				dev_warn(&pdev->dev, "unsupported state %u\n",
+					 mlx4_work->state);
+			}
+			*found = 1;
+			mutex_unlock(&mlx4_dl_work_list_mutex);
+			return ret;
+		}
+	}
+	mutex_unlock(&mlx4_dl_work_list_mutex);
+
+	return ret;
+}
+
 static int mlx4_init_one(struct pci_dev *pdev, const struct pci_device_id *id)
 {
 	struct mlx4_priv *priv;
 	struct mlx4_dev *dev;
-	int ret;
+	int ret, found = 0;
+
+	ret = mlx4_init_work_in_flight(pdev, &found);
+	if (found)
+		return ret;
 
 	printk_once(KERN_INFO "%s", mlx4_version);
 
@@ -3591,12 +3726,17 @@ static int mlx4_init_one(struct pci_dev *pdev, const struct pci_device_id *id)
 	mutex_init(&dev->persist->device_state_mutex);
 	mutex_init(&dev->persist->interface_state_mutex);
 
-	ret =  __mlx4_init_one(pdev, id->driver_data, priv);
+	ret = __mlx4_init_create_pwork(pdev, id->driver_data, priv);
 	if (ret) {
-		kfree(dev->persist);
-		kfree(priv);
+		ret =  __mlx4_init_one(pdev, id->driver_data, priv);
+		if (ret) {
+			kfree(dev->persist);
+			kfree(priv);
+		} else {
+			pci_save_state(pdev);
+		}
 	} else {
-		pci_save_state(pdev);
+		ret = -EPROBE_DEFER;
 	}
 
 	return ret;

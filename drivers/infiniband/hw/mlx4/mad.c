@@ -2127,12 +2127,9 @@ int mlx4_ib_init_sriov(struct mlx4_ib_dev *dev)
 		return 0;
 	}
 
-	for (i = 0; i < dev->dev->caps.sqp_demux; i++) {
-		if (i == mlx4_master_func_num(dev->dev))
-			mlx4_put_slave_node_guid(dev->dev, i, dev->ib_dev.node_guid);
-		else
-			mlx4_put_slave_node_guid(dev->dev, i, mlx4_ib_gen_node_guid());
-	}
+	/* VF's node GUID is PF node GUID */
+	for (i = 0; i < dev->dev->caps.sqp_demux; i++)
+		mlx4_put_slave_node_guid(dev->dev, i, dev->ib_dev.node_guid);
 
 	err = mlx4_ib_init_alias_guid_service(dev);
 	if (err) {

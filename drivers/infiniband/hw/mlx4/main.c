@@ -71,11 +71,6 @@ int mlx4_ib_sm_guid_assign = 0;
 module_param_named(sm_guid_assign, mlx4_ib_sm_guid_assign, int, 0444);
 MODULE_PARM_DESC(sm_guid_assign, "Enable SM alias_GUID assignment if sm_guid_assign > 0 (Default: 0)");
 
-int mlx4_ib_guid_gen_magic = 90;
-module_param_named(guid_gen_magic, mlx4_ib_guid_gen_magic, int, 0444);
-MODULE_PARM_DESC(guid_gen_magic,
-		 "Magic num to add to the generated guid, default is 100.");
-
 static const char mlx4_ib_version[] =
 	DRV_NAME ": Mellanox ConnectX InfiniBand driver v"
 	DRV_VERSION " (" DRV_RELDATE ")\n";
