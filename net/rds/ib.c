@@ -395,8 +395,21 @@ static int rds_ib_laddr_check(struct net *net, __be32 addr)
 	struct sockaddr_in sin;
 
 	/* Link-local addresses don't play well with IB */
-	if (ipv4_is_linklocal_169(addr))
-		pr_info_ratelimited("RDS/IB: Link local address %pI4 NOT SUPPORTED\n", &addr);
+	if (ipv4_is_linklocal_169(addr)) {
+		pr_info_once("\n");
+		pr_info_once("****************************************************\n");
+		pr_info_once("** WARNING WARNING WARNING WARNING WARNING        **\n");
+		pr_info_once("**                                                **\n");
+		pr_info_once("** RDS/IB: Link local address %pI4 NOT SUPPORTED  **\n",
+			     &addr);
+		pr_info_once("**                                                **\n");
+		pr_info_once("** HAIP IP addresses should not be used on ORACLE **\n");
+		pr_info_once("** engineered systems                             **\n");
+		pr_info_once("**                                                **\n");
+		pr_info_once("** If you see this message, Please refer to       **\n");
+		pr_info_once("** cluster_interconnects in MOS note #1274318.1   **\n");
+		pr_info_once("****************************************************\n");
+	}
 
 	/* Create a CMA ID and try to bind it. This catches both
 	 * IB and iWARP capable NICs.
