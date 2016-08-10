@@ -102,12 +102,12 @@ MODULE_PARM_DESC(ki_spqp_size, "Number of privileged QPs for key invalidate sten
 
 /* pqp_size ==  cq_eq_max */
 uint sif_cq_eq_max = 46;
-module_param_named(cq_eq_max, sif_cq_eq_max, uint, S_IRUGO | S_IWUSR);
+module_param_named(cq_eq_max, sif_cq_eq_max, uint, S_IRUGO);
 MODULE_PARM_DESC(cq_eq_max, "Upper limit on no. of EQs to distribute completion events among");
 
 uint sif_cb_max = 100;
-module_param_named(cb_max, sif_cb_max, uint, S_IRUGO | S_IWUSR);
-MODULE_PARM_DESC(cb_max, "Upper limit on no. of CBs.");
+module_param_named(cb_max, sif_cb_max, uint, S_IRUGO);
+MODULE_PARM_DESC(cb_max, "Upper limit on no. of CBs of each type to reserve for the kernel");
 
 uint sif_fmr_cache_flush_threshold = 512;
 module_param_named(fmr_cache_flush_threshold, sif_fmr_cache_flush_threshold, uint, S_IRUGO | S_IWUSR);
