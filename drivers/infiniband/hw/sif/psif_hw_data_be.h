@@ -2957,8 +2957,13 @@ struct psif_epsc_csr_config {
 	u64	vlink_connect:1;
 	/** Setup CMPL spin set mode to be fast - default is safe (PF only). */
 	u64	fast_spin:1;
+	/** Number of UFs (PF+VFs) to configure HW for 
+	 *  0 means to use default stored in HW (PF only)
+	 *  Though this is a signed value (values < 0 are used for special settings
+	 *  not available in official FW) the created bitfield is unsigned. */
+	u64	num_ufs:16;
 	/** Padded field. */
-	u64	noname:55;
+	u64	noname:39;
 } PSIF_PACKED_ALIGNED; /* struct psif_epsc_csr_config [48 byte] */
 
 /* This is the portion of the descriptor which is updated by software. */

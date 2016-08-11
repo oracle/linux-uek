@@ -2941,7 +2941,12 @@ struct psif_epsc_csr_config {
 	/** MMU context for mailbox. */
 	struct psif_mmu_cntx	mmu_cntx;
 	/** Padded field. */
-	u64	noname:55;
+	u64	noname:39;
+	/** Number of UFs (PF+VFs) to configure HW for 
+	 *  0 means to use default stored in HW (PF only)
+	 *  Though this is a signed value (values < 0 are used for special settings
+	 *  not available in official FW) the created bitfield is unsigned. */
+	u64	num_ufs:16;
 	/** Setup CMPL spin set mode to be fast - default is safe (PF only). */
 	u64	fast_spin:1;
 	/** Connect all vlinks to external port (PF only). */
