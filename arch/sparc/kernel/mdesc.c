@@ -20,6 +20,7 @@
 #include <asm/uaccess.h>
 #include <asm/oplib.h>
 #include <asm/smp.h>
+#include <asm/mmu_64.h>
 
 /* Unlike the OBP device tree, the machine description is a full-on
  * DAG.  An arbitrary number of ARCs are possible from one
@@ -1123,6 +1124,42 @@ void mdesc_populate_present_mask(cpumask_t *mask)
 
 	ncpus_probed = 0;
 	mdesc_iterate_over_cpus(record_one_cpu, NULL, mask);
+}
+
+static void * __init get_one_mmu_ctx_bits(struct mdesc_handle *hp, u64 mp,
+					 int cpuid, void *arg)
+{
+	const u64 *ctx_md = mdesc_get_property(hp, mp, "mmu-#context-bits",
+					       NULL);
+	unsigned long *ctx_bits = arg;
+	u64 val = DEFAULT_CTX_NR_BITS;
+
+	if (ctx_md && *ctx_md)
+		val = *ctx_md;
+
+	if (!*ctx_bits)
+		*ctx_bits = val;
+
+	/* The previous cpu must report the same number of context-bits */
+	if (*ctx_bits != val) {
+		printk_once(KERN_WARNING "Inconsistent context-bits reported by MD\n");
+		*ctx_bits = DEFAULT_CTX_NR_BITS;
+	} else {
+		*ctx_bits = val;
+	}
+
+	if (*ctx_bits > MAX_CTX_NR_BITS) {
+		printk_once(KERN_WARNING "Unsupported number of context-bits reported by MD\n");
+		*ctx_bits = DEFAULT_CTX_NR_BITS;
+	}
+
+	return NULL;
+}
+
+void __init mdesc_get_mmu_ctx_bits(cpumask_t *mask, unsigned long *ctx_bits)
+{
+	*ctx_bits = 0;
+	mdesc_iterate_over_cpus(get_one_mmu_ctx_bits, ctx_bits, mask);
 }
 
 static void * __init check_one_pgsz(struct mdesc_handle *hp, u64 mp, int cpuid, void *arg)

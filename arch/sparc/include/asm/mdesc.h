@@ -94,6 +94,7 @@ int mdesc_get_node_info(struct mdesc_handle *hp, u64 node,
 void mdesc_fill_in_cpu_data(cpumask_t *mask);
 void mdesc_populate_present_mask(cpumask_t *mask);
 void mdesc_get_page_sizes(cpumask_t *mask, unsigned long *pgsz_mask);
+extern void mdesc_get_mmu_ctx_bits(cpumask_t *mask, unsigned long *ctx_bits);
 
 void sun4v_mdesc_init(void);
 

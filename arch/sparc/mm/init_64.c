@@ -56,6 +56,7 @@
 
 #include "init_64.h"
 
+unsigned long ctx_nr_bits = DEFAULT_CTX_NR_BITS;
 unsigned long kern_linear_pte_xor[4] __read_mostly;
 static unsigned long page_cache4v_flag;
 
@@ -925,7 +926,6 @@ EXPORT_SYMBOL(__flush_dcache_range);
 /* get_new_mmu_context() uses "cache + 1".  */
 DEFINE_SPINLOCK(ctx_alloc_lock);
 unsigned long tlb_context_cache = CTX_FIRST_VERSION - 1;
-#define MAX_CTX_NR	(1UL << CTX_NR_BITS)
 #define CTX_BMAP_SLOTS	BITS_TO_LONGS(MAX_CTX_NR)
 DECLARE_BITMAP(mmu_context_bmap, MAX_CTX_NR);
 
@@ -948,9 +948,9 @@ void get_new_mmu_context(struct mm_struct *mm)
 	spin_lock(&ctx_alloc_lock);
 	orig_pgsz_bits = (mm->context.sparc64_ctx_val & CTX_PGSZ_MASK);
 	ctx = (tlb_context_cache + 1) & CTX_NR_MASK;
-	new_ctx = find_next_zero_bit(mmu_context_bmap, 1 << CTX_NR_BITS, ctx);
+	new_ctx = find_next_zero_bit(mmu_context_bmap, 1UL << ctx_nr_bits, ctx);
 	new_version = 0;
-	if (new_ctx >= (1 << CTX_NR_BITS)) {
+	if (new_ctx >= (1UL << ctx_nr_bits)) {
 		new_ctx = find_next_zero_bit(mmu_context_bmap, ctx, 1);
 		if (new_ctx >= ctx) {
 			int i;
@@ -2645,6 +2645,7 @@ void __init paging_init(void)
 		mdesc_fill_in_cpu_data(cpu_all_mask);
 #endif
 		mdesc_get_page_sizes(cpu_all_mask, &cpu_pgsz_mask);
+		mdesc_get_mmu_ctx_bits(cpu_all_mask, &ctx_nr_bits);
 
 		sun4v_linear_pte_xor_finalize();
 

@@ -15,6 +15,7 @@ static inline void enter_lazy_tlb(struct mm_struct *mm, struct task_struct *tsk)
 
 extern spinlock_t ctx_alloc_lock;
 extern unsigned long tlb_context_cache;
+extern unsigned long ctx_nr_bits;
 extern unsigned long mmu_context_bmap[];
 
 void get_new_mmu_context(struct mm_struct *mm);
