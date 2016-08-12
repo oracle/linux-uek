@@ -1316,7 +1316,7 @@ void rds_ib_conn_shutdown(struct rds_connection *conn)
 		}
 
 		atomic_inc(&ic->i_destroying);
-		smp_mb__after_atomic_inc();
+		smp_mb__after_atomic();
 
 		tasklet_kill(&ic->i_stasklet);
 		tasklet_kill(&ic->i_rtasklet);
