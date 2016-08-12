@@ -1,6 +1,6 @@
 /* Misc driver release info */
 
-#define BUILD_DATE "2016-07-26"
-#define BUILD_TIME "15:46:06"
-#define BUILD_EPOCH 1469547966
-#define TITAN_RELEASE "1.0.0.2"
+#define BUILD_DATE "2016-08-12"
+#define BUILD_TIME "11:24:07"
+#define BUILD_EPOCH 1471001047
+#define TITAN_RELEASE "1.0.0.3"

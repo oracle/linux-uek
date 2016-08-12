@@ -416,6 +416,9 @@ void write_struct_psif_epsc_csr_vimma_ctrl(XFILE *fd,
 void write_struct_psif_epsc_csr_ber_data(XFILE *fd,
 	int network_order,
 	const struct psif_epsc_csr_ber_data *data);
+void write_struct_psif_epsc_csr_diag_counters(XFILE *fd,
+	int network_order,
+	const struct psif_epsc_csr_diag_counters *data);
 void write_union_psif_epsc_csr_details(XFILE *fd,
 	int network_order,
 	const union psif_epsc_csr_details *data);

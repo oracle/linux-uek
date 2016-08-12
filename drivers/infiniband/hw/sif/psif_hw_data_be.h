@@ -1849,6 +1849,36 @@ struct psif_eq_entry {
 } PSIF_PACKED_ALIGNED32; /* struct psif_eq_entry [64 byte] */
 
 /**
+ * \brief Definition of struct returned by EPSC_QUERY_ON_CHIP_TEMP
+ * \details
+ * This struct contain temperatures in Centigrades from several PSIF chip internal sensors.
+ * Naming of struct memebers reflect PSIF ASIC internal module names.
+ * \par Width
+ *      64 bit
+ * \par Used in
+ * the parameter for the PSIF_QUERY sub-operation EPSC_QUERY_ON_CHIP_TEMP - index field input ignored
+ * \par Classification
+ *      internal, development
+ */
+
+struct psif_epsc_query_on_chip_temp {
+	/* Sample max value */
+	u16	max:8;
+	/* Default main sensor */
+	u16	main:8;
+	/* ARM cores */
+	u16	eps:8;
+	/* IB cores */
+	u16	ibu:8;
+	/* Transaction core */
+	u16	tsu:8;
+	/* PCI core */
+	u16	peu:8;
+	/* Future sensors */
+	u16	noname:16;
+} PSIF_PACKED_ALIGNED; /* struct psif_epsc_query_on_chip_temp [ 8 byte] */
+
+/**
  * \brief Definition of struct returned by EPSC_QUERY_EXTERNAL_PORT_INFO
  * \details
  * This struct is returning several attributes of the external IB port. The vHCA IB portnumber
@@ -2808,6 +2838,20 @@ struct psif_epsc_csr_ber_data {
 	u32	len;
 } PSIF_PACKED_ALIGNED; /* struct psif_epsc_csr_ber_data [24 byte] */
 
+/**
+ * Structure for EPSC_DIAG_COUNTERS
+ */
+struct psif_epsc_csr_diag_counters {
+	/* Buffer address in host memory */
+	u64	host_addr;
+	/* MMU supplied by the driver */
+	struct psif_mmu_cntx	mmu_cntx;
+	/* UF number */
+	u32	uf;
+	/* Buffer length in bytes */
+	u32	len;
+} PSIF_PACKED_ALIGNED; /* struct psif_epsc_csr_diag_counters [24 byte] */
+
 /* Public API for mailbox requests details */
 union psif_epsc_csr_details {
 	/* Anonymous data */
@@ -2878,6 +2922,8 @@ union psif_epsc_csr_details {
 	struct psif_epsc_csr_vimma_ctrl	vimma_ctrl;
 	/* BER data query */
 	struct psif_epsc_csr_ber_data	ber;
+	/* DIAG counters query */
+	struct psif_epsc_csr_diag_counters	diag;
 } PSIF_PACKED; /* union psif_epsc_csr_details [88 byte] */
 
 /**

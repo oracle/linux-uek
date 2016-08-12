@@ -1443,6 +1443,8 @@ const char *string_enum_psif_epsc_csr_opcode(enum psif_epsc_csr_opcode val)
 		return "EPSC_VIMMA_CTRL";
 	case EPSC_BER_DATA:
 		return "EPSC_BER_DATA";
+	case EPSC_DIAG_COUNTERS:
+		return "EPSC_DIAG_COUNTERS";
 	case EPSC_LAST_OP:
 		return "EPSC_LAST_OP";
 	case PSIF_EPSC_CSR_OPCODE_FIELD_MAX:
@@ -4456,6 +4458,28 @@ void write_struct_psif_epsc_csr_ber_data(XFILE *fd,
 	xprintf(fd, "}");
 } /* end write_..._psif_epsc_csr_ber_data(psif_epsc_csr_ber_data data) */
 
+void write_struct_psif_epsc_csr_diag_counters(XFILE *fd,
+	int network_order,
+	const struct psif_epsc_csr_diag_counters *data)
+{
+	u64 swap[3];
+
+	if (network_order) {
+		copy_convert_to_sw(swap, (volatile void *)data, 24);
+		data = (struct psif_epsc_csr_diag_counters *)swap;
+	}
+	xprintf(fd, "{");
+	xprintf(fd, " .host_addr = ");
+	write_bits_u64(fd, 64, data->host_addr);
+	xprintf(fd, ", .mmu_cntx = ");
+	write_struct_psif_mmu_cntx(fd, 0, &(data->mmu_cntx));
+	xprintf(fd, ", .len = ");
+	write_bits_u32(fd, 32, data->len);
+	xprintf(fd, ", .uf = ");
+	write_bits_u32(fd, 32, data->uf);
+	xprintf(fd, "}");
+} /* end write_..._psif_epsc_csr_diag_counters(psif_epsc_csr_diag_counters data) */
+
 void write_union_psif_epsc_csr_details(XFILE *fd,
 	int network_order,
 	const union psif_epsc_csr_details *data)
@@ -4537,6 +4561,8 @@ void write_union_psif_epsc_csr_details(XFILE *fd,
 	write_struct_psif_epsc_csr_vimma_ctrl(fd, 0, &(data->vimma_ctrl));
 	xprintf(fd, ", .ber = ");
 	write_struct_psif_epsc_csr_ber_data(fd, 0, &(data->ber));
+	xprintf(fd, ", .diag = ");
+	write_struct_psif_epsc_csr_diag_counters(fd, 0, &(data->diag));
 	xprintf(fd, "}");
 } /* end write_..._psif_epsc_csr_details(psif_epsc_csr_details data) */
 
