@@ -21,7 +21,7 @@
  *
  * CDDL HEADER END
  *
- * Copyright 2010, 2011, 2012, 2013 Oracle, Inc.  All rights reserved.
+ * Copyright 2010 -- 2016 Oracle, Inc.  All rights reserved.
  * Use is subject to license terms.
  */
 
@@ -31,6 +31,7 @@
 #include <linux/slab.h>
 #include <linux/sort.h>
 #include <linux/uaccess.h>
+#include <linux/vmalloc.h>
 #include <linux/workqueue.h>
 
 #include "dtrace.h"
@@ -78,44 +79,6 @@ static volatile uint64_t	fasttrap_mod_gen;
 
 static void fasttrap_pid_cleanup(void);
 
-static void fasttrap_usdt_args64(fasttrap_probe_t *probe, struct pt_regs *regs,
-				 int argc, uintptr_t *argv) {
-	int		i, x, cap = min(argc, (int)probe->ftp_nargs);
-	uintptr_t	*st = (uintptr_t *)regs->sp;
-
-	for (i = 0; i < cap; i++) {
-		switch (x = probe->ftp_argmap[i]) {
-		case 0:
-			argv[i] = regs->di;
-			break;
-		case 1:
-			argv[i] = regs->si;
-			break;
-		case 2:
-			argv[i] = regs->dx;
-			break;
-		case 3:
-			argv[i] = regs->cx;
-			break;
-		case 4:
-			argv[i] = regs->r8;
-			break;
-		case 5:
-			argv[i] = regs->r9;
-			break;
-		default:
-			ASSERT(x > 5);
-
-			__copy_from_user_inatomic_nocache(&argv[i],
-							  (void *)&st[x - 6],
-							  sizeof(st[0]));
-		}
-	}
-
-	while (i < argc)
-		argv[i++] = 0;
-}
-
 static int fasttrap_pid_probe(fasttrap_machtp_t *mtp, struct pt_regs *regs) {
 	fasttrap_tracepoint_t	*tp = container_of(mtp, fasttrap_tracepoint_t,
 						   ftt_mtp);
@@ -143,25 +106,16 @@ static int fasttrap_pid_probe(fasttrap_machtp_t *mtp, struct pt_regs *regs) {
 	for (id = tp->ftt_ids; id != NULL; id = id->fti_next) {
 		fasttrap_probe_t	*ftp = id->fti_probe;
 
-		if (id->fti_ptype == DTFTP_IS_ENABLED) {
+		if (id->fti_ptype == DTFTP_IS_ENABLED)
 			is_enabled = 1;
-		} else if (ftp->ftp_argmap == NULL) {
-			dtrace_probe(ftp->ftp_id, regs->di, regs->si, regs->dx,
-				     regs->cx, regs->r8);
-		} else {
-			uintptr_t	t[5];
-
-			fasttrap_usdt_args64(ftp, regs,
-					     sizeof(t) / sizeof(t[0]), t);
-			dtrace_probe(ftp->ftp_id, t[0], t[1], t[2], t[3],
-				     t[4]);
-		}
+		else
+			fasttrap_pid_probe_arch(ftp, regs);
 	}
 
 	this_cpu_core->cpu_dtrace_regs = NULL;
 
 	if (is_enabled)
-		regs->ax = 1;
+		fasttrap_set_enabled(regs);
 
 	return 0;
 }
@@ -720,42 +674,6 @@ static void fasttrap_pid_getargdesc(void *arg, dtrace_id_t id, void *parg,
 
 	ASSERT(strlen(str + 1) < sizeof(desc->dtargd_xlate));
 	strcpy(desc->dtargd_xlate, str);
-}
-
-static uint64_t fasttrap_usdt_getarg(void *arg, dtrace_id_t id, void *parg,
-				     int argno, int aframes)
-{
-	struct pt_regs	*regs = this_cpu_core->cpu_dtrace_regs;
-	uint64_t	*st;
-	uint64_t	val;
-
-	if (regs == NULL)
-		return 0;
-
-	switch (argno) {
-	case 0:
-		return regs->di;
-	case 1:
-		return regs->si;
-	case 2:
-		return regs->dx;
-	case 3:
-		return regs->cx;
-	case 4:
-		return regs->r8;
-	case 5:
-		return regs->r9;
-	}
-
-	ASSERT(argno > 5);
-
-	st = (uint64_t *)regs->sp;
-	DTRACE_CPUFLAG_SET(CPU_DTRACE_NOFAULT);
-	__copy_from_user_inatomic_nocache(&val, (void *)&st[argno - 6],
-					  sizeof(st[0]));
-	DTRACE_CPUFLAG_CLEAR(CPU_DTRACE_NOFAULT);
-
-	return val;
 }
 
 static void fasttrap_pid_destroy(void *arg, dtrace_id_t id, void *parg)
