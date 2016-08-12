@@ -30,65 +30,7 @@
 #include <asm/stacktrace.h>
 
 #include "dtrace.h"
-
-/* Register indices */
-#define REG_G0		0
-#define REG_G1		(REG_G0 + 1)
-#define REG_G2		(REG_G0 + 2)
-#define REG_G3		(REG_G0 + 3)
-#define REG_G4		(REG_G0 + 4)
-#define REG_G5		(REG_G0 + 5)
-#define REG_G6		(REG_G0 + 6)
-#define REG_G7		(REG_G0 + 7)
-
-#define REG_O0		(REG_G7 + 1)	/* 8 */
-#define REG_O1		(REG_O0 + 1)
-#define REG_O2		(REG_O0 + 2)
-#define REG_O3		(REG_O0 + 3)
-#define REG_O4		(REG_O0 + 4)
-#define REG_O5		(REG_O0 + 5)
-#define REG_O6		(REG_O0 + 6)
-#define REG_O7		(REG_O0 + 7)
-
-#define REG_L0		(REG_O7 + 1)	/* 16 */
-#define REG_L1		(REG_L0 + 1)
-#define REG_L2		(REG_L0 + 2)
-#define REG_L3		(REG_L0 + 3)
-#define REG_L4		(REG_L0 + 4)
-#define REG_L5		(REG_L0 + 5)
-#define REG_L6		(REG_L0 + 6)
-#define REG_L7		(REG_L0 + 7)
-
-#define REG_I0		(REG_L7 + 1)	/* 24 */
-#define REG_I1		(REG_I0 + 1)
-#define REG_I2		(REG_I0 + 2)
-#define REG_I3		(REG_I0 + 3)
-#define REG_I4		(REG_I0 + 4)
-#define REG_I5		(REG_I0 + 5)
-#define REG_I6		(REG_I0 + 6)
-#define REG_I7		(REG_I0 + 7)
-
-#define REG_CCR		(REG_I7 + 1)	/* 32 */
-
-#define REG_PC		(REG_CCR + 1)	/* 33 */
-#define REG_nPC		(REG_PC + 1)	/* 34 */
-#define REG_Y		(REG_nPC + 1)	/* 35 */
-
-#define	REG_ASI		(REG_Y + 1)	/* 36 */
-#define	REG_FPRS	(REG_ASI + 1)	/* 37 */
-
-/*
- * Our own personal SPARC V9 stack layout structure, because the one in
- * <kernel-source-tree>/arch/sparc/include/uapi/asm/ptrace.h is wrong.
- */
-struct sparc_v9_frame {
-        unsigned long locals[8];
-        unsigned long ins[6];
-        struct sparc_v9_frame *fp;
-        unsigned long callers_pc;
-        unsigned long xargs[6];
-        unsigned long xxargs[1];
-};
+#include "dtrace/isa_arch.h"
 
 uint64_t dtrace_getarg(int argno, int aframes)
 {
