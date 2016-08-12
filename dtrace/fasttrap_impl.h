@@ -2,6 +2,7 @@
 #define _FASTTRAP_IMPL_H_
 
 #include <linux/dtrace/fasttrap.h>
+#include <dtrace/fasttrap_arch.h>
 
 /*
  * Fasttrap Providers, Probes and Tracepoints
@@ -120,7 +121,12 @@ extern fasttrap_hash_t			fasttrap_tpoints;
 	(((pc) / sizeof (fasttrap_instr_t) + (pid)) &			      \
 	 fasttrap_tpoints.fth_mask)
 
-#define FASTTRAP_OFFSET_AFRAMES		3
+extern void fasttrap_usdt_args64_arch(fasttrap_probe_t *probe, struct pt_regs *regs,
+				      int argc, uintptr_t *argv);
+extern uint64_t fasttrap_usdt_getarg(void *arg, dtrace_id_t id, void *parg,
+				     int argno, int aframes);
+extern void fasttrap_pid_probe_arch(fasttrap_probe_t *ftp, struct pt_regs *regs);
+extern void fasttrap_set_enabled(struct pt_regs *regs);
 
 extern void fasttrap_meta_create_probe(void *, void *,
 				       dtrace_helper_probedesc_t *);
