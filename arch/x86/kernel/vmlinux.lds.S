@@ -372,7 +372,8 @@ INIT_PER_CPU(irq_stack_union);
 /*
  * Build-time check on the image size:
  */
-. = ASSERT((_end - _text <= KERNEL_IMAGE_SIZE),
+. = ASSERT(((_end < _text) ? (_end < KERNEL_IMAGE_SIZE)
+			   : (_end - _text <= KERNEL_IMAGE_SIZE)),
 	   "kernel image bigger than KERNEL_IMAGE_SIZE");
 
 #ifdef CONFIG_SMP
