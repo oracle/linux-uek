@@ -90,8 +90,8 @@ static const struct file_operations waitfd_fops = {
 	.llseek		= noop_llseek,
 };
  
-SYSCALL_DEFINE4(waitfd, int __maybe_unused, which, pid_t, upid, int, options,
-		int __maybe_unused, flags)
+SYSCALL_DEFINE4(waitfd, int, which, pid_t, upid, int, options,
+		int, flags)
 {
 	int ufd;
 	struct waitfd_ctx *ctx;
