@@ -78,18 +78,18 @@ sdtstub()
 	${CC} ${aflags} -c -o ${1} .tmp_sdtstub.S
 }
 
-# Generate the SDT probe info for object file ${1} and kernel image ${2}
-# ${3} output file
+# Generate the SDT probe info for kernel image ${1}
+# ${2} output file
 sdtinfo()
 {
-	info SDTINF ${3}
+	info SDTINF ${2}
 
-	${srctree}/scripts/dtrace_sdt.sh sdtinfo .tmp_sdtinfo.S ${1} ${2}
+	${srctree}/scripts/dtrace_sdt.sh sdtinfo .tmp_sdtinfo.S ${1}
 
 	local aflags="${KBUILD_AFLAGS} ${KBUILD_AFLAGS_KERNEL}               \
 		      ${NOSTDINC_FLAGS} ${LINUXINCLUDE} ${KBUILD_CPPFLAGS}"
 
-	${CC} ${aflags} -c -o ${3} .tmp_sdtinfo.S
+	${CC} ${aflags} -c -o ${2} .tmp_sdtinfo.S
 }
 
 # Link of vmlinux.o used for section mismatch analysis
@@ -118,6 +118,7 @@ modpost_link()
 # Link of vmlinux
 # ${1} - optional extra .o files
 # ${2} - output file
+# ${3} - optional extra ld flag(s)
 vmlinux_link()
 {
 	local lds="${objtree}/${KBUILD_LDS}"
@@ -141,7 +142,7 @@ vmlinux_link()
 				${1}"
 		fi
 
-		${LD} ${LDFLAGS} ${LDFLAGS_vmlinux} -o ${2}		\
+		${LD} ${LDFLAGS} ${LDFLAGS_vmlinux} ${3} -o ${2}	\
 			-T ${lds} ${objects}
 	else
 		if [ -n "${CONFIG_THIN_ARCHIVES}" ]; then
@@ -161,7 +162,7 @@ vmlinux_link()
 				${1}"
 		fi
 
-		${CC} ${CFLAGS_vmlinux} -o ${2}				\
+		${CC} ${CFLAGS_vmlinux} ${3} -o ${2}			\
 			-Wl,-T,${lds}					\
 			${objects}					\
 			-lutil -lrt -lpthread
@@ -328,7 +329,7 @@ if [ -n "${CONFIG_KALLSYMS}" ]; then
 	kallsyms_vmlinux=.tmp_vmlinux2
 
 	if [ -n "${CONFIG_DTRACE}" ]; then
-		sdtinfo vmlinux.o "" ${sdtinfoo}
+		sdtinfo vmlinux.o ${sdtinfoo}
 	fi
 
 	# step 1
@@ -336,7 +337,8 @@ if [ -n "${CONFIG_KALLSYMS}" ]; then
 	kallsyms .tmp_vmlinux1 .tmp_kallsyms1.o
 
 	if [ -n "${CONFIG_DTRACE}" ]; then
-		sdtinfo vmlinux.o .tmp_vmlinux1 ${sdtinfoo}
+		vmlinux_link "${sdtstubo} ${sdtinfoo}" .tmp_vmlinux1 "-r"
+		sdtinfo .tmp_vmlinux1 ${sdtinfoo}
 	fi
 
 	# step 2

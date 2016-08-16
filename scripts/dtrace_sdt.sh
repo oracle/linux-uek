@@ -10,10 +10,10 @@ LANG=C
 #	dtrace_sdt.sh sdtinfo <c-file> <o-file> kmod
 #		This is used to generate DTrace SDT probe definitions for a
 #		kmod .o file.  The output is written to <c-file>.
-#	dtrace_sdt.sh sdtinfo <S-file> <o-file> <l-file>
+#	dtrace_sdt.sh sdtinfo <S-file> <l-file>
 #		This is used to generate DTrace SDT probe definitions for a
-#		kernel object file <o-file> and kernel image file <l-file>.
-#		The output is written to <S-file>.
+#		linked kernel image file <l-file>.  The output is written to
+#		<S-file>.
 #
 
 opr="$1"
@@ -31,7 +31,7 @@ if [ -z "$tfn" ]; then
 fi
 
 ofn="$1"
-lfn="$2"
+tok="$2"
 
 if [ -z "$ofn" ]; then
     echo "ERROR: Missing object file argument" > /dev/stderr
@@ -66,41 +66,10 @@ if [ "$opr" != "sdtinfo" ]; then
     exit 1
 fi
 
-(
-    # Only include the first two objdump output runs for the actual kernel.
-    # We do not need them for kernel modules.
-    if [ "x${lfn}" != "x" -a "x${lfn}" != "xkmod" ]; then
-	# Output all functions listed in the symbol table.  Output lines will
-	# all resemble the following:
-	#	<value> <<scope> F <section> <size> <name>
-	# Therefore, output lines will contain 6 tokens (see STAGE 1 below).
-	#
-	${OBJDUMP} -t ${ofn} | \
-	    grep ' F '
-
-	# Output all functions listed in the symbol table of the linked kernel
-	# image, i.e. with resolved addresses.  We only output the section
-	# name, value, and symbol name for these functions.  Therefore, output
-	# lines will contains 3 tokens (see STAGE 2 below).
-	#
-	# Note that we output one extra special symbol (__init_begin).  This
-	# one is used to signal the boundary between the init-section code
-	# that gets discarded after system boot, and the general code section
-	# that is used as kernel runtime.  Probes in the init-section will be
-	# ignored (for now).
-	#
-	${OBJDUMP} -t ${lfn} | \
-	    awk '/ F / {
-		     print $4 " " $1 " " $6;
-		     next;
-		 }
-
-		 $NF == "__init_begin" {
-		     print ". " $1 " " $NF;
-		 }' | sort -k1,2
-    else
-	scripts/kmodsdt ${ofn}
-    fi
+if [ "$tok" = "kmod" ]; then
+    # Pre-process the object file to handle any local functions that contain
+    # SDT probes.
+    scripts/kmodsdt ${ofn}
 
     # Output all function symbols in the symbol table of the object file.
     # Subsequently, output all relocation records for DTrace SDT probes.  The
@@ -154,50 +123,10 @@ fi
 		 print $4 " " $1 " G " $7;
 	     else
 		 print $4 " " $1 " F " $6;
-	 }
-	 NF > 3 && kvh {
-	     if (/^[0-9a-f]/) {
-		 sidx++;
-		 if ($3 == "F") {
-		     if ($6 == ".hidden")
-			 $6 = $7;
-		 }
-	     }
-	     next;
 	 }' | \
-    sort -k1,2
-) | \
-    awk -v lfn="${lfn}" \
-	-v arch=${ARCH} \
-	'function addl(v0, v1, v0h, v0l, v1h, v1l, d, tmp) {
-             tmp = $0;
-             if (length(v0) > 8 || length(v1) > 8) {
-                 d = length(v0);
-                 v0h = strtonum("0x"substr(v0, 1, d - 8));
-                 v0l = strtonum("0x"substr(v0, d - 8 + 1));
-                 d = length(v1);
-                 v1h = strtonum("0x"substr(v1, 1, d - 8));
-                 v1l = strtonum("0x"substr(v1, d - 8 + 1));
-
-                 v0h += v1h;
-                 v0l += v1l;
-
-                 d = sprintf("%x", v0l);
-                 if (length(d) > 8)
-                     v0h++;
-
-                 d = sprintf("%x%x", v0h, v0l);
-             } else {
-                 v0 = strtonum("0x"v0);
-                 v1 = strtonum("0x"v1);
-                 d = sprintf("%x", v0 + v1);
-             }
-             $0 = tmp;
-
-             return d;
-         }
-
-         function subl(v0, v1, v0h, v0l, v1h, v1l, d, tmp) {
+    sort -k1,2 | \
+    awk -v arch=${ARCH} \
+	'function subl(v0, v1, v0h, v0l, v1h, v1l, d, tmp) {
              tmp = $0;
              if (length(v0) > 8) {
                  d = length(v0);
@@ -231,90 +160,12 @@ fi
          }
 
 	 BEGIN {
-	     if (lfn != "kmod") {
-		 print "#include <asm/types.h>";
-		 print "#if BITS_PER_LONG == 64";
-		 print "# define PTR .quad";
-		 print "# define ALGN .align 8";
-		 print "#else";
-		 print "# define PTR .long";
-		 print "# define ALGN .align 4";
-		 print "#endif";
-
-		 print "\t.section .rodata, \042a\042";
-		 print "";
-
-		 print ".globl dtrace_sdt_probes";
-		 print "\tALGN";
-		 print "dtrace_sdt_probes:";
-	     } else
-		 print "#include <linux/sdt.h>";
+	     print "#include <linux/sdt.h>";
 
 	     probec = 0;
 	 }
 
 	 #
-	 # [STAGE 1] Kernel only:
-	 # Process a symbol table definition for a function in the object
-	 # file ($ofn).  As we pass through the symbol table, we record the
-	 # function with the lowest offset within each section.
-	 #
-	 NF == 6 {
-	     if ($4 in sectaddr) {
-		 if ($1 < sectaddr[$4]) {
-		     sectaddr[$4] = $1;
-		     sectfunc[$4] = $6;
-		 }
-	     } else {
-		 secttodo[$4] = 1;
-		 sectaddr[$4] = $1;
-		 sectfunc[$4] = $6;
-	     }
-
-	     next;
-	 }
-
-	 #
-	 # [STAGE 2] Kernel only:
-	 # Process a symbol table definition for a function in the final link
-	 # target ($tfn).  As we pass through the symbol table, we update the
-	 # section data with the final load address using the known function
-	 # with lowest offset wihin the section.
-	 #
-	 NF == 3 {		# Symbol def in $lfn (final addresses)
-	     for (s in secttodo) {
-		 if (sectfunc[s] == $3) {
-		     if (init_begin && $2 > init_begin) {
-			 sectname[s] = "";
-			 next;
-		     }
-
-		     sectname[s] = $1;
-
-		     # If the first function in the section is not at offset 0,
-		     # subtracting the offset from the function address  yields
-		     # the address of the start of the section.
-		     if (sectaddr[s] !~ /^0+$/)
-			 sectaddr[s] = subl($2, sectaddr[s]);
-		     else
-			 sectaddr[s] = $2;
-
-		     delete secttodo[s];
-
-		     next;
-		 }
-	     }
-
-	     if ($3 == "__init_begin") {
-		 print "\t/* Sections above " $2 " are skipped. */";
-		 init_begin = $2;
-	     }
-
-	     next;
-	 }
-
-	 #
-	 # [STAGE 3a] Kernel and kernel modules:
 	 # Process a symbol table definition for a function in the object
 	 # file ($ofn).  As we pass through the symbol table, we record the
 	 # function name, address, and symbol table index or alias.  This
@@ -340,12 +191,7 @@ fi
 	 }
 
 	 #
-	 # [STAGE 3b] Kernel and kernel modules:
 	 # Process a relocation record associated with the preceding function.
-	 #
-	 # For kernel:
-	 # Convert the section offset into an absolute address based on the
-	 # section load address.
 	 #
 	 # For kernel modules:
 	 # Convert the section offset into an offset in the function where the
@@ -356,39 +202,211 @@ fi
 	 NF == 4 && $3 == "R" {
 	     sub(/^0+/, "", $2);
 
-	     if (lfn != "kmod") {
-		 if ($1 in sectaddr) {
-		     if (!sectname[$1]) {
-			 printf "WARNING: Probe %s in [%s] %s() ignored - " \
-				"init-section.\n", $4, $1, fname \
-								>"/dev/stderr";
-			 next;
-		     }
+	     addr = subl($2, faddr);
 
-		     addr = addl(sectaddr[$1], $2);
-		     printf "\t/* [%s base] %s + %s = [%s] %s */\n", \
-			    $1, sectaddr[$1], $2, sectname[$1], addr \
-		 } else
-		     addr = $2;
+	     if (arch == "x86" || arch == "x86_64")
+		 addr = subl(addr, 1);
 
-		 if (arch == "x86" || arch == "x86_64")
-		     addr = subl(addr, 1);
+	     protom[alias] = 1;
+	     probev[probec] = sprintf("  {\042%s\042,  \042%s\042 /* %s */, (uintptr_t)%s+0x%s },", $4, fname, $1, alias, addr);
+	     probec++;
 
-		 printf "\tPTR\t0x%s\n", addr;
-		 printf "\tPTR\t%d\n", length($4);
-		 printf "\tPTR\t%d\n", length(fname);
-		 printf "\t.asciz\t\042%s\042\n", $4;
-		 printf "\t.asciz\t\042%s\042\n", fname;
-		 print "\tALGN";
-	     } else {
-		 addr = subl($2, faddr);
+	     next;
+	 }
 
-		 if (arch == "x86" || arch == "x86_64")
-		     addr = subl(addr, 1);
+	 END {
+	     if (probec > 0) {
+		 for (alias in protom)
+		     printf "extern void %s(void);\n", alias;
+		 print "\nstatic sdt_probedesc_t\t_sdt_probes[] = {";
+		 for (i = 0; i < probec; i++)
+		     print probev[i];
+		 print "};\n";
+	     } else
+		print "#define _sdt_probes\tNULL";
 
-		 protom[alias] = 1;
-		 probev[probec] = sprintf("  {\042%s\042,  \042%s\042 /* %s */, (uintptr_t)%s+0x%s },", $4, fname, $1, alias, addr);
-	     }
+	     print "#define _sdt_probec\t" probec;
+
+	     exit(errc == 0 ? 0 : 1);
+	 }' > $tfn
+else
+    # For a linked kernel (with relocation data), the scope of DTrace SDT
+    # probe discovery can be limited to just the .text section.
+    #
+    # First the section record is retrieved in order to determine the base
+    # address for symbols in the .text section.
+    #
+    # Subsequently, all function symbols that are located in the .text sectio
+    # are read from the symbol table of the linked kernel object.  Each symbol
+    # is reported in the output stream with its address, a token identifying it
+    # as a function (or alias), and its name.
+    #
+    # Finally, each relocation record from the .text section that relates to
+    # SDT probes are written to the output stream with its address, a token
+    # identifying it as a relocation, and its name.  Probes are identified in
+    # the relocation records as symbols with __dtrace_probe_ as prefix.
+    #
+    # We sort the output based on the address, which guarantees that the output
+    # will be a list of functions, and each function record will be followed 
+    # immediately by any DTrace SDT probe records that are used in that
+    # function.
+    #
+    # Three different record types can show up in the output (3 tokens each):
+    #    <address> F <name>
+    #        Named function at a specific address.
+    #    <address> G <name>
+    #        Global alias for a local function at a specific offset.  A
+    #        function can only have one alias, and there cannot be an alias
+    #        without its respective function.
+    #    <address> R <value>
+    #        Relocation within a section at a specific address
+    #
+    ${OBJDUMP} -htrj .text ${ofn} | \
+    awk 'function addl(v0, v1, v0h, v0l, v1h, v1l, d, tmp) {
+             tmp = $0;
+             if (length(v0) > 8 || length(v1) > 8) {
+                 d = length(v0);
+                 v0h = strtonum("0x"substr(v0, 1, d - 8));
+                 v0l = strtonum("0x"substr(v0, d - 8 + 1));
+                 d = length(v1);
+                 v1h = strtonum("0x"substr(v1, 1, d - 8));
+                 v1l = strtonum("0x"substr(v1, d - 8 + 1));
+
+                 v0h += v1h;
+                 v0l += v1l;
+
+                 d = sprintf("%x", v0l);
+                 if (length(d) > 8)
+                     v0h++;
+
+                 d = sprintf("%x%x", v0h, v0l);
+             } else {
+                 v0 = strtonum("0x"v0);
+                 v1 = strtonum("0x"v1);
+                 d = sprintf("%x", v0 + v1);
+             }
+             $0 = tmp;
+
+             return d;
+         }
+
+	 NF == 7 && $2 == ".text" {
+	     base = $4;
+	     next;
+	 }
+
+	 /^RELOC/ {
+	     in_reloc = $4 == "[.text]:";
+	     next;
+	 }
+
+	 in_reloc && /__dtrace_probe_/ {
+	     $3 = substr($3, 16);
+	     sub(/[\-+].*$/, "", $3);
+	     print addl(base, $1) " R " $3;
+	     next;
+	 }
+
+	 / F / {
+	     if ($6 == ".hidden")
+		 print $1 " G " $7;
+	     else
+		 print $1 " F " $6;
+	 }' | \
+    sort -k1,2 | \
+    awk -v arch=${ARCH} \
+	'function subl(v0, v1, v0h, v0l, v1h, v1l, d, tmp) {
+             tmp = $0;
+             if (length(v0) > 8) {
+                 d = length(v0);
+                 v0h = strtonum("0x"substr(v0, 1, d - 8));
+                 v0l = strtonum("0x"substr(v0, d - 8 + 1));
+                 d = length(v1);
+                 v1h = strtonum("0x"substr(v1, 1, d - 8));
+                 v1l = strtonum("0x"substr(v1, d - 8 + 1));
+
+                 if (v0l > v1l) {
+                     if (v0h >= v1h) {
+                         d = sprintf("%x%x", v0h - v1h, v0l - v1l);
+                     } else {
+                         printf "#error Invalid addresses: %x vs %x", v0, v1 \
+                                                                >"/dev/stderr";
+                         errc++;
+                     }
+                 } else {
+                     printf "#error Invalid addresses: %x vs %x", v0, v1 \
+                                                                >"/dev/stderr";
+                     errc++;
+                 }
+             } else {
+                 v0 = strtonum("0x"v0);
+                 v1 = strtonum("0x"v1);
+                 d = sprintf("%x", v0 - v1);
+             }
+             $0 = tmp;
+
+             return d;
+         }
+
+	 BEGIN {
+	     print "#include <asm/types.h>";
+	     print "#if BITS_PER_LONG == 64";
+	     print "# define PTR .quad";
+	     print "# define ALGN .align 8";
+	     print "#else";
+	     print "# define PTR .long";
+	     print "# define ALGN .align 4";
+	     print "#endif";
+
+	     print "\t.section .rodata, \042a\042";
+	     print "";
+
+	     print ".globl dtrace_sdt_probes";
+	     print "\tALGN";
+	     print "dtrace_sdt_probes:";
+
+	     probec = 0;
+	 }
+
+	 #
+	 # Process a symbol table definition for a function in the .text
+	 # section of the kernel image.  As we pass through the symbol table,
+	 # we record the function name and address.
+	 #
+	 NF == 3 && $2 == "F" {
+	     fname = $3;
+	     sub(/\..*$/, "", fname);
+	     alias = $3;
+
+	     next;
+	 }
+
+	 NF == 3 && $2 == "G" {
+	     alias = $3;
+
+	     next;
+	 }
+
+	 #
+	 # Process a relocation record associated with the preceding function.
+	 #
+	 # Since all addresses are already resolved earlier, we can simply
+	 # generate the SDT probe information record.
+	 #
+	 NF == 3 && $2 == "R" {
+	     sub(/^0+/, "", $1);
+
+	     addr = $1;
+
+	     if (arch == "x86" || arch == "x86_64")
+		 addr = subl(addr, 1);
+
+	     printf "\tPTR\t0x%s\n", addr;
+	     printf "\tPTR\t%d\n", length($3);
+	     printf "\tPTR\t%d\n", length(fname);
+	     printf "\t.asciz\t\042%s\042\n", $3;
+	     printf "\t.asciz\t\042%s\042\n", fname;
+	     print "\tALGN";
 
 	     probec++;
 
@@ -396,27 +414,14 @@ fi
 	 }
 
 	 END {
-	     if (lfn != "kmod") {
-		 print "";
-		 print ".globl dtrace_sdt_nprobes";
-		 print "\tALGN";
-		 print "dtrace_sdt_nprobes:";
-		 printf "\tPTR\t%d\n", probec;
-	     } else {
-		 if (probec > 0) {
-		     for (alias in protom)
-			 printf "extern void %s(void);\n", alias;
-		     print "\nstatic sdt_probedesc_t\t_sdt_probes[] = {";
-		     for (i = 0; i < probec; i++)
-			 print probev[i];
-		     print "};\n";
-		 } else
-		     print "#define _sdt_probes\tNULL";
-
-		 print "#define _sdt_probec\t" probec;
-	     }
+	     print "";
+	     print ".globl dtrace_sdt_nprobes";
+	     print "\tALGN";
+	     print "dtrace_sdt_nprobes:";
+	     printf "\tPTR\t%d\n", probec;
 
 	     exit(errc == 0 ? 0 : 1);
 	 }' > $tfn
+fi
 
 exit $?
