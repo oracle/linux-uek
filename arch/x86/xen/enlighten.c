@@ -288,6 +288,27 @@ static void __init xen_banner(void)
 	       version >> 16, version & 0xffff, extra.extraversion,
 	       xen_feature(XENFEAT_mmu_pt_update_preserve_ad) ? " (preserve-AD)" : "");
 }
+
+/*
+ * On x86 whenever VMAs are setup, the 'is_ISA_range quirk' (which we
+ * re-implement below) is used to figure whether to ignore the
+ * requested PAT type and always use WB (see 'reserve_memtype').
+ *
+ * The combination of MTRR (UC) and PAT (UC or WB) for the ISA region ends
+ * up with the same value - UC.
+ *
+ * However on Xen, due to XSA 154 we enforce that mappings to _ANY_ MMIO
+ * range MUST have the same the same cachability mapping - and in this case
+ * we enforce UC for everything.
+ *
+ * The effective result of the function below is for 'reserver_memtype'
+ * to ignore the result from 'x86_platform.is_untracked_pat_range' quirk.
+ */
+static bool xen_ignore(u64 s, u64 e)
+{
+	return false;
+}
+
 /* Check if running on Xen version (major, minor) or later */
 bool
 xen_running_on_version_or_later(unsigned int major, unsigned int minor)
@@ -1725,6 +1746,8 @@ asmlinkage __visible void __init xen_start_kernel(void)
 		x86_init.mpparse.get_smp_config = x86_init_uint_noop;
 
 		xen_boot_params_init_edd();
+
+		x86_platform.is_untracked_pat_range = xen_ignore;
 	}
 #ifdef CONFIG_PCI
 	/* PCI BIOS service won't work from a PV guest. */
