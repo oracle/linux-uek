@@ -106,7 +106,11 @@ static int sif_seq_show(struct seq_file *s, void *v)
 
 	sif_log(sd->sdev, SIF_DFS, "%lld", it->pos);
 	if (!it->pos || !it->started) {
-		seq_printf(s, "# %s state:\n", sif_table_name(sd->type));
+		if (!sd->is_eq)
+			seq_printf(s, "# %s state (entries %d, extent %d):\n",
+				sif_table_name(sd->type),
+				sd->sdev->ba[sd->type].entry_cnt,
+				sd->sdev->ba[sd->type].ext_sz);
 		if (sd->dfs_print)
 			sd->dfs_print(s, sd->sdev, -1);
 		else

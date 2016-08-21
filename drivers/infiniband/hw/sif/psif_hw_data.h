@@ -59,7 +59,7 @@ enum psif_enum_extent {
 	PSIF_EPSC_DEGRADE_CAUSE_EXTENT	 = 0x7u,
 	PSIF_EPSC_ATOMIC_CAP_EXTENT	 = 0x3u,
 	PSIF_EPSC_CSR_STATUS_EXTENT	 = 0x100u,
-	PSIF_EPSC_CSR_OPCODE_EXTENT	 = 0x50u,
+	PSIF_EPSC_CSR_OPCODE_EXTENT	 = 0x51u,
 	PSIF_EPSC_CSR_FLAGS_EXTENT	 = 0x5u,
 	PSIF_VLINK_STATE_EXTENT	 = 0x11u,
 	PSIF_EPSC_CSR_MODIFY_DEVICE_FLAGS_EXTENT	 = 0x3u,
@@ -1278,8 +1278,10 @@ enum psif_epsc_csr_opcode {
 	EPSC_VIMMA_CTRL	 = 0x4bu,
 	/* EPSC BER (Bit Error Report) Data */
 	EPSC_BER_DATA	 = 0x4eu,
+	/* IB Diag Counters */
+	EPSC_DIAG_COUNTERS	 = 0x4fu,
 	/** EOF marker - must be last and highest in this enum type. */
-	EPSC_LAST_OP	 = 0x4fu,
+	EPSC_LAST_OP	 = 0x50u,
 	/* Padding out to required bits allocated */
 	PSIF_EPSC_CSR_OPCODE_FIELD_MAX	 = 0xffu
 }; /* enum psif_epsc_csr_opcode [ 8 bits] */

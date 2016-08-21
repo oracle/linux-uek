@@ -47,7 +47,8 @@ static uint dummy_lat_cb_size = 1;
  * They are all read only after driver load
  */
 
-#define add_qsz_parameter(type, hwtype, initsize) \
+#define add_qsz_parameter(type, initsize) \
+static const uint sif_##type##_default_size = initsize;\
 uint sif_##type##_size = initsize;\
 module_param_named(type##_size, sif_##type##_size, uint, S_IRUGO);\
 MODULE_PARM_DESC(type##_size, "Size of the " #type " descriptor table")
@@ -57,25 +58,32 @@ MODULE_PARM_DESC(type##_size, "Size of the " #type " descriptor table")
  *  e.g. for instance qp_size=2048 or ah_size=100
  * (all sizes will be rounded up to a power of two value)
  */
-add_qsz_parameter(mr, key, 4194304);
-add_qsz_parameter(epsc, epsc_csr_req, 2048);
-add_qsz_parameter(qp, qp, 1048576);
-add_qsz_parameter(rq, rq_hw, 1048576);
-add_qsz_parameter(cq, cq_hw, 524288);
-add_qsz_parameter(ah, ah, 262144);
-add_qsz_parameter(sq_ring, sq_ring, 262144);
-add_qsz_parameter(sq_tvl, sq_tvl, 128);
+add_qsz_parameter(mr, 4194304);
+add_qsz_parameter(epsc, 2048);
+add_qsz_parameter(qp, 1048576);
+add_qsz_parameter(rq, 1048576);
+add_qsz_parameter(cq, 524288);
+add_qsz_parameter(ah, 262144);
+add_qsz_parameter(sq_ring, 262144);
+add_qsz_parameter(sq_tvl, 128);
 
 /* These sizes must be equal to QP size */
 #define sif_sq_rspq_size sif_qp_size
+#define sif_sq_rspq_default_size sif_qp_default_size
 #define sif_rqsp_size sif_qp_size
+#define sif_rqsp_default_size sif_qp_default_size
 #define sif_atsp_size sif_qp_size
+#define sif_atsp_default_size sif_qp_default_size
 
 /* These can be set from the command line - no parameter needed */
 static uint sif_epsa0_size = 64;
+static const uint sif_epsa0_default_size = 64;
 static uint sif_epsa1_size = 64;
+static const uint sif_epsa1_default_size = 64;
 static uint sif_epsa2_size = 64;
+static const uint sif_epsa2_default_size = 64;
 static uint sif_epsa3_size = 64;
+static const uint sif_epsa3_default_size = 64;
 
 /* This defines how small the smallest (sw) pointers can get.
  * If set to <= 8, 512 sw descriptors will fit in one page.
@@ -115,6 +123,7 @@ struct sif_table_layout {
 	const char *name; /* Corresponding to enum name */
 	const char *desc; /* Textual table desc (for logging) */
 	uint *e_cnt_ref; /* Driver parameter ref for no.of entries to allocate */
+	const uint *e_def_cnt; /* Driver parameter ref for default no.of entries to allocate */
 	u32 entry_sz;  /* Real size of entries in this table */
 	u32 ext;       /* Actual extent of (stride between) entries in this table */
 	sif_dfs_printer dfs_printer; /* entry printing in debugfs */
@@ -141,6 +150,7 @@ struct sif_table_layout {
 	.name = #type,\
 	.desc = _desc,\
 	.e_cnt_ref = &sif_##ec##_size,\
+	.e_def_cnt = &sif_##ec##_default_size,	\
 	.entry_sz = sizeof(struct _e_type),\
 	.ext = roundup_pow_of_two(sizeof(struct _e_type)),\
 	.dfs_printer = _dfs_printer,\
@@ -179,6 +189,7 @@ struct sif_table_layout {
 	.name = #type "_csr_req", \
 	.desc = "EPS" #_suff " Request queue", \
 	.e_cnt_ref = &sif_##type##_size, \
+	.e_def_cnt = &sif_##type##_default_size, \
 	.entry_sz = sizeof(struct psif_epsc_csr_req),\
 	.ext = roundup_pow_of_two(sizeof(struct psif_epsc_csr_req)), \
 	.dfs_printer = sif_dfs_print_##type, \
@@ -193,6 +204,7 @@ struct sif_table_layout {
 	.name = #type "_csr_rsp", \
 	.desc = "EPS" #_suff " Response queue", \
 	.e_cnt_ref = &sif_##type##_size, \
+	.e_def_cnt = &sif_##type##_default_size, \
 	.entry_sz = sizeof(struct psif_epsc_csr_rsp),\
 	.ext = roundup_pow_of_two(sizeof(struct psif_epsc_csr_rsp)), \
 	.dfs_printer = NULL, \
@@ -231,6 +243,7 @@ static struct sif_table_layout base_layout[] = {
 		.name = "sq_cmpl",
 		.desc = "cq: SQ addr.map",
 		.e_cnt_ref = &sif_qp_size,
+		.e_def_cnt = &sif_qp_default_size, \
 		.entry_sz = 0, /* Calculated later */
 		.ext = 0, /* Calculated later */
 		.dfs_printer = sif_dfs_print_sq_cmpl,
@@ -247,6 +260,7 @@ static struct sif_table_layout base_layout[] = {
 		.name = "bw_cb",
 		.desc = "High bandwith collect buffer",
 		.e_cnt_ref = &dummy_bw_cb_size,
+		.e_def_cnt = &dummy_bw_cb_size,
 		.entry_sz = sizeof(struct psif_cb),
 		.ext = 4096,
 		.dfs_printer = NULL,
@@ -260,6 +274,7 @@ static struct sif_table_layout base_layout[] = {
 		.name = "lat_cb",
 		.desc = "Low latency collect buffer",
 		.e_cnt_ref = &dummy_lat_cb_size,
+		.e_def_cnt = &dummy_lat_cb_size,
 		.entry_sz = sizeof(struct psif_cb),
 		.ext = 4096,
 		.dfs_printer = NULL,
@@ -494,6 +509,9 @@ int sif_table_init(struct sif_dev *sdev, enum sif_tab_type type)
 	tp->type = type;
 	tp->sdev = sdev;
 	cfg_sz = (u32)(*base_layout[type].e_cnt_ref);
+	if (type < bw_cb && sdev->res_frac > 1 && cfg_sz == (u32)(*base_layout[type].e_def_cnt))
+		cfg_sz = cfg_sz / sdev->res_frac;
+
 	if (cfg_sz & 0x80000000 || cfg_sz == 0) {
 		sif_log(sdev, SIF_INFO, "%s(%u): table size %#x out of bounds",
 			base_layout[type].desc, type, cfg_sz);

@@ -95,8 +95,8 @@ struct sif_pqp *get_pqp_same_eq(struct sif_dev *sdev, int comp_vector);
 /* Get the next PQP in round robin fashion */
 struct sif_pqp *get_next_pqp(struct sif_dev *sdev);
 
-/* Get the right CB for the current CPU for the given QP */
-struct sif_cb *get_cb(struct sif_qp *qp);
+/* Get the right CB for the current CPU for the given QP and wr */
+struct sif_cb *get_cb(struct sif_qp *qp, struct psif_wr *wr);
 
 static inline struct sif_cq *pqp_cq(struct sif_dev *sdev)
 {

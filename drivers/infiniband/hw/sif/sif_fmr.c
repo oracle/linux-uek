@@ -173,7 +173,6 @@ int sif_unmap_phys_fmr_list(struct list_head *fmr_list)
 	list_for_each_entry(ib_fmr, fmr_list, list) {
 		cnt++;
 		if (cnt >= sif_fmr_cache_flush_threshold) {
-			ret = sif_post_flush_tlb(sdev, true);
 			flush_all = true;
 			goto key_to_invalid;
 		}
@@ -214,6 +213,9 @@ key_to_invalid:
 		cnt, (spqp ? " (stencil)" : ""));
 
 	if (flush_all) {
+		ret = sif_post_flush_tlb(sdev, true);
+		if (ret)
+			goto out;
 		ret = sif_complete_flush_tlb(sdev);
 		if (ret)
 			goto out;

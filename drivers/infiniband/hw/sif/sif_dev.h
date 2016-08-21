@@ -236,6 +236,7 @@ struct sif_compl; /* Declared in sif_cq.h */
 
 struct sif_dev {
 	struct ib_device ib_dev;
+	struct device *hwmon_dev;
 	struct sif_verbs sv;
 	struct pci_dev *pdev;
 	struct sif_dfs *dfs;    /* Optional debugfs info, if enabled in kernel */
@@ -264,8 +265,9 @@ struct sif_dev {
 	/* Interrupt allocation */
 	size_t intr_req;  /* Number of irqs requested */
 	size_t intr_cnt;  /* Number of irqs allocated */
-	size_t bw_cb_cnt;   /* No.of virtual collect buffers available */
-	size_t lat_cb_cnt;   /* No.of virtual collect buffers available */
+	size_t bw_cb_cnt;   /* No.of bandwidth optimized virtual collect buffers available */
+	size_t lat_cb_cnt;  /* No.of latency optimized virtual collect buffers available */
+	size_t res_frac;   /* Fraction of the available hardware resources allocated to this UF */
 	size_t msix_entries_sz; /* Size of the allocated msix_entries array */
 	spinlock_t msix_lock;	/* Protects intr_used */
 	struct msix_entry *msix_entries; /* MSI-X vector info */
@@ -281,7 +283,7 @@ struct sif_dev {
 	struct sif_cb **kernel_cb[2]; /* cb's for the kernel (bw and low latency per cpu) */
 	int pqp_cnt;		  /* Number of PQPs set up */
 	atomic_t next_pqp;	  /* Used for round robin assignment of pqp */
-	int kernel_cb_cnt;	  /* Number of pairs of CBs set up for the kernel */
+	int kernel_cb_cnt[2];	  /* Number of CBs set up for the kernel for each kind */
 	struct sif_idr xrcd_refs; /* Mgmt of sif_xrcd allocations */
 	struct sif_idr pd_refs;   /* Mgmt of sif_pd allocations */
 	struct sif_spqp_pool ki_spqp; /* Stencil PQPs for key invalidates */
@@ -417,8 +419,8 @@ extern ulong sif_trace_mask;
 		sif_log_trace(class, format, ## arg);	\
 		if (unlikely((sif_debug_mask) & (class))) {		\
 			dev_info(&(sdev)->pdev->dev,	\
-				   "[%d] " format "\n", \
-				   current->pid, \
+				   "[%d] %s: " format "\n", \
+				   current->pid, __func__,  \
 				   ## arg); \
 		} \
 	} while (0)
@@ -428,8 +430,8 @@ extern ulong sif_trace_mask;
 		sif_log_trace(class, format, ## arg);	\
 		if (unlikely((sif_debug_mask) & (class))) {		\
 			dev_info((ibdev)->dma_device,     \
-				   "[%d] " format "\n", \
-				   current->pid, \
+				   "[%d] %s: " format "\n", \
+				   current->pid, __func__,  \
 				   ## arg); \
 		} \
 	} while (0)
@@ -462,8 +464,8 @@ extern ulong sif_trace_mask;
 		sif_log_trace(class, format, ## arg);	\
 		if (unlikely((sif_debug_mask) & (class) && printk_ratelimit())) { \
 			dev_info(&sdev->pdev->dev,	\
-				"[%d] " format "\n",	\
-				current->pid,		\
+				"[%d] %s: " format "\n",\
+				current->pid, __func__,	\
 				## arg);		\
 		} \
 	} while (0)
@@ -617,8 +619,10 @@ extern ulong sif_feature_mask;
 /* Check all event queues on all interrupts */
 #define SIFF_check_all_eqs_on_intr	0x8000
 
-/* Make all vlinks behave in sync with the correspondinding external port */
-#define SIFF_vlink_connect	       0x10000
+/* Default behavior is: Make all vlinks behave in sync with the correspondinding external port.
+ * This flag turns off this behavior and the vlink state becomes unrelated to physical link.
+ */
+#define SIFF_vlink_disconnect	    0x10000
 
 /* Don't allocate vcbs in a round robin fashion */
 #define SIFF_alloc_cb_round_robin      0x20000
@@ -704,6 +708,9 @@ extern uint sif_ki_spqp_size;
 
 /* Max number of collect buffers supported */
 extern uint sif_cb_max;
+
+/* Number of VFs to request firmware to configure, 0 = use driver defaults */
+extern int sif_vf_max;
 
 /* Initialized in init */
 extern struct kmem_cache *compl_cache;

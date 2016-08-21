@@ -32,6 +32,7 @@
 #include "sif_defs.h"
 #include <linux/bitmap.h>
 #include <linux/seq_file.h>
+#include <xen/xen.h>
 
 #define CSR_ONLINE_MASK 0x8000
 
@@ -696,6 +697,24 @@ int sif_eps_init(struct sif_dev *sdev, enum sif_tab_type type)
 	lcqe.rsp = &lrsp;
 	lcqe.need_complete = false;
 
+	if (!sdev->is_vf) {
+		/* PF only: If sif_vf_max is >= 0, enable that number of VFs.
+		 * If vf_max == -1: enable Exadata mode as follows:
+		 *    if Xen PV domain automatically enable all VFs,
+		 *    otherwise enable no VFs - only physical function.
+		 * If vf_max == -2: Default to NVRAM settings from firmware
+		 *    = bw comp mode.
+		 */
+		if (sif_vf_max >= 0)
+			lconfig.num_ufs = min_t(int, pci_sriov_get_totalvfs(sdev->pdev),sif_vf_max) + 1;
+		else if (sif_vf_max == -2)
+			lconfig.num_ufs = 0; /* Use firmware defaults */
+		else if (xen_pv_domain())
+			lconfig.num_ufs = pci_sriov_get_totalvfs(sdev->pdev) + 1;
+		else
+			lconfig.num_ufs = 1;
+	}
+
 	lconfig.hwapi_major_ver = PSIF_MAJOR_VERSION;
 	lconfig.hwapi_minor_ver = PSIF_MINOR_VERSION;
 	lconfig.epsapi_major_ver = EPSC_MAJOR_VERSION;
@@ -718,9 +737,10 @@ int sif_eps_init(struct sif_dev *sdev, enum sif_tab_type type)
 	sif_log(sdev, SIF_INFO, "Configure for big endian host");
 	lconfig.big_endian = 1;
 #endif
-	if (!sdev->is_vf && sif_feature(vlink_connect)) {
-		sif_log(sdev, SIF_INIT, "Associate all vlink state info with state of external port");
-		lconfig.vlink_connect = 1;
+	lconfig.vlink_connect = 1;
+	if (!sdev->is_vf && sif_feature(vlink_disconnect)) {
+		sif_log(sdev, SIF_INIT, "Disassociate all vlink state info from state of external port");
+		lconfig.vlink_connect = 0;
 	}
 
 	lconfig.sparc_pages = (sdev->mi.page_size == 0x2000) ? 1 : 0;
@@ -952,6 +972,8 @@ proto_probing_done:
 	ret = sif_eps_firmware_version_ok(sdev, eps_num);
 	if (ret)
 		goto epsc_failed;
+
+	sif_cb_init(sdev);
 
 #if defined(CONFIG_ARCH_DMA_ADDR_T_64BIT) && defined(__sparc__)
 	/* The kernel is currently using iommu bypass mode in the sparc iommu, and

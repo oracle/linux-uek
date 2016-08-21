@@ -377,7 +377,7 @@ int sif_map_fmr_ctx(struct sif_dev *sdev,
 	leaf_level = hw_leaf_level(hw_ctx->page_size);
 
 	/* Now page sizes may have changed too, if so we cannot reuse the page table, delete it: */
-	if (ctx->pt && page_shift > ctx->pt->page_shift) {
+	if (ctx->pt && page_shift != ctx->pt->page_shift) {
 		sif_pt_free(ctx->pt);
 		ctx->pt = NULL;
 	}

@@ -42,6 +42,9 @@ struct sif_shpd {
 	struct sif_pd *pd;
 };
 
+/* Initialize driver information about the number of CBs of each type available */
+void sif_cb_init(struct sif_dev *sdev);
+
 /* Initialize/deinitialize the pd subsystem */
 int sif_init_pd(struct sif_dev *sdev);
 void sif_deinit_pd(struct sif_dev *sdev);

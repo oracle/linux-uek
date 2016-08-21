@@ -36,6 +36,7 @@
 #include "sif_pd.h"
 #include "sif_base.h"
 #include "version.h"
+#include "sif_hwmon.h"
 
 
 static ssize_t show_rev(struct device *dev, struct device_attribute *attr,
@@ -899,6 +900,7 @@ int sif_register_ib_device(struct sif_dev *sdev)
 		goto err_sysfsreg;
 	}
 
+	sif_register_hwmon_dev(sdev);
 	/* Populate the external kernel API (see sif_verbs.h): */
 	sdev->sv.eps_wr = sif_eps_wr_ex;
 	sdev->sv.create_cq = sif_create_cq;
@@ -920,6 +922,7 @@ void sif_unregister_ib_device(struct sif_dev *sdev)
 {
 	struct ib_device *ibdev = &sdev->ib_dev;
 
+	sif_unregister_hwmon_dev(sdev);
 	sdev->registered = false;
 	ib_unregister_device(ibdev);
 	sif_logi(ibdev, SIF_VERBS, "done unregistering device");

@@ -552,6 +552,12 @@ int post_process_wa4074(struct sif_dev *sdev, struct sif_qp *qp)
 		return -1;
 	}
 
+	if (qp->flags & SIF_QPF_HW_OWNED) {
+		sif_log(sdev, SIF_INFO, "qp %d is not in SHADOWED ERR state yet",
+			qp->qp_idx);
+		return ret;
+	}
+
 	/* if flush SQ is in progress, set FLUSH_SQ_IN_FLIGHT.
 	 */
 	if (test_bit(FLUSH_SQ_IN_PROGRESS, &sq_sw->flags)) {
@@ -688,6 +694,12 @@ flush_sq_again:
 		last_seq, last_gen_seq);
 
 	for (; (!GREATER_16(last_seq, last_gen_seq)); ++last_seq) {
+		if (unlikely(cq->entries < ((u32) (last_seq - sq_sw->head_seq)))) {
+			sif_log(sdev, SIF_INFO, "cq (%d) is  full! (len = %d, used = %d)",
+				cq->index, cq->entries, last_seq - sq_sw->head_seq - 1 );
+			goto err_post_wa4074;
+		}
+
 		sif_log(sdev, SIF_WCE_V, "generate completion %x",
 			last_seq);
 
