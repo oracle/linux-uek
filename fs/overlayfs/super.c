@@ -893,18 +893,11 @@ static int ovl_posix_acl_xattr_set(struct dentry *dentry, const char *name,
 
 	posix_acl_release(acl);
 
-	return ovl_setxattr(dentry, name, value, size, flags);
+	return ovl_xattr_set(dentry, name, value, size, flags);
 
 out_acl_release:
 	posix_acl_release(acl);
 	return err;
-}
-
-static int ovl_other_xattr_set(struct dentry *dentry, const char *name,
-			       const void *value, size_t size, int flags,
-			       int handler_flags)
-{
-	return ovl_setxattr(dentry, name, value, size, flags);
 }
 
 static int ovl_own_xattr_set(struct dentry *dentry, const char *name,
@@ -912,6 +905,13 @@ static int ovl_own_xattr_set(struct dentry *dentry, const char *name,
 			     int handler_flags)
 {
 	return -EPERM;
+}
+
+static int ovl_other_xattr_set(struct dentry *dentry, const char *name,
+			       const void *value, size_t size, int flags,
+			       int handler_flags)
+{
+	return ovl_xattr_set(dentry, name, value, size, flags);
 }
 
 static const struct xattr_handler __maybe_unused
