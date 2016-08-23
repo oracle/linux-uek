@@ -421,7 +421,11 @@ enum {
 	DEBUG_MISC_INFO = 0x00004000,
 	DEBUG_IBDEV_INFO = 0x00008000,
 	DEBUG_CM_INFO = 0x00010000,
-	DEBUG_CTRL_INFO = 0x00020000
+	DEBUG_CTRL_INFO = 0x00020000,
+	DEBUG_QP_INFO = 0x00040000,
+	DEBUG_TX_INFO = 0x00080000,
+	DEBUG_RX_INFO = 0x00100000,
+	DEBUG_TXDATA_INFO = 0x00200000
 };
 
 #define	XVE_OP_RECV   (1ul << 31)
@@ -546,6 +550,25 @@ struct xve_cm_data {
 enum {
 	XVE_CM_ESTD_RX = 1,
 	XVE_CM_ESTD_TX
+};
+
+/* Extension bits in the qp create mask to ib_create_qp
+ */
+enum xve_qp_create_flags {
+	/* Indicate that this is an Ethernet over IB QP */
+	IB_QP_CREATE_EOIB            = 1 << 4,
+	/* Enable receive side scaling */
+	IB_QP_CREATE_RSS             = 1 << 5,
+	/* Enable header/data split for offloading */
+	IB_QP_CREATE_HDR_SPLIT       = 1 << 6,
+	/* Enable receive side dynamic mtu */
+	IB_QP_CREATE_RCV_DYNAMIC_MTU = 1 << 7,
+	/* Enable a special EPSA proxy */
+	IB_QP_CREATE_PROXY           = 1 << 8,
+	/* No csum for qp, wqe.wr.csum = qp.magic */
+	IB_QP_NO_CSUM                = 1 << 9,
+	/* Enable receive side dynamic mtu */
+	IB_QP_CREATE_SND_DYNAMIC_MTU = 1 << 10,
 };
 
 /* CM Statistics */
@@ -692,6 +715,8 @@ struct xve_dev_priv {
 	__be16       bcast_mlid;
 	u16 local_lid;
 	u32 qkey;
+	u32 port_qkey;
+	u8 is_titan;
 
 	/* Device attributes */
 	struct ib_device_attr dev_attr;
@@ -769,6 +794,7 @@ struct xve_dev_priv {
 	u16 mp_flag;
 	u8 vnet_mode;
 	u8 vnic_type;
+	u8 is_eoib;
 	char xve_name[XVE_MAX_NAME_SIZE];
 	struct xve_gw_info gw;
 
@@ -1557,7 +1583,7 @@ static inline void dumppkt(unsigned char *pkt, unsigned short len, char *name)
 	pr_info("%s DumpPacket of %d\n", name, len);
 
 	for (i = 0; i < len; i++) {
-		if ((i != 0) && (i % 8 == 0)) {
+		if ((i != 0) && (i % 16 == 0)) {
 			pr_info("%s\n", line);
 			memset(line, 0, sizeof(line));
 			cp = line;

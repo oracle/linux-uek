@@ -352,8 +352,6 @@ xve_ib_handle_rx_wc(struct net_device *dev, struct ib_wc *wc)
 	xve_ud_dma_unmap_rx(priv, mapping);
 	xve_ud_skb_put_frags(priv, skb,  wc->byte_len);
 	grhhdr = (struct ib_packed_grh *)(skb->data);
-	/* This will print packet when driver is in Debug Mode */
-	dumppkt(skb->data, skb->len, "UD Packet Dump");
 	skb_pull(skb, IB_GRH_BYTES);
 
 	if (xve_is_edr(priv)) {
@@ -391,6 +389,8 @@ xve_ib_handle_rx_wc(struct net_device *dev, struct ib_wc *wc)
 			test_bit(XVE_FLAG_CSUM, &priv->flags))
 		skb->ip_summed = CHECKSUM_UNNECESSARY;
 
+	/* This will print packet when driver is in Debug Mode */
+	dumppkt(skb->data, skb->len, "UD Packet Dump");
 	xve_test("%s RX UD pkt %02x %02x %02x %02x %02x %02x %02x %02x %02x",
 		 __func__, skb->data[0], skb->data[1], skb->data[2],
 		 skb->data[3], skb->data[4], skb->data[5], skb->data[6],
@@ -713,6 +713,11 @@ static inline int post_send(struct xve_dev_priv *priv,
 	wr->num_sge = nr_frags + off;
 	wr->wr_id = wr_id;
 	wr->wr.ud.remote_qpn = qpn;
+	if (priv->is_eoib) {
+		wr->wr.ud.remote_qkey =  priv->port_qkey;
+		xve_debug(DEBUG_TX_INFO, priv, "%s qkey to use %x",
+				__func__, wr->wr.ud.remote_qkey);
+	}
 	wr->wr.ud.ah = address;
 	if (head) {
 		wr->wr.ud.mss = skb_shinfo(skb)->gso_size;
@@ -814,6 +819,17 @@ int xve_send(struct net_device *dev, struct sk_buff *skb,
 	 }
 	skb_orphan(skb);
 	skb_dst_drop(skb);
+
+	if (skb->ip_summed == CHECKSUM_PARTIAL)
+		priv->tx_wr.send_flags |= IB_SEND_IP_CSUM;
+	else
+		priv->tx_wr.send_flags &= ~IB_SEND_IP_CSUM;
+
+	xve_debug(DEBUG_TX_INFO, priv,
+			"%s sending packet, length=%d csum=%x address=%p qpn=0x%06x flags%x\n",
+			__func__, skb->len, skb->ip_summed,
+			address, qpn, priv->tx_wr.send_flags);
+
 	if (unlikely(post_send(priv, priv->tx_head & (priv->xve_sendq_size - 1),
 			       address->ah, qpn, tx_req, phead, hlen))) {
 		xve_warn(priv, "%s post_send failed head%d tail%d out%d type%d\n",
