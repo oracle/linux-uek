@@ -54,7 +54,7 @@ int xve_recvq_size __read_mostly = XVE_RX_RING_SIZE;
 module_param_named(send_queue_size, xve_sendq_size, int, 0444);
 MODULE_PARM_DESC(send_queue_size, "Number of descriptors in send queue");
 module_param_named(recv_queue_size, xve_recvq_size, int, 0444);
-MODULE_PARM_DESC(recv_queue_size, "Number of descriptors in receive queue");
+MODULE_PARM_DESC(recv_queue_size, "Number of recv queue descriptors");
 
 int xve_max_send_cqe __read_mostly = MAX_SEND_CQE;
 module_param_named(max_send_cqe, xve_max_send_cqe, int, 0444);
@@ -1542,6 +1542,10 @@ static int xve_xsmp_send_notification(struct xve_dev_priv *priv, u64 vid,
 			__func__, priv->xve_name, priv->admin_mtu);
 		xsmp_msg->vn_mtu = cpu_to_be16(priv->admin_mtu);
 		xsmp_msg->net_id = cpu_to_be32(priv->net_id);
+		if (test_bit(XVE_HBEAT_LOST, &priv->state))
+			xsmp_msg->install_flag = XVE_NOTIFY_HBEAT_LOST;
+		else
+			xsmp_msg->install_flag = 0;
 	}
 
 	header->type = XSMP_MESSAGE_TYPE_XVE;
@@ -1601,6 +1605,9 @@ static int xve_state_machine(struct xve_dev_priv *priv)
 			/* Disjoin from multicast Group */
 			set_bit(XVE_HBEAT_LOST, &priv->state);
 			spin_unlock_irqrestore(&priv->lock, flags);
+			/* Send updated state */
+			(void)xve_xsmp_handle_oper_req(priv->xsmp_hndl,
+							priv->resource_id);
 			xve_queue_work(priv, XVE_WQ_START_FLUSHNORMAL);
 		}
 		priv->counters[XVE_STATE_MACHINE_UP]++;
