@@ -106,10 +106,9 @@ int xve_ignore_hbeat_loss;
 module_param_named(ignore_hb_loss, xve_ignore_hbeat_loss, int, 0644);
 MODULE_PARM_DESC(ignore_hb_loss, "Ignore heart beat loss on edr based vNICs with uplink");
 
-int xve_enable_offload;
+int xve_enable_offload = 1;
 module_param_named(enable_offload, xve_enable_offload, int, 0444);
 MODULE_PARM_DESC(enable_offload, "Enable stateless offload");
-
 unsigned long xve_tca_subnet;
 module_param(xve_tca_subnet, ulong, 0444);
 MODULE_PARM_DESC(xve_tca_subnet, "tca subnet prefix");
@@ -133,6 +132,9 @@ MODULE_PARM_DESC(xve_tca_qkey, "tca qkey");
 unsigned int xve_ud_mode;
 module_param(xve_ud_mode, uint, 0444);
 MODULE_PARM_DESC(xve_ud_mode, "Always use UD mode irrespective of xsmp.vnet_mode value");
+unsigned int xve_eoib_mode = 1;
+module_param(xve_eoib_mode, uint, 0444);
+MODULE_PARM_DESC(xve_eoib_mode, "Always use UD mode irrespective of xsmp.vnet_mode value");
 
 static void xve_send_msg_to_xsigod(xsmp_cookie_t xsmp_hndl, void *data,
 				   int len);
@@ -1752,24 +1754,25 @@ xve_set_edr_features(struct xve_dev_priv *priv)
 	priv->netdev->hw_features =
 		NETIF_F_HIGHDMA | NETIF_F_SG | NETIF_F_GRO;
 
-	priv->lro_mode = 1;
-
-	if (xve_enable_offload) {
-		if (priv->hca_caps & IB_DEVICE_UD_IP_CSUM)
+	pr_info("XVE: %s %s flags[%x]\n",
+			__func__, priv->xve_name, priv->hca_caps);
+	if (xve_enable_offload & (priv->is_eoib && priv->is_titan)) {
+		if (priv->hca_caps & IB_DEVICE_UD_IP_CSUM) {
+			pr_info("XVE: %s Setting checksum offload %s[%x]\n",
+				__func__, priv->xve_name, priv->hca_caps);
+			set_bit(XVE_FLAG_CSUM, &priv->flags);
 			priv->netdev->hw_features |=
 				NETIF_F_IP_CSUM | NETIF_F_RXCSUM;
+		}
 
-		if (priv->hca_caps & IB_DEVICE_UD_TSO)
+		if (priv->hca_caps & IB_DEVICE_UD_TSO) {
+			pr_info("XVE: %s Setting TSO offload %s[%x]\n",
+				__func__, priv->xve_name, priv->hca_caps);
 			priv->netdev->hw_features |= NETIF_F_TSO;
+		}
 
 	}
 	priv->netdev->features |= priv->netdev->hw_features;
-
-	if (priv->lro_mode && lro) {
-		priv->netdev->features |= NETIF_F_LRO;
-		xve_lro_setup(priv);
-	} else
-		priv->lro_mode = 0;
 
 	/* Reserve extra space for EoIB header */
 	priv->netdev->hard_header_len += sizeof(struct xve_eoib_hdr);
@@ -1925,13 +1928,15 @@ static int xcpm_check_vnic_from_same_pvi(xsmp_cookie_t xsmp_hndl,
 	return 0;
 }
 
-static int xve_check_for_hca(xsmp_cookie_t xsmp_hndl)
+static int xve_check_for_hca(xsmp_cookie_t xsmp_hndl, u8 *is_titan)
 {
 	struct ib_device *hca;
 	struct xsmp_session_info xsmp_info;
 
 	xcpm_get_xsmp_session_info(xsmp_hndl, &xsmp_info);
 	hca = xsmp_info.ib_device;
+	if (strncmp(hca->name, "sif", 3) == 0)
+		*is_titan = (u8)1;
 
 	if (!((strncmp(hca->name, "mlx4", 4) != 0) ||
 			(strncmp(hca->name, "sif0", 4) != 0)))
@@ -2077,14 +2082,17 @@ static int xve_xsmp_send_ack(struct xve_dev_priv *priv,
 		xmsgp->hca_data_qp = cpu_to_be32(priv->qp->qp_num);
 		xmsgp->hca_qkey = cpu_to_be32(priv->qkey);
 		xmsgp->hca_pkey = cpu_to_be16(priv->pkey);
-		xmsgp->tca_subnet_prefix =
-			cpu_to_be64(priv->gw.t_gid.global.subnet_prefix);
-		xmsgp->tca_guid =
-			cpu_to_be64(priv->gw.t_gid.global.interface_id);
-		xmsgp->tca_ctrl_qp = cpu_to_be32(priv->gw.t_ctrl_qp);
-		xmsgp->tca_data_qp = cpu_to_be32(priv->gw.t_data_qp);
-		xmsgp->tca_pkey = cpu_to_be16(priv->gw.t_pkey);
-		xmsgp->tca_qkey = cpu_to_be16(priv->gw.t_qkey);
+		if (!priv->is_eoib) {
+			xmsgp->tca_subnet_prefix =
+				cpu_to_be64(priv->gw.t_gid.
+					global.subnet_prefix);
+			xmsgp->tca_guid =
+				cpu_to_be64(priv->gw.t_gid.global.interface_id);
+			xmsgp->tca_ctrl_qp = cpu_to_be32(priv->gw.t_ctrl_qp);
+			xmsgp->tca_data_qp = cpu_to_be32(priv->gw.t_data_qp);
+			xmsgp->tca_pkey = cpu_to_be16(priv->gw.t_pkey);
+			xmsgp->tca_qkey = cpu_to_be16(priv->gw.t_qkey);
+		}
 	}
 	pr_info("XVE: %s ACK back with admin mtu ",  __func__);
 	pr_info("%d for %s", xmsgp->vn_mtu, priv->xve_name);
@@ -2139,8 +2147,9 @@ static int xve_xsmp_install(xsmp_cookie_t xsmp_hndl, struct xve_xsmp_msg *xmsgp,
 	__be16 pkey_be;
 	__be32 net_id_be;
 	u8 ecode = 0;
+	u8 is_titan = 0;
 
-	if (xve_check_for_hca(xsmp_hndl) != 0) {
+	if (xve_check_for_hca(xsmp_hndl, &is_titan) != 0) {
 		pr_info("Warning !!!!! Unsupported HCA card for xve ");
 		pr_info("interface - %s XSF feature is only ", xmsgp->xve_name);
 		pr_info("supported on Connect-X and PSIF HCA cards !!!!!!!");
@@ -2211,6 +2220,7 @@ static int xve_xsmp_install(xsmp_cookie_t xsmp_hndl, struct xve_xsmp_msg *xmsgp,
 		(xmsgp->vnet_mode);
 	priv->net_id = be32_to_cpu(xmsgp->net_id);
 	priv->netdev->mtu = be16_to_cpu(xmsgp->vn_mtu);
+	pr_info("XVE: %s MTU %d - ", __func__, priv->netdev->mtu);
 	priv->resource_id = be64_to_cpu(xmsgp->resource_id);
 	priv->mp_flag = be16_to_cpu(xmsgp->mp_flag);
 	priv->install_flag = be32_to_cpu(xmsgp->install_flag);
@@ -2224,16 +2234,22 @@ static int xve_xsmp_install(xsmp_cookie_t xsmp_hndl, struct xve_xsmp_msg *xmsgp,
 	/* For legacy PVI's XSMP will not have vnic_type field so
 	   value is zero */
 	priv->vnic_type = xmsgp->vnic_type;
-	/* Make Send and Recv Queue parmaters Per Vnic */
-	priv->xve_sendq_size = xve_sendq_size;
-	priv->xve_recvq_size = xve_recvq_size;
-	priv->xve_max_send_cqe = xve_max_send_cqe;
+	priv->is_eoib = xve_eoib_mode ? (xmsgp->eoib_enable) : 0;
+	priv->is_titan = (is_titan) ? 1 : 0;
 
-	if (priv->vnic_type == XSMP_XCM_UPLINK) {
-		/* For G/W mode set higher values */
+	/* Make Send and Recv Queue parmaters Per Vnic */
+	if (!(priv->vnet_mode & XVE_VNET_MODE_UD)) {
+		priv->xve_sendq_size = xve_sendq_size;
+		priv->xve_recvq_size = xve_recvq_size;
+		priv->xve_max_send_cqe = xve_max_send_cqe;
+	} else {
+		/* For UD mode set higher values */
 		priv->xve_sendq_size = 8192;
 		priv->xve_recvq_size = 8192;
 		priv->xve_max_send_cqe = 512;
+	}
+
+	if (priv->vnic_type == XSMP_XCM_UPLINK) {
 		priv->gw.t_gid.global.subnet_prefix =
 			xve_tca_subnet ? cpu_to_be64(xve_tca_subnet) :
 			be64_to_cpu(xmsgp->tca_subnet_prefix);
@@ -2246,9 +2262,6 @@ static int xve_xsmp_install(xsmp_cookie_t xsmp_hndl, struct xve_xsmp_msg *xmsgp,
 			be32_to_cpu(xmsgp->tca_data_qp);
 		priv->gw.t_pkey = xve_tca_pkey ? xve_tca_pkey :
 			be16_to_cpu(xmsgp->tca_pkey);
-		/* FIXME: xmsgp->tca_qkey is u16.need to fix in osdn */
-		priv->gw.t_qkey = xve_tca_qkey ? xve_tca_qkey :
-			be16_to_cpu(xmsgp->tca_qkey);
 		xve_dbg_ctrl(priv,
 			"GW prefix:%llx guid:%llx, lid: %hu sl: %hu TDQP%x TCQP:%x\n",
 				priv->gw.t_gid.global.subnet_prefix,
@@ -2263,8 +2276,14 @@ static int xve_xsmp_install(xsmp_cookie_t xsmp_hndl, struct xve_xsmp_msg *xmsgp,
 	if (priv->pkey == 0)
 		priv->pkey |= 0x8000;
 	/* Qkey For EDR vnic's*/
-	priv->gw.t_qkey = xve_tca_qkey ? xve_tca_qkey :
-		be16_to_cpu(xmsgp->tca_qkey);
+	if (priv->is_eoib) {
+		priv->gw.t_qkey = xve_tca_qkey ? xve_tca_qkey :
+				be32_to_cpu(xmsgp->global_qpkey);
+		priv->port_qkey = (port == 1 || priv->is_titan != 1) ?
+				priv->gw.t_qkey : priv->gw.t_qkey + 1;
+	} else
+		priv->gw.t_qkey = xve_tca_qkey ? xve_tca_qkey :
+			be16_to_cpu(xmsgp->tca_qkey);
 
 	/* Always set chassis ADMIN up by default */
 	set_bit(XVE_CHASSIS_ADMIN_UP, &priv->state);
@@ -2279,9 +2298,12 @@ static int xve_xsmp_install(xsmp_cookie_t xsmp_hndl, struct xve_xsmp_msg *xmsgp,
 
 	pr_info("XVE: %s adding vnic %s ",
 			__func__, priv->xve_name);
-	pr_info("net_id %d vnet_mode %d type%d",
-			priv->net_id, priv->vnet_mode, priv->vnic_type);
+	pr_info("net_id %d vnet_mode %d type%d eoib[%s]",
+			priv->net_id, priv->vnet_mode, priv->vnic_type,
+			priv->is_eoib ? "Yes" : "no");
 	pr_info("port %d net_id_be %d\n", port, net_id_be);
+	pr_info("MTU port%d active%d\n", priv->port_attr.max_mtu,
+				 priv->port_attr.active_mtu);
 
 	memcpy(priv->bcast_mgid.raw, bcast_mgid, sizeof(union ib_gid));
 	if (xve_is_edr(priv)) {
@@ -2556,7 +2578,7 @@ xve_xsmp_vnic_ready(xsmp_cookie_t xsmp_hndl, struct xve_xsmp_msg *xmsgp,
 {
 	struct xve_dev_priv *priv;
 	unsigned long flags;
-int ret;
+	int ret;
 
 	priv = xve_get_xve_by_vid(be64_to_cpu(xmsgp->resource_id));
 	if (!priv) {
@@ -2566,7 +2588,7 @@ int ret;
 	}
 	pr_info("XVE VNIC_READY: vnic_type: %u, subnet_prefix: %llx\n",
 			priv->vnic_type, priv->gw.t_gid.global.subnet_prefix);
-	pr_info("ctrl_qp: %u, data_qp: %u, pkey: %x, qkey: %x\n",
+	pr_info("TCA ctrl_qp: %u, data_qp: %u, pkey: %x, qkey: %x\n",
 			priv->gw.t_ctrl_qp, priv->gw.t_data_qp,
 			priv->gw.t_pkey, priv->gw.t_qkey);
 

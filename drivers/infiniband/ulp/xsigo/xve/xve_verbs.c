@@ -72,6 +72,7 @@ int xve_mcast_attach(struct net_device *dev, u16 mlid, union ib_gid *mgid,
 	else
 		priv->counters[XVE_MCAST_ATTACH]++;
 
+	xve_dbg_mcast(priv, "Successfully attached to Group mode%d", set_qkey);
 out:
 	kfree(qp_attr);
 	return ret;
@@ -91,6 +92,11 @@ int xve_init_qp(struct net_device *dev)
 
 	qp_attr.qp_state = IB_QPS_INIT;
 	qp_attr.qkey = 0;
+	if (priv->is_eoib) {
+		qp_attr.qkey =  priv->gw.t_qkey;
+		xve_debug(DEBUG_QP_INFO, priv, "Setting qkey %x\n",
+			qp_attr.qkey);
+	}
 	qp_attr.port_num = priv->port;
 	qp_attr.pkey_index = priv->pkey_index;
 	attr_mask = IB_QP_QKEY | IB_QP_PORT | IB_QP_PKEY_INDEX | IB_QP_STATE;
@@ -215,6 +221,12 @@ int xve_transport_dev_init(struct net_device *dev, struct ib_device *ca)
 		if (max_sge >= (MAX_SKB_FRAGS + 1))
 			max_sge = MAX_SKB_FRAGS + 1;
 		init_attr.cap.max_send_sge = max_sge;
+	}
+
+	if (priv->is_eoib && priv->is_titan) {
+		init_attr.create_flags |= IB_QP_CREATE_EOIB;
+		xve_debug(DEBUG_QP_INFO, priv, "Setting eoIB mode%x\n",
+				init_attr.create_flags);
 	}
 
 	priv->qp = ib_create_qp(priv->pd, &init_attr);

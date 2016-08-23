@@ -119,7 +119,9 @@ struct xve_xsmp_msg {
 			u32 hca_ctrl_qp;
 			u32 hca_data_qp;
 			u16 hca_pkey;
-			u16 hca_qkey;
+			u32 hca_qkey;
+			u8  eoib_enable;
+			u32 global_qpkey;
 		} __packed;
 		u8 bytes[512];
 	};

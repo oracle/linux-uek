@@ -440,6 +440,8 @@ static int xve_proc_read_device(struct seq_file *m, void *data)
 
 	seq_printf(m, "PortDetails:\t\t\tPort:%d pkey:%d  pkey_index:%d\n",
 		   vp->port, vp->pkey, vp->pkey_index);
+	seq_printf(m, "Qkey:\t\t\t\t%x:%x\n", vp->qkey, vp->gw.t_qkey);
+	seq_printf(m, "Port Qkey:\t\t\t%x\n", vp->port_qkey);
 
 	tmp_buf[0] = 0;
 	print_mgid_buf(tmp_buf, bcast_mgid_token);
@@ -450,6 +452,7 @@ static int xve_proc_read_device(struct seq_file *m, void *data)
 	print_mgid_buf(tmp_buf, local_gid_token);
 
 	seq_printf(m, "Type:\t\t\t\t%s\n", (vp->vnic_type) ? "EDR" : "Legacy");
+	seq_printf(m, "VNIC Type:\t\t\t\t%d\n", vp->vnic_type);
 	seq_printf(m, "Local gid:\t\t\t%s\n", tmp_buf);
 	seq_printf(m, "MAC addr:\t\t\t0x%Lx\n", vp->mac);
 	seq_printf(m, "VID:\t\t\t\t0x%Lx\n", vp->resource_id);
