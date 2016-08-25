@@ -311,18 +311,22 @@ static void huge_pte_at_flush_update(struct mm_struct *mm, unsigned long addr,
 	}
 }
 
-static void form_sentinel(pte_t *sentinel_pte, pte_t entry, pte_t *pte)
+static void form_sentinel(pte_t *sentinel_pte, pte_t entry, pte_t *pte,
+			  unsigned int hugepage_shift)
 {
 	pte_t sentinel = __pte(_PAGE_VALID | _PAGE_SPECIAL_4V |
-		_PAGE_PMD_HUGE | (pte_val(entry) & _PAGE_SZALL_4V) |
-		__pa(pte));
+		(pte_val(entry) & _PAGE_SZALL_4V) | __pa(pte));
 
 	BUG_ON(__pa(pte) & _PAGE_SZALL_4V);
+        if (hugepage_shift == 31U) /* 2G page */
+		sentinel = __pte(pte_val(sentinel) | _PAGE_PMD_HUGE);
+
 	*sentinel_pte = sentinel;
 }
 
 static bool huge_pte_at_handle_sentinel(pte_t *sentinel_pte, pte_t *pte,
-					pte_t orig, pte_t entry)
+					pte_t orig, pte_t entry,
+					unsigned int hugepage_shift)
 {
 	bool rc = true;
 
@@ -336,7 +340,7 @@ static bool huge_pte_at_handle_sentinel(pte_t *sentinel_pte, pte_t *pte,
 	} else if (pte_val(*sentinel_pte) & _PAGE_VALID) {
 		*pte = *sentinel_pte;
 	} else {
-		form_sentinel(sentinel_pte, entry, pte);
+		form_sentinel(sentinel_pte, entry, pte, hugepage_shift);
 		*pte = entry;
 	}
 
@@ -353,7 +357,7 @@ static bool __set_huge_pte_at(struct mm_struct *mm, unsigned long addr,
 		pte_t orig = *pte;
 
 		rc = huge_pte_at_handle_sentinel(sentinel_pte, pte, orig,
-					entry);
+						 entry, hugepage_shift);
 		huge_pte_at_flush_update(mm, addr, pte, orig, sentinel_pte);
 	} else
 		*pte = entry;
