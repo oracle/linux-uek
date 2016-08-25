@@ -46,6 +46,25 @@ struct hash_testvec {
 	unsigned char ksize;
 };
 
+/*
+ * cipher_testvec:	structure to describe a cipher test
+ * @key:	A pointer to a key used by the test
+ * @klen:	The length of @key
+ * @iv:		A pointer to the IV used by the test
+ * @input:	A pointer to data used as input
+ * @ilen	The length of data in @input
+ * @result:	A pointer to what the test need to produce
+ * @rlen:	The length of data in @result
+ * @fail:	If set to one, the test need to fail
+ * @wk:		Does the test need CRYPTO_TFM_REQ_WEAK_KEY
+ * 		( e.g. test needs to fail due to a weak key )
+ * @np: 	numbers of SG to distribute data in (from 1 to MAX_TAP)
+ * @tap:	How to distribute data in @np SGs
+ * @also_non_np: 	if set to 1, the test will be also done without
+ * 			splitting data in @np SGs
+ * @fips_skip:	Skip the test vector in FIPS mode
+ */
+
 struct cipher_testvec {
 	char *key;
 	char *iv;
@@ -59,6 +78,7 @@ struct cipher_testvec {
 	unsigned char klen;
 	unsigned short ilen;
 	unsigned short rlen;
+	bool fips_skip;
 };
 
 struct aead_testvec {
@@ -16588,6 +16608,7 @@ static struct cipher_testvec aes_xts_enc_tv_template[] = {
 			  "\x00\x00\x00\x00\x00\x00\x00\x00"
 			  "\x00\x00\x00\x00\x00\x00\x00\x00",
 		.klen   = 32,
+		.fips_skip = 1,
 		.iv     = "\x00\x00\x00\x00\x00\x00\x00\x00"
 			  "\x00\x00\x00\x00\x00\x00\x00\x00",
 		.input  = "\x00\x00\x00\x00\x00\x00\x00\x00"
@@ -16930,6 +16951,7 @@ static struct cipher_testvec aes_xts_dec_tv_template[] = {
 			  "\x00\x00\x00\x00\x00\x00\x00\x00"
 			  "\x00\x00\x00\x00\x00\x00\x00\x00",
 		.klen   = 32,
+		.fips_skip = 1,
 		.iv     = "\x00\x00\x00\x00\x00\x00\x00\x00"
 			  "\x00\x00\x00\x00\x00\x00\x00\x00",
 		.input = "\x91\x7c\xf6\x9e\xbd\x68\xb2\xec"
