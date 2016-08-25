@@ -1161,31 +1161,6 @@ static int fm10k_set_channels(struct net_device *dev,
 	return fm10k_setup_tc(dev, netdev_get_num_tc(dev));
 }
 
-static int fm10k_get_ts_info(struct net_device *dev,
-			     struct ethtool_ts_info *info)
-{
-	struct fm10k_intfc *interface = netdev_priv(dev);
-
-	info->so_timestamping =
-		SOF_TIMESTAMPING_TX_SOFTWARE |
-		SOF_TIMESTAMPING_RX_SOFTWARE |
-		SOF_TIMESTAMPING_SOFTWARE |
-		SOF_TIMESTAMPING_TX_HARDWARE |
-		SOF_TIMESTAMPING_RX_HARDWARE |
-		SOF_TIMESTAMPING_RAW_HARDWARE;
-
-	if (interface->ptp_clock)
-		info->phc_index = ptp_clock_index(interface->ptp_clock);
-	else
-		info->phc_index = -1;
-
-	info->tx_types = BIT(HWTSTAMP_TX_OFF) | BIT(HWTSTAMP_TX_ON);
-
-	info->rx_filters = BIT(HWTSTAMP_FILTER_NONE) | BIT(HWTSTAMP_FILTER_ALL);
-
-	return 0;
-}
-
 static const struct ethtool_ops fm10k_ethtool_ops = {
 	.get_strings		= fm10k_get_strings,
 	.get_sset_count		= fm10k_get_sset_count,
