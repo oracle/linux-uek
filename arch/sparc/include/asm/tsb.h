@@ -205,10 +205,13 @@ extern struct tsb_phys_patch_entry __tsb_phys_patch, __tsb_phys_patch_end;
 	brz,pn		REG1, FAIL_LABEL;		\
 	 sethi		%uhi(_PAGE_PMD_HUGE), REG2;	\
 	sllx		REG2, 32, REG2;			\
+	andcc		REG1, REG2, %g0;		\
 	be,pt		%xcc, 700f;			\
-	 andcc		REG1, REG2, %g0;		\
-	brlz,pt		REG1, PTE_LABEL;		\
-	 andn		REG1, REG2, REG1;		\
+	 nop;						\
+	brgez,pn	REG1, FAIL_LABEL;		\
+	 nop;						\
+	ba		PTE_LABEL;			\
+	 nop;						\
 700:
 #else
 #define USER_PGTABLE_CHECK_PMD_HUGE(VADDR, REG1, REG2, FAIL_LABEL, PTE_LABEL) \
