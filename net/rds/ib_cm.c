@@ -527,7 +527,7 @@ static void rds_ib_rx(struct rds_ib_connection *ic)
 		if ((atomic_read(&rds_ibdev->srq->s_num_posted) <
 					rds_ib_srq_hwm_refill) &&
 			!test_and_set_bit(0, &rds_ibdev->srq->s_refill_gate))
-				queue_delayed_work(rds_wq,
+				queue_delayed_work(conn->c_wq,
 					&rds_ibdev->srq->s_refill_w, 0);
 
 	if (ic->i_rx_poll_cq >= RDS_IB_RX_LIMIT) {
