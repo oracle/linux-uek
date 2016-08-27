@@ -94,9 +94,9 @@ void rds_connect_path_complete(struct rds_connection *conn, int curr)
 
 	conn->c_reconnect_jiffies = 0;
 	set_bit(0, &conn->c_map_queued);
-	queue_delayed_work(rds_wq, &conn->c_send_w, 0);
-	queue_delayed_work(rds_wq, &conn->c_recv_w, 0);
-	queue_delayed_work(rds_wq, &conn->c_hb_w, 0);
+	queue_delayed_work(conn->c_wq, &conn->c_send_w, 0);
+	queue_delayed_work(conn->c_wq, &conn->c_recv_w, 0);
+	queue_delayed_work(conn->c_wq, &conn->c_hb_w, 0);
 	conn->c_hb_start = 0;
 
 	conn->c_connection_start = get_seconds();
@@ -211,11 +211,11 @@ void rds_send_worker(struct work_struct *work)
 		switch (ret) {
 		case -EAGAIN:
 			rds_stats_inc(s_send_immediate_retry);
-			queue_delayed_work(rds_wq, &conn->c_send_w, 0);
+			queue_delayed_work(conn->c_wq, &conn->c_send_w, 0);
 			break;
 		case -ENOMEM:
 			rds_stats_inc(s_send_delayed_retry);
-			queue_delayed_work(rds_wq, &conn->c_send_w, 2);
+			queue_delayed_work(conn->c_wq, &conn->c_send_w, 2);
 		default:
 			break;
 		}
@@ -233,11 +233,11 @@ void rds_recv_worker(struct work_struct *work)
 		switch (ret) {
 		case -EAGAIN:
 			rds_stats_inc(s_recv_immediate_retry);
-			queue_delayed_work(rds_wq, &conn->c_recv_w, 0);
+			queue_delayed_work(conn->c_wq, &conn->c_recv_w, 0);
 			break;
 		case -ENOMEM:
 			rds_stats_inc(s_recv_delayed_retry);
-			queue_delayed_work(rds_wq, &conn->c_recv_w, 2);
+			queue_delayed_work(conn->c_wq, &conn->c_recv_w, 2);
 		default:
 			break;
 		}
@@ -281,7 +281,7 @@ void rds_hb_worker(struct work_struct *work)
 			rds_conn_drop(conn, DR_HB_TIMEOUT);
 			return;
 		}
-		queue_delayed_work(rds_wq, &conn->c_hb_w, HZ);
+		queue_delayed_work(conn->c_wq, &conn->c_hb_w, HZ);
 	}
 }
 
