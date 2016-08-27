@@ -495,7 +495,7 @@ over_batch:
 			rds_stats_inc(s_send_lock_queue_raced);
 			if (batch_count < send_batch_count)
 				goto restart;
-			queue_delayed_work(rds_wq, &conn->c_send_w, 1);
+			queue_delayed_work(conn->c_wq, &conn->c_send_w, 1);
 		}
 	}
 out:
@@ -1401,7 +1401,7 @@ int rds_sendmsg(struct socket *sock, struct msghdr *msg, size_t payload_len)
 
 	ret = rds_send_xmit(conn);
 	if (ret == -ENOMEM || ret == -EAGAIN)
-		queue_delayed_work(rds_wq, &conn->c_send_w, 1);
+		queue_delayed_work(conn->c_wq, &conn->c_send_w, 1);
 
 
 	rds_message_put(rm);
@@ -1521,7 +1521,7 @@ int rds_send_internal(struct rds_connection *conn, struct rds_sock *rs,
 		rds_stats_inc(s_send_queue_full);
 
 		/* force a requeue of the work for later */
-		queue_delayed_work(rds_wq, &conn->c_send_w, 1);
+		queue_delayed_work(conn->c_wq, &conn->c_send_w, 1);
 
 		ret = -EAGAIN;
 		goto out;
@@ -1534,7 +1534,7 @@ int rds_send_internal(struct rds_connection *conn, struct rds_sock *rs,
 	rds_stats_inc(s_send_queued);
 
 	/* always hand the send off to the worker thread */
-	queue_delayed_work(rds_wq, &conn->c_send_w, 0);
+	queue_delayed_work(conn->c_wq, &conn->c_send_w, 0);
 
 	rdsdebug("message sent for rs %p, conn %p, len %d, %pI4 : %u -> %pI4 : %u\n",
 		 rs, conn, skb->len, &dst->saddr, dst->sport, &dst->daddr, dst->dport);
@@ -1597,7 +1597,7 @@ rds_send_pong(struct rds_connection *conn, __be16 dport)
 	rds_stats_inc(s_send_pong);
 
 	if (!test_bit(RDS_LL_SEND_FULL, &conn->c_flags))
-		queue_delayed_work(rds_wq, &conn->c_send_w, 0);
+		queue_delayed_work(conn->c_wq, &conn->c_send_w, 0);
 
 	rds_message_put(rm);
 	return 0;
@@ -1646,7 +1646,7 @@ rds_send_hb(struct rds_connection *conn, int response)
 
 	ret = rds_send_xmit(conn);
 	if (ret == -ENOMEM || ret == -EAGAIN)
-		queue_delayed_work(rds_wq, &conn->c_send_w, 1);
+		queue_delayed_work(conn->c_wq, &conn->c_send_w, 1);
 
 	rds_message_put(rm);
 	return 0;
@@ -1671,5 +1671,5 @@ void rds_route_to_base(struct rds_connection *conn)
 	}
 	spin_unlock_irqrestore(&base_conn->c_lock, flags);
 	conn->c_route_to_base = 1;
-	queue_delayed_work(rds_wq, &base_conn->c_send_w, 0);
+	queue_delayed_work(conn->c_wq, &base_conn->c_send_w, 0);
 }
