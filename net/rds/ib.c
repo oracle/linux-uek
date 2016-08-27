@@ -119,6 +119,7 @@ static int initial_failovers_iterations; /* = 0 */
 static void rds_ib_initial_failovers(struct work_struct *workarg);
 DECLARE_DELAYED_WORK(riif_dlywork, rds_ib_initial_failovers);
 static int timeout_until_initial_failovers;
+static struct workqueue_struct *rds_ip_wq;
 
 /*
  * rds_detected_linklayer_up
@@ -1402,14 +1403,14 @@ static void rds_ib_event_handler(struct ib_event_handler *handler,
 				rds_rtd(RDS_RTD_ACT_BND,
 					"active bonding fallback enabled\n");
 				INIT_DELAYED_WORK(&work->work, rds_ib_failback);
-				queue_delayed_work(rds_wq, &work->work,
+				queue_delayed_work(rds_ip_wq, &work->work,
 					get_failback_sync_jiffies(&ip_config[port]));
 			} else
 				kfree(work);
 		} else {
 			/* this_port_transition == RDSIBP_TRANSITION_DOWN */
 			INIT_DELAYED_WORK(&work->work, rds_ib_failover);
-			queue_delayed_work(rds_wq, &work->work, 0);
+			queue_delayed_work(rds_ip_wq, &work->work, 0);
 		}
 	}
 }
@@ -1506,7 +1507,7 @@ rds_ib_initial_failovers(struct work_struct *workarg)
 		if (timeout_until_initial_failovers > 0) {
 			timeout_until_initial_failovers -=
 			  msecs_to_jiffies(100);
-			queue_delayed_work(rds_wq,
+			queue_delayed_work(rds_ip_wq,
 					   &riif_dlywork,
 					   msecs_to_jiffies(100));
 			initial_failovers_iterations++;
@@ -1689,7 +1690,7 @@ sched_initial_failovers(unsigned int tot_devs,
 
 	timeout_until_initial_failovers = trigger_delay_max_jiffies;
 
-	queue_delayed_work(rds_wq,
+	queue_delayed_work(rds_ip_wq,
 			   &riif_dlywork,
 			   trigger_delay_min_jiffies);
 }
@@ -2071,7 +2072,7 @@ static void rds_ib_unregister_client(void)
 {
 	ib_unregister_client(&rds_ib_client);
 	/* wait for rds_ib_dev_free() to complete */
-	flush_workqueue(rds_wq);
+	flush_workqueue(rds_ip_wq);
 	flush_workqueue(rds_local_wq);
 }
 
@@ -2122,7 +2123,7 @@ static void rds_ib_joining_ip(struct work_struct *_work)
 	if (in_dev && !in_dev->ifa_list && work->timeout > 0) {
 		INIT_DELAYED_WORK(&work->work, rds_ib_joining_ip);
 		work->timeout -= msecs_to_jiffies(100);
-		queue_delayed_work(rds_wq, &work->work, msecs_to_jiffies(100));
+		queue_delayed_work(rds_ip_wq, &work->work, msecs_to_jiffies(100));
 	} else if (in_dev && in_dev->ifa_list) {
 		u16 pkey = 0;
 
@@ -2241,7 +2242,7 @@ static int rds_ib_netdev_callback(struct notifier_block *self, unsigned long eve
 				work->dev = ndev;
 				work->timeout = msecs_to_jiffies(10000);
 				INIT_DELAYED_WORK(&work->work, rds_ib_joining_ip);
-				queue_delayed_work(rds_wq, &work->work,
+				queue_delayed_work(rds_ip_wq, &work->work,
 						msecs_to_jiffies(100));
 			}
 		}
@@ -2450,7 +2451,7 @@ static int rds_ib_netdev_callback(struct notifier_block *self, unsigned long eve
 			rds_rtd(RDS_RTD_ACT_BND,
 				"active bonding fallback enabled\n");
 			INIT_DELAYED_WORK(&work->work, rds_ib_failback);
-			queue_delayed_work(rds_wq, &work->work,
+			queue_delayed_work(rds_ip_wq, &work->work,
 					get_failback_sync_jiffies(&ip_config[port]));
 			ip_config[port].port_active_ts = 0;
 		} else
@@ -2460,7 +2461,7 @@ static int rds_ib_netdev_callback(struct notifier_block *self, unsigned long eve
 	case RDSIBP_TRANSITION_DOWN:
 		if (rds_ib_sysctl_active_bonding) {
 			INIT_DELAYED_WORK(&work->work, rds_ib_failover);
-			queue_delayed_work(rds_wq, &work->work, 0);
+			queue_delayed_work(rds_ip_wq, &work->work, 0);
 		} else {
 			/*
 			 * Note: Active bonding disabled by override
@@ -2484,6 +2485,21 @@ static int rds_ib_netdev_callback(struct notifier_block *self, unsigned long eve
 static struct notifier_block rds_ib_nb = {
 	.notifier_call = rds_ib_netdev_callback
 };
+
+void rds_ip_thread_exit(void)
+{
+	flush_workqueue(rds_ip_wq);
+	destroy_workqueue(rds_ip_wq);
+}
+
+int rds_ip_threads_init(void)
+{
+	rds_ip_wq = create_singlethread_workqueue("krdsd_ip");
+	if (!rds_ip_wq)
+		return -ENOMEM;
+	return 0;
+}
+
 
 int rds_ib_init(void)
 {
@@ -2531,12 +2547,18 @@ int rds_ib_init(void)
 
 	rds_info_register_func(RDS_INFO_IB_CONNECTIONS, rds_ib_ic_info);
 
+	ret = rds_ip_threads_init();
+	if (ret) {
+		printk(KERN_ERR "RDS: failed to create IP thread\n");
+		goto out_ibreg;
+	}
+
 	rds_ib_ip_excl_ips_init();
 
 	ret = rds_ib_ip_config_init();
 	if (ret) {
 		printk(KERN_ERR "RDS/IB: failed to init port\n");
-		goto out_ibreg;
+		goto out_ip_thread;
 	}
 
 	rds_ib_ip_failover_groups_init();
@@ -2545,6 +2567,8 @@ int rds_ib_init(void)
 
 	goto out;
 
+out_ip_thread:
+	rds_ip_thread_exit();
 out_ibreg:
 	rds_ib_unregister_client();
 out_recv:
@@ -2570,6 +2594,7 @@ void rds_ib_exit(void)
 	destroy_workqueue(rds_aux_wq);
 	rds_trans_unregister(&rds_ib_transport);
 	rds_ib_fmr_exit();
+	rds_ip_thread_exit();
 
 	if (ip_config)
 		kfree(ip_config);
