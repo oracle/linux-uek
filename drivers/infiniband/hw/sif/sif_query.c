@@ -162,6 +162,7 @@ int sif_calc_ipd(struct sif_dev	 *sdev, u8 port, enum ib_rate static_rate, u8 *i
 	int path = ib_rate_to_mult(static_rate);
 	int link;
 	u8 active_speed = sdev->port[port - 1].active_speed;
+	int active_mult = psif_port_speed_to_mult((enum psif_port_speed)active_speed);
 	u8 active_width = sdev->port[port - 1].active_width;
 
 	if (static_rate == IB_RATE_PORT_CURRENT) {
@@ -180,8 +181,8 @@ int sif_calc_ipd(struct sif_dev	 *sdev, u8 port, enum ib_rate static_rate, u8 *i
 		return -EDEADLK;
 	}
 
-	/* 2^active_width * active_speed */
-	link = (1 << active_width)*active_speed;
+	/* 2^active_width * mult SDR of active speed */
+	link = (1 << active_width)*active_mult;
 
 	if (path >= link)
 		*ipd = 0;

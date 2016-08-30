@@ -456,6 +456,29 @@ enum ib_mtu sif2ib_path_mtu(enum psif_path_mtu mtu)
 	}
 }
 
+/* psif_port_speed to mult - convert the IB speed definition to a
+ * multiple of the base rate of 2.5 Gbps. E.g, PSIF_SPEED_EDR will
+ * be converted to 10, as 25 Gbps is 10 * 2.5 Gbps.
+ */
+const int psif_port_speed_to_mult(enum psif_port_speed speed)
+{
+	switch (speed) {
+	default:
+	case PSIF_PORT_SPEED_FIELD_MAX:
+	case PSIF_SPEED_SDR:
+		return 1;
+	case PSIF_SPEED_DDR:
+		return 2;
+	case PSIF_SPEED_QDR:
+		return 4;
+	case PSIF_SPEED_FDR10:
+		return 4;
+	case PSIF_SPEED_FDR:
+		return 5;
+	case PSIF_SPEED_EDR:
+		return 10;
+	}
+}
 
 /* TBD: IB datastructure dump functions - remove/replace? */
 

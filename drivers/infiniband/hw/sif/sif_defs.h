@@ -67,6 +67,7 @@ enum psif_migration ib2sif_mig_state(enum ib_mig_state mstate);
 enum ib_mtu sif2ib_path_mtu(enum psif_path_mtu mtu);
 enum psif_path_mtu ib2sif_path_mtu(enum ib_mtu mtu);
 enum kernel_ulp_type sif_find_kernel_ulp_caller(void);
+const int psif_port_speed_to_mult(enum psif_port_speed speed);
 
 /* TBD: IB datastructure dump functions - remove/replace? */
 const char *ib_event2str(enum ib_event_type e);
