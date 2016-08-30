@@ -16,6 +16,7 @@ enum {
 	MMSIZE,
 	DCSIZE,
 	DCVERS,
+	SBMODE,
 
 	PARAMCOUNT
 };
@@ -26,6 +27,7 @@ static __initconst const char name[][22] = {
 	[MMSIZE] = "MemMap Size          ",
 	[DCSIZE] = "MemMap Desc. Size    ",
 	[DCVERS] = "MemMap Desc. Version ",
+	[SBMODE] = "Secure Boot Enabled  ",
 };
 
 static __initconst const struct {
@@ -43,6 +45,7 @@ static __initconst const struct {
 			[MMSIZE] = "xen,uefi-mmap-size",
 			[DCSIZE] = "xen,uefi-mmap-desc-size",
 			[DCVERS] = "xen,uefi-mmap-desc-ver",
+			[SBMODE] = "",
 		}
 	}, {
 #endif
@@ -53,6 +56,7 @@ static __initconst const struct {
 			[MMSIZE] = "linux,uefi-mmap-size",
 			[DCSIZE] = "linux,uefi-mmap-desc-size",
 			[DCVERS] = "linux,uefi-mmap-desc-ver",
+			[SBMODE] = "linux,uefi-secure-boot",
 		}
 	}
 };
@@ -63,6 +67,11 @@ static int __init efi_get_fdt_prop(const void *fdt, int node, const char *pname,
 	const void *prop;
 	int len;
 	u64 val;
+
+	if (!pname[0]) {
+		memset(var, 0, size);
+		return 0;
+	}
 
 	prop = fdt_getprop(fdt, node, pname, &len);
 	if (!prop)
@@ -81,7 +90,7 @@ static int __init efi_get_fdt_prop(const void *fdt, int node, const char *pname,
 	return 0;
 }
 
-u64 __init efi_get_fdt_params(struct efi_memory_map_data *mm)
+u64 __init efi_get_fdt_params(struct efi_memory_map_data *mm, u32 *secure_boot)
 {
 	const void *fdt = initial_boot_params;
 	unsigned long systab;
@@ -95,6 +104,7 @@ u64 __init efi_get_fdt_params(struct efi_memory_map_data *mm)
 		[MMSIZE] = { &mm->size,		sizeof(mm->size) },
 		[DCSIZE] = { &mm->desc_size,	sizeof(mm->desc_size) },
 		[DCVERS] = { &mm->desc_version,	sizeof(mm->desc_version) },
+		[SBMODE] = { secure_boot,       sizeof(*secure_boot) },
 	};
 
 	BUILD_BUG_ON(ARRAY_SIZE(target) != ARRAY_SIZE(name));
