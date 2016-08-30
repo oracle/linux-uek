@@ -439,7 +439,7 @@ static void __update_mmu_tsb_insert(struct mm_struct *mm, unsigned long tsb_inde
 }
 
 #ifdef CONFIG_HUGETLB_PAGE
-unsigned int xl_hugepage_shift = HPAGE_SHIFT;
+unsigned int xl_hugepage_shift;
 static unsigned long xl_hugepage_pte;
 
 static bool is_xl_hugetlb_pte(pte_t pte)
