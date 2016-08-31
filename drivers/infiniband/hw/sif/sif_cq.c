@@ -56,16 +56,17 @@ static inline int translate_wr_id(
 				cqe->seq_num, cq->index, sq_seq_num, wh->sq_seq,
 				cqe->status, cqe->opcode);
 			return -EIO;
-		} else
-			sif_log(sdev, SIF_INFO,
+		}
+		sif_log(sdev, SIF_INFO,
 			"unexp. cqe 0x%x for cq %d: got sq_seq 0x%x, last exp.0x%x, sts %d opc 0x%x",
-				cqe->seq_num, cq->index, sq_seq_num, wh->sq_seq,
-				cqe->status, cqe->opcode);
+			cqe->seq_num, cq->index, sq_seq_num, wh->sq_seq,
+			cqe->status, cqe->opcode);
 		return -EFAULT;
 	}
 	if (unlikely(wh->sq_seq != sq_seq_num)) {
 		bool duplicate_comp_wrap_case  = (wh->sq_seq - sq_seq_num == sq->entries);
 		int log_level = duplicate_comp_wrap_case ? SIF_WCE : SIF_INFO;
+
 		sif_log(sdev, log_level,
 			"wrong cqe 0x%x for cq %d: got sq_seq 0x%x, expected 0x%x, sts %d opc 0x%x",
 			cqe->seq_num, cq->index, sq_seq_num, wh->sq_seq, cqe->status, cqe->opcode);

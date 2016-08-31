@@ -35,7 +35,7 @@ static u64 sensor_show(const struct device *device,
 		char *buf,
 		int sif_hwmon_attr_temp)
 {
-        struct sif_dev *sdev = dev_get_drvdata(device);
+	struct sif_dev *sdev = dev_get_drvdata(device);
 	struct psif_epsc_csr_req req;
 	struct psif_epsc_csr_rsp rsp;
 
@@ -76,8 +76,7 @@ static u64 sensor_show(const struct device *device,
 				WARN_ON(1);
 			}
 			sprintf(buf, "%u\n", t);
-		}
-		else
+		} else
 			sif_log(sdev, SIF_INFO, "Failed to query on chip temperature\n");
 	}
 	return strlen(buf);
@@ -144,6 +143,7 @@ void sif_register_hwmon_dev(struct sif_dev *sdev)
 void sif_unregister_hwmon_dev(struct sif_dev *sdev)
 {
 	struct device *hwmon_dev = sdev->hwmon_dev;
+
 	if (hwmon_dev) {
 		hwmon_device_unregister(hwmon_dev);
 		sdev->hwmon_dev = NULL;

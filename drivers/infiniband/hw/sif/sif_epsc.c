@@ -706,7 +706,7 @@ int sif_eps_init(struct sif_dev *sdev, enum sif_tab_type type)
 		 *    = bw comp mode.
 		 */
 		if (sif_vf_max >= 0)
-			lconfig.num_ufs = min_t(int, pci_sriov_get_totalvfs(sdev->pdev),sif_vf_max) + 1;
+			lconfig.num_ufs = min_t(int, pci_sriov_get_totalvfs(sdev->pdev), sif_vf_max) + 1;
 		else if (sif_vf_max == -2)
 			lconfig.num_ufs = 0; /* Use firmware defaults */
 		else if (xen_pv_domain())

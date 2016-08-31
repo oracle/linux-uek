@@ -234,7 +234,7 @@ struct sif_qp *create_qp(struct sif_dev *sdev,
 	/*
 	 * We add a sge (with the stencil) when sending with TSO. The stencil is stored at
 	 * the beginning of the inline-area. TSO implies checksumming which again has
-	 * a requirement that no inline can be used. 
+	 * a requirement that no inline can be used.
 	 * To be able to accomodate as large L3/L4-headers as possible we allocate 192
 	 * bytes for inlining;
 	 * entry size 512 bytes
@@ -251,7 +251,7 @@ struct sif_qp *create_qp(struct sif_dev *sdev,
 				init_attr->qp_type, min_tso_inline);
 			init_attr->cap.max_inline_data = min_tso_inline;
 		}
-		init_attr->cap.max_send_sge ++;
+		init_attr->cap.max_send_sge++;
 	}
 
 	if (init_attr->qp_type == IB_QPT_RC || init_attr->qp_type == IB_QPT_XRC_INI) {
@@ -866,6 +866,7 @@ int modify_qp_hw_wa_qp_retry(struct sif_dev *sdev, struct sif_qp *qp,
 			if (qp->flags & SIF_QPF_USER_MODE) {
 				struct sif_sq *sq = get_sq(sdev, qp);
 				struct sif_sq_sw *sq_sw = sq ? get_sif_sq_sw(sdev, qp->qp_idx) : NULL;
+
 				if (sq_sw)
 					sq_sw->need_flush = true;
 			}
@@ -2261,10 +2262,11 @@ fixup_failed:
 	if (rq) {
 		if (rq->is_srq)
 			atomic_dec(&rq->refcnt);
-		else
+		else {
 			ret = free_rq(sdev, qp->rq_idx);
 			if (ret && ret != -EBUSY)
 				return ret;
+		}
 	}
 
 	if (index > 3 && reuse_ok)

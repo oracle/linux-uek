@@ -462,8 +462,8 @@ extern ulong sif_trace_mask;
 #define sif_log_rlim(sdev, class, format, arg...)	\
 	do { \
 		sif_log_trace(class, format, ## arg);	\
-		if (unlikely((sif_debug_mask) & (class) && printk_ratelimit())) { \
-			dev_info(&sdev->pdev->dev,	\
+		if (unlikely((sif_debug_mask) & (class))) { \
+			dev_info_ratelimited(&sdev->pdev->dev,	\
 				"[%d] %s: " format "\n",\
 				current->pid, __func__,	\
 				## arg);		\

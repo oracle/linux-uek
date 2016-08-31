@@ -113,6 +113,7 @@ int sif_eq_request_irq_all(struct sif_eps *es)
 
 	for (i = 0; i < es->eqs.cnt; i++) {
 		struct sif_eq *eq = &es->eqs.eq[i];
+
 		if (!eq->requested) {
 			ret = sif_request_irq(eq);
 			if (ret)
@@ -622,9 +623,8 @@ static void handle_event_work(struct work_struct *work)
 
 	atomic_inc(&ew->eq->work_cnt);
 
-	if (unlikely(!sdev->registered)) {
+	if (unlikely(!sdev->registered))
 		wait_for_completion_interruptible(&sdev->ready_for_events);
-	}
 
 	switch (ew->ibe.event) {
 	case IB_EVENT_CQ_ERR: {
@@ -932,7 +932,9 @@ static int dispatch_eq(struct sif_eq *eq)
 		if (likely(leqe.event_status_cmpl_notify)) {
 			nevents += handle_completion_event(eq, &leqe);
 
-			/* No other event type bits will be set on a CNE */
+			/* No other event type bits will be set on a
+			 * completion notification event (CNE)
+			 */
 			goto only_cne;
 		}
 

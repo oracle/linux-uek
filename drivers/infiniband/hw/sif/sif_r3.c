@@ -35,6 +35,7 @@ void sif_r3_pre_init(struct sif_dev *sdev)
 {
 	/* Init the flush_retry qp lock */
 	u8 flush_idx;
+
 	for (flush_idx = 0; flush_idx < 2; ++flush_idx)
 		mutex_init(&sdev->flush_lock[flush_idx]);
 }
@@ -71,6 +72,7 @@ flush_retry_failed:
 void sif_r3_deinit(struct sif_dev *sdev)
 {
 	u8 flush_idx;
+
 	for (flush_idx = 0; flush_idx < 2; ++flush_idx)
 		sif_hw_free_flush_qp(sdev, flush_idx);
 
@@ -696,7 +698,7 @@ flush_sq_again:
 	for (; (LESS_OR_EQUAL_16(last_seq, last_gen_seq)); ++last_seq) {
 		if (unlikely(cq->entries < ((u32) (last_seq - sq_sw->head_seq)))) {
 			sif_log(sdev, SIF_INFO, "cq (%d) is  full! (len = %d, used = %d)",
-				cq->index, cq->entries, last_seq - sq_sw->head_seq - 1 );
+				cq->index, cq->entries, last_seq - sq_sw->head_seq - 1);
 			goto err_post_wa4074;
 		}
 
