@@ -919,7 +919,12 @@ ovl_posix_acl_xattr_set(struct dentry *dentry, const char *name,
 
 	posix_acl_release(acl);
 
-	return ovl_xattr_set(dentry, name, value, size, flags);
+	err = ovl_xattr_set(dentry, name, value, size, flags);
+	if (!err)
+		ovl_copyattr(ovl_inode_real(d_inode(dentry), NULL),
+				 d_inode(dentry));
+
+	return err;
 
 out_acl_release:
 	posix_acl_release(acl);
