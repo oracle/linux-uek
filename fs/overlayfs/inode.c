@@ -11,6 +11,7 @@
 #include <linux/slab.h>
 #include <linux/cred.h>
 #include <linux/xattr.h>
+#include <linux/posix_acl.h>
 #include "overlayfs.h"
 
 static int ovl_copy_up_last(struct dentry *dentry, struct iattr *attr,
@@ -307,14 +308,14 @@ struct posix_acl *ovl_get_acl(struct inode *inode, int type)
 	const struct cred *old_cred;
 	struct posix_acl *acl;
 
-	if (!IS_POSIXACL(realinode))
+	if (!IS_ENABLED(CONFIG_FS_POSIX_ACL) || !IS_POSIXACL(realinode))
 		return NULL;
 
 	if (!realinode->i_op->get_acl)
 		return NULL;
 
 	old_cred = ovl_override_creds(inode->i_sb);
-	acl = realinode->i_op->get_acl(realinode, type);
+	acl = get_acl(realinode, type);
 	revert_creds(old_cred);
 
 	return acl;
