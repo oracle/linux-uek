@@ -44,7 +44,7 @@
 #include "ib.h"
 #include "tcp.h"
 
-static unsigned int rds_ib_max_frag = RDS_FRAG_SIZE;
+static unsigned int rds_ib_max_frag = RDS_MAX_FRAG_SIZE;
 static unsigned int ib_init_frag_size = RDS_FRAG_SIZE;
 
 module_param(rds_ib_max_frag, int, 0444);
