@@ -694,16 +694,6 @@ static int sif_mmap(struct ib_ucontext *ib_uc, struct vm_area_struct *vma)
 	return -EOPNOTSUPP;
 }
 
-static int sif_get_protocol_stats(struct ib_device *ibdev,
-				union rdma_protocol_stats *stats)
-{
-	struct sif_dev *sdev = to_sdev(ibdev);
-
-	sif_log(sdev, SIF_VERBS, "Not implemented");
-	return -EOPNOTSUPP;
-}
-
-
 static enum rdma_link_layer sif_get_link_layer(struct ib_device *ibdev, u8 port_num)
 {
 	struct sif_dev *sdev = to_sdev(ibdev);
@@ -796,8 +786,6 @@ int sif_register_ib_device(struct sif_dev *sdev)
 	      | (1ull << IB_USER_VERBS_CMD_ALLOC_SHPD) |
 		(1ull << IB_USER_VERBS_CMD_SHARE_PD)
 	      ;
-
-	dev->get_protocol_stats = sif_get_protocol_stats;
 
 	dev->query_device = sif_query_device;
 	dev->modify_device = sif_modify_device;
