@@ -57,8 +57,8 @@ struct eps_version_data {
 	u16 epsc_major;
 	u16 epsc_minor;
 #endif
-	u16 fw_minor;
-	u16 fw_major;
+	u16 fw_minor;   /* This is the internal firmware version, */
+	u16 fw_major;	/* which is not the same as the official release version */
 	int seq_set_proto; /* Protocol version of the initial setup meta protocol (0 == legacy) */
 	struct psif_epsc_csr_config nb_cfg; /* "Network" byte order config storage (see #3804) */
 	char *fw_version[FWV_MAX];

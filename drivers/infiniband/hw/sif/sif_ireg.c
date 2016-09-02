@@ -52,8 +52,12 @@ static ssize_t show_fw_ver(struct device *device,
 {
 	struct sif_dev *sdev = dev_get_drvdata(device);
 	struct sif_eps *es = &sdev->es[sdev->mbox_epsc];
+	u64 fw_ver = cpu_to_be64(es->data->dev.fw_ver);
 
-	return sprintf(buf, "%hu.%hu.0\n", es->ver.fw_major, es->ver.fw_minor);
+	return sprintf(buf, "%llu.%llu.%llu\n",
+		(fw_ver >> 32) & 0xffff,
+		(fw_ver >> 16) & 0xffff,
+		(fw_ver & 0xffff));
 }
 
 static ssize_t show_eps_api_ver(struct device *device,
