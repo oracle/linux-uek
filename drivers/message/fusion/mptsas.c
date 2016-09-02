@@ -97,6 +97,11 @@ module_param(mpt_loadtime_max_sectors, int, 0);
 MODULE_PARM_DESC(mpt_loadtime_max_sectors,
 		" Maximum sector define for Host Bus Adaptor.Range 64 to 8192 default=8192");
 
+static int mpt_cmd_retry_count = 300;
+module_param(mpt_cmd_retry_count, int, 0);
+MODULE_PARM_DESC(mpt_cmd_retry_count,
+		" Device discovery TUR command retry count: default=300");
+
 static u8	mptsasDoneCtx = MPT_MAX_PROTOCOL_DRIVERS;
 static u8	mptsasTaskCtx = MPT_MAX_PROTOCOL_DRIVERS;
 static u8	mptsasInternalCtx = MPT_MAX_PROTOCOL_DRIVERS; /* Used only for internal commands */
@@ -1338,6 +1343,7 @@ enum device_state{
 	DEVICE_RETRY,
 	DEVICE_ERROR,
 	DEVICE_READY,
+	DEVICE_START_UNIT,
 };
 
 static int
@@ -1680,7 +1686,246 @@ mptsas_firmware_event_work(struct work_struct *work)
 	}
 }
 
+/**
+ *	mptsas_get_lun_number - returns the first entry in report_luns table
+ *	@ioc: Pointer to MPT_ADAPTER structure
+ *	@channel:
+ *	@id:
+ *	@lun:
+ *
+ */
+static int
+mptsas_get_lun_number(MPT_ADAPTER *ioc, u8 channel, u8 id, int *lun)
+{
+	INTERNAL_CMD	*iocmd;
+	struct scsi_lun *lun_data;
+	dma_addr_t	lun_data_dma;
+	u32		lun_data_len;
+	u8 		*data;
+	MPT_SCSI_HOST	*hd;
+	int		rc;
+	u32 		length, num_luns;
 
+	iocmd = NULL;
+	hd = shost_priv(ioc->sh);
+	lun_data_len = (255 * sizeof(struct scsi_lun));
+	lun_data = pci_alloc_consistent(ioc->pcidev, lun_data_len,
+	    &lun_data_dma);
+	if (!lun_data) {
+		printk(MYIOC_s_ERR_FMT "%s: pci_alloc_consistent(%d) FAILED!\n",
+		    ioc->name, __FUNCTION__, lun_data_len);
+		rc = -ENOMEM;
+		goto out;
+	}
+
+	iocmd = kzalloc(sizeof(INTERNAL_CMD), GFP_KERNEL);
+	if (!iocmd) {
+		printk(MYIOC_s_ERR_FMT "%s: kzalloc(%zd) FAILED!\n",
+		    ioc->name, __FUNCTION__, sizeof(INTERNAL_CMD));
+		rc = -ENOMEM;
+		goto out;
+	}
+
+	/*
+	 * Report Luns
+	 */
+	iocmd->cmd = REPORT_LUNS;
+	iocmd->data_dma = lun_data_dma;
+	iocmd->data = (u8 *)lun_data;
+	iocmd->size = lun_data_len;
+	iocmd->channel = channel;
+	iocmd->id = id;
+
+	if ((rc = mptscsih_do_cmd(hd, iocmd)) < 0) {
+		printk(MYIOC_s_ERR_FMT "%s: fw_channel=%d fw_id=%d: "
+		    "report_luns failed due to rc=0x%x\n", ioc->name,
+		    __FUNCTION__, channel, id, rc);
+		goto out;
+	}
+
+	if (rc != MPT_SCANDV_GOOD) {
+		printk(MYIOC_s_ERR_FMT "%s: fw_channel=%d fw_id=%d: "
+		    "report_luns failed due to rc=0x%x\n", ioc->name,
+		    __FUNCTION__, channel, id, rc);
+		rc = -rc;
+		goto out;
+	}
+
+	data = (u8 *)lun_data;
+	length = ((data[0] << 24) | (data[1] << 16) |
+	    (data[2] << 8) | (data[3] << 0));
+
+	num_luns = (length / sizeof(struct scsi_lun));
+	if (!num_luns)
+		goto out;
+	/* return 1st lun in the list */
+	*lun = mpt_scsilun_to_int(&lun_data[1]);
+
+#if 0
+	/* some debugging, left commented out */
+	{
+		struct scsi_lun *lunp;
+		for (lunp = &lun_data[1]; lunp <= &lun_data[num_luns]; lunp++)
+			printk("%x\n", scsilun_to_int(lunp));
+	}
+#endif
+
+ out:
+	if (lun_data)
+		pci_free_consistent(ioc->pcidev, lun_data_len, lun_data,
+		    lun_data_dma);
+	kfree(iocmd);
+	return rc;
+}
+
+/**
+ * mptsas_test_unit_ready -
+ * @ioc: Pointer to MPT_ADAPTER structure
+ * @channel:
+ * @id:
+ * @count: retry count
+ *
+ */
+enum device_state
+mptsas_test_unit_ready(MPT_ADAPTER *ioc, u8 channel, u8 id, u16 count)
+{
+	INTERNAL_CMD	*iocmd;
+	MPT_SCSI_HOST	*hd = shost_priv(ioc->sh);
+	enum device_state	state;
+	int			rc;
+	u8		skey, asc, ascq;
+	u8		retry_ua;
+
+	if (count >= mpt_cmd_retry_count)
+		return DEVICE_ERROR;
+
+	retry_ua = 0;
+	iocmd = kzalloc(sizeof(INTERNAL_CMD), GFP_KERNEL);
+	if (!iocmd) {
+		printk(MYIOC_s_ERR_FMT "%s: kzalloc(%zd) FAILED!\n",
+		__FUNCTION__, ioc->name, sizeof(INTERNAL_CMD));
+		return DEVICE_ERROR;
+	}
+
+	state = DEVICE_ERROR;
+	iocmd->cmd = TEST_UNIT_READY;
+	iocmd->data_dma = -1;
+	iocmd->data = NULL;
+
+	if (mptscsih_is_phys_disk(ioc, channel, id)) {
+		iocmd->flags |= MPT_ICFLAG_PHYS_DISK;
+		iocmd->physDiskNum = mptscsih_raid_id_to_num(ioc, channel, id);
+	}
+	iocmd->channel = channel;
+	iocmd->id = id;
+
+ retry:
+	devtprintk(ioc, printk(MYIOC_s_DEBUG_FMT "%s: fw_channel=%d "
+	    "fw_id=%d retry=%d\n", ioc->name, __FUNCTION__, channel, id, count));
+	rc = mptscsih_do_cmd(hd, iocmd);
+	devtprintk(ioc, printk(MYIOC_s_DEBUG_FMT "%s: rc=0x%02x\n",
+	    ioc->name, __FUNCTION__, rc));
+	if (rc < 0) {
+		printk(MYIOC_s_ERR_FMT "%s: fw_channel=%d fw_id=%d: "
+		    "tur failed due to timeout\n", ioc->name,
+		    __FUNCTION__, channel, id);
+		goto tur_done;
+	}
+
+	switch(rc) {
+	case MPT_SCANDV_GOOD:
+		state = DEVICE_READY;
+		goto tur_done;
+	case MPT_SCANDV_BUSY:
+		devtprintk(ioc, printk(MYIOC_s_DEBUG_FMT "%s: "
+		    "fw_channel=%d fw_id=%d : device busy\n",
+		    ioc->name, __FUNCTION__, channel, id));
+		state = DEVICE_RETRY;
+		break;
+	case MPT_SCANDV_DID_RESET:
+		devtprintk(ioc, printk(MYIOC_s_DEBUG_FMT "%s: "
+		    "fw_channel=%d fw_id=%d : did reset\n",
+		    ioc->name, __FUNCTION__, channel, id));
+		state = DEVICE_RETRY;
+		break;
+	case MPT_SCANDV_SENSE:
+		skey = ioc->internal_cmds.sense[2] & 0x0F;
+		asc = ioc->internal_cmds.sense[12];
+		ascq = ioc->internal_cmds.sense[13];
+
+		devtprintk(ioc, printk(MYIOC_s_DEBUG_FMT "%s: "
+		    "fw_channel=%d fw_id=%d : [sense_key,asc,"
+		    "ascq]: [0x%02x,0x%02x,0x%02x]\n", ioc->name,
+		     __FUNCTION__, channel, id, skey, asc, ascq));
+
+		if (skey == UNIT_ATTENTION) {
+			state = DEVICE_RETRY;
+			break;
+		} else if (skey == NOT_READY) {
+			/* medium isn't present */
+			if (asc == 0x3a) {
+				state = DEVICE_READY;
+				goto tur_done;
+			}
+			/* LOGICAL UNIT NOT READY */
+			else if (asc == 0x04) {
+				if (ascq == 0x03 ||
+				   ascq == 0x0b ||
+				   ascq == 0x0c) {
+					state = DEVICE_ERROR;
+				} else {
+					state = DEVICE_START_UNIT;
+					break;
+				}
+			}
+			/* LOGICAL UNIT HAS NOT SELF-CONFIGURED YET */
+			else if (asc == 0x3e && !ascq) {
+				state = DEVICE_START_UNIT;
+				break;
+			}
+		} else if (skey == ILLEGAL_REQUEST) {
+		/* try sending a tur to a non-zero lun number */
+			if (!iocmd->lun && !mptsas_get_lun_number(ioc,
+			    channel, id, &iocmd->lun) && iocmd->lun)
+				goto retry;
+		}
+		printk(MYIOC_s_ERR_FMT "%s: fw_channel=%d fw_id=%d : "
+		    "tur failed due to [sense_key,asc,ascq]: "
+		    "[0x%02x,0x%02x,0x%02x]\n", ioc->name,
+		    __FUNCTION__, channel, id, skey, asc, ascq);
+		goto tur_done;
+	case MPT_SCANDV_SELECTION_TIMEOUT:
+		printk(MYIOC_s_ERR_FMT "%s: fw_channel=%d fw_id=%d: "
+		    "tur failed due to no device\n", ioc->name,
+		    __FUNCTION__, channel,
+		    id);
+		goto tur_done;
+	case MPT_SCANDV_SOME_ERROR:
+		printk(MYIOC_s_ERR_FMT "%s: fw_channel=%d fw_id=%d: "
+		    "tur failed due to some error\n", ioc->name,
+		    __FUNCTION__,
+		    channel, id);
+		goto tur_done;
+	default:
+		printk(MYIOC_s_ERR_FMT
+		    "%s: fw_channel=%d fw_id=%d: tur failed due to "
+		    "unknown rc=0x%02x\n", ioc->name, __FUNCTION__,
+		    channel, id, rc );
+		goto tur_done;
+	}
+ tur_done:
+	/* Try Sending START_STOP scsi command */
+	if(state == DEVICE_START_UNIT) {
+		iocmd->cmd = START_STOP;
+		rc = mptscsih_do_cmd(hd, iocmd);
+		devtprintk(ioc, printk(MYIOC_s_DEBUG_FMT "%s: rc=0x%02x\n",
+		    ioc->name, __FUNCTION__, rc));
+		/* No need to check return value rc, since TUR is going to be retried */
+		state = DEVICE_RETRY;
+	}
+	kfree(iocmd);
+	return state;
+}
 
 static int
 mptsas_slave_configure(struct scsi_device *sdev)
@@ -3950,9 +4195,11 @@ mptsas_probe_expanders(MPT_ADAPTER *ioc)
 static void
 mptsas_probe_devices(MPT_ADAPTER *ioc)
 {
+	u16 retry_count;
 	u16 handle;
 	struct mptsas_devinfo sas_device;
 	struct mptsas_phyinfo *phy_info;
+	enum device_state state;
 
 	handle = 0xFFFF;
 	while (!(mptsas_sas_device_pg0(ioc, &sas_device,
@@ -3980,7 +4227,17 @@ mptsas_probe_devices(MPT_ADAPTER *ioc)
 		if (mptsas_get_rphy(phy_info))
 			continue;
 
-		mptsas_add_end_device(ioc, phy_info);
+		state = DEVICE_RETRY;
+		retry_count = 0;
+		while(state == DEVICE_RETRY) {
+			state = mptsas_test_unit_ready(ioc, sas_device.channel,
+			    sas_device.id, retry_count++);
+			ssleep(1);
+		}
+		if (state == DEVICE_READY)
+			mptsas_add_end_device(ioc, phy_info);
+		else
+			memset(&phy_info->attached, 0, sizeof(struct mptsas_devinfo));
 	}
 }
 
