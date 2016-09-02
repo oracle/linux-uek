@@ -1266,7 +1266,10 @@ static void init_node_masks_nonnuma(void)
 	for (i = 0; i < NR_CPUS; i++)
 		numa_cpu_lookup_table[i] = 0;
 
-	cpumask_setall(&numa_cpumask_lookup_table[0]);
+	/* Add current cpu into numa_cpumask_lookup_table[0],
+	 * the rest of the numa cpumask will be set in __cpu_up().
+	 */
+	cpumask_set_cpu(smp_processor_id(), &numa_cpumask_lookup_table[0]);
 #endif
 }
 
@@ -1831,11 +1834,22 @@ static int __init bootmem_init_numa(void)
 	return err;
 }
 
+void sparc64_update_numa_mask(unsigned int cpu)
+{
+	if (num_node_masks > 1)
+		return;
+
+	cpumask_set_cpu(cpu, &numa_cpumask_lookup_table[0]);
+}
 #else
 
 static int bootmem_init_numa(void)
 {
 	return -1;
+}
+
+void sparc64_update_numa_mask(unsigned int cpu)
+{
 }
 
 #endif

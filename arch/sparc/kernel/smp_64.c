@@ -1315,6 +1315,7 @@ int __cpu_up(unsigned int cpu, struct task_struct *tidle)
 			if (tlb_type != hypervisor)
 				smp_synchronize_one_tick(cpu);
 			cpu_map_rebuild();
+			sparc64_update_numa_mask(cpu);
 		}
 	}
 	return ret;
