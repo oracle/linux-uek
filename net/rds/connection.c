@@ -655,6 +655,7 @@ static char *conn_drop_reasons[] = {
 	[DR_CONN_CONNECT_FAIL]		= "conn_connect failure",
 	[DR_HB_TIMEOUT]			= "hb timeout",
 	[DR_RECONNECT_TIMEOUT]		= "reconnect timeout",
+	[DR_SOCK_CANCEL]		= "cancel operation on socket",
 	[DR_IB_CONN_DROP_RACE]		= "race between ESTABLISHED event and drop",
 	[DR_IB_NOT_CONNECTING_STATE]	= "conn is not in CONNECTING state",
 	[DR_IB_QP_EVENT]		= "qp event",

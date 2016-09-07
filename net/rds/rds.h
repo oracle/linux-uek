@@ -155,6 +155,7 @@ enum rds_conn_drop_src {
 	DR_CONN_CONNECT_FAIL,
 	DR_HB_TIMEOUT,
 	DR_RECONNECT_TIMEOUT,
+	DR_SOCK_CANCEL,
 
 	/* ib_cm  */
 	DR_IB_CONN_DROP_RACE,
