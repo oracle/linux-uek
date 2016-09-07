@@ -868,6 +868,7 @@ void rds_send_drop_to(struct rds_sock *rs, struct sockaddr_in *dest)
 	struct rds_connection *conn;
 	unsigned long flags;
 	LIST_HEAD(list);
+	int conn_dropped = 0;
 
 	/* get all the messages we're dropping under the rs lock */
 	spin_lock_irqsave(&rs->rs_lock, flags);
@@ -929,6 +930,16 @@ void rds_send_drop_to(struct rds_sock *rs, struct sockaddr_in *dest)
 	while (!list_empty(&list)) {
 		rm = list_entry(list.next, struct rds_message, m_sock_item);
 		list_del_init(&rm->m_sock_item);
+
+		/* Drop the connection only if this is part of cancel.
+		 * For a paticular dest and for a sock,	all the rms cancelled
+		 * belong to the same connection.
+		 */
+		if (!conn_dropped && dest &&
+		    test_bit(RDS_MSG_MAPPED, &rm->m_flags)) {
+			rds_conn_drop(conn, DR_SOCK_CANCEL);
+			conn_dropped = 1;
+		}
 		rds_message_wait(rm);
 
 		/*
