@@ -294,6 +294,7 @@ static int vlds_signal_event(pid_t tgid, int fd)
 	struct file *efd_file;
 	struct eventfd_ctx *efd_ctx;
 	struct task_struct *utask;
+	struct pid *pid;
 
 	/*
 	 * Signal the process that there is an event pending
@@ -304,8 +305,15 @@ static int vlds_signal_event(pid_t tgid, int fd)
 
 	rcu_read_lock();
 
+	/* Get the pid */
+	pid = find_vpid(tgid);
+	if (pid == NULL) {
+		rcu_read_unlock();
+		return -ESRCH;
+	}
+
 	/* Get the task struct */
-	utask = pid_task(find_vpid(tgid), PIDTYPE_PID);
+	utask = pid_task(pid, PIDTYPE_PID);
 	if (!utask || !utask->files) {
 		rcu_read_unlock();
 		return -EIO;
@@ -340,12 +348,13 @@ static int vlds_signal_event(pid_t tgid, int fd)
 static void vlds_add_event_all(struct vlds_dev *vlds, u64 type)
 {
 	struct vlds_event_info *event_info;
+	struct vlds_event_info *nxt;
 	struct vlds_event *event;
 	int rv;
 
 	mutex_lock(&vlds_event_info_list_mutex);
 
-	list_for_each_entry(event_info, &vlds_event_info_list, list) {
+	list_for_each_entry_safe(event_info, nxt, &vlds_event_info_list, list) {
 
 		event = kzalloc(sizeof(struct vlds_event), GFP_KERNEL);
 		if (unlikely(event == NULL)) {
@@ -362,14 +371,29 @@ static void vlds_add_event_all(struct vlds_dev *vlds, u64 type)
 			/* just give an error if we failed to add the event */
 			pr_err("%s: Failed to create %llu event for tgid=%u\n",
 			    vlds->int_name, type, event_info->tgid);
+
+			/*
+			 * If the event failed to signal because the
+			 * process no longer exists, we will prune the
+			 * stale event_info from the list. This can happen
+			 * if a process registers an eventfd but fails to
+			 * unregister it before exiting.
+			 */
+			if (rv == -ESRCH) {
+				pr_err("%s: Removing stale event_info for "
+				       "tgid=%u\n", vlds->int_name,
+				       event_info->tgid);
+				vlds_remove_event_info(event_info->tgid);
+			}
 		}
 	}
 
 	mutex_unlock(&vlds_event_info_list_mutex);
 }
 
-static int vlds_add_svc_event(pid_t tgid, struct vlds_service_info *svc_info,
-	u64 type, vlds_ver_t *neg_vers)
+static void vlds_add_svc_event(struct vlds_dev *vlds, pid_t tgid,
+			       struct vlds_service_info *svc_info, u64 type,
+			       vlds_ver_t *neg_vers)
 {
 	struct vlds_event_info *event_info;
 	struct vlds_event *event;
@@ -386,7 +410,7 @@ static int vlds_add_svc_event(pid_t tgid, struct vlds_service_info *svc_info,
 		 * of using polling - which is valid.
 		 */
 		mutex_unlock(&vlds_event_info_list_mutex);
-		return 0;
+		return;
 	}
 
 	event = kzalloc(sizeof(struct vlds_event), GFP_KERNEL);
@@ -395,7 +419,7 @@ static int vlds_add_svc_event(pid_t tgid, struct vlds_service_info *svc_info,
 			dprintk("failed to allocate event for "
 			    "service %llx\n", svc_info->handle);
 		mutex_unlock(&vlds_event_info_list_mutex);
-		return -ENOMEM;
+		return;
 	}
 
 	event->type = type;
@@ -407,10 +431,26 @@ static int vlds_add_svc_event(pid_t tgid, struct vlds_service_info *svc_info,
 	    &event_info->event_list);
 
 	rv = vlds_signal_event(tgid, event_info->fd);
+	if (rv) {
+		/* just give an error if we failed to add the event */
+		pr_err("%s: Failed to create event (type = %llu) for tgid=%u\n",
+		    vlds->int_name, type, tgid);
+
+		/*
+		 * If the event failed to signal because the
+		 * process no longer exists, we will prune the
+		 * stale event_info from the list. This can happen
+		 * if a process registers an eventfd but fails to
+		 * unregister it before exiting.
+		 */
+		if (rv == -ESRCH) {
+			pr_err("%s: Removing stale event_info for "
+			       "tgid=%u\n", vlds->int_name, tgid);
+			vlds_remove_event_info(tgid);
+		}
+	}
 
 	mutex_unlock(&vlds_event_info_list_mutex);
-
-	return rv;
 
 }
 
@@ -419,7 +459,6 @@ static void vlds_add_event_svc_all(struct vlds_dev *vlds,
 	struct vlds_service_info *svc_info, u64 type, vlds_ver_t *neg_vers)
 {
 	struct vlds_tgid_info *tgid_info;
-	int rv;
 
 	list_for_each_entry(tgid_info, &svc_info->tgid_list, list) {
 
@@ -427,13 +466,8 @@ static void vlds_add_event_svc_all(struct vlds_dev *vlds,
 		if (!tgid_info->event_reg)
 			continue;
 
-		rv = vlds_add_svc_event(tgid_info->tgid, svc_info,
+		vlds_add_svc_event(vlds, tgid_info->tgid, svc_info,
 		    type, neg_vers);
-		if (rv) {
-			/* just give an error if we failed to add the event */
-			pr_err("%s: Failed to create event (type = %llu)\n",
-			    vlds->int_name, type);
-		}
 	}
 }
 
@@ -1012,16 +1046,9 @@ static int vlds_svc_reg(struct vlds_dev *vlds, const void __user *uarg)
 		 * event for the process - since it will probably expect one.
 		 */
 		if (is_event_reg &&
-		    svc_info->state == VLDS_HDL_STATE_CONNECTED) {
-			rv = vlds_add_svc_event(tgid, svc_info,
+		    svc_info->state == VLDS_HDL_STATE_CONNECTED)
+			vlds_add_svc_event(vlds, tgid, svc_info,
 			    VLDS_EVENT_TYPE_REG, &svc_info->neg_vers);
-			if (rv) {
-				/* just give an error if add event fails */
-				pr_err("%s: Failed to create registration "
-				    "event (%llx)\n", vlds->int_name,
-				    svc_info->handle);
-			}
-		}
 
 		dprintk("%s: registered tgid %u with service %s (client = %u) "
 		    "(hdl = %llx)\n", vlds->int_name, tgid, svc_str,
