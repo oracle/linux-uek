@@ -1,11 +1,12 @@
 /*
  * vcc.c: sun4v virtual channel concentrator
  *
- * Copyright (C) 2014 Oracle. All rights reserved.
+ * Copyright (C) 2014,2016 Oracle. All rights reserved.
  */
 
 #include <linux/module.h>
 #include <linux/slab.h>
+#include <linux/delay.h>
 #include <linux/sysfs.h>
 #include <linux/tty.h>
 #include <linux/tty_flip.h>
@@ -23,9 +24,13 @@ MODULE_LICENSE("GPL");
 MODULE_VERSION(DRV_MODULE_VERSION);
 
 struct vcc {
-	struct tty_port port;	/* must be first element */
 	spinlock_t lock;
 	char *domain;
+	struct tty_struct *tty; /* only populated while dev is open */
+	u64 port_id;
+
+	u64 refcnt;
+	bool excl_locked;
 
 	/*
 	 * This buffer is required to support the tty write_room interface
@@ -39,6 +44,9 @@ struct vcc {
 	struct timer_list tx_timer;
 	struct vio_driver_state	vio;
 };
+
+/* amount of time in ns that thread will delay waiting for a vcc ref */
+#define	VCC_REF_DELAY	100
 
 #define VCC_MAX_PORTS	256
 #define VCC_MINOR_START	0
@@ -54,6 +62,9 @@ struct vcc {
 static const char vcc_driver_name[] = "vcc";
 static const char vcc_device_node[] = "vcc";
 static struct tty_driver *vcc_tty_driver;
+
+static struct vcc *vcc_table[VCC_MAX_PORTS];
+static DEFINE_SPINLOCK(vcc_table_lock);
 
 int vcc_dbg;
 int vcc_dbg_ldc;
@@ -102,6 +113,93 @@ static struct ktermios vcc_tty_termios = {
 	.c_ospeed = 38400
 };
 
+static void vcc_table_add(struct vcc *vcc)
+{
+	unsigned long flags;
+
+	BUG_ON(vcc->port_id >= VCC_MAX_PORTS);
+
+	spin_lock_irqsave(&vcc_table_lock, flags);
+	vcc_table[vcc->port_id] = vcc;
+	spin_unlock_irqrestore(&vcc_table_lock, flags);
+}
+
+static void vcc_table_remove(u64 port_id)
+{
+	unsigned long flags;
+
+	BUG_ON(port_id >= VCC_MAX_PORTS);
+
+	spin_lock_irqsave(&vcc_table_lock, flags);
+	vcc_table[port_id] = NULL;
+	spin_unlock_irqrestore(&vcc_table_lock, flags);
+}
+
+static struct vcc *vcc_get(u64 port_id, bool excl)
+{
+	unsigned long flags;
+	struct vcc *vcc;
+
+try_again:
+
+	spin_lock_irqsave(&vcc_table_lock, flags);
+
+	vcc = vcc_table[port_id];
+	if (!vcc) {
+		spin_unlock_irqrestore(&vcc_table_lock, flags);
+		return NULL;
+	}
+
+	if (!excl) {
+		if (vcc->excl_locked) {
+			spin_unlock_irqrestore(&vcc_table_lock, flags);
+			udelay(VCC_REF_DELAY);
+			goto try_again;
+		}
+		vcc->refcnt++;
+		spin_unlock_irqrestore(&vcc_table_lock, flags);
+		return vcc;
+	}
+
+	if (vcc->refcnt) {
+		spin_unlock_irqrestore(&vcc_table_lock, flags);
+		/*
+		 * Threads wanting exclusive access to a
+		 * vcc will wait half the time - which should give
+		 * them higher priority in the case of multiple
+		 * waiters.
+		 */
+		udelay(VCC_REF_DELAY/2);
+		goto try_again;
+	}
+
+	vcc->refcnt++;
+	vcc->excl_locked = true;
+	spin_unlock_irqrestore(&vcc_table_lock, flags);
+
+	return vcc;
+}
+
+static void vcc_put(struct vcc *vcc, bool excl)
+{
+	unsigned long flags;
+
+	if (!vcc)
+		return;
+
+	spin_lock_irqsave(&vcc_table_lock, flags);
+
+	/* check if caller attempted to put with the wrong flags */
+	BUG_ON((excl && !vcc->excl_locked) || (!excl && vcc->excl_locked));
+
+	vcc->refcnt--;
+
+	if (excl)
+		vcc->excl_locked = false;
+
+	spin_unlock_irqrestore(&vcc_table_lock, flags);
+}
+
 static void vcc_kick_rx(struct vcc *vcc)
 {
 	struct vio_driver_state *vio = &vcc->vio;
@@ -137,7 +235,7 @@ static void vcc_kick_tx(struct vcc *vcc)
 
 static int vcc_rx_check(struct tty_struct *tty, int size)
 {
-	BUG_ON(!tty);
+	BUG_ON(!tty || !tty->port);
 
 	/*
 	 * tty_buffer_request_room eventually calls kmalloc with GFP_ATOMIC
@@ -154,7 +252,7 @@ static int vcc_rx(struct tty_struct *tty, char *buf, int size)
 {
 	int len;
 
-	BUG_ON(!tty);
+	BUG_ON(!tty || !tty->port);
 
 	/*
 	 * tty_insert_flig_string... calls __tty_buffer_request_room.
@@ -178,7 +276,7 @@ static int vcc_ldc_read(struct vcc *vcc)
 	int rv = 0;
 	vccdbg("%s\n", __func__);
 
-	tty = vcc->port.tty;
+	tty = vcc->tty;
 	if (!tty) {
 		rv = ldc_rx_reset(vio->lp);
 		vccdbg("%s: reset rx q: rv=%d\n", __func__, rv);
@@ -290,7 +388,7 @@ static void vcc_tx_timer(unsigned long arg)
 		vccdbg("%s: ldc_write()=%d\n", __func__, rv);
 		vcc_kick_tx(vcc);
 	} else {
-		struct tty_struct *tty = vcc->port.tty;
+		struct tty_struct *tty = vcc->tty;
 
 		vcc->chars_in_buffer = 0;
 
@@ -356,12 +454,13 @@ static ssize_t vcc_sysfs_domain_show(struct device *device,
 	struct device_attribute *attr, char *buf)
 {
 	int rv;
-	unsigned long flags;
-	struct vcc *vcc = dev_get_drvdata(device);
+	struct vcc *vcc;
 
-	spin_lock_irqsave(&vcc->lock, flags);
+	vcc = dev_get_drvdata(device);
+	if (!vcc)
+		return -ENODEV;
+
 	rv = scnprintf(buf, PAGE_SIZE, "%s\n", vcc->domain);
-	spin_unlock_irqrestore(&vcc->lock, flags);
 
 	return rv;
 }
@@ -388,7 +487,11 @@ static ssize_t vcc_sysfs_break_store(struct device *device,
 	int rv = count;
 	int brk;
 	unsigned long flags;
-	struct vcc *vcc = dev_get_drvdata(device);
+	struct vcc *vcc;
+
+	vcc = dev_get_drvdata(device);
+	if (!vcc)
+		return -ENODEV;
 
 	spin_lock_irqsave(&vcc->lock, flags);
 
@@ -456,21 +559,27 @@ static int vcc_probe(struct vio_dev *vdev,
 			      vcc_versions, ARRAY_SIZE(vcc_versions),
 			      NULL, name);
 	if (rv)
-		goto free_port;
+		goto free_vcc;
 
 	vcc->vio.debug = vcc_dbg_vio;
 	vcc_ldc_cfg.debug = vcc_dbg_ldc;
 
 	rv = vio_ldc_alloc(&vcc->vio, &vcc_ldc_cfg, vcc);
 	if (rv)
-		goto free_port;
+		goto free_vcc;
 
-	tty_port_init(&vcc->port);
 	spin_lock_init(&vcc->lock);
-	vcc->port.ops = &vcc_port_ops;
+	vcc->port_id = vdev->port_id;
+	vcc_table_add(vcc);
 
-	dev = tty_port_register_device(&vcc->port, vcc_tty_driver,
-		vdev->port_id, &vdev->dev);
+	/*
+	 * Register the device using the port ID as the index.
+	 * XXX - Device registration should probably be done last
+	 * since the device is "live" as soon as it's called (and
+	 * calls into the tty/vcc infrastructure can start
+	 * happening for this device immediately afterwards).
+	 */
+	dev = tty_register_device(vcc_tty_driver, vdev->port_id, &vdev->dev);
 	if (IS_ERR(dev)) {
 		rv = PTR_ERR(dev);
 		goto free_ldc;
@@ -497,7 +606,7 @@ static int vcc_probe(struct vio_dev *vdev,
 
 	rv = sysfs_create_group(&vdev->dev.kobj, &vcc_attribute_group);
 	if (rv)
-		goto remove_sysfs;
+		goto free_domain;
 
 	init_timer(&vcc->rx_timer);
 	vcc->rx_timer.function = vcc_rx_timer;
@@ -525,17 +634,17 @@ static int vcc_probe(struct vio_dev *vdev,
 
 	return 0;
 
-remove_sysfs:
-	sysfs_remove_group(&vdev->dev.kobj, &vcc_attribute_group);
+free_domain:
 	kfree(vcc->domain);
 
 unreg_tty:
 	tty_unregister_device(vcc_tty_driver, vdev->port_id);
 
 free_ldc:
+	vcc_table_remove(vdev->port_id);
 	vio_ldc_free(&vcc->vio);
 
-free_port:
+free_vcc:
 	kfree(name);
 	kfree(vcc);
 
@@ -546,7 +655,6 @@ static int vcc_remove(struct vio_dev *vdev)
 {
 	struct vcc *vcc = dev_get_drvdata(&vdev->dev);
 	struct tty_struct *tty;
-	unsigned long flags;
 
 	vccdbg("%s\n", __func__);
 
@@ -556,12 +664,18 @@ static int vcc_remove(struct vio_dev *vdev)
 	del_timer_sync(&vcc->rx_timer);
 	del_timer_sync(&vcc->tx_timer);
 
-	spin_lock_irqsave(&vcc->lock, flags);
-	tty = vcc->port.tty;
-	spin_unlock_irqrestore(&vcc->lock, flags);
-
+	/*
+	 * If there's a process with the device open,
+	 * hangup the tty.
+	 */
+	tty = vcc->tty;
 	if (tty)
 		tty_vhangup(tty);
+
+	/* Get an exclusive ref to the vcc */
+	vcc = vcc_get(vdev->port_id, true);
+
+	BUG_ON(!vcc);
 
 	tty_unregister_device(vcc_tty_driver, vdev->port_id);
 
@@ -570,9 +684,21 @@ static int vcc_remove(struct vio_dev *vdev)
 	sysfs_remove_group(&vdev->dev.kobj, &vcc_attribute_group);
 	dev_set_drvdata(&vdev->dev, NULL);
 
+	vcc_table_remove(vdev->port_id);
+
 	kfree(vcc->vio.name);
 	kfree(vcc->domain);
 	kfree(vcc);
+
+	/*
+	 * Since the vcc has been freed and removed from
+	 * the table, no need to call vcc_put() here. Any threads
+	 * waiting on vcc_get() will notice the vcc removed
+	 * from the list and unblock with a NULL returned for
+	 * the vcc. Since we grabbed exclusive
+	 * access to the vcc, we are guaranteed that no other
+	 * access to the vcc will be made - including any puts.
+	 */
 
 	return 0;
 }
@@ -595,57 +721,69 @@ static struct vio_driver vcc_driver = {
 static int vcc_open(struct tty_struct *tty, struct file *filp)
 {
 	struct vcc *vcc;
-	int rv, count;
+	struct tty_port *port;
+	int rv;
 
 	vccdbg("%s\n", __func__);
+
 	if (!tty) {
 		pr_err("%s: NULL tty\n", __func__);
 		return -ENXIO;
 	}
 
-	if (!tty->port) {
-		pr_err("%s: NULL tty port\n", __func__);
-		return -ENXIO;
-	}
-	if (!tty->port->ops) {
-		pr_err("%s: NULL tty port ops\n", __func__);
-		return -ENXIO;
-	}
+	/* Only allow a single open */
+	if (tty->count > 1)
+		return -EBUSY;
 
-	vcc = container_of(tty->port, struct vcc, port);
+	vcc = vcc_get(tty->index, false);
+	if (!vcc) {
+		pr_err("%s: NULL vcc\n", __func__);
+		return -ENXIO;
+	}
 
 	if (!vcc->vio.lp) {
 		pr_err("%s: NULL lp\n", __func__);
+		vcc_put(vcc, false);
 		return -ENXIO;
 	}
 	vccdbgl(vcc->vio.lp);
 
-	/*
-	 * vcc_close is called even if vcc_open fails so call
-	 * tty_port_open() regardless in case of -EBUSY.
-	 */
-	count = tty->port->count;
-	if (count)
-		pr_err("%s: tty port busy\n", __func__);
-	rv = tty_port_open(tty->port, tty, filp);
-	if (rv == 0 && count != 0)
-		rv = -EBUSY;
+	vcc_put(vcc, false);
+
+	port = tty->port;
+	if (!port) {
+		pr_err("%s: NULL tty port\n", __func__);
+		return -ENXIO;
+	}
+
+	if (!port->ops) {
+		pr_err("%s: NULL tty port ops\n", __func__);
+		return -ENXIO;
+	}
+
+	rv = tty_port_open(port, tty, filp);
 
 	return rv;
-
 }
 
 static void vcc_close(struct tty_struct *tty, struct file *filp)
 {
 	vccdbg("%s\n", __func__);
+
 	if (!tty) {
 		pr_err("%s: NULL tty\n", __func__);
 		return;
 	}
+
+	/* if this isn't the last close just return */
+	if (tty->count > 1)
+		return;
+
 	if (!tty->port) {
 		pr_err("%s: NULL tty port\n", __func__);
 		return;
 	}
+
 	tty_port_close(tty->port, tty, filp);
 }
 
@@ -665,16 +803,40 @@ static void vcc_ldc_hup(struct vcc *vcc)
 
 static void vcc_hangup(struct tty_struct *tty)
 {
-	struct vcc *vcc = container_of(tty->port, struct vcc, port);
+	struct vcc *vcc;
+	struct tty_port *port;
+
+	vccdbg("%s\n", __func__);
+
+	if (!tty) {
+		pr_err("%s: NULL tty\n", __func__);
+		return;
+	}
+
+	vcc = vcc_get(tty->index, false);
+	if (!vcc) {
+		pr_err("%s: NULL vcc\n", __func__);
+		return;
+	}
+
+	port = tty->port;
+	if (!port) {
+		pr_err("%s: NULL tty port\n", __func__);
+		vcc_put(vcc, false);
+		return;
+	}
 
 	vcc_ldc_hup(vcc);
-	tty_port_hangup(tty->port);
+
+	vcc_put(vcc, false);
+
+	tty_port_hangup(port);
 }
 
 static int vcc_write(struct tty_struct *tty,
 		const unsigned char *buf, int count)
 {
-	struct vcc *vcc = container_of(tty->port, struct vcc, port);
+	struct vcc *vcc;
 	struct vio_vcc *pkt;
 	unsigned long flags;
 	int total_sent = 0;
@@ -682,6 +844,17 @@ static int vcc_write(struct tty_struct *tty,
 	int rv = -EINVAL;
 
 	vccdbg("%s\n", __func__);
+
+	if (!tty) {
+		pr_err("%s: NULL tty\n", __func__);
+		return -ENXIO;
+	}
+
+	vcc = vcc_get(tty->index, false);
+	if (!vcc) {
+		pr_err("%s: NULL vcc\n", __func__);
+		return -ENXIO;
+	}
 
 	spin_lock_irqsave(&vcc->lock, flags);
 
@@ -734,6 +907,8 @@ static int vcc_write(struct tty_struct *tty,
 
 	spin_unlock_irqrestore(&vcc->lock, flags);
 
+	vcc_put(vcc, false);
+
 	vccdbg("%s: total=%d rv=%d\n", __func__, total_sent, rv);
 
 	return total_sent ? total_sent : rv;
@@ -741,27 +916,72 @@ static int vcc_write(struct tty_struct *tty,
 
 static int vcc_write_room(struct tty_struct *tty)
 {
-	struct vcc *vcc = container_of(tty->port, struct vcc, port);
+	struct vcc *vcc;
+	u64 num;
 
-	return VCC_BUFF_LEN - vcc->chars_in_buffer;
+	if (!tty) {
+		pr_err("%s: NULL tty\n", __func__);
+		return -ENXIO;
+	}
+
+	vcc = vcc_get(tty->index, false);
+	if (!vcc) {
+		pr_err("%s: NULL vcc\n", __func__);
+		return -ENXIO;
+	}
+
+	num = VCC_BUFF_LEN - vcc->chars_in_buffer;
+
+	vcc_put(vcc, false);
+
+	return num;
 }
 
 static int vcc_chars_in_buffer(struct tty_struct *tty)
 {
-	struct vcc *vcc = container_of(tty->port, struct vcc, port);
+	struct vcc *vcc;
+	u64 num;
 
-	return vcc->chars_in_buffer;
+	if (!tty) {
+		pr_err("%s: NULL tty\n", __func__);
+		return -ENXIO;
+	}
+
+	vcc = vcc_get(tty->index, false);
+	if (!vcc) {
+		pr_err("%s: NULL vcc\n", __func__);
+		return -ENXIO;
+	}
+
+	num = vcc->chars_in_buffer;
+
+	vcc_put(vcc, false);
+
+	return num;
 }
 
 static int vcc_break_ctl(struct tty_struct *tty, int state)
 {
-	struct vcc *vcc = container_of(tty->port, struct vcc, port);
+	struct vcc *vcc;
 	unsigned long flags;
 
 	vccdbg("%s(%d)\n", __func__, state);
 
-	if (state == 0)		/* turn off break */
+	if (!tty) {
+		pr_err("%s: NULL tty\n", __func__);
+		return -ENXIO;
+	}
+
+	vcc = vcc_get(tty->index, false);
+	if (!vcc) {
+		pr_err("%s: NULL vcc\n", __func__);
+		return -ENXIO;
+	}
+
+	if (state == 0) {	/* turn off break */
+		vcc_put(vcc, false);
 		return 0;
+	}
 
 	spin_lock_irqsave(&vcc->lock, flags);
 
@@ -770,7 +990,62 @@ static int vcc_break_ctl(struct tty_struct *tty, int state)
 
 	spin_unlock_irqrestore(&vcc->lock, flags);
 
+	vcc_put(vcc, false);
+
 	return 0;
+}
+
+static int vcc_install(struct tty_driver *driver, struct tty_struct *tty)
+{
+	int ret;
+	struct vcc *vcc;
+	struct tty_port *port;
+
+	if (tty->index >= VCC_MAX_PORTS)
+		return -EINVAL;
+
+	ret = tty_standard_install(driver, tty);
+	if (ret)
+		return ret;
+
+	/* alloc and assign a port for the tty */
+	port = kzalloc(sizeof(*port), GFP_KERNEL);
+	if (!port) {
+		pr_err("%s: cannot allocate tty_port\n", __func__);
+		return -ENOMEM;
+	}
+	tty_port_init(port);
+	port->ops = &vcc_port_ops;
+	tty->port = port;
+
+	vcc = vcc_get(tty->index, true);
+	if (!vcc) {
+		tty->port = NULL;
+		kfree(port);
+		return -ENODEV;
+	}
+
+	/* assign the tty to the vcc */
+	vcc->tty = tty;
+
+	vcc_put(vcc, true);
+
+	return 0;
+}
+
+static void vcc_cleanup(struct tty_struct *tty)
+{
+	struct vcc *vcc;
+
+	vcc = vcc_get(tty->index, true);
+	if (vcc) {
+		vcc->tty = NULL;
+		vcc_put(vcc, true);
+	}
+
+	tty_port_destroy(tty->port);
+	kfree(tty->port);
+	tty->port = NULL;
 }
 
 static const struct tty_operations vcc_ops = {
@@ -780,7 +1055,9 @@ static const struct tty_operations vcc_ops = {
 	.write = vcc_write,
 	.write_room = vcc_write_room,
 	.chars_in_buffer = vcc_chars_in_buffer,
-	.break_ctl = vcc_break_ctl
+	.break_ctl = vcc_break_ctl,
+	.install = vcc_install,
+	.cleanup = vcc_cleanup
 };
 
 /*
@@ -825,7 +1102,6 @@ static int vcc_tty_init(void)
 
 	pr_err("%s: tty driver register failed\n", __func__);
 
-	tty_unregister_driver(vcc_tty_driver);
 	put_tty_driver(vcc_tty_driver);
 	vcc_tty_driver = NULL;
 
