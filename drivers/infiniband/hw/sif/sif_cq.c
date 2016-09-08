@@ -10,7 +10,6 @@
  *
  * sif_cq.c: Implementation of completion queue logic for SIF
  */
-#include <linux/version.h>
 #include <linux/sched.h>
 #include <linux/random.h>
 #include <rdma/ib_verbs.h>

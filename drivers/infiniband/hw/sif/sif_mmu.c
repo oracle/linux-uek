@@ -27,7 +27,6 @@
 #include <linux/hugetlb.h>
 #include <linux/highmem.h>
 #include <linux/kref.h>
-#include <linux/version.h>
 #include <rdma/ib_umem.h>
 #include "psif_hw_setget.h"
 #include "sif_defs.h"

@@ -15,6 +15,7 @@
 #ifndef _SIF_MEM_H
 #define _SIF_MEM_H
 #include <rdma/ib_verbs.h>
+#include <rdma/sif_verbs.h>
 #include "sif_user.h"
 
 /* We need to support 4 interfaces to memory; abbreviated umem, fmr,

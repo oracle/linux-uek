@@ -10,7 +10,6 @@
  *
  * sif_dma.c: DMA memory mapping
  */
-#include <linux/version.h>
 #include "sif_dma.h"
 #include "sif_dev.h"
 #include "psif_hw_data.h"

@@ -14,7 +14,6 @@
 #ifndef __SIF_DEV_H
 #define __SIF_DEV_H
 
-#include <linux/version.h>
 #include <linux/pci.h>
 #include <linux/sched.h>
 #include <linux/dma-mapping.h>
@@ -31,7 +30,7 @@
 #include "sif_mem.h"
 
 
-#include "sif_verbs.h"
+#include <rdma/sif_verbs.h>
 
 #include "sif_r3.h"
 

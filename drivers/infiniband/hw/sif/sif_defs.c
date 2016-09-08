@@ -10,7 +10,6 @@
  *
  * sif_defs.c: IB-to-SIF Mapper.
  */
-#include <linux/version.h>
 #include <rdma/ib_verbs.h>
 #include "sif_dev.h"
 #include "sif_defs.h"

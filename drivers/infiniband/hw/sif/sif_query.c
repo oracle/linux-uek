@@ -10,7 +10,6 @@
  *
  * sif_query.c: SIF implementation of some of IB query APIs
  */
-#include <linux/version.h>
 #include <rdma/ib_verbs.h>
 #include <rdma/ib_mad.h>
 #include "sif_dev.h"
