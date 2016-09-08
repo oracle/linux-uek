@@ -1336,9 +1336,11 @@ void rds_ib_recv_cqe_handler(struct rds_ib_connection *ic,
 	} else {
 		/* We expect errors as the qp is drained during shutdown */
 		if (rds_conn_up(conn) || rds_conn_connecting(conn)) {
-			pr_warn("RDS/IB: recv completion <%pI4,%pI4,%d> had status %u vendor_err 0x%x, disconnecting and reconnecting\n",
-				&conn->c_laddr, &conn->c_faddr, conn->c_tos,
-				wc->status, wc->vendor_err);
+			/* Flush errors are normal while draining the QP */
+			if (wc->status != IB_WC_WR_FLUSH_ERR)
+				pr_warn("RDS/IB: recv completion <%pI4,%pI4,%d> had status %u vendor_err 0x%x, disconnecting and reconnecting\n",
+					&conn->c_laddr, &conn->c_faddr, conn->c_tos,
+					wc->status, wc->vendor_err);
 			rds_conn_drop(conn, DR_IB_RECV_COMP_ERR);
 			rds_rtd(RDS_RTD_ERR, "status %u => %s\n", wc->status,
 				rds_ib_wc_status_str(wc->status));
