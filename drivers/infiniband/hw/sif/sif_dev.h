@@ -226,6 +226,7 @@ struct sif_eq {
 	char name[SIF_EQ_NAME_LEN+1];	      /* Storage for name visible from /proc/interrupts */
 	struct sif_irq_ch irq_ch; /* Per channel interrupt coalescing settings */
 	cpumask_var_t affinity_mask; /* cpu affinity_mask for set_irq_hints. */
+	unsigned int max_intr_ms; /* Max recorded time in msec on interrupt handling */
 };
 
 /* Driver specific per instance data */

@@ -338,6 +338,8 @@ static void sif_eq_table_deinit(struct sif_dev *sdev, struct sif_eps *es, u16 eq
 
 static irqreturn_t sif_intr(int irq, void *d)
 {
+	ulong start_time = jiffies;
+	ulong elapsed;
 	u32 nreqs;
 	struct sif_eq *eq = (struct sif_eq *)d;
 	struct sif_dev *sdev = eq->ba.sdev;
@@ -357,6 +359,11 @@ static irqreturn_t sif_intr(int irq, void *d)
 		sif_log(sdev, SIF_INTR, "feature check_all_eqs_on_intr - dispatch done.");
 		/* Note: this feature does not check the EPSA* interrupt queues */
 	}
+
+	elapsed = jiffies_to_msecs(jiffies - start_time);
+
+	if (eq->max_intr_ms < elapsed)
+		eq->max_intr_ms = elapsed;
 
 	return IRQ_HANDLED;
 }
@@ -1096,18 +1103,19 @@ void sif_dfs_print_eq(struct seq_file *s, struct sif_dev *sdev,
 			"#   niu = (index of) next software index update\n#\n"
 			"#   ni = Number of events seen\n"
 			"#   wi = Number of events handled in work queue\n"
-			"# Name    index   entries  ext.%9s vec# IRQ# %9s %9s %9s %9s\n",
-			"n.seq", "#ni", "#wi", "sii", "niu");
+			"#   ms = Max recorded time in msec on interrupt handling\n"
+			"# Name    index   entries  ext.%9s vec# IRQ# %9s %9s %9s %9s %9s\n",
+			"n.seq", "#ni", "#wi", "sii", "niu", "ms");
 		return;
 	}
 
 	eq = &sdev->es[sdev->mbox_epsc].eqs.eq[pos];
 
-	seq_printf(s, "%-12s%3u %9u %4u %9u %4d %4d %9u %9u %9u %9u\n",
+	seq_printf(s, "%-12s%3u %9u %4u %9u %4d %4d %9u %9u %9u %9u %9d\n",
 		eq->name, eq->index, eq->entries, eq->extent, eq->next_seq, eq->intr_vec,
 		sdev->msix_entries[eq->intr_vec].vector,
 		atomic_read(&eq->intr_cnt), atomic_read(&eq->work_cnt),
-		eq->sw_index_interval, eq->sw_index_next_update);
+		eq->sw_index_interval, eq->sw_index_next_update, eq->max_intr_ms);
 }
 
 void sif_dfs_print_irq_ch(struct seq_file *s, struct sif_dev *sdev,
