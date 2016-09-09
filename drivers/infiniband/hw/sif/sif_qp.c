@@ -2203,47 +2203,6 @@ int destroy_qp(struct sif_dev *sdev, struct sif_qp *qp)
 	if (ret)
 		sif_log(sdev, SIF_INFO, "modify qp %d to RESET failed, sts %d", index, ret);
 
-	if (!(qp->flags & SIF_QPF_USER_MODE)) {
-		int nfixup;
-		struct sif_sq *sq = get_sq(sdev, qp);
-		u32 cq_idx = get_psif_qp_core__rcv_cq_indx(&qp->d.state);
-		struct sif_cq *send_cq = (sq && sq->cq_idx >= 0) ? get_sif_cq(sdev, sq->cq_idx) : NULL;
-		struct sif_cq *recv_cq = rq ? get_sif_cq(sdev, cq_idx) : NULL;
-
-		if (send_cq) {
-			ret = post_process_wa4074(sdev, qp);
-			if (ret) {
-				sif_log(sdev, SIF_INFO,
-					"post_process_wa4074 failed for qp %d send cq %d with error %d",
-					qp->qp_idx, sq->cq_idx, ret);
-				goto fixup_failed;
-			}
-
-			nfixup = sif_fixup_cqes(send_cq, sq, qp);
-			if (nfixup < 0) {
-				sif_log(sdev, SIF_INFO,
-					"fixup cqes on qp %d send cq %d failed with error %d",
-					qp->qp_idx, sq->cq_idx, nfixup);
-				goto fixup_failed;
-			}
-			sif_log(sdev, SIF_QP, "fixup cqes fixed %d CQEs in sq.cq %d",
-				nfixup, sq->cq_idx);
-		}
-		if (recv_cq && recv_cq != send_cq) {
-			nfixup = sif_fixup_cqes(recv_cq, sq, qp);
-			if (nfixup < 0) {
-				sif_log(sdev, SIF_INFO,
-					"fixup cqes on qp %d recv cq %d failed with error %d",
-					qp->qp_idx, cq_idx, nfixup);
-				goto fixup_failed;
-			}
-			sif_log(sdev, SIF_QP, "fixup cqes fixed %d CQEs in rq.cq %d",
-				nfixup, cq_idx);
-
-		}
-	}
-
-fixup_failed:
 	if (qp->qp_idx < 4) {
 		/* Special QP cleanup */
 		int ok = atomic_add_unless(&sdev->sqp_usecnt[qp->qp_idx], -1, 0);
@@ -2306,7 +2265,40 @@ static int reset_qp(struct sif_dev *sdev, struct sif_qp *qp)
 
 	}
 
+	if (!(qp->flags & SIF_QPF_USER_MODE)) {
+		int nfixup;
+		u32 cq_idx = get_psif_qp_core__rcv_cq_indx(&qp->d.state);
+		struct sif_cq *send_cq = (sq && sq->cq_idx >= 0) ? get_sif_cq(sdev, sq->cq_idx) : NULL;
+		struct sif_cq *recv_cq = rq ? get_sif_cq(sdev, cq_idx) : NULL;
 
+
+		/* clean-up the SQ/RQ CQ before reset the SQ */
+		if (send_cq) {
+			nfixup = sif_fixup_cqes(send_cq, sq, qp);
+			if (nfixup < 0) {
+				sif_log(sdev, SIF_INFO,
+					"fixup cqes on qp %d send cq %d failed with error %d",
+					qp->qp_idx, sq->cq_idx, nfixup);
+				goto fixup_failed;
+			}
+			sif_log(sdev, SIF_QP, "fixup cqes fixed %d CQEs in sq.cq %d",
+				nfixup, sq->cq_idx);
+		}
+		if (recv_cq && recv_cq != send_cq) {
+			nfixup = sif_fixup_cqes(recv_cq, sq, qp);
+			if (nfixup < 0) {
+				sif_log(sdev, SIF_INFO,
+					"fixup cqes on qp %d recv cq %d failed with error %d",
+					qp->qp_idx, cq_idx, nfixup);
+				goto fixup_failed;
+			}
+			sif_log(sdev, SIF_QP, "fixup cqes fixed %d CQEs in rq.cq %d",
+				nfixup, cq_idx);
+
+		}
+	}
+
+fixup_failed:
 	/* if the send queue scheduler is running, wait for
 	 * it to terminate:
 	 */

@@ -780,6 +780,12 @@ int sif_fixup_cqes(struct sif_cq *cq, struct sif_sq *sq, struct sif_qp *qp)
 		/* Read into local copy in host memory order */
 		copy_conv_to_sw(&lcqe, cqe, sizeof(lcqe));
 
+		/* In a scenario where QP has been destroyed/reset multiple times but the
+		 * associated CQ has not being polled yet.
+		 */
+		if (lcqe.opcode & SIF_WC_QP_DESTROYED)
+			continue;
+
 		/* Receive completion? */
 		if (lcqe.opcode & PSIF_WC_OPCODE_RECEIVE_SEND) {
 			struct sif_post_mortem_qp_info_in_cqe *post_mortem_info =
@@ -790,6 +796,7 @@ int sif_fixup_cqes(struct sif_cq *cq, struct sif_sq *sq, struct sif_qp *qp)
 			post_mortem_info->srq_idx = qp->rq_idx;
 			post_mortem_info->qpn     = qp->qp_idx;
 		} else {
+
 			/* If a send completion, handle the wr_id */
 			ret = translate_wr_id(&wr_id_host_order, sdev, cq, sq, &lcqe,
 					lcqe.wc_id.sq_id.sq_seq_num, lcqe.qp);
