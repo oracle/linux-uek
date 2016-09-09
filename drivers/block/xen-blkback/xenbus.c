@@ -159,7 +159,6 @@ static int xen_blkif_alloc_rings(struct xen_blkif *blkif)
 		init_waitqueue_head(&ring->shutdown_wq);
 		ring->blkif = blkif;
 		ring->st_print = jiffies;
-		xen_blkif_get(blkif);
 	}
 
 	return 0;
@@ -296,7 +295,6 @@ static int xen_blkif_disconnect(struct xen_blkif *blkif)
 		BUG_ON(ring->free_pages_num != 0);
 		BUG_ON(ring->persistent_gnt_c != 0);
 		WARN_ON(i != (XEN_BLKIF_REQS_PER_PAGE * blkif->nr_ring_pages));
-		xen_blkif_put(blkif);
 	}
 	blkif->nr_ring_pages = 0;
 	/*
