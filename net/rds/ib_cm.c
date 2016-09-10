@@ -995,7 +995,8 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 
 	err = rds_ib_setup_qp(conn);
 	if (err) {
-		pr_warn("RDS/IB: rds_ib_setup_qp failed (%d)\n", err);
+		pr_warn("RDS/IB: rds_ib_setup_qp failed with err(%d) for conn <%pI4,%pI4,%d>\n",
+			err, &conn->c_laddr, &conn->c_faddr, conn->c_tos);
 		rds_conn_drop(conn, DR_IB_PAS_SETUP_QP_FAIL);
 		goto out;
 	}
@@ -1008,7 +1009,8 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 	/* rdma_accept() calls rdma_reject() internally if it fails */
 	err = rdma_accept(cm_id, &conn_param);
 	if (err) {
-		pr_warn("RDS/IB: rdma_accept failed (%d)\n", err);
+		pr_warn("RDS/IB: rdma_accept failed with err(%d) for conn <%pI4,%pI4,%d>\n",
+			err, &conn->c_laddr, &conn->c_faddr, conn->c_tos);
 		rds_conn_drop(conn, DR_IB_RDMA_ACCEPT_FAIL);
 	}
 
