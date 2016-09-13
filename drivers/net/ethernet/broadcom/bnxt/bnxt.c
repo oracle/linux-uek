@@ -37,9 +37,7 @@
 #include <net/udp.h>
 #include <net/checksum.h>
 #include <net/ip6_checksum.h>
-#if defined(CONFIG_VXLAN) || defined(CONFIG_VXLAN_MODULE)
-#include <net/vxlan.h>
-#endif
+#include <net/udp_tunnel.h>
 #ifdef CONFIG_NET_RX_BUSY_POLL
 #include <net/busy_poll.h>
 #endif
@@ -58,6 +56,7 @@
 #include "bnxt.h"
 #include "bnxt_sriov.h"
 #include "bnxt_ethtool.h"
+#include "kcompat.h"
 
 #define BNXT_TX_TIMEOUT		(5 * HZ)
 
@@ -5275,9 +5274,7 @@ static int __bnxt_open_nic(struct bnxt *bp, bool irq_re_init, bool link_re_init)
 	}
 
 	if (irq_re_init) {
-#if defined(CONFIG_VXLAN) || defined(CONFIG_VXLAN_MODULE)
-		vxlan_get_rx_port(bp->dev);
-#endif
+		udp_tunnel_get_rx_info(bp->dev);
 		if (!bnxt_hwrm_tunnel_dst_port_alloc(
 				bp, htons(0x17c1),
 				TUNNEL_DST_PORT_FREE_REQ_TUNNEL_TYPE_GENEVE))
@@ -6308,6 +6305,7 @@ static void bnxt_cfg_ntp_filters(struct bnxt *bp)
 
 #endif /* CONFIG_RFS_ACCEL */
 
+#ifdef HAVE_NDO_ADD_VXLAN
 static void bnxt_add_vxlan_port(struct net_device *dev, sa_family_t sa_family,
 				__be16 port)
 {
@@ -6350,6 +6348,25 @@ static void bnxt_del_vxlan_port(struct net_device *dev, sa_family_t sa_family,
 		}
 	}
 }
+#endif
+
+#ifdef OLD_VLAN
+static void bnxt_vlan_rx_register(struct net_device *dev,
+				  struct vlan_group *vlgrp)
+{
+	struct bnxt *bp = netdev_priv(dev);
+
+	if (!netif_running(dev)) {
+		bp->vlgrp = vlgrp;
+		return;
+	}
+	bnxt_disable_napi(bp);
+	bnxt_disable_int_sync(bp);
+	bp->vlgrp = vlgrp;
+	bnxt_enable_napi(bp);
+	bnxt_enable_int(bp);
+}
+#endif
 
 static const struct net_device_ops bnxt_netdev_ops = {
 	.ndo_open		= bnxt_open,
@@ -6379,8 +6396,10 @@ static const struct net_device_ops bnxt_netdev_ops = {
 #ifdef CONFIG_RFS_ACCEL
 	.ndo_rx_flow_steer	= bnxt_rx_flow_steer,
 #endif
+#ifdef HAVE_NDO_ADD_VXLAN
 	.ndo_add_vxlan_port	= bnxt_add_vxlan_port,
 	.ndo_del_vxlan_port	= bnxt_del_vxlan_port,
+#endif
 #ifdef CONFIG_NET_RX_BUSY_POLL
 	.ndo_busy_poll		= bnxt_busy_poll,
 #endif
