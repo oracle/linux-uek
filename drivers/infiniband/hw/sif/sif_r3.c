@@ -810,8 +810,13 @@ static u16 walk_and_update_cqes(struct sif_dev *sdev, struct sif_qp *qp, u16 hea
 			if (last_seq != updated_seq)
 				lcqe.wc_id.sq_id.sq_seq_num = updated_seq;
 
-			if (GREATER_16(updated_seq, end))
+			if (GREATER_16(updated_seq, end)) {
+				/* Explicitly mark the CQE as duplicated completion
+				 * when there are more CQE in the CQ.
+				 */
 				lcqe.wc_id.sq_id.sq_seq_num = end;
+				lcqe.status = PSIF_WC_STATUS_DUPL_COMPL_ERR;
+			}
 
 			copy_conv_to_hw(cqe, &lcqe, sizeof(lcqe));
 

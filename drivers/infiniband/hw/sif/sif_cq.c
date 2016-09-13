@@ -49,7 +49,7 @@ static inline int translate_wr_id(
 		return -EFAULT;
 	}
 	if (!unlikely(wh->used)) {
-		if (sq_seq_num == wh->sq_seq) {
+		if ((sq_seq_num == wh->sq_seq) || (cqe->status == PSIF_WC_STATUS_DUPL_COMPL_ERR)) {
 			sif_log(sdev, SIF_WCE,
 			"dupl cqe 0x%x for cq %d: got sq_seq 0x%x, last exp.0x%x, sts %d opc 0x%x",
 				cqe->seq_num, cq->index, sq_seq_num, wh->sq_seq,
