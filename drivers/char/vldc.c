@@ -1,7 +1,7 @@
 /*
  * vldc.c: Sun4v Virtual LDC (Logical Domain Channel) Driver
  *
- * Copyright (C) 2014 Oracle. All rights reserved.
+ * Copyright (C) 2014-2016 Oracle. All rights reserved.
  */
 
 #include <linux/cdev.h>
@@ -15,6 +15,7 @@
 #include <linux/poll.h>
 #include <linux/list.h>
 #include <linux/mutex.h>
+#include <linux/spinlock.h>
 #include <linux/wait.h>
 #include <linux/sched.h>
 #include <linux/delay.h>
@@ -59,8 +60,8 @@ if (vldcdbg)\
 /* Time (in ms) to sleep waiting for write space to become available */
 #define VLDC_WRITE_BLOCK_SLEEP_DELAY 1
 
-/* Timeout (in ms) to sleep waiting for LDC connection to complete */
-#define VLDC_CONNECTION_TIMEOUT 10000
+/* Timeout (in 10ms intervals) to sleep waiting for LDC connection */
+#define VLDC_CONNECTION_TIMEOUT 1000
 
 static char driver_version[] = DRV_NAME ".c:v" DRV_VERSION "\n";
 
@@ -70,9 +71,10 @@ struct vldc_driver_data {
 	int			num_vldc_dev_list;
 	struct class		*chrdev_class;
 	dev_t			devt;
+	u32			vldc_next_dev_id;
 };
 struct vldc_driver_data vldc_data;
-static DEFINE_MUTEX(vldc_data_mutex); /* protect vldc_data */
+static DEFINE_SPINLOCK(vldc_data_lock);
 
 /*
  * VLDC device struct. Each vldc device which is probed
@@ -96,6 +98,9 @@ struct vldc_dev {
 	struct ldc_channel	*lp;
 	atomic_t		mtu;
 	atomic_t		mode;
+
+	/* Unique ID assigned to this dev */
+	u32			dev_id;
 
 	/* each device gets its own read cookie buf */
 	void                    *cookie_read_buf;
@@ -139,12 +144,11 @@ static int vldc_ldc_send(struct vldc_dev *vldc, void *data, int len)
 	return err;
 }
 
-static ssize_t vldc_fops_write(struct file *filp, const char __user *ubuf,
-			       size_t count, loff_t *off)
+static ssize_t vldc_write_dev(struct vldc_dev *vldc, char *buf,
+			       size_t count, loff_t *off, bool from_user)
 {
-	struct vldc_dev *vldc;
 	int rv;
-	char *ubufp;
+	char *bufp;
 	int nbytes_written;
 	int nbytes_left;
 	size_t size;
@@ -152,12 +156,11 @@ static ssize_t vldc_fops_write(struct file *filp, const char __user *ubuf,
 	dprintk("entered.\n");
 
 	/* validate args */
-	if (filp == NULL || ubuf == NULL)
+	if (vldc == NULL || buf == NULL)
 		return -EINVAL;
 
 	nbytes_written = 0; /* number of bytes written */
 
-	vldc = filp->private_data;
 	rv = 0;
 
 	/*
@@ -175,7 +178,7 @@ static ssize_t vldc_fops_write(struct file *filp, const char __user *ubuf,
 	}
 
 	nbytes_left = count; /* number of bytes left to write */
-	ubufp = (char *)ubuf;
+	bufp = buf;
 
 	while (nbytes_left > 0) {
 
@@ -185,9 +188,13 @@ static ssize_t vldc_fops_write(struct file *filp, const char __user *ubuf,
 		else
 			size = min_t(int, atomic_read(&vldc->mtu), nbytes_left);
 
-		if (copy_from_user(vldc->tx_buf, ubufp, size) != 0) {
-			rv = -EFAULT;
-			goto done;
+		if (from_user) {
+			if (copy_from_user(vldc->tx_buf, bufp, size) != 0) {
+				rv = -EFAULT;
+				goto done;
+			}
+		} else {
+			memcpy(vldc->tx_buf, bufp, (size_t)size);
 		}
 
 		rv = vldc_ldc_send(vldc, vldc->tx_buf, size);
@@ -200,7 +207,7 @@ static ssize_t vldc_fops_write(struct file *filp, const char __user *ubuf,
 		if (unlikely(rv == 0))
 			break;
 
-		ubufp += rv;
+		bufp += rv;
 		nbytes_written += rv;
 		nbytes_left -= rv;
 	}
@@ -217,6 +224,27 @@ done:
 	return (ssize_t)rv;
 }
 
+static ssize_t vldc_fops_write(struct file *filp, const char __user *ubuf,
+			       size_t count, loff_t *off)
+{
+	struct vldc_dev *vldc;
+	ssize_t rv;
+
+	dprintk("entered.\n");
+
+	/* validate args */
+	if (filp == NULL || ubuf == NULL)
+		return -EINVAL;
+
+	vldc = filp->private_data;
+
+	rv = vldc_write_dev(vldc, (char *)ubuf, count, off, true);
+
+	dprintk("(%s) rv=%zd\n", vldc->name, rv);
+
+	return rv;
+}
+
 static bool vldc_will_read_block(struct vldc_dev *vldc)
 {
 
@@ -229,12 +257,11 @@ static bool vldc_will_read_block(struct vldc_dev *vldc)
 	return !ldc_rx_data_available(vldc->lp);
 }
 
-static ssize_t vldc_fops_read(struct file *filp, char __user *ubuf,
-			      size_t count, loff_t *offp)
+static ssize_t vldc_read_dev(struct vldc_dev *vldc, char *buf,
+			      size_t count, loff_t *offp, bool to_user)
 {
-	struct vldc_dev *vldc;
 	int rv;
-	char *ubufp;
+	char *bufp;
 	int nbytes_read;
 	int nbytes_left;
 	size_t size;
@@ -242,12 +269,11 @@ static ssize_t vldc_fops_read(struct file *filp, char __user *ubuf,
 	dprintk("entered.\n");
 
 	/* validate args */
-	if (filp == NULL || ubuf == NULL)
+	if (vldc == NULL || buf == NULL)
 		return -EINVAL;
 
 	nbytes_read = 0; /* number of bytes read */
 
-	vldc = filp->private_data;
 	rv = 0;
 
 	/*  Per spec if reading 0 bytes, just return 0. */
@@ -271,7 +297,7 @@ static ssize_t vldc_fops_read(struct file *filp, char __user *ubuf,
 	}
 
 	nbytes_left = count; /* number of bytes left to read */
-	ubufp = (char *)ubuf;
+	bufp = buf;
 
 	/* read count bytes or until LDC has no more read data (or error) */
 	while (nbytes_left > 0) {
@@ -295,12 +321,16 @@ static ssize_t vldc_fops_read(struct file *filp, char __user *ubuf,
 		if (unlikely(rv == 0))
 			break;
 
-		if (copy_to_user(ubufp, vldc->rx_buf, rv) != 0) {
-			rv = -EFAULT;
-			goto done;
+		if (to_user) {
+			if (copy_to_user(bufp, vldc->rx_buf, rv) != 0) {
+				rv = -EFAULT;
+				goto done;
+			}
+		} else {
+			memcpy(bufp, vldc->rx_buf, (size_t)rv);
 		}
 
-		ubufp += rv;
+		bufp += rv;
 		nbytes_read += rv;
 		nbytes_left -= rv;
 	}
@@ -318,7 +348,27 @@ done:
 	ldc_enable_hv_intr(vldc->lp);
 
 	return (ssize_t)rv;
+}
 
+static ssize_t vldc_fops_read(struct file *filp, char __user *ubuf,
+			      size_t count, loff_t *offp)
+{
+	struct vldc_dev *vldc;
+	ssize_t rv;
+
+	dprintk("entered.\n");
+
+	/* validate args */
+	if (filp == NULL || ubuf == NULL)
+		return -EINVAL;
+
+	vldc = filp->private_data;
+
+	rv = vldc_read_dev(vldc, (char *)ubuf, count, offp, true);
+
+	dprintk("(%s) rv=%zd\n", vldc->name, rv);
+
+	return rv;
 }
 
 static unsigned int vldc_fops_poll(struct file *filp, poll_table *wait)
@@ -658,7 +708,7 @@ static int vldc_connect(struct ldc_channel *lp)
 		state = ldc_state(lp);
 		if (state == LDC_STATE_CONNECTED)
 			break;
-		msleep_interruptible(1);
+		msleep_interruptible(10);
 	} while (timeout-- > 0);
 
 	if (state == LDC_STATE_CONNECTED)
@@ -670,10 +720,10 @@ static int vldc_connect(struct ldc_channel *lp)
 /*
  * Open function does the following:
  * 1. Alloc and bind LDC to the device (using sysfs parameters)
+ * NOTE - this MUST be called in process context.
  */
-static int vldc_fops_open(struct inode *inode, struct file *filp)
+static int vldc_open_dev(struct vldc_dev *vldc)
 {
-	struct vldc_dev *vldc;
 	char *tbuffer;
 	char *rbuffer;
 	char *crbuffer;
@@ -685,7 +735,8 @@ static int vldc_fops_open(struct inode *inode, struct file *filp)
 	int err;
 	bool ldc_bound;
 
-	dprintk("entered.\n");
+	if (!vldc)
+		return -EINVAL;
 
 	rv = 0;
 	ldc_bound = false;
@@ -693,8 +744,6 @@ static int vldc_fops_open(struct inode *inode, struct file *filp)
 	rbuffer = NULL;
 	crbuffer = NULL;
 	cwbuffer = NULL;
-
-	vldc = container_of(inode->i_cdev, struct vldc_dev, cdev);
 
 	/* just to be safe, if the device is in reset, deny the open. */
 	if (atomic_read(&vldc->is_reset_asserted))
@@ -791,11 +840,6 @@ static int vldc_fops_open(struct inode *inode, struct file *filp)
 		goto error;
 	}
 
-	/* tuck away the vldc device for subsequent fops */
-	filp->private_data = vldc;
-
-	dprintk("Success.\n");
-
 	return 0;
 
 error:
@@ -821,16 +865,35 @@ error:
 	atomic_inc(&vldc->is_released);
 
 	return rv;
-
 }
 
-static int vldc_fops_release(struct inode *inode, struct file *filp)
+static int vldc_fops_open(struct inode *inode, struct file *filp)
 {
 	struct vldc_dev *vldc;
+	int rv;
 
 	dprintk("entered.\n");
 
-	vldc = filp->private_data;
+	vldc = container_of(inode->i_cdev, struct vldc_dev, cdev);
+
+	rv = vldc_open_dev(vldc);
+	if (rv) {
+		dprintk("vldc_open_dev failed: %d.\n", rv);
+		return rv;
+	}
+
+	/* tuck away the vldc device for subsequent fops */
+	filp->private_data = vldc;
+
+	dprintk("Success.\n");
+
+	return 0;
+}
+
+static void vldc_close_dev(struct vldc_dev *vldc)
+{
+	if (!vldc)
+		return;
 
 	ldc_unbind(vldc->lp);
 
@@ -858,6 +921,17 @@ static int vldc_fops_release(struct inode *inode, struct file *filp)
 	 * They will exit (with an error) since is_released is now set.
 	 */
 	wake_up_interruptible(&vldc->waitqueue);
+}
+
+static int vldc_fops_release(struct inode *inode, struct file *filp)
+{
+	struct vldc_dev *vldc;
+
+	dprintk("entered.\n");
+
+	vldc = filp->private_data;
+
+	vldc_close_dev(vldc);
 
 	return 0;
 }
@@ -872,9 +946,191 @@ static const struct file_operations vldc_fops = {
 	.unlocked_ioctl	= vldc_fops_ioctl,
 };
 
+/* Kernel driver interface functions */
+
+static struct vldc_dev *vldc_find_dev(char *dev_name)
+{
+	struct vldc_dev *vldc;
+	unsigned long flags;
+	bool found;
+
+	if (!dev_name)
+		return NULL;
+
+	found = false;
+
+	spin_lock_irqsave(&vldc_data_lock, flags);
+	list_for_each_entry(vldc, &vldc_data.vldc_dev_list, list) {
+		if (!strncmp(vldc->name, dev_name, NAME_MAX)) {
+				found = true;
+				break;
+		}
+	}
+	spin_unlock_irqrestore(&vldc_data_lock, flags);
+
+	if (!found)
+		return NULL;
+
+	return vldc;
+}
+
+static struct vldc_dev *vldc_find_devid(u32 vldc_dev_id)
+{
+	struct vldc_dev *vldc;
+	unsigned long flags;
+	bool found;
+
+	found = false;
+
+	spin_lock_irqsave(&vldc_data_lock, flags);
+	list_for_each_entry(vldc, &vldc_data.vldc_dev_list, list) {
+		if (vldc->dev_id == vldc_dev_id) {
+				found = true;
+				break;
+		}
+	}
+	spin_unlock_irqrestore(&vldc_data_lock, flags);
+
+	if (!found)
+		return NULL;
+
+	return vldc;
+}
+
+static int vldc_set_dev_mode(struct vldc_dev *vldc, u8 mode)
+{
+	/* validate args */
+	if (!vldc || mode > VLDC_MODE_STREAM)
+		return -EINVAL;
+
+	mutex_lock(&vldc->vldc_mutex);
+
+	if (!atomic_read(&vldc->is_released)) {
+		/* can't change the mode while the device is open */
+		mutex_unlock(&vldc->vldc_mutex);
+		return -EBUSY;
+	}
+
+	atomic_set(&vldc->mode, mode);
+
+	mutex_unlock(&vldc->vldc_mutex);
+
+	dprintk("mode changed to %d.\n", mode);
+
+	return 0;
+}
+
+int vldc_open(char *dev_name, u8 mode)
+{
+	struct vldc_dev *vldc;
+	u8 orig_mode;
+	int rv;
+	int rv2;
+
+	dprintk("entered.\n");
+
+	if (!dev_name)
+		return -EINVAL;
+
+	vldc = vldc_find_dev(dev_name);
+	if (!vldc)
+		return -EINVAL;
+
+	orig_mode = atomic_read(&vldc->mode);
+	if (mode != orig_mode) {
+		rv = vldc_set_dev_mode(vldc, mode);
+		if (rv) {
+			dprintk("vldc_set_dev_mode failed: %d.\n", rv);
+			return rv;
+		}
+	}
+
+	rv = vldc_open_dev(vldc);
+	if (rv) {
+		/* revert the mode if necessary */
+		if (mode != orig_mode) {
+			rv2 = vldc_set_dev_mode(vldc, orig_mode);
+			if (rv2)
+				dprintk("Failed to revert vldc mode: %d.\n",
+					rv2);
+		}
+
+		dprintk("vldc_open_dev failed: %d.\n", rv);
+		return rv;
+	}
+
+	dprintk("Success.\n");
+
+	return (int)vldc->dev_id;
+}
+EXPORT_SYMBOL_GPL(vldc_open);
+
+int vldc_close(int vldc_dev_id)
+{
+	struct vldc_dev *vldc;
+
+	dprintk("entered.\n");
+
+	vldc = vldc_find_devid((u32)vldc_dev_id);
+	if (!vldc)
+		return -EINVAL;
+
+	vldc_close_dev(vldc);
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(vldc_close);
+
+ssize_t vldc_read(int vldc_dev_id, char *buf, size_t count, loff_t *offp)
+{
+	struct vldc_dev *vldc;
+	ssize_t rv;
+
+	dprintk("entered.\n");
+
+	/* validate arg */
+	if (buf == NULL)
+		return -EINVAL;
+
+	vldc = vldc_find_devid((u32)vldc_dev_id);
+	if (!vldc)
+		return -EINVAL;
+
+	rv = vldc_read_dev(vldc, buf, count, offp, false);
+
+	dprintk("(%s) rv=%zd\n", vldc->name, rv);
+
+	return rv;
+}
+EXPORT_SYMBOL_GPL(vldc_read);
+
+ssize_t vldc_write(int vldc_dev_id, const char *buf, size_t count, loff_t *off)
+{
+	struct vldc_dev *vldc;
+	ssize_t rv;
+
+	dprintk("entered.\n");
+
+	/* validate arg */
+	if (buf == NULL)
+		return -EINVAL;
+
+	vldc = vldc_find_devid((u32)vldc_dev_id);
+	if (!vldc)
+		return -EINVAL;
+
+	rv = vldc_write_dev(vldc, (char *)buf, count, off, false);
+
+	dprintk("(%s) rv=%zd\n", vldc->name, rv);
+
+	return rv;
+}
+EXPORT_SYMBOL_GPL(vldc_write);
+
 static int vldc_get_next_avail_minor(void)
 {
 	struct vldc_dev *vldc;
+	unsigned long flags;
 	bool found;
 	int i;
 
@@ -882,7 +1138,7 @@ static int vldc_get_next_avail_minor(void)
 	 * walk the vldc_dev_list list to find the next
 	 * lowest available minor.
 	 */
-	mutex_lock(&vldc_data_mutex);
+	spin_lock_irqsave(&vldc_data_lock, flags);
 	for (i = VLDC_MINOR_BASE; i < VLDC_MAX_DEVS; i++) {
 		found = false;
 		list_for_each_entry(vldc, &vldc_data.vldc_dev_list, list) {
@@ -896,7 +1152,7 @@ static int vldc_get_next_avail_minor(void)
 			break;
 		}
 	}
-	mutex_unlock(&vldc_data_mutex);
+	spin_unlock_irqrestore(&vldc_data_lock, flags);
 
 	if (i == VLDC_MAX_DEVS) {
 		dprintk("no more minors left for allocation!\n");
@@ -1018,8 +1274,6 @@ static ssize_t vldc_sysfs_mtu_store(struct device *device,
 
 }
 
-
-
 static DEVICE_ATTR(mode, (S_IRUSR|S_IWUSR), vldc_sysfs_mode_show,
 		   vldc_sysfs_mode_store);
 static DEVICE_ATTR(mtu, (S_IRUSR|S_IWUSR), vldc_sysfs_mtu_show,
@@ -1052,6 +1306,7 @@ static int vldc_probe(struct vio_dev *vdev, const struct vio_device_id *vio_did)
 	dev_t devt;
 	struct device *device;
 	int next_minor;
+	unsigned long flags;
 	bool created_sysfs_group;
 	u64 node;
 #ifdef VLDC_DEBUG
@@ -1176,11 +1431,14 @@ static int vldc_probe(struct vio_dev *vdev, const struct vio_device_id *vio_did)
 
 	created_sysfs_group = true;
 
+	/* assign a dev ID to the device */
+	vldc->dev_id = ++vldc_data.vldc_next_dev_id;
+
 	/* add the vldc to the global vldc_data device list */
-	mutex_lock(&vldc_data_mutex);
+	spin_lock_irqsave(&vldc_data_lock, flags);
 	list_add_tail(&vldc->list, &vldc_data.vldc_dev_list);
 	vldc_data.num_vldc_dev_list++;
-	mutex_unlock(&vldc_data_mutex);
+	spin_unlock_irqrestore(&vldc_data_lock, flags);
 
 	dprintk("%s: probe successful\n", vldc->name);
 
@@ -1212,13 +1470,14 @@ error:
 
 static int vldc_free_vldc_dev(struct vldc_dev *vldc)
 {
+	unsigned long flags;
 
 	dprintk("entered. (%s)\n", vldc->name);
 
-	mutex_lock(&vldc_data_mutex);
+	spin_lock_irqsave(&vldc_data_lock, flags);
 	list_del(&vldc->list);
 	vldc_data.num_vldc_dev_list--;
-	mutex_unlock(&vldc_data_mutex);
+	spin_unlock_irqrestore(&vldc_data_lock, flags);
 
 	sysfs_remove_group(&vldc->device->kobj, &vldc_attribute_group);
 	device_destroy(vldc_data.chrdev_class, vldc->devt);
