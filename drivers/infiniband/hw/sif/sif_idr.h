@@ -13,7 +13,6 @@
 
 #ifndef _SIF_IDR_H
 #define _SIF_IDR_H
-#include <linux/version.h>
 #include <linux/idr.h>
 #include <linux/mutex.h>
 

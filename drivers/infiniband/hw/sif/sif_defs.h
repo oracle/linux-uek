@@ -36,6 +36,8 @@ struct xchar {
 };
 
 #define GREATER_16(a, b) ((s16)((s16)(a) - (s16)(b)) > 0)
+#define LESS_OR_EQUAL_16(a, b) (!(GREATER_16((a), (b))))
+#define PSIF_WC_STATUS_DUPL_COMPL_ERR (PSIF_WC_STATUS_FIELD_MAX - 1)
 
 
 #define XFILE struct xchar
@@ -65,6 +67,7 @@ enum psif_migration ib2sif_mig_state(enum ib_mig_state mstate);
 enum ib_mtu sif2ib_path_mtu(enum psif_path_mtu mtu);
 enum psif_path_mtu ib2sif_path_mtu(enum ib_mtu mtu);
 enum kernel_ulp_type sif_find_kernel_ulp_caller(void);
+const int psif_port_speed_to_mult(enum psif_port_speed speed);
 
 /* TBD: IB datastructure dump functions - remove/replace? */
 const char *ib_event2str(enum ib_event_type e);

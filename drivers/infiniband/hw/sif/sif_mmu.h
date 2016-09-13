@@ -16,6 +16,7 @@
 
 #include <rdma/ib_verbs.h>
 #include "psif_hw_data.h"
+#include <rdma/sif_verbs.h>
 #include "sif_user.h"
 
 struct sif_mem;

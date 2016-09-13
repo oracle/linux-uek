@@ -14,7 +14,6 @@
 #ifndef __SIF_DEV_H
 #define __SIF_DEV_H
 
-#include <linux/version.h>
 #include <linux/pci.h>
 #include <linux/sched.h>
 #include <linux/dma-mapping.h>
@@ -31,7 +30,7 @@
 #include "sif_mem.h"
 
 
-#include "sif_verbs.h"
+#include <rdma/sif_verbs.h>
 
 #include "sif_r3.h"
 
@@ -462,8 +461,8 @@ extern ulong sif_trace_mask;
 #define sif_log_rlim(sdev, class, format, arg...)	\
 	do { \
 		sif_log_trace(class, format, ## arg);	\
-		if (unlikely((sif_debug_mask) & (class) && printk_ratelimit())) { \
-			dev_info(&sdev->pdev->dev,	\
+		if (unlikely((sif_debug_mask) & (class))) { \
+			dev_info_ratelimited(&sdev->pdev->dev,	\
 				"[%d] %s: " format "\n",\
 				current->pid, __func__,	\
 				## arg);		\

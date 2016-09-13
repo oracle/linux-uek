@@ -42,6 +42,7 @@
 #include <linux/mlx4/device.h>
 #include <linux/semaphore.h>
 #include <rdma/ib_smi.h>
+#include <rdma/ib_pma.h>
 #include <linux/delay.h>
 
 #include <asm/io.h>
@@ -1023,19 +1024,33 @@ static int mlx4_MAD_IFC_wrapper(struct mlx4_dev *dev, int slave,
 		}
 	}
 
-	/* Non-privileged VFs are only allowed "host" view LID-routed 'Get' MADs.
-	 * These are the MADs used by ib verbs (such as ib_query_gids).
+	/* Non-privileged VFs are only allowed certain MADs
+	 * for the following exception cases
+	 *
+	 * (a) "host" view LID-routed 'Get' MADs.
+	 *    These are the MADs used by ib verbs (such as ib_query_gid).
+	 * (b) 'Get' MADs used for performance monitoring.
+	 *     (comaptibility for older GuestOS VFs)
 	 */
-	if (slave != mlx4_master_func_num(dev) &&
-	    !mlx4_vf_smi_enabled(dev, slave, port)) {
-		if (!(smp->mgmt_class == IB_MGMT_CLASS_SUBN_LID_ROUTED &&
-		      smp->method == IB_MGMT_METHOD_GET) || network_view) {
-			mlx4_err(dev, "Unprivileged slave %d is trying to execute a Subnet MGMT MAD, class 0x%x, method 0x%x, view=%s for attr 0x%x. Rejecting\n",
+	if ((slave != mlx4_master_func_num(dev)) &&
+	    (!mlx4_vf_smi_enabled(dev, slave, port))) {
+		if ((!(smp->mgmt_class == IB_MGMT_CLASS_SUBN_LID_ROUTED &&
+		       smp->method == IB_MGMT_METHOD_GET) || network_view) &&
+		    !(smp->mgmt_class == IB_MGMT_CLASS_PERF_MGMT &&
+		      smp->method == IB_MGMT_METHOD_GET &&
+		      (smp->attr_id == IB_PMA_PORT_COUNTERS ||
+		       smp->attr_id == IB_PMA_PORT_COUNTERS_EXT))) {
+			mlx4_err(dev,
+				 "Unprivileged slave %d is trying to execute a Subnet MGMT MAD, class 0x%x, method 0x%x, view=%s for attr 0x%x. Rejecting\n",
 				 slave, smp->mgmt_class, smp->method,
 				 network_view ? "Network" : "Host",
 				 be16_to_cpu(smp->attr_id));
 			return -EPERM;
 		}
+		/* We get here when we are (a) or (b) exception
+		 * case for unprivileged VF described above
+		 * => fallthru and process this MAD
+		 */
 	}
 
 	return mlx4_cmd_box(dev, inbox->dma, outbox->dma,

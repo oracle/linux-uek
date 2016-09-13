@@ -21,7 +21,7 @@
  *
  */
 #define SIF_UVERBS_ABI_MAJOR_VERSION    3
-#define SIF_UVERBS_ABI_MINOR_VERSION    4
+#define SIF_UVERBS_ABI_MINOR_VERSION    5
 
 #define SIF_UVERBS_VERSION(x, y) ((x) << 8 | (y))
 
@@ -84,19 +84,12 @@ enum sif_mem_type {
 	SIFMT_MAX
 };
 
-enum sif_proxy_type {
-	SIFPX_OFF, /* Default value - no proxying */
-	SIFPX_EPSA_1,
-	SIFPX_EPSA_2,
-	SIFPX_EPSA_3,
-	SIFPX_EPSA_4
-};
-
 enum sif_flush_type {
 	NO_FLUSH,
 	FLUSH_SQ,
 	FLUSH_RQ
 };
+
 #endif
 
 /* These should be multiple of 64 bytes and densely packed: */

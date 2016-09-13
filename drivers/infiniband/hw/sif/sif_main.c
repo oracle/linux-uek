@@ -11,7 +11,6 @@
  * sif_main.c: main entry points and initialization
  */
 
-#include <linux/version.h>
 #include <linux/module.h>
 #ifdef CONFIG_X86
 #include <asm/mtrr.h>

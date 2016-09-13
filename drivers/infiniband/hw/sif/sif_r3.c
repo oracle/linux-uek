@@ -35,6 +35,7 @@ void sif_r3_pre_init(struct sif_dev *sdev)
 {
 	/* Init the flush_retry qp lock */
 	u8 flush_idx;
+
 	for (flush_idx = 0; flush_idx < 2; ++flush_idx)
 		mutex_init(&sdev->flush_lock[flush_idx]);
 }
@@ -71,6 +72,7 @@ flush_retry_failed:
 void sif_r3_deinit(struct sif_dev *sdev)
 {
 	u8 flush_idx;
+
 	for (flush_idx = 0; flush_idx < 2; ++flush_idx)
 		sif_hw_free_flush_qp(sdev, flush_idx);
 
@@ -583,7 +585,7 @@ int post_process_wa4074(struct sif_dev *sdev, struct sif_qp *qp)
 	}
 
 	copy_conv_to_sw(&lqqp, &qp->d, sizeof(lqqp));
-	last_seq = sq_sw->last_seq;
+	last_seq = READ_ONCE(sq_sw->last_seq);
 
 	set_bit(CQ_POLLING_NOT_ALLOWED, &cq_sw->flags);
 
@@ -687,16 +689,16 @@ flush_sq_again:
 	 * completed before generating a sq_flush_cqe.
 	 */
 	spin_lock_irqsave(&sq->lock, flags);
-	last_gen_seq = sq_sw->last_seq;
+	last_gen_seq = READ_ONCE(sq_sw->last_seq);
 	spin_unlock_irqrestore(&sq->lock, flags);
 
 	sif_log(sdev, SIF_WCE_V, "generate completion from %x to %x",
 		last_seq, last_gen_seq);
 
-	for (; (!GREATER_16(last_seq, last_gen_seq)); ++last_seq) {
+	for (; (LESS_OR_EQUAL_16(last_seq, last_gen_seq)); ++last_seq) {
 		if (unlikely(cq->entries < ((u32) (last_seq - sq_sw->head_seq)))) {
 			sif_log(sdev, SIF_INFO, "cq (%d) is  full! (len = %d, used = %d)",
-				cq->index, cq->entries, last_seq - sq_sw->head_seq - 1 );
+				cq->index, cq->entries, last_seq - sq_sw->head_seq - 1);
 			goto err_post_wa4074;
 		}
 
@@ -748,6 +750,12 @@ flush_sq_again:
 	sq_sw->trusted_seq = last_seq;
 
 check_in_flight_and_return:
+	last_gen_seq = READ_ONCE(sq_sw->last_seq);
+
+
+	if (LESS_OR_EQUAL_16(last_seq, last_gen_seq))
+		goto flush_sq_again;
+
 	if (test_and_clear_bit(FLUSH_SQ_IN_FLIGHT, &sq_sw->flags))
 		goto flush_sq_again;
 
@@ -799,21 +807,15 @@ static u16 walk_and_update_cqes(struct sif_dev *sdev, struct sif_qp *qp, u16 hea
 			last_seq = lcqe.wc_id.sq_id.sq_seq_num;
 			sif_log(sdev, SIF_WCE_V, "last_seq %x updated_seq %x lcqe.seq_num %x",
 				last_seq, updated_seq, lcqe.seq_num);
-			if (last_seq != updated_seq) {
+			if (last_seq != updated_seq)
 				lcqe.wc_id.sq_id.sq_seq_num = updated_seq;
-				if (GREATER_16(updated_seq, end)) {
-					/* A scenario might be that an additional CQE
-					 * must be generated to flush all the HW
-					 * generated completions. Thus, ignore the polling of the cqe.
-					 */
-					lcqe.seq_num = ~lcqe.seq_num;
-					sif_log(sdev, SIF_WCE_V, "corrupt: lcqe.seq_num %x",
-						lcqe.seq_num);
-					set_bit(CQ_POLLING_IGNORED_SEQ, &cq_sw->flags);
-				}
-				copy_conv_to_hw(cqe, &lcqe, sizeof(lcqe));
-			}
-			if (!GREATER_16(updated_seq, end))
+
+			if (GREATER_16(updated_seq, end))
+				lcqe.wc_id.sq_id.sq_seq_num = end;
+
+			copy_conv_to_hw(cqe, &lcqe, sizeof(lcqe));
+
+			if (LESS_OR_EQUAL_16(updated_seq, end))
 				updated_seq++;
 			++n;
 		}

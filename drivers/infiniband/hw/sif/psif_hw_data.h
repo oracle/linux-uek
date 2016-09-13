@@ -729,7 +729,8 @@ enum psif_eps_core_id {
  * \par Width
  *      32 bit
  * \par Used in
- * the parameter for the PSIF_QUERY sub-operation EPSC_QUERY_NUM_VFS and EPS_QUERY_JUMBO - set in the index field
+ * the parameter for the PSIF_QUERY sub-operation EPSC_QUERY_NUM_VFS
+ * and EPS_QUERY_JUMBO - set in the index field
  * \par Classification
  *      driver
  */

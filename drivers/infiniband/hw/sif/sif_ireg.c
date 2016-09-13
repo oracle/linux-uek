@@ -52,8 +52,12 @@ static ssize_t show_fw_ver(struct device *device,
 {
 	struct sif_dev *sdev = dev_get_drvdata(device);
 	struct sif_eps *es = &sdev->es[sdev->mbox_epsc];
+	u64 fw_ver = cpu_to_be64(es->data->dev.fw_ver);
 
-	return sprintf(buf, "%hu.%hu.0\n", es->ver.fw_major, es->ver.fw_minor);
+	return sprintf(buf, "%llu.%llu.%llu\n",
+		(fw_ver >> 32) & 0xffff,
+		(fw_ver >> 16) & 0xffff,
+		(fw_ver & 0xffff));
 }
 
 static ssize_t show_eps_api_ver(struct device *device,
@@ -694,16 +698,6 @@ static int sif_mmap(struct ib_ucontext *ib_uc, struct vm_area_struct *vma)
 	return -EOPNOTSUPP;
 }
 
-static int sif_get_protocol_stats(struct ib_device *ibdev,
-				union rdma_protocol_stats *stats)
-{
-	struct sif_dev *sdev = to_sdev(ibdev);
-
-	sif_log(sdev, SIF_VERBS, "Not implemented");
-	return -EOPNOTSUPP;
-}
-
-
 static enum rdma_link_layer sif_get_link_layer(struct ib_device *ibdev, u8 port_num)
 {
 	struct sif_dev *sdev = to_sdev(ibdev);
@@ -796,8 +790,6 @@ int sif_register_ib_device(struct sif_dev *sdev)
 	      | (1ull << IB_USER_VERBS_CMD_ALLOC_SHPD) |
 		(1ull << IB_USER_VERBS_CMD_SHARE_PD)
 	      ;
-
-	dev->get_protocol_stats = sif_get_protocol_stats;
 
 	dev->query_device = sif_query_device;
 	dev->modify_device = sif_modify_device;

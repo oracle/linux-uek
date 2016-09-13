@@ -12,7 +12,7 @@
  */
 
 #include <linux/module.h>
-#include "sif_verbs.h"
+#include <rdma/sif_verbs.h>
 #include "sif_dev.h"
 #include "sif_epsc.h"
 #include "psif_hw_data.h"

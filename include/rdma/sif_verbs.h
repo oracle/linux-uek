@@ -14,7 +14,6 @@
 #ifndef _SIF_VERBS_H
 #define _SIF_VERBS_H
 #include <rdma/ib_verbs.h>
-#include "sif_user.h"
 
 /*** sif verbs extensions ***/
 
@@ -51,16 +50,18 @@ struct sif_device_modify {
 };
 
 
-/* Extension bits in the qp create mask to ib_create_qp    */
-/* Note that we use bits below IB_QP_CREATE_RESERVED_START */
+/* Provider specific extension bits in the qp create mask to ib_create_qp.
+ * We use the uppermost bits (mostly in the IB_QP_CREATE_RESERVED_START(b.26) - END range)
+ * to avoid conflict with future upstream bits, currently occupying bits 0-8:
+ */
 enum sif_qp_create_flags {
-	IB_QP_CREATE_EOIB            = IB_QP_CREATE_RESERVED_END     ,  /* Indicate that this is an Ethernet over IB QP */
-	IB_QP_CREATE_RSS             = IB_QP_CREATE_RESERVED_END >> 1,  /* Enable receive side scaling */
-	IB_QP_CREATE_HDR_SPLIT       = IB_QP_CREATE_RESERVED_END >> 2,  /* Enable header/data split for offloading */
-	IB_QP_CREATE_RCV_DYNAMIC_MTU = IB_QP_CREATE_RESERVED_END >> 3,  /* Enable receive side dynamic mtu */
-	IB_QP_CREATE_PROXY           = IB_QP_CREATE_RESERVED_END >> 4,  /* Enable a special EPSA proxy */
-	IB_QP_NO_CSUM		     = IB_QP_CREATE_RESERVED_END >> 5,  /* No csum for qp, wqe.wr.csum = qp.magic */
-	IB_QP_CREATE_SND_DYNAMIC_MTU = IB_QP_CREATE_RESERVED_END >> 6,  /* Enable receive side dynamic mtu */
+	IB_QP_CREATE_EOIB	     = 1 << 24, /* Enable Ethernet over IB support */
+	IB_QP_CREATE_RSS             = 1 << 25,	/* Enable receive side scaling */
+	IB_QP_CREATE_HDR_SPLIT       = 1 << 26, /* Enable header/data split for offloading */
+	IB_QP_CREATE_RCV_DYNAMIC_MTU = 1 << 27, /* Enable receive side dynamic mtu */
+	IB_QP_CREATE_PROXY           = 1 << 28, /* Enable a special EPSA proxy QP */
+	IB_QP_NO_CSUM		     = 1 << 29, /* No csum for qp, wqe.wr.csum = qp.magic */
+	IB_QP_CREATE_SND_DYNAMIC_MTU = 1 << 30, /* Enable receive side dynamic mtu */
 };
 
 /* Extension bits in the qp attr mask to ib_modify_qp
@@ -75,7 +76,6 @@ enum sif_qp_attr_mask {
 	IB_QP_SND_DYN_MTU  = 1 << 29,  /* Enable send side dynamic mtu */
 };
 
-
 /* Set/get the 48 bit ethernet mac address for a port on a uf
  * The uf field is ignored for all ufs except uf 0 (PF)
  */
@@ -86,6 +86,14 @@ struct sif_dev;
 struct psif_epsc_csr_req;
 struct psif_epsc_csr_rsp;
 enum psif_mbox_type;
+
+enum sif_proxy_type {
+	SIFPX_OFF, /* Default value - no proxying */
+	SIFPX_EPSA_1,
+	SIFPX_EPSA_2,
+	SIFPX_EPSA_3,
+	SIFPX_EPSA_4
+};
 
 struct sif_verbs {
 	/* Exposed internal create_cq call to allow creation of proxy CQs.

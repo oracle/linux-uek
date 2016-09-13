@@ -657,8 +657,7 @@ void sif_dfs_print_rq_hw(struct seq_file *s, struct sif_dev *sdev, loff_t pos)
 		seq_puts(s, "\t[XRCSRQ -> CQ:");
 		seq_printf(s, "%u", rq->cq_idx);
 		seq_puts(s, "]\n");
-	}
-	else if (rq->is_srq)
+	} else if (rq->is_srq)
 		seq_puts(s, "\t[SRQ]\n");
 	else
 		seq_puts(s, "\n");
