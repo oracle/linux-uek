@@ -15,6 +15,11 @@
 #define _SIF_EQ_H
 #include "psif_hw_csr.h"
 
+/* This defines a timeout period in msecs to switch between the irq
+ * handler (sif_intr) and the threaded irq handler (sif_intr_worker)
+ */
+#define SIF_IRQ_HANDLER_TIMEOUT 20
+
 extern uint sif_cq_eq_max;
 
 struct sif_dev;

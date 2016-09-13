@@ -37,7 +37,7 @@ static void sif_eq_table_deinit(struct sif_dev *sdev, struct sif_eps *es, u16 eq
 
 static void sif_eq_deinit_tables(struct sif_dev *sdev, struct sif_eps *es);
 
-static int dispatch_eq(struct sif_eq *eq);
+static bool dispatch_eq(struct sif_eq *eq, int irq, bool interruptible);
 
 static enum ib_event_type epsc2ib_event(struct psif_eq_entry *eqe);
 
@@ -333,27 +333,32 @@ static void sif_eq_table_deinit(struct sif_dev *sdev, struct sif_eps *es, u16 eq
 	}
 }
 
+/* Kernel thread interrupt routines */
+static irqreturn_t sif_intr_worker(int irq, void *d)
+{
+	struct sif_eq *eq = (struct sif_eq *)d;
+
+	dispatch_eq(eq, irq, false);
+
+	return IRQ_HANDLED;
+}
 
 /* Interrupt routines for MSI-X */
-
 static irqreturn_t sif_intr(int irq, void *d)
 {
 	ulong start_time = jiffies;
 	ulong elapsed;
-	u32 nreqs;
 	struct sif_eq *eq = (struct sif_eq *)d;
-	struct sif_dev *sdev = eq->ba.sdev;
-	nreqs = dispatch_eq(eq);
-	sif_log(sdev, SIF_INTR,
-		"done [irq %d (eq %d) - %d events dispatched]",
-		irq, eq->index, nreqs);
+	bool wakeup_thread;
+
+	wakeup_thread = dispatch_eq(eq, irq, true);
 
 	elapsed = jiffies_to_msecs(jiffies - start_time);
 
 	if (eq->max_intr_ms < elapsed)
 		eq->max_intr_ms = elapsed;
 
-	return IRQ_HANDLED;
+	return wakeup_thread ? IRQ_WAKE_THREAD : IRQ_HANDLED;
 }
 
 /* Interrupt coalescing settings for a single channel */
@@ -447,10 +452,15 @@ static int sif_request_irq(struct sif_eq *eq)
 	int vector_num = eq->intr_vec;
 	struct sif_dev *s = eq->ba.sdev;
 	int ret = 0;
-	int flags = (s->intr_cnt !=  s->intr_req) ? IRQF_SHARED : 0;
+	unsigned long flags = (s->intr_cnt !=  s->intr_req) ? IRQF_SHARED : 0;
 
 	irq = s->msix_entries[vector_num].vector;
-	ret = request_irq(irq, &sif_intr, flags, eq->name, eq);
+
+	/* IRQF_ONESHOT flag is used since the irq line
+	 * must be disabled until the threaded handler
+	 * (sif_intr_worker) has been completed
+	 */
+	ret = request_threaded_irq(irq, &sif_intr, &sif_intr_worker, flags | IRQF_ONESHOT, eq->name, eq);
 	if (ret)
 		return ret;
 
@@ -873,12 +883,14 @@ static u32 handle_srq_event(struct sif_eq *eq, void *element, enum ib_event_type
 
 
 /* Called from interrupt threads */
-static int dispatch_eq(struct sif_eq *eq)
+static bool dispatch_eq(struct sif_eq *eq, int irq, bool interruptible)
 {
 	volatile struct psif_eq_entry *eqe;
 	struct psif_eq_entry leqe;
 	struct psif_epsc_csr_req req;
 	struct sif_dev *sdev = eq->ba.sdev;
+	ulong timeout = jiffies + msecs_to_jiffies(SIF_IRQ_HANDLER_TIMEOUT);
+	bool wakeup_thread = false;
 
 	u32 seqno;
 	u32 nreqs = 0;
@@ -891,7 +903,8 @@ static int dispatch_eq(struct sif_eq *eq)
 	seqno = eq->next_seq;
 	eqe = (struct psif_eq_entry *)get_eq_entry(eq, seqno);
 	sif_log(sdev, SIF_INTR, "eqe at %p next seq.no %x", eqe, seqno);
-	while (get_psif_eq_entry__seq_num(eqe) == seqno) {
+
+	while (get_psif_eq_entry__seq_num(eqe) == seqno && !wakeup_thread) {
 		u32 nevents = 0;
 
 		eq->next_seq++;
@@ -1048,10 +1061,16 @@ only_cne:
 		seqno = eq->next_seq;
 		eqe = (struct psif_eq_entry *)get_eq_entry(eq, seqno);
 		nreqs++;
+		/* check whether we should stop processing events */
+		wakeup_thread = interruptible ? time_after(jiffies, timeout) : false;
 	}
 	spin_unlock_irqrestore(&eq->ba.lock, flags);
 	atomic_add(nreqs, &eq->intr_cnt);
-	return nreqs;
+
+	sif_log(sdev, SIF_INTR, "done [irq %d (eq %d) - %d events dispatched]",
+		irq, eq->index, nreqs);
+
+	return wakeup_thread;
 }
 
 
