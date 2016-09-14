@@ -138,7 +138,7 @@ if [ "$tok" = "kmod" ]; then
 
                  if (v0l > v1l) {
                      if (v0h >= v1h) {
-                         d = sprintf("%x%x", v0h - v1h, v0l - v1l);
+                         d = sprintf("%08x%08x", v0h - v1h, v0l - v1l);
                      } else {
                          printf "#error Invalid addresses: %x vs %x", v0, v1 \
                                                                 >"/dev/stderr";
@@ -152,7 +152,7 @@ if [ "$tok" = "kmod" ]; then
              } else {
                  v0 = strtonum("0x"v0);
                  v1 = strtonum("0x"v1);
-                 d = sprintf("%x", v0 - v1);
+                 d = sprintf("%016x", v0 - v1);
              }
              $0 = tmp;
 
@@ -279,11 +279,11 @@ else
                  if (length(d) > 8)
                      v0h++;
 
-                 d = sprintf("%x%x", v0h, v0l);
+                 d = sprintf("%08x%08x", v0h, v0l);
              } else {
                  v0 = strtonum("0x"v0);
                  v1 = strtonum("0x"v1);
-                 d = sprintf("%x", v0 + v1);
+                 d = sprintf("%016x", v0 + v1);
              }
              $0 = tmp;
 
@@ -327,7 +327,7 @@ else
 
                  if (v0l > v1l) {
                      if (v0h >= v1h) {
-                         d = sprintf("%x%x", v0h - v1h, v0l - v1l);
+                         d = sprintf("%08x%08x", v0h - v1h, v0l - v1l);
                      } else {
                          printf "#error Invalid addresses: %x vs %x", v0, v1 \
                                                                 >"/dev/stderr";
@@ -341,7 +341,7 @@ else
              } else {
                  v0 = strtonum("0x"v0);
                  v1 = strtonum("0x"v1);
-                 d = sprintf("%x", v0 - v1);
+                 d = sprintf("%016x", v0 - v1);
              }
              $0 = tmp;
 
