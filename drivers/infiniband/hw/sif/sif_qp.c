@@ -1168,10 +1168,6 @@ static void set_qp_path_hw(struct sif_qp *qp, struct psif_epsc_csr_modify_qp *mc
 			ah_attr->grh.dgid.global.interface_id);
 	}
 
-	if (qp_attr_mask & IB_QP_TIMEOUT) {
-		path->local_ack_timeout = qp_attr->timeout;
-		sif_log(sdev, SIF_QP, " - with timeout %d", qp_attr->timeout);
-	}
 
 	sif_log(sdev, SIF_QP, "local_lid_path %d, remote_lid %d %s, QP(ipd):%d %s",
 		path->local_lid_path, path->remote_lid, (path->loopback ? "(loopback)" : ""),
@@ -1309,8 +1305,7 @@ static int modify_qp_hw(struct sif_dev *sdev, struct sif_qp *qp,
 
 	if (qp_attr_mask & IB_QP_TIMEOUT) {
 		ctrl_attr->local_ack_timeout = 1;
-		if (!(qp_attr_mask & (IB_QP_AV|IB_QP_ALT_PATH)))
-			mct->data.primary_path.local_ack_timeout = qp_attr->timeout;
+		mct->data.primary_path.local_ack_timeout = qp_attr->timeout;
 	}
 
 	if (qp_attr_mask & IB_QP_RETRY_CNT) {
@@ -1561,10 +1556,6 @@ static void set_qp_path_sw(struct sif_qp *qp, struct ib_qp_attr *qp_attr,
 			be64_to_cpu(path->remote_gid_1));
 	}
 
-	if (qp_attr_mask & IB_QP_TIMEOUT) {
-		set_psif_qp_path__local_ack_timeout(path, qp_attr->timeout);
-		sif_log(sdev, SIF_QP, " - with timeout %d", qp_attr->timeout);
-	}
 
 	qp->remote_lid = ah_attr->dlid;
 	set_psif_qp_path__remote_lid(path, ah_attr->dlid);
@@ -1720,10 +1711,10 @@ static int modify_qp_sw(struct sif_dev *sdev, struct sif_qp *qp,
 		qp->mtu = qp_attr->path_mtu;
 	}
 
-	if (!(qp_attr_mask & (IB_QP_AV|IB_QP_ALT_PATH))) {
+	if (qp_attr_mask & IB_QP_TIMEOUT) {
 		/* Set these values also if a path does not get set */
-		if (qp_attr_mask & IB_QP_TIMEOUT)
-			set_psif_qp_path__local_ack_timeout(&qps->path_a, qp_attr->timeout);
+		set_psif_qp_path__local_ack_timeout(&qps->path_a, qp_attr->timeout);
+		sif_log(sdev, SIF_QP, "timeout %d", qp_attr->timeout);
 	}
 
 	if (qp_attr_mask & IB_QP_RETRY_CNT) {
