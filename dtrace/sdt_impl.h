@@ -7,6 +7,8 @@
 
 extern struct module		*dtrace_kmod;
 
+struct sdt_argdesc;
+
 typedef struct sdt_probe {
 	dtrace_mprovider_t	*sdp_provider;	/* provider */
 	char			*sdp_name;	/* name of probe */
@@ -18,14 +20,13 @@ typedef struct sdt_probe {
 	asm_instr_t		*sdp_patchpoint;/* patch point */
 	asm_instr_t		sdp_patchval;	/* instruction to patch */
 	asm_instr_t		sdp_savedval;	/* saved instruction value */
+	struct sdt_argdesc	*sdp_argdesc;	/* arguments for this probe */
+	size_t			sdp_nargdesc;	/* number of arguments */
 	struct sdt_probe	*sdp_next;	/* next probe */
 	struct sdt_probe	*sdp_hashnext;	/* next on hash */
 } sdt_probe_t;
 
-typedef struct sdt_argdesc  {
-	char			*sda_provider;
-	char			*sda_name;
-	int			sda_ndx;
+typedef struct sdt_argdesc {
 	int			sda_mapping;
 	char			*sda_native;
 	char			*sda_xlate;
