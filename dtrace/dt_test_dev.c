@@ -106,6 +106,11 @@ static long dt_test_ioctl(struct file *file,
 
 static int dt_test_open(struct inode *inode, struct file *file)
 {
+	/*
+	 * Test translation-to-nothing.
+	 */
+	DTRACE_PROBE4(sdt__test__open__file, struct inode *,inode, int :, 666,
+		      char * : (), 0, struct file *, file);
 	return 0;
 }
 
