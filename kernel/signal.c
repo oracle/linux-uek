@@ -1003,7 +1003,8 @@ static int __send_signal(int sig, struct siginfo *info, struct task_struct *t,
 	result = TRACE_SIGNAL_IGNORED;
 	if (!prepare_signal(sig, t,
 			    from_ancestor_ns || (info == SEND_SIG_FORCED))) {
-		DTRACE_PROC2(signal__discard, struct task_struct *, t,
+		DTRACE_PROC2(signal__discard,
+			     struct task_struct * : (lwpsinfo_t *, psinfo_t *), t,
 			     int, sig);
 		goto ret;
 	}
@@ -1092,7 +1093,9 @@ out_set:
 	signalfd_notify(t, sig);
 	sigaddset(&pending->signal, sig);
 	complete_signal(sig, t, group);
-	DTRACE_PROC2(signal__send, struct task_struct *, t, int, sig);
+	DTRACE_PROC2(signal__send,
+		     struct task_struct * : (lwpsinfo_t *, psinfo_t *), t,
+		     int, sig);
 ret:
 	trace_signal_generate(sig, info, t, group, result);
 	return ret;
@@ -1587,7 +1590,9 @@ int send_sigqueue(struct sigqueue *q, struct task_struct *t, int group)
 	list_add_tail(&q->list, &pending->list);
 	sigaddset(&pending->signal, sig);
 	complete_signal(sig, t, group);
-	DTRACE_PROC2(signal__send, struct task_struct *, t, int, sig);
+	DTRACE_PROC2(signal__send,
+		     struct task_struct * : (lwpsinfo_t *, psinfo_t *), t,
+		     int, sig);
 	result = TRACE_SIGNAL_DELIVERED;
 out:
 	trace_signal_generate(sig, &q->info, t, group, result);
