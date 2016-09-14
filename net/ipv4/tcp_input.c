@@ -4431,7 +4431,7 @@ coalesce_done:
 				NET_INC_STATS(sock_net(sk),
 					      LINUX_MIB_TCPOFOMERGE);
 				tcp_drop(sk, skb1);
-				goto add_sack;
+				goto merge_right;
 			}
 		} else if (tcp_ooo_try_coalesce(sk, skb1,
 						skb, &fragstolen)) {
@@ -4444,6 +4444,7 @@ coalesce_done:
 	rb_link_node(&skb->rbnode, parent, p);
 	rb_insert_color(&skb->rbnode, &tp->out_of_order_queue);
 
+merge_right:
 	/* Remove other segments covered by skb. */
 	while ((q = rb_next(&skb->rbnode)) != NULL) {
 		skb1 = rb_entry(q, struct sk_buff, rbnode);
