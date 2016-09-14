@@ -22,7 +22,9 @@ extern void *dtrace_sdt_probes __attribute__((weak));
 
 extern void dtrace_sdt_init(void);
 extern void dtrace_sdt_register(struct module *);
-extern void dtrace_sdt_register_module(struct module *);
+extern void dtrace_sdt_register_module(struct module *,
+				       void *sdt_names_addr, size_t,
+				       void *sdt_args_addr, size_t);
 extern void dtrace_sdt_exit(void);
 
 /*

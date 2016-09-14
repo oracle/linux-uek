@@ -3572,7 +3572,15 @@ static int complete_formation(struct module *mod, struct load_info *info)
 	int err;
 
 #ifdef CONFIG_DTRACE
-	dtrace_sdt_register_module(mod);
+	void *sdt_args, *sdt_names;
+	unsigned int sdt_args_len, sdt_names_len;
+
+	sdt_names = section_objs(info, "_dtrace_sdt_names", 1,
+				 &sdt_names_len);
+	sdt_args = section_objs(info, "_dtrace_sdt_args", 1,
+				&sdt_args_len);
+	dtrace_sdt_register_module(mod, sdt_names, sdt_names_len,
+				   sdt_args, sdt_args_len);
 #endif
 
 	mutex_lock(&module_mutex);

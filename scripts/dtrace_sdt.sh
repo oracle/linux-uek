@@ -208,7 +208,7 @@ if [ "$tok" = "kmod" ]; then
 		 addr = subl(addr, 1);
 
 	     protom[alias] = 1;
-	     probev[probec] = sprintf("  {\042%s\042,  \042%s\042 /* %s */, (uintptr_t)%s+0x%s },", $4, fname, $1, alias, addr);
+	     probev[probec] = sprintf("  {\042%s\042,  \042%s\042 /* %s */, 0 /* sdt_args string */, (uintptr_t)%s+0x%s },", $4, fname, $1, alias, addr);
 	     probec++;
 
 	     next;
