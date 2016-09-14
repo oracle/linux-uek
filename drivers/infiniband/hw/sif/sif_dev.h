@@ -616,9 +616,6 @@ extern ulong sif_feature_mask;
 /* Let driver do page table walk instead of EPSC for query QP - to avoid #3583 */
 #define SIFF_passthrough_query_qp	0x4000
 
-/* Check all event queues on all interrupts */
-#define SIFF_check_all_eqs_on_intr	0x8000
-
 /* Default behavior is: Make all vlinks behave in sync with the correspondinding external port.
  * This flag turns off this behavior and the vlink state becomes unrelated to physical link.
  */
@@ -676,7 +673,7 @@ extern ulong sif_feature_mask;
 /* Configure PSIF to use the opposite base page size (e.g. 8K on x86 and 4K on sparc) */
 #define SIFF_toggle_page_size        0x40000000
 
-#define SIFF_all_features	     0x7fffddfb
+#define SIFF_all_features	     0x7fff5dfb
 
 #define sif_feature(x) (sif_feature_mask & (SIFF_##x))
 

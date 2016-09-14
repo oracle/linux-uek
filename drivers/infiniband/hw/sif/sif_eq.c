@@ -348,18 +348,6 @@ static irqreturn_t sif_intr(int irq, void *d)
 		"done [irq %d (eq %d) - %d events dispatched]",
 		irq, eq->index, nreqs);
 
-	if (sif_feature(check_all_eqs_on_intr)) {
-		int i;
-		struct sif_eps *es = &sdev->es[sdev->mbox_epsc];
-
-		sif_log(sdev, SIF_INTR, "feature check_all_eqs_on_intr - dispatching:");
-		for (i = 0; i < es->eqs.cnt; i++)
-			if (i != eq->index)
-				dispatch_eq(&es->eqs.eq[i]);
-		sif_log(sdev, SIF_INTR, "feature check_all_eqs_on_intr - dispatch done.");
-		/* Note: this feature does not check the EPSA* interrupt queues */
-	}
-
 	elapsed = jiffies_to_msecs(jiffies - start_time);
 
 	if (eq->max_intr_ms < elapsed)
