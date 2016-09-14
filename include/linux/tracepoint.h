@@ -188,6 +188,7 @@ extern void syscall_unregfunc(void);
 	static inline void trace_##name(proto)				\
 	{								\
 		DTRACE_PROBE_TRACEPOINT(name, args);			\
+		DTRACE_PROTO_TRACEPOINT(name, proto);			\
 		if (static_key_false(&__tracepoint_##name.key))		\
 			__DO_TRACE(&__tracepoint_##name,		\
 				TP_PROTO(data_proto),			\
@@ -258,6 +259,7 @@ extern void syscall_unregfunc(void);
 	static inline void trace_##name(proto)				\
 	{								\
 		DTRACE_PROBE_TRACEPOINT(name, args);			\
+		DTRACE_PROTO_TRACEPOINT(name, proto);			\
 	}								\
 	static inline void trace_##name##_rcuidle(proto)		\
 	{ }								\
