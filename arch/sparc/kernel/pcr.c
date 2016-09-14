@@ -274,6 +274,7 @@ static int __init register_perf_hsvc(void)
 			break;
 
 		case SUN4V_CHIP_SPARC_M7:
+		case SUN4V_CHIP_SPARC_S7:
 			perf_hsvc_group = HV_GRP_M7_PERF;
 			break;
 
@@ -323,6 +324,7 @@ static int __init setup_sun4v_pcr_ops(void)
 		break;
 
 	case SUN4V_CHIP_SPARC_M7:
+	case SUN4V_CHIP_SPARC_S7:
 		pcr_ops = &m7_pcr_ops;
 		break;
 

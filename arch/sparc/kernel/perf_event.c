@@ -1189,7 +1189,8 @@ static bool is_stop_counting_cycles_requested(u64 val)
 	 */
 	if (!strcmp(sparc_pmu_type, "niagara4") ||
 	    !strcmp(sparc_pmu_type, "niagara5") ||
-	    !strcmp(sparc_pmu_type, "sparc-m7")) {
+	    !strcmp(sparc_pmu_type, "sparc-m7") ||
+	    !strcmp(sparc_pmu_type, "sparc-s7")) {
 		if ((val & PCR_N4_SL) == PCR_N4_CYCLES_SELECTED)
 			ret = true;
 	}
@@ -1203,7 +1204,8 @@ static void wait_for_counter_overflow(int pcr_index)
 
 	if (!strcmp(sparc_pmu_type, "niagara4") ||
 	    !strcmp(sparc_pmu_type, "niagara5") ||
-	    !strcmp(sparc_pmu_type, "sparc-m7")) {
+	    !strcmp(sparc_pmu_type, "sparc-m7") ||
+	    !strcmp(sparc_pmu_type, "sparc-s7")) {
 		pcr = pcr_ops->read_pcr(pcr_index);
 		if (((pcr & PCR_N4_SL) == PCR_N4_CYCLES_SELECTED) &&
 		    ((pcr & PCR_N4_UTRACE) || (pcr & PCR_N4_STRACE))) {
@@ -1882,7 +1884,8 @@ static bool __init supported_pmu(void)
 		sparc_pmu = &niagara4_pmu;
 		return true;
 	}
-	if (!strcmp(sparc_pmu_type, "sparc-m7")) {
+	if (!strcmp(sparc_pmu_type, "sparc-m7") ||
+	    !strcmp(sparc_pmu_type, "sparc-s7")) {
 		sparc_pmu = &sparc_m7_pmu;
 		return true;
 	}
