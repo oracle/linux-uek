@@ -308,6 +308,9 @@ extern "C" {
 typedef struct sdt_probedesc {
 	char			*sdpd_name;	/* probe name */
 	char			*sdpd_func;	/* probe function */
+#ifndef __GENKSYMS__
+	char			*sdpd_args;	/* arg string */
+#endif
 	unsigned long		sdpd_offset;	/* offset of call in text */
 	struct sdt_probedesc	*sdpd_next;	/* next static probe */
 } sdt_probedesc_t;
