@@ -57,6 +57,11 @@ extern "C" {
 
 #else /* __KERNEL__ */
 
+#include <linux/stringify.h>
+
+#define PROBENAME_STR(str) ".ascii \"" __stringify(str) "\"\n"
+#define ARG_STR(str) ".ascii \"" __stringify(str) ",\"\n"
+
 #define	DTRACE_PROBE(name)	{					\
 	extern void __dtrace_probe_##name(void);			\
 	__dtrace_probe_##name();					\
@@ -65,17 +70,44 @@ extern "C" {
 #define	DTRACE_PROBE1(name, type1, arg1)	{			\
 	extern void __dtrace_probe_##name(uintptr_t);			\
 	__dtrace_probe_##name((uintptr_t)(arg1));			\
+	asm volatile(".pushsection _dtrace_sdt_names, \"a\", @progbits\n" \
+		     PROBENAME_STR(name)				\
+		     ".byte 0\n"					\
+		     ".popsection\n"					\
+		     ".pushsection _dtrace_sdt_args, \"a\", @progbits\n" \
+		     ARG_STR(type1)					\
+		     ".byte 0\n"					\
+		     ".popsection\n"); 					\
 }
 
 #define	DTRACE_PROBE2(name, type1, arg1, type2, arg2)	{		\
 	extern void __dtrace_probe_##name(uintptr_t, uintptr_t);	\
 	__dtrace_probe_##name((uintptr_t)(arg1), (uintptr_t)(arg2));	\
+	asm volatile(".pushsection _dtrace_sdt_names, \"a\", @progbits\n" \
+		     PROBENAME_STR(name)				\
+		     ".byte 0\n"					\
+		     ".popsection\n"					\
+		     ".pushsection _dtrace_sdt_args, \"a\", @progbits\n" \
+		     ARG_STR(type1)					\
+		     ARG_STR(type2)					\
+		     ".byte 0\n"					\
+		     ".popsection\n"); 					\
 }
 
 #define	DTRACE_PROBE3(name, type1, arg1, type2, arg2, type3, arg3) {	\
 	extern void __dtrace_probe_##name(uintptr_t, uintptr_t, uintptr_t); \
 	__dtrace_probe_##name((uintptr_t)(arg1), (uintptr_t)(arg2),	\
 	    (uintptr_t)(arg3));						\
+	asm volatile(".pushsection _dtrace_sdt_names, \"a\", @progbits\n" \
+		     PROBENAME_STR(name)				\
+		     ".byte 0\n"					\
+		     ".popsection\n"					\
+		     ".pushsection _dtrace_sdt_args, \"a\", @progbits\n" \
+		     ARG_STR(type1)					\
+		     ARG_STR(type2)					\
+		     ARG_STR(type3)					\
+		     ".byte 0\n"					\
+		     ".popsection\n"); 					\
 }
 
 #define	DTRACE_PROBE4(name, type1, arg1, type2, arg2, 			\
@@ -84,6 +116,17 @@ extern "C" {
 	    uintptr_t, uintptr_t);					\
 	__dtrace_probe_##name((uintptr_t)(arg1), (uintptr_t)(arg2),	\
 	    (uintptr_t)(arg3), (uintptr_t)(arg4));			\
+	asm volatile(".pushsection _dtrace_sdt_names, \"a\", @progbits\n" \
+		     PROBENAME_STR(name)				\
+		     ".byte 0\n"					\
+		     ".popsection\n"					\
+		     ".pushsection _dtrace_sdt_args, \"a\", @progbits\n" \
+		     ARG_STR(type1)					\
+		     ARG_STR(type2)					\
+		     ARG_STR(type3)					\
+		     ARG_STR(type4)					\
+		     ".byte 0\n"					\
+		     ".popsection\n"); 					\
 }
 
 #define	DTRACE_PROBE5(name, type1, arg1, type2, arg2, 			\
@@ -92,6 +135,18 @@ extern "C" {
 	    uintptr_t, uintptr_t, uintptr_t);				\
 	__dtrace_probe_##name((uintptr_t)(arg1), (uintptr_t)(arg2),	\
 	    (uintptr_t)(arg3), (uintptr_t)(arg4), (uintptr_t)(arg5));	\
+	asm volatile(".pushsection _dtrace_sdt_names, \"a\", @progbits\n" \
+		     PROBENAME_STR(name)				\
+		     ".byte 0\n"					\
+		     ".popsection\n"					\
+		     ".pushsection _dtrace_sdt_args, \"a\", @progbits\n" \
+		     ARG_STR(type1)					\
+		     ARG_STR(type2)					\
+		     ARG_STR(type3)					\
+		     ARG_STR(type4)					\
+		     ARG_STR(type5)					\
+		     ".byte 0\n"					\
+		     ".popsection\n"); 					\
 }
 
 #define	DTRACE_PROBE6(name, type1, arg1, type2, arg2, 			\
@@ -101,6 +156,19 @@ extern "C" {
 	__dtrace_probe_##name((uintptr_t)(arg1), (uintptr_t)(arg2),	\
 	    (uintptr_t)(arg3), (uintptr_t)(arg4), (uintptr_t)(arg5),	\
 	    (uintptr_t)(arg6));						\
+	asm volatile(".pushsection _dtrace_sdt_names, \"a\", @progbits\n" \
+		     PROBENAME_STR(name)				\
+		     ".byte 0\n"					\
+		     ".popsection\n"					\
+		     ".pushsection _dtrace_sdt_args, \"a\", @progbits\n" \
+		     ARG_STR(type1)					\
+		     ARG_STR(type2)					\
+		     ARG_STR(type3)					\
+		     ARG_STR(type4)					\
+		     ARG_STR(type5)					\
+		     ARG_STR(type6)					\
+		     ".byte 0\n"					\
+		     ".popsection\n"); 					\
 }
 
 #define	DTRACE_PROBE7(name, type1, arg1, type2, arg2, type3, arg3,	\
@@ -110,6 +178,20 @@ extern "C" {
 	__dtrace_probe_##name((uintptr_t)(arg1), (uintptr_t)(arg2),	\
 	    (uintptr_t)(arg3), (uintptr_t)(arg4), (uintptr_t)(arg5),	\
 	    (uintptr_t)(arg6), (uintptr_t)(arg7));			\
+	asm volatile(".pushsection _dtrace_sdt_names, \"a\", @progbits\n" \
+		     PROBENAME_STR(name)				\
+		     ".byte 0\n"					\
+		     ".popsection\n"					\
+		     ".pushsection _dtrace_sdt_args, \"a\", @progbits\n" \
+		     ARG_STR(type1)					\
+		     ARG_STR(type2)					\
+		     ARG_STR(type3)					\
+		     ARG_STR(type4)					\
+		     ARG_STR(type5)					\
+		     ARG_STR(type6)					\
+		     ARG_STR(type7)					\
+		     ".byte 0\n"					\
+		     ".popsection\n"); 					\
 }
 
 #define	DTRACE_PROBE8(name, type1, arg1, type2, arg2, type3, arg3,	\
@@ -120,19 +202,40 @@ extern "C" {
 	__dtrace_probe_##name((uintptr_t)(arg1), (uintptr_t)(arg2),	\
 	    (uintptr_t)(arg3), (uintptr_t)(arg4), (uintptr_t)(arg5),	\
 	    (uintptr_t)(arg6), (uintptr_t)(arg7), (uintptr_t)(arg8));	\
+	asm volatile(".pushsection _dtrace_sdt_names, \"a\", @progbits\n" \
+		     PROBENAME_STR(name)				\
+		     ".byte 0\n"					\
+		     ".popsection\n"					\
+		     ".pushsection _dtrace_sdt_args, \"a\", @progbits\n" \
+		     ARG_STR(type1)					\
+		     ARG_STR(type2)					\
+		     ARG_STR(type3)					\
+		     ARG_STR(type4)					\
+		     ARG_STR(type5)					\
+		     ARG_STR(type6)					\
+		     ARG_STR(type7)					\
+		     ARG_STR(type8)					\
+		     ".byte 0\n"					\
+		     ".popsection\n"); 					\
 }
 
 #ifdef CONFIG_DT_SDT_PERF
 
-/* This counts the number of args */
+/*
+ * This counts the number of args.
+ */
 #define DTRACE_NARGS_SEQ(_1,_2,_3,_4,_5,_6,_7,_8,_9,_10,_11,_12,_13,_14,_15,_16,_17,_18,N,...) N
 #define DTRACE_NARGS(...) DTRACE_NARGS_SEQ(__VA_ARGS__, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1)
 
-/* This will let macros expand before concating them */
+/*
+ * This will let macros expand before concatting them.
+ */
 #define DTRACE_PRIMITIVE_CAT(x, y) x ## y
 #define DTRACE_CAT(x, y) DTRACE_PRIMITIVE_CAT(x, y)
 
-/* This will call a macro on each argument passed in */
+/*
+ * This will call a macro on each argument passed in.
+ */
 #define DTRACE_APPLY(macro, ...) DTRACE_CAT(DTRACE_APPLY_, DTRACE_NARGS(__VA_ARGS__))(macro, __VA_ARGS__)
 #define DTRACE_APPLY_1(m, x1) m(x1)
 #define DTRACE_APPLY_2(m, x1, x2) m(x1), m(x2)
@@ -186,9 +289,19 @@ extern "C" {
 	__dtrace_probe___perf_##name(DTRACE_APPLY(DTRACE_UINTPTR_CAST_EACH, args));	\
 }
 
+#define DTRACE_PROTO_TRACEPOINT(name, proto...) {				\
+	asm volatile(".pushsection _dtrace_sdt_names, \"a\", @progbits\n"	\
+		     ".ascii \"" __stringify(__perf_##name) "\"\n"		\
+		     ".byte 0\n"						\
+		     ".popsection\n"						\
+		     ".pushsection _dtrace_sdt_args, \"a\", @progbits\n"	\
+		     ".asciz \"" __stringify(proto) "\"\n"			\
+		     ".popsection\n");						\
+}
 #else
 
 #define DTRACE_PROBE_TRACEPOINT(name, args...)
+#define DTRACE_PROTO_TRACEPOINT(name, proto...)
 
 #endif
 
@@ -221,6 +334,7 @@ typedef struct sdt_probedesc {
 	type4, arg4, type5, arg5, type6, arg6, type7, arg7, type8, arg8) \
 							DTRACE_PROBE(name)
 #define DTRACE_PROBE_TRACEPOINT(name, args...)
+#define DTRACE_PROTO_TRACEPOINT(name, proto)
 
 #endif /* CONFIG_DTRACE */
 
