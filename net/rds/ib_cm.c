@@ -936,8 +936,6 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 		} else if (rds_conn_state(conn) == RDS_CONN_CONNECTING) {
 			unsigned long now = get_seconds();
 
-			conn->c_reconnect_racing++;
-
 			/*
 			 * after 15 seconds, give up on existing connection
 			 * attempts and make them try again.  At this point
