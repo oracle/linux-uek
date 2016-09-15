@@ -150,12 +150,8 @@ void rds_queue_reconnect(struct rds_connection *conn)
 		rand % conn->c_reconnect_jiffies, conn->c_reconnect_jiffies,
 		conn, &conn->c_laddr, &conn->c_faddr, conn->c_tos);
 
-	if (conn->c_laddr >= conn->c_faddr)
 		queue_delayed_work(conn->c_wq, &conn->c_conn_w,
 				   rand % conn->c_reconnect_jiffies);
-	else
-		queue_delayed_work(conn->c_wq, &conn->c_conn_w,
-				   msecs_to_jiffies(100));
 
 	conn->c_reconnect_jiffies = min(conn->c_reconnect_jiffies * 2,
 					rds_sysctl_reconnect_max_jiffies);
@@ -297,7 +293,6 @@ void rds_reconnect_timeout(struct work_struct *work)
 			&conn->c_laddr, &conn->c_faddr,
 			conn->c_tos);
 		rds_conn_drop(conn, DR_RECONNECT_TIMEOUT);
-		conn->c_reconnect_racing = 0;
 	}
 }
 
@@ -315,25 +310,7 @@ void rds_shutdown_worker(struct work_struct *work)
 				conn->c_tos,
 				conn_drop_reason_str(conn->c_drop_source));
 
-	/* if racing is detected, lower IP backs off and let the higher IP
-	 * drives the reconnect (one-sided reconnect)
-	 */
-	if (conn->c_laddr < conn->c_faddr && conn->c_reconnect_racing) {
-		rds_rtd(RDS_RTD_CM,
-			"calling rds_conn_shutdown, conn %p:0 <%pI4,%pI4,%d>\n",
-			conn, &conn->c_laddr, &conn->c_faddr,
-			conn->c_tos);
-		rds_conn_shutdown(conn, 0);
-		queue_delayed_work(conn->c_wq, &conn->c_reconn_w,
-				   msecs_to_jiffies(5000));
-	} else {
-		rds_rtd(RDS_RTD_CM,
-			"calling rds_conn_shutdown, conn %p:1 <%pI4,%pI4,%d>\n",
-			conn, &conn->c_laddr, &conn->c_faddr,
-			conn->c_tos);
-		rds_conn_shutdown(conn, 1);
-	}
-
+	rds_conn_shutdown(conn, 1);
 }
 
 void rds_threads_exit(void)
