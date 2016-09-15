@@ -42,8 +42,13 @@ static const struct dentry_operations anon_inodefs_dentry_operations = {
 static struct dentry *anon_inodefs_mount(struct file_system_type *fs_type,
 				int flags, const char *dev_name, void *data)
 {
-	return mount_pseudo(fs_type, "anon_inode:", NULL,
+	struct dentry *root;
+	root =  mount_pseudo(fs_type, "anon_inode:", NULL,
 			&anon_inodefs_dentry_operations, ANON_INODE_FS_MAGIC);
+
+	if (!IS_ERR(root))
+		root->d_sb->s_iflags |= SB_I_NOEXEC;
+	return root;
 }
 
 static struct file_system_type anon_inode_fs_type = {
