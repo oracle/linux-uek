@@ -750,7 +750,6 @@ void rds_conn_drop(struct rds_connection *conn, int reason)
 		conn->c_reconnect_warn = 1;
 		conn->c_reconnect_drops = 0;
 		conn->c_reconnect_err = 0;
-		conn->c_reconnect_racing = 0;
 		printk(KERN_INFO "RDS/IB: connection "
 			"<%pI4,%pI4,%d> dropped due to '%s'\n",
 			&conn->c_laddr,
