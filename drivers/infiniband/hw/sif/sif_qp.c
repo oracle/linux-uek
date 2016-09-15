@@ -170,6 +170,8 @@ struct sif_qp *create_qp(struct sif_dev *sdev,
 	u32 flags = init_attr->create_flags;
 	u32 max_sge;
 	int min_tso_inline;
+	/* PSIF extensions */
+	bool flag_create_lso = !!(flags & (IB_QP_CREATE_IPOIB_UD_LSO | IB_QP_CREATE_EOIB));
 
 	/* In limited mode QPs are not usable and possibly hazardous as nothing is set up
 	 * avoid any creation of any such:
@@ -188,12 +190,12 @@ struct sif_qp *create_qp(struct sif_dev *sdev,
 	max_sge = SIF_HW_MAX_SEND_SGE;
 
 	/* We need to be able to add sge for stencil with LSO */
-	max_sge -= !!(flags & IB_QP_CREATE_IPOIB_UD_LSO);
+	max_sge -= flag_create_lso;
 
 	if (init_attr->cap.max_send_sge > max_sge) {
 		sif_log(sdev, SIF_INFO, "illegal max send sge %d, SIF only supports %d %s",
 			init_attr->cap.max_send_sge, max_sge,
-			flags & IB_QP_CREATE_IPOIB_UD_LSO ? "with LSO" : "");
+			flag_create_lso ? "with LSO" : "");
 		return ERR_PTR(-EINVAL);
 	}
 
@@ -243,7 +245,7 @@ struct sif_qp *create_qp(struct sif_dev *sdev,
 	 * inline_bufer = 512 - 256 -64 = 192
 	 */
 	min_tso_inline = 192;
-	if (flags & IB_QP_CREATE_IPOIB_UD_LSO) {
+	if (flag_create_lso) {
 		if (init_attr->cap.max_inline_data < min_tso_inline) {
 			sif_log(sdev, SIF_INFO,
 				"Create LSO QP; qp_%d max_sge %d inline_size %d qp_type %d; modifying max_inline_size to %d",
