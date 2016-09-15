@@ -256,10 +256,6 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 	case RDMA_CM_EVENT_REJECTED:
 		err = (int *)event->param.conn.private_data;
 
-		if (conn && event->status == RDS_REJ_CONSUMER_DEFINED &&
-		    *err <= 1)
-			conn->c_reconnect_racing++;
-
 		if (conn) {
 			if (event->status == RDS_REJ_CONSUMER_DEFINED &&
 			    (*err) == 0) {
