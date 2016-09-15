@@ -69,6 +69,9 @@
  */
 #define SIF_SW_MAX_CQE_LOG2 0x18  /* = 16 MB - tested and should cover most use cases.. */
 #define SIF_SW_MAX_CQE (1 << SIF_SW_MAX_CQE_LOG2)
+/* 768 entries for the HW duplicate completions and 1 entry for the fence completion. */
+#define SIF_SW_RESERVED_DUL_CQE (768 + 1)
+#define SIF_SW_RESERVED_LAST_CQE 1
 
 #define SIF_SW_MAX_SQE_LOG2 0xf  /* = 32K */
 #define SIF_SW_MAX_SQE (1 << SIF_SW_MAX_SQE_LOG2)
