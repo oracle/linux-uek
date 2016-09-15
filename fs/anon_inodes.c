@@ -98,6 +98,7 @@ static struct dentry *anon_inodefs_mount(struct file_system_type *fs_type,
 			deactivate_locked_super(s);
 			root = ERR_CAST(anon_inode_inode);
 		}
+		root->d_sb->s_iflags |= SB_I_NOEXEC;
 	}
 	return root;
 }
