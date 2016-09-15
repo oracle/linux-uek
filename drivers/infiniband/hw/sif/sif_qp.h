@@ -116,7 +116,7 @@ struct sif_qp {
 	u16 eps_tag;			/* Value to use for the eps_tag field (proxy_qp) */
 	short port;			/* IB port number (= sif port# + 1) */
 	u32 flags;			/* SIF specific flags */
-	enum ib_qp_state last_set_state;
+	enum ib_qp_state last_set_state; /* Best effort last known state of the QP */
 	enum psif_qp_trans type;	/* PSIF transport type set up for this QP */
 	enum ib_qp_type ib_qp_type;	/* IB QP type */
 	u32 pd_indx;

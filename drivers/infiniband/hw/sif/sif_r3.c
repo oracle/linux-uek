@@ -531,7 +531,7 @@ int pre_process_wa4074(struct sif_dev *sdev, struct sif_qp *qp)
 	return 0;
 }
 
-/* QP is in RESET state, its now safe to do a cq_walk and
+/* QP is in RESET or shadow error state, its now safe to do a cq_walk and
  * flush any completions.
  */
 int post_process_wa4074(struct sif_dev *sdev, struct sif_qp *qp)
@@ -552,6 +552,12 @@ int post_process_wa4074(struct sif_dev *sdev, struct sif_qp *qp)
 		sif_log(sdev, SIF_INFO, "sq/cq not defined for qp %d (type %s)",
 			qp->qp_idx, string_enum_psif_qp_trans(qp->type));
 		return -1;
+	}
+
+	if (unlikely(READ_ONCE(cq->in_error))) {
+		sif_log(sdev, SIF_WCE_V, "qp %d: cq %d is in error - exiting",
+			qp->qp_idx, cq->index);
+		return ret;
 	}
 
 	if (qp->flags & SIF_QPF_HW_OWNED) {

@@ -668,10 +668,14 @@ static void handle_event_work(struct work_struct *work)
 		struct sif_rq *rq = get_rq(sdev, qp);
 
 		if (rq) {
+			struct sif_cq *cq = get_sif_cq(sdev, qp->rcv_cq_indx);
 			struct sif_rq_sw *rq_sw = get_sif_rq_sw(sdev, rq->index);
 
-			/* WA #3850:if SRQ, generate LAST_WQE event */
-			if (rq->is_srq && ibqp->event_handler) {
+			if (READ_ONCE(cq->in_error))
+				sif_log(sdev, SIF_INTR, "CQ %d already in error - not flushing",
+					cq->index);
+			else if (rq->is_srq && ibqp->event_handler) {
+				/* WA #3850:if SRQ, generate LAST_WQE event */
 				struct ib_event ibe = {
 					.device = &sdev->ib_dev,
 					.event = IB_EVENT_QP_LAST_WQE_REACHED,
@@ -1018,13 +1022,31 @@ static bool dispatch_eq(struct sif_eq *eq, int irq, bool interruptible)
 			ibe.element.port_num = port_num;
 			nevents += handle_event(eq, &ibe);
 		}
+		/* Handle CQ errors early, as they may affect what we need to do on QPs */
+		if (leqe.event_status_cq_error) {
+			struct sif_cq *cq = get_sif_cq(sdev, leqe.cqd_id);
+
+			ibe.event = IB_EVENT_CQ_ERR;
+			ibe.element.cq = &get_sif_cq(sdev, leqe.cqd_id)->ibcq;
+			WRITE_ONCE(cq->in_error, true);
+			if (leqe.vendor_error == TSU_CBLD_CQ_FULL_ERR)
+				sif_log(sdev, SIF_INFO, "CQ overrun on CQ %d", cq->index);
+			else if (leqe.vendor_error == TSU_CBLD_CQ_ALREADY_IN_ERR)
+				sif_log(sdev, SIF_INTR, "CQ %d already in error event", cq->index);
+			else
+				dump_eq_entry(SIF_INFO, "Got cq_error", &leqe);
+			nevents += handle_event(eq, &ibe);
+		}
 		if (leqe.event_status_local_work_queue_catastrophic_error ||
 			leqe.event_status_xrc_domain_violation ||
 			leqe.event_status_invalid_xrceth) {
+			struct sif_qp *qp = to_sqp(ibqp);
+
+			qp->last_set_state = IB_QPS_ERR;
 			ibe.event = IB_EVENT_QP_FATAL;
 			ibe.element.qp = ibqp;
 			nevents += handle_event(eq, &ibe);
-			dump_eq_entry(SIF_INFO, "Got Fatal error", &leqe);
+			dump_eq_entry(SIF_INFO, "Got fatal QP error", &leqe);
 		}
 		if (leqe.event_status_srq_catastrophic_error) {
 			ibe.event = IB_EVENT_SRQ_ERR;
@@ -1075,12 +1097,6 @@ static bool dispatch_eq(struct sif_eq *eq, int irq, bool interruptible)
 			ibe.event = IB_EVENT_PATH_MIG;
 			ibe.element.qp = ibqp;
 			nevents += handle_event(eq, &ibe);
-		}
-		if (leqe.event_status_cq_error) {
-			ibe.event = IB_EVENT_CQ_ERR;
-			ibe.element.cq = &get_sif_cq(sdev, leqe.cqd_id)->ibcq;
-			nevents += handle_event(eq, &ibe);
-			dump_eq_entry(SIF_INFO, "Got cq_error", &leqe);
 		}
 		if (leqe.event_status_local_catastrophic_error) {
 			ibe.event = IB_EVENT_DEVICE_FATAL;

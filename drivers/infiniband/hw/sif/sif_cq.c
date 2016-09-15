@@ -918,16 +918,18 @@ int sif_req_notify_cq(struct ib_cq *ibcq, enum ib_cq_notify_flags flags)
 	int ret;
 	DECLARE_SIF_CQE_WITH_SAME_EQ(sdev, lcqe, cq->eq_idx);
 
-	sif_log(sdev, SIF_NCQ, "cq_idx %d, flags 0x%x", cq->index, flags);
-
 	memset(&wr, 0, sizeof(struct psif_wr));
 
 	if (flags & IB_CQ_SOLICITED)
 		wr.se = 1;
 
-	/* If a CQ is not valid, do not rearm the CQ. */
-	if (!get_psif_cq_hw__valid(&cq->d))
+	/* Do not rearm a CQ if it is not valid or is in error */
+	if (unlikely(!get_psif_cq_hw__valid(&cq->d) || READ_ONCE(cq->in_error))) {
+		sif_log(sdev, SIF_NCQ, "cq %d, flags 0x%x (ignored - CQ in error)", cq->index, flags);
 		return 0;
+	}
+
+	sif_log(sdev, SIF_NCQ, "cq_idx %d, flags 0x%x", cq->index, flags);
 
 	/* We should never miss events in psif so we have no need for a separate
 	 *  handling of IB_CQ_REPORT_MISSED_EVENTS - ignore it.

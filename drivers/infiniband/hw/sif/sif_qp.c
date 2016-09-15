@@ -2075,6 +2075,13 @@ int epsc_query_qp(struct sif_qp *sqp, struct psif_query_qp *lqqp)
 	else
 		memcpy(lqqp, &sqp->qqp, sizeof(*lqqp));
 
+	/* Capture if the QP went to one of the error states */
+	if (!ret) {
+		if (lqqp->qp.state == PSIF_QP_STATE_ERROR)
+			sqp->last_set_state = IB_QPS_ERR;
+		else if (lqqp->qp.state == PSIF_QP_STATE_SQERR)
+			sqp->last_set_state = IB_QPS_SQE;
+	}
 	return ret;
 }
 
@@ -2091,9 +2098,6 @@ static int sif_query_qp_hw(struct ib_qp *ibqp, struct ib_qp_attr *qp_attr,
 
 
 	ret = epsc_query_qp(qp, &lqqp);
-	if (!ret)
-		qp->last_set_state = sif2ib_qp_state(lqqp.qp.state);
-
 	if (ret)
 		return ret;
 
@@ -2291,7 +2295,7 @@ static int reset_qp(struct sif_dev *sdev, struct sif_qp *qp)
 		struct sif_cq *recv_cq = rq ? get_sif_cq(sdev, cq_idx) : NULL;
 
 
-		/* clean-up the SQ/RQ CQ before reset the SQ */
+		/* clean-up the SQ/RQ CQ before resetting the SQ */
 		if (send_cq) {
 			nfixup = sif_fixup_cqes(send_cq, sq, qp);
 			if (nfixup < 0) {

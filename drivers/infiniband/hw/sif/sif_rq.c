@@ -339,8 +339,14 @@ static void sif_flush_rq(struct work_struct *work)
 	u32 head, tail;
 	unsigned long flags;
 	enum sif_mqp_type mqp_type = SIF_MQP_SW;
-	struct sif_cq *cq = rq ? get_sif_cq(sdev, rq->cq_idx) : NULL;
+	struct sif_cq *cq = rq ? get_sif_cq(sdev, target_qp->rcv_cq_indx) : NULL;
 	DECLARE_SIF_CQE_POLL(sdev, lcqe);
+
+	if (unlikely(!rq || !cq)) {
+		sif_log(sdev, SIF_INFO, "rq/cq not defined for qp %d (type %s)",
+			target_qp->qp_idx, string_enum_psif_qp_trans(target_qp->type));
+		goto done;
+	}
 
 	/* if flush RQ is in progress, set FLUSH_RQ_IN_FLIGHT.
 	 */
@@ -399,6 +405,12 @@ static void sif_flush_rq(struct work_struct *work)
 
 		}
 		mutex_unlock(&target_qp->lock);
+
+		if (unlikely(READ_ONCE(cq->in_error))) {
+			sif_log(sdev, SIF_WCE_V, "qp %d: cq %d is in error - exiting",
+				target_qp->qp_idx, cq->index);
+			goto free_rq_error;
+		}
 
 		/* Workaround #622 v2 step 2: Invalidate RQ
 		 * Invalidation of an RQ causes PSIF to flush it's caches for that RQ.

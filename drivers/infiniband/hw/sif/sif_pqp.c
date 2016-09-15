@@ -676,11 +676,19 @@ int poll_cq_waitfor(struct sif_cqe *lcqe)
 			/* Allow some pure busy wait before we attempt to reschedule/relax */
 			if (waitcnt < 10)
 				continue;
+
 			if (!irqs_disabled())
 				cond_resched();
 			else
 				cpu_relax();
 
+			if (unlikely(READ_ONCE(pqp->qp->last_set_state) != IB_QPS_RTS)) {
+				sif_log(sdev, SIF_INFO,
+					"cq %d: poll for cqe %p failed - pqp %d not operational\n",
+					cq->index, lcqe, pqp->qp->qp_idx);
+				ret = -EINTR;
+				break;
+			}
 			if (sdev->min_resp_ticks != min_resp_ticks) {
 				/* Give us a quick way out by changing min_resp_ticks */
 				pqp->timeout -= (min_resp_ticks - sdev->min_resp_ticks) * 4;

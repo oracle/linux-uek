@@ -41,7 +41,7 @@ struct sif_cq {
 	/* lock protects the below data structure and access/freeing of sq elems */
 	spinlock_t lock ____cacheline_internodealigned_in_smp;
 	bool user_mode;  /* Set if this is a CQ to be mapped to user space */
-	bool pd_is_set;  /* Whether or not this cq has a pd set in it's descriptor */
+	bool in_error;   /* Set if the CQ has received an error event */
 	bool rcn_sent;   /* Set if ib_req_notify_cq() has been called on this cq */
 	u8 eq_idx;       /* Index of the event queue that gets completion events for this cq */
 	atomic_t error_cnt;   /* No. of error completions observed on this cq */
