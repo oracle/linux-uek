@@ -293,7 +293,6 @@ struct rds_connection {
 
 	unsigned int		c_rdsinfo_pending;
 
-	unsigned int		c_reconnect_racing;
 	unsigned int		c_route_resolved;
 
 	enum rds_conn_drop_src	c_drop_source;
