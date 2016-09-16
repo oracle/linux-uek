@@ -101,16 +101,29 @@ static long dt_test_ioctl(struct file *file,
 
 	DTRACE_PROBE(sdt__test);
 
+	/*
+	 * Test translation-to-nothing.
+	 */
+	DTRACE_PROBE(sdt__test__ioctl__file, int, cmd, int :, 666,
+		     char * : (), 0, struct file *, file, int, arg);
+
+	/*
+	 * Probes with every valid count of args.
+	 */
+	DTRACE_PROBE(sdt__test__arg1, int, 1);
+	DTRACE_PROBE(sdt__test__arg2, int, 1, int, 2);
+	DTRACE_PROBE(sdt__test__arg3, int, 1, int, 2, int, 3);
+	DTRACE_PROBE(sdt__test__arg4, int, 1, int, 2, int, 3, int, 4);
+	DTRACE_PROBE(sdt__test__arg5, int, 1, int, 2, int, 3, int, 4, int, 5);
+	DTRACE_PROBE(sdt__test__arg6, int, 1, int, 2, int, 3, int, 4, int, 5, int, 6);
+	DTRACE_PROBE(sdt__test__arg7, int, 1, int, 2, int, 3, int, 4, int, 5, int, 6, int, 7);
+	DTRACE_PROBE(sdt__test__arg8, int, 1, int, 2, int, 3, int, 4, int, 5, int, 6, int, 7, int, 8);
+
 	return -EAGAIN;
 }
 
 static int dt_test_open(struct inode *inode, struct file *file)
 {
-	/*
-	 * Test translation-to-nothing.
-	 */
-	DTRACE_PROBE4(sdt__test__open__file, struct inode *,inode, int :, 666,
-		      char * : (), 0, struct file *, file);
 	return 0;
 }
 
