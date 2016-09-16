@@ -2104,8 +2104,8 @@ long _do_fork(unsigned long clone_flags,
 		}
 
 		put_pid(pid);
-		DTRACE_PROC1(lwp__create, struct task_struct * : (lwpsinfo_t *, psinfo_t *), p);
-		DTRACE_PROC1(create, struct task_struct * : psinfo_t *, p);
+		DTRACE_PROC(lwp__create, struct task_struct * : (lwpsinfo_t *, psinfo_t *), p);
+		DTRACE_PROC(create, struct task_struct * : psinfo_t *, p);
 	} else {
 		nr = PTR_ERR(p);
 	}

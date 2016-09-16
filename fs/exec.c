@@ -1736,7 +1736,7 @@ static int do_execveat_common(int fd, struct filename *filename,
 	current->in_execve = 1;
 
 	file = do_open_execat(fd, filename, flags);
-	DTRACE_PROC1(exec, char *, filename->name);
+	DTRACE_PROC(exec, char *, filename->name);
 	retval = PTR_ERR(file);
 	if (IS_ERR(file))
 		goto out_unmark;
@@ -1841,7 +1841,7 @@ out_files:
 		reset_files_struct(displaced);
 out_ret:
 	putname(filename);
-	DTRACE_PROC1(exec__failure, int, retval);
+	DTRACE_PROC(exec__failure, int, retval);
 	return retval;
 }
 

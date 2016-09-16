@@ -1585,8 +1585,8 @@ void update_process_times(int user_tick)
 {
 	struct task_struct *p = current;
 
-	DTRACE_SCHED1(tick, struct task_struct * : (lwpsinfo_t *, psinfo_t *),
-		      p);
+	DTRACE_SCHED(tick, struct task_struct * : (lwpsinfo_t *, psinfo_t *),
+		     p);
 
 	/* Note: this timer irq context must be accounted for as well. */
 	account_process_tick(p, user_tick);
