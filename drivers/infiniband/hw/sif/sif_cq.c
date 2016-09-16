@@ -208,9 +208,12 @@ struct sif_cq *create_cq(struct sif_pd *pd, int entries,
 
 	if (alloc_sz <= SIF_MAX_CONT)
 		cq->mem = sif_mem_create_dmacont(sdev, alloc_sz, GFP_KERNEL | __GFP_ZERO, DMA_BIDIRECTIONAL);
-	else
+	else {
+		enum sif_mem_type memtype = sif_feature(no_huge_pages) ? SIFMT_4K : SIFMT_2M;
+
 		cq->mem = sif_mem_create(sdev, alloc_sz >> PMD_SHIFT,
-					alloc_sz, SIFMT_2M, GFP_KERNEL | __GFP_ZERO, DMA_BIDIRECTIONAL);
+					alloc_sz, memtype, GFP_KERNEL | __GFP_ZERO, DMA_BIDIRECTIONAL);
+	}
 	if (!cq->mem) {
 		sif_log(sdev, SIF_INFO,	"Failed to allocate %d CQ entries", entries);
 		ecq = ERR_PTR(-ENOMEM);

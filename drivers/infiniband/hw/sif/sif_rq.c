@@ -143,9 +143,12 @@ int alloc_rq(struct sif_dev *sdev, struct sif_pd *pd,
 
 	if (alloc_sz <= SIF_MAX_CONT)
 		rq->mem = sif_mem_create_dmacont(sdev, alloc_sz, GFP_KERNEL | __GFP_ZERO, DMA_BIDIRECTIONAL);
-	else
+	else {
+		enum sif_mem_type memtype = sif_feature(no_huge_pages) ? SIFMT_4K : SIFMT_2M;
+
 		rq->mem = sif_mem_create(sdev, alloc_sz >> PMD_SHIFT,
-					alloc_sz, SIFMT_2M, GFP_KERNEL | __GFP_ZERO, DMA_BIDIRECTIONAL);
+					alloc_sz, memtype, GFP_KERNEL | __GFP_ZERO, DMA_BIDIRECTIONAL);
+	}
 	if (!rq->mem) {
 		sif_log(sdev, SIF_INFO, "Failed RQ buffer pool allocation!");
 		ret = -ENOMEM;

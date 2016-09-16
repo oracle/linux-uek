@@ -167,9 +167,11 @@ int sif_alloc_sq(struct sif_dev *sdev, struct sif_pd *pd,
 	if (alloc_sz <= SIF_MAX_CONT)
 		sq->mem = sif_mem_create_dmacont(sdev, alloc_sz, GFP_KERNEL, DMA_BIDIRECTIONAL);
 	else {
+		enum sif_mem_type memtype = sif_feature(no_huge_pages) ? SIFMT_4K : SIFMT_2M;
+
 		alloc_sz = (alloc_sz + ~PMD_MASK) & PMD_MASK;
 		sq->mem = sif_mem_create(sdev, alloc_sz >> PMD_SHIFT,
-					alloc_sz, SIFMT_2M, GFP_KERNEL | __GFP_ZERO,
+					alloc_sz, memtype, GFP_KERNEL | __GFP_ZERO,
 					DMA_BIDIRECTIONAL);
 	}
 	if (!sq->mem) {
