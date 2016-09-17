@@ -888,6 +888,15 @@ rds_conn_connecting(struct rds_connection *conn)
 	return atomic_read(&conn->c_state) == RDS_CONN_CONNECTING;
 }
 
+static inline bool
+rds_conn_self_loopback_passive(struct rds_connection *conn)
+{
+	if (conn->c_laddr == conn->c_faddr && !conn->c_passive)
+		return true;
+	else
+		return false;
+}
+
 /* message.c */
 struct rds_message *rds_message_alloc(unsigned int nents, gfp_t gfp);
 struct scatterlist *rds_message_alloc_sgs(struct rds_message *rm, int nents);
