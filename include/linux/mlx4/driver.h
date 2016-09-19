@@ -74,4 +74,9 @@ int mlx4_unregister_event_notifier(struct mlx4_dev *dev,
 
 struct devlink_port *mlx4_get_devlink_port(struct mlx4_dev *dev, int port);
 
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+int mlx4_choose_vector(struct mlx4_dev *dev, int vector, int num_comp);
+void mlx4_release_vector(struct mlx4_dev *dev, int vector);
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
+
 #endif /* MLX4_DRIVER_H */
