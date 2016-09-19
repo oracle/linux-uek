@@ -49,6 +49,9 @@
 #include <linux/mlx4/doorbell.h>
 #include <linux/mlx4/qp.h>
 #include <linux/mlx4/cq.h>
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+#include <linux/mlx4/driver.h>
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 #define MLX4_IB_DRV_NAME	"mlx4_ib"
 
@@ -134,6 +137,9 @@ struct mlx4_ib_cq {
 	/* List of qps that it serves.*/
 	struct list_head		send_qp_list;
 	struct list_head		recv_qp_list;
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	int			vector;
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 };
 
 #define MLX4_MR_PAGES_ALIGN 0x40
