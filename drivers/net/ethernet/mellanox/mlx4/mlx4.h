@@ -391,6 +391,7 @@ struct mlx4_eq {
 	struct mlx4_buf_list   *page_list;
 	struct mlx4_mtt		mtt;
 	struct mlx4_eq_tasklet	tasklet_ctx;
+	u32			ncqs;
 };
 
 struct mlx4_slave_eqe {
