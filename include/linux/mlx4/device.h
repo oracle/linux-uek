@@ -891,6 +891,9 @@ struct mlx4_dev {
 	u64			regid_allmulti_array[MLX4_MAX_PORTS + 1];
 	struct mlx4_vf_dev     *dev_vfs;
 	u8  uar_page_shift;
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	spinlock_t		eq_accounting_lock;
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 };
 
 struct mlx4_adev {
