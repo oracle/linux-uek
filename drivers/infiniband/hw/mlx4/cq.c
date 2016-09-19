@@ -242,8 +242,19 @@ int mlx4_ib_create_cq(struct ib_cq *ibcq, const struct ib_cq_init_attr *attr,
 		cq->mcq.usage = MLX4_RES_USAGE_DRIVER;
 	}
 
+#ifdef WITHOUT_ORACLE_EXTENSIONS
 	if (dev->eq_table)
 		vector = dev->eq_table[vector % ibdev->num_comp_vectors];
+#else
+	if (dev->eq_table) {
+		vector = dev->eq_table[mlx4_choose_vector(dev->dev, vector,
+							  ibdev->num_comp_vectors)];
+	} else {
+		vector = mlx4_choose_vector(dev->dev, vector, ibdev->num_comp_vectors);
+	}
+
+	cq->vector = vector;
+#endif /* WITHOUT_ORACLE_EXTENSIONS */
 
 	err = mlx4_cq_alloc(dev->dev, entries, &cq->buf.mtt, uar, cq->db.dma,
 			    &cq->mcq, vector, 0,
@@ -271,6 +282,11 @@ err_cq_free:
 	mlx4_cq_free(dev->dev, &cq->mcq);
 
 err_dbmap:
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	if (dev->eq_table)
+		mlx4_release_vector(dev->dev, cq->vector);
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
+
 	if (udata)
 		mlx4_ib_db_unmap_user(context, &cq->db);
 
@@ -495,6 +511,12 @@ int mlx4_ib_destroy_cq(struct ib_cq *cq, struct ib_udata *udata)
 		mlx4_db_free(dev->dev, &mcq->db);
 	}
 	ib_umem_release(mcq->umem);
+
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	if (dev->eq_table)
+		mlx4_release_vector(dev->dev, mcq->vector);
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
+
 	return 0;
 }
 
