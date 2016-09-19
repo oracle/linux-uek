@@ -1177,6 +1177,9 @@ int mlx4_init_eq_table(struct mlx4_dev *dev)
 	int err;
 	int i;
 
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	spin_lock_init(&dev->eq_accounting_lock);
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 	priv->eq_table.uar_map = kcalloc(mlx4_num_eq_uar(dev),
 					 sizeof(*priv->eq_table.uar_map),
 					 GFP_KERNEL);
@@ -1562,3 +1565,38 @@ void mlx4_release_eq(struct mlx4_dev *dev, int vec)
 }
 EXPORT_SYMBOL(mlx4_release_eq);
 
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+int mlx4_choose_vector(struct mlx4_dev *dev, int vector, int num_comp)
+{
+	struct mlx4_eq *chosen;
+	int k;
+
+	if (vector || smp_processor_id() == (vector % num_online_cpus())) {
+		spin_lock(&dev->eq_accounting_lock);
+		mlx4_priv(dev)->eq_table.eq[vector].ncqs++;
+		spin_unlock(&dev->eq_accounting_lock);
+	} else {
+		spin_lock(&dev->eq_accounting_lock);
+		chosen = &mlx4_priv(dev)->eq_table.eq[0];
+		for (k = 0; k < num_comp; k++) {
+			if (mlx4_priv(dev)->eq_table.eq[k].ncqs < chosen->ncqs) {
+				chosen = &mlx4_priv(dev)->eq_table.eq[k];
+				vector = k;
+			}
+		}
+		chosen->ncqs++;
+		spin_unlock(&dev->eq_accounting_lock);
+	}
+
+	return vector;
+}
+EXPORT_SYMBOL(mlx4_choose_vector);
+
+void mlx4_release_vector(struct mlx4_dev *dev, int vector)
+{
+	spin_lock(&dev->eq_accounting_lock);
+	mlx4_priv(dev)->eq_table.eq[vector].ncqs--;
+	spin_unlock(&dev->eq_accounting_lock);
+}
+EXPORT_SYMBOL(mlx4_release_vector);
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
