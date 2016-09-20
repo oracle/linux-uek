@@ -41,7 +41,7 @@
 #define VLDC_DEBUG_MSG		2 /* Prints all request/response buffers */
 #define VLDC_DEBUG_STATES	4 /* Verbose look at state changes */
 #define VLDC_RESET_RETRY_STIME (15 * HZ) /* 15 seconds retry time */
-#define VLDC_RESET_RETRY_LTIME (60 * HZ) /* 30 seconds retry time */
+#define VLDC_RESET_RETRY_LTIME (60 * HZ) /* 60 seconds retry time */
 #define VLDC_RESET_RETRY_SCOUNT 25
 #define INVALID_IPMI_DEV -1
 
@@ -132,13 +132,6 @@ static unsigned int vldc_init_data(struct si_sm_data *v, struct si_sm_io *io)
 	v->state = VLDC_STATE_IDLE;
 	v->vldc_handle = INVALID_IPMI_DEV;
 
-	vldc_reset_wq = alloc_workqueue("ipmi-vldc-reset-wq", WQ_UNBOUND, 1);
-	if (vldc_reset_wq == NULL) {
-		pr_err("%s: Reset workqueue creation failed\n", __func__);
-		return -ENOMEM;
-	}
-	INIT_WORK(&(v->reset_work), vldc_reset_work);
-	init_waitqueue_head(&v->cleanup_waitq);
 	return 0;
 }
 
@@ -338,11 +331,15 @@ static enum si_sm_result vldc_event(struct si_sm_data *vldc, long time)
 
 static void vldc_cleanup(struct si_sm_data *v)
 {
+	if (!v)
+		return;
+
+	v->state = VLDC_STATE_CLEANUP;
 	if (vldc_reset_wq) {
-		v->state = VLDC_STATE_CLEANUP;
 		wake_up(&v->cleanup_waitq);
 		flush_workqueue(vldc_reset_wq);
 		destroy_workqueue(vldc_reset_wq);
+		vldc_reset_wq = NULL;
 	}
 	vldc_close(v->vldc_handle);
 	v->vldc_handle = INVALID_IPMI_DEV;
@@ -358,8 +355,10 @@ static int vldc_detect(struct si_sm_data *v)
 	int dev_handle;
 
 	if (v->vldc_handle >= 0) {
-		pr_warn("%s: Whaaa, vldc_flip already set = %d\n",
+		pr_warn("%s: vldc_handle already present = %d\n",
 		       __func__, v->vldc_handle);
+		vldc_close(v->vldc_handle);
+		v->vldc_handle = INVALID_IPMI_DEV;
 	}
 
 	dev_handle = vldc_open(VLDC_IPMI_DEV, VLDC_MODE_STREAM);
@@ -371,6 +370,17 @@ static int vldc_detect(struct si_sm_data *v)
 
 	v->vldc_handle = dev_handle;
 	pr_info("%s: Successfully opened %s\n", __func__, VLDC_IPMI_DEV);
+
+	if (vldc_reset_wq)
+		return 0;
+	vldc_reset_wq = alloc_workqueue("ipmi-vldc-reset-wq", WQ_UNBOUND, 1);
+	if (vldc_reset_wq == NULL) {
+		pr_err("%s: Reset workqueue creation failed\n", __func__);
+		return -ENOMEM;
+	}
+	INIT_WORK(&(v->reset_work), vldc_reset_work);
+	init_waitqueue_head(&v->cleanup_waitq);
+
 	return 0;
 }
 
@@ -388,7 +398,7 @@ static void vldc_reset_work(struct work_struct *work)
 		return;
 	}
 
-	/* Try in each 10 seconds for reconnection for 25 times.
+	/* Try in each 15 seconds for reconnection for 25 times.
 	 * If it is unsuccessful, then there is a good chance that something is
 	 * horribly wrong with the ILOM. Increase the timeout to 1 minute
 	 * afterwards.
