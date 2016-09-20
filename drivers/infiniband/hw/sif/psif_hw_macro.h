@@ -171,6 +171,14 @@
 #define PSIF_QP_CORE_ERROR_RETRY_COUNT_BITS	3
 #define PSIF_QP_CORE_ERROR_RETRY_COUNT_MASK	0x0000003800000000ull
 
+/*
+ * When 1, indicates that the receive queue of this QP is a shared receive
+ * queue. This bit is used by tsu_err to classify errors.
+ */
+#define PSIF_QP_CORE_CQ_IN_ERR_OFFSET	0
+#define PSIF_QP_CORE_CQ_IN_ERR_BIT_POSITION		38
+#define PSIF_QP_CORE_CQ_IN_ERR_BIT	0x0000004000000000ull
+
 /* A hit in the set locally spun out of tsu_cmpl is found. */
 #define PSIF_QP_CORE_SPIN_HIT_OFFSET	0
 #define PSIF_QP_CORE_SPIN_HIT_BIT_POSITION		39
