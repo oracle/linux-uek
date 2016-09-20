@@ -303,14 +303,24 @@ struct sif_qp *create_qp(struct sif_dev *sdev,
 	qp->mtu = IB_MTU_4096;
 	qp->type = sif_attr->qp_type;
 
-	/* TBD: Optimize this log to a single stmt */
-	if (send_cq)
-		sif_log(sdev, SIF_QP, "qpn %d, qp 0x%p send cq %d (type %s) port %d, pd %d",
-			index, qp, send_cq->index, string_enum_psif_qp_trans(qp->type),
-			qp->port, pd->idx);
-	else
-		sif_log(sdev, SIF_QP, "qpn %d, qp 0x%p [no send cq] (type %s) port %d, pd %d",
-			index, qp, string_enum_psif_qp_trans(qp->type), qp->port, pd->idx);
+	sif_logs(SIF_QP,
+		{
+			char port_str[] = "port 1,";
+			char send_cq_str[] = "send cq 16777216"; /* 16M is max */
+
+			port_str[0] = 0;
+			if (init_attr->qp_type <= IB_QPT_GSI)
+				sprintf(port_str, "port %d,", qp->port);
+			if (send_cq)
+				sprintf(send_cq_str, "send cq %d", send_cq->index);
+			else
+				sprintf(send_cq_str, "[no send cq]");
+
+			sif_log(sdev, SIF_QP, "qpn %d, qp 0x%p %s (type %s) %s pd %d",
+				index, qp, send_cq_str, string_enum_psif_qp_trans(qp->type),
+				port_str, pd->idx);
+		}
+	);
 
 	/* The PQP and XRC QPs do not have receive queues */
 	if (qp->type != PSIF_QP_TRANSPORT_MANSP1 && qp->type != PSIF_QP_TRANSPORT_XRC) {
