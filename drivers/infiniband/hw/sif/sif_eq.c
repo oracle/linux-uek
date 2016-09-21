@@ -574,7 +574,7 @@ bool sif_check_valid_eq_channel(struct sif_dev *sdev, int comp_vector)
 	return ((comp_vector >= 0) && (comp_vector <= eqs_cnt) ? true : false);
 }
 
-/* @eqe contains little endian copy of event triggering the call
+/* @eqe contains host endian copy of event triggering the call
  *   - called from interrupt level
  *  Returns the number of events handled
  */
@@ -742,12 +742,12 @@ static void handle_event_work(struct work_struct *work)
 	kfree(ew);
 }
 
-/* Generic event handler - @eqe contains little endian copy of event triggering the call
+/* Generic event handler - @eqe contains host endian copy of event triggering the call
  * ib_dispatch_event dispatches directly so we have to defer the actual dispatch
  * a better priority level via sdev->wq:
  */
 
-static u32 handle_event(struct sif_eq *eq, void *element, enum ib_event_type ev_type)
+static u32 handle_event(struct sif_eq *eq, struct ib_event *ibe)
 {
 	struct sif_dev *sdev = eq->ba.sdev;
 	struct event_work *ew = kmalloc(sizeof(struct event_work), GFP_ATOMIC);
@@ -759,13 +759,10 @@ static u32 handle_event(struct sif_eq *eq, void *element, enum ib_event_type ev_
 	}
 	memset(&ew->ibe, 0, sizeof(struct ib_event));
 	ew->ibe.device = &sdev->ib_dev;
-	ew->ibe.event = ev_type;
+	ew->ibe.event = ibe->event;
+	memcpy(&ew->ibe.element, &ibe->element, sizeof(ibe->element));
 	ew->eq = eq;
 
-	/* Assume ibe.element is a union and that our caller has
-	 * set up the right value for us (port, cq, qp or srq):
-	 */
-	ew->ibe.element.cq = element;
 	INIT_WORK(&ew->ws, handle_event_work);
 
 	sif_log(sdev, SIF_INTR, "Processing IB event type %s",
@@ -790,14 +787,14 @@ static u32 handle_epsc_event(struct sif_eq *eq, struct psif_eq_entry *eqe)
 	struct sif_dev *sdev = eq->ba.sdev;
 	struct sif_eps *es = &sdev->es[eq->eps->eps_num];
 	u32 ret = 1;
-	enum psif_event event_type;
+	struct ib_event ibe;
 
 	if (eqe->port_flags == PSIF_EVENT_EXTENSION)
-		event_type = eqe->extension_type;
+		ibe.event = eqe->extension_type;
 	else
-		event_type = eqe->port_flags;
+		ibe.event = eqe->port_flags;
 
-	switch (event_type) {
+	switch (ibe.event) {
 	case PSIF_EVENT_MAILBOX:
 		sif_log(sdev, SIF_INTR, "epsc completion event for seq.%d eps_num %d",
 			eqe->cq_sequence_number, eq->eps->eps_num);
@@ -813,12 +810,12 @@ static u32 handle_epsc_event(struct sif_eq *eq, struct psif_eq_entry *eqe)
 		break;
 	default:
 	{
-		enum ib_event_type ibe = epsc2ib_event(eqe);
+		ibe.event = epsc2ib_event(eqe);
 
-		if (ibe != (enum ib_event_type)-1) {
-			void *element = (void *)((u64) eqe->port + 1);
+		if (ibe.event != (enum ib_event_type)-1) {
+			ibe.element.port_num = eqe->port + 1;
 
-			return handle_event(eq, element, ibe);
+			return handle_event(eq, &ibe);
 		}
 		sif_log(sdev, SIF_INFO, "Unhandled epsc event of type %s::%s (%d::%u)",
 			string_enum_psif_event(eqe->port_flags),
@@ -855,13 +852,13 @@ static u32 handle_epsa_event(struct sif_eq *eq, struct psif_eq_entry *eqe)
  * then retrieve the rq_idx from the QP
  * Note: For SRQ_LIM event due to modify_srq, QP points to pQP.
  */
-static u32 handle_srq_event(struct sif_eq *eq, void *element, enum ib_event_type ev_type)
+static u32 handle_srq_event(struct sif_eq *eq, struct ib_event *ibe)
 {
-	if (element != NULL) {
+	if (ibe->element.qp != NULL) {
 		struct sif_dev *sdev = eq->ba.sdev;
-		struct sif_qp *qp = to_sqp(element);
+		struct sif_qp *qp = to_sqp(ibe->element.qp);
 		enum psif_qp_trans type = qp->type;
-		struct sif_rq *rq = (ev_type == IB_EVENT_SRQ_LIMIT_REACHED &&
+		struct sif_rq *rq = (ibe->event == IB_EVENT_SRQ_LIMIT_REACHED &&
 				     type == PSIF_QP_TRANSPORT_MANSP1) ?
 			get_sif_rq(sdev, qp->srq_idx) : get_sif_rq(sdev, qp->rq_idx);
 
@@ -869,10 +866,11 @@ static u32 handle_srq_event(struct sif_eq *eq, void *element, enum ib_event_type
 		if (atomic_dec_and_test(&qp->refcnt))
 			complete(&qp->can_destroy);
 
-		return handle_event(eq, (void *)&rq->ibsrq, ev_type);
+		ibe->element.srq = &rq->ibsrq;
+		return handle_event(eq, ibe);
 	}
 	sif_log(eq->ba.sdev, SIF_INFO, "eq %d: Discarding %s event: QP destroyed", eq->index,
-		ev_type == IB_EVENT_SRQ_ERR ? "IB_EVENT_SRQ_ERR" : "IB_EVENT_SRQ_LIMIT_REACHED");
+		ibe->event == IB_EVENT_SRQ_ERR ? "IB_EVENT_SRQ_ERR" : "IB_EVENT_SRQ_LIMIT_REACHED");
 	return 1;
 }
 
@@ -889,20 +887,22 @@ static bool dispatch_eq(struct sif_eq *eq, int irq, bool interruptible)
 	struct psif_eq_entry leqe;
 	struct psif_epsc_csr_req req;
 	struct sif_dev *sdev = eq->ba.sdev;
+	struct ib_event ibe;
+	struct ib_qp *ibqp = NULL;
 	ulong timeout = jiffies + msecs_to_jiffies(SIF_IRQ_HANDLER_TIMEOUT);
 	bool wakeup_thread = false;
-
 	u32 seqno;
 	u32 nreqs = 0;
 	ulong flags;
-	void *port_elem;
-	void *qp_elem = NULL;
+	u8 port_num;
 
 	/* Serialize event queue processing: */
 	spin_lock_irqsave(&eq->ba.lock, flags);
 	seqno = eq->next_seq;
 	eqe = (struct psif_eq_entry *)get_eq_entry(eq, seqno);
 	sif_log(sdev, SIF_INTR, "eqe at %p next seq.no %x", eqe, seqno);
+
+	memset(&ibe.element, 0, sizeof(ibe.element));
 
 	while (get_psif_eq_entry__seq_num(eqe) == seqno && !wakeup_thread) {
 		u32 nevents = 0;
@@ -935,7 +935,7 @@ static bool dispatch_eq(struct sif_eq *eq, int irq, bool interruptible)
 
 		copy_conv_to_sw(&leqe, eqe, sizeof(leqe));
 
-		port_elem = (void *)((u64) leqe.port + 1);
+		port_num = leqe.port + 1;
 
 		if (likely(leqe.event_status_cmpl_notify)) {
 			nevents += handle_completion_event(eq, &leqe);
@@ -995,7 +995,7 @@ static bool dispatch_eq(struct sif_eq *eq, int irq, bool interruptible)
 						eq->index, sif_qp_elem->qp_idx, eqe->seq_num);
 					goto only_cne;
 				}
-				qp_elem = (void *) &sif_qp_elem->ibqp;
+				ibqp = &sif_qp_elem->ibqp;
 			}
 		}
 
@@ -1003,48 +1003,92 @@ static bool dispatch_eq(struct sif_eq *eq, int irq, bool interruptible)
 			nevents += handle_epsc_event(eq, &leqe);
 		if (leqe.event_status_eps_a)
 			nevents += handle_epsa_event(eq, &leqe);
-		if (leqe.event_status_port_error)
-			nevents += handle_event(eq, port_elem, IB_EVENT_PORT_ERR);
-		if (leqe.event_status_client_registration)
-			nevents += handle_event(eq, port_elem, IB_EVENT_CLIENT_REREGISTER);
-		if (leqe.event_status_port_active)
-			nevents += handle_event(eq, port_elem, IB_EVENT_PORT_ACTIVE);
+		if (leqe.event_status_port_error) {
+			ibe.event = IB_EVENT_PORT_ERR;
+			ibe.element.port_num = port_num;
+			nevents += handle_event(eq, &ibe);
+		}
+		if (leqe.event_status_client_registration) {
+			ibe.event = IB_EVENT_CLIENT_REREGISTER;
+			ibe.element.port_num = port_num;
+			nevents += handle_event(eq, &ibe);
+		}
+		if (leqe.event_status_port_active) {
+			ibe.event = IB_EVENT_PORT_ACTIVE;
+			ibe.element.port_num = port_num;
+			nevents += handle_event(eq, &ibe);
+		}
 		if (leqe.event_status_local_work_queue_catastrophic_error ||
 			leqe.event_status_xrc_domain_violation ||
 			leqe.event_status_invalid_xrceth) {
-			nevents += handle_event(eq, qp_elem, IB_EVENT_QP_FATAL);
+			ibe.event = IB_EVENT_QP_FATAL;
+			ibe.element.qp = ibqp;
+			nevents += handle_event(eq, &ibe);
 			dump_eq_entry(SIF_INFO, "Got Fatal error", &leqe);
 		}
-		if (leqe.event_status_srq_catastrophic_error)
-			nevents += PSIF_REVISION(sdev) <= 3 ?
-				handle_srq_event(eq, qp_elem, IB_EVENT_SRQ_ERR) :
-				handle_event(eq, &get_sif_rq(sdev, leqe.rqd_id)->ibsrq, IB_EVENT_SRQ_ERR);
-		if (leqe.event_status_path_migration_request_error)
-			nevents += handle_event(eq, qp_elem, IB_EVENT_PATH_MIG_ERR);
-		if (leqe.event_status_local_access_violation_wq_error)
-			nevents += handle_event(eq, qp_elem, IB_EVENT_QP_ACCESS_ERR);
-		if (leqe.event_status_invalid_request_local_wq_error)
-			nevents += handle_event(eq, qp_elem, IB_EVENT_QP_REQ_ERR);
-		if (leqe.event_status_last_wqe_reached)
-			nevents += handle_event(eq, qp_elem,
-						IB_EVENT_QP_LAST_WQE_REACHED);
-		if (leqe.event_status_srq_limit_reached)
-			nevents += PSIF_REVISION(sdev) <= 3 ?
-				handle_srq_event(eq, qp_elem, IB_EVENT_SRQ_LIMIT_REACHED) :
-				handle_event(eq, &get_sif_rq(sdev, leqe.rqd_id)->ibsrq,
-					IB_EVENT_SRQ_LIMIT_REACHED);
-		if (leqe.event_status_communication_established)
-			nevents += handle_event(eq, qp_elem, IB_EVENT_COMM_EST);
-		if (leqe.event_status_path_migrated)
-			nevents += handle_event(eq, qp_elem, IB_EVENT_PATH_MIG);
+		if (leqe.event_status_srq_catastrophic_error) {
+			ibe.event = IB_EVENT_SRQ_ERR;
+			if (PSIF_REVISION(sdev) <= 3) {
+				ibe.element.qp = ibqp;
+				nevents += handle_srq_event(eq, &ibe);
+			} else {
+				ibe.element.srq = &get_sif_rq(sdev, leqe.rqd_id)->ibsrq;
+				nevents += handle_event(eq, &ibe);
+			}
+		}
+		if (leqe.event_status_path_migration_request_error) {
+			ibe.event = IB_EVENT_PATH_MIG_ERR;
+			ibe.element.qp = ibqp;
+			nevents += handle_event(eq, &ibe);
+		}
+		if (leqe.event_status_local_access_violation_wq_error) {
+			ibe.event = IB_EVENT_QP_ACCESS_ERR;
+			ibe.element.qp = ibqp;
+			nevents += handle_event(eq, &ibe);
+		}
+		if (leqe.event_status_invalid_request_local_wq_error) {
+			ibe.event = IB_EVENT_QP_REQ_ERR;
+			ibe.element.qp = ibqp;
+			nevents += handle_event(eq, &ibe);
+		}
+		if (leqe.event_status_last_wqe_reached) {
+			ibe.event = IB_EVENT_QP_LAST_WQE_REACHED;
+			ibe.element.qp = ibqp;
+			nevents += handle_event(eq, &ibe);
+		}
+		if (leqe.event_status_srq_limit_reached) {
+			ibe.event = IB_EVENT_SRQ_LIMIT_REACHED;
+			if (PSIF_REVISION(sdev) <= 3) {
+				ibe.element.qp = ibqp;
+				nevents += handle_srq_event(eq, &ibe);
+			} else {
+				ibe.element.srq = &get_sif_rq(sdev, leqe.rqd_id)->ibsrq;
+				nevents += handle_event(eq, &ibe);
+			}
+		}
+		if (leqe.event_status_communication_established) {
+			ibe.event = IB_EVENT_COMM_EST;
+			ibe.element.qp = ibqp;
+			nevents += handle_event(eq, &ibe);
+		}
+		if (leqe.event_status_path_migrated) {
+			ibe.event = IB_EVENT_PATH_MIG;
+			ibe.element.qp = ibqp;
+			nevents += handle_event(eq, &ibe);
+		}
 		if (leqe.event_status_cq_error) {
-			nevents += handle_event(eq, &get_sif_cq(sdev, leqe.cqd_id)->ibcq,
-						IB_EVENT_CQ_ERR);
+			ibe.event = IB_EVENT_CQ_ERR;
+			ibe.element.cq = &get_sif_cq(sdev, leqe.cqd_id)->ibcq;
+			nevents += handle_event(eq, &ibe);
 			dump_eq_entry(SIF_INFO, "Got cq_error", &leqe);
 		}
-		if (leqe.event_status_local_catastrophic_error)
-			nevents += handle_event(eq, port_elem, IB_EVENT_DEVICE_FATAL);
-
+		if (leqe.event_status_local_catastrophic_error) {
+			ibe.event = IB_EVENT_DEVICE_FATAL;
+			/* psif does not associate this event with a port
+			 *  (ibe.element union is memset to 0 initally)
+			 */
+			nevents += handle_event(eq, &ibe);
+		}
 
 		/* TBD: These are the ones that do not map directly to IB errors */
 		check_for_psif_event(event_status_port_changed);
