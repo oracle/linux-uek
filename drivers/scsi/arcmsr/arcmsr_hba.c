@@ -1807,8 +1807,8 @@ static int arcmsr_iop_message_xfer(struct AdapterControlBlock *acb,
 		int32_t my_empty_len, wqbuf_firstindex, wqbuf_lastindex;
 		uint8_t *pQbuffer, *ptmpuserbuffer;
 
-		ver_addr = kmalloc(1032, GFP_ATOMIC);
-		if (!ver_addr) {
+		user_len = pcmdmessagefld->cmdmessage.Length;
+		if (user_len > 1032) {
 			retvalue = ARCMSR_MESSAGE_FAIL;
 			goto message_out;
 		}
@@ -1819,13 +1819,13 @@ static int arcmsr_iop_message_xfer(struct AdapterControlBlock *acb,
 			pcmdmessagefld->cmdmessage.ReturnCode = 
 			ARCMSR_MESSAGE_RETURNCODE_OK;
 		}
-		ptmpuserbuffer = ver_addr;
-		user_len = pcmdmessagefld->cmdmessage.Length;
-		if (user_len > 1032) {
+		ver_addr = kmalloc(1032, GFP_ATOMIC);
+		if (!ver_addr) {
 			retvalue = ARCMSR_MESSAGE_FAIL;
-			kfree(ver_addr);
 			goto message_out;
 		}
+		ptmpuserbuffer = ver_addr;
+
 		memcpy(ptmpuserbuffer, pcmdmessagefld->messagedatabuffer, user_len);
 		wqbuf_lastindex = acb->wqbuf_lastindex;
 		wqbuf_firstindex = acb->wqbuf_firstindex;
