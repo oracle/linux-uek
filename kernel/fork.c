@@ -1390,9 +1390,11 @@ static struct task_struct *copy_process(unsigned long clone_flags,
 	}
 #endif
 #ifdef CONFIG_CPUSETS
+#ifndef __sparc_v9__
 	p->cpuset_mem_spread_rotor = NUMA_NO_NODE;
 	p->cpuset_slab_spread_rotor = NUMA_NO_NODE;
 	seqcount_init(&p->mems_allowed_seq);
+#endif
 #endif
 #ifdef CONFIG_TRACE_IRQFLAGS
 	p->irq_events = 0;

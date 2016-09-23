@@ -29,7 +29,7 @@ int vds_io_init(void)
 	 * The size of the cache object accomdate the largest possible
 	 * IO transfer initiated from either dring or descriptor mode.
 	 */
-	max_cookies = (roundup(VDS_MAX_XFER_SIZE, PAGE_SIZE) / PAGE_SIZE) + 1;
+	max_cookies = (roundup(VDS_MAX_XFER_SIZE, PAGE_SIZE) / PAGE_SIZE) + 2;
 	max_cookies = max(max_cookies, VIO_MAX_RING_COOKIES);
 	max_entry = max_cookies * sizeof(struct ldc_trans_cookie);
 
@@ -40,6 +40,7 @@ int vds_io_init(void)
 	vds_ioc_size = sizeof(struct vds_io) +
 		       max(max_dring_mode, max_desc_mode);
 
+	BUG_ON(vds_io_cache);
 	vds_io_cache = kmem_cache_create(vds_ioc_name, vds_ioc_size, 0,
 					 0, NULL);
 	if (!vds_io_cache) {
@@ -52,7 +53,9 @@ int vds_io_init(void)
 
 void vds_io_fini(void)
 {
+	BUG_ON(!vds_io_cache);
 	kmem_cache_destroy(vds_io_cache);
+	vds_io_cache = NULL;
 }
 
 /*
@@ -84,6 +87,7 @@ struct vds_io *vds_io_alloc(struct vio_driver_state *vio,
 	vdsdbg(MEM, "size=%d ioc_size=%d\n", size, vds_ioc_size);
 
 	if (size <= vds_ioc_size) {
+		BUG_ON(!vds_io_cache);
 		io = kmem_cache_zalloc(vds_io_cache, GFP_ATOMIC);
 
 		if (!io)
@@ -122,6 +126,7 @@ err:
 void vds_io_free(struct vds_io *io)
 {
 	if (io->flags & VDS_IO_CACHE) {
+		BUG_ON(!vds_io_cache);
 		kmem_cache_free(vds_io_cache, io);
 	} else {
 		kfree(io->msgbuf);
@@ -221,20 +226,23 @@ void vds_io_done(struct vds_io *io)
 	 * This means that any request which was scheduled from the
 	 * kernel workqueue AFTER the reset will execute but no response
 	 * will be sent to the client.
+	 *
+	 * The reset can be initiated by an explicit incoming request
+	 * or while processing an IO request.  Wakeup anyone waiting on
+	 * the IO list in either case.
 	 */
 	vds_vio_lock(vio, flags);
 	list_del(&io->list);
 	if (io->flags & VDS_IO_FINI)
 		INIT_LIST_HEAD(&port->io_list);
-	else
-		wake_up(&port->wait);
+	wake_up(&port->wait);
 	vds_vio_unlock(vio, flags);
 	vds_io_free(io);
 }
 
 static int vds_io_rw(struct vds_io *io)
 {
-	int err;
+	int err = 0;
 	void *buf;
 	unsigned long len;
 	struct vio_driver_state *vio = io->vio;
@@ -246,13 +254,17 @@ static int vds_io_rw(struct vds_io *io)
 	if (!to_sector(io->size))
 		return -EINVAL;
 
-	if (!port->be_ops)
-		return -EIO;
+	vds_be_rlock(port);
+
+	if (!port->be_ops) {
+		err = -EIO;
+		goto done;
+	}
 
 	len = (unsigned long)roundup(io->size, PAGE_SIZE);
 	err = vds_io_alloc_pages(io, len);
 	if (err)
-		return err;
+		goto done;
 
 	buf = page_address(io->pages);
 
@@ -269,6 +281,8 @@ static int vds_io_rw(struct vds_io *io)
 
 	vds_io_free_pages(io);
 
+done:
+	vds_be_runlock(port);
 	return err;
 }
 
@@ -517,10 +531,12 @@ int vd_op_flush(struct vds_io *io)
 	 */
 	vdsdbg(FLUSH, "VD_OP_FLUSH\n");
 	vds_io_wait(io);
+	vds_be_rlock(port);
 	if (port->be_ops)
 		rv = port->be_ops->flush(port);
 	else
 		rv = -EIO;
+	vds_be_runlock(port);
 
 	vdsdbg(FLUSH, "VD_OP_FLUSH rv=%d\n", rv);
 	return rv;
@@ -594,10 +610,12 @@ int vd_op_rw(struct vds_io *io)
 	io->size = desc->size;
 	io->offset = offset;
 
+	vds_be_rlock(port);
 	if (port->be_ops)
 		err = port->be_ops->rw(io);
 	else
 		err = -EIO;
+	vds_be_runlock(port);
 
 	if (!err && !(io->rw & WRITE))
 		err = vds_copy(vio, LDC_COPY_OUT, buf, desc, 0, 0);
@@ -619,6 +637,11 @@ int vds_be_init(struct vds_port *port)
 {
 	int i, rv;
 	bool iso;
+	enum {
+		none,
+		read,
+		write
+	} be_lock = none;
 	umode_t mode;
 	struct path path;
 	struct inode *inode;
@@ -632,6 +655,8 @@ int vds_be_init(struct vds_port *port)
 	mode = inode->i_mode;
 	path_put(&path);
 
+	vds_be_wlock(port);
+	be_lock = write;
 	if (S_ISREG(mode))
 		port->be_ops = vds_reg_get_ops();
 	else if (S_ISBLK(mode))
@@ -655,6 +680,13 @@ int vds_be_init(struct vds_port *port)
 		goto done;
 	}
 
+	/*
+	 * Downgrade to a read lock since label operations use backend
+	 * IO routines which grab the read lock.
+	 */
+	vds_be_dglock(port);
+	be_lock = read;
+
 	rv = vds_label_chk_iso(port, &iso);
 	if (rv) {
 		vdsmsg(err, "media check error\n");
@@ -676,6 +708,10 @@ int vds_be_init(struct vds_port *port)
 	vds_label_init(port);
 
 done:
+	if (be_lock == read)
+		vds_be_runlock(port);
+	else if (be_lock == write)
+		vds_be_wunlock(port);
 	if (rv)
 		vdsmsg(err, "%s: init failed (%d)\n", port->path, rv);
 
@@ -684,9 +720,13 @@ done:
 
 void vds_be_fini(struct vds_port *port)
 {
+	struct vio_driver_state *vio = &port->vio;
+
 	vds_label_fini(port);
+	vds_be_wlock(port);
 	if (port->be_ops) {
 		port->be_ops->fini(port);
 		port->be_data = NULL;
 	}
+	vds_be_wunlock(port);
 }

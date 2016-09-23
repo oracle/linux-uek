@@ -104,9 +104,9 @@ enum si_intf_state {
 #define IPMI_BT_INTMASK_ENABLE_IRQ_BIT	1
 
 enum si_type {
-    SI_KCS, SI_SMIC, SI_BT
+    SI_KCS, SI_SMIC, SI_BT, SI_VLDC
 };
-static char *si_to_str[] = { "kcs", "smic", "bt" };
+static char *si_to_str[] = { "kcs", "smic", "bt", "vldc" };
 
 #define DEVICE_NAME "ipmi_si"
 
@@ -2844,6 +2844,40 @@ static struct parisc_driver ipmi_parisc_driver = {
 };
 #endif /* CONFIG_PARISC */
 
+#ifdef CONFIG_SPARC64
+static void init_vldc(void)
+{
+	struct smi_info *info;
+	int rc;
+
+	info = smi_info_alloc();
+	if (!info)
+		return;
+
+	info->addr_source = SI_DEFAULT;
+	info->si_type = SI_VLDC;
+	info->io_setup = port_setup;
+	info->io.addr_data = 0xdead;
+	info->io.addr_type = IPMI_IO_ADDR_SPACE;
+
+	info->io.addr = NULL;
+	info->io.regspacing = DEFAULT_REGSPACING;
+	info->io.regsize = DEFAULT_REGSPACING;
+	info->io.regshift = 0;
+	rc = add_smi(info);
+	if (rc) {
+		printk(KERN_WARNING "add_smi(SI_VLDC) failed with err=%d\n", rc);
+		kfree(info);
+	}
+}
+#else
+static struct si_sm_handlers vldc_smi_handlers = { };
+
+static void init_vldc(void)
+{
+}
+#endif
+
 static int wait_for_msg_done(struct smi_info *smi_info)
 {
 	enum si_sm_result     smi_result;
@@ -3446,6 +3480,10 @@ static int try_smi_init(struct smi_info *new_smi)
 		new_smi->handlers = &bt_smi_handlers;
 		break;
 
+	case SI_VLDC:
+		new_smi->handlers = &vldc_smi_handlers;
+		break;
+
 	default:
 		/* No support for anything else yet. */
 		rv = -EIO;
@@ -3715,6 +3753,7 @@ static int init_ipmi_si(void)
 	/* poking PC IO addresses will crash machine, don't do it */
 	si_trydefaults = 0;
 #endif
+	init_vldc();
 
 	/* We prefer devices with interrupts, but in the case of a machine
 	   with multiple BMCs we assume that there will be several instances

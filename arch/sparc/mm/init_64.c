@@ -56,6 +56,7 @@
 
 #include "init_64.h"
 
+unsigned long ctx_nr_bits = DEFAULT_CTX_NR_BITS;
 unsigned long kern_linear_pte_xor[4] __read_mostly;
 static unsigned long page_cache4v_flag;
 
@@ -437,20 +438,8 @@ static void __update_mmu_tsb_insert(struct mm_struct *mm, unsigned long tsb_inde
 	tsb_insert(tsb, tag, tte);
 }
 
-#if defined(CONFIG_HUGETLB_PAGE) || defined(CONFIG_TRANSPARENT_HUGEPAGE)
-static inline bool is_hugetlb_pte(pte_t pte)
-{
-	if ((tlb_type == hypervisor &&
-	     (pte_val(pte) & _PAGE_SZALL_4V) == _PAGE_SZHUGE_4V) ||
-	    (tlb_type != hypervisor &&
-	     (pte_val(pte) & _PAGE_SZALL_4U) == _PAGE_SZHUGE_4U))
-		return true;
-	return false;
-}
-#endif
-
 #ifdef CONFIG_HUGETLB_PAGE
-unsigned int xl_hugepage_shift;
+unsigned int xl_hugepage_shift = HPAGE_SHIFT;
 static unsigned long xl_hugepage_pte;
 
 static bool is_xl_hugetlb_pte(pte_t pte)
@@ -618,10 +607,13 @@ void update_mmu_cache(struct vm_area_struct *vma, unsigned long address, pte_t *
 	spin_lock_irqsave(&mm->context.lock, flags);
 
 #if defined(CONFIG_HUGETLB_PAGE) || defined(CONFIG_TRANSPARENT_HUGEPAGE)
-	if (mm->context.huge_pte_count[MM_PTES_HUGE] && is_hugetlb_pte(pte))
+	if (mm->context.huge_pte_count[MM_PTES_HUGE] &&
+			is_default_hugetlb_pte(pte)) {
+		/* We are fabricating 8MB pages using 4MB real hw pages */
+		pte_val(pte) |= (address & (1UL << REAL_HPAGE_SHIFT));
 		__update_mmu_tsb_insert(mm, MM_TSB_HUGE, REAL_HPAGE_SHIFT,
 					address, pte_val(pte));
-	else if (mm->context.huge_pte_count[MM_PTES_XLHUGE] &&
+	} else if (mm->context.huge_pte_count[MM_PTES_XLHUGE] &&
 			is_xl_hugetlb_pte(pte))
 		__update_mmu_tsb_insert(mm, MM_TSB_XLHUGE, xl_hugepage_shift,
 			address, pte_val(pte));
@@ -936,7 +928,6 @@ EXPORT_SYMBOL(__flush_dcache_range);
 /* get_new_mmu_context() uses "cache + 1".  */
 DEFINE_SPINLOCK(ctx_alloc_lock);
 unsigned long tlb_context_cache = CTX_FIRST_VERSION - 1;
-#define MAX_CTX_NR	(1UL << CTX_NR_BITS)
 #define CTX_BMAP_SLOTS	BITS_TO_LONGS(MAX_CTX_NR)
 DECLARE_BITMAP(mmu_context_bmap, MAX_CTX_NR);
 
@@ -959,9 +950,9 @@ void get_new_mmu_context(struct mm_struct *mm)
 	spin_lock(&ctx_alloc_lock);
 	orig_pgsz_bits = (mm->context.sparc64_ctx_val & CTX_PGSZ_MASK);
 	ctx = (tlb_context_cache + 1) & CTX_NR_MASK;
-	new_ctx = find_next_zero_bit(mmu_context_bmap, 1 << CTX_NR_BITS, ctx);
+	new_ctx = find_next_zero_bit(mmu_context_bmap, 1UL << ctx_nr_bits, ctx);
 	new_version = 0;
-	if (new_ctx >= (1 << CTX_NR_BITS)) {
+	if (new_ctx >= (1UL << ctx_nr_bits)) {
 		new_ctx = find_next_zero_bit(mmu_context_bmap, ctx, 1);
 		if (new_ctx >= ctx) {
 			int i;
@@ -1020,6 +1011,58 @@ early_param("numa", early_numa);
 do {	if (numa_debug) \
 		printk(KERN_INFO f, ## a); \
 } while (0)
+
+struct memmap_entry {
+	u64 addr;	/* start of memory segment */
+	u64 size;	/* size of memory segment */
+};
+static struct memmap_entry memmap_map[64];
+static int memmap_nr;
+
+static void add_memmap_region(u64 addr, u64 size)
+{
+	if (memmap_nr >= ARRAY_SIZE(memmap_map)) {
+		pr_err("Too many entries in the memory map!\n");
+		return;
+	}
+	memmap_map[memmap_nr].addr = addr;
+	memmap_map[memmap_nr].size = size;
+	memmap_nr++;
+}
+
+static int __init setup_memmap(char *p)
+{
+	char *oldp;
+	u64 start_at, mem_size;
+
+	if (!p)
+		return -EINVAL;
+
+	if (!strncmp(p, "exactmap", 8)) {
+		pr_err("\"memmap=exactmap\" not valid on SPARC\n");
+		return 0;
+	}
+
+	oldp = p;
+	mem_size = memparse(p, &p);
+	if (p == oldp)
+		return -EINVAL;
+
+	if (*p == '@') {
+		pr_err("\"memmap=nn@ss\" (force RAM) invalid on SPARC\n");
+	} else if (*p == '#') {
+		pr_err("\"memmap=nn#ss\" (force ACPI data) invalid on SPARC\n");
+	} else if (*p == '!') {
+		pr_err("\"memmap=nn!ss\" (mark as protected) invalid on SPARC\n");
+	} else if (*p == '$') {
+		start_at = memparse(p+1, &p);
+		add_memmap_region(start_at, mem_size);
+	} else {
+		pr_err("unsupported memmap option\n");
+	}
+	return *p == '\0' ? 0 : -EINVAL;
+}
+early_param("memmap", setup_memmap);
 
 static void __init find_ramdisk(unsigned long phys_base)
 {
@@ -2175,6 +2218,7 @@ static void __init setup_page_offset(void)
 			max_phys_bits = 47;
 			break;
 		case SUN4V_CHIP_SPARC_M7:
+		case SUN4V_CHIP_SPARC_S7:
 		default:
 			/* M7 and later support 52-bit virtual addresses.  */
 			sparc64_va_hole_top =    0xfff8000000000000UL;
@@ -2392,6 +2436,7 @@ static void __init sun4v_linear_pte_xor_finalize(void)
 	 */
 	switch (sun4v_chip_type) {
 	case SUN4V_CHIP_SPARC_M7:
+	case SUN4V_CHIP_SPARC_S7:
 		pagecv_flag = 0x00;
 		break;
 	default:
@@ -2543,6 +2588,7 @@ void __init paging_init(void)
 	 */
 	switch (sun4v_chip_type) {
 	case SUN4V_CHIP_SPARC_M7:
+	case SUN4V_CHIP_SPARC_S7:
 		page_cache4v_flag = _PAGE_CP_4V;
 		break;
 	default:
@@ -2610,6 +2656,12 @@ void __init paging_init(void)
 	if (cmdline_memory_size)
 		reduce_memory(cmdline_memory_size);
 
+	/* Reserve any memory excluded by "memmap" arguments. */
+	for (i = 0; i < memmap_nr; ++i) {
+		struct memmap_entry *m = &memmap_map[i];
+		memblock_remove(m->addr, m->size);
+	}
+
 	memblock_allow_resize();
 	memblock_dump_all();
 
@@ -2653,6 +2705,7 @@ void __init paging_init(void)
 		mdesc_fill_in_cpu_data(cpu_all_mask);
 #endif
 		mdesc_get_page_sizes(cpu_all_mask, &cpu_pgsz_mask);
+		mdesc_get_mmu_ctx_bits(cpu_all_mask, &ctx_nr_bits);
 
 		sun4v_linear_pte_xor_finalize();
 
@@ -3262,9 +3315,10 @@ void hugetlb_setup(struct pt_regs *regs, unsigned int tsb_index)
 	 * the Data-TLB for huge pages.
 	 */
 	if (tlb_type == cheetah_plus) {
+		bool need_context_reload = false;
 		unsigned long ctx;
 
-		spin_lock(&ctx_alloc_lock);
+		spin_lock_irq(&ctx_alloc_lock);
 		ctx = mm->context.sparc64_ctx_val;
 		ctx &= ~CTX_PGSZ_MASK;
 		ctx |= CTX_PGSZ_BASE << CTX_PGSZ0_SHIFT;
@@ -3283,9 +3337,12 @@ void hugetlb_setup(struct pt_regs *regs, unsigned int tsb_index)
 			 * also executing in this address space.
 			 */
 			mm->context.sparc64_ctx_val = ctx;
-			on_each_cpu(context_reload, mm, 0);
+			need_context_reload = true;
 		}
-		spin_unlock(&ctx_alloc_lock);
+		spin_unlock_irq(&ctx_alloc_lock);
+
+		if (need_context_reload)
+			on_each_cpu(context_reload, mm, 0);
 	}
 }
 #endif
@@ -3345,6 +3402,24 @@ static void __init kernel_lds_init(void)
 	bss_resource.end    = compute_kern_paddr(_end - 1);
 }
 
+static struct resource* __init
+insert_ram_resource(u64 start_pfn, u64 end_pfn, bool reserved)
+{
+	struct resource *res =
+		kzalloc(sizeof(struct resource), GFP_ATOMIC);
+	if (!res)
+		return NULL;
+	res->name = reserved ? "Reserved" : "System RAM";
+	res->start = start_pfn << PAGE_SHIFT;
+	res->end = (end_pfn << PAGE_SHIFT) - 1;
+	res->flags = IORESOURCE_BUSY | IORESOURCE_MEM;
+	if (insert_resource(&iomem_resource, res)) {
+		kfree(res);
+		return NULL;
+	}
+	return res;
+}
+
 static int __init report_memory(void)
 {
 	int i;
@@ -3373,6 +3448,13 @@ static int __init report_memory(void)
 		insert_resource(res, &code_resource);
 		insert_resource(res, &data_resource);
 		insert_resource(res, &bss_resource);
+	}
+
+	/* Mark any "memmap" regions busy for the resource manager. */
+	for (i = 0; i < memmap_nr; ++i) {
+		struct memmap_entry *m = &memmap_map[i];
+		insert_ram_resource(PFN_DOWN(m->addr),
+				    PFN_UP(m->addr + m->size - 1), 1);
 	}
 
 	return 0;

@@ -431,6 +431,7 @@ sun4v_chip_type:
 	 cmp	%g2, 'M'
 	be,pt	%xcc, 70f
 	 cmp	%g2, 'S'
+	be,pt	%xcc, 71f
 	bne,pn	%xcc, 49f
 	 nop
 
@@ -453,12 +454,18 @@ sun4v_chip_type:
 	cmp	%g2, '8'
 	be,pt	%xcc, 5f
 	 mov	SUN4V_CHIP_SPARC_M8, %g4
-	cmp	%g2, 'N'
-	be,pt	%xcc, 5f
-	 mov	SUN4V_CHIP_SPARC_SN, %g4
 	ba,pt	%xcc, 49f
 	 nop
-
+71:
+	ldub	[%g1 + 7], %g2
+	cmp	%g2, '7'
+	be,pt	%xcc, 5f
+	 mov	SUN4V_CHIP_SPARC_S7, %g4
+	cmp	%g2, '8'
+	be,pt	%xcc, 5f
+	 mov	SUN4V_CHIP_SPARC_S8, %g4
+	ba,pt	%xcc, 49f
+	 nop
 91:	sethi	%hi(prom_cpu_compatible), %g1
 	or	%g1, %lo(prom_cpu_compatible), %g1
 	ldub	[%g1 + 17], %g2
@@ -618,6 +625,9 @@ niagara_tlb_fixup:
 	be,pt	%xcc, niagara4_patch
 	 nop
 	cmp	%g1, SUN4V_CHIP_SPARC_M7
+	be,pt	%xcc, niagara4_patch
+	 nop
+	cmp	%g1, SUN4V_CHIP_SPARC_S7
 	be,pt	%xcc, niagara4_patch
 	 nop
 

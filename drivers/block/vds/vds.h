@@ -19,6 +19,7 @@
 #include <linux/device-mapper.h>
 #include <linux/sysfs.h>
 #include <linux/wait.h>
+#include <linux/rwsem.h>
 
 #include <asm/vio.h>
 #include <asm/ldc.h>
@@ -45,6 +46,7 @@ struct vds_port {
 	u64			seq;
 	const char		*path;
 	void			*msgbuf;
+	struct rw_semaphore	be_lock;
 	struct vds_be_ops	*be_ops;	/* backend ops */
 	void			*be_data;
 	struct mutex		label_lock;
@@ -58,6 +60,7 @@ struct vds_port {
 };
 
 #define	VDS_PORT_SEQ		0x1
+#define	VDS_PORT_FINI		0x2
 
 static inline struct vds_port *to_vds_port(struct vio_driver_state *vio)
 {
@@ -102,15 +105,49 @@ int vds_vtoc_get(struct vds_port *port);
 int vds_vtoc_set(struct vds_port *port, struct vio_disk_vtoc *vtoc);
 int vds_vtoc_clear(struct vds_port *port);
 
+/*
+ * Backend r/w lock blocks changes to the backend state
+ * while there are outstanding IO operations against that backend.
+ */
+#define	vds_be_rlock(p)						\
+	do {							\
+		vdsdbg(LOCK, "backend rlock\n");		\
+		down_read(&(p)->be_lock);			\
+	} while (0)
+
+#define	vds_be_runlock(p)					\
+	do {							\
+		vdsdbg(LOCK, "backend runlock\n");		\
+		up_read(&(p)->be_lock);				\
+	} while (0)
+
+#define	vds_be_wlock(p)						\
+	do {							\
+		vdsdbg(LOCK, "backend wlock\n");		\
+		down_write(&(p)->be_lock);			\
+	} while (0)
+
+#define	vds_be_wunlock(p)					\
+	do {							\
+		vdsdbg(LOCK, "backend wunlock\n");		\
+		up_write(&(p)->be_lock);			\
+	} while (0)
+
+#define	vds_be_dglock(p)					\
+	do {							\
+		vdsdbg(LOCK, "backend downgrade lock\n");	\
+		downgrade_write(&(p)->be_lock);			\
+	} while (0)
+
 #define	vds_label_lock(p, v)					\
 	do {							\
-		vdsdbg(LOCK, "label lock\n");	\
+		vdsdbg(LOCK, "label lock\n");			\
 		mutex_lock(&(p)->label_lock);			\
 	} while (0)
 
 #define	vds_label_unlock(p, v)					\
 	do {							\
-		vdsdbg(LOCK, "label unlock\n");	\
+		vdsdbg(LOCK, "label unlock\n");			\
 		mutex_unlock(&(p)->label_lock);			\
 	} while (0)
 

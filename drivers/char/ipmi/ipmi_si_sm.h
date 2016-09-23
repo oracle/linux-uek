@@ -138,4 +138,7 @@ struct si_sm_handlers {
 extern struct si_sm_handlers kcs_smi_handlers;
 extern struct si_sm_handlers smic_smi_handlers;
 extern struct si_sm_handlers bt_smi_handlers;
+#ifdef CONFIG_SPARC64
+extern struct si_sm_handlers vldc_smi_handlers;
+#endif
 

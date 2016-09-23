@@ -76,14 +76,15 @@ void flush_tsb_user(struct tlb_batch *tb)
 
 	spin_lock_irqsave(&mm->context.lock, flags);
 
-	base = (unsigned long) mm->context.tsb_block[MM_TSB_BASE].tsb;
-	nentries = mm->context.tsb_block[MM_TSB_BASE].tsb_nentries;
-	if (tlb_type == cheetah_plus || tlb_type == hypervisor)
-		base = __pa(base);
-	__flush_tsb_one(tb, PAGE_SHIFT, base, nentries);
-
+	if (!tb->default_huge) {
+		base = (unsigned long) mm->context.tsb_block[MM_TSB_BASE].tsb;
+		nentries = mm->context.tsb_block[MM_TSB_BASE].tsb_nentries;
+		if (tlb_type == cheetah_plus || tlb_type == hypervisor)
+			base = __pa(base);
+		__flush_tsb_one(tb, PAGE_SHIFT, base, nentries);
+	}
 #if defined(CONFIG_HUGETLB_PAGE) || defined(CONFIG_TRANSPARENT_HUGEPAGE)
-	if (mm->context.tsb_block[MM_TSB_HUGE].tsb) {
+	if (tb->default_huge && mm->context.tsb_block[MM_TSB_HUGE].tsb) {
 		base = (unsigned long) mm->context.tsb_block[MM_TSB_HUGE].tsb;
 		nentries = mm->context.tsb_block[MM_TSB_HUGE].tsb_nentries;
 		if (tlb_type == cheetah_plus || tlb_type == hypervisor)
@@ -92,7 +93,7 @@ void flush_tsb_user(struct tlb_batch *tb)
 	}
 #endif
 #ifdef	CONFIG_HUGETLB_PAGE
-	if (mm->context.tsb_block[MM_TSB_XLHUGE].tsb) {
+	if (!tb->default_huge && mm->context.tsb_block[MM_TSB_XLHUGE].tsb) {
 		base = (unsigned long) mm->context.tsb_block[MM_TSB_XLHUGE].tsb;
 		nentries = mm->context.tsb_block[MM_TSB_XLHUGE].tsb_nentries;
 		base = __pa(base);
@@ -102,20 +103,22 @@ void flush_tsb_user(struct tlb_batch *tb)
 	spin_unlock_irqrestore(&mm->context.lock, flags);
 }
 
-void flush_tsb_user_page(struct mm_struct *mm, unsigned long vaddr)
+void flush_tsb_user_page(struct mm_struct *mm, unsigned long vaddr,
+			bool default_huge)
 {
 	unsigned long nentries, base, flags;
 
 	spin_lock_irqsave(&mm->context.lock, flags);
 
-	base = (unsigned long) mm->context.tsb_block[MM_TSB_BASE].tsb;
-	nentries = mm->context.tsb_block[MM_TSB_BASE].tsb_nentries;
-	if (tlb_type == cheetah_plus || tlb_type == hypervisor)
-		base = __pa(base);
-	__flush_tsb_one_entry(base, vaddr, PAGE_SHIFT, nentries);
-
+	if (!default_huge) {
+		base = (unsigned long) mm->context.tsb_block[MM_TSB_BASE].tsb;
+		nentries = mm->context.tsb_block[MM_TSB_BASE].tsb_nentries;
+		if (tlb_type == cheetah_plus || tlb_type == hypervisor)
+			base = __pa(base);
+		__flush_tsb_one_entry(base, vaddr, PAGE_SHIFT, nentries);
+	}
 #if defined(CONFIG_HUGETLB_PAGE) || defined(CONFIG_TRANSPARENT_HUGEPAGE)
-	if (mm->context.tsb_block[MM_TSB_HUGE].tsb) {
+	if (default_huge && mm->context.tsb_block[MM_TSB_HUGE].tsb) {
 		base = (unsigned long) mm->context.tsb_block[MM_TSB_HUGE].tsb;
 		nentries = mm->context.tsb_block[MM_TSB_HUGE].tsb_nentries;
 		if (tlb_type == cheetah_plus || tlb_type == hypervisor)
@@ -124,7 +127,7 @@ void flush_tsb_user_page(struct mm_struct *mm, unsigned long vaddr)
 	}
 #endif
 #ifdef	CONFIG_HUGETLB_PAGE
-	if (mm->context.tsb_block[MM_TSB_XLHUGE].tsb) {
+	if (!default_huge && mm->context.tsb_block[MM_TSB_XLHUGE].tsb) {
 		base = (unsigned long) mm->context.tsb_block[MM_TSB_XLHUGE].tsb;
 		nentries = mm->context.tsb_block[MM_TSB_XLHUGE].tsb_nentries;
 		base = __pa(base);

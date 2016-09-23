@@ -8,6 +8,7 @@
 #include <linux/string.h>
 #include <linux/init.h>
 #include <asm/oplib.h>
+#include <asm/setup.h>
 
 /* WARNING: The boot loader knows that these next three variables come one right
  *          after another in the .data section.  Do not move this stuff into
@@ -17,13 +18,12 @@
 /* We limit BARG_LEN to 1024 because this is the size of the
  * 'barg_out' command line buffer in the SILO bootloader.
  */
-#define BARG_LEN 1024
 struct {
 	int bootstr_len;
 	int bootstr_valid;
-	char bootstr_buf[BARG_LEN];
+	char bootstr_buf[COMMAND_LINE_SIZE];
 } bootstr_info = {
-	.bootstr_len = BARG_LEN,
+	.bootstr_len = COMMAND_LINE_SIZE,
 #ifdef CONFIG_CMDLINE
 	.bootstr_valid = 1,
 	.bootstr_buf = CONFIG_CMDLINE,
@@ -37,7 +37,7 @@ prom_getbootargs(void)
 	if (bootstr_info.bootstr_valid)
 		return bootstr_info.bootstr_buf;
 	prom_getstring(prom_chosen_node, "bootargs",
-		       bootstr_info.bootstr_buf, BARG_LEN);
+		       bootstr_info.bootstr_buf, COMMAND_LINE_SIZE);
 	bootstr_info.bootstr_valid = 1;
 	return bootstr_info.bootstr_buf;
 }

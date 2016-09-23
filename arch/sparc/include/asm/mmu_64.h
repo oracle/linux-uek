@@ -5,9 +5,11 @@
 #include <asm/page.h>
 #include <asm/hypervisor.h>
 
-#define CTX_NR_BITS		13
+#define MAX_CTX_NR_BITS			16
+#define DEFAULT_CTX_NR_BITS		13
 
-#define TAG_CONTEXT_BITS	((_AC(1,UL) << CTX_NR_BITS) - _AC(1,UL))
+#define MAX_CTX_NR		(_AC(1, UL) << MAX_CTX_NR_BITS)
+#define TAG_CONTEXT_BITS	((_AC(1, UL) << ctx_nr_bits) - _AC(1, UL))
 
 /* UltraSPARC-III+ and later have a feature whereby you can
  * select what page size the various Data-TLB instances in the

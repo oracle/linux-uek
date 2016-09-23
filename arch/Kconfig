@@ -87,6 +87,7 @@ config KPROBES_ON_FTRACE
 
 config UPROBES
 	def_bool n
+	depends on ARCH_SUPPORTS_UPROBES
 	select PERCPU_RWSEM
 	help
 	  Uprobes is the user-space counterpart to kprobes: they

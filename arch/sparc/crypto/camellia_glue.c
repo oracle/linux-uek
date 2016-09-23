@@ -18,6 +18,8 @@
 
 #include "opcodes.h"
 
+#define CFR_CAMELLIA   _AC(0x0000000000000008,UL) /* Supports CAMELLIA opcodes*/
+
 #define CAMELLIA_MIN_KEY_SIZE        16
 #define CAMELLIA_MAX_KEY_SIZE        32
 #define CAMELLIA_BLOCK_SIZE          16

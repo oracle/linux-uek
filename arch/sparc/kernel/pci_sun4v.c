@@ -26,6 +26,7 @@
 #include "iommu_common.h"
 
 #include "pci_sun4v.h"
+#include "priq_sun4v.h"
 
 #define DRIVER_NAME	"pci_sun4v"
 #define PFX		DRIVER_NAME ": "
@@ -1009,7 +1010,8 @@ static const struct sparc64_msiq_ops pci_sun4v_msiq_ops = {
 
 static void pci_sun4v_msi_init(struct pci_pbm_info *pbm)
 {
-	sparc64_pbm_msi_init(pbm, &pci_sun4v_msiq_ops);
+	if (pci_sun4v_priq_msi_init(pbm))
+		sparc64_pbm_msi_init(pbm, &pci_sun4v_msiq_ops);
 }
 #else /* CONFIG_PCI_MSI */
 static void pci_sun4v_msi_init(struct pci_pbm_info *pbm)

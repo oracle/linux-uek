@@ -76,6 +76,8 @@
 #define HV_ECHANNEL			16 /* Invalid LDC channel          */
 #define HV_EBUSY			17 /* Resource busy                */
 
+#define HV_EUNBOUND			19 /* Resource is unbound	   */
+
 /* mach_exit()
  * TRAP:	HV_FAST_TRAP
  * FUNCTION:	HV_FAST_MACH_EXIT
@@ -3009,6 +3011,652 @@ unsigned long sun4v_m7_set_perfreg(unsigned long reg_num,
 				      unsigned long reg_val);
 #endif
 
+/* priq_unconf()
+ * TRAP:	HV_FAST_TRAP
+ * FUNCTION:	PRIQ_UNCONF
+ * ARG0:	id
+ * RET0:	status
+ * ERRORS:	EINVAL		Invalid id.
+ * EBUSY:	EBUSY		Interrupt sources are bound to the PRIQ
+ *				or the PRIQ is bound to a CPU.
+ *
+ * This service unconfigures a previously configured Priority Interrupt
+ * Queue (PRIQ). The service will fail if any interrupt sources are bound
+ * to the PRIQ or if the PRIQ is bound to a CPU.
+ */
+#define HV_FAST_PRIQ_UNCONF	0x1d2
+
+/* priq_bind()
+ * TRAP:	HV_FAST_TRAP
+ * FUNCTION:	PRIQ_BIND
+ * ARG0:	id
+ * ARG1:	cpuid
+ * ARG2:	pil
+ * RET0:	status
+ * ERRORS:	EINVAL		Invalid id or pil value.
+ * ENOCPU:	ENOCPU		Invalid cpuid value.
+ *
+ * This service binds a previously configured Priority Interrupt
+ * Queue (PRIQ) specified by id to the CPU specified by cpuid and interrupt
+ * priority (softint level) specified by pil.
+ *
+ * If the PRIQ is not empty, the appropriate level interrupt will be triggered
+ * upon successful completion of this service.
+ */
+#define HV_FAST_PRIQ_BIND	0x1d3
+
+/* priq_bind_info()
+ * TRAP:	HV_FAST_TRAP
+ * FUNCTION:	PRIQ_BIND_INFO
+ * ARG0:	id
+ * RET0:	status
+ * RET1:	cpuid
+ * RET2:	pil
+ * ERRORS:	EINVAL		Invalid id.
+ *		EUNBOUND	The PRIQ is unbound.
+ *
+ * This service queries the previously configured Priority Interrupt
+ * Queue (PRIQ) for its binding information. The PRIQ must be configured
+ * and bound.
+ */
+#define HV_FAST_PRIQ_BIND_INFO	0x1d4
+
+/* priq_unbind()
+ * TRAP:	HV_FAST_TRAP
+ * FUNCTION:	PRIQ_UNBIND
+ * ARG0:	id
+ * RET0:	status
+ * ERRORS:	EINVAL		Invalid id.
+ *		EUNBOUND	The PRIQ is unbound.
+ *
+ * This service unbinds the the previously configured and bound Priority
+ * Interrupt Queue (PRIQ) from its CPU.
+ */
+#define HV_FAST_PRIQ_UNBIND	0x1d5
+
+/* priq_get_head_tail()
+ * TRAP:	HV_FAST_TRAP
+ * FUNCTION:	PRIQ_GET_HEAD_TAIL
+ * ARG0:	id
+ * RET0:	status
+ * RET1:	head
+ * REG2:	tail
+ * ERRORS:	EINVAL		Invalid id value.
+ *
+ * This service returns the head and tail offsets associated with the
+ * previously configured Priority Interrupt Queue (PRIQ).
+ */
+#define HV_FAST_PRIQ_GET_HEAD_TAIL 0x1d6
+
+/* priq_set_head()
+ * TRAP:	HV_FAST_TRAP
+ * FUNCTION:	HV_PRIQ_SET_HEAD
+ * ARG0:	id
+ * ARG1:	head
+ * RET0:	status
+ * ERRORS:	EINVAL		Invalid id or head offset value.
+ *
+ * This service sets the head offset of the the previously configured Priority
+ * Interrupt Queue (PRIQ) to the value specified by head.
+ *
+ * If the PRIQ is not empty after the update, the appropriate level interrupt
+ * will be triggered upon successful completion of this service.
+ */
+#define HV_FAST_PRIQ_SET_HEAD	0x1d7
+
+/* priq_status()
+ * TRAP:	HV_FAST_TRAP
+ * FUNCTION:	HV_PRIQ_STATUS
+ * ARG0:	id
+ * RET0:	status
+ * RET1:	priq_status
+ * ERRORS:	EINVAL		Invalid id value
+ *
+ * This service returns the status of the the previously configured Priority
+ * Interrupt Queue (PRIQ).
+ */
+#define HV_FAST_PRIQ_STATUS	0x1d8
+#define	PRIQ_STATUS_OK		0x0
+#define	PRIQ_STATUS_OVERFLOW	0x1		/* XXX check this */
+
+/* priq_conf()
+ * TRAP:	HV_FAST_TRAP
+ * FUNCTION:	HV_FAST_PRIQ_CONF
+ * ARG0:	type
+ * ARG1:	arg		(cpuid or devhandle)
+ * ARG2:	raddr
+ * ARG3:	nentries
+ * RET0:	status
+ * RET1:	id
+ * ERRORS:	EINVAL		Invalid nentries, type, or arg
+ *		ENORADDR	Invalid raddr
+ *		EBADALIGN	Improperly aligned raddr
+ *		ETOOMANY	No PRIQs available of the specified type
+ *
+ * This service is used to configure a Priority Interrupt Queue (PRIQ). The
+ * queue will be configured to start at real address raddr and contain nentries
+ * 64-byte records. The queue must be size aligned.
+ *
+ * Upon successful completion, the queue will be configured, its head and tail
+ * offsets will be initialized to equal values to indicate an empty queue, the
+ * PRIQ status will be set to PRIQ_STATUS_OK, and a PRIQ identifier id will
+ * be returned.
+ *
+ * The type parameter specifies the type of PRIQ. The arg parameter depends on
+ * the type of the queue.
+ * PRIQ_CPU - A PRIQ associated with a CPU. The argument must be a valid cpu ID.
+ * PRIQ_PCI - A PRIQ associated with a PCI root complex. The argument must be
+ *	      a valid devhandle of a PCI root complex.
+ *
+ * The PRIQ configured is associated with the resource indicated by the type
+ * and arg parameters and must be unconfigured if that resource is removed
+ * from the guest.
+ *
+ * XXX NOTE
+ *  Since last examining HV source PRIQ_CPU is defined but not implemented.
+ */
+#define HV_FAST_PRIQ_CONF	0x1d9
+#define PRIQ_CPU	0x01
+#define	PRIQ_PCI	0x02
+
+/* priq_info()
+ * TRAP:	HV_FAST_TRAP
+ * FUNCTION:	HV_FAST_PRIQ_INFO
+ * ARG0:	id
+ * RET0:	status
+ * RET1:	type
+ * RET2:	arg
+ * RET3:	raddr
+ * RET4:	nentries
+ * ERRORS:	EINVAL		Invalid id.
+ *
+ * This service is used to query the configuration of a previously configured
+ * Priority Interrupt Queue (PRIQ).
+ */
+#define HV_FAST_PRIQ_INFO	0x1da
+
+#ifndef __ASSEMBLY__
+struct hv_priq_info {
+	unsigned long	type;
+	unsigned long	arg;
+	unsigned long	raddr;
+	unsigned long	nentries;
+};
+#endif	/* !__ASSEMBLY__ */
+#define	HV_PRIQ_INFO_TYPE_OFFSET	0x00
+#define HV_PRIQ_INFO_ARG_OFFSET		0x08
+#define HV_PRIQ_INFO_RADDR_OFFSET	0x10
+#define HV_PRIQ_INFO_NENTRIES_OFFSET	0x18
+
+/* pci_priq_err_bind()
+ * TRAP:	HV_FAST_TRAP
+ * FUNCTION:	HV_FAST_PCI_PRIQ_ERR_BIND
+ * ARG0:	devhandle
+ * ARG1:	errtype
+ * ARG2:	priq_id
+ * RET0:	status
+ * ERRORS:	EINVAL		Invalid devhandle, errtype, or priq_id value
+ *
+ * This service binds error reporting for the error source specified by the
+ * argument errtype for the root complex defined by the argument devhandle to
+ * the Priority Interrupt Queue (PRIQ) specified by priq_id.
+ *
+ * The error reporting is enabled separately, see Section 24.5.23,
+ * "pci_priq_err_enable" .
+ */
+#define HV_FAST_PCI_PRIQ_ERR_BIND	0x1db
+
+/* pci_priq_err_info()
+ * TRAP:	HV_FAST_TRAP
+ * FUNCTION:	HV_FAST_PCI_PRIQ_ERR_INFO
+ * ARG0:	devhandle
+ * ARG1:	errtype
+ * RET0:	status
+ * RET1:	priq_id
+ * RET2:	enabled
+ * ERRORS:	EINVAL		Invalid devhandle or errtype value.
+ *
+ * This service queries the PRIQ binding and enabled state of errors specified
+ * by the argument errtype for the root complex defined by the argument
+ * devhandle.
+ *
+ * If successful, priq_id indicates the PRIQ to which the errors are bound and
+ * enabled is non-zero if they are enabled.
+ */
+#define HV_FAST_PCI_PRIQ_ERR_INFO	0x1dc
+
+#ifndef __ASSEMBLY__
+struct hv_pci_priq_err_info {
+	unsigned long	priq_id;
+	unsigned long	enabled;
+};
+#endif	/* !__ASSEMBLY__ */
+#define	HV_PCI_PRIQ_ERR_INFO_PRIQ_ID_OFFSET	0x00
+#define HV_PCI_PRIQ_ERR_INFO_ENABLED_OFFSET	0x08
+
+/* pci_priq_err_unbind()
+ * TRAP:	HV_FAST_TRAP
+ * FUNCTION:	HV_FAST_PCI_PRIQ_UNBIND
+ * ARG0:	devhandle
+ * ARG1:	errtype
+ * RET0:	status
+ * ERRORS:	EINVAL		Invalid devhandle, errtype value.
+ *		EUNBOUND	The errors are not bound to a PRIQ.
+ *
+ * This service unbinds errors specified the argument errtype for the root
+ * complex defined by the argument devhandle from a PRIQ.
+ *
+ * The errors are disabled as a result of this service.
+ */
+#define HV_FAST_PCI_PRIQ_ERR_UNBIND	0x1dd
+
+/* pci_priq_err_enable()
+ * TRAP:	HV_FAST_TRAP
+ * FUNCTION:	HV_FAST_PCI_PRIQ_ERR_ENABLE
+ * ARG0:	devhandle
+ * ARG1:	errtype
+ * RET0:	status
+ * ERRORS:	EINVAL		Invalid devhandle or errtype value.
+ *		EUNBOUND	The errors are not bound to a PRIQ.
+ *
+ * This service enables errors specified by the argument errtype in the root
+ * complex specified by devhandle.
+ */
+#define HV_FAST_PCI_PRIQ_ERR_ENABLE	0x1de
+
+/* pci_priq_err_disable()
+ * TRAP:	HV_FAST_TRAP
+ * FUNCTION:	HV_FAST_PCI_PRIQ_ERR_DISABLE
+ * ARG0:	devhandle
+ * ARG1:	errtype
+ * RET0:	status
+ * ERRORS:	EINVAL		Invalid devhandle or errtype value.
+ *
+ * This service disables the errors specified by the argument errtype in the
+ * root complex specified by devhandle.
+ */
+#define HV_FAST_PCI_PRIQ_ERR_DISABLE	0x1df
+
+/* pci_priq_msi_bind()
+ * TRAP:	HV_FAST_TRAP
+ * FUNCTION:	HV_FAST_PCI_PRIQ_MSI_BIND
+ * ARG0:	devhandle
+ * ARG1:	msinum
+ * ARG2:	rid
+ * ARG3:	priq_id
+ * RET0:	status
+ * ERRORS:	EINVAL		Invalid devhandle, msinum, rid, or priq_id.
+ *
+ * This service binds MSI defined by the arguments devhandle, msinum, and rid
+ * to the Priority Interrupt Queue (PRIQ) specified by priq_id.
+ *
+ * The argument rid is the PCI Requester ID of the PCI function that will
+ * generate the MSI.
+ *
+ * The MSI is enabled separately, see Section 24.5.4, "pci_priq_msi_enable"
+ *
+ * If the endpoint is a PCI/X endpoint, the rid value must be the RID as seen
+ * in the root complex when the MSI is received. That value may not be the
+ * same as the RID of the endpoint device.
+ */
+#define HV_FAST_PCI_PRIQ_MSI_BIND	0x1e0
+
+/* pci_priq_msi_info()
+ * TRAP:	HV_FAST_TRAP
+ * FUNCTION:	HV_FAST_PCI_PRIQ_MSI_INFO
+ * ARG0:	devhandle
+ * ARG1:	msinum
+ * ARG2:	rid
+ * RET0:	status
+ * RET1:	priq_id
+ * RET2:	enabled
+ * ERRORS:	EINVAL		Invalid id.
+ *
+ * This service queries the PRIQ binding and enabled state of the MSI specified
+ * by the arguments devhandle, msinum, and rid.
+ *
+ * If successful, priq_id indicates the PRIQ to which the MSI is bound and
+ * enabled is non-zero if the MSI is enabled.
+ *
+ * Implementation Note
+ * The rid value may not be validated depending on the implementation.
+ */
+#define HV_FAST_PCI_PRIQ_MSI_INFO	0x1e1
+
+#ifndef __ASSEMBLY__
+struct hv_pci_msi_info {
+	unsigned long	priq_id;
+	unsigned long	enabled;
+};
+#endif	/* !__ASSEMBLY__ */
+#define HV_PCI_MSI_INFO_PRIQ_ID_OFFSET		0x00
+#define	HV_PCI_MSI_INFO_PRIQ_ENABLE_OFFSET	0x08
+
+/* pci_priq_msi_unbind()
+ * TRAP:	HV_FAST_TRAP
+ * FUNCTION:	HV_FAST_PCI_PRIQ_MSI_UNBIND
+ * ARG0:	devhandle
+ * ARG1:	msinum
+ * ARG2:	rid
+ * RET0:	status
+ * ERRORS:	EINVAL		Invalid devhandle, msinum, or rid.
+ *		EUNBOUND	The MSI is not bound to a PRIQ.
+ *
+ * This service unbinds the MSI specified by the arguments devhandle, msinum,
+ * and rid from a PRIQ.
+ *
+ * The MSI is disabled as a result of this service.
+ *
+ * Implementation Note
+ * The rid value may not be validated depending on the implementation.
+ */
+#define HV_FAST_PCI_PRIQ_MSI_UNBIND	0x1e2
+
+/* pci_priq_msi_enable()
+ * TRAP:	HV_FAST_TRAP
+ * FUNCTION:	HV_FAST_PCI_PRIQ_MSI_ENABLE
+ * ARG0:	devhandle
+ * ARG1:	msinum
+ * ARG2:	rid
+ * RET0:	status
+ * ERRORS:	EINVAL		Invalid devhandle, msinum, or rid.
+ *		EUNBOUND	The MSI is not bound to a PRIQ.
+ *
+ * This service enables the MSI specified by the arguments devhandle, msinum,
+ * and rid to generate PRIQ interrupts.
+ *
+ * MSIs are implemented as memory writes to addresses designated by software
+ * and firmware. Enabling an MSI makes the address valid for the MSI when
+ * accessed by the specified RID. Depending on the implementation, generation
+ * of the MSI when it has not been enabled may cause errors to be reported by
+ * the hardware. For example, DMA errors or I/O address translation errors may
+ * be reported.
+ *
+ * Upon success, the MSI state for the MSI is set to PCI_MSI_DELIVERED prior
+ * to enabling the MSI.
+ *
+ * Implementation Note
+ * The rid value may not be validated depending on the implementation.
+ */
+#define HV_FAST_PCI_PRIQ_MSI_ENABLE	0x1e3
+
+/* pci_priq_msi_disable()
+ * TRAP:	HV_FAST_TRAP
+ * FUNCTION:	HV_FAST_PCI_PRIQ_MSI_DISABLE
+ * ARG0:	devhandle
+ * ARG1:	msinum
+ * ARG2:	rid
+ * RET0:	status
+ * ERRORS:	EINVAL		Invalid devhandle, msinum, or rid.
+ *		EUNBOUND	The MSI is not bound to a PRIQ.
+ *
+ * This service disables the MSI specified by the arguments devhandle, msinum,
+ * and rid.
+ *
+ * Programming Note
+ * Depending on the system implementation, an error may occur if an MSI is
+ * received when it is disabled. Setting the MSI state to MSI_STATE_DELIVERED
+ * to prevent further interrupts may be preferable.
+ *
+ * Implementation Note
+ * The rid value may not be validated depending on the implementation.
+ */
+#define HV_FAST_PCI_PRIQ_MSI_DISABLE	0x1e4
+
+/* pci_priq_msi_getstate()
+ * TRAP:	HV_FAST_TRAP
+ * FUNCTION:	HV_FAST_PCI_PRIQ_MSI_GETSTATE
+ * ARG0:	devhandle
+ * ARG1:	msinum
+ * ARG2:	rid
+ * RET0:	status
+ * RET1:	msistate
+ * ERRORS:	EINVAL		Invalid devhandle, msinum, or rid.
+ *		EUNBOUND	The MSI is not bound to a PRIQ.
+ *
+ * This service queries the current MSI State (msistate) for the MSI
+ * specified by the arguments devhandle, msinum, and rid.
+ *
+ * Implementation Note
+ * The rid value may not be validated depending on the implementation.
+ */
+#define HV_FAST_PCI_PRIQ_MSI_GETSTATE	0x1e5
+
+/* pci_priq_msi_setstate()
+ * TRAP:	HV_FAST_TRAP
+ * FUNCTION:	HV_FAST_PCI_PRIQ_MSI_SETSTATE
+ * ARG0:	devhandle
+ * ARG1:	msinum
+ * ARG2:	rid
+ * ARG3:	msistate
+ * RET0:	status
+ * ERRORS:	EINVAL		Invalid devhandle, msinum, or rid.
+ *		EUNBOUND	The MSI is not bound to a PRIQ.
+ *
+ * This service sets the current MSI State (msistate) for the MSI specified
+ * by the arguments devhandle, msinum, and rid.
+ *
+ * Implementation Note
+ * The rid value may not be validated depending on the implementation.
+ */
+#define HV_FAST_PCI_PRIQ_MSI_SETSTATE	0x1e6
+
+/* pci_priq_msg_bind()
+ * TRAP:	HV_FAST_TRAP
+ * FUNCTION:	HV_FAST_PCI_PRIQ_MSG_BIND
+ * ARG0:	devhandle
+ * ARG1:	msgtype
+ * ARG2:	priq_id
+ * RET0:	status
+ * ERRORS:	EINVAL		Invalid devhandle, msgtype, or priq_id.
+ *
+ * This service binds PCIe messages of type msgtype for the root complex
+ * defined by the argument devhandle to the Priority Interrupt Queue (PRIQ)
+ * specified by priq_id.
+ *
+ */
+#define HV_FAST_PCI_PRIQ_MSG_BIND	0x1f0
+
+/* pci_priq_msg_info()
+ * TRAP:	HV_FAST_TRAP
+ * FUNCTION:	HV_FAST_PCI_PRIQ_MSG_INFO
+ * ARG0:	devhandle
+ * ARG1:	msgtype
+ * RET0:	status
+ * RET1:	priq_id
+ * RET2:	enabled
+ * ERRORS:	EINVAL		Invalid devhandle or msgtype
+ *		EUNBOUND	The message type is not bound to a PRIQ.
+ *
+ * This service queries the PRIQ binding and enabled state of PCIe messages
+ * specified by the argument msgtype for the root complex defined by the
+ * argument devhandle.
+ *
+ * If successful, priq_id indicates the PRIQ to which the messages are bound
+ * and enabled is non-zero if the messages are enabled.
+ */
+#define HV_FAST_PCI_PRIQ_MSG_INFO	0x1f1
+
+#ifndef __ASSEMBLY__
+struct hv_pci_priq_msg_info {
+	unsigned long	priq_id;
+	unsigned long	enabled;
+};
+#endif	/* !__ASSEMBLY__ */
+#define HV_PCI_PRIQ_MSG_INFO_PRIQ_ID_OFFSET	0x00
+#define	HV_PCI_PRIQ_MSG_INFO_ENABLED_OFFSET	0x08
+
+/* pci_priq_msg_unbind()
+ * TRAP:	HV_FAST_TRAP
+ * FUNCTION:	HV_FAST_PCI_PRIQ_MSG_UNBIND
+ * ARG0:	devhandle
+ * ARG1:	msgtype
+ * RET0:	status
+ * ERRORS:	EINVAL		Invalid devhandle, msgtype.
+ *		EUNBOUND	The message type is not bound to a PRIQ.
+ *
+ * This service unbinds PCIe messages specified the argument msgtype for the
+ * root complex defined by he argument devhandle from a PRIQ.
+ *
+ * The messages are disabled as a result of this service.
+ */
+#define HV_FAST_PCI_PRIQ_MSG_UNBIND	0x1f2
+
+/* pci_priq_msg_enable()
+ * TRAP:	HV_FAST_TRAP
+ * FUNCTION:	HV_FAST_PCI_PRIQ_MSG_ENABLE
+ * ARG0:	devhandle
+ * ARG1:	msgtype
+ * RET0:	status
+ * ERRORS:	EINVAL		Invalid devhandle or msgtype.
+ *		EUNBOUND	The message type is not bound to a PRIQ.
+ *
+ * This service enables the PCIe messages specified by the argument msgtype
+ * in the root complex specified by devhandle.
+ */
+#define HV_FAST_PCI_PRIQ_MSG_ENABLE	0x1f3
+
+/* pci_priq_msg_disable()
+ * TRAP:	HV_FAST_TRAP
+ * FUNCTION:	HV_FAST_PCI_PRIQ_MSG_DISABLE
+ * ARG0:	devhandle
+ * ARG1:	msgtype
+ * RET0:	status
+ * ERRORS:	EINVAL		Invalid devhandle or msgtype.
+ *
+ * This service disables the PCIe messages specified by the argument msgtype
+ * in the root complex specified by devhandle.
+ */
+#define HV_FAST_PCI_PRIQ_MSG_DISABLE	0x1f4
+
+#define	HV_PCI_INTX_CLEAR	0x00UL
+#define HV_PCI_INTX_SET		0x01UL
+
+/* pci_priq_intx_bind()
+ * TRAP:	HV_FAST_TRAP
+ * FUNCTION:	HV_FAST_PCI_PRIQ_INTX_BIND
+ * ARG0:	devhandle
+ * ARG1:	intx
+ * ARG2:	priq_id
+ * RET0:	status
+ * ERRORS:	EINVAL		Invalid devhandle, intx, or priq_id.
+ *
+ * This service binds INTx interrupts specified by intx for the root complex
+ * defined by the argument devhandle to the Priority Interrupt Queue (PRIQ)
+ * specified by priq_id.
+ *
+ * The INTx interrupt is enabled separately, see Section 24.5.16,
+ * âpci_priq_intx_enableâ.
+ */
+#define HV_FAST_PCI_PRIQ_INTX_BIND	0x1f5
+
+/* pci_priq_intx_info()
+ * TRAP:	HV_FAST_TRAP
+ * FUNCTION:	HV_FAST_PCI_PRIQ_INTX_INFO
+ * ARG0:	devhandle
+ * ARG1:	intx
+ * RET0:	status
+ * RET1:	priq_id
+ * RET2:	enabled
+ * ERRORS:	EINVAL		Invalid devhandle or intx value.
+ *		EUNBOUND	The INTx interrupts are not bound to a PRIQ.
+ *
+ * This service queries the PRIQ binding and enabled state of INTx interrupts
+ * specified by the argument intx for the root complex defined by the argument
+ * devhandle.
+ *
+ * If successful, priq_id indicates the PRIQ to which the INTx interrupts are
+ * bound and enabled is non-zero if they are enabled.
+ */
+#define HV_FAST_PCI_PRIQ_INTX_INFO	0x1f6
+
+#ifndef	__ASSEMBLY__
+struct hv_pci_priq_intx_info {
+	unsigned long	priq_id;
+	unsigned long	enabled;
+};
+#endif	/* !__ASSEMBLY__ */
+#define	HV_PCI_PRIQ_INTX_INFO_PRIQ_ID_OFFSET	0x00
+#define	HV_PCI_PRIQ_INTX_INFO_ENABLED_OFFSET	0x08
+
+/* pci_priq_intx_unbind()
+ * TRAP:	HV_FAST_TRAP
+ * FUNCTION:	HV_FAST_PCI_PRIQ_INTX_UNBIND
+ * ARG0:	devhandle
+ * ARG1:	intx
+ * RET0:	status
+ * ERRORS:	EINVAL		Invalid devhandle or intx value.
+ *		EUNBOUND	The INTx interrupts are not bound to a PRIQ.
+ *
+ * This service unbinds INTx interrupts specified the argument intx for the
+ * root complex defined by the argument devhandle from a PRIQ.
+ *
+ * The INTx interrupts are disabled as a result of this service.
+ */
+#define HV_FAST_PCI_PRIQ_INTX_UNBIND	0x1f7
+
+/* pci_priq_intx_enable()
+ * TRAP:	HV_FAST_TRAP
+ * FUNCTION:	HV_FAST_PCI_PRIQ_INTX_ENABLE
+ * ARG0:	devhandle
+ * ARG1:	intx
+ * RET0:	status
+ * ERRORS:	EINVAL		Invalid devhandle or intx value.
+ *		EUNBOUND	The INTx interrupts are not bound to a PRIQ.
+ *
+ * This service enables the INTx interrupts specified by the argument intx in
+ * the root complex specified by devhandle.
+ */
+#define HV_FAST_PCI_PRIQ_INTX_ENABLE	0x1f8
+
+/* pci_priq_intx_disable()
+ * TRAP:	HV_FAST_TRAP
+ * FUNCTION:	HV_FAST_PCI_PRIQ_INTX_DISABLE
+ * ARG0:	devhandle
+ * ARG1:	intx
+ * RET0:	status
+ * ERRORS:	EINVAL		Invalid devhandle or intx value.
+ *
+ * This service disables the INTx interrupts specified by the argument intx
+ * in the root complex specified by devhandle.
+ */
+#define HV_FAST_PCI_PRIQ_INTX_DISABLE	0x1f9
+
+/* pci_priq_intx_getstate()
+ * TRAP:	HV_FAST_TRAP
+ * FUNCTION:	HV_FAST_PCI_PRIQ_INTX_GETSTATE
+ * ARG0:	devhandle
+ * ARG1:	intx
+ * RET0:	status
+ * RET1:	intxstate
+ * ERRORS:	EINVAL		Invalid devhandle or intx
+ *		EUNBOUND	The INTx interrupts are not bound to a PRIQ.
+ *
+ * This service queries the current INTx State (msistate) for the INTx
+ * interrupts specified by the argument intx in the root complex specified
+ * by the argument devhandle.
+ */
+#define HV_FAST_PCI_PRIQ_INTX_GETSTATE	0x1fa
+
+/* pci_priq_intx_setstate()
+ * TRAP:	HV_FAST_TRAP
+ * FUNCTION:	HV_FAST_PCI_PRIQ_INTX_SETSTATE
+ * ARG0:	devhandle
+ * ARG1:	intx
+ * ARG2:	intxstate
+ * RET0:	status
+ * ERRORS:	EINVAL		Invalid devhandle, intx, intxstate.
+ *		EUNBOUND	The INTx interrupts are not bound to a PRIQ.
+ *
+ * This service sets the current INTx State (intxstate) for the INTx
+ * interrupts specified by the argument intx in the root complex specified
+ * by the argument devhandle.
+ *
+ * The INTx state must be cleared after an INTx interrupt is delivered in
+ * order to receive the next INTx interrupt of the same intx value.
+ */
+#define HV_FAST_PCI_PRIQ_INTX_SETSTATE	0x1fb
+
 /* Function numbers for HV_CORE_TRAP.  */
 #define HV_CORE_SET_VER			0x00
 #define HV_CORE_PUTCHAR			0x01
@@ -3034,6 +3682,8 @@ unsigned long sun4v_m7_set_perfreg(unsigned long reg_num,
 #define HV_GRP_SDIO_ERR			0x0109
 #define HV_GRP_REBOOT_DATA		0x0110
 #define HV_GRP_M7_PERF			0x0114
+#define	HV_GRP_PRIQ			0x011b
+#define	HV_GRP_PRIQ_PCI			0x011c
 #define HV_GRP_NIAG_PERF		0x0200
 #define HV_GRP_FIRE_PERF		0x0201
 #define HV_GRP_N2_CPU			0x0202

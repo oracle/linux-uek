@@ -433,8 +433,10 @@ static int __vdc_tx_trigger(struct vdc_port *port)
 			delay = 128;
 	} while (err == -EAGAIN);
 
-	if (err == -ENOTCONN)
+	if (err == -ENOTCONN) {
+		printk(KERN_ERR PFX "vio_ldc_send() failure, err=%d.\n", err);
 		vdc_ldc_reset(port);
+	}
 	return err;
 }
 
@@ -736,14 +738,6 @@ static int vdc_port_up(struct vdc_port *port)
 	return comp.err;
 }
 
-static void vdc_port_down(struct vdc_port *port)
-{
-	ldc_disconnect(port->vio.lp);
-	ldc_unbind(port->vio.lp);
-	vdc_free_tx_ring(port);
-	vio_ldc_free(&port->vio);
-}
-
 static int probe_disk(struct vdc_port *port)
 {
 	struct request_queue *q;
@@ -946,6 +940,8 @@ err_out_free_tx_ring:
 	vdc_free_tx_ring(port);
 
 err_out_free_ldc:
+	flush_work(&port->ldc_reset_work);
+	del_timer_sync(&port->ldc_reset_timer);
 	vio_ldc_free(&port->vio);
 
 err_out_free_port:
@@ -1025,6 +1021,9 @@ static void vdc_ldc_reset_timer(unsigned long _arg)
 	struct vio_driver_state *vio = &port->vio;
 	unsigned long flags;
 
+	if (!port->disk)
+		return;
+
 	spin_lock_irqsave(&vio->lock, flags);
 	if (!(port->vio.hs_state & VIO_HS_COMPLETE)) {
 		pr_warn(PFX "%s ldc down %llu seconds, draining queue\n",
@@ -1049,37 +1048,37 @@ static void vdc_ldc_reset_work(struct work_struct *work)
 	spin_unlock_irqrestore(&vio->lock, flags);
 }
 
+/*
+ * Reset the connection by disconnecting and reconnecting the LDC.
+ * There is no need to free and reallocate the LDC; in fact this
+ * causes various race conditions unless the channel is freed/allocated
+ * under a mutex (see ldc.c:__ldc_channel_exits()).
+ */
 static void vdc_ldc_reset(struct vdc_port *port)
 {
 	int err;
+	struct vio_driver_state *vio = &port->vio;
 
-	assert_spin_locked(&port->vio.lock);
+	assert_spin_locked(&vio->lock);
 
 	pr_warn(PFX "%s ldc link reset\n", port->disk_name);
+
+	if (!port->disk)
+		return;
+
 	blk_stop_queue(port->disk->queue);
 	vdc_requeue_inflight(port);
-	vdc_port_down(port);
+	vio_link_state_change(vio, LDC_EVENT_RESET);
 
-	err = vio_ldc_alloc(&port->vio, &vdc_ldc_cfg, port);
-	if (err) {
-		pr_err(PFX "%s vio_ldc_alloc:%d\n", port->disk_name, err);
-		return;
-	}
-
-	err = vdc_alloc_tx_ring(port);
-	if (err) {
-		pr_err(PFX "%s vio_alloc_tx_ring:%d\n", port->disk_name, err);
-		goto err_free_ldc;
-	}
+	err = ldc_connect(vio->lp);
+	if (err)
+		pr_err(PFX "%s connect failed, err=%d\n",
+			port->disk_name, err);
 
 	if (port->ldc_timeout)
 		mod_timer(&port->ldc_reset_timer,
 			  round_jiffies(jiffies + HZ * port->ldc_timeout));
-	mod_timer(&port->vio.timer, round_jiffies(jiffies + HZ));
-	return;
-
-err_free_ldc:
-	vio_ldc_free(&port->vio);
+	mod_timer(&vio->timer, round_jiffies(jiffies + HZ));
 }
 
 static const struct vio_device_id vdc_port_match[] = {

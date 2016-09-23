@@ -113,13 +113,17 @@ static unsigned int get_user_insn(unsigned long tpc)
 	if (pmd_none(*pmdp) || unlikely(pmd_bad(*pmdp)))
 		goto out_irq_enable;
 
-#ifdef CONFIG_TRANSPARENT_HUGEPAGE
-	if (pmd_trans_huge(*pmdp)) {
+#if defined(CONFIG_HUGETLB_PAGE) || defined(CONFIG_TRANSPARENT_HUGEPAGE)
+	if (is_hugetlb_pmd(*pmdp)) {
+		unsigned long hpage_mask = HPAGE_MASK;
+
+		if (xl_hugepage_shift == XLHPAGE_2GB_SHIFT)
+			hpage_mask = ~((1UL << xl_hugepage_shift) - 1);
 		if (pmd_trans_splitting(*pmdp))
 			goto out_irq_enable;
 
 		pa  = pmd_pfn(*pmdp) << PAGE_SHIFT;
-		pa += tpc & ~HPAGE_MASK;
+		pa += tpc & ~hpage_mask;
 
 		/* Use phys bypass so we don't pollute dtlb/dcache. */
 		__asm__ __volatile__("lduwa [%1] %2, %0"

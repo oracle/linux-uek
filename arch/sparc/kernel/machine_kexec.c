@@ -9,6 +9,7 @@
 #include <asm/io_64.h>
 #include <asm/nmi.h>
 #include "kernel.h"
+#include "priq_sun4v.h"
 
 static atomic_t kexec_strand_wait;
 static const unsigned int tte_order = 9U;
@@ -132,6 +133,13 @@ out:
 	return rc;
 }
 
+static void priq_tear_down(void)
+{
+	int cpu = smp_processor_id();
+
+	priq_percpu_destroy(cpu);
+}
+
 static void mondo_tear_down(void)
 {
 	int cpu = smp_processor_id();
@@ -168,6 +176,7 @@ static void machine_capture_other_strands(void *ignore)
 	__asm__ __volatile__("flushw");
 	if (atomic_read(&nmi_active) > 0)
 		stop_nmi_watchdog(NULL);
+	priq_tear_down();
 	mondo_tear_down();
 	atomic_dec(&kexec_strand_wait);
 }
@@ -200,6 +209,7 @@ void machine_crash_shutdown(struct pt_regs *regs)
 	local_irq_disable();
 	stop_strands();
 	machine_kexec_disable_irq();
+	priq_percpu_destroy(smp_processor_id());
 	destroy_nucleus_tsb();
 	crash_save_cpu(regs, smp_processor_id());
 }
@@ -212,6 +222,7 @@ static void machine_strand_mondo_rip(void *ignore)
 {
 	if (atomic_read(&nmi_active) > 0)
 		stop_nmi_watchdog(NULL);
+	priq_tear_down();
 	mondo_tear_down();
 	atomic_dec(&kexec_strand_wait);
 }
@@ -406,6 +417,7 @@ void machine_kexec(struct kimage *image)
 	void *kexec_startp = &kexec_start;
 	unsigned long distance = (unsigned long) (kexec_startp - trap_table);
 
+	priq_tear_down();
 	mondo_tear_down();
 	if (image == kexec_image)
 		machine_shim_load_kexec(image);
