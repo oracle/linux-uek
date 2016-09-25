@@ -4627,7 +4627,7 @@ lpfc_els_disc_plogi(struct lpfc_vport *vport)
 	return sentplogi;
 }
 
-uint32_t
+static uint32_t
 lpfc_rdp_res_link_service(struct fc_rdp_link_service_desc *desc,
 		uint32_t word0)
 {
@@ -4639,7 +4639,7 @@ lpfc_rdp_res_link_service(struct fc_rdp_link_service_desc *desc,
 	return sizeof(struct fc_rdp_link_service_desc);
 }
 
-uint32_t
+static uint32_t
 lpfc_rdp_res_sfp_desc(struct fc_rdp_sfp_desc *desc,
 		uint8_t *page_a0, uint8_t *page_a2)
 {
@@ -4704,7 +4704,7 @@ lpfc_rdp_res_sfp_desc(struct fc_rdp_sfp_desc *desc,
 	return sizeof(struct fc_rdp_sfp_desc);
 }
 
-uint32_t
+static uint32_t
 lpfc_rdp_res_link_error(struct fc_rdp_link_error_status_desc *desc,
 		READ_LNK_VAR *stat)
 {
@@ -4733,7 +4733,7 @@ lpfc_rdp_res_link_error(struct fc_rdp_link_error_status_desc *desc,
 	return sizeof(struct fc_rdp_link_error_status_desc);
 }
 
-uint32_t
+static uint32_t
 lpfc_rdp_res_bbc_desc(struct fc_rdp_bbc_desc *desc, READ_LNK_VAR *stat,
 		      struct lpfc_vport *vport)
 {
@@ -4758,7 +4758,7 @@ lpfc_rdp_res_bbc_desc(struct fc_rdp_bbc_desc *desc, READ_LNK_VAR *stat,
 	return sizeof(struct fc_rdp_bbc_desc);
 }
 
-uint32_t
+static uint32_t
 lpfc_rdp_res_oed_temp_desc(struct lpfc_hba *phba,
 			   struct fc_rdp_oed_sfp_desc *desc, uint8_t *page_a2)
 {
@@ -4786,7 +4786,7 @@ lpfc_rdp_res_oed_temp_desc(struct lpfc_hba *phba,
 	return sizeof(struct fc_rdp_oed_sfp_desc);
 }
 
-uint32_t
+static uint32_t
 lpfc_rdp_res_oed_voltage_desc(struct lpfc_hba *phba,
 			      struct fc_rdp_oed_sfp_desc *desc,
 			      uint8_t *page_a2)
@@ -4815,7 +4815,7 @@ lpfc_rdp_res_oed_voltage_desc(struct lpfc_hba *phba,
 	return sizeof(struct fc_rdp_oed_sfp_desc);
 }
 
-uint32_t
+static uint32_t
 lpfc_rdp_res_oed_txbias_desc(struct lpfc_hba *phba,
 			     struct fc_rdp_oed_sfp_desc *desc,
 			     uint8_t *page_a2)
@@ -4844,7 +4844,7 @@ lpfc_rdp_res_oed_txbias_desc(struct lpfc_hba *phba,
 	return sizeof(struct fc_rdp_oed_sfp_desc);
 }
 
-uint32_t
+static uint32_t
 lpfc_rdp_res_oed_txpower_desc(struct lpfc_hba *phba,
 			      struct fc_rdp_oed_sfp_desc *desc,
 			      uint8_t *page_a2)
@@ -4874,7 +4874,7 @@ lpfc_rdp_res_oed_txpower_desc(struct lpfc_hba *phba,
 }
 
 
-uint32_t
+static uint32_t
 lpfc_rdp_res_oed_rxpower_desc(struct lpfc_hba *phba,
 			      struct fc_rdp_oed_sfp_desc *desc,
 			      uint8_t *page_a2)
@@ -4903,7 +4903,7 @@ lpfc_rdp_res_oed_rxpower_desc(struct lpfc_hba *phba,
 	return sizeof(struct fc_rdp_oed_sfp_desc);
 }
 
-uint32_t
+static uint32_t
 lpfc_rdp_res_opd_desc(struct fc_rdp_opd_sfp_desc *desc,
 		      uint8_t *page_a0, struct lpfc_vport *vport)
 {
@@ -4917,7 +4917,7 @@ lpfc_rdp_res_opd_desc(struct fc_rdp_opd_sfp_desc *desc,
 	return sizeof(struct fc_rdp_opd_sfp_desc);
 }
 
-uint32_t
+static uint32_t
 lpfc_rdp_res_fec_desc(struct fc_fec_rdp_desc *desc, READ_LNK_VAR *stat)
 {
 	if (bf_get(lpfc_read_link_stat_gec2, stat) == 0)
@@ -4934,7 +4934,7 @@ lpfc_rdp_res_fec_desc(struct fc_fec_rdp_desc *desc, READ_LNK_VAR *stat)
 	return sizeof(struct fc_fec_rdp_desc);
 }
 
-uint32_t
+static uint32_t
 lpfc_rdp_res_speed(struct fc_rdp_port_speed_desc *desc, struct lpfc_hba *phba)
 {
 	uint16_t rdp_cap = 0;
@@ -4996,7 +4996,7 @@ lpfc_rdp_res_speed(struct fc_rdp_port_speed_desc *desc, struct lpfc_hba *phba)
 	return sizeof(struct fc_rdp_port_speed_desc);
 }
 
-uint32_t
+static uint32_t
 lpfc_rdp_res_diag_port_names(struct fc_rdp_port_name_desc *desc,
 		struct lpfc_hba *phba)
 {
@@ -5013,7 +5013,7 @@ lpfc_rdp_res_diag_port_names(struct fc_rdp_port_name_desc *desc,
 	return sizeof(struct fc_rdp_port_name_desc);
 }
 
-uint32_t
+static uint32_t
 lpfc_rdp_res_attach_port_names(struct fc_rdp_port_name_desc *desc,
 		struct lpfc_vport *vport, struct lpfc_nodelist *ndlp)
 {
@@ -5037,7 +5037,7 @@ lpfc_rdp_res_attach_port_names(struct fc_rdp_port_name_desc *desc,
 	return sizeof(struct fc_rdp_port_name_desc);
 }
 
-void
+static void
 lpfc_els_rdp_cmpl(struct lpfc_hba *phba, struct lpfc_rdp_context *rdp_context,
 		int status)
 {
@@ -5175,7 +5175,7 @@ free_rdp_context:
 	kfree(rdp_context);
 }
 
-int
+static int
 lpfc_get_rdp_info(struct lpfc_hba *phba, struct lpfc_rdp_context *rdp_context)
 {
 	LPFC_MBOXQ_t *mbox = NULL;
@@ -8005,7 +8005,7 @@ lpfc_els_unsol_event(struct lpfc_hba *phba, struct lpfc_sli_ring *pring,
 	}
 }
 
-void
+static void
 lpfc_start_fdmi(struct lpfc_vport *vport)
 {
 	struct lpfc_hba *phba = vport->phba;
