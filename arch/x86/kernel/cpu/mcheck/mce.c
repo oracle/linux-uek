@@ -43,6 +43,7 @@
 #include <linux/irq_work.h>
 #include <linux/export.h>
 #include <linux/jump_label.h>
+#include <linux/reboot.h>
 
 #include <asm/intel-family.h>
 #include <asm/processor.h>
@@ -274,6 +275,7 @@ static atomic_t mce_panicked;
 
 static int fake_panic;
 static atomic_t mce_fake_panicked;
+static atomic_t mce_reboot;
 
 /* Panic in progress. Enable interrupts and wait for final IPI */
 static void wait_for_panic(void)
@@ -282,8 +284,29 @@ static void wait_for_panic(void)
 
 	preempt_disable();
 	local_irq_enable();
+
+	/* 
+	 * If two cpus get into mce_panic() very close together,
+	 * the second CPU will wait for mce_reboot flag. The lead CPU 
+	 * should set the flag within PANIC_TIMEOUT seconds.
+	 */
 	while (timeout-- > 0)
+	{
+		/* 
+		 * The intent of this patch is to ensure that the mce stack 
+		 * is not put in the panic stack trace when the kernel reboots 
+		 * due to the Uncorrectable Error. The mce stack in the panic trace 
+		 * confuses the administrator and falsely implicates mce module
+		 * as a culprit.
+		 */ 
+		if(atomic_read(&mce_reboot))
+			machine_emergency_restart();
 		udelay(1);
+	}
+	/* 
+	 * If the mce_reboot flag is not set within PANIC_TIMEOUT secs
+	 * call kernel panic.
+	 */
 	if (panic_timeout == 0)
 		panic_timeout = mca_cfg.panic_timeout;
 	panic("Panicing machine check CPU died");
@@ -294,6 +317,7 @@ static void mce_panic(const char *msg, struct mce *final, char *exp)
 	int apei_err = 0;
 	struct llist_node *pending;
 	struct mce_evt_llist *l;
+	bool uncorrectable = false;
 
 	if (!fake_panic) {
 		/*
@@ -330,6 +354,13 @@ static void mce_panic(const char *msg, struct mce *final, char *exp)
 			if (!apei_err)
 				apei_err = apei_write_mce(m);
 		}
+		/*
+		 * Set the flag for any uncorreactable errors. But turn on 
+		 * mce_reboot flag only after printing MCE errors. Otherwise,
+		 * we may end up restarting the system without printing mce 
+		 * logs.
+		 */
+		uncorrectable = true;
 	}
 	if (final) {
 		print_mce(final);
@@ -340,11 +371,11 @@ static void mce_panic(const char *msg, struct mce *final, char *exp)
 		pr_emerg(HW_ERR "Some CPUs didn't answer in synchronization\n");
 	if (exp)
 		pr_emerg(HW_ERR "Machine check: %s\n", exp);
-	if (!fake_panic) {
-		if (panic_timeout == 0)
-			panic_timeout = mca_cfg.panic_timeout;
-		panic(msg);
-	} else
+	if(uncorrectable)
+		atomic_inc(&mce_reboot);
+	if (!fake_panic) 
+		wait_for_panic();
+	else
 		pr_emerg(HW_ERR "Fake kernel panic: %s\n", msg);
 }
 
@@ -2388,6 +2419,7 @@ static void mce_reset(void)
 {
 	cpu_missing = 0;
 	atomic_set(&mce_fake_panicked, 0);
+	atomic_set(&mce_reboot, 0);
 	atomic_set(&mce_executing, 0);
 	atomic_set(&mce_callin, 0);
 	atomic_set(&global_nwo, 0);
