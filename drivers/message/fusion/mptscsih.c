@@ -105,7 +105,7 @@ mptscsih_taskmgmt_response_code(MPT_ADAPTER *ioc, u8 response_code);
 static int	mptscsih_get_completion_code(MPT_ADAPTER *ioc,
 		MPT_FRAME_HDR *req, MPT_FRAME_HDR *reply);
 int		mptscsih_scandv_complete(MPT_ADAPTER *ioc, MPT_FRAME_HDR *mf, MPT_FRAME_HDR *r);
-static int	mptscsih_do_cmd(MPT_SCSI_HOST *hd, INTERNAL_CMD *iocmd);
+int		mptscsih_do_cmd(MPT_SCSI_HOST *hd, INTERNAL_CMD *iocmd);
 static void	mptscsih_synchronize_cache(MPT_SCSI_HOST *hd, VirtDevice *vdevice);
 
 static int
@@ -2777,7 +2777,7 @@ mptscsih_get_completion_code(MPT_ADAPTER *ioc, MPT_FRAME_HDR *req,
  *
  *		 > 0 if command complete but some type of completion error.
  */
-static int
+int
 mptscsih_do_cmd(MPT_SCSI_HOST *hd, INTERNAL_CMD *io)
 {
 	MPT_FRAME_HDR	*mf;
@@ -3000,6 +3000,7 @@ mptscsih_do_cmd(MPT_SCSI_HOST *hd, INTERNAL_CMD *io)
 	mutex_unlock(&ioc->internal_cmds.mutex);
 	return ret;
 }
+EXPORT_SYMBOL(mptscsih_do_cmd);
 
 /*=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=*/
 /**
