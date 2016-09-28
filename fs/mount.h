@@ -13,6 +13,10 @@ struct mnt_namespace {
 	u64			seq;	/* Sequence number to prevent loops */
 	wait_queue_head_t poll;
 	u64 event;
+#ifndef __GENKSYMS__
+	unsigned int		mounts; /* # of mounts in the namespace */
+	unsigned int		pending_mounts;
+#endif
 };
 
 struct mnt_pcp {
