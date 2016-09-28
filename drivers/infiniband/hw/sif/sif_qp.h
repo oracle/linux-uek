@@ -103,7 +103,6 @@ struct sif_qp {
 	struct completion can_destroy; /* use to synchronize destroy qp with event handling */
 	struct mutex lock ____cacheline_internodealigned_in_smp;
 	int qp_idx;			/* qp and sq index */
-	int rq_idx;
 	u32 max_inline_data;		/* Requested max inline for this QP */
 
 	/* Next 6 members are copy from the qp state */
@@ -116,9 +115,18 @@ struct sif_qp {
 
 	u16 eps_tag;			/* Value to use for the eps_tag field (proxy_qp) */
 	short port;			/* IB port number (= sif port# + 1) */
-	u32 flags;
+	u32 flags;			/* SIF specific flags */
 	enum ib_qp_state last_set_state;
 	enum psif_qp_trans type;	/* PSIF transport type set up for this QP */
+	enum ib_qp_type ib_qp_type;	/* IB QP type */
+	u32 pd_indx;
+	int rq_idx;
+	bool rq_is_srq;
+	int xrcd_indx;
+	int send_cq_indx;
+	int rcv_cq_indx;
+	u32 create_flags;
+	enum sif_proxy_type proxy;
 
 	/* The following members are not used in critical path */
 	u16 pkey_index;			/* Default PKEY index as set by IB_QP_PKEY */
