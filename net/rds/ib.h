@@ -250,7 +250,6 @@ struct rds_ib_connection {
 	spinlock_t              i_rx_lock;
 	unsigned int            i_rx_wait_for_handler;
 	atomic_t                i_worker_has_rx;
-	atomic_t		i_destroying;
 };
 
 /* This assumes that atomic_t is at least 32 bits */
