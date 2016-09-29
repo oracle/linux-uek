@@ -315,6 +315,7 @@ void rds_ib_cm_connect_complete(struct rds_connection *conn, struct rdma_cm_even
 	}
 
 	ic->i_sl = ic->i_cm_id->route.path_rec->sl;
+	atomic_set(&ic->i_cq_quiesce, 0);
 
 	/*
 	 * Init rings and fill recv. this needs to wait until protocol negotiation
@@ -477,8 +478,8 @@ void rds_ib_tasklet_fn_send(unsigned long data)
 	memset(&ack_state, 0, sizeof(ack_state));
 	rds_ib_stats_inc(s_ib_tasklet_call);
 
-	/* if send cq has been destroyed, ignore incoming cq event */
-	if (!ic->i_scq)
+	/* if cq has been already reaped, ignore incoming cq event */
+	 if (atomic_read(&ic->i_cq_quiesce))
 		return;
 
 	poll_cq(ic, ic->i_scq, ic->i_send_wc, &ack_state, 0);
@@ -506,6 +507,10 @@ static void rds_ib_rx(struct rds_ib_connection *ic)
 	BUG_ON(conn->c_tos && !rds_ibdev);
 
 	rds_ib_stats_inc(s_ib_tasklet_call);
+
+	/* if cq has been already reaped, ignore incoming cq event */
+	if (atomic_read(&ic->i_cq_quiesce))
+		return;
 
 	memset(&ack_state, 0, sizeof(ack_state));
 
@@ -1214,6 +1219,8 @@ void rds_ib_conn_shutdown(struct rds_connection *conn)
 
 		tasklet_kill(&ic->i_stasklet);
 		tasklet_kill(&ic->i_rtasklet);
+
+		atomic_set(&ic->i_cq_quiesce, 1);
 
 		/* first destroy the ib state that generates callbacks */
 		if (ic->i_cm_id->qp)
