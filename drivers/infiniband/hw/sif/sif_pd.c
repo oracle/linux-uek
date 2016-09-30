@@ -400,7 +400,7 @@ static int alloc_from_block(struct sif_table_block *b, enum sif_tab_type type)
 	struct sif_table *table = b->table;
 
 	if (table->alloc_rr)
-		next = (b->last_used + 1) & (table->entry_per_block - 1);
+		next = b->last_used & (table->entry_per_block - 1);
 	loc_idx = find_next_zero_bit(b->bitmap, table->entry_per_block, next);
 	if (table->alloc_rr && loc_idx >= table->entry_per_block)
 		loc_idx = find_next_zero_bit(b->bitmap, table->entry_per_block, 0);

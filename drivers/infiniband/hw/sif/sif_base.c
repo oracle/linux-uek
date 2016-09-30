@@ -472,7 +472,7 @@ static int init_blocks(struct sif_dev *sdev, enum sif_tab_type type)
 		for (i = 0; i < tp->block_cnt; i++) {
 			struct sif_table_block *b = sif_get_block(tp, i);
 
-			b->last_used = tp->entry_per_block - 1;
+			b->last_used = tp->entry_per_block;
 		}
 	}
 	return 0;
