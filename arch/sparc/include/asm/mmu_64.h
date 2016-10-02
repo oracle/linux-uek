@@ -134,17 +134,6 @@ static inline unsigned int hugepage_size_to_pte_count_idx(
 	return pte_count_index;
 }
 
-static inline unsigned int real_hugepage_size_to_pte_count_idx(
-				unsigned long real_hugepage_size)
-{
-	unsigned int pte_count_index = MM_PTES_HUGE;
-
-	if (real_hugepage_size != REAL_HPAGE_SIZE)
-		pte_count_index = MM_PTES_XLHUGE;
-
-	return pte_count_index;
-}
-
 void __init hv_establish_xl_hugepage_tsb_descriptor(unsigned short pgsz_idx,
 						unsigned int pgsz_mask);
 

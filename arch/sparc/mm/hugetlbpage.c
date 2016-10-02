@@ -532,7 +532,7 @@ void set_huge_pte_at(struct mm_struct *mm, unsigned long addr,
 
 	if (!pte_present(*ptep) && pte_present(entry)) {
 		unsigned int pte_count_idx =
-			real_hugepage_size_to_pte_count_idx(hugepage_size);
+			hugepage_size_to_pte_count_idx(hugepage_size);
 
 		mm->context.huge_pte_count[pte_count_idx]++;
 	}
@@ -559,7 +559,7 @@ pte_t huge_ptep_get_and_clear(struct mm_struct *mm, unsigned long addr,
 
 	if (pte_present(entry)) {
 		unsigned int pte_count_idx =
-			real_hugepage_size_to_pte_count_idx(hugepage_size);
+			hugepage_size_to_pte_count_idx(hugepage_size);
 
 		mm->context.huge_pte_count[pte_count_idx]--;
 	}
