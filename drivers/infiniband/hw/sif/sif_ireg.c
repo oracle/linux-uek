@@ -422,7 +422,7 @@ static struct ib_ucontext *sif_alloc_ucontext(struct ib_device *ibdev,
 	if (!s_uc)
 		return NULL;
 
-	s_uc->pd = alloc_pd(sdev);
+	s_uc->pd = alloc_pd(sdev, false);
 	if (!s_uc->pd) {
 		ret = -ENOMEM;
 		goto alloc_pd_failed;
@@ -486,7 +486,7 @@ static struct ib_ucontext *sif_alloc_ucontext(struct ib_device *ibdev,
 udata_copy_failed:
 	release_cb(sdev, s_uc->cb);
 alloc_cb_failed:
-	dealloc_pd(s_uc->pd);
+	dealloc_pd(s_uc->pd, false);
 alloc_pd_failed:
 	kfree(s_uc);
 	return ERR_PTR(ret);
@@ -502,7 +502,7 @@ static int sif_dealloc_ucontext(struct ib_ucontext *ib_uc)
 
 	sif_logs(SIF_VERBS_V, pd_idx = s_uc->pd->idx);
 
-	ret = dealloc_pd(s_uc->pd);
+	ret = dealloc_pd(s_uc->pd, false);
 	if (ret) {
 		sif_log(sdev, SIF_INFO, "Failed (status %d) to deallocate pd %d", ret, s_uc->pd->idx);
 		return ret;

@@ -50,7 +50,7 @@ struct ib_xrcd *sif_alloc_xrcd(struct ib_device *device,
 		goto err_idr_alloc;
 	}
 	xrcd->index = ret;
-	xrcd->pd = alloc_pd(sdev);
+	xrcd->pd = alloc_pd(sdev, false);
 	if (!xrcd->pd) {
 		ret = -ENOMEM;
 		sif_log(sdev, SIF_XRC, "alloc_pd failed with %d", ret);
@@ -76,7 +76,7 @@ int sif_dealloc_xrcd(struct ib_xrcd *ib_xrcd)
 
 	sif_log(sdev, SIF_XRC, "index %d", xrcd->index);
 
-	dealloc_pd(xrcd->pd);
+	dealloc_pd(xrcd->pd, false);
 	sif_idr_remove(&sdev->xrcd_refs, xrcd->index);
 	kfree(xrcd);
 	return 0;
