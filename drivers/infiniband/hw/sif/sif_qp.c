@@ -1429,6 +1429,14 @@ static int modify_qp_hw(struct sif_dev *sdev, struct sif_qp *qp,
 	}
 
 ok_modify_qp_sw:
+	/* The QP mask for QP transition is checked in sif_modify_qp_is_ok.
+	 * No check for qp_type because only UC/UD and MANSP1 can be transitioned
+	 * to SQE.
+	 */
+	if ((qp_attr->qp_state == IB_QPS_RTS) && (qp_attr->cur_qp_state == IB_QPS_SQE)) {
+		ctrl_attr->req_access_error = 1;
+		mct->data.req_access_error = 0;
+	}
 
 	/*
 	 * On modify to RTR, we set the TSU SL (tsl), because we have
