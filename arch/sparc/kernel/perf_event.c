@@ -1366,51 +1366,56 @@ static u64 nop_for_index(int idx)
 			      sparc_pmu->lower_nop, idx);
 }
 
-static inline void sparc_pmu_enable_event(struct cpu_hw_events *cpuc, struct hw_perf_event *hwc, int idx)
+
+static inline void sparc_pmu_enable_event(struct cpu_hw_events *cpuc,
+					  struct hw_perf_event *hwc,
+					  int event_idx)
 {
-	u64 enc, val, mask = mask_for_index(idx);
-	int pcr_index = 0;
+	u64 enc, val, mask = mask_for_index(event_idx);
+	int pcr_idx = 0;
 
 	if (sparc_pmu->num_pcrs > 1)
-		pcr_index = idx;
+		pcr_idx = cpuc->current_idx[event_idx];
 
-	enc = perf_event_get_enc(cpuc->events[idx]);
+	enc = perf_event_get_enc(cpuc->events[event_idx]);
 
-	val = cpuc->pcr[pcr_index];
+	val = cpuc->pcr[pcr_idx];
 	val &= ~mask;
-	val |= event_encoding(enc, idx);
-	cpuc->pcr[pcr_index] = val;
+	val |= event_encoding(enc, event_idx);
+	cpuc->pcr[pcr_idx] = val;
 
-	pcr_ops->write_pcr(pcr_index, cpuc->pcr[pcr_index]);
+	pcr_ops->write_pcr(pcr_idx, cpuc->pcr[pcr_idx]);
 }
 
-static inline void sparc_pmu_disable_event(struct cpu_hw_events *cpuc, struct hw_perf_event *hwc, int idx)
+static inline void sparc_pmu_disable_event(struct cpu_hw_events *cpuc,
+					   struct hw_perf_event *hwc,
+					   int event_idx)
 {
-	u64 mask = mask_for_index(idx);
-	u64 nop = nop_for_index(idx);
-	int pcr_index = 0;
+	u64 mask = mask_for_index(event_idx);
+	u64 nop = nop_for_index(event_idx);
+	int pcr_idx = 0;
 	u64 val;
 
 	if (sparc_pmu->num_pcrs > 1)
-		pcr_index = idx;
+		pcr_idx = cpuc->current_idx[event_idx];
 
-	val = cpuc->pcr[pcr_index];
+	val = cpuc->pcr[pcr_idx];
 	val &= ~mask;
 	val |= nop;
-	cpuc->pcr[pcr_index] = val;
+	cpuc->pcr[pcr_idx] = val;
 
-	pcr_ops->write_pcr(pcr_index, cpuc->pcr[pcr_index]);
+	pcr_ops->write_pcr(pcr_idx, cpuc->pcr[pcr_idx]);
 }
 
 static u64 sparc_perf_event_update(struct perf_event *event,
-				   struct hw_perf_event *hwc, int idx,
+				   struct hw_perf_event *hwc, int pcr_idx,
 				   bool overflow)
 {
 	u64 prev_raw_count, new_raw_count, delta;
 
 again:
 	prev_raw_count = local64_read(&hwc->prev_count);
-	new_raw_count = sparc_pmu->read_pmc(idx);
+	new_raw_count = sparc_pmu->read_pmc(pcr_idx);
 
 	if (local64_cmpxchg(&hwc->prev_count, prev_raw_count,
 			     new_raw_count) != prev_raw_count)
@@ -1427,7 +1432,7 @@ again:
 }
 
 static int sparc_perf_event_set_period(struct perf_event *event,
-				       struct hw_perf_event *hwc, int idx)
+				       struct hw_perf_event *hwc, int pcr_idx)
 {
 	s64 left = local64_read(&hwc->period_left);
 	s64 period = hwc->sample_period;
@@ -1451,7 +1456,7 @@ static int sparc_perf_event_set_period(struct perf_event *event,
 
 	local64_set(&hwc->prev_count, (u64)-left);
 
-	sparc_pmu->write_pmc(idx, (u64)(-left) & 0xffffffff);
+	sparc_pmu->write_pmc(pcr_idx, (u64)(-left) & 0xffffffff);
 
 	perf_event_update_userpage(event);
 
@@ -1668,36 +1673,38 @@ static int active_event_index(struct cpu_hw_events *cpuc,
 			break;
 	}
 	BUG_ON(i == cpuc->n_events);
-	return cpuc->current_idx[i];
+	return i;
 }
 
 static void sparc_pmu_start(struct perf_event *event, int flags)
 {
 	struct cpu_hw_events *cpuc = this_cpu_ptr(&cpu_hw_events);
-	int idx = active_event_index(cpuc, event);
+	int event_idx = active_event_index(cpuc, event);
+	int pcr_idx = cpuc->current_idx[event_idx];
 
 	if (flags & PERF_EF_RELOAD) {
 		WARN_ON_ONCE(!(event->hw.state & PERF_HES_UPTODATE));
-		sparc_perf_event_set_period(event, &event->hw, idx);
+		sparc_perf_event_set_period(event, &event->hw, pcr_idx);
 	}
 
 	event->hw.state = 0;
 
-	sparc_pmu_enable_event(cpuc, &event->hw, idx);
+	sparc_pmu_enable_event(cpuc, &event->hw, event_idx);
 }
 
 static void sparc_pmu_stop(struct perf_event *event, int flags)
 {
 	struct cpu_hw_events *cpuc = this_cpu_ptr(&cpu_hw_events);
-	int idx = active_event_index(cpuc, event);
+	int event_idx = active_event_index(cpuc, event);
+	int pcr_idx = cpuc->current_idx[event_idx];
 
 	if (!(event->hw.state & PERF_HES_STOPPED)) {
-		sparc_pmu_disable_event(cpuc, &event->hw, idx);
+		sparc_pmu_disable_event(cpuc, &event->hw, event_idx);
 		event->hw.state |= PERF_HES_STOPPED;
 	}
 
 	if (!(event->hw.state & PERF_HES_UPTODATE) && (flags & PERF_EF_UPDATE)) {
-		sparc_perf_event_update(event, &event->hw, idx, false);
+		sparc_perf_event_update(event, &event->hw, pcr_idx, false);
 		event->hw.state |= PERF_HES_UPTODATE;
 	}
 }
@@ -1740,10 +1747,11 @@ static void sparc_pmu_del(struct perf_event *event, int _flags)
 static void sparc_pmu_read(struct perf_event *event)
 {
 	struct cpu_hw_events *cpuc = this_cpu_ptr(&cpu_hw_events);
-	int idx = active_event_index(cpuc, event);
 	struct hw_perf_event *hwc = &event->hw;
+	int event_idx = active_event_index(cpuc, event);
+	int pcr_idx = cpuc->current_idx[event_idx];
 
-	sparc_perf_event_update(event, hwc, idx, false);
+	sparc_perf_event_update(event, hwc, pcr_idx, false);
 }
 
 static atomic_t active_events = ATOMIC_INIT(0);
@@ -2231,10 +2239,10 @@ static int __kprobes perf_event_nmi_handler(struct notifier_block *self,
 
 	for (i = 0; i < cpuc->n_events; i++) {
 		struct perf_event *event = cpuc->event[i];
-		int idx = cpuc->current_idx[i];
+		int pcr_idx = cpuc->current_idx[i];
 		struct hw_perf_event *hwc;
 		u64 val;
-		u64 pcr = pcr_ops->read_pcr(idx);
+		u64 pcr = pcr_ops->read_pcr(pcr_idx);
 
 		/* If this 'event' didn't cause the interrupt just continue */
 		if ((pcr & (sparc_pmu->irq_bit | PCR_N4_OV)) !=
@@ -2243,15 +2251,15 @@ static int __kprobes perf_event_nmi_handler(struct notifier_block *self,
 
 		if (sparc_pmu->irq_bit &&
 		    sparc_pmu->num_pcrs > 1)
-			pcr_ops->write_pcr(idx, cpuc->pcr[idx]);
+			pcr_ops->write_pcr(pcr_idx, cpuc->pcr[pcr_idx]);
 
 		hwc = &event->hw;
-		val = sparc_perf_event_update(event, hwc, idx, true);
+		val = sparc_perf_event_update(event, hwc, pcr_idx, true);
 		if (val & (1ULL << 31))
 			continue;
 
 		perf_sample_data_init(&data, 0, hwc->last_period);
-		if (!sparc_perf_event_set_period(event, hwc, idx))
+		if (!sparc_perf_event_set_period(event, hwc, pcr_idx))
 			continue;
 
 		if (perf_event_overflow(event, &data, regs))
