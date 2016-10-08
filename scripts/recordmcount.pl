@@ -135,6 +135,7 @@ my %text_sections = (
      ".spinlock.text" => 1,
      ".irqentry.text" => 1,
      ".kprobes.text" => 1,
+     ".cpuidle.text" => 1,
      ".text.unlikely" => 1,
 );
 

@@ -335,7 +335,7 @@ void arch_cpu_idle(void)
 /*
  * We use this if we don't have any better idle routine..
  */
-void default_idle(void)
+void __cpuidle default_idle(void)
 {
 	trace_cpu_idle_rcuidle(1, smp_processor_id());
 	safe_halt();
@@ -449,8 +449,7 @@ static int prefer_mwait_c1_over_halt(const struct cpuinfo_x86 *c)
  * This invokes MWAIT with interrutps enabled and no flags,
  * which is backwards compatible with the original MWAIT implementation.
  */
-
-static void mwait_idle(void)
+static __cpuidle void mwait_idle(void)
 {
 	if (!current_set_polling_and_test()) {
 		trace_cpu_idle_rcuidle(1, smp_processor_id());

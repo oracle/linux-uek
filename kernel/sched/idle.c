@@ -15,6 +15,18 @@
 
 #include "sched.h"
 
+/* Linker adds these: start and end of __cpuidle functions */
+extern char __cpuidle_text_start[], __cpuidle_text_end[];
+
+/**
+ * sched_idle_set_state - Record idle state for the current CPU.
+ * @idle_state: State to record.
+ */
+void sched_idle_set_state(struct cpuidle_state *idle_state)
+{
+	idle_set_state(this_rq(), idle_state);
+}
+
 static int __read_mostly cpu_idle_force_poll;
 
 void cpu_idle_poll_ctrl(bool enable)
@@ -43,7 +55,7 @@ static int __init cpu_idle_nopoll_setup(char *__unused)
 __setup("hlt", cpu_idle_nopoll_setup);
 #endif
 
-static inline int cpu_idle_poll(void)
+static noinline int __cpuidle cpu_idle_poll(void)
 {
 	rcu_idle_enter();
 	trace_cpu_idle_rcuidle(0, smp_processor_id());
@@ -65,6 +77,43 @@ void __weak arch_cpu_idle(void)
 {
 	cpu_idle_force_poll = 1;
 	local_irq_enable();
+}
+
+/**
+ * default_idle_call - Default CPU idle routine.
+ *
+ * To use when the cpuidle framework cannot be used.
+ */
+void __cpuidle default_idle_call(void)
+{
+	if (current_clr_polling_and_test()) {
+		local_irq_enable();
+	} else {
+		stop_critical_timings();
+		arch_cpu_idle();
+		start_critical_timings();
+	}
+}
+
+static int call_cpuidle(struct cpuidle_driver *drv, struct cpuidle_device *dev,
+		      int next_state)
+{
+	/*
+	 * The idle task must be scheduled, it is pointless to go to idle, just
+	 * update no idle residency and return.
+	 */
+	if (current_clr_polling_and_test()) {
+		dev->last_residency = 0;
+		local_irq_enable();
+		return -EBUSY;
+	}
+
+	/*
+	 * Enter the idle state previously returned by the governor decision.
+	 * This function will block until an interrupt occurs and will take
+	 * care of re-enabling the local interrupts
+	 */
+	return cpuidle_enter(drv, dev, next_state);
 }
 
 /**
@@ -274,6 +323,12 @@ static void cpu_idle_loop(void)
 		sched_ttwu_pending();
 		schedule_preempt_disabled();
 	}
+}
+
+bool cpu_in_idle(unsigned long pc)
+{
+	return pc >= (unsigned long)__cpuidle_text_start &&
+		pc < (unsigned long)__cpuidle_text_end;
 }
 
 void cpu_startup_entry(enum cpuhp_state state)

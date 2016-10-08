@@ -254,6 +254,7 @@ is_mcounted_section_name(char const *const txtname)
 		strcmp(".spinlock.text", txtname) == 0 ||
 		strcmp(".irqentry.text", txtname) == 0 ||
 		strcmp(".kprobes.text", txtname) == 0 ||
+		strcmp(".cpuidle.text", txtname) == 0 ||
 		strcmp(".text.unlikely", txtname) == 0;
 }
 

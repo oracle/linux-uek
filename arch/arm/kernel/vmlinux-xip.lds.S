@@ -8,9 +8,6 @@
 #include <asm/thread_info.h>
 #include <asm/memory.h>
 #include <asm/page.h>
-#ifdef CONFIG_ARM_KERNMEM_PERMS
-#include <asm/pgtable.h>
-#endif
 
 #define PROC_INFO							\
 	. = ALIGN(4);							\
@@ -84,19 +81,13 @@ SECTIONS
 		*(.discard.*)
 	}
 
-#ifdef CONFIG_XIP_KERNEL
 	. = XIP_VIRT_ADDR(CONFIG_XIP_PHYS_ADDR);
-#else
-	. = PAGE_OFFSET + TEXT_OFFSET;
-#endif
+	_xiprom = .;			/* XIP ROM area to be mapped */
+
 	.head.text : {
 		_text = .;
 		HEAD_TEXT
 	}
-
-#ifdef CONFIG_ARM_KERNMEM_PERMS
-	. = ALIGN(1<<SECTION_SHIFT);
-#endif
 
 	.text : {			/* Real text segment		*/
 		_stext = .;		/* Text and read-only data	*/
@@ -118,9 +109,6 @@ SECTIONS
 			ARM_CPU_KEEP(PROC_INFO)
 	}
 
-#ifdef CONFIG_DEBUG_RODATA
-	. = ALIGN(1<<SECTION_SHIFT);
-#endif
 	RO_DATA(PAGE_SIZE)
 
 	. = ALIGN(4);
@@ -153,31 +141,25 @@ SECTIONS
 
 	_etext = .;			/* End of text and rodata section */
 
-#ifndef CONFIG_XIP_KERNEL
-# ifdef CONFIG_ARM_KERNMEM_PERMS
-	. = ALIGN(1<<SECTION_SHIFT);
-# else
-	. = ALIGN(PAGE_SIZE);
-# endif
-	__init_begin = .;
-#endif
 	/*
 	 * The vectors and stubs are relocatable code, and the
 	 * only thing that matters is their relative offsets
 	 */
 	__vectors_start = .;
-	.vectors 0 : AT(__vectors_start) {
+	.vectors 0xffff0000 : AT(__vectors_start) {
 		*(.vectors)
 	}
 	. = __vectors_start + SIZEOF(.vectors);
 	__vectors_end = .;
 
 	__stubs_start = .;
-	.stubs 0x1000 : AT(__stubs_start) {
+	.stubs ADDR(.vectors) + 0x1000 : AT(__stubs_start) {
 		*(.stubs)
 	}
 	. = __stubs_start + SIZEOF(.stubs);
 	__stubs_end = .;
+
+	PROVIDE(vector_fiq_offset = vector_fiq - ADDR(.vectors));
 
 	INIT_TEXT_SECTION(8)
 	.exit.text : {
@@ -209,37 +191,20 @@ SECTIONS
 		__pv_table_end = .;
 	}
 	.init.data : {
-#ifndef CONFIG_XIP_KERNEL
-		INIT_DATA
-#endif
 		INIT_SETUP(16)
 		INIT_CALLS
 		CON_INITCALL
 		SECURITY_INITCALL
 		INIT_RAM_FS
 	}
-#ifndef CONFIG_XIP_KERNEL
-	.exit.data : {
-		ARM_EXIT_KEEP(EXIT_DATA)
-	}
-#endif
 
 #ifdef CONFIG_SMP
 	PERCPU_SECTION(L1_CACHE_BYTES)
 #endif
 
-#ifdef CONFIG_XIP_KERNEL
+	_exiprom = .;			/* End of XIP ROM area */
 	__data_loc = ALIGN(4);		/* location in binary */
 	. = PAGE_OFFSET + TEXT_OFFSET;
-#else
-#ifdef CONFIG_ARM_KERNMEM_PERMS
-	. = ALIGN(1<<SECTION_SHIFT);
-#else
-	. = ALIGN(THREAD_SIZE);
-#endif
-	__init_end = .;
-	__data_loc = .;
-#endif
 
 	.data : AT(__data_loc) {
 		_data = .;		/* address in memory */
@@ -251,14 +216,12 @@ SECTIONS
 		 */
 		INIT_TASK_DATA(THREAD_SIZE)
 
-#ifdef CONFIG_XIP_KERNEL
 		. = ALIGN(PAGE_SIZE);
 		__init_begin = .;
 		INIT_DATA
 		ARM_EXIT_KEEP(EXIT_DATA)
 		. = ALIGN(PAGE_SIZE);
 		__init_end = .;
-#endif
 
 		NOSAVE_DATA
 		CACHELINE_ALIGNED_DATA(L1_CACHE_BYTES)
