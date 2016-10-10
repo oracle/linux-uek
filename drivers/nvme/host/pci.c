@@ -1962,6 +1962,11 @@ static void nvme_free_ns(struct kref *kref)
 	kfree(ns);
 }
 
+static void nvme_put_ns(struct nvme_ns *ns)
+{
+        kref_put(&ns->kref, nvme_free_ns);
+}
+
 static int nvme_open(struct block_device *bdev, fmode_t mode)
 {
 	int ret = 0;
@@ -2117,8 +2122,6 @@ static void nvme_alloc_ns(struct nvme_dev *dev, unsigned nsid)
 	struct gendisk *disk;
 	int node = dev_to_node(dev->dev);
 
-	lockdep_assert_held(&dev->namespaces_mutex);
-
 	ns = kzalloc_node(sizeof(*ns), GFP_KERNEL, node);
 	if (!ns)
 		return;
@@ -2140,7 +2143,9 @@ static void nvme_alloc_ns(struct nvme_dev *dev, unsigned nsid)
 	ns->ns_id = nsid;
 	ns->disk = disk;
 	ns->lba_shift = 9; /* set to a default value for 512 until disk is validated */
+	mutex_lock(&dev->namespaces_mutex);
 	list_add_tail(&ns->list, &dev->namespaces);
+	mutex_unlock(&dev->namespaces_mutex);
 
 	blk_queue_logical_block_size(ns->queue, 1 << ns->lba_shift);
 	if (dev->max_hw_sectors) {
@@ -2385,20 +2390,22 @@ static int ns_cmp(void *priv, struct list_head *a, struct list_head *b)
 	return nsa->ns_id - nsb->ns_id;
 }
 
-static struct nvme_ns *nvme_find_ns(struct nvme_dev *dev, unsigned nsid)
+static struct nvme_ns *nvme_find_get_ns(struct nvme_dev *dev, unsigned nsid)
 {
-	struct nvme_ns *ns;
+	struct nvme_ns *ns, *ret = NULL;
 
-	lockdep_assert_held(&dev->namespaces_mutex);
-
-
+	mutex_lock(&dev->namespaces_mutex);
 	list_for_each_entry(ns, &dev->namespaces, list) {
-		if (ns->ns_id == nsid)
-			return ns;
+		if (ns->ns_id == nsid) {
+			kref_get(&ns->kref);
+			ret = ns;
+			break;
+		}
 		if (ns->ns_id > nsid)
 			break;
 	}
-	return NULL;
+	mutex_unlock(&dev->namespaces_mutex);
+	return ret;
 }
 
 static inline bool nvme_io_incapable(struct nvme_dev *dev)
@@ -2410,8 +2417,6 @@ static inline bool nvme_io_incapable(struct nvme_dev *dev)
 static void nvme_ns_remove(struct nvme_ns *ns)
 {
 	bool kill = nvme_io_incapable(ns->dev) && !blk_queue_dying(ns->queue);
-
-	lockdep_assert_held(&ns->dev->namespaces_mutex);
 
 	if (kill) {
 		blk_set_queue_dying(ns->queue);
@@ -2433,7 +2438,9 @@ static void nvme_ns_remove(struct nvme_ns *ns)
 		blk_mq_abort_requeue_list(ns->queue);
 		blk_cleanup_queue(ns->queue);
 	}
+	mutex_lock(&ns->dev->namespaces_mutex);
 	list_del_init(&ns->list);
+	mutex_unlock(&ns->dev->namespaces_mutex);
 	kref_put(&ns->kref, nvme_free_ns);
 }
 
@@ -2441,10 +2448,11 @@ static void nvme_validate_ns(struct nvme_dev *dev, unsigned nsid)
 {
 	struct nvme_ns *ns;
 
-	ns = nvme_find_ns(dev, nsid);
+	ns = nvme_find_get_ns(dev, nsid);
 	if (ns) {
 		if (revalidate_disk(ns->disk))
 			nvme_ns_remove(ns);
+		nvme_put_ns(ns);
 		} else
 			nvme_alloc_ns(dev, nsid);
 }
@@ -2473,9 +2481,11 @@ static int nvme_scan_ns_list(struct nvme_dev *dev, unsigned nn)
 			nvme_validate_ns(dev, nsid);
 
 			while (++prev < nsid) {
-				ns = nvme_find_ns(dev, prev);
-				if (ns)
+				ns = nvme_find_get_ns(dev, prev);
+				if (ns) {
 					nvme_ns_remove(ns);
+					nvme_put_ns(ns);
+				}
 			}
 		}
 		nn -= j;
@@ -2489,8 +2499,6 @@ static void __nvme_scan_namespaces(struct nvme_dev *dev, unsigned nn)
 {
 	struct nvme_ns *ns, *next;
 	unsigned i;
-
-	lockdep_assert_held(&dev->namespaces_mutex);
 
 	for (i = 1; i <= nn; i++)
 		nvme_validate_ns(dev, i);
@@ -2509,13 +2517,12 @@ void nvme_scan_namespaces(struct nvme_dev *dev)
 	if (nvme_identify_ctrl(dev, &id))
 		return;
 
-	mutex_lock(&dev->namespaces_mutex);
-
 	nn = le32_to_cpu(id->nn);
 	if (!nvme_scan_ns_list(dev, nn))
 		goto done;
 	__nvme_scan_namespaces(dev, le32_to_cpup(&id->nn));
 done:
+	mutex_lock(&dev->namespaces_mutex);
 	list_sort(NULL, &dev->namespaces, ns_cmp);
 	mutex_unlock(&dev->namespaces_mutex);
 	kfree(id);
@@ -2906,6 +2913,12 @@ static void nvme_dev_shutdown(struct nvme_dev *dev)
 		nvme_clear_queue(dev->queues[i]);
 }
 
+/*
+ * This function iterates the namespace list unlocked to allow recovery from
+ * controller failure. It is up to the caller to ensure the namespace list is
+ * not modified by scan work while this function is executing.
+ */
+
 static void nvme_dev_remove(struct nvme_dev *dev)
 {
 	struct nvme_ns *ns, *next;
@@ -2919,10 +2932,8 @@ static void nvme_dev_remove(struct nvme_dev *dev)
 		 */
 		nvme_dev_shutdown(dev);
 	}
-	mutex_lock(&dev->namespaces_mutex);
 	list_for_each_entry_safe(ns, next, &dev->namespaces, list)
 		nvme_ns_remove(ns);
-	mutex_unlock(&dev->namespaces_mutex);
 }
 
 static int nvme_setup_prp_pools(struct nvme_dev *dev)
