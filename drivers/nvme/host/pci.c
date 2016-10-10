@@ -2117,6 +2117,8 @@ static void nvme_alloc_ns(struct nvme_dev *dev, unsigned nsid)
 	struct gendisk *disk;
 	int node = dev_to_node(dev->dev);
 
+	lockdep_assert_held(&dev->namespaces_mutex);
+
 	ns = kzalloc_node(sizeof(*ns), GFP_KERNEL, node);
 	if (!ns)
 		return;
@@ -2387,6 +2389,9 @@ static struct nvme_ns *nvme_find_ns(struct nvme_dev *dev, unsigned nsid)
 {
 	struct nvme_ns *ns;
 
+	lockdep_assert_held(&dev->namespaces_mutex);
+
+
 	list_for_each_entry(ns, &dev->namespaces, list) {
 		if (ns->ns_id == nsid)
 			return ns;
@@ -2405,6 +2410,8 @@ static inline bool nvme_io_incapable(struct nvme_dev *dev)
 static void nvme_ns_remove(struct nvme_ns *ns)
 {
 	bool kill = nvme_io_incapable(ns->dev) && !blk_queue_dying(ns->queue);
+
+	lockdep_assert_held(&ns->dev->namespaces_mutex);
 
 	if (kill) {
 		blk_set_queue_dying(ns->queue);
@@ -2483,6 +2490,8 @@ static void __nvme_scan_namespaces(struct nvme_dev *dev, unsigned nn)
 	struct nvme_ns *ns, *next;
 	unsigned i;
 
+	lockdep_assert_held(&dev->namespaces_mutex);
+
 	for (i = 1; i <= nn; i++)
 		nvme_validate_ns(dev, i);
 
@@ -2500,12 +2509,15 @@ void nvme_scan_namespaces(struct nvme_dev *dev)
 	if (nvme_identify_ctrl(dev, &id))
 		return;
 
+	mutex_lock(&dev->namespaces_mutex);
+
 	nn = le32_to_cpu(id->nn);
 	if (!nvme_scan_ns_list(dev, nn))
 		goto done;
 	__nvme_scan_namespaces(dev, le32_to_cpup(&id->nn));
 done:
 	list_sort(NULL, &dev->namespaces, ns_cmp);
+	mutex_unlock(&dev->namespaces_mutex);
 	kfree(id);
 }
 
@@ -2839,6 +2851,7 @@ static void nvme_freeze_queues(struct nvme_dev *dev)
 {
 	struct nvme_ns *ns;
 
+	mutex_lock(&dev->namespaces_mutex);
 	list_for_each_entry(ns, &dev->namespaces, list) {
 		blk_mq_freeze_queue_start(ns->queue);
 
@@ -2849,18 +2862,21 @@ static void nvme_freeze_queues(struct nvme_dev *dev)
 		blk_mq_cancel_requeue_work(ns->queue);
 		blk_mq_stop_hw_queues(ns->queue);
 	}
+	mutex_unlock(&dev->namespaces_mutex);
 }
 
 static void nvme_unfreeze_queues(struct nvme_dev *dev)
 {
 	struct nvme_ns *ns;
 
+	mutex_lock(&dev->namespaces_mutex);
 	list_for_each_entry(ns, &dev->namespaces, list) {
 		queue_flag_clear_unlocked(QUEUE_FLAG_STOPPED, ns->queue);
 		blk_mq_unfreeze_queue(ns->queue);
 		blk_mq_start_stopped_hw_queues(ns->queue, true);
 		blk_mq_kick_requeue_list(ns->queue);
 	}
+	mutex_unlock(&dev->namespaces_mutex);
 }
 
 static void nvme_dev_shutdown(struct nvme_dev *dev)
@@ -2903,8 +2919,10 @@ static void nvme_dev_remove(struct nvme_dev *dev)
 		 */
 		nvme_dev_shutdown(dev);
 	}
+	mutex_lock(&dev->namespaces_mutex);
 	list_for_each_entry_safe(ns, next, &dev->namespaces, list)
 		nvme_ns_remove(ns);
+	mutex_unlock(&dev->namespaces_mutex);
 }
 
 static int nvme_setup_prp_pools(struct nvme_dev *dev)
@@ -3239,6 +3257,7 @@ static int nvme_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 		goto free;
 
 	INIT_LIST_HEAD(&dev->namespaces);
+	mutex_init(&dev->namespaces_mutex);
 	INIT_WORK(&dev->reset_work, nvme_reset_work);
 	dev->dev = get_device(&pdev->dev);
 	pci_set_drvdata(pdev, dev);
