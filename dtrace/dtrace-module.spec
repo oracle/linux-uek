@@ -19,8 +19,8 @@
 
 Name: dtrace-modules-%{kver}
 Summary: dtrace module
-Version: 0.5.3
-Release: 2%{dist}
+Version: 0.5.4
+Release: 1%{dist}
 Provides: dtrace-modules
 Requires: at
 License: CDDL
@@ -127,6 +127,9 @@ rm -rf %{buildroot}
 /usr/include/linux/dtrace/types.h
 
 %changelog
+* Mon Oct 10 2016 Nick Alcock <nick.alcock@oracle.com> - 0.5.4-1
+- USDT for SPARC. [Orabug: 24455245]
+- Release to dev only: not ready for release.
 * Wed Jul 20 2016 Nick Alcock <nick.alcock@oracle.com> - 0.5.3-2
 - Re-enable 0.5.3 release after bugfix [Orabug: 23344927]
 * Mon May 23 2016 Kris Van Hees <kris.van.hees@oracle.com> - 0.5.3-1
