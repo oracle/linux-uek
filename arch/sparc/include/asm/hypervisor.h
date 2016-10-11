@@ -3091,15 +3091,24 @@ unsigned long sun4v_t5_set_perfreg(unsigned long reg_num,
 				   unsigned long reg_val);
 #endif
 
-
-#define HV_FAST_M7_GET_PERFREG	0x43
-#define HV_FAST_M7_SET_PERFREG	0x44
+#define HV_FAST_M7_GET_PERFREG		0x43
+#define HV_FAST_M7_SET_PERFREG		0x44
 
 #ifndef	__ASSEMBLY__
 unsigned long sun4v_m7_get_perfreg(unsigned long reg_num,
 				      unsigned long *reg_val);
 unsigned long sun4v_m7_set_perfreg(unsigned long reg_num,
 				      unsigned long reg_val);
+#endif
+
+#define HV_FAST_M8_GET_PERFREG		0x231
+#define HV_FAST_M8_SET_PERFREG		0x232
+
+#ifndef __ASSEMBLY__
+unsigned long sun4v_m8_get_perfreg(unsigned long reg_num,
+				   unsigned long *reg_val);
+unsigned long sun4v_m8_set_perfreg(unsigned long reg_num,
+				   unsigned long reg_val);
 #endif
 
 /* priq_unconf()
@@ -3784,6 +3793,7 @@ struct hv_pci_priq_intx_info {
 #define HV_GRP_KT_CPU			0x0209
 #define HV_GRP_VT_CPU			0x020c
 #define HV_GRP_T5_CPU			0x0211
+#define HV_GRP_M8_PERF			0x0215
 #define HV_GRP_SONOMA_EPSC		0x0241
 #define HV_GRP_DIAG			0x0300
 

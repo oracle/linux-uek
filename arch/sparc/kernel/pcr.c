@@ -243,6 +243,33 @@ static const struct pcr_ops m7_pcr_ops = {
 	.pcr_nmi_disable	= PCR_N4_PICNPT,
 };
 
+static u64 m8_pcr_read(unsigned long reg_num)
+{
+	unsigned long val;
+
+	(void) sun4v_m8_get_perfreg(reg_num, &val);
+
+	return val;
+}
+
+static void m8_pcr_write(unsigned long reg_num, u64 val)
+{
+	(void) sun4v_m8_set_perfreg(reg_num, val);
+}
+
+static const struct pcr_ops m8_pcr_ops = {
+	.read_pcr               = m8_pcr_read,
+	.write_pcr              = m8_pcr_write,
+	.read_pic               = n4_pic_read,
+	.write_pic              = n4_pic_write,
+	.nmi_picl_value         = n4_picl_value,
+	.pcr_nmi_enable         = (PCR_M8_PICNPT | PCR_M8_STRACE |
+				   PCR_M8_UTRACE | PCR_M8_TOE |
+				   (0x2f << PCR_M8_SL_SHIFT) |
+				   (0x03 << PCR_M8_MASK_SHIFT)),
+	.pcr_nmi_disable        = PCR_M8_PICNPT,
+};
+
 static unsigned long perf_hsvc_group;
 static unsigned long perf_hsvc_major;
 static unsigned long perf_hsvc_minor;
@@ -276,6 +303,10 @@ static int __init register_perf_hsvc(void)
 		case SUN4V_CHIP_SPARC_M7:
 		case SUN4V_CHIP_SPARC_S7:
 			perf_hsvc_group = HV_GRP_M7_PERF;
+			break;
+
+		case SUN4V_CHIP_SPARC_M8:
+			perf_hsvc_group = HV_GRP_M8_PERF;
 			break;
 
 		default:
@@ -326,6 +357,10 @@ static int __init setup_sun4v_pcr_ops(void)
 	case SUN4V_CHIP_SPARC_M7:
 	case SUN4V_CHIP_SPARC_S7:
 		pcr_ops = &m7_pcr_ops;
+		break;
+
+	case SUN4V_CHIP_SPARC_M8:
+		pcr_ops = &m8_pcr_ops;
 		break;
 
 	default:

@@ -902,3 +902,20 @@ ENTRY(sun4v_m7_set_perfreg)
 	retl
 	nop
 ENDPROC(sun4v_m7_set_perfreg)
+
+ENTRY(sun4v_m8_get_perfreg)
+	mov     %o1, %o4
+	mov     HV_FAST_M8_GET_PERFREG, %o5
+	ta      HV_FAST_TRAP
+	stx     %o1, [%o4]
+	retl
+	nop
+ENDPROC(sun4v_m8_get_perfreg)
+
+ENTRY(sun4v_m8_set_perfreg)
+	mov     HV_FAST_M8_SET_PERFREG, %o5
+	ta      HV_FAST_TRAP
+	retl
+	nop
+ENDPROC(sun4v_m8_set_perfreg)
+

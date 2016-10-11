@@ -118,7 +118,8 @@ static DEFINE_PER_CPU(struct cpu_hw_events, cpu_hw_events) = { .enabled = 1, };
  * counter event.  In particular it gives the encoding as well as
  * a mask telling which counters the event can be measured on.
  *
- * The mask is unused on SPARC-T4 and later.
+ * The mask is unused on SPARC-T4 and SPARC-M7. It is utilised
+ * again on SPARC-M8.
  */
 struct perf_event_map {
 	u16	encoding;
@@ -126,6 +127,18 @@ struct perf_event_map {
 #define PIC_NONE	0x00
 #define PIC_UPPER	0x01
 #define PIC_LOWER	0x02
+
+/* SPARC-M8 perf events can either be counted on
+ * all counters or restricted to counters 0 and 1
+ * or counters 2 and 3
+ */
+#define M8_PIC_0        0x10
+#define M8_PIC_1        0x20
+#define M8_PIC_2        0x40
+#define M8_PIC_3        0x80
+#define M8_PIC_01       (M8_PIC_0 | M8_PIC_1)
+#define M8_PIC_23       (M8_PIC_2 | M8_PIC_3)
+#define M8_PIC_ANY      (M8_PIC_0 | M8_PIC_1 | M8_PIC_2 | M8_PIC_3)
 };
 
 /* Encode a perf_event_map entry into a long.  */
@@ -173,6 +186,7 @@ struct sparc_pmu {
 	unsigned int			flags;
 #define SPARC_PMU_ALL_EXCLUDES_SAME	0x00000001
 #define SPARC_PMU_HAS_CONFLICTS		0x00000002
+#define SPARC_M8_PMU_HAS_CONFLICTS      0x00000004
 	int				max_hw_events;
 	int				num_pcrs;
 	int				num_pic_regs;
@@ -1338,11 +1352,200 @@ static const struct sparc_pmu sparc_m7_pmu = {
 	.irq_bit	= PCR_N4_TOE,
 	.upper_nop	= 0,
 	.lower_nop	= 0,
-	.flags		= 0,
+	.flags          = 0,
 	.max_hw_events	= 4,
 	.num_pcrs	= 4,
 	.num_pic_regs	= 4,
 };
+
+static const struct perf_event_map sparc_m8_perfmon_event_map[] = {
+	[PERF_COUNT_HW_CPU_CYCLES] = { ((0x2f << 8) | 0x03), M8_PIC_ANY },
+	[PERF_COUNT_HW_INSTRUCTIONS] = { ((0x0e << 8) | 0xff), M8_PIC_ANY },
+	[PERF_COUNT_HW_CACHE_REFERENCES] = { ((0x0e << 8) | 0x02), M8_PIC_ANY },
+	[PERF_COUNT_HW_CACHE_MISSES] = { ((0x28 << 8) | 0xff), M8_PIC_ANY },
+	[PERF_COUNT_HW_BRANCH_INSTRUCTIONS] = { ((0x0f << 8) | 0xf0), M8_PIC_ANY },
+	[PERF_COUNT_HW_BRANCH_MISSES] = { ((0x21 << 8) | 0x3f), M8_PIC_ANY },
+};
+
+static const struct perf_event_map *sparc_m8_event_map(int event_id)
+{
+	return &sparc_m8_perfmon_event_map[event_id];
+}
+
+static const cache_map_t sparc_m8_cache_map = {
+[C(L1D)] = {
+	[C(OP_READ)] = {
+		[C(RESULT_ACCESS)] = { CACHE_OP_UNSUPPORTED },
+		/* L1 data cache misses of all types */
+		[C(RESULT_MISS)] = { ((0x27 << 8) | 0xff), M8_PIC_ANY },
+	},
+	[C(OP_WRITE)] = {
+		[C(RESULT_ACCESS)] = { CACHE_OP_UNSUPPORTED },
+		/* L1 data cache misses of all types */
+		[C(RESULT_MISS)] = { ((0x27 << 8) | 0xff), M8_PIC_ANY },
+	},
+	[C(OP_PREFETCH)] = {
+		/* total number of hardware data prefetches */
+		[C(RESULT_ACCESS)] = { ((0x2c << 8) | 0xff), M8_PIC_ANY },
+		[C(RESULT_MISS)] = { CACHE_OP_UNSUPPORTED },
+	},
+},
+[C(L1I)] = {
+	[C(OP_READ)] = {
+		[C(RESULT_ACCESS)] = { CACHE_OP_UNSUPPORTED },
+		/* instruction local L1 miss */
+		[C(RESULT_MISS)] = { ((0x05 << 8) | 0x7f), M8_PIC_ANY },
+	},
+	[ C(OP_WRITE) ] = {
+		[ C(RESULT_ACCESS) ] = { CACHE_OP_NONSENSE },
+		[ C(RESULT_MISS)   ] = { CACHE_OP_NONSENSE },
+	},
+	[ C(OP_PREFETCH) ] = {
+		/* total number of instruction prefetches */
+		[ C(RESULT_ACCESS) ] = { ((0x14 << 8) | 0xff), M8_PIC_ANY },
+		[ C(RESULT_MISS)   ] = { CACHE_OP_UNSUPPORTED },
+	},
+},
+[C(LL)] = {
+	[C(OP_READ)] = {
+		/* data local L2 + L3 hit */
+		[C(RESULT_ACCESS)] = { ((0x27 << 8) | 0x07), M8_PIC_ANY },
+		/* data local L2 + L3 misses */
+		[C(RESULT_MISS)] = { ((0x27 << 8) | 0xf8), M8_PIC_ANY },
+	},
+	[C(OP_WRITE)] = {
+		/* data local L2 + L3 hit */
+		[C(RESULT_ACCESS)] = { ((0x27 << 8) | 0x07), M8_PIC_ANY },
+		/* data local L2 + L3 misses */
+		[C(RESULT_MISS)] = { ((0x27 << 8) | 0xf8), M8_PIC_ANY },
+	},
+	[C(OP_PREFETCH)] = {
+		/* L3 (hardware) hit */
+		[C(RESULT_ACCESS)] = { ((0x2c << 8) | 0x03), M8_PIC_ANY },
+		[C(RESULT_MISS)] = { CACHE_OP_UNSUPPORTED },
+	},
+},
+[C(DTLB)] = {
+	[C(OP_READ)] = {
+		[C(RESULT_ACCESS)] = { CACHE_OP_UNSUPPORTED },
+		/* all dtlb misses */
+		[C(RESULT_MISS)] = { ((0x37 << 8) | 0xff), M8_PIC_ANY },
+	},
+	[ C(OP_WRITE) ] = {
+		[ C(RESULT_ACCESS) ] = { CACHE_OP_UNSUPPORTED },
+		/* all dtlb misses */
+		[ C(RESULT_MISS)   ] = { ((0x37 << 8) | 0xff), M8_PIC_ANY },
+	},
+	[ C(OP_PREFETCH) ] = {
+		[ C(RESULT_ACCESS) ] = { CACHE_OP_UNSUPPORTED },
+		[ C(RESULT_MISS)   ] = { CACHE_OP_UNSUPPORTED },
+	},
+},
+[C(ITLB)] = {
+	[C(OP_READ)] = {
+		[C(RESULT_ACCESS)] = { CACHE_OP_UNSUPPORTED },
+		/* all itlb misses */
+		[C(RESULT_MISS)] = { ((0x07 << 8) | 0xff), M8_PIC_ANY },
+	},
+	[ C(OP_WRITE) ] = {
+		[ C(RESULT_ACCESS) ] = { CACHE_OP_UNSUPPORTED },
+		[ C(RESULT_MISS)   ] = { CACHE_OP_UNSUPPORTED },
+	},
+	[ C(OP_PREFETCH) ] = {
+		[ C(RESULT_ACCESS) ] = { CACHE_OP_UNSUPPORTED },
+		[ C(RESULT_MISS)   ] = { CACHE_OP_UNSUPPORTED },
+	},
+},
+[C(BPU)] = {
+	[C(OP_READ)] = {
+		[C(RESULT_ACCESS)] = { CACHE_OP_UNSUPPORTED },
+		/* branch mispredict */
+		[C(RESULT_MISS)] = { ((0x21 << 8) | 0x3f), M8_PIC_ANY },
+	},
+	[ C(OP_WRITE) ] = {
+		[ C(RESULT_ACCESS) ] = { CACHE_OP_UNSUPPORTED },
+		/* branch mispredict */
+		[ C(RESULT_MISS)   ] = { ((0x21 << 8) | 0x3f), M8_PIC_ANY },
+	},
+	[ C(OP_PREFETCH) ] = {
+		[ C(RESULT_ACCESS) ] = { CACHE_OP_UNSUPPORTED },
+		/* branch mispredict */
+		[ C(RESULT_MISS)   ] = { ((0x21 << 8) | 0x3f), M8_PIC_ANY },
+	},
+},
+[C(NODE)] = {
+	[C(OP_READ)] = {
+		[C(RESULT_ACCESS)] = { CACHE_OP_UNSUPPORTED },
+		[C(RESULT_MISS)  ] = { CACHE_OP_UNSUPPORTED },
+	},
+	[ C(OP_WRITE) ] = {
+		[ C(RESULT_ACCESS) ] = { CACHE_OP_UNSUPPORTED },
+		[ C(RESULT_MISS)   ] = { CACHE_OP_UNSUPPORTED },
+	},
+	[ C(OP_PREFETCH) ] = {
+		[ C(RESULT_ACCESS) ] = { CACHE_OP_UNSUPPORTED },
+		[ C(RESULT_MISS)   ] = { CACHE_OP_UNSUPPORTED },
+	},
+},
+};
+
+/* sysfs definitions required for sparc m8 'Kernel PMU events' */
+#define SPARC_M8_EVENT_ATTR(name, config)                       \
+	PMU_EVENT_ATTR_STRING(name, sparc_m8_event_attr_##name, \
+				"event=" #config)
+
+#define SPARC_M8_EVENT_PTR(name) (&sparc_m8_event_attr_##name.attr.attr)
+
+static struct attribute *sparc_m8_pmu_format_attrs[] = {
+	&format_attr_event.attr,
+	NULL,
+};
+
+static struct attribute_group sparc_m8_pmu_format_attr_group = {
+	.name = "format",
+	.attrs = sparc_m8_pmu_format_attrs,
+};
+
+#include "sparc_m8_pmu_events.h"
+
+static struct attribute_group sparc_m8_pmu_events_attr_group = {
+	.name = "events",
+	.attrs = sparc_m8_pmu_event_attrs,
+};
+
+static const struct attribute_group *sparc_m8_pmu_attr_groups[] = {
+	&sparc_m8_pmu_events_attr_group,
+	&sparc_m8_pmu_format_attr_group,
+	NULL,
+};
+
+static const struct sparc_pmu sparc_m8_pmu = {
+	.attr_groups    = sparc_m8_pmu_attr_groups,
+	.event_map      = sparc_m8_event_map,
+	.cache_map      = &sparc_m8_cache_map,
+	.max_events     = ARRAY_SIZE(sparc_m8_perfmon_event_map),
+	.read_pmc       = sparc_vt_read_pmc,
+	.write_pmc      = sparc_vt_write_pmc,
+	.upper_shift    = 5,
+	.lower_shift    = 5,
+	.event_mask     = 0x3fff,
+	.user_bit       = PCR_M8_UTRACE,
+
+	.priv_bit       = PCR_M8_STRACE,
+
+	/* We explicitly don't support hypervisor tracing. */
+	.hv_bit         = 0,
+
+	.irq_bit        = PCR_M8_TOE,
+	.upper_nop      = 0,
+	.lower_nop      = 0,
+	.flags          = (SPARC_PMU_HAS_CONFLICTS |
+			   SPARC_M8_PMU_HAS_CONFLICTS),
+	.max_hw_events  = 4,
+	.num_pcrs       = 4,
+	.num_pic_regs   = 4,
+};
+
 static const struct sparc_pmu *sparc_pmu __read_mostly;
 
 static u64 event_encoding(u64 event_id, int idx)
@@ -1839,21 +2042,84 @@ static void hw_perf_event_destroy(struct perf_event *event)
 	perf_event_release_pmc();
 }
 
+static int sparc_m8_assign_pic(int *pic_map, u8 event_mask)
+{
+	int i, ret = -1;
+
+	switch (event_mask & M8_PIC_ANY) {
+	case M8_PIC_ANY:
+		/* Event can be assigned to any performance counter */
+		for (i = 0; i < MAX_PCRS; i++) {
+			if (pic_map[i] == PIC_NO_INDEX)	{
+				pic_map[i] = ret = i;
+				break;
+			}
+		}
+		break;
+
+	case M8_PIC_01:
+		/* Event can only be assigned to perfromance counters 0 or 1 */
+		for (i = 0; i < 2; i++) {
+			if (pic_map[i] == PIC_NO_INDEX) {
+				pic_map[i] = ret = i;
+				break;
+			}
+		}
+		break;
+
+	case M8_PIC_23:
+		/* Event can only be assigned to performance counters 2 or 3 */
+		for (i = 2; i < MAX_PCRS; i++) {
+			if (pic_map[i] == PIC_NO_INDEX) {
+				pic_map[i] = ret = i;
+				break;
+			}
+		}
+		break;
+
+	case M8_PIC_0:
+		/* Event can only be assigned to performance counter 0 */
+		if (pic_map[0] == PIC_NO_INDEX)
+			pic_map[0] = ret = 0;
+		break;
+
+	case M8_PIC_1:
+		/* Event can only be assigned to performance counter 1 */
+		if (pic_map[1] == PIC_NO_INDEX)
+			pic_map[1] = ret = 1;
+		break;
+
+	case M8_PIC_2:
+		/* Event can only be assigned to performance counter 2 */
+		if (pic_map[2] == PIC_NO_INDEX)
+			pic_map[2] = ret = 2;
+		break;
+
+	case M8_PIC_3:
+		/* Event can only be assigned to performance counter 3 */
+		if (pic_map[3] == PIC_NO_INDEX)
+			pic_map[3] = ret = 3;
+		break;
+
+	default:
+		ret = -1;
+	}
+	return ret;
+}
+
 /* Make sure all events can be scheduled into the hardware at
- * the same time.  This is simplified by the fact that we only
- * need to support 2 simultaneous HW events.
+ * the same time.
  *
  * As a side effect, the evts[]->hw.idx values will be assigned
  * on success.  These are pending indexes.  When the events are
  * actually programmed into the chip, these values will propagate
- * to the per-cpu cpuc->current_idx[] slots, see the code in
- * maybe_change_configuration() for details.
+ * to the per-cpu cpuc->current_idx[] slots.
  */
 static int sparc_check_constraints(struct perf_event **evts,
 				   unsigned long *events, int n_ev)
 {
 	u8 msk0 = 0, msk1 = 0;
-	int idx0 = 0;
+	int i, idx0 = 0;
 
 	/* This case is possible when we are invoked from
 	 * hw_perf_group_sched_in().
@@ -1865,11 +2131,31 @@ static int sparc_check_constraints(struct perf_event **evts,
 		return -1;
 
 	if (!(sparc_pmu->flags & SPARC_PMU_HAS_CONFLICTS)) {
-		int i;
-
 		for (i = 0; i < n_ev; i++)
 			evts[i]->hw.idx = i;
 		return 0;
+	}
+
+	if (sparc_pmu->flags & SPARC_M8_PMU_HAS_CONFLICTS) {
+		int pic_map[MAX_PCRS];
+		int pic, ret = 0;
+		u8 mask;
+
+		for (i = 0; i < MAX_PCRS; i++)
+			pic_map[i] = PIC_NO_INDEX;
+
+		for (i = 0; i < n_ev; i++) {
+			mask = perf_event_get_msk(events[i]);
+			pic = sparc_m8_assign_pic(pic_map, mask);
+			if (pic >= 0)
+				evts[i]->hw.idx = pic;
+			else {
+				/* Can't assign a pic, lets bail out */
+				ret = -1;
+				break;
+			}
+		}
+		return ret;
 	}
 
 	msk0 = perf_event_get_msk(events[0]);
@@ -2301,6 +2587,11 @@ static bool __init supported_pmu(void)
 		sparc_pmu = &sparc_m7_pmu;
 		return true;
 	}
+	if (!strcmp(sparc_pmu_type, "sparc-m8")) { 
+		sparc_pmu = &sparc_m8_pmu;
+		return true;
+	}
+
 	return false;
 }
 

@@ -53,6 +53,7 @@ static struct api_info api_table[] = {
 	{ .group = HV_GRP_SONOMA_EPSC,				},
 	{ .group = HV_GRP_DIAG,		.flags = FLAG_PRE_API	},
 	{ .group = HV_GRP_M7_PERF,				},
+	{ .group = HV_GRP_M8_PERF,                              },
 };
 
 static DEFINE_SPINLOCK(hvapi_lock);
