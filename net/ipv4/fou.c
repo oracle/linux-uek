@@ -187,7 +187,7 @@ static struct sk_buff **fou_gro_receive(struct sk_buff **head,
 	if (!ops || !ops->callbacks.gro_receive)
 		goto out_unlock;
 
-	pp = ops->callbacks.gro_receive(head, skb);
+	pp = call_gro_receive(ops->callbacks.gro_receive, head, skb);
 
 out_unlock:
 	rcu_read_unlock();
@@ -354,7 +354,7 @@ static struct sk_buff **gue_gro_receive(struct sk_buff **head,
 	if (WARN_ON(!ops || !ops->callbacks.gro_receive))
 		goto out_unlock;
 
-	pp = ops->callbacks.gro_receive(head, skb);
+	pp = call_gro_receive(ops->callbacks.gro_receive, head, skb);
 
 out_unlock:
 	rcu_read_unlock();
