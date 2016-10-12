@@ -15,6 +15,7 @@
 #include <asm/nmi.h>
 #include <asm/nops.h>
 #include <asm/dtrace_arch.h>
+#include <asm/text-patching.h>
 
 static uint8_t nops[ASM_CALL_SIZE];
 static uint8_t movs[ASM_CALL_SIZE];
