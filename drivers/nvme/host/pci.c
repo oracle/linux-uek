@@ -66,6 +66,10 @@ static int io_queue_depth = 1024;
 module_param_cb(io_queue_depth, &io_queue_depth_ops, &io_queue_depth, 0644);
 MODULE_PARM_DESC(io_queue_depth, "set io queue depth, should >= 2");
 
+static unsigned int nvme_io_queues = UINT_MAX;
+module_param(nvme_io_queues, uint, 0);
+MODULE_PARM_DESC(nvme_io_queues, "set the number of nvme io queues");
+
 struct nvme_dev;
 struct nvme_queue;
 
@@ -1909,7 +1913,7 @@ static int nvme_setup_io_queues(struct nvme_dev *dev)
 		.pre_vectors = 1
 	};
 
-	nr_io_queues = num_possible_cpus();
+	nr_io_queues = min(nvme_io_queues, num_possible_cpus());
 	result = nvme_set_queue_count(&dev->ctrl, &nr_io_queues);
 	if (result < 0)
 		return result;
