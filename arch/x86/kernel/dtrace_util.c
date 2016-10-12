@@ -12,6 +12,7 @@
 #include <linux/slab.h>
 #include <asm/insn.h>
 #include <asm/ptrace.h>
+#include <asm/text-patching.h>
 
 /*
  * Move the instruction pointer forward to the next instruction, effectiely
