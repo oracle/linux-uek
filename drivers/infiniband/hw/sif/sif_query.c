@@ -85,7 +85,7 @@ int sif_query_device(struct ib_device *ibdev, struct ib_device_attr *props)
 	props->max_cqe = SIF_SW_MAX_CQE;
 	/* Make sure we never fill the CQ completely on rev 1-3 - Bug #3657 */
 	if (PSIF_REVISION(sdev) <= 3)
-		props->max_cqe = SIF_SW_MAX_CQE - 1;
+		props->max_cqe = SIF_SW_MAX_CQE - (SIF_SW_RESERVED_DUL_CQE + SIF_SW_RESERVED_LAST_CQE);
 	props->max_mr = sdev->ba[key].entry_cnt;
 	props->max_pd = SIF_MAX_PD_INDEX - 1; /* 0 not used, limited by hw field size */
 	props->max_qp_rd_atom = ldev.max_qp_rd_atom;
