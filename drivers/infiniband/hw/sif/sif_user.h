@@ -65,6 +65,7 @@ enum sif_vendor_flags {
 	tsu_qosl      = 0x10,   /* Value to use for the qosl bit in the qp state */
 	no_checksum   = 0x20,   /* No csum for qp, wqe.wr.csum = qp.magic */
 	dynamic_mtu   = 0x40,   /* dynamic MTU - use 256B instead of the path MTU */
+	no_x_cqe      = 0x80,   /* Don't allocate room in the CQs to avoid overflow due to #4074 */
 };
 
 enum sif_mem_type {
