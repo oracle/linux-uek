@@ -937,8 +937,7 @@ void rds_send_drop_to(struct rds_sock *rs, struct sockaddr_in *dest)
 		 */
 		if (!conn_dropped && dest &&
 		    test_bit(RDS_MSG_MAPPED, &rm->m_flags)) {
-			conn->c_drop_source = DR_SOCK_CANCEL;
-			rds_conn_drop(conn);
+			rds_conn_drop(conn, DR_SOCK_CANCEL);
 			conn_dropped = 1;
 		}
 		rds_message_wait(rm);
