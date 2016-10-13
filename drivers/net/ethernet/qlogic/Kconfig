@@ -128,10 +128,15 @@ config QEDE_VXLAN
 	  qede module. Say Y here if you want to enable hardware offload
 	  support for Virtual eXtensible Local Area Network (VXLAN)
 	  in the driver.
+
+config QED_RDMA
+	bool
+
 config INFINIBAND_QEDR
 	tristate "QLogic qede RoCE sources [debug]"
 	depends on QEDE && 64BIT
 	select QED_LL2
+	select QED_RDMA
 	default n
 	---help---
 	  This provides a temporary node that allows the compilation
