@@ -62,6 +62,7 @@ struct sif_pt {
 	struct sif_dev *sdev;	/* Device this mapping is valid for */
 	bool fixed_top;         /* If set, pt guarantees that the top node remains constant */
 	bool modifiable;	/* Set if this page table should support modification */
+	bool thread_safe;	/* Set if multiple threads may modify the page table */
 	u8 top_level;		/* Page table level of top node, 0 means no table */
 	u8 leaf_level;		/* Page table level of leaf node */
 	u8 pte_ext_shift;	/* Only populate every (1 << pte_ext_shift) pte */
@@ -96,17 +97,22 @@ struct sif_pt *sif_pt_create_empty(struct sif_dev *sdev, u64 vstart, enum sif_me
  * Set @modifiable to allow the table to be extended and shrinked
  * Set @fixed_top to have pt guarantee that the top node remains constant
  * in which case it will always be a level 4 tree.
+ * set @thread_safe if the page table can be modified in parallel by multiple threads,
+ * which requires the mutex lock to be held. Such page tables cannot be
+ * called from interrupt context due to locking needs.
  */
 struct sif_pt *sif_pt_create(struct sif_dev *sdev, struct scatterlist *sg,
 			u64 vstart, size_t mapsize,
-			u32 page_shift, bool modifiable, bool fixed_top);
+			u32 page_shift, bool modifiable, bool fixed_top,
+			bool thread_safe);
 
 /* Create a sif page table from a mem object:
  * Set @fixed_top to prepare for a table where the top node is fixed:
  * (will always be a level 4 tree)
  */
 struct sif_pt *sif_pt_create_for_mem(struct sif_mem *mem, u64 vstart,
-				u32 page_shift, bool modifiable, bool fixed_top);
+				u32 page_shift, bool modifiable,
+				bool fixed_top, bool thread_safe);
 
 /* Remap the (remappable) page table to be used starting at vstart for the range of mem
  * eg. replace the current mapping with a new one, preserving the top node

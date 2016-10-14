@@ -277,7 +277,7 @@ static int sif_map_gva_ctx(struct sif_dev *sdev,
 
 	if (multipage) {
 		ctx->pt = sif_pt_create(sdev, sif_mem_get_sgl(mem),
-					ctx->base, ctx->size, page_shift, false, false);
+					ctx->base, ctx->size, page_shift, false, false, false);
 		if (!ctx->pt)
 			return -ENOMEM;
 		set_ctx(sdev, ctx, sif_pt_root_table_level(ctx->pt), sif_pt_dma_root(ctx->pt));
@@ -324,7 +324,7 @@ static int sif_map_special_ctx(struct sif_dev *sdev,
 	hw_ctx->translation_type = MMU_GVA2GPA_MODE;
 
 	if (multipage) {
-		ctx->pt = sif_pt_create_for_mem(mem, ctx->base, 12, true, true);
+		ctx->pt = sif_pt_create_for_mem(mem, ctx->base, 12, true, true, false);
 		if (!ctx->pt)
 			return -ENOMEM;
 		set_ctx(sdev, ctx, sif_pt_root_table_level(ctx->pt), sif_pt_dma_root(ctx->pt));
@@ -404,7 +404,7 @@ int sif_map_fmr_ctx(struct sif_dev *sdev,
 
 		set_ctx(sdev, ctx, leaf_level, aligned_dma_addr);
 	} else if (!ctx->pt) {
-		ctx->pt = sif_pt_create_for_mem(mem, ctx->base, page_shift, true, false);
+		ctx->pt = sif_pt_create_for_mem(mem, ctx->base, page_shift, true, false, false);
 		if (!ctx->pt)
 			return -ENOMEM;
 		set_ctx(sdev, ctx, sif_pt_root_table_level(ctx->pt), sif_pt_dma_root(ctx->pt));

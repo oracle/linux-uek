@@ -58,6 +58,30 @@ void sif_pt_exit(void)
 
 /* some utilities: */
 
+
+/* Abstract locking functions:
+ * TBD: In principle this allows locking to be skipped if the page table
+ * does not need to be enforcing thread safeness.
+ * Right now use locking to trap if two threads are trying to modify a
+ * table that is assumed to be accessed serialized:
+ * This is a measure to avoid memory overwrites or corruction
+ * if used like we assume is the case in Orabug: 24655978.
+ *
+ */
+static inline void pt_lock(struct sif_pt *pt)
+{
+	if (pt->thread_safe)
+		mutex_lock(&pt->lock);
+	else
+		BUG_ON(!mutex_trylock(&pt->lock));
+}
+
+static inline void pt_unlock(struct sif_pt *pt)
+{
+	mutex_unlock(&pt->lock);
+}
+
+
 /* Find the optimal page size (represented by the leaf level)
  * to use based on device capabilities, configuration and a max_shift
  * value (typically based on continuousness of memory.
@@ -347,7 +371,7 @@ static void sif_pt_release(struct kref *kref)
  */
 struct sif_pt *sif_pt_create(struct sif_dev *sdev, struct scatterlist *sg,
 			u64 vstart, size_t size, u32 page_shift,
-			bool modifiable, bool fixed_top)
+			bool modifiable, bool fixed_top, bool thread_safe)
 {
 	int ret = 0;
 	int i;
@@ -367,6 +391,7 @@ struct sif_pt *sif_pt_create(struct sif_dev *sdev, struct scatterlist *sg,
 	pt->sdev = sdev;
 	pt->fixed_top = fixed_top;
 	pt->modifiable = modifiable;
+	pt->thread_safe = thread_safe;
 
 	ret = find_optimal_leaf_level(sdev, page_shift,
 				vstart, dma_start, size,
@@ -395,7 +420,8 @@ extend_failed:
 
 
 struct sif_pt *sif_pt_create_for_mem(struct sif_mem *mem,
-				u64 vstart, u32 page_shift, bool modifiable, bool fixed_top)
+				u64 vstart, u32 page_shift,
+				bool modifiable, bool fixed_top, bool thread_safe)
 {
 	int ret = 0;
 	int i;
@@ -411,6 +437,7 @@ struct sif_pt *sif_pt_create_for_mem(struct sif_mem *mem,
 	pt->sdev = sdev;
 	pt->fixed_top = fixed_top;
 	pt->modifiable = modifiable;
+	pt->thread_safe = thread_safe;
 	ret = find_optimal_leaf_level(sdev, page_shift,
 				vstart, sif_mem_dma(mem, 0), size,
 				&pt->leaf_level, &pt->pte_ext_shift);
@@ -447,7 +474,8 @@ struct sif_pt *sif_pt_create_empty(struct sif_dev *sdev, u64 vstart, enum sif_me
 	if (map_mt == SIFMT_2M)
 		page_shift += sdev->mi.level_shift;
 
-	pt = sif_pt_create(sdev, NULL, vstart, 0, page_shift, true, map_mt == SIFMT_CS);
+	pt = sif_pt_create(sdev, NULL, vstart, 0, page_shift, true, map_mt == SIFMT_CS,
+		map_mt == SIFMT_CS);
 	if (!pt)
 		return NULL;
 
@@ -953,7 +981,7 @@ int sif_pt_entry(struct sif_pt *pt, u64 vaddr, dma_addr_t *entry, dma_addr_t *va
 	u8 level;
 	int i, ip;
 
-	mutex_lock(&pt->lock);
+	pt_lock(pt);
 	level = pt->leaf_level;
 	va_up = vaddr & ~level_to_pagemask(pt, level);
 	pt_shift = level_to_pageshift(pt, level-1);
@@ -972,7 +1000,7 @@ int sif_pt_entry(struct sif_pt *pt, u64 vaddr, dma_addr_t *entry, dma_addr_t *va
 		sif_log(sdev, SIF_MMU_V, "Page at vaddr %llx not found", va_up);
 		ret = -EINVAL;
 	}
-	mutex_unlock(&pt->lock);
+	pt_unlock(pt);
 	return ret;
 }
 
@@ -1141,7 +1169,8 @@ int sif_pt_extend(struct sif_pt *pt, struct scatterlist *sg, u64 vstart, size_t 
 
 	sif_log(pt->sdev, SIF_MMU, "** vstart %llx size %lx page size %llx leaf_level %d **",
 		vstart, size, page_mask + 1, pt->leaf_level);
-	mutex_lock(&pt->lock);
+
+	pt_lock(pt);
 
 	/* Calculate a good size of each sg table in the kmem object: */
 	if (!pt->top) {
@@ -1182,13 +1211,13 @@ int sif_pt_extend(struct sif_pt *pt, struct scatterlist *sg, u64 vstart, size_t 
 
 	pt->vstart = new_start;
 	pt->vsize = new_size;
-	mutex_unlock(&pt->lock);
+	pt_unlock(pt);
 	return ret;
 populate_failed:
 	kref_put(&pt->refcnt, sif_pt_release);
 kmem_ext_failed:
 	sif_kmem_free(pt->sdev, &pt->m);
-	mutex_unlock(&pt->lock);
+	pt_unlock(pt);
 	return ret;
 }
 
@@ -1209,8 +1238,8 @@ int sif_pt_extend_with_mem(struct sif_pt *pt, struct sif_mem *mem, u64 vstart)
 
 	sif_log(pt->sdev, SIF_MMU, "** vstart %llx size %lx page size %llx leaf level %d **",
 		vstart, size, page_mask + 1, pt->leaf_level);
-	mutex_lock(&pt->lock);
 
+	pt_lock(pt);
 	/* Calculate a good size of each sg table in the kmem object: */
 	if (!pt->top) {
 		/* This is a blank pt - allocate and set up the initial structures */
@@ -1247,12 +1276,12 @@ int sif_pt_extend_with_mem(struct sif_pt *pt, struct sif_mem *mem, u64 vstart)
 
 	pt->vstart = new_start;
 	pt->vsize = new_size;
-	mutex_unlock(&pt->lock);
+	pt_unlock(pt);
 	return ret;
 
 kmem_ext_failed:
 	sif_kmem_free(pt->sdev, &pt->m);
-	mutex_unlock(&pt->lock);
+	pt_unlock(pt);
 	return ret;
 }
 
@@ -1271,7 +1300,8 @@ int sif_pt_free_part(struct sif_pt *pt, u64 vstart, size_t size)
 	sif_log(pt->sdev, SIF_PT_V, "** vstart %llx -> %llx, size %lx **", vstart, va, size);
 
 	page_size = level_to_pagesize(pt, level - 1);
-	mutex_lock(&pt->lock);
+
+	pt_lock(pt);
 	p = find_page(pt, level, va_up);
 	if (!p) {
 		sif_log(pt->sdev, SIF_INFO, "vaddr %llx not found at level %d",
@@ -1311,11 +1341,11 @@ int sif_pt_free_part(struct sif_pt *pt, u64 vstart, size_t size)
 	 */
 	dma_sync_sg_for_device(pt->sdev->ib_dev.dma_device, pt->m.sg, pt->m.sg_max, DMA_TO_DEVICE);
 
-	mutex_unlock(&pt->lock);
+	pt_unlock(pt);
 	return kref_put(&pt->refcnt, sif_pt_release);
 
 failed:
-	mutex_unlock(&pt->lock);
+	pt_unlock(pt);
 	return ret;
 }
 
@@ -1368,8 +1398,8 @@ int sif_pt_remap_for_mem(struct sif_pt *pt, struct sif_mem *mem, u32 page_shift,
 	}
 
 	sif_log(pt->sdev, SIF_MMU_V, "** vstart %llx size %llx **", vstart, mem->size);
-	mutex_lock(&pt->lock);
 
+	pt_lock(pt);
 	/* Fast path: Repopulate ptes directly - all ref.cnts are kept as is: */
 
 	ret = populate_pt_from_mem(pt, mem, vstart, true);
@@ -1380,7 +1410,7 @@ int sif_pt_remap_for_mem(struct sif_pt *pt, struct sif_mem *mem, u32 page_shift,
 	 */
 	if (!ret)
 		dma_sync_sg_for_device(pt->sdev->ib_dev.dma_device, pt->m.sg, pt->m.sg_max, DMA_TO_DEVICE);
-	mutex_unlock(&pt->lock);
+	pt_unlock(pt);
 	return ret;
 }
 
