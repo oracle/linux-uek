@@ -918,13 +918,16 @@ void ipoib_cm_handle_tx_wc(struct net_device *dev, struct ib_wc *wc)
 	    wc->status != IB_WC_WR_FLUSH_ERR) {
 		struct ipoib_neigh *neigh;
 
-		/*IB_WC_RNR_RETRY_EXC_ERR error is part of the life cycle, so don't make waves.*/
-		if (IB_WC_RNR_RETRY_EXC_ERR != wc->status)
-			ipoib_warn(priv, "%s: failed cm send event "
+		/* IB_WC[_RNR]_RETRY_EXC_ERR error is part of the life cycle,
+		 * so don't make waves.
+		 */
+		if (IB_WC_RNR_RETRY_EXC_ERR == wc->status ||
+		    IB_WC_RETRY_EXC_ERR == wc->status)
+			ipoib_dbg(priv, "%s: failed cm send event "
 				   "(status=%d, wrid=%d vend_err 0x%x)\n",
 				   __func__, wc->status, wr_id, wc->vendor_err);
 		else
-			ipoib_dbg(priv, "%s: failed cm send event "
+			ipoib_warn(priv, "%s: failed cm send event "
 				   "(status=%d, wrid=%d vend_err 0x%x)\n",
 				   __func__, wc->status, wr_id, wc->vendor_err);
 

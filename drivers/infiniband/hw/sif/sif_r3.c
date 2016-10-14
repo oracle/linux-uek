@@ -531,7 +531,7 @@ int pre_process_wa4074(struct sif_dev *sdev, struct sif_qp *qp)
 	return 0;
 }
 
-/* QP is in RESET state, its now safe to do a cq_walk and
+/* QP is in RESET or shadow error state, its now safe to do a cq_walk and
  * flush any completions.
  */
 int post_process_wa4074(struct sif_dev *sdev, struct sif_qp *qp)
@@ -552,6 +552,12 @@ int post_process_wa4074(struct sif_dev *sdev, struct sif_qp *qp)
 		sif_log(sdev, SIF_INFO, "sq/cq not defined for qp %d (type %s)",
 			qp->qp_idx, string_enum_psif_qp_trans(qp->type));
 		return -1;
+	}
+
+	if (unlikely(READ_ONCE(cq->in_error))) {
+		sif_log(sdev, SIF_WCE_V, "qp %d: cq %d is in error - exiting",
+			qp->qp_idx, cq->index);
+		return ret;
 	}
 
 	if (qp->flags & SIF_QPF_HW_OWNED) {
@@ -696,9 +702,9 @@ flush_sq_again:
 		last_seq, last_gen_seq);
 
 	for (; (LESS_OR_EQUAL_16(last_seq, last_gen_seq)); ++last_seq) {
-		if (unlikely(cq->entries < ((u32) (last_seq - sq_sw->head_seq)))) {
+		if (unlikely(GREATER_32((u16)(last_seq - sq_sw->head_seq), cq->entries))) {
 			sif_log(sdev, SIF_INFO, "cq (%d) is  full! (len = %d, used = %d)",
-				cq->index, cq->entries, last_seq - sq_sw->head_seq - 1);
+				cq->index, cq->entries, (u16)(last_seq - sq_sw->head_seq));
 			goto err_post_wa4074;
 		}
 
@@ -810,8 +816,13 @@ static u16 walk_and_update_cqes(struct sif_dev *sdev, struct sif_qp *qp, u16 hea
 			if (last_seq != updated_seq)
 				lcqe.wc_id.sq_id.sq_seq_num = updated_seq;
 
-			if (GREATER_16(updated_seq, end))
+			if (GREATER_16(updated_seq, end)) {
+				/* Explicitly mark the CQE as duplicated completion
+				 * when there are more CQE in the CQ.
+				 */
 				lcqe.wc_id.sq_id.sq_seq_num = end;
+				lcqe.status = PSIF_WC_STATUS_DUPL_COMPL_ERR;
+			}
 
 			copy_conv_to_hw(cqe, &lcqe, sizeof(lcqe));
 

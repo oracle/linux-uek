@@ -55,7 +55,6 @@ unsigned int rds_ib_fmr_8k_pool_size = RDS_FMR_8K_POOL_SIZE;
 unsigned int rds_ib_retry_count = RDS_IB_DEFAULT_RETRY_COUNT;
 unsigned int rds_ib_active_bonding_enabled = 0;
 unsigned int rds_ib_active_bonding_fallback = 1;
-unsigned int rds_ib_active_bonding_reconnect_delay = 1;
 unsigned int rds_ib_active_bonding_trigger_delay_max_msecs; /* = 0; */
 unsigned int rds_ib_active_bonding_trigger_delay_min_msecs; /* = 0; */
 unsigned int rds_ib_rnr_retry_count = RDS_IB_DEFAULT_RNR_RETRY_COUNT;
@@ -78,8 +77,6 @@ MODULE_PARM_DESC(rds_ib_active_bonding_fallback, " Active Bonding failback Enabl
 module_param(rds_ib_active_bonding_failover_groups, charp, 0444);
 MODULE_PARM_DESC(rds_ib_active_bonding_failover_groups,
 	"<ifname>[,<ifname>]*[;<ifname>[,<ifname>]*]*");
-module_param(rds_ib_active_bonding_reconnect_delay, int, 0444);
-MODULE_PARM_DESC(rds_ib_active_bonding_reconnect_delay, " Active Bonding reconnect delay");
 module_param(rds_ib_active_bonding_trigger_delay_max_msecs, int, 0444);
 MODULE_PARM_DESC(rds_ib_active_bonding_trigger_delay_max_msecs,
 		" Active Bonding Max delay before active bonding is triggered(msecs)");
@@ -172,8 +169,7 @@ void rds_ib_dev_shutdown(struct rds_ib_device *rds_ibdev)
 
 	spin_lock_irqsave(&rds_ibdev->spinlock, flags);
 	list_for_each_entry(ic, &rds_ibdev->conn_list, ib_node) {
-		ic->conn->c_drop_source = DR_IB_UMMOD;
-		rds_conn_drop(ic->conn);
+		rds_conn_drop(ic->conn, DR_IB_UMMOD);
 	}
 	spin_unlock_irqrestore(&rds_ibdev->spinlock, flags);
 }
@@ -584,55 +580,16 @@ static int rds_ib_addr_exist(struct net_device *ndev,
 	return found;
 }
 
-static void rds_ib_update_arp_cache(struct net_device      *out_dev,
-					unsigned char      *dev_addr,
-					__be32             ip_addr)
+static void rds_ib_notify_addr_change(__be32 addr)
 {
-	int ret = 0;
-	struct neighbour *neigh;
-
-	neigh = __neigh_lookup_errno(&arp_tbl, &ip_addr, out_dev);
-	if (!IS_ERR(neigh)) {
-		ret = neigh_update(neigh, dev_addr, NUD_STALE,
-					NEIGH_UPDATE_F_OVERRIDE |
-					NEIGH_UPDATE_F_ADMIN);
-		if (ret)
-			printk(KERN_ERR "RDS/IB: neigh_update failed (%d) "
-				"for out_dev %s IP %u.%u.%u.%u\n",
-				ret, out_dev->name, NIPQUAD(ip_addr));
-		neigh_release(neigh);
-	}
-}
-
-static void rds_ib_conn_drop(struct work_struct *_work)
-{
-	struct rds_ib_conn_drop_work    *work =
-		container_of(_work, struct rds_ib_conn_drop_work, work.work);
-	struct rds_connection   *conn = work->conn;
-
-	rds_rtd(RDS_RTD_CM_EXT,
-		"conn: %p, calling rds_conn_drop\n", conn);
-
-	conn->c_drop_source = DR_IB_ACTIVE_BOND_FAILOVER;
-	rds_conn_drop(conn);
-
-	kfree(work);
-}
-
-static void rds_ib_notify_addr_change(struct work_struct *_work)
-{
-	struct rds_ib_addr_change_work  *work =
-		container_of(_work, struct rds_ib_addr_change_work, work.work);
-	struct sockaddr_in      sin;
-	int ret;
+	struct sockaddr_in sin;
 
 	sin.sin_family = AF_INET;
-	sin.sin_addr.s_addr = work->addr;
+	sin.sin_addr.s_addr = addr;
 	sin.sin_port = 0;
-
-	ret = rdma_notify_addr_change((struct sockaddr *)&sin);
-
-	kfree(work);
+	if (rdma_notify_addr_change((struct sockaddr *)&sin))
+		pr_err("RDS/IP: %pI4 address change notification failed\n",
+		       &addr);
 }
 
 static int rds_ib_move_ip(char			*from_dev,
@@ -654,12 +611,9 @@ static int rds_ib_move_ip(char			*from_dev,
 	char			to_dev2[2*IFNAMSIZ + 1];
 	char                    *tmp_str;
 	int			ret = 0;
-	u8			active_port, i, j, port = 0;
+	u8			active_port;
 	struct in_device	*in_dev;
-	struct rds_ib_connection *ic, *ic2;
 	struct rds_ib_device *rds_ibdev;
-	struct rds_ib_conn_drop_work *work;
-	struct rds_ib_addr_change_work *work_addrchange;
 
 	page = alloc_page(GFP_HIGHUSER);
 	if (!page) {
@@ -782,103 +736,7 @@ static int rds_ib_move_ip(char			*from_dev,
 		if (!rds_ibdev)
 			goto out;
 
-		spin_lock_bh(&rds_ibdev->spinlock);
-		list_for_each_entry(ic, &rds_ibdev->conn_list, ib_node) {
-			if (ic->conn->c_laddr == addr) {
-				/* if local connection, update the ARP cache */
-				if (ic->conn->c_loopback) {
-					for (i = 1; i <= ip_port_cnt; i++) {
-						if (ip_config[i].ip_addr ==
-							ic->conn->c_faddr) {
-							port = i;
-							break;
-						}
-
-						for (j = 0; j < ip_config[i].alias_cnt; j++) {
-							if (ip_config[i].aliases[j].ip_addr == ic->conn->c_faddr) {
-								port = i;
-								break;
-							}
-						}
-					}
-
-					BUG_ON(!port);
-
-					rds_ib_update_arp_cache(
-						ip_config[from_port].dev,
-						ip_config[port].dev->dev_addr,
-						ic->conn->c_faddr);
-
-					rds_ib_update_arp_cache(
-						ip_config[to_port].dev,
-						ip_config[port].dev->dev_addr,
-						ic->conn->c_faddr);
-
-					rds_ib_update_arp_cache(
-						ip_config[from_port].dev,
-						ip_config[to_port].dev->dev_addr,
-						ic->conn->c_laddr);
-
-					rds_ib_update_arp_cache(
-						ip_config[to_port].dev,
-						ip_config[to_port].dev->dev_addr,
-						ic->conn->c_laddr);
-
-					list_for_each_entry(ic2,
-						&rds_ibdev->conn_list,
-							ib_node) {
-						if (ic2->conn->c_laddr ==
-							ic->conn->c_faddr &&
-							ic2->conn->c_faddr ==
-							ic->conn->c_laddr) {
-							rds_rtd(RDS_RTD_CM_EXT_P,
-								"conn:%p, tos %d, calling rds_conn_drop\n",
-								ic2->conn,
-								ic2->conn->c_tos);
-							ic2->conn->c_drop_source = DR_IB_LOOPBACK_CONN_DROP;
-							rds_conn_drop(ic2->conn);
-						}
-					}
-				}
-
-				/*
-				 * For failover from HW PORT event, do
-				 * delayed connection drop, else call
-				 * inline
-				 */
-				if (event_type == RDS_IB_PORT_EVENT_IB &&
-					failover) {
-					work = kzalloc(sizeof *work, GFP_ATOMIC);
-					if (!work) {
-						printk(KERN_ERR
-							"RDS/IP: failed to allocate connection drop work\n");
-							spin_unlock_bh(&rds_ibdev->spinlock);
-							goto out;
-					}
-
-					work->conn = ic->conn;
-					INIT_DELAYED_WORK(&work->work, rds_ib_conn_drop);
-					queue_delayed_work(rds_aux_wq, &work->work,
-						msecs_to_jiffies(1000 * rds_ib_active_bonding_reconnect_delay));
-				} else {
-					rds_rtd(RDS_RTD_CM_EXT,
-						"conn: %p, tos %d, calling rds_conn_drop\n",
-						ic->conn, ic->conn->c_tos);
-					ic->conn->c_drop_source = DR_IB_ACTIVE_BOND_FAILBACK;
-					rds_conn_drop(ic->conn);
-				}
-			}
-		}
-		spin_unlock_bh(&rds_ibdev->spinlock);
-
-		work_addrchange = kzalloc(sizeof *work, GFP_ATOMIC);
-		if (!work_addrchange) {
-			printk(KERN_WARNING "RDS/IP: failed to allocate work\n");
-			goto out;
-		}
-		work_addrchange->addr = addr;
-		INIT_DELAYED_WORK(&work_addrchange->work, rds_ib_notify_addr_change);
-		queue_delayed_work(rds_wq, &work_addrchange->work, 10);
+		rds_ib_notify_addr_change(addr);
 	}
 
 out:

@@ -69,6 +69,9 @@
  */
 #define SIF_SW_MAX_CQE_LOG2 0x18  /* = 16 MB - tested and should cover most use cases.. */
 #define SIF_SW_MAX_CQE (1 << SIF_SW_MAX_CQE_LOG2)
+/* 768 entries for the HW duplicate completions and 1 entry for the fence completion. */
+#define SIF_SW_RESERVED_DUL_CQE (768 + 1)
+#define SIF_SW_RESERVED_LAST_CQE 1
 
 #define SIF_SW_MAX_SQE_LOG2 0xf  /* = 32K */
 #define SIF_SW_MAX_SQE (1 << SIF_SW_MAX_SQE_LOG2)
@@ -226,6 +229,7 @@ struct sif_eq {
 	char name[SIF_EQ_NAME_LEN+1];	      /* Storage for name visible from /proc/interrupts */
 	struct sif_irq_ch irq_ch; /* Per channel interrupt coalescing settings */
 	cpumask_var_t affinity_mask; /* cpu affinity_mask for set_irq_hints. */
+	unsigned int max_intr_ms; /* Max recorded time in msec on interrupt handling */
 };
 
 /* Driver specific per instance data */
@@ -615,9 +619,6 @@ extern ulong sif_feature_mask;
 /* Let driver do page table walk instead of EPSC for query QP - to avoid #3583 */
 #define SIFF_passthrough_query_qp	0x4000
 
-/* Check all event queues on all interrupts */
-#define SIFF_check_all_eqs_on_intr	0x8000
-
 /* Default behavior is: Make all vlinks behave in sync with the correspondinding external port.
  * This flag turns off this behavior and the vlink state becomes unrelated to physical link.
  */
@@ -675,7 +676,7 @@ extern ulong sif_feature_mask;
 /* Configure PSIF to use the opposite base page size (e.g. 8K on x86 and 4K on sparc) */
 #define SIFF_toggle_page_size        0x40000000
 
-#define SIFF_all_features	     0x7fffddfb
+#define SIFF_all_features	     0x7fff5dfb
 
 #define sif_feature(x) (sif_feature_mask & (SIFF_##x))
 

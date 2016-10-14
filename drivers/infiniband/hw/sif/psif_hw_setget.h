@@ -369,6 +369,26 @@ static inline u8 get_psif_qp_core__error_retry_count(volatile struct psif_qp_cor
 	return((u8)((be64_to_cpu(pte[0]) >> 35) & 0x0000000000000007ull));
 }
 
+/*
+ * When 1, indicates that the receive queue of this QP is a shared receive
+ * queue. This bit is used by tsu_err to classify errors.
+ */
+static inline void set_psif_qp_core__cq_in_err(
+	volatile struct psif_qp_core *ptr,
+	u8 data)
+{
+	/* group=0 shift=38 bits=1 */
+	volatile __be64 *const pte = (__be64 *)ptr;
+	pte[0] = cpu_to_be64((be64_to_cpu(pte[0]) & 0xffffffbfffffffffull) |
+		((((u64)(data)) & 0x0000000000000001ull) << 38));
+}
+static inline u8 get_psif_qp_core__cq_in_err(volatile struct psif_qp_core *ptr)
+{
+	/* group=0 shift=38 bits=1 */
+	volatile __be64 *const pte = (__be64 *)ptr;
+	return((u8)((be64_to_cpu(pte[0]) >> 38) & 0x0000000000000001ull));
+}
+
 /* A hit in the set locally spun out of tsu_cmpl is found. */
 static inline void set_psif_qp_core__spin_hit(
 	volatile struct psif_qp_core *ptr,

@@ -80,15 +80,10 @@ EXPORT_SYMBOL_GPL(rds_local_wq);
 void rds_connect_path_complete(struct rds_connection *conn, int curr)
 {
 	if (!rds_conn_transition(conn, curr, RDS_CONN_UP)) {
-		printk(KERN_WARNING "%s: Cannot transition to state UP"
-				", current state is %d\n",
-				__func__,
-				atomic_read(&conn->c_state));
-		atomic_set(&conn->c_state, RDS_CONN_ERROR);
-		if (conn->c_loopback)
-			queue_work(rds_local_wq, &conn->c_down_w);
-		else
-			queue_work(rds_wq, &conn->c_down_w);
+		pr_warn("RDS: Cannot transition conn <%pI4,%pI4,%d> to state UP, current state is %d\n",
+			&conn->c_laddr, &conn->c_faddr, conn->c_tos,
+		atomic_read(&conn->c_state));
+		rds_conn_drop(conn, DR_IB_NOT_CONNECTING_STATE);
 		return;
 	}
 
@@ -96,10 +91,12 @@ void rds_connect_path_complete(struct rds_connection *conn, int curr)
 		conn, &conn->c_laddr, &conn->c_faddr, conn->c_tos);
 
 	conn->c_reconnect_jiffies = 0;
+	conn->c_reconnect_retry = rds_sysctl_reconnect_retry_ms;
+	conn->c_reconnect_retry_count = 0;
 	set_bit(0, &conn->c_map_queued);
-	queue_delayed_work(rds_wq, &conn->c_send_w, 0);
-	queue_delayed_work(rds_wq, &conn->c_recv_w, 0);
-	queue_delayed_work(rds_wq, &conn->c_hb_w, 0);
+	queue_delayed_work(conn->c_wq, &conn->c_send_w, 0);
+	queue_delayed_work(conn->c_wq, &conn->c_recv_w, 0);
+	queue_delayed_work(conn->c_wq, &conn->c_hb_w, 0);
 	conn->c_hb_start = 0;
 
 	conn->c_connection_start = get_seconds();
@@ -143,12 +140,10 @@ void rds_queue_reconnect(struct rds_connection *conn)
 		conn->c_reconnect_jiffies);
 
 	set_bit(RDS_RECONNECT_PENDING, &conn->c_flags);
-	if (conn->c_reconnect_jiffies == 0) {
+	if (conn->c_reconnect_jiffies == 0 ||
+	    test_and_clear_bit(RDS_RECONNECT_TIMEDOUT, &conn->c_reconn_flags)) {
 		conn->c_reconnect_jiffies = rds_sysctl_reconnect_min_jiffies;
-		if (conn->c_loopback)
-			queue_delayed_work(rds_local_wq, &conn->c_conn_w, 0);
-		else
-			queue_delayed_work(rds_wq, &conn->c_conn_w, 0);
+		queue_delayed_work(conn->c_wq, &conn->c_conn_w, 0);
 		return;
 	}
 
@@ -158,19 +153,8 @@ void rds_queue_reconnect(struct rds_connection *conn)
 		rand % conn->c_reconnect_jiffies, conn->c_reconnect_jiffies,
 		conn, &conn->c_laddr, &conn->c_faddr, conn->c_tos);
 
-	if (conn->c_loopback) {
-		if (conn->c_laddr >= conn->c_faddr)
-			queue_delayed_work(rds_local_wq, &conn->c_conn_w,
-				rand % conn->c_reconnect_jiffies);
-		else
-			queue_delayed_work(rds_local_wq, &conn->c_conn_w,
-				msecs_to_jiffies(100));
-	} else if (conn->c_laddr >= conn->c_faddr)
-			queue_delayed_work(rds_wq, &conn->c_conn_w,
-			   rand % conn->c_reconnect_jiffies);
-	else
-			queue_delayed_work(rds_wq, &conn->c_conn_w,
-					msecs_to_jiffies(100));
+		queue_delayed_work(conn->c_wq, &conn->c_conn_w,
+				   rand % conn->c_reconnect_jiffies);
 
 	conn->c_reconnect_jiffies = min(conn->c_reconnect_jiffies * 2,
 					rds_sysctl_reconnect_max_jiffies);
@@ -201,8 +185,7 @@ void rds_connect_worker(struct work_struct *work)
 					"reconnecting..., conn %p\n", conn);
 				rds_queue_reconnect(conn);
 			} else {
-				conn->c_drop_source = DR_CONN_CONNECT_FAIL;
-				rds_conn_error(conn, "RDS: connect failed\n");
+				rds_conn_drop(conn, DR_CONN_CONNECT_FAIL);
 			}
 		}
 	} else {
@@ -225,11 +208,11 @@ void rds_send_worker(struct work_struct *work)
 		switch (ret) {
 		case -EAGAIN:
 			rds_stats_inc(s_send_immediate_retry);
-			queue_delayed_work(rds_wq, &conn->c_send_w, 0);
+			queue_delayed_work(conn->c_wq, &conn->c_send_w, 0);
 			break;
 		case -ENOMEM:
 			rds_stats_inc(s_send_delayed_retry);
-			queue_delayed_work(rds_wq, &conn->c_send_w, 2);
+			queue_delayed_work(conn->c_wq, &conn->c_send_w, 2);
 		default:
 			break;
 		}
@@ -247,11 +230,11 @@ void rds_recv_worker(struct work_struct *work)
 		switch (ret) {
 		case -EAGAIN:
 			rds_stats_inc(s_recv_immediate_retry);
-			queue_delayed_work(rds_wq, &conn->c_recv_w, 0);
+			queue_delayed_work(conn->c_wq, &conn->c_recv_w, 0);
 			break;
 		case -ENOMEM:
 			rds_stats_inc(s_recv_delayed_retry);
-			queue_delayed_work(rds_wq, &conn->c_recv_w, 2);
+			queue_delayed_work(conn->c_wq, &conn->c_recv_w, 2);
 		default:
 			break;
 		}
@@ -292,11 +275,10 @@ void rds_hb_worker(struct work_struct *work)
 				"RDS/IB: connection <%u.%u.%u.%u,%u.%u.%u.%u,%d> timed out (0x%lx,0x%lx)..discon and recon\n",
 				NIPQUAD(conn->c_laddr),	NIPQUAD(conn->c_faddr),
 				conn->c_tos, conn->c_hb_start, now);
-			conn->c_drop_source = DR_HB_TIMEOUT;
-			rds_conn_drop(conn);
+			rds_conn_drop(conn, DR_HB_TIMEOUT);
 			return;
 		}
-		queue_delayed_work(rds_wq, &conn->c_hb_w, HZ);
+		queue_delayed_work(conn->c_wq, &conn->c_hb_w, HZ);
 	}
 }
 
@@ -305,17 +287,28 @@ void rds_reconnect_timeout(struct work_struct *work)
 	struct rds_connection *conn =
 		container_of(work, struct rds_connection, c_reconn_w.work);
 
-	/* if the higher IP has not reconnected, reset back to two-sided
-	 * reconnect.
-	 */
+	if (conn->c_reconnect_retry_count > rds_sysctl_reconnect_max_retries) {
+		pr_info("RDS: connection <%pI4,%pI4,%d> reconnect retries(%d) exceeded, stop retry\n",
+			&conn->c_laddr, &conn->c_faddr, conn->c_tos,
+			conn->c_reconnect_retry_count);
+		return;
+	}
+
 	if (!rds_conn_up(conn)) {
-		rds_rtd(RDS_RTD_CM,
-			"conn not up, calling rds_conn_drop <%u.%u.%u.%u,%u.%u.%u.%u,%d>\n",
-			NIPQUAD(conn->c_laddr),	NIPQUAD(conn->c_faddr),
-			conn->c_tos);
-		conn->c_drop_source = DR_RECONNECT_TIMEOUT;
-		rds_conn_drop(conn);
-		conn->c_reconnect_racing = 0;
+		if (rds_conn_up(conn) == RDS_CONN_DISCONNECTING) {
+			queue_delayed_work(conn->c_wq, &conn->c_reconn_w,
+					   msecs_to_jiffies(100));
+		} else {
+			conn->c_reconnect_retry_count++;
+			rds_rtd(RDS_RTD_CM,
+				"conn <%pI4,%pI4,%d> not up, retry(%d)\n",
+				&conn->c_laddr, &conn->c_faddr, conn->c_tos,
+				conn->c_reconnect_retry_count);
+			queue_delayed_work(conn->c_wq, &conn->c_reconn_w,
+					   msecs_to_jiffies(conn->c_reconnect_retry));
+			set_bit(RDS_RECONNECT_TIMEDOUT, &conn->c_reconn_flags);
+			rds_conn_drop(conn, DR_RECONNECT_TIMEOUT);
+		}
 	}
 }
 
@@ -333,29 +326,7 @@ void rds_shutdown_worker(struct work_struct *work)
 				conn->c_tos,
 				conn_drop_reason_str(conn->c_drop_source));
 
-	/* if racing is detected, lower IP backs off and let the higher IP
-	 * drives the reconnect (one-sided reconnect)
-	 */
-	if (conn->c_laddr < conn->c_faddr && conn->c_reconnect_racing) {
-		rds_rtd(RDS_RTD_CM,
-			"calling rds_conn_shutdown, conn %p:0 <%u.%u.%u.%u,%u.%u.%u.%u,%d>\n",
-			conn, NIPQUAD(conn->c_laddr), NIPQUAD(conn->c_faddr),
-			conn->c_tos);
-		rds_conn_shutdown(conn, 0);
-		if (conn->c_loopback)
-			queue_delayed_work(rds_local_wq, &conn->c_reconn_w,
-					   msecs_to_jiffies(5000));
-		else
-			queue_delayed_work(rds_wq, &conn->c_reconn_w,
-					   msecs_to_jiffies(5000));
-	} else {
-		rds_rtd(RDS_RTD_CM,
-			"calling rds_conn_shutdown, conn %p:1 <%u.%u.%u.%u,%u.%u.%u.%u,%d>\n",
-			conn, NIPQUAD(conn->c_laddr), NIPQUAD(conn->c_faddr),
-			conn->c_tos);
-		rds_conn_shutdown(conn, 1);
-	}
-
+	rds_conn_shutdown(conn, 1);
 }
 
 void rds_threads_exit(void)

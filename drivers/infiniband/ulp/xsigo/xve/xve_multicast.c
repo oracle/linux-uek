@@ -174,7 +174,10 @@ static int xve_mcast_join_finish(struct xve_mcast *mcast,
 		}
 		priv->qkey = be32_to_cpu(priv->broadcast->mcmember.qkey);
 		spin_unlock_irq(&priv->lock);
-		priv->tx_wr.wr.ud.remote_qkey = priv->qkey;
+		priv->tx_wr.wr.ud.remote_qkey = (priv->is_eoib == 1) ?
+						priv->port_qkey : priv->qkey;
+		xve_warn(priv, "setting remote_qkey %x",
+				priv->tx_wr.wr.ud.remote_qkey);
 
 		set_qkey = 1;
 	}
@@ -467,7 +470,7 @@ static void xve_mcast_join(struct net_device *dev, struct xve_mcast *mcast,
 		rec.rate = mcast_rate;
 	}
 
-	xve_dbg_mcast(priv, "joining MGID %pI6 pkey %d qkey %d rate%d\n",
+	xve_dbg_mcast(priv, "joining MGID %pI6 pkey %d qkey %x rate%d\n",
 		      mcast->mcmember.mgid.raw, rec.pkey, rec.qkey, rec.rate);
 	set_bit(XVE_MCAST_FLAG_BUSY, &mcast->flags);
 	mcast->mc = ib_sa_join_multicast(&xve_sa_client, priv->ca, priv->port,

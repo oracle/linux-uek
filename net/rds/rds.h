@@ -140,6 +140,9 @@ enum {
 #define RDS_RDMA_RESOLVE_TO_MAX_INDEX   5
 #define RDS_ADDR_RES_TM_INDEX_MAX 5
 
+/* Bits for c_reconn_flags */
+#define RDS_RECONNECT_TIMEDOUT	0
+
 enum rds_conn_drop_src {
 	/* rds-core */
 	DR_DEFAULT,
@@ -151,6 +154,7 @@ enum rds_conn_drop_src {
 	DR_CONN_CONNECT_FAIL,
 	DR_HB_TIMEOUT,
 	DR_RECONNECT_TIMEOUT,
+	DR_SOCK_CANCEL,
 
 	/* ib_cm  */
 	DR_IB_CONN_DROP_RACE,
@@ -244,6 +248,7 @@ struct rds_connection {
 	struct rds_transport	*c_trans;
 	void			*c_transport_data;
 
+	struct workqueue_struct *c_wq;
 	atomic_t		c_state;
 	unsigned long		c_send_gen;
 	unsigned long		c_flags;
@@ -271,6 +276,9 @@ struct rds_connection {
 	possible_net_t		c_net;
 
 	/* Re-connect stall diagnostics */
+	unsigned long		c_reconn_flags;
+	unsigned long		c_reconnect_retry;
+	unsigned int		c_reconnect_retry_count;
 	unsigned long           c_reconnect_start;
 	unsigned int            c_reconnect_drops;
 	int                     c_reconnect_warn;
@@ -292,7 +300,6 @@ struct rds_connection {
 
 	unsigned int		c_rdsinfo_pending;
 
-	unsigned int		c_reconnect_racing;
 	unsigned int		c_route_resolved;
 
 	enum rds_conn_drop_src	c_drop_source;
@@ -852,7 +859,7 @@ struct rds_connection *rds_conn_find(struct net *net, __be32 laddr,
 void rds_conn_shutdown(struct rds_connection *conn, int restart);
 void rds_conn_destroy(struct rds_connection *conn, int shutdown);
 void rds_conn_reset(struct rds_connection *conn);
-void rds_conn_drop(struct rds_connection *conn);
+void rds_conn_drop(struct rds_connection *conn, int reason);
 void rds_conn_laddr_list(__be32 laddr, struct list_head *laddr_conns);
 void rds_conn_connect_if_down(struct rds_connection *conn);
 void rds_for_each_conn_info(struct socket *sock, unsigned int len,
@@ -861,10 +868,6 @@ void rds_for_each_conn_info(struct socket *sock, unsigned int len,
 			  int (*visitor)(struct rds_connection *, void *),
 			  size_t item_len);
 char *conn_drop_reason_str(enum rds_conn_drop_src reason);
-void __rds_conn_error(struct rds_connection *conn, const char *, ...)
-				__attribute__ ((format (printf, 2, 3)));
-#define rds_conn_error(conn, fmt...) \
-	__rds_conn_error(conn, KERN_WARNING "RDS: " fmt)
 
 static inline int
 rds_conn_transition(struct rds_connection *conn, int old, int new)
@@ -888,6 +891,15 @@ static inline int
 rds_conn_connecting(struct rds_connection *conn)
 {
 	return atomic_read(&conn->c_state) == RDS_CONN_CONNECTING;
+}
+
+static inline bool
+rds_conn_self_loopback_passive(struct rds_connection *conn)
+{
+	if (conn->c_laddr == conn->c_faddr && !conn->c_passive)
+		return true;
+	else
+		return false;
 }
 
 /* message.c */
@@ -1034,6 +1046,8 @@ extern unsigned long rds_sysctl_trace_flags;
 extern unsigned int  rds_sysctl_trace_level;
 extern unsigned int  rds_sysctl_shutdown_trace_start_time;
 extern unsigned int  rds_sysctl_shutdown_trace_end_time;
+extern unsigned long rds_sysctl_reconnect_retry_ms;
+extern unsigned int rds_sysctl_reconnect_max_retries;
 
 /* threads.c */
 int rds_threads_init(void);

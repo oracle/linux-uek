@@ -215,6 +215,13 @@ static struct rds_connection *__rds_conn_create(struct net *net,
 	}
 
 	conn->c_trans = trans;
+	conn->c_reconnect_retry = rds_sysctl_reconnect_retry_ms;
+	conn->c_reconnect_retry_count = 0;
+
+	if (conn->c_loopback)
+		conn->c_wq = rds_local_wq;
+	else
+		conn->c_wq = rds_wq;
 
 	ret = trans->conn_alloc(conn, gfp);
 	if (ret) {
@@ -340,9 +347,9 @@ void rds_conn_shutdown(struct rds_connection *conn, int restart)
 		mutex_lock(&conn->c_cm_lock);
 		if (!rds_conn_transition(conn, RDS_CONN_UP, RDS_CONN_DISCONNECTING)
 		 && !rds_conn_transition(conn, RDS_CONN_ERROR, RDS_CONN_DISCONNECTING)) {
-			conn->c_drop_source = DR_INV_CONN_STATE;
-			rds_conn_error(conn, "shutdown called in state %d\n",
-					atomic_read(&conn->c_state));
+			pr_warn("RDS: shutdown called in state %d\n",
+				atomic_read(&conn->c_state));
+			rds_conn_drop(conn, DR_INV_CONN_STATE);
 			mutex_unlock(&conn->c_cm_lock);
 			return;
 		}
@@ -362,12 +369,9 @@ void rds_conn_shutdown(struct rds_connection *conn, int restart)
 			 * Quite reproduceable with loopback connections.
 			 * Mostly harmless.
 			 */
-			conn->c_drop_source = DR_DOWN_TRANSITION_FAIL;
-			rds_conn_error(conn,
-				"%s: failed to transition to state DOWN, "
-				"current state is %d\n",
-				__func__,
-				atomic_read(&conn->c_state));
+			pr_warn("RDS: %s: failed to transition to state DOWN, current state is %d\n",
+				__func__, atomic_read(&conn->c_state));
+			rds_conn_drop(conn, DR_DOWN_TRANSITION_FAIL);
 			return;
 		}
 	}
@@ -421,8 +425,7 @@ void rds_conn_destroy(struct rds_connection *conn, int shutdown)
 	synchronize_rcu();
 
 	/* shut the connection down */
-	conn->c_drop_source = DR_CONN_DESTROY;
-	rds_conn_drop(conn);
+	rds_conn_drop(conn, DR_CONN_DESTROY);
 	flush_work(&conn->c_down_w);
 
 	/* now that conn down worker is flushed; there cannot be any
@@ -652,6 +655,7 @@ static char *conn_drop_reasons[] = {
 	[DR_CONN_CONNECT_FAIL]		= "conn_connect failure",
 	[DR_HB_TIMEOUT]			= "hb timeout",
 	[DR_RECONNECT_TIMEOUT]		= "reconnect timeout",
+	[DR_SOCK_CANCEL]		= "cancel operation on socket",
 	[DR_IB_CONN_DROP_RACE]		= "race between ESTABLISHED event and drop",
 	[DR_IB_NOT_CONNECTING_STATE]	= "conn is not in CONNECTING state",
 	[DR_IB_QP_EVENT]		= "qp event",
@@ -725,13 +729,12 @@ static void rds_conn_probe_lanes(struct rds_connection *conn)
 			else if (rds_conn_connecting(tmp) && (tmp->c_route_resolved == 0)) {
 				printk(KERN_INFO "RDS/IB: connection "
 				       "<%u.%u.%u.%u,%u.%u.%u.%u,%d> "
-				       "connecting, force reset ",
+				       "connecting, force reset\n",
 				       NIPQUAD(tmp->c_laddr),
 				       NIPQUAD(tmp->c_faddr),
 				       tmp->c_tos);
 
-				conn->c_drop_source = DR_ZERO_LANE_DOWN;
-				rds_conn_drop(tmp);
+				rds_conn_drop(tmp, DR_ZERO_LANE_DOWN);
 			}
 		}
 	}
@@ -741,22 +744,22 @@ static void rds_conn_probe_lanes(struct rds_connection *conn)
 /*
  * Force a disconnect
  */
-void rds_conn_drop(struct rds_connection *conn)
+void rds_conn_drop(struct rds_connection *conn, int reason)
 {
 	unsigned long now = get_seconds();
 
+	conn->c_drop_source = reason;
 	if (rds_conn_state(conn) == RDS_CONN_UP) {
 		conn->c_reconnect_start = now;
 		conn->c_reconnect_warn = 1;
 		conn->c_reconnect_drops = 0;
 		conn->c_reconnect_err = 0;
-		conn->c_reconnect_racing = 0;
 		printk(KERN_INFO "RDS/IB: connection "
 			"<%u.%u.%u.%u,%u.%u.%u.%u,%d> dropped due to '%s'\n",
 			NIPQUAD(conn->c_laddr),
 			NIPQUAD(conn->c_faddr),
 			conn->c_tos,
-			conn_drop_reason_str(conn->c_drop_source));
+			conn_drop_reason_str(reason));
 
 		if (conn->c_tos == 0)
 			rds_conn_probe_lanes(conn);
@@ -785,11 +788,7 @@ void rds_conn_drop(struct rds_connection *conn)
 		conn, NIPQUAD(conn->c_laddr), NIPQUAD(conn->c_faddr),
 		conn->c_tos);
 
-	if (conn->c_loopback)
-		queue_work(rds_local_wq, &conn->c_down_w);
-	else
-		queue_work(rds_wq, &conn->c_down_w);
-
+	queue_work(conn->c_wq, &conn->c_down_w);
 }
 EXPORT_SYMBOL_GPL(rds_conn_drop);
 
@@ -805,25 +804,7 @@ void rds_conn_connect_if_down(struct rds_connection *conn)
 			"queueing connect work, conn %p, <%u.%u.%u.%u,%u.%u.%u.%u,%d>\n",
 			conn, NIPQUAD(conn->c_laddr), NIPQUAD(conn->c_faddr),
 			conn->c_tos);
-		if (conn->c_loopback)
-			queue_delayed_work(rds_local_wq, &conn->c_conn_w, 0);
-		else
-			queue_delayed_work(rds_wq, &conn->c_conn_w, 0);
+		queue_delayed_work(conn->c_wq, &conn->c_conn_w, 0);
 	}
 }
 EXPORT_SYMBOL_GPL(rds_conn_connect_if_down);
-
-/*
- * An error occurred on the connection
- */
-void
-__rds_conn_error(struct rds_connection *conn, const char *fmt, ...)
-{
-	va_list ap;
-
-	va_start(ap, fmt);
-	vprintk(fmt, ap);
-	va_end(ap);
-
-	rds_conn_drop(conn);
-}

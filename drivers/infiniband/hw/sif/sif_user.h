@@ -21,7 +21,7 @@
  *
  */
 #define SIF_UVERBS_ABI_MAJOR_VERSION    3
-#define SIF_UVERBS_ABI_MINOR_VERSION    5
+#define SIF_UVERBS_ABI_MINOR_VERSION    6
 
 #define SIF_UVERBS_VERSION(x, y) ((x) << 8 | (y))
 

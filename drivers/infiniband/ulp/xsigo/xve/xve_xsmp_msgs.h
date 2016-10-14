@@ -119,7 +119,9 @@ struct xve_xsmp_msg {
 			u32 hca_ctrl_qp;
 			u32 hca_data_qp;
 			u16 hca_pkey;
-			u16 hca_qkey;
+			u32 hca_qkey;
+			u8  eoib_enable;
+			u32 global_qpkey;
 		} __packed;
 		u8 bytes[512];
 	};
@@ -302,6 +304,7 @@ struct xve_iscsi_msg {
 #define XVE_INSTALL_TSO	(1 << 3)
 #define XVE_INSTALL_RX_BAT	(1 << 4)
 #define XVE_8K_IBMTU		(1 << 5)
+#define XVE_NOTIFY_HBEAT_LOST   (1 << 7)
 #define	XVE_INSTALL_LINK2QP	(1 << 8)
 
 #define XSIGO_IP_FRAGMENT_BIT       (1 << 8)

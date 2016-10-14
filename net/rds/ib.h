@@ -139,11 +139,6 @@ struct rds_ib_path {
 	union ib_gid    p_dgid;
 };
 
-struct rds_ib_migrate_work {
-	struct delayed_work             work;
-	struct rds_ib_connection        *ic;
-};
-
 struct rds_ib_rx_work {
 	struct delayed_work             work;
 	struct rds_ib_connection        *ic;
@@ -227,15 +222,7 @@ struct rds_ib_connection {
 
 	struct completion       i_last_wqe_complete;
 
-#if 0
-	/* APM support */
-	struct rds_ib_path      i_pri_path;
-	struct rds_ib_path      i_cur_path;
-	unsigned int            i_alt_path_index;
-	unsigned long		i_last_migration;
-#endif
 	/* Active Bonding */
-	struct rds_ib_migrate_work	i_migrate_w;
 	unsigned int		i_active_side;
 
 	int			i_scq_vector;
@@ -246,7 +233,6 @@ struct rds_ib_connection {
 	spinlock_t              i_rx_lock;
 	unsigned int            i_rx_wait_for_handler;
 	atomic_t                i_worker_has_rx;
-	atomic_t		i_destroying;
 };
 
 /* This assumes that atomic_t is at least 32 bits */
@@ -412,11 +398,6 @@ struct rds_ib_conn_destroy_work {
 	struct rds_connection          *conn;
 };
 
-struct rds_ib_addr_change_work {
-	struct delayed_work             work;
-	__be32                          addr;
-};
-
 enum {
 	RDS_IB_MR_8K_POOL,
 	RDS_IB_MR_1M_POOL,
@@ -580,7 +561,6 @@ void rds_ib_conn_shutdown(struct rds_connection *conn);
 void rds_ib_state_change(struct sock *sk);
 int rds_ib_listen_init(void);
 void rds_ib_listen_stop(void);
-void __rds_ib_conn_error(struct rds_connection *conn, const char *, ...);
 int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 			     struct rdma_cm_event *event);
 int rds_ib_cm_initiate_connect(struct rdma_cm_id *cm_id);
@@ -588,9 +568,6 @@ void rds_ib_cm_connect_complete(struct rds_connection *conn,
 				struct rdma_cm_event *event);
 void rds_ib_init_frag(unsigned int version);
 void rds_ib_conn_destroy_init(struct rds_connection *conn);
-
-#define rds_ib_conn_error(conn, fmt...) \
-	__rds_ib_conn_error(conn, KERN_WARNING "RDS/IB: " fmt)
 
 /* ib_rdma.c */
 int rds_ib_update_ipaddr(struct rds_ib_device *rds_ibdev, __be32 ipaddr);

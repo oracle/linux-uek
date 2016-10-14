@@ -150,6 +150,77 @@ static int send_epsa_proxy_qp_sq_key(struct sif_dev *sdev, u32 lkey,
 	return ret;
 }
 
+
+/*
+ * Initialization of qp state via local copy
+ *
+ * To be called from create_qp and when QP is modified to RESET, in
+ * case it is resurrected
+ */
+
+static void init_hw_qp_state(struct sif_dev *sdev, struct sif_qp *qp)
+{
+	struct psif_qp qpi;
+
+	memset(&qpi, 0, sizeof(struct psif_qp));
+
+	/* Only init these for QPs which have their SQs read by the CMPL block */
+	if (is_reliable_qp(qp->type) && qp->ib_qp_type != IB_QPT_XRC_TGT) {
+		struct sif_sq *sq = get_sif_sq(sdev, qp->qp_idx);
+
+		qpi.state.sq_clog2_extent = order_base_2(sq->extent);
+		qpi.state.sq_clog2_size   = order_base_2(sq->entries);
+	}
+
+	qpi.state.state			= ib2sif_qp_state(IB_QPS_RESET);
+	qpi.state.pd			= qp->pd_indx;
+	qpi.state.magic			= qp->magic;
+	qpi.state.transport_type	= qp->type;
+	qpi.state.xrc_domain		= qp->xrcd_indx;
+	qpi.state.rq_indx		= qp->rq_idx;
+	qpi.state.rq_is_srq		= qp->rq_is_srq;
+	qpi.state.send_cq_indx		= qp->send_cq_indx;
+	qpi.state.rcv_cq_indx		= qp->rcv_cq_indx;
+	qpi.state.mstate		= APM_MIGRATED;
+	qpi.state.path_mtu		= ib2sif_path_mtu(qp->mtu);
+
+	/* Last acked psn must be initialized to one less than xmit_psn
+	 * and it is a 24 bit value. See bug #1011
+	 */
+	qpi.state.xmit_psn = 0;
+	qpi.state.last_acked_psn = 0xffffff;
+	qpi.state.qosl = qp->qosl;
+
+	/* See #2402/#2770 */
+	if (sif_feature(infinite_rnr)) {
+		qpi.state.rnr_retry_init	= 7;
+		qpi.state.rnr_retry_count	= 7;
+		qpi.state.min_rnr_nak_time	= 26; /* Bug 3646, this is about 160 us */
+	}
+
+	qpi.state.no_checksum			= !!(qp->create_flags & IB_QP_NO_CSUM);
+	qpi.state.proxy_qp_enable		= !!(qp->proxy != SIFPX_OFF);
+	qpi.state.ipoib_enable			= !!(qp->flags & SIF_QPF_IPOIB);
+	qpi.state.ipoib				= !!(qp->flags & SIF_QPF_IPOIB);
+
+	/* SIF extensions */
+	qpi.state.eoib_enable			= !!(qp->create_flags & IB_QP_CREATE_EOIB);
+	qpi.state.eoib				= !!(qp->create_flags & IB_QP_CREATE_EOIB);
+	qpi.state.eoib_type			= (qp->create_flags & IB_QP_CREATE_EOIB) ? EOIB_QKEY_ONLY : 0;
+	qpi.state.rss_enable			= !!(qp->create_flags & IB_QP_CREATE_RSS);
+	qpi.state.hdr_split_enable		= !!(qp->create_flags & IB_QP_CREATE_HDR_SPLIT);
+	qpi.state.rcv_dynamic_mtu_enable	= !!(qp->create_flags & IB_QP_CREATE_RCV_DYNAMIC_MTU);
+	qpi.state.send_dynamic_mtu_enable	= !!(qp->create_flags & IB_QP_CREATE_SND_DYNAMIC_MTU);
+
+	/* according to ib_verbs.h init_attr->port_num is only valid for QP0/1 */
+	if (qp->ib_qp_type <= IB_QPT_GSI) {
+		qpi.path_a.port = qp->port - 1;
+		sif_log(sdev, SIF_QP, "qp %d path_a.port = %d", qp->qp_idx, qpi.path_a.port);
+	}
+
+	copy_conv_to_hw(&qp->d, &qpi, sizeof(struct psif_qp));
+}
+
 struct sif_qp *create_qp(struct sif_dev *sdev,
 			struct ib_qp_init_attr *init_attr,
 			struct sif_qp_init_attr *sif_attr)
@@ -157,7 +228,6 @@ struct sif_qp *create_qp(struct sif_dev *sdev,
 	struct sif_qp *qp, *rqp = NULL;
 	struct sif_sq *sq = NULL;
 	struct sif_rq *rq = NULL;
-	struct psif_qp qpi;
 	struct sif_pd *pd = sif_attr->pd;
 
 	int ret = 0;
@@ -170,6 +240,8 @@ struct sif_qp *create_qp(struct sif_dev *sdev,
 	u32 flags = init_attr->create_flags;
 	u32 max_sge;
 	int min_tso_inline;
+	/* PSIF extensions */
+	bool flag_create_lso = !!(flags & (IB_QP_CREATE_IPOIB_UD_LSO | IB_QP_CREATE_EOIB));
 
 	/* In limited mode QPs are not usable and possibly hazardous as nothing is set up
 	 * avoid any creation of any such:
@@ -188,12 +260,12 @@ struct sif_qp *create_qp(struct sif_dev *sdev,
 	max_sge = SIF_HW_MAX_SEND_SGE;
 
 	/* We need to be able to add sge for stencil with LSO */
-	max_sge -= !!(flags & IB_QP_CREATE_IPOIB_UD_LSO);
+	max_sge -= flag_create_lso;
 
 	if (init_attr->cap.max_send_sge > max_sge) {
 		sif_log(sdev, SIF_INFO, "illegal max send sge %d, SIF only supports %d %s",
 			init_attr->cap.max_send_sge, max_sge,
-			flags & IB_QP_CREATE_IPOIB_UD_LSO ? "with LSO" : "");
+			flag_create_lso ? "with LSO" : "");
 		return ERR_PTR(-EINVAL);
 	}
 
@@ -243,7 +315,7 @@ struct sif_qp *create_qp(struct sif_dev *sdev,
 	 * inline_bufer = 512 - 256 -64 = 192
 	 */
 	min_tso_inline = 192;
-	if (flags & IB_QP_CREATE_IPOIB_UD_LSO) {
+	if (flag_create_lso) {
 		if (init_attr->cap.max_inline_data < min_tso_inline) {
 			sif_log(sdev, SIF_INFO,
 				"Create LSO QP; qp_%d max_sge %d inline_size %d qp_type %d; modifying max_inline_size to %d",
@@ -273,7 +345,9 @@ struct sif_qp *create_qp(struct sif_dev *sdev,
 
 	memset(qp, 0, sizeof(struct sif_qp));
 	qp->qp_idx = index;
+	qp->pd_indx = pd->idx;
 	qp->ulp_type = sif_attr->ulp_type;
+	qp->create_flags = flags;
 
 	if (qp->ulp_type == RDS_ULP) {
 		int new_max_inline = CB_LENGTH; /* collectbuffer_length is max 256 */
@@ -301,14 +375,24 @@ struct sif_qp *create_qp(struct sif_dev *sdev,
 	qp->mtu = IB_MTU_4096;
 	qp->type = sif_attr->qp_type;
 
-	/* TBD: Optimize this log to a single stmt */
-	if (send_cq)
-		sif_log(sdev, SIF_QP, "qpn %d, qp 0x%p send cq %d (type %s) port %d, pd %d",
-			index, qp, send_cq->index, string_enum_psif_qp_trans(qp->type),
-			qp->port, pd->idx);
-	else
-		sif_log(sdev, SIF_QP, "qpn %d, qp 0x%p [no send cq] (type %s) port %d, pd %d",
-			index, qp, string_enum_psif_qp_trans(qp->type), qp->port, pd->idx);
+	sif_logs(SIF_QP,
+		{
+			char port_str[] = "port 1,";
+			char send_cq_str[] = "send cq 16777216"; /* 16M is max */
+
+			port_str[0] = 0;
+			if (init_attr->qp_type <= IB_QPT_GSI)
+				sprintf(port_str, "port %d,", qp->port);
+			if (send_cq)
+				sprintf(send_cq_str, "send cq %d", send_cq->index);
+			else
+				sprintf(send_cq_str, "[no send cq]");
+
+			sif_log(sdev, SIF_QP, "qpn %d, qp 0x%p %s (type %s) %s pd %d",
+				index, qp, send_cq_str, string_enum_psif_qp_trans(qp->type),
+				port_str, pd->idx);
+		}
+	);
 
 	/* The PQP and XRC QPs do not have receive queues */
 	if (qp->type != PSIF_QP_TRANSPORT_MANSP1 && qp->type != PSIF_QP_TRANSPORT_XRC) {
@@ -341,6 +425,7 @@ struct sif_qp *create_qp(struct sif_dev *sdev,
 		init_attr->cap.max_recv_wr = rq->entries_user;
 	}
 	qp->rq_idx = rq_idx;
+	qp->rq_is_srq = !!init_attr->srq;
 
 	if (rq && !init_attr->srq) {
 		/* Check/update max sge cap: */
@@ -375,50 +460,19 @@ struct sif_qp *create_qp(struct sif_dev *sdev,
 		init_attr->cap.max_send_wr = sq->entries;
 	}
 
-	/* Initialization of qp state via local copy */
-	memset(&qpi, 0, sizeof(struct psif_qp));
-
-	if (is_reliable_qp(qp->type) && init_attr->qp_type != IB_QPT_XRC_TGT) {
-		qpi.state.sq_clog2_extent = order_base_2(sq->extent);
-		qpi.state.sq_clog2_size = order_base_2(sq->entries);
-	}
-	qpi.state.retry_sq_seq = 0;
-	qpi.state.state = ib2sif_qp_state(IB_QPS_RESET);
-	qpi.state.pd = pd->idx;
 	if (!sif_feature(zero_magic)) {
 		qp->magic = prandom_u32();
-		qpi.state.magic = qp->magic;
-	}
-	qpi.state.transport_type = qp->type;
+	} else
+		qp->magic = 0;
+
 	if (qp->type == PSIF_QP_TRANSPORT_XRC && init_attr->xrcd)
-		qpi.state.xrc_domain = to_sxrcd(init_attr->xrcd)->index;
-	qpi.state.rq_indx = rq_idx;
-	qpi.state.rq_is_srq = !!init_attr->srq || (init_attr->qp_type == IB_QPT_XRC_TGT);
-	qpi.state.send_cq_indx = send_cq ? send_cq->index : (u32)-1;
-	qpi.state.rcv_cq_indx = recv_cq ? recv_cq->index : (u32)-1;
-
-	qpi.state.mstate = APM_MIGRATED;
-	qpi.state.path_mtu = ib2sif_path_mtu(qp->mtu);
-	/* Last acked psn must be initialized to one less than xmit_psn
-	 * and it is a 24 bit value. See issue #1011
-	 */
-	qpi.state.xmit_psn = 0;
-	qpi.state.last_acked_psn = 0xffffff;
-	qpi.state.qosl = qp->qosl = sif_attr->qosl;
-
-	/* See #2402/#2770 */
-	if (sif_feature(infinite_rnr)) {
-		qpi.state.rnr_retry_init = 7;
-		qpi.state.rnr_retry_count = 7;
-		qpi.state.min_rnr_nak_time = 26; /* Bug 3646, this is about 160 us */
-	}
-
-	if (flags & IB_QP_NO_CSUM)
-		qpi.state.no_checksum = 1;
+		qp->xrcd_indx = to_sxrcd(init_attr->xrcd)->index;
+	qp->send_cq_indx = send_cq ? send_cq->index : (u32)-1;
+	qp->rcv_cq_indx = recv_cq ? recv_cq->index : (u32)-1;
+	qp->proxy = sif_attr->proxy;
 
 	if (sif_attr->proxy != SIFPX_OFF) {
 		/* This is a proxy QP */
-		qpi.state.proxy_qp_enable = 1;
 		qp->eps_tag |= EPS_TAG_FROM_HOST;
 		ret = send_epsa_proxy_qp_sq_key(sdev, sq->sg_mr->index,
 						qp->qp_idx,
@@ -430,36 +484,11 @@ struct sif_qp *create_qp(struct sif_dev *sdev,
 	if (sif_attr->user_mode)
 		qp->flags |= SIF_QPF_USER_MODE;
 
-	if (flags & IB_QP_CREATE_IPOIB_UD_LSO) {
+	if (flags & IB_QP_CREATE_IPOIB_UD_LSO)
 		qp->flags |= SIF_QPF_IPOIB;
-		qpi.state.ipoib_enable = 1;
-		qpi.state.ipoib = 1;
-	}
 
-	/* PSIF extensions */
-	if (flags & IB_QP_CREATE_EOIB) {
-		qp->flags |= SIF_QPF_EOIB;
-		qpi.state.eoib_enable = 1;
-		qpi.state.eoib = 1;
-		qpi.state.eoib_type = EOIB_QKEY_ONLY;
-	}
-	if (flags & IB_QP_CREATE_RSS)
-		qpi.state.rss_enable = 1;
-	if (flags & IB_QP_CREATE_HDR_SPLIT)
-		qpi.state.hdr_split_enable = 1;
-	if (flags & IB_QP_CREATE_RCV_DYNAMIC_MTU)
-		qpi.state.rcv_dynamic_mtu_enable = 1;
-	if (flags & IB_QP_CREATE_SND_DYNAMIC_MTU)
-		qpi.state.send_dynamic_mtu_enable = 1;
-
-	/* according to ib_verbs.h init_attr->port_num is only valid for QP0/1 */
-	if (init_attr->qp_type <= IB_QPT_GSI)
-		qpi.path_a.port = init_attr->port_num - 1;
-
-	sif_log(sdev, SIF_QP, "qp %d path_a.port = %d", qp->qp_idx, qpi.path_a.port);
-
-	/* Write composed entry to shared area */
-	copy_conv_to_hw(&qp->d, &qpi, sizeof(struct psif_qp));
+	/* Now, initialize the HW QP state */
+	init_hw_qp_state(sdev, qp);
 
 	mutex_init(&qp->lock); /* TBD: Sync scheme! */
 	set_bit(SIF_QPS_IN_RESET, &qp->persistent_state);
@@ -1156,10 +1185,6 @@ static void set_qp_path_hw(struct sif_qp *qp, struct psif_epsc_csr_modify_qp *mc
 			ah_attr->grh.dgid.global.interface_id);
 	}
 
-	if (qp_attr_mask & IB_QP_TIMEOUT) {
-		path->local_ack_timeout = qp_attr->timeout;
-		sif_log(sdev, SIF_QP, " - with timeout %d", qp_attr->timeout);
-	}
 
 	sif_log(sdev, SIF_QP, "local_lid_path %d, remote_lid %d %s, QP(ipd):%d %s",
 		path->local_lid_path, path->remote_lid, (path->loopback ? "(loopback)" : ""),
@@ -1297,8 +1322,7 @@ static int modify_qp_hw(struct sif_dev *sdev, struct sif_qp *qp,
 
 	if (qp_attr_mask & IB_QP_TIMEOUT) {
 		ctrl_attr->local_ack_timeout = 1;
-		if (!(qp_attr_mask & (IB_QP_AV|IB_QP_ALT_PATH)))
-			mct->data.primary_path.local_ack_timeout = qp_attr->timeout;
+		mct->data.primary_path.local_ack_timeout = qp_attr->timeout;
 	}
 
 	if (qp_attr_mask & IB_QP_RETRY_CNT) {
@@ -1549,10 +1573,6 @@ static void set_qp_path_sw(struct sif_qp *qp, struct ib_qp_attr *qp_attr,
 			be64_to_cpu(path->remote_gid_1));
 	}
 
-	if (qp_attr_mask & IB_QP_TIMEOUT) {
-		set_psif_qp_path__local_ack_timeout(path, qp_attr->timeout);
-		sif_log(sdev, SIF_QP, " - with timeout %d", qp_attr->timeout);
-	}
 
 	qp->remote_lid = ah_attr->dlid;
 	set_psif_qp_path__remote_lid(path, ah_attr->dlid);
@@ -1708,10 +1728,10 @@ static int modify_qp_sw(struct sif_dev *sdev, struct sif_qp *qp,
 		qp->mtu = qp_attr->path_mtu;
 	}
 
-	if (!(qp_attr_mask & (IB_QP_AV|IB_QP_ALT_PATH))) {
+	if (qp_attr_mask & IB_QP_TIMEOUT) {
 		/* Set these values also if a path does not get set */
-		if (qp_attr_mask & IB_QP_TIMEOUT)
-			set_psif_qp_path__local_ack_timeout(&qps->path_a, qp_attr->timeout);
+		set_psif_qp_path__local_ack_timeout(&qps->path_a, qp_attr->timeout);
+		sif_log(sdev, SIF_QP, "timeout %d", qp_attr->timeout);
 	}
 
 	if (qp_attr_mask & IB_QP_RETRY_CNT) {
@@ -2055,6 +2075,13 @@ int epsc_query_qp(struct sif_qp *sqp, struct psif_query_qp *lqqp)
 	else
 		memcpy(lqqp, &sqp->qqp, sizeof(*lqqp));
 
+	/* Capture if the QP went to one of the error states */
+	if (!ret) {
+		if (lqqp->qp.state == PSIF_QP_STATE_ERROR)
+			sqp->last_set_state = IB_QPS_ERR;
+		else if (lqqp->qp.state == PSIF_QP_STATE_SQERR)
+			sqp->last_set_state = IB_QPS_SQE;
+	}
 	return ret;
 }
 
@@ -2071,9 +2098,6 @@ static int sif_query_qp_hw(struct ib_qp *ibqp, struct ib_qp_attr *qp_attr,
 
 
 	ret = epsc_query_qp(qp, &lqqp);
-	if (!ret)
-		qp->last_set_state = sif2ib_qp_state(lqqp.qp.state);
-
 	if (ret)
 		return ret;
 
@@ -2203,47 +2227,6 @@ int destroy_qp(struct sif_dev *sdev, struct sif_qp *qp)
 	if (ret)
 		sif_log(sdev, SIF_INFO, "modify qp %d to RESET failed, sts %d", index, ret);
 
-	if (!(qp->flags & SIF_QPF_USER_MODE)) {
-		int nfixup;
-		struct sif_sq *sq = get_sq(sdev, qp);
-		u32 cq_idx = get_psif_qp_core__rcv_cq_indx(&qp->d.state);
-		struct sif_cq *send_cq = (sq && sq->cq_idx >= 0) ? get_sif_cq(sdev, sq->cq_idx) : NULL;
-		struct sif_cq *recv_cq = rq ? get_sif_cq(sdev, cq_idx) : NULL;
-
-		if (send_cq) {
-			ret = post_process_wa4074(sdev, qp);
-			if (ret) {
-				sif_log(sdev, SIF_INFO,
-					"post_process_wa4074 failed for qp %d send cq %d with error %d",
-					qp->qp_idx, sq->cq_idx, ret);
-				goto fixup_failed;
-			}
-
-			nfixup = sif_fixup_cqes(send_cq, sq, qp);
-			if (nfixup < 0) {
-				sif_log(sdev, SIF_INFO,
-					"fixup cqes on qp %d send cq %d failed with error %d",
-					qp->qp_idx, sq->cq_idx, nfixup);
-				goto fixup_failed;
-			}
-			sif_log(sdev, SIF_QP, "fixup cqes fixed %d CQEs in sq.cq %d",
-				nfixup, sq->cq_idx);
-		}
-		if (recv_cq && recv_cq != send_cq) {
-			nfixup = sif_fixup_cqes(recv_cq, sq, qp);
-			if (nfixup < 0) {
-				sif_log(sdev, SIF_INFO,
-					"fixup cqes on qp %d recv cq %d failed with error %d",
-					qp->qp_idx, cq_idx, nfixup);
-				goto fixup_failed;
-			}
-			sif_log(sdev, SIF_QP, "fixup cqes fixed %d CQEs in rq.cq %d",
-				nfixup, cq_idx);
-
-		}
-	}
-
-fixup_failed:
 	if (qp->qp_idx < 4) {
 		/* Special QP cleanup */
 		int ok = atomic_add_unless(&sdev->sqp_usecnt[qp->qp_idx], -1, 0);
@@ -2281,7 +2264,6 @@ fixup_failed:
  */
 static int reset_qp(struct sif_dev *sdev, struct sif_qp *qp)
 {
-	volatile struct psif_qp *qps = &qp->d;
 	struct sif_rq *rq = get_rq(sdev, qp);
 	struct sif_sq *sq = get_sq(sdev, qp);
 	bool need_wa_3714 = 0;
@@ -2306,7 +2288,40 @@ static int reset_qp(struct sif_dev *sdev, struct sif_qp *qp)
 
 	}
 
+	if (!(qp->flags & SIF_QPF_USER_MODE)) {
+		int nfixup;
+		u32 cq_idx = get_psif_qp_core__rcv_cq_indx(&qp->d.state);
+		struct sif_cq *send_cq = (sq && sq->cq_idx >= 0) ? get_sif_cq(sdev, sq->cq_idx) : NULL;
+		struct sif_cq *recv_cq = rq ? get_sif_cq(sdev, cq_idx) : NULL;
 
+
+		/* clean-up the SQ/RQ CQ before resetting the SQ */
+		if (send_cq) {
+			nfixup = sif_fixup_cqes(send_cq, sq, qp);
+			if (nfixup < 0) {
+				sif_log(sdev, SIF_INFO,
+					"fixup cqes on qp %d send cq %d failed with error %d",
+					qp->qp_idx, sq->cq_idx, nfixup);
+				goto fixup_failed;
+			}
+			sif_log(sdev, SIF_QP, "fixup cqes fixed %d CQEs in sq.cq %d",
+				nfixup, sq->cq_idx);
+		}
+		if (recv_cq && recv_cq != send_cq) {
+			nfixup = sif_fixup_cqes(recv_cq, sq, qp);
+			if (nfixup < 0) {
+				sif_log(sdev, SIF_INFO,
+					"fixup cqes on qp %d recv cq %d failed with error %d",
+					qp->qp_idx, cq_idx, nfixup);
+				goto fixup_failed;
+			}
+			sif_log(sdev, SIF_QP, "fixup cqes fixed %d CQEs in rq.cq %d",
+				nfixup, cq_idx);
+
+		}
+	}
+
+fixup_failed:
 	/* if the send queue scheduler is running, wait for
 	 * it to terminate:
 	 */
@@ -2400,12 +2415,8 @@ failed:
 		}
 	}
 
-	/* Reset counters to same values used at QP create
-	 * Last acked psn must be initialized to one less than xmit_psn
-	 * and it is a 24 bit value. See issue #1011
-	 */
-	set_psif_qp_core__xmit_psn(&qps->state, 0);
-	set_psif_qp_core__last_acked_psn(&qps->state, 0xffffff);
+	/* Re-initialize the HW QP state as after create_qp() */
+	init_hw_qp_state(sdev, qp);
 
 	return ret;
 }
