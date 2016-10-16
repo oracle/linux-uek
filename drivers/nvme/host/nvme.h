@@ -45,6 +45,7 @@ struct nvme_dev {
 	struct msix_entry *entry;
 	struct nvme_bar __iomem *bar;
 	struct list_head namespaces;
+	struct mutex namespaces_mutex;
 	struct kref kref;
 	struct device *device;
 	struct work_struct reset_work;
