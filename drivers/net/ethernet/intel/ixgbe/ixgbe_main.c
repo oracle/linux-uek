@@ -65,6 +65,7 @@
 #include "ixgbe_common.h"
 #include "ixgbe_dcb_82599.h"
 #include "ixgbe_sriov.h"
+#include "kcompat.h"
 
 char ixgbe_driver_name[] = "ixgbe";
 static const char ixgbe_driver_string[] =
@@ -5006,24 +5007,23 @@ fwd_queue_err:
 	return err;
 }
 
+static int ixgbe_upper_dev_walk(struct net_device *upper, void *data)
+{
+	if (netif_is_macvlan(upper)) {
+		struct macvlan_dev *dfwd = netdev_priv(upper);
+		struct ixgbe_fwd_adapter *vadapter = dfwd->fwd_priv;
+
+		if (dfwd->fwd_priv)
+			ixgbe_fwd_ring_up(upper, vadapter);
+	}
+
+	return 0;
+}
+
 static void ixgbe_configure_dfwd(struct ixgbe_adapter *adapter)
 {
-	struct net_device *upper;
-	struct list_head *iter;
-	int err;
-
-	netdev_for_each_all_upper_dev_rcu(adapter->netdev, upper, iter) {
-		if (netif_is_macvlan(upper)) {
-			struct macvlan_dev *dfwd = netdev_priv(upper);
-			struct ixgbe_fwd_adapter *vadapter = dfwd->fwd_priv;
-
-			if (dfwd->fwd_priv) {
-				err = ixgbe_fwd_ring_up(upper, vadapter);
-				if (err)
-					continue;
-			}
-		}
-	}
+	netdev_walk_all_upper_dev_rcu(adapter->netdev,
+				      ixgbe_upper_dev_walk, NULL);
 }
 
 static void ixgbe_configure(struct ixgbe_adapter *adapter)
@@ -5440,12 +5440,25 @@ static void ixgbe_fdir_filter_exit(struct ixgbe_adapter *adapter)
 	spin_unlock(&adapter->fdir_perfect_lock);
 }
 
+static int ixgbe_disable_macvlan(struct net_device *upper, void *data)
+{
+	if (netif_is_macvlan(upper)) {
+		struct macvlan_dev *vlan = netdev_priv(upper);
+
+		if (vlan->fwd_priv) {
+			netif_tx_stop_all_queues(upper);
+			netif_carrier_off(upper);
+			netif_tx_disable(upper);
+		}
+	}
+
+	return 0;
+}
+
 void ixgbe_down(struct ixgbe_adapter *adapter)
 {
 	struct net_device *netdev = adapter->netdev;
 	struct ixgbe_hw *hw = &adapter->hw;
-	struct net_device *upper;
-	struct list_head *iter;
 	int i;
 
 	/* signal that we are down to the interrupt handler */
@@ -5469,17 +5482,8 @@ void ixgbe_down(struct ixgbe_adapter *adapter)
 	netif_tx_disable(netdev);
 
 	/* disable any upper devices */
-	netdev_for_each_all_upper_dev_rcu(adapter->netdev, upper, iter) {
-		if (netif_is_macvlan(upper)) {
-			struct macvlan_dev *vlan = netdev_priv(upper);
-
-			if (vlan->fwd_priv) {
-				netif_tx_stop_all_queues(upper);
-				netif_carrier_off(upper);
-				netif_tx_disable(upper);
-			}
-		}
-	}
+	netdev_walk_all_upper_dev_rcu(adapter->netdev,
+				      ixgbe_disable_macvlan, NULL);
 
 	ixgbe_irq_disable(adapter);
 
@@ -6707,6 +6711,18 @@ static void ixgbe_update_default_up(struct ixgbe_adapter *adapter)
 #endif
 }
 
+static int ixgbe_enable_macvlan(struct net_device *upper, void *data)
+{
+	if (netif_is_macvlan(upper)) {
+		struct macvlan_dev *vlan = netdev_priv(upper);
+
+		if (vlan->fwd_priv)
+			netif_tx_wake_all_queues(upper);
+	}
+
+	return 0;
+}
+
 /**
  * ixgbe_watchdog_link_is_up - update netif_carrier status and
  *                             print link up message
@@ -6716,8 +6732,6 @@ static void ixgbe_watchdog_link_is_up(struct ixgbe_adapter *adapter)
 {
 	struct net_device *netdev = adapter->netdev;
 	struct ixgbe_hw *hw = &adapter->hw;
-	struct net_device *upper;
-	struct list_head *iter;
 	u32 link_speed = adapter->link_speed;
 	const char *speed_str;
 	bool flow_rx, flow_tx;
@@ -6788,14 +6802,8 @@ static void ixgbe_watchdog_link_is_up(struct ixgbe_adapter *adapter)
 
 	/* enable any upper devices */
 	rtnl_lock();
-	netdev_for_each_all_upper_dev_rcu(adapter->netdev, upper, iter) {
-		if (netif_is_macvlan(upper)) {
-			struct macvlan_dev *vlan = netdev_priv(upper);
-
-			if (vlan->fwd_priv)
-				netif_tx_wake_all_queues(upper);
-		}
-	}
+	netdev_walk_all_upper_dev_rcu(adapter->netdev,
+				      ixgbe_enable_macvlan, NULL);
 	rtnl_unlock();
 
 	/* update the default user priority for VFs */
@@ -8266,6 +8274,34 @@ int ixgbe_setup_tc(struct net_device *dev, u8 tc)
 
 	return 0;
 }
+
+#ifdef CONFIG_NET_CLS_ACT
+struct upper_walk_data {
+	struct ixgbe_adapter *adapter;
+	u64 action;
+	int ifindex;
+	u8 queue;
+};
+
+static int get_macvlan_queue(struct net_device *upper, void *_data)
+{
+	if (netif_is_macvlan(upper)) {
+		struct macvlan_dev *dfwd = netdev_priv(upper);
+		struct ixgbe_fwd_adapter *vadapter = dfwd->fwd_priv;
+		struct upper_walk_data *data = _data;
+		struct ixgbe_adapter *adapter = data->adapter;
+		int ifindex = data->ifindex;
+
+		if (vadapter && vadapter->netdev->ifindex == ifindex) {
+			data->queue = adapter->rx_ring[vadapter->rx_base_queue]->reg_idx;
+			data->action = data->queue;
+			return 1;
+		}
+	}
+
+	return 0;
+}
+#endif
 
 #ifdef CONFIG_PCI_IOV
 void ixgbe_sriov_reinit(struct ixgbe_adapter *adapter)
