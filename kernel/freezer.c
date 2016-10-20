@@ -66,6 +66,11 @@ bool __refrigerator(bool check_kthr_stop)
 	bool was_frozen = false;
 	long save = current->state;
 
+       if (!(current->flags & PF_KTHREAD)
+           && test_thread_flag(TIF_KSPLICE_FREEZING)
+           && !test_thread_flag(TIF_KSPLICE_FROM_ENTRY_CODE))
+               return false;
+
 	pr_debug("%s entered refrigerator\n", current->comm);
 
 	for (;;) {
