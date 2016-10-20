@@ -1654,7 +1654,7 @@ struct psif_modify_command {
 	 */
 	u32	notify_when_zero:1;
 	/* Manually added spacing to pad out psif_modify_command */
-	u32	pad05:3;
+	u32	pad00:3;
 } PSIF_PACKED; /* struct psif_modify_command [ 5 byte] */
 
 /*
@@ -2146,10 +2146,10 @@ struct psif_csr_modify_qp_ctrl {
 	 */
 	u64	notify_when_zero:1;
 	/* Manually added spacing to pad out psif_modify_command */
-	u64	pad06:3;
+	u64	pad00:3;
 	/* Inlined cmd_attributes : struct psif_qp_attributes (24 bits) */
-	/* Manually added spacing to pad outpsif_qp_attributes */
-	u64	pad07:7;
+	/* Manually added spacing to pad out psif_qp_attributes */
+	u64	pad01:7;
 	/* Change path req_access error if set. */
 	u64	req_access_error:1;
 	/* Change path MTU if set. */
@@ -3282,7 +3282,7 @@ struct psif_base_addr { /* Subjected to copy and convert */
 	/* Number of entries in table. */
 	u32	num_entries;
 	/* Manually added spacing to pad out base addr */
-	u32	pad08:27;
+	u32	pad00:27;
 	/*
 	 * clog2_extent used for entry alignment. This field used to calculate
 	 * address for a particular entry. Address to an entry is calculated as
