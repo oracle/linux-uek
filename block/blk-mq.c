@@ -114,14 +114,13 @@ void blk_mq_freeze_queue_start(struct request_queue *q)
 {
 	bool freeze;
 
-	spin_lock_irq(q->queue_lock);
+	mutex_lock(&q->mq_freeze_lock);
 	freeze = !q->mq_freeze_depth++;
-	spin_unlock_irq(q->queue_lock);
-
 	if (freeze) {
 		percpu_ref_kill(&q->mq_usage_counter);
 		blk_mq_run_hw_queues(q, false);
 	}
+	mutex_unlock(&q->mq_freeze_lock);
 }
 EXPORT_SYMBOL_GPL(blk_mq_freeze_queue_start);
 
@@ -145,14 +144,14 @@ void blk_mq_unfreeze_queue(struct request_queue *q)
 {
 	bool wake;
 
-	spin_lock_irq(q->queue_lock);
+	mutex_lock(&q->mq_freeze_lock);
 	wake = !--q->mq_freeze_depth;
 	WARN_ON_ONCE(q->mq_freeze_depth < 0);
-	spin_unlock_irq(q->queue_lock);
 	if (wake) {
 		percpu_ref_reinit(&q->mq_usage_counter);
 		wake_up_all(&q->mq_freeze_wq);
 	}
+	mutex_unlock(&q->mq_freeze_lock);
 }
 EXPORT_SYMBOL_GPL(blk_mq_unfreeze_queue);
 
@@ -759,10 +758,11 @@ static void __blk_mq_run_hw_queue(struct blk_mq_hw_ctx *hctx)
 	struct list_head *dptr;
 	int queued;
 
-	WARN_ON(!cpumask_test_cpu(raw_smp_processor_id(), hctx->cpumask));
-
 	if (unlikely(test_bit(BLK_MQ_S_STOPPED, &hctx->state)))
 		return;
+
+	WARN_ON(!cpumask_test_cpu(raw_smp_processor_id(), hctx->cpumask) &&
+		cpu_online(hctx->next_cpu));
 
 	hctx->run++;
 
