@@ -78,6 +78,10 @@ static bool use_cmb_sqes = true;
 module_param(use_cmb_sqes, bool, 0644);
 MODULE_PARM_DESC(use_cmb_sqes, "use controller's memory buffer for I/O SQes");
 
+static unsigned int nvme_io_queues = UINT_MAX;
+module_param(nvme_io_queues, uint, 0);
+MODULE_PARM_DESC(nvme_io_queues, "set the number of nvme io queues");
+
 static DEFINE_SPINLOCK(dev_list_lock);
 static LIST_HEAD(dev_list);
 static struct task_struct *nvme_thread;
@@ -2305,7 +2309,7 @@ static int nvme_setup_io_queues(struct nvme_dev *dev)
 	struct pci_dev *pdev = to_pci_dev(dev->dev);
 	int result, i, vecs, nr_io_queues, size;
 
-	nr_io_queues = num_possible_cpus();
+	nr_io_queues = min(nvme_io_queues, num_possible_cpus());
 	result = set_queue_count(dev, nr_io_queues);
 	if (result <= 0)
 		return result;
