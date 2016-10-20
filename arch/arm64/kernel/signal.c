@@ -763,8 +763,11 @@ asmlinkage void do_notify_resume(struct pt_regs *regs,
 			if (thread_flags & _TIF_UPROBE)
 				uprobe_notify_resume(regs);
 
-			if (thread_flags & _TIF_SIGPENDING)
+			if (thread_flags & _TIF_SIGPENDING) {
+				set_thread_flag(TIF_KSPLICE_FROM_ENTRY_CODE);
 				do_signal(regs);
+				clear_thread_flag(TIF_KSPLICE_FROM_ENTRY_CODE);
+			}
 
 			if (thread_flags & _TIF_NOTIFY_RESUME) {
 				clear_thread_flag(TIF_NOTIFY_RESUME);
