@@ -107,6 +107,8 @@ struct ib_cq *sif_create_cq(struct ib_device *ibdev, int entries,
 			user_mode = false;
 		if (uc->abi_version < 0x0302) /* TBD: Remove - bw comp */
 			user_mode = !user_mode;
+		if (uc->abi_version < SIF_UVERBS_VERSION(3, 6))
+			user_flags |= no_x_cqe;
 	}
 
 	cq = create_cq(pd, entries, comp_vector, proxy, user_mode, user_flags);
@@ -119,6 +121,8 @@ struct ib_cq *sif_create_cq(struct ib_device *ibdev, int entries,
 
 		memset(&resp, 0, sizeof(resp));
 		resp.cq_idx = cq->index;
+		if (user_mode)
+			resp.headroom = cq->entries - cq->ibcq.cqe;
 		ret = ib_copy_to_udata(udata, &resp, sizeof(resp));
 		if (ret) {
 			destroy_cq(cq);

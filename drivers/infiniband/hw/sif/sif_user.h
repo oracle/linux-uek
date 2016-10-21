@@ -21,7 +21,7 @@
  *
  */
 #define SIF_UVERBS_ABI_MAJOR_VERSION    3
-#define SIF_UVERBS_ABI_MINOR_VERSION    6
+#define SIF_UVERBS_ABI_MINOR_VERSION    7
 
 #define SIF_UVERBS_VERSION(x, y) ((x) << 8 | (y))
 
@@ -129,7 +129,7 @@ struct sif_create_cq_ext {
 
 struct sif_create_cq_resp_ext {
 	__u32 cq_idx;
-	__u32 reserved;
+	__u32 headroom; /* #of reserved entries (not exposed to the user) in the CQ */
 };
 
 struct sif_create_qp_ext {
