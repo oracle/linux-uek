@@ -618,6 +618,7 @@ char *conn_drop_reason_str(u8 reason)
 	case 6: return "conn_connect failure";
 	case 7: return "hb timeout";
 	case 8: return "reconnect timeout";
+	case 9: return "cancel operation on socket";
 
 	case 20: return "race between ESTABLISHED event and drop";
 	case 21: return "conn is not in CONNECTING state";
