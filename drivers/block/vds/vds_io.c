@@ -1,7 +1,7 @@
 /*
  * vds_io.c: LDOM Virtual Disk Server.
  *
- * Copyright (C) 2014, 2015 Oracle. All rights reserved.
+ * Copyright (C) 2014, 2016 Oracle. All rights reserved.
  */
 
 #include "vds.h"
@@ -141,9 +141,12 @@ static int vds_io_alloc_pages(struct vds_io *io, unsigned long len)
 
 	BUG_ON(len % PAGE_SIZE != 0);
 	io->ord = get_order(len);
-	io->pages = alloc_pages(GFP_KERNEL | __GFP_COMP, io->ord);
-	if (!io->pages)
-		return -ENOMEM;
+	do {
+		io->pages = alloc_pages(GFP_KERNEL | __GFP_COMP | __GFP_NOWARN,
+					io->ord);
+		if (!io->pages)
+			msleep(10);
+	} while (!io->pages);
 	io->npages = len >> PAGE_SHIFT;
 
 	vdsdbg(MEM, "ord=%d pages=%p npages=%d\n", io->ord, io->pages,
