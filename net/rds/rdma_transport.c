@@ -45,6 +45,8 @@
 
 #define RDS_REJ_CONSUMER_DEFINED 28
 
+static struct rdma_cm_id *rds_rdma_listen_id;
+
 int unload_allowed __initdata;
 
 module_param_named(module_unload_allowed, unload_allowed, int, 0);
@@ -383,11 +385,21 @@ static int rds_rdma_listen_init(void)
 
 	rdsdebug("cm %p listening on port %u\n", cm_id, RDS_PORT);
 
+	rds_rdma_listen_id = cm_id;
 	cm_id = NULL;
 out:
 	if (cm_id)
 		rdma_destroy_id(cm_id);
 	return ret;
+}
+
+static void rds_rdma_listen_stop(void)
+{
+	if (rds_rdma_listen_id) {
+		rdsdebug("cm %p\n", rds_rdma_listen_id);
+		rdma_destroy_id(rds_rdma_listen_id);
+		rds_rdma_listen_id = NULL;
+	}
 }
 
 #define MODULE_NAME "rds_rdma"
@@ -425,6 +437,8 @@ module_init(rds_rdma_init);
 
 void rds_rdma_exit(void)
 {
+	/* stop listening first to ensure no new connections are attempted */
+	rds_rdma_listen_stop();
 	/* cancel initial ib failover work if still active*/
 	cancel_delayed_work_sync(&riif_dlywork);
 	rds_ib_exit();
