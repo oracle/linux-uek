@@ -15,7 +15,6 @@
 #include "sif_hwi.h"
 #include "sif_base.h"
 #include "sif_cq.h"
-#include "sif_pqp.h"
 #include "sif_qp.h"
 #include "sif_ibqp.h"
 #include "sif_pd.h"
@@ -29,149 +28,8 @@
 #include <rdma/ib_mad.h>
 #include <rdma/ib_smi.h>
 
-/* Create the special SIF privileged QP which is used
- * for special sif specific work requests such as for instance
- * requesting completion event notification on a cq.
- */
-
-static void sif_pqp_fini(struct sif_dev *sdev);
-
-
 static int sif_chip_init(struct sif_dev *sdev);
 static void sif_chip_deinit(struct sif_dev *sdev);
-
-
-static int sif_pqp_init(struct sif_dev *sdev)
-{
-	struct sif_pqp *pqp;
-	struct sif_eps *es = &sdev->es[sdev->mbox_epsc];
-	int i;
-	int ret = 0;
-	uint n_pqps = es->eqs.cnt - 2;
-
-	sdev->pqi.pqp = sif_kmalloc(sdev, sizeof(struct sif_pqp *) * n_pqps, GFP_KERNEL | __GFP_ZERO);
-	if (!sdev->pqi.pqp)
-		return -ENOMEM;
-
-	for (i = 0; i < n_pqps; i++) {
-		pqp = sif_create_pqp(sdev, i);
-		if (IS_ERR(pqp)) {
-			if ((i > 0) &&
-			    !(eps_version_ge(es, 0, 42))) {
-				sif_log(sdev, SIF_INFO,
-				"SIF device has an old FW version that only supports one pqp");
-				break;
-			}
-			ret = PTR_ERR(pqp);
-			goto failed;
-		}
-		sdev->pqi.pqp[i] = pqp;
-	}
-	sdev->pqi.cnt = i;
-	atomic_set(&sdev->pqi.next, 0);
-	return 0;
-
-failed:
-	sdev->pqi.cnt = i;
-	sif_pqp_fini(sdev);
-	return ret;
-}
-
-
-static void sif_pqp_fini(struct sif_dev *sdev)
-{
-	/* we must maintain a consistent state of the PQP array
-	 * during takedown as these operations themselves
-	 * generate PQP requests..
-	 */
-	while (sdev->pqi.cnt > 0) {
-		int i = sdev->pqi.cnt - 1;
-		struct sif_pqp *pqp = sdev->pqi.pqp[i];
-
-		if (i > 0) {
-			/* Remove ourselves first, except the final PQP */
-			sdev->pqi.pqp[i] = NULL;
-			sdev->pqi.cnt--;
-		}
-		sif_destroy_pqp(sdev, pqp);
-		if (i == 0)
-			sdev->pqi.cnt--;
-	}
-	kfree(sdev->pqi.pqp);
-	sdev->pqi.pqp = NULL;
-}
-
-
-static void sif_ki_spqp_fini(struct sif_dev *sdev);
-
-static int sif_ki_spqp_init(struct sif_dev *sdev)
-{
-	int i;
-	int ret = 0;
-	int n = max(sif_ki_spqp_size, 0U);
-	int bm_len = max(1, n/8);
-
-	mutex_init(&sdev->pqi.ki_s.lock);
-	sdev->pqi.ki_s.spqp =
-#ifdef CONFIG_NUMA
-		kmalloc_node(sizeof(struct sif_st_pqp *) * n, GFP_KERNEL | __GFP_ZERO,
-			sdev->pdev->dev.numa_node);
-#else
-		kmalloc(sizeof(struct sif_st_pqp *) * n, GFP_KERNEL | __GFP_ZERO);
-#endif
-	if (!sdev->pqi.ki_s.spqp)
-		return -ENOMEM;
-
-	sdev->pqi.ki_s.bitmap =
-#ifdef CONFIG_NUMA
-		kmalloc_node(sizeof(ulong) * bm_len, GFP_KERNEL | __GFP_ZERO,
-			sdev->pdev->dev.numa_node);
-#else
-		kmalloc(sizeof(ulong) * bm_len, GFP_KERNEL | __GFP_ZERO);
-#endif
-	if (!sdev->pqi.ki_s.bitmap) {
-		ret = -ENOMEM;
-		goto bm_failed;
-	}
-
-	for (i = 0; i < n; i++) {
-		struct sif_st_pqp *spqp = sif_create_inv_key_st_pqp(sdev);
-
-		if (IS_ERR(spqp)) {
-			ret = PTR_ERR(spqp);
-			break;
-		}
-		sdev->pqi.ki_s.spqp[i] = spqp;
-		spqp->index = i;
-	}
-	sdev->pqi.ki_s.pool_sz = i;
-	if (ret && i) {
-		sif_log(sdev, SIF_INFO, "Failed to create %d INVALIDATE_KEY stencil QPs", i);
-		sif_ki_spqp_fini(sdev);
-	}
-
-	if (i)
-		sif_log(sdev, SIF_INIT, "Created %d INVALIDATE_KEY stencil QPs", i);
-bm_failed:
-	if (ret)
-		kfree(sdev->pqi.ki_s.spqp);
-	return 0;  /* Never fail on stencil PQP allocation */
-}
-
-
-static void sif_ki_spqp_fini(struct sif_dev *sdev)
-{
-	int i;
-
-	if (!sdev->pqi.ki_s.spqp)
-		return;
-	for (i = sdev->pqi.ki_s.pool_sz - 1; i >= 0; i--)
-		sif_destroy_st_pqp(sdev, sdev->pqi.ki_s.spqp[i]);
-	kfree(sdev->pqi.ki_s.bitmap);
-	kfree(sdev->pqi.ki_s.spqp);
-	sdev->pqi.ki_s.spqp = NULL;
-}
-
 
 static void sif_hw_kernel_cb_fini(struct sif_dev *sdev)
 {
@@ -487,10 +345,6 @@ int sif_hw_init(struct sif_dev *sdev)
 	if (ret)
 		goto pqp_failed;
 
-	ret = sif_ki_spqp_init(sdev);
-	if (ret)
-		goto ki_spqp_failed;
-
 	ret = sif_init_xrcd(sdev);
 	if (ret)
 		goto xrcd_failed;
@@ -498,8 +352,6 @@ int sif_hw_init(struct sif_dev *sdev)
 	return 0;
 
 xrcd_failed:
-	sif_ki_spqp_fini(sdev);
-ki_spqp_failed:
 	sif_pqp_fini(sdev);
 pqp_failed:
 	/* Release indices for qp 0 and 1 */
@@ -527,7 +379,6 @@ void sif_hw_deinit(struct sif_dev *sdev)
 
 	if (!sdev->limited_mode) {
 		sif_log(sdev, SIF_PQP, "enter");
-		sif_ki_spqp_fini(sdev);
 		sif_pqp_fini(sdev);
 
 		/* Release indices for qp 0 and 1 */

@@ -122,6 +122,10 @@ struct sif_pqp_info {
 	struct sif_spqp_pool ki_s;
 };
 
+
+int sif_pqp_init(struct sif_dev *sdev);
+void sif_pqp_fini(struct sif_dev *sdev);
+
 struct sif_pqp *sif_create_pqp(struct sif_dev *sdev, int comp_vector);
 int sif_destroy_pqp(struct sif_dev *sdev, struct sif_pqp *pqp);
 
