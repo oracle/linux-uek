@@ -282,14 +282,11 @@ struct sif_dev {
 	atomic_t cq_miss_occ; /* Global #times sif_poll_cq had to busy wait (upd.by destroy_cq) */
 	struct sif_eps *es; /* State for the EPS comm (sif_epsc.h) */
 	struct sif_table ba[sif_tab_max]; /* Base address setup structures */
-	struct sif_pqp **pqp;  /* PSIF management QPs */
+	struct sif_pqp_info pqi;  /* PSIF management QP infrastructure */
 	struct sif_cb **kernel_cb[2]; /* cb's for the kernel (bw and low latency per cpu) */
-	int pqp_cnt;		  /* Number of PQPs set up */
-	atomic_t next_pqp;	  /* Used for round robin assignment of pqp */
 	int kernel_cb_cnt[2];	  /* Number of CBs set up for the kernel for each kind */
 	struct sif_idr xrcd_refs; /* Mgmt of sif_xrcd allocations */
 	struct sif_idr pd_refs;   /* Mgmt of sif_pd allocations */
-	struct sif_spqp_pool ki_spqp; /* Stencil PQPs for key invalidates */
 	/* Misc settings */
 	struct completion ready_for_events; /* Set when we are ready to receive events from sif */
 	bool registered;	/* Set when we are registered with the verbs layer */

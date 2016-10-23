@@ -72,6 +72,8 @@ struct sif_cqe {
 	}
 
 
+
+/* Per PQP state/configuration info */
 struct sif_pqp {
 	struct sif_qp *qp;  /* The qp used */
 	struct sif_cq *cq;  /* Associated completion queue for this priv.QP */
@@ -81,6 +83,43 @@ struct sif_pqp {
 	u16 last_full_seq;  /* For logging purposes, record when last observed full */
 	u16 last_nc_full;   /* Track when to return EAGAIN to flush non-compl.entries */
 	u16 lowpri_lim;  /* Max number of outstanding low priority reqs */
+};
+
+/* Stencil PQP support - pre-populated PQPs for special performance sensitive use cases */
+
+#define SPQP_DOORBELL_INTERVAL 8192
+
+struct sif_st_pqp {
+	struct sif_pqp pqp;	/* The PQP to use - must be first */
+	struct sif_sq *sq;	/* Short path to sq */
+	struct sif_sq_sw *sq_sw;/* Short path to sq_sw */
+	int index;		/* The index of this st_pqp within it's pool */
+	u16 doorbell_interval;  /* Interval between each doorbell write */
+	u16 doorbell_seq;	/* Seq.no to use in next doorbell */
+	u16 next_doorbell_seq;  /* Next seqno to ring doorbell */
+	u16 req_compl;		/* Number of completions requested */
+	u16 next_poll_seq;	/* Next seqno to set completion and wait/poll for one */
+	u64 checksum;		/* Host endian partial checksum of stencil WR entries */
+};
+
+
+/* Stencil PQP management */
+struct sif_spqp_pool {
+	struct mutex lock;	  /* Protects access to this pool */
+	struct sif_st_pqp **spqp; /* Key invalidate stencil PQPs */
+	u32 pool_sz;		  /* Number of stencil PQPs set up */
+	ulong *bitmap;		  /* Bitmap for allocation from spqp */
+};
+
+/* PQP specific global state/configuration (embedded in sif_dev)
+ */
+struct sif_pqp_info {
+	struct sif_pqp **pqp; /* The array of "normal" PQPs */
+	int cnt;	/* Number of PQPs set up */
+	atomic_t next;	/* Used for round robin assignment of pqp */
+
+	/* Stencil PQPs for key invalidates */
+	struct sif_spqp_pool ki_s;
 };
 
 struct sif_pqp *sif_create_pqp(struct sif_dev *sdev, int comp_vector);
@@ -147,31 +186,6 @@ int sif_gen_sq_flush_cqe(struct sif_dev *sdev, struct sif_sq *sq,
 			 u32 sq_seq, u32 target_qp, bool notify_ev);
 
 /* Stencil PQP support - pre-populated PQPs for special performance sensitive use cases */
-
-#define SPQP_DOORBELL_INTERVAL 8192
-
-struct sif_st_pqp {
-	struct sif_pqp pqp;	/* The PQP to use - must be first */
-	struct sif_sq *sq;	/* Short path to sq */
-	struct sif_sq_sw *sq_sw;/* Short path to sq_sw */
-	int index;		/* The index of this st_pqp within it's pool */
-	u16 doorbell_interval;  /* Interval between each doorbell write */
-	u16 doorbell_seq;	/* Seq.no to use in next doorbell */
-	u16 next_doorbell_seq;  /* Next seqno to ring doorbell */
-	u16 req_compl;		/* Number of completions requested */
-	u16 next_poll_seq;	/* Next seqno to set completion and wait/poll for one */
-	u64 checksum;		/* Host endian partial checksum of stencil WR entries */
-};
-
-
-/* Stencil PQP management */
-struct sif_spqp_pool {
-	struct mutex lock;	  /* Protects access to this pool */
-	struct sif_st_pqp **spqp; /* Key invalidate stencil PQPs */
-	u32 pool_sz;		  /* Number of stencil PQPs set up */
-	ulong *bitmap;		  /* Bitmap for allocation from spqp */
-};
-
 
 struct sif_st_pqp *sif_create_inv_key_st_pqp(struct sif_dev *sdev);
 

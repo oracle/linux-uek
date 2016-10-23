@@ -376,9 +376,9 @@ static struct sif_pqp *find_any_pqp(struct sif_dev *sdev)
 {
 	int cpu;
 
-	for (cpu = 0; cpu < sdev->pqp_cnt; cpu++)
-		if (sdev->pqp[cpu])
-			return sdev->pqp[cpu];
+	for (cpu = 0; cpu < sdev->pqi.cnt; cpu++)
+		if (sdev->pqi.pqp[cpu])
+			return sdev->pqi.pqp[cpu];
 	return NULL;
 }
 
@@ -386,7 +386,7 @@ static struct sif_pqp *find_any_pqp(struct sif_dev *sdev)
 struct sif_pqp *get_pqp_same_eq(struct sif_dev *sdev, int comp_vector)
 {
 	unsigned int pqp_index = comp_vector - 2;
-	struct sif_pqp *pqp = sdev->pqp_cnt ? sdev->pqp[pqp_index % sdev->pqp_cnt] : NULL;
+	struct sif_pqp *pqp = sdev->pqi.cnt ? sdev->pqi.pqp[pqp_index % sdev->pqi.cnt] : NULL;
 
 	if (unlikely(!pqp)) {
 		/* Typically during take down */
@@ -400,7 +400,7 @@ struct sif_pqp *get_pqp_same_eq(struct sif_dev *sdev, int comp_vector)
 struct sif_pqp *get_pqp(struct sif_dev *sdev)
 {
 	unsigned int cpu = smp_processor_id();
-	struct sif_pqp *pqp = sdev->pqp_cnt ? sdev->pqp[cpu % sdev->pqp_cnt] : NULL;
+	struct sif_pqp *pqp = sdev->pqi.cnt ? sdev->pqi.pqp[cpu % sdev->pqi.cnt] : NULL;
 
 	if (unlikely(!pqp)) {
 		/* Typically during take down */
@@ -413,9 +413,9 @@ struct sif_pqp *get_pqp(struct sif_dev *sdev)
 struct sif_pqp *get_next_pqp(struct sif_dev *sdev)
 {
 	struct sif_pqp *pqp;
-	int next = atomic_inc_return(&sdev->next_pqp) % sdev->pqp_cnt;
+	int next = atomic_inc_return(&sdev->pqi.next) % sdev->pqi.cnt;
 
-	pqp = sdev->pqp[next];
+	pqp = sdev->pqi.pqp[next];
 	if (unlikely(!pqp)) {
 		/* Typically during take down */
 		return find_any_pqp(sdev);
@@ -1044,13 +1044,13 @@ struct sif_st_pqp *sif_alloc_ki_spqp(struct sif_dev *sdev)
 	int index;
 	struct sif_st_pqp *spqp = NULL;
 
-	mutex_lock(&sdev->ki_spqp.lock);
-	index = find_next_zero_bit(sdev->ki_spqp.bitmap, sdev->ki_spqp.pool_sz, 0);
-	if (index < sdev->ki_spqp.pool_sz) {
-		set_bit(index, sdev->ki_spqp.bitmap);
-		spqp = sdev->ki_spqp.spqp[index];
+	mutex_lock(&sdev->pqi.ki_s.lock);
+	index = find_next_zero_bit(sdev->pqi.ki_s.bitmap, sdev->pqi.ki_s.pool_sz, 0);
+	if (index < sdev->pqi.ki_s.pool_sz) {
+		set_bit(index, sdev->pqi.ki_s.bitmap);
+		spqp = sdev->pqi.ki_s.spqp[index];
 	}
-	mutex_unlock(&sdev->ki_spqp.lock);
+	mutex_unlock(&sdev->pqi.ki_s.lock);
 	sif_log(sdev, SIF_PQPT, "bit index %d", index);
 	return spqp;
 }
@@ -1059,8 +1059,8 @@ void sif_release_ki_spqp(struct sif_st_pqp *spqp)
 {
 	struct sif_dev *sdev = to_sdev(spqp->pqp.cq->ibcq.device);
 
-	mutex_lock(&sdev->ki_spqp.lock);
-	clear_bit(spqp->index, sdev->ki_spqp.bitmap);
-	mutex_unlock(&sdev->ki_spqp.lock);
+	mutex_lock(&sdev->pqi.ki_s.lock);
+	clear_bit(spqp->index, sdev->pqi.ki_s.bitmap);
+	mutex_unlock(&sdev->pqi.ki_s.lock);
 	sif_log(sdev, SIF_PQPT, "bit index %d", spqp->index);
 }

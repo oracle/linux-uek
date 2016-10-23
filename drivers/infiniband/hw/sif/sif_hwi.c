@@ -49,8 +49,8 @@ static int sif_pqp_init(struct sif_dev *sdev)
 	int ret = 0;
 	uint n_pqps = es->eqs.cnt - 2;
 
-	sdev->pqp = sif_kmalloc(sdev, sizeof(struct sif_pqp *) * n_pqps, GFP_KERNEL | __GFP_ZERO);
-	if (!sdev->pqp)
+	sdev->pqi.pqp = sif_kmalloc(sdev, sizeof(struct sif_pqp *) * n_pqps, GFP_KERNEL | __GFP_ZERO);
+	if (!sdev->pqi.pqp)
 		return -ENOMEM;
 
 	for (i = 0; i < n_pqps; i++) {
@@ -65,14 +65,14 @@ static int sif_pqp_init(struct sif_dev *sdev)
 			ret = PTR_ERR(pqp);
 			goto failed;
 		}
-		sdev->pqp[i] = pqp;
+		sdev->pqi.pqp[i] = pqp;
 	}
-	sdev->pqp_cnt = i;
-	atomic_set(&sdev->next_pqp, 0);
+	sdev->pqi.cnt = i;
+	atomic_set(&sdev->pqi.next, 0);
 	return 0;
 
 failed:
-	sdev->pqp_cnt = i;
+	sdev->pqi.cnt = i;
 	sif_pqp_fini(sdev);
 	return ret;
 }
@@ -84,21 +84,21 @@ static void sif_pqp_fini(struct sif_dev *sdev)
 	 * during takedown as these operations themselves
 	 * generate PQP requests..
 	 */
-	while (sdev->pqp_cnt > 0) {
-		int i = sdev->pqp_cnt - 1;
-		struct sif_pqp *pqp = sdev->pqp[i];
+	while (sdev->pqi.cnt > 0) {
+		int i = sdev->pqi.cnt - 1;
+		struct sif_pqp *pqp = sdev->pqi.pqp[i];
 
 		if (i > 0) {
 			/* Remove ourselves first, except the final PQP */
-			sdev->pqp[i] = NULL;
-			sdev->pqp_cnt--;
+			sdev->pqi.pqp[i] = NULL;
+			sdev->pqi.cnt--;
 		}
 		sif_destroy_pqp(sdev, pqp);
 		if (i == 0)
-			sdev->pqp_cnt--;
+			sdev->pqi.cnt--;
 	}
-	kfree(sdev->pqp);
-	sdev->pqp = NULL;
+	kfree(sdev->pqi.pqp);
+	sdev->pqi.pqp = NULL;
 }
 
 
@@ -111,25 +111,25 @@ static int sif_ki_spqp_init(struct sif_dev *sdev)
 	int n = max(sif_ki_spqp_size, 0U);
 	int bm_len = max(1, n/8);
 
-	mutex_init(&sdev->ki_spqp.lock);
-	sdev->ki_spqp.spqp =
+	mutex_init(&sdev->pqi.ki_s.lock);
+	sdev->pqi.ki_s.spqp =
 #ifdef CONFIG_NUMA
 		kmalloc_node(sizeof(struct sif_st_pqp *) * n, GFP_KERNEL | __GFP_ZERO,
 			sdev->pdev->dev.numa_node);
 #else
 		kmalloc(sizeof(struct sif_st_pqp *) * n, GFP_KERNEL | __GFP_ZERO);
 #endif
-	if (!sdev->ki_spqp.spqp)
+	if (!sdev->pqi.ki_s.spqp)
 		return -ENOMEM;
 
-	sdev->ki_spqp.bitmap =
+	sdev->pqi.ki_s.bitmap =
 #ifdef CONFIG_NUMA
 		kmalloc_node(sizeof(ulong) * bm_len, GFP_KERNEL | __GFP_ZERO,
 			sdev->pdev->dev.numa_node);
 #else
 		kmalloc(sizeof(ulong) * bm_len, GFP_KERNEL | __GFP_ZERO);
 #endif
-	if (!sdev->ki_spqp.bitmap) {
+	if (!sdev->pqi.ki_s.bitmap) {
 		ret = -ENOMEM;
 		goto bm_failed;
 	}
@@ -141,10 +141,10 @@ static int sif_ki_spqp_init(struct sif_dev *sdev)
 			ret = PTR_ERR(spqp);
 			break;
 		}
-		sdev->ki_spqp.spqp[i] = spqp;
+		sdev->pqi.ki_s.spqp[i] = spqp;
 		spqp->index = i;
 	}
-	sdev->ki_spqp.pool_sz = i;
+	sdev->pqi.ki_s.pool_sz = i;
 	if (ret && i) {
 		sif_log(sdev, SIF_INFO, "Failed to create %d INVALIDATE_KEY stencil QPs", i);
 		sif_ki_spqp_fini(sdev);
@@ -154,7 +154,7 @@ static int sif_ki_spqp_init(struct sif_dev *sdev)
 		sif_log(sdev, SIF_INIT, "Created %d INVALIDATE_KEY stencil QPs", i);
 bm_failed:
 	if (ret)
-		kfree(sdev->ki_spqp.spqp);
+		kfree(sdev->pqi.ki_s.spqp);
 	return 0;  /* Never fail on stencil PQP allocation */
 }
 
@@ -163,13 +163,13 @@ static void sif_ki_spqp_fini(struct sif_dev *sdev)
 {
 	int i;
 
-	if (!sdev->ki_spqp.spqp)
+	if (!sdev->pqi.ki_s.spqp)
 		return;
-	for (i = sdev->ki_spqp.pool_sz - 1; i >= 0; i--)
-		sif_destroy_st_pqp(sdev, sdev->ki_spqp.spqp[i]);
-	kfree(sdev->ki_spqp.bitmap);
-	kfree(sdev->ki_spqp.spqp);
-	sdev->ki_spqp.spqp = NULL;
+	for (i = sdev->pqi.ki_s.pool_sz - 1; i >= 0; i--)
+		sif_destroy_st_pqp(sdev, sdev->pqi.ki_s.spqp[i]);
+	kfree(sdev->pqi.ki_s.bitmap);
+	kfree(sdev->pqi.ki_s.spqp);
+	sdev->pqi.ki_s.spqp = NULL;
 }
 
 
