@@ -7675,10 +7675,16 @@ static void ixgbe_atr(struct ixgbe_ring *ring,
 	skb = first->skb;
 	hdr.network = skb_network_header(skb);
 #ifdef CONFIG_IXGBE_VXLAN
+	if (unlikely(hdr.network <= skb->data))
+		return;
 	if (skb->encapsulation &&
 	    first->protocol == htons(ETH_P_IP) &&
 	    hdr.ipv4->protocol == IPPROTO_UDP) {
 		struct ixgbe_adapter *adapter = q_vector->adapter;
+
+		if (unlikely(skb_tail_pointer(skb) < hdr.network +
+			     VXLAN_HEADROOM))
+			return;
 
 		/* verify the port is recognized as VXLAN */
 		if (adapter->vxlan_port &&
@@ -7686,6 +7692,12 @@ static void ixgbe_atr(struct ixgbe_ring *ring,
 			hdr.network = skb_inner_network_header(skb);
 	}
 #endif /* CONFIG_IXGBE_VXLAN */
+
+	/* Make sure we have at least [minimum IPv4 header + TCP]
+	 * or [IPv6 header] bytes
+	 */
+	if (unlikely(skb_tail_pointer(skb) < hdr.network + 40))
+		return;
 
 	/* Currently only IPv4/IPv6 with TCP is supported */
 	switch (hdr.ipv4->version) {
@@ -7704,6 +7716,10 @@ static void ixgbe_atr(struct ixgbe_ring *ring,
 	}
 
 	if (l4_proto != IPPROTO_TCP)
+		return;
+
+	if (unlikely(skb_tail_pointer(skb) < hdr.network +
+		     hlen + sizeof(struct tcphdr)))
 		return;
 
 	th = (struct tcphdr *)(hdr.network + hlen);
