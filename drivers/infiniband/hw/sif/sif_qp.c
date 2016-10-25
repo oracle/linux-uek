@@ -1429,6 +1429,14 @@ static int modify_qp_hw(struct sif_dev *sdev, struct sif_qp *qp,
 	}
 
 ok_modify_qp_sw:
+	/* The QP mask for QP transition is checked in sif_modify_qp_is_ok.
+	 * No check for qp_type because only UC/UD and MANSP1 can be transitioned
+	 * to SQE.
+	 */
+	if ((qp_attr->qp_state == IB_QPS_RTS) && (qp_attr->cur_qp_state == IB_QPS_SQE)) {
+		ctrl_attr->req_access_error = 1;
+		mct->data.req_access_error = 0;
+	}
 
 	/*
 	 * On modify to RTR, we set the TSU SL (tsl), because we have
@@ -1877,23 +1885,18 @@ int sif_query_qp(struct ib_qp *ibqp, struct ib_qp_attr *qp_attr,
 
 }
 
-static void get_qp_path_sw(struct sif_qp *qp, struct ib_qp_attr *qp_attr, bool alternate)
+static void get_qp_path_sw(struct sif_qp *qp, struct ib_qp_attr *qp_attr)
 {
 	volatile struct psif_qp_path *path;
 	struct ib_ah_attr *ah_attr;
-	enum psif_use_grh use_grh;
 	volatile struct psif_qp_path *alt_path;
 	struct ib_ah_attr *alt_ah_attr;
 
-	alt_path =  &qp->d.path_b;
-	alt_ah_attr = &qp_attr->alt_ah_attr;
 	path = &qp->d.path_a;
 	ah_attr = &qp_attr->ah_attr;
-
 	ah_attr->sl = get_psif_qp_path__sl(path);
-	use_grh = get_psif_qp_path__use_grh(path);
 
-	if (use_grh == USE_GRH) {
+	if (get_psif_qp_path__use_grh(path) == USE_GRH) {
 		ah_attr->ah_flags |= IB_AH_GRH;
 		ah_attr->grh.dgid.global.subnet_prefix = get_psif_qp_path__remote_gid_0(path);
 		ah_attr->grh.dgid.global.interface_id = get_psif_qp_path__remote_gid_1(path);
@@ -1908,6 +1911,22 @@ static void get_qp_path_sw(struct sif_qp *qp, struct ib_qp_attr *qp_attr, bool a
 	ah_attr->port_num = get_psif_qp_path__port(path);
 	ah_attr->dlid =	get_psif_qp_path__remote_lid(path);
 	ah_attr->src_path_bits = get_psif_qp_path__local_lid_path(path);
+
+	alt_path =  &qp->d.path_b;
+	alt_ah_attr = &qp_attr->alt_ah_attr;
+	alt_ah_attr->sl = get_psif_qp_path__sl(alt_path);
+
+	if (get_psif_qp_path__use_grh(alt_path) == USE_GRH) {
+		alt_ah_attr->ah_flags |= IB_AH_GRH;
+		alt_ah_attr->grh.dgid.global.subnet_prefix = get_psif_qp_path__remote_gid_0(alt_path);
+		alt_ah_attr->grh.dgid.global.interface_id = get_psif_qp_path__remote_gid_1(alt_path);
+		alt_ah_attr->grh.flow_label = get_psif_qp_path__flowlabel(alt_path);
+		alt_ah_attr->grh.hop_limit = get_psif_qp_path__hoplmt(alt_path);
+		/* TBD: ah_attr->grh.sgid_index? */
+	}
+
+	qp_attr->alt_pkey_index = get_psif_qp_path__pkey_indx(alt_path);
+	qp_attr->alt_timeout = get_psif_qp_path__local_ack_timeout(alt_path);
 
 	alt_ah_attr->port_num = get_psif_qp_path__port(alt_path);
 	alt_ah_attr->dlid =	get_psif_qp_path__remote_lid(alt_path);
@@ -1949,7 +1968,7 @@ static int sif_query_qp_sw(struct ib_qp *ibqp, struct ib_qp_attr *qp_attr,
 	qp_attr->pkey_index = get_psif_qp_path__pkey_indx(&qps->path_a);
 	qp_attr->port_num = qp->port;
 	qp_attr->qkey = get_psif_qp_core__qkey(&qps->state);
-	get_qp_path_sw(qp, qp_attr, qp_attr_mask & IB_QP_ALT_PATH);
+	get_qp_path_sw(qp, qp_attr);
 
 	qp_attr->path_mtu = sif2ib_path_mtu(get_psif_qp_core__path_mtu(&qps->state));
 	qp_attr->timeout = get_psif_qp_path__local_ack_timeout(&qps->path_a);
@@ -1977,30 +1996,23 @@ static int sif_query_qp_sw(struct ib_qp *ibqp, struct ib_qp_attr *qp_attr,
 		qp_init_attr->cap.max_send_sge    = sq->sg_entries;
 	}
 	qp_init_attr->cap.max_inline_data = qp->max_inline_data;
+	qp_attr->max_rd_atomic = get_psif_qp_core__max_outstanding(&qps->state);
 
-	/* TBD: What to do with this:
-	 * IB_QP_MAX_QP_RD_ATOMIC		= (1<<13),
-	 */
 	return ret;
 }
 
-static void get_qp_path_hw(struct psif_query_qp *qqp, struct ib_qp_attr *qp_attr, bool alternate)
+static void get_qp_path_hw(struct psif_query_qp *qqp, struct ib_qp_attr *qp_attr)
 {
 	struct psif_qp_path *path;
 	struct ib_ah_attr *ah_attr;
-	enum psif_use_grh use_grh;
 	struct psif_qp_path *alt_path;
 	struct ib_ah_attr *alt_ah_attr;
 
-	alt_path =  &qqp->alternate_path;
-	alt_ah_attr = &qp_attr->alt_ah_attr;
 	path = &qqp->primary_path;
 	ah_attr = &qp_attr->ah_attr;
-
 	ah_attr->sl = path->sl;
-	use_grh = path->use_grh;
 
-	if (use_grh == USE_GRH) {
+	if (path->use_grh == USE_GRH) {
 		ah_attr->ah_flags |= IB_AH_GRH;
 		ah_attr->grh.dgid.global.subnet_prefix = path->remote_gid_0;
 		ah_attr->grh.dgid.global.interface_id = path->remote_gid_1;
@@ -2008,23 +2020,34 @@ static void get_qp_path_hw(struct psif_query_qp *qqp, struct ib_qp_attr *qp_attr
 		ah_attr->grh.hop_limit = path->hoplmt;
 		/* TBD: ah_attr->grh.sgid_index? */
 	}
-	qp_attr->pkey_index = path->pkey_indx;
-	qp_attr->timeout = path->local_ack_timeout;
-	qp_attr->port_num = path->port + 1;
-
-	qp_attr->alt_pkey_index = alt_path->pkey_indx;
-	qp_attr->alt_timeout = alt_path->local_ack_timeout;
-	qp_attr->alt_port_num = alt_path->port + 1;
-
-
 
 	ah_attr->port_num = path->port + 1;
 	ah_attr->dlid =	path->remote_lid;
 	ah_attr->src_path_bits = path->local_lid_path;
 
+	qp_attr->pkey_index = path->pkey_indx;
+	qp_attr->timeout = path->local_ack_timeout;
+	qp_attr->port_num = path->port + 1;
+
+	alt_path =  &qqp->alternate_path;
+	alt_ah_attr = &qp_attr->alt_ah_attr;
+	alt_ah_attr->sl = alt_path->sl;
+
+	if (alt_path->use_grh == USE_GRH) {
+		alt_ah_attr->ah_flags |= IB_AH_GRH;
+		alt_ah_attr->grh.dgid.global.subnet_prefix = alt_path->remote_gid_0;
+		alt_ah_attr->grh.dgid.global.interface_id = alt_path->remote_gid_1;
+		alt_ah_attr->grh.flow_label = alt_path->flowlabel;
+		alt_ah_attr->grh.hop_limit = alt_path->hoplmt;
+		/* TBD: ah_attr->grh.sgid_index? */
+	}
 	alt_ah_attr->port_num = alt_path->port + 1;
 	alt_ah_attr->dlid =	alt_path->remote_lid;
 	alt_ah_attr->src_path_bits = alt_path->local_lid_path;
+
+	qp_attr->alt_pkey_index = alt_path->pkey_indx;
+	qp_attr->alt_timeout = alt_path->local_ack_timeout;
+	qp_attr->alt_port_num = alt_path->port + 1;
 }
 
 u64 sif_qqp_dma_addr(struct sif_dev *sdev, struct sif_qp *qps)
@@ -2123,7 +2146,7 @@ static int sif_query_qp_hw(struct ib_qp *ibqp, struct ib_qp_attr *qp_attr,
 	qp_attr->pkey_index = lqqp.primary_path.pkey_indx;
 	qp_attr->port_num = lqqp.primary_path.port + 1;
 	qp_attr->qkey = lqqp.qp.qkey;
-	get_qp_path_hw(&lqqp, qp_attr, qp_attr_mask & IB_QP_ALT_PATH);
+	get_qp_path_hw(&lqqp, qp_attr);
 
 	qp_attr->path_mtu = sif2ib_path_mtu(lqqp.qp.path_mtu);
 	qp_attr->timeout = lqqp.primary_path.local_ack_timeout;
@@ -2152,10 +2175,8 @@ static int sif_query_qp_hw(struct ib_qp *ibqp, struct ib_qp_attr *qp_attr,
 		qp_init_attr->cap.max_send_sge    = sq->sg_entries;
 	}
 	qp_init_attr->cap.max_inline_data = qp->max_inline_data;
+	qp_attr->max_rd_atomic = lqqp.qp.max_outstanding;
 
-	/* TBD: What to do with these..
-	 * IB_QP_MAX_QP_RD_ATOMIC		= (1<<13),
-	 */
 	return ret;
 }
 

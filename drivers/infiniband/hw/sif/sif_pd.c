@@ -45,25 +45,26 @@ inline void cancel_cb(struct psif_cb __iomem *cb)
 }
 
 
-struct sif_pd *alloc_pd(struct sif_dev *sdev)
+struct sif_pd *alloc_pd(struct sif_dev *sdev, bool shared)
 {
 	struct sif_pd *pd = kzalloc(sizeof(struct sif_pd), GFP_KERNEL);
 
 	if (!pd)
 		return NULL;
-
-	pd->idx = sif_idr_alloc(&sdev->pd_refs, pd, GFP_KERNEL);
+	if (!shared)
+		pd->idx = sif_idr_alloc(&sdev->pd_refs, pd, GFP_KERNEL);
 	spin_lock_init(&pd->lock);
 	INIT_LIST_HEAD(&pd->qp_list);
 	INIT_LIST_HEAD(&pd->cq_list);
 	INIT_LIST_HEAD(&pd->rq_list);
 
-	sif_log(sdev, SIF_PD, "pd idx %d", pd->idx);
+	if (!shared)
+		sif_log(sdev, SIF_PD, "pd idx %d", pd->idx);
 	return pd;
 }
 
 
-int dealloc_pd(struct sif_pd *pd)
+int dealloc_pd(struct sif_pd *pd, bool shared)
 {
 	struct sif_dev *sdev = to_sdev(pd->ibpd.device);
 
@@ -82,7 +83,8 @@ int dealloc_pd(struct sif_pd *pd)
 		return -EBUSY;
 	}
 
-	sif_idr_remove(&sdev->pd_refs, pd->idx);
+	if (!shared)
+		sif_idr_remove(&sdev->pd_refs, pd->idx);
 	kfree(pd);
 	return 0;
 }
@@ -98,7 +100,7 @@ struct ib_pd *sif_alloc_pd(struct ib_device *ibdev,
 	struct sif_pd *pd;
 	int ret;
 
-	pd = alloc_pd(sdev);
+	pd = alloc_pd(sdev, false);
 	if (!pd)
 		return ERR_PTR(-ENOMEM);
 
@@ -111,7 +113,7 @@ struct ib_pd *sif_alloc_pd(struct ib_device *ibdev,
 		resp.cb_idx = uc->cb->idx;
 		ret = ib_copy_to_udata(udata, &resp, sizeof(resp));
 		if (ret) {
-			dealloc_pd(pd);
+			dealloc_pd(pd, false);
 			return ERR_PTR(-EFAULT);
 		}
 	}
@@ -120,7 +122,21 @@ struct ib_pd *sif_alloc_pd(struct ib_device *ibdev,
 
 int sif_dealloc_pd(struct ib_pd *ibpd)
 {
-	return ibpd->shpd ? 0 : dealloc_pd(to_spd(ibpd));
+	if (likely(!ibpd->shpd))
+		return dealloc_pd(to_spd(ibpd), false);
+
+	if (atomic_read(&ibpd->shpd->shared) == 1) {
+		/* This is the last PD "object" of the shared PD.
+		 * Thus, this PD "object" is assigned to shpd->pd
+		 * in order to let sif_remove_shpd to clean up
+		 * the PD "object" and remove the sif_idr.
+		 */
+		struct sif_shpd *shpd = to_sshpd(ibpd->shpd);
+
+		shpd->pd = to_spd(ibpd);
+		return 0;
+	}
+	return dealloc_pd(to_spd(ibpd), true);
 }
 
 struct ib_shpd *sif_alloc_shpd(struct ib_device *ibdev,
@@ -135,6 +151,8 @@ struct ib_shpd *sif_alloc_shpd(struct ib_device *ibdev,
 	if (!shpd)
 		return ERR_PTR(-ENOMEM);
 
+	sif_log(sdev, SIF_PD, "alloc shared pd idx %d", pd->idx);
+
 	shpd->ibshpd.device = &sdev->ib_dev;
 	shpd->pd = pd;
 
@@ -146,9 +164,18 @@ struct ib_pd *sif_share_pd(struct ib_device *ibdev,
 			struct ib_udata *udata,
 			struct ib_shpd *ibshpd)
 {
+	struct sif_dev *sdev = to_sdev(ibdev);
 	struct sif_shpd *shpd = to_sshpd(ibshpd);
-	struct sif_pd *pd = shpd->pd;
+	struct sif_pd *pd;
 	int ret;
+
+	pd = alloc_pd(sdev, true);
+	if (!pd)
+		return ERR_PTR(-ENOMEM);
+
+	pd->idx = shpd->pd->idx;
+
+	sif_log(sdev, SIF_PD, "shared pd idx %d", pd->idx);
 
 	if (udata) {
 		struct sif_ucontext *uc = to_sctx(context);
@@ -169,9 +196,12 @@ int sif_remove_shpd(struct ib_device *ibdev,
 		int atinit)
 {
 	struct sif_shpd *shpd = to_sshpd(ibshpd);
+	struct sif_dev *sdev = to_sdev(ibdev);
 
-	if (!atinit && shpd->pd)
-		dealloc_pd(shpd->pd);
+	if (!atinit && shpd->pd) {
+		sif_log(sdev, SIF_PD, "remove shared pd idx %d", shpd->pd->idx);
+		dealloc_pd(shpd->pd, false);
+	}
 
 	kfree(ibshpd);
 

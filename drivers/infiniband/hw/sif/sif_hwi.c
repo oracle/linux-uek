@@ -459,7 +459,7 @@ int sif_hw_init(struct sif_dev *sdev)
 		goto pd_init_failed;
 
 	/* We need a kernel protection domain for resource allocation */
-	pd = alloc_pd(sdev);
+	pd = alloc_pd(sdev, false);
 	if (!pd)
 		goto pd_alloc_failed;
 	pd->ibpd.device = &sdev->ib_dev;
@@ -501,7 +501,7 @@ pqp_failed:
 	/* Release indices for qp 0 and 1 */
 	for (i = 3; i >= 0; i--)
 		sif_free_qp_idx(pd, i);
-	dealloc_pd(pd);
+	dealloc_pd(pd, false);
 
 pd_alloc_failed:
 	sif_deinit_pd(sdev);
@@ -529,7 +529,7 @@ void sif_hw_deinit(struct sif_dev *sdev)
 			sif_free_qp_idx(sdev->pd, i);
 	}
 
-	dealloc_pd(sdev->pd);
+	dealloc_pd(sdev->pd, false);
 	sif_deinit_pd(sdev);
 	sif_hw_kernel_cb_fini(sdev);
 	sif_base_deinit(sdev);

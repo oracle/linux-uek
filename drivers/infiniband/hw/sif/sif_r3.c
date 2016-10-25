@@ -212,7 +212,7 @@ static int sif_hw_allocate_flush_qp(struct sif_dev *sdev, u8 flush_idx)
 	/* CQ */
 	cq = create_cq(sdev->pd,
 		init_attr.cap.max_send_wr + init_attr.cap.max_recv_wr,
-		1, SIFPX_OFF, false);
+		1, SIFPX_OFF, false, 0);
 	if (IS_ERR(cq)) {
 		sif_log(sdev, SIF_INFO, "Failed to create CQ for flush_retry QP port %d", port);
 		return -EINVAL;

@@ -295,7 +295,6 @@ struct sif_dev {
 	bool registered;	/* Set when we are registered with the verbs layer */
 	u64 min_resp_ticks;   /* expected min. hw resp.time in ticks */
 
-	u16 jiffies_sampling_cnt;    /* 1/N counter used to display performance measurement.  */
 	/* Support for workaround for #3552 - feature_mask create_do_not_evict_qp: */
 	u32 dne_qp;
 
@@ -697,7 +696,6 @@ extern uint sif_rq_size;
 extern ulong sif_eps_log_size;
 extern ushort sif_eps_log_level;
 
-extern ushort sif_perf_sampling_threshold;
 extern uint sif_fmr_cache_flush_threshold;
 
 /* Maximum number of outstanding privileged QP requests supported */

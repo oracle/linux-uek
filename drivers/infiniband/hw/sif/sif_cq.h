@@ -63,7 +63,8 @@ int poll_wait_for_cq_writeback(struct sif_dev *sdev, struct sif_cq *cq);
 struct sif_cq *create_cq(struct sif_pd *pd, int cqe,
 			int comp_vector,
 			enum sif_proxy_type proxy,
-			bool user_mode);
+			bool user_mode,
+			enum sif_vendor_flags user_flags);
 
 
 /* internal poll/peek of completion queue:

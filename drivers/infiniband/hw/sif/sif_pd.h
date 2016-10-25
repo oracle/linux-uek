@@ -49,8 +49,8 @@ void sif_cb_init(struct sif_dev *sdev);
 int sif_init_pd(struct sif_dev *sdev);
 void sif_deinit_pd(struct sif_dev *sdev);
 
-struct sif_pd *alloc_pd(struct sif_dev *sdev);
-int dealloc_pd(struct sif_pd *pd);
+struct sif_pd *alloc_pd(struct sif_dev *sdev, bool shared);
+int dealloc_pd(struct sif_pd *pd, bool shared);
 
 
 /* Per protection domain table index allocations (2nd level allocation) */

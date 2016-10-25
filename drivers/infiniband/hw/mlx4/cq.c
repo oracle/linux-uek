@@ -231,8 +231,12 @@ struct ib_cq *mlx4_ib_create_cq(struct ib_device *ibdev, int entries, int vector
 		uar = &dev->priv_uar;
 	}
 
-	if (dev->eq_table)
-		vector = dev->eq_table[vector % ibdev->num_comp_vectors];
+	if (dev->eq_table) {
+		vector = dev->eq_table[mlx4_choose_vector(dev->dev, vector,
+							  ibdev->num_comp_vectors)];
+	}
+
+	cq->vector = vector;
 
 	err = mlx4_cq_alloc(dev->dev, entries, &cq->buf.mtt, uar,
 			    cq->db.dma, &cq->mcq, vector, 0, 0);
@@ -254,6 +258,8 @@ struct ib_cq *mlx4_ib_create_cq(struct ib_device *ibdev, int entries, int vector
 	return &cq->ibcq;
 
 err_dbmap:
+	mlx4_release_vector(dev->dev, cq->vector);
+
 	if (context)
 		mlx4_ib_db_unmap_user(to_mucontext(context), &cq->db);
 
@@ -480,6 +486,8 @@ int mlx4_ib_destroy_cq(struct ib_cq *cq)
 		mlx4_ib_free_cq_buf(dev, &mcq->buf, cq->cqe);
 		mlx4_db_free(dev->dev, &mcq->db);
 	}
+
+	mlx4_release_vector(dev->dev, mcq->vector);
 
 	kfree(mcq);
 

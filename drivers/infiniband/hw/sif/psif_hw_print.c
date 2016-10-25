@@ -2524,7 +2524,7 @@ void write_struct_psif_wr(XFILE *fd,
 	xprintf(fd, "  .xrc_hdr = ");
 	write_struct_psif_wr_xrc(fd, 0, &(data->xrc_hdr));
 	xprintf(fd, "}");
-		}
+}
 
 void write_struct_psif_wr_expand(XFILE *fd,
 	int network_order,

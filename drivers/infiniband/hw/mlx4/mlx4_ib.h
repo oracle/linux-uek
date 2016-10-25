@@ -46,6 +46,7 @@
 
 #include <linux/mlx4/device.h>
 #include <linux/mlx4/doorbell.h>
+#include <linux/mlx4/driver.h>
 
 #define MLX4_IB_DRV_NAME	"mlx4_ib"
 
@@ -121,6 +122,7 @@ struct mlx4_ib_cq {
 	/* List of qps that it serves.*/
 	struct list_head		send_qp_list;
 	struct list_head		recv_qp_list;
+	int			vector;
 };
 
 struct mlx4_ib_mr {

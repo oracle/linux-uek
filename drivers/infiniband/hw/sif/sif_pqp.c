@@ -76,7 +76,7 @@ static struct sif_pqp *_sif_create_pqp(struct sif_dev *sdev, size_t alloc_sz, in
 		return NULL;
 	}
 
-	cq = create_cq(sdev->pd, sif_max_pqp_wr, comp_vector, SIFPX_OFF, false);
+	cq = create_cq(sdev->pd, sif_max_pqp_wr, comp_vector, SIFPX_OFF, false, 0);
 	if (IS_ERR(cq)) {
 		ret = PTR_ERR(cq);
 		goto cq_alloc_failed;

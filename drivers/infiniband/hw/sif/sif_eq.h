@@ -20,6 +20,12 @@
  */
 #define SIF_IRQ_HANDLER_TIMEOUT 20
 
+/* This defines a timeout period in msecs to stop processing events
+ * from the threaded irq handler (sif_intr_worker)
+ */
+#define SIF_IRQ_THR_HANDLER_TIMEOUT 5000
+
+
 extern uint sif_cq_eq_max;
 
 struct sif_dev;

@@ -1631,7 +1631,7 @@ struct psif_modify_qp {
 /* QP number UF and command for either modify or query QP. */
 struct psif_modify_command {
 	/* Manually added spacing to pad out psif_modify_command */
-	u32	pad01:3;
+	u32	pad00:3;
 	/*
 	 * This will arm interrupt to be sent when the refcount for the QP index used
 	 * have reached zero. It should be used when modify to Reset - when interrupt
@@ -2159,11 +2159,11 @@ struct psif_csr_modify_qp_ctrl {
 	u16	path_mtu:1;
 	/* Change path req_access error if set. */
 	u64	req_access_error:1;
-	/* Manually added spacing to pad outpsif_qp_attributes */
-	u64	pad02:7;
+	/* Manually added spacing to pad out psif_qp_attributes */
+	u64	pad00:7;
 	/* Inlined cmd_attributes : struct psif_qp_attributes (24 bits) */
 	/* Manually added spacing to pad out psif_modify_command */
-	u64	pad03:3;
+	u64	pad01:3;
 	/*
 	 * This will arm interrupt to be sent when the refcount for the QP index used
 	 * have reached zero. It should be used when modify to Reset - when interrupt
@@ -3286,7 +3286,7 @@ struct psif_base_addr { /* Subjected to copy and convert */
 	 */
 	u32	extent_log2:5;
 	/* Manually added spacing to pad out base addr */
-	u32	pad04:27;
+	u32	pad00:27;
 	/* Number of entries in table. */
 	u32	num_entries;
 } PSIF_PACKED_ALIGNED; /* struct psif_base_addr [24 byte] */
