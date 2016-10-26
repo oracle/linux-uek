@@ -512,6 +512,25 @@ static inline u32 get_psif_qp_core__magic(volatile struct psif_qp_core *ptr)
 }
 
 /*
+ * Completion queue sequence number. This is used for privileged requests,
+ * where sequence number for one CQ is added to a different completion.
+ */
+static inline void set_psif_qp_core__cq_seq(
+	volatile struct psif_qp_core *ptr,
+	u32 data)
+{
+	/* group=3 shift=32 bits=32 */
+	volatile u32 * const pte = (u32 *)((u8 *)((__be64 *)ptr + 3) + 0);
+	*pte = cpu_to_be32(data);
+}
+static inline u32 get_psif_qp_core__cq_seq(volatile struct psif_qp_core *ptr)
+{
+	/* group=3 shift=32 bits=32 */
+	volatile u32 * const pte = (u32 *)((u8 *)((__be64 *)ptr + 3) + 0);
+	return((u32)be32_to_cpu(*pte));
+}
+
+/*
  * Q-Key received in incoming IB packet is checked towards this Q-Key. Q-Key
  * used on transmit if top bit of Q-Key in WR is set.
  */

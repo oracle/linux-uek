@@ -933,8 +933,11 @@ int sif_req_notify_cq(struct ib_cq *ibcq, enum ib_cq_notify_flags flags)
 	if (flags & IB_CQ_SOLICITED)
 		wr.se = 1;
 
-	/* Do not rearm a CQ if it is not valid or is in error */
-	if (unlikely(!get_psif_cq_hw__valid(&cq->d) || READ_ONCE(cq->in_error))) {
+	/* Do not rearm a CQ if it is not valid or is in error - except for small queues
+	 * (detects no_x_cqe case..)
+	 */
+	if (unlikely(!get_psif_cq_hw__valid(&cq->d) ||
+			(READ_ONCE(cq->in_error) && cq->entries > SIF_SW_RESERVED_DUL_CQE))) {
 		sif_log(sdev, SIF_NCQ, "cq %d, flags 0x%x (ignored - CQ in error)", cq->index, flags);
 		return 0;
 	}

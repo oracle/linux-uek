@@ -96,6 +96,6 @@ int sif_release_cq(struct sif_dev *sdev, int index);
 void sif_dfs_print_cq_hw(struct seq_file *s, struct sif_dev *sdev,
 			loff_t pos);
 
-extern int sif_fixup_cqes(struct sif_cq *cq, struct sif_sq *sq, struct sif_qp *qp);
+int sif_fixup_cqes(struct sif_cq *cq, struct sif_sq *sq, struct sif_qp *qp);
 
 #endif

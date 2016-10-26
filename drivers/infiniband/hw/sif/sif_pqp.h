@@ -18,8 +18,10 @@ struct sif_qp;
 struct sif_cq;
 struct sif_rq;
 struct sif_sq;
+struct sif_eq;
 struct completion;
 enum post_mode;
+struct psif_eq_entry;
 
 /* Data structure used by PQP requesters to get the completion information,
  * and optionally block waiting for it to arrive:
@@ -31,6 +33,7 @@ struct sif_cqe {
 	bool need_complete;	  /* cmpl is initialized and a waiter is present */
 	bool written;		  /* Set to true when a completion has been copied here */
 	u16 sq_seq;		  /* set by post_send to allow us to reset ourselves */
+	unsigned long t_start;    /* jiffies when request was posted */
 };
 
 /*
@@ -43,6 +46,7 @@ struct sif_cqe {
 		.pqp = get_pqp(d_),\
 		.need_complete = false,\
 		.written = false,\
+		.t_start = jiffies,\
 	}
 
 #define DECLARE_SIF_CQE_WITH_SAME_EQ(d_, c_, e_)	\
@@ -51,6 +55,7 @@ struct sif_cqe {
 		.pqp = get_pqp_same_eq(d_, e_),	\
 		.need_complete = false,\
 		.written = false,\
+		.t_start = jiffies,\
 	}
 
 
@@ -60,6 +65,7 @@ struct sif_cqe {
 		.pqp = get_pqp(d_),\
 		.need_complete = true,\
 		.written = false,\
+		.t_start = jiffies,\
 	};\
 	init_completion(&c_.cmpl)
 
@@ -69,8 +75,13 @@ struct sif_cqe {
 		.pqp = get_next_pqp(d_),\
 		.need_complete = false,\
 		.written = false,\
+		.t_start = jiffies,\
 	}
 
+struct pqp_work {
+	struct work_struct ws;
+	struct sif_pqp *pqp; /* The pqp that needs work */
+};
 
 
 /* Per PQP state/configuration info */
@@ -83,6 +94,13 @@ struct sif_pqp {
 	u16 last_full_seq;  /* For logging purposes, record when last observed full */
 	u16 last_nc_full;   /* Track when to return EAGAIN to flush non-compl.entries */
 	u16 lowpri_lim;  /* Max number of outstanding low priority reqs */
+
+	/* Error recovery handling state of the PQP  (access to these protected by CQ lock) */
+	bool res_queued;    /* Queued for resurrect after a QP error */
+	bool write_only;    /* The PQP is temporarily disabled and only writing entries is legal */
+	atomic_t ev_cnt; /* #of async events seen for this PQP */
+	u32 max_qlen; /* Longest PQP send queue observed during poll */
+	unsigned long max_cmpl_time; /* Highest number of ticks recorded for a PQP completion */
 };
 
 /* Stencil PQP support - pre-populated PQPs for special performance sensitive use cases */
@@ -117,6 +135,9 @@ struct sif_pqp_info {
 	struct sif_pqp **pqp; /* The array of "normal" PQPs */
 	int cnt;	/* Number of PQPs set up */
 	atomic_t next;	/* Used for round robin assignment of pqp */
+
+	/* Support for resurrecting PQPs */
+	unsigned long pqp_query_ticks; /* #of ticks to wait before querying a PQP for error */
 
 	/* Stencil PQPs for key invalidates */
 	struct sif_spqp_pool ki_s;
@@ -204,5 +225,10 @@ int sif_inv_key_update_st(struct sif_st_pqp *spqp, int index, enum wr_mode mode)
 
 
 int sif_destroy_st_pqp(struct sif_dev *sdev, struct sif_st_pqp *spqp);
+
+/* Called from interrupt level to handle events on privileged QPs: */
+void handle_pqp_event(struct sif_eq *eq, struct psif_eq_entry *eqe, struct sif_qp *qp);
+
+void sif_dfs_print_pqp(struct seq_file *s, struct sif_dev *sdev, loff_t pos);
 
 #endif

@@ -227,6 +227,15 @@
 #define PSIF_QP_CORE_3_MAGIC_MASK	0x00000000ffffffffull
 
 /*
+ * Completion queue sequence number. This is used for privileged requests,
+ * where sequence number for one CQ is added to a different completion.
+ */
+#define PSIF_QP_CORE_CQ_SEQ_OFFSET	3
+#define PSIF_QP_CORE_3_CQ_SEQ_SHIFT	32
+#define PSIF_QP_CORE_3_CQ_SEQ_BITS	32
+#define PSIF_QP_CORE_3_CQ_SEQ_MASK	0xffffffff00000000ull
+
+/*
  * Q-Key received in incoming IB packet is checked towards this Q-Key. Q-Key
  * used on transmit if top bit of Q-Key in WR is set.
  */

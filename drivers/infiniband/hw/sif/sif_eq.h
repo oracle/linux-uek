@@ -68,4 +68,8 @@ void sif_dfs_print_irq_ch(struct seq_file *s, struct sif_dev *sdev, loff_t pos);
 u32 sif_get_eq_channel(struct sif_dev *sdev, struct sif_cq *cq);
 bool sif_check_valid_eq_channel(struct sif_dev *sdev, int comp_vector);
 
+#define dump_eq_entry(level, _s, _eqe)	    \
+	sif_logs(level, printk("%s: ", _s); \
+		write_struct_psif_eq_entry(NULL, 0, _eqe); printk("\n"))
+
 #endif

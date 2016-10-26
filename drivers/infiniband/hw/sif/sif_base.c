@@ -782,8 +782,9 @@ int sif_write_invalidate(struct sif_pqp *pqp, enum sif_tab_type type, int index,
 	if (inv_op == -1)
 		return -ENODEV;
 
-	sif_log(sdev, SIF_PQP, "sending inv.req. type %s (0x%x) target queue index %d",
-		sif_table_name(type), inv_op, index);
+	if (likely(p_mode != PM_WRITE)) /* Only log actual operations to the PQP */
+		sif_log(sdev, SIF_PQP, "sending inv.req. type %s (0x%x) target queue index %d",
+			sif_table_name(type), inv_op, index);
 
 	memset(&wr, 0, sizeof(struct psif_wr));
 	/* For this table type we need to send an explicit
