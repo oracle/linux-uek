@@ -2246,10 +2246,9 @@ static void blkfront_setup_discard(struct blkfront_info *info)
 		info->discard_granularity = discard_granularity;
 		info->discard_alignment = discard_alignment;
 	}
-	err = xenbus_gather(XBT_NIL, info->xbdev->otherend,
-		    "discard-secure", "%d", &discard_secure,
-		    NULL);
-	if (!err)
+	err = xenbus_scanf(XBT_NIL, info->xbdev->otherend,
+			   "discard-secure", "%u", &discard_secure);
+	if (err > 0)
 		info->feature_secdiscard = !!discard_secure;
 }
 
@@ -2348,9 +2347,8 @@ static void blkfront_gather_backend_features(struct blkfront_info *info)
 
 	info->feature_flush = 0;
 
-	err = xenbus_gather(XBT_NIL, info->xbdev->otherend,
-			"feature-barrier", "%d", &barrier,
-			NULL);
+	err = xenbus_scanf(XBT_NIL, info->xbdev->otherend,
+			   "feature-barrier", "%d", &barrier);
 
 	/*
 	 * If there's no "feature-barrier" defined, then it means
@@ -2359,38 +2357,35 @@ static void blkfront_gather_backend_features(struct blkfront_info *info)
 	 *
 	 * If there are barriers, then we use flush.
 	 */
-	if (!err && barrier)
+	if (err > 0 && barrier)
 		info->feature_flush = REQ_FLUSH | REQ_FUA;
 	/*
 	 * And if there is "feature-flush-cache" use that above
 	 * barriers.
 	 */
-	err = xenbus_gather(XBT_NIL, info->xbdev->otherend,
-			"feature-flush-cache", "%d", &flush,
-			NULL);
+	err = xenbus_scanf(XBT_NIL, info->xbdev->otherend,
+			   "feature-flush-cache", "%d", &flush);
 
-	if (!err && flush)
+	if (err > 0 && flush)
 		info->feature_flush = REQ_FLUSH;
 
-	err = xenbus_gather(XBT_NIL, info->xbdev->otherend,
-			"feature-discard", "%d", &discard,
-			NULL);
+	err = xenbus_scanf(XBT_NIL, info->xbdev->otherend,
+			   "feature-discard", "%d", &discard);
 
-	if (!err && discard)
+	if (err > 0 && discard)
 		blkfront_setup_discard(info);
 
-	err = xenbus_gather(XBT_NIL, info->xbdev->otherend,
-			"feature-persistent", "%u", &persistent,
-			NULL);
-	if (err)
+	err = xenbus_scanf(XBT_NIL, info->xbdev->otherend,
+			   "feature-persistent", "%d", &persistent);
+	if (err <= 0)
 		info->feature_persistent = 0;
 	else
 		info->feature_persistent = persistent;
 
-	err = xenbus_gather(XBT_NIL, info->xbdev->otherend,
-			    "feature-max-indirect-segments", "%u", &indirect_segments,
-			    NULL);
-	if (err)
+	err = xenbus_scanf(XBT_NIL, info->xbdev->otherend,
+			   "feature-max-indirect-segments", "%u",
+			   &indirect_segments);
+	if (err <= 0)
 		info->max_indirect_segments = 0;
 	else {
 		info->max_indirect_segments = min(indirect_segments,
@@ -2696,7 +2691,7 @@ static void blkfront_connect(struct blkfront_info *info)
 	if (err) {
 		xenbus_dev_fatal(info->xbdev, err, "xlvbd_add at %s",
 				 info->xbdev->otherend);
-		return;
+		goto fail;
 	}
 
 	err = device_create_file(&info->xbdev->dev, &dev_attr_max_ring_page_order);

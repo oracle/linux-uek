@@ -41,6 +41,10 @@ struct shared_info *HYPERVISOR_shared_info = (void *)&xen_dummy_shared_info;
 DEFINE_PER_CPU(struct vcpu_info *, xen_vcpu);
 static struct vcpu_info __percpu *xen_vcpu_info;
 
+/* Linux <-> Xen vCPU id mapping */
+DEFINE_PER_CPU(uint32_t, xen_vcpu_id);
+EXPORT_PER_CPU_SYMBOL(xen_vcpu_id);
+
 /* These are unused until we support booting "pre-ballooned" */
 unsigned long xen_released_pages;
 struct xen_memory_region xen_extra_mem[XEN_EXTRA_MEM_MAX_REGIONS] __initdata;
@@ -79,6 +83,70 @@ int xen_unmap_domain_gfn_range(struct vm_area_struct *vma,
 }
 EXPORT_SYMBOL_GPL(xen_unmap_domain_gfn_range);
 
+static void xen_read_wallclock(struct timespec64 *ts)
+{
+	u32 version;
+	struct timespec64 now, ts_monotonic;
+	struct shared_info *s = HYPERVISOR_shared_info;
+	struct pvclock_wall_clock *wall_clock = &(s->wc);
+
+	/* get wallclock at system boot */
+	do {
+		version = wall_clock->version;
+		rmb();		/* fetch version before time */
+		now.tv_sec  = ((uint64_t)wall_clock->sec_hi << 32) | wall_clock->sec;
+		now.tv_nsec = wall_clock->nsec;
+		rmb();		/* fetch time before checking version */
+	} while ((wall_clock->version & 1) || (version != wall_clock->version));
+
+	/* time since system boot */
+	ktime_get_ts64(&ts_monotonic);
+	*ts = timespec64_add(now, ts_monotonic);
+}
+
+static int xen_pvclock_gtod_notify(struct notifier_block *nb,
+				   unsigned long was_set, void *priv)
+{
+	/* Protected by the calling core code serialization */
+	static struct timespec64 next_sync;
+
+	struct xen_platform_op op;
+	struct timespec64 now, system_time;
+	struct timekeeper *tk = priv;
+
+	now.tv_sec = tk->xtime_sec;
+	now.tv_nsec = (long)(tk->tkr_mono.xtime_nsec >> tk->tkr_mono.shift);
+	system_time = timespec64_add(now, tk->wall_to_monotonic);
+
+	/*
+	 * We only take the expensive HV call when the clock was set
+	 * or when the 11 minutes RTC synchronization time elapsed.
+	 */
+	if (!was_set && timespec64_compare(&now, &next_sync) < 0)
+		return NOTIFY_OK;
+
+	op.cmd = XENPF_settime64;
+	op.u.settime64.mbz = 0;
+	op.u.settime64.secs = now.tv_sec;
+	op.u.settime64.nsecs = now.tv_nsec;
+	op.u.settime64.system_time = timespec64_to_ns(&system_time);
+	(void)HYPERVISOR_platform_op(&op);
+
+	/*
+	 * Move the next drift compensation time 11 minutes
+	 * ahead. That's emulating the sync_cmos_clock() update for
+	 * the hardware RTC.
+	 */
+	next_sync = now;
+	next_sync.tv_sec += 11 * 60;
+
+	return NOTIFY_OK;
+}
+
+static struct notifier_block xen_pvclock_gtod_notifier = {
+	.notifier_call = xen_pvclock_gtod_notify,
+};
+
 static void xen_percpu_init(void)
 {
 	struct vcpu_register_vcpu_info info;
@@ -97,10 +165,14 @@ static void xen_percpu_init(void)
 	pr_info("Xen: initializing cpu%d\n", cpu);
 	vcpup = per_cpu_ptr(xen_vcpu_info, cpu);
 
+	/* Direct vCPU id mapping for ARM guests. */
+	per_cpu(xen_vcpu_id, cpu) = cpu;
+
 	info.mfn = virt_to_gfn(vcpup);
 	info.offset = xen_offset_in_page(vcpup);
 
-	err = HYPERVISOR_vcpu_op(VCPUOP_register_vcpu_info, cpu, &info);
+	err = HYPERVISOR_vcpu_op(VCPUOP_register_vcpu_info, xen_vcpu_nr(cpu),
+				 &info);
 	BUG_ON(err);
 	per_cpu(xen_vcpu, cpu) = vcpup;
 
@@ -244,7 +316,13 @@ static int __init xen_guest_init(void)
 	if (xen_vcpu_info == NULL)
 		return -ENOMEM;
 
-	if (gnttab_setup_auto_xlat_frames(grant_frames)) {
+	/* Direct vCPU id mapping for ARM guests. */
+	per_cpu(xen_vcpu_id, 0) = 0;
+
+	xen_auto_xlat_grant_frames.count = gnttab_max_grant_frames();
+	if (xen_xlate_map_ballooned_pages(&xen_auto_xlat_grant_frames.pfn,
+					  &xen_auto_xlat_grant_frames.vaddr,
+					  xen_auto_xlat_grant_frames.count)) {
 		free_percpu(xen_vcpu_info);
 		return -ENOMEM;
 	}
@@ -270,6 +348,11 @@ static int __init xen_guest_init(void)
 	xen_percpu_init();
 
 	register_cpu_notifier(&xen_cpu_notifier);
+
+	xen_time_setup_guest();
+
+	if (xen_initial_domain())
+		pvclock_gtod_register_notifier(&xen_pvclock_gtod_notifier);
 
 	return 0;
 }
