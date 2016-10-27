@@ -24,6 +24,8 @@
 #include <asm/mmu_64.h>
 #include <asm/adi.h>
 
+#define MDESC_RETRIES 1000
+
 /* Unlike the OBP device tree, the machine description is a full-on
  * DAG.  An arbitrary number of ARCs are possible from one
  * node to other nodes and thus we can't use the OBP device_node
@@ -516,39 +518,48 @@ void mdesc_update(void)
 	unsigned long len, real_len, status;
 	struct mdesc_handle *hp, *orig_hp;
 	unsigned long flags;
+	int i;
 
 	mutex_lock(&mdesc_mutex);
 
-	(void) sun4v_mach_desc(0UL, 0UL, &len);
+	for (i = 0; i < MDESC_RETRIES; ++i) {
+		(void)sun4v_mach_desc(0UL, 0UL, &len);
 
-	hp = mdesc_alloc(len, &kmalloc_mdesc_memops);
-	if (!hp) {
-		printk(KERN_ERR "MD: mdesc alloc fails\n");
-		goto out;
+		hp = mdesc_alloc(len, &kmalloc_mdesc_memops);
+		if (!hp) {
+			pr_err("MD: mdesc alloc fails\n");
+			goto out;
+		}
+
+		status = sun4v_mach_desc(__pa(&hp->mdesc), len, &real_len);
+		if (status != HV_EOK || real_len > len) {
+			/* retry reading the mdesc */
+			atomic_dec(&hp->refcnt);
+			mdesc_free(hp);
+			hp = NULL;
+			continue;
+		}
+
+		spin_lock_irqsave(&mdesc_lock, flags);
+		orig_hp = cur_mdesc;
+		cur_mdesc = hp;
+		spin_unlock_irqrestore(&mdesc_lock, flags);
+
+		mdesc_notify_clients(orig_hp, hp);
+
+		spin_lock_irqsave(&mdesc_lock, flags);
+		if (atomic_dec_and_test(&orig_hp->refcnt))
+			mdesc_free(orig_hp);
+		else
+			list_add(&orig_hp->list, &mdesc_zombie_list);
+		spin_unlock_irqrestore(&mdesc_lock, flags);
+
+		/* successfully read the mdesc, break out of the loop */
+		break;
 	}
 
-	status = sun4v_mach_desc(__pa(&hp->mdesc), len, &real_len);
-	if (status != HV_EOK || real_len > len) {
-		printk(KERN_ERR "MD: mdesc reread fails with %lu\n",
-		       status);
-		atomic_dec(&hp->refcnt);
-		mdesc_free(hp);
-		goto out;
-	}
-
-	spin_lock_irqsave(&mdesc_lock, flags);
-	orig_hp = cur_mdesc;
-	cur_mdesc = hp;
-	spin_unlock_irqrestore(&mdesc_lock, flags);
-
-	mdesc_notify_clients(orig_hp, hp);
-
-	spin_lock_irqsave(&mdesc_lock, flags);
-	if (atomic_dec_and_test(&orig_hp->refcnt))
-		mdesc_free(orig_hp);
-	else
-		list_add(&orig_hp->list, &mdesc_zombie_list);
-	spin_unlock_irqrestore(&mdesc_lock, flags);
+	if  (i >= MDESC_RETRIES)
+		pr_err("MD: mdesc reread fails with %lu\n", status);
 
 out:
 	mutex_unlock(&mdesc_mutex);
@@ -1394,30 +1405,44 @@ void __init sun4v_mdesc_init(void)
 {
 	struct mdesc_handle *hp;
 	unsigned long len, real_len, status;
+	int i;
 
-	(void) sun4v_mach_desc(0UL, 0UL, &len);
+	for (i = 0; i < MDESC_RETRIES; ++i) {
 
-	printk("MDESC: Size is %lu bytes.\n", len);
+		(void)sun4v_mach_desc(0UL, 0UL, &len);
 
-	hp = mdesc_alloc(len, &memblock_mdesc_ops);
-	if (hp == NULL) {
-		prom_printf("MDESC: alloc of %lu bytes failed.\n", len);
-		prom_halt();
+		hp = mdesc_alloc(len, &memblock_mdesc_ops);
+		if (!hp) {
+			prom_printf("MDESC: alloc of %lu bytes failed.\n", len);
+			prom_halt();
+			break;
+		}
+
+		status = sun4v_mach_desc(__pa(&hp->mdesc), len, &real_len);
+		if (status != HV_EOK || real_len > len) {
+			mdesc_free(hp);
+			hp = NULL;
+			continue;
+		}
+
+		/* current 'mops' pointers are dangerous if not __init code */
+		hp->mops = NULL;
+		cur_mdesc = hp;
+
+#ifdef CONFIG_SPARC64
+	        mdesc_adi_init();
+#endif
+		report_platform_properties();
+
+		/* successfully read mdesc, break out of the loop */
+		break;
 	}
 
-	status = sun4v_mach_desc(__pa(&hp->mdesc), len, &real_len);
-	if (status != HV_EOK || real_len > len) {
+	if  (i >= MDESC_RETRIES) {
 		prom_printf("sun4v_mach_desc fails, err(%lu), "
 			    "len(%lu), real_len(%lu)\n",
 			    status, len, real_len);
-		mdesc_free(hp);
 		prom_halt();
 	}
-
-	/* current 'mops' pointers are dangerous if not __init code */
-	hp->mops = NULL;
-	cur_mdesc = hp;
-
-	mdesc_adi_init();
-	report_platform_properties();
+	pr_info("MDESC: Size is %lu bytes.\n", len);
 }
