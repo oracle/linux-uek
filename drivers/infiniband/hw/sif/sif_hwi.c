@@ -449,6 +449,10 @@ int sif_hw_init(struct sif_dev *sdev)
 	if (ret)
 		goto base_failed;
 
+	ret = sif_dfs_register(sdev);
+	if (ret)
+		goto pfail_dfs;
+
 	/* Allocate collect buffers for kernel usage */
 	ret = sif_hw_kernel_cb_init(sdev);
 	if (ret)
@@ -508,6 +512,8 @@ pd_alloc_failed:
 pd_init_failed:
 	sif_hw_kernel_cb_fini(sdev);
 cb_alloc_failed:
+	sif_dfs_unregister(sdev);
+pfail_dfs:
 	sif_base_deinit(sdev);
 base_failed:
 	sif_chip_deinit(sdev);
@@ -532,6 +538,7 @@ void sif_hw_deinit(struct sif_dev *sdev)
 	dealloc_pd(sdev->pd, false);
 	sif_deinit_pd(sdev);
 	sif_hw_kernel_cb_fini(sdev);
+	sif_dfs_unregister(sdev);
 	sif_base_deinit(sdev);
 	sif_chip_deinit(sdev);
 }

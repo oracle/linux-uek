@@ -335,10 +335,6 @@ static int sif_probe(struct pci_dev *pdev,
 	/* Type UMEM means no override - initialize */
 	sdev->mt_override = SIFMT_UMEM;
 
-	err = sif_dfs_register(sdev);
-	if (err)
-		goto pfail_dfs;
-
 	/* PSIF initialization */
 	err = sif_hw_init(sdev);
 	if (err)
@@ -409,8 +405,6 @@ pfail_dma_inv_mr:
 fwa_reg_failed:
 	sif_hw_deinit(sdev);
 pfail_psif_base:
-	sif_dfs_unregister(sdev);
-pfail_dfs:
 	sif_bar_deinit(pdev);
 pfail_bar:
 	pci_disable_pcie_error_reporting(pdev);
@@ -440,7 +434,6 @@ static void sif_remove(struct pci_dev *dev)
 	sif_dealloc_mr(sdev, sdev->dma_inv_mr);
 	sif_fwa_unregister(sdev);
 	sif_hw_deinit(sdev);
-	sif_dfs_unregister(sdev);
 	sif_bar_deinit(dev);
 	pci_clear_master(dev);
 	pci_disable_device(dev);
