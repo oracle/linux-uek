@@ -285,6 +285,7 @@ struct sif_cq *create_cq(struct sif_pd *pd, int entries,
 	memset(&lcq_sw, 0, sizeof(lcq_sw));
 	lcq_sw.head_indx = cq_sw->next_seq;
 	copy_conv_to_hw(&cq_sw->d, &lcq_sw, sizeof(lcq_sw));
+	atomic_set(&cq_sw->cleanup_refcnt, 0);
 
 	spin_lock_init(&cq->lock);
 
