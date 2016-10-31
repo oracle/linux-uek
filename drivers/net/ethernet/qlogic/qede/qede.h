@@ -192,6 +192,8 @@ struct qede_dev {
 	unsigned long			sp_flags;
 	u16				vxlan_dst_port;
 
+	bool wol_enabled;
+
 	struct qede_rdma_dev		rdma_info;
 };
 
