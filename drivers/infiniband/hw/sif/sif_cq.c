@@ -420,9 +420,9 @@ static int handle_send_wc(struct sif_dev *sdev, struct sif_cq *cq,
 
 	if (qp_is_destroyed) {
 		wc->wr_id = cqe->wc_id.rq_id;
-
-		/* No more work, when QP is gone */
-		return cqe->status == PSIF_WC_STATUS_GEN_TRANSL_COMPL_ERR ? -EFAULT : 0;
+		sif_log(sdev, SIF_INFO,
+			"remove cqe (0x%llx) from cq %d", wc->wr_id, cq->index);
+		return -EFAULT;
 	}
 
 	ret = translate_wr_id(&wc->wr_id, sdev, cq, sq, cqe, sq_seq_num, cqe->qp);
@@ -468,8 +468,11 @@ static int handle_recv_wc(struct sif_dev *sdev, struct sif_cq *cq, struct ib_wc 
 	wc->wr_id = cqe->wc_id.rq_id;
 
 	/* If no QP, no further work */
-	if (qp_is_destroyed)
-		return 0;
+	if (qp_is_destroyed) {
+		sif_log(sdev, SIF_INFO,
+			"remove cqe (0x%llx) from cq %d", wc->wr_id, cq->index);
+		return -EFAULT;
+	}
 
 	rq_len = atomic_dec_return(&rq_sw->length);
 
