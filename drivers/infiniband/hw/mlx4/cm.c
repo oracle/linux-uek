@@ -276,6 +276,34 @@ static void sl_id_map_add(struct ib_device *ibdev, struct id_map_entry *new)
 	rb_insert_color(&new->node, sl_id_map);
 }
 
+/* try to reschedule the delayed work
+ * if not scheduled before, schedule it; otherwise, try to cancel it first and
+ * reschedule on the cuccess of cancellation.
+ *
+ * sriov->going_down_lock & sriov->id_map_lock are required by caller
+ *
+ * returns 1 when (re)scheduled successfully; 0 otherwise
+ */
+static int __try_reschedule(struct id_map_entry *ent)
+{
+	if (!ent->scheduled_delete) {
+		ent->scheduled_delete = 1;
+		schedule_delayed_work(&ent->timeout, CM_CLEANUP_CACHE_TIMEOUT);
+		return 1;
+	}
+
+	/* try to cancel delayed work */
+	if (cancel_delayed_work(&ent->timeout)) {
+		/* work was successfully cancelled, work not running,
+		 * it's safe to queue another one */
+		schedule_delayed_work(&ent->timeout, CM_CLEANUP_CACHE_TIMEOUT);
+		return 1;
+	}
+
+	/* the timeout() work maybe running, don't queue another one */
+	return 0;
+}
+
 static void schedule_delayed(struct ib_device *ibdev, struct id_map_entry *id)
 {
 	struct mlx4_ib_sriov *sriov = &to_mdev(ibdev)->sriov;
@@ -284,10 +312,8 @@ static void schedule_delayed(struct ib_device *ibdev, struct id_map_entry *id)
 	spin_lock_irqsave(&sriov->going_down_lock, flags);
 	spin_lock(&sriov->id_map_lock);
 	/*make sure that there is no schedule inside the scheduled work.*/
-	if (!sriov->is_going_down) {
-		id->scheduled_delete = 1;
-		schedule_delayed_work(&id->timeout, CM_CLEANUP_CACHE_TIMEOUT);
-	}
+	if (!sriov->is_going_down)
+		__try_reschedule(id);
 	spin_unlock(&sriov->id_map_lock);
 	spin_unlock_irqrestore(&sriov->going_down_lock, flags);
 }
@@ -366,14 +392,14 @@ id_map_get(struct ib_device *ibdev, int *pv_cm_id, int sl_cm_id, int slave_id,
 	}
 	if (ent && sched_or_cancel) {
 		if (sched_or_cancel == ID_SCHED_DELETE) {
-			cancel_delayed_work(&ent->timeout);
-			ent->scheduled_delete = 1;
-			schedule_delayed_work(&ent->timeout,
-				CM_CLEANUP_CACHE_TIMEOUT);
+			if (!__try_reschedule(ent))
+				ent = NULL;
 		}
 		if (sched_or_cancel == ID_CANCEL_DELETE) {
-			ent->scheduled_delete = 0;
-			cancel_delayed_work(&ent->timeout);
+			if (cancel_delayed_work(&ent->timeout))
+				ent->scheduled_delete = 0;
+			else
+				ent = NULL;
 		}
 	}
 	spin_unlock(&sriov->id_map_lock);
@@ -502,7 +528,7 @@ void mlx4_ib_cm_paravirt_clean(struct mlx4_ib_dev *dev, int slave)
 	struct rb_root *sl_id_map = &sriov->sl_id_map;
 	struct list_head lh;
 	struct rb_node *nd;
-	int need_flush = 1;
+	int no_flush = 1;
 	struct id_map_entry *map, *tmp_map;
 	TRACE("%s\n", __func__);
 	/* cancel all delayed work queue entries */
@@ -511,13 +537,13 @@ void mlx4_ib_cm_paravirt_clean(struct mlx4_ib_dev *dev, int slave)
 	list_for_each_entry_safe(map, tmp_map, &dev->sriov.cm_list, list) {
 		if (slave < 0 || slave == map->slave_id) {
 			if (map->scheduled_delete)
-				need_flush &= !!cancel_delayed_work(&map->timeout);
+				no_flush &= !!cancel_delayed_work(&map->timeout);
 		}
 	}
 
 	spin_unlock(&sriov->id_map_lock);
 
-	if (!need_flush)
+	if (!no_flush)
 		flush_scheduled_work(); /* make sure all timers were flushed */
 
 	/* now, remove all leftover entries from databases*/
