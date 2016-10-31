@@ -682,7 +682,7 @@ static void handle_event_work(struct work_struct *work)
 					.element.qp = &qp->ibqp
 				};
 				ibqp->event_handler(&ibe, ibqp->qp_context);
-			} else {
+			} else if (!rq->is_srq) {
 				/* WA #622: if reqular RQ, flush */
 				if (sif_flush_rq_wq(sdev, rq, qp, atomic_read(&rq_sw->length)))
 					sif_log(sdev, SIF_INFO, "failed to flush RQ %d",
