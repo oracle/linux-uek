@@ -227,6 +227,7 @@ enum {
 	XVE_STATE_MACHINE_DOWN,
 	XVE_STATE_MACHINE_IBCLEAR,
 	XVE_NAPI_POLL_COUNTER,
+	XVE_NAPI_DROP_COUNTER,
 	XVE_SHORT_PKT_COUNTER,
 	XVE_TX_COUNTER,
 	XVE_TX_SKB_FREE_COUNTER,
@@ -311,6 +312,7 @@ enum {
 	XVE_PATHREC_QUERY_COUNTER,
 	XVE_PATHREC_RESP_COUNTER,
 	XVE_PATHREC_RESP_ERR_COUNTER,
+	XVE_PATHREC_GW_COUNTER,
 
 	XVE_SM_CHANGE_COUNTER,
 	XVE_CLIENT_REREGISTER_COUNTER,
@@ -431,7 +433,9 @@ enum {
 	DEBUG_QP_INFO = 0x00040000,
 	DEBUG_TX_INFO = 0x00080000,
 	DEBUG_RX_INFO = 0x00100000,
-	DEBUG_TXDATA_INFO = 0x00200000
+	DEBUG_TXDATA_INFO = 0x00200000,
+	DEBUG_INSTALL_INFO = 0x00400000,
+	DEBUG_FWTABLE_INFO = 0x00800000
 };
 
 #define	XVE_OP_RECV   (1ul << 31)
@@ -910,11 +914,17 @@ struct icmp6_ndp {
 #define DRV_PRINT(fmt, arg...)                                  \
 	PRINT(KERN_INFO, "DRV", fmt, ##arg)
 #define xve_printk(level, priv, format, arg...)			\
-	printk(level "%s: " format,				\
+	printk(level "%s: " format "\n",			\
 		((struct xve_dev_priv *) priv)->netdev->name,	\
 		## arg)
 #define xve_warn(priv, format, arg...)				\
 	xve_printk(KERN_WARNING, priv, format, ## arg)
+#define xve_info(priv, format, arg...)				\
+	do {							\
+		if (xve_debug_level & DEBUG_DRV_INFO)		\
+			xve_printk(KERN_INFO, priv, format,	\
+			## arg);				\
+	} while (0)
 
 #define XSMP_INFO(fmt, arg...)					\
 	do {							\
@@ -949,11 +959,11 @@ struct icmp6_ndp {
 	do {								\
 		if (xve_debug_level & level) {				\
 			if (priv)					\
-				printk("%s: " format,			\
+				pr_info("%s: " format "\n",		\
 				((struct xve_dev_priv *) priv)->netdev->name, \
 				## arg);				\
 			else						\
-				printk("XVE: " format, ## arg);		\
+				pr_info("XVE: " format "\n", ## arg);	\
 		}							\
 	} while (0)
 
@@ -1528,7 +1538,7 @@ static inline void dbg_dump_raw_pkt(unsigned char *buff, int length, char *name)
 	if (!(xve_debug_level & DEBUG_TEST_INFO))
 		return;
 
-	printk("%s. Packet length is %d\n", name, length);
+	pr_info("%s. Packet length is %d\n", name, length);
 	tmp_len = (length >> 2) + 1;
 	data_ptr = (u32 *) buff;
 	for (i = 0; i < tmp_len; i++) {

@@ -168,10 +168,9 @@ int xve_aging_task_machine(struct xve_dev_priv *priv)
 				    (XVE_FWT_ENTRY_REFRESH, &fwt_entry->state)
 				    && ((jiffies - fwt_entry->last_refresh) >=
 					priv->aging_delay)) {
-					pr_info("XVE: %s MAC ", priv->xve_name);
-					pr_info("%pM", smac);
-					pr_info(" vlan %d Aged out\n",
-						fwt_entry->vlan);
+					xve_info(priv,
+							"MAC %pM vlan %d Aged out",
+							smac, fwt_entry->vlan);
 					/*
 					 * Can there be a race here where path
 					 *  becomes a bad address when paths
@@ -259,11 +258,12 @@ void xve_fwt_insert(struct xve_dev_priv *priv, struct xve_cm_ctx *ctx,
 		     (fwt_entry->dgid.raw, gid->raw, sizeof(union ib_gid)))) {
 			print_mgid_buf(from, (char *)fwt_entry->dgid.raw);
 			print_mgid_buf(to, (char *)gid->raw);
-			pr_info("XVE: %s MAC %pM ",
-			     priv->xve_name, smac);
-			pr_info(" vlan %d moved from GID %s to GID %s\n",
-				fwt_entry->vlan, from, to);
-
+			xve_debug(DEBUG_FWTABLE_INFO, priv,
+					"XVE: %s MAC %pM ",
+					priv->xve_name, smac);
+			xve_debug(DEBUG_FWTABLE_INFO, priv,
+					"vlan %d moved from GID %s to GID %s\n",
+					fwt_entry->vlan, from, to);
 			priv->counters[XVE_MAC_MOVED_COUNTER]++;
 
 			memcpy(fwt_entry->dgid.raw, gid->raw,
@@ -300,8 +300,10 @@ void xve_fwt_insert(struct xve_dev_priv *priv, struct xve_cm_ctx *ctx,
 		}
 		memset(fwt_entry, 0, sizeof(struct xve_fwt_entry));
 		print_mgid_buf(from, (char *)gid->raw);
-		pr_info("XVE: %s MAC %pM", priv->xve_name, smac);
-		pr_info("vlan %d learned from GID %s, mode: %s QPN %x Fwt %p\n",
+		xve_debug(DEBUG_FWTABLE_INFO, priv,
+			"XVE: %s MAC %pM", priv->xve_name, smac);
+		xve_debug(DEBUG_FWTABLE_INFO, priv,
+			"vlan %d learned from GID %s, mode: %s QPN %x Fwt %p\n",
 			vlan, from, qpn ? "UD" : "RC", qpn, fwt_entry);
 		priv->counters[XVE_MAC_LEARN_COUNTER]++;
 		memcpy(fwt_entry->dgid.raw, gid->raw, sizeof(union ib_gid));
@@ -388,9 +390,8 @@ void xve_fwt_cleanup(struct xve_dev_priv *priv)
 			xve_fwt->num--;
 		}
 	}
-	pr_info("XVE: %s Forwarding table cleaned up for %s",
-		__func__, priv->xve_name);
-	pr_info("number of entries %d\n", xve_fwt->num);
+	xve_info(priv, "Forwarding table cleaned up entries:%d",
+			xve_fwt->num);
 	spin_unlock_irqrestore(&xve_fwt->lock, flags);
 }
 

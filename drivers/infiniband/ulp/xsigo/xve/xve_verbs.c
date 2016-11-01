@@ -178,10 +178,10 @@ int xve_transport_dev_init(struct net_device *dev, struct ib_device *ca)
 	}
 
 	/* Bug 24673784 */
-	if (priv->is_titan && xve_use_hugecq) {
+	if (priv->is_titan && xve_use_hugecq)
 		priv->xve_rcq_size = priv->xve_scq_size =
 				xve_use_hugecq;
-	} else {
+	else {
 		size = priv->xve_sendq_size;
 		size += priv->xve_recvq_size + 1; /* 1 extra for rx_drain_qp */
 		priv->xve_rcq_size = size;
