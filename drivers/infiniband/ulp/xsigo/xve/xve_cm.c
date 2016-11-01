@@ -1224,7 +1224,6 @@ void xve_cm_destroy_tx_deferred(struct xve_cm_ctx *tx)
 	clear_bit(XVE_FLAG_OPER_UP, &tx->flags);
 	if (test_and_clear_bit(XVE_FLAG_INITIALIZED, &tx->flags)) {
 		list_move(&tx->list, &priv->cm.reap_list);
-		xve_cm_set(tx->path, NULL);
 		xve_queue_work(priv, XVE_WQ_START_CMTXREAP);
 	}
 	spin_unlock_irqrestore(&priv->lock, flags);
@@ -1282,6 +1281,7 @@ static void __xve_cm_tx_reap(struct xve_dev_priv *priv)
 		if (p->path)
 			xve_flush_single_path_by_gid(dev,
 						     &p->path->pathrec.dgid);
+		xve_cm_set(p->path, NULL);
 		xve_cm_tx_destroy(p);
 		netif_tx_lock_bh(dev);
 		spin_lock_irqsave(&priv->lock, flags);
