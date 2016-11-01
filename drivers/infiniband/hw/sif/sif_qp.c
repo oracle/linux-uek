@@ -487,6 +487,9 @@ struct sif_qp *create_qp(struct sif_dev *sdev,
 	if (flags & IB_QP_CREATE_IPOIB_UD_LSO)
 		qp->flags |= SIF_QPF_IPOIB;
 
+	/* SIF extensions */
+	if (flags & IB_QP_CREATE_EOIB)
+		qp->flags |= SIF_QPF_EOIB;
 	/* Now, initialize the HW QP state */
 	init_hw_qp_state(sdev, qp);
 
