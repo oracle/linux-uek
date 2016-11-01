@@ -694,17 +694,31 @@ void xve_data_recv_handler(struct xve_dev_priv *priv)
 	}
 }
 
-void xve_send_comp_handler(struct ib_cq *cq, void *dev_ptr)
+static void xve_ib_tx_timer_func(unsigned long ctx)
 {
-	struct xve_dev_priv *priv = netdev_priv((struct net_device *)dev_ptr);
+	struct net_device *dev = (struct net_device *)ctx;
+	struct xve_dev_priv *priv = netdev_priv(dev);
 	unsigned long flags = 0;
 
+	netif_tx_lock(dev);
 	spin_lock_irqsave(&priv->lock, flags);
 	if (test_bit(XVE_OPER_UP, &priv->state) &&
-	    !test_bit(XVE_DELETING, &priv->state)) {
+			!test_bit(XVE_DELETING, &priv->state)) {
 		poll_tx(priv);
 	}
 	spin_unlock_irqrestore(&priv->lock, flags);
+	if (netif_queue_stopped(dev))
+		mod_timer(&priv->poll_timer, jiffies + 1);
+
+	netif_tx_unlock(dev);
+}
+
+
+void xve_send_comp_handler(struct ib_cq *cq, void *dev_ptr)
+{
+	struct xve_dev_priv *priv = netdev_priv((struct net_device *)dev_ptr);
+
+	mod_timer(&priv->poll_timer, jiffies);
 }
 
 static inline int post_send(struct xve_dev_priv *priv,
@@ -761,8 +775,10 @@ static inline int post_send(struct xve_dev_priv *priv,
 /* Always called with priv->lock held
  * type argument is used to differentiate between the GATEWAY
  * and UVNIC packet.
- * 1 -> GATEWAY PACKET
  * 0 -> normal UVNIC PACKET
+ * 1 -> GATEWAY Broadcast PACKET
+ * 2 -> Sending Queued PACKET
+ * 3 -> Path Not found PACKET
  */
 int xve_send(struct net_device *dev, struct sk_buff *skb,
 	      struct xve_ah *address, u32 qpn, int type)
@@ -772,6 +788,7 @@ int xve_send(struct net_device *dev, struct sk_buff *skb,
 	int hlen;
 	void *phead;
 	int ret = NETDEV_TX_OK;
+	u8 packet_sent = 0;
 
 	if (skb_is_gso(skb)) {
 		hlen = skb_transport_offset(skb) + tcp_hdrlen(skb);
@@ -843,16 +860,6 @@ int xve_send(struct net_device *dev, struct sk_buff *skb,
 		netif_stop_queue(dev);
 	}
 
-	if (netif_queue_stopped(dev)) {
-		int rc;
-
-		rc = ib_req_notify_cq(priv->send_cq,
-				IB_CQ_NEXT_COMP | IB_CQ_REPORT_MISSED_EVENTS);
-		if (rc < 0)
-			xve_warn(priv, "request notify on send CQ failed\n");
-		else if (rc)
-			poll_tx(priv);
-	 }
 	skb_orphan(skb);
 	skb_dst_drop(skb);
 
@@ -874,17 +881,24 @@ int xve_send(struct net_device *dev, struct sk_buff *skb,
 		--priv->tx_outstanding;
 		priv->counters[XVE_TX_RING_FULL_COUNTER]++;
 		xve_put_ah_refcnt(address);
+		xve_free_txbuf_memory(priv, tx_req);
 		if (netif_queue_stopped(dev)) {
 			priv->counters[XVE_TX_WAKE_UP_COUNTER]++;
 			netif_wake_queue(dev);
 		}
-		xve_free_txbuf_memory(priv, tx_req);
-	} else
+	} else {
+		packet_sent = 1;
 		++priv->tx_head;
+	}
 
 	priv->send_hbeat_flag = 0;
-	if (unlikely(priv->tx_outstanding > SENDQ_LOW_WMARK))
+	if (unlikely(priv->tx_outstanding > SENDQ_LOW_WMARK)) {
+		priv->counters[XVE_TX_WMARK_REACH_COUNTER]++;
 		poll_tx(priv);
+	}
+
+	if (packet_sent)
+		priv->counters[XVE_TX_COUNTER]++;
 	return ret;
 }
 
@@ -1157,6 +1171,8 @@ int xve_ib_dev_stop(struct net_device *dev, int flush)
 	xve_debug(DEBUG_IBDEV_INFO, priv, "%s All sends and receives done\n",
 		  __func__);
 timeout:
+	xve_warn(priv, "Deleting TX timer");
+	del_timer_sync(&priv->poll_timer);
 	qp_attr.qp_state = IB_QPS_RESET;
 	if (ib_modify_qp(priv->qp, &qp_attr, IB_QP_STATE))
 		xve_warn(priv, "Failed to modify QP to RESET state\n");
@@ -1183,6 +1199,9 @@ int xve_ib_dev_init(struct net_device *dev, struct ib_device *ca, int port)
 			ca->name, priv->xve_name);
 		return -ENODEV;
 	}
+
+	setup_timer(&priv->poll_timer, xve_ib_tx_timer_func,
+			(unsigned long)dev);
 
 	if (dev->flags & IFF_UP) {
 		if (xve_ib_dev_open(dev) != 0) {

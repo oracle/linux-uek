@@ -236,6 +236,7 @@ enum {
 	XVE_TX_DROP_OPER_DOWN_COUNT,
 	XVE_TX_SKB_ALLOC_ERROR_COUNTER,
 	XVE_TX_RING_FULL_COUNTER,
+	XVE_TX_WMARK_REACH_COUNTER,
 	XVE_TX_WAKE_UP_COUNTER,
 	XVE_TX_QUEUE_STOP_COUNTER,
 	XVE_RX_SKB_COUNTER,
@@ -292,6 +293,7 @@ enum {
 	XVE_TX_UD_COUNTER,
 	XVE_TX_RC_COUNTER,
 	XVE_TX_MCAST_PKT,
+	XVE_TX_BCAST_PKT,
 	XVE_TX_MCAST_ARP_QUERY,
 	XVE_TX_MCAST_NDP_QUERY,
 	XVE_TX_MCAST_ARP_VLAN_QUERY,
@@ -707,6 +709,7 @@ struct xve_dev_priv {
 	struct net_device_stats stats;
 	struct napi_struct napi;
 	struct xve_ethtool_st ethtool;
+	struct timer_list poll_timer;
 	u8 lro_mode;
 	struct xve_lro lro;
 	unsigned long flags;
@@ -1179,7 +1182,8 @@ void xve_remove_fwt_entry(struct xve_dev_priv *priv,
 void xve_fwt_entry_free(struct xve_dev_priv *priv,
 			struct xve_fwt_entry *fwt_entry);
 
-int xve_mcast_send(struct net_device *dev, void *mgid, struct sk_buff *skb);
+int xve_mcast_send(struct net_device *dev, void *mgid, struct sk_buff *skb,
+		u8 bcast);
 void xve_advert_mcast_join(struct xve_dev_priv *priv);
 int xve_mcast_start_thread(struct net_device *dev);
 int xve_mcast_stop_thread(struct net_device *dev, int flush);

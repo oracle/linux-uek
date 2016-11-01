@@ -667,7 +667,8 @@ static int xve_mcast_leave(struct net_device *dev, struct xve_mcast *mcast)
 	return 0;
 }
 
-int xve_mcast_send(struct net_device *dev, void *mgid, struct sk_buff *skb)
+int xve_mcast_send(struct net_device *dev, void *mgid, struct sk_buff *skb,
+		u8 broadcast)
 {
 	struct xve_dev_priv *priv = netdev_priv(dev);
 	struct xve_mcast *mcast;
@@ -681,11 +682,14 @@ int xve_mcast_send(struct net_device *dev, void *mgid, struct sk_buff *skb)
 		return ret;
 	}
 
-	if (xve_is_uplink(priv) && xve_gw_linkup(priv)) {
+	if (broadcast && (xve_is_uplink(priv) && xve_gw_linkup(priv))) {
 		struct sk_buff *nskb = skb_clone(skb, GFP_ATOMIC);
 
-		if (nskb)
+		if (nskb) {
 			ret = xve_gw_send(dev, nskb);
+			if (ret != NETDEV_TX_OK)
+				return ret;
+		}
 	}
 
 	mcast = __xve_mcast_find(dev, mgid);

@@ -622,7 +622,7 @@ static void path_rec_completion(int status,
 		skb->dev = dev;
 		xve_get_ah_refcnt(path->ah);
 		/* Sending the queued GATEWAY Packet */
-		ret = xve_send(dev, skb, path->ah, priv->gw.t_data_qp, 1);
+		ret = xve_send(dev, skb, path->ah, priv->gw.t_data_qp, 2);
 		if (ret == NETDEV_TX_BUSY) {
 			xve_warn(priv, "send queue full full, dropping packet for %s\n",
 					priv->xve_name);
@@ -892,9 +892,15 @@ static int xve_start_xmit(struct sk_buff *skb, struct net_device *dev)
 	fwt_entry = xve_fwt_lookup(&priv->xve_fwt, eth_hdr(skb)->h_dest,
 			vlan_tag, 0);
 	if (!fwt_entry) {
-		if (is_multicast_ether_addr(eth_hdr(skb)->h_dest)) {
+		if (is_broadcast_ether_addr(eth_hdr(skb)->h_dest)) {
 			ret = xve_mcast_send(dev,
-					(void *)priv->bcast_mgid.raw, skb);
+					(void *)priv->bcast_mgid.raw, skb, 1);
+			priv->counters[XVE_TX_BCAST_PKT]++;
+			goto stats;
+		} else if (is_multicast_ether_addr(eth_hdr(skb)->h_dest)) {
+			/* For Now Send Multicast Packet to G/W also */
+			ret = xve_mcast_send(dev,
+					(void *)priv->bcast_mgid.raw, skb, 1);
 			priv->counters[XVE_TX_MCAST_PKT]++;
 			goto stats;
 		} else {
@@ -920,7 +926,7 @@ static int xve_start_xmit(struct sk_buff *skb, struct net_device *dev)
 				if (bcast_skb != NULL)
 					ret = xve_mcast_send(dev,
 						       (void *)priv->bcast_mgid.
-						       raw, bcast_skb);
+						       raw, bcast_skb, 1);
 			/*
 			 * Now send the original packet also to over broadcast
 			 * Later add counters for flood mode
@@ -928,7 +934,7 @@ static int xve_start_xmit(struct sk_buff *skb, struct net_device *dev)
 			if (xve_is_edr(priv) ||
 					len < XVE_UD_MTU(priv->max_ib_mtu)) {
 				ret = xve_mcast_send(dev,
-				       (void *)priv->bcast_mgid.raw, skb);
+				       (void *)priv->bcast_mgid.raw, skb, 1);
 				priv->counters[XVE_TX_MCAST_FLOOD_UD]++;
 			} else {
 				if (xve_flood_rc) {
@@ -982,7 +988,7 @@ static int xve_start_xmit(struct sk_buff *skb, struct net_device *dev)
 		xve_debug(DEBUG_SEND_INFO, priv, "%s path ah is %p\n",
 			  __func__, path->ah);
 		xve_get_ah_refcnt(path->ah);
-		ret = xve_send(dev, skb, path->ah, fwt_entry->dqpn, 0);
+		ret = xve_send(dev, skb, path->ah, fwt_entry->dqpn, 3);
 		priv->counters[XVE_TX_UD_COUNTER]++;
 		goto stats;
 	}
@@ -1001,7 +1007,6 @@ static int xve_start_xmit(struct sk_buff *skb, struct net_device *dev)
 stats:
 	INC_TX_PKT_STATS(priv, dev);
 	INC_TX_BYTE_STATS(priv, dev, len);
-	priv->counters[XVE_TX_COUNTER]++;
 free_fwt_ctx:
 	if (path)
 		xve_put_path(path, 0);
@@ -1601,15 +1606,6 @@ static int xve_state_machine(struct xve_dev_priv *priv)
 		handle_action_flags(priv);
 
 		if (priv->send_hbeat_flag) {
-			unsigned long flags = 0;
-
-			if (unlikely(priv->tx_outstanding > SENDQ_LOW_WMARK)) {
-				netif_tx_lock(priv->netdev);
-				spin_lock_irqsave(&priv->lock, flags);
-				poll_tx(priv);
-				spin_unlock_irqrestore(&priv->lock, flags);
-				netif_tx_unlock(priv->netdev);
-			 }
 			if (xve_is_ovn(priv))
 				xve_send_hbeat(priv);
 		}
