@@ -2159,7 +2159,7 @@ static int xve_xsmp_install(xsmp_cookie_t xsmp_hndl, struct xve_xsmp_msg *xmsgp,
 			pr_info("MTU%d %s\n", be16_to_cpu(xmsgp->vn_mtu),
 				xmsgp->xve_name);
 			ret = -EINVAL;
-			ecode = XVE_INVALID_OPERATION;
+			ecode = XVE_NACK_IB_MTU_MISMATCH;
 			goto dup_error;
 		}
 	}
@@ -2184,6 +2184,12 @@ static int xve_xsmp_install(xsmp_cookie_t xsmp_hndl, struct xve_xsmp_msg *xmsgp,
 	    (xsmp_hndl, xmsgp->xve_name, XSMP_MESSAGE_TYPE_VNIC) != 0) {
 		pr_info("%s Duplicate name %s\n", __func__, xmsgp->xve_name);
 		ret = -EEXIST;
+		/* send VID to xmsgp*/
+		priv = xve_get_xve_by_name(xmsgp->xve_name);
+		if (priv)
+			xmsgp->tca_subnet_prefix =
+				cpu_to_be64(priv->resource_id);
+		ecode = XVE_NACK_DUP_NAME;
 		goto dup_error;
 	}
 
@@ -2200,6 +2206,9 @@ static int xve_xsmp_install(xsmp_cookie_t xsmp_hndl, struct xve_xsmp_msg *xmsgp,
 			   __func__, xmsgp->xve_name,
 			   be64_to_cpu(xmsgp->resource_id));
 		ret = -EEXIST;
+		/* send VID to xmsgp*/
+		ecode = XVE_NACK_DUP_NAME;
+		xmsgp->tca_subnet_prefix = cpu_to_be64(priv->resource_id);
 		goto dup_error;
 	}
 
