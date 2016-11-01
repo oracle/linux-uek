@@ -2148,6 +2148,7 @@ static int xve_xsmp_install(xsmp_cookie_t xsmp_hndl, struct xve_xsmp_msg *xmsgp,
 		ret = -EEXIST;
 		update_state = 1;
 		priv->xsmp_hndl = xsmp_hndl;
+		priv->counters[XVE_DUP_VID_COUNTER]++;
 		goto send_ack;
 	}
 
