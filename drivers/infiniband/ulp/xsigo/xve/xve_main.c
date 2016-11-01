@@ -1871,7 +1871,11 @@ static int xcpm_check_vnic_from_same_pvi(xsmp_cookie_t xsmp_hndl,
 	u8 port;
 	char gid_buf[64];
 
-	xcpm_get_xsmp_session_info(xsmp_hndl, &xsmp_info);
+	if ((xcpm_get_xsmp_session_info(xsmp_hndl, &xsmp_info) != 0)) {
+		pr_info("XVE:%s Session Not present", __func__);
+		return -EINVAL;
+	}
+
 	hca = xsmp_info.ib_device;
 	port = xscore_port_num(xsmp_info.port);
 	(void)ib_query_gid(hca, port, 0, &local_gid);
@@ -1899,14 +1903,18 @@ static int xve_check_for_hca(xsmp_cookie_t xsmp_hndl, u8 *is_titan)
 	struct ib_device *hca;
 	struct xsmp_session_info xsmp_info;
 
-	xcpm_get_xsmp_session_info(xsmp_hndl, &xsmp_info);
+	if ((xcpm_get_xsmp_session_info(xsmp_hndl, &xsmp_info) != 0)) {
+		pr_info("XVE:%s Session Not present", __func__);
+		return -EINVAL;
+	}
+
 	hca = xsmp_info.ib_device;
 	if (strncmp(hca->name, "sif", 3) == 0)
 		*is_titan = (u8)1;
 
 	if (!((strncmp(hca->name, "mlx4", 4) != 0) ||
 			(strncmp(hca->name, "sif0", 4) != 0)))
-		return -EEXIST;
+		return -EINVAL;
 	return 0;
 }
 
@@ -2130,7 +2138,7 @@ static int xve_xsmp_install(xsmp_cookie_t xsmp_hndl, struct xve_xsmp_msg *xmsgp,
 			pr_info("Warning !!!!! Jumbo is supported on Titan Cards Only");
 			pr_info("MTU%d %s\n", be16_to_cpu(xmsgp->vn_mtu),
 				xmsgp->xve_name);
-			ret = -EEXIST;
+			ret = -EINVAL;
 			ecode = XVE_INVALID_OPERATION;
 			goto dup_error;
 		}
