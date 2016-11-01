@@ -620,6 +620,7 @@ copied:
 			skb->data[10], skb->data[11],
 			skb->protocol);
 	update_cm_rx_rate(p, skb->len);
+	priv->counters[XVE_RC_RXCOMPL_COUNTER]++;
 	xve_send_skb(priv, skb);
 repost:
 	if (unlikely(xve_cm_post_receive_srq(dev, wr_id))) {
@@ -745,6 +746,7 @@ void xve_cm_handle_tx_wc(struct net_device *dev,
 
 	netif_tx_lock(dev);
 	++tx->tx_tail;
+	priv->counters[XVE_RC_TXCOMPL_COUNTER]++;
 	if (unlikely(--priv->tx_outstanding == priv->xve_sendq_size >> 1) &&
 	    netif_queue_stopped(dev) &&
 	    test_bit(XVE_FLAG_ADMIN_UP, &priv->flags)) {

@@ -159,8 +159,8 @@ enum {
 	XVE_CM_BUF_SIZE = XVE_CM_MTU + VLAN_ETH_HLEN,
 	XVE_CM_HEAD_SIZE = XVE_CM_BUF_SIZE % PAGE_SIZE,
 	XVE_CM_RX_SG = ALIGN(XVE_CM_BUF_SIZE, PAGE_SIZE) / PAGE_SIZE,
-	XVE_RX_RING_SIZE = 256,
-	XVE_TX_RING_SIZE = 128,
+	XVE_RX_RING_SIZE = 2048,
+	XVE_TX_RING_SIZE = 2048,
 	XVE_MAX_QUEUE_SIZE = 8192,
 	XVE_MIN_QUEUE_SIZE = 2,
 	XVE_CM_MAX_CONN_QP = 4096,
@@ -292,6 +292,8 @@ enum {
 
 	XVE_TX_UD_COUNTER,
 	XVE_TX_RC_COUNTER,
+	XVE_RC_RXCOMPL_COUNTER,
+	XVE_RC_TXCOMPL_COUNTER,
 	XVE_TX_MCAST_PKT,
 	XVE_TX_BCAST_PKT,
 	XVE_TX_MCAST_ARP_QUERY,
@@ -322,6 +324,7 @@ enum {
 	XVE_HBEAT_COUNTER,
 	XVE_LINK_STATUS_COUNTER,
 	XVE_RX_NOGRH,
+	XVE_DUP_VID_COUNTER,
 
 	XVE_MAX_COUNTERS
 };
@@ -750,6 +753,8 @@ struct xve_dev_priv {
 	/* TX and RX Ring attributes */
 	int xve_recvq_size;
 	int xve_sendq_size;
+	int xve_rcq_size;
+	int xve_scq_size;
 	int xve_max_send_cqe;
 	struct xve_rx_buf *rx_ring;
 	struct xve_tx_buf *tx_ring;

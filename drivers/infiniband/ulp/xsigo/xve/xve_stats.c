@@ -126,6 +126,8 @@ static char *counter_name[XVE_MAX_COUNTERS] = {
 	"mcast detach count:\t\t",
 	"tx ud count:\t\t\t",
 	"tx rc count:\t\t\t",
+	"rc tx compl count:\t\t\t",
+	"rc rx compl count:\t\t\t",
 	"tx mcast count:\t\t\t",
 	"tx broadcast count:\t\t\t",
 	"tx arp count:\t\t\t",
@@ -152,6 +154,7 @@ static char *counter_name[XVE_MAX_COUNTERS] = {
 	"Heartbeat Count(0x8919):\t\t",
 	"Link State message count:\t",
 	"RX frames without GRH\t\t",
+	"Duplicate xve install count:\t"
 };
 
 static char *misc_counter_name[XVE_MISC_MAX_COUNTERS] = {
@@ -470,11 +473,13 @@ static int xve_proc_read_device(struct seq_file *m, void *data)
 
 	seq_printf(m, "Receive Queue size: \t\t%d\n", vp->xve_recvq_size);
 	seq_printf(m, "Transmit Queue size: \t\t%d\n", vp->xve_sendq_size);
-	seq_printf(m, "Completion Queue size: \t\t%d\n", vp->xve_max_send_cqe);
+	seq_printf(m, "Receive CQ size: \t\t%d\n", vp->xve_rcq_size);
+	seq_printf(m, "Transmit CQ size: \t\t%d\n", vp->xve_scq_size);
 
 	if (vp->cm_supported) {
 		seq_printf(m, "Num of cm frags: \t\t%d\n", vp->cm.num_frags);
 		seq_printf(m, "CM mtu  \t\t\t%d\n", vp->cm.max_cm_mtu);
+		seq_printf(m, "CM SRQ \t\t\t%s\n", (vp->cm.srq) ? "yes" : "no");
 	}
 
 	seq_puts(m, "\n");
