@@ -584,7 +584,9 @@ void xve_mcast_join_task(struct work_struct *work)
 		    ("XVE: %s xve %s dev mtu %d, admin_mtu %d, mcast_mtu %d\n",
 		     __func__, priv->xve_name, priv->netdev->mtu,
 		     priv->admin_mtu, priv->mcast_mtu);
-		xve_dev_set_mtu(dev, min(priv->mcast_mtu, priv->admin_mtu));
+		if (!priv->is_jumbo)
+			xve_dev_set_mtu(dev,
+				min(priv->mcast_mtu, priv->admin_mtu));
 	}
 
 	xve_dbg_mcast(priv, "successfully joined all multicast groups\n");

@@ -33,6 +33,9 @@
 #include "xve.h"
 #include "xve_compat.h"
 
+static int xve_max_inline_data = 128;
+module_param(xve_max_inline_data, int, 0644);
+
 int xve_mcast_attach(struct net_device *dev, u16 mlid, union ib_gid *mgid,
 		     int set_qkey)
 {
@@ -225,8 +228,9 @@ int xve_transport_dev_init(struct net_device *dev, struct ib_device *ca)
 
 	if (priv->is_eoib && priv->is_titan) {
 		init_attr.create_flags |= IB_QP_CREATE_EOIB;
-		xve_debug(DEBUG_QP_INFO, priv, "Setting eoIB mode%x\n",
-				init_attr.create_flags);
+		init_attr.cap.max_inline_data = xve_max_inline_data;
+		xve_debug(DEBUG_QP_INFO, priv, "Setting eoIB mode%x data%x\n",
+				init_attr.create_flags, xve_max_inline_data);
 	}
 
 	priv->qp = ib_create_qp(priv->pd, &init_attr);
@@ -243,10 +247,12 @@ int xve_transport_dev_init(struct net_device *dev, struct ib_device *ca)
 	priv->tx_wr.send_flags = IB_SEND_SIGNALED;
 
 	priv->rx_sge[0].lkey = priv->mr->lkey;
-	if (xve_ud_need_sg(priv->admin_mtu)) {
+	 if (xve_ud_need_sg(priv->admin_mtu)) {
 		priv->rx_sge[0].length = XVE_UD_HEAD_SIZE;
-		priv->rx_sge[1].length = PAGE_SIZE;
-		priv->rx_sge[1].lkey = priv->mr->lkey;
+		for (i = 1; i < xve_ud_rx_sg(priv); i++) {
+			priv->rx_sge[i].length = PAGE_SIZE;
+			priv->rx_sge[i].lkey = priv->mr->lkey;
+		}
 		priv->rx_wr.num_sge = xve_ud_rx_sg(priv);
 	} else {
 		priv->rx_sge[0].length = XVE_UD_BUF_SIZE(priv->max_ib_mtu);

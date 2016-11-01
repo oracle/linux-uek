@@ -84,6 +84,7 @@
 #include <rdma/ib_pack.h>
 #include <rdma/ib_sa.h>
 #include <rdma/ib_cache.h>
+#include <rdma/sif_verbs.h>
 
 #include "xscore.h"
 #include "hash.h"
@@ -153,7 +154,7 @@ enum xve_flush_level {
 enum {
 	XVE_UD_HEAD_SIZE = IB_GRH_BYTES + VLAN_ETH_HLEN + XVE_EOIB_LEN,
 	XVE_UD_RX_OVN_SG = 2,	/* max buffer needed for 4K mtu */
-	XVE_UD_RX_EDR_SG = 3,	/* max buffer needed for 10K mtu */
+	XVE_UD_RX_EDR_SG = 4,	/* max buffer needed for 10K mtu */
 	XVE_CM_MTU = 0x10000 - 0x20,	/* padding to align header to 16 */
 	XVE_CM_BUF_SIZE = XVE_CM_MTU + VLAN_ETH_HLEN,
 	XVE_CM_HEAD_SIZE = XVE_CM_BUF_SIZE % PAGE_SIZE,
@@ -552,26 +553,6 @@ enum {
 	XVE_CM_ESTD_TX
 };
 
-/* Extension bits in the qp create mask to ib_create_qp
- */
-enum xve_qp_create_flags {
-	/* Indicate that this is an Ethernet over IB QP */
-	IB_QP_CREATE_EOIB            = 1 << 4,
-	/* Enable receive side scaling */
-	IB_QP_CREATE_RSS             = 1 << 5,
-	/* Enable header/data split for offloading */
-	IB_QP_CREATE_HDR_SPLIT       = 1 << 6,
-	/* Enable receive side dynamic mtu */
-	IB_QP_CREATE_RCV_DYNAMIC_MTU = 1 << 7,
-	/* Enable a special EPSA proxy */
-	IB_QP_CREATE_PROXY           = 1 << 8,
-	/* No csum for qp, wqe.wr.csum = qp.magic */
-	IB_QP_NO_CSUM                = 1 << 9,
-	/* Enable receive side dynamic mtu */
-	IB_QP_CREATE_SND_DYNAMIC_MTU = 1 << 10,
-};
-
-/* CM Statistics */
 struct xve_cm_stats {
 	unsigned long tx_jiffies;
 	unsigned long rx_jiffies;
@@ -795,6 +776,7 @@ struct xve_dev_priv {
 	u8 vnet_mode;
 	u8 vnic_type;
 	u8 is_eoib;
+	u8 is_jumbo;
 	char xve_name[XVE_MAX_NAME_SIZE];
 	struct xve_gw_info gw;
 

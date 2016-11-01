@@ -462,6 +462,9 @@ static int xve_proc_read_device(struct seq_file *m, void *data)
 	seq_printf(m, "IB MAX MTU: \t\t\t%d\n", vp->max_ib_mtu);
 	seq_printf(m, "SG UD Mode:\t\t\t%d\n", xve_ud_need_sg(vp->admin_mtu));
 	seq_printf(m, "Max SG supported(HCA):\t\t%d\n", vp->dev_attr.max_sge);
+	seq_printf(m, "Eoib:\t\t\t\t%s\n", (vp->is_eoib) ? "yes" : "no");
+	seq_printf(m, "Jumbo:\t\t\t\t%s\n", (vp->is_jumbo) ? "yes" : "no");
+	seq_printf(m, "Titan:\t\t\t\t%s\n", (vp->is_titan) ? "yes" : "no");
 
 	seq_printf(m, "Receive Queue size: \t\t%d\n", vp->xve_recvq_size);
 	seq_printf(m, "Transmit Queue size: \t\t%d\n", vp->xve_sendq_size);
