@@ -814,7 +814,7 @@ int xve_send(struct net_device *dev, struct sk_buff *skb,
 
 		if (unlikely(skb->len > max_packet_len)) {
 			xve_warn(priv, "%s packet len %d",  __func__, skb->len);
-			xve_warn(priv, "(> %d) too long to", priv->mcast_mtu);
+			xve_warn(priv, "(> %d) too long to", max_packet_len);
 			xve_warn(priv, "send,dropping %ld packets %s\n",
 					dev->stats.tx_dropped, dev->name);
 			INC_TX_DROP_STATS(priv, dev);

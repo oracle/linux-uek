@@ -326,7 +326,7 @@ void xve_remove_fwt_entry(struct xve_dev_priv *priv,
 			  struct xve_fwt_entry *fwt_entry)
 {
 	struct xve_fwt_s *xve_fwt = &priv->xve_fwt;
-	unsigned long flags;
+	unsigned long flags = 0;
 
 	spin_lock_irqsave(&xve_fwt->lock, flags);
 	xve_debug(DEBUG_TABLE_INFO, priv, "%s Deleting FWT From list %p\n",
@@ -366,6 +366,7 @@ void xve_fwt_entry_destroy(struct xve_dev_priv *priv,
 			   struct xve_fwt_entry *fwt_entry)
 {
 	xve_remove_fwt_entry(priv, fwt_entry);
+	/* Function gets cald with Lock held always */
 	xve_fwt_entry_free(priv, fwt_entry);
 }
 
