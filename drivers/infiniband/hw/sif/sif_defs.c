@@ -540,6 +540,10 @@ static inline enum kernel_ulp_type find_ulp_type_from_address(void *ptr)
 			return IPOIB_CM_ULP;
 		else if (strstr(symbol_name, "ipoib_"))
 			return IPOIB_ULP;
+		else if (strstr(symbol_name, "xve_cm_"))
+			return XVE_CM_ULP;
+		else if (strstr(symbol_name, "xve_"))
+			return XVE_ULP;
 #endif
 	}
 	return OTHER_ULP;

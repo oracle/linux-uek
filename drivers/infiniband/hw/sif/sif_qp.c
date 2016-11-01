@@ -2499,12 +2499,14 @@ void sif_dfs_print_qp(struct seq_file *s, struct sif_dev *sdev,
 		seq_puts(s, "\t[EPSA tunneling]\n");
 	else if (qp->ulp_type == RDS_ULP)
 		seq_puts(s, "\t[RDS]\n");
+	else if (qp->flags & SIF_QPF_IPOIB)
+		seq_puts(s, "\t[IPoIB]\n");
 	else if (qp->ulp_type == IPOIB_CM_ULP)
 		seq_puts(s, "\t[IPOIB_CM]\n");
 	else if (qp->flags & SIF_QPF_EOIB)
 		seq_puts(s, "\t[EoIB]\n");
-	else if (qp->flags & SIF_QPF_IPOIB)
-		seq_puts(s, "\t[IPoIB]\n");
+	else if (qp->ulp_type == XVE_CM_ULP)
+		seq_puts(s, "\t[EoIB_CM]\n");
 	else if (qp->flags & SIF_QPF_NO_EVICT)
 		seq_puts(s, "\t[no_evict]\n");
 	else if (qp->flags & SIF_QPF_FLUSH_RETRY)

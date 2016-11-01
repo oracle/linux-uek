@@ -69,6 +69,8 @@ enum kernel_ulp_type {
 	RDS_ULP	     = 1,
 	IPOIB_CM_ULP = 2,
 	IPOIB_ULP    = 3,
+	XVE_CM_ULP   = 4,
+	XVE_ULP      = 5,
 };
 
 struct sif_qp_init_attr {
