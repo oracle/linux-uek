@@ -133,7 +133,7 @@ struct xve_xsmp_msg {
 #define XVE_NACK_LIMIT_REACHED	3	/* Max number of XVEs reached */
 #define XVE_NACK_ALLOCATION_ERROR	4	/* Error during instantiation */
 #define XVE_INVALID_OPERATION	6	/* Invalid Install message */
-#define XVE_NACK_CODE_MAX	7
+#define XVE_NACK_IB_MTU_MISMATCH 20
 
 /* The common XVE XSMP header for all messages */
 struct xve_xsmp_header {
