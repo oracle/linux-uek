@@ -176,7 +176,7 @@ static int xve_mcast_join_finish(struct xve_mcast *mcast,
 		spin_unlock_irq(&priv->lock);
 		priv->tx_wr.wr.ud.remote_qkey = (priv->is_eoib == 1) ?
 						priv->port_qkey : priv->qkey;
-		xve_warn(priv, "setting remote_qkey %x",
+		xve_dbg_mcast(priv, "setting remote_qkey %x",
 				priv->tx_wr.wr.ud.remote_qkey);
 
 		set_qkey = 1;
@@ -580,8 +580,8 @@ void xve_mcast_join_task(struct work_struct *work)
 	spin_unlock_irq(&priv->lock);
 
 	if (!xve_cm_admin_enabled(dev)) {
-		printk
-		    ("XVE: %s xve %s dev mtu %d, admin_mtu %d, mcast_mtu %d\n",
+		xve_info(priv,
+		    "XVE: %s xve %s dev mtu %d, admin_mtu %d, mcast_mtu %d\n",
 		     __func__, priv->xve_name, priv->netdev->mtu,
 		     priv->admin_mtu, priv->mcast_mtu);
 		if (!priv->is_jumbo)
@@ -701,8 +701,8 @@ int xve_mcast_send(struct net_device *dev, void *mgid, struct sk_buff *skb,
 
 		mcast = xve_mcast_alloc(dev, 0);
 		if (!mcast) {
-			xve_warn(priv, "unable to allocate memory for ");
-			xve_warn(priv, "multicast structure\n");
+			xve_warn(priv,
+				"%s unable to allocate memory", __func__);
 			INC_TX_DROP_STATS(priv, dev);
 			dev_kfree_skb_any(skb);
 			goto out;

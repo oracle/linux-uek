@@ -574,6 +574,9 @@ static int poll_rx(struct xve_dev_priv *priv, int num_polls, int *done,
 	int n, i;
 
 	n = ib_poll_cq(priv->recv_cq, num_polls, priv->ibwc);
+	if (n < 0)
+		xve_warn(priv, "%s ib_poll_cq() failed, rc %d",
+				 __func__, n);
 	for (i = 0; i < n; ++i) {
 		/*
 		 * Convert any successful completions to flush
@@ -606,16 +609,18 @@ int xve_poll(struct napi_struct *napi, int budget)
 
 	done = 0;
 
-	priv->counters[XVE_NAPI_POLL_COUNTER]++;
 	/*
 	 * If not connected complete it
 	 */
 	if (!(test_bit(XVE_OPER_UP, &priv->state) ||
 		test_bit(XVE_HBEAT_LOST, &priv->state))) {
+		priv->counters[XVE_NAPI_DROP_COUNTER]++;
 		napi_complete(&priv->napi);
 		clear_bit(XVE_INTR_ENABLED, &priv->state);
 		return 0;
 	}
+
+	priv->counters[XVE_NAPI_POLL_COUNTER]++;
 
 poll_more:
 	while (done < budget) {
@@ -625,6 +630,9 @@ poll_more:
 		t = min(XVE_NUM_WC, max);
 
 		n = ib_poll_cq(priv->recv_cq, t, priv->ibwc);
+		if (n < 0)
+			xve_warn(priv, "%s ib_poll_cq() failed, rc %d",
+				 __func__, n);
 		for (i = 0; i < n; i++) {
 			struct ib_wc *wc = priv->ibwc + i;
 
@@ -789,7 +797,9 @@ int xve_send(struct net_device *dev, struct sk_buff *skb,
 	void *phead;
 	int ret = NETDEV_TX_OK;
 	u8 packet_sent = 0;
+	int id;
 
+	id = priv->tx_head & (priv->xve_sendq_size - 1);
 	if (skb_is_gso(skb)) {
 		hlen = skb_transport_offset(skb) + tcp_hdrlen(skb);
 		phead = skb->data;
@@ -798,10 +808,7 @@ int xve_send(struct net_device *dev, struct sk_buff *skb,
 				 "%s linear data too small dropping %ld packets %s\n",
 				 __func__, dev->stats.tx_dropped,
 				 dev->name);
-			INC_TX_DROP_STATS(priv, dev);
-			xve_put_ah_refcnt(address);
-			dev_kfree_skb_any(skb);
-			return ret;
+		goto drop_pkt;
 		}
 	} else {
 		int max_packet_len;
@@ -813,14 +820,10 @@ int xve_send(struct net_device *dev, struct sk_buff *skb,
 			max_packet_len = priv->mcast_mtu + VLAN_ETH_HLEN;
 
 		if (unlikely(skb->len > max_packet_len)) {
-			xve_warn(priv, "%s packet len %d",  __func__, skb->len);
-			xve_warn(priv, "(> %d) too long to", max_packet_len);
-			xve_warn(priv, "send,dropping %ld packets %s\n",
-					dev->stats.tx_dropped, dev->name);
-			INC_TX_DROP_STATS(priv, dev);
-			xve_put_ah_refcnt(address);
-			dev_kfree_skb_any(skb);
-			return ret;
+			xve_info(priv,
+				"packet len %d (>%d) too long dropping",
+				skb->len, max_packet_len);
+			goto drop_pkt;
 		}
 		phead = NULL;
 		hlen = 0;
@@ -836,7 +839,7 @@ int xve_send(struct net_device *dev, struct sk_buff *skb,
 	 * means we have to make sure everything is properly recorded and
 	 * our state is consistent before we call post_send().
 	 */
-	tx_req = &priv->tx_ring[priv->tx_head & (priv->xve_sendq_size - 1)];
+	tx_req = &priv->tx_ring[id];
 	tx_req->skb = skb;
 	tx_req->ah = address;
 	if (unlikely(xve_dma_map_tx(priv->ca, tx_req))) {
@@ -850,8 +853,8 @@ int xve_send(struct net_device *dev, struct sk_buff *skb,
 	/* Queue almost full */
 	if (++priv->tx_outstanding == priv->xve_sendq_size) {
 		xve_dbg_data(priv,
-				"%s stop queue head%d out%d tail%d type%d",
-				__func__, priv->tx_head, priv->tx_tail,
+				"%s stop queue id%d head%d tail%d out%d type%d",
+				__func__, id, priv->tx_head, priv->tx_tail,
 				priv->tx_outstanding, type);
 		if (ib_req_notify_cq(priv->send_cq, IB_CQ_NEXT_COMP))
 			xve_warn(priv, "%s Req notify on send CQ failed\n",
@@ -875,10 +878,10 @@ int xve_send(struct net_device *dev, struct sk_buff *skb,
 
 	if (unlikely(post_send(priv, priv->tx_head & (priv->xve_sendq_size - 1),
 			       address->ah, qpn, tx_req, phead, hlen))) {
-		xve_warn(priv, "%s post_send failed head%d tail%d out%d type%d\n",
-				__func__, priv->tx_head, priv->tx_tail,
-				priv->tx_outstanding, type);
 		--priv->tx_outstanding;
+		xve_warn(priv, "%s post_send failed id%d head%d tail%d out%d type%d",
+				__func__, id, priv->tx_head, priv->tx_tail,
+				priv->tx_outstanding, type);
 		priv->counters[XVE_TX_RING_FULL_COUNTER]++;
 		xve_put_ah_refcnt(address);
 		xve_free_txbuf_memory(priv, tx_req);
@@ -899,6 +902,12 @@ int xve_send(struct net_device *dev, struct sk_buff *skb,
 
 	if (packet_sent)
 		priv->counters[XVE_TX_COUNTER]++;
+	return ret;
+
+drop_pkt:
+	INC_TX_DROP_STATS(priv, dev);
+	xve_put_ah_refcnt(address);
+	dev_kfree_skb_any(skb);
 	return ret;
 }
 
@@ -1171,7 +1180,7 @@ int xve_ib_dev_stop(struct net_device *dev, int flush)
 	xve_debug(DEBUG_IBDEV_INFO, priv, "%s All sends and receives done\n",
 		  __func__);
 timeout:
-	xve_warn(priv, "Deleting TX timer");
+	xve_debug(DEBUG_IBDEV_INFO, priv, "Deleting TX timer\n");
 	del_timer_sync(&priv->poll_timer);
 	qp_attr.qp_state = IB_QPS_RESET;
 	if (ib_modify_qp(priv->qp, &qp_attr, IB_QP_STATE))

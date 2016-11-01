@@ -81,7 +81,8 @@ static int xve_set_coalesce(struct net_device *dev,
 			   coal->rx_coalesce_usecs);
 
 	if (ret) {
-		xve_warn(priv, "failed modifying CQ (%d)\n", ret);
+		xve_debug(DEBUG_INSTALL_INFO, priv,
+				"failed modifying CQ (%d)\n", ret);
 		return ret;
 	}
 

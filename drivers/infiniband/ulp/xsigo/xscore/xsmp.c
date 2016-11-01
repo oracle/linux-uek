@@ -937,7 +937,7 @@ static void xsmp_process_recv_msgs(struct work_struct *work)
 		break;
 	default:
 		kfree(xwork->msg);
-		XSMP_ERROR("%s: Unknown message type: %d\n", __func__,
+		XSMP_INFO("%s: Unknown message type: %d\n", __func__,
 			   m_header->type);
 		break;
 	}

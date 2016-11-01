@@ -64,6 +64,7 @@ static char *counter_name[XVE_MAX_COUNTERS] = {
 	"state_machine_down count:\t",
 	"state_machine_ibclear count:\t",
 	"napi_poll_count:\t\t",
+	"napi_drop_count:\t\t",
 	"short_tx_pkt_count:\t\t",
 	"tx_skb_count:\t\t\t",
 	"tx skb free count:\t\t",
@@ -143,6 +144,7 @@ static char *counter_name[XVE_MAX_COUNTERS] = {
 	"pathrec query count:\t\t",
 	"pathrec resp count:\t\t",
 	"pathrec resp err count:\t\t",
+	"pathrec gw packet count:\t\t",
 	"ib sm_change count:\t\t",
 	"ib client_reregister count:\t",
 	"ib port_err count:\t\t",
@@ -474,7 +476,7 @@ static int xve_proc_read_device(struct seq_file *m, void *data)
 	seq_printf(m, "Receive Queue size: \t\t%d\n", vp->xve_recvq_size);
 	seq_printf(m, "Transmit Queue size: \t\t%d\n", vp->xve_sendq_size);
 	seq_printf(m, "Receive CQ size: \t\t%d\n", vp->xve_rcq_size);
-	seq_printf(m, "Transmit CQ size: \t\t%d\n", vp->xve_scq_size);
+	seq_printf(m, "TX CQ size:\t\t\t%d\n", vp->xve_scq_size);
 
 	if (vp->cm_supported) {
 		seq_printf(m, "Num of cm frags: \t\t%d\n", vp->cm.num_frags);
@@ -589,6 +591,11 @@ static int xve_proc_read_device(struct seq_file *m, void *data)
 	else
 		strcat(tmp_buf, " +  IB Device Not Opened");
 
+	if (test_bit(XVE_HBEAT_LOST, &vp->state))
+		strcat(tmp_buf, " + HeartBeat Lost");
+	else
+		strcat(tmp_buf, " + HeartBeat Active");
+
 	if (test_bit(XVE_OVER_QUOTA, &vp->state))
 		strcat(tmp_buf, " +  No RX Quota");
 
@@ -596,6 +603,11 @@ static int xve_proc_read_device(struct seq_file *m, void *data)
 
 	if (vp->work_queue_failed != 0)
 		seq_printf(m, "WQ Failed:\t\t\t%ld\n", vp->work_queue_failed);
+
+	seq_printf(m, "TX Net queue \t\t%s %d:%d\n",
+			netif_queue_stopped(vp->netdev) ? "stopped" : "active",
+			vp->counters[XVE_TX_WAKE_UP_COUNTER],
+			vp->counters[XVE_TX_QUEUE_STOP_COUNTER]);
 
 	seq_printf(m, "Counters cleared count:\t\t%u\n", vp->counters_cleared);
 

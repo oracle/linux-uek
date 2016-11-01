@@ -182,7 +182,7 @@ int xve_open(struct net_device *netdev)
 	struct xve_dev_priv *priv = netdev_priv(netdev);
 	unsigned long flags = 0;
 
-	pr_info("XVE: %s Bringing interface up %s\n", __func__, priv->xve_name);
+	xve_info(priv, "Bringing interface up");
 	priv->counters[XVE_OPEN_COUNTER]++;
 
 	spin_lock_irqsave(&priv->lock, flags);
@@ -225,7 +225,7 @@ static int xve_stop(struct net_device *netdev)
 	struct xve_dev_priv *priv = netdev_priv(netdev);
 	unsigned long flags = 0;
 
-	pr_info("XVE: %s Stopping interface %s\n", __func__, priv->xve_name);
+	xve_info(priv, "Stopping interface");
 
 	spin_lock_irqsave(&priv->lock, flags);
 	clear_bit(XVE_FLAG_ADMIN_UP, &priv->flags);
@@ -239,8 +239,9 @@ static int xve_stop(struct net_device *netdev)
 	xve_xsmp_send_oper_state(priv, priv->resource_id,
 			 XSMP_XVE_OPER_DOWN);
 
-	pr_info("XVE: %s Finished Stopping interface %s\n", __func__,
-		priv->xve_name);
+	xve_debug(DEBUG_IBDEV_INFO, priv,
+			"%s Stopped interface %s\n", __func__,
+			priv->xve_name);
 	return 0;
 }
 
@@ -248,8 +249,8 @@ int xve_modify_mtu(struct net_device *netdev, int new_mtu)
 {
 	struct xve_dev_priv *priv = netdev_priv(netdev);
 
-	pr_info("XVE: %s changing mtu from %d to %d\n",
-		priv->xve_name, priv->admin_mtu, new_mtu);
+	xve_info(priv, "changing mtu from %d to %d",
+			priv->admin_mtu, new_mtu);
 	if (new_mtu == netdev->mtu)
 		return 0;
 
@@ -645,6 +646,7 @@ static void path_rec_completion(int status,
 	while ((skb = __skb_dequeue(&uplink_skqueue))) {
 		skb->dev = dev;
 		xve_get_ah_refcnt(path->ah);
+		priv->counters[XVE_PATHREC_GW_COUNTER]++;
 		/* Sending the queued GATEWAY Packet */
 		ret = xve_send(dev, skb, path->ah, priv->gw.t_data_qp, 2);
 		if (ret == NETDEV_TX_BUSY) {
@@ -1193,8 +1195,7 @@ static void xve_io_disconnect(struct xve_dev_priv *priv)
 		spin_unlock_irqrestore(&priv->lock, flags);
 		if (test_bit(XVE_OS_ADMIN_UP, &priv->state))
 			napi_synchronize(&priv->napi);
-		pr_info("%s Flushing mcast [xve :%s]\n", __func__,
-			priv->xve_name);
+		xve_info(priv, "%s Flushing mcast", __func__);
 		xve_queue_work(priv, XVE_WQ_START_FLUSHNORMAL);
 	} else {
 		spin_unlock_irqrestore(&priv->lock, flags);
@@ -1538,7 +1539,8 @@ static int xve_xsmp_send_notification(struct xve_dev_priv *priv, u64 vid,
 	xsmp_msg = (struct xve_xsmp_msg *)(msg + sizeof(*header));
 
 	if (notifycmd == XSMP_XVE_OPER_UP) {
-		pr_info("XVE: %s sending updated mtu for %s[mtu %d]\n",
+		xve_debug(DEBUG_INSTALL_INFO, priv,
+			"XVE: %s sending updated mtu for %s[mtu %d]\n",
 			__func__, priv->xve_name, priv->admin_mtu);
 		xsmp_msg->vn_mtu = cpu_to_be16(priv->admin_mtu);
 		xsmp_msg->net_id = cpu_to_be32(priv->net_id);
@@ -1597,7 +1599,7 @@ static int xve_state_machine(struct xve_dev_priv *priv)
 				XVE_HBEAT_LOSS_THRES*priv->hb_interval)) {
 			unsigned long flags = 0;
 
-			xve_warn(priv, "Heart Beat Loss: %lu:%lu\n",
+			xve_info(priv, "Heart Beat Loss: %lu:%lu\n",
 				jiffies, (unsigned long)priv->last_hbeat +
 				3*priv->hb_interval*HZ);
 
@@ -1743,23 +1745,17 @@ xve_set_edr_features(struct xve_dev_priv *priv)
 	priv->netdev->hw_features =
 		NETIF_F_HIGHDMA | NETIF_F_SG | NETIF_F_GRO;
 
-	pr_info("XVE: %s %s flags[%x]\n",
-			__func__, priv->xve_name, priv->hca_caps);
+	xve_info(priv, "%s HCA capability flags[%x]",
+			__func__, priv->hca_caps);
 	if (xve_enable_offload & (priv->is_eoib && priv->is_titan)) {
 		if (priv->hca_caps & IB_DEVICE_UD_IP_CSUM) {
-			pr_info("XVE: %s Setting checksum offload %s[%x]\n",
-				__func__, priv->xve_name, priv->hca_caps);
 			set_bit(XVE_FLAG_CSUM, &priv->flags);
 			priv->netdev->hw_features |=
 				NETIF_F_IP_CSUM | NETIF_F_RXCSUM;
 		}
 
-		if (priv->hca_caps & IB_DEVICE_UD_TSO) {
-			pr_info("XVE: %s Setting TSO offload %s[%x]\n",
-				__func__, priv->xve_name, priv->hca_caps);
+		if (priv->hca_caps & IB_DEVICE_UD_TSO)
 			priv->netdev->hw_features |= NETIF_F_TSO;
-		}
-
 	}
 	priv->netdev->features |= priv->netdev->hw_features;
 
@@ -1777,14 +1773,10 @@ int xve_set_dev_features(struct xve_dev_priv *priv, struct ib_device *hca)
 
 	priv->lro_mode = 1;
 	if (priv->vnet_mode == XVE_VNET_MODE_RC) {
-		pr_info("XVE: %s Setting RC mode for %s\n", __func__,
-			priv->xve_name);
 		strcpy(priv->mode, "connected(RC)");
 		set_bit(XVE_FLAG_ADMIN_CM, &priv->flags);
 		priv->cm_supported = 1;
 	} else {/* UD */
-		pr_info("XVE: %s Setting UD mode for %s\n", __func__,
-			priv->xve_name);
 		strcpy(priv->mode, "datagram(UD)");
 
 		/* MTU will be reset when mcast join happens */
@@ -1793,6 +1785,8 @@ int xve_set_dev_features(struct xve_dev_priv *priv, struct ib_device *hca)
 			priv->netdev->mtu = XVE_UD_MTU(priv->max_ib_mtu);
 		priv->lro_mode = 0;
 	}
+	xve_info(priv, "%s Mode:%d MTU:%d", __func__,
+			priv->vnet_mode, priv->netdev->mtu);
 
 	priv->mcast_mtu = priv->admin_mtu = priv->netdev->mtu;
 	xg_setup_pseudo_device(priv->netdev, hca);
@@ -1849,7 +1843,7 @@ void xve_remove_one(struct xve_dev_priv *priv)
 
 	int count = 0;
 
-	pr_info("XVE:%s Removing xve interface %s\n", __func__, priv->xve_name);
+	xve_info(priv, "%s Removing xve interface", __func__);
 	ib_unregister_event_handler(&priv->event_handler);
 	cancel_delayed_work_sync(&priv->stale_task);
 	rtnl_lock();
@@ -1857,15 +1851,13 @@ void xve_remove_one(struct xve_dev_priv *priv)
 	rtnl_unlock();
 	vmk_notify_uplink(priv->netdev);
 	unregister_netdev(priv->netdev);
-	pr_info("XVE:%s Unregistered xve interface %s\n", __func__,
-		priv->xve_name);
+	xve_info(priv, "%s Unregistered xve interface ", __func__);
 	/* Wait for reference count to go zero  */
 	while (atomic_read(&priv->ref_cnt) && xve_continue_unload()) {
 		count++;
 		if (count > 20) {
-			pr_info("%s: Waiting for refcnt to become", __func__);
-			pr_info("zero [xve: %s] %d\n",
-				priv->xve_name, atomic_read(&priv->ref_cnt));
+			xve_info(priv, "Waiting for refcnt to become zero %d",
+					atomic_read(&priv->ref_cnt));
 			count = 0;
 		}
 		msleep(1000);
@@ -1979,7 +1971,8 @@ int xve_xsmp_send_oper_state(struct xve_dev_priv *priv, u64 vid, int state)
 	int ret;
 	char *str = state == XSMP_XVE_OPER_UP ? "UP" : "DOWN";
 
-	pr_info("XVE: %s Sending OPER state [%d:%s]  to %s\n",
+	xve_debug(DEBUG_INSTALL_INFO, priv,
+		"XVE: %s Sending OPER state [%d:%s]  to %s\n",
 		__func__, state, str, priv->xve_name);
 	if (state == XSMP_XVE_OPER_UP) {
 		set_bit(XVE_OPER_REP_SENT, &priv->state);
@@ -2091,9 +2084,12 @@ static int xve_xsmp_send_ack(struct xve_dev_priv *priv,
 			xmsgp->tca_qkey = cpu_to_be16(priv->gw.t_qkey);
 		}
 	}
-	pr_info("XVE: %s ACK back with admin mtu ",  __func__);
-	pr_info("%d for %s", xmsgp->vn_mtu, priv->xve_name);
-	pr_info("[netid %d ]\n", xmsgp->net_id);
+	xve_debug(DEBUG_INSTALL_INFO, priv,
+		"XVE: %s ACK back with admin mtu ",  __func__);
+	xve_debug(DEBUG_INSTALL_INFO, priv,
+		"%d for %s", xmsgp->vn_mtu, priv->xve_name);
+	xve_debug(DEBUG_INSTALL_INFO, priv,
+		"[netid %d ]\n", xmsgp->net_id);
 
 	memcpy(msg + sizeof(*m_header), xmsgp, sizeof(*xmsgp));
 
@@ -2173,8 +2169,8 @@ static int xve_xsmp_install(xsmp_cookie_t xsmp_hndl, struct xve_xsmp_msg *xmsgp,
 		/*
 		 * Duplicate VID, send ACK, send oper state update
 		 */
-		XSMP_ERROR
-		    ("%s: Duplicate XVE install message name: %s, VID=0x%llx\n",
+		xve_debug(DEBUG_INSTALL_INFO, priv,
+		     "%s: Duplicate XVE install message name: %s, VID=0x%llx\n",
 		     __func__, xmsgp->xve_name,
 		     be64_to_cpu(xmsgp->resource_id));
 		ret = -EEXIST;
@@ -2220,10 +2216,6 @@ static int xve_xsmp_install(xsmp_cookie_t xsmp_hndl, struct xve_xsmp_msg *xmsgp,
 	}
 	priv = netdev_priv(netdev);
 
-	pr_info("XVE: %s Installing xve %s - ", __func__, xmsgp->xve_name);
-	pr_info("resource id %llx", be64_to_cpu(xmsgp->resource_id));
-	pr_info("priv DS %p\n",  priv);
-
 	xcpm_get_xsmp_session_info(xsmp_hndl, &priv->xsmp_info);
 	hca = priv->xsmp_info.ib_device;
 	port = xscore_port_num(priv->xsmp_info.port);
@@ -2232,7 +2224,6 @@ static int xve_xsmp_install(xsmp_cookie_t xsmp_hndl, struct xve_xsmp_msg *xmsgp,
 		(xmsgp->vnet_mode);
 	priv->net_id = be32_to_cpu(xmsgp->net_id);
 	priv->netdev->mtu = be16_to_cpu(xmsgp->vn_mtu);
-	pr_info("XVE: %s MTU %d - ", __func__, priv->netdev->mtu);
 	priv->resource_id = be64_to_cpu(xmsgp->resource_id);
 	priv->mp_flag = be16_to_cpu(xmsgp->mp_flag);
 	priv->install_flag = be32_to_cpu(xmsgp->install_flag);
@@ -2250,6 +2241,9 @@ static int xve_xsmp_install(xsmp_cookie_t xsmp_hndl, struct xve_xsmp_msg *xmsgp,
 	priv->is_titan = (is_titan) ? 1 : 0;
 	priv->is_jumbo = (is_jumbo) ? 1 : 0;
 
+	pr_info("Install VNIC:%s rID:%llx pDS:%p NetId:%d",
+			  xmsgp->xve_name, be64_to_cpu(xmsgp->resource_id),
+			  priv, priv->net_id);
 	/* Make Send and Recv Queue parmaters Per Vnic */
 	if (!(priv->vnet_mode & XVE_VNET_MODE_UD)) {
 		priv->xve_sendq_size = xve_sendq_size;
@@ -2309,14 +2303,6 @@ static int xve_xsmp_install(xsmp_cookie_t xsmp_hndl, struct xve_xsmp_msg *xmsgp,
 		goto device_init_failed;
 	}
 
-	pr_info("XVE: %s adding vnic %s ",
-			__func__, priv->xve_name);
-	pr_info("net_id %d vnet_mode %d type%d eoib[%s]",
-			priv->net_id, priv->vnet_mode, priv->vnic_type,
-			priv->is_eoib ? "Yes" : "no");
-	pr_info("port %d net_id_be %d\n", port, net_id_be);
-	pr_info("MTU port%d active%d\n", priv->port_attr.max_mtu,
-				 priv->port_attr.active_mtu);
 
 	memcpy(priv->bcast_mgid.raw, bcast_mgid, sizeof(union ib_gid));
 	if (xve_is_edr(priv)) {
@@ -2349,7 +2335,6 @@ static int xve_xsmp_install(xsmp_cookie_t xsmp_hndl, struct xve_xsmp_msg *xmsgp,
 		priv->pkey |= 0x8000;
 	}
 
-	pr_info("MGID: %pI6 pkey%d\n", &priv->bcast_mgid.raw, priv->pkey);
 
 	if (xve_set_dev_features(priv, hca))
 		goto device_init_failed;
@@ -2420,8 +2405,13 @@ static int xve_xsmp_install(xsmp_cookie_t xsmp_hndl, struct xve_xsmp_msg *xmsgp,
 
 	queue_sm_work(priv, 0);
 
-	pr_info("%s Successfully created xve [%s]\n", __func__,
-		xmsgp->xve_name);
+	pr_info("%s Install Success: vnet_mode:%d type:%d eoib[%s] HPort:%d\n",
+			priv->xve_name, priv->vnet_mode, priv->vnic_type,
+			priv->is_eoib ? "Yes" : "no", port);
+	pr_info("VNIC:%s MTU[%d:%d:%d] MGID:%pI6 pkey:%d\n", priv->xve_name,
+			priv->netdev->mtu, priv->port_attr.max_mtu,
+			priv->port_attr.active_mtu,
+			&priv->bcast_mgid.raw, priv->pkey);
 
 send_ack:
 	ret = xve_xsmp_send_ack(priv, xmsgp);
@@ -2431,9 +2421,8 @@ send_ack:
 			   be64_to_cpu(xmsgp->resource_id));
 	}
 	if (update_state && priv->vnic_type == XSMP_XCM_OVN) {
-		printk
-		    ("XVE: %s Sending Oper state to  chassis for %s id %llx\n",
-		     __func__, priv->xve_name, priv->resource_id);
+		xve_info(priv, "Sending Oper state to  chassis for  id %llx\n",
+		     priv->resource_id);
 		(void)xve_xsmp_handle_oper_req(priv->xsmp_hndl,
 					       priv->resource_id);
 	}
@@ -2599,9 +2588,11 @@ xve_xsmp_vnic_ready(xsmp_cookie_t xsmp_hndl, struct xve_xsmp_msg *xmsgp,
 			  __func__, xmsgp->xve_name);
 		return -1;
 	}
-	pr_info("XVE VNIC_READY: vnic_type: %u, subnet_prefix: %llx\n",
+	xve_debug(DEBUG_INSTALL_INFO, priv,
+			"XVE VNIC_READY: vnic_type: %u, subnet_prefix: %llx\n",
 			priv->vnic_type, priv->gw.t_gid.global.subnet_prefix);
-	pr_info("TCA ctrl_qp: %u, data_qp: %u, pkey: %x, qkey: %x\n",
+	xve_debug(DEBUG_INSTALL_INFO, priv,
+			"TCA ctrl_qp: %u, data_qp: %u, pkey: %x, qkey: %x\n",
 			priv->gw.t_ctrl_qp, priv->gw.t_data_qp,
 			priv->gw.t_pkey, priv->gw.t_qkey);
 

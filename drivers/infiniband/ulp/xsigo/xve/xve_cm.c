@@ -59,7 +59,8 @@ static struct ib_send_wr xve_cm_rx_drain_wr = {
 	.opcode = IB_WR_SEND,
 };
 
-static int xve_cm_tx_handler(struct ib_cm_id *cm_id, struct ib_cm_event *event);
+static int xve_cm_tx_handler(struct ib_cm_id *cm_id,
+		struct ib_cm_event *event);
 static void __xve_cm_tx_reap(struct xve_dev_priv *priv);
 
 static void xve_cm_dma_unmap_rx(struct xve_dev_priv *priv, int frags,
@@ -91,7 +92,7 @@ static int xve_cm_post_receive_srq(struct net_device *netdev, int id)
 
 	ret = ib_post_srq_recv(priv->cm.srq, wr, &bad_wr);
 	if (unlikely(ret)) {
-		xve_warn(priv, "post srq failed for buf %d (%d)\n", id, ret);
+		xve_warn(priv, "post srq failed for buf %d (%d)", id, ret);
 		xve_cm_dma_unmap_rx(priv, priv->cm.num_frags - 1,
 				    priv->cm.srq_ring[id].mapping);
 		dev_kfree_skb_any(priv->cm.srq_ring[id].skb);
@@ -112,7 +113,7 @@ static struct sk_buff *xve_cm_alloc_rx_skb(struct net_device *dev,
 
 	skb = xve_dev_alloc_skb(priv, XVE_CM_HEAD_SIZE + NET_IP_ALIGN);
 	if (unlikely(!skb)) {
-		xve_warn(priv, "%s Failed to allocate skb\n", __func__);
+		xve_warn(priv, "%s Failed to allocate skb", __func__);
 		return NULL;
 	}
 
@@ -143,7 +144,7 @@ static struct sk_buff *xve_cm_alloc_rx_skb(struct net_device *dev,
 		    ib_dma_map_page(priv->ca, skb_shinfo(skb)->frags[i].page.p,
 				    0, PAGE_SIZE, DMA_FROM_DEVICE);
 		if (unlikely(ib_dma_mapping_error(priv->ca, mapping[i + 1]))) {
-			xve_warn(priv, "%s Failed to Map page\n", __func__);
+			xve_warn(priv, "%s Failed to Map page", __func__);
 			goto partial_error;
 		}
 	}
@@ -199,7 +200,7 @@ static void xve_cm_start_rx_drain(struct xve_dev_priv *priv)
 	 */
 	p = list_entry(priv->cm.rx_flush_list.next, typeof(*p), list);
 	if (ib_post_send(p->qp, &xve_cm_rx_drain_wr, &bad_wr))
-		xve_warn(priv, "failed to post drain wr\n");
+		xve_warn(priv, "failed to post drain wr");
 
 	list_splice_init(&priv->cm.rx_flush_list, &priv->cm.rx_drain_list);
 }
@@ -250,24 +251,24 @@ static int xve_cm_modify_rx_qp(struct net_device *dev,
 	qp_attr.qp_state = IB_QPS_INIT;
 	ret = ib_cm_init_qp_attr(cm_id, &qp_attr, &qp_attr_mask);
 	if (ret) {
-		xve_warn(priv, "failed to init QP attr for INIT: %d\n", ret);
+		xve_warn(priv, "failed to init QP attr for INIT: %d", ret);
 		return ret;
 	}
 	ret = ib_modify_qp(qp, &qp_attr, qp_attr_mask);
 	if (ret) {
-		xve_warn(priv, "failed to modify QP to INIT: %d\n", ret);
+		xve_warn(priv, "failed to modify QP to INIT: %d", ret);
 		return ret;
 	}
 	qp_attr.qp_state = IB_QPS_RTR;
 	ret = ib_cm_init_qp_attr(cm_id, &qp_attr, &qp_attr_mask);
 	if (ret) {
-		xve_warn(priv, "failed to init QP attr for RTR: %d\n", ret);
+		xve_warn(priv, "failed to init QP attr for RTR: %d", ret);
 		return ret;
 	}
 	qp_attr.rq_psn = psn;
 	ret = ib_modify_qp(qp, &qp_attr, qp_attr_mask);
 	if (ret) {
-		xve_warn(priv, "failed to modify QP to RTR: %d\n", ret);
+		xve_warn(priv, "failed to modify QP to RTR: %d", ret);
 		return ret;
 	}
 
@@ -282,12 +283,12 @@ static int xve_cm_modify_rx_qp(struct net_device *dev,
 	qp_attr.qp_state = IB_QPS_RTS;
 	ret = ib_cm_init_qp_attr(cm_id, &qp_attr, &qp_attr_mask);
 	if (ret) {
-		xve_warn(priv, "failed to init QP attr for RTS: %d\n", ret);
+		xve_warn(priv, "failed to init QP attr for RTS: %d", ret);
 		return 0;
 	}
 	ret = ib_modify_qp(qp, &qp_attr, qp_attr_mask);
 	if (ret) {
-		xve_warn(priv, "failed to modify QP to RTS: %d\n", ret);
+		xve_warn(priv, "failed to modify QP to RTS: %d", ret);
 		return 0;
 	}
 
@@ -333,7 +334,8 @@ static int xve_cm_send_rep(struct net_device *dev, struct ib_cm_id *cm_id,
 	return ib_send_cm_rep(cm_id, &rep);
 }
 
-static int xve_cm_req_handler(struct ib_cm_id *cm_id, struct ib_cm_event *event)
+static int xve_cm_req_handler(struct ib_cm_id *cm_id,
+		struct ib_cm_event *event)
 {
 	struct net_device *dev = cm_id->context;
 	struct xve_dev_priv *priv = netdev_priv(dev);
@@ -378,8 +380,8 @@ static int xve_cm_req_handler(struct ib_cm_id *cm_id, struct ib_cm_event *event)
 		char print[512];
 
 		print_mgid_buf(print, (char *)dgid->raw);
-		pr_info("XVE: %s  Adding Rx QP to the path %s\n",
-			priv->xve_name, print);
+		pr_info("XVE: %s  Adding Rx QP%x to the path %s ctx:%p\n",
+			priv->xve_name, p->qp->qp_num, print, p);
 		path->cm_ctx_rx = p;
 	} else {
 		priv->counters[XVE_PATH_NOT_SETUP]++;
@@ -395,9 +397,9 @@ static int xve_cm_req_handler(struct ib_cm_id *cm_id, struct ib_cm_event *event)
 
 	ret = xve_cm_send_rep(dev, cm_id, p->qp, &event->param.req_rcvd, psn);
 	if (ret) {
-		xve_warn(priv, "failed to send REP: %d\n", ret);
+		xve_warn(priv, "failed to send REP: %d", ret);
 		if (ib_modify_qp(p->qp, &xve_cm_err_attr, IB_QP_STATE))
-			xve_warn(priv, "unable to move qp to error state\n");
+			xve_warn(priv, "unable to move qp to error state");
 	}
 	return 0;
 
@@ -408,7 +410,8 @@ err_qp:
 	return ret;
 }
 
-static int xve_cm_rx_handler(struct ib_cm_id *cm_id, struct ib_cm_event *event)
+static int xve_cm_rx_handler(struct ib_cm_id *cm_id,
+		struct ib_cm_event *event)
 {
 	struct xve_cm_ctx *p;
 	struct xve_dev_priv *priv;
@@ -424,7 +427,7 @@ static int xve_cm_rx_handler(struct ib_cm_id *cm_id, struct ib_cm_event *event)
 		p = cm_id->context;
 		priv = netdev_priv(p->netdev);
 		if (ib_modify_qp(p->qp, &xve_cm_err_attr, IB_QP_STATE))
-			xve_warn(priv, "unable to move qp to error state\n");
+			xve_warn(priv, "unable to move qp to error state");
 		/* Fall through */
 	default:
 		return 0;
@@ -450,8 +453,9 @@ static void xve_cm_free_rx_reap_list(struct net_device *dev)
 
 
 /* Adjust length of skb with fragments to match received data */
-static inline void skb_put_frags(struct sk_buff *skb, unsigned int hdr_space,
-				 unsigned int length, struct sk_buff *toskb)
+static inline void skb_put_frags(struct sk_buff *skb,
+		 unsigned int hdr_space,
+		 unsigned int length, struct sk_buff *toskb)
 {
 	int i, num_frags;
 	unsigned int size;
@@ -499,7 +503,7 @@ void xve_cm_handle_rx_wc(struct net_device *dev, struct ib_wc *wc)
 	struct sk_buff *small_skb;
 	u16 vlan;
 
-	xve_dbg_data(priv, "cm recv completion: id %d, status: %d\n",
+	xve_dbg_data(priv, "cm recv completion: id %d, status: %d",
 		     wr_id, wc->status);
 
 	if (unlikely(wr_id >= priv->xve_recvq_size)) {
@@ -513,7 +517,7 @@ void xve_cm_handle_rx_wc(struct net_device *dev, struct ib_wc *wc)
 			spin_unlock_irqrestore(&priv->lock, flags);
 		} else
 			xve_warn(priv,
-				 "cm recv completion event with wrid %d (> %d)\n",
+				 "cm recv completion event with wrid %d (> %d)",
 				 wr_id, priv->xve_recvq_size);
 		return;
 	}
@@ -538,11 +542,11 @@ void xve_cm_handle_rx_wc(struct net_device *dev, struct ib_wc *wc)
 	skb = rx_ring[wr_id].skb;
 
 	if (unlikely(wc->status != IB_WC_SUCCESS)) {
-		if (!test_bit(XVE_DELETING, &priv->state)) {
-			pr_err("%s: cm recv error", priv->xve_name);
-			pr_err("(status=%d, wrid=%d", wc->status, wr_id);
-			pr_err("vend_err %x)\n", wc->vendor_err);
-		}
+		if (!test_bit(XVE_DELETING, &priv->state))
+			xve_dbg_data(priv,
+				"cm recv err QP%x status:%d wr:%d vendor_err%x",
+				 wc->qp->qp_num, wc->status, wr_id,
+				 wc->vendor_err);
 		INC_RX_DROP_STATS(priv, dev);
 		goto repost;
 	}
@@ -623,10 +627,8 @@ copied:
 	priv->counters[XVE_RC_RXCOMPL_COUNTER]++;
 	xve_send_skb(priv, skb);
 repost:
-	if (unlikely(xve_cm_post_receive_srq(dev, wr_id))) {
-		xve_warn(priv, "xve_cm_post_receive_srq failed ");
-		xve_warn(priv, "for buf %d\n", wr_id);
-	}
+	if (unlikely(xve_cm_post_receive_srq(dev, wr_id)))
+		xve_warn(priv, "cm post srq failed for buf %d", wr_id);
 }
 
 static inline int post_send(struct xve_dev_priv *priv,
@@ -666,10 +668,11 @@ int xve_cm_send(struct net_device *dev, struct sk_buff *skb,
 	struct xve_cm_buf *tx_req;
 	u64 addr;
 	int ret = NETDEV_TX_OK;
+	uint32_t wr_id;
 
 	if (unlikely(skb->len > tx->mtu + VLAN_ETH_HLEN)) {
 		xve_warn(priv,
-			 "packet len %d (> %d) too long to send, dropping\n",
+			 "packet len %d (> %d) too long to send, dropping",
 			 skb->len, tx->mtu);
 		INC_TX_DROP_STATS(priv, dev);
 		INC_TX_ERROR_STATS(priv, dev);
@@ -678,7 +681,7 @@ int xve_cm_send(struct net_device *dev, struct sk_buff *skb,
 	}
 
 	xve_dbg_data(priv,
-		     "sending packet: head 0x%x length %d connection 0x%x\n",
+		     "sending packet: head 0x%x length %d connection 0x%x",
 		     tx->tx_head, skb->len, tx->qp->qp_num);
 
 	/*
@@ -688,7 +691,8 @@ int xve_cm_send(struct net_device *dev, struct sk_buff *skb,
 	 * means we have to make sure everything is properly recorded and
 	 * our state is consistent before we call post_send().
 	 */
-	tx_req = &tx->tx_ring[tx->tx_head & (priv->xve_sendq_size - 1)];
+	wr_id = tx->tx_head & (priv->xve_sendq_size - 1);
+	tx_req = &tx->tx_ring[wr_id];
 	tx_req->skb = skb;
 	addr = ib_dma_map_single(priv->ca, skb->data, skb->len, DMA_TO_DEVICE);
 	if (unlikely(ib_dma_mapping_error(priv->ca, addr))) {
@@ -699,10 +703,10 @@ int xve_cm_send(struct net_device *dev, struct sk_buff *skb,
 	}
 	tx_req->mapping[0] = addr;
 
-	if (unlikely(post_send(priv, tx, tx->tx_head &
-			       (priv->xve_sendq_size - 1),
+	if (unlikely(post_send(priv, tx, wr_id,
 			       addr, skb->len))) {
-		xve_warn(priv, "post_send failed\n");
+		xve_warn(priv, "QP[%d] post_send failed wr_id:%d ctx:%p",
+				tx->qp->qp_num, wr_id, tx);
 		INC_TX_ERROR_STATS(priv, dev);
 		xve_cm_tx_buf_free(priv, tx_req);
 	} else {
@@ -714,7 +718,7 @@ int xve_cm_send(struct net_device *dev, struct sk_buff *skb,
 				     tx->qp->qp_num);
 			if (ib_req_notify_cq(priv->send_cq, IB_CQ_NEXT_COMP))
 				xve_warn(priv,
-					 "request notify on send CQ failed\n");
+					 "request notify on send CQ failed");
 			priv->counters[XVE_TX_RING_FULL_COUNTER]++;
 			priv->counters[XVE_TX_QUEUE_STOP_COUNTER]++;
 			netif_stop_queue(dev);
@@ -736,7 +740,7 @@ void xve_cm_handle_tx_wc(struct net_device *dev,
 		     wr_id, wc->status);
 
 	if (unlikely(wr_id >= priv->xve_sendq_size)) {
-		xve_warn(priv, "cm send completion event with wrid %d (> %d)\n",
+		xve_warn(priv, "cm send completion event with wrid %d (> %d)",
 			 wr_id, priv->xve_sendq_size);
 		return;
 	}
@@ -755,9 +759,14 @@ void xve_cm_handle_tx_wc(struct net_device *dev,
 	}
 
 	if (wc->status != IB_WC_SUCCESS && wc->status != IB_WC_WR_FLUSH_ERR) {
-		pr_err("%s: failed cm send event ", priv->xve_name);
-		pr_err("(status=%d, wrid=%d vend_err %x)\n",
-		       wc->status, wr_id, wc->vendor_err);
+		if (wc->status != IB_WC_RNR_RETRY_EXC_ERR)
+			xve_warn(priv, "QP[%x] failed cm send event status:%d wrid:%d vend_err:%x",
+					wc->qp->qp_num, wc->status, wr_id,
+					wc->vendor_err);
+		else
+			xve_debug(DEBUG_CM_INFO, priv, "QP[%x] status:%d wrid:%d vend_err:%x",
+					wc->qp->qp_num, wc->status, wr_id,
+					wc->vendor_err);
 		xve_cm_destroy_tx_deferred(tx);
 	}
 	netif_tx_unlock(dev);
@@ -819,8 +828,8 @@ void xve_cm_dev_stop(struct net_device *dev)
 		spin_unlock_irq(&priv->lock);
 		ret = ib_modify_qp(p->qp, &xve_cm_err_attr, IB_QP_STATE);
 		if (ret)
-			xve_warn(priv, "unable to move qp to error state: %d\n",
-				 ret);
+			xve_warn(priv, "QP[%x] unable to move error state[%d]",
+				 p->qp ? p->qp->qp_num : 0, ret);
 		spin_lock_irq(&priv->lock);
 	}
 
@@ -831,7 +840,7 @@ void xve_cm_dev_stop(struct net_device *dev)
 	       !list_empty(&priv->cm.rx_flush_list) ||
 	       !list_empty(&priv->cm.rx_drain_list)) {
 		if (time_after(jiffies, begin + 5 * HZ)) {
-			xve_warn(priv, "RX drain timing out\n");
+			xve_warn(priv, "RX drain timing out");
 
 			/*
 			 * assume the HW is wedged and just free up everything.
@@ -871,7 +880,7 @@ static int xve_cm_rep_handler(struct ib_cm_id *cm_id, struct ib_cm_event *event)
 	p->mtu = be32_to_cpu(data->mtu);
 
 	if (p->mtu <= ETH_HLEN) {
-		xve_warn(priv, "Rejecting connection: mtu %d <= %d\n",
+		xve_warn(priv, "Rejecting connection: mtu %d <= %d",
 			 p->mtu, ETH_HLEN);
 		return -EINVAL;
 	}
@@ -879,26 +888,26 @@ static int xve_cm_rep_handler(struct ib_cm_id *cm_id, struct ib_cm_event *event)
 	qp_attr.qp_state = IB_QPS_RTR;
 	ret = ib_cm_init_qp_attr(cm_id, &qp_attr, &qp_attr_mask);
 	if (ret) {
-		xve_warn(priv, "failed to init QP attr for RTR: %d\n", ret);
+		xve_warn(priv, "failed to init QP attr for RTR: %d", ret);
 		return ret;
 	}
 
 	qp_attr.rq_psn = 0; /* FIXME */
 	ret = ib_modify_qp(p->qp, &qp_attr, qp_attr_mask);
 	if (ret) {
-		xve_warn(priv, "failed to modify QP to RTR: %d\n", ret);
+		xve_warn(priv, "failed to modify QP to RTR: %d", ret);
 		return ret;
 	}
 
 	qp_attr.qp_state = IB_QPS_RTS;
 	ret = ib_cm_init_qp_attr(cm_id, &qp_attr, &qp_attr_mask);
 	if (ret) {
-		xve_warn(priv, "failed to init QP attr for RTS: %d\n", ret);
+		xve_warn(priv, "failed to init QP attr for RTS: %d", ret);
 		return ret;
 	}
 	ret = ib_modify_qp(p->qp, &qp_attr, qp_attr_mask);
 	if (ret) {
-		xve_warn(priv, "failed to modify QP to RTS: %d\n", ret);
+		xve_warn(priv, "failed to modify QP to RTS: %d", ret);
 		return ret;
 	}
 
@@ -914,7 +923,7 @@ static int xve_cm_rep_handler(struct ib_cm_id *cm_id, struct ib_cm_event *event)
 		skb->dev = p->netdev;
 		if (dev_queue_xmit(skb)) {
 			xve_warn(priv, "dev_queue_xmit failed ");
-			xve_warn(priv, "to requeue packet\n");
+			xve_warn(priv, "to requeue packet");
 		} else {
 			xve_dbg_data(priv, "%s Succefully sent skb\n",
 				     __func__);
@@ -924,7 +933,7 @@ static int xve_cm_rep_handler(struct ib_cm_id *cm_id, struct ib_cm_event *event)
 
 	ret = ib_send_cm_rtu(cm_id, NULL, 0);
 	if (ret) {
-		xve_warn(priv, "failed to send RTU: %d\n", ret);
+		xve_warn(priv, "failed to send RTU: %d", ret);
 		return ret;
 	}
 	return 0;
@@ -998,7 +1007,7 @@ static int xve_cm_modify_tx_init(struct net_device *dev,
 	ret =
 	    ib_find_pkey(priv->ca, priv->port, priv->pkey, &qp_attr.pkey_index);
 	if (ret) {
-		xve_warn(priv, "pkey 0x%x not found: %d\n", priv->pkey, ret);
+		xve_warn(priv, "pkey 0x%x not found: %d", priv->pkey, ret);
 		return ret;
 	}
 
@@ -1010,7 +1019,7 @@ static int xve_cm_modify_tx_init(struct net_device *dev,
 
 	ret = ib_modify_qp(qp, &qp_attr, qp_attr_mask);
 	if (ret) {
-		xve_warn(priv, "failed to modify tx QP to INIT: %d\n", ret);
+		xve_warn(priv, "failed to modify tx QP to INIT: %d", ret);
 		return ret;
 	}
 	return 0;
@@ -1023,7 +1032,7 @@ static int xve_cm_tx_init(struct xve_cm_ctx *p, struct ib_sa_path_rec *pathrec)
 
 	p->tx_ring = vmalloc(priv->xve_sendq_size * sizeof(*p->tx_ring));
 	if (IS_ERR(p->tx_ring)) {
-		xve_warn(priv, "failed to allocate tx ring\n");
+		xve_warn(priv, "failed to allocate tx ring");
 		ret = -ENOMEM;
 		goto err_tx;
 	}
@@ -1032,34 +1041,31 @@ static int xve_cm_tx_init(struct xve_cm_ctx *p, struct ib_sa_path_rec *pathrec)
 	p->qp = xve_cm_create_tx_qp(p->netdev, p);
 	if (IS_ERR(p->qp)) {
 		ret = PTR_ERR(p->qp);
-		xve_warn(priv, "failed to allocate tx qp: %d\n", ret);
+		xve_warn(priv, "failed to allocate tx qp: %d", ret);
 		goto err_qp;
 	}
 
 	p->id = ib_create_cm_id(priv->ca, xve_cm_tx_handler, p);
 	if (IS_ERR(p->id)) {
 		ret = PTR_ERR(p->id);
-		xve_warn(priv, "failed to create tx cm id: %d\n", ret);
+		xve_warn(priv, "failed to create tx cm id: %d", ret);
 		goto err_id;
 	}
 
 	ret = xve_cm_modify_tx_init(p->netdev, p->id, p->qp);
 	if (ret) {
-		xve_warn(priv, "failed to modify tx qp to rtr: %d\n", ret);
+		xve_warn(priv, "failed to modify tx qp to rtr: %d", ret);
 		goto err_modify;
 	}
 
 	ret = xve_cm_send_req(p->netdev, p->id, p->qp, pathrec);
 	if (ret) {
-		xve_warn(priv, "failed to send cm req: %d\n", ret);
+		xve_warn(priv, "failed to send cm req: %d", ret);
 		goto err_send_cm;
 	}
 
-	xve_debug(DEBUG_CM_INFO, priv, "%s Request connection", __func__);
-	xve_debug(DEBUG_CM_INFO, priv, "0x%x for gid", p->qp->qp_num);
-	xve_debug(DEBUG_CM_INFO, priv, "%pI6 net_id 0x%x\n", pathrec->dgid.raw,
-		  priv->net_id);
-
+	pr_info("%s QP[%x] Tx Created path %pI6 ctx:%p\n", priv->xve_name,
+			p->qp->qp_num, pathrec->dgid.raw, p);
 	return 0;
 
 err_send_cm:
@@ -1081,11 +1087,12 @@ static void xve_cm_tx_destroy(struct xve_cm_ctx *p)
 	struct xve_cm_buf *tx_req;
 	unsigned long begin;
 	unsigned long flags = 0;
+	uint32_t qp_num = p->qp ? p->qp->qp_num : 0;
 
-	xve_debug(DEBUG_CM_INFO, priv, "%s Destroy active conn", __func__);
-	xve_debug(DEBUG_CM_INFO, priv, "0x%x head", p->qp ? p->qp->qp_num : 0);
-	xve_debug(DEBUG_CM_INFO, priv, " 0x%x tail 0x%x\n", p->tx_head,
-		  p->tx_tail);
+	xve_debug(DEBUG_CM_INFO, priv,
+			"QP[%x] ctx:%p Destroy active conn head[0x%x] tail[0x%x]",
+			qp_num, p, p->tx_head, p->tx_tail);
+
 	if (p->id)
 		ib_destroy_cm_id(p->id);
 
@@ -1115,7 +1122,6 @@ timeout:
 	while ((int)p->tx_tail - (int)p->tx_head < 0) {
 		tx_req = &p->tx_ring[p->tx_tail & (priv->xve_sendq_size - 1)];
 
-
 		++p->tx_tail;
 		spin_unlock_irqrestore(&priv->lock, flags);
 
@@ -1134,9 +1140,8 @@ timeout:
 	}
 	spin_unlock_irqrestore(&priv->lock, flags);
 
-	pr_info("%s [xve %s] Destroyed active con", __func__, priv->xve_name);
-	pr_info("qp [0x%x] head", p->qp ? p->qp->qp_num : 0);
-	pr_info("0x%x tail 0x%x\n", p->tx_head, p->tx_tail);
+	xve_warn(priv, "QP[%x] Destroyed, head[0x%x] tail[0x%x]",
+			qp_num, p->tx_head, p->tx_tail);
 	if (p->qp)
 		ib_destroy_qp(p->qp);
 	if (p->tx_ring)
@@ -1145,7 +1150,8 @@ timeout:
 		kfree(p);
 }
 
-static int xve_cm_tx_handler(struct ib_cm_id *cm_id, struct ib_cm_event *event)
+static int xve_cm_tx_handler(struct ib_cm_id *cm_id,
+		struct ib_cm_event *event)
 {
 	struct xve_cm_ctx *tx = cm_id->context;
 	struct xve_dev_priv *priv;
@@ -1162,13 +1168,13 @@ static int xve_cm_tx_handler(struct ib_cm_id *cm_id, struct ib_cm_event *event)
 	dev = priv->netdev;
 	switch (event->event) {
 	case IB_CM_DREQ_RECEIVED:
-		xve_debug(DEBUG_CM_INFO, priv, "%s DREQ received QP %x\n",
+		xve_debug(DEBUG_CM_INFO, priv, "%s DREQ received QP %x",
 			  __func__, tx->qp ? tx->qp->qp_num : 0);
 
 		ib_send_cm_drep(cm_id, NULL, 0);
 		break;
 	case IB_CM_REP_RECEIVED:
-		xve_debug(DEBUG_CM_INFO, priv, "%s REP received QP %x\n",
+		xve_debug(DEBUG_CM_INFO, priv, "%s REP received QP %x",
 			  __func__, tx->qp ? tx->qp->qp_num : 0);
 		ret = xve_cm_rep_handler(cm_id, event);
 		if (ret)
@@ -1178,7 +1184,7 @@ static int xve_cm_tx_handler(struct ib_cm_id *cm_id, struct ib_cm_event *event)
 	case IB_CM_REQ_ERROR:
 	case IB_CM_REJ_RECEIVED:
 	case IB_CM_TIMEWAIT_EXIT:
-		pr_info("%s CM event %d [dev %s] QP %x\n", __func__,
+		pr_info("%s CM event %d [dev %s] QP %x", __func__,
 			event->event, dev->name, tx->qp ? tx->qp->qp_num : 0);
 		netif_tx_lock_bh(dev);
 		/*
@@ -1327,7 +1333,7 @@ void xve_cm_stale_task(struct work_struct *work)
 		spin_unlock_irq(&priv->lock);
 		ret = ib_modify_qp(p->qp, &xve_cm_err_attr, IB_QP_STATE);
 		if (ret)
-			xve_warn(priv, "unable to move qp to error state: %d\n",
+			xve_warn(priv, "unable to move qp to error state: %d",
 				 ret);
 		spin_lock_irq(&priv->lock);
 	}
@@ -1398,7 +1404,7 @@ int xve_cm_dev_init(struct net_device *dev)
 	    min_t(int,
 		  ALIGN((priv->admin_mtu + VLAN_ETH_HLEN),
 			PAGE_SIZE) / PAGE_SIZE, attr.max_srq_sge);
-	xve_debug(DEBUG_CM_INFO, priv, "%s max_srq_sge=%d\n", __func__,
+	xve_debug(DEBUG_CM_INFO, priv, "%s max_srq_sge=%d", __func__,
 		  attr.max_srq_sge);
 
 	xve_cm_create_srq(dev, attr.max_srq_sge);
@@ -1406,7 +1412,7 @@ int xve_cm_dev_init(struct net_device *dev)
 		priv->cm.max_cm_mtu = attr.max_srq_sge * PAGE_SIZE - 0x20;
 		priv->cm.num_frags = attr.max_srq_sge;
 		xve_debug(DEBUG_CM_INFO, priv,
-			  "%s max_cm_mtu = 0x%x, num_frags=%d\n", __func__,
+			  "%s max_cm_mtu = 0x%x, num_frags=%d", __func__,
 			  priv->cm.max_cm_mtu, priv->cm.num_frags);
 	} else {
 		pr_notice("XVE: Non-SRQ mode not supported\n");
@@ -1422,17 +1428,14 @@ int xve_cm_dev_init(struct net_device *dev)
 						 priv->cm.
 						 srq_ring[i].mapping)) {
 				xve_warn(priv,
-					"%s failed to allocate rc ",
-					__func__);
-				xve_warn(priv,
-					 "receive buffer %d\n", i);
+					"%s failed to allocate rbuf rc%d",
+					__func__, i);
 				xve_cm_dev_cleanup(dev);
 				return -ENOMEM;
 			}
 
 			if (xve_cm_post_receive_srq(dev, i)) {
-				xve_warn(priv, "xve_cm_post_receive_srq ");
-				xve_warn(priv, "failed for buf %d\n", i);
+				xve_warn(priv, "SRQ post failed buf:%d", i);
 				xve_cm_dev_cleanup(dev);
 				return -EIO;
 			}
@@ -1450,11 +1453,11 @@ void xve_cm_dev_cleanup(struct net_device *dev)
 	if (!priv->cm_supported || !priv->cm.srq)
 		return;
 
-	xve_debug(DEBUG_CM_INFO, priv, "%s Cleanup xve CM\n", __func__);
+	xve_debug(DEBUG_CM_INFO, priv, "%s Cleanup xve CM", __func__);
 
 	ret = ib_destroy_srq(priv->cm.srq);
 	if (ret)
-		xve_warn(priv, "ib_destroy_srq failed: %d\n", ret);
+		xve_warn(priv, "ib_destroy_srq failed: %d", ret);
 
 	priv->cm.srq = NULL;
 	if (!priv->cm.srq_ring)
