@@ -71,12 +71,16 @@ void xve_free_ah(struct kref *kref)
 static void xve_ud_dma_unmap_rx(struct xve_dev_priv *priv,
 				u64 mapping[XVE_UD_RX_EDR_SG])
 {
+	int i = 0;
+
 	if (xve_ud_need_sg(priv->admin_mtu)) {
 		ib_dma_unmap_single(priv->ca, mapping[0], XVE_UD_HEAD_SIZE,
 				    DMA_FROM_DEVICE);
-		ib_dma_unmap_page(priv->ca, mapping[1], PAGE_SIZE,
-				  DMA_FROM_DEVICE);
-		xve_counters[XVE_NUM_PAGES_ALLOCED]--;
+		for (i = 1; i < xve_ud_rx_sg(priv); i++) {
+			ib_dma_unmap_page(priv->ca, mapping[i], PAGE_SIZE,
+					DMA_FROM_DEVICE);
+			xve_counters[XVE_NUM_PAGES_ALLOCED]--;
+		}
 	} else {
 		ib_dma_unmap_single(priv->ca, mapping[0],
 				    XVE_UD_BUF_SIZE(priv->max_ib_mtu),
@@ -89,34 +93,47 @@ static void xve_ud_skb_put_frags(struct xve_dev_priv *priv,
 		struct sk_buff *skb,
 		unsigned int length)
 {
-	if (xve_ud_need_sg(priv->admin_mtu)) {
-		skb_frag_t *frag = &skb_shinfo(skb)->frags[0];
-		unsigned int size;
-		/*
-		 * There is only two buffers needed for max_payload = 4K,
-		 * first buf size is XVE_UD_HEAD_SIZE
-		 */
-		skb->tail += XVE_UD_HEAD_SIZE;
-		skb->len  += length;
+	int i, num_frags;
+	unsigned int size, hdr_space = XVE_UD_HEAD_SIZE;
 
-		size = length - XVE_UD_HEAD_SIZE;
+	/* put header into skb */
+	if (xve_ud_need_sg(priv->admin_mtu))
+		size = min(length, hdr_space);
+	else
+		size = length;
 
-		skb_frag_size_set(frag, size);
-		skb->data_len += size;
-		skb->truesize += PAGE_SIZE;
-	} else
-		skb_put(skb, length);
+		skb->tail += size;
+	skb->len += size;
+	length -= size;
+
+	num_frags = skb_shinfo(skb)->nr_frags;
+	for (i = 0; i < num_frags; i++) {
+		skb_frag_t *frag = &skb_shinfo(skb)->frags[i];
+
+		if (length == 0) {
+			__free_page(skb_shinfo(skb)->frags[i].page.p);
+			--skb_shinfo(skb)->nr_frags;
+		} else {
+			size = min_t(unsigned, length, PAGE_SIZE);
+
+			frag->size = size;
+			skb->data_len += size;
+			skb->truesize += size;
+			skb->len += size;
+			length -= size;
+		}
+	}
 }
 
 static int xve_ib_post_receive(struct net_device *dev, int id)
 {
 	struct xve_dev_priv *priv = netdev_priv(dev);
 	struct ib_recv_wr *bad_wr;
-	int ret;
+	int ret, i;
 
 	priv->rx_wr.wr_id = id | XVE_OP_RECV;
-	priv->rx_sge[0].addr = priv->rx_ring[id].mapping[0];
-	priv->rx_sge[1].addr = priv->rx_ring[id].mapping[1];
+	for (i = 0; i < xve_ud_rx_sg(priv); i++)
+		priv->rx_sge[i].addr = priv->rx_ring[id].mapping[i];
 
 	ret = ib_post_recv(priv->qp, &priv->rx_wr, &bad_wr);
 	if (unlikely(ret)) {
@@ -135,7 +152,7 @@ static struct sk_buff *xve_alloc_rx_skb(struct net_device *dev, int id)
 	struct sk_buff *skb;
 	int buf_size, align;
 	u64 *mapping;
-	int tailroom;
+	int tailroom, i;
 
 	if (xve_ud_need_sg(priv->admin_mtu)) {
 		/* reserve some tailroom for IP/TCP headers */
@@ -165,17 +182,20 @@ static struct sk_buff *xve_alloc_rx_skb(struct net_device *dev, int id)
 	if (unlikely(ib_dma_mapping_error(priv->ca, mapping[0])))
 		goto error;
 
-	if (xve_ud_need_sg(priv->admin_mtu)) {
+	for (i = 1; xve_ud_need_sg(priv->admin_mtu) &&
+			i < xve_ud_rx_sg(priv); i++) {
 		struct page *page = xve_alloc_page(GFP_ATOMIC);
 
 		if (!page)
 			goto partial_error;
-		skb_fill_page_desc(skb, 0, page, 0, PAGE_SIZE);
-		mapping[1] =
-		    ib_dma_map_page(priv->ca, skb_shinfo(skb)->frags[0].page.p,
-				    0, PAGE_SIZE, DMA_FROM_DEVICE);
-		if (unlikely(ib_dma_mapping_error(priv->ca, mapping[1])))
+		skb_fill_page_desc(skb, i-1, page, 0, PAGE_SIZE);
+		mapping[i] =
+			ib_dma_map_page(priv->ca,
+					skb_shinfo(skb)->frags[i-1].page.p,
+					0, PAGE_SIZE, DMA_FROM_DEVICE);
+		if (unlikely(ib_dma_mapping_error(priv->ca, mapping[i])))
 			goto partial_error;
+
 	}
 
 	priv->rx_ring[id].skb = skb;
@@ -372,6 +392,7 @@ xve_ib_handle_rx_wc(struct net_device *dev, struct ib_wc *wc)
 		xve_handle_ctrl_msg(priv, skb, eh);
 		goto repost;
 	}
+
 
 	vlan = xg_vlan_get_rxtag(skb);
 	if (wc->wc_flags & IB_WC_GRH) {
@@ -698,17 +719,20 @@ static inline int post_send(struct xve_dev_priv *priv,
 	skb_frag_t *frags = skb_shinfo(skb)->frags;
 	int nr_frags = skb_shinfo(skb)->nr_frags;
 	u64 *mapping = tx_req->mapping;
+	int total_size = 0;
 
 	if (skb_headlen(skb)) {
 		priv->tx_sge[0].addr = mapping[0];
 		priv->tx_sge[0].length = skb_headlen(skb);
 		off = 1;
+		total_size += skb_headlen(skb);
 	} else
 		off = 0;
 
 	for (i = 0; i < nr_frags; ++i) {
 		priv->tx_sge[i + off].addr = mapping[i + off];
 		priv->tx_sge[i + off].length = frags[i].size;
+		total_size += frags[i].size;
 	}
 	wr->num_sge = nr_frags + off;
 	wr->wr_id = wr_id;
@@ -728,6 +752,10 @@ static inline int post_send(struct xve_dev_priv *priv,
 		wr->opcode = IB_WR_SEND;
 	}
 
+	xve_debug(DEBUG_TXDATA_INFO, priv, "wr_id %d Frags %d size %d\n",
+			wr_id, wr->num_sge, total_size);
+	dumppkt(skb->data + sizeof(struct xve_eoib_hdr), total_size,
+			"Post Send Dump");
 	return ib_post_send(priv->qp, &priv->tx_wr, &bad_wr);
 }
 /* Always called with priv->lock held
@@ -759,7 +787,15 @@ int xve_send(struct net_device *dev, struct sk_buff *skb,
 			return ret;
 		}
 	} else {
-		if (unlikely(skb->len > priv->mcast_mtu + VLAN_ETH_HLEN)) {
+		int max_packet_len;
+
+		if (priv->is_jumbo)
+			max_packet_len = priv->admin_mtu + VLAN_ETH_HLEN
+				+ sizeof(struct xve_eoib_hdr);
+		else
+			max_packet_len = priv->mcast_mtu + VLAN_ETH_HLEN;
+
+		if (unlikely(skb->len > max_packet_len)) {
 			xve_warn(priv, "%s packet len %d",  __func__, skb->len);
 			xve_warn(priv, "(> %d) too long to", priv->mcast_mtu);
 			xve_warn(priv, "send,dropping %ld packets %s\n",

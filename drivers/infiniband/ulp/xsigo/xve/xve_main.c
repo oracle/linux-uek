@@ -132,6 +132,7 @@ MODULE_PARM_DESC(xve_tca_qkey, "tca qkey");
 unsigned int xve_ud_mode;
 module_param(xve_ud_mode, uint, 0444);
 MODULE_PARM_DESC(xve_ud_mode, "Always use UD mode irrespective of xsmp.vnet_mode value");
+
 unsigned int xve_eoib_mode = 1;
 module_param(xve_eoib_mode, uint, 0444);
 MODULE_PARM_DESC(xve_eoib_mode, "Always use UD mode irrespective of xsmp.vnet_mode value");
@@ -261,11 +262,12 @@ int xve_modify_mtu(struct net_device *netdev, int new_mtu)
 		return 0;
 	}
 
-	if (new_mtu > XVE_UD_MTU(priv->max_ib_mtu))
+	if (!priv->is_jumbo && (new_mtu > XVE_UD_MTU(priv->max_ib_mtu)))
 		return -EINVAL;
 
-	priv->admin_mtu = new_mtu;
-	netdev->mtu = min(priv->mcast_mtu, priv->admin_mtu);
+	priv->admin_mtu = netdev->mtu = new_mtu;
+	if (!priv->is_jumbo)
+		netdev->mtu = min(priv->mcast_mtu, priv->admin_mtu);
 	xve_queue_work(priv, XVE_WQ_START_FLUSHLIGHT);
 	(void)xve_xsmp_handle_oper_req(priv->xsmp_hndl, priv->resource_id);
 
@@ -841,41 +843,8 @@ int xve_add_eoib_header(struct xve_dev_priv *priv, struct sk_buff *skb)
 	eoibp = (struct xve_eoib_hdr *) skb_push(skb, len);
 
 	skb_set_mac_header(skb, len);
-	if (!xve_enable_offload) {
-		eoibp->magic = cpu_to_be16(XVE_EOIB_MAGIC);
-		eoibp->tss_mask_sz = 0;
-		return 0;
-	}
-	/* encap_data = (VNIC_EOIB_HDR_VER << 4) | (VNIC_EOIB_HDR_SIG << 6)
-		From net/ethernet/mellanox/mlx4_vnic/vnic_data_tx.c */
-	eoibp->encap_data = 0x3 << 6;
-	eoibp->seg_off = eoibp->seg_id = 0;
-#define VNIC_EOIB_HDR_UDP_CHK_OK        0x2
-#define VNIC_EOIB_HDR_TCP_CHK_OK        0x1
-#define VNIC_EOIB_HDR_IP_CHK_OK         0x1
-
-#define VNIC_EOIB_HDR_SET_IP_CHK_OK(eoib_hdr)   (eoib_hdr->encap_data = \
-		(eoib_hdr->encap_data & 0xFC) | VNIC_EOIB_HDR_IP_CHK_OK)
-#define VNIC_EOIB_HDR_SET_TCP_CHK_OK(eoib_hdr)  (eoib_hdr->encap_data = \
-		(eoib_hdr->encap_data & 0xF3) | (VNIC_EOIB_HDR_TCP_CHK_OK << 2))
-#define VNIC_EOIB_HDR_SET_UDP_CHK_OK(eoib_hdr)  (eoib_hdr->encap_data = \
-		(eoib_hdr->encap_data & 0xF3) | (VNIC_EOIB_HDR_UDP_CHK_OK << 2))
-
-	switch (ntohs(skb->protocol)) {
-	case ETH_P_IP: {
-		struct iphdr *ip_h = ip_hdr(skb);
-
-		VNIC_EOIB_HDR_SET_IP_CHK_OK(eoibp);
-		if (ip_h->protocol == IPPROTO_TCP)
-			VNIC_EOIB_HDR_SET_TCP_CHK_OK(eoibp);
-		else if (ip_h->protocol == IPPROTO_UDP)
-			VNIC_EOIB_HDR_SET_UDP_CHK_OK(eoibp);
-		break;
-	}
-
-	case ETH_P_IPV6:
-		break;
-	}
+	eoibp->magic = cpu_to_be16(XVE_EOIB_MAGIC);
+	eoibp->tss_mask_sz = 0;
 	return 0;
 }
 
@@ -1799,7 +1768,8 @@ int xve_set_dev_features(struct xve_dev_priv *priv, struct ib_device *hca)
 		strcpy(priv->mode, "datagram(UD)");
 
 		/* MTU will be reset when mcast join happens */
-		if (priv->netdev->mtu > XVE_UD_MTU(priv->max_ib_mtu))
+		if (!priv->is_jumbo &&
+			(priv->netdev->mtu > XVE_UD_MTU(priv->max_ib_mtu)))
 			priv->netdev->mtu = XVE_UD_MTU(priv->max_ib_mtu);
 		priv->lro_mode = 0;
 	}
@@ -1941,7 +1911,6 @@ static int xve_check_for_hca(xsmp_cookie_t xsmp_hndl, u8 *is_titan)
 	if (!((strncmp(hca->name, "mlx4", 4) != 0) ||
 			(strncmp(hca->name, "sif0", 4) != 0)))
 		return -EEXIST;
-
 	return 0;
 }
 
@@ -2147,7 +2116,7 @@ static int xve_xsmp_install(xsmp_cookie_t xsmp_hndl, struct xve_xsmp_msg *xmsgp,
 	__be16 pkey_be;
 	__be32 net_id_be;
 	u8 ecode = 0;
-	u8 is_titan = 0;
+	u8 is_titan = 0, is_jumbo = 0;
 
 	if (xve_check_for_hca(xsmp_hndl, &is_titan) != 0) {
 		pr_info("Warning !!!!! Unsupported HCA card for xve ");
@@ -2155,6 +2124,20 @@ static int xve_xsmp_install(xsmp_cookie_t xsmp_hndl, struct xve_xsmp_msg *xmsgp,
 		pr_info("supported on Connect-X and PSIF HCA cards !!!!!!!");
 		ret = -EEXIST;
 		goto dup_error;
+	}
+
+	if ((be16_to_cpu(xmsgp->vn_mtu) > XVE_UD_MTU(4096))
+			&& (xmsgp->vnet_mode & XVE_VNET_MODE_UD)) {
+		if (is_titan)
+			is_jumbo = 1;
+		else {
+			pr_info("Warning !!!!! Jumbo is supported on Titan Cards Only");
+			pr_info("MTU%d %s\n", be16_to_cpu(xmsgp->vn_mtu),
+				xmsgp->xve_name);
+			ret = -EEXIST;
+			ecode = XVE_INVALID_OPERATION;
+			goto dup_error;
+		}
 	}
 
 	priv = xve_get_xve_by_vid(be64_to_cpu(xmsgp->resource_id));
@@ -2236,6 +2219,7 @@ static int xve_xsmp_install(xsmp_cookie_t xsmp_hndl, struct xve_xsmp_msg *xmsgp,
 	priv->vnic_type = xmsgp->vnic_type;
 	priv->is_eoib = xve_eoib_mode ? (xmsgp->eoib_enable) : 0;
 	priv->is_titan = (is_titan) ? 1 : 0;
+	priv->is_jumbo = (is_jumbo) ? 1 : 0;
 
 	/* Make Send and Recv Queue parmaters Per Vnic */
 	if (!(priv->vnet_mode & XVE_VNET_MODE_UD)) {
