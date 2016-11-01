@@ -73,6 +73,7 @@ static char *counter_name[XVE_MAX_COUNTERS] = {
 	"tx drop oper down count:\t",
 	"tx drop skb error count:\t",
 	"tx drop ring full count:\t",
+	"tx ring wmark reached count:\t",
 	"tx wake up count\t\t",
 	"tx queue stop count:\t\t",
 	"rx_skb_count:\t\t\t",
@@ -126,6 +127,7 @@ static char *counter_name[XVE_MAX_COUNTERS] = {
 	"tx ud count:\t\t\t",
 	"tx rc count:\t\t\t",
 	"tx mcast count:\t\t\t",
+	"tx broadcast count:\t\t\t",
 	"tx arp count:\t\t\t",
 	"tx ndp count:\t\t\t",
 	"tx arp vlan count:\t\t",
@@ -146,7 +148,7 @@ static char *counter_name[XVE_MAX_COUNTERS] = {
 	"ib lid_active count:\t\t",
 	"ib pkey_change count:\t\t",
 	"ib invalid count:\t\t",
-	"uplink unicast:\t\t\t",
+	"tx uplink broadcast:\t\t\t",
 	"Heartbeat Count(0x8919):\t\t",
 	"Link State message count:\t",
 	"RX frames without GRH\t\t",
@@ -468,6 +470,7 @@ static int xve_proc_read_device(struct seq_file *m, void *data)
 
 	seq_printf(m, "Receive Queue size: \t\t%d\n", vp->xve_recvq_size);
 	seq_printf(m, "Transmit Queue size: \t\t%d\n", vp->xve_sendq_size);
+	seq_printf(m, "Completion Queue size: \t\t%d\n", vp->xve_max_send_cqe);
 
 	if (vp->cm_supported) {
 		seq_printf(m, "Num of cm frags: \t\t%d\n", vp->cm.num_frags);
