@@ -433,18 +433,14 @@ static void eps_struct_init(struct sif_dev *sdev)
 	u8 i;
 
 	for (i = 0; i < sdev->eps_cnt; i++) {
-		memset(sdev->es, 0, sizeof(*sdev->es));
 		es = &sdev->es[i];
+		memset(es, 0, sizeof(*es));
 		es->sdev = sdev;
 		es->eps_num = i;
 		spin_lock_init(&es->lock);
 
-		if (i != sdev->mbox_epsc)
-			continue;
-
 		/* EPSC is implicitly started at power on */
-		if (es->state == ES_NOT_RUNNING)
-			es->state = ES_RUNNING;
+		es->state = (i == sdev->mbox_epsc) ? ES_RUNNING : ES_NOT_RUNNING;
 	}
 }
 
@@ -636,7 +632,7 @@ int sif_eps_init(struct sif_dev *sdev, enum sif_tab_type type)
 	int ret = 0;
 	u16 seq_num = 0; /* Init runs in separate seq.numbers */
 	int i;
-	ulong timeout = es->keepalive_interval = sdev->min_resp_ticks * 2;
+	ulong timeout = sdev->min_resp_ticks * 2;
 	ulong timeout_time = jiffies + timeout;
 	u64 tries = 0;
 	size_t bsz;
@@ -648,8 +644,12 @@ int sif_eps_init(struct sif_dev *sdev, enum sif_tab_type type)
 	u16 mailbox_seq_version_to_use = 2;
 
 	if (eps_num == sdev->mbox_epsc)
-		eps_struct_init(sdev);
+		eps_struct_init(sdev); /* This function call will have the
+					* side effect of initializing all
+					* the eps* structs
+					*/
 
+	es->keepalive_interval = timeout;
 	es->last_seq = 0;
 
 	ret = eps_set_state(sdev, eps_num, ES_INIT);
@@ -935,7 +935,7 @@ proto_probing_done:
 
 	/* in protocol version 2 bits 16-31 of the response sequence number contain
 	 * an ID the driver has to provide in requests
-     */
+	 */
 	es->mbox_id = (lrsp.seq_num >> 16) & 0xffff;
 
 	memcpy(&es->ver, &lrsp.data, sizeof(lrsp.data));
