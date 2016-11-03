@@ -871,25 +871,23 @@ int sif_poll_cq(struct ib_cq *ibcq, int num_entries, struct ib_wc *wc)
 
 		polled_value = get_psif_cq_entry__seq_num(cqe);
 
-		if (seqno == polled_value)
-			npolled++;
-		else
+		if (seqno != polled_value)
 			break;
 
 		if (likely(wc)) {
-			if (unlikely(handle_wc(sdev, cq, cqe, wc) < 0)) {
-				/* poll_cq should not return < 0. Thus, ignore
-				 * the CQE if it is duplicate, unexpected or wrong
-				 * CQE.
-				 */
-				seqno = ++cq_sw->next_seq;
-				npolled--;
-				continue;
+			 /* handle_wc == 0 means that it's a valid cqe.
+			  * Thus, increments the npolled and the wc pointer.
+			  */
+			if (likely(handle_wc(sdev, cq, cqe, wc) == 0)) {
+				++wc;
+				++npolled;
 			}
-			wc++;
 			seqno = ++cq_sw->next_seq;
-		} else /* peek_cq semantics */
+		} else {
+			/* peek_cq semantics */
 			++seqno;
+			++npolled;
+		}
 
 		cqe = get_cq_entry(cq, seqno);
 	}
