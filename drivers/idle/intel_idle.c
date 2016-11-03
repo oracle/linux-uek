@@ -313,6 +313,7 @@ static struct cpuidle_state atom_cstates[MWAIT_MAX_NUM_CSTATES] = {
 
 static struct cpuidle_state bdw_cstates[MWAIT_MAX_NUM_CSTATES] = {
 	{
+		.name = "C1-BDW",
 		.desc = "MWAIT 0x00",
 		.driver_data = (void *) 0x00,
 		.flags = CPUIDLE_FLAG_TIME_VALID,
@@ -368,8 +369,9 @@ static struct cpuidle_state bdw_cstates[MWAIT_MAX_NUM_CSTATES] = {
 		.target_residency = 1800,
 		.enter = &intel_idle },
 	{
+		.name = "C10-BDW",
 		.desc = "MWAIT 0x60",
-		.driver_data = (void *) 0x50,
+		.driver_data = (void *) 0x60,
 		.flags = CPUIDLE_FLAG_TIME_VALID | CPUIDLE_FLAG_TLB_FLUSHED,
 		.exit_latency = 2600,
 		.target_residency = 7700,
