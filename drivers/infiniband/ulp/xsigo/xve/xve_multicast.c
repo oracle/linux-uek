@@ -176,7 +176,7 @@ static int xve_mcast_join_finish(struct xve_mcast *mcast,
 		spin_unlock_irq(&priv->lock);
 		priv->tx_wr.wr.ud.remote_qkey = (priv->is_eoib == 1) ?
 						priv->port_qkey : priv->qkey;
-		xve_warn(priv, "setting remote_qkey %x",
+		xve_dbg_mcast(priv, "setting remote_qkey %x",
 				priv->tx_wr.wr.ud.remote_qkey);
 
 		set_qkey = 1;
@@ -580,11 +580,13 @@ void xve_mcast_join_task(struct work_struct *work)
 	spin_unlock_irq(&priv->lock);
 
 	if (!xve_cm_admin_enabled(dev)) {
-		printk
-		    ("XVE: %s xve %s dev mtu %d, admin_mtu %d, mcast_mtu %d\n",
+		xve_info(priv,
+		    "XVE: %s xve %s dev mtu %d, admin_mtu %d, mcast_mtu %d\n",
 		     __func__, priv->xve_name, priv->netdev->mtu,
 		     priv->admin_mtu, priv->mcast_mtu);
-		xve_dev_set_mtu(dev, min(priv->mcast_mtu, priv->admin_mtu));
+		if (!priv->is_jumbo)
+			xve_dev_set_mtu(dev,
+				min(priv->mcast_mtu, priv->admin_mtu));
 	}
 
 	xve_dbg_mcast(priv, "successfully joined all multicast groups\n");
@@ -665,7 +667,8 @@ static int xve_mcast_leave(struct net_device *dev, struct xve_mcast *mcast)
 	return 0;
 }
 
-int xve_mcast_send(struct net_device *dev, void *mgid, struct sk_buff *skb)
+int xve_mcast_send(struct net_device *dev, void *mgid, struct sk_buff *skb,
+		u8 broadcast)
 {
 	struct xve_dev_priv *priv = netdev_priv(dev);
 	struct xve_mcast *mcast;
@@ -679,11 +682,14 @@ int xve_mcast_send(struct net_device *dev, void *mgid, struct sk_buff *skb)
 		return ret;
 	}
 
-	if (xve_is_uplink(priv) && xve_gw_linkup(priv)) {
+	if (broadcast && (xve_is_uplink(priv) && xve_gw_linkup(priv))) {
 		struct sk_buff *nskb = skb_clone(skb, GFP_ATOMIC);
 
-		if (nskb)
+		if (nskb) {
 			ret = xve_gw_send(dev, nskb);
+			if (ret != NETDEV_TX_OK)
+				return ret;
+		}
 	}
 
 	mcast = __xve_mcast_find(dev, mgid);
@@ -695,8 +701,8 @@ int xve_mcast_send(struct net_device *dev, void *mgid, struct sk_buff *skb)
 
 		mcast = xve_mcast_alloc(dev, 0);
 		if (!mcast) {
-			xve_warn(priv, "unable to allocate memory for ");
-			xve_warn(priv, "multicast structure\n");
+			xve_warn(priv,
+				"%s unable to allocate memory", __func__);
 			INC_TX_DROP_STATS(priv, dev);
 			dev_kfree_skb_any(skb);
 			goto out;

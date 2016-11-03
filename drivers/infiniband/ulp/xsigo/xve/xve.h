@@ -84,6 +84,7 @@
 #include <rdma/ib_pack.h>
 #include <rdma/ib_sa.h>
 #include <rdma/ib_cache.h>
+#include <rdma/sif_verbs.h>
 
 #include "xscore.h"
 #include "hash.h"
@@ -153,13 +154,13 @@ enum xve_flush_level {
 enum {
 	XVE_UD_HEAD_SIZE = IB_GRH_BYTES + VLAN_ETH_HLEN + XVE_EOIB_LEN,
 	XVE_UD_RX_OVN_SG = 2,	/* max buffer needed for 4K mtu */
-	XVE_UD_RX_EDR_SG = 3,	/* max buffer needed for 10K mtu */
+	XVE_UD_RX_EDR_SG = 4,	/* max buffer needed for 10K mtu */
 	XVE_CM_MTU = 0x10000 - 0x20,	/* padding to align header to 16 */
 	XVE_CM_BUF_SIZE = XVE_CM_MTU + VLAN_ETH_HLEN,
 	XVE_CM_HEAD_SIZE = XVE_CM_BUF_SIZE % PAGE_SIZE,
 	XVE_CM_RX_SG = ALIGN(XVE_CM_BUF_SIZE, PAGE_SIZE) / PAGE_SIZE,
-	XVE_RX_RING_SIZE = 256,
-	XVE_TX_RING_SIZE = 128,
+	XVE_RX_RING_SIZE = 2048,
+	XVE_TX_RING_SIZE = 2048,
 	XVE_MAX_QUEUE_SIZE = 8192,
 	XVE_MIN_QUEUE_SIZE = 2,
 	XVE_CM_MAX_CONN_QP = 4096,
@@ -226,6 +227,7 @@ enum {
 	XVE_STATE_MACHINE_DOWN,
 	XVE_STATE_MACHINE_IBCLEAR,
 	XVE_NAPI_POLL_COUNTER,
+	XVE_NAPI_DROP_COUNTER,
 	XVE_SHORT_PKT_COUNTER,
 	XVE_TX_COUNTER,
 	XVE_TX_SKB_FREE_COUNTER,
@@ -235,6 +237,7 @@ enum {
 	XVE_TX_DROP_OPER_DOWN_COUNT,
 	XVE_TX_SKB_ALLOC_ERROR_COUNTER,
 	XVE_TX_RING_FULL_COUNTER,
+	XVE_TX_WMARK_REACH_COUNTER,
 	XVE_TX_WAKE_UP_COUNTER,
 	XVE_TX_QUEUE_STOP_COUNTER,
 	XVE_RX_SKB_COUNTER,
@@ -290,7 +293,10 @@ enum {
 
 	XVE_TX_UD_COUNTER,
 	XVE_TX_RC_COUNTER,
+	XVE_RC_RXCOMPL_COUNTER,
+	XVE_RC_TXCOMPL_COUNTER,
 	XVE_TX_MCAST_PKT,
+	XVE_TX_BCAST_PKT,
 	XVE_TX_MCAST_ARP_QUERY,
 	XVE_TX_MCAST_NDP_QUERY,
 	XVE_TX_MCAST_ARP_VLAN_QUERY,
@@ -306,6 +312,7 @@ enum {
 	XVE_PATHREC_QUERY_COUNTER,
 	XVE_PATHREC_RESP_COUNTER,
 	XVE_PATHREC_RESP_ERR_COUNTER,
+	XVE_PATHREC_GW_COUNTER,
 
 	XVE_SM_CHANGE_COUNTER,
 	XVE_CLIENT_REREGISTER_COUNTER,
@@ -319,6 +326,7 @@ enum {
 	XVE_HBEAT_COUNTER,
 	XVE_LINK_STATUS_COUNTER,
 	XVE_RX_NOGRH,
+	XVE_DUP_VID_COUNTER,
 
 	XVE_MAX_COUNTERS
 };
@@ -425,7 +433,9 @@ enum {
 	DEBUG_QP_INFO = 0x00040000,
 	DEBUG_TX_INFO = 0x00080000,
 	DEBUG_RX_INFO = 0x00100000,
-	DEBUG_TXDATA_INFO = 0x00200000
+	DEBUG_TXDATA_INFO = 0x00200000,
+	DEBUG_INSTALL_INFO = 0x00400000,
+	DEBUG_FWTABLE_INFO = 0x00800000
 };
 
 #define	XVE_OP_RECV   (1ul << 31)
@@ -552,26 +562,6 @@ enum {
 	XVE_CM_ESTD_TX
 };
 
-/* Extension bits in the qp create mask to ib_create_qp
- */
-enum xve_qp_create_flags {
-	/* Indicate that this is an Ethernet over IB QP */
-	IB_QP_CREATE_EOIB            = 1 << 4,
-	/* Enable receive side scaling */
-	IB_QP_CREATE_RSS             = 1 << 5,
-	/* Enable header/data split for offloading */
-	IB_QP_CREATE_HDR_SPLIT       = 1 << 6,
-	/* Enable receive side dynamic mtu */
-	IB_QP_CREATE_RCV_DYNAMIC_MTU = 1 << 7,
-	/* Enable a special EPSA proxy */
-	IB_QP_CREATE_PROXY           = 1 << 8,
-	/* No csum for qp, wqe.wr.csum = qp.magic */
-	IB_QP_NO_CSUM                = 1 << 9,
-	/* Enable receive side dynamic mtu */
-	IB_QP_CREATE_SND_DYNAMIC_MTU = 1 << 10,
-};
-
-/* CM Statistics */
 struct xve_cm_stats {
 	unsigned long tx_jiffies;
 	unsigned long rx_jiffies;
@@ -726,6 +716,7 @@ struct xve_dev_priv {
 	struct net_device_stats stats;
 	struct napi_struct napi;
 	struct xve_ethtool_st ethtool;
+	struct timer_list poll_timer;
 	u8 lro_mode;
 	struct xve_lro lro;
 	unsigned long flags;
@@ -766,6 +757,8 @@ struct xve_dev_priv {
 	/* TX and RX Ring attributes */
 	int xve_recvq_size;
 	int xve_sendq_size;
+	int xve_rcq_size;
+	int xve_scq_size;
 	int xve_max_send_cqe;
 	struct xve_rx_buf *rx_ring;
 	struct xve_tx_buf *tx_ring;
@@ -795,6 +788,7 @@ struct xve_dev_priv {
 	u8 vnet_mode;
 	u8 vnic_type;
 	u8 is_eoib;
+	u8 is_jumbo;
 	char xve_name[XVE_MAX_NAME_SIZE];
 	struct xve_gw_info gw;
 
@@ -920,11 +914,17 @@ struct icmp6_ndp {
 #define DRV_PRINT(fmt, arg...)                                  \
 	PRINT(KERN_INFO, "DRV", fmt, ##arg)
 #define xve_printk(level, priv, format, arg...)			\
-	printk(level "%s: " format,				\
+	printk(level "%s: " format "\n",			\
 		((struct xve_dev_priv *) priv)->netdev->name,	\
 		## arg)
 #define xve_warn(priv, format, arg...)				\
 	xve_printk(KERN_WARNING, priv, format, ## arg)
+#define xve_info(priv, format, arg...)				\
+	do {							\
+		if (xve_debug_level & DEBUG_DRV_INFO)		\
+			xve_printk(KERN_INFO, priv, format,	\
+			## arg);				\
+	} while (0)
 
 #define XSMP_INFO(fmt, arg...)					\
 	do {							\
@@ -959,11 +959,11 @@ struct icmp6_ndp {
 	do {								\
 		if (xve_debug_level & level) {				\
 			if (priv)					\
-				printk("%s: " format,			\
+				pr_info("%s: " format "\n",		\
 				((struct xve_dev_priv *) priv)->netdev->name, \
 				## arg);				\
 			else						\
-				printk("XVE: " format, ## arg);		\
+				pr_info("XVE: " format "\n", ## arg);	\
 		}							\
 	} while (0)
 
@@ -1197,7 +1197,8 @@ void xve_remove_fwt_entry(struct xve_dev_priv *priv,
 void xve_fwt_entry_free(struct xve_dev_priv *priv,
 			struct xve_fwt_entry *fwt_entry);
 
-int xve_mcast_send(struct net_device *dev, void *mgid, struct sk_buff *skb);
+int xve_mcast_send(struct net_device *dev, void *mgid, struct sk_buff *skb,
+		u8 bcast);
 void xve_advert_mcast_join(struct xve_dev_priv *priv);
 int xve_mcast_start_thread(struct net_device *dev);
 int xve_mcast_stop_thread(struct net_device *dev, int flush);
@@ -1537,7 +1538,7 @@ static inline void dbg_dump_raw_pkt(unsigned char *buff, int length, char *name)
 	if (!(xve_debug_level & DEBUG_TEST_INFO))
 		return;
 
-	printk("%s. Packet length is %d\n", name, length);
+	pr_info("%s. Packet length is %d\n", name, length);
 	tmp_len = (length >> 2) + 1;
 	data_ptr = (u32 *) buff;
 	for (i = 0; i < tmp_len; i++) {

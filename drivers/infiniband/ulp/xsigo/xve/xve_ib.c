@@ -71,12 +71,16 @@ void xve_free_ah(struct kref *kref)
 static void xve_ud_dma_unmap_rx(struct xve_dev_priv *priv,
 				u64 mapping[XVE_UD_RX_EDR_SG])
 {
+	int i = 0;
+
 	if (xve_ud_need_sg(priv->admin_mtu)) {
 		ib_dma_unmap_single(priv->ca, mapping[0], XVE_UD_HEAD_SIZE,
 				    DMA_FROM_DEVICE);
-		ib_dma_unmap_page(priv->ca, mapping[1], PAGE_SIZE,
-				  DMA_FROM_DEVICE);
-		xve_counters[XVE_NUM_PAGES_ALLOCED]--;
+		for (i = 1; i < xve_ud_rx_sg(priv); i++) {
+			ib_dma_unmap_page(priv->ca, mapping[i], PAGE_SIZE,
+					DMA_FROM_DEVICE);
+			xve_counters[XVE_NUM_PAGES_ALLOCED]--;
+		}
 	} else {
 		ib_dma_unmap_single(priv->ca, mapping[0],
 				    XVE_UD_BUF_SIZE(priv->max_ib_mtu),
@@ -89,34 +93,47 @@ static void xve_ud_skb_put_frags(struct xve_dev_priv *priv,
 		struct sk_buff *skb,
 		unsigned int length)
 {
-	if (xve_ud_need_sg(priv->admin_mtu)) {
-		skb_frag_t *frag = &skb_shinfo(skb)->frags[0];
-		unsigned int size;
-		/*
-		 * There is only two buffers needed for max_payload = 4K,
-		 * first buf size is XVE_UD_HEAD_SIZE
-		 */
-		skb->tail += XVE_UD_HEAD_SIZE;
-		skb->len  += length;
+	int i, num_frags;
+	unsigned int size, hdr_space = XVE_UD_HEAD_SIZE;
 
-		size = length - XVE_UD_HEAD_SIZE;
+	/* put header into skb */
+	if (xve_ud_need_sg(priv->admin_mtu))
+		size = min(length, hdr_space);
+	else
+		size = length;
 
-		skb_frag_size_set(frag, size);
-		skb->data_len += size;
-		skb->truesize += PAGE_SIZE;
-	} else
-		skb_put(skb, length);
+		skb->tail += size;
+	skb->len += size;
+	length -= size;
+
+	num_frags = skb_shinfo(skb)->nr_frags;
+	for (i = 0; i < num_frags; i++) {
+		skb_frag_t *frag = &skb_shinfo(skb)->frags[i];
+
+		if (length == 0) {
+			__free_page(skb_shinfo(skb)->frags[i].page.p);
+			--skb_shinfo(skb)->nr_frags;
+		} else {
+			size = min_t(unsigned, length, PAGE_SIZE);
+
+			frag->size = size;
+			skb->data_len += size;
+			skb->truesize += size;
+			skb->len += size;
+			length -= size;
+		}
+	}
 }
 
 static int xve_ib_post_receive(struct net_device *dev, int id)
 {
 	struct xve_dev_priv *priv = netdev_priv(dev);
 	struct ib_recv_wr *bad_wr;
-	int ret;
+	int ret, i;
 
 	priv->rx_wr.wr_id = id | XVE_OP_RECV;
-	priv->rx_sge[0].addr = priv->rx_ring[id].mapping[0];
-	priv->rx_sge[1].addr = priv->rx_ring[id].mapping[1];
+	for (i = 0; i < xve_ud_rx_sg(priv); i++)
+		priv->rx_sge[i].addr = priv->rx_ring[id].mapping[i];
 
 	ret = ib_post_recv(priv->qp, &priv->rx_wr, &bad_wr);
 	if (unlikely(ret)) {
@@ -135,7 +152,7 @@ static struct sk_buff *xve_alloc_rx_skb(struct net_device *dev, int id)
 	struct sk_buff *skb;
 	int buf_size, align;
 	u64 *mapping;
-	int tailroom;
+	int tailroom, i;
 
 	if (xve_ud_need_sg(priv->admin_mtu)) {
 		/* reserve some tailroom for IP/TCP headers */
@@ -165,17 +182,20 @@ static struct sk_buff *xve_alloc_rx_skb(struct net_device *dev, int id)
 	if (unlikely(ib_dma_mapping_error(priv->ca, mapping[0])))
 		goto error;
 
-	if (xve_ud_need_sg(priv->admin_mtu)) {
+	for (i = 1; xve_ud_need_sg(priv->admin_mtu) &&
+			i < xve_ud_rx_sg(priv); i++) {
 		struct page *page = xve_alloc_page(GFP_ATOMIC);
 
 		if (!page)
 			goto partial_error;
-		skb_fill_page_desc(skb, 0, page, 0, PAGE_SIZE);
-		mapping[1] =
-		    ib_dma_map_page(priv->ca, skb_shinfo(skb)->frags[0].page.p,
-				    0, PAGE_SIZE, DMA_FROM_DEVICE);
-		if (unlikely(ib_dma_mapping_error(priv->ca, mapping[1])))
+		skb_fill_page_desc(skb, i-1, page, 0, PAGE_SIZE);
+		mapping[i] =
+			ib_dma_map_page(priv->ca,
+					skb_shinfo(skb)->frags[i-1].page.p,
+					0, PAGE_SIZE, DMA_FROM_DEVICE);
+		if (unlikely(ib_dma_mapping_error(priv->ca, mapping[i])))
 			goto partial_error;
+
 	}
 
 	priv->rx_ring[id].skb = skb;
@@ -373,6 +393,7 @@ xve_ib_handle_rx_wc(struct net_device *dev, struct ib_wc *wc)
 		goto repost;
 	}
 
+
 	vlan = xg_vlan_get_rxtag(skb);
 	if (wc->wc_flags & IB_WC_GRH) {
 		xve_fwt_insert(priv, NULL, &grhhdr->source_gid, wc->src_qp,
@@ -553,6 +574,9 @@ static int poll_rx(struct xve_dev_priv *priv, int num_polls, int *done,
 	int n, i;
 
 	n = ib_poll_cq(priv->recv_cq, num_polls, priv->ibwc);
+	if (n < 0)
+		xve_warn(priv, "%s ib_poll_cq() failed, rc %d",
+				 __func__, n);
 	for (i = 0; i < n; ++i) {
 		/*
 		 * Convert any successful completions to flush
@@ -585,16 +609,18 @@ int xve_poll(struct napi_struct *napi, int budget)
 
 	done = 0;
 
-	priv->counters[XVE_NAPI_POLL_COUNTER]++;
 	/*
 	 * If not connected complete it
 	 */
 	if (!(test_bit(XVE_OPER_UP, &priv->state) ||
 		test_bit(XVE_HBEAT_LOST, &priv->state))) {
+		priv->counters[XVE_NAPI_DROP_COUNTER]++;
 		napi_complete(&priv->napi);
 		clear_bit(XVE_INTR_ENABLED, &priv->state);
 		return 0;
 	}
+
+	priv->counters[XVE_NAPI_POLL_COUNTER]++;
 
 poll_more:
 	while (done < budget) {
@@ -604,6 +630,9 @@ poll_more:
 		t = min(XVE_NUM_WC, max);
 
 		n = ib_poll_cq(priv->recv_cq, t, priv->ibwc);
+		if (n < 0)
+			xve_warn(priv, "%s ib_poll_cq() failed, rc %d",
+				 __func__, n);
 		for (i = 0; i < n; i++) {
 			struct ib_wc *wc = priv->ibwc + i;
 
@@ -673,17 +702,31 @@ void xve_data_recv_handler(struct xve_dev_priv *priv)
 	}
 }
 
-void xve_send_comp_handler(struct ib_cq *cq, void *dev_ptr)
+static void xve_ib_tx_timer_func(unsigned long ctx)
 {
-	struct xve_dev_priv *priv = netdev_priv((struct net_device *)dev_ptr);
+	struct net_device *dev = (struct net_device *)ctx;
+	struct xve_dev_priv *priv = netdev_priv(dev);
 	unsigned long flags = 0;
 
+	netif_tx_lock(dev);
 	spin_lock_irqsave(&priv->lock, flags);
 	if (test_bit(XVE_OPER_UP, &priv->state) &&
-	    !test_bit(XVE_DELETING, &priv->state)) {
+			!test_bit(XVE_DELETING, &priv->state)) {
 		poll_tx(priv);
 	}
 	spin_unlock_irqrestore(&priv->lock, flags);
+	if (netif_queue_stopped(dev))
+		mod_timer(&priv->poll_timer, jiffies + 1);
+
+	netif_tx_unlock(dev);
+}
+
+
+void xve_send_comp_handler(struct ib_cq *cq, void *dev_ptr)
+{
+	struct xve_dev_priv *priv = netdev_priv((struct net_device *)dev_ptr);
+
+	mod_timer(&priv->poll_timer, jiffies);
 }
 
 static inline int post_send(struct xve_dev_priv *priv,
@@ -698,17 +741,20 @@ static inline int post_send(struct xve_dev_priv *priv,
 	skb_frag_t *frags = skb_shinfo(skb)->frags;
 	int nr_frags = skb_shinfo(skb)->nr_frags;
 	u64 *mapping = tx_req->mapping;
+	int total_size = 0;
 
 	if (skb_headlen(skb)) {
 		priv->tx_sge[0].addr = mapping[0];
 		priv->tx_sge[0].length = skb_headlen(skb);
 		off = 1;
+		total_size += skb_headlen(skb);
 	} else
 		off = 0;
 
 	for (i = 0; i < nr_frags; ++i) {
 		priv->tx_sge[i + off].addr = mapping[i + off];
 		priv->tx_sge[i + off].length = frags[i].size;
+		total_size += frags[i].size;
 	}
 	wr->num_sge = nr_frags + off;
 	wr->wr_id = wr_id;
@@ -728,13 +774,19 @@ static inline int post_send(struct xve_dev_priv *priv,
 		wr->opcode = IB_WR_SEND;
 	}
 
+	xve_debug(DEBUG_TXDATA_INFO, priv, "wr_id %d Frags %d size %d\n",
+			wr_id, wr->num_sge, total_size);
+	dumppkt(skb->data + sizeof(struct xve_eoib_hdr), total_size,
+			"Post Send Dump");
 	return ib_post_send(priv->qp, &priv->tx_wr, &bad_wr);
 }
 /* Always called with priv->lock held
  * type argument is used to differentiate between the GATEWAY
  * and UVNIC packet.
- * 1 -> GATEWAY PACKET
  * 0 -> normal UVNIC PACKET
+ * 1 -> GATEWAY Broadcast PACKET
+ * 2 -> Sending Queued PACKET
+ * 3 -> Path Not found PACKET
  */
 int xve_send(struct net_device *dev, struct sk_buff *skb,
 	      struct xve_ah *address, u32 qpn, int type)
@@ -744,7 +796,10 @@ int xve_send(struct net_device *dev, struct sk_buff *skb,
 	int hlen;
 	void *phead;
 	int ret = NETDEV_TX_OK;
+	u8 packet_sent = 0;
+	int id;
 
+	id = priv->tx_head & (priv->xve_sendq_size - 1);
 	if (skb_is_gso(skb)) {
 		hlen = skb_transport_offset(skb) + tcp_hdrlen(skb);
 		phead = skb->data;
@@ -753,21 +808,22 @@ int xve_send(struct net_device *dev, struct sk_buff *skb,
 				 "%s linear data too small dropping %ld packets %s\n",
 				 __func__, dev->stats.tx_dropped,
 				 dev->name);
-			INC_TX_DROP_STATS(priv, dev);
-			xve_put_ah_refcnt(address);
-			dev_kfree_skb_any(skb);
-			return ret;
+		goto drop_pkt;
 		}
 	} else {
-		if (unlikely(skb->len > priv->mcast_mtu + VLAN_ETH_HLEN)) {
-			xve_warn(priv, "%s packet len %d",  __func__, skb->len);
-			xve_warn(priv, "(> %d) too long to", priv->mcast_mtu);
-			xve_warn(priv, "send,dropping %ld packets %s\n",
-					dev->stats.tx_dropped, dev->name);
-			INC_TX_DROP_STATS(priv, dev);
-			xve_put_ah_refcnt(address);
-			dev_kfree_skb_any(skb);
-			return ret;
+		int max_packet_len;
+
+		if (priv->is_jumbo)
+			max_packet_len = priv->admin_mtu + VLAN_ETH_HLEN
+				+ sizeof(struct xve_eoib_hdr);
+		else
+			max_packet_len = priv->mcast_mtu + VLAN_ETH_HLEN;
+
+		if (unlikely(skb->len > max_packet_len)) {
+			xve_info(priv,
+				"packet len %d (>%d) too long dropping",
+				skb->len, max_packet_len);
+			goto drop_pkt;
 		}
 		phead = NULL;
 		hlen = 0;
@@ -783,7 +839,7 @@ int xve_send(struct net_device *dev, struct sk_buff *skb,
 	 * means we have to make sure everything is properly recorded and
 	 * our state is consistent before we call post_send().
 	 */
-	tx_req = &priv->tx_ring[priv->tx_head & (priv->xve_sendq_size - 1)];
+	tx_req = &priv->tx_ring[id];
 	tx_req->skb = skb;
 	tx_req->ah = address;
 	if (unlikely(xve_dma_map_tx(priv->ca, tx_req))) {
@@ -797,8 +853,8 @@ int xve_send(struct net_device *dev, struct sk_buff *skb,
 	/* Queue almost full */
 	if (++priv->tx_outstanding == priv->xve_sendq_size) {
 		xve_dbg_data(priv,
-				"%s stop queue head%d out%d tail%d type%d",
-				__func__, priv->tx_head, priv->tx_tail,
+				"%s stop queue id%d head%d tail%d out%d type%d",
+				__func__, id, priv->tx_head, priv->tx_tail,
 				priv->tx_outstanding, type);
 		if (ib_req_notify_cq(priv->send_cq, IB_CQ_NEXT_COMP))
 			xve_warn(priv, "%s Req notify on send CQ failed\n",
@@ -807,16 +863,6 @@ int xve_send(struct net_device *dev, struct sk_buff *skb,
 		netif_stop_queue(dev);
 	}
 
-	if (netif_queue_stopped(dev)) {
-		int rc;
-
-		rc = ib_req_notify_cq(priv->send_cq,
-				IB_CQ_NEXT_COMP | IB_CQ_REPORT_MISSED_EVENTS);
-		if (rc < 0)
-			xve_warn(priv, "request notify on send CQ failed\n");
-		else if (rc)
-			poll_tx(priv);
-	 }
 	skb_orphan(skb);
 	skb_dst_drop(skb);
 
@@ -832,23 +878,36 @@ int xve_send(struct net_device *dev, struct sk_buff *skb,
 
 	if (unlikely(post_send(priv, priv->tx_head & (priv->xve_sendq_size - 1),
 			       address->ah, qpn, tx_req, phead, hlen))) {
-		xve_warn(priv, "%s post_send failed head%d tail%d out%d type%d\n",
-				__func__, priv->tx_head, priv->tx_tail,
-				priv->tx_outstanding, type);
 		--priv->tx_outstanding;
+		xve_warn(priv, "%s post_send failed id%d head%d tail%d out%d type%d",
+				__func__, id, priv->tx_head, priv->tx_tail,
+				priv->tx_outstanding, type);
 		priv->counters[XVE_TX_RING_FULL_COUNTER]++;
 		xve_put_ah_refcnt(address);
+		xve_free_txbuf_memory(priv, tx_req);
 		if (netif_queue_stopped(dev)) {
 			priv->counters[XVE_TX_WAKE_UP_COUNTER]++;
 			netif_wake_queue(dev);
 		}
-		xve_free_txbuf_memory(priv, tx_req);
-	} else
+	} else {
+		packet_sent = 1;
 		++priv->tx_head;
+	}
 
 	priv->send_hbeat_flag = 0;
-	if (unlikely(priv->tx_outstanding > SENDQ_LOW_WMARK))
+	if (unlikely(priv->tx_outstanding > SENDQ_LOW_WMARK)) {
+		priv->counters[XVE_TX_WMARK_REACH_COUNTER]++;
 		poll_tx(priv);
+	}
+
+	if (packet_sent)
+		priv->counters[XVE_TX_COUNTER]++;
+	return ret;
+
+drop_pkt:
+	INC_TX_DROP_STATS(priv, dev);
+	xve_put_ah_refcnt(address);
+	dev_kfree_skb_any(skb);
 	return ret;
 }
 
@@ -1121,6 +1180,8 @@ int xve_ib_dev_stop(struct net_device *dev, int flush)
 	xve_debug(DEBUG_IBDEV_INFO, priv, "%s All sends and receives done\n",
 		  __func__);
 timeout:
+	xve_debug(DEBUG_IBDEV_INFO, priv, "Deleting TX timer\n");
+	del_timer_sync(&priv->poll_timer);
 	qp_attr.qp_state = IB_QPS_RESET;
 	if (ib_modify_qp(priv->qp, &qp_attr, IB_QP_STATE))
 		xve_warn(priv, "Failed to modify QP to RESET state\n");
@@ -1147,6 +1208,9 @@ int xve_ib_dev_init(struct net_device *dev, struct ib_device *ca, int port)
 			ca->name, priv->xve_name);
 		return -ENODEV;
 	}
+
+	setup_timer(&priv->poll_timer, xve_ib_tx_timer_func,
+			(unsigned long)dev);
 
 	if (dev->flags & IFF_UP) {
 		if (xve_ib_dev_open(dev) != 0) {

@@ -33,6 +33,12 @@
 #include "xve.h"
 #include "xve_compat.h"
 
+static int xve_max_inline_data = 128;
+module_param(xve_max_inline_data, int, 0644);
+
+static int xve_use_hugecq = 16384;
+module_param(xve_use_hugecq, int, 0644);
+
 int xve_mcast_attach(struct net_device *dev, u16 mlid, union ib_gid *mgid,
 		     int set_qkey)
 {
@@ -148,7 +154,7 @@ int xve_transport_dev_init(struct net_device *dev, struct ib_device *ca)
 		.qp_type = IB_QPT_UD
 	};
 	struct ethtool_coalesce *coal;
-	int ret, size, max_sge = MAX_SKB_FRAGS + 1;
+	int ret, size = 0, max_sge = MAX_SKB_FRAGS + 1;
 	int i;
 
 	priv->pd = ib_alloc_pd(priv->ca);
@@ -164,7 +170,6 @@ int xve_transport_dev_init(struct net_device *dev, struct ib_device *ca)
 		goto out_free_pd;
 	}
 
-	size = priv->xve_recvq_size + 1;
 	ret = xve_cm_dev_init(dev);
 	if (ret != 0) {
 		pr_err("%s Failed for %s [ret %d ]\n", __func__,
@@ -172,24 +177,32 @@ int xve_transport_dev_init(struct net_device *dev, struct ib_device *ca)
 		goto out_free_mr;
 	}
 
-	size += priv->xve_sendq_size;
-	size = priv->xve_recvq_size + 1;	/* 1 extra for rx_drain_qp */
+	/* Bug 24673784 */
+	if (priv->is_titan && xve_use_hugecq)
+		priv->xve_rcq_size = priv->xve_scq_size =
+				xve_use_hugecq;
+	else {
+		size = priv->xve_sendq_size;
+		size += priv->xve_recvq_size + 1; /* 1 extra for rx_drain_qp */
+		priv->xve_rcq_size = size;
+		priv->xve_scq_size = priv->xve_sendq_size;
+	}
 
 	/* Create Receive CompletionQueue */
-	priv->recv_cq =
-	    ib_create_cq(priv->ca, xve_ib_completion, NULL, dev, size, 0);
+	priv->recv_cq = ib_create_cq(priv->ca, xve_ib_completion, NULL,
+				     dev, priv->xve_rcq_size, 0);
 	if (IS_ERR(priv->recv_cq)) {
-		pr_warn("%s: failed to create receive CQ for %s\n",
-			ca->name, priv->xve_name);
+		pr_warn("%s: failed to create receive CQ for %s size%d\n",
+			ca->name, priv->xve_name, priv->xve_rcq_size);
 		goto out_free_mr;
 	}
 
 	/* Create Send CompletionQueue */
 	priv->send_cq = ib_create_cq(priv->ca, xve_send_comp_handler, NULL,
-				     dev, priv->xve_sendq_size, 0);
+				     dev, priv->xve_scq_size, 0);
 	if (IS_ERR(priv->send_cq)) {
-		pr_warn("%s: failed to create send CQ for %s\n",
-			ca->name, priv->xve_name);
+		pr_warn("%s: failed to create send CQ for %s size%d\n",
+			ca->name, priv->xve_name, priv->xve_scq_size);
 		goto out_free_recv_cq;
 	}
 
@@ -225,8 +238,9 @@ int xve_transport_dev_init(struct net_device *dev, struct ib_device *ca)
 
 	if (priv->is_eoib && priv->is_titan) {
 		init_attr.create_flags |= IB_QP_CREATE_EOIB;
-		xve_debug(DEBUG_QP_INFO, priv, "Setting eoIB mode%x\n",
-				init_attr.create_flags);
+		init_attr.cap.max_inline_data = xve_max_inline_data;
+		xve_debug(DEBUG_QP_INFO, priv, "Setting eoIB mode%x data%x\n",
+				init_attr.create_flags, xve_max_inline_data);
 	}
 
 	priv->qp = ib_create_qp(priv->pd, &init_attr);
@@ -243,10 +257,12 @@ int xve_transport_dev_init(struct net_device *dev, struct ib_device *ca)
 	priv->tx_wr.send_flags = IB_SEND_SIGNALED;
 
 	priv->rx_sge[0].lkey = priv->mr->lkey;
-	if (xve_ud_need_sg(priv->admin_mtu)) {
+	 if (xve_ud_need_sg(priv->admin_mtu)) {
 		priv->rx_sge[0].length = XVE_UD_HEAD_SIZE;
-		priv->rx_sge[1].length = PAGE_SIZE;
-		priv->rx_sge[1].lkey = priv->mr->lkey;
+		for (i = 1; i < xve_ud_rx_sg(priv); i++) {
+			priv->rx_sge[i].length = PAGE_SIZE;
+			priv->rx_sge[i].lkey = priv->mr->lkey;
+		}
 		priv->rx_wr.num_sge = xve_ud_rx_sg(priv);
 	} else {
 		priv->rx_sge[0].length = XVE_UD_BUF_SIZE(priv->max_ib_mtu);
