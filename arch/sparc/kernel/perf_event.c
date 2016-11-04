@@ -1036,6 +1036,62 @@ static void sparc_pmu_enable(struct pmu *pmu)
 		pcr_ops->write_pcr(i, cpuc->pcr[i]);
 }
 
+/* Used when checking to see if we are counting 'cycles' */
+#define PCR_N4_CYCLES_SELECTED (26 << PCR_N4_SL_SHIFT)
+
+/* Threshold value used to decide whether to let
+ * the 32 bit performance counter overflow
+ * */
+#define PIC_OVERFLOW_THRESHOLD (0xfffffc00)
+
+static bool is_stop_counting_cycles_requested(u64 val)
+{
+	bool ret = false;
+
+	/* Check the value we want to write to the PCR
+	 * register to see if we are requesting that we
+	 * stop counting 'cycles'
+	 */
+	if (!strcmp(sparc_pmu_type, "niagara4") ||
+	    !strcmp(sparc_pmu_type, "niagara5") ||
+	    !strcmp(sparc_pmu_type, "sparc-m7")) {
+		if ((val & PCR_N4_SL) == PCR_N4_CYCLES_SELECTED)
+			ret = true;
+	}
+	return ret;
+}
+
+static void wait_for_counter_overflow(int pcr_index)
+{
+	u64 pcr;
+	u32 count;
+
+	if (!strcmp(sparc_pmu_type, "niagara4") ||
+	    !strcmp(sparc_pmu_type, "niagara5") ||
+	    !strcmp(sparc_pmu_type, "sparc-m7")) {
+		pcr = pcr_ops->read_pcr(pcr_index);
+		if (((pcr & PCR_N4_SL) == PCR_N4_CYCLES_SELECTED) &&
+		    ((pcr & PCR_N4_UTRACE) || (pcr & PCR_N4_STRACE))) {
+
+			/* We are currently counting cycles. If we are close
+			 * to overflowing the 32 bit performance counter
+			 * (0xffffffff -> 0x00000000), then wait here until
+			 * the overflow happens.
+			 */
+			count = sparc_pmu->read_pmc(pcr_index);
+			while (count > PIC_OVERFLOW_THRESHOLD) {
+				if (count == sparc_pmu->read_pmc(pcr_index)) {
+					/* If the count hasn't changed then
+					 * something has gone wrong !
+					 */
+					break;
+				}
+				count = sparc_pmu->read_pmc(pcr_index);
+			}
+		}
+	}
+}
+
 static void sparc_pmu_disable(struct pmu *pmu)
 {
 	struct cpu_hw_events *cpuc = this_cpu_ptr(&cpu_hw_events);
@@ -1053,6 +1109,10 @@ static void sparc_pmu_disable(struct pmu *pmu)
 		val &= ~(sparc_pmu->user_bit | sparc_pmu->priv_bit |
 			 sparc_pmu->hv_bit | sparc_pmu->irq_bit);
 		cpuc->pcr[i] = val;
+
+		if (is_stop_counting_cycles_requested(val) == true)
+			wait_for_counter_overflow(i);
+
 		pcr_ops->write_pcr(i, cpuc->pcr[i]);
 	}
 }
