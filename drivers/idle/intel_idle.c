@@ -312,6 +312,7 @@ static struct cpuidle_state atom_cstates[MWAIT_MAX_NUM_CSTATES] = {
 };
 
 static struct cpuidle_state bdw_cstates[MWAIT_MAX_NUM_CSTATES] = {
+	{ /* MWAIT C0 */ },
 	{
 		.name = "C1-BDW",
 		.desc = "MWAIT 0x00",
