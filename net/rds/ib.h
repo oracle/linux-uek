@@ -364,6 +364,7 @@ struct rds_ib_port {
 	uint16_t		pkey;
 	unsigned int            alias_cnt;
 	struct rds_ib_alias	aliases[RDS_IB_MAX_ALIASES];
+	unsigned long		port_active_ts;
 };
 
 enum {
@@ -669,5 +670,8 @@ extern unsigned int rds_ib_sysctl_flow_control;
 extern unsigned int rds_ib_sysctl_active_bonding;
 extern unsigned int rds_ib_sysctl_trigger_active_bonding;
 extern unsigned int rds_ib_sysctl_disable_unmap_fmr_cpu;
+extern unsigned long rds_ib_active_bonding_failback_min_jiffies;
+extern unsigned long rds_ib_active_bonding_failback_max_jiffies;
+extern unsigned long rds_ib_sysctl_active_bonding_failback_jiffies;
 
 #endif

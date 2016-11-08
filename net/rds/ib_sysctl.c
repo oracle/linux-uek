@@ -74,6 +74,10 @@ unsigned int rds_ib_sysctl_disable_unmap_fmr_cpu; /* = 0 */
  */
 unsigned int rds_ib_sysctl_trigger_active_bonding; /* = 0 */
 
+unsigned long rds_ib_active_bonding_failback_min_jiffies = HZ;
+unsigned long rds_ib_active_bonding_failback_max_jiffies = HZ * 100;
+unsigned long rds_ib_sysctl_active_bonding_failback_jiffies = HZ * 10;
+
 static struct ctl_table rds_ib_sysctl_table[] = {
 	{
 		.procname       = "max_send_wr",
@@ -129,6 +133,15 @@ static struct ctl_table rds_ib_sysctl_table[] = {
 		.maxlen         = sizeof(rds_ib_sysctl_trigger_active_bonding),
 		.mode           = 0644,
 		.proc_handler   = &proc_dointvec,
+	},
+	{
+		.procname       = "active_bonding_failback_ms",
+		.data           = &rds_ib_sysctl_active_bonding_failback_jiffies,
+		.maxlen         = sizeof(rds_ib_sysctl_active_bonding_failback_jiffies),
+		.mode           = 0644,
+		.proc_handler   = proc_doulongvec_ms_jiffies_minmax,
+		.extra1		= &rds_ib_active_bonding_failback_min_jiffies,
+		.extra2		= &rds_ib_active_bonding_failback_max_jiffies,
 	},
 	{
 		.procname       = "disable_unmap_fmr_cpu_assignment",
