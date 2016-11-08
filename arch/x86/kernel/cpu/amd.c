@@ -318,11 +318,30 @@ static void amd_get_topology(struct cpuinfo_x86 *c)
 		/* get compute unit information */
 		c->x86_max_cores /= smp_num_siblings;
 		c->cpu_core_id = ebx & 0xff;
+
+		/*
+		 * We may have multiple LLCs if L3 caches exist, so check if we
+		 * have an L3 cache by looking at the L3 cache CPUID leaf.
+		 */
+		if (cpuid_edx(0x80000006)) {
+			if (c->x86 == 0x17) {
+				/*
+				 * LLC is at the core complex level.
+				 * Core complex id is ApicId[3].
+				 */
+				per_cpu(cpu_llc_id, cpu) = c->apicid >> 3;
+			} else {
+				/* LLC is at the node level. */
+				per_cpu(cpu_llc_id, cpu) = node_id;
+			}
+		}
 	} else if (cpu_has(c, X86_FEATURE_NODEID_MSR)) {
 		u64 value;
 
 		rdmsrl(MSR_FAM10H_NODE_ID, value);
 		node_id = value & 7;
+
+		per_cpu(cpu_llc_id, cpu) = node_id;
 	} else
 		return;
 
@@ -332,9 +351,6 @@ static void amd_get_topology(struct cpuinfo_x86 *c)
 
 		set_cpu_cap(c, X86_FEATURE_AMD_DCM);
 		cus_per_node = c->x86_max_cores / nodes_per_socket;
-
-		/* store NodeID, use llc_shared_map to store sibling info */
-		per_cpu(cpu_llc_id, cpu) = node_id;
 
 		/* core id has to be in the [0 .. cores_per_node - 1] range */
 		c->cpu_core_id %= cus_per_node;
