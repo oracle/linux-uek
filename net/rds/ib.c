@@ -147,6 +147,16 @@ rds_ibp_all_layers_up(struct rds_ib_port *rds_ibp)
 	return 0;
 }
 
+static unsigned long get_failback_sync_jiffies(struct rds_ib_port *rds_ibp)
+{
+	unsigned long t = get_jiffies_64() - rds_ibp->port_active_ts;
+
+	if (t > rds_ib_sysctl_active_bonding_failback_jiffies)
+		return 0;
+
+	return rds_ib_sysctl_active_bonding_failback_jiffies - t;
+}
+
 void rds_ib_nodev_connect(void)
 {
 	struct rds_ib_connection *ic;
@@ -1237,6 +1247,7 @@ static void rds_ib_event_handler(struct ib_event_handler *handler,
 		if (event->event == IB_EVENT_PORT_ACTIVE) {
 			ip_config[port].port_layerflags |=
 			  RDSIBP_STATUS_HWPORTUP;
+			ip_config[port].port_active_ts = get_jiffies_64();
 		} else {
 			/* event->event == IB_EVENT_PORT_ERROR */
 			ip_config[port].port_layerflags &=
@@ -1391,7 +1402,8 @@ static void rds_ib_event_handler(struct ib_event_handler *handler,
 				rds_rtd(RDS_RTD_ACT_BND,
 					"active bonding fallback enabled\n");
 				INIT_DELAYED_WORK(&work->work, rds_ib_failback);
-				queue_delayed_work(rds_wq, &work->work, 0);
+				queue_delayed_work(rds_wq, &work->work,
+					get_failback_sync_jiffies(&ip_config[port]));
 			} else
 				kfree(work);
 		} else {
@@ -2438,7 +2450,9 @@ static int rds_ib_netdev_callback(struct notifier_block *self, unsigned long eve
 			rds_rtd(RDS_RTD_ACT_BND,
 				"active bonding fallback enabled\n");
 			INIT_DELAYED_WORK(&work->work, rds_ib_failback);
-			queue_delayed_work(rds_wq, &work->work, 0);
+			queue_delayed_work(rds_wq, &work->work,
+					get_failback_sync_jiffies(&ip_config[port]));
+			ip_config[port].port_active_ts = 0;
 		} else
 			kfree(work);
 		break;
