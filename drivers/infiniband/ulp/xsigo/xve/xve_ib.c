@@ -522,12 +522,8 @@ static void xve_ib_handle_tx_wc(struct net_device *dev, struct ib_wc *wc)
 	}
 
 	tx_req = &priv->tx_ring[wr_id];
-	if ((tx_req == NULL) || (tx_req->ah == NULL)) {
-		xve_debug(DEBUG_DATA_INFO, priv,
-				"%s [ca %p] wr_id%d content NULL\n",
-				__func__, priv->ca, wr_id);
-		return;
-	}
+
+	BUG_ON(tx_req == NULL || tx_req->ah == NULL);
 
 	xve_put_ah_refcnt(tx_req->ah);
 	xve_free_txbuf_memory(priv, tx_req);
@@ -550,22 +546,19 @@ static void xve_ib_handle_tx_wc(struct net_device *dev, struct ib_wc *wc)
 
 int poll_tx(struct xve_dev_priv *priv)
 {
-	int n, i, tot = 0;
+	int n, i;
 
-	do {
-		n = ib_poll_cq(priv->send_cq, MAX_SEND_CQE, priv->send_wc);
-		/* handle multiple WC's in one call */
-		for (i = 0; i < n; ++i)
-			xve_ib_handle_tx_wc(priv->netdev,
-					priv->send_wc + i);
-		if (n < 0) {
-			xve_warn(priv, "%s ib_poll_cq() failed, rc %d\n",
-					__func__, n);
-		}
-		tot += n;
-	} while (n == MAX_SEND_CQE);
+	n = ib_poll_cq(priv->send_cq, MAX_SEND_CQE, priv->send_wc);
+	/* handle multiple WC's in one call */
+	for (i = 0; i < n; ++i)
+		xve_ib_handle_tx_wc(priv->netdev,
+				priv->send_wc + i);
+	if (n < 0) {
+		xve_warn(priv, "%s ib_poll_cq() failed, rc %d\n",
+				__func__, n);
+	}
 
-	return tot;
+	return n == MAX_SEND_CQE;
 }
 
 static int poll_rx(struct xve_dev_priv *priv, int num_polls, int *done,
@@ -712,7 +705,8 @@ static void xve_ib_tx_timer_func(unsigned long ctx)
 	spin_lock_irqsave(&priv->lock, flags);
 	if (test_bit(XVE_OPER_UP, &priv->state) &&
 			!test_bit(XVE_DELETING, &priv->state)) {
-		poll_tx(priv);
+		while (poll_tx(priv))
+			; /* nothing */
 	}
 	spin_unlock_irqrestore(&priv->lock, flags);
 	if (netif_queue_stopped(dev))
@@ -800,6 +794,18 @@ int xve_send(struct net_device *dev, struct sk_buff *skb,
 	int id;
 
 	id = priv->tx_head & (priv->xve_sendq_size - 1);
+
+	/*
+	 * Gateway broadcast packet's can come as that packets are not
+	 * controlled by network layer
+	 */
+	if (priv->tx_outstanding >= priv->xve_sendq_size) {
+		xve_warn(priv, "TX QUEUE FULL %d head%d tail%d out%d type%d",
+				id, priv->tx_head, priv->tx_tail,
+				priv->tx_outstanding, type);
+		goto drop_pkt;
+	}
+
 	if (skb_is_gso(skb)) {
 		hlen = skb_transport_offset(skb) + tcp_hdrlen(skb);
 		phead = skb->data;
@@ -895,10 +901,6 @@ int xve_send(struct net_device *dev, struct sk_buff *skb,
 	}
 
 	priv->send_hbeat_flag = 0;
-	if (unlikely(priv->tx_outstanding > SENDQ_LOW_WMARK)) {
-		priv->counters[XVE_TX_WMARK_REACH_COUNTER]++;
-		poll_tx(priv);
-	}
 
 	if (packet_sent)
 		priv->counters[XVE_TX_COUNTER]++;
@@ -1043,7 +1045,14 @@ void xve_drain_cq(struct net_device *dev)
 {
 	struct xve_dev_priv *priv = netdev_priv(dev);
 	int n, done = 0;
+	unsigned long flags = 0;
 
+	if (test_and_set_bit(XVE_DRAIN_IN_PROGRESS, &priv->flags)) {
+		xve_info(priv, "Drain in progress[%d:%d:%d] state[%lx:%lx]",
+				priv->tx_outstanding, priv->tx_head,
+				priv->tx_tail, priv->flags, priv->state);
+		return;
+	}
 	/*
 	 * We call completion handling routines that expect to be
 	 * called from the BH-disabled NAPI poll context, so disable
@@ -1055,8 +1064,20 @@ void xve_drain_cq(struct net_device *dev)
 		n = poll_rx(priv, XVE_NUM_WC, &done, 1);
 	} while (n == XVE_NUM_WC);
 
-	poll_tx(priv);
 	local_bh_enable();
+
+	/* Poll UD completions */
+	netif_tx_lock_bh(dev);
+	spin_lock_irqsave(&priv->lock, flags);
+
+	if (priv->tx_outstanding)
+		while (poll_tx(priv))
+			; /* nothing */
+
+	spin_unlock_irqrestore(&priv->lock, flags);
+	netif_tx_unlock_bh(dev);
+
+	clear_bit(XVE_DRAIN_IN_PROGRESS, &priv->flags);
 }
 
 int xve_ib_dev_open(struct net_device *dev)
@@ -1141,7 +1162,8 @@ int xve_ib_dev_stop(struct net_device *dev, int flush)
 	begin = jiffies;
 
 	while (priv->tx_head != priv->tx_tail || recvs_pending(dev)) {
-		if (time_after(jiffies, begin + 5 * HZ)) {
+		/* Wait for xve_wait_txcompl seconds */
+		if (time_after(jiffies, begin + xve_wait_txcompl * HZ)) {
 			xve_warn(priv,
 				 "%s timing out; %d sends %d receives not completed\n",
 				 __func__, priv->tx_head - priv->tx_tail,
