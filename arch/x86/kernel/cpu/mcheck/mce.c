@@ -1716,6 +1716,15 @@ static void __mcheck_cpu_init_timer(void)
 	mce_start_timer(cpu, t);
 }
 
+static void __mcheck_cpu_setup_timer(void)
+{
+	struct timer_list *t = this_cpu_ptr(&mce_timer);
+	unsigned int cpu = smp_processor_id();
+
+	setup_timer(t, mce_timer_fn, cpu);
+}
+
+
 /* Handle unconfigured int18 (should never happen) */
 static int unexpected_machine_check(struct pt_regs *regs, long error_code)
 {
@@ -1757,7 +1766,7 @@ void mcheck_cpu_init(struct cpuinfo_x86 *c)
 
 	__mcheck_cpu_init_generic();
 	__mcheck_cpu_init_vendor(c);
-	__mcheck_cpu_init_timer();
+	__mcheck_cpu_setup_timer();
 	INIT_WORK(this_cpu_ptr(&mce_work), mce_process_work);
 	init_irq_work(this_cpu_ptr(&mce_irq_work), &mce_irq_work_cb);
 }
@@ -2436,14 +2445,16 @@ mce_cpu_callback(struct notifier_block *nfb, unsigned long action, void *hcpu)
 
 	switch (action & ~CPU_TASKS_FROZEN) {
 	case CPU_ONLINE:
+	case CPU_DOWN_FAILED:
+
 		mce_device_create(cpu);
+
 		if (threshold_cpu_callback)
 			threshold_cpu_callback(action, cpu);
+		smp_call_function_single(cpu, mce_reenable_cpu, &action, 1);
+		mce_start_timer(cpu, t);
 		break;
 	case CPU_DEAD:
-		if (threshold_cpu_callback)
-			threshold_cpu_callback(action, cpu);
-		mce_device_remove(cpu);
 		mce_intel_hcpu_update(cpu);
 
 		/* intentionally ignoring frozen here */
@@ -2453,10 +2464,11 @@ mce_cpu_callback(struct notifier_block *nfb, unsigned long action, void *hcpu)
 	case CPU_DOWN_PREPARE:
 		smp_call_function_single(cpu, mce_disable_cpu, &action, 1);
 		del_timer_sync(t);
-		break;
-	case CPU_DOWN_FAILED:
-		smp_call_function_single(cpu, mce_reenable_cpu, &action, 1);
-		mce_start_timer(cpu, t);
+
+		if (threshold_cpu_callback)
+			threshold_cpu_callback(action, cpu);
+		mce_device_remove(cpu);
+
 		break;
 	}
 
