@@ -195,6 +195,7 @@ enum {
 	XVE_FLAG_IB_EVENT = 14,
 	XVE_FLAG_DONT_DETACH_MCAST = 15,
 	XVE_MAX_BACKOFF_SECONDS = 16,
+	XVE_DRAIN_IN_PROGRESS = 17,
 };
 
 enum xve_advert_types {
@@ -295,6 +296,8 @@ enum {
 	XVE_TX_RC_COUNTER,
 	XVE_RC_RXCOMPL_COUNTER,
 	XVE_RC_TXCOMPL_COUNTER,
+	XVE_RC_RXCOMPL_ERR_COUNTER,
+	XVE_RC_TXCOMPL_ERR_COUNTER,
 	XVE_TX_MCAST_PKT,
 	XVE_TX_BCAST_PKT,
 	XVE_TX_MCAST_ARP_QUERY,
@@ -506,6 +509,7 @@ extern u32 xve_counters[];
 extern struct workqueue_struct *xve_taskqueue;
 extern struct workqueue_struct *xve_workqueue;
 extern int xve_mc_sendonly_timeout;
+extern int xve_wait_txcompl;
 
 extern void xve_remove_procfs_root_entries(void);
 extern int xve_create_procfs_root_entries(void);
@@ -571,6 +575,7 @@ struct xve_cm_stats {
 	u32 rx_rate;
 	u32 tx_bytes;
 	u32 rx_bytes;
+	u32 tx_compl_err;
 
 };
 
