@@ -241,6 +241,7 @@ enum {
 	XVE_TX_WMARK_REACH_COUNTER,
 	XVE_TX_WAKE_UP_COUNTER,
 	XVE_TX_QUEUE_STOP_COUNTER,
+	XVE_TX_LIN_SKB_COUNTER,
 	XVE_RX_SKB_COUNTER,
 	XVE_RX_SKB_ALLOC_COUNTER,
 	XVE_RX_SMALLSKB_ALLOC_COUNTER,
@@ -774,6 +775,7 @@ struct xve_dev_priv {
 	struct ib_send_wr tx_wr;
 	struct ib_wc send_wc[MAX_SEND_CQE];
 	struct ib_recv_wr rx_wr;
+	uint32_t max_send_sge;
 	/* Allocate EDR SG for now */
 	struct ib_sge rx_sge[XVE_UD_RX_EDR_SG];
 	struct ib_wc ibwc[XVE_NUM_WC];
@@ -1309,8 +1311,43 @@ static inline u16 xg_vlan_get_rxtag(struct sk_buff *skb)
 
 }
 
+
+static inline int xve_linearize_skb(struct net_device *dev,
+		struct sk_buff *skb,
+		struct xve_dev_priv *priv,
+		unsigned max_send_sge)
+{
+	unsigned usable_sge = max_send_sge - !!skb_headlen(skb);
+
+	if (skb_shinfo(skb)->nr_frags > usable_sge) {
+		if (skb_linearize(skb) < 0) {
+			pr_warn_ratelimited("XVE: %s failure to linearize\n",
+					priv->xve_name);
+			INC_TX_DROP_STATS(priv, dev);
+			INC_TX_ERROR_STATS(priv, dev);
+			dev_kfree_skb_any(skb);
+			return -1;
+		}
+
+		/* skb_linearize returned ok but still not reducing nr_frags */
+		if (skb_shinfo(skb)->nr_frags > usable_sge) {
+			pr_warn_ratelimited
+				("XVE: %s too many frags after skb linearize\n",
+				 priv->xve_name);
+			INC_TX_DROP_STATS(priv, dev);
+			INC_TX_ERROR_STATS(priv, dev);
+			dev_kfree_skb_any(skb);
+			return -1;
+		}
+		priv->counters[XVE_TX_LIN_SKB_COUNTER]++;
+	}
+	return 0;
+
+}
+
+
 /*
- * ipoib_calc_speed - calculate port speed
+ * xve_calc_speed - calculate port speed
  *
  * @priv - device private data
  *
