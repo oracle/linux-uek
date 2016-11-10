@@ -835,6 +835,10 @@ int xve_send(struct net_device *dev, struct sk_buff *skb,
 		hlen = 0;
 	}
 
+	/* Linearize if there are more than allowed SGE's */
+	if (xve_linearize_skb(dev, skb, priv, priv->max_send_sge) < 0)
+		return ret;
+
 	xve_dbg_data(priv,
 		     "%s sending packet, length=%d address=%p qpn=0x%06x\n",
 		     __func__, skb->len, address, qpn);

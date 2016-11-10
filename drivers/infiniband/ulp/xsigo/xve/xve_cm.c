@@ -1438,6 +1438,9 @@ int xve_cm_dev_init(struct net_device *dev)
 		return ret;
 	}
 
+	/* PSIF determines SGE value based on stack unwind */
+	priv->dev_attr = attr;
+
 	/* Based on the admin mtu from the chassis */
 	attr.max_srq_sge =
 	    min_t(int,
