@@ -285,6 +285,15 @@ static void set_cookie(unsigned int devhandle, unsigned int devino)
 	set_bit(nr, cookie_bitmap);
 }
 
+static void clear_cookie(unsigned int devhandle, unsigned int devino)
+{
+	int nr = (int) (devhandle | devino);
+
+	if (nr >= NR_COOKIE_BITS)
+		return;
+	clear_bit(nr, cookie_bitmap);
+}
+
 static unsigned int cookie_exists(u32 devhandle, unsigned int devino)
 {
 	unsigned long hv_err, cookie;
@@ -752,6 +761,25 @@ static unsigned long cookie_assign(unsigned int irq, u32 devhandle,
 	return hv_error;
 }
 
+static unsigned long cookie_unassign(u32 devhandle, unsigned int devino)
+{
+	unsigned long hv_error;
+
+	/* set the cookie value to 0, so that the interrupt source is
+	 * returned to the state of having no cookie assigned,
+	 * and interrupts are explicitly disabled for the device.
+	 */
+	hv_error = sun4v_vintr_set_cookie(devhandle, devino, 0);
+
+	/* clear the cookie bitmap */
+	if (hv_error)
+		pr_err("HV vintr set cookie failed = %ld\n", hv_error);
+	else
+		clear_cookie(devhandle, devino);
+
+	return hv_error;
+}
+
 static void cookie_handler_data(struct irq_handler_data *data,
 				u32 devhandle, unsigned int devino)
 {
@@ -767,6 +795,10 @@ static unsigned int cookie_build_irq(u32 devhandle, unsigned int devino,
 
 	irq = sun4v_build_common(devhandle, devino, cookie_handler_data, chip);
 
+	/* ensure irq is valid */
+	if (!irq)
+		return 0;
+
 	hv_error = cookie_assign(irq, devhandle, devino);
 	if (hv_error) {
 		irq_free(irq);
@@ -774,6 +806,18 @@ static unsigned int cookie_build_irq(u32 devhandle, unsigned int devino,
 	}
 
 	return irq;
+}
+
+/* cookie_free_irq will reverse the effect of cookie_build_irq sequence,
+ * by unassign the cookie and free the irq resource
+ */
+static void cookie_free_irq(int irq, u32 devhandle, unsigned int devino)
+{
+	/* set vintr cookie to 0 and clear cookie bitmap */
+	cookie_unassign(devhandle, devino);
+
+	/* free irq_handler_data and irq desc */
+	irq_free(irq);
 }
 
 static unsigned int sun4v_build_cookie(u32 devhandle, unsigned int devino)
@@ -864,6 +908,18 @@ unsigned int sun4v_build_virq(u32 devhandle, unsigned int devino)
 
 out:
 	return irq;
+}
+
+void sun4v_free_virq(int irq, u32 devhandle, unsigned int devino)
+{
+	if (!irq)
+		return;
+
+	/* clear IRQ_NOAUTOGEN which is set in sun4v_build_virq */
+	irq_clear_status_flags(irq, IRQ_NOAUTOEN);
+
+	/* undo the effect of sun4v_build_virq() */
+	cookie_free_irq(irq, devhandle, devino);
 }
 
 void *hardirq_stack[NR_CPUS];

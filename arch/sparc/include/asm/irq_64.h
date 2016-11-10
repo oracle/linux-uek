@@ -46,6 +46,7 @@ void irq_install_pre_handler(int irq,
 unsigned int build_irq(int inofixup, unsigned long iclr, unsigned long imap);
 unsigned int sun4v_build_irq(u32 devhandle, unsigned int devino);
 unsigned int sun4v_build_virq(u32 devhandle, unsigned int devino);
+void sun4v_free_virq(int irq, u32 devhandle, unsigned int devino);
 unsigned int sun4v_build_msi(u32 devhandle, unsigned int *irq_p,
 			     unsigned int msi_devino_start,
 			     unsigned int msi_devino_end);
