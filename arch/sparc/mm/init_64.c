@@ -1170,7 +1170,7 @@ struct mdesc_mblock {
 static struct mdesc_mblock *mblocks;
 static int num_mblocks;
 
-static unsigned long ra_to_pa(unsigned long addr)
+static unsigned long __init ra_to_pa(unsigned long addr)
 {
 	int i;
 
@@ -1186,7 +1186,7 @@ static unsigned long ra_to_pa(unsigned long addr)
 	return addr;
 }
 
-static int find_node(unsigned long addr)
+static int __init find_node(unsigned long addr)
 {
 	int i;
 
@@ -1203,7 +1203,7 @@ static int find_node(unsigned long addr)
 	return 0;
 }
 
-static u64 memblock_nid_range(u64 start, u64 end, int *nid)
+static u64 __init memblock_nid_range(u64 start, u64 end, int *nid)
 {
 	*nid = find_node(start);
 	start += PAGE_SIZE;
