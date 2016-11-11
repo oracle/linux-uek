@@ -3241,6 +3241,9 @@ int ixgbevf_close(struct net_device *netdev)
 {
 	struct ixgbevf_adapter *adapter = netdev_priv(netdev);
 
+	if (!netif_device_present(netdev))
+		return 0;
+
 	ixgbevf_down(adapter);
 	ixgbevf_free_irq(adapter);
 
@@ -3267,6 +3270,8 @@ static void ixgbevf_queue_reset_subtask(struct ixgbevf_adapter *adapter)
 	 * match packet buffer alignment. Unfortunately, the
 	 * hardware is not flexible enough to do this dynamically.
 	 */
+	rtnl_lock();
+
 	if (netif_running(dev))
 		ixgbevf_close(dev);
 
@@ -3275,6 +3280,8 @@ static void ixgbevf_queue_reset_subtask(struct ixgbevf_adapter *adapter)
 
 	if (netif_running(dev))
 		ixgbevf_open(dev);
+
+	rtnl_unlock();
 }
 
 static void ixgbevf_tx_ctxtdesc(struct ixgbevf_ring *tx_ring,
@@ -3815,17 +3822,17 @@ static int ixgbevf_suspend(struct pci_dev *pdev, pm_message_t state)
 	int retval = 0;
 #endif
 
+	rtnl_lock();
 	netif_device_detach(netdev);
 
 	if (netif_running(netdev)) {
-		rtnl_lock();
 		ixgbevf_down(adapter);
 		ixgbevf_free_irq(adapter);
 		ixgbevf_free_all_tx_resources(adapter);
 		ixgbevf_free_all_rx_resources(adapter);
 		ixgbevf_clear_interrupt_scheme(adapter);
-		rtnl_unlock();
 	}
+	rtnl_unlock();
 
 #ifdef CONFIG_PM
 	retval = pci_save_state(pdev);
