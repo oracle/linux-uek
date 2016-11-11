@@ -6327,6 +6327,7 @@ static int bnxt_change_mtu(struct net_device *dev, int new_mtu)
 static int bnxt_setup_tc(struct net_device *dev, u8 tc)
 {
 	struct bnxt *bp = netdev_priv(dev);
+	bool sh = false;
 
 	if (tc > bp->max_tc) {
 		netdev_err(dev, "too many traffic classes requested: %d Max supported is %d\n",
@@ -6337,12 +6338,11 @@ static int bnxt_setup_tc(struct net_device *dev, u8 tc)
 	if (netdev_get_num_tc(dev) == tc)
 		return 0;
 
+	if (bp->flags & BNXT_FLAG_SHARED_RINGS)
+		sh = true;
+
 	if (tc) {
 		int max_rx_rings, max_tx_rings, rc;
-		bool sh = false;
-
-		if (bp->flags & BNXT_FLAG_SHARED_RINGS)
-			sh = true;
 
 		rc = bnxt_get_max_rings(bp, &max_rx_rings, &max_tx_rings, sh);
 		if (rc || bp->tx_nr_rings_per_tc * tc > max_tx_rings)
@@ -6360,7 +6360,8 @@ static int bnxt_setup_tc(struct net_device *dev, u8 tc)
 		bp->tx_nr_rings = bp->tx_nr_rings_per_tc;
 		netdev_reset_tc(dev);
 	}
-	bp->cp_nr_rings = max_t(int, bp->tx_nr_rings, bp->rx_nr_rings);
+	bp->cp_nr_rings = sh ? max_t(int, bp->tx_nr_rings, bp->rx_nr_rings) :
+			       bp->tx_nr_rings + bp->rx_nr_rings;
 	bp->num_stat_ctxs = bp->cp_nr_rings;
 
 	if (netif_running(bp->dev))
