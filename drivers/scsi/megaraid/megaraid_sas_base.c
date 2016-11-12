@@ -6812,8 +6812,7 @@ static int megasas_mgmt_ioctl_fw(struct file *file, unsigned long arg)
 	if (atomic_read(&instance->adprecovery) != MEGASAS_HBA_OPERATIONAL) {
 		spin_unlock_irqrestore(&instance->hba_lock, flags);
 
-		dev_err(&instance->pdev->dev, "timed out while"
-			"waiting for HBA to recover\n");
+		dev_err(&instance->pdev->dev, "timed out while waiting for HBA to recover\n");
 		error = -ENODEV;
 		goto out_up;
 	}
@@ -6881,8 +6880,7 @@ static int megasas_mgmt_ioctl_aen(struct file *file, unsigned long arg)
 	spin_lock_irqsave(&instance->hba_lock, flags);
 	if (atomic_read(&instance->adprecovery) != MEGASAS_HBA_OPERATIONAL) {
 		spin_unlock_irqrestore(&instance->hba_lock, flags);
-		dev_err(&instance->pdev->dev, "timed out while waiting"
-				"for HBA to recover\n");
+		dev_err(&instance->pdev->dev, "timed out while waiting for HBA to recover\n");
 		return -ENODEV;
 	}
 	spin_unlock_irqrestore(&instance->hba_lock, flags);
