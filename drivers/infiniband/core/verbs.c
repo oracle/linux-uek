@@ -948,8 +948,11 @@ int ib_modify_qp(struct ib_qp *qp,
 		qp->qp_flag |= IB_GUID_RNR_TWEAK;
 
 	if ((qp->qp_flag & IB_GUID_RNR_TWEAK) &&
-		(qp_attr_mask & IB_QP_MIN_RNR_TIMER))
+		(qp_attr_mask & IB_QP_MIN_RNR_TIMER)) {
+		/* Original min_rnr_timer value is saved in qp->qp_flag */
+		qp->qp_flag = idx | IB_QP_MIN_RNR_TIMER;
 		qp_attr->min_rnr_timer = ib_rnr_timeout_sif[idx];
+	}
 
 	return qp->device->modify_qp(qp->real_qp, qp_attr, qp_attr_mask, NULL);
 }
@@ -960,9 +963,19 @@ int ib_query_qp(struct ib_qp *qp,
 		int qp_attr_mask,
 		struct ib_qp_init_attr *qp_init_attr)
 {
-	return qp->device->query_qp ?
-		qp->device->query_qp(qp->real_qp, qp_attr, qp_attr_mask, qp_init_attr) :
-		-ENOSYS;
+	int ret;
+
+	if (!qp->device->query_qp)
+		return -ENOSYS;
+
+	ret = qp->device->query_qp(qp->real_qp, qp_attr,
+				qp_attr_mask, qp_init_attr);
+
+	if (!ret && (qp_attr_mask & IB_QP_MIN_RNR_TIMER) &&
+		(qp->qp_flag & IB_GUID_RNR_TWEAK))
+		qp_attr->min_rnr_timer = qp->qp_flag & ~IB_GUID_RNR_TWEAK;
+
+	return ret;
 }
 EXPORT_SYMBOL(ib_query_qp);
 
