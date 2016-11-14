@@ -1302,12 +1302,18 @@ static void cm_format_req(struct cm_req_msg *req_msg,
 	struct ib_sa_path_rec *pri_path = param->primary_path;
 	struct ib_sa_path_rec *alt_path = param->alternate_path;
 	struct ib_device_attr attr;
-	u32 vendor_part_id;
+	u32 vendor_part_id = 0;
 
-	if (ib_query_device(cm_id_priv->id.device, &attr))
-		vendor_part_id = 0;
-	else
-		vendor_part_id = attr.vendor_part_id;
+	/*
+	 * ib_query_device is still needed to check if the local
+	 * device is one of the sif_family_vendor_part_id list
+	 * (PSIF 2.1 Rev 3)
+	 */
+	if (cm_id_priv->id.device->dma_device)
+		if (!strcmp(cm_id_priv->id.device->dma_device->driver->name,
+				"sif"))
+			if (!ib_query_device(cm_id_priv->id.device, &attr))
+				vendor_part_id = attr.vendor_part_id;
 
 	cm_format_mad_hdr(&req_msg->hdr, CM_REQ_ATTR_ID,
 			  cm_form_tid(cm_id_priv, CM_MSG_SEQUENCE_REQ));
@@ -2004,12 +2010,18 @@ static void cm_format_rep(struct cm_rep_msg *rep_msg,
 			  struct ib_cm_rep_param *param)
 {
 	struct ib_device_attr attr;
-	u32 vendor_part_id;
+	u32 vendor_part_id = 0;
 
-	if (ib_query_device(cm_id_priv->id.device, &attr))
-		vendor_part_id = 0;
-	else
-		vendor_part_id = attr.vendor_part_id;
+	/*
+	 * ib_query_device is still needed to check if the local
+	 * device is one of the sif_family_vendor_part_id list
+	 * (PSIF 2.1 Rev 3)
+	 */
+	if (cm_id_priv->id.device->dma_device)
+		if (!strcmp(cm_id_priv->id.device->dma_device->driver->name,
+				"sif"))
+			if (!ib_query_device(cm_id_priv->id.device, &attr))
+				vendor_part_id = attr.vendor_part_id;
 
 	cm_format_mad_hdr(&rep_msg->hdr, CM_REP_ATTR_ID, cm_id_priv->tid);
 	rep_msg->local_comm_id = cm_id_priv->id.local_id;
