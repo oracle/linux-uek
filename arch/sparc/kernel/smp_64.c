@@ -1321,6 +1321,7 @@ int __cpu_up(unsigned int cpu, struct task_struct *tidle)
 			 */
 			if (tlb_type != hypervisor)
 				smp_synchronize_one_tick(cpu);
+			smp_fill_in_sib_core_maps();
 			cpu_map_rebuild();
 			sparc64_update_numa_mask(cpu);
 		}
@@ -1367,7 +1368,6 @@ void cpu_play_dead(void)
 int __cpu_disable(void)
 {
 	int cpu = smp_processor_id();
-	cpuinfo_sparc *c;
 	int i;
 	cpumask_var_t mask;
 
@@ -1385,12 +1385,6 @@ int __cpu_disable(void)
 	for_each_cpu(i, &per_cpu(cpu_sibling_map, cpu))
 		cpumask_clear_cpu(cpu, &per_cpu(cpu_sibling_map, i));
 	cpumask_clear(&per_cpu(cpu_sibling_map, cpu));
-
-	c = &cpu_data(cpu);
-
-	c->sock_id = -1;
-	c->core_id = 0;
-	c->proc_id = -1;
 
 	/*
 	 * Offline before fixup.
@@ -1429,7 +1423,7 @@ void __cpu_die(unsigned int cpu)
 		do {
 			hv_err = sun4v_cpu_stop(cpu);
 			if (hv_err == HV_EOK) {
-				set_cpu_present(cpu, false);
+				set_cpu_online(cpu, false);
 				sun4v_free_mondo_queues(cpu);
 				break;
 			}

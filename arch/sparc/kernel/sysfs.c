@@ -477,6 +477,8 @@ static void unregister_cpu_online(unsigned int cpu)
 	struct device *s = &c->dev;
 	int i;
 
+	BUG_ON(!c->hotpluggable);
+
 	unregister_mmu_stats(s);
 	for (i = 0; i < ARRAY_SIZE(cpu_core_attrs); i++)
 		device_remove_file(s, &cpu_core_attrs[i]);
@@ -546,6 +548,7 @@ static int __init topology_init(void)
 	for_each_possible_cpu(cpu) {
 		struct cpu *c = &per_cpu(cpu_devices, cpu);
 
+		c->hotpluggable = 1;
 		register_cpu(c, cpu);
 		if (cpu_online(cpu))
 			register_cpu_online(cpu);
