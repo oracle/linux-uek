@@ -1057,8 +1057,8 @@ static void cm_cleanup_timewait(struct cm_timewait_info *timewait_info)
 	}
 
 	/* Clean-up the overloaded MBIT */
-	if (timewait_info->remote_ca_guid & IB_GUID_MBIT)
-		timewait_info->remote_ca_guid &= ~IB_GUID_MBIT;
+	if (timewait_info->remote_ca_guid & cpu_to_be64(IB_GUID_MBIT))
+		timewait_info->remote_ca_guid &= cpu_to_be64(~IB_GUID_MBIT);
 }
 
 static struct cm_timewait_info * cm_create_timewait_info(__be32 local_id)
@@ -1316,7 +1316,8 @@ static void cm_format_req(struct cm_req_msg *req_msg,
 	req_msg->service_id = param->service_id;
 
 	if (is_vendor_sif_family(vendor_part_id))
-		req_msg->local_ca_guid = cm_id_priv->id.device->node_guid | IB_GUID_MBIT;
+		req_msg->local_ca_guid = cm_id_priv->id.device->node_guid |
+			cpu_to_be64(IB_GUID_MBIT);
 	else
 		req_msg->local_ca_guid = cm_id_priv->id.device->node_guid;
 
@@ -2021,7 +2022,8 @@ static void cm_format_rep(struct cm_rep_msg *rep_msg,
 	cm_rep_set_rnr_retry_count(rep_msg, param->rnr_retry_count);
 
 	if (is_vendor_sif_family(vendor_part_id))
-		rep_msg->local_ca_guid = cm_id_priv->id.device->node_guid | IB_GUID_MBIT;
+		rep_msg->local_ca_guid = cm_id_priv->id.device->node_guid |
+			cpu_to_be64(IB_GUID_MBIT);
 	else
 		rep_msg->local_ca_guid = cm_id_priv->id.device->node_guid;
 
@@ -3889,7 +3891,7 @@ static int cm_init_qp_init_attr(struct cm_id_private *cm_id_priv,
 {
 	unsigned long flags;
 	int ret;
-	u64 remote_guid;
+	__be64 remote_guid;
 
 	spin_lock_irqsave(&cm_id_priv->lock, flags);
 	switch (cm_id_priv->id.state) {
@@ -3908,7 +3910,7 @@ static int cm_init_qp_init_attr(struct cm_id_private *cm_id_priv,
 		qp_attr->qp_access_flags = IB_ACCESS_REMOTE_WRITE;
 
 		remote_guid = cm_id_priv->timewait_info->remote_ca_guid;
-		if (remote_guid & IB_GUID_MBIT)
+		if (remote_guid & cpu_to_be64(IB_GUID_MBIT))
 			qp_attr->qp_access_flags |= IB_GUID_RNR_TWEAK;
 
 		if (cm_id_priv->responder_resources)
