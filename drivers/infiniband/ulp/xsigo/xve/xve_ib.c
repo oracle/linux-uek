@@ -1007,6 +1007,7 @@ int xve_ib_dev_up(struct net_device *dev)
 int xve_ib_dev_down(struct net_device *dev, int flush)
 {
 	struct xve_dev_priv *priv = netdev_priv(dev);
+	struct xve_path *path, *tp;
 
 	xve_debug(DEBUG_IBDEV_INFO, priv, "%s downing ib_dev\n", __func__);
 	if (!test_and_clear_bit(XVE_FLAG_OPER_UP, &priv->flags)) {
@@ -1027,7 +1028,10 @@ int xve_ib_dev_down(struct net_device *dev, int flush)
 	xve_mcast_stop_thread(dev, flush);
 	xve_mcast_dev_flush(dev);
 
-	xve_flush_paths(dev);
+	/* Flush all Paths */
+	list_for_each_entry_safe(path, tp, &priv->path_list, list)
+		xve_flush_single_path_by_gid(dev, &path->pathrec.dgid);
+
 
 	return 0;
 }

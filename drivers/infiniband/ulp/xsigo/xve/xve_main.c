@@ -347,7 +347,7 @@ inline void xve_put_path(struct xve_path *path)
 	atomic_dec_if_positive(&path->users);
 }
 
-inline void xve_free_path(struct xve_path *path, int do_lock)
+inline void xve_free_path(struct xve_path *path)
 {
 	struct xve_dev_priv *priv;
 	struct net_device *netdev;
@@ -362,20 +362,16 @@ inline void xve_free_path(struct xve_path *path, int do_lock)
 	while ((skb = __skb_dequeue(&path->uplink_queue)))
 		dev_kfree_skb_irq(skb);
 
-	if (do_lock)
-		spin_lock_irqsave(&priv->lock, flags);
-	if (xve_cmtx_get(path)) {
-		if (do_lock)
-			spin_unlock_irqrestore(&priv->lock, flags);
+	netif_tx_lock_bh(netdev);
+	if (xve_cmtx_get(path))
 		xve_cm_destroy_tx_deferred(xve_cmtx_get(path));
-		if (do_lock)
-			spin_lock_irqsave(&priv->lock, flags);
-	}
+	netif_tx_unlock_bh(netdev);
+
+	spin_lock_irqsave(&priv->lock, flags);
 	xve_flush_l2_entries(netdev, path);
 	if (path->ah)
 		xve_put_ah(path->ah);
-	if (do_lock)
-		spin_unlock_irqrestore(&priv->lock, flags);
+	spin_unlock_irqrestore(&priv->lock, flags);
 
 	kfree(path);
 }
@@ -487,16 +483,6 @@ void xve_mark_paths_invalid(struct net_device *dev)
 	spin_unlock_irq(&priv->lock);
 }
 
-void xve_flush_paths(struct net_device *dev)
-{
-	struct xve_dev_priv *priv = netdev_priv(dev);
-	struct xve_path *path, *tp;
-
-	list_for_each_entry_safe(path, tp, &priv->path_list, list) {
-		xve_flush_single_path(dev, path);
-	}
-
-}
 
 void xve_flush_single_path_by_gid(struct net_device *dev, union ib_gid *gid)
 {
@@ -533,9 +519,10 @@ void xve_flush_single_path_by_gid(struct net_device *dev, union ib_gid *gid)
 
 	wait_for_completion(&path->done);
 	list_del(&path->list);
+
 	/* Make sure path is not in use */
 	if (atomic_dec_if_positive(&path->users) <= 0)
-		xve_free_path(path, 1);
+		xve_free_path(path);
 	else {
 		/* Wait for path->users to become zero */
 		unsigned long begin = jiffies;
@@ -549,17 +536,12 @@ void xve_flush_single_path_by_gid(struct net_device *dev, union ib_gid *gid)
 			msleep(20);
 		}
 		if (atomic_read(&path->users) == 0)
-			xve_free_path(path, 1);
+			xve_free_path(path);
 
 	}
 timeout:
 	return;
 
-}
-
-void xve_flush_single_path(struct net_device *dev, struct xve_path *path)
-{
-	xve_flush_single_path_by_gid(dev, &path->pathrec.dgid);
 }
 
 static void path_rec_completion(int status,
@@ -790,16 +772,21 @@ xve_path_lookup(struct net_device *dev,
 	if (!path)
 		return NULL;
 
+	if (!path->ah) {
+		if (!path->query && path_rec_start(dev, path)) {
+			/*
+			 * Forwarding entry not yet added to the path fwt_list
+			 * just free that path
+			 */
+			kfree(path);
+			return NULL;
+		}
+	}
+
 	spin_lock_irqsave(&xve_fwt->lock, flags);
 	fwt_entry->path = path;
 	list_add_tail(&fwt_entry->list, &path->fwt_list);
 	spin_unlock_irqrestore(&xve_fwt->lock, flags);
-	if (!path->ah) {
-		if (!path->query && path_rec_start(dev, path)) {
-			xve_free_path(path, 0);
-			return NULL;
-		}
-	}
 
 	return path;
 }

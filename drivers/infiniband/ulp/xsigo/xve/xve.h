@@ -1166,8 +1166,6 @@ void queue_sm_work(struct xve_dev_priv *priv, int msecs);
 void queue_age_work(struct xve_dev_priv *priv, int msecs);
 
 void xve_mark_paths_invalid(struct net_device *dev);
-void xve_flush_paths(struct net_device *dev);
-void xve_flush_single_path(struct net_device *dev, struct xve_path *path);
 void xve_flush_single_path_by_gid(struct net_device *dev, union ib_gid *gid);
 struct xve_dev_priv *xve_intf_alloc(const char *format);
 
