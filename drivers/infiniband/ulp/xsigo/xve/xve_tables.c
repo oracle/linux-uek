@@ -368,7 +368,6 @@ void xve_fwt_entry_destroy(struct xve_dev_priv *priv,
 			   struct xve_fwt_entry *fwt_entry)
 {
 	xve_remove_fwt_entry(priv, fwt_entry);
-	/* Function gets cald with Lock held always */
 	xve_fwt_entry_free(priv, fwt_entry);
 }
 
