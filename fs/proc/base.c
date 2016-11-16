@@ -1299,6 +1299,47 @@ static const struct file_operations proc_pid_sched_autogroup_operations = {
 
 #endif /* CONFIG_SCHED_AUTOGROUP */
 
+#ifdef CONFIG_SPARC64
+static int
+sparc_adi_show(struct seq_file *m, void *v)
+{
+	struct inode *inode = m->private;
+	struct task_struct *task = get_proc_task(inode);
+
+	if (!task)
+		return -ENOENT;
+
+	if (!adi_capable())
+		return -ENOTSUPP;
+
+	task_lock(task);
+
+	/* anonymous processes can not use ADI */
+	if (task->mm) {
+		struct pt_regs *regs;
+		regs = task_pt_regs(task);
+		seq_printf(m, "%d\n", !!(regs->tstate & TSTATE_MCDE));
+	} else
+		seq_printf(m, "-1\n");
+
+	task_unlock(task);
+	put_task_struct(task);
+	return 0;
+}
+
+static int
+sparc_adi_open(struct inode *inode, struct file *filp)
+{
+	return single_open(filp, sparc_adi_show, inode);
+}
+
+static const struct file_operations proc_sparc_adi_operations = {
+	.open		= sparc_adi_open,
+	.read		= seq_read,
+	.release	= single_release,
+};
+#endif /* CONFIG_SPARC_ADI */
+
 static ssize_t comm_write(struct file *file, const char __user *buf,
 				size_t count, loff_t *offset)
 {
@@ -2639,6 +2680,9 @@ static const struct pid_entry tgid_base_stuff[] = {
 #endif
 #ifdef CONFIG_CHECKPOINT_RESTORE
 	REG("timers",	  S_IRUGO, proc_timers_operations),
+#endif
+#ifdef CONFIG_SPARC64
+	REG("sparc_adi",  S_IRUGO, proc_sparc_adi_operations),
 #endif
 };
 

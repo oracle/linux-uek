@@ -24,6 +24,8 @@ struct adi_config {
 
 extern struct adi_config adi_state;
 
+extern int mcd_on_by_default;
+
 extern void mdesc_adi_init(void);
 
 static inline bool adi_capable(void)
