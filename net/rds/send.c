@@ -865,7 +865,7 @@ EXPORT_SYMBOL_GPL(rds_send_drop_acked);
 void rds_send_drop_to(struct rds_sock *rs, struct sockaddr_in *dest)
 {
 	struct rds_message *rm, *tmp;
-	struct rds_connection *conn;
+	struct rds_connection *conn = NULL;
 	unsigned long flags;
 	LIST_HEAD(list);
 	int conn_dropped = 0;
@@ -935,7 +935,7 @@ void rds_send_drop_to(struct rds_sock *rs, struct sockaddr_in *dest)
 		 * For a paticular dest and for a sock,	all the rms cancelled
 		 * belong to the same connection.
 		 */
-		if (!conn_dropped && dest &&
+		if (conn && !conn_dropped && dest &&
 		    test_bit(RDS_MSG_MAPPED, &rm->m_flags)) {
 			rds_conn_drop(conn, DR_SOCK_CANCEL);
 			conn_dropped = 1;
