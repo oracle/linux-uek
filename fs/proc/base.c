@@ -1333,9 +1333,71 @@ sparc_adi_open(struct inode *inode, struct file *filp)
 	return single_open(filp, sparc_adi_show, inode);
 }
 
+static ssize_t
+sparc_adi_write(struct file *file, const char __user *buf,
+		size_t count, loff_t *offset)
+{
+	struct task_struct *task;
+	char buffer[PROC_NUMBUF];
+	struct pt_regs *regs;
+	int err, val;
+
+	if (!adi_capable()) {
+		err = -EPERM;
+		goto out;
+	}
+
+	memset(buffer, 0, sizeof(buffer));
+	if (count > sizeof(buffer) - 1)
+		count = sizeof(buffer) - 1;
+	if (copy_from_user(buffer, buf, count)) {
+		err = -EFAULT;
+		goto out;
+	}
+
+	err = kstrtoint(strstrip(buffer), 0, &val);
+	if (err)
+		goto out;
+
+	task = get_proc_task(file_inode(file));
+
+	if (!task) {
+		err = -ESRCH;
+		goto out;
+	}
+
+	task_lock(task);
+
+	/* anonymous processes can not use ADI */
+	if (!task->mm) {
+		err = -EINVAL;
+		goto err_task_lock;
+	}
+
+	regs = task_pt_regs(task);
+
+	switch (val) {
+	case 1:
+		regs->tstate |= TSTATE_MCDE;
+		break;
+	case 0:
+		regs->tstate &= ~TSTATE_MCDE;
+		break;
+	default:
+		break;
+	}
+
+err_task_lock:
+	task_unlock(task);
+	put_task_struct(task);
+out:
+	return err < 0 ? err : count;
+}
+
 static const struct file_operations proc_sparc_adi_operations = {
 	.open		= sparc_adi_open,
 	.read		= seq_read,
+	.write		= sparc_adi_write,
 	.release	= single_release,
 };
 #endif /* CONFIG_SPARC_ADI */
@@ -2682,7 +2744,7 @@ static const struct pid_entry tgid_base_stuff[] = {
 	REG("timers",	  S_IRUGO, proc_timers_operations),
 #endif
 #ifdef CONFIG_SPARC64
-	REG("sparc_adi",  S_IRUGO, proc_sparc_adi_operations),
+	REG("sparc_adi",  S_IRUGO|S_IWUSR, proc_sparc_adi_operations),
 #endif
 };
 
