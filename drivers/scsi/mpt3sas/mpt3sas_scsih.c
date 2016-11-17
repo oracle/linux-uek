@@ -4032,11 +4032,6 @@ _scsih_eedp_error_handling(struct scsi_cmnd *scmd, u16 ioc_status)
 	    SAM_STAT_CHECK_CONDITION;
 }
 
-static inline bool ata_12_16_cmd(struct scsi_cmnd *scmd)
-{
-	return (scmd->cmnd[0] == ATA_12 || scmd->cmnd[0] == ATA_16);
-}
-
 /**
  * scsih_qcmd - main scsi request entry point
  * @scmd: pointer to scsi command object
