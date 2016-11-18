@@ -480,6 +480,10 @@ static void unregister_cpu_online(unsigned int cpu)
 	unregister_mmu_stats(s);
 	for (i = 0; i < ARRAY_SIZE(cpu_core_attrs); i++)
 		device_remove_file(s, &cpu_core_attrs[i]);
+
+	for (i = 0; i < MAX_CACHE_LEVEL; i++)
+		kobject_put(&(INDEX_KOBJECT_PTR(cpu, i)->kobj));
+	kobject_put(cache_kobjs[cpu]);
 }
 #endif
 
