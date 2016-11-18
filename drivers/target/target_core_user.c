@@ -27,6 +27,7 @@
 #include <linux/uio_driver.h>
 #include <linux/stringify.h>
 #include <linux/bitops.h>
+#include <linux/highmem.h>
 #include <net/genetlink.h>
 #include <target/target_core_base.h>
 #include <target/target_core_fabric.h>
