@@ -583,7 +583,7 @@ int pciehp_enable_slot(struct slot *p_slot)
 		if (getstatus) {
 			ctrl_info(ctrl, "Already enabled on slot(%s)\n",
 				  slot_name(p_slot));
-			return -EINVAL;
+			return 0;
 		}
 	}
 
