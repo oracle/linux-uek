@@ -639,6 +639,7 @@ struct xve_fwt_entry {
 	char smac_addr[ETH_ALEN];
 	unsigned long state;
 	atomic_t ref_cnt;
+	atomic_t del_inprogress;
 	unsigned long last_refresh;
 	int hash_value;
 	u32 dqpn;
@@ -915,14 +916,15 @@ struct icmp6_ndp {
 	} while (0)
 
 #define PRINT(level, x, fmt, arg...)				\
-	printk(level "%s: " fmt, MODULE_NAME, ##arg)
+	printk(level "%s: [PID%d]" fmt, MODULE_NAME, current->pid, ##arg)
 #define XSMP_ERROR(fmt, arg...)					\
 	PRINT(KERN_ERR, "XSMP", fmt, ##arg)
 #define DRV_PRINT(fmt, arg...)                                  \
 	PRINT(KERN_INFO, "DRV", fmt, ##arg)
 #define xve_printk(level, priv, format, arg...)			\
-	printk(level "%s: " format "\n",			\
+	printk(level "%s: [PID%d]" format "\n",			\
 		((struct xve_dev_priv *) priv)->netdev->name,	\
+		current->pid,					\
 		## arg)
 #define xve_warn(priv, format, arg...)				\
 	xve_printk(KERN_WARNING, priv, format, ## arg)
@@ -966,11 +968,12 @@ struct icmp6_ndp {
 	do {								\
 		if (xve_debug_level & level) {				\
 			if (priv)					\
-				pr_info("%s: " format "\n",		\
+				pr_info_ratelimited("%s: [PID%d] " format "\n",\
 				((struct xve_dev_priv *) priv)->netdev->name, \
+				current->pid,				\
 				## arg);				\
 			else						\
-				pr_info("XVE: " format "\n", ## arg);	\
+				pr_info_ratelimited("XVE" format "\n", ## arg);\
 		}							\
 	} while (0)
 
@@ -1166,7 +1169,8 @@ void queue_sm_work(struct xve_dev_priv *priv, int msecs);
 void queue_age_work(struct xve_dev_priv *priv, int msecs);
 
 void xve_mark_paths_invalid(struct net_device *dev);
-void xve_flush_single_path_by_gid(struct net_device *dev, union ib_gid *gid);
+void xve_flush_single_path_by_gid(struct net_device *dev, union ib_gid *gid,
+			   struct xve_fwt_entry *fwt_entry);
 struct xve_dev_priv *xve_intf_alloc(const char *format);
 
 int xve_ib_dev_init(struct net_device *dev, struct ib_device *ca, int port);
@@ -1256,11 +1260,10 @@ void xve_fwt_insert(struct xve_dev_priv *priv, struct xve_cm_ctx *ctx,
 		    union ib_gid *gid, u32 qpn, char *smac, u16 vlan);
 void xve_fwt_cleanup(struct xve_dev_priv *xvep);
 int xve_advert_process(struct xve_dev_priv *priv, struct sk_buff *skb);
-struct xve_fwt_entry *xve_fwt_lookup(struct xve_fwt_s *xve_fwt, char *mac,
+struct xve_fwt_entry *xve_fwt_lookup(struct xve_dev_priv *priv, char *mac,
 				     u16 vlan, int refresh);
 void xve_fwt_put_ctx(struct xve_fwt_s *xve_fwt,
 		     struct xve_fwt_entry *fwt_entry);
-struct xve_fwt_entry *xve_fwt_list(struct xve_fwt_s *xve_fwt, int val);
 bool xve_fwt_entry_valid(struct xve_fwt_s *xve_fwt,
 			 struct xve_fwt_entry *fwt_entry);
 void xve_flush_l2_entries(struct net_device *netdev, struct xve_path *path);

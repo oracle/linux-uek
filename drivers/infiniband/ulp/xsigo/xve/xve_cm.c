@@ -1105,7 +1105,7 @@ static int wait_for_txcmcompletions(struct xve_cm_ctx *p, u8 modify)
 				ib_modify_qp(p->qp, &xve_cm_err_attr,
 						IB_QP_STATE);
 				xve_debug(DEBUG_CM_INFO, priv,
-					"M%d QP[%x] TX completions pending[%d]",
+					"M%d QP[%x] TX Completions pending[%d]",
 					modify, qpnum, p->tx_head - p->tx_tail);
 			}
 
@@ -1325,7 +1325,7 @@ static void __xve_cm_tx_reap(struct xve_dev_priv *priv)
 		 */
 		if (p->path)
 			xve_flush_single_path_by_gid(dev,
-						     &p->path->pathrec.dgid);
+					&p->path->pathrec.dgid, NULL);
 		xve_cm_set(p->path, NULL);
 		xve_cm_tx_destroy(p);
 		netif_tx_lock_bh(dev);
