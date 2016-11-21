@@ -1030,7 +1030,7 @@ int xve_ib_dev_down(struct net_device *dev, int flush)
 
 	/* Flush all Paths */
 	list_for_each_entry_safe(path, tp, &priv->path_list, list)
-		xve_flush_single_path_by_gid(dev, &path->pathrec.dgid);
+		xve_flush_single_path_by_gid(dev, &path->pathrec.dgid, NULL);
 
 
 	return 0;

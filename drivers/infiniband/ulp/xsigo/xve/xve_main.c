@@ -137,6 +137,10 @@ unsigned int xve_eoib_mode = 1;
 module_param(xve_eoib_mode, uint, 0444);
 MODULE_PARM_DESC(xve_eoib_mode, "Always use UD mode irrespective of xsmp.vnet_mode value");
 
+static int xve_age_path = 1;
+module_param(xve_age_path, int, 0644);
+MODULE_PARM_DESC(xve_age_path, "Age path enable/disable if no fwt entries");
+
 static void xve_send_msg_to_xsigod(xsmp_cookie_t xsmp_hndl, void *data,
 				   int len);
 struct xve_path_iter {
@@ -356,6 +360,8 @@ inline void xve_free_path(struct xve_path *path)
 
 	netdev = path->dev;
 	priv = netdev_priv(netdev);
+	xve_debug(DEBUG_FLUSH_INFO, priv, "%s Freeing the path %p",
+		  __func__, path);
 	while ((skb = __skb_dequeue(&path->queue)))
 		dev_kfree_skb_irq(skb);
 
@@ -484,11 +490,13 @@ void xve_mark_paths_invalid(struct net_device *dev)
 }
 
 
-void xve_flush_single_path_by_gid(struct net_device *dev, union ib_gid *gid)
+void xve_flush_single_path_by_gid(struct net_device *dev, union ib_gid *gid,
+		struct xve_fwt_entry *fwt_entry)
 {
 	struct xve_dev_priv *priv = netdev_priv(dev);
 	unsigned long flags = 0;
 	struct xve_path *path;
+	uint8_t path_ret = 0;
 
 	netif_tx_lock_bh(dev);
 	spin_lock_irqsave(&priv->lock, flags);
@@ -498,18 +506,34 @@ void xve_flush_single_path_by_gid(struct net_device *dev, union ib_gid *gid)
 		char *mgid_token = gid->raw;
 		char tmp_buf[64];
 
-		xve_debug(DEBUG_FLUSH_INFO, priv, "%s Path not found\n",
-			  __func__);
 		print_mgid_buf(tmp_buf, mgid_token);
-		xve_debug(DEBUG_FLUSH_INFO, priv, "%s MGID %s\n",
-			  __func__, tmp_buf);
-		spin_unlock_irqrestore(&priv->lock, flags);
-		netif_tx_unlock_bh(dev);
-		return;
+		xve_debug(DEBUG_FLUSH_INFO, priv, "%s Path not found MGID %s",
+				__func__, tmp_buf);
+		path_ret = 1;
 	}
 
-	xve_debug(DEBUG_FLUSH_INFO, priv, "%s Flushing the path %p\n",
+
+	if (fwt_entry != NULL) {
+		xve_remove_fwt_entry(priv, fwt_entry);
+		xve_debug(DEBUG_FLUSH_INFO, priv, "%s Fwt removed %p",
+				__func__, fwt_entry);
+		/*
+		 * There is more than one FWT entry in this path,
+		 * destroy just this FWT entry.
+		 */
+		if ((path && !list_empty(&path->fwt_list)) || !xve_age_path) {
+			xve_info(priv, "path%p has more entries FWT%p",
+					path, fwt_entry);
+			path_ret = 1;
+		}
+	}
+
+	if (path_ret)
+		goto unlock;
+
+	xve_debug(DEBUG_FLUSH_INFO, priv, "%s Flushing the path %p",
 		  __func__, path);
+	/* This path is not used in subsequent path_look ups's */
 	rb_erase(&path->rb_node, &priv->path_tree);
 	if (path->query)
 		ib_sa_cancel_query(path->query_id, path->query);
@@ -539,7 +563,14 @@ void xve_flush_single_path_by_gid(struct net_device *dev, union ib_gid *gid)
 			xve_free_path(path);
 
 	}
+	xve_debug(DEBUG_FLUSH_INFO, priv, "%s Flushed the path %p",
+		  __func__, path);
 timeout:
+	return;
+
+unlock:
+	spin_unlock_irqrestore(&priv->lock, flags);
+	netif_tx_unlock_bh(dev);
 	return;
 
 }
@@ -766,7 +797,7 @@ xve_path_lookup(struct net_device *dev,
 	struct xve_path *path;
 	unsigned long flags = 0;
 
-	xve_debug(DEBUG_TABLE_INFO, priv, "%s Adding  FWT to list %p\n",
+	xve_debug(DEBUG_TABLE_INFO, priv, "%s Adding  FWT to list %p",
 		  __func__, fwt_entry);
 	path = xve_find_path_by_gid(priv, &fwt_entry->dgid);
 	if (!path)
@@ -911,7 +942,7 @@ static int xve_start_xmit(struct sk_buff *skb, struct net_device *dev)
 	}
 	len = skb->len;
 
-	fwt_entry = xve_fwt_lookup(&priv->xve_fwt, eth_hdr(skb)->h_dest,
+	fwt_entry = xve_fwt_lookup(priv, eth_hdr(skb)->h_dest,
 			vlan_tag, 0);
 	if (!fwt_entry) {
 		if (is_broadcast_ether_addr(eth_hdr(skb)->h_dest)) {
@@ -2430,9 +2461,8 @@ static int xve_xsmp_install(xsmp_cookie_t xsmp_hndl, struct xve_xsmp_msg *xmsgp,
 send_ack:
 	ret = xve_xsmp_send_ack(priv, xmsgp);
 	if (ret) {
-		XSMP_ERROR("%s: xve_xsmp_send_ack error name: %s, VID=0x%llx\n",
-			   __func__, xmsgp->xve_name,
-			   be64_to_cpu(xmsgp->resource_id));
+		xve_info(priv, "%s: xve_xsmp_send_ack error name VID=0x%llx",
+			   __func__, be64_to_cpu(xmsgp->resource_id));
 	}
 	if (update_state && priv->vnic_type == XSMP_XCM_OVN) {
 		xve_info(priv, "Sending Oper state to  chassis for  id %llx\n",
@@ -2578,9 +2608,8 @@ static int xve_xsmp_update(xsmp_cookie_t xsmp_hndl, struct xve_xsmp_msg *xmsgp)
 	if (send_ack) {
 		ret = xve_xsmp_send_ack(priv, xmsgp);
 		if (ret) {
-			XSMP_ERROR("%s: xve_xsmp_send_ack error name: %s\n"
-				"VID=0x%llx\n", __func__, xmsgp->xve_name,
-				be64_to_cpu(xmsgp->resource_id));
+			xve_info(priv, "%s: error name VID=0x%llx",
+				 __func__, be64_to_cpu(xmsgp->resource_id));
 		}
 	}
 	mutex_unlock(&priv->mutex);
@@ -2617,9 +2646,8 @@ xve_xsmp_vnic_ready(xsmp_cookie_t xsmp_hndl, struct xve_xsmp_msg *xmsgp,
 
 	ret = xve_xsmp_send_ack(priv, xmsgp);
 	if (ret) {
-		XSMP_ERROR("%s: xve_xsmp_send_ack error name: %s, VID=0x%llx\n",
-			   __func__, xmsgp->xve_name,
-			   be64_to_cpu(xmsgp->resource_id));
+		xve_info(priv, "%s: xve_xsmp_send_ack error name VID=0x%llx",
+			   __func__, be64_to_cpu(xmsgp->resource_id));
 	}
 
 	(void) xve_xsmp_handle_oper_req(priv->xsmp_hndl,
