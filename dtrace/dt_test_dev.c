@@ -21,7 +21,7 @@
  *
  * CDDL HEADER END
  *
- * Copyright 2011-2014 Oracle, Inc.  All rights reserved.
+ * Copyright 2011-2016 Oracle, Inc.  All rights reserved.
  * Use is subject to license terms.
  */
 
@@ -97,6 +97,10 @@ static long dt_test_ioctl(struct file *file,
 					8ULL, 9ULL);
 
 		return 0;
+	}
+
+	if (DTRACE_PROBE_ENABLED(sdt__test)) {
+		DTRACE_PROBE(sdt__test__is__enabled)
 	}
 
 	DTRACE_PROBE(sdt__test);

@@ -60,6 +60,9 @@
  *	 mov	%i4, %o5
  *	ret
  *	 restore
+ *
+ * For is-enabled probes, we just drop an "or %g0, 1, %o0"
+ * directly into the delay slot.
  */
 #if SDT_TRAMP_SIZE < 11
 # error SDT_TRAMP_SIZE is less than the required 11 instructions.
@@ -124,27 +127,40 @@ void sdt_provide_probe_arch(sdt_probe_t *sdp, struct module *mp, int idx)
 							   SDT_TRAMP_SIZE]);
 	asm_instr_t	*instr = trampoline;
 
-	*instr++ = SDT_SAVE;
+	if (sdp->sdp_ptype == SDTPT_OFFSETS) {
+		*instr++ = SDT_SAVE;
 
-	if (sdp->sdp_id > (uint32_t)SDT_SIMM13_MAX)  {
-		*instr++ = SDT_SETHI(sdp->sdp_id, SDT_REG_O0);
-		*instr++ = SDT_ORLO(SDT_REG_O0, sdp->sdp_id, SDT_REG_O0);
-	} else {
-		*instr++ = SDT_ORSIMM13(SDT_REG_G0, sdp->sdp_id, SDT_REG_O0);
+		if (sdp->sdp_id > (uint32_t)SDT_SIMM13_MAX)  {
+			*instr++ = SDT_SETHI(sdp->sdp_id, SDT_REG_O0);
+			*instr++ = SDT_ORLO(SDT_REG_O0, sdp->sdp_id,
+					    SDT_REG_O0);
+		} else {
+			*instr++ = SDT_ORSIMM13(SDT_REG_G0, sdp->sdp_id,
+						SDT_REG_O0);
+		}
+
+		*instr++ = SDT_MOV(SDT_REG_I0, SDT_REG_O1);
+		*instr++ = SDT_MOV(SDT_REG_I1, SDT_REG_O2);
+		*instr++ = SDT_MOV(SDT_REG_I2, SDT_REG_O3);
+		*instr++ = SDT_MOV(SDT_REG_I3, SDT_REG_O4);
+		*instr = SDT_CALL(instr, dtrace_probe);
+		instr++;
+		*instr++ = SDT_MOV(SDT_REG_I4, SDT_REG_O5);
+
+		*instr++ = SDT_RET;
+		*instr++ = SDT_RESTORE;
+
+		sdp->sdp_patchval = SDT_CALL(sdp->sdp_patchpoint, trampoline);
+	} else {				/* SDTPT_IS_ENABLED */
+		/*
+		 * We want to change the insn in the delay slot,
+		 * which will be the arg setup.  There is no
+		 * trampoline.
+		 */
+		sdp->sdp_patchpoint++; /* next insn */
+		sdp->sdp_patchval = SDT_ORSIMM13(SDT_REG_G0, 1, SDT_REG_O0);
 	}
 
-	*instr++ = SDT_MOV(SDT_REG_I0, SDT_REG_O1);
-	*instr++ = SDT_MOV(SDT_REG_I1, SDT_REG_O2);
-	*instr++ = SDT_MOV(SDT_REG_I2, SDT_REG_O3);
-	*instr++ = SDT_MOV(SDT_REG_I3, SDT_REG_O4);
-	*instr = SDT_CALL(instr, dtrace_probe);
-	instr++;
-	*instr++ = SDT_MOV(SDT_REG_I4, SDT_REG_O5);
-
-	*instr++ = SDT_RET;
-	*instr++ = SDT_RESTORE;
-
-	sdp->sdp_patchval = SDT_CALL(sdp->sdp_patchpoint, trampoline);
 	sdp->sdp_savedval = *sdp->sdp_patchpoint;
 }
 
