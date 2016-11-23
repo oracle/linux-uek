@@ -1684,6 +1684,17 @@ static int nvme_dev_map(struct nvme_dev *dev)
 			dev->q_depth);
 	}
 
+	/*
+	 * Limit q_depth for Samsung NVMe SSDs. The depth and descriptor 
+	 * size should not span a DMA page (64 x 64B) unless NVME_CAP_MQES(cap) 
+	 * already restricted it further.
+	 */
+	if (pdev->vendor == PCI_VENDOR_ID_SAMSUNG && pdev->device == 0xa821 ) {
+		dev->q_depth = min_t(int, dev->q_depth, 64);
+		dev_warn(dev->dev, "detected Samsung NVMe controller, limit "
+			"queue depth=%u.\n", dev->q_depth);
+	}
+
 	if (readl(dev->bar + NVME_REG_VS) >= NVME_VS(1, 2))
 		dev->cmb = nvme_map_cmb(dev);
 
