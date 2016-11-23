@@ -157,14 +157,6 @@ typedef enum dtrace_speculation_state {
 
 #define KERNELBASE	(uintptr_t)_text
 
-#if defined(__i386__) || defined(__x86_64__)
-# define DTRACE_INVOP_PUSHL_EBP	1
-# define DTRACE_INVOP_POPL_EBP	2
-# define DTRACE_INVOP_LEAVE	3
-# define DTRACE_INVOP_NOP	4
-# define DTRACE_INVOP_RET	5
-#endif
-
 #ifdef CONFIG_DT_DEBUG_MUTEX
 # define real_mutex_lock(x)		mutex_lock(x)
 # define real_mutex_unlock(x)		mutex_unlock(x)

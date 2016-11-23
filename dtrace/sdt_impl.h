@@ -9,6 +9,12 @@ extern struct module		*dtrace_kmod;
 
 struct sdt_argdesc;
 
+typedef enum fasttrap_probe_type {
+        SDTPT_NONE = 0,
+        SDTPT_OFFSETS,
+        SDTPT_IS_ENABLED
+} sdt_probe_type_t;
+
 typedef struct sdt_probe {
 	dtrace_mprovider_t	*sdp_provider;	/* provider */
 	char			*sdp_name;	/* name of probe */
@@ -17,6 +23,7 @@ typedef struct sdt_probe {
 	struct module		*sdp_module;	/* modctl for module */
 	int			sdp_loadcnt;	/* load count for module */
 	int			sdp_primary;	/* non-zero if primary mod */
+	sdt_probe_type_t	sdp_ptype;	/* probe type */
 	asm_instr_t		*sdp_patchpoint;/* patch point */
 	asm_instr_t		sdp_patchval;	/* instruction to patch */
 	asm_instr_t		sdp_savedval;	/* saved instruction value */
