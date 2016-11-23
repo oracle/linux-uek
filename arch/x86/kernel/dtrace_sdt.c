@@ -2,7 +2,7 @@
  * FILE:        dtrace_sdt.c
  * DESCRIPTION: Dynamic Tracing: SDT registration code (arch-specific)
  *
- * Copyright (C) 2010-2014 Oracle Corporation
+ * Copyright (C) 2010-2016 Oracle Corporation
  */
 
 #include <linux/kernel.h>
@@ -16,15 +16,19 @@
 #include <asm/nops.h>
 #include <asm/dtrace_arch.h>
 
-#define	SDT_NOP_SIZE	5
+static uint8_t nops[ASM_CALL_SIZE];
+static uint8_t movs[ASM_CALL_SIZE];
 
-uint8_t			nops[SDT_NOP_SIZE];
+#define DT_OP_REX_RAX           0x48
+#define DT_OP_XOR_EAX_0         0x33
+#define DT_OP_XOR_EAX_1         0xc0
 
 /* This code is based on apply_alternatives and text_poke_early.  It needs to
  * run before SMP is initialized in order to avoid SMP problems with patching
  * code that might be accessed on another CPU.
  */
-void __init_or_module dtrace_sdt_nop_multi(asm_instr_t **addrs, int cnt)
+void __init_or_module dtrace_sdt_nop_multi(asm_instr_t **addrs,
+					   int *is_enabled, int cnt)
 {
 	int			i;
 	asm_instr_t		*addr;
@@ -35,7 +39,10 @@ void __init_or_module dtrace_sdt_nop_multi(asm_instr_t **addrs, int cnt)
 
 	for (i = 0; i < cnt; i++) {
 		addr = addrs[i];
-		memcpy(addr, nops, sizeof(nops));
+		if (likely(!is_enabled[i]))
+			memcpy(addr, nops, sizeof(nops));
+		else
+			memcpy(addr, movs, sizeof(movs));
 	}
 
 	sync_core();
@@ -54,5 +61,13 @@ void dtrace_sdt_init_arch(void)
 	 * sequence, we play it pretty safe.
 	 */
 	add_nops(nops, 1);
-	add_nops(nops + 1, SDT_NOP_SIZE - 1);
+	add_nops(nops + 1, ASM_CALL_SIZE - 1);
+
+	/*
+	 * Is-enabled probe points contain an "xor %rax, %rax" when disabled.
+	 */
+	movs[0] = DT_OP_REX_RAX;
+	movs[1] = DT_OP_XOR_EAX_0;
+	movs[2] = DT_OP_XOR_EAX_1;
+	add_nops(movs + 3, ASM_CALL_SIZE - 3);
 }

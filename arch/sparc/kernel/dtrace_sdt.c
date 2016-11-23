@@ -15,7 +15,9 @@
 #include <asm/cacheflush.h>
 #include <asm/dtrace_arch.h>
 
-void __init_or_module dtrace_sdt_nop_multi(asm_instr_t **addrs, int cnt)
+void __init_or_module dtrace_sdt_nop_multi(asm_instr_t **addrs,
+					   int * __always_unused is_enabled,
+					   int cnt)
 {
 	int		i;
 	asm_instr_t	*addr;
