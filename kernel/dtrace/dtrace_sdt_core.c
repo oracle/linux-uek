@@ -142,6 +142,12 @@ void dtrace_sdt_stash_args(const char *module_name,
 		u32 h = jhash(sdpd[i].sdpd_name, l, 0);
 		h = h % hashsize;
 
+		/*
+		 * Is-enabled probes have no arg string.
+		 */
+		if (sdpd[i].sdpd_name[0] == '?')
+			continue;
+
 		while (args_by_name[h].pnhe_name != NULL &&
 		       strcmp(sdpd[i].sdpd_name,
 			      args_by_name[h].pnhe_name) != 0) {
@@ -177,6 +183,7 @@ void dtrace_sdt_register(struct module *mp)
 	void			*nextpi;
 	sdt_probedesc_t		*sdps;
 	asm_instr_t		**addrs;
+	int			*is_enabled;
 	void			*args;
 	size_t			args_len;
 
@@ -208,19 +215,26 @@ void dtrace_sdt_register(struct module *mp)
 
 	/*
 	 * Create a list of addresses (SDT probe locations) that need to be
-	 * patched with a NOP instruction (or instruction sequence).
+	 * patched with a NOP instruction (or instruction sequence), and another
+	 * array indicating whether each probe needs patching with an
+	 * arch-dependent false return instead.
 	 */
 	addrs = (asm_instr_t **)vmalloc(dtrace_sdt_nprobes *
 					sizeof(asm_instr_t *));
-	if (addrs == NULL) {
-		pr_warning("%s: cannot allocate SDT probe address list\n",
-			   __func__);
+	is_enabled = (int *)vmalloc(dtrace_sdt_nprobes * sizeof(int));
+	if ((addrs == NULL) || (is_enabled == NULL)) {
+		pr_warning("%s: cannot allocate SDT probe address/is-enabled "
+			   "lists\n", __func__);
 		vfree(sdps);
+		vfree(addrs);
+		vfree(is_enabled);
 		return;
 	}
 
 	for (i = cnt = 0; cnt < dtrace_sdt_nprobes; i++) {
 		char	*func = pi->name + pi->name_len + 1;
+
+		is_enabled[cnt] = (pi->name[0] == '?');
 
 		if (sdt_probe_set(&sdps[cnt], pi->name, func, pi->addr,
 				  &addrs[cnt],
@@ -239,7 +253,7 @@ void dtrace_sdt_register(struct module *mp)
 	mp->sdt_probes = sdps;
 	mp->sdt_probec = cnt;
 
-	dtrace_sdt_nop_multi(addrs, cnt);
+	dtrace_sdt_nop_multi(addrs, is_enabled, cnt);
 
 	/*
 	 * Allocate space for the array of arg types, and copy it in from the
@@ -264,6 +278,7 @@ void dtrace_sdt_register(struct module *mp)
 
 end:
 	vfree(addrs);
+	vfree(is_enabled);
 }
 
 static int __init nosdt(char *str)
@@ -282,6 +297,7 @@ void dtrace_sdt_register_module(struct module *mp,
 	int			i, cnt;
 	sdt_probedesc_t		*sdp;
 	asm_instr_t		**addrs;
+	int			*is_enabled;
 
 	if (mp->sdt_probec == 0 || mp->sdt_probes == NULL)
 		return;
@@ -292,23 +308,29 @@ void dtrace_sdt_register_module(struct module *mp,
 	 */
 	addrs = (asm_instr_t **)vmalloc(mp->sdt_probec *
 					sizeof(asm_instr_t *));
-	if (addrs == NULL) {
+	is_enabled = (int *)vmalloc(mp->sdt_probec * sizeof(int));
+	if ((addrs == NULL) || (is_enabled == NULL)) {
 		pr_warning("%s: cannot allocate SDT probe address list (%s)\n",
 			   __func__, mp->name);
+		vfree(addrs);
+		vfree(is_enabled);
 		return;
 	}
 
 	for (i = cnt = 0, sdp = mp->sdt_probes; i < mp->sdt_probec;
-	     i++, sdp++)
-		addrs[cnt++] = (asm_instr_t *)sdp->sdpd_offset;
+	     i++, sdp++) {
+		addrs[cnt] = (asm_instr_t *)sdp->sdpd_offset;
+		is_enabled[cnt++] = (sdp->sdpd_name[0] == '?');
+	}
 
-	dtrace_sdt_nop_multi(addrs, cnt);
+	dtrace_sdt_nop_multi(addrs, is_enabled, cnt);
 
 	dtrace_sdt_stash_args(mp->name, mp->sdt_probes, mp->sdt_probec,
 			      sdt_names_addr, sdt_names_len,
 			      sdt_args_addr, sdt_args_len);
 
 	vfree(addrs);
+	vfree(is_enabled);
 }
 
 void dtrace_sdt_init(void)

@@ -2200,7 +2200,8 @@ static int add_versions(struct buffer *b, struct module *mod)
 		exp = find_symbol(s->name);
 		if (!exp || exp->module == mod) {
 			if (have_vmlinux && !s->weak &&
-			    !strstarts(s->name, "__dtrace_probe_")) {
+			    !strstarts(s->name, "__dtrace_probe_") &&
+			    !strstarts(s->name, "__dtrace_isenabled_")) {
 				if (warn_unresolved) {
 					warn("\"%s\" [%s.ko] undefined!\n",
 					     s->name, mod->name);

@@ -7,6 +7,7 @@
 
 #ifdef CONFIG_DTRACE
 
+#include <asm/dtrace_sdt_arch.h>
 #include <linux/stringify.h>
 
 #define	DTRACE_PROBE(name, ...)	{				\
@@ -21,6 +22,11 @@
 		     ".byte 0\n"					\
 		     ".popsection\n");					\
 }
+
+#define	DTRACE_PROBE_ENABLED(name)	unlikely(({			\
+	extern int __dtrace_isenabled_##name(__DTRACE_SDT_ISENABLED_PROTO); \
+	__dtrace_isenabled_##name(__DTRACE_SDT_ISENABLED_ARGS);		\
+}))
 
 #ifdef CONFIG_DT_SDT_PERF
 
