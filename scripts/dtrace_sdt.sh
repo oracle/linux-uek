@@ -39,8 +39,7 @@ if [ -z "$ofn" ]; then
 fi
 
 if [ "$opr" = "sdtstub" ]; then
-    ${NM} -u $* | \
-	grep __dtrace_probe_ | sort | uniq | \
+    ${NM} -u $* | grep -E '__dtrace_(probe|isenabled)_' | sort | uniq | \
 	${AWK} -v arch=${ARCH} \
 	       '{
 		    printf("\t.globl %s\n\t.type %s,@function\n%s:\n",
@@ -73,7 +72,8 @@ if [ "$tok" = "kmod" ]; then
 
     # Output all function symbols in the symbol table of the object file.
     # Subsequently, output all relocation records for DTrace SDT probes.  The
-    # probes are identified by their __dtrace_probe_ prefix.
+    # probes are identified by either a __dtrace_probe_ or __dtrace_isenabled_
+    # prefix.
     #
     # We sort the output primarily based on the section, using the value (or
     # offset) as secondary sort criterion  The overall result is that the
@@ -111,6 +111,13 @@ if [ "$tok" = "kmod" ]; then
 	     $3 = substr($3, 16);
 	     sub(/[\-+].*$/, "", $3);
 	     print sect " " $1 " R " $3;
+	     next;
+	 }
+
+	 sect && /__dtrace_isenabled_/ {
+	     $3 = substr($3, 20);
+	     sub(/[\-+].*$/, "", $3);
+	     print sect " " $1 " R ?" $3;
 	     next;
 	 }
 
@@ -244,7 +251,8 @@ else
     # Finally, each relocation record from the .text section that relates to
     # SDT probes are written to the output stream with its address, a token
     # identifying it as a relocation, and its name.  Probes are identified in
-    # the relocation records as symbols with __dtrace_probe_ as prefix.
+    # the relocation records as symbols with either a __dtrace_probe_ or
+    # __dtrace_isenabled_ prefix.
     #
     # We sort the output based on the address, which guarantees that the output
     # will be a list of functions, and each function record will be followed 
@@ -304,6 +312,13 @@ else
 	     $3 = substr($3, 16);
 	     sub(/[\-+].*$/, "", $3);
 	     print addl(base, $1) " R " $3;
+	     next;
+	 }
+
+	 in_reloc && /__dtrace_isenabled_/ {
+	     $3 = substr($3, 20);
+	     sub(/[\-+].*$/, "", $3);
+	     print addl(base, $1) " R ?" $3;
 	     next;
 	 }
 
