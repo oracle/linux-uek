@@ -21,7 +21,7 @@
  *
  * CDDL HEADER END
  *
- * Copyright 2010-2014 Oracle, Inc.  All rights reserved.
+ * Copyright 2010-2016 Oracle, Inc.  All rights reserved.
  * Use is subject to license terms.
  */
 
@@ -297,6 +297,13 @@ void sdt_provide_module(void *arg, struct module *mp)
 		int			i, j;
 		dtrace_mprovider_t	*prov;
 		dtrace_id_t		id;
+		sdt_probe_type_t	ptype;
+
+		if (name[0] == '?') {
+			ptype = SDTPT_IS_ENABLED;
+			name++;
+		} else
+			ptype = SDTPT_OFFSETS;
 
 		for (prov = sdt_providers; prov->dtmp_pref != NULL; prov++) {
 			char	*prefix = prov->dtmp_pref;
@@ -337,6 +344,7 @@ void sdt_provide_module(void *arg, struct module *mp)
 		sdp->sdp_name = nname;
 		sdp->sdp_namelen = len;
 		sdp->sdp_provider = prov;
+		sdp->sdp_ptype = ptype;
 
 		sdp->sdp_argdesc = sdt_setup_args(sdpd, &sdp->sdp_nargdesc);
 
@@ -358,13 +366,13 @@ void sdt_provide_module(void *arg, struct module *mp)
 			PDATA(mp)->sdt_probe_cnt++;
 		}
 
-		sdp->sdp_hashnext = sdt_probetab[
-					SDT_ADDR2NDX(sdpd->sdpd_offset)];
-		sdt_probetab[SDT_ADDR2NDX(sdpd->sdpd_offset)] = sdp;
-
 		sdp->sdp_patchpoint = (asm_instr_t *)sdpd->sdpd_offset;
 
 		sdt_provide_probe_arch(sdp, mp, idx);
+
+		sdp->sdp_hashnext = sdt_probetab[
+					SDT_ADDR2NDX(sdp->sdp_patchpoint)];
+		sdt_probetab[SDT_ADDR2NDX(sdp->sdp_patchpoint)] = sdp;
 	}
 }
 
@@ -422,6 +430,10 @@ void sdt_getargdesc(void *arg, dtrace_id_t id, void *parg,
 
 	desc->dtargd_native[0] = '\0';
 	desc->dtargd_xlate[0] = '\0';
+
+	while ((sdp->sdp_ptype == SDTPT_IS_ENABLED) &&
+	       (sdp->sdp_next != NULL))
+		sdp = sdp->sdp_next;
 
 	if (sdp->sdp_nargdesc <= desc->dtargd_ndx) {
 		desc->dtargd_ndx = DTRACE_ARGNONE;

@@ -21,7 +21,7 @@
  *
  * CDDL HEADER END
  *
- * Copyright 2010-2014 Oracle, Inc.  All rights reserved.
+ * Copyright 2010-2016 Oracle, Inc.  All rights reserved.
  * Use is subject to license terms.
  */
 
@@ -42,14 +42,18 @@ static uint8_t sdt_invop(struct pt_regs *regs)
 
 	for (; sdt != NULL; sdt = sdt->sdp_hashnext) {
 		if ((uintptr_t)sdt->sdp_patchpoint == regs->ip) {
-			this_cpu_core->cpu_dtrace_regs = regs;
+			if (sdt->sdp_ptype == SDTPT_IS_ENABLED)
+				regs->ax = 1;
+			else {
+				this_cpu_core->cpu_dtrace_regs = regs;
 
-			dtrace_probe(sdt->sdp_id, regs->di, regs->si,
-				     regs->dx, regs->cx, regs->r8);
+				dtrace_probe(sdt->sdp_id, regs->di, regs->si,
+					     regs->dx, regs->cx, regs->r8);
 
-			this_cpu_core->cpu_dtrace_regs = NULL;
+				this_cpu_core->cpu_dtrace_regs = NULL;
+			}
 
-			return DTRACE_INVOP_NOP;
+			return ASM_CALL_SIZE;
 		}
 	}
 
