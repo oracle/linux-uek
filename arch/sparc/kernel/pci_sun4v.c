@@ -208,7 +208,7 @@ static void *dma_4v_alloc_coherent(struct device *dev, size_t size,
 	entry = iommu_tbl_range_alloc(dev, &iommu->tbl, npages, NULL,
 				      (unsigned long)(-1), 0);
 
-	if (unlikely(entry == DMA_ERROR_CODE))
+	if (unlikely(entry == IOMMU_ERROR_CODE))
 		goto range_alloc_fail;
 
 	*dma_addrp = (iommu->tbl.table_map_base + (entry << IO_PAGE_SHIFT));
@@ -236,7 +236,7 @@ static void *dma_4v_alloc_coherent(struct device *dev, size_t size,
 	return ret;
 
 iommu_map_fail:
-	iommu_tbl_range_free(&iommu->tbl, *dma_addrp, npages, DMA_ERROR_CODE);
+	iommu_tbl_range_free(&iommu->tbl, *dma_addrp, npages, IOMMU_ERROR_CODE);
 
 range_alloc_fail:
 	free_pages(first_page, order);
@@ -275,7 +275,7 @@ static void dma_4v_free_coherent(struct device *dev, size_t size, void *cpu,
 	devhandle = pbm->devhandle;
 	entry = ((dvma - iommu->tbl.table_map_base) >> IO_PAGE_SHIFT);
 	dma_4v_iommu_demap(&devhandle, entry, npages);
-	iommu_tbl_range_free(&iommu->tbl, dvma, npages, DMA_ERROR_CODE);
+	iommu_tbl_range_free(&iommu->tbl, dvma, npages, IOMMU_ERROR_CODE);
 	order = get_order(size);
 	if (order < 10)
 		free_pages((unsigned long)cpu, order);
@@ -344,7 +344,7 @@ static dma_addr_t dma_4v_map_page(struct device *dev, struct page *page,
 	entry = iommu_tbl_range_alloc(dev, &iommu->tbl, npages, NULL,
 				      (unsigned long)(-1), 0);
 
-	if (unlikely(entry == DMA_ERROR_CODE))
+	if (unlikely(entry == IOMMU_ERROR_CODE))
 		goto bad;
 
 	bus_addr = (iommu->tbl.table_map_base + (entry << IO_PAGE_SHIFT));
@@ -379,7 +379,7 @@ bad:
 	return DMA_ERROR_CODE;
 
 iommu_map_fail:
-	iommu_tbl_range_free(&iommu->tbl, bus_addr, npages, DMA_ERROR_CODE);
+	iommu_tbl_range_free(&iommu->tbl, bus_addr, npages, IOMMU_ERROR_CODE);
 	return DMA_ERROR_CODE;
 }
 
@@ -411,7 +411,7 @@ static void dma_4v_unmap_page(struct device *dev, dma_addr_t bus_addr,
 	bus_addr &= IO_PAGE_MASK;
 	entry = (bus_addr - iommu->tbl.table_map_base) >> IO_PAGE_SHIFT;
 	dma_4v_iommu_demap(&devhandle, entry, npages);
-	iommu_tbl_range_free(&iommu->tbl, bus_addr, npages, DMA_ERROR_CODE);
+	iommu_tbl_range_free(&iommu->tbl, bus_addr, npages, IOMMU_ERROR_CODE);
 }
 
 static int dma_4v_map_sg_bypass(struct device *dev, struct scatterlist *sglist,
@@ -515,7 +515,7 @@ static int dma_4v_map_sg(struct device *dev, struct scatterlist *sglist,
 					      &handle, (unsigned long)(-1), 0);
 
 		/* Handle failure */
-		if (unlikely(entry == DMA_ERROR_CODE)) {
+		if (unlikely(entry == IOMMU_ERROR_CODE)) {
 			if (printk_ratelimit())
 				printk(KERN_INFO "iommu_alloc failed, iommu %p paddr %lx"
 				       " npages %lx\n", iommu, paddr, npages);
@@ -590,7 +590,7 @@ iommu_map_failed:
 			npages = iommu_num_pages(s->dma_address, s->dma_length,
 						 IO_PAGE_SIZE);
 			iommu_tbl_range_free(&iommu->tbl, vaddr, npages,
-					     DMA_ERROR_CODE);
+					     IOMMU_ERROR_CODE);
 			/* XXX demap? XXX */
 			s->dma_address = DMA_ERROR_CODE;
 			s->dma_length = 0;
@@ -638,7 +638,7 @@ static void dma_4v_unmap_sg(struct device *dev, struct scatterlist *sglist,
 		entry = ((dma_handle - tbl->table_map_base) >> shift);
 		dma_4v_iommu_demap(&devhandle, entry, npages);
 		iommu_tbl_range_free(&iommu->tbl, dma_handle, npages,
-				     DMA_ERROR_CODE);
+				     IOMMU_ERROR_CODE);
 		sg = sg_next(sg);
 	}
 
