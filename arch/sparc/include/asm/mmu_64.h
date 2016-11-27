@@ -108,6 +108,7 @@ typedef struct {
 	struct hv_tsb_descr	tsb_descr[MM_NUM_TSBS];
 	void			*vdso;
 	unsigned long		huge_pte_count[MM_NUM_HUGEPAGE_SIZES];
+	unsigned long		thp_pte_count;
 } mm_context_t;
 
 #if defined(CONFIG_HUGETLB_PAGE) || defined(CONFIG_TRANSPARENT_HUGEPAGE)
@@ -128,17 +129,6 @@ static inline unsigned int hugepage_size_to_pte_count_idx(
 	unsigned int pte_count_index = MM_PTES_HUGE;
 
 	if (hugepage_size != HPAGE_SIZE)
-		pte_count_index = MM_PTES_XLHUGE;
-
-	return pte_count_index;
-}
-
-static inline unsigned int real_hugepage_size_to_pte_count_idx(
-				unsigned long real_hugepage_size)
-{
-	unsigned int pte_count_index = MM_PTES_HUGE;
-
-	if (real_hugepage_size != REAL_HPAGE_SIZE)
 		pte_count_index = MM_PTES_XLHUGE;
 
 	return pte_count_index;

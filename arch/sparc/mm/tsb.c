@@ -502,9 +502,13 @@ retry_tsb_alloc:
 
 #if defined(CONFIG_HUGETLB_PAGE) || defined(CONFIG_TRANSPARENT_HUGEPAGE)
 static void capture_and_clear_huge_pte_counts(mm_context_t *mm_context,
+					      unsigned long *thp_pte_count,
 					      unsigned long *capture_array)
 {
 	unsigned int hugepage_idx;
+
+	*thp_pte_count = mm_context->thp_pte_count;
+	mm_context->thp_pte_count = 0UL;
 
 	for (hugepage_idx = 0UL; hugepage_idx != MM_NUM_HUGEPAGE_SIZES;
 		hugepage_idx++) {
@@ -516,11 +520,14 @@ static void capture_and_clear_huge_pte_counts(mm_context_t *mm_context,
 
 static void
 captured_hugepage_pte_count_grow_tsb(struct mm_struct *mm,
+				     unsigned long *thp_pte_count,
 				     unsigned long *capture_huge_pte_count)
 {
 	if (unlikely(capture_huge_pte_count[MM_PTES_HUGE]))
+	if (unlikely(capture_huge_pte_count[MM_PTES_HUGE]) || *thp_pte_count)
 		tsb_grow(mm, MM_TSB_HUGE,
-			capture_huge_pte_count[MM_PTES_HUGE]);
+			(capture_huge_pte_count[MM_PTES_HUGE] +
+			 *thp_pte_count) * REAL_HPAGE_PER_HPAGE);
 
 	if (unlikely(capture_huge_pte_count[MM_PTES_XLHUGE]))
 		tsb_grow(mm, MM_TSB_XLHUGE,
@@ -528,15 +535,18 @@ captured_hugepage_pte_count_grow_tsb(struct mm_struct *mm,
 }
 #else
 static void capture_and_clear_huge_pte_counts(mm_context_t *mm_context,
+					      unsigned long *thp_pte_count,
 					      unsigned long *capture_array) {}
 static void
 captured_hugepage_pte_count_grow_tsb(struct mm_struct *mm,
+				     unsigned long *thp_pte_count,
 				     unsigned long *capture_huge_pte_count) {}
 #endif /* CONFIG_HUGETLB_PAGE || CONFIG_TRANSPARENT_HUGEPAGE */
 
 int init_new_context(struct task_struct *tsk, struct mm_struct *mm)
 {
 	unsigned long capture_huge_pte_count[MM_NUM_HUGEPAGE_SIZES];
+	unsigned long saved_thp_pte_count;
 	unsigned int i;
 
 	spin_lock_init(&mm->context.lock);
@@ -547,7 +557,8 @@ int init_new_context(struct task_struct *tsk, struct mm_struct *mm)
 	 * will re-increment the counters as the parent PTEs are
 	 * copied into the child address space.
 	 */
-	capture_and_clear_huge_pte_counts(&mm->context, capture_huge_pte_count);
+	capture_and_clear_huge_pte_counts(&mm->context, &saved_thp_pte_count,
+					   capture_huge_pte_count);
 
 	/* copy_mm() copies over the parent's mm_struct before calling
 	 * us, so we need to zero out the TSB pointer or else tsb_grow()
@@ -559,9 +570,11 @@ int init_new_context(struct task_struct *tsk, struct mm_struct *mm)
 	/* If this is fork, inherit the parent's TSB size.  We would
 	 * grow it to that size on the first page fault anyways.
 	 */
-	tsb_grow(mm, MM_TSB_BASE, get_mm_rss(mm));
+	tsb_grow(mm, MM_TSB_BASE, get_mm_rss(mm) -
+		 saved_thp_pte_count * (HPAGE_SIZE / PAGE_SIZE));
 
-	captured_hugepage_pte_count_grow_tsb(mm, capture_huge_pte_count);
+	captured_hugepage_pte_count_grow_tsb(mm, &saved_thp_pte_count,
+					     capture_huge_pte_count);
 
 	if (unlikely(!mm->context.tsb_block[MM_TSB_BASE].tsb))
 		return -ENOMEM;

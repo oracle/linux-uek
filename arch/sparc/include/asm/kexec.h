@@ -100,8 +100,6 @@ static inline void crash_setup_regs(struct pt_regs *newregs,
 	if (oldregs)
 		memcpy(newregs, oldregs, sizeof(*newregs));
 	else {
-		unsigned long tl = 1, tstate, tpc, tnpc, y;
-
 		asm volatile("stx %%g0, %0" : "=m" (newregs->u_regs[0]));
 		asm volatile("stx %%g1, %0" : "=m" (newregs->u_regs[1]));
 		asm volatile("stx %%g2, %0" : "=m" (newregs->u_regs[2]));
@@ -118,15 +116,16 @@ static inline void crash_setup_regs(struct pt_regs *newregs,
 		asm volatile("stx %%o5, %0" : "=m" (newregs->u_regs[13]));
 		asm volatile("stx %%o6, %0" : "=m" (newregs->u_regs[14]));
 		asm volatile("stx %%o7, %0" : "=m" (newregs->u_regs[15]));
-		asm volatile("wrpr %0, %%tl" :: "r" (tl));
-		asm volatile("rdpr %%tstate, %0" : "=r" (tstate));
-		newregs->tstate = tstate;
-		asm volatile("rdpr %%tpc, %0" : "=r" (tpc));
-		newregs->tpc = tpc;
-		asm volatile("rdpr %%tnpc, %0" : "=r" (tnpc));
-		newregs->tnpc = tnpc;
-		asm volatile("rd %%y, %0" : "=r" (y));
-		newregs->y = y;
+		/*
+		 * The following are dependent on the tl register. We
+		 * can worry about them if the crash command ever needs
+		 * them.
+		 */
+		newregs->tstate = 0;
+		newregs->tpc = 0;
+		newregs->tnpc = 0;
+		newregs->y = 0;
+
 		newregs->magic = PT_REGS_MAGIC;
 	}
 }

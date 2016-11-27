@@ -1097,8 +1097,8 @@ static int pci_sun4v_pbm_init(struct pci_pbm_info *pbm,
 
 	pbm->sysfs_dev_attr_group = &pci_sun4v_dev_attr_group;
 
-	printk("%s: SUN4V PCI Bus Module\n", pbm->name);
-	printk("%s: On NUMA node %d\n", pbm->name, pbm->numa_node);
+	pr_info("%s: SUN4V PCI Bus Module (%04x:00:00.0) Node: %d\n",
+		pbm->name, pbm->index, pbm->numa_node);
 
 	pci_determine_mem_io_space(pbm);
 

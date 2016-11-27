@@ -1,7 +1,7 @@
 /*
  * vds_io.c: LDOM Virtual Disk Server.
  *
- * Copyright (C) 2014, 2015 Oracle. All rights reserved.
+ * Copyright (C) 2014, 2016 Oracle. All rights reserved.
  */
 
 #include "vds.h"
@@ -141,9 +141,12 @@ static int vds_io_alloc_pages(struct vds_io *io, unsigned long len)
 
 	BUG_ON(len % PAGE_SIZE != 0);
 	io->ord = get_order(len);
-	io->pages = alloc_pages(GFP_KERNEL | __GFP_COMP, io->ord);
-	if (!io->pages)
-		return -ENOMEM;
+	do {
+		io->pages = alloc_pages(GFP_KERNEL | __GFP_COMP | __GFP_NOWARN,
+					io->ord);
+		if (!io->pages)
+			msleep(10);
+	} while (!io->pages);
 	io->npages = len >> PAGE_SHIFT;
 
 	vdsdbg(MEM, "ord=%d pages=%p npages=%d\n", io->ord, io->pages,
@@ -214,6 +217,8 @@ void vds_io_done(struct vds_io *io)
 {
 	struct vio_driver_state *vio = io->vio;
 	struct vds_port *port = to_vds_port(vio);
+	struct list_head *pos, *tmp;
+	struct vds_io *ent;
 	unsigned long flags;
 
 	vdsdbg(WQ, "io=%p cpu=%d first=%p\n", io, smp_processor_id(),
@@ -230,11 +235,23 @@ void vds_io_done(struct vds_io *io)
 	 * The reset can be initiated by an explicit incoming request
 	 * or while processing an IO request.  Wakeup anyone waiting on
 	 * the IO list in either case.
+	 *
+	 * With out of order execution, the reset may result from the
+	 * completion of a request that started later but completed
+	 * earlier than other requests on the IO queue.  This should be
+	 * fine since after the connection is re-establised, the client
+	 * will resend all requests for which it has received no response.
 	 */
 	vds_vio_lock(vio, flags);
 	list_del(&io->list);
-	if (io->flags & VDS_IO_FINI)
+	if (io->flags & VDS_IO_FINI) {
+		list_for_each_safe(pos, tmp, &port->io_list) {
+			ent = list_entry(pos, struct vds_io, list);
+			ent->flags |= VDS_IO_DROP;
+		}
 		INIT_LIST_HEAD(&port->io_list);
+
+	}
 	wake_up(&port->wait);
 	vds_vio_unlock(vio, flags);
 	vds_io_free(io);

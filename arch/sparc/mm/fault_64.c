@@ -289,19 +289,6 @@ static void noinline __kprobes bogus_32bit_fault_tpc(struct pt_regs *regs)
 
 #if defined(CONFIG_HUGETLB_PAGE) || defined(CONFIG_TRANSPARENT_HUGEPAGE)
 /* Put this here until there are more consumers.*/
-static unsigned long hugepage_pte_counts_to_pages(mm_context_t *mm_context)
-{
-	unsigned long hugepages_to_pages = 0UL;
-
-	if (xl_hugepage_shift)
-		hugepages_to_pages = xl_hugepage_pte_count(mm_context) <<
-			(xl_hugepage_shift - PAGE_SHIFT);
-	hugepages_to_pages = hugepages_to_pages +
-		(hugepage_pte_count(mm_context) << (HPAGE_SHIFT - PAGE_SHIFT));
-
-	return hugepages_to_pages;
-}
-
 static void sparc64_hugetlb_tsb_fault(struct pt_regs *regs,
 				      struct mm_struct *mm,
 				      unsigned int hugepage_shift)
@@ -318,6 +305,13 @@ static void sparc64_hugetlb_tsb_fault(struct pt_regs *regs,
 		hugepage_size_to_pte_count_idx(1UL << hugepage_shift);
 
 	mm_rss = mm->context.huge_pte_count[hugepage_pte_idx];
+	if (hugepage_idx == MM_TSB_HUGE) {
+#if defined(CONFIG_TRANSPARENT_HUGEPAGE)
+		mm_rss += mm->context.thp_pte_count;
+#endif
+		mm_rss *= REAL_HPAGE_PER_HPAGE;
+	}
+
 	if (unlikely(mm_rss >
 	     mm->context.tsb_block[hugepage_idx].tsb_rss_limit)) {
 		if (mm->context.tsb_block[hugepage_idx].tsb)
@@ -328,10 +322,6 @@ static void sparc64_hugetlb_tsb_fault(struct pt_regs *regs,
 	}
 }
 #else
-static unsigned long hugepage_pte_counts_to_pages(mm_context_t *mm_context)
-{
-	return 0UL;
-}
 static void sparc64_hugetlb_tsb_fault(struct pt_regs *regs,
 				      struct mm_struct *mm,
 				      unsigned int hugepage_shift)
@@ -550,7 +540,9 @@ good_area:
 	up_read(&mm->mmap_sem);
 
 	mm_rss = get_mm_rss(mm);
-	mm_rss =  mm_rss - hugepage_pte_counts_to_pages(&mm->context);
+#if defined(CONFIG_TRANSPARENT_HUGEPAGE)
+	mm_rss -= (mm->context.thp_pte_count * (HPAGE_SIZE / PAGE_SIZE));
+#endif
 	if (unlikely(mm_rss >
 		     mm->context.tsb_block[MM_TSB_BASE].tsb_rss_limit))
 		tsb_grow(mm, MM_TSB_BASE, mm_rss);

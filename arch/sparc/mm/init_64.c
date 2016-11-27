@@ -439,7 +439,7 @@ static void __update_mmu_tsb_insert(struct mm_struct *mm, unsigned long tsb_inde
 }
 
 #ifdef CONFIG_HUGETLB_PAGE
-unsigned int xl_hugepage_shift = HPAGE_SHIFT;
+unsigned int xl_hugepage_shift;
 static unsigned long xl_hugepage_pte;
 
 static bool is_xl_hugetlb_pte(pte_t pte)
@@ -607,8 +607,8 @@ void update_mmu_cache(struct vm_area_struct *vma, unsigned long address, pte_t *
 	spin_lock_irqsave(&mm->context.lock, flags);
 
 #if defined(CONFIG_HUGETLB_PAGE) || defined(CONFIG_TRANSPARENT_HUGEPAGE)
-	if (mm->context.huge_pte_count[MM_PTES_HUGE] &&
-			is_default_hugetlb_pte(pte)) {
+	if ((mm->context.huge_pte_count[MM_PTES_HUGE] ||
+	     mm->context.thp_pte_count) && is_default_hugetlb_pte(pte)) {
 		/* We are fabricating 8MB pages using 4MB real hw pages */
 		pte_val(pte) |= (address & (1UL << REAL_HPAGE_SHIFT));
 		__update_mmu_tsb_insert(mm, MM_TSB_HUGE, REAL_HPAGE_SHIFT,
@@ -1266,7 +1266,10 @@ static void init_node_masks_nonnuma(void)
 	for (i = 0; i < NR_CPUS; i++)
 		numa_cpu_lookup_table[i] = 0;
 
-	cpumask_setall(&numa_cpumask_lookup_table[0]);
+	/* Add current cpu into numa_cpumask_lookup_table[0],
+	 * the rest of the numa cpumask will be set in __cpu_up().
+	 */
+	cpumask_set_cpu(smp_processor_id(), &numa_cpumask_lookup_table[0]);
 #endif
 }
 
@@ -1831,11 +1834,22 @@ static int __init bootmem_init_numa(void)
 	return err;
 }
 
+void sparc64_update_numa_mask(unsigned int cpu)
+{
+	if (num_node_masks > 1)
+		return;
+
+	cpumask_set_cpu(cpu, &numa_cpumask_lookup_table[0]);
+}
 #else
 
 static int bootmem_init_numa(void)
 {
 	return -1;
+}
+
+void sparc64_update_numa_mask(unsigned int cpu)
+{
 }
 
 #endif
@@ -2537,7 +2551,6 @@ void __init paging_init(void)
 {
 	unsigned long end_pfn, shift, phys_base, phys_end;
 	unsigned long real_end, i;
-	int node;
 
 	setup_page_offset();
 
@@ -2737,21 +2750,6 @@ void __init paging_init(void)
 
 	/* Setup bootmem... */
 	last_valid_pfn = end_pfn = bootmem_init(phys_base);
-
-	/* Once the OF device tree and MDESC have been setup, we know
-	 * the list of possible cpus.  Therefore we can allocate the
-	 * IRQ stacks.
-	 */
-	for_each_possible_cpu(i) {
-		node = cpu_to_node(i);
-
-		softirq_stack[i] = __alloc_bootmem_node(NODE_DATA(node),
-							THREAD_SIZE,
-							THREAD_SIZE, 0);
-		hardirq_stack[i] = __alloc_bootmem_node(NODE_DATA(node),
-							THREAD_SIZE,
-							THREAD_SIZE, 0);
-	}
 
 	kernel_physical_mapping_init();
 

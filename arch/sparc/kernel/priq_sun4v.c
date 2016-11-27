@@ -19,6 +19,13 @@
 static unsigned long priqs_eq_sizes, priqs_per_cpu, priqs_per_pcibus;
 static unsigned long priq_eq_max_num_entries;
 static bool priq_configured;
+static bool priq_debug;
+
+#define PRIQ_LABEL "[priq] "
+#define priqdbg(fmt, args...) \
+do {    if (priq_debug) \
+		pr_info(PRIQ_LABEL fmt, ## args); \
+} while (0)
 
 /* priq_eq_sizes is a bit map of supported EQ sizes.
  *     If bit n is set, EQ size in bytes of 2^(13 + 3n) is supported.
@@ -66,8 +73,8 @@ static int __init priq_get_properties(void)
 		priqs_per_pcibus = 1;
 
 	rc = 0;
-	pr_info("%s: priqs_eq_sizes=%ld priqs_per_cpu=%ld priqs_per_pcibus=%ld\n",
-		__func__, priqs_eq_sizes, priqs_per_cpu, priqs_per_pcibus);
+	pr_info("PRIQ: priqs_eq_sizes=%ld priqs_per_cpu=%ld priqs_per_pcibus=%ld\n",
+		priqs_eq_sizes, priqs_per_cpu, priqs_per_pcibus);
 
 out:
 	mdesc_release(hp);
@@ -76,6 +83,7 @@ out:
 
 /* bus, device and function. */
 #define BDF(b, d, f)	(((b) << 8) | ((d) << 3) | (f))
+#define RID(bdf) ((bdf) & 0xffff)
 
 /* bus, device and function for intx is PEX req_id (0x0000).*/
 #define	BDF_INTX	BDF(0, 0, 0)
@@ -87,13 +95,20 @@ out:
 #define	PRIQ_INTD	3UL
 
 struct priq_irq {
-	struct list_head	list;		/* list			*/
-	int			irq;		/* irq			*/
-	unsigned int		msidata;	/* msi data		*/
-	unsigned int		devhandle;	/* rc devhandle		*/
-	unsigned short		bdf;		/* bus/device/function	*/
-	unsigned short		strand;		/* strand bound too	*/
+	struct list_head	list;		/* list			      */
+	int			irq;		/* irq			      */
+	unsigned int		msidata;	/* msi data		      */
+	unsigned int		devhandle;	/* rc devhandle		      */
+	unsigned int		bdf;		/* domain/bus/device/function */
+	unsigned short		strand;		/* strand bound too	      */
 };
+
+static char *BDF2str(char *buf, int size, unsigned int bdf)
+{
+	snprintf(buf, size, "%04x:%02x:%02x.%d", (bdf >> 16) & 0xffff,
+		 (bdf >> 8) & 0xff, (bdf & 0xff) >> 3, bdf & 0x03);
+	return buf;
+}
 
 static unsigned long priq_irq_to_intx(struct priq_irq *priq_irq)
 {
@@ -110,10 +125,11 @@ static bool priq_irq_is_intx(struct priq_irq *priq_irq)
 static void priq_intx_debug(struct priq_irq *priq_irq, const char *message)
 {
 	unsigned long intx = priq_irq_to_intx(priq_irq);
+	char buf[16];
 
-	pr_info("%s: %s intx=%ld devhandle=0x%x irq=%d bdf=%d msidata=%u\n",
-		__func__, message, intx, priq_irq->devhandle, priq_irq->irq,
-		priq_irq->bdf, priq_irq->msidata);
+	pr_info("PRIQ: %s intx=%ld devhandle=0x%x irq=%d bdf=%s msidata=%u\n",
+		message, intx, priq_irq->devhandle, priq_irq->irq,
+		BDF2str(buf, 16, priq_irq->bdf), priq_irq->msidata);
 }
 #else
 static void priq_intx_debug(struct priq_irq *priq_irq, const char *message) {}
@@ -177,7 +193,7 @@ static DEFINE_PER_CPU(struct priq, current_priq) = {
 		      .id = 0UL, .c_raddr = 0UL, .head = 0UL, .tail = 0UL,
 		      .hash = NULL};
 
-/* cpus with PRIQs */
+/* online CPUs with configured PRIQs */
 static cpumask_t priq_cpu_mask;
 
 static void cpumask_set_cpu_priq(int cpu)
@@ -261,11 +277,14 @@ static int priq_irq_bind_eqcb(struct irq_data *data, const struct cpumask *mask)
 	int strand = priq_irq->strand;
 	unsigned long hverror, id;
 	struct priq *priq;
+	char buf[16];
 
 	strand = priq_affine(strand, mask);
 
-	if (strand >= nr_cpu_ids)
+	if (strand >= nr_cpu_ids) {
+		priqdbg("priq_affine failed. strand: %d\n", strand);
 		return -ENODEV;
+	}
 
 	priq = &per_cpu(current_priq, strand);
 	id = priq->id;
@@ -275,14 +294,24 @@ static int priq_irq_bind_eqcb(struct irq_data *data, const struct cpumask *mask)
 
 		priq_intx_debug(priq_irq, __func__);
 		hverror = pci_priq_intx_bind(priq_irq->devhandle, intx, id);
-	} else
+		if (hverror) {
+			priqdbg("bind_eqcb(intx) h: %lu intx: %ld RC: 0x%04x\n",
+				hverror, intx, priq_irq->devhandle);
+			return -ENODEV;
+		}
+
+		priqdbg("bind_eqcb(intx) success. intx: %ld RC: 0x%04x\n",
+			intx, priq_irq->devhandle);
+	} else {
 		hverror = pci_priq_msi_bind(priq_irq->devhandle,
 					    priq_irq->msidata,
-					    priq_irq->bdf, id);
-
-	if (hverror) {
-		pr_err("%s: Failed for bind hverror(%ld)\n", __func__, hverror);
-		return -ENODEV;
+					    RID(priq_irq->bdf), id);
+		if (hverror) {
+			priqdbg("bind_eqcb(msi). hv: %lu msi: %d PCI: %s\n",
+				hverror, priq_irq->msidata,
+				BDF2str(buf, 16, priq_irq->bdf));
+			return -ENODEV;
+		}
 	}
 
 	priq_irq->strand = strand;
@@ -302,32 +331,50 @@ static int priq_irq_bind_eqcb(struct irq_data *data, const struct cpumask *mask)
 static int priq_msi_set_affinity(struct irq_data *data,
 				 const struct cpumask *mask, bool force)
 {
-	return priq_irq_bind_eqcb(data, mask);
+	int err = priq_irq_bind_eqcb(data, mask);
+
+	if (err) {
+		struct priq_irq *priq_msi = irq_data_get_irq_handler_data(data);
+		char buf[16];
+
+		pr_warn("PRIQ: Could not set affinity. MSI %d - PCI: %s\n",
+			priq_msi->msidata, BDF2str(buf, 16, priq_msi->bdf));
+	}
+
+	return err;
 }
 
 static void priq_msi_enable(struct irq_data *data)
 {
 	struct priq_irq *priq_msi = irq_data_get_irq_handler_data(data);
 	unsigned long hverror;
+	char buf[16];
 
 	hverror = priq_irq_bind_eqcb(data, data->affinity);
 	if (hverror)
-		return;
+		goto out;
 
 	hverror = pci_priq_msi_enable(priq_msi->devhandle, priq_msi->msidata,
-				      priq_msi->bdf);
+				      RID(priq_msi->bdf));
 	if (hverror) {
-		pr_err("%s: Failed enable hverror(%ld).\n", __func__, hverror);
-		return;
+		priqdbg("MSI enable failed. err: %ld\n", hverror);
+		goto out;
 	}
 
 	hverror = pci_priq_msi_setstate(priq_msi->devhandle, priq_msi->msidata,
-					priq_msi->bdf, HV_MSISTATE_IDLE);
-	if (hverror)
-		pr_err("%s: Failed to set msi to idle, hverror(%ld).\n",
-		       __func__, hverror);
+					RID(priq_msi->bdf), HV_MSISTATE_IDLE);
+	if (hverror) {
+		priqdbg("Set MSI to idle failed. err: %ld\n", hverror);
+		goto out;
+	}
 
 	unmask_msi_irq(data);
+	return;
+
+out:
+	pr_err("PRIQ: Could not enable MSI: %d - RC: 0x%04x - PCI: %s\n",
+	       priq_msi->msidata, priq_msi->devhandle,
+	       BDF2str(buf, 16, priq_msi->bdf));
 }
 
 static void priq_msi_disable(struct irq_data *data)
@@ -336,9 +383,9 @@ static void priq_msi_disable(struct irq_data *data)
 	unsigned long hverror;
 
 	hverror = pci_priq_msi_disable(priq_msi->devhandle, priq_msi->msidata,
-				       priq_msi->bdf);
+				       RID(priq_msi->bdf));
 	if (hverror)
-		pr_err("%s: Failed for hverror(%ld).\n", __func__, hverror);
+		priqdbg("MSI disable failed. err: %ld\n", hverror);
 
 	mask_msi_irq(data);
 }
@@ -355,7 +402,17 @@ static struct irq_chip priq_msi_chip = {
 static int priq_intx_set_affinity(struct irq_data *data,
 				  const struct cpumask *mask, bool force)
 {
-	return priq_irq_bind_eqcb(data, mask);
+	int err = priq_irq_bind_eqcb(data, mask);
+
+	if (err) {
+		struct priq_irq *priq_irq = irq_data_get_irq_handler_data(data);
+		unsigned long intx = priq_irq_to_intx(priq_irq);
+
+		pr_warn("PRIQ: Could not set affinity. INTx %lu - RC: 0x%04x\n",
+			intx, priq_irq->devhandle);
+	}
+
+	return err;
 }
 
 static void priq_intx_enable(struct irq_data *data)
@@ -369,18 +426,26 @@ static void priq_intx_enable(struct irq_data *data)
 		goto out;
 
 	hverror = pci_priq_intx_enable(priq_irq->devhandle, intx);
-	if (hverror)
-		pr_err("%s: Failed for Enable hverror(%ld).\n", __func__,
-		       hverror);
+	if (hverror) {
+		priqdbg("intx enable failed: %ld, rc: 0x%03x, intx: %lu\n",
+			hverror, priq_irq->devhandle, intx);
+		goto out;
+	}
 
 	hverror = pci_priq_intx_setstate(priq_irq->devhandle, intx,
 					 HV_PCI_INTX_CLEAR);
-	if (hverror)
-		pr_err("%s: Failed for clear of intx, hverror(%ld).\n",
-		       __func__, hverror);
+	if (hverror) {
+		priqdbg("clear intx failed: %ld, rc: 0x%03x, intx: %lu\n",
+			hverror, priq_irq->devhandle, intx);
+		goto out;
+	}
+
+	return;
 
 out:
 	priq_intx_debug(priq_irq, __func__);
+	pr_err("PRIQ: Could not enable INTx %lu - RC: 0x%04x\n", intx,
+	       priq_irq->devhandle);
 }
 
 static void priq_intx_disable(struct irq_data *data)
@@ -391,7 +456,8 @@ static void priq_intx_disable(struct irq_data *data)
 
 	hverror = pci_priq_intx_disable(priq_irq->devhandle, intx);
 	if (hverror)
-		pr_err("%s: Failed for hverror(%ld).\n", __func__, hverror);
+		priqdbg("intx(%lu) disable failed: %lu 0x%04x\n", intx, hverror,
+			priq_irq->devhandle);
 
 	priq_intx_debug(priq_irq, __func__);
 }
@@ -415,12 +481,13 @@ static void priq_hash_nodes_free(void)
 {
 	int node;
 
-	for_each_online_node(node)
+	for_each_online_node(node) {
 		if (priq_hash[node]) {
 			struct list_head *head = priq_hash[node];
 
 			free_pages((unsigned long)head, 0U);
 		}
+	}
 }
 
 static int priq_hash_nodes_init(void)
@@ -433,8 +500,7 @@ static int priq_hash_nodes_init(void)
 
 		page = alloc_pages_exact_node(node, GFP_ATOMIC, 0U);
 		if (!page) {
-			pr_err("%s: Failed to allocate priq hash list.\n",
-			       __func__);
+			priqdbg("Failed to allocate priq hash list.\n");
 			goto out;
 		}
 
@@ -453,7 +519,7 @@ static unsigned int priq_hash_value(unsigned int devhandle, unsigned int bdf,
 				    unsigned int msidata)
 {
 	unsigned long bits = ((unsigned long)devhandle << 44) |
-			     ((unsigned long)msidata << 16) | bdf;
+			     ((unsigned long)msidata << 16) | RID(bdf);
 	unsigned int hash_value = hash_64(bits, PRIQ_HASH_BITS);
 
 	return hash_value;
@@ -489,14 +555,14 @@ static void priq_hash_del(struct priq_irq *priq_irq)
 	spin_unlock_irqrestore(&priq_hash_node_lock, flags);
 }
 
-static unsigned short priq_bdf(struct pci_dev *pdev)
+static unsigned int priq_bdf(struct pci_dev *pdev)
 {
 	unsigned int device = PCI_SLOT(pdev->devfn);
 	unsigned int func = PCI_FUNC(pdev->devfn);
 	struct pci_bus *bus_dev = pdev->bus;
 	unsigned int bus = bus_dev->number;
 
-	return BDF(bus, device, func);
+	return (pci_domain_nr(bus_dev) << 16) | BDF(bus, device, func);
 }
 
 /* This selection is based on node and online cpus. Should online not
@@ -587,12 +653,14 @@ static void priq_msi_teardown(unsigned int irq, struct pci_dev *pdev)
 	struct pci_pbm_info *pbm = get_pbm(pdev);
 	struct priq_irq *priq_msi = irq_get_handler_data(irq);
 	unsigned long hverror;
+	char buf[16];
 
 	hverror = pci_priq_msi_unbind(pbm->devhandle, priq_msi->msidata,
-				      priq_msi->bdf);
+				      RID(priq_msi->bdf));
 	if (hverror && hverror != HV_EUNBOUND)
-		pr_err("%s: pci_priq_msi_unbind failed with (%ld).\n", __func__,
-		       hverror);
+		priqdbg("msi_unbind failed: %ld, dh: 0x%03x, pci: %s, 0x%x\n",
+			hverror, pbm->devhandle,
+			BDF2str(buf, 16, priq_msi->bdf), priq_msi->msidata);
 
 	priq_hash_del(priq_msi);
 	synchronize_rcu();
@@ -634,24 +702,28 @@ static unsigned int priq_pci_record_bdf(unsigned long word4)
 
 static void priq_msi_dump_record(const char *reason, void *entry)
 {
-	unsigned long *word = entry;
+	if (priq_debug) {
+		unsigned long *word = entry;
 
-	pr_err("%s: %s\n", __func__, reason);
-	pr_err("word0=0x%.16lx word1=0x%.16lx word2=0x%.16lx word3=0x%.16lx\n",
-	       word[0], word[1], word[2], word[3]);
-	pr_err("word4=0x%.16lx word5=0x%.16lx word6=0x%.16lx word7=0x%.16lx\n",
-	       word[4], word[5], word[6], word[7]);
+		pr_err("%s: %s\n", __func__, reason);
+		pr_err("word0=0x%.16lx word1=0x%.16lx word2=0x%.16lx word3=0x%.16lx\n",
+		       word[0], word[1], word[2], word[3]);
+		pr_err("word4=0x%.16lx word5=0x%.16lx word6=0x%.16lx word7=0x%.16lx\n",
+		       word[4], word[5], word[6], word[7]);
+	}
 }
 
 static void priq_msi_idle(struct priq_irq *priq_msi)
 {
 	unsigned long hverror;
+	char buf[16];
 
 	hverror = pci_priq_msi_setstate(priq_msi->devhandle, priq_msi->msidata,
-					priq_msi->bdf, HV_MSISTATE_IDLE);
+					RID(priq_msi->bdf), HV_MSISTATE_IDLE);
 	if (hverror)
-		pr_err("%s: Failed to set msi to idle, hverror(%ld).\n",
-		       __func__, hverror);
+		priqdbg("Failed to set msi to idle. err: %ldi, pci: %s, 0x%x\n",
+			hverror, BDF2str(buf, 16, priq_msi->bdf),
+			priq_msi->msidata);
 }
 
 #define PRIQ_TYPE_MASK		0xffUL
@@ -680,8 +752,8 @@ static void process_priq_record(void *entry, int type,
 		hverror = pci_priq_intx_setstate(priq_irq->devhandle, intx,
 						 HV_PCI_INTX_CLEAR);
 		if (hverror)
-			pr_err("%s: intx_setstate failed for, hverror(%ld).\n",
-			       __func__, hverror);
+			priqdbg("intx_setstate failed. err: %ld, intx: %lu dh: 0x%03x\n",
+				hverror, intx, priq_irq->devhandle);
 
 		generic_handle_irq(priq_irq->irq);
 		break;
@@ -717,7 +789,7 @@ static void priq_msi_consume(struct priq *priq, void *entry)
 	struct priq_irq *priq_irq;
 	bool found = false;
 
-	if (type !=  PRIQ_TYPE_MSI32 && type != PRIQ_TYPE_MSI64 &&
+	if (type != PRIQ_TYPE_MSI32 && type != PRIQ_TYPE_MSI64 &&
 	    type != PRIQ_TYPE_INTX) {
 		priq_msi_dump_record("type not supported yet", entry);
 		return;
@@ -725,7 +797,7 @@ static void priq_msi_consume(struct priq *priq, void *entry)
 
 	rcu_read_lock();
 	list_for_each_entry_rcu(priq_irq, head, list) {
-		if (priq_irq->devhandle == dhndl && priq_irq->bdf == bdf &&
+		if (priq_irq->devhandle == dhndl && RID(priq_irq->bdf) == bdf &&
 		    priq_irq->msidata == msidata) {
 			process_priq_record(entry, type, priq_irq);
 			found = true;
@@ -790,8 +862,7 @@ static void handle_priq(struct priq *priq)
 
 	hverror = priq_get_head_tail(priq->id, &head, &tail);
 	if (hverror) {
-		pr_err("PRIQ: %s: failed priq_get_head_tail(%ld).\n",
-		       __func__, hverror);
+		priqdbg("failed priq_get_head_tail(%ld).\n", hverror);
 		return;
 	}
 
@@ -821,7 +892,7 @@ static void handle_priq(struct priq *priq)
 	priq_enable_ie(pstate);
 
 	if (nested) {
-		pr_err("PRIQ: bailed on nested interrupt\n");
+		priqdbg("Bailed on nested interrupt\n");
 		return;
 	}
 
@@ -850,11 +921,8 @@ again:
 	BUG_ON(priq->head != priq->tail);
 	priq_enable_ie(pstate);
 
-	if (hverror) {
-		pr_err("%s: failed priq_set_head(%ld).\n", __func__, hverror);
-		pr_err("%s: Fatal error, priq is in impossible condition. Proceeding but with peril.\n",
-		       __func__);
-	}
+	if (hverror)
+		priqdbg("Failed priq_set_head: %ld\n", hverror);
 }
 
 /* We have at most one priq per cpu for now.*/
@@ -923,6 +991,10 @@ static int __init early_priq(char *p)
 				early_priq_coarse();
 			else if (!strcmp(p, "off"))
 				priq_enabled = false;
+			else if (!strcmp(p, "dbg")) {
+				priq_debug = true;
+				priqdbg("PRIQ: debugging enabled.\n");
+			}
 		}
 
 		p = k;
@@ -976,15 +1048,14 @@ void priq_percpu_setup(int cpu)
 	if ((long)id < 0) {
 		long hverror = -id;
 
-		pr_err("%s: priq_conf failed for (%ld) one cpu(%d).\n",
-		       __func__, hverror, cpu);
+		priqdbg("priq_conf failed: %ld, cpu(%d)\n", hverror, cpu);
 		goto out2;
 	}
 
 	hverror = priq_bind(id, cpu, PIL_DEVICE_IRQ);
 	if (hverror) {
-		pr_err("%s: priq_bind(id=%lx) failed for (%ld) one cpu(%d).\n",
-		       __func__, id, hverror, cpu);
+		priqdbg("priq_bind(id=%lx) failed: %ld, cpu(%d)\n", id, hverror,
+			cpu);
 		goto out3;
 	}
 
@@ -1003,12 +1074,11 @@ void priq_percpu_setup(int cpu)
 out3:
 	hverror = priq_unconf(id);
 	if (hverror)
-		pr_err("%s: priq_unconf(%ld) failed for(%ld)\n", __func__, id,
-		       hverror);
+		priqdbg("priq_unconf(%ld) failed: %ld\n", id, hverror);
 out2:
 	free_pages((unsigned long)__va(raddr), order);
 out1:
-	pr_err("%s: failed to allocate priq for cpu(%d).\n", __func__, cpu);
+	priqdbg("Failed to allocate priq for cpu(%d)\n", cpu);
 out:
 	return;
 }
@@ -1017,31 +1087,31 @@ static void unbind_priq_msi(struct priq *priq, struct priq_irq *priq_msi)
 {
 	struct hv_pci_msi_info info;
 	unsigned long hverror;
+	char buf[16];
 
 	hverror = pci_priq_msi_info(priq_msi->devhandle, priq_msi->msidata,
-				    priq_msi->bdf, &info);
-
-	if (hverror == HV_EUNBOUND) {
-		pr_err("%s: attempt to unbind unbound MSI\n", __func__);
-		return;
-	}
+				    RID(priq_msi->bdf), &info);
 
 	if (hverror) {
-		pr_err("%s: Failed to obtain priq msi info, hverror(%ld).\n",
-		       __func__, hverror);
+		if (hverror != HV_EUNBOUND)
+			priqdbg("msi info failed. err: %ld, pci: %s, 0x%x\n",
+				hverror, BDF2str(buf, 16, priq_msi->bdf),
+				priq_msi->msidata);
 		return;
 	}
 
 	if (priq->id != info.priq_id) {
-		pr_err("%s: attempt to unbind MSI from wrong PRIQ\n", __func__);
+		priqdbg("Attempt unbind MSI from wrong PRIQ. pci: %s, 0x%x\n",
+			BDF2str(buf, 16, priq_msi->bdf), priq_msi->msidata);
 		return;
 	}
 
 	hverror = pci_priq_msi_unbind(priq_msi->devhandle, priq_msi->msidata,
-				      priq_msi->bdf);
+				      RID(priq_msi->bdf));
 	if (hverror)
-		pr_err("%s: Failed to unbind msi irq, hverror(%ld).\n",
-		       __func__, hverror);
+		priqdbg("Failed to unbind msi irq. err: %ld, pci: %s 0x%x\n",
+			hverror, BDF2str(buf, 16, priq_msi->bdf),
+			priq_msi->msidata);
 }
 
 static void unbind_priq_intx(struct priq *priq, struct priq_irq *priq_irq)
@@ -1053,8 +1123,8 @@ static void unbind_priq_intx(struct priq *priq, struct priq_irq *priq_irq)
 	hverror = pci_priq_intx_info(priq_irq->devhandle, intx, &info);
 	if (hverror) {
 		if (hverror != HV_EUNBOUND)
-			pr_err("%s: Failed to obtain priq intx information, hverror(%ld).\n",
-			       __func__, hverror);
+			priqdbg("intx info failed. err: %ld, dh: 0x%03x, intx: %lu\n",
+				hverror, priq_irq->devhandle, intx);
 		return;
 	}
 
@@ -1063,8 +1133,8 @@ static void unbind_priq_intx(struct priq *priq, struct priq_irq *priq_irq)
 
 	hverror = pci_priq_intx_unbind(priq_irq->devhandle, intx);
 	if (hverror)
-		pr_err("%s: Failed to unbind intx, hverror(%ld)\n",
-		       __func__, hverror);
+		priqdbg("Failed unbind intx. err: %ld, dh: 0x%03x, intx: %lu\n",
+			hverror, priq_irq->devhandle, intx);
 }
 
 static void unbind_all_msi_on_priq(int cpu, struct priq *priq)
@@ -1108,14 +1178,15 @@ void priq_percpu_destroy(int cpu)
 
 	hverror = priq_unbind(priq->id);
 	if (hverror) {
-		pr_err("%s: priq_unbind failed for (%ld)\n", __func__, hverror);
+		priqdbg("priq_unbind failed. err: %ld, id: %lu\n", hverror,
+			priq->id);
 		return;
 	}
 
 	hverror = priq_unconf(priq->id);
 	if (hverror) {
-		pr_err("%s: priq_unconf failed with error (%ld), for cpu=%d.\n",
-		       __func__, hverror, cpu);
+		priqdbg("priq_unconf failed. err: %ld, cpu=%d, id: %lu\n",
+			hverror, cpu, priq->id);
 		return;
 	}
 
@@ -1149,16 +1220,14 @@ void __init sun4v_priq(void)
 	/* Register the HV groups.*/
 	group_rc = sun4v_hvapi_register(HV_GRP_PRIQ, major, &minor);
 	if (group_rc) {
-		pr_err("%s: failed to register HV_GRP_PRIQ(%d).\n",
-		       __func__, group_rc);
+		priqdbg("Failed to register HV_GRP_PRIQ(%d)\n", group_rc);
 		return;
 	}
 
 	minor = 1UL;
 	group_rc = sun4v_hvapi_register(HV_GRP_PRIQ_PCI, major, &minor);
 	if (group_rc) {
-		pr_err("%s: failed to register HV_GRP_PRIQ_PCI(%d).\n",
-		       __func__, group_rc);
+		priqdbg("Failed to register HV_GRP_PRIQ_PCI(%d).\n", group_rc);
 		return;
 	}
 
@@ -1167,8 +1236,7 @@ void __init sun4v_priq(void)
 
 	priq_configured = true;
 	priq_percpu_setup(cpu);
-
-	pr_err("PRIQ Enabled\n");
+	return;
 }
 
 int pci_sun4v_priq_msi_init(struct pci_pbm_info *pbm)
@@ -1180,8 +1248,8 @@ int pci_sun4v_priq_msi_init(struct pci_pbm_info *pbm)
 	pbm->setup_msi_irq = priq_msi_setup;
 	pbm->teardown_msi_irq = priq_msi_teardown;
 
-	pr_info("%s: devhandle=0x%x node=%d.\n", __func__, pbm->devhandle,
-		pbm->numa_node);
+	pr_info("PRIQ: Enabled Root Complex = 0x%03x node=%d.\n",
+		pbm->devhandle, pbm->numa_node);
 	return 0;
 }
 
@@ -1195,7 +1263,7 @@ static int intx_shared(unsigned int rc, unsigned int msidata, int node)
 
 	list_for_each_entry_rcu(priq_irq, head, list) {
 		if (priq_irq->devhandle == rc && priq_irq->bdf == bdf &&
-		    priq_irq->msidata == msidata) {
+			priq_irq->msidata == msidata) {
 			irq = priq_irq->irq;
 			break;
 		}
@@ -1229,8 +1297,7 @@ static int setup_priq_intx_irq(unsigned int devhandle, unsigned int devino,
 
 	priq_irq = kzalloc_node(sizeof(*priq_irq), GFP_ATOMIC, node);
 	if (!priq_irq) {
-		pr_err("%s: failed to allocate legacy priq_irq.\n",
-		       __func__);
+		priqdbg("Failed to allocate legacy priq_irq\n");
 		irq_free(irq);
 		return -1;
 	}

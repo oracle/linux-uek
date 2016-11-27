@@ -12,19 +12,21 @@
 #include <linux/cdrom.h>
 #include <linux/slab.h>
 #include <linux/spinlock.h>
+#include <linux/bitmap.h>
 #include <linux/completion.h>
 #include <linux/delay.h>
 #include <linux/init.h>
 #include <linux/list.h>
 #include <linux/scatterlist.h>
+#include <linux/wait.h>
 
 #include <asm/vio.h>
 #include <asm/ldc.h>
 
 #define DRV_MODULE_NAME		"sunvdc"
 #define PFX DRV_MODULE_NAME	": "
-#define DRV_MODULE_VERSION	"1.2"
-#define DRV_MODULE_RELDATE	"November 24, 2014"
+#define DRV_MODULE_VERSION	"1.3"
+#define DRV_MODULE_RELDATE	"September 24, 2016"
 
 static char version[] =
 	DRV_MODULE_NAME ".c:v" DRV_MODULE_VERSION " (" DRV_MODULE_RELDATE ")\n";
@@ -43,7 +45,9 @@ MODULE_VERSION(DRV_MODULE_VERSION);
 static struct workqueue_struct *sunvdc_wq;
 
 struct vdc_req_entry {
-	struct request		*req;
+	struct bio		*req;
+	u64			size;
+	int			sent;
 };
 
 struct vdc_port {
@@ -51,13 +55,14 @@ struct vdc_port {
 
 	struct gendisk		*disk;
 
-	struct vdc_completion	*cmp;
+	struct vio_completion	*cmp;
 
 	u64			req_id;
 	u64			seq;
 	struct vdc_req_entry	rq_arr[VDC_TX_RING_SIZE];
 
 	unsigned long		ring_cookies;
+	wait_queue_head_t	wait;
 
 	u64			max_xfer_size;
 	u32			vdisk_block_size;
@@ -74,12 +79,18 @@ struct vdc_port {
 	u8			vdisk_type;
 	u8			vdisk_mtype;
 
+	u8			flags;
+
 	char			disk_name[32];
 };
+
+#define	VDC_PORT_RESET	0x1
 
 static void vdc_ldc_reset(struct vdc_port *port);
 static void vdc_ldc_reset_work(struct work_struct *work);
 static void vdc_ldc_reset_timer(unsigned long _arg);
+static struct bio *vdc_desc_put(struct vdc_port *port, unsigned int idx);
+static inline void vdc_desc_set_state(struct vio_disk_desc *, int);
 
 static inline struct vdc_port *to_vdc_port(struct vio_driver_state *vio)
 {
@@ -88,6 +99,8 @@ static inline struct vdc_port *to_vdc_port(struct vio_driver_state *vio)
 
 /* Ordered from largest major to lowest */
 static struct vio_version vdc_versions[] = {
+	{ .major = 1, .minor = 3 },
+	{ .major = 1, .minor = 2 },
 	{ .major = 1, .minor = 1 },
 	{ .major = 1, .minor = 0 },
 };
@@ -101,11 +114,6 @@ static inline int vdc_version_supported(struct vdc_port *port,
 #define VDCBLK_NAME	"vdisk"
 static int vdc_major;
 #define PARTITION_SHIFT	3
-
-static inline u32 vdc_tx_dring_avail(struct vio_dring_state *dr)
-{
-	return vio_dring_avail(dr, VDC_TX_RING_SIZE);
-}
 
 static int vdc_getgeo(struct block_device *bdev, struct hd_geometry *geo)
 {
@@ -160,30 +168,13 @@ static const struct block_device_operations vdc_fops = {
 	.ioctl		= vdc_ioctl,
 };
 
-static void vdc_blk_queue_start(struct vdc_port *port)
+static void vdc_finish(struct vio_completion *cmp, int err, int waiting_for)
 {
-	struct vio_dring_state *dr = &port->vio.drings[VIO_DRIVER_TX_RING];
-
-	/* restart blk queue when ring is half emptied. also called after
-	 * handshake completes, so check for initial handshake before we've
-	 * allocated a disk.
-	 */
-	if (port->disk && blk_queue_stopped(port->disk->queue) &&
-	    vdc_tx_dring_avail(dr) * 100 / VDC_TX_RING_SIZE >= 50) {
-		blk_start_queue(port->disk->queue);
-	}
-
-}
-
-static void vdc_finish(struct vio_driver_state *vio, int err, int waiting_for)
-{
-	if (vio->cmp &&
-	    (waiting_for == -1 ||
-	     vio->cmp->waiting_for == waiting_for)) {
-		vio->cmp->err = err;
-		complete(&vio->cmp->com);
-		vio->cmp = NULL;
-	}
+	if (cmp && (waiting_for == -1 || cmp->waiting_for == waiting_for)) {
+		cmp->err = err;
+		complete_all(&cmp->com);
+	} else
+		pr_debug(PFX "skip err=%d wait=%d\n", err, waiting_for);
 }
 
 static void vdc_handshake_complete(struct vio_driver_state *vio)
@@ -191,8 +182,8 @@ static void vdc_handshake_complete(struct vio_driver_state *vio)
 	struct vdc_port *port = to_vdc_port(vio);
 
 	del_timer(&port->ldc_reset_timer);
-	vdc_finish(vio, 0, WAITING_FOR_LINK_UP);
-	vdc_blk_queue_start(port);
+	vdc_finish(vio->cmp, 0, WAITING_FOR_LINK_UP);
+	vio->cmp = NULL;
 }
 
 static int vdc_handle_unknown(struct vdc_port *port, void *arg)
@@ -279,38 +270,46 @@ static int vdc_handle_attr(struct vio_driver_state *vio, void *arg)
 	}
 }
 
-static void vdc_end_special(struct vdc_port *port, struct vio_disk_desc *desc)
+static void vdc_end_special(struct vdc_port *port, int err)
 {
-	int err = desc->status;
-
-	vdc_finish(&port->vio, -err, WAITING_FOR_GEN_CMD);
+	vdc_finish(port->cmp, -err, WAITING_FOR_GEN_CMD);
+	port->cmp = NULL;
 }
 
 static void vdc_end_one(struct vdc_port *port, struct vio_dring_state *dr,
-			unsigned int index)
+			unsigned int index, int err)
 {
 	struct vio_disk_desc *desc = vio_dring_entry(dr, index);
+	struct vio_driver_state *vio = &port->vio;
 	struct vdc_req_entry *rqe = &port->rq_arr[index];
-	struct request *req;
+	struct bio *req;
 
-	if (unlikely(desc->hdr.state != VIO_DESC_DONE))
+	assert_spin_locked(&vio->lock);
+
+	if (err)
+		vdc_desc_set_state(desc, VIO_DESC_DONE);
+	else if (unlikely(desc->hdr.state != VIO_DESC_DONE)) {
+		pr_err("%s idx=%u err=%d state=%d\n",
+			__func__, index, err, desc->hdr.state);
 		return;
+	} else
+		err = desc->status;
 
-	ldc_unmap(port->vio.lp, desc->cookies, desc->ncookies);
-	desc->hdr.state = VIO_DESC_FREE;
-	dr->cons = vio_dring_next(dr, index);
-
-	req = rqe->req;
+	req = vdc_desc_put(port, index);
 	if (req == NULL) {
-		vdc_end_special(port, desc);
+		vdc_end_special(port, err);
 		return;
 	}
 
-	rqe->req = NULL;
+	if (rqe->size != desc->size) {
+		pr_err("%s idx=%u err=%d state=%d size=%lld rsize=%lld\n",
+			__func__, index, err, desc->hdr.state,
+			desc->size, rqe->size);
+		BUG();
+	}
 
-	__blk_end_request(req, (desc->status ? -EIO : 0), desc->size);
-
-	vdc_blk_queue_start(port);
+	bio_endio(req, err ? -EIO : 0);
+	rqe->size = 0;
 }
 
 static int vdc_ack(struct vdc_port *port, void *msgbuf)
@@ -323,7 +322,7 @@ static int vdc_ack(struct vdc_port *port, void *msgbuf)
 		     pkt->start_idx >= VDC_TX_RING_SIZE))
 		return 0;
 
-	vdc_end_one(port, dr, pkt->start_idx);
+	vdc_end_one(port, dr, pkt->start_idx, 0);
 
 	return 0;
 }
@@ -398,56 +397,170 @@ static void vdc_event(void *arg, int event)
 		if (err < 0)
 			break;
 	}
-	if (err < 0)
-		vdc_finish(&port->vio, err, WAITING_FOR_ANY);
+
+	/*
+	 * If there is an error, reset the link.  All inflight
+	 * requests will be resent once the port is up again.
+	 */
+	if (err < 0) {
+		vio_link_state_change(vio, LDC_EVENT_RESET);
+		queue_work(sunvdc_wq, &port->ldc_reset_work);
+	}
 out:
 	spin_unlock_irqrestore(&vio->lock, flags);
 }
 
-static int __vdc_tx_trigger(struct vdc_port *port)
+static int __vdc_tx_trigger(struct vdc_port *port, unsigned int idx, int new)
 {
-	struct vio_dring_state *dr = &port->vio.drings[VIO_DRIVER_TX_RING];
+	struct vdc_req_entry *rqe = &port->rq_arr[idx];
+	struct vio_driver_state *vio = &port->vio;
+	struct vio_dring_state *dr = &vio->drings[VIO_DRIVER_TX_RING];
 	struct vio_dring_data hdr = {
 		.tag = {
 			.type		= VIO_TYPE_DATA,
 			.stype		= VIO_SUBTYPE_INFO,
 			.stype_env	= VIO_DRING_DATA,
-			.sid		= vio_send_sid(&port->vio),
+			.sid		= vio_send_sid(vio),
 		},
 		.dring_ident		= dr->ident,
-		.start_idx		= dr->prod,
-		.end_idx		= dr->prod,
+		.start_idx		= idx,
+		.end_idx		= idx,
 	};
+	unsigned long flags = 0;
 	int err, delay;
 
-	hdr.seq = dr->snd_nxt;
 	delay = 1;
 	do {
-		err = vio_ldc_send(&port->vio, &hdr, sizeof(hdr));
+		/*
+		 * We can get here for a new or an inflight request.
+		 * In the former case, we must explicity hold the vio lock.
+		 * In the latter case, the lock is already held as part
+		 * reset processing.  Sending the request and setting the
+		 * related fields in case of success must be atomic.
+		 * First, snd_nxt and req_id must be incremented atomically.
+		 * Second, if the thread is preempted after vio_ldc_send()
+		 * but before setting rqe->sent and the service resets,
+		 * the request may not be resent during reset processing.
+		 */
+		if (new)
+			spin_lock_irqsave(&vio->lock, flags);
+		else
+			assert_spin_locked(&vio->lock);
+		hdr.seq = dr->snd_nxt;
+		err = vio_ldc_send(vio, &hdr, sizeof(hdr));
 		if (err > 0) {
+			rqe->sent = 1;
 			dr->snd_nxt++;
+			port->req_id++;
+			if (new)
+				spin_unlock_irqrestore(&vio->lock, flags);
 			break;
 		}
+		if (new)
+			spin_unlock_irqrestore(&vio->lock, flags);
+
 		udelay(delay);
 		if ((delay <<= 1) > 128)
 			delay = 128;
 	} while (err == -EAGAIN);
 
-	if (err == -ENOTCONN) {
-		printk(KERN_ERR PFX "vio_ldc_send() failure, err=%d.\n", err);
-		vdc_ldc_reset(port);
-	}
+	if (err < 0)
+		pr_err(PFX "vio_ldc_send() failed, idx=%d err=%d.\n", idx, err);
+
 	return err;
 }
 
-static int __send_request(struct request *req)
+static struct vio_disk_desc *vdc_desc_get(struct vdc_port *port,
+					  struct bio *req,
+					  unsigned int *idxp)
 {
-	struct vdc_port *port = req->rq_disk->private_data;
-	struct vio_dring_state *dr = &port->vio.drings[VIO_DRIVER_TX_RING];
+	unsigned int idx;
+	struct vio_disk_desc *desc = NULL;
+	struct vio_driver_state *vio = &port->vio;
+	struct vio_dring_state *dr = &vio->drings[VIO_DRIVER_TX_RING];
+	DEFINE_WAIT(wait);
+	unsigned long flags;
+
+	while (1) {
+		prepare_to_wait(&port->wait, &wait, TASK_INTERRUPTIBLE);
+
+		spin_lock_irqsave(&vio->lock, flags);
+		idx = find_first_zero_bit(dr->txmap, dr->nr_txmap);
+		if (idx < VDC_TX_RING_SIZE) {
+			bitmap_set(dr->txmap, idx, 1);
+			desc = dr->base + (dr->entry_size * idx);
+			if (req) {
+				BUG_ON(port->rq_arr[idx].req);
+				port->rq_arr[idx].req = req;
+			}
+			*idxp = idx;
+
+			spin_unlock_irqrestore(&vio->lock, flags);
+			finish_wait(&port->wait, &wait);
+			break;
+		}
+		spin_unlock_irqrestore(&vio->lock, flags);
+		schedule();
+		finish_wait(&port->wait, &wait);
+	}
+
+	BUG_ON(!desc);
+
+	return desc;
+}
+
+static struct bio *vdc_desc_put(struct vdc_port *port, unsigned int idx)
+{
+	struct vio_driver_state *vio = &port->vio;
+	struct vio_dring_state *dr = &vio->drings[VIO_DRIVER_TX_RING];
+	struct vio_disk_desc *desc = vio_dring_entry(dr, idx);
+	struct vdc_req_entry *rqe;
+	struct bio *req;
+
+	assert_spin_locked(&vio->lock);
+
+	ldc_unmap(vio->lp, desc->cookies, desc->ncookies);
+
+	bitmap_clear(dr->txmap, idx, 1);
+	vdc_desc_set_state(desc, VIO_DESC_FREE);
+
+	rqe = &port->rq_arr[idx];
+	req = rqe->req;
+	rqe->req = NULL;
+	rqe->sent = 0;
+	wake_up_all(&port->wait);
+
+	return req;
+}
+
+static inline void vdc_desc_set_state(struct vio_disk_desc *desc, int state)
+{
+	desc->hdr.state = state;
+	/*
+	 * This has to be a non-SMP write barrier because we are writing
+	 * to memory which is shared with the peer LDOM.
+	 */
+	wmb();
+}
+
+static void __create_flush_desc(struct vdc_port *port,
+	struct vio_disk_desc *desc)
+{
+	memset(desc, 0, sizeof(struct vio_disk_desc));
+	desc->hdr.ack = VIO_ACK_ENABLE;
+	desc->req_id = port->req_id;
+	desc->operation = VD_OP_FLUSH;
+}
+
+static int __create_rw_desc(struct vdc_port *port, struct request *req,
+			    struct vio_disk_desc *desc, unsigned int idx)
+{
+	struct vio_driver_state *vio = &port->vio;
 	struct scatterlist sg[port->ring_cookies];
 	struct vdc_req_entry *rqe;
-	struct vio_disk_desc *desc;
+	DEFINE_WAIT(wait);
 	unsigned int map_perm;
+	unsigned long flags;
 	int nsg, err, i;
 	u64 len;
 	u8 op;
@@ -464,86 +577,155 @@ static int __send_request(struct request *req)
 
 	sg_init_table(sg, port->ring_cookies);
 	nsg = blk_rq_map_sg(req->q, req, sg);
+	if (!nsg) {
+		pr_err(PFX "blk_rq_map_sg() failed, nsg=%d.\n", nsg);
+		return -EIO;
+	}
+
+	memset(desc, 0, sizeof(struct vio_disk_desc));
+
+	while (1) {
+		prepare_to_wait(&port->wait, &wait, TASK_INTERRUPTIBLE);
+
+		spin_lock_irqsave(&vio->lock, flags);
+		err = ldc_map_sg(port->vio.lp, sg, nsg, desc->cookies,
+				 port->ring_cookies, map_perm);
+
+		if (err >= 0 || err != -ENOMEM) {
+			spin_unlock_irqrestore(&vio->lock, flags);
+			finish_wait(&port->wait, &wait);
+			break;
+		}
+
+		spin_unlock_irqrestore(&vio->lock, flags);
+		schedule();
+		finish_wait(&port->wait, &wait);
+	}
+
+	if (err <= 0) {
+		pr_err(PFX "ldc_map_sg() failed, err=%d.\n", err);
+		return err;
+	}
 
 	len = 0;
 	for (i = 0; i < nsg; i++)
 		len += sg[i].length;
 
-	desc = vio_dring_cur(dr);
-
-	err = ldc_map_sg(port->vio.lp, sg, nsg,
-			 desc->cookies, port->ring_cookies,
-			 map_perm);
-	if (err < 0) {
-		printk(KERN_ERR PFX "ldc_map_sg() failure, err=%d.\n", err);
-		return err;
-	}
-
-	rqe = &port->rq_arr[dr->prod];
-	rqe->req = req;
-
 	desc->hdr.ack = VIO_ACK_ENABLE;
 	desc->req_id = port->req_id;
 	desc->operation = op;
-	if (port->vdisk_type == VD_DISK_TYPE_DISK) {
+	if (port->vdisk_type == VD_DISK_TYPE_DISK)
 		desc->slice = 0xff;
-	} else {
+	else
 		desc->slice = 0;
-	}
 	desc->status = ~0;
 	desc->offset = (blk_rq_pos(req) << 9) / port->vdisk_block_size;
 	desc->size = len;
 	desc->ncookies = err;
 
-	/* This has to be a non-SMP write barrier because we are writing
-	 * to memory which is shared with the peer LDOM.
-	 */
-	wmb();
-	desc->hdr.state = VIO_DESC_READY;
+	rqe = &port->rq_arr[idx];
+	rqe->size = len;
 
-	err = __vdc_tx_trigger(port);
-	if (err < 0) {
-		printk(KERN_ERR PFX "vdc_tx_trigger() failure, err=%d\n", err);
-	} else {
-		port->req_id++;
-		dr->prod = vio_dring_next(dr, dr->prod);
+	return 0;
+}
+
+static int __send_request(struct vdc_port *port, unsigned int idx)
+{
+	struct vio_driver_state *vio = &port->vio;
+	struct vio_dring_state *dr = &vio->drings[VIO_DRIVER_TX_RING];
+	struct vio_disk_desc *desc = vio_dring_entry(dr, idx);
+	int err;
+
+	vdc_desc_set_state(desc, VIO_DESC_READY);
+
+	while (1) {
+		err = __vdc_tx_trigger(port, idx, 1);
+
+		if (err == -ECONNRESET || err == -ENOTCONN) {
+			vdc_ldc_reset(port);
+			pr_info(PFX "%s retry, idx=%d err=%d\n",
+				__func__, idx, err);
+		} else if (err < 0) {
+			pr_err(PFX "%s error, idx=%d err=%d\n",
+				__func__, idx, err);
+		} else
+			break;
 	}
 
 	return err;
 }
 
-static void do_vdc_request(struct request_queue *rq)
+/*
+ * IO requests are handed off directly to vdc without any queueing at
+ * the blk layer.
+ *
+ * A dring entry is first allocated and then mapped for a request,
+ * and the request is then sent to the server. A recoverable error,
+ * e.g. reset, is continuously retried until success.
+ *
+ * A reset error can be sync or async, i.e., it can be a direct result
+ * of a send, or fielded indirectly via an interrupt.  In either case
+ * the connection is reset and all inflight request are resent immediately
+ * after the connection is re-established at the end of the reset processing.
+ *
+ * The tx dring acts effectively as a request queue. An incoming request
+ * will continuously retry until it gets a tx ring descriptor and proceeds.
+ * The descriptor is freed in interrupt context and the vio spinlock is used
+ * for synchronization.
+ */
+static void vdc_make_request(struct request_queue *q, struct bio *bio)
 {
-	struct request *req;
+	struct vdc_port *port = q->queuedata;
+	struct vio_driver_state *vio = &port->vio;
+	struct vio_dring_state *dr = &vio->drings[VIO_DRIVER_TX_RING];
+	struct vio_disk_desc *desc;
+	struct request req;
+	unsigned int idx;
+	unsigned long flags;
+	int err = 0;
 
-	while ((req = blk_peek_request(rq)) != NULL) {
-		struct vdc_port *port;
-		struct vio_dring_state *dr;
+	BUG_ON(!port);
 
-		port = req->rq_disk->private_data;
-		dr = &port->vio.drings[VIO_DRIVER_TX_RING];
-		if (unlikely(vdc_tx_dring_avail(dr) < 1))
-			goto wait;
+	desc = vdc_desc_get(port, bio, &idx);
 
-		blk_start_request(req);
+	if (bio->bi_rw & REQ_FLUSH)
+		__create_flush_desc(port, desc);
+	else {
+		memset(&req, 0, sizeof(req));
+		/*
+		 * XXX We should be able to use init_request_from_bio()
+		 * but it is not an exported symbol.
+		 */
+		req.bio = bio;
+		req.cmd_flags = bio->bi_rw & REQ_COMMON_MASK;
+		req.errors = 0;
+		req.__sector = bio->bi_iter.bi_sector;
+		req.q = q;
+		err = __create_rw_desc(port, &req, desc, idx);
+		if (err)
+			pr_err(PFX "__create_rw_desc() failed, err=%d\n", err);
+	}
 
-		if (__send_request(req) < 0) {
-			blk_requeue_request(rq, req);
-wait:
-			/* Avoid pointless unplugs. */
-			blk_stop_queue(rq);
-			break;
-		}
+	if (!err)
+		err = __send_request(port, idx);
+
+	/*
+	 * Terminate the request unless a descriptor was
+	 * successfully allocated and sent to the server.
+	 */
+	if (err < 0) {
+		spin_lock_irqsave(&vio->lock, flags);
+		vdc_end_one(port, dr, idx, err);
+		spin_unlock_irqrestore(&vio->lock, flags);
 	}
 }
 
 static int generic_request(struct vdc_port *port, u8 op, void *buf, int len)
 {
-	struct vio_dring_state *dr;
 	struct vio_completion comp;
 	struct vio_disk_desc *desc;
 	unsigned int map_perm;
-	unsigned long flags;
+	unsigned int idx;
 	int op_len, err;
 	void *req_buf;
 
@@ -604,7 +786,6 @@ static int generic_request(struct vdc_port *port, u8 op, void *buf, int len)
 	case VD_OP_GET_EFI:
 	case VD_OP_SET_EFI:
 		return -EOPNOTSUPP;
-		break;
 	};
 
 	map_perm |= LDC_MAP_SHADOW | LDC_MAP_DIRECT | LDC_MAP_IO;
@@ -620,27 +801,21 @@ static int generic_request(struct vdc_port *port, u8 op, void *buf, int len)
 	if (map_perm & LDC_MAP_R)
 		memcpy(req_buf, buf, len);
 
-	spin_lock_irqsave(&port->vio.lock, flags);
-
-	dr = &port->vio.drings[VIO_DRIVER_TX_RING];
-
-	/* XXX If we want to use this code generically we have to
-	 * XXX handle TX ring exhaustion etc.
-	 */
-	desc = vio_dring_cur(dr);
+	desc = vdc_desc_get(port, NULL, &idx);
+	if (!desc) {
+		err = -ENOMEM;
+		goto done;
+	}
 
 	err = ldc_map_single(port->vio.lp, req_buf, op_len,
 			     desc->cookies, port->ring_cookies,
 			     map_perm);
-	if (err < 0) {
-		spin_unlock_irqrestore(&port->vio.lock, flags);
-		kfree(req_buf);
-		return err;
-	}
+	if (err < 0)
+		goto done;
 
 	init_completion(&comp.com);
 	comp.waiting_for = WAITING_FOR_GEN_CMD;
-	port->vio.cmp = &comp;
+	port->cmp = &comp;
 
 	desc->hdr.ack = VIO_ACK_ENABLE;
 	desc->req_id = port->req_id;
@@ -651,31 +826,36 @@ static int generic_request(struct vdc_port *port, u8 op, void *buf, int len)
 	desc->size = op_len;
 	desc->ncookies = err;
 
-	/* This has to be a non-SMP write barrier because we are writing
-	 * to memory which is shared with the peer LDOM.
-	 */
-	wmb();
-	desc->hdr.state = VIO_DESC_READY;
-
-	err = __vdc_tx_trigger(port);
+	err = __send_request(port, idx);
 	if (err >= 0) {
-		port->req_id++;
-		dr->prod = vio_dring_next(dr, dr->prod);
-		spin_unlock_irqrestore(&port->vio.lock, flags);
-
 		wait_for_completion(&comp.com);
 		err = comp.err;
 	} else {
-		port->vio.cmp = NULL;
-		spin_unlock_irqrestore(&port->vio.lock, flags);
+		port->cmp = NULL;
+		goto done;
 	}
 
 	if (map_perm & LDC_MAP_W)
 		memcpy(buf, req_buf, len);
 
+done:
+	(void) vdc_desc_put(port, idx);
 	kfree(req_buf);
-
 	return err;
+}
+
+static int vio_txring_alloc(struct vio_dring_state *dr, unsigned int nr_tx)
+{
+	unsigned int sz;
+
+	sz = BITS_TO_LONGS(nr_tx) * sizeof(unsigned long);
+	dr->txmap = kzalloc(sz, GFP_KERNEL);
+
+	if (!dr->txmap)
+		return -ENOMEM;
+
+	dr->nr_txmap = nr_tx;
+	return 0;
 }
 
 static int vdc_alloc_tx_ring(struct vdc_port *port)
@@ -684,10 +864,15 @@ static int vdc_alloc_tx_ring(struct vdc_port *port)
 	unsigned long len, entry_size;
 	int ncookies;
 	void *dring;
+	int ret;
 
 	entry_size = sizeof(struct vio_disk_desc) +
 		(sizeof(struct ldc_trans_cookie) * port->ring_cookies);
 	len = (VDC_TX_RING_SIZE * entry_size);
+
+	ret = vio_txring_alloc(dr, VDC_TX_RING_SIZE);
+	if (ret)
+		return ret;
 
 	ncookies = VIO_MAX_RING_COOKIES;
 	dring = ldc_alloc_exp_dring(port->vio.lp, len,
@@ -701,7 +886,6 @@ static int vdc_alloc_tx_ring(struct vdc_port *port)
 	dr->base = dring;
 	dr->entry_size = entry_size;
 	dr->num_entries = VDC_TX_RING_SIZE;
-	dr->prod = dr->cons = 0;
 	dr->pending = VDC_TX_RING_SIZE;
 	dr->ncookies = ncookies;
 
@@ -769,12 +953,15 @@ static int probe_disk(struct vdc_port *port)
 				    (u64)geom.num_sec);
 	}
 
-	q = blk_init_queue(do_vdc_request, &port->vio.lock);
+	q = blk_alloc_queue(GFP_KERNEL);
 	if (!q) {
 		printk(KERN_ERR PFX "%s: Could not allocate queue.\n",
 		       port->vio.name);
 		return -ENOMEM;
 	}
+	blk_queue_make_request(q, vdc_make_request);
+	q->queuedata = port;
+
 	g = alloc_disk(1 << PARTITION_SHIFT);
 	if (!g) {
 		printk(KERN_ERR PFX "%s: Could not allocate gendisk.\n",
@@ -836,7 +1023,7 @@ static int probe_disk(struct vdc_port *port)
 
 static struct ldc_channel_config vdc_ldc_cfg = {
 	.event		= vdc_event,
-	.mtu		= 64,
+	.mtu		= 512,
 	.mode		= LDC_MODE_UNRELIABLE,
 };
 
@@ -906,6 +1093,7 @@ static int vdc_port_probe(struct vio_dev *vdev, const struct vio_device_id *id)
 	setup_timer(&port->ldc_reset_timer, vdc_ldc_reset_timer,
 		    (unsigned long)port);
 	INIT_WORK(&port->ldc_reset_work, vdc_ldc_reset_work);
+	init_waitqueue_head(&port->wait);
 
 	err = vio_driver_init(&port->vio, vdev, VDEV_DISK,
 			      vdc_versions, ARRAY_SIZE(vdc_versions),
@@ -960,7 +1148,6 @@ static int vdc_port_remove(struct vio_dev *vdev)
 		unsigned long flags;
 
 		spin_lock_irqsave(&port->vio.lock, flags);
-		blk_stop_queue(port->disk->queue);
 		spin_unlock_irqrestore(&port->vio.lock, flags);
 
 		flush_work(&port->ldc_reset_work);
@@ -968,7 +1155,6 @@ static int vdc_port_remove(struct vio_dev *vdev)
 		del_timer_sync(&port->vio.timer);
 
 		del_gendisk(port->disk);
-		blk_cleanup_queue(port->disk->queue);
 		put_disk(port->disk);
 		port->disk = NULL;
 
@@ -982,37 +1168,39 @@ static int vdc_port_remove(struct vio_dev *vdev)
 	return 0;
 }
 
-static void vdc_requeue_inflight(struct vdc_port *port)
+static void vdc_resend_inflight(struct vdc_port *port)
 {
-	struct vio_dring_state *dr = &port->vio.drings[VIO_DRIVER_TX_RING];
-	u32 idx;
+	struct vio_driver_state *vio = &port->vio;
+	struct vio_dring_state *dr = &vio->drings[VIO_DRIVER_TX_RING];
+	struct vio_disk_desc *desc;
+	struct vdc_req_entry *rqe;
+	unsigned int idx;
 
-	for (idx = dr->cons; idx != dr->prod; idx = vio_dring_next(dr, idx)) {
-		struct vio_disk_desc *desc = vio_dring_entry(dr, idx);
-		struct vdc_req_entry *rqe = &port->rq_arr[idx];
-		struct request *req;
+	assert_spin_locked(&vio->lock);
 
-		ldc_unmap(port->vio.lp, desc->cookies, desc->ncookies);
-		desc->hdr.state = VIO_DESC_FREE;
-		dr->cons = vio_dring_next(dr, idx);
-
-		req = rqe->req;
-		if (req == NULL) {
-			vdc_end_special(port, desc);
-			continue;
+	for (idx = find_first_bit(dr->txmap, dr->nr_txmap);
+	     idx < dr->nr_txmap;
+	     idx = find_next_bit(dr->txmap, dr->nr_txmap, idx + 1)) {
+		rqe = &port->rq_arr[idx];
+		if (rqe->sent) {
+			desc = vio_dring_entry(dr, idx);
+			vdc_desc_set_state(desc, VIO_DESC_READY);
+			if (__vdc_tx_trigger(port, idx, 0) < 0)
+				break;
 		}
-
-		rqe->req = NULL;
-		blk_requeue_request(port->disk->queue, req);
 	}
 }
 
 static void vdc_queue_drain(struct vdc_port *port)
 {
-	struct request *req;
+	struct vio_dring_state *dr = &port->vio.drings[VIO_DRIVER_TX_RING];
+	unsigned int idx;
 
-	while ((req = blk_fetch_request(port->disk->queue)) != NULL)
-		__blk_end_request_all(req, -EIO);
+	for (idx = find_first_bit(dr->txmap, dr->nr_txmap);
+	     idx < dr->nr_txmap;
+	     idx = find_next_bit(dr->txmap, dr->nr_txmap, idx + 1)) {
+			vdc_end_one(port, dr, idx, -EIO);
+	}
 }
 
 static void vdc_ldc_reset_timer(unsigned long _arg)
@@ -1029,7 +1217,6 @@ static void vdc_ldc_reset_timer(unsigned long _arg)
 		pr_warn(PFX "%s ldc down %llu seconds, draining queue\n",
 			port->disk_name, port->ldc_timeout);
 		vdc_queue_drain(port);
-		vdc_blk_queue_start(port);
 	}
 	spin_unlock_irqrestore(&vio->lock, flags);
 }
@@ -1037,15 +1224,10 @@ static void vdc_ldc_reset_timer(unsigned long _arg)
 static void vdc_ldc_reset_work(struct work_struct *work)
 {
 	struct vdc_port *port;
-	struct vio_driver_state *vio;
-	unsigned long flags;
 
 	port = container_of(work, struct vdc_port, ldc_reset_work);
-	vio = &port->vio;
 
-	spin_lock_irqsave(&vio->lock, flags);
 	vdc_ldc_reset(port);
-	spin_unlock_irqrestore(&vio->lock, flags);
 }
 
 /*
@@ -1056,29 +1238,42 @@ static void vdc_ldc_reset_work(struct work_struct *work)
  */
 static void vdc_ldc_reset(struct vdc_port *port)
 {
-	int err;
 	struct vio_driver_state *vio = &port->vio;
-
-	assert_spin_locked(&vio->lock);
+	unsigned long flags;
+	int err;
 
 	pr_warn(PFX "%s ldc link reset\n", port->disk_name);
 
-	if (!port->disk)
+	spin_lock_irqsave(&vio->lock, flags);
+
+	if (port->flags & VDC_PORT_RESET) {
+		spin_unlock_irqrestore(&vio->lock, flags);
+		wait_for_completion(&port->vio.cmp->com);
 		return;
+	}
 
-	blk_stop_queue(port->disk->queue);
-	vdc_requeue_inflight(port);
+	if (!port->disk)
+		goto done;
+
 	vio_link_state_change(vio, LDC_EVENT_RESET);
-
-	err = ldc_connect(vio->lp);
+	port->flags |= VDC_PORT_RESET;
+	spin_unlock_irqrestore(&vio->lock, flags);
+	err = vdc_port_up(port);
+	spin_lock_irqsave(&vio->lock, flags);
 	if (err)
-		pr_err(PFX "%s connect failed, err=%d\n",
-			port->disk_name, err);
+		pr_err(PFX "%s vdc_port_up() failed, err=%d\n",
+		       port->disk_name, err);
+	else
+		vdc_resend_inflight(port);
 
 	if (port->ldc_timeout)
 		mod_timer(&port->ldc_reset_timer,
 			  round_jiffies(jiffies + HZ * port->ldc_timeout));
 	mod_timer(&vio->timer, round_jiffies(jiffies + HZ));
+
+	port->flags &= ~VDC_PORT_RESET;
+done:
+	spin_unlock_irqrestore(&vio->lock, flags);
 }
 
 static const struct vio_device_id vdc_port_match[] = {

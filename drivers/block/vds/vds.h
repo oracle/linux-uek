@@ -111,25 +111,25 @@ int vds_vtoc_clear(struct vds_port *port);
  */
 #define	vds_be_rlock(p)						\
 	do {							\
-		vdsdbg(LOCK, "backend rlock\n");		\
+		vdsdbg(BELOCK, "backend rlock\n");		\
 		down_read(&(p)->be_lock);			\
 	} while (0)
 
 #define	vds_be_runlock(p)					\
 	do {							\
-		vdsdbg(LOCK, "backend runlock\n");		\
+		vdsdbg(BELOCK, "backend runlock\n");		\
 		up_read(&(p)->be_lock);				\
 	} while (0)
 
 #define	vds_be_wlock(p)						\
 	do {							\
-		vdsdbg(LOCK, "backend wlock\n");		\
+		vdsdbg(BELOCK, "backend wlock\n");		\
 		down_write(&(p)->be_lock);			\
 	} while (0)
 
 #define	vds_be_wunlock(p)					\
 	do {							\
-		vdsdbg(LOCK, "backend wunlock\n");		\
+		vdsdbg(BELOCK, "backend wunlock\n");		\
 		up_write(&(p)->be_lock);			\
 	} while (0)
 
@@ -189,6 +189,7 @@ int vds_vtoc_clear(struct vds_port *port);
 #define VDS_DEBUG_IO		0x100
 #define VDS_DEBUG_BIO		0x200
 #define VDS_DEBUG_FIO		0x400
+#define VDS_DEBUG_BELOCK	0x800
 
 extern int vds_dbg;
 extern int vds_dbg_ldc;

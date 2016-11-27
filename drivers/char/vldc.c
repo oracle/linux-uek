@@ -1616,10 +1616,6 @@ static void __exit vldc_exit(void)
 module_init(vldc_init);
 module_exit(vldc_exit);
 
-/* dummy var for ipmi_vldc to reference in order to force a module dependency */
-int vldc_dummy_var;
-EXPORT_SYMBOL(vldc_dummy_var);
-
 MODULE_AUTHOR("Oracle");
 MODULE_DESCRIPTION("Sun4v Virtual LDC Driver");
 MODULE_LICENSE("GPL");

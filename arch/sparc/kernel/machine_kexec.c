@@ -190,15 +190,18 @@ static void destroy_nucleus_tsb(void)
 		       hverror);
 }
 
+static int crashing_cpu;
+
 void machine_crash_shutdown(struct pt_regs *regs)
 {
 	unsigned long msecs;
 
+	crashing_cpu = smp_processor_id();
 	if (atomic_read(&nmi_active) > 0)
 		stop_nmi_watchdog(NULL);
 	atomic_set(&kexec_strand_wait, num_online_cpus() - 1);
 	smp_call_function(machine_capture_other_strands, NULL, false);
-	msecs = 1000;
+	msecs = 60000;
 	while ((atomic_read(&kexec_strand_wait) > 0) && msecs) {
 		mdelay(1);
 		msecs--;

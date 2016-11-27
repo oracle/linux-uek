@@ -278,7 +278,7 @@ static int vcc_ldc_read(struct vcc *vcc)
 
 	tty = vcc->tty;
 	if (!tty) {
-		rv = ldc_rx_reset(vio->lp);
+		rv = ldc_rx_reset(vio->lp); /* XXX - is this needed? */
 		vccdbg("%s: reset rx q: rv=%d\n", __func__, rv);
 		goto done;
 	}
@@ -329,47 +329,78 @@ done:
 
 static void vcc_rx_timer(unsigned long arg)
 {
-	struct vcc *vcc = (struct vcc *)arg;
-	struct vio_driver_state *vio = &vcc->vio;
+	struct vcc *vcc;
+	struct vio_driver_state *vio;
 	unsigned long flags;
 	int rv;
 
 	vccdbg("%s\n", __func__);
+
+	vcc = vcc_get((u64)arg, false);
+
+	/* if the device was removed do nothing */
+	if (!vcc)
+		return;
+
 	spin_lock_irqsave(&vcc->lock, flags);
 	TIMER_CLEAR(vcc, rx);
+
+	vio = &vcc->vio;
 
 	/*
 	 * Re-enable interrupts.
 	 */
 	ldc_enable_hv_intr(vio->lp);
 
-	rv = vcc_ldc_read(vcc);
-	if (rv < 0) {
-		struct vio_driver_state *vio = &vcc->vio;
-
-		if (rv == -ECONNRESET)
-			vio_conn_reset(vio);	/* xxx noop */
+	/* if the device was closed do nothing */
+	if (!vcc->tty) {
+		/*
+		 * XXX - If we have have outstanding LDC read data,
+		 * it may be a good idea to flush the LDC read queue
+		 * here to prevent the LDC from re-issuing the LDC
+		 * data event over and over again. (TBD)
+		 */
+		spin_unlock_irqrestore(&vcc->lock, flags);
+		vcc_put(vcc, false);
+		return;
 	}
+
+	rv = vcc_ldc_read(vcc);
+	if (rv == -ECONNRESET)
+		vio_conn_reset(vio);	/* currently a noop */
+
 	spin_unlock_irqrestore(&vcc->lock, flags);
+
+	vcc_put(vcc, false);
+
 	vccdbg("%s done\n", __func__);
 }
 
 static void vcc_tx_timer(unsigned long arg)
 {
-	struct vcc *vcc = (struct vcc *)arg;
+	struct vcc *vcc;
 	struct vio_vcc *pkt;
 	unsigned long flags;
 	int tosend = 0;
 	int rv;
 
 	vccdbg("%s\n", __func__);
-	if (!vcc) {
-		pr_err("%s: vcc not found\n", __func__);
+
+	vcc = vcc_get((u64)arg, false);
+
+	/* if the device was removed do nothing */
+	if (!vcc)
 		return;
-	}
 
 	spin_lock_irqsave(&vcc->lock, flags);
 	TIMER_CLEAR(vcc, tx);
+
+	/* if the device was closed do nothing */
+	if (!vcc->tty) {
+		spin_unlock_irqrestore(&vcc->lock, flags);
+		vcc_put(vcc, false);
+		return;
+	}
 
 	tosend = min(VCC_BUFF_LEN, vcc->chars_in_buffer);
 	if (!tosend)
@@ -403,6 +434,9 @@ static void vcc_tx_timer(unsigned long arg)
 	}
 done:
 	spin_unlock_irqrestore(&vcc->lock, flags);
+
+	vcc_put(vcc, false);
+
 	vccdbg("%s done\n", __func__);
 }
 
@@ -429,10 +463,9 @@ static void vcc_event(void *arg, int event)
 	}
 
 	rv = vcc_ldc_read(vcc);
-	if (rv < 0) {
-		if (rv == -ECONNRESET)
-			vio_conn_reset(vio);	/* xxx noop */
-	}
+	if (rv == -ECONNRESET)
+		vio_conn_reset(vio);	/* currently a noop */
+
 	spin_unlock_irqrestore(&vcc->lock, flags);
 }
 
@@ -610,11 +643,11 @@ static int vcc_probe(struct vio_dev *vdev,
 
 	init_timer(&vcc->rx_timer);
 	vcc->rx_timer.function = vcc_rx_timer;
-	vcc->rx_timer.data = (unsigned long)vcc;
+	vcc->rx_timer.data = (unsigned long)vdev->port_id;
 
 	init_timer(&vcc->tx_timer);
 	vcc->tx_timer.function = vcc_tx_timer;
-	vcc->tx_timer.data = (unsigned long)vcc;
+	vcc->tx_timer.data = (unsigned long)vdev->port_id;
 
 	dev_set_drvdata(&vdev->dev, vcc);
 
