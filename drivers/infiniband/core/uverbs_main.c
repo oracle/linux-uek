@@ -1116,7 +1116,10 @@ static void ib_uverbs_remove_one(struct ib_device *device)
 
 	if (atomic_dec_and_test(&uverbs_dev->refcount))
 		ib_uverbs_comp_dev(uverbs_dev);
-	wait_for_completion(&uverbs_dev->comp);
+
+	if (system_state == SYSTEM_RUNNING)
+		wait_for_completion(&uverbs_dev->comp);
+
 	kobject_put(&uverbs_dev->kobj);
 }
 
