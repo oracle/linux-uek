@@ -805,8 +805,9 @@ static void set_load_weight(struct task_struct *p)
 
 static void enqueue_task(struct rq *rq, struct task_struct *p, int flags)
 {
-	DTRACE_SCHED2(enqueue, struct task_struct *, p,
-			       cpuinfo_t *, rq->dtrace_cpu_info);
+	DTRACE_SCHED(enqueue, struct task_struct * : (lwpsinfo_t *,
+						      psinfo_t *), p,
+			      cpuinfo_t *, rq->dtrace_cpu_info);
 	update_rq_clock(rq);
 	sched_info_queued(rq, p);
 	p->sched_class->enqueue_task(rq, p, flags);
@@ -814,9 +815,10 @@ static void enqueue_task(struct rq *rq, struct task_struct *p, int flags)
 
 static void dequeue_task(struct rq *rq, struct task_struct *p, int flags)
 {
-	DTRACE_SCHED3(dequeue, struct task_struct *, p,
-			       cpuinfo_t *, rq->dtrace_cpu_info,
-			       int, 0);
+	DTRACE_SCHED(dequeue, struct task_struct * : (lwpsinfo_t *,
+						      psinfo_t *), p,
+			      cpuinfo_t *, rq->dtrace_cpu_info,
+			      int, 0);
 	update_rq_clock(rq);
 	sched_info_dequeued(rq, p);
 	p->sched_class->dequeue_task(rq, p, flags);
@@ -1678,7 +1680,8 @@ try_to_wake_up(struct task_struct *p, unsigned int state, int wake_flags)
 	success = 1; /* we're going to change ->state */
 	cpu = task_cpu(p);
 
-	DTRACE_SCHED1(wakeup, struct task_struct *, p);
+	DTRACE_SCHED(wakeup, struct task_struct * : (lwpsinfo_t *,
+						     psinfo_t *), p);
 
 	if (p->on_rq && ttwu_remote(p, wake_flags))
 		goto stat;
@@ -2187,7 +2190,8 @@ prepare_task_switch(struct rq *rq, struct task_struct *prev,
 	trace_sched_switch(prev, next);
 	sched_info_switch(rq, prev, next);
 	perf_event_task_sched_out(prev, next);
-	DTRACE_SCHED1(off__cpu, struct task_struct *, next);
+	DTRACE_SCHED(off__cpu, struct task_struct * : (lwpsinfo_t *,
+						       psinfo_t *), next);
 	fire_sched_out_preempt_notifiers(prev, next);
 	prepare_lock_switch(rq, next);
 	prepare_arch_switch(next);
@@ -3138,7 +3142,9 @@ void set_user_nice(struct task_struct *p, long nice)
 	p->prio = effective_prio(p);
 	delta = p->prio - old_prio;
 
-	DTRACE_SCHED2(change__pri, struct task_struct *, p, int, old_prio);
+	DTRACE_SCHED(change__pri, struct task_struct * : (lwpsinfo_t *,
+							  psinfo_t *), p,
+		      int, old_prio);
 	if (queued) {
 		enqueue_task(rq, p, 0);
 		/*
@@ -4252,7 +4258,9 @@ SYSCALL_DEFINE0(sched_yield)
 	do_raw_spin_unlock(&rq->lock);
 	sched_preempt_enable_no_resched();
 
-	DTRACE_SCHED1(surrender, struct task_struct *, current);
+	DTRACE_SCHED(surrender,
+		     struct task_struct * : (lwpsinfo_t *, psinfo_t *),
+		     current);
 	schedule();
 
 	return 0;
@@ -4407,7 +4415,9 @@ out_irq:
 	local_irq_restore(flags);
 
 	if (yielded > 0) {
-		DTRACE_SCHED1(surrender, struct task_struct *, curr);
+		DTRACE_SCHED(surrender,
+			     struct task_struct * : (lwpsinfo_t *, psinfo_t *),
+			     curr);
 		schedule();
 	}
 

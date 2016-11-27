@@ -275,9 +275,9 @@ static void psinfo_cleaner(struct work_struct *work)
 	spin_unlock_irqrestore(&psinfo_lock, flags);
 
 #ifdef CONFIG_DT_DEBUG
-	DTRACE_PROBE8(test, uint64_t, 10, uint64_t, 20, uint64_t, 30,
-			    uint64_t, 40, uint64_t, 50, uint64_t, 60,
-			    uint64_t, 70, uint64_t, 80);
+	DTRACE_PROBE(test, uint64_t, 10, uint64_t, 20, uint64_t, 30,
+			   uint64_t, 40, uint64_t, 50, uint64_t, 60,
+			   uint64_t, 70, uint64_t, 80);
 #endif
 
 	while (psinfo) {
