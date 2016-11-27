@@ -20,10 +20,15 @@
 #include "psif_hw_setget.h"
 #include "sif_pqp.h"
 #include "sif_qp.h"
+#include "sif_query.h"
 #include "sif_hwi.h"
 #include "sif_ibqp.h"
 #include "sif_checksum.h"
 #include "sif_defs.h"
+#include <linux/seq_file.h>
+
+static int _pqp_queue_resurrect(struct sif_pqp *pqp);
+static void pqp_resurrect(struct work_struct *work);
 
 static inline struct sif_qp *__create_init_qp(struct sif_dev *sdev, struct sif_cq *cq)
 {
@@ -56,6 +61,91 @@ static inline struct sif_qp *__create_init_qp(struct sif_dev *sdev, struct sif_c
 }
 
 
+/* Sync HW pointers to the first req we did not receive any completion for.
+ * This must be done from INIT state, eg. before we attempt to move to
+ * a HW owned state again, but after the implicit logic for resetting values
+ * in the qp state:
+ */
+static inline void _resync_pointers(struct sif_qp *qp)
+{
+	unsigned long flags;
+	struct sif_dev *sdev = to_sdev(qp->ibqp.device);
+	struct sif_sq *sq = get_sq(sdev, qp);
+	struct sif_cq *cq = get_sif_cq(sdev, qp->send_cq_indx);
+	struct sif_cq_sw *cq_sw = get_sif_cq_sw(sdev, qp->send_cq_indx);
+	struct sif_sq_sw *sq_sw = get_sif_sq_sw(sdev, qp->qp_idx);
+	struct sif_sq_hdl *wh;
+
+	spin_lock_irqsave(&cq->lock, flags);
+	sq_sw->head_seq++;
+	spin_unlock_irqrestore(&cq->lock, flags);
+
+	spin_lock_irqsave(&sq->lock, flags);
+
+	/* Terminate the failed request in error, then replay any
+	 * inflicted 3rd party reqs:
+	 */
+	wh = get_sq_hdl(sq, sq_sw->head_seq);
+	if (wh) {
+		struct sif_cqe *lcqe = (struct sif_cqe *)wh->wr_id;
+
+		if (lcqe) {
+			sif_log(sdev, SIF_PQP, "Complete cqe %p for sq_seq %d for qp %d",
+				lcqe, wh->sq_seq, qp->qp_idx);
+			lcqe->cqe.status = PSIF_WC_STATUS_SUCCESS;
+			WRITE_ONCE(lcqe->written, true);
+			wh->wr_id = 0;
+			wh->used = false;
+		}
+	}
+
+	/* This seqno got reset by the generic RESET->INIT code, set it back
+	 * to the value we want here, which is +1 compared to sq_hw::last_seq
+	 */
+	set_psif_qp_core__sq_seq(&qp->d.state, sq_sw->head_seq + 1);
+	set_psif_qp_core__retry_sq_seq(&qp->d.state, sq_sw->head_seq + 1);
+
+	/* We also need to set QP::cq_seq back to where we expect it: */
+	set_psif_qp_core__cq_seq(&qp->d.state, cq_sw->next_seq);
+
+	set_psif_sq_sw__tail_indx(&sq_sw->d, sq_sw->last_seq + 1);
+	set_psif_sq_hw__destroyed(&sq->d, 0);
+	set_psif_sq_hw__last_seq(&sq->d, sq_sw->head_seq + 1);
+	spin_unlock_irqrestore(&sq->lock, flags);
+	mb();
+}
+
+/* Take a priv.QP from RESET to RTS */
+static int _modify_reset_to_rts(struct sif_dev *sdev, struct sif_qp *qp, bool resurrect)
+{
+	int ret;
+
+	/* The privileged QP only supports state in modify_qp */
+	struct ib_qp_attr mod_attr = {
+		.qp_state        = IB_QPS_INIT
+	};
+
+	/* Run the required qp modify sequence */
+	ret = _modify_qp(sdev, qp, &mod_attr, IB_QP_STATE, true, NULL);
+	if (ret)
+		return ret;
+
+	if (resurrect)
+		_resync_pointers(qp);
+
+	mod_attr.qp_state = IB_QPS_RTR;
+	ret = _modify_qp(sdev, qp, &mod_attr, IB_QP_STATE, true, NULL);
+	if (ret)
+		return ret;
+
+	mod_attr.qp_state = IB_QPS_RTS;
+	mod_attr.sq_psn	= 0;
+
+	/* Modify the QP to RTS, but don't reflect it to last_set_state yet.. */
+	ret = _modify_qp(sdev, qp, &mod_attr, IB_QP_STATE, true, NULL);
+	return ret;
+}
+
 
 static struct sif_pqp *_sif_create_pqp(struct sif_dev *sdev, size_t alloc_sz, int comp_vector)
 {
@@ -64,11 +154,6 @@ static struct sif_pqp *_sif_create_pqp(struct sif_dev *sdev, size_t alloc_sz, in
 	struct sif_qp *qp;
 	struct sif_sq *sq = NULL;
 	int ret = 0;
-
-	/* The privileged QP only supports state in modify_qp */
-	struct ib_qp_attr mod_attr = {
-		.qp_state        = IB_QPS_INIT
-	};
 
 	pqp = kzalloc(alloc_sz, GFP_KERNEL);
 	if (!pqp) {
@@ -96,35 +181,24 @@ static struct sif_pqp *_sif_create_pqp(struct sif_dev *sdev, size_t alloc_sz, in
 	}
 
 	pqp->qp = qp;
+	qp->pqp = pqp;
 	sq = get_sif_sq(sdev, qp->qp_idx);
 	/* Reserve 1/2 or at least 1 entry for pqp requests with completion on the PQP */
 	pqp->lowpri_lim = sq->entries - min_t(int, sq->entries/2, 2);
 
-	/* Run the required qp modify sequence */
-	ret = sif_modify_qp(&qp->ibqp, &mod_attr,
-			IB_QP_STATE, NULL);
+	mutex_lock(&qp->lock);
+	ret = _modify_reset_to_rts(sdev, qp, false);
 	if (ret)
 		goto qp_alloc_failed;
-
-	mod_attr.qp_state = IB_QPS_RTR;
-	ret = sif_modify_qp(&qp->ibqp, &mod_attr,
-			IB_QP_STATE, NULL);
-	if (ret)
-		goto qp_alloc_failed;
-
-	mod_attr.qp_state = IB_QPS_RTS;
-	mod_attr.sq_psn	= 0;
-	ret = sif_modify_qp(&qp->ibqp, &mod_attr,
-			IB_QP_STATE, NULL);
-	if (ret)
-		goto qp_alloc_failed;
-
 	atomic64_set(&pqp->qp->arm_srq_holdoff_time, 0);
 
+	mutex_unlock(&qp->lock);
 	sif_log(sdev, SIF_QP, "success");
 	return pqp;
 
 qp_alloc_failed:
+	mutex_unlock(&qp->lock);
+
 	/* Special destruction order, see below: */
 	destroy_cq(cq);
 	if (sq)
@@ -297,6 +371,10 @@ static int __pqp_process_cqe(struct sif_pqp *pqp, struct sif_cqe *first_err)
 
 		lcqe = (struct sif_cqe *)wh->wr_id;
 		if (lcqe) {
+			unsigned long elapsed = jiffies - lcqe->t_start;
+
+			if (unlikely(elapsed > pqp->max_cmpl_time))
+				pqp->max_cmpl_time = elapsed;
 			wh->wr_id = 0;
 			cqe_cnt++;
 			mb();
@@ -336,6 +414,8 @@ cont_no_wh:
 		}
 
 		ql = sq_length(sq, sq_seq, sq_sw->last_seq);
+		if (unlikely(ql > pqp->max_qlen))
+			pqp->max_qlen = ql;
 		if (ql <= sq->mask)
 			pqp_complete_nonfull(pqp);
 		mb();
@@ -376,9 +456,9 @@ static struct sif_pqp *find_any_pqp(struct sif_dev *sdev)
 {
 	int cpu;
 
-	for (cpu = 0; cpu < sdev->pqp_cnt; cpu++)
-		if (sdev->pqp[cpu])
-			return sdev->pqp[cpu];
+	for (cpu = 0; cpu < sdev->pqi.cnt; cpu++)
+		if (sdev->pqi.pqp[cpu])
+			return sdev->pqi.pqp[cpu];
 	return NULL;
 }
 
@@ -386,7 +466,7 @@ static struct sif_pqp *find_any_pqp(struct sif_dev *sdev)
 struct sif_pqp *get_pqp_same_eq(struct sif_dev *sdev, int comp_vector)
 {
 	unsigned int pqp_index = comp_vector - 2;
-	struct sif_pqp *pqp = sdev->pqp_cnt ? sdev->pqp[pqp_index % sdev->pqp_cnt] : NULL;
+	struct sif_pqp *pqp = sdev->pqi.cnt ? sdev->pqi.pqp[pqp_index % sdev->pqi.cnt] : NULL;
 
 	if (unlikely(!pqp)) {
 		/* Typically during take down */
@@ -400,7 +480,7 @@ struct sif_pqp *get_pqp_same_eq(struct sif_dev *sdev, int comp_vector)
 struct sif_pqp *get_pqp(struct sif_dev *sdev)
 {
 	unsigned int cpu = smp_processor_id();
-	struct sif_pqp *pqp = sdev->pqp_cnt ? sdev->pqp[cpu % sdev->pqp_cnt] : NULL;
+	struct sif_pqp *pqp = sdev->pqi.cnt ? sdev->pqi.pqp[cpu % sdev->pqi.cnt] : NULL;
 
 	if (unlikely(!pqp)) {
 		/* Typically during take down */
@@ -413,9 +493,9 @@ struct sif_pqp *get_pqp(struct sif_dev *sdev)
 struct sif_pqp *get_next_pqp(struct sif_dev *sdev)
 {
 	struct sif_pqp *pqp;
-	int next = atomic_inc_return(&sdev->next_pqp) % sdev->pqp_cnt;
+	int next = atomic_inc_return(&sdev->pqi.next) % sdev->pqi.cnt;
 
-	pqp = sdev->pqp[next];
+	pqp = sdev->pqi.pqp[next];
 	if (unlikely(!pqp)) {
 		/* Typically during take down */
 		return find_any_pqp(sdev);
@@ -463,11 +543,6 @@ int sif_pqp_write_send(struct sif_pqp *pqp, struct psif_wr *wr, struct sif_cqe *
 	struct sif_sq_sw *sq_sw = get_sif_sq_sw(sdev, qp_idx);
 	unsigned long timeout = sdev->min_resp_ticks * 4;
 	u16 limit = pqp_req_gets_completion(pqp, wr, mode) ? sq->entries : pqp->lowpri_lim;
-	/* Per IBTA 11.4.1.1, error is only returned
-	 * when the QP is in the RESET, INIT or RTR states.
-	 */
-	if (qp->last_set_state < IB_QPS_RTS)
-		return -EINVAL; /* The pqp is not ready */
 
 	pqp->timeout = jiffies + timeout;
 
@@ -476,7 +551,9 @@ int sif_pqp_write_send(struct sif_pqp *pqp, struct psif_wr *wr, struct sif_cqe *
 	wr->tsu_sl = qp->tsl;
 
 restart:
-	/* Make sure emptying the queue takes preference over filling it up: */
+	/* Make sure emptying the queue takes preference over filling it up.
+	 * This will also make us exit if the pqp is not up and running:
+	 */
 	if (mode != PM_WRITE)
 		ret = pqp_process_cqe(pqp, NULL);
 	if (ret > 0 || ret == -EBUSY)
@@ -551,12 +628,12 @@ restart:
 
 	sqe = get_sq_entry(sq, sq_seq);
 
-	sif_log(sdev, SIF_PQP, "pd %d cq_idx %d sq_idx %d sq.seqn %d op %s",
-		pd->idx, wr->cq_desc_vlan_pri_union.cqd_id, sq->index, sq_seq,
-		string_enum_psif_wr_type(wr->op));
-
 	if (likely(mode != PM_WRITE)) {
 		u64 csum;
+
+		sif_log(sdev, SIF_PQP, "pd %d cq_idx %d sq_idx %d sq.seqn %d op %s",
+			pd->idx, wr->cq_desc_vlan_pri_union.cqd_id, sq->index, sq_seq,
+			string_enum_psif_wr_type(wr->op));
 
 		wr->sq_seq = sq_seq;
 
@@ -573,7 +650,9 @@ restart:
 	/* update send queue */
 	copy_conv_to_hw(sqe, wr, sizeof(struct psif_wr));
 
-	if (likely(mode != PM_WRITE)) {
+	if (unlikely(READ_ONCE(pqp->write_only)))
+		wmb();
+	else if (likely(mode != PM_WRITE)) {
 		/* Flush writes before updating the sw pointer,
 		 * This is necessary to ensure that the sqs do not see
 		 * an incomplete entry:
@@ -661,7 +740,8 @@ int poll_cq_waitfor(struct sif_cqe *lcqe)
 				if (sif_feature(pcie_trigger))
 					force_pcie_link_retrain(sdev);
 				sif_log(sdev, SIF_INFO,
-					"cq %d: poll for cqe %p timed out", cq->index, lcqe);
+					"cq %d: poll for cqe for sq %d, sq.seq %d timed out",
+					cq->index, pqp->qp->qp_idx, lcqe->sq_seq);
 				atomic_inc(&cq->timeout_cnt);
 
 				sif_logs(SIF_PQPT,
@@ -682,13 +762,6 @@ int poll_cq_waitfor(struct sif_cqe *lcqe)
 			else
 				cpu_relax();
 
-			if (unlikely(READ_ONCE(pqp->qp->last_set_state) != IB_QPS_RTS)) {
-				sif_log(sdev, SIF_INFO,
-					"cq %d: poll for cqe %p failed - pqp %d not operational\n",
-					cq->index, lcqe, pqp->qp->qp_idx);
-				ret = -EINTR;
-				break;
-			}
 			if (sdev->min_resp_ticks != min_resp_ticks) {
 				/* Give us a quick way out by changing min_resp_ticks */
 				pqp->timeout -= (min_resp_ticks - sdev->min_resp_ticks) * 4;
@@ -1044,13 +1117,13 @@ struct sif_st_pqp *sif_alloc_ki_spqp(struct sif_dev *sdev)
 	int index;
 	struct sif_st_pqp *spqp = NULL;
 
-	mutex_lock(&sdev->ki_spqp.lock);
-	index = find_next_zero_bit(sdev->ki_spqp.bitmap, sdev->ki_spqp.pool_sz, 0);
-	if (index < sdev->ki_spqp.pool_sz) {
-		set_bit(index, sdev->ki_spqp.bitmap);
-		spqp = sdev->ki_spqp.spqp[index];
+	mutex_lock(&sdev->pqi.ki_s.lock);
+	index = find_next_zero_bit(sdev->pqi.ki_s.bitmap, sdev->pqi.ki_s.pool_sz, 0);
+	if (index < sdev->pqi.ki_s.pool_sz) {
+		set_bit(index, sdev->pqi.ki_s.bitmap);
+		spqp = sdev->pqi.ki_s.spqp[index];
 	}
-	mutex_unlock(&sdev->ki_spqp.lock);
+	mutex_unlock(&sdev->pqi.ki_s.lock);
 	sif_log(sdev, SIF_PQPT, "bit index %d", index);
 	return spqp;
 }
@@ -1059,8 +1132,365 @@ void sif_release_ki_spqp(struct sif_st_pqp *spqp)
 {
 	struct sif_dev *sdev = to_sdev(spqp->pqp.cq->ibcq.device);
 
-	mutex_lock(&sdev->ki_spqp.lock);
-	clear_bit(spqp->index, sdev->ki_spqp.bitmap);
-	mutex_unlock(&sdev->ki_spqp.lock);
+	mutex_lock(&sdev->pqi.ki_s.lock);
+	clear_bit(spqp->index, sdev->pqi.ki_s.bitmap);
+	mutex_unlock(&sdev->pqi.ki_s.lock);
 	sif_log(sdev, SIF_PQPT, "bit index %d", spqp->index);
+}
+
+
+static void sif_ki_spqp_fini(struct sif_dev *sdev);
+
+static int sif_ki_spqp_init(struct sif_dev *sdev)
+{
+	int i;
+	int ret = 0;
+	int n = max(sif_ki_spqp_size, 0U);
+	int bm_len = max(1, n/8);
+	struct sif_pqp_info *pqi = &sdev->pqi;
+
+	mutex_init(&pqi->ki_s.lock);
+	pqi->ki_s.spqp =
+#ifdef CONFIG_NUMA
+		kmalloc_node(sizeof(struct sif_st_pqp *) * n, GFP_KERNEL | __GFP_ZERO,
+			sdev->pdev->dev.numa_node);
+#else
+		kmalloc(sizeof(struct sif_st_pqp *) * n, GFP_KERNEL | __GFP_ZERO);
+#endif
+	if (!pqi->ki_s.spqp)
+		return -ENOMEM;
+
+	pqi->ki_s.bitmap =
+#ifdef CONFIG_NUMA
+		kmalloc_node(sizeof(ulong) * bm_len, GFP_KERNEL | __GFP_ZERO,
+			sdev->pdev->dev.numa_node);
+#else
+		kmalloc(sizeof(ulong) * bm_len, GFP_KERNEL | __GFP_ZERO);
+#endif
+	if (!pqi->ki_s.bitmap) {
+		ret = -ENOMEM;
+		goto bm_failed;
+	}
+
+	for (i = 0; i < n; i++) {
+		struct sif_st_pqp *spqp = sif_create_inv_key_st_pqp(sdev);
+
+		if (IS_ERR(spqp)) {
+			ret = PTR_ERR(spqp);
+			break;
+		}
+		pqi->ki_s.spqp[i] = spqp;
+		spqp->index = i;
+	}
+	pqi->ki_s.pool_sz = i;
+	if (ret && i) {
+		sif_log(sdev, SIF_INFO, "Failed to create %d INVALIDATE_KEY stencil QPs", i);
+		sif_ki_spqp_fini(sdev);
+	}
+
+	if (i)
+		sif_log(sdev, SIF_INIT, "Created %d INVALIDATE_KEY stencil QPs", i);
+bm_failed:
+	if (ret)
+		kfree(pqi->ki_s.spqp);
+	return 0;  /* Never fail on stencil PQP allocation */
+}
+
+
+static void sif_ki_spqp_fini(struct sif_dev *sdev)
+{
+	struct sif_pqp_info *pqi = &sdev->pqi;
+	int i;
+
+	if (!pqi->ki_s.spqp)
+		return;
+	for (i = pqi->ki_s.pool_sz - 1; i >= 0; i--)
+		sif_destroy_st_pqp(sdev, pqi->ki_s.spqp[i]);
+	kfree(pqi->ki_s.bitmap);
+	kfree(pqi->ki_s.spqp);
+	pqi->ki_s.spqp = NULL;
+}
+
+int sif_pqp_init(struct sif_dev *sdev)
+{
+	struct sif_pqp *pqp;
+	struct sif_pqp_info *pqi = &sdev->pqi;
+	struct sif_eps *es = &sdev->es[sdev->mbox_epsc];
+	int i;
+	int ret = 0;
+	uint n_pqps = es->eqs.cnt - 2;
+
+	/* Use a sensible default value for when to query a PQP to see if it got
+	 * set to error without an event - will be adjusted dynamically:
+	 */
+	pqi->pqp_query_ticks = max(1ULL, sdev->min_resp_ticks / 50);
+
+	pqi->pqp = sif_kmalloc(sdev, sizeof(struct sif_pqp *) * n_pqps, GFP_KERNEL | __GFP_ZERO);
+	if (!pqi->pqp)
+		return -ENOMEM;
+
+	for (i = 0; i < n_pqps; i++) {
+		pqp = sif_create_pqp(sdev, i);
+		if (IS_ERR(pqp)) {
+			if ((i > 0) &&
+			    !(eps_version_ge(es, 0, 42))) {
+				sif_log(sdev, SIF_INFO,
+				"SIF device has an old FW version that only supports one pqp");
+				break;
+			}
+			ret = PTR_ERR(pqp);
+			goto failed;
+		}
+		pqi->pqp[i] = pqp;
+	}
+	pqi->cnt = i;
+	atomic_set(&pqi->next, 0);
+
+	ret = sif_ki_spqp_init(sdev);
+	if (ret)
+		goto failed;
+	return 0;
+
+failed:
+	pqi->cnt = i;
+	sif_pqp_fini(sdev);
+	return ret;
+}
+
+void sif_pqp_fini(struct sif_dev *sdev)
+{
+	struct sif_pqp_info *pqi = &sdev->pqi;
+
+	sif_ki_spqp_fini(sdev);
+
+	/* we must maintain a consistent state of the PQP array
+	 * during takedown as these operations themselves
+	 * generate PQP requests..
+	 */
+	while (pqi->cnt > 0) {
+		int i = pqi->cnt - 1;
+		struct sif_pqp *pqp = pqi->pqp[i];
+
+		if (i > 0) {
+			/* Remove ourselves first, except the final PQP */
+			pqi->pqp[i] = NULL;
+			pqi->cnt--;
+		}
+		sif_destroy_pqp(sdev, pqp);
+		if (i == 0)
+			pqi->cnt--;
+	}
+	kfree(pqi->pqp);
+	pqi->pqp = NULL;
+}
+
+void handle_pqp_event(struct sif_eq *eq, struct psif_eq_entry *eqe, struct sif_qp *qp)
+{
+	struct sif_dev *sdev = eq->ba.sdev;
+	unsigned long flags;
+	struct sif_pqp *pqp = qp->pqp;
+
+	if (eqe->event_status_cq_error) {
+		struct sif_cq *cq = get_sif_cq(sdev, eqe->cqd_id);
+
+		if (eqe->vendor_error == TSU_CBLD_CQ_FULL_ERR)
+			sif_log(sdev, SIF_INFO, "PQP error due to CQ overrun on CQ %d", cq->index);
+		else if (eqe->vendor_error == TSU_CBLD_CQ_ALREADY_IN_ERR)
+			sif_log(sdev, SIF_INFO, "PQP error due to CQ %d already in error event",
+				cq->index);
+		else
+			dump_eq_entry(SIF_INFO, "Got unexpected cq_error", eqe);
+
+		WRITE_ONCE(qp->last_set_state, IB_QPS_ERR);
+		WRITE_ONCE(pqp->write_only, true);
+
+		spin_lock_irqsave(&pqp->cq->lock, flags);
+		_pqp_queue_resurrect(pqp);
+		spin_unlock_irqrestore(&pqp->cq->lock, flags);
+	} else {
+		sif_log(sdev, SIF_INFO, "Received unexpected async event on PQP %d: ", qp->qp_idx);
+		sif_logs(SIF_INFO, write_struct_psif_eq_entry(NULL, 0, eqe); printk("\n"));
+	}
+	atomic_inc(&pqp->ev_cnt);
+}
+
+/* NB! Assumed called with cq lock held:
+ * Trigger a resurrect operation on the PQP -
+ * if necessary - eg. if the QP is in error
+ * and no resurrect operation is already queued:
+ */
+static int _pqp_queue_resurrect(struct sif_pqp *pqp)
+{
+	enum ib_qp_state s;
+	struct pqp_work *work;
+	struct sif_dev *sdev = to_sdev(pqp->qp->ibqp.device);
+	struct sif_qp *qp = pqp->qp;
+
+	if (READ_ONCE(pqp->res_queued))
+		return -EAGAIN;
+	s = qp->last_set_state;
+	if (s != IB_QPS_ERR && s != IB_QPS_SQE)
+		return 0;
+
+	work = kzalloc(sizeof(*work), GFP_ATOMIC);
+	if (!work)
+		return -ENOMEM;
+
+	work->pqp = pqp;
+	INIT_WORK(&work->ws, pqp_resurrect);
+	WRITE_ONCE(pqp->res_queued, true);
+
+	queue_work(sdev->wq, &work->ws);
+	return -EAGAIN;
+}
+
+/* Simplified version of _reset_qp() for PQPs already in error
+ * as none of the other workarounds are needed for PQPs in error
+ * due to a CQ error. Assumes QP lock is held.
+ */
+static int _reset_qp_pqp(struct sif_pqp *pqp)
+{
+	struct sif_dev *sdev = to_sdev(pqp->qp->ibqp.device);
+	struct sif_qp *qp = pqp->qp;
+	struct sif_sq *sq = get_sq(sdev, qp);
+	int ret = 0;
+	struct ib_qp_attr mod_attr = {
+		.qp_state        = IB_QPS_RESET
+	};
+
+	ret = _modify_qp(sdev, qp, &mod_attr, IB_QP_STATE, true, NULL);
+	if (ret)
+		goto out;
+
+	/* Bring down order needed by rev2 according to bug #3480 */
+	ret = poll_wait_for_qp_writeback(sdev, qp);
+	if (ret)
+		goto out;
+
+	ret = sif_flush_sqs(sdev, sq);
+	if (ret)
+		goto out;
+
+	/* Re-initialize the HW QP state as after create_qp() */
+	init_hw_qp_state(sdev, qp);
+out:
+	return ret;
+}
+
+
+/* Called with QP lock held. Check SQ state and
+ * trigger SQ mode if there are outstanding requests
+ * that failed in the previous "life" of this PQP.
+ * The QP is already in RTS but new reqs are held back
+ * by pqp->write_only being set:
+ */
+static int _retrigger_sq(struct sif_pqp *pqp)
+{
+	unsigned long flags;
+	struct sif_dev *sdev = to_sdev(pqp->qp->ibqp.device);
+	struct sif_sq *sq = get_sq(sdev, pqp->qp);
+	struct sif_sq_sw *sq_sw = get_sif_sq_sw(sdev, pqp->qp->qp_idx);
+	int ql;
+
+	spin_lock_irqsave(&sq->lock, flags);
+	ql = sq_length(sq, sq_sw->head_seq, sq_sw->last_seq);
+
+	if (ql > 0) {
+		u32 sq_seq = sq_sw->head_seq + 1;
+
+		sif_log(sdev, SIF_INFO, "Queue length %d, start at %u", ql, sq_seq);
+
+		/* Outstanding requests, must trigger SQ mode: */
+		sif_doorbell_from_sqe(pqp->qp, sq_seq, true);
+
+		sif_logs(SIF_PQPT,
+			struct sif_sq *sq = get_sif_sq(sdev, pqp->qp->qp_idx);
+			struct psif_sq_entry *sqe = get_sq_entry(sq, sq_seq);
+
+			write_struct_psif_sq_entry(NULL, 1, sqe));
+	}
+
+	/* Finally reset the write only flag:
+	 * While the flag is set, post operations will just be written
+	 * to the send queue without any collect buffer write:
+	 */
+	WRITE_ONCE(pqp->write_only, false);
+	spin_unlock_irqrestore(&sq->lock, flags);
+	return 0;
+}
+
+
+/* Process a pqp_work work element to resurrect a PQP that is in error.
+ * This function assumes this is due to a CQ error on a user CQ:
+ */
+static void pqp_resurrect(struct work_struct *work)
+{
+	struct pqp_work *rw = container_of(work, struct pqp_work, ws);
+	struct sif_pqp *pqp = rw->pqp;
+	struct sif_qp *qp = pqp->qp;
+	struct sif_dev *sdev = to_sdev(pqp->qp->ibqp.device);
+	unsigned long flags;
+	int ret;
+
+	sif_log(sdev, SIF_PQP, " PQP %d", qp->qp_idx);
+
+	mutex_lock(&qp->lock);
+	ret = _reset_qp_pqp(pqp);
+	if (ret)
+		goto out;
+
+	ret = _modify_reset_to_rts(sdev, qp, true);
+	if (ret)
+		goto out;
+
+	/* Now retrigger any accidental 3rd party requests
+	 * that failed in the previous "life" of the PQP:
+	 */
+	ret = _retrigger_sq(pqp);
+	if (ret)
+		goto out;
+
+	spin_lock_irqsave(&pqp->cq->lock, flags);
+	/* Avoid losing an acciental update to the state */
+	if (qp->last_set_state == IB_QPS_RTS)
+		WRITE_ONCE(pqp->res_queued, false);
+	spin_unlock_irqrestore(&pqp->cq->lock, flags);
+out:
+	mutex_unlock(&qp->lock);
+	kfree(rw);
+	if (ret)
+		sif_log(sdev, SIF_INFO, "Fatal error: Failed to resurrect PQP %d",
+			qp->qp_idx);
+
+	sif_log(sdev, SIF_PQP, " PQP %d done", qp->qp_idx);
+}
+
+void sif_dfs_print_pqp(struct seq_file *s, struct sif_dev *sdev, loff_t pos)
+{
+	struct sif_qp *qp;
+	struct sif_pqp *pqp;
+	struct sif_pqp_info *pqi = &sdev->pqi;
+
+	if (unlikely(pos < 0)) {
+		seq_printf(s, "# Global PQP config:\n# Number of normal PQPs: %u\n# Next PQP in RR: %u\n"
+			"#\n# Per PQP stats:\n# qmax = Longest PQP send queue observed (during poll)\n"
+			"# tmax = Max time in msec observed for a PQP req\n"
+			"# evc = #of PQP async events seen\n#\n"
+			"#Index State %6s qmax   tmax  evc\n", pqi->cnt,
+			atomic_read(&pqi->next), "CQ");
+		return;
+	}
+
+	qp = get_sif_qp(sdev, pos);
+	if (qp->type != PSIF_QP_TRANSPORT_MANSP1)
+		return;
+	pqp = qp->pqp;
+
+	seq_printf(s, "%6llu %5u %6u %4u %6u  %u", pos, qp->last_set_state,
+		get_psif_qp_core__send_cq_indx(&qp->d.state),
+		pqp->max_qlen, jiffies_to_msecs(pqp->max_cmpl_time), atomic_read(&pqp->ev_cnt));
+	if (qp->flags & SIF_QPF_KI_STENCIL)
+		seq_puts(s, "  [ki_stencil]\n");
+	else
+		seq_puts(s, "\n");
 }

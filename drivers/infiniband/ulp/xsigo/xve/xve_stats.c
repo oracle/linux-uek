@@ -77,6 +77,7 @@ static char *counter_name[XVE_MAX_COUNTERS] = {
 	"tx ring wmark reached count:\t",
 	"tx wake up count\t\t",
 	"tx queue stop count:\t\t",
+	"tx linearize skb count:\t",
 	"rx_skb_count:\t\t\t",
 	"rx_skb_alloc_count:\t\t",
 	"rx_smallskb_alloc_count:\t",
@@ -127,8 +128,10 @@ static char *counter_name[XVE_MAX_COUNTERS] = {
 	"mcast detach count:\t\t",
 	"tx ud count:\t\t\t",
 	"tx rc count:\t\t\t",
-	"rc tx compl count:\t\t\t",
 	"rc rx compl count:\t\t\t",
+	"rc tx compl count:\t\t\t",
+	"rc rx compl error count:\t\t",
+	"rc tx compl error count:\t\t",
 	"tx mcast count:\t\t\t",
 	"tx broadcast count:\t\t\t",
 	"tx arp count:\t\t\t",
@@ -469,6 +472,7 @@ static int xve_proc_read_device(struct seq_file *m, void *data)
 	seq_printf(m, "IB MAX MTU: \t\t\t%d\n", vp->max_ib_mtu);
 	seq_printf(m, "SG UD Mode:\t\t\t%d\n", xve_ud_need_sg(vp->admin_mtu));
 	seq_printf(m, "Max SG supported(HCA):\t\t%d\n", vp->dev_attr.max_sge);
+	seq_printf(m, "SG Capability:\t\t\t%d\n", vp->max_send_sge);
 	seq_printf(m, "Eoib:\t\t\t\t%s\n", (vp->is_eoib) ? "yes" : "no");
 	seq_printf(m, "Jumbo:\t\t\t\t%s\n", (vp->is_jumbo) ? "yes" : "no");
 	seq_printf(m, "Titan:\t\t\t\t%s\n", (vp->is_titan) ? "yes" : "no");
@@ -493,7 +497,7 @@ static int xve_proc_read_device(struct seq_file *m, void *data)
 		seq_puts(m, "Multicast Report:\n");
 		seq_printf(m, "Flag:	            \t\t%lx\n",
 				vp->broadcast->flags);
-		seq_printf(m, "join state:		\t\t%s\n",
+		seq_printf(m, "join state:	\t\t%s\n",
 			   test_bit(XVE_MCAST_FLAG_ATTACHED,
 				    &vp->broadcast->
 				    flags) ? "Joined" : "Not joined");
@@ -604,7 +608,7 @@ static int xve_proc_read_device(struct seq_file *m, void *data)
 	if (vp->work_queue_failed != 0)
 		seq_printf(m, "WQ Failed:\t\t\t%ld\n", vp->work_queue_failed);
 
-	seq_printf(m, "TX Net queue \t\t%s %d:%d\n",
+	seq_printf(m, "TX Net queue \t\t\t%s %d:%d\n",
 			netif_queue_stopped(vp->netdev) ? "stopped" : "active",
 			vp->counters[XVE_TX_WAKE_UP_COUNTER],
 			vp->counters[XVE_TX_QUEUE_STOP_COUNTER]);

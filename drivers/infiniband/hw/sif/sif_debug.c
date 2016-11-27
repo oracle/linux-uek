@@ -27,6 +27,7 @@
 struct sif_dfs_ref {
 	struct sif_dev *sdev;
 	bool is_eq;
+	bool no_table_info; /* If set, no table extent/size info printed */
 	enum sif_tab_type type;
 	sif_dfs_printer dfs_print;
 };
@@ -43,6 +44,7 @@ struct sif_dfs {
 	struct sif_dfs_ref sd_irq_ch;
 	struct sif_dfs_ref sd_ipoffload;
 	struct sif_dfs_ref sd_wa_stats;
+	struct sif_dfs_ref sd_pqp;
 };
 
 /* A simple iterator */
@@ -106,7 +108,7 @@ static int sif_seq_show(struct seq_file *s, void *v)
 
 	sif_log(sd->sdev, SIF_DFS, "%lld", it->pos);
 	if (!it->pos || !it->started) {
-		if (!sd->is_eq)
+		if (!sd->no_table_info)
 			seq_printf(s, "# %s state (entries %d, extent %d):\n",
 				sif_table_name(sd->type),
 				sd->sdev->ba[sd->type].entry_cnt,
@@ -533,45 +535,60 @@ int sif_dfs_register(struct sif_dev *sdev)
 	/* Single file for the event queues */
 	sdr = &sdev->dfs->sd_eq;
 	sdr->sdev = sdev;
-	sdr->is_eq = true;
+	sdr->is_eq = sdr->no_table_info = true;
 	sdr->dfs_print = sif_dfs_print_eq;
 	df = debugfs_create_file("eq", S_IRUGO, sdev->dfs->root,
 				(void *)sdr, &table_fops);
 	if (!df) {
 		sif_log(sdev, SIF_INFO, "Unable to set up debugfs file for event queues");
-		return -ENOMEM;
+		goto sif_dfs_reg_failed;
 	}
 	/* Single file for the ipoffload qp-statistics */
 	sdr = &sdev->dfs->sd_ipoffload;
 	sdr->sdev = sdev;
 	sdr->dfs_print = sif_dfs_print_ipoffload;
 	sdr->type = qp;
+	sdr->no_table_info = true;
 	df = debugfs_create_file("ipoffload", S_IRUGO, sdev->dfs->root,
 				(void *)sdr, &table_fops);
 	if (!df) {
 		sif_log(sdev, SIF_INFO, "Unable to set up debugfs file for ipoffload qp stat");
-		return -ENOMEM;
+		goto sif_dfs_reg_failed;
 	}
 	/* Single file for the wa statistics */
 	sdr = &sdev->dfs->sd_wa_stats;
 	sdr->sdev = sdev;
+	sdr->no_table_info = true;
 	df = debugfs_create_file("wa_stats", S_IRUGO, sdev->dfs->root,
 				(void *)sdr, &wa_fops);
 	if (!df) {
 		sif_log(sdev, SIF_INFO, "Unable to set up debugfs file for wa stat");
-		return -ENOMEM;
+		goto sif_dfs_reg_failed;
 	}
 	/* Single file for the int channel coalescing settings */
 	sdr = &sdev->dfs->sd_irq_ch;
 	sdr->sdev = sdev;
-	sdr->is_eq = true;
+	sdr->is_eq = sdr->no_table_info = true;
 	sdr->dfs_print = sif_dfs_print_irq_ch;
 	df = debugfs_create_file("irq_ch", S_IWUSR | S_IRUGO, sdev->dfs->root,
 				(void *)sdr, &table_fops_rw);
 	if (!df) {
 		sif_log(sdev, SIF_INFO,
 			"Unable to set up debugfs file for interrupt channels coalescing settings");
-		return -ENOMEM;
+		goto sif_dfs_reg_failed;
+	}
+
+	/* Single file for detailed pqp statistics */
+	sdr = &sdev->dfs->sd_pqp;
+	sdr->sdev = sdev;
+	sdr->dfs_print = sif_dfs_print_pqp;
+	sdr->type = qp;
+	sdr->no_table_info = true;
+	df = debugfs_create_file("pqp", S_IRUGO, sdev->dfs->root,
+				(void *)sdr, &table_fops);
+	if (!df) {
+		sif_log(sdev, SIF_INFO, "Unable to set up debugfs file for pqp stat");
+		goto sif_dfs_reg_failed;
 	}
 
 	/* Create a directory for raw qp dump info */

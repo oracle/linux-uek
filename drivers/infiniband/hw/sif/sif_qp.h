@@ -69,6 +69,8 @@ enum kernel_ulp_type {
 	RDS_ULP	     = 1,
 	IPOIB_CM_ULP = 2,
 	IPOIB_ULP    = 3,
+	XVE_CM_ULP   = 4,
+	XVE_ULP      = 5,
 };
 
 struct sif_qp_init_attr {
@@ -133,6 +135,7 @@ struct sif_qp {
 	enum ib_mtu mtu;		/* Currently set mtu */
 	enum ib_qp_state tracked_state; /* TBD: This is stupid: Make SQD fail as MLX for SQD */
 	struct dentry *dfs_qp;		/* Raw qp dump debugfs handle - used by sif_debug.c */
+	struct sif_pqp *pqp;		/* Set if this QP is used as a PQP */
 	bool sq_cmpl_map_valid;
 
 	int srq_idx;			/* WA #3952: Track SRQ for modify_srq(used only for pQP) */
@@ -223,6 +226,14 @@ int modify_qp(struct sif_dev *sdev, struct sif_qp *qp,
 	struct ib_qp_attr *qp_attr, int qp_attr_mask,
 	bool fail_on_same_state, struct ib_udata *udata);
 
+/* Internal kernel only modify QP operation that assumes qp->lock is held */
+int _modify_qp(struct sif_dev *sdev, struct sif_qp *qp,
+	struct ib_qp_attr *qp_attr, int qp_attr_mask,
+	bool fail_on_same_state, enum ib_qp_state *new_statep);
+
+/* Reset data structures of a QP - exposed for PQP only usage */
+int _reset_qp(struct sif_dev *sdev, struct sif_qp *qp);
+
 enum ib_qp_state get_qp_state(struct sif_qp *qp);
 
 /* Line printers for debugfs files */
@@ -289,5 +300,10 @@ static inline bool ib_legal_path_mtu(enum ib_mtu mtu)
 
 struct sif_sq *get_sq(struct sif_dev *sdev, struct sif_qp *qp);
 struct sif_rq *get_rq(struct sif_dev *sdev, struct sif_qp *qp);
+
+int poll_wait_for_qp_writeback(struct sif_dev *sdev, struct sif_qp *qp);
+
+/* Initialization of qp state via local copy (exposed for use with PQP) */
+void init_hw_qp_state(struct sif_dev *sdev, struct sif_qp *qp);
 
 #endif

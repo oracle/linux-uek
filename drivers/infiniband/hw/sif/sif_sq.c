@@ -449,7 +449,7 @@ void sif_dfs_print_sq_hw(struct seq_file *s, struct sif_dev *sdev, loff_t pos)
 		pos,
 		sq->cq_idx, head, tail, sq->entries, qlen, sq->max_outstanding,
 		sq->sg_entries, qp->max_inline_data,
-		get_psif_sq_sw__tail_indx(&sq_sw->d), lhw.last_seq,
+		lhw.last_seq, get_psif_sq_sw__tail_indx(&sq_sw->d),
 		lhw.sq_next.next_qp_num, lhw.sq_next.next_null,
 		tsv, lhw.sq_done, lhw.destroyed);
 }

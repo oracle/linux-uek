@@ -504,11 +504,14 @@ int pre_process_wa4074(struct sif_dev *sdev, struct sif_qp *qp)
 	if (qp->flags & SIF_QPF_NO_EVICT)
 		return 0; /* do-not-evict QPs don't have any SQs */
 
-	if (unlikely(!sq)) {
-		sif_log(sdev, SIF_INFO, "sq not defined for qp %d (type %s)",
+	if (unlikely(!sq || !cq)) {
+		sif_log(sdev, SIF_INFO, "sq/cq not defined for qp %d (type %s)",
 			qp->qp_idx, string_enum_psif_qp_trans(qp->type));
 		return -1;
 	}
+
+	set_bit(CQ_POLLING_NOT_ALLOWED, &cq_sw->flags);
+	atomic_inc(&cq_sw->cleanup_refcnt);
 
 	len = outstanding_wqes(sdev, qp, &head);
 	if (len <= 0)
@@ -523,9 +526,6 @@ int pre_process_wa4074(struct sif_dev *sdev, struct sif_qp *qp)
 	}
 	atomic64_add(len, &sdev->wa_stats.wa4074[WRS_CSUM_CORR_WA4074_CNT]);
 	spin_unlock_irqrestore(&sq->lock, flags);
-	if (cq)
-		set_bit(CQ_POLLING_NOT_ALLOWED, &cq_sw->flags);
-
 	atomic64_inc(&sdev->wa_stats.wa4074[PRE_WA4074_CNT]);
 
 	return 0;
@@ -578,9 +578,6 @@ int post_process_wa4074(struct sif_dev *sdev, struct sif_qp *qp)
 		return ret;
 	}
 
-	if ((sq_sw->last_seq - sq_sw->head_seq) == 0)
-		goto err_post_wa4074;
-
 	/* if SQ has been flushed before, continue to generate
 	 * the remaining completions.
 	 */
@@ -590,10 +587,17 @@ int post_process_wa4074(struct sif_dev *sdev, struct sif_qp *qp)
 		goto flush_sq_again;
 	}
 
+	/* if there is nothing to clean-up, decrement the refcnt.
+	 * This is needed as pre_process_wa4074 has increment the refcnt.
+	 */
+	if ((sq_sw->last_seq - sq_sw->head_seq) == 0) {
+		if (atomic_dec_and_test(&cq_sw->cleanup_refcnt))
+			clear_bit(CQ_POLLING_NOT_ALLOWED, &cq_sw->flags);
+		goto err_post_wa4074;
+	}
+
 	copy_conv_to_sw(&lqqp, &qp->d, sizeof(lqqp));
 	last_seq = READ_ONCE(sq_sw->last_seq);
-
-	set_bit(CQ_POLLING_NOT_ALLOWED, &cq_sw->flags);
 
 	sif_log(sdev, SIF_WCE_V, "sq_retry_seq %x sq_seq %x last_seq %x head_seq %x",
 		lqqp.state.retry_sq_seq, lqqp.state.sq_seq, sq_sw->last_seq, sq_sw->head_seq);
@@ -654,6 +658,7 @@ int post_process_wa4074(struct sif_dev *sdev, struct sif_qp *qp)
 
 		if (!last_seq_set) {
 			sif_log(sdev, SIF_INFO, "failed to generate a completion to cq");
+			ret = -EFAULT;
 			goto err_post_wa4074;
 		}
 
@@ -674,7 +679,8 @@ int post_process_wa4074(struct sif_dev *sdev, struct sif_qp *qp)
 	last_seq = walk_and_update_cqes(sdev, qp, sq_sw->head_seq + 1, sq_sw->last_seq);
 	sq_sw->trusted_seq = last_seq;
 
-	clear_bit(CQ_POLLING_NOT_ALLOWED, &cq_sw->flags);
+	if (atomic_dec_and_test(&cq_sw->cleanup_refcnt))
+		clear_bit(CQ_POLLING_NOT_ALLOWED, &cq_sw->flags);
 
 	if (GREATER_16(last_seq, sq_sw->last_seq)) {
 		sif_log(sdev, SIF_WCE_V, "last seq %x > sq_sw->last_seq %x\n", last_seq, sq_sw->last_seq);
@@ -766,7 +772,6 @@ check_in_flight_and_return:
 		goto flush_sq_again;
 
 err_post_wa4074:
-	clear_bit(CQ_POLLING_NOT_ALLOWED, &cq_sw->flags);
 	clear_bit(FLUSH_SQ_IN_FLIGHT, &sq_sw->flags);
 	clear_bit(FLUSH_SQ_IN_PROGRESS, &sq_sw->flags);
 

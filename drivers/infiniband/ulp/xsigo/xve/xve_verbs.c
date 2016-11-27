@@ -228,20 +228,21 @@ int xve_transport_dev_init(struct net_device *dev, struct ib_device *ca)
 	if (priv->hca_caps & IB_DEVICE_BLOCK_MULTICAST_LOOPBACK)
 		init_attr.create_flags |= IB_QP_CREATE_BLOCK_MULTICAST_LOOPBACK;
 
-	if (dev->features & NETIF_F_SG) {
-		/* As Titan Card supports less than MAX SKB we need to check */
-		max_sge = priv->dev_attr.max_sge;
-		if (max_sge >= (MAX_SKB_FRAGS + 1))
-			max_sge = MAX_SKB_FRAGS + 1;
-		init_attr.cap.max_send_sge = max_sge;
-	}
-
 	if (priv->is_eoib && priv->is_titan) {
 		init_attr.create_flags |= IB_QP_CREATE_EOIB;
 		init_attr.cap.max_inline_data = xve_max_inline_data;
-		xve_debug(DEBUG_QP_INFO, priv, "Setting eoIB mode%x data%x\n",
-				init_attr.create_flags, xve_max_inline_data);
 	}
+
+	if (dev->features & NETIF_F_SG) {
+		/*PSIF supports 16 SGE's*/
+		max_sge =  min_t(uint32_t, priv->dev_attr.max_sge,
+				MAX_SKB_FRAGS + 1);
+
+		init_attr.cap.max_send_sge = max_sge;
+	}
+
+	xve_debug(DEBUG_QP_INFO, priv, "Create QP flags%x sge%d\n",
+				init_attr.create_flags, max_sge);
 
 	priv->qp = ib_create_qp(priv->pd, &init_attr);
 	if (IS_ERR(priv->qp)) {
@@ -270,6 +271,7 @@ int xve_transport_dev_init(struct net_device *dev, struct ib_device *ca)
 	}
 	priv->rx_wr.next = NULL;
 	priv->rx_wr.sg_list = priv->rx_sge;
+	priv->max_send_sge = init_attr.cap.max_send_sge;
 
 	return 0;
 

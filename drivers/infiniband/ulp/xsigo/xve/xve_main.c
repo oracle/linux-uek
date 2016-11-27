@@ -647,12 +647,19 @@ static void path_rec_completion(int status,
 		skb->dev = dev;
 		xve_get_ah_refcnt(path->ah);
 		priv->counters[XVE_PATHREC_GW_COUNTER]++;
-		/* Sending the queued GATEWAY Packet */
+		/* Send G/W packet */
+		netif_tx_lock_bh(dev);
+		spin_lock_irqsave(&priv->lock, flags);
+
 		ret = xve_send(dev, skb, path->ah, priv->gw.t_data_qp, 2);
 		if (ret == NETDEV_TX_BUSY) {
 			xve_warn(priv, "send queue full full, dropping packet for %s\n",
 					priv->xve_name);
-			}
+		}
+
+		spin_unlock_irqrestore(&priv->lock, flags);
+		netif_tx_unlock_bh(dev);
+
 	}
 }
 
@@ -822,8 +829,10 @@ int xve_gw_send(struct net_device *dev, struct sk_buff *skb)
 	int ret = NETDEV_TX_OK;
 
 	path = xve_get_gw_path(dev);
-	if (!path)
+	if (!path) {
+		dev_kfree_skb_any(skb);
 		return NETDEV_TX_BUSY;
+	}
 
 	if (path->ah) {
 		xve_dbg_data(priv, "Sending unicast copy to gw ah:%p dqpn:%u\n",
@@ -1047,6 +1056,13 @@ unlock:
 		dev_kfree_skb_any(skb);
 
 	spin_unlock_irqrestore(&priv->lock, flags);
+
+	if (unlikely(priv->tx_outstanding > SENDQ_LOW_WMARK)) {
+		priv->counters[XVE_TX_WMARK_REACH_COUNTER]++;
+		mod_timer(&priv->poll_timer, jiffies);
+
+	}
+
 	return ret;
 }
 
@@ -1206,9 +1222,11 @@ void handle_carrier_state(struct xve_dev_priv *priv, char state)
 {
 	if (state) {
 		priv->jiffies = jiffies;
-		priv->counters[XVE_TX_WAKE_UP_COUNTER]++;
 		netif_carrier_on(priv->netdev);
-		netif_wake_queue(priv->netdev);
+		if (netif_queue_stopped(priv->netdev)) {
+			netif_wake_queue(priv->netdev);
+			priv->counters[XVE_TX_WAKE_UP_COUNTER]++;
+		}
 		/* careful we are holding lock (priv->lock)inside this */
 		xve_data_recv_handler(priv);
 	} else {
@@ -2638,8 +2656,11 @@ static void xve_handle_del_message(xsmp_cookie_t xsmp_hndl,
 			  __func__, xmsgp->xve_name);
 		return;
 	}
+	xve_info(priv, "Start Deleting interface");
 	spin_lock_irqsave(&priv->lock, flags);
 	set_bit(XVE_DELETING, &priv->state);
+	/*Set OperState to down*/
+	clear_bit(XVE_OPER_UP, &priv->state);
 	spin_unlock_irqrestore(&priv->lock, flags);
 
 }
@@ -2785,6 +2806,8 @@ static void xve_xsmp_event_handler(xsmp_cookie_t xsmp_hndl, int event)
 			if (xsmp_sessions_match(&priv->xsmp_info, xsmp_hndl)) {
 				spin_lock_irqsave(&priv->lock, flags);
 				set_bit(XVE_DELETING, &priv->state);
+				/*Set OperState to down*/
+				clear_bit(XVE_OPER_UP, &priv->state);
 				spin_unlock_irqrestore(&priv->lock, flags);
 			}
 		}
@@ -2924,6 +2947,8 @@ static void __exit xve_cleanup_module(void)
 	list_for_each_entry(priv, &xve_dev_list, list) {
 		spin_lock_irqsave(&priv->lock, flags);
 		set_bit(XVE_DELETING, &priv->state);
+		/*Set OperState to down*/
+		clear_bit(XVE_OPER_UP, &priv->state);
 		set_bit(XVE_SHUTDOWN, &priv->state);
 		spin_unlock_irqrestore(&priv->lock, flags);
 	}

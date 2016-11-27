@@ -71,8 +71,6 @@ static unsigned char bug_3646_conv_table[32] = {
 	0,
 };
 
-static int reset_qp(struct sif_dev *sdev, struct sif_qp *qp);
-
 static int sif_create_pma_qp(struct ib_pd *ibpd,
 			struct ib_qp_init_attr *init_attr,
 			struct sif_qp_init_attr sif_attr);
@@ -89,7 +87,7 @@ struct sif_rq *get_rq(struct sif_dev *sdev, struct sif_qp *qp)
 			NULL : get_sif_rq(sdev, qp->rq_idx);
 }
 
-static int poll_wait_for_qp_writeback(struct sif_dev *sdev, struct sif_qp *qp)
+int poll_wait_for_qp_writeback(struct sif_dev *sdev, struct sif_qp *qp)
 {
 	unsigned long timeout = sdev->min_resp_ticks;
 	unsigned long timeout_real = jiffies + timeout;
@@ -157,8 +155,7 @@ static int send_epsa_proxy_qp_sq_key(struct sif_dev *sdev, u32 lkey,
  * To be called from create_qp and when QP is modified to RESET, in
  * case it is resurrected
  */
-
-static void init_hw_qp_state(struct sif_dev *sdev, struct sif_qp *qp)
+void init_hw_qp_state(struct sif_dev *sdev, struct sif_qp *qp)
 {
 	struct psif_qp qpi;
 
@@ -487,6 +484,9 @@ struct sif_qp *create_qp(struct sif_dev *sdev,
 	if (flags & IB_QP_CREATE_IPOIB_UD_LSO)
 		qp->flags |= SIF_QPF_IPOIB;
 
+	/* SIF extensions */
+	if (flags & IB_QP_CREATE_EOIB)
+		qp->flags |= SIF_QPF_EOIB;
 	/* Now, initialize the HW QP state */
 	init_hw_qp_state(sdev, qp);
 
@@ -971,64 +971,17 @@ int sif_modify_qp(struct ib_qp *ibqp,
 }
 
 
-int modify_qp(struct sif_dev *sdev, struct sif_qp *qp,
+/* The actual modify_qp operation:
+ * assuming qp->lock is held at entry
+ */
+int _modify_qp(struct sif_dev *sdev, struct sif_qp *qp,
 	struct ib_qp_attr *qp_attr, int qp_attr_mask,
-	bool fail_on_same_state, struct ib_udata *udata)
+	bool fail_on_same_state, enum ib_qp_state *new_statep)
 {
-	int ret = 0;
-	struct ib_qp *ibqp = &qp->ibqp;
-	struct sif_rq *rq = get_rq(sdev, qp);
-	struct sif_sq *sq = get_sq(sdev, qp);
 	enum ib_qp_state cur_state, new_state;
+	struct ib_qp *ibqp = &qp->ibqp;
 	enum sif_mqp_type mqp_type = SIF_MQP_IGN;
-
-	sif_log(sdev, SIF_QP, "Enter: qpn %d qp_idx %d mask 0x%x",
-		ibqp->qp_num, qp->qp_idx, qp_attr_mask);
-
-	/* WA for Bug 622, RQ flush from error completion in userspace */
-	if (udata) {
-		struct sif_modify_qp_ext cmd;
-
-		ret = ib_copy_from_udata(&cmd, udata, sizeof(cmd));
-		if (ret) {
-			sif_log(sdev, SIF_INFO, "ib_copy_from_udata failed, sts %d, qp %d, size %ld",
-				ret, qp->qp_idx, sizeof(cmd));
-			return ret;
-		}
-
-		switch (cmd.flush) {
-		case FLUSH_RQ:
-			if (unlikely(!rq)) {
-				ret = -EINVAL;
-				sif_log(sdev, SIF_INFO,
-					"flush requested for qp(type %s) with no rq defined",
-					string_enum_psif_qp_trans(qp->type));
-			} else {
-				ret = sif_flush_rq_wq(sdev, rq, qp, rq->entries);
-				if (ret)
-					sif_log(sdev, SIF_INFO, "failed to flush RQ %d", rq->index);
-			}
-			return ret;
-		case FLUSH_SQ:
-			sif_log(sdev, SIF_WCE_V, "user trying to flush SQ %d", qp->qp_idx);
-
-			if (unlikely(!sq)) {
-				ret = -EINVAL;
-				sif_log(sdev, SIF_INFO,
-					"flush requested for qp(type %s) with no sq defined",
-					string_enum_psif_qp_trans(qp->type));
-			} else {
-				ret = post_process_wa4074(sdev, qp);
-				if (ret)
-					sif_log(sdev, SIF_INFO, "failed to flush SQ %d", qp->qp_idx);
-			}
-			return ret;
-		default:
-			break;
-		}
-	}
-
-	mutex_lock(&qp->lock);
+	int ret = 0;
 
 	cur_state = qp_attr_mask & IB_QP_CUR_STATE ?
 		qp_attr->cur_qp_state : qp->last_set_state;
@@ -1082,7 +1035,70 @@ sif_mqp_ret:
 		/* No extra actions needed */
 		break;
 	}
+	if (new_statep)
+		*new_statep = new_state;
+	return ret;
+}
 
+
+int modify_qp(struct sif_dev *sdev, struct sif_qp *qp,
+	struct ib_qp_attr *qp_attr, int qp_attr_mask,
+	bool fail_on_same_state, struct ib_udata *udata)
+{
+	int ret = 0;
+	struct sif_rq *rq = get_rq(sdev, qp);
+	struct sif_sq *sq = get_sq(sdev, qp);
+	struct ib_qp *ibqp = &qp->ibqp;
+	enum ib_qp_state new_state;
+
+	sif_log(sdev, SIF_QP, "Enter: qpn %d qp_idx %d mask 0x%x",
+		ibqp->qp_num, qp->qp_idx, qp_attr_mask);
+
+	/* WA for Bug 622, RQ flush from error completion in userspace */
+	if (udata) {
+		struct sif_modify_qp_ext cmd;
+
+		ret = ib_copy_from_udata(&cmd, udata, sizeof(cmd));
+		if (ret) {
+			sif_log(sdev, SIF_INFO, "ib_copy_from_udata failed, sts %d, qp %d, size %ld",
+				ret, qp->qp_idx, sizeof(cmd));
+			return ret;
+		}
+
+		switch (cmd.flush) {
+		case FLUSH_RQ:
+			if (unlikely(!rq)) {
+				ret = -EINVAL;
+				sif_log(sdev, SIF_INFO,
+					"flush requested for qp(type %s) with no rq defined",
+					string_enum_psif_qp_trans(qp->type));
+			} else {
+				ret = sif_flush_rq_wq(sdev, rq, qp, rq->entries);
+				if (ret)
+					sif_log(sdev, SIF_INFO, "failed to flush RQ %d", rq->index);
+			}
+			return ret;
+		case FLUSH_SQ:
+			sif_log(sdev, SIF_WCE_V, "user trying to flush SQ %d", qp->qp_idx);
+
+			if (unlikely(!sq)) {
+				ret = -EINVAL;
+				sif_log(sdev, SIF_INFO,
+					"flush requested for qp(type %s) with no sq defined",
+					string_enum_psif_qp_trans(qp->type));
+			} else {
+				ret = post_process_wa4074(sdev, qp);
+				if (ret)
+					sif_log(sdev, SIF_INFO, "failed to flush SQ %d", qp->qp_idx);
+			}
+			return ret;
+		default:
+			break;
+		}
+	}
+
+	mutex_lock(&qp->lock);
+	ret = _modify_qp(sdev, qp, qp_attr, qp_attr_mask, fail_on_same_state, &new_state);
 	mutex_unlock(&qp->lock);
 
 	if (ret)
@@ -1116,7 +1132,7 @@ sif_mqp_ret:
 		break;
 	case IB_QPS_RESET:
 		/* clean all state associated with this QP */
-		ret = reset_qp(sdev, qp);
+		ret = _reset_qp(sdev, qp);
 		break;
 	default:
 		/* No extra actions needed */
@@ -2281,9 +2297,9 @@ int destroy_qp(struct sif_dev *sdev, struct sif_qp *qp)
 }
 
 /* Set this QP back to the initial state
- * (called by modify_qp after a successful modify to reset
+ * (called by modify_qp after a successful modify to reset)
  */
-static int reset_qp(struct sif_dev *sdev, struct sif_qp *qp)
+int _reset_qp(struct sif_dev *sdev, struct sif_qp *qp)
 {
 	struct sif_rq *rq = get_rq(sdev, qp);
 	struct sif_sq *sq = get_sq(sdev, qp);
@@ -2316,14 +2332,14 @@ static int reset_qp(struct sif_dev *sdev, struct sif_qp *qp)
 		struct sif_cq *recv_cq = rq ? get_sif_cq(sdev, cq_idx) : NULL;
 
 
-		/* clean-up the SQ/RQ CQ before resetting the SQ */
+		/* clean up the SQ/RQ CQ before resetting the SQ */
 		if (send_cq) {
 			nfixup = sif_fixup_cqes(send_cq, sq, qp);
 			if (nfixup < 0) {
 				sif_log(sdev, SIF_INFO,
 					"fixup cqes on qp %d send cq %d failed with error %d",
 					qp->qp_idx, sq->cq_idx, nfixup);
-				goto fixup_failed;
+				goto failed;
 			}
 			sif_log(sdev, SIF_QP, "fixup cqes fixed %d CQEs in sq.cq %d",
 				nfixup, sq->cq_idx);
@@ -2334,7 +2350,7 @@ static int reset_qp(struct sif_dev *sdev, struct sif_qp *qp)
 				sif_log(sdev, SIF_INFO,
 					"fixup cqes on qp %d recv cq %d failed with error %d",
 					qp->qp_idx, cq_idx, nfixup);
-				goto fixup_failed;
+				goto failed;
 			}
 			sif_log(sdev, SIF_QP, "fixup cqes fixed %d CQEs in rq.cq %d",
 				nfixup, cq_idx);
@@ -2342,7 +2358,7 @@ static int reset_qp(struct sif_dev *sdev, struct sif_qp *qp)
 		}
 	}
 
-fixup_failed:
+failed:
 	/* if the send queue scheduler is running, wait for
 	 * it to terminate:
 	 */
@@ -2350,13 +2366,13 @@ fixup_failed:
 	if (qp->ibqp.qp_type != IB_QPT_XRC_TGT) {
 		ret = sif_flush_sqs(sdev, sq);
 		if (ret)
-			goto failed;
+			goto sqs_flush_failed;
 	}
 
 	sif_logs(SIF_DUMP,
 		write_struct_psif_qp(NULL, 1, (struct psif_qp *)&qp->d));
 
-failed:
+sqs_flush_failed:
 	if (ret) {
 		/* TBD: Debug case - should never fail? */
 		if (qp->type != PSIF_QP_TRANSPORT_MANSP1)
@@ -2468,7 +2484,7 @@ void sif_dfs_print_qp(struct seq_file *s, struct sif_dev *sdev,
 	sq = get_sq(sdev, qp);
 	rq = get_rq(sdev, qp);
 
-	seq_printf(s, "%llu\t%d\t", pos,	qp->last_set_state);
+	seq_printf(s, "%llu\t%d\t", pos, qp->last_set_state);
 
 	if (!rq)
 		seq_puts(s, "[none]");
@@ -2496,12 +2512,14 @@ void sif_dfs_print_qp(struct seq_file *s, struct sif_dev *sdev,
 		seq_puts(s, "\t[EPSA tunneling]\n");
 	else if (qp->ulp_type == RDS_ULP)
 		seq_puts(s, "\t[RDS]\n");
+	else if (qp->flags & SIF_QPF_IPOIB)
+		seq_puts(s, "\t[IPoIB]\n");
 	else if (qp->ulp_type == IPOIB_CM_ULP)
 		seq_puts(s, "\t[IPOIB_CM]\n");
 	else if (qp->flags & SIF_QPF_EOIB)
 		seq_puts(s, "\t[EoIB]\n");
-	else if (qp->flags & SIF_QPF_IPOIB)
-		seq_puts(s, "\t[IPoIB]\n");
+	else if (qp->ulp_type == XVE_CM_ULP)
+		seq_puts(s, "\t[EoIB_CM]\n");
 	else if (qp->flags & SIF_QPF_NO_EVICT)
 		seq_puts(s, "\t[no_evict]\n");
 	else if (qp->flags & SIF_QPF_FLUSH_RETRY)

@@ -83,6 +83,7 @@ struct sif_cq_sw {
 	__u32 miss_cnt;		/* Number of in-flight completions observed by poll_cq */
 	__u32 miss_occ;		/* Number of times 1 or more in-flight completions was seen */
 	unsigned long flags;    /* Flags, using unsigned long due to test_set/test_and_set_bit */
+	atomic_t cleanup_refcnt;/* A refcnt to enable/disable cq polling. */
 };
 
 #endif

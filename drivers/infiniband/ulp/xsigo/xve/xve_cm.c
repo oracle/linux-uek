@@ -41,6 +41,12 @@ static int rnr_retry_count = 4;
 module_param_named(rnr_retry_count, rnr_retry_count, int, 0644);
 MODULE_PARM_DESC(rnr_retry_count, "Max number rnr retries");
 
+int xve_wait_txcompl = 10;
+module_param_named(xve_wait_txcompl, xve_wait_txcompl, int, 0644);
+
+static int xve_modify_qp = 1;
+module_param_named(xve_modify_qp, xve_modify_qp, int, 0644);
+
 #define XVE_CM_IETF_ID 0x1000000000000000ULL
 
 #define XVE_CM_RX_UPDATE_TIME (256 * HZ)
@@ -548,6 +554,7 @@ void xve_cm_handle_rx_wc(struct net_device *dev, struct ib_wc *wc)
 				 wc->qp->qp_num, wc->status, wr_id,
 				 wc->vendor_err);
 		INC_RX_DROP_STATS(priv, dev);
+		priv->counters[XVE_RC_RXCOMPL_ERR_COUNTER]++;
 		goto repost;
 	}
 
@@ -647,16 +654,14 @@ static inline int post_send(struct xve_dev_priv *priv,
 }
 
 static void xve_cm_tx_buf_free(struct xve_dev_priv *priv,
-			       struct xve_cm_buf *tx_req)
+			       struct xve_cm_buf *tx_req,
+			       struct xve_cm_ctx *tx,
+			       uint32_t wr_id, uint32_t qp_num)
 {
-	if ((tx_req->skb == NULL) || (tx_req->mapping[0] == 0))
-		xve_debug(DEBUG_DATA_INFO, priv,
-			  "%s Contents of tx_req %p are NULL skb %p mapping %lld\n",
-			  __func__, tx_req, tx_req->skb, tx_req->mapping[0]);
-	else
-		ib_dma_unmap_single(priv->ca, tx_req->mapping[0],
-				    tx_req->skb->len, DMA_TO_DEVICE);
+	BUG_ON(tx_req == NULL || tx_req->skb == NULL);
 
+	ib_dma_unmap_single(priv->ca, tx_req->mapping[0],
+			tx_req->skb->len, DMA_TO_DEVICE);
 	xve_dev_kfree_skb_any(priv, tx_req->skb, 1);
 	memset(tx_req, 0, sizeof(struct xve_cm_buf));
 }
@@ -708,7 +713,7 @@ int xve_cm_send(struct net_device *dev, struct sk_buff *skb,
 		xve_warn(priv, "QP[%d] post_send failed wr_id:%d ctx:%p",
 				tx->qp->qp_num, wr_id, tx);
 		INC_TX_ERROR_STATS(priv, dev);
-		xve_cm_tx_buf_free(priv, tx_req);
+		xve_cm_tx_buf_free(priv, tx_req, tx, 0, tx->qp->qp_num);
 	} else {
 		dev->trans_start = jiffies;
 		++tx->tx_head;
@@ -746,7 +751,7 @@ void xve_cm_handle_tx_wc(struct net_device *dev,
 	}
 
 	tx_req = &tx->tx_ring[wr_id];
-	xve_cm_tx_buf_free(priv, tx_req);
+	xve_cm_tx_buf_free(priv, tx_req, tx, wr_id, wc->qp->qp_num);
 
 	netif_tx_lock(dev);
 	++tx->tx_tail;
@@ -759,6 +764,8 @@ void xve_cm_handle_tx_wc(struct net_device *dev,
 	}
 
 	if (wc->status != IB_WC_SUCCESS && wc->status != IB_WC_WR_FLUSH_ERR) {
+		priv->counters[XVE_RC_TXCOMPL_ERR_COUNTER]++;
+		tx->stats.tx_compl_err++;
 		if (wc->status != IB_WC_RNR_RETRY_EXC_ERR)
 			xve_warn(priv, "QP[%x] failed cm send event status:%d wrid:%d vend_err:%x",
 					wc->qp->qp_num, wc->status, wr_id,
@@ -1081,11 +1088,56 @@ err_tx:
 	return ret;
 }
 
+static int wait_for_txcmcompletions(struct xve_cm_ctx *p, u8 modify)
+{
+	struct xve_dev_priv *priv = netdev_priv(p->netdev);
+	unsigned long begin;
+	uint32_t qpnum = p->qp ? p->qp->qp_num : 0;
+
+
+	if (p->tx_ring) {
+		int num_loops = 0;
+
+		begin = jiffies;
+
+		while ((int)p->tx_tail - (int)p->tx_head < 0) {
+			if (!num_loops && xve_modify_qp && modify) {
+				ib_modify_qp(p->qp, &xve_cm_err_attr,
+						IB_QP_STATE);
+				xve_debug(DEBUG_CM_INFO, priv,
+					"M%d QP[%x] TX completions pending[%d]",
+					modify, qpnum, p->tx_head - p->tx_tail);
+			}
+
+			/* If Oper State is down poll for completions */
+			if (!test_bit(XVE_OPER_UP, &priv->state))
+				xve_drain_cq(priv->netdev);
+
+			if (time_after(jiffies,
+				begin + xve_wait_txcompl * HZ)) {
+				xve_warn(priv,
+					"M%d QP[%x] Tx Completions Pending[%d], Waited[%d:%d] state%d",
+					modify, qpnum, p->tx_head - p->tx_tail,
+					num_loops, xve_wait_txcompl,
+					test_bit(XVE_OPER_UP, &priv->state));
+				return -EINVAL;
+			}
+			num_loops++;
+			msleep(20);
+		}
+		if (num_loops != 0)
+			xve_debug(DEBUG_CM_INFO, priv, "M%d QP%x Overall Wait[%d:%d]",
+					modify, qpnum, num_loops,
+					jiffies_to_msecs(jiffies - begin));
+	}
+
+	return 0;
+}
+
 static void xve_cm_tx_destroy(struct xve_cm_ctx *p)
 {
 	struct xve_dev_priv *priv = netdev_priv(p->netdev);
 	struct xve_cm_buf *tx_req;
-	unsigned long begin;
 	unsigned long flags = 0;
 	uint32_t qp_num = p->qp ? p->qp->qp_num : 0;
 
@@ -1096,36 +1148,27 @@ static void xve_cm_tx_destroy(struct xve_cm_ctx *p)
 	if (p->id)
 		ib_destroy_cm_id(p->id);
 
-	if (p->tx_ring) {
-		/* Wait for all sends to complete */
-		if (!netif_carrier_ok(priv->netdev)
-		    && unlikely(priv->tx_outstanding > MAX_SEND_CQE))
-			while (poll_tx(priv))
-				; /* nothing */
+	wait_for_txcmcompletions(p, 1);
 
-		begin = jiffies;
-		while ((int)p->tx_tail - (int)p->tx_head < 0) {
-			if (time_after(jiffies, begin + 5 * HZ)) {
-				xve_warn(priv,
-					 "timing out; %d sends not completed\n",
-					 p->tx_head - p->tx_tail);
-				goto timeout;
-			}
+	/* Destroy QP and Wait for any pending completions */
+	if (p->qp)
+		ib_destroy_qp(p->qp);
 
-			msleep(20);
-		}
-	}
+	pr_info("%s QP[%x] ctx:%p Destroyed head[0x%x] tail[0x%x]\n",
+			priv->xve_name, qp_num, p, p->tx_head, p->tx_tail);
 
-timeout:
+	wait_for_txcmcompletions(p, 0);
 
 	spin_lock_irqsave(&priv->lock, flags);
 	while ((int)p->tx_tail - (int)p->tx_head < 0) {
-		tx_req = &p->tx_ring[p->tx_tail & (priv->xve_sendq_size - 1)];
+		uint32_t wr_id = p->tx_tail & (priv->xve_sendq_size - 1);
+
+		tx_req = &p->tx_ring[wr_id];
 
 		++p->tx_tail;
 		spin_unlock_irqrestore(&priv->lock, flags);
 
-		xve_cm_tx_buf_free(priv, tx_req);
+		xve_cm_tx_buf_free(priv, tx_req, p, 0, 0);
 		netif_tx_lock_bh(p->netdev);
 		if (unlikely(--priv->tx_outstanding ==
 					(priv->xve_sendq_size >> 1))
@@ -1140,10 +1183,6 @@ timeout:
 	}
 	spin_unlock_irqrestore(&priv->lock, flags);
 
-	xve_warn(priv, "QP[%x] Destroyed, head[0x%x] tail[0x%x]",
-			qp_num, p->tx_head, p->tx_tail);
-	if (p->qp)
-		ib_destroy_qp(p->qp);
 	if (p->tx_ring)
 		vfree(p->tx_ring);
 	if (p != NULL)
@@ -1398,6 +1437,9 @@ int xve_cm_dev_init(struct net_device *dev)
 		pr_warn("ib_query_device() failed with %d\n", ret);
 		return ret;
 	}
+
+	/* PSIF determines SGE value based on stack unwind */
+	priv->dev_attr = attr;
 
 	/* Based on the admin mtu from the chassis */
 	attr.max_srq_sge =

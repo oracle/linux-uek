@@ -285,6 +285,7 @@ struct sif_cq *create_cq(struct sif_pd *pd, int entries,
 	memset(&lcq_sw, 0, sizeof(lcq_sw));
 	lcq_sw.head_indx = cq_sw->next_seq;
 	copy_conv_to_hw(&cq_sw->d, &lcq_sw, sizeof(lcq_sw));
+	atomic_set(&cq_sw->cleanup_refcnt, 0);
 
 	spin_lock_init(&cq->lock);
 
@@ -419,9 +420,9 @@ static int handle_send_wc(struct sif_dev *sdev, struct sif_cq *cq,
 
 	if (qp_is_destroyed) {
 		wc->wr_id = cqe->wc_id.rq_id;
-
-		/* No more work, when QP is gone */
-		return cqe->status == PSIF_WC_STATUS_GEN_TRANSL_COMPL_ERR ? -EFAULT : 0;
+		sif_log(sdev, SIF_INFO,
+			"remove cqe (0x%llx) from cq %d", wc->wr_id, cq->index);
+		return -EFAULT;
 	}
 
 	ret = translate_wr_id(&wc->wr_id, sdev, cq, sq, cqe, sq_seq_num, cqe->qp);
@@ -467,8 +468,11 @@ static int handle_recv_wc(struct sif_dev *sdev, struct sif_cq *cq, struct ib_wc 
 	wc->wr_id = cqe->wc_id.rq_id;
 
 	/* If no QP, no further work */
-	if (qp_is_destroyed)
-		return 0;
+	if (qp_is_destroyed) {
+		sif_log(sdev, SIF_INFO,
+			"remove cqe (0x%llx) from cq %d", wc->wr_id, cq->index);
+		return -EFAULT;
+	}
 
 	rq_len = atomic_dec_return(&rq_sw->length);
 
@@ -870,25 +874,23 @@ int sif_poll_cq(struct ib_cq *ibcq, int num_entries, struct ib_wc *wc)
 
 		polled_value = get_psif_cq_entry__seq_num(cqe);
 
-		if (seqno == polled_value)
-			npolled++;
-		else
+		if (seqno != polled_value)
 			break;
 
 		if (likely(wc)) {
-			if (unlikely(handle_wc(sdev, cq, cqe, wc) < 0)) {
-				/* poll_cq should not return < 0. Thus, ignore
-				 * the CQE if it is duplicate, unexpected or wrong
-				 * CQE.
-				 */
-				seqno = ++cq_sw->next_seq;
-				npolled--;
-				continue;
+			 /* handle_wc == 0 means that it's a valid cqe.
+			  * Thus, increments the npolled and the wc pointer.
+			  */
+			if (likely(handle_wc(sdev, cq, cqe, wc) == 0)) {
+				++wc;
+				++npolled;
 			}
-			wc++;
 			seqno = ++cq_sw->next_seq;
-		} else /* peek_cq semantics */
+		} else {
+			/* peek_cq semantics */
 			++seqno;
+			++npolled;
+		}
 
 		cqe = get_cq_entry(cq, seqno);
 	}
@@ -933,8 +935,11 @@ int sif_req_notify_cq(struct ib_cq *ibcq, enum ib_cq_notify_flags flags)
 	if (flags & IB_CQ_SOLICITED)
 		wr.se = 1;
 
-	/* Do not rearm a CQ if it is not valid or is in error */
-	if (unlikely(!get_psif_cq_hw__valid(&cq->d) || READ_ONCE(cq->in_error))) {
+	/* Do not rearm a CQ if it is not valid or is in error - except for small queues
+	 * (detects no_x_cqe case..)
+	 */
+	if (unlikely(!get_psif_cq_hw__valid(&cq->d) ||
+			(READ_ONCE(cq->in_error) && cq->entries > SIF_SW_RESERVED_DUL_CQE))) {
 		sif_log(sdev, SIF_NCQ, "cq %d, flags 0x%x (ignored - CQ in error)", cq->index, flags);
 		return 0;
 	}

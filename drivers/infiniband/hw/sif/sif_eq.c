@@ -682,7 +682,7 @@ static void handle_event_work(struct work_struct *work)
 					.element.qp = &qp->ibqp
 				};
 				ibqp->event_handler(&ibe, ibqp->qp_context);
-			} else {
+			} else if (!rq->is_srq) {
 				/* WA #622: if reqular RQ, flush */
 				if (sif_flush_rq_wq(sdev, rq, qp, atomic_read(&rq_sw->length)))
 					sif_log(sdev, SIF_INFO, "failed to flush RQ %d",
@@ -879,11 +879,6 @@ static u32 handle_srq_event(struct sif_eq *eq, struct ib_event *ibe)
 }
 
 
-#define dump_eq_entry(level, _s, _eqe)	\
-	sif_logs(level, printk("%s: ", _s); \
-		write_struct_psif_eq_entry(NULL, 0, &leqe); printk("\n"))
-
-
 /* Called from interrupt threads */
 static bool dispatch_eq(struct sif_eq *eq, int irq, unsigned int msecs)
 {
@@ -975,10 +970,9 @@ static bool dispatch_eq(struct sif_eq *eq, int irq, unsigned int msecs)
 				goto only_cne;
 			}
 
-			/* silently drop the event if it is a PQP. */
-			if (unlikely(sif_qp_elem->type == PSIF_QP_TRANSPORT_MANSP1) &&
-			    !leqe.event_status_srq_limit_reached) {
-				sif_log(eq->ba.sdev, SIF_INFO, "Received async event on PQP!");
+			/* Capture PQP events which must be handled separately */
+			if (unlikely(sif_qp_elem->type == PSIF_QP_TRANSPORT_MANSP1)) {
+				handle_pqp_event(eq, &leqe, sif_qp_elem);
 				goto only_cne;
 			}
 
@@ -1025,16 +1019,25 @@ static bool dispatch_eq(struct sif_eq *eq, int irq, unsigned int msecs)
 		/* Handle CQ errors early, as they may affect what we need to do on QPs */
 		if (leqe.event_status_cq_error) {
 			struct sif_cq *cq = get_sif_cq(sdev, leqe.cqd_id);
+			struct sif_qp *qp = safe_get_sif_qp(sdev, leqe.qp);
+
+			/* Capture PQP events which must be handled separately */
+			if (unlikely(qp && qp->type == PSIF_QP_TRANSPORT_MANSP1)) {
+				handle_pqp_event(eq, &leqe, qp);
+				goto only_cne;
+			}
 
 			ibe.event = IB_EVENT_CQ_ERR;
 			ibe.element.cq = &get_sif_cq(sdev, leqe.cqd_id)->ibcq;
 			WRITE_ONCE(cq->in_error, true);
 			if (leqe.vendor_error == TSU_CBLD_CQ_FULL_ERR)
-				sif_log(sdev, SIF_INFO, "CQ overrun on CQ %d", cq->index);
+				sif_log(sdev, SIF_INFO, "CQ overrun on CQ %d (QP %d)",
+					leqe.qp, cq->index);
 			else if (leqe.vendor_error == TSU_CBLD_CQ_ALREADY_IN_ERR)
-				sif_log(sdev, SIF_INTR, "CQ %d already in error event", cq->index);
+				sif_log(sdev, SIF_INTR, "CQ %d already in error event (QP %d)",
+					leqe.qp, cq->index);
 			else
-				dump_eq_entry(SIF_INFO, "Got cq_error", &leqe);
+				dump_eq_entry(SIF_INFO, "Got other cq_error", &leqe);
 			nevents += handle_event(eq, &ibe);
 		}
 		if (leqe.event_status_local_work_queue_catastrophic_error ||
@@ -1046,7 +1049,13 @@ static bool dispatch_eq(struct sif_eq *eq, int irq, unsigned int msecs)
 			ibe.event = IB_EVENT_QP_FATAL;
 			ibe.element.qp = ibqp;
 			nevents += handle_event(eq, &ibe);
-			dump_eq_entry(SIF_INFO, "Got fatal QP error", &leqe);
+
+			switch (leqe.vendor_error) {
+			case TSU_CBLD_CQ_FULL_ERR:
+				break;
+			default:
+				dump_eq_entry(SIF_INFO, "Got fatal QP error", &leqe);
+			}
 		}
 		if (leqe.event_status_srq_catastrophic_error) {
 			ibe.event = IB_EVENT_SRQ_ERR;

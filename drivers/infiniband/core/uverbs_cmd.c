@@ -2824,8 +2824,11 @@ ssize_t ib_uverbs_modify_qp(struct ib_uverbs_file *file,
 			qp->qp_flag |= IB_GUID_RNR_TWEAK;
 
 		if ((qp->qp_flag & IB_GUID_RNR_TWEAK) &&
-			(cmd.attr_mask & IB_QP_MIN_RNR_TIMER))
+			(cmd.attr_mask & IB_QP_MIN_RNR_TIMER)) {
+			/* Save original min_rnr_timer value in qp->qp_flag */
+			qp->qp_flag = attr->min_rnr_timer | IB_QP_MIN_RNR_TIMER;
 			attr->min_rnr_timer = ib_uverbs_rnr_timeout_sif[attr->min_rnr_timer];
+		}
 
 		ret = qp->device->modify_qp(qp, attr, cmd.attr_mask, &udata);
 	} else {

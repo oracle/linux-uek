@@ -166,7 +166,7 @@ int sif_unmap_phys_fmr_list(struct list_head *fmr_list)
 		if (!spqp)
 			sif_log(sdev, SIF_PQPT,
 				"All %u configured stencil pqps busy, consider increasing ki_spqp_size",
-				sdev->ki_spqp.pool_sz);
+				sdev->pqi.ki_s.pool_sz);
 	}
 
 	/* Check if we should do a brute force whole MMU caches flush */
