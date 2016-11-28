@@ -105,7 +105,7 @@ int dtrace_die_notifier(struct notifier_block *nb, unsigned long val,
 		}
 
 		if (rval != 0) {
-			dtrace_skip_instruction(dargs->regs);
+			dargs->regs->ip += rval;
 
 			return NOTIFY_OK | NOTIFY_STOP_MASK;
 		}
