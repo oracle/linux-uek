@@ -1089,6 +1089,14 @@ static inline int xve_cm_up(struct xve_path *path)
 		return test_bit(XVE_FLAG_OPER_UP, &path->cm_ctx_tx->flags);
 }
 
+static inline char *xve_cm_txstate(struct xve_cm_ctx *tx)
+{
+	if (test_bit(XVE_FLAG_OPER_UP, &tx->flags))
+		return "Connected";
+	else
+		return "Not Connected";
+}
+
 static inline struct xve_cm_ctx *xve_get_cmctx(struct xve_path *path)
 {
 	return path->cm_ctx_common;
