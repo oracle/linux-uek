@@ -102,6 +102,19 @@ static int qede_alloc_rx_buffer(struct qede_dev *edev,
 				struct qede_rx_queue *rxq);
 static void qede_link_update(void *dev, struct qed_link_output *link);
 
+/* The qede lock is used to protect driver state change and driver flows that
+ * are not reentrant.
+ */
+void __qede_lock(struct qede_dev *edev)
+{
+	mutex_lock(&edev->qede_lock);
+}
+
+void __qede_unlock(struct qede_dev *edev)
+{
+	mutex_unlock(&edev->qede_lock);
+}
+
 #ifdef CONFIG_QED_SRIOV
 static int qede_set_vf_vlan(struct net_device *ndev, int vf, u16 vlan, u8 qos)
 {
@@ -1951,7 +1964,7 @@ static int qede_vlan_rx_add_vid(struct net_device *dev, __be16 proto, u16 vid)
 {
 	struct qede_dev *edev = netdev_priv(dev);
 	struct qede_vlan *vlan, *tmp;
-	int rc;
+	int rc = 0;
 
 	DP_VERBOSE(edev, NETIF_MSG_IFUP, "Adding vlan 0x%04x\n", vid);
 
@@ -1975,6 +1988,7 @@ static int qede_vlan_rx_add_vid(struct net_device *dev, __be16 proto, u16 vid)
 	}
 
 	/* If interface is down, cache this VLAN ID and return */
+	__qede_lock(edev);
 	if (edev->state != QEDE_STATE_OPEN) {
 		DP_VERBOSE(edev, NETIF_MSG_IFDOWN,
 			   "Interface is down, VLAN %d will be configured when interface is up\n",
@@ -1982,8 +1996,7 @@ static int qede_vlan_rx_add_vid(struct net_device *dev, __be16 proto, u16 vid)
 		if (vid != 0)
 			edev->non_configured_vlans++;
 		list_add(&vlan->list, &edev->vlan_list);
-
-		return 0;
+		goto out;
 	}
 
 	/* Check for the filter limit.
@@ -1999,7 +2012,7 @@ static int qede_vlan_rx_add_vid(struct net_device *dev, __be16 proto, u16 vid)
 			DP_ERR(edev, "Failed to configure VLAN %d\n",
 			       vlan->vid);
 			kfree(vlan);
-			return -EINVAL;
+			goto out;
 		}
 		vlan->configured = true;
 
@@ -2016,7 +2029,9 @@ static int qede_vlan_rx_add_vid(struct net_device *dev, __be16 proto, u16 vid)
 
 	list_add(&vlan->list, &edev->vlan_list);
 
-	return 0;
+out:
+	__qede_unlock(edev);
+	return rc;
 }
 
 static void qede_del_vlan_from_list(struct qede_dev *edev,
@@ -2093,11 +2108,12 @@ static int qede_vlan_rx_kill_vid(struct net_device *dev, __be16 proto, u16 vid)
 {
 	struct qede_dev *edev = netdev_priv(dev);
 	struct qede_vlan *vlan = NULL;
-	int rc;
+	int rc = 0;
 
 	DP_VERBOSE(edev, NETIF_MSG_IFDOWN, "Removing vlan 0x%04x\n", vid);
 
 	/* Find whether entry exists */
+	__qede_lock(edev);
 	list_for_each_entry(vlan, &edev->vlan_list, list)
 		if (vlan->vid == vid)
 			break;
@@ -2105,7 +2121,7 @@ static int qede_vlan_rx_kill_vid(struct net_device *dev, __be16 proto, u16 vid)
 	if (!vlan || (vlan->vid != vid)) {
 		DP_VERBOSE(edev, (NETIF_MSG_IFUP | NETIF_MSG_IFDOWN),
 			   "Vlan isn't configured\n");
-		return 0;
+		goto out;
 	}
 
 	if (edev->state != QEDE_STATE_OPEN) {
@@ -2115,7 +2131,7 @@ static int qede_vlan_rx_kill_vid(struct net_device *dev, __be16 proto, u16 vid)
 		DP_VERBOSE(edev, NETIF_MSG_IFDOWN,
 			   "Interface is down, removing VLAN from list only\n");
 		qede_del_vlan_from_list(edev, vlan);
-		return 0;
+		goto out;
 	}
 
 	/* Remove vlan */
@@ -2124,7 +2140,7 @@ static int qede_vlan_rx_kill_vid(struct net_device *dev, __be16 proto, u16 vid)
 					    vid);
 		if (rc) {
 			DP_ERR(edev, "Failed to remove VLAN %d\n", vid);
-			return -EINVAL;
+			goto out;
 		}
 	}
 
@@ -2135,6 +2151,8 @@ static int qede_vlan_rx_kill_vid(struct net_device *dev, __be16 proto, u16 vid)
 	 */
 	rc = qede_configure_vlan_filters(edev);
 
+out:
+	__qede_unlock(edev);
 	return rc;
 }
 
@@ -2164,7 +2182,13 @@ static void qede_vlan_mark_nonconfigured(struct qede_dev *edev)
 	edev->accept_any_vlan = false;
 }
 
-static int qede_set_features(struct net_device *dev, netdev_features_t features)
+static void qede_set_features_reload(struct qede_dev *edev,
+				     struct qede_reload_args *args)
+{
+	edev->ndev->features = args->u.features;
+}
+
+int qede_set_features(struct net_device *dev, netdev_features_t features)
 {
 	struct qede_dev *edev = netdev_priv(dev);
 	netdev_features_t changes = features ^ dev->features;
@@ -2178,9 +2202,14 @@ static int qede_set_features(struct net_device *dev, netdev_features_t features)
 			need_reload = edev->gro_disable;
 	}
 
-	if (need_reload && netif_running(edev->ndev)) {
-		dev->features = features;
-		qede_reload(edev, NULL, NULL);
+	if (need_reload) {
+		struct qede_reload_args args;
+
+		args.u.features = features;
+		args.func = &qede_set_features_reload;
+
+		qede_reload(edev, &args, false);
+
 		return 1;
 	}
 
@@ -2491,12 +2520,11 @@ static void qede_sp_task(struct work_struct *work)
 					     sp_task.work);
 	struct qed_dev *cdev = edev->cdev;
 
-	mutex_lock(&edev->qede_lock);
+	__qede_lock(edev);
 
-	if (edev->state == QEDE_STATE_OPEN) {
-		if (test_and_clear_bit(QEDE_SP_RX_MODE, &edev->sp_flags))
+	if (test_and_clear_bit(QEDE_SP_RX_MODE, &edev->sp_flags))
+		if (edev->state == QEDE_STATE_OPEN)
 			qede_config_rx_mode(edev->ndev);
-	}
 
 	if (test_and_clear_bit(QEDE_SP_VXLAN_PORT_CONFIG, &edev->sp_flags)) {
 		struct qed_tunn_params tunn_params;
@@ -2507,7 +2535,7 @@ static void qede_sp_task(struct work_struct *work)
 		qed_ops->tunn_config(cdev, &tunn_params);
 	}
 
-	mutex_unlock(&edev->qede_lock);
+	__qede_unlock(edev);
 }
 
 static void qede_update_pf_params(struct qed_dev *cdev)
@@ -3530,15 +3558,18 @@ enum qede_unload_mode {
 	QEDE_UNLOAD_NORMAL,
 };
 
-static void qede_unload(struct qede_dev *edev, enum qede_unload_mode mode)
+static void qede_unload(struct qede_dev *edev, enum qede_unload_mode mode,
+			bool is_locked)
 {
 	struct qed_link_params link_params;
 	int rc;
 
 	DP_INFO(edev, "Starting qede unload\n");
 
+	if (!is_locked)
+		__qede_lock(edev);
+
 	qede_roce_dev_event_close(edev);
-	mutex_lock(&edev->qede_lock);
 	edev->state = QEDE_STATE_CLOSED;
 
 	/* Close OS Tx */
@@ -3570,7 +3601,8 @@ static void qede_unload(struct qede_dev *edev, enum qede_unload_mode mode)
 	qede_free_fp_array(edev);
 
 out:
-	mutex_unlock(&edev->qede_lock);
+	if (!is_locked)
+		__qede_unlock(edev);
 	DP_INFO(edev, "Ending qede unload\n");
 }
 
@@ -3579,7 +3611,8 @@ enum qede_load_mode {
 	QEDE_LOAD_RELOAD,
 };
 
-static int qede_load(struct qede_dev *edev, enum qede_load_mode mode)
+static int qede_load(struct qede_dev *edev, enum qede_load_mode mode,
+		     bool is_locked)
 {
 	struct qed_link_params link_params;
 	struct qed_link_output link_output;
@@ -3587,13 +3620,16 @@ static int qede_load(struct qede_dev *edev, enum qede_load_mode mode)
 
 	DP_INFO(edev, "Starting qede load\n");
 
+	if (!is_locked)
+		__qede_lock(edev);
+
 	rc = qede_set_num_queues(edev);
 	if (rc)
-		goto err0;
+		goto out;
 
 	rc = qede_alloc_fp_array(edev);
 	if (rc)
-		goto err0;
+		goto out;
 
 	qede_init_fp(edev);
 
@@ -3623,10 +3659,6 @@ static int qede_load(struct qede_dev *edev, enum qede_load_mode mode)
 	/* Add primary mac and set Rx filters */
 	ether_addr_copy(edev->primary_mac, edev->ndev->dev_addr);
 
-	mutex_lock(&edev->qede_lock);
-	edev->state = QEDE_STATE_OPEN;
-	mutex_unlock(&edev->qede_lock);
-
 	/* Program un-configured VLANs */
 	qede_configure_vlan_filters(edev);
 
@@ -3641,10 +3673,12 @@ static int qede_load(struct qede_dev *edev, enum qede_load_mode mode)
 	qede_roce_dev_event_open(edev);
 	qede_link_update(edev, &link_output);
 
+	edev->state = QEDE_STATE_OPEN;
+
 	DP_INFO(edev, "Ending successfully qede load\n");
 
-	return 0;
 
+	goto out;
 err4:
 	qede_sync_free_irqs(edev);
 	memset(&edev->int_info.msix_cnt, 0, sizeof(struct qed_int_info));
@@ -3658,26 +3692,40 @@ err1:
 	edev->num_queues = 0;
 	edev->fp_num_tx = 0;
 	edev->fp_num_rx = 0;
-err0:
+out:
+	if (!is_locked)
+		__qede_unlock(edev);
+
 	return rc;
 }
 
+/* 'func' should be able to run between unload and reload assuming interface
+ * is actually running, or afterwards in case it's currently DOWN.
+ */
 void qede_reload(struct qede_dev *edev,
-		 void (*func)(struct qede_dev *, union qede_reload_args *),
-		 union qede_reload_args *args)
+		 struct qede_reload_args *args, bool is_locked)
 {
-	qede_unload(edev, QEDE_UNLOAD_NORMAL);
-	/* Call function handler to update parameters
-	 * needed for function load.
+	if (!is_locked)
+		__qede_lock(edev);
+
+	/* Since qede_lock is held, internal state wouldn't change even
+	 * if netdev state would start transitioning. Check whether current
+	 * internal configuration indicates device is up, then reload.
 	 */
-	if (func)
-		func(edev, args);
+	if (edev->state == QEDE_STATE_OPEN) {
+		qede_unload(edev, QEDE_UNLOAD_NORMAL, true);
+		if (args)
+			args->func(edev, args);
+		qede_load(edev, QEDE_LOAD_RELOAD, true);
 
-	qede_load(edev, QEDE_LOAD_RELOAD);
+		/* Since no one is going to do it for us, re-configure */
+		qede_config_rx_mode(edev->ndev);
+	} else if (args) {
+		args->func(edev, args);
+	}
 
-	mutex_lock(&edev->qede_lock);
-	qede_config_rx_mode(edev->ndev);
-	mutex_unlock(&edev->qede_lock);
+	if (!is_locked)
+		__qede_unlock(edev);
 }
 
 /* called with rtnl_lock */
@@ -3690,8 +3738,7 @@ static int qede_open(struct net_device *ndev)
 
 	edev->ops->common->set_power_state(edev->cdev, PCI_D0);
 
-	rc = qede_load(edev, QEDE_LOAD_NORMAL);
-
+	rc = qede_load(edev, QEDE_LOAD_NORMAL, false);
 	if (rc)
 		return rc;
 
@@ -3707,7 +3754,7 @@ static int qede_close(struct net_device *ndev)
 {
 	struct qede_dev *edev = netdev_priv(ndev);
 
-	qede_unload(edev, QEDE_UNLOAD_NORMAL);
+	qede_unload(edev, QEDE_UNLOAD_NORMAL, false);
 
 	edev->ops->common->update_drv_state(edev->cdev, false);
 
@@ -3839,15 +3886,8 @@ static void qede_set_rx_mode(struct net_device *ndev)
 {
 	struct qede_dev *edev = netdev_priv(ndev);
 
-	DP_INFO(edev, "qede_set_rx_mode called\n");
-
-	if (edev->state != QEDE_STATE_OPEN) {
-		DP_INFO(edev,
-			"qede_set_rx_mode called while interface is down\n");
-	} else {
-		set_bit(QEDE_SP_RX_MODE, &edev->sp_flags);
-		schedule_delayed_work(&edev->sp_task, 0);
-	}
+	set_bit(QEDE_SP_RX_MODE, &edev->sp_flags);
+	schedule_delayed_work(&edev->sp_task, 0);
 }
 
 /* Must be called with qede_lock held */
