@@ -263,6 +263,8 @@ struct qede_rx_queue {
 	u64			rx_hw_errors;
 	u64			rx_alloc_errors;
 	u64			rx_ip_frags;
+
+	void *handle;
 };
 
 union db_prod {
@@ -292,6 +294,8 @@ struct qede_tx_queue {
 	u64			stopped_cnt;
 
 	bool			is_legacy;
+	void *handle;
+
 };
 
 #define BD_UNMAP_ADDR(bd)		HILO_U64(le32_to_cpu((bd)->addr.hi), \
