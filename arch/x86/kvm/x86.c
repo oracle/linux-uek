@@ -542,7 +542,7 @@ out:
 }
 EXPORT_SYMBOL_GPL(load_pdptrs);
 
-static bool pdptrs_changed(struct kvm_vcpu *vcpu)
+bool pdptrs_changed(struct kvm_vcpu *vcpu)
 {
 	u64 pdpte[ARRAY_SIZE(vcpu->arch.walk_mmu->pdptrs)];
 	bool changed = true;
@@ -568,6 +568,7 @@ out:
 
 	return changed;
 }
+EXPORT_SYMBOL_GPL(pdptrs_changed);
 
 int kvm_set_cr0(struct kvm_vcpu *vcpu, unsigned long cr0)
 {
