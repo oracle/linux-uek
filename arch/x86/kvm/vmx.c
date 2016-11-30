@@ -9092,6 +9092,7 @@ static void prepare_vmcs02(struct kvm_vcpu *vcpu, struct vmcs12 *vmcs12)
 {
 	struct vcpu_vmx *vmx = to_vmx(vcpu);
 	u32 exec_control;
+	bool nested_ept_enabled = false;
 
 	vmcs_write16(GUEST_ES_SELECTOR, vmcs12->guest_es_selector);
 	vmcs_write16(GUEST_CS_SELECTOR, vmcs12->guest_cs_selector);
@@ -9252,6 +9253,7 @@ static void prepare_vmcs02(struct kvm_vcpu *vcpu, struct vmcs12 *vmcs12)
 				vmcs12->guest_intr_status);
 		}
 
+		nested_ept_enabled = (exec_control & SECONDARY_EXEC_ENABLE_EPT) != 0;
 		vmcs_write32(SECONDARY_VM_EXEC_CONTROL, exec_control);
 	}
 
@@ -9379,8 +9381,18 @@ static void prepare_vmcs02(struct kvm_vcpu *vcpu, struct vmcs12 *vmcs12)
 	vmx_set_cr4(vcpu, vmcs12->guest_cr4);
 	vmcs_writel(CR4_READ_SHADOW, nested_read_cr4(vmcs12));
 
-	/* shadow page tables on either EPT or shadow page tables */
-	kvm_set_cr3(vcpu, vmcs12->guest_cr3);
+	/*
+	 * Shadow page tables on either EPT or shadow page tables.
+	 * If PAE and EPT are both on, CR3 is not used by the CPU and must not
+	 * be dereferenced.
+	 */
+	if (is_pae(vcpu) && is_paging(vcpu) && !is_long_mode(vcpu) &&
+	    nested_ept_enabled) {
+		vcpu->arch.cr3 = vmcs12->guest_cr3;
+		__set_bit(VCPU_EXREG_CR3, (ulong *)&vcpu->arch.regs_avail);
+	} else
+		kvm_set_cr3(vcpu, vmcs12->guest_cr3);
+
 	kvm_mmu_reset_context(vcpu);
 
 	if (!enable_ept)
