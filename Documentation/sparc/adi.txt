@@ -148,6 +148,25 @@ MCD disabled
 		siginfo.si_trapno = 0;
 
 
+ADI specific proc files
+-----------------------
+
+ADI feature adds two new proc files:
+
+/proc/sys/kernel/mcd_on_by_default
+	This file indicates if TTE.mcd (and hence ADI) will be enabled by
+	default for a new task. Reading from the file returns current value
+	which can be changed by writing to this file.
+
+/proc/<pid>/sparc_adi
+	This file reports the current state of ADI for the process. A
+	value of 1 means ADI si enabled currently for the process, a
+	value of 0 means ADI is not enabled currently for the process,
+	and a value of -1 means ADI is not available to the process.
+	Writing to this file, when ADI is available, changes the current
+	state of ADI for theprocess.
+
+
 Sample program to use ADI
 -------------------------
 

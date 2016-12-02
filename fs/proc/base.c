@@ -1309,21 +1309,22 @@ sparc_adi_show(struct seq_file *m, void *v)
 	if (!task)
 		return -ENOENT;
 
-	if (!adi_capable())
-		return -ENOTSUPP;
-
-	task_lock(task);
-
-	/* anonymous processes can not use ADI */
-	if (task->mm) {
-		struct pt_regs *regs;
-		regs = task_pt_regs(task);
-		seq_printf(m, "%d\n", !!(regs->tstate & TSTATE_MCDE));
-	} else
+	if (!adi_capable()) {
 		seq_printf(m, "-1\n");
+	} else {
+		task_lock(task);
 
-	task_unlock(task);
-	put_task_struct(task);
+		/* anonymous processes can not use ADI */
+		if (task->mm) {
+			struct pt_regs *regs;
+			regs = task_pt_regs(task);
+			seq_printf(m, "%d\n", !!(regs->tstate & TSTATE_MCDE));
+		} else
+			seq_printf(m, "-1\n");
+
+		task_unlock(task);
+		put_task_struct(task);
+	}
 	return 0;
 }
 
