@@ -2763,6 +2763,21 @@ void __init paging_init(void)
 		free_area_init_nodes(max_zone_pfns);
 	}
 
+	/* Once the OF device tree and MDESC have been setup, we know
+	 * the list of possible cpus. Therefore we can allocate the
+	 * IRQ stacks. For ED we will do this in a NUMA friendly manner.
+	 */
+	for_each_possible_cpu(i) {
+		unsigned long goal = __pa(MAX_DMA_ADDRESS);
+		int node = cpu_to_node(i);
+
+		softirq_stack[i] = __alloc_bootmem_node_high(NODE_DATA(node),
+							     THREAD_SIZE,
+							     THREAD_SIZE, goal);
+		hardirq_stack[i] = __alloc_bootmem_node_high(NODE_DATA(node),
+							     THREAD_SIZE,
+							     THREAD_SIZE, goal);
+	}
 	printk("Booting Linux...\n");
 }
 
