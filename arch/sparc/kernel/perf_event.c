@@ -177,6 +177,7 @@ struct sparc_pmu {
 	int				upper_shift;
 	int				lower_shift;
 	int				event_mask;
+	int				picnht_bit;
 	int				user_bit;
 	int				priv_bit;
 	int				hv_bit;
@@ -974,6 +975,7 @@ static const struct sparc_pmu sparc_m7_pmu = {
 	.upper_shift    = 5,
 	.lower_shift    = 5,
 	.event_mask     = 0x7ff,
+	.picnht_bit     = PCR_N4_PICNHT,
 	.user_bit       = PCR_N4_UTRACE,
 	.priv_bit       = PCR_N4_STRACE,
 
@@ -1160,8 +1162,8 @@ static const struct sparc_pmu sparc_m8_pmu = {
 	.upper_shift    = 5,
 	.lower_shift    = 5,
 	.event_mask     = 0x3fff,
+	.picnht_bit     = PCR_M8_PICNHT,
 	.user_bit       = PCR_M8_UTRACE,
-
 	.priv_bit       = PCR_M8_STRACE,
 
 	/* We explicitly don't support hypervisor tracing. */
@@ -1216,6 +1218,11 @@ static inline void sparc_pmu_enable_event(struct cpu_hw_events *cpuc,
 	val = cpuc->pcr[pcr_idx];
 	val &= ~mask;
 	val |= event_encoding(enc, event_idx);
+
+	/* In order for privileged software to access
+	 * the PIC the 'picnht' bit needs to be reset
+	 */
+	val &= ~(sparc_pmu->picnht_bit);
 	cpuc->pcr[pcr_idx] = val;
 
 	pcr_ops->write_pcr(pcr_idx, cpuc->pcr[pcr_idx]);
