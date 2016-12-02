@@ -49,4 +49,6 @@ extern void iommu_tbl_range_free(struct iommu_map_table *iommu,
 				 u64 dma_addr, unsigned long npages,
 				 unsigned long entry);
 
+extern int iommu_default_npools;
+
 #endif

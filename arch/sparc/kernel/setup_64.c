@@ -32,6 +32,7 @@
 #include <linux/module.h>
 #include <linux/start_kernel.h>
 #include <linux/bootmem.h>
+#include <linux/iommu-common.h>
 
 #include <asm/io.h>
 #include <asm/processor.h>
@@ -144,6 +145,13 @@ static void __init boot_flags_init(char *commands)
 			while (*commands && *commands != ' ')
 				process_switch(*commands++);
 			continue;
+		}
+		if (!strncmp(commands, "npools=", 7)) {
+			int npools;
+
+			npools = simple_strtoul(commands + 7, &commands, 0);
+			if (npools <= IOMMU_NR_POOLS)
+				iommu_default_npools = npools;
 		}
 		if (!strncmp(commands, "mem=", 4))
 			cmdline_memory_size = memparse(commands + 4, &commands);

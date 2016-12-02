@@ -11,6 +11,8 @@
 #include <linux/dma-mapping.h>
 #include <linux/hash.h>
 
+int iommu_default_npools = IOMMU_NR_POOLS;
+
 static unsigned long iommu_large_alloc = 15;
 
 static	DEFINE_PER_CPU(unsigned int, iommu_hash_common);
@@ -60,7 +62,7 @@ void iommu_tbl_pool_init(struct iommu_map_table *iommu,
 
 	setup_iommu_pool_hash();
 	if (npools == 0)
-		iommu->nr_pools = IOMMU_NR_POOLS;
+		iommu->nr_pools = iommu_default_npools;
 	else
 		iommu->nr_pools = npools;
 	BUG_ON(npools > IOMMU_NR_POOLS);
