@@ -295,7 +295,7 @@ void rds_reconnect_timeout(struct work_struct *work)
 	}
 
 	if (!rds_conn_up(conn)) {
-		if (rds_conn_up(conn) == RDS_CONN_DISCONNECTING) {
+		if (rds_conn_state(conn) == RDS_CONN_DISCONNECTING) {
 			queue_delayed_work(conn->c_wq, &conn->c_reconn_w,
 					   msecs_to_jiffies(100));
 		} else {
