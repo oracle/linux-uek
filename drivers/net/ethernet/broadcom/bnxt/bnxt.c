@@ -6360,7 +6360,7 @@ static int bnxt_change_mtu(struct net_device *dev, int new_mtu)
 	return 0;
 }
 
-static int bnxt_setup_tc(struct net_device *dev, u8 tc)
+int bnxt_setup_mq_tc(struct net_device *dev, u8 tc)
 {
 	struct bnxt *bp = netdev_priv(dev);
 	bool sh = false;
@@ -6405,6 +6405,17 @@ static int bnxt_setup_tc(struct net_device *dev, u8 tc)
 
 	return 0;
 }
+
+#ifdef HAVE_TC_TO_NETDEV
+static int bnxt_setup_tc(struct net_device *dev, u32 handle, __be16 proto,
+			 struct tc_to_netdev *ntc)
+{
+	if (ntc->type != TC_SETUP_MQPRIO)
+		return -EINVAL;
+
+	return bnxt_setup_mq_tc(dev, ntc->tc);
+}
+#endif
 
 #ifdef CONFIG_RFS_ACCEL
 #ifdef NEW_FLOW_KEYS
@@ -6700,7 +6711,13 @@ static const struct net_device_ops bnxt_netdev_ops = {
 #ifdef CONFIG_NET_POLL_CONTROLLER
 	.ndo_poll_controller	= bnxt_poll_controller,
 #endif
+#ifdef HAVE_SETUP_TC
+#ifdef HAVE_TC_TO_NETDEV
+	.ndo_setup_tc           = bnxt_set_tc,
+#else
 	.ndo_setup_tc           = bnxt_setup_tc,
+#endif
+#endif
 #ifdef CONFIG_RFS_ACCEL
 	.ndo_rx_flow_steer	= bnxt_rx_flow_steer,
 #endif
