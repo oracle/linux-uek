@@ -10103,7 +10103,8 @@ static int bnx2x_vxlan_port_update(struct bnx2x *bp, u16 port)
 
 static void __bnx2x_add_vxlan_port(struct bnx2x *bp, u16 port)
 {
-	if (!netif_running(bp->dev))
+
+	if (!netif_running(bp->dev) || CHIP_IS_E1x(bp))
 		return;
 
 	if (bp->vxlan_dst_port_count && bp->vxlan_dst_port == port) {
@@ -10133,7 +10134,7 @@ static void bnx2x_add_vxlan_port(struct net_device *netdev,
 static void __bnx2x_del_vxlan_port(struct bnx2x *bp, u16 port)
 {
 	if (!bp->vxlan_dst_port_count || bp->vxlan_dst_port != port ||
-	    !IS_PF(bp)) {
+	    !IS_PF(bp) || CHIP_IS_E1x(bp)) {
 		DP(BNX2X_MSG_SP, "Invalid vxlan port\n");
 		return;
 	}
