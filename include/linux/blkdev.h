@@ -477,7 +477,11 @@ struct request_queue {
 	struct mutex		sysfs_lock;
 
 	int			bypass_depth;
+#ifdef __GENKSYMS__
+	int			mq_freeze_depth;
+#else
 	atomic_t		mq_freeze_depth;
+#endif
 
 #if defined(CONFIG_BLK_DEV_BSG)
 	bsg_job_fn		*bsg_job_fn;
