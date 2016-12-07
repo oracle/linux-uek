@@ -188,6 +188,14 @@ void mlx4_enter_error_state(struct mlx4_dev_persistent *persist)
 	mlx4_err(dev, "device was reset successfully\n");
 	mutex_unlock(&persist->device_state_mutex);
 
+	/* Mellanox device reset and recovery has never worked and
+	 * in fact ends up hanging the system which needs a hard reboot
+	 * of the system. Instead of waiting for recovery which never
+	 * going to happen, just panic the system so that it can capture
+	 * all the necessary logs/vmcore and let the node graceful shutdown.
+	 */
+	panic("MLX4 device reset due to unrecoverable catastrophic failure\n");
+
 	/* At that step HW was already reset, now notify clients */
 	mlx4_dispatch_event(dev, MLX4_DEV_EVENT_CATASTROPHIC_ERROR, 0);
 	mlx4_cmd_wake_completions(dev);
