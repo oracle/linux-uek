@@ -90,6 +90,8 @@ Summary: The Linux kernel
 %define with_bootwrapper %{?_without_bootwrapper: 0} %{?!_without_bootwrapper: 1}
 # Want to build a the vsdo directories installed
 %define with_vdso_install %{?_without_vdso_install: 0} %{?!_without_vdso_install: 1}
+# TUI for perf
+%define with_perf_tui  1
 
 # Build the kernel-doc package, but don't fail the build if it botches.
 # Here "true" means "continue" and "false" means "fail the build".
@@ -524,6 +526,9 @@ BuildRequires: hmaccalc
 %endif
 %if %{with_dtrace}
 BuildRequires: libdtrace-ctf-devel >= 0.5.0
+%endif
+%if %{with_perf_tui}
+BuildRequires: slang-devel, slang-static
 %endif
 BuildConflicts: rhbuildsys(DiskFree) < 500Mb
 
