@@ -51,6 +51,7 @@
 
 #include <rdma/ib_cache.h>
 #include <rdma/ib_cm.h>
+#include <linux/pci.h>
 #include "cm_msgs.h"
 #include "core_priv.h"
 
@@ -62,6 +63,9 @@ MODULE_LICENSE("Dual BSD/GPL");
 #undef pr_fmt
 #endif
 #define pr_fmt(fmt) "%s:%s: " fmt, KBUILD_MODNAME, __func__
+
+#define SIF_VENDID(n) ((n) ? (to_pci_dev((n))->vendor == PCI_VENDOR_ID_SUN) : 0)
+#define SIF_DEVID(n) (SIF_VENDID(n) ? to_pci_dev((n))->device : 0)
 
 static void cm_add_one(struct ib_device *device);
 static void cm_remove_one(struct ib_device *device);
@@ -1286,10 +1290,10 @@ static void cm_format_mad_hdr(struct ib_mad_hdr *hdr,
 }
 
 #define SIF_DEVICES		6
-const u32 sif_family_vendor_part_id[SIF_DEVICES] = {
+const u16 sif_family_vendor_part_id[SIF_DEVICES] = {
 	0x2088, 0x2089, 0x2188, 0x2189, 0x2198, 0x2199};
 
-static inline bool is_vendor_sif_family(u32 part_id)
+static inline bool is_vendor_sif_family(u16 part_id)
 {
 	int i;
 
@@ -1306,19 +1310,7 @@ static void cm_format_req(struct cm_req_msg *req_msg,
 {
 	struct ib_sa_path_rec *pri_path = param->primary_path;
 	struct ib_sa_path_rec *alt_path = param->alternate_path;
-	struct ib_device_attr attr;
-	u32 vendor_part_id = 0;
-
-	/*
-	 * ib_query_device is still needed to check if the local
-	 * device is one of the sif_family_vendor_part_id list
-	 * (PSIF 2.1 Rev 3)
-	 */
-	if (cm_id_priv->id.device->dma_device)
-		if (!strcmp(cm_id_priv->id.device->dma_device->driver->name,
-				"sif"))
-			if (!ib_query_device(cm_id_priv->id.device, &attr))
-				vendor_part_id = attr.vendor_part_id;
+	u16 vendor_part_id = SIF_DEVID(cm_id_priv->id.device->dma_device);
 
 	cm_format_mad_hdr(&req_msg->hdr, CM_REQ_ATTR_ID,
 			  cm_form_tid(cm_id_priv, CM_MSG_SEQUENCE_REQ));
@@ -2014,19 +2006,7 @@ static void cm_format_rep(struct cm_rep_msg *rep_msg,
 			  struct cm_id_private *cm_id_priv,
 			  struct ib_cm_rep_param *param)
 {
-	struct ib_device_attr attr;
-	u32 vendor_part_id = 0;
-
-	/*
-	 * ib_query_device is still needed to check if the local
-	 * device is one of the sif_family_vendor_part_id list
-	 * (PSIF 2.1 Rev 3)
-	 */
-	if (cm_id_priv->id.device->dma_device)
-		if (!strcmp(cm_id_priv->id.device->dma_device->driver->name,
-				"sif"))
-			if (!ib_query_device(cm_id_priv->id.device, &attr))
-				vendor_part_id = attr.vendor_part_id;
+	u16 vendor_part_id = SIF_DEVID(cm_id_priv->id.device->dma_device);
 
 	cm_format_mad_hdr(&rep_msg->hdr, CM_REP_ATTR_ID, cm_id_priv->tid);
 	rep_msg->local_comm_id = cm_id_priv->id.local_id;
