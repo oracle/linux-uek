@@ -1200,6 +1200,7 @@ static int nvme_alloc_admin_tags(struct nvme_dev *dev)
 		 * condition. See NVM-Express 1.2 specification, section 4.1.2.
 		 */
 		dev->admin_tagset.queue_depth = NVME_AQ_BLKMQ_DEPTH - 1;
+		dev->admin_tagset.reserved_tags = 1;
 		dev->admin_tagset.timeout = ADMIN_TIMEOUT;
 		dev->admin_tagset.numa_node = dev_to_node(dev->dev);
 		dev->admin_tagset.cmd_size = nvme_cmd_size(dev);
@@ -1244,7 +1245,7 @@ static int nvme_configure_admin_queue(struct nvme_dev *dev)
 
 	nvmeq = dev->queues[0];
 	if (!nvmeq) {
-		nvmeq = nvme_alloc_queue(dev, 0, NVME_AQ_DEPTH);
+		nvmeq = nvme_alloc_queue(dev, 0, dev->admin_tagset.queue_depth + 1);
 		if (!nvmeq)
 			return -ENOMEM;
 	}
@@ -1696,10 +1697,17 @@ static int nvme_dev_map(struct nvme_dev *dev)
 	 * size should not span a DMA page (64 x 64B) unless NVME_CAP_MQES(cap) 
 	 * already restricted it further.
 	 */
-	if (pdev->vendor == PCI_VENDOR_ID_SAMSUNG && pdev->device == 0xa821 ) {
-		dev->q_depth = min_t(int, dev->q_depth, 64);
-		dev_warn(dev->dev, "detected Samsung NVMe controller, limit "
-			"queue depth=%u.\n", dev->q_depth);
+
+	dev->admin_tagset.queue_depth = NVME_AQ_DEPTH - 1;
+
+	if (pdev->vendor == PCI_VENDOR_ID_SAMSUNG) {
+		if(pdev->device == 0xa821 || pdev->device == 0xa822) {
+			dev->q_depth = min_t(int, dev->q_depth, 64);
+			dev->admin_tagset.queue_depth = min_t(int, NVME_AQ_DEPTH, 64) - 1;
+			dev_warn(dev->dev, "detected Samsung PM172x controller, limit "
+				"IO queue depth to %u and admin queue depth to %u.\n", 
+				dev->q_depth, dev->admin_tagset.queue_depth);
+		}
 	}
 
 	if (readl(dev->bar + NVME_REG_VS) >= NVME_VS(1, 2))
