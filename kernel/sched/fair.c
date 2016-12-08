@@ -4671,6 +4671,14 @@ static int wake_affine(struct sched_domain *sd, struct task_struct *p, int sync)
 	return 1;
 }
 
+static inline int task_util(struct task_struct *p);
+static int cpu_util_wake(int cpu, struct task_struct *p);
+
+static unsigned long capacity_spare_wake(int cpu, struct task_struct *p)
+{
+	return capacity_orig_of(cpu) - cpu_util_wake(cpu, p);
+}
+
 /*
  * find_idlest_group finds and returns the least busy CPU group within the
  * domain.
@@ -4680,15 +4688,21 @@ find_idlest_group(struct sched_domain *sd, struct task_struct *p,
 		  int this_cpu, int sd_flag)
 {
 	struct sched_group *idlest = NULL, *group = sd->groups;
-	unsigned long min_load = ULONG_MAX, this_load = 0;
+	struct sched_group *most_spare_sg = NULL;
+	unsigned long min_runnable_load = ULONG_MAX, this_runnable_load = 0;
+	unsigned long min_avg_load = ULONG_MAX, this_avg_load = 0;
+	unsigned long most_spare = 0, this_spare = 0;
 	int load_idx = sd->forkexec_idx;
-	int imbalance = 100 + (sd->imbalance_pct-100)/2;
+	int imbalance_scale = 100 + (sd->imbalance_pct-100)/2;
+	unsigned long imbalance = scale_load_down(NICE_0_LOAD) *
+				(sd->imbalance_pct-100) / 100;
 
 	if (sd_flag & SD_BALANCE_WAKE)
 		load_idx = sd->wake_idx;
 
 	do {
-		unsigned long load, avg_load;
+		unsigned long load, avg_load, runnable_load;
+		unsigned long spare_cap, max_spare_cap;
 		int local_group;
 		int i;
 
@@ -4700,8 +4714,13 @@ find_idlest_group(struct sched_domain *sd, struct task_struct *p,
 		local_group = cpumask_test_cpu(this_cpu,
 					       sched_group_cpus(group));
 
-		/* Tally up the load of all CPUs in the group */
+		/*
+		 * Tally up the load of all CPUs in the group and find
+		 * the group containing the CPU with most spare capacity.
+		 */
 		avg_load = 0;
+		runnable_load = 0;
+		max_spare_cap = 0;
 
 		for_each_cpu(i, sched_group_cpus(group)) {
 			/* Bias balancing toward cpus of our domain */
@@ -4710,22 +4729,84 @@ find_idlest_group(struct sched_domain *sd, struct task_struct *p,
 			else
 				load = target_load(i, load_idx);
 
-			avg_load += load;
+			runnable_load += load;
+
+			avg_load += cfs_rq_load_avg(&cpu_rq(i)->cfs);
+
+			spare_cap = capacity_spare_wake(i, p);
+
+			if (spare_cap > max_spare_cap)
+				max_spare_cap = spare_cap;
 		}
 
 		/* Adjust by relative CPU capacity of the group */
-		avg_load = (avg_load * SCHED_CAPACITY_SCALE) / group->sgc->capacity;
+		avg_load = (avg_load * SCHED_CAPACITY_SCALE) /
+					group->sgc->capacity;
+		runnable_load = (runnable_load * SCHED_CAPACITY_SCALE) /
+					group->sgc->capacity;
 
 		if (local_group) {
-			this_load = avg_load;
-		} else if (avg_load < min_load) {
-			min_load = avg_load;
-			idlest = group;
+			this_runnable_load = runnable_load;
+			this_avg_load = avg_load;
+			this_spare = max_spare_cap;
+		} else {
+			if (min_runnable_load > (runnable_load + imbalance)) {
+				/*
+				 * The runnable load is significantly smaller
+				 * so we can pick this new cpu
+				 */
+				min_runnable_load = runnable_load;
+				min_avg_load = avg_load;
+				idlest = group;
+			} else if ((runnable_load < (min_runnable_load + imbalance)) &&
+				   (100*min_avg_load > imbalance_scale*avg_load)) {
+				/*
+				 * The runnable loads are close so take the
+				 * blocked load into account through avg_load.
+				 */
+				min_avg_load = avg_load;
+				idlest = group;
+			}
+
+			if (most_spare < max_spare_cap) {
+				most_spare = max_spare_cap;
+				most_spare_sg = group;
+			}
 		}
 	} while (group = group->next, group != sd->groups);
 
-	if (!idlest || 100*this_load < imbalance*min_load)
+	/*
+	 * The cross-over point between using spare capacity or least load
+	 * is too conservative for high utilization tasks on partially
+	 * utilized systems if we require spare_capacity > task_util(p),
+	 * so we allow for some task stuffing by using
+	 * spare_capacity > task_util(p)/2.
+	 *
+	 * Spare capacity can't be used for fork because the utilization has
+	 * not been set yet, we must first select a rq to compute the initial
+	 * utilization.
+	 */
+	if (sd_flag & SD_BALANCE_FORK)
+		goto skip_spare;
+
+	if (this_spare > task_util(p) / 2 &&
+	    imbalance_scale*this_spare > 100*most_spare)
 		return NULL;
+
+	if (most_spare > task_util(p) / 2)
+		return most_spare_sg;
+
+skip_spare:
+	if (!idlest)
+		return NULL;
+
+	if (min_runnable_load > (this_runnable_load + imbalance))
+		return NULL;
+
+	if ((this_runnable_load < (min_runnable_load + imbalance)) &&
+	     (100*this_avg_load < imbalance_scale*min_avg_load))
+		return NULL;
+
 	return idlest;
 }
 
@@ -4822,6 +4903,64 @@ next:
 done:
 	return target;
 }
+
+/*
+ * cpu_util returns the amount of capacity of a CPU that is used by CFS
+ * tasks. The unit of the return value must be the one of capacity so we can
+ * compare the utilization with the capacity of the CPU that is available for
+ * CFS task (ie cpu_capacity).
+ *
+ * cfs_rq.avg.util_avg is the sum of running time of runnable tasks plus the
+ * recent utilization of currently non-runnable tasks on a CPU. It represents
+ * the amount of utilization of a CPU in the range [0..capacity_orig] where
+ * capacity_orig is the cpu_capacity available at the highest frequency
+ * (arch_scale_freq_capacity()).
+ * The utilization of a CPU converges towards a sum equal to or less than the
+ * current capacity (capacity_curr <= capacity_orig) of the CPU because it is
+ * the running time on this CPU scaled by capacity_curr.
+ *
+ * Nevertheless, cfs_rq.avg.util_avg can be higher than capacity_curr or even
+ * higher than capacity_orig because of unfortunate rounding in
+ * cfs.avg.util_avg or just after migrating tasks and new task wakeups until
+ * the average stabilizes with the new running time. We need to check that the
+ * utilization stays within the range of [0..capacity_orig] and cap it if
+ * necessary. Without utilization capping, a group could be seen as overloaded
+ * (CPU0 utilization at 121% + CPU1 utilization at 80%) whereas CPU1 has 20% of
+ * available capacity. We allow utilization to overshoot capacity_curr (but not
+ * capacity_orig) as it useful for predicting the capacity required after task
+ * migrations (scheduler-driven DVFS).
+ */
+static int cpu_util(int cpu)
+{
+	unsigned long util = cpu_rq(cpu)->cfs.avg.util_avg;
+	unsigned long capacity = capacity_orig_of(cpu);
+
+	return (util >= capacity) ? capacity : util;
+}
+
+static inline int task_util(struct task_struct *p)
+{
+	return p->se.avg.util_avg;
+}
+
+/*
+ * cpu_util_wake: Compute cpu utilization with any contributions from
+ * the waking task p removed.
+ */
+static int cpu_util_wake(int cpu, struct task_struct *p)
+{
+	unsigned long util, capacity;
+
+	/* Task has no contribution or is new */
+	if (cpu != task_cpu(p) || !p->se.avg.last_update_time)
+		return cpu_util(cpu);
+
+	capacity = capacity_orig_of(cpu);
+	util = max_t(long, cpu_rq(cpu)->cfs.avg.util_avg - task_util(p), 0);
+
+	return (util >= capacity) ? capacity : util;
+}
+
 /*
  * get_cpu_usage returns the amount of capacity of a CPU that is used by CFS
  * tasks. The unit of the return value must be the one of capacity so we can
