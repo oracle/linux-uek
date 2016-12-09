@@ -495,7 +495,11 @@ struct request_queue {
 #endif
 	struct rcu_head		rcu_head;
 	wait_queue_head_t	mq_freeze_wq;
+#ifdef __GENKSYMS__
+	struct percpu_ref	mq_usage_counter;
+#else
 	struct percpu_ref	q_usage_counter;
+#endif
 	struct list_head	all_q_node;
 
 	struct blk_mq_tag_set	*tag_set;
