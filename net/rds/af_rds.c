@@ -440,6 +440,7 @@ static int rds_setsockopt(struct socket *sock, int level, int optname,
 			  char __user *optval, unsigned int optlen)
 {
 	struct rds_sock *rs = rds_sk_to_rs(sock->sk);
+	struct net *net = sock_net(sock->sk);
 	int ret;
 
 	if (level != SOL_RDS) {
@@ -467,6 +468,10 @@ static int rds_setsockopt(struct socket *sock, int level, int optname,
 		ret = rds_cong_monitor(rs, optval, optlen);
 		break;
 	case RDS_CONN_RESET:
+		if (!ns_capable(net->user_ns, CAP_NET_ADMIN)) {
+			ret =  -EACCES;
+			break;
+		}
 		ret = rds_user_reset(rs, optval, optlen);
 		break;
 	case SO_RDS_TRANSPORT:
