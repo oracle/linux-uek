@@ -2994,14 +2994,24 @@ static void mlx4_enable_msi_x(struct mlx4_dev *dev)
 {
 	struct mlx4_priv *priv = mlx4_priv(dev);
 	struct msix_entry *entries;
+#ifdef WITHOUT_ORACLE_EXTENSIONS
 	int i;
+#else
+	int i, nreq = 0;
+#endif /* WITHOUT_ORACLE_EXTENSIONS */
 	int port = 0;
 
 	if (msi_x) {
+#ifdef WITHOUT_ORACLE_EXTENSIONS
 		int nreq = min3(dev->caps.num_ports *
 				(int)num_online_cpus() + 1,
 				dev->caps.num_eqs - dev->caps.reserved_eqs,
 				MAX_MSIX);
+#else
+		nreq = min3(dev->caps.num_ports * (int)num_online_cpus() + 1,
+			    dev->caps.num_eqs - dev->caps.reserved_eqs,
+			    MAX_MSIX);
+#endif /* WITHOUT_ORACLE_EXTENSIONS */
 
 		if (msi_x > 1)
 			nreq = min_t(int, nreq, msi_x);
@@ -3013,6 +3023,11 @@ static void mlx4_enable_msi_x(struct mlx4_dev *dev)
 		for (i = 0; i < nreq; ++i)
 			entries[i].entry = i;
 
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+		mlx4_info(dev, "Enabling %d MSI-X vectors, eqs %d rsvd_eqs %d msi_x %d\n",
+			  nreq, dev->caps.num_eqs, dev->caps.reserved_eqs,
+			  msi_x);
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 		nreq = pci_enable_msix_range(dev->persist->pdev, entries, 2,
 					     nreq);
 
@@ -3067,12 +3082,20 @@ static void mlx4_enable_msi_x(struct mlx4_dev *dev)
 		}
 
 		dev->flags |= MLX4_FLAG_MSI_X;
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+		mlx4_info(dev, "Successfully allocated %d MSI-X vectors\n",
+			  nreq);
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 		kfree(entries);
 		return;
 	}
 
 no_msi:
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	mlx4_info(dev, "No MSI-X vectors, nreq/errno %d msi_x %d\n",
+		  nreq, msi_x);
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 	dev->caps.num_comp_vectors = 1;
 
 	BUG_ON(MLX4_EQ_ASYNC >= 2);
