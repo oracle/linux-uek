@@ -393,6 +393,10 @@ else
 	     sub(/\..*$/, "", fname);
 	     alias = $3;
 
+	     if ($1 != prev)
+		 funcc++;
+	     prev = $1;
+
 	     next;
 	 }
 
@@ -431,9 +435,12 @@ else
 	 END {
 	     print "";
 	     print ".globl dtrace_sdt_nprobes";
+	     print ".globl dtrace_fbt_nfuncs";
 	     print "\tALGN";
 	     print "dtrace_sdt_nprobes:";
 	     printf "\tPTR\t%d\n", probec;
+	     print "dtrace_fbt_nfuncs:";
+	     printf "\tPTR\t%d\n", funcc;
 
 	     exit(errc == 0 ? 0 : 1);
 	 }' > $tfn
