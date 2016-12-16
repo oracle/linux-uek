@@ -3102,14 +3102,13 @@ static void mlx4_enable_msi_x(struct mlx4_dev *dev)
 {
 	struct mlx4_priv *priv = mlx4_priv(dev);
 	struct msix_entry *entries;
-	int i;
+	int i, nreq = 0;
 	int port = 0;
 
 	if (msi_x) {
-		int nreq = min3(dev->caps.num_ports *
-				(int)num_online_cpus() + 1,
-				dev->caps.num_eqs - dev->caps.reserved_eqs,
-				MAX_MSIX);
+		nreq = min3(dev->caps.num_ports * (int)num_online_cpus() + 1,
+			    dev->caps.num_eqs - dev->caps.reserved_eqs,
+			    MAX_MSIX);
 
 		if (msi_x > 1 && !mlx4_is_mfunc(dev))
 			nreq = min_t(int, nreq, msi_x);
@@ -3121,6 +3120,9 @@ static void mlx4_enable_msi_x(struct mlx4_dev *dev)
 		for (i = 0; i < nreq; ++i)
 			entries[i].entry = i;
 
+		mlx4_info(dev, "Enabling %d MSI-X vectors, eqs %d rsvd_eqs %d msi_x %d\n",
+			  nreq, dev->caps.num_eqs, dev->caps.reserved_eqs,
+			  msi_x);
 		nreq = pci_enable_msix_range(dev->persist->pdev, entries, 2,
 					     nreq);
 
@@ -3175,12 +3177,16 @@ static void mlx4_enable_msi_x(struct mlx4_dev *dev)
 		}
 
 		dev->flags |= MLX4_FLAG_MSI_X;
+		mlx4_info(dev, "Successfully allocated %d MSI-X vectors\n",
+			  nreq);
 
 		kfree(entries);
 		return;
 	}
 
 no_msi:
+	mlx4_info(dev, "No MSI-X vectors, nreq/errno %d msi_x %d\n",
+		  nreq, msi_x);
 	dev->caps.num_comp_vectors = 1;
 
 	BUG_ON(MLX4_EQ_ASYNC >= 2);
