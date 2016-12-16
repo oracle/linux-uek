@@ -38,6 +38,7 @@
 #include <asm/pgtable_types.h>
 #include <asm/export.h>
 #include <asm/frame.h>
+#include <asm/dtrace_util.h>
 #include <linux/err.h>
 
 .code64
@@ -863,6 +864,11 @@ ENTRY(\sym)
 	addq	$EXCEPTION_STKSZ, CPU_TSS_IST(\shift_ist)
 	.endif
 
+#ifdef CONFIG_DTRACE
+	test %rax,%rax
+	jnz dtrace_error_exit
+#endif
+
 	/* these procedures expect "no swapgs" flag in ebx */
 	.if \paranoid
 	jmp	paranoid_exit
@@ -899,6 +905,149 @@ ENTRY(\sym)
 	.endif
 END(\sym)
 .endm
+
+#ifdef CONFIG_DTRACE
+ENTRY(dtrace_error_exit)
+	DEFAULT_FRAME
+	RESTORE_EXTRA_REGS
+	DISABLE_INTERRUPTS(CLBR_NONE)
+	TRACE_IRQS_OFF
+	GET_THREAD_INFO(%rcx)
+
+#ifdef CONFIG_PREEMPT
+	/* Interrupts are off */
+	/* Check if we need preemption */
+	bt      $9,EFLAGS(%rsp) /* interrupts were off? */
+	jnc     1f
+0:      cmpl    $0,PER_CPU_VAR(__preempt_count)
+	jnz     1f
+	call    preempt_schedule_irq
+	jmp     0b
+1:
+#endif
+
+	/*
+	 * The iretq could re-enable interrupts:
+	 */
+	TRACE_IRQS_IRETQ
+
+	negq %rax
+
+	cmpl $DTRACE_INVOP_MOV_RSP_RBP,%eax
+	je dtrace_emu_mov
+	cmpl $DTRACE_INVOP_PUSH_BP,%eax
+	je dtrace_emu_push
+	cmpl $DTRACE_INVOP_LEAVE,%eax
+	je dtrace_emu_leave
+	cmpl $DTRACE_INVOP_NOP,%eax
+	je dtrace_emu_nop
+	cmpl $DTRACE_INVOP_RET,%eax
+	je dtrace_emu_ret
+
+	leaq dtrace_error_msg(%rip),%rdi
+	movq %rax,%rsi
+	movq (%rsp),%rdx
+	call printk
+
+	RESTORE_C_REGS
+	REMOVE_PT_GPREGS_FROM_STACK 8
+	INTERRUPT_RETURN
+
+dtrace_emu_mov:
+	RESTORE_C_REGS
+	REMOVE_PT_GPREGS_FROM_STACK 8
+
+	/* Emulate "mov %rsp, %rbp" instruction. */
+	pushq %rax			/* push temp */
+	movq 8(%rsp),%rax		/* load calling RIP */
+	addq $3,%rax			/* increment over trapping instr */
+	movq %rax,8(%rsp)		/* store calling RIP */
+	movq 32(%rsp),%rbp		/* load %rsp into %rbp */
+	popq %rax			/* pop off temp */
+
+	INTERRUPT_RETURN
+
+dtrace_emu_push:
+	RESTORE_C_REGS
+	REMOVE_PT_GPREGS_FROM_STACK 8
+
+	/*
+	 * Emulate a "pushq %rbp" instruction.  We need to move the stack down
+	 * to make room for the extra address getting pushed.
+	 */
+	subq $16,%rsp			/* make room for %rbp */
+	pushq %rax			/* push temp */
+	movq 24(%rsp),%rax		/* load calling RIP */
+	addq $1,%rax			/* increment over trapping instr */
+	movq %rax,8(%rsp)		/* store calling RIP */
+	movq 32(%rsp),%rax		/* load calling CS */
+	movq %rax,16(%rsp)		/* store calling CS */
+	movq 40(%rsp),%rax		/* load calling RFLAGS */
+	movq %rax,24(%rsp)		/* store calling RFLAGS */
+	movq 48(%rsp),%rax		/* load calling RSP */
+	subq $8,%rax			/* make room for %rbp */
+	movq %rax,32(%rsp)		/* store calling RSP */
+	movq 56(%rsp),%rax		/* load calling SS */
+	movq %rax,40(%rsp)		/* store calling SS */
+	movq 32(%rsp),%rax		/* reload calling RSP */
+	movq %rbp,(%rax)		/* store %rbp there */
+	popq %rax			/* pop off temp */
+
+	INTERRUPT_RETURN
+
+dtrace_emu_nop:
+	RESTORE_C_REGS
+	REMOVE_PT_GPREGS_FROM_STACK 8
+
+	/* Emulate a "nop" instruction. */
+	incq (%rsp)
+
+	INTERRUPT_RETURN
+
+dtrace_emu_leave:
+	RESTORE_C_REGS
+	REMOVE_PT_GPREGS_FROM_STACK 8
+
+	/*
+	 * Emulate a "leave" instruction.  This is equivalent to the sequence:
+	 *	movq %rbp,%rsp
+	 *	popq %rbp
+	 * We can use the fact that on x86_64 %rsp is saved explicitly, so we
+	 * do not need to move any data around.
+	 */
+	pushq %rax			/* push temp */
+	movq 8(%rsp),%rax		/* load calling RIP */
+	addq $1,%rax			/* increment over trapping instr */
+	movq %rax,8(%rsp)		/* store calling RIP */
+	movq (%rbp),%rax		/* get new %rbp */
+	addq $8,%rbp			/* adjust new %rsp */
+	movq %rbp,32(%rsp)		/* store new %rsp */
+	movq %rax,%rbp			/* set new %rbp */
+	popq %rax			/* pop off temp */
+
+	INTERRUPT_RETURN
+
+dtrace_emu_ret:
+	RESTORE_C_REGS
+	REMOVE_PT_GPREGS_FROM_STACK 8
+
+	/* Emulate a "ret" instruction. */
+	pushq %rax			/* push temp */
+	movq 32(%rsp),%rax		/* load %rsp */
+	movq (%rax),%rax		/* load calling RIP */
+	movq %rax,8(%rsp)		/* store calling RIP */
+	addq $8,32(%rsp)		/* adjust new %rsp */
+	popq %rax			/* pop off temp */
+
+	INTERRUPT_RETURN
+
+	CFI_ENDPROC
+
+END(dtrace_error_exit)
+
+dtrace_error_msg:
+	.asciz "DTRACE: non-zero (%x) return from trap at %x\n"
+#endif
 
 idtentry divide_error			do_divide_error			has_error_code=0
 idtentry overflow			do_overflow			has_error_code=0

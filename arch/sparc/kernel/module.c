@@ -227,9 +227,8 @@ int module_finalize(const Elf_Ehdr *hdr,
 	}
 
 # ifdef CONFIG_DTRACE
-	if (me->sdt_probec > 0)
-		me->pdata = module_alloc(me->sdt_probec * SDT_TRAMP_SIZE *
-					 sizeof(asm_instr_t));
+	if (DTRACE_SDT_MAX(me) + DTRACE_FBT_MAX(me) > 0)
+		me->pdata = module_alloc(DTRACE_PD_MAXSIZE(me));
 	else
 		me->pdata = NULL;
 # endif

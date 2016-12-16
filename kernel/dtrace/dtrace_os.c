@@ -57,14 +57,17 @@ void dtrace_os_init(void)
 	 * DTrace uses an architecture-specific structure (hidden from us here)
 	 * to hold some data, and since we do not know the layout or the size,
 	 * we ensure that we allocate enough memory to accomodate the largest
-	 * of those structures.
+	 * of those structures.  On some architectures there may not be a need
+	 * for additional data.  In that case, pdata will be NULL.
+	 *
 	 * So, the memory we allocate will hold:
 	 *	- the dtrace_kmod module structure
 	 *	- a block of memory (aligned at a structure boundary) to be
-	 *	  used for pdata and other related data
+	 *	  used for pdata and other related data [optional]
 	 * The memory is allocated from the modules space.
 	 */
-	module_size = ALIGN(sizeof(struct module), 8) + DTRACE_PDATA_MAXSIZE;
+	module_size = ALIGN(sizeof(struct module), 8) +
+		      DTRACE_PD_MAXSIZE_KERNEL;
 	dtrace_kmod = module_alloc(module_size);
 	if (dtrace_kmod == NULL) {
 		pr_warning("%s: cannot allocate kernel pseudo-module\n",
@@ -74,11 +77,17 @@ void dtrace_os_init(void)
 
 	memset(dtrace_kmod, 0, module_size);
 	strlcpy(dtrace_kmod->name, "vmlinux", MODULE_NAME_LEN);
+
+	if (DTRACE_PD_MAXSIZE_KERNEL > 0)
+		dtrace_kmod->pdata = (char *)dtrace_kmod +
+			             ALIGN(sizeof(struct module), 8);
+	else
+		dtrace_kmod->pdata = NULL;
+
+	dtrace_kmod->core_size = DTRACE_PD_MAXSIZE_KERNEL;
+	dtrace_kmod->num_ftrace_callsites = dtrace_fbt_nfuncs;
 	dtrace_kmod->state = MODULE_STATE_LIVE;
 	atomic_inc(&dtrace_kmod->refcnt);
-	dtrace_kmod->pdata = (char *)dtrace_kmod +
-				ALIGN(sizeof(struct module), 8);
-	dtrace_kmod->core_layout.size = DTRACE_PDATA_MAXSIZE;
 
 	psinfo_cachep = kmem_cache_create("psinfo_cache",
 				sizeof(dtrace_psinfo_t), 0,

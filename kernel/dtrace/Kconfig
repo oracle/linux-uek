@@ -57,6 +57,13 @@ config DT_SDT_PERF
 	  Provides the perf provider, containing a DTrace probe for each
 	  perf-events tracepoint in the system.
 
+config DT_FBT
+	tristate "Function boundary tracing"
+	default m
+	select FTRACE
+	help
+	  Provides function boundary tracing for functions in the kernel.
+
 config DT_SYSTRACE
 	tristate "System Call Tracing"
 	default m
