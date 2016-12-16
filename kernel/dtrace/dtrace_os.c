@@ -7,6 +7,7 @@
 
 #include <linux/binfmts.h>
 #include <linux/dtrace_cpu.h>
+#include <linux/dtrace_fbt.h>
 #include <linux/dtrace_os.h>
 #include <linux/dtrace_sdt.h>
 #include <linux/fs.h>
@@ -437,6 +438,7 @@ EXPORT_SYMBOL(dtrace_stacktrace);
 \*---------------------------------------------------------------------------*/
 static struct notifier_block	dtrace_die = {
 	.notifier_call = dtrace_die_notifier,
+	.priority = 0x7fffffff
 };
 
 static int	dtrace_enabled = 0;
