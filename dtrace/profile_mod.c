@@ -49,7 +49,6 @@ DT_PROVIDER_POPS(profile)
 static dtrace_pops_t profile_pops = {
 	profile_provide,
 	NULL,
-	NULL,
 	profile_enable,
 	profile_disable,
 	NULL,

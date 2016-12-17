@@ -51,7 +51,6 @@ int				dtrace_err_verbose;
 dtrace_pops_t			dtrace_provider_ops = {
 	(void (*)(void *, const dtrace_probedesc_t *))dtrace_nullop,
 	(void (*)(void *, struct module *))dtrace_nullop,
-	(void (*)(void *, struct module *))dtrace_nullop,
 	(int (*)(void *, dtrace_id_t, void *))dtrace_enable_nullop,
 	(void (*)(void *, dtrace_id_t, void *))dtrace_nullop,
 	(void (*)(void *, dtrace_id_t, void *))dtrace_nullop,
@@ -1256,15 +1255,6 @@ static void dtrace_module_unloaded(struct module *mp)
 		kfree(probe->dtpr_func);
 		kfree(probe->dtpr_name);
 		kfree(probe);
-	}
-
-
-	/*
-	 * Give all providers a chance to do cleanup for this module.
-	 */
-	for (prv = dtrace_provider; prv != NULL; prv = prv->dtpv_next) {
-		if (prv->dtpv_pops.dtps_cleanup_module)
-			prv->dtpv_pops.dtps_cleanup_module(prv->dtpv_arg, mp);
 	}
 
 	mutex_unlock(&dtrace_lock);
