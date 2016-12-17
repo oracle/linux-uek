@@ -44,7 +44,7 @@
  *	mov	%i1, %o2
  *	mov	%i2, %o3
  *	mov	%i3, %o4
- *	call	<diff > 0xfff>
+ *	call	dtrace_probe
  *	 mov	%i4, %o5
  *	ret
  *	 restore
@@ -56,7 +56,7 @@
  *	mov	%i1, %o2
  *	mov	%i2, %o3
  *	mov	%i3, %o4
- *	call	<diff <= 0xfff>
+ *	call	dtrace_probe
  *	 mov	%i4, %o5
  *	ret
  *	 restore
@@ -64,8 +64,10 @@
  * For is-enabled probes, we just drop an "or %g0, 1, %o0"
  * directly into the delay slot.
  */
-#if SDT_TRAMP_SIZE < 11
-# error SDT_TRAMP_SIZE is less than the required 11 instructions.
+#ifndef SDT_TRAMP_SIZE
+# error The kernel must define SDT_TRAMP_SIZE!
+#elif SDT_TRAMP_SIZE < 11
+# error SDT_TRAMP_SIZE must be at least 11 instructions!
 #endif
 
 #define SA(x)			((long)ALIGN((x), 4))
@@ -194,12 +196,6 @@ void sdt_disable_arch(sdt_probe_t *sdp, dtrace_id_t id, void *arg)
 
 int sdt_dev_init_arch(void)
 {
-	/*
-	 * Sanity check to ensure that the memory allocated by the kernel is
-	 * sufficient for what PDATA needs.
-	 */
-	ASSERT(sizeof(dtrace_module_t) < DTRACE_PDATA_SIZE);
-
 	return 0;
 }
 

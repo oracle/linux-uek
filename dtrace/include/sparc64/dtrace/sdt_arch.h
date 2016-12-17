@@ -32,7 +32,6 @@
  * Use is subject to license terms.
  */
 
-
 #define SDT_AFRAMES	1
 
 #endif /* _SPARC64_SDT_ARCH_H */
