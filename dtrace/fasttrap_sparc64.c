@@ -116,6 +116,6 @@ void fasttrap_pid_probe_arch(fasttrap_probe_t *ftp, struct pt_regs *regs)
 
 void fasttrap_set_enabled(struct pt_regs *regs)
 {
-	regs->u_regs[REG_O0] = 1;
+	regs->u_regs[ASM_REG_O0] = 1;
 }
 
