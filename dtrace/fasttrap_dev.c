@@ -753,13 +753,6 @@ static int fasttrap_uint32_cmp(const void *ap, const void *bp)
 	return (*(const uint32_t *)ap - *(const uint32_t *)bp);
 }
 
-#if 0
-static int fasttrap_uint64_cmp(const void *ap, const void *bp)
-{
-	return (*(const uint64_t *)ap - *(const uint64_t *)bp);
-}
-#endif
-
 void fasttrap_meta_create_probe(void *arg, void *parg,
 				dtrace_helper_probedesc_t *dhpb)
 {
@@ -1068,7 +1061,7 @@ static fasttrap_provider_t *fasttrap_provider_lookup(pid_t pid,
 						     const dtrace_pattr_t *pa)
 {
 	fasttrap_provider_t	*fp, *new_fp = NULL;
-	fasttrap_proc_t		*proc;
+	fasttrap_proc_t		*proc = NULL;
 	fasttrap_bucket_t	*bucket;
 	char			provname[DTRACE_PROVNAMELEN];
 	struct task_struct	*p;

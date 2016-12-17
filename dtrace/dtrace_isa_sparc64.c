@@ -35,10 +35,8 @@
 
 uint64_t dtrace_getarg(int argno, int aframes)
 {
-	uintptr_t		val;
 	struct sparc_v9_frame	*fp;
 	uint64_t		rval;
-	int			lvl;
 
 	/*
 	 * Account for the fact that dtrace_getarg() consumes an additional
@@ -48,10 +46,10 @@ uint64_t dtrace_getarg(int argno, int aframes)
 
 #ifdef FIXME
 	if (argno < 6) {
-		if ((lvl = dtrace_fish(aframes, REG_I0 + argno, &val)) == 0)
+		if ((lvl = dtrace_fish(aframes, ASM_REG_I0 + argno, &val)) == 0)
 			return val;
 	} else {
-		if ((lvl = dtrace_fish(aframes, REG_I6, &val)) == 0) {
+		if ((lvl = dtrace_fish(aframes, ASM_REG_I6, &val)) == 0) {
 			/*
 			 * We have a stack pointer; grab the argument.
 			 */
@@ -95,19 +93,19 @@ ulong_t dtrace_getreg(struct task_struct *task, uint_t reg)
 {
 	struct pt_regs	*rp = task_pt_regs(task);
 
-	if (reg <= REG_O7)			/* G[0-7], O[0-7] */
+	if (reg <= ASM_REG_O7)			/* G[0-7], O[0-7] */
 		return rp->u_regs[reg];		/* 0 .. 15 */
 
-	if (reg <= REG_I7) {			/* L[0-7], I[0-7] */
+	if (reg <= ASM_REG_I7) {		/* L[0-7], I[0-7] */
 		if (rp->tstate & TSTATE_PRIV) {
 			struct reg_window	*rw;
 
 			rw = (struct reg_window *)(rp->u_regs[14] + STACK_BIAS);
 
-			if (reg <= REG_L7)
-				return rw->locals[reg - REG_L0];
+			if (reg <= ASM_REG_L7)
+				return rw->locals[reg - ASM_REG_L0];
 			else
-				return rw->ins[reg - REG_I0];
+				return rw->ins[reg - ASM_REG_I0];
 		} else {
 			mm_segment_t			old_fs;
 			struct reg_window __user	*rw;
@@ -121,10 +119,14 @@ ulong_t dtrace_getreg(struct task_struct *task, uint_t reg)
 
 			DTRACE_CPUFLAG_SET(CPU_DTRACE_NOFAULT);
 
-			if (reg <= REG_L7)
-				val = dtrace_fulword(&rw->locals[reg - REG_L0]);
+			if (reg <= ASM_REG_L7)
+				val = dtrace_fulword(
+					&rw->locals[reg - ASM_REG_L0]
+				      );
 			else
-				val = dtrace_fulword(&rw->locals[reg - REG_I0]);
+				val = dtrace_fulword(
+					&rw->locals[reg - ASM_REG_I0]
+				      );
 
 			DTRACE_CPUFLAG_CLEAR(CPU_DTRACE_NOFAULT);
 
@@ -155,11 +157,18 @@ ulong_t dtrace_getreg(struct task_struct *task, uint_t reg)
 
 void pdata_init(dtrace_module_t *pdata, struct module *mp)
 {
-	if (mp->pdata)
-		pdata->sdt_tab = mp->pdata;
+	if (mp->pdata) {
+		pdata->sdt_tab = (asm_instr_t *)((uintptr_t)mp->pdata +
+						 DTRACE_PD_SDT_OFF(mp));
+		pdata->fbt_tab = (asm_instr_t *)((uintptr_t)mp->pdata +
+						 DTRACE_PD_FBT_OFF(mp));
+	} else {
+		pdata->sdt_tab = NULL;
+		pdata->fbt_tab = NULL;
+	}
 }
 
 void pdata_cleanup(dtrace_module_t *pdata, struct module *mp)
 {
-	mp->pdata = pdata->sdt_tab;
+	mp->pdata = (void *)((uintptr_t)pdata->sdt_tab - DTRACE_PD_SDT_OFF(mp));
 }

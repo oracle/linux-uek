@@ -36,10 +36,11 @@
  *	- pdata: pointer to a dtrace_module struct (for DTrace)
  */
 typedef struct dtrace_module {
+        int             enabled_cnt;
         size_t          sdt_probe_cnt;
-        int             sdt_enabled;
 	asm_instr_t	*sdt_tab;
         size_t          fbt_probe_cnt;
+	asm_instr_t	*fbt_tab;
 } dtrace_module_t;
 
 #endif /* _SPARC64_MOD_ARCH_H */

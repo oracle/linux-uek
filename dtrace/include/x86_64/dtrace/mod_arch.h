@@ -36,8 +36,8 @@
  *	- pdata: pointer to a dtrace_module struct (for DTrace)
  */
 typedef struct dtrace_module {
+        int             enabled_cnt;
         size_t          sdt_probe_cnt;
-        int             sdt_enabled;
         size_t          fbt_probe_cnt;
 } dtrace_module_t;
 
