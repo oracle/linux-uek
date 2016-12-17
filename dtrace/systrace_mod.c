@@ -49,7 +49,6 @@ DT_PROVIDER_POPS(systrace)
 static dtrace_pops_t syscall_pops = {
 	systrace_provide,
 	NULL,
-	NULL,
 	systrace_enable,
 	systrace_disable,
 	NULL,
