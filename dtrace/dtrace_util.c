@@ -192,6 +192,7 @@ void dtrace_for_each_module(for_each_module_fn *fn, void *arg)
 	 * must also identify and skip the list header because that is not a
 	 * valid module at all.
 	 */
+	fn(arg, dtrace_kmod);
 	fn(arg, THIS_MODULE);
 
 	rcu_read_lock();
