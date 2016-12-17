@@ -32,7 +32,6 @@
  * Use is subject to license terms.
  */
 
-
 #define SDT_AFRAMES	4
 
 #endif /* _X86_64_SDT_ARCH_H */

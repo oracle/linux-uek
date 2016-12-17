@@ -29,6 +29,7 @@
 #include <linux/slab.h>
 #include <linux/uaccess.h>
 #include <linux/vmalloc.h>
+#include <asm/dtrace_util.h>
 
 #include "dtrace.h"
 #include "dtrace_dev.h"
@@ -53,7 +54,7 @@ static uint8_t sdt_invop(struct pt_regs *regs)
 				this_cpu_core->cpu_dtrace_regs = NULL;
 			}
 
-			return ASM_CALL_SIZE;
+			return DTRACE_INVOP_NOPS;
 		}
 	}
 
@@ -64,11 +65,6 @@ void sdt_provide_probe_arch(sdt_probe_t *sdp, struct module *mp, int idx)
 {
 	sdp->sdp_patchval = SDT_PATCHVAL;
 	sdp->sdp_savedval = *sdp->sdp_patchpoint;
-}
-
-int sdt_provide_module_arch(void *arg, struct module *mp)
-{
-	return 1;
 }
 
 void sdt_enable_arch(sdt_probe_t *sdp, dtrace_id_t id, void *arg)
@@ -120,12 +116,6 @@ uint64_t sdt_getarg(void *arg, dtrace_id_t id, void *parg, int argno,
 
 int sdt_dev_init_arch(void)
 {
-	/*
-	 * Sanity check to ensure that the memory allocated by the kernel is
-	 * sufficient for what PDATA needs.
-	 */
-	ASSERT(sizeof(dtrace_module_t) < DTRACE_PDATA_SIZE);
-
 	return dtrace_invop_add(sdt_invop);
 }
 

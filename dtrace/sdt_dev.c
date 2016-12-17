@@ -288,9 +288,6 @@ void sdt_provide_module(void *arg, struct module *mp)
 			return;
 	}
 
-	if (!sdt_provide_module_arch(arg, mp))
-		return;
-
 	for (idx = 0, sdpd = mp->sdt_probes; idx < mp->sdt_probec;
 	     idx++, sdpd++) {
 		char			*name = sdpd->sdpd_name, *nname;
@@ -379,6 +376,7 @@ void sdt_provide_module(void *arg, struct module *mp)
 int _sdt_enable(void *arg, dtrace_id_t id, void *parg)
 {
 	sdt_probe_t	*sdp = parg;
+	sdt_probe_t	*curr;
 
 	/*
 	 * Ensure that we have a reference to the module.
@@ -391,14 +389,12 @@ int _sdt_enable(void *arg, dtrace_id_t id, void *parg)
 	 * reference we took above, because we only need one to prevent the
 	 * module from being unloaded.
 	 */
-	PDATA(sdp->sdp_module)->sdt_enabled++;
-	if (PDATA(sdp->sdp_module)->sdt_enabled > 1)
+	PDATA(sdp->sdp_module)->enabled_cnt++;
+	if (PDATA(sdp->sdp_module)->enabled_cnt > 1)
 		module_put(sdp->sdp_module);
 
-	while (sdp != NULL) {
-		sdt_enable_arch(sdp, id, arg);
-		sdp = sdp->sdp_next;
-	}
+	for (curr = sdp; curr != NULL; curr = curr->sdp_next)
+		sdt_enable_arch(curr, id, arg);
 
 	return 0;
 }
@@ -406,6 +402,10 @@ int _sdt_enable(void *arg, dtrace_id_t id, void *parg)
 void _sdt_disable(void *arg, dtrace_id_t id, void *parg)
 {
 	sdt_probe_t	*sdp = parg;
+	sdt_probe_t	*curr;
+
+	for (curr = sdp; curr != NULL; curr = curr->sdp_next)
+		sdt_disable_arch(curr, id, arg);
 
 	/*
 	 * If we are disabling a probe, we know it was enabled, and therefore
@@ -413,14 +413,9 @@ void _sdt_disable(void *arg, dtrace_id_t id, void *parg)
 	 * being unloaded.  If we disable the last probe on the module, we can
 	 * drop the reference.
 	 */
-	PDATA(sdp->sdp_module)->sdt_enabled--;
-	if (PDATA(sdp->sdp_module)->sdt_enabled == 0)
+	PDATA(sdp->sdp_module)->enabled_cnt--;
+	if (PDATA(sdp->sdp_module)->enabled_cnt == 0)
 		module_put(sdp->sdp_module);
-
-	while (sdp != NULL) {
-		sdt_disable_arch(sdp, id, arg);
-		sdp = sdp->sdp_next;
-	}
 }
 
 void sdt_getargdesc(void *arg, dtrace_id_t id, void *parg,
