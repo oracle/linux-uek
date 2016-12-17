@@ -49,7 +49,6 @@ DT_PROVIDER_POPS(dt_test)
 static dtrace_pops_t dt_test_pops = {
 	dt_test_provide,
 	NULL,
-	NULL,
 	dt_test_enable,
 	dt_test_disable,
 	NULL,
