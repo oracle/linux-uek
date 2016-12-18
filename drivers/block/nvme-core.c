@@ -894,7 +894,7 @@ static int nvme_queue_rq(struct blk_mq_hw_ctx *hctx,
 	 */
 	if (ns && ns->ms && !blk_integrity_rq(req)) {
 		if (!(ns->pi_type && ns->ms == 8) &&
-					req->cmd_type != REQ_TYPE_DRV_PRIV) {
+					req->cmd_type != REQ_TYPE_SPECIAL) {
 			req->errors = -EFAULT;
 			blk_mq_complete_request(req);
 			return BLK_MQ_RQ_QUEUE_OK;
@@ -2523,6 +2523,22 @@ done:
 	kfree(id);
 }
 
+static void nvme_set_irq_hints(struct nvme_dev *dev)
+{
+       struct nvme_queue *nvmeq;
+       int i;
+
+       for (i = 0; i < dev->online_queues; i++) {
+               nvmeq = dev->queues[i];
+
+               if (!nvmeq->tags || !(*nvmeq->tags))
+                       continue;
+
+               irq_set_affinity_hint(dev->entry[nvmeq->cq_vector].vector,
+                                       blk_mq_tags_cpumask(*nvmeq->tags));
+       }
+}
+
 static void nvme_dev_scan(struct work_struct *work)
 {
 	struct nvme_dev *dev = container_of(work, struct nvme_dev, scan_work);
@@ -2530,6 +2546,8 @@ static void nvme_dev_scan(struct work_struct *work)
 	if (!dev->tagset.tags)
 		return;
 	nvme_scan_namespaces(dev);
+
+	nvme_set_irq_hints(dev);
 }
 
 /*
@@ -3062,22 +3080,6 @@ static const struct file_operations nvme_dev_fops = {
 	.compat_ioctl	= nvme_dev_ioctl,
 };
 
-static void nvme_set_irq_hints(struct nvme_dev *dev)
-{
-       struct nvme_queue *nvmeq;
-       int i;
-
-       for (i = 0; i < dev->online_queues; i++) {
-               nvmeq = dev->queues[i];
-
-		if (!nvmeq->tags || !(*nvmeq->tags))
-			continue;
-
-		irq_set_affinity_hint(dev->entry[nvmeq->cq_vector].vector,
-					blk_mq_tags_cpumask(*nvmeq->tags));
-	}
-}
-
 static void nvme_probe_work(struct work_struct *work)
 {
 	struct nvme_dev *dev = container_of(work, struct nvme_dev, probe_work);
@@ -3119,8 +3121,6 @@ static void nvme_probe_work(struct work_struct *work)
 	result = nvme_setup_io_queues(dev);
 	if (result)
 		goto free_tags;
-
-	nvme_set_irq_hints(dev);
 
 	dev->event_limit = 1;
 
