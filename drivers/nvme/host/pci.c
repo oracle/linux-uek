@@ -729,8 +729,8 @@ static void req_completion(struct nvme_queue *nvmeq, void *ctx,
 }
 
 /* length is in bytes.  gfp flags indicates whether we may sleep. */
-static int nvme_setup_prps(struct nvme_dev *dev, struct nvme_iod *iod,
-		int total_len, gfp_t gfp)
+static bool nvme_setup_prps(struct nvme_dev *dev, struct nvme_iod *iod,
+		int total_len)
 {
 	struct dma_pool *pool;
 	int length = total_len;
@@ -746,7 +746,7 @@ static int nvme_setup_prps(struct nvme_dev *dev, struct nvme_iod *iod,
 
 	length -= (page_size - offset);
 	if (length <= 0)
-		return total_len;
+		return true;
 
 	dma_len -= (page_size - offset);
 	if (dma_len) {
@@ -759,7 +759,7 @@ static int nvme_setup_prps(struct nvme_dev *dev, struct nvme_iod *iod,
 
 	if (length <= page_size) {
 		iod->first_dma = dma_addr;
-		return total_len;
+		return true;
 	}
 
 	nprps = DIV_ROUND_UP(length, page_size);
@@ -771,11 +771,11 @@ static int nvme_setup_prps(struct nvme_dev *dev, struct nvme_iod *iod,
 		iod->npages = 1;
 	}
 
-	prp_list = dma_pool_alloc(pool, gfp, &prp_dma);
+	prp_list = dma_pool_alloc(pool, GFP_ATOMIC, &prp_dma);
 	if (!prp_list) {
 		iod->first_dma = dma_addr;
 		iod->npages = -1;
-		return (total_len - length) + page_size;
+		return false;
 	}
 	list[0] = prp_list;
 	iod->first_dma = prp_dma;
@@ -783,9 +783,9 @@ static int nvme_setup_prps(struct nvme_dev *dev, struct nvme_iod *iod,
 	for (;;) {
 		if (i == page_size >> 3) {
 			__le64 *old_prp_list = prp_list;
-			prp_list = dma_pool_alloc(pool, gfp, &prp_dma);
+			prp_list = dma_pool_alloc(pool, GFP_ATOMIC, &prp_dma);
 			if (!prp_list)
-				return total_len - length;
+				return false;
 			list[iod->npages++] = prp_list;
 			prp_list[0] = old_prp_list[i - 1];
 			old_prp_list[i - 1] = cpu_to_le64(prp_dma);
@@ -805,7 +805,7 @@ static int nvme_setup_prps(struct nvme_dev *dev, struct nvme_iod *iod,
 		dma_len = sg_dma_len(sg);
 	}
 
-	return total_len;
+	return true;
 }
 
 static int nvme_map_data(struct nvme_dev *dev, struct nvme_iod *iod,
@@ -826,7 +826,7 @@ static int nvme_map_data(struct nvme_dev *dev, struct nvme_iod *iod,
 	if (!dma_map_sg(dev->dev, iod->sg, iod->nents, dma_dir))
 		goto out;
 
-	if (!nvme_setup_prps(dev, iod, blk_rq_bytes(req), GFP_ATOMIC))
+	if (!nvme_setup_prps(dev, iod, blk_rq_bytes(req)))
 		goto out_unmap;
 
 	ret = BLK_MQ_RQ_QUEUE_ERROR;
