@@ -628,7 +628,7 @@ static void req_completion(struct nvme_queue *nvmeq, void *ctx,
 			spin_unlock_irqrestore(req->q->queue_lock, flags);
 			goto release_iod;
 		}
-		if (req->cmd_type == REQ_TYPE_SPECIAL) {
+		if (req->cmd_type == REQ_TYPE_DRV_PRIV) {
 			if (cmd_rq->ctx == CMD_CTX_CANCELLED)
 				req->errors = -EINTR;
 			else
@@ -639,7 +639,7 @@ static void req_completion(struct nvme_queue *nvmeq, void *ctx,
 	} else
 		req->errors = 0;
 
-	if (req->cmd_type == REQ_TYPE_SPECIAL) {
+	if (req->cmd_type == REQ_TYPE_DRV_PRIV) {
 		u32 result = le32_to_cpup(&cqe->result);
 		req->special = (void *)(uintptr_t)result;
 	}
@@ -896,7 +896,7 @@ static int nvme_queue_rq(struct blk_mq_hw_ctx *hctx,
 	 */
 	if (ns && ns->ms && !blk_integrity_rq(req)) {
 		if (!(ns->pi_type && ns->ms == 8) &&
-					req->cmd_type != REQ_TYPE_SPECIAL) {
+					req->cmd_type != REQ_TYPE_DRV_PRIV) {
 			req->errors = -EFAULT;
 			blk_mq_complete_request(req);
 			return BLK_MQ_RQ_QUEUE_OK;
@@ -910,7 +910,7 @@ static int nvme_queue_rq(struct blk_mq_hw_ctx *hctx,
 	if (req->cmd_flags & REQ_DISCARD) {
 		ret = nvme_setup_discard(nvmeq, ns, iod, &cmnd);
 	} else {
-		if (req->cmd_type == REQ_TYPE_SPECIAL)
+		if (req->cmd_type == REQ_TYPE_DRV_PRIV)
 			memcpy(&cmnd, req->cmd, sizeof(cmnd));
 		else if (req->cmd_flags & REQ_FLUSH)
 			nvme_setup_flush(ns, &cmnd);
@@ -1015,7 +1015,7 @@ int __nvme_submit_sync_cmd(struct request_queue *q, struct nvme_command *cmd,
 	if (IS_ERR(req))
 		return PTR_ERR(req);
 
-	req->cmd_type = REQ_TYPE_SPECIAL;
+	req->cmd_type = REQ_TYPE_DRV_PRIV;
 	req->cmd_flags |= REQ_FAILFAST_DRIVER;
 	req->__data_len = 0;
 	req->__sector = (sector_t) -1;
