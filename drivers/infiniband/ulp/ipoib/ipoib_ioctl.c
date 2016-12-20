@@ -47,6 +47,11 @@ int ipoib_do_ioctl(struct net_device *dev, struct ifreq *ifr, int cmd)
 	struct ib_cm_acl *acl;
 	char *buf;
 
+	if (cmd < IPOIBSTATUSGET || cmd > IPOIBACLDEL) {
+		ipoib_dbg(priv, "invalid ioctl opcode 0x%x\n", cmd);
+		return -EOPNOTSUPP;
+	}
+
 	rc = copy_from_user(&req_data, rq->req_data,
 			    sizeof(struct ipoib_ioctl_req_data));
 	if (rc != 0) {
@@ -187,10 +192,6 @@ int ipoib_do_ioctl(struct net_device *dev, struct ifreq *ifr, int cmd)
 			ib_cm_acl_delete(acl, subnet_prefix, guid);
 			ib_cm_acl_delete(&priv->acl, subnet_prefix, guid);
 		}
-		break;
-	default:
-		ipoib_dbg(priv, "invalid ioctl opcode 0x%x\n", cmd);
-		rc = -EINVAL;
 		break;
 	}
 
