@@ -79,9 +79,9 @@ Summary: The Linux kernel
 # kernel-doc
 %define with_doc       1
 # kernel-headers
-%define with_headers   1
+%define with_headers   0
 # dtrace
-%define with_dtrace    1
+%define with_dtrace    0
 # kernel-firmware
 %define with_firmware  0
 # kernel-debuginfo
