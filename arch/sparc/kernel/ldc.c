@@ -1530,6 +1530,12 @@ void ldc_set_state(struct ldc_channel *lp, u8 state)
 }
 EXPORT_SYMBOL(ldc_set_state);
 
+int ldc_chan_state(struct ldc_channel *lp)
+{
+	return lp->chan_state;
+}
+EXPORT_SYMBOL(ldc_chan_state);
+
 int ldc_mode(struct ldc_channel *lp)
 {
 	return lp->cfg.mode;

@@ -78,6 +78,7 @@ int ldc_disconnect(struct ldc_channel *lp);
 
 int ldc_state(struct ldc_channel *lp);
 void ldc_set_state(struct ldc_channel *lp, u8 state);
+int ldc_chan_state(struct ldc_channel *lp);
 int ldc_mode(struct ldc_channel *lp);
 void ldc_print(struct ldc_channel *lp);
 int ldc_rx_reset(struct ldc_channel *lp);
