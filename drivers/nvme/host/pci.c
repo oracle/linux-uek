@@ -664,7 +664,7 @@ static void req_completion(struct nvme_queue *nvmeq, void *ctx,
 		}
 		if (req->cmd_type == REQ_TYPE_DRV_PRIV) {
 			if (cmd_rq->ctx == CMD_CTX_CANCELLED)
-				req->errors = -EINTR;
+				req->errors = NVME_SC_CANCELLED;
 			else
 				req->errors = status;
 		} else {
@@ -2354,12 +2354,9 @@ static int nvme_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	if (!dev->queues)
 		goto free;
 
-<<<<<<< HEAD
 	INIT_LIST_HEAD(&dev->ctrl.namespaces);
 	mutex_init(&dev->namespaces_mutex);
 	INIT_WORK(&dev->reset_work, nvme_reset_work);
-=======
->>>>>>> f3ca80f... nvme: move chardev and sysfs interface to common code
 	dev->dev = get_device(&pdev->dev);
 	pci_set_drvdata(pdev, dev);
 
