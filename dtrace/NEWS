@@ -1,6 +1,37 @@
 DTrace Kernel Modules News
 ==========================
 
+Release 0.6.0 (Dec 19th, 2016)
+------------------------------
+Kernel release: 4.1.12-81
+
+New features:
+
+ - Userspace tracepoints (USDT) now work on SPARC for both 64- and 32-bit
+   processes.
+
+ - The types and translators used by SDT probes are now acquired from the
+   DTRACE_PROBE macros in the kernel source.  New probe argument types and
+   translations are picked up automatically without needing to change the
+   module at all.  perf-event probe argument types are acquired in the
+   same way.
+
+ - The DTRACE_PROBEn() macros used for SDT probes have been supplanted by a
+   new DTRACE_PROBE() macro which works exactly the same except that you don't
+   need to count the arguments any more and misuses (args with no types, etc)
+   are diagnosed even when CONFIG_DTRACE is disabled.
+
+ - is-enabled probes are now supported for SDT: these are expressions which
+   always return false unless the specified probe is enabled, generally used
+   directly in if statements, and can be used to suppress collection of
+   expensive data only needed for probes until the probes that use them are
+   enabled:
+
+     if (DTRACE_PROBE_ENABLED(probename)) /* expensive stuff */
+
+   Per-provider wrappers for DTRACE_PROBE_ENABLED() can be used, as with
+   DTRACE_PROBE() itself.
+
 Release 0.5.3 (May 25th, 2016)
 ------------------------------
 Kernel release: 4.1.12-43.el6uek
