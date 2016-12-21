@@ -67,15 +67,7 @@
 #include <linux/userfaultfd.h>
 
 #ifndef __NR_userfaultfd
-#ifdef __x86_64__
-#define __NR_userfaultfd 323
-#elif defined(__i386__)
-#define __NR_userfaultfd 374
-#elif defined(__powewrpc__)
-#define __NR_userfaultfd 364
-#else
 #error "missing __NR_userfaultfd definition"
-#endif
 #endif
 
 static unsigned long nr_cpus, nr_pages, nr_pages_per_cpu, page_size;
