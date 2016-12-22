@@ -2076,6 +2076,27 @@ void sun4v_nonresum_error(struct pt_regs *regs, unsigned long offset)
 
 	put_cpu();
 
+	if (!(regs->tstate & TSTATE_PRIV)) {
+		/* DON'T PANIC.  This error was from userspace. */
+		siginfo_t info;
+		unsigned int insn;
+
+		info.si_signo = SIGBUS;
+		info.si_code = BUS_ADRERR;
+		info.si_errno = 0;
+		info.si_trapno = 0;
+		info.si_addr = 0;
+
+		if (!copy_from_user(&insn, (void __user *)regs->tpc, 4)) {
+			info.si_addr = (void __user *)
+				compute_effective_address(regs, insn,
+						(insn >> 25) & 0x1f);
+		}
+
+		force_sig_info(SIGBUS, &info, current);
+		return;
+	}
+
 #ifdef CONFIG_PCI
 	/* Check for the special PCI poke sequence. */
 	if (pci_poke_in_progress && pci_poke_cpu == cpu) {
