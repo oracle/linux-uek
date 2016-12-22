@@ -1533,7 +1533,7 @@ trace_page_fault_entries(unsigned long address, struct pt_regs *regs,
  *
  * exception_{enter,exit}() contains all sorts of tracepoints.
  */
-dotraplinkage void notrace
+dotraplinkage int notrace
 do_page_fault(struct pt_regs *regs, unsigned long error_code)
 {
 	unsigned long address = read_cr2(); /* Get the faulting address */
@@ -1545,5 +1545,6 @@ do_page_fault(struct pt_regs *regs, unsigned long error_code)
 
 	__do_page_fault(regs, error_code, address);
 	exception_exit(prev_state);
+	return 0;
 }
 NOKPROBE_SYMBOL(do_page_fault);
