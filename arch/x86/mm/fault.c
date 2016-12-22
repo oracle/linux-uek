@@ -1302,7 +1302,7 @@ good_area:
 }
 NOKPROBE_SYMBOL(__do_page_fault);
 
-dotraplinkage void notrace
+dotraplinkage int notrace
 do_page_fault(struct pt_regs *regs, unsigned long error_code)
 {
 	unsigned long address = read_cr2(); /* Get the faulting address */
@@ -1319,6 +1319,7 @@ do_page_fault(struct pt_regs *regs, unsigned long error_code)
 	prev_state = exception_enter();
 	__do_page_fault(regs, error_code, address);
 	exception_exit(prev_state);
+	return 0;
 }
 NOKPROBE_SYMBOL(do_page_fault);
 
@@ -1333,7 +1334,7 @@ trace_page_fault_entries(unsigned long address, struct pt_regs *regs,
 		trace_page_fault_kernel(address, regs, error_code);
 }
 
-dotraplinkage void notrace
+dotraplinkage int notrace
 trace_do_page_fault(struct pt_regs *regs, unsigned long error_code)
 {
 	/*
@@ -1349,6 +1350,7 @@ trace_do_page_fault(struct pt_regs *regs, unsigned long error_code)
 	trace_page_fault_entries(address, regs, error_code);
 	__do_page_fault(regs, error_code, address);
 	exception_exit(prev_state);
+	return 0;
 }
 NOKPROBE_SYMBOL(trace_do_page_fault);
 #endif /* CONFIG_TRACING */

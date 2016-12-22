@@ -286,26 +286,28 @@ do_trap(int trapnr, int signr, char *str, struct pt_regs *regs,
 }
 NOKPROBE_SYMBOL(do_trap);
 
-static void do_error_trap(struct pt_regs *regs, long error_code, char *str,
+static int do_error_trap(struct pt_regs *regs, long error_code, char *str,
 			  unsigned long trapnr, int signr)
 {
 	enum ctx_state prev_state = exception_enter();
 	siginfo_t info;
+	int ret;
 
-	if (notify_die(DIE_TRAP, str, regs, error_code, trapnr, signr) !=
-			NOTIFY_STOP) {
+	ret = notify_die(DIE_TRAP, str, regs, error_code, trapnr, signr);
+	if ((ret & NOTIFY_STOP_MASK) != NOTIFY_STOP_MASK) {
 		conditional_sti(regs);
 		do_trap(trapnr, signr, str, regs, error_code,
 			fill_trap_info(regs, signr, trapnr, &info));
 	}
 
 	exception_exit(prev_state);
+	return notifier_to_errno(ret);
 }
 
 #define DO_ERROR(trapnr, signr, str, name)				\
-dotraplinkage void do_##name(struct pt_regs *regs, long error_code)	\
+dotraplinkage int do_##name(struct pt_regs *regs, long error_code)	\
 {									\
-	do_error_trap(regs, error_code, str, trapnr, signr);		\
+	return do_error_trap(regs, error_code, str, trapnr, signr);	\
 }
 
 DO_ERROR(X86_TRAP_DE,     SIGFPE,  "divide error",		divide_error)
@@ -319,7 +321,7 @@ DO_ERROR(X86_TRAP_AC,     SIGBUS,  "alignment check",		alignment_check)
 
 #ifdef CONFIG_X86_64
 /* Runs on IST stack */
-dotraplinkage void do_double_fault(struct pt_regs *regs, long error_code)
+dotraplinkage int do_double_fault(struct pt_regs *regs, long error_code)
 {
 	static const char str[] = "double fault";
 	struct task_struct *tsk = current;
@@ -347,7 +349,7 @@ dotraplinkage void do_double_fault(struct pt_regs *regs, long error_code)
 		regs->ip = (unsigned long)general_protection;
 		regs->sp = (unsigned long)&normal_regs->orig_ax;
 
-		return;
+		return 0;
 	}
 #endif
 
@@ -366,10 +368,12 @@ dotraplinkage void do_double_fault(struct pt_regs *regs, long error_code)
 	 */
 	for (;;)
 		die(str, regs, error_code);
+
+	return 0;
 }
 #endif
 
-dotraplinkage void do_bounds(struct pt_regs *regs, long error_code)
+dotraplinkage int do_bounds(struct pt_regs *regs, long error_code)
 {
 	struct task_struct *tsk = current;
 	struct xsave_struct *xsave_buf;
@@ -439,7 +443,7 @@ dotraplinkage void do_bounds(struct pt_regs *regs, long error_code)
 
 exit:
 	exception_exit(prev_state);
-	return;
+	return 0;
 exit_trap:
 	/*
 	 * This path out is for all the cases where we could not
@@ -450,13 +454,15 @@ exit_trap:
 	 */
 	do_trap(X86_TRAP_BR, SIGSEGV, "bounds", regs, error_code, NULL);
 	exception_exit(prev_state);
+	return 0;
 }
 
-dotraplinkage void
+dotraplinkage int
 do_general_protection(struct pt_regs *regs, long error_code)
 {
 	struct task_struct *tsk;
 	enum ctx_state prev_state;
+	int ret = 0;
 
 	prev_state = exception_enter();
 	conditional_sti(regs);
@@ -474,8 +480,9 @@ do_general_protection(struct pt_regs *regs, long error_code)
 
 		tsk->thread.error_code = error_code;
 		tsk->thread.trap_nr = X86_TRAP_GP;
-		if (notify_die(DIE_GPF, "general protection fault", regs, error_code,
-			       X86_TRAP_GP, SIGSEGV) != NOTIFY_STOP)
+		ret = notify_die(DIE_GPF, "general protection fault", regs,
+					 error_code, X86_TRAP_GP, SIGSEGV);
+		if ((ret & NOTIFY_STOP_MASK) != NOTIFY_STOP_MASK)
 			die("general protection fault", regs, error_code);
 		goto exit;
 	}
@@ -495,13 +502,15 @@ do_general_protection(struct pt_regs *regs, long error_code)
 	force_sig_info(SIGSEGV, SEND_SIG_PRIV, tsk);
 exit:
 	exception_exit(prev_state);
+	return notifier_to_errno(ret);
 }
 NOKPROBE_SYMBOL(do_general_protection);
 
 /* May run on IST stack. */
-dotraplinkage void notrace do_int3(struct pt_regs *regs, long error_code)
+dotraplinkage int notrace do_int3(struct pt_regs *regs, long error_code)
 {
 	enum ctx_state prev_state;
+	int ret = 0;
 
 #ifdef CONFIG_DYNAMIC_FTRACE
 	/*
@@ -510,10 +519,10 @@ dotraplinkage void notrace do_int3(struct pt_regs *regs, long error_code)
 	 */
 	if (unlikely(atomic_read(&modifying_ftrace_code)) &&
 	    ftrace_int3_handler(regs))
-		return;
+		return 0;
 #endif
 	if (poke_int3_handler(regs))
-		return;
+		return 0;
 
 	prev_state = ist_enter(regs);
 #ifdef CONFIG_KGDB_LOW_LEVEL_TRAP
@@ -527,9 +536,12 @@ dotraplinkage void notrace do_int3(struct pt_regs *regs, long error_code)
 		goto exit;
 #endif
 
-	if (notify_die(DIE_INT3, "int3", regs, error_code, X86_TRAP_BP,
-			SIGTRAP) == NOTIFY_STOP)
+	ret = notify_die(DIE_INT3, "int3", regs, error_code, X86_TRAP_BP,
+			 SIGTRAP);
+	if ((ret & NOTIFY_STOP_MASK) == NOTIFY_STOP_MASK) {
+		ret = notifier_to_errno(ret);
 		goto exit;
+	}
 
 	/*
 	 * Let others (NMI) know that the debug stack is in use
@@ -542,6 +554,7 @@ dotraplinkage void notrace do_int3(struct pt_regs *regs, long error_code)
 	debug_stack_usage_dec();
 exit:
 	ist_exit(regs, prev_state);
+	return ret;
 }
 NOKPROBE_SYMBOL(do_int3);
 
@@ -614,7 +627,7 @@ NOKPROBE_SYMBOL(fixup_bad_iret);
  *
  * May run on IST stack.
  */
-dotraplinkage void do_debug(struct pt_regs *regs, long error_code)
+dotraplinkage int do_debug(struct pt_regs *regs, long error_code)
 {
 	struct task_struct *tsk = current;
 	enum ctx_state prev_state;
@@ -698,6 +711,7 @@ dotraplinkage void do_debug(struct pt_regs *regs, long error_code)
 
 exit:
 	ist_exit(regs, prev_state);
+	return 0;
 }
 NOKPROBE_SYMBOL(do_debug);
 
@@ -790,16 +804,17 @@ static void math_error(struct pt_regs *regs, int error_code, int trapnr)
 	force_sig_info(SIGFPE, &info, task);
 }
 
-dotraplinkage void do_coprocessor_error(struct pt_regs *regs, long error_code)
+dotraplinkage int do_coprocessor_error(struct pt_regs *regs, long error_code)
 {
 	enum ctx_state prev_state;
 
 	prev_state = exception_enter();
 	math_error(regs, error_code, X86_TRAP_MF);
 	exception_exit(prev_state);
+	return 0;
 }
 
-dotraplinkage void
+dotraplinkage int
 do_simd_coprocessor_error(struct pt_regs *regs, long error_code)
 {
 	enum ctx_state prev_state;
@@ -807,9 +822,10 @@ do_simd_coprocessor_error(struct pt_regs *regs, long error_code)
 	prev_state = exception_enter();
 	math_error(regs, error_code, X86_TRAP_XF);
 	exception_exit(prev_state);
+	return 0;
 }
 
-dotraplinkage void
+dotraplinkage int
 do_spurious_interrupt_bug(struct pt_regs *regs, long error_code)
 {
 	conditional_sti(regs);
@@ -817,6 +833,7 @@ do_spurious_interrupt_bug(struct pt_regs *regs, long error_code)
 	/* No need to warn about this any longer. */
 	pr_info("Ignoring P6 Local APIC Spurious Interrupt Bug...\n");
 #endif
+	return 0;
 }
 
 asmlinkage __visible void __attribute__((weak)) smp_thermal_interrupt(void)
@@ -869,7 +886,7 @@ void math_state_restore(void)
 }
 EXPORT_SYMBOL_GPL(math_state_restore);
 
-dotraplinkage void
+dotraplinkage int
 do_device_not_available(struct pt_regs *regs, long error_code)
 {
 	enum ctx_state prev_state;
@@ -886,7 +903,7 @@ do_device_not_available(struct pt_regs *regs, long error_code)
 		info.regs = regs;
 		math_emulate(&info);
 		exception_exit(prev_state);
-		return;
+		return 0;
 	}
 #endif
 	math_state_restore(); /* interrupts still off */
@@ -894,6 +911,7 @@ do_device_not_available(struct pt_regs *regs, long error_code)
 	conditional_sti(regs);
 #endif
 	exception_exit(prev_state);
+	return 0;
 }
 NOKPROBE_SYMBOL(do_device_not_available);
 
