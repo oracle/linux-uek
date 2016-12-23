@@ -100,7 +100,7 @@ static ssize_t lio_target_np_store_sctp(
 		 * Use existing np->np_sockaddr for SCTP network portal reference
 		 */
 		tpg_np_sctp = iscsit_tpg_add_network_portal(tpg, &np->np_sockaddr,
-					np->np_ip, tpg_np, ISCSI_SCTP_TCP);
+					tpg_np, ISCSI_SCTP_TCP);
 		if (!tpg_np_sctp || IS_ERR(tpg_np_sctp))
 			goto out;
 	} else {
@@ -178,7 +178,7 @@ static ssize_t lio_target_np_store_iser(
 		}
 
 		tpg_np_iser = iscsit_tpg_add_network_portal(tpg, &np->np_sockaddr,
-				np->np_ip, tpg_np, ISCSI_INFINIBAND);
+				tpg_np, ISCSI_INFINIBAND);
 		if (IS_ERR(tpg_np_iser)) {
 			rc = PTR_ERR(tpg_np_iser);
 			goto out;
@@ -249,8 +249,8 @@ static struct se_tpg_np *lio_target_call_addnptotpg(
 			return ERR_PTR(-EINVAL);
 		}
 		str++; /* Skip over leading "[" */
-		*str2 = '\0'; /* Terminate the IPv6 address */
-		str2++; /* Skip over the "]" */
+		*str2 = '\0'; /* Terminate the unbracketed IPv6 address */
+		str2++; /* Skip over the \0 */
 		port_str = strstr(str2, ":");
 		if (!port_str) {
 			pr_err("Unable to locate \":port\""
@@ -317,7 +317,7 @@ static struct se_tpg_np *lio_target_call_addnptotpg(
 	 * sys/kernel/config/iscsi/$IQN/$TPG/np/$IP:$PORT/
 	 *
 	 */
-	tpg_np = iscsit_tpg_add_network_portal(tpg, &sockaddr, str, NULL,
+	tpg_np = iscsit_tpg_add_network_portal(tpg, &sockaddr, NULL,
 				ISCSI_TCP);
 	if (IS_ERR(tpg_np)) {
 		iscsit_put_tpg(tpg);
@@ -345,8 +345,8 @@ static void lio_target_call_delnpfromtpg(
 
 	se_tpg = &tpg->tpg_se_tpg;
 	pr_debug("LIO_Target_ConfigFS: DEREGISTER -> %s TPGT: %hu"
-		" PORTAL: %s:%hu\n", config_item_name(&se_tpg->se_tpg_wwn->wwn_group.cg_item),
-		tpg->tpgt, tpg_np->tpg_np->np_ip, tpg_np->tpg_np->np_port);
+		" PORTAL: %pISc:%hu\n", config_item_name(&se_tpg->se_tpg_wwn->wwn_group.cg_item),
+		tpg->tpgt, &tpg_np->tpg_np->np_sockaddr, tpg_np->tpg_np->np_port);
 
 	ret = iscsit_tpg_del_network_portal(tpg, tpg_np);
 	if (ret < 0)
@@ -1907,7 +1907,8 @@ static void lio_tpg_release_fabric_acl(
 }
 
 /*
- * Called with spin_lock_bh(struct se_portal_group->session_lock) held..
+ * Called with spin_lock_irq(struct se_portal_group->session_lock) held
+ * or not held.
  *
  * Also, this function calls iscsit_inc_session_usage_count() on the
  * struct iscsi_session in question.
@@ -1915,19 +1916,32 @@ static void lio_tpg_release_fabric_acl(
 static int lio_tpg_shutdown_session(struct se_session *se_sess)
 {
 	struct iscsi_session *sess = se_sess->fabric_sess_ptr;
+	struct se_portal_group *se_tpg = se_sess->se_tpg;
+	bool local_lock = false;
+
+	if (!spin_is_locked(&se_tpg->session_lock)) {
+		spin_lock_irq(&se_tpg->session_lock);
+		local_lock = true;
+	}
 
 	spin_lock(&sess->conn_lock);
 	if (atomic_read(&sess->session_fall_back_to_erl0) ||
 	    atomic_read(&sess->session_logout) ||
 	    (sess->time2retain_timer_flags & ISCSI_TF_EXPIRED)) {
 		spin_unlock(&sess->conn_lock);
+		if (local_lock)
+			spin_unlock_irq(&sess->conn_lock);
 		return 0;
 	}
 	atomic_set(&sess->session_reinstatement, 1);
 	spin_unlock(&sess->conn_lock);
 
 	iscsit_stop_time2retain_timer(sess);
+	spin_unlock_irq(&se_tpg->session_lock);
+
 	iscsit_stop_session(sess, 1, 1);
+	if (!local_lock)
+		spin_lock_irq(&se_tpg->session_lock);
 
 	return 1;
 }
@@ -1967,7 +1981,7 @@ static void lio_set_default_node_attributes(struct se_node_acl *se_acl)
 
 static int lio_check_stop_free(struct se_cmd *se_cmd)
 {
-	return target_put_sess_cmd(se_cmd->se_sess, se_cmd);
+	return target_put_sess_cmd(se_cmd);
 }
 
 static void lio_release_cmd(struct se_cmd *se_cmd)

@@ -143,6 +143,11 @@ static inline int apic_x2apic_mode(struct kvm_lapic *apic)
 	return apic->vcpu->arch.apic_base & X2APIC_ENABLE;
 }
 
+static inline bool kvm_vcpu_apicv_active(struct kvm_vcpu *vcpu)
+{
+         return vcpu->arch.apic && vcpu->arch.apicv_active;
+}
+
 static inline bool kvm_apic_vid_enabled(struct kvm *kvm)
 {
 	return kvm_x86_ops->vm_has_apicv(kvm);
@@ -150,7 +155,7 @@ static inline bool kvm_apic_vid_enabled(struct kvm *kvm)
 
 static inline bool kvm_apic_has_events(struct kvm_vcpu *vcpu)
 {
-	return vcpu->arch.apic->pending_events;
+	return kvm_vcpu_has_lapic(vcpu) && vcpu->arch.apic->pending_events;
 }
 
 bool kvm_apic_pending_eoi(struct kvm_vcpu *vcpu, int vector);

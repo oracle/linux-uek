@@ -160,6 +160,7 @@ struct dentry_operations {
 	char *(*d_dname)(struct dentry *, char *, int);
 	struct vfsmount *(*d_automount)(struct path *);
 	int (*d_manage)(struct dentry *, bool);
+	struct inode *(*d_select_inode)(struct dentry *, unsigned);
 } ____cacheline_aligned;
 
 /*
@@ -225,6 +226,7 @@ struct dentry_operations {
 
 #define DCACHE_MAY_FREE			0x00800000
 #define DCACHE_FALLTHRU			0x01000000 /* Fall through to lower layer */
+#define DCACHE_OP_SELECT_INODE		0x02000000 /* Unioned entry: dcache op selects inode */
 
 extern seqlock_t rename_lock;
 
@@ -406,9 +408,7 @@ static inline bool d_mountpoint(const struct dentry *dentry)
  */
 static inline unsigned __d_entry_type(const struct dentry *dentry)
 {
-	unsigned type = READ_ONCE(dentry->d_flags);
-	smp_rmb();
-	return type & DCACHE_ENTRY_TYPE;
+	return dentry->d_flags & DCACHE_ENTRY_TYPE;
 }
 
 static inline bool d_is_miss(const struct dentry *dentry)
@@ -575,5 +575,17 @@ static inline struct dentry *d_backing_dentry(struct dentry *upper)
 {
 	return upper;
 }
+
+static inline struct inode *vfs_select_inode(struct dentry *dentry,
+                                            unsigned open_flags)
+{
+	struct inode *inode = d_inode(dentry);
+
+	if (inode && unlikely(dentry->d_flags & DCACHE_OP_SELECT_INODE))
+		inode = dentry->d_op->d_select_inode(dentry, open_flags);
+
+	return inode;
+}
+
 
 #endif	/* __LINUX_DCACHE_H */

@@ -2080,6 +2080,14 @@ static int resize_chunks(struct r5conf *conf, int new_disks, int new_sectors)
 	unsigned long cpu;
 	int err = 0;
 
+	/*
+	 * Never shrink. And mddev_suspend() could deadlock if this is called
+	 * from raid5d. In that case, scribble_disks and scribble_sectors
+	 * should equal to new_disks and new_sectors
+	 */
+	if (conf->scribble_disks >= new_disks &&
+	    conf->scribble_sectors >= new_sectors)
+		return 0;
 	mddev_suspend(conf->mddev);
 	get_online_cpus();
 	for_each_present_cpu(cpu) {
@@ -2101,6 +2109,10 @@ static int resize_chunks(struct r5conf *conf, int new_disks, int new_sectors)
 	}
 	put_online_cpus();
 	mddev_resume(conf->mddev);
+	if (!err) {
+		conf->scribble_disks = new_disks;
+		conf->scribble_sectors = new_sectors;
+	}
 	return err;
 }
 
@@ -2151,6 +2163,9 @@ static int resize_stripes(struct r5conf *conf, int newsize)
 	if (!sc)
 		return -ENOMEM;
 
+	/* Need to ensure auto-resizing doesn't interfere */
+	mutex_lock(&conf->cache_size_mutex);
+
 	for (i = conf->max_nr_stripes; i; i--) {
 		nsh = alloc_stripe(sc, GFP_KERNEL);
 		if (!nsh)
@@ -2167,6 +2182,7 @@ static int resize_stripes(struct r5conf *conf, int newsize)
 			kmem_cache_free(sc, nsh);
 		}
 		kmem_cache_destroy(sc);
+		mutex_unlock(&conf->cache_size_mutex);
 		return -ENOMEM;
 	}
 	/* Step 2 - Must use GFP_NOIO now.
@@ -2213,6 +2229,7 @@ static int resize_stripes(struct r5conf *conf, int newsize)
 	} else
 		err = -ENOMEM;
 
+	mutex_unlock(&conf->cache_size_mutex);
 	/* Step 4, return new stripes to service */
 	while(!list_empty(&newstripes)) {
 		nsh = list_entry(newstripes.next, struct stripe_head, lru);
@@ -2240,7 +2257,7 @@ static int resize_stripes(struct r5conf *conf, int newsize)
 static int drop_one_stripe(struct r5conf *conf)
 {
 	struct stripe_head *sh;
-	int hash = (conf->max_nr_stripes - 1) % NR_STRIPE_HASH_LOCKS;
+	int hash = (conf->max_nr_stripes - 1) & STRIPE_HASH_LOCKS_MASK;
 
 	spin_lock_irq(conf->hash_locks + hash);
 	sh = get_free_stripe(conf, hash);
@@ -3489,6 +3506,7 @@ returnbi:
 		}
 	if (!discard_pending &&
 	    test_bit(R5_Discard, &sh->dev[sh->pd_idx].flags)) {
+		int hash;
 		clear_bit(R5_Discard, &sh->dev[sh->pd_idx].flags);
 		clear_bit(R5_UPTODATE, &sh->dev[sh->pd_idx].flags);
 		if (sh->qd_idx >= 0) {
@@ -3502,16 +3520,17 @@ returnbi:
 		 * no updated data, so remove it from hash list and the stripe
 		 * will be reinitialized
 		 */
-		spin_lock_irq(&conf->device_lock);
 unhash:
+		hash = sh->hash_lock_index;
+		spin_lock_irq(conf->hash_locks + hash);
 		remove_hash(sh);
+		spin_unlock_irq(conf->hash_locks + hash);
 		if (head_sh->batch_head) {
 			sh = list_first_entry(&sh->batch_list,
 					      struct stripe_head, batch_list);
 			if (sh != head_sh)
 					goto unhash;
 		}
-		spin_unlock_irq(&conf->device_lock);
 		sh = head_sh;
 
 		if (test_bit(STRIPE_SYNC_REQUESTED, &sh->state))
@@ -4213,7 +4232,6 @@ static void break_stripe_batch_list(struct stripe_head *head_sh,
 		WARN_ON_ONCE(sh->state & ((1 << STRIPE_ACTIVE) |
 					  (1 << STRIPE_SYNCING) |
 					  (1 << STRIPE_REPLACED) |
-					  (1 << STRIPE_PREREAD_ACTIVE) |
 					  (1 << STRIPE_DELAYED) |
 					  (1 << STRIPE_BIT_DELAY) |
 					  (1 << STRIPE_FULL_WRITE) |
@@ -4228,6 +4246,7 @@ static void break_stripe_batch_list(struct stripe_head *head_sh,
 					      (1 << STRIPE_REPLACED)));
 
 		set_mask_bits(&sh->state, ~(STRIPE_EXPAND_SYNC_FLAGS |
+					    (1 << STRIPE_PREREAD_ACTIVE) |
 					    (1 << STRIPE_DEGRADED)),
 			      head_sh->state & (1 << STRIPE_INSYNC));
 
@@ -5846,12 +5865,14 @@ static void raid5d(struct md_thread *thread)
 	pr_debug("%d stripes handled\n", handled);
 
 	spin_unlock_irq(&conf->device_lock);
-	if (test_and_clear_bit(R5_ALLOC_MORE, &conf->cache_state)) {
+	if (test_and_clear_bit(R5_ALLOC_MORE, &conf->cache_state) &&
+	    mutex_trylock(&conf->cache_size_mutex)) {
 		grow_one_stripe(conf, __GFP_NOWARN);
 		/* Set flag even if allocation failed.  This helps
 		 * slow down allocation requests when mem is short
 		 */
 		set_bit(R5_DID_ALLOC, &conf->cache_state);
+		mutex_unlock(&conf->cache_size_mutex);
 	}
 
 	async_tx_issue_pending_all();
@@ -5883,18 +5904,22 @@ raid5_set_cache_size(struct mddev *mddev, int size)
 		return -EINVAL;
 
 	conf->min_nr_stripes = size;
+	mutex_lock(&conf->cache_size_mutex);
 	while (size < conf->max_nr_stripes &&
 	       drop_one_stripe(conf))
 		;
+	mutex_unlock(&conf->cache_size_mutex);
 
 
 	err = md_allow_write(mddev);
 	if (err)
 		return err;
 
+	mutex_lock(&conf->cache_size_mutex);
 	while (size > conf->max_nr_stripes)
 		if (!grow_one_stripe(conf, GFP_KERNEL))
 			break;
+	mutex_unlock(&conf->cache_size_mutex);
 
 	return 0;
 }
@@ -6353,6 +6378,12 @@ static int raid5_alloc_percpu(struct r5conf *conf)
 	}
 	put_online_cpus();
 
+	if (!err) {
+		conf->scribble_disks = max(conf->raid_disks,
+			conf->previous_raid_disks);
+		conf->scribble_sectors = max(conf->chunk_sectors,
+			conf->prev_chunk_sectors);
+	}
 	return err;
 }
 
@@ -6360,11 +6391,19 @@ static unsigned long raid5_cache_scan(struct shrinker *shrink,
 				      struct shrink_control *sc)
 {
 	struct r5conf *conf = container_of(shrink, struct r5conf, shrinker);
-	int ret = 0;
-	while (ret < sc->nr_to_scan) {
-		if (drop_one_stripe(conf) == 0)
-			return SHRINK_STOP;
-		ret++;
+	unsigned long ret = SHRINK_STOP;
+
+	if (mutex_trylock(&conf->cache_size_mutex)) {
+		ret= 0;
+		while (ret < sc->nr_to_scan &&
+		       conf->max_nr_stripes > conf->min_nr_stripes) {
+			if (drop_one_stripe(conf) == 0) {
+				ret = SHRINK_STOP;
+				break;
+			}
+			ret++;
+		}
+		mutex_unlock(&conf->cache_size_mutex);
 	}
 	return ret;
 }
@@ -6433,6 +6472,7 @@ static struct r5conf *setup_conf(struct mddev *mddev)
 		goto abort;
 	spin_lock_init(&conf->device_lock);
 	seqcount_init(&conf->gen_lock);
+	mutex_init(&conf->cache_size_mutex);
 	init_waitqueue_head(&conf->wait_for_stripe);
 	init_waitqueue_head(&conf->wait_for_overlap);
 	INIT_LIST_HEAD(&conf->handle_list);
@@ -6920,8 +6960,8 @@ static int run(struct mddev *mddev)
 		}
 
 		if (discard_supported &&
-		   mddev->queue->limits.max_discard_sectors >= stripe &&
-		   mddev->queue->limits.discard_granularity >= stripe)
+		    mddev->queue->limits.max_discard_sectors >= (stripe >> 9) &&
+		    mddev->queue->limits.discard_granularity >= stripe)
 			queue_flag_set_unlocked(QUEUE_FLAG_DISCARD,
 						mddev->queue);
 		else

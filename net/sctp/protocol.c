@@ -60,6 +60,8 @@
 #include <net/inet_common.h>
 #include <net/inet_ecn.h>
 
+#define MAX_SCTP_PORT_HASH_ENTRIES (64 * 1024)
+
 /* Global data structures. */
 struct sctp_globals sctp_globals __read_mostly;
 
@@ -1166,7 +1168,7 @@ static void sctp_v4_del_protocol(void)
 	unregister_inetaddr_notifier(&sctp_inetaddr_notifier);
 }
 
-static int __net_init sctp_net_init(struct net *net)
+static int __net_init sctp_defaults_init(struct net *net)
 {
 	int status;
 
@@ -1259,12 +1261,6 @@ static int __net_init sctp_net_init(struct net *net)
 
 	sctp_dbg_objcnt_init(net);
 
-	/* Initialize the control inode/socket for handling OOTB packets.  */
-	if ((status = sctp_ctl_sock_init(net))) {
-		pr_err("Failed to initialize the SCTP control sock\n");
-		goto err_ctl_sock_init;
-	}
-
 	/* Initialize the local address list. */
 	INIT_LIST_HEAD(&net->sctp.local_addr_list);
 	spin_lock_init(&net->sctp.local_addr_lock);
@@ -1280,9 +1276,6 @@ static int __net_init sctp_net_init(struct net *net)
 
 	return 0;
 
-err_ctl_sock_init:
-	sctp_dbg_objcnt_exit(net);
-	sctp_proc_exit(net);
 err_init_proc:
 	cleanup_sctp_mibs(net);
 err_init_mibs:
@@ -1291,14 +1284,11 @@ err_sysctl_register:
 	return status;
 }
 
-static void __net_exit sctp_net_exit(struct net *net)
+static void __net_exit sctp_defaults_exit(struct net *net)
 {
 	/* Free the local address list */
 	sctp_free_addr_wq(net);
 	sctp_free_local_addr_list(net);
-
-	/* Free the control endpoint.  */
-	inet_ctl_sock_destroy(net->sctp.ctl_sock);
 
 	sctp_dbg_objcnt_exit(net);
 
@@ -1307,9 +1297,32 @@ static void __net_exit sctp_net_exit(struct net *net)
 	sctp_sysctl_net_unregister(net);
 }
 
-static struct pernet_operations sctp_net_ops = {
-	.init = sctp_net_init,
-	.exit = sctp_net_exit,
+static struct pernet_operations sctp_defaults_ops = {
+	.init = sctp_defaults_init,
+	.exit = sctp_defaults_exit,
+};
+
+static int __net_init sctp_ctrlsock_init(struct net *net)
+{
+	int status;
+
+	/* Initialize the control inode/socket for handling OOTB packets.  */
+	status = sctp_ctl_sock_init(net);
+	if (status)
+		pr_err("Failed to initialize the SCTP control sock\n");
+
+	return status;
+}
+
+static void __net_init sctp_ctrlsock_exit(struct net *net)
+{
+	/* Free the control endpoint.  */
+	inet_ctl_sock_destroy(net->sctp.ctl_sock);
+}
+
+static struct pernet_operations sctp_ctrlsock_ops = {
+	.init = sctp_ctrlsock_init,
+	.exit = sctp_ctrlsock_exit,
 };
 
 /* Initialize the universe into something sensible.  */
@@ -1321,6 +1334,8 @@ static __init int sctp_init(void)
 	unsigned long limit;
 	int max_share;
 	int order;
+	int num_entries;
+	int max_entry_order;
 
 	sock_skb_cb_check_size(sizeof(struct sctp_ulpevent));
 
@@ -1373,14 +1388,24 @@ static __init int sctp_init(void)
 
 	/* Size and allocate the association hash table.
 	 * The methodology is similar to that of the tcp hash tables.
+	 * Though not identical.  Start by getting a goal size
 	 */
 	if (totalram_pages >= (128 * 1024))
 		goal = totalram_pages >> (22 - PAGE_SHIFT);
 	else
 		goal = totalram_pages >> (24 - PAGE_SHIFT);
 
-	for (order = 0; (1UL << order) < goal; order++)
-		;
+	/* Then compute the page order for said goal */
+	order = get_order(goal);
+
+	/* Now compute the required page order for the maximum sized table we
+	 * want to create
+	 */
+	max_entry_order = get_order(MAX_SCTP_PORT_HASH_ENTRIES *
+				    sizeof(struct sctp_bind_hashbucket));
+
+	/* Limit the page order by that maximum hash table size */
+	order = min(order, max_entry_order);
 
 	do {
 		sctp_assoc_hashsize = (1UL << order) * PAGE_SIZE /
@@ -1414,27 +1439,42 @@ static __init int sctp_init(void)
 		INIT_HLIST_HEAD(&sctp_ep_hashtable[i].chain);
 	}
 
-	/* Allocate and initialize the SCTP port hash table.  */
+	/* Allocate and initialize the SCTP port hash table.
+	 * Note that order is initalized to start at the max sized
+	 * table we want to support.  If we can't get that many pages
+	 * reduce the order and try again
+	 */
 	do {
-		sctp_port_hashsize = (1UL << order) * PAGE_SIZE /
-					sizeof(struct sctp_bind_hashbucket);
-		if ((sctp_port_hashsize > (64 * 1024)) && order > 0)
-			continue;
 		sctp_port_hashtable = (struct sctp_bind_hashbucket *)
 			__get_free_pages(GFP_ATOMIC|__GFP_NOWARN, order);
 	} while (!sctp_port_hashtable && --order > 0);
+
 	if (!sctp_port_hashtable) {
 		pr_err("Failed bind hash alloc\n");
 		status = -ENOMEM;
 		goto err_bhash_alloc;
 	}
+
+	/* Now compute the number of entries that will fit in the
+	 * port hash space we allocated
+	 */
+	num_entries = (1UL << order) * PAGE_SIZE /
+		      sizeof(struct sctp_bind_hashbucket);
+
+	/* And finish by rounding it down to the nearest power of two
+	 * this wastes some memory of course, but its needed because
+	 * the hash function operates based on the assumption that
+	 * that the number of entries is a power of two
+	 */
+	sctp_port_hashsize = rounddown_pow_of_two(num_entries);
+
 	for (i = 0; i < sctp_port_hashsize; i++) {
 		spin_lock_init(&sctp_port_hashtable[i].lock);
 		INIT_HLIST_HEAD(&sctp_port_hashtable[i].chain);
 	}
 
-	pr_info("Hash tables configured (established %d bind %d)\n",
-		sctp_assoc_hashsize, sctp_port_hashsize);
+	pr_info("Hash tables configured (established %d bind %d/%d)\n",
+		sctp_assoc_hashsize, sctp_port_hashsize, num_entries);
 
 	sctp_sysctl_register();
 
@@ -1442,8 +1482,11 @@ static __init int sctp_init(void)
 	sctp_v4_pf_init();
 	sctp_v6_pf_init();
 
-	status = sctp_v4_protosw_init();
+	status = register_pernet_subsys(&sctp_defaults_ops);
+	if (status)
+		goto err_register_defaults;
 
+	status = sctp_v4_protosw_init();
 	if (status)
 		goto err_protosw_init;
 
@@ -1451,9 +1494,9 @@ static __init int sctp_init(void)
 	if (status)
 		goto err_v6_protosw_init;
 
-	status = register_pernet_subsys(&sctp_net_ops);
+	status = register_pernet_subsys(&sctp_ctrlsock_ops);
 	if (status)
-		goto err_register_pernet_subsys;
+		goto err_register_ctrlsock;
 
 	status = sctp_v4_add_protocol();
 	if (status)
@@ -1469,12 +1512,14 @@ out:
 err_v6_add_protocol:
 	sctp_v4_del_protocol();
 err_add_protocol:
-	unregister_pernet_subsys(&sctp_net_ops);
-err_register_pernet_subsys:
+	unregister_pernet_subsys(&sctp_ctrlsock_ops);
+err_register_ctrlsock:
 	sctp_v6_protosw_exit();
 err_v6_protosw_init:
 	sctp_v4_protosw_exit();
 err_protosw_init:
+	unregister_pernet_subsys(&sctp_defaults_ops);
+err_register_defaults:
 	sctp_v4_pf_exit();
 	sctp_v6_pf_exit();
 	sctp_sysctl_unregister();
@@ -1507,11 +1552,13 @@ static __exit void sctp_exit(void)
 	sctp_v6_del_protocol();
 	sctp_v4_del_protocol();
 
-	unregister_pernet_subsys(&sctp_net_ops);
+	unregister_pernet_subsys(&sctp_ctrlsock_ops);
 
 	/* Free protosw registrations */
 	sctp_v6_protosw_exit();
 	sctp_v4_protosw_exit();
+
+	unregister_pernet_subsys(&sctp_defaults_ops);
 
 	/* Unregister with socket layer. */
 	sctp_v6_pf_exit();

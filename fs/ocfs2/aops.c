@@ -686,7 +686,7 @@ static int ocfs2_direct_IO_zero_extend(struct ocfs2_super *osb,
 
 	if (p_cpos && !(ext_flags & OCFS2_EXT_UNWRITTEN)) {
 		u64 s = i_size_read(inode);
-		sector_t sector = (p_cpos << (osb->s_clustersize_bits - 9)) +
+		sector_t sector = ((u64)p_cpos << (osb->s_clustersize_bits - 9)) +
 			(do_div(s, osb->s_clustersize) >> 9);
 
 		ret = blkdev_issue_zeroout(osb->sb->s_bdev, sector,
@@ -911,7 +911,7 @@ static ssize_t ocfs2_direct_IO_write(struct kiocb *iocb,
 		BUG_ON(!p_cpos || (ext_flags & OCFS2_EXT_UNWRITTEN));
 
 		ret = blkdev_issue_zeroout(osb->sb->s_bdev,
-				p_cpos << (osb->s_clustersize_bits - 9),
+				(u64)p_cpos << (osb->s_clustersize_bits - 9),
 				zero_len_head >> 9, GFP_NOFS, false);
 		if (ret < 0)
 			mlog_errno(ret);
@@ -2235,6 +2235,16 @@ out_commit:
 	ocfs2_commit_trans(osb, handle);
 
 out:
+	/*
+	 * The mmapped page won't be unlocked in ocfs2_free_write_ctxt(),
+	 * even in case of error here like ENOSPC and ENOMEM. So, we need
+	 * to unlock the target page manually to prevent deadlocks when
+	 * retrying again on ENOSPC, or when returning non-VM_FAULT_LOCKED
+	 * to VM code.
+	 */
+	if (wc->w_target_locked)
+		unlock_page(mmap_page);
+
 	ocfs2_free_write_ctxt(wc);
 
 	if (data_ac) {

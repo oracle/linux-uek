@@ -3384,12 +3384,14 @@ static void rocker_port_fdb_learn_work(struct work_struct *work)
 	info.addr = lw->addr;
 	info.vid = lw->vid;
 
+	rtnl_lock();
 	if (learned && removing)
 		call_netdev_switch_notifiers(NETDEV_SWITCH_FDB_DEL,
 					     lw->dev, &info.info);
 	else if (learned && !removing)
 		call_netdev_switch_notifiers(NETDEV_SWITCH_FDB_ADD,
 					     lw->dev, &info.info);
+	rtnl_unlock();
 
 	kfree(work);
 }
@@ -4587,6 +4589,7 @@ static void rocker_remove_ports(struct rocker *rocker)
 		rocker_port = rocker->ports[i];
 		rocker_port_ig_tbl(rocker_port, ROCKER_OP_FLAG_REMOVE);
 		unregister_netdev(rocker_port->dev);
+		free_netdev(rocker_port->dev);
 	}
 	kfree(rocker->ports);
 }

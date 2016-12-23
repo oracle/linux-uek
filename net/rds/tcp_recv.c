@@ -207,15 +207,14 @@ static int rds_tcp_data_recv(read_descriptor_t *desc, struct sk_buff *skb,
 		}
 
 		if (left && tc->t_tinc_data_rem) {
-			clone = skb_clone(skb, arg->gfp);
+			to_copy = min(tc->t_tinc_data_rem, left);
+
+			clone = pskb_extract(skb, offset, to_copy, arg->gfp);
 			if (!clone) {
 				desc->error = -ENOMEM;
 				goto out;
 			}
 
-			to_copy = min(tc->t_tinc_data_rem, left);
-			pskb_pull(clone, offset);
-			pskb_trim(clone, to_copy);
 			skb_queue_tail(&tinc->ti_skb_list, clone);
 
 			rdsdebug("skb %p data %p len %d off %u to_copy %zu -> "
