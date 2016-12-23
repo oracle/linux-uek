@@ -413,14 +413,6 @@ static void blk_mq_sysfs_init(struct request_queue *q)
 		kobject_init(&ctx->kobj, &blk_mq_ctx_ktype);
 }
 
-/* see blk_register_queue() */
-void blk_mq_finish_init(struct request_queue *q)
-{
-	mutex_lock(&q->mq_freeze_lock);
-	percpu_ref_switch_to_percpu(&q->mq_usage_counter);
-	mutex_unlock(&q->mq_freeze_lock);
-}
-
 int blk_mq_register_disk(struct gendisk *disk)
 {
 	struct device *dev = disk_to_dev(disk);
