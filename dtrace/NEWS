@@ -32,6 +32,16 @@ New features:
    Per-provider wrappers for DTRACE_PROBE_ENABLED() can be used, as with
    DTRACE_PROBE() itself.
 
+ - Function boundary tracing (FBT) is supported in a limited fashion.  For
+   now, it is limited to the entry point functions for system calls.  This
+   limitation will be lifted as soon as possible.
+
+Bugfixes:
+
+ - Due to a logic error in preemption handling, it was possible that code was
+   being executed under the assumption that preemption was disabled when in
+   fact it was not.
+
 Release 0.5.3 (May 25th, 2016)
 ------------------------------
 Kernel release: 4.1.12-43.el6uek
