@@ -130,6 +130,7 @@ rm -rf %{buildroot}
 * Mon Dec 19 2016 - <nick.alcock@oracle.com> - 0.6.0-1
 - USDT for SPARC. [Orabug: 24455245]
 - Is-enabled probes for SDT [Orabug: 25143173]
+- Function boundary tracing (FBT) [Orabug: 21220305]
 - Add improved multi-argument DTRACE_PROBE macro [Orabug: 24678897]
 - Detemine SDT (including perf-event) argument types dynamically
   [Orabug: 24661801]
