@@ -744,7 +744,10 @@ static int nvme_queue_rq(struct blk_mq_hw_ctx *hctx,
 
 	spin_lock_irq(&nvmeq->q_lock);
 	if (unlikely(nvmeq->cq_vector < 0)) {
-		ret = BLK_MQ_RQ_QUEUE_BUSY;
+		if (ns && !test_bit(NVME_NS_DEAD, &ns->flags))
+			ret = BLK_MQ_RQ_QUEUE_BUSY;
+		else
+			ret = BLK_MQ_RQ_QUEUE_ERROR;
 		spin_unlock_irq(&nvmeq->q_lock);
 		goto out;
 	}
@@ -1291,6 +1294,12 @@ static struct blk_mq_ops nvme_mq_ops = {
 static void nvme_dev_remove_admin(struct nvme_dev *dev)
 {
 	if (dev->ctrl.admin_q && !blk_queue_dying(dev->ctrl.admin_q)) {
+		/*
+		 * If the controller was reset during removal, it's possible
+		 * user requests may be waiting on a stopped queue. Start the
+		 * queue to flush these to completion.
+		 */
+		blk_mq_start_stopped_hw_queues(dev->ctrl.admin_q, true);
 		blk_cleanup_queue(dev->ctrl.admin_q);
 		blk_mq_free_tag_set(&dev->admin_tagset);
 	}
@@ -1945,6 +1954,7 @@ static int nvme_remove_dead_ctrl(void *arg)
 	struct nvme_dev *dev = (struct nvme_dev *)arg;
 	struct pci_dev *pdev = to_pci_dev(dev->dev);
 
+	nvme_kill_queues(&dev->ctrl);
 	if (pci_get_drvdata(pdev))
 		pci_stop_and_remove_bus_device_locked(pdev);
 	nvme_put_ctrl(&dev->ctrl);
