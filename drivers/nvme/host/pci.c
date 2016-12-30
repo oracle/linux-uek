@@ -105,7 +105,6 @@ struct nvme_dev {
 	void __iomem *bar;
 	struct mutex namespaces_mutex;
 	struct work_struct reset_work;
-	struct work_struct scan_work;
 	struct work_struct remove_work;
 	struct work_struct async_work;
 	struct timer_list watchdog_timer;
@@ -279,16 +278,6 @@ static int nvme_init_request(void *data, struct request *req,
 	return 0;
 }
 
-static void nvme_queue_scan(struct nvme_dev *dev)
-{
-	/*
-	 * Do not queue new scan work when a controller is reset during
-	 * removal.
-	 */
-	if (dev->ctrl.state == NVME_CTRL_LIVE)
-		queue_work(nvme_workq, &dev->scan_work);
-}
-
 static void nvme_complete_async_event(struct nvme_dev *dev,
 		struct nvme_completion *cqe)
 {
@@ -306,7 +295,7 @@ static void nvme_complete_async_event(struct nvme_dev *dev,
 	switch (result & 0xff07) {
 	case NVME_AER_NOTICE_NS_CHANGED:
 		dev_info(dev->ctrl.device, "rescanning\n");
-		nvme_queue_scan(dev);
+		nvme_queue_scan(&dev->ctrl);
 	default:
 		dev_warn(dev->ctrl.device, "async event result %08x\n", result);
 	}
@@ -1561,31 +1550,21 @@ static int nvme_setup_io_queues(struct nvme_dev *dev)
 	return result;
 }
 
-static void nvme_set_irq_hints(struct nvme_dev *dev)
+static void nvme_pci_post_scan(struct nvme_ctrl *ctrl)
 {
-       struct nvme_queue *nvmeq;
-       int i;
+	struct nvme_dev *dev = to_nvme_dev(ctrl);
+	struct nvme_queue *nvmeq;
+	int i;
 
-       for (i = 0; i < dev->online_queues; i++) {
-               nvmeq = dev->queues[i];
+	for (i = 0; i < dev->online_queues; i++) {
+		nvmeq = dev->queues[i];
 
-               if (!nvmeq->tags || !(*nvmeq->tags))
-                       continue;
+		if (!nvmeq->tags || !(*nvmeq->tags))
+			continue;
 
-               irq_set_affinity_hint(dev->entry[nvmeq->cq_vector].vector,
-                                       blk_mq_tags_cpumask(*nvmeq->tags));
-       }
-}
-
-static void nvme_dev_scan(struct work_struct *work)
-{
-	struct nvme_dev *dev = container_of(work, struct nvme_dev, scan_work);
-
-	if (!dev->tagset.tags)
-		return;
-	nvme_scan_namespaces(dev);
-
-	nvme_set_irq_hints(dev);
+		irq_set_affinity_hint(dev->entry[nvmeq->cq_vector].vector,
+					blk_mq_tags_cpumask(*nvmeq->tags));
+	}
 }
 
 static void nvme_del_queue_end(struct request *req, int error)
@@ -1941,7 +1920,7 @@ static void nvme_reset_work(struct work_struct *work)
 	}
 
 	if (dev->online_queues > 1)
-		nvme_queue_scan(dev);
+		nvme_queue_scan(&dev->ctrl);
 	return;
 
  out:
@@ -2009,6 +1988,7 @@ static const struct nvme_ctrl_ops nvme_pci_ctrl_ops = {
 	.reg_read64		= nvme_pci_reg_read64,
 	.reset_ctrl		= nvme_pci_reset_ctrl,
 	.free_ctrl		= nvme_pci_free_ctrl,
+	.post_scan		= nvme_pci_post_scan,
 };
 
 static int nvme_probe(struct pci_dev *pdev, const struct pci_device_id *id)
@@ -2038,7 +2018,6 @@ static int nvme_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	dev->dev = get_device(&pdev->dev);
 	pci_set_drvdata(pdev, dev);
 
-	INIT_WORK(&dev->scan_work, nvme_dev_scan);
 	INIT_WORK(&dev->reset_work, nvme_reset_work);
 	INIT_WORK(&dev->remove_work, nvme_remove_dead_ctrl_work);
 	INIT_WORK(&dev->async_work, nvme_async_event_work);
@@ -2103,9 +2082,6 @@ static void nvme_remove(struct pci_dev *pdev)
 
 	pci_set_drvdata(pdev, NULL);
 	flush_work(&dev->async_work);
-	flush_work(&dev->reset_work);
-	flush_work(&dev->scan_work);
-	nvme_remove_namespaces(&dev->ctrl);
 	nvme_uninit_ctrl(&dev->ctrl);
 	nvme_dev_disable(dev, true);
 	flush_work(&dev->reset_work);
