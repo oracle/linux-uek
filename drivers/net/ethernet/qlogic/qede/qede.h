@@ -394,9 +394,26 @@ int qede_free_tx_pkt(struct qede_dev *edev,
 		     struct qede_tx_queue *txq, int *len);
 int qede_poll(struct napi_struct *napi, int budget);
 irqreturn_t qede_msix_fp_int(int irq, void *fp_cookie);
+
+/* Filtering function definitions */
+void qede_force_mac(void *dev, u8 *mac, bool forced);
+int qede_set_mac_addr(struct net_device *ndev, void *p);
+
+int qede_vlan_rx_add_vid(struct net_device *dev, __be16 proto, u16 vid);
+int qede_vlan_rx_kill_vid(struct net_device *dev, __be16 proto, u16 vid);
+void qede_vlan_mark_nonconfigured(struct qede_dev *edev);
+int qede_configure_vlan_filters(struct qede_dev *edev);
+
+int qede_set_features(struct net_device *dev, netdev_features_t features);
+void qede_set_rx_mode(struct net_device *ndev);
+void qede_config_rx_mode(struct net_device *ndev);
+void qede_fill_rss_params(struct qede_dev *edev,
+			  struct qed_update_vport_rss_params *rss, u8 *update);
+
 #ifdef CONFIG_DCB
 void qede_set_dcbnl_ops(struct net_device *ndev);
 #endif
+
 void qede_config_debug(uint debug, u32 *p_dp_module, u8 *p_dp_level);
 void qede_set_ethtool_ops(struct net_device *netdev);
 void qede_reload(struct qede_dev *edev,
