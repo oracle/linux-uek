@@ -80,7 +80,6 @@ struct nvme_queue;
 
 static int nvme_reset(struct nvme_dev *dev);
 static int nvme_process_cq(struct nvme_queue *nvmeq);
-static void nvme_unmap_data(struct nvme_dev *dev, struct nvme_iod *iod);
 static void nvme_remove_dead_ctrl(struct nvme_dev *dev);
 static void nvme_dev_disable(struct nvme_dev *dev, bool shutdown);
 
@@ -1818,9 +1817,6 @@ static void nvme_reset_work(struct work_struct *work)
 	 */
 	if (dev->bar)
 		nvme_dev_disable(dev, false);
-
-	if (test_bit(NVME_CTRL_REMOVING, &dev->flags))
-		goto out;
 
 	if (!nvme_change_ctrl_state(&dev->ctrl, NVME_CTRL_RESETTING))
 		goto out;
