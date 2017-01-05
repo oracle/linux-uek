@@ -310,15 +310,7 @@ static void amd_get_topology(struct cpuinfo_x86 *c)
 
 	/* get information required for multi-node processors */
 	if (cpu_has_topoext) {
-		u32 eax, ebx, ecx, edx;
-
-		cpuid(0x8000001e, &eax, &ebx, &ecx, &edx);
-		node_id = ecx & 7;
-
-		/* get compute unit information */
-		c->x86_max_cores /= smp_num_siblings;
-		c->cpu_core_id = ebx & 0xff;
-
+		node_id = cpuid_ecx(0x8000001e) & 7;
 		/*
 		 * We may have multiple LLCs if L3 caches exist, so check if we
 		 * have an L3 cache by looking at the L3 cache CPUID leaf.
