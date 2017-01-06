@@ -1420,6 +1420,7 @@ void __init sun4v_mdesc_init(void)
 
 		status = sun4v_mach_desc(__pa(&hp->mdesc), len, &real_len);
 		if (status != HV_EOK || real_len > len) {
+			atomic_dec(&hp->refcnt);
 			mdesc_free(hp);
 			hp = NULL;
 			continue;
