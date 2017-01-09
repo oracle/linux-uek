@@ -2,7 +2,7 @@
  * FILE:	dtrace_os.c
  * DESCRIPTION:	Dynamic Tracing: OS support functions - part of kernel core
  *
- * Copyright (C) 2010-2014 Oracle Corporation
+ * Copyright (C) 2010-2017 Oracle Corporation
  */
 
 #include <linux/binfmts.h>
@@ -20,6 +20,7 @@
 #include <linux/stacktrace.h>
 #include <linux/vmalloc.h>
 #include <linux/kallsyms.h>
+#include <linux/uaccess.h>
 #include <linux/workqueue.h>
 #include <linux/mm.h>
 #include <asm/ptrace.h>
