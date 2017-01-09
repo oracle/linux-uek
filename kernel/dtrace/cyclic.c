@@ -2,7 +2,7 @@
  * FILE:	cyclic.c
  * DESCRIPTION:	Minimal cyclic implementation
  *
- * Copyright (C) 2010, 2011, 2012, 2013 Oracle Corporation
+ * Copyright (C) 2010, 2011, 2012, 2013, 2017 Oracle Corporation
  */
 
 #include <linux/cpu.h>
@@ -229,7 +229,7 @@ static void cyclic_omni_start(cyclic_t *omni, int cpu)
 }
 
 #ifdef CONFIG_HOTPLUG_CPU
-static void cyclic_cpu_offline(int cpu)
+static int cyclic_cpu_offline(unsigned int cpu)
 {
 	cyclic_t	*cyc;
 
@@ -244,9 +244,10 @@ static void cyclic_cpu_offline(int cpu)
 				cyclic_remove((cyclic_id_t)c);
 		}
 	}
+	return 0;
 }
 
-static void cyclic_cpu_online(int cpu)
+static int cyclic_cpu_online(unsigned int cpu)
 {
 	cyclic_t	*cyc;
 
@@ -266,27 +267,8 @@ static void cyclic_cpu_online(int cpu)
 
 		cyclic_omni_start(cyc, cpu);
 	}
+	return 0;
 }
-
-static int cyclic_cpu_notifier(struct notifier_block *nb, unsigned long val,
-			       void *args)
-{
-	unsigned int	cpu = (unsigned int)(long)args;
-
-	switch (val & 0x000f) {
-	case CPU_ONLINE:
-		cyclic_cpu_online(cpu);
-		break;
-	case CPU_DYING:
-		cyclic_cpu_offline(cpu);
-		break;
-	}
-	return NOTIFY_DONE;
-}
-
-static struct notifier_block	cpu_notifier = {
-	.notifier_call = cyclic_cpu_notifier,
-};
 #endif
 
 /*
@@ -295,6 +277,7 @@ static struct notifier_block	cpu_notifier = {
 cyclic_id_t cyclic_add_omni(cyc_omni_handler_t *omni)
 {
 	int		cpu;
+	int		ret;
 	cyclic_t	*cyc;
 	unsigned long	flags;
 
@@ -311,8 +294,14 @@ cyclic_id_t cyclic_add_omni(cyc_omni_handler_t *omni)
 #ifdef CONFIG_HOTPLUG_CPU
 	spin_lock_irqsave(&cyclic_lock, flags);
 	if (!omni_enabled) {
-		register_cpu_notifier(&cpu_notifier);
-		omni_enabled = 1;
+		ret = cpuhp_setup_state_nocalls(CPUHP_AP_CYCLIC_STARTING,
+						"Cyclic omni-timer starting",
+						cyclic_cpu_online,
+						cyclic_cpu_offline);
+		if (ret)
+			pr_warn_once("Cannot enable cyclic omni timer\n");
+		else
+			omni_enabled = 1;
 	}
 	spin_unlock_irqrestore(&cyclic_lock, flags);
 #endif
