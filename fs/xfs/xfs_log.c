@@ -3341,12 +3341,8 @@ xfs_log_force(
 	xfs_mount_t	*mp,
 	uint		flags)
 {
-	int	error;
-
 	trace_xfs_log_force(mp, 0);
-	error = _xfs_log_force(mp, flags, NULL);
-	if (error)
-		xfs_warn(mp, "%s: error %d returned.", __func__, error);
+	_xfs_log_force(mp, flags, NULL);
 }
 
 /*
@@ -3490,12 +3486,8 @@ xfs_log_force_lsn(
 	xfs_lsn_t	lsn,
 	uint		flags)
 {
-	int	error;
-
 	trace_xfs_log_force(mp, lsn);
-	error = _xfs_log_force_lsn(mp, lsn, flags, NULL);
-	if (error)
-		xfs_warn(mp, "%s: error %d returned.", __func__, error);
+	_xfs_log_force_lsn(mp, lsn, flags, NULL);
 }
 
 /*
