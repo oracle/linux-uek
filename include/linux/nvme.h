@@ -60,6 +60,7 @@ enum {
 	NVME_CSTS_SHST_MASK	= 3 << 2,
 };
 
+extern unsigned int nvme_max_retries;
 extern unsigned char nvme_io_timeout;
 #define NVME_IO_TIMEOUT	(nvme_io_timeout * HZ)
 
@@ -132,6 +133,7 @@ struct nvme_iod {
 	int offset;		/* Of PRP list */
 	int nents;		/* Used in scatterlist */
 	int length;		/* Of data, in bytes */
+	int retries;
 	unsigned long start_time;
 	dma_addr_t first_dma;
 	struct list_head node;

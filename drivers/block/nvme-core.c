@@ -68,6 +68,11 @@ static unsigned char shutdown_timeout = 5;
 module_param(shutdown_timeout, byte, 0644);
 MODULE_PARM_DESC(shutdown_timeout, "timeout in seconds for controller shutdown");
 
+unsigned int nvme_max_retries = 5;
+module_param_named(max_retries, nvme_max_retries, uint, 0644);
+MODULE_PARM_DESC(max_retries, "max number of retries a command may have");
+EXPORT_SYMBOL_GPL(nvme_max_retries);
+
 static int nvme_major;
 module_param(nvme_major, int, 0);
 
@@ -482,11 +487,13 @@ static void bio_completion(struct nvme_queue *nvmeq, void *ctx,
 	if (unlikely(status)) {
 		if (!(status & NVME_SC_DNR ||
 				bio->bi_rw & REQ_FAILFAST_MASK) &&
-				(jiffies - iod->start_time) < IOD_TIMEOUT) {
+				(jiffies - iod->start_time) < IOD_TIMEOUT&&
+					iod->retries < nvme_max_retries) {
 			if (!waitqueue_active(&nvmeq->sq_full))
 				add_wait_queue(&nvmeq->sq_full,
 							&nvmeq->sq_cong_wait);
 			list_add_tail(&iod->node, &nvmeq->iod_bio);
+			iod->retries++;
 			wake_up(&nvmeq->sq_full);
 			return;
 		}
