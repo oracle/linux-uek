@@ -1112,6 +1112,9 @@ void smp_flush_tlb_pending(struct mm_struct *mm, unsigned long nr, unsigned long
 	info.nr = nr;
 	info.vaddrs = vaddrs;
 
+	if (atomic_read(&mm->mm_users) < 1)
+		goto done;
+
 	if (mm == current->mm && atomic_read(&mm->mm_users) == 1)
 		cpumask_copy(mm_cpumask(mm), cpumask_of(cpu));
 	else
@@ -1119,7 +1122,7 @@ void smp_flush_tlb_pending(struct mm_struct *mm, unsigned long nr, unsigned long
 				       &info, 1);
 
 	__flush_tlb_pending(ctx, nr, vaddrs);
-
+done:
 	put_cpu();
 }
 
@@ -1128,6 +1131,9 @@ void smp_flush_tlb_page(struct mm_struct *mm, unsigned long vaddr)
 	unsigned long context = CTX_HWBITS(mm->context);
 	int cpu = get_cpu();
 
+	if (atomic_read(&mm->mm_users) < 1)
+		goto done;
+
 	if (mm == current->mm && atomic_read(&mm->mm_users) == 1)
 		cpumask_copy(mm_cpumask(mm), cpumask_of(cpu));
 	else
@@ -1135,7 +1141,7 @@ void smp_flush_tlb_page(struct mm_struct *mm, unsigned long vaddr)
 				      context, vaddr, 0,
 				      mm_cpumask(mm));
 	__flush_tlb_page(context, vaddr);
-
+done:
 	put_cpu();
 }
 
