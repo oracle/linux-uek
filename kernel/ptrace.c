@@ -838,6 +838,7 @@ static int ptrace_getmapfd(struct task_struct *child, unsigned long addr,
 
 	mm = get_task_mm(child);
 	files = get_files_struct(child);
+	down_read(&mm->mmap_sem);
 	vma = find_vma(mm, addr);
 
 	if (!vma || vma->vm_start > addr) {
@@ -856,11 +857,17 @@ static int ptrace_getmapfd(struct task_struct *child, unsigned long addr,
 	}
 
 	new_fd = get_unused_fd_flags(O_CLOEXEC);
+	if (new_fd < 0) {
+		ret = new_fd;
+		goto err;
+	}
+
 	ret = __put_user(new_fd, datalp);
 	get_file(vma->vm_file);
 	fd_install(new_fd, vma->vm_file);
 
 err:
+	up_read(&mm->mmap_sem);
 	put_files_struct(files);
 	mmput(mm);
 
