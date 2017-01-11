@@ -392,8 +392,7 @@ out:
 
 #define MODULE_NAME "rds_rdma"
 
-int __init
-rds_rdma_init(void)
+int __init rds_rdma_init(void)
 {
 	int ret;
 
