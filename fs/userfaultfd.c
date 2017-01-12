@@ -64,6 +64,7 @@ struct userfaultfd_wait_queue {
 	struct uffd_msg msg;
 	wait_queue_t wq;
 	struct userfaultfd_ctx *ctx;
+	bool waken;
 };
 
 struct userfaultfd_wake_range {
@@ -87,6 +88,12 @@ static int userfaultfd_wake_function(wait_queue_t *wq, unsigned mode,
 	if (len && (start > uwq->msg.arg.pagefault.address ||
 		    start + len <= uwq->msg.arg.pagefault.address))
 		goto out;
+	WRITE_ONCE(uwq->waken, true);
+	/*
+	 * The implicit smp_mb__before_spinlock in try_to_wake_up()
+	 * renders uwq->waken visible to other CPUs before the task is
+	 * waken.
+	 */
 	ret = wake_up_state(wq->private, mode);
 	if (ret)
 		/*
@@ -309,6 +316,7 @@ int handle_userfault(struct vm_area_struct *vma, unsigned long address,
 	struct userfaultfd_wait_queue uwq;
 	int ret;
 	bool must_wait, return_to_userland;
+	long blocking_state;
 
 	BUG_ON(!rwsem_is_locked(&mm->mmap_sem));
 
@@ -378,9 +386,12 @@ int handle_userfault(struct vm_area_struct *vma, unsigned long address,
 	uwq.wq.private = current;
 	uwq.msg = userfault_msg(address, flags, reason);
 	uwq.ctx = ctx;
+	uwq.waken = false;
 
 	return_to_userland = (flags & (FAULT_FLAG_USER|FAULT_FLAG_KILLABLE)) ==
 		(FAULT_FLAG_USER|FAULT_FLAG_KILLABLE);
+	blocking_state = return_to_userland ? TASK_INTERRUPTIBLE :
+			 TASK_KILLABLE;
 
 	spin_lock(&ctx->fault_pending_wqh.lock);
 	/*
@@ -393,8 +404,7 @@ int handle_userfault(struct vm_area_struct *vma, unsigned long address,
 	 * following the spin_unlock to happen before the list_add in
 	 * __add_wait_queue.
 	 */
-	set_current_state(return_to_userland ? TASK_INTERRUPTIBLE :
-			  TASK_KILLABLE);
+	set_current_state(blocking_state);
 	spin_unlock(&ctx->fault_pending_wqh.lock);
 
 	if (!is_vm_hugetlb_page(vma))
@@ -411,6 +421,29 @@ int handle_userfault(struct vm_area_struct *vma, unsigned long address,
 		wake_up_poll(&ctx->fd_wqh, POLLIN);
 		schedule();
 		ret |= VM_FAULT_MAJOR;
+
+		/*
+		 * False wakeups can orginate even from rwsem before
+		 * up_read() however userfaults will wait either for a
+		 * targeted wakeup on the specific uwq waitqueue from
+		 * wake_userfault() or for signals or for uffd
+		 * release.
+		 */
+		while (!READ_ONCE(uwq.waken)) {
+			/*
+			 * This needs the full smp_store_mb()
+			 * guarantee as the state write must be
+			 * visible to other CPUs before reading
+			 * uwq.waken from other CPUs.
+			 */
+			set_current_state(blocking_state);
+			if (READ_ONCE(uwq.waken) ||
+			    READ_ONCE(ctx->released) ||
+			    (return_to_userland ? signal_pending(current) :
+			     fatal_signal_pending(current)))
+				break;
+			schedule();
+		}
 	}
 
 	__set_current_state(TASK_RUNNING);
