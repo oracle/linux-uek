@@ -2917,7 +2917,7 @@ static int ldom_req_sp_token(const char *service_name, u32 *sp_token_result,
 static char full_boot_str[256] __aligned(32);
 static int reboot_data_supported;
 
-void ldom_reboot(const char *boot_command)
+void ldom_reboot(const char *boot_command, bool prepend_boot)
 {
 	dprintk("entered.\n");
 
@@ -2928,8 +2928,8 @@ void ldom_reboot(const char *boot_command)
 	if (boot_command && strlen(boot_command)) {
 		unsigned long len;
 
-		strcpy(full_boot_str, "boot ");
-		strcpy(full_boot_str + strlen("boot "), boot_command);
+		snprintf(full_boot_str, sizeof(full_boot_str), "%s%s",
+			 prepend_boot ? "boot " : "", boot_command);
 		len = strlen(full_boot_str);
 
 		if (reboot_data_supported) {

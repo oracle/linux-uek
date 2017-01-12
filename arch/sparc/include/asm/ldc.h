@@ -5,7 +5,7 @@
 
 extern int ldom_domaining_enabled;
 void ldom_set_var(const char *var, const char *value);
-void ldom_reboot(const char *boot_command);
+void ldom_reboot(const char *boot_command, bool prepend_boot);
 void ldom_power_off(void);
 
 /* The event handler will be evoked when link state changes
