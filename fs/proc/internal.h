@@ -15,6 +15,28 @@
 #include <linux/atomic.h>
 #include <linux/binfmts.h>
 
+#define NOD(NAME, MODE, IOP, FOP, OP) {			\
+	.name = (NAME),					\
+	.len  = sizeof(NAME) - 1,			\
+	.mode = MODE,					\
+	.iop  = IOP,					\
+	.fop  = FOP,					\
+	.op   = OP,					\
+}
+
+#define DIR(NAME, MODE, iops, fops)	\
+	NOD(NAME, (S_IFDIR | (MODE)), &iops, &fops, {})
+#define LNK(NAME, get_link)					\
+	NOD(NAME, (S_IFLNK | S_IRWXUGO),				\
+		&proc_pid_link_inode_operations, NULL,		\
+		{ .proc_get_link = get_link })
+#define REG(NAME, MODE, fops)				\
+	NOD(NAME, (S_IFREG | (MODE)), NULL, &fops, {})
+#define ONE(NAME, MODE, show)				\
+		NOD(NAME, (S_IFREG | (MODE)),			\
+		NULL, &proc_single_file_operations,	\
+		{ .proc_show = show })
+
 struct ctl_table_header;
 struct mempolicy;
 
@@ -67,6 +89,15 @@ struct proc_inode {
 	struct ctl_table *sysctl_entry;
 	const struct proc_ns_operations *ns_ops;
 	struct inode vfs_inode;
+};
+
+struct pid_entry {
+	const char *name;
+	int len;
+	umode_t mode;
+	const struct inode_operations *iop;
+	const struct file_operations *fop;
+	union proc_op op;
 };
 
 /*
@@ -168,6 +199,13 @@ extern int pid_delete_dentry(const struct dentry *);
 extern int proc_pid_readdir(struct file *, struct dir_context *);
 extern struct dentry *proc_pid_lookup(struct inode *, struct dentry *, unsigned int);
 extern loff_t mem_lseek(struct file *, loff_t, int);
+struct dentry *proc_pident_lookup(struct inode *dir,
+				  struct dentry *dentry,
+				  const struct pid_entry *ents,
+				  unsigned int nents);
+int proc_pident_readdir(struct file *file, struct dir_context *ctx,
+			const struct pid_entry *ents,
+			unsigned int nents);
 
 /* Lookups */
 typedef int instantiate_t(struct inode *, struct dentry *,

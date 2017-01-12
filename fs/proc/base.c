@@ -104,37 +104,6 @@
  *	in /proc for a task before it execs a suid executable.
  */
 
-struct pid_entry {
-	const char *name;
-	int len;
-	umode_t mode;
-	const struct inode_operations *iop;
-	const struct file_operations *fop;
-	union proc_op op;
-};
-
-#define NOD(NAME, MODE, IOP, FOP, OP) {			\
-	.name = (NAME),					\
-	.len  = sizeof(NAME) - 1,			\
-	.mode = MODE,					\
-	.iop  = IOP,					\
-	.fop  = FOP,					\
-	.op   = OP,					\
-}
-
-#define DIR(NAME, MODE, iops, fops)	\
-	NOD(NAME, (S_IFDIR|(MODE)), &iops, &fops, {} )
-#define LNK(NAME, get_link)					\
-	NOD(NAME, (S_IFLNK|S_IRWXUGO),				\
-		&proc_pid_link_inode_operations, NULL,		\
-		{ .proc_get_link = get_link } )
-#define REG(NAME, MODE, fops)				\
-	NOD(NAME, (S_IFREG|(MODE)), NULL, &fops, {})
-#define ONE(NAME, MODE, show)				\
-	NOD(NAME, (S_IFREG|(MODE)), 			\
-		NULL, &proc_single_file_operations,	\
-		{ .proc_show = show } )
-
 /*
  * Count the number of hardlinks for the pid_entry table, excluding the .
  * and .. links.
@@ -2371,10 +2340,9 @@ out:
 	return -ENOENT;
 }
 
-static struct dentry *proc_pident_lookup(struct inode *dir, 
-					 struct dentry *dentry,
-					 const struct pid_entry *ents,
-					 unsigned int nents)
+struct dentry *proc_pident_lookup(struct inode *dir, struct dentry *dentry,
+				  const struct pid_entry *ents,
+				  unsigned int nents)
 {
 	int error;
 	struct task_struct *task = get_proc_task(dir);
@@ -2406,8 +2374,8 @@ out_no_task:
 	return ERR_PTR(error);
 }
 
-static int proc_pident_readdir(struct file *file, struct dir_context *ctx,
-		const struct pid_entry *ents, unsigned int nents)
+int proc_pident_readdir(struct file *file, struct dir_context *ctx,
+			const struct pid_entry *ents, unsigned int nents)
 {
 	struct task_struct *task = get_proc_task(file_inode(file));
 	const struct pid_entry *p;
