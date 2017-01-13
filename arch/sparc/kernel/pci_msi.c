@@ -267,6 +267,7 @@ static void sparc64_teardown_msi_irq(unsigned int irq,
 
 	msi_num = pbm->msi_first + i;
 	pbm->msi_irq_table[i] = ~0U;
+	pbm->msi_msiqid_table[i] = ~0U;
 
 	err = ops->msi_teardown(pbm, msi_num);
 	if (err) {
