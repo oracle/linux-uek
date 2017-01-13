@@ -116,6 +116,13 @@ static int pty_write(struct tty_struct *tty, const unsigned char *buf, int c)
 	if (tty->stopped)
 		return 0;
 
+	if (to == NULL)
+		return -ENODEV;
+	to = tty_kref_get(to);
+	if (tty->link == NULL) {
+		tty_kref_put(to);
+		return -ENODEV;
+	}
 	if (c > 0) {
 		/* Stuff the data into the input queue of the other end */
 		c = tty_insert_flip_string(to, buf, c);
@@ -125,6 +132,7 @@ static int pty_write(struct tty_struct *tty, const unsigned char *buf, int c)
 			tty_wakeup(tty);
 		}
 	}
+	tty_kref_put(to);
 	return c;
 }
 
