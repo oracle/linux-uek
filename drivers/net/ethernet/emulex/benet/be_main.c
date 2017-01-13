@@ -3513,8 +3513,10 @@ static void be_rx_qs_destroy(struct be_adapter *adapter)
 
 static void be_disable_if_filters(struct be_adapter *adapter)
 {
-	be_cmd_pmac_del(adapter, adapter->if_handle,
-			adapter->pmac_id[0], 0);
+	if (!BEx_chip(adapter) || !be_virtfn(adapter) ||
+	    check_privilege(adapter, BE_PRIV_FILTMGMT))
+			be_cmd_pmac_del(adapter, adapter->if_handle,
+				adapter->pmac_id[0], 0);
 
 	be_clear_uc_list(adapter);
 	be_clear_mc_list(adapter);
