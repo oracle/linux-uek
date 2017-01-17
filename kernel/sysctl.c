@@ -68,6 +68,7 @@
 #include <linux/bpf.h>
 #include <linux/mount.h>
 #include <linux/userfaultfd_k.h>
+#include <linux/ksplice.h>
 
 #include "../lib/kstrtox.h"
 
@@ -1288,6 +1289,13 @@ static struct ctl_table kern_table[] = {
 		.proc_handler	= stack_erasing_sysctl,
 		.extra1		= SYSCTL_ZERO,
 		.extra2		= SYSCTL_ONE,
+	},
+#endif
+#ifdef CONFIG_KSPLICE
+	{
+		.procname	= "ksplice",
+		.mode		= 0555,
+		.child		= ksplice_sysctls,
 	},
 #endif
 	{ }

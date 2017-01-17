@@ -965,3 +965,10 @@ source "kernel/gcov/Kconfig"
 source "scripts/gcc-plugins/Kconfig"
 
 endmenu
+
+config KSPLICE
+	bool "Ksplice"
+	depends on MODULES
+	select SYSCTL
+	help
+	  Enable helper features for supporting Ksplice zero-downtime updates.
