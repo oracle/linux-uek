@@ -67,6 +67,7 @@
 #include <linux/kexec.h>
 #include <linux/bpf.h>
 #include <linux/mount.h>
+#include <linux/ksplice.h>
 
 #include <linux/uaccess.h>
 #include <asm/processor.h>
@@ -1224,6 +1225,13 @@ static struct ctl_table kern_table[] = {
 		.proc_handler	= proc_dointvec_minmax,
 		.extra1		= &zero,
 		.extra2		= &one,
+	},
+#endif
+#ifdef CONFIG_KSPLICE
+	{
+		.procname	= "ksplice",
+		.mode		= 0555,
+		.child		= ksplice_sysctls,
 	},
 #endif
 	{ }

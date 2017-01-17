@@ -960,3 +960,10 @@ config REFCOUNT_FULL
 	  security flaw exploits.
 
 source "kernel/gcov/Kconfig"
+
+config KSPLICE
+	bool "Ksplice"
+	depends on MODULES
+	select SYSCTL
+	help
+	  Enable helper features for supporting Ksplice zero-downtime updates.
