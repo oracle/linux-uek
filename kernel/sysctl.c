@@ -64,6 +64,7 @@
 #include <linux/binfmts.h>
 #include <linux/sched/sysctl.h>
 #include <linux/kexec.h>
+#include <linux/ksplice.h>
 
 #include <asm/uaccess.h>
 #include <asm/processor.h>
@@ -1141,6 +1142,13 @@ static struct ctl_table kern_table[] = {
 		.extra1		= &zero,
 		.extra2		= &one,
 	},
+#ifdef CONFIG_KSPLICE
+	{
+		.procname	= "ksplice",
+		.mode		= 0555,
+		.child		= ksplice_sysctls,
+	},
+#endif
 	{ }
 };
 
