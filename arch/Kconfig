@@ -374,3 +374,10 @@ config CLONE_BACKWARDS2
 	  Architecture has the first two arguments of clone(2) swapped.
 
 source "kernel/gcov/Kconfig"
+
+config KSPLICE
+	bool "Ksplice"
+	depends on MODULES
+	select SYSCTL
+	help
+	  Enable helper features for supporting Ksplice zero-downtime updates.
