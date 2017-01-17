@@ -241,12 +241,8 @@ void dtrace_sdt_register(struct module *mp)
 				  cnt > 0 ? &sdps[cnt - 1] : NULL))
 			pr_warning("%s: failed to add SDT probe %s\n",
 				   __func__, pi->name);
-		else {
-			if (is_enabled[cnt])
-				printk(KERN_INFO "is-enabled probe at %p\n", addrs[cnt]);
-
+		else
 			cnt++;
-		}
 
 		nextpi = (void *)pi + sizeof(dtrace_sdt_probeinfo_t)
 			+ roundup(pi->name_len + 1 +
