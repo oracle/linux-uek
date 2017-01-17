@@ -1223,7 +1223,8 @@ static void qed_iov_clean_vf(struct qed_hwfn *p_hwfn, u8 vfid)
 		return;
 
 	/* Clear the VF mac */
-	memset(vf_info->mac, 0, ETH_ALEN);
+	eth_zero_addr(vf_info->mac);
+
 }
 
 static void qed_iov_vf_cleanup(struct qed_hwfn *p_hwfn,
@@ -2563,8 +2564,7 @@ static int qed_iov_vf_update_mac_shadow(struct qed_hwfn *p_hwfn,
 		for (i = 0; i < QED_ETH_VF_NUM_MAC_FILTERS; i++) {
 			if (ether_addr_equal(p_vf->shadow_config.macs[i],
 					     p_params->mac)) {
-				memset(p_vf->shadow_config.macs[i], 0,
-				       ETH_ALEN);
+				eth_zero_addr(p_vf->shadow_config.macs[i]);
 				break;
 			}
 		}
@@ -2577,7 +2577,7 @@ static int qed_iov_vf_update_mac_shadow(struct qed_hwfn *p_hwfn,
 	} else if (p_params->opcode == QED_FILTER_REPLACE ||
 		   p_params->opcode == QED_FILTER_FLUSH) {
 		for (i = 0; i < QED_ETH_VF_NUM_MAC_FILTERS; i++)
-			memset(p_vf->shadow_config.macs[i], 0, ETH_ALEN);
+			eth_zero_addr(p_vf->shadow_config.macs[i]);
 	}
 
 	/* List the new MAC address */
