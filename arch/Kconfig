@@ -183,3 +183,10 @@ config HAVE_RCU_TABLE_FREE
 	bool
 
 source "kernel/gcov/Kconfig"
+
+config KSPLICE
+	bool "Ksplice"
+	depends on MODULES
+	select SYSCTL
+	help
+	  Enable helper features for supporting Ksplice zero-downtime updates.

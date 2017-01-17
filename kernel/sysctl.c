@@ -57,6 +57,7 @@
 #include <linux/pipe_fs_i.h>
 #include <linux/oom.h>
 #include <linux/kmod.h>
+#include <linux/ksplice.h>
 
 #include <asm/uaccess.h>
 #include <asm/processor.h>
@@ -991,6 +992,13 @@ static struct ctl_table kern_table[] = {
 		.maxlen		= sizeof(int),
 		.mode		= 0644,
 		.proc_handler	= proc_dointvec,
+	},
+#endif
+#if defined(CONFIG_KSPLICE)
+	{
+		.procname	= "ksplice",
+		.mode		= 0555,
+		.child		= ksplice_sysctls,
 	},
 #endif
 	{ }
