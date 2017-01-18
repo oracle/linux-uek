@@ -783,6 +783,13 @@ void get_cpu_cap(struct cpuinfo_x86 *c, enum get_cpu_cap_behavior behavior)
 		c->x86_power = cpuid_edx(0x80000007);
 
 	init_scattered_cpuid_features(c, behavior);
+
+	/*
+	 * Clear/Set all flags overridden by options, after probe.
+	 * This needs to happen each time we re-probe, which may happen
+	 * several times during CPU initialization.
+	 */
+	apply_forced_caps(c);
 }
 
 static void identify_cpu_without_cpuid(struct cpuinfo_x86 *c)
