@@ -586,8 +586,16 @@ static irqreturn_t pcie_isr(int irq, void *dev_id)
 	if (intr_loc & PCI_EXP_SLTSTA_ABP)
 		pciehp_handle_attention_button(slot);
 
-	/* Check Presence Detect Changed */
-	if (intr_loc & PCI_EXP_SLTSTA_PDC)
+	/*
+	 * Check Link Status Changed at higher precedence than Presence
+	 * Detect Changed.  The PDS value may be set to "card present" from
+	 * out-of-band detection, which may be in conflict with a Link Down
+	 * and cause the wrong event to queue. We can skip the PDC if we
+	 * are handling a link event in the same handler.
+	 */
+	if (intr_loc & PCI_EXP_SLTSTA_DLLSC)
+		pciehp_handle_linkstate_change(slot);
+	else if (intr_loc & PCI_EXP_SLTSTA_PDC)
 		pciehp_handle_presence_change(slot);
 
 	/* Check Power Fault Detected */
@@ -595,9 +603,6 @@ static irqreturn_t pcie_isr(int irq, void *dev_id)
 		ctrl->power_fault_detected = 1;
 		pciehp_handle_power_fault(slot);
 	}
-
-	if (intr_loc & PCI_EXP_SLTSTA_DLLSC)
-		pciehp_handle_linkstate_change(slot);
 
 	return IRQ_HANDLED;
 }

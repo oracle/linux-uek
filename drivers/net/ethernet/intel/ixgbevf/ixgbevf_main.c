@@ -1482,6 +1482,9 @@ static void ixgbevf_free_irq(struct ixgbevf_adapter *adapter)
 {
 	int i, q_vectors;
 
+	if (!adapter->msix_entries)
+		return;
+
 	q_vectors = adapter->num_msix_vectors;
 	i = q_vectors - 1;
 
@@ -2534,6 +2537,9 @@ static void ixgbevf_free_q_vectors(struct ixgbevf_adapter *adapter)
  **/
 static void ixgbevf_reset_interrupt_capability(struct ixgbevf_adapter *adapter)
 {
+	if (!adapter->msix_entries)
+		return;
+
 	pci_disable_msix(adapter->pdev);
 	kfree(adapter->msix_entries);
 	adapter->msix_entries = NULL;
@@ -3790,10 +3796,9 @@ static int ixgbevf_suspend(struct pci_dev *pdev, pm_message_t state)
 		ixgbevf_free_irq(adapter);
 		ixgbevf_free_all_tx_resources(adapter);
 		ixgbevf_free_all_rx_resources(adapter);
+		ixgbevf_clear_interrupt_scheme(adapter);
 		rtnl_unlock();
 	}
-
-	ixgbevf_clear_interrupt_scheme(adapter);
 
 #ifdef CONFIG_PM
 	retval = pci_save_state(pdev);
