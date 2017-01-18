@@ -99,20 +99,6 @@
 M7memop_enable:	.word 15
 
 /*
- * Define clear_page(dest) as memset(dest, 0, PAGE_SIZE)
- * (can create a more optimized version later.)
- */
-	.globl		M7clear_page
-	.globl		M7clear_user_page
-M7clear_page:		/* clear_page(dest) */
-M7clear_user_page:
-	set PAGE_SIZE, %o1
-	/* fall through into bzero code */
-
-	.size		M7clear_page,.-M7clear_page
-	.size		M7clear_user_page,.-M7clear_user_page
-
-/*
  * Define bzero(dest, n) as memset(dest, 0, n)
  * (can create a more optimized version later.)
  */
