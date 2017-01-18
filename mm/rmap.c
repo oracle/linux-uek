@@ -1273,14 +1273,17 @@ static int try_to_unmap_one(struct page *page, struct vm_area_struct *vma,
 			entry = make_migration_entry(page, pte_write(pteval));
 		}
 		swp_pte = swp_entry_to_pte(entry);
+		arch_unmap_one(mm, address, swp_pte, pteval);
 		if (pte_soft_dirty(pteval))
 			swp_pte = pte_swp_mksoft_dirty(swp_pte);
+		arch_unmap_one(mm, address, swp_pte, pteval);
 		set_pte_at(mm, address, pte, swp_pte);
 	} else if (IS_ENABLED(CONFIG_MIGRATION) &&
 		   (flags & TTU_MIGRATION)) {
 		/* Establish migration entry for a file page */
 		swp_entry_t entry;
 		entry = make_migration_entry(page, pte_write(pteval));
+		arch_unmap_one(mm, address, swp_entry_to_pte(entry), pteval);
 		set_pte_at(mm, address, pte, swp_entry_to_pte(entry));
 	} else
 		dec_mm_counter(mm, MM_FILEPAGES);
