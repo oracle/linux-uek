@@ -49,6 +49,7 @@ struct vdc_req_entry {
 	struct bio		*req;
 	u64			size;
 	int			sent;
+	unsigned long		start_time;
 };
 
 struct vdc_port {
@@ -277,6 +278,41 @@ static int vdc_handle_attr(struct vio_driver_state *vio, void *arg)
 	}
 }
 
+void vdc_start_io_acct (struct vdc_port *port, int rw, sector_t sec,
+			unsigned long nrsec)
+{
+	struct hd_struct *part;
+	int cpu;
+
+	part = disk_map_sector_rcu(port->disk, sec);
+	cpu = part_stat_lock();
+
+	part_round_stats(cpu, part);
+	part_stat_inc(cpu, part, ios[rw]);
+	part_stat_add(cpu, part, sectors[rw], nrsec);
+	part_inc_in_flight(part, rw);
+
+	part_stat_unlock();
+}
+
+void vdc_end_io_acct(struct vdc_port *port, int rw, unsigned long start_time,
+		     sector_t sec)
+{
+	unsigned long duration = jiffies - start_time;
+	int cpu;
+	struct hd_struct *part;
+
+	part = disk_map_sector_rcu(port->disk, sec);
+	cpu = part_stat_lock();
+
+	part_stat_add(cpu, part, ticks[rw], duration);
+	part_round_stats(cpu, part);
+	part_dec_in_flight(part, rw);
+
+	part_stat_unlock();
+}
+
+
 static void vdc_end_special(struct vdc_port *port, int err)
 {
 	vdc_finish(port->cmp, -err, WAITING_FOR_GEN_CMD);
@@ -314,6 +350,9 @@ static void vdc_end_one(struct vdc_port *port, struct vio_dring_state *dr,
 			desc->size, rqe->size);
 		BUG();
 	}
+
+	vdc_end_io_acct(port, bio_data_dir(req), rqe->start_time,
+			req->bi_iter.bi_sector);
 
 	bio_endio(req, err ? -EIO : 0);
 	rqe->size = 0;
@@ -632,6 +671,7 @@ static int __create_rw_desc(struct vdc_port *port, struct request *req,
 
 	rqe = &port->rq_arr[idx];
 	rqe->size = len;
+	rqe->start_time = jiffies;
 
 	return 0;
 }
@@ -711,6 +751,10 @@ static void vdc_make_request(struct request_queue *q, struct bio *bio)
 		err = __create_rw_desc(port, &req, desc, idx);
 		if (err)
 			pr_err(PFX "__create_rw_desc() failed, err=%d\n", err);
+
+		vdc_start_io_acct(port, bio_data_dir(bio),
+				  bio->bi_iter.bi_sector,
+				  bio_sectors(bio));
 	}
 
 	if (!err)
