@@ -3400,7 +3400,7 @@ static int ds_handshake_reg(struct ds_dev *ds, struct ds_msg_tag *pkt)
 			if (svc_info == NULL) {
 				/* There is no service */
 
-				pr_err("ds-%llu: no service registered for "
+				dprintk3("ds-%llu: no service registered for "
 				    "UNREG_REQ handle %llx\n", ds->id,
 				   unreg_req->payload.handle);
 
@@ -4680,6 +4680,13 @@ static int ds_remove(struct vio_dev *vdev)
 	ldc_unbind(ds->lp);
 
 	ldc_free(ds->lp);
+
+	/*
+	 * Since the ds_dev can remain for a while til it's
+	 * freed (callout queue), to make sure the lp isn't used,
+	 * we set it to NULL here.
+	 */
+	ds->lp = NULL;
 
 	/* free any entries left on the callout list */
 	list_for_each_entry_safe(qhdrp, tmp, &ds->callout_list, list) {
