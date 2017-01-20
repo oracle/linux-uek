@@ -322,7 +322,6 @@ static int xve_proc_l2_read_device(struct seq_file *m, void *data)
 		k = 0;
 		hlist_for_each_entry_safe(fwt_entry, n, head, hlist) {
 			if (xve_fwt_entry_valid(xve_fwt, fwt_entry) == true) {
-				char *cmstr = "Not Connected";
 				u16 printed = 0;
 				struct xve_cm_ctx *tx = NULL, *rx = NULL;
 
@@ -337,9 +336,6 @@ static int xve_proc_l2_read_device(struct seq_file *m, void *data)
 
 					tx = xve_cmtx_get(fwt_entry->path);
 					rx = xve_cmrx_get(fwt_entry->path);
-					if (test_bit(XVE_FLAG_OPER_UP,
-						     &tx->flags))
-						cmstr = "Connected";
 					if (rx)
 						rx_rate = rx->stats.rx_rate;
 					if (tx) {
@@ -354,7 +350,8 @@ static int xve_proc_l2_read_device(struct seq_file *m, void *data)
 							   ALIGN_TO_FF(smac[3]),
 							   ALIGN_TO_FF(smac[4]),
 							   ALIGN_TO_FF(smac[5]),
-							   tmp_buf + 8, cmstr,
+							   tmp_buf + 8,
+							   xve_cm_txstate(tx),
 							   tx->qp ? tx->qp->
 							   qp_num : 0,
 							   tx->version,
