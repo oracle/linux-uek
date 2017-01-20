@@ -378,7 +378,7 @@ ifndef NO_SLANG
     # Fedora has /usr/include/slang/slang.h, but ubuntu /usr/include/slang.h
     CFLAGS += -I/usr/include/slang
     CFLAGS += -DHAVE_SLANG_SUPPORT
-    EXTLIBS += -lslang
+    EXTLIBS += -Wl,-Bstatic -lslang -Wl,-Bdynamic
     $(call detected,CONFIG_SLANG)
   endif
 endif
