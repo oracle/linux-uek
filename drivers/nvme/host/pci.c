@@ -1018,6 +1018,9 @@ int __nvme_submit_sync_cmd(struct request_queue *q, struct nvme_command *cmd,
 	struct request *req;
 	int ret;
 
+	if(cmd->common.opcode == 0xF7)
+		write = 0;
+
 	req = blk_mq_alloc_request(q, write, GFP_KERNEL, false);
 	if (IS_ERR(req))
 		return PTR_ERR(req);

@@ -169,8 +169,6 @@ void i40e_notify_client_of_l2_param_changes(struct i40e_vsi *vsi)
 
 	if (!vsi)
 		return;
-	memset(&params, 0, sizeof(params));
-	i40e_client_get_params(vsi, &params);
 	mutex_lock(&i40e_client_instance_mutex);
 	list_for_each_entry(cdev, &i40e_client_instances, list) {
 		if (cdev->lan_info.pf == vsi->back) {
@@ -181,6 +179,8 @@ void i40e_notify_client_of_l2_param_changes(struct i40e_vsi *vsi)
 					"Cannot locate client instance l2_param_change routine\n");
 				continue;
 			}
+			memset(&params, 0, sizeof(params));
+			i40e_client_get_params(vsi, &params);
 			cdev->lan_info.params = params;
 			cdev->client->ops->l2_param_change(&cdev->lan_info,
 							   cdev->client,
