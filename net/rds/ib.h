@@ -512,8 +512,7 @@ struct rds_ib_device {
 	struct mutex		free_dev_lock;
 };
 
-#define pcidev_to_node(pcidev) pcibus_to_node(pcidev->bus)
-#define ibdev_to_node(ibdev) pcidev_to_node(to_pci_dev(ibdev->dma_device))
+#define ibdev_to_node(ibdev) dev_to_node((ibdev)->dev.parent)
 #define rdsibdev_to_node(rdsibdev) ibdev_to_node(rdsibdev->dev)
 
 /* bits for i_ack_flags */
