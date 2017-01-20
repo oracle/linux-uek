@@ -635,3 +635,38 @@ config MAX_STACK_SIZE_MB
 	  changed to a smaller value in which case that is used.
 
 	  A sane initial value is 80 MB.
+
+# For architectures that support deferred memory initialisation
+config ARCH_SUPPORTS_DEFERRED_STRUCT_PAGE_INIT
+	bool
+
+config DEFERRED_STRUCT_PAGE_INIT
+	bool "Defer initialisation of struct pages to kswapd"
+	default n
+	depends on ARCH_SUPPORTS_DEFERRED_STRUCT_PAGE_INIT
+	depends on MEMORY_HOTPLUG
+	help
+	  Ordinarily all struct pages are initialised during early boot in a
+	  single thread. On very large machines this can take a considerable
+	  amount of time. If this option is set, large machines will bring up
+	  a subset of memmap at boot and then initialise the rest in parallel
+	  when kswapd starts. This has a potential performance impact on
+	  processes running early in the lifetime of the systemm until kswapd
+	  finishes the initialisation.
+
+config ZONE_DEVICE
+	bool "Device memory (pmem, etc...) hotplug support" if EXPERT
+	default !ZONE_DMA
+	depends on !ZONE_DMA
+	depends on MEMORY_HOTPLUG
+	depends on MEMORY_HOTREMOVE
+	depends on X86_64 #arch_add_memory() comprehends device memory
+
+	help
+	  Device memory hotplug support allows for establishing pmem,
+	  or other device driver discovered memory regions, in the
+	  memmap. This allows pfn_to_page() lookups of otherwise
+	  "device-physical" addresses which is needed for using a DAX
+	  mapping in an O_DIRECT operation, among other things.
+
+	  If FS_DAX is enabled, then say Y.

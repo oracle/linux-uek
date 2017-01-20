@@ -17,68 +17,88 @@
 #include <linux/atomic.h>
 #include <linux/blkdev.h>
 #include <linux/buffer_head.h>
+#include <linux/dax.h>
 #include <linux/fs.h>
 #include <linux/genhd.h>
 #include <linux/highmem.h>
 #include <linux/memcontrol.h>
 #include <linux/mm.h>
 #include <linux/mutex.h>
+#include <linux/pmem.h>
 #include <linux/sched.h>
 #include <linux/uio.h>
 #include <linux/vmstat.h>
+#include <linux/sizes.h>
 
-int dax_clear_blocks(struct inode *inode, sector_t block, long size)
+static long dax_map_atomic(struct block_device *bdev, struct blk_dax_ctl *dax)
+{
+	struct request_queue *q = bdev->bd_queue;
+	long rc = -EIO;
+
+	dax->addr = (void __pmem *) ERR_PTR(-EIO);
+	if (blk_queue_enter(q, true) != 0)
+		return rc;
+
+	rc = bdev_direct_access(bdev, dax);
+	if (rc < 0) {
+		dax->addr = (void __pmem *) ERR_PTR(rc);
+		blk_queue_exit(q);
+		return rc;
+	}
+	return rc;
+}
+
+static void dax_unmap_atomic(struct block_device *bdev,
+		const struct blk_dax_ctl *dax)
+{
+	if (IS_ERR(dax->addr))
+		return;
+	blk_queue_exit(bdev->bd_queue);
+}
+
+/*
+ * dax_clear_blocks() is called from within transaction context from XFS,
+ * and hence this means the stack from this point must follow GFP_NOFS
+ * semantics for all operations.
+ */
+int dax_clear_blocks(struct inode *inode, sector_t block, long _size)
 {
 	struct block_device *bdev = inode->i_sb->s_bdev;
-	sector_t sector = block << (inode->i_blkbits - 9);
+	struct blk_dax_ctl dax = {
+		.sector = block << (inode->i_blkbits - 9),
+		.size = _size,
+	};
 
 	might_sleep();
 	do {
-		void *addr;
-		unsigned long pfn;
-		long count;
+		long count, sz;
 
-		count = bdev_direct_access(bdev, sector, &addr, &pfn, size);
+		count = dax_map_atomic(bdev, &dax);
 		if (count < 0)
 			return count;
-		BUG_ON(size < count);
-		while (count > 0) {
-			unsigned pgsz = PAGE_SIZE - offset_in_page(addr);
-			if (pgsz > count)
-				pgsz = count;
-			if (pgsz < PAGE_SIZE)
-				memset(addr, 0, pgsz);
-			else
-				clear_page(addr);
-			addr += pgsz;
-			size -= pgsz;
-			count -= pgsz;
-			BUG_ON(pgsz & 511);
-			sector += pgsz / 512;
-			cond_resched();
-		}
-	} while (size);
+		sz = min_t(long, count, SZ_128K);
+		clear_pmem(dax.addr, sz);
+		dax.size -= sz;
+		dax.sector += sz / 512;
+		dax_unmap_atomic(bdev, &dax);
+		cond_resched();
+	} while (dax.size);
 
+	wmb_pmem();
 	return 0;
 }
 EXPORT_SYMBOL_GPL(dax_clear_blocks);
 
-static long dax_get_addr(struct buffer_head *bh, void **addr, unsigned blkbits)
-{
-	unsigned long pfn;
-	sector_t sector = bh->b_blocknr << (blkbits - 9);
-	return bdev_direct_access(bh->b_bdev, sector, addr, &pfn, bh->b_size);
-}
-
-static void dax_new_buf(void *addr, unsigned size, unsigned first, loff_t pos,
-			loff_t end)
+/* the clear_pmem() calls are ordered by a wmb_pmem() in the caller */
+static void dax_new_buf(void __pmem *addr, unsigned size, unsigned first,
+		loff_t pos, loff_t end)
 {
 	loff_t final = end - pos + first; /* The final byte of the buffer */
 
 	if (first > 0)
-		memset(addr, 0, first);
+		clear_pmem(addr, first);
 	if (final < size)
-		memset(addr + final, 0, size - final);
+		clear_pmem(addr + final, size - final);
 }
 
 static bool buffer_written(struct buffer_head *bh)
@@ -98,38 +118,50 @@ static bool buffer_size_valid(struct buffer_head *bh)
 	return bh->b_state != 0;
 }
 
+
+static sector_t to_sector(const struct buffer_head *bh,
+		const struct inode *inode)
+{
+	sector_t sector = bh->b_blocknr << (inode->i_blkbits - 9);
+
+	return sector;
+}
+
 static ssize_t dax_io(struct inode *inode, struct iov_iter *iter,
 		      loff_t start, loff_t end, get_block_t get_block,
 		      struct buffer_head *bh)
 {
-	ssize_t retval = 0;
-	loff_t pos = start;
-	loff_t max = start;
-	loff_t bh_max = start;
-	void *addr;
-	bool hole = false;
+	loff_t pos = start, max = start, bh_max = start;
+	bool hole = false, need_wmb = false;
+	struct block_device *bdev = NULL;
+	int rw = iov_iter_rw(iter), rc;
+	long map_len = 0;
+	struct blk_dax_ctl dax = {
+		.addr = (void __pmem *) ERR_PTR(-EIO),
+	};
 
-	if (iov_iter_rw(iter) != WRITE)
+	if (rw == READ)
 		end = min(end, i_size_read(inode));
 
 	while (pos < end) {
-		unsigned len;
+		size_t len;
 		if (pos == max) {
 			unsigned blkbits = inode->i_blkbits;
-			sector_t block = pos >> blkbits;
+			long page = pos >> PAGE_SHIFT;
+			sector_t block = page << (PAGE_SHIFT - blkbits);
 			unsigned first = pos - (block << blkbits);
 			long size;
 
 			if (pos == bh_max) {
 				bh->b_size = PAGE_ALIGN(end - pos);
 				bh->b_state = 0;
-				retval = get_block(inode, block, bh,
-						   iov_iter_rw(iter) == WRITE);
-				if (retval)
+				rc = get_block(inode, block, bh, rw == WRITE);
+				if (rc)
 					break;
 				if (!buffer_size_valid(bh))
 					bh->b_size = 1 << blkbits;
 				bh_max = pos - first + bh->b_size;
+				bdev = bh->b_bdev;
 			} else {
 				unsigned done = bh->b_size -
 						(bh_max - (pos - first));
@@ -137,38 +169,53 @@ static ssize_t dax_io(struct inode *inode, struct iov_iter *iter,
 				bh->b_size -= done;
 			}
 
-			hole = iov_iter_rw(iter) != WRITE && !buffer_written(bh);
+			hole = rw == READ && !buffer_written(bh);
 			if (hole) {
-				addr = NULL;
 				size = bh->b_size - first;
 			} else {
-				retval = dax_get_addr(bh, &addr, blkbits);
-				if (retval < 0)
+				dax_unmap_atomic(bdev, &dax);
+				dax.sector = to_sector(bh, inode);
+				dax.size = bh->b_size;
+				map_len = dax_map_atomic(bdev, &dax);
+				if (map_len < 0) {
+					rc = map_len;
 					break;
-				if (buffer_unwritten(bh) || buffer_new(bh))
-					dax_new_buf(addr, retval, first, pos,
-									end);
-				addr += first;
-				size = retval - first;
+				}
+				if (buffer_unwritten(bh) || buffer_new(bh)) {
+					dax_new_buf(dax.addr, map_len, first,
+							pos, end);
+					need_wmb = true;
+				}
+				dax.addr += first;
+				size = map_len - first;
 			}
 			max = min(pos + size, end);
 		}
 
-		if (iov_iter_rw(iter) == WRITE)
-			len = copy_from_iter(addr, max - pos, iter);
-		else if (!hole)
-			len = copy_to_iter(addr, max - pos, iter);
+		if (iov_iter_rw(iter) == WRITE) {
+			len = copy_from_iter_pmem(dax.addr, max - pos, iter);
+			need_wmb = true;
+		} else if (!hole)
+			len = copy_to_iter((void __force *) dax.addr, max - pos,
+					iter);
 		else
 			len = iov_iter_zero(max - pos, iter);
 
-		if (!len)
+		if (!len) {
+			rc = -EFAULT;
 			break;
+		}
 
 		pos += len;
-		addr += len;
+		if (!IS_ERR(dax.addr))
+			dax.addr += len;
 	}
 
-	return (pos == start) ? retval : pos - start;
+	if (need_wmb)
+		wmb_pmem();
+	dax_unmap_atomic(bdev, &dax);
+
+	return (pos == start) ? rc : pos - start;
 }
 
 /**
@@ -209,7 +256,8 @@ ssize_t dax_do_io(struct kiocb *iocb, struct inode *inode,
 	}
 
 	/* Protects against truncate */
-	inode_dio_begin(inode);
+	if (!(flags & DIO_SKIP_DIO_COUNT))
+		inode_dio_begin(inode);
 
 	retval = dax_io(inode, iter, pos, end, get_block, &bh);
 
@@ -219,7 +267,8 @@ ssize_t dax_do_io(struct kiocb *iocb, struct inode *inode,
 	if ((retval > 0) && end_io)
 		end_io(iocb, pos, retval, bh.b_private);
 
-	inode_dio_end(inode);
+	if (!(flags & DIO_SKIP_DIO_COUNT))
+		inode_dio_end(inode);
  out:
 	return retval;
 }
@@ -255,26 +304,35 @@ static int dax_load_hole(struct address_space *mapping, struct page *page,
 	return VM_FAULT_LOCKED;
 }
 
-static int copy_user_bh(struct page *to, struct buffer_head *bh,
-			unsigned blkbits, unsigned long vaddr)
+static int copy_user_bh(struct page *to, struct inode *inode,
+		struct buffer_head *bh, unsigned long vaddr)
 {
-	void *vfrom, *vto;
-	if (dax_get_addr(bh, &vfrom, blkbits) < 0)
-		return -EIO;
+	struct blk_dax_ctl dax = {
+		.sector = to_sector(bh, inode),
+		.size = bh->b_size,
+	};
+	struct block_device *bdev = bh->b_bdev;
+	void *vto;
+
+	if (dax_map_atomic(bdev, &dax) < 0)
+		return PTR_ERR(dax.addr);
 	vto = kmap_atomic(to);
-	copy_user_page(vto, vfrom, vaddr, to);
+	copy_user_page(vto, (void __force *)dax.addr, vaddr, to);
 	kunmap_atomic(vto);
+	dax_unmap_atomic(bdev, &dax);
 	return 0;
 }
 
 static int dax_insert_mapping(struct inode *inode, struct buffer_head *bh,
 			struct vm_area_struct *vma, struct vm_fault *vmf)
 {
-	struct address_space *mapping = inode->i_mapping;
-	sector_t sector = bh->b_blocknr << (inode->i_blkbits - 9);
 	unsigned long vaddr = (unsigned long)vmf->virtual_address;
-	void *addr;
-	unsigned long pfn;
+	struct address_space *mapping = inode->i_mapping;
+	struct block_device *bdev = bh->b_bdev;
+	struct blk_dax_ctl dax = {
+		.sector = to_sector(bh, inode),
+		.size = bh->b_size,
+	};
 	pgoff_t size;
 	int error;
 
@@ -293,18 +351,18 @@ static int dax_insert_mapping(struct inode *inode, struct buffer_head *bh,
 		goto out;
 	}
 
-	error = bdev_direct_access(bh->b_bdev, sector, &addr, &pfn, bh->b_size);
-	if (error < 0)
-		goto out;
-	if (error < PAGE_SIZE) {
-		error = -EIO;
+	if (dax_map_atomic(bdev, &dax) < 0) {
+		error = PTR_ERR(dax.addr);
 		goto out;
 	}
 
-	if (buffer_unwritten(bh) || buffer_new(bh))
-		clear_page(addr);
+	if (buffer_unwritten(bh) || buffer_new(bh)) {
+		clear_pmem(dax.addr, PAGE_SIZE);
+		wmb_pmem();
+	}
+	dax_unmap_atomic(bdev, &dax);
 
-	error = vm_insert_mixed(vma, vaddr, pfn);
+	error = vm_insert_mixed(vma, vaddr, dax.pfn);
 
  out:
 	i_mmap_unlock_read(mapping);
@@ -312,7 +370,23 @@ static int dax_insert_mapping(struct inode *inode, struct buffer_head *bh,
 	return error;
 }
 
-static int do_dax_fault(struct vm_area_struct *vma, struct vm_fault *vmf,
+/**
+ * __dax_fault - handle a page fault on a DAX file
+ * @vma: The virtual memory area where the fault occurred
+ * @vmf: The description of the fault
+ * @get_block: The filesystem method used to translate file offsets to blocks
+ * @complete_unwritten: The filesystem method used to convert unwritten blocks
+ *	to written so the data written to them is exposed. This is required for
+ *	required by write faults for filesystems that will return unwritten
+ *	extent mappings from @get_block, but it is optional for reads as
+ *	dax_insert_mapping() will always zero unwritten blocks. If the fs does
+ *	not support unwritten extents, the it should pass NULL.
+ *
+ * When a page fault occurs, filesystems may call this helper in their
+ * fault handler for DAX files. __dax_fault() assumes the caller has done all
+ * the necessary locking for the page fault to proceed successfully.
+ */
+int __dax_fault(struct vm_area_struct *vma, struct vm_fault *vmf,
 			get_block_t get_block, dax_iodone_t complete_unwritten)
 {
 	struct file *file = vma->vm_file;
@@ -382,7 +456,7 @@ static int do_dax_fault(struct vm_area_struct *vma, struct vm_fault *vmf,
 	if (vmf->cow_page) {
 		struct page *new_page = vmf->cow_page;
 		if (buffer_written(&bh))
-			error = copy_user_bh(new_page, &bh, blkbits, vaddr);
+			error = copy_user_bh(new_page, inode, &bh, vaddr);
 		else
 			clear_user_highpage(new_page, vaddr);
 		if (error)
@@ -425,8 +499,12 @@ static int do_dax_fault(struct vm_area_struct *vma, struct vm_fault *vmf,
 	 * as for normal BH based IO completions.
 	 */
 	error = dax_insert_mapping(inode, &bh, vma, vmf);
-	if (buffer_unwritten(&bh))
-		complete_unwritten(&bh, !error);
+	if (buffer_unwritten(&bh)) {
+		if (complete_unwritten)
+			complete_unwritten(&bh, !error);
+		else
+			WARN_ON_ONCE(!(vmf->flags & FAULT_FLAG_WRITE));
+	}
 
  out:
 	if (error == -ENOMEM)
@@ -443,6 +521,7 @@ static int do_dax_fault(struct vm_area_struct *vma, struct vm_fault *vmf,
 	}
 	goto out;
 }
+EXPORT_SYMBOL(__dax_fault);
 
 /**
  * dax_fault - handle a page fault on a DAX file
@@ -463,13 +542,199 @@ int dax_fault(struct vm_area_struct *vma, struct vm_fault *vmf,
 		sb_start_pagefault(sb);
 		file_update_time(vma->vm_file);
 	}
-	result = do_dax_fault(vma, vmf, get_block, complete_unwritten);
+	result = __dax_fault(vma, vmf, get_block, complete_unwritten);
 	if (vmf->flags & FAULT_FLAG_WRITE)
 		sb_end_pagefault(sb);
 
 	return result;
 }
 EXPORT_SYMBOL_GPL(dax_fault);
+
+#ifdef CONFIG_TRANSPARENT_HUGEPAGE
+/*
+ * The 'colour' (ie low bits) within a PMD of a page offset.  This comes up
+ * more often than one might expect in the below function.
+ */
+#define PG_PMD_COLOUR	((PMD_SIZE >> PAGE_SHIFT) - 1)
+
+int __dax_pmd_fault(struct vm_area_struct *vma, unsigned long address,
+		pmd_t *pmd, unsigned int flags, get_block_t get_block,
+		dax_iodone_t complete_unwritten)
+{
+	struct file *file = vma->vm_file;
+	struct address_space *mapping = file->f_mapping;
+	struct inode *inode = mapping->host;
+	struct buffer_head bh;
+	unsigned blkbits = inode->i_blkbits;
+	unsigned long pmd_addr = address & PMD_MASK;
+	bool write = flags & FAULT_FLAG_WRITE;
+	struct block_device *bdev;
+	pgoff_t size, pgoff;
+	sector_t block;
+	int result = 0;
+
+	/* dax pmd mappings are broken wrt gup and fork */
+	if (!IS_ENABLED(CONFIG_FS_DAX_PMD))
+		return VM_FAULT_FALLBACK;
+
+	/* Fall back to PTEs if we're going to COW */
+	if (write && !(vma->vm_flags & VM_SHARED))
+		return VM_FAULT_FALLBACK;
+	/* If the PMD would extend outside the VMA */
+	if (pmd_addr < vma->vm_start)
+		return VM_FAULT_FALLBACK;
+	if ((pmd_addr + PMD_SIZE) > vma->vm_end)
+		return VM_FAULT_FALLBACK;
+
+	pgoff = linear_page_index(vma, pmd_addr);
+	size = (i_size_read(inode) + PAGE_SIZE - 1) >> PAGE_SHIFT;
+	if (pgoff >= size)
+		return VM_FAULT_SIGBUS;
+	/* If the PMD would cover blocks out of the file */
+	if ((pgoff | PG_PMD_COLOUR) >= size)
+		return VM_FAULT_FALLBACK;
+
+	memset(&bh, 0, sizeof(bh));
+	block = (sector_t)pgoff << (PAGE_SHIFT - blkbits);
+
+	bh.b_size = PMD_SIZE;
+	if (get_block(inode, block, &bh, write) != 0)
+		return VM_FAULT_SIGBUS;
+	bdev = bh.b_bdev;
+	i_mmap_lock_read(mapping);
+
+	/*
+	 * If the filesystem isn't willing to tell us the length of a hole,
+	 * just fall back to PTEs.  Calling get_block 512 times in a loop
+	 * would be silly.
+	 */
+	if (!buffer_size_valid(&bh) || bh.b_size < PMD_SIZE)
+		goto fallback;
+
+	/*
+	 * If we allocated new storage, make sure no process has any
+	 * zero pages covering this hole
+	 */
+	if (buffer_new(&bh)) {
+		i_mmap_unlock_read(mapping);
+		unmap_mapping_range(mapping, pgoff << PAGE_SHIFT, PMD_SIZE, 0);
+		i_mmap_lock_read(mapping);
+	}
+
+	/*
+	 * If a truncate happened while we were allocating blocks, we may
+	 * leave blocks allocated to the file that are beyond EOF.  We can't
+	 * take i_mutex here, so just leave them hanging; they'll be freed
+	 * when the file is deleted.
+	 */
+	size = (i_size_read(inode) + PAGE_SIZE - 1) >> PAGE_SHIFT;
+	if (pgoff >= size) {
+		result = VM_FAULT_SIGBUS;
+		goto out;
+	}
+	if ((pgoff | PG_PMD_COLOUR) >= size)
+		goto fallback;
+
+	if (!write && !buffer_mapped(&bh) && buffer_uptodate(&bh)) {
+		spinlock_t *ptl;
+		pmd_t entry;
+		struct page *zero_page = get_huge_zero_page();
+
+		if (unlikely(!zero_page))
+			goto fallback;
+
+		ptl = pmd_lock(vma->vm_mm, pmd);
+		if (!pmd_none(*pmd)) {
+			spin_unlock(ptl);
+			goto fallback;
+		}
+
+		entry = mk_pmd(zero_page, vma->vm_page_prot);
+		entry = pmd_mkhuge(entry);
+		set_pmd_at(vma->vm_mm, pmd_addr, pmd, entry);
+		result = VM_FAULT_NOPAGE;
+		spin_unlock(ptl);
+	} else {
+		struct blk_dax_ctl dax = {
+			.sector = to_sector(&bh, inode),
+			.size = PMD_SIZE,
+		};
+		long length = dax_map_atomic(bdev, &dax);
+
+		if (length < 0) {
+			result = VM_FAULT_SIGBUS;
+			goto out;
+		}
+		if ((length < PMD_SIZE) || (dax.pfn & PG_PMD_COLOUR)) {
+			dax_unmap_atomic(bdev, &dax);
+			goto fallback;
+		}
+
+		/*
+		 * TODO: teach vmf_insert_pfn_pmd() to support
+		 * 'pte_special' for pmds
+		 */
+		if (pfn_valid(dax.pfn)) {
+			dax_unmap_atomic(bdev, &dax);
+			goto fallback;
+		}
+
+		if (buffer_unwritten(&bh) || buffer_new(&bh)) {
+			clear_pmem(dax.addr, PMD_SIZE);
+			wmb_pmem();
+			count_vm_event(PGMAJFAULT);
+			mem_cgroup_count_vm_event(vma->vm_mm, PGMAJFAULT);
+			result |= VM_FAULT_MAJOR;
+		}
+		dax_unmap_atomic(bdev, &dax);
+
+		result |= vmf_insert_pfn_pmd(vma, address, pmd, dax.pfn, write);
+	}
+
+ out:
+	i_mmap_unlock_read(mapping);
+
+	if (buffer_unwritten(&bh))
+		complete_unwritten(&bh, !(result & VM_FAULT_ERROR));
+
+	return result;
+
+ fallback:
+	count_vm_event(THP_FAULT_FALLBACK);
+	result = VM_FAULT_FALLBACK;
+	goto out;
+}
+EXPORT_SYMBOL_GPL(__dax_pmd_fault);
+
+/**
+ * dax_pmd_fault - handle a PMD fault on a DAX file
+ * @vma: The virtual memory area where the fault occurred
+ * @vmf: The description of the fault
+ * @get_block: The filesystem method used to translate file offsets to blocks
+ *
+ * When a page fault occurs, filesystems may call this helper in their
+ * pmd_fault handler for DAX files.
+ */
+int dax_pmd_fault(struct vm_area_struct *vma, unsigned long address,
+			pmd_t *pmd, unsigned int flags, get_block_t get_block,
+			dax_iodone_t complete_unwritten)
+{
+	int result;
+	struct super_block *sb = file_inode(vma->vm_file)->i_sb;
+
+	if (flags & FAULT_FLAG_WRITE) {
+		sb_start_pagefault(sb);
+		file_update_time(vma->vm_file);
+	}
+	result = __dax_pmd_fault(vma, address, pmd, flags, get_block,
+				complete_unwritten);
+	if (flags & FAULT_FLAG_WRITE)
+		sb_end_pagefault(sb);
+
+	return result;
+}
+EXPORT_SYMBOL_GPL(dax_pmd_fault);
+#endif /* CONFIG_TRANSPARENT_HUGEPAGE */
 
 /**
  * dax_pfn_mkwrite - handle first write to DAX page
@@ -525,11 +790,17 @@ int dax_zero_page_range(struct inode *inode, loff_t from, unsigned length,
 	if (err < 0)
 		return err;
 	if (buffer_written(&bh)) {
-		void *addr;
-		err = dax_get_addr(&bh, &addr, inode->i_blkbits);
-		if (err < 0)
-			return err;
-		memset(addr + offset, 0, length);
+		struct block_device *bdev = bh.b_bdev;
+		struct blk_dax_ctl dax = {
+			.sector = to_sector(&bh, inode),
+			.size = PAGE_CACHE_SIZE,
+		};
+
+		if (dax_map_atomic(bdev, &dax) < 0)
+			return PTR_ERR(dax.addr);
+		clear_pmem(dax.addr + offset, length);
+		wmb_pmem();
+		dax_unmap_atomic(bdev, &dax);
 	}
 
 	return 0;

@@ -102,6 +102,8 @@ obj-$(CONFIG_TORTURE_TEST) += torture.o
 obj-$(CONFIG_DTRACE) += dtrace/
 obj-$(CONFIG_CTF) += ctf/
 
+obj-$(CONFIG_HAS_IOMEM) += memremap.o
+
 $(obj)/configs.o: $(obj)/config_data.h
 
 $(obj)/modsign_uefi.o: KBUILD_CFLAGS += -fshort-wchar

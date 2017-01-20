@@ -22,6 +22,7 @@
 #include <linux/time.h>
 #include <linux/highuid.h>
 #include <linux/pagemap.h>
+#include <linux/dax.h>
 #include <linux/quotaops.h>
 #include <linux/string.h>
 #include <linux/buffer_head.h>
@@ -720,7 +721,7 @@ static int _ext4_get_block(struct inode *inode, sector_t iblock,
 		ext4_io_end_t *io_end = ext4_inode_aio(inode);
 
 		map_bh(bh, inode->i_sb, map.m_pblk);
-		ext4_update_bh_state(bh, map.m_flags);
+		bh->b_state = (bh->b_state & ~EXT4_MAP_FLAGS) | map.m_flags;
 		if (IS_DAX(inode) && buffer_unwritten(bh)) {
 			/*
 			 * dgc: I suspect unwritten conversion on ext4+DAX is
@@ -3058,6 +3059,17 @@ static int ext4_get_block_write_nolock(struct inode *inode, sector_t iblock,
 		   inode->i_ino, create);
 	return _ext4_get_block(inode, iblock, bh_result,
 			       EXT4_GET_BLOCKS_NO_LOCK);
+}
+
+int ext4_get_block_dax(struct inode *inode, sector_t iblock,
+		   struct buffer_head *bh_result, int create)
+{
+	int flags = EXT4_GET_BLOCKS_PRE_IO | EXT4_GET_BLOCKS_UNWRIT_EXT;
+	if (create)
+		flags |= EXT4_GET_BLOCKS_CREATE;
+	ext4_debug("ext4_get_block_dax: inode %lu, create flag %d\n",
+		   inode->i_ino, create);
+	return _ext4_get_block(inode, iblock, bh_result, flags);
 }
 
 static void ext4_end_io_dio(struct kiocb *iocb, loff_t offset,
