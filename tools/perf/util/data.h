@@ -9,9 +9,13 @@ enum perf_data_mode {
 	PERF_DATA_MODE_READ,
 };
 
+struct perf_data_file {
+	const char	*path;
+	int		 fd;
+};
+
 struct perf_data {
-	const char		*path;
-	int			 fd;
+	struct perf_data_file	 file;
 	bool			 is_pipe;
 	bool			 force;
 	unsigned long		 size;
@@ -35,7 +39,7 @@ static inline int perf_data__is_pipe(struct perf_data *data)
 
 static inline int perf_data__fd(struct perf_data *data)
 {
-	return data->fd;
+	return data->file.fd;
 }
 
 static inline unsigned long perf_data__size(struct perf_data *data)

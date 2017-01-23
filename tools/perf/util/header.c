@@ -2901,13 +2901,13 @@ int perf_session__read_header(struct perf_session *session)
 	if (f_header.data.size == 0) {
 		pr_warning("WARNING: The %s file's data size field is 0 which is unexpected.\n"
 			   "Was the 'perf record' command properly terminated?\n",
-			   data->path);
+			   data->file.path);
 	}
 
 	if (f_header.attr_size == 0) {
 		pr_err("ERROR: The %s file's attr size field is 0 which is unexpected.\n"
 		       "Was the 'perf record' command properly terminated?\n",
-		       data->path);
+		       data->file.path);
 		return -EINVAL;
 	}
 
