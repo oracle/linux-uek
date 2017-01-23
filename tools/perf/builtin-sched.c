@@ -1702,9 +1702,11 @@ static int perf_sched__read_events(struct perf_sched *sched)
 	};
 	struct perf_session *session;
 	struct perf_data data = {
-		.path = input_name,
-		.mode = PERF_DATA_MODE_READ,
-		.force = sched->force,
+		.file      = {
+			.path = input_name,
+		},
+		.mode      = PERF_DATA_MODE_READ,
+		.force     = sched->force,
 	};
 	int rc = -1;
 
@@ -2904,9 +2906,11 @@ static int perf_sched__timehist(struct perf_sched *sched)
 		{ "sched:sched_migrate_task", timehist_migrate_task_event, },
 	};
 	struct perf_data data = {
-		.path = input_name,
-		.mode = PERF_DATA_MODE_READ,
-		.force = sched->force,
+		.file      = {
+			.path = input_name,
+		},
+		.mode      = PERF_DATA_MODE_READ,
+		.force     = sched->force,
 	};
 
 	struct perf_session *session;
