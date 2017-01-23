@@ -1266,27 +1266,27 @@ void smp_fill_in_sib_core_maps(void)
 {
 	unsigned int i, j;
 
-	for_each_present_cpu(i) {
+	for_each_online_cpu(i) {
 		cpumask_clear(&cpu_core_map[i]);
 		if (cpu_data(i).core_id == 0) {
 			cpumask_set_cpu(i, &cpu_core_map[i]);
 			continue;
 		}
 
-		for_each_present_cpu(j) {
+		for_each_online_cpu(j) {
 			if (cpu_data(i).core_id == cpu_data(j).core_id)
 				cpumask_set_cpu(j, &cpu_core_map[i]);
 		}
 	}
 
-	for_each_present_cpu(i)  {
+	for_each_online_cpu(i)  {
 		cpumask_clear(&cpu_core_sib_map[i]);
 		if (cpu_data(i).sock_id == -1) {
 			cpumask_set_cpu(i, &cpu_core_sib_map[i]);
 			continue;
 		}
 
-		for_each_present_cpu(j)  {
+		for_each_online_cpu(j)  {
 			if (cpu_data(i).max_cache_id ==
 			    cpu_data(j).max_cache_id)
 				cpumask_set_cpu(j, &cpu_core_sib_cache_map[i]);
@@ -1296,14 +1296,14 @@ void smp_fill_in_sib_core_maps(void)
 		}
 	}
 
-	for_each_present_cpu(i) {
+	for_each_online_cpu(i) {
 		cpumask_clear(&per_cpu(cpu_sibling_map, i));
 		if (cpu_data(i).proc_id == -1) {
 			cpumask_set_cpu(i, &per_cpu(cpu_sibling_map, i));
 			continue;
 		}
 
-		for_each_present_cpu(j) {
+		for_each_online_cpu(j) {
 			if (cpu_data(i).proc_id == cpu_data(j).proc_id)
 				cpumask_set_cpu(j, &per_cpu(cpu_sibling_map,
 						i));
