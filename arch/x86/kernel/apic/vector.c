@@ -373,6 +373,11 @@ int apic_set_affinity(struct irq_data *data, const struct cpumask *mask,
 
 	return 0;
 }
+/*
+ *  This export is UEK-only for Hyper-V PCI pass-through driver,
+ *  do not add this function to kABI whitelist.
+ */
+EXPORT_SYMBOL_GPL(apic_set_affinity);
 
 #ifdef CONFIG_SMP
 void send_cleanup_vector(struct irq_cfg *cfg)
