@@ -3688,7 +3688,7 @@ next:
 			ASSERT(end + 1 >= base);
 #ifdef CONFIG_IPV6
 		} else if (af == AF_INET6) {
-			struct in6_addr	ip6;
+			in6_addr_t	ip6;
 			int		firstzero, tryzero, numzero, v6end;
 			uint16_t	val;
 			const char	digits[] = "0123456789abcdef";
@@ -3707,7 +3707,7 @@ next:
 			 */
 			dtrace_bcopy(
 			    (void *)(uintptr_t)tupregs[argi].dttk_value,
-			    (void *)(uintptr_t)&ip6, sizeof(struct in6_addr));
+			    (void *)(uintptr_t)&ip6, sizeof(in6_addr_t));
 
 			/*
 			 * Check an IPv6 string will fit in scratch.
@@ -3729,7 +3729,7 @@ next:
 			firstzero = -1;
 			tryzero = -1;
 			numzero = 1;
-			for (i = 0; i < sizeof(struct in6_addr); i++) {
+			for (i = 0; i < sizeof(in6_addr_t); i++) {
 				if (ip6.s6_addr[i] == 0 &&
 				    tryzero == -1 && i % 2 == 0) {
 					tryzero = i;
@@ -3738,7 +3738,7 @@ next:
 
 				if (tryzero != -1 &&
 				    (ip6.s6_addr[i] != 0 ||
-				    i == sizeof(struct in6_addr) - 1)) {
+				    i == sizeof(in6_addr_t) - 1)) {
 
 					if (i - tryzero <= numzero) {
 						tryzero = -1;
@@ -3750,19 +3750,19 @@ next:
 					tryzero = -1;
 
 					if (ip6.s6_addr[i] == 0 &&
-					    i == sizeof(struct in6_addr) - 1)
+					    i == sizeof(in6_addr_t) - 1)
 						numzero += 2;
 				}
 			}
-			ASSERT(firstzero + numzero <= sizeof(struct in6_addr));
+			ASSERT(firstzero + numzero <= sizeof(in6_addr_t));
 
 			/*
 			 * Check for an IPv4 embedded address.
 			 */
-			v6end = sizeof(struct in6_addr) - 2;
-			if (ipv6_addr_type(&ip6) |
+			v6end = sizeof(in6_addr_t) - 2;
+			if (ipv6_addr_type(&ip6) &
 			    (IPV6_ADDR_COMPATv4 | IPV6_ADDR_MAPPED)) {
-				for (i = sizeof(struct in6_addr) - 1;
+				for (i = sizeof(in6_addr_t) - 1;
 				    i >= DTRACE_V4MAPPED_OFFSET; i--) {
 					ASSERT(end >= base);
 

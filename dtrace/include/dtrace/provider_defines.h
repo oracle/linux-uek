@@ -34,11 +34,13 @@
 
 #include <linux/dtrace/universal.h>
 #include <linux/cred.h>
+#include <linux/in6.h>
 
 typedef uintptr_t		dtrace_provider_id_t;
 typedef uintptr_t		dtrace_meta_provider_id_t;
 typedef struct cred	cred_t;
 typedef __be32		ipaddr_t;
+typedef struct in6_addr	in6_addr_t;
 
 struct dtrace_pops;
 struct dtrace_helper_probedesc;
