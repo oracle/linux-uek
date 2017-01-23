@@ -1157,6 +1157,17 @@ u64 hv_do_hypercall(u64 control, void *input, void *output);
 		}
 
 /*
+ *  PCI Express Pass Through
+ *  {44C4F61D-4444-4400-9D52-802E27EDE19F}
+ */
+
+#define HV_PCIE_GUID \
+	.guid = { \
+			0x1d, 0xf6, 0xc4, 0x44, 0x44, 0x44, 0x00, 0x44, \
+			0x9d, 0x52, 0x80, 0x2e, 0x27, 0xed, 0xe1, 0x9f \
+		}
+
+/*
  * Common header for Hyper-V ICs
  */
 
