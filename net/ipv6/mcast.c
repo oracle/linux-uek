@@ -64,6 +64,8 @@
 
 #include <net/ip6_checksum.h>
 
+#include <linux/sdt.h>
+
 /* Ensure that we have struct in6_addr aligned on 32bit word. */
 static void *__mld2_query_bugs[] __attribute__((__unused__)) = {
 	BUILD_BUG_ON_NULL(offsetof(struct mld2_query, mld2q_srcs) % 4),
@@ -1639,10 +1641,21 @@ static void mld_sendpack(struct sk_buff *skb)
 		dst = NULL;
 	}
 	skb_dst_set(skb, dst);
-	if (err)
-		goto err_out;
+	if (err) {
+		kfree_skb(skb);
+		skb = NULL;
+		goto out;
+	}
 
 	payload_len = skb->len;
+
+	DTRACE_IP(send,
+	    struct sk_buff * : pktinfo_t *, skb,
+	    struct sock * : csinfo_t *, skb->sk,
+	    void_ip_t * : ipinfo_t *, ipv6_hdr(skb),
+	    struct net_device * : ifinfo_t *, skb->dev,
+	    struct iphdr *: ipv4info_t *, NULL,
+	    struct ipv6hdr * : ipv6info_t *, ipv6_hdr(skb));
 
 	err = NF_HOOK(NFPROTO_IPV6, NF_INET_LOCAL_OUT,
 		      net->ipv6.igmp_sk, skb, NULL, skb->dev,
@@ -1653,15 +1666,20 @@ out:
 		ICMP6_INC_STATS(net, idev, ICMP6_MIB_OUTMSGS);
 		IP6_UPD_PO_STATS(net, idev, IPSTATS_MIB_OUTMCAST, payload_len);
 	} else {
+		DTRACE_IP(drop__out,
+		    struct sk_buff * : pktinfo_t *, skb,
+		    struct sock * : csinfo_t *, skb ? skb->sk : NULL,
+		    void_ip_t * : ipinfo_t *, skb ? ipv6_hdr(skb) : NULL,
+		    struct net_device * : ifinfo_t *, skb ? skb->dev : NULL,
+		    struct iphdr * : ipv4info_t *, NULL,
+		    struct ipv6hdr * : ipv6info_t *, skb ? ipv6_hdr(skb) : NULL,
+		    char * : string, "multicast send error");
+
 		IP6_INC_STATS(net, idev, IPSTATS_MIB_OUTDISCARDS);
 	}
 
 	rcu_read_unlock();
 	return;
-
-err_out:
-	kfree_skb(skb);
-	goto out;
 }
 
 static int grec_size(struct ifmcaddr6 *pmc, int type, int gdel, int sdel)
@@ -1965,6 +1983,15 @@ static void igmp6_send(struct in6_addr *addr, struct net_device *dev, int type)
 
 	if (!skb) {
 		rcu_read_lock();
+		DTRACE_IP(drop__out,
+		    struct sk_buff * : pktinfo_t *, NULL,
+		    struct sock * : csinfo_t *, sk,
+		    void_ip_t * : ipinfo_t *, NULL,
+		    struct net_device * : ifinfo_t *, NULL,
+		    struct iphdr * : ipv4info_t *, NULL,
+		    struct ipv6hdr * : ipv6info_t *, NULL,
+		    char * : string, "out of memory");
+
 		IP6_INC_STATS(net, __in6_dev_get(dev),
 			      IPSTATS_MIB_OUTDISCARDS);
 		rcu_read_unlock();
@@ -2004,10 +2031,21 @@ static void igmp6_send(struct in6_addr *addr, struct net_device *dev, int type)
 	dst = icmp6_dst_alloc(skb->dev, &fl6);
 	if (IS_ERR(dst)) {
 		err = PTR_ERR(dst);
-		goto err_out;
+		kfree_skb(skb);
+		skb = NULL;
+		goto out;
 	}
 
 	skb_dst_set(skb, dst);
+
+	DTRACE_IP(send,
+	    struct sk_buff * : pktinfo_t *, skb,
+	    struct sock * : csinfo_t *, skb->sk,
+	    void_ip_t * : ipinfo_t *, ipv6_hdr(skb),
+	    struct net_device * : ifinfo_t *, skb->dev,
+	    struct iphdr *: ipv4info_t *, NULL,
+	    struct ipv6hdr * : ipv6info_t *, ipv6_hdr(skb));
+
 	err = NF_HOOK(NFPROTO_IPV6, NF_INET_LOCAL_OUT, sk, skb,
 		      NULL, skb->dev, dst_output_sk);
 out:
@@ -2015,15 +2053,21 @@ out:
 		ICMP6MSGOUT_INC_STATS(net, idev, type);
 		ICMP6_INC_STATS(net, idev, ICMP6_MIB_OUTMSGS);
 		IP6_UPD_PO_STATS(net, idev, IPSTATS_MIB_OUTMCAST, full_len);
-	} else
+	} else {
+		DTRACE_IP(drop__out,
+		    struct sk_buff * : pktinfo_t *, skb,
+		    struct sock * : csinfo_t *, skb ? skb->sk : NULL,
+		    void_ip_t * : ipinfo_t *, skb ? ipv6_hdr(skb) : NULL,
+		    struct net_device * : ifinfo_t *, skb ? skb->dev : NULL,
+		    struct iphdr * : ipv4info_t *, NULL,
+		    struct ipv6hdr * : ipv6info_t *, skb ? ipv6_hdr(skb) : NULL,
+		    char * : string, "multicast send error");
+
 		IP6_INC_STATS(net, idev, IPSTATS_MIB_OUTDISCARDS);
+	}
 
 	rcu_read_unlock();
 	return;
-
-err_out:
-	kfree_skb(skb);
-	goto out;
 }
 
 static void mld_send_initial_cr(struct inet6_dev *idev)

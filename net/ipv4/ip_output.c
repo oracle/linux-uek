@@ -79,6 +79,7 @@
 #include <linux/mroute.h>
 #include <linux/netlink.h>
 #include <linux/tcp.h>
+#include <linux/sdt.h>
 
 int sysctl_ip_default_ttl __read_mostly = IPDEFTTL;
 EXPORT_SYMBOL(sysctl_ip_default_ttl);
@@ -97,6 +98,15 @@ int __ip_local_out_sk(struct sock *sk, struct sk_buff *skb)
 
 	iph->tot_len = htons(skb->len);
 	ip_send_check(iph);
+
+	DTRACE_IP(send,
+	    struct sk_buff * :	pktinfo_t *, skb,
+	    struct sock * : csinfo_t *, sk,
+	    void_ip_t * : ipinfo_t *, iph,
+	    struct net_device * : ifinfo_t *, skb->dev,
+	    struct iphdr * : ipv4info_t *, iph,
+	    struct ipv6hdr * : ipv6info_t *, NULL);
+
 	return nf_hook(NFPROTO_IPV4, NF_INET_LOCAL_OUT, sk, skb, NULL,
 		       skb_dst(skb)->dev, dst_output_sk);
 }
@@ -858,6 +868,7 @@ static int __ip_append_data(struct sock *sk,
 	int csummode = CHECKSUM_NONE;
 	struct rtable *rt = (struct rtable *)cork->dst;
 	u32 tskey = 0;
+	const char *dropreason;
 
 	skb = skb_peek_tail(queue);
 
@@ -874,9 +885,13 @@ static int __ip_append_data(struct sock *sk,
 	maxnonfragsize = ip_sk_ignore_df(sk) ? 0xFFFF : mtu;
 
 	if (cork->length + length > maxnonfragsize - fragheaderlen) {
+		struct iphdr *iph = ip_hdr(skb);
+
 		ip_local_error(sk, EMSGSIZE, fl4->daddr, inet->inet_dport,
 			       mtu - (opt ? opt->optlen : 0));
-		return -EMSGSIZE;
+		dropreason = "packet too big";
+		err = -EMSGSIZE;
+		goto error2;
 	}
 
 	/*
@@ -897,8 +912,10 @@ static int __ip_append_data(struct sock *sk,
 		err = ip_ufo_append_data(sk, queue, getfrag, from, length,
 					 hh_len, fragheaderlen, transhdrlen,
 					 maxfraglen, flags);
-		if (err)
+		if (err) {
+			dropreason = "could not offload UDP fragmentation";
 			goto error;
+		}
 		return 0;
 	}
 
@@ -967,8 +984,10 @@ alloc_new_skb:
 					skb = sock_wmalloc(sk,
 							   alloclen + hh_len + 15, 1,
 							   sk->sk_allocation);
-				if (unlikely(!skb))
+				if (unlikely(!skb)) {
+					dropreason = "no buffers";
 					err = -ENOBUFS;
+				}
 			}
 			if (!skb)
 				goto error;
@@ -1008,7 +1027,9 @@ alloc_new_skb:
 			copy = datalen - transhdrlen - fraggap;
 			if (copy > 0 && getfrag(from, data + transhdrlen, offset, copy, fraggap, skb) < 0) {
 				err = -EFAULT;
+				dropreason = "could not fragment packet";
 				kfree_skb(skb);
+				skb = NULL;
 				goto error;
 			}
 
@@ -1035,6 +1056,7 @@ alloc_new_skb:
 			if (getfrag(from, skb_put(skb, copy),
 					offset, copy, off, skb) < 0) {
 				__skb_trim(skb, off);
+				dropreason = "could not fragment packet";
 				err = -EFAULT;
 				goto error;
 			}
@@ -1042,14 +1064,18 @@ alloc_new_skb:
 			int i = skb_shinfo(skb)->nr_frags;
 
 			err = -ENOMEM;
-			if (!sk_page_frag_refill(sk, pfrag))
+			if (!sk_page_frag_refill(sk, pfrag)) {
+				dropreason = "no memory";
 				goto error;
+			}
 
 			if (!skb_can_coalesce(skb, i, pfrag->page,
 					      pfrag->offset)) {
 				err = -EMSGSIZE;
-				if (i == MAX_SKB_FRAGS)
+				if (i == MAX_SKB_FRAGS) {
+					dropreason = "too many fragments";
 					goto error;
+				}
 
 				__skb_fill_page_desc(skb, i, pfrag->page,
 						     pfrag->offset, 0);
@@ -1059,8 +1085,10 @@ alloc_new_skb:
 			copy = min_t(int, copy, pfrag->size - pfrag->offset);
 			if (getfrag(from,
 				    page_address(pfrag->page) + pfrag->offset,
-				    offset, copy, skb->len, skb) < 0)
+				    offset, copy, skb->len, skb) < 0) {
+				dropreason = "could not framgent packet";
 				goto error_efault;
+			}
 
 			pfrag->offset += copy;
 			skb_frag_size_add(&skb_shinfo(skb)->frags[i - 1], copy);
@@ -1080,6 +1108,16 @@ error_efault:
 error:
 	cork->length -= length;
 	IP_INC_STATS(sock_net(sk), IPSTATS_MIB_OUTDISCARDS);
+error2:
+	DTRACE_IP(drop__out,
+	    struct sk_buff * : pktinfo_t *, skb,
+	    struct sock * : csinfo_t *, skb ? skb->sk : NULL,
+	    void_ip_t * : ipinfo_t *, skb ? ip_hdr(skb) : NULL,
+	    struct net_device * : ifinfo_t *, skb ? skb->dev : NULL,
+	    struct iphdr * : ipv4info_t *, skb ? ip_hdr(skb) : NULL,
+	    struct ipv6hdr * : ipv6info_t *, NULL,
+	    char * : string, dropreason);
+
 	return err;
 }
 
@@ -1173,6 +1211,8 @@ ssize_t	ip_append_page(struct sock *sk, struct flowi4 *fl4, struct page *page,
 	int len;
 	int err;
 	unsigned int maxfraglen, fragheaderlen, fraggap, maxnonfragsize;
+	struct iphdr *iph;
+	const char *dropreason;
 
 	if (inet->hdrincl)
 		return -EPERM;
@@ -1238,6 +1278,7 @@ ssize_t	ip_append_page(struct sock *sk, struct flowi4 *fl4, struct page *page,
 			alloclen = fragheaderlen + hh_len + fraggap + 15;
 			skb = sock_wmalloc(sk, alloclen, 1, sk->sk_allocation);
 			if (unlikely(!skb)) {
+				dropreason = "no buffers";
 				err = -ENOBUFS;
 				goto error;
 			}
@@ -1282,6 +1323,7 @@ ssize_t	ip_append_page(struct sock *sk, struct flowi4 *fl4, struct page *page,
 			get_page(page);
 			skb_fill_page_desc(skb, i, page, offset, len);
 		} else {
+			dropreason = "packet too big";
 			err = -EMSGSIZE;
 			goto error;
 		}
@@ -1304,6 +1346,16 @@ ssize_t	ip_append_page(struct sock *sk, struct flowi4 *fl4, struct page *page,
 error:
 	cork->length -= size;
 	IP_INC_STATS(sock_net(sk), IPSTATS_MIB_OUTDISCARDS);
+	iph = skb ? ip_hdr(skb) : NULL;
+	DTRACE_IP(drop__out,
+	    struct sk_buff * : pktinfo_t *, skb,
+	    struct sock * : csinfo_t *, skb ? skb->sk : NULL,
+	    void_ip_t * : ipinfo_t *, iph,
+	    struct net_device * : ifinfo_t *, skb ? skb->dev : NULL,
+	    struct iphdr * : ipv4info_t *, iph,
+	    struct ipv6hdr * : ipv6info_t *, NULL,
+	    char * : string, dropreason);
+
 	return err;
 }
 
@@ -1420,8 +1472,21 @@ int ip_send_skb(struct net *net, struct sk_buff *skb)
 	if (err) {
 		if (err > 0)
 			err = net_xmit_errno(err);
-		if (err)
+		if (err) {
+			struct iphdr *iph = ip_hdr(skb);
+
 			IP_INC_STATS(net, IPSTATS_MIB_OUTDISCARDS);
+			DTRACE_IP(drop__out,
+			    struct sk_buff * : pktinfo_t *, skb,
+			    struct sock * : csinfo_t *, skb->sk,
+			    void_ip_t * : ipinfo_t *, iph,
+			    struct net_device * : ifinfo_t *, skb->dev,
+			    struct iphdr * : ipv4info_t *, iph,
+			    struct ipv6hdr * : ipv6info_t *, NULL,
+			    char * : string, "packet too short");
+		}
+
+
 	}
 
 	return err;
