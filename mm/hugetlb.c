@@ -33,6 +33,7 @@
 #include <linux/hugetlb.h>
 #include <linux/hugetlb_cgroup.h>
 #include <linux/node.h>
+#include <linux/userfaultfd_k.h>
 #include "internal.h"
 
 int hugepages_treat_as_movable;
@@ -831,8 +832,27 @@ static bool vma_has_reserves(struct vm_area_struct *vma, long chg)
 	 * Only the process that called mmap() has reserves for
 	 * private mappings.
 	 */
-	if (is_vma_resv_set(vma, HPAGE_RESV_OWNER))
-		return true;
+	if (is_vma_resv_set(vma, HPAGE_RESV_OWNER)) {
+		/*
+		 * Like the shared case above, a hole punch or truncate
+		 * could have been performed on the private mapping.
+		 * Examine the value of chg to determine if reserves
+		 * actually exist or were previously consumed.
+		 * Very Subtle - The value of chg comes from a previous
+		 * call to vma_needs_reserves().  The reserve map for
+		 * private mappings has different (opposite) semantics
+		 * than that of shared mappings.  vma_needs_reserves()
+		 * has already taken this difference in semantics into
+		 * account.  Therefore, the meaning of chg is the same
+		 * as in the shared case above.  Code could easily be
+		 * combined, but keeping it separate draws attention to
+		 * subtle differences.
+		 */
+		if (chg)
+			return false;
+		else
+			return true;
+	}
 
 	return false;
 }
@@ -1691,11 +1711,17 @@ static void return_unused_surplus_pages(struct hstate *h,
  * is not the case is if a reserve map was changed between calls.  It
  * is the responsibility of the caller to notice the difference and
  * take appropriate action.
+ *
+ * vma_add_reservation is used in error paths where a reservation must
+ * be restored when a newly allocated huge page must be freed.  It is
+ * to be called after calling vma_needs_reservation to determine if a
+ * reservation exists.
  */
 enum vma_resv_mode {
 	VMA_NEEDS_RESV,
 	VMA_COMMIT_RESV,
 	VMA_END_RESV,
+	VMA_ADD_RESV,
 };
 static long __vma_reservation_common(struct hstate *h,
 				struct vm_area_struct *vma, unsigned long addr,
@@ -1721,12 +1747,39 @@ static long __vma_reservation_common(struct hstate *h,
 		region_abort(resv, idx, idx + 1);
 		ret = 0;
 		break;
+	case VMA_ADD_RESV:
+		if (vma->vm_flags & VM_MAYSHARE)
+			ret = region_add(resv, idx, idx + 1);
+		else {
+			region_abort(resv, idx, idx + 1);
+			ret = region_del(resv, idx, idx + 1);
+		}
+		break;
 	default:
 		BUG();
 	}
 
 	if (vma->vm_flags & VM_MAYSHARE)
 		return ret;
+	else if (is_vma_resv_set(vma, HPAGE_RESV_OWNER) && ret >= 0) {
+		/*
+		 * In most cases, reserves always exist for private mappings.
+		 * However, a file associated with mapping could have been
+		 * hole punched or truncated after reserves were consumed.
+		 * As subsequent fault on such a range will not use reserves.
+		 * Subtle - The reserve map for private mappings has the
+		 * opposite meaning than that of shared mappings.  If NO
+		 * entry is in the reserve map, it means a reservation exists.
+		 * If an entry exists in the reserve map, it means the
+		 * reservation has already been consumed.  As a result, the
+		 * return value of this routine is the opposite of the
+		 * value returned from reserve map manipulation routines above.
+		 */
+		if (ret)
+			return 0;
+		else
+			return 1;
+	}
 	else
 		return ret < 0 ? ret : 0;
 }
@@ -1747,6 +1800,56 @@ static void vma_end_reservation(struct hstate *h,
 			struct vm_area_struct *vma, unsigned long addr)
 {
 	(void)__vma_reservation_common(h, vma, addr, VMA_END_RESV);
+}
+
+static long vma_add_reservation(struct hstate *h,
+			struct vm_area_struct *vma, unsigned long addr)
+{
+	return __vma_reservation_common(h, vma, addr, VMA_ADD_RESV);
+}
+
+/*
+ * This routine is called to restore a reservation on error paths.  In the
+ * specific error paths, a huge page was allocated (via alloc_huge_page)
+ * and is about to be freed.  If a reservation for the page existed,
+ * alloc_huge_page would have consumed the reservation and set PagePrivate
+ * in the newly allocated page.  When the page is freed via free_huge_page,
+ * the global reservation count will be incremented if PagePrivate is set.
+ * However, free_huge_page can not adjust the reserve map.  Adjust the
+ * reserve map here to be consistent with global reserve count adjustments
+ * to be made by free_huge_page.
+ */
+static void restore_reserve_on_error(struct hstate *h,
+			struct vm_area_struct *vma, unsigned long address,
+			struct page *page)
+{
+	if (unlikely(PagePrivate(page))) {
+		long rc = vma_needs_reservation(h, vma, address);
+
+		if (unlikely(rc < 0)) {
+			/*
+			 * Rare out of memory condition in reserve map
+			 * manipulation.  Clear PagePrivate so that
+			 * global reserve count will not be incremented
+			 * by free_huge_page.  This will make it appear
+			 * as though the reservation for this page was
+			 * consumed.  This may prevent the task from
+			 * faulting in the page at a later time.  This
+			 * is better than inconsistent global huge page
+			 * accounting of reserve counts.
+			 */
+			ClearPagePrivate(page);
+		} else if (rc) {
+			rc = vma_add_reservation(h, vma, address);
+			if (unlikely(rc < 0))
+				/*
+				 * See above comment about rare out of
+				 * memory condition.
+				 */
+				ClearPagePrivate(page);
+		} else
+			vma_end_reservation(h, vma, address);
+	}
 }
 
 struct page *alloc_huge_page(struct vm_area_struct *vma,
@@ -3364,6 +3467,7 @@ retry_avoidcopy:
 	spin_unlock(ptl);
 	mmu_notifier_invalidate_range_end(mm, mmun_start, mmun_end);
 out_release_all:
+	restore_reserve_on_error(h, vma, address, new_page);
 	page_cache_release(new_page);
 out_release_old:
 	page_cache_release(old_page);
@@ -3455,6 +3559,27 @@ retry:
 		size = i_size_read(mapping->host) >> huge_page_shift(h);
 		if (idx >= size)
 			goto out;
+
+		/*
+		 * Check for page in userfault range
+		 */
+		if (userfaultfd_missing(vma)) {
+			u32 hash;
+
+			/*
+			 * hugetlb_fault_mutex must be dropped before
+			 * handling userfault.  Reacquire after handling
+			 * fault to make calling code simpler.
+			 */
+			hash = hugetlb_fault_mutex_hash(h, mm, vma, mapping,
+							idx, address);
+			mutex_unlock(&hugetlb_fault_mutex_table[hash]);
+			ret = handle_userfault(vma, address, flags,
+						VM_UFFD_MISSING);
+			mutex_lock(&hugetlb_fault_mutex_table[hash]);
+			goto out;
+		}
+
 		page = alloc_huge_page(vma, address, 0);
 		if (IS_ERR(page)) {
 			ret = PTR_ERR(page);
@@ -3545,6 +3670,7 @@ backout:
 	spin_unlock(ptl);
 backout_unlocked:
 	unlock_page(page);
+	restore_reserve_on_error(h, vma, address, page);
 	put_page(page);
 	goto out;
 }
@@ -3722,10 +3848,90 @@ out_mutex:
 	return ret;
 }
 
+/*
+ * Used by userfaultfd UFFDIO_COPY.  Based on mcopy_atomic_pte with
+ * modifications for huge pages.
+ */
+int hugetlb_mcopy_atomic_pte(struct mm_struct *dst_mm,
+			    pte_t *dst_pte,
+			    struct vm_area_struct *dst_vma,
+			    unsigned long dst_addr,
+			    unsigned long src_addr,
+			    struct page **pagep)
+{
+	struct hstate *h = hstate_vma(dst_vma);
+	pte_t _dst_pte;
+	spinlock_t *ptl;
+	int ret;
+	struct page *page;
+
+	if (!*pagep) {
+		ret = -ENOMEM;
+		page = alloc_huge_page(dst_vma, dst_addr, 0);
+		if (IS_ERR(page))
+			goto out;
+
+		ret = copy_huge_page_from_user(page,
+						(const void __user *) src_addr,
+						pages_per_huge_page(h), false);
+
+		/* fallback to copy_from_user outside mmap_sem */
+		if (unlikely(ret)) {
+			ret = -EFAULT;
+			*pagep = page;
+			/* don't free the page */
+			goto out;
+		}
+	} else {
+		page = *pagep;
+		*pagep = NULL;
+	}
+
+	/*
+	 * The memory barrier inside __SetPageUptodate makes sure that
+	 * preceding stores to the page contents become visible before
+	 * the set_pte_at() write.
+	 */
+	__SetPageUptodate(page);
+	set_page_huge_active(page);
+
+	ptl = huge_pte_lockptr(h, dst_mm, dst_pte);
+	spin_lock(ptl);
+
+	ret = -EEXIST;
+	if (!huge_pte_none(huge_ptep_get(dst_pte)))
+		goto out_release_unlock;
+
+	ClearPagePrivate(page);
+	hugepage_add_new_anon_rmap(page, dst_vma, dst_addr);
+
+	_dst_pte = make_huge_pte(dst_vma, page, dst_vma->vm_flags & VM_WRITE);
+	if (dst_vma->vm_flags & VM_WRITE)
+		_dst_pte = huge_pte_mkdirty(_dst_pte);
+	_dst_pte = pte_mkyoung(_dst_pte);
+
+	set_huge_pte_at(dst_mm, dst_addr, dst_pte, _dst_pte);
+
+	(void)huge_ptep_set_access_flags(dst_vma, dst_addr, dst_pte, _dst_pte,
+					dst_vma->vm_flags & VM_WRITE);
+
+	/* No need to invalidate - it was non-present before */
+	update_mmu_cache(dst_vma, dst_addr, dst_pte);
+
+	spin_unlock(ptl);
+	ret = 0;
+out:
+	return ret;
+out_release_unlock:
+	spin_unlock(ptl);
+	put_page(page);
+	goto out;
+}
+
 long follow_hugetlb_page(struct mm_struct *mm, struct vm_area_struct *vma,
 			 struct page **pages, struct vm_area_struct **vmas,
 			 unsigned long *position, unsigned long *nr_pages,
-			 long i, unsigned int flags)
+			 long i, unsigned int flags, int *nonblocking)
 {
 	unsigned long pfn_offset;
 	unsigned long vaddr = *position;
@@ -3788,6 +3994,7 @@ long follow_hugetlb_page(struct mm_struct *mm, struct vm_area_struct *vma,
 		    ((flags & FOLL_WRITE) &&
 		      !huge_pte_write(huge_ptep_get(pte)))) {
 			int ret;
+			unsigned int fault_flags = 0;
 
 			if (pte)
 				spin_unlock(ptl);
@@ -3795,13 +4002,39 @@ long follow_hugetlb_page(struct mm_struct *mm, struct vm_area_struct *vma,
 			if (flags & FOLL_IMMED)
 				return i;
 
-			ret = hugetlb_fault(mm, vma, vaddr,
-				(flags & FOLL_WRITE) ? FAULT_FLAG_WRITE : 0);
-			if (!(ret & VM_FAULT_ERROR))
-				continue;
-
-			remainder = 0;
-			break;
+			if (flags & FOLL_WRITE)
+				fault_flags |= FAULT_FLAG_WRITE;
+			if (nonblocking)
+				fault_flags |= FAULT_FLAG_ALLOW_RETRY;
+			if (flags & FOLL_NOWAIT)
+				fault_flags |= FAULT_FLAG_ALLOW_RETRY |
+					FAULT_FLAG_RETRY_NOWAIT;
+			if (flags & FOLL_TRIED) {
+				VM_WARN_ON_ONCE(fault_flags &
+						FAULT_FLAG_ALLOW_RETRY);
+				fault_flags |= FAULT_FLAG_TRIED;
+			}
+			ret = hugetlb_fault(mm, vma, vaddr, fault_flags);
+			if (ret & VM_FAULT_ERROR) {
+				remainder = 0;
+				break;
+			}
+			if (ret & VM_FAULT_RETRY) {
+				if (nonblocking)
+					*nonblocking = 0;
+				*nr_pages = 0;
+				/*
+				 * VM_FAULT_RETRY must not return an
+				 * error, it will return zero
+				 * instead.
+				 *
+				 * No need to update "position" as the
+				 * caller will not check it after
+				 * *nr_pages is set to 0.
+				 */
+				return i;
+			}
+			continue;
 		}
 
 		pfn_offset = (vaddr & ~huge_page_mask(h)) >> PAGE_SHIFT;
@@ -3830,6 +4063,11 @@ same_page:
 		spin_unlock(ptl);
 	}
 	*nr_pages = remainder;
+	/*
+	 * setting position is actually required only if remainder is
+	 * not zero but it's faster not to add a "if (remainder)"
+	 * branch.
+	 */
 	*position = vaddr;
 
 	return i ? i : -EFAULT;

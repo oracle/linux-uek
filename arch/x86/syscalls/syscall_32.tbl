@@ -365,6 +365,7 @@
 356	i386	memfd_create		sys_memfd_create
 357	i386	bpf			sys_bpf
 358	i386	execveat		sys_execveat			stub32_execveat
+359	i386	userfaultfd		sys_userfaultfd
 # This one is a temporary number, designed for no clashes.
 # Nothing but DTrace should use it.
 473	i386	waitfd			sys_waitfd
