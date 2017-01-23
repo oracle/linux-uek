@@ -174,7 +174,6 @@ config SYSTEMPORT
 config BNXT
 	tristate "Broadcom NetXtreme-C/E support"
 	depends on PCI
-	depends on VXLAN || VXLAN=n
 	select FW_LOADER
 	select LIBCRC32C
 	---help---
@@ -190,5 +189,15 @@ config BNXT_SRIOV
 	  This configuration parameter enables Single Root Input Output
 	  Virtualization support in the NetXtreme-C/E products. This
 	  allows for virtual function acceleration in virtual environments.
+
+config BNXT_DCB
+	bool "Data Center Bridging (DCB) Support"
+	default n
+	depends on BNXT && DCB
+	---help---
+	  Say Y here if you want to use Data Center Bridging (DCB) in the
+	  driver.
+
+	  If unsure, say N.
 
 endif # NET_VENDOR_BROADCOM
