@@ -2550,7 +2550,7 @@ static int trace__replay(struct trace *trace)
 	const struct perf_evsel_str_handler handlers[] = {
 		{ "probe:vfs_getname",	     trace__vfs_getname, },
 	};
-	struct perf_data_file file = {
+	struct perf_data data = {
 		.path  = input_name,
 		.mode  = PERF_DATA_MODE_READ,
 		.force = trace->force,
@@ -2576,7 +2576,7 @@ static int trace__replay(struct trace *trace)
 	/* add tid to output */
 	trace->multiple_threads = true;
 
-	session = perf_session__new(&file, false, &trace->tool);
+	session = perf_session__new(&data, false, &trace->tool);
 	if (session == NULL)
 		return -1;
 

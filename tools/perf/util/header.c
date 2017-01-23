@@ -1764,7 +1764,7 @@ process_event_desc(struct feat_fd *ff, void *data __maybe_unused)
 
 	session = container_of(ff->ph, struct perf_session, header);
 
-	if (session->file->is_pipe) {
+	if (session->data->is_pipe) {
 		/* Save events for reading later by print_event_desc,
 		 * since they can't be read again in pipe mode. */
 		ff->events = events;
@@ -1773,7 +1773,7 @@ process_event_desc(struct feat_fd *ff, void *data __maybe_unused)
 	for (evsel = events; evsel->attr.size; evsel++)
 		perf_evlist__set_event_name(session->evlist, evsel);
 
-	if (!session->file->is_pipe)
+	if (!session->data->is_pipe)
 		free_event_desc(events);
 
 	return 0;
@@ -2260,7 +2260,7 @@ int perf_header__fprintf_info(struct perf_session *session, FILE *fp, bool full)
 {
 	struct header_print_data hd;
 	struct perf_header *header = &session->header;
-	int fd = perf_data_file__fd(session->file);
+	int fd = perf_data__fd(session->data);
 	struct stat st;
 	int ret, bit;
 
@@ -2276,7 +2276,7 @@ int perf_header__fprintf_info(struct perf_session *session, FILE *fp, bool full)
 	perf_header__process_sections(header, fd, &hd,
 				      perf_file_section__fprintf_info);
 
-	if (session->file->is_pipe)
+	if (session->data->is_pipe)
 		return 0;
 
 	fprintf(fp, "# missing features: ");
@@ -2769,7 +2769,7 @@ static int perf_header__read_pipe(struct perf_session *session)
 	struct perf_pipe_file_header f_header;
 
 	if (perf_file_header__read_pipe(&f_header, header,
-					perf_data_file__fd(session->file),
+					perf_data__fd(session->data),
 					session->repipe) < 0) {
 		pr_debug("incompatible file format\n");
 		return -EINVAL;
@@ -2872,13 +2872,13 @@ static int perf_evlist__prepare_tracepoint_events(struct perf_evlist *evlist,
 
 int perf_session__read_header(struct perf_session *session)
 {
-	struct perf_data_file *file = session->file;
+	struct perf_data *data = session->data;
 	struct perf_header *header = &session->header;
 	struct perf_file_header	f_header;
 	struct perf_file_attr	f_attr;
 	u64			f_id;
 	int nr_attrs, nr_ids, i, j;
-	int fd = perf_data_file__fd(file);
+	int fd = perf_data__fd(data);
 
 	session->evlist = perf_evlist__new();
 	if (session->evlist == NULL)
@@ -2886,7 +2886,7 @@ int perf_session__read_header(struct perf_session *session)
 
 	session->evlist->env = &header->env;
 	session->machines.host.env = &header->env;
-	if (perf_data_file__is_pipe(file))
+	if (perf_data__is_pipe(data))
 		return perf_header__read_pipe(session);
 
 	if (perf_file_header__read(&f_header, header, fd) < 0)
@@ -2901,13 +2901,13 @@ int perf_session__read_header(struct perf_session *session)
 	if (f_header.data.size == 0) {
 		pr_warning("WARNING: The %s file's data size field is 0 which is unexpected.\n"
 			   "Was the 'perf record' command properly terminated?\n",
-			   file->path);
+			   data->path);
 	}
 
 	if (f_header.attr_size == 0) {
 		pr_err("ERROR: The %s file's attr size field is 0 which is unexpected.\n"
 		       "Was the 'perf record' command properly terminated?\n",
-		       file->path);
+		       data->path);
 		return -EINVAL;
 	}
 
@@ -3416,7 +3416,7 @@ int perf_event__process_tracing_data(struct perf_tool *tool __maybe_unused,
 				     struct perf_session *session)
 {
 	ssize_t size_read, padding, size = event->tracing_data.size;
-	int fd = perf_data_file__fd(session->file);
+	int fd = perf_data__fd(session->data);
 	off_t offset = lseek(fd, 0, SEEK_CUR);
 	char buf[BUFSIZ];
 

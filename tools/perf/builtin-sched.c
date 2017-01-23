@@ -1701,14 +1701,14 @@ static int perf_sched__read_events(struct perf_sched *sched)
 		{ "sched:sched_migrate_task", process_sched_migrate_task_event, },
 	};
 	struct perf_session *session;
-	struct perf_data_file file = {
+	struct perf_data data = {
 		.path = input_name,
 		.mode = PERF_DATA_MODE_READ,
 		.force = sched->force,
 	};
 	int rc = -1;
 
-	session = perf_session__new(&file, false, &sched->tool);
+	session = perf_session__new(&data, false, &sched->tool);
 	if (session == NULL) {
 		pr_debug("No Memory for session\n");
 		return -1;
@@ -2903,7 +2903,7 @@ static int perf_sched__timehist(struct perf_sched *sched)
 	const struct perf_evsel_str_handler migrate_handlers[] = {
 		{ "sched:sched_migrate_task", timehist_migrate_task_event, },
 	};
-	struct perf_data_file file = {
+	struct perf_data data = {
 		.path = input_name,
 		.mode = PERF_DATA_MODE_READ,
 		.force = sched->force,
@@ -2931,7 +2931,7 @@ static int perf_sched__timehist(struct perf_sched *sched)
 
 	symbol_conf.use_callchain = sched->show_callchain;
 
-	session = perf_session__new(&file, false, &sched->tool);
+	session = perf_session__new(&data, false, &sched->tool);
 	if (session == NULL)
 		return -ENOMEM;
 
