@@ -71,6 +71,7 @@
 
 #include <linux/netfilter.h>
 #include <linux/netfilter_ipv6.h>
+#include <linux/sdt.h>
 
 static u32 ndisc_hash(const void *pkey,
 		      const struct net_device *dev,
@@ -479,6 +480,14 @@ static void ndisc_send_skb(struct sk_buff *skb,
 	rcu_read_lock();
 	idev = __in6_dev_get(dst->dev);
 	IP6_UPD_PO_STATS(net, idev, IPSTATS_MIB_OUT, skb->len);
+
+	DTRACE_IP(send,
+		  struct sk_buff * : pktinfo_t *, skb,
+		  struct sock * : csinfo_t *, skb->sk,
+		  void_ip_t * : ipinfo_t *, ipv6_hdr(skb),
+		  struct net_device * : ifinfo_t *, skb->dev,
+		  struct iphdr * : ipv4info_t *, NULL,
+		  struct ipv6hdr * : ipv6info_t *, ipv6_hdr(skb));
 
 	err = NF_HOOK(NFPROTO_IPV6, NF_INET_LOCAL_OUT,
 		      net, sk, skb, NULL, dst->dev,

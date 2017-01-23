@@ -79,6 +79,7 @@
 #include <linux/netfilter_ipv4.h>
 #include <linux/compat.h>
 #include <linux/uio.h>
+#include <linux/sdt.h>
 
 struct raw_frag_vec {
 	struct msghdr *msg;
@@ -428,6 +429,14 @@ static int raw_send_hdrinc(struct sock *sk, struct flowi4 *fl4,
 			icmp_out_count(net, ((struct icmphdr *)
 				skb_transport_header(skb))->type);
 	}
+
+	DTRACE_IP(send,
+		  struct sk_buff * :  pktinfo_t *, skb,
+		  struct sock * : csinfo_t *, sk,
+		  void_ip_t * : ipinfo_t *, iph,
+		  struct net_device * : ifinfo_t *, skb->dev,
+		  struct iphdr * : ipv4info_t *, iph,
+		  struct ipv6hdr * : ipv6info_t *, NULL);
 
 	err = NF_HOOK(NFPROTO_IPV4, NF_INET_LOCAL_OUT,
 		      net, sk, skb, NULL, rt->dst.dev,
