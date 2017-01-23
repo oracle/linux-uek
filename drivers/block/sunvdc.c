@@ -46,7 +46,7 @@ MODULE_VERSION(DRV_MODULE_VERSION);
 static struct workqueue_struct *sunvdc_wq;
 
 struct vdc_req_entry {
-	struct bio		*req;
+	struct bio		*bio;
 	u64			size;
 	int			sent;
 	unsigned long		start_time;
@@ -325,7 +325,7 @@ static void vdc_end_one(struct vdc_port *port, struct vio_dring_state *dr,
 	struct vio_disk_desc *desc = vio_dring_entry(dr, index);
 	struct vio_driver_state *vio = &port->vio;
 	struct vdc_req_entry *rqe = &port->rq_arr[index];
-	struct bio *req;
+	struct bio *bio;
 
 	assert_spin_locked(&vio->lock);
 
@@ -338,8 +338,8 @@ static void vdc_end_one(struct vdc_port *port, struct vio_dring_state *dr,
 	} else
 		err = desc->status;
 
-	req = vdc_desc_put(port, index);
-	if (req == NULL) {
+	bio = vdc_desc_put(port, index);
+	if (bio == NULL) {
 		vdc_end_special(port, err);
 		return;
 	}
@@ -351,10 +351,10 @@ static void vdc_end_one(struct vdc_port *port, struct vio_dring_state *dr,
 		BUG();
 	}
 
-	vdc_end_io_acct(port, bio_data_dir(req), rqe->start_time,
-			req->bi_iter.bi_sector);
+	vdc_end_io_acct(port, bio_data_dir(bio), rqe->start_time,
+		bio->bi_iter.bi_sector);
 
-	bio_endio(req, err ? -EIO : 0);
+	bio_endio(bio, err ? -EIO : 0);
 	rqe->size = 0;
 }
 
@@ -517,7 +517,7 @@ static int __vdc_tx_trigger(struct vdc_port *port, unsigned int idx, int new)
 }
 
 static struct vio_disk_desc *vdc_desc_get(struct vdc_port *port,
-					  struct bio *req,
+					  struct bio *bio,
 					  unsigned int *idxp)
 {
 	unsigned int idx;
@@ -535,9 +535,9 @@ static struct vio_disk_desc *vdc_desc_get(struct vdc_port *port,
 		if (idx < VDC_TX_RING_SIZE) {
 			bitmap_set(dr->txmap, idx, 1);
 			desc = dr->base + (dr->entry_size * idx);
-			if (req) {
-				BUG_ON(port->rq_arr[idx].req);
-				port->rq_arr[idx].req = req;
+			if (bio) {
+				BUG_ON(port->rq_arr[idx].bio);
+				port->rq_arr[idx].bio = bio;
 			}
 			*idxp = idx;
 
@@ -561,7 +561,7 @@ static struct bio *vdc_desc_put(struct vdc_port *port, unsigned int idx)
 	struct vio_dring_state *dr = &vio->drings[VIO_DRIVER_TX_RING];
 	struct vio_disk_desc *desc = vio_dring_entry(dr, idx);
 	struct vdc_req_entry *rqe;
-	struct bio *req;
+	struct bio *bio;
 
 	assert_spin_locked(&vio->lock);
 
@@ -571,12 +571,12 @@ static struct bio *vdc_desc_put(struct vdc_port *port, unsigned int idx)
 	vdc_desc_set_state(desc, VIO_DESC_FREE);
 
 	rqe = &port->rq_arr[idx];
-	req = rqe->req;
-	rqe->req = NULL;
+	bio = rqe->bio;
+	rqe->bio = NULL;
 	rqe->sent = 0;
 	wake_up_all(&port->wait);
 
-	return req;
+	return bio;
 }
 
 static inline void vdc_desc_set_state(struct vio_disk_desc *desc, int state)
