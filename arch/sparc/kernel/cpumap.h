@@ -14,5 +14,6 @@ static inline int map_to_cpu(unsigned int index)
 #endif
 
 void sparc64_update_numa_mask(unsigned int cpu);
+void sparc64_clear_numa_mask(unsigned int cpu);
 
 #endif

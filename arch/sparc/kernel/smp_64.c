@@ -1388,10 +1388,15 @@ int __cpu_disable(void)
 		cpumask_clear_cpu(cpu, &cpu_core_sib_map[i]);
 	cpumask_clear(&cpu_core_sib_map[cpu]);
 
+	for_each_cpu(i, &cpu_core_sib_cache_map[cpu])
+		cpumask_clear_cpu(cpu, &cpu_core_sib_cache_map[i]);
+	cpumask_clear(&cpu_core_sib_cache_map[cpu]);
+
 	for_each_cpu(i, &per_cpu(cpu_sibling_map, cpu))
 		cpumask_clear_cpu(cpu, &per_cpu(cpu_sibling_map, i));
 	cpumask_clear(&per_cpu(cpu_sibling_map, cpu));
 
+	sparc64_clear_numa_mask(cpu);
 	/*
 	 * Offline before fixup.
 	 * See irq_choose_cpu(), cpu_map_rebuild().

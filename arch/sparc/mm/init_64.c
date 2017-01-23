@@ -1836,11 +1836,14 @@ static int __init bootmem_init_numa(void)
 
 void sparc64_update_numa_mask(unsigned int cpu)
 {
-	if (num_node_masks > 1)
-		return;
-
-	cpumask_set_cpu(cpu, &numa_cpumask_lookup_table[0]);
+	cpumask_set_cpu(cpu, &numa_cpumask_lookup_table[cpu_to_node(cpu)]);
 }
+
+void sparc64_clear_numa_mask(unsigned int cpu)
+{
+	cpumask_clear_cpu(cpu, &numa_cpumask_lookup_table[cpu_to_node(cpu)]);
+}
+#
 #else
 
 static int bootmem_init_numa(void)
@@ -1852,6 +1855,9 @@ void sparc64_update_numa_mask(unsigned int cpu)
 {
 }
 
+void sparc64_clear_numa_mask(unsigned int cpu)
+{
+}
 #endif
 
 static void __init bootmem_init_nonnuma(void)
