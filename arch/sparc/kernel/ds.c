@@ -95,10 +95,24 @@ module_param(dsdbg_level, uint, S_IRUGO|S_IWUSR);
 
 static char version[] = DRV_MODULE_NAME ".c:v" DRV_MODULE_VERSION "\n";
 
-#define dprintk(fmt, args...) do {\
-if (dsdbg_level > 0)\
+/*
+ * We define 3 general debug print levels as follows:
+ * 1 - Errors encountered in the code critical for debugging.
+ * 2 - General code execution path information important to debugging
+ * 3 - More verbose detailed info in common code execution paths - which
+ *     could result in overloading console screen/logs.
+ */
+#define dprintk_lvl(lvl, fmt, args...) do {\
+if (lvl <= dsdbg_level)\
 	printk(KERN_ERR "%s: %s: " fmt, DRV_MODULE_NAME, __func__, ##args);\
 } while (0)
+
+#define dprintk1(fmt, args...) dprintk_lvl(1, fmt, ##args)
+#define dprintk2(fmt, args...) dprintk_lvl(2, fmt, ##args)
+#define dprintk3(fmt, args...) dprintk_lvl(3, fmt, ##args)
+
+/* existing dprintk() calls in the code will translate to level 2 */
+#define	dprintk(fmt, args...) dprintk2(fmt, ##args)
 
 MODULE_AUTHOR("Oracle");
 MODULE_DESCRIPTION("Sun4v LDOM domain services driver");
@@ -834,18 +848,18 @@ static int ds_ldc_send_payload(struct ldc_channel *lp, u32 type,
 {
 	struct ds_msg *msg;
 	size_t msglen;
-	gfp_t alloc_flags;
 	int rv;
 
-	/* This function can be called in either process or atomic mode */
-	if (in_atomic())
-		alloc_flags = GFP_ATOMIC;
-	else
-		alloc_flags = GFP_KERNEL;
+	/*
+	 * This function is called with spinlocks held,
+	 * so we must use GFP_ATOMIC.
+	 */
 	msglen = sizeof(struct ds_msg) + len;
-	msg = kzalloc(msglen, alloc_flags);
-	if (msg == NULL)
+	msg = kzalloc(msglen, GFP_ATOMIC);
+	if (msg == NULL) {
+		pr_err("%s: FAILED to alloc DS msg!\n", __func__);
 		return -ENOMEM;
+	}
 
 	msg->tag.type = type;
 	msg->tag.len = len;
@@ -933,10 +947,10 @@ static struct ds_service_info *ds_callout_data_get_service(
 	if (!svc_info || !svc_info->is_connected) {
 
 		if (!svc_info)
-			dprintk("ds-%llu: Data received for "
+			dprintk1("ds-%llu: Data received for "
 			    "unknown handle %llu\n", ds->id, hdl);
 		else
-			dprintk("ds-%llu: Data received for "
+			dprintk1("ds-%llu: Data received for "
 			    "unconnected handle %llu\n", ds->id, hdl);
 
 		/*
@@ -970,7 +984,7 @@ static struct ds_service_info *ds_callout_reg_get_service(
 
 		svc_info = ds_find_service_client_handle(ds, hdl);
 		if (svc_info == NULL) {
-			dprintk("ds-%llu: %s cb request received for "
+			dprintk1("ds-%llu: %s cb request received for "
 			    "unknown handle %llu\n", ds->id,
 			    (type == DS_QTYPE_REG) ? "Reg" : "Unreg", hdl);
 			return NULL;
@@ -1179,17 +1193,16 @@ static int ds_submit_reg_cb(struct ds_dev *ds, u64 hdl, ds_ver_t *neg_vers,
 			    u8 type)
 {
 	struct ds_callout_reg_entry *rentry;
-	gfp_t alloc_flags;
 
-	/* This function can be called in either process or atomic mode */
-	if (in_atomic())
-		alloc_flags = GFP_ATOMIC;
-	else
-		alloc_flags = GFP_KERNEL;
-
-	rentry = kzalloc(sizeof(struct ds_callout_reg_entry), alloc_flags);
-	if (!rentry)
+	/*
+	 * This function is called with spinlocks held,
+	 * so we must use GFP_ATOMIC.
+	 */
+	rentry = kzalloc(sizeof(struct ds_callout_reg_entry), GFP_ATOMIC);
+	if (!rentry) {
+		pr_err("%s: FAILED to alloc callout entry!\n", __func__);
 		return -ENOMEM;
+	}
 
 	rentry->hdr.type = type;
 	rentry->hdr.ds = ds;
@@ -1215,7 +1228,6 @@ static int ds_submit_data_cb(struct ds_dev *ds, struct ds_msg_tag *pkt,
 {
 	struct ds_callout_data_entry *dentry;
 	u64 pktlen;
-	gfp_t alloc_flags;
 
 	pktlen = (sizeof(struct ds_msg_tag) + pkt->len);
 
@@ -1224,16 +1236,16 @@ static int ds_submit_data_cb(struct ds_dev *ds, struct ds_msg_tag *pkt,
 	 * data work queue for later processing.
 	 */
 
-	/* This function can be called in either process or atomic mode */
-	if (in_atomic())
-		alloc_flags = GFP_ATOMIC;
-	else
-		alloc_flags = GFP_KERNEL;
-
+	/*
+	 * This function is called with spinlocks held,
+	 * so we must use GFP_ATOMIC.
+	 */
 	dentry = kzalloc(sizeof(struct ds_callout_data_entry) + pktlen,
-	    alloc_flags);
-	if (!dentry)
+	    GFP_ATOMIC);
+	if (!dentry) {
+		pr_err("%s: FAILED to alloc callout entry!\n", __func__);
 		return -ENOMEM;
+	}
 
 	dentry->hdr.type = DS_QTYPE_DATA;
 	dentry->hdr.ds = ds;
@@ -1704,7 +1716,7 @@ static void ds_dom_suspend_data_cb(ds_cb_arg_t arg,
 		pr_err("ds-%llu: ds_cap_send failed err=%d\n", ds->id, rv);
 	else {
 		rv = suspend();
-		dprintk("ds-%llu: rv=%d.\n", ds->id, rv);
+		dprintk3("ds-%llu: rv=%d.\n", ds->id, rv);
 	}
 
 	res.result = rv ? SUSPEND_FAILURE : SUSPEND_POST_SUCCESS;
@@ -2605,7 +2617,14 @@ static int ldom_req_sp_token(const char *service_name, u32 *sp_token_result,
 
 	svc_info = ds_find_connected_prov_service("sp-token");
 	if (svc_info == NULL) {
-		pr_err("%s: sp-token service not registered.\n", __func__);
+		/*
+		 * Since the ldoms manager will continuously
+		 * attempt to get SP token on systems which do
+		 * not support EoUSB, only display this error
+		 * once to avoid flooding the console.
+		 */
+		printk_once("%s: sp-token service not registered.\n", __func__);
+		dprintk3("%s: sp-token service not registered.\n", __func__);
 		return -EIO;
 	}
 
@@ -2835,7 +2854,12 @@ static int ds_service_reg(struct ds_dev *ds, struct ds_service_info *svc_info)
 		u8 id_buf[256];
 	} pbuf;
 
-	dprintk("entered.\n");
+	/*
+	 * The ds driver will continuously attempt to register
+	 * services for domain which are UP, so we make these
+	 * debug messages level 3 to avoid flooding the console.
+	 */
+	dprintk3("entered.\n");
 
 	payload_len = (sizeof(struct ds_reg_req_payload) +
 		   strlen(svc_info->id) + 1);
@@ -2852,7 +2876,7 @@ static int ds_service_reg(struct ds_dev *ds, struct ds_service_info *svc_info)
 	rv = ds_ldc_send_payload(ds->lp, DS_REG_REQ, &pbuf, payload_len);
 
 	if (rv > 0)
-		dprintk("ds-%llu: DS_REG_REQ sent for %s service (%llu.%llu), "
+		dprintk3("ds-%llu: DS_REG_REQ sent for %s service (%llu.%llu), "
 		    "hdl=(%llx)\n", ds->id, svc_info->id, svc_info->vers.major,
 		    svc_info->vers.minor, svc_info->handle);
 
@@ -2939,7 +2963,14 @@ static int ds_handshake_reg(struct ds_dev *ds, struct ds_msg_tag *pkt)
 	struct ds_unreg_nack *unreg_nack = NULL;
 	struct ds_service_info *svc_info;
 
-	dprintk("entered.\n");
+	/*
+	 * Since the ds driver will continuously send reg
+	 * requests to domains which are UP, a steady steam
+	 * of nacks are typically returned from domains which
+	 * do not support the services. This can flood the console.
+	 * So, make these debug messages level 3.
+	 */
+	dprintk3("entered.\n");
 
 	rv = 0;
 
@@ -3026,7 +3057,7 @@ static int ds_handshake_reg(struct ds_dev *ds, struct ds_msg_tag *pkt)
 			    reg_req->payload.svc_id);
 			if (svc_info == NULL) {
 				/* There is no registered service */
-				dprintk("ds-%llu: no service registered for "
+				dprintk1("ds-%llu: no service registered for "
 				    "REG_REQ service %s (%llx)\n", ds->id,
 				    reg_req->payload.svc_id,
 				    reg_req->payload.handle);
@@ -3158,7 +3189,7 @@ static int ds_handshake_reg(struct ds_dev *ds, struct ds_msg_tag *pkt)
 		svc_info->reg_state = DS_REG_STATE_UNREG;
 		svc_info->svc_reg_timeout = ds_get_service_timeout();
 
-		dprintk("ds-%llu: Registration nack'd for %s service "
+		dprintk3("ds-%llu: Registration nack'd for %s service "
 		    "(%llx). Result=%llu. Major=%u\n", ds->id, svc_info->id,
 		    reg_nack->payload.handle, reg_nack->payload.result,
 		    reg_nack->payload.major);
@@ -3387,7 +3418,7 @@ static void ds_timer_register_service(struct ds_dev *ds,
 			svc_info->svc_reg_timeout = 0;
 			return;
 		} else {
-			dprintk("ds-%llu: failed to send REG_REQ for "
+			dprintk1("ds-%llu: failed to send REG_REQ for "
 				" \"%s\" service (%d)\n", ds->id,
 				svc_info->id, rv);
 		}
@@ -3707,9 +3738,13 @@ conn_reset:
 static int ds_handshake_msg(struct ds_dev *ds, struct ds_msg_tag *pkt)
 {
 
-	dprintk("entered.\n");
+	/*
+	 * This routine is called constantly during normal
+	 * execution, so make debug messages level 3.
+	 */
+	dprintk3("entered.\n");
 
-	dprintk("ds-%llu: ds_handshake: hs_state=%d, pkt_type = %d\n", ds->id,
+	dprintk3("ds-%llu: ds_handshake: hs_state=%d, pkt_type = %d\n", ds->id,
 	    ds->hs_state, pkt->type);
 
 	if (ds->hs_state == DS_HS_LDC_DOWN) {
@@ -3820,7 +3855,11 @@ static void ds_event(void *arg, int event)
 	unsigned long buf_size;
 	int rv;
 
-	dprintk("ds-%llu: CPU[%d] event received = %d\n", ds->id,
+	/*
+	 * This routine is called constantly during normal
+	 * execution, so make debug messages level 3.
+	 */
+	dprintk3("ds-%llu: CPU[%d] event received = %d\n", ds->id,
 	    smp_processor_id(), event);
 
 	/*
@@ -3854,7 +3893,7 @@ static void ds_event(void *arg, int event)
 
 		rv = ldc_read(ds->lp, ds->rcv_buf, sizeof(*tag));
 
-		dprintk("ds-%llu: ldc_read 1 returns rv=%d\n", ds->id, rv);
+		dprintk3("ds-%llu: ldc_read 1 returns rv=%d\n", ds->id, rv);
 
 		if (unlikely(rv < 0)) {
 			if (rv == -ECONNRESET)
@@ -3883,31 +3922,31 @@ static void ds_event(void *arg, int event)
 		rv = ds_read_ldc_msg(ds, (unsigned char *)(tag + 1),
 		    tag->len);
 
-		dprintk("ds-%llu: ldc_read 2 returns rv=%d\n", ds->id, rv);
+		dprintk3("ds-%llu: ldc_read 2 returns rv=%d\n", ds->id, rv);
 
 		if (unlikely(rv < 0)) {
 			if (rv == -ECONNRESET)
 				ds_reset(ds);
 			else
-				dprintk("ds-%llu: ldc_read_ldc_msg "
+				dprintk1("ds-%llu: ldc_read_ldc_msg "
 				    "returned err=%d\n", ds->id, rv);
 
 			break;
 		}
 
 		if (rv < tag->len) {
-			dprintk("ds-%llu: ldc_read returned %d bytes "
+			dprintk1("ds-%llu: ldc_read returned %d bytes "
 			    "< taglen=%d\n", ds->id, rv, tag->len);
 			break;
 		}
 
 		if (tag->type < DS_DATA) {
-			dprintk("ds-%llu: hs data received (%d bytes)\n",
+			dprintk3("ds-%llu: hs data received (%d bytes)\n",
 			    ds->id, rv);
 			rv = ds_handshake_msg(ds,
 			    (struct ds_msg_tag *)ds->rcv_buf);
 		} else {
-			dprintk("ds-%llu: data received (%d bytes)\n",
+			dprintk3("ds-%llu: data received (%d bytes)\n",
 			    ds->id, rv);
 			/* only process data if the HS is complete */
 			if (ds->hs_state == DS_HS_COMPLETE) {
@@ -3968,7 +4007,7 @@ static int ds_get_hv_pri(const void __user *uarg)
 		hv_ret = sun4v_mach_pri(0ULL, &pri_len);
 		/* NOTE - the HV returns HV_EINVAL when getting the size here */
 		if (hv_ret != HV_EOK && hv_ret != HV_EINVAL) {
-			dprintk("ds: sun4v_mach_pri 1 failed: rv = %lu "
+			dprintk1("ds: sun4v_mach_pri 1 failed: rv = %lu "
 			    "pri_len = %lu\n", hv_ret, pri_len);
 			rv = -EIO;
 			goto error_out1;
@@ -3993,7 +4032,7 @@ static int ds_get_hv_pri(const void __user *uarg)
 
 	/* Ensure the user supplied buffer is large enough for the PRI */
 	if (pri_get_arg.buflen < pri_len) {
-		dprintk("Supplied buffer for PRI too small (%llu)\n",
+		dprintk1("Supplied buffer for PRI too small (%llu)\n",
 		    pri_get_arg.buflen);
 		rv = -EINVAL;
 		goto error_out1;
@@ -4013,7 +4052,7 @@ static int ds_get_hv_pri(const void __user *uarg)
 
 		hv_ret = sun4v_mach_pri(__pa(kpri_buf_align16), &pri_len);
 		if (hv_ret != HV_EOK) {
-			dprintk("ds: sun4v_mach_pri 2 failed: rv = %lu\n",
+			dprintk1("ds: sun4v_mach_pri 2 failed: rv = %lu\n",
 			    hv_ret);
 			rv = -EIO;
 			kfree(kpri_buf);
@@ -4037,7 +4076,7 @@ static int ds_get_hv_pri(const void __user *uarg)
 		 * changed since we first checked.
 		 */
 		if (pri_get_arg.buflen < pri_len) {
-			dprintk("Supplied buffer for PRI too small (%llu)\n",
+			dprintk1("Supplied buffer for PRI too small (%llu)\n",
 			    pri_get_arg.buflen);
 			rv = -EINVAL;
 			goto error_out1;
@@ -4064,7 +4103,7 @@ static int ds_get_hv_pri(const void __user *uarg)
 
 error_out1:
 
-	dprintk("ds: failed to get PRI rv = %d\n", rv);
+	dprintk1("ds: failed to get PRI rv = %d\n", rv);
 
 	return rv;
 }
@@ -4274,7 +4313,7 @@ static int ds_probe(struct vio_dev *vdev, const struct vio_device_id *id)
 
 	node = vio_vdev_node(hp, vdev);
 	if (node == MDESC_NODE_NULL) {
-		dprintk("ds: Failed to get vdev MD node.\n");
+		dprintk1("ds: Failed to get vdev MD node.\n");
 		mdesc_release(hp);
 		rv = -ENXIO;
 		goto out_free_ds;

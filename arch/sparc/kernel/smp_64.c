@@ -65,9 +65,13 @@ cpumask_t cpu_core_map[NR_CPUS] __read_mostly =
 cpumask_t cpu_core_sib_map[NR_CPUS] __read_mostly = {
 	[0 ... NR_CPUS-1] = CPU_MASK_NONE };
 
+cpumask_t cpu_core_sib_cache_map[NR_CPUS] __read_mostly = {
+	[0 ... NR_CPUS - 1] = CPU_MASK_NONE };
+
 EXPORT_PER_CPU_SYMBOL(cpu_sibling_map);
 EXPORT_SYMBOL(cpu_core_map);
 EXPORT_SYMBOL(cpu_core_sib_map);
+EXPORT_SYMBOL(cpu_core_sib_cache_map);
 
 static cpumask_t smp_commenced_mask;
 
@@ -1279,6 +1283,9 @@ void smp_fill_in_sib_core_maps(void)
 		for_each_present_cpu(j)  {
 			if (cpu_data(i).max_cache_id ==
 			    cpu_data(j).max_cache_id)
+				cpumask_set_cpu(j, &cpu_core_sib_cache_map[i]);
+
+			if (cpu_data(i).sock_id == cpu_data(j).sock_id)
 				cpumask_set_cpu(j, &cpu_core_sib_map[i]);
 		}
 	}
@@ -1314,6 +1321,7 @@ int __cpu_up(unsigned int cpu, struct task_struct *tidle)
 			 */
 			if (tlb_type != hypervisor)
 				smp_synchronize_one_tick(cpu);
+			smp_fill_in_sib_core_maps();
 			cpu_map_rebuild();
 			sparc64_update_numa_mask(cpu);
 		}
@@ -1360,7 +1368,6 @@ void cpu_play_dead(void)
 int __cpu_disable(void)
 {
 	int cpu = smp_processor_id();
-	cpuinfo_sparc *c;
 	int i;
 	cpumask_var_t mask;
 
@@ -1378,12 +1385,6 @@ int __cpu_disable(void)
 	for_each_cpu(i, &per_cpu(cpu_sibling_map, cpu))
 		cpumask_clear_cpu(cpu, &per_cpu(cpu_sibling_map, i));
 	cpumask_clear(&per_cpu(cpu_sibling_map, cpu));
-
-	c = &cpu_data(cpu);
-
-	c->sock_id = -1;
-	c->core_id = 0;
-	c->proc_id = -1;
 
 	/*
 	 * Offline before fixup.
@@ -1422,7 +1423,7 @@ void __cpu_die(unsigned int cpu)
 		do {
 			hv_err = sun4v_cpu_stop(cpu);
 			if (hv_err == HV_EOK) {
-				set_cpu_present(cpu, false);
+				set_cpu_online(cpu, false);
 				sun4v_free_mondo_queues(cpu);
 				break;
 			}

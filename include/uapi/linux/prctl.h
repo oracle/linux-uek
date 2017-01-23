@@ -190,20 +190,4 @@ struct prctl_mm_map {
 # define PR_FP_MODE_FR		(1 << 0)	/* 64b FP registers */
 # define PR_FP_MODE_FRE		(1 << 1)	/* 32b compatibility */
 
-/* SPARC ADI operations, see Documentation/prctl/sparc_adi.txt for details */
-#define PR_GET_SPARC_ADICAPS	48
-#define PR_SET_SPARC_ADI	49
-# define PR_SET_SPARC_ADI_CLEAR	0
-# define PR_SET_SPARC_ADI_SET	1
-#define PR_ENABLE_SPARC_ADI	50
-#define PR_DISABLE_SPARC_ADI	51
-#define PR_GET_SPARC_ADI_STATUS	52
-
-/* Data structure returned by PR_GET_SPARC_ADICAPS */
-struct adi_caps {
-	__u64 blksz;
-	__u64 nbits;
-	__u64 ue_on_adi;
-};
-
 #endif /* _LINUX_PRCTL_H */

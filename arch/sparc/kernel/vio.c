@@ -94,16 +94,30 @@ static int vio_device_remove(struct device *dev)
 {
 	struct vio_dev *vdev = to_vio_dev(dev);
 	struct vio_driver *drv = to_vio_driver(dev->driver);
+	int rc;
 
 	if (drv->remove) {
 
-		return drv->remove(vdev);
+		rc = drv->remove(vdev);
 
 		/*
-		 * Ideally, we would remove/deallocate tx/rx virqs
-		 * here - however, there are currently no support
-		 * routines to do so at the moment. TBD
+		 * Remove/deallocate tx/rx virqs unless the
+		 * driver specified not to.
 		 */
+		if (!drv->no_irq) {
+			if (vdev->tx_irq != 0) {
+				sun4v_free_virq(vdev->tx_irq, vdev->dev_handle,
+						vdev->tx_ino);
+				vdev->tx_irq = 0;
+			}
+			if (vdev->rx_irq != 0) {
+				sun4v_free_virq(vdev->rx_irq, vdev->dev_handle,
+						vdev->rx_ino);
+				vdev->rx_irq = 0;
+			}
+		}
+
+		return rc;
 	}
 
 	return 1;
