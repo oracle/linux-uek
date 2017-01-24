@@ -3686,7 +3686,7 @@ next:
 					*end-- = '.';
 			}
 			ASSERT(end + 1 >= base);
-#ifdef CONFIG_IPV6
+#if IS_ENABLED(CONFIG_IPV6)
 		} else if (af == AF_INET6) {
 			in6_addr_t	ip6;
 			int		firstzero, tryzero, numzero, v6end;
@@ -3829,7 +3829,7 @@ next:
 			break;
 		}
 
-#ifdef CONFIG_IPV6
+#if IS_ENABLED(CONFIG_IPV6)
 inetout:
 #endif
 		regs[rd] = (uintptr_t)end + 1;
