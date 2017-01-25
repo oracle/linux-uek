@@ -9,6 +9,8 @@
 #include <linux/threads.h>
 #include <asm/switch_to.h>
 
+unsigned long regs_get_kernel_stack_nth(struct pt_regs *regs, unsigned int n);
+
 static inline int pt_regs_trap_type(struct pt_regs *regs)
 {
 	return regs->magic & 0x1ff;
