@@ -888,6 +888,9 @@ xfs_free_eofblocks(
 		if (error)
 			return error;
 
+		/* wait on dio to ensure i_size has settled */
+		inode_dio_wait(VFS_I(ip));
+
 		/*
 		 * There are blocks after the end of file.
 		 * Free them up now by truncating the file to
