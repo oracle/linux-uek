@@ -689,8 +689,9 @@ int vds_be_init(struct vds_port *port)
 			udelay(VDS_DEV_DELAY);
 		}
 
-	vdsdbg(HS, "vdisk_blk_sz=%u vdisk_sz=%llu max_xfer_sz=%llu\n",
-	       port->vdisk_bsize, port->vdisk_size, port->max_xfer_size);
+	vdsdbg(HS, "vdisk_blk_sz=%u vdisk_sz=%llu vdisk_phy_blk_sz=%u max_xfer_sz=%llu\n",
+	       port->vdisk_bsize, port->vdisk_size, port->vdisk_phy_bsize,
+	       port->max_xfer_size);
 
 	if (!(port->vdisk_bsize && port->vdisk_size && port->max_xfer_size)) {
 		rv = -EINVAL;
@@ -746,4 +747,14 @@ void vds_be_fini(struct vds_port *port)
 		port->be_data = NULL;
 	}
 	vds_be_wunlock(port);
+}
+
+int vds_io_max_xfer_size(struct vds_port *port, struct block_device *bdev)
+{
+	unsigned max_sect = blk_queue_get_max_sectors(bdev_get_queue(bdev), 0);
+
+	if (max_sect == 0)
+		return 0;
+
+	return to_bytes(max_sect) / port->vdisk_bsize;
 }

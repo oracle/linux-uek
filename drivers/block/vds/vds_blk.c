@@ -19,8 +19,8 @@ static int vds_blk_init(struct vds_port *port)
 
 	port->vdisk_bsize = bdev_logical_block_size(bdev);
 	port->vdisk_size = i_size_read(bdev->bd_inode) / port->vdisk_bsize;
-	port->max_xfer_size = to_bytes(blk_queue_get_max_sectors(
-			      bdev_get_queue(bdev), 0)) / port->vdisk_bsize;
+	port->max_xfer_size = vds_io_max_xfer_size(port, bdev);
+	port->vdisk_phy_bsize = bdev_physical_block_size(bdev);
 
 	port->be_data = bdev;
 

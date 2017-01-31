@@ -53,6 +53,8 @@ void vds_io_enq(struct vds_io *io);
 void vds_io_wait(struct vds_io *io);
 void vds_io_done(struct vds_io *io);
 
+int vds_io_max_xfer_size(struct vds_port *port, struct block_device *bdev);
+
 void *vds_get(struct vds_port *port, sector_t offset, u64 size);
 int vds_clear(struct vds_port *port, sector_t offset, u64 size);
 int vds_read(struct vds_port *port, void *addr, sector_t offset, u64 size);

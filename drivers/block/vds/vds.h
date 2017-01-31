@@ -42,6 +42,7 @@ struct vds_port {
 	u64			max_xfer_size;
 	u64			vdisk_size;
 	u32			vdisk_bsize;
+	u32                     vdisk_phy_bsize;
 	u32			msglen;
 	u64			seq;
 	const char		*path;
