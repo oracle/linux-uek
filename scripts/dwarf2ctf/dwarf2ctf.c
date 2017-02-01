@@ -2,7 +2,7 @@
  * dwarf2ctf.c: Read in DWARF[23] debugging information from some set of ELF
  * files, and generate CTF in correspondingly-named files.
  *
- * (C) 2011 -- 2015 Oracle, Inc.  All rights reserved.
+ * (C) 2011 -- 2017 Oracle, Inc.  All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -246,18 +246,33 @@ static ctf_id_t ctf_void_type;
 static ctf_id_t ctf_funcptr_type;
 
 /*
- * Compute the type ID of a DWARF DIE and return it in a new dynamically-
- * allocated string.
+ * Override the presence and value of FORM_u/sdata attributes on DWARF DIEs,
+ * either adding to it, or replacing it.
+ *
+ * (Used so that a caller of construct_ctf_id() that wants a type to be created
+ * can override aspects of that type.)
+ */
+typedef struct die_override {
+	int tag;
+	int attribute;
+	enum { DIE_OVERRIDE_REPLACE, DIE_OVERRIDE_ADD } op;
+	Dwarf_Sword value;
+} die_override_t;
+
+/*
+ * Compute the type ID of a DWARF DIE (with possibly-overridden attributes) and
+ * return it in a new dynamically- allocated string.
  *
  * Optionally, call a callback with the computed ID once we know it (this is a
  * recursive process, so the callback can be called multiple times as the ID
- * is built up).
+ * is built up).  The overrides are not passed down to the callback.
  *
  * An ID of NULL indicates that this DIE has no ID and need not be considered.
  */
-static char *type_id(Dwarf_Die *die, void (*fun)(Dwarf_Die *die,
-						 const char *id,
-						 void *data),
+static char *type_id(Dwarf_Die *die, die_override_t *overrides,
+		     void (*fun)(Dwarf_Die *die,
+				 const char *id,
+				 void *data),
 		     void *data) __attribute__((__warn_unused_result__));
 
 /*
@@ -418,7 +433,8 @@ static void write_types(char *output_dir);
 static ctf_full_id_t *construct_ctf_id(const char *module_name,
 				       const char *file_name,
 				       Dwarf_Die *die,
-				       Dwarf_Die *parent_die);
+				       Dwarf_Die *parent_die,
+				       die_override_t *overrides);
 
 /*
  * Things to do after a CTF recursion step.
@@ -433,8 +449,8 @@ enum skip_type { SKIP_CONTINUE = 0, SKIP_SKIP, SKIP_ABORT };
 static ctf_id_t die_to_ctf(const char *module_name, const char *file_name,
 			   Dwarf_Die *die, Dwarf_Die *parent_die,
 			   ctf_file_t *ctf, ctf_id_t parent_ctf_id,
-			   ulong_t parent_bias, int top_level_type,
-			   enum skip_type *skip, int *override,
+			   die_override_t *overrides, int top_level_type,
+			   enum skip_type *skip, int *replace,
 			   const char *id);
 
 /*
@@ -458,10 +474,7 @@ static ctf_id_t lookup_ctf_type(const char *module_name, const char *file_name,
  * with the CU's DIE).  The parent_ctf_id is always in the same CTF file as the
  * ctf_id, just as the parent DWARF DIE is always in the same DWARF CU: this is
  * lexical scope, not dynamic, so referenced types themselves located at the top
- * level have the CU as their parent.  The parent_bias is an offset which should
- * be added to the member offset of any structure or union members above and
- * beyond the offset given in the member itself (used for unnamed structures and
- * unions).
+ * level have the CU as their parent.
  *
  * Returning an error value (see below) indicates that no CTF was generated from
  * this DWARF DIE.
@@ -473,9 +486,9 @@ static ctf_id_t lookup_ctf_type(const char *module_name, const char *file_name,
  * sub-entities can be skipped, but translation of the containing type should
  * continue.  Setting it to SKIP_CONTINUE indicates no error.
  *
- * Setting 'override' to 1 in a child DIE indicates that this type should
- * entirely *override* its parent's type (generally because it has wrapped it up
- * in something).  This override takes immediate effect for later children of
+ * Setting 'replace' to 1 in a child DIE indicates that this type should
+ * entirely *replace* its parent's type (generally because it has wrapped it up
+ * in something).  This replacemenu takes immediate effect for later children of
  * the same DIE.
  *
  * die_to_ctf() calls these functions repeatedly for every child of the
@@ -491,26 +504,26 @@ typedef ctf_id_t (*ctf_assembly_fun)(const char *module_name,
 				     const char *file_name,
 				     Dwarf_Die *die,
 				     Dwarf_Die *parent_die,
-				     ulong_t parent_bias,
 				     ctf_file_t *ctf,
 				     ctf_id_t parent_ctf_id,
 				     const char *locerrstr,
+				     die_override_t *overrides,
 				     int top_level_type,
 				     enum skip_type *skip,
-				     int *override);
+				     int *replace);
 
 #define ASSEMBLY_FUN(name)					     \
 	static ctf_id_t assemble_ctf_##name(const char *module_name,  \
 					    const char *file_name,    \
 					    Dwarf_Die *die,	      \
 					    Dwarf_Die *parent_die,    \
-					    ulong_t parent_bias,      \
 					    ctf_file_t *ctf,	      \
 					    ctf_id_t parent_ctf_id,   \
 					    const char *locerrstr,    \
+					    die_override_t *overrides, \
 					    int top_level_type,	      \
 					    enum skip_type *skip,     \
-					    int *override)
+					    int *replace)
 
 /*
  * Defined assembly functions.
@@ -631,8 +644,21 @@ static long count_dwarf_members(Dwarf_Die *die);
  * Given a DIE that may contain a type attribute, look up the target of that
  * attribute and return it, or NULL if none.
  */
-
 static Dwarf_Die *private_dwarf_type(Dwarf_Die *die, Dwarf_Die *target_die);
+
+/*
+ * Given a DIE that contains a udata attribute, look up that attribute and
+ * return its value (optionally overridden or modified by the die_overrides).
+ */
+static Dwarf_Word private_dwarf_udata(Dwarf_Die *die, int attribute,
+				      die_override_t *overrides);
+
+/*
+ * Find an override in an override list.
+ */
+static die_override_t *private_find_override(Dwarf_Die *die,
+					     int attribute,
+					     die_override_t *overrides);
 
 /*
  * Determine the dimensions of an array subrange, or 0 if variable.
@@ -1348,9 +1374,11 @@ static void init_tu_to_modules(void)
  * This function is the hottest hot spot in dwarf2ctf, so is somewhat
  * aggressively optimized.
  */
-static char *type_id(Dwarf_Die *die, void (*fun)(Dwarf_Die *die,
-						 const char *id,
-						 void *data),
+static char *type_id(Dwarf_Die *die,
+		     die_override_t *overrides,
+		     void (*fun)(Dwarf_Die *die,
+				 const char *id,
+				 void *data),
 		     void *data)
 {
 	char *id = NULL;
@@ -1376,7 +1404,7 @@ static char *type_id(Dwarf_Die *die, void (*fun)(Dwarf_Die *die,
 	}
 
 	/*
-	 * If we have a type DIE, generate it first.
+	 * If we have a type DIE, generate it first, passing any overrides down.
 	 *
 	 * Otherwise, note the location of this DIE, providing scoping
 	 * information for all types based upon this one.  Location elements are
@@ -1389,7 +1417,8 @@ static char *type_id(Dwarf_Die *die, void (*fun)(Dwarf_Die *die,
 	 */
 	if (dwarf_tag(die) != DW_TAG_subrange_type) {
 		if (dwarf_tag(die) != DW_TAG_base_type)
-			id = type_id(private_dwarf_type(die, &type_die), fun, data);
+			id = type_id(private_dwarf_type(die, &type_die),
+				     overrides, fun, data);
 
 		/*
 		 * Location information.  We use cached realpath() results, and
@@ -1488,7 +1517,7 @@ static char *type_id(Dwarf_Die *die, void (*fun)(Dwarf_Die *die,
 			break;
 
 		do {
-			char *sub_id = type_id(&dim_die, fun, data);
+			char *sub_id = type_id(&dim_die, overrides, fun, data);
 			id = str_append(id, sub_id);
 			free(sub_id);
 		} while ((sib_ret = dwarf_siblingof(&dim_die, &dim_die)) == 0);
@@ -1509,7 +1538,7 @@ static char *type_id(Dwarf_Die *die, void (*fun)(Dwarf_Die *die,
 		{
 			char elems[22];	    /* bigger than 2^64's digit count */
 			char *sub_id = type_id(private_dwarf_type(die, &type_die),
-					       fun, data);
+					       overrides, fun, data);
 
 			snprintf(elems, sizeof (elems), " %li", nelems);
 			id = str_appendn(id, sub_id, elems, NULL);
@@ -1813,7 +1842,7 @@ static void detect_duplicates(const char *module_name,
 			      Dwarf_Die *parent_die,
 			      void *data)
 {
-	char *id = type_id(die, NULL, NULL);
+	char *id = type_id(die, NULL, NULL, NULL);
 
 	/*
 	 * If a DWARF-4 type signature is found, abort.  While we can support
@@ -1877,7 +1906,7 @@ static void detect_duplicates(const char *module_name,
 	dw_ctf_trace("Marking %s as seen in %s\n", id, module_name);
 	g_hash_table_replace(id_to_module, id, xstrdup(module_name));
 	mark_seen_contained(die, module_name);
-	free(type_id(die, detect_duplicates_typeid, data));
+	free(type_id(die, NULL, detect_duplicates_typeid, data));
 }
 
 /*
@@ -1945,7 +1974,7 @@ static void mark_seen_contained(Dwarf_Die *die, const char *module_name)
 			    dwarf_tag(&child) <= assembly_len &&
 			    assembly_tab[dwarf_tag(&child)] != NULL) {
 
-				char *id = type_id(&child, NULL, NULL);
+				char *id = type_id(&child, NULL, NULL, NULL);
 
 				dw_ctf_trace("Marking %s as seen in %s\n", id,
 					     module_name);
@@ -1984,7 +2013,7 @@ static void mark_shared(Dwarf_Die *die, const char *id, void *data)
 	 * throwing the result away.
 	 */
 	if (id == NULL) {
-		free(type_id(die, mark_shared, state));
+		free(type_id(die, NULL, mark_shared, state));
 		return;
 	}
 
@@ -2044,7 +2073,8 @@ static void mark_shared(Dwarf_Die *die, const char *id, void *data)
 
 		do
 			if (!member_blacklisted(&child, die))
-				free(type_id(&child, mark_shared, state));
+					free(type_id(&child, NULL,
+						     mark_shared, state));
 		while ((sib_ret = dwarf_siblingof(&child, &child)) == 0);
 
 		if (sib_ret == -1)
@@ -2095,7 +2125,7 @@ static void detect_duplicates_alias_fixup(const char *module_name,
 	 * and that have names.
 	 */
 
-	char *id = type_id(die, is_named_struct_union_enum, &is_sou);
+	char *id = type_id(die, NULL, is_named_struct_union_enum, &is_sou);
 
 	if ((strncmp(id, "////", strlen("////")) == 0) || !is_sou) {
 		free(id);
@@ -2103,7 +2133,7 @@ static void detect_duplicates_alias_fixup(const char *module_name,
 	}
 	free(id);
 
-	free(type_id(die, detect_duplicates_alias_fixup_internal, data));
+	free(type_id(die, NULL, detect_duplicates_alias_fixup_internal, data));
 }
 
 /*
@@ -2228,18 +2258,23 @@ static void detect_duplicates_alias_fixup_internal(Dwarf_Die *die,
  * too, since we treat them exactly like types, and dealing with types is our
  * most important function).  In such calls, the module_name may be 'shared_ctf'
  * if this type is in the shared CTF repository.
+ *
+ * Select properties of the DIE can be overridden via the overrides array, if
+ * needed.
  */
 static ctf_full_id_t *construct_ctf_id(const char *module_name,
 				       const char *file_name,
 				       Dwarf_Die *die,
-				       Dwarf_Die *parent_die)
+				       Dwarf_Die *parent_die,
+				       die_override_t *overrides)
 {
-	char *id = type_id(die, NULL, NULL);
+	char *id = type_id(die, overrides, NULL, NULL);
 	char *ctf_module;
 	ctf_file_t *ctf;
 	ctf_snapshot_id_t snapshot;
 
-	dw_ctf_trace("    %p: %s: looking up %s: %s\n", &id, module_name,
+	dw_ctf_trace("    %p: %s: looking up %s: %s\n", &id,
+		     module_name ? module_name : "(no module)",
 		     dwarf_diename(die), id);
 	/*
 	 * Make sure this type does not already exist.  (Recursive chasing for
@@ -2306,8 +2341,8 @@ static ctf_full_id_t *construct_ctf_id(const char *module_name,
 	enum skip_type skip = SKIP_CONTINUE;
 	dw_ctf_trace("%p: into die_to_ctf() for %s\n", &id, id);
 	ctf_id_t this_ctf_id = die_to_ctf(ctf_module, file_name, die,
-					  parent_die, ctf, -1, 0, 1, &skip,
-					  NULL, id);
+					  parent_die, ctf, -1, overrides,
+					  1, &skip, NULL, id);
 	dw_ctf_trace("%p: out of die_to_ctf()\n", &id);
 
 	ctf_id = malloc(sizeof (struct ctf_full_id));
@@ -2370,12 +2405,12 @@ static ctf_full_id_t *construct_ctf_id(const char *module_name,
  * top-level, this is a CU DIE.
  * ctf: The CTF file this object should go into (possibly shared_ctf).
  * parent_ctf_id: The CTF ID of the parent DIE, or -1 if none.
- * parent_bias: any bias applied to structure members.  Normally 0, may be
- * nonzero for unnamed structure members.
+ * die_override_t: Overrides for DWARF attributes (a NULL-terminated array,
+ * or NULL).
  * top_level_type: 1 if this is a top-level type that can have a name and be
  * referred to by other types.
  * skip: The error-handling / skipping enum.
- * override: if 1, this type should replace its parent type entirely.
+ * replace: if 1, this type should replace its parent type entirely.
  * id: the ID of this type.
  *
  * Note: id is only defined when top_level_type is 1.  (We never use it
@@ -2384,8 +2419,8 @@ static ctf_full_id_t *construct_ctf_id(const char *module_name,
 static ctf_id_t die_to_ctf(const char *module_name, const char *file_name,
 			   Dwarf_Die *die, Dwarf_Die *parent_die,
 			   ctf_file_t *ctf, ctf_id_t parent_ctf_id,
-			   ulong_t parent_bias, int top_level_type,
-			   enum skip_type *skip, int *override,
+			   die_override_t *overrides, int top_level_type,
+			   enum skip_type *skip, int *replace,
 			   const char *id)
 {
 	int sib_ret = 0;
@@ -2442,12 +2477,12 @@ static ctf_id_t die_to_ctf(const char *module_name, const char *file_name,
 		this_ctf_id = assembly_tab[dwarf_tag(die)](module_name,
 							   file_name,
 							   die, parent_die,
-							   parent_bias, ctf,
-							   parent_ctf_id,
+							   ctf, parent_ctf_id,
 							   locerrstr,
+							   overrides,
 							   top_level_type,
 							   skip,
-							   override ? override :
+							   replace ? replace :
 							   &dummy);
 		dw_ctf_trace("%s: out of assembly function for tag %lx with "
 			     "type ID %li\n", locerrstr,
@@ -2507,7 +2542,7 @@ static ctf_id_t die_to_ctf(const char *module_name, const char *file_name,
 		if ((dwarf_haschildren(die)) && (*skip == SKIP_CONTINUE)) {
 			Dwarf_Die child_die;
 			ctf_id_t new_id;
-			int override = 0;
+			int replace = 0;
 
 			if (dwarf_child(die, &child_die) < 0) {
 				fprintf(stderr, "%s: Cannot recurse to "
@@ -2517,10 +2552,10 @@ static ctf_id_t die_to_ctf(const char *module_name, const char *file_name,
 			}
 
 			new_id = die_to_ctf(module_name, file_name, &child_die,
-					    die, ctf, this_ctf_id, parent_bias,
-					    0, skip, &override, NULL);
+					    die, ctf, this_ctf_id, overrides, 0,
+					    skip, &replace, NULL);
 
-			if (override)
+			if (replace)
 				this_ctf_id = new_id;
 		}
 
@@ -2551,7 +2586,7 @@ static void construct_ctf(const char *module_name, const char *file_name,
 			  Dwarf_Die *die, Dwarf_Die *parent_die,
 			  void *unused __unused__)
 {
-	construct_ctf_id(module_name, file_name, die, parent_die);
+	construct_ctf_id(module_name, file_name, die, parent_die, NULL);
 }
 
 /*
@@ -2591,7 +2626,7 @@ static ctf_id_t lookup_ctf_type(const char *module_name, const char *file_name,
 		     module_name, file_name);
 
 	type_ref = construct_ctf_id(module_name, file_name,
-				    type_die, &cu_die);
+				    type_die, &cu_die, NULL);
 
 	/*
 	 * Pass any error back up.
@@ -2730,10 +2765,11 @@ static int filter_ctf_uninteresting(Dwarf_Die *die,
  */
 static ctf_id_t assemble_ctf_base(const char *module_name,
 				  const char *file_name, Dwarf_Die *die,
-				  Dwarf_Die *parent_die, ulong_t parent_bias,
-				  ctf_file_t *ctf, ctf_id_t parent_ctf_id,
-				  const char *locerrstr, int top_level_type,
-				  enum skip_type *skip, int *override)
+				  Dwarf_Die *parent_die, ctf_file_t *ctf,
+				  ctf_id_t parent_ctf_id, const char *locerrstr,
+				  die_override_t *overrides,
+				  int top_level_type, enum skip_type *skip,
+				  int *replace)
 {
 	typedef ctf_id_t (*ctf_add_fun)(ctf_file_t *, uint_t,
 					const char *, const ctf_encoding_t *);
@@ -2834,10 +2870,11 @@ static ctf_id_t assemble_ctf_base(const char *module_name,
 static ctf_id_t assemble_ctf_pointer(const char *module_name,
 				     const char *file_name,
 				     Dwarf_Die *die, Dwarf_Die *parent_die,
-				     ulong_t parent_bias, ctf_file_t *ctf,
-				     ctf_id_t parent_ctf_id,
-				     const char *locerrstr, int top_level_type,
-				     enum skip_type *skip, int *override)
+				     ctf_file_t *ctf, ctf_id_t parent_ctf_id,
+				     const char *locerrstr,
+				     die_override_t *overrides,
+				     int top_level_type,
+				     enum skip_type *skip, int *replace)
 {
 	ctf_id_t type_ref;
 
@@ -2864,10 +2901,12 @@ static ctf_id_t assemble_ctf_pointer(const char *module_name,
  */
 static ctf_id_t assemble_ctf_array(const char *module_name,
 				   const char *file_name, Dwarf_Die *die,
-				   Dwarf_Die *parent_die, ulong_t parent_bias,
-				   ctf_file_t *ctf, ctf_id_t parent_ctf_id,
-				   const char *locerrstr, int top_level_type,
-				   enum skip_type *skip, int *override)
+				   Dwarf_Die *parent_die, ctf_file_t *ctf,
+				   ctf_id_t parent_ctf_id,
+				   const char *locerrstr,
+				   die_override_t *overrides,
+				   int top_level_type,
+				   enum skip_type *skip, int *replace)
 {
 	ctf_id_t type_ref;
 
@@ -2892,13 +2931,13 @@ static ctf_id_t assemble_ctf_array_dimension(const char *module_name,
 					     const char *file_name,
 					     Dwarf_Die *die,
 					     Dwarf_Die *parent_die,
-					     ulong_t parent_bias,
 					     ctf_file_t *ctf,
 					     ctf_id_t parent_ctf_id,
 					     const char *locerrstr,
+					     die_override_t *overrides,
 					     int top_level_type,
 					     enum skip_type *skip,
-					     int *override)
+					     int *replace)
 {
 	ctf_arinfo_t arinfo;
 
@@ -2924,7 +2963,7 @@ static ctf_id_t assemble_ctf_array_dimension(const char *module_name,
 	 * type-so-far, overriding the parent type.
 	 */
 
-	*override = 1;
+	*replace = 1;
 	return ctf_add_array(ctf, top_level_type ? CTF_ADD_ROOT : CTF_ADD_NONROOT,
 			     &arinfo);
 }
@@ -2936,13 +2975,13 @@ static ctf_id_t assemble_ctf_enumeration(const char *module_name,
 					 const char *file_name,
 					 Dwarf_Die *die,
 					 Dwarf_Die *parent_die,
-					 ulong_t parent_bias,
 					 ctf_file_t *ctf,
 					 ctf_id_t parent_ctf_id,
 					 const char *locerrstr,
+					 die_override_t *overrides,
 					 int top_level_type,
 					 enum skip_type *skip,
-					 int *override)
+					 int *replace)
 {
 	const char *name = dwarf_diename(die);
 
@@ -2957,16 +2996,15 @@ static ctf_id_t assemble_ctf_enumerator(const char *module_name,
 					const char *file_name,
 					Dwarf_Die *die,
 					Dwarf_Die *parent_die,
-					ulong_t parent_bias,
 					ctf_file_t *ctf,
 					ctf_id_t parent_ctf_id,
 					const char *locerrstr,
+					die_override_t *overrides,
 					int top_level_type,
 					enum skip_type *skip,
-					int *override)
+					int *replace)
 {
 	const char *name = dwarf_diename(die);
-	Dwarf_Attribute value_attr;
 	Dwarf_Word value;
 	int err;
 
@@ -2975,9 +3013,7 @@ static ctf_id_t assemble_ctf_enumerator(const char *module_name,
 	CTF_DW_ENFORCE_NOT(bit_stride);
 	CTF_DW_ENFORCE_NOT(byte_stride);
 
-	dwarf_attr(die, DW_AT_const_value, &value_attr);
-	dwarf_formudata(&value_attr, &value);
-
+	value = private_dwarf_udata(die, DW_AT_const_value, overrides);
 	err = ctf_add_enumerator(ctf, parent_ctf_id, name, value);
 
 	if (err != 0)
@@ -2993,13 +3029,13 @@ static ctf_id_t assemble_ctf_typedef(const char *module_name,
 				     const char *file_name,
 				     Dwarf_Die *die,
 				     Dwarf_Die *parent_die,
-				     ulong_t parent_bias,
 				     ctf_file_t *ctf,
 				     ctf_id_t parent_ctf_id,
 				     const char *locerrstr,
+				     die_override_t *overrides,
 				     int top_level_type,
 				     enum skip_type *skip,
-				     int *override)
+				     int *replace)
 {
 	const char *name = dwarf_diename(die);
 	ctf_id_t type_ref;
@@ -3023,13 +3059,13 @@ static ctf_id_t assemble_ctf_cvr_qual(const char *module_name,
 				      const char *file_name,
 				      Dwarf_Die *die,
 				      Dwarf_Die *parent_die,
-				      ulong_t paretn_bias,
 				      ctf_file_t *ctf,
 				      ctf_id_t parent_ctf_id,
 				      const char *locerrstr,
+				      die_override_t *overrides,
 				      int top_level_type,
 				      enum skip_type *skip,
-				      int *override)
+				      int *replace)
 {
 	ctf_id_t (*ctf_cvr_fun)(ctf_file_t *, uint_t, ctf_id_t);
 	ctf_id_t type_ref;
@@ -3069,13 +3105,13 @@ static ctf_id_t assemble_ctf_struct_union(const char *module_name,
 					  const char *file_name,
 					  Dwarf_Die *die,
 					  Dwarf_Die *parent_die,
-					  ulong_t parent_bias,
 					  ctf_file_t *ctf,
 					  ctf_id_t parent_ctf_id,
 					  const char *locerrstr,
+					  die_override_t *overrides,
 					  int top_level_type,
 					  enum skip_type *skip,
-					  int *override)
+					  int *replace)
 {
 	ctf_id_t (*ctf_add_sou)(ctf_file_t *, uint_t, const char *);
 
@@ -3168,15 +3204,15 @@ static ctf_id_t assemble_ctf_su_member(const char *module_name,
 				       const char *file_name,
 				       Dwarf_Die *die,
 				       Dwarf_Die *parent_die,
-				       ulong_t parent_bias,
 				       ctf_file_t *ctf,
 				       ctf_id_t parent_ctf_id,
 				       const char *locerrstr,
+				       die_override_t *overrides,
 				       int top_level_type,
 				       enum skip_type *skip,
-				       int *override)
+				       int *replace)
 {
-	ulong_t offset;
+	ulong_t offset = 0;
 	ctf_full_id_t *new_type;
 	Dwarf_Attribute type_attr;
 	Dwarf_Die type_die;
@@ -3234,15 +3270,10 @@ static ctf_id_t assemble_ctf_su_member(const char *module_name,
 	 * DW_AT_data_bit_offset is the simple case.  DW_AT_data_member_location
 	 * is trickier, and, alas, the DWARF2 variation is the complex one.
 	 */
-	if (dwarf_hasattr(die, DW_AT_data_bit_offset)) {
-		Dwarf_Attribute bit_offset_attr;
-		Dwarf_Word bit_offset;
-
-		dwarf_attr(die, DW_AT_data_bit_offset, &bit_offset_attr);
-		dwarf_formudata(&bit_offset_attr, &bit_offset);
-
-		offset = bit_offset;
-	} else if (dwarf_hasattr(die, DW_AT_data_member_location)) {
+	if (dwarf_hasattr(die, DW_AT_data_bit_offset))
+		offset = private_dwarf_udata(die, DW_AT_data_bit_offset,
+					     overrides);
+	else if (dwarf_hasattr(die, DW_AT_data_member_location)) {
 		Dwarf_Attribute location_attr;
 
 		dwarf_attr(die, DW_AT_data_member_location, &location_attr);
@@ -3258,6 +3289,11 @@ static ctf_id_t assemble_ctf_su_member(const char *module_name,
 			/*
 			 * Byte offset, with bit_offset of containing
 			 * structure/union added, if present.
+			 *
+			 * (No overrides supported here, yet, due to lack of
+			 * sdata overrides and the desire for consistency.
+			 * We can add them if we start passing down
+			 * DW_AT_data_member_location overrides.)
 			 */
 			if (dwarf_whatform(&location_attr) == DW_FORM_sdata) {
 				Dwarf_Sword location;
@@ -3340,11 +3376,19 @@ static ctf_id_t assemble_ctf_su_member(const char *module_name,
 			exit(1);
 		}
 		}
-	} else { /* No offset.  */
-		offset = 0;
-	}
+		/* Fall through. */
+	} else { /* No offset beyond any override.  */
+		die_override_t *o;
 
-	offset += parent_bias;
+		o = private_find_override(die, DW_AT_data_bit_offset,
+					  overrides);
+		if (o) {
+			if (o->op == DIE_OVERRIDE_REPLACE)
+				offset = o->value;
+			else
+				offset += o->value;
+		}
+	}
 
 	/*
 	 * If this is an unnamed struct/union, call directly back to
@@ -3371,15 +3415,22 @@ static ctf_id_t assemble_ctf_su_member(const char *module_name,
 		if (dwarf_child(&type_die, &child_die) < 0)
 			return parent_ctf_id;
 
+		die_override_t o[] = {{ dwarf_tag(&child_die),
+					DW_AT_data_bit_offset,
+					DIE_OVERRIDE_ADD,
+					offset }, {0} };
+
 		die_to_ctf(module_name, file_name, &child_die, parent_die, ctf,
-		    parent_ctf_id, offset, 0, skip, &dummy, NULL);
+			   parent_ctf_id, o, 0, skip, &dummy, NULL);
+
 		return parent_ctf_id;
 	}
 
 	/*
 	 * Get the CTF ID of this member's type, by recursive lookup.
 	 */
-	new_type = construct_ctf_id(module_name, file_name, &type_die, &cu_die);
+	new_type = construct_ctf_id(module_name, file_name, &type_die,
+				    &cu_die, NULL);
 
 	if (new_type == NULL) {
 		*skip = SKIP_ABORT;
@@ -3482,13 +3533,13 @@ static ctf_id_t assemble_ctf_variable(const char *module_name,
 				      const char *file_name,
 				      Dwarf_Die *die,
 				      Dwarf_Die *parent_die,
-				      ulong_t parent_bias,
 				      ctf_file_t *ctf,
 				      ctf_id_t parent_ctf_id,
 				      const char *locerrstr,
+				      die_override_t *overrides,
 				      int top_level_type,
 				      enum skip_type *skip,
-				      int *override)
+				      int *replace)
 {
 	const char *name = dwarf_diename(die);
 	ctf_id_t type_ref;
@@ -3626,6 +3677,51 @@ static Dwarf_Die *private_dwarf_type(Dwarf_Die *die, Dwarf_Die *target_die)
 		}
 		return target_die;
 	}
+
+	return NULL;
+}
+
+/*
+ * Given a DIE that contains a udata attribute, look up that attribute and
+ * return its value (optionally overridden or modified by the die_overrides).
+ */
+static Dwarf_Word private_dwarf_udata(Dwarf_Die *die, int attribute,
+				      die_override_t *overrides)
+{
+	Dwarf_Attribute attr;
+	Dwarf_Word value;
+	die_override_t *override;
+
+	override = private_find_override(die, attribute, overrides);
+
+	if (override && override->op == DIE_OVERRIDE_REPLACE)
+		return override->value;
+
+	dwarf_attr(die, attribute, &attr);
+	dwarf_formudata(&attr, &value);
+
+	if (override)
+		value += override->value;
+
+	return value;
+}
+
+/*
+ * Find an override in an override list.
+ */
+static die_override_t *private_find_override(Dwarf_Die *die,
+					     int attribute,
+					     die_override_t *overrides)
+{
+	size_t i;
+
+	if (overrides == NULL)
+	    return NULL;
+
+	for (i = 0; overrides[i].tag != 0; i++)
+		if ((overrides[i].tag == dwarf_tag(die)) &&
+		    (overrides[i].attribute == attribute))
+			return &overrides[i];
 
 	return NULL;
 }
