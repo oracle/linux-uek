@@ -123,7 +123,7 @@ static int receive_chars_getchar(struct uart_port *port)
 
 static int receive_chars_read(struct uart_port *port)
 {
-	int saw_console_brk = 0;
+	static int saw_console_brk;
 	int limit = 10000;
 
 	while (limit-- > 0) {
@@ -135,6 +135,9 @@ static int receive_chars_read(struct uart_port *port)
 			bytes_read = 0;
 
 			if (stat == CON_BREAK) {
+				if (saw_console_brk)
+					sun_do_break();
+
 				if (uart_handle_break(port))
 					continue;
 				saw_console_brk = 1;
@@ -158,6 +161,7 @@ static int receive_chars_read(struct uart_port *port)
 		if (port->sysrq != 0 &&  *con_read_page) {
 			for (i = 0; i < bytes_read; i++)
 				uart_handle_sysrq_char(port, con_read_page[i]);
+			saw_console_brk = 0;
 		}
 
 		if (port->state == NULL)
