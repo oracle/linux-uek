@@ -364,6 +364,13 @@ static void detect_duplicates_alias_fixup_internal(Dwarf_Die *die,
 						   const char *id, void *data);
 
 /*
+ * Mark a basic type shared by name and intern it in all relevant hashes.  (Used
+ * for marking basic types we don't have a DIE for.)
+ */
+static void mark_shared_by_name(ctf_file_t *ctf, ctf_id_t ctf_id,
+				const char *name);
+
+/*
  * Determine if a type is a named struct, union, or enum.
  *
  * A type_id() callback.
@@ -1236,7 +1243,7 @@ static ctf_file_t *init_ctf_table(const char *module_name)
 	    (builtin_modules == NULL)) {
 		ctf_encoding_t void_encoding = { CTF_INT_SIGNED, 0, 0 };
 		ctf_encoding_t int_encoding = { CTF_INT_SIGNED, 0,
-						sizeof (int) };
+						sizeof (int) * 8 };
 		ctf_id_t int_type;
 		ctf_id_t func_type;
 		ctf_funcinfo_t func_info;
@@ -1251,6 +1258,8 @@ static ctf_file_t *init_ctf_table(const char *module_name)
 						"void", &void_encoding);
 		int_type = ctf_add_integer(ctf_file, CTF_ADD_ROOT, "int",
 					   &int_encoding);
+		mark_shared_by_name(ctf_file, ctf_void_type, "void");
+		mark_shared_by_name(ctf_file, int_type, "int");
 
 		func_info.ctc_return = int_type;
 		func_info.ctc_argc = 0;
@@ -2243,6 +2252,33 @@ static void detect_duplicates_alias_fixup_internal(Dwarf_Die *die,
 	}
 
 	free(opaque_id);
+}
+
+/*
+ * Mark a basic type shared by name and intern it in all relevant hashes.  (Used
+ * for marking basic types we don't have a DIE for.)
+ */
+static void mark_shared_by_name(ctf_file_t *ctf, ctf_id_t ctf_id,
+				const char *name)
+{
+	ctf_full_id_t static_ctf_id = { ctf, ctf_id };
+	ctf_full_id_t *full_ctf_id;
+	char *id = NULL;
+
+	full_ctf_id = malloc(sizeof (struct ctf_full_id));
+	if (full_ctf_id == NULL) {
+		fprintf(stderr, "%s: out of memory\n", __func__);
+		exit(1);
+	}
+	*full_ctf_id = static_ctf_id;
+
+	id = str_appendn(id, "////", name, " ", NULL);
+#ifdef DEBUG
+	strcpy(full_ctf_id->module_name, "shared_ctf");
+	strcpy(full_ctf_id->file_name, "<built-in type>");
+#endif
+	g_hash_table_replace(id_to_module, id, xstrdup("shared_ctf"));
+	g_hash_table_replace(id_to_type, xstrdup(id), full_ctf_id);
 }
 
 /*
