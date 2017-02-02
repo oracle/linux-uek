@@ -20,6 +20,7 @@
 #include <sys/types.h>
 #include <fcntl.h>
 #include <limits.h>
+#include <endian.h>
 
 #include <libelf.h>
 #include <dwarf.h>
@@ -469,6 +470,12 @@ static void detect_duplicates_tu_done(const char *module_name,
  * Free DWARF state for detect_duplicates().
  */
 static void detect_duplicates_dwarf_free(struct detect_duplicates_state *state);
+
+/*
+ * Determine if a type is duplicated and needs sharing.
+ */
+enum needs_sharing { NS_NOT_SHARED, NS_NO_MARKING, NS_NEEDS_SHARING };
+static enum needs_sharing type_needs_sharing(const char *module_name, const char *id);
 
 /*
  * Mark a type (optionally, with an already-known ID) as duplicated and located
@@ -1539,9 +1546,63 @@ static char *type_id(Dwarf_Die *die,
 	 * construct the IDs of basic types, structures, and unions by hand.
 	 */
 	switch (dwarf_tag(die)) {
-	case DW_TAG_base_type:
-		id = str_appendn(id, dwarf_diename(die), " ", NULL);
+	case DW_TAG_base_type: {
+		Dwarf_Word bit_size = -1;
+		Dwarf_Word type_size = -1;
+		Dwarf_Word bit_offset = -1;
+
+		/*
+		 * CTF encodes the size and bitwise-offset of bit-fields in the
+		 * base type, so it must be stored once for each size, even if
+		 * it only appears once for all sizes in the DWARF.
+		 */
+		if (dwarf_hasattr(die, DW_AT_bit_size) ||
+		    private_find_override(die, DW_AT_bit_size,
+					  overrides))
+			bit_size = private_dwarf_udata(die, DW_AT_bit_size,
+						       overrides);
+		if (dwarf_hasattr(die, DW_AT_bit_offset) ||
+		    private_find_override(die, DW_AT_bit_offset,
+					  overrides))
+			bit_offset = private_dwarf_udata(die, DW_AT_bit_offset,
+							 overrides);
+
+		/*
+		 * Bitfields that occupy their entire containing type are not
+		 * bitfields, but just redundant DWARF.  GCC emits these now and
+		 * again, but the dups would trip CTF consistency checks, so
+		 * must be skipped.
+		 */
+		if (bit_size > -1) {
+			/*
+			 * This "may be omitted" in DWARF, but GCC doesn't:
+			 * bitfields always get both.  (See
+			 * gcc/dwarf2out.c:gen_field_die().)
+			 */
+			type_size = private_dwarf_udata(die, DW_AT_bit_size,
+							overrides);
+		}
+		if (bit_size != type_size) {
+			char bitsize[22];	/* > 2^64's digit count */
+			char bitoffset[22];	/* > 2^64's digit count */
+
+			snprintf(bitsize, sizeof (bitsize), "%li", bit_size);
+			id = str_appendn(id, dwarf_diename(die), ":", bitsize,
+					 NULL);
+			if (bit_offset != -1) {
+				snprintf(bitoffset, sizeof (bitoffset), "%li",
+					bit_offset);
+				id = str_appendn(id, ":", bitoffset, NULL);
+			}
+			id = str_append(id, " ");
+		} else {
+			/*
+			 * Ordinary (non-bit-field) base type.
+			 */
+			id = str_appendn(id, dwarf_diename(die), " ", NULL);
+		}
 		break;
+	}
 	case DW_TAG_enumeration_type:
 		id = str_appendn(id, "enum ", dwarf_diename(die), " ", NULL);
 		break;
@@ -2009,20 +2070,12 @@ static void detect_duplicates(const char *module_name,
 	 * We never consider types in modules on the deduplication blacklist
 	 * to introduce duplicates.
 	 */
-	const char *existing_type_module;
-
-	existing_type_module = g_hash_table_lookup(id_to_module, id);
-
-	if (existing_type_module != NULL) {
-		if ((strcmp(existing_type_module, module_name) != 0) &&
-		    (builtin_modules != NULL) &&
-		    (dedup_blacklist == NULL ||
-		     !g_hash_table_lookup_extended(dedup_blacklist, module_name,
-						   NULL, NULL))) {
-			mark_shared(die, NULL, data);
-			mark_seen_contained(die, "shared_ctf");
-		}
-
+	switch (type_needs_sharing(module_name, id)) {
+	case NS_NEEDS_SHARING:
+		mark_shared(die, NULL, data);
+		mark_seen_contained(die, "shared_ctf");
+		/* Fall through */
+	case NS_NO_MARKING:
 		/*
 		 * A duplicated type, but in the same module, or deduplication
 		 * is disabled, so id_to_module is already correct.  (When
@@ -2032,6 +2085,8 @@ static void detect_duplicates(const char *module_name,
 		 */
 		free(id);
 		return;
+	case NS_NOT_SHARED:
+		break;
 	}
 
 	/*
@@ -2127,6 +2182,37 @@ static void free_duplicates_id_file(void *data)
 }
 
 /*
+ * Determine if a type is duplicated and needs sharing.
+ */
+static enum needs_sharing type_needs_sharing(const char *module_name,
+					     const char *id)
+{
+	const char *existing_type_module;
+	existing_type_module = g_hash_table_lookup(id_to_module, id);
+
+	/*
+	 * Types not already known about do not need sharing.
+	 *
+	 * Types on the dedup blacklist, types already in the current modules,
+	 * and any types in external-module mode do not even need marking.
+	 */
+	if (existing_type_module == NULL)
+		return NS_NOT_SHARED;
+
+	if ((strcmp(existing_type_module, module_name) == 0) ||
+	    (strcmp(existing_type_module, "shared_ctf") == 0) ||
+	    (builtin_modules == NULL))
+		return NS_NO_MARKING;
+
+	if (dedup_blacklist != NULL &&
+	    g_hash_table_lookup_extended(dedup_blacklist, module_name,
+					 NULL, NULL))
+		return NS_NO_MARKING;
+
+	return NS_NEEDS_SHARING;
+}
+
+/*
  * Detect duplicates and mark seen types for a given type, via a type_id()
  * callback: used to detect dependent types (particularly those at child-DIE
  * level) as duplicates.
@@ -2170,31 +2256,82 @@ static void mark_seen_contained(Dwarf_Die *die, const char *module_name)
 	 * We iterate over all immediate children and recursively call ourselves
 	 * for all those of type DW_TAG_structure_type and DW_TAG_union_type.
 	 *
-	 * Further, everything other than members (which has an entry in
-	 * assembly_tab) needs marking, since these may be declared at structure
-	 * scope rather than being confined to global scope.  Members are
-	 * skipped because they cannot be used as the type of another field.
-	 * These types cannot be duplicates if their containing type is not a
-	 * duplicate, and typedefs cannot occur at this level so they cannot be
-	 * aliased; thus we can mark them directly without going back into the
-	 * top of detect_duplicates().
+	 * Further, everything with an entry in assembly_tab other than
+	 * non-bitfield members needs marking, since these may be declared at
+	 * structure scope rather than being confined to global scope.
+	 * Non-bitfield members are skipped because they cannot be used as the
+	 * type of another field.  These types cannot be duplicates if their
+	 * containing type is not a duplicate, and typedefs cannot occur at this
+	 * level so they cannot be aliased; thus we can mark them directly
+	 * without going back into the top of detect_duplicates().
+	 *
+	 * (Bit-field members are not skipped: they use different CTF from their
+	 * non-bitfield equivalents, even though they refer to the same
+	 * top-level DIE.)
 	 */
 	int sib_ret;
 
 	do
 		switch (dwarf_tag(&child)) {
+		case DW_TAG_member: {
+			/*
+			 * bit_size and bit_offset go together: we can assume
+			 * that if a member has the one, it has the other.
+			 */
+			if (dwarf_tag(&child) == DW_TAG_member &&
+			    !dwarf_hasattr(&child, DW_AT_bit_size))
+				break;
+
+			die_override_t override[] =
+				{{ DW_TAG_base_type,
+				   DW_AT_bit_size,
+				   DIE_OVERRIDE_REPLACE,
+				   private_dwarf_udata(&child, DW_AT_bit_size,
+						       NULL) },
+				 { DW_TAG_base_type,
+				   DW_AT_bit_offset,
+				   DIE_OVERRIDE_REPLACE,
+				   private_dwarf_udata(&child, DW_AT_bit_offset,
+						       NULL) },
+				 {0}};
+
+			char *id = type_id(&child, override, NULL, NULL);
+
+			/*
+			 * We also have to do shared checking in here, since
+			 * this type does not exist at the DWARF top level.
+			 */
+			switch (type_needs_sharing(module_name, id)) {
+			case NS_NEEDS_SHARING:
+				g_hash_table_replace(id_to_module, id,
+						     xstrdup("shared_ctf"));
+				dw_ctf_trace("Marking bitfield member %s as "
+					     "shared\n", id);
+
+				break;
+			case NS_NO_MARKING:
+				free(id);
+				break;
+			case NS_NOT_SHARED:
+				g_hash_table_replace(id_to_module, id,
+						     xstrdup(module_name));
+				dw_ctf_trace("Marking bitfield member %s as seen in %s\n",
+					     id, module_name);
+				break;
+			}
+			break;
+		}
 		case DW_TAG_structure_type:
 		case DW_TAG_union_type:
 			mark_seen_contained(&child, module_name);
 			/* fall through */
 		default:
-			if (dwarf_tag(&child) != DW_TAG_member &&
-			    dwarf_tag(&child) <= assembly_len &&
+			if (dwarf_tag(&child) <= assembly_len &&
 			    assembly_tab[dwarf_tag(&child)] != NULL) {
 
 				char *id = type_id(&child, NULL, NULL, NULL);
 
-				dw_ctf_trace("Marking %s as seen in %s\n", id,
+				dw_ctf_trace("Marking member %s as seen in %s\n", id,
 					     module_name);
 				g_hash_table_replace(id_to_module, id,
 						     xstrdup(module_name));
@@ -2285,14 +2422,36 @@ static void mark_shared(Dwarf_Die *die, const char *id, void *data)
 
 		/*
 		 * We are only interested in non-blacklisted children of type
-		 * DW_TAG_member.
+		 * DW_TAG_member.  As above, bitfields get an override to
+		 * denote the bitfieldness of their parent type.
 		 */
 		int sib_ret;
 
 		do
-			if (!member_blacklisted(&child, die))
+			if ((dwarf_tag(&child) == DW_TAG_member) &&
+			    !member_blacklisted(&child, die)) {
+				if (dwarf_hasattr(&child, DW_AT_bit_size)) {
+					die_override_t override[] =
+						{{ DW_TAG_base_type,
+						   DW_AT_bit_size,
+						   DIE_OVERRIDE_REPLACE,
+						   private_dwarf_udata(&child,
+								       DW_AT_bit_size,
+								       NULL) },
+						 { DW_TAG_base_type,
+						   DW_AT_bit_offset,
+						   DIE_OVERRIDE_REPLACE,
+						   private_dwarf_udata(&child,
+								       DW_AT_bit_offset,
+								       NULL) },
+						 {0}};
+
+					free(type_id(&child, override,
+						     mark_shared, state));
+				} else
 					free(type_id(&child, NULL,
 						     mark_shared, state));
+			}
 		while ((sib_ret = dwarf_siblingof(&child, &child)) == 0);
 
 		if (sib_ret == -1)
@@ -3013,11 +3172,11 @@ static ctf_id_t assemble_ctf_base(const char *module_name,
 					const char *, const ctf_encoding_t *);
 
 	const char *name = dwarf_diename(die);
-	Dwarf_Attribute encoding_attr, size_attr;
 	Dwarf_Word encoding, size;
 	ctf_add_fun ctf_add_func;
 	ctf_encoding_t ctf_encoding;
 	size_t encoding_search;
+	die_override_t *bit_size_override, *bit_offset_override;
 
 	struct dwarf_encoding_tab {
 		Dwarf_Word encoding;
@@ -3060,19 +3219,10 @@ static ctf_id_t assemble_ctf_base(const char *module_name,
 	CTF_DW_ENFORCE(name);
 	CTF_DW_ENFORCE(encoding);
 	CTF_DW_ENFORCE(byte_size);
-	CTF_DW_ENFORCE_NOT(bit_size);
 	CTF_DW_ENFORCE_NOT(endianity);
 
-	dwarf_attr(die, DW_AT_encoding, &encoding_attr);
-	dwarf_formudata(&encoding_attr, &encoding);
-
-	if ((dwarf_attr(die, DW_AT_byte_size, &size_attr) == NULL) ||
-	    (dwarf_formudata(&size_attr, &size) < 0)) {
-		fprintf(stderr, "%s: skipping type, cannot get size: %s\n",
-			locerrstr, dwarf_errmsg(dwarf_errno()));
-		*skip = SKIP_ABORT;
-		return CTF_ERROR_REPORTED;
-	}
+	encoding = private_dwarf_udata(die, DW_AT_encoding, overrides);
+	size = private_dwarf_udata(die, DW_AT_byte_size, overrides);
 
 	for (encoding_search = 0; all_encodings[encoding_search].func != 0;
 	     encoding_search++) {
@@ -3095,8 +3245,40 @@ static ctf_id_t assemble_ctf_base(const char *module_name,
 		*skip = SKIP_ABORT;
 		return CTF_ERROR_REPORTED;
 	}
-	ctf_encoding.cte_offset = 0;
-	ctf_encoding.cte_bits = size * 8;
+
+	/*
+	 * Handle bitfields.  Only look at overrides, since bitfields can only
+	 * be members of structures in C, thus derived from the referencing DIE.
+	 * Bitfields are never top-level types in C, even though they are in
+	 * DWARF.
+	 */
+	bit_size_override = private_find_override(die, DW_AT_bit_size,
+						  overrides);
+	bit_offset_override = private_find_override(die, DW_AT_bit_offset,
+						    overrides);
+	if (bit_size_override) {
+		ctf_encoding.cte_bits = bit_size_override->value;
+		top_level_type = 0;
+	} else
+		ctf_encoding.cte_bits = size * 8;
+
+	if (bit_offset_override) {
+#if __BYTE_ORDER == __BIG_ENDIAN
+		ctf_encoding.cte_offset = bit_offset_override->value;
+#else
+		/*
+		 * The figure here counts from the left to the leftmost edge of
+		 * the bitfield: we want to count from the right to the
+		 * rightmost edge.
+		 */
+		ctf_encoding.cte_offset = (size * 8) -
+			bit_offset_override->value - ctf_encoding.cte_bits;
+		dw_ctf_trace("Endianizing cte_offset from %x to %x\n", bit_offset_override->value,
+			     ctf_encoding.cte_offset);
+#endif
+	} else
+		ctf_encoding.cte_offset = 0;
+
 
 	return ctf_add_func(ctf, top_level_type ? CTF_ADD_ROOT : CTF_ADD_NONROOT,
 			    name, &ctf_encoding);
@@ -3451,6 +3633,7 @@ static ctf_id_t assemble_ctf_su_member(const char *module_name,
 				       int *replace)
 {
 	ulong_t offset = 0;
+	ulong_t bit_offset = 0;
 	ctf_full_id_t *new_type;
 	Dwarf_Attribute type_attr;
 	Dwarf_Die type_die;
@@ -3503,14 +3686,19 @@ static ctf_id_t assemble_ctf_su_member(const char *module_name,
 	dwarf_diecu(&type_die, &cu_die, NULL, NULL);
 
 	/*
-	 * Figure out the offset of this type, in bits.
+	 * Figure out the offset of this type, in bits.  (This is split in two
+	 * for bitfields, where the bitfield itself gets represented elsewhere,
+	 * in the CTF type of the member itself.)
 	 *
 	 * DW_AT_data_bit_offset is the simple case.  DW_AT_data_member_location
 	 * is trickier, and, alas, the DWARF2 variation is the complex one.
 	 */
-	if (dwarf_hasattr(die, DW_AT_data_bit_offset))
+	if (dwarf_hasattr(die, DW_AT_data_bit_offset)) {
 		offset = private_dwarf_udata(die, DW_AT_data_bit_offset,
 					     overrides);
+		bit_offset = offset % 8;
+		offset = offset / 8 * 8;
+	}
 	else if (dwarf_hasattr(die, DW_AT_data_member_location)) {
 		Dwarf_Attribute location_attr;
 
@@ -3545,14 +3733,14 @@ static ctf_id_t assemble_ctf_su_member(const char *module_name,
 				offset = location * 8;
 			}
 
-			if (dwarf_hasattr(parent_die, DW_AT_bit_offset)) {
+			if (dwarf_hasattr(die, DW_AT_bit_offset)) {
 				Dwarf_Attribute bit_attr;
 				Dwarf_Word bit;
 
-				dwarf_attr(parent_die, DW_AT_bit_offset,
+				dwarf_attr(die, DW_AT_bit_offset,
 					   &bit_attr);
 				dwarf_formudata(&bit_attr, &bit);
-				offset += bit;
+				bit_offset = bit;
 			}
 			break;
 		}
@@ -3626,13 +3814,16 @@ static ctf_id_t assemble_ctf_su_member(const char *module_name,
 			else
 				offset += o->value;
 		}
+		bit_offset = offset % 8;
+		offset = offset / 8 * 8;
 	}
 
 	/*
 	 * If this is an unnamed struct/union, call directly back to
 	 * die_to_ctf() to add this struct's members to the current structure,
 	 * merging it seamlessly with its parent (excepting only the member
-	 * offsets).
+	 * offsets).  Use DW_AT_data_bit_offset because it does not require
+	 * the complexity of DW_AT_data_member_location to be faked.
 	 */
 	if (!dwarf_hasattr(die, DW_AT_name)) {
 		Dwarf_Die child_die;
@@ -3666,9 +3857,37 @@ static ctf_id_t assemble_ctf_su_member(const char *module_name,
 
 	/*
 	 * Get the CTF ID of this member's type, by recursive lookup.
+	 *
+	 * If this is a bitfield, we want to note that said type's size and
+	 * bit-offset should be adjusted.
 	 */
-	new_type = construct_ctf_id(module_name, file_name, &type_die,
-				    &cu_die, NULL);
+	if (dwarf_hasattr(die, DW_AT_bit_size)) {
+		die_override_t o[] =
+			{{ dwarf_tag(&type_die),
+			   DW_AT_bit_size,
+			   DIE_OVERRIDE_REPLACE,
+			   private_dwarf_udata(die, DW_AT_bit_size,
+					       NULL) },
+			 { dwarf_tag(&type_die),
+			   DW_AT_bit_offset,
+			   DIE_OVERRIDE_REPLACE,
+			   bit_offset },
+			 {0} };
+
+		new_type = construct_ctf_id(module_name, file_name, &type_die,
+					    &cu_die, o);
+	} else {
+		if (bit_offset != 0) {
+			fprintf(stderr, "%s:%s: error in member %s: No "
+				"DW_AT_bit_size, but nonzero bit offset of "
+				"%lx in overall offset of %lx\n", locerrstr,
+				dwarf_diename(&cu_die), dwarf_diename(die),
+				bit_offset, offset);
+			return CTF_ERROR_REPORTED;
+		}
+		new_type = construct_ctf_id(module_name, file_name, &type_die,
+					    &cu_die, NULL);
+	}
 
 	if (new_type == NULL) {
 		*skip = SKIP_ABORT;
