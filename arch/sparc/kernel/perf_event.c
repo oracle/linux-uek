@@ -1423,6 +1423,7 @@ static void sparc_pmu_enable(struct pmu *pmu)
 
 /* Used when checking to see if we are counting 'cycles' */
 #define PCR_N4_CYCLES_SELECTED (26 << PCR_N4_SL_SHIFT)
+#define PCR_M8_CYCLES_SELECTED (0x2f << PCR_M8_SL_SHIFT)
 
 /* Threshold value used to decide whether to let
  * the 32 bit performance counter overflow
@@ -1443,14 +1444,37 @@ static bool is_stop_counting_cycles_requested(u64 val)
 	    !strcmp(sparc_pmu_type, "sparc-s7")) {
 		if ((val & PCR_N4_SL) == PCR_N4_CYCLES_SELECTED)
 			ret = true;
+	} else if (!strcmp(sparc_pmu_type, "sparc-m8")) {
+			if ((val & PCR_M8_SL) == PCR_M8_CYCLES_SELECTED)
+				ret = true;
 	}
 	return ret;
+}
+
+static void _wait_for_counter_overflow(int pcr_index)
+{
+	u32 count;
+
+	/* We are currently counting cycles. If we are close
+	 * to overflowing the 32 bit performance counter
+	 * (0xffffffff -> 0x00000000), then wait here until
+	 * the overflow happens.
+	 */
+	count = sparc_pmu->read_pmc(pcr_index);
+	while (count > PIC_OVERFLOW_THRESHOLD) {
+		if (count == sparc_pmu->read_pmc(pcr_index)) {
+			/* If the count hasn't changed then
+			 * something has gone wrong !
+			 */
+			break;
+		}
+		count = sparc_pmu->read_pmc(pcr_index);
+	}
 }
 
 static void wait_for_counter_overflow(int pcr_index)
 {
 	u64 pcr;
-	u32 count;
 
 	if (!strcmp(sparc_pmu_type, "niagara4") ||
 	    !strcmp(sparc_pmu_type, "niagara5") ||
@@ -1458,24 +1482,14 @@ static void wait_for_counter_overflow(int pcr_index)
 	    !strcmp(sparc_pmu_type, "sparc-s7")) {
 		pcr = pcr_ops->read_pcr(pcr_index);
 		if (((pcr & PCR_N4_SL) == PCR_N4_CYCLES_SELECTED) &&
-		    ((pcr & PCR_N4_UTRACE) || (pcr & PCR_N4_STRACE))) {
+		    ((pcr & PCR_N4_UTRACE) || (pcr & PCR_N4_STRACE)))
+			_wait_for_counter_overflow(pcr_index);
 
-			/* We are currently counting cycles. If we are close
-			 * to overflowing the 32 bit performance counter
-			 * (0xffffffff -> 0x00000000), then wait here until
-			 * the overflow happens.
-			 */
-			count = sparc_pmu->read_pmc(pcr_index);
-			while (count > PIC_OVERFLOW_THRESHOLD) {
-				if (count == sparc_pmu->read_pmc(pcr_index)) {
-					/* If the count hasn't changed then
-					 * something has gone wrong !
-					 */
-					break;
-				}
-				count = sparc_pmu->read_pmc(pcr_index);
-			}
-		}
+	} else if (!strcmp(sparc_pmu_type, "sparc-m8")) {
+			pcr = pcr_ops->read_pcr(pcr_index);
+			if (((pcr & PCR_M8_SL) == PCR_M8_CYCLES_SELECTED) &&
+			    ((pcr & PCR_M8_UTRACE) || (pcr & PCR_M8_STRACE)))
+				_wait_for_counter_overflow(pcr_index);
 	}
 }
 
