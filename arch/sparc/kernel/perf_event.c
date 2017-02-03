@@ -177,11 +177,14 @@ struct sparc_pmu {
 	int				upper_shift;
 	int				lower_shift;
 	int				event_mask;
+	int				ntc_bit;
 	int				picnht_bit;
+	int				picnpt_bit;
 	int				user_bit;
 	int				priv_bit;
 	int				hv_bit;
 	int				irq_bit;
+	int				ov_bit;
 	int				upper_nop;
 	int				lower_nop;
 	unsigned int			flags;
@@ -192,6 +195,8 @@ struct sparc_pmu {
 	int				num_pcrs;
 	int				num_pic_regs;
 };
+
+static const struct sparc_pmu *sparc_pmu __read_mostly;
 
 static u32 sparc_default_read_pmc(int idx)
 {
@@ -758,10 +763,10 @@ static void sparc_vt_write_pmc(int idx, u64 val)
 	pcr = pcr_ops->read_pcr(idx);
 
 	/* stop the counter */
-	pcr_ops->write_pcr(idx, PCR_N4_PICNPT);
+	pcr_ops->write_pcr(idx, sparc_pmu->picnpt_bit);
 
 	/* ensure ov and ntc are reset */
-	pcr &= ~(PCR_N4_OV | PCR_N4_NTC);
+	pcr &= ~(sparc_pmu->ov_bit | sparc_pmu->ntc_bit);
 
 	pcr_ops->write_pic(idx, val & 0xffffffff);
 
@@ -777,6 +782,9 @@ static const struct sparc_pmu niagara4_pmu = {
 	.upper_shift	= 5,
 	.lower_shift	= 5,
 	.event_mask	= 0x7ff,
+	.ntc_bit	= PCR_N4_NTC,
+	.picnpt_bit	= PCR_N4_PICNPT,
+	.ov_bit		= PCR_N4_OV,
 	.user_bit	= PCR_N4_UTRACE,
 	.priv_bit	= PCR_N4_STRACE,
 
@@ -975,7 +983,10 @@ static const struct sparc_pmu sparc_m7_pmu = {
 	.upper_shift    = 5,
 	.lower_shift    = 5,
 	.event_mask     = 0x7ff,
+	.ntc_bit        = PCR_N4_NTC,
 	.picnht_bit     = PCR_N4_PICNHT,
+	.picnpt_bit     = PCR_N4_PICNPT,
+	.ov_bit         = PCR_N4_OV,
 	.user_bit       = PCR_N4_UTRACE,
 	.priv_bit       = PCR_N4_STRACE,
 
@@ -1162,7 +1173,10 @@ static const struct sparc_pmu sparc_m8_pmu = {
 	.upper_shift    = 5,
 	.lower_shift    = 5,
 	.event_mask     = 0x3fff,
+	.ntc_bit        = PCR_M8_NTC,
 	.picnht_bit     = PCR_M8_PICNHT,
+	.picnpt_bit     = PCR_M8_PICNPT,
+	.ov_bit         = PCR_M8_OV,
 	.user_bit       = PCR_M8_UTRACE,
 	.priv_bit       = PCR_M8_STRACE,
 
@@ -1178,8 +1192,6 @@ static const struct sparc_pmu sparc_m8_pmu = {
 	.num_pcrs       = 4,
 	.num_pic_regs   = 4,
 };
-
-static const struct sparc_pmu *sparc_pmu __read_mostly;
 
 static u64 event_encoding(u64 event_id, int idx)
 {
