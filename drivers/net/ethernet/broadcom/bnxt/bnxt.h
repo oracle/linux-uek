@@ -423,7 +423,8 @@ struct rx_tpa_end_cmp_ext {
 
 #define BNXT_MAX_MTU		9500
 #define BNXT_MAX_PAGE_MODE_MTU	\
-	((unsigned int)PAGE_SIZE - VLAN_ETH_HLEN - NET_IP_ALIGN)
+	((unsigned int)PAGE_SIZE - VLAN_ETH_HLEN - NET_IP_ALIGN -	\
+	 XDP_PACKET_HEADROOM)
 
 #define BNXT_MIN_PKT_SIZE	52
 
@@ -621,6 +622,10 @@ struct bnxt_rx_ring_info {
 	u16			rx_next_cons;
 	void __iomem		*rx_doorbell;
 	void __iomem		*rx_agg_doorbell;
+
+#ifdef HAVE_NDO_XDP
+	struct bpf_prog		*xdp_prog;
+#endif
 
 	struct rx_bd		*rx_desc_ring[MAX_RX_PAGES];
 	struct bnxt_sw_rx_bd	*rx_buf_ring;
@@ -1258,6 +1263,10 @@ struct bnxt {
 
 	u8			num_leds;
 	struct bnxt_led_info	leds[BNXT_MAX_LED];
+
+#ifdef HAVE_NDO_XDP
+	struct bpf_prog		*xdp_prog;
+#endif
 };
 
 #define BNXT_RX_STATS_OFFSET(counter)			\
@@ -1285,6 +1294,8 @@ static inline void bnxt_db_write(struct bnxt *bp, void __iomem *db, u32 val)
 		writel(val, db);
 }
 
+void bnxt_reuse_rx_data(struct bnxt_rx_ring_info *rxr, u16 cons, void *data);
+void bnxt_set_tpa_flags(struct bnxt *bp);
 void bnxt_set_ring_params(struct bnxt *);
 int bnxt_set_rx_skb_mode(struct bnxt *bp, bool page_mode);
 void bnxt_hwrm_cmd_hdr_init(struct bnxt *, void *, u16, u16, u16);
