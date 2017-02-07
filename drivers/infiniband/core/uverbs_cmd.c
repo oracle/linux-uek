@@ -1595,7 +1595,27 @@ ssize_t ib_uverbs_reg_mr_relaxed(struct ib_uverbs_file *file,
 			(ufmr_pool1_blocksize + PAGE_SIZE) >> PAGE_SHIFT;
 		int pool2pages =
 			(ufmr_pool2_blocksize + PAGE_SIZE) >> PAGE_SHIFT;
-		struct ib_pd *pool_pd = file->device->ib_dev->relaxed_pd;
+		struct ib_pd *pool_pd = NULL;
+
+		/*
+		 * If not already allocated, we do (lazy)
+		 * pd allocation for usnic node type devices!
+		 */
+		if (file->device &&
+		    file->device->ib_dev &&
+		    file->device->ib_dev->relaxed_pd == NULL &&
+		    (file->device->ib_dev->node_type == RDMA_NODE_USNIC ||
+		     file->device->ib_dev->node_type == RDMA_NODE_USNIC_UDP)) {
+			file->device->ib_dev->relaxed_pd =
+				ib_alloc_pd(file->device->ib_dev);
+			if (IS_ERR(file->device->ib_dev->relaxed_pd)) {
+				ret = PTR_ERR(file->device->ib_dev->relaxed_pd);
+				file->device->ib_dev->relaxed_pd = NULL;
+				goto err_put;
+			}
+		}
+
+		pool_pd = file->device->ib_dev->relaxed_pd;
 
 		/* Create pool for 8kb buffers */
 		ret = create_fmr_pool(pool_pd, pool1pages, ufmr_pool1_nelems,
