@@ -425,23 +425,30 @@ void bdi_destroy(struct backing_dev_info *bdi)
 {
 	int i;
 
-	bdi_wb_shutdown(bdi);
 	bdi_set_min_ratio(bdi, 0);
+	bdi_unregister(bdi);
 
 	WARN_ON(!list_empty(&bdi->work_list));
 	WARN_ON(delayed_work_pending(&bdi->wb.dwork));
-
-	if (bdi->dev) {
-		bdi_debug_unregister(bdi);
-		device_unregister(bdi->dev);
-		bdi->dev = NULL;
-	}
 
 	for (i = 0; i < NR_BDI_STAT_ITEMS; i++)
 		percpu_counter_destroy(&bdi->bdi_stat[i]);
 	fprop_local_destroy_percpu(&bdi->completions);
 }
 EXPORT_SYMBOL(bdi_destroy);
+
+void bdi_unregister(struct backing_dev_info *bdi)
+{
+        /* make sure nobody finds us on the bdi_list anymore */
+        bdi_wb_shutdown(bdi);
+
+        if (bdi->dev) {
+                bdi_debug_unregister(bdi);
+                device_unregister(bdi->dev);
+                bdi->dev = NULL;
+        }
+}
+EXPORT_SYMBOL(bdi_unregister);
 
 /*
  * For use from filesystems to quickly init and register a bdi associated

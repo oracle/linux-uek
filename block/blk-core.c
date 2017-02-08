@@ -504,6 +504,8 @@ EXPORT_SYMBOL_GPL(blk_set_queue_dying);
 void blk_cleanup_queue(struct request_queue *q)
 {
 	spinlock_t *lock = q->queue_lock;
+	int i;
+	struct backing_dev_info *bdi = &q->backing_dev_info;
 
 	/* mark @q DYING, no new request or merges will be allowed afterwards */
 	mutex_lock(&q->sysfs_lock);
@@ -552,12 +554,9 @@ void blk_cleanup_queue(struct request_queue *q)
 		q->queue_lock = &q->__queue_lock;
 	spin_unlock_irq(lock);
 
-	bdi_destroy(&q->backing_dev_info);
-
-	if (q->owner) {
-		put_device(q->owner);
-		q->owner = NULL;
-	}
+	for (i = 0; i < NR_BDI_STAT_ITEMS; i++)
+		percpu_counter_destroy(&bdi->bdi_stat[i]);
+	fprop_local_destroy_percpu(&bdi->completions);
 
 	/* @q is and will stay empty, shutdown and put */
 	blk_put_queue(q);

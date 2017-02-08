@@ -111,6 +111,7 @@ struct backing_dev_info *inode_to_bdi(struct inode *inode);
 
 int __must_check bdi_init(struct backing_dev_info *bdi);
 void bdi_destroy(struct backing_dev_info *bdi);
+void bdi_unregister(struct backing_dev_info *bdi);
 
 __printf(3, 4)
 int bdi_register(struct backing_dev_info *bdi, struct device *parent,
