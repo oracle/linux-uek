@@ -191,6 +191,11 @@ static inline struct proc_dir_entry *pde_get(struct proc_dir_entry *pde)
 }
 extern void pde_put(struct proc_dir_entry *);
 
+static inline bool is_empty_pde(const struct proc_dir_entry *pde)
+{
+	return S_ISDIR(pde->mode) && !pde->proc_iops;
+}
+
 /*
  * inode.c
  */
