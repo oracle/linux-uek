@@ -699,13 +699,17 @@ static int handle_mcast(struct vnet_port *port, void *msgbuf)
 	struct vio_net_mcast_info *pkt = msgbuf;
 	struct net_device *dev = VNET_PORT_TO_NET_DEVICE(port);
 
-	if (pkt->tag.stype != VIO_SUBTYPE_ACK)
-		pr_err("%s: Got unexpected MCAST reply [%02x:%02x:%04x:%08x]\n",
+	if (pkt->tag.stype != VIO_SUBTYPE_ACK) {
+		struct vio_driver_state *vio = &port->vio;
+
+		viodbg(HS,
+		       "%s: Got unexpected MCAST reply [%02x:%02x:%04x:%08x]\n",
 		       dev->name,
 		       pkt->tag.type,
 		       pkt->tag.stype,
 		       pkt->tag.stype_env,
 		       pkt->tag.sid);
+	}
 
 	return 0;
 }
