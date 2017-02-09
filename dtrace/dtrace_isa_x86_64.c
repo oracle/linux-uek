@@ -216,9 +216,9 @@ ulong_t dtrace_getreg(struct task_struct *task, uint_t reg)
 	case REG_ES:
 		return task->thread.es;
 	case REG_FS:
-		return task->thread.fs;
+		return task->thread.fsbase;
 	case REG_GS:
-		return task->thread.gs;
+		return task->thread.gsbase;
 	case REG_TRAPNO:
 		return task->thread.trap_nr;
 	default:
