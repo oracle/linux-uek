@@ -57,11 +57,11 @@
 #include <linux/miscdevice.h>
 #include <linux/module.h>
 
-#include "xenbus_comms.h"
-
 #include <xen/xenbus.h>
 #include <xen/xen.h>
 #include <asm/xen/hypervisor.h>
+
+#include "xenbus.h"
 
 MODULE_LICENSE("GPL");
 

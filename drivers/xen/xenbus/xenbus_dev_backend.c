@@ -16,7 +16,7 @@
 #include <xen/events.h>
 #include <asm/xen/hypervisor.h>
 
-#include "xenbus_comms.h"
+#include "xenbus.h"
 
 MODULE_LICENSE("GPL");
 
