@@ -807,7 +807,7 @@ static int ovmapi_send_dom0_message(struct ovmapi_information *p_ovmapi_info,
 }
 
 static void ovmapi_receive_dom0_message(struct xenbus_watch *watch,
-					const char **vec, unsigned int len)
+					const char *path, const char *token)
 {
 	unsigned long read_to_here = 0;
 	char *name = NULL;
