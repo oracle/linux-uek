@@ -570,6 +570,7 @@ static void ena_free_all_rx_bufs(struct ena_adapter *adapter)
  */
 static void ena_free_tx_bufs(struct ena_ring *tx_ring)
 {
+	bool print_once = true;
 	u32 i;
 
 	for (i = 0; i < tx_ring->ring_size; i++) {
@@ -581,9 +582,16 @@ static void ena_free_tx_bufs(struct ena_ring *tx_ring)
 		if (!tx_info->skb)
 			continue;
 
-		netdev_notice(tx_ring->netdev,
-			      "free uncompleted tx skb qid %d idx 0x%x\n",
-			      tx_ring->qid, i);
+		if (print_once) {
+			netdev_notice(tx_ring->netdev,
+				      "free uncompleted tx skb qid %d idx 0x%x\n",
+				      tx_ring->qid, i);
+			print_once = false;
+		} else {
+			netdev_dbg(tx_ring->netdev,
+				   "free uncompleted tx skb qid %d idx 0x%x\n",
+				   tx_ring->qid, i);
+		}
 
 		ena_buf = tx_info->bufs;
 		dma_unmap_single(tx_ring->dev,
