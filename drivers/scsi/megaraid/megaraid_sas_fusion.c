@@ -4011,6 +4011,7 @@ transition_to_ready:
 					__func__, __LINE__);
 				megaraid_sas_kill_hba(instance);
 				retval = FAILED;
+				goto out;
 			}
 			/* Reset load balance info */
 			if (fusion->load_balance_info)
