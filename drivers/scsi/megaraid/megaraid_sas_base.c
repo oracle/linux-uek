@@ -42,7 +42,7 @@
 #include <linux/delay.h>
 #include <linux/uio.h>
 #include <linux/slab.h>
-#include <asm/uaccess.h>
+#include <linux/uaccess.h>
 #include <asm/unaligned.h>
 #include <linux/fs.h>
 #include <linux/compat.h>
@@ -6825,8 +6825,8 @@ megasas_mgmt_fw_ioctl(struct megasas_instance *instance,
 		sense_ptr = (unsigned long *) ((unsigned long)ioc->frame.raw +
 				ioc->sense_off);
 
-		unsigned long tmp = get_unaligned((unsigned long *) sense_ptr);
-		if (copy_to_user((void __user *)((unsigned long)tmp),
+		if (copy_to_user((void __user *)((unsigned long)
+				 get_unaligned((unsigned long *)sense_ptr)),
 				 sense, ioc->sense_len)) {
 			dev_err(&instance->pdev->dev, "Failed to copy out to user "
 					"sense data\n");
