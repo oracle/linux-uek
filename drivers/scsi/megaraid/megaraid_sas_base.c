@@ -7202,6 +7202,13 @@ megasas_sysfs_set_dbg_lvl(struct device_driver *dd, const char *buf, size_t coun
 static DRIVER_ATTR(dbg_lvl, S_IRUGO|S_IWUSR, megasas_sysfs_show_dbg_lvl,
 		megasas_sysfs_set_dbg_lvl);
 
+static inline void megasas_remove_scsi_device(struct scsi_device *sdev)
+{
+	sdev_printk(KERN_INFO, sdev, "SCSI device is removed\n");
+	scsi_remove_device(sdev);
+	scsi_device_put(sdev);
+}
+
 static void
 megasas_aen_polling(struct work_struct *work)
 {
@@ -7306,10 +7313,8 @@ megasas_aen_polling(struct work_struct *work)
 					else
 						scsi_device_put(sdev1);
 				} else {
-					if (sdev1) {
-						scsi_remove_device(sdev1);
-						scsi_device_put(sdev1);
-					}
+					if (sdev1)
+						megasas_remove_scsi_device(sdev1);
 				}
 			}
 		}
@@ -7326,10 +7331,8 @@ megasas_aen_polling(struct work_struct *work)
 					else
 						scsi_device_put(sdev1);
 				} else {
-					if (sdev1) {
-						scsi_remove_device(sdev1);
-						scsi_device_put(sdev1);
-					}
+					if (sdev1)
+						megasas_remove_scsi_device(sdev1);
 				}
 			}
 		}
