@@ -26,6 +26,7 @@
  */
 
 #include <linux/dtrace_cpu.h>
+#include <linux/uaccess.h>
 #include <asm/cacheflush.h>
 #include <asm/stacktrace.h>
 
