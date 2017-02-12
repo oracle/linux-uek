@@ -374,8 +374,13 @@ static int mlx4_comm_cmd_wait(struct mlx4_dev *dev, u8 vhcr_cmd,
 
 	err = context->result;
 	if (err && context->fw_status != CMD_STAT_MULTI_FUNC_REQ) {
+#ifdef WITHOUT_ORACLE_EXTENSIONS
 		mlx4_err(dev, "command 0x%x failed: fw status = 0x%x\n",
 			 vhcr_cmd, context->fw_status);
+#else
+		mlx4_err(dev, "%s: command 0x%x failed: fw status = 0x%x\n",
+			 __func__, vhcr_cmd, context->fw_status);
+#endif /* WITHOUT_ORACLE_EXTENSIONS */
 		if (mlx4_closing_cmd_fatal_error(op, context->fw_status))
 			goto out_reset;
 	}
@@ -673,8 +678,13 @@ static int mlx4_cmd_poll(struct mlx4_dev *dev, u64 in_param, u64 *out_param,
 			   __raw_readl(hcr + HCR_STATUS_OFFSET)) >> 24;
 	err = mlx4_status_to_errno(stat);
 	if (err) {
+#ifdef WITHOUT_ORACLE_EXTENSIONS
 		mlx4_err(dev, "command 0x%x failed: fw status = 0x%x\n",
 			 op, stat);
+#else
+		mlx4_err(dev, "%s: command 0x%x failed: fw status = 0x%x\n",
+			 __func__, op, stat);
+#endif /* WITHOUT_ORACLE_EXTENSIONS */
 		if (mlx4_closing_cmd_fatal_error(op, stat))
 			goto out_reset;
 		goto out;
@@ -784,11 +794,21 @@ static int mlx4_cmd_wait(struct mlx4_dev *dev, u64 in_param, u64 *out_param,
 		    (in_modifier == 1 || in_modifier == 2) &&
 		    op_modifier == MLX4_SET_PORT_IB_OPCODE &&
 		    context->fw_status == CMD_STAT_BAD_SIZE)
+#ifdef WITHOUT_ORACLE_EXTENSIONS
 			mlx4_dbg(dev, "command 0x%x failed: fw status = 0x%x\n",
 				 op, context->fw_status);
+#else
+			mlx4_dbg(dev, "%s(%d): command 0x%x failed: fw status = 0x%x\n",
+				 __func__, __LINE__, op, context->fw_status);
+#endif /* WITHOUT_ORACLE_EXTENSIONS */
 		else
+#ifdef WITHOUT_ORACLE_EXTENSIONS
 			mlx4_err(dev, "command 0x%x failed: fw status = 0x%x\n",
 				 op, context->fw_status);
+#else
+			mlx4_err(dev, "%s(%d): command 0x%x failed: fw status = 0x%x\n",
+				 __func__, __LINE__, op, context->fw_status);
+#endif /* WITHOUT_ORACLE_EXTENSIONS */
 		if (dev->persist->state & MLX4_DEVICE_STATE_INTERNAL_ERROR)
 			err = mlx4_internal_err_ret_value(dev, op, op_modifier);
 		else if (mlx4_closing_cmd_fatal_error(op, context->fw_status))
