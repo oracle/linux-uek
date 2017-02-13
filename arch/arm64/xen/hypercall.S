@@ -81,6 +81,7 @@ HYPERCALL2(physdev_op);
 HYPERCALL3(vcpu_op);
 HYPERCALL1(tmem_op);
 HYPERCALL2(multicall);
+HYPERCALL3(dm_op);
 
 ENTRY(privcmd_call)
 	mov x16, x0

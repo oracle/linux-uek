@@ -49,6 +49,7 @@ int HYPERVISOR_memory_op(unsigned int cmd, void *arg);
 int HYPERVISOR_physdev_op(int cmd, void *arg);
 int HYPERVISOR_vcpu_op(int cmd, int vcpuid, void *extra_args);
 int HYPERVISOR_tmem_op(void *arg);
+int HYPERVISOR_dm_op(domid_t domid, unsigned int nr_bufs, void *bufs);
 int HYPERVISOR_multicall(struct multicall_entry *calls, uint32_t nr);
 
 static inline int
