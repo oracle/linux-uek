@@ -1423,11 +1423,19 @@ int sunvnet_start_xmit_common(struct sk_buff *skb, struct net_device *dev,
 
 	err = __vnet_tx_trigger(port, dr->cons);
 	if (unlikely(err < 0)) {
-		netdev_info(dev, "TX trigger error %d\n", err);
 		d->hdr.state = VIO_DESC_FREE;
 		skb = port->tx_bufs[txi].skb;
 		port->tx_bufs[txi].skb = NULL;
 		dev->stats.tx_carrier_errors++;
+		if (err == -ECONNRESET) {
+			/* change ldc state and reset vnet port */
+			vio_link_state_change(&port->vio, LDC_EVENT_RESET);
+			vnet_port_reset(port);
+			vio_port_up(&port->vio);
+			port->rx_event = 0;
+		} else {
+			netdev_info(dev, "TX trigger error %d\n", err);
+		}
 		goto out_dropped;
 	}
 
