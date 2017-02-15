@@ -147,4 +147,7 @@ config INFINIBAND_QEDR
 config QED_ISCSI
 	bool
 
+config QED_FCOE
+	bool
+
 endif # NET_VENDOR_QLOGIC
