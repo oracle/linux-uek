@@ -17,7 +17,6 @@
 #include <linux/kernel.h>
 #include <linux/skbuff.h>
 
-struct crypto_aead;
 struct module;
 struct rtattr;
 struct seq_file;
@@ -127,6 +126,7 @@ struct ablkcipher_walk {
 };
 
 extern const struct crypto_type crypto_ablkcipher_type;
+extern const struct crypto_type crypto_aead_type;
 extern const struct crypto_type crypto_blkcipher_type;
 
 void crypto_mod_put(struct crypto_alg *alg);
@@ -241,6 +241,22 @@ static inline void *crypto_ablkcipher_ctx_aligned(struct crypto_ablkcipher *tfm)
 	return crypto_tfm_ctx_aligned(&tfm->base);
 }
 
+static inline struct aead_alg *crypto_aead_alg(struct crypto_aead *tfm)
+{
+	return &crypto_aead_tfm(tfm)->__crt_alg->cra_aead;
+}
+
+static inline void *crypto_aead_ctx(struct crypto_aead *tfm)
+{
+	return crypto_tfm_ctx(&tfm->base);
+}
+
+static inline struct crypto_instance *crypto_aead_alg_instance(
+	struct crypto_aead *aead)
+{
+	return crypto_tfm_alg_instance(&aead->base);
+}
+
 static inline struct crypto_blkcipher *crypto_spawn_blkcipher(
 	struct crypto_spawn *spawn)
 {
@@ -347,6 +363,21 @@ static inline int ablkcipher_tfm_in_queue(struct crypto_queue *queue,
 					  struct crypto_ablkcipher *tfm)
 {
 	return crypto_tfm_in_queue(queue, crypto_ablkcipher_tfm(tfm));
+}
+
+static inline void *aead_request_ctx(struct aead_request *req)
+{
+	return req->__ctx;
+}
+
+static inline void aead_request_complete(struct aead_request *req, int err)
+{
+	req->base.complete(&req->base, err);
+}
+
+static inline u32 aead_request_flags(struct aead_request *req)
+{
+	return req->base.flags;
 }
 
 static inline struct crypto_alg *crypto_get_attr_alg(struct rtattr **tb,

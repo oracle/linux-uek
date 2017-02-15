@@ -59,6 +59,7 @@ struct macsec_eth_header {
 
 #define GCM_AES_IV_LEN 12
 #define DEFAULT_ICV_LEN 16
+#define IV_EXTRA_ROOM sizeof(u32)
 
 #define MACSEC_NUM_AN 4 /* 2 bits for the association number */
 
@@ -606,18 +607,23 @@ static void macsec_encrypt_done(struct crypto_async_request *base, int err)
 
 static struct aead_request *macsec_alloc_req(struct crypto_aead *tfm,
 					     unsigned char **iv,
-					     struct scatterlist **sg)
+                                             struct scatterlist **sg,
+                                             struct scatterlist **sg_ad)
 {
-	size_t size, iv_offset, sg_offset;
+	size_t size, iv_offset, sg_offset, sg_ad_offset;
 	struct aead_request *req;
 	void *tmp;
 
 	size = sizeof(struct aead_request) + crypto_aead_reqsize(tfm);
 	iv_offset = size;
-	size += GCM_AES_IV_LEN;
+	size += GCM_AES_IV_LEN + IV_EXTRA_ROOM;
 
 	size = ALIGN(size, __alignof__(struct scatterlist));
 	sg_offset = size;
+	size += sizeof(struct scatterlist) * (MAX_SKB_FRAGS + 1);
+
+	size = ALIGN(size, __alignof__(struct scatterlist));
+	sg_ad_offset = size;
 	size += sizeof(struct scatterlist) * (MAX_SKB_FRAGS + 1);
 
 	tmp = kmalloc(size, GFP_ATOMIC);
@@ -626,6 +632,7 @@ static struct aead_request *macsec_alloc_req(struct crypto_aead *tfm,
 
 	*iv = (unsigned char *)(tmp + iv_offset);
 	*sg = (struct scatterlist *)(tmp + sg_offset);
+	*sg_ad = (struct scatterlist *)(tmp + sg_ad_offset);
 	req = tmp;
 
 	aead_request_set_tfm(req, tfm);
@@ -638,6 +645,7 @@ static struct sk_buff *macsec_encrypt(struct sk_buff *skb,
 {
 	int ret;
 	struct scatterlist *sg;
+	struct scatterlist *sg_ad;
 	unsigned char *iv;
 	struct ethhdr *eth;
 	struct macsec_eth_header *hh;
@@ -710,7 +718,7 @@ static struct sk_buff *macsec_encrypt(struct sk_buff *skb,
 		return ERR_PTR(-EINVAL);
 	}
 
-	req = macsec_alloc_req(tx_sa->key.tfm, &iv, &sg);
+	req = macsec_alloc_req(tx_sa->key.tfm, &iv, &sg, &sg_ad);
 	if (!req) {
 		macsec_txsa_put(tx_sa);
 		kfree_skb(skb);
@@ -719,17 +727,28 @@ static struct sk_buff *macsec_encrypt(struct sk_buff *skb,
 
 	macsec_fill_iv(iv, secy->sci, pn);
 
-	sg_init_table(sg, MAX_SKB_FRAGS + 1);
-	skb_to_sgvec(skb, sg, 0, skb->len);
-
 	if (tx_sc->encrypt) {
-		int len = skb->len - macsec_hdr_len(tx_sc->send_sci) -
-			  secy->icv_len;
-		aead_request_set_crypt(req, sg, sg, len, iv);
-		aead_request_set_ad(req, macsec_hdr_len(tx_sc->send_sci), 0);
+		int assoc_len = macsec_hdr_len(tx_sc->send_sci);
+                int data_len = skb->len - secy->icv_len - assoc_len;
+
+                sg_init_table(sg_ad, MAX_SKB_FRAGS + 1);
+                skb_to_sgvec(skb, sg_ad, 0, assoc_len);
+                sg_init_table(sg, MAX_SKB_FRAGS + 1);
+                skb_to_sgvec(skb, sg, assoc_len, data_len + secy->icv_len);
+	
+		aead_request_set_crypt(req, sg, sg, data_len, iv);
+		aead_request_set_assoc(req, sg_ad, assoc_len);
 	} else {
+		int assoc_len = skb->len - secy->icv_len;
+                int data_len = secy->icv_len;
+
+                sg_init_table(sg_ad, MAX_SKB_FRAGS + 1);
+                skb_to_sgvec(skb, sg_ad, 0, assoc_len);
+                sg_init_table(sg, MAX_SKB_FRAGS + 1);
+                skb_to_sgvec(skb, sg, assoc_len, data_len);
+
 		aead_request_set_crypt(req, sg, sg, 0, iv);
-		aead_request_set_ad(req, skb->len - secy->icv_len, 0);
+		aead_request_set_assoc(req, sg_ad, assoc_len);
 	}
 
 	macsec_skb_cb(skb)->req = req;
@@ -901,6 +920,7 @@ static struct sk_buff *macsec_decrypt(struct sk_buff *skb,
 {
 	int ret;
 	struct scatterlist *sg;
+	struct scatterlist *sg_ad;
 	unsigned char *iv;
 	struct aead_request *req;
 	struct macsec_eth_header *hdr;
@@ -911,7 +931,7 @@ static struct sk_buff *macsec_decrypt(struct sk_buff *skb,
 	if (!skb)
 		return ERR_PTR(-ENOMEM);
 
-	req = macsec_alloc_req(rx_sa->key.tfm, &iv, &sg);
+	req = macsec_alloc_req(rx_sa->key.tfm, &iv, &sg, &sg_ad);
 	if (!req) {
 		kfree_skb(skb);
 		return ERR_PTR(-ENOMEM);
@@ -927,20 +947,36 @@ static struct sk_buff *macsec_decrypt(struct sk_buff *skb,
 		/* confidentiality: ethernet + macsec header
 		 * authenticated, encrypted payload
 		 */
-		int len = skb->len - macsec_hdr_len(macsec_skb_cb(skb)->has_sci);
 
-		aead_request_set_crypt(req, sg, sg, len, iv);
-		aead_request_set_ad(req, macsec_hdr_len(macsec_skb_cb(skb)->has_sci), 0);
-		skb = skb_unshare(skb, GFP_ATOMIC);
-		if (!skb) {
-			aead_request_free(req);
-			return ERR_PTR(-ENOMEM);
-		}
-	} else {
-		/* integrity only: all headers + data authenticated */
-		aead_request_set_crypt(req, sg, sg, icv_len, iv);
-		aead_request_set_ad(req, skb->len - icv_len, 0);
-	}
+                int assoc_len = macsec_hdr_len(macsec_skb_cb(skb)->has_sci);
+                int data_len = skb->len - assoc_len;
+
+                sg_init_table(sg_ad, MAX_SKB_FRAGS + 1);
+                skb_to_sgvec(skb, sg_ad, 0, assoc_len);
+                sg_init_table(sg, MAX_SKB_FRAGS + 1);
+                skb_to_sgvec(skb, sg, assoc_len, data_len);
+
+                aead_request_set_crypt(req, sg, sg, data_len, iv);
+                aead_request_set_assoc(req, sg_ad, assoc_len);
+
+                skb = skb_unshare(skb, GFP_ATOMIC);
+                if (!skb) {
+                        aead_request_free(req);
+                        return ERR_PTR(-ENOMEM);
+                }
+        } else {
+                /* integrity only: all headers + data authenticated */
+                int assoc_len = skb->len - icv_len;
+                int data_len = icv_len;
+
+                sg_init_table(sg_ad, MAX_SKB_FRAGS + 1);
+                skb_to_sgvec(skb, sg_ad, 0, assoc_len);
+                sg_init_table(sg, MAX_SKB_FRAGS + 1);
+                skb_to_sgvec(skb, sg, assoc_len, data_len);
+
+                aead_request_set_crypt(req, sg, sg, data_len, iv);
+                aead_request_set_assoc(req, sg_ad, assoc_len);
+        }
 
 	macsec_skb_cb(skb)->req = req;
 	skb->dev = dev;
