@@ -7,6 +7,7 @@
 
 #include <linux/spinlock.h>
 #include <asm/spitfire.h>
+#include <asm/adi_64.h>
 #include <asm-generic/mm_hooks.h>
 
 static inline void enter_lazy_tlb(struct mm_struct *mm, struct task_struct *tsk)
@@ -132,6 +133,7 @@ static inline void switch_mm(struct mm_struct *old_mm, struct mm_struct *mm, str
 		__flush_tlb_mm(CTX_HWBITS(mm->context),
 			       SECONDARY_CONTEXT);
 	}
+
 	spin_unlock_irqrestore(&mm->context.lock, flags);
 }
 
@@ -154,6 +156,47 @@ static inline void activate_mm(struct mm_struct *active_mm, struct mm_struct *mm
 	__flush_tlb_mm(CTX_HWBITS(mm->context), SECONDARY_CONTEXT);
 	tsb_context_switch(mm);
 	spin_unlock_irqrestore(&mm->context.lock, flags);
+}
+
+#define  __HAVE_ARCH_START_CONTEXT_SWITCH
+static inline void arch_start_context_switch(struct task_struct *prev)
+{
+	/* Save the current state of MCDPER register for the process we are
+	 * switching from
+	 */
+	if (adi_capable()) {
+		register unsigned long tmp_mcdper;
+
+		__asm__ __volatile__(
+			".word 0x83438000\n\t"	/* rd  %mcdper, %g1 */
+			"mov %%g1, %0\n\t"
+			: "=r" (tmp_mcdper)
+			:
+			: "g1");
+		if (tmp_mcdper)
+			set_tsk_thread_flag(prev, TIF_MCDPER);
+		else
+			clear_tsk_thread_flag(prev, TIF_MCDPER);
+	}
+}
+
+#define finish_arch_post_lock_switch	finish_arch_post_lock_switch
+static inline void finish_arch_post_lock_switch(void)
+{
+	/* Restore the state of MCDPER register for the new process
+	 * just switched to.
+	 */
+	if (adi_capable()) {
+		register unsigned long tmp_mcdper;
+
+		tmp_mcdper = test_thread_flag(TIF_MCDPER);
+		__asm__ __volatile__(
+			"mov %0, %%g1\n\t"
+			".word 0x9d800001\n\t"	/* wr %g0, %g1, %mcdper" */
+			:
+			: "ir" (tmp_mcdper)
+			: "g1");
+	}
 }
 
 #endif /* !(__ASSEMBLY__) */

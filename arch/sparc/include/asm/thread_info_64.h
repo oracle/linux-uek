@@ -200,7 +200,7 @@ static struct thread_info *current_thread_info_reg = 0;
  *       in using in assembly, else we can't use the mask as
  *       an immediate value in instructions such as andcc.
  */
-/* flag bit 12 is available */
+#define TIF_MCDPER		12	/* Precise MCD exception */
 #define TIF_MEMDIE		13	/* is terminating due to OOM killer */
 #define TIF_POLLING_NRFLAG	14
 #define TIF_FREEZE              15      /* is freezing for suspend */

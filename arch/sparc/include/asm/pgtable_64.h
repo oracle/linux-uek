@@ -17,6 +17,7 @@
 #include <asm/types.h>
 #include <asm/spitfire.h>
 #include <asm/asi.h>
+#include <asm/adi.h>
 #include <asm/page.h>
 #include <asm/processor.h>
 
@@ -572,6 +573,18 @@ static inline pte_t pte_mkspecial(pte_t pte)
 	return pte;
 }
 
+static inline pte_t pte_mkmcd(pte_t pte)
+{
+	pte_val(pte) |= _PAGE_MCD_4V;
+	return pte;
+}
+
+static inline pte_t pte_mknotmcd(pte_t pte)
+{
+	pte_val(pte) &= ~_PAGE_MCD_4V;
+	return pte;
+}
+
 static inline unsigned long pte_young(pte_t pte)
 {
 	unsigned long mask;
@@ -982,9 +995,14 @@ void pgtable_trans_huge_deposit(struct mm_struct *mm, pmd_t *pmdp,
 pgtable_t pgtable_trans_huge_withdraw(struct mm_struct *mm, pmd_t *pmdp);
 #endif
 
-/* Encode and de-code a swap entry */
+/* Encode and de-code a swap entry. Upper bits of offset are used to
+ * store the ADI version tag for pages that have ADI enabled and tags set
+ */
 #define __swp_type(entry)	(((entry).val >> PAGE_SHIFT) & 0xffUL)
-#define __swp_offset(entry)	((entry).val >> (PAGE_SHIFT + 8UL))
+#define __swp_offset(entry)		\
+	((((entry).val << adi_nbits()) >> adi_nbits()) >> (PAGE_SHIFT + 8UL))
+#define __swp_aditag(entry)		\
+	((entry).val >> (sizeof(unsigned long)-adi_nbits()))
 #define __swp_entry(type, offset)	\
 	( (swp_entry_t) \
 	  { \
@@ -1006,6 +1024,69 @@ int page_in_phys_avail(unsigned long paddr);
 
 int remap_pfn_range(struct vm_area_struct *, unsigned long, unsigned long,
 		    unsigned long, pgprot_t);
+
+#define __HAVE_ARCH_DO_SWAP_PAGE
+static inline void arch_do_swap_page(struct mm_struct *mm, unsigned long addr,
+				     pte_t pte, pte_t oldpte)
+{
+	if (pte_val(pte) & _PAGE_MCD_4V) {
+		swp_entry_t tmp;
+		pgoff_t swap_off;
+		unsigned long swap_type, version;
+
+		/* Check if the swapped out page has an ADI version
+		 * saved in the swap offset. If yes, restore
+		 * version tag to the newly allocated page
+		 */
+		tmp = __pte_to_swp_entry(oldpte);
+		swap_off = __swp_offset(tmp);
+		swap_type = __swp_type(tmp);
+		version = __swp_aditag(tmp);
+		if (version) {
+			unsigned long i, paddr;
+
+			paddr = pte_val(pte) & _PAGE_PADDR_4V;
+			for (i = paddr; i < (paddr+PAGE_SIZE);
+					i += adi_blksize())
+				asm volatile("stxa %0, [%1] %2\n\t"
+					:
+					: "r" (version), "r" (i),
+					  "i" (ASI_MCD_REAL));
+		}
+	}
+}
+
+#define __HAVE_ARCH_UNMAP_ONE
+static inline void arch_unmap_one(struct mm_struct *mm, unsigned long addr,
+				  pte_t pte, pte_t oldpte)
+{
+	if (pte_val(oldpte) & _PAGE_MCD_4V) {
+		unsigned long version, paddr;
+
+		paddr = pte_val(oldpte) & _PAGE_PADDR_4V;
+		asm volatile("ldxa [%1] %2, %0\n\t"
+			     : "=r" (version)
+			     : "r" (paddr), "i" (ASI_MCD_REAL));
+		if (version) {
+			swp_entry_t tmp;
+			pgoff_t swap_off;
+			unsigned long swap_type, shift_size;
+
+			/* Save ADI version tag in the top bits
+			 * of swap offset
+			 */
+			tmp = __pte_to_swp_entry(pte);
+			swap_off = __swp_offset(tmp);
+			swap_type = __swp_type(tmp);
+			shift_size = PAGE_SHIFT + 8UL + adi_nbits();
+			swap_off = (swap_off << shift_size)>>shift_size;
+			swap_off = (version << (sizeof(unsigned long) -
+					        shift_size)) | swap_off;
+			tmp = __swp_entry(swap_type, swap_off);
+			pte = __swp_entry_to_pte(tmp);
+		}
+	}
+}
 
 static inline int io_remap_pfn_range(struct vm_area_struct *vma,
 				     unsigned long from, unsigned long pfn,

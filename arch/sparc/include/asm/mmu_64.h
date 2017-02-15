@@ -109,6 +109,7 @@ typedef struct {
 	void			*vdso;
 	unsigned long		huge_pte_count[MM_NUM_HUGEPAGE_SIZES];
 	unsigned long		thp_pte_count;
+	bool			adi;
 } mm_context_t;
 
 #if defined(CONFIG_HUGETLB_PAGE) || defined(CONFIG_TRANSPARENT_HUGEPAGE)
