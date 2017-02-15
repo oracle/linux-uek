@@ -1,7 +1,7 @@
 /*
  * vds_blk.c: LDOM Virtual Disk Server.
  *
- * Copyright (C) 2014, 2016 Oracle. All rights reserved.
+ * Copyright (C) 2014, 2017 Oracle. All rights reserved.
  */
 
 #include "vds.h"
@@ -149,9 +149,19 @@ static int vds_blk_rw(struct vds_io *io)
 			       bio->bi_iter.bi_sector, bio->bi_iter.bi_size);
 
 			if (!rv) {
+				/*
+				 * A drive with chunk_sectors > 0 (i.e. NVME)
+				 * will result in rv = 0 when the chunk_sectors
+				 * boundary has been hit. Break here if page(s)
+				 * have already been added (bi_size != 0).
+				 * Submit the already added pages and continue.
+				 */
+				if (bio->bi_iter.bi_size != 0)
+					break;
 				vdsmsg(err,
-				       "bio_add_page: resid=%ld biolen=%ld\n",
-				       resid, biolen);
+				       "bio_add_page: resid=%ld biolen=%ld "
+				       "bi_sector=%ld\n",
+				       resid, biolen, bio->bi_iter.bi_sector);
 				err = -EIO;
 				break;
 			}
