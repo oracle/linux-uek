@@ -52,7 +52,6 @@
  *	@base: Common attributes for async crypto requests
  *	@assoclen: Length in bytes of associated data for authentication
  *	@cryptlen: Length of data to be encrypted or decrypted
- *	@cryptoff: Bytes to skip after AD before plain/cipher text
  *	@iv: Initialisation vector
  *	@assoc: Associated data
  *	@src: Source data
@@ -62,11 +61,8 @@
 struct aead_request {
 	struct crypto_async_request base;
 
-	bool old;
-
 	unsigned int assoclen;
 	unsigned int cryptlen;
-	unsigned int cryptoff;
 
 	u8 *iv;
 
@@ -318,7 +314,10 @@ static inline int crypto_aead_decrypt(struct aead_request *req)
  *
  * Return: number of bytes
  */
-unsigned int crypto_aead_reqsize(struct crypto_aead *tfm);
+static inline unsigned int crypto_aead_reqsize(struct crypto_aead *tfm)
+{
+	return tfm->reqsize;
+}
 
 /**
  * aead_request_set_tfm() - update cipher handle reference in request
@@ -418,9 +417,6 @@ static inline void aead_request_set_callback(struct aead_request *req,
  * destination is the ciphertext. For a decryption operation, the use is
  * reversed - the source is the ciphertext and the destination is the plaintext.
  *
- * For both src/dst the layout is associated data, skipped data,
- * plain/cipher text, authentication tag.
- *
  * IMPORTANT NOTE AEAD requires an authentication tag (MAC). For decryption,
  *		  the caller must concatenate the ciphertext followed by the
  *		  authentication tag and provide the entire data stream to the
@@ -453,7 +449,8 @@ static inline void aead_request_set_crypt(struct aead_request *req,
  * @assoc: associated data scatter / gather list
  * @assoclen: number of bytes to process from @assoc
  *
- * Obsolete, do not use.
+ * For encryption, the memory is filled with the associated data. For
+ * decryption, the memory must point to the associated data.
  */
 static inline void aead_request_set_assoc(struct aead_request *req,
 					  struct scatterlist *assoc,
@@ -461,26 +458,6 @@ static inline void aead_request_set_assoc(struct aead_request *req,
 {
 	req->assoc = assoc;
 	req->assoclen = assoclen;
-	req->old = true;
-}
-
-/**
- * aead_request_set_ad - set associated data information
- * @req: request handle
- * @assoclen: number of bytes in associated data
- * @cryptoff: Number of bytes to skip after AD before plain/cipher text
- *
- * Setting the AD information.  This function sets the length of
- * the associated data and the number of bytes to skip after it to
- * access the plain/cipher text.
- */
-static inline void aead_request_set_ad(struct aead_request *req,
-				       unsigned int assoclen,
-				       unsigned int cryptoff)
-{
-	req->assoclen = assoclen;
-	req->cryptoff = cryptoff;
-	req->old = false;
 }
 
 static inline struct crypto_aead *aead_givcrypt_reqtfm(
