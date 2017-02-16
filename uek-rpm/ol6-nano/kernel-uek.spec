@@ -518,7 +518,7 @@ BuildRequires: sparse >= 0.4.1
 %if %{signmodules}
 BuildRequires: openssl
 BuildRequires: gnupg
-#BuildRequires: pesign >= 0.10-4
+BuildRequires: pesign >= 0.10-4
 %endif
 %if %{with_fips}
 BuildRequires: hmaccalc
@@ -543,6 +543,8 @@ Source17: kabitool
 Source18: check-kabi
 Source20: x86_energy_perf_policy
 Source21: turbostat
+Source22: securebootca.cer
+Source23: secureboot.cer
 
 Source1000: config-x86_64
 Source1001: config-x86_64-debug
@@ -1070,6 +1072,11 @@ BuildKernel() {
       cp arch/$Arch/boot/zImage.stub $RPM_BUILD_ROOT/%{image_install_path}/zImage.stub-$KernelVer || :
     fi
     %if %{signmodules}
+        %ifarch x86_64
+            # Sign the image if we're using EFI
+            %pesign -s -i $KernelImage -o $KernelImage.signed -a %{SOURCE22} -c %{SOURCE23} -n oraclesecureboot
+            mv $KernelImage.signed $KernelImage
+        %endif
 	# Sign the image if we're using EFI
 	#% pesign -s -i $KernelImage -o vmlinuz.signed
 	#    if [ -x /usr/bin/pesign -a "x86_64" == "x86_64" ]; then
