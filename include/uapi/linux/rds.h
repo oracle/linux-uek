@@ -35,6 +35,7 @@
 #define _LINUX_RDS_H
 
 #include <linux/types.h>
+#include <linux/socket.h>		/* For __kernel_sockaddr_storage. */
 /* XXX <net/sock.h> was included as part of NETFILTER support (commit f13bbf62)
  * but <net/sock.h> is not exported to uapi, although <linux/rds.h> is
  * (in theory). Is <net/sock.h> needed for user-apps that use netfilter?
@@ -395,7 +396,7 @@ struct rds_get_mr_args {
 };
 
 struct rds_get_mr_for_dest_args {
-	struct sockaddr_storage	dest_addr;
+	struct __kernel_sockaddr_storage dest_addr;
 	struct rds_iovec	vec;
 	__u64			cookie_addr;
 	__u64			flags;
