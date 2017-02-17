@@ -84,6 +84,10 @@ union md_node_info {
 	struct ds_port {
 		u64 id;				/* id */
 	} ds_port;
+	struct vdev {
+		char name[MDESC_MAX_STR_LEN];	/* name (property) */
+		u64 cfg_hdl;			/* config handle */
+	} vdev;
 };
 u64 mdesc_get_node(struct mdesc_handle *hp, char *node_name,
 	union md_node_info *node_info);

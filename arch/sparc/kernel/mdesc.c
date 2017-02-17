@@ -1,6 +1,7 @@
 /* mdesc.c: Sun4V machine description handling.
  *
  * Copyright (C) 2007, 2008 David S. Miller <davem@davemloft.net>
+ * Copyright (C) 2017 Oracle. All rights reserved.
  */
 #include <linux/kernel.h>
 #include <linux/types.h>
@@ -95,11 +96,16 @@ static int get_ds_port_node_info(struct mdesc_handle *md, u64 node,
 	union md_node_info *node_info);
 static bool ds_port_node_match(union md_node_info *a_node_info,
 	union md_node_info *b_node_info);
+static int get_vdev_node_info(struct mdesc_handle *md, u64 node,
+	union md_node_info *node_info);
+static bool vdev_node_match(union md_node_info *a_node_info,
+	union md_node_info *b_node_info);
 
 /* supported node types which can be registered */
 static struct md_node_ops md_node_ops_table[] = {
 	{"virtual-device-port", get_vdev_port_node_info, vdev_port_node_match},
 	{"domain-services-port", get_ds_port_node_info, ds_port_node_match},
+	{"virtual-device", get_vdev_node_info, vdev_node_match},
 	{NULL, NULL, NULL}
 };
 
@@ -333,7 +339,7 @@ static int get_vdev_port_node_info(struct mdesc_handle *md, u64 node,
 	const char *name;
 
 	/*
-	 * Virtual device nodes are distinguished by:
+	 * Virtual device port nodes are distinguished by:
 	 * 1. "id" property
 	 * 2. "name" property
 	 * 3. parent node "cfg-handle" property
@@ -390,6 +396,42 @@ static bool ds_port_node_match(union md_node_info *a_node_info,
 	union md_node_info *b_node_info)
 {
 	if (a_node_info->ds_port.id != b_node_info->ds_port.id)
+		return false;
+
+	return true;
+}
+
+static int get_vdev_node_info(struct mdesc_handle *md, u64 node,
+	union md_node_info *node_info)
+{
+	const u64 *cfg_hdlp;
+	const char *name;
+
+	/*
+	 * Virtual device nodes are distinguished by:
+	 * 1. "cfg-handle" property
+	 * 2. "name" property
+	 */
+	cfg_hdlp = mdesc_get_property(md, node, "cfg-handle", NULL);
+	name = mdesc_get_property(md, node, "name", NULL);
+
+	if (!cfg_hdlp || !name)
+		return -1;
+
+	strncpy(node_info->vdev.name, name, MDESC_MAX_STR_LEN);
+	node_info->vdev.cfg_hdl = *cfg_hdlp;
+
+	return 0;
+}
+
+static bool vdev_node_match(union md_node_info *a_node_info,
+	union md_node_info *b_node_info)
+{
+	if (a_node_info->vdev.cfg_hdl != b_node_info->vdev.cfg_hdl)
+		return false;
+
+	if (strncmp(a_node_info->vdev.name,
+	    b_node_info->vdev.name, MDESC_MAX_STR_LEN) != 0)
 		return false;
 
 	return true;

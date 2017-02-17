@@ -7,6 +7,7 @@
  *     Stephen Rothwell
  *
  * Adapted to sparc64 by David S. Miller davem@davemloft.net
+ * Copyright (C) 2017 Oracle. All rights reserved.
  */
 
 #include <linux/kernel.h>
@@ -133,6 +134,8 @@ static ssize_t devspec_show(struct device *dev,
 		str = "vnet";
 	else if (!strcmp(vdev->type, "vdc-port"))
 		str = "vdisk";
+	else if (vdev->devalias)
+		str = vdev->devalias;
 
 	return sprintf(buf, "%s\n", str);
 }
@@ -207,7 +210,14 @@ static const u64 *vio_cfg_handle(struct mdesc_handle *hp, u64 node)
 	const u64 *cfg_handle;
 	u64 a;
 
-	cfg_handle = NULL;
+	/* Find the first cfg-handle property for the node starting with
+	 * the current node and then, if not found, try the parent nodes.
+	 */
+
+	cfg_handle = mdesc_get_property(hp, node, "cfg-handle", NULL);
+	if (cfg_handle)
+		return cfg_handle;
+
 	mdesc_for_each_arc(a, hp, node, MDESC_ARC_TYPE_BACK) {
 		u64 target;
 
@@ -292,9 +302,18 @@ static struct vio_dev *vio_create_one(struct mdesc_handle *hp, u64 mp,
 	struct vio_dev *vdev;
 	int err, tlen, clen;
 	const u64 *id, *cfg_handle;
+	int devalias_len;
+	const char *devalias;
 
+	/* We use the device-type property to name the device if
+	 * present. If not present, fallback to use the name property.
+	 * NOTE - since there seem to be several different
+	 * virtual-device nodes with a generic device-type of "serial",
+	 * we use name property instead for these devices as they
+	 * are more descriptive and unique.
+	 */
 	type = mdesc_get_property(hp, mp, "device-type", &tlen);
-	if (!type) {
+	if (!type || !strcmp(type, "serial")) {
 		type = mdesc_get_property(hp, mp, "name", &tlen);
 		if (!type) {
 			type = mdesc_node_name(hp, mp);
@@ -312,11 +331,16 @@ static struct vio_dev *vio_create_one(struct mdesc_handle *hp, u64 mp,
 	cfg_handle = vio_cfg_handle(hp, mp);
 
 	compat = mdesc_get_property(hp, mp, "device-type", &clen);
-	if (!compat) {
-		clen = 0;
-	} else if (clen > VIO_MAX_COMPAT_LEN) {
+	if (compat && clen > VIO_MAX_COMPAT_LEN) {
 		printk(KERN_ERR "VIO: Compat len %d for [%s] is too long.\n",
 		       clen, type);
+		return NULL;
+	}
+
+	devalias = mdesc_get_property(hp, mp, "devalias", &devalias_len);
+	if (devalias && devalias_len > VIO_MAX_STR_LEN) {
+		printk(KERN_ERR "VIO: devalias len %d for [%s] is too long.\n",
+		       devalias_len, type);
 		return NULL;
 	}
 
@@ -327,11 +351,13 @@ static struct vio_dev *vio_create_one(struct mdesc_handle *hp, u64 mp,
 	}
 
 	memcpy(vdev->type, type, tlen);
-	if (compat)
+	if (compat) {
 		memcpy(vdev->compat, compat, clen);
-	else
-		memset(vdev->compat, 0, sizeof(vdev->compat));
-	vdev->compat_len = clen;
+		vdev->compat_len = clen;
+	}
+
+	if (devalias)
+		memcpy(vdev->devalias, devalias, devalias_len);
 
 	vdev->port_id = ~0UL;
 	vdev->tx_irq = 0;
@@ -339,12 +365,22 @@ static struct vio_dev *vio_create_one(struct mdesc_handle *hp, u64 mp,
 
 	vio_fill_channel_info(hp, mp, vdev);
 
-	if (!id) {
+	/* Create the final name for the device.
+	 * If there was no parent given or no id
+	 * and no cfg-handle was found, just use the type
+	 * for the device name. If we found an id and/or
+	 * a cfg-handle, append them to the name to help
+	 * make the name as unique as possible.
+	 */
+	if (parent == NULL || (!id && !cfg_handle)) {
 		dev_set_name(&vdev->dev, "%s", type);
 		vdev->dev_no = ~(u64)0;
 	} else if (!cfg_handle) {
 		dev_set_name(&vdev->dev, "%s-%llu", type, *id);
 		vdev->dev_no = *id;
+	} else if (!id) {
+		dev_set_name(&vdev->dev, "%s-%llu", type, *cfg_handle);
+		vdev->dev_no = *cfg_handle;
 	} else {
 		dev_set_name(&vdev->dev, "%s-%llu-%llu", type,
 			     *cfg_handle, *id);
@@ -452,10 +488,41 @@ static void vio_remove(struct mdesc_handle *hp, u64 node, const char *node_name)
 	}
 }
 
-static struct mdesc_notifier_client vio_device_notifier = {
+static struct mdesc_notifier_client vio_device_port_notifier = {
 	.add		= vio_add,
 	.remove		= vio_remove,
 	.node_name	= "virtual-device-port",
+};
+
+/* We are only interested in virtual device ports under the
+ * "channel-devices" node.
+ */
+static void vio_add_vdev(struct mdesc_handle *hp, u64 node,
+	const char *node_name)
+{
+	int found;
+	u64 a;
+
+	found = 0;
+	mdesc_for_each_arc(a, hp, node, MDESC_ARC_TYPE_BACK) {
+		u64 target = mdesc_arc_target(hp, a);
+		const char *name = mdesc_node_name(hp, target);
+
+		if (!strcmp(name, "channel-devices")) {
+			found = 1;
+			break;
+		}
+	}
+
+	if (found)
+		(void) vio_create_one(hp, node, (char *)node_name,
+				      &root_vdev->dev);
+}
+
+static struct mdesc_notifier_client vio_device_notifier = {
+	.add		= vio_add_vdev,
+	.remove		= vio_remove,
+	.node_name	= "virtual-device",
 };
 
 /* We are only interested in domain service ports under the
@@ -557,6 +624,7 @@ static int __init vio_init(void)
 	}
 
 	mdesc_register_notifier(&vio_device_notifier);
+	mdesc_register_notifier(&vio_device_port_notifier);
 	mdesc_register_notifier(&vio_ds_notifier);
 
 	mdesc_release(hp);
