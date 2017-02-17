@@ -96,6 +96,13 @@
  */
 #define HWCAP_SPARC_CRYPTO	0x04000000 /* CRYPTO insns available */
 #define HWCAP_SPARC_ADI		0x08000000 /* ADI available */
+#define HWCAP_SPARC_VIS3B	0x10000000 /* VIS3B insns available */
+#define HWCAP_SPARC_PAUSE_NSEC	0x20000000 /* Time based pause available */
+#define HWCAP_SPARC_MWAIT	0x40000000 /* MWAIT insn available */
+#define HWCAP_SPARC_SPARC5	0x80000000 /* SPARC5 insns available */
+
+/* Virtual Address Masking available */
+#define HWCAP_SPARC_VAMASK	0x0000000100000000UL
 
 #define CORE_DUMP_USE_REGSET
 
