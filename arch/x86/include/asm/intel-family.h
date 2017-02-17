@@ -59,6 +59,7 @@
 #define INTEL_FAM6_ATOM_MERRIFIELD1	0x4A /* Tangier */
 #define INTEL_FAM6_ATOM_MERRIFIELD2	0x5A /* Annidale */
 #define INTEL_FAM6_ATOM_GOLDMONT	0x5C
+#define INTEL_FAM6_ATOM_GEMINI_LAKE	0x7A
 #define INTEL_FAM6_ATOM_DENVERTON	0x5F /* Goldmont Microserver */
 
 /* Xeon Phi */
