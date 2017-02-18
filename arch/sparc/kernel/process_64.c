@@ -803,6 +803,16 @@ out:
 	return ret;
 }
 
+int mcd_on_by_default;
+
+static int __init setup_mcd_default(char *str)
+{
+	if (adi_capable())
+		mcd_on_by_default = 1;
+	return 1;
+}
+__setup("mcd_on_by_default", setup_mcd_default);
+
 void sparc64_elf_core_copy_regs(elf_gregset_t dst, struct pt_regs *regs)
 {
 	memcpy(&dst[0], regs->u_regs, 8 * sizeof(unsigned long));
