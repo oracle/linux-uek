@@ -917,10 +917,7 @@ static int vdc_port_up(struct vdc_port *port)
 	comp.waiting_for = WAITING_FOR_LINK_UP;
 	port->vio.cmp = &comp;
 
-	ldc_disable_hv_intr(port->vio.lp);
 	vio_port_up(&port->vio);
-	ldc_enable_hv_intr(port->vio.lp);
-
 	wait_for_completion(&comp.com);
 	return comp.err;
 }
