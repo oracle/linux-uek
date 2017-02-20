@@ -55,10 +55,10 @@ void dtrace_sdt_init_arch(void)
 {
 	/*
 	 * A little unusual, but potentially necessary.  While we could use a
-	 * single NOP sequence of length SDT_NOP_SIZE, we need to consider the
+	 * single NOP sequence of length ASM_CALL_SIZE, we need to consider the
 	 * fact that when a SDT probe point is enabled, a single invalid opcode
 	 * is written on the first byte of this NOP sequence.  By using a
-	 * sequence of a 1-byte NOP, followed by a (SDT_NOP_SIZE - 1) byte NOP
+	 * sequence of a 1-byte NOP, followed by a (ASM_CALL_SIZE - 1) byte NOP
 	 * sequence, we play it pretty safe.
 	 */
 	add_nops(nops, 1);

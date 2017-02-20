@@ -126,13 +126,16 @@ int dtrace_die_notifier(struct notifier_block *nb, unsigned long val,
 		switch (rval) {
 		case DTRACE_INVOP_NOPS:
 			/*
-			 * Probe points are encoded as a single-byte NOP,
-			 * followed by a multi-byte NOP.  We can therefore
-			 * safely report this case as equivalent to a single
-			 * NOP that needs to be emulated.  Execution will
-			 * continue with the multi-byte NOP.
+			 * SDT probe points are encoded as either:
+			 *   - a 1-byte NOP followed by a multi-byte NOP
+			 *   - a multi-byte code sequence (to set AX to 0),
+			 *     followed by a multi-byte NOP
+			 * In both cases, the total length of the probe point
+			 * instruction is ASM_CALL_SITE bytes, so we can safely
+			 * skip that number of bytes here.
 			 */
-			rval = DTRACE_INVOP_NOP;
+			dargs->regs->ip += ASM_CALL_SIZE;
+			return NOTIFY_OK | NOTIFY_STOP_MASK;
 		case DTRACE_INVOP_MOV_RSP_RBP:
 		case DTRACE_INVOP_NOP:
 		case DTRACE_INVOP_PUSH_BP:
@@ -173,13 +176,16 @@ int dtrace_die_notifier(struct notifier_block *nb, unsigned long val,
 		switch (rval) {
 		case DTRACE_INVOP_NOPS:
 			/*
-			 * Probe points are encoded as a single-byte NOP,
-			 * followed by a multi-byte NOP.  We can therefore
-			 * safely report this case as equivalent to a single
-			 * NOP that needs to be emulated.  Execution will
-			 * continue with the multi-byte NOP.
+			 * SDT probe points are encoded as either:
+			 *   - a 1-byte NOP followed by a multi-byte NOP
+			 *   - a multi-byte code sequence (to set AX to 0),
+			 *     followed by a multi-byte NOP
+			 * In both cases, the total length of the probe point
+			 * instruction is ASM_CALL_SITE bytes, so we can safely
+			 * skip that number of bytes here.
 			 */
-			rval = DTRACE_INVOP_NOP;
+			dargs->regs->ip += ASM_CALL_SIZE;
+			return NOTIFY_OK | NOTIFY_STOP_MASK;
 		case DTRACE_INVOP_MOV_RSP_RBP:
 		case DTRACE_INVOP_NOP:
 		case DTRACE_INVOP_PUSH_BP:
