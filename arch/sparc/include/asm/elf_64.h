@@ -103,6 +103,8 @@
 
 /* Virtual Address Masking available */
 #define HWCAP_SPARC_VAMASK	0x0000000100000000UL
+/* SPARC6 insns available */
+#define HWCAP_SPARC_SPARC6	0x0000000200000000UL
 
 #define CORE_DUMP_USE_REGSET
 

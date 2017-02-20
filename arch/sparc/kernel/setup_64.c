@@ -397,13 +397,17 @@ static const char *hwcaps[] = {
 	"mul32", "div32", "fsmuld", "v8plus", "popc", "vis", "vis2",
 	"ASIBlkInit", "fmaf", "vis3", "hpc", "random", "trans", "fjfmau",
 	"ima", "cspare", "pause", "cbcond", NULL /*reserved for crypto */,
-	"adp", "vis3b", "pause-nsec", "mwait", "sparc5", "vamask"
+	"adp", "vis3b", "pause-nsec", "mwait", "sparc5", "vamask", "sparc6"
 };
 
 static const char *crypto_hwcaps[] = {
+	/* These stings are as they appear in the
+	 * Compatibility Feature Register.
+	 */
 	"aes", "des", "kasumi", "camellia", "md5", "sha1", "sha256",
 	"sha512", "mpmul", "montmul", "montsqr", "crc32c", "xmpmul",
-	"xmontmul", "xmontsqr"
+	"xmontmul", "xmontsqr", "onaddsub", "onmul", "ondiv",
+	"dictunpack", "fpcmpshl", "rle", "sha3"
 };
 
 void cpucap_info(struct seq_file *m)
@@ -542,6 +546,7 @@ static void __init init_sparc64_elf_hwcap(void)
 		    sun4v_chip_type == SUN4V_CHIP_SPARC_M6 ||
 		    sun4v_chip_type == SUN4V_CHIP_SPARC_M7 ||
 		    sun4v_chip_type == SUN4V_CHIP_SPARC_S7 ||
+		    sun4v_chip_type == SUN4V_CHIP_SPARC_M8 ||
 		    sun4v_chip_type == SUN4V_CHIP_SPARC64X)
 			cap |= HWCAP_SPARC_BLKINIT;
 		if (sun4v_chip_type == SUN4V_CHIP_NIAGARA2 ||
@@ -551,10 +556,12 @@ static void __init init_sparc64_elf_hwcap(void)
 		    sun4v_chip_type == SUN4V_CHIP_SPARC_M6 ||
 		    sun4v_chip_type == SUN4V_CHIP_SPARC_M7 ||
 		    sun4v_chip_type == SUN4V_CHIP_SPARC_S7 ||
+		    sun4v_chip_type == SUN4V_CHIP_SPARC_M8 ||
 		    sun4v_chip_type == SUN4V_CHIP_SPARC64X)
 			cap |= HWCAP_SPARC_N2;
 		if (sun4v_chip_type == SUN4V_CHIP_SPARC_M7 ||
-		    sun4v_chip_type == SUN4V_CHIP_SPARC_S7)
+		    sun4v_chip_type == SUN4V_CHIP_SPARC_S7 ||
+		    sun4v_chip_type == SUN4V_CHIP_SPARC_M8)
 			cap |= (HWCAP_SPARC_VAMASK |
 				AV_SPARC_FSMULD);
 	}
@@ -585,6 +592,7 @@ static void __init init_sparc64_elf_hwcap(void)
 			    sun4v_chip_type == SUN4V_CHIP_SPARC_M6 ||
 			    sun4v_chip_type == SUN4V_CHIP_SPARC_M7 ||
 			    sun4v_chip_type == SUN4V_CHIP_SPARC_S7 ||
+			    sun4v_chip_type == SUN4V_CHIP_SPARC_M8 ||
 			    sun4v_chip_type == SUN4V_CHIP_SPARC64X)
 				cap |= (AV_SPARC_VIS | AV_SPARC_VIS2 |
 					AV_SPARC_ASI_BLK_INIT |
@@ -595,16 +603,19 @@ static void __init init_sparc64_elf_hwcap(void)
 			    sun4v_chip_type == SUN4V_CHIP_SPARC_M6 ||
 			    sun4v_chip_type == SUN4V_CHIP_SPARC_M7 ||
 			    sun4v_chip_type == SUN4V_CHIP_SPARC_S7 ||
+			    sun4v_chip_type == SUN4V_CHIP_SPARC_M8 ||
 			    sun4v_chip_type == SUN4V_CHIP_SPARC64X)
 				cap |= (AV_SPARC_FMAF | AV_SPARC_HPC);
 			if (sun4v_chip_type == SUN4V_CHIP_NIAGARA3 ||
 			    sun4v_chip_type == SUN4V_CHIP_NIAGARA4 ||
 			    sun4v_chip_type == SUN4V_CHIP_NIAGARA5 ||
 			    sun4v_chip_type == SUN4V_CHIP_SPARC_M7 ||
-			    sun4v_chip_type == SUN4V_CHIP_SPARC_S7)
+			    sun4v_chip_type == SUN4V_CHIP_SPARC_S7 ||
+			    sun4v_chip_type == SUN4V_CHIP_SPARC_M8)
 				cap |= AV_SPARC_VIS3;
 			if (sun4v_chip_type == SUN4V_CHIP_SPARC_M7 ||
-			    sun4v_chip_type == SUN4V_CHIP_SPARC_S7)
+			    sun4v_chip_type == SUN4V_CHIP_SPARC_S7 ||
+			    sun4v_chip_type == SUN4V_CHIP_SPARC_M8)
 				cap |= (AV_SPARC_IMA | AV_SPARC_PAUSE |
 					AV_SPARC_CBCOND |
 					HWCAP_SPARC_CRYPTO |
@@ -613,6 +624,8 @@ static void __init init_sparc64_elf_hwcap(void)
 					HWCAP_SPARC_PAUSE_NSEC |
 					HWCAP_SPARC_MWAIT |
 					HWCAP_SPARC_SPARC5);
+			if (sun4v_chip_type == SUN4V_CHIP_SPARC_M8)
+				cap |= HWCAP_SPARC_SPARC6;
 		}
 	}
 	sparc64_elf_hwcap = cap | mdesc_caps;
