@@ -276,6 +276,21 @@ enum qed_protocol {
 	QED_PROTOCOL_ISCSI,
 };
 
+enum qed_link_mode_bits {
+	QED_LM_FIBRE_BIT = BIT(0),
+	QED_LM_Autoneg_BIT = BIT(1),
+	QED_LM_Asym_Pause_BIT = BIT(2),
+	QED_LM_Pause_BIT = BIT(3),
+	QED_LM_1000baseT_Half_BIT = BIT(4),
+	QED_LM_1000baseT_Full_BIT = BIT(5),
+	QED_LM_10000baseKR_Full_BIT = BIT(6),
+	QED_LM_25000baseKR_Full_BIT = BIT(7),
+	QED_LM_40000baseLR4_Full_BIT = BIT(8),
+	QED_LM_50000baseKR2_Full_BIT = BIT(9),
+	QED_LM_100000baseKR4_Full_BIT = BIT(10),
+	QED_LM_COUNT = 11
+};
+
 struct qed_link_params {
 	bool	link_up;
 
@@ -303,9 +318,11 @@ struct qed_link_params {
 struct qed_link_output {
 	bool	link_up;
 
-	u32	supported_caps;         /* In SUPPORTED defs */
-	u32	advertised_caps;        /* In ADVERTISED defs */
-	u32	lp_caps;                /* In ADVERTISED defs */
+	/* In QED_LM_* defs */
+	u32	supported_caps;
+	u32	advertised_caps;
+	u32	lp_caps;
+
 	u32	speed;                  /* In Mb/s */
 	u8	duplex;                 /* In DUPLEX defs */
 	u8	port;                   /* In PORT defs */
