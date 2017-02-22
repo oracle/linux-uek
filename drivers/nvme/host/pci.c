@@ -82,7 +82,6 @@ struct nvme_queue;
 static int nvme_reset(struct nvme_dev *dev);
 static int nvme_process_cq(struct nvme_queue *nvmeq);
 static void nvme_unmap_data(struct nvme_dev *dev, struct nvme_iod *iod);
-static void nvme_dead_ctrl(struct nvme_dev *dev);
 static void nvme_remove_dead_ctrl(struct nvme_dev *dev);
 static void nvme_dev_disable(struct nvme_dev *dev, bool shutdown);
 
@@ -1883,7 +1882,7 @@ static void nvme_pci_free_ctrl(struct nvme_ctrl *ctrl)
 static void nvme_reset_work(struct work_struct *work)
 {
 	struct nvme_dev *dev = container_of(work, struct nvme_dev, reset_work);
-	int result;
+	int result = -ENODEV;
 
 	if (WARN_ON(test_bit(NVME_CTRL_RESETTING, &dev->flags)))
 		goto out;
@@ -1903,26 +1902,25 @@ static void nvme_reset_work(struct work_struct *work)
 
 	result = nvme_configure_admin_queue(dev);
 	if (result)
-		goto unmap;
+		goto out;
 
 	nvme_init_queue(dev->queues[0], 0);
 	result = nvme_alloc_admin_tags(dev);
 	if (result)
-		goto disable;
+		goto out;
 
 	result = nvme_init_identify(&dev->ctrl);
 	if (result)
-		goto free_tags;
+		goto out;
 
 	result = nvme_setup_io_queues(dev);
 	if (result)
-		goto free_tags;
+		goto out;
 
 	dev->ctrl.event_limit = NVME_NR_AEN_COMMANDS;
 	queue_work(nvme_workq, &dev->async_work);
 
 	mod_timer(&dev->watchdog_timer, round_jiffies(jiffies + HZ));
-
 	/*
 	 * Keep the controller around but remove all namespaces if we don't have
 	 * any working I/O queue.
@@ -1938,17 +1936,8 @@ static void nvme_reset_work(struct work_struct *work)
 	clear_bit(NVME_CTRL_RESETTING, &dev->flags);
 	return;
 
- free_tags:
-	nvme_dev_remove_admin(dev);
-	blk_put_queue(dev->ctrl.admin_q);
-	dev->ctrl.admin_q = NULL;
- disable:
-	nvme_disable_admin_queue(dev, false);
- unmap:
-	nvme_dev_unmap(dev);
  out:
-	if (!work_pending(&dev->reset_work))
-		nvme_dead_ctrl(dev);
+	nvme_remove_dead_ctrl(dev, result);
 }
 
 static int nvme_remove_dead_ctrl(void *arg)
@@ -1960,18 +1949,6 @@ static int nvme_remove_dead_ctrl(void *arg)
 		pci_stop_and_remove_bus_device_locked(pdev);
 	nvme_put_ctrl(&dev->ctrl);
 	return 0;
-}
-
-static void nvme_dead_ctrl(struct nvme_dev *dev)
-{
-	dev_warn(dev->ctrl.device, "Removing after probe failure\n");
-	kref_get(&dev->ctrl.kref);
-	if (IS_ERR(kthread_run(nvme_remove_dead_ctrl, dev, "nvme%d",
-						dev->ctrl.instance))) {
-		dev_err(dev->dev,
-			"Failed to start controller remove task\n");
-		nvme_put_ctrl(&dev->ctrl);
-	}
 }
 
 static int nvme_reset(struct nvme_dev *dev)
@@ -2103,6 +2080,11 @@ static void nvme_shutdown(struct pci_dev *pdev)
 	nvme_dev_disable(dev, true);
 }
 
+/*
+ * The driver's remove may be called on a device in a partially initialized
+ * state. This function must not have any dependencies on the device state in
+ * order to proceed.
+ */
 static void nvme_remove(struct pci_dev *pdev)
 {
 	struct nvme_dev *dev = pci_get_drvdata(pdev);
