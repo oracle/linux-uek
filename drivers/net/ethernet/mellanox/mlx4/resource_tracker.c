@@ -2935,6 +2935,11 @@ static u32 qp_get_srqn(struct mlx4_qp_context *qpc)
 	return be32_to_cpu(qpc->srqn) & 0x1ffffff;
 }
 
+static u32 qp_get_st(struct mlx4_qp_context *qpc)
+{
+	return (be32_to_cpu(qpc->flags) >> 16) & 0xff;
+}
+
 static void adjust_proxy_tun_qkey(struct mlx4_dev *dev, struct mlx4_vhcr *vhcr,
 				  struct mlx4_qp_context *context)
 {
@@ -2973,6 +2978,10 @@ int mlx4_RST2INIT_QP_wrapper(struct mlx4_dev *dev, int slave,
 	int use_srq = (qp_get_srqn(qpc) >> 24) & 1;
 	struct res_srq *srq;
 	int local_qpn = be32_to_cpu(qpc->local_qpn) & 0xffffff;
+	int st = qp_get_st(qpc);
+
+	if (slave != mlx4_master_func_num(dev) && st == MLX4_QP_ST_MLX)
+		return -EPERM;
 
 	err = adjust_qp_sched_queue(dev, slave, qpc, inbox);
 	if (err)
