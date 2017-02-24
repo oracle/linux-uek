@@ -6740,8 +6740,8 @@ struct qla_qpair *qla2xxx_create_qpair(struct scsi_qla_host *vha,
 		qpair->id = qpair_id;
 		qpair->vp_idx = vp_idx;
 
-		for (i = 0; i < ha->msix_count; i++) {
-			msix = &ha->msix_entries[i + 2];
+		for (i = 2; i < ha->msix_count; i++) {
+			msix = &ha->msix_entries[i];
 			if (msix->in_use)
 				continue;
 			qpair->msix = msix;

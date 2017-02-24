@@ -425,18 +425,31 @@ static void qla2x00_free_queues(struct qla_hw_data *ha)
 	struct req_que *req;
 	struct rsp_que *rsp;
 	int cnt;
+	unsigned long flags;
 
+	spin_lock_irqsave(&ha->hardware_lock, flags);
 	for (cnt = 0; cnt < ha->max_req_queues; cnt++) {
 		req = ha->req_q_map[cnt];
+		 clear_bit(cnt, ha->req_qid_map);
+		ha->req_q_map[cnt] = NULL;
+		spin_unlock_irqrestore(&ha->hardware_lock, flags);
 		qla2x00_free_req_que(ha, req);
+		spin_lock_irqsave(&ha->hardware_lock, flags);
 	}
+	spin_unlock_irqrestore(&ha->hardware_lock, flags);
 	kfree(ha->req_q_map);
 	ha->req_q_map = NULL;
 
+	spin_lock_irqsave(&ha->hardware_lock, flags);
 	for (cnt = 0; cnt < ha->max_rsp_queues; cnt++) {
 		rsp = ha->rsp_q_map[cnt];
+		 clear_bit(cnt, ha->req_qid_map);
+		ha->rsp_q_map[cnt] =  NULL;
+		spin_unlock_irqrestore(&ha->hardware_lock, flags);
 		qla2x00_free_rsp_que(ha, rsp);
+		spin_lock_irqsave(&ha->hardware_lock, flags);
 	}
+	spin_unlock_irqrestore(&ha->hardware_lock, flags);
 	kfree(ha->rsp_q_map);
 	ha->rsp_q_map = NULL;
 }
@@ -1851,17 +1864,22 @@ qla83xx_iospace_config(struct qla_hw_data *ha)
 		pci_read_config_word(ha->pdev,
 		    QLA_83XX_PCI_MSIX_CONTROL, &msix);
 		ha->msix_count = msix + 1;
-		/* Max queues are bounded by available msix vectors */
-		/* queue 0 uses two msix vectors */
+		/*
+		 * By default, driver uses at least two msix vectors
+		 * (default & rspq)
+		 */
 		if (ql2xmqsupport) {
 			/* MB interrupt uses 1 vector */
 			ha->max_req_queues = ha->msix_count - 1;
 			ha->max_rsp_queues = ha->max_req_queues;
+
+			/* ATIOQ needs 1 vector. That's 1 less QPair */
+			if (QLA_TGT_MODE_ENABLED())
+				ha->max_req_queues--;
+
 			/* Queue pairs is the max value minus
 			 * the base queue pair */
 			ha->max_qpairs = ha->max_req_queues - 1;
-			ql_dbg_pci(ql_dbg_multiq, ha->pdev, 0xc010,
-			    "Max no of queues pairs: %d.\n", ha->max_qpairs);
 			ql_dbg_pci(ql_dbg_init, ha->pdev, 0x0190,
 			    "Max no of queues pairs: %d.\n", ha->max_qpairs);
 		}
@@ -1873,6 +1891,8 @@ qla83xx_iospace_config(struct qla_hw_data *ha)
 
 mqiobase_exit:
 	ha->msix_count = ha->max_rsp_queues + 1;
+	if (QLA_TGT_MODE_ENABLED())
+		ha->msix_count++;
 
 	qlt_83xx_iospace_config(ha);
 
@@ -3226,13 +3246,6 @@ qla2x00_delete_all_vps(struct qla_hw_data *ha, scsi_qla_host_t *base_vha)
 static void
 qla2x00_destroy_deferred_work(struct qla_hw_data *ha)
 {
-	/* Flush the work queue and remove it */
-	if (ha->wq) {
-		flush_workqueue(ha->wq);
-		destroy_workqueue(ha->wq);
-		ha->wq = NULL;
-	}
-
 	/* Cancel all work and destroy DPC workqueues */
 	if (ha->dpc_lp_wq) {
 		cancel_work_sync(&ha->idc_aen);
@@ -3420,9 +3433,17 @@ qla2x00_free_device(scsi_qla_host_t *vha)
 		ha->isp_ops->disable_intrs(ha);
 	}
 
+	qla2x00_free_fcports(vha);
+
 	qla2x00_free_irqs(vha);
 
-	qla2x00_free_fcports(vha);
+	/* Flush the work queue and remove it */
+	if (ha->wq) {
+		flush_workqueue(ha->wq);
+		destroy_workqueue(ha->wq);
+		ha->wq = NULL;
+	}
+
 
 	qla2x00_mem_free(ha);
 
@@ -4994,8 +5015,8 @@ qla2x00_disable_board_on_pci_error(struct work_struct *work)
 
 	base_vha->flags.init_done = 0;
 	qla25xx_delete_queues(base_vha);
-	qla2x00_free_irqs(base_vha);
 	qla2x00_free_fcports(base_vha);
+	qla2x00_free_irqs(base_vha);
 	qla2x00_mem_free(ha);
 	qla82xx_md_free(base_vha);
 	qla2x00_free_queues(ha);
