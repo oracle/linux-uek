@@ -1,7 +1,7 @@
 /*
  * vds_vtoc.c: LDOM Virtual Disk Server.
  *
- * Copyright (C) 2014 Oracle. All rights reserved.
+ * Copyright (C) 2014, 2017 Oracle. All rights reserved.
  */
 
 #include "vds.h"
@@ -167,9 +167,9 @@ static void vds_vtoc_set_default(struct vds_port *port, struct dk_label *label)
 	vdsdbg(IOC, "requested disk size: %ld bytes\n", disk_size);
 	vdsdbg(IOC, "setup: ncyl=%d nhead=%d nsec=%d\n", label->dkl_pcyl,
 	       label->dkl_nhead, label->dkl_nsect);
-	vdsdbg(IOC, "provided disk size: %lld bytes\n", (uint64_t)
-	       (label->dkl_pcyl * label->dkl_nhead *
-	       label->dkl_nsect * bsize));
+	vdsdbg(IOC, "provided disk size: %lld bytes\n",
+	       ((uint64_t)label->dkl_pcyl * (uint64_t)label->dkl_nhead *
+	       (uint64_t)label->dkl_nsect * (uint64_t)bsize));
 
 	vd_get_readable_size(disk_size, &size, &unit);
 
