@@ -2728,11 +2728,16 @@ struct isp_operations {
 
 struct scsi_qla_host;
 
+
+#define QLA83XX_RSPQ_MSIX_ENTRY_NUMBER 1 /* refer to qla83xx_msix_entries */
+
 struct qla_msix_entry {
 	int have_irq;
 	uint32_t vector;
 	uint16_t entry;
 	struct rsp_que *rsp;
+	struct irq_affinity_notify irq_notify;
+	int cpuid;
 };
 
 #define	WATCH_INTERVAL		1       /* number of seconds */
@@ -2943,6 +2948,7 @@ struct qlt_hw_data {
 	uint32_t num_qfull_cmds_dropped;
 	spinlock_t q_full_lock;
 	uint32_t leak_exchg_thresh_hold;
+	int rspq_vector_cpuid;
 };
 
 #define MAX_QFULL_CMDS_ALLOC	8192
