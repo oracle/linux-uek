@@ -721,11 +721,21 @@ qla2xxx_queuecommand(struct Scsi_Host *host, struct scsi_cmnd *cmd)
 	struct scsi_qla_host *base_vha = pci_get_drvdata(ha->pdev);
 	srb_t *sp;
 	int rval;
-	struct qla_qpair *qpair;
+	struct qla_qpair *qpair = NULL;
+	uint32_t tag;
+	uint16_t hwq;
 
-	if (vha->vp_idx && vha->qpair) {
-		qpair = vha->qpair;
-		return qla2xxx_mqueuecommand(host, cmd, qpair);
+	if (ha->mqenable) {
+		if (shost_use_blk_mq(vha->host)) {
+			tag = blk_mq_unique_tag(cmd->request);
+			hwq = blk_mq_unique_tag_to_hwq(tag);
+			qpair = ha->queue_pair_map[hwq];
+		} else if (vha->vp_idx && vha->qpair) {
+			qpair = vha->qpair;
+		}
+
+		if (qpair)
+			return qla2xxx_mqueuecommand(host, cmd, qpair);
 	}
 
 	if (ha->flags.eeh_busy) {
@@ -2473,6 +2483,8 @@ qla2x00_probe_one(struct pci_dev *pdev, const struct pci_device_id *id)
 	uint16_t req_length = 0, rsp_length = 0;
 	struct req_que *req = NULL;
 	struct rsp_que *rsp = NULL;
+	int cpu_id;
+	cpumask_t cpu_mask;
 
 	bars = pci_select_bars(pdev, IORESOURCE_MEM | IORESOURCE_IO);
 	sht = &qla2xxx_driver_template;
@@ -2834,6 +2846,17 @@ qla2x00_probe_one(struct pci_dev *pdev, const struct pci_device_id *id)
 		goto probe_init_failed;
 	}
 
+	if (ha->mqenable && shost_use_blk_mq(host)) {
+		/* number of hardware queues supported by blk/scsi-mq*/
+		host->nr_hw_queues = ha->max_qpairs;
+
+		ql_dbg(ql_dbg_init, base_vha, 0x0192,
+			"blk/scsi-mq enabled, HW queues = %d.\n",
+				host->nr_hw_queues);
+	} else
+		ql_dbg(ql_dbg_init, base_vha, 0x0193,
+			"blk/scsi-mq disabled.\n");
+
 	qlt_probe_one_stage1(base_vha, ha);
 
 	pci_save_state(pdev);
@@ -2928,6 +2951,15 @@ qla2x00_probe_one(struct pci_dev *pdev, const struct pci_device_id *id)
 	if (ha->mqenable) {
 		base_vha->qps_hint = alloc_percpu(struct qla_percpu_qp_hint);
 		ha->wq = alloc_workqueue("qla2xxx_wq", WQ_MEM_RECLAIM, 1);
+		/* Create start of day qpairs for Block MQ */
+		if (shost_use_blk_mq(host)) {
+			cpumask_clear(&cpu_mask);
+			for (cpu_id = 0; cpu_id < ha->max_qpairs; cpu_id++) {
+				cpumask_set_cpu(cpu_id, &cpu_mask);
+				qla2xxx_create_qpair(base_vha, &cpu_mask, 5, 0);
+				cpumask_clear_cpu(cpu_id, &cpu_mask);
+			}
+		}
 	}
 	if (ha->flags.running_gold_fw)
 		goto skip_dpc;
