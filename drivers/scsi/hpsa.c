@@ -5598,11 +5598,24 @@ static void hpsa_scan_start(struct Scsi_Host *sh)
 	if (unlikely(lockup_detected(h)))
 		return hpsa_scan_complete(h);
 
+	/*
+	 * If a scan is alreay waiting to run, no need to add another
+	 */
+	spin_lock_irqsave(&h->scan_lock, flags);
+	if (h->scan_waiting) {
+		wake_up_all(&h->scan_wait_queue);
+		spin_unlock_irqrestore(&h->scan_lock, flags);
+		return;
+	}
+
+	spin_unlock_irqrestore(&h->scan_lock, flags);
+
 	/* wait until any scan already in progress is finished. */
 	while (1) {
 		spin_lock_irqsave(&h->scan_lock, flags);
 		if (h->scan_finished)
 			break;
+		h->scan_waiting = 1;
 		spin_unlock_irqrestore(&h->scan_lock, flags);
 		wait_event(h->scan_wait_queue, h->scan_finished);
 		/* Note: We don't need to worry about a race between this
@@ -5612,6 +5625,7 @@ static void hpsa_scan_start(struct Scsi_Host *sh)
 		 */
 	}
 	h->scan_finished = 0; /* mark scan as in progress */
+	h->scan_waiting = 0;
 	spin_unlock_irqrestore(&h->scan_lock, flags);
 
 	if (unlikely(lockup_detected(h)))
@@ -8707,6 +8721,11 @@ static void hpsa_rescan_ctlr_worker(struct work_struct *work)
 		return;
 	}
 
+	if (h->scan_waiting) {
+		h->drv_req_rescan = 1;
+		return;
+	}
+
 	if (hpsa_ctlr_needs_rescan(h) || hpsa_offline_devices_ready(h)) {
 		scsi_host_get(h->scsi_host);
 		hpsa_ack_ctlr_events(h);
@@ -8869,6 +8888,7 @@ reinit_after_soft_reset:
 	init_waitqueue_head(&h->event_sync_wait_queue);
 	mutex_init(&h->reset_mutex);
 	h->scan_finished = 1; /* no scan currently in progress */
+	h->scan_waiting = 0;
 
 	pci_set_drvdata(pdev, h);
 	h->ndevices = 0;
