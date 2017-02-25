@@ -4450,7 +4450,50 @@ sglist_finished:
 	return 0;
 }
 
-#define IO_ACCEL_INELIGIBLE (1)
+static inline void warn_zero_length_transfer(struct ctlr_info *h,
+						u8 *cdb, const char *func)
+{
+	dev_warn(&h->pdev->dev,
+			"%s: Blocking zero-length request: CDB:%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x\n",
+			func,
+			cdb[0], cdb[1], cdb[2], cdb[3],
+			cdb[4], cdb[5], cdb[6], cdb[7],
+			cdb[8], cdb[9], cdb[10], cdb[11],
+			cdb[12], cdb[13], cdb[14], cdb[15]);
+}
+
+#define IO_ACCEL_INELIGIBLE 1
+/* zero-length transfers trigger hardware errors. */
+static bool is_zero_length_transfer(u8 *cdb)
+{
+u32 block_cnt;
+
+	/* Block zero-length transfer sizes on certain commands. */
+	switch (cdb[0]) {
+	case READ_10:
+	case WRITE_10:
+	case VERIFY:		/* 0x2F */
+	case WRITE_VERIFY:	/* 0x2E */
+		block_cnt = get_unaligned_be16(&cdb[7]);
+		break;
+	case READ_12:
+	case WRITE_12:
+	case VERIFY_12: /* 0xAF */
+	case WRITE_VERIFY_12:	/* 0xAE */
+		block_cnt = get_unaligned_be32(&cdb[6]);
+		break;
+	case READ_16:
+	case WRITE_16:
+	case VERIFY_16:		/* 0x8F */
+		block_cnt = get_unaligned_be32(&cdb[10]);
+		break;
+	default:
+		return false;
+	}
+
+	return block_cnt == 0;
+}
+
 static int fixup_ioaccel_cdb(u8 *cdb, int *cdb_len)
 {
 	int is_write = 0;
@@ -4516,6 +4559,12 @@ static int hpsa_scsi_ioaccel1_queue_command(struct ctlr_info *h,
 	}
 
 	BUG_ON(cmd->cmd_len > IOACCEL1_IOFLAGS_CDBLEN_MAX);
+
+	if (is_zero_length_transfer(cdb)) {
+		warn_zero_length_transfer(h, cdb, __func__);
+		atomic_dec(&phys_disk->ioaccel_cmds_out);
+		return IO_ACCEL_INELIGIBLE;
+	}
 
 	if (fixup_ioaccel_cdb(cdb, &cdb_len)) {
 		atomic_dec(&phys_disk->ioaccel_cmds_out);
@@ -4680,6 +4729,12 @@ static int hpsa_scsi_ioaccel2_queue_command(struct ctlr_info *h,
 		return -1;
 
 	BUG_ON(scsi_sg_count(cmd) > h->maxsgentries);
+
+	if (is_zero_length_transfer(cdb)) {
+		warn_zero_length_transfer(h, cdb, __func__);
+		atomic_dec(&phys_disk->ioaccel_cmds_out);
+		return IO_ACCEL_INELIGIBLE;
+	}
 
 	if (fixup_ioaccel_cdb(cdb, &cdb_len)) {
 		atomic_dec(&phys_disk->ioaccel_cmds_out);
