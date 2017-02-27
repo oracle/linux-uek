@@ -680,7 +680,12 @@ long __get_user_pages(struct task_struct *tsk, struct mm_struct *mm,
 
 		/* first iteration or cross vma bound */
 		if (!vma || start >= vma->vm_end) {
-			vma = find_extend_vma(mm, start);
+			/* Do not extend stack in no-fault mode. */
+			if (gup_flags & FOLL_IMMED)
+				vma = find_vma(mm, start);
+			else
+				vma = find_extend_vma(mm, start);
+
 			if (!vma && in_gate_area(mm, start)) {
 				int ret;
 				ret = get_gate_page(mm, start & PAGE_MASK,
@@ -708,7 +713,8 @@ retry:
 		 */
 		if (unlikely(fatal_signal_pending(current)))
 			return i ? i : -ERESTARTSYS;
-		cond_resched();
+		if (likely(!(foll_flags & FOLL_IMMED)))
+			cond_resched();
 		page = follow_page_mask(vma, start, foll_flags, &page_mask);
 		if (!page) {
 			int ret;
