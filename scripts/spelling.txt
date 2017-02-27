@@ -1014,6 +1014,7 @@ vaid||valid
 vaild||valid
 valide||valid
 variantions||variations
+varible||variable
 varient||variant
 vaule||value
 verbse||verbose
