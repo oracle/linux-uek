@@ -1848,6 +1848,77 @@ static int start_ordered_ops(struct inode *inode, loff_t start, loff_t end)
 	return ret;
 }
 
+/* In order to avoid KABI breakage */
+/* private information held for every overlayfs dentry */
+struct ovl_entry {
+	struct dentry *__upperdentry;
+	void *cache; /* struct ovl_dir_cache */
+	union {
+		struct {
+			u64 version;
+			const char *redirect;
+			bool opaque;
+		};
+		struct rcu_head rcu;
+	};
+	unsigned numlower;
+	struct path lowerstack[];
+};
+
+static struct dentry *ovl_dentry_upper(struct dentry *dentry)
+{
+	struct ovl_entry *oe = dentry->d_fsdata;
+
+	return lockless_dereference(oe->__upperdentry);
+}
+
+static struct dentry *ovl_dentry_lower(struct dentry *dentry)
+{
+	struct ovl_entry *oe = dentry->d_fsdata;
+
+	return oe->numlower ? (oe->lowerstack[0].dentry) : NULL;
+}
+
+static struct dentry *btrfs_d_real(struct dentry *dentry, struct inode *inode)
+{
+	struct dentry *real;
+
+	if (!d_is_reg(dentry)) {
+		if (!inode || inode == d_inode(dentry))
+			return dentry;
+		goto bug;
+	}
+
+	if (d_is_negative(dentry))
+		return dentry;
+
+	real = ovl_dentry_upper(dentry);
+	if (real && (!inode || inode == d_inode(real)))
+		return real;
+
+	real = ovl_dentry_lower(dentry);
+	if (!real)
+		goto bug;
+
+	real = btrfs_d_real(real, inode);
+	if (!inode || inode == d_inode(real))
+		return real;
+bug:
+	WARN(1, "ovl_d_real(%pd4, %s:%lu): real dentry not found\n", dentry,
+	     inode ? inode->i_sb->s_id : "NULL", inode ? inode->i_ino : 0);
+	return dentry;
+}
+
+static struct dentry *btrfs_file_dentry(struct file *file)
+{
+	struct dentry *dentry = file->f_path.dentry;
+
+	if (unlikely(dentry->d_flags & DCACHE_OP_SELECT_INODE))
+		return btrfs_d_real(dentry, file_inode(file));
+	else
+		return dentry;
+}
+
 /*
  * fsync call for both files and directories.  This logs the inode into
  * the tree log instead of forcing full commits whenever possible.
@@ -1861,8 +1932,8 @@ static int start_ordered_ops(struct inode *inode, loff_t start, loff_t end)
  */
 int btrfs_sync_file(struct file *file, loff_t start, loff_t end, int datasync)
 {
-	struct dentry *dentry = file->f_path.dentry;
-	struct inode *inode = d_inode(dentry);
+	struct dentry *dentry = btrfs_file_dentry(file);
+	struct inode *inode = file_inode(file);
 	struct btrfs_root *root = BTRFS_I(inode)->root;
 	struct btrfs_trans_handle *trans;
 	struct btrfs_log_ctx ctx;
@@ -2008,9 +2079,17 @@ int btrfs_sync_file(struct file *file, loff_t start, loff_t end, int datasync)
 
 	btrfs_init_log_ctx(&ctx);
 
-	ret = btrfs_log_dentry_safe(trans, root, dentry, start, end, &ctx);
-	if (ret < 0) {
-		/* Fallthrough and commit/free transaction. */
+	if (inode->i_sb == dentry->d_sb) {
+		ret = btrfs_log_dentry_safe(trans, root, dentry, start, end, &ctx);
+		if (ret < 0) {
+			/* Fallthrough and commit/free transaction. */
+			ret = 1;
+		}
+	} else {
+		/*
+		 * the above btrfs_file_dentry didn't get a btrfs dentry, lets
+		 * go to commit transaction
+		 */
 		ret = 1;
 	}
 
