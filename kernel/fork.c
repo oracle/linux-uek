@@ -1938,6 +1938,16 @@ static __latent_entropy struct task_struct *copy_process(
 
 #ifdef CONFIG_DTRACE
 	/*
+	 * If we're called with stack_start != 0, this is almost certainly a
+	 * thread being created in current.  Make sure it gets its own psinfo
+	 * data, because we need to record a new bottom of stack value.
+	 */
+	if (p->mm && stack_start) {
+		dtrace_psinfo_alloc(p);
+		p->dtrace_psinfo->ustack = stack_start;
+	}
+
+	/*
 	 * We make this call fairly late into the copy_process() handling,
 	 * because we need to ensure that we can look up this task based on
 	 * its pid using find_task_by_vpid().  We also must ensure that the
