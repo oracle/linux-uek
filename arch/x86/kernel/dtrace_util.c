@@ -6,11 +6,17 @@
  */
 
 #include <linux/dtrace_cpu.h>
+#include <linux/dtrace_os.h>
 #include <linux/kdebug.h>
+#include <linux/mm.h>
 #include <linux/module.h>
 #include <linux/notifier.h>
+#include <linux/ptrace.h>
+#include <linux/sched.h>
 #include <linux/slab.h>
+#include <linux/uaccess.h>
 #include <asm/insn.h>
+#include <asm/pgtable.h>
 #include <asm/ptrace.h>
 #include <asm/text-patching.h>
 #include <asm/dtrace_arch.h>
@@ -271,3 +277,133 @@ void dtrace_invop_disable(uint8_t *addr, uint8_t opcode)
 	text_poke(addr, ((unsigned char []){opcode}), 1);
 }
 EXPORT_SYMBOL(dtrace_invop_disable);
+
+static inline dtrace_bad_address(void *addr)
+{
+	unsigned long	dummy;
+
+	return probe_kernel_address((unsigned long *)addr, dummy);
+}
+
+int dtrace_user_addr_is_exec(uintptr_t addr)
+{
+	struct mm_struct	*mm = current->mm;
+	pgd_t			*pgd;
+	pud_t			*pud;
+	pmd_t			*pmd;
+	pte_t			*pte;
+	unsigned long		flags;
+	int			ret = 0;
+
+	if (mm == NULL)
+		return 0;
+
+	addr &= PAGE_MASK;
+
+	local_irq_save(flags);
+
+	pgd = pgd_offset(mm, addr);
+	if (dtrace_bad_address(pgd))
+		goto out;
+	if (pgd_none(*pgd) || !pgd_present(*pgd))
+		goto out;
+
+	pud = pud_offset(pgd, addr);
+	if (dtrace_bad_address(pud))
+		goto out;
+	if (pud_none(*pud) || !pud_present(*pud))
+		goto out;
+	if (unlikely(pud_large(*pud))) {
+		pte = (pte_t *)pud;
+		if (dtrace_bad_address(pte))
+			goto out;
+
+		ret = pte_exec(*pte);
+		goto out;
+	}
+
+	pmd = pmd_offset(pud, addr);
+	if (dtrace_bad_address(pmd))
+		goto out;
+	if (pmd_none(*pmd) || pmd_trans_splitting(*pmd))
+		goto out;
+	if (unlikely(pmd_large(*pmd) || !pmd_present(*pmd))) {
+		pte = (pte_t *)pmd;
+		if (dtrace_bad_address(pte))
+			goto out;
+
+		ret = pte_exec(*pte);
+		goto out;
+	}
+
+	pte = pte_offset_map(pmd, addr);
+	if (dtrace_bad_address(pte))
+		goto out;
+	if (pte_protnone(*pte))
+		goto out;
+	if ((pte_flags(*pte) & (_PAGE_PRESENT|_PAGE_USER|_PAGE_SPECIAL)) !=
+	    (_PAGE_PRESENT|_PAGE_USER))
+		goto out;
+
+	ret = pte_exec(*pte);
+
+out:
+	local_irq_restore(flags);
+
+	return ret;
+}
+EXPORT_SYMBOL(dtrace_user_addr_is_exec);
+
+void dtrace_user_stacktrace(stacktrace_state_t *st)
+{
+	struct thread_info	*t = current_thread_info();
+	struct pt_regs		*regs = current_pt_regs();
+	uint64_t		*pcs = st->pcs;
+	uint64_t		*fps = st->fps;
+	int			limit = st->limit;
+	unsigned long		*bos;
+	unsigned long		*sp = (unsigned long *)user_stack_pointer(regs);
+	int			ret;
+
+	if (!user_mode(regs))
+		goto out;
+
+	if (!current->dtrace_psinfo)
+		goto out;
+
+	bos = current->dtrace_psinfo->ustack;
+
+	st->depth = 1;
+	if (pcs) {
+		*pcs++ = (uint64_t)instruction_pointer(regs);
+		limit--;
+	}
+
+	if (!limit)
+		goto out;
+
+	while (sp <= bos && limit) {
+		unsigned long	pc;
+
+		pagefault_disable();
+		ret = __copy_from_user_inatomic(&pc, sp, sizeof(pc));
+		pagefault_enable();
+
+		if (ret)
+			break;
+
+		if (dtrace_user_addr_is_exec(pc) && pcs) {
+			*pcs++ = pc;
+			limit--;
+		}
+		st->depth++;
+
+		sp++;
+	}
+
+out:
+	if (pcs) {
+		while (limit--)
+			*pcs++ = 0;
+	}
+}

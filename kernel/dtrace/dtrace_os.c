@@ -23,7 +23,6 @@
 #include <linux/kallsyms.h>
 #include <linux/uaccess.h>
 #include <linux/workqueue.h>
-#include <linux/mm.h>
 #include <asm/ptrace.h>
 
 #if defined(CONFIG_DT_FASTTRAP) || defined(CONFIG_DT_FASTTRAP_MODULE)
@@ -225,6 +224,8 @@ void dtrace_psinfo_alloc(struct task_struct *tsk)
 		}
 		psinfo->envp[len] = NULL;
 
+		psinfo->ustack = mm->start_stack;
+
 		mmput(mm);
 	} else {
 		size_t	len = min(TASK_COMM_LEN, PR_PSARGS_SZ);
@@ -409,6 +410,11 @@ void dtrace_stacktrace(stacktrace_state_t *st)
 {
 	struct stack_trace	trace;
 	int			i;
+
+	if ((st->flags & STACKTRACE_TYPE) == STACKTRACE_USER) {
+		dtrace_user_stacktrace(st);
+		return;
+	}
 
 	trace.nr_entries = 0;
 	trace.max_entries = st->limit ? st->limit : 512;

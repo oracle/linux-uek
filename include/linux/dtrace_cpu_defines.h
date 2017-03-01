@@ -10,7 +10,11 @@
 #define CPUC_PADSIZE	(192 - CPUC_SIZE)
 
 #define per_cpu_core(cpu)	(&per_cpu(dtrace_cpu_core, (cpu)))
-#define this_cpu_core		(this_cpu_ptr(&dtrace_cpu_core))
+#if 0
+# define this_cpu_core		(this_cpu_ptr(&dtrace_cpu_core))
+#else
+# define this_cpu_core		(per_cpu_core(smp_processor_id()))
+#endif
 
 #define DTRACE_CPUFLAG_ISSET(flag) \
 	(this_cpu_core->cpuc_dtrace_flags & (flag))
@@ -35,6 +39,7 @@
 #define CPU_DTRACE_BADSTACK	0x1000
 #define CPU_DTRACE_NOPF		0x2000
 #define CPU_DTRACE_PF_TRAPPED	0x4000
+#define CPU_DTRACE_PROBE_CTX	0x8000
 
 #define CPU_DTRACE_FAULT	(CPU_DTRACE_BADADDR | CPU_DTRACE_BADALIGN | \
 				 CPU_DTRACE_DIVZERO | CPU_DTRACE_ILLOP | \
