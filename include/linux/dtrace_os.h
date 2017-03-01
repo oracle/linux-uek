@@ -10,11 +10,11 @@ typedef uint32_t dtrace_id_t;
 #ifdef CONFIG_DTRACE
 
 #include <linux/ktime.h>
+#include <linux/mm.h>
 #include <linux/notifier.h>
 #if defined(CONFIG_DT_FASTTRAP) || defined(CONFIG_DT_FASTTRAP_MODULE)
 #include <linux/uprobes.h>
 #endif
-#include <asm/dtrace_util.h>
 #include <asm/unistd.h>
 #include <asm/asm-offsets.h>
 #include <linux/dtrace_cpu.h>
@@ -49,7 +49,7 @@ extern int dtrace_die_notifier(struct notifier_block *, unsigned long, void *);
 
 #define STACKTRACE_KERNEL	0x01
 #define STACKTRACE_USER		0x02
-#define STACKTRACE_SKIP		0x10
+#define STACKTRACE_TYPE		0x0f
 
 typedef struct stacktrace_state {
 	uint64_t	*pcs;
@@ -60,7 +60,10 @@ typedef struct stacktrace_state {
 } stacktrace_state_t;
 
 extern void dtrace_stacktrace(stacktrace_state_t *);
+extern void dtrace_user_stacktrace(stacktrace_state_t *);
 extern void dtrace_handle_badaddr(struct pt_regs *);
+
+#include <asm/dtrace_util.h>
 
 /*
  * This is only safe to call if we know this is a userspace fault

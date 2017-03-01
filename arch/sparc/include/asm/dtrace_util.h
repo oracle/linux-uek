@@ -3,6 +3,6 @@
 #ifndef _SPARC_DTRACE_UTIL_H
 #define _SPARC_DTRACE_UTIL_H
 
-/* Nothing for now */
+extern int dtrace_user_addr_is_exec(uintptr_t);
 
 #endif /* _SPARC_DTRACE_UTIL_H */

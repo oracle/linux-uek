@@ -20,6 +20,9 @@ typedef struct dtrace_psinfo {
 	unsigned long envc;
 	char **envp;
 	char psargs[PR_PSARGS_SZ];
+#ifndef __GENKSYMS__
+	void *ustack;
+#endif
 } dtrace_psinfo_t;
 
 extern void dtrace_psinfo_alloc(struct task_struct *);
