@@ -63,6 +63,7 @@ void smp_release(void);
 #ifdef CONFIG_HOTPLUG_CPU
 int __cpu_disable(void);
 void __cpu_die(unsigned int cpu);
+void arch_unregister_cpu(int cpu);
 #endif
 
 #endif /* !(__ASSEMBLY__) */
@@ -76,5 +77,7 @@ void __cpu_die(unsigned int cpu);
 #define smp_fill_in_cpu_possible_map() do { } while (0)
 
 #endif /* !(CONFIG_SMP) */
+
+void arch_register_cpu(int cpu);
 
 #endif /* !(_SPARC64_SMP_H) */

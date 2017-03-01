@@ -28,6 +28,7 @@
 #include <linux/suspend.h>
 #include <linux/syscore_ops.h>
 #include <linux/stop_machine.h>
+#include <linux/cpu.h>
 
 #include <asm/hypervisor.h>
 #include <asm/ldc.h>
@@ -2014,13 +2015,18 @@ static int __cpuinit dr_cpu_configure(struct ds_dev *ds,
 			     resp_len, ncpus, mask,
 			     DR_CPU_STAT_CONFIGURED);
 
-	mdesc_populate_present_mask(mask);
 	mdesc_fill_in_cpu_data(mask);
 
 	for_each_cpu(cpu, mask) {
 		int err;
 
 		dprintk("ds-%llu: Starting cpu %d...\n", ds->id, cpu);
+
+		cpu_maps_update_begin();
+		set_cpu_present(cpu, true);
+		arch_register_cpu(cpu);
+		cpu_maps_update_done();
+
 		err = cpu_up(cpu);
 		if (err) {
 			u32 res = DR_CPU_RES_FAILURE;
@@ -2078,6 +2084,11 @@ static int dr_cpu_unconfigure(struct ds_dev *ds,
 			dr_cpu_mark(resp, cpu, ncpus,
 				    DR_CPU_RES_FAILURE,
 				    DR_CPU_STAT_CONFIGURED);
+
+		cpu_maps_update_begin();
+		set_cpu_present(cpu, false);
+		arch_unregister_cpu(cpu);
+		cpu_maps_update_done();
 	}
 
 	ds_cap_send(handle, resp, resp_len);
