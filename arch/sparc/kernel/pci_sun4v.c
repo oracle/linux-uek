@@ -265,41 +265,33 @@ range_alloc_fail:
 	return NULL;
 }
 
-unsigned long dma_4v_iotsb_bind(unsigned long devhandle,
-				unsigned long iotsb_num,
-				struct pci_bus *bus_dev)
+unsigned long dma_4v_iotsb_bind(struct device *dev)
 {
-	struct pci_dev *pdev;
-	unsigned long err;
+	struct pci_pbm_info *pbm = dev->archdata.host_controller;
+	struct pci_dev *pdev = to_pci_dev(dev);
+	unsigned long iotsb_num;
+	unsigned long err = 0;
 	unsigned int bus;
 	unsigned int device;
 	unsigned int fun;
 
-	list_for_each_entry(pdev, &bus_dev->devices, bus_list) {
-		if (pdev->subordinate) {
-			/* No need to bind pci bridge */
-			dma_4v_iotsb_bind(devhandle, iotsb_num,
-					  pdev->subordinate);
-		 } else {
-			bus = bus_dev->number;
-			device = PCI_SLOT(pdev->devfn);
-			fun = PCI_FUNC(pdev->devfn);
-			err = pci_sun4v_iotsb_bind(devhandle, iotsb_num,
-						   HV_PCI_DEVICE_BUILD(bus,
-								       device,
-								       fun));
+	iotsb_num = pbm->iommu->atu->iotsb->iotsb_num;
+	bus = pdev->bus->number;
+	device = PCI_SLOT(pdev->devfn);
+	fun = PCI_FUNC(pdev->devfn);
 
-			/* If bind fails for one device it is going to fail
-			 * for rest of the devices because we are sharing
-			 * IOTSB. So in case of failure simply return with
-			 * error.
-			 */
-			if (err)
-				return err;
-		}
-	}
+	err = pci_sun4v_iotsb_bind(pbm->devhandle, iotsb_num,
+				   HV_PCI_DEVICE_BUILD(bus,
+						       device,
+						       fun));
 
-	return 0;
+	/* If bind fails, device will no longer be able to
+	 * use ATU because hypervisor will reject any access
+	 * to IOTSB until device is successfully bound to IOTSB.
+	 * However, device still can continue using legacy IOMMU
+	 * with 32bit DMA.
+	 */
+	return err;
 }
 
 static void dma_4v_iommu_demap(struct device *dev, unsigned long devhandle,
@@ -873,12 +865,7 @@ static int pci_sun4v_atu_alloc_iotsb(struct pci_pbm_info *pbm)
 		goto iotsb_conf_failed;
 	}
 	iotsb->iotsb_num = iotsb_num;
-
-	err = dma_4v_iotsb_bind(pbm->devhandle, iotsb_num, pbm->pci_bus);
-	if (err) {
-		pr_err(PFX "pci_iotsb_bind failed error: %ld\n", err);
-		goto iotsb_conf_failed;
-	}
+	iotsb->bind = dma_4v_iotsb_bind;
 
 	return 0;
 

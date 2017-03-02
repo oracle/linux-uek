@@ -759,12 +759,22 @@ int dma_supported(struct device *dev, u64 device_mask)
 {
 	struct iommu *iommu = dev->archdata.iommu;
 	u64 dma_addr_mask = iommu->dma_addr_mask;
+	unsigned long err;
 
 	if (device_mask > DMA_BIT_MASK(32)) {
-		if (iommu->atu)
+		if (iommu->atu && dev_is_pci(dev)) {
+			/* bind this pci device to ATU IOTSB */
+			err = iommu->atu->iotsb->bind(dev);
+			/* if binding fails, ATU cannot be used and hence
+			 * no 64bit DMA.
+			 */
+			if (err)
+				return 0;
+
 			dma_addr_mask = iommu->atu->dma_addr_mask;
-		else
+		} else {
 			return 0;
+		}
 	}
 
 	if ((device_mask & dma_addr_mask) == dma_addr_mask)

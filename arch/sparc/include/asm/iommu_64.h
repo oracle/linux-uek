@@ -35,6 +35,8 @@ struct atu_iotsb {
 	u64	table_size;	/* IOTSB table size */
 	u64	page_size;	/* IO PAGE size for IOTSB */
 	u32	iotsb_num;	/* tsbnum is same as iotsb_handle */
+
+	unsigned long (*bind)(struct device *dev);
 };
 
 struct atu_ranges {
