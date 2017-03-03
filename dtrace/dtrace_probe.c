@@ -21,7 +21,7 @@
  *
  * CDDL HEADER END
  *
- * Copyright 2010-2014 Oracle, Inc.  All rights reserved.
+ * Copyright 2010-2017 Oracle, Inc.  All rights reserved.
  * Use is subject to license terms.
  */
 
@@ -599,8 +599,7 @@ void dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 		return;
 	}
 
-#ifdef FIXME
-	if (panic_quiesce) {
+	if (oops_in_progress) {
 		/*
 		 * We don't trace anything if we're panicking.
 		 */
@@ -609,7 +608,26 @@ void dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 		local_irq_restore(cookie);
 		return;
 	}
-#endif
+
+	flags = (volatile uint16_t *)&this_cpu_core->cpuc_dtrace_flags;
+
+	/*
+	 * Probe context is not re-entrant, unless we're getting called to
+	 * process an ERROR probe.
+	 */
+	if ((*flags & CPU_DTRACE_PROBE_CTX) && id != dtrace_probeid_error) {
+		dt_dbg_probe("Attempt to fire probe from within a probe " \
+			     "(ID %d, CPoID %d, U %d, pflag %d)\n", id,
+			     (int)this_cpu_core->cpu_dtrace_caller, cpuid,
+			     pflag);
+		if (pflag)
+			dtrace_preempt_on();
+		local_irq_restore(cookie);
+		return;
+	}
+
+	*flags |= CPU_DTRACE_PROBE_CTX;
+	this_cpu_core->cpu_dtrace_caller = id;
 
 	now = dtrace_gethrtime();
 	vtime = (dtrace_vtime_references > 0);
@@ -627,8 +645,6 @@ void dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 	mstate.dtms_arg[2] = arg2;
 	mstate.dtms_arg[3] = arg3;
 	mstate.dtms_arg[4] = arg4;
-
-	flags = (volatile uint16_t *)&this_cpu_core->cpuc_dtrace_flags;
 
 	for (ecb = probe->dtpr_ecb; ecb != NULL; ecb = ecb->dte_next) {
 		dtrace_predicate_t	*pred = ecb->dte_predicate;
@@ -1269,6 +1285,16 @@ void dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 
 	if (vtime)
 		current->dtrace_start = dtrace_gethrtime();
+
+	/*
+	 * Only clear the flag if this is not the ERROR probe.  We know that
+	 * an ERROR probe executes from within another probe, and therefore
+	 * we need to retain the probe context flag in the flags.
+	 */
+	if (id != dtrace_probeid_error) {
+		*flags &= ~CPU_DTRACE_PROBE_CTX;
+		this_cpu_core->cpu_dtrace_caller = 0;
+	}
 
 	if (pflag)
 		dtrace_preempt_on();

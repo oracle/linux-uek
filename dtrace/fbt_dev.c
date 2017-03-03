@@ -21,7 +21,7 @@
  *
  * CDDL HEADER END
  *
- * Copyright 2010, 2011, 2012, 2013 Oracle, Inc.  All rights reserved.
+ * Copyright 2010-2017 Oracle, Inc.  All rights reserved.
  * Use is subject to license terms.
  */
 
@@ -47,12 +47,6 @@ static void *fbt_provide_probe(struct module *mp, char *func, int type, int
 {
 	fbt_probe_t	*fbp;
 	fbt_probe_t	*prev;
-
-	/*
-	 * Only syscalls for now...
-	 */
-	if (strncmp(func, "SyS_", 4))
-		return NULL;
 
 	switch (type) {
 	case FBT_ENTRY:
