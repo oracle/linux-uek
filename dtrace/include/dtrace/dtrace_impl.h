@@ -28,7 +28,7 @@
  *
  * CDDL HEADER END
  *
- * Copyright 2009-2014 Oracle, Inc.  All rights reserved.
+ * Copyright 2009-2017 Oracle, Inc.  All rights reserved.
  * Use is subject to license terms.
  */
 
@@ -905,7 +905,31 @@ extern void dtrace_copyinstr(uintptr_t, uintptr_t, size_t,
 			     volatile uint16_t *);
 extern void dtrace_copyoutstr(uintptr_t, uintptr_t, size_t,
 			      volatile uint16_t *);
-extern uintptr_t dtrace_caller(int);
+
+/*
+ * Plaforms that support a fast path to obtain the caller implement the
+ * dtrace_caller() function.
+ *
+ * The first argument is the number of frames that should be skipped when
+ * looking for a caller address.  The 2nd argument is a dummy argument that
+ * is necessary for SPARC.
+ *
+ * On x86 this is effectively a NOP.
+ *
+ * On SPARC it is possible to retrieve the caller address from the register
+ * windows without flushing them to the stack.  This involves performing
+ * explicit rotation of the register windows.  Modification of the windowing
+ * mechanism state alters all %i, %o, and %l registers so we are can only use
+ * %g registers to store temporary data.
+ *
+ * On Linux a lot of %g registers are already allocated for specific purpose.
+ * Saving temporaries to the stack would be a violation of the fast path code
+ * logic. Therefore, the function prototype declares a 2nd argument that serves
+ * as a temporary value.  A compiler will not expect that the value in %o1
+ * will survive the call and therefore dtrace_caller() can use %o1 as a
+ * temporary registe.
+ */
+extern uintptr_t dtrace_caller(int, int);
 
 extern void dtrace_copyin_arch(uintptr_t, uintptr_t, size_t,
 			       volatile uint16_t *);

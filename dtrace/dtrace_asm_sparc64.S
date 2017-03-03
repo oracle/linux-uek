@@ -19,7 +19,7 @@
  * CDDL HEADER END
  */
 /*
- * Copyright 2010-2014 Oracle, Inc.  All rights reserved.
+ * Copyright 2010-2017 Oracle, Inc.  All rights reserved.
  * Use is subject to license terms.
  */
 
@@ -47,6 +47,7 @@
 	mov	%o2, %o0
 	ENDPROC(dtrace_casptr)
 
+/* FIXME */
 	ENTRY(dtrace_fish)
 	rd	%pc, %g5
 	ba	0f
@@ -110,8 +111,16 @@
 	add	%g2, 1, %o0		! Failure; return deepest frame + 1
 	ENDPROC(dtrace_fish)
 
-/* FIXME */
+	/*
+	 * Try to find caller in register windows.
+	 *
+	 * This is tricky as we must use globals during window rotation
+	 * and must preserve them at the same time. For that reason the 2nd
+	 * argument is not used. This allows us to use %o1 as a scratch to
+	 * keep value of %g4 in and prevents caller to keep something in %o1.
+	 */
 	ENTRY(dtrace_caller)
+	mov	%g4, %o1
 	mov	nwin_minus_one, %g4
 	rdpr	%canrestore, %g2
 	cmp	%g2, %o0
@@ -120,25 +129,27 @@
 	sub	%g1, %o0, %g3
 	brgez,a,pt %g3, 0f
 	wrpr	%g3, %cwp
-	!
-	! CWP minus the number of frames is negative; we must perform the
-	! arithmetic modulo MAXWIN.
-	!
+	/*
+	 * CWP minus the number of frames is negative; we must perform the
+	 * arithmetic modulo MAXWIN.
+	 */
 	add	%g4, %g3, %g3
 	inc	%g3
 	wrpr	%g3, %cwp
 0:
 	mov	%i7, %g4
 	wrpr	%g1, %cwp
-	retl
 	mov	%g4, %o0
+	retl
+	mov	%o1, %g4
 1:
-	!
-	! The caller has been flushed to the stack.  This is unlikely
-        ! (interrupts are disabled in dtrace_probe()), but possible (the
-        ! interrupt inducing the spill may have been taken before the
-        ! call to dtrace_probe()).
-	!
+	/*
+	 * The caller has been flushed to the stack.  This is unlikely
+         * (interrupts are disabled in dtrace_probe()), but possible (the
+         * interrupt inducing the spill may have been taken before the
+         * call to dtrace_probe()).
+	 */
+	mov	%o1, %g4
 	retl
 	mov	-1, %o0
 	ENDPROC(dtrace_caller)

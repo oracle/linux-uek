@@ -21,7 +21,7 @@
  *
  * CDDL HEADER END
  *
- * Copyright 2010-2014 Oracle, Inc.  All rights reserved.
+ * Copyright 2010-2017 Oracle, Inc.  All rights reserved.
  * Use is subject to license terms.
  */
 
@@ -2169,7 +2169,7 @@ static uint64_t dtrace_dif_variable(dtrace_mstate_t *mstate,
 							mstate->dtms_arg[0]);
 				mstate->dtms_caller = caller[1];
 			} else if ((mstate->dtms_caller =
-					dtrace_caller(aframes)) == -1) {
+					dtrace_caller(aframes, 0)) == -1) {
 				/*
 				 * We have failed to do this the quick way;
 				 * we must resort to the slower approach of
