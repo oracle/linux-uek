@@ -938,8 +938,10 @@ __lpfc_sli_get_sglq(struct lpfc_hba *phba, struct lpfc_iocbq *piocbq)
 	start_sglq = sglq;
 	while (!found) {
 		if (!sglq)
-			return NULL;
-		if (lpfc_test_rrq_active(phba, ndlp, sglq->sli4_lxritag)) {
+			break;
+		if (ndlp && ndlp->active_rrqs_xri_bitmap &&
+		    test_bit(sglq->sli4_lxritag,
+		    ndlp->active_rrqs_xri_bitmap)) {
 			/* This xri has an rrq outstanding for this DID.
 			 * put it back in the list and get another xri.
 			 */
