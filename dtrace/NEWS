@@ -1,9 +1,9 @@
 DTrace Kernel Modules News
 ==========================
 
-Release 0.6.0 (Dec 19th, 2016)
+Release 0.6.0 (Mar  3rd, 2017)
 ------------------------------
-Kernel release: 4.1.12-81
+Kernel release: 4.1.12-92.el6uek
 
 New features:
 
@@ -32,15 +32,42 @@ New features:
    Per-provider wrappers for DTRACE_PROBE_ENABLED() can be used, as with
    DTRACE_PROBE() itself.
 
- - Function boundary tracing (FBT) is supported in a limited fashion.  For
-   now, it is limited to the entry point functions for system calls.  This
-   limitation will be lifted as soon as possible.
+ - Function boundary tracing (FBT) is supported for entry probes to most
+   functions in the core kernel.  The current implementation does not support
+   retrieval of function arguments or return probes (except for some limited
+   support on x86_64).  These features are currently under development.
+
+Changes:
+
+ - The implementation of the D 'ustack' action has been moved into the kernel
+   proper.  This change was motivated by the need to access page table
+   structures directly using a lock-free mechanism.
+
+ - Probe processing will be bypassed when the system is entering panic mode,
+   This ensures that DTrace will not cause panic related output to be
+   disrupted.
 
 Bugfixes:
 
  - Due to a logic error in preemption handling, it was possible that code was
    being executed under the assumption that preemption was disabled when in
    fact it was not.
+
+ - Probe processing (probe context) is not re-entrant, yet probes firing as a
+   result of processing another probe would cause re-entry into the processing
+   core, with often horrible effects.  The processing core has been modified to
+   block any re-entry attempt except for ERROR probe processing.  That is a
+   deliberate (and acceptable) exception in the DTrace design.
+
+ - The fast path implementation for obtaining the value of the D 'caller'
+   variable for sparc64 has been corrected.
+
+ - The implemenation of the D 'stack' action has been made more robust, making
+   sure that memory access faults are not fatal.
+
+ - The implementation of the D 'ustack' action has been reworked completely to
+   improve stability and accuracy.
+
 
 Release 0.5.3 (May 25th, 2016)
 ------------------------------
@@ -61,6 +88,7 @@ Bugfixes:
  - On sparc64, it was possible to crash the system by unloading and reloading
    the sdt DTrace multi-provider module due to the handling of memory that is
    set aside for SDT probe trampolines.  This bug has been fixed.
+
 
 Release 0.5.2 (Feb 3rd, 2016)
 -----------------------------
