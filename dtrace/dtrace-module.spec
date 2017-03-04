@@ -20,7 +20,7 @@
 Name: dtrace-modules-%{kver}
 Summary: dtrace module
 Version: 0.6.0
-Release: 1%{dist}
+Release: 2%{dist}
 Provides: dtrace-modules
 Requires: at
 License: CDDL
@@ -127,6 +127,11 @@ rm -rf %{buildroot}
 /usr/include/linux/dtrace/types.h
 
 %changelog
+* Fri Mar  3 2017 - <kris.van.hees@oracle.com> - 0.6.0-2
+- Further implementation of FBT with fixes to ustack
+  [Orabug: 21220305]
+- Handle modular IPv6 and introduce typedef in6_addr_t
+  (Nick Alcock) [Orabug: 25557554]
 * Mon Dec 19 2016 - <nick.alcock@oracle.com> - 0.6.0-1
 - USDT for SPARC. [Orabug: 24455245]
 - Is-enabled probes for SDT [Orabug: 25143173]
