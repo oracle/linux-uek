@@ -91,6 +91,10 @@
 #include <asm/visasm.h>
 #include <asm/asi.h>
 
+#if !defined(EX_LD) && !defined(EX_ST)
+#define NON_USER_COPY
+#endif
+
 #ifndef EX_LD
 #define EX_LD(x)	x
 #endif
@@ -802,7 +806,11 @@ FUNC_NAME:
 .Lunalignsetup:
 .Lunalignrejoin:
 	mov	%g1, %o3	! save %g1 as VISEntryHalf clobbers it
+#ifdef NON_USER_COPY
+	VISEntryHalfFast(.Lmedium_vis_entry_fail_cp)
+#else
 	VISEntryHalf
+#endif
 	mov	%o3, %g1	! restore %g1
 
 	set MED_UMAX, %o3
@@ -990,7 +998,148 @@ FUNC_NAME:
 	add	%o0, 8, %o0
 
 .Lunalign_short:
+#ifdef NON_USER_COPY
+	VISExitHalfFast
+#else
 	VISExitHalf
+#endif
 	ba	.Lsmallrest
 	nop
+
+/*
+ * This is a special case of nested memcpy. This can happen when kernel
+ * calls unaligned memcpy back to back without saving FP registers. We need
+ * traps(context switch) to save/restore FP registers. If the kernel calls
+ * memcpy without this trap sequence we will hit FP corruption. Let's use
+ * the normal integer load/store method in this case.
+ */
+
+#ifdef NON_USER_COPY
+.Lmedium_vis_entry_fail_cp:
+	or	%o0, %o1, %g2
+#endif
+.Lmedium_cp:
+	LOAD(prefetch, %o1 + 0x40, #n_reads_strong)
+	andcc	%g2, 0x7, %g0
+	bne,pn	%ncc, .Lmedium_unaligned_cp
+	 nop
+
+.Lmedium_noprefetch_cp:
+	andncc	%o2, 0x20 - 1, %o5
+	be,pn	%ncc, 2f
+	 sub	%o2, %o5, %o2
+1:	EX_LD(LOAD(ldx, %o1 + 0x00, %g1))
+	EX_LD(LOAD(ldx, %o1 + 0x08, %g2))
+	EX_LD(LOAD(ldx, %o1 + 0x10, %g7))
+	EX_LD(LOAD(ldx, %o1 + 0x18, %o4))
+	add	%o1, 0x20, %o1
+	subcc	%o5, 0x20, %o5
+	EX_ST(STORE(stx, %g1, %o0 + 0x00))
+	EX_ST(STORE(stx, %g2, %o0 + 0x08))
+	EX_ST(STORE(stx, %g7, %o0 + 0x10))
+	EX_ST(STORE(stx, %o4, %o0 + 0x18))
+	bne,pt	%ncc, 1b
+	 add	%o0, 0x20, %o0
+2:	andcc	%o2, 0x18, %o5
+	be,pt	%ncc, 3f
+	 sub	%o2, %o5, %o2
+1:	EX_LD(LOAD(ldx, %o1 + 0x00, %g1))
+	add	%o1, 0x08, %o1
+	add	%o0, 0x08, %o0
+	subcc	%o5, 0x08, %o5
+	bne,pt	%ncc, 1b
+	 EX_ST(STORE(stx, %g1, %o0 - 0x08))
+3:	brz,pt	%o2, .Lexit_cp
+	 cmp	%o2, 0x04
+	bl,pn	%ncc, .Ltiny_cp
+	 nop
+	EX_LD(LOAD(lduw, %o1 + 0x00, %g1))
+	add	%o1, 0x04, %o1
+	add	%o0, 0x04, %o0
+	subcc	%o2, 0x04, %o2
+	bne,pn	%ncc, .Ltiny_cp
+	 EX_ST(STORE(stw, %g1, %o0 - 0x04))
+	ba,a,pt	%ncc, .Lexit_cp
+
+.Lmedium_unaligned_cp:
+	/* First get dest 8 byte aligned.  */
+	sub	%g0, %o0, %g1
+	and	%g1, 0x7, %g1
+	brz,pt	%g1, 2f
+	 sub	%o2, %g1, %o2
+
+1:	EX_LD(LOAD(ldub, %o1 + 0x00, %g2))
+	add	%o1, 1, %o1
+	subcc	%g1, 1, %g1
+	add	%o0, 1, %o0
+	bne,pt	%ncc, 1b
+	 EX_ST(STORE(stb, %g2, %o0 - 0x01))
+2:
+	and	%o1, 0x7, %g1
+	brz,pn	%g1, .Lmedium_noprefetch_cp
+	 sll	%g1, 3, %g1
+	mov	64, %g2
+	sub	%g2, %g1, %g2
+	andn	%o1, 0x7, %o1
+	EX_LD(LOAD(ldx, %o1 + 0x00, %o4))
+	sllx	%o4, %g1, %o4
+	andn	%o2, 0x08 - 1, %o5
+	sub	%o2, %o5, %o2
+
+1:	EX_LD(LOAD(ldx, %o1 + 0x08, %g3))
+	add	%o1, 0x08, %o1
+	subcc	%o5, 0x08, %o5
+	srlx	%g3, %g2, %g7
+	or	%g7, %o4, %g7
+	EX_ST(STORE(stx, %g7, %o0 + 0x00))
+	add	%o0, 0x08, %o0
+	bne,pt	%ncc, 1b
+	 sllx	%g3, %g1, %o4
+	srl	%g1, 3, %g1
+	add	%o1, %g1, %o1
+	brz,pn	%o2, .Lexit_cp
+	 nop
+	ba,pt	%ncc, .Lsmall_unaligned_cp
+
+.Ltiny_cp:
+	EX_LD(LOAD(ldub, %o1 + 0x00, %g1))
+	subcc	%o2, 1, %o2
+	be,pn	%ncc, .Lexit_cp
+	 EX_ST(STORE(stb, %g1, %o0 + 0x00))
+	EX_LD(LOAD(ldub, %o1 + 0x01, %g1))
+	subcc	%o2, 1, %o2
+	be,pn	%ncc, .Lexit_cp
+	 EX_ST(STORE(stb, %g1, %o0 + 0x01))
+	EX_LD(LOAD(ldub, %o1 + 0x02, %g1))
+	ba,pt	%ncc, .Lexit_cp
+	 EX_ST(STORE(stb, %g1, %o0 + 0x02))
+
+.Lsmall_cp:
+	andcc	%g2, 0x3, %g0
+	bne,pn	%ncc, .Lsmall_unaligned_cp
+	 andn	%o2, 0x4 - 1, %o5
+	sub	%o2, %o5, %o2
+1:
+	EX_LD(LOAD(lduw, %o1 + 0x00, %g1))
+	add	%o1, 0x04, %o1
+	subcc	%o5, 0x04, %o5
+	add	%o0, 0x04, %o0
+	bne,pt	%ncc, 1b
+	 EX_ST(STORE(stw, %g1, %o0 - 0x04))
+	brz,pt	%o2, .Lexit_cp
+	 nop
+	ba,a,pt	%ncc, .Ltiny_cp
+
+.Lsmall_unaligned_cp:
+1:	EX_LD(LOAD(ldub, %o1 + 0x00, %g1))
+	add	%o1, 1, %o1
+	add	%o0, 1, %o0
+	subcc	%o2, 1, %o2
+	bne,pt	%ncc, 1b
+	 EX_ST(STORE(stb, %g1, %o0 - 0x01))
+	ba,a,pt	%ncc, .Lexit_cp
+
+.Lexit_cp:
+	retl
+	 mov	EX_RETVAL(%o3), %o0
 	.size  FUNC_NAME, .-FUNC_NAME
