@@ -188,7 +188,6 @@ static void ib_fmr_batch_release(struct ib_fmr_pool *pool, int unmap_usedonce)
 
 		spin_lock_irq(&pool->pool_lock);
 		list_splice_init(&pool->used_list, &temp_list);
-		spin_unlock_irq(&pool->pool_lock);
 		list_for_each_entry(fmr, &temp_list, list) {
 			/* find first fmr that is not mapped yet */
 			if (fmr->remap_count ==  0 ||
@@ -196,20 +195,20 @@ static void ib_fmr_batch_release(struct ib_fmr_pool *pool, int unmap_usedonce)
 				/* split the list 2 two */
 				list_cut_position(&unmap_list, &temp_list,
 								 &fmr->list);
-				spin_lock_irq(&pool->pool_lock);
 				list_splice(&temp_list, &pool->used_list);
-				spin_unlock_irq(&pool->pool_lock);
 				already_split = 1;
 				break;
 			} else {
-				spin_lock_irq(&pool->pool_lock);
 				hlist_del_init(&fmr->cache_node);
-				spin_unlock_irq(&pool->pool_lock);
 				fmr->remap_count = 0;
 				list_add_tail(&fmr->fmr->list, &fmr_list);
 				count++;
 			}
 		}
+		/* fmrs to unmap are detached from cache, now it safe to drop
+		 * pool_lock
+		 */
+		spin_unlock_irq(&pool->pool_lock);
 
 		if (!already_split) {
 			/* All are mapped once */
