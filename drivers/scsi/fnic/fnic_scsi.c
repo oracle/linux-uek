@@ -230,10 +230,10 @@ int fnic_fw_reset_handler(struct fnic *fnic)
 		fnic_queue_wq_copy_desc_fw_reset(wq, SCSI_NO_TAG);
 		atomic64_inc(&fnic->fnic_stats.fw_stats.active_fw_reqs);
 		if (atomic64_read(&fnic->fnic_stats.fw_stats.active_fw_reqs) >
-			  atomic64_read(&fnic->fnic_stats.fw_stats.max_fw_reqs))
+			atomic64_read(&fnic->fnic_stats.fw_stats.max_fw_reqs))
 			atomic64_set(&fnic->fnic_stats.fw_stats.max_fw_reqs,
-				atomic64_read(
-				  &fnic->fnic_stats.fw_stats.active_fw_reqs));
+			atomic64_read(
+				&fnic->fnic_stats.fw_stats.active_fw_reqs));
 	}
 
 	spin_unlock_irqrestore(&fnic->wq_copy_lock[0], flags);
@@ -301,9 +301,9 @@ int fnic_flogi_reg_handler(struct fnic *fnic, u32 fc_id)
 
 	atomic64_inc(&fnic->fnic_stats.fw_stats.active_fw_reqs);
 	if (atomic64_read(&fnic->fnic_stats.fw_stats.active_fw_reqs) >
-		  atomic64_read(&fnic->fnic_stats.fw_stats.max_fw_reqs))
+		atomic64_read(&fnic->fnic_stats.fw_stats.max_fw_reqs))
 		atomic64_set(&fnic->fnic_stats.fw_stats.max_fw_reqs,
-		  atomic64_read(&fnic->fnic_stats.fw_stats.active_fw_reqs));
+		atomic64_read(&fnic->fnic_stats.fw_stats.active_fw_reqs));
 
 flogi_reg_ioreq_end:
 	spin_unlock_irqrestore(&fnic->wq_copy_lock[0], flags);
@@ -397,9 +397,9 @@ static inline int fnic_queue_wq_copy_desc(struct fnic *fnic,
 
 	atomic64_inc(&fnic->fnic_stats.fw_stats.active_fw_reqs);
 	if (atomic64_read(&fnic->fnic_stats.fw_stats.active_fw_reqs) >
-		  atomic64_read(&fnic->fnic_stats.fw_stats.max_fw_reqs))
+		atomic64_read(&fnic->fnic_stats.fw_stats.max_fw_reqs))
 		atomic64_set(&fnic->fnic_stats.fw_stats.max_fw_reqs,
-		  atomic64_read(&fnic->fnic_stats.fw_stats.active_fw_reqs));
+		atomic64_read(&fnic->fnic_stats.fw_stats.active_fw_reqs));
 
 	spin_unlock_irqrestore(&fnic->wq_copy_lock[0], intr_flags);
 	return 0;
@@ -556,7 +556,7 @@ static int fnic_queuecommand_lck(struct scsi_cmnd *sc, void (*done)(struct scsi_
 		atomic64_inc(&fnic_stats->io_stats.active_ios);
 		atomic64_inc(&fnic_stats->io_stats.num_ios);
 		if (atomic64_read(&fnic_stats->io_stats.active_ios) >
-			  atomic64_read(&fnic_stats->io_stats.max_active_ios))
+			atomic64_read(&fnic_stats->io_stats.max_active_ios))
 			atomic64_set(&fnic_stats->io_stats.max_active_ios,
 			     atomic64_read(&fnic_stats->io_stats.active_ios));
 
@@ -1469,9 +1469,9 @@ static inline int fnic_queue_abort_io_req(struct fnic *fnic, int tag,
 
 	atomic64_inc(&fnic->fnic_stats.fw_stats.active_fw_reqs);
 	if (atomic64_read(&fnic->fnic_stats.fw_stats.active_fw_reqs) >
-		  atomic64_read(&fnic->fnic_stats.fw_stats.max_fw_reqs))
+		atomic64_read(&fnic->fnic_stats.fw_stats.max_fw_reqs))
 		atomic64_set(&fnic->fnic_stats.fw_stats.max_fw_reqs,
-		  atomic64_read(&fnic->fnic_stats.fw_stats.active_fw_reqs));
+		atomic64_read(&fnic->fnic_stats.fw_stats.active_fw_reqs));
 
 	spin_unlock_irqrestore(&fnic->wq_copy_lock[0], flags);
 	atomic_dec(&fnic->in_flight);
@@ -2008,9 +2008,9 @@ static inline int fnic_queue_dr_io_req(struct fnic *fnic,
 
 	atomic64_inc(&fnic->fnic_stats.fw_stats.active_fw_reqs);
 	if (atomic64_read(&fnic->fnic_stats.fw_stats.active_fw_reqs) >
-		  atomic64_read(&fnic->fnic_stats.fw_stats.max_fw_reqs))
+		atomic64_read(&fnic->fnic_stats.fw_stats.max_fw_reqs))
 		atomic64_set(&fnic->fnic_stats.fw_stats.max_fw_reqs,
-		  atomic64_read(&fnic->fnic_stats.fw_stats.active_fw_reqs));
+		atomic64_read(&fnic->fnic_stats.fw_stats.active_fw_reqs));
 
 lr_io_req_end:
 	spin_unlock_irqrestore(&fnic->wq_copy_lock[0], intr_flags);

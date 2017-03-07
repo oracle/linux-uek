@@ -251,13 +251,13 @@ static int fnic_trace_debugfs_open(struct inode *inode,
 
 	if (*rdata_ptr == fc_trc_flag->fnic_trace) {
 		fnic_dbg_prt->buffer = vmalloc(3 *
-					(trace_max_pages * PAGE_SIZE));
+				(trace_max_pages * PAGE_SIZE));
 		if (!fnic_dbg_prt->buffer) {
 			kfree(fnic_dbg_prt);
 			return -ENOMEM;
 		}
 		memset((void *)fnic_dbg_prt->buffer, 0,
-		3 * (trace_max_pages * PAGE_SIZE));
+			3 * (trace_max_pages * PAGE_SIZE));
 		fnic_dbg_prt->buffer_len = fnic_get_trace_data(fnic_dbg_prt);
 	} else {
 		fnic_dbg_prt->buffer =
@@ -403,6 +403,8 @@ int fnic_trace_debugfs_init(void)
 			"Cannot create trace file under debugfs\n");
 		return rc;
 	}
+
+
 	rc = 0;
 	return rc;
 }
