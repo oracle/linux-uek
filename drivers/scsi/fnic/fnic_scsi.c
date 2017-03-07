@@ -1134,21 +1134,16 @@ static void fnic_fcpio_itmf_cmpl_handler(struct fnic *fnic,
 			return;
 		}
 
-		CMD_FLAGS(sc) |= FNIC_IO_ABT_TERM_DONE;
+		CMD_ABTS_STATUS(sc) = hdr_status;
 
 		/* If the status is IO not found consider it as success */
 		if (hdr_status == FCPIO_IO_NOT_FOUND)
 			CMD_ABTS_STATUS(sc) = FCPIO_SUCCESS;
-		else
-			CMD_ABTS_STATUS(sc) = hdr_status;
 
-		atomic64_dec(&fnic_stats->io_stats.active_ios);
-		if (atomic64_read(&fnic->io_cmpl_skip))
-			atomic64_dec(&fnic->io_cmpl_skip);
-		else
-			atomic64_inc(&fnic_stats->io_stats.io_completions);
 
-		if (!(CMD_FLAGS(sc) & (FNIC_IO_ABORTED | FNIC_IO_DONE)))
+		CMD_FLAGS(sc) |= FNIC_IO_ABT_TERM_DONE;
+
+		if(!(CMD_FLAGS(sc) & (FNIC_IO_ABORTED | FNIC_IO_DONE)))
 			atomic64_inc(&misc_stats->no_icmnd_itmf_cmpls);
 
 		FNIC_SCSI_DBG(KERN_DEBUG, fnic->lport->host,
@@ -1576,6 +1571,10 @@ static void fnic_rport_exch_reset(struct fnic *fnic, u32 port_id)
 			"state is %s\n",
 			fnic_ioreq_state_to_str(CMD_STATE(sc)));
 		}
+		if (sc->device == NULL)
+			shost_printk(KERN_ERR, fnic->lport->host,
+			"fnic_rport_exch_reset: sc->device is null state is "
+			"%s\n", fnic_ioreq_state_to_str(CMD_STATE(sc)));
 
 		if (!(CMD_FLAGS(sc) & FNIC_IO_ISSUED)) {
 			shost_printk(KERN_ERR, fnic->lport->host,
@@ -1690,6 +1689,17 @@ void fnic_terminate_rport_io(struct fc_rport *rport)
 			spin_unlock_irqrestore(io_lock, flags);
 			continue;
 		}
+
+		if (sc->device == NULL)
+			shost_printk(KERN_ERR, fnic->lport->host,
+			"fnic_terminate_rport_io: sc->device is null "
+			"state is %s tag is %d\n",
+			fnic_ioreq_state_to_str(CMD_STATE(sc)), tag);
+		else if (sc->device->sdev_gendev.parent == NULL)
+			shost_printk(KERN_ERR, fnic->lport->host,
+			"fnic_terminate_rport_io: parent is null "
+			"state is %s  tag is %d\n",
+			fnic_ioreq_state_to_str(CMD_STATE(sc)), tag);
 
 		cmd_rport = starget_to_rport(scsi_target(sc->device));
 		if (rport != cmd_rport) {
