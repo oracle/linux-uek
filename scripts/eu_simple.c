@@ -1,7 +1,7 @@
 /*
  * Convenience wrappers for functions in elfutils.
  *
- * (C) 2014 Oracle, Inc.  All rights reserved.
+ * (C) 2014, 2017 Oracle, Inc.  All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -54,22 +54,26 @@ static int no_debuginfo(Dwfl_Module *mod __unused__,
 /*
  * Wrap up dwfl_new() complexities.
  */
-Dwfl *simple_dwfl_new(const char *file_name)
+Dwfl *simple_dwfl_new(const char *file_name, Dwfl_Module **module)
 {
 	const char *err;
 	static Dwfl_Callbacks cb = { .find_debuginfo = no_debuginfo,
 				     .section_address = dwfl_offline_section_address };
 	Dwfl *dwfl = dwfl_begin(&cb);
+	Dwfl_Module *mod;
 
 	if (dwfl == NULL) {
 		err = "initialize libdwfl";
 		goto fail;
 	}
 
-	if (private_dwfl_report_elf(dwfl, "", file_name, -1, 0) == NULL) {
+	mod = private_dwfl_report_elf(dwfl, "", file_name, -1, 0);
+	if (mod == NULL) {
 		err = "open object file with libdwfl";
 		goto fail;
 	}
+	if (module)
+		*module = mod;
 
 	if (dwfl_report_end(dwfl, NULL, NULL) != 0) {
 		err = "finish opening object file with libdwfl";
