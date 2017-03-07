@@ -1231,7 +1231,7 @@ static void __xve_cm_tx_reap(struct xve_dev_priv *priv)
 		 */
 		if (p->path)
 			xve_flush_single_path_by_gid(dev,
-						     &p->path->pathrec.dgid);
+					&p->path->pathrec.dgid, NULL);
 		xve_cm_tx_destroy(p);
 		netif_tx_lock_bh(dev);
 		spin_lock_irqsave(&priv->lock, flags);

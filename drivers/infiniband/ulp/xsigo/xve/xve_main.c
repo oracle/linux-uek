@@ -98,6 +98,10 @@ int xve_do_arp = 1;
 module_param_named(do_arp, xve_do_arp, int, 0644);
 MODULE_PARM_DESC(do_arp, "Enable/Disable ARP for NIC MTU less than IB-MTU");
 
+static int xve_age_path = 1;
+module_param(xve_age_path, int, 0644);
+MODULE_PARM_DESC(xve_age_path, "Age path enable/disable if no fwt entries");
+
 static void xve_send_msg_to_xsigod(xsmp_cookie_t xsmp_hndl, void *data,
 				   int len);
 
@@ -420,22 +424,13 @@ void xve_mark_paths_invalid(struct net_device *dev)
 	spin_unlock_irq(&priv->lock);
 }
 
-void xve_flush_paths(struct net_device *dev)
-{
-	struct xve_dev_priv *priv = netdev_priv(dev);
-	struct xve_path *path, *tp;
-
-	list_for_each_entry_safe(path, tp, &priv->path_list, list) {
-		xve_flush_single_path(dev, path);
-	}
-
-}
-
-void xve_flush_single_path_by_gid(struct net_device *dev, union ib_gid *gid)
+void xve_flush_single_path_by_gid(struct net_device *dev, union ib_gid *gid,
+		struct xve_fwt_entry *fwt_entry)
 {
 	struct xve_dev_priv *priv = netdev_priv(dev);
 	unsigned long flags = 0;
 	struct xve_path *path;
+	uint8_t path_ret = 0;
 
 	netif_tx_lock_bh(dev);
 	spin_lock_irqsave(&priv->lock, flags);
@@ -450,10 +445,29 @@ void xve_flush_single_path_by_gid(struct net_device *dev, union ib_gid *gid)
 		print_mgid_buf(tmp_buf, mgid_token);
 		xve_debug(DEBUG_FLUSH_INFO, priv, "%s MGID %s\n",
 			  __func__, tmp_buf);
-		spin_unlock_irqrestore(&priv->lock, flags);
-		netif_tx_unlock_bh(dev);
-		return;
+		path_ret = 1;
 	}
+
+	if (fwt_entry != NULL) {
+		xve_remove_fwt_entry(priv, fwt_entry);
+		xve_debug(DEBUG_FLUSH_INFO, priv, "%s Fwt removed %p",
+				__func__, fwt_entry);
+		/*
+		 * There is more than one FWT entry in this path,
+		 * destroy just this FWT entry.
+		 */
+		if (path && !list_empty(&path->fwt_list)) {
+			xve_warn(priv, "path%p has more entries FWT%p",
+					path, fwt_entry);
+			path_ret = 1;
+		}
+
+		if (!xve_age_path)
+			path_ret = 1;
+	}
+
+	if (path_ret)
+		goto unlock;
 
 	xve_debug(DEBUG_FLUSH_INFO, priv, "%s Flushing the path %p\n",
 		  __func__, path);
@@ -467,11 +481,11 @@ void xve_flush_single_path_by_gid(struct net_device *dev, union ib_gid *gid)
 	wait_for_completion(&path->done);
 	list_del(&path->list);
 	path_free(dev, path);
-}
-
-void xve_flush_single_path(struct net_device *dev, struct xve_path *path)
-{
-	xve_flush_single_path_by_gid(dev, &path->pathrec.dgid);
+	return;
+unlock:
+	spin_unlock_irqrestore(&priv->lock, flags);
+	netif_tx_unlock_bh(dev);
+	return;
 }
 
 static void path_rec_completion(int status,
@@ -700,7 +714,7 @@ static int xve_start_xmit(struct sk_buff *skb, struct net_device *dev)
 	if (xg_vlan_tx_tag_present(skb))
 		vlan_get_tag(skb, &vlan_tag);
 
-	fwt_entry = xve_fwt_lookup(&priv->xve_fwt, skb->data, vlan_tag, 0);
+	fwt_entry = xve_fwt_lookup(priv, skb->data, vlan_tag, 0);
 	if (!fwt_entry) {
 		if (is_multicast_ether_addr(skb->data)) {
 			xve_mcast_send(dev, (void *)priv->bcast_mgid.raw, skb);

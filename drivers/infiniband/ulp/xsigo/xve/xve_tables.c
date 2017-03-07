@@ -36,10 +36,6 @@
 #include <linux/pkt_sched.h>
 #include <linux/random.h>
 
-static int xve_age_path = 1;
-module_param(xve_age_path, int, 0644);
-MODULE_PARM_DESC(xve_age_path, "Age path enable/disable if no fwt entries");
-
 u32 xve_hash_salt __read_mostly;
 static struct kmem_cache *xve_fwt_cache __read_mostly;
 
@@ -94,34 +90,6 @@ static struct xve_fwt_entry *xve_fwt_find_entry(struct hlist_head *head,
 	return NULL;
 }
 
-static struct xve_fwt_entry *xve_fwt_find_valid(struct hlist_head *head)
-{
-	struct hlist_node *h;
-	struct xve_fwt_entry *fwt_entry;
-
-	hlist_for_each_entry(fwt_entry, h, head, hlist) {
-		if (test_bit(XVE_FWT_ENTRY_VALID, &fwt_entry->state))
-			return fwt_entry;
-	}
-	return NULL;
-}
-
-struct xve_fwt_entry *xve_fwt_list(struct xve_fwt_s *xve_fwt, int val)
-{
-	struct hlist_head *head;
-	struct xve_fwt_entry *fwt_entry = NULL;
-	unsigned long flags = 0;
-
-	spin_lock_irqsave(&xve_fwt->lock, flags);
-	head = &xve_fwt->fwt[val];
-	if (head != NULL)
-		fwt_entry = xve_fwt_find_valid(head);
-	if (fwt_entry)
-		atomic_inc(&fwt_entry->ref_cnt);
-	spin_unlock_irqrestore(&xve_fwt->lock, flags);
-	return fwt_entry;
-}
-
 bool xve_fwt_entry_valid(struct xve_fwt_s *xve_fwt,
 			 struct xve_fwt_entry *fwt_entry)
 {
@@ -147,8 +115,6 @@ int xve_aging_task_machine(struct xve_dev_priv *priv)
 	struct xve_fwt_s *xve_fwt = &priv->xve_fwt;
 	int i;
 	char *smac;
-	union ib_gid dgid;
-	int is_list_empty = 0;
 	struct hlist_head *head;
 	struct hlist_node *h, *n;
 
@@ -166,13 +132,15 @@ int xve_aging_task_machine(struct xve_dev_priv *priv)
 		hlist_for_each_entry_safe(fwt_entry, h, n, head, hlist) {
 			if (xve_fwt_entry_valid(xve_fwt, fwt_entry) == true) {
 				smac = fwt_entry->smac_addr;
+				spin_lock_irqsave(&priv->lock, flags);
 				if (!test_and_clear_bit
 				    (XVE_FWT_ENTRY_REFRESH, &fwt_entry->state)
 				    && ((jiffies - fwt_entry->last_refresh) >=
 					priv->aging_delay)) {
+					path = fwt_entry->path;
 					printk(KERN_INFO "XVE: %s MAC"
 					" %02x:%02x:%02x:%02x:%02x:%02x"
-					" vlan %d Aged out\n",
+					" vlan %d Aged out Path%p\n",
 					priv->xve_name,
 					ALIGN_TO_FF(smac[0]),
 					ALIGN_TO_FF(smac[1]),
@@ -180,34 +148,34 @@ int xve_aging_task_machine(struct xve_dev_priv *priv)
 					ALIGN_TO_FF(smac[3]),
 					ALIGN_TO_FF(smac[4]),
 					ALIGN_TO_FF(smac[5]),
-					fwt_entry->vlan);
-					/*
-					 * Can there be a race here where path
-					 *  becomes a bad address when paths
-					 *  gets flushed??
-					 */
-					spin_lock_irqsave(&priv->lock, flags);
-					xve_remove_fwt_entry(priv, fwt_entry);
-					path = fwt_entry->path;
+					fwt_entry->vlan, path);
+					atomic_set(&fwt_entry->del_inprogress,
+							1);
 					if (path) {
-						memcpy(dgid.raw,
-						       path->pathrec.dgid.raw,
-						       sizeof(dgid));
-						if (list_empty(&path->fwt_list))
-							is_list_empty = 1;
+						spin_unlock_irqrestore(
+							&priv->lock, flags);
+						xve_flush_single_path_by_gid(
+							priv->netdev,
+							&path->pathrec.dgid,
+							fwt_entry);
+						spin_lock_irqsave(&priv->lock,
+								flags);
+						xve_fwt_put_ctx(xve_fwt,
+								fwt_entry);
+						xve_fwt_entry_free(priv,
+								fwt_entry);
+					} else {
+						xve_fwt_put_ctx(xve_fwt,
+								fwt_entry);
+						xve_fwt_entry_destroy(priv,
+								fwt_entry);
 					}
-					spin_unlock_irqrestore(&priv->lock,
-							       flags);
-					if (xve_age_path && is_list_empty)
-						xve_flush_single_path_by_gid
-						    (priv->netdev, &dgid);
-					xve_fwt_put_ctx(xve_fwt, fwt_entry);
-					xve_fwt_entry_free(priv, fwt_entry);
 					priv->counters[XVE_MAC_AGED_COUNTER]++;
 				} else {
 					priv->counters[XVE_MAC_STILL_INUSE]++;
 					xve_fwt_put_ctx(xve_fwt, fwt_entry);
 				}
+				spin_unlock_irqrestore(&priv->lock, flags);
 			} else {
 				priv->counters[XVE_MAC_AGED_NOMATCHES]++;
 			}
@@ -217,17 +185,24 @@ int xve_aging_task_machine(struct xve_dev_priv *priv)
 	return 0;
 }
 
-struct xve_fwt_entry *xve_fwt_lookup(struct xve_fwt_s *xve_fwt, char *mac,
+struct xve_fwt_entry *xve_fwt_lookup(struct xve_dev_priv *priv, char *mac,
 				     u16 vlan, int refresh)
 {
+	struct xve_fwt_s *xve_fwt = &priv->xve_fwt;
+	struct xve_fwt_entry *fwt_entry;
 	unsigned long flags;
 	struct hlist_head *head;
-	struct xve_fwt_entry *fwt_entry;
 
 	spin_lock_irqsave(&xve_fwt->lock, flags);
 	head = &xve_fwt->fwt[xve_mac_hash(mac, XVE_FWT_HASH_LISTS, vlan)];
 	fwt_entry = xve_fwt_find_entry(head, mac, vlan);
 	if (fwt_entry) {
+		if (atomic_read(&fwt_entry->del_inprogress)) {
+			xve_warn(priv, "%p Table delete in progress mac%pM",
+					fwt_entry, mac);
+			spin_unlock_irqrestore(&xve_fwt->lock, flags);
+			return NULL;
+		}
 		atomic_inc(&fwt_entry->ref_cnt);
 		if (refresh)
 			set_bit(XVE_FWT_ENTRY_REFRESH, &fwt_entry->state);
@@ -258,7 +233,11 @@ void xve_fwt_insert(struct xve_dev_priv *priv, struct xve_cm_ctx *ctx,
 	struct xve_path *path;
 	char from[64], to[64];
 
-	fwt_entry = xve_fwt_lookup(xve_fwt, smac, vlan, 1);
+	/* Get a FWT entry for this mac and vlan */
+	spin_lock_irqsave(&priv->lock, flags);
+	fwt_entry = xve_fwt_lookup(priv, smac, vlan, 1);
+	spin_unlock_irqrestore(&priv->lock, flags);
+
 	if (fwt_entry) {
 		if (unlikely
 		    (memcmp
