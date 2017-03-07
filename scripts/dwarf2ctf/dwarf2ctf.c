@@ -1314,7 +1314,7 @@ static void init_tu_to_modules(void)
 		 * construct mappings from each TU to "vmlinux".
 		 */
 
-		Dwfl *dwfl = simple_dwfl_new(builtin_objects[i]);
+		Dwfl *dwfl = simple_dwfl_new(builtin_objects[i], NULL);
 		Dwarf_Die *tu = NULL;
 		Dwarf_Addr junk;
 
@@ -1342,7 +1342,7 @@ static void init_tu_to_modules(void)
 		 * mappings from each TU to the module name.
 		 */
 
-		Dwfl *dwfl = simple_dwfl_new(builtin_modules[i]);
+		Dwfl *dwfl = simple_dwfl_new(builtin_modules[i], NULL);
 		Dwarf_Die *tu = NULL;
 		Dwarf_Addr junk;
 
@@ -1596,7 +1596,7 @@ static void process_file(const char *file_name,
 	char *fn_module_name = fn_to_module(file_name);
 	const char *module_name = fn_module_name;
 
-	Dwfl *dwfl = simple_dwfl_new(file_name);
+	Dwfl *dwfl = simple_dwfl_new(file_name, NULL);
 	GHashTable *seen_before = g_hash_table_new_full(g_str_hash, g_str_equal,
 							free, free);
 	Dwarf_Die *tu_die = NULL;

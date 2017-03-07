@@ -834,7 +834,7 @@ static void read_module_symbols(unsigned int module_name,
 				const char *module_path,
 				GHashTable *module_symbol_seen)
 {
-	Dwfl *dwfl = simple_dwfl_new(module_path);
+	Dwfl *dwfl = simple_dwfl_new(module_path, NULL);
 	Dwarf_Die *tu = NULL;
 	Dwarf_Addr junk;
 	unsigned int *module_idx = NULL;
