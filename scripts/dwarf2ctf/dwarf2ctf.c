@@ -1103,7 +1103,7 @@ static void init_dedup_blacklist(const char *dedup_blacklist_file)
 			line[len-1] = '\0';
 
 
-		g_hash_table_insert(dedup_blacklist, strdup(line), NULL);
+		g_hash_table_insert(dedup_blacklist, xstrdup(line), NULL);
 	}
 
 	if (ferror(f)) {
@@ -1999,8 +1999,8 @@ static void detect_duplicates_will_rescan(Dwarf_Die *die, const char *id,
 		fprintf(stderr, "Out of memory allocating id_file\n");
 		exit (1);
 	}
-	id_file->file_name = strdup(state->file_name);
-	id_file->id = strdup(id);
+	id_file->file_name = xstrdup(state->file_name);
+	id_file->id = xstrdup(id);
 	id_file->dieoff = dwarf_dieoffset(die);
 	state->named_structs = g_slist_prepend(state->named_structs, id_file);
 }
@@ -4059,7 +4059,7 @@ static char *rel_abs_file_name(const char *file_name, const char *relative_to)
 
 	abspath = realpath(file_name, NULL);
 	if (abspath == NULL)
-		abspath = strdup(file_name);
+		abspath = xstrdup(file_name);
 
 	if ((dir > -1) && (fchdir(dir) < 0)) {
 		fprintf(stderr, "Cannot return to original directory "
