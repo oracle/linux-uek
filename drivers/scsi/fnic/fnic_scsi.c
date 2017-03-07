@@ -1790,8 +1790,6 @@ int fnic_abort_cmd(struct scsi_cmnd *sc)
 		"Abort Cmd called FCID 0x%x, LUN 0x%llx TAG %x flags %x\n",
 		rport->port_id, sc->device->lun, tag, CMD_FLAGS(sc));
 
-	CMD_FLAGS(sc) = FNIC_NO_FLAGS;
-
 	if (lp->state != LPORT_ST_READY || !(lp->link_up)) {
 		ret = FAILED;
 		goto fnic_abort_cmd_end;
@@ -2559,6 +2557,21 @@ int fnic_host_reset(struct scsi_cmnd *sc)
 	unsigned long wait_host_tmo;
 	struct Scsi_Host *shost = sc->device->host;
 	struct fc_lport *lp = shost_priv(shost);
+	struct fnic *fnic = lport_priv(lp);
+	unsigned long flags;
+
+	spin_lock_irqsave(&fnic->fnic_lock, flags);
+	if (fnic->internal_reset_progress == 0) {
+		fnic->internal_reset_progress = 1;
+	} else {
+		spin_unlock_irqrestore(&fnic->fnic_lock, flags);
+		FNIC_SCSI_DBG(KERN_DEBUG, fnic->lport->host,
+			"Another reset in progress skipping another host reset\n");
+		return SUCCESS;
+	}
+	spin_unlock_irqrestore(&fnic->fnic_lock, flags);
+
+
 
 	/*
 	 * If fnic_reset is successful, wait for fabric login to complete
