@@ -336,30 +336,6 @@ void dtrace_psinfo_free(struct task_struct *tsk)
 \*---------------------------------------------------------------------------*/
 dtrace_vtime_state_t	dtrace_vtime_active = 0;
 
-/*
- * Return a high resolution timer value that is guaranteed to always increase.
- */
-ktime_t dtrace_gethrtime(void)
-{
-	struct timespec ts;
-
-	getrawmonotonic(&ts);
-	return timespec_to_ktime(ts);
-}
-EXPORT_SYMBOL(dtrace_gethrtime);
-
-/*
- * Return the current wall-clock time, in nanoseconds since the epoch.
- */
-ktime_t dtrace_getwalltime(void)
-{
-	struct timespec ts;
-
-	getnstimeofday(&ts);
-	return timespec_to_ktime(ts);
-}
-EXPORT_SYMBOL(dtrace_getwalltime);
-
 void dtrace_vtime_enable(void)
 {
 	dtrace_vtime_state_t	old, new;
@@ -394,7 +370,7 @@ EXPORT_SYMBOL(dtrace_vtime_disable);
 
 void dtrace_vtime_switch(struct task_struct *prev, struct task_struct *next)
 {
-	ktime_t	now = dtrace_gethrtime();
+	ktime_t	now = ns_to_ktime(ktime_get_raw_fast_ns());
 
 	if (ktime_nz(prev->dtrace_start)) {
 		prev->dtrace_vtime = ktime_add(prev->dtrace_vtime,
@@ -405,6 +381,53 @@ void dtrace_vtime_switch(struct task_struct *prev, struct task_struct *next)
 
 	next->dtrace_start = now;
 }
+
+void dtrace_vtime_suspend(void)
+{
+	ktime_t	now = ns_to_ktime(ktime_get_raw_fast_ns());
+
+	current->dtrace_vtime = ktime_add(current->dtrace_vtime,
+				  ktime_sub(now, current->dtrace_start));
+	current->dtrace_start = now;
+}
+EXPORT_SYMBOL(dtrace_vtime_suspend);
+
+void dtrace_vtime_resume(void)
+{
+	current->dtrace_start = ns_to_ktime(ktime_get_raw_fast_ns());
+}
+EXPORT_SYMBOL(dtrace_vtime_resume);
+
+#define ktime_lt(t0, t1)	((t0).tv64 < (t1).tv64)
+#define ktime_gt(t0, t1)	((t0).tv64 > (t1).tv64)
+
+void dtrace_chill(ktime_t val, ktime_t interval, ktime_t int_max)
+{
+	ktime_t			now = ns_to_ktime(ktime_get_raw_fast_ns());
+	cpu_core_t		*cpu = this_cpu_core;
+	volatile uint16_t	*flags;
+
+	flags = (volatile uint16_t *)&cpu->cpuc_dtrace_flags;
+
+	if (ktime_gt(ktime_sub(now, cpu->cpu_dtrace_chillmark), interval)) {
+		cpu->cpu_dtrace_chillmark = now;
+		cpu->cpu_dtrace_chilled = ktime_set(0, 0);
+	}
+
+	if (ktime_gt(ktime_add(cpu->cpu_dtrace_chilled, val), int_max) ||
+	    ktime_lt(ktime_add(cpu->cpu_dtrace_chilled, val),
+		     cpu->cpu_dtrace_chilled)) {
+		*flags |= CPU_DTRACE_ILLOP;
+		return;
+	}
+
+	while (ktime_lt(ktime_sub(ns_to_ktime(ktime_get_raw_fast_ns()), now),
+			val))
+		continue;
+
+	cpu->cpu_dtrace_chilled = ktime_add(cpu->cpu_dtrace_chilled, val);
+}
+EXPORT_SYMBOL(dtrace_chill);
 
 void dtrace_stacktrace(stacktrace_state_t *st)
 {
