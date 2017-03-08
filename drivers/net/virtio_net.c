@@ -1842,6 +1842,10 @@ static int virtnet_probe(struct virtio_device *vdev)
 					      mtu));
 		if (virtnet_change_mtu(dev, mtu))
 			__virtio_clear_bit(vdev, VIRTIO_NET_F_MTU);
+
+		/* TODO: size buffers correctly in this case. */
+		if (dev->mtu > ETH_DATA_LEN)
+			vi->big_packets = true;
 	}
 
 	if (vi->any_header_sg)
