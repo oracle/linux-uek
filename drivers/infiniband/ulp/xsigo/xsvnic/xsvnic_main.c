@@ -81,10 +81,10 @@ module_param(multicast_list_disable, int, 0644);
 static int xsvnic_hbeat_enable = 2;
 module_param(xsvnic_hbeat_enable, int, 0644);
 
-int xsvnic_rxring_size = 256;
+int xsvnic_rxring_size = 2048;
 module_param(xsvnic_rxring_size, int, 0444);
 
-int xsvnic_txring_size = 256;
+int xsvnic_txring_size = 2048;
 module_param(xsvnic_txring_size, int, 0444);
 
 int xsvnic_highdma;
@@ -105,7 +105,7 @@ module_param(xsvnic_reclaim_count, int, 0644);
 int xsvnic_tx_queue_len = 1000;
 module_param(xsvnic_tx_queue_len, int, 0644);
 
-int xsvnic_tx_intr_mode;
+int xsvnic_tx_intr_mode = 1;
 module_param(xsvnic_tx_intr_mode, int, 0644);
 
 int xsvnic_max_coal_frames;
