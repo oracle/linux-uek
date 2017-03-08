@@ -28,7 +28,7 @@
  *
  * CDDL HEADER END
  *
- * Copyright 2009 -- 2013 Oracle, Inc.  All rights reserved.
+ * Copyright 2009-2017 Oracle, Inc.  All rights reserved.
  * Use is subject to license terms.
  */
 
@@ -51,6 +51,7 @@
 
 #include <asm/bitsperlong.h>
 #include <linux/dtrace_os.h>
+#include <linux/jiffies.h>
 
 typedef unsigned char	uchar_t;
 typedef unsigned int	uint_t;
@@ -126,6 +127,8 @@ typedef enum {
 #define ktime_ge(t0, t1)	(t0 >= t1)
 #define ktime_gt(t0, t1)	(t0 > t1)
 #define ktime_cp(t0, t1)	(t0 = t1)
+
+#define SECS_TO_JIFFIES(s)	(((s) * SEC_CONVERSION) >> SEC_JIFFIE_SC)
 
 /*
  * Translate between kernel config options and userspace-compatible definitions.
