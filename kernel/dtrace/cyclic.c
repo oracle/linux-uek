@@ -52,7 +52,8 @@ static void cyclic_fire(uintptr_t arg)
 		 * We know that the 'pend' counter for the cyclic is non-zero.
 		 * So, we can start with calling the handler at least once.
 		 */
-		(*cyc->cyc.hdlr.cyh_func)(cyc->cyc.hdlr.cyh_arg);
+		(*cyc->cyc.hdlr.cyh_func)(cyc->cyc.hdlr.cyh_arg,
+					  ns_to_ktime(ktime_get_raw_fast_ns()));
 
 again:
 		/*
@@ -107,7 +108,8 @@ static enum hrtimer_restart cyclic_expire(struct hrtimer *timr)
 	 * interrupt context.
 	 */
 	if (cyc->cyc.hdlr.cyh_level == CY_HIGH_LEVEL) {
-		(*cyc->cyc.hdlr.cyh_func)(cyc->cyc.hdlr.cyh_arg);
+		(*cyc->cyc.hdlr.cyh_func)(cyc->cyc.hdlr.cyh_arg,
+					  ns_to_ktime(ktime_get_raw_fast_ns()));
 		goto done;
 	}
 
@@ -181,6 +183,11 @@ cyclic_id_t cyclic_add(cyc_handler_t *hdlr, cyc_time_t *when)
 		hrtimer_start(&cyc->cyc.timr, cyc->cyc.when.cyt_when,
 			      HRTIMER_MODE_ABS_PINNED);
 
+	/*
+	 * Let the caller know when the cyclic was added.
+	 */
+	when->cyt_when = ns_to_ktime(ktime_get_raw_fast_ns());
+
 	return (cyclic_id_t)cyc;
 }
 EXPORT_SYMBOL(cyclic_add);
@@ -223,6 +230,11 @@ static void cyclic_omni_start(cyclic_t *omni, int cpu)
 {
 	cyc_time_t	when;
 	cyc_handler_t	hdlr;
+
+	/*
+	 * Let the caller know when the cyclic is being started.
+	 */
+	when.cyt_when = ns_to_ktime(ktime_get_raw_fast_ns());
 
 	omni->omni.hdlr.cyo_online(omni->omni.hdlr.cyo_arg, cpu, &hdlr, &when);
 	cyclic_add_pinned(cpu, omni, &hdlr, &when);

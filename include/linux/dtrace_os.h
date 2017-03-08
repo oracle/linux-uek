@@ -29,9 +29,6 @@ extern void dtrace_os_exit(void);
 extern void dtrace_enable(void);
 extern void dtrace_disable(void);
 
-extern ktime_t dtrace_gethrtime(void);
-extern ktime_t dtrace_getwalltime(void);
-
 typedef enum dtrace_vtime_state {
 	DTRACE_VTIME_INACTIVE = 0,
 	DTRACE_VTIME_ACTIVE
@@ -42,6 +39,9 @@ extern dtrace_vtime_state_t dtrace_vtime_active;
 extern void dtrace_vtime_enable(void);
 extern void dtrace_vtime_disable(void);
 extern void dtrace_vtime_switch(struct task_struct *, struct task_struct *);
+extern void dtrace_vtime_suspend(void);
+extern void dtrace_vtime_resume(void);
+extern void dtrace_chill(ktime_t, ktime_t, ktime_t);
 
 extern void dtrace_skip_instruction(struct pt_regs *);
 
