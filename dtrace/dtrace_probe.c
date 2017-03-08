@@ -393,49 +393,12 @@ static void dtrace_action_stop(void)
 
 static void dtrace_action_chill(dtrace_mstate_t *mstate, ktime_t val)
 {
-	ktime_t			now;
-	volatile uint16_t	*flags;
-	cpu_core_t		*cpu = this_cpu_core;
-
 	if (dtrace_destructive_disallow)
 		return;
 
-	flags = (volatile uint16_t *)&cpu->cpuc_dtrace_flags;
+	dtrace_chill(val, dtrace_chill_interval, dtrace_chill_max);
 
-	now = dtrace_gethrtime();
-
-	if (ktime_gt(ktime_sub(now, cpu->cpu_dtrace_chillmark),
-		     dtrace_chill_interval)) {
-		/*
-		 * We need to advance the mark to the current time.
-		 */
-		cpu->cpu_dtrace_chillmark = now;
-		cpu->cpu_dtrace_chilled = ktime_set(0, 0);
-	}
-
-	/*
-	 * Now check to see if the requested chill time would take us over
-	 * the maximum amount of time allowed in the chill interval.  (Or
-	 * worse, if the calculation itself induces overflow.)
-	 */
-	if (ktime_gt(ktime_add(cpu->cpu_dtrace_chilled, val),
-		     dtrace_chill_max) ||
-	    ktime_lt(ktime_add(cpu->cpu_dtrace_chilled, val),
-		     cpu->cpu_dtrace_chilled)) {
-		*flags |= CPU_DTRACE_ILLOP;
-		return;
-	}
-
-	while (ktime_lt(ktime_sub(dtrace_gethrtime(), now), val))
-		continue;
-
-	/*
-	 * Normally, we assure that the value of the variable "timestamp" does
-	 * not change within an ECB.  The presence of chill() represents an
-	 * exception to this rule, however.
-	 */
 	mstate->dtms_present &= ~DTRACE_MSTATE_TIMESTAMP;
-	cpu->cpu_dtrace_chilled = ktime_add(cpu->cpu_dtrace_chilled, val);
 }
 
 static void dtrace_action_ustack(dtrace_mstate_t *mstate,
@@ -559,9 +522,8 @@ void dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 	dtrace_action_t		*act;
 	intptr_t		offs;
 	size_t			size;
-	int			vtime, onintr;
+	int			onintr;
 	volatile uint16_t	*flags;
-	ktime_t			now;
 	int			pflag = 0;
 
 #ifdef FIXME
@@ -629,13 +591,8 @@ void dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 	*flags |= CPU_DTRACE_PROBE_CTX;
 	this_cpu_core->cpu_dtrace_caller = id;
 
-	now = dtrace_gethrtime();
-	vtime = (dtrace_vtime_references > 0);
-
-	if (vtime && ktime_nz(current->dtrace_start))
-		current->dtrace_vtime =
-			ktime_add(current->dtrace_vtime,
-				  ktime_sub(now, current->dtrace_start));
+	if (id != dtrace_probeid_error)
+		dtrace_vtime_suspend();
 
 	mstate.dtms_difo = NULL;
 	mstate.dtms_probe = probe;
@@ -753,7 +710,7 @@ void dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 			}
 		}
 
-		if (ktime_gt(ktime_sub(now, state->dts_alive),
+		if (ktime_gt(ktime_sub(current->dtrace_start, state->dts_alive),
 			     dtrace_deadman_timeout)) {
 			/*
 			 * We seem to be dead.  Unless we (a) have kernel
@@ -1241,15 +1198,6 @@ void dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 				continue;
 			}
 
-			if (vtime)
-				/*
-				 * Before recursing on dtrace_probe(), we
-				 * need to explicitly clear out our start
-				 * time to prevent it from being accumulated
-				 * into t_dtrace_vtime.
-				 */
-				current->dtrace_start = ktime_set(0, 0);
-
 			/*
 			 * Iterate over the actions to figure out which action
 			 * we were processing when we experienced the error.
@@ -1283,8 +1231,7 @@ void dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 			     id, ecb->dte_epid);
 	}
 
-	if (vtime)
-		current->dtrace_start = dtrace_gethrtime();
+	dtrace_vtime_resume();
 
 	/*
 	 * Only clear the flag if this is not the ERROR probe.  We know that

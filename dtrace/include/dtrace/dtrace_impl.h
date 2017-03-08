@@ -275,9 +275,9 @@ struct dtrace_state {
 	uint32_t dts_stkstroverflows;
 	uint32_t dts_dblerrors;
 	uint32_t dts_reserve;
-	ktime_t dts_laststatus;
 	cyclic_id_t dts_cleaner;
 	cyclic_id_t dts_deadman;
+	uint64_t dts_laststatus;
 	ktime_t dts_alive;
 	char dts_speculates;
 	char dts_destructive;
@@ -870,8 +870,6 @@ extern void dtrace_sync(void);
 extern void dtrace_toxic_ranges(void (*)(uintptr_t, uintptr_t));
 extern void dtrace_vpanic(const char *, va_list);
 extern int dtrace_getipl(void);
-
-extern ktime_t dtrace_gethrestime(void);
 
 extern dtrace_icookie_t dtrace_interrupt_disable(void);
 extern void dtrace_interrupt_enable(dtrace_icookie_t);
