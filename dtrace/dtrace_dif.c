@@ -30,6 +30,7 @@
 #include <linux/hardirq.h>
 #include <linux/in6.h>
 #include <linux/inet.h>
+#include <linux/jiffies.h>
 #include <linux/kdev_t.h>
 #include <linux/slab.h>
 #include <linux/socket.h>
@@ -2079,8 +2080,9 @@ static uint64_t dtrace_dif_variable(dtrace_mstate_t *mstate,
 		return (uint64_t)(uintptr_t)current;
 
 	case DIF_VAR_TIMESTAMP:
+	case DIF_VAR_WALLTIMESTAMP:
 		if (!(mstate->dtms_present & DTRACE_MSTATE_TIMESTAMP)) {
-			mstate->dtms_timestamp = dtrace_gethrtime();
+			mstate->dtms_timestamp = current->dtrace_start;
 			mstate->dtms_present |= DTRACE_MSTATE_TIMESTAMP;
 		}
 
@@ -2090,9 +2092,6 @@ static uint64_t dtrace_dif_variable(dtrace_mstate_t *mstate,
 		ASSERT(dtrace_vtime_references != 0);
 
 		return ktime_to_ns(current->dtrace_vtime);
-
-	case DIF_VAR_WALLTIMESTAMP:
-		return ktime_to_ns(dtrace_getwalltime());
 
 	case DIF_VAR_IPL:
 		if (!dtrace_priv_kernel(state))
@@ -2382,7 +2381,7 @@ static void dtrace_dif_subr(uint_t subr, uint_t rd, uint64_t *regs,
 
 	switch (subr) {
 	case DIF_SUBR_RAND:
-		regs[rd] = ktime_to_ns(dtrace_gethrtime()) * 2416 + 374441;
+		regs[rd] = jiffies * 2416 + 374441;
 		regs[rd] = do_div(regs[rd], 1771875);
 		break;
 

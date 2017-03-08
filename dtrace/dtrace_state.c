@@ -54,11 +54,11 @@ dtrace_optval_t		dtrace_jstackstrsize_default = 512;
 #if 1
 ktime_t			dtrace_deadman_interval = KTIME_INIT(10, 0);
 ktime_t			dtrace_deadman_timeout = KTIME_INIT(120, 0);
-ktime_t			dtrace_deadman_user = KTIME_INIT(120, 0);
+uint64_t		dtrace_deadman_user = SECS_TO_JIFFIES(120);
 #else
 ktime_t			dtrace_deadman_interval = KTIME_INIT(1, 0);
 ktime_t			dtrace_deadman_timeout = KTIME_INIT(10, 0);
-ktime_t			dtrace_deadman_user = KTIME_INIT(30, 0);
+uint64_t		dtrace_deadman_user = SECS_TO_JIFFIES(30);
 #endif
 
 dtrace_id_t		dtrace_probeid_begin;
@@ -289,7 +289,7 @@ void dtrace_vstate_fini(dtrace_vstate_t *vstate)
 		vfree(vstate->dtvs_locals);
 }
 
-static void dtrace_state_clean(dtrace_state_t *state)
+static void dtrace_state_clean(dtrace_state_t *state, ktime_t when)
 {
 	if (state->dts_activity != DTRACE_ACTIVITY_ACTIVE &&
 	    state->dts_activity != DTRACE_ACTIVITY_DRAINING)
@@ -299,10 +299,8 @@ static void dtrace_state_clean(dtrace_state_t *state)
 	dtrace_speculation_clean(state);
 }
 
-static void dtrace_state_deadman(dtrace_state_t *state)
+static void dtrace_state_deadman(dtrace_state_t *state, ktime_t when)
 {
-	ktime_t	now;
-
 #ifdef FIXME
 	/*
 	 * This may not be needed for Linux - we'll see.
@@ -310,11 +308,8 @@ static void dtrace_state_deadman(dtrace_state_t *state)
 	dtrace_sync();
 #endif
 
-	now = dtrace_gethrtime();
-
 	if (state != dtrace_anon.dta_state &&
-	    ktime_ge(ktime_sub(now, state->dts_laststatus),
-			       dtrace_deadman_user))
+	    time_after_eq(jiffies, state->dts_laststatus + dtrace_deadman_user))
 		return;
 
 	/*
@@ -328,7 +323,7 @@ static void dtrace_state_deadman(dtrace_state_t *state)
 	 */
 	state->dts_alive = ktime_set(KTIME_SEC_MAX, 0);
 	dtrace_membar_producer();
-	state->dts_alive = now;
+	state->dts_alive = when;
 }
 
 dtrace_state_t *dtrace_state_create(struct file *file)
@@ -801,8 +796,9 @@ int dtrace_state_go(dtrace_state_t *state, processorid_t *cpu)
 	when.cyt_when = ktime_set(0, 0);
 	when.cyt_interval = dtrace_deadman_interval;
 
-	state->dts_alive = state->dts_laststatus = dtrace_gethrtime();
 	state->dts_deadman = cyclic_add(&hdlr, &when);
+	state->dts_alive = when.cyt_when;
+	state->dts_laststatus = jiffies;
 
 	state->dts_activity = DTRACE_ACTIVITY_WARMUP;
 

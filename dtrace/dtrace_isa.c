@@ -121,11 +121,6 @@ void dtrace_copyinstr(uintptr_t uaddr, uintptr_t kaddr, size_t size,
 	dtrace_copyinstr_arch(uaddr, kaddr, size, flags);
 }
 
-ktime_t dtrace_gethrestime(void)
-{
-	return dtrace_gethrtime();
-}
-
 void dtrace_getpcstack(uint64_t *pcstack, int pcstack_limit, int aframes,
 		       uint32_t *intrpc)
 {
