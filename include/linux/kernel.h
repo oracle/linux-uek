@@ -254,6 +254,7 @@ extern long (*panic_blink)(int state);
 __printf(1, 2)
 void panic(const char *fmt, ...)
 	__noreturn __cold;
+void nmi_panic(struct pt_regs *regs, const char *msg);
 extern void oops_enter(void);
 extern void oops_exit(void);
 void print_oops_end_marker(void);
@@ -445,18 +446,6 @@ extern int sysctl_panic_on_stackoverflow;
  */
 extern atomic_t panic_cpu;
 #define PANIC_CPU_INVALID	-1
-
-/*
- * A variant of panic() called from NMI context. We return if we've already
- * panicked on this CPU.
- */
-#define nmi_panic(fmt, ...)						\
-do {									\
-	int cpu = raw_smp_processor_id();				\
-									\
-	if (atomic_cmpxchg(&panic_cpu, PANIC_CPU_INVALID, cpu) != cpu)	\
-		panic(fmt, ##__VA_ARGS__);				\
-} while (0)
 
 /*
  * Only to be used by arch init code. If the user over-wrote the default
