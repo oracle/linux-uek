@@ -112,10 +112,15 @@ void dtrace_fbt_init(fbt_add_probe_fn fbt_add_probe)
 			continue;
 
 		/*
-		 * No FBT tracing for DTrace functions.  Also weed out symbols
-		 * that are not relevant here.
+		 * No FBT tracing for DTrace functions, and functions that are
+		 * crucial to probe processing.
+		 * Also weed out symbols that are not relevant here.
 		 */
 		if (strncmp(sym.name, "dtrace_", 7) == 0)
+			continue;
+		if (strncmp(sym.name, "insn_", 5) == 0)
+			continue;
+		if (strncmp(sym.name, "inat_", 5) == 0)
 			continue;
 		if (strncmp(sym.name, "_GLOBAL_", 8) == 0)
 			continue;
