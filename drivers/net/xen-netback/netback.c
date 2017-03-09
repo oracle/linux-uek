@@ -275,6 +275,28 @@ static void xen_netbk_kick_thread(struct xen_netbk *netbk)
 	wake_up(&netbk->wq);
 }
 
+static bool xenvif_rx_ring_slots_available(struct xenvif *vif, int needed)
+{
+	RING_IDX prod, cons;
+
+	do {
+		prod = vif->rx.sring->req_prod;
+		cons = vif->rx.req_cons;
+
+		if (prod - cons >= needed)
+			return true;
+
+		vif->rx.sring->req_event = prod + 1;
+
+		/* Make sure event is visible before we check prod
+		 * again.
+		 */
+		mb();
+	} while (vif->rx.sring->req_prod != prod);
+
+	return false;
+}
+
 static int max_required_rx_slots(struct xenvif *vif)
 {
 	int max = DIV_ROUND_UP(vif->dev->mtu, PAGE_SIZE);
@@ -718,8 +740,6 @@ static void xen_netbk_rx_action(struct xen_netbk *netbk)
 	struct sk_buff *skb;
 	LIST_HEAD(notify);
 	int ret;
-	int nr_frags;
-	int count;
 	unsigned long offset;
 	struct skb_cb_overlay *sco;
 
@@ -730,23 +750,37 @@ static void xen_netbk_rx_action(struct xen_netbk *netbk)
 
 	skb_queue_head_init(&rxq);
 
-	count = 0;
-
 	while ((skb = skb_dequeue(&netbk->rx_queue)) != NULL) {
 		vif = netdev_priv(skb->dev);
-		nr_frags = skb_shinfo(skb)->nr_frags;
+		int max_slots_needed;
+		int i;
+
+		/* We need a cheap worse case estimate for the number of
+		 * slots we'll use.
+		 */
+
+		max_slots_needed = DIV_ROUND_UP(offset_in_page(skb->data) +
+						skb_headlen(skb),
+						PAGE_SIZE);
+		for (i = 0; i < skb_shinfo(skb)->nr_frags; i++) {
+			unsigned int size;
+			size = skb_frag_size(&skb_shinfo(skb)->frags[i]);
+			max_slots_needed += DIV_ROUND_UP(size, PAGE_SIZE);
+		}
+		if (skb_shinfo(skb)->gso_type & SKB_GSO_TCPV4 ||
+		    skb_shinfo(skb)->gso_type & SKB_GSO_TCPV6)
+			max_slots_needed++;
+
+		/* If the skb may not fit then bail out now */
+		if (!xenvif_rx_ring_slots_available(vif, max_slots_needed)) {
+			skb_queue_head(&netbk->rx_queue, skb);
+			break;
+		}
 
 		sco = (struct skb_cb_overlay *)skb->cb;
 		sco->meta_slots_used = netbk_gop_skb(skb, &npo);
 
-		count += nr_frags + 1;
-
 		__skb_queue_tail(&rxq, skb);
-
-		/* Filled the batch queue? */
-		/* XXX FIXME: RX path dependent on MAX_SKB_FRAGS */
-		if (count + MAX_SKB_FRAGS >= XEN_NETIF_RX_RING_SIZE)
-			break;
 	}
 
 	BUG_ON(npo.meta_prod > ARRAY_SIZE(netbk->meta));
