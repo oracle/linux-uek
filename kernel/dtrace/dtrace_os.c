@@ -382,11 +382,39 @@ void dtrace_psinfo_free(struct task_struct *tsk)
 \*---------------------------------------------------------------------------*/
 dtrace_vtime_state_t	dtrace_vtime_active = 0;
 
+/*
+ * Until Linux kernel gains lock-free realtime clock access we are maintaining
+ * our own version for lock-free access from within a probe context.
+ */
+static struct dtrace_time_fast {
+	seqcount_t	dtwf_seq;
+	ktime_t		dtwf_offsreal[2];
+} dtrace_time ____cacheline_aligned;
+
+/*
+ * Callback from timekeeper code that allows dtrace to update its own time data.
+ */
+void dtrace_update_time(struct timekeeper *tk)
+{
+	raw_write_seqcount_latch(&dtrace_time.dtwf_seq);
+	dtrace_time.dtwf_offsreal[0] = tk->offs_real;
+	raw_write_seqcount_latch(&dtrace_time.dtwf_seq);
+	dtrace_time.dtwf_offsreal[1] = tk->offs_real;
+}
+
+/* Lock free walltime */
 ktime_t dtrace_get_walltime(void)
 {
-	struct timespec t = __current_kernel_time();
+	u64 nsec = ktime_get_mono_fast_ns();
+	unsigned int seq;
+	ktime_t *offset;
 
-	return ns_to_ktime(timespec64_to_ns(&t));
+	do {
+		seq = raw_read_seqcount(&dtrace_time.dtwf_seq);
+		offset = dtrace_time.dtwf_offsreal + (seq & 0x1);
+	} while (read_seqcount_retry(&dtrace_time.dtwf_seq, seq));
+
+	return ktime_add_ns(*offset, nsec);
 }
 EXPORT_SYMBOL(dtrace_get_walltime);
 

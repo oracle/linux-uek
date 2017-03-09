@@ -14,6 +14,10 @@ BL_DENTRY(void *, kprobe_exceptions_notify)
  * Functions used to update vtime in probe context.
  */
 BL_SENTRY(typeof(ktime_get_raw_fast_ns), ktime_get_raw_fast_ns)
+BL_DENTRY(void *, raw_read_seqcount)
+BL_DENTRY(void *, read_seqcount_retry)
+BL_DENTRY(void *, __read_seqcount_retry)
+
 /* xen_clocksource */
 BL_DENTRY(void *, xen_clocksource_get_cycles)
 BL_DENTRY(void *, xen_clocksource_read)
