@@ -21,8 +21,7 @@
  *
  * CDDL HEADER END
  *
- * Copyright 2010-2017 Oracle, Inc.  All rights reserved.
- * Use is subject to license terms.
+ * Copyright (c) 2010, 2017, Oracle and/or its affiliates. All rights reserved.
  */
 
 #include <linux/dtrace_cpu.h>
@@ -2080,13 +2079,15 @@ static uint64_t dtrace_dif_variable(dtrace_mstate_t *mstate,
 		return (uint64_t)(uintptr_t)current;
 
 	case DIF_VAR_TIMESTAMP:
-	case DIF_VAR_WALLTIMESTAMP:
 		if (!(mstate->dtms_present & DTRACE_MSTATE_TIMESTAMP)) {
 			mstate->dtms_timestamp = current->dtrace_start;
 			mstate->dtms_present |= DTRACE_MSTATE_TIMESTAMP;
 		}
 
 		return ktime_to_ns(mstate->dtms_timestamp);
+
+	case DIF_VAR_WALLTIMESTAMP:
+		return ktime_to_ns(dtrace_get_walltime());
 
 	case DIF_VAR_VTIMESTAMP:
 		ASSERT(dtrace_vtime_references != 0);
