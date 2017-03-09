@@ -72,6 +72,8 @@ struct sun4v_1insn_patch_entry {
 };
 extern struct sun4v_1insn_patch_entry __sun4v_1insn_patch,
 	__sun4v_1insn_patch_end;
+extern struct sun4v_1insn_patch_entry __sun_m7_1insn_patch,
+	__sun_m7_1insn_patch_end;
 
 struct sun4v_2insn_patch_entry {
 	unsigned int	addr;

@@ -12,6 +12,7 @@
 #include <asm/signal.h>
 #include <asm/cacheflush.h>
 #include <asm/uaccess.h>
+#include <asm/stacktrace.h>
 
 /* We do not have hardware single-stepping on sparc64.
  * So we implement software single-stepping with breakpoint
@@ -51,6 +52,10 @@ int __kprobes arch_prepare_kprobe(struct kprobe *p)
 	if ((unsigned long) p->addr & 0x3UL)
 		return -EILSEQ;
 
+	p->ainsn.insn = get_insn_slot();
+	if (!p->ainsn.insn)
+		return -ENOMEM;
+
 	p->ainsn.insn[0] = *p->addr;
 	flushi(&p->ainsn.insn[0]);
 
@@ -59,6 +64,14 @@ int __kprobes arch_prepare_kprobe(struct kprobe *p)
 
 	p->opcode = *p->addr;
 	return 0;
+}
+
+void __kprobes arch_remove_kprobe(struct kprobe *p)
+{
+	if (p->ainsn.insn) {
+		free_insn_slot(p->ainsn.insn, 0);
+		p->ainsn.insn = NULL;
+	}
 }
 
 void __kprobes arch_arm_kprobe(struct kprobe *p)
@@ -601,3 +614,29 @@ int __kprobes arch_trampoline_kprobe(struct kprobe *p)
 
 	return 0;
 }
+
+/**
+ * regs_get_kernel_stack_nth() - get Nth entry of the stack
+ * @regs:       pt_regs which contains kernel stack pointer.
+ * @n:          stack entry number.
+ *
+ * regs_get_kernel_stack_nth() returns @n th entry of the kernel stack which
+ * is specified by @regs. If the @n th entry is NOT in the kernel stack,
+ * this returns 0.
+ */
+unsigned long regs_get_kernel_stack_nth(struct pt_regs *regs, unsigned int n)
+{
+	unsigned long ksp, nth_entry_addr;
+
+	stack_trace_flush();
+
+	ksp = kernel_stack_pointer(regs);
+	ksp += STACK_BIAS;
+	nth_entry_addr = ksp + (n * sizeof(unsigned long));
+
+	if (object_is_on_stack((void *)nth_entry_addr))
+		return *(unsigned long *)nth_entry_addr;
+	else
+		return 0;
+}
+

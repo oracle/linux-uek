@@ -6,13 +6,12 @@
 
 typedef u32 kprobe_opcode_t;
 
+#define __ARCH_WANT_KPROBES_INSN_SLOT
 #define BREAKPOINT_INSTRUCTION   0x91d02070 /* ta 0x70 */
 #define BREAKPOINT_INSTRUCTION_2 0x91d02071 /* ta 0x71 */
 #define MAX_INSN_SIZE 2
 
 #define kretprobe_blacklist_size 0
-
-#define arch_remove_kprobe(p)	do {} while (0)
 
 #define flush_insn_slot(p)		\
 do { 	flushi(&(p)->ainsn.insn[0]);	\
@@ -21,10 +20,13 @@ do { 	flushi(&(p)->ainsn.insn[0]);	\
 
 void kretprobe_trampoline(void);
 
+struct kprobe;
+void __kprobes arch_remove_kprobe(struct kprobe *p);
+
 /* Architecture specific copy of original instruction*/
 struct arch_specific_insn {
 	/* copy of the original instruction */
-	kprobe_opcode_t insn[MAX_INSN_SIZE];
+	kprobe_opcode_t *insn;
 };
 
 struct prev_kprobe {

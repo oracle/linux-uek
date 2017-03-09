@@ -120,7 +120,7 @@ static void set_related_affinity(struct pci_pbm_info *pbm, unsigned int msiqid,
 			unsigned int irq;
 			struct irq_desc *desc;
 
-			irq = pbm->msi_irq_table[msi - pbm->msiq_first];
+			irq = pbm->msi_irq_table[msi];
 			if (irq == oirq)
 				continue;
 
@@ -143,7 +143,7 @@ static int irq_set_msi_affinity(struct irq_data *data,
 	struct pci_dev *pdev = msi_desc->dev;
 	struct pci_pbm_info *pbm = pdev->dev.archdata.host_controller;
 
-	msiqid = pbm->msi_msiqid_table[msi_desc->msg.data - pbm->msiq_first];
+	msiqid = pbm->msi_msiqid_table[msi_desc->msg.data - pbm->msi_first];
 	msiq_irq = pbm->msiqid_irq_table[msiqid];
 
 	mdesc = irq_to_desc(msiq_irq);
@@ -170,7 +170,7 @@ static void irq_print_msi_chip(struct irq_data *data, struct seq_file *p)
 	struct pci_dev *pdev = msi_desc->dev;
 	struct pci_pbm_info *pbm = pdev->dev.archdata.host_controller;
 
-	msiqid = pbm->msi_msiqid_table[msi_desc->msg.data - pbm->msiq_first];
+	msiqid = pbm->msi_msiqid_table[msi_desc->msg.data - pbm->msi_first];
 	msiq_irq = pbm->msiqid_irq_table[msiqid];
 
 	seq_printf(p, "MSIQ:%d", msiq_irq);
@@ -267,6 +267,7 @@ static void sparc64_teardown_msi_irq(unsigned int irq,
 
 	msi_num = pbm->msi_first + i;
 	pbm->msi_irq_table[i] = ~0U;
+	pbm->msi_msiqid_table[i] = ~0U;
 
 	err = ops->msi_teardown(pbm, msi_num);
 	if (err) {

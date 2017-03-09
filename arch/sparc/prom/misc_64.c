@@ -54,7 +54,7 @@ void prom_reboot(const char *bcommand)
 
 #ifdef CONFIG_SUN_LDOMS
 	if (ldom_domaining_enabled)
-		ldom_reboot(bcommand);
+		ldom_reboot(bcommand, true);
 #endif
 	args[0] = (unsigned long) "boot";
 	args[1] = 1;
@@ -116,8 +116,16 @@ void notrace prom_halt(void)
 	unsigned long args[3];
 
 #ifdef CONFIG_SUN_LDOMS
+	/*
+	* By storing a no-op command
+	* in the 'reboot-command' variable we cause OBP
+	* to ignore the setting of 'auto-boot?' after
+	* it completes the reset.  This causes the system
+	* to stop at the ok prompt.
+	*/
+
 	if (ldom_domaining_enabled)
-		ldom_power_off();
+		ldom_reboot("noop", false);
 #endif
 again:
 	args[0] = (unsigned long) "exit";

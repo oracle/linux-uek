@@ -5,7 +5,7 @@
 
 extern int ldom_domaining_enabled;
 void ldom_set_var(const char *var, const char *value);
-void ldom_reboot(const char *boot_command);
+void ldom_reboot(const char *boot_command, bool prepend_boot);
 void ldom_power_off(void);
 
 /* The event handler will be evoked when link state changes
@@ -78,6 +78,7 @@ int ldc_disconnect(struct ldc_channel *lp);
 
 int ldc_state(struct ldc_channel *lp);
 void ldc_set_state(struct ldc_channel *lp, u8 state);
+int ldc_chan_state(struct ldc_channel *lp);
 int ldc_mode(struct ldc_channel *lp);
 void ldc_print(struct ldc_channel *lp);
 int ldc_rx_reset(struct ldc_channel *lp);

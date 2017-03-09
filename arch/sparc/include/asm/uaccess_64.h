@@ -10,8 +10,10 @@
 #include <linux/compiler.h>
 #include <linux/string.h>
 #include <linux/thread_info.h>
+#include <linux/sched.h>
 #include <asm/asi.h>
 #include <asm/spitfire.h>
+#include <asm/adi_64.h>
 #include <asm-generic/uaccess-unaligned.h>
 #endif
 
@@ -71,6 +73,28 @@ static inline bool __chk_range_not_ok(unsigned long addr, unsigned long size, un
 	__chk_range_not_ok((unsigned long __force)(addr), size, limit); \
 })
 
+static inline void enable_adi(void)
+{
+	/*
+	 * If userspace is using ADI, it could potentially pass a pointer
+	 * with version tag embedded in it. To maintain the ADI security,
+	 * we must enable PSTATE.mcde. Userspace would have already set
+	 * TTE.mcd in an earlier call to kernel and set the version tag
+	 * for the address being dereferenced. Setting PSTATE.mcde would
+	 * ensure any access to userspace data through a system call
+	 * honors ADI and does not allow a rogue app to bypass ADI by
+	 * using system calls. Also to ensure the right exception,
+	 * precise or disrupting, is delivered to the userspace, update
+	 * PMCDPER to match MCDPER
+	 */
+	__asm__ __volatile__(
+		".word 0x83438000\n\t"	/* rd %mcdper, %g1 */
+		".word 0xaf900001\n\t"	/* wrpr  %g0, %g1, %pmcdper */
+		:
+		: "i" (PSTATE_MCDE)
+		: "g1");
+}
+
 static inline int __access_ok(const void __user * addr, unsigned long size)
 {
 	return 1;
@@ -129,7 +153,9 @@ struct __large_struct { unsigned long buf[100]; };
 #define __m(x) ((struct __large_struct *)(x))
 
 #define __put_user_nocheck(data, addr, size) ({			\
-	register int __pu_ret;					\
+	register int __pu_ret, __adi_status;				\
+	if ((__adi_status = (current->mm && current->mm->context.adi)))	\
+		enable_adi();					\
 	switch (size) {						\
 	case 1: __put_user_asm(data, b, addr, __pu_ret); break;	\
 	case 2: __put_user_asm(data, h, addr, __pu_ret); break;	\
@@ -137,6 +163,9 @@ struct __large_struct { unsigned long buf[100]; };
 	case 8: __put_user_asm(data, x, addr, __pu_ret); break;	\
 	default: __pu_ret = __put_user_bad(); break;		\
 	}							\
+	if (__adi_status)					\
+		/* wrpr  %g0, %pmcdper */			\
+		__asm__ __volatile__(".word 0xaf900000"::);	\
 	__pu_ret;						\
 })
 
@@ -163,8 +192,10 @@ __asm__ __volatile__(							\
 int __put_user_bad(void);
 
 #define __get_user_nocheck(data, addr, size, type) ({			     \
-	register int __gu_ret;						     \
+	register int __gu_ret, __adi_status;				     \
 	register unsigned long __gu_val;				     \
+	if ((__adi_status = (current->mm && current->mm->context.adi)))	     \
+		enable_adi();						     \
 	switch (size) {							     \
 		case 1: __get_user_asm(__gu_val, ub, addr, __gu_ret); break; \
 		case 2: __get_user_asm(__gu_val, uh, addr, __gu_ret); break; \
@@ -176,6 +207,9 @@ int __put_user_bad(void);
 			break;						     \
 	} 								     \
 	data = (__force type) __gu_val;					     \
+	if (__adi_status)						     \
+		/* wrpr  %g0, %pmcdper */				     \
+		__asm__ __volatile__(".word 0xaf900000"::);		     \
 	 __gu_ret;							     \
 })
 
@@ -242,6 +276,33 @@ else									\
 
 int __get_user_bad(void);
 
+/* When kernel access userspace memory, it must honor ADI setting
+ * to ensure ADI protection continues across system calls. Kernel
+ * must set PSTATE.mcde bit. It must also update PMCDPER register
+ * to reflect MCDPER register so the kind of exception generated
+ * in case of ADI version tag mismatch, is what the userspace is
+ * expecting. PMCDPER exists only on the processors that support
+ * ADI and must be accessed conditionally to avoid illegal
+ * instruction trap.
+ */
+#define user_access_begin()						\
+	do {								\
+		if (current->mm && current->mm->context.adi)		\
+			enable_adi();					\
+	} while (0)
+
+#define user_access_end()						\
+	do {								\
+		if (adi_capable())					\
+			/* wrpr  %g0, %pmcdper */			\
+			__asm__ __volatile__(".word 0xaf900000"::);	\
+	} while (0)
+
+#define unsafe_get_user(x, ptr, err)	\
+		do { if (unlikely(__get_user(x, ptr))) goto err; } while (0)
+#define unsafe_put_user(x, ptr, err)	\
+		do { if (unlikely(__put_user(x, ptr))) goto err; } while (0)
+
 unsigned long __must_check ___copy_from_user(void *to,
 					     const void __user *from,
 					     unsigned long size);
@@ -250,10 +311,17 @@ unsigned long copy_from_user_fixup(void *to, const void __user *from,
 static inline unsigned long __must_check
 copy_from_user(void *to, const void __user *from, unsigned long size)
 {
-	unsigned long ret = ___copy_from_user(to, from, size);
+	unsigned long ret, adi_status;
 
+	if ((adi_status = (current->mm && current->mm->context.adi)))
+		enable_adi();
+
+	ret = ___copy_from_user(to, from, size);
 	if (unlikely(ret))
 		ret = copy_from_user_fixup(to, from, size);
+	if (adi_status)
+		/* wrpr  %g0, %pmcdper */
+		__asm__ __volatile__(".word 0xaf900000"::);
 
 	return ret;
 }
@@ -267,10 +335,18 @@ unsigned long copy_to_user_fixup(void __user *to, const void *from,
 static inline unsigned long __must_check
 copy_to_user(void __user *to, const void *from, unsigned long size)
 {
-	unsigned long ret = ___copy_to_user(to, from, size);
+	unsigned long ret, adi_status;
 
+	if ((adi_status = (current->mm && current->mm->context.adi)))
+		enable_adi();
+
+	ret = ___copy_to_user(to, from, size);
 	if (unlikely(ret))
 		ret = copy_to_user_fixup(to, from, size);
+	if (adi_status)
+		/* wrpr  %g0, %pmcdper */
+		__asm__ __volatile__(".word 0xaf900000"::);
+
 	return ret;
 }
 #define __copy_to_user copy_to_user
@@ -283,17 +359,40 @@ unsigned long copy_in_user_fixup(void __user *to, void __user *from,
 static inline unsigned long __must_check
 copy_in_user(void __user *to, void __user *from, unsigned long size)
 {
-	unsigned long ret = ___copy_in_user(to, from, size);
+	unsigned long ret, adi_status;
 
+	if ((adi_status = (current->mm && current->mm->context.adi)))
+		enable_adi();
+
+	ret = ___copy_in_user(to, from, size);
 	if (unlikely(ret))
 		ret = copy_in_user_fixup(to, from, size);
+	if (adi_status)
+		/* wrpr  %g0, %pmcdper */
+		__asm__ __volatile__(".word 0xaf900000"::);
+
 	return ret;
 }
 #define __copy_in_user copy_in_user
 
 unsigned long __must_check __clear_user(void __user *, unsigned long);
 
-#define clear_user __clear_user
+static inline unsigned long __must_check
+___clear_user(void __user *uaddr, unsigned long size)
+{
+	unsigned long ret, adi_status;
+
+	if ((adi_status = (current->mm && current->mm->context.adi)))
+		enable_adi();
+
+	ret = __clear_user(uaddr, size);
+	if (adi_status)
+		/* wrpr  %g0, %pmcdper */
+		__asm__ __volatile__(".word 0xaf900000"::);
+
+	return ret;
+}
+#define clear_user ___clear_user
 
 __must_check long strlen_user(const char __user *str);
 __must_check long strnlen_user(const char __user *str, long n);

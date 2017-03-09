@@ -296,6 +296,14 @@ pte_t arch_make_huge_pte(pte_t entry, struct vm_area_struct *vma,
 {
 	unsigned int hugepage_shift = huge_page_shift(hstate_vma(vma));
 
+#ifdef CONFIG_SPARC64
+	/* If this vma has ADI enabled on it, turn on TTE.mcd
+	 */
+	if (vma->vm_flags & VM_SPARC_ADI)
+		entry = pte_mkmcd(entry);
+	else
+		entry = pte_mknotmcd(entry);
+#endif
 	return hugepage_shift_to_tte(entry, hugepage_shift);
 }
 

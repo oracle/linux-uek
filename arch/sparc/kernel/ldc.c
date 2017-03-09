@@ -780,6 +780,9 @@ void ldc_enable_hv_intr(struct ldc_channel *lp)
 {
 	unsigned long flags;
 
+	if (!lp)
+		return;
+
 	spin_lock_irqsave(&lp->lock, flags);
 
 	ldcdbg(RX, "ldc_enable_hv_intr: dh=%llu, ino=%llu\n",
@@ -796,6 +799,9 @@ EXPORT_SYMBOL(ldc_enable_hv_intr);
 void ldc_disable_hv_intr(struct ldc_channel *lp)
 {
 	unsigned long flags;
+
+	if (!lp)
+		return;
 
 	spin_lock_irqsave(&lp->lock, flags);
 
@@ -1529,6 +1535,12 @@ void ldc_set_state(struct ldc_channel *lp, u8 state)
 	lp->state = state;
 }
 EXPORT_SYMBOL(ldc_set_state);
+
+int ldc_chan_state(struct ldc_channel *lp)
+{
+	return lp->chan_state;
+}
+EXPORT_SYMBOL(ldc_chan_state);
 
 int ldc_mode(struct ldc_channel *lp)
 {

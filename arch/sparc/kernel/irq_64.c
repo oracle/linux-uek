@@ -1156,7 +1156,7 @@ static int alloc_one_queue(unsigned long *pa_ptr, unsigned long qmask)
 	unsigned long order = get_order(size);
 	unsigned long p;
 
-	p = __get_free_pages(GFP_KERNEL | __GFP_COMP, order);
+	p = __get_free_pages(GFP_KERNEL | __GFP_COMP | __GFP_ZERO, order);
 	if (!p) {
 		pr_err("SUN4V: Error, cannot allocate queue.\n");
 		return -ENOMEM;

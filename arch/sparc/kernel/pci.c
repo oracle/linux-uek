@@ -685,6 +685,13 @@ struct pci_bus *pci_scan_one_pbm(struct pci_pbm_info *pbm,
 		return NULL;
 	}
 
+	/* adding the device later will overwrite this value with the parent and
+	 * then trash the entire subtree.
+	 */
+	set_dev_node(&bus->dev, pbm->numa_node);
+	if (bus->dev.parent)
+		set_dev_node(bus->dev.parent, pbm->numa_node);
+
 	pci_of_scan_bus(pbm, node, bus);
 	pci_bus_register_of_sysfs(bus);
 

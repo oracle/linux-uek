@@ -254,6 +254,22 @@ static inline int pmd_same(pmd_t pmd_a, pmd_t pmd_b)
 #endif /* CONFIG_TRANSPARENT_HUGEPAGE */
 #endif
 
+#ifndef __HAVE_ARCH_DO_SWAP_PAGE
+static inline void arch_do_swap_page(struct mm_struct *mm, unsigned long addr,
+				     pte_t pte, pte_t orig_pte)
+{
+
+}
+#endif
+
+#ifndef __HAVE_ARCH_UNMAP_ONE
+static inline void arch_unmap_one(struct mm_struct *mm, unsigned long addr,
+				  pte_t pte, pte_t orig_pte)
+{
+
+}
+#endif
+
 #ifndef __HAVE_ARCH_PGD_OFFSET_GATE
 #define pgd_offset_gate(mm, addr)	pgd_offset(mm, addr)
 #endif

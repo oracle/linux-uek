@@ -1836,11 +1836,14 @@ static int __init bootmem_init_numa(void)
 
 void sparc64_update_numa_mask(unsigned int cpu)
 {
-	if (num_node_masks > 1)
-		return;
-
-	cpumask_set_cpu(cpu, &numa_cpumask_lookup_table[0]);
+	cpumask_set_cpu(cpu, &numa_cpumask_lookup_table[cpu_to_node(cpu)]);
 }
+
+void sparc64_clear_numa_mask(unsigned int cpu)
+{
+	cpumask_clear_cpu(cpu, &numa_cpumask_lookup_table[cpu_to_node(cpu)]);
+}
+#
 #else
 
 static int bootmem_init_numa(void)
@@ -1852,6 +1855,9 @@ void sparc64_update_numa_mask(unsigned int cpu)
 {
 }
 
+void sparc64_clear_numa_mask(unsigned int cpu)
+{
+}
 #endif
 
 static void __init bootmem_init_nonnuma(void)
@@ -2763,6 +2769,21 @@ void __init paging_init(void)
 		free_area_init_nodes(max_zone_pfns);
 	}
 
+	/* Once the OF device tree and MDESC have been setup, we know
+	 * the list of possible cpus. Therefore we can allocate the
+	 * IRQ stacks. For ED we will do this in a NUMA friendly manner.
+	 */
+	for_each_possible_cpu(i) {
+		unsigned long goal = __pa(MAX_DMA_ADDRESS);
+		int node = cpu_to_node(i);
+
+		softirq_stack[i] = __alloc_bootmem_node_high(NODE_DATA(node),
+							     THREAD_SIZE,
+							     THREAD_SIZE, goal);
+		hardirq_stack[i] = __alloc_bootmem_node_high(NODE_DATA(node),
+							     THREAD_SIZE,
+							     THREAD_SIZE, goal);
+	}
 	printk("Booting Linux...\n");
 }
 

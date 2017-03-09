@@ -44,6 +44,9 @@
  */
 #define DS_TIMER_BUG_WAR 1
 
+/* Def to enable memory buffer debugging */
+#define	DS_MEM_DEBUG 1
+
 /*
  * Def to enable ioctl to inject a PRI update
  * event for testing purposes.
@@ -103,13 +106,20 @@ static char version[] = DRV_MODULE_NAME ".c:v" DRV_MODULE_VERSION "\n";
  *     could result in overloading console screen/logs.
  */
 #define dprintk_lvl(lvl, fmt, args...) do {\
-if (lvl <= dsdbg_level)\
+if (dsdbg_level < 8 && lvl <= dsdbg_level)\
 	printk(KERN_ERR "%s: %s: " fmt, DRV_MODULE_NAME, __func__, ##args);\
 } while (0)
 
 #define dprintk1(fmt, args...) dprintk_lvl(1, fmt, ##args)
 #define dprintk2(fmt, args...) dprintk_lvl(2, fmt, ##args)
 #define dprintk3(fmt, args...) dprintk_lvl(3, fmt, ##args)
+#ifdef DS_MEM_DEBUG
+/* we use debug level 8 exclusively for low level mem buf debugging */
+#define	dprintk_mem(fmt, args...) do {\
+if (dsdbg_level == 8)\
+	printk(KERN_ERR "%s: %s: " fmt, DRV_MODULE_NAME, __func__, ##args);\
+} while (0)
+#endif
 
 /* existing dprintk() calls in the code will translate to level 2 */
 #define	dprintk(fmt, args...) dprintk2(fmt, ##args)
@@ -121,13 +131,9 @@ MODULE_VERSION(DRV_MODULE_VERSION);
 
 #define LDC_IRQ_NAME_MAX	32
 
-#define	DS_DEFAULT_BUF_SIZE	4096
+/* The largest contiguous buffer the kernel seems to allow is 8MB. */
+#define	DS_MAX_BUF_SIZE		(8*1024*1024)
 #define	DS_DEFAULT_MTU		4096
-/*
- * The SP DS needs a huge buffer to handle PRI update messages.
- * The largest contiguous buffer the kernel seems to allow is 8MB.
- */
-#define	DS_DEFAULT_SP_BUF_SIZE	(8*1024*1024)
 
 #define	DS_PRIMARY_ID		0
 
@@ -145,27 +151,17 @@ MODULE_VERSION(DRV_MODULE_VERSION);
 u64 ds_local_ldom_handle;
 bool ds_local_ldom_handle_set;
 
-/* Global driver data struct for data common to all ds devices. */
-struct ds_driver_data {
-
-	/* list of all ds devices */
-	struct list_head	ds_dev_list;
-	int			num_ds_dev_list;
-
-};
-struct ds_driver_data ds_data;
-static DEFINE_SPINLOCK(ds_data_lock); /* protect ds_data */
-
 /*
  * For each DS port, a timer fires every DS_REG_TIMER_FREQ
  * milliseconds to attempt to register services on that DS port.
  */
-#define	DS_REG_TIMER_FREQ	100	/* in ms */
+#define	DS_REG_TIMER_FREQ	2000	/* in ms */
 
 /* Timeout to wait for responses for sp-token and var-config DS requests */
 #define	DS_RESPONSE_TIMEOUT	10	/* in seconds */
 
 #define	DS_LDC_READ_DELAY_CNT	10000	/* each CNT will wait 10ms */
+#define	DS_LDC_WRITE_DELAY_CNT	10000	/* each CNT will wait 10ms */
 
 #ifdef DS_TIMER_BUG_WAR
 /*
@@ -209,9 +205,9 @@ struct ds_dev {
 	/* negotiated DS version */
 	ds_ver_t		neg_vers;
 
-	/* LDC receive data buffer for this ds_dev */
+	/* LDC receive data buffer currently assigned to this ds_dev */
 	u8			*rcv_buf;
-	u64			rcv_buf_len;
+
 	u32			mtu;
 
 	/* service registration timer */
@@ -234,6 +230,10 @@ struct ds_dev {
 #define DS_HS_LDC_DOWN		0x00
 #define DS_HS_START		0x01
 #define DS_HS_COMPLETE		0x02
+
+/* list of all ds devices */
+struct list_head ds_dev_list;
+static DEFINE_SPINLOCK(ds_dev_list_lock);
 
 /*
  * LDC interrupts are not blocked by spin_lock_irqsave(). So, for any
@@ -260,6 +260,40 @@ struct ds_dev {
 	spin_unlock_irqrestore(&((ds)->ds_lock), flags); \
 	ldc_enable_hv_intr((ds)->lp); \
 } while (0);
+
+
+/*
+ * We maintain a list of memory buffers which can be reused to hold
+ * event receive data, etc. This is more efficient than allocating from
+ * the kernel general memory pool on every event or allocating static
+ * max-size buffers for every DS dev since there is a DS dev for every
+ * ldom (when executing in the primary domain) and the data for some
+ * events can be large (>4K) - resulting in a potentially huge amount of
+ * statically allocated kernel memory which has low utilization.
+ */
+struct ds_mem_buf {
+	/* link into the global driver memory buffer list */
+	struct list_head	list;
+
+	unsigned long		bufsize;
+	void			*buf;
+
+	/* flag to indicate if the buffer is free/available for use */
+	bool			free;
+
+#ifdef DS_MEM_DEBUG
+	/* realloc_cnt and num are used for debugging only */
+	u64			realloc_cnt;
+	u64			num;
+#endif
+};
+
+/* list of all ds memory buffers */
+struct list_head	ds_mem_buf_list;
+static DEFINE_SPINLOCK(ds_mem_buf_list_lock);
+#ifdef DS_MEM_DEBUG
+u64 ds_mem_buf_num; /* debugging only */
+#endif
 
 /*
  * Generic service info structure used to describe
@@ -791,26 +825,144 @@ static int __init ldoms_debug_level_setup(char *level_str)
 }
 __setup(LDOMS_DEBUG_LEVEL_SETUP, ldoms_debug_level_setup);
 
-static void *ds_zalloc_pages(unsigned long size, gfp_t alloc_flags)
+#ifdef DS_MEM_DEBUG
+static void ds_dump_mem_buf_list(void)
 {
+	struct ds_mem_buf *dsbuf;
+	unsigned long flags;
+
+	dprintk_mem("DS MEM DEBUG: DUMP MEM BUF LIST\n");
+
+	spin_lock_irqsave(&ds_mem_buf_list_lock, flags);
+	list_for_each_entry(dsbuf, &ds_mem_buf_list, list) {
+		dprintk_mem("DS MEM DEBUG: Entry[%llu] size=%lu, "
+		    "realloccnt=%llu free=%u\n",
+		    dsbuf->num, dsbuf->bufsize, dsbuf->realloc_cnt,
+		    dsbuf->free);
+	}
+	spin_unlock_irqrestore(&ds_mem_buf_list_lock, flags);
+}
+#endif /* DS_MEM_DEBUG */
+
+static void *ds_zalloc_mem_buf(unsigned long size, gfp_t alloc_flags)
+{
+	unsigned long buf_alloc_size;
+	struct ds_mem_buf *dsbuf;
+	unsigned long flags;
 	unsigned long order;
 	void *buf;
+#ifdef DS_MEM_DEBUG
+	static u64 print_membuf_list_cnt;
+#endif
 
-	order = get_order(size);
-	buf = (void *) __get_free_pages(alloc_flags, order);
+#ifdef DS_MEM_DEBUG
+	dprintk_mem("DS MEM DEBUG: entered\n");
+	dprintk_mem("DS MEM DEBUG: size=%lu\n", size);
 
-	if (buf)
-		memset(buf, 0, PAGE_SIZE << order);
+	/* dump the full mem buf list every 100 allocs */
+	if (!(print_membuf_list_cnt++ % 100))
+		ds_dump_mem_buf_list();
+#endif
 
-	return buf;
+	if (size > DS_MAX_BUF_SIZE)  {
+		pr_err("%s: alloc size too large (%lu)\n", __func__, size);
+		return NULL;
+	}
+
+	/*
+	 * See if there's an available buffer in the global list
+	 * that matches the requested size.
+	 * NOTE - we round the size up to the nearest power of 2
+	 * to increase the likelihood of future matching/reuse.
+	 */
+	for (buf_alloc_size = 1; buf_alloc_size < size; buf_alloc_size <<= 1)
+		;
+
+	spin_lock_irqsave(&ds_mem_buf_list_lock, flags);
+	list_for_each_entry(dsbuf, &ds_mem_buf_list, list) {
+		if (dsbuf->free && buf_alloc_size == dsbuf->bufsize) {
+			dsbuf->free = false;
+#ifdef DS_MEM_DEBUG
+			dsbuf->realloc_cnt++;
+			dprintk_mem("DS MEM DEBUG: realloc mem buf %llu, "
+			    "size=%lu, realloccnt=%llu\n", dsbuf->num,
+			    dsbuf->bufsize, dsbuf->realloc_cnt);
+#endif
+			spin_unlock_irqrestore(&ds_mem_buf_list_lock, flags);
+			return dsbuf->buf;
+		}
+	}
+	spin_unlock_irqrestore(&ds_mem_buf_list_lock, flags);
+
+	/*
+	 * Didn't find an available memory buffer in the list.
+	 * Alloc a new buffer and add it to the global list.
+	 */
+
+	/* First, alloc the ds_mem_buf for the memory buffer */
+	dsbuf = kzalloc(sizeof(struct ds_mem_buf), alloc_flags);
+	if (dsbuf == NULL) {
+		pr_err("%s: FAILED to alloc ds_mem_buf\n", __func__);
+		return NULL;
+	}
+
+	/*
+	 * Alloc the buffer - using get_free_pages for large buffers
+	 * (>=PAGE_SIZE) or kzalloc for smaller buffers.
+	 */
+	if (buf_alloc_size >= PAGE_SIZE) {
+		order = get_order(buf_alloc_size);
+		buf = (void *) __get_free_pages(alloc_flags, order);
+		if (buf)
+			memset(buf, 0, PAGE_SIZE << order);
+	} else {
+		buf = kzalloc(buf_alloc_size, alloc_flags);
+	}
+	if (buf == NULL) {
+		pr_err("%s: FAILED to alloc mem buffer (%lu)\n",
+		    __func__, buf_alloc_size);
+		kfree(dsbuf);
+		return NULL;
+	}
+
+	dsbuf->free = false;
+	dsbuf->buf = buf;
+	dsbuf->bufsize = buf_alloc_size;
+#ifdef DS_MEM_DEBUG
+	dsbuf->num = ds_mem_buf_num++;
+	dprintk_mem("DS MEM DEBUG: new mem buf %llu, size=%lu\n",
+	    dsbuf->num, dsbuf->bufsize);
+#endif
+
+	/* Insert the new ds_mem_buf into the global list */
+	spin_lock_irqsave(&ds_mem_buf_list_lock, flags);
+	list_add(&dsbuf->list, &ds_mem_buf_list);
+	spin_unlock_irqrestore(&ds_mem_buf_list_lock, flags);
+
+	return dsbuf->buf;
 }
 
-static void ds_free_pages(void *buf, unsigned long size)
+static void ds_free_mem_buf(void *buf)
 {
-	if (!buf)
-		return;
+	struct ds_mem_buf *dsbuf;
+	unsigned long flags;
+	bool found;
 
-	free_pages((unsigned long)buf, get_order(size));
+	found = false;
+
+	spin_lock_irqsave(&ds_mem_buf_list_lock, flags);
+	list_for_each_entry(dsbuf, &ds_mem_buf_list, list) {
+		if (dsbuf->buf == buf) {
+			/* mark it free, but keep it in the list for reuse */
+			dsbuf->free = true;
+			found = true;
+			break;
+		}
+	}
+	spin_unlock_irqrestore(&ds_mem_buf_list_lock, flags);
+
+	if (!found)
+		pr_err("%s: FAILED to find mem buf at %p\n", __func__, buf);
 }
 
 static void ds_reset(struct ds_dev *ds)
@@ -828,22 +980,57 @@ static void ds_reset(struct ds_dev *ds)
 	ldc_clr_reset(ds->lp);
 }
 
-static int ds_ldc_send_msg(struct ldc_channel *lp, void *data, int len)
+static int ds_ldc_send_msg(struct ds_dev *ds, u8 *buf, int len)
 {
-	int rv, limit = 1000;
+	unsigned int bytes_left;
+	unsigned int bytes_written;
+	unsigned int write_size;
+	unsigned int delay_cnt;
+	int rv;
 
-	rv = -EINVAL;
-	while (limit-- > 0) {
-		rv = ldc_write(lp, data, len);
-		if (rv != -EAGAIN)
-			break;
-		udelay(1);
+	/* Validate that the channel is UP */
+	if (ldc_chan_state(ds->lp) != LDC_CHANNEL_UP) {
+		dprintk("ds-%llu: FAILED to send data, channel not UP\n",
+		    ds->id);
+		return -EIO;
 	}
 
-	return rv;
+	bytes_left = len;
+	bytes_written = 0;
+	delay_cnt = 0;
+	rv = 0;
+	while (bytes_left) {
+
+		write_size = min_t(int, bytes_left, ds->mtu);
+
+		rv = ldc_write(ds->lp, (void *) (buf + bytes_written),
+		    write_size);
+
+		if ((rv == -EAGAIN || rv == 0) &&
+		    delay_cnt++ < DS_LDC_WRITE_DELAY_CNT) {
+			/*
+			 * For large messages, give the other
+			 * end of the LDC a chance to
+			 * read the data from the LDC.
+			 */
+			mdelay(10);
+			continue;
+		}
+
+		if (rv <= 0)
+			break;
+
+		bytes_left -= rv;
+		bytes_written += rv;
+	}
+
+	if (rv < 0)
+		return rv;
+
+	return bytes_written;
 }
 
-static int ds_ldc_send_payload(struct ldc_channel *lp, u32 type,
+static int ds_ldc_send_payload(struct ds_dev *ds, u32 type,
 	void *data, int len)
 {
 	struct ds_msg *msg;
@@ -865,7 +1052,7 @@ static int ds_ldc_send_payload(struct ldc_channel *lp, u32 type,
 	msg->tag.len = len;
 	memcpy(msg->payload, data, len);
 
-	rv = ds_ldc_send_msg(lp, msg, msglen);
+	rv = ds_ldc_send_msg(ds, (u8 *)msg, msglen);
 
 	kfree(msg);
 
@@ -882,7 +1069,7 @@ static void ds_send_data_nack(struct ds_dev *ds, u64 handle, u64 result)
 	req.handle = handle;
 	req.result = result;
 
-	rv = ds_ldc_send_payload(ds->lp, DS_NACK, &req, sizeof(req));
+	rv = ds_ldc_send_payload(ds, DS_NACK, &req, sizeof(req));
 	if (rv <= 0)
 		pr_err("ds-%llu: %s: ldc_send failed. (%d)\n ", ds->id,
 		    __func__, rv);
@@ -1026,13 +1213,13 @@ static void ds_do_callout_processing(void)
 	 * call back into this driver and attempt to re-acquire
 	 * the lock(s) resulting in deadlock.
 	 */
-	spin_lock_irqsave(&ds_data_lock, flags);
-	list_for_each_entry(ds, &ds_data.ds_dev_list, list) {
+	spin_lock_irqsave(&ds_dev_list_lock, flags);
+	list_for_each_entry(ds, &ds_dev_list, list) {
 		LOCK_DS_DEV(ds, ds_flags)
 		list_splice_tail_init(&ds->callout_list, &todo);
 		UNLOCK_DS_DEV(ds, ds_flags)
 	}
-	spin_unlock_irqrestore(&ds_data_lock, flags);
+	spin_unlock_irqrestore(&ds_dev_list_lock, flags);
 
 	list_for_each_entry_safe(qhdrp, tmp, &todo, list) {
 
@@ -1053,7 +1240,7 @@ static void ds_do_callout_processing(void)
 				kfree(qhdrp->ds);
 
 			list_del(&qhdrp->list);
-			kfree(qhdrp);
+			ds_free_mem_buf(qhdrp);
 
 			continue;
 		}
@@ -1070,7 +1257,7 @@ static void ds_do_callout_processing(void)
 			if (unlikely(svc_info == NULL)) {
 				UNLOCK_DS_DEV(ds, ds_flags)
 				list_del(&qhdrp->list);
-				kfree(qhdrp);
+				ds_free_mem_buf(qhdrp);
 				continue;
 			}
 
@@ -1112,7 +1299,7 @@ static void ds_do_callout_processing(void)
 			if (unlikely(svc_info == NULL)) {
 				UNLOCK_DS_DEV(ds, ds_flags)
 				list_del(&qhdrp->list);
-				kfree(qhdrp);
+				ds_free_mem_buf(qhdrp);
 				continue;
 			}
 
@@ -1147,7 +1334,7 @@ static void ds_do_callout_processing(void)
 
 		/* done processing the entry, remove it from the list */
 		list_del(&qhdrp->list);
-		kfree(qhdrp);
+		ds_free_mem_buf(qhdrp);
 	}
 
 	dprintk("ds: CPU[%d]: callout processing END\n", smp_processor_id());
@@ -1166,14 +1353,14 @@ static int ds_callout_thread(void *__unused)
 		prepare_to_wait(&ds_wait, &wait, TASK_INTERRUPTIBLE);
 
 		work_to_do = false;
-		spin_lock_irqsave(&ds_data_lock, flags);
-		list_for_each_entry(ds, &ds_data.ds_dev_list, list) {
+		spin_lock_irqsave(&ds_dev_list_lock, flags);
+		list_for_each_entry(ds, &ds_dev_list, list) {
 			if (!list_empty(&ds->callout_list)) {
 				work_to_do = true;
 				break;
 			}
 		}
-		spin_unlock_irqrestore(&ds_data_lock, flags);
+		spin_unlock_irqrestore(&ds_dev_list_lock, flags);
 
 		if (!work_to_do)
 			schedule();
@@ -1198,7 +1385,8 @@ static int ds_submit_reg_cb(struct ds_dev *ds, u64 hdl, ds_ver_t *neg_vers,
 	 * This function is called with spinlocks held,
 	 * so we must use GFP_ATOMIC.
 	 */
-	rentry = kzalloc(sizeof(struct ds_callout_reg_entry), GFP_ATOMIC);
+	rentry = ds_zalloc_mem_buf(sizeof(struct ds_callout_reg_entry),
+	    GFP_ATOMIC);
 	if (!rentry) {
 		pr_err("%s: FAILED to alloc callout entry!\n", __func__);
 		return -ENOMEM;
@@ -1240,8 +1428,8 @@ static int ds_submit_data_cb(struct ds_dev *ds, struct ds_msg_tag *pkt,
 	 * This function is called with spinlocks held,
 	 * so we must use GFP_ATOMIC.
 	 */
-	dentry = kzalloc(sizeof(struct ds_callout_data_entry) + pktlen,
-	    GFP_ATOMIC);
+	dentry = ds_zalloc_mem_buf(sizeof(struct ds_callout_data_entry) +
+	    pktlen, GFP_ATOMIC);
 	if (!dentry) {
 		pr_err("%s: FAILED to alloc callout entry!\n", __func__);
 		return -ENOMEM;
@@ -1300,8 +1488,8 @@ int ds_cap_init(ds_capability_t *cap, ds_ops_t *ops, u32 flags,
 
 	/* Find the ds_dev associated with domain_hdl. */
 	found = false;
-	spin_lock_irqsave(&ds_data_lock, data_flags);
-	list_for_each_entry(ds, &ds_data.ds_dev_list, list) {
+	spin_lock_irqsave(&ds_dev_list_lock, data_flags);
+	list_for_each_entry(ds, &ds_dev_list, list) {
 
 		LOCK_DS_DEV(ds, ds_flags)
 
@@ -1312,7 +1500,7 @@ int ds_cap_init(ds_capability_t *cap, ds_ops_t *ops, u32 flags,
 
 		UNLOCK_DS_DEV(ds, ds_flags)
 	}
-	spin_unlock_irqrestore(&ds_data_lock, data_flags);
+	spin_unlock_irqrestore(&ds_dev_list_lock, data_flags);
 
 	if (!found) {
 		pr_err("%s: Error: dom_hdl %llu DS port not found\n",
@@ -1413,9 +1601,9 @@ int ds_cap_fini(ds_svc_hdl_t hdl)
 
 	/* Find and remove all services associated with hdl. */
 
-	spin_lock_irqsave(&ds_data_lock, flags);
+	spin_lock_irqsave(&ds_dev_list_lock, flags);
 
-	list_for_each_entry(ds, &ds_data.ds_dev_list, list) {
+	list_for_each_entry(ds, &ds_dev_list, list) {
 
 		LOCK_DS_DEV(ds, ds_flags)
 
@@ -1434,7 +1622,7 @@ int ds_cap_fini(ds_svc_hdl_t hdl)
 		UNLOCK_DS_DEV(ds, ds_flags)
 	}
 
-	spin_unlock_irqrestore(&ds_data_lock, flags);
+	spin_unlock_irqrestore(&ds_dev_list_lock, flags);
 
 	return 0;
 
@@ -1472,8 +1660,8 @@ int ds_cap_send(ds_svc_hdl_t hdl, void *buf, size_t buflen)
 
 	svc_info = NULL;
 
-	spin_lock_irqsave(&ds_data_lock, flags);
-	list_for_each_entry(ds, &ds_data.ds_dev_list, list) {
+	spin_lock_irqsave(&ds_dev_list_lock, flags);
+	list_for_each_entry(ds, &ds_dev_list, list) {
 
 		LOCK_DS_DEV(ds, ds_flags)
 
@@ -1489,7 +1677,7 @@ int ds_cap_send(ds_svc_hdl_t hdl, void *buf, size_t buflen)
 		UNLOCK_DS_DEV(ds, ds_flags)
 	}
 
-	spin_unlock_irqrestore(&ds_data_lock, flags);
+	spin_unlock_irqrestore(&ds_dev_list_lock, flags);
 
 	if (svc_info == NULL) {
 		pr_err("%s: Error: no service found "
@@ -1531,7 +1719,7 @@ int ds_cap_send(ds_svc_hdl_t hdl, void *buf, size_t buflen)
 			    ds->id, __func__);
 	} else {
 		/* send the data out to the LDC */
-		rv = ds_ldc_send_msg(ds->lp, (void *)hdr, msglen);
+		rv = ds_ldc_send_msg(ds, (u8 *)hdr, msglen);
 		if (rv <= 0) {
 			pr_err("ds-%llu: %s: ldc_send failed.(%d)\n ",
 			    ds->id, __func__, rv);
@@ -2041,23 +2229,23 @@ static struct ds_service_info *ds_find_connected_prov_service(char *svc_id)
 	unsigned long ds_flags = 0;
 	struct ds_service_info *svc_info;
 
-	spin_lock_irqsave(&ds_data_lock, flags);
+	spin_lock_irqsave(&ds_dev_list_lock, flags);
 
-	list_for_each_entry(ds, &ds_data.ds_dev_list, list) {
+	list_for_each_entry(ds, &ds_dev_list, list) {
 
 		LOCK_DS_DEV(ds, ds_flags)
 
 		svc_info = ds_find_service_provider_id(ds, svc_id);
 		if (svc_info != NULL && svc_info->is_connected) {
 			UNLOCK_DS_DEV(ds, ds_flags)
-			spin_unlock_irqrestore(&ds_data_lock, flags);
+			spin_unlock_irqrestore(&ds_dev_list_lock, flags);
 			return svc_info;
 		}
 
 		UNLOCK_DS_DEV(ds, ds_flags)
 	}
 
-	spin_unlock_irqrestore(&ds_data_lock, flags);
+	spin_unlock_irqrestore(&ds_dev_list_lock, flags);
 
 	return NULL;
 
@@ -2327,8 +2515,8 @@ static void ds_disconnect_service_client(struct ds_dev *ds,
 	} else if (client_svc_info->reg_state == DS_REG_STATE_REGISTERED_LDC) {
 		rv = ds_service_unreg(ds, client_svc_info->con_handle);
 		if (rv != 0) {
-			pr_err("ds-%llu: %s: failed to send UNREG_REQ for "
-			    "handle %llx (%d)\n", ds->id, __func__,
+			dprintk("ds-%llu: failed to send UNREG_REQ for "
+			    "handle %llx (%d)\n", ds->id,
 			    client_svc_info->con_handle, rv);
 		}
 	}
@@ -2382,8 +2570,8 @@ static void ds_disconnect_service_provider(struct ds_dev *ds,
 	    DS_REG_STATE_REGISTERED_LDC) {
 		rv = ds_service_unreg(ds, provider_svc_info->con_handle);
 		if (rv != 0) {
-			pr_err("ds-%llu: %s: failed to send UNREG_REQ for "
-			    "handle %llx (%d)\n", ds->id, __func__,
+			dprintk("ds-%llu: failed to send UNREG_REQ for "
+			    "handle %llx (%d)\n", ds->id,
 			    provider_svc_info->con_handle, rv);
 		}
 	}
@@ -2552,7 +2740,7 @@ void ldom_set_var(const char *var, const char *value)
 		return;
 	}
 
-	dprintk("%s: found %s client service\n", __func__, svc_info->id);
+	dprintk("found %s client service\n", svc_info->id);
 
 	memset(&payload, 0, sizeof(payload));
 	payload.msg.hdr.type = DS_VAR_SET_REQ;
@@ -2624,7 +2812,7 @@ static int ldom_req_sp_token(const char *service_name, u32 *sp_token_result,
 		 * once to avoid flooding the console.
 		 */
 		printk_once("%s: sp-token service not registered.\n", __func__);
-		dprintk3("%s: sp-token service not registered.\n", __func__);
+		dprintk3("sp-token service not registered.\n");
 		return -EIO;
 	}
 
@@ -2650,8 +2838,8 @@ static int ldom_req_sp_token(const char *service_name, u32 *sp_token_result,
 
 	payload->req_num = ds_sp_token_next_req_num;
 
-	dprintk("%s: sizeof ds_sp_token_msg=%lu svclen=%d.\n",
-	    __func__, sizeof(struct ds_sp_token_msg), svc_len);
+	dprintk("sizeof ds_sp_token_msg=%lu svclen=%d.\n",
+	    sizeof(struct ds_sp_token_msg), svc_len);
 	dprintk("req_num %llu: payload(%p): type[0x%llx] svc[%s].\n",
 	    payload->req_num, payload, payload->type, payload->service);
 
@@ -2729,7 +2917,7 @@ static int ldom_req_sp_token(const char *service_name, u32 *sp_token_result,
 static char full_boot_str[256] __aligned(32);
 static int reboot_data_supported;
 
-void ldom_reboot(const char *boot_command)
+void ldom_reboot(const char *boot_command, bool prepend_boot)
 {
 	dprintk("entered.\n");
 
@@ -2740,8 +2928,8 @@ void ldom_reboot(const char *boot_command)
 	if (boot_command && strlen(boot_command)) {
 		unsigned long len;
 
-		strcpy(full_boot_str, "boot ");
-		strcpy(full_boot_str + strlen("boot "), boot_command);
+		snprintf(full_boot_str, sizeof(full_boot_str), "%s%s",
+			 prepend_boot ? "boot " : "", boot_command);
 		len = strlen(full_boot_str);
 
 		if (reboot_data_supported) {
@@ -2873,7 +3061,7 @@ static int ds_service_reg(struct ds_dev *ds, struct ds_service_info *svc_info)
 	pbuf.req.minor = svc_info->vers.minor;
 	strcpy(pbuf.req.svc_id, svc_info->id);
 
-	rv = ds_ldc_send_payload(ds->lp, DS_REG_REQ, &pbuf, payload_len);
+	rv = ds_ldc_send_payload(ds, DS_REG_REQ, &pbuf, payload_len);
 
 	if (rv > 0)
 		dprintk3("ds-%llu: DS_REG_REQ sent for %s service (%llu.%llu), "
@@ -2892,7 +3080,7 @@ static int ds_service_unreg(struct ds_dev *ds, u64 handle)
 
 	req.handle = handle;
 
-	rv = ds_ldc_send_payload(ds->lp, DS_UNREG_REQ, &req, sizeof(req));
+	rv = ds_ldc_send_payload(ds, DS_UNREG_REQ, &req, sizeof(req));
 
 	return (rv <= 0);
 }
@@ -2907,7 +3095,7 @@ static void ds_service_ack(struct ds_dev *ds, u64 handle, u16 minor)
 	req.handle = handle;
 	req.minor = minor;
 
-	rv = ds_ldc_send_payload(ds->lp, DS_REG_ACK, &req, sizeof(req));
+	rv = ds_ldc_send_payload(ds, DS_REG_ACK, &req, sizeof(req));
 	if (rv <= 0)
 		pr_err("ds-%llu: %s: ldc_send failed. (%d)\n ", ds->id,
 		    __func__, rv);
@@ -2925,7 +3113,7 @@ static void ds_service_nack(struct ds_dev *ds, u64 handle, u64 result,
 	req.result = result;
 	req.major = major;
 
-	rv = ds_ldc_send_payload(ds->lp, DS_REG_NACK, &req, sizeof(req));
+	rv = ds_ldc_send_payload(ds, DS_REG_NACK, &req, sizeof(req));
 	if (rv <= 0)
 		pr_err("ds-%llu: %s: ldc_send failed. (%d)\n ", ds->id,
 		    __func__, rv);
@@ -2941,7 +3129,7 @@ static void ds_service_unreg_ack(struct ds_dev *ds, u64 handle)
 
 	req.handle = handle;
 
-	rv = ds_ldc_send_payload(ds->lp, DS_UNREG_ACK, &req, sizeof(req));
+	rv = ds_ldc_send_payload(ds, DS_UNREG_ACK, &req, sizeof(req));
 	if (rv <= 0)
 		pr_err("ds-%llu: %s: ldc_send failed. (%d)\n ", ds->id,
 		    __func__, rv);
@@ -3057,7 +3245,7 @@ static int ds_handshake_reg(struct ds_dev *ds, struct ds_msg_tag *pkt)
 			    reg_req->payload.svc_id);
 			if (svc_info == NULL) {
 				/* There is no registered service */
-				dprintk1("ds-%llu: no service registered for "
+				dprintk3("ds-%llu: no service registered for "
 				    "REG_REQ service %s (%llx)\n", ds->id,
 				    reg_req->payload.svc_id,
 				    reg_req->payload.handle);
@@ -3212,7 +3400,7 @@ static int ds_handshake_reg(struct ds_dev *ds, struct ds_msg_tag *pkt)
 			if (svc_info == NULL) {
 				/* There is no service */
 
-				pr_err("ds-%llu: no service registered for "
+				dprintk3("ds-%llu: no service registered for "
 				    "UNREG_REQ handle %llx\n", ds->id,
 				   unreg_req->payload.handle);
 
@@ -3570,7 +3758,7 @@ static int ds_init_req(struct ds_dev *ds)
 	req.ver.major = DS_MAJOR_VERSION;
 	req.ver.minor = DS_MINOR_VERSION;
 
-	rv = ds_ldc_send_payload(ds->lp, DS_INIT_REQ, &req, sizeof(req));
+	rv = ds_ldc_send_payload(ds, DS_INIT_REQ, &req, sizeof(req));
 
 	return (rv <= 0);
 }
@@ -3584,7 +3772,7 @@ static void ds_init_ack(struct ds_dev *ds)
 
 	req.minor = DS_MINOR_VERSION;
 
-	rv = ds_ldc_send_payload(ds->lp, DS_INIT_ACK, &req, sizeof(req));
+	rv = ds_ldc_send_payload(ds, DS_INIT_ACK, &req, sizeof(req));
 	if (rv <= 0)
 		pr_err("ds-%llu: %s: ldc_send failed. (%d)\n ", ds->id,
 		    __func__, rv);
@@ -3600,7 +3788,7 @@ static void ds_init_nack(struct ds_dev *ds, u16 major)
 
 	req.major = major;
 
-	rv = ds_ldc_send_payload(ds->lp, DS_INIT_NACK, &req, sizeof(req));
+	rv = ds_ldc_send_payload(ds, DS_INIT_NACK, &req, sizeof(req));
 	if (rv <= 0)
 		pr_err("ds-%llu: %s: ldc_send failed. (%d)\n ", ds->id,
 		    __func__, rv);
@@ -3824,8 +4012,8 @@ static int ds_read_ldc_msg(struct ds_dev *ds, unsigned char *buf,
 
 		rv = ldc_read(ds->lp, (void *)(buf + bytes_read), read_size);
 
-		if (delay_cnt++ < DS_LDC_READ_DELAY_CNT &&
-		    (rv == -EAGAIN || rv == 0)) {
+		if ((rv == -EAGAIN || rv == 0) &&
+		    delay_cnt++ < DS_LDC_READ_DELAY_CNT) {
 			/*
 			 * For huge messages (such as PRI Update),
 			 * give the other end of the LDC a chance to
@@ -3844,8 +4032,8 @@ static int ds_read_ldc_msg(struct ds_dev *ds, unsigned char *buf,
 
 	if (rv < 0)
 		return rv;
-	else
-		return bytes_read;
+
+	return bytes_read;
 }
 
 static void ds_event(void *arg, int event)
@@ -3853,6 +4041,7 @@ static void ds_event(void *arg, int event)
 	struct ds_dev *ds = arg;
 	unsigned long flags;
 	unsigned long buf_size;
+	struct ds_msg_tag tag;
 	int rv;
 
 	/*
@@ -3889,11 +4078,9 @@ static void ds_event(void *arg, int event)
 
 	rv = 0;
 	while (1) {
-		struct ds_msg_tag *tag;
+		rv = ldc_read(ds->lp, &tag, sizeof(tag));
 
-		rv = ldc_read(ds->lp, ds->rcv_buf, sizeof(*tag));
-
-		dprintk3("ds-%llu: ldc_read 1 returns rv=%d\n", ds->id, rv);
+		dprintk3("ds-%llu: ldc_read tag returns rv=%d\n", ds->id, rv);
 
 		if (unlikely(rv < 0)) {
 			if (rv == -ECONNRESET)
@@ -3904,25 +4091,24 @@ static void ds_event(void *arg, int event)
 		if (rv == 0)
 			break;
 
-		tag = (struct ds_msg_tag *)ds->rcv_buf;
+		/* alloc a buffer large enough to hold the event data and tag */
+		buf_size = (sizeof(tag) + tag.len);
 
-		/* Make sure the read won't overrun our buffer */
-		if (ds->handle == DS_SP_DMN_HANDLE)
-			buf_size = DS_DEFAULT_SP_BUF_SIZE;
-		else
-			buf_size = DS_DEFAULT_BUF_SIZE;
-
-		if (tag->len > (buf_size - sizeof(struct ds_msg_tag))) {
-			pr_err("ds-%llu: %s: received msg length %d too big.\n",
-			    ds->id, __func__, tag->len);
+		ds->rcv_buf = ds_zalloc_mem_buf(buf_size, GFP_ATOMIC);
+		if (!ds->rcv_buf) {
+			pr_err("ds-%llu: %s: failed to alloc rcv buf "
+			    "(tag len=%d).\n", ds->id, __func__, tag.len);
 			ds_reset(ds);
 			break;
 		}
 
-		rv = ds_read_ldc_msg(ds, (unsigned char *)(tag + 1),
-		    tag->len);
+		/* copy the tag into the buf */
+		(void) memcpy((void *)ds->rcv_buf, (void *)&tag, sizeof(tag));
 
-		dprintk3("ds-%llu: ldc_read 2 returns rv=%d\n", ds->id, rv);
+		rv = ds_read_ldc_msg(ds, ((u8 *)ds->rcv_buf + sizeof(tag)),
+		    tag.len);
+
+		dprintk3("ds-%llu: ldc_read data returns rv=%d\n", ds->id, rv);
 
 		if (unlikely(rv < 0)) {
 			if (rv == -ECONNRESET)
@@ -3930,17 +4116,20 @@ static void ds_event(void *arg, int event)
 			else
 				dprintk1("ds-%llu: ldc_read_ldc_msg "
 				    "returned err=%d\n", ds->id, rv);
-
+			ds_free_mem_buf(ds->rcv_buf);
+			ds->rcv_buf = NULL;
 			break;
 		}
 
-		if (rv < tag->len) {
+		if (rv < tag.len) {
 			dprintk1("ds-%llu: ldc_read returned %d bytes "
-			    "< taglen=%d\n", ds->id, rv, tag->len);
+			    "< taglen=%d\n", ds->id, rv, tag.len);
+			ds_free_mem_buf(ds->rcv_buf);
+			ds->rcv_buf = NULL;
 			break;
 		}
 
-		if (tag->type < DS_DATA) {
+		if (tag.type < DS_DATA) {
 			dprintk3("ds-%llu: hs data received (%d bytes)\n",
 			    ds->id, rv);
 			rv = ds_handshake_msg(ds,
@@ -3963,12 +4152,18 @@ static void ds_event(void *arg, int event)
 
 		if (unlikely(rv < 0)) {
 
-			if (rv == -ECONNRESET)
+			if (rv == -ECONNRESET) {
+				ds_free_mem_buf(ds->rcv_buf);
+				ds->rcv_buf = NULL;
 				break;
+			}
 
 			pr_err("ds-%llu: %s: failed process data "
 				"packet rv = %d\n", ds->id, __func__, rv);
 		}
+
+		ds_free_mem_buf(ds->rcv_buf);
+		ds->rcv_buf = NULL;
 	}
 
 	spin_unlock_irqrestore(&ds->ds_lock, flags);
@@ -4132,9 +4327,9 @@ static int ds_set_pri(void)
 	int rv;
 
 	/* find the SP DS (if present ) */
-	spin_lock_irqsave(&ds_data_lock, data_flags);
+	spin_lock_irqsave(&ds_dev_list_lock, data_flags);
 	found = false;
-	list_for_each_entry(ds, &ds_data.ds_dev_list, list) {
+	list_for_each_entry(ds, &ds_dev_list, list) {
 
 		LOCK_DS_DEV(ds, ds_flags)
 
@@ -4145,7 +4340,7 @@ static int ds_set_pri(void)
 
 		UNLOCK_DS_DEV(ds, ds_flags)
 	}
-	spin_unlock_irqrestore(&ds_data_lock, data_flags);
+	spin_unlock_irqrestore(&ds_dev_list_lock, data_flags);
 
 	if (!found) {
 		pr_err("%s: failed to SP DS.\n", __func__);
@@ -4211,7 +4406,7 @@ static long ds_fops_ioctl(struct file *filp, unsigned int cmd,
 
 	switch (cmd) {
 	case DS_SPTOK_GET:
-		dprintk("%s: Getting sp-token\n", __func__);
+		dprintk("Getting sp-token\n");
 		uarg = (ds_ioctl_sptok_data_t __user *)arg;
 		if (get_user(major_version, &uarg->major_version) != 0 ||
 		    get_user(minor_version, &uarg->minor_version) != 0 ||
@@ -4247,7 +4442,7 @@ static long ds_fops_ioctl(struct file *filp, unsigned int cmd,
 
 	case DS_PRI_GET:
 
-		dprintk("%s: Getting HV PRI\n", __func__);
+		dprintk("Getting HV PRI\n");
 
 		/* Only allow one thread at a time to access the HV PRI */
 		mutex_lock(&ds_ioctl_hv_pri_mutex);
@@ -4261,7 +4456,7 @@ static long ds_fops_ioctl(struct file *filp, unsigned int cmd,
 #ifdef DS_PRI_TEST
 	case DS_PRI_SET:
 
-		dprintk("%s: Initiating PRI Update\n", __func__);
+		dprintk("Initiating PRI Update\n");
 
 		rv = ds_set_pri();
 
@@ -4365,23 +4560,6 @@ static int ds_probe(struct vio_dev *vdev, const struct vio_device_id *id)
 
 	mdesc_release(hp);
 
-	/* allocate receive buffers */
-	if (is_sp) {
-		ds->rcv_buf = ds_zalloc_pages(DS_DEFAULT_SP_BUF_SIZE,
-		    GFP_KERNEL);
-		if (unlikely(!ds->rcv_buf))
-			goto out_free_ds;
-
-		ds->rcv_buf_len = DS_DEFAULT_SP_BUF_SIZE;
-	} else {
-		ds->rcv_buf = kzalloc(DS_DEFAULT_BUF_SIZE,
-		    GFP_KERNEL);
-		if (unlikely(!ds->rcv_buf))
-			goto out_free_ds;
-
-		ds->rcv_buf_len = DS_DEFAULT_BUF_SIZE;
-	}
-
 	ds_cfg.mtu = DS_DEFAULT_MTU;
 	ds->mtu = ds_cfg.mtu;
 
@@ -4399,7 +4577,7 @@ static int ds_probe(struct vio_dev *vdev, const struct vio_device_id *id)
 	lp = ldc_alloc(vdev->channel_id, &ds_cfg, ds, ds_irq_name);
 	if (IS_ERR(lp)) {
 		rv = PTR_ERR(lp);
-		goto out_free_rcv_buf;
+		goto out_free_ds;
 	}
 	ds->lp = lp;
 
@@ -4444,22 +4622,15 @@ static int ds_probe(struct vio_dev *vdev, const struct vio_device_id *id)
 
 	UNLOCK_DS_DEV(ds, ds_flags)
 
-	/* add the ds_dev to the global ds_data device list */
-	spin_lock_irqsave(&ds_data_lock, flags);
-	list_add_tail(&ds->list, &ds_data.ds_dev_list);
-	ds_data.num_ds_dev_list++;
-	spin_unlock_irqrestore(&ds_data_lock, flags);
+	/* add the ds_dev to the global ds device list */
+	spin_lock_irqsave(&ds_dev_list_lock, flags);
+	list_add_tail(&ds->list, &ds_dev_list);
+	spin_unlock_irqrestore(&ds_dev_list_lock, flags);
 
 	return rv;
 
 out_free_ldc:
 	ldc_free(ds->lp);
-
-out_free_rcv_buf:
-	if (is_sp)
-		ds_free_pages(ds->rcv_buf, DS_DEFAULT_SP_BUF_SIZE);
-	else
-		kfree(ds->rcv_buf);
 
 out_free_ds:
 	kfree(ds);
@@ -4487,7 +4658,7 @@ static int ds_remove(struct vio_dev *vdev)
 	 * Lock the global ds_dev list to prevent another thread
 	 * from finding the ds in the list while we are removing it.
 	 */
-	spin_lock_irqsave(&ds_data_lock, flags);
+	spin_lock_irqsave(&ds_dev_list_lock, flags);
 
 	/*
 	 * Lock down the ds_dev to prevent removing it
@@ -4495,9 +4666,8 @@ static int ds_remove(struct vio_dev *vdev)
 	 */
 	LOCK_DS_DEV(ds, ds_flags)
 
-	/* remove the ds_dev from the global ds_data device list */
+	/* remove the ds_dev from the global ds device list */
 	list_del(&ds->list);
-	ds_data.num_ds_dev_list--;
 
 	del_timer_sync(&ds->ds_reg_tmr);
 
@@ -4511,15 +4681,17 @@ static int ds_remove(struct vio_dev *vdev)
 
 	ldc_free(ds->lp);
 
-	if (ds->handle == DS_SP_DMN_HANDLE)
-		ds_free_pages(ds->rcv_buf, DS_DEFAULT_SP_BUF_SIZE);
-	else
-		kfree(ds->rcv_buf);
+	/*
+	 * Since the ds_dev can remain for a while til it's
+	 * freed (callout queue), to make sure the lp isn't used,
+	 * we set it to NULL here.
+	 */
+	ds->lp = NULL;
 
 	/* free any entries left on the callout list */
 	list_for_each_entry_safe(qhdrp, tmp, &ds->callout_list, list) {
 		list_del(&qhdrp->list);
-		kfree(qhdrp);
+		ds_free_mem_buf(qhdrp);
 		ds->co_ref_cnt--;
 	}
 
@@ -4550,7 +4722,7 @@ static int ds_remove(struct vio_dev *vdev)
 		UNLOCK_DS_DEV(ds, ds_flags)
 	}
 
-	spin_unlock_irqrestore(&ds_data_lock, flags);
+	spin_unlock_irqrestore(&ds_dev_list_lock, flags);
 
 	return 0;
 }
@@ -4591,8 +4763,9 @@ static int __init ds_init(void)
 
 	dprintk("%s", version);
 
-	INIT_LIST_HEAD(&ds_data.ds_dev_list);
-	ds_data.num_ds_dev_list = 0;
+	INIT_LIST_HEAD(&ds_dev_list);
+
+	INIT_LIST_HEAD(&ds_mem_buf_list);
 
 	err = misc_register(&ds_miscdev);
 	if (err)
