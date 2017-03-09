@@ -25,6 +25,7 @@
 #include <linux/stop_machine.h>
 #include <linux/pvclock_gtod.h>
 #include <linux/compiler.h>
+#include <linux/dtrace_os.h>
 
 #include "tick-internal.h"
 #include "ntp_internal.h"
@@ -652,6 +653,7 @@ static void timekeeping_update(struct timekeeper *tk, unsigned int action)
 	tk_update_ktime_data(tk);
 
 	update_vsyscall(tk);
+	dtrace_update_time(tk);
 	update_pvclock_gtod(tk, action & TK_CLOCK_WAS_SET);
 
 	update_fast_timekeeper(&tk->tkr_mono, &tk_fast_mono);
