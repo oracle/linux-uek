@@ -100,6 +100,9 @@ config QED
 	---help---
 	  This enables the support for ...
 
+config QED_LL2
+	bool
+
 config QED_SRIOV
 	bool "QLogic QED 25/40/100Gb SR-IOV support"
 	depends on QED && PCI_IOV
@@ -125,5 +128,26 @@ config QEDE_VXLAN
 	  qede module. Say Y here if you want to enable hardware offload
 	  support for Virtual eXtensible Local Area Network (VXLAN)
 	  in the driver.
+
+config QED_RDMA
+	bool
+
+config INFINIBAND_QEDR
+	tristate "QLogic qede RoCE sources [debug]"
+	depends on QEDE && 64BIT
+	select QED_LL2
+	select QED_RDMA
+	default n
+	---help---
+	  This provides a temporary node that allows the compilation
+	  and logical testing of the InfiniBand over Ethernet support
+	  for QLogic QED. This would be replaced by the 'real' option
+	  once the QEDR driver is added [+relocated].
+
+config QED_ISCSI
+	bool
+
+config QED_FCOE
+	bool
 
 endif # NET_VENDOR_QLOGIC
