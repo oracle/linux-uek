@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2005 - 2015 Emulex
+ * Copyright (C) 2005 - 2016 Broadcom
  * All rights reserved.
  *
  * This program is free software; you can redistribute it and/or
@@ -37,7 +37,7 @@
 #include "be_hw.h"
 #include "be_roce.h"
 
-#define DRV_VER			"11.0.0.0"
+#define DRV_VER			"11.1.0.0"
 #define DRV_NAME		"be2net"
 #define BE_NAME			"Emulex BladeEngine2"
 #define BE3_NAME		"Emulex BladeEngine3"
@@ -65,7 +65,7 @@
 /* Number of bytes of an RX frame that are copied to skb->data */
 #define BE_HDR_LEN		((u16) 64)
 /* allocate extra space to allow tunneling decapsulation without head reallocation */
-#define BE_RX_SKB_ALLOC_SIZE (BE_HDR_LEN + 64)
+#define BE_RX_SKB_ALLOC_SIZE	256
 
 #define BE_MAX_JUMBO_FRAME_SIZE	9018
 #define BE_MIN_MTU		256
@@ -224,11 +224,6 @@ struct be_aic_obj {		/* Adaptive interrupt coalescing (AIC) info */
 	ulong jiffies;
 	u64 rx_pkts_prev;	/* Used to calculate RX pps */
 	u64 tx_reqs_prev;	/* Used to calculate TX pps */
-};
-
-enum {
-	NAPI_POLLING,
-	BUSY_POLLING
 };
 
 struct be_mcc_obj {
@@ -443,6 +438,7 @@ struct be_resources {
 	u16 max_iface_count;
 	u16 max_mcc_count;
 	u16 max_evt_qs;
+	u16 max_nic_evt_qs;	/* NIC's share of evt qs */
 	u32 if_cap_flags;
 	u32 vf_if_cap_flags;	/* VF if capability flags */
 	u32 flags;
@@ -571,6 +567,8 @@ struct be_adapter {
 	u32 uc_macs;		/* Count of secondary UC MAC programmed */
 	unsigned long vids[BITS_TO_LONGS(VLAN_N_VID)];
 	u16 vlans_added;
+	bool update_uc_list;
+	bool update_mc_list;
 
 	u32 beacon_state;	/* for set_phys_id */
 
@@ -622,6 +620,7 @@ struct be_adapter {
 	u32 fat_dump_len;
 	u16 serial_num[CNTL_SERIAL_NUM_WORDS];
 	u8 phy_state; /* state of sfp optics (functional, faulted, etc.,) */
+	u8 dev_mac[ETH_ALEN];
 };
 
 #define be_physfn(adapter)		(!adapter->virtfn)
@@ -644,7 +643,10 @@ struct be_adapter {
 #define be_max_txqs(adapter)		(adapter->res.max_tx_qs)
 #define be_max_prio_txqs(adapter)	(adapter->res.max_prio_tx_qs)
 #define be_max_rxqs(adapter)		(adapter->res.max_rx_qs)
-#define be_max_eqs(adapter)		(adapter->res.max_evt_qs)
+/* Max number of EQs available for the function (NIC + RoCE (if enabled)) */
+#define be_max_func_eqs(adapter)	(adapter->res.max_evt_qs)
+/* Max number of EQs available avaialble only for NIC */
+#define be_max_nic_eqs(adapter)		(adapter->res.max_nic_evt_qs)
 #define be_if_cap_flags(adapter)	(adapter->res.if_cap_flags)
 #define be_max_pf_pool_rss_tables(adapter)	\
 				(adapter->pool_res.max_rss_tables)
@@ -654,7 +656,7 @@ static inline u16 be_max_qs(struct be_adapter *adapter)
 	/* If no RSS, need atleast the one def RXQ */
 	u16 num = max_t(u16, be_max_rss(adapter), 1);
 
-	num = min(num, be_max_eqs(adapter));
+	num = min(num, be_max_nic_eqs(adapter));
 	return min_t(u16, num, num_online_cpus());
 }
 

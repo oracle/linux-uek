@@ -18,6 +18,10 @@ static void qla2x00_status_entry(scsi_qla_host_t *, struct rsp_que *, void *);
 static void qla2x00_status_cont_entry(struct rsp_que *, sts_cont_entry_t *);
 static void qla2x00_error_entry(scsi_qla_host_t *, struct rsp_que *,
 	sts_entry_t *);
+static void qla_irq_affinity_notify(struct irq_affinity_notify *,
+	const cpumask_t *);
+static void qla_irq_affinity_release(struct kref *);
+
 
 /**
  * qla2100_intr_handler() - Process interrupts for the ISP2100 and ISP2200.
@@ -2553,6 +2557,14 @@ void qla24xx_process_response_queue(struct scsi_qla_host *vha,
 	if (!vha->flags.online)
 		return;
 
+	if (rsp->msix->cpuid != smp_processor_id()) {
+		/* if kernel does not notify qla of IRQ's CPU change,
+		 * then set it here.
+		 */
+		rsp->msix->cpuid = smp_processor_id();
+		ha->tgt.rspq_vector_cpuid = rsp->msix->cpuid;
+	}
+
 	while (rsp->ring_ptr->signature != RESPONSE_PROCESSED) {
 		pkt = (struct sts_entry_24xx *)rsp->ring_ptr;
 
@@ -2830,41 +2842,6 @@ out:
 }
 
 static irqreturn_t
-qla25xx_msix_rsp_q(int irq, void *dev_id)
-{
-	struct qla_hw_data *ha;
-	scsi_qla_host_t *vha;
-	struct rsp_que *rsp;
-	struct device_reg_24xx __iomem *reg;
-	unsigned long flags;
-	uint32_t hccr = 0;
-
-	rsp = (struct rsp_que *) dev_id;
-	if (!rsp) {
-		ql_log(ql_log_info, NULL, 0x505b,
-		    "%s: NULL response queue pointer.\n", __func__);
-		return IRQ_NONE;
-	}
-	ha = rsp->hw;
-	vha = pci_get_drvdata(ha->pdev);
-
-	/* Clear the interrupt, if enabled, for this response queue */
-	if (!ha->flags.disable_msix_handshake) {
-		reg = &ha->iobase->isp24;
-		spin_lock_irqsave(&ha->hardware_lock, flags);
-		WRT_REG_DWORD(&reg->hccr, HCCRX_CLR_RISC_INT);
-		hccr = RD_REG_DWORD_RELAXED(&reg->hccr);
-		spin_unlock_irqrestore(&ha->hardware_lock, flags);
-	}
-	if (qla2x00_check_reg32_for_disconnect(vha, hccr))
-		goto out;
-	queue_work_on((int) (rsp->id - 1), ha->wq, &rsp->q_work);
-
-out:
-	return IRQ_HANDLED;
-}
-
-static irqreturn_t
 qla24xx_msix_default(int irq, void *dev_id)
 {
 	scsi_qla_host_t	*vha;
@@ -2951,6 +2928,35 @@ qla24xx_msix_default(int irq, void *dev_id)
 	return IRQ_HANDLED;
 }
 
+irqreturn_t
+qla2xxx_msix_rsp_q(int irq, void *dev_id)
+{
+	struct qla_hw_data *ha;
+	struct qla_qpair *qpair;
+	struct device_reg_24xx __iomem *reg;
+	unsigned long flags;
+
+	qpair = dev_id;
+	if (!qpair) {
+		ql_log(ql_log_info, NULL, 0x505b,
+		    "%s: NULL response queue pointer.\n", __func__);
+		return IRQ_NONE;
+	}
+	ha = qpair->hw;
+
+	/* Clear the interrupt, if enabled, for this response queue */
+	if (unlikely(!ha->flags.disable_msix_handshake)) {
+		reg = &ha->iobase->isp24;
+		spin_lock_irqsave(&ha->hardware_lock, flags);
+		WRT_REG_DWORD(&reg->hccr, HCCRX_CLR_RISC_INT);
+		spin_unlock_irqrestore(&ha->hardware_lock, flags);
+	}
+
+	queue_work(ha->wq, &qpair->q_work);
+
+	return IRQ_HANDLED;
+}
+
 /* Interrupt handling helpers. */
 
 struct qla_init_msix_entry {
@@ -2958,21 +2964,16 @@ struct qla_init_msix_entry {
 	irq_handler_t handler;
 };
 
-static struct qla_init_msix_entry msix_entries[3] = {
-	{ "qla2xxx (default)", qla24xx_msix_default },
-	{ "qla2xxx (rsp_q)", qla24xx_msix_rsp_q },
-	{ "qla2xxx (multiq)", qla25xx_msix_rsp_q },
-};
-
-static struct qla_init_msix_entry qla82xx_msix_entries[2] = {
-	{ "qla2xxx (default)", qla82xx_msix_default },
-	{ "qla2xxx (rsp_q)", qla82xx_msix_rsp_q },
-};
-
-static struct qla_init_msix_entry qla83xx_msix_entries[3] = {
+static struct qla_init_msix_entry msix_entries[] = {
 	{ "qla2xxx (default)", qla24xx_msix_default },
 	{ "qla2xxx (rsp_q)", qla24xx_msix_rsp_q },
 	{ "qla2xxx (atio_q)", qla83xx_msix_atio_q },
+	{ "qla2xxx (qpair_multiq)", qla2xxx_msix_rsp_q },
+};
+
+static struct qla_init_msix_entry qla82xx_msix_entries[] = {
+	{ "qla2xxx (default)", qla82xx_msix_default },
+	{ "qla2xxx (rsp_q)", qla82xx_msix_rsp_q },
 };
 
 static void
@@ -2984,8 +2985,11 @@ qla24xx_disable_msix(struct qla_hw_data *ha)
 
 	for (i = 0; i < ha->msix_count; i++) {
 		qentry = &ha->msix_entries[i];
-		if (qentry->have_irq)
-			free_irq(qentry->vector, qentry->rsp);
+		if (qentry->have_irq) {
+			/* un-register irq cpu affinity notification */
+			irq_set_affinity_notifier(qentry->vector, NULL);
+			free_irq(qentry->vector, qentry->handle);
+		}
 	}
 	pci_disable_msix(ha->pdev);
 	kfree(ha->msix_entries);
@@ -2999,7 +3003,6 @@ static int
 qla24xx_enable_msix(struct qla_hw_data *ha, struct rsp_que *rsp)
 {
 #define MIN_MSIX_COUNT	2
-#define ATIO_VECTOR	2
 	int i, ret;
 	struct msix_entry *entries;
 	struct qla_msix_entry *qentry;
@@ -3027,11 +3030,26 @@ qla24xx_enable_msix(struct qla_hw_data *ha, struct rsp_que *rsp)
 	} else if (ret < ha->msix_count) {
 		ql_log(ql_log_warn, vha, 0x00c6,
 		    "MSI-X: Failed to enable support "
-		    "-- %d/%d\n Retry with %d vectors.\n",
-		    ha->msix_count, ret, ret);
+		    "with %d vectors, using %d vectors\n",
+		    ha->msix_count, ret);
+		ha->msix_count = ret;
+		/* Recalculate queue values */
+		if (ha->mqiobase && ql2xmqsupport) {
+			ha->max_req_queues = ha->msix_count - 1;
+
+			/* ATIOQ needs 1 vector. That's 1 less QPair */
+			if (QLA_TGT_MODE_ENABLED())
+				ha->max_req_queues--;
+
+			ha->max_rsp_queues = ha->max_req_queues;
+
+			ha->max_qpairs = ha->max_req_queues - 1;
+			ql_dbg_pci(ql_dbg_init, ha->pdev, 0x0190,
+				"Adjusted Max no of queues pairs: %d.\n",
+					ha->max_qpairs);
+		}
+
 	}
-	ha->msix_count = ret;
-	ha->max_rsp_queues = ha->msix_count - 1;
 	ha->msix_entries = kzalloc(sizeof(struct qla_msix_entry) *
 				ha->msix_count, GFP_KERNEL);
 	if (!ha->msix_entries) {
@@ -3047,12 +3065,20 @@ qla24xx_enable_msix(struct qla_hw_data *ha, struct rsp_que *rsp)
 		qentry->vector = entries[i].vector;
 		qentry->entry = entries[i].entry;
 		qentry->have_irq = 0;
-		qentry->rsp = NULL;
+		qentry->in_use = 0;
+		qentry->handle = NULL;
+		qentry->irq_notify.notify  = qla_irq_affinity_notify;
+		qentry->irq_notify.release = qla_irq_affinity_release;
+		qentry->cpuid = -1;
 	}
 
 	/* Enable MSI-X vectors for the base queue */
-	for (i = 0; i < 2; i++) {
+	for (i = 0; i < (QLA_MSIX_RSP_Q + 1); i++) {
 		qentry = &ha->msix_entries[i];
+		qentry->handle = rsp;
+		rsp->msix = qentry;
+		scnprintf(qentry->name, sizeof(qentry->name),
+			msix_entries[i].name);
 		if (IS_P3P_TYPE(ha))
 			ret = request_irq(qentry->vector,
 				qla82xx_msix_entries[i].handler,
@@ -3064,8 +3090,6 @@ qla24xx_enable_msix(struct qla_hw_data *ha, struct rsp_que *rsp)
 		if (ret)
 			goto msix_register_fail;
 		qentry->have_irq = 1;
-		qentry->rsp = rsp;
-		rsp->msix = qentry;
 	}
 
 	/*
@@ -3073,13 +3097,28 @@ qla24xx_enable_msix(struct qla_hw_data *ha, struct rsp_que *rsp)
 	 * queue.
 	 */
 	if (QLA_TGT_MODE_ENABLED() && IS_ATIO_MSIX_CAPABLE(ha)) {
-		qentry = &ha->msix_entries[ATIO_VECTOR];
-		ret = request_irq(qentry->vector,
-			qla83xx_msix_entries[ATIO_VECTOR].handler,
-			0, qla83xx_msix_entries[ATIO_VECTOR].name, rsp);
-		qentry->have_irq = 1;
-		qentry->rsp = rsp;
+		qentry = &ha->msix_entries[QLA_ATIO_VECTOR];
 		rsp->msix = qentry;
+		qentry->handle = rsp;
+		scnprintf(qentry->name, sizeof(qentry->name),
+			msix_entries[QLA_ATIO_VECTOR].name);
+		qentry->in_use = 1;
+		ret = request_irq(qentry->vector,
+			msix_entries[QLA_ATIO_VECTOR].handler,
+			0, msix_entries[QLA_ATIO_VECTOR].name, rsp);
+		qentry->have_irq = 1;
+
+		/* Register for CPU affinity notification. */
+		irq_set_affinity_notifier(qentry->vector, &qentry->irq_notify);
+
+		/* Schedule work (ie. trigger a notification) to read cpu
+		 * mask for this specific irq.
+		 * kref_get is required because
+		* irq_affinity_notify() will do
+		* kref_put().
+		*/
+		kref_get(&qentry->irq_notify.kref);
+		schedule_work(&qentry->irq_notify.work);
 	}
 
 msix_register_fail:
@@ -3095,11 +3134,13 @@ msix_register_fail:
 	/* Enable MSI-X vector for response queue update for queue 0 */
 	if (IS_QLA83XX(ha) || IS_QLA27XX(ha)) {
 		if (ha->msixbase && ha->mqiobase &&
-		    (ha->max_rsp_queues > 1 || ha->max_req_queues > 1))
+		    (ha->max_rsp_queues > 1 || ha->max_req_queues > 1 ||
+		     ql2xmqsupport))
 			ha->mqenable = 1;
 	} else
-		if (ha->mqiobase
-		    && (ha->max_rsp_queues > 1 || ha->max_req_queues > 1))
+		if (ha->mqiobase &&
+		    (ha->max_rsp_queues > 1 || ha->max_req_queues > 1 ||
+		     ql2xmqsupport))
 			ha->mqenable = 1;
 	ql_dbg(ql_dbg_multiq, vha, 0xc005,
 	    "mqiobase=%p, max_rsp_queues=%d, max_req_queues=%d.\n",
@@ -3225,16 +3266,16 @@ qla2x00_free_irqs(scsi_qla_host_t *vha)
 		free_irq(ha->pdev->irq, rsp);
 }
 
-
-int qla25xx_request_irq(struct rsp_que *rsp)
+int qla25xx_request_irq(struct qla_hw_data *ha, struct qla_qpair *qpair,
+	struct qla_msix_entry *msix, int vector_type)
 {
-	struct qla_hw_data *ha = rsp->hw;
-	struct qla_init_msix_entry *intr = &msix_entries[2];
-	struct qla_msix_entry *msix = rsp->msix;
+	struct qla_init_msix_entry *intr = &msix_entries[vector_type];
 	scsi_qla_host_t *vha = pci_get_drvdata(ha->pdev);
 	int ret;
 
-	ret = request_irq(msix->vector, intr->handler, 0, intr->name, rsp);
+	scnprintf(msix->name, sizeof(msix->name),
+	    "qla2xxx%lu_qpair%d", vha->host_no, qpair->id);
+	ret = request_irq(msix->vector, intr->handler, 0, msix->name, qpair);
 	if (ret) {
 		ql_log(ql_log_fatal, vha, 0x00e6,
 		    "MSI-X: Unable to register handler -- %x/%d.\n",
@@ -3242,6 +3283,54 @@ int qla25xx_request_irq(struct rsp_que *rsp)
 		return ret;
 	}
 	msix->have_irq = 1;
-	msix->rsp = rsp;
+	msix->handle = qpair;
 	return ret;
+}
+
+
+/* irq_set_affinity/irqbalance will trigger notification of cpu mask update */
+static void qla_irq_affinity_notify(struct irq_affinity_notify *notify,
+	const cpumask_t *mask)
+{
+	struct qla_msix_entry *e =
+		container_of(notify, struct qla_msix_entry, irq_notify);
+	struct qla_hw_data *ha;
+	struct scsi_qla_host *base_vha;
+	struct rsp_que *rsp;
+
+	/* user is recommended to set mask to just 1 cpu */
+	e->cpuid = cpumask_first(mask);
+
+	rsp = (struct rsp_que *)e->handle;
+	ha = rsp->hw;
+
+	base_vha = pci_get_drvdata(ha->pdev);
+
+	ql_dbg(ql_dbg_init, base_vha, 0xffff,
+	    "%s: host %ld : vector %d cpu %d\n", __func__,
+	    base_vha->host_no, e->vector, e->cpuid);
+
+	if (e->have_irq) {
+		if ((IS_QLA83XX(ha) || IS_QLA27XX(ha)) &&
+		    (e->entry == QLA83XX_RSPQ_MSIX_ENTRY_NUMBER)) {
+			ha->tgt.rspq_vector_cpuid = e->cpuid;
+			ql_dbg(ql_dbg_init, base_vha, 0xffff,
+			    "%s: host%ld: rspq vector %d cpu %d  runtime change\n",
+			    __func__, base_vha->host_no, e->vector, e->cpuid);
+		}
+	}
+}
+
+void qla_irq_affinity_release(struct kref *ref)
+{
+	struct irq_affinity_notify *notify =
+		container_of(ref, struct irq_affinity_notify, kref);
+	struct qla_msix_entry *e =
+		container_of(notify, struct qla_msix_entry, irq_notify);
+	struct rsp_que *rsp = (struct rsp_que *)e->handle;
+	struct scsi_qla_host *base_vha = pci_get_drvdata(rsp->hw->pdev);
+
+	ql_dbg(ql_dbg_init, base_vha, 0xffff,
+	    "%s: host%ld: vector %d cpu %d\n", __func__,
+	    base_vha->host_no, e->vector, e->cpuid);
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2005 - 2015 Emulex
+ * Copyright (C) 2005 - 2016 Broadcom
  * All rights reserved.
  *
  * This program is free software; you can redistribute it and/or
@@ -87,6 +87,17 @@ static struct be_cmd_priv_map cmd_priv_map[] = {
 		CMD_SUBSYSTEM_LOWLEVEL,
 		BE_PRIV_DEVCFG | BE_PRIV_DEVSEC
 	},
+	{
+		OPCODE_COMMON_SET_HSW_CONFIG,
+		CMD_SUBSYSTEM_COMMON,
+		BE_PRIV_DEVCFG | BE_PRIV_VHADM |
+		BE_PRIV_DEVSEC
+	},
+	{
+		OPCODE_COMMON_GET_EXT_FAT_CAPABILITIES,
+		CMD_SUBSYSTEM_COMMON,
+		BE_PRIV_DEVCFG
+	}
 };
 
 static bool be_cmd_allowed(struct be_adapter *adapter, u8 opcode, u8 subsystem)
@@ -1107,7 +1118,7 @@ int be_cmd_pmac_add(struct be_adapter *adapter, u8 *mac_addr,
 err:
 	spin_unlock_bh(&adapter->mcc_lock);
 
-	 if (status == MCC_STATUS_UNAUTHORIZED_REQUEST)
+	 if (base_status(status) == MCC_STATUS_UNAUTHORIZED_REQUEST)
 		status = -EPERM;
 
 	return status;
@@ -2718,6 +2729,26 @@ static int be_flash(struct be_adapter *adapter, const u8 *img,
 	return 0;
 }
 
+#define NCSI_UPDATE_LOG	"NCSI section update is not supported in FW ver %s\n"
+static bool be_fw_ncsi_supported(char *ver)
+{
+	int v1[4] = {3, 102, 148, 0}; /* Min ver that supports NCSI FW */
+	int v2[4];
+	int i;
+
+	if (sscanf(ver, "%d.%d.%d.%d", &v2[0], &v2[1], &v2[2], &v2[3]) != 4)
+		return false;
+
+	for (i = 0; i < 4; i++) {
+		if (v1[i] < v2[i])
+			return true;
+		else if (v1[i] > v2[i])
+			return false;
+	}
+
+	return true;
+}
+
 /* For BE2, BE3 and BE3-R */
 static int be_flash_BEx(struct be_adapter *adapter,
 			const struct firmware *fw,
@@ -2795,8 +2826,10 @@ static int be_flash_BEx(struct be_adapter *adapter,
 			continue;
 
 		if ((pflashcomp[i].optype == OPTYPE_NCSI_FW) &&
-		    memcmp(adapter->fw_ver, "3.102.148.0", 11) < 0)
+		    !be_fw_ncsi_supported(adapter->fw_ver)) {
+			dev_info(dev, NCSI_UPDATE_LOG, adapter->fw_ver);
 			continue;
+		}
 
 		if (pflashcomp[i].optype == OPTYPE_PHY_FW  &&
 		    !phy_flashing_required(adapter))
@@ -3517,6 +3550,11 @@ int be_cmd_get_cntl_attributes(struct be_adapter *adapter)
 		for (i = 0; i < CNTL_SERIAL_NUM_WORDS; i++)
 			adapter->serial_num[i] = le32_to_cpu(serial_num[i]) &
 				(BIT_MASK(16) - 1);
+		/* For BEx, since GET_FUNC_CONFIG command is not
+		 * supported, we read funcnum here as a workaround.
+		 */
+		if (BEx_chip(adapter))
+			adapter->pf_num = attribs->hba_attribs.pci_funcnum;
 	}
 
 err:
@@ -3850,6 +3888,10 @@ int be_cmd_set_hsw_config(struct be_adapter *adapter, u16 pvid,
 	void *ctxt;
 	int status;
 
+	if (!be_cmd_allowed(adapter, OPCODE_COMMON_SET_HSW_CONFIG,
+			    CMD_SUBSYSTEM_COMMON))
+		return -EPERM;
+
 	spin_lock_bh(&adapter->mcc_lock);
 
 	wrb = wrb_from_mccq(adapter);
@@ -3871,7 +3913,7 @@ int be_cmd_set_hsw_config(struct be_adapter *adapter, u16 pvid,
 		AMAP_SET_BITS(struct amap_set_hsw_context, pvid_valid, ctxt, 1);
 		AMAP_SET_BITS(struct amap_set_hsw_context, pvid, ctxt, pvid);
 	}
-	if (!BEx_chip(adapter) && hsw_mode) {
+	if (hsw_mode) {
 		AMAP_SET_BITS(struct amap_set_hsw_context, interface_id,
 			      ctxt, adapter->hba_port_num);
 		AMAP_SET_BITS(struct amap_set_hsw_context, pport, ctxt, 1);
@@ -4118,6 +4160,10 @@ int be_cmd_get_ext_fat_capabilites(struct be_adapter *adapter,
 	struct be_cmd_req_get_ext_fat_caps *req;
 	int status;
 
+	if (!be_cmd_allowed(adapter, OPCODE_COMMON_GET_EXT_FAT_CAPABILITIES,
+			    CMD_SUBSYSTEM_COMMON))
+		return -EPERM;
+
 	if (mutex_lock_interruptible(&adapter->mbox_lock))
 		return -1;
 
@@ -4129,7 +4175,7 @@ int be_cmd_get_ext_fat_capabilites(struct be_adapter *adapter,
 
 	req = cmd->va;
 	be_wrb_cmd_hdr_prepare(&req->hdr, CMD_SUBSYSTEM_COMMON,
-			       OPCODE_COMMON_GET_EXT_FAT_CAPABILITES,
+			       OPCODE_COMMON_GET_EXT_FAT_CAPABILITIES,
 			       cmd->size, wrb, cmd);
 	req->parameter_type = cpu_to_le32(1);
 
@@ -4158,7 +4204,7 @@ int be_cmd_set_ext_fat_capabilites(struct be_adapter *adapter,
 	req = cmd->va;
 	memcpy(&req->set_params, configs, sizeof(struct be_fat_conf_params));
 	be_wrb_cmd_hdr_prepare(&req->hdr, CMD_SUBSYSTEM_COMMON,
-			       OPCODE_COMMON_SET_EXT_FAT_CAPABILITES,
+			       OPCODE_COMMON_SET_EXT_FAT_CAPABILITIES,
 			       cmd->size, wrb, cmd);
 
 	status = be_mcc_notify_wait(adapter);
@@ -4364,7 +4410,7 @@ err:
 }
 
 /* This routine returns a list of all the NIC PF_nums in the adapter */
-u16 be_get_nic_pf_num_list(u8 *buf, u32 desc_count, u16 *nic_pf_nums)
+static u16 be_get_nic_pf_num_list(u8 *buf, u32 desc_count, u16 *nic_pf_nums)
 {
 	struct be_res_desc_hdr *hdr = (struct be_res_desc_hdr *)buf;
 	struct be_pcie_res_desc *pcie = NULL;
@@ -4516,7 +4562,7 @@ static int be_cmd_set_profile_config(struct be_adapter *adapter, void *desc,
 }
 
 /* Mark all fields invalid */
-void be_reset_nic_desc(struct be_nic_res_desc *nic)
+static void be_reset_nic_desc(struct be_nic_res_desc *nic)
 {
 	memset(nic, 0, sizeof(*nic));
 	nic->unicast_mac_count = 0xFFFF;
@@ -4889,8 +4935,9 @@ err:
 	return status;
 }
 
-int __be_cmd_set_logical_link_config(struct be_adapter *adapter,
-				     int link_state, int version, u8 domain)
+static int
+__be_cmd_set_logical_link_config(struct be_adapter *adapter,
+				 int link_state, int version, u8 domain)
 {
 	struct be_mcc_wrb *wrb;
 	struct be_cmd_req_set_ll_link *req;
@@ -4931,7 +4978,7 @@ int be_cmd_set_logical_link_config(struct be_adapter *adapter,
 {
 	int status;
 
-	if (BEx_chip(adapter))
+	if (BE2_chip(adapter))
 		return -EOPNOTSUPP;
 
 	status = __be_cmd_set_logical_link_config(adapter, link_state,

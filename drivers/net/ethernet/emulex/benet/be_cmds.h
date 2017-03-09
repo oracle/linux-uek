@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2005 - 2015 Emulex
+ * Copyright (C) 2005 - 2016 Broadcom
  * All rights reserved.
  *
  * This program is free software; you can redistribute it and/or
@@ -294,8 +294,8 @@ struct be_mcc_mailbox {
 #define OPCODE_COMMON_GET_PHY_DETAILS			102
 #define OPCODE_COMMON_SET_DRIVER_FUNCTION_CAP		103
 #define OPCODE_COMMON_GET_CNTL_ADDITIONAL_ATTRIBUTES	121
-#define OPCODE_COMMON_GET_EXT_FAT_CAPABILITES		125
-#define OPCODE_COMMON_SET_EXT_FAT_CAPABILITES		126
+#define OPCODE_COMMON_GET_EXT_FAT_CAPABILITIES		125
+#define OPCODE_COMMON_SET_EXT_FAT_CAPABILITIES		126
 #define OPCODE_COMMON_GET_MAC_LIST			147
 #define OPCODE_COMMON_SET_MAC_LIST			148
 #define OPCODE_COMMON_GET_HSW_CONFIG			152
@@ -1718,7 +1718,11 @@ struct mgmt_hba_attribs {
 	u32 rsvd2[55];
 	u8 rsvd3[3];
 	u8 phy_port;
-	u32 rsvd4[13];
+	u32 rsvd4[15];
+	u8 rsvd5[2];
+	u8 pci_funcnum;
+	u8 rsvd6;
+	u32 rsvd7[6];
 } __packed;
 
 struct mgmt_controller_attrib {

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2005 - 2015 Emulex
+ * Copyright (C) 2005 - 2016 Broadcom
  * All rights reserved.
  *
  * This program is free software; you can redistribute it and/or
@@ -19,6 +19,7 @@
 #include <linux/module.h>
 #include "be.h"
 #include "be_cmds.h"
+#include "kcompat.h"
 #include <asm/div64.h>
 #include <linux/aer.h>
 #include <linux/if_bridge.h>
@@ -260,6 +261,20 @@ void be_cq_notify(struct be_adapter *adapter, u16 qid, bool arm, u16 num_popped)
 	iowrite32(val, adapter->db + DB_CQ_OFFSET);
 }
 
+static void be_dev_mac_del(struct be_adapter *adapter, int pmac_id)
+{
+	int i;
+
+	/* Skip deletion if the programmed mac is
+	 * being used in uc-list
+	 */
+	for (i = 0; i < adapter->uc_macs; i++) {
+		if (adapter->pmac_id[i + 1] == pmac_id)
+			return;
+	}
+	be_cmd_pmac_del(adapter, adapter->if_handle, pmac_id, 0);
+}
+
 static int be_mac_addr_set(struct net_device *netdev, void *p)
 {
 	struct be_adapter *adapter = netdev_priv(netdev);
@@ -275,8 +290,15 @@ static int be_mac_addr_set(struct net_device *netdev, void *p)
 	/* Proceed further only if, User provided MAC is different
 	 * from active MAC
 	 */
-	if (ether_addr_equal(addr->sa_data, netdev->dev_addr))
+	if (ether_addr_equal(addr->sa_data, adapter->dev_mac))
 		return 0;
+
+	/* BE3 VFs without FILTMGMT privilege are not allowed to set its MAC
+	 * address
+	 */
+	if (BEx_chip(adapter) && be_virtfn(adapter) &&
+	    !check_privilege(adapter, BE_PRIV_FILTMGMT))
+		return -EPERM;
 
 	/* if device is not running, copy MAC to netdev->dev_addr */
 	if (!netif_running(netdev))
@@ -316,6 +338,9 @@ static int be_mac_addr_set(struct net_device *netdev, void *p)
 		status = -EPERM;
 		goto err;
 	}
+
+	/* Remember currently programmed MAC */
+	ether_addr_copy(adapter->dev_mac, addr->sa_data);
 done:
 	ether_addr_copy(netdev->dev_addr, addr->sa_data);
 	dev_info(dev, "MAC address changed to %pM\n", addr->sa_data);
@@ -683,14 +708,24 @@ void be_link_status_update(struct be_adapter *adapter, u8 link_status)
 	netdev_info(netdev, "Link is %s\n", link_status ? "Up" : "Down");
 }
 
+static int be_gso_hdr_len(struct sk_buff *skb)
+{
+	if (skb->encapsulation)
+		return skb_inner_transport_offset(skb) +
+		       inner_tcp_hdrlen(skb);
+	return skb_transport_offset(skb) + tcp_hdrlen(skb);
+}
+
 static void be_tx_stats_update(struct be_tx_obj *txo, struct sk_buff *skb)
 {
 	struct be_tx_stats *stats = tx_stats(txo);
-	u64 tx_pkts = skb_shinfo(skb)->gso_segs ? : 1;
+	u32 tx_pkts = skb_shinfo(skb)->gso_segs ? : 1;
+	/* Account for headers which get duplicated in TSO pkt */
+	u32 dup_hdr_len = tx_pkts > 1 ? be_gso_hdr_len(skb) * (tx_pkts - 1) : 0;
 
 	u64_stats_update_begin(&stats->sync);
 	stats->tx_reqs++;
-	stats->tx_bytes += skb->len;
+	stats->tx_bytes += skb->len + dup_hdr_len;
 	stats->tx_pkts += tx_pkts;
 	if (skb->encapsulation && skb->ip_summed == CHECKSUM_PARTIAL)
 		stats->tx_vxlan_offload_pkts += tx_pkts;
@@ -1420,13 +1455,18 @@ static int be_vid_config(struct be_adapter *adapter)
 	u16 num = 0, i = 0;
 	int status = 0;
 
-	/* No need to further configure vids if in promiscuous mode */
-	if (be_in_all_promisc(adapter))
+	/* No need to change the VLAN state if the I/F is in promiscuous */
+	if (adapter->netdev->flags & IFF_PROMISC)
 		return 0;
 
 	if (adapter->vlans_added > be_max_vlans(adapter))
 		return be_set_vlan_promisc(adapter);
 
+	if (adapter->if_flags & BE_IF_FLAGS_VLAN_PROMISCUOUS) {
+		status = be_clear_vlan_promisc(adapter);
+		if (status)
+			return status;
+	}
 	/* Construct VLAN Table to give to HW */
 	for_each_set_bit(i, adapter->vids, VLAN_N_VID)
 		vids[num++] = cpu_to_le16(i);
@@ -1439,8 +1479,6 @@ static int be_vid_config(struct be_adapter *adapter)
 		    addl_status(status) ==
 				MCC_ADDL_STATUS_INSUFFICIENT_RESOURCES)
 			return be_set_vlan_promisc(adapter);
-	} else if (adapter->if_flags & BE_IF_FLAGS_VLAN_PROMISCUOUS) {
-		status = be_clear_vlan_promisc(adapter);
 	}
 	return status;
 }
@@ -1460,13 +1498,7 @@ static int be_vlan_add_vid(struct net_device *netdev, __be16 proto, u16 vid)
 	set_bit(vid, adapter->vids);
 	adapter->vlans_added++;
 
-	status = be_vid_config(adapter);
-	if (status) {
-		adapter->vlans_added--;
-		clear_bit(vid, adapter->vids);
-	}
-
-	return status;
+	return be_vid_config(adapter);
 }
 
 static int be_vlan_rem_vid(struct net_device *netdev, __be16 proto, u16 vid)
@@ -1484,12 +1516,6 @@ static int be_vlan_rem_vid(struct net_device *netdev, __be16 proto, u16 vid)
 	adapter->vlans_added--;
 
 	return be_vid_config(adapter);
-}
-
-static void be_clear_all_promisc(struct be_adapter *adapter)
-{
-	be_cmd_rx_filter(adapter, BE_IF_FLAGS_ALL_PROMISCUOUS, OFF);
-	adapter->if_flags &= ~BE_IF_FLAGS_ALL_PROMISCUOUS;
 }
 
 static void be_set_all_promisc(struct be_adapter *adapter)
@@ -1510,42 +1536,144 @@ static void be_set_mc_promisc(struct be_adapter *adapter)
 		adapter->if_flags |= BE_IF_FLAGS_MCAST_PROMISCUOUS;
 }
 
-static void be_set_mc_list(struct be_adapter *adapter)
+static void be_set_uc_promisc(struct be_adapter *adapter)
 {
 	int status;
 
-	status = be_cmd_rx_filter(adapter, BE_IF_FLAGS_MULTICAST, ON);
+	if (adapter->if_flags & BE_IF_FLAGS_PROMISCUOUS)
+		return;
+
+	status = be_cmd_rx_filter(adapter, BE_IF_FLAGS_PROMISCUOUS, ON);
 	if (!status)
-		adapter->if_flags &= ~BE_IF_FLAGS_MCAST_PROMISCUOUS;
-	else
+		adapter->if_flags |= BE_IF_FLAGS_PROMISCUOUS;
+}
+
+static void be_clear_uc_promisc(struct be_adapter *adapter)
+{
+	int status;
+
+	if (!(adapter->if_flags & BE_IF_FLAGS_PROMISCUOUS))
+		return;
+
+	status = be_cmd_rx_filter(adapter, BE_IF_FLAGS_PROMISCUOUS, OFF);
+	if (!status)
+		adapter->if_flags &= ~BE_IF_FLAGS_PROMISCUOUS;
+}
+
+/* The below 2 functions are the callback args for __dev_mc_sync/dev_uc_sync().
+ * We use a single callback function for both sync and unsync. We really don't
+ * add/remove addresses through this callback. But, we use it to detect changes
+ * to the uc/mc lists. The entire uc/mc list is programmed in be_set_rx_mode().
+ */
+static int be_uc_list_update(struct net_device *netdev,
+			     const unsigned char *addr)
+{
+	struct be_adapter *adapter = netdev_priv(netdev);
+
+	adapter->update_uc_list = true;
+	return 0;
+}
+
+static int be_mc_list_update(struct net_device *netdev,
+			     const unsigned char *addr)
+{
+	struct be_adapter *adapter = netdev_priv(netdev);
+
+	adapter->update_mc_list = true;
+	return 0;
+}
+
+static void be_set_mc_list(struct be_adapter *adapter)
+{
+	struct net_device *netdev = adapter->netdev;
+	bool mc_promisc = false;
+	int status;
+
+	__dev_mc_sync(netdev, be_mc_list_update, be_mc_list_update);
+
+	if (netdev->flags & IFF_PROMISC) {
+		adapter->update_mc_list = false;
+	} else if (netdev->flags & IFF_ALLMULTI ||
+		   netdev_mc_count(netdev) > be_max_mc(adapter)) {
+		/* Enable multicast promisc if num configured exceeds
+		 * what we support
+		 */
+		mc_promisc = true;
+		adapter->update_mc_list = false;
+	} else if (adapter->if_flags & BE_IF_FLAGS_MCAST_PROMISCUOUS) {
+		/* Update mc-list unconditionally if the iface was previously
+		 * in mc-promisc mode and now is out of that mode.
+		 */
+		adapter->update_mc_list = true;
+	}
+
+	if (mc_promisc) {
 		be_set_mc_promisc(adapter);
+	} else if (adapter->update_mc_list) {
+		status = be_cmd_rx_filter(adapter, BE_IF_FLAGS_MULTICAST, ON);
+		if (!status)
+			adapter->if_flags &= ~BE_IF_FLAGS_MCAST_PROMISCUOUS;
+		else
+			be_set_mc_promisc(adapter);
+
+		adapter->update_mc_list = false;
+	}
+}
+
+static void be_clear_mc_list(struct be_adapter *adapter)
+{
+	struct net_device *netdev = adapter->netdev;
+
+	__dev_mc_unsync(netdev, NULL);
+	be_cmd_rx_filter(adapter, BE_IF_FLAGS_MULTICAST, OFF);
 }
 
 static void be_set_uc_list(struct be_adapter *adapter)
 {
+	struct net_device *netdev = adapter->netdev;
 	struct netdev_hw_addr *ha;
+	bool uc_promisc = false;
 	int i = 1; /* First slot is claimed by the Primary MAC */
 
-	for (; adapter->uc_macs > 0; adapter->uc_macs--, i++)
-		be_cmd_pmac_del(adapter, adapter->if_handle,
-				adapter->pmac_id[i], 0);
+	__dev_uc_sync(netdev, be_uc_list_update, be_uc_list_update);
 
-	if (netdev_uc_count(adapter->netdev) > be_max_uc(adapter)) {
-		be_set_all_promisc(adapter);
-		return;
+	if (netdev->flags & IFF_PROMISC) {
+		adapter->update_uc_list = false;
+	} else if (netdev_uc_count(netdev) > (be_max_uc(adapter) - 1)) {
+		uc_promisc = true;
+		adapter->update_uc_list = false;
+	}  else if (adapter->if_flags & BE_IF_FLAGS_PROMISCUOUS) {
+		/* Update uc-list unconditionally if the iface was previously
+		 * in uc-promisc mode and now is out of that mode.
+		 */
+		adapter->update_uc_list = true;
 	}
 
-	netdev_for_each_uc_addr(ha, adapter->netdev) {
-		adapter->uc_macs++; /* First slot is for Primary MAC */
-		be_cmd_pmac_add(adapter, (u8 *)ha->addr, adapter->if_handle,
-				&adapter->pmac_id[adapter->uc_macs], 0);
+	if (uc_promisc) {
+		be_set_uc_promisc(adapter);
+	} else if (adapter->update_uc_list) {
+		be_clear_uc_promisc(adapter);
+
+		for (; adapter->uc_macs > 0; adapter->uc_macs--, i++)
+			be_cmd_pmac_del(adapter, adapter->if_handle,
+					adapter->pmac_id[i], 0);
+
+		netdev_for_each_uc_addr(ha, adapter->netdev) {
+			adapter->uc_macs++; /* First slot is for Primary MAC */
+			be_cmd_pmac_add(adapter,
+					(u8 *)ha->addr, adapter->if_handle,
+					&adapter->pmac_id[adapter->uc_macs], 0);
+		}
+		adapter->update_uc_list = false;
 	}
 }
 
 static void be_clear_uc_list(struct be_adapter *adapter)
 {
+	struct net_device *netdev = adapter->netdev;
 	int i;
 
+	__dev_uc_unsync(netdev, NULL);
 	for (i = 1; i < (adapter->uc_macs + 1); i++)
 		be_cmd_pmac_del(adapter, adapter->if_handle,
 				adapter->pmac_id[i], 0);
@@ -1557,27 +1685,17 @@ static void be_set_rx_mode(struct net_device *netdev)
 	struct be_adapter *adapter = netdev_priv(netdev);
 
 	if (netdev->flags & IFF_PROMISC) {
-		be_set_all_promisc(adapter);
-		return;
+		if (!be_in_all_promisc(adapter))
+			be_set_all_promisc(adapter);
+	} else if (be_in_all_promisc(adapter)) {
+		/* We need to re-program the vlan-list or clear
+		 * vlan-promisc mode (if needed) when the interface
+		 * comes out of promisc mode.
+		 */
+		be_vid_config(adapter);
 	}
 
-	/* Interface was previously in promiscuous mode; disable it */
-	if (be_in_all_promisc(adapter)) {
-		be_clear_all_promisc(adapter);
-		if (adapter->vlans_added)
-			be_vid_config(adapter);
-	}
-
-	/* Enable multicast promisc if num configured exceeds what we support */
-	if (netdev->flags & IFF_ALLMULTI ||
-	    netdev_mc_count(netdev) > be_max_mc(adapter)) {
-		be_set_mc_promisc(adapter);
-		return;
-	}
-
-	if (netdev_uc_count(netdev) != adapter->uc_macs)
-		be_set_uc_list(adapter);
-
+	be_set_uc_list(adapter);
 	be_set_mc_list(adapter);
 }
 
@@ -2605,7 +2723,6 @@ static void be_evt_queues_destroy(struct be_adapter *adapter)
 		if (eqo->q.created) {
 			be_eq_clean(eqo);
 			be_cmd_q_destroy(adapter, &eqo->q, QTYPE_EQ);
-			napi_hash_del(&eqo->napi);
 			netif_napi_del(&eqo->napi);
 			free_cpumask_var(eqo->affinity_mask);
 		}
@@ -2867,7 +2984,7 @@ static inline bool do_gro(struct be_rx_compl_info *rxcp)
 }
 
 static int be_process_rx(struct be_rx_obj *rxo, struct napi_struct *napi,
-			 int budget, int polling)
+			 int budget)
 {
 	struct be_adapter *adapter = rxo->adapter;
 	struct be_queue_info *rx_cq = &rxo->cq;
@@ -2899,8 +3016,7 @@ static int be_process_rx(struct be_rx_obj *rxo, struct napi_struct *napi,
 			goto loop_continue;
 		}
 
-		/* Don't do gro when we're busy_polling */
-		if (do_gro(rxcp) && polling != BUSY_POLLING)
+		if (do_gro(rxcp))
 			be_rx_compl_process_gro(rxo, napi, rxcp);
 		else
 			be_rx_compl_process(rxo, napi, rxcp);
@@ -2998,106 +3114,6 @@ static void be_process_tx(struct be_adapter *adapter, struct be_tx_obj *txo,
 	}
 }
 
-#ifdef CONFIG_NET_RX_BUSY_POLL
-static inline bool be_lock_napi(struct be_eq_obj *eqo)
-{
-	bool status = true;
-
-	spin_lock(&eqo->lock); /* BH is already disabled */
-	if (eqo->state & BE_EQ_LOCKED) {
-		WARN_ON(eqo->state & BE_EQ_NAPI);
-		eqo->state |= BE_EQ_NAPI_YIELD;
-		status = false;
-	} else {
-		eqo->state = BE_EQ_NAPI;
-	}
-	spin_unlock(&eqo->lock);
-	return status;
-}
-
-static inline void be_unlock_napi(struct be_eq_obj *eqo)
-{
-	spin_lock(&eqo->lock); /* BH is already disabled */
-
-	WARN_ON(eqo->state & (BE_EQ_POLL | BE_EQ_NAPI_YIELD));
-	eqo->state = BE_EQ_IDLE;
-
-	spin_unlock(&eqo->lock);
-}
-
-static inline bool be_lock_busy_poll(struct be_eq_obj *eqo)
-{
-	bool status = true;
-
-	spin_lock_bh(&eqo->lock);
-	if (eqo->state & BE_EQ_LOCKED) {
-		eqo->state |= BE_EQ_POLL_YIELD;
-		status = false;
-	} else {
-		eqo->state |= BE_EQ_POLL;
-	}
-	spin_unlock_bh(&eqo->lock);
-	return status;
-}
-
-static inline void be_unlock_busy_poll(struct be_eq_obj *eqo)
-{
-	spin_lock_bh(&eqo->lock);
-
-	WARN_ON(eqo->state & (BE_EQ_NAPI));
-	eqo->state = BE_EQ_IDLE;
-
-	spin_unlock_bh(&eqo->lock);
-}
-
-static inline void be_enable_busy_poll(struct be_eq_obj *eqo)
-{
-	spin_lock_init(&eqo->lock);
-	eqo->state = BE_EQ_IDLE;
-}
-
-static inline void be_disable_busy_poll(struct be_eq_obj *eqo)
-{
-	local_bh_disable();
-
-	/* It's enough to just acquire napi lock on the eqo to stop
-	 * be_busy_poll() from processing any queueus.
-	 */
-	while (!be_lock_napi(eqo))
-		mdelay(1);
-
-	local_bh_enable();
-}
-
-#else /* CONFIG_NET_RX_BUSY_POLL */
-
-static inline bool be_lock_napi(struct be_eq_obj *eqo)
-{
-	return true;
-}
-
-static inline void be_unlock_napi(struct be_eq_obj *eqo)
-{
-}
-
-static inline bool be_lock_busy_poll(struct be_eq_obj *eqo)
-{
-	return false;
-}
-
-static inline void be_unlock_busy_poll(struct be_eq_obj *eqo)
-{
-}
-
-static inline void be_enable_busy_poll(struct be_eq_obj *eqo)
-{
-}
-
-static inline void be_disable_busy_poll(struct be_eq_obj *eqo)
-{
-}
-#endif /* CONFIG_NET_RX_BUSY_POLL */
-
 int be_poll(struct napi_struct *napi, int budget)
 {
 	struct be_eq_obj *eqo = container_of(napi, struct be_eq_obj, napi);
@@ -3112,18 +3128,13 @@ int be_poll(struct napi_struct *napi, int budget)
 	for_all_tx_queues_on_eq(adapter, eqo, txo, i)
 		be_process_tx(adapter, txo, i);
 
-	if (be_lock_napi(eqo)) {
-		/* This loop will iterate twice for EQ0 in which
-		 * completions of the last RXQ (default one) are also processed
-		 * For other EQs the loop iterates only once
-		 */
-		for_all_rx_queues_on_eq(adapter, eqo, rxo, i) {
-			work = be_process_rx(rxo, napi, budget, NAPI_POLLING);
-			max_work = max(work, max_work);
-		}
-		be_unlock_napi(eqo);
-	} else {
-		max_work = budget;
+	/* This loop will iterate twice for EQ0 in which
+	 * completions of the last RXQ (default one) are also processed
+	 * For other EQs the loop iterates only once
+	 */
+	for_all_rx_queues_on_eq(adapter, eqo, rxo, i) {
+		work = be_process_rx(rxo, napi, budget);
+		max_work = max(work, max_work);
 	}
 
 	if (is_mcc_eqo(eqo))
@@ -3146,28 +3157,6 @@ int be_poll(struct napi_struct *napi, int budget)
 	}
 	return max_work;
 }
-
-#ifdef CONFIG_NET_RX_BUSY_POLL
-static int be_busy_poll(struct napi_struct *napi)
-{
-	struct be_eq_obj *eqo = container_of(napi, struct be_eq_obj, napi);
-	struct be_adapter *adapter = eqo->adapter;
-	struct be_rx_obj *rxo;
-	int i, work = 0;
-
-	if (!be_lock_busy_poll(eqo))
-		return LL_FLUSH_BUSY;
-
-	for_all_rx_queues_on_eq(adapter, eqo, rxo, i) {
-		work = be_process_rx(rxo, napi, 4, BUSY_POLLING);
-		if (work)
-			break;
-	}
-
-	be_unlock_busy_poll(eqo);
-	return work;
-}
-#endif
 
 void be_detect_error(struct be_adapter *adapter)
 {
@@ -3249,15 +3238,16 @@ static void be_msix_disable(struct be_adapter *adapter)
 
 static int be_msix_enable(struct be_adapter *adapter)
 {
-	int i, num_vec;
+	unsigned int i, max_roce_eqs;
 	struct device *dev = &adapter->pdev->dev;
+	int num_vec;
 
-	/* If RoCE is supported, program the max number of NIC vectors that
-	 * may be configured via set-channels, along with vectors needed for
-	 * RoCe. Else, just program the number we'll use initially.
+	/* If RoCE is supported, program the max number of vectors that
+	 * could be used for NIC and RoCE, else, just program the number
+	 * we'll use initially.
 	 */
 	if (be_roce_supported(adapter))
-		num_vec = min_t(int, 2 * be_max_eqs(adapter),
+		num_vec = min_t(int, be_max_func_eqs(adapter),
 				2 * num_online_cpus());
 	else
 		num_vec = adapter->cfg_num_qs;
@@ -3418,10 +3408,15 @@ static void be_rx_qs_destroy(struct be_adapter *adapter)
 
 static void be_disable_if_filters(struct be_adapter *adapter)
 {
-	be_cmd_pmac_del(adapter, adapter->if_handle,
-			adapter->pmac_id[0], 0);
+	if (!BEx_chip(adapter) || !be_virtfn(adapter) ||
+	    check_privilege(adapter, BE_PRIV_FILTMGMT)) {
+		be_cmd_pmac_del(adapter, adapter->if_handle,
+				adapter->pmac_id[0], 0);
+		eth_zero_addr(adapter->dev_mac);
+	}
 
 	be_clear_uc_list(adapter);
+	be_clear_mc_list(adapter);
 
 	/* The IFACE flags are enabled in the open path and cleared
 	 * in the close path. When a VF gets detached from the host and
@@ -3462,7 +3457,6 @@ static int be_close(struct net_device *netdev)
 	if (adapter->flags & BE_FLAGS_NAPI_ENABLED) {
 		for_all_evt_queues(adapter, eqo, i) {
 			napi_disable(&eqo->napi);
-			be_disable_busy_poll(eqo);
 		}
 		adapter->flags &= ~BE_FLAGS_NAPI_ENABLED;
 	}
@@ -3569,13 +3563,26 @@ static int be_enable_if_filters(struct be_adapter *adapter)
 	if (status)
 		return status;
 
-	/* For BE3 VFs, the PF programs the initial MAC address */
-	if (!(BEx_chip(adapter) && be_virtfn(adapter))) {
-		status = be_cmd_pmac_add(adapter, adapter->netdev->dev_addr,
-					 adapter->if_handle,
-					 &adapter->pmac_id[0], 0);
+	/* Normally this condition usually true as the ->dev_mac is zeroed.
+	 * But on BE3 VFs the initial MAC is pre-programmed by PF and
+	 * subsequent be_dev_mac_add() can fail (after fresh boot)
+	 */
+	if (!ether_addr_equal(adapter->dev_mac, adapter->netdev->dev_addr)) {
+		int old_pmac_id = -1;
+
+		/* Remember old programmed MAC if any - can happen on BE3 VF */
+		if (!is_zero_ether_addr(adapter->dev_mac))
+			old_pmac_id = adapter->pmac_id[0];
 		if (status)
 			return status;
+
+		/* Delete the old programmed MAC as we successfully programmed
+		 * a new MAC
+		 */
+		if (old_pmac_id >= 0 && old_pmac_id != adapter->pmac_id[0])
+			be_dev_mac_del(adapter, old_pmac_id);
+
+		ether_addr_copy(adapter->dev_mac, adapter->netdev->dev_addr);
 	}
 
 	if (adapter->vlans_added)
@@ -3617,7 +3624,6 @@ static int be_open(struct net_device *netdev)
 
 	for_all_evt_queues(adapter, eqo, i) {
 		napi_enable(&eqo->napi);
-		be_enable_busy_poll(eqo);
 		be_eq_notify(adapter, eqo->q.id, true, true, 0, 0);
 	}
 	adapter->flags |= BE_FLAGS_NAPI_ENABLED;
@@ -3729,6 +3735,11 @@ static void be_vf_clear(struct be_adapter *adapter)
 
 		be_cmd_if_destroy(adapter, vf_cfg->if_handle, vf + 1);
 	}
+
+	if (BE3_chip(adapter))
+		be_cmd_set_hsw_config(adapter, 0, 0,
+				      adapter->if_handle,
+				      PORT_FWD_TYPE_PASSTHRU, 0);
 done:
 	kfree(adapter->vf_cfg);
 	adapter->num_vfs = 0;
@@ -4023,6 +4034,15 @@ static int be_vf_setup(struct be_adapter *adapter)
 		}
 	}
 
+	if (BE3_chip(adapter)) {
+		/* On BE3, enable VEB only when SRIOV is enabled */
+		status = be_cmd_set_hsw_config(adapter, 0, 0,
+					       adapter->if_handle,
+					       PORT_FWD_TYPE_VEB, 0);
+		if (status)
+			goto err;
+	}
+
 	adapter->flags |= BE_FLAGS_SRIOV_ENABLED;
 	return 0;
 err:
@@ -4140,7 +4160,7 @@ static void be_setup_init(struct be_adapter *adapter)
  * for distribution between the VFs. This self-imposed limit will determine the
  * no: of VFs for which RSS can be enabled.
  */
-void be_calculate_pf_pool_rss_tables(struct be_adapter *adapter)
+static void be_calculate_pf_pool_rss_tables(struct be_adapter *adapter)
 {
 	struct be_port_resources port_res = {0};
 	u8 rss_tables_on_port;
@@ -4229,16 +4249,13 @@ static int be_get_resources(struct be_adapter *adapter)
 	struct be_resources res = {0};
 	int status;
 
-	if (BEx_chip(adapter)) {
-		BEx_get_resources(adapter, &res);
-		adapter->res = res;
-	}
-
 	/* For Lancer, SH etc read per-function resource limits from FW.
 	 * GET_FUNC_CONFIG returns per function guaranteed limits.
 	 * GET_PROFILE_CONFIG returns PCI-E related limits PF-pool limits
 	 */
-	if (!BEx_chip(adapter)) {
+	if (BEx_chip(adapter)) {
+		BEx_get_resources(adapter, &res);
+	} else {
 		status = be_cmd_get_func_config(adapter, &res);
 		if (status)
 			return status;
@@ -4247,12 +4264,12 @@ static int be_get_resources(struct be_adapter *adapter)
 		if (res.max_rss_qs && res.max_rss_qs == res.max_rx_qs &&
 		    !(res.if_cap_flags & BE_IF_FLAGS_DEFQ_RSS))
 			res.max_rss_qs -= 1;
-
-		/* If RoCE may be enabled stash away half the EQs for RoCE */
-		if (be_roce_supported(adapter))
-			res.max_evt_qs /= 2;
-		adapter->res = res;
 	}
+
+	/* If RoCE is supported stash away half the EQs for RoCE */
+	res.max_nic_evt_qs = be_roce_supported(adapter) ?
+				res.max_evt_qs / 2 : res.max_evt_qs;
+	adapter->res = res;
 
 	/* If FW supports RSS default queue, then skip creating non-RSS
 	 * queue for non-IP traffic.
@@ -4262,7 +4279,7 @@ static int be_get_resources(struct be_adapter *adapter)
 
 	dev_info(dev, "Max: txqs %d, rxqs %d, rss %d, eqs %d, vfs %d\n",
 		 be_max_txqs(adapter), be_max_rxqs(adapter),
-		 be_max_rss(adapter), be_max_eqs(adapter),
+		 be_max_rss(adapter), be_max_nic_eqs(adapter),
 		 be_max_vfs(adapter));
 	dev_info(dev, "Max: uc-macs %d, mc-macs %d, vlans %d\n",
 		 be_max_uc(adapter), be_max_mc(adapter),
@@ -4324,6 +4341,10 @@ static int be_mac_setup(struct be_adapter *adapter)
 
 		memcpy(adapter->netdev->dev_addr, mac, ETH_ALEN);
 		memcpy(adapter->netdev->perm_addr, mac, ETH_ALEN);
+
+		/* Initial MAC for BE3 VFs is already programmed by PF */
+		if (BEx_chip(adapter) && be_virtfn(adapter))
+			memcpy(adapter->dev_mac, mac, ETH_ALEN);
 	}
 
 	return 0;
@@ -4568,6 +4589,15 @@ static int be_setup(struct be_adapter *adapter)
 	if (be_physfn(adapter))
 		be_cmd_set_logical_link_config(adapter,
 					       IFLA_VF_LINK_STATE_AUTO, 0);
+
+	/* BE3 EVB echoes broadcast/multicast packets back to PF's vport
+	 * confusing a linux bridge or OVS that it might be connected to.
+	 * Set the EVB to PASSTHRU mode which effectively disables the EVB
+	 * when SRIOV is not enabled.
+	 */
+	if (BE3_chip(adapter))
+		be_cmd_set_hsw_config(adapter, 0, 0, adapter->if_handle,
+				      PORT_FWD_TYPE_PASSTHRU, 0);
 
 	if (adapter->num_vfs)
 		be_vf_setup(adapter);
@@ -4888,9 +4918,6 @@ static const struct net_device_ops be_netdev_ops = {
 #endif
 	.ndo_bridge_setlink	= be_ndo_bridge_setlink,
 	.ndo_bridge_getlink	= be_ndo_bridge_getlink,
-#ifdef CONFIG_NET_RX_BUSY_POLL
-	.ndo_busy_poll		= be_busy_poll,
-#endif
 #ifdef CONFIG_BE2NET_VXLAN
 	.ndo_add_vxlan_port	= be_add_vxlan_port,
 	.ndo_del_vxlan_port	= be_del_vxlan_port,
@@ -5054,6 +5081,10 @@ static void be_worker(struct work_struct *work)
 	struct be_rx_obj *rxo;
 	int i;
 
+	if (be_physfn(adapter) &&
+	    MODULO(adapter->work_counter, adapter->be_get_temp_freq) == 0)
+		be_cmd_get_die_temperature(adapter);
+
 	/* when interrupts are not yet enabled, just reap any pending
 	 * mcc completions
 	 */
@@ -5071,10 +5102,6 @@ static void be_worker(struct work_struct *work)
 		else
 			be_cmd_get_stats(adapter, &adapter->stats_cmd);
 	}
-
-	if (be_physfn(adapter) &&
-	    MODULO(adapter->work_counter, adapter->be_get_temp_freq) == 0)
-		be_cmd_get_die_temperature(adapter);
 
 	for_all_rx_queues(adapter, rxo, i) {
 		/* Replenish RX-queues starved due to memory
@@ -5274,6 +5301,9 @@ static void be_remove(struct pci_dev *pdev)
 	unregister_netdev(adapter->netdev);
 
 	be_clear(adapter);
+
+	if (!pci_vfs_assigned(adapter->pdev))
+		be_cmd_reset_function(adapter);
 
 	/* tell fw we're done with firing cmds */
 	be_cmd_fw_clean(adapter);
