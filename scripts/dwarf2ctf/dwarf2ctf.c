@@ -345,7 +345,7 @@ struct detect_duplicates_state {
 	const char *file_name;
 	const char *module_name;
 	GHashTable *structs_seen;
-	GSList *named_structs;
+	GList *named_structs;
 	const char *dwfl_file_name;
 	Dwarf *dwarf;
 	Dwfl *dwfl;
@@ -397,8 +397,10 @@ static void mark_seen_contained(Dwarf_Die *die, const char *module_name);
  * Determine if some type (whose ultimate base type is an non-opaque structure,
  * alias, or enum) has an opaque equivalent which is shared, and mark it and
  * all its bases as shared too if so.
+ *
+ * A list_filter() filter function.
  */
-static void detect_duplicates_alias_fixup(void *id_file_data, void *data);
+static int detect_duplicates_alias_fixup(void *id_file_data, void *data);
 
 /*
  * Mark a basic type shared by name and intern it in all relevant hashes.  (Used
@@ -715,6 +717,13 @@ static char *str_appendn(char *s, ...)
 static char *xstrdup(const char *s) __attribute__((__nonnull__,
 						   __warn_unused_result__,
 						   __malloc__));
+
+/*
+ * Filter a GList, calling a predicate on it and removing all elements for which
+ * the predicate returns true.
+ */
+typedef int (*filter_pred_fun) (void *element, void *data);
+static GList *list_filter(GList *list, filter_pred_fun fun, void *data);
 
 /*
  * Figure out the (pathless, suffixless) module name for a given module file (.o
@@ -1823,14 +1832,14 @@ static void scan_duplicates(void)
 		dw_ctf_trace("Duplicate detection: alias fixup pass.\n");
 
 		state.repeat_detection = 0;
-
-		g_slist_foreach(state.named_structs, detect_duplicates_alias_fixup,
-				&state);
+		state.named_structs = list_filter(state.named_structs,
+						  detect_duplicates_alias_fixup,
+						  &state);
 	} while (state.repeat_detection);
  out:
 	detect_duplicates_dwarf_free(&state);
 	dw_ctf_trace("Duplicate detection: complete.\n");
-	g_slist_free_full(state.named_structs, free_duplicates_id_file);
+	g_list_free_full(state.named_structs, free_duplicates_id_file);
 }
 
 /*
@@ -2002,7 +2011,7 @@ static void detect_duplicates_will_rescan(Dwarf_Die *die, const char *id,
 	id_file->file_name = xstrdup(state->file_name);
 	id_file->id = xstrdup(id);
 	id_file->dieoff = dwarf_dieoffset(die);
-	state->named_structs = g_slist_prepend(state->named_structs, id_file);
+	state->named_structs = g_list_prepend(state->named_structs, id_file);
 }
 
 /*
@@ -2230,14 +2239,19 @@ static void is_named_struct_union_enum(Dwarf_Die *die, const char *unused,
  * (This is why it must run over non-opaque structures: given a non-opaque
  * structure, its opaque alias is easy to compute, but the converse is not
  * true.)
+ *
+ * As a list_filter() filter function, returns 0 if this structure will not need
+ * to be checked again (because both its opaque and transparent variants are
+ * shared).
  */
-static void detect_duplicates_alias_fixup(void *id_file_data, void *data)
+static int detect_duplicates_alias_fixup(void *id_file_data, void *data)
 {
 	struct detect_duplicates_id_file *id_file = id_file_data;
 	struct detect_duplicates_state *state = data;
 
 	int transparent_shared = 0;
 	int opaque_shared = 0;
+	int made_shared = 0;
 
 	char *opaque_id;
 	const char *line_num;
@@ -2317,6 +2331,7 @@ static void detect_duplicates_alias_fixup(void *id_file_data, void *data)
 			exit(1);
 		}
 		mark_shared(&die, NULL, state);
+		made_shared = 1;
 	}
 
 	/*
@@ -2334,9 +2349,12 @@ static void detect_duplicates_alias_fixup(void *id_file_data, void *data)
 		dw_ctf_trace("Marking %s as duplicate\n", opaque_id);
 		g_hash_table_replace(id_to_module, xstrdup(opaque_id),
 				     xstrdup("shared_ctf"));
+		made_shared = 1;
 	}
 
 	free(opaque_id);
+
+	return made_shared || (opaque_shared && transparent_shared);
 }
 
 /*
@@ -3976,6 +3994,23 @@ static char *str_appendn(char *s, ...)
 	va_end(ap);
 
 	return s;
+}
+
+/*
+ * Filter a GList, calling a predicate on it and removing all elements for which
+ * the predicate returns true.
+ */
+static GList *list_filter(GList *list, filter_pred_fun fun, void *data)
+{
+	GList *cur = list;
+	while (cur) {
+		GList *next = cur->next;
+		if (fun(cur->data, data))
+			list = g_list_delete_link(list, cur);
+		cur = next;
+	}
+
+	return list;
 }
 
 /*
