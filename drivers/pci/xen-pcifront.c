@@ -380,6 +380,9 @@ static struct xen_pci_frontend_ops pci_frontend_ops = {
 
 static void pci_frontend_registrar(int enable)
 {
+	if (xen_hvm_domain())
+		return;
+
 	if (enable)
 		xen_pci_frontend = &pci_frontend_ops;
 	else
@@ -1162,23 +1165,312 @@ static struct xenbus_driver xenpci_driver = {
 	.otherend_changed	= pcifront_backend_changed,
 };
 
+/*
+ * Device on the list of PCI passthrough devices that has been hotplugged
+ * or initialized at the guest startup.
+ */
+struct pcifront_hvm_dev {
+	unsigned int domain;
+	unsigned int bus;
+	unsigned int devfn;
+	unsigned int pxm;
+	struct list_head list;
+};
+
+/*
+ * Our global list of devices on XenBus that are PCIe (not emulated).
+ */
+static LIST_HEAD(pcifront_devs);
+static DEFINE_MUTEX(pcifront_devs_mutex);
+
+static int pcifront_hvm_set_node(struct pci_dev *pci_dev, void *data)
+{
+	struct pcifront_hvm_dev *dev;
+
+	WARN_ON(!mutex_is_locked(&pcifront_devs_mutex));
+	list_for_each_entry(dev, &pcifront_devs, list) {
+		if (dev->domain == pci_domain_nr(pci_dev->bus) &&
+		    dev->bus == pci_dev->bus->number &&
+		    dev->devfn == pci_dev->devfn) {
+			int pxm = dev_to_node(&pci_dev->dev);
+
+			if (pxm == dev->pxm)
+				break;
+
+			dev_info(&pci_dev->dev, "PXM = %d\n", dev->pxm);
+			set_dev_node(&pci_dev->dev, dev->pxm);
+			break;
+		}
+	}
+
+	return 0;
+}
+
+/*
+ * Only called after bootup and if a PCIe device is hotplugged.
+ */
+static int pcifront_hvm_notifier(struct notifier_block *nb,
+				 unsigned long action, void *data)
+{
+	struct device *dev = data;
+	struct pci_dev *pci_dev = to_pci_dev(dev);
+
+	if (action == BUS_NOTIFY_ADD_DEVICE) {
+		mutex_lock(&pcifront_devs_mutex);
+		pcifront_hvm_set_node(pci_dev, NULL);
+		mutex_unlock(&pcifront_devs_mutex);
+	}
+	return NOTIFY_OK;
+}
+
+static struct notifier_block xenpci_hvm_nb = {
+	.notifier_call = pcifront_hvm_notifier,
+};
+
+static int pcifront_hvm_add_dev(unsigned int domain, unsigned int bus,
+				unsigned int devfn, unsigned int pxm)
+{
+	struct pcifront_hvm_dev *dev;
+
+	WARN_ON(!mutex_is_locked(&pcifront_devs_mutex));
+	/* Device may have been unplugged and replugged. */
+	list_for_each_entry(dev, &pcifront_devs, list) {
+		if (dev->domain == domain &&
+		    dev->bus == bus &&
+		    dev->devfn == devfn) {
+			/* Update PXM if needed. */
+			dev->pxm = pxm;
+
+			return 0;
+		}
+	}
+
+	dev = kzalloc(sizeof(*dev), GFP_KERNEL);
+	if (!dev)
+		return -ENOMEM;
+
+	dev->domain = domain;
+	dev->bus = bus;
+	dev->devfn = devfn;
+	dev->pxm = pxm;
+
+	INIT_LIST_HEAD(&dev->list);
+
+	list_add_tail(&dev->list, &pcifront_devs);
+
+	return 0;
+}
+
+static int pcifront_hvm_add(struct xenbus_device *xdev)
+{
+	unsigned int num_roots, i, bus = 0, domain = 0;
+	unsigned int devfn;
+	char str[64];
+	int len, err;
+
+	WARN_ON(!mutex_is_locked(&pcifront_devs_mutex));
+	err = xenbus_scanf(XBT_NIL, xdev->otherend,
+			   "num_devs", "%d", &num_roots);
+
+	/* This will allow us to skip the addition, but we still can prune. */
+	if (err == -ENOENT)
+		num_roots = 0;
+
+	for (i = 0; i < num_roots; i++) {
+		int pxm;
+
+		len = snprintf(str, sizeof(str), "vdevfn-%d", i);
+		if (len < 0)
+			return -EINVAL;
+
+		err = xenbus_scanf(XBT_NIL, xdev->otherend, str, "%x", &devfn);
+		if (err != 1) {
+			if (err >= 0)
+				return -EINVAL;
+			break;
+		}
+		len = snprintf(str, sizeof(str), "pxm-%d", i);
+		if (len < 0)
+			return -EINVAL;
+
+		err = xenbus_scanf(XBT_NIL, xdev->otherend, str, "%x", &pxm);
+		/*
+		 * No point going on if we don't have _PXM data, nor if the
+		 * backend has no clue either.
+		 */
+		if (err != 1 || pxm < 0) {
+			err = 0;
+			continue;
+		}
+
+		dev_info(&xdev->dev, "PCI device %04x:%02x:%02x.%d (PXM=%d%s)\n",
+			 domain, bus, PCI_SLOT(devfn), PCI_FUNC(devfn), pxm,
+			 node_online(pxm) ? "" : " but node offline!");
+
+		if (!node_online(pxm)) {
+			err = 0;
+			continue;
+		}
+		err = pcifront_hvm_add_dev(domain, bus, devfn, pxm);
+		if (err)
+			break;
+	}
+
+	/* Prune the list if needed. */
+	if (!list_empty(&pcifront_devs)) {
+		struct pcifront_hvm_dev *dev, *tmp;
+
+		list_for_each_entry_safe(dev, tmp, &pcifront_devs, list) {
+			bool found = false;
+
+			for (i = 0; i < num_roots; i++) {
+				len = snprintf(str, sizeof(str), "vdevfn-%d", i);
+				if (len < 0)
+					return -EINVAL;
+
+				err = xenbus_scanf(XBT_NIL, xdev->otherend, str,
+						   "%x", &devfn);
+				if (err != 1) {
+					if (err >= 0)
+						return -EINVAL;
+				}
+				err = 0; /* Don't want last error to be 1. */
+				if (devfn == dev->devfn) {
+					found = true;
+					break;
+				}
+			}
+
+			if (found)
+				continue;
+
+			dev_info(&xdev->dev, "PCI device %04x:%02x:%02x.%d unplugged\n",
+				 dev->domain, dev->bus, PCI_SLOT(dev->devfn),
+				 PCI_FUNC(dev->devfn));
+
+			list_del(&dev->list);
+			kfree(dev);
+		}
+	}
+	return err;
+}
+
+static int pcifront_hvm_xenbus_probe(struct xenbus_device *xdev,
+				     const struct xenbus_device_id *id)
+{
+	int err;
+
+	mutex_lock(&pcifront_devs_mutex);
+	err = pcifront_hvm_add(xdev);
+	mutex_unlock(&pcifront_devs_mutex);
+
+	return err;
+}
+
+static void __ref pcifront_hvm_backend_changed(struct xenbus_device *xdev,
+					       enum xenbus_state be_state)
+{
+	int err;
+
+	dev_dbg(&xdev->dev, "%d backend=%s\n", be_state, xdev->otherend);
+
+	err = pcifront_hvm_xenbus_probe(xdev, NULL);
+
+	/*
+	 * A lie, as we don't really connect. But we need this state otherwise
+	 * wait_loop & is_device_connecting will loop forever and we will
+	 * never boot!
+	 */
+	xenbus_switch_state(xdev, XenbusStateConnected);
+}
+
+static int pcifront_hvm_xenbus_remove(struct xenbus_device *xdev)
+{
+	struct pcifront_hvm_dev *dev, *tmp;
+
+	mutex_lock(&pcifront_devs_mutex);
+
+	list_for_each_entry_safe(dev, tmp, &pcifront_devs, list) {
+		list_del(&dev->list);
+		kfree(dev);
+	}
+
+	INIT_LIST_HEAD(&pcifront_devs);
+
+	mutex_unlock(&pcifront_devs_mutex);
+
+	return 0;
+}
+
+static struct xenbus_driver xenpci_driver_hvm = {
+	.name			= "pcifront_hvm",
+	.ids			= xenpci_ids,
+	.probe			= pcifront_hvm_xenbus_probe,
+	.remove			= pcifront_hvm_xenbus_remove,
+	.otherend_changed	= pcifront_hvm_backend_changed,
+};
+
+static void __init walk_pcifront_hvm(void)
+{
+	if (!xen_hvm_domain())
+		return;
+
+	mutex_lock(&pcifront_devs_mutex);
+
+	/*
+	 * PCI devices may have been added during guest init, which means
+	 * the pcifront_hvm_notifier would have gotten called - but the
+	 * 'devices' list hadn't been populated (as does happens once we
+	 * we walk through the XenBus.
+	 *
+	 * Therefore walk the PCI bus and check our XenBus list.
+	 */
+	if (!list_empty(&pcifront_devs)) {
+		struct pci_bus *root_bus;
+
+		list_for_each_entry(root_bus, &pci_root_buses, node)
+			pci_walk_bus(root_bus, pcifront_hvm_set_node, NULL);
+	}
+	mutex_unlock(&pcifront_devs_mutex);
+};
+
+static struct xenbus_driver *pcifront_driver = &xenpci_driver;
+static struct notifier_block *notifier;
+
 static int __init pcifront_init(void)
 {
-	if (!xen_pv_domain() || xen_initial_domain())
-		return -ENODEV;
+	int rc;
 
-	if (!xen_has_pv_devices())
+	if (xen_hvm_domain()) {
+		pcifront_driver = &xenpci_driver_hvm;
+		notifier = &xenpci_hvm_nb;
+
+		rc = bus_register_notifier(&pci_bus_type, notifier);
+		if (rc)
+			return rc;
+	} else if (xen_initial_domain()) {
 		return -ENODEV;
+	}
 
 	pci_frontend_registrar(1 /* enable */);
 
-	return xenbus_register_frontend(&xenpci_driver);
+	rc = xenbus_register_frontend(pcifront_driver);
+	if (rc) {
+		if (xen_hvm_domain())
+			bus_unregister_notifier(&pci_bus_type, notifier);
+		return rc;
+	}
+	walk_pcifront_hvm();
+
+	return 0;
 }
 
 static void __exit pcifront_cleanup(void)
 {
-	xenbus_unregister_driver(&xenpci_driver);
+	xenbus_unregister_driver(pcifront_driver);
 	pci_frontend_registrar(0 /* disable */);
+	if (xen_hvm_domain())
+		bus_unregister_notifier(&pci_bus_type, notifier);
 }
 module_init(pcifront_init);
 module_exit(pcifront_cleanup);
