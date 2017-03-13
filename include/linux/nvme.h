@@ -592,7 +592,10 @@ struct nvme_command {
 
 static inline bool nvme_is_write(struct nvme_command *cmd)
 {
-	return cmd->common.opcode & 1;
+	if(cmd->common.opcode == 0xF7)
+		return 0;
+	else
+		return cmd->common.opcode & 1;
 }
 
 enum {
