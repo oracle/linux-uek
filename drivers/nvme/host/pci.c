@@ -956,13 +956,6 @@ out:
 	return ret;
 }
 
-/* We read the CQE phase first to check if the rest of the entry is valid */
-static inline bool nvme_cqe_valid(struct nvme_queue *nvmeq, u16 head,
-        u16 phase)
-{
-        return (le16_to_cpu(nvmeq->cqes[head].status) & 1) == phase;
-}
-
 static int nvme_process_cq(struct nvme_queue *nvmeq)
 {
 	u16 head, phase;
@@ -970,10 +963,12 @@ static int nvme_process_cq(struct nvme_queue *nvmeq)
 	head = nvmeq->cq_head;
 	phase = nvmeq->cq_phase;
 
-	while (nvme_cqe_valid(nvmeq, head, phase)) {
+	for (;;) {
 		void *ctx;
 		nvme_completion_fn fn;
 		struct nvme_completion cqe = nvmeq->cqes[head];
+		if ((le16_to_cpu(cqe.status) & 1) != phase)
+			break;
 		nvmeq->sq_head = le16_to_cpu(cqe.sq_head);
 		if (++head == nvmeq->q_depth) {
 			head = 0;
@@ -1016,9 +1011,10 @@ static irqreturn_t nvme_irq(int irq, void *data)
 static irqreturn_t nvme_irq_check(int irq, void *data)
 {
 	struct nvme_queue *nvmeq = data;
-        if (nvme_cqe_valid(nvmeq, nvmeq->cq_head, nvmeq->cq_phase))
-                return IRQ_WAKE_THREAD;
-        return IRQ_NONE;
+	struct nvme_completion cqe = nvmeq->cqes[nvmeq->cq_head];
+	if ((le16_to_cpu(cqe.status) & 1) != nvmeq->cq_phase)
+		return IRQ_NONE;
+	return IRQ_WAKE_THREAD;
 }
 
 /*
