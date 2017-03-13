@@ -38,6 +38,8 @@ extern unsigned char admin_timeout;
 extern unsigned char shutdown_timeout;
 #define SHUTDOWN_TIMEOUT	(shutdown_timeout * HZ)
 
+extern unsigned int nvme_max_retries;
+
 enum {
 	NVME_NS_LBA		= 0,
 	NVME_NS_LIGHTNVM	= 1,
@@ -202,7 +204,8 @@ static inline int nvme_error_status(u16 status)
 static inline bool nvme_req_needs_retry(struct request *req, u16 status)
 {
 	return !(status & NVME_SC_DNR || blk_noretry_request(req)) &&
-		(jiffies - req->start_time) < req->timeout;
+		(jiffies - req->start_time) < req->timeout &&
+		req->retries < nvme_max_retries;
 }
 
 void nvme_cancel_request(struct request *req, void *data, bool reserved);
