@@ -65,11 +65,6 @@ static unsigned char shutdown_timeout = 5;
 module_param(shutdown_timeout, byte, 0644);
 MODULE_PARM_DESC(shutdown_timeout, "timeout in seconds for controller shutdown");
 
-unsigned int nvme_max_retries = 5;
-module_param_named(max_retries, nvme_max_retries, uint, 0644);
-MODULE_PARM_DESC(max_retries, "max number of retries a command may have");
-EXPORT_SYMBOL_GPL(nvme_max_retries);
-
 static int nvme_major;
 module_param(nvme_major, int, 0);
 
@@ -630,12 +625,9 @@ static void req_completion(struct nvme_queue *nvmeq, void *ctx,
 
 	if (unlikely(status)) {
 		if (!(status & NVME_SC_DNR || blk_noretry_request(req))
-		    && (jiffies - req->start_time) < req->timeout &&
-			req->retries < nvme_max_retries) {
+		    && (jiffies - req->start_time) < req->timeout) {
 			unsigned long flags;
 
-			req->retries++;
-			requeue = true;
 			blk_mq_requeue_request(req);
 			spin_lock_irqsave(req->q->queue_lock, flags);
 			if (!blk_queue_stopped(req->q))
@@ -860,11 +852,6 @@ static void nvme_setup_rw(struct nvme_ns *ns, struct request *req,
 
 	if (req->cmd_flags & REQ_RAHEAD)
 		dsmgmt |= NVME_RW_DSM_FREQ_PREFETCH;
-
-	if (!(req->cmd_flags & REQ_DONTPREP)) {
-		req->retries = 0;
-		req->cmd_flags |= REQ_DONTPREP;
-	}
 
 	memset(cmnd, 0, sizeof(*cmnd));
 	cmnd->rw.opcode = (rq_data_dir(req) ? nvme_cmd_write : nvme_cmd_read);
