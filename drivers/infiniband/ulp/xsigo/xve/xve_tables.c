@@ -196,6 +196,7 @@ struct xve_fwt_entry *xve_fwt_lookup(struct xve_dev_priv *priv, char *mac,
 		if (atomic_read(&fwt_entry->del_inprogress)) {
 			xve_info(priv, "%p Table delete in progress mac%pM",
 					fwt_entry, mac);
+			spin_unlock_irqrestore(&xve_fwt->lock, flags);
 			return NULL;
 		}
 		atomic_inc(&fwt_entry->ref_cnt);
