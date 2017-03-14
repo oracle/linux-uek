@@ -39,10 +39,19 @@
 #include <linux/hugetlb.h>
 #include <linux/dma-attrs.h>
 #include <linux/slab.h>
+#include <linux/moduleparam.h>
 #include <rdma/ib_umem_odp.h>
 
 #include "uverbs.h"
 
+#if defined(__sparc__) && defined(__arch64__)
+/* weak order is enabled by default for sparc 64 platforms */
+static bool allow_weak_ordering = true;
+#else
+static bool allow_weak_ordering;
+#endif
+module_param(allow_weak_ordering, bool, 0444);
+MODULE_PARM_DESC(allow_weak_ordering,  "Allow weak ordering for data registered memory");
 
 static void __ib_umem_release(struct ib_device *dev, struct ib_umem *umem, int dirty)
 {
@@ -86,6 +95,8 @@ struct ib_umem *ib_umem_get(struct ib_ucontext *context, unsigned long addr,
 	DEFINE_DMA_ATTRS(attrs);
 	if (dmasync)
 		dma_set_attr(DMA_ATTR_WRITE_BARRIER, &attrs);
+	else if (allow_weak_ordering)
+		dma_set_attr(DMA_ATTR_WEAK_ORDERING, &attrs);
 	return ib_umem_get_attrs(context, addr, size, access, DMA_BIDIRECTIONAL, &attrs);
 }
 EXPORT_SYMBOL(ib_umem_get);

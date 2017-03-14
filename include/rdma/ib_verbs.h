@@ -1494,6 +1494,22 @@ struct ib_dma_mapping_ops {
 	void		(*free_coherent)(struct ib_device *dev,
 					 size_t size, void *cpu_addr,
 					 u64 dma_handle);
+	u64             (*map_single_attrs)(struct ib_device *dev,
+					    void *ptr, size_t size,
+					    enum dma_data_direction direction,
+					    struct dma_attrs *attrs);
+	void            (*unmap_single_attrs)(struct ib_device *dev,
+					      u64 addr, size_t size,
+					      enum dma_data_direction direction,
+					      struct dma_attrs *attrs);
+	int             (*map_sg_attrs)(struct ib_device *dev,
+					struct scatterlist *sg, int nents,
+					enum dma_data_direction direction,
+					struct dma_attrs *attrs);
+	void            (*unmap_sg_attrs)(struct ib_device *dev,
+					  struct scatterlist *sg, int nents,
+					  enum dma_data_direction direction,
+					  struct dma_attrs *attrs);
 };
 
 struct iw_cm_verbs;
@@ -2225,9 +2241,8 @@ static inline void ib_dma_unmap_single(struct ib_device *dev,
 				       enum dma_data_direction direction)
 {
 	if (dev->dma_ops)
-		dev->dma_ops->unmap_single(dev, addr, size, direction);
-	else
-		dma_unmap_single(dev->dma_device, addr, size, direction);
+		return dev->dma_ops->unmap_single(dev, addr, size, direction);
+	dma_unmap_single(dev->dma_device, addr, size, direction);
 }
 
 static inline u64 ib_dma_map_single_attrs(struct ib_device *dev,
@@ -2235,6 +2250,9 @@ static inline u64 ib_dma_map_single_attrs(struct ib_device *dev,
 					  enum dma_data_direction direction,
 					  struct dma_attrs *attrs)
 {
+	if (dev->dma_ops)
+		return dev->dma_ops->map_single_attrs(dev, cpu_addr, size,
+						      direction, attrs);
 	return dma_map_single_attrs(dev->dma_device, cpu_addr, size,
 				    direction, attrs);
 }
@@ -2244,8 +2262,11 @@ static inline void ib_dma_unmap_single_attrs(struct ib_device *dev,
 					     enum dma_data_direction direction,
 					     struct dma_attrs *attrs)
 {
-	return dma_unmap_single_attrs(dev->dma_device, addr, size,
-				      direction, attrs);
+	if (dev->dma_ops)
+		return dev->dma_ops->unmap_single_attrs(dev, addr, size,
+							direction, attrs);
+	dma_unmap_single_attrs(dev->dma_device, addr, size,
+			       direction, attrs);
 }
 
 /**
@@ -2279,9 +2300,8 @@ static inline void ib_dma_unmap_page(struct ib_device *dev,
 				     enum dma_data_direction direction)
 {
 	if (dev->dma_ops)
-		dev->dma_ops->unmap_page(dev, addr, size, direction);
-	else
-		dma_unmap_page(dev->dma_device, addr, size, direction);
+		return dev->dma_ops->unmap_page(dev, addr, size, direction);
+	dma_unmap_page(dev->dma_device, addr, size, direction);
 }
 
 /**
@@ -2322,7 +2342,11 @@ static inline int ib_dma_map_sg_attrs(struct ib_device *dev,
 				      enum dma_data_direction direction,
 				      struct dma_attrs *attrs)
 {
-	return dma_map_sg_attrs(dev->dma_device, sg, nents, direction, attrs);
+	if (dev->dma_ops)
+		return dev->dma_ops->map_sg_attrs(dev, sg, nents,
+						  direction, attrs);
+	return dma_map_sg_attrs(dev->dma_device, sg, nents,
+				direction, attrs);
 }
 
 static inline void ib_dma_unmap_sg_attrs(struct ib_device *dev,
@@ -2330,7 +2354,11 @@ static inline void ib_dma_unmap_sg_attrs(struct ib_device *dev,
 					 enum dma_data_direction direction,
 					 struct dma_attrs *attrs)
 {
-	dma_unmap_sg_attrs(dev->dma_device, sg, nents, direction, attrs);
+	if (dev->dma_ops)
+		return dev->dma_ops->unmap_sg_attrs(dev, sg, nents, direction,
+						    attrs);
+	dma_unmap_sg_attrs(dev->dma_device, sg, nents, direction,
+			   attrs);
 }
 /**
  * ib_sg_dma_address - Return the DMA address from a scatter/gather entry
@@ -2373,9 +2401,8 @@ static inline void ib_dma_sync_single_for_cpu(struct ib_device *dev,
 					      enum dma_data_direction dir)
 {
 	if (dev->dma_ops)
-		dev->dma_ops->sync_single_for_cpu(dev, addr, size, dir);
-	else
-		dma_sync_single_for_cpu(dev->dma_device, addr, size, dir);
+		return dev->dma_ops->sync_single_for_cpu(dev, addr, size, dir);
+	dma_sync_single_for_cpu(dev->dma_device, addr, size, dir);
 }
 
 /**
@@ -2391,9 +2418,9 @@ static inline void ib_dma_sync_single_for_device(struct ib_device *dev,
 						 enum dma_data_direction dir)
 {
 	if (dev->dma_ops)
-		dev->dma_ops->sync_single_for_device(dev, addr, size, dir);
-	else
-		dma_sync_single_for_device(dev->dma_device, addr, size, dir);
+		return dev->dma_ops->sync_single_for_device(dev, addr, size,
+							    dir);
+	dma_sync_single_for_device(dev->dma_device, addr, size, dir);
 }
 
 /**
@@ -2432,9 +2459,9 @@ static inline void ib_dma_free_coherent(struct ib_device *dev,
 					u64 dma_handle)
 {
 	if (dev->dma_ops)
-		dev->dma_ops->free_coherent(dev, size, cpu_addr, dma_handle);
-	else
-		dma_free_coherent(dev->dma_device, size, cpu_addr, dma_handle);
+		return dev->dma_ops->free_coherent(dev, size, cpu_addr,
+						   dma_handle);
+	dma_free_coherent(dev->dma_device, size, cpu_addr, dma_handle);
 }
 
 /**

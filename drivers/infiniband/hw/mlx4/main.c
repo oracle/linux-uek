@@ -53,6 +53,7 @@
 #include "mlx4_ib.h"
 #include "user.h"
 #include "wc.h"
+#include "dma.h"
 
 #define DRV_NAME	MLX4_IB_DRV_NAME
 #define DRV_VERSION	"2.2-1"
@@ -2367,6 +2368,8 @@ static void *mlx4_ib_add(struct mlx4_dev *dev)
 			"Device struct alloc failed\n");
 		return NULL;
 	}
+
+	mlx4_register_dma_ops(&ibdev->ib_dev);
 
 	iboe = &ibdev->iboe;
 
