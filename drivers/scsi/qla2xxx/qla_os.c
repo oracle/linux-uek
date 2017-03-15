@@ -4019,6 +4019,7 @@ struct scsi_qla_host *qla2x00_create_host(struct scsi_host_template *sht,
 	INIT_LIST_HEAD(&vha->qp_list);
 
 	spin_lock_init(&vha->work_lock);
+	init_waitqueue_head(&vha->vref_waitq);
 
 	sprintf(vha->host_str, "%s_%ld", QLA2XXX_DRIVER_NAME, vha->host_no);
 	ql_dbg(ql_dbg_init, vha, 0x0041,
