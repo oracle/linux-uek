@@ -2152,7 +2152,7 @@ static uint64_t dtrace_dif_variable(dtrace_mstate_t *mstate,
 			return 0;
 
 		if (!(mstate->dtms_present & DTRACE_MSTATE_CALLER)) {
-			int	aframes = mstate->dtms_probe->dtpr_aframes + 2;
+			int	aframes = mstate->dtms_probe->dtpr_aframes + 3;
 
 			if (!DTRACE_ANCHORED(mstate->dtms_probe)) {
 				/*
