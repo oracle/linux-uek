@@ -121,6 +121,10 @@ void dtrace_copyinstr(uintptr_t uaddr, uintptr_t kaddr, size_t size,
 	dtrace_copyinstr_arch(uaddr, kaddr, size, flags);
 }
 
+/*
+ * FIXME: aframes + 3 should really be aframes + 1, dtrace_stacktrace() in the
+ *	  kernel should do its own aframes + 2
+ */
 void dtrace_getpcstack(uint64_t *pcstack, int pcstack_limit, int aframes,
 		       uint32_t *intrpc)
 {
@@ -128,7 +132,7 @@ void dtrace_getpcstack(uint64_t *pcstack, int pcstack_limit, int aframes,
 					pcstack,
 					NULL,
 					pcstack_limit,
-					aframes,
+					aframes + 3,
 					STACKTRACE_KERNEL
 				     };
 
@@ -187,6 +191,10 @@ void dtrace_getupcstack(uint64_t *pcstack, int pcstack_limit)
 	dtrace_getufpstack(pcstack, NULL, pcstack_limit);
 }
 
+/*
+ * FIXME: aframes + 3 should really be aframes + 1, dtrace_stacktrace() in the
+ *	  kernel should do its own aframes + 2
+ */
 int dtrace_getstackdepth(dtrace_mstate_t *mstate, int aframes)
 {
 	uintptr_t		old = mstate->dtms_scratch_ptr;
@@ -194,7 +202,7 @@ int dtrace_getstackdepth(dtrace_mstate_t *mstate, int aframes)
 					NULL,
 					NULL,
 					0,
-					aframes,
+					aframes + 3,
 					STACKTRACE_KERNEL
 				     };
 
@@ -212,7 +220,9 @@ int dtrace_getstackdepth(dtrace_mstate_t *mstate, int aframes)
 	st.limit = (mstate->dtms_scratch_base + mstate->dtms_scratch_size -
 		    (uintptr_t)st.pcs) >> 3;
 
+	DTRACE_CPUFLAG_SET(CPU_DTRACE_NOFAULT);
 	dtrace_stacktrace(&st);
+	DTRACE_CPUFLAG_CLEAR(CPU_DTRACE_NOFAULT);
 
 	mstate->dtms_scratch_ptr = old;
 

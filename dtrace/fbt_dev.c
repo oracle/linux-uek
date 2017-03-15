@@ -53,7 +53,7 @@ static void *fbt_provide_probe(struct module *mp, char *func, int type, int
 		fbp = kzalloc(sizeof(fbt_probe_t), GFP_KERNEL);
 		fbp->fbp_name = kstrdup(func, GFP_KERNEL);
 		fbp->fbp_id = dtrace_probe_create(fbt_id, mp->name, func,
-						  "entry", 3, fbp);
+						  "entry", FBT_AFRAMES, fbp);
 		fbp->fbp_module = mp;
 		fbp->fbp_loadcnt = 1; /* FIXME */
 		fbp->fbp_primary = 1; /* FIXME */
@@ -76,8 +76,8 @@ static void *fbt_provide_probe(struct module *mp, char *func, int type, int
 			fbp->fbp_id = prev->fbp_id;
 		} else {
 			fbp->fbp_id = dtrace_probe_create(fbt_id, mp->name,
-							  func, "return", 3,
-							  fbp);
+							  func, "return",
+							  FBT_AFRAMES, fbp);
 		}
 
 		fbp->fbp_module = mp;
