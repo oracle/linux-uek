@@ -2,6 +2,7 @@
 #define _FBT_H_
 
 #include <asm/dtrace_arch.h>
+#include <dtrace/fbt_arch.h>
 
 typedef struct fbt_probe {
         char			*fbp_name;	/* name of probe */

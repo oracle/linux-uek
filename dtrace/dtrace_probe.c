@@ -850,7 +850,7 @@ void dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 				dtrace_getpcstack(
 					(uint64_t *)(tomax + valoffs),
 					size / sizeof(pc_t),
-					probe->dtpr_aframes,
+					probe->dtpr_aframes + 1,
 					DTRACE_ANCHORED(probe)
 						? NULL
 						: (uint32_t *)arg0);
