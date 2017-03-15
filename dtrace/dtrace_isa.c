@@ -190,7 +190,6 @@ void dtrace_getupcstack(uint64_t *pcstack, int pcstack_limit)
 int dtrace_getstackdepth(dtrace_mstate_t *mstate, int aframes)
 {
 	uintptr_t		old = mstate->dtms_scratch_ptr;
-	size_t			size;
 	stacktrace_state_t	st = {
 					NULL,
 					NULL,
@@ -199,14 +198,19 @@ int dtrace_getstackdepth(dtrace_mstate_t *mstate, int aframes)
 					STACKTRACE_KERNEL
 				     };
 
-	st.pcs = (uint64_t *)P2ROUNDUP(mstate->dtms_scratch_ptr, 8);
-	size = (uintptr_t)st.pcs - mstate->dtms_scratch_ptr +
-			  aframes * sizeof(uint64_t);
-	if (mstate->dtms_scratch_ptr + size >
+	st.pcs = (uint64_t *)ALIGN(old, 8);
+	if ((uintptr_t)st.pcs >
 	    mstate->dtms_scratch_base + mstate->dtms_scratch_size) {
 		DTRACE_CPUFLAG_SET(CPU_DTRACE_NOSCRATCH);
 		return 0;
 	}
+
+	/*
+	 * Calculate how many (64-bit) PCs we can fit in the remaining scratch
+	 * memory.
+	 */
+	st.limit = (mstate->dtms_scratch_base + mstate->dtms_scratch_size -
+		    (uintptr_t)st.pcs) >> 3;
 
 	dtrace_stacktrace(&st);
 
