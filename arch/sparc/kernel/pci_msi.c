@@ -355,6 +355,18 @@ static void msi_table_free(struct pci_pbm_info *pbm)
 	pbm->msi_msiqid_table = NULL;
 }
 
+static int msi_priq_table_alloc(struct pci_pbm_info *pbm)
+{
+	int size;
+
+	size = pbm->msi_num * sizeof(struct priq_irq *);
+	pbm->msi_priq = kzalloc(size, GFP_KERNEL);
+	if (!pbm->msi_priq)
+		return -ENOMEM;
+
+	return 0;
+}
+
 static int bringup_one_msi_queue(struct pci_pbm_info *pbm,
 				 const struct sparc64_msiq_ops *ops,
 				 unsigned long msiqid,
@@ -567,8 +579,14 @@ void pci_priq_msi_init(struct pci_pbm_info *pbm)
 	if (msi_bitmap_alloc(pbm))
 		goto out;
 
+	if (msi_priq_table_alloc(pbm))
+		goto out_bitmap_alloc;
+
 	sun4v_pbm_msi_info(pbm);
 	return;
+
+out_bitmap_alloc:
+	msi_bitmap_free(pbm);
 out:
-	pr_info("%s: MSI initialization failed.\n", pbm->name);
+	pr_warn("%s: PRIQ MSI initialization failed.\n", pbm->name);
 }

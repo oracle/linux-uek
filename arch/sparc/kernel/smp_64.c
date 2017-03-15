@@ -138,8 +138,6 @@ void smp_callin(void)
 	/* idle thread is expected to have preempt disabled */
 	preempt_disable();
 
-	priq_percpu_setup(cpuid);
-
 	local_irq_enable();
 
 	cpu_startup_entry(CPUHP_ONLINE);

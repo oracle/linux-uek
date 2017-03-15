@@ -57,6 +57,15 @@ struct sparc64_msiq_cookie {
 	struct pci_pbm_info *pbm;
 	unsigned long msiqid;
 };
+
+struct priq_irq {
+	struct list_head list;
+	int irq;
+	unsigned int msidata;
+	unsigned int devhandle;      /* rc devhandle               */
+	unsigned int bdf;            /* domain/bus/device/function */
+	unsigned short strand;       /* strand bound too           */
+};
 #endif
 
 struct pci_pbm_info {
@@ -145,6 +154,8 @@ struct pci_pbm_info {
 
 	/* msieq_id -> corresponding irq */
 	unsigned int                    *msiqid_irq_table;
+
+	struct priq_irq			**msi_priq;
 
 	int (*setup_msi_irq)(unsigned int *irq_p, struct pci_dev *pdev,
 			     struct msi_desc *entry);

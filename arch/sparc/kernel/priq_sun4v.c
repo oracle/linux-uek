@@ -94,15 +94,6 @@ out:
 #define	PRIQ_INTC	2UL
 #define	PRIQ_INTD	3UL
 
-struct priq_irq {
-	struct list_head	list;		/* list			      */
-	int			irq;		/* irq			      */
-	unsigned int		msidata;	/* msi data		      */
-	unsigned int		devhandle;	/* rc devhandle		      */
-	unsigned int		bdf;		/* domain/bus/device/function */
-	unsigned short		strand;		/* strand bound too	      */
-};
-
 static char *BDF2str(char *buf, int size, unsigned int bdf)
 {
 	snprintf(buf, size, "%04x:%02x:%02x.%d", (bdf >> 16) & 0xffff,
@@ -206,51 +197,24 @@ static void cpumask_clear_cpu_priq(int cpu)
 	cpumask_clear_cpu(cpu, &priq_cpu_mask);
 }
 
-static DEFINE_SPINLOCK(priq_affine_lock);
-static unsigned short next_strand[MAX_NUMNODES];
-
-static int priq_choose_strand(int hint_strand)
-{
-	static const unsigned short strand_step = 0x08U;
-	int node = cpu_to_node(hint_strand);
-	cpumask_t *cpumask = cpumask_of_node(node);
-	cpumask_t possible_strands;
-	unsigned long flags;
-	int strand;
-
-	cpumask_and(&possible_strands, &priq_cpu_mask, cpumask);
-
-	spin_lock_irqsave(&priq_affine_lock, flags);
-
-	strand = next_strand[node] + strand_step;
-	if (!cpumask_test_cpu(strand, &possible_strands)) {
-		strand = cpumask_next(strand + 1, &possible_strands);
-		if (strand >= nr_cpu_ids)
-			strand = cpumask_first(&possible_strands);
-	}
-	next_strand[node] = strand;
-
-	spin_unlock_irqrestore(&priq_affine_lock, flags);
-
-	return strand;
-}
-
 static int priq_mask_to_strand(int hint_strand, const struct cpumask *mask)
 {
-	cpumask_t *cpumask = cpumask_of_node(cpu_to_node(hint_strand));
-	cpumask_t tmp_mask, node_mask;
+	cpumask_t tmp_mask;
 	int strand;
 
-	cpumask_and(&node_mask, &priq_cpu_mask, cpumask);
+	if (hint_strand)
+		hint_strand--;
+
 	cpumask_and(&tmp_mask, &priq_cpu_mask, mask);
-	cpumask_and(&tmp_mask, &tmp_mask, &node_mask);
 
 	if (cpumask_empty(&tmp_mask)) {
-		strand = cpumask_next(hint_strand, &node_mask);
+		strand = cpumask_next(hint_strand, &priq_cpu_mask);
+
 		if (strand >= nr_cpu_ids)
-			strand = cpumask_first(&node_mask);
+			strand = cpumask_first(&priq_cpu_mask);
 	} else {
 		strand = cpumask_next(hint_strand, &tmp_mask);
+
 		if (strand >= nr_cpu_ids)
 			strand = cpumask_first(&tmp_mask);
 	}
@@ -258,28 +222,16 @@ static int priq_mask_to_strand(int hint_strand, const struct cpumask *mask)
 	return strand;
 }
 
-static int priq_affine(int hint_strand, const struct cpumask *mask)
+static int priq_irq_bind_eqcb(struct priq_irq *priq_irq,
+			      const struct cpumask *mask)
 {
-	int strand;
-
-	if (cpumask_equal(mask, cpu_online_mask))
-		strand = priq_choose_strand(hint_strand);
-	else
-		strand = priq_mask_to_strand(hint_strand, mask);
-
-	return strand;
-}
-
-static int priq_irq_bind_eqcb(struct irq_data *data, const struct cpumask *mask)
-{
-	struct priq_irq *priq_irq = irq_data_get_irq_handler_data(data);
 	bool is_intx = priq_irq_is_intx(priq_irq);
 	int strand = priq_irq->strand;
 	unsigned long hverror, id;
 	struct priq *priq;
 	char buf[16];
 
-	strand = priq_affine(strand, mask);
+	strand = priq_mask_to_strand(strand, mask);
 
 	if (strand >= nr_cpu_ids) {
 		priqdbg("priq_affine failed. strand: %d\n", strand);
@@ -331,14 +283,15 @@ static int priq_irq_bind_eqcb(struct irq_data *data, const struct cpumask *mask)
 static int priq_msi_set_affinity(struct irq_data *data,
 				 const struct cpumask *mask, bool force)
 {
-	int err = priq_irq_bind_eqcb(data, mask);
+	struct priq_irq *priq_msi = irq_data_get_irq_handler_data(data);
+	int err = priq_irq_bind_eqcb(priq_msi, mask);
 
 	if (err) {
-		struct priq_irq *priq_msi = irq_data_get_irq_handler_data(data);
 		char buf[16];
 
-		pr_warn("PRIQ: Could not set affinity. MSI %d - PCI: %s\n",
-			priq_msi->msidata, BDF2str(buf, 16, priq_msi->bdf));
+		pr_warn("PRIQ: Set affinity failed. IRQ: %d, MSI %d, PCI: %s\n",
+			priq_msi->irq, priq_msi->msidata,
+			BDF2str(buf, 16, priq_msi->bdf));
 	}
 
 	return err;
@@ -350,7 +303,7 @@ static void priq_msi_enable(struct irq_data *data)
 	unsigned long hverror;
 	char buf[16];
 
-	hverror = priq_irq_bind_eqcb(data, data->affinity);
+	hverror = priq_irq_bind_eqcb(priq_msi, data->affinity);
 	if (hverror)
 		goto out;
 
@@ -402,10 +355,10 @@ static struct irq_chip priq_msi_chip = {
 static int priq_intx_set_affinity(struct irq_data *data,
 				  const struct cpumask *mask, bool force)
 {
-	int err = priq_irq_bind_eqcb(data, mask);
+	struct priq_irq *priq_irq = irq_data_get_irq_handler_data(data);
+	int err = priq_irq_bind_eqcb(priq_irq, mask);
 
 	if (err) {
-		struct priq_irq *priq_irq = irq_data_get_irq_handler_data(data);
 		unsigned long intx = priq_irq_to_intx(priq_irq);
 
 		pr_warn("PRIQ: Could not set affinity. INTx %lu - RC: 0x%04x\n",
@@ -421,7 +374,7 @@ static void priq_intx_enable(struct irq_data *data)
 	unsigned long intx = priq_irq_to_intx(priq_irq);
 	unsigned long hverror;
 
-	hverror = priq_irq_bind_eqcb(data, data->affinity);
+	hverror = priq_irq_bind_eqcb(priq_irq, data->affinity);
 	if (hverror)
 		goto out;
 
@@ -515,6 +468,61 @@ out:
 	return -ENOMEM;
 }
 
+#define MAX_PBMS_BITS 7
+#define MAX_PBMS (1 << (MAX_PBMS_BITS))
+#define MAX_PBMS_MASK ((MAX_PBMS) - 1)
+
+static struct pci_pbm_info *pbms[MAX_PBMS];
+
+static DEFINE_SPINLOCK(priq_pbm_tbl_lock);
+
+static struct pci_pbm_info *priq_dhndl_to_pbm(unsigned int dhndl)
+{
+	int idx = dhndl & MAX_PBMS_MASK;
+	unsigned long flags;
+	int j = 0;
+
+	spin_lock_irqsave(&priq_pbm_tbl_lock, flags);
+	while (unlikely(pbms[idx]->devhandle != dhndl)) {
+		idx = (idx + 1) & MAX_PBMS_MASK;
+
+		if (unlikely(j++ >= MAX_PBMS)) {
+			priqdbg("Can't find pbm\n");
+			spin_unlock_irqrestore(&priq_pbm_tbl_lock, flags);
+			return NULL;
+		}
+	}
+	spin_unlock_irqrestore(&priq_pbm_tbl_lock, flags);
+
+	return pbms[idx];
+}
+
+static int priq_add_pbm_tbl(struct pci_pbm_info *pbm)
+{
+	int idx = pbm->devhandle & MAX_PBMS_MASK;
+	unsigned long flags;
+	int j = 0;
+
+	spin_lock_irqsave(&priq_pbm_tbl_lock, flags);
+	while (pbms[idx]) {
+		if (j == 0)
+			pr_warn("PRIQ: PBM Hash Collision\n");
+
+		idx = (idx + 1) & MAX_PBMS_MASK;
+
+		if (j++ >= MAX_PBMS) {
+			pr_err("PRIQ: Too many root Complexes\n");
+			spin_unlock_irqrestore(&priq_pbm_tbl_lock, flags);
+			return -ENODEV;
+		}
+	}
+
+	pbms[idx] = pbm;
+
+	spin_unlock_irqrestore(&priq_pbm_tbl_lock, flags);
+	return 0;
+}
+
 static unsigned int priq_hash_value(unsigned int devhandle, unsigned int bdf,
 				    unsigned int msidata)
 {
@@ -525,34 +533,55 @@ static unsigned int priq_hash_value(unsigned int devhandle, unsigned int bdf,
 	return hash_value;
 }
 
-static struct list_head *priq_hvalue_to_head(struct priq *priq,
-					     unsigned int hash_value)
-{
-	return &priq->hash[hash_value];
-}
-
 static void priq_hash_add(struct priq_irq *priq_irq, int node)
 {
-	unsigned int hash_value;
-	struct list_head *head;
-	unsigned long flags;
+	if (priq_irq->bdf != BDF_INTX) {
+		struct pci_pbm_info *pbm;
 
-	hash_value = priq_hash_value(priq_irq->devhandle, priq_irq->bdf,
-				     priq_irq->msidata);
-	head = &priq_hash[node][hash_value];
+		pbm = priq_dhndl_to_pbm(priq_irq->devhandle);
+		if (!pbm) {
+			priqdbg("Cannot add priq_irq to tbl\n");
+			return;
+		}
 
-	spin_lock_irqsave(&priq_hash_node_lock, flags);
-	list_add_rcu(&priq_irq->list, head);
-	spin_unlock_irqrestore(&priq_hash_node_lock, flags);
+		pbm->msi_priq[priq_irq->msidata - pbm->msi_first] = priq_irq;
+
+	} else {
+		unsigned int hash_value;
+		struct list_head *head;
+		unsigned long flags;
+
+		hash_value = priq_hash_value(priq_irq->devhandle, priq_irq->bdf,
+					     priq_irq->msidata);
+
+		head = &priq_hash[0][hash_value];
+
+		spin_lock_irqsave(&priq_hash_node_lock, flags);
+		list_add_rcu(&priq_irq->list, head);
+		spin_unlock_irqrestore(&priq_hash_node_lock, flags);
+	}
 }
 
 static void priq_hash_del(struct priq_irq *priq_irq)
 {
-	unsigned long flags;
+	if (priq_irq->bdf != BDF_INTX) {
+		struct pci_pbm_info *pbm;
 
-	spin_lock_irqsave(&priq_hash_node_lock, flags);
-	list_del_rcu(&priq_irq->list);
-	spin_unlock_irqrestore(&priq_hash_node_lock, flags);
+		pbm = priq_dhndl_to_pbm(priq_irq->devhandle);
+		if (!pbm) {
+			priqdbg("Cannot rm priq_irq from tbl\n");
+			return;
+		}
+
+		pbm->msi_priq[priq_irq->msidata - pbm->msi_first] = 0;
+
+	} else {
+		unsigned long flags;
+
+		spin_lock_irqsave(&priq_hash_node_lock, flags);
+		list_del_rcu(&priq_irq->list);
+		spin_unlock_irqrestore(&priq_hash_node_lock, flags);
+	}
 }
 
 static unsigned int priq_bdf(struct pci_dev *pdev)
@@ -565,20 +594,23 @@ static unsigned int priq_bdf(struct pci_dev *pdev)
 	return (pci_domain_nr(bus_dev) << 16) | BDF(bus, device, func);
 }
 
-/* This selection is based on node and online cpus. Should online not
- * intersect the initial cpu's node then we have an issue. The issue is
- * migrating the priq_msi to another node with active cpu-s.
- */
 static int priq_irq_get_strand(int node)
 {
 	cpumask_t *nodemask = cpumask_of_node(node);
+	static int last_strand;
 	cpumask_t tmp;
 
 	cpumask_and(&tmp, nodemask, &priq_cpu_mask);
-	if (cpumask_empty(&tmp))
-		return cpumask_first(&priq_cpu_mask);
 
-	return cpumask_first(&tmp);
+	if (cpumask_empty(&tmp)) {
+		last_strand = cpumask_first(&priq_cpu_mask);
+	} else {
+		last_strand = cpumask_next(last_strand, &tmp);
+		if (last_strand >= nr_cpu_ids)
+			last_strand = cpumask_first(&tmp);
+	}
+
+	return last_strand;
 }
 
 static int priq_msi_setup(unsigned int *irqp, struct pci_dev *pdev,
@@ -593,6 +625,9 @@ static int priq_msi_setup(unsigned int *irqp, struct pci_dev *pdev,
 
 	node = pbm->numa_node;
 	strand = priq_irq_get_strand(node);
+
+	if (unlikely(strand >= nr_cpu_ids))
+		goto out;
 
 	/* if node was -1, it is now >= 0 or if all strands in original are
 	 * offline and a different node gets chosen, it will come back correct.
@@ -775,39 +810,50 @@ static void priq_msi_consume(struct priq *priq, void *entry)
 	} *rec = entry;
 
 	unsigned int msidata = priq_pci_record_msidata(rec->word6);
-
-	unsigned int bdf = priq_pci_record_bdf(rec->word4);
-
-	unsigned int dhndl = priq_pci_record_dhndl(rec->word4);
-
-	unsigned long type = rec->word0 & PRIQ_TYPE_MASK;
-
-	unsigned int hash_value = priq_hash_value(dhndl, bdf, msidata);
-
-	struct list_head *head = priq_hvalue_to_head(priq, hash_value);
+	unsigned int bdf     = priq_pci_record_bdf(rec->word4);
+	unsigned int dhndl   = priq_pci_record_dhndl(rec->word4);
+	unsigned long type   = rec->word0 & PRIQ_TYPE_MASK;
 
 	struct priq_irq *priq_irq;
-	bool found = false;
 
-	if (type != PRIQ_TYPE_MSI32 && type != PRIQ_TYPE_MSI64 &&
-	    type != PRIQ_TYPE_INTX) {
-		priq_msi_dump_record("type not supported yet", entry);
-		return;
-	}
 
-	rcu_read_lock();
-	list_for_each_entry_rcu(priq_irq, head, list) {
-		if (priq_irq->devhandle == dhndl && RID(priq_irq->bdf) == bdf &&
-		    priq_irq->msidata == msidata) {
+	if (likely(type == PRIQ_TYPE_MSI64 || type == PRIQ_TYPE_MSI32)) {
+		struct pci_pbm_info *pbm;
+
+		pbm = priq_dhndl_to_pbm(dhndl);
+		if (likely(pbm)) {
+			priq_irq = pbm->msi_priq[msidata - pbm->msi_first];
 			process_priq_record(entry, type, priq_irq);
-			found = true;
-			break;
 		}
-	}
-	rcu_read_unlock();
 
-	if (!found)
-		priq_msi_dump_record("No PRIQ MSI record found.", entry);
+		return;
+
+	} else if (type == PRIQ_TYPE_INTX) {
+		unsigned int hash_value = msidata;
+		struct list_head *head;
+		bool found = false;
+
+		head = &priq->hash[hash_value];
+
+		rcu_read_lock();
+		list_for_each_entry_rcu(priq_irq, head, list) {
+			if (priq_irq->devhandle == dhndl &&
+			    RID(priq_irq->bdf) == bdf &&
+			    priq_irq->msidata == msidata) {
+				found = true;
+				break;
+			}
+		}
+		rcu_read_unlock();
+
+		if (found)
+			process_priq_record(entry, type, priq_irq);
+		else
+			priq_msi_dump_record("No PRIQ MSI Record.", entry);
+
+	} else {
+		priq_msi_dump_record("Type not supported yet", entry);
+	}
 }
 
 static unsigned long priq_disable_ie(void)
@@ -861,7 +907,7 @@ static void handle_priq(struct priq *priq)
 	bool nested;
 
 	hverror = priq_get_head_tail(priq->id, &head, &tail);
-	if (hverror) {
+	if (unlikely(hverror)) {
 		priqdbg("failed priq_get_head_tail(%ld).\n", hverror);
 		return;
 	}
@@ -877,7 +923,7 @@ static void handle_priq(struct priq *priq)
 	/* when we are done processing prior interrupts, these should be equal
 	 * in which case we are NOT nested.
 	 */
-	if (priq->head == priq->tail) {
+	if (likely(priq->head == priq->tail)) {
 		nested = false;
 		priq->tail = tail;
 
@@ -891,28 +937,29 @@ static void handle_priq(struct priq *priq)
 
 	priq_enable_ie(pstate);
 
-	if (nested) {
+	if (unlikely(nested)) {
 		priqdbg("Bailed on nested interrupt\n");
 		return;
 	}
 
-again:
-	while (head != tail) {
-		void *entry = __va(raddr + head);
+	while (1) {
+		while (likely(head != tail)) {
+			void *entry = __va(raddr + head);
 
-		priq_msi_consume(priq, entry);
-		head = (head + PRIQ_EQ_SIZE) & ~mask;
-	}
+			priq_msi_consume(priq, entry);
+			head = (head + PRIQ_EQ_SIZE) & ~mask;
+		}
 
-	pstate = priq_disable_ie();
+		pstate = priq_disable_ie();
 
-	/* have we taken a new nested interrupt increasing the amount
-	 * of work. if so, lets keep going
-	 */
-	if (tail != priq->tail) {
+		/* have we taken a new nested interrupt increasing the amount
+		 * of work. if so, lets keep going
+		 */
+		if (likely(tail == priq->tail))
+			break;
+
 		tail = priq->tail;
 		priq_enable_ie(pstate);
-		goto again;
 	}
 
 	hverror = priq_set_head(priq->id, head);
@@ -921,7 +968,7 @@ again:
 	BUG_ON(priq->head != priq->tail);
 	priq_enable_ie(pstate);
 
-	if (hverror)
+	if (unlikely(hverror))
 		priqdbg("Failed priq_set_head: %ld\n", hverror);
 }
 
@@ -1083,59 +1130,6 @@ out:
 	return;
 }
 
-static void unbind_priq_msi(struct priq *priq, struct priq_irq *priq_msi)
-{
-	struct hv_pci_msi_info info;
-	unsigned long hverror;
-	char buf[16];
-
-	hverror = pci_priq_msi_info(priq_msi->devhandle, priq_msi->msidata,
-				    RID(priq_msi->bdf), &info);
-
-	if (hverror) {
-		if (hverror != HV_EUNBOUND)
-			priqdbg("msi info failed. err: %ld, pci: %s, 0x%x\n",
-				hverror, BDF2str(buf, 16, priq_msi->bdf),
-				priq_msi->msidata);
-		return;
-	}
-
-	if (priq->id != info.priq_id) {
-		priqdbg("Attempt unbind MSI from wrong PRIQ. pci: %s, 0x%x\n",
-			BDF2str(buf, 16, priq_msi->bdf), priq_msi->msidata);
-		return;
-	}
-
-	hverror = pci_priq_msi_unbind(priq_msi->devhandle, priq_msi->msidata,
-				      RID(priq_msi->bdf));
-	if (hverror)
-		priqdbg("Failed to unbind msi irq. err: %ld, pci: %s 0x%x\n",
-			hverror, BDF2str(buf, 16, priq_msi->bdf),
-			priq_msi->msidata);
-}
-
-static void unbind_priq_intx(struct priq *priq, struct priq_irq *priq_irq)
-{
-	unsigned long intx = priq_irq_to_intx(priq_irq);
-	struct hv_pci_priq_intx_info info;
-	unsigned long hverror;
-
-	hverror = pci_priq_intx_info(priq_irq->devhandle, intx, &info);
-	if (hverror) {
-		if (hverror != HV_EUNBOUND)
-			priqdbg("intx info failed. err: %ld, dh: 0x%03x, intx: %lu\n",
-				hverror, priq_irq->devhandle, intx);
-		return;
-	}
-
-	if (priq->id != info.priq_id)
-		return;
-
-	hverror = pci_priq_intx_unbind(priq_irq->devhandle, intx);
-	if (hverror)
-		priqdbg("Failed unbind intx. err: %ld, dh: 0x%03x, intx: %lu\n",
-			hverror, priq_irq->devhandle, intx);
-}
 
 static void unbind_all_msi_on_priq(int cpu, struct priq *priq)
 {
@@ -1145,7 +1139,6 @@ static void unbind_all_msi_on_priq(int cpu, struct priq *priq)
 	for_each_irq_desc(irq, desc) {
 		struct irq_chip *chip = irq_desc_get_chip(desc);
 		struct priq_irq *priq_irq;
-		bool is_intx;
 
 		if (chip != &priq_msi_chip && chip != &priq_intx_chip)
 			continue;
@@ -1154,11 +1147,7 @@ static void unbind_all_msi_on_priq(int cpu, struct priq *priq)
 		if (priq_irq->strand != cpu)
 			continue;
 
-		is_intx = priq_irq_is_intx(priq_irq);
-		if (is_intx)
-			unbind_priq_intx(priq, priq_irq);
-		else
-			unbind_priq_msi(priq, priq_irq);
+		priq_irq_bind_eqcb(priq_irq, &priq_cpu_mask);
 	}
 }
 
@@ -1198,6 +1187,31 @@ void priq_percpu_destroy(int cpu)
 	priq->hash = NULL;
 }
 
+static int cpu_notify_callback(struct notifier_block *nfb, unsigned long action,
+			       void *hcpu)
+{
+	unsigned int cpu = (unsigned long)hcpu;
+
+	switch (action) {
+	case CPU_ONLINE:
+	case CPU_ONLINE_FROZEN:
+		if (!cpumask_test_cpu(cpu, &priq_cpu_mask))
+			priq_percpu_setup(cpu);
+		break;
+
+	case CPU_DOWN_PREPARE:
+	case CPU_DOWN_PREPARE_FROZEN:
+		if (cpumask_test_cpu(cpu, &priq_cpu_mask))
+			priq_percpu_destroy(cpu);
+		break;
+	}
+	return NOTIFY_OK;
+}
+
+static struct notifier_block priq_cpu_notifier = {
+	.notifier_call = cpu_notify_callback,
+};
+
 void __init sun4v_priq(void)
 {
 	int cpu = raw_smp_processor_id();
@@ -1236,15 +1250,23 @@ void __init sun4v_priq(void)
 
 	priq_configured = true;
 	priq_percpu_setup(cpu);
-	return;
+
+	register_cpu_notifier(&priq_cpu_notifier);
 }
 
 int pci_sun4v_priq_msi_init(struct pci_pbm_info *pbm)
 {
+	int err;
+
 	if (!priq_configured)
 		return -ENODEV;
 
+	err = priq_add_pbm_tbl(pbm);
+	if (err)
+		return err;
+
 	pci_priq_msi_init(pbm);
+
 	pbm->setup_msi_irq = priq_msi_setup;
 	pbm->teardown_msi_irq = priq_msi_teardown;
 
