@@ -4,6 +4,9 @@
 #include <linux/kobject.h>
 #include <linux/kdev_t.h>
 #include <linux/list.h>
+#ifndef __GENKSYMS__
+#include <linux/device.h>
+#endif /* __GENKSYMS__ */
 
 struct file_operations;
 struct inode;
@@ -25,6 +28,12 @@ struct cdev *cdev_alloc(void);
 void cdev_put(struct cdev *p);
 
 int cdev_add(struct cdev *, dev_t, unsigned);
+
+#ifndef __GENKSYMS__
+void cdev_set_parent(struct cdev *p, struct kobject *kobj);
+int cdev_device_add(struct cdev *cdev, struct device *dev);
+void cdev_device_del(struct cdev *cdev, struct device *dev);
+#endif /* __GENKSYMS__ */
 
 void cdev_del(struct cdev *);
 
