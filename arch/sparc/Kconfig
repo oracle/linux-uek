@@ -198,9 +198,9 @@ config NR_CPUS
 	int "Maximum number of CPUs"
 	depends on SMP
 	range 2 32 if SPARC32
-	range 2 4064 if SPARC64
+	range 2 4096 if SPARC64
 	default 32 if SPARC32
-	default 2048 if SPARC64
+	default 4096 if SPARC64
 
 config SPARC_DAX
 	bool "Enable Oracle Sparc DAX driver"

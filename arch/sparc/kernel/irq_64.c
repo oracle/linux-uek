@@ -1231,12 +1231,12 @@ static void __init init_cpu_send_mondo_info(struct trap_per_cpu *tb)
 {
 #ifdef CONFIG_SMP
 	unsigned long page;
+	unsigned int order;
 
-	BUILD_BUG_ON((NR_CPUS * sizeof(u16)) > (PAGE_SIZE - 64));
-
-	page = get_zeroed_page(GFP_KERNEL);
+	order = get_order(num_possible_cpus() * sizeof(u16) + 64);
+	page = __get_free_pages(GFP_KERNEL | __GFP_ZERO, order);
 	if (!page) {
-		prom_printf("SUN4V: Error, cannot allocate cpu mondo page.\n");
+		prom_printf("SUN4V: Error, cannot allocate cpu mondo pages.\n");
 		prom_halt();
 	}
 
