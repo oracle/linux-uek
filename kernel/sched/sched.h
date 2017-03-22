@@ -238,11 +238,18 @@ struct task_group {
 	unsigned long shares;
 
 #ifdef	CONFIG_SMP
-	atomic_long_t load_avg;
 #ifdef __GENKSYMS__
+	atomic_long_t load_avg;
 	atomic_t runnable_avg;
-#endif
-#endif
+#else
+	/*
+	 * load_avg can be heavily contended at clock tick time, so put
+	 * it in its own cacheline separated from the fields above which
+	 * will also be accessed at each tick.
+	 */
+	atomic_long_t load_avg ____cacheline_aligned;
+#endif /* __GENKSYMS__ */
+#endif /* CONFIG_SMP */
 #endif
 
 #ifdef CONFIG_RT_GROUP_SCHED
