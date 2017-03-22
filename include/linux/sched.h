@@ -1132,29 +1132,33 @@ struct load_weight {
 	u32 inv_weight;
 };
 
+/*
+ * The load_avg/util_avg accumulates an infinite geometric series.
+ * 1) load_avg factors the amount of time that a sched_entity is
+ * runnable on a rq into its weight. For cfs_rq, it is the aggregated
+ * such weights of all runnable and blocked sched_entities.
+ * 2) util_avg factors frequency scaling into the amount of time
+ * that a sched_entity is running on a CPU, in the range [0..SCHED_LOAD_SCALE].
+ * For cfs_rq, it is the aggregated such times of all runnable and
+ * blocked sched_entities.
+ * The 64 bit load_sum can:
+ * 1) for cfs_rq, afford 4353082796 (=2^64/47742/88761) entities with
+ * the highest weight (=88761) always runnable, we should not overflow
+ * 2) for entity, support any load.weight always runnable
+ */
 struct sched_avg {
-	u64 last_runnable_update;
-	s64 decay_count;
 	/*
-	 * utilization_avg_contrib describes the amount of time that a
-	 * sched_entity is running on a CPU. It is based on running_avg_sum
-	 * and is scaled in the range [0..SCHED_LOAD_SCALE].
-	 * load_avg_contrib described the amount of time that a sched_entity
-	 * is runnable on a rq. It is based on both runnable_avg_sum and the
-	 * weight of the task.
+	 * Oracle inc use only.
+	 * The following macros are used to preserve the ABI.
 	 */
-	unsigned long load_avg_contrib, utilization_avg_contrib;
-	/*
-	 * These sums represent an infinite geometric series and so are bound
-	 * above by 1024/(1-y).  Thus we only need a u32 to store them for all
-	 * choices of y < 1-2^(-32)*1024.
-	 * running_avg_sum reflects the time that the sched_entity is
-	 * effectively running on the CPU.
-	 * runnable_avg_sum represents the amount of time a sched_entity is on
-	 * a runqueue which includes the running time that is monitored by
-	 * running_avg_sum.
-	 */
-	u32 runnable_avg_sum, avg_period, running_avg_sum;
+	u64 UEK_KABI_RENAME(last_runnable_update, last_update_time);
+	UEK_KABI_REPLACE(s64 decay_count, u64 load_sum)
+	unsigned long UEK_KABI_RENAME(load_avg_contrib, load_avg),
+		      UEK_KABI_RENAME(utilization_avg_contrib, util_avg);
+	u32 UEK_KABI_RENAME(runnable_avg_sum, util_sum),
+	    UEK_KABI_RENAME(avg_period, period_contrib),
+	    UEK_KABI_RENAME(running_avg_sum, dummy_uek_kabi_hole);
+
 };
 
 #ifdef CONFIG_SCHEDSTATS
@@ -1220,7 +1224,7 @@ struct sched_entity {
 #endif
 
 #ifdef CONFIG_SMP
-	/* Per-entity load-tracking */
+	/* Per entity load average tracking */
 	struct sched_avg	avg;
 #endif
 };

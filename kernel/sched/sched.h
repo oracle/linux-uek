@@ -239,7 +239,9 @@ struct task_group {
 
 #ifdef	CONFIG_SMP
 	atomic_long_t load_avg;
+#ifdef __GENKSYMS__
 	atomic_t runnable_avg;
+#endif
 #endif
 #endif
 
@@ -359,27 +361,31 @@ struct cfs_rq {
 #endif
 
 #ifdef CONFIG_SMP
-	/*
-	 * CFS Load tracking
-	 * Under CFS, load is tracked on a per-entity basis and aggregated up.
-	 * This allows for the description of both thread and group usage (in
-	 * the FAIR_GROUP_SCHED case).
-	 * runnable_load_avg is the sum of the load_avg_contrib of the
-	 * sched_entities on the rq.
-	 * blocked_load_avg is similar to runnable_load_avg except that its
-	 * the blocked sched_entities on the rq.
-	 * utilization_load_avg is the sum of the average running time of the
-	 * sched_entities on the rq.
-	 */
+
+#ifdef __GENKSYMS__
 	unsigned long runnable_load_avg, blocked_load_avg, utilization_load_avg;
 	atomic64_t decay_counter;
 	u64 last_decay;
 	atomic_long_t removed_load;
+#else
+	/*
+	 * CFS load tracking
+	 */
+	struct sched_avg avg;
+#ifdef CONFIG_FAIR_GROUP_SCHED
+	unsigned long tg_load_avg_contrib;
+#endif
+	atomic_long_t removed_load_avg, removed_util_avg;
+#ifndef CONFIG_64BIT
+	u64 load_last_update_time_copy;
+#endif
+#endif /* __GENKSYSMS__ */
 
 #ifdef CONFIG_FAIR_GROUP_SCHED
-	/* Required to track per-cpu representation of a task_group */
+#ifdef __GENKSYMS__
 	u32 tg_runnable_contrib;
 	unsigned long tg_load_contrib;
+#endif
 
 	/*
 	 *   h_load = weight * f(tg)
@@ -1304,8 +1310,6 @@ extern void init_dl_bandwidth(struct dl_bandwidth *dl_b, u64 period, u64 runtime
 extern void init_dl_task_timer(struct sched_dl_entity *dl_se);
 
 unsigned long to_ratio(u64 period, u64 runtime);
-
-extern void update_idle_cpu_load(struct rq *this_rq);
 
 extern void init_task_runnable_average(struct task_struct *p);
 
