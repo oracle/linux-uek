@@ -1,7 +1,7 @@
 /*
  * vds.h: LDOM Virtual Disk Server.
  *
- * Copyright (C) 2014, 2015 Oracle. All rights reserved.
+ * Copyright (C) 2014, 2017 Oracle. All rights reserved.
  */
 
 #include <linux/module.h>
@@ -62,6 +62,7 @@ struct vds_port {
 
 #define	VDS_PORT_SEQ		0x1
 #define	VDS_PORT_FINI		0x2
+#define	VDS_PORT_READ_ONLY	0x4
 
 static inline struct vds_port *to_vds_port(struct vio_driver_state *vio)
 {

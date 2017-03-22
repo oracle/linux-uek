@@ -1,7 +1,7 @@
 /*
  * vds_main.c: LDOM Virtual Disk Server.
  *
- * Copyright (C) 2014, 2015 Oracle. All rights reserved.
+ * Copyright (C) 2014, 2017 Oracle. All rights reserved.
  */
 
 #include "vds.h"
@@ -80,6 +80,24 @@ static struct vio_version vds_versions[] = {
 	{ .major = 1, .minor = 3 },
 	{ .major = 1, .minor = 1 },
 	{ .major = 1, .minor = 0 },
+};
+
+struct vds_operation {
+	int operation;
+	int rw;
+	int (*function)(struct vds_io *);
+};
+
+static struct vds_operation vds_operations[] = {
+	{ VD_OP_BREAD, READ, vd_op_rw },
+	{ VD_OP_BWRITE, WRITE, vd_op_rw },
+	{ VD_OP_GET_VTOC, READ, vd_op_get_vtoc },
+	{ VD_OP_SET_VTOC, WRITE, vd_op_set_vtoc },
+	{ VD_OP_GET_DISKGEOM, READ, vd_op_get_geom },
+	{ VD_OP_SET_DISKGEOM, WRITE, vd_op_set_geom },
+	{ VD_OP_GET_EFI, READ, vd_op_get_efi },
+	{ VD_OP_SET_EFI, WRITE, vd_op_set_efi },
+	{ VD_OP_FLUSH, WRITE, vd_op_flush }
 };
 
 static inline int vds_version_supp(struct vds_port *port, u16 major, u16 minor)
@@ -392,7 +410,8 @@ static void vds_bh_io(struct work_struct *work)
 	struct vds_io *io = container_of(work, struct vds_io, vds_work);
 	struct vio_driver_state *vio = io->vio;
 	struct vds_port *port = to_vds_port(vio);
-	int err;
+	struct vds_operation *op;
+	int err, i;
 
 	BUG_ON(in_interrupt());
 
@@ -402,38 +421,22 @@ static void vds_bh_io(struct work_struct *work)
 	io->ack = VIO_SUBTYPE_ACK;
 	io->error = 0;
 
-	switch (io->desc->operation) {
-	case VD_OP_BREAD:
-		err = vd_op_rw(io);
-		break;
-	case VD_OP_BWRITE:
-		io->rw = WRITE;
-		err = vd_op_rw(io);
-		break;
-	case VD_OP_GET_VTOC:
-		err = vd_op_get_vtoc(io);
-		break;
-	case VD_OP_SET_VTOC:
-		err = vd_op_set_vtoc(io);
-		break;
-	case VD_OP_GET_DISKGEOM:
-		err = vd_op_get_geom(io);
-		break;
-	case VD_OP_SET_DISKGEOM:
-		err = vd_op_set_geom(io);
-		break;
-	case VD_OP_GET_EFI:
-		err = vd_op_get_efi(io);
-		break;
-	case VD_OP_SET_EFI:
-		err = vd_op_set_efi(io);
-		break;
-	case VD_OP_FLUSH:
-		err = vd_op_flush(io);
-		break;
-	default:
+	for (i = 0, op = NULL; i < ARRAY_SIZE(vds_operations); i++) {
+		if (io->desc->operation == vds_operations[i].operation) {
+			op = &vds_operations[i];
+			break;
+		}
+	}
+
+	if (op != NULL) {
+		if ((port->flags & VDS_PORT_READ_ONLY) && op->rw != READ) {
+			err = -EROFS;
+		} else {
+			io->rw = op->rw;
+			err = (*op->function)(io);
+		}
+	} else {
 		err = -ENOTSUPP;
-		break;
 	}
 
 	if (io->ack == VIO_SUBTYPE_ACK && err != 0 && io->error == 0)
@@ -490,7 +493,7 @@ static void vds_reset(struct vds_io *io)
 	vds_vio_lock(vio, flags);
 	vio_link_state_change(vio, LDC_EVENT_RESET);
 
-	port->flags = 0;
+	port->flags &= ~(VDS_PORT_FINI | VDS_PORT_SEQ);
 	kfree(port->msgbuf);
 	port->msglen = LDC_PACKET_SIZE;
 	port->msgbuf = kzalloc(port->msglen, GFP_ATOMIC);
@@ -868,9 +871,9 @@ static int vds_port_probe(struct vio_dev *vdev, const struct vio_device_id *id)
 	struct mdesc_handle *hp;
 	struct vds_port *port;
 	struct vio_driver_state *vio;
-	const char *path;
+	const char *path, *prop;
 	u64 node;
-	int err;
+	int err, len;
 
 	print_version();
 
@@ -918,6 +921,19 @@ static int vds_port_probe(struct vio_dev *vdev, const struct vio_device_id *id)
 		goto free_ldc;
 	}
 	port->path = kstrdup(path, GFP_KERNEL);
+	prop = mdesc_get_property(hp, node, "vds-block-device-opts", &len);
+	if (prop != NULL) {
+		while (len > 0) {
+			if (strcmp(prop, "ro") == 0) {
+				port->flags |= VDS_PORT_READ_ONLY;
+				vdsdbg(IOC,
+				    "%s is read-only\n", port->path);
+				break;
+			}
+			len -= strlen(prop) + 1;
+			prop += strlen(prop) + 1;
+		}
+	}
 	mdesc_release(hp);
 	vdsdbg(INIT, "path=%s\n", path);
 	port->vtoc = kzalloc(roundup(sizeof(*port->vtoc), 8), GFP_KERNEL);
