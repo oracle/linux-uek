@@ -176,7 +176,7 @@ cyclic_id_t cyclic_add(cyc_handler_t *hdlr, cyc_time_t *when)
 	cyc->cyc.when = *when;
 	cyc->cyc.hdlr = *hdlr;
 
-	if (cyc->cyc.when.cyt_when.tv64 == 0)
+	if (cyc->cyc.when.cyt_when == 0)
 		hrtimer_start(&cyc->cyc.timr, cyc->cyc.when.cyt_interval,
 			      HRTIMER_MODE_REL_PINNED);
 	else
@@ -194,7 +194,7 @@ EXPORT_SYMBOL(cyclic_add);
 
 static void cyclic_omni_xcall(cyclic_t *cyc)
 {
-	if (cyc->cyc.when.cyt_when.tv64 == 0)
+	if (cyc->cyc.when.cyt_when == 0)
 		hrtimer_start(&cyc->cyc.timr, cyc->cyc.when.cyt_interval,
 			      HRTIMER_MODE_REL_PINNED);
 	else
@@ -410,7 +410,7 @@ static int s_show(struct seq_file *seq, void *p)
 				   c->cpu,
 				   c->cyc.hdlr.cyh_level == CY_HIGH_LEVEL
 					? 'H' : 'l',
-				   c->cyc.when.cyt_interval.tv64,
+				   c->cyc.when.cyt_interval,
 				   c->cyc.hdlr.cyh_func,
 				   (uint64_t)c->cyc.hdlr.cyh_arg);
 	} else
@@ -418,7 +418,7 @@ static int s_show(struct seq_file *seq, void *p)
 			   cyc->cpu,
 			   cyc->cyc.hdlr.cyh_level == CY_HIGH_LEVEL
 				? 'H' : 'l',
-			   cyc->cyc.when.cyt_interval.tv64,
+			   cyc->cyc.when.cyt_interval,
 			   cyc->cyc.hdlr.cyh_func,
 			   (uint64_t)cyc->cyc.hdlr.cyh_arg);
 
