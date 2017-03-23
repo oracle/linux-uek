@@ -799,6 +799,20 @@ static void frontend_changed(struct xenbus_device *dev,
 		break;
 
 	case XenbusStateClosing:
+		if (!xenbus_dev_is_online(dev)) {
+			/*
+			 * Toolstack initiated detach (online = 0) but frontend
+			 * device is busy. Report this with status busy so that
+			 * toolstack waiting on hotplug-status will be notified
+			 * instead of wait timeout.
+			 */
+			err = xenbus_write(XBT_NIL, dev->nodename,
+						"hotplug-status", "busy");
+			if (err)
+				xenbus_dev_error(dev, err,
+						"writing %s/hotplug-status",
+						dev->nodename);
+		}
 		xenbus_switch_state(dev, XenbusStateClosing);
 		break;
 
