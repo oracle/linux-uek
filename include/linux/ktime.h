@@ -175,7 +175,7 @@ static inline s64 ktime_divns(const ktime_t kt, s64 div)
  */
 static inline int ktime_nz(const ktime_t kt)
 {
-	return kt.tv64 != 0LL;
+	return kt != 0LL;
 }
 
 static inline s64 ktime_to_us(const ktime_t kt)

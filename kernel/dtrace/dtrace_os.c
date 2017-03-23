@@ -407,8 +407,8 @@ void dtrace_vtime_resume(void)
 }
 EXPORT_SYMBOL(dtrace_vtime_resume);
 
-#define ktime_lt(t0, t1)	((t0).tv64 < (t1).tv64)
-#define ktime_gt(t0, t1)	((t0).tv64 > (t1).tv64)
+#define ktime_lt(t0, t1)	((t0) < (t1))
+#define ktime_gt(t0, t1)	((t0) > (t1))
 
 void dtrace_chill(ktime_t val, ktime_t interval, ktime_t int_max)
 {
