@@ -1517,7 +1517,7 @@ int qed_mcp_handle_events(struct qed_hwfn *p_hwfn,
 			qed_mcp_update_stag(p_hwfn, p_ptt);
 			break;
 		default:
-			DP_NOTICE(p_hwfn, "Unimplemented MFW message %d\n", i);
+			DP_INFO(p_hwfn, "Unimplemented MFW message %d\n", i);
 			rc = -EINVAL;
 		}
 	}
