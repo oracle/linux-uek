@@ -81,6 +81,7 @@ void blk_mq_freeze_queue_start(struct request_queue *q)
 {
 	int freeze_depth;
 
+	mutex_lock(&q->mq_freeze_lock);
 	freeze_depth = atomic_inc_return(&q->mq_freeze_depth);
 	if (freeze_depth == 1) {
 		percpu_ref_kill(&q->q_usage_counter);
@@ -126,6 +127,7 @@ void blk_mq_unfreeze_queue(struct request_queue *q)
 {
 	int freeze_depth;
 
+	mutex_lock(&q->mq_freeze_lock);
 	freeze_depth = atomic_dec_return(&q->mq_freeze_depth);
 	WARN_ON_ONCE(freeze_depth < 0);
 	if (!freeze_depth) {
