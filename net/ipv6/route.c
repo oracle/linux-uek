@@ -1629,7 +1629,6 @@ static void rt6_do_pmtu_disc(const struct in6_addr *daddr, const struct in6_addr
 			     struct net *net, u32 pmtu, int ifindex)
 {
 	struct rt6_info *rt, *nrt;
-	int allfrag = 0;
 again:
 	rt = rt6_lookup(net, daddr, saddr, ifindex, 0);
 	if (rt == NULL)
@@ -1643,16 +1642,8 @@ again:
 	if (pmtu >= dst_mtu(&rt->dst))
 		goto out;
 
-	if (pmtu < IPV6_MIN_MTU) {
-		/*
-		 * According to RFC2460, PMTU is set to the IPv6 Minimum Link
-		 * MTU (1280) and a fragment header should always be included
-		 * after a node receiving Too Big message reporting PMTU is
-		 * less than the IPv6 Minimum Link MTU.
-		 */
+	if (pmtu < IPV6_MIN_MTU)
 		pmtu = IPV6_MIN_MTU;
-		allfrag = 1;
-	}
 
 	/* New mtu received -> path was valid.
 	   They are sent only in response to data packets,
@@ -1667,11 +1658,6 @@ again:
 	 */
 	if (rt->rt6i_flags & RTF_CACHE) {
 		dst_metric_set(&rt->dst, RTAX_MTU, pmtu);
-		if (allfrag) {
-			u32 features = dst_metric(&rt->dst, RTAX_FEATURES);
-			features |= RTAX_FEATURE_ALLFRAG;
-			dst_metric_set(&rt->dst, RTAX_FEATURES, features);
-		}
 		rt6_mtu_change(rt->dst.dev, pmtu);
 		rt6_update_expires(rt, net->ipv6.sysctl.ip6_rt_mtu_expires);
 		rt->rt6i_flags |= RTF_MODIFIED;
@@ -1690,11 +1676,6 @@ again:
 
 	if (nrt) {
 		dst_metric_set(&nrt->dst, RTAX_MTU, pmtu);
-		if (allfrag) {
-			u32 features = dst_metric(&nrt->dst, RTAX_FEATURES);
-			features |= RTAX_FEATURE_ALLFRAG;
-			dst_metric_set(&nrt->dst, RTAX_FEATURES, features);
-		}
 
 		/* According to RFC 1981, detecting PMTU increase shouldn't be
 		 * happened within 5 mins, the recommended timer is 10 mins.
