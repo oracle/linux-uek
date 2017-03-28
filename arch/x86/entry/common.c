@@ -24,6 +24,7 @@
 #include <linux/uprobes.h>
 #include <linux/livepatch.h>
 #include <linux/syscalls.h>
+#include <linux/ksplice_clear_stack.h>
 
 #include <asm/desc.h>
 #include <asm/traps.h>
@@ -156,6 +157,8 @@ static void exit_to_usermode_loop(struct pt_regs *regs, u32 cached_flags)
 		/* deal with pending signal delivery */
 		if (cached_flags & _TIF_SIGPENDING) {
 			set_thread_flag(TIF_KSPLICE_FROM_ENTRY_CODE);
+			if (cached_flags & _TIF_KSPLICE_FREEZING)
+				ksplice_clear_stack();
 			do_signal(regs);
 			clear_thread_flag(TIF_KSPLICE_FROM_ENTRY_CODE);
 		}
