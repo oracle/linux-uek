@@ -30,7 +30,7 @@
 #include <linux/tracehook.h>
 #include <linux/ratelimit.h>
 #include <linux/syscalls.h>
-
+#include <linux/ksplice_clear_stack.h>
 #include <asm/debug-monitors.h>
 #include <asm/elf.h>
 #include <asm/cacheflush.h>
@@ -765,6 +765,8 @@ asmlinkage void do_notify_resume(struct pt_regs *regs,
 
 			if (thread_flags & _TIF_SIGPENDING) {
 				set_thread_flag(TIF_KSPLICE_FROM_ENTRY_CODE);
+				if (thread_flags & _TIF_KSPLICE_FREEZING)
+					ksplice_clear_stack();
 				do_signal(regs);
 				clear_thread_flag(TIF_KSPLICE_FROM_ENTRY_CODE);
 			}
