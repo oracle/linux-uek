@@ -2010,21 +2010,26 @@ static void bnxt_free_rx_skbs(struct bnxt *bp)
 
 		for (j = 0; j < max_idx; j++) {
 			struct bnxt_sw_rx_bd *rx_buf = &rxr->rx_buf_ring[j];
+			dma_addr_t mapping = rx_buf->mapping;
 			void *data = rx_buf->data;
 
 			if (!data)
 				continue;
 
-			dma_unmap_single_attrs(&pdev->dev, rx_buf->mapping,
-					       bp->rx_buf_use_size, bp->rx_dir,
-					       &attrs);
-
 			rx_buf->data = NULL;
 
-			if (BNXT_RX_PAGE_MODE(bp))
+			if (BNXT_RX_PAGE_MODE(bp)) {
+				mapping -= bp->rx_dma_offset;
+				dma_unmap_page_attrs(&pdev->dev, mapping,
+						     PAGE_SIZE, bp->rx_dir,
+						     &attrs);
 				__free_page(data);
-			else
+			} else {
+				dma_unmap_single_attrs(&pdev->dev, mapping,
+							bp->rx_buf_use_size,
+							bp->rx_dir, &attrs);
 				kfree(data);
+			}
 		}
 
 		for (j = 0; j < max_agg_idx; j++) {
