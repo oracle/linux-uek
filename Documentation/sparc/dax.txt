@@ -1,0 +1,256 @@
+Oracle Data Analytics Accelerator (DAX)
+---------------------------------------
+
+DAX is a coprocessor which resides on the SPARC M7 processor chip, and has
+direct access to the CPU's L3 caches as well as physical memory. It performs a
+handful of operations on data streams with various input and output formats.
+The driver is merely a transport mechanism and does not have knowledge of the
+various opcodes and data formats. A user space library provides high level
+services and translates these into low level commands which are then passed
+into the driver and subsequently the hypervisor and the coprocessor. This
+document describes the general flow of the driver, its structures, and its
+programmatic interface. It should be emphasized though that this interface is
+not intended for general use.  All applications using DAX should go through the
+user libraries.
+
+The DAX is documented in 3 places, though all are internal-only:
+ * Hypervisor API Wiki
+ * Virtual Machine Spec
+ * M7 PRM
+
+High Level Overview
+-------------------
+
+A coprocessor request is described by a Command Control Block (CCB). The CCB
+contains an opcode and various parameters. The opcode specifies what operation
+is to be done, and the parameters specify options, flags, sizes, and addresses.
+The CCB (or an array of CCBs) is passed to the Hypervisor, which handles
+queueing and scheduling of requests to the available coprocessor execution
+units. A status code returned indicates if the request was submitted
+successfully or if there was an error.  One of the addresses given in each CCB
+is a pointer to a "completion area", which is a 128 byte memory block that is
+written by the coprocessor to provide execution status. No interrupt is
+generated upon completion; the completion area must be polled by software to
+find out when a transaction has finished, but the M7 processor provides a
+mechanism to pause the virtual processor until the completion status has been
+updated by the coprocessor. A key feature of the DAX coprocessor design is that
+after a request is submitted, the kernel is no longer involved in the
+processing of it.  The polling is done at the user level, which results in
+almost zero latency between completion of a request and resumption of execution
+of the requesting thread.
+
+
+Addressing Memory
+-----------------
+
+The kernel does not have access to physical memory in the Sun4v architecture,
+as there is an additional level of memory virtualization present. This
+intermediate level is called "real" memory, and the kernel treats this as
+if it were physical.  The Hypervisor handles the translations between real
+memory and physical so that each logical domain (LDOM) can have a partition
+of physical memory that is isolated from that of other LDOMs.  When the
+kernel sets up a virtual mapping, it is a translation from a virtual
+address to a real address.
+
+The DAX coprocessor can only operate on _physical memory_, so before a request
+can be fed to the coprocessor, all the addresses in a CCB must be converted
+into physical addresses. The kernel cannot do this since it has no visibility
+into physical addresses. So a CCB may contain either the virtual or real
+addresses of the buffers or a combination of them. An "address type" field is
+available for each address that may be given in the CCB. In all cases, the
+Hypervisor will translate all the addresses to physical before dispatching to
+hardware.
+
+
+The Driver API
+--------------
+
+The driver provides most of its services via the ioctl() call. There is also
+some functionality provided via the mmap() call. These are the available ioctl
+functions:
+
+CCB_THR_INIT
+
+Creates a new context for a thread and initializes it for use. Each thread
+that wishes to submit requests must open the DAX device file and perform this
+ioctl.  This function causes a context structure to be allocated for the
+thread, which contains pointers and values used internally by the driver to
+keep track of submitted requests. A completion area buffer is also allocated,
+and this is large enough to contain the completion areas for many concurrent
+requests. The size of this buffer is returned to the caller since this is
+needed for the mmap() call so that the user can get access to the completion
+area buffer. Another value returned is the maximum length of the CCB array
+that may be submitted.
+
+CCB_THR_FINI
+
+Destroys a context for a thread. After doing this, the thread can no longer
+submit any requests.
+
+CA_DEQUEUE
+
+Notifies the driver that one or more completion areas are no longer needed and
+may be reused. This function must be performed whenever a thread has completed
+transactions that it has consumed. It need not be done after every transaction,
+but just often enough so that the completion areas do not run out.
+
+CCB_EXEC
+
+Submits one or more CCBs for execution on the coprocessor. An array of CCBs is
+given, along with the array length in bytes. The number of bytes actually
+accepted by the coprocessor is returned along with the offset of the completion
+area chosen for this set of submissions. This offset is relative to the start
+of the completion area virtual address given by a call to mmap() to the driver.
+
+There also several ioctl functions related to performance counters, but these
+are not described in this document. Access to the performance counters is
+provided via a utility program included with the DAX user libraries.
+
+MMAP
+
+The mmap() function provides two different services depending on
+whether or not PROT_WRITE is given.
+
+ - If a read-only mapping is requested, then the call is a request to
+   map the completion area buffer. In this case, the size requested
+   must equal the completion area size returned by the CCB_THR_INIT
+   ioctl call.
+ - If a read/write mapping is requested, then memory is allocated.
+   The memory is physically contiguous and locked. This memory can
+   be used for any virtual buffer in a CCB.
+
+
+Completion of a Request
+-----------------------
+
+The first byte in each completion area is the command status, and this byte is
+updated by the coprocessor hardware. Software may take advantage of special M7
+processor capabilities to efficiently poll this status byte.  First, a series
+of new address space identifiers has been introduced which can be used with a
+Load From Alternate Space instruction in order to effect a "monitored load".
+The typical ASI used would be 0x84, ASI_MONITOR_PRIMARY. Second, a new
+instruction, Monitored Wait (mwait) is introduced. It is just like /PAUSE/ in
+that it suspends execution of the virtual processor, but only until one of
+several events occur. If the block of data containing the monitored location is
+written to by any other virtual processor, then the mwait terminates. This
+allows software to resume execution immediately after a transaction completes,
+and without a context switch or kernel to user transition. The latency
+between transaction completion and resumption of execution may thus be
+just a few nanoseconds.
+
+
+Life cycle of a DAX Submission
+------------------------------
+
+ - Application opens dax device
+ - calls the CCB_THR_INIT ioctl
+ - invokes mmap() to get the completion area address
+ - optionally use mmap to allocate memory buffers for the request
+ - allocate a CCB and fill in the opcode, flags, parameter, addresses, etc.
+ - call the CCB_EXEC ioctl
+ - go into a loop executing monitored load + monitored wait and
+   terminate when the command status indicates the request is complete
+ - call the CA_DEQUEUE ioctl to release the completion area
+ - call munmap to deallocate completion area and any other memory
+ - call the CCB_THR_FINI ioctl
+ - close the dax device
+
+
+Memory Constraints
+------------------
+
+The DAX hardware operates only on physical addresses. Therefore, it is not
+aware of virtual memory mappings and the discontiguities that may exist in the
+physical memory that a virtual buffer maps to. There is no I/O TLB nor any kind
+of scatter/gather mechanism. Any data passed to DAX must reside in a physically
+contiguous region of memory.
+
+As stated earlier, the Hypervisor translates all addresses within a CCB to
+physical before handing off the CCB to DAX. The Hypervisor determines the
+virtual page size for each virtual address given, and uses this to program a
+size limit for each addresses. This prevents the coprocessor from reading or
+writing beyond the bound of the virtual page, even though it is accessing
+physical memory directly. A simpler way of saying this is that DAX will not
+"cross" a virtual page boundary. If an 8k virtual page is used, then the data
+is strictly limited to 8k. If a user's buffer is larger than 8k, then a larger
+page size must be used, or the transaction size will still be limited to 8k.
+There are two ways of accomplishing this.
+
+Huge pages. A user may allocate huge pages using either the mmap or shmget
+interfaces. Memory buffers residing on huge pages may be used to achieve much
+larger DAX transaction sizes, but the rules must still be followed, and no
+transaction can cross a page boundary, even a huge page.  A major caveat is
+that Linux on Sparc presents 8Mb as one of the huge page sizes. Sparc does not
+actually provide a 8Mb hardware page size, and this size is synthesized by
+pasting together two 4Mb pages. The reasons for this are historical, and it
+creates an issue because only half of this 8Mb page can actually be used for
+any given buffer in a DAX request, and it must be either the first half or the
+second half; it cannot be a 4Mb chunk in the middle, since that crosses a page
+boundary.
+
+DAX memory. The driver provides a memory allocation mechanism which guarantees
+that the backing physical memory is contiguous. A call to mmap requests an
+allocation, and the virtual address returned to the user is backed by mappings
+to 8k pages. However, when any address within one of these allocations is used
+in a DAX request, the driver replaces the user virtual address with the real
+address of the backing memory, and utilizes the DAX _flow control_ mechanism
+(if available) to specify a size limit on the memory buffer. This kind of
+allocation is called a "synthetic large page" because the driver can "create"
+pages of arbitrary size that do not depend on the hardware page sizes.
+
+Note. The synthetic large pages are only supported on some versions of the M7
+cpu, and an alternate technique is employed on the other versions: a mmap call
+may only request exactly 4Mb, and again, a contiguous physical allocation is
+used, and 8k pages are used for the user mappings to this area, while inside
+the kernel, a 4Mb virtual page is actually used. Similar to the synthetic large
+page "translation", when a user gives one of these addresses in a ccb, the
+driver replaces it with the corresponding kernel virtual address. Then the
+Hypervisor will sense the 4Mb virtual page size to complete the logic.
+
+
+Organization of the Driver Source
+---------------------------------
+
+The driver is split into several files based on the general area of
+functionality provided:
+
+ * dax_main.c - attach/detach, open/close, ioctl, thread init/fini functions,
+   context allocation, ccb submit/dequeue
+ * dax_mm.c   - memory allocation, mapping, and locking/unlocking
+ * dax_debugfs.c - support for debugfs access
+ * dax_bip.c  - utility functions to handle BIP buffers, used to track outstanding CCBs
+ * dax_perf.c - performance counter functions
+ * ccb.h - internal structure of a CCB and completion area
+ * sys_dax.h  - ioctl definitions and structures
+ * dax_impl.h - driver internal macros and structures
+
+
+Data Structures used by the Driver
+----------------------------------
+
+ * BIP Buffer - A variant of a circular buffer that returns variable length
+   contiguous blocks
+ * Context - a per thread structure that holds the state of CCBs submitted by
+   the thread
+ * dax_mm -  a structure that describes one memory management context, i.e., a
+   list of dax contexts belonging to the threads in a process
+ * dax_vma - a structure that describes one memory allocation
+
+
+Note on Memory Unmap Operations
+-------------------------------
+
+The multi threaded architecture of applications means that multiple threads
+have access to, and control over memory that is being used for DAX operations.
+It is the responsibility of the user to ensure that proper synchronization
+occurs among multiple threads accessing memory that may be accessed by DAX. But
+the driver has to protect against a thread releasing memory that may be in use
+by DAX, as freed memory might be immediately reallocated somewhere else, to
+another process, or to another kernel entity, and DAX might still be reading or
+writing to this memory. This is a hard problem to solve because there is no
+easy way to find out if a particular memory region is currently in use by DAX.
+This can only be done by a search of all outstanding transactions for memory
+addresses that fall within range of memory allocation being freed. Hence, a
+memory unmap operation will wait for all DAX operations using that memory to
+complete.
+

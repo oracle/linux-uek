@@ -78,6 +78,12 @@
 
 #define HV_EUNBOUND			19 /* Resource is unbound	   */
 
+#define HV_EUNAVAILABLE			23 /* Resource or operation not
+					    * currently available, but may
+					    * become available in the future
+					    */
+
+
 /* mach_exit()
  * TRAP:	HV_FAST_TRAP
  * FUNCTION:	HV_FAST_MACH_EXIT
