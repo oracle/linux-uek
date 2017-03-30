@@ -2,7 +2,7 @@
  * FILE:	dtrace_os.c
  * DESCRIPTION:	Dynamic Tracing: OS support functions - part of kernel core
  *
- * Copyright (C) 2010-2017 Oracle Corporation
+ * Copyright (c) 2010, 2017, Oracle and/or its affiliates. All rights reserved.
  */
 
 #include <linux/binfmts.h>
@@ -19,6 +19,7 @@
 #include <linux/sched.h>
 #include <linux/slab.h>
 #include <linux/stacktrace.h>
+#include <linux/timekeeping.h>
 #include <linux/vmalloc.h>
 #include <linux/kallsyms.h>
 #include <linux/uaccess.h>
@@ -335,6 +336,14 @@ void dtrace_psinfo_free(struct task_struct *tsk)
 (* TIME SUPPORT FUNCTIONS                                                    *)
 \*---------------------------------------------------------------------------*/
 dtrace_vtime_state_t	dtrace_vtime_active = 0;
+
+ktime_t dtrace_get_walltime(void)
+{
+	struct timespec t = __current_kernel_time();
+
+	return ns_to_ktime(timespec64_to_ns(&t));
+}
+EXPORT_SYMBOL(dtrace_get_walltime);
 
 void dtrace_vtime_enable(void)
 {
