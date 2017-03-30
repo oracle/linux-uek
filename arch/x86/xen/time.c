@@ -221,8 +221,10 @@ static const struct clock_event_device xen_timerop_clockevent = {
 	.name = "xen",
 	.features = CLOCK_EVT_FEAT_ONESHOT,
 
-	.max_delta_ns = 0xffffffff,
-	.min_delta_ns = TIMER_SLOP,
+	.max_delta_ns		= 0xffffffff,
+	.max_delta_ticks	= 0xffffffff,
+	.min_delta_ns		= TIMER_SLOP,
+	.min_delta_ticks	= TIMER_SLOP,
 
 	.mult = 1,
 	.shift = 0,
@@ -282,7 +284,9 @@ static const struct clock_event_device xen_vcpuop_clockevent = {
 	.features = CLOCK_EVT_FEAT_ONESHOT,
 
 	.max_delta_ns = 0xffffffff,
+	.max_delta_ticks = 0xffffffff,
 	.min_delta_ns = TIMER_SLOP,
+	.min_delta_ticks = TIMER_SLOP,
 
 	.mult = 1,
 	.shift = 0,
