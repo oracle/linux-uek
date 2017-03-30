@@ -117,15 +117,15 @@ typedef enum {
 #define P2ROUNDUP(x, a)	(-(-(x) & -(a)))
 
 #if (BITS_PER_LONG == 64) || defined(CONFIG_KTIME_SCALAR)
-# define KTIME_INIT(s, ns)	{ .tv64 = (s64)(s) * NSEC_PER_SEC + (s64)(ns) }
+#define KTIME_INIT(s, ns)	((s64)(s) * NSEC_PER_SEC + (s64)(ns))
 #else
-# define KTIME_INIT(n, ns)	{ .tv = { .sec = (s), .nsec = (ns) } }
+# define KTIME_INIT(n, ns)	{ .sec = (s), .nsec = (ns) }
 #endif
-#define ktime_lt(t0, t1)	((t0).tv64 < (t1).tv64)
-#define ktime_le(t0, t1)	((t0).tv64 <= (t1).tv64)
-#define ktime_ge(t0, t1)	((t0).tv64 >= (t1).tv64)
-#define ktime_gt(t0, t1)	((t0).tv64 > (t1).tv64)
-#define ktime_cp(t0, t1)	((t0).tv64 = (t1).tv64)
+#define ktime_lt(t0, t1)	(t0 < t1)
+#define ktime_le(t0, t1)	(t0 <= t1)
+#define ktime_ge(t0, t1)	(t0 >= t1)
+#define ktime_gt(t0, t1)	(t0 > t1)
+#define ktime_cp(t0, t1)	(t0 = t1)
 
 /*
  * Translate between kernel config options and userspace-compatible definitions.

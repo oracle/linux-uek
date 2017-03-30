@@ -82,9 +82,9 @@ static long dt_perf_ioctl(struct file *file,
 		    dtrace_probe(invoke_pid, cmd, arg, 2, 3, 4);
 
 		tm1 = dtrace_gethrtime();
-		tm1.tv64 -= tm0.tv64;
+		tm1 -= tm0;
 
-		dtrace_probe(result_pid, cmd, arg, tm1.tv64, tm1.tv64 >> 32, 0);
+		dtrace_probe(result_pid, cmd, arg, tm1, tm1 >> 32, 0);
 		break;
 
 	case _IOW(1, 2, int): {
@@ -95,9 +95,9 @@ static long dt_perf_ioctl(struct file *file,
 		    dtrace_sdt_perf();
 
 		tm1 = dtrace_gethrtime();
-		tm1.tv64 -= tm0.tv64;
+		tm1 -= tm0;
 
-		dtrace_probe(result_pid, cmd, arg, tm1.tv64, tm1.tv64 >> 32, 0);
+		dtrace_probe(result_pid, cmd, arg, tm1, tm1 >> 32, 0);
 		break;
 	}
 
