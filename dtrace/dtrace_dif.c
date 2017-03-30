@@ -2406,7 +2406,7 @@ static void dtrace_dif_subr(uint_t subr, uint_t rd, uint64_t *regs,
 
 		m.mx = dtrace_load64(tupregs[0].dttk_value);
 #ifdef CONFIG_SMP
-		regs[rd] = (uintptr_t)m.mi.owner;
+		regs[rd] = (uintptr_t)__mutex_owner(&m.mi);
 #else
 		regs[rd] = 0;
 #endif
