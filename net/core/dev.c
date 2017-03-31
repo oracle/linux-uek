@@ -2025,7 +2025,7 @@ static inline void skb_orphan_try(struct sk_buff *skb)
 {
 	struct sock *sk = skb->sk;
 
-	if (sk && !skb_shinfo(skb)->tx_flags) {
+	if (sk && !(skb_shinfo(skb)->tx_flags & ~SKBTX_SHARED_FRAG)) {
 		/* skb_tx_hash() wont be able to get sk.
 		 * We copy sk_hash into skb->rxhash
 		 */

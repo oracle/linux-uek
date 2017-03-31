@@ -618,6 +618,15 @@ static int packet_rcv(struct sk_buff *skb, struct net_device *dev,
 		skb = nskb;
 	}
 
+	if (skb_has_shared_frag(skb)) {
+		struct sk_buff *nskb = skb_copy(skb, GFP_ATOMIC);
+
+		if (nskb == NULL) 
+			goto drop_n_acct;
+		kfree_skb(skb);
+		skb = nskb;
+	}
+
 	BUILD_BUG_ON(sizeof(*PACKET_SKB_CB(skb)) + MAX_ADDR_LEN - 8 >
 		     sizeof(skb->cb));
 
