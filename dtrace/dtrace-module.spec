@@ -127,6 +127,10 @@ rm -rf %{buildroot}
 /usr/include/linux/dtrace/types.h
 
 %changelog
+* Sun Apr  2 2017 - <kris.van.hees@oracle.com> - 0.6.0-3
+- Lockfree walltimestamp implementation (Tomas Jedlicka) [Orabug: 25715256]
+- Corrected aframes values to skip DTrace frames [Orabug: 25727046]
+- Bug fix for stackdepth buffer overrun [Orabug: 25559321]
 * Fri Mar  3 2017 - <kris.van.hees@oracle.com> - 0.6.0-2
 - Further implementation of FBT with fixes to ustack
   [Orabug: 21220305]
