@@ -1,9 +1,9 @@
 DTrace Kernel Modules News
 ==========================
 
-Release 0.6.0 (Mar  3rd, 2017)
+Release 0.6.0 (Apr  3rd, 2017)
 ------------------------------
-Kernel release: 4.1.12-92.el6uek
+Kernel release: 4.1.12-97.el6uek
 
 New features:
 
@@ -67,6 +67,14 @@ Bugfixes:
 
  - The implementation of the D 'ustack' action has been reworked completely to
    improve stability and accuracy.
+
+ - The number of stack frames to skip has been adjusted to changes in the
+   implementation of various providers, ensuring that DTrace related frames
+   are skipped as they should.  This makes the D 'stack' action and the D
+   'caller' variable values correct.
+
+ - The implementation of the D 'stackdepth' variable could cause memory writes
+   beyond the end of the DTrace probe scratch buffer.
 
 
 Release 0.5.3 (May 25th, 2016)
