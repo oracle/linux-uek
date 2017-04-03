@@ -465,10 +465,14 @@ void dtrace_stacktrace(stacktrace_state_t *st)
 	 * on x86_64 adds a ULONG_MAX entry after the last stack trace entry.
 	 * This might be a sentinel value, but given that struct stack_trace
 	 * already contains a nr_entries counter, this seems rather pointless.
-	 * Alas, we need to add a special case for that...
+	 * Alas, we need to add a special case for that...  And to make matters
+	 * worse, it actually does this only when there is room for it (i.e.
+	 * when nr_entries < max_entries).
+	 * Since ULONG_MAX inever a valid PC, we can just check for that.
 	 */
 #ifdef CONFIG_X86_64
-	st->depth = trace.nr_entries - 1;
+	if (trace.nr_entries && st->pcs[trace.nr_entries - 1] == ULONG_MAX)
+		st->depth = trace.nr_entries - 1;
 #else
 	st->depth = trace.nr_entries;
 #endif
