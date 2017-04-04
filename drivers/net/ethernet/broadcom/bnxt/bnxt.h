@@ -423,8 +423,6 @@ struct rx_tpa_end_cmp_ext {
 
 #define BNXT_MIN_PKT_SIZE	52
 
-#define BNXT_NUM_TESTS(bp)	0
-
 #define BNXT_DEFAULT_RX_RING_SIZE	511
 #define BNXT_DEFAULT_TX_RING_SIZE	511
 
@@ -902,6 +900,14 @@ struct bnxt_led_info {
 	__le16	led_color_caps;
 };
 
+#define BNXT_MAX_TEST	8
+
+struct bnxt_test_info {
+	u8 offline_mask;
+	u16 timeout;
+	char string[BNXT_MAX_TEST][ETH_GSTRING_LEN];
+};
+
 #define BNXT_GRCPF_REG_WINDOW_BASE_OUT	0x400
 #define BNXT_CAG_REG_LEGACY_INT_STATUS	0x4014
 #define BNXT_CAG_REG_BASE		0x300000
@@ -1171,6 +1177,9 @@ struct bnxt {
 	struct ethtool_eee	eee;
 	u32			lpi_tmr_lo;
 	u32			lpi_tmr_hi;
+
+	u8			num_tests;
+	struct bnxt_test_info	*test_info;
 
 	u8			wol_filter_id;
 	u8			wol;
