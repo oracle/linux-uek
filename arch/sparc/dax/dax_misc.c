@@ -216,13 +216,13 @@ void dax_overflow_check(struct dax_ctx *ctx, int idx)
 
 		dax_dbg("*   Output address = 0x%lx, page size = 0x%lx; page overflow %s",
 			virtp, page_size,
-			(virtp + ca->output_sz >= ALIGN(virtp, page_size)) ?
+			(virtp + ca->output_sz >= ALIGN(virtp + 1, page_size)) ?
 					 "LIKELY" : "UNLIKELY");
 		dax_dbg("*   Output size produced (0x%x) is %s the page bounds 0x%lx..0x%lx",
 			ca->output_sz,
-			(virtp + ca->output_sz >= ALIGN(virtp, page_size)) ?
+			(virtp + ca->output_sz >= ALIGN(virtp + 1, page_size)) ?
 					 "OUTSIDE" : "WITHIN",
-			virtp, ALIGN(virtp, page_size));
+			virtp, ALIGN(virtp + 1, page_size));
 	}
 
 	virtp = ccb->dwords[QUERY_DWORD_INPUT];
@@ -247,14 +247,14 @@ void dax_overflow_check(struct dax_ctx *ctx, int idx)
 		dax_dbg("*   Input address = 0x%lx, page size = 0x%lx; page overflow %s",
 			virtp, page_size,
 			(virtp + input_size >=
-			 ALIGN(virtp, page_size)) ?
+			 ALIGN(virtp + 1, page_size)) ?
 					"LIKELY" : "UNLIKELY");
 		dax_dbg("*   Input size processed (0x%x) is %s the page bounds 0x%lx..0x%lx",
 			ca->n_processed,
 			(virtp + ca->n_processed >=
-			 ALIGN(virtp, page_size)) ?
+			 ALIGN(virtp + 1, page_size)) ?
 					"OUTSIDE" : "WITHIN",
-			virtp, ALIGN(virtp, page_size));
+			virtp, ALIGN(virtp + 1, page_size));
 	}
 	dax_dbg("*************************");
 }
