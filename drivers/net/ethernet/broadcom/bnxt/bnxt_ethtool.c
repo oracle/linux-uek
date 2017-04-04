@@ -21,6 +21,7 @@
 #endif
 #include "bnxt_hsi.h"
 #include "bnxt.h"
+#include "bnxt_xdp.h"
 #include "bnxt_ethtool.h"
 #include "bnxt_nvm_defs.h"	/* NVRAM content constant and structure defs */
 #include "bnxt_fw_hdr.h"	/* Firmware hdr constant and structure defs */
@@ -2601,6 +2602,7 @@ static int bnxt_run_loopback(struct bnxt *bp)
 		dev_kfree_skb(skb);
 		return -EIO;
 	}
+	bnxt_xmit_xdp(bp, txr, map, pkt_size, 0);
 
 	/* Sync BD data before updating doorbell */
 	wmb();
