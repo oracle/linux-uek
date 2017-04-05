@@ -35,7 +35,7 @@ static int dax_validate_ccb(union ccb *);
 static int dax_preprocess_usr_ccbs(struct dax_ctx *, union ccb *, size_t);
 static void dax_ctx_fini(struct dax_ctx *);
 static void dax_ctx_flush_decommit_ccbs(struct dax_ctx *);
-static int dax_ccb_flush_contig(struct dax_ctx *, int, int, bool);
+static int dax_ccb_flush_contig(struct dax_ctx *, int, int, bool, bool);
 static void dax_ccb_wait(struct dax_ctx *, int);
 static void dax_state_destroy(struct file *f);
 
@@ -435,8 +435,18 @@ static int dax_ioctl_ca_dequeue(void *arg, struct file *f)
 		n_dq = min(n_remain, n_avail);
 		end_idx = start_idx + n_dq;
 
-		if (dax_ccb_flush_contig(dax_ctx, start_idx, end_idx, false)) {
-			rv = -EBUSY;
+		rv = dax_ccb_flush_contig(dax_ctx, start_idx, end_idx,
+					  false, true);
+		if (rv != 0) {
+			/* Attempted to dequeue single CA for long CCB.  All
+			 * the CCBs till then are dequeued, So release their
+			 * backing BIP buffer
+			 */
+			if (rv == -EINVAL) {
+				n_dq--;
+				dax_ccb_buffer_decommit(dax_ctx, n_dq);
+				usr_args.dcd_len_dequeued += NCCB_TO_CA_BYTE(n_dq);
+			}
 			goto ca_dequeue_end;
 		}
 
@@ -975,12 +985,12 @@ static void dax_ctx_flush_decommit_ccbs(struct dax_ctx *dax_ctx)
 
 	/* Wait for all CCBs to complete.  Do not remove from CCB buffer */
 	dax_ccb_flush_contig(dax_ctx, CCB_BYTE_TO_NCCB(dax_ctx->a_start),
-			     CCB_BYTE_TO_NCCB(dax_ctx->a_end), true);
+			     CCB_BYTE_TO_NCCB(dax_ctx->a_end), true, false);
 
 	if (dax_ctx->b_end > 0)
 		dax_ccb_flush_contig(dax_ctx, 0,
 				     CCB_BYTE_TO_NCCB(dax_ctx->b_end),
-				     true);
+				     true, false);
 
 	/* decommit all */
 	while (dax_ccb_buffer_get_contig_ccbs(dax_ctx, &n_contig_ccbs) >= 0) {
@@ -991,7 +1001,8 @@ static void dax_ctx_flush_decommit_ccbs(struct dax_ctx *dax_ctx)
 }
 
 static int dax_ccb_flush_contig(struct dax_ctx *dax_ctx, int start_idx,
-				int end_idx, bool wait)
+				int end_idx, bool wait,
+				bool check_long_ccb_error)
 {
 	int i;
 
@@ -1000,6 +1011,18 @@ static int dax_ccb_flush_contig(struct dax_ctx *dax_ctx, int start_idx,
 	for (i = start_idx; i < end_idx; i++) {
 		u8 status;
 		union ccb *ccb = &dax_ctx->ccb_buf[i];
+
+		if (check_long_ccb_error && IS_LONG_CCB(ccb) &&
+		   (i == (end_idx - 1))) {
+			/*
+			 * Validate that the user must dequeue 2 CAs for a long
+			 * CCB.  In other words, the last entry in a contig
+			 * block cannot be a long CCB.
+			 */
+			dax_err("invalid attempt to dequeue single CA for long CCB, index=%d",
+				i);
+			return -EINVAL;
+		}
 
 		if (wait) {
 			dax_ccb_wait(dax_ctx, i);
@@ -1017,20 +1040,9 @@ static int dax_ccb_flush_contig(struct dax_ctx *dax_ctx, int start_idx,
 		/* free any locked pages associated with this ccb */
 		dax_unlock_pages_ccb(dax_ctx, i, ccb, true);
 
-		if (IS_LONG_CCB(ccb)) {
-			/*
-			 * Validate that the user must dequeue 2 CAs for a long
-			 * CCB.  In other words, the last entry in a contig
-			 * block cannot be a long CCB.
-			 */
-			if (i == end_idx) {
-				dax_err("invalid attempt to dequeue single CA for long CCB, index=%d",
-					i);
-				return -EINVAL;
-			}
-			/* skip over 64B data of long CCB */
+		/* skip over 64B data of long CCB */
+		if (IS_LONG_CCB(ccb))
 			i++;
-		}
 	}
 	return 0;
 }
