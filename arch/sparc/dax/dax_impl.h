@@ -131,6 +131,8 @@ extern const struct vm_operations_struct dax_vm_ops;
 
 #define	CCB_HDR(ccb)		((struct ccb_hdr *)(ccb))
 #define	IS_LONG_CCB(ccb)	((CCB_HDR(ccb))->sync_flags & CCB_SYNC_LONGCCB)
+/* VM spec 36.2.1.1.8 & 36.2.1.2 / PRM 23.7.1 */
+#define NO_PAGE_RANGE_CHECK (0xfLL << 56)
 
 #define	DAX_CCB_WAIT_USEC		100
 #define	DAX_CCB_WAIT_RETRIES_MAX	10000

@@ -196,8 +196,8 @@ int dax_map_segment_common(unsigned long size,
 			    ccbp->dwords[addr_sel]);
 	} else {
 		*ccb_addr_type = CCB_AT_RA;
-		ccbp->dwords[addr_sel] = dv->pa +
-			(virtp - vma->vm_start);
+		ccbp->dwords[addr_sel] = NO_PAGE_RANGE_CHECK |
+			(dv->pa + (virtp - vma->vm_start));
 		dax_map_dbg("changed %s to RA 0x%llx", name,
 			    ccbp->dwords[addr_sel]);
 	}
