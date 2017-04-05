@@ -41,9 +41,6 @@
 
 #define CM_CLEANUP_CACHE_TIMEOUT  (5 * HZ)
 
-#define ID_SCHED_DELETE		1
-#define	ID_CANCEL_DELETE	2
-
 struct id_map_entry {
 	struct rb_node node;
 
@@ -176,9 +173,8 @@ static void id_map_ent_timeout(struct work_struct *work)
 	struct mlx4_ib_sriov *sriov = &dev->sriov;
 	struct rb_root *sl_id_map = &sriov->sl_id_map;
 	int pv_id = (int) ent->pv_cm_id;
-	unsigned long flags;
 
-	spin_lock_irqsave(&sriov->id_map_lock, flags);
+	spin_lock(&sriov->id_map_lock);
 	db_ent = (struct id_map_entry *)idr_find(&sriov->pv_id_table, pv_id);
 	if (!db_ent)
 		goto out;
@@ -189,7 +185,7 @@ static void id_map_ent_timeout(struct work_struct *work)
 
 out:
 	list_del(&ent->list);
-	spin_unlock_irqrestore(&sriov->id_map_lock, flags);
+	spin_unlock(&sriov->id_map_lock);
 	kfree(ent);
 }
 
@@ -243,22 +239,6 @@ static void sl_id_map_add(struct ib_device *ibdev, struct id_map_entry *new)
 	rb_insert_color(&new->node, sl_id_map);
 }
 
-static void schedule_delayed(struct ib_device *ibdev, struct id_map_entry *id)
-{
-	struct mlx4_ib_sriov *sriov = &to_mdev(ibdev)->sriov;
-	unsigned long flags;
-
-	spin_lock(&sriov->id_map_lock);
-	spin_lock_irqsave(&sriov->going_down_lock, flags);
-	/*make sure that there is no schedule inside the scheduled work.*/
-	if (!sriov->is_going_down) {
-		id->scheduled_delete = 1;
-		schedule_delayed_work(&id->timeout, CM_CLEANUP_CACHE_TIMEOUT);
-	}
-	spin_unlock_irqrestore(&sriov->going_down_lock, flags);
-	spin_unlock(&sriov->id_map_lock);
-}
-
 static struct id_map_entry *
 id_map_alloc(struct ib_device *ibdev, int slave_id, u32 sl_cm_id)
 {
@@ -291,10 +271,8 @@ id_map_alloc(struct ib_device *ibdev, int slave_id, u32 sl_cm_id)
 	spin_unlock(&sriov->id_map_lock);
 	idr_preload_end();
 
-	if (ret >= 0) {
-		schedule_delayed(ibdev, ent);
+	if (ret >= 0)
 		return ent;
-	}
 
 	/*error flow*/
 	kfree(ent);
@@ -303,8 +281,7 @@ id_map_alloc(struct ib_device *ibdev, int slave_id, u32 sl_cm_id)
 }
 
 static struct id_map_entry *
-id_map_get(struct ib_device *ibdev, int *pv_cm_id, int sl_cm_id, int slave_id,
-		 int sched_or_cancel)
+id_map_get(struct ib_device *ibdev, int *pv_cm_id, int sl_cm_id, int slave_id)
 {
 	struct id_map_entry *ent;
 	struct mlx4_ib_sriov *sriov = &to_mdev(ibdev)->sriov;
@@ -316,21 +293,25 @@ id_map_get(struct ib_device *ibdev, int *pv_cm_id, int sl_cm_id, int slave_id,
 			*pv_cm_id = (int) ent->pv_cm_id;
 	} else
 		ent = (struct id_map_entry *)idr_find(&sriov->pv_id_table, *pv_cm_id);
-	if (ent && sched_or_cancel) {
-		if (sched_or_cancel == ID_SCHED_DELETE) {
-			cancel_delayed_work(&ent->timeout);
-			ent->scheduled_delete = 1;
-			schedule_delayed_work(&ent->timeout,
-				CM_CLEANUP_CACHE_TIMEOUT);
-		}
-		if (sched_or_cancel == ID_CANCEL_DELETE) {
-			ent->scheduled_delete = 0;
-			cancel_delayed_work(&ent->timeout);
-		}
-	}
 	spin_unlock(&sriov->id_map_lock);
 
 	return ent;
+}
+
+static void schedule_delayed(struct ib_device *ibdev, struct id_map_entry *id)
+{
+	struct mlx4_ib_sriov *sriov = &to_mdev(ibdev)->sriov;
+	unsigned long flags;
+
+	spin_lock(&sriov->id_map_lock);
+	spin_lock_irqsave(&sriov->going_down_lock, flags);
+	/*make sure that there is no schedule inside the scheduled work.*/
+	if (!sriov->is_going_down) {
+		id->scheduled_delete = 1;
+		schedule_delayed_work(&id->timeout, CM_CLEANUP_CACHE_TIMEOUT);
+	}
+	spin_unlock_irqrestore(&sriov->going_down_lock, flags);
+	spin_unlock(&sriov->id_map_lock);
 }
 
 int mlx4_ib_multiplex_cm_handler(struct ib_device *ibdev, int port, int slave_id,
@@ -344,10 +325,6 @@ int mlx4_ib_multiplex_cm_handler(struct ib_device *ibdev, int port, int slave_id
 			mad->mad_hdr.attr_id == CM_REP_ATTR_ID ||
 			mad->mad_hdr.attr_id == CM_SIDR_REQ_ATTR_ID) {
 		sl_cm_id = get_local_comm_id(mad);
-		id = id_map_get(ibdev, &pv_cm_id, slave_id, sl_cm_id,
-				ID_SCHED_DELETE);
-		if (id)
-			goto cont;
 		id = id_map_alloc(ibdev, slave_id, sl_cm_id);
 		if (IS_ERR(id)) {
 			mlx4_ib_warn(ibdev, "%s: id{slave: %d, sl_cm_id: 0x%x} Failed to id_map_alloc\n",
@@ -356,13 +333,10 @@ int mlx4_ib_multiplex_cm_handler(struct ib_device *ibdev, int port, int slave_id
 		}
 	} else if (mad->mad_hdr.attr_id == CM_REJ_ATTR_ID ||
 		   mad->mad_hdr.attr_id == CM_SIDR_REP_ATTR_ID) {
-		sl_cm_id = get_local_comm_id(mad);
-		id = id_map_get(ibdev, &pv_cm_id, slave_id, sl_cm_id,
-				ID_SCHED_DELETE);
 		return 0;
 	} else {
 		sl_cm_id = get_local_comm_id(mad);
-		id = id_map_get(ibdev, &pv_cm_id, slave_id, sl_cm_id, 0);
+		id = id_map_get(ibdev, &pv_cm_id, slave_id, sl_cm_id);
 	}
 
 	if (!id) {
@@ -371,7 +345,6 @@ int mlx4_ib_multiplex_cm_handler(struct ib_device *ibdev, int port, int slave_id
 		return -EINVAL;
 	}
 
-cont:
 	set_local_comm_id(mad, id->pv_cm_id);
 
 	if (mad->mad_hdr.attr_id == CM_DREQ_ATTR_ID)
@@ -387,7 +360,6 @@ int mlx4_ib_demux_cm_handler(struct ib_device *ibdev, int port, int *slave,
 {
 	u32 pv_cm_id;
 	struct id_map_entry *id;
-	int	sched_or_cancel = 0;
 
 	if (mad->mad_hdr.attr_id == CM_REQ_ATTR_ID ||
 	    mad->mad_hdr.attr_id == CM_SIDR_REQ_ATTR_ID) {
@@ -407,9 +379,7 @@ int mlx4_ib_demux_cm_handler(struct ib_device *ibdev, int port, int *slave,
 	}
 
 	pv_cm_id = get_remote_comm_id(mad);
-	if (mad->mad_hdr.attr_id == CM_REP_ATTR_ID)
-		sched_or_cancel = ID_CANCEL_DELETE;
-	id = id_map_get(ibdev, (int *)&pv_cm_id, -1, -1, sched_or_cancel);
+	id = id_map_get(ibdev, (int *)&pv_cm_id, -1, -1);
 
 	if (!id) {
 		pr_debug("Couldn't find an entry for pv_cm_id 0x%x\n", pv_cm_id);
@@ -420,10 +390,10 @@ int mlx4_ib_demux_cm_handler(struct ib_device *ibdev, int port, int *slave,
 		*slave = id->slave_id;
 	set_remote_comm_id(mad, id->sl_cm_id);
 
-	if (mad->mad_hdr.attr_id == CM_DREQ_ATTR_ID ||
-		mad->mad_hdr.attr_id == CM_REJ_ATTR_ID)
+	if (mad->mad_hdr.attr_id == CM_DREQ_ATTR_ID)
 		schedule_delayed(ibdev, id);
-	else if (mad->mad_hdr.attr_id == CM_DREP_ATTR_ID) {
+	else if (mad->mad_hdr.attr_id == CM_REJ_ATTR_ID ||
+			mad->mad_hdr.attr_id == CM_DREP_ATTR_ID) {
 		id_map_find_del(ibdev, (int) pv_cm_id);
 	}
 
