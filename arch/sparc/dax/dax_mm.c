@@ -43,8 +43,8 @@ static int dax_alloc_ram(struct file *filp, struct vm_area_struct *vma)
 	}
 
 	if (dax_no_flow_ctl && len != DAX_SYN_LARGE_PAGE_SIZE) {
-		dax_err("unsupported length 0x%lx != 0x%lx virtual page size",
-			len, DAX_SYN_LARGE_PAGE_SIZE);
+		dax_map_dbg("unsupported length 0x%lx != 0x%lx virtual page size",
+			    len, DAX_SYN_LARGE_PAGE_SIZE);
 		goto done;
 	}
 
