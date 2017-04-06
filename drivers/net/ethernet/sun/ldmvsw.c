@@ -42,11 +42,11 @@
 static u8 vsw_port_hwaddr[ETH_ALEN] = {0xFE, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 
 #define DRV_MODULE_NAME		"ldmvsw"
-#define DRV_MODULE_VERSION	"1.0"
-#define DRV_MODULE_RELDATE	"Jan 15, 2016"
+#define DRV_MODULE_VERSION	"1.1"
+#define DRV_MODULE_RELDATE	"February 3, 2017"
 
 static char version[] =
-	DRV_MODULE_NAME ".c:v" DRV_MODULE_VERSION " (" DRV_MODULE_RELDATE ")\n";
+	DRV_MODULE_NAME " " DRV_MODULE_VERSION " (" DRV_MODULE_RELDATE ")";
 MODULE_AUTHOR("Oracle");
 MODULE_DESCRIPTION("Sun4v LDOM Virtual Switch Driver");
 MODULE_LICENSE("GPL");
@@ -236,8 +236,7 @@ static struct net_device *vsw_alloc_netdev(u8 hwaddr[],
 	dev->ethtool_ops = &vsw_ethtool_ops;
 	dev->watchdog_timeo = VSW_TX_TIMEOUT;
 
-	dev->hw_features = NETIF_F_TSO | NETIF_F_GSO | NETIF_F_GSO_SOFTWARE |
-			   NETIF_F_HW_CSUM | NETIF_F_SG;
+	dev->hw_features = NETIF_F_HW_CSUM | NETIF_F_SG;
 	dev->features = dev->hw_features;
 
 	SET_NETDEV_DEV(dev, &vdev->dev);
@@ -257,11 +256,6 @@ static struct vio_driver_ops vsw_vio_ops = {
 	.handshake_complete	= sunvnet_handshake_complete_common,
 };
 
-static void print_version(void)
-{
-	printk_once(KERN_INFO "%s", version);
-}
-
 static const char *remote_macaddr_prop = "remote-mac-address";
 static const char *id_prop = "id";
 
@@ -277,8 +271,6 @@ static int vsw_port_probe(struct vio_dev *vdev, const struct vio_device_id *id)
 	const u64 *port_id;
 	u64 handle;
 	u64 node;
-
-	print_version();
 
 	hp = mdesc_grab();
 
@@ -334,7 +326,7 @@ static int vsw_port_probe(struct vio_dev *vdev, const struct vio_device_id *id)
 	port->vp = vp;
 	port->dev = dev;
 	port->switch_port = 1;
-	port->tso = true;
+	port->tso = false; /* no tso in vsw, misbehaves in bridge */
 	port->tsolen = 0;
 
 	/* Mark the port as belonging to ldmvsw which directs the
@@ -464,6 +456,7 @@ static struct vio_driver vsw_port_driver = {
 
 static int __init vsw_init(void)
 {
+	pr_info("%s\n", version);
 	return vio_register_driver(&vsw_port_driver);
 }
 

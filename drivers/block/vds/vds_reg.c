@@ -7,18 +7,31 @@
 #include "vds.h"
 #include "vds_io.h"
 
+/* Default logical and physical block size */
+#define VDS_DEFAULT_BLK_SIZE	512
+
 static int vds_reg_init(struct vds_port *port)
 {
 	struct file *file;
+	struct block_device *bdev;
 
 	file = filp_open(port->path, O_RDWR | O_EXCL | O_LARGEFILE, 0);
 	if (IS_ERR(file))
 		return (int)PTR_ERR(file);
 
-	port->vdisk_bsize = 512;
+	bdev = file->f_inode->i_sb->s_bdev;
+	if (bdev) {
+		port->vdisk_bsize = bdev_logical_block_size(bdev);
+		port->vdisk_phy_bsize = bdev_physical_block_size(bdev);
+		port->max_xfer_size = vds_io_max_xfer_size(port, bdev);
+	} else {
+		port->vdisk_bsize = VDS_DEFAULT_BLK_SIZE;
+		port->vdisk_phy_bsize = VDS_DEFAULT_BLK_SIZE;
+		port->max_xfer_size = 1024;
+	}
+
 	port->vdisk_size = i_size_read(file_inode(file)) /
-				       port->vdisk_bsize;
-	port->max_xfer_size = 1024;
+			   port->vdisk_bsize;
 
 	port->be_data = file;
 

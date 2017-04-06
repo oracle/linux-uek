@@ -487,6 +487,13 @@ static void unregister_cpu_online(unsigned int cpu)
 		kobject_put(&(INDEX_KOBJECT_PTR(cpu, i)->kobj));
 	kobject_put(cache_kobjs[cpu]);
 }
+
+void arch_unregister_cpu(int cpu)
+{
+	struct cpu *c = &per_cpu(cpu_devices, cpu);
+
+	unregister_cpu(c);
+}
 #endif
 
 static int sysfs_cpu_notify(struct notifier_block *self,
@@ -535,6 +542,24 @@ static void register_nodes(void)
 #endif
 }
 
+/* This function should only be called from the cpu_maps_update_begin
+ * or cpu_notifier_register_begin context.
+ */
+void arch_register_cpu(int cpu)
+{
+	int node = cpu_to_node(cpu);
+	struct cpu *c = &per_cpu(cpu_devices, cpu);
+
+	if (!node_online(node))
+		panic("corresponding node [%d] for cpu [%d] is not online.\n",
+		      node, cpu);
+
+	c->hotpluggable = 1;
+	register_cpu(c, cpu);
+	if (cpu_online(cpu))
+		register_cpu_online(cpu);
+}
+
 static int __init topology_init(void)
 {
 	int cpu;
@@ -544,16 +569,9 @@ static int __init topology_init(void)
 	check_mmu_stats();
 
 	cpu_notifier_register_begin();
-
-	for_each_possible_cpu(cpu) {
-		struct cpu *c = &per_cpu(cpu_devices, cpu);
-
-		c->hotpluggable = 1;
-		register_cpu(c, cpu);
-		if (cpu_online(cpu))
-			register_cpu_online(cpu);
+	for_each_present_cpu(cpu) {
+		arch_register_cpu(cpu);
 	}
-
 	__register_cpu_notifier(&sysfs_cpu_nb);
 
 	cpu_notifier_register_done();

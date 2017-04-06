@@ -397,7 +397,8 @@ SYSCALL_DEFINE3(mprotect, unsigned long, start, size_t, len,
 		/* Here we know that vma->vm_start <= nstart < vma->vm_end. */
 
 		newflags = vm_flags;
-		newflags |= (vma->vm_flags & ~(VM_READ | VM_WRITE | VM_EXEC));
+		newflags |= (vma->vm_flags & ~(VM_READ | VM_WRITE | VM_EXEC |
+				VM_ARCH_CLEAR));
 
 		/* newflags >> 4 shift VM_MAY% in place of VM_% */
 		if ((newflags & ~(newflags >> 4)) & (VM_READ | VM_WRITE | VM_EXEC)) {

@@ -181,6 +181,7 @@ static int vds_handle_attr(struct vio_driver_state *vio, void *arg)
 	port->xfer_mode = pkt->xfer_mode;
 
 	pkt->vdisk_block_size = port->vdisk_bsize;
+	pkt->phys_block_size = port->vdisk_phy_bsize;
 
 	/* XXX OBP doesn't seem to honor max_xfer_size */
 	pkt->max_xfer_size = port->max_xfer_size;
@@ -191,9 +192,9 @@ static int vds_handle_attr(struct vio_driver_state *vio, void *arg)
 	pkt->tag.stype = VIO_SUBTYPE_ACK;
 	pkt->tag.sid = vio_send_sid(vio);
 
-	vdsdbg(HS, "SEND ATTR dksz[%llu] blksz[%u] max_xfer[%llu] ops[%llx]\n",
+	vdsdbg(HS, "SEND ATTR dksz[%llu] blksz[%u] max_xfer[%llu] ops[%llx] physz[%u]\n",
 	       pkt->vdisk_size, pkt->vdisk_block_size,
-	       pkt->max_xfer_size, pkt->operations);
+	       pkt->max_xfer_size, pkt->operations, pkt->phys_block_size);
 
 	return vio_ldc_send(vio, pkt, sizeof(*pkt));
 }

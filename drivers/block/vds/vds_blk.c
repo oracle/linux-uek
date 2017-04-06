@@ -1,7 +1,7 @@
 /*
  * vds_blk.c: LDOM Virtual Disk Server.
  *
- * Copyright (C) 2014, 2016 Oracle. All rights reserved.
+ * Copyright (C) 2014, 2017 Oracle. All rights reserved.
  */
 
 #include "vds.h"
@@ -19,8 +19,8 @@ static int vds_blk_init(struct vds_port *port)
 
 	port->vdisk_bsize = bdev_logical_block_size(bdev);
 	port->vdisk_size = i_size_read(bdev->bd_inode) / port->vdisk_bsize;
-	port->max_xfer_size = to_bytes(blk_queue_get_max_sectors(
-			      bdev_get_queue(bdev), 0)) / port->vdisk_bsize;
+	port->max_xfer_size = vds_io_max_xfer_size(port, bdev);
+	port->vdisk_phy_bsize = bdev_physical_block_size(bdev);
 
 	port->be_data = bdev;
 
@@ -149,9 +149,19 @@ static int vds_blk_rw(struct vds_io *io)
 			       bio->bi_iter.bi_sector, bio->bi_iter.bi_size);
 
 			if (!rv) {
+				/*
+				 * A drive with chunk_sectors > 0 (i.e. NVME)
+				 * will result in rv = 0 when the chunk_sectors
+				 * boundary has been hit. Break here if page(s)
+				 * have already been added (bi_size != 0).
+				 * Submit the already added pages and continue.
+				 */
+				if (bio->bi_iter.bi_size != 0)
+					break;
 				vdsmsg(err,
-				       "bio_add_page: resid=%ld biolen=%ld\n",
-				       resid, biolen);
+				       "bio_add_page: resid=%ld biolen=%ld "
+				       "bi_sector=%ld\n",
+				       resid, biolen, bio->bi_iter.bi_sector);
 				err = -EIO;
 				break;
 			}

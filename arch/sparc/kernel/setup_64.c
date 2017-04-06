@@ -390,16 +390,20 @@ static const char *hwcaps[] = {
 
 	/* These strings are as they appear in the machine description
 	 * 'hwcap-list' property for cpu nodes.
+	 * Note: Virtual address masking (vamask) appears in the machine
+	 *       description cpu node as va-mask-nz-mask and va-mask-z-mask
+	 *       properties.
 	 */
 	"mul32", "div32", "fsmuld", "v8plus", "popc", "vis", "vis2",
 	"ASIBlkInit", "fmaf", "vis3", "hpc", "random", "trans", "fjfmau",
 	"ima", "cspare", "pause", "cbcond", NULL /*reserved for crypto */,
-	"adp",
+	"adp", "vis3b", "pause-nsec", "mwait", "sparc5", "vamask"
 };
 
 static const char *crypto_hwcaps[] = {
 	"aes", "des", "kasumi", "camellia", "md5", "sha1", "sha256",
-	"sha512", "mpmul", "montmul", "montsqr", "crc32c",
+	"sha512", "mpmul", "montmul", "montsqr", "crc32c", "xmpmul",
+	"xmontmul", "xmontsqr"
 };
 
 void cpucap_info(struct seq_file *m)
@@ -549,6 +553,10 @@ static void __init init_sparc64_elf_hwcap(void)
 		    sun4v_chip_type == SUN4V_CHIP_SPARC_S7 ||
 		    sun4v_chip_type == SUN4V_CHIP_SPARC64X)
 			cap |= HWCAP_SPARC_N2;
+		if (sun4v_chip_type == SUN4V_CHIP_SPARC_M7 ||
+		    sun4v_chip_type == SUN4V_CHIP_SPARC_S7)
+			cap |= (HWCAP_SPARC_VAMASK |
+				AV_SPARC_FSMULD);
 	}
 
 	cap |= (AV_SPARC_MUL32 | AV_SPARC_DIV32 | AV_SPARC_V8PLUS);
@@ -592,8 +600,19 @@ static void __init init_sparc64_elf_hwcap(void)
 			if (sun4v_chip_type == SUN4V_CHIP_NIAGARA3 ||
 			    sun4v_chip_type == SUN4V_CHIP_NIAGARA4 ||
 			    sun4v_chip_type == SUN4V_CHIP_NIAGARA5 ||
+			    sun4v_chip_type == SUN4V_CHIP_SPARC_M7 ||
 			    sun4v_chip_type == SUN4V_CHIP_SPARC_S7)
 				cap |= AV_SPARC_VIS3;
+			if (sun4v_chip_type == SUN4V_CHIP_SPARC_M7 ||
+			    sun4v_chip_type == SUN4V_CHIP_SPARC_S7)
+				cap |= (AV_SPARC_IMA | AV_SPARC_PAUSE |
+					AV_SPARC_CBCOND |
+					HWCAP_SPARC_CRYPTO |
+					HWCAP_SPARC_ADI |
+					HWCAP_SPARC_VIS3B |
+					HWCAP_SPARC_PAUSE_NSEC |
+					HWCAP_SPARC_MWAIT |
+					HWCAP_SPARC_SPARC5);
 		}
 	}
 	sparc64_elf_hwcap = cap | mdesc_caps;

@@ -1262,52 +1262,64 @@ void __init smp_fill_in_cpu_possible_map(void)
 		set_cpu_possible(i, false);
 }
 
+void smp_setup_sib_core_map(unsigned int cpu)
+{
+	unsigned int i;
+
+	cpumask_clear(&cpu_core_map[cpu]);
+	if (cpu_data(cpu).core_id == 0) {
+		cpumask_set_cpu(cpu, &cpu_core_map[cpu]);
+	} else {
+		for_each_online_cpu(i) {
+			if (cpu_data(cpu).core_id == cpu_data(i).core_id) {
+				cpumask_set_cpu(i, &cpu_core_map[cpu]);
+				cpumask_set_cpu(cpu, &cpu_core_map[i]);
+			}
+		}
+	}
+	cpumask_clear(&cpu_core_sib_map[cpu]);
+	if (cpu_data(cpu).sock_id == -1) {
+		cpumask_set_cpu(cpu, &cpu_core_sib_map[cpu]);
+	} else {
+
+		for_each_online_cpu(i)  {
+			if (cpu_data(cpu).max_cache_id ==
+			    cpu_data(i).max_cache_id) {
+				cpumask_set_cpu(i,
+					&cpu_core_sib_cache_map[cpu]);
+
+				cpumask_set_cpu(cpu,
+					&cpu_core_sib_cache_map[i]);
+			}
+
+			if (cpu_data(cpu).sock_id == cpu_data(i).sock_id) {
+				cpumask_set_cpu(i, &cpu_core_sib_map[cpu]);
+				cpumask_set_cpu(cpu, &cpu_core_sib_map[i]);
+			}
+		}
+	}
+	cpumask_clear(&per_cpu(cpu_sibling_map, cpu));
+	if (cpu_data(cpu).proc_id == -1) {
+		cpumask_set_cpu(cpu, &per_cpu(cpu_sibling_map, cpu));
+	} else {
+		for_each_online_cpu(i) {
+			if (cpu_data(cpu).proc_id == cpu_data(i).proc_id) {
+				cpumask_set_cpu(i, &per_cpu(cpu_sibling_map,
+					cpu));
+				cpumask_set_cpu(cpu, &per_cpu(cpu_sibling_map,
+					i));
+			}
+		}
+	}
+
+}
+
 void smp_fill_in_sib_core_maps(void)
 {
-	unsigned int i, j;
+	unsigned int i;
 
 	for_each_online_cpu(i) {
-		cpumask_clear(&cpu_core_map[i]);
-		if (cpu_data(i).core_id == 0) {
-			cpumask_set_cpu(i, &cpu_core_map[i]);
-			continue;
-		}
-
-		for_each_online_cpu(j) {
-			if (cpu_data(i).core_id == cpu_data(j).core_id)
-				cpumask_set_cpu(j, &cpu_core_map[i]);
-		}
-	}
-
-	for_each_online_cpu(i)  {
-		cpumask_clear(&cpu_core_sib_map[i]);
-		if (cpu_data(i).sock_id == -1) {
-			cpumask_set_cpu(i, &cpu_core_sib_map[i]);
-			continue;
-		}
-
-		for_each_online_cpu(j)  {
-			if (cpu_data(i).max_cache_id ==
-			    cpu_data(j).max_cache_id)
-				cpumask_set_cpu(j, &cpu_core_sib_cache_map[i]);
-
-			if (cpu_data(i).sock_id == cpu_data(j).sock_id)
-				cpumask_set_cpu(j, &cpu_core_sib_map[i]);
-		}
-	}
-
-	for_each_online_cpu(i) {
-		cpumask_clear(&per_cpu(cpu_sibling_map, i));
-		if (cpu_data(i).proc_id == -1) {
-			cpumask_set_cpu(i, &per_cpu(cpu_sibling_map, i));
-			continue;
-		}
-
-		for_each_online_cpu(j) {
-			if (cpu_data(i).proc_id == cpu_data(j).proc_id)
-				cpumask_set_cpu(j, &per_cpu(cpu_sibling_map,
-						i));
-		}
+		smp_setup_sib_core_map(i);
 	}
 }
 
@@ -1327,7 +1339,7 @@ int __cpu_up(unsigned int cpu, struct task_struct *tidle)
 			 */
 			if (tlb_type != hypervisor)
 				smp_synchronize_one_tick(cpu);
-			smp_fill_in_sib_core_maps();
+			smp_setup_sib_core_map(cpu);
 			cpu_map_rebuild();
 			sparc64_update_numa_mask(cpu);
 		}

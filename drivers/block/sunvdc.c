@@ -36,6 +36,7 @@ MODULE_LICENSE("GPL");
 MODULE_VERSION(DRV_MODULE_VERSION);
 
 #define VDC_TX_RING_SIZE	512
+#define VDC_DEFAULT_BLK_SIZE	512
 
 #define WAITING_FOR_LINK_UP	0x01
 #define WAITING_FOR_TX_SPACE	0x02
@@ -55,7 +56,8 @@ struct vdc_port {
 
 	struct gendisk		*disk;
 
-	struct vio_completion	*cmp;
+	struct vio_completion	*cmp;		/* Generic request completion */
+	struct vio_completion   cmp_hs;		/* Handshake completion */
 
 	u64			req_id;
 	u64			seq;
@@ -78,6 +80,7 @@ struct vdc_port {
 	u32			vdisk_size;
 	u8			vdisk_type;
 	u8			vdisk_mtype;
+	u32			vdisk_phys_blksz;
 
 	u8			flags;
 
@@ -182,8 +185,7 @@ static void vdc_handshake_complete(struct vio_driver_state *vio)
 	struct vdc_port *port = to_vdc_port(vio);
 
 	del_timer(&port->ldc_reset_timer);
-	vdc_finish(vio->cmp, 0, WAITING_FOR_LINK_UP);
-	vio->cmp = NULL;
+	vdc_finish(&port->cmp_hs, 0, WAITING_FOR_LINK_UP);
 }
 
 static int vdc_handle_unknown(struct vdc_port *port, void *arg)
@@ -262,6 +264,11 @@ static int vdc_handle_attr(struct vio_driver_state *vio, void *arg)
 		if (pkt->max_xfer_size < port->max_xfer_size)
 			port->max_xfer_size = pkt->max_xfer_size;
 		port->vdisk_block_size = pkt->vdisk_block_size;
+
+		port->vdisk_phys_blksz = VDC_DEFAULT_BLK_SIZE;
+		if (vdc_version_supported(port, 1, 2))
+			port->vdisk_phys_blksz = pkt->phys_block_size;
+
 		return 0;
 	} else {
 		printk(KERN_ERR PFX "%s: Attribute NACK\n", vio->name);
@@ -908,18 +915,16 @@ static void vdc_free_tx_ring(struct vdc_port *port)
 	}
 }
 
+/*
+ * This function ensures that the communication channel between VDC & VDS
+ * is established. It assumes that the handshake completion variable is
+ * initialized before it is called.
+ */
 static int vdc_port_up(struct vdc_port *port)
 {
-	struct vio_completion comp;
-
-	init_completion(&comp.com);
-	comp.err = 0;
-	comp.waiting_for = WAITING_FOR_LINK_UP;
-	port->vio.cmp = &comp;
-
 	vio_port_up(&port->vio);
-	wait_for_completion(&comp.com);
-	return comp.err;
+	wait_for_completion(&port->cmp_hs.com);
+	return port->cmp_hs.err;
 }
 
 static int probe_disk(struct vdc_port *port)
@@ -931,6 +936,12 @@ static int probe_disk(struct vdc_port *port)
 	err = vdc_port_up(port);
 	if (err)
 		return err;
+
+	/* Using version 1.2 means vdisk_phys_blksz should be set unless the
+	 * disk is reserved by another system.
+	 */
+	if (vdc_version_supported(port, 1, 2) && !port->vdisk_phys_blksz)
+		return -ENODEV;
 
 	if (vdc_version_supported(port, 1, 1)) {
 		/* vdisk_size should be set during the handshake, if it wasn't
@@ -1010,6 +1021,8 @@ static int probe_disk(struct vdc_port *port)
 			break;
 		}
 	}
+
+	blk_queue_physical_block_size(q, port->vdisk_phys_blksz);
 
 	pr_info(PFX "%s: %u sectors (%u MB) protocol %d.%d\n",
 	       g->disk_name,
@@ -1101,7 +1114,11 @@ static int vdc_port_probe(struct vio_dev *vdev, const struct vio_device_id *id)
 	if (err)
 		goto err_out_free_port;
 
-	port->vdisk_block_size = 512;
+	init_completion(&port->cmp_hs.com);
+	port->cmp_hs.err = 0;
+	port->cmp_hs.waiting_for = WAITING_FOR_LINK_UP;
+
+	port->vdisk_block_size = VDC_DEFAULT_BLK_SIZE;
 	port->max_xfer_size = ((128 * 1024) / port->vdisk_block_size);
 	port->ring_cookies = ((port->max_xfer_size *
 			       port->vdisk_block_size) / PAGE_SIZE) + 2;
@@ -1248,7 +1265,7 @@ static void vdc_ldc_reset(struct vdc_port *port)
 
 	if (port->flags & VDC_PORT_RESET) {
 		spin_unlock_irqrestore(&vio->lock, flags);
-		wait_for_completion(&port->vio.cmp->com);
+		wait_for_completion(&port->cmp_hs.com);
 		return;
 	}
 
@@ -1257,6 +1274,19 @@ static void vdc_ldc_reset(struct vdc_port *port)
 
 	vio_link_state_change(vio, LDC_EVENT_RESET);
 	port->flags |= VDC_PORT_RESET;
+
+	/*
+	 * To avoid potential race between multiple VDC threads
+	 * trying to reset the LDC channel concurrently, the
+	 * handshake completion variable is initialized while
+	 * holding vio->lock. Otherwise there's a window where
+	 * vdc_ldc_reset() can call wait_for_completion() but
+	 * reinit_completion() hasn't been called yet.
+	 */
+	reinit_completion(&port->cmp_hs.com);
+	port->cmp_hs.err = 0;
+	port->cmp_hs.waiting_for = WAITING_FOR_LINK_UP;
+
 	spin_unlock_irqrestore(&vio->lock, flags);
 	err = vdc_port_up(port);
 	spin_lock_irqsave(&vio->lock, flags);
