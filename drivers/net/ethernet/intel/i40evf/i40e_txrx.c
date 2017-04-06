@@ -819,19 +819,16 @@ static inline void i40e_rx_checksum(struct i40e_vsi *vsi,
 	if (rx_error & BIT(I40E_RX_DESC_ERROR_PPRS_SHIFT))
 		return;
 
-	/* The hardware supported by this driver does not validate outer
-	 * checksums for tunneled VXLAN or GENEVE frames.  I don't agree
-	 * with it but the specification states that you "MAY validate", it
-	 * doesn't make it a hard requirement so if we have validated the
-	 * inner checksum report CHECKSUM_UNNECESSARY.
-	 */
-	if (decoded.inner_prot & (I40E_RX_PTYPE_INNER_PROT_TCP |
-				  I40E_RX_PTYPE_INNER_PROT_UDP |
-				  I40E_RX_PTYPE_INNER_PROT_SCTP))
-		tunnel = true;
-
-	skb->ip_summed = CHECKSUM_UNNECESSARY;
-	skb->csum_level = tunnel ? 1 : 0;
+	/* Only report checksum unnecessary for TCP, UDP, or SCTP */
+	switch (decoded.inner_prot) {
+	case I40E_RX_PTYPE_INNER_PROT_TCP:
+	case I40E_RX_PTYPE_INNER_PROT_UDP:
+	case I40E_RX_PTYPE_INNER_PROT_SCTP:
+		skb->ip_summed = CHECKSUM_UNNECESSARY;
+		/* fall though */
+	default:
+		break;
+	}
 
 	return;
 
