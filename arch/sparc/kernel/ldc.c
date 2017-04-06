@@ -1359,7 +1359,10 @@ EXPORT_SYMBOL(ldc_free);
 int ldc_bind(struct ldc_channel *lp)
 {
 	unsigned long hv_err, flags;
+	unsigned long head, tail, chan_state;
+	bool wait_for_channel_reset = false;
 	int err = -EINVAL;
+	int limit = 1000;
 
 	if (lp->state != LDC_STATE_INIT)
 		return -EINVAL;
@@ -1372,6 +1375,19 @@ int ldc_bind(struct ldc_channel *lp)
 	lp->flags |= LDC_FLAG_REGISTERED_IRQS;
 
 	err = -ENODEV;
+
+	/* sun4v_ldc_rx_get_state() will return 0 if this ldc channel
+	 * was previously configured. If so, after setting the new
+	 * configuration, we need to wait for the channel to reset
+	 * so that the seqid is reset to 0.
+	 */
+	hv_err = sun4v_ldc_rx_get_state(lp->id,
+					&head,
+					&tail,
+					&chan_state);
+	if (hv_err == 0)
+		wait_for_channel_reset = true;
+
 	hv_err = sun4v_ldc_tx_qconf(lp->id, 0, 0);
 	if (hv_err)
 		goto out_free_irqs;
@@ -1409,6 +1425,31 @@ int ldc_bind(struct ldc_channel *lp)
 
 	ldc_rx_reset(lp);
 	lp->rx_head = lp->rx_tail;
+
+	/* If the channel was previously configured, wait until we
+	 * have received a packet from the other end to ensure the
+	 * the LDC reset was fully completed.
+	 *
+	 * Following loop is necessary because ldc_reset does not
+	 * handle reconnection if a NACK is received.
+	 */
+	do {
+		hv_err = sun4v_ldc_rx_get_state(lp->id,
+					&lp->rx_head,
+					&lp->rx_tail,
+					&lp->chan_state);
+		if (hv_err)
+			goto out_unmap_rx;
+
+		if (!wait_for_channel_reset)
+			break;
+		if (lp->rx_head != lp->rx_tail)
+			break;
+		udelay(10);
+
+	} while (limit-- > 0);
+	if (limit < 0)
+		pr_warn("ldc: channel %lu failed to reset\n", lp->id);
 
 	lp->hs_state = LDC_HS_OPEN;
 	ldc_set_state(lp, LDC_STATE_BOUND);
