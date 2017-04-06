@@ -549,24 +549,35 @@ struct switch_request {
 static void __loop_update_dio(struct loop_device *lo, bool dio)
 {
 	struct file *file = lo->lo_backing_file;
-	struct inode *inode = file->f_mapping->host;
+	struct address_space *mapping = file->f_mapping;
+	struct inode *inode = mapping->host;
+	unsigned short sb_bsize = 0;
+	unsigned dio_align = 0;
 	bool use_dio;
 
+	if (inode->i_sb->s_bdev) {
+		sb_bsize = bdev_logical_block_size(inode->i_sb->s_bdev);
+		dio_align = sb_bsize - 1;
+	}
+
 	/*
-	 * loop block's logical block size is 512, now
-	 * we support direct I/O only if the backing
-	 * block devices' minimize I/O size is 512 and
-	 * the offset is aligned with 512.
+	 * We support direct I/O only if lo_offset is aligned with the
+	 * logical I/O size of backing device, and the logical block
+	 * size of loop is bigger than the backing device's and the loop
+	 * needn't transform transfer.
+	 *
+	 * TODO: the above condition may be loosed in the future, and
+	 * direct I/O may be switched runtime at that time because most
+	 * of requests in sane applications should be PAGE_SIZE aligned
 	 */
 	if (dio) {
-		if (inode->i_sb->s_bdev) {
-			if (bdev_io_min(inode->i_sb->s_bdev) == 512 &&
-			    !(lo->lo_offset & 511))
-				use_dio = true;
-			else
-				use_dio = false;
-		} else
+		if (queue_logical_block_size(lo->lo_queue) >= sb_bsize &&
+				!(lo->lo_offset & dio_align) &&
+				mapping->a_ops->direct_IO &&
+				!lo->transfer)
 			use_dio = true;
+		else
+			use_dio = false;
 	} else {
 		use_dio = false;
 	}
