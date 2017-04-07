@@ -227,20 +227,10 @@ int module_finalize(const Elf_Ehdr *hdr,
 	}
 
 # ifdef CONFIG_DTRACE
-	if (DTRACE_SDT_MAX(me) + DTRACE_FBT_MAX(me) > 0)
-		me->pdata = module_alloc(DTRACE_PD_MAXSIZE(me));
-	else
-		me->pdata = NULL;
+	me->pdata = NULL;
 # endif
 
 	return 0;
 }
 
-# ifdef CONFIG_DTRACE
-void module_arch_cleanup(struct module *me)
-{
-	if (me->pdata)
-		module_memfree(me->pdata);
-}
-#endif
 #endif /* CONFIG_SPARC64 */
