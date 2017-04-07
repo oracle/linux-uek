@@ -2304,6 +2304,7 @@ void blk_mq_update_nr_hw_queues(struct blk_mq_tag_set *set, int nr_hw_queues)
 		else
 			blk_queue_make_request(q, blk_sq_make_request);
 
+		blk_mq_update_queue_map(q->mq_map, q->nr_hw_queues, cpu_online_mask);
 		blk_mq_queue_reinit(q, cpu_online_mask);
 	}
 
