@@ -1363,7 +1363,7 @@ int bnx2i_process_scsi_cmd_resp(struct iscsi_session *session,
 	u32 datalen = 0;
 
 	resp_cqe = (struct bnx2i_cmd_response *)cqe;
-	spin_lock_bh(&session->back_lock);
+	spin_lock_bh(&session->lock);
 	task = iscsi_itt_to_task(conn,
 				 resp_cqe->itt & ISCSI_CMD_RESPONSE_INDEX);
 	if (!task)
@@ -1434,7 +1434,7 @@ done:
 	__iscsi_complete_pdu(conn, (struct iscsi_hdr *)hdr,
 			     conn->data, datalen);
 fail:
-	spin_unlock_bh(&session->back_lock);
+	spin_unlock_bh(&session->lock);
 	return 0;
 }
 
@@ -1459,7 +1459,7 @@ static int bnx2i_process_login_resp(struct iscsi_session *session,
 	int pad_len;
 
 	login = (struct bnx2i_login_response *) cqe;
-	spin_lock(&session->back_lock);
+	spin_lock(&session->lock);
 	task = iscsi_itt_to_task(conn,
 				 login->itt & ISCSI_LOGIN_RESPONSE_INDEX);
 	if (!task)
@@ -1502,7 +1502,7 @@ static int bnx2i_process_login_resp(struct iscsi_session *session,
 		bnx2i_conn->gen_pdu.resp_buf,
 		bnx2i_conn->gen_pdu.resp_wr_ptr - bnx2i_conn->gen_pdu.resp_buf);
 done:
-	spin_unlock(&session->back_lock);
+	spin_unlock(&session->lock);
 	return 0;
 }
 
@@ -1527,7 +1527,7 @@ static int bnx2i_process_text_resp(struct iscsi_session *session,
 	int pad_len;
 
 	text = (struct bnx2i_text_response *) cqe;
-	spin_lock(&session->back_lock);
+	spin_lock(&session->lock);
 	task = iscsi_itt_to_task(conn, text->itt & ISCSI_LOGIN_RESPONSE_INDEX);
 	if (!task)
 		goto done;
@@ -1563,7 +1563,7 @@ static int bnx2i_process_text_resp(struct iscsi_session *session,
 			     bnx2i_conn->gen_pdu.resp_wr_ptr -
 			     bnx2i_conn->gen_pdu.resp_buf);
 done:
-	spin_unlock(&session->back_lock);
+	spin_unlock(&session->lock);
 	return 0;
 }
 
@@ -1586,7 +1586,7 @@ static int bnx2i_process_tmf_resp(struct iscsi_session *session,
 	struct iscsi_tm_rsp *resp_hdr;
 
 	tmf_cqe = (struct bnx2i_tmf_response *)cqe;
-	spin_lock(&session->back_lock);
+	spin_lock(&session->lock);
 	task = iscsi_itt_to_task(conn,
 				 tmf_cqe->itt & ISCSI_TMF_RESPONSE_INDEX);
 	if (!task)
@@ -1602,7 +1602,7 @@ static int bnx2i_process_tmf_resp(struct iscsi_session *session,
 
 	__iscsi_complete_pdu(conn, (struct iscsi_hdr *)resp_hdr, NULL, 0);
 done:
-	spin_unlock(&session->back_lock);
+	spin_unlock(&session->lock);
 	return 0;
 }
 
@@ -1625,7 +1625,7 @@ static int bnx2i_process_logout_resp(struct iscsi_session *session,
 	struct iscsi_logout_rsp *resp_hdr;
 
 	logout = (struct bnx2i_logout_response *) cqe;
-	spin_lock(&session->back_lock);
+	spin_lock(&session->lock);
 	task = iscsi_itt_to_task(conn,
 				 logout->itt & ISCSI_LOGOUT_RESPONSE_INDEX);
 	if (!task)
@@ -1649,7 +1649,7 @@ static int bnx2i_process_logout_resp(struct iscsi_session *session,
 
 	bnx2i_conn->ep->state = EP_STATE_LOGOUT_RESP_RCVD;
 done:
-	spin_unlock(&session->back_lock);
+	spin_unlock(&session->lock);
 	return 0;
 }
 
@@ -1670,12 +1670,12 @@ static void bnx2i_process_nopin_local_cmpl(struct iscsi_session *session,
 	struct iscsi_task *task;
 
 	nop_in = (struct bnx2i_nop_in_msg *)cqe;
-	spin_lock(&session->back_lock);
+	spin_lock(&session->lock);
 	task = iscsi_itt_to_task(conn,
 				 nop_in->itt & ISCSI_NOP_IN_MSG_INDEX);
 	if (task)
 		__iscsi_put_task(task);
-	spin_unlock(&session->back_lock);
+	spin_unlock(&session->lock);
 }
 
 /**
@@ -1714,7 +1714,7 @@ static int bnx2i_process_nopin_mesg(struct iscsi_session *session,
 
 	nop_in = (struct bnx2i_nop_in_msg *)cqe;
 
-	spin_lock(&session->back_lock);
+	spin_lock(&session->lock);
 	hdr = (struct iscsi_nopin *)&bnx2i_conn->gen_pdu.resp_hdr;
 	memset(hdr, 0, sizeof(struct iscsi_hdr));
 	hdr->opcode = nop_in->op_code;
@@ -1740,7 +1740,7 @@ static int bnx2i_process_nopin_mesg(struct iscsi_session *session,
 	}
 done:
 	__iscsi_complete_pdu(conn, (struct iscsi_hdr *)hdr, NULL, 0);
-	spin_unlock(&session->back_lock);
+	spin_unlock(&session->lock);
 
 	return tgt_async_nop;
 }
@@ -1773,7 +1773,7 @@ static void bnx2i_process_async_mesg(struct iscsi_session *session,
 		return;
 	}
 
-	spin_lock(&session->back_lock);
+	spin_lock(&session->lock);
 	resp_hdr = (struct iscsi_async *) &bnx2i_conn->gen_pdu.resp_hdr;
 	memset(resp_hdr, 0, sizeof(struct iscsi_hdr));
 	resp_hdr->opcode = async_cqe->op_code;
@@ -1792,7 +1792,7 @@ static void bnx2i_process_async_mesg(struct iscsi_session *session,
 
 	__iscsi_complete_pdu(bnx2i_conn->cls_conn->dd_data,
 			     (struct iscsi_hdr *)resp_hdr, NULL, 0);
-	spin_unlock(&session->back_lock);
+	spin_unlock(&session->lock);
 }
 
 
@@ -1819,7 +1819,7 @@ static void bnx2i_process_reject_mesg(struct iscsi_session *session,
 	} else
 		bnx2i_unsol_pdu_adjust_rq(bnx2i_conn);
 
-	spin_lock(&session->back_lock);
+	spin_lock(&session->lock);
 	hdr = (struct iscsi_reject *) &bnx2i_conn->gen_pdu.resp_hdr;
 	memset(hdr, 0, sizeof(struct iscsi_hdr));
 	hdr->opcode = reject->op_code;
@@ -1830,7 +1830,7 @@ static void bnx2i_process_reject_mesg(struct iscsi_session *session,
 	hdr->ffffffff = cpu_to_be32(RESERVED_ITT);
 	__iscsi_complete_pdu(conn, (struct iscsi_hdr *)hdr, conn->data,
 			     reject->data_length);
-	spin_unlock(&session->back_lock);
+	spin_unlock(&session->lock);
 }
 
 /**
@@ -1850,13 +1850,13 @@ static void bnx2i_process_cmd_cleanup_resp(struct iscsi_session *session,
 	struct iscsi_task *task;
 
 	cmd_clean_rsp = (struct bnx2i_cleanup_response *)cqe;
-	spin_lock(&session->back_lock);
+	spin_lock(&session->lock);
 	task = iscsi_itt_to_task(conn,
 			cmd_clean_rsp->itt & ISCSI_CLEANUP_RESPONSE_INDEX);
 	if (!task)
 		printk(KERN_ALERT "bnx2i: cmd clean ITT %x not active\n",
 			cmd_clean_rsp->itt & ISCSI_CLEANUP_RESPONSE_INDEX);
-	spin_unlock(&session->back_lock);
+	spin_unlock(&session->lock);
 	complete(&bnx2i_conn->cmd_cleanup_cmpl);
 }
 
@@ -1923,11 +1923,11 @@ static int bnx2i_queue_scsi_cmd_resp(struct iscsi_session *session,
 	int rc = 0;
 	int cpu;
 
-	spin_lock(&session->back_lock);
+	spin_lock(&session->lock);
 	task = iscsi_itt_to_task(bnx2i_conn->cls_conn->dd_data,
 				 cqe->itt & ISCSI_CMD_RESPONSE_INDEX);
 	if (!task || !task->sc) {
-		spin_unlock(&session->back_lock);
+		spin_unlock(&session->lock);
 		return -EINVAL;
 	}
 	sc = task->sc;
@@ -1937,7 +1937,7 @@ static int bnx2i_queue_scsi_cmd_resp(struct iscsi_session *session,
 	else
 		cpu = sc->request->cpu;
 
-	spin_unlock(&session->back_lock);
+	spin_unlock(&session->lock);
 
 	p = &per_cpu(bnx2i_percpu, cpu);
 	spin_lock(&p->p_work_lock);

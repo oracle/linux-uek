@@ -331,19 +331,12 @@ struct iscsi_session {
 	struct iscsi_transport	*tt;
 	struct Scsi_Host	*host;
 	struct iscsi_conn	*leadconn;	/* leading connection */
-	/* Between the forward and the backward locks exists a strict locking
-	 * hierarchy. The mutual exclusion zone protected by the forward lock
-	 * can enclose the mutual exclusion zone protected by the backward lock
-	 * but not vice versa.
-	 */
-	spinlock_t		frwd_lock;	/* protects session state, *
-						 * cmdsn, queued_cmdsn     *
+	spinlock_t		lock;		/* protects session state, *
+						 * sequence numbers,       *
 						 * session resources:      *
-						 * - cmdpool kfifo_out ,   *
-						 * - mgmtpool,		   */
-	spinlock_t		back_lock;	/* protects cmdsn_exp      *
-						 * cmdsn_max,              *
-						 * cmdpool kfifo_in        */
+						 * - cmdpool,		   *
+						 * - mgmtpool,		   *
+						 * - r2tpool		   */
 	int			state;		/* session state           */
 	int			age;		/* counts session re-opens */
 

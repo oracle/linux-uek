@@ -229,9 +229,9 @@ static int beiscsi_eh_abort(struct scsi_cmnd *sc)
 	session = cls_session->dd_data;
 
 	/* check if we raced, task just got cleaned up under us */
-	spin_lock_bh(&session->back_lock);
+	spin_lock_bh(&session->lock);
 	if (!abrt_task || !abrt_task->sc) {
-		spin_unlock_bh(&session->back_lock);
+		spin_unlock_bh(&session->lock);
 		return SUCCESS;
 	}
 	/* get a task ref till FW processes the req for the ICD used */
@@ -250,7 +250,7 @@ static int beiscsi_eh_abort(struct scsi_cmnd *sc)
 	}
 	inv_tbl.cid = beiscsi_conn->beiscsi_conn_cid;
 	inv_tbl.icd = abrt_io_task->psgl_handle->sgl_index;
-	spin_unlock_bh(&session->back_lock);
+	spin_unlock_bh(&session->lock);
 
 	rc = beiscsi_mgmt_invalidate_icds(phba, &inv_tbl, 1);
 	iscsi_put_task(abrt_task);
@@ -283,9 +283,9 @@ static int beiscsi_eh_device_reset(struct scsi_cmnd *sc)
 	cls_session = starget_to_session(scsi_target(sc->device));
 	session = cls_session->dd_data;
 
-	spin_lock_bh(&session->frwd_lock);
+	spin_lock_bh(&session->lock);
 	if (!session->leadconn || session->state != ISCSI_STATE_LOGGED_IN) {
-		spin_unlock_bh(&session->frwd_lock);
+		spin_unlock_bh(&session->lock);
 		return FAILED;
 	}
 
@@ -295,14 +295,13 @@ static int beiscsi_eh_device_reset(struct scsi_cmnd *sc)
 
 	inv_tbl = kzalloc(sizeof(*inv_tbl), GFP_ATOMIC);
 	if (!inv_tbl) {
-		spin_unlock_bh(&session->frwd_lock);
+		spin_unlock_bh(&session->lock);
 		beiscsi_log(phba, KERN_ERR, BEISCSI_LOG_EH,
 			    "BM_%d : invldt_cmd_tbl alloc failed\n");
 		return FAILED;
 	}
 	nents = 0;
-	/* take back_lock to prevent task from getting cleaned up under us */
-	spin_lock(&session->back_lock);
+	spin_lock(&session->lock);
 	for (i = 0; i < conn->session->cmds_max; i++) {
 		task = conn->session->cmds[i];
 		if (!task->sc)
@@ -336,8 +335,7 @@ static int beiscsi_eh_device_reset(struct scsi_cmnd *sc)
 		inv_tbl->task[nents] = task;
 		nents++;
 	}
-	spin_unlock_bh(&session->back_lock);
-	spin_unlock_bh(&session->frwd_lock);
+	spin_unlock_bh(&session->lock);
 
 	rc = SUCCESS;
 	if (!nents)
@@ -1236,11 +1234,11 @@ hwi_complete_drvr_msgs(struct beiscsi_conn *beiscsi_conn,
 	pwrb_context = &phwi_ctrlr->wrb_context[cri_index];
 	pwrb_handle = pwrb_context->pwrb_handle_basestd[wrb_index];
 	session = beiscsi_conn->conn->session;
-	spin_lock_bh(&session->back_lock);
+	spin_lock_bh(&session->lock);
 	task = pwrb_handle->pio_handle;
 	if (task)
 		__iscsi_put_task(task);
-	spin_unlock_bh(&session->back_lock);
+	spin_unlock_bh(&session->lock);
 }
 
 static void
@@ -1341,10 +1339,10 @@ static void hwi_complete_cmd(struct beiscsi_conn *beiscsi_conn,
 	pwrb_handle = pwrb_context->pwrb_handle_basestd[
 		      csol_cqe.wrb_index];
 
-	spin_lock_bh(&session->back_lock);
+	spin_lock_bh(&session->lock);
 	task = pwrb_handle->pio_handle;
 	if (!task) {
-		spin_unlock_bh(&session->back_lock);
+		spin_unlock_bh(&session->lock);
 		return;
 	}
 	type = ((struct beiscsi_io_task *)task->dd_data)->wrb_type;
@@ -1387,7 +1385,7 @@ static void hwi_complete_cmd(struct beiscsi_conn *beiscsi_conn,
 		break;
 	}
 
-	spin_unlock_bh(&session->back_lock);
+	spin_unlock_bh(&session->lock);
 }
 
 /**
@@ -1626,9 +1624,9 @@ beiscsi_hdl_fwd_pdu(struct beiscsi_conn *beiscsi_conn,
 			    pasync_ctx->async_entry[cri].wq.bytes_needed,
 			    pasync_ctx->async_entry[cri].wq.bytes_received);
 	}
-	spin_lock_bh(&session->back_lock);
+	spin_lock_bh(&session->lock);
 	status = beiscsi_complete_pdu(beiscsi_conn, phdr, pdata, dlen);
-	spin_unlock_bh(&session->back_lock);
+	spin_unlock_bh(&session->lock);
 	beiscsi_hdl_purge_handles(phba, pasync_ctx, cri);
 	return status;
 }
@@ -4343,9 +4341,9 @@ beiscsi_offload_connection(struct beiscsi_conn *beiscsi_conn,
 	 * login/startup related tasks.
 	 */
 	beiscsi_conn->login_in_progress = 0;
-	spin_lock_bh(&session->back_lock);
+	spin_lock_bh(&session->lock);
 	beiscsi_cleanup_task(task);
-	spin_unlock_bh(&session->back_lock);
+	spin_unlock_bh(&session->lock);
 
 	pwrb_handle = alloc_wrb_handle(phba, beiscsi_conn->beiscsi_conn_cid,
 				       &pwrb_context);
