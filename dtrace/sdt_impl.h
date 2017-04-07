@@ -53,7 +53,7 @@ extern void sdt_enable_arch(sdt_probe_t *, dtrace_id_t, void *);
 extern void sdt_disable_arch(sdt_probe_t *, dtrace_id_t, void *);
 
 extern void sdt_provide_module(void *, struct module *);
-extern void sdt_cleanup_module(void *, struct module *);
+extern void sdt_destroy_module(void *, struct module *);
 extern int _sdt_enable(void *, dtrace_id_t, void *);
 extern void _sdt_disable(void *, dtrace_id_t, void *);
 extern void sdt_getargdesc(void *, dtrace_id_t, void *, dtrace_argdesc_t *);

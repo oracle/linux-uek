@@ -67,6 +67,15 @@ void sdt_provide_probe_arch(sdt_probe_t *sdp, struct module *mp, int idx)
 	sdp->sdp_savedval = *sdp->sdp_patchpoint;
 }
 
+int sdt_provide_module_arch(void *arg, struct module *mp)
+{
+	return 1;
+}
+
+void sdt_destroy_module(void *arg, struct module *mp)
+{
+}
+
 void sdt_enable_arch(sdt_probe_t *sdp, dtrace_id_t id, void *arg)
 {
 	dtrace_invop_enable(sdp->sdp_patchpoint, sdp->sdp_patchval);

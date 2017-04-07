@@ -21,8 +21,7 @@
  *
  * CDDL HEADER END
  *
- * Copyright 2010, 2011, 2012, 2013 Oracle, Inc.  All rights reserved.
- * Use is subject to license terms.
+ * Copyright (c) 2010, 2017, Oracle and/or its affiliates. All rights reserved.
  */
 
 #include <linux/idr.h>
@@ -219,6 +218,11 @@ int dtrace_register(const char *name, const dtrace_pattr_t *pap, uint32_t priv,
 	if (pops->dtps_provide_module == NULL) {
 		ASSERT(pops->dtps_provide != NULL);
 		provider->dtpv_pops.dtps_provide_module =
+		    (void (*)(void *, struct module *))dtrace_nullop;
+	}
+
+	if (pops->dtps_destroy_module == NULL) {
+		provider->dtpv_pops.dtps_destroy_module =
 		    (void (*)(void *, struct module *))dtrace_nullop;
 	}
 

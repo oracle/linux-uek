@@ -21,8 +21,7 @@
  *
  * CDDL HEADER END
  *
- * Copyright 2010-2017 Oracle, Inc.  All rights reserved.
- * Use is subject to license terms.
+ * Copyright (c) 2010, 2017, Oracle and/or its affiliates. All rights reserved.
  */
 
 #include <linux/fs.h>
@@ -44,7 +43,7 @@ int			fbt_probetab_mask;
 
 static void *fbt_provide_probe(struct module *mp, char *func, int type, int
 			       stype, asm_instr_t *addr, uintptr_t off,
-			       void *pfbt)
+			       void *pfbt, void *arg)
 {
 	fbt_probe_t	*fbp;
 	fbt_probe_t	*prev;
@@ -61,14 +60,19 @@ static void *fbt_provide_probe(struct module *mp, char *func, int type, int
 		fbp->fbp_roffset = off;
 		fbp->fbp_patchpoint = addr;
 		fbt_provide_probe_arch(fbp, type, stype);
-                fbp->fbp_hashnext = fbt_probetab[FBT_ADDR2NDX(addr)];
 
-		fbt_probetab[FBT_ADDR2NDX(addr)] = fbp;
+		fbp->fbp_hashnext = fbt_probetab[FBT_ADDR2NDX(fbp->fbp_patchpoint)];
+		fbt_probetab[FBT_ADDR2NDX(fbp->fbp_patchpoint)] = fbp;
 
 		PDATA(mp)->fbt_probe_cnt++;
 
 		return fbp;
 	case FBT_RETURN:
+
+		/* Check if we are able to patch this return probe. */
+		if (!fbt_can_patch_return_arch(addr))
+			return pfbt;
+
 		fbp = kzalloc(sizeof(fbt_probe_t), GFP_KERNEL);
 		fbp->fbp_name = kstrdup(func, GFP_KERNEL);
 
@@ -88,9 +92,9 @@ static void *fbt_provide_probe(struct module *mp, char *func, int type, int
 		fbp->fbp_roffset = off;
 		fbp->fbp_patchpoint = addr;
 		fbt_provide_probe_arch(fbp, type, stype);
-                fbp->fbp_hashnext = fbt_probetab[FBT_ADDR2NDX(addr)];
 
-		fbt_probetab[FBT_ADDR2NDX(addr)] = fbp;
+		fbp->fbp_hashnext = fbt_probetab[FBT_ADDR2NDX(fbp->fbp_patchpoint)];
+		fbt_probetab[FBT_ADDR2NDX(fbp->fbp_patchpoint)] = fbp;
 
 		PDATA(mp)->fbt_probe_cnt++;
 
@@ -105,16 +109,35 @@ static void *fbt_provide_probe(struct module *mp, char *func, int type, int
 
 void fbt_provide_module(void *arg, struct module *mp)
 {
+	struct module_use *use;
+
 	/*
 	 * Nothing to do if the module FBT probes were already created.
 	 */
 	if (PDATA(mp)->fbt_probe_cnt != 0)
 		return;
 
-	if (strncmp(mp->name, "vmlinux", 7))
+	/*
+	 * Do not try to instrument DTrace itself and its modules:
+	 * 	- dtrace module
+	 * 	- ctf module
+	 * 	- all modules depending on dtrace
+	 */
+	if (!strncmp(mp->name, "dtrace", 7))
 		return;
 
-	dtrace_fbt_init((fbt_add_probe_fn)fbt_provide_probe);
+	list_for_each_entry(use, &mp->target_list, target_list) {
+		if (!strncmp(use->target->name, "dtrace", 7))
+			return;
+	}
+
+	/*
+	 * Provide probes.
+	 */
+	if (!fbt_provide_module_arch(arg, mp))
+		return;
+
+	dtrace_fbt_init((fbt_add_probe_fn)fbt_provide_probe, mp, NULL);
 }
 
 int _fbt_enable(void *arg, dtrace_id_t id, void *parg)
@@ -165,13 +188,12 @@ void _fbt_disable(void *arg, dtrace_id_t id, void *parg)
 void fbt_destroy(void *arg, dtrace_id_t id, void *parg)
 {
 	fbt_probe_t	*fbp = parg;
-	fbt_probe_t	*nxt, *hbp, *lst;
-	struct module	*mp = fbp->fbp_module;
+	fbt_probe_t	*hbp, *lst, *nxt;
 	int		ndx;
+	struct module	*mp = fbp->fbp_module;
 
 	do {
-		if (mp != NULL)
-			PDATA(mp)->fbt_probe_cnt--;
+		nxt = fbp->fbp_next;
 
 		ndx = FBT_ADDR2NDX(fbp->fbp_patchpoint);
 		lst = NULL;
@@ -189,9 +211,10 @@ void fbt_destroy(void *arg, dtrace_id_t id, void *parg)
 		else
 			fbt_probetab[ndx] = fbp->fbp_hashnext;
 
-		nxt = fbp->fbp_next;
-
+		kfree(fbp->fbp_name);
 		kfree(fbp);
+
+		PDATA(mp)->fbt_probe_cnt--;
 
 		fbp = nxt;
 	} while (fbp != NULL);
@@ -231,18 +254,12 @@ int fbt_dev_init(void)
 {
 	int ret = 0;
 
-	fbt_probetab_mask = fbt_probetab_size - 1;
-	fbt_probetab = dtrace_vzalloc_try(fbt_probetab_size *
-					  sizeof (fbt_probe_t *));
-
 	ret = misc_register(&fbt_dev);
 	if (ret)
 		pr_err("%s: Can't register misc device %d\n",
 		       fbt_dev.name, fbt_dev.minor);
 
-	fbt_dev_init_arch();
-
-	return ret;
+	return fbt_dev_init_arch();
 }
 
 void fbt_dev_exit(void)
@@ -250,8 +267,4 @@ void fbt_dev_exit(void)
 	fbt_dev_exit_arch();
 
 	misc_deregister(&fbt_dev);
-
-	vfree(fbt_probetab);
-	fbt_probetab_mask = 0;
-	fbt_probetab_size = 0;
 }

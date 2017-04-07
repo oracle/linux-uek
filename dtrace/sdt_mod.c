@@ -22,8 +22,7 @@
  *
  * CDDL HEADER END
  *
- * Copyright 2010-2016 Oracle, Inc.  All rights reserved.
- * Use is subject to license terms.
+ * Copyright (c) 2010, 2017, Oracle and/or its affiliates. All rights reserved.
  */
 
 #include <linux/module.h>
@@ -120,20 +119,21 @@ static dtrace_pattr_t perf_attr = {
 DT_PROVIDER_POPS(sdt)
 
 static dtrace_pops_t sdt_pops = {
-	NULL,
-	sdt_provide_module,
-	sdt_enable,
-	sdt_disable,
-	NULL,
-	NULL,
-	sdt_getargdesc,
+	.dtps_provide = NULL,
+	.dtps_provide_module = sdt_provide_module,
+	.dtps_destroy_module = sdt_destroy_module,
+	.dtps_enable = sdt_enable,
+	.dtps_disable = sdt_disable,
+	.dtps_suspend = NULL,
+	.dtps_resume = NULL,
+	.dtps_getargdesc = sdt_getargdesc,
 #ifdef CONFIG_X86_64
-	sdt_getarg,
+	.dtps_getargval = sdt_getarg,
 #else
-	NULL,
+	.dtps_getargval = NULL,
 #endif
-	NULL,
-	sdt_destroy,
+	.dtps_usermode = NULL,
+	.dtps_destroy = sdt_destroy,
 };
 
 dtrace_mprovider_t sdt_providers[] = {

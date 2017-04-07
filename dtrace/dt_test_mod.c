@@ -21,8 +21,7 @@
  *
  * CDDL HEADER END
  *
- * Copyright 2011, 2012 Oracle, Inc.  All rights reserved.
- * Use is subject to license terms.
+ * Copyright (c) 2011, 2017, Oracle and/or its affiliates. All rights reserved.
  */
 
 #include <linux/module.h>
@@ -47,16 +46,17 @@ static const dtrace_pattr_t dt_test_attr = {
 DT_PROVIDER_POPS(dt_test)
 
 static dtrace_pops_t dt_test_pops = {
-	dt_test_provide,
-	NULL,
-	dt_test_enable,
-	dt_test_disable,
-	NULL,
-	NULL,
-	NULL,
-	NULL,
-	NULL,
-	dt_test_destroy
+	.dtps_provide = dt_test_provide,
+	.dtps_provide_module = NULL,
+	.dtps_destroy_module = NULL,
+	.dtps_enable = dt_test_enable,
+	.dtps_disable = dt_test_disable,
+	.dtps_suspend = NULL,
+	.dtps_resume = NULL,
+	.dtps_getargdesc = NULL,
+	.dtps_getargval = NULL,
+	.dtps_usermode = NULL,
+	.dtps_destroy = dt_test_destroy
 };
 
 DT_PROVIDER_MODULE(dt_test, DTRACE_PRIV_USER)

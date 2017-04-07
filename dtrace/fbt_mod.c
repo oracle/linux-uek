@@ -21,8 +21,7 @@
  *
  * CDDL HEADER END
  *
- * Copyright 2010, 2011, 2012, 2013 Oracle, Inc.  All rights reserved.
- * Use is subject to license terms.
+ * Copyright (c) 2010, 2017, Oracle and/or its affiliates. All rights reserved.
  */
 
 #include <linux/module.h>
@@ -47,16 +46,17 @@ static const dtrace_pattr_t fbt_attr = {
 DT_PROVIDER_POPS(fbt)
 
 static dtrace_pops_t fbt_pops = {
-	NULL,
-	fbt_provide_module,
-	fbt_enable,
-	fbt_disable,
-	NULL,
-	NULL,
-	NULL,
-	NULL,
-	NULL,
-	fbt_destroy
+	.dtps_provide = NULL,
+	.dtps_provide_module = fbt_provide_module,
+	.dtps_destroy_module = fbt_destroy_module,
+	.dtps_enable = fbt_enable,
+	.dtps_disable = fbt_disable,
+	.dtps_suspend = NULL,
+	.dtps_resume = NULL,
+	.dtps_getargdesc = NULL,
+	.dtps_getargval = NULL,
+	.dtps_usermode = NULL,
+	.dtps_destroy = fbt_destroy
 };
 
 DT_PROVIDER_MODULE(fbt, DTRACE_PRIV_KERNEL)
