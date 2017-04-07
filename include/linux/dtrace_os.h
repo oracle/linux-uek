@@ -26,6 +26,9 @@ extern struct module	*dtrace_kmod;
 extern void dtrace_os_init(void);
 extern void dtrace_os_exit(void);
 
+extern void *dtrace_alloc_text(struct module *, unsigned long);
+extern void dtrace_free_text(void *);
+
 extern void dtrace_enable(void);
 extern void dtrace_disable(void);
 

@@ -2,7 +2,7 @@
  * FILE:        dtrace_fbt.c
  * DESCRIPTION: Dynamic Tracing: FBT registration code (arch-specific)
  *
- * Copyright (C) 2010-2014 Oracle Corporation
+ * Copyright (c) 2010, 2017, Oracle and/or its affiliates. All rights reserved.
  */
 
 #include <linux/kernel.h>
@@ -39,7 +39,8 @@ dtrace_fbt_populate_bl(void)
 #undef BL_DENTRY
 }
 
-void dtrace_fbt_init(fbt_add_probe_fn fbt_add_probe)
+void dtrace_fbt_init(fbt_add_probe_fn fbt_add_probe, struct module *mp,
+		     void *arg)
 {
 	loff_t			pos;
 	struct kallsym_iter	sym;
@@ -72,12 +73,19 @@ void dtrace_fbt_init(fbt_add_probe_fn fbt_add_probe)
 			continue;
 
 		/*
-		 * Only core kernel symbols are of interest here.
+		 * Handle only symbols that belong to the module we have been
+		 * asked for.
 		 */
-		if (!core_kernel_text(sym.value))
+		if (mp == dtrace_kmod && !core_kernel_text(sym.value))
 			continue;
 
-		/* TODO: Jumplabel blacklist ? */
+		/*
+		 * Ensure we have not been given .init symbol from kallsyms
+		 * interface. This could lead to memory corruption once DTrace
+		 * tries to enable probe in already freed memory.
+		 */
+		if (mp != dtrace_kmod && !within_module_core(sym.value, mp))
+			continue;
 
 		/*
 		 * See if the symbol is on the FBT's blacklist.  Since both
@@ -134,9 +142,9 @@ void dtrace_fbt_init(fbt_add_probe_fn fbt_add_probe)
 			case 0:	/* start of function */
 				if (*addr == FBT_PUSHL_EBP) {
 					fbt_add_probe(
-						dtrace_kmod, sym.name,
+						mp, sym.name,
 						FBT_ENTRY, *addr, addr, 0,
-						NULL);
+						NULL, arg);
 					state = 1;
 				} else if (insc > 2)
 					state = 2;
@@ -147,9 +155,9 @@ void dtrace_fbt_init(fbt_add_probe_fn fbt_add_probe)
 
 					off = addr - (asm_instr_t *)sym.value;
 					fbtp = fbt_add_probe(
-						dtrace_kmod, sym.name,
+						mp, sym.name,
 						FBT_RETURN, *addr, addr, off,
-						fbtp);
+						fbtp, arg);
 				}
 				break;
 			}
