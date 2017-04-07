@@ -21,8 +21,7 @@
  *
  * CDDL HEADER END
  *
- * Copyright 2010-2016 Oracle, Inc.  All rights reserved.
- * Use is subject to license terms.
+ * Copyright (c) 2010, 2017, Oracle and/or its affiliates. All rights reserved.
  */
 
 #include <linux/delay.h>
@@ -58,7 +57,8 @@ dtrace_pops_t			dtrace_provider_ops = {
 	NULL,
 	NULL,
 	NULL,
-	(void (*)(void *, dtrace_id_t, void *))dtrace_nullop
+	(void (*)(void *, dtrace_id_t, void *))dtrace_nullop,
+	(void (*)(void *, struct module *))dtrace_nullop,
 };
 
 static size_t			dtrace_retain_max = 1024;
@@ -1135,10 +1135,11 @@ static void module_del_pdata(void *dmy, struct module *mp)
 {
 	dtrace_module_t	*pdata = mp->pdata;
 
-	if (!pdata)
+	if (pdata == NULL)
 		return;
 
 	pdata_cleanup(pdata, mp);
+	mp->pdata = NULL;
 	kmem_cache_free(dtrace_pdata_cachep, pdata);
 }
 
@@ -1257,10 +1258,17 @@ static void dtrace_module_unloaded(struct module *mp)
 		kfree(probe);
 	}
 
-	mutex_unlock(&dtrace_lock);
-	mutex_unlock(&dtrace_provider_lock);
+	/*
+	 * Notify providers to cleanup per-module data for this module.
+	 */
+	for (prv = dtrace_provider; prv != NULL; prv = prv->dtpv_next)
+		if (prv->dtpv_pops.dtps_destroy_module != NULL)
+			prv->dtpv_pops.dtps_destroy_module(prv->dtpv_arg, mp);
 
 	module_del_pdata(NULL, mp);
+
+	mutex_unlock(&dtrace_lock);
+	mutex_unlock(&dtrace_provider_lock);
 }
 
 /*
@@ -1452,6 +1460,7 @@ int dtrace_dev_init(void)
 	 * a pdata object.  Modules loaded after this one will get their pdata
 	 * object assigned using the module notifier hook.
 	 */
+	module_add_pdata(NULL, dtrace_kmod);
 	dtrace_for_each_module(module_add_pdata, NULL);
 
 	/*
@@ -1603,6 +1612,7 @@ void dtrace_dev_exit(void)
 	 * point had their pdata object cleaned up using the module notifier
 	 * hook.
 	 */
+	module_del_pdata(NULL, dtrace_kmod);
 	dtrace_for_each_module(module_del_pdata, NULL);
 
 	/*

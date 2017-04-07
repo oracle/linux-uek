@@ -21,8 +21,7 @@
  *
  * CDDL HEADER END
  *
- * Copyright 2010-2016 Oracle, Inc.  All rights reserved.
- * Use is subject to license terms.
+ * Copyright (c) 2010, 2017, Oracle and/or its affiliates. All rights reserved.
  */
 
 #include <linux/ctype.h>
@@ -277,6 +276,12 @@ void sdt_provide_module(void *arg, struct module *mp)
 	 * Nothing to do if there are no SDT probes.
 	 */
 	if (mp->sdt_probec == 0)
+		return;
+
+	/*
+	 * Nothing if arch specific module setup fails.
+	 */
+	if (!sdt_provide_module_arch(NULL, mp))
 		return;
 
 	/*

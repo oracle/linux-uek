@@ -47,16 +47,17 @@ static const dtrace_pattr_t dt_perf_attr = {
 DT_PROVIDER_POPS(dt_perf)
 
 static dtrace_pops_t dt_perf_pops = {
-	dt_perf_provide,
-	NULL,
-	dt_perf_enable,
-	dt_perf_disable,
-	NULL,
-	NULL,
-	NULL,
-	NULL,
-	NULL,
-	dt_perf_destroy
+	.dtps_provide = dt_perf_provide,
+	.dtps_provide_module = NULL,
+	.dtps_destroy_module = NULL,
+	.dtps_enable = dt_perf_enable,
+	.dtps_disable = dt_perf_disable,
+	.dtps_suspend = NULL,
+	.dtps_resume = NULL,
+	.dtps_getargdesc = NULL,
+	.dtps_getargval = NULL,
+	.dtps_usermode = NULL,
+	.dtps_destroy = dt_perf_destroy
 };
 
 DT_PROVIDER_MODULE(dt_perf, DTRACE_PRIV_USER)

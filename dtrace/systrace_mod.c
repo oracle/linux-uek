@@ -21,8 +21,7 @@
  *
  * CDDL HEADER END
  *
- * Copyright 2010, 2011 Oracle, Inc.  All rights reserved.
- * Use is subject to license terms.
+ * Copyright (c) 2010, 2017, Oracle and/or its affiliates. All rights reserved.
  */
 
 #include <linux/module.h>
@@ -47,16 +46,17 @@ static const dtrace_pattr_t syscall_attr = {
 DT_PROVIDER_POPS(systrace)
 
 static dtrace_pops_t syscall_pops = {
-	systrace_provide,
-	NULL,
-	systrace_enable,
-	systrace_disable,
-	NULL,
-	NULL,
-	NULL,
-	NULL,
-	NULL,
-	systrace_destroy
+	.dtps_provide = systrace_provide,
+	.dtps_provide_module = NULL,
+	.dtps_destroy_module = NULL,
+	.dtps_enable = systrace_enable,
+	.dtps_disable = systrace_disable,
+	.dtps_suspend = NULL,
+	.dtps_resume = NULL,
+	.dtps_getargdesc = NULL,
+	.dtps_getargval = NULL,
+	.dtps_usermode = NULL,
+	.dtps_destroy = systrace_destroy
 };
 
 DT_PROVIDER_MODULE(syscall, DTRACE_PRIV_USER)
