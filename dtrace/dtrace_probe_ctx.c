@@ -39,6 +39,7 @@ void dtrace_panic(const char *fmt, ...)
 
 	BUG();
 }
+EXPORT_SYMBOL(dtrace_panic);
 
 int dtrace_assfail(const char *a, const char *f, int l)
 {

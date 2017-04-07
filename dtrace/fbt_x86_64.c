@@ -21,8 +21,7 @@
  *
  * CDDL HEADER END
  *
- * Copyright 2010-2014 Oracle, Inc.  All rights reserved.
- * Use is subject to license terms.
+ * Copyright (c) 2010, 2017, Oracle and/or its affiliates. All rights reserved.
  */
 
 #include <linux/dtrace_fbt.h>
@@ -72,6 +71,20 @@ void fbt_provide_probe_arch(fbt_probe_t *fbp, int type, int stype)
 					  : DTRACE_INVOP_RET;
 }
 
+int fbt_can_patch_return_arch(asm_instr_t *addr)
+{
+	return 1;
+}
+
+int fbt_provide_module_arch(void *arg, struct module *mp)
+{
+	return 1;
+}
+
+void fbt_destroy_module(void *arg, struct module *mp)
+{
+}
+
 void fbt_enable_arch(fbt_probe_t *fbp, dtrace_id_t id, void *arg)
 {
 	dtrace_invop_enable(fbp->fbp_patchpoint, fbp->fbp_patchval);
@@ -84,10 +97,21 @@ void fbt_disable_arch(fbt_probe_t *fbp, dtrace_id_t id, void *arg)
 
 int fbt_dev_init_arch(void)
 {
+	fbt_probetab_mask = fbt_probetab_size - 1;
+	fbt_probetab = dtrace_vzalloc_try(fbt_probetab_size *
+					  sizeof (fbt_probe_t *));
+
+	if (fbt_probetab == NULL)
+		return -ENOMEM;
+
 	return dtrace_invop_add(fbt_invop);
 }
 
 void fbt_dev_exit_arch(void)
 {
+	vfree(fbt_probetab);
+	fbt_probetab_mask = 0;
+	fbt_probetab_size = 0;
+
 	dtrace_invop_remove(fbt_invop);
 }

@@ -28,10 +28,24 @@
  *
  * CDDL HEADER END
  *
- * Copyright 2017 Oracle, Inc.  All rights reserved.
- * Use is subject to license terms.
+ * Copyright (c) 2017, Oracle and/or its affiliates. All rights reserved.
  */
 
 #define FBT_AFRAMES	9
+
+typedef struct fbt_probe {
+        char			*fbp_name;	/* name of probe */
+        dtrace_id_t		fbp_id;		/* probe ID */
+        struct module		*fbp_module;	/* defining module */
+        int			fbp_loadcnt;	/* load count for module */
+        int			fbp_primary;	/* non-zero if primary mod */
+        asm_instr_t		*fbp_patchpoint;/* patch point */
+        asm_instr_t		fbp_patchval;	/* instruction to patch */
+        asm_instr_t		fbp_savedval;	/* saved instruction value */
+	uintptr_t		fbp_roffset;	/* relative offset */
+        int			fbp_rval;
+        struct fbt_probe	*fbp_next;	/* next probe */
+        struct fbt_probe	*fbp_hashnext;	/* next on hash */
+} fbt_probe_t;
 
 #endif /* _X86_64_FBT_ARCH_H */

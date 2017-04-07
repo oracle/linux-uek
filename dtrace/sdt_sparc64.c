@@ -21,14 +21,14 @@
  *
  * CDDL HEADER END
  *
- * Copyright 2010-2016 Oracle, Inc.  All rights reserved.
- * Use is subject to license terms.
+ * Copyright (c) 2010, 2017, Oracle and/or its affiliates. All rights reserved.
  */
 
 #include <linux/sdt.h>
 #include <linux/slab.h>
 #include <linux/uaccess.h>
 #include <linux/vmalloc.h>
+#include <asm/cacheflush.h>
 #include <asm/pgtable.h>
 
 #include "dtrace.h"
@@ -64,11 +64,7 @@
  * For is-enabled probes, we just drop an "or %g0, 1, %o0"
  * directly into the delay slot.
  */
-#ifndef SDT_TRAMP_SIZE
-# error The kernel must define SDT_TRAMP_SIZE!
-#elif SDT_TRAMP_SIZE < 11
-# error SDT_TRAMP_SIZE must be at least 11 instructions!
-#endif
+#define	SDT_TRAMP_SIZE	11
 
 #define SA(x)			((long)ALIGN((x), 4))
 #define MINFRAME		STACKFRAME_SZ
@@ -166,32 +162,43 @@ void sdt_provide_probe_arch(sdt_probe_t *sdp, struct module *mp, int idx)
 	sdp->sdp_savedval = *sdp->sdp_patchpoint;
 }
 
+/*
+ * Allocates SDT trampoline that is executable.
+ */
 int sdt_provide_module_arch(void *arg, struct module *mp)
 {
-	/*
-	 * The vmlinux pseudo-module (core Linux kernel) is a special case...
-	 */
-	if (mp == dtrace_kmod && PDATA(mp)->sdt_tab == NULL) {
-		PDATA(mp)->sdt_tab = (asm_instr_t *)ALIGN(
-			(uintptr_t)PDATA(mp) + sizeof(dtrace_module_t), 8);
-		return 1;
+	if (mp->sdt_probec > 0 && PDATA(mp)->sdt_tab == NULL) {
+		asm_instr_t *tramp = dtrace_alloc_text(mp, mp->sdt_probec *
+						       SDT_TRAMP_SIZE *
+						       sizeof (asm_instr_t));
+
+		if (tramp == NULL)
+			return 0;
+
+		PDATA(mp)->sdt_tab = tramp;
 	}
 
 	return 1;
 }
 
-void sdt_cleanup_module(void *dmy, struct module *mp)
+void sdt_destroy_module(void *arg, struct module *mp)
 {
+	if (PDATA(mp)->sdt_tab != NULL) {
+		dtrace_free_text(PDATA(mp)->sdt_tab);
+		PDATA(mp)->sdt_tab = NULL;
+	}
 }
 
 void sdt_enable_arch(sdt_probe_t *sdp, dtrace_id_t id, void *arg)
 {
 	*sdp->sdp_patchpoint = sdp->sdp_patchval;
+	flushi(sdp->sdp_patchpoint);
 }
 
 void sdt_disable_arch(sdt_probe_t *sdp, dtrace_id_t id, void *arg)
 {
 	*sdp->sdp_patchpoint = sdp->sdp_savedval;
+	flushi(sdp->sdp_patchpoint);
 }
 
 int sdt_dev_init_arch(void)

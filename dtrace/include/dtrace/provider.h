@@ -28,8 +28,7 @@
  *
  * CDDL HEADER END
  *
- * Copyright 2009 -- 2013 Oracle, Inc.  All rights reserved.
- * Use is subject to license terms.
+ * Copyright (c) 2009, 2017, Oracle and/or its affiliates. All rights reserved.
  */
 
 /*
@@ -57,6 +56,7 @@
  *   dtps_getargval()        <-- Get the value for an argX or args[X] variable
  *   dtps_usermode()         <-- Find out if the probe was fired in user mode
  *   dtps_destroy()          <-- Destroy all state associated with this probe
+ *   dtps_destroy_module()   <-- Destroy per-module data
  *
  * 1.2  void dtps_provide(void *arg, const dtrace_probedesc_t *spec)
  *
@@ -354,6 +354,22 @@
  *   The DTrace framework is locked in such a way that it may not be called
  *   back into at all.  mod_lock is held.  cpu_lock is not held, and may not be
  *   acquired.
+ *
+ * 1.12 void dtps_destroy_module(void *arg, struct modctl *mp)
+ *
+ * 1.12.1 Overview
+ *
+ *   Called to notify provider that it can remove any per-module data.
+ *
+ * 1.12.2 Arguments and notes
+ *
+ *   The first argument is the cookie as passed to dtrace_register(). The
+ *   second argument is a pointer to a struct module structure that points to
+ *   the module for which data may be cleared.
+ *
+ * 1.12.3 Return value
+ *
+ *   None.
  *
  *
  * 2 Provider-to-Framework API
@@ -716,6 +732,7 @@ typedef struct dtrace_pops {
 	uint64_t (*dtps_getargval)(void *, dtrace_id_t, void *, int, int);
 	int (*dtps_usermode)(void *, dtrace_id_t, void *);
 	void (*dtps_destroy)(void *, dtrace_id_t, void *);
+	void (*dtps_destroy_module)(void *, struct module *);
 } dtrace_pops_t;
 
 typedef struct dtrace_helper_probedesc {

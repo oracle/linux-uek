@@ -24,8 +24,7 @@
  *
  * CDDL HEADER END
  *
- * Copyright 2016 Oracle, Inc.  All rights reserved.
- * Use is subject to license terms.
+ * Copyrigt (c) 2016, 2017, Oracle and/or its affiliates. All rights reserved.
  */
 
 
@@ -77,7 +76,7 @@
 
 #define ASM_REG_ISGLOBAL(r)	((r) >= ASM_REG_G0 && (r) <= ASM_REG_G7)
 #define ASM_REG_ISOUTPUT(r)	((r) >= ASM_REG_O0 && (r) <= ASM_REG_O7)
-#define ASM_REG_ISLOCAL(r)	((r) >= ASM_REH_L0 && (r) <= ASM_REG_L7)
+#define ASM_REG_ISLOCAL(r)	((r) >= ASM_REG_L0 && (r) <= ASM_REG_L7)
 #define ASM_REG_ISINPUT(r)	((r) >= ASM_REG_I0 && (r) <= ASM_REG_I7)
 #define ASM_REG_ISVOLATILE(r)						      \
         ((ASM_REG_ISGLOBAL(r) || ASM_REG_ISOUTPUT(r)) && (r) != ASM_REG_G0)
@@ -144,6 +143,8 @@
 #define ASM_FMT3_OP_MASK	0xc1f80000
 #define ASM_FMT3_OP(val)	((val) & ASM_FMT3_OP_MASK)
 
+#define	ASM_FMT3_OP_TCC		(0x3a << ASM_FMT3_OP3_SHIFT)
+
 #define ASM_FMT3_RD_SHIFT	25
 #define ASM_FMT3_RD_MASK	(0x1f << ASM_FMT3_RD_SHIFT)
 #define ASM_FMT3_RD(val)						      \
@@ -203,6 +204,7 @@
 #define ASM_OP_BGE		(ASM_OP0 | ASM_FMT2_OP2_BCC | ASM_FMT2_COND_BGE)
 #define ASM_OP_BAPCC		(ASM_OP0 | ASM_FMT2_OP2_BPCC | ASM_FMT2_COND_BA)
 #define ASM_OP_RD		(ASM_OP2 | (0x28 << ASM_FMT3_OP3_SHIFT))
+#define	ASM_OP_TA		(ASM_OP2 | ASM_FMT3_OP_TCC | ASM_FMT2_COND_BA)
 
 #define ASM_ORLO(rs, val, rd)						      \
 	(ASM_OP_OR | ((rs) << ASM_FMT3_RS1_SHIFT) |			      \
@@ -243,6 +245,8 @@
 
 #define ASM_CALL(orig, dest)	(ASM_OP_CALL | ASM_DISP30(orig, dest))
 
+#define	ASM_TA(lvl)	(ASM_OP_TA | ASM_FMT3_IMM | ((lvl) & 0xff))
+
 #define ASM_RET								      \
 	(ASM_OP_JMPL | (ASM_REG_I7 << ASM_FMT3_RS1_SHIFT) |		      \
 	 (ASM_REG_G0 << ASM_FMT3_RD_SHIFT) | ASM_FMT3_IMM |		      \
@@ -253,6 +257,7 @@
 	 (ASM_REG_G0 << ASM_FMT3_RD_SHIFT) | ASM_FMT3_IMM |		      \
 	 (sizeof (asm_instr_t) << 1))
 
+#define	ASM_MINFRAME	(22 * 8)
 #define ASM_SAVEIMM(rd, val, rs1)					      \
 	(ASM_OP_SAVE | ((rs1) << ASM_FMT3_RS1_SHIFT) |			      \
 	 ((rd) << ASM_FMT3_RD_SHIFT) | ASM_FMT3_IMM | ((val) & ASM_SIMM13_MASK))

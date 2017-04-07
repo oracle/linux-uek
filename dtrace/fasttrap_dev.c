@@ -21,8 +21,7 @@
  *
  * CDDL HEADER END
  *
- * Copyright 2010 -- 2016 Oracle, Inc.  All rights reserved.
- * Use is subject to license terms.
+ * Copyright (c) 2010, 2017, Oracle and/or its affiliates. All rights reserved.
  */
 
 #include <linux/atomic.h>
@@ -709,6 +708,7 @@ static dtrace_pops_t pid_pops = {
 	fasttrap_pid_provide,
 	NULL,
 	NULL,
+	NULL,
 	fasttrap_pid_enable,
 	fasttrap_pid_disable,
 	NULL,
@@ -721,16 +721,17 @@ static dtrace_pops_t pid_pops = {
 };
 
 static dtrace_pops_t usdt_pops = {
-	fasttrap_pid_provide,
-	NULL,
-	fasttrap_pid_enable,
-	fasttrap_pid_disable,
-	NULL,
-	NULL,
-	fasttrap_pid_getargdesc,
-	fasttrap_usdt_getarg,
-	NULL,
-	fasttrap_pid_destroy
+	.dtps_provide = fasttrap_pid_provide,
+	.dtps_provide_module = NULL,
+	.dtps_destroy_module = NULL,
+	.dtps_enable = fasttrap_pid_enable,
+	.dtps_disable = fasttrap_pid_disable,
+	.dtps_suspend = NULL,
+	.dtps_resume = NULL,
+	.dtps_getargdesc = fasttrap_pid_getargdesc,
+	.dtps_getargval = fasttrap_usdt_getarg,
+	.dtps_usermode = NULL,
+	.dtps_destroy = fasttrap_pid_destroy
 };
 
 static uint_t fasttrap_hash_str(const char *p)

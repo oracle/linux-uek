@@ -21,8 +21,7 @@
  *
  * CDDL HEADER END
  *
- * Copyright 2010-2014 Oracle, Inc.  All rights reserved.
- * Use is subject to license terms.
+ * Copyright (c) 2010, 2017, Oracle and/or its affiliates. All rights reserved.
  */
 
 #include <linux/dtrace_cpu.h>
@@ -157,18 +156,22 @@ ulong_t dtrace_getreg(struct task_struct *task, uint_t reg)
 
 void pdata_init(dtrace_module_t *pdata, struct module *mp)
 {
-	if (mp->pdata) {
-		pdata->sdt_tab = (asm_instr_t *)((uintptr_t)mp->pdata +
-						 DTRACE_PD_SDT_OFF(mp));
-		pdata->fbt_tab = (asm_instr_t *)((uintptr_t)mp->pdata +
-						 DTRACE_PD_FBT_OFF(mp));
-	} else {
-		pdata->sdt_tab = NULL;
-		pdata->fbt_tab = NULL;
+	/*
+	 * Throw away existing data as we don't support reusal at
+	 * the moment.
+	 */
+	if (mp->pdata != NULL) {
+		pdata_cleanup(pdata, mp);
 	}
+
+	pdata->sdt_tab = NULL;
+	pdata->fbt_tab = NULL;
 }
 
 void pdata_cleanup(dtrace_module_t *pdata, struct module *mp)
 {
-	mp->pdata = (void *)((uintptr_t)pdata->sdt_tab - DTRACE_PD_SDT_OFF(mp));
+	if (pdata->sdt_tab != NULL)
+		dtrace_free_text(pdata->sdt_tab);
+	if (pdata->fbt_tab != NULL)
+		dtrace_free_text(pdata->fbt_tab);
 }
