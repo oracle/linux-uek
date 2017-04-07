@@ -86,7 +86,8 @@ int qede_alloc_rx_buffer(struct qede_rx_queue *rxq, bool allow_lazy)
 	rx_bd = (struct eth_rx_bd *)qed_chain_produce(&rxq->rx_bd_ring);
 	WARN_ON(!rx_bd);
 	rx_bd->addr.hi = cpu_to_le32(upper_32_bits(mapping));
-	rx_bd->addr.lo = cpu_to_le32(lower_32_bits(mapping));
+	rx_bd->addr.lo = cpu_to_le32(lower_32_bits(mapping) +
+				     rxq->rx_headroom);
 
 	rxq->sw_rx_prod++;
 	rxq->filled_buffers++;
@@ -445,7 +446,8 @@ static inline void qede_reuse_page(struct qede_rx_queue *rxq,
 	new_mapping = curr_prod->mapping + curr_prod->page_offset;
 
 	rx_bd_prod->addr.hi = cpu_to_le32(upper_32_bits(new_mapping));
-	rx_bd_prod->addr.lo = cpu_to_le32(lower_32_bits(new_mapping));
+	rx_bd_prod->addr.lo = cpu_to_le32(lower_32_bits(new_mapping) +
+					  rxq->rx_headroom);
 
 	rxq->sw_rx_prod++;
 	curr_cons->data = NULL;
@@ -926,7 +928,7 @@ static struct sk_buff *qede_rx_allocate_skb(struct qede_dev *edev,
 					    struct sw_rx_data *bd, u16 len,
 					    u16 pad)
 {
-	unsigned int offset = bd->page_offset;
+	unsigned int offset = bd->page_offset + pad;
 	struct skb_frag_struct *frag;
 	struct page *page = bd->data;
 	unsigned int pull_len;
@@ -943,7 +945,7 @@ static struct sk_buff *qede_rx_allocate_skb(struct qede_dev *edev,
 	 */
 	if (len + pad <= edev->rx_copybreak) {
 		memcpy(skb_put(skb, len),
-		       page_address(page) + pad + offset, len);
+		       page_address(page) + offset, len);
 		qede_reuse_page(rxq, bd);
 		goto out;
 	}
@@ -951,7 +953,7 @@ static struct sk_buff *qede_rx_allocate_skb(struct qede_dev *edev,
 	frag = &skb_shinfo(skb)->frags[0];
 
 	skb_add_rx_frag(skb, skb_shinfo(skb)->nr_frags,
-			page, pad + offset, len, rxq->rx_buf_seg_size);
+			page, offset, len, rxq->rx_buf_seg_size);
 
 	va = skb_frag_address(frag);
 	pull_len = eth_get_headlen(va, QEDE_RX_HDR_SIZE);
