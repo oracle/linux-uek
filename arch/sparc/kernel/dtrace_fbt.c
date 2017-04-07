@@ -2,17 +2,20 @@
  * FILE:        dtrace_fbt.c
  * DESCRIPTION: Dynamic Tracing: FBT registration code (arch-specific)
  *
- * Copyright (C) 2010-2016 Oracle Corporation
+ * Copyright (c) 2010, 2017, Oracle and/or its affiliates. All rights reserved.
  */
 
 #include <linux/kernel.h>
 #include <linux/kallsyms.h>
+#include <linux/kdebug.h>
 #include <linux/slab.h>
 #include <linux/sort.h>
+#include <linux/context_tracking.h>
 #include <linux/dtrace_os.h>
 #include <linux/dtrace_fbt.h>
 #include <linux/moduleloader.h>
 #include <linux/vmalloc.h>
+#include <asm/bug.h>
 #include <asm/dtrace_arch.h>
 #include <asm/sections.h>
 
@@ -51,6 +54,7 @@
 #define ASM_IMM22_SHIFT		10
 
 #define ASM_OP0			(((uint32_t)0) << ASM_OP_SHIFT)
+#define ASM_OP1			(((uint32_t)1) << ASM_OP_SHIFT)
 #define ASM_OP2			(((uint32_t)2) << ASM_OP_SHIFT)
 
 #define ASM_FMT3_OP3_SHIFT	19
@@ -98,7 +102,10 @@
 #define ASM_FMT2_COND_BGE	(0xb << ASM_FMT2_COND_SHIFT)
 
 #define ASM_OP_SAVE		(ASM_OP2 | (0x3c << ASM_FMT3_OP3_SHIFT))
+#define ASM_OP_JMPL		(ASM_OP2 | (0x38 << ASM_FMT3_OP3_SHIFT))
+#define ASM_OP_RETURN		(ASM_OP2 | (0x39 << ASM_FMT3_OP3_SHIFT))
 #define ASM_OP_SETHI		(ASM_OP0 | ASM_FMT2_OP2_SETHI)
+#define ASM_OP_RD		(ASM_OP2 | (0x28 << ASM_FMT3_OP3_SHIFT))
 
 #define ASM_SETHI(val, reg)						      \
 	(ASM_OP_SETHI | (reg << ASM_FMT2_RD_SHIFT) |			      \
@@ -116,6 +123,22 @@
 	 ASM_FMT3_RD(instr) == ASM_REG_O6 &&				      \
 	 ASM_FMT3_RS1(instr) == ASM_REG_O6 &&				      \
 	 !(ASM_FMT3_ISIMM(instr) && ASM_FMT3_SIMM13(instr) == 0))
+
+#define ASM_IS_RDPC(instr)	((ASM_FMT3_OP(instr) == ASM_OP_RD) &&	      \
+				 (ASM_FMT3_RD(instr) == ASM_REG_PC))
+
+#define ASM_IS_PCRELATIVE(instr)					      \
+        ((((instr) & ASM_OP_MASK) == ASM_OP0 &&				      \
+	  ((instr) & ASM_FMT2_OP2_MASK) != ASM_FMT2_OP2_SETHI) ||	      \
+	 ((instr) & ASM_OP_MASK) == ASM_OP1 ||				      \
+	 ASM_IS_RDPC(instr))
+
+#define ASM_IS_CTI(instr)						      \
+	((((instr) & ASM_OP_MASK) == ASM_OP0 &&				      \
+	  ((instr) & ASM_FMT2_OP2_MASK) != ASM_FMT2_OP2_SETHI) ||	      \
+	 ((instr) & ASM_OP_MASK) == ASM_OP1 ||				      \
+	 (ASM_FMT3_OP(instr) == ASM_OP_JMPL) ||				      \
+	 (ASM_FMT3_OP(instr) == ASM_OP_RETURN))
 
 #define ASM_IS_NOP(instr)	((instr) == ASM_NOP)
 
@@ -140,11 +163,11 @@ dtrace_fbt_populate_bl(void)
 #undef BL_SENTRY
 };
 
-void dtrace_fbt_init(fbt_add_probe_fn fbt_add_probe)
+void dtrace_fbt_init(fbt_add_probe_fn fbt_add_probe, struct module *mp,
+		     void *arg)
 {
 	loff_t			pos;
 	struct kallsym_iter	sym;
-	size_t			blpos = 0;
 	asm_instr_t		*paddr = NULL;
 	dt_fbt_bl_entry_t	*blent = NULL;
 
@@ -158,7 +181,8 @@ void dtrace_fbt_init(fbt_add_probe_fn fbt_add_probe)
 	pos = 0;
 	kallsyms_iter_reset(&sym, 0);
 	while (kallsyms_iter_update(&sym, pos++)) {
-		asm_instr_t	*addr, *end;
+		asm_instr_t	*addr, *end, *ins;
+		void *fbtp = NULL;
 
 		/*
 		 * There is no point considering non-function symbols for FBT,
@@ -178,9 +202,18 @@ void dtrace_fbt_init(fbt_add_probe_fn fbt_add_probe)
 			continue;
 
 		/*
-		 * Only core kernel symbols are of interest here.
+		 * Handle only symbols that belong to the module we have been
+		 * asked for.
 		 */
-		if (!core_kernel_text(sym.value))
+		if (mp == dtrace_kmod && !core_kernel_text(sym.value))
+			continue;
+
+		/*
+		 * Ensure we have not been given .init symbol from kallsyms
+		 * interface. This could lead to memory corruption once DTrace
+		 * tries to enable probe in already freed memory.
+		 */
+		if (mp != dtrace_kmod && !within_module_core(sym.value, mp))
 			continue;
 
 		/*
@@ -224,13 +257,12 @@ void dtrace_fbt_init(fbt_add_probe_fn fbt_add_probe)
 		paddr = addr;
 
 		if (ASM_IS_SAVE(*addr)) {
-			asm_instr_t	*ins = addr;
-
 			/*
 			 * If there are other saves, this function has multiple
 			 * entry points or some other complex construct - we'll
 			 * skip it.
 			 */
+			ins = addr;
 			while (++ins < end) {
 				if (ASM_IS_SAVE(*ins))
 					break;
@@ -262,10 +294,69 @@ void dtrace_fbt_init(fbt_add_probe_fn fbt_add_probe)
 			     ASM_MOD_OUTPUTS(*(addr + 2))))
 				continue;
 
-			fbt_add_probe(dtrace_kmod, sym.name, FBT_ENTRY, 32,
-				      addr + 1, 0, NULL);
+			fbt_add_probe(mp, sym.name, FBT_ENTRY, 32,
+				      addr + 1, 0, NULL, arg);
 		} else
 			continue;
+
+		/* Scan function for possible return probes. */
+		for (ins = addr; ins + 1 < end; ins++) {
+
+			/* Only CTIs may become return probe. */
+			if (!ASM_IS_CTI(*ins))
+				continue;
+
+			/*
+			 * Check the delay slot for incompatible instructions:
+			 *   - DCTI
+			 *   - PC relative instruction
+			 *
+			 * More detailed analysis is performed in the fbt module.
+			 */
+			if (ASM_IS_CTI(*(ins + 1)))
+				continue;
+
+			if (ASM_IS_PCRELATIVE(*(ins + 1)))
+				continue;
+
+			/* Create or update the return probe. */
+			fbtp = fbt_add_probe(mp, sym.name, FBT_RETURN, 32, ins,
+					     (uintptr_t)ins - (uintptr_t)addr,
+					     fbtp, arg);
+		}
 	}
 }
 EXPORT_SYMBOL(dtrace_fbt_init);
+
+static void (*fbt_handler)(struct pt_regs *) = NULL;
+
+int dtrace_fbt_set_handler(void (*func)(struct pt_regs *))
+{
+	fbt_handler = func;
+	return 0;
+}
+EXPORT_SYMBOL(dtrace_fbt_set_handler);
+
+asmlinkage void dtrace_fbt_trap(unsigned long traplevel, struct pt_regs *regs)
+{
+	enum ctx_state prev_state = exception_enter();
+
+	if (user_mode(regs)) {
+		local_irq_enable();
+		bad_trap(regs, traplevel);
+		goto out;
+	}
+
+        /*
+	 * If we take this trap and fbt_handler is not set we are out of luck.
+	 * Since we don't know why the trap fired (it should never happen in
+	 * DTrace code unless fbt_handler is set), there is no way of knowing
+	 * whether it is safe to just do nothing.
+	 */
+        BUG_ON(fbt_handler == NULL);
+
+	fbt_handler(regs);
+
+out:
+	exception_exit(prev_state);
+}
