@@ -38,6 +38,7 @@ static int dax_alloc_ram(struct file *filp, struct vm_area_struct *vma)
 	len = vma->vm_end - vma->vm_start;
 	if (len & (PAGE_SIZE - 1)) {
 		dax_err("request (0x%lx) not a multiple of page size", len);
+		ret = -EOVERFLOW;
 		goto done;
 	}
 
