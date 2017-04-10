@@ -568,7 +568,7 @@ void dax_vm_close(struct vm_area_struct *vma)
 int dax_clean_dm(struct dax_mm *dm)
 {
 	/* if ctx list is empty, clean up this struct dax_mm */
-	if (list_empty(&dm->ctx_list)) {
+	if (list_empty(&dm->ctx_list) && (dm->vma_count == 0)) {
 		spin_lock(&dm_list_lock);
 		list_del(&dm->mm_list);
 		dax_list_dbg("freeing dm with vma_count=%d, ctx_count=%d",
