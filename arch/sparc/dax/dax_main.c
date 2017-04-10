@@ -292,7 +292,7 @@ static long dax_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 	case DAXIOC_DEP_1:
 	case DAXIOC_DEP_3:
 	case DAXIOC_DEP_4:
-		dax_err("Old version of libdax in use. Please update");
+		dax_err("Old driver API not supported");
 		return -ENOTTY;
 	default:
 		return dax_perfcount_ioctl(f, cmd, arg);
