@@ -27,6 +27,9 @@
 #include <linux/dtrace_cpu.h>
 #include <linux/fdtable.h>
 #include <linux/hardirq.h>
+#include <linux/if_arp.h>
+#include <linux/if_ether.h>
+#include <linux/if_infiniband.h>
 #include <linux/in6.h>
 #include <linux/inet.h>
 #include <linux/jiffies.h>
@@ -51,6 +54,8 @@ size_t				dtrace_global_maxsize = 16 * 1024;
 const char			dtrace_zero[256] = { 0, };
 
 uint64_t			dtrace_vtime_references;
+
+static const char		dtrace_hexdigits[] = "0123456789abcdef";
 
 static int dtrace_difo_err(uint_t pc, const char *format, ...)
 {
@@ -600,6 +605,7 @@ int dtrace_difo_validate_helper(dtrace_difo_t *dp)
 			    subr == DIF_SUBR_INET_NTOA ||
 			    subr == DIF_SUBR_INET_NTOA6 ||
 			    subr == DIF_SUBR_INET_NTOP ||
+			    subr == DIF_SUBR_LINK_NTOP ||
 			    subr == DIF_SUBR_LLTOSTR ||
 			    subr == DIF_SUBR_RINDEX ||
 			    subr == DIF_SUBR_STRCHR ||
@@ -3635,6 +3641,81 @@ next:
 		break;
 	}
 
+	case DIF_SUBR_LINK_NTOP: {
+		struct dtrace_hwtype_alen {
+			int hwtype;
+			size_t hwalen;
+		} hwinfo[] = {
+			{ ARPHRD_ETHER, ETH_ALEN },
+			{ ARPHRD_INFINIBAND, INFINIBAND_ALEN },
+			{ -1, 0 }
+		};
+/*
+ * Captures the maximum hardware address length among all the supported
+ * hardware types. Please update this macro when adding a new hardware type.
+ */
+#define DTRACE_MAX_HWTYPE_ALEN (ETH_ALEN > INFINIBAND_ALEN ? \
+				ETH_ALEN : INFINIBAND_ALEN)
+		uint8_t hwaddr[DTRACE_MAX_HWTYPE_ALEN];
+		char *base;
+		size_t size, len;
+		int type, i;
+
+		type = (int)tupregs[0].dttk_value;
+		for (i = 0; hwinfo[i].hwtype != -1; i++) {
+			if (type == hwinfo[i].hwtype)
+				break;
+		}
+		if (hwinfo[i].hwtype == -1) {
+			DTRACE_CPUFLAG_SET(CPU_DTRACE_ILLOP);
+			regs[rd] = 0;
+			break;
+		}
+		len = hwinfo[i].hwalen;
+
+		/*
+		 * Safely load the hardware address.
+		 */
+		dtrace_bcopy((void *)(uintptr_t)tupregs[1].dttk_value, hwaddr,
+			     len);
+
+		/*
+		 * Check if an hardware address string will fit in scratch.
+		 * For every byte we need 3 characters (including ':').
+		 */
+		size = len * 3;
+		if (!DTRACE_INSCRATCH(mstate, size)) {
+			DTRACE_CPUFLAG_SET(CPU_DTRACE_NOSCRATCH);
+			regs[rd] = 0;
+			break;
+		}
+		base = (char *)mstate->dtms_scratch_ptr;
+
+		/*
+		 * Build the Hardware address string by working through the
+		 * address from the beginning. Given a hardware address
+		 * {0xa0, 0xaa, 0xff, 0xc, 0, 1, 2} of length 6, it will build
+		 * a0:aa:ff:0c:00:01:02.
+		 */
+		for (i = 0; i < len; i++) {
+			if (hwaddr[i] < 16) {
+				*base++ = '0';
+				*base++ = dtrace_hexdigits[hwaddr[i]];
+			} else {
+				*base++ = dtrace_hexdigits[hwaddr[i] / 16];
+				*base++ = dtrace_hexdigits[hwaddr[i] % 16];
+			}
+
+			if (i < len - 1)
+				*base++ = ':';
+		}
+		*base++ = '\0';
+		regs[rd] = mstate->dtms_scratch_ptr;
+		mstate->dtms_scratch_ptr += size;
+#undef DTRACE_MAX_HWTYPE_ALEN
+		break;
+	}
+
 	case DIF_SUBR_INET_NTOA:
 	case DIF_SUBR_INET_NTOA6:
 	case DIF_SUBR_INET_NTOP: {
@@ -3696,7 +3777,6 @@ next:
 			in6_addr_t	ip6;
 			int		firstzero, tryzero, numzero, v6end;
 			uint16_t	val;
-			const char	digits[] = "0123456789abcdef";
 
 			/*
 			 * Stringify using RFC 1884 convention 2 - 16 bit
@@ -3819,7 +3899,8 @@ next:
 					*end-- = '0';
 				} else {
 					for (; val; val /= 16) {
-						*end-- = digits[val % 16];
+						*end-- = \
+						    dtrace_hexdigits[val % 16];
 					}
 				}
 			}
