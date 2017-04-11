@@ -25,3 +25,15 @@ Module.symvers
 #
 *.sdtinfo.c
 *.sdtstub.S
+
+#
+# cscope files
+#
+cscope.*
+ncscope.*
+
+#
+# Top-level tag files
+#
+/tags
+/*TAGS

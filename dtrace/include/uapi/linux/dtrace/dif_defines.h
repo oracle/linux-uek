@@ -226,8 +226,9 @@
 #define DIF_SUBR_INET_NTOA		42
 #define DIF_SUBR_INET_NTOA6		43
 #define DIF_SUBR_D_PATH			44
+#define DIF_SUBR_LINK_NTOP		45
 
-#define DIF_SUBR_MAX			44
+#define DIF_SUBR_MAX			45
 
 typedef uint32_t	dif_instr_t;
 
