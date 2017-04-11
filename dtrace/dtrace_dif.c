@@ -2013,10 +2013,15 @@ static uintptr_t dtrace_dif_varstr(uintptr_t addr, dtrace_state_t *state,
 /*
  * This function implements the DIF emulator's variable lookups.  The emulator
  * passes a reserved variable identifier and optional built-in array index.
+ *
+ * This function is annotated to be always inlined in dtrace_dif_emulate()
+ * because (1) that is the only place where it is called from, and (2) it has
+ * come to our attention that some GCC versions inline i automatically while
+ * others do not and that messes up the number of frames to skip (aframes).
  */
-static uint64_t dtrace_dif_variable(dtrace_mstate_t *mstate,
-				    dtrace_state_t *state, uint64_t v,
-				    uint64_t ndx)
+static uint64_t __always_inline dtrace_dif_variable(dtrace_mstate_t *mstate,
+						    dtrace_state_t *state,
+						    uint64_t v, uint64_t ndx)
 {
 	/*
 	 * If we're accessing one of the uncached arguments, we'll turn this
@@ -2034,7 +2039,7 @@ static uint64_t dtrace_dif_variable(dtrace_mstate_t *mstate,
 		if (ndx >=
 		    sizeof(mstate->dtms_arg) / sizeof(mstate->dtms_arg[0])) {
 			int			aframes =
-					mstate->dtms_probe->dtpr_aframes + 2;
+					mstate->dtms_probe->dtpr_aframes + 1;
 			dtrace_provider_t	*pv;
 			uint64_t		val;
 
@@ -2153,7 +2158,7 @@ static uint64_t dtrace_dif_variable(dtrace_mstate_t *mstate,
 			return 0;
 
 		if (!(mstate->dtms_present & DTRACE_MSTATE_CALLER)) {
-			int	aframes = mstate->dtms_probe->dtpr_aframes + 3;
+			int	aframes = mstate->dtms_probe->dtpr_aframes + 1;
 
 			if (!DTRACE_ANCHORED(mstate->dtms_probe)) {
 				/*
