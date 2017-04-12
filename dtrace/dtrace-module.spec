@@ -127,6 +127,9 @@ rm -rf %{buildroot}
 /usr/include/linux/dtrace/types.h
 
 %changelog
+* Wed Apr 12 2017 - <kris.van.hees@oracle.com> - 0.6.0-4
+- Always inline dtrace_dif_variable to ensure consistent aframes count
+  [Orabug: 25872472]
 * Sun Apr  2 2017 - <kris.van.hees@oracle.com> - 0.6.0-3
 - Lockfree walltimestamp implementation (Tomas Jedlicka) [Orabug: 25715256]
 - Corrected aframes values to skip DTrace frames [Orabug: 25727046]
