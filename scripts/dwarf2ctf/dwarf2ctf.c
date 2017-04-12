@@ -523,8 +523,14 @@ static ctf_id_t die_to_ctf(const char *module_name, const char *file_name,
 			   Dwarf_Die *die, Dwarf_Die *parent_die,
 			   ctf_file_t *ctf, ctf_id_t parent_ctf_id,
 			   die_override_t *overrides, int top_level_type,
-			   enum skip_type *skip, int *replace,
+			   int backwards, enum skip_type *skip, int *replace,
 			   const char *id);
+
+/*
+ * Return the next DIE, if that DIE needs to be emitted before this one.
+ */
+static Dwarf_Die *die_emit_next_backwards(Dwarf_Die *next, Dwarf_Die *die,
+					  die_override_t *overrides);
 
 /*
  * Look up a type through its reference: return its ctf_id_t, or
@@ -2741,7 +2747,7 @@ static ctf_full_id_t *construct_ctf_id(const char *module_name,
 	dw_ctf_trace("%p: into die_to_ctf() for %s\n", &id, id);
 	ctf_id_t this_ctf_id = die_to_ctf(ctf_module, file_name, die,
 					  parent_die, ctf, -1, overrides,
-					  1, &skip, NULL, id);
+					  1, 0, &skip, NULL, id);
 	dw_ctf_trace("%p: out of die_to_ctf()\n", &id);
 
 	ctf_id = malloc(sizeof (struct ctf_full_id));
@@ -2808,6 +2814,8 @@ static ctf_full_id_t *construct_ctf_id(const char *module_name,
  * or NULL).
  * top_level_type: 1 if this is a top-level type that can have a name and be
  * referred to by other types.
+ * backwards: if 1, this is an internal call to process a series of bitfields
+ *            with descending bit_offset and identical data_member_location.
  * skip: The error-handling / skipping enum.
  * replace: if 1, this type should replace its parent type entirely.
  * id: the ID of this type.
@@ -2819,7 +2827,7 @@ static ctf_id_t die_to_ctf(const char *module_name, const char *file_name,
 			   Dwarf_Die *die, Dwarf_Die *parent_die,
 			   ctf_file_t *ctf, ctf_id_t parent_ctf_id,
 			   die_override_t *overrides, int top_level_type,
-			   enum skip_type *skip, int *replace,
+			   int backwards, enum skip_type *skip, int *replace,
 			   const char *id)
 {
 	int sib_ret = 0;
@@ -2830,7 +2838,40 @@ static ctf_id_t die_to_ctf(const char *module_name, const char *file_name,
 		const char *id_name;
 		const char *decl_file_name = dwarf_decl_file(die);
 		int decl_line_num;
+		int emitted_backwards = 0;
 		char locerrstr[1024];
+		Dwarf_Die next_die;
+
+		/*
+		 * If the next DWARF DIE is at the same location as this one but
+		 * with a lower bit_offset, we need to process the set of DIEs
+		 * at this location in *reverse*, because DWARF has the DIEs in
+		 * declaration order, while CTF wants them in in-memory order:
+		 * so recurse to handle the next until we get to an element with
+		 * a sibling at a different data_member_location (safe because
+		 * there can't be that many of them per data_member_location),
+		 * then (at the end of die_to_ctf()) exit the recursion and skip
+		 * over the lot.
+		 *
+		 * We can ignore 'replace' and the return value of die_to_ctf
+		 * because bitfields must be structure or union members and
+		 * cannot be array dimensions.
+		 */
+		if (die_emit_next_backwards(&next_die, die, overrides) != NULL) {
+			ctf_id_t dummy;
+
+			dw_ctf_trace("Emitting %s:%s:%lx backwards\n",
+				     module_name, file_name,
+				     dwarf_dieoffset(&next_die));
+
+			dummy = die_to_ctf(module_name, file_name, &next_die,
+					   parent_die, ctf, parent_ctf_id,
+					   overrides, top_level_type, 1, skip,
+					   replace, NULL);
+			if (*skip == SKIP_ABORT)
+				return dummy;
+			emitted_backwards = 1;
+		}
 
 		/*
 		 * Compute a name for our current location, for error messages.
@@ -2838,7 +2879,6 @@ static ctf_id_t die_to_ctf(const char *module_name, const char *file_name,
 		 * hard for users to comprehend, and should we move to a hashed
 		 * representation would be entirely useless for this purpose.)
 		 */
-
 		if ((decl_file_name == NULL) ||
 		    (dwarf_decl_line(die, &decl_line_num) < 0)) {
 			decl_file_name = "global";
@@ -2952,11 +2992,28 @@ static ctf_id_t die_to_ctf(const char *module_name, const char *file_name,
 
 			new_id = die_to_ctf(module_name, file_name, &child_die,
 					    die, ctf, this_ctf_id, overrides, 0,
-					    skip, &replace, NULL);
+					    0, skip, &replace, NULL);
 
 			if (replace)
 				this_ctf_id = new_id;
 		}
+
+		/*
+		 * If we are walking backwards over a bunch of bitfields, this
+		 * is a recursive walk, not an iterative one: return.
+		 */
+		if (backwards)
+			return this_ctf_id;
+
+		/*
+		 * We are not walking backwards, but this is the final stage of
+		 * a bunch of backwards emissions: walk forwards until we hit
+		 * the last one again.
+		 */
+		if (emitted_backwards)
+			while (die_emit_next_backwards(&next_die, die,
+						       overrides) != NULL)
+				*die = next_die;
 
 		/*
 		 * Walk siblings of non-top-level types only: the sibling walk
@@ -2986,6 +3043,27 @@ static void construct_ctf(const char *module_name, const char *file_name,
 			  void *unused __unused__)
 {
 	construct_ctf_id(module_name, file_name, die, parent_die, NULL);
+}
+
+/*
+ * Return the next DIE, if that DIE needs to be emitted before this one.
+ */
+static Dwarf_Die *die_emit_next_backwards(Dwarf_Die *next, Dwarf_Die *die,
+					  die_override_t *overrides)
+{
+	if (dwarf_tag(die) == DW_TAG_member &&
+	    dwarf_siblingof(die, next) == 0 &&
+	    dwarf_tag(next) == DW_TAG_member &&
+	    dwarf_hasattr(die, DW_AT_data_member_location) &&
+	    dwarf_hasattr(next, DW_AT_data_member_location) &&
+	    private_dwarf_udata(die, DW_AT_data_member_location, overrides) ==
+	    private_dwarf_udata(next, DW_AT_data_member_location, overrides) &&
+	    dwarf_hasattr(die, DW_AT_bit_offset) &&
+	    dwarf_hasattr(next, DW_AT_bit_offset) &&
+	    private_dwarf_udata(die, DW_AT_bit_offset, overrides) >
+	    private_dwarf_udata(next, DW_AT_bit_offset, overrides))
+		return next;
+	return NULL;
 }
 
 /*
@@ -3850,7 +3928,7 @@ static ctf_id_t assemble_ctf_su_member(const char *module_name,
 					offset }, {0} };
 
 		die_to_ctf(module_name, file_name, &child_die, parent_die, ctf,
-			   parent_ctf_id, o, 0, skip, &dummy, NULL);
+			   parent_ctf_id, o, 0, 0, skip, &dummy, NULL);
 
 		return parent_ctf_id;
 	}
