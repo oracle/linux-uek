@@ -84,6 +84,7 @@
 
 #include <linux/crypto.h>
 #include <linux/scatterlist.h>
+#include <linux/sdt.h>
 
 int sysctl_tcp_tw_reuse __read_mostly;
 int sysctl_tcp_low_latency __read_mostly;
@@ -563,6 +564,21 @@ void tcp_v4_send_check(struct sock *sk, struct sk_buff *skb)
 }
 EXPORT_SYMBOL(tcp_v4_send_check);
 
+/* Since we want to trace send events in TCP prior to pushing the segment to
+ * IP - where the IP header is added - we need to construct an argument
+ * containing relevant IP info so that TCP probe consumers can utilize it.
+ */
+static inline void dtrace_tcp_build_iphdr(__be32 saddr, __be32 daddr,
+					  struct iphdr *iph)
+{
+	iph->version = 4;
+	iph->ihl = 5;
+	iph->tot_len = 5;
+	iph->protocol = IPPROTO_TCP;
+	iph->saddr = saddr;
+	iph->daddr = daddr;
+}
+
 /*
  *	This routine will send an RST to the other tcp.
  *
@@ -684,6 +700,39 @@ static void tcp_v4_send_reset(struct sock *sk, struct sk_buff *skb)
 		arg.bound_dev_if = sk->sk_bound_dev_if;
 
 	arg.tos = ip_hdr(skb)->tos;
+
+	if (DTRACE_TCP_ENABLED(send) ||
+	    DTRACE_TCP_ENABLED(accept__refused)) {
+		struct iphdr iph;
+
+		dtrace_tcp_build_iphdr(ip_hdr(skb)->daddr, ip_hdr(skb)->saddr,
+				       &iph);
+
+		DTRACE_TCP_NOCHECK(send,
+				   struct sk_buff * : pktinfo_t *, NULL,
+				   struct sock * : csinfo_t *, NULL,
+				   __dtrace_tcp_void_ip_t * : ipinfo_t *, &iph,
+				   struct tcp_sock * : tcpsinfo_t *, NULL,
+				   struct tcphdr * : tcpinfo_t *, &rep.th,
+				   int : tcplsinfo_t *, TCP_CLOSE,
+				   int : int, TCP_CLOSE,
+				   int : int, DTRACE_NET_PROBE_OUTBOUND);
+		if (th->syn && rep.th.seq == 0)
+			DTRACE_TCP_NOCHECK(accept__refused,
+					   struct sk_buff * : pktinfo_t *, NULL,
+					   struct sock * : csinfo_t *, NULL,
+					   __dtrace_tcp_void_ip_t * :
+					   ipinfo_t *, &iph,
+					   struct tcp_sock * : tcpsinfo_t *,
+					   NULL,
+					   struct tcphdr * : tcpinfo_t *,
+					   &rep.th,
+					   int : tcplsinfo_t *, TCP_CLOSE,
+					   int : int, TCP_CLOSE,
+					   int : int,
+					   DTRACE_NET_PROBE_OUTBOUND);
+	}
+
 	ip_send_unicast_reply(*this_cpu_ptr(net->ipv4.tcp_sk),
 			      skb, &TCP_SKB_CB(skb)->header.h4.opt,
 			      ip_hdr(skb)->saddr, ip_hdr(skb)->daddr,
@@ -769,6 +818,24 @@ static void tcp_v4_send_ack(struct net *net,
 	if (oif)
 		arg.bound_dev_if = oif;
 	arg.tos = tos;
+
+	if (DTRACE_TCP_ENABLED(send)) {
+		struct iphdr iph;
+
+		dtrace_tcp_build_iphdr(ip_hdr(skb)->daddr, ip_hdr(skb)->saddr,
+				       &iph);
+
+		DTRACE_TCP_NOCHECK(send,
+				   struct sk_buff * : pktinfo_t *, NULL,
+				   struct sock * : csinfo_t *, NULL,
+				   __dtrace_tcp_void_ip_t * : ipinfo_t *, &iph,
+				   struct tcp_sock * : tcpsinfo_t *, NULL,
+				   struct tcphdr * : tcpinfo_t *, &rep,
+				   int : tcplsinfo_t *, TCP_CLOSE,
+				   int : int, TCP_CLOSE,
+				   int : int, DTRACE_NET_PROBE_OUTBOUND);
+	}
+
 	ip_send_unicast_reply(*this_cpu_ptr(net->ipv4.tcp_sk),
 			      skb, &TCP_SKB_CB(skb)->header.h4.opt,
 			      ip_hdr(skb)->saddr, ip_hdr(skb)->daddr,
@@ -842,6 +909,31 @@ static int tcp_v4_send_synack(struct sock *sk, struct dst_entry *dst,
 		__tcp_v4_send_check(skb, ireq->ir_loc_addr, ireq->ir_rmt_addr);
 
 		skb_set_queue_mapping(skb, queue_mapping);
+
+		if (DTRACE_TCP_ENABLED(send)) {
+			struct iphdr iph;
+
+			dtrace_tcp_build_iphdr(ireq->ir_loc_addr,
+					       ireq->ir_rmt_addr, &iph);
+
+			/* Do not supply tcp sk - addresses/ports are not
+			 * committed yet - instead translators will fill them
+			 * in from skb/IP info.
+			 */
+			DTRACE_TCP_NOCHECK(send,
+					   struct sk_buff * :  pktinfo_t *, skb,
+					   struct sock * : csinfo_t *, sk,
+					   __dtrace_tcp_void_ip_t * :
+					   ipinfo_t *, &iph,
+					   struct tcp_sock * : tcpsinfo_t *,
+					   NULL,
+					   struct tcphdr * : tcpinfo_t *,
+					   tcp_hdr(skb),
+					   int : tcplsinfo_t *, TCP_LISTEN,
+					   int, TCP_LISTEN,
+					   int, DTRACE_NET_PROBE_OUTBOUND);
+		}
+
 		err = ip_build_and_send_pkt(skb, sk, ireq->ir_loc_addr,
 					    ireq->ir_rmt_addr,
 					    ireq->opt);
@@ -1547,7 +1639,7 @@ int tcp_v4_rcv(struct sk_buff *skb)
 {
 	const struct iphdr *iph;
 	const struct tcphdr *th;
-	struct sock *sk;
+	struct sock *sk = NULL;
 	int ret;
 	struct net *net = dev_net(skb->dev);
 
@@ -1597,6 +1689,15 @@ int tcp_v4_rcv(struct sk_buff *skb)
 	if (!sk)
 		goto no_tcp_socket;
 
+	DTRACE_TCP(receive,
+		   struct sk_buff * :  pktinfo_t *, skb,
+		   struct sock * : csinfo_t *, sk,
+		   __dtrace_tcp_void_ip_t * : ipinfo_t *, ip_hdr(skb),
+		   struct tcp_sock * : tcpsinfo_t *, tcp_sk(sk),
+		   struct tcphdr * : tcpinfo_t *, tcp_hdr(skb),
+		   int : tcplsinfo_t *, sk ? sk->sk_state : TCP_CLOSE,
+		   int, sk ? sk->sk_state : TCP_CLOSE,
+		   int, DTRACE_NET_PROBE_INBOUND);
 process:
 	if (sk->sk_state == TCP_TIME_WAIT)
 		goto do_time_wait;
@@ -1660,6 +1761,18 @@ bad_packet:
 
 discard_it:
 	/* Discard frame. */
+	if (DTRACE_TCP_ENABLED(receive) && skb->pkt_type == PACKET_HOST)
+		DTRACE_TCP_NOCHECK(receive,
+				   struct sk_buff * :  pktinfo_t *, skb,
+				   struct sock * : csinfo_t *, sk,
+				   __dtrace_tcp_void_ip_t * : ipinfo_t *,
+				   ip_hdr(skb),
+				   struct tcp_sock * : tcpsinfo_t *, tcp_sk(sk),
+				   struct tcphdr * : tcpinfo_t *, tcp_hdr(skb),
+				   int : tcplsinfo_t *,
+				   sk ? sk->sk_state : TCP_CLOSE,
+				   int, sk ? sk->sk_state : TCP_CLOSE,
+				   int, DTRACE_NET_PROBE_INBOUND);
 	kfree_skb(skb);
 	return 0;
 
