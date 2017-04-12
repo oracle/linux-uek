@@ -113,14 +113,46 @@ typedef struct sdt_probedesc {
 #define	DTRACE_SMB(name, ...)						\
 	DTRACE_PROBE(__smb_##name, ## __VA_ARGS__);
 
+/*
+ * These definitions are used at probe points to specify the traffic direction;
+ * this helps simplify argument translation.
+ */
+#define	DTRACE_NET_PROBE_OUTBOUND	0x0
+#define	DTRACE_NET_PROBE_INBOUND	0x1
+
 #define	DTRACE_IP(name, ...)						\
 	DTRACE_PROBE(__ip_##name, ## __VA_ARGS__);
 
+/*
+ * Default DTRACE_TCP() and DTRACE_UDP() provider definitions specify the
+ * probe point within an is-enabled predicate.  This is to avoid the overhead
+ * incurred during argument dereferencing (e.g. calls to ip_hdr(skb)), along
+ * with any conditional evaluation (which would require branching) when the
+ * probe is disabled.
+ *
+ * Because some TCP probe points require additional argument preparation,
+ * we also define the is-enabled predicate directly as
+ * DTRACE_TCP_ENABLED(probename) along with a probe point which does not
+ * the probe in an is-enabled predicate; this allows us to handle cases such
+ * as this:
+ *
+ * if (DTRACE_TCP_ENABLED(state__change)) {
+ *      ...argument preparation...
+ *      DTRACE_TCP_NOCHECK(state__change, ...);
+ * }
+ */
+
 #define	DTRACE_TCP(name, ...)						\
+	if (DTRACE_PROBE_ENABLED(__tcp_##name))				\
+		DTRACE_PROBE(__tcp_##name, ## __VA_ARGS__)
+#define	DTRACE_TCP_ENABLED(name)					\
+	DTRACE_PROBE_ENABLED(__tcp_##name)
+#define	DTRACE_TCP_NOCHECK(name, ...)					\
 	DTRACE_PROBE(__tcp_##name, ## __VA_ARGS__);
 
 #define	DTRACE_UDP(name, ...)						\
-	DTRACE_PROBE(__udp_##name, ## __VA_ARGS__);
+	if (DTRACE_PROBE_ENABLED(__udp_##name))				\
+		DTRACE_PROBE(__udp_##name, ## __VA_ARGS__);
 
 #define	DTRACE_SYSEVENT(name, ...)					\
 	DTRACE_PROBE(__sysevent_##name, ## __VA_ARGS__);

@@ -76,6 +76,7 @@
 #include <linux/ipsec.h>
 #include <asm/unaligned.h>
 #include <linux/errqueue.h>
+#include <linux/sdt.h>
 
 int sysctl_tcp_fack __read_mostly;
 int sysctl_tcp_max_reordering __read_mostly = 300;
@@ -5524,6 +5525,14 @@ void tcp_finish_connect(struct sock *sk, struct sk_buff *skb)
 	struct tcp_sock *tp = tcp_sk(sk);
 	struct inet_connection_sock *icsk = inet_csk(sk);
 
+	DTRACE_TCP(connect__established,
+		   struct sk_buff * :  pktinfo_t *, skb,
+		   struct sock * : csinfo_t *, sk,
+		   __dtrace_tcp_void_ip_t * : ipinfo_t *, ip_hdr(skb),
+		   struct tcp_sock * : tcpsinfo_t *, tp,
+		   struct tcphdr * : tcpinfo_t *, tcp_hdr(skb),
+		   int : tcplsinfo_t *, TCP_ESTABLISHED,
+		   int, TCP_ESTABLISHED, int, DTRACE_NET_PROBE_INBOUND);
 	tcp_set_state(sk, TCP_ESTABLISHED);
 	icsk->icsk_ack.lrcvtime = tcp_jiffies32;
 
@@ -5657,6 +5666,17 @@ static int tcp_rcv_synsent_state_process(struct sock *sk, struct sk_buff *skb,
 		 */
 
 		if (th->rst) {
+			DTRACE_TCP(connect__refused,
+				   struct sk_buff * : pktinfo_t *, skb,
+				   struct sock * : csinfo_t *, sk,
+				   __dtrace_tcp_void_ip_t * : ipinfo_t *,
+				   ip_hdr(skb),
+				   struct tcp_sock * : tcpsinfo_t *, tp,
+				   struct tcphdr * : tcpinfo_t *, th,
+				   int : tcplsinfo_t *,
+				   sk ? sk->sk_state : TCP_CLOSE,
+				   int, sk ? sk->sk_state : TCP_CLOSE,
+				   int, DTRACE_NET_PROBE_INBOUND);
 			tcp_reset(sk);
 			goto discard;
 		}
@@ -5949,6 +5969,16 @@ int tcp_rcv_state_process(struct sock *sk, struct sk_buff *skb)
 			tcp_init_buffer_space(sk);
 		}
 		smp_mb();
+
+		DTRACE_TCP(accept__established,
+			   struct sk_buff * :  pktinfo_t *, skb,
+			   struct sock * : csinfo_t *, sk,
+			   __dtrace_tcp_void_ip_t * : ipinfo_t *, ip_hdr(skb),
+			   struct tcp_sock * : tcpsinfo_t *, tp,
+			   struct tcphdr * : tcpinfo_t *, tcp_hdr(skb),
+			   int : tcplsinfo_t *, TCP_ESTABLISHED,
+			   int, TCP_ESTABLISHED,
+			   int, DTRACE_NET_PROBE_INBOUND);
 		tcp_set_state(sk, TCP_ESTABLISHED);
 		sk->sk_state_change(sk);
 
@@ -6376,6 +6406,19 @@ int tcp_conn_request(struct request_sock_ops *rsk_ops,
 		af_ops->send_synack(sk, dst, &fl, req, &foc,
 				    !want_cookie ? TCP_SYNACK_NORMAL :
 						   TCP_SYNACK_COOKIE);
+		/* Do not pass in tcp sock as ports/addresses are not yet
+		 * populated - instead translators will fill them in from
+		 * skb data.
+		 */
+		DTRACE_TCP(state__change,
+			   struct sk_buff * : pktinfo_t *, skb,
+			   struct sock * : csinfo_t *, sk,
+			   __dtrace_tcp_void_ip_t * : ipinfo_t *, ip_hdr(skb),
+			   struct tcp_sock * : tcpsinfo_t *, NULL,
+			   struct tcphdr * : tcpinfo_t *, tcp_hdr(skb),
+			   int : tcplsinfo_t *, TCP_LISTEN,
+			   int, TCP_SYN_RECV, int, DTRACE_NET_PROBE_INBOUND);
+
 		if (want_cookie) {
 			reqsk_free(req);
 			return 0;
