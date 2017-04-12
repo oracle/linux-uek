@@ -53,6 +53,7 @@
 
 #include <linux/proc_fs.h>
 #include <linux/seq_file.h>
+#include <linux/sdt.h>
 #include <trace/events/skb.h>
 #include "udp_impl.h"
 
@@ -419,6 +420,12 @@ try_again:
 		return err;
 	}
 	if (!peeked) {
+		DTRACE_UDP(receive,
+			   struct sk_buff * :  pktinfo_t *, skb,
+			   struct sock * : csinfo_t *, sk,
+			   void_ip_t * : ipinfo_t *, ip_hdr(skb),
+			   struct udp_sock * : udpsinfo_t *, udp_sk(sk),
+			   struct udphdr * : udpinfo_t *, udp_hdr(skb));
 		if (is_udp4)
 			UDP_INC_STATS(sock_net(sk), UDP_MIB_INDATAGRAMS,
 				      is_udplite);
@@ -616,6 +623,15 @@ static int udpv6_queue_rcv_skb(struct sock *sk, struct sk_buff *skb)
 
 			ret = encap_rcv(sk, skb);
 			if (ret <= 0) {
+				DTRACE_UDP(receive,
+					   struct sk_buff * :  pktinfo_t *, skb,
+					   struct sock * : csinfo_t *, sk,
+					   void_ip_t * : ipinfo_t *,
+					   ip_hdr(skb),
+					   struct udp_sock * : udpsinfo_t *,
+					   udp_sk(sk),
+					   struct udphdr * : udpinfo_t *,
+					   udp_hdr(skb));
 				__UDP_INC_STATS(sock_net(sk),
 						UDP_MIB_INDATAGRAMS,
 						is_udplite);
@@ -1071,6 +1087,13 @@ static int udp_v6_send_skb(struct sk_buff *skb, struct flowi6 *fl6)
 		uh->check = CSUM_MANGLED_0;
 
 send:
+	DTRACE_UDP(send,
+		   struct sk_buff * :  pktinfo_t *, skb,
+		   struct sock * : csinfo_t *, sk,
+		   void_ip_t * : ipinfo_t *, ip_hdr(skb),
+		   struct udp_sock * : udpsinfo_t *, udp_sk(sk),
+		   struct udphdr * : udpinfo_t *, uh);
+
 	err = ip6_send_skb(skb);
 	if (err) {
 		if (err == -ENOBUFS && !inet6_sk(sk)->recverr) {
