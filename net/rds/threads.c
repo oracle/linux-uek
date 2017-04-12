@@ -74,6 +74,8 @@ MODULE_PARM_DESC(rds_conn_hb_timeout, " Connection heartbeat timeout");
  */
 struct workqueue_struct *rds_wq;
 EXPORT_SYMBOL_GPL(rds_wq);
+struct workqueue_struct *rds_tos_wq;
+EXPORT_SYMBOL_GPL(rds_tos_wq);
 struct workqueue_struct *rds_local_wq;
 EXPORT_SYMBOL_GPL(rds_local_wq);
 
@@ -352,12 +354,17 @@ void rds_shutdown_worker(struct work_struct *work)
 void rds_threads_exit(void)
 {
 	destroy_workqueue(rds_wq);
+	destroy_workqueue(rds_tos_wq);
 	destroy_workqueue(rds_local_wq);
 }
 
 int rds_threads_init(void)
 {
 	rds_wq = create_singlethread_workqueue("krdsd");
+	if (!rds_wq)
+		return -ENOMEM;
+
+	rds_tos_wq = create_singlethread_workqueue("krdsd_tos");
 	if (!rds_wq)
 		return -ENOMEM;
 
