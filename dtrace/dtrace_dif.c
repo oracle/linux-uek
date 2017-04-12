@@ -2016,7 +2016,7 @@ static uintptr_t dtrace_dif_varstr(uintptr_t addr, dtrace_state_t *state,
  *
  * This function is annotated to be always inlined in dtrace_dif_emulate()
  * because (1) that is the only place where it is called from, and (2) it has
- * come to our attention that some GCC versions inline i automatically while
+ * come to our attention that some GCC versions inline it automatically while
  * others do not and that messes up the number of frames to skip (aframes).
  */
 static uint64_t __always_inline dtrace_dif_variable(dtrace_mstate_t *mstate,
