@@ -404,6 +404,13 @@ static void rds_ib_cq_event_handler(struct ib_event *event, void *data)
 		 event->event, rds_ib_event_str(event->event), data);
 }
 
+static void rds_ib_cq_comp_handler_fastreg(struct ib_cq *cq, void *context)
+{
+	struct rds_ib_device *rds_ibdev = context;
+
+	tasklet_schedule(&rds_ibdev->fastreg_tasklet);
+}
+
 static void rds_ib_cq_comp_handler_send(struct ib_cq *cq, void *context)
 {
 	struct rds_connection *conn = context;
@@ -426,6 +433,20 @@ static void rds_ib_cq_comp_handler_recv(struct ib_cq *cq, void *context)
 	rds_ib_stats_inc(s_ib_evt_handler_call);
 
 	tasklet_schedule(&ic->i_rtasklet);
+}
+
+static void poll_fcq(struct rds_ib_device *rds_ibdev, struct ib_cq *cq,
+		     struct ib_wc *wcs)
+{
+	int nr, i;
+	struct ib_wc *wc;
+
+	while ((nr = ib_poll_cq(cq, RDS_WC_MAX, wcs)) > 0) {
+		for (i = 0; i < nr; i++) {
+			wc = wcs + i;
+			rds_ib_fcq_handler(rds_ibdev, wc);
+		}
+	}
 }
 
 static void poll_scq(struct rds_ib_connection *ic, struct ib_cq *cq,
@@ -477,6 +498,15 @@ static void poll_rcq(struct rds_ib_connection *ic, struct ib_cq *cq,
 		if (ic->i_rx_poll_cq >= RDS_IB_RX_LIMIT)
 			break;
 	}
+}
+
+static void rds_ib_tasklet_fn_fastreg(unsigned long data)
+{
+	struct rds_ib_device *rds_ibdev = (struct rds_ib_device *)data;
+
+	poll_fcq(rds_ibdev, rds_ibdev->fastreg_cq, rds_ibdev->fastreg_wc);
+	ib_req_notify_cq(rds_ibdev->fastreg_cq, IB_CQ_NEXT_COMP);
+	poll_fcq(rds_ibdev, rds_ibdev->fastreg_cq, rds_ibdev->fastreg_wc);
 }
 
 void rds_ib_tasklet_fn_send(unsigned long data)
@@ -643,7 +673,7 @@ static int rds_ib_setup_qp(struct rds_connection *conn)
 	struct ib_qp_init_attr qp_attr;
 	struct rds_ib_device *rds_ibdev;
 	int ret;
-	int mr_reg, mr_inv;
+	int mr_reg;
 
 	/*
 	 * It's normal to see a null device if an incoming connection races
@@ -653,25 +683,22 @@ static int rds_ib_setup_qp(struct rds_connection *conn)
 	if (!rds_ibdev)
 		return -EOPNOTSUPP;
 
-	/* In the case of FRWR, mr registration and invalidation wrs use the
+	/* In the case of FRWR, mr registration wrs use the
 	 * same work queue as the send wrs. To make sure that we are not
 	 * overflowing the workqueue, we allocate separately for each operation.
-	 * mr_reg and mr_inv are the wr numbers allocated for reg and inv.
+	 * mr_reg is the wr numbers allocated for reg.
 	 */
-	if (rds_ibdev->use_fastreg) {
+	if (rds_ibdev->use_fastreg)
 		mr_reg = RDS_IB_DEFAULT_FREG_WR;
-		mr_inv = 1;
-	} else {
+	else
 		mr_reg = 0;
-		mr_inv = 0;
-	}
 
 	/* add the conn now so that connection establishment has the dev */
 	rds_ib_add_conn(rds_ibdev, conn);
 
-	if (rds_ibdev->max_wrs < ic->i_send_ring.w_nr + 1 + mr_reg + mr_inv)
+	if (rds_ibdev->max_wrs < ic->i_send_ring.w_nr + 1 + mr_reg)
 		rds_ib_ring_resize(&ic->i_send_ring,
-				   rds_ibdev->max_wrs - 1 - mr_reg - mr_inv);
+				   rds_ibdev->max_wrs - 1 - mr_reg);
 	if (rds_ibdev->max_wrs < ic->i_recv_ring.w_nr + 1)
 		rds_ib_ring_resize(&ic->i_recv_ring, rds_ibdev->max_wrs - 1);
 
@@ -681,7 +708,7 @@ static int rds_ib_setup_qp(struct rds_connection *conn)
 
 	ic->i_scq_vector = ibdev_get_unused_vector(rds_ibdev);
 	memset(&cq_attr, 0, sizeof(cq_attr));
-	cq_attr.cqe = ic->i_send_ring.w_nr + 1 + mr_reg + mr_inv;
+	cq_attr.cqe = ic->i_send_ring.w_nr + 1 + mr_reg;
 	cq_attr.comp_vector = ic->i_scq_vector;
 	ic->i_scq = ib_create_cq(dev, rds_ib_cq_comp_handler_send,
 				 rds_ib_cq_event_handler, conn,
@@ -734,7 +761,7 @@ static int rds_ib_setup_qp(struct rds_connection *conn)
 	qp_attr.event_handler = rds_ib_qp_event_handler;
 	qp_attr.qp_context = conn;
 	/* + 1 to allow for the single ack message */
-	qp_attr.cap.max_send_wr = ic->i_send_ring.w_nr + 1 + mr_reg + mr_inv;
+	qp_attr.cap.max_send_wr = ic->i_send_ring.w_nr + 1 + mr_reg;
 	qp_attr.cap.max_recv_wr = ic->i_recv_ring.w_nr + 1;
 	qp_attr.cap.max_send_sge = rds_ibdev->max_sge;
 	qp_attr.cap.max_recv_sge = RDS_IB_RECV_SGE;
@@ -1415,4 +1442,218 @@ void rds_ib_conn_free(void *arg)
 	rds_ib_recv_free_caches(ic);
 
 	kfree(ic);
+}
+
+void rds_ib_destroy_fastreg(struct rds_ib_device *rds_ibdev)
+{
+	/* Because we are using rw_lock, by this point we should have
+	 * received completions for all the wrs posted
+	 */
+	WARN_ON(atomic_read(&rds_ibdev->fastreg_wrs) != RDS_IB_DEFAULT_FREG_WR);
+
+	tasklet_kill(&rds_ibdev->fastreg_tasklet);
+	if (rds_ibdev->fastreg_qp) {
+		/* Destroy qp */
+		if (ib_destroy_qp(rds_ibdev->fastreg_qp))
+			pr_err("Error destroying fastreg qp for rds_ibdev: %p\n",
+			       rds_ibdev);
+		rds_ibdev->fastreg_qp = NULL;
+	}
+
+	if (rds_ibdev->fastreg_cq) {
+		/* Destroy cq and cq_vector */
+		if (ib_destroy_cq(rds_ibdev->fastreg_cq))
+			pr_err("Error destroying fastreg cq for rds_ibdev: %p\n",
+			       rds_ibdev);
+		rds_ibdev->fastreg_cq = NULL;
+		ibdev_put_vector(rds_ibdev, rds_ibdev->fastreg_cq_vector);
+	}
+}
+
+int rds_ib_setup_fastreg(struct rds_ib_device *rds_ibdev)
+{
+	int ret = 0;
+	struct ib_cq_init_attr cq_attr;
+	struct ib_qp_init_attr qp_init_attr;
+	struct ib_qp_attr qp_attr;
+	struct ib_port_attr port_attr;
+	int gid_index = 0;
+	union ib_gid dgid;
+
+	rds_ibdev->fastreg_cq_vector = ibdev_get_unused_vector(rds_ibdev);
+	memset(&cq_attr, 0, sizeof(cq_attr));
+	cq_attr.cqe = RDS_IB_DEFAULT_FREG_WR + 1;
+	cq_attr.comp_vector = rds_ibdev->fastreg_cq_vector;
+	rds_ibdev->fastreg_cq = ib_create_cq(rds_ibdev->dev,
+					     rds_ib_cq_comp_handler_fastreg,
+					     rds_ib_cq_event_handler,
+					     rds_ibdev,
+					     &cq_attr);
+	if (IS_ERR(rds_ibdev->fastreg_cq)) {
+		ret = PTR_ERR(rds_ibdev->fastreg_cq);
+		rds_ibdev->fastreg_cq = NULL;
+		ibdev_put_vector(rds_ibdev, rds_ibdev->fastreg_cq_vector);
+		rds_rtd(RDS_RTD_ERR, "ib_create_cq failed: %d\n", ret);
+		goto clean_up;
+	}
+
+	ret = ib_req_notify_cq(rds_ibdev->fastreg_cq, IB_CQ_NEXT_COMP);
+	if (ret)
+		goto clean_up;
+	rds_rtd(RDS_RTD_RDMA_IB,
+		"Successfully created fast reg cq for ib_device: %p\n",
+		rds_ibdev->dev);
+
+	memset(&qp_init_attr, 0, sizeof(qp_init_attr));
+	qp_init_attr.send_cq		= rds_ibdev->fastreg_cq;
+	qp_init_attr.recv_cq		= rds_ibdev->fastreg_cq;
+	qp_init_attr.qp_type		= IB_QPT_RC;
+	/* 1 WR is used for invalidaton */
+	qp_init_attr.cap.max_send_wr	= RDS_IB_DEFAULT_FREG_WR + 1;
+	qp_init_attr.cap.max_recv_wr	= 0;
+	qp_init_attr.cap.max_send_sge	= 0;
+	qp_init_attr.cap.max_recv_sge	= 0;
+
+	rds_ibdev->fastreg_qp = ib_create_qp(rds_ibdev->pd, &qp_init_attr);
+	if (IS_ERR(rds_ibdev->fastreg_qp)) {
+		ret = PTR_ERR(rds_ibdev->fastreg_qp);
+		rds_ibdev->fastreg_qp = NULL;
+		rds_rtd(RDS_RTD_ERR, "ib_create_qp failed: %d\n", ret);
+		goto clean_up;
+	}
+	rds_rtd(RDS_RTD_RDMA_IB,
+		"Successfully created fast reg qp for ib_device: %p\n",
+		rds_ibdev->dev);
+
+	/* Use modify_qp verb to change the state from RESET to INIT */
+	memset(&qp_attr, 0, sizeof(qp_attr));
+	qp_attr.qp_state	= IB_QPS_INIT;
+	qp_attr.pkey_index	= 0;
+	qp_attr.qp_access_flags	= IB_ACCESS_REMOTE_READ |
+				  IB_ACCESS_REMOTE_WRITE;
+	qp_attr.port_num	= RDS_IB_DEFAULT_FREG_PORT_NUM;
+
+	ret = ib_modify_qp(rds_ibdev->fastreg_qp, &qp_attr, IB_QP_STATE	|
+						IB_QP_PKEY_INDEX	|
+						IB_QP_ACCESS_FLAGS	|
+						IB_QP_PORT);
+	if (ret) {
+		rds_rtd(RDS_RTD_ERR, "ib_modify_qp to IB_QPS_INIT failed: %d\n",
+			ret);
+		goto clean_up;
+	}
+	rds_rtd(RDS_RTD_RDMA_IB,
+		"Successfully moved qp to INIT state for ib_device: %p\n",
+		rds_ibdev->dev);
+
+	/* query port to get the lid */
+	ret = ib_query_port(rds_ibdev->dev, RDS_IB_DEFAULT_FREG_PORT_NUM,
+			    &port_attr);
+	if (ret) {
+		rds_rtd(RDS_RTD_ERR, "ib_query_port failed: %d\n", ret);
+		goto clean_up;
+	}
+	rds_rtd(RDS_RTD_RDMA_IB,
+		"Successfully queried the port and the port is in %d state\n",
+		port_attr.state);
+
+	ret = ib_query_gid(rds_ibdev->dev, RDS_IB_DEFAULT_FREG_PORT_NUM,
+			   gid_index, &dgid, NULL);
+	if (ret) {
+		rds_rtd(RDS_RTD_ERR, "ib_query_gid failed: %d\n", ret);
+		goto clean_up;
+	}
+	rds_rtd(RDS_RTD_RDMA_IB,
+		"Successfully queried the gid_index %d and the gid is " RDS_IB_GID_FMT "\n",
+		gid_index, RDS_IB_GID_ARG(dgid));
+
+	/* Use modify_qp verb to change the state from INIT to RTR */
+	memset(&qp_attr, 0, sizeof(qp_attr));
+	qp_attr.qp_state	= IB_QPS_RTR;
+	qp_attr.path_mtu	= IB_MTU_4096;
+	qp_attr.dest_qp_num	= rds_ibdev->fastreg_qp->qp_num;
+	qp_attr.rq_psn		= 1;
+	qp_attr.ah_attr.ah_flags	= IB_AH_GRH;
+	qp_attr.ah_attr.ib.dlid		= port_attr.lid;
+	qp_attr.ah_attr.ib.src_path_bits	= 0;
+	qp_attr.ah_attr.sl		= 0;
+	qp_attr.ah_attr.port_num	= RDS_IB_DEFAULT_FREG_PORT_NUM;
+	qp_attr.ah_attr.grh.hop_limit	= 1;
+	qp_attr.ah_attr.grh.dgid	= dgid;
+	qp_attr.ah_attr.grh.sgid_index	= gid_index;
+
+	ret = ib_modify_qp(rds_ibdev->fastreg_qp, &qp_attr, IB_QP_STATE	|
+						IB_QP_AV		|
+						IB_QP_PATH_MTU		|
+						IB_QP_DEST_QPN		|
+						IB_QP_RQ_PSN		|
+						IB_QP_MAX_DEST_RD_ATOMIC |
+						IB_QP_MIN_RNR_TIMER);
+	if (ret) {
+		rds_rtd(RDS_RTD_ERR, "ib_modify_qp to IB_QPS_RTR failed: %d\n",
+			ret);
+		goto clean_up;
+	}
+	rds_rtd(RDS_RTD_RDMA_IB,
+		"Successfully moved qp to RTR state for ib_device: %p\n",
+		rds_ibdev->dev);
+
+	/* Use modify_qp verb to change the state from RTR to RTS */
+	memset(&qp_attr, 0, sizeof(qp_attr));
+	qp_attr.qp_state	= IB_QPS_RTS;
+	qp_attr.sq_psn		= 1;
+	qp_attr.timeout		= 14;
+	qp_attr.retry_cnt	= 6;
+	qp_attr.rnr_retry	= 6;
+	qp_attr.max_rd_atomic	= 1;
+
+	ret = ib_modify_qp(rds_ibdev->fastreg_qp, &qp_attr, IB_QP_STATE	|
+						IB_QP_TIMEOUT		|
+						IB_QP_RETRY_CNT		|
+						IB_QP_RNR_RETRY		|
+						IB_QP_SQ_PSN		|
+						IB_QP_MAX_QP_RD_ATOMIC);
+	if (ret) {
+		rds_rtd(RDS_RTD_ERR, "ib_modify_qp to IB_QPS_RTS failed: %d\n",
+			ret);
+		goto clean_up;
+	}
+	rds_rtd(RDS_RTD_RDMA_IB,
+		"Successfully moved qp to RTS state for ib_device: %p\n",
+		rds_ibdev->dev);
+
+	tasklet_init(&rds_ibdev->fastreg_tasklet, rds_ib_tasklet_fn_fastreg,
+		     (unsigned long)rds_ibdev);
+	atomic_set(&rds_ibdev->fastreg_wrs, RDS_IB_DEFAULT_FREG_WR);
+
+clean_up:
+	if (ret)
+		rds_ib_destroy_fastreg(rds_ibdev);
+	return ret;
+}
+
+void rds_ib_reset_fastreg(struct work_struct *work)
+{
+	struct rds_ib_device *rds_ibdev = container_of(work,
+						       struct rds_ib_device,
+						       fastreg_reset_w);
+
+	pr_warn("RDS: IB: Resetting fastreg qp\n");
+	/* Acquire write lock to stop posting on fastreg qp before resetting */
+	down_write(&rds_ibdev->fastreg_lock);
+
+	rds_ib_destroy_fastreg(rds_ibdev);
+	if (rds_ib_setup_fastreg(rds_ibdev)) {
+		/* Failing to setup fastreg qp at this stage is unexpected.
+		 * If it happens, throw a warning, and return immediately,
+		 * without up_writing the fastreg_lock.
+		 */
+		pr_err("RDS: IB: Failed to setup fastreg resources in %s\n",
+		       __func__);
+		WARN_ON(1);
+		return;
+	}
+
+	up_write(&rds_ibdev->fastreg_lock);
+	pr_warn("RDS: IB: Finished resetting fastreg qp\n");
 }

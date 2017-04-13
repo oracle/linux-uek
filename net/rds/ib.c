@@ -213,6 +213,11 @@ static void rds_ib_dev_free_dev(struct rds_ib_device *rds_ibdev)
 		rds_ib_destroy_mr_pool(rds_ibdev->mr_8k_pool);
 	if (rds_ibdev->mr_1m_pool)
 		rds_ib_destroy_mr_pool(rds_ibdev->mr_1m_pool);
+	if (rds_ibdev->use_fastreg) {
+		cancel_work_sync(&rds_ibdev->fastreg_reset_w);
+		down_write(&rds_ibdev->fastreg_lock);
+		rds_ib_destroy_fastreg(rds_ibdev);
+	}
 	if (rds_ibdev->mr)
 		ib_dereg_mr(rds_ibdev->mr);
 	if (rds_ibdev->pd)
@@ -286,6 +291,9 @@ void rds_ib_remove_one(struct ib_device *device, void *client_data)
 {
 	struct rds_ib_device *rds_ibdev;
 	int i;
+
+	rds_rtd(RDS_RTD_RDMA_IB, "Removing ib_device: %p name: %s num_ports: %u\n",
+		device, device->name, device->phys_port_cnt);
 
 	rds_ibdev = ib_get_client_data(device, &rds_ib_client);
 	if (!rds_ibdev) {
@@ -1987,6 +1995,9 @@ void rds_ib_add_one(struct ib_device *device)
 	struct ib_device_attr *dev_attr;
 	bool has_frwr, has_fmr;
 
+	rds_rtd(RDS_RTD_RDMA_IB, "Adding ib_device: %p name: %s num_ports: %u\n",
+		device, device->name, device->phys_port_cnt);
+
 	/* Only handle IB (no iWARP) devices */
 	if (device->node_type != RDMA_NODE_IB_CA)
 		return;
@@ -2064,6 +2075,16 @@ void rds_ib_add_one(struct ib_device *device)
 
 	pr_info("RDS/IB: %s will be used for ib_device: %s\n",
 		rds_ibdev->use_fastreg ? "FRWR" : "FMR", device->name);
+
+	if (rds_ibdev->use_fastreg) {
+		INIT_WORK(&rds_ibdev->fastreg_reset_w, rds_ib_reset_fastreg);
+		init_rwsem(&rds_ibdev->fastreg_lock);
+		atomic_set(&rds_ibdev->fastreg_wrs, RDS_IB_DEFAULT_FREG_WR);
+		if (rds_ib_setup_fastreg(rds_ibdev)) {
+			pr_err("RDS/IB: Failed to setup fastreg resources\n");
+			goto put_dev;
+		}
+	}
 
 	rds_ibdev->mr_1m_pool =
 		rds_ib_create_mr_pool(rds_ibdev, RDS_IB_MR_1M_POOL);
