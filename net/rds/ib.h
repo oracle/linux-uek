@@ -52,6 +52,8 @@
 
 #define	RDS_IB_CLEAN_CACHE	1
 
+#define RDS_IB_DEFAULT_FREG_PORT_NUM	1
+
 extern struct rw_semaphore rds_ib_devices_lock;
 extern struct list_head rds_ib_devices;
 
@@ -422,7 +424,17 @@ struct rds_ib_device {
 	struct list_head	conn_list;
 	struct ib_device	*dev;
 	struct ib_pd		*pd;
+
 	bool			use_fastreg;
+	int			fastreg_cq_vector;
+	struct ib_cq		*fastreg_cq;
+	struct ib_wc            fastreg_wc[RDS_WC_MAX];
+	struct ib_qp		*fastreg_qp;
+	struct tasklet_struct	fastreg_tasklet;
+	atomic_t		fastreg_wrs;
+	struct rw_semaphore	fastreg_lock;
+	struct work_struct	fastreg_reset_w;
+
 	struct ib_mr		*mr;
 	struct rds_ib_mr_pool	*mr_1m_pool;
 	struct rds_ib_mr_pool   *mr_8k_pool;
@@ -586,6 +598,9 @@ void rds_ib_cm_connect_complete(struct rds_connection *conn,
 				struct rdma_cm_event *event);
 void rds_ib_init_frag(unsigned int version);
 void rds_ib_conn_destroy_init(struct rds_connection *conn);
+void rds_ib_destroy_fastreg(struct rds_ib_device *rds_ibdev);
+int rds_ib_setup_fastreg(struct rds_ib_device *rds_ibdev);
+void rds_ib_reset_fastreg(struct work_struct *work);
 
 /* ib_rdma.c */
 int rds_ib_update_ipaddr(struct rds_ib_device *rds_ibdev, __be32 ipaddr);
@@ -603,6 +618,7 @@ void rds_ib_free_mr(void *trans_private, int invalidate);
 void rds_ib_flush_mrs(void);
 int rds_ib_fmr_init(void);
 void rds_ib_fmr_exit(void);
+void rds_ib_fcq_handler(struct rds_ib_device *rds_ibdev, struct ib_wc *wc);
 void rds_ib_mr_cqe_handler(struct rds_ib_connection *ic, struct ib_wc *wc);
 
 /* ib_recv.c */
