@@ -359,6 +359,10 @@ static int __cvmx_pcie_get_qlm(int node, int pcie_port)
 		default:
 			return -1;
 		}
+	} else if (OCTEON_IS_MODEL(OCTEON_CN63XX)) {
+		return pcie_port;
+	} else if (OCTEON_IS_MODEL(OCTEON_CN66XX)) {
+		return pcie_port;
 	}
 	return -1;
 }
@@ -1484,7 +1488,7 @@ static int __cvmx_pcie_rc_initialize_link_gen2(int node, int pcie_port)
 		if (cvmx_get_cycle() - start_cycle > cvmx_clock_get_rate(CVMX_CLOCK_CORE)) {
 			return -1;
 		}
-		cvmx_wait_usec(1000);
+		cvmx_wait_usec(10000);
 		pciercx_cfg032.u32 = CVMX_PCIE_CFGX_READ(pcie_port,
 							 CVMX_PCIERCX_CFG032(pcie_port));
 	} while ((pciercx_cfg032.s.dlla == 0) || (pciercx_cfg032.s.lt == 1));
@@ -2557,6 +2561,7 @@ int cvmx_pcie_rc_shutdown(int pcie_port)
 
 	return 0;
 }
+EXPORT_SYMBOL(cvmx_pcie_rc_shutdown);
 
 /**
  * @INTERNAL

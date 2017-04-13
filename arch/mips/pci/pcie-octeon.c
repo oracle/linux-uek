@@ -13,7 +13,8 @@
 #include <linux/delay.h>
 #include <linux/moduleparam.h>
 #include <linux/syscore_ops.h>
-
+#include <linux/module.h>
+#include <linux/of_address.h>
 #include <asm/octeon/octeon.h>
 #include <asm/octeon/cvmx-npei-defs.h>
 #include <asm/octeon/cvmx-pciercx-defs.h>
@@ -695,6 +696,55 @@ static void octeon_pcie_interface_init(struct octeon_pcie_interface *iface, unsi
 	iface->pem = pem;
 }
 
+int octeon_pcie_get_qlm_from_fdt(int numa_node, int pcie_port)
+{
+	struct device_node	*np;
+	const int		*qlm;
+
+	for_each_compatible_node(np, NULL, "cavium,octeon-7890-pcie") {
+		const __be32		*reg;
+		u64			addr;
+
+		reg = of_get_property(np, "reg", NULL);
+		if (reg) {
+			addr = of_translate_address(np, reg);
+			if ((numa_node == (addr >> 36 & 0x3)) &&
+			    (pcie_port == (addr >> 24 & 0x3))) {
+				qlm = of_get_property(np, "qlm", NULL);
+				return qlm ? *qlm : -1;
+			}
+		}
+	}
+
+	return -1;
+}
+EXPORT_SYMBOL(octeon_pcie_get_qlm_from_fdt);
+
+static bool octeon_pcie_is_pem_in_fdt(int gport)
+{
+	struct device_node	*node;
+	int			numa_node;
+	int			pcie_port;
+
+	numa_node = gport >> 4;
+	pcie_port = gport & 0xf;
+
+	for_each_compatible_node(node, NULL, "cavium,octeon-7890-pcie") {
+		const __be32		*reg;
+		u64			addr;
+
+		reg = of_get_property(node, "reg", NULL);
+		if (reg) {
+			addr = of_translate_address(node, reg);
+			if ((numa_node == (addr >> 36 & 0x3)) &&
+			    (pcie_port == (addr >> 24 & 0x3)))
+				return true;
+		}
+	}
+
+	return false;
+}
+
 void octeon_pcie_setup_port(unsigned int node, unsigned int port, bool do_register)
 {
 	int result;
@@ -750,7 +800,7 @@ void octeon_pcie_setup_port(unsigned int node, unsigned int port, bool do_regist
 				srio_war15205 += 1;
 		}
 		result = cvmx_pcie_rc_initialize(gport);
-		if (result < 0)
+		if (result < 0 && octeon_pcie_is_pem_in_fdt(gport) == false)
 			return;
 
 		/*
