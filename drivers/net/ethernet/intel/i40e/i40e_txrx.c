@@ -27,6 +27,7 @@
 #include <linux/prefetch.h>
 #include <net/busy_poll.h>
 #include "i40e.h"
+#include "i40e_trace.h"
 #include "i40e_prototype.h"
 #include "kcompat.h"
 
@@ -764,6 +765,7 @@ static bool i40e_clean_tx_irq(struct i40e_ring *tx_ring, int budget)
 		/* prevent any other reads prior to eop_desc */
 		read_barrier_depends();
 
+		i40e_trace(clean_tx_irq, tx_ring, tx_desc, tx_buf);
 		/* we have caught up to head, no work left to do */
 		if (tx_head == tx_desc)
 			break;
@@ -790,6 +792,8 @@ static bool i40e_clean_tx_irq(struct i40e_ring *tx_ring, int budget)
 
 		/* unmap remaining buffers */
 		while (tx_desc != eop_desc) {
+			i40e_trace(clean_tx_irq_unmap,
+				   tx_ring, tx_desc, tx_buf);
 
 			tx_buf++;
 			tx_desc++;
@@ -1945,6 +1949,7 @@ static int i40e_clean_rx_irq(struct i40e_ring *rx_ring, int budget)
 		if (!size)
 			break;
 
+		i40e_trace(clean_rx_irq, rx_ring, rx_desc, skb);
 		rx_buffer = i40e_get_rx_buffer(rx_ring, size);
 
 		skb = i40e_fetch_rx_buffer(rx_ring, rx_buffer, skb, size);
@@ -1994,6 +1999,7 @@ static int i40e_clean_rx_irq(struct i40e_ring *rx_ring, int budget)
 		vlan_tag = (qword & BIT(I40E_RX_DESC_STATUS_L2TAG1P_SHIFT)) ?
 			   le16_to_cpu(rx_desc->wb.qword0.lo_dword.l2tag1) : 0;
 
+		i40e_trace(clean_rx_irq_rx, rx_ring, rx_desc, skb);
 		i40e_receive_skb(rx_ring, skb, vlan_tag);
 		skb = NULL;
 
@@ -3081,6 +3087,8 @@ static netdev_tx_t i40e_xmit_frame_ring(struct sk_buff *skb,
 	/* prefetch the data, we'll need it later */
 	prefetch(skb->data);
 
+	i40e_trace(xmit_frame_ring, skb, tx_ring);
+
 	count = i40e_xmit_descriptor_count(skb);
 	if (i40e_chk_linearize(skb, count)) {
 		if (__skb_linearize(skb)) {
@@ -3159,6 +3167,7 @@ static netdev_tx_t i40e_xmit_frame_ring(struct sk_buff *skb,
 	return NETDEV_TX_OK;
 
 out_drop:
+	i40e_trace(xmit_frame_ring_drop, first->skb, tx_ring);
 	dev_kfree_skb_any(first->skb);
 	first->skb = NULL;
 	return NETDEV_TX_OK;
