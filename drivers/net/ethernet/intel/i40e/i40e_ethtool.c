@@ -690,6 +690,7 @@ static int i40e_set_settings(struct net_device *netdev,
 	struct ethtool_cmd safe_ecmd;
 	i40e_status status = 0;
 	bool change = false;
+	int timeout = 50;
 	int err = 0;
 	u8 autoneg;
 	u32 advertise;
@@ -739,14 +740,20 @@ static int i40e_set_settings(struct net_device *netdev,
 	if (memcmp(ecmd, &safe_ecmd, sizeof(struct ethtool_cmd)))
 		return -EOPNOTSUPP;
 
-	while (test_bit(__I40E_CONFIG_BUSY, &vsi->state))
+	while (test_and_set_bit(__I40E_CONFIG_BUSY, &pf->state)) {
+		timeout--;
+		if (!timeout)
+			return -EBUSY;
 		usleep_range(1000, 2000);
+	}
 
 	/* Get the current phy config */
 	status = i40e_aq_get_phy_capabilities(hw, false, false, &abilities,
 					      NULL);
-	if (status)
-		return -EAGAIN;
+	if (status) {
+		err = -EAGAIN;
+		goto done;
+	}
 
 	/* Copy abilities to config in case autoneg is not
 	 * set below
@@ -761,7 +768,8 @@ static int i40e_set_settings(struct net_device *netdev,
 			/* If autoneg is not supported, return error */
 			if (!(safe_ecmd.supported & SUPPORTED_Autoneg)) {
 				netdev_info(netdev, "Autoneg not supported on this phy\n");
-				return -EINVAL;
+				err = -EINVAL;
+				goto done;
 			}
 			/* Autoneg is allowed to change */
 			config.abilities = abilities.abilities |
@@ -778,7 +786,8 @@ static int i40e_set_settings(struct net_device *netdev,
 			    hw->phy.link_info.phy_type !=
 			    I40E_PHY_TYPE_10GBASE_T) {
 				netdev_info(netdev, "Autoneg cannot be disabled on this phy\n");
-				return -EINVAL;
+				err = -EINVAL;
+				goto done;
 			}
 			/* Autoneg is allowed to change */
 			config.abilities = abilities.abilities &
@@ -844,7 +853,8 @@ static int i40e_set_settings(struct net_device *netdev,
 			netdev_info(netdev, "Set phy config failed, err %s aq_err %s\n",
 				    i40e_stat_str(hw, status),
 				    i40e_aq_str(hw, hw->aq.asq_last_status));
-			return -EAGAIN;
+			err = -EAGAIN;
+			goto done;
 		}
 
 		status = i40e_update_link_info(hw);
@@ -856,6 +866,9 @@ static int i40e_set_settings(struct net_device *netdev,
 	} else {
 		netdev_info(netdev, "Nothing changed, exiting without setting anything.\n");
 	}
+
+done:
+	clear_bit(__I40E_CONFIG_BUSY, &pf->state);
 
 	return err;
 }
@@ -1271,6 +1284,7 @@ static int i40e_set_ringparam(struct net_device *netdev,
 	struct i40e_vsi *vsi = np->vsi;
 	struct i40e_pf *pf = vsi->back;
 	u32 new_rx_count, new_tx_count;
+	int timeout = 50;
 	int i, err = 0;
 
 	if ((ring->rx_mini_pending) || (ring->rx_jumbo_pending))
@@ -1295,8 +1309,12 @@ static int i40e_set_ringparam(struct net_device *netdev,
 	    (new_rx_count == vsi->rx_rings[0]->count))
 		return 0;
 
-	while (test_and_set_bit(__I40E_CONFIG_BUSY, &pf->state))
+	while (test_and_set_bit(__I40E_CONFIG_BUSY, &pf->state)) {
+		timeout--;
+		if (!timeout)
+			return -EBUSY;
 		usleep_range(1000, 2000);
+	}
 
 	if (!netif_running(vsi->netdev)) {
 		/* simple case - set for the next time the netdev is started */
