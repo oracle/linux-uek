@@ -1031,13 +1031,8 @@ void *rds_ib_get_mr(struct scatterlist *sg, unsigned long nents,
 		goto out;
 	}
 
-	if (conn) {
+	if (conn)
 		ic = conn->c_transport_data;
-	} else if (rds_ibdev->use_fastreg) {
-		/* TODO: Add FRWR support for RDS_GET_MR */
-		ret = -EOPNOTSUPP;
-		goto out;
-	}
 
 	if (!rds_ibdev->mr_8k_pool || !rds_ibdev->mr_1m_pool) {
 		ret = -ENODEV;
@@ -1146,14 +1141,26 @@ out_unmap:
 	return ret;
 }
 
-static int rds_ib_rdma_build_fastreg(struct rds_ib_mr *ibmr)
+static int rds_ib_rdma_build_fastreg(struct rds_ib_device *rds_ibdev,
+				     struct rds_ib_mr *ibmr)
 {
 	struct ib_fast_reg_wr f_wr;
 	struct ib_send_wr *failed_wr;
+	struct ib_qp *qp;
+	atomic_t *n_wrs;
 	int ret = 0;
 
-	while (atomic_dec_return(&ibmr->ic->i_fastreg_wrs) <= 0) {
-		atomic_inc(&ibmr->ic->i_fastreg_wrs);
+	if (ibmr->ic) {
+		n_wrs = &ibmr->ic->i_fastreg_wrs;
+		qp = ibmr->ic->i_cm_id->qp;
+	} else {
+		down_read(&rds_ibdev->fastreg_lock);
+		n_wrs = &rds_ibdev->fastreg_wrs;
+		qp = rds_ibdev->fastreg_qp;
+	}
+
+	while (atomic_dec_return(n_wrs) <= 0) {
+		atomic_inc(n_wrs);
 		/* Depending on how many times schedule() is called,
 		 * we could replace it with wait_event() in future.
 		 */
@@ -1178,11 +1185,11 @@ static int rds_ib_rdma_build_fastreg(struct rds_ib_mr *ibmr)
 	f_wr.iova_start = 0;
 	f_wr.wr.send_flags = IB_SEND_SIGNALED;
 
-	failed_wr = (struct ib_send_wr *)&f_wr;
-	ret = ib_post_send(ibmr->ic->i_cm_id->qp, (struct ib_send_wr *)&f_wr, &failed_wr);
-	BUG_ON(failed_wr != (struct ib_send_wr *)&f_wr);
+	failed_wr = &f_wr.wr;
+	ret = ib_post_send(qp, &f_wr.wr, &failed_wr);
+	BUG_ON(failed_wr != &f_wr.wr);
 	if (ret) {
-		atomic_inc(&ibmr->ic->i_fastreg_wrs);
+		atomic_inc(n_wrs);
 		ibmr->fr_state = MR_IS_INVALID;
 		pr_warn_ratelimited("RDS/IB: %s:%d ib_post_send returned %d\n",
 				    __func__, __LINE__, ret);
@@ -1196,6 +1203,8 @@ static int rds_ib_rdma_build_fastreg(struct rds_ib_mr *ibmr)
 	}
 
 out:
+	if (!ibmr->ic)
+		up_read(&rds_ibdev->fastreg_lock);
 	return ret;
 }
 
@@ -1217,7 +1226,7 @@ static int rds_ib_map_fastreg_mr(struct rds_ib_device *rds_ibdev,
 	if (ret)
 		goto out;
 
-	ret = rds_ib_rdma_build_fastreg(ibmr);
+	ret = rds_ib_rdma_build_fastreg(rds_ibdev, ibmr);
 	if (ret)
 		goto out;
 
@@ -1244,6 +1253,8 @@ static int rds_ib_fastreg_inv(struct rds_ib_mr *ibmr)
 	struct ib_send_wr s_wr, *failed_wr;
 	int ret = 0;
 
+	down_read(&ibmr->device->fastreg_lock);
+
 	if (ibmr->fr_state != MR_IS_VALID)
 		goto out;
 
@@ -1256,7 +1267,7 @@ static int rds_ib_fastreg_inv(struct rds_ib_mr *ibmr)
 	s_wr.send_flags = IB_SEND_SIGNALED;
 
 	failed_wr = &s_wr;
-	ret = ib_post_send(ibmr->ic->i_cm_id->qp, &s_wr, &failed_wr);
+	ret = ib_post_send(ibmr->device->fastreg_qp, &s_wr, &failed_wr);
 	BUG_ON(failed_wr != &s_wr);
 	if (ret) {
 		ibmr->fr_state = MR_IS_STALE;
@@ -1266,9 +1277,31 @@ static int rds_ib_fastreg_inv(struct rds_ib_mr *ibmr)
 	}
 
 	wait_for_completion(&ibmr->wr_comp);
-
 out:
+	up_read(&ibmr->device->fastreg_lock);
 	return ret;
+}
+
+void rds_ib_fcq_handler(struct rds_ib_device *rds_ibdev, struct ib_wc *wc)
+{
+	struct rds_ib_mr *ibmr = (struct rds_ib_mr *)wc->wr_id;
+	enum rds_ib_fr_state fr_state = ibmr->fr_state;
+
+	WARN_ON(ibmr->fr_state == MR_IS_STALE);
+
+	if (wc->status != IB_WC_SUCCESS) {
+		pr_warn("RDS: IB: MR completion on fastreg qp status %u vendor_err %u\n",
+			wc->status, wc->vendor_err);
+		ibmr->fr_state = MR_IS_STALE;
+		queue_work(rds_wq, &rds_ibdev->fastreg_reset_w);
+	}
+
+	if (fr_state == MR_IS_INVALID) {
+		complete(&ibmr->wr_comp);
+	} else if (fr_state == MR_IS_VALID) {
+		atomic_inc(&rds_ibdev->fastreg_wrs);
+		complete(&ibmr->wr_comp);
+	}
 }
 
 void rds_ib_mr_cqe_handler(struct rds_ib_connection *ic, struct ib_wc *wc)
