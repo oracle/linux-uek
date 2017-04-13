@@ -193,6 +193,9 @@ int dax_map_segment_common(unsigned long size,
 		*ccb_addr_type = CCB_AT_VA;
 		ccbp->dwords[addr_sel] = (unsigned long)dv->kva +
 					(virtp - vma->vm_start);
+		/* touch va to fault translation into tlb/tsb */
+		READ_ONCE(*(u8 *)ccbp->dwords[addr_sel]);
+
 		dax_map_dbg("changed %s to KVA 0x%llx", name,
 			    ccbp->dwords[addr_sel]);
 	} else {
