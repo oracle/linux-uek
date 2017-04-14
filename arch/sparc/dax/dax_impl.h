@@ -93,7 +93,7 @@ extern const struct vm_operations_struct dax_vm_ops;
 		if (!((hdr)->at_##type == CCB_AT_VA ||			\
 		    (hdr)->at_##type == CCB_AT_IMM)) {			\
 			dax_err(					\
-			"invalid at_##type address type (%d) in user CCB", \
+			"invalid at_"#type" address type (%d) in user CCB", \
 				(hdr)->at_##type);			\
 			goto label;					\
 		}							\
