@@ -404,7 +404,7 @@ static inline unsigned long __pte_default_huge_mask(void)
 
 static inline pte_t pte_mkhuge(pte_t pte)
 {
-	return pte;
+	return __pte(pte_val(pte) | __pte_default_huge_mask());
 }
 
 static inline bool is_default_hugetlb_pte(pte_t pte)
@@ -859,7 +859,7 @@ static inline unsigned long __pmd_page(pmd_t pmd)
 #define pgd_page_vaddr(pgd)		\
 	((unsigned long) __va(pgd_val(pgd)))
 #define pgd_present(pgd)		(pgd_val(pgd) != 0U)
-#define pgd_clear(pgdp)			(pgd_val(*(pgd)) = 0UL)
+#define pgd_clear(pgdp)			(pgd_val(*(pgdp)) = 0UL)
 
 static inline unsigned long pud_large(pud_t pud)
 {
@@ -908,10 +908,12 @@ static inline unsigned long pud_pfn(pud_t pud)
 
 /* Actual page table PTE updates.  */
 void tlb_batch_add(struct mm_struct *mm, unsigned long vaddr,
-		   pte_t *ptep, pte_t orig, int fullmm);
+		   pte_t *ptep, pte_t orig, int fullmm,
+		   unsigned int hugepage_shift);
 
 static void maybe_tlb_batch_add(struct mm_struct *mm, unsigned long vaddr,
-				pte_t *ptep, pte_t orig, int fullmm)
+				pte_t *ptep, pte_t orig, int fullmm,
+				unsigned int hugepage_shift)
 {
 	/* It is more efficient to let flush_tlb_kernel_range()
 	 * handle init_mm tlb flushes.
@@ -920,7 +922,7 @@ static void maybe_tlb_batch_add(struct mm_struct *mm, unsigned long vaddr,
 	 *             and SUN4V pte layout, so this inline test is fine.
 	 */
 	if (likely(mm != &init_mm) && pte_accessible(mm, orig))
-		tlb_batch_add(mm, vaddr, ptep, orig, fullmm);
+		tlb_batch_add(mm, vaddr, ptep, orig, fullmm, hugepage_shift);
 }
 
 #define __HAVE_ARCH_PMDP_GET_AND_CLEAR
@@ -939,7 +941,7 @@ static inline void __set_pte_at(struct mm_struct *mm, unsigned long addr,
 	pte_t orig = *ptep;
 
 	*ptep = pte;
-	maybe_tlb_batch_add(mm, addr, ptep, orig, fullmm);
+	maybe_tlb_batch_add(mm, addr, ptep, orig, fullmm, PAGE_SHIFT);
 }
 
 #define set_pte_at(mm,addr,ptep,pte)	\

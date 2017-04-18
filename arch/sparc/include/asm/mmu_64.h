@@ -60,11 +60,6 @@
 #define CTX_HWBITS(__ctx)	((__ctx.sparc64_ctx_val) & CTX_HW_MASK)
 #define CTX_NRBITS(__ctx)	((__ctx.sparc64_ctx_val) & CTX_NR_MASK)
 
-/* This identifies the three possible tsbs and indices into tsb array. */
-#define MM_TSB_BASE	0
-#define MM_TSB_HUGE	1
-#define	MM_TSB_XLHUGE	2
-
 #ifndef __ASSEMBLY__
 
 #define TSB_ENTRY_ALIGNMENT	16
@@ -87,18 +82,13 @@ struct tsb_config {
 	unsigned long		tsb_map_pte;
 };
 
+#define MM_TSB_BASE	0
 
 #if defined(CONFIG_HUGETLB_PAGE) || defined(CONFIG_TRANSPARENT_HUGEPAGE)
-/* This is for  the tsbs.*/
-#define MM_NUM_TSBS		3
-/* This is the count of huge_pte_count array. */
-#define MM_NUM_HUGEPAGE_SIZES	2
-#define MM_PTES_HUGE		0
-#define MM_PTES_XLHUGE		1
-
+#define MM_TSB_HUGE	1
+#define MM_NUM_TSBS	2
 #else
 #define MM_NUM_TSBS	1
-#define MM_NUM_HUGEPAGE_SIZES	0
 #endif
 
 typedef struct {
@@ -107,39 +97,10 @@ typedef struct {
 	struct tsb_config	tsb_block[MM_NUM_TSBS];
 	struct hv_tsb_descr	tsb_descr[MM_NUM_TSBS];
 	void			*vdso;
-	unsigned long		huge_pte_count[MM_NUM_HUGEPAGE_SIZES];
+	unsigned long		hugetlb_pte_count;
 	unsigned long		thp_pte_count;
 	bool			adi;
 } mm_context_t;
-
-#if defined(CONFIG_HUGETLB_PAGE) || defined(CONFIG_TRANSPARENT_HUGEPAGE)
-
-static inline unsigned long xl_hugepage_pte_count(mm_context_t *mm_context)
-{
-	return mm_context->huge_pte_count[MM_PTES_XLHUGE];
-}
-
-static inline unsigned long hugepage_pte_count(mm_context_t *mm_context)
-{
-	return mm_context->huge_pte_count[MM_PTES_HUGE];
-}
-
-static inline unsigned int hugepage_size_to_pte_count_idx(
-				unsigned long hugepage_size)
-{
-	unsigned int pte_count_index = MM_PTES_HUGE;
-
-	if (hugepage_size != HPAGE_SIZE)
-		pte_count_index = MM_PTES_XLHUGE;
-
-	return pte_count_index;
-}
-
-void __init hv_establish_xl_hugepage_tsb_descriptor(unsigned short pgsz_idx,
-						unsigned int pgsz_mask);
-
-#endif /* CONFIG_HUGETLB_PAGE || CONFIG_TRANSPARENT_HUGEPAGE */
-
 
 #endif /* !__ASSEMBLY__ */
 

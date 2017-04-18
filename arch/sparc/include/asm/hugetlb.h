@@ -32,11 +32,9 @@ static inline int is_hugepage_only_range(struct mm_struct *mm,
 static inline int prepare_hugepage_range(struct file *file,
 			unsigned long addr, unsigned long len)
 {
-	struct hstate *h = hstate_file(file);
-
-	if (len & ~huge_page_mask(h))
+	if (len & ~HPAGE_MASK)
 		return -EINVAL;
-	if (addr & ~huge_page_mask(h))
+	if (addr & ~HPAGE_MASK)
 		return -EINVAL;
 	return 0;
 }

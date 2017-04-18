@@ -17,9 +17,7 @@
 
 #define HPAGE_SHIFT		23
 #define REAL_HPAGE_SHIFT	22
-#define XLHPAGE_16GB_SHIFT	34
-#define	XLHPAGE_2GB_SHIFT	31
-
+#define HPAGE_256MB_SHIFT	28
 #define REAL_HPAGE_SIZE		(_AC(1,UL) << REAL_HPAGE_SHIFT)
 
 #if defined(CONFIG_HUGETLB_PAGE) || defined(CONFIG_TRANSPARENT_HUGEPAGE)
@@ -27,16 +25,15 @@
 #define HPAGE_MASK		(~(HPAGE_SIZE - 1UL))
 #define HUGETLB_PAGE_ORDER	(HPAGE_SHIFT - PAGE_SHIFT)
 #define HAVE_ARCH_HUGETLB_UNMAPPED_AREA
-#define HUGE_MAX_HSTATE		2
 #define REAL_HPAGE_PER_HPAGE	(_AC(1,UL) << (HPAGE_SHIFT - REAL_HPAGE_SHIFT))
+#define HUGE_MAX_HSTATE		2
 #endif
 
 #ifndef __ASSEMBLY__
 
 #if defined(CONFIG_HUGETLB_PAGE) || defined(CONFIG_TRANSPARENT_HUGEPAGE)
 struct pt_regs;
-void hugetlb_setup(struct pt_regs *regs, unsigned int tsb_index);
-extern unsigned int xl_hugepage_shift;
+void hugetlb_setup(struct pt_regs *regs);
 #endif
 
 #define WANT_PAGE_VIRTUAL

@@ -441,145 +441,38 @@ static void __update_mmu_tsb_insert(struct mm_struct *mm, unsigned long tsb_inde
 }
 
 #ifdef CONFIG_HUGETLB_PAGE
-unsigned int xl_hugepage_shift;
-static unsigned long xl_hugepage_pte;
-
-static bool is_xl_hugetlb_pte(pte_t pte)
+static int __init setup_hugepagesz(char *string)
 {
-	bool rc = false;
-
-	if (!xl_hugepage_pte)
-		goto out;
-	else if ((pte_val(pte) & _PAGE_SZALL_4V) == xl_hugepage_pte)
-		rc = true;
-out:
-	return rc;
-}
-
-static void __init sun4v_xl_hugepage_hash_patch(void)
-{
-	extern unsigned int __sun4v_xl_hugepage_hash_patch;
-	unsigned *insn, *p;
-
-	p = &__sun4v_xl_hugepage_hash_patch;
-	insn = (unsigned int *)(unsigned long)*p;
-	*insn = *insn | xl_hugepage_shift;
-	__asm__ __volatile__("flush %0\n\t"
-		: /* no outputs */
-		: "r" (insn));
-}
-
-static void __init sun4v_xl_hugepage_pte_size_patch(void)
-{
-	extern unsigned int __sun4v_xl_hugepage_pte_size_patch;
-	unsigned *insn, *p;
-
-	p = &__sun4v_xl_hugepage_pte_size_patch;
-	insn = (unsigned int *)(unsigned long)*p;
-	p++;
-	/* It is a simm13 in subcc instruction.*/
-	*insn = *p | (unsigned int) xl_hugepage_pte;
-	__asm__ __volatile__("flush %0\n\t"
-		: /* no outputs */
-		: "r" (insn));
-}
-
-static void __init sun4v_xl_hugepage_pte_branch_patch(void)
-{
-	extern unsigned int __sun4v_xl_hugepage_pte_branch_patch;
-	extern unsigned int sun4v_xl_hugepages;
-	unsigned int btarget = (unsigned int)
-		(unsigned long) &sun4v_xl_hugepages;
-	unsigned int *insn, *p, disp19;
-
-	p = &__sun4v_xl_hugepage_pte_branch_patch;
-	insn = (unsigned int *)(unsigned long)*p;
-	/* Instruction which needs to be a bne,pt to sun4v_xl_hugepages.*/
-	p++;
-	disp19 = (btarget - (unsigned int) (unsigned long) insn);
-	disp19 = disp19 >> 2;
-	disp19 = disp19 & (0x7ffff);
-	*insn = *p & ~0x7ffff;
-	*insn = *insn | disp19;
-	__asm__ __volatile__("flush %0\n\t"
-		: /* no outputs */
-		: "r" (insn));
-}
-
-static int __init setup_xl_hugepage(unsigned int hugepage_shift)
-{
+	unsigned long long hugepage_size;
+	unsigned int hugepage_shift;
 	unsigned short hv_pgsz_idx;
 	unsigned int hv_pgsz_mask;
 	int rc = 0;
 
+	hugepage_size = memparse(string, &string);
+	hugepage_shift = ilog2(hugepage_size);
+
 	switch (hugepage_shift) {
-	case XLHPAGE_16GB_SHIFT:
-		xl_hugepage_pte = _PAGE_SZ16GB_4V;
-		hv_pgsz_mask = HV_PGSZ_MASK_16GB;
-		hv_pgsz_idx = HV_PGSZ_IDX_16GB;
+	case HPAGE_256MB_SHIFT:
+		hv_pgsz_mask = HV_PGSZ_MASK_256MB;
+		hv_pgsz_idx = HV_PGSZ_IDX_256MB;
 		break;
-	case XLHPAGE_2GB_SHIFT:
-		xl_hugepage_pte = _PAGE_SZ2GB_4V;
-		hv_pgsz_mask = HV_PGSZ_MASK_2GB;
-		hv_pgsz_idx = HV_PGSZ_IDX_2GB;
+	case HPAGE_SHIFT:
+		hv_pgsz_mask = HV_PGSZ_MASK_4MB;
+		hv_pgsz_idx = HV_PGSZ_IDX_4MB;
 		break;
 	default:
-		goto out;
+		hv_pgsz_mask = 0;
 	}
 
 	if ((hv_pgsz_mask & cpu_pgsz_mask) == 0U) {
-		pr_warn("hugepagesz=%luM not supported by MMU.\n",
-			(1UL << (hugepage_shift - 20)));
+		pr_warn("hugepagesz=%llu not supported by MMU.\n",
+			hugepage_size);
 		goto out;
 	}
 
-	if (xl_hugepage_shift) {
-		pr_warn("hugepagesz=%luM in use and hugepagesz=%luM"
-			" ignored.\n",
-			(1UL << (xl_hugepage_shift - 20)),
-			(1UL << (hugepage_shift - 20)));
-		goto out;
-	}
-
-	xl_hugepage_shift = hugepage_shift;
-	sun4v_xl_hugepage_hash_patch();
-	sun4v_xl_hugepage_pte_size_patch();
-	sun4v_xl_hugepage_pte_branch_patch();
-	hv_establish_xl_hugepage_tsb_descriptor(hv_pgsz_idx, hv_pgsz_mask);
-	hugetlb_add_hstate(xl_hugepage_shift - PAGE_SHIFT);
+	hugetlb_add_hstate(hugepage_shift - PAGE_SHIFT);
 	rc = 1;
-out:
-	return rc;
-}
-
-static int __init setup_hugepagesz(char *string)
-{
-	unsigned long long xl_hugepage_size;
-	int rc = 0;
-
-	if (tlb_type != hypervisor)
-		goto out;
-
-	xl_hugepage_size = memparse(string, &string);
-
-	switch (xl_hugepage_size) {
-	case 1UL << XLHPAGE_16GB_SHIFT:
-	case 1UL << XLHPAGE_2GB_SHIFT:
-	{
-		unsigned int hugepage_shift = ilog2(xl_hugepage_size);
-
-		rc = setup_xl_hugepage(hugepage_shift);
-		break;
-	}
-	default:
-		pr_warn("hugepage size(0x%llx) not supported.\n",
-			xl_hugepage_size);
-		break;
-	case HPAGE_SIZE:
-		hugetlb_add_hstate(HUGETLB_PAGE_ORDER);
-		rc = 1;
-		break;
-	}
 
 out:
 	return rc;
@@ -609,17 +502,13 @@ void update_mmu_cache(struct vm_area_struct *vma, unsigned long address, pte_t *
 	spin_lock_irqsave(&mm->context.lock, flags);
 
 #if defined(CONFIG_HUGETLB_PAGE) || defined(CONFIG_TRANSPARENT_HUGEPAGE)
-	if ((mm->context.huge_pte_count[MM_PTES_HUGE] ||
-	     mm->context.thp_pte_count) && is_default_hugetlb_pte(pte)) {
-		/* We are fabricating 8MB pages using 4MB real hw pages */
+	if ((mm->context.hugetlb_pte_count || mm->context.thp_pte_count) &&
+	    is_hugetlb_pmd(__pmd(pte_val(pte)))) {
+		/* We are fabricating 8MB pages using 4MB real hw pages.  */
 		pte_val(pte) |= (address & (1UL << REAL_HPAGE_SHIFT));
 		__update_mmu_tsb_insert(mm, MM_TSB_HUGE, REAL_HPAGE_SHIFT,
 					address, pte_val(pte));
-	} else if (mm->context.huge_pte_count[MM_PTES_XLHUGE] &&
-			is_xl_hugetlb_pte(pte))
-		__update_mmu_tsb_insert(mm, MM_TSB_XLHUGE, xl_hugepage_shift,
-			address, pte_val(pte));
-	else
+	} else
 #endif
 		__update_mmu_tsb_insert(mm, MM_TSB_BASE, PAGE_SHIFT,
 					address, pte_val(pte));
@@ -3319,7 +3208,7 @@ static void context_reload(void *__data)
 		load_secondary_context(mm);
 }
 
-void hugetlb_setup(struct pt_regs *regs, unsigned int tsb_index)
+void hugetlb_setup(struct pt_regs *regs)
 {
 	struct mm_struct *mm = current->mm;
 	struct tsb_config *tp;
@@ -3337,9 +3226,9 @@ void hugetlb_setup(struct pt_regs *regs, unsigned int tsb_index)
 		die_if_kernel("HugeTSB in atomic", regs);
 	}
 
-	tp = &mm->context.tsb_block[tsb_index];
+	tp = &mm->context.tsb_block[MM_TSB_HUGE];
 	if (likely(tp->tsb == NULL))
-		tsb_grow(mm, tsb_index, 0);
+		tsb_grow(mm, MM_TSB_HUGE, 0);
 
 	tsb_context_switch(mm);
 	smp_tsb_sync(mm);

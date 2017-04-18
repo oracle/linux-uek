@@ -87,6 +87,33 @@ static void __flush_tsb_one(struct tlb_batch *tb, unsigned long hash_shift,
 		__flush_tsb_one_entry(tsb, tb->vaddrs[i], hash_shift, nentries);
 }
 
+#if defined(CONFIG_HUGETLB_PAGE) || defined(CONFIG_TRANSPARENT_HUGEPAGE)
+static void __flush_huge_tsb_one_entry(unsigned long tsb, unsigned long v,
+				       unsigned long hash_shift,
+				       unsigned long nentries,
+				       unsigned int hugepage_shift)
+{
+	unsigned int hpage_entries;
+	unsigned int i;
+
+	hpage_entries = 1 << (hugepage_shift - hash_shift);
+	for (i = 0; i < hpage_entries; i++)
+		__flush_tsb_one_entry(tsb, v + (i << hash_shift), hash_shift,
+				      nentries);
+}
+
+static void __flush_huge_tsb_one(struct tlb_batch *tb, unsigned long hash_shift,
+				 unsigned long tsb, unsigned long nentries,
+				 unsigned int hugepage_shift)
+{
+	unsigned long i;
+
+	for (i = 0; i < tb->tlb_nr; i++)
+		__flush_huge_tsb_one_entry(tsb, tb->vaddrs[i], hash_shift,
+					   nentries, hugepage_shift);
+}
+#endif
+
 void flush_tsb_user(struct tlb_batch *tb)
 {
 	struct mm_struct *mm = tb->mm;
@@ -94,7 +121,7 @@ void flush_tsb_user(struct tlb_batch *tb)
 
 	spin_lock_irqsave(&mm->context.lock, flags);
 
-	if (!tb->default_huge) {
+	if (tb->hugepage_shift == PAGE_SHIFT) {
 		base = (unsigned long) mm->context.tsb_block[MM_TSB_BASE].tsb;
 		nentries = mm->context.tsb_block[MM_TSB_BASE].tsb_nentries;
 		if (tlb_type == cheetah_plus || tlb_type == hypervisor)
@@ -102,33 +129,26 @@ void flush_tsb_user(struct tlb_batch *tb)
 		__flush_tsb_one(tb, PAGE_SHIFT, base, nentries);
 	}
 #if defined(CONFIG_HUGETLB_PAGE) || defined(CONFIG_TRANSPARENT_HUGEPAGE)
-	if (tb->default_huge && mm->context.tsb_block[MM_TSB_HUGE].tsb) {
+	else if (mm->context.tsb_block[MM_TSB_HUGE].tsb) {
 		base = (unsigned long) mm->context.tsb_block[MM_TSB_HUGE].tsb;
 		nentries = mm->context.tsb_block[MM_TSB_HUGE].tsb_nentries;
 		if (tlb_type == cheetah_plus || tlb_type == hypervisor)
 			base = __pa(base);
-		__flush_tsb_one(tb, REAL_HPAGE_SHIFT, base, nentries);
+		__flush_huge_tsb_one(tb, REAL_HPAGE_SHIFT, base, nentries,
+				     tb->hugepage_shift);
 	}
 #endif
-#ifdef	CONFIG_HUGETLB_PAGE
-	if (!tb->default_huge && mm->context.tsb_block[MM_TSB_XLHUGE].tsb) {
-		base = (unsigned long) mm->context.tsb_block[MM_TSB_XLHUGE].tsb;
-		nentries = mm->context.tsb_block[MM_TSB_XLHUGE].tsb_nentries;
-		base = __pa(base);
-		__flush_tsb_one(tb, xl_hugepage_shift, base, nentries);
-	}
-#endif	/* CONFIG_HUGETLB_PAGE */
 	spin_unlock_irqrestore(&mm->context.lock, flags);
 }
 
 void flush_tsb_user_page(struct mm_struct *mm, unsigned long vaddr,
-			bool default_huge)
+			 unsigned int hugepage_shift)
 {
 	unsigned long nentries, base, flags;
 
 	spin_lock_irqsave(&mm->context.lock, flags);
 
-	if (!default_huge) {
+	if (hugepage_shift == PAGE_SHIFT) {
 		base = (unsigned long) mm->context.tsb_block[MM_TSB_BASE].tsb;
 		nentries = mm->context.tsb_block[MM_TSB_BASE].tsb_nentries;
 		if (tlb_type == cheetah_plus || tlb_type == hypervisor)
@@ -136,22 +156,15 @@ void flush_tsb_user_page(struct mm_struct *mm, unsigned long vaddr,
 		__flush_tsb_one_entry(base, vaddr, PAGE_SHIFT, nentries);
 	}
 #if defined(CONFIG_HUGETLB_PAGE) || defined(CONFIG_TRANSPARENT_HUGEPAGE)
-	if (default_huge && mm->context.tsb_block[MM_TSB_HUGE].tsb) {
+	else if (mm->context.tsb_block[MM_TSB_HUGE].tsb) {
 		base = (unsigned long) mm->context.tsb_block[MM_TSB_HUGE].tsb;
 		nentries = mm->context.tsb_block[MM_TSB_HUGE].tsb_nentries;
 		if (tlb_type == cheetah_plus || tlb_type == hypervisor)
 			base = __pa(base);
-		__flush_tsb_one_entry(base, vaddr, REAL_HPAGE_SHIFT, nentries);
+		__flush_huge_tsb_one_entry(base, vaddr, REAL_HPAGE_SHIFT,
+					   nentries, hugepage_shift);
 	}
 #endif
-#ifdef	CONFIG_HUGETLB_PAGE
-	if (!default_huge && mm->context.tsb_block[MM_TSB_XLHUGE].tsb) {
-		base = (unsigned long) mm->context.tsb_block[MM_TSB_XLHUGE].tsb;
-		nentries = mm->context.tsb_block[MM_TSB_XLHUGE].tsb_nentries;
-		base = __pa(base);
-		__flush_tsb_one_entry(base, vaddr, xl_hugepage_shift, nentries);
-	}
-#endif	/* CONFIG_HUGETLB_PAGE */
 	spin_unlock_irqrestore(&mm->context.lock, flags);
 }
 
@@ -161,56 +174,9 @@ void flush_tsb_user_page(struct mm_struct *mm, unsigned long vaddr,
 #if defined(CONFIG_HUGETLB_PAGE) || defined(CONFIG_TRANSPARENT_HUGEPAGE)
 #define HV_PGSZ_IDX_HUGE	HV_PGSZ_IDX_4MB
 #define HV_PGSZ_MASK_HUGE	HV_PGSZ_MASK_4MB
-static unsigned short hv_pgsz_idx_xlhuge;
-static unsigned int hv_pgsz_mask_xlhuge;
-
-void __init hv_establish_xl_hugepage_tsb_descriptor(unsigned short pgsz_idx,
-						    unsigned int pgsz_mask)
-{
-	hv_pgsz_idx_xlhuge = pgsz_idx;
-	hv_pgsz_mask_xlhuge = pgsz_mask;
-}
 #endif
 
-static void sun4v_fill_tsb_descriptor(struct mm_struct *mm)
-{
-	struct hv_tsb_descr *htd = &mm->context.tsb_descr[0];
-	unsigned int tsb_idx;
-
-	for (tsb_idx = 0U; tsb_idx < MM_NUM_TSBS; tsb_idx++) {
-		/* Should there not be a tsb then skip it.*/
-		if (!mm->context.tsb_block[tsb_idx].tsb)
-			continue;
-
-		switch (tsb_idx) {
-		case MM_TSB_BASE:
-			htd->pgsz_mask = HV_PGSZ_MASK_BASE;
-			htd->pgsz_idx = HV_PGSZ_IDX_BASE;
-			break;
-#if defined(CONFIG_HUGETLB_PAGE) || defined(CONFIG_TRANSPARENT_HUGEPAGE)
-		case MM_TSB_HUGE:
-			htd->pgsz_mask = HV_PGSZ_MASK_HUGE;
-			htd->pgsz_idx = HV_PGSZ_IDX_HUGE;
-			break;
-		case MM_TSB_XLHUGE:
-			htd->pgsz_mask = hv_pgsz_mask_xlhuge;
-			htd->pgsz_idx = hv_pgsz_idx_xlhuge;
-			break;
-#endif
-		default:
-			BUG();
-		}
-		htd->assoc = 1;
-		htd->num_ttes = mm->context.tsb_block[tsb_idx].tsb_nentries;
-		htd->ctx_idx = 0;
-		htd->tsb_base = __pa(mm->context.tsb_block[tsb_idx].tsb);
-		htd->resv = 0;
-		htd++;
-	}
-}
-
-static void setup_tsb_params(struct mm_struct *mm, unsigned long tsb_idx,
-			     unsigned long tsb_bytes)
+static void setup_tsb_params(struct mm_struct *mm, unsigned long tsb_idx, unsigned long tsb_bytes)
 {
 	unsigned long tsb_reg, base, tsb_paddr;
 	unsigned long page_sz, tte;
@@ -224,7 +190,6 @@ static void setup_tsb_params(struct mm_struct *mm, unsigned long tsb_idx,
 		break;
 #if defined(CONFIG_HUGETLB_PAGE) || defined(CONFIG_TRANSPARENT_HUGEPAGE)
 	case MM_TSB_HUGE:
-	case MM_TSB_XLHUGE:
 		base = TSBMAP_4M_BASE;
 		break;
 #endif
@@ -307,8 +272,40 @@ static void setup_tsb_params(struct mm_struct *mm, unsigned long tsb_idx,
 		mm->context.tsb_block[tsb_idx].tsb_map_pte = tte;
 	}
 
-	if (tlb_type == hypervisor)
-		sun4v_fill_tsb_descriptor(mm);
+	/* Setup the Hypervisor TSB descriptor.  */
+	if (tlb_type == hypervisor) {
+		struct hv_tsb_descr *hp = &mm->context.tsb_descr[tsb_idx];
+
+		switch (tsb_idx) {
+		case MM_TSB_BASE:
+			hp->pgsz_idx = HV_PGSZ_IDX_BASE;
+			break;
+#if defined(CONFIG_HUGETLB_PAGE) || defined(CONFIG_TRANSPARENT_HUGEPAGE)
+		case MM_TSB_HUGE:
+			hp->pgsz_idx = HV_PGSZ_IDX_HUGE;
+			break;
+#endif
+		default:
+			BUG();
+		}
+		hp->assoc = 1;
+		hp->num_ttes = tsb_bytes / 16;
+		hp->ctx_idx = 0;
+		switch (tsb_idx) {
+		case MM_TSB_BASE:
+			hp->pgsz_mask = HV_PGSZ_MASK_BASE;
+			break;
+#if defined(CONFIG_HUGETLB_PAGE) || defined(CONFIG_TRANSPARENT_HUGEPAGE)
+		case MM_TSB_HUGE:
+			hp->pgsz_mask = HV_PGSZ_MASK_HUGE;
+			break;
+#endif
+		default:
+			BUG();
+		}
+		hp->tsb_base = tsb_paddr;
+		hp->resv = 0;
+	}
 }
 
 struct kmem_cache *pgtable_cache __read_mostly;
@@ -518,55 +515,15 @@ retry_tsb_alloc:
 	}
 }
 
-#if defined(CONFIG_HUGETLB_PAGE) || defined(CONFIG_TRANSPARENT_HUGEPAGE)
-static void capture_and_clear_huge_pte_counts(mm_context_t *mm_context,
-					      unsigned long *thp_pte_count,
-					      unsigned long *capture_array)
-{
-	unsigned int hugepage_idx;
-
-	*thp_pte_count = mm_context->thp_pte_count;
-	mm_context->thp_pte_count = 0UL;
-
-	for (hugepage_idx = 0UL; hugepage_idx != MM_NUM_HUGEPAGE_SIZES;
-		hugepage_idx++) {
-		capture_array[hugepage_idx] =
-			mm_context->huge_pte_count[hugepage_idx];
-		mm_context->huge_pte_count[hugepage_idx] = 0UL;
-	}
-}
-
-static void
-captured_hugepage_pte_count_grow_tsb(struct mm_struct *mm,
-				     unsigned long *thp_pte_count,
-				     unsigned long *capture_huge_pte_count)
-{
-	if (unlikely(capture_huge_pte_count[MM_PTES_HUGE]))
-	if (unlikely(capture_huge_pte_count[MM_PTES_HUGE]) || *thp_pte_count)
-		tsb_grow(mm, MM_TSB_HUGE,
-			(capture_huge_pte_count[MM_PTES_HUGE] +
-			 *thp_pte_count) * REAL_HPAGE_PER_HPAGE);
-
-	if (unlikely(capture_huge_pte_count[MM_PTES_XLHUGE]))
-		tsb_grow(mm, MM_TSB_XLHUGE,
-			capture_huge_pte_count[MM_PTES_XLHUGE]);
-}
-#else
-static void capture_and_clear_huge_pte_counts(mm_context_t *mm_context,
-					      unsigned long *thp_pte_count,
-					      unsigned long *capture_array) {}
-static void
-captured_hugepage_pte_count_grow_tsb(struct mm_struct *mm,
-				     unsigned long *thp_pte_count,
-				     unsigned long *capture_huge_pte_count) {}
-#endif /* CONFIG_HUGETLB_PAGE || CONFIG_TRANSPARENT_HUGEPAGE */
-
 static atomic_t nctxs = ATOMIC_INIT(0);
 
 int init_new_context(struct task_struct *tsk, struct mm_struct *mm)
 {
-	unsigned long capture_huge_pte_count[MM_NUM_HUGEPAGE_SIZES];
+	unsigned long mm_rss = get_mm_rss(mm);
+#if defined(CONFIG_HUGETLB_PAGE) || defined(CONFIG_TRANSPARENT_HUGEPAGE)
+	unsigned long saved_hugetlb_pte_count;
 	unsigned long saved_thp_pte_count;
+#endif
 	unsigned int i;
 	int max_nctx = max_user_nctx;
 	int ret = 0;
@@ -591,12 +548,18 @@ int init_new_context(struct task_struct *tsk, struct mm_struct *mm)
 
 	mm->context.sparc64_ctx_val = 0UL;
 
-	/* We reset it to zero because the fork() page copying
+#if defined(CONFIG_HUGETLB_PAGE) || defined(CONFIG_TRANSPARENT_HUGEPAGE)
+	/* We reset them to zero because the fork() page copying
 	 * will re-increment the counters as the parent PTEs are
 	 * copied into the child address space.
 	 */
-	capture_and_clear_huge_pte_counts(&mm->context, &saved_thp_pte_count,
-					   capture_huge_pte_count);
+	saved_hugetlb_pte_count = mm->context.hugetlb_pte_count;
+	saved_thp_pte_count = mm->context.thp_pte_count;
+	mm->context.hugetlb_pte_count = 0;
+	mm->context.thp_pte_count = 0;
+
+	mm_rss -= saved_thp_pte_count * (HPAGE_SIZE / PAGE_SIZE);
+#endif
 
 	/* copy_mm() copies over the parent's mm_struct before calling
 	 * us, so we need to zero out the TSB pointer or else tsb_grow()
@@ -608,11 +571,14 @@ int init_new_context(struct task_struct *tsk, struct mm_struct *mm)
 	/* If this is fork, inherit the parent's TSB size.  We would
 	 * grow it to that size on the first page fault anyways.
 	 */
-	tsb_grow(mm, MM_TSB_BASE, get_mm_rss(mm) -
-		 saved_thp_pte_count * (HPAGE_SIZE / PAGE_SIZE));
+	tsb_grow(mm, MM_TSB_BASE, mm_rss);
 
-	captured_hugepage_pte_count_grow_tsb(mm, &saved_thp_pte_count,
-					     capture_huge_pte_count);
+#if defined(CONFIG_HUGETLB_PAGE) || defined(CONFIG_TRANSPARENT_HUGEPAGE)
+	if (unlikely(saved_hugetlb_pte_count + saved_thp_pte_count))
+		tsb_grow(mm, MM_TSB_HUGE,
+			 (saved_hugetlb_pte_count + saved_thp_pte_count) *
+			 REAL_HPAGE_PER_HPAGE);
+#endif
 
 	if (unlikely(!mm->context.tsb_block[MM_TSB_BASE].tsb)) {
 		ret = -ENOMEM;

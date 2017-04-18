@@ -67,7 +67,7 @@ void arch_leave_lazy_mmu_mode(void)
 }
 
 static void tlb_batch_add_one(struct mm_struct *mm, unsigned long vaddr,
-			      bool exec, bool default_huge)
+			      bool exec, unsigned int hugepage_shift)
 {
 	struct tlb_batch *tb = &get_cpu_var(tlb_batch);
 	unsigned long nr;
@@ -84,19 +84,19 @@ static void tlb_batch_add_one(struct mm_struct *mm, unsigned long vaddr,
 	}
 
 	if (!tb->active) {
-		flush_tsb_user_page(mm, vaddr, default_huge);
+		flush_tsb_user_page(mm, vaddr, hugepage_shift);
 		global_flush_tlb_page(mm, vaddr);
 		goto out;
 	}
 
 	if (nr == 0) {
 		tb->mm = mm;
-		tb->default_huge = default_huge;
+		tb->hugepage_shift = hugepage_shift;
 	}
 
-	if (tb->default_huge != default_huge) {
+	if (tb->hugepage_shift != hugepage_shift) {
 		flush_tlb_pending();
-		tb->default_huge = default_huge;
+		tb->hugepage_shift = hugepage_shift;
 		nr = 0;
 	}
 
@@ -110,10 +110,9 @@ out:
 }
 
 void tlb_batch_add(struct mm_struct *mm, unsigned long vaddr,
-		   pte_t *ptep, pte_t orig, int fullmm)
+		   pte_t *ptep, pte_t orig, int fullmm,
+		   unsigned int hugepage_shift)
 {
-	bool default_huge = is_default_hugetlb_pte(orig);
-
 	if (tlb_type != hypervisor &&
 	    pte_dirty(orig)) {
 		unsigned long paddr, pfn = pte_pfn(orig);
@@ -139,7 +138,7 @@ void tlb_batch_add(struct mm_struct *mm, unsigned long vaddr,
 
 no_cache_flush:
 	if (!fullmm)
-		tlb_batch_add_one(mm, vaddr, pte_exec(orig), default_huge);
+		tlb_batch_add_one(mm, vaddr, pte_exec(orig), hugepage_shift);
 }
 
 #ifdef CONFIG_TRANSPARENT_HUGEPAGE
@@ -155,7 +154,7 @@ static void tlb_batch_pmd_scan(struct mm_struct *mm, unsigned long vaddr,
 		if (pte_val(*pte) & _PAGE_VALID) {
 			bool exec = pte_exec(*pte);
 
-			tlb_batch_add_one(mm, vaddr, exec, false);
+			tlb_batch_add_one(mm, vaddr, exec, PAGE_SHIFT);
 		}
 		pte++;
 		vaddr += PAGE_SIZE;
@@ -180,16 +179,16 @@ void set_pmd_at(struct mm_struct *mm, unsigned long addr,
 		 * for huge zero page.  Huge zero pages are like hugetlb
 		 * pages in that there is no RSS, but there is the need
 		 * for TSB entries.  So, huge zero page counts go into
-		 * huge_pte_count[MM_PTES_HUGE].
+		 * hugetlb_pte_count.
 		 */
 		if (pmd_val(pmd) & _PAGE_PMD_HUGE) {
 			if (is_huge_zero_page(pmd_page(pmd)))
-				mm->context.huge_pte_count[MM_PTES_HUGE]++;
+				mm->context.hugetlb_pte_count++;
 			else
 				mm->context.thp_pte_count++;
 		} else {
 			if (is_huge_zero_page(pmd_page(orig)))
-				mm->context.huge_pte_count[MM_PTES_HUGE]--;
+				mm->context.hugetlb_pte_count--;
 			else
 				mm->context.thp_pte_count--;
 		}
@@ -210,9 +209,9 @@ void set_pmd_at(struct mm_struct *mm, unsigned long addr,
 			pte_t orig_pte = __pte(pmd_val(orig));
 			bool exec = pte_exec(orig_pte);
 
-			tlb_batch_add_one(mm, addr, exec, true);
+			tlb_batch_add_one(mm, addr, exec, REAL_HPAGE_SHIFT);
 			tlb_batch_add_one(mm, addr + REAL_HPAGE_SIZE, exec,
-					true);
+					REAL_HPAGE_SHIFT);
 		} else {
 			tlb_batch_pmd_scan(mm, addr, orig);
 		}
@@ -233,14 +232,13 @@ void pmdp_invalidate(struct vm_area_struct *vma, unsigned long address,
 	flush_tlb_range(vma, address, address + HPAGE_PMD_SIZE);
 
 	/*
-	 * set_pmd_at() will not be called in a way to decrement the
-	 * context.thp_pte_count when splitting a THP, so do it now.
+	 * set_pmd_at() will not be called in a way to decrement
+	 * thp_pte_count when splitting a THP, so do it now.
 	 * Sanity check pmd before doing the actual decrement.
 	 */
 	if ((pmd_val(entry) & _PAGE_PMD_HUGE) &&
 	    !is_huge_zero_page(pmd_page(entry)))
 		(vma->vm_mm)->context.thp_pte_count--;
-	
 }
 
 void pgtable_trans_huge_deposit(struct mm_struct *mm, pmd_t *pmdp,

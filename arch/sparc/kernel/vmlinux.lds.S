@@ -123,21 +123,6 @@ SECTIONS
 		*(.swapper_4m_tsb_phys_patch)
 		__swapper_4m_tsb_phys_patch_end = .;
 	}
-	.sun4v_xl_hugepage_pte_size_patch : {
-		__sun4v_xl_hugepage_pte_size_patch = .;
-		*(.sun4v_xl_hugepage_pte_size_patch)
-		__sun4v_xl_hugepage_pte_size_patch_end = .;
-	}
-	.sun4v_xl_hugepage_hash_patch : {
-		__sun4v_xl_hugepage_hash_patch = .;
-		*(.sun4v_xl_hugepage_hash_patch)
-		__sun4v_xl_hugepage_hash_patch_end = .;
-	}
-	.sun4v_xl_hugepage_pte_branch_patch : {
-		__sun4v_xl_hugepage_pte_branch_patch = .;
-		*(.sun4v_xl_hugepage_pte_branch_patch)
-		__sun4v_xl_hugepage_pte_branch_patch_end = .;
-	}
 	.popc_3insn_patch : {
 		__popc_3insn_patch = .;
 		*(.popc_3insn_patch)
