@@ -25,6 +25,8 @@
 #include <linux/uaccess.h>
 #include <linux/workqueue.h>
 #include <asm/ptrace.h>
+#include <linux/init_task.h>
+#include <linux/sched/mm.h>
 
 #if defined(CONFIG_DT_FASTTRAP) || defined(CONFIG_DT_FASTTRAP_MODULE)
 # include <linux/uprobes.h>
