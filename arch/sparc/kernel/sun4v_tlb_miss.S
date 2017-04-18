@@ -27,20 +27,20 @@
 
 	/* Create TSB pointer.  This is something like:
 	 *
-	 * index_mask = (512 << (tsb_reg & 0x7UL)) - 1UL;
-	 * tsb_base = tsb_reg & ~0x7UL;
+	 * tsb_mask = (HV_TSB_SIZE_BASE << (tsb_reg & HV_TSB_SIZE_MASK)) - 1UL;
+	 * tsb_base = tsb_reg & ~HV_TSB_SIZE_MASK;
 	 * tsb_index = ((vaddr >> HASH_SHIFT) & tsb_mask);
-	 * tsb_ptr = tsb_base + (tsb_index * 16);
+	 * tsb_ptr = tsb_base + (tsb_index * (1UL << HV_TSB_TTE_SIZE_SHIFT));
 	 */
-#define COMPUTE_TSB_PTR(TSB_PTR, VADDR, HASH_SHIFT, TMP1, TMP2) \
-	and	TSB_PTR, 0x7, TMP1;			\
-	mov	512, TMP2;				\
-	andn	TSB_PTR, 0x7, TSB_PTR;			\
-	sllx	TMP2, TMP1, TMP2;			\
-	srlx	VADDR, HASH_SHIFT, TMP1;		\
-	sub	TMP2, 1, TMP2;				\
-	and	TMP1, TMP2, TMP1;			\
-	sllx	TMP1, 4, TMP1;				\
+#define COMPUTE_TSB_PTR(TSB_PTR, VADDR, HASH_SHIFT, TMP1, TMP2)		\
+	and	TSB_PTR, HV_TSB_SIZE_MASK, TMP1;			\
+	mov	HV_TSB_SIZE_BASE, TMP2;					\
+	andn	TSB_PTR, HV_TSB_SIZE_MASK, TSB_PTR;			\
+	sllx	TMP2, TMP1, TMP2;					\
+	srlx	VADDR, HASH_SHIFT, TMP1;				\
+	sub	TMP2, 1, TMP2;						\
+	and	TMP1, TMP2, TMP1;					\
+	sllx	TMP1, HV_TSB_TTE_SIZE_SHIFT, TMP1;			\
 	add	TSB_PTR, TMP1, TSB_PTR;
 
 sun4v_itlb_miss:
