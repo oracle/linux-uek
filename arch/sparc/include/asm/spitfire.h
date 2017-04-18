@@ -39,7 +39,7 @@
 
 #define HV_TSB_SIZE_BASE	0x200	/* 512 TTE-s minimum.		*/
 #define	HV_TSB_SIZE_BASE_SHIFT	0x09	/* Shift of minimum tsb size.	*/
-#define	HV_TSB_SIZE_MASK	0x07	/* Size encoding of tsb.	*/
+#define	HV_TSB_SIZE_MASK	0x0f	/* Size encoding of tsb.	*/
 #define	HV_TSB_TTE_SIZE_SHIFT	0x04	/* Sixteen byte tte size.	*/
 
 #define L1DCACHE_SIZE		0x4000
