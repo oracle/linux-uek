@@ -249,11 +249,7 @@ void dax_map_segment(struct dax_ctx *dax_ctx, union ccb *ccb, size_t ccb_len)
 		}
 
 		if (hdr->at_src0 == CCB_AT_VA_ALT) {
-			access = (struct ccb_data_acc_ctl *)
-				  &ccbp->dwords[QUERY_DWORD_DAC];
-			/* size in bytes */
-			size = DAX_IN_SIZE_FROM_CCB(access->input_cnt);
-			if (dax_map_segment_common(size, &ccb_addr_type, "src0",
+			if (dax_map_segment_common(0, &ccb_addr_type, "src0",
 						QUERY_DWORD_INPUT, ccbp,
 						dax_ctx) == 0)
 				hdr->at_src0 = ccb_addr_type;

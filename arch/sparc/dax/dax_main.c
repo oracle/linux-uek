@@ -50,6 +50,9 @@ module_param(force, int, 0644);
 MODULE_PARM_DESC(force, "Forces module loading if no device present");
 module_param(dax_debug, int, 0644);
 MODULE_PARM_DESC(dax_debug, "Debug flags");
+static int flow_enable = 0;
+module_param(flow_enable, int, 0644);
+MODULE_PARM_DESC(flow_enable, "Enables flow control if hardware supports it");
 
 static const struct file_operations dax_fops = {
 	.owner =    THIS_MODULE,
@@ -163,8 +166,11 @@ static int __init dax_attach(void)
 	 * MD does not report it in old versions of HV, we need to explicitly
 	 * check for flow control feature.
 	 */
-	if ((dax_type == DAX1) && !dax_has_flow_ctl_numa()) {
-		dax_dbg("Flow control disabled, dax_alloc restricted to 4M");
+	if (!flow_enable) {
+		dax_dbg("Flow control disabled by software, dax_alloc restricted to 4M");
+		dax_no_flow_ctl = true;
+	} else if ((dax_type == DAX1) && !dax_has_flow_ctl_numa()) {
+		dax_dbg("Flow control disabled by hardware, dax_alloc restricted to 4M");
 		dax_no_flow_ctl = true;
 	} else {
 		dax_dbg("Flow control enabled");
