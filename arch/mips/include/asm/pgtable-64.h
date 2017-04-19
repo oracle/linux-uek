@@ -18,6 +18,7 @@
 #include <asm/fixmap.h>
 
 #ifdef CONFIG_PAGE_SIZE_64KB
+#define __ARCH_USE_5LEVEL_HACK
 #include <asm-generic/pgtable-nopmd.h>
 #else
 #include <asm-generic/pgtable-nopud.h>
