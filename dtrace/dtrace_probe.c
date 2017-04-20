@@ -33,6 +33,7 @@
 #include <linux/vmalloc.h>
 #include <asm/pgtable.h>
 #include <asm/cmpxchg.h>
+#include <linux/sched/signal.h>
 
 #include "dtrace.h"
 
