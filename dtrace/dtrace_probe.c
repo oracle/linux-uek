@@ -1300,7 +1300,7 @@ void dtrace_probe_exit(void)
 
 void dtrace_probe_remove_id(dtrace_id_t id)
 {
-	return idr_remove(&dtrace_probe_idr, id);
+	idr_remove(&dtrace_probe_idr, id);
 }
 
 dtrace_probe_t *dtrace_probe_lookup_id(dtrace_id_t id)
