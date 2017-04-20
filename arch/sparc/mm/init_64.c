@@ -2163,11 +2163,18 @@ static void __init setup_page_offset(void)
 			break;
 		case SUN4V_CHIP_SPARC_M7:
 		case SUN4V_CHIP_SPARC_S7:
-		default:
 			/* M7 and later support 52-bit virtual addresses.  */
 			sparc64_va_hole_top =    0xfff8000000000000UL;
 			sparc64_va_hole_bottom = 0x0008000000000000UL;
 			max_phys_bits = 49;
+			break;
+		case SUN4V_CHIP_SPARC_M8:
+		case SUN4V_CHIP_SPARC_S8:
+		default:
+			/* M8 and later support 54-bit virtual addresses.  */
+			sparc64_va_hole_top =    0xffe0000000000000UL;
+			sparc64_va_hole_bottom = 0x0020000000000000UL;
+			max_phys_bits = 51;
 			break;
 		}
 	}
