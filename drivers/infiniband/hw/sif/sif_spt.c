@@ -75,6 +75,7 @@ static int sif_set_mmu_ctx(struct sif_dev *sdev, struct sif_mmu_ctx *ctx,
 			struct sif_mem *mem, bool write)
 {
 	pgd_t *pgd;
+	p4d_t *p4d;
 	pud_t *pud;
 	pmd_t *pmd;
 	pte_t *ptep, pte;
@@ -95,7 +96,12 @@ static int sif_set_mmu_ctx(struct sif_dev *sdev, struct sif_mmu_ctx *ctx,
 
 	ctx->pt = (void *)pgd; /* Misuse pt to save the pointer to avoid going via mm at dealloc time */
 	ctx->mt = SIFMT_ZERO;
-	pud = pud_offset(pgd, start);
+
+	p4d = p4d_offset(pgd, start);
+	if (p4d_none(*p4d))
+		goto err;
+
+	pud = pud_offset(p4d, start);
 	if (pud_none(*pud))
 		goto err;
 
@@ -203,6 +209,7 @@ void sif_spt_unmap_gva_ctx(struct sif_dev *sdev, struct sif_mmu_ctx *sctx)
 	u64 start = sctx->base;
 	u64 len = sctx->size;
 	pgd_t *pgd;
+	p4d_t *p4d;
 	pud_t *pud;
 	pmd_t *pmd;
 	pte_t *ptep, pte;
@@ -223,7 +230,13 @@ void sif_spt_unmap_gva_ctx(struct sif_dev *sdev, struct sif_mmu_ctx *sctx)
 		goto out;
 	}
 
-	pud = pud_offset(pgd, start);
+	p4d = p4d_offset(pgd, start);
+	if (p4d_none(*p4d)) {
+		sif_log(sdev, SIF_MMU, "Table entry(p4d) already freed");
+		goto out;
+	}
+
+	pud = pud_offset(p4d, start);
 	if (pud_none(*pud)) {
 		sif_log(sdev, SIF_MMU, "Table entry(pud) already freed");
 		goto out;

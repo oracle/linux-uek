@@ -62,6 +62,7 @@ typedef struct { unsigned long pte; } pte_t;
 typedef struct { unsigned long iopte; } iopte_t;
 typedef struct { unsigned long pmd; } pmd_t;
 typedef struct { unsigned long pud; } pud_t;
+typedef struct { unsigned long p4d; } p4d_t;
 typedef struct { unsigned long pgd; } pgd_t;
 typedef struct { unsigned long pgprot; } pgprot_t;
 
@@ -69,6 +70,7 @@ typedef struct { unsigned long pgprot; } pgprot_t;
 #define iopte_val(x)	((x).iopte)
 #define pmd_val(x)      ((x).pmd)
 #define pud_val(x)      ((x).pud)
+#define p4d_val(x)      ((x).p4d)
 #define pgd_val(x)	((x).pgd)
 #define pgprot_val(x)	((x).pgprot)
 
@@ -76,6 +78,7 @@ typedef struct { unsigned long pgprot; } pgprot_t;
 #define __iopte(x)	((iopte_t) { (x) } )
 #define __pmd(x)        ((pmd_t) { (x) } )
 #define __pud(x)        ((pud_t) { (x) } )
+#define __p4d(x)        ((p4d_t) { (x) } )
 #define __pgd(x)	((pgd_t) { (x) } )
 #define __pgprot(x)	((pgprot_t) { (x) } )
 
@@ -85,6 +88,7 @@ typedef unsigned long pte_t;
 typedef unsigned long iopte_t;
 typedef unsigned long pmd_t;
 typedef unsigned long pud_t;
+typedef unsigned long p4d_t;
 typedef unsigned long pgd_t;
 typedef unsigned long pgprot_t;
 
@@ -92,6 +96,7 @@ typedef unsigned long pgprot_t;
 #define iopte_val(x)	(x)
 #define pmd_val(x)      (x)
 #define pud_val(x)      (x)
+#define p4d_val(x)      (x)
 #define pgd_val(x)	(x)
 #define pgprot_val(x)	(x)
 
@@ -99,6 +104,7 @@ typedef unsigned long pgprot_t;
 #define __iopte(x)	(x)
 #define __pmd(x)        (x)
 #define __pud(x)        (x)
+#define __p4d(x)        (x)
 #define __pgd(x)	(x)
 #define __pgprot(x)	(x)
 

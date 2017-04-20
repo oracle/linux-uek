@@ -1616,17 +1616,26 @@ static int __init pcpu_cpu_distance(unsigned int from, unsigned int to)
 static void __init pcpu_populate_pte(unsigned long addr)
 {
 	pgd_t *pgd = pgd_offset_k(addr);
+	p4d_t *p4d;
 	pud_t *pud;
 	pmd_t *pmd;
 
 	if (pgd_none(*pgd)) {
-		pud_t *new;
+		p4d_t *new;
 
 		new = __alloc_bootmem(PAGE_SIZE, PAGE_SIZE, PAGE_SIZE);
 		pgd_populate(&init_mm, pgd, new);
 	}
 
-	pud = pud_offset(pgd, addr);
+	p4d = p4d_offset(pgd, addr);
+	if (p4d_none(*p4d)) {
+		pud_t *new;
+
+		new = __alloc_bootmem(PAGE_SIZE, PAGE_SIZE, PAGE_SIZE);
+		p4d_populate(&init_mm, p4d, new);
+	}
+
+	pud = pud_offset(p4d, addr);
 	if (pud_none(*pud)) {
 		pmd_t *new;
 

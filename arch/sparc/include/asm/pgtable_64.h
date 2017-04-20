@@ -12,7 +12,6 @@
  * the SpitFire page tables.
  */
 
-#include <asm-generic/5level-fixup.h>
 #include <linux/compiler.h>
 #include <linux/const.h>
 #include <asm/types.h>
@@ -63,8 +62,16 @@
 #define PUD_MASK	(~(PUD_SIZE-1))
 #define PUD_BITS	(PAGE_SHIFT - 3)
 
-/* PGDIR_SHIFT determines what a fourth-level page table entry can map */
-#define PGDIR_SHIFT	(PUD_SHIFT + PUD_BITS)
+/* P4D_SHIFT determines the size of the area a fourth-level page
+ * table can map
+*/
+#define P4D_SHIFT	(PUD_SHIFT + PUD_BITS)
+#define P4D_SIZE	(_AC(1,UL) << P4D_SHIFT)
+#define P4D_MASK	(~(P4D_SIZE-1))
+#define P4D_BITS	(PAGE_SHIFT - 3)
+
+/* PGDIR_SHIFT determines what a fifth-level page table entry can map */
+#define PGDIR_SHIFT	(P4D_SHIFT + P4D_BITS)
 #define PGDIR_SIZE	(_AC(1,UL) << PGDIR_SHIFT)
 #define PGDIR_MASK	(~(PGDIR_SIZE-1))
 #define PGDIR_BITS	(PAGE_SHIFT - 3)
@@ -73,7 +80,7 @@
 #error MAX_PHYS_ADDRESS_BITS exceeds what kernel page tables can support
 #endif
 
-#if (PGDIR_SHIFT + PGDIR_BITS) != 53
+#if (PGDIR_SHIFT + PGDIR_BITS) != 63
 #error Page table parameters do not cover virtual address space properly.
 #endif
 
@@ -95,6 +102,7 @@ bool kern_addr_valid(unsigned long addr);
 #define PTRS_PER_PTE	(1UL << (PAGE_SHIFT-3))
 #define PTRS_PER_PMD	(1UL << PMD_BITS)
 #define PTRS_PER_PUD	(1UL << PUD_BITS)
+#define PTRS_PER_P4D	(1UL << P4D_BITS)
 #define PTRS_PER_PGD	(1UL << PGDIR_BITS)
 
 /* Kernel has a separate 44bit address space. */
@@ -106,6 +114,9 @@ bool kern_addr_valid(unsigned long addr);
 #define pud_ERROR(e)							\
 	pr_err("%s:%d: bad pud %p(%016lx) seen at (%pS)\n",		\
 	       __FILE__, __LINE__, &(e), pud_val(e), __builtin_return_address(0))
+#define p4d_ERROR(e)							\
+	pr_err("%s:%d: bad p4d %p(%016lx) seen at (%pS)\n",		\
+	       __FILE__, __LINE__, &(e), p4d_val(e), __builtin_return_address(0))
 #define pgd_ERROR(e)							\
 	pr_err("%s:%d: bad pgd %p(%016lx) seen at (%pS)\n",		\
 	       __FILE__, __LINE__, &(e), pgd_val(e), __builtin_return_address(0))
@@ -817,6 +828,10 @@ static inline int pmd_present(pmd_t pmd)
 
 #define pud_bad(pud)			(pud_val(pud) & ~PAGE_MASK)
 
+#define p4d_none(p4d)			(!p4d_val(p4d))
+
+#define p4d_bad(p4d)			(p4d_val(p4d) & ~PAGE_MASK)
+
 #define pgd_none(pgd)			(!pgd_val(pgd))
 
 #define pgd_bad(pgd)			(pgd_val(pgd) & ~PAGE_MASK)
@@ -850,13 +865,24 @@ static inline unsigned long __pmd_page(pmd_t pmd)
 
 	return ((unsigned long) __va(pfn << PAGE_SHIFT));
 }
+
 #define pmd_page(pmd) 			virt_to_page((void *)__pmd_page(pmd))
+#define pmd_clear(pmdp)			(pmd_val(*(pmdp)) = 0UL)
 #define pud_page_vaddr(pud)		\
 	((unsigned long) __va(pud_val(pud)))
 #define pud_page(pud) 			virt_to_page((void *)pud_page_vaddr(pud))
-#define pmd_clear(pmdp)			(pmd_val(*(pmdp)) = 0UL)
 #define pud_present(pud)		(pud_val(pud) != 0U)
 #define pud_clear(pudp)			(pud_val(*(pudp)) = 0UL)
+
+#define p4d_set(p4dp, pudp)	\
+	(p4d_val(*(p4dp)) = (__pa((unsigned long) (pudp))))
+
+#define p4d_page_vaddr(p4d)             \
+	((unsigned long) __va(p4d_val(p4d)))
+#define p4d_page(p4d)                   virt_to_page((void *)p4d_page_vaddr(p4d))
+#define p4d_present(p4d)                (p4d_val(p4d) != 0U)
+#define p4d_clear(p4dp)                 (p4d_val(*(p4dp)) = 0UL)
+
 #define pgd_page_vaddr(pgd)		\
 	((unsigned long) __va(pgd_val(pgd)))
 #define pgd_present(pgd)		(pgd_val(pgd) != 0U)
@@ -879,8 +905,8 @@ static inline unsigned long pud_pfn(pud_t pud)
 /* Same in both SUN4V and SUN4U.  */
 #define pte_none(pte) 			(!pte_val(pte))
 
-#define pgd_set(pgdp, pudp)	\
-	(pgd_val(*(pgdp)) = (__pa((unsigned long) (pudp))))
+#define pgd_set(pgdp, p4dp)	\
+	(pgd_val(*(pgdp)) = (__pa((unsigned long) (p4dp))))
 
 /* to find an entry in a page-table-directory. */
 #define pgd_index(address)	(((address) >> PGDIR_SHIFT) & (PTRS_PER_PGD - 1))
@@ -889,10 +915,15 @@ static inline unsigned long pud_pfn(pud_t pud)
 /* to find an entry in a kernel page-table-directory */
 #define pgd_offset_k(address) pgd_offset(&init_mm, address)
 
+/* Find an entry in the fourt-level page table.. */
+#define p4d_index(address)	(((address) >> P4D_SHIFT) & (PTRS_PER_P4D - 1))
+#define p4d_offset(pgdp, address)	\
+	((p4d_t *) pgd_page_vaddr(*(pgdp)) + p4d_index(address))
+
 /* Find an entry in the third-level page table.. */
 #define pud_index(address)	(((address) >> PUD_SHIFT) & (PTRS_PER_PUD - 1))
-#define pud_offset(pgdp, address)	\
-	((pud_t *) pgd_page_vaddr(*(pgdp)) + pud_index(address))
+#define pud_offset(p4dp, address)	\
+	((pud_t *) p4d_page_vaddr(*(p4dp)) + pud_index(address))
 
 /* Find an entry in the second-level page table.. */
 #define pmd_offset(pudp, address)	\

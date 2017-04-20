@@ -83,6 +83,7 @@ int dtrace_user_addr_is_exec(uintptr_t addr)
 {
 	struct mm_struct	*mm = current->mm;
 	pgd_t			pgd;
+	p4d_t			p4d;
 	pud_t			pud;
 	pmd_t			pmd;
 	unsigned long		flags;
@@ -99,7 +100,11 @@ int dtrace_user_addr_is_exec(uintptr_t addr)
 	if (pgd_none(pgd))
 		goto out;
 
-	pud = *pud_offset(&pgd, addr);
+	p4d = *p4d_offset(&pgd, addr);
+	if (p4d_none(p4d))
+		goto out;
+
+	pud = *pud_offset(&p4d, addr);
 	if (pud_none(pud))
 		goto out;
 

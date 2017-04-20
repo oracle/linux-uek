@@ -269,21 +269,25 @@ pte_t *huge_pte_alloc(struct mm_struct *mm,
 			unsigned long addr, unsigned long sz)
 {
 	pgd_t *pgd;
+	p4d_t *p4d;
 	pud_t *pud;
 	pmd_t *pmd;
 	pte_t *pte = NULL;
 
 	pgd = pgd_offset(mm, addr);
-	pud = pud_alloc(mm, pgd, addr);
-	if (pud) {
-		pmd = pmd_alloc(mm, pud, addr);
-		if (!pmd)
-			return NULL;
+	p4d = p4d_alloc(mm, pgd, addr);
+	if (p4d) {
+		pud = pud_alloc(mm, p4d, addr);
+		if (pud) {
+			pmd = pmd_alloc(mm, pud, addr);
+			if (!pmd)
+				return NULL;
 
-		if (sz >= PMD_SIZE)
-			pte = (pte_t *)pmd;
-		else
-			pte = pte_alloc_map(mm, NULL, pmd, addr);
+			if (sz >= PMD_SIZE)
+				pte = (pte_t *)pmd;
+			else
+				pte = pte_alloc_map(mm, NULL, pmd, addr);
+		}
 	}
 
 	return pte;
@@ -292,20 +296,24 @@ pte_t *huge_pte_alloc(struct mm_struct *mm,
 pte_t *huge_pte_offset(struct mm_struct *mm, unsigned long addr)
 {
 	pgd_t *pgd;
+	p4d_t *p4d;
 	pud_t *pud;
 	pmd_t *pmd;
 	pte_t *pte = NULL;
 
 	pgd = pgd_offset(mm, addr);
 	if (!pgd_none(*pgd)) {
-		pud = pud_offset(pgd, addr);
-		if (!pud_none(*pud)) {
-			pmd = pmd_offset(pud, addr);
-			if (!pmd_none(*pmd)) {
-				if (is_hugetlb_pmd(*pmd))
-					pte = (pte_t *)pmd;
-				else
-					pte = pte_offset_map(pmd, addr);
+		p4d = p4d_offset(pgd, addr);
+		if (!p4d_none(*p4d)) {
+			pud = pud_offset(p4d, addr);
+			if (!pud_none(*pud)) {
+				pmd = pmd_offset(pud, addr);
+				if (!pmd_none(*pmd)) {
+					if (is_hugetlb_pmd(*pmd))
+						pte = (pte_t *)pmd;
+					else
+						pte = pte_offset_map(pmd, addr);
+				}
 			}
 		}
 	}
@@ -432,7 +440,7 @@ static void hugetlb_free_pmd_range(struct mmu_gather *tlb, pud_t *pud,
 	mm_dec_nr_pmds(tlb->mm);
 }
 
-static void hugetlb_free_pud_range(struct mmu_gather *tlb, pgd_t *pgd,
+static void hugetlb_free_pud_range(struct mmu_gather *tlb, p4d_t *p4d,
 				   unsigned long addr, unsigned long end,
 				   unsigned long floor, unsigned long ceiling)
 {
@@ -441,7 +449,7 @@ static void hugetlb_free_pud_range(struct mmu_gather *tlb, pgd_t *pgd,
 	unsigned long start;
 
 	start = addr;
-	pud = pud_offset(pgd, addr);
+	pud = pud_offset(p4d, addr);
 	do {
 		next = pud_addr_end(addr, end);
 		if (pud_none_or_clear_bad(pud))
@@ -449,6 +457,40 @@ static void hugetlb_free_pud_range(struct mmu_gather *tlb, pgd_t *pgd,
 		hugetlb_free_pmd_range(tlb, pud, addr, next, floor,
 				       ceiling);
 	} while (pud++, addr = next, addr != end);
+
+	start &= P4D_MASK;
+	if (start < floor)
+		return;
+	if (ceiling) {
+		ceiling &= P4D_MASK;
+		if (!ceiling)
+			return;
+	}
+	if (end - 1 > ceiling - 1)
+		return;
+
+	pud = pud_offset(p4d, start);
+	p4d_clear(p4d);
+	pud_free_tlb(tlb, pud, start);
+}
+
+static void hugetlb_free_p4d_range(struct mmu_gather *tlb, pgd_t *pgd,
+				   unsigned long addr, unsigned long end,
+				   unsigned long floor, unsigned long ceiling)
+{
+	unsigned long next;
+	unsigned long start;
+	p4d_t *p4d;
+
+	start = addr;
+	p4d = p4d_offset(pgd, addr);
+	do {
+		next = p4d_addr_end(addr, end);
+		if (p4d_none_or_clear_bad(p4d))
+			continue;
+		hugetlb_free_pud_range(tlb, p4d, addr, next, floor,
+				ceiling);
+	} while (p4d++, addr = next, addr != end);
 
 	start &= PGDIR_MASK;
 	if (start < floor)
@@ -461,9 +503,9 @@ static void hugetlb_free_pud_range(struct mmu_gather *tlb, pgd_t *pgd,
 	if (end - 1 > ceiling - 1)
 		return;
 
-	pud = pud_offset(pgd, start);
+	p4d = p4d_offset(pgd, start);
 	pgd_clear(pgd);
-	pud_free_tlb(tlb, pud, start);
+	p4d_free_tlb(tlb, p4d, start);
 }
 
 void hugetlb_free_pgd_range(struct mmu_gather *tlb,
@@ -494,6 +536,6 @@ void hugetlb_free_pgd_range(struct mmu_gather *tlb,
 		next = pgd_addr_end(addr, end);
 		if (pgd_none_or_clear_bad(pgd))
 			continue;
-		hugetlb_free_pud_range(tlb, pgd, addr, next, floor, ceiling);
+		hugetlb_free_p4d_range(tlb, pgd, addr, next, floor, ceiling);
 	} while (pgd++, addr = next, addr != end);
 }
