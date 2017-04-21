@@ -57,7 +57,7 @@ static int dax_has_flow_ctl_one_node(void)
 
 	ra = virt_to_phys(ccb);
 
-	hv_rv = sun4v_dax_ccb_submit((void *) ra, 64, HV_DAX_QUERY_CMD, 0,
+	hv_rv = sun4v_dax_ccb_submit((void *) ra, 64, HV_DAX_CCB_VA_PRIVILEGED | HV_DAX_QUERY_CMD, 0,
 				     &submitted_ccb_buf_len, &nomap_va);
 	if (hv_rv != HV_EOK) {
 		dax_info("failed dax submit, ret=0x%lx", hv_rv);
@@ -161,11 +161,9 @@ bool dax_has_flow_ctl_numa(void)
 
 void dax_overflow_check(struct dax_ctx *ctx, int idx)
 {
-	unsigned long output_size, input_size, virtp;
-	unsigned long page_size = PAGE_SIZE;
+	unsigned long virtp, page_size = PAGE_SIZE;
 	struct ccb_hdr *hdr;
 	union ccb     *ccb;
-	struct ccb_data_acc_ctl *access;
 	struct vm_area_struct *vma;
 	struct ccb_completion_area *ca = &ctx->ca_buf[idx];
 
@@ -181,80 +179,36 @@ void dax_overflow_check(struct dax_ctx *ctx, int idx)
 	ccb = &ctx->ccb_buf[idx];
 	hdr = CCB_HDR(ccb);
 
-	access = (struct ccb_data_acc_ctl *) &ccb->dwords[QUERY_DWORD_DAC];
-	output_size = access->output_buf_sz * 64 + 64;
-	input_size  = access->input_cnt + 1;
-
 	dax_dbg("*************************");
 	dax_dbg("*DAX Page Overflow Report:");
-	dax_dbg("*  Output size requested = 0x%lx, output size produced = 0x%x",
-		output_size, ca->output_sz);
-	dax_dbg("*  Input size requested = 0x%lx, input size processed = 0x%x",
-		input_size, ca->n_processed);
-	dax_dbg("*  User virtual address analysis:");
+	dax_dbg("*  Output size produced = 0x%x", ca->output_sz);
+	dax_dbg("*  Input size processed = 0x%x", ca->n_processed);
+	dax_dbg("*  Address analysis:");
 
 	virtp = ccb->dwords[QUERY_DWORD_OUTPUT];
 
 	if (hdr->at_dst == CCB_AT_RA) {
-		dax_dbg("*   Output address = 0x%lx physical, so no overflow possible",
-			virtp);
-	} else {
-		/* output buffer was virtual, so page overflow is possible */
-		if (hdr->at_dst == CCB_AT_VA_ALT) {
-			if (current->mm == NULL)
-				return;
+		page_size = DAX_SYN_LARGE_PAGE_SIZE;
+	} else if (hdr->at_dst == CCB_AT_VA_ALT) {
+		if (current->mm == NULL)
+			return;
 
-			vma = find_vma(current->mm, virtp);
-			if (vma == NULL)
-				dax_dbg("*   Output address = 0x%lx but is demapped, which precludes analysis",
-					virtp);
-			else
-				page_size = vma_kernel_pagesize(vma);
-		} else if (hdr->at_dst == CCB_AT_VA) {
-			page_size = DAX_SYN_LARGE_PAGE_SIZE;
+		vma = find_vma(current->mm, virtp);
+		if (vma == NULL) {
+			dax_dbg("*   Output address = 0x%lx but is demapped, which precludes analysis",
+				virtp);
+			goto done;
+		} else {
+			page_size = vma_kernel_pagesize(vma);
 		}
+	} 
 
-		dax_dbg("*   Output address = 0x%lx, page size = 0x%lx; page overflow %s",
-			virtp, page_size,
-			(virtp + ca->output_sz >= ALIGN(virtp + 1, page_size)) ?
-					 "LIKELY" : "UNLIKELY");
-		dax_dbg("*   Output size produced (0x%x) is %s the page bounds 0x%lx..0x%lx",
-			ca->output_sz,
-			(virtp + ca->output_sz >= ALIGN(virtp + 1, page_size)) ?
+	dax_dbg("*   Output size produced (0x%x) is %s the page bounds 0x%lx..0x%lx",
+		ca->output_sz,
+		(virtp + ca->output_sz > ALIGN(virtp + 1, page_size)) ?
 					 "OUTSIDE" : "WITHIN",
 			virtp, ALIGN(virtp + 1, page_size));
-	}
 
-	virtp = ccb->dwords[QUERY_DWORD_INPUT];
-	if (hdr->at_src0 == CCB_AT_RA) {
-		dax_dbg("*   Input address = 0x%lx physical, so no overflow possible",
-			virtp);
-	} else {
-		if (hdr->at_src0 == CCB_AT_VA_ALT) {
-			if (current->mm == NULL)
-				return;
-
-			vma = find_vma(current->mm, virtp);
-			if (vma == NULL)
-				dax_dbg("*   Input address = 0x%lx but is demapped, which precludes analysis",
-					virtp);
-			else
-				page_size = vma_kernel_pagesize(vma);
-		} else if (hdr->at_src0 == CCB_AT_VA) {
-			page_size = DAX_SYN_LARGE_PAGE_SIZE;
-		}
-
-		dax_dbg("*   Input address = 0x%lx, page size = 0x%lx; page overflow %s",
-			virtp, page_size,
-			(virtp + input_size >=
-			 ALIGN(virtp + 1, page_size)) ?
-					"LIKELY" : "UNLIKELY");
-		dax_dbg("*   Input size processed (0x%x) is %s the page bounds 0x%lx..0x%lx",
-			ca->n_processed,
-			(virtp + ca->n_processed >=
-			 ALIGN(virtp + 1, page_size)) ?
-					"OUTSIDE" : "WITHIN",
-			virtp, ALIGN(virtp + 1, page_size));
-	}
+done:
 	dax_dbg("*************************");
 }

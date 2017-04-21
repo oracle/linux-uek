@@ -15,7 +15,7 @@ atomic_t dax_alloc_counter = ATOMIC_INIT(0);
 atomic_t dax_requested_mem = ATOMIC_INIT(0);
 
 int dax_debug;
-bool dax_no_flow_ctl;
+bool dax_no_flow_ctl, dax_no_ra_pgsz;
 
 /* driver public entry points */
 static long dax_ioctl(struct file *f, unsigned int cmd, unsigned long arg);
@@ -141,6 +141,9 @@ static int __init dax_attach(void)
 				 DAX_MAJOR, minor);
 	}
 
+	dax_no_ra_pgsz = (DAX_MAJOR == 1) && (minor == 0);
+	dax_dbg("RA pagesize feature %spresent", dax_no_ra_pgsz ? "not " : "");
+
 	ret = hv_get_hwqueue_size(&max_ccbs);
 	if (ret != 0) {
 		dax_err("get_hwqueue_size failed with status=%d and max_ccbs=%ld",
@@ -170,7 +173,7 @@ static int __init dax_attach(void)
 		dax_dbg("Flow control disabled by software, dax_alloc restricted to 4M");
 		dax_no_flow_ctl = true;
 	} else if ((dax_type == DAX1) && !dax_has_flow_ctl_numa()) {
-		dax_dbg("Flow control disabled by hardware, dax_alloc restricted to 4M");
+		dax_dbg("Flow control disabled by hardware, dax_alloc (if available) restricted to 4M");
 		dax_no_flow_ctl = true;
 	} else {
 		dax_dbg("Flow control enabled");

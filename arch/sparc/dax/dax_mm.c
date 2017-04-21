@@ -35,6 +35,11 @@ static int dax_alloc_ram(struct file *filp, struct vm_area_struct *vma)
 	int ret = -ENOMEM;
 	struct dax_ctx *dax_ctx = (struct dax_ctx *) filp->private_data;
 
+	if (dax_no_ra_pgsz) {
+		ret = -ENODEV;
+		goto done;
+	}
+
 	len = vma->vm_end - vma->vm_start;
 	if (len & (PAGE_SIZE - 1)) {
 		dax_err("request (0x%lx) not a multiple of page size", len);
@@ -158,8 +163,7 @@ int dax_devmap(struct file *f, struct vm_area_struct *vma)
 	return 0;
 }
 
-int dax_map_segment_common(unsigned long size,
-			   u32 *ccb_addr_type, char *name,
+int dax_map_segment_common(u32 *ccb_addr_type, char *name,
 			   u32 addr_sel, union ccb *ccbp,
 			   struct dax_ctx *dax_ctx)
 {
@@ -167,7 +171,7 @@ int dax_map_segment_common(unsigned long size,
 	struct vm_area_struct *vma;
 	unsigned long virtp = ccbp->dwords[addr_sel];
 
-	dax_map_dbg("%s uva 0x%lx, size=0x%lx", name, virtp, size);
+	dax_map_dbg("%s uva 0x%lx", name, virtp);
 	vma = find_vma(dax_ctx->dax_mm->this_mm, virtp);
 
 	if (vma == NULL)
@@ -179,24 +183,12 @@ int dax_map_segment_common(unsigned long size,
 	if (dv == NULL || vma->vm_ops != &dax_vm_ops)
 		return -1;
 
-	/*
-	 * check if user provided size is within the vma bounds.
-	 */
-	if ((virtp + size) > vma->vm_end) {
-		dax_err("%s buffer 0x%lx+0x%lx overflows page 0x%lx+0x%lx",
-			name, virtp, size, dv->pa, dv->length);
-		return -1;
-	}
-
 	dax_vm_print("matched", dv);
 	if (dax_no_flow_ctl) {
-		*ccb_addr_type = CCB_AT_VA;
-		ccbp->dwords[addr_sel] = (unsigned long)dv->kva +
-					(virtp - vma->vm_start);
-		/* touch va to fault translation into tlb/tsb */
-		READ_ONCE(*(u8 *)ccbp->dwords[addr_sel]);
-
-		dax_map_dbg("changed %s to KVA 0x%llx", name,
+		*ccb_addr_type = CCB_AT_RA;
+		ccbp->dwords[addr_sel] = CHECK_4MB_PAGE_RANGE |
+			(dv->pa + (virtp - vma->vm_start));
+		dax_map_dbg("changed %s to RA 0x%llx", name,
 			    ccbp->dwords[addr_sel]);
 	} else {
 		*ccb_addr_type = CCB_AT_RA;
@@ -217,8 +209,6 @@ void dax_map_segment(struct dax_ctx *dax_ctx, union ccb *ccb, size_t ccb_len)
 {
 	int i;
 	int nelem = CCB_BYTE_TO_NCCB(ccb_len);
-	struct ccb_data_acc_ctl *access;
-	unsigned long size;
 	u32 ccb_addr_type;
 
 	for (i = 0; i < nelem; i++) {
@@ -232,37 +222,27 @@ void dax_map_segment(struct dax_ctx *dax_ctx, union ccb *ccb, size_t ccb_len)
 		dax_dbg("ccb[%d]=0x%p, idx=%d, at_dst=%d",
 			i, ccbp, idx, hdr->at_dst);
 		if (hdr->at_dst == CCB_AT_VA_ALT) {
-			access = (struct ccb_data_acc_ctl *)
-				&ccbp->dwords[QUERY_DWORD_DAC];
-			/* size in bytes */
-			size = DAX_OUT_SIZE_FROM_CCB(access->output_buf_sz);
-
-			if (dax_map_segment_common(size, &ccb_addr_type, "dst",
+			if (dax_map_segment_common(&ccb_addr_type, "dst",
 						   QUERY_DWORD_OUTPUT, ccbp,
-						   dax_ctx) == 0) {
+						   dax_ctx) == 0)
 				hdr->at_dst = ccb_addr_type;
-				/* enforce flow limit */
-				if (hdr->at_dst == CCB_AT_RA)
-					access->flow_ctl =
-						DAX_BUF_LIMIT_FLOW_CTL;
-			}
 		}
 
 		if (hdr->at_src0 == CCB_AT_VA_ALT) {
-			if (dax_map_segment_common(0, &ccb_addr_type, "src0",
-						QUERY_DWORD_INPUT, ccbp,
-						dax_ctx) == 0)
+			if (dax_map_segment_common(&ccb_addr_type, "src0",
+						   QUERY_DWORD_INPUT, ccbp,
+						   dax_ctx) == 0)
 				hdr->at_src0 = ccb_addr_type;
 		}
 
 		if (hdr->at_src1 == CCB_AT_VA_ALT)
-			if (dax_map_segment_common(0, &ccb_addr_type, "src1",
+			if (dax_map_segment_common(&ccb_addr_type, "src1",
 						   QUERY_DWORD_SEC_INPUT, ccbp,
 						   dax_ctx) == 0)
 				hdr->at_src1 = ccb_addr_type;
 
 		if (hdr->at_tbl == CCB_AT_VA_ALT)
-			if (dax_map_segment_common(0, &ccb_addr_type, "tbl",
+			if (dax_map_segment_common(&ccb_addr_type, "tbl",
 						   QUERY_DWORD_TBL, ccbp,
 						   dax_ctx) == 0)
 				hdr->at_tbl = ccb_addr_type;
