@@ -277,6 +277,7 @@ nfssvc_decode_writeargs(struct svc_rqst *rqstp, __be32 *p,
 					struct nfsd_writeargs *args)
 {
 	unsigned int len, hdr, dlen;
+	struct kvec *head = rqstp->rq_arg.head;
 	int v;
 
 	if (!(p = decode_fh(p, &args->fh)))
@@ -297,6 +298,8 @@ nfssvc_decode_writeargs(struct svc_rqst *rqstp, __be32 *p,
 	 * bytes.
 	 */
 	hdr = (void*)p - rqstp->rq_arg.head[0].iov_base;
+	if (hdr > head->iov_len)
+		return 0;
 	dlen = rqstp->rq_arg.head[0].iov_len + rqstp->rq_arg.page_len
 		- hdr;
 
