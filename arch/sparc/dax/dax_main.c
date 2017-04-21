@@ -753,7 +753,7 @@ static int dax_ioctl_ccb_exec(void *arg, struct file *f)
 	 * enhancement.
 	 */
 	if (ccb_buf == NULL || nreserved != usr_args.dce_ccb_buf_len) {
-		dax_err("insufficient kernel CCB resources: user needs to free completion area space and retry");
+		dax_dbg("insufficient kernel CCB resources: user needs to free completion area space and retry");
 		return -ENOBUFS;
 	}
 
