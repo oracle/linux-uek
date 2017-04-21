@@ -361,6 +361,40 @@ static void dma_4v_free_coherent(struct device *dev, size_t size, void *cpu,
 		free_pages((unsigned long)cpu, order);
 }
 
+static dma_addr_t dma_4v_map_page_bypass(struct device *dev, struct page *page,
+					 unsigned long offset, size_t sz,
+					 enum dma_data_direction direction,
+					 struct dma_attrs *attrs)
+{
+	struct pci_pbm_info *pbm;
+	unsigned long devhandle;
+	unsigned long ra;
+	unsigned long prot;
+	unsigned long dma_addr;
+
+	if (unlikely(direction == DMA_NONE))
+		goto bad;
+
+	prot = HV_PCI_MAP_ATTR_READ;
+	if (direction != DMA_TO_DEVICE)
+		prot |= HV_PCI_MAP_ATTR_WRITE;
+
+	/* VPCI maj=2, min=[0,1] or greater supports relax ordering */
+	if (dma_get_attr(DMA_ATTR_WEAK_ORDERING, attrs) && vpci_major >= 2)
+		prot |= HV_PCI_MAP_ATTR_RELAXED_ORDER;
+
+	pbm = dev->archdata.host_controller;
+	devhandle = pbm->devhandle;
+	ra = __pa(page_address(page) + offset);
+	if (pci_sun4v_iommu_getbypass(devhandle, ra, prot, &dma_addr))
+		goto bad;
+
+	return dma_addr;
+
+bad:
+	return DMA_ERROR_CODE;
+}
+
 static dma_addr_t dma_4v_map_page(struct device *dev, struct page *page,
 				  unsigned long offset, size_t sz,
 				  enum dma_data_direction direction,
@@ -482,6 +516,45 @@ static void dma_4v_unmap_page(struct device *dev, dma_addr_t bus_addr,
 	entry = (bus_addr - tbl->table_map_base) >> IO_PAGE_SHIFT;
 	dma_4v_iommu_demap(dev, devhandle, bus_addr, iotsb_num, entry, npages);
 	iommu_tbl_range_free(tbl, bus_addr, npages, IOMMU_ERROR_CODE);
+}
+
+static int dma_4v_map_sg_bypass(struct device *dev, struct scatterlist *sglist,
+				int nelems, enum dma_data_direction direction,
+				struct dma_attrs *attrs)
+{
+	struct pci_pbm_info *pbm;
+	unsigned long devhandle;
+	unsigned long ra;
+	unsigned long prot;
+	unsigned long dma_addr;
+	struct scatterlist *s;
+	int i;
+
+	if (unlikely(direction == DMA_NONE))
+		goto bad;
+
+	prot = HV_PCI_MAP_ATTR_READ;
+	if (direction != DMA_TO_DEVICE)
+		prot |= HV_PCI_MAP_ATTR_WRITE;
+
+	/* VPCI maj=2, min=[0,1] or greater supports relax ordering */
+	if (dma_get_attr(DMA_ATTR_WEAK_ORDERING, attrs) && vpci_major >= 2)
+		prot |= HV_PCI_MAP_ATTR_RELAXED_ORDER;
+
+	pbm = dev->archdata.host_controller;
+	devhandle = pbm->devhandle;
+	for_each_sg(sglist, s, nelems, i) {
+		ra = (unsigned long)SG_ENT_PHYS_ADDRESS(s);
+		if (pci_sun4v_iommu_getbypass(devhandle, ra, prot, &dma_addr))
+			goto bad;
+		s->dma_address = dma_addr;
+		s->dma_length = s->length;
+	}
+
+	return nelems;
+
+bad:
+	return 0;
 }
 
 static int dma_4v_map_sg(struct device *dev, struct scatterlist *sglist,
