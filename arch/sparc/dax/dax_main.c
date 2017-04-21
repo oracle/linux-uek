@@ -27,6 +27,8 @@ static int dax_ioctl_ccb_thr_init(void *, struct file *);
 static int dax_ioctl_ccb_thr_fini(struct file *f);
 static int dax_ioctl_ccb_exec(void *, struct file *);
 static int dax_ioctl_ca_dequeue(void *, struct file *f);
+static int dax_ioctl_ccb_kill(void *arg, struct file *f);
+static int dax_ioctl_ccb_info(void *arg, struct file *f);
 static int dax_validate_ca_dequeue_args(struct dax_ctx *,
 					struct dax_ca_dequeue_arg *);
 static int dax_ccb_hv_submit(struct dax_ctx *, union ccb *, size_t,
@@ -293,6 +295,10 @@ static long dax_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 		return dax_ioctl_ca_dequeue((void *)arg, f);
 	case DAXIOC_CCB_EXEC:
 		return dax_ioctl_ccb_exec((void *)arg, f);
+	case DAXIOC_CCB_KILL:
+		return dax_ioctl_ccb_kill((void *)arg, f);
+	case DAXIOC_CCB_INFO:
+		return dax_ioctl_ccb_info((void *)arg, f);
 	case DAXIOC_VERSION:
 		if (copy_to_user((void __user *)arg, &dax_version,
 				 sizeof(dax_version)))
@@ -384,6 +390,223 @@ static int dax_ioctl_ccb_thr_fini(struct file *f)
 	}
 
 	dax_state_destroy(f);
+	return 0;
+}
+
+int dax_ccb_kill_info_hv(u64 ca, unsigned long ret, char *ok_str)
+{
+	switch (ret) {
+	case HV_EOK:
+		dax_kill_info_dbg("HV returned HV_EOK for ca_ra 0x%llx, %s", ca,
+				  ok_str);
+		return 0;
+
+	case HV_EBADALIGN:
+		dax_err("HV returned HV_EBADALIGN for ca_ra 0x%llx", ca);
+		return -EFAULT;
+
+	case HV_ENORADDR:
+		dax_err("HV returned HV_ENORADDR for ca_ra 0x%llx", ca);
+		return -EFAULT;
+
+	case HV_EINVAL:
+		dax_err("HV returned HV_EINVAL for ca_ra 0x%llx", ca);
+		return -EINVAL;
+
+	case HV_EWOULDBLOCK:
+		dax_err("HV returned HV_EWOULDBLOCK for ca_ra 0x%llx", ca);
+		return -EAGAIN;
+
+	case HV_ENOACCESS:
+		dax_err("HV returned HV_ENOACCESS for ca_ra 0x%llx", ca);
+		return -EPERM;
+
+	default:
+		dax_err("HV returned unknown (%ld) for ca_ra 0x%llx", ret, ca);
+		return -EIO;
+	}
+}
+
+int dax_ccb_kill(u64 ca, u16 *kill_res)
+{
+	unsigned long hv_ret;
+	char res_str[80];
+	int count;
+	int ret;
+
+	/* confirm dax drv and hv api constants the same */
+	BUILD_BUG_ON(DAX_KILL_COMPLETED != HV_DAX_KILL_COMPLETED);
+	BUILD_BUG_ON(DAX_KILL_DEQUEUED != HV_DAX_KILL_DEQUEUED);
+	BUILD_BUG_ON(DAX_KILL_KILLED != HV_DAX_KILL_KILLED);
+	BUILD_BUG_ON(DAX_KILL_NOTFOUND != HV_DAX_KILL_NOTFOUND);
+
+	for (count = 0; count < DAX_KILL_RETRIES_MAX; count++) {
+		dax_dbg("attempting kill on ca_ra 0x%llx", ca);
+		hv_ret = sun4v_dax_ccb_kill(ca, kill_res);
+
+		if (*kill_res == DAX_KILL_COMPLETED)
+			snprintf(res_str, sizeof(res_str), "COMPLETED");
+		else if (*kill_res == DAX_KILL_DEQUEUED)
+			snprintf(res_str, sizeof(res_str), "DEQUEUED");
+		else if (*kill_res == DAX_KILL_KILLED)
+			snprintf(res_str, sizeof(res_str), "KILLED");
+		else if (*kill_res == DAX_KILL_NOTFOUND)
+			snprintf(res_str, sizeof(res_str), "NOTFOUND");
+		else
+			snprintf(res_str, sizeof(res_str), "??? (%d)",
+				 *kill_res);
+
+		ret = dax_ccb_kill_info_hv(ca, hv_ret, res_str);
+		if (ret != -EAGAIN)
+			return ret;
+		dax_kill_info_dbg("ccb_kill count = %d", count);
+		udelay(DAX_KILL_WAIT_USEC);
+	}
+
+	return -EAGAIN;
+}
+
+static int dax_ccb_info(u64 ca, struct dax_ccb_info_arg *info)
+{
+	u16 *info_arr = &info->dax_ccb_state;
+	unsigned long hv_ret;
+	char info_str[80];
+	int count;
+	int ret;
+
+	/* confirm dax drv and hv api constants the same */
+	BUILD_BUG_ON(DAX_CCB_COMPLETED != HV_CCB_STATE_COMPLETED);
+	BUILD_BUG_ON(DAX_CCB_ENQUEUED != HV_CCB_STATE_ENQUEUED);
+	BUILD_BUG_ON(DAX_CCB_INPROGRESS != HV_CCB_STATE_INPROGRESS);
+	BUILD_BUG_ON(DAX_CCB_NOTFOUND != HV_CCB_STATE_NOTFOUND);
+
+	for (count = 0; count < DAX_INFO_RETRIES_MAX; count++) {
+		dax_dbg("attempting info on ca_ra 0x%llx", ca);
+		hv_ret = sun4v_dax_ccb_info(ca, info_arr);
+
+		if (info->dax_ccb_state == DAX_CCB_COMPLETED) {
+			snprintf(info_str, sizeof(info_str),
+				 "ccb_state COMPLETED");
+		} else if (info->dax_ccb_state == DAX_CCB_ENQUEUED) {
+			snprintf(info_str, sizeof(info_str),
+				 "ccb_state ENQUEUED (dax_unit %d, queue_num %d, queue_pos %d)",
+				 info->dax_inst_num, info->dax_q_num,
+				 info->dax_q_pos);
+		} else if (info->dax_ccb_state == DAX_CCB_INPROGRESS) {
+			snprintf(info_str, sizeof(info_str),
+				 "ccb_state INPROGRESS");
+		} else if (info->dax_ccb_state == DAX_CCB_NOTFOUND) {
+			snprintf(info_str, sizeof(info_str),
+				 "ccb_state NOTFOUND");
+		} else {
+			snprintf(info_str, sizeof(info_str),
+				 "ccb_state ??? (%d)", info->dax_ccb_state);
+		}
+
+		ret = dax_ccb_kill_info_hv(ca, hv_ret, info_str);
+		if (ret != -EAGAIN)
+			return ret;
+		dax_kill_info_dbg("ccb_info count = %d", count);
+		udelay(DAX_INFO_WAIT_USEC);
+	}
+
+	return -EAGAIN;
+}
+
+static int dax_ioctl_ccb_kill(void *arg, struct file *f)
+{
+	struct dax_ctx *dax_ctx = (struct dax_ctx *) f->private_data;
+	struct dax_ccb_kill_arg kill_arg;
+	int ret;
+	u64 ca;
+
+	if (dax_ctx == NULL) {
+		dax_err("CCB_INIT ioctl not previously called");
+		return -ENOENT;
+	}
+
+	if (dax_ctx->owner != current) {
+		dax_err("wrong thread");
+		return -EUSERS;
+	}
+
+	if (copy_from_user(&kill_arg, (void __user *)arg, sizeof(kill_arg))) {
+		dax_err("copy_from_user failed");
+		return -EFAULT;
+	}
+
+	dax_dbg("ca_offset=%d", kill_arg.dax_ca_offset);
+
+	if (kill_arg.dax_ca_offset >= dax_ctx->ca_buflen) {
+		dax_err("invalid dax_ca_offset (%d) >= ca_buflen (%d)",
+			kill_arg.dax_ca_offset, dax_ctx->ca_buflen);
+		return -EINVAL;
+	}
+
+	ca = dax_ctx->ca_buf_ra + kill_arg.dax_ca_offset;
+
+	ret = dax_ccb_kill(ca, &kill_arg.dax_kill_res);
+	if (ret != 0) {
+		dax_err("dax_ccb_kill failed (ret=%d)", ret);
+		return ret;
+	}
+
+	dax_kill_info_dbg("kill succeeded on ca_offset %d",
+			  kill_arg.dax_ca_offset);
+
+	if (copy_to_user((void __user *)arg, &kill_arg, sizeof(kill_arg))) {
+		dax_err("copy_to_user failed");
+		return -EFAULT;
+	}
+
+	return 0;
+}
+
+static int dax_ioctl_ccb_info(void *arg, struct file *f)
+{
+	struct dax_ctx *dax_ctx = (struct dax_ctx *) f->private_data;
+	struct dax_ccb_info_arg info_arg;
+	int ret;
+	u64 ca;
+
+	if (dax_ctx == NULL) {
+		dax_err("CCB_INIT ioctl not previously called");
+		return -ENOENT;
+	}
+
+	if (dax_ctx->owner != current) {
+		dax_err("wrong thread");
+		return -EUSERS;
+	}
+
+	if (copy_from_user(&info_arg, (void __user *)arg, sizeof(info_arg))) {
+		dax_err("copy_from_user failed");
+		return -EFAULT;
+	}
+
+	dax_dbg("ca_offset=%d", info_arg.dax_ca_offset);
+
+	if (info_arg.dax_ca_offset >= dax_ctx->ca_buflen) {
+		dax_err("invalid dax_ca_offset (%d) >= ca_buflen (%d)",
+			info_arg.dax_ca_offset, dax_ctx->ca_buflen);
+		return -EINVAL;
+	}
+
+	ca = dax_ctx->ca_buf_ra + info_arg.dax_ca_offset;
+
+	ret = dax_ccb_info(ca, &info_arg);
+	if (ret != 0) {
+		dax_err("dax_ccb_info failed (ret=%d)", ret);
+		return ret;
+	}
+
+	dax_kill_info_dbg("info succeeded on ca_offset %d",
+			  info_arg.dax_ca_offset);
+
+	if (copy_to_user((void __user *)arg, &info_arg, sizeof(info_arg))) {
+		dax_err("copy_to_user failed");
+		return -EFAULT;
+	}
 
 	return 0;
 }
@@ -1062,6 +1285,9 @@ static int dax_ccb_flush_contig(struct dax_ctx *dax_ctx, int start_idx,
 static void dax_ccb_wait(struct dax_ctx *dax_ctx, int idx)
 {
 	int nretries = 0;
+	u16 kill_res;
+	int ret;
+	u64 ca;
 
 	dax_dbg("idx=%d", idx);
 
@@ -1069,9 +1295,16 @@ static void dax_ccb_wait(struct dax_ctx *dax_ctx, int idx)
 		udelay(dax_ccb_wait_usec);
 
 		if (++nretries >= dax_ccb_wait_retries_max) {
-			dax_alert("dax_ctx (0x%p): CCB[%d] did not complete (timed out, wait usec=%d retries=%d). CCB kill will be attempted in future version",
-				(void *)dax_ctx, idx, dax_ccb_wait_usec,
+			dax_alert("dax_ctx (0x%p): CCB[%d] did not complete (timed out, wait usec=%d retries=%d). Killing ccb",
+				  (void *)dax_ctx, idx, dax_ccb_wait_usec,
 				  dax_ccb_wait_retries_max);
+			ca = dax_ctx->ca_buf_ra + NCCB_TO_CA_BYTE(idx);
+			ret = dax_ccb_kill(ca, &kill_res);
+			if (ret != 0)
+				dax_alert("Killing CCB[%d] failed", idx);
+			else
+				dax_alert("CCB[%d] killed", idx);
+
 			return;
 		}
 	}

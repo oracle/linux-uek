@@ -54,6 +54,7 @@ extern const struct vm_operations_struct dax_vm_ops;
 #define DAX_DBG_FLG_LIST	0x08
 #define DAX_DBG_FLG_PERF	0x10
 #define DAX_DBG_FLG_NOMAP	0x20
+#define DAX_DBG_FLG_KILL_INFO	0x40
 #define	DAX_DBG_FLG_ALL		0xff
 
 #define dax_info(fmt, ...)	pr_info("%s: " fmt "\n", __func__,\
@@ -86,6 +87,10 @@ extern const struct vm_operations_struct dax_vm_ops;
 				} while (0)
 #define	dax_nomap_dbg(fmt, ...)	do {\
 					if (dax_debug & DAX_DBG_FLG_NOMAP)\
+						dax_info(fmt, ##__VA_ARGS__);\
+				} while (0)
+#define	dax_kill_info_dbg(fmt, ...)	do {				\
+					if (dax_debug & DAX_DBG_FLG_KILL_INFO)\
 						dax_info(fmt, ##__VA_ARGS__);\
 				} while (0)
 
@@ -140,6 +145,12 @@ extern const struct vm_operations_struct dax_vm_ops;
 
 #define	DAX_CCB_WAIT_USEC		100
 #define	DAX_CCB_WAIT_RETRIES_MAX	10000
+
+#define	DAX_KILL_WAIT_USEC	100UL
+#define	DAX_KILL_RETRIES_MAX	10000
+
+#define	DAX_INFO_WAIT_USEC	100UL
+#define	DAX_INFO_RETRIES_MAX	2
 
 #define DAX_OUT_SIZE_FROM_CCB(sz)	((1 + (sz)) * 64)
 #define DAX_IN_SIZE_FROM_CCB(sz)		(1 + (sz))
@@ -264,6 +275,7 @@ void dax_unlock_pages_ccb(struct dax_ctx *ctx, int ccb_num, union ccb *ccbp);
 void dax_prt_ccbs(union ccb *ccb, u64 len);
 bool dax_has_flow_ctl_numa(void);
 bool dax_has_ra_pgsz(void);
+int dax_ccb_kill(u64 ca, u16 *kill_res);
 long dax_perfcount_ioctl(struct file *f, unsigned int cmd, unsigned long arg);
 union ccb *dax_ccb_buffer_reserve(struct dax_ctx *ctx, size_t len,
 				  size_t *reserved);

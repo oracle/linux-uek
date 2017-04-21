@@ -236,6 +236,40 @@ ENTRY(sun4v_dax_ccb_submit)
 	 stx	%o2, [%g1]
 ENDPROC(sun4v_dax_ccb_submit)
 
+	/* %o0: completion area ra for the ccb to get info
+	 *
+	 * returns:
+	 * %o0: status
+	 * %o1: CCB state
+	 * %o2: position
+	 * %o3: dax
+	 * %o4: queue
+	 */
+ENTRY(sun4v_dax_ccb_info)
+	mov	%o1, %g1
+	mov	HV_DAX_CCB_INFO, %o5
+	ta	HV_FAST_TRAP
+	sth	%o1, [%g1 + DAX_CCB_INFO_OFFSET_CCB_STATE]
+	sth	%o2, [%g1 + DAX_CCB_INFO_OFFSET_QUEUE_POS]
+	sth	%o3, [%g1 + DAX_CCB_INFO_OFFSET_DAX_UNIT]
+	retl
+	 sth	%o4, [%g1 + DAX_CCB_INFO_OFFSET_QUEUE_NUM]
+ENDPROC(sun4v_dax_ccb_info)
+
+	/* %o0: completion area ra for the ccb to kill
+	 *
+	 * returns:
+	 * %o0: status
+	 * %o1: result of the kill
+	 */
+ENTRY(sun4v_dax_ccb_kill)
+	mov	%o1, %g1
+	mov	HV_DAX_CCB_KILL, %o5
+	ta	HV_FAST_TRAP
+	retl
+	 sth	%o1, [%g1]
+ENDPROC(sun4v_dax_ccb_kill)
+
 	/* %o0: pointer to unsigned long time
 	 *
 	 * returns %o0: status

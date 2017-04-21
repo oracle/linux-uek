@@ -1002,37 +1002,60 @@ unsigned long sun4v_dax_ccb_submit(void *ccb, int len, long flags,
 /* dax_ccb_info()
  * TRAP:	HV_FAST_TRAP
  * FUNCTION:	HV_DAX_CCB_INFO
- * ARG0:        real address of CCB completion area
+ * ARG0:	real address of CCB completion area
  * RET0:	status (success or error code)
- * RET1         CCB state
- * RET2         queue position
+ * RET1:	info array
+ *			- RET1[0]: CCB state
+ *			- RET1[1]: dax unit
+ *			- RET1[2]: queue number
+ *			- RET1[3]: queue position
  *
- * ERRORS:	EWOULDBLOCK etc
- *		ENOTSUPPORTED	etc
- *
- * Details.
+ * ERRORS:	EOK		operation successful
+ *		EBADALIGN	address not 64B aligned
+ *		ENORADDR	RA in address not valid
+ *		EINVAL		CA not valid
+ *		EWOULDBLOCK	info not available for this CCB currently, try
+ *				again
+ *		ENOACCESS	guest cannot use dax
  */
 
 #define HV_DAX_CCB_INFO                 0x35
-#define HV_DAX_STATE_COMPLETED      0
-#define HV_DAX_STATE_PENDING        1
-#define HV_DAX_STATE_INPROGRESS     2
-#define HV_DAX_STATE_NOTFOUND       3
+#ifndef __ASSEMBLY__
+unsigned long sun4v_dax_ccb_info(u64 ca, u16 *info_arr);
+#endif
+/* info array byte offsets, each elem is u16 (RET1) */
+#define DAX_CCB_INFO_OFFSET_CCB_STATE	0
+#define DAX_CCB_INFO_OFFSET_DAX_UNIT	2
+#define DAX_CCB_INFO_OFFSET_QUEUE_NUM	4
+#define DAX_CCB_INFO_OFFSET_QUEUE_POS	6
+
+/* CCB state (RET1[0]) */
+#define HV_CCB_STATE_COMPLETED      0
+#define HV_CCB_STATE_ENQUEUED       1
+#define HV_CCB_STATE_INPROGRESS     2
+#define HV_CCB_STATE_NOTFOUND       3
 
 /* dax_ccb_kill()
  * TRAP:	HV_FAST_TRAP
  * FUNCTION:	HV_DAX_CCB_KILL
- * ARG0:        real address of CCB completion area
+ * ARG0:	real address of CCB completion area
  * RET0:	status (success or error code)
- * RET1         CCB kill status
+ * RET1:	CCB kill status
  *
- * ERRORS:	EWOULDBLOCK etc
- *		ENOTSUPPORTED	etc
- *
- * Details.
+ * ERRORS:	EOK		operation successful
+ *		EBADALIGN	address not 64B aligned
+ *		ENORADDR	RA in address not valid
+ *		EINVAL		CA not valid
+ *		EWOULDBLOCK	kill not available for this CCB currently, try
+ *				again
+ *		ENOACCESS	guest cannot use dax
  */
 
 #define HV_DAX_CCB_KILL                 0x36
+#ifndef __ASSEMBLY__
+unsigned long sun4v_dax_ccb_kill(u64 ca, u16 *kill_status);
+#endif
+/* CCB kill status (RET1) */
 #define HV_DAX_KILL_COMPLETED       0
 #define HV_DAX_KILL_DEQUEUED        1
 #define HV_DAX_KILL_KILLED          2

@@ -25,6 +25,17 @@
 #define	DAX_SUBMIT_ERR_UNAVAIL			12
 #define	DAX_SUBMIT_ERR_INTERNAL			13
 
+/* DAXIOC_CCB_KILL dax_kill_res */
+#define	DAX_KILL_COMPLETED	0
+#define	DAX_KILL_DEQUEUED	1
+#define	DAX_KILL_KILLED		2
+#define	DAX_KILL_NOTFOUND	3
+
+/* DAXIOC_CCB_INFO dax_ccb_state */
+#define	DAX_CCB_COMPLETED	0
+#define	DAX_CCB_ENQUEUED	1
+#define	DAX_CCB_INPROGRESS	2
+#define	DAX_CCB_NOTFOUND	3
 
 #define	DAX_DEV "/dev/dax"
 #define DAX_DRIVER_VERSION 3
@@ -51,6 +62,10 @@
 #define	DAXIOC_CA_DEQUEUE	_IOWR(DAXIOC, 7, struct dax_ca_dequeue_arg)
 /* CCB execution */
 #define	DAXIOC_CCB_EXEC		_IOWR(DAXIOC, 8, struct dax_ccb_exec_arg)
+/* CCB kill */
+#define	DAXIOC_CCB_KILL		_IOWR(DAXIOC, 9, struct dax_ccb_kill_arg)
+/* CCB info */
+#define	DAXIOC_CCB_INFO		_IOWR(DAXIOC, 10, struct dax_ccb_info_arg)
 /* get driver version */
 #define DAXIOC_VERSION          _IOWR(DAXIOC, 5, long)
 
@@ -103,6 +118,38 @@ struct dax_ca_dequeue_arg {
 	__u32 dcd_len_dequeued;
 };
 
+/*
+ * DAXIOC_CCB_KILL
+ * dax_ca_offset : ca offset for ccb to kill
+ * dax_kill_res : result of kill attempt
+ */
+struct dax_ccb_kill_arg {
+	__u16 dax_ca_offset;
+	__u16 dax_kill_res;
+};
+
+/*
+ * DAXIOC_CCB_INFO
+ * dax_ca_offset : ca offset for ccb to get info
+ * dax_ccb_state : ccb state
+ * dax_inst_num : dax instance number on which ccb is enqueued
+ *		  (if dax_ccb_state == DAX_CCB_ENQUEUED)
+ * dax_q_num : queue number on which ccb is enqueued
+ *	       (if dax_ccb_state == DAX_CCB_ENQUEUED)
+ * dax_q_pos : ccb position in queue (if dax_ccb_state == DAX_CCB_ENQUEUED)
+ *
+ * Note: it is possible for CCB_INFO to return dax_ccb_state as
+ * DAX_CCB_NOTFOUND when the CCB is still executing. In order to ensure a CCB
+ * in the NOTFOUND state will never be executed, CCB_KILL must be called on
+ * that CCB.
+ */
+struct dax_ccb_info_arg {
+	__u16 dax_ca_offset;
+	__u16 dax_ccb_state;
+	__u16 dax_inst_num;
+	__u16 dax_q_num;
+	__u16 dax_q_pos;
+};
 
 /* The number of DAX engines per node */
 #define DAX_PER_NODE		(8)

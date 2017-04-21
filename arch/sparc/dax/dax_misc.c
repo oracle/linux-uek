@@ -82,7 +82,13 @@ static int dax_has_flow_ctl_one_node(void)
 		timeout = timeout - mwait_time;
 	}
 	if (timeout <= 0) {
-		dax_alert("dax flow control test timed out");
+		int kill_ret;
+		u16 kill_res;
+
+		dax_alert("dax flow control test timed out, killing ccb");
+		ra = virt_to_phys(ca);
+		kill_ret = dax_ccb_kill(ra, &kill_res);
+		dax_alert("kill returned %d, kill_res %d", kill_ret, kill_res);
 		ret = -EIO;
 		goto done;
 	}
@@ -238,7 +244,13 @@ bool dax_has_ra_pgsz(void)
 		timeout = timeout - mwait_time;
 	}
 	if (timeout <= 0) {
-		dax_alert("dax ra_pgsz test timed out");
+		int kill_ret;
+		u16 kill_res;
+
+		dax_alert("dax ra_pgsz test timed out, killing ccb");
+		ra = virt_to_phys(ca);
+		kill_ret = dax_ccb_kill(ra, &kill_res);
+		dax_alert("kill returned %d, kill_res %d", kill_ret, kill_res);
 		goto done;
 	}
 

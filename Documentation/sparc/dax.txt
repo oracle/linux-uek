@@ -106,6 +106,17 @@ There also several ioctl functions related to performance counters, but these
 are not described in this document. Access to the performance counters is
 provided via a utility program included with the DAX user libraries.
 
+CCB_KILL
+
+Kills a CCB during execution. The CCB is guaranteed to not continue executing
+once this call returns successfully.
+
+CCB_INFO
+
+Retrieves info about an executing CCB. Note that some Hypervisors might return
+notfound when the CCB is in inprogress state. To ensure a CCB in the notfound
+state will never be executed, CCB_KILL must be called on that CCB.
+
 MMAP
 
 The mmap() function provides two different services depending on
