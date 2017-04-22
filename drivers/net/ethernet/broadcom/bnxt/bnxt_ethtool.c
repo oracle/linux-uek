@@ -956,6 +956,9 @@ u32 _bnxt_fw_to_ethtool_adv_spds(u16 fw_speeds, u8 fw_pause)
 	if ((fw_speeds) & BNXT_LINK_SPEED_MSK_50GB)			\
 		ethtool_link_ksettings_add_link_mode(lk_ksettings, name,\
 						     50000baseCR2_Full);\
+	if ((fw_speeds) & BNXT_LINK_SPEED_MSK_100GB)			\
+		ethtool_link_ksettings_add_link_mode(lk_ksettings, name,\
+						     100000baseCR4_Full);\
 	if ((fw_pause) & BNXT_LINK_PAUSE_RX) {				\
 		ethtool_link_ksettings_add_link_mode(lk_ksettings, name,\
 						     Pause);		\
@@ -992,6 +995,9 @@ u32 _bnxt_fw_to_ethtool_adv_spds(u16 fw_speeds, u8 fw_pause)
 	if (ethtool_link_ksettings_test_link_mode(lk_ksettings, name,	\
 						  50000baseCR2_Full))	\
 		(fw_speeds) |= BNXT_LINK_SPEED_MSK_50GB;		\
+	if (ethtool_link_ksettings_test_link_mode(lk_ksettings, name,	\
+						  100000baseCR4_Full))	\
+		(fw_speeds) |= BNXT_LINK_SPEED_MSK_100GB;		\
 }
 
 static void bnxt_fw_to_ethtool_advertised_spds(struct bnxt_link_info *link_info,
@@ -1099,6 +1105,8 @@ u32 bnxt_fw_to_ethtool_speed(u16 fw_link_speed)
 		return SPEED_40000;
 	case BNXT_LINK_SPEED_50GB:
 		return SPEED_50000;
+	case BNXT_LINK_SPEED_100GB:
+		return SPEED_100000;
 	default:
 		return SPEED_UNKNOWN;
 	}
@@ -1231,7 +1239,7 @@ static int bnxt_get_settings(struct net_device *dev, struct ethtool_cmd *cmd)
 }
 #endif
 
-static u32 bnxt_get_fw_speed(struct net_device *dev, u16 ethtool_speed)
+static u32 bnxt_get_fw_speed(struct net_device *dev, u32 ethtool_speed)
 {
 	struct bnxt *bp = netdev_priv(dev);
 	struct bnxt_link_info *link_info = &bp->link_info;
@@ -1270,6 +1278,10 @@ static u32 bnxt_get_fw_speed(struct net_device *dev, u16 ethtool_speed)
 	case SPEED_50000:
 		if (support_spds & BNXT_LINK_SPEED_MSK_50GB)
 			fw_speed = PORT_PHY_CFG_REQ_AUTO_LINK_SPEED_50GB;
+		break;
+	case SPEED_100000:
+		if (support_spds & BNXT_LINK_SPEED_MSK_100GB)
+			fw_speed = PORT_PHY_CFG_REQ_AUTO_LINK_SPEED_100GB;
 		break;
 	default:
 		netdev_err(dev, "unsupported speed!\n");
