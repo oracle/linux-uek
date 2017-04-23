@@ -764,28 +764,35 @@ static u8 rds_ib_init_port(struct rds_ib_device	*rds_ibdev,
 			   uint16_t		pkey)
 {
 	const char *digits = "0123456789";
+	u8 next_port_idx;
 
-	if (ip_port_cnt >= ip_port_max) {
+	/*
+	 * First initialize new entry before
+	 * bumping ip_port_cnt
+	 * (dont bump ip_port_cnt yet!)
+	 */
+	next_port_idx = ip_port_cnt + 1;
+
+	if (next_port_idx >= ip_port_max) {
 		printk(KERN_ERR
 			"RDS/IB: Exceeded max ports (%d) for device %s\n",
 				ip_port_max, rds_ibdev->dev->name);
 		return 0;
 	}
 
-	ip_port_cnt++;
-	ip_config[ip_port_cnt].port_num = port_num;
-	ip_config[ip_port_cnt].port_label[0] = 'P';
-	ip_config[ip_port_cnt].port_label[1] = digits[ip_port_cnt / 10];
-	ip_config[ip_port_cnt].port_label[2] = digits[ip_port_cnt % 10];
-	ip_config[ip_port_cnt].port_label[3] = 0;
-	ip_config[ip_port_cnt].dev = net_dev;
-	ip_config[ip_port_cnt].rds_ibdev = rds_ibdev;
-	ip_config[ip_port_cnt].ip_active_port = 0;
-	strcpy(ip_config[ip_port_cnt].if_name, net_dev->name);
-	memcpy(&ip_config[ip_port_cnt].gid, &gid, sizeof(union ib_gid));
-	ip_config[ip_port_cnt].pkey = pkey;
-	ip_config[ip_port_cnt].port_state = RDS_IB_PORT_INIT;
-	ip_config[ip_port_cnt].port_layerflags = 0x0; /* all clear to begin */
+	ip_config[next_port_idx].port_num = port_num;
+	ip_config[next_port_idx].port_label[0] = 'P';
+	ip_config[next_port_idx].port_label[1] = digits[next_port_idx / 10];
+	ip_config[next_port_idx].port_label[2] = digits[next_port_idx % 10];
+	ip_config[next_port_idx].port_label[3] = 0;
+	ip_config[next_port_idx].dev = net_dev;
+	ip_config[next_port_idx].rds_ibdev = rds_ibdev;
+	ip_config[next_port_idx].ip_active_port = 0;
+	strcpy(ip_config[next_port_idx].if_name, net_dev->name);
+	memcpy(&ip_config[next_port_idx].gid, &gid, sizeof(union ib_gid));
+	ip_config[next_port_idx].pkey = pkey;
+	ip_config[next_port_idx].port_state = RDS_IB_PORT_INIT;
+	ip_config[next_port_idx].port_layerflags = 0x0; /* all clear to begin */
 
 	/*
 	 * We check for the link UP state and use it to set
@@ -799,16 +806,27 @@ static u8 rds_ib_init_port(struct rds_ib_device	*rds_ibdev,
 	 *
 	 */
 	if (rds_detected_link_layer_up(net_dev)) {
-		ip_config[ip_port_cnt].port_layerflags =
+		ip_config[next_port_idx].port_layerflags =
 			(RDSIBP_STATUS_LINKUP | RDSIBP_STATUS_HWPORTUP);
 	}
 
 	/*
-	 * Note: Only HW and LINK status determined in this routine during
-	 * module initialization path. Status of netdev layer will be
-	 * determined by subsequent  NETDEV_UP (or lack of NETDEV_UP)
-	 * events - which are generated  on loading of rds_rdma module!
+	 * Note: Only HW and LINK status determined in this routine.
+	 * (a) When called during module initialization path, the s
+	 *  status of netdev layer will be determined by subsequent
+	 * NETDEV_UP (or lack of NETDEV_UP) events - which are
+	 * generated  after rds_rdma module by initscripts.
+	 * (b) For interfaces added after initscripts are run,
+	 * NETDEV_UP precedes this initialization call.
 	 */
+
+	/*
+	 * bump global ip_port_cnt last - no racing thread should
+	 * access the 'next_port_idx' entry before it is all initialized
+	 * above
+	 */
+	ip_port_cnt++;
+
 	return ip_port_cnt;
 }
 
@@ -1294,7 +1312,7 @@ static void rds_ib_event_handler(struct ib_event_handler *handler,
 			 * We are in INIT state but not during module
 			 * initialization. This can happens when
 			 * a new port is detected and initialized
-			 * in rds_ib_joining_ip().
+			 * in rds_ib_addintf_after_initscripts().
 			 *
 			 * It can also happen via init script
 			 * 'stop' invocation -which (temporarily?)
@@ -2104,7 +2122,87 @@ static void rds_ib_update_ip_config(void)
 	read_unlock(&dev_base_lock);
 }
 
-static void rds_ib_joining_ip(struct work_struct *_work)
+static void rds_ib_portstate_delayed_initswitch(struct work_struct *_work)
+{
+	struct rds_ib_port_ud_work      *work =
+		container_of(_work, struct rds_ib_port_ud_work, work.work);
+	u8 port = work->port;
+
+	BUG_ON(!port);
+
+	if (ip_config[port].port_state != RDS_IB_PORT_INIT) {
+		/*
+		 * We moved out of INIT state likely in NETDEV_CHANGE handler
+		 * processing after intialization workqueue triggered by
+		 * NETDEV_UP processing after a added interface!
+		 * Nothing to do - we are done!
+		 */
+		kfree(work);
+		return;
+	}
+
+	/*
+	 * We get here when we had a "perfect race" in a narrow
+	 * window when both netdev notifier callback and workqueue
+	 * execute simultaneously on separate threads.
+	 *
+	 * (a) The NETDEV_CHANGE handler ran ahead
+	 * of or during workqueue executed initializaion
+	 * (but missed the new interface)
+	 * (b) The workqueue initialization code missed detecting
+	 *     the link layer UP state!
+	 *
+	 * Maintain layer flags for port still in INIT state
+	 */
+
+	/* Paranoia assertion and NETDEV layer */
+	if (!(ip_config[port].dev->flags & IFF_UP) ||
+	    !((ip_config[port].port_layerflags & RDSIBP_STATUS_NETDEVUP)
+	      == RDSIBP_STATUS_NETDEVUP)) {
+		printk(KERN_WARNING "RDS/IB: Device %s "
+		       "flag NOT marked UP in "
+		       "delayed INIT transition processing!\n",
+		       ip_config[port].dev->name);
+		/* init port layer flag after warning! */
+		if (ip_config[port].dev->flags & IFF_UP)
+			ip_config[port].port_layerflags |=
+				RDSIBP_STATUS_NETDEVUP;
+		else
+			ip_config[port].port_layerflags &=
+				~RDSIBP_STATUS_NETDEVUP;
+	}
+	/* Check on link (and hw) layers */
+	if (rds_detected_link_layer_up(ip_config[port].dev)) {
+		ip_config[port].port_layerflags |= RDSIBP_STATUS_LINKUP;
+		ip_config[port].port_layerflags |= RDSIBP_STATUS_HWPORTUP;
+	} else {
+		ip_config[port].port_layerflags &= ~RDSIBP_STATUS_LINKUP;
+	}
+
+	/*
+	 * Mark the port state UP or DOWN
+	 */
+	if (rds_ibp_all_layers_up(&ip_config[port])) {
+		ip_config[port].port_state = RDS_IB_PORT_UP;
+		printk(KERN_NOTICE
+		       "RDS/IB: delayed INIT transition: port index %u "
+		       "interface %s transitioned from INIT to UP "
+		       "state(portlayers 0x%x)\n",
+		       port, ip_config[port].dev->name,
+		       ip_config[port].port_layerflags);
+	} else {
+		ip_config[port].port_state = RDS_IB_PORT_DOWN;
+		printk(KERN_NOTICE
+		       "RDS/IB: delayed INIT transition: port index %u "
+		       "interface %s transitioned from INIT to DOWN "
+		       "state(portlayers 0x%x)\n",
+		       port, ip_config[port].dev->name,
+		       ip_config[port].port_layerflags);
+	}
+	kfree(work);
+}
+
+static void rds_ib_addintf_after_initscripts(struct work_struct *_work)
 {
 	struct rds_ib_port_ud_work      *work =
 		container_of(_work, struct rds_ib_port_ud_work, work.work);
@@ -2116,12 +2214,13 @@ static void rds_ib_joining_ip(struct work_struct *_work)
 	struct rds_ib_device    *rds_ibdev;
 	int                     ret = 0;
 	u8                      port_num;
-	u8                      port;
+	u8                      port = 0;
 
 	read_lock(&dev_base_lock);
 	in_dev = in_dev_get(ndev);
 	if (in_dev && !in_dev->ifa_list && work->timeout > 0) {
-		INIT_DELAYED_WORK(&work->work, rds_ib_joining_ip);
+		INIT_DELAYED_WORK(&work->work,
+				  rds_ib_addintf_after_initscripts);
 		work->timeout -= msecs_to_jiffies(100);
 		queue_delayed_work(rds_ip_wq, &work->work, msecs_to_jiffies(100));
 	} else if (in_dev && in_dev->ifa_list) {
@@ -2160,27 +2259,81 @@ static void rds_ib_joining_ip(struct work_struct *_work)
 							ifa->ifa_mask);
 				}
 				/*
-				 * Processing triggered by a NETDEV_UP event
-				 * mark the NETDEV layer UP.
-				 * (No failback/failover processing done for
-				 * this initial NETDEV_UP event for a new
-				 * device!)
+				 * We just added a new interface, which is in
+				 * INIT state and it needs to go to UP or DOWN
+				 * depending on various layers being UP or down
+				 * (layerflags will be clear in the newly added
+				 *  port entry!)
+				 *
+				 * (1) This routine processing triggered by a
+				 *     NETDEV_UP event so we can safely mark
+				 *     that layer UP. (Note: No
+				 *     failback/failover processing done for
+				 *     this initial NETDEV_UP event for a new
+				 *     device!)
 				 */
 				ip_config[port].port_layerflags |=
 					RDSIBP_STATUS_NETDEVUP;
 				if (!(ip_config[port].dev->flags & IFF_UP)) {
 					printk(KERN_WARNING "RDS/IB: Device %s "
 					       "flag NOT marked UP in "
-					       "NETDEV_UP(joining ip) "
-					       "processing!\n",
+					       "NETDEV_UP(addintf after"
+					       " initscripts) processing!\n",
 					       ip_config[port].dev->name);
 				}
+				/*
+				 * (2) Note:
+				 *   While we were scheduled and run from
+				 *   workqueue link layer may have come up and
+				 *   NETDEV_CHANGE event processing missed us.
+				 *   (If NETDEV_CHANGE processing happens later
+				 *   we will have updates in the netdev callback
+				 *   handler). If link layer is UP, we can set
+				 *   the flags sooner rather than later.
+				 *    (As usual we can mark HW layer UP if
+				 *   link layer is up)
+				 */
+				if (rds_detected_link_layer_up(
+							ip_config[port].dev)) {
+					ip_config[port].port_layerflags |=
+						RDSIBP_STATUS_LINKUP;
+					ip_config[port].port_layerflags |=
+						RDSIBP_STATUS_HWPORTUP;
+				}
+				/*
+				 * Mark the port state UP sooner if we can!
+				 */
+				if (rds_ibp_all_layers_up(&ip_config[port])) {
+					ip_config[port].port_state =
+						RDS_IB_PORT_UP;
+				}
+
+				/*
+				 * We could have missed NETDEV_CHANGE processing
+				 * and link layer coming up still while
+				 * executing rest of this function. We will
+				 * schedule something for later to fix port
+				 * state if needed.
+				 */
 			}
 		}
 		printk(KERN_INFO "RDS/IB: Updated IP configuration..\n");
 		rds_ib_ip_failover_groups_init();
 		rds_ib_dump_ip_config();
-		kfree(work);
+		/*
+		 * If port is still in INIT state, schedule
+		 * a call to check back later.
+		 */
+		if (port && ip_config[port].port_state == RDS_IB_PORT_INIT) {
+			work->port = port;
+			INIT_DELAYED_WORK(&work->work,
+					  rds_ib_portstate_delayed_initswitch);
+			/* check after 10 seconds */
+			queue_delayed_work(rds_ip_wq, &work->work,
+					   msecs_to_jiffies(10000));
+		} else {
+			kfree(work);
+		}
 	} else if (!work->timeout)
 		kfree(work);
 
@@ -2241,7 +2394,8 @@ static int rds_ib_netdev_callback(struct notifier_block *self, unsigned long eve
 			if (work) {
 				work->dev = ndev;
 				work->timeout = msecs_to_jiffies(10000);
-				INIT_DELAYED_WORK(&work->work, rds_ib_joining_ip);
+				INIT_DELAYED_WORK(&work->work,
+					  rds_ib_addintf_after_initscripts);
 				queue_delayed_work(rds_ip_wq, &work->work,
 						msecs_to_jiffies(100));
 			}
@@ -2349,7 +2503,7 @@ static int rds_ib_netdev_callback(struct notifier_block *self, unsigned long eve
 		 * We are in INIT state but not during module
 		 * initialization. This can happens when
 		 * a new port is detected and initialized
-		 * in rds_ib_joining_ip().
+		 * in rds_ib_addintf_after_initscripts().
 		 *
 		 * It can also happen via init script
 		 * 'stop' invocation -which (temporarily?)
