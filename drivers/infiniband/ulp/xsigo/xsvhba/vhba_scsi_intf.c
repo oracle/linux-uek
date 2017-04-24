@@ -67,37 +67,6 @@ static int xg_vhba_slave_configure(struct scsi_device *device)
 	return 0;
 }
 
-void xsigo_cmd_timeout(struct srb *sp)
-{
-	struct scsi_xg_vhba_host *ha;
-	struct scsi_cmnd *cmd;
-	struct virtual_hba *vhba;
-	int iocb_handle;
-	unsigned long flags = 0;
-
-	cmd = sp->cmd;
-	ha = sp->ha;
-	vhba = ha->vhba;
-
-	dprintk(TRC_SCSI_ERRS, vhba, "I/O timeout\n");
-
-	spin_lock_irqsave(&ha->io_lock, flags);
-
-	atomic_dec(&ha->stats.io_stats.num_vh_q_reqs[sp->queue_num]);
-
-	cmd->result = DID_ABORT << 16;
-	iocb_handle = sp->iocb_handle;
-	if (ha->outstanding_cmds[iocb_handle]) {
-		ha->outstanding_cmds[iocb_handle] = NULL;
-		CMD_SP(sp->cmd) = NULL;
-		spin_unlock_irqrestore(&ha->io_lock, flags);
-		complete_cmd_and_callback(vhba, sp, sp->cmd);
-		DEC_REF_CNT(vhba);
-	} else {
-		spin_unlock_irqrestore(&ha->io_lock, flags);
-	}
-}
-
 static int xg_vhba_queuecommand_lck(struct scsi_cmnd *cmd,
 				    void (*fn)(struct scsi_cmnd *))
 {
@@ -436,12 +405,6 @@ no_lun_mask:
 		timeout_val = vhba_default_scsi_timeout;
 	else
 		timeout_val = timeout_per_command(cmd) / HZ;
-
-	sp->timer.expires = jiffies + (timeout_val - IB_CMD_TIMEOUT_DELTA) * HZ;
-	init_timer(&sp->timer);
-	sp->timer.data = (unsigned long)sp;
-	sp->timer.function = (void (*)(unsigned long))xsigo_cmd_timeout;
-	add_timer(&sp->timer);
 
 	/* Prepare the IOCB, the handle, build IOCB and fire it off */
 	dprintk(TRC_IO, vhba,
