@@ -233,6 +233,7 @@ struct qede_dev {
 	struct delayed_work		sp_task;
 	unsigned long			sp_flags;
 	u16				vxlan_dst_port;
+	u16				geneve_dst_port;
 
 #ifdef CONFIG_RFS_ACCEL
 	struct qede_arfs		*arfs;
