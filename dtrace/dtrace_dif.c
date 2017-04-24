@@ -3656,12 +3656,13 @@ next:
  */
 #define DTRACE_MAX_HWTYPE_ALEN (ETH_ALEN > INFINIBAND_ALEN ? \
 				ETH_ALEN : INFINIBAND_ALEN)
+		uintptr_t src = tupregs[1].dttk_value;
+		int type = tupregs[0].dttk_value;
 		uint8_t hwaddr[DTRACE_MAX_HWTYPE_ALEN];
 		char *base;
 		size_t size, len;
-		int type, i;
+		int i;
 
-		type = (int)tupregs[0].dttk_value;
 		for (i = 0; hwinfo[i].hwtype != -1; i++) {
 			if (type == hwinfo[i].hwtype)
 				break;
@@ -3676,11 +3677,14 @@ next:
 		/*
 		 * Safely load the hardware address.
 		 */
-		dtrace_bcopy((void *)(uintptr_t)tupregs[1].dttk_value, hwaddr,
-			     len);
+		if (!dtrace_canload(src, len, mstate, vstate)) {
+			regs[rd] = 0;
+			break;
+		}
+		dtrace_bcopy((void *)src, hwaddr, len);
 
 		/*
-		 * Check if an hardware address string will fit in scratch.
+		 * Check if a hardware address string will fit in scratch.
 		 * For every byte we need 3 characters (including ':').
 		 */
 		size = len * 3;
@@ -3719,6 +3723,7 @@ next:
 	case DIF_SUBR_INET_NTOA:
 	case DIF_SUBR_INET_NTOA6:
 	case DIF_SUBR_INET_NTOP: {
+		uintptr_t src;
 		size_t	size;
 		int	af, argi, i;
 		char	*base, *end;
@@ -3731,6 +3736,7 @@ next:
 			argi = 0;
 		}
 
+		src = tupregs[argi].dttk_value;
 		if (af == AF_INET) {
 			ipaddr_t	ip4;
 			uint8_t		*ptr8, val;
@@ -3738,7 +3744,11 @@ next:
 			/*
 			 * Safely load the IPv4 address.
 			 */
-			ip4 = dtrace_load32(tupregs[argi].dttk_value);
+			if (!dtrace_canload(src, 4, mstate, vstate)) {
+				regs[rd] = 0;
+				break;
+			}
+			ip4 = dtrace_load32(src);
 
 			/*
 			 * Check an IPv4 string will fit in scratch.
@@ -3790,9 +3800,13 @@ next:
 			/*
 			 * Safely load the IPv6 address.
 			 */
-			dtrace_bcopy(
-			    (void *)(uintptr_t)tupregs[argi].dttk_value,
-			    (void *)(uintptr_t)&ip6, sizeof(in6_addr_t));
+			if (!dtrace_canload(src, sizeof(in6_addr_t), mstate,
+					    vstate)) {
+				regs[rd] = 0;
+				break;
+			}
+			dtrace_bcopy((void *)src, (void *)(uintptr_t)&ip6,
+				     sizeof(in6_addr_t));
 
 			/*
 			 * Check an IPv6 string will fit in scratch.
