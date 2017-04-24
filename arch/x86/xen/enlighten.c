@@ -1327,7 +1327,7 @@ static const struct pv_apic_ops xen_apic_ops __initconst = {
 #endif
 };
 
-static void xen_reboot(int reason)
+void xen_reboot(int reason)
 {
 	struct sched_shutdown r = { .reason = reason };
 	int cpu;
