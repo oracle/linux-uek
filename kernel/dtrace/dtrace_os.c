@@ -2,7 +2,7 @@
  * FILE:	dtrace_os.c
  * DESCRIPTION:	Dynamic Tracing: OS support functions - part of kernel core
  *
- * Copyright (C) 2010-2014 Oracle Corporation
+ * Copyright (c) 2010, 2017, Oracle and/or its affiliates. All rights reserved.
  */
 
 #include <linux/binfmts.h>
@@ -19,6 +19,7 @@
 #include <linux/sched.h>
 #include <linux/slab.h>
 #include <linux/stacktrace.h>
+#include <linux/timekeeping.h>
 #include <linux/vmalloc.h>
 #include <linux/kallsyms.h>
 #include <linux/workqueue.h>
@@ -335,6 +336,14 @@ void dtrace_psinfo_free(struct task_struct *tsk)
 \*---------------------------------------------------------------------------*/
 dtrace_vtime_state_t	dtrace_vtime_active = 0;
 
+ktime_t dtrace_get_walltime(void)
+{
+	struct timespec t = __current_kernel_time();
+
+	return ns_to_ktime(timespec64_to_ns(&t));
+}
+EXPORT_SYMBOL(dtrace_get_walltime);
+
 void dtrace_vtime_enable(void)
 {
 	dtrace_vtime_state_t	old, new;
@@ -455,10 +464,14 @@ void dtrace_stacktrace(stacktrace_state_t *st)
 	 * on x86_64 adds a ULONG_MAX entry after the last stack trace entry.
 	 * This might be a sentinel value, but given that struct stack_trace
 	 * already contains a nr_entries counter, this seems rather pointless.
-	 * Alas, we need to add a special case for that...
+	 * Alas, we need to add a special case for that...  And to make matters
+	 * worse, it actually does this only when there is room for it (i.e.
+	 * when nr_entries < max_entries).
+	 * Since ULONG_MAX inever a valid PC, we can just check for that.
 	 */
 #ifdef CONFIG_X86_64
-	st->depth = trace.nr_entries - 1;
+	if (trace.nr_entries && st->pcs[trace.nr_entries - 1] == ULONG_MAX)
+		st->depth = trace.nr_entries - 1;
 #else
 	st->depth = trace.nr_entries;
 #endif

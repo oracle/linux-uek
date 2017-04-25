@@ -1,4 +1,4 @@
-/* Copyright (C) 2011-2014 Oracle, Inc. */
+/* Copyright (c) 2011, 2017, Oracle and/or its affiliates. All rights reserved. */
 
 #ifndef _LINUX_DTRACE_OS_H_
 #define _LINUX_DTRACE_OS_H_
@@ -35,6 +35,8 @@ typedef enum dtrace_vtime_state {
 } dtrace_vtime_state_t;
 
 extern dtrace_vtime_state_t dtrace_vtime_active;
+
+extern ktime_t dtrace_get_walltime(void);
 
 extern void dtrace_vtime_enable(void);
 extern void dtrace_vtime_disable(void);
