@@ -159,6 +159,113 @@ bool dax_has_flow_ctl_numa(void)
 	return !!atomic_read(&has_flow_ctl);
 }
 
+bool dax_has_ra_pgsz(void)
+{
+	struct ccb_extract *ccb;
+	struct ccb_completion_area *ca;
+	char *mem, *dax_input, *dax_output;
+	unsigned long submitted_ccb_buf_len, nomap_va, hv_rv, ra, va;
+	long timeout;
+	bool ret = false;
+	int i;
+
+	/* allocate 3 pages so we are guaranteed a 16k aligned chunk inside it */
+	mem = kzalloc(3*PAGE_SIZE, GFP_KERNEL);
+
+	if (mem == NULL)
+		return false;
+
+	va = ALIGN((unsigned long)mem, 2*PAGE_SIZE);
+	ccb = (struct ccb_extract *) va;
+	ca = (struct ccb_completion_area *)ALIGN(va + sizeof(*ccb),
+						 sizeof(*ca));
+	dax_input = (char *)ca + sizeof(*ca);
+	/* position output address 16 bytes before the end of the page */
+	dax_output = (char *) ALIGN((u64)dax_input, PAGE_SIZE) - 16;
+
+	ccb->control.hdr.opcode  = CCB_QUERY_OPCODE_EXTRACT;
+
+	/* I/O formats and sizes */
+	ccb->control.src0_fmt = CCB_QUERY_IFMT_FIX_BYTE;
+	ccb->control.src0_sz = DAX_INPUT_ELEM_SZ - 1; /* 1 byte */
+	ccb->control.output_sz = DAX_OUTPUT_ELEM_SZ - 1; /* 1 byte */
+	ccb->control.output_fmt = CCB_QUERY_OFMT_BYTE_ALIGN;
+
+	/* addresses */
+	*(u64 *)&ccb->src0 = (u64) dax_input;
+	*(u64 *)&ccb->output = (u64) virt_to_phys(dax_output);
+	*(u64 *)&ccb->completion = (u64) ca;
+
+	/* address types */
+	ccb->control.hdr.at_src0 = CCB_AT_VA;
+	ccb->control.hdr.at_dst  = CCB_AT_RA;
+	ccb->control.hdr.at_cmpl = CCB_AT_VA;
+
+	/* input sizes */
+	ccb->data_acc_ctl.input_len_fmt = CCB_QUERY_ILF_BYTE;
+	ccb->data_acc_ctl.input_cnt = (DAX_INPUT_ELEMS * DAX_INPUT_ELEM_SZ) - 1;
+
+	/* no flow control, we are testing for page limit */
+	ccb->data_acc_ctl.flow_ctl = 0;
+
+	memset(dax_input, 0x99, DAX_INPUT_ELEMS * DAX_INPUT_ELEM_SZ);
+	memset(dax_output, 0x77, DAX_OUTPUT_ELEMS * DAX_OUTPUT_ELEM_SZ);
+
+	ra = virt_to_phys(ccb);
+
+	hv_rv = sun4v_dax_ccb_submit((void *) ra, 64, HV_DAX_CCB_VA_PRIVILEGED | HV_DAX_QUERY_CMD, 0,
+				     &submitted_ccb_buf_len, &nomap_va);
+	if (hv_rv != HV_EOK) {
+		dax_info("failed dax submit, ret=0x%lx", hv_rv);
+		if (dax_debug & DAX_DBG_FLG_BASIC)
+			dax_prt_ccbs((union ccb *)ccb, 64);
+		goto done;
+	}
+
+	timeout = 10LL * 1000LL * 1000LL; /* 10ms in ns */
+	while (timeout > 0) {
+		unsigned long status;
+		unsigned long mwait_time = 8192;
+
+		/* monitored load */
+		__asm__ __volatile__("lduba [%1] 0x84, %0\n\t"
+				     : "=r" (status) : "r" (&ca->cmd_status));
+		if (status == CCB_CMD_STAT_NOT_COMPLETED)
+			__asm__ __volatile__("wr %0, %%asr28\n\t" /* mwait */
+					     : : "r" (mwait_time));
+		else
+			break;
+		timeout = timeout - mwait_time;
+	}
+	if (timeout <= 0) {
+		dax_alert("dax ra_pgsz test timed out");
+		goto done;
+	}
+
+	if (ca->cmd_status == CCB_CMD_STAT_FAILED &&
+	    ca->err_mask == CCB_CMD_ERR_POF) {
+		ret = true;
+		dax_dbg("dax ra_pgsz test succeeded: feature is available");
+	}
+	else {
+		dax_dbg("dax ra_pgsz test failed: feature not available");
+	}
+
+	dax_dbg("page overflow test, output_sz=%d", ca->output_sz);
+	dax_dbg("mem=%p, va=0x%lx, ccb=%p, ca=%p, out=%p",
+		mem, va, ccb, ca, dax_output);
+	dax_dbg("cmd_status=%d, err_mask=0x%x",
+		ca->cmd_status, ca->err_mask);
+	dax_prt_ccbs((union ccb *)ccb, 64);
+	for (i=0; i<64; i=i+8) {
+		dax_dbg("%08lx/ %08lx", (unsigned long) dax_output+i, *(unsigned long *)(dax_output+i));
+	}
+
+done:
+	kfree(mem);
+	return ret;
+}
+
 void dax_overflow_check(struct dax_ctx *ctx, int idx)
 {
 	unsigned long virtp, page_size = PAGE_SIZE;

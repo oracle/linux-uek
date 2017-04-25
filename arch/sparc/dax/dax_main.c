@@ -141,7 +141,7 @@ static int __init dax_attach(void)
 				 DAX_MAJOR, minor);
 	}
 
-	dax_no_ra_pgsz = (DAX_MAJOR == 1) && (minor == 0);
+	dax_no_ra_pgsz = (DAX_MAJOR == 1) && (minor == 0) && !dax_has_ra_pgsz();
 	dax_dbg("RA pagesize feature %spresent", dax_no_ra_pgsz ? "not " : "");
 
 	ret = hv_get_hwqueue_size(&max_ccbs);

@@ -155,12 +155,12 @@ extern const struct vm_operations_struct dax_vm_ops;
 #define DAX_PERF_CTR_OFFSET(num, node, dax) \
 		DAX_PERF_REG_OFF(num, DAX_PERF_CTR_0, (node), (dax))
 
-/* dax flow control test constants */
+/* dax flow control and ra/pgsz test constants */
 #define DAX_FLOW_LIMIT		64UL
-#define	DAX_INPUT_ELEMS		64
+#define	DAX_INPUT_ELEMS		128
 #define	DAX_INPUT_ELEM_SZ	1
-#define	DAX_OUTPUT_ELEMS	64
-#define	DAX_OUTPUT_ELEM_SZ	2
+#define	DAX_OUTPUT_ELEMS	128
+#define	DAX_OUTPUT_ELEM_SZ	1
 
 enum dax_types {
 	DAX1,
@@ -263,6 +263,7 @@ void dax_unlock_pages_ccb(struct dax_ctx *ctx, int ccb_num, union ccb *ccbp,
 			  bool warn);
 void dax_prt_ccbs(union ccb *ccb, u64 len);
 bool dax_has_flow_ctl_numa(void);
+bool dax_has_ra_pgsz(void);
 long dax_perfcount_ioctl(struct file *f, unsigned int cmd, unsigned long arg);
 union ccb *dax_ccb_buffer_reserve(struct dax_ctx *ctx, size_t len,
 				  size_t *reserved);
