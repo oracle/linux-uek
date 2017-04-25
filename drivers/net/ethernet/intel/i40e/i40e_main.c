@@ -2308,6 +2308,22 @@ int i40e_sync_vsi_filters(struct i40e_vsi *vsi)
 			       test_bit(__I40E_FILTER_OVERFLOW_PROMISC,
 					&vsi->state));
 
+		aq_ret = i40e_aq_set_vsi_unicast_promiscuous(
+						  &vsi->back->hw,
+						  vsi->seid,
+						  cur_promisc, NULL, true);
+		if (aq_ret) {
+			retval =
+			i40e_aq_rc_to_posix(aq_ret,
+					    hw->aq.asq_last_status);
+			dev_info(&pf->pdev->dev,
+				"set unicast promisc failed on %s, err %s, aq_err %s\n",
+					 vsi_name,
+				 i40e_stat_str(hw, aq_ret),
+				 i40e_aq_str(hw,
+					     hw->aq.asq_last_status));
+		}
+
 	}
 out:
 	/* if something went wrong then set the changed flag so we try again */
