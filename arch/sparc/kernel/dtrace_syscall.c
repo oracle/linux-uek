@@ -12,7 +12,7 @@
 #include <linux/kallsyms.h>
 #include <linux/module.h>
 #include <linux/namei.h>
-#include <linux/sched.h>
+#include <linux/binfmts.h>
 #include <linux/syscalls.h>
 #include <asm/compat.h>
 
