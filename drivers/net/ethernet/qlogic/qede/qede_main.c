@@ -963,13 +963,8 @@ static int __qede_probe(struct pci_dev *pdev, u32 dp_module, u8 dp_level,
 	edev->ops->common->set_id(cdev, edev->ndev->name, DRV_MODULE_VERSION);
 
 	/* PTP not supported on VFs */
-	if (!is_vf) {
-		rc = qede_ptp_register_phc(edev);
-		if (rc) {
-			DP_NOTICE(edev, "Cannot register PHC\n");
-			goto err5;
-		}
-	}
+	if (!is_vf)
+		qede_ptp_enable(edev, true);
 
 	edev->ops->register_ops(cdev, &qede_ll_ops, edev);
 
@@ -984,8 +979,6 @@ static int __qede_probe(struct pci_dev *pdev, u32 dp_module, u8 dp_level,
 
 	return 0;
 
-err5:
-	unregister_netdev(edev->ndev);
 err4:
 	qede_roce_dev_remove(edev);
 err3:
@@ -1036,7 +1029,7 @@ static void __qede_remove(struct pci_dev *pdev, enum qede_remove_mode mode)
 	unregister_netdev(ndev);
 	cancel_delayed_work_sync(&edev->sp_task);
 
-	qede_ptp_remove(edev);
+	qede_ptp_disable(edev);
 
 	qede_roce_dev_remove(edev);
 
@@ -1899,8 +1892,6 @@ static void qede_unload(struct qede_dev *edev, enum qede_unload_mode mode,
 	qede_roce_dev_event_close(edev);
 	edev->state = QEDE_STATE_CLOSED;
 
-	qede_ptp_stop(edev);
-
 	/* Close OS Tx */
 	netif_tx_disable(edev->ndev);
 	netif_carrier_off(edev->ndev);
@@ -2010,8 +2001,6 @@ static int qede_load(struct qede_dev *edev, enum qede_load_mode mode,
 	qede_roce_dev_event_open(edev);
 
 	edev->state = QEDE_STATE_OPEN;
-
-	qede_ptp_start(edev, (mode == QEDE_LOAD_NORMAL));
 
 	DP_INFO(edev, "Ending successfully qede load\n");
 
