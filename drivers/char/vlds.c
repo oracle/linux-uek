@@ -81,6 +81,9 @@ struct vlds_dev {
 
 	/* list of all services for this vlds device */
 	struct list_head	service_info_list;
+
+	/* set as cdev parent kobject */
+	struct kobject		kobj;
 };
 
 /* for convenience, alias to the vlds_dev for the SP device */
@@ -2054,10 +2057,9 @@ static void vlds_free_vlds_dev(struct vlds_dev *vlds)
 	list_del(&vlds->list);
 	vlds_data.num_vlds_dev_list--;
 
-	/* free it */
-	kfree(vlds->int_name);
+	/* free memory when kobject's reference count is 0 */
 	mutex_destroy(&vlds->vlds_mutex);
-	kfree(vlds);
+	kobject_put(&vlds->kobj);
 
 	return;
 }
@@ -2289,6 +2291,20 @@ static int vlds_get_next_avail_minor(void)
 	return i;
 }
 
+static void vlds_free_kobject(struct kobject *kobj)
+{
+	struct vlds_dev *vlds =
+		container_of(kobj, struct vlds_dev, kobj);
+
+	dprintk("Deallocating (%s)\n", vlds->int_name);
+	kfree(vlds->int_name);
+	kfree(vlds);
+}
+
+static struct kobj_type vlds_ktype = {
+	.release = vlds_free_kobject,
+};
+
 static int vlds_alloc_vlds_dev(char *int_name, char *dev_name,
 	struct device *vdev_dev, const u64 domain_handle,
 	struct vlds_dev **vldsp)
@@ -2342,9 +2358,13 @@ static int vlds_alloc_vlds_dev(char *int_name, char *dev_name,
 	vlds->ref_cnt = 0;
 	vlds->removed = false;
 
+	/* setup kobj to free vlds, it will be the parent of cdev */
+	kobject_init(&vlds->kobj, &vlds_ktype);
+
 	/* create/add the associated cdev */
 	cdev_init(&vlds->cdev, &vlds_fops);
 	vlds->cdev.owner = THIS_MODULE;
+	vlds->cdev.kobj.parent = &vlds->kobj;
 	rv = cdev_add(&vlds->cdev, devt, 1);
 	if (rv != 0) {
 		dprintk("cdev_add() failed.\n");
@@ -2383,12 +2403,13 @@ error:
 	if (devt)
 		cdev_del(&vlds->cdev);
 
-	if (vlds->int_name)
-		kfree(vlds->int_name);
-
 	if (vlds != NULL) {
+		kfree(vlds->int_name);
 		mutex_destroy(&vlds->vlds_mutex);
-		kfree(vlds);
+		if (vlds->kobj.state_initialized)
+			kobject_put(&vlds->kobj);
+		else
+			kfree(vlds);
 	}
 
 	dprintk("dev alloc failed (rv=%d)\n", rv);
