@@ -1,7 +1,0 @@
-%pubring kernel.pub
-%secring kernel.sec
-Key-Type: DSA
-Key-Length: 1024
-Name-Real: Oracle America, Inc.
-Name-Comment: Kernel Module GPG key
-%commit

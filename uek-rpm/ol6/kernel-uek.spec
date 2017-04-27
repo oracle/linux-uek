@@ -519,7 +519,9 @@ BuildRequires: sparse >= 0.4.1
 %if %{signmodules}
 BuildRequires: openssl
 BuildRequires: gnupg
-#BuildRequires: pesign >= 0.10-4
+%ifarch x86_64
+BuildRequires: pesign >= 0.10-4
+%endif
 %endif
 %if %{with_fips}
 BuildRequires: hmaccalc
@@ -547,11 +549,14 @@ Source17: kabitool
 Source18: check-kabi
 Source20: x86_energy_perf_policy
 Source21: turbostat
+Source22: securebootca.cer
+Source23: secureboot.cer
 
 Source1000: config-x86_64
 Source1001: config-x86_64-debug
 Source1004: config-sparc
 Source1005: config-sparc-debug
+Source1006: nano_modules.list
 
 Source25: Module.kabi_x86_64debug
 Source26: Module.kabi_x86_64
@@ -614,6 +619,17 @@ Linux operating system.  The kernel handles the basic functions
 of the operating system: memory allocation, process allocation, device
 input and output, etc.
 
+%ifarch x86_64
+%package -n kernel-ueknano
+Summary: The Linux kernel
+Group: System Environment/Kernel
+License: GPLv2
+%description -n kernel-ueknano
+The kernel package contains the Linux kernel (vmlinuz), the core of any
+Linux operating system.  The kernel handles the basic functions
+of the operating system: memory allocation, process allocation, device
+input and output, etc.
+%endif
 
 %package doc
 Summary: Various documentation bits found in the kernel source
@@ -974,6 +990,11 @@ mkdir -p configs
 %ifarch x86_64
 	cp %{SOURCE1001} configs/config-debug
 	cp %{SOURCE1000} configs/config
+	# Generate modules list for nano package.
+	while read mod
+	do
+		echo "/lib/modules/%{KVERREL}/$mod" >> %{_builddir}/nano_modules.list.path
+	done < %{SOURCE1006}
 %endif #ifarch x86_64
 
 %ifarch i686
@@ -1074,6 +1095,11 @@ BuildKernel() {
       cp arch/$Arch/boot/zImage.stub $RPM_BUILD_ROOT/%{image_install_path}/zImage.stub-$KernelVer || :
     fi
     %if %{signmodules}
+        %ifarch x86_64
+            # Sign the image if we're using EFI
+            %pesign -s -i $KernelImage -o $KernelImage.signed -a %{SOURCE22} -c %{SOURCE23} -n oraclesecureboot
+            mv $KernelImage.signed $KernelImage
+        %endif
 	# Sign the image if we're using EFI
 	#% pesign -s -i $KernelImage -o vmlinuz.signed
 	#    if [ -x /usr/bin/pesign -a "x86_64" == "x86_64" ]; then
@@ -1587,11 +1613,35 @@ ln -sf /lib/firmware/%{rpmversion}-%{pkg_release} /lib/firmware/%{rpmversion}-%{
 %{nil}
 
 #
-# This macro defines a %%preun script for a kernel package.
-#	%%kernel_variant_preun <subpackage>
+# This macro defines a %%post and %% posttrans script for nano kernel package
 #
-%define kernel_variant_preun() \
-%{expand:%%preun %{?1}}\
+%define kernel_variant_nano_post() \
+%posttrans -n kernel-ueknano\
+/sbin/new-kernel-pkg --package kernel --mkinitrd --dracut --depmod --update %{KVERREL} || exit $?\
+/sbin/new-kernel-pkg --package kernel --rpmposttrans %{KVERREL} || exit $?\
+if [ -x /sbin/weak-modules ]\
+then\
+    /sbin/weak-modules --add-kernel %{KVERREL} || exit $?\
+fi\
+\
+%post -n kernel-ueknano\
+if [ `uname -i` == "x86_64" -o `uname -i` == "i386" ] &&\
+   [ -f /etc/sysconfig/kernel ]; then\
+  /bin/sed -r -i -e 's/^DEFAULTKERNEL=.*$/DEFAULTKERNEL=kernel-ueknano/' /etc/sysconfig/kernel || exit $?\
+fi\
+if grep --silent '^hwcap 0 nosegneg$' /etc/ld.so.conf.d/kernel-*.conf 2> /dev/null; then\
+  sed -i '/^hwcap 0 nosegneg$/ s/0/1/' /etc/ld.so.conf.d/kernel-*.conf\
+fi\
+/sbin/new-kernel-pkg --package kernel-ueknano --install %{KVERREL} || exit $?\
+ln -sf /lib/firmware/%{rpmversion}-%{pkg_release} /lib/firmware/%{rpmversion}-%{pkg_release}.%{_target_cpu}\
+%{nil}
+
+#
+# This macro defines a %%preun script for a kernel package.
+#	%%kernel_variant_preun [-n] <subpackage>
+#
+%define kernel_variant_preun(n:) \
+%{expand:%%preun %{-n} %{?1}}\
 /sbin/new-kernel-pkg --rminitrd --rmmoddep --remove %{KVERREL}%{?1:.%{1}} || exit $?\
 if [ -x /sbin/weak-modules ]\
 then\
@@ -1602,10 +1652,10 @@ fi\
 
 #
 # This macro defines a %%pre script for a kernel package.
-#	%%kernel_variant_pre <subpackage>
+#      %%kernel_variant_pre [-n] <subpackage>
 #
-%define kernel_variant_pre() \
-%{expand:%%pre %{?1}}\
+%define kernel_variant_pre(n:) \
+%{expand:%%pre %{-n} %{?1}}\
 message="Change references of /dev/hd in /etc/fstab to disk label"\
 if [ -f /etc/fstab ]\
 then\
@@ -1659,6 +1709,12 @@ fi\
 %kernel_variant_post -u -v uek -r (kernel%{variant}|kernel%{variant}-debug|kernel-ovs)
 %else
 %kernel_variant_post -u -v uek -r (kernel%{variant}|kernel%{variant}-debug|kernel-ovs)
+%endif
+
+%ifarch x86_64
+%kernel_variant_pre -n kernel-ueknano
+%kernel_variant_preun -n kernel-ueknano
+%kernel_variant_nano_post
 %endif
 
 %kernel_variant_pre smp
@@ -1723,11 +1779,11 @@ fi
 #
 # This macro defines the %%files sections for a kernel package
 # and its devel and debuginfo packages.
-#	%%kernel_variant_files [-k vmlinux] <condition> <subpackage>
+#	%%kernel_variant_files [-k vmlinux] <condition> [-n] <subpackage> [-f <files list>]
 #
-%define kernel_variant_files(k:) \
+%define kernel_variant_files(k:n:f:) \
 %if %{1}\
-%{expand:%%files %{?2}}\
+%{expand:%%files %{-n} %{?2} %{-f}}\
 %defattr(-,root,root)\
 /%{image_install_path}/%{?-k:%{-k*}}%{!?-k:vmlinuz}-%{KVERREL}%{?2:.%{2}}\
 %if %{with_fips} \
@@ -1737,7 +1793,9 @@ fi
 /boot/symvers-%{KVERREL}%{?2:.%{2}}.gz\
 /boot/config-%{KVERREL}%{?2:.%{2}}\
 %dir /lib/modules/%{KVERREL}%{?2:.%{2}}\
+%if "%{-n*}" != "kernel-ueknano"\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/kernel\
+%endif\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/build\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/source\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/extra\
@@ -1757,6 +1815,7 @@ fi
 /usr/sbin/turbostat\
 %endif\
 %ghost /boot/initramfs-%{KVERREL}%{?2:.%{2}}.img\
+%if "%{-n*}" != "kernel-ueknano"\
 %{expand:%%files %{?2:%{2}-}devel}\
 %defattr(-,root,root)\
 %dir /usr/src/kernels\
@@ -1781,10 +1840,14 @@ fi
 %endif\
 %endif\
 %endif\
+%endif\
 %{nil}
 
 
 %kernel_variant_files %{with_up}
+%ifarch x86_64
+%kernel_variant_files %{with_up} -n kernel-ueknano -f %{_builddir}/nano_modules.list.path
+%endif
 %kernel_variant_files %{with_smp} smp
 %if %{with_up}
 %kernel_variant_files %{with_debug} debug
