@@ -7,11 +7,6 @@
 #ifndef _SYS_DAX_H
 #define _SYS_DAX_H
 
-#ifdef __KERNEL__
-#include "ccb.h"
-#else
-#include <ccb.h>
-#endif
 #include <linux/types.h>
 
 /* DAXIOC_CCB_EXEC dce_ccb_status */
@@ -40,9 +35,13 @@
 #define	DAXIOC	'D'
 
 /* Deprecated IOCTL numbers */
-#define	DAXIOC_DEP_1	_IOWR(DAXIOC, 1, struct dax_ccb_thr_init_arg)
-#define	DAXIOC_DEP_3	_IOWR(DAXIOC, 3, struct dax_ca_dequeue_arg)
-#define	DAXIOC_DEP_4	_IOWR(DAXIOC, 4, struct dax_ccb_exec_arg)
+#define	DAXIOC_CCB_THR_INIT_OLD	_IOWR(DAXIOC, 1, struct dax_ccb_thr_init_arg)
+#define	DAXIOC_CA_DEQUEUE_OLD	_IOWR(DAXIOC, 3, struct dax_ca_dequeue_arg)
+#define	DAXIOC_CCB_EXEC_OLD	_IOWR(DAXIOC, 4, struct dax_ccb_exec_arg)
+#define	PERFCOUNT_GET_NODE_COUNT_OLD		_IOR('p', 0xB0, void *)
+#define	PERFCOUNT_DAX_SET_COUNTERS_OLD		_IOW('p', 0xBA, void *)
+#define	PERFCOUNT_DAX_GET_COUNTERS_OLD		_IOR('p', 0xBB, void *)
+#define	PERFCOUNT_DAX_CLEAR_COUNTERS_OLD	_IOW('p', 0xBC, void *)
 
 /* CCB thread initialization */
 #define	DAXIOC_CCB_THR_INIT	_IOWR(DAXIOC, 6, struct dax_ccb_thr_init_arg)
@@ -70,9 +69,9 @@
  * dcti_compl_mapoff - return u64 mmap offset
  */
 struct dax_ccb_thr_init_arg {
-	u32 dcti_ccb_buf_maxlen;
-	u64 dcti_compl_maplen;
-	u64 dcti_compl_mapoff;
+	__u32 dcti_ccb_buf_maxlen;
+	__u64 dcti_compl_maplen;
+	__u64 dcti_compl_mapoff;
 };
 
 /*
@@ -86,12 +85,12 @@ struct dax_ccb_thr_init_arg {
  * dce_nomap_va : bad virtual address when ret is NOMAP or NOACCESS
  */
 struct dax_ccb_exec_arg {
-	u32	dce_ccb_buf_len;
+	__u32	dce_ccb_buf_len;
 	void	*dce_ccb_buf_addr;
-	u32	dce_submitted_ccb_buf_len;
-	u64	dce_ca_region_off;
-	u32	dce_ccb_status;
-	u64	dce_nomap_va;
+	__u32	dce_submitted_ccb_buf_len;
+	__u64	dce_ca_region_off;
+	__u32	dce_ccb_status;
+	__u64	dce_nomap_va;
 };
 
 /*
@@ -100,8 +99,8 @@ struct dax_ccb_exec_arg {
  * dcd_len_dequeued : byte len of CAs dequeued by the driver
  */
 struct dax_ca_dequeue_arg {
-	u32 dcd_len_requested;
-	u32 dcd_len_dequeued;
+	__u32 dcd_len_requested;
+	__u32 dcd_len_dequeued;
 };
 
 

@@ -298,9 +298,13 @@ static long dax_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 				 sizeof(dax_version)))
 			return -EFAULT;
 		return 0;
-	case DAXIOC_DEP_1:
-	case DAXIOC_DEP_3:
-	case DAXIOC_DEP_4:
+	case DAXIOC_CCB_THR_INIT_OLD:
+	case DAXIOC_CA_DEQUEUE_OLD:
+	case DAXIOC_CCB_EXEC_OLD:
+	case PERFCOUNT_GET_NODE_COUNT_OLD:
+	case PERFCOUNT_DAX_SET_COUNTERS_OLD:
+	case PERFCOUNT_DAX_GET_COUNTERS_OLD:
+	case PERFCOUNT_DAX_CLEAR_COUNTERS_OLD:
 		dax_err("Old driver API not supported");
 		return -ENOTTY;
 	default:
