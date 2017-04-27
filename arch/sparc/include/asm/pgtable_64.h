@@ -1031,7 +1031,7 @@ int remap_pfn_range(struct vm_area_struct *, unsigned long, unsigned long,
 static inline void arch_do_swap_page(struct mm_struct *mm, unsigned long addr,
 				     pte_t pte, pte_t oldpte)
 {
-	if (pte_val(pte) & _PAGE_MCD_4V) {
+	if (adi_state.enabled && (pte_val(pte) & _PAGE_MCD_4V)) {
 		swp_entry_t tmp;
 		pgoff_t swap_off;
 		unsigned long swap_type, version;
@@ -1062,7 +1062,7 @@ static inline void arch_do_swap_page(struct mm_struct *mm, unsigned long addr,
 static inline void arch_unmap_one(struct mm_struct *mm, unsigned long addr,
 				  pte_t pte, pte_t oldpte)
 {
-	if (pte_val(oldpte) & _PAGE_MCD_4V) {
+	if (adi_state.enabled & (pte_val(oldpte) & _PAGE_MCD_4V)) {
 		unsigned long version, paddr;
 
 		paddr = pte_val(oldpte) & _PAGE_PADDR_4V;
