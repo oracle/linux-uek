@@ -214,6 +214,19 @@ static void init_member_blacklist(const char *member_blacklist_file,
 static int member_blacklisted(Dwarf_Die *die, Dwarf_Die *parent_die);
 
 /*
+ * The variable blacklist, like the others, is an automatically-maintained
+ * blacklist giving variables in specific modules which should not be emitted.
+ * (These are variables whose names are ambiguous within a module, and may
+ * appear multiple times in /proc/kallmodsyms, identical but for address and
+ * thus indistinguishable.)
+ *
+ * The mapping is from module`variable to NULL (safe because variable names
+ * cannot begin with a backtick, and even if they could DTrace's notation could
+ * not reference such variables).
+ */
+static GHashTable *variable_blacklist;
+
+/*
  * A mapping from translation unit name to the name of the module that
  * translation unit is part of.  Module names have no trailing suffix.
  *
@@ -332,6 +345,15 @@ struct detect_duplicates_id_file
  * translation unit, in order that recursion terminates if two such structures
  * have pointers to each other.
  *
+ * vars_seen tracks variables seen in this module, mapping from unadorned name
+ * to a non-NULL pointer (for static, non-'external') or NULL (for non-static or
+ * 'extern').  If a static variable coexists with any other variable with the
+ * same name, static or not, the variable is blacklisted.  (Non-static
+ * coexistence is fine, because they are just different references to the same
+ * variable).  Note that management of this variable is a little annoying
+ * because it varies by module, not by TU, so we can't use tu_init/tu_done to
+ * manage its lifetime.
+ *
  * named_structs tracks type IDs and contained modules for every type that may
  * contain undetected duplicates and thus may require rescanning.
  *
@@ -346,6 +368,7 @@ struct detect_duplicates_state {
 	const char *module_name;
 	GHashTable *structs_seen;
 	GList *named_structs;
+	GHashTable *vars_seen;
 	const char *dwfl_file_name;
 	Dwarf *dwarf;
 	Dwfl *dwfl;
@@ -375,6 +398,15 @@ static void detect_duplicates(const char *module_name, const char *file_name,
  */
 static void detect_duplicates_will_rescan(Dwarf_Die *die, const char *id,
 					  void *data);
+
+/*
+ * Note the variable referenced by this DIE in vars_seen: blacklist it if an
+ * entry for this variable already exists in vars_seen and this instance is
+ * static, or if a static entry already exists in vars_seen, whether this
+ * instance is static or not.
+ */
+static void detect_duplicates_blacklist_var_dups(Dwarf_Die *die,
+						 struct detect_duplicates_state *state);
 
 /*
  * Detect duplicates and mark seen types for a given type, via a type_id()
@@ -858,6 +890,8 @@ static void run(char *output_dir)
 					     free, free);
 	per_module = g_hash_table_new_full(g_str_hash, g_str_equal, free,
 					   private_per_module_free);
+	variable_blacklist = g_hash_table_new_full(g_str_hash, g_str_equal,
+						   free, free);
 
 	dw_ctf_trace("Initializing...\n");
 	init_tu_to_modules();
@@ -1837,8 +1871,14 @@ static void scan_duplicates(void)
 						  &state);
 	} while (state.repeat_detection);
  out:
+	g_hash_table_destroy(state.vars_seen);
 	detect_duplicates_dwarf_free(&state);
 	dw_ctf_trace("Duplicate detection: complete.\n");
+	dw_ctf_trace("%llu distinct type IDs known.\n",
+		     (long long unsigned) g_hash_table_size(id_to_module));
+	dw_ctf_trace("%llu variables blacklisted for static/nonstatic "
+		     "conflicts.\n",
+		     (long long unsigned) g_hash_table_size(variable_blacklist));
 	g_list_free_full(state.named_structs, free_duplicates_id_file);
 }
 
@@ -1852,9 +1892,18 @@ static void detect_duplicates_tu_init(const char *module_name,
 {
 	struct detect_duplicates_state *state = data;
 
-	state->module_name = module_name;
 	state->structs_seen = g_hash_table_new_full(g_str_hash, g_str_equal,
 						    free, free);
+	if (state->module_name == NULL ||
+	    (strcmp(state->module_name, module_name) != 0)) {
+		if (state->module_name != NULL)
+			g_hash_table_remove_all(state->vars_seen);
+		else
+			state->vars_seen = g_hash_table_new_full(g_str_hash,
+								 g_str_equal,
+								 free, NULL);
+	}
+	state->module_name = module_name;
 }
 
 /*
@@ -1938,6 +1987,18 @@ static void detect_duplicates(const char *module_name,
 		free(type_id(die, NULL, detect_duplicates_will_rescan, state));
 
 	/*
+	 * Handle static variable blacklisting.  (We still shuffle blacklisted
+	 * variables into the right place in id_to_module because we check for
+	 * blacklisting at the lowest level, by which point we have already
+	 * depended on id_to_module being correctly populated.)
+	 *
+	 * Avoid calling this for recursive dependent-type scans: variables
+	 * cannot be dependent types.
+	 */
+	if (parent_die != NULL && dwarf_tag(die) == DW_TAG_variable)
+		detect_duplicates_blacklist_var_dups(die, state);
+
+	/*
 	 * If we know of a single module incorporating this type, and it is not
 	 * the same as the module we are currently in, then this type is
 	 * duplicated across modules and belongs in the global type table.
@@ -2012,6 +2073,46 @@ static void detect_duplicates_will_rescan(Dwarf_Die *die, const char *id,
 	id_file->id = xstrdup(id);
 	id_file->dieoff = dwarf_dieoffset(die);
 	state->named_structs = g_list_prepend(state->named_structs, id_file);
+}
+
+/*
+ * Note the variable referenced by this DIE in vars_seen: blacklist it if an
+ * entry for this variable already exists in vars_seen and this instance is
+ * static, or if a static entry already exists in vars_seen, whether this
+ * instance is static or not.
+ */
+static void detect_duplicates_blacklist_var_dups(Dwarf_Die *die,
+						 struct detect_duplicates_state *state)
+{
+	void *static_var;
+	int blacklist = 0;
+
+	if (g_hash_table_lookup_extended(state->vars_seen,
+					 dwarf_diename(die),
+					 NULL, &static_var)) {
+		if (!dwarf_hasattr(die, DW_AT_external) &&
+		    !dwarf_hasattr(die, DW_AT_declaration))
+			blacklist = 1;
+		if (static_var != NULL)
+			blacklist = 1;
+	}
+	else
+	  /*
+	   * We need a non-NULL address here, but that is all we need.
+	   * The address of a random variable will do.
+	   */
+		g_hash_table_insert(state->vars_seen,
+				    xstrdup(dwarf_diename(die)),
+				    (!dwarf_hasattr(die, DW_AT_external) &&
+				     !dwarf_hasattr(die, DW_AT_declaration)) ?
+				    &static_var : NULL);
+
+	if (blacklist) {
+		char *var = NULL;
+		var = str_appendn(var, state->module_name, "`",
+				  dwarf_diename(die), NULL);
+		g_hash_table_replace(variable_blacklist, var, NULL);
+	}
 }
 
 /*
@@ -2857,9 +2958,8 @@ static int filter_ctf_file_scope(Dwarf_Die *die, Dwarf_Die *parent_die)
 
 /*
  * A CTF assembly filter function which excludes all names not at the global
- * scope, all static symbols, and all names whose names are unlikely to be
- * interesting.  (DTrace userspace contains a similar list, but the two lists
- * need not be in sync.)
+ * scope, and all names whose names are unlikely to be interesting.  (DTrace
+ * userspace contains a similar list, but the two lists need not be in sync.)
  */
 static int filter_ctf_uninteresting(Dwarf_Die *die,
 				    Dwarf_Die *parent_die)
@@ -2874,7 +2974,6 @@ static int filter_ctf_uninteresting(Dwarf_Die *die,
 
 #define strstarts(var, x) (strncmp(var, x, strlen (x)) == 0)
 	return ((dwarf_tag(parent_die) == DW_TAG_compile_unit) &&
-		(dwarf_hasattr(die, DW_AT_external)) &&
 		!((strcmp(sym_name, "__per_cpu_start") == 0) ||
 		  (strcmp(sym_name, "__per_cpu_end") == 0) ||
 		  (strstarts(sym_name, "__crc_")) ||
@@ -3681,10 +3780,25 @@ static ctf_id_t assemble_ctf_variable(const char *module_name,
 				      int *replace)
 {
 	const char *name = dwarf_diename(die);
+	char *blacklist_name = NULL;
 	ctf_id_t type_ref;
 	int err;
 
 	CTF_DW_ENFORCE(name);
+
+	/*
+	 * If blacklisted, just skip it.
+	 */
+	blacklist_name = str_appendn(blacklist_name, module_name, "`",
+				     dwarf_diename(die), NULL);
+	if (g_hash_table_lookup_extended(variable_blacklist, blacklist_name,
+					 NULL, NULL)) {
+		dw_ctf_trace("%s: variable %s is blacklisted for static/non-"
+			     "static ambiguity.\n", file_name, blacklist_name);
+		free(blacklist_name);
+		return 0;
+	}
+	free(blacklist_name);
 
 	if ((type_ref = lookup_ctf_type(module_name, file_name, die, ctf,
 					locerrstr)) < 0) {
