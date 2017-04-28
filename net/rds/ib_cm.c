@@ -210,7 +210,7 @@ static int rds_ib_match_acl(struct rdma_cm_id *cm_id, __be32 saddr)
 	__be64 fguid = cm_id->route.path_rec->dgid.global.interface_id;
 	__be64 fsubnet = cm_id->route.path_rec->dgid.global.subnet_prefix;
 	struct ib_cm_dpp dpp;
-	u32 addr; 
+	u32 addr;
 
 	ib_cm_dpp_init(&dpp, cm_id->device, cm_id->port_num,
 		       ntohs(cm_id->route.path_rec->pkey));
@@ -950,24 +950,22 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 			rds_ib_stats_inc(s_ib_listen_closed_stale);
 		} else if (rds_conn_state(conn) == RDS_CONN_CONNECTING) {
 			unsigned long now = get_seconds();
-			unsigned long retry =
-					conn->c_path[0].cp_reconnect_retry;
 
-
-			/* after retry seconds, give up on
-			 * existing connection attempts and try again.
-			 * At this point it's no longer backoff race but
-			 * something has gone horribly wrong.
+			/*
+			 * after 15 seconds, give up on existing connection
+			 * attempts and make them try again.  At this point
+			 * it's no longer a race but something has gone
+			 * horribly wrong
 			 */
-			retry = DIV_ROUND_UP(retry, 1000);
 			if (now > conn->c_connection_start &&
-			    now - conn->c_connection_start > retry) {
-				pr_info("RDS/IB: conn <%pI4,%pI4,%d> racing for more than %lus, retry\n",
-					&conn->c_laddr, &conn->c_faddr,
-					conn->c_tos, retry);
-				set_bit(RDS_RECONNECT_TIMEDOUT,
-					&conn->c_path[0].cp_reconn_flags);
-				rds_conn_drop(conn, DR_RECONNECT_TIMEOUT);
+			    now - conn->c_connection_start > 15) {
+				printk(KERN_CRIT "RDS/IB: connection "
+					"<%pI4,%pI4,%d> "
+					"racing for 15s, forcing reset ",
+					&conn->c_laddr,
+					&conn->c_faddr,
+					conn->c_tos);
+				rds_conn_drop(conn, DR_IB_REQ_WHILE_CONNECTING);
 				rds_ib_stats_inc(s_ib_listen_closed_stale);
 			} else {
 				/* Wait and see - our connect may still be succeeding */
