@@ -37,6 +37,7 @@
 #include <linux/in.h>
 #include <linux/poll.h>
 #include <linux/version.h>
+#include <linux/random.h>
 #include <net/sock.h>
 
 #include "rds.h"
@@ -323,6 +324,24 @@ static int rds_cong_monitor(struct rds_sock *rs, char __user *optval,
 	return ret;
 }
 
+static void rds_user_conn_paths_drop(struct rds_connection *conn, int reason)
+{
+	int i;
+	struct rds_conn_path *cp;
+
+	if (!conn->c_trans->t_mp_capable || conn->c_npaths == 1) {
+		cp = &conn->c_path[0];
+		cp->cp_drop_source = reason;
+		rds_conn_path_drop(cp, DR_USER_RESET);
+	} else {
+		for (i = 0; i < RDS_MPATH_WORKERS; i++) {
+			cp = &conn->c_path[i];
+			cp->cp_drop_source = reason;
+			rds_conn_path_drop(cp, DR_USER_RESET);
+		}
+	}
+}
+
 static int rds_user_reset(struct rds_sock *rs, char __user *optval, int optlen)
 {
 	struct rds_reset reset;
@@ -341,15 +360,14 @@ static int rds_user_reset(struct rds_sock *rs, char __user *optval, int optlen)
 		pr_info("RDS: Reset ALL conns for Source %pI4\n",
 			 &reset.src.s_addr);
 
-		rds_conn_laddr_list(reset.src.s_addr, &s_addr_conns);
+		rds_conn_laddr_list(sock_net(rds_rs_to_sk(rs)),
+				    reset.src.s_addr, &s_addr_conns);
 		if (list_empty(&s_addr_conns))
 			goto done;
 
 		list_for_each_entry(conn, &s_addr_conns, c_laddr_node)
-			if (conn) {
-				conn->c_drop_source = 1;
-				rds_conn_drop(conn, DR_USER_RESET);
-			}
+			if (conn)
+				rds_user_conn_paths_drop(conn, 1);
 		goto done;
 	}
 
@@ -358,11 +376,14 @@ static int rds_user_reset(struct rds_sock *rs, char __user *optval, int optlen)
 			rs->rs_transport, reset.tos);
 
 	if (conn) {
-		printk(KERN_NOTICE "Resetting RDS/IB connection "
+		bool is_tcp = conn->c_trans->t_type == RDS_TRANS_TCP;
+
+		printk(KERN_NOTICE "Resetting RDS/%s connection "
 				"<%pI4,%pI4,%d>\n",
+				is_tcp ? "tcp" : "IB",
 				&reset.src.s_addr,
 				&reset.dst.s_addr, conn->c_tos);
-		rds_conn_drop(conn, DR_USER_RESET);
+		rds_user_conn_paths_drop(conn, DR_USER_RESET);
 	}
 done:
 	return 0;
@@ -898,9 +919,13 @@ static void rds_exit(void)
 }
 module_exit(rds_exit);
 
+u32 rds_gen_num;
+
 static int rds_init(void)
 {
 	int ret;
+
+	net_get_random_once(&rds_gen_num, sizeof(rds_gen_num));
 
 	rds_bind_lock_init();
 
