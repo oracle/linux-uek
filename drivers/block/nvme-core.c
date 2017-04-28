@@ -849,6 +849,7 @@ static int nvme_submit_bio_queue(struct nvme_queue *nvmeq, struct nvme_ns *ns,
 								struct bio *bio)
 {
 	struct nvme_iod *iod;
+	struct nvme_dev *dev = nvmeq->dev;
 	int psegs = bio_phys_segments(ns->queue, bio);
 	int result;
 	unsigned size = !(bio->bi_rw & REQ_DISCARD) ? bio->bi_size :
@@ -868,13 +869,19 @@ static int nvme_submit_bio_queue(struct nvme_queue *nvmeq, struct nvme_ns *ns,
 	if (bio->bi_rw & REQ_DISCARD) {
 		void *range;
 		/*
+		 * Temporarily drop nvmeq->q_lock, since dma_pool_alloc might
+		 * take a long time.
+		 */
+		spin_unlock_irq(&nvmeq->q_lock);
+		/*
 		 * We reuse the small pool to allocate the 16-byte range here
 		 * as it is not worth having a special pool for these or
 		 * additional cases to handle freeing the iod.
 		 */
-		range = dma_pool_alloc(nvmeq->dev->prp_small_pool,
+		range = dma_pool_alloc(dev->prp_small_pool,
 						GFP_ATOMIC,
 						&iod->first_dma);
+		spin_lock_irq(&nvmeq->q_lock);
 		if (!range) {
 			result = -ENOMEM;
 			goto free_iod;
@@ -887,11 +894,18 @@ static int nvme_submit_bio_queue(struct nvme_queue *nvmeq, struct nvme_ns *ns,
 			psegs);
 		if (result <= 0)
 			goto free_iod;
-		if (nvme_setup_prps(nvmeq->dev, iod, result, GFP_ATOMIC) !=
-								result) {
+		/*
+		 * Temporarily drop nvmeq->q_lock, since dma_pool_alloc (called
+		 * by nvme_setup_prps()) might take a long time.
+		 */
+		spin_unlock_irq(&nvmeq->q_lock);
+		if (nvme_setup_prps(dev, iod, result, GFP_ATOMIC) !=
+							result) {
+			spin_lock_irq(&nvmeq->q_lock);
 			result = -ENOMEM;
 			goto free_iod;
 		}
+		spin_lock_irq(&nvmeq->q_lock);
 		nvme_start_io_acct(bio);
 	}
 	if (unlikely(nvme_submit_iod(nvmeq, iod))) {
@@ -902,7 +916,7 @@ static int nvme_submit_bio_queue(struct nvme_queue *nvmeq, struct nvme_ns *ns,
 	return 0;
 
  free_iod:
-	nvme_free_iod(nvmeq->dev, iod);
+	nvme_free_iod(dev, iod);
 	return result;
 }
 
