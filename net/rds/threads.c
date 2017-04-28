@@ -93,8 +93,6 @@ void rds_connect_path_complete(struct rds_conn_path *cp, int curr)
 		conn, &conn->c_laddr, &conn->c_faddr, conn->c_tos);
 
 	cp->cp_reconnect_jiffies = 0;
-	cp->cp_reconnect_retry = rds_sysctl_reconnect_retry_ms;
-	cp->cp_reconnect_retry_count = 0;
 	set_bit(0, &conn->c_map_queued);
 	queue_delayed_work(cp->cp_wq, &cp->cp_send_w, 0);
 	queue_delayed_work(cp->cp_wq, &cp->cp_recv_w, 0);
@@ -148,8 +146,7 @@ void rds_queue_reconnect(struct rds_conn_path *cp)
 		return;
 
 	set_bit(RDS_RECONNECT_PENDING, &cp->cp_flags);
-	if (cp->cp_reconnect_jiffies == 0 ||
-	    test_and_clear_bit(RDS_RECONNECT_TIMEDOUT, &cp->cp_reconn_flags)) {
+	if (cp->cp_reconnect_jiffies == 0) {
 		cp->cp_reconnect_jiffies = rds_sysctl_reconnect_min_jiffies;
 		queue_delayed_work(cp->cp_wq, &cp->cp_conn_w, 0);
 		return;
@@ -319,29 +316,12 @@ void rds_reconnect_timeout(struct work_struct *work)
 						cp_reconn_w.work);
 	struct rds_connection *conn = cp->cp_conn;
 
-	if (cp->cp_reconnect_retry_count > rds_sysctl_reconnect_max_retries) {
-		pr_info("RDS: connection <%pI4,%pI4,%d> reconnect retries(%d) exceeded, stop retry\n",
+	if (!rds_conn_path_up(cp)) {
+		rds_rtd(RDS_RTD_CM,
+			"conn <%pI4,%pI4,%d> not up, retry(%d)\n",
 			&conn->c_laddr, &conn->c_faddr, conn->c_tos,
 			cp->cp_reconnect_retry_count);
-		return;
-	}
-
-	if (!rds_conn_path_up(cp)) {
-		if (rds_conn_path_state(cp) == RDS_CONN_DISCONNECTING) {
-			queue_delayed_work(cp->cp_wq, &cp->cp_reconn_w,
-					   msecs_to_jiffies(100));
-		} else {
-			cp->cp_reconnect_retry_count++;
-			rds_rtd(RDS_RTD_CM,
-				"conn <%pI4,%pI4,%d> not up, retry(%d)\n",
-				&conn->c_laddr, &conn->c_faddr, conn->c_tos,
-				cp->cp_reconnect_retry_count);
-			queue_delayed_work(cp->cp_wq, &cp->cp_reconn_w,
-					   msecs_to_jiffies(
-					   cp->cp_reconnect_retry));
-			set_bit(RDS_RECONNECT_TIMEDOUT, &cp->cp_reconn_flags);
-			rds_conn_path_drop(cp, DR_RECONNECT_TIMEOUT);
-		}
+		rds_conn_path_drop(cp, DR_RECONNECT_TIMEOUT);
 	}
 }
 
