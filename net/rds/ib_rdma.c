@@ -36,6 +36,7 @@
 #include "rds.h"
 #include "ib.h"
 #include "xlist.h"
+#include "rds_single_path.h"
 
 struct workqueue_struct *rds_ib_fmr_wq;
 
