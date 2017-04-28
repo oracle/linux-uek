@@ -38,6 +38,7 @@
 
 #include "rds.h"
 #include "ib.h"
+#include "rds_single_path.h"
 
 unsigned int rds_ib_srq_max_wr = RDS_IB_DEFAULT_SRQ_MAX_WR;
 unsigned int rds_ib_srq_hwm_refill = RDS_IB_DEFAULT_SRQ_HWM_REFILL;
@@ -705,7 +706,8 @@ release_out:
 	if (rds_conn_up(conn) &&
 	   (must_wake || (can_wait && ring_low)
 			|| rds_ib_ring_empty(&ic->i_recv_ring))) {
-		queue_delayed_work(conn->c_wq, &conn->c_recv_w, 1);
+		queue_delayed_work(conn->c_path[0].cp_wq,
+				   &conn->c_path[0].cp_recv_w, 1);
 	}
 	if (can_wait)
 		cond_resched();
@@ -1493,8 +1495,9 @@ static void rds_ib_srq_clear_ring(struct rds_ib_device *rds_ibdev)
 }
 
 
-int rds_ib_recv(struct rds_connection *conn)
+int rds_ib_recv_path(struct rds_conn_path *cp)
 {
+	struct rds_connection *conn = cp->cp_conn;
 	struct rds_ib_connection *ic = conn->c_transport_data;
 	int ret = 0;
 
