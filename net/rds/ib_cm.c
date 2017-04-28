@@ -43,6 +43,7 @@
 #include "rds.h"
 #include "ib.h"
 #include "tcp.h"
+#include "rds_single_path.h"
 
 static unsigned int rds_ib_max_frag = RDS_MAX_FRAG_SIZE;
 static unsigned int ib_init_frag_size = RDS_FRAG_SIZE;
@@ -498,7 +499,7 @@ void rds_ib_tasklet_fn_send(unsigned long data)
 	if (rds_conn_up(conn) &&
 	   (!test_bit(RDS_LL_SEND_FULL, &conn->c_flags) ||
 	    test_bit(0, &conn->c_map_queued)))
-		rds_send_xmit(ic->conn);
+		rds_send_xmit(&ic->conn->c_path[0]);
 }
 
 /*
@@ -541,7 +542,7 @@ static void rds_ib_rx(struct rds_ib_connection *ic)
 		if ((atomic_read(&rds_ibdev->srq->s_num_posted) <
 					rds_ib_srq_hwm_refill) &&
 			!test_and_set_bit(0, &rds_ibdev->srq->s_refill_gate))
-				queue_delayed_work(conn->c_wq,
+				queue_delayed_work(conn->c_path[0].cp_wq,
 					&rds_ibdev->srq->s_refill_w, 0);
 
 	if (ic->i_rx_poll_cq >= RDS_IB_RX_LIMIT) {
@@ -949,7 +950,8 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 			rds_ib_stats_inc(s_ib_listen_closed_stale);
 		} else if (rds_conn_state(conn) == RDS_CONN_CONNECTING) {
 			unsigned long now = get_seconds();
-			unsigned long retry = conn->c_reconnect_retry;
+			unsigned long retry =
+					conn->c_path[0].cp_reconnect_retry;
 
 
 			/* after retry seconds, give up on
@@ -964,7 +966,7 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 					&conn->c_laddr, &conn->c_faddr,
 					conn->c_tos, retry);
 				set_bit(RDS_RECONNECT_TIMEDOUT,
-					&conn->c_reconn_flags);
+					&conn->c_path[0].cp_reconn_flags);
 				rds_conn_drop(conn, DR_RECONNECT_TIMEOUT);
 				rds_ib_stats_inc(s_ib_listen_closed_stale);
 			} else {
@@ -1131,8 +1133,9 @@ out:
 	return ret;
 }
 
-int rds_ib_conn_connect(struct rds_connection *conn)
+int rds_ib_conn_path_connect(struct rds_conn_path *cp)
 {
+	struct rds_connection *conn = cp->cp_conn;
 	struct rds_ib_connection *ic = conn->c_transport_data;
 	struct sockaddr_in src, dest;
 	int ret;
@@ -1183,8 +1186,9 @@ out:
  * so that it can be called at any point during startup.  In fact it
  * can be called multiple times for a given connection.
  */
-void rds_ib_conn_shutdown(struct rds_connection *conn)
+void rds_ib_conn_path_shutdown(struct rds_conn_path *cp)
 {
+	struct rds_connection *conn = cp->cp_conn;
 	struct rds_ib_connection *ic = conn->c_transport_data;
 	int err = 0;
 
@@ -1361,7 +1365,7 @@ int rds_ib_conn_alloc(struct rds_connection *conn, gfp_t gfp)
 	spin_lock_init(&ic->i_rx_lock);
 
 	/*
-	 * rds_ib_conn_shutdown() waits for these to be emptied so they
+	 * rds_ib_conn_path_shutdown() waits for these to be emptied so they
 	 * must be initialized before it can be called.
 	 */
 	rds_ib_ring_init(&ic->i_send_ring, rds_ib_sysctl_max_send_wr);
