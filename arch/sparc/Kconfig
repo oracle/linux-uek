@@ -43,7 +43,7 @@ config SPARC
 	select ODD_RT_SIGACTION
 	select OLD_SIGSUSPEND
 	select ARCH_HAS_SG_CHAIN
-	select PROVE_LOCKING_SMALL if PROVE_LOCKING
+	select LOCKDEP_SMALL if LOCKDEP
 
 config SPARC32
 	def_bool !64BIT
