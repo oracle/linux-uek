@@ -1649,7 +1649,7 @@ out_end_io:
  * case the completion can be called in interrupt context, whereas if we have an
  * ioend we will always be called in task context (i.e. from a workqueue).
  */
-STATIC void
+STATIC int
 xfs_end_io_direct_write(
 	struct kiocb		*iocb,
 	loff_t			offset,
@@ -1659,15 +1659,19 @@ xfs_end_io_direct_write(
 	struct inode		*inode = file_inode(iocb->ki_filp);
 	struct xfs_ioend	*ioend = private;
 
+	if (size <= 0)
+		return 0;
+
 	trace_xfs_gbmap_direct_endio(XFS_I(inode), offset, size,
 				     ioend ? ioend->io_type : 0, NULL);
 
 	if (!ioend) {
 		ASSERT(offset + size <= i_size_read(inode));
-		return;
+		return 0;
 	}
 
 	__xfs_end_io_direct_write(inode, ioend, offset, size);
+	return 0;
 }
 
 static inline ssize_t
@@ -1676,10 +1680,7 @@ xfs_vm_do_dio(
 	struct kiocb		*iocb,
 	struct iov_iter		*iter,
 	loff_t			offset,
-	void			(*endio)(struct kiocb	*iocb,
-					 loff_t		offset,
-					 ssize_t	size,
-					 void		*private),
+	dio_iodone_t		endio,
 	int			flags)
 {
 	struct block_device	*bdev;

@@ -264,8 +264,13 @@ ssize_t dax_do_io(struct kiocb *iocb, struct inode *inode,
 	if ((flags & DIO_LOCKING) && iov_iter_rw(iter) == READ)
 		mutex_unlock(&inode->i_mutex);
 
-	if ((retval > 0) && end_io)
-		end_io(iocb, pos, retval, bh.b_private);
+	if (end_io) {
+		int err;
+
+		err = end_io(iocb, pos, retval, bh.b_private);
+		if (err)
+			retval = err;
+	}
 
 	if (!(flags & DIO_SKIP_DIO_COUNT))
 		inode_dio_end(inode);
