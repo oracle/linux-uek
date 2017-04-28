@@ -38,6 +38,7 @@
 #include "rds.h"
 #include "ib.h"
 #include "tcp.h"
+#include "rds_single_path.h"
 
 static char *rds_ib_wc_status_strings[] = {
 #define RDS_IB_WC_STATUS_STR(foo) \
@@ -467,7 +468,8 @@ void rds_ib_send_add_credits(struct rds_connection *conn, unsigned int credits)
 
 	atomic_add(IB_SET_SEND_CREDITS(credits), &ic->i_credits);
 	if (test_and_clear_bit(RDS_LL_SEND_FULL, &conn->c_flags))
-		queue_delayed_work(conn->c_wq, &conn->c_send_w, 0);
+		queue_delayed_work(conn->c_path[0].cp_wq,
+				   &conn->c_path[0].cp_send_w, 0);
 
 	WARN_ON(IB_GET_SEND_CREDITS(credits) >= 16384);
 
@@ -1084,8 +1086,9 @@ out:
 	return ret;
 }
 
-void rds_ib_xmit_complete(struct rds_connection *conn)
+void rds_ib_xmit_path_complete(struct rds_conn_path *cp)
 {
+	struct rds_connection *conn = cp->cp_conn;
 	struct rds_ib_connection *ic = conn->c_transport_data;
 
 	/* We may have a pending ACK or window update we were unable
