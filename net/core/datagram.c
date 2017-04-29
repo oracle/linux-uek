@@ -708,28 +708,32 @@ int skb_copy_and_csum_datagram_msg(struct sk_buff *skb,
 {
 	__wsum csum;
 	int chunk = skb->len - hlen;
+	struct iov_iter save_iter;
 
 	if (!chunk)
 		return 0;
 
 	if (msg_data_left(msg) < chunk) {
 		if (__skb_checksum_complete(skb))
-			goto csum_error;
+			return -EINVAL;
 		if (skb_copy_datagram_msg(skb, hlen, msg, chunk))
 			goto fault;
 	} else {
 		csum = csum_partial(skb->data, hlen, skb->csum);
+		memcpy(&save_iter, &msg->msg_iter, sizeof save_iter);
 		if (skb_copy_and_csum_datagram(skb, hlen, &msg->msg_iter,
 					       chunk, &csum))
 			goto fault;
-		if (csum_fold(csum))
-			goto csum_error;
+
+		if (csum_fold(csum)) {
+			memcpy(&msg->msg_iter, &save_iter, sizeof save_iter);
+			return -EINVAL;
+		}
+
 		if (unlikely(skb->ip_summed == CHECKSUM_COMPLETE))
 			netdev_rx_csum_fault(skb->dev);
 	}
 	return 0;
-csum_error:
-	return -EINVAL;
 fault:
 	return -EFAULT;
 }
