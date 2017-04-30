@@ -312,9 +312,16 @@ int ipoib_create_acl_sysfs(struct net_device *dev)
 {
 	int rc = 0;
 
+	if (!ipoib_debug_level)
+		dev_attr_acl_enabled.attr.mode = 0444;
+
 	rc = device_create_file(&dev->dev, &dev_attr_acl_enabled);
 	if (rc)
 		return rc;
+
+	if (!ipoib_debug_level)
+		return 0;
+
 	rc = device_create_file(&dev->dev, &dev_attr_add_acl);
 	if (rc)
 		return rc;

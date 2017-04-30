@@ -101,9 +101,8 @@ int __ipoib_vlan_add(struct ipoib_dev_priv *ppriv, struct ipoib_dev_priv *priv,
 		if (device_create_file(&priv->dev->dev, &dev_attr_parent))
 			goto sysfs_failed;
 
-		if (ipoib_debug_level)
-			if (ipoib_create_acl_sysfs(priv->dev))
-				goto sysfs_failed;
+		if (ipoib_create_acl_sysfs(priv->dev))
+			goto sysfs_failed;
 	}
 
 	priv->child_type  = type;

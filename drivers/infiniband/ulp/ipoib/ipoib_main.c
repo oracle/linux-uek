@@ -1904,9 +1904,8 @@ static struct net_device *ipoib_add_port(const char *format,
 		goto sysfs_failed;
 	if (device_create_file(&priv->dev->dev, &dev_attr_delete_named_child))
 		goto sysfs_failed;
-	if (ipoib_debug_level)
-		if (ipoib_create_acl_sysfs(priv->dev))
-			goto sysfs_failed;
+	if (ipoib_create_acl_sysfs(priv->dev))
+		goto sysfs_failed;
 
 	return priv->dev;
 
