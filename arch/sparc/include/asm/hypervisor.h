@@ -946,39 +946,58 @@ extern unsigned long sun4v_mmu_unmap_perm_addr(unsigned long vaddr,
 /* dax_ccb_submit()
  * TRAP:	HV_FAST_TRAP
  * FUNCTION:	HV_DAX_CCB_SUBMIT
- * ARG0:        address of CCB array
- * ARG1:        size (in bytes) of CCB array being submitted
- * ARG2:        flags
- * ARG3:        virtual queue token
+ * ARG0:	address of CCB array
+ * ARG1:	size (in bytes) of CCB array being submitted
+ * ARG2:	flags
+ * ARG3:	reserved
  * RET0:	status (success or error code)
- * RET1         size (in bytes) of CCB array that was accepted (might be less than arg1)
- * RET2         Identifies the VA in question when status is ENOMAP or ENOACCESS
- * RET3         (if using virtual message queues) new virtual queue token
+ * RET1:	size (in bytes) of CCB array that was accepted (might be less
+ *		than arg1)
+ * RET2:	status data
+ *		if status == ENOMAP or ENOACCESS, identifies the VA in question
+ *		if status == EUNAVAILBLE, unavailable code
+ * RET3:	reserved
  *
- * ERRORS:	EWOULDBLOCK etc
- *		ENOTSUPPORTED	etc
- *
- * Details.
+ * ERRORS:	EOK		successful submission (check size)
+ *		EWOULDBLOCK	could not finish submissions, try again
+ *		EBADALIGN	array not 64B aligned or size not 64B multiple
+ *		ENORADDR	invalid RA for array or in CCB
+ *		ENOMAP		could not translate address (see status data)
+ *		EINVAL		invalid ccb or arguments
+ *		ETOOMANY	too many ccbs with all-or-nothing flag
+ *		ENOACCESS	guest has no access to submit ccbs or address
+ *				in CCB does not have correct permissions (check
+ *				status data)
+ *		EUNAVAILABLE	ccb operation could not be performed at this
+ *				time (check status data)
+ *				Status data codes:
+ *					0 - exact CCB could not be executed
+ *					1 - CCB opcode cannot be executed
+ *					2 - CCB version cannot be executed
+ *					3 - vcpu cannot execute CCBs
+ *					4 - no CCBs can be executed
  */
 
 #define HV_DAX_CCB_SUBMIT               0x34
 #ifndef __ASSEMBLY__
-unsigned long sun4v_dax_ccb_submit(void *ccb, int len, long flags, long vq_token, long *submitted_len, long *error_va);
+unsigned long sun4v_dax_ccb_submit(void *ccb, int len, long flags,
+				   long reserved, long *submitted_len,
+				   long *status_data);
 #endif
 /* flags (ARG2) */
-#define HV_DAX_MESSAGE_CMD         (0)
-#define HV_DAX_VIRTUAL_MESSAGE_CMD (1)
-#define HV_DAX_QUERY_CMD           (2)
-#define HV_DAX_ARG0_TYPE_REAL      (0 << 4)
-#define HV_DAX_ARG0_TYPE_PRIMARY   (1 << 4)
-#define HV_DAX_ARG0_TYPE_SECONDARY (2 << 4)
-#define HV_DAX_ARG0_TYPE_NUCLEUS   (3 << 4)
-#define HV_DAX_ARG0_PRIVILEGED     (1 << 6)
-#define HV_DAX_ALL_OR_NOTHING      (1 << 7)
-#define HV_DAX_CCB_VA_REJECT       (0 << 12)
-#define HV_DAX_CCB_VA_SECONDARY    (2 << 12)
-#define HV_DAX_CCB_VA_NUCLEUS      (3 << 12)
-#define HV_DAX_CCB_VA_PRIVILEGED   (1 << 14)
+#define BIT_FIELD(n, s)			((n) << (s))
+#define HV_DAX_QUERY_CMD		BIT_FIELD(2UL, 0)
+#define HV_DAX_ARG0_TYPE_REAL		BIT_FIELD(0UL, 4)
+#define HV_DAX_ARG0_TYPE_PRIMARY	BIT_FIELD(1UL, 4)
+#define HV_DAX_ARG0_TYPE_SECONDARY	BIT_FIELD(2UL, 4)
+#define HV_DAX_ARG0_TYPE_NUCLEUS	BIT_FIELD(3UL, 4)
+#define HV_DAX_ARG0_PRIVILEGED		BIT(6)
+#define HV_DAX_ALL_OR_NOTHING		BIT(7)
+#define HV_DAX_QUEUE_INFO		BIT(8)
+#define HV_DAX_CCB_VA_REJECT		BIT_FIELD(0UL, 12)
+#define HV_DAX_CCB_VA_SECONDARY		BIT_FIELD(2UL, 12)
+#define HV_DAX_CCB_VA_NUCLEUS		BIT_FIELD(3UL, 12)
+#define HV_DAX_CCB_VA_PRIVILEGED	BIT(14)
 
 /* dax_ccb_info()
  * TRAP:	HV_FAST_TRAP

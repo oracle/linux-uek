@@ -14,7 +14,7 @@ static int dax_has_flow_ctl_one_node(void)
 	struct ccb_extract *ccb;
 	struct ccb_completion_area *ca;
 	char *mem, *dax_input, *dax_output;
-	unsigned long submitted_ccb_buf_len, nomap_va, hv_rv, ra, va;
+	unsigned long submitted_ccb_buf_len, status_data, hv_rv, ra, va;
 	long timeout;
 	int ret = 0;
 
@@ -58,7 +58,7 @@ static int dax_has_flow_ctl_one_node(void)
 	ra = virt_to_phys(ccb);
 
 	hv_rv = sun4v_dax_ccb_submit((void *) ra, 64, HV_DAX_CCB_VA_PRIVILEGED | HV_DAX_QUERY_CMD, 0,
-				     &submitted_ccb_buf_len, &nomap_va);
+				     &submitted_ccb_buf_len, &status_data);
 	if (hv_rv != HV_EOK) {
 		dax_info("failed dax submit, ret=0x%lx", hv_rv);
 		if (dax_debug & DAX_DBG_FLG_BASIC)
@@ -164,7 +164,7 @@ bool dax_has_ra_pgsz(void)
 	struct ccb_extract *ccb;
 	struct ccb_completion_area *ca;
 	char *mem, *dax_input, *dax_output;
-	unsigned long submitted_ccb_buf_len, nomap_va, hv_rv, ra, va;
+	unsigned long submitted_ccb_buf_len, status_data, hv_rv, ra, va;
 	long timeout;
 	bool ret = false;
 	int i;
@@ -214,7 +214,7 @@ bool dax_has_ra_pgsz(void)
 	ra = virt_to_phys(ccb);
 
 	hv_rv = sun4v_dax_ccb_submit((void *) ra, 64, HV_DAX_CCB_VA_PRIVILEGED | HV_DAX_QUERY_CMD, 0,
-				     &submitted_ccb_buf_len, &nomap_va);
+				     &submitted_ccb_buf_len, &status_data);
 	if (hv_rv != HV_EOK) {
 		dax_info("failed dax submit, ret=0x%lx", hv_rv);
 		if (dax_debug & DAX_DBG_FLG_BASIC)

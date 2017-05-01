@@ -219,13 +219,13 @@ ENDPROC(sun4v_set_version)
 	/* %o0: address of CCB array
 	 * %o1: size (in bytes) of CCB array
 	 * %o2: flags
-	 * %o3: virtual queue token
+	 * %o3: reserved
 	 *
 	 * returns:
 	 * %o0: status
 	 * %o1: size (in bytes) of the CCB array that was accepted
-	 * %o2: error address
-	 * %o3: new virtual queue token
+	 * %o2: status data
+	 * %o3: reserved
 	 */
 ENTRY(sun4v_dax_ccb_submit)
 	mov	%o5, %g1
@@ -233,7 +233,7 @@ ENTRY(sun4v_dax_ccb_submit)
 	ta	HV_FAST_TRAP
 	stx	%o1, [%o4]
 	retl
-	stx	%o2, [%g1]
+	 stx	%o2, [%g1]
 ENDPROC(sun4v_dax_ccb_submit)
 
 	/* %o0: pointer to unsigned long time

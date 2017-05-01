@@ -873,7 +873,7 @@ static int dax_ccb_hv_submit(struct dax_ctx *dax_ctx, union ccb *ccb_buf,
 			     size_t buflen, struct dax_ccb_exec_arg *exec_arg)
 {
 	unsigned long submitted_ccb_buf_len = 0;
-	unsigned long nomap_va = 0;
+	unsigned long status_data = 0;
 	unsigned long hv_rv = HV_ENOMAP;
 	int rv = -EIO;
 	ptrdiff_t offset;
@@ -892,7 +892,7 @@ static int dax_ccb_hv_submit(struct dax_ctx *dax_ctx, union ccb *ccb_buf,
 				     offset, buflen,
 				     HV_DAX_QUERY_CMD |
 				     HV_DAX_CCB_VA_SECONDARY, 0,
-				     &submitted_ccb_buf_len, &nomap_va);
+				     &submitted_ccb_buf_len, &status_data);
 
 	if (dax_debug & DAX_DBG_FLG_BASIC)
 		dax_prt_ccbs(ccb_buf, buflen);
@@ -901,8 +901,8 @@ static int dax_ccb_hv_submit(struct dax_ctx *dax_ctx, union ccb *ccb_buf,
 	exec_arg->dce_submitted_ccb_buf_len = 0;
 	exec_arg->dce_ca_region_off = 0;
 
-	dax_dbg("hcall rv=%ld, submitted_ccb_buf_len=%ld, nomap_va=0x%lx",
-		hv_rv, submitted_ccb_buf_len, nomap_va);
+	dax_dbg("hcall rv=%ld, submitted_ccb_buf_len=%ld, status_data=0x%lx",
+		hv_rv, submitted_ccb_buf_len, status_data);
 
 	if (submitted_ccb_buf_len % sizeof(union ccb) != 0) {
 		dax_err("submitted_ccb_buf_len %ld not multiple of ccb size %ld",
@@ -940,9 +940,8 @@ static int dax_ccb_hv_submit(struct dax_ctx *dax_ctx, union ccb *ccb_buf,
 		 * HV was unable to translate a VA.  The VA it could not
 		 * translate is returned in the nomap_va param.
 		 */
-		dax_err("hcall returned HV_ENOMAP nomap_va=0x%lx with %d retries",
-			nomap_va, DAX_NOMAP_RETRIES);
-		exec_arg->dce_nomap_va = nomap_va;
+		dax_err("hcall returned HV_ENOMAP nomap_va=0x%lx", status_data);
+		exec_arg->dce_nomap_va = status_data;
 		exec_arg->dce_ccb_status = DAX_SUBMIT_ERR_NOMAP;
 		break;
 	case HV_EINVAL:
@@ -966,17 +965,19 @@ static int dax_ccb_hv_submit(struct dax_ctx *dax_ctx, union ccb *ccb_buf,
 		 */
 		dax_err("hcall returned HV_ENOACCESS");
 		exec_arg->dce_ccb_status = DAX_SUBMIT_ERR_NOACCESS;
-		exec_arg->dce_nomap_va = nomap_va;
+		exec_arg->dce_nomap_va = status_data;
 		break;
 	case HV_EUNAVAILABLE:
 		/*
 		 * The requested CCB operation could not be performed at this
 		 * time. The restrict-ed operation availability may apply only
 		 * to the first unsuccessfully submitted CCB, or may apply to a
-		 * larger scope.
+		 * larger scope. Return the specific unavailable code in the
+		 * nomap_va field.
 		 */
-		dax_err("hcall returned HV_EUNAVAILABLE");
+		dax_err("hcall returned HV_EUNAVAILABLE code=%ld", status_data);
 		exec_arg->dce_ccb_status = DAX_SUBMIT_ERR_UNAVAIL;
+		exec_arg->dce_nomap_va = status_data;
 		break;
 	default:
 		exec_arg->dce_ccb_status = DAX_SUBMIT_ERR_INTERNAL;
