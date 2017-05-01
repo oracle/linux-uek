@@ -1925,8 +1925,10 @@ static void i40evf_adminq_task(struct work_struct *work)
 		if (ret || !v_msg->v_opcode)
 			break; /* No event to process or error cleaning ARQ */
 
-		i40evf_virtchnl_completion(adapter, v_msg->v_opcode,
-					   v_msg->v_retval, event.msg_buf,
+		i40evf_virtchnl_completion(adapter,
+					   le32_to_cpu(v_msg->v_opcode),
+					   le32_to_cpu(v_msg->v_retval),
+					   event.msg_buf,
 					   event.msg_len);
 		if (pending != 0)
 			memset(event.msg_buf, 0, I40EVF_MAX_AQ_BUF_SIZE);
