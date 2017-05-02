@@ -2389,6 +2389,13 @@ static u64 ds_get_new_service_handle(struct ds_dev *ds, bool is_client)
 	if (is_client)
 		handle |= DS_HDL_ISCLIENT_BIT;
 
+	/*
+	 * Set the ISCNTRLD bit for SP services to ensure the handle doesn't
+	 * collide with a GM-generated handle.
+	 */
+	if (ds->handle == DS_SP_DMN_HANDLE)
+		handle |= DS_HDL_ISCNTRLD_BIT;
+
 	return handle;
 
 }
