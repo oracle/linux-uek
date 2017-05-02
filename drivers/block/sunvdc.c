@@ -95,6 +95,7 @@ static void vdc_ldc_reset_work(struct work_struct *work);
 static void vdc_ldc_reset_timer(unsigned long _arg);
 static struct bio *vdc_desc_put(struct vdc_port *port, unsigned int idx);
 static inline void vdc_desc_set_state(struct vio_disk_desc *, int);
+static void vdc_resend_inflight(struct vdc_port *port);
 
 static inline struct vdc_port *to_vdc_port(struct vio_driver_state *vio)
 {
@@ -186,6 +187,7 @@ static void vdc_handshake_complete(struct vio_driver_state *vio)
 	struct vdc_port *port = to_vdc_port(vio);
 
 	del_timer(&port->ldc_reset_timer);
+	vdc_resend_inflight(port);
 	vdc_finish(&port->cmp_hs, 0, WAITING_FOR_LINK_UP);
 }
 
@@ -1337,8 +1339,6 @@ static void vdc_ldc_reset(struct vdc_port *port)
 	if (err)
 		pr_err(PFX "%s vdc_port_up() failed, err=%d\n",
 		       port->disk_name, err);
-	else
-		vdc_resend_inflight(port);
 
 	if (port->ldc_timeout)
 		mod_timer(&port->ldc_reset_timer,
