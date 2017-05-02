@@ -1136,10 +1136,10 @@ static struct ds_service_info *ds_callout_data_get_service(
 
 		if (!svc_info)
 			dprintk1("ds-%llu: Data received for "
-			    "unknown handle %llu\n", ds->id, hdl);
+			    "unknown handle %llx\n", ds->id, hdl);
 		else
 			dprintk1("ds-%llu: Data received for "
-			    "unconnected handle %llu\n", ds->id, hdl);
+			    "unconnected handle %llx\n", ds->id, hdl);
 
 		/*
 		 * If this was a LDC data packet, nack it.
@@ -1173,7 +1173,7 @@ static struct ds_service_info *ds_callout_reg_get_service(
 		svc_info = ds_find_service_client_handle(ds, hdl);
 		if (svc_info == NULL) {
 			dprintk1("ds-%llu: %s cb request received for "
-			    "unknown handle %llu\n", ds->id,
+			    "unknown handle %llx\n", ds->id,
 			    (type == DS_QTYPE_REG) ? "Reg" : "Unreg", hdl);
 			return NULL;
 		}
