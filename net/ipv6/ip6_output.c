@@ -1380,9 +1380,9 @@ emsgsize:
 					 sizeof(struct ipv6hdr));
 			DTRACE_IP(drop__out,
 			    struct sk_buff * : pktinfo_t *, skb,
-			    struct sock * : csinfo_t *, skb->sk,
+			    struct sock * : csinfo_t *, skb ? skb->sk : NULL,
 			    void_ip_t * : ipinfo_t *, NULL,
-			    struct net_device * : ifinfo_t *, skb->dev,
+			    struct net_device * : ifinfo_t *, skb ? skb->dev : NULL,
 			    struct iphdr * : ipv4info_t *, NULL,
 			    struct ipv6hdr * : ipv6info_t *, NULL,
 			    char * : string, "packet too big");
