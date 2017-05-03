@@ -57,8 +57,6 @@ MODULE_SUPPORTED_DEVICE("Microsemi Smart Family Controllers");
 MODULE_VERSION(DRIVER_VERSION);
 MODULE_LICENSE("GPL");
 
-#define PQI_ENABLE_MULTI_QUEUE_SUPPORT	0
-
 static char *hpe_branded_controller = "HPE Smart Array Controller";
 static char *microsemi_branded_controller = "Microsemi Smart Family Controller";
 
@@ -94,7 +92,7 @@ static unsigned int pqi_supported_event_types[] = {
 
 static int pqi_disable_device_id_wildcards;
 module_param_named(disable_device_id_wildcards,
-	pqi_disable_device_id_wildcards, int, S_IRUGO | S_IWUSR);
+	pqi_disable_device_id_wildcards, int, 0644);
 MODULE_PARM_DESC(disable_device_id_wildcards,
 	"Disable device ID wildcards.");
 
@@ -383,7 +381,6 @@ static int pqi_build_raid_path_request(struct pqi_ctrl_info *ctrl_info,
 	default:
 		dev_err(&ctrl_info->pci_dev->dev, "unknown command 0x%c\n",
 			cmd);
-		WARN_ON(cmd);
 		break;
 	}
 
@@ -1145,10 +1142,8 @@ static int pqi_get_device_info(struct pqi_ctrl_info *ctrl_info,
 	sanitize_inquiry_string(&buffer[16], 16);
 
 	device->devtype = buffer[0] & 0x1f;
-	memcpy(device->vendor, &buffer[8],
-		sizeof(device->vendor));
-	memcpy(device->model, &buffer[16],
-		sizeof(device->model));
+	memcpy(device->vendor, &buffer[8], sizeof(device->vendor));
+	memcpy(device->model, &buffer[16], sizeof(device->model));
 
 	if (pqi_is_logical_device(device) && device->devtype == TYPE_DISK) {
 		pqi_get_raid_level(ctrl_info, device);
@@ -1619,9 +1614,6 @@ static void pqi_update_device_list(struct pqi_ctrl_info *ctrl_info,
 			 */
 			device->new_device = true;
 			break;
-		default:
-			WARN_ON(find_result);
-			break;
 		}
 	}
 
@@ -1754,7 +1746,7 @@ static inline bool pqi_skip_device(u8 *scsi3addr,
 	return false;
 }
 
-static inline bool pqi_expose_device(struct pqi_scsi_dev *device)
+static inline bool pqi_ok_to_expose_device(struct pqi_scsi_dev *device)
 {
 	/* Expose all devices except for physical devices that are masked. */
 	if (device->is_physical_device && MASKED_DEVICE(device->scsi3addr))
@@ -1895,7 +1887,7 @@ static int pqi_update_scsi_devices(struct pqi_ctrl_info *ctrl_info)
 
 		pqi_assign_bus_target_lun(device);
 
-		device->expose_device = pqi_expose_device(device);
+		device->expose_device = pqi_ok_to_expose_device(device);
 
 		if (device->is_physical_device) {
 			device->wwid = phys_lun_ext_entry->wwid;
@@ -2694,7 +2686,6 @@ static unsigned int pqi_process_io_intr(struct pqi_ctrl_info *ctrl_info,
 			dev_err(&ctrl_info->pci_dev->dev,
 				"unexpected IU type: 0x%x\n",
 				response->header.iu_type);
-			WARN_ON(response->header.iu_type);
 			break;
 		}
 
@@ -4683,7 +4674,6 @@ static int pqi_raid_submit_scsi_cmd(struct pqi_ctrl_info *ctrl_info,
 		dev_err(&ctrl_info->pci_dev->dev,
 			"unknown data direction: %d\n",
 			scmd->sc_data_direction);
-		WARN_ON(scmd->sc_data_direction);
 		break;
 	}
 
@@ -4766,7 +4756,6 @@ static int pqi_aio_submit_io(struct pqi_ctrl_info *ctrl_info,
 		dev_err(&ctrl_info->pci_dev->dev,
 			"unknown data direction: %d\n",
 			scmd->sc_data_direction);
-		WARN_ON(scmd->sc_data_direction);
 		break;
 	}
 
@@ -5519,8 +5508,8 @@ static ssize_t pqi_host_rescan_store(struct device *dev,
 	return count;
 }
 
-static DEVICE_ATTR(version, S_IRUGO, pqi_version_show, NULL);
-static DEVICE_ATTR(rescan, S_IWUSR, NULL, pqi_host_rescan_store);
+static DEVICE_ATTR(version, 0444, pqi_version_show, NULL);
+static DEVICE_ATTR(rescan, 0200, NULL, pqi_host_rescan_store);
 
 static struct device_attribute *pqi_shost_attrs[] = {
 	&dev_attr_version,
@@ -5578,8 +5567,8 @@ static ssize_t pqi_ssd_smart_path_enabled_show(struct device *dev,
 	return 2;
 }
 
-static DEVICE_ATTR(sas_address, S_IRUGO, pqi_sas_address_show, NULL);
-static DEVICE_ATTR(ssd_smart_path_enabled, S_IRUGO,
+static DEVICE_ATTR(sas_address, 0444, pqi_sas_address_show, NULL);
+static DEVICE_ATTR(ssd_smart_path_enabled, 0444,
 	pqi_ssd_smart_path_enabled_show, NULL);
 
 static struct device_attribute *pqi_sdev_attrs[] = {
@@ -6143,9 +6132,6 @@ static int pqi_pci_init(struct pqi_ctrl_info *ctrl_info)
 		goto release_regions;
 	}
 
-	ctrl_info->registers = ctrl_info->iomem_base;
-	ctrl_info->pqi_registers = &ctrl_info->registers->pqi_registers;
-
 #define PCI_EXP_COMP_TIMEOUT_65_TO_210_MS		0x6
 
 	/* Increase the PCIe completion timeout. */
@@ -6159,6 +6145,9 @@ static int pqi_pci_init(struct pqi_ctrl_info *ctrl_info)
 
 	/* Enable bus mastering. */
 	pci_set_master(ctrl_info->pci_dev);
+
+	ctrl_info->registers = ctrl_info->iomem_base;
+	ctrl_info->pqi_registers = &ctrl_info->registers->pqi_registers;
 
 	pci_set_drvdata(ctrl_info->pci_dev, ctrl_info);
 
@@ -6176,7 +6165,8 @@ static void pqi_cleanup_pci_init(struct pqi_ctrl_info *ctrl_info)
 {
 	iounmap(ctrl_info->iomem_base);
 	pci_release_regions(ctrl_info->pci_dev);
-	pci_disable_device(ctrl_info->pci_dev);
+	if (pci_is_enabled(ctrl_info->pci_dev))
+		pci_disable_device(ctrl_info->pci_dev);
 	pci_set_drvdata(ctrl_info->pci_dev, NULL);
 }
 
