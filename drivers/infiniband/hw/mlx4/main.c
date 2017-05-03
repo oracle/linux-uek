@@ -2211,6 +2211,136 @@ static void mlx4_ib_free_eqs(struct mlx4_dev *dev, struct mlx4_ib_dev *ibdev)
 	kfree(ibdev->eq_table);
 }
 
+/*
+ * create show function and a device_attribute struct pointing to
+ * the function for _name
+ */
+#define DEVICE_DIAG_RPRT_ATTR(_name, _offset, _op_mod)		\
+static ssize_t show_rprt_##_name(struct device *dev,		\
+				 struct device_attribute *attr,	\
+				 char *buf){			\
+	return show_diag_rprt(dev, buf, _offset, _op_mod);	\
+}								\
+static DEVICE_ATTR(_name, S_IRUGO, show_rprt_##_name, NULL);
+
+#define MLX4_DIAG_RPRT_CLEAR_DIAGS 3
+
+static size_t show_diag_rprt(struct device *device, char *buf,
+			     u32 offset, u8 op_modifier)
+{
+	size_t ret;
+	u32 counter_offset = offset;
+	u32 diag_counter = 0;
+	struct mlx4_ib_dev *dev = container_of(device, struct mlx4_ib_dev,
+					       ib_dev.dev);
+
+	ret = mlx4_query_diag_counters(dev->dev, 1, op_modifier,
+				       &counter_offset, &diag_counter);
+	if (ret)
+		return ret;
+
+	return sprintf(buf, "%d\n", diag_counter);
+}
+
+static ssize_t clear_diag_counters(struct device *device,
+				   struct device_attribute *attr,
+				   const char *buf, size_t length)
+{
+	size_t ret;
+	struct mlx4_ib_dev *dev = container_of(device, struct mlx4_ib_dev,
+					       ib_dev.dev);
+
+	ret = mlx4_query_diag_counters(dev->dev, 0, MLX4_DIAG_RPRT_CLEAR_DIAGS,
+				       NULL, NULL);
+	if (ret)
+		return ret;
+
+	return length;
+}
+
+DEVICE_DIAG_RPRT_ATTR(rq_num_lle	, 0x00, 2);
+DEVICE_DIAG_RPRT_ATTR(sq_num_lle	, 0x04, 2);
+DEVICE_DIAG_RPRT_ATTR(rq_num_lqpoe	, 0x08, 2);
+DEVICE_DIAG_RPRT_ATTR(sq_num_lqpoe 	, 0x0C, 2);
+DEVICE_DIAG_RPRT_ATTR(rq_num_leeoe	, 0x10, 2);
+DEVICE_DIAG_RPRT_ATTR(sq_num_leeoe	, 0x14, 2);
+DEVICE_DIAG_RPRT_ATTR(rq_num_lpe	, 0x18, 2);
+DEVICE_DIAG_RPRT_ATTR(sq_num_lpe	, 0x1C, 2);
+DEVICE_DIAG_RPRT_ATTR(rq_num_wrfe	, 0x20, 2);
+DEVICE_DIAG_RPRT_ATTR(sq_num_wrfe	, 0x24, 2);
+DEVICE_DIAG_RPRT_ATTR(sq_num_mwbe	, 0x2C, 2);
+DEVICE_DIAG_RPRT_ATTR(sq_num_bre	, 0x34, 2);
+DEVICE_DIAG_RPRT_ATTR(rq_num_lae	, 0x38, 2);
+DEVICE_DIAG_RPRT_ATTR(sq_num_rire	, 0x44, 2);
+DEVICE_DIAG_RPRT_ATTR(rq_num_rire	, 0x48, 2);
+DEVICE_DIAG_RPRT_ATTR(sq_num_rae	, 0x4C, 2);
+DEVICE_DIAG_RPRT_ATTR(rq_num_rae	, 0x50, 2);
+DEVICE_DIAG_RPRT_ATTR(sq_num_roe	, 0x54, 2);
+DEVICE_DIAG_RPRT_ATTR(sq_num_tree	, 0x5C, 2);
+DEVICE_DIAG_RPRT_ATTR(sq_num_rree	, 0x64, 2);
+DEVICE_DIAG_RPRT_ATTR(rq_num_rnr	, 0x68, 2);
+DEVICE_DIAG_RPRT_ATTR(sq_num_rnr	, 0x6C, 2);
+DEVICE_DIAG_RPRT_ATTR(sq_num_rabrte	, 0x7C, 2);
+DEVICE_DIAG_RPRT_ATTR(sq_num_ieecne	, 0x84, 2);
+DEVICE_DIAG_RPRT_ATTR(sq_num_ieecse	, 0x8C, 2);
+DEVICE_DIAG_RPRT_ATTR(rq_num_oos	, 0x100, 2);
+DEVICE_DIAG_RPRT_ATTR(sq_num_oos	, 0x104, 2);
+DEVICE_DIAG_RPRT_ATTR(rq_num_mce	, 0x108, 2);
+DEVICE_DIAG_RPRT_ATTR(rq_num_rsync	, 0x110, 2);
+DEVICE_DIAG_RPRT_ATTR(sq_num_rsync	, 0x114, 2);
+DEVICE_DIAG_RPRT_ATTR(rq_num_udsdprd	, 0x118, 2);
+DEVICE_DIAG_RPRT_ATTR(rq_num_ucsdprd	, 0x120, 2);
+DEVICE_DIAG_RPRT_ATTR(num_cqovf		, 0x1A0, 2);
+DEVICE_DIAG_RPRT_ATTR(num_eqovf		, 0x1A4, 2);
+DEVICE_DIAG_RPRT_ATTR(num_baddb		, 0x1A8, 2);
+
+static DEVICE_ATTR(clear_diag, S_IWUSR, NULL, clear_diag_counters);
+
+static struct attribute *diag_rprt_attrs[] = {
+	&dev_attr_rq_num_lle.attr,
+	&dev_attr_sq_num_lle.attr,
+	&dev_attr_rq_num_lqpoe.attr,
+	&dev_attr_sq_num_lqpoe.attr,
+	&dev_attr_rq_num_leeoe.attr,
+	&dev_attr_sq_num_leeoe.attr,
+	&dev_attr_rq_num_lpe.attr,
+	&dev_attr_sq_num_lpe.attr,
+	&dev_attr_rq_num_wrfe.attr,
+	&dev_attr_sq_num_wrfe.attr,
+	&dev_attr_sq_num_mwbe.attr,
+	&dev_attr_sq_num_bre.attr,
+	&dev_attr_rq_num_lae.attr,
+	&dev_attr_sq_num_rire.attr,
+	&dev_attr_rq_num_rire.attr,
+	&dev_attr_sq_num_rae.attr,
+	&dev_attr_rq_num_rae.attr,
+	&dev_attr_sq_num_roe.attr,
+	&dev_attr_sq_num_tree.attr,
+	&dev_attr_sq_num_rree.attr,
+	&dev_attr_rq_num_rnr.attr,
+	&dev_attr_sq_num_rnr.attr,
+	&dev_attr_sq_num_rabrte.attr,
+	&dev_attr_sq_num_ieecne.attr,
+	&dev_attr_sq_num_ieecse.attr,
+	&dev_attr_rq_num_oos.attr,
+	&dev_attr_sq_num_oos.attr,
+	&dev_attr_rq_num_mce.attr,
+	&dev_attr_rq_num_rsync.attr,
+	&dev_attr_sq_num_rsync.attr,
+	&dev_attr_rq_num_udsdprd.attr,
+	&dev_attr_rq_num_ucsdprd.attr,
+	&dev_attr_num_cqovf.attr,
+	&dev_attr_num_eqovf.attr,
+	&dev_attr_num_baddb.attr,
+	&dev_attr_clear_diag.attr,
+	NULL
+};
+
+static struct attribute_group diag_counters_group = {
+	.name  = "diag_counters",
+	.attrs  = diag_rprt_attrs
+};
+
 static void *mlx4_ib_add(struct mlx4_dev *dev)
 {
 	struct mlx4_ib_dev *ibdev;
@@ -2495,6 +2625,8 @@ static void *mlx4_ib_add(struct mlx4_dev *dev)
 				       mlx4_class_attributes[j]))
 			goto err_notif;
 	}
+	if (sysfs_create_group(&ibdev->ib_dev.dev.kobj, &diag_counters_group))
+		goto err_notif;
 
 	ibdev->ib_active = true;
 
@@ -2640,6 +2772,7 @@ static void mlx4_ib_remove(struct mlx4_dev *dev, void *ibdev_ptr)
 	flush_workqueue(wq);
 
 	mlx4_ib_close_sriov(ibdev);
+	sysfs_remove_group(&ibdev->ib_dev.dev.kobj, &diag_counters_group);
 	mlx4_ib_mad_cleanup(ibdev);
 	ib_unregister_device(&ibdev->ib_dev);
 	if (ibdev->iboe.nb.notifier_call) {

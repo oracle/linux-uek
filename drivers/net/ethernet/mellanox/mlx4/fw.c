@@ -2415,6 +2415,41 @@ int mlx4_get_phys_port_id(struct mlx4_dev *dev)
 	return ret;
 }
 
+int mlx4_query_diag_counters(struct mlx4_dev *dev, int array_length,
+			     u8 op_modifier, u32 in_offset[],
+			     u32 counter_out[])
+{
+	struct mlx4_cmd_mailbox *mailbox;
+	u32 *outbox;
+	int ret;
+	int i;
+
+	mailbox = mlx4_alloc_cmd_mailbox(dev);
+	if (IS_ERR(mailbox))
+		return PTR_ERR(mailbox);
+	outbox = mailbox->buf;
+
+	ret = mlx4_cmd_box(dev, 0, mailbox->dma, 0, op_modifier,
+			   MLX4_CMD_DIAG_RPRT, MLX4_CMD_TIME_CLASS_A,
+			   MLX4_CMD_NATIVE);
+	if (ret)
+		goto out;
+
+	for (i = 0; i < array_length; i++) {
+		if (in_offset[i] > MLX4_MAILBOX_SIZE) {
+			ret = -EINVAL;
+			goto out;
+		}
+
+		MLX4_GET(counter_out[i], outbox, in_offset[i]);
+	}
+
+out:
+	mlx4_free_cmd_mailbox(dev, mailbox);
+	return ret;
+}
+EXPORT_SYMBOL_GPL(mlx4_query_diag_counters);
+
 #define MLX4_WOL_SETUP_MODE (5 << 28)
 int mlx4_wol_read(struct mlx4_dev *dev, u64 *config, int port)
 {
