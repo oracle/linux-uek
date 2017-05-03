@@ -805,6 +805,16 @@ no_context(struct pt_regs *regs, unsigned long error_code,
 	    (((unsigned long)tsk->stack - 1 - address < PAGE_SIZE) ||
 	     address - ((unsigned long)tsk->stack + THREAD_SIZE) < PAGE_SIZE)) {
 		unsigned long stack = this_cpu_read(orig_ist.ist[DOUBLEFAULT_STACK]) - sizeof(void *);
+
+		/*
+		 * Allow for the possibility that we know what we are doing and
+		 * ignore this fault.  E.g. the address may come from a source
+		 * we cannot trust and it is OK if we cannot access it.
+		 */
+		 if (notify_die(DIE_PAGE_FAULT, "page fault", regs, error_code,
+				14, SIGKILL) == NOTIFY_STOP)
+			return;
+
 		/*
 		 * We're likely to be running with very little stack space
 		 * left.  It's plausible that we'd hit this condition but
