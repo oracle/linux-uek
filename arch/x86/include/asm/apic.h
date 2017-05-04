@@ -13,6 +13,8 @@
 #include <asm/mpspec.h>
 #include <asm/msr.h>
 
+#include <xen/xen.h>
+
 #define ARCH_APICTIMER_STOPS_ON_C3	1
 
 /*

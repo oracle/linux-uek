@@ -53,7 +53,7 @@
 
 asmlinkage extern void ret_from_fork(void);
 
-DEFINE_PER_CPU(unsigned long, old_rsp);
+DEFINE_PER_CPU_USER_MAPPED(unsigned long, old_rsp);
 EXPORT_PER_CPU_SYMBOL(old_rsp);
 
 /* Prints also some state that isn't saved in the pt_regs */
