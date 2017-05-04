@@ -16,6 +16,7 @@
 #include <asm/asm.h>
 #include <asm/smap.h>
 #include <asm/spec_ctrl.h>
+#include <asm/kaiser.h>
 #include <linux/linkage.h>
 #include <linux/err.h>
 
@@ -120,6 +121,7 @@ ENTRY(ia32_sysenter_target)
 	 * it is too small to ever cause noticeable irq latency.
 	 */
 	SWAPGS_UNSAFE_STACK
+	SWITCH_KERNEL_CR3_NO_STACK
 	movq	PER_CPU_VAR(cpu_tss + TSS_sp0), %rsp
 	ENABLE_INTERRUPTS(CLBR_NONE)
 
@@ -211,6 +213,7 @@ sysexit_from_sys_call:
 	movl	EFLAGS(%rsp),%r11d	/* User eflags */
 	/*CFI_RESTORE rflags*/
 	TRACE_IRQS_ON
+	SWITCH_USER_CR3
 
 	/*
 	 * SYSRETL works even on Intel CPUs.  Use it in preference to SYSEXIT,
@@ -358,6 +361,7 @@ ENTRY(ia32_cstar_target)
 	 * it is too small to ever cause noticeable irq latency.
 	 */
 	SWAPGS_UNSAFE_STACK
+	SWITCH_KERNEL_CR3_NO_STACK
 	movl	%esp,%r8d
 	CFI_REGISTER	rsp,r8
 	movq	PER_CPU_VAR(kernel_stack),%rsp
@@ -423,6 +427,7 @@ sysretl_from_sys_call:
 	xorq	%r9,%r9
 	xorq	%r8,%r8
 	TRACE_IRQS_ON
+	SWITCH_USER_CR3
 	movl RSP(%rsp),%esp
 	CFI_RESTORE rsp
 	/*
@@ -517,6 +522,7 @@ ENTRY(ia32_syscall)
 	PARAVIRT_ADJUST_EXCEPTION_FRAME
 	ASM_CLAC			/* Do this early to minimize exposure */
 	SWAPGS
+	SWITCH_KERNEL_CR3_NO_STACK
 	ENABLE_INTERRUPTS(CLBR_NONE)
 
 	/* Zero-extending 32-bit regs, do not remove */
