@@ -83,6 +83,8 @@ static int gup_huge_pmd(pmd_t *pmdp, pmd_t pmd, unsigned long addr,
 	refs = 0;
 	head = pmd_page(pmd);
 	page = head + ((addr & ~PMD_MASK) >> PAGE_SHIFT);
+	if (PageTail(head))
+		head = compound_head(head);
 	tail = page;
 	do {
 		VM_BUG_ON(compound_head(page) != head);
@@ -98,6 +100,57 @@ static int gup_huge_pmd(pmd_t *pmdp, pmd_t pmd, unsigned long addr,
 	}
 
 	if (unlikely(pmd_val(pmd) != pmd_val(*pmdp))) {
+		*nr -= refs;
+		while (refs--)
+			put_page(head);
+		return 0;
+	}
+
+	/* Any tail page need their mapcount reference taken before we
+	 * return.
+	 */
+	while (refs--) {
+		if (PageTail(tail))
+			get_huge_page_tail(tail);
+		tail++;
+	}
+
+	return 1;
+}
+
+static int gup_huge_pud(pud_t *pudp, pud_t pud, unsigned long addr,
+			unsigned long end, int write, struct page **pages,
+			int *nr)
+{
+	struct page *head, *page, *tail;
+	int refs;
+
+	if (!(pud_val(pud) & _PAGE_VALID))
+		return 0;
+
+	if (write && !pud_write(pud))
+		return 0;
+
+	refs = 0;
+	head = pud_page(pud);
+	page = head + ((addr & ~PUD_MASK) >> PAGE_SHIFT);
+	if (PageTail(head))
+		head = compound_head(head);
+	tail = page;
+	do {
+		VM_BUG_ON(compound_head(page) != head);
+		pages[*nr] = page;
+		(*nr)++;
+		page++;
+		refs++;
+	} while (addr += PAGE_SIZE, addr != end);
+
+	if (!page_cache_add_speculative(head, refs)) {
+		*nr -= refs;
+		return 0;
+	}
+
+	if (unlikely(pud_val(pud) != pud_val(*pudp))) {
 		*nr -= refs;
 		while (refs--)
 			put_page(head);
@@ -154,7 +207,11 @@ static int gup_pud_range(p4d_t p4d, unsigned long addr, unsigned long end,
 		next = pud_addr_end(addr, end);
 		if (pud_none(pud))
 			return 0;
-		if (!gup_pmd_range(pud, addr, next, write, pages, nr))
+		if (unlikely(pud_large(pud))) {
+			if (!gup_huge_pud(pudp, pud, addr, next,
+					  write, pages, nr))
+				return 0;
+		} else if (!gup_pmd_range(pud, addr, next, write, pages, nr))
 			return 0;
 	} while (pudp++, addr = next, addr != end);
 
