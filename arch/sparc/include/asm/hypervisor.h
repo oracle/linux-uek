@@ -936,6 +936,89 @@ extern unsigned long sun4v_mmu_unmap_perm_addr(unsigned long vaddr,
  */
 #define HV_FAST_MEM_SYNC		0x32
 
+/* Coprocessor services
+ *
+ * M7 and later processors provide an on-chip coprocessor which
+ * accelerates database operations, and is known internally as
+ * DAX.
+ */
+
+/* dax_ccb_submit()
+ * TRAP:	HV_FAST_TRAP
+ * FUNCTION:	HV_DAX_CCB_SUBMIT
+ * ARG0:        address of CCB array
+ * ARG1:        size (in bytes) of CCB array being submitted
+ * ARG2:        flags
+ * ARG3:        virtual queue token
+ * RET0:	status (success or error code)
+ * RET1         size (in bytes) of CCB array that was accepted (might be less than arg1)
+ * RET2         Identifies the VA in question when status is ENOMAP or ENOACCESS
+ * RET3         (if using virtual message queues) new virtual queue token
+ *
+ * ERRORS:	EWOULDBLOCK etc
+ *		ENOTSUPPORTED	etc
+ *
+ * Details.
+ */
+
+#define HV_DAX_CCB_SUBMIT               0x34
+#ifndef __ASSEMBLY__
+unsigned long sun4v_dax_ccb_submit(void *ccb, int len, long flags, long vq_token, long *submitted_len, long *error_va);
+#endif
+/* flags (ARG2) */
+#define HV_DAX_MESSAGE_CMD         (0)
+#define HV_DAX_VIRTUAL_MESSAGE_CMD (1)
+#define HV_DAX_QUERY_CMD           (2)
+#define HV_DAX_ARG0_TYPE_REAL      (0 << 4)
+#define HV_DAX_ARG0_TYPE_PRIMARY   (1 << 4)
+#define HV_DAX_ARG0_TYPE_SECONDARY (2 << 4)
+#define HV_DAX_ARG0_TYPE_NUCLEUS   (3 << 4)
+#define HV_DAX_ARG0_PRIVILEGED     (1 << 6)
+#define HV_DAX_ALL_OR_NOTHING      (1 << 7)
+#define HV_DAX_CCB_VA_REJECT       (0 << 12)
+#define HV_DAX_CCB_VA_SECONDARY    (2 << 12)
+#define HV_DAX_CCB_VA_NUCLEUS      (3 << 12)
+#define HV_DAX_CCB_VA_PRIVILEGED   (1 << 14)
+
+/* dax_ccb_info()
+ * TRAP:	HV_FAST_TRAP
+ * FUNCTION:	HV_DAX_CCB_INFO
+ * ARG0:        real address of CCB completion area
+ * RET0:	status (success or error code)
+ * RET1         CCB state
+ * RET2         queue position
+ *
+ * ERRORS:	EWOULDBLOCK etc
+ *		ENOTSUPPORTED	etc
+ *
+ * Details.
+ */
+
+#define HV_DAX_CCB_INFO                 0x35
+#define HV_DAX_STATE_COMPLETED      0
+#define HV_DAX_STATE_PENDING        1
+#define HV_DAX_STATE_INPROGRESS     2
+#define HV_DAX_STATE_NOTFOUND       3
+
+/* dax_ccb_kill()
+ * TRAP:	HV_FAST_TRAP
+ * FUNCTION:	HV_DAX_CCB_KILL
+ * ARG0:        real address of CCB completion area
+ * RET0:	status (success or error code)
+ * RET1         CCB kill status
+ *
+ * ERRORS:	EWOULDBLOCK etc
+ *		ENOTSUPPORTED	etc
+ *
+ * Details.
+ */
+
+#define HV_DAX_CCB_KILL                 0x36
+#define HV_DAX_KILL_COMPLETED       0
+#define HV_DAX_KILL_DEQUEUED        1
+#define HV_DAX_KILL_KILLED          2
+#define HV_DAX_KILL_NOTFOUND        3
+
 /* Time of day services.
  *
  * The hypervisor maintains the time of day on a per-domain basis.
@@ -3689,6 +3772,7 @@ struct hv_pci_priq_intx_info {
 #define HV_GRP_SDIO			0x0108
 #define HV_GRP_SDIO_ERR			0x0109
 #define HV_GRP_REBOOT_DATA		0x0110
+#define HV_GRP_M7_DAX			0x0113
 #define HV_GRP_M7_PERF			0x0114
 #define	HV_GRP_PRIQ			0x011b
 #define	HV_GRP_PRIQ_PCI			0x011c

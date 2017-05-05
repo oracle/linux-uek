@@ -39,6 +39,7 @@ static struct api_info api_table[] = {
 	{ .group = HV_GRP_SDIO,					},
 	{ .group = HV_GRP_SDIO_ERR,				},
 	{ .group = HV_GRP_REBOOT_DATA,				},
+	{ .group = HV_GRP_M7_DAX,				},
 	{ .group = HV_GRP_PRIQ,					},
 	{ .group = HV_GRP_PRIQ_PCI,				},
 	{ .group = HV_GRP_NIAG_PERF,	.flags = FLAG_PRE_API	},
