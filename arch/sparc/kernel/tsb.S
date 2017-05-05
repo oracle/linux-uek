@@ -29,13 +29,17 @@
 	 */
 tsb_miss_dtlb:
 	mov		TLB_TAG_ACCESS, %g4
+	ldxa		[%g4] ASI_DMMU, %g4
+	srlx		%g4, PAGE_SHIFT, %g4
 	ba,pt		%xcc, tsb_miss_page_table_walk
-	 ldxa		[%g4] ASI_DMMU, %g4
+	 sllx		%g4, PAGE_SHIFT, %g4
 
 tsb_miss_itlb:
 	mov		TLB_TAG_ACCESS, %g4
+	ldxa		[%g4] ASI_IMMU, %g4
+	srlx		%g4, PAGE_SHIFT, %g4
 	ba,pt		%xcc, tsb_miss_page_table_walk
-	 ldxa		[%g4] ASI_IMMU, %g4
+	 sllx		%g4, PAGE_SHIFT, %g4
 
 	/* At this point we have:
 	 * %g1 --	PAGE_SIZE TSB entry address
@@ -113,57 +117,12 @@ tsb_miss_page_table_walk_sun4v_fastpath:
 	/* Valid PTE is now in %g5.  */
 
 #if defined(CONFIG_HUGETLB_PAGE) || defined(CONFIG_TRANSPARENT_HUGEPAGE)
-661:	sethi		%uhi(_PAGE_SZALL_4U), %g7
+	sethi		%uhi(_PAGE_PMD_HUGE), %g7
 	sllx		%g7, 32, %g7
-	.section	.sun4v_2insn_patch, "ax"
-	.word		661b
-	mov		_PAGE_SZALL_4V, %g7
-	nop
-	.previous
 
-	and		%g5, %g7, %g2
-
-	/* This deserves a comment. Should xl_hugepages be selected for
-	 * sun4v the patch order must be for correctness/safety reasons:
-	 *	sun4v_xl_hugepage_hash_patch
-	 *	sun4v_xl_hugepage_pte_size_patch
-	 *	sun4v_xl_hugepage_pte_branch_patch
-	 * . Doing otherwise could result in hangs and thus boot failures.
-	 */
-661:	sethi		%uhi(_PAGE_SZHUGE_4U), %g7
-662:	sllx		%g7, 32, %g7
-	.section	.sun4v_2insn_patch, "ax"
-	.word		661b
-	mov		_PAGE_SZHUGE_4V, %g7
-	nop
-	.previous
-	.section	.sun4v_xl_hugepage_pte_size_patch, "ax"
-	.word		662b
-	subcc		%g2, 0, %g0
-	.previous
-
-	/* Should it be patched for xl_hugepages, then we need to fix up
-	 * the disp19 target to sun4v_xl_hugepages.
-	 */
-661:
+	andcc		%g5, %g7, %g0
+	be,pt		%xcc, 60f
 	 nop
-	.section	.sun4v_xl_hugepage_pte_branch_patch, "ax"
-	.word		661b
-	beq,pn		%xcc, 662f
-662:
-	.previous
-	cmp		%g2, %g7
-	bne,pt		%xcc, 60f
-	 nop
-
-	/* It is the default huge page (8M). We have to propagate
-	 * the 4MB bit of the virtual address because we are
-	 * fabricating 8MB pages using 4MB hw pages.
-	 */
-	sethi		%hi(4 * 1024 * 1024), %g2
-	andn		%g5, %g2, %g5
-	and		%g4, %g2, %g2
-	or		%g5, %g2, %g5
 
 	/* It is a huge page, use huge page TSB entry address we
 	 * calculated above.  If the huge page TSB has not been
@@ -198,14 +157,13 @@ tsb_miss_page_table_walk_sun4v_fastpath:
 	 mov	%g3, %g4
 	ba,pt	%xcc, etrap
 	 rd	%pc, %g7
-	or	%g0, MM_TSB_HUGE, %o1
 	call	hugetlb_setup
 	 add	%sp, PTREGS_OFF, %o0
 	ba,pt	%xcc, rtrap
 	 nop
 
 60:
-#endif /* CONFIG_HUGETLB_PAGE || CONFIG_TRANSPARENT_HUGEPAGE */
+#endif
 
 	/* At this point we have:
 	 * %g1 --	TSB entry address
@@ -315,6 +273,10 @@ tsb_do_dtlb_fault:
 	nop
 	.previous
 
+	/* Clear context ID bits.  */
+	srlx		%g5, PAGE_SHIFT, %g5
+	sllx		%g5, PAGE_SHIFT, %g5
+
 	be,pt	%xcc, sparc64_realfault_common
 	 mov	FAULT_CODE_DTLB, %g4
 	ba,pt	%xcc, winfix_trampoline
@@ -397,8 +359,7 @@ tsb_flush:
 	 * %o0: page table physical address
 	 * %o1:	TSB base config pointer
 	 * %o2:	TSB huge config pointer, or NULL if none
-	 * %o3  TSB XL huge config pointer or NULL if none
-	 * %o4:	Hypervisor TSB descriptor physical address
+	 * %o3:	Hypervisor TSB descriptor physical address
 	 *
 	 * We have to run this whole thing with interrupts
 	 * disabled so that the current cpu doesn't change
@@ -416,7 +377,6 @@ __tsb_context_switch:
 	stx	%o0, [%g2 + TRAP_PER_CPU_PGD_PADDR]
 
 	ldx	[%o1 + TSB_CONFIG_REG_VAL], %o0
-	/* Check hugepage tsb */
 	brz,pt	%o2, 1f
 	 mov	-1, %g3
 
@@ -436,34 +396,16 @@ __tsb_context_switch:
 	mov	SCRATCHPAD_UTSBREG2, %o5
 	stxa	%g3, [%o5] ASI_SCRATCHPAD
 
-	/* Start counting HV tsb descriptors. */
-	mov	1, %o0
+	mov	2, %o0
 	cmp	%g3, -1
-	beq	%xcc, 2f
-	 nop
-	add	%o0, 1, %o0
-2:
-
-	/* check xl_hugepage tsb */
-	brz,pt	%o3, 3f
-	 mov	-1, %g3
-	ldx	[%o3 + TSB_CONFIG_REG_VAL], %g3
-3:
-	mov	SCRATCHPAD_XLHUGPAGES, %o5
-	stxa	%g3, [%o5] ASI_SCRATCHPAD
-
-	cmp	%g3, -1
-	beq	%xcc, 4f
-	 nop
-	add	%o0, 1, %o0
-4:
+	move	%xcc, 1, %o0
 
 	mov	HV_FAST_MMU_TSB_CTXNON0, %o5
-	mov	%o4, %o1
+	mov	%o3, %o1
 	ta	HV_FAST_TRAP
 
 	/* Finish up.  */
-	ba,pt	%xcc, 60f
+	ba,pt	%xcc, 9f
 	 nop
 
 	/* SUN4U TSB switch.  */
@@ -473,8 +415,8 @@ __tsb_context_switch:
 	stxa	%o0, [%o5] ASI_IMMU
 	membar	#Sync
 
-	ldx	[%o1 + TSB_CONFIG_MAP_VADDR], %o4
-	brz	%o4, 60f
+2:	ldx	[%o1 + TSB_CONFIG_MAP_VADDR], %o4
+	brz	%o4, 9f
 	 ldx	[%o1 + TSB_CONFIG_MAP_PTE], %o5
 
 	sethi	%hi(sparc64_highest_unlocked_tlb_ent), %g2
@@ -486,7 +428,7 @@ __tsb_context_switch:
 	stxa	%o5, [%g2] ASI_DTLB_DATA_ACCESS
 	membar	#Sync
 
-	brz,pt	%o2, 60f
+	brz,pt	%o2, 9f
 	 nop
 
 	ldx	[%o2 + TSB_CONFIG_MAP_VADDR], %o4
@@ -498,7 +440,7 @@ __tsb_context_switch:
 	stxa	%o5, [%g2] ASI_DTLB_DATA_ACCESS
 	membar	#Sync
 
-60:
+9:
 	wrpr	%g1, %pstate
 
 	retl

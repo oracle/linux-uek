@@ -201,6 +201,12 @@ config NR_CPUS
 	default 32 if SPARC32
 	default 2048 if SPARC64
 
+config SPARC_DAX
+	bool "Enable Oracle Sparc DAX driver"
+	def_bool m if SPARC64
+	---help---
+		This enables Oracle Data Analytics Accelerator (DAX) driver
+
 source kernel/Kconfig.hz
 
 config RWSEM_GENERIC_SPINLOCK

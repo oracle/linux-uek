@@ -8,7 +8,7 @@
 #define SCRATCHPAD_UTSBREG1	0x10
 #define SCRATCHPAD_UTSBREG2	0x18
 	/* 0x20 and 0x28, hypervisor only... */
-#define	SCRATCHPAD_XLHUGPAGES	0x30 /* Reserved for XL hugepages TSB	    */
+#define SCRATCHPAD_UNUSED1	0x30
 #define SCRATCHPAD_UNUSED2	0x38 /* Reserved for OBP		    */
 
 #endif /* !(_SPARC64_SCRATCHPAD_H) */

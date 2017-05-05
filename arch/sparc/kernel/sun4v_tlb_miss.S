@@ -32,32 +32,16 @@
 	 * tsb_index = ((vaddr >> HASH_SHIFT) & tsb_mask);
 	 * tsb_ptr = tsb_base + (tsb_index * 16);
 	 */
-#define COMPUTE_TSB_PTR(TSB_PTR, VADDR,			\
-	 PATCH_PROLOGUE, PATCH_EPILOGUE,		\
-	HASH_SHIFT, TMP1, TMP2) 			\
+#define COMPUTE_TSB_PTR(TSB_PTR, VADDR, HASH_SHIFT, TMP1, TMP2) \
 	and	TSB_PTR, 0x7, TMP1;			\
 	mov	512, TMP2;				\
 	andn	TSB_PTR, 0x7, TSB_PTR;			\
 	sllx	TMP2, TMP1, TMP2;			\
-	PATCH_PROLOGUE;					\
 	srlx	VADDR, HASH_SHIFT, TMP1;		\
-	PATCH_EPILOGUE;					\
 	sub	TMP2, 1, TMP2;				\
 	and	TMP1, TMP2, TMP1;			\
 	sllx	TMP1, 4, TMP1;				\
 	add	TSB_PTR, TMP1, TSB_PTR;
-
-	/* This is for xl_hugepages.*/
-#define	PATCH_HASH_SHIFT_PROLOGUE			\
-	661:;
-#define	PATCH_HASH_SHIFT_EPILOGUE				\
-	.section        .sun4v_xl_hugepage_hash_patch, "ax";	\
-	.word		661b;					\
-	.previous;
-
-	/* This is the normal tsb miss case.*/
-#define PATCH_HASH_SHIFT_NOPROLOGUE
-#define PATCH_HASH_SHIFT_NOEPILOGUE
 
 sun4v_itlb_miss:
 	/* Load MMU Miss base into %g2.  */
@@ -69,8 +53,7 @@ sun4v_itlb_miss:
 
 	LOAD_ITLB_INFO(%g2, %g4, %g5)
 	COMPUTE_TAG_TARGET(%g6, %g4, %g5, kvmap_itlb_4v)
-	COMPUTE_TSB_PTR(%g1, %g4, PATCH_HASH_SHIFT_NOPROLOGUE,	\
-		PATCH_HASH_SHIFT_NOEPILOGUE, PAGE_SHIFT, %g3, %g7)
+	COMPUTE_TSB_PTR(%g1, %g4, PAGE_SHIFT, %g3, %g7)
 
 	/* Load TSB tag/pte into %g2/%g3 and compare the tag.  */
 	ldda	[%g1] ASI_QUAD_LDD_PHYS_4V, %g2
@@ -116,8 +99,7 @@ sun4v_dtlb_miss:
 
 	LOAD_DTLB_INFO(%g2, %g4, %g5)
 	COMPUTE_TAG_TARGET(%g6, %g4, %g5, kvmap_dtlb_4v)
-	COMPUTE_TSB_PTR(%g1, %g4, PATCH_HASH_SHIFT_NOPROLOGUE,	\
-		PATCH_HASH_SHIFT_NOEPILOGUE, PAGE_SHIFT, %g3, %g7)
+	COMPUTE_TSB_PTR(%g1, %g4, PAGE_SHIFT, %g3, %g7)
 
 	/* Load TSB tag/pte into %g2/%g3 and compare the tag.  */
 	ldda	[%g1] ASI_QUAD_LDD_PHYS_4V, %g2
@@ -190,8 +172,7 @@ sun4v_dtsb_miss:
 	/* fallthrough */
 
 sun4v_tsb_miss_common:
-	COMPUTE_TSB_PTR(%g1, %g4, PATCH_HASH_SHIFT_NOPROLOGUE,	\
-		PATCH_HASH_SHIFT_NOEPILOGUE, PAGE_SHIFT, %g5, %g7)
+	COMPUTE_TSB_PTR(%g1, %g4, PAGE_SHIFT, %g5, %g7)
 
 	sub	%g2, TRAP_PER_CPU_FAULT_INFO, %g2
 
@@ -201,8 +182,7 @@ sun4v_tsb_miss_common:
 	cmp	%g5, -1
 	be,pt	%xcc, 80f
 	 nop
-	COMPUTE_TSB_PTR(%g5, %g4, PATCH_HASH_SHIFT_NOPROLOGUE,	\
-		PATCH_HASH_SHIFT_NOEPILOGUE, REAL_HPAGE_SHIFT, %g2, %g7)
+	COMPUTE_TSB_PTR(%g5, %g4, REAL_HPAGE_SHIFT, %g2, %g7)
 
 	/* That clobbered %g2, reload it.  */
 	ldxa	[%g0] ASI_SCRATCHPAD, %g2
@@ -213,47 +193,6 @@ sun4v_tsb_miss_common:
 
 	ba,pt	%xcc, tsb_miss_page_table_walk_sun4v_fastpath
 	 ldx	[%g2 + TRAP_PER_CPU_PGD_PADDR], %g7
-
-#ifdef CONFIG_HUGETLB_PAGE
-	/*
-	 * %g3 -- FAULT_CODE_{D,I}TLB
-	 * %g4 -- virtual address
-	 * %g5 -- pte
-	 * %g6 -- tag
-	 */
-	.global sun4v_xl_hugepages
-sun4v_xl_hugepages:
-	sethi	%uhi(_PAGE_SPECIAL_4V), %g2
-	sllx	%g2, 32, %g2
-	andcc	%g5, %g2, %g0
-	be,pt	%xcc, 10f
-	sethi	%uhi(_PAGE_VALID | _PAGE_PMD_HUGE | _PAGE_SPECIAL_4V), %g1;
-	sllx	%g1, 32, %g1
-	or	%g1, _PAGE_SZALL_4V, %g1
-	andn	%g5, %g1, %g1
-	ldxa	[%g1 + %g0] ASI_PHYS_USE_EC, %g5
-	brgez,pn %g5, tsb_do_fault
-10:	mov	SCRATCHPAD_XLHUGPAGES, %g1
-	ldxa	[%g1] ASI_SCRATCHPAD, %g1
-	cmp	%g1, -1
-	beq,pn	%xcc, 10f
-	COMPUTE_TSB_PTR(%g1, %g4, PATCH_HASH_SHIFT_PROLOGUE,	\
-		PATCH_HASH_SHIFT_EPILOGUE, 0, %g2, %g7)
-	ba,pt	%xcc, tsb_reload
-	 nop
-10:	SET_GL(1)
-	rdpr	%tl, %g7
-	cmp	%g7, 1
-	bne,pn	%xcc, winfix_trampoline
-	 mov	%g3, %g4
-	ba,pt	%xcc, etrap
-	 rd	%pc, %g7
-	or	%g0, MM_TSB_XLHUGE, %o1
-	call	hugetlb_setup
-	 add	%sp, PTREGS_OFF, %o0
-	ba,pt	%xcc, rtrap
-	 nop
-#endif	/* CONFIG_HUGETLB_PAGE */
 
 sun4v_itlb_error:
 	rdpr	%tl, %g1

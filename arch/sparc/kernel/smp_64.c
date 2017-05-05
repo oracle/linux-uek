@@ -1462,6 +1462,30 @@ void __cpu_die(unsigned int cpu)
 
 void __init smp_cpus_done(unsigned int max_cpus)
 {
+#if defined(CONFIG_SUN_LDOMS) && defined(CONFIG_HOTPLUG_CPU)
+	unsigned long hv_err;
+	int cpu;
+
+	if (num_present_cpus() == num_online_cpus()) {
+		/* All present cpus are online,
+		 * nothing to do here
+		 */
+		return;
+	}
+
+	/* Stop the cpus currently not online, so that we
+	 * can bring them online later if required
+	 */
+	for_each_present_cpu(cpu) {
+		if (!cpu_online(cpu) &&
+			(sun4v_cpu_state(cpu) != HV_CPU_STATE_STOPPED)) {
+			hv_err = sun4v_cpu_stop(cpu);
+			if (hv_err)
+				pr_err("%s: sun4v_cpu_stop() fails err=%lu\n",
+					__func__, hv_err);
+		}
+	}
+#endif
 }
 
 void smp_send_reschedule(int cpu)

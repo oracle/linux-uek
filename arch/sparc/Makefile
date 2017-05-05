@@ -59,6 +59,7 @@ libs-y                 += arch/sparc/lib/
 
 drivers-$(CONFIG_PM) += arch/sparc/power/
 drivers-$(CONFIG_OPROFILE)	+= arch/sparc/oprofile/
+drivers-$(CONFIG_SPARC_DAX)	+= arch/sparc/dax/
 
 boot := arch/sparc/boot
 

@@ -1,7 +1,7 @@
 /*
  * vds_io.c: LDOM Virtual Disk Server.
  *
- * Copyright (C) 2014, 2016 Oracle. All rights reserved.
+ * Copyright (C) 2014, 2017 Oracle. All rights reserved.
  */
 
 #include "vds.h"
@@ -232,6 +232,9 @@ void vds_io_done(struct vds_io *io)
 	 * kernel workqueue AFTER the reset will execute but no response
 	 * will be sent to the client.
 	 *
+	 * If the request is part of a previously discarded IO queue, do
+	 * not try dequeue it, but just drop it instead.
+	 *
 	 * The reset can be initiated by an explicit incoming request
 	 * or while processing an IO request.  Wakeup anyone waiting on
 	 * the IO list in either case.
@@ -243,7 +246,10 @@ void vds_io_done(struct vds_io *io)
 	 * will resend all requests for which it has received no response.
 	 */
 	vds_vio_lock(vio, flags);
-	list_del(&io->list);
+
+	if (!(io->flags & VDS_IO_DROP))
+		list_del(&io->list);
+
 	if (io->flags & VDS_IO_FINI) {
 		list_for_each_safe(pos, tmp, &port->io_list) {
 			ent = list_entry(pos, struct vds_io, list);
