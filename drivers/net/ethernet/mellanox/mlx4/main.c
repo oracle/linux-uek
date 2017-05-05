@@ -2721,6 +2721,15 @@ static void mlx4_enable_msi_x(struct mlx4_dev *dev)
 
 		nreq = min_t(int, dev->caps.num_eqs - dev->caps.reserved_eqs,
 			     nreq);
+		/* 2.35.5530 firmware is providing more than 64 vectors.
+		 * Limit max MSI-X vector allocation to MAX_MSIX(64) for now.
+		 * Beyond that, it's going in legacy mode and 3 vectors are flooded with interrupts.
+		 * This causes performance inconsistencies.
+		 * We should remove following condition after driver can support beyond 64 vectors
+		 * without getting into legacy mode.
+		 */
+		if (nreq > MAX_MSIX)
+			nreq = MAX_MSIX;
 
 		if (msi_x > 1)
 			nreq = min_t(int, nreq, msi_x);
