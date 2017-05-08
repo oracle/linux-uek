@@ -252,12 +252,6 @@ static int cap_inode_listxattr(struct dentry *dentry)
 	return 0;
 }
 
-static int cap_inode_getsecurity(const struct inode *inode, const char *name,
-				 void **buffer, bool alloc)
-{
-	return -EOPNOTSUPP;
-}
-
 static int cap_inode_setsecurity(struct inode *inode, const char *name,
 				 const void *value, size_t size, int flags)
 {
