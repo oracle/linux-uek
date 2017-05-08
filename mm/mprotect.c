@@ -370,6 +370,18 @@ SYSCALL_DEFINE3(mprotect, unsigned long, start, size_t, len,
 	error = -ENOMEM;
 	if (!vma)
 		goto out;
+
+#ifdef CONFIG_SPARC64
+	/* This is a hack until ADI is supported for swappable pages.
+	 * Remove this code when that happens.
+	 */
+	if (unlikely((prot & PROT_ADI) &&
+	    (!is_vm_hugetlb_page(vma)))) {
+		error = -EINVAL;
+		goto out;
+	}
+#endif
+
 	prev = vma->vm_prev;
 	if (unlikely(grows & PROT_GROWSDOWN)) {
 		if (vma->vm_start >= end)
