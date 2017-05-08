@@ -49,6 +49,8 @@
 
 #define RDS_WC_MAX 32
 
+#define	RDS_IB_CLEAN_CACHE	1
+
 extern struct rw_semaphore rds_ib_devices_lock;
 extern struct list_head rds_ib_devices;
 
@@ -217,6 +219,7 @@ struct rds_ib_connection {
 	u16			i_frag_sz;	/* IB fragment size */
 	u16			i_frag_cache_sz;
 	u8			i_frag_pages;
+	u8			i_flags;
 
 	/* Batched completions */
 	unsigned int		i_unsignaled_wrs;
