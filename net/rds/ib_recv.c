@@ -219,8 +219,11 @@ void rds_ib_recv_rebuild_caches(struct rds_ib_connection *ic)
 	}
 
 	/* check if existing cache can be re-used */
-	if (ic->i_frag_cache_sz == ic->i_frag_sz)
-		return;
+	if ((ic->i_frag_cache_sz == ic->i_frag_sz) &&
+		!(ic->i_flags & RDS_IB_CLEAN_CACHE))
+			return;
+
+	ic->i_flags &= ~RDS_IB_CLEAN_CACHE;
 
 	/* Now re-build the caches */
 	rds_ib_recv_free_caches(ic);
@@ -260,8 +263,12 @@ void rds_ib_inc_free(struct rds_incoming *inc)
 
 	/* Free attached frags */
 	list_for_each_entry_safe(frag, pos, &ibinc->ii_frags, f_item) {
-		list_del_init(&frag->f_item);
-		rds_ib_frag_free(ic, frag);
+		if (frag->f_sg.length != ic->i_frag_sz)
+			rds_ib_recv_free_frag(frag);
+		else {
+			list_del_init(&frag->f_item);
+			rds_ib_frag_free(ic, frag);
+		}
 	}
 	BUG_ON(!list_empty(&ibinc->ii_frags));
 
@@ -1341,6 +1348,8 @@ void rds_ib_recv_cqe_handler(struct rds_ib_connection *ic,
 				pr_warn("RDS/IB: recv completion <%pI4,%pI4,%d> had status %u vendor_err 0x%x, disconnecting and reconnecting\n",
 					&conn->c_laddr, &conn->c_faddr, conn->c_tos,
 					wc->status, wc->vendor_err);
+			if (wc->status == IB_WC_LOC_LEN_ERR)
+				ic->i_flags |= RDS_IB_CLEAN_CACHE;
 			rds_conn_drop(conn, DR_IB_RECV_COMP_ERR);
 			rds_rtd(RDS_RTD_ERR, "status %u => %s\n", wc->status,
 				rds_ib_wc_status_str(wc->status));
