@@ -125,6 +125,10 @@ config AUDIT_ARCH
 config HAVE_SETUP_PER_CPU_AREA
 	def_bool y if SPARC64
 
+config EFI
+	def_bool y if SPARC64
+	select UCS2_STRING
+
 config NEED_PER_CPU_EMBED_FIRST_CHUNK
 	def_bool y if SPARC64
 

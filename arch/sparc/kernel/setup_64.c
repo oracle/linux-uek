@@ -33,6 +33,7 @@
 #include <linux/start_kernel.h>
 #include <linux/bootmem.h>
 #include <linux/iommu-common.h>
+#include <linux/efi.h>
 
 #include <asm/io.h>
 #include <asm/processor.h>
@@ -662,6 +663,19 @@ void __init alloc_irqstack_bootmem(void)
 	}
 }
 
+void __init sparc_efi_init(void)
+{
+#ifdef CONFIG_EFI
+	phandle node;
+
+	node = prom_finddevice("/chosen");
+	if (prom_getproplen(node, "efi-booter") > 0) {
+		set_bit(EFI_BOOT, &efi.flags);
+		set_bit(EFI_64BIT, &efi.flags);
+	}
+#endif
+}
+
 void __init setup_arch(char **cmdline_p)
 {
 	/* Initialize PROM console and command line. */
@@ -716,6 +730,8 @@ void __init setup_arch(char **cmdline_p)
 		}
 	}
 #endif
+
+	sparc_efi_init();
 
 	/* Get boot processor trap_block[] setup.  */
 	init_cur_cpu_trap(current_thread_info());

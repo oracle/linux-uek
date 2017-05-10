@@ -339,6 +339,7 @@ int __init efi_config_parse_tables(void *config_tables, int count, int sz,
 	return 0;
 }
 
+#ifndef CONFIG_SPARC
 int __init efi_config_init(efi_config_table_type_t *arch_tables)
 {
 	void *config_tables;
@@ -365,6 +366,7 @@ int __init efi_config_init(efi_config_table_type_t *arch_tables)
 	early_memunmap(config_tables, efi.systab->nr_tables * sz);
 	return ret;
 }
+#endif
 
 #ifdef CONFIG_EFI_VARS_MODULE
 static int __init efi_load_efivars(void)
