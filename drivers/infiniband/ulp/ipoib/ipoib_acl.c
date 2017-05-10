@@ -495,6 +495,10 @@ void ipoib_init_acl(struct net_device *dev)
 	struct ib_cm_dpp dpp;
 	struct ipoib_dev_priv *priv = netdev_priv(dev);
 
+	INIT_RADIX_TREE(&priv->instances_acls.instances, GFP_KERNEL);
+	priv->instances_acls.list_count = 0;
+	mutex_init(&priv->instances_acls.lock);
+
 	ipoib_dbg(priv, "Initializing ACL for device %s\n", dev->name);
 	ib_cm_acl_init(&priv->acl);
 	ib_cm_dpp_init(&dpp, priv->ca, priv->port, priv->pkey);

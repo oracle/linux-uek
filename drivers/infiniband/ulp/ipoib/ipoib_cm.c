@@ -970,10 +970,6 @@ int ipoib_cm_dev_open(struct net_device *dev)
 		goto err_cm;
 	}
 
-	INIT_RADIX_TREE(&priv->instances_acls.instances, GFP_KERNEL);
-	priv->instances_acls.list_count = 0;
-	mutex_init(&priv->instances_acls.lock);
-
 	ret = ib_cm_listen(priv->cm.id, cpu_to_be64(IPOIB_CM_IETF_ID | priv->qp->qp_num),
 			   0, NULL);
 	if (ret) {
