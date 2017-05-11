@@ -113,7 +113,11 @@ err_put:
 	mlx4_table_put(dev, &srq_table->table, *srqn);
 
 err_out:
+#ifdef WITHOUT_ORACLE_EXTENSIONS
 	mlx4_bitmap_free(&srq_table->bitmap, *srqn, MLX4_NO_RR);
+#else
+	mlx4_bitmap_free(&srq_table->bitmap, *srqn, MLX4_USE_RR);
+#endif /* WITHOUT_ORACLE_EXTENSIONS */
 	return err;
 }
 
@@ -141,7 +145,11 @@ void __mlx4_srq_free_icm(struct mlx4_dev *dev, int srqn)
 
 	mlx4_table_put(dev, &srq_table->cmpt_table, srqn);
 	mlx4_table_put(dev, &srq_table->table, srqn);
+#ifdef WITHOUT_ORACLE_EXTENSIONS
 	mlx4_bitmap_free(&srq_table->bitmap, srqn, MLX4_NO_RR);
+#else
+	mlx4_bitmap_free(&srq_table->bitmap, srqn, MLX4_USE_RR);
+#endif /* WITHOUT_ORACLE_EXTENSIONS */
 }
 
 static void mlx4_srq_free_icm(struct mlx4_dev *dev, int srqn)
