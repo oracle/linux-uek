@@ -1159,7 +1159,7 @@ int do_machine_check(struct pt_regs *regs, long error_code)
 		mcgstatus = mce_rdmsrl(MSR_IA32_MCG_STATUS);
 		if (mcgstatus & MCG_STATUS_RIPV) {
 			mce_wrmsrl(MSR_IA32_MCG_STATUS, 0);
-			return;
+			return 0;
 		}
 	}
 
