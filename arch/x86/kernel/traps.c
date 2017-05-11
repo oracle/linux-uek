@@ -444,7 +444,7 @@ dotraplinkage int do_bounds(struct pt_regs *regs, long error_code)
 	RCU_LOCKDEP_WARN(!rcu_is_watching(), "entry code didn't wake RCU");
 	if (notify_die(DIE_TRAP, "bounds", regs, error_code,
 			X86_TRAP_BR, SIGSEGV) == NOTIFY_STOP)
-		return;
+		return 0;
 	cond_local_irq_enable(regs);
 
 	if (!user_mode(regs))
@@ -527,13 +527,13 @@ do_general_protection(struct pt_regs *regs, long error_code)
 	if (v8086_mode(regs)) {
 		local_irq_enable();
 		handle_vm86_fault((struct kernel_vm86_regs *) regs, error_code);
-		return;
+		return 0;
 	}
 
 	tsk = current;
 	if (!user_mode(regs)) {
 		if (fixup_exception(regs, X86_TRAP_GP))
-			return;
+			return 0;
 
 		tsk->thread.error_code = error_code;
 		tsk->thread.trap_nr = X86_TRAP_GP;
@@ -541,7 +541,7 @@ do_general_protection(struct pt_regs *regs, long error_code)
 					 error_code, X86_TRAP_GP, SIGSEGV);
 		if ((ret & NOTIFY_STOP_MASK) != NOTIFY_STOP_MASK)
 			die("general protection fault", regs, error_code);
-		return;
+		return notifier_to_errno(ret);
 	}
 
 	tsk->thread.error_code = error_code;
