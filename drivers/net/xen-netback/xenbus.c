@@ -1060,27 +1060,12 @@ static int read_xenbus_vif_flags(struct backend_info *be)
 	vif->can_sg = !!xenbus_read_unsigned(dev->otherend, "feature-sg", 0);
 
 	vif->gso_mask = 0;
-	vif->gso_prefix_mask = 0;
 
 	if (xenbus_read_unsigned(dev->otherend, "feature-gso-tcpv4", 0))
 		vif->gso_mask |= GSO_BIT(TCPV4);
 
-	if (xenbus_read_unsigned(dev->otherend, "feature-gso-tcpv4-prefix", 0))
-		vif->gso_prefix_mask |= GSO_BIT(TCPV4);
-
 	if (xenbus_read_unsigned(dev->otherend, "feature-gso-tcpv6", 0))
 		vif->gso_mask |= GSO_BIT(TCPV6);
-
-	if (xenbus_read_unsigned(dev->otherend, "feature-gso-tcpv6-prefix", 0))
-		vif->gso_prefix_mask |= GSO_BIT(TCPV6);
-
-	if (vif->gso_mask & vif->gso_prefix_mask) {
-		xenbus_dev_fatal(dev, err,
-				 "%s: gso and gso prefix flags are not "
-				 "mutually exclusive",
-				 dev->otherend);
-		return -EOPNOTSUPP;
-	}
 
 	vif->ip_csum = !xenbus_read_unsigned(dev->otherend,
 					     "feature-no-csum-offload", 0);
