@@ -231,12 +231,10 @@ struct xenvif_pkt_state {
 };
 
 static void xenvif_rx_next_skb(struct xenvif_queue *queue,
-			       struct xenvif_pkt_state *pkt)
+			       struct xenvif_pkt_state *pkt,
+			       struct sk_buff *skb)
 {
-	struct sk_buff *skb;
 	unsigned int gso_type;
-
-	skb = xenvif_rx_dequeue(queue);
 
 	queue->stats.tx_bytes += skb->len;
 	queue->stats.tx_packets++;
@@ -264,15 +262,6 @@ static void xenvif_rx_next_skb(struct xenvif_queue *queue,
 
 		pkt->extra_count++;
 	}
-}
-
-static void xenvif_rx_complete(struct xenvif_queue *queue,
-			       struct xenvif_pkt_state *pkt)
-{
-	/* All responses are ready to be pushed. */
-	queue->rx.rsp_prod_pvt = queue->rx.req_cons;
-
-	__skb_queue_tail(queue->rx_copy.completed, pkt->skb);
 }
 
 static void xenvif_rx_next_frag(struct xenvif_pkt_state *pkt)
@@ -405,11 +394,11 @@ static void xenvif_rx_extra_slot(struct xenvif_queue *queue,
 	BUG();
 }
 
-void xenvif_rx_skb(struct xenvif_queue *queue)
+void xenvif_rx_skb(struct xenvif_queue *queue, struct sk_buff *skb)
 {
 	struct xenvif_pkt_state pkt;
 
-	xenvif_rx_next_skb(queue, &pkt);
+	xenvif_rx_next_skb(queue, &pkt, skb);
 
 	queue->last_rx_time = jiffies;
 
@@ -430,7 +419,8 @@ void xenvif_rx_skb(struct xenvif_queue *queue)
 		pkt.slot++;
 	} while (pkt.remaining_len > 0 || pkt.extra_count != 0);
 
-	xenvif_rx_complete(queue, &pkt);
+	/* All responses are ready to be pushed. */
+	queue->rx.rsp_prod_pvt = queue->rx.req_cons;
 }
 
 #define RX_BATCH_SIZE 64
@@ -439,13 +429,16 @@ void xenvif_rx_action(struct xenvif_queue *queue)
 {
 	struct sk_buff_head completed_skbs;
 	unsigned int work_done = 0;
+	struct sk_buff *skb;
 
 	__skb_queue_head_init(&completed_skbs);
 	queue->rx_copy.completed = &completed_skbs;
 
 	while (xenvif_rx_ring_slots_available(queue) &&
 	       work_done < RX_BATCH_SIZE) {
-		xenvif_rx_skb(queue);
+		skb = xenvif_rx_dequeue(queue);
+		xenvif_rx_skb(queue, skb);
+		__skb_queue_tail(queue->rx_copy.completed, skb);
 		work_done++;
 	}
 
