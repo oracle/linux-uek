@@ -124,6 +124,8 @@ static int xenvif_read_io_ring(struct seq_file *m, void *v)
 		   skb_queue_len(&queue->rx_queue),
 		   netif_tx_queue_stopped(dev_queue) ? "stopped" : "running");
 
+	xenvif_dump_grant_info(queue, m);
+
 	return 0;
 }
 
@@ -411,6 +413,12 @@ static int netback_probe(struct xenbus_device *dev,
 			    "%u", true);
 	if (err)
 		pr_debug("Error writing feature-ctrl-ring\n");
+
+	/* Staging grants support: This is an optional feature. */
+	err = xenbus_printf(XBT_NIL, dev->nodename,
+			    "feature-staging-grants", "%u", 1);
+	if (err)
+		pr_debug("Error writing feature-staging-grants\n");
 
 	script = xenbus_read(XBT_NIL, dev->nodename, "script", NULL);
 	if (IS_ERR(script)) {
@@ -1069,6 +1077,7 @@ static int connect_data_rings(struct backend_info *be,
 	unsigned int num_queues = queue->vif->num_queues;
 	unsigned long tx_ring_ref, rx_ring_ref;
 	unsigned int tx_evtchn, rx_evtchn;
+	unsigned long pool_ref, pool_size;
 	int err;
 	char *xspath;
 	size_t xspathsize;
@@ -1135,6 +1144,32 @@ static int connect_data_rings(struct backend_info *be,
 				 tx_ring_ref, rx_ring_ref,
 				 tx_evtchn, rx_evtchn);
 		goto err;
+	}
+
+	err = xenbus_gather(XBT_NIL, xspath,
+			    "tx-pool-ref", "%lu", &pool_ref,
+			    "tx-pool-size", "%lu", &pool_size, NULL);
+	if (!err) {
+		err = xenvif_add_gref_mapping(queue->vif, queue->id,
+					      pool_ref, pool_size);
+		if (err) {
+			xenbus_dev_fatal(dev, err,
+					 "mapping tx prealloc ref %lu size %lu",
+					 pool_ref, pool_size);
+		}
+	}
+
+	err = xenbus_gather(XBT_NIL, xspath,
+			    "rx-pool-ref", "%lu", &pool_ref,
+			    "rx-pool-size", "%lu", &pool_size, NULL);
+	if (!err) {
+		err = xenvif_add_gref_mapping(queue->vif, queue->id,
+					      pool_ref, pool_size);
+		if (err) {
+			xenbus_dev_fatal(dev, err,
+					 "mapping rx prealloc ref %lu size %lu",
+					 pool_ref, pool_size);
+		}
 	}
 
 	err = 0;

@@ -96,6 +96,10 @@ unsigned int xenvif_hash_cache_size = XENVIF_HASH_CACHE_SIZE_DEFAULT;
 module_param_named(hash_cache_size, xenvif_hash_cache_size, uint, 0644);
 MODULE_PARM_DESC(hash_cache_size, "Number of flows in the hash cache");
 
+unsigned int xenvif_gref_mapping_size = XEN_NETBK_GREF_MAP_SIZE;
+module_param_named(gref_mapping_size, xenvif_gref_mapping_size, uint, 0644);
+MODULE_PARM_DESC(gref_mapping_size, "Number of grefs in the mapping table");
+
 static void xenvif_idx_release(struct xenvif_queue *queue, u16 pending_idx,
 			       u8 status);
 

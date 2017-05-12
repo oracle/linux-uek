@@ -537,6 +537,8 @@ int xenvif_init_queue(struct xenvif_queue *queue)
 	spin_lock_init(&queue->callback_lock);
 	spin_lock_init(&queue->response_lock);
 
+	xenvif_init_grant(queue);
+
 	/* If ballooning is disabled, this will consume real memory, so you
 	 * better enable it. The long term solution would be to use just a
 	 * bunch of valid page descriptors, without dependency on ballooning
@@ -763,6 +765,7 @@ void xenvif_disconnect_data(struct xenvif *vif)
 		}
 
 		xenvif_unmap_frontend_data_rings(queue);
+		xenvif_deinit_grant(queue);
 	}
 
 	xenvif_mcast_addr_list_free(vif);
