@@ -93,6 +93,9 @@
 #include <trace/events/oom.h>
 #include "internal.h"
 #include "fd.h"
+#ifdef CONFIG_SPARC64
+#include "adi.h"
+#endif
 
 /* NOTE:
  *	Implementing inode permission operations in /proc is almost
@@ -2814,6 +2817,10 @@ static const struct pid_entry tgid_base_stuff[] = {
 	DIR("ns",	  S_IRUSR|S_IXUGO, proc_ns_dir_inode_operations, proc_ns_dir_operations),
 #ifdef CONFIG_NET
 	DIR("net",        S_IRUGO|S_IXUGO, proc_net_inode_operations, proc_net_operations),
+#endif
+#ifdef CONFIG_SPARC64
+	DIR("adi",	  S_IRUGO | S_IXUGO, proc_adi_inode_operations,
+	    proc_adi_operations),
 #endif
 	REG("environ",    S_IRUSR, proc_environ_operations),
 	ONE("auxv",       S_IRUSR, proc_pid_auxv),

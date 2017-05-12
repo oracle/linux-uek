@@ -8,6 +8,7 @@
 #define __ASM_SPARC64_ADI_H
 
 #include <linux/types.h>
+#include <asm/processor.h>
 
 #ifndef __ASSEMBLY__
 
@@ -41,6 +42,23 @@ static inline unsigned long adi_blksize(void)
 static inline unsigned long adi_nbits(void)
 {
 	return adi_state.caps.nbits;
+}
+
+static inline unsigned char adi_get_version(void *addr)
+{
+	long version;
+
+	asm volatile("ldxa [%1] %2, %0\n\t"
+		     : "=r" (version)
+		     : "r" (addr), "i" (ASI_MCD_PRIV_PRIMARY));
+	return (unsigned char)version;
+}
+
+static inline void adi_set_version(void *addr, int version)
+{
+	asm volatile("stxa %1, [%0] %2\n\t"
+		     :
+		     : "r" (addr), "r" (version), "i" (ASI_MCD_PRIV_PRIMARY));
 }
 
 static inline unsigned long adi_normalize(long addr)
