@@ -179,6 +179,8 @@ struct xenvif_queue { /* Per-queue data for xenvif */
 	/* passed to gnttab_[un]map_refs with pages under (un)mapping */
 	struct page *pages_to_map[MAX_PENDING_REQS];
 	struct page *pages_to_unmap[MAX_PENDING_REQS];
+	/* Tx pregranted buffers in use */
+	struct xenvif_grant *tx_grants[MAX_PENDING_REQS];
 
 	/* This prevents zerocopy callbacks  to race over dealloc_ring */
 	spinlock_t callback_lock;
@@ -367,7 +369,8 @@ extern struct dentry *xen_netback_dbg_root;
 
 void xenvif_skb_zerocopy_prepare(struct xenvif_queue *queue,
 				 struct sk_buff *skb);
-void xenvif_skb_zerocopy_complete(struct xenvif_queue *queue);
+void xenvif_skb_zerocopy_complete(struct xenvif_queue *queue,
+				  pending_ring_idx_t prod);
 
 /* Multicast control */
 bool xenvif_mcast_match(struct xenvif *vif, const u8 *addr);

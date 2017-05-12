@@ -58,15 +58,18 @@ void xenvif_skb_zerocopy_prepare(struct xenvif_queue *queue,
 	atomic_inc(&queue->inflight_packets);
 }
 
-void xenvif_skb_zerocopy_complete(struct xenvif_queue *queue)
+void xenvif_skb_zerocopy_complete(struct xenvif_queue *queue,
+				  pending_ring_idx_t prod)
 {
 	atomic_dec(&queue->inflight_packets);
 
 	/* Wake the dealloc thread _after_ decrementing inflight_packets so
 	 * that if kthread_stop() has already been called, the dealloc thread
-	 * does not wait forever with nothing to wake it.
+	 * does not wait forever with nothing to wake it. But only wake up when
+	 * there are grants to unmap.
 	 */
-	wake_up(&queue->dealloc_wq);
+	if (prod != queue->dealloc_prod)
+		wake_up(&queue->dealloc_wq);
 }
 
 int xenvif_schedulable(struct xenvif *vif)
@@ -512,6 +515,7 @@ int xenvif_init_queue(struct xenvif_queue *queue)
 			  .ctx = NULL,
 			  .desc = i };
 		queue->grant_tx_handle[i] = NETBACK_INVALID_HANDLE;
+		queue->tx_grants[i] = NULL;
 	}
 
 	return 0;

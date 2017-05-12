@@ -97,6 +97,8 @@ MODULE_PARM_DESC(gref_mapping_size, "Number of grefs in the mapping table");
 static void xenvif_idx_release(struct xenvif_queue *queue, u16 pending_idx,
 			       u8 status);
 
+static bool xenvif_tx_grant(struct xenvif_queue *queue, grant_ref_t ref,
+			    u16 pending_idx);
 static void make_tx_response(struct xenvif_queue *queue,
 			     struct xen_netif_tx_request *txp,
 			     unsigned int extra_count,
@@ -104,6 +106,11 @@ static void make_tx_response(struct xenvif_queue *queue,
 static void push_tx_responses(struct xenvif_queue *queue);
 
 static inline int tx_work_todo(struct xenvif_queue *queue);
+
+static inline void *page_to_kaddr(struct page *page)
+{
+	return pfn_to_kaddr(page_to_pfn(page));
+}
 
 static inline unsigned long idx_to_pfn(struct xenvif_queue *queue,
 				       u16 idx)
@@ -322,16 +329,20 @@ struct xenvif_tx_cb {
 #define XENVIF_TX_CB(skb) ((struct xenvif_tx_cb *)(skb)->cb)
 
 static inline void xenvif_tx_create_map_op(struct xenvif_queue *queue,
-					   u16 pending_idx,
-					   struct xen_netif_tx_request *txp,
-					   unsigned int extra_count,
+					   u16 pending_idx, grant_ref_t gref,
 					   struct gnttab_map_grant_ref *mop)
 {
 	queue->pages_to_map[mop-queue->tx_map_ops] = queue->mmap_pages[pending_idx];
 	gnttab_set_map_op(mop, idx_to_kaddr(queue, pending_idx),
 			  GNTMAP_host_map | GNTMAP_readonly,
-			  txp->gref, queue->vif->domid);
+			  gref, queue->vif->domid);
+}
 
+static inline void xenvif_tx_copy_request(struct xenvif_queue *queue,
+					  u16 pending_idx,
+					  struct xen_netif_tx_request *txp,
+					  unsigned int extra_count)
+{
 	memcpy(&queue->pending_tx_info[pending_idx].req, txp,
 	       sizeof(*txp));
 	queue->pending_tx_info[pending_idx].extra_count = extra_count;
@@ -340,10 +351,18 @@ static inline void xenvif_tx_create_map_op(struct xenvif_queue *queue,
 static inline void xenvif_tx_create_copy_op(struct xenvif_queue *queue,
 					    unsigned *copy_ops,
 					    struct xen_netif_tx_request *txreq,
+					    struct xenvif_grant *grant,
 					    struct sk_buff *skb,
 					    unsigned int data_len)
 {
 	struct gnttab_copy *tx_copy_op;
+
+	/* Copy right way when frontend uses a gref mapping */
+	if (grant) {
+		memcpy(skb->data, page_to_kaddr(grant->page) + txreq->offset,
+		       data_len);
+		return;
+	}
 
 	tx_copy_op = &queue->tx_copy_ops[*copy_ops];
 	tx_copy_op->source.u.ref = txreq->gref;
@@ -397,11 +416,14 @@ static struct gnttab_map_grant_ref *xenvif_get_requests(struct xenvif_queue *que
 	start = (frag_get_pending_idx(&shinfo->frags[0]) == pending_idx);
 
 	for (shinfo->nr_frags = start; shinfo->nr_frags < nr_slots;
-	     shinfo->nr_frags++, txp++, gop++) {
+	     shinfo->nr_frags++, txp++) {
 		index = pending_index(queue->pending_cons++);
 		pending_idx = queue->pending_ring[index];
-		xenvif_tx_create_map_op(queue, pending_idx, txp, 0, gop);
 		frag_set_pending_idx(&frags[shinfo->nr_frags], pending_idx);
+		xenvif_tx_copy_request(queue, pending_idx, txp, 0);
+		if (!xenvif_tx_grant(queue, txp->gref, pending_idx))
+			xenvif_tx_create_map_op(queue, pending_idx,
+						txp->gref, gop++);
 	}
 
 	if (frag_overflow) {
@@ -410,13 +432,15 @@ static struct gnttab_map_grant_ref *xenvif_get_requests(struct xenvif_queue *que
 		frags = shinfo->frags;
 
 		for (shinfo->nr_frags = 0; shinfo->nr_frags < frag_overflow;
-		     shinfo->nr_frags++, txp++, gop++) {
+		     shinfo->nr_frags++, txp++) {
 			index = pending_index(queue->pending_cons++);
 			pending_idx = queue->pending_ring[index];
-			xenvif_tx_create_map_op(queue, pending_idx, txp, 0,
-						gop);
 			frag_set_pending_idx(&frags[shinfo->nr_frags],
 					     pending_idx);
+			xenvif_tx_copy_request(queue, pending_idx, txp, 0);
+			if (!xenvif_tx_grant(queue, txp->gref, pending_idx))
+				xenvif_tx_create_map_op(queue, pending_idx,
+							txp->gref, gop++);
 		}
 
 		skb_shinfo(skb)->frag_list = nskb;
@@ -452,6 +476,44 @@ static inline void xenvif_grant_handle_reset(struct xenvif_queue *queue,
 	queue->grant_tx_handle[pending_idx] = NETBACK_INVALID_HANDLE;
 }
 
+static void xenvif_tx_grant_reset(struct xenvif_queue *queue, u16 pending_idx)
+{
+	struct xenvif_grant *grant = queue->tx_grants[pending_idx];
+
+	xenvif_put_grant(queue, grant);
+	xenvif_grant_handle_reset(queue, pending_idx);
+	queue->tx_grants[pending_idx] = NULL;
+}
+
+static void xenvif_tx_grant_release(struct xenvif_queue *queue, u16 pending_idx)
+{
+	if (queue->tx_grants[pending_idx])
+		xenvif_tx_grant_reset(queue, pending_idx);
+	else
+		xenvif_idx_unmap(queue, pending_idx);
+	xenvif_idx_release(queue, pending_idx, XEN_NETIF_RSP_OKAY);
+}
+
+/* Checks if there's a grant available for gref and if so, set it also
+ * in the tx_grants array that keeps the ones in flight.
+ */
+static bool xenvif_tx_grant(struct xenvif_queue *queue, grant_ref_t ref,
+			    u16 pending_idx)
+{
+	struct xenvif_grant *grant = xenvif_get_grant(queue, ref);
+	grant_handle_t handle = !grant ? NETBACK_INVALID_HANDLE : grant->handle;
+
+	if (unlikely(queue->tx_grants[pending_idx])) {
+		netdev_err(queue->vif->dev,
+			   "Trying to overwrite an active grant! pending_idx: %x\n",
+			   pending_idx);
+		BUG();
+	}
+	xenvif_grant_handle_set(queue, pending_idx, handle);
+	queue->tx_grants[pending_idx] = grant;
+	return !!grant;
+}
+
 static int xenvif_tx_check_gop(struct xenvif_queue *queue,
 			       struct sk_buff *skb,
 			       struct gnttab_map_grant_ref **gopp_map,
@@ -470,7 +532,14 @@ static int xenvif_tx_check_gop(struct xenvif_queue *queue,
 	int nr_frags = shinfo->nr_frags;
 	const bool sharedslot = nr_frags &&
 				frag_get_pending_idx(&shinfo->frags[0]) == pending_idx;
-	int i, err;
+	int i, err = 0;
+
+	/* Check the frags if there's already a mapped grant for the header */
+	if (likely(queue->tx_grants[pending_idx])) {
+		if (!sharedslot)
+			xenvif_tx_grant_reset(queue, pending_idx);
+		goto check_frags;
+	}
 
 	/* Check status of header. */
 	err = (*gopp_copy)->status;
@@ -493,6 +562,10 @@ check_frags:
 		int j, newerr;
 
 		pending_idx = frag_get_pending_idx(&shinfo->frags[i]);
+
+		/* Skip the frag if it's already in the mapping table */
+		if (queue->tx_grants[pending_idx] && !err)
+			continue;
 
 		/* Check error status: if okay then remember grant handle. */
 		newerr = gop_map->status;
@@ -544,9 +617,7 @@ check_frags:
 		/* Invalidate preceding fragments of this skb. */
 		for (j = 0; j < i; j++) {
 			pending_idx = frag_get_pending_idx(&shinfo->frags[j]);
-			xenvif_idx_unmap(queue, pending_idx);
-			xenvif_idx_release(queue, pending_idx,
-					   XEN_NETIF_RSP_OKAY);
+			xenvif_tx_grant_release(queue, pending_idx);
 		}
 
 		/* And if we found the error while checking the frag_list, unmap
@@ -555,9 +626,7 @@ check_frags:
 		if (first_shinfo) {
 			for (j = 0; j < first_shinfo->nr_frags; j++) {
 				pending_idx = frag_get_pending_idx(&first_shinfo->frags[j]);
-				xenvif_idx_unmap(queue, pending_idx);
-				xenvif_idx_release(queue, pending_idx,
-						   XEN_NETIF_RSP_OKAY);
+				xenvif_tx_grant_release(queue, pending_idx);
 			}
 		}
 
@@ -587,6 +656,7 @@ static void xenvif_fill_frags(struct xenvif_queue *queue, struct sk_buff *skb)
 	for (i = 0; i < nr_frags; i++) {
 		skb_frag_t *frag = shinfo->frags + i;
 		struct xen_netif_tx_request *txp;
+		struct xenvif_grant *grant;
 		struct page *page;
 		u16 pending_idx;
 
@@ -604,14 +674,16 @@ static void xenvif_fill_frags(struct xenvif_queue *queue, struct sk_buff *skb)
 		prev_pending_idx = pending_idx;
 
 		txp = &queue->pending_tx_info[pending_idx].req;
-		page = virt_to_page(idx_to_kaddr(queue, pending_idx));
+		grant = queue->tx_grants[pending_idx];
+		page = (grant ? grant->page :
+			virt_to_page(idx_to_kaddr(queue, pending_idx)));
 		__skb_fill_page_desc(skb, i, page, txp->offset, txp->size);
 		skb->len += txp->size;
 		skb->data_len += txp->size;
 		skb->truesize += txp->size;
 
 		/* Take an extra reference to offset network stack's put_page */
-		get_page(queue->mmap_pages[pending_idx]);
+		get_page(page);
 	}
 }
 
@@ -807,17 +879,19 @@ void xenvif_mcast_addr_list_free(struct xenvif *vif)
 static void xenvif_tx_build_gops(struct xenvif_queue *queue,
 				     int budget,
 				     unsigned *copy_ops,
-				     unsigned *map_ops)
+				     unsigned *map_ops,
+				     unsigned *gnt_ops)
 {
-	struct gnttab_map_grant_ref *gop = queue->tx_map_ops;
+	struct gnttab_map_grant_ref *ngop, *gop = queue->tx_map_ops;
+	unsigned int frag_overflow, nr_gnts = 0;
 	struct sk_buff *skb, *nskb;
 	int ret;
-	unsigned int frag_overflow;
 
 	while (skb_queue_len(&queue->tx_queue) < budget) {
 		struct xen_netif_tx_request txreq;
 		struct xen_netif_tx_request txfrags[XEN_NETBK_LEGACY_SLOTS_MAX];
 		struct xen_netif_extra_info extras[XEN_NETIF_EXTRA_TYPE_MAX-1];
+		struct xenvif_grant *grant = NULL;
 		unsigned int extra_count;
 		u16 pending_idx;
 		RING_IDX idx;
@@ -968,28 +1042,32 @@ static void xenvif_tx_build_gops(struct xenvif_queue *queue,
 		XENVIF_TX_CB(skb)->pending_idx = pending_idx;
 
 		__skb_put(skb, data_len);
-		xenvif_tx_create_copy_op(queue, copy_ops, &txreq,
-					 skb, data_len);
 
-		if (data_len < txreq.size) {
-			frag_set_pending_idx(&skb_shinfo(skb)->frags[0],
-					     pending_idx);
-			xenvif_tx_create_map_op(queue, pending_idx, &txreq,
-						extra_count, gop);
-			gop++;
-		} else {
-			frag_set_pending_idx(&skb_shinfo(skb)->frags[0],
-					     INVALID_PENDING_IDX);
-			memcpy(&queue->pending_tx_info[pending_idx].req,
-			       &txreq, sizeof(txreq));
-			queue->pending_tx_info[pending_idx].extra_count =
-				extra_count;
+		if (xenvif_tx_grant(queue, txreq.gref, pending_idx)) {
+			grant = queue->tx_grants[pending_idx];
+			nr_gnts++;
 		}
+
+		xenvif_tx_create_copy_op(queue, copy_ops, &txreq,
+					 grant, skb, data_len);
+
+		frag_set_pending_idx(&skb_shinfo(skb)->frags[0],
+				     (data_len < txreq.size ? pending_idx :
+				      INVALID_PENDING_IDX));
+		xenvif_tx_copy_request(queue, pending_idx, &txreq,
+				       extra_count);
+
+		if (!grant && data_len < txreq.size)
+			xenvif_tx_create_map_op(queue, pending_idx,
+						txreq.gref, gop++);
 
 		queue->pending_cons++;
 
+		ngop = gop;
 		gop = xenvif_get_requests(queue, skb, txfrags, gop,
 				          frag_overflow, nskb);
+		nr_gnts += (skb_shinfo(skb)->nr_frags + frag_overflow) -
+			(gop - ngop);
 
 		__skb_queue_tail(&queue->tx_queue, skb);
 
@@ -1001,6 +1079,7 @@ static void xenvif_tx_build_gops(struct xenvif_queue *queue,
 	}
 
 	(*map_ops) = gop - queue->tx_map_ops;
+	(*gnt_ops) = nr_gnts;
 	return;
 }
 
@@ -1189,16 +1268,21 @@ static int xenvif_tx_submit(struct xenvif_queue *queue)
 void xenvif_zerocopy_callback(struct ubuf_info *ubuf, bool zerocopy_success)
 {
 	unsigned long flags;
-	pending_ring_idx_t index;
+	pending_ring_idx_t index, dealloc_prod_save;
 	struct xenvif_queue *queue = ubuf_to_queue(ubuf);
 
 	/* This is the only place where we grab this lock, to protect callbacks
 	 * from each other.
 	 */
 	spin_lock_irqsave(&queue->callback_lock, flags);
+	dealloc_prod_save = queue->dealloc_prod;
 	do {
 		u16 pending_idx = ubuf->desc;
 		ubuf = (struct ubuf_info *) ubuf->ctx;
+		if (queue->tx_grants[pending_idx]) {
+			xenvif_tx_grant_release(queue, pending_idx);
+			continue;
+		}
 		BUG_ON(queue->dealloc_prod - queue->dealloc_cons >=
 			MAX_PENDING_REQS);
 		index = pending_index(queue->dealloc_prod);
@@ -1215,7 +1299,7 @@ void xenvif_zerocopy_callback(struct ubuf_info *ubuf, bool zerocopy_success)
 		queue->stats.tx_zerocopy_success++;
 	else
 		queue->stats.tx_zerocopy_fail++;
-	xenvif_skb_zerocopy_complete(queue);
+	xenvif_skb_zerocopy_complete(queue, dealloc_prod_save);
 }
 
 static inline void xenvif_tx_dealloc_action(struct xenvif_queue *queue)
@@ -1288,18 +1372,20 @@ static inline void xenvif_tx_dealloc_action(struct xenvif_queue *queue)
 /* Called after netfront has transmitted */
 int xenvif_tx_action(struct xenvif_queue *queue, int budget)
 {
-	unsigned nr_mops, nr_cops = 0;
+	unsigned nr_mops, nr_cops = 0, nr_gnts = 0;
 	int work_done, ret;
 
 	if (unlikely(!tx_work_todo(queue)))
 		return 0;
 
-	xenvif_tx_build_gops(queue, budget, &nr_cops, &nr_mops);
+	xenvif_tx_build_gops(queue, budget, &nr_cops, &nr_mops, &nr_gnts);
 
-	if (nr_cops == 0)
+	if (!nr_gnts && nr_cops == 0)
 		return 0;
 
-	gnttab_batch_copy(queue->tx_copy_ops, nr_cops);
+	if (nr_cops != 0)
+		gnttab_batch_copy(queue->tx_copy_ops, nr_cops);
+
 	if (nr_mops != 0) {
 		ret = gnttab_map_refs(queue->tx_map_ops,
 				      NULL,
