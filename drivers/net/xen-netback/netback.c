@@ -90,6 +90,10 @@ module_param(fatal_skb_slots, uint, 0444);
 #define XEN_NETBACK_TX_COPY_LEN 128
 
 
+unsigned int xenvif_gref_mapping_size = XEN_NETBK_GREF_MAP_SIZE;
+module_param_named(gref_mapping_size, xenvif_gref_mapping_size, uint, 0644);
+MODULE_PARM_DESC(gref_mapping_size, "Number of grefs in the mapping table");
+
 static void xenvif_idx_release(struct xenvif_queue *queue, u16 pending_idx,
 			       u8 status);
 
