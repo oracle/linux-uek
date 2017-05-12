@@ -184,8 +184,12 @@ static int xenvif_start_xmit(struct sk_buff *skb, struct net_device *dev)
 	cb = XENVIF_RX_CB(skb);
 	cb->expires = jiffies + vif->drain_timeout;
 
-	xenvif_rx_queue_tail(queue, skb);
-	xenvif_kick_thread(queue);
+	if (!skip_guestrx_thread || !queue->grant.count) {
+		xenvif_rx_queue_tail(queue, skb);
+		xenvif_kick_thread(queue);
+	} else if (xenvif_rx_one_skb(queue, skb) < 0) {
+		return NETDEV_TX_BUSY;
+	}
 
 	return NETDEV_TX_OK;
 
@@ -495,6 +499,7 @@ int xenvif_init_queue(struct xenvif_queue *queue)
 
 	spin_lock_init(&queue->callback_lock);
 	spin_lock_init(&queue->response_lock);
+	spin_lock_init(&queue->rx_lock);
 
 	xenvif_init_grant(queue);
 

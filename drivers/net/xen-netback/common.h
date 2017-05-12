@@ -205,6 +205,10 @@ struct xenvif_queue { /* Per-queue data for xenvif */
 	char rx_irq_name[IRQ_NAME_SIZE]; /* DEVNAME-qN-rx */
 	struct xen_netif_rx_back_ring rx;
 	struct sk_buff_head rx_queue;
+	/* This prevents from have guestrx thread and ndo_start_xmit to race
+	 * over response creation.
+	 */
+	spinlock_t rx_lock;
 
 	unsigned int rx_queue_max;
 	unsigned int rx_queue_len;
@@ -337,6 +341,7 @@ void xenvif_kick_thread(struct xenvif_queue *queue);
 
 int xenvif_dealloc_kthread(void *data);
 
+int xenvif_rx_one_skb(struct xenvif_queue *queue, struct sk_buff *skb);
 void xenvif_rx_action(struct xenvif_queue *queue);
 void xenvif_rx_queue_tail(struct xenvif_queue *queue, struct sk_buff *skb);
 
@@ -357,6 +362,7 @@ static inline pending_ring_idx_t nr_pending_reqs(struct xenvif_queue *queue)
 irqreturn_t xenvif_interrupt(int irq, void *dev_id);
 
 extern bool separate_tx_rx_irq;
+extern bool skip_guestrx_thread;
 
 extern unsigned int rx_drain_timeout_msecs;
 extern unsigned int rx_stall_timeout_msecs;

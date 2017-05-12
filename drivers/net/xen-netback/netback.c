@@ -55,6 +55,14 @@
 bool separate_tx_rx_irq = 1;
 module_param(separate_tx_rx_irq, bool, 0644);
 
+/* Provide an option to skip using the internal queue between sender
+ * and guest rx thread handling the transmission to guest. Enabling
+ * this might improve performance on cases where frontend is a
+ * copybreak interface or is fully recycling pages.
+ */
+bool skip_guestrx_thread;
+module_param(skip_guestrx_thread, bool, 0644);
+
 /* The time that packets can stay on the guest Rx internal queue
  * before they are dropped.
  */

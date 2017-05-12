@@ -33,15 +33,11 @@
 #include <xen/xen.h>
 #include <xen/events.h>
 
-static bool xenvif_rx_ring_slots_available(struct xenvif_queue *queue)
+static bool xenvif_rx_ring_slots_available(struct xenvif_queue *queue,
+					   struct sk_buff *skb)
 {
 	RING_IDX prod, cons;
-	struct sk_buff *skb;
 	int needed;
-
-	skb = skb_peek(&queue->rx_queue);
-	if (!skb)
-		return false;
 
 	needed = DIV_ROUND_UP(skb->len, XEN_PAGE_SIZE);
 	if (skb_is_gso(skb))
@@ -65,6 +61,17 @@ static bool xenvif_rx_ring_slots_available(struct xenvif_queue *queue)
 	} while (queue->rx.sring->req_prod != prod);
 
 	return false;
+}
+
+static bool xenvif_rx_queue_slots_available(struct xenvif_queue *queue)
+{
+	struct sk_buff *skb;
+
+	skb = skb_peek(&queue->rx_queue);
+	if (!skb)
+		return false;
+
+	return xenvif_rx_ring_slots_available(queue, skb);
 }
 
 void xenvif_rx_queue_tail(struct xenvif_queue *queue, struct sk_buff *skb)
@@ -162,7 +169,8 @@ static void xenvif_rx_copy_flush(struct xenvif_queue *queue)
 	if (notify)
 		notify_remote_via_irq(queue->rx_irq);
 
-	__skb_queue_purge(queue->rx_copy.completed);
+	if (queue->rx_copy.completed)
+		__skb_queue_purge(queue->rx_copy.completed);
 }
 
 static void xenvif_rx_copy_add(struct xenvif_queue *queue,
@@ -423,6 +431,23 @@ void xenvif_rx_skb(struct xenvif_queue *queue, struct sk_buff *skb)
 	queue->rx.rsp_prod_pvt = queue->rx.req_cons;
 }
 
+int xenvif_rx_one_skb(struct xenvif_queue *queue, struct sk_buff *skb)
+{
+	unsigned long flags;
+
+	spin_lock_irqsave(&queue->rx_lock, flags);
+	if (!xenvif_rx_ring_slots_available(queue, skb)) {
+		spin_unlock_irqrestore(&queue->rx_lock, flags);
+		return -ENOSPC;
+	}
+
+	xenvif_rx_skb(queue, skb);
+	xenvif_rx_copy_flush(queue);
+	spin_unlock_irqrestore(&queue->rx_lock, flags);
+	kfree_skb(skb);
+	return 0;
+}
+
 #define RX_BATCH_SIZE 64
 
 void xenvif_rx_action(struct xenvif_queue *queue)
@@ -431,10 +456,11 @@ void xenvif_rx_action(struct xenvif_queue *queue)
 	unsigned int work_done = 0;
 	struct sk_buff *skb;
 
+	spin_lock_irq(&queue->rx_lock);
 	__skb_queue_head_init(&completed_skbs);
 	queue->rx_copy.completed = &completed_skbs;
 
-	while (xenvif_rx_ring_slots_available(queue) &&
+	while (xenvif_rx_queue_slots_available(queue) &&
 	       work_done < RX_BATCH_SIZE) {
 		skb = xenvif_rx_dequeue(queue);
 		xenvif_rx_skb(queue, skb);
@@ -444,6 +470,8 @@ void xenvif_rx_action(struct xenvif_queue *queue)
 
 	/* Flush any pending copies and complete all skbs. */
 	xenvif_rx_copy_flush(queue);
+	queue->rx_copy.completed = NULL;
+	spin_unlock_irq(&queue->rx_lock);
 }
 
 static bool xenvif_rx_queue_stalled(struct xenvif_queue *queue)
@@ -471,7 +499,7 @@ static bool xenvif_rx_queue_ready(struct xenvif_queue *queue)
 
 static bool xenvif_have_rx_work(struct xenvif_queue *queue)
 {
-	return xenvif_rx_ring_slots_available(queue) ||
+	return xenvif_rx_queue_slots_available(queue) ||
 		(queue->vif->stall_timeout &&
 		 (xenvif_rx_queue_stalled(queue) ||
 		  xenvif_rx_queue_ready(queue))) ||
