@@ -100,6 +100,9 @@ struct netfront_stats {
 	struct u64_stats_sync	syncp;
 
 	u64	rx_gso_checksum_fixup;
+	u64	rx_alloc_pages;
+	u64	rx_alloc_failed_pages;
+	u64	rx_packet_pages;
 };
 
 struct netfront_info;
@@ -336,13 +339,20 @@ static void xennet_maybe_wake_tx(struct netfront_queue *queue)
 
 static struct page *xennet_alloc_page(struct netfront_queue *queue)
 {
+	struct netfront_stats *rx_stats = this_cpu_ptr(queue->info->rx_stats);
 	struct page *page = NULL;
+
+	rx_stats->rx_packet_pages++;
 
 	page = get_buf_from_pool(&queue->rx_pool);
 	if (likely(page))
 		return page;
 
 	page = alloc_page(GFP_ATOMIC | __GFP_NOWARN);
+	if (likely(page))
+		rx_stats->rx_alloc_pages++;
+	else
+		rx_stats->rx_alloc_failed_pages++;
 	return page;
 }
 
@@ -1665,7 +1675,7 @@ static void xennet_deinit_buffer_pool(struct netfront_buffer_pool *pool)
 static int xennet_init_buffer_pool(struct netfront_buffer_pool *pool,
 				   unsigned int num, unsigned int free)
 {
-	pool->pages = kcalloc(num * sizeof(struct netfront_buffer),
+	pool->pages = kcalloc(num, sizeof(struct netfront_buffer),
 			      GFP_KERNEL);
 	if (!pool->pages)
 		return -ENOMEM;
@@ -2385,6 +2395,18 @@ static const struct xennet_stat {
 		"rx_gso_checksum_fixup",
 		offsetof(struct netfront_stats, rx_gso_checksum_fixup)
 	},
+	{
+		"rx_alloc_pages",
+		offsetof(struct netfront_stats, rx_alloc_pages)
+	},
+	{
+		"rx_alloc_failed_pages",
+		offsetof(struct netfront_stats, rx_alloc_failed_pages)
+	},
+	{
+		"rx_packet_pages",
+		offsetof(struct netfront_stats, rx_packet_pages)
+	},
 };
 
 static int xennet_get_sset_count(struct net_device *dev, int string_set)
@@ -2411,6 +2433,9 @@ static void xennet_get_ethtool_stats(struct net_device *dev,
 		struct netfront_stats *s = per_cpu_ptr(np->rx_stats, cpu);
 
 		tot_stats.rx_gso_checksum_fixup += s->rx_gso_checksum_fixup;
+		tot_stats.rx_alloc_pages += s->rx_alloc_pages;
+		tot_stats.rx_alloc_failed_pages += s->rx_alloc_failed_pages;
+		tot_stats.rx_packet_pages += s->rx_packet_pages;
 	}
 
 	for (i = 0; i < ARRAY_SIZE(xennet_stats); i++)
