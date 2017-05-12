@@ -71,6 +71,7 @@ static const struct ethtool_ops xennet_ethtool_ops;
 
 struct netfront_cb {
 	int pull_to;
+	grant_ref_t ref;
 };
 
 #define NETFRONT_SKB_CB(skb)	((struct netfront_cb *)((skb)->cb))
@@ -182,6 +183,7 @@ struct netfront_queue {
 
 	/* TX/RX buffers premapped with the backend */
 	struct netfront_buffer_info indir_tx, indir_rx;
+	struct netfront_buffer_pool indir_rx_pool;
 	/* Maximum grants per queue permanently on backend */
 	unsigned int max_grefs;
 };
@@ -238,14 +240,14 @@ static unsigned short get_id_from_freelist(unsigned *head,
 	return id;
 }
 
-static bool page_is_reusable(struct page *page)
+static inline bool page_is_reusable(struct page *page)
 {
 	return likely(page_count(page) == 1) &&
 	       likely(!page_is_pfmemalloc(page));
 }
 
 static bool add_buf_to_pool(struct netfront_buffer_pool *pool,
-			    struct page *page)
+			    struct page *page, grant_ref_t ref)
 {
 	unsigned int idx;
 
@@ -254,31 +256,39 @@ static bool add_buf_to_pool(struct netfront_buffer_pool *pool,
 
 	idx = pool->prod & (pool->size - 1);
 	pool->pages[idx].page = page;
+	pool->pages[idx].ref = ref;
 	pool->prod++;
 	return true;
 }
 
-static struct page *get_buf_from_pool(struct netfront_buffer_pool *pool)
+static bool get_buf_from_pool(struct netfront_buffer_pool *pool,
+			      struct page **p, grant_ref_t *ref,
+			      bool consume)
 {
 	unsigned int free = pool->prod - pool->cons;
 	struct page *page;
+	grant_ref_t gref;
 	unsigned int idx;
+	bool ret;
 
 	if (unlikely(!free || free < pool->free))
-		return NULL;
+		return false;
 
 	idx = pool->cons & (pool->size - 1);
 	page = pool->pages[idx].page;
+	gref = pool->pages[idx].ref;
+	ret = page_is_reusable(page);
+
+	if (!ret && !consume)
+		return false;
 
 	pool->pages[idx].page = NULL;
+	pool->pages[idx].ref = GRANT_INVALID_REF;
 	pool->cons++;
 
-	if (!page_is_reusable(page)) {
-		put_page(page);
-		return NULL;
-	}
-
-	return page;
+	*ref = gref;
+	*p = page;
+	return ret;
 }
 
 static int xennet_rxidx(RING_IDX idx)
@@ -337,17 +347,47 @@ static void xennet_maybe_wake_tx(struct netfront_queue *queue)
 		netif_tx_wake_queue(netdev_get_tx_queue(dev, queue->id));
 }
 
-static struct page *xennet_alloc_page(struct netfront_queue *queue)
+static bool xennet_allow_recycle(struct netfront_queue *queue, grant_ref_t ref)
+{
+	return (ref != GRANT_INVALID_REF && queue->indir_rx_pool.size > 0) ||
+	       (ref == GRANT_INVALID_REF && !queue->indir_rx_pool.size);
+}
+
+static struct page *xennet_alloc_page(struct netfront_queue *queue,
+				      grant_ref_t *ref)
 {
 	struct netfront_stats *rx_stats = this_cpu_ptr(queue->info->rx_stats);
 	struct page *page = NULL;
+	bool reuse;
 
 	rx_stats->rx_packet_pages++;
 
-	page = get_buf_from_pool(&queue->rx_pool);
-	if (likely(page))
+	/* Bail out if we have a backing grant ref when the page is still
+	 * being used. We have reached here means we are recycling grants
+	 * mapped on the backend, as much as possible. Granting buffers
+	 * is cheap on guests, but expensive on the backend hence we don't
+	 * do this recycling for grants but rather only the pre mapped grants.
+	 */
+	reuse = get_buf_from_pool(&queue->rx_pool, &page, ref, true);
+	if (likely(reuse && xennet_allow_recycle(queue, *ref)))
 		return page;
 
+	/* This is a pregranted buffer and gets stored in a separate
+	 * quarantine pool to be reused later.
+	 */
+	if (*ref != GRANT_INVALID_REF)
+		/* Always succeed since we never add more than total
+		 * of preallocated.
+		 */
+		BUG_ON(!add_buf_to_pool(&queue->indir_rx_pool, page, *ref));
+	else if (page)
+		put_page(page);
+
+	if (get_buf_from_pool(&queue->indir_rx_pool, &page, ref, false))
+		return page;
+
+	/* No reusable pages */
+	*ref = GRANT_INVALID_REF;
 	page = alloc_page(GFP_ATOMIC | __GFP_NOWARN);
 	if (likely(page))
 		rx_stats->rx_alloc_pages++;
@@ -358,6 +398,7 @@ static struct page *xennet_alloc_page(struct netfront_queue *queue)
 
 static struct sk_buff *xennet_alloc_one_rx_buffer(struct netfront_queue *queue)
 {
+	grant_ref_t ref = GRANT_INVALID_REF;
 	struct sk_buff *skb;
 	struct page *page;
 
@@ -367,7 +408,7 @@ static struct sk_buff *xennet_alloc_one_rx_buffer(struct netfront_queue *queue)
 	if (unlikely(!skb))
 		return NULL;
 
-	page = xennet_alloc_page(queue);
+	page = xennet_alloc_page(queue, &ref);
 	if (!page) {
 		kfree_skb(skb);
 		return NULL;
@@ -377,6 +418,7 @@ static struct sk_buff *xennet_alloc_one_rx_buffer(struct netfront_queue *queue)
 	/* Align ip header to a 16 bytes boundary */
 	skb_reserve(skb, NET_IP_ALIGN);
 	skb->dev = queue->info->netdev;
+	NETFRONT_SKB_CB(skb)->ref = ref;
 
 	return skb;
 }
@@ -384,6 +426,7 @@ static struct sk_buff *xennet_alloc_one_rx_buffer(struct netfront_queue *queue)
 
 static void xennet_alloc_rx_buffers(struct netfront_queue *queue)
 {
+	domid_t otherend_id = queue->info->xbdev->otherend_id;
 	RING_IDX req_prod = queue->rx.req_prod_pvt;
 	int notify;
 
@@ -393,11 +436,11 @@ static void xennet_alloc_rx_buffers(struct netfront_queue *queue)
 	for (req_prod = queue->rx.req_prod_pvt;
 	     req_prod - queue->rx.rsp_cons < NET_RX_RING_SIZE;
 	     req_prod++) {
+		struct xen_netif_rx_request *req;
 		struct sk_buff *skb;
 		unsigned short id;
-		grant_ref_t ref;
 		struct page *page;
-		struct xen_netif_rx_request *req;
+		grant_ref_t ref;
 
 		skb = xennet_alloc_one_rx_buffer(queue);
 		if (!skb)
@@ -408,17 +451,20 @@ static void xennet_alloc_rx_buffers(struct netfront_queue *queue)
 		BUG_ON(queue->rx_skbs[id]);
 		queue->rx_skbs[id] = skb;
 
-		ref = gnttab_claim_grant_reference(&queue->gref_rx_head);
-		WARN_ON_ONCE(IS_ERR_VALUE((unsigned long)(int)ref));
-		queue->grant_rx_ref[id] = ref;
-
+		ref = NETFRONT_SKB_CB(skb)->ref;
 		page = skb_frag_page(&skb_shinfo(skb)->frags[0]);
 
+		if (ref == GRANT_INVALID_REF) {
+			ref = gnttab_claim_grant_reference(&queue->gref_rx_head);
+			WARN_ON_ONCE(IS_ERR_VALUE((unsigned long)(int)ref));
+			gnttab_page_grant_foreign_access_ref_one(ref,
+								 otherend_id,
+								 page, 0);
+		}
+
+		queue->grant_rx_ref[id] = ref;
+
 		req = RING_GET_REQUEST(&queue->rx, req_prod);
-		gnttab_page_grant_foreign_access_ref_one(ref,
-							 queue->info->xbdev->otherend_id,
-							 page,
-							 0);
 		req->id = id;
 		req->gref = ref;
 	}
@@ -903,6 +949,16 @@ static int xennet_get_responses(struct netfront_queue *queue,
 		}
 
 		/*
+		 * Preallocated buffers have a ref in cb to avoid being revoke
+		 * (the underlying grant) and freeing later on. These grants
+		 * are mapped in the backend.
+		 */
+		if (NETFRONT_SKB_CB(skb)->ref != GRANT_INVALID_REF) {
+			__skb_queue_tail(list, skb);
+			goto next;
+		}
+
+		/*
 		 * This definitely indicates a bug, either in this driver or in
 		 * the backend driver. In future this should flag the bad
 		 * situation to the system controller to reboot the backend.
@@ -980,6 +1036,26 @@ static int xennet_set_skb_gso(struct sk_buff *skb,
 	return 0;
 }
 
+static void xennet_page_ref_inc(struct netfront_queue *queue,
+				struct page *page, grant_ref_t ref)
+{
+	if (!xennet_allow_recycle(queue, ref))
+		return;
+
+	if (add_buf_to_pool(&queue->rx_pool, page, ref)) {
+		get_page(page);
+		return;
+	}
+
+	/* If a page with a backing grant reference fails to add into
+	 * inflight pages, therefore needs to go to the quarantine pool
+	 */
+	if (ref != GRANT_INVALID_REF) {
+		WARN_ON(!add_buf_to_pool(&queue->indir_rx_pool, page, ref));
+		get_page(page);
+	}
+}
+
 static RING_IDX xennet_fill_frags(struct netfront_queue *queue,
 				  struct sk_buff *skb,
 				  struct sk_buff_head *list)
@@ -992,6 +1068,7 @@ static RING_IDX xennet_fill_frags(struct netfront_queue *queue,
 		struct xen_netif_rx_response *rx =
 			RING_GET_RESPONSE(&queue->rx, ++cons);
 		skb_frag_t *nfrag = &skb_shinfo(nskb)->frags[0];
+		grant_ref_t ref = NETFRONT_SKB_CB(nskb)->ref;
 		struct page *page = skb_frag_page(nfrag);
 
 		if (shinfo->nr_frags == MAX_SKB_FRAGS) {
@@ -1002,8 +1079,7 @@ static RING_IDX xennet_fill_frags(struct netfront_queue *queue,
 		}
 		BUG_ON(shinfo->nr_frags >= MAX_SKB_FRAGS);
 
-		if (add_buf_to_pool(&queue->rx_pool, page))
-			get_page(page);
+		xennet_page_ref_inc(queue, page, ref);
 
 		skb_add_rx_frag(skb, shinfo->nr_frags, skb_frag_page(nfrag),
 				rx->offset, rx->status, PAGE_SIZE);
@@ -1082,6 +1158,7 @@ static int xennet_poll(struct napi_struct *napi, int budget)
 	struct net_device *dev = queue->info->netdev;
 	struct sk_buff *skb;
 	struct page *page;
+	grant_ref_t ref;
 	struct netfront_rx_info rinfo;
 	struct xen_netif_rx_response *rx = &rinfo.rx;
 	struct xen_netif_extra_info *extras = rinfo.extras;
@@ -1136,14 +1213,14 @@ err:
 			NETFRONT_SKB_CB(skb)->pull_to = RX_COPY_THRESHOLD;
 
 		page = skb_frag_page(&skb_shinfo(skb)->frags[0]);
+		ref = NETFRONT_SKB_CB(skb)->ref;
 
 		skb_shinfo(skb)->frags[0].page_offset = rx->offset;
 		skb_frag_size_set(&skb_shinfo(skb)->frags[0], rx->status);
 		skb->data_len = rx->status;
 		skb->len += rx->status;
 
-		if (add_buf_to_pool(&queue->rx_pool, page))
-			get_page(page);
+		xennet_page_ref_inc(queue, page, ref);
 
 		i = xennet_fill_frags(queue, skb, &tmpq);
 
@@ -1264,6 +1341,15 @@ static void xennet_release_rx_bufs(struct netfront_queue *queue)
 		ref = queue->grant_rx_ref[id];
 		if (ref == GRANT_INVALID_REF)
 			continue;
+
+		/* The grant reference is instead released on
+		 * xennet_deinit_pool()
+		 */
+		if (NETFRONT_SKB_CB(skb)->ref != GRANT_INVALID_REF) {
+			skb_shinfo(skb)->nr_frags = 0;
+			kfree_skb(skb);
+			continue;
+		}
 
 		page = skb_frag_page(&skb_shinfo(skb)->frags[0]);
 
@@ -1800,14 +1886,14 @@ static void xennet_deinit_pool(struct netfront_queue *queue,
 static void setup_staging_grants(struct xenbus_device *dev,
 				 struct netfront_queue *queue)
 {
-	int err;
+	int j, err;
 
 	/* Frontend disabled staging grefs */
 	if (!xennet_staging_grants)
 		return;
 
 	err = xennet_init_pool(queue, &queue->indir_rx,
-			       NET_RX_RING_SIZE, true);
+			       NET_RX_RING_SIZE << 1, true);
 	if (err)
 		dev_err(&dev->dev, "failed to add Rx grefs");
 
@@ -1815,6 +1901,21 @@ static void setup_staging_grants(struct xenbus_device *dev,
 			       NET_TX_RING_SIZE, false);
 	if (err)
 		dev_err(&dev->dev, "failed to add Tx grefs");
+
+	if (xennet_init_buffer_pool(&queue->indir_rx_pool,
+				    NET_RX_RING_SIZE << 1, 1))
+		dev_err(&dev->dev, "can't allocate reserve pool\n");
+
+	/* Add our preallocated buffers to the quarantine pool
+	 * At this point these buffers cannot be revoked by the guest,
+	 * because they are being used by backend.
+	 */
+	for (j = 0; j < queue->indir_rx.bufs_num; j++) {
+		struct netfront_buffer *buf = &queue->indir_rx.bufs[j];
+
+		add_buf_to_pool(&queue->indir_rx_pool,
+				buf->page, buf->ref);
+	}
 }
 
 static int setup_netfront(struct xenbus_device *dev,
