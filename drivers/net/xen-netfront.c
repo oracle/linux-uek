@@ -85,6 +85,9 @@ struct netfront_cb {
 /* Minimum number of Rx slots (includes slot for GSO metadata). */
 #define NET_RX_SLOTS_MIN (XEN_NETIF_NR_SLOTS_MIN + 1)
 
+#define NET_RX_POOL_SIZE (NET_RX_RING_SIZE)
+#define NET_RX_POOL_FREE (NET_RX_POOL_SIZE - (NET_RX_SLOTS_MIN << 2))
+
 /* Queue name is interface name with "-qNNN" appended */
 #define QUEUE_NAME_SIZE (IFNAMSIZ + 6)
 
@@ -106,6 +109,7 @@ struct netfront_buffer {
 	struct page *page;
 };
 
+/* Keeps track of inflight slots */
 struct netfront_buffer_info {
 	grant_ref_t gref_head;
 	unsigned skb_freelist;
@@ -115,6 +119,13 @@ struct netfront_buffer_info {
 	/* Only used if frontend wants to permanently map grefs */
 	struct xen_ext_gref_alloc *map;
 	grant_ref_t ref;
+};
+
+/* Contains a fixed number of set of reusable pages */
+struct netfront_buffer_pool {
+	RING_IDX cons, prod;
+	struct netfront_buffer *pages;
+	unsigned int size, free;
 };
 
 struct netfront_queue {
@@ -164,6 +175,7 @@ struct netfront_queue {
 	struct sk_buff *rx_skbs[NET_RX_RING_SIZE];
 	grant_ref_t gref_rx_head;
 	grant_ref_t grant_rx_ref[NET_RX_RING_SIZE];
+	struct netfront_buffer_pool rx_pool;
 
 	/* TX/RX buffers premapped with the backend */
 	struct netfront_buffer_info indir_tx, indir_rx;
@@ -223,6 +235,49 @@ static unsigned short get_id_from_freelist(unsigned *head,
 	return id;
 }
 
+static bool page_is_reusable(struct page *page)
+{
+	return likely(page_count(page) == 1) &&
+	       likely(!page_is_pfmemalloc(page));
+}
+
+static bool add_buf_to_pool(struct netfront_buffer_pool *pool,
+			    struct page *page)
+{
+	unsigned int idx;
+
+	if ((pool->prod - pool->cons) >= pool->size)
+		return false;
+
+	idx = pool->prod & (pool->size - 1);
+	pool->pages[idx].page = page;
+	pool->prod++;
+	return true;
+}
+
+static struct page *get_buf_from_pool(struct netfront_buffer_pool *pool)
+{
+	unsigned int free = pool->prod - pool->cons;
+	struct page *page;
+	unsigned int idx;
+
+	if (unlikely(!free || free < pool->free))
+		return NULL;
+
+	idx = pool->cons & (pool->size - 1);
+	page = pool->pages[idx].page;
+
+	pool->pages[idx].page = NULL;
+	pool->cons++;
+
+	if (!page_is_reusable(page)) {
+		put_page(page);
+		return NULL;
+	}
+
+	return page;
+}
+
 static int xennet_rxidx(RING_IDX idx)
 {
 	return idx & (NET_RX_RING_SIZE - 1);
@@ -279,6 +334,17 @@ static void xennet_maybe_wake_tx(struct netfront_queue *queue)
 		netif_tx_wake_queue(netdev_get_tx_queue(dev, queue->id));
 }
 
+static struct page *xennet_alloc_page(struct netfront_queue *queue)
+{
+	struct page *page = NULL;
+
+	page = get_buf_from_pool(&queue->rx_pool);
+	if (likely(page))
+		return page;
+
+	page = alloc_page(GFP_ATOMIC | __GFP_NOWARN);
+	return page;
+}
 
 static struct sk_buff *xennet_alloc_one_rx_buffer(struct netfront_queue *queue)
 {
@@ -291,7 +357,7 @@ static struct sk_buff *xennet_alloc_one_rx_buffer(struct netfront_queue *queue)
 	if (unlikely(!skb))
 		return NULL;
 
-	page = alloc_page(GFP_ATOMIC | __GFP_NOWARN);
+	page = xennet_alloc_page(queue);
 	if (!page) {
 		kfree_skb(skb);
 		return NULL;
@@ -916,6 +982,7 @@ static RING_IDX xennet_fill_frags(struct netfront_queue *queue,
 		struct xen_netif_rx_response *rx =
 			RING_GET_RESPONSE(&queue->rx, ++cons);
 		skb_frag_t *nfrag = &skb_shinfo(nskb)->frags[0];
+		struct page *page = skb_frag_page(nfrag);
 
 		if (shinfo->nr_frags == MAX_SKB_FRAGS) {
 			unsigned int pull_to = NETFRONT_SKB_CB(skb)->pull_to;
@@ -924,6 +991,9 @@ static RING_IDX xennet_fill_frags(struct netfront_queue *queue,
 			__pskb_pull_tail(skb, pull_to - skb_headlen(skb));
 		}
 		BUG_ON(shinfo->nr_frags >= MAX_SKB_FRAGS);
+
+		if (add_buf_to_pool(&queue->rx_pool, page))
+			get_page(page);
 
 		skb_add_rx_frag(skb, shinfo->nr_frags, skb_frag_page(nfrag),
 				rx->offset, rx->status, PAGE_SIZE);
@@ -1001,6 +1071,7 @@ static int xennet_poll(struct napi_struct *napi, int budget)
 	struct netfront_queue *queue = container_of(napi, struct netfront_queue, napi);
 	struct net_device *dev = queue->info->netdev;
 	struct sk_buff *skb;
+	struct page *page;
 	struct netfront_rx_info rinfo;
 	struct xen_netif_rx_response *rx = &rinfo.rx;
 	struct xen_netif_extra_info *extras = rinfo.extras;
@@ -1054,10 +1125,15 @@ err:
 		if (NETFRONT_SKB_CB(skb)->pull_to > RX_COPY_THRESHOLD)
 			NETFRONT_SKB_CB(skb)->pull_to = RX_COPY_THRESHOLD;
 
+		page = skb_frag_page(&skb_shinfo(skb)->frags[0]);
+
 		skb_shinfo(skb)->frags[0].page_offset = rx->offset;
 		skb_frag_size_set(&skb_shinfo(skb)->frags[0], rx->status);
 		skb->data_len = rx->status;
 		skb->len += rx->status;
+
+		if (add_buf_to_pool(&queue->rx_pool, page))
+			get_page(page);
 
 		i = xennet_fill_frags(queue, skb, &tmpq);
 
@@ -1578,6 +1654,27 @@ static int xennet_init_buffer_info(struct netfront_buffer_info *binfo,
 	return 0;
 }
 
+static void xennet_deinit_buffer_pool(struct netfront_buffer_pool *pool)
+{
+	kfree(pool->pages);
+	pool->pages = NULL;
+	pool->size = 0;
+	pool->free = 0;
+}
+
+static int xennet_init_buffer_pool(struct netfront_buffer_pool *pool,
+				   unsigned int num, unsigned int free)
+{
+	pool->pages = kcalloc(num * sizeof(struct netfront_buffer),
+			      GFP_KERNEL);
+	if (!pool->pages)
+		return -ENOMEM;
+
+	pool->size = num;
+	pool->free = free;
+	return 0;
+}
+
 static void xennet_revoke_pool(struct netfront_queue *queue,
 			       struct netfront_buffer_info *binfo, bool rw)
 {
@@ -1680,6 +1777,8 @@ static int xennet_init_pool(struct netfront_queue *queue,
 static void xennet_deinit_pool(struct netfront_queue *queue,
 			       struct netfront_buffer_info *binfo, bool rw)
 {
+	xennet_deinit_buffer_pool(&queue->rx_pool);
+
 	if (!binfo->bufs_num)
 		return;
 
@@ -1828,6 +1927,12 @@ static int xennet_init_queue(struct netfront_queue *queue)
 					  &queue->gref_rx_head) < 0) {
 		pr_alert("can't alloc rx grant refs\n");
 		err = -ENOMEM;
+		goto exit_free_tx;
+	}
+
+	if (xennet_init_buffer_pool(&queue->rx_pool, NET_RX_POOL_SIZE,
+				    NET_RX_POOL_FREE)) {
+		pr_alert("can't allocate page pool\n");
 		goto exit_free_tx;
 	}
 
