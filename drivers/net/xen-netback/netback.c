@@ -337,6 +337,29 @@ static inline void xenvif_tx_create_map_op(struct xenvif_queue *queue,
 	queue->pending_tx_info[pending_idx].extra_count = extra_count;
 }
 
+static inline void xenvif_tx_create_copy_op(struct xenvif_queue *queue,
+					    unsigned *copy_ops,
+					    struct xen_netif_tx_request *txreq,
+					    struct sk_buff *skb,
+					    unsigned int data_len)
+{
+	struct gnttab_copy *tx_copy_op;
+
+	tx_copy_op = &queue->tx_copy_ops[*copy_ops];
+	tx_copy_op->source.u.ref = txreq->gref;
+	tx_copy_op->source.domid = queue->vif->domid;
+	tx_copy_op->source.offset = txreq->offset;
+
+	tx_copy_op->dest.u.gmfn = virt_to_gfn(skb->data);
+	tx_copy_op->dest.domid = DOMID_SELF;
+	tx_copy_op->dest.offset =
+		offset_in_page(skb->data) & ~XEN_PAGE_MASK;
+
+	tx_copy_op->len = data_len;
+	tx_copy_op->flags = GNTCOPY_source_gref;
+	(*copy_ops)++;
+}
+
 static inline struct sk_buff *xenvif_alloc_skb(unsigned int size)
 {
 	struct sk_buff *skb =
@@ -945,20 +968,8 @@ static void xenvif_tx_build_gops(struct xenvif_queue *queue,
 		XENVIF_TX_CB(skb)->pending_idx = pending_idx;
 
 		__skb_put(skb, data_len);
-		queue->tx_copy_ops[*copy_ops].source.u.ref = txreq.gref;
-		queue->tx_copy_ops[*copy_ops].source.domid = queue->vif->domid;
-		queue->tx_copy_ops[*copy_ops].source.offset = txreq.offset;
-
-		queue->tx_copy_ops[*copy_ops].dest.u.gmfn =
-			virt_to_gfn(skb->data);
-		queue->tx_copy_ops[*copy_ops].dest.domid = DOMID_SELF;
-		queue->tx_copy_ops[*copy_ops].dest.offset =
-			offset_in_page(skb->data) & ~XEN_PAGE_MASK;
-
-		queue->tx_copy_ops[*copy_ops].len = data_len;
-		queue->tx_copy_ops[*copy_ops].flags = GNTCOPY_source_gref;
-
-		(*copy_ops)++;
+		xenvif_tx_create_copy_op(queue, copy_ops, &txreq,
+					 skb, data_len);
 
 		if (data_len < txreq.size) {
 			frag_set_pending_idx(&skb_shinfo(skb)->frags[0],
