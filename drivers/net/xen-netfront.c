@@ -67,6 +67,11 @@ module_param_named(staging_grants, xennet_staging_grants, bool, 0644);
 MODULE_PARM_DESC(staging_grants,
 		 "Staging grants support (0=off, 1=on [default]");
 
+static bool xennet_rx_copy_mode;
+module_param_named(rx_copy_mode, xennet_rx_copy_mode, bool, 0644);
+MODULE_PARM_DESC(rx_copy_mode,
+		 "Always copy data from Rx grants into new pages");
+
 static const struct ethtool_ops xennet_ethtool_ops;
 
 struct netfront_cb {
@@ -1140,6 +1145,24 @@ static RING_IDX xennet_fill_frags(struct netfront_queue *queue,
 	return cons;
 }
 
+static void xennet_orphan_done(struct ubuf_info *ubuf, bool success)
+{
+	/* Purposely empty as SKBTX_DEV_ZEROCOPY requires a valid
+	 * destructor context and callback.
+	 */
+}
+
+static int xennet_orphan_frags(struct sk_buff *skb, gfp_t gfp_mask)
+{
+	struct ubuf_info ctx;
+
+	ctx.callback = xennet_orphan_done;
+	skb_shinfo(skb)->destructor_arg = &ctx;
+	skb_shinfo(skb)->tx_flags |= SKBTX_DEV_ZEROCOPY;
+
+	return skb_orphan_frags(skb, gfp_mask);
+}
+
 static int checksum_setup(struct netfront_info *info, struct sk_buff *skb)
 {
 	bool recalculate_partial_csum = false;
@@ -1177,6 +1200,15 @@ static int handle_incoming_queue(struct netfront_queue *queue,
 
 		if (pull_to > skb_headlen(skb))
 			__pskb_pull_tail(skb, pull_to - skb_headlen(skb));
+
+		/* Rx copy mode means copying skb frags into new pages */
+		if (xennet_rx_copy_mode &&
+		    unlikely(xennet_orphan_frags(skb, GFP_ATOMIC))) {
+			kfree_skb(skb);
+			packets_dropped++;
+			queue->info->netdev->stats.rx_errors++;
+			continue;
+		}
 
 		/* Ethernet work: Delayed to here as it peeks the header. */
 		skb->protocol = eth_type_trans(skb, queue->info->netdev);
