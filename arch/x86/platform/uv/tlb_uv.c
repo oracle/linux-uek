@@ -24,7 +24,7 @@
 #include <asm/irq_vectors.h>
 #include <asm/timer.h>
 
-static struct bau_operations ops __ro_after_init;
+static struct bau_operations ops;
 
 /* timeouts in nanoseconds (indexed by UVH_AGING_PRESCALE_SEL urgency7 30:28) */
 static int timeout_base_ns[] = {
