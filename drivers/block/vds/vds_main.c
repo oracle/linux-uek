@@ -21,6 +21,7 @@ MODULE_VERSION(DRV_MOD_VERSION);
 				 1 << VD_OP_SET_VTOC |		\
 				 1 << VD_OP_GET_DISKGEOM |	\
 				 1 << VD_OP_SET_DISKGEOM |	\
+				 1 << VD_OP_GET_DEVID |		\
 				 1 << VD_OP_GET_EFI |		\
 				 1 << VD_OP_SET_EFI |		\
 				 1 << VD_OP_FLUSH)
@@ -68,6 +69,7 @@ int vds_ooo;	/* out of order execution default value */
 int vds_dbg;
 int vds_dbg_ldc;
 int vds_dbg_vio;
+u32 vds_hostid;
 
 module_param(vds_dbg, uint, 0664);
 module_param(vds_dbg_ldc, uint, 0664);
@@ -95,6 +97,7 @@ static struct vds_operation vds_operations[] = {
 	{ VD_OP_SET_VTOC, WRITE, vd_op_set_vtoc },
 	{ VD_OP_GET_DISKGEOM, READ, vd_op_get_geom },
 	{ VD_OP_SET_DISKGEOM, WRITE, vd_op_set_geom },
+	{ VD_OP_GET_DEVID, READ, vd_op_get_devid },
 	{ VD_OP_GET_EFI, READ, vd_op_get_efi },
 	{ VD_OP_SET_EFI, WRITE, vd_op_set_efi },
 	{ VD_OP_FLUSH, WRITE, vd_op_flush }
@@ -1077,16 +1080,33 @@ static struct vio_driver vds_port_driver = {
 
 static int __init vds_init(void)
 {
+	struct mdesc_handle *hp;
+	const u64 *val;
+	u64 node;
 	int rv;
 
 	rv = vds_io_init();
-	if (!rv) {
-		rv = vio_register_driver(&vds_port_driver);
-		if (rv < 0)
-			vds_io_fini();
+	if (rv)
+		return rv;
+
+	rv = vio_register_driver(&vds_port_driver);
+	if (rv < 0) {
+		vds_io_fini();
+		return rv;
+	}
+	hp = mdesc_grab();
+	node = mdesc_node_by_name(hp, MDESC_NODE_NULL, "platform");
+	if (node != MDESC_NODE_NULL) {
+		val = mdesc_get_property(hp, node, "hostid", NULL);
+		if (val != NULL)
+			vds_hostid = *val;
+		else
+			pr_warn("vds_init: Can't find hostid property.\n");
+	} else {
+		pr_warn("vds_init: Can't find platform node in machine-description.\n");
 	}
 
-	return rv;
+	return 0;
 }
 
 static void __exit vds_exit(void)

@@ -7,6 +7,7 @@
 #include "vds.h"
 #include "vds_io.h"
 #include "vds_vtoc.h"
+#include "vds_devid.h"
 
 /*
  * By Solaris convention, slice/partition 2 represents the entire disk;
@@ -373,6 +374,7 @@ int vds_vtoc_set(struct vds_port *port, struct vio_disk_vtoc *vtoc)
 {
 	int i, rv;
 	struct dk_label *label;
+	struct vio_driver_state *vio = &port->vio;
 
 	rv = vds_vtoc_get_label(port, &label);
 	if (!label)
@@ -402,6 +404,20 @@ int vds_vtoc_set(struct vds_port *port, struct vio_disk_vtoc *vtoc)
 		port->label_type = VDS_LABEL_VTOC;
 		port->npart = label->dkl_vtoc.v_nparts;
 		vds_vtoc_update_part(port, label);
+		/*
+		 * When the disk label changes then the location where
+		 * the devid is stored on a disk image can change.
+		 */
+		if (S_ISREG(port->mode)) {
+			rv = vds_dskimg_write_devid(port);
+			if (rv) {
+				vdsdbg(DEVID,
+				    "vds_vtoc_set: fail to write devid\n");
+
+				/* vtoc was set, though devid write failed */
+				rv = 0;
+			}
+		}
 	}
 
 	/*

@@ -1,11 +1,13 @@
 /*
  * vds_vtoc.c: LDOM Virtual Disk Server.
  *
- * Copyright (C) 2014 Oracle. All rights reserved.
+ * Copyright (C) 2014, 2017 Oracle. All rights reserved.
  */
 
 #include "vds.h"
 #include "vds_io.h"
+#include "vds_devid.h"
+
 #include <../block/partitions/check.h>
 #include <../block/partitions/efi.h>
 #include <linux/byteorder/generic.h>
@@ -85,10 +87,32 @@ static int vds_efi_check_gpt(struct vio_driver_state *vio,
 	    (unsigned char *)gpt, le32_to_cpu(gpt->header_size));
 }
 
+static bool efi_guid_found(efi_uuid_t *guidp, efi_uuid_t *uuidp)
+{
+	u32 time_low;
+	u16 time_hi_and_version, time_mid;
+
+	time_low = le32_to_cpu(uuidp->time_low);
+	time_mid = le16_to_cpu(uuidp->time_mid);
+	time_hi_and_version = le16_to_cpu(uuidp->time_hi_and_version);
+
+	if ((guidp->time_low == time_low) && (guidp->time_mid == time_mid) &&
+	    (guidp->time_hi_and_version == time_hi_and_version)) {
+
+		if (memcmp(guidp->clk_node_addr, uuidp->clk_node_addr,
+		    sizeof(guidp->clk_node_addr)) == 0) {
+			return true;
+		}
+	}
+	return false;
+}
+
 static void vds_efi_update_part(struct vds_port *port, gpt_entry *gpe)
 {
 	int i;
 	u64 start, end;
+	efi_guid_t *guidp;
+	efi_uuid_t efi_reserved = EFI_RESERVED;
 
 	vds_label_clear_part(port);
 
@@ -100,6 +124,10 @@ static void vds_efi_update_part(struct vds_port *port, gpt_entry *gpe)
 		if (start && end) {
 			port->part[i].start = start;
 			port->part[i].size = end - start + 1;
+
+			guidp = &gpe[i].partition_type_guid;
+			if (efi_guid_found((efi_uuid_t *)guidp, &efi_reserved))
+				port->efi_rsvd_partnum = i;
 		}
 	}
 }
@@ -112,6 +140,8 @@ static int vds_efi_update(struct vds_port *port, gpt_header *gpt)
 	sector_t lba;
 	gpt_entry *gpe = NULL;
 	struct vio_driver_state *vio = &port->vio;
+
+	port->efi_rsvd_partnum = -1;
 
 	/*
 	 * Validate GPT and update partition info.
@@ -204,7 +234,7 @@ int vds_efi_set(struct vds_port *port, sector_t lba, size_t len, void *data)
 		vdsmsg(err, "write EFI label failed: rv=%d\n", err);
 	} else if (lba == VDS_EFI_GPT) {
 		rv = vds_efi_validate(port);
-		if (rv)
+		if (rv) {
 			/*
 			 * To convert from EFI to VTOC, Solaris format(1M)
 			 * clears the EFI signature, issues a GETGEOM command
@@ -212,6 +242,20 @@ int vds_efi_set(struct vds_port *port, sector_t lba, size_t len, void *data)
 			 * ignore invalid signature errors here just in case.
 			 */
 			vdsdbg(IOC, "read EFI label failed: rv=%d\n", rv);
+
+		} else if (S_ISREG(port->mode)) {
+			/*
+			 * When the disk label changes then the location where
+			 * the devid is stored on a disk image can change.
+			 */
+			rv = vds_dskimg_write_devid(port);
+			if (rv) {
+				/* EFI was set, though devid write failed */
+				vdsdbg(DEVID,
+				    "vds_efi_set: fail to write devid: rv=%d\n",
+				    rv);
+			}
+		}
 	}
 
 	return err;

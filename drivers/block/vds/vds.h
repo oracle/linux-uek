@@ -58,6 +58,9 @@ struct vds_port {
 	struct workqueue_struct	*ioq;
 	struct list_head	io_list;
 	wait_queue_head_t	wait;
+	void			*devid;
+	int			efi_rsvd_partnum;
+	umode_t			mode;
 };
 
 #define	VDS_PORT_SEQ		0x1
@@ -192,6 +195,7 @@ int vds_vtoc_clear(struct vds_port *port);
 #define VDS_DEBUG_BIO		0x200
 #define VDS_DEBUG_FIO		0x400
 #define VDS_DEBUG_BELOCK	0x800
+#define VDS_DEBUG_DEVID		0x1000
 
 extern int vds_dbg;
 extern int vds_dbg_ldc;

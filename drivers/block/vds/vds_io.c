@@ -6,6 +6,7 @@
 
 #include "vds.h"
 #include "vds_io.h"
+#include "vds_devid.h"
 
 #define	VDS_MAX_XFER_SIZE	(128 * 1024)
 #define	VDS_RETRIES		5
@@ -464,6 +465,54 @@ int vd_op_set_geom(struct vds_io *io)
 	return rv;
 }
 
+int vd_op_get_devid(struct vds_io *io)
+{
+	int rv;
+	struct vio_driver_state *vio = io->vio;
+	struct vds_port *port = to_vds_port(vio);
+	struct vio_disk_devid *devid_outp = NULL;
+	struct devid_info *devid;
+	int devid_len;
+
+	/* FIXME - add support for block special */
+	if (!S_ISREG(port->mode))
+		return 0;
+
+	if (port->devid == NULL) {
+		vdsdbg(DEVID, "VD_OP_GET_DEVID devid not found\n");
+		return (-ENXIO);
+	}
+
+	devid_outp = kzalloc(roundup(io->desc->size, 8), GFP_KERNEL);
+	if (devid_outp == NULL)
+		return (-ENOMEM);
+
+	devid = (struct devid_info *)port->devid;
+	vdsdbg(DEVID, "port->devid:");
+	vds_devid_dump((u8 *)devid, 26, (void *)devid, NULL);
+
+	devid_len = DEVID_GETLEN(devid);
+
+	devid_outp->type = DEVID_GETTYPE(devid);
+	devid_outp->len = devid_len;
+	memcpy(devid_outp->id, devid->did_id, devid_len);
+
+	vdsdbg(DEVID, "devid struct: type=0x%x, len=%d\n",
+	    devid_outp->type, devid_outp->len);
+	vds_devid_dump((u8 *)devid_outp, sizeof(devid_outp),
+	    (void *)devid_outp, "devid_outp:");
+	vds_devid_dump((u8 *)devid_outp->id, devid_outp->len,
+	    (void *)devid_outp->id, "devid_outp->id:");
+
+	rv = vds_copy(vio, LDC_COPY_OUT, devid_outp, io->desc, 0, 0);
+
+	vdsdbg(DEVID, "VD_OP_GET_DEVID rv=%d\n", rv);
+
+	kfree(devid_outp);
+
+	return rv;
+}
+
 int vd_op_get_efi(struct vds_io *io)
 {
 	int rv;
@@ -653,6 +702,24 @@ done:
 	return err;
 }
 
+static int vds_be_init_devid(struct vds_port *port)
+{
+	int rv;
+
+	if (S_ISREG(port->mode)) {
+		rv = vds_dskimg_init_devid(port);
+	} else {
+		/*
+		 * We should support devid for other backends. For now,
+		 * we only support devid for disk images backed by a
+		 * file.
+		 */
+		rv = 0;
+	}
+
+	return rv;
+}
+
 /*
  * Backend operations.
  */
@@ -676,6 +743,7 @@ int vds_be_init(struct vds_port *port)
 
 	inode = path.dentry->d_inode;
 	mode = inode->i_mode;
+	port->mode = mode;
 	path_put(&path);
 
 	vds_be_wlock(port);
@@ -731,6 +799,13 @@ int vds_be_init(struct vds_port *port)
 
 	vds_label_init(port);
 
+	/*
+	 * Failure to create a device id is not fatal and does not
+	 * prevent the disk image from being attached.
+	 */
+	(void) vds_be_init_devid(port);
+	rv = 0;
+
 done:
 	if (be_lock == read)
 		vds_be_runlock(port);
@@ -752,6 +827,8 @@ void vds_be_fini(struct vds_port *port)
 		port->be_ops->fini(port);
 		port->be_data = NULL;
 	}
+	kfree(port->devid);
+	port->devid = NULL;
 	vds_be_wunlock(port);
 }
 
