@@ -777,9 +777,7 @@ static int dax_ioctl_ccb_exec(void *arg, struct file *f)
 	if (rv != 0)
 		return rv;
 
-	dax_map_segment(dax_ctx, ccb_buf, usr_args.dce_ccb_buf_len);
-
-	rv = dax_lock_pages(dax_ctx, ccb_buf, usr_args.dce_ccb_buf_len);
+	rv = dax_map_segment(dax_ctx, ccb_buf, usr_args.dce_ccb_buf_len);
 	if (rv != 0)
 		return rv;
 
@@ -1052,7 +1050,7 @@ static int dax_ccb_flush_contig(struct dax_ctx *dax_ctx, int start_idx,
 
 		dax_overflow_check(dax_ctx, i);
 		/* free any locked pages associated with this ccb */
-		dax_unlock_pages_ccb(dax_ctx, i, ccb, true);
+		dax_unlock_pages_ccb(dax_ctx, i, ccb);
 
 		/* skip over 64B data of long CCB */
 		if (IS_LONG_CCB(ccb))

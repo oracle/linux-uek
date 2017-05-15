@@ -18,6 +18,13 @@ int dax_at_to_ccb_idx[AT_MAX] = {
 	QUERY_DWORD_TBL,
 };
 
+char *dax_at_to_str[AT_MAX] = {
+	"dst",
+	"src0",
+	"src1",
+	"tbl"
+};
+
 static void dax_vm_print(char *prefix, struct dax_vma *dv)
 {
 	dax_map_dbg("%s : vma %p, kva=%p, uva=0x%lx, pa=0x%lx",
@@ -163,38 +170,74 @@ int dax_devmap(struct file *f, struct vm_area_struct *vma)
 	return 0;
 }
 
-int dax_map_segment_common(u32 *ccb_addr_type, char *name,
+int dax_map_segment_common(u32 *ccb_addr_type, enum dax_at at,
 			   u32 addr_sel, union ccb *ccbp,
 			   struct dax_ctx *dax_ctx)
 {
 	struct dax_vma *dv = NULL;
 	struct vm_area_struct *vma;
 	unsigned long virtp = ccbp->dwords[addr_sel];
+	int ret, idx, tmp;
+	struct page *page;
 
-	dax_map_dbg("%s uva 0x%lx", name, virtp);
+	*ccb_addr_type = CCB_AT_VA_ALT;
+	dax_map_dbg("%s uva 0x%lx", dax_at_to_str[at], virtp);
 	vma = find_vma(dax_ctx->dax_mm->this_mm, virtp);
 
 	if (vma == NULL)
-		return -1;
+		return 0;
 
 	dv = vma->vm_private_data;
 
 	/* Only memory allocated by dax_alloc_ram has dax_vm_ops set */
-	if (dv == NULL || vma->vm_ops != &dax_vm_ops)
-		return -1;
+	if (dv == NULL || vma->vm_ops != &dax_vm_ops) {
+		idx = ccbp - dax_ctx->ccb_buf;
+
+		if (is_vm_hugetlb_page(vma)) {
+			dax_dbg("virtp=0x%lx backed by huge page. No need to lock",
+				virtp);
+		} else {
+			down_read(&current->mm->mmap_sem);
+			ret = get_user_pages_fast(virtp, 1, 1, &page);
+			up_read(&current->mm->mmap_sem);
+
+			if (ret == 1) {
+				dax_ctx->pages[at][idx] = page;
+				dax_dbg("locked page %p, for VA 0x%lx",
+					page, virtp);
+			} else {
+				dax_err("get_user_pages for 1 page failed, virtp=0x%lx, ret=%d",
+					virtp, ret);
+				return -1;
+			}
+		}
+
+		/*
+		 * Hypervisor does the TLB or TSB walk
+		 * and expects the translation to be present
+		 * in either of them.
+		 */
+		if (copy_from_user(&tmp, (void __user *)
+				   ccbp->dwords[addr_sel], 1)) {
+			dax_dbg("ccb=0x%p, idx=%d", ccbp, idx);
+			dax_dbg("bad %s address 0x%llx",
+				dax_at_to_str[at], ccbp->dwords[addr_sel]);
+		}
+		return 0;
+	}
 
 	dax_vm_print("matched", dv);
+	*ccb_addr_type = CCB_AT_RA;
+
 	if (dax_no_flow_ctl) {
-		*ccb_addr_type = CCB_AT_RA;
 		ccbp->dwords[addr_sel] = CHECK_4MB_PAGE_RANGE |
 			(dv->pa + (virtp - vma->vm_start));
-		dax_map_dbg("changed %s to RA 0x%llx", name,
+		dax_map_dbg("changed %s to RA 0x%llx", dax_at_to_str[at],
 			    ccbp->dwords[addr_sel]);
 	} else {
-		*ccb_addr_type = CCB_AT_RA;
 		ccbp->dwords[addr_sel] = NO_PAGE_RANGE_CHECK |
 			(dv->pa + (virtp - vma->vm_start));
-		dax_map_dbg("changed %s to RA 0x%llx", name,
+		dax_map_dbg("changed %s to RA 0x%llx", dax_at_to_str[at],
 			    ccbp->dwords[addr_sel]);
 	}
 
@@ -205,7 +248,7 @@ int dax_map_segment_common(u32 *ccb_addr_type, char *name,
  * Look for use of special dax contiguous segment and
  * set it up for physical access
  */
-void dax_map_segment(struct dax_ctx *dax_ctx, union ccb *ccb, size_t ccb_len)
+int dax_map_segment(struct dax_ctx *dax_ctx, union ccb *ccb, size_t ccb_len)
 {
 	int i;
 	int nelem = CCB_BYTE_TO_NCCB(ccb_len);
@@ -222,35 +265,49 @@ void dax_map_segment(struct dax_ctx *dax_ctx, union ccb *ccb, size_t ccb_len)
 		dax_dbg("ccb[%d]=0x%p, idx=%d, at_dst=%d",
 			i, ccbp, idx, hdr->at_dst);
 		if (hdr->at_dst == CCB_AT_VA_ALT) {
-			if (dax_map_segment_common(&ccb_addr_type, "dst",
+			if (dax_map_segment_common(&ccb_addr_type, AT_DST,
 						   QUERY_DWORD_OUTPUT, ccbp,
-						   dax_ctx) == 0)
-				hdr->at_dst = ccb_addr_type;
+						   dax_ctx) != 0)
+				goto error;
+			hdr->at_dst = ccb_addr_type;
 		}
 
 		if (hdr->at_src0 == CCB_AT_VA_ALT) {
-			if (dax_map_segment_common(&ccb_addr_type, "src0",
+			if (dax_map_segment_common(&ccb_addr_type, AT_SRC0,
 						   QUERY_DWORD_INPUT, ccbp,
-						   dax_ctx) == 0)
-				hdr->at_src0 = ccb_addr_type;
+						   dax_ctx) != 0)
+				goto error;
+			hdr->at_src0 = ccb_addr_type;
 		}
 
-		if (hdr->at_src1 == CCB_AT_VA_ALT)
-			if (dax_map_segment_common(&ccb_addr_type, "src1",
+		if (hdr->at_src1 == CCB_AT_VA_ALT) {
+			if (dax_map_segment_common(&ccb_addr_type, AT_SRC1,
 						   QUERY_DWORD_SEC_INPUT, ccbp,
-						   dax_ctx) == 0)
-				hdr->at_src1 = ccb_addr_type;
+						   dax_ctx) != 0)
+				goto error;
+			hdr->at_src1 = ccb_addr_type;
+		}
 
-		if (hdr->at_tbl == CCB_AT_VA_ALT)
-			if (dax_map_segment_common(&ccb_addr_type, "tbl",
+		if (hdr->at_tbl == CCB_AT_VA_ALT) {
+			if (dax_map_segment_common(&ccb_addr_type, AT_TBL,
 						   QUERY_DWORD_TBL, ccbp,
-						   dax_ctx) == 0)
-				hdr->at_tbl = ccb_addr_type;
+						   dax_ctx) != 0)
+				goto error;
+			hdr->at_tbl = ccb_addr_type;
+		}
 
 		/* skip over 2nd 64 bytes of long CCB */
 		if (IS_LONG_CCB(ccbp))
 			i++;
 	}
+	return 0;
+error:
+	/*
+	 * On error this unlocks all the pages locked by
+	 * dax_map_segment_common(...)
+	 */
+	dax_unlock_pages(dax_ctx, ccb, ccb_len);
+	return -1;
 }
 
 int dax_alloc_page_arrays(struct dax_ctx *ctx)
@@ -281,8 +338,7 @@ void dax_dealloc_page_arrays(struct dax_ctx *ctx)
 }
 
 
-void dax_unlock_pages_ccb(struct dax_ctx *ctx, int ccb_num, union ccb *ccbp,
-			  bool warn)
+void dax_unlock_pages_ccb(struct dax_ctx *ctx, int ccb_num, union ccb *ccbp)
 {
 	int i;
 
@@ -292,152 +348,8 @@ void dax_unlock_pages_ccb(struct dax_ctx *ctx, int ccb_num, union ccb *ccbp,
 			put_page(ctx->pages[i][ccb_num]);
 			dax_dbg("freeing page %p", ctx->pages[i][ccb_num]);
 			ctx->pages[i][ccb_num] = NULL;
-		} else if (warn) {
-			struct ccb_hdr *hdr = CCB_HDR(ccbp);
-
-			WARN((hdr->at_dst == CCB_AT_VA_ALT && i == AT_DST) ||
-			     (hdr->at_src0 == CCB_AT_VA_ALT && i == AT_SRC0) ||
-			     (hdr->at_src1 == CCB_AT_VA_ALT && i == AT_SRC1) ||
-			     (hdr->at_tbl == CCB_AT_VA_ALT && i == AT_TBL),
-			     "page[%d][%d] for 0x%llx not locked",
-			     i, ccb_num,
-			     ccbp->dwords[dax_at_to_ccb_idx[i]]);
 		}
 	}
-}
-
-static int dax_lock_pages_at(struct dax_ctx *ctx, int ccb_num,
-			     union ccb *ccbp, int addr_sel, enum dax_at at,
-			     int idx)
-{
-	int nr_pages = 1;
-	int res;
-	struct page *page;
-	unsigned long virtp = ccbp[ccb_num].dwords[addr_sel];
-
-	if (virtp == 0)
-		return 0;
-
-	down_read(&current->mm->mmap_sem);
-	res = get_user_pages_fast(virtp,
-			     nr_pages, 1, &page);
-	up_read(&current->mm->mmap_sem);
-
-	if (res == nr_pages) {
-		ctx->pages[at][idx] = page;
-		dax_dbg("locked page %p, for VA 0x%lx",
-			page, virtp);
-	} else {
-		dax_err("get_user_pages failed, virtp=0x%lx, nr_pages=%d, res=%d",
-			virtp, nr_pages, res);
-		return -EFAULT;
-	}
-
-	return 0;
-}
-
-/*
- * Lock user pages. They get released during the dequeue phase
- * or upon device close.
- */
-int dax_lock_pages(struct dax_ctx *dax_ctx, union ccb *ccb, size_t ccb_len)
-{
-	int tmp, i;
-	int ret = 0;
-	int nelem = CCB_BYTE_TO_NCCB(ccb_len);
-
-	for (i = 0; i < nelem; i++) {
-		struct ccb_hdr *hdr = CCB_HDR(&ccb[i]);
-		u32 idx;
-
-		/* index into ccb_buf */
-		idx = &ccb[i] - dax_ctx->ccb_buf;
-
-		dax_dbg("ccb[%d]=0x%p, idx=%d, at_dst=%d, at_src0=%d, at_src1=%d, at_tbl=%d",
-			 i, &ccb[i], idx, hdr->at_dst, hdr->at_src0,
-			 hdr->at_src1, hdr->at_tbl);
-
-		/* look at all addresses in hdr*/
-		if (hdr->at_dst == CCB_AT_VA_ALT) {
-			ret = dax_lock_pages_at(dax_ctx, i, ccb,
-						dax_at_to_ccb_idx[AT_DST],
-						AT_DST,
-						idx);
-			if (ret != 0)
-				break;
-		}
-
-		if (hdr->at_src0 == CCB_AT_VA_ALT) {
-			ret = dax_lock_pages_at(dax_ctx, i, ccb,
-						dax_at_to_ccb_idx[AT_SRC0],
-						AT_SRC0,
-						idx);
-			if (ret != 0)
-				break;
-		}
-
-		if (hdr->at_src1 == CCB_AT_VA_ALT) {
-			ret = dax_lock_pages_at(dax_ctx, i, ccb,
-						dax_at_to_ccb_idx[AT_SRC1],
-						AT_SRC1,
-						idx);
-			if (ret != 0)
-				break;
-		}
-
-		if (hdr->at_tbl == CCB_AT_VA_ALT) {
-			ret = dax_lock_pages_at(dax_ctx, i, ccb,
-						dax_at_to_ccb_idx[AT_TBL],
-						AT_TBL, idx);
-			if (ret != 0)
-				break;
-		}
-
-		/*
-		 * Hypervisor does the TLB or TSB walk
-		 * and expects the translation to be present
-		 * in either of them.
-		 */
-		if (hdr->at_dst == CCB_AT_VA_ALT &&
-		    copy_from_user(&tmp, (void __user *)
-				   ccb[i].dwords[QUERY_DWORD_OUTPUT], 1)) {
-			dax_dbg("ccb[%d]=0x%p, idx=%d", i, &ccb[i], idx);
-			dax_dbg("bad OUTPUT address 0x%llx",
-				ccb[i].dwords[QUERY_DWORD_OUTPUT]);
-		}
-
-		if (hdr->at_src0 == CCB_AT_VA_ALT &&
-		    copy_from_user(&tmp, (void __user *)
-				   ccb[i].dwords[QUERY_DWORD_INPUT], 1)) {
-			dax_dbg("ccb[%d]=0x%p, idx=%d", i, &ccb[i], idx);
-			dax_dbg("bad INPUT address 0x%llx",
-				ccb[i].dwords[QUERY_DWORD_INPUT]);
-		}
-
-		if (hdr->at_src1 == CCB_AT_VA_ALT &&
-		    copy_from_user(&tmp, (void __user *)
-				   ccb[i].dwords[QUERY_DWORD_SEC_INPUT], 1)) {
-			dax_dbg("ccb[%d]=0x%p, idx=%d", i, &ccb[i], idx);
-			dax_dbg("bad SEC_INPUT address 0x%llx",
-				ccb[i].dwords[QUERY_DWORD_SEC_INPUT]);
-		}
-
-		if (hdr->at_tbl == CCB_AT_VA_ALT &&
-		    copy_from_user(&tmp, (void __user *)
-				   ccb[i].dwords[QUERY_DWORD_TBL], 1)) {
-			dax_dbg("ccb[%d]=0x%p, idx=%d", i, &ccb[i], idx);
-			dax_dbg("bad TBL address 0x%llx",
-				ccb[i].dwords[QUERY_DWORD_TBL]);
-		}
-
-		/* skip over 2nd 64 bytes of long CCB */
-		if (IS_LONG_CCB(&ccb[i]))
-			i++;
-	}
-	if (ret)
-		dax_unlock_pages(dax_ctx, ccb, ccb_len);
-
-	return ret;
 }
 
 /*
@@ -453,7 +365,7 @@ void dax_unlock_pages(struct dax_ctx *dax_ctx, union ccb *ccb, size_t ccb_len)
 
 		/* index into ccb_buf */
 		idx = &ccb[i] - dax_ctx->ccb_buf;
-		dax_unlock_pages_ccb(dax_ctx, idx, ccb, false);
+		dax_unlock_pages_ccb(dax_ctx, idx, ccb);
 	}
 }
 

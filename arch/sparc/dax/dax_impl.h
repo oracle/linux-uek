@@ -27,6 +27,7 @@
 #include <linux/types.h>
 #include <linux/spinlock.h>
 #include <linux/vmalloc.h>
+#include <linux/hugetlb.h>
 #include <asm/hypervisor.h>
 #include <asm/pgtable.h>
 #include <asm/mdesc.h>
@@ -259,8 +260,7 @@ struct dax_ctx {
 
 int dax_alloc_page_arrays(struct dax_ctx *ctx);
 void dax_dealloc_page_arrays(struct dax_ctx *ctx);
-void dax_unlock_pages_ccb(struct dax_ctx *ctx, int ccb_num, union ccb *ccbp,
-			  bool warn);
+void dax_unlock_pages_ccb(struct dax_ctx *ctx, int ccb_num, union ccb *ccbp);
 void dax_prt_ccbs(union ccb *ccb, u64 len);
 bool dax_has_flow_ctl_numa(void);
 bool dax_has_ra_pgsz(void);
@@ -276,10 +276,8 @@ void dax_vm_close(struct vm_area_struct *vma);
 void dax_overflow_check(struct dax_ctx *ctx, int idx);
 int dax_clean_dm(struct dax_mm *dm);
 void dax_ccbs_drain(struct dax_ctx *ctx, struct dax_vma *dv);
-void dax_map_segment(struct dax_ctx *dax_ctx, union ccb *ccb,
+int dax_map_segment(struct dax_ctx *dax_ctx, union ccb *ccb,
 		     size_t ccb_len);
-int dax_lock_pages(struct dax_ctx *dax_ctx, union ccb *ccb,
-			  size_t ccb_len);
 void dax_unlock_pages(struct dax_ctx *dax_ctx, union ccb *ccb,
 			     size_t ccb_len);
 int dax_address_in_use(struct dax_vma *dv, u32 addr_type,
