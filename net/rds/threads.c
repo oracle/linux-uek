@@ -132,7 +132,7 @@ EXPORT_SYMBOL_GPL(rds_connect_complete);
  * We should *always* start with a random backoff; otherwise a broken connection
  * will always take several iterations to be re-established.
  */
-void rds_queue_reconnect(struct rds_conn_path *cp)
+void rds_queue_reconnect(struct rds_conn_path *cp, int reason)
 {
 	unsigned long delay = 0;
 	unsigned long rand;
@@ -140,19 +140,26 @@ void rds_queue_reconnect(struct rds_conn_path *cp)
 	bool is_tcp = conn->c_trans->t_type == RDS_TRANS_TCP;
 
 	rds_rtd(RDS_RTD_CM_EXT,
-		"conn %p for %pI4 to %pI4 tos %d reconnect jiffies %lu\n", conn,
+		"conn %p for %pI4 to %pI4 tos %d reconnect jiffies %lu %s\n", conn,
 		&conn->c_laddr, &conn->c_faddr,	conn->c_tos,
-		cp->cp_reconnect_jiffies);
+		cp->cp_reconnect_jiffies, conn_drop_reason_str(reason));
 
 	/* let peer with smaller addr initiate reconnect, to avoid duels */
 	if (is_tcp && !IS_CANONICAL(conn->c_laddr, conn->c_faddr))
 		return;
 
+	if (reason == DR_IB_BASE_CONN_DOWN) {
+		cp->cp_reconnect_jiffies = 0;
+		delay = msecs_to_jiffies(500);
+	}
+
 	set_bit(RDS_RECONNECT_PENDING, &cp->cp_flags);
 	if (cp->cp_reconnect_jiffies == 0) {
 		set_bit(RDS_INITIAL_RECONNECT, &cp->cp_flags);
+		get_random_bytes(&rand, sizeof(rand));
 		cp->cp_reconnect_jiffies = rds_sysctl_reconnect_min_jiffies;
-		queue_delayed_work(cp->cp_wq, &cp->cp_conn_w, rand % cp->cp_reconnect_jiffies);
+		queue_delayed_work(cp->cp_wq, &cp->cp_conn_w,
+				   delay + (rand % cp->cp_reconnect_jiffies));
 		return;
 	}
 
@@ -203,7 +210,8 @@ void rds_connect_worker(struct work_struct *work)
 						     RDS_CONN_DOWN)) {
 				rds_rtd(RDS_RTD_CM_EXT,
 					"reconnecting..., conn %p\n", conn);
-				rds_queue_reconnect(cp);
+				rds_queue_reconnect(cp, ret == DR_IB_BASE_CONN_DOWN ?
+						DR_IB_BASE_CONN_DOWN : DR_DEFAULT);
 			} else {
 				rds_conn_path_drop(cp, DR_CONN_CONNECT_FAIL);
 			}
@@ -334,7 +342,7 @@ void rds_shutdown_worker(struct work_struct *work)
 {
 	struct rds_conn_path *cp = container_of(work,
 						struct rds_conn_path,
-						cp_down_w);
+						cp_down_w.work);
 	unsigned long now = get_seconds();
 	bool is_tcp = cp->cp_conn->c_trans->t_type == RDS_TRANS_TCP;
 	struct rds_connection *conn = cp->cp_conn;
