@@ -159,7 +159,7 @@ static void __rds_conn_path_init(struct rds_connection *conn,
 	INIT_DELAYED_WORK(&cp->cp_hb_w, rds_hb_worker);
 	INIT_DELAYED_WORK(&cp->cp_reconn_w, rds_reconnect_timeout);
 	INIT_DELAYED_WORK(&cp->cp_reject_w, rds_reject_worker);
-	INIT_WORK(&cp->cp_down_w, rds_shutdown_worker);
+	INIT_DELAYED_WORK(&cp->cp_down_w, rds_shutdown_worker);
 	mutex_init(&cp->cp_cm_lock);
 	cp->cp_flags = 0;
 }
@@ -421,7 +421,7 @@ void rds_conn_shutdown(struct rds_conn_path *cp, int restart)
 	rcu_read_lock();
 	if (!hlist_unhashed(&conn->c_hash_node) && restart) {
 		rcu_read_unlock();
-		rds_queue_reconnect(cp);
+		rds_queue_reconnect(cp, DR_DEFAULT);
 	} else {
 		rcu_read_unlock();
 	}
@@ -442,7 +442,7 @@ static void rds_conn_path_destroy(struct rds_conn_path *cp, int shutdown)
 		return;
 
 	rds_conn_path_drop(cp, DR_CONN_DESTROY);
-	flush_work(&cp->cp_down_w);
+	flush_delayed_work(&cp->cp_down_w);
 
 	/* now that conn down worker is flushed; there cannot be any
 	 * more posting of reconn timeout work. But cancel any already
@@ -852,6 +852,7 @@ void rds_conn_path_drop(struct rds_conn_path *cp, int reason)
 	unsigned long now = get_seconds();
 	struct rds_connection *conn = cp->cp_conn;
 
+	unsigned long delay = 0;
 	cp->cp_drop_source = reason;
 	if (rds_conn_path_state(cp) == RDS_CONN_UP) {
 		cp->cp_reconnect_start = now;
@@ -891,13 +892,16 @@ void rds_conn_path_drop(struct rds_conn_path *cp, int reason)
 
 	atomic_set(&cp->cp_state, RDS_CONN_ERROR);
 
+	if ((conn->c_tos && reason == DR_IB_ADDR_CHANGE) ||
+	    reason == DR_IB_BASE_CONN_DOWN)
+		delay = msecs_to_jiffies(100);
 	rds_rtd(RDS_RTD_CM_EXT,
 		"RDS/%s: queueing shutdown work, conn %p, <%pI4,%pI4,%d>\n",
 		conn->c_trans->t_type == RDS_TRANS_TCP ? "TCP" : "IB",
 		conn, &conn->c_laddr, &conn->c_faddr,
 		conn->c_tos);
 
-	queue_work(cp->cp_wq, &cp->cp_down_w);
+	queue_delayed_work(cp->cp_wq, &cp->cp_down_w, delay);
 }
 EXPORT_SYMBOL_GPL(rds_conn_path_drop);
 
@@ -918,11 +922,18 @@ void rds_conn_path_connect_if_down(struct rds_conn_path *cp)
 
 	if (rds_conn_path_state(cp) == RDS_CONN_DOWN &&
 	    !test_and_set_bit(RDS_RECONNECT_PENDING, &cp->cp_flags)) {
+		if (conn->c_tos == 0 ||
+		    (conn->c_tos && rds_conn_state(cp->cp_base_conn) == RDS_CONN_UP)) {
 		rds_rtd(RDS_RTD_CM_EXT,
 			"queueing connect work, conn %p, <%pI4,%pI4,%d>\n",
 			conn, &conn->c_laddr, &conn->c_faddr,
 			conn->c_tos);
 		queue_delayed_work(cp->cp_wq, &cp->cp_conn_w, 0);
+		} else
+			rds_rtd(RDS_RTD_CM_EXT,
+				"skip, base conn %p down, conn %p, <%pI4,%pI4,%d>\n",
+				cp->cp_base_conn, conn, &conn->c_laddr,
+				&conn->c_faddr, conn->c_tos);
 	}
 }
 EXPORT_SYMBOL_GPL(rds_conn_path_connect_if_down);
