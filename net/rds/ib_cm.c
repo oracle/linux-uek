@@ -1173,9 +1173,24 @@ int rds_ib_conn_path_connect(struct rds_conn_path *cp)
 	struct rds_connection *conn = cp->cp_conn;
 	struct rds_ib_connection *ic = conn->c_transport_data;
 	struct sockaddr_in src, dest;
-	int ret;
+	int ret = 0;
 
 	conn->c_route_resolved = 0;
+
+	if (conn->c_tos) {
+			mutex_lock(&conn->c_base_conn->c_cm_lock);
+			if (!rds_conn_transition(conn->c_base_conn, RDS_CONN_UP,
+						 RDS_CONN_UP)) {
+				rds_rtd(RDS_RTD_CM_EXT,
+					"RDS/IB: base conn %p (%p) is not up\n",
+					conn->c_base_conn, conn);
+				ret = DR_IB_BASE_CONN_DOWN;
+			}
+			mutex_unlock(&conn->c_base_conn->c_cm_lock);
+			if (ret)
+				goto out;
+	}
+
 	/* XXX I wonder what affect the port space has */
 	/* delegate cm event handler to rdma_transport */
 	ic->i_cm_id = rdma_create_id(rds_conn_net(conn),
