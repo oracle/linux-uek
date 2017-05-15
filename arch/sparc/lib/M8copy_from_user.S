@@ -29,6 +29,18 @@
 #define FUNC_NAME		M8copy_from_user
 #define LOAD(type,addr,dest)	type##a [addr] %asi, dest
 
+/*
+ * For ldmxa instruction, source address has to be in registers.
+ * Look at Oracle SPARC Architecture 2017
+ * Section 7.89 Load Misaligned Integer to Alternate Space
+ * So, we need to do this in two instructions.
+ * mov offset, %o3
+ * ldmxa   [ %o1 + %o3 ] %asi, %o4
+ */
+#define LOAD_MS(type,addr,offset,dest)		\
+	mov offset, %o3;			\
+	EX_LD(.word  0xd98a560b)
+
 #define EX_RETVAL(x)		0
 
 #ifdef __KERNEL__

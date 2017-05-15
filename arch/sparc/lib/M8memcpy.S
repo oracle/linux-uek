@@ -91,6 +91,10 @@
 #include <asm/visasm.h>
 #include <asm/asi.h>
 
+#if !defined(EX_LD) && !defined(EX_ST)
+#define NON_USER_COPY
+#endif
+
 #ifndef EX_LD
 #define EX_LD(x)	x
 #endif
@@ -111,6 +115,10 @@
 
 #ifndef LOAD
 #define LOAD(type,addr,dest)	type [addr], dest
+#endif
+
+#ifndef LOAD_MS
+#define LOAD_MS(type,addr,offset,dest)  EX_LD(.word 0xd98a7400+offset)
 #endif
 
 #ifndef STORE
@@ -169,6 +177,8 @@
 #define	SHORT_LONG	64	/* max copy for short longword-aligned case */
 				/* must be at least 64 */
 #define	SMALL_MAX	128
+#define MED_MS_UMAX	4096	/* max copy for medium un-aligned case where */
+				/* ldmx makes lot of difference */
 #define	MED_UMAX	32960	/* max copy for medium un-aligned case */
 #define	MED_WMAX	32960	/* max copy for medium word-aligned case */
 #define	MED_MAX		32960	/* max copy for medium longword-aligned case */
@@ -801,8 +811,28 @@ FUNC_NAME:
 	! Dst is on 8 byte boundary; src is not; remaining count > SMALL_MAX
 .Lunalignsetup:
 .Lunalignrejoin:
+	! At smaller lengths, new ldm instructions perform better than
+	! FP logic. This is due to fixed overhead of FP save/restore. But
+	! the overhead does not matter how big the memcpy length is. However,
+	! the internal overhead due to the slower ldmx instruction grows with
+	! memcpy size. With our experiments, we noticed that ldm performance
+	! starts to converge with FP performance at about length 4096 and over.
+	! We check the memcpy length length here. Jump to mis-aligned logic
+	! if the length is 4096 or less. Else continue with FP logic.
+
+	set MED_MS_UMAX, %o3
+	cmp %o2, %o3
+	ble,pt  %ncc, .Lunalign_ms_start
+	nop
+
+	/* Now let's start FP/alignaddr logic */
 
 	mov	%g1, %o3		! save %g1 as VISEntryHalf clobbers it
+#ifdef NON_USER_COPY
+	VISEntryHalfFast(.Lunalign_ms_start)
+#else
+	VISEntryHalf
+#endif
 	VISEntryHalf
 	mov	%o3, %g1		! restore %g1
 
@@ -991,8 +1021,60 @@ FUNC_NAME:
 	add	%o0, 8, %o0
 
 .Lunalign_short:
+#ifdef NON_USER_COPY
+	VISExitHalfFast
+#else
 	VISExitHalf
+#endif
 	ba	.Lsmallrest
 	nop
 
+	! Start using M8 mis-aligned instructions.
+.Lunalign_ms_start:
+	prefetch [%o1 + (4 * BLOCK_SIZE)], 20
+	andn    %o2, 0x3f, %o5	! %o5 is multiple of block size
+	and     %o2, 0x3f, %o2	! residue bytes in %o2
+
+.Lunalign_ms_loop:
+	LOAD_MS(ldmx, %o1, 0, %o4)
+	subcc   %o5, BLOCK_SIZE, %o5
+	EX_ST(STORE(stx, %o4, %o0))
+	LOAD_MS(ldmx, %o1, 8, %o4)
+	EX_ST(STORE(stx, %o4, %o0+8))
+	LOAD_MS(ldmx, %o1, 16, %o4)
+	EX_ST(STORE(stx, %o4, %o0+16))
+	LOAD_MS(ldmx, %o1, 24, %o4)
+	EX_ST(STORE(stx, %o4, %o0+24))
+	LOAD_MS(ldmx, %o1, 32, %o4)
+	EX_ST(STORE(stx, %o4, %o0+32))
+	LOAD_MS(ldmx, %o1, 40, %o4)
+	EX_ST(STORE(stx, %o4, %o0+40))
+	LOAD_MS(ldmx, %o1, 48, %o4)
+	EX_ST(STORE(stx, %o4, %o0+48))
+	LOAD_MS(ldmx, %o1, 56, %o4)
+	add     %o1, BLOCK_SIZE, %o1
+	EX_ST(STORE(stx, %o4, %o0+56))
+	add     %o0, BLOCK_SIZE, %o0
+	bgu,pt  %ncc, .Lunalign_ms_loop
+	prefetch [%o1 + (5 * BLOCK_SIZE)], 20
+
+	! Handle trailing bytes, 64 to 127
+	! Dest long word aligned, Src not long word aligned
+	cmp     %o2, 15
+	bleu    %ncc, .Lunalign_ms_short
+
+	andn    %o2, 0x7, %o5           ! %o5 is multiple of 8
+	and     %o2, 0x7, %o2           ! residue bytes in %o2
+
+.Lunalign_ms_by8:
+	subcc   %o5, 8, %o5
+	LOAD_MS(ldmx, %o1, 0, %o4)
+	EX_ST(STORE(stx, %o4, %o0))
+	add     %o1, 8, %o1
+	bgu,pt  %ncc, .Lunalign_ms_by8
+	add     %o0, 8, %o0
+
+.Lunalign_ms_short:
+	ba      .Lsmallrest
+	nop
 	.size  FUNC_NAME, .-FUNC_NAME
