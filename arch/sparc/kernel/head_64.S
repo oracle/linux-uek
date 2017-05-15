@@ -631,6 +631,10 @@ niagara_tlb_fixup:
 	be,pt	%xcc, sparc_m7_patch
 	 nop
 
+	cmp	%g1, SUN4V_CHIP_SPARC_M8
+	be,pt	%xcc, sparc_m8_patch
+	 nop
+
 	call	generic_patch_copyops
 	 nop
 	call	generic_patch_bzero
@@ -648,6 +652,17 @@ sparc_m7_patch:
 	 nop
 
 	ba,a,pt	%xcc, 80f
+
+sparc_m8_patch:
+	call	m8_patch_copyops
+	 nop
+	call	m8_patch_bzero
+	 nop
+	call	m8_patch_pageops
+	 nop
+
+	ba,a,pt	%xcc, 80f
+	 nop
 
 niagara4_patch:
 	call	niagara4_patch_copyops

@@ -37,6 +37,8 @@ lib-$(CONFIG_SPARC64) +=  NG4patch.o NG4copy_page.o NG4clear_page.o NG4memset.o
 
 lib-$(CONFIG_SPARC64) += M7memcpy.o M7memset.o M7copy_to_user.o M7copy_from_user.o M7patch.o M7clear_page.o
 
+lib-$(CONFIG_SPARC64) += M8memcpy.o M8copy_to_user.o M8copy_from_user.o M8patch.o
+
 lib-$(CONFIG_SPARC64) += GENmemcpy.o GENcopy_from_user.o GENcopy_to_user.o
 lib-$(CONFIG_SPARC64) += GENpatch.o GENpage.o GENbzero.o
 
