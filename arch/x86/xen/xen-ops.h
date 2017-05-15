@@ -78,6 +78,7 @@ bool xen_vcpu_stolen(int vcpu);
 
 void xen_vcpu_setup(int cpu);
 void xen_setup_vcpu_info_placement(void);
+void xen_setup_vcpu_vsyscall_time_info(int cpu);
 
 #ifdef CONFIG_SMP
 void xen_smp_init(void);

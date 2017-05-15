@@ -15,6 +15,7 @@
 #include <linux/slab.h>
 #include <linux/pvclock_gtod.h>
 #include <linux/timekeeper_internal.h>
+#include <linux/mm.h>
 
 #include <asm/pvclock.h>
 #include <asm/xen/hypervisor.h>
@@ -379,6 +380,90 @@ static const struct pv_time_ops xen_time_ops __initconst = {
 	.steal_clock = xen_steal_clock,
 };
 
+static struct pvclock_vsyscall_time_info *xen_clock __read_mostly;
+
+void xen_setup_vcpu_vsyscall_time_info(int cpu)
+{
+	struct vcpu_register_time_memory_area t;
+	int ret;
+
+	if (!xen_clock)
+		return;
+
+	t.addr.v = &xen_clock[cpu].pvti;
+
+	ret = HYPERVISOR_vcpu_op(VCPUOP_register_vcpu_time_memory_area,
+				 cpu, &t);
+
+	/*
+	 * We don't disable VCLOCK_PVCLOCK entirely if one of the vCPUS fails
+	 * to register the secondary time info with Xen. If it does fail worse
+	 * it can happen is process seeing a zeroed out pvti. Though userspace
+	 * checks the PVCLOCK_TSC_STABLE_BIT and if 0, it discards the data
+	 * in pvti and fallbacks to a system call for a reliable timestamp.
+	 */
+	WARN_ONCE(ret != 0,
+		  "CPU%d: Cannot register secondary vcpu_time_info", cpu);
+}
+
+static __init void xen_setup_vsyscall_time_info(void)
+{
+	struct vcpu_register_time_memory_area t;
+	struct pvclock_vsyscall_time_info *ti;
+	struct pvclock_vcpu_time_info *pvti;
+	int cpu = smp_processor_id();
+	unsigned long size;
+	int ret;
+
+	pvti = &__this_cpu_read(xen_vcpu)->time;
+
+	/*
+	 * We check ahead on the primary time info if this
+	 * bit is supported hence speeding up Xen clocksource.
+	 */
+	if (!(pvti->flags & PVCLOCK_TSC_STABLE_BIT))
+		return;
+
+	pvclock_set_flags(PVCLOCK_TSC_STABLE_BIT);
+
+	size = PAGE_ALIGN(sizeof(struct pvclock_vsyscall_time_info) * NR_CPUS);
+	ti = (struct pvclock_vsyscall_time_info *)
+		alloc_pages_exact(size, GFP_KERNEL | __GFP_ZERO);
+	if (!ti)
+		return;
+
+	t.addr.v = &ti->pvti;
+
+	ret = HYPERVISOR_vcpu_op(VCPUOP_register_vcpu_time_memory_area,
+				 cpu, &t);
+	if (ret) {
+		pr_debug("xen: Cannot register secondary time_info err %d\n",
+			 ret);
+		free_pages_exact(ti, get_order(size));
+		return;
+	}
+
+	/* If the check above succedded this one most likely too since it's the
+	 * same data on both primary and secondary time infos just different
+	 * memory regions. But we still check in case hypervisor is buggy.
+	 */
+	pvti = &ti->pvti;
+	if (!(pvti->flags & PVCLOCK_TSC_STABLE_BIT)) {
+		t.addr.v = NULL;
+		if (!HYPERVISOR_vcpu_op(VCPUOP_register_vcpu_time_memory_area,
+					cpu, &t))
+			free_pages_exact(ti, get_order(size));
+
+		pr_debug("xen: VCLOCK_PVCLOCK not supported\n");
+		return;
+	}
+
+	xen_clock = ti;
+	pvclock_init_vsyscall(xen_clock, size);
+
+	xen_clocksource.archdata.vclock_mode = VCLOCK_PVCLOCK;
+}
+
 static void __init xen_time_init(void)
 {
 	int cpu = smp_processor_id();
@@ -409,6 +494,7 @@ static void __init xen_time_init(void)
 	xen_setup_cpu_clockevents();
 
 	xen_time_setup_guest();
+	xen_setup_vsyscall_time_info();
 
 	if (xen_initial_domain())
 		pvclock_gtod_register_notifier(&xen_pvclock_gtod_notifier);

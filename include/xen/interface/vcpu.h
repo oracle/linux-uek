@@ -178,4 +178,32 @@ DEFINE_GUEST_HANDLE_STRUCT(vcpu_register_vcpu_info);
 
 /* Send an NMI to the specified VCPU. @extra_arg == NULL. */
 #define VCPUOP_send_nmi             11
+
+/*
+ * Register a memory location to get a secondary copy of the vcpu time
+ * parameters.  The master copy still exists as part of the vcpu shared
+ * memory area, and this secondary copy is updated whenever the master copy
+ * is updated (and using the same versioning scheme for synchronisation).
+ *
+ * The intent is that this copy may be mapped (RO) into userspace so
+ * that usermode can compute system time using the time info and the
+ * tsc.  Usermode will see an array of vcpu_time_info structures, one
+ * for each vcpu, and choose the right one by an existing mechanism
+ * which allows it to get the current vcpu number (such as via a
+ * segment limit).  It can then apply the normal algorithm to compute
+ * system time from the tsc.
+ *
+ * @extra_arg == pointer to vcpu_register_time_info_memory_area structure.
+ */
+#define VCPUOP_register_vcpu_time_memory_area   13
+DEFINE_GUEST_HANDLE_STRUCT(vcpu_time_info_t);
+struct vcpu_register_time_memory_area {
+	union {
+		GUEST_HANDLE(vcpu_time_info_t) h;
+		struct pvclock_vcpu_time_info *v;
+		uint64_t p;
+	} addr;
+};
+DEFINE_GUEST_HANDLE_STRUCT(vcpu_register_time_memory_area_t);
+
 #endif /* __XEN_PUBLIC_VCPU_H__ */

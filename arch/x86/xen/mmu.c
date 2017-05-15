@@ -2327,6 +2327,7 @@ static void xen_set_fixmap(unsigned idx, phys_addr_t phys, pgprot_t prot)
 	case FIX_KMAP_BEGIN ... FIX_KMAP_END:
 # endif
 #elif defined(CONFIG_X86_VSYSCALL_EMULATION)
+	case PVCLOCK_FIXMAP_BEGIN ... PVCLOCK_FIXMAP_END:
 	case VSYSCALL_PAGE:
 #endif
 	case FIX_TEXT_POKE0:
@@ -2368,7 +2369,8 @@ static void xen_set_fixmap(unsigned idx, phys_addr_t phys, pgprot_t prot)
 #ifdef CONFIG_X86_VSYSCALL_EMULATION
 	/* Replicate changes to map the vsyscall page into the user
 	   pagetable vsyscall mapping. */
-	if (idx == VSYSCALL_PAGE) {
+	if (idx == VSYSCALL_PAGE ||
+	    (idx >= PVCLOCK_FIXMAP_BEGIN && idx <= PVCLOCK_FIXMAP_END)) {
 		unsigned long vaddr = __fix_to_virt(idx);
 		set_pte_vaddr_pud(level3_user_vsyscall, vaddr, pte);
 	}
