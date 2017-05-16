@@ -79,7 +79,7 @@ void dtrace_fbt_init(fbt_add_probe_fn fbt_add_probe)
 	kallsyms_iter_reset(&sym, 0);
 	while (kallsyms_iter_update(&sym, pos++)) {
 		asm_instr_t	*addr, *end;
-		int		state = 0;
+		int		state = 0, insc = 0;
 		void		*fbtp = NULL;
 
 		/*
@@ -147,11 +147,13 @@ void dtrace_fbt_init(fbt_add_probe_fn fbt_add_probe)
 		while (addr < end) {
 			struct insn	insn;
 
+			insc++;
+
 			switch (state) {
 			case 0:	/* start of function */
 				if (*addr == FBT_PUSHL_EBP)
 					state = 1;
-				else
+				else if (insc > 2)
 					state = 2;
 				break;
 			case 1:	/* push %rbp seen */
