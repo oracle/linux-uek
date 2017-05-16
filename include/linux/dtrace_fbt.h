@@ -26,7 +26,7 @@ extern unsigned long dtrace_fbt_nfuncs __attribute__((weak));
 #define FBT_RETURN	1
 
 typedef void *(*fbt_add_probe_fn)(struct module *, char *, int, int,
-				  asm_instr_t *, void *);
+				  asm_instr_t *, uintptr_t, void *);
 extern void dtrace_fbt_init(fbt_add_probe_fn);
 
 #endif /* _LINUX_DTRACE_FBT_H */
