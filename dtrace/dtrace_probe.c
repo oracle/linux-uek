@@ -678,8 +678,11 @@ void dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 			if ((ecb->dte_cond & DTRACE_COND_USERMODE) &&
 			    prov->dtpv_pops.dtps_usermode(
 				prov->dtpv_arg, probe->dtpr_id, probe->dtpr_arg
-			    ) == 0)
+			    ) == 0) {
+				dt_dbg_probe("Probe (ID %d EPID %d) Skipped\n",
+					     id, ecb->dte_epid);
 				continue;
+			}
 
 			/*
 			 * This is more subtle than it looks. We have to be
@@ -706,8 +709,12 @@ void dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 				    !uid_eq(s_cr->euid, cr->suid) ||
 				    !gid_eq(s_cr->egid, cr->egid) ||
 				    !gid_eq(s_cr->egid, cr->gid) ||
-				    !gid_eq(s_cr->egid, cr->sgid))
+				    !gid_eq(s_cr->egid, cr->sgid)) {
+					dt_dbg_probe("Probe (ID %d EPID %d) "
+						     "Skipped\n",
+						     id, ecb->dte_epid);
 					continue;
+				}
 			}
 		}
 
@@ -733,14 +740,19 @@ void dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 				} while (cmpxchg(activity, curr,
 					 DTRACE_ACTIVITY_KILLED) != curr);
 
+				dt_dbg_probe("Probe (ID %d EPID %d) Skipped\n",
+					     id, ecb->dte_epid);
 				continue;
 			}
 		}
 
 		if ((offs = dtrace_buffer_reserve(buf, ecb->dte_needed,
 						  ecb->dte_alignment, state,
-						  &mstate)) < 0)
+						  &mstate)) < 0) {
+			dt_dbg_probe("Probe (ID %d EPID %d) Skipped\n",
+				     id, ecb->dte_epid);
 			continue;
+		}
 
 		tomax = buf->dtb_tomax;
 		ASSERT(tomax != NULL);
@@ -783,6 +795,8 @@ void dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 
 				dt_dbg_probe("  Predicate not met (%d)\n",
 					     rval);
+				dt_dbg_probe("Probe (ID %d EPID %d) Done\n",
+					     id, ecb->dte_epid);
 				continue;
 			}
 
