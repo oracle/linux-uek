@@ -154,7 +154,8 @@ void dtrace_fbt_init(fbt_add_probe_fn fbt_add_probe)
 				if (*addr == FBT_PUSHL_EBP) {
 					fbt_add_probe(
 						dtrace_kmod, sym.name,
-						FBT_ENTRY, *addr, addr, NULL);
+						FBT_ENTRY, *addr, addr, 0,
+						NULL);
 					state = 1;
 				} else if (insc > 2)
 					state = 2;
@@ -163,9 +164,13 @@ void dtrace_fbt_init(fbt_add_probe_fn fbt_add_probe)
 				if (*addr == FBT_RET &&
 				    (*(addr + 1) == FBT_PUSHL_EBP ||
 				     *(addr + 1) == FBT_NOP)) {
+					uintptr_t	off;
+
+					off = addr - (asm_instr_t *)sym.value;
 					fbt_add_probe(
 						dtrace_kmod, sym.name,
-						FBT_RETURN, *addr, addr, fbtp);
+						FBT_RETURN, *addr, addr, off,
+						fbtp);
 					state = 2;
 				}
 				break;

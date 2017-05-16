@@ -280,7 +280,7 @@ void dtrace_fbt_init(fbt_add_probe_fn fbt_add_probe)
 				continue;
 
 			fbt_add_probe(dtrace_kmod, sym.name, FBT_ENTRY, 32,
-				      addr + 1, NULL);
+				      addr + 1, 0, NULL);
 		} else
 			continue;
 	}
