@@ -292,22 +292,20 @@ static dma_addr_t dma_4v_map_page_bypass(struct device *dev, struct page *page,
 	unsigned long prot;
 	unsigned long dma_addr;
 
-	BUG_ON(!dev);
-	pbm = dev->archdata.host_controller;
-	BUG_ON(!pbm);
-	devhandle = pbm->devhandle;
-
 	if (unlikely(direction == DMA_NONE))
 		goto bad;
 
 	prot = HV_PCI_MAP_ATTR_READ;
-
 	if (direction != DMA_TO_DEVICE)
 		prot |= HV_PCI_MAP_ATTR_WRITE;
 
+	/* VPCI maj=2, min=[0,1] or greater supports relax ordering */
+	if (dma_get_attr(DMA_ATTR_WEAK_ORDERING, attrs) && vpci_major >= 2)
+		prot |= HV_PCI_MAP_ATTR_RELAXED_ORDER;
 
+	pbm = dev->archdata.host_controller;
+	devhandle = pbm->devhandle;
 	ra = __pa(page_address(page) + offset);
-
 	if (pci_sun4v_iommu_getbypass(devhandle, ra, prot, &dma_addr))
 		goto bad;
 
@@ -426,21 +424,21 @@ static int dma_4v_map_sg_bypass(struct device *dev, struct scatterlist *sglist,
 	struct scatterlist *s;
 	int i;
 
-	BUG_ON(!dev);
-	pbm = dev->archdata.host_controller;
-	BUG_ON(!pbm);
-	devhandle = pbm->devhandle;
-
 	if (unlikely(direction == DMA_NONE))
 		goto bad;
 
 	prot = HV_PCI_MAP_ATTR_READ;
-
 	if (direction != DMA_TO_DEVICE)
 		prot |= HV_PCI_MAP_ATTR_WRITE;
 
+	/* VPCI maj=2, min=[0,1] or greater supports relax ordering */
+	if (dma_get_attr(DMA_ATTR_WEAK_ORDERING, attrs) && vpci_major >= 2)
+		prot |= HV_PCI_MAP_ATTR_RELAXED_ORDER;
+
+	pbm = dev->archdata.host_controller;
+	devhandle = pbm->devhandle;
 	for_each_sg(sglist, s, nelems, i) {
-		ra = (unsigned long) SG_ENT_PHYS_ADDRESS(s);
+		ra = (unsigned long)SG_ENT_PHYS_ADDRESS(s);
 		if (pci_sun4v_iommu_getbypass(devhandle, ra, prot, &dma_addr))
 			goto bad;
 		s->dma_address = dma_addr;
