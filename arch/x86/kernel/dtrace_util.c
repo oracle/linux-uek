@@ -263,22 +263,22 @@ EXPORT_SYMBOL(dtrace_invop_remove);
  * Enable an INVOP-based probe, i.e. ensure that an INVOP trap is triggered at
  * the specified address.
  */
-void dtrace_invop_enable(uint8_t *addr)
+void dtrace_invop_enable(asm_instr_t *addr, asm_instr_t opcode)
 {
-	text_poke(addr, ((unsigned char []){INVOP_TRAP_INSTR}), 1);
+	text_poke(addr, ((unsigned char []){opcode}), 1);
 }
 EXPORT_SYMBOL(dtrace_invop_enable);
 
 /*
  * Disable an INVOP-based probe.
  */
-void dtrace_invop_disable(uint8_t *addr, uint8_t opcode)
+void dtrace_invop_disable(asm_instr_t *addr, asm_instr_t opcode)
 {
 	text_poke(addr, ((unsigned char []){opcode}), 1);
 }
 EXPORT_SYMBOL(dtrace_invop_disable);
 
-static inline dtrace_bad_address(void *addr)
+static inline int dtrace_bad_address(void *addr)
 {
 	unsigned long	dummy;
 
