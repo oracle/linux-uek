@@ -2378,11 +2378,7 @@ static void dtrace_dif_subr(uint_t subr, uint_t rd, uint64_t *regs,
 	volatile uint16_t	*flags = &this_cpu_core->cpuc_dtrace_flags;
 	volatile uintptr_t	*illval = &this_cpu_core->cpuc_dtrace_illval;
 	dtrace_vstate_t		*vstate = &state->dts_vstate;
-
-	union {
-		struct mutex mi;
-		uint64_t mx;
-	} m;
+	struct mutex		mtx;
 
 	union {
 		rwlock_t ri;
@@ -2399,25 +2395,30 @@ static void dtrace_dif_subr(uint_t subr, uint_t rd, uint64_t *regs,
 
 	case DIF_SUBR_MUTEX_OWNED:
 		if (!dtrace_canload(tupregs[0].dttk_value,
-				    sizeof(struct mutex), mstate, vstate)) {
-			regs[rd] = 0;
+				    sizeof(struct mutex), mstate, vstate))
 			break;
-		}
 
-		m.mx = dtrace_load64(tupregs[0].dttk_value);
-		regs[rd] = mutex_owned(&m.mi);
+		dtrace_bcopy((const void *)(uintptr_t)tupregs[0].dttk_value,
+			     &mtx, sizeof(struct mutex));
+		if (*flags & CPU_DTRACE_FAULT)
+			break;
+
+		regs[rd] = mutex_owned(&mtx);
 		break;
 
 	case DIF_SUBR_MUTEX_OWNER:
+		regs[rd] = 0;
 		if (!dtrace_canload(tupregs[0].dttk_value,
-				    sizeof(struct mutex), mstate, vstate)) {
-			regs[rd] = 0;
+				    sizeof(struct mutex), mstate, vstate))
 			break;
-		}
 
-		m.mx = dtrace_load64(tupregs[0].dttk_value);
+		dtrace_bcopy((const void *)(uintptr_t)tupregs[0].dttk_value,
+			     &mtx, sizeof(struct mutex));
+		if (*flags & CPU_DTRACE_FAULT)
+			break;
+
 #ifdef CONFIG_SMP
-		regs[rd] = (uintptr_t)__mutex_owner(&m.mi);
+		regs[rd] = (uintptr_t)__mutex_owner(&mtx);
 #else
 		regs[rd] = 0;
 #endif
@@ -2430,7 +2431,6 @@ static void dtrace_dif_subr(uint_t subr, uint_t rd, uint64_t *regs,
 			break;
 		}
 
-		m.mx = dtrace_load64(tupregs[0].dttk_value);
 		/*
 		 * On Linux, all mutexes are adaptive.
 		 */
@@ -2444,7 +2444,6 @@ static void dtrace_dif_subr(uint_t subr, uint_t rd, uint64_t *regs,
 			break;
 		}
 
-		m.mx = dtrace_load64(tupregs[0].dttk_value);
 		/*
 		 * On Linux, all mutexes are adaptive.
 		 */
@@ -4050,7 +4049,7 @@ uint64_t dtrace_dif_emulate(dtrace_difo_t *difo, dtrace_mstate_t *mstate,
 		r2 = DIF_INSTR_R2(instr);
 		rd = DIF_INSTR_RD(instr);
 
-		dt_dbg_dif("      Executing opcode %d (%d, %d, %d)\n",
+		dt_dbg_dif("      Executing opcode %02x (%02x, %02x, %02x)\n",
 			   DIF_INSTR_OP(instr), r1, r2, rd);
 
 		switch (DIF_INSTR_OP(instr)) {
