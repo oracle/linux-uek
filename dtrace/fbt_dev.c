@@ -43,7 +43,8 @@ int			fbt_probetab_size = FBT_PROBETAB_SIZE;
 int			fbt_probetab_mask;
 
 static void *fbt_provide_probe(struct module *mp, char *func, int type, int
-			       stype, asm_instr_t *addr, void *pfbt)
+			       stype, asm_instr_t *addr, uintptr_t off,
+			       void *pfbt)
 {
 	fbt_probe_t	*fbp;
 	fbt_probe_t	*prev;
@@ -57,6 +58,7 @@ static void *fbt_provide_probe(struct module *mp, char *func, int type, int
 		fbp->fbp_module = mp;
 		fbp->fbp_loadcnt = 1; /* FIXME */
 		fbp->fbp_primary = 1; /* FIXME */
+		fbp->fbp_roffset = off;
 		fbp->fbp_patchpoint = addr;
 		fbt_provide_probe_arch(fbp, type, stype);
                 fbp->fbp_hashnext = fbt_probetab[FBT_ADDR2NDX(addr)];
@@ -83,6 +85,7 @@ static void *fbt_provide_probe(struct module *mp, char *func, int type, int
 		fbp->fbp_module = mp;
 		fbp->fbp_loadcnt = 1; /* FIXME */
 		fbp->fbp_primary = 1; /* FIXME */
+		fbp->fbp_roffset = off;
 		fbp->fbp_patchpoint = addr;
 		fbt_provide_probe_arch(fbp, type, stype);
                 fbp->fbp_hashnext = fbt_probetab[FBT_ADDR2NDX(addr)];
