@@ -41,9 +41,13 @@ static uint8_t fbt_invop(struct pt_regs *regs)
 	for (; fbp != NULL; fbp = fbp->fbp_hashnext) {
 		if ((uintptr_t)fbp->fbp_patchpoint == regs->ip) {
 			this_cpu_core->cpu_dtrace_regs = regs;
-
-			dtrace_probe(fbp->fbp_id, regs->di, regs->si,
-				     regs->dx, regs->cx, regs->r8);
+			if (fbp->fbp_roffset == 0) {
+				dtrace_probe(fbp->fbp_id, regs->di, regs->si,
+					     regs->dx, regs->cx, regs->r8);
+			} else {
+				dtrace_probe(fbp->fbp_id, fbp->fbp_roffset,
+					     regs->ax, 0, 0, 0);
+			}
 
 			this_cpu_core->cpu_dtrace_regs = NULL;
 
@@ -58,7 +62,7 @@ void fbt_provide_probe_arch(fbt_probe_t *fbp, int type, int stype)
 {
 	fbp->fbp_patchval = FBT_PATCHVAL;
 	fbp->fbp_savedval = *fbp->fbp_patchpoint;
-	fbp->fbp_rval = type == FBT_ENTRY ? DTRACE_INVOP_MOV_RSP_RBP
+	fbp->fbp_rval = type == FBT_ENTRY ? DTRACE_INVOP_PUSH_BP
 					  : DTRACE_INVOP_RET;
 }
 
