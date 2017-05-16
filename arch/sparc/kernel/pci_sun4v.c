@@ -31,6 +31,12 @@
 #define DRIVER_NAME	"pci_sun4v"
 #define PFX		DRIVER_NAME ": "
 
+/* check if Infiniband device */
+#define IS_IB_DEVICE(pdev) ( \
+	(pdev->class >> 8) == PCI_CLASS_SERIAL_INFINIBAND || \
+	(pdev->class >> 8) == PCI_CLASS_NETWORK_INFINIBAND)
+
+
 static unsigned long vpci_major;
 static unsigned long vpci_minor;
 
@@ -320,6 +326,7 @@ static dma_addr_t dma_4v_map_page(struct device *dev, struct page *page,
 				  enum dma_data_direction direction,
 				  struct dma_attrs *attrs)
 {
+	struct pci_dev *pdev = to_pci_dev(dev);
 	struct iommu *iommu;
 	unsigned long flags, npages, oaddr;
 	unsigned long i, base_paddr;
@@ -327,8 +334,9 @@ static dma_addr_t dma_4v_map_page(struct device *dev, struct page *page,
 	unsigned long prot;
 	long entry;
 
-	return dma_4v_map_page_bypass(dev, page, offset, sz,
-					      direction, attrs);
+	if (IS_IB_DEVICE(pdev))
+		return dma_4v_map_page_bypass(dev, page, offset, sz,
+						direction, attrs);
 
 	iommu = dev->archdata.iommu;
 
@@ -386,13 +394,15 @@ static void dma_4v_unmap_page(struct device *dev, dma_addr_t bus_addr,
 			      struct dma_attrs *attrs)
 {
 	struct pci_pbm_info *pbm;
+	struct pci_dev *pdev = to_pci_dev(dev);
 	struct iommu *iommu;
 	unsigned long npages;
 	long entry;
 	u32 devhandle;
 
-	/* no need to un-map bypass dma address */
-	return;
+	/* IB uses bypass, no need to un-map bypass dma address */
+	if (IS_IB_DEVICE(pdev))
+		return;
 
 	if (unlikely(direction == DMA_NONE)) {
 		if (printk_ratelimit())
@@ -455,6 +465,7 @@ static int dma_4v_map_sg(struct device *dev, struct scatterlist *sglist,
 			 int nelems, enum dma_data_direction direction,
 			 struct dma_attrs *attrs)
 {
+	struct pci_dev *pdev = to_pci_dev(dev);
 	struct scatterlist *s, *outs, *segstart;
 	unsigned long flags, handle, prot;
 	dma_addr_t dma_next = 0, dma_addr;
@@ -465,7 +476,8 @@ static int dma_4v_map_sg(struct device *dev, struct scatterlist *sglist,
 	unsigned long base_shift;
 	long err;
 
-	return dma_4v_map_sg_bypass(dev, sglist, nelems,
+	if (IS_IB_DEVICE(pdev))
+		return dma_4v_map_sg_bypass(dev, sglist, nelems,
 					    direction, attrs);
 
 	BUG_ON(direction == DMA_NONE);
@@ -606,13 +618,15 @@ static void dma_4v_unmap_sg(struct device *dev, struct scatterlist *sglist,
 			    struct dma_attrs *attrs)
 {
 	struct pci_pbm_info *pbm;
+	struct pci_dev *pdev = to_pci_dev(dev);
 	struct scatterlist *sg;
 	struct iommu *iommu;
 	unsigned long flags, entry;
 	u32 devhandle;
 
-	/* no need to un-map bypass dma address */
-	return;
+	/* IB uses bypass, no need to un-map bypass dma address */
+	if (IS_IB_DEVICE(pdev))
+		return;
 
 	BUG_ON(direction == DMA_NONE);
 
