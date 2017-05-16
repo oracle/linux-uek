@@ -80,7 +80,6 @@ void dtrace_fbt_init(fbt_add_probe_fn fbt_add_probe)
 	while (kallsyms_iter_update(&sym, pos++)) {
 		asm_instr_t	*addr, *end;
 		int		state = 0, insc = 0;
-		void		*efbp = NULL;
 		void		*fbtp = NULL;
 
 		/*
@@ -162,17 +161,14 @@ void dtrace_fbt_init(fbt_add_probe_fn fbt_add_probe)
 					state = 2;
 				break;
 			case 1: /* look for ret */
-				if (*addr == FBT_RET &&
-				    (*(addr + 1) == FBT_PUSHL_EBP ||
-				     *(addr + 1) == FBT_NOP)) {
+				if (*addr == FBT_RET) {
 					uintptr_t	off;
 
 					off = addr - (asm_instr_t *)sym.value;
-					fbt_add_probe(
+					fbtp = fbt_add_probe(
 						dtrace_kmod, sym.name,
 						FBT_RETURN, *addr, addr, off,
 						fbtp);
-					state = 2;
 				}
 				break;
 			}
