@@ -32,7 +32,8 @@
 #include "dtrace_dev.h"
 #include "fbt_impl.h"
 
-#define FBT_PATCHVAL		0xf0
+#define FBT_ENTRY_PATCHVAL		0xf0
+#define FBT_RETURN_PATCHVAL		0xcc
 
 static uint8_t fbt_invop(struct pt_regs *regs)
 {
@@ -60,7 +61,8 @@ static uint8_t fbt_invop(struct pt_regs *regs)
 
 void fbt_provide_probe_arch(fbt_probe_t *fbp, int type, int stype)
 {
-	fbp->fbp_patchval = FBT_PATCHVAL;
+	fbp->fbp_patchval = type == FBT_ENTRY ? FBT_ENTRY_PATCHVAL
+					      : FBT_RETURN_PATCHVAL;
 	fbp->fbp_savedval = *fbp->fbp_patchpoint;
 	fbp->fbp_rval = type == FBT_ENTRY ? DTRACE_INVOP_PUSH_BP
 					  : DTRACE_INVOP_RET;
@@ -68,13 +70,12 @@ void fbt_provide_probe_arch(fbt_probe_t *fbp, int type, int stype)
 
 void fbt_enable_arch(fbt_probe_t *fbp, dtrace_id_t id, void *arg)
 {
-	dtrace_invop_enable((uint8_t *)fbp->fbp_patchpoint);
+	dtrace_invop_enable(fbp->fbp_patchpoint, fbp->fbp_patchval);
 }
 
 void fbt_disable_arch(fbt_probe_t *fbp, dtrace_id_t id, void *arg)
 {
-	dtrace_invop_disable((uint8_t *)fbp->fbp_patchpoint,
-			     fbp->fbp_savedval);
+	dtrace_invop_disable(fbp->fbp_patchpoint, fbp->fbp_savedval);
 }
 
 int fbt_dev_init_arch(void)

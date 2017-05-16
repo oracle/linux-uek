@@ -69,13 +69,12 @@ void sdt_provide_probe_arch(sdt_probe_t *sdp, struct module *mp, int idx)
 
 void sdt_enable_arch(sdt_probe_t *sdp, dtrace_id_t id, void *arg)
 {
-	dtrace_invop_enable((uint8_t *)sdp->sdp_patchpoint);
+	dtrace_invop_enable(sdp->sdp_patchpoint, sdp->sdp_patchval);
 }
 
 void sdt_disable_arch(sdt_probe_t *sdp, dtrace_id_t id, void *arg)
 {
-	dtrace_invop_disable((uint8_t *)sdp->sdp_patchpoint,
-			     sdp->sdp_savedval);
+	dtrace_invop_disable(sdp->sdp_patchpoint, sdp->sdp_savedval);
 }
 
 uint64_t sdt_getarg(void *arg, dtrace_id_t id, void *parg, int argno,
