@@ -151,33 +151,27 @@ void dtrace_fbt_init(fbt_add_probe_fn fbt_add_probe)
 
 			switch (state) {
 			case 0:	/* start of function */
-				if (*addr == FBT_PUSHL_EBP)
-					state = 1;
-				else if (insc > 2)
-					state = 2;
-				break;
-			case 1:	/* push %rbp seen */
-				if (*addr == FBT_MOV_RSP_RBP_1 &&
-				    *(addr + 1) == FBT_MOV_RSP_RBP_2 &&
-				    *(addr + 2) == FBT_MOV_RSP_RBP_3)
+				if (*addr == FBT_PUSHL_EBP) {
 					fbt_add_probe(
 						dtrace_kmod, sym.name,
 						FBT_ENTRY, *addr, addr, NULL);
-				state = 2;
+					state = 1;
+				} else if (insc > 2)
+					state = 2;
 				break;
-			case 2: /* look for ret */
+			case 1: /* look for ret */
 				if (*addr == FBT_RET &&
 				    (*(addr + 1) == FBT_PUSHL_EBP ||
 				     *(addr + 1) == FBT_NOP)) {
 					fbt_add_probe(
 						dtrace_kmod, sym.name,
 						FBT_RETURN, *addr, addr, fbtp);
-					state = 3;
+					state = 2;
 				}
 				break;
 			}
 
-			if (state == 3)
+			if (state == 2)
 				break;
 
 			kernel_insn_init(&insn, addr, MAX_INSN_SIZE);
