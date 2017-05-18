@@ -1083,11 +1083,9 @@ END(\sym)
 
 #ifdef CONFIG_DTRACE
 ENTRY(dtrace_error_exit)
-	DEFAULT_FRAME
 	RESTORE_EXTRA_REGS
 	DISABLE_INTERRUPTS(CLBR_NONE)
 	TRACE_IRQS_OFF
-	GET_THREAD_INFO(%rcx)
 
 #ifdef CONFIG_PREEMPT
 	/* Interrupts are off */
@@ -1215,8 +1213,6 @@ dtrace_emu_ret:
 	popq %rax			/* pop off temp */
 
 	INTERRUPT_RETURN
-
-	CFI_ENDPROC
 
 END(dtrace_error_exit)
 
