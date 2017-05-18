@@ -644,8 +644,6 @@ static const struct net_device_ops qede_netdev_vf_ops = {
 	.ndo_vlan_rx_kill_vid = qede_vlan_rx_kill_vid,
 	.ndo_set_features = qede_set_features,
 	.ndo_get_stats64 = qede_get_stats64,
-	.ndo_udp_tunnel_add = qede_udp_tunnel_add,
-	.ndo_udp_tunnel_del = qede_udp_tunnel_del,
 	.ndo_features_check = qede_features_check,
 };
 
