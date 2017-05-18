@@ -325,7 +325,7 @@ int dtrace_user_addr_is_exec(uintptr_t addr)
 	pmd = pmd_offset(pud, addr);
 	if (dtrace_bad_address(pmd))
 		goto out;
-	if (pmd_none(*pmd) || pmd_trans_splitting(*pmd))
+	if (pmd_none(*pmd))
 		goto out;
 	if (unlikely(pmd_large(*pmd) || !pmd_present(*pmd))) {
 		pte = (pte_t *)pmd;
