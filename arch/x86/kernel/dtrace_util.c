@@ -356,10 +356,8 @@ EXPORT_SYMBOL(dtrace_user_addr_is_exec);
 
 void dtrace_user_stacktrace(stacktrace_state_t *st)
 {
-	struct thread_info	*t = current_thread_info();
 	struct pt_regs		*regs = current_pt_regs();
 	uint64_t		*pcs = st->pcs;
-	uint64_t		*fps = st->fps;
 	int			limit = st->limit;
 	unsigned long		*bos;
 	unsigned long		*sp = (unsigned long *)user_stack_pointer(regs);

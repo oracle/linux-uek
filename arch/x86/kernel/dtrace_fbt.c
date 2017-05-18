@@ -80,7 +80,6 @@ void dtrace_fbt_init(fbt_add_probe_fn fbt_add_probe)
 	while (kallsyms_iter_update(&sym, pos++)) {
 		asm_instr_t	*addr, *end;
 		int		state = 0;
-		void    	*efbp = NULL;
 		void		*fbtp = NULL;
 
 		/*
