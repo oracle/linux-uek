@@ -104,7 +104,7 @@ int dtrace_user_addr_is_exec(uintptr_t addr)
 		goto out;
 
 	pmd = *pmd_offset(&pud, addr);
-	if (pmd_none(pmd) || pmd_trans_splitting(pmd))
+	if (pmd_none(pmd))
 		goto out;
 	if (unlikely(pmd_large(pmd))) {
 		/* not sure how to do this */
