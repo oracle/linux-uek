@@ -135,6 +135,9 @@ config NEED_PER_CPU_EMBED_FIRST_CHUNK
 config NEED_PER_CPU_PAGE_FIRST_CHUNK
 	def_bool y if SPARC64
 
+config ARCH_HAS_CACHE_LINE_SIZE
+	def_bool y if SPARC64
+
 config MMU
 	bool
 	default y

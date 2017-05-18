@@ -12,6 +12,11 @@
 #define L1_CACHE_SHIFT 5
 #define L1_CACHE_BYTES 32
 
+#ifdef CONFIG_ARCH_HAS_CACHE_LINE_SIZE
+#define cache_line_size() max(local_cpu_data().l3_cache_line_size, \
+		              local_cpu_data().ecache_line_size)
+#endif
+
 #ifdef CONFIG_SPARC32
 #define SMP_CACHE_BYTES_SHIFT 5
 #else
