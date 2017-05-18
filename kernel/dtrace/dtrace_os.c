@@ -84,7 +84,7 @@ void dtrace_os_init(void)
 	else
 		dtrace_kmod->pdata = NULL;
 
-	dtrace_kmod->core_size = DTRACE_PD_MAXSIZE_KERNEL;
+	dtrace_kmod->core_layout.size = DTRACE_PD_MAXSIZE_KERNEL;
 	dtrace_kmod->num_ftrace_callsites = dtrace_fbt_nfuncs;
 	dtrace_kmod->state = MODULE_STATE_LIVE;
 	atomic_inc(&dtrace_kmod->refcnt);
