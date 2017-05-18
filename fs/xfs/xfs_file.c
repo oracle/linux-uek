@@ -1188,7 +1188,7 @@ xfs_find_get_desired_pgoff(
 
 	index = startoff >> PAGE_CACHE_SHIFT;
 	endoff = XFS_FSB_TO_B(mp, map->br_startoff + map->br_blockcount);
-	end = endoff >> PAGE_CACHE_SHIFT;
+	end = (endoff - 1) >> PAGE_CACHE_SHIFT;
 	do {
 		int		want;
 		unsigned	nr_pages;
