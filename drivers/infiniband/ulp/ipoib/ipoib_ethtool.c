@@ -164,7 +164,57 @@ static int ipoib_get_sset_count(struct net_device __always_unused *dev,
 	return -EOPNOTSUPP;
 }
 
+/* Return lane speed in unit of 1e6 bit/sec */
+static inline int ib_speed_enum_to_int(int speed)
+{
+	switch (speed) {
+	case IB_SPEED_SDR:
+		return SPEED_2500;
+	case IB_SPEED_DDR:
+		return SPEED_5000;
+	case IB_SPEED_QDR:
+	case IB_SPEED_FDR10:
+		return SPEED_10000;
+	case IB_SPEED_FDR:
+		return SPEED_14000;
+	case IB_SPEED_EDR:
+		return SPEED_25000;
+	}
+
+	return SPEED_UNKNOWN;
+}
+
+static int ipoib_get_settings(struct net_device *netdev,
+			      struct ethtool_cmd *ecmd)
+{
+	struct ipoib_dev_priv *priv = netdev_priv(netdev);
+	struct ib_port_attr attr;
+	int ret, speed, width;
+
+	if (!netif_carrier_ok(netdev)) {
+		ethtool_cmd_speed_set(ecmd, SPEED_UNKNOWN);
+		ecmd->duplex = DUPLEX_UNKNOWN;
+		return 0;
+	}
+
+	ret = ib_query_port(priv->ca, priv->port, &attr);
+	if (ret < 0)
+		return -EINVAL;
+
+	speed = ib_speed_enum_to_int(attr.active_speed);
+	width = ib_width_enum_to_int(attr.active_width);
+
+	if (speed < 0 || width < 0)
+		return -EINVAL;
+
+	ethtool_cmd_speed_set(ecmd, speed * width);
+	ecmd->duplex = DUPLEX_FULL;
+
+	return 0;
+}
+
 static const struct ethtool_ops ipoib_ethtool_ops = {
+	.get_settings		= ipoib_get_settings,
 	.get_drvinfo		= ipoib_get_drvinfo,
 	.get_coalesce		= ipoib_get_coalesce,
 	.set_coalesce		= ipoib_set_coalesce,
