@@ -6249,8 +6249,6 @@ static int pqi_ctrl_init(struct pqi_ctrl_info *ctrl_info)
 	return 0;
 }
 
-#if defined(CONFIG_PM)
-
 static void pqi_reinit_queues(struct pqi_ctrl_info *ctrl_info)
 {
 	unsigned int i;
@@ -6356,8 +6354,6 @@ static int pqi_ctrl_init_resume(struct pqi_ctrl_info *ctrl_info)
 
 	return 0;
 }
-
-#endif /* CONFIG_PM */
 
 static inline int pqi_set_pcie_completion_timeout(struct pci_dev *pci_dev,
 	u16 timeout)
@@ -6734,9 +6730,7 @@ static void pqi_process_module_params(void)
 	pqi_process_lockup_action_param();
 }
 
-#if defined(CONFIG_PM)
-
-static int pqi_suspend(struct pci_dev *pci_dev, pm_message_t state)
+static __maybe_unused int pqi_suspend(struct pci_dev *pci_dev, pm_message_t state)
 {
 	struct pqi_ctrl_info *ctrl_info;
 
@@ -6766,7 +6760,7 @@ static int pqi_suspend(struct pci_dev *pci_dev, pm_message_t state)
 	return 0;
 }
 
-static int pqi_resume(struct pci_dev *pci_dev)
+static __maybe_unused int pqi_resume(struct pci_dev *pci_dev)
 {
 	int rc;
 	struct pqi_ctrl_info *ctrl_info;
@@ -6796,8 +6790,6 @@ static int pqi_resume(struct pci_dev *pci_dev)
 
 	return pqi_ctrl_init_resume(ctrl_info);
 }
-
-#endif /* CONFIG_PM */
 
 /* Define the PCI IDs for the controllers that we support. */
 static const struct pci_device_id pqi_pci_id_table[] = {
