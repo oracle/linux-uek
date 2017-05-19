@@ -197,9 +197,7 @@ int dax_map_segment_common(u32 *ccb_addr_type, enum dax_at at,
 			dax_dbg("virtp=0x%lx backed by huge page. No need to lock",
 				virtp);
 		} else {
-			down_read(&current->mm->mmap_sem);
 			ret = get_user_pages_fast(virtp, 1, 1, &page);
-			up_read(&current->mm->mmap_sem);
 
 			if (ret == 1) {
 				dax_ctx->pages[at][idx] = page;
