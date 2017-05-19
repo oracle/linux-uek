@@ -1398,7 +1398,7 @@ static int resp_inquiry(struct scsi_cmnd *scp, struct sdebug_dev_info *devip)
 	arr[4] = SDEBUG_LONG_INQ_SZ - 5;
 	arr[5] = scsi_debug_dif ? 1 : 0; /* PROTECT bit */
 	if (0 == scsi_debug_vpd_use_hostno)
-		arr[5] = 0x10; /* claim: implicit TGPS */
+		arr[5] |= 0x10; /* claim: implicit TPGS */
 	arr[6] = 0x10; /* claim: MultiP */
 	/* arr[6] |= 0x40; ... claim: EncServ (enclosure services) */
 	arr[7] = 0xa; /* claim: LINKED + CMDQUE */
