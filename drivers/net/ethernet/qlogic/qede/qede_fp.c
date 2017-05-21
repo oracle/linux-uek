@@ -98,7 +98,7 @@ int qede_alloc_rx_buffer(struct qede_rx_queue *rxq, bool allow_lazy)
 /* Unmap the data and free skb */
 int qede_free_tx_pkt(struct qede_dev *edev, struct qede_tx_queue *txq, int *len)
 {
-	u16 idx = txq->sw_tx_cons & NUM_TX_BDS_MAX;
+	u16 idx = txq->sw_tx_cons;
 	struct sk_buff *skb = txq->sw_tx_ring[idx].skb;
 	struct eth_tx_1st_bd *first_bd;
 	struct eth_tx_bd *tx_data_bd;
@@ -155,7 +155,7 @@ static void qede_free_failed_tx_pkt(struct qede_tx_queue *txq,
 				    struct eth_tx_1st_bd *first_bd,
 				    int nbd, bool data_split)
 {
-	u16 idx = txq->sw_tx_prod & NUM_TX_BDS_MAX;
+	u16 idx = txq->sw_tx_prod;
 	struct sk_buff *skb = txq->sw_tx_ring[idx].skb;
 	struct eth_tx_bd *tx_data_bd;
 	int i, split_bd_len = 0;
@@ -366,7 +366,7 @@ static int qede_tx_int(struct qede_dev *edev, struct qede_tx_queue *txq)
 
 		bytes_compl += len;
 		pkts_compl++;
-		txq->sw_tx_cons++;
+		txq->sw_tx_cons = (txq->sw_tx_cons + 1) % txq->num_tx_buffers;
 		txq->xmit_pkts++;
 	}
 
@@ -1301,7 +1301,7 @@ netdev_tx_t qede_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 #endif
 
 	/* Fill the entry in the SW ring and the BDs in the FW ring */
-	idx = txq->sw_tx_prod & NUM_TX_BDS_MAX;
+	idx = txq->sw_tx_prod;
 	txq->sw_tx_ring[idx].skb = skb;
 	first_bd = (struct eth_tx_1st_bd *)
 		   qed_chain_produce(&txq->tx_pbl);
@@ -1485,7 +1485,7 @@ netdev_tx_t qede_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 	/* Advance packet producer only before sending the packet since mapping
 	 * of pages may fail.
 	 */
-	txq->sw_tx_prod++;
+	txq->sw_tx_prod = (txq->sw_tx_prod + 1) % txq->num_tx_buffers;
 
 	/* 'next page' entries are counted in the producer value */
 	txq->tx_db.data.bd_prod =

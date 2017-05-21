@@ -1351,7 +1351,7 @@ static int qede_alloc_mem_txq(struct qede_dev *edev, struct qede_tx_queue *txq)
 					    QED_CHAIN_USE_TO_CONSUME_PRODUCE,
 					    QED_CHAIN_MODE_PBL,
 					    QED_CHAIN_CNT_TYPE_U16,
-					    TX_RING_SIZE,
+					    txq->num_tx_buffers,
 					    sizeof(*p_virt), &txq->tx_pbl);
 	if (rc)
 		goto err;
