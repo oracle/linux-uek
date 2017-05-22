@@ -39,6 +39,7 @@
 #include <linux/vmalloc.h>
 #include <net/ipv6.h>
 #include <asm/byteorder.h>
+#include <asm/traps.h>
 
 #include <linux/mount.h>
 
@@ -1094,9 +1095,18 @@ void dtrace_difo_release(dtrace_difo_t *dp, dtrace_vstate_t *vstate)
  * no way for a global variable key signature to match a thread-local key
  * signature.
  */
+#ifdef CONFIG_X86_64
+# define DTRACE_IN_IRQ()						\
+	((this_cpu_core->cpu_dtrace_regs &&				\
+	  this_cpu_core->cpu_dtrace_regs->orig_ax == X86_TRAP_BP)	\
+		? (hardirq_count() - HARDIRQ_OFFSET)			\
+		: in_irq())
+#else
+# define DTRACE_IN_IRQ()	in_irq()
+#endif
 #define DTRACE_TLS_THRKEY(where)					\
 	{								\
-		uint_t	intr = in_irq() ? 1 : 0;			\
+		uint_t	intr = DTRACE_IN_IRQ() ? 1 : 0;			\
 									\
 		(where) = ((current->pid + DIF_VARIABLE_MAX) &		\
 			   (((uint64_t)1 << 63) - 1)) |			\

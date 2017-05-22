@@ -26,6 +26,7 @@
  */
 
 #include <linux/dtrace_fbt.h>
+#include <asm/traps.h>
 #include <asm/dtrace_util.h>
 
 #include "dtrace.h"
@@ -41,15 +42,32 @@ static uint8_t fbt_invop(struct pt_regs *regs)
 
 	for (; fbp != NULL; fbp = fbp->fbp_hashnext) {
 		if ((uintptr_t)fbp->fbp_patchpoint == regs->ip) {
+			unsigned long	orig_ax;
+
+			/*
+			 * We (ab)use regs->orig_ax to store the trapno since
+			 * int3 (used for return probes) causes HARDIRQ to be
+			 * incremented in the preempt_count, which messes with
+			 * the TLS thread key calculation.
+			 *
+			 * This is not pretty, but neither is the fact that
+			 * int3 cause handlers to think they are called from
+			 * within an interrupt.
+			 */
 			this_cpu_core->cpu_dtrace_regs = regs;
+			orig_ax = regs->orig_ax;
+
 			if (fbp->fbp_roffset == 0) {
+				regs->orig_ax = X86_TRAP_UD;
 				dtrace_probe(fbp->fbp_id, regs->di, regs->si,
 					     regs->dx, regs->cx, regs->r8);
 			} else {
+				regs->orig_ax = X86_TRAP_BP;
 				dtrace_probe(fbp->fbp_id, fbp->fbp_roffset,
 					     regs->ax, 0, 0, 0);
 			}
 
+			regs->orig_ax = orig_ax;
 			this_cpu_core->cpu_dtrace_regs = NULL;
 
 			return fbp->fbp_rval;
