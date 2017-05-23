@@ -38,6 +38,7 @@
 #include <linux/slab.h>
 #include <linux/vmalloc.h>
 #include <linux/moduleparam.h>
+#include <linux/sched.h>
 
 #include "ipoib.h"
 
@@ -1160,9 +1161,8 @@ static struct ib_qp *ipoib_cm_create_tx_qp(struct net_device *dev, struct ipoib_
 		.sq_sig_type		= IB_SIGNAL_ALL_WR,
 		.qp_type		= IB_QPT_RC,
 		.qp_context		= tx,
-		.create_flags		= IB_QP_CREATE_USE_GFP_NOIO
+		.create_flags		= 0
 	};
-
 	struct ib_qp *tx_qp;
 
 	if (dev->features & NETIF_F_SG)
@@ -1170,12 +1170,6 @@ static struct ib_qp *ipoib_cm_create_tx_qp(struct net_device *dev, struct ipoib_
 			min_t(u32, priv->max_sge, MAX_SKB_FRAGS + 1);
 
 	tx_qp = ib_create_qp(priv->pd, &attr);
-	if (PTR_ERR(tx_qp) == -EINVAL) {
-		ipoib_warn(priv, "can't use GFP_NOIO for QPs on device %s, using GFP_KERNEL\n",
-			   priv->ca->name);
-		attr.create_flags &= ~IB_QP_CREATE_USE_GFP_NOIO;
-		tx_qp = ib_create_qp(priv->pd, &attr);
-	}
 	tx->max_send_sge = attr.cap.max_send_sge;
 	return tx_qp;
 }
@@ -1253,10 +1247,11 @@ static int ipoib_cm_tx_init(struct ipoib_cm_tx *p, u32 qpn,
 			    struct ib_sa_path_rec *pathrec)
 {
 	struct ipoib_dev_priv *priv = netdev_priv(p->dev);
+	unsigned int noio_flag;
 	int ret;
 
-	p->tx_ring = __vmalloc(ipoib_cm_sendq_size * sizeof(*p->tx_ring),
-			       GFP_NOIO, PAGE_KERNEL);
+	noio_flag = memalloc_noio_save();
+	p->tx_ring = vzalloc(ipoib_sendq_size * sizeof(*p->tx_ring));
 	if (!p->tx_ring) {
 		ipoib_warn(priv, "failed to allocate tx ring\n");
 		ret = -ENOMEM;
@@ -1265,9 +1260,10 @@ static int ipoib_cm_tx_init(struct ipoib_cm_tx *p, u32 qpn,
 	memset(p->tx_ring, 0, ipoib_cm_sendq_size * sizeof(*p->tx_ring));
 
 	p->qp = ipoib_cm_create_tx_qp(p->dev, p);
+	memalloc_noio_restore(noio_flag);
 	if (IS_ERR(p->qp)) {
 		ret = PTR_ERR(p->qp);
-		ipoib_warn(priv, "failed to allocate tx qp: %d\n", ret);
+		ipoib_warn(priv, "failed to create tx qp: %d\n", ret);
 		goto err_qp;
 	}
 
