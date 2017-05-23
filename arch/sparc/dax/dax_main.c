@@ -779,7 +779,7 @@ static int dax_ioctl_ccb_exec(void *arg, struct file *f)
 
 	rv = dax_map_segment(dax_ctx, ccb_buf, usr_args.dce_ccb_buf_len);
 	if (rv != 0)
-		return rv;
+		return -EFAULT;
 
 	hv_rv = dax_ccb_hv_submit(dax_ctx, ccb_buf, usr_args.dce_ccb_buf_len,
 				  &usr_args);
