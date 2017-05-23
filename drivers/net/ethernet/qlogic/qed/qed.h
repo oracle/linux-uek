@@ -639,7 +639,6 @@ struct qed_dev {
 
 	int				pcie_width;
 	int				pcie_speed;
-	u8				ver_str[VER_SIZE];
 
 	/* Add MF related configuration */
 	u8				mcp_rev;
