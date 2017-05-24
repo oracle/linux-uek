@@ -181,8 +181,7 @@ static void init_builtin(const char *builtin_objects_file,
  * proceed to add or remove members from structures depending on which source
  * file they were included from.
  *
- * These modules still share types with the rest of the kernel, but types that
- * only they share with other modules will not be shared for that reason alone.
+ * These modules share no types whatsoever with the rest of the kernel.
  *
  * This is, of course, only used if deduplication is turned on.
  */
@@ -192,6 +191,12 @@ static GHashTable *dedup_blacklist;
  * Populate the deduplication blacklist from the dedup_blacklist file.
  */
 static void init_dedup_blacklist(const char *dedup_blacklist_file);
+
+/*
+ * See if the given module is blacklisted, and update state accordingly so that
+ * type IDs are appropriately augmented.
+ */
+static void dedup_blacklisted_module(const char *module_name);
 
 /*
  * The member blacklist bans fields with specific names in specifically named
@@ -288,6 +293,12 @@ static char *type_id(Dwarf_Die *die, die_override_t *overrides,
 				 const char *id,
 				 void *data),
 		     void *data) __attribute__((__warn_unused_result__));
+
+/*
+ * If non-NULL, a prefix attached to all type ID types.  This is used to ensure
+ * that types in blacklisted modules do not appear anywhere else.
+ */
+static char *blacklist_type_prefix;
 
 /*
  * Process a file, calling the dwarf_process function for every type found
@@ -1172,6 +1183,32 @@ static void init_dedup_blacklist(const char *dedup_blacklist_file)
 }
 
 /*
+ * See if the given module is blacklisted, and update state accordingly so that
+ * type IDs are appropriately augmented.
+ */
+static void dedup_blacklisted_module(const char *module_name)
+{
+	if (dedup_blacklist == NULL)
+		return;
+	if (g_hash_table_lookup_extended(dedup_blacklist, module_name,
+					 NULL, NULL)) {
+		/*
+		 * The prefix goes before the DWARF file pathname, so we pick
+		 * something that is not going to be a valid path on any POSIX
+		 * system.
+		 */
+		free(blacklist_type_prefix);
+		blacklist_type_prefix = NULL;
+		blacklist_type_prefix = str_appendn(blacklist_type_prefix,
+						    "/dev/null/@blacklisted: ",
+						    module_name, "@", NULL);
+	} else {
+		free(blacklist_type_prefix);
+		blacklist_type_prefix = NULL;
+	}
+}
+
+/*
  * Populate the member blacklist from the member_blacklist file.
  */
 static void init_member_blacklist(const char *member_blacklist_file,
@@ -1503,7 +1540,9 @@ static char *type_id(Dwarf_Die *die,
 	 *
 	 * Otherwise, note the location of this DIE, providing scoping
 	 * information for all types based upon this one.  Location elements are
-	 * separated by //, an element impossible in a Linux path.
+	 * separated by //, an element impossible in a Linux path.  The
+	 * blacklist type prefix (if set) follows this (which is a name which,
+	 * while not impossible in a Linux path, is very unlikely.)
 	 *
 	 * Array dimensions get none of this: they must be contained within
 	 * another DIE, so will always have a location attached via that DIE,
@@ -1535,7 +1574,11 @@ static char *type_id(Dwarf_Die *die,
 				snprintf(line_num, sizeof (line_num), "%i",
 					 decl_line_num);
 			}
-			id = str_appendn(id, fname, "//", line_num, "//", NULL);
+			if (!blacklist_type_prefix)
+				id = str_appendn(id, fname, "//", line_num, "//", NULL);
+			else
+				id = str_appendn(id, blacklist_type_prefix, "//", fname,
+						 "//", line_num, "//", NULL);
 		}
 	}
 
@@ -1801,6 +1844,12 @@ static void process_file(const char *file_name,
 		}
 
 
+		/*
+		 * This arranges to augment type IDs appropriately for
+		 * dedup-blacklisted modules for everything that uses
+		 * process_file().  We reset it at the end.
+		 */
+		dedup_blacklisted_module(module_name);
 		if (tu_init != NULL)
 			tu_init(module_name, file_name, tu_die, data);
 
@@ -1810,6 +1859,7 @@ static void process_file(const char *file_name,
 		if (tu_done != NULL)
 			tu_done(module_name, file_name, tu_die, data);
 	}
+	dedup_blacklisted_module("");
 
 	free(fn_module_name);
 	simple_dwfl_free(dwfl);
