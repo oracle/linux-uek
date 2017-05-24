@@ -37,7 +37,6 @@
 #include "xattr.h"
 #include "acl.h"
 
-
 /*
  * Convert from xattr value to acl struct.
  */
@@ -286,7 +285,7 @@ int ocfs2_iop_set_acl(struct inode *inode, struct posix_acl *acl, int type)
 	struct buffer_head *bh = NULL;
 	int status = 0;
 
-	status = ocfs2_inode_lock_full(inode, &bh, 1, OCFS2_LOCK_RECURSIVE);
+	status = ocfs2_inode_lock(inode, &bh, 1);
 	if (status < 0) {
 		if (status != -ENOENT)
 			mlog_errno(status);
@@ -308,7 +307,7 @@ struct posix_acl *ocfs2_iop_get_acl(struct inode *inode, int type)
 	osb = OCFS2_SB(inode->i_sb);
 	if (!(osb->s_mount_opt & OCFS2_MOUNT_POSIX_ACL))
 		return NULL;
-	ret = ocfs2_inode_lock_full(inode, &di_bh, 0, OCFS2_LOCK_RECURSIVE);
+	ret = ocfs2_inode_lock(inode, &di_bh, 0);
 	if (ret < 0) {
 		if (ret != -ENOENT)
 			mlog_errno(ret);
