@@ -141,10 +141,9 @@ void dtrace_user_stacktrace(stacktrace_state_t *st)
 	flush_user_windows();
 
 	st->depth = 1;
-	if (pcs) {
+	if (pcs)
 		*pcs++ = (uint64_t)instruction_pointer(regs);
-		limit--;
-	}
+	limit--;
 
 	if (!limit)
 		goto out;
@@ -168,10 +167,9 @@ void dtrace_user_stacktrace(stacktrace_state_t *st)
 			addr = ((struct reg_window32 *)(&t->reg_window[window]))->ins[7];
 		}
 
-		if (pcs) {
+		if (pcs)
 			*pcs++ = addr;
-			limit--;
-		}
+		limit--;
 		st->depth++;
 
 		if (!limit)
@@ -206,10 +204,9 @@ void dtrace_user_stacktrace(stacktrace_state_t *st)
 		if (ret)
 			break;
 
-		if (pcs) {
+		if (pcs)
 			*pcs++ = addr;
-			limit--;
-		}
+		limit--;
 		st->depth++;
 
 		pagefault_disable();

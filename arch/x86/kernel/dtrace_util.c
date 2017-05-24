@@ -373,10 +373,9 @@ void dtrace_user_stacktrace(stacktrace_state_t *st)
 	bos = current->dtrace_psinfo->ustack;
 
 	st->depth = 1;
-	if (pcs) {
+	if (pcs)
 		*pcs++ = (uint64_t)instruction_pointer(regs);
-		limit--;
-	}
+	limit--;
 
 	if (!limit)
 		goto out;
@@ -391,11 +390,12 @@ void dtrace_user_stacktrace(stacktrace_state_t *st)
 		if (ret)
 			break;
 
-		if (dtrace_user_addr_is_exec(pc) && pcs) {
-			*pcs++ = pc;
+		if (dtrace_user_addr_is_exec(pc)) {
+			if (pcs)
+				*pcs++ = pc;
 			limit--;
+			st->depth++;
 		}
-		st->depth++;
 
 		sp++;
 	}
