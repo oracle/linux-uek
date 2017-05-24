@@ -19,8 +19,8 @@
 
 Name: dtrace-modules-%{kver}
 Summary: dtrace module
-Version: 0.6.0
-Release: 2%{dist}
+Version: 0.6.1
+Release: 1%{dist}
 Provides: dtrace-modules
 Requires: at
 License: CDDL
@@ -127,6 +127,16 @@ rm -rf %{buildroot}
 /usr/include/linux/dtrace/types.h
 
 %changelog
+* Wed May 24 2017 - <kris.van.hees@oracle.com> - 0.6.1-1
+- Implement link_ntop() DTrace subroutine logic (Nick Alcock) [Orabug: 25931479]
+- Add canload() for input of *_ntop(), *_nto*() (Tomas Jedlicka)
+- Fix implementation of mutex_* subroutines [Orabug: 26044447]
+- Improve probe execution debugging
+- Support passing offset as arg0 to FBT return probes [Orabug: 25949086]
+- Use different probe trigger instruction for entry vs return [Orabug: 25949048]
+- Ensure FBT return probes only run with in_irq() true when in true IRQ context
+  [Orabug: 26089286]
+- Ensure ustackdepth returns correct value [Orabug: 25949692]
 * Wed Apr 12 2017 - <kris.van.hees@oracle.com> - 0.6.0-4
 - Always inline dtrace_dif_variable to ensure consistent aframes count
   [Orabug: 25872472]
