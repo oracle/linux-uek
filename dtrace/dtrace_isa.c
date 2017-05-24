@@ -176,11 +176,12 @@ unsigned long dtrace_getufpstack(uint64_t *pcstack, uint64_t *fpstack,
 	dtrace_stacktrace(&st);
 
 	depth = st.depth;
-        while (st.depth < st.limit) {
-		if (pcstack)
+	if (pcstack) {
+	        while (st.depth < st.limit) {
 			pcstack[st.depth++] = 0;
-		if (fpstack)
-			fpstack[st.depth++] = 0;
+			if (fpstack)
+				fpstack[st.depth++] = 0;
+		}
 	}
 
 	return depth;
@@ -231,5 +232,5 @@ int dtrace_getstackdepth(dtrace_mstate_t *mstate, int aframes)
 
 int dtrace_getustackdepth(void)
 {
-	return dtrace_getufpstack(NULL, NULL, 0);
+	return dtrace_getufpstack(NULL, NULL, INT_MAX);
 }
