@@ -176,7 +176,7 @@ typedef enum {
 /* convenient tests for these bits */
 static inline bool is_cpuset_online(const struct cpuset *cs)
 {
-	return test_bit(CS_ONLINE, &cs->flags);
+	return test_bit(CS_ONLINE, &cs->flags) && !css_is_dying(&cs->css);
 }
 
 static inline int is_cpu_exclusive(const struct cpuset *cs)
