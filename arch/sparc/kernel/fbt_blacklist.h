@@ -17,9 +17,7 @@ BL_DENTRY(typeof(save_stack_trace), save_stack_trace)
 BL_DENTRY(typeof(__save_stack_trace), __save_stack_trace)
 BL_DENTRY(typeof(stack_trace_flush), stack_trace_flush)
 BL_DENTRY(typeof(in_sched_functions), in_sched_functions)
-
-BL_SENTRY(typeof(search_exception_tables), search_exception_tables)
-
+BL_DENTRY(typeof(search_exception_tables), search_exception_tables) 
 BL_DENTRY(void *, down_read_trylock)
 BL_DENTRY(void *, __down_read_trylock)
 BL_DENTRY(void *, __get_user_pages_fast)
