@@ -86,6 +86,7 @@ typedef struct sdt_probedesc {
 #define	DTRACE_PROBE(name, ...)						\
 	__DTRACE_DOUBLE_APPLY_NOCOMMA(__DTRACE_NONE, __DTRACE_NONE, ## __VA_ARGS__)	\
 	do { } while (0)
+#define	DTRACE_PROBE_ENABLED(name) 0
 #define DTRACE_PROBE_TRACEPOINT(name, ...)
 #define DTRACE_PROTO_TRACEPOINT(name, ...)
 
