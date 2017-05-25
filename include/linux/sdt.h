@@ -101,6 +101,9 @@ typedef struct sdt_probedesc {
 #define	DTRACE_IO(name, ...)						\
 	DTRACE_PROBE(__io_##name, ## __VA_ARGS__);
 
+#define	DTRACE_IO_ENABLED(name)						\
+	DTRACE_PROBE_ENABLED(__io_##name)
+
 #define	DTRACE_ISCSI(name, ...)						\
 	DTRACE_PROBE(__iscsi_##name, ## __VA_ARGS__);
 

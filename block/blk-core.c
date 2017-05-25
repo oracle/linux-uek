@@ -1699,9 +1699,6 @@ static inline void blk_partition_remap(struct bio *bio)
 	if (bio_sectors(bio) && bdev != bdev->bd_contains) {
 		struct hd_struct *p = bdev->bd_part;
 
-#ifdef CONFIG_DTRACE
-		bio->bi_bdev_orig = bdev;
-#endif
 		bio->bi_iter.bi_sector += p->start_sect;
 		bio->bi_bdev = bdev->bd_contains;
 
@@ -1874,9 +1871,13 @@ generic_make_request_checks(struct bio *bio)
 		return false;	/* throttled, will be resubmitted later */
 
 	trace_block_bio_queue(q, bio);
+	DTRACE_IO(start, struct bio * : (bufinfo_t *, devinfo_t *), bio,
+		  struct file * : fileinfo_t *, NULL);
 	return true;
 
 end_io:
+	DTRACE_IO(start, struct bio * : (bufinfo_t *, devinfo_t *), bio,
+		  struct file * : fileinfo_t *, NULL);
 	bio_endio(bio, err);
 	return false;
 }
