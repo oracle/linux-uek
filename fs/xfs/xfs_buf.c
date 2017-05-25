@@ -58,6 +58,18 @@ static kmem_zone_t *xfs_buf_zone;
 #define xb_to_gfp(flags) \
 	((((flags) & XBF_READ_AHEAD) ? __GFP_NORETRY : GFP_NOFS) | __GFP_NOWARN)
 
+#define	DTRACE_IO_XFS_WAIT(name, bp)					\
+	if (DTRACE_IO_ENABLED(name)) {					\
+		struct bio bio = {					\
+			.bi_iter.bi_sector = (bp)->b_bn,		\
+			.bi_iter.bi_size = (bp)->b_length,		\
+			.bi_rw = ((bp)->b_flags & XBF_WRITE) != 0,	\
+			.bi_bdev = (bp)->b_target->bt_bdev,		\
+		};							\
+		DTRACE_IO(name, struct bio * : (bufinfo_t *,		\
+			  devinfo_t *), &bio,				\
+			  struct file * : fileinfo_t *, NULL);		\
+	}
 
 static inline int
 xfs_buf_is_vmapped(
@@ -1527,7 +1539,9 @@ xfs_buf_submit_wait(
 
 	/* wait for completion before gathering the error from the buffer */
 	trace_xfs_buf_iowait(bp, _RET_IP_);
+	DTRACE_IO_XFS_WAIT(wait__start, bp);
 	wait_for_completion(&bp->b_iowait);
+	DTRACE_IO_XFS_WAIT(wait__done, bp);
 	trace_xfs_buf_iowait_done(bp, _RET_IP_);
 	error = bp->b_error;
 
