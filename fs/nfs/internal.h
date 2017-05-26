@@ -9,6 +9,7 @@
 #include <linux/crc32.h>
 #include <linux/nfs_page.h>
 #include <linux/wait_bit.h>
+#include <linux/sdt.h>
 
 #define NFS_MS_MASK (MS_RDONLY|MS_NOSUID|MS_NODEV|MS_NOEXEC|MS_SYNCHRONOUS)
 
@@ -775,4 +776,17 @@ static inline void nfs_context_set_write_error(struct nfs_open_context *ctx, int
 	ctx->error = error;
 	smp_wmb();
 	set_bit(NFS_CONTEXT_ERROR_WRITE, &ctx->flags);
+}
+
+#define        DTRACE_IO_NFS(name, rw, size, inode)                    \
+	if (DTRACE_IO_ENABLED(name)) {				       \
+		struct bio bio = {					       \
+			.bi_rw = rw,                            \
+			.bi_flags = (1 << BIO_USER_MAPPED),     \
+			.bi_iter.bi_size = size,                \
+			.bi_iter.bi_sector = NFS_FILEID(inode), \
+		};                                              \
+		DTRACE_IO(name, struct bio * : (bufinfo_t *,    \
+			  devinfo_t *), &bio,                   \
+			  struct file * : fileinfo_t *, NULL);  \
 }
