@@ -111,6 +111,7 @@
 #include <net/xfrm.h>
 #include <trace/events/udp.h>
 #include <linux/static_key.h>
+#include <linux/sdt.h>
 #include <trace/events/skb.h>
 #include <net/busy_poll.h>
 #include "udp_impl.h"
@@ -836,6 +837,13 @@ static int udp_send_skb(struct sk_buff *skb, struct flowi4 *fl4)
 		uh->check = CSUM_MANGLED_0;
 
 send:
+	DTRACE_UDP(send,
+		   struct sk_buff * :  pktinfo_t *, skb,
+		   struct sock * : csinfo_t *, sk,
+		   void_ip_t * : ipinfo_t *, ip_hdr(skb),
+		   struct udp_sock * : udpsinfo_t *, udp_sk(sk),
+		   struct udphdr * : udpinfo_t *, uh);
+
 	err = ip_send_skb(sock_net(sk), skb);
 	if (err) {
 		if (err == -ENOBUFS && !inet->recverr) {
@@ -1314,9 +1322,16 @@ try_again:
 		goto out_free;
 	}
 
-	if (!peeked)
+	if (!peeked) {
+		DTRACE_UDP(receive,
+			   struct sk_buff * :  pktinfo_t *, skb,
+			   struct sock * : csinfo_t *, sk,
+			   void_ip_t * : ipinfo_t *, ip_hdr(skb),
+			   struct udp_sock * : udpsinfo_t *, udp_sk(sk),
+			   struct udphdr * : udpinfo_t *, udp_hdr(skb));
 		UDP_INC_STATS_USER(sock_net(sk),
 				UDP_MIB_INDATAGRAMS, is_udplite);
+	}
 
 	sock_recv_ts_and_drops(msg, sk, skb);
 
@@ -1529,6 +1544,15 @@ int udp_queue_rcv_skb(struct sock *sk, struct sk_buff *skb)
 
 			ret = encap_rcv(sk, skb);
 			if (ret <= 0) {
+				DTRACE_UDP(receive,
+					   struct sk_buff * :  pktinfo_t *, skb,
+					   struct sock * : csinfo_t *, sk,
+					   void_ip_t * : ipinfo_t *,
+					   ip_hdr(skb),
+					   struct udp_sock * : udpsinfo_t *,
+					   udp_sk(sk),
+					   struct udphdr * : udpinfo_t *,
+					   udp_hdr(skb));
 				UDP_INC_STATS_BH(sock_net(sk),
 						 UDP_MIB_INDATAGRAMS,
 						 is_udplite);

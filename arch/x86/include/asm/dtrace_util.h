@@ -12,13 +12,14 @@
 
 #ifndef __ASSEMBLY__
 
+#include <asm/dtrace_arch.h>
 #include <asm/ptrace.h>
 
 extern int dtrace_invop_add(uint8_t (*func)(struct pt_regs *));
 extern void dtrace_invop_remove(uint8_t (*func)(struct pt_regs *));
 
-extern void dtrace_invop_enable(uint8_t *);
-extern void dtrace_invop_disable(uint8_t *, uint8_t);
+extern void dtrace_invop_enable(asm_instr_t *, asm_instr_t);
+extern void dtrace_invop_disable(asm_instr_t *, asm_instr_t);
 
 extern int dtrace_user_addr_is_exec(uintptr_t);
 

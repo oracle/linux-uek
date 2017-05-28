@@ -79,8 +79,7 @@ void dtrace_fbt_init(fbt_add_probe_fn fbt_add_probe)
 	kallsyms_iter_reset(&sym, 0);
 	while (kallsyms_iter_update(&sym, pos++)) {
 		asm_instr_t	*addr, *end;
-		int		state = 0;
-		void		*efbp = NULL;
+		int		state = 0, insc = 0;
 		void		*fbtp = NULL;
 
 		/*
@@ -148,35 +147,33 @@ void dtrace_fbt_init(fbt_add_probe_fn fbt_add_probe)
 		while (addr < end) {
 			struct insn	insn;
 
+			insc++;
+
 			switch (state) {
 			case 0:	/* start of function */
-				if (*addr == FBT_PUSHL_EBP)
+				if (*addr == FBT_PUSHL_EBP) {
+					fbt_add_probe(
+						dtrace_kmod, sym.name,
+						FBT_ENTRY, *addr, addr, 0,
+						NULL);
 					state = 1;
-				else
+				} else if (insc > 2)
 					state = 2;
 				break;
-			case 1:	/* push %rbp seen */
-				if (*addr == FBT_MOV_RSP_RBP_1 &&
-				    *(addr + 1) == FBT_MOV_RSP_RBP_2 &&
-				    *(addr + 2) == FBT_MOV_RSP_RBP_3)
-					fbt_add_probe(
+			case 1: /* look for ret */
+				if (*addr == FBT_RET) {
+					uintptr_t	off;
+
+					off = addr - (asm_instr_t *)sym.value;
+					fbtp = fbt_add_probe(
 						dtrace_kmod, sym.name,
-						FBT_ENTRY, *addr, addr, NULL);
-				state = 2;
-				break;
-			case 2: /* look for ret */
-				if (*addr == FBT_RET &&
-				    (*(addr + 1) == FBT_PUSHL_EBP ||
-				     *(addr + 1) == FBT_NOP)) {
-					fbt_add_probe(
-						dtrace_kmod, sym.name,
-						FBT_RETURN, *addr, addr, fbtp);
-					state = 3;
+						FBT_RETURN, *addr, addr, off,
+						fbtp);
 				}
 				break;
 			}
 
-			if (state == 3)
+			if (state == 2)
 				break;
 
 			kernel_insn_init(&insn, addr, MAX_INSN_SIZE);

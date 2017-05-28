@@ -2,7 +2,7 @@
  * dwarf2ctf.c: Read in DWARF[23] debugging information from some set of ELF
  * files, and generate CTF in correspondingly-named files.
  *
- * (C) 2011 -- 2015 Oracle, Inc.  All rights reserved.
+ * (C) 2011 -- 2017 Oracle, Inc.  All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -20,6 +20,7 @@
 #include <sys/types.h>
 #include <fcntl.h>
 #include <limits.h>
+#include <endian.h>
 
 #include <libelf.h>
 #include <dwarf.h>
@@ -180,8 +181,7 @@ static void init_builtin(const char *builtin_objects_file,
  * proceed to add or remove members from structures depending on which source
  * file they were included from.
  *
- * These modules still share types with the rest of the kernel, but types that
- * only they share with other modules will not be shared for that reason alone.
+ * These modules share no types whatsoever with the rest of the kernel.
  *
  * This is, of course, only used if deduplication is turned on.
  */
@@ -191,6 +191,12 @@ static GHashTable *dedup_blacklist;
  * Populate the deduplication blacklist from the dedup_blacklist file.
  */
 static void init_dedup_blacklist(const char *dedup_blacklist_file);
+
+/*
+ * See if the given module is blacklisted, and update state accordingly so that
+ * type IDs are appropriately augmented.
+ */
+static void dedup_blacklisted_module(const char *module_name);
 
 /*
  * The member blacklist bans fields with specific names in specifically named
@@ -212,6 +218,19 @@ static void init_member_blacklist(const char *member_blacklist_file,
  * member blacklist.
  */
 static int member_blacklisted(Dwarf_Die *die, Dwarf_Die *parent_die);
+
+/*
+ * The variable blacklist, like the others, is an automatically-maintained
+ * blacklist giving variables in specific modules which should not be emitted.
+ * (These are variables whose names are ambiguous within a module, and may
+ * appear multiple times in /proc/kallmodsyms, identical but for address and
+ * thus indistinguishable.)
+ *
+ * The mapping is from module`variable to NULL (safe because variable names
+ * cannot begin with a backtick, and even if they could DTrace's notation could
+ * not reference such variables).
+ */
+static GHashTable *variable_blacklist;
 
 /*
  * A mapping from translation unit name to the name of the module that
@@ -246,19 +265,40 @@ static ctf_id_t ctf_void_type;
 static ctf_id_t ctf_funcptr_type;
 
 /*
- * Compute the type ID of a DWARF DIE and return it in a new dynamically-
- * allocated string.
+ * Override the presence and value of FORM_u/sdata attributes on DWARF DIEs,
+ * either adding to it, or replacing it.
+ *
+ * (Used so that a caller of construct_ctf_id() that wants a type to be created
+ * can override aspects of that type.)
+ */
+typedef struct die_override {
+	int tag;
+	int attribute;
+	enum { DIE_OVERRIDE_REPLACE, DIE_OVERRIDE_ADD } op;
+	Dwarf_Sword value;
+} die_override_t;
+
+/*
+ * Compute the type ID of a DWARF DIE (with possibly-overridden attributes) and
+ * return it in a new dynamically- allocated string.
  *
  * Optionally, call a callback with the computed ID once we know it (this is a
  * recursive process, so the callback can be called multiple times as the ID
- * is built up).
+ * is built up).  The overrides are not passed down to the callback.
  *
  * An ID of NULL indicates that this DIE has no ID and need not be considered.
  */
-static char *type_id(Dwarf_Die *die, void (*fun)(Dwarf_Die *die,
-						 const char *id,
-						 void *data),
+static char *type_id(Dwarf_Die *die, die_override_t *overrides,
+		     void (*fun)(Dwarf_Die *die,
+				 const char *id,
+				 void *data),
 		     void *data) __attribute__((__warn_unused_result__));
+
+/*
+ * If non-NULL, a prefix attached to all type ID types.  This is used to ensure
+ * that types in blacklisted modules do not appear anywhere else.
+ */
+static char *blacklist_type_prefix;
 
 /*
  * Process a file, calling the dwarf_process function for every type found
@@ -297,6 +337,57 @@ static void process_tu_func(const char *module_name,
 			    void *data);
 
 /*
+ * Records the type ID of interesting types, the files they are contained in,
+ * and their DWARF offset, so they can be found rapidly.
+ *
+ * Used to avoid rescanning files that can contain no duplicates.
+ */
+struct detect_duplicates_id_file
+{
+	char *file_name;
+	char *id;
+	Dwarf_Off dieoff;
+};
+
+/*
+ * The structure used as the data argument for detect_duplicates() and
+ * detect_duplicates_alias_fixup().
+ *
+ * structs_seen tracks the IDs of structures marked as duplicates within a given
+ * translation unit, in order that recursion terminates if two such structures
+ * have pointers to each other.
+ *
+ * vars_seen tracks variables seen in this module, mapping from unadorned name
+ * to a non-NULL pointer (for static, non-'external') or NULL (for non-static or
+ * 'extern').  If a static variable coexists with any other variable with the
+ * same name, static or not, the variable is blacklisted.  (Non-static
+ * coexistence is fine, because they are just different references to the same
+ * variable).  Note that management of this variable is a little annoying
+ * because it varies by module, not by TU, so we can't use tu_init/tu_done to
+ * manage its lifetime.
+ *
+ * named_structs tracks type IDs and contained modules for every type that may
+ * contain undetected duplicates and thus may require rescanning.
+ *
+ * dwfl and dwfl_file_name identify the opened DWARF file (if any) during the
+ * second duplicates detection pass.
+ *
+ * repeat_detection is set by each phase if it considers that another round of
+ * alias fixup detection is needed.
+ */
+struct detect_duplicates_state {
+	const char *file_name;
+	const char *module_name;
+	GHashTable *structs_seen;
+	GList *named_structs;
+	GHashTable *vars_seen;
+	const char *dwfl_file_name;
+	Dwarf *dwarf;
+	Dwfl *dwfl;
+	int repeat_detection;
+};
+
+/*
  * Scan and identify duplicates across the entire set of object files.
  */
 static void scan_duplicates(void);
@@ -310,6 +401,24 @@ static void scan_duplicates(void);
 static void detect_duplicates(const char *module_name, const char *file_name,
 			      Dwarf_Die *die, Dwarf_Die *parent_die,
 			      void *data);
+
+/*
+ * Note in the detect_duplicates_id_file list that we will rescan a DIE in
+ * a later duplicate detection pass
+ *
+ * A type_id() callback.
+ */
+static void detect_duplicates_will_rescan(Dwarf_Die *die, const char *id,
+					  void *data);
+
+/*
+ * Note the variable referenced by this DIE in vars_seen: blacklist it if an
+ * entry for this variable already exists in vars_seen and this instance is
+ * static, or if a static entry already exists in vars_seen, whether this
+ * instance is static or not.
+ */
+static void detect_duplicates_blacklist_var_dups(Dwarf_Die *die,
+						 struct detect_duplicates_state *state);
 
 /*
  * Detect duplicates and mark seen types for a given type, via a type_id()
@@ -329,24 +438,20 @@ static void detect_duplicates_typeid(Dwarf_Die *die, const char *id,
 static void mark_seen_contained(Dwarf_Die *die, const char *module_name);
 
 /*
- * Second duplication detection pass, checking for opaque/nonopaque structure
- * aliasing, marking all aliases as shared, and requesting a new
- * detect_duplicates() pass if any was found.
- */
-static void detect_duplicates_alias_fixup(const char *module_name,
-					  const char *file_name,
-					  Dwarf_Die *die,
-					  Dwarf_Die *parent_die,
-					  void *data);
-/*
  * Determine if some type (whose ultimate base type is an non-opaque structure,
  * alias, or enum) has an opaque equivalent which is shared, and mark it and
  * all its bases as shared too if so.
  *
- * A type_id() callback.
+ * A list_filter() filter function.
  */
-static void detect_duplicates_alias_fixup_internal(Dwarf_Die *die,
-						   const char *id, void *data);
+static int detect_duplicates_alias_fixup(void *id_file_data, void *data);
+
+/*
+ * Mark a basic type shared by name and intern it in all relevant hashes.  (Used
+ * for marking basic types we don't have a DIE for.)
+ */
+static void mark_shared_by_name(ctf_file_t *ctf, ctf_id_t ctf_id,
+				const char *name);
 
 /*
  * Determine if a type is a named struct, union, or enum.
@@ -359,18 +464,29 @@ static void is_named_struct_union_enum(Dwarf_Die *die, const char *unused,
 /*
  * Set up state for detect_duplicates().  A tu_init() callback.
  */
-static void detect_duplicates_init(const char *module_name,
-				   const char *file_name,
-				   Dwarf_Die *tu_die,
-				   void *data);
+static void detect_duplicates_tu_init(const char *module_name,
+				      const char *file_name,
+				      Dwarf_Die *tu_die,
+				      void *data);
 
 /*
  * Free state for detect_duplicates().  A tu_done() callback.
  */
-static void detect_duplicates_done(const char *module_name,
-				   const char *file_name,
-				   Dwarf_Die *tu_die,
-				   void *data);
+static void detect_duplicates_tu_done(const char *module_name,
+				      const char *file_name,
+				      Dwarf_Die *tu_die,
+				      void *data);
+
+/*
+ * Free DWARF state for detect_duplicates().
+ */
+static void detect_duplicates_dwarf_free(struct detect_duplicates_state *state);
+
+/*
+ * Determine if a type is duplicated and needs sharing.
+ */
+enum needs_sharing { NS_NOT_SHARED, NS_NO_MARKING, NS_NEEDS_SHARING };
+static enum needs_sharing type_needs_sharing(const char *module_name, const char *id);
 
 /*
  * Mark a type (optionally, with an already-known ID) as duplicated and located
@@ -380,23 +496,6 @@ static void detect_duplicates_done(const char *module_name,
  */
 static void mark_shared(Dwarf_Die *die, const char *id,
 			void *data);
-
-/*
- * The structure used as the data argument for detect_duplicates() and
- * detect_duplicates_alias_fixup().
- *
- * structs_seen tracks the IDs of structures marked as duplicates within a given
- * translation unit, in order that recursion terminates if two such structures
- * have pointers to each other.
- *
- * repeat_detection is set by each phase if it considers that another round of
- * alias fixup detection is needed.
- */
-struct detect_duplicates_state {
-	const char *module_name;
-	GHashTable *structs_seen;
-	int repeat_detection;
-};
 
 /*
  * Construct CTF out of each type.
@@ -418,7 +517,8 @@ static void write_types(char *output_dir);
 static ctf_full_id_t *construct_ctf_id(const char *module_name,
 				       const char *file_name,
 				       Dwarf_Die *die,
-				       Dwarf_Die *parent_die);
+				       Dwarf_Die *parent_die,
+				       die_override_t *overrides);
 
 /*
  * Things to do after a CTF recursion step.
@@ -433,9 +533,15 @@ enum skip_type { SKIP_CONTINUE = 0, SKIP_SKIP, SKIP_ABORT };
 static ctf_id_t die_to_ctf(const char *module_name, const char *file_name,
 			   Dwarf_Die *die, Dwarf_Die *parent_die,
 			   ctf_file_t *ctf, ctf_id_t parent_ctf_id,
-			   ulong_t parent_bias, int top_level_type,
-			   enum skip_type *skip, int *override,
+			   die_override_t *overrides, int top_level_type,
+			   int backwards, enum skip_type *skip, int *replace,
 			   const char *id);
+
+/*
+ * Return the next DIE, if that DIE needs to be emitted before this one.
+ */
+static Dwarf_Die *die_emit_next_backwards(Dwarf_Die *next, Dwarf_Die *die,
+					  die_override_t *overrides);
 
 /*
  * Look up a type through its reference: return its ctf_id_t, or
@@ -458,10 +564,7 @@ static ctf_id_t lookup_ctf_type(const char *module_name, const char *file_name,
  * with the CU's DIE).  The parent_ctf_id is always in the same CTF file as the
  * ctf_id, just as the parent DWARF DIE is always in the same DWARF CU: this is
  * lexical scope, not dynamic, so referenced types themselves located at the top
- * level have the CU as their parent.  The parent_bias is an offset which should
- * be added to the member offset of any structure or union members above and
- * beyond the offset given in the member itself (used for unnamed structures and
- * unions).
+ * level have the CU as their parent.
  *
  * Returning an error value (see below) indicates that no CTF was generated from
  * this DWARF DIE.
@@ -473,9 +576,9 @@ static ctf_id_t lookup_ctf_type(const char *module_name, const char *file_name,
  * sub-entities can be skipped, but translation of the containing type should
  * continue.  Setting it to SKIP_CONTINUE indicates no error.
  *
- * Setting 'override' to 1 in a child DIE indicates that this type should
- * entirely *override* its parent's type (generally because it has wrapped it up
- * in something).  This override takes immediate effect for later children of
+ * Setting 'replace' to 1 in a child DIE indicates that this type should
+ * entirely *replace* its parent's type (generally because it has wrapped it up
+ * in something).  This replacemenu takes immediate effect for later children of
  * the same DIE.
  *
  * die_to_ctf() calls these functions repeatedly for every child of the
@@ -491,26 +594,26 @@ typedef ctf_id_t (*ctf_assembly_fun)(const char *module_name,
 				     const char *file_name,
 				     Dwarf_Die *die,
 				     Dwarf_Die *parent_die,
-				     ulong_t parent_bias,
 				     ctf_file_t *ctf,
 				     ctf_id_t parent_ctf_id,
 				     const char *locerrstr,
+				     die_override_t *overrides,
 				     int top_level_type,
 				     enum skip_type *skip,
-				     int *override);
+				     int *replace);
 
 #define ASSEMBLY_FUN(name)					     \
 	static ctf_id_t assemble_ctf_##name(const char *module_name,  \
 					    const char *file_name,    \
 					    Dwarf_Die *die,	      \
 					    Dwarf_Die *parent_die,    \
-					    ulong_t parent_bias,      \
 					    ctf_file_t *ctf,	      \
 					    ctf_id_t parent_ctf_id,   \
 					    const char *locerrstr,    \
+					    die_override_t *overrides, \
 					    int top_level_type,	      \
 					    enum skip_type *skip,     \
-					    int *override)
+					    int *replace)
 
 /*
  * Defined assembly functions.
@@ -631,8 +734,21 @@ static long count_dwarf_members(Dwarf_Die *die);
  * Given a DIE that may contain a type attribute, look up the target of that
  * attribute and return it, or NULL if none.
  */
-
 static Dwarf_Die *private_dwarf_type(Dwarf_Die *die, Dwarf_Die *target_die);
+
+/*
+ * Given a DIE that contains a udata attribute, look up that attribute and
+ * return its value (optionally overridden or modified by the die_overrides).
+ */
+static Dwarf_Word private_dwarf_udata(Dwarf_Die *die, int attribute,
+				      die_override_t *overrides);
+
+/*
+ * Find an override in an override list.
+ */
+static die_override_t *private_find_override(Dwarf_Die *die,
+					     int attribute,
+					     die_override_t *overrides);
 
 /*
  * Determine the dimensions of an array subrange, or 0 if variable.
@@ -659,6 +775,13 @@ static char *xstrdup(const char *s) __attribute__((__nonnull__,
 						   __malloc__));
 
 /*
+ * Filter a GList, calling a predicate on it and removing all elements for which
+ * the predicate returns true.
+ */
+typedef int (*filter_pred_fun) (void *element, void *data);
+static GList *list_filter(GList *list, filter_pred_fun fun, void *data);
+
+/*
  * Figure out the (pathless, suffixless) module name for a given module file (.o
  * or .ko), and return it in a new dynamically allocated string.
  */
@@ -679,6 +802,11 @@ static char *rel_abs_file_name(const char *file_name, const char *relative_to);
  * Free a per_module's contents.
  */
 static void private_per_module_free(void *per_module);
+
+/*
+ * Free a detect_duplicates_id_file's contents.
+ */
+static void free_duplicates_id_file(void *id_file);
 
 /* Initialization.  */
 
@@ -786,6 +914,8 @@ static void run(char *output_dir)
 					     free, free);
 	per_module = g_hash_table_new_full(g_str_hash, g_str_equal, free,
 					   private_per_module_free);
+	variable_blacklist = g_hash_table_new_full(g_str_hash, g_str_equal,
+						   free, free);
 
 	dw_ctf_trace("Initializing...\n");
 	init_tu_to_modules();
@@ -1040,7 +1170,7 @@ static void init_dedup_blacklist(const char *dedup_blacklist_file)
 			line[len-1] = '\0';
 
 
-		g_hash_table_insert(dedup_blacklist, strdup(line), NULL);
+		g_hash_table_insert(dedup_blacklist, xstrdup(line), NULL);
 	}
 
 	if (ferror(f)) {
@@ -1050,6 +1180,32 @@ static void init_dedup_blacklist(const char *dedup_blacklist_file)
 	}
 
 	fclose(f);
+}
+
+/*
+ * See if the given module is blacklisted, and update state accordingly so that
+ * type IDs are appropriately augmented.
+ */
+static void dedup_blacklisted_module(const char *module_name)
+{
+	if (dedup_blacklist == NULL)
+		return;
+	if (g_hash_table_lookup_extended(dedup_blacklist, module_name,
+					 NULL, NULL)) {
+		/*
+		 * The prefix goes before the DWARF file pathname, so we pick
+		 * something that is not going to be a valid path on any POSIX
+		 * system.
+		 */
+		free(blacklist_type_prefix);
+		blacklist_type_prefix = NULL;
+		blacklist_type_prefix = str_appendn(blacklist_type_prefix,
+						    "/dev/null/@blacklisted: ",
+						    module_name, "@", NULL);
+	} else {
+		free(blacklist_type_prefix);
+		blacklist_type_prefix = NULL;
+	}
 }
 
 /*
@@ -1210,7 +1366,7 @@ static ctf_file_t *init_ctf_table(const char *module_name)
 	    (builtin_modules == NULL)) {
 		ctf_encoding_t void_encoding = { CTF_INT_SIGNED, 0, 0 };
 		ctf_encoding_t int_encoding = { CTF_INT_SIGNED, 0,
-						sizeof (int) };
+						sizeof (int) * 8 };
 		ctf_id_t int_type;
 		ctf_id_t func_type;
 		ctf_funcinfo_t func_info;
@@ -1225,6 +1381,8 @@ static ctf_file_t *init_ctf_table(const char *module_name)
 						"void", &void_encoding);
 		int_type = ctf_add_integer(ctf_file, CTF_ADD_ROOT, "int",
 					   &int_encoding);
+		mark_shared_by_name(ctf_file, ctf_void_type, "void");
+		mark_shared_by_name(ctf_file, int_type, "int");
 
 		func_info.ctc_return = int_type;
 		func_info.ctc_argc = 0;
@@ -1279,7 +1437,7 @@ static void init_tu_to_modules(void)
 		 * construct mappings from each TU to "vmlinux".
 		 */
 
-		Dwfl *dwfl = simple_dwfl_new(builtin_objects[i]);
+		Dwfl *dwfl = simple_dwfl_new(builtin_objects[i], NULL);
 		Dwarf_Die *tu = NULL;
 		Dwarf_Addr junk;
 
@@ -1307,7 +1465,7 @@ static void init_tu_to_modules(void)
 		 * mappings from each TU to the module name.
 		 */
 
-		Dwfl *dwfl = simple_dwfl_new(builtin_modules[i]);
+		Dwfl *dwfl = simple_dwfl_new(builtin_modules[i], NULL);
 		Dwarf_Die *tu = NULL;
 		Dwarf_Addr junk;
 
@@ -1348,9 +1506,11 @@ static void init_tu_to_modules(void)
  * This function is the hottest hot spot in dwarf2ctf, so is somewhat
  * aggressively optimized.
  */
-static char *type_id(Dwarf_Die *die, void (*fun)(Dwarf_Die *die,
-						 const char *id,
-						 void *data),
+static char *type_id(Dwarf_Die *die,
+		     die_override_t *overrides,
+		     void (*fun)(Dwarf_Die *die,
+				 const char *id,
+				 void *data),
 		     void *data)
 {
 	char *id = NULL;
@@ -1376,11 +1536,13 @@ static char *type_id(Dwarf_Die *die, void (*fun)(Dwarf_Die *die,
 	}
 
 	/*
-	 * If we have a type DIE, generate it first.
+	 * If we have a type DIE, generate it first, passing any overrides down.
 	 *
 	 * Otherwise, note the location of this DIE, providing scoping
 	 * information for all types based upon this one.  Location elements are
-	 * separated by //, an element impossible in a Linux path.
+	 * separated by //, an element impossible in a Linux path.  The
+	 * blacklist type prefix (if set) follows this (which is a name which,
+	 * while not impossible in a Linux path, is very unlikely.)
 	 *
 	 * Array dimensions get none of this: they must be contained within
 	 * another DIE, so will always have a location attached via that DIE,
@@ -1389,7 +1551,8 @@ static char *type_id(Dwarf_Die *die, void (*fun)(Dwarf_Die *die,
 	 */
 	if (dwarf_tag(die) != DW_TAG_subrange_type) {
 		if (dwarf_tag(die) != DW_TAG_base_type)
-			id = type_id(private_dwarf_type(die, &type_die), fun, data);
+			id = type_id(private_dwarf_type(die, &type_die),
+				     overrides, fun, data);
 
 		/*
 		 * Location information.  We use cached realpath() results, and
@@ -1411,7 +1574,11 @@ static char *type_id(Dwarf_Die *die, void (*fun)(Dwarf_Die *die,
 				snprintf(line_num, sizeof (line_num), "%i",
 					 decl_line_num);
 			}
-			id = str_appendn(id, fname, "//", line_num, "//", NULL);
+			if (!blacklist_type_prefix)
+				id = str_appendn(id, fname, "//", line_num, "//", NULL);
+			else
+				id = str_appendn(id, blacklist_type_prefix, "//", fname,
+						 "//", line_num, "//", NULL);
 		}
 	}
 
@@ -1424,14 +1591,67 @@ static char *type_id(Dwarf_Die *die, void (*fun)(Dwarf_Die *die,
 	 * WARNING: The spaces in the strings in this switch statement are not
 	 * just for appearance: types with spaces in their names are impossible
 	 * in C.  If you move those spaces around for appearance's sake, please
-	 * adjust detect_duplicates_alias_fixup() and
-	 * detect_duplicates_alias_fixup_internal(), which construct structure/
-	 * union type names by hand.
+	 * adjust mark_shared_by_name and detect_duplicates_alias_fixup(), which
+	 * construct the IDs of basic types, structures, and unions by hand.
 	 */
 	switch (dwarf_tag(die)) {
-	case DW_TAG_base_type:
-		id = str_appendn(id, dwarf_diename(die), " ", NULL);
+	case DW_TAG_base_type: {
+		Dwarf_Word bit_size = -1;
+		Dwarf_Word type_size = -1;
+		Dwarf_Word bit_offset = -1;
+
+		/*
+		 * CTF encodes the size and bitwise-offset of bit-fields in the
+		 * base type, so it must be stored once for each size, even if
+		 * it only appears once for all sizes in the DWARF.
+		 */
+		if (dwarf_hasattr(die, DW_AT_bit_size) ||
+		    private_find_override(die, DW_AT_bit_size,
+					  overrides))
+			bit_size = private_dwarf_udata(die, DW_AT_bit_size,
+						       overrides);
+		if (dwarf_hasattr(die, DW_AT_bit_offset) ||
+		    private_find_override(die, DW_AT_bit_offset,
+					  overrides))
+			bit_offset = private_dwarf_udata(die, DW_AT_bit_offset,
+							 overrides);
+
+		/*
+		 * Bitfields that occupy their entire containing type are not
+		 * bitfields, but just redundant DWARF.  GCC emits these now and
+		 * again, but the dups would trip CTF consistency checks, so
+		 * must be skipped.
+		 */
+		if (bit_size > -1) {
+			/*
+			 * This "may be omitted" in DWARF, but GCC doesn't:
+			 * bitfields always get both.  (See
+			 * gcc/dwarf2out.c:gen_field_die().)
+			 */
+			type_size = private_dwarf_udata(die, DW_AT_bit_size,
+							overrides);
+		}
+		if (bit_size != type_size) {
+			char bitsize[22];	/* > 2^64's digit count */
+			char bitoffset[22];	/* > 2^64's digit count */
+
+			snprintf(bitsize, sizeof (bitsize), "%li", bit_size);
+			id = str_appendn(id, dwarf_diename(die), ":", bitsize,
+					 NULL);
+			if (bit_offset != -1) {
+				snprintf(bitoffset, sizeof (bitoffset), "%li",
+					bit_offset);
+				id = str_appendn(id, ":", bitoffset, NULL);
+			}
+			id = str_append(id, " ");
+		} else {
+			/*
+			 * Ordinary (non-bit-field) base type.
+			 */
+			id = str_appendn(id, dwarf_diename(die), " ", NULL);
+		}
 		break;
+	}
 	case DW_TAG_enumeration_type:
 		id = str_appendn(id, "enum ", dwarf_diename(die), " ", NULL);
 		break;
@@ -1488,7 +1708,7 @@ static char *type_id(Dwarf_Die *die, void (*fun)(Dwarf_Die *die,
 			break;
 
 		do {
-			char *sub_id = type_id(&dim_die, fun, data);
+			char *sub_id = type_id(&dim_die, overrides, fun, data);
 			id = str_append(id, sub_id);
 			free(sub_id);
 		} while ((sib_ret = dwarf_siblingof(&dim_die, &dim_die)) == 0);
@@ -1509,7 +1729,7 @@ static char *type_id(Dwarf_Die *die, void (*fun)(Dwarf_Die *die,
 		{
 			char elems[22];	    /* bigger than 2^64's digit count */
 			char *sub_id = type_id(private_dwarf_type(die, &type_die),
-					       fun, data);
+					       overrides, fun, data);
 
 			snprintf(elems, sizeof (elems), " %li", nelems);
 			id = str_appendn(id, sub_id, elems, NULL);
@@ -1558,7 +1778,7 @@ static void process_file(const char *file_name,
 	char *fn_module_name = fn_to_module(file_name);
 	const char *module_name = fn_module_name;
 
-	Dwfl *dwfl = simple_dwfl_new(file_name);
+	Dwfl *dwfl = simple_dwfl_new(file_name, NULL);
 	GHashTable *seen_before = g_hash_table_new_full(g_str_hash, g_str_equal,
 							free, free);
 	Dwarf_Die *tu_die = NULL;
@@ -1624,6 +1844,12 @@ static void process_file(const char *file_name,
 		}
 
 
+		/*
+		 * This arranges to augment type IDs appropriately for
+		 * dedup-blacklisted modules for everything that uses
+		 * process_file().  We reset it at the end.
+		 */
+		dedup_blacklisted_module(module_name);
 		if (tu_init != NULL)
 			tu_init(module_name, file_name, tu_die, data);
 
@@ -1633,6 +1859,7 @@ static void process_file(const char *file_name,
 		if (tu_done != NULL)
 			tu_done(module_name, file_name, tu_die, data);
 	}
+	dedup_blacklisted_module("");
 
 	free(fn_module_name);
 	simple_dwfl_free(dwfl);
@@ -1732,18 +1959,17 @@ static void scan_duplicates(void)
 	 * the TU->module-name mapping, even if in this case it is trivial.
 	 */
 
-	struct detect_duplicates_state state;
+	struct detect_duplicates_state state = {0};
 
 	dw_ctf_trace("Duplicate detection: primary pass.\n");
 
-	state.repeat_detection = 0;
 	for (i = 0; i < object_names_cnt; i++)
 		process_file(object_names[i], detect_duplicates,
-			     detect_duplicates_init,
-			     detect_duplicates_done, &state);
+			     detect_duplicates_tu_init,
+			     detect_duplicates_tu_done, &state);
 
 	if ((!state.repeat_detection) || (builtin_modules == NULL))
-		return;
+		goto out;
 
 	do {
 		/*
@@ -1757,42 +1983,73 @@ static void scan_duplicates(void)
 		dw_ctf_trace("Duplicate detection: alias fixup pass.\n");
 
 		state.repeat_detection = 0;
-
-		for (i = 0; i < object_names_cnt; i++)
-			process_file(object_names[i],
-				     detect_duplicates_alias_fixup,
-				     detect_duplicates_init,
-				     detect_duplicates_done, &state);
+		state.named_structs = list_filter(state.named_structs,
+						  detect_duplicates_alias_fixup,
+						  &state);
 	} while (state.repeat_detection);
+ out:
+	g_hash_table_destroy(state.vars_seen);
+	detect_duplicates_dwarf_free(&state);
 	dw_ctf_trace("Duplicate detection: complete.\n");
+	dw_ctf_trace("%llu distinct type IDs known.\n",
+		     (long long unsigned) g_hash_table_size(id_to_module));
+	dw_ctf_trace("%llu variables blacklisted for static/nonstatic "
+		     "conflicts.\n",
+		     (long long unsigned) g_hash_table_size(variable_blacklist));
+	g_list_free_full(state.named_structs, free_duplicates_id_file);
 }
 
 /*
  * Set up state for detect_duplicates().  A tu_init() callback.
  */
-static void detect_duplicates_init(const char *module_name,
-				   const char *file_name,
-				   Dwarf_Die *tu_die,
-				   void *data)
+static void detect_duplicates_tu_init(const char *module_name,
+				      const char *file_name,
+				      Dwarf_Die *tu_die,
+				      void *data)
 {
 	struct detect_duplicates_state *state = data;
 
-	state->module_name = module_name;
 	state->structs_seen = g_hash_table_new_full(g_str_hash, g_str_equal,
 						    free, free);
+	if (state->module_name == NULL ||
+	    (strcmp(state->module_name, module_name) != 0)) {
+		if (state->module_name != NULL)
+			g_hash_table_remove_all(state->vars_seen);
+		else
+			state->vars_seen = g_hash_table_new_full(g_str_hash,
+								 g_str_equal,
+								 free, NULL);
+	}
+	state->module_name = module_name;
 }
 
 /*
  * Free state for detect_duplicates().  A tu_done() callback.
  */
-static void detect_duplicates_done(const char *module_name,
-				   const char *file_name,
-				   Dwarf_Die *tu_die,
-				   void *data)
+static void detect_duplicates_tu_done(const char *module_name,
+				      const char *file_name,
+				      Dwarf_Die *tu_die,
+				      void *data)
 {
 	struct detect_duplicates_state *state = data;
 
 	g_hash_table_destroy(state->structs_seen);
+	state->structs_seen = NULL;
+}
+
+/*
+ * Free DWARF state for detect_duplicates().
+ */
+static void detect_duplicates_dwarf_free(struct detect_duplicates_state *state)
+{
+	if (state->dwfl == NULL)
+		return;
+	simple_dwfl_free(state->dwfl);
+	state->dwfl = NULL;
+	state->dwarf = NULL;
+	state->dwfl_file_name = NULL;
+	if (state->structs_seen)
+		g_hash_table_destroy(state->structs_seen);
 	state->structs_seen = NULL;
 }
 
@@ -1813,8 +2070,11 @@ static void detect_duplicates(const char *module_name,
 			      Dwarf_Die *parent_die,
 			      void *data)
 {
-	char *id = type_id(die, NULL, NULL);
+	struct detect_duplicates_state *state = data;
+	int is_sou = 0;
+	char *id = type_id(die, NULL, is_named_struct_union_enum, &is_sou);
 
+	state->file_name = file_name;
 	/*
 	 * If a DWARF-4 type signature is found, abort.  While we can support
 	 * DWARF-4 eventually, support in elfutils is insufficiently robust for
@@ -1832,6 +2092,28 @@ static void detect_duplicates(const char *module_name,
 		}
 	}
 
+	/*
+	 * Non-anonymous, non-opaque structure types in non-dedup-blacklisted
+	 * modules get their names and locations recorded for subsequent passes;
+	 * all type_id()-descendant types are similarly noted.
+	 */
+	if (is_sou && strncmp(id, "////", strlen("////")) != 0 &&
+	    (dedup_blacklist == NULL ||
+	     !g_hash_table_lookup_extended(dedup_blacklist, module_name,
+					   NULL, NULL)))
+		free(type_id(die, NULL, detect_duplicates_will_rescan, state));
+
+	/*
+	 * Handle static variable blacklisting.  (We still shuffle blacklisted
+	 * variables into the right place in id_to_module because we check for
+	 * blacklisting at the lowest level, by which point we have already
+	 * depended on id_to_module being correctly populated.)
+	 *
+	 * Avoid calling this for recursive dependent-type scans: variables
+	 * cannot be dependent types.
+	 */
+	if (parent_die != NULL && dwarf_tag(die) == DW_TAG_variable)
+		detect_duplicates_blacklist_var_dups(die, state);
 
 	/*
 	 * If we know of a single module incorporating this type, and it is not
@@ -1844,20 +2126,12 @@ static void detect_duplicates(const char *module_name,
 	 * We never consider types in modules on the deduplication blacklist
 	 * to introduce duplicates.
 	 */
-	const char *existing_type_module;
-
-	existing_type_module = g_hash_table_lookup(id_to_module, id);
-
-	if (existing_type_module != NULL) {
-		if ((strcmp(existing_type_module, module_name) != 0) &&
-		    (builtin_modules != NULL) &&
-		    (dedup_blacklist == NULL ||
-		     !g_hash_table_lookup_extended(dedup_blacklist, module_name,
-						   NULL, NULL))) {
-			mark_shared(die, NULL, data);
-			mark_seen_contained(die, "shared_ctf");
-		}
-
+	switch (type_needs_sharing(module_name, id)) {
+	case NS_NEEDS_SHARING:
+		mark_shared(die, NULL, data);
+		mark_seen_contained(die, "shared_ctf");
+		/* Fall through */
+	case NS_NO_MARKING:
 		/*
 		 * A duplicated type, but in the same module, or deduplication
 		 * is disabled, so id_to_module is already correct.  (When
@@ -1867,6 +2141,8 @@ static void detect_duplicates(const char *module_name,
 		 */
 		free(id);
 		return;
+	case NS_NOT_SHARED:
+		break;
 	}
 
 	/*
@@ -1877,7 +2153,119 @@ static void detect_duplicates(const char *module_name,
 	dw_ctf_trace("Marking %s as seen in %s\n", id, module_name);
 	g_hash_table_replace(id_to_module, id, xstrdup(module_name));
 	mark_seen_contained(die, module_name);
-	free(type_id(die, detect_duplicates_typeid, data));
+	free(type_id(die, NULL, detect_duplicates_typeid, data));
+}
+
+/*
+ * Note in the detect_duplicates_id_file list that we will rescan a DIE in
+ * a later duplicate detection pass
+ *
+ * A type_id() callback.
+ */
+static void detect_duplicates_will_rescan(Dwarf_Die *die, const char *id,
+					  void *data)
+{
+	struct detect_duplicates_state *state = data;
+	struct detect_duplicates_id_file *id_file;
+
+	/*
+	 * We don't care about array index types, which will never be structures
+	 * in C.
+	 */
+	if (id[0] == '[')
+		return;
+
+	id_file = calloc(1, sizeof (struct detect_duplicates_id_file));
+	if (id_file == NULL) {
+		fprintf(stderr, "Out of memory allocating id_file\n");
+		exit (1);
+	}
+	id_file->file_name = xstrdup(state->file_name);
+	id_file->id = xstrdup(id);
+	id_file->dieoff = dwarf_dieoffset(die);
+	state->named_structs = g_list_prepend(state->named_structs, id_file);
+}
+
+/*
+ * Note the variable referenced by this DIE in vars_seen: blacklist it if an
+ * entry for this variable already exists in vars_seen and this instance is
+ * static, or if a static entry already exists in vars_seen, whether this
+ * instance is static or not.
+ */
+static void detect_duplicates_blacklist_var_dups(Dwarf_Die *die,
+						 struct detect_duplicates_state *state)
+{
+	void *static_var;
+	int blacklist = 0;
+
+	if (g_hash_table_lookup_extended(state->vars_seen,
+					 dwarf_diename(die),
+					 NULL, &static_var)) {
+		if (!dwarf_hasattr(die, DW_AT_external) &&
+		    !dwarf_hasattr(die, DW_AT_declaration))
+			blacklist = 1;
+		if (static_var != NULL)
+			blacklist = 1;
+	}
+	else
+	  /*
+	   * We need a non-NULL address here, but that is all we need.
+	   * The address of a random variable will do.
+	   */
+		g_hash_table_insert(state->vars_seen,
+				    xstrdup(dwarf_diename(die)),
+				    (!dwarf_hasattr(die, DW_AT_external) &&
+				     !dwarf_hasattr(die, DW_AT_declaration)) ?
+				    &static_var : NULL);
+
+	if (blacklist) {
+		char *var = NULL;
+		var = str_appendn(var, state->module_name, "`",
+				  dwarf_diename(die), NULL);
+		g_hash_table_replace(variable_blacklist, var, NULL);
+	}
+}
+
+/*
+ * Free a detect_duplicates_id_file's contents.
+ */
+static void free_duplicates_id_file(void *data)
+{
+	struct detect_duplicates_id_file *id_file = data;
+	free(id_file->file_name);
+	free(id_file->id);
+	free(id_file);
+}
+
+/*
+ * Determine if a type is duplicated and needs sharing.
+ */
+static enum needs_sharing type_needs_sharing(const char *module_name,
+					     const char *id)
+{
+	const char *existing_type_module;
+	existing_type_module = g_hash_table_lookup(id_to_module, id);
+
+	/*
+	 * Types not already known about do not need sharing.
+	 *
+	 * Types on the dedup blacklist, types already in the current modules,
+	 * and any types in external-module mode do not even need marking.
+	 */
+	if (existing_type_module == NULL)
+		return NS_NOT_SHARED;
+
+	if ((strcmp(existing_type_module, module_name) == 0) ||
+	    (strcmp(existing_type_module, "shared_ctf") == 0) ||
+	    (builtin_modules == NULL))
+		return NS_NO_MARKING;
+
+	if (dedup_blacklist != NULL &&
+	    g_hash_table_lookup_extended(dedup_blacklist, module_name,
+					 NULL, NULL))
+		return NS_NO_MARKING;
+
+	return NS_NEEDS_SHARING;
 }
 
 /*
@@ -1890,7 +2278,8 @@ static void detect_duplicates_typeid(Dwarf_Die *die, const char *id,
 {
 	struct detect_duplicates_state *state = data;
 
-	detect_duplicates(state->module_name, NULL, die, NULL, data);
+	detect_duplicates(state->module_name, state->file_name, die, NULL,
+			  data);
 }
 
 /*
@@ -1923,31 +2312,82 @@ static void mark_seen_contained(Dwarf_Die *die, const char *module_name)
 	 * We iterate over all immediate children and recursively call ourselves
 	 * for all those of type DW_TAG_structure_type and DW_TAG_union_type.
 	 *
-	 * Further, everything other than members (which has an entry in
-	 * assembly_tab) needs marking, since these may be declared at structure
-	 * scope rather than being confined to global scope.  Members are
-	 * skipped because they cannot be used as the type of another field.
-	 * These types cannot be duplicates if their containing type is not a
-	 * duplicate, and typedefs cannot occur at this level so they cannot be
-	 * aliased; thus we can mark them directly without going back into the
-	 * top of detect_duplicates().
+	 * Further, everything with an entry in assembly_tab other than
+	 * non-bitfield members needs marking, since these may be declared at
+	 * structure scope rather than being confined to global scope.
+	 * Non-bitfield members are skipped because they cannot be used as the
+	 * type of another field.  These types cannot be duplicates if their
+	 * containing type is not a duplicate, and typedefs cannot occur at this
+	 * level so they cannot be aliased; thus we can mark them directly
+	 * without going back into the top of detect_duplicates().
+	 *
+	 * (Bit-field members are not skipped: they use different CTF from their
+	 * non-bitfield equivalents, even though they refer to the same
+	 * top-level DIE.)
 	 */
 	int sib_ret;
 
 	do
 		switch (dwarf_tag(&child)) {
+		case DW_TAG_member: {
+			/*
+			 * bit_size and bit_offset go together: we can assume
+			 * that if a member has the one, it has the other.
+			 */
+			if (dwarf_tag(&child) == DW_TAG_member &&
+			    !dwarf_hasattr(&child, DW_AT_bit_size))
+				break;
+
+			die_override_t override[] =
+				{{ DW_TAG_base_type,
+				   DW_AT_bit_size,
+				   DIE_OVERRIDE_REPLACE,
+				   private_dwarf_udata(&child, DW_AT_bit_size,
+						       NULL) },
+				 { DW_TAG_base_type,
+				   DW_AT_bit_offset,
+				   DIE_OVERRIDE_REPLACE,
+				   private_dwarf_udata(&child, DW_AT_bit_offset,
+						       NULL) },
+				 {0}};
+
+			char *id = type_id(&child, override, NULL, NULL);
+
+			/*
+			 * We also have to do shared checking in here, since
+			 * this type does not exist at the DWARF top level.
+			 */
+			switch (type_needs_sharing(module_name, id)) {
+			case NS_NEEDS_SHARING:
+				g_hash_table_replace(id_to_module, id,
+						     xstrdup("shared_ctf"));
+				dw_ctf_trace("Marking bitfield member %s as "
+					     "shared\n", id);
+
+				break;
+			case NS_NO_MARKING:
+				free(id);
+				break;
+			case NS_NOT_SHARED:
+				g_hash_table_replace(id_to_module, id,
+						     xstrdup(module_name));
+				dw_ctf_trace("Marking bitfield member %s as seen in %s\n",
+					     id, module_name);
+				break;
+			}
+			break;
+		}
 		case DW_TAG_structure_type:
 		case DW_TAG_union_type:
 			mark_seen_contained(&child, module_name);
 			/* fall through */
 		default:
-			if (dwarf_tag(&child) != DW_TAG_member &&
-			    dwarf_tag(&child) <= assembly_len &&
+			if (dwarf_tag(&child) <= assembly_len &&
 			    assembly_tab[dwarf_tag(&child)] != NULL) {
 
-				char *id = type_id(&child, NULL, NULL);
+				char *id = type_id(&child, NULL, NULL, NULL);
 
-				dw_ctf_trace("Marking %s as seen in %s\n", id,
+				dw_ctf_trace("Marking member %s as seen in %s\n", id,
 					     module_name);
 				g_hash_table_replace(id_to_module, id,
 						     xstrdup(module_name));
@@ -1984,7 +2424,7 @@ static void mark_shared(Dwarf_Die *die, const char *id, void *data)
 	 * throwing the result away.
 	 */
 	if (id == NULL) {
-		free(type_id(die, mark_shared, state));
+		free(type_id(die, NULL, mark_shared, state));
 		return;
 	}
 
@@ -2038,13 +2478,36 @@ static void mark_shared(Dwarf_Die *die, const char *id, void *data)
 
 		/*
 		 * We are only interested in non-blacklisted children of type
-		 * DW_TAG_member.
+		 * DW_TAG_member.  As above, bitfields get an override to
+		 * denote the bitfieldness of their parent type.
 		 */
 		int sib_ret;
 
 		do
-			if (!member_blacklisted(&child, die))
-				free(type_id(&child, mark_shared, state));
+			if ((dwarf_tag(&child) == DW_TAG_member) &&
+			    !member_blacklisted(&child, die)) {
+				if (dwarf_hasattr(&child, DW_AT_bit_size)) {
+					die_override_t override[] =
+						{{ DW_TAG_base_type,
+						   DW_AT_bit_size,
+						   DIE_OVERRIDE_REPLACE,
+						   private_dwarf_udata(&child,
+								       DW_AT_bit_size,
+								       NULL) },
+						 { DW_TAG_base_type,
+						   DW_AT_bit_offset,
+						   DIE_OVERRIDE_REPLACE,
+						   private_dwarf_udata(&child,
+								       DW_AT_bit_offset,
+								       NULL) },
+						 {0}};
+
+					free(type_id(&child, override,
+						     mark_shared, state));
+				} else
+					free(type_id(&child, NULL,
+						     mark_shared, state));
+			}
 		while ((sib_ret = dwarf_siblingof(&child, &child)) == 0);
 
 		if (sib_ret == -1)
@@ -2057,53 +2520,6 @@ static void mark_shared(Dwarf_Die *die, const char *id, void *data)
 	fprintf(stderr, "Cannot mark aggregate %s members as duplicated: %s\n",
 		dwarf_diename(die), dwarf_errmsg(dwarf_errno()));
 	exit(1);
-}
-
-/*
- * Duplicate detection alias fixup pass.  Once the first pass is complete, we
- * may have marked an opaque 'struct foo' for sharing but not caught the
- * non-opaque instance, because no users of the non-opaque instance appeared in
- * the DWARF after the opaque copy was detected as a duplicate.
- *
- * (The inverse case of a non-opaque structure/union/enum detected as a
- * duplicate after the last usage of its opaque alias will be caught by this
- * trap too.)
- *
- * This detects such cases, and marks their members as duplicates too.
- * (Structures, unions, and enums with no name are skipped, because they cannot
- * have opaque equivalents, so must have been marked in the primary pass.)
- */
-static void detect_duplicates_alias_fixup(const char *module_name,
-					  const char *file_name,
-					  Dwarf_Die *die,
-					  Dwarf_Die *parent_die,
-					  void *data)
-{
-	int is_sou = 0;
-
-	/*
-	 * We skip this for all modules in the deduplication blacklist, if there
-	 * is one.
-	 */
-	if (dedup_blacklist != NULL &&
-	    g_hash_table_lookup_extended(dedup_blacklist, module_name,
-					 NULL, NULL))
-		return;
-
-	/*
-	 * We only do anything for structures and unions that are not opaque,
-	 * and that have names.
-	 */
-
-	char *id = type_id(die, is_named_struct_union_enum, &is_sou);
-
-	if ((strncmp(id, "////", strlen("////")) == 0) || !is_sou) {
-		free(id);
-		return;
-	}
-	free(id);
-
-	free(type_id(die, detect_duplicates_alias_fixup_internal, data));
 }
 
 /*
@@ -2124,53 +2540,57 @@ static void is_named_struct_union_enum(Dwarf_Die *die, const char *unused,
 }
 
 /*
- * Determine if some type (whose ultimate base type is an non-opaque structure,
- * alias, or enum) has an opaque equivalent which is shared, and mark it and
- * all its bases as shared too if so.
+ * Duplicate detection alias fixup pass.  Once the first pass is complete, we
+ * may have marked an opaque 'struct foo' for sharing but not caught the
+ * non-opaque instance, because no users of the non-opaque instance appeared in
+ * the DWARF after the opaque copy was detected as a duplicate.
+ * This pass detects such cases, and marks their members as duplicates too.
  *
- * A type_id() callback.
+ * (The inverse case of a non-opaque structure/union/enum detected as a
+ * duplicate after the last usage of its opaque alias will be caught by this
+ * trap too.)
  *
  * Warning: this routine directly computes type_id()s without access to the
  * corresponding type DIE, and as such is dependent on the format of type_id()s.
  * (This is why it must run over non-opaque structures: given a non-opaque
  * structure, its opaque alias is easy to compute, but the converse is not
  * true.)
+ *
+ * As a list_filter() filter function, returns 0 if this structure will not need
+ * to be checked again (because both its opaque and transparent variants are
+ * shared).
  */
-static void detect_duplicates_alias_fixup_internal(Dwarf_Die *die,
-						   const char *id, void *data)
+static int detect_duplicates_alias_fixup(void *id_file_data, void *data)
 {
+	struct detect_duplicates_id_file *id_file = id_file_data;
+	struct detect_duplicates_state *state = data;
+
 	int transparent_shared = 0;
 	int opaque_shared = 0;
+	int made_shared = 0;
 
 	char *opaque_id;
 	const char *line_num;
 	const char *type_name;
 
 	/*
-	 * We don't care about array index types, which will never be structures
-	 * in C.
-	 */
-	if (id[0] == '[')
-		return;
-
-	/*
 	 * Compute the opaque variant corresponding to this transparent type,
-	 * and check to see if either is marked shared, then mark both as shared
-	 * if either is.  (Unfortunately this means a double recursion in such
-	 * cases, but this is unavoidable.)
+	 * and check to see if either is marked shared, then find the DIE and
+	 * mark both as shared if either is.  (Unfortunately this means a double
+	 * recursion in such cases, but this is unavoidable.)
 	 */
 
-	line_num = strstr(id, "//");
+	line_num = strstr(id_file->id, "//");
 	if (!line_num) {
 		fprintf(stderr, "Internal error: type ID %s is corrupt.\n",
-			id);
+			id_file->id);
 		exit(1);
 	}
 
 	type_name = strstr(line_num + 1, "//");
 	if (!type_name) {
 		fprintf(stderr, "Internal error: type ID %s is corrupt.\n",
-			id);
+			id_file->id);
 		exit(1);
 	}
 	type_name += 2;
@@ -2179,7 +2599,7 @@ static void detect_duplicates_alias_fixup_internal(Dwarf_Die *die,
 	opaque_id = str_append(opaque_id, type_name);
 
 	const char *transparent_module = g_hash_table_lookup(id_to_module,
-							     id);
+							     id_file->id);
 	const char *opaque_module = g_hash_table_lookup(id_to_module,
 							opaque_id);
 
@@ -2192,8 +2612,43 @@ static void detect_duplicates_alias_fixup_internal(Dwarf_Die *die,
 	/*
 	 * Transparent type needs sharing.
 	 */
-	if (opaque_shared && !transparent_shared)
-		mark_shared(die, NULL, data);
+	if (opaque_shared && !transparent_shared) {
+		Dwarf_Die die;
+		Dwfl_Module *mod;
+		Dwarf_Addr dummy;
+
+		/*
+		 * Since we are not using process_file(), we must handle
+		 * translation unit switches by hand, including resetting
+		 * structs_seen.  We also need to open the DWARF file, since
+		 * type_id() needs access to the DIE of this type and all its
+		 * dependent types as well.
+		 */
+
+		if (state->dwfl != NULL &&
+		    strcmp(state->dwfl_file_name,
+			   id_file->file_name) != 0)
+			detect_duplicates_dwarf_free(state);
+
+		if (state->dwfl_file_name == NULL) {
+			state->dwfl = simple_dwfl_new(id_file->file_name, &mod);
+			state->dwarf = dwfl_module_getdwarf(mod, &dummy);
+			state->dwfl_file_name = id_file->file_name;
+			state->structs_seen = g_hash_table_new_full(g_str_hash,
+								    g_str_equal,
+								    free, free);
+		}
+		if (!dwarf_offdie(state->dwarf, id_file->dieoff,
+				  &die)) {
+			fprintf(stderr, "Cannot look up offset %li in "
+				"%s for type with ID %s\n",
+				id_file->dieoff, id_file->file_name,
+				id_file->id);
+			exit(1);
+		}
+		mark_shared(&die, NULL, state);
+		made_shared = 1;
+	}
 
 	/*
 	 * We don't have the opaque type's DIE, so we can't use mark_shared():
@@ -2210,9 +2665,39 @@ static void detect_duplicates_alias_fixup_internal(Dwarf_Die *die,
 		dw_ctf_trace("Marking %s as duplicate\n", opaque_id);
 		g_hash_table_replace(id_to_module, xstrdup(opaque_id),
 				     xstrdup("shared_ctf"));
+		made_shared = 1;
 	}
 
 	free(opaque_id);
+
+	return made_shared || (opaque_shared && transparent_shared);
+}
+
+/*
+ * Mark a basic type shared by name and intern it in all relevant hashes.  (Used
+ * for marking basic types we don't have a DIE for.)
+ */
+static void mark_shared_by_name(ctf_file_t *ctf, ctf_id_t ctf_id,
+				const char *name)
+{
+	ctf_full_id_t static_ctf_id = { ctf, ctf_id };
+	ctf_full_id_t *full_ctf_id;
+	char *id = NULL;
+
+	full_ctf_id = malloc(sizeof (struct ctf_full_id));
+	if (full_ctf_id == NULL) {
+		fprintf(stderr, "%s: out of memory\n", __func__);
+		exit(1);
+	}
+	*full_ctf_id = static_ctf_id;
+
+	id = str_appendn(id, "////", name, " ", NULL);
+#ifdef DEBUG
+	strcpy(full_ctf_id->module_name, "shared_ctf");
+	strcpy(full_ctf_id->file_name, "<built-in type>");
+#endif
+	g_hash_table_replace(id_to_module, id, xstrdup("shared_ctf"));
+	g_hash_table_replace(id_to_type, xstrdup(id), full_ctf_id);
 }
 
 /*
@@ -2228,18 +2713,23 @@ static void detect_duplicates_alias_fixup_internal(Dwarf_Die *die,
  * too, since we treat them exactly like types, and dealing with types is our
  * most important function).  In such calls, the module_name may be 'shared_ctf'
  * if this type is in the shared CTF repository.
+ *
+ * Select properties of the DIE can be overridden via the overrides array, if
+ * needed.
  */
 static ctf_full_id_t *construct_ctf_id(const char *module_name,
 				       const char *file_name,
 				       Dwarf_Die *die,
-				       Dwarf_Die *parent_die)
+				       Dwarf_Die *parent_die,
+				       die_override_t *overrides)
 {
-	char *id = type_id(die, NULL, NULL);
+	char *id = type_id(die, overrides, NULL, NULL);
 	char *ctf_module;
 	ctf_file_t *ctf;
 	ctf_snapshot_id_t snapshot;
 
-	dw_ctf_trace("    %p: %s: looking up %s: %s\n", &id, module_name,
+	dw_ctf_trace("    %p: %s: looking up %s: %s\n", &id,
+		     module_name ? module_name : "(no module)",
 		     dwarf_diename(die), id);
 	/*
 	 * Make sure this type does not already exist.  (Recursive chasing for
@@ -2306,8 +2796,8 @@ static ctf_full_id_t *construct_ctf_id(const char *module_name,
 	enum skip_type skip = SKIP_CONTINUE;
 	dw_ctf_trace("%p: into die_to_ctf() for %s\n", &id, id);
 	ctf_id_t this_ctf_id = die_to_ctf(ctf_module, file_name, die,
-					  parent_die, ctf, -1, 0, 1, &skip,
-					  NULL, id);
+					  parent_die, ctf, -1, overrides,
+					  1, 0, &skip, NULL, id);
 	dw_ctf_trace("%p: out of die_to_ctf()\n", &id);
 
 	ctf_id = malloc(sizeof (struct ctf_full_id));
@@ -2370,12 +2860,14 @@ static ctf_full_id_t *construct_ctf_id(const char *module_name,
  * top-level, this is a CU DIE.
  * ctf: The CTF file this object should go into (possibly shared_ctf).
  * parent_ctf_id: The CTF ID of the parent DIE, or -1 if none.
- * parent_bias: any bias applied to structure members.  Normally 0, may be
- * nonzero for unnamed structure members.
+ * die_override_t: Overrides for DWARF attributes (a NULL-terminated array,
+ * or NULL).
  * top_level_type: 1 if this is a top-level type that can have a name and be
  * referred to by other types.
+ * backwards: if 1, this is an internal call to process a series of bitfields
+ *            with descending bit_offset and identical data_member_location.
  * skip: The error-handling / skipping enum.
- * override: if 1, this type should replace its parent type entirely.
+ * replace: if 1, this type should replace its parent type entirely.
  * id: the ID of this type.
  *
  * Note: id is only defined when top_level_type is 1.  (We never use it
@@ -2384,8 +2876,8 @@ static ctf_full_id_t *construct_ctf_id(const char *module_name,
 static ctf_id_t die_to_ctf(const char *module_name, const char *file_name,
 			   Dwarf_Die *die, Dwarf_Die *parent_die,
 			   ctf_file_t *ctf, ctf_id_t parent_ctf_id,
-			   ulong_t parent_bias, int top_level_type,
-			   enum skip_type *skip, int *override,
+			   die_override_t *overrides, int top_level_type,
+			   int backwards, enum skip_type *skip, int *replace,
 			   const char *id)
 {
 	int sib_ret = 0;
@@ -2396,7 +2888,40 @@ static ctf_id_t die_to_ctf(const char *module_name, const char *file_name,
 		const char *id_name;
 		const char *decl_file_name = dwarf_decl_file(die);
 		int decl_line_num;
+		int emitted_backwards = 0;
 		char locerrstr[1024];
+		Dwarf_Die next_die;
+
+		/*
+		 * If the next DWARF DIE is at the same location as this one but
+		 * with a lower bit_offset, we need to process the set of DIEs
+		 * at this location in *reverse*, because DWARF has the DIEs in
+		 * declaration order, while CTF wants them in in-memory order:
+		 * so recurse to handle the next until we get to an element with
+		 * a sibling at a different data_member_location (safe because
+		 * there can't be that many of them per data_member_location),
+		 * then (at the end of die_to_ctf()) exit the recursion and skip
+		 * over the lot.
+		 *
+		 * We can ignore 'replace' and the return value of die_to_ctf
+		 * because bitfields must be structure or union members and
+		 * cannot be array dimensions.
+		 */
+		if (die_emit_next_backwards(&next_die, die, overrides) != NULL) {
+			ctf_id_t dummy;
+
+			dw_ctf_trace("Emitting %s:%s:%lx backwards\n",
+				     module_name, file_name,
+				     dwarf_dieoffset(&next_die));
+
+			dummy = die_to_ctf(module_name, file_name, &next_die,
+					   parent_die, ctf, parent_ctf_id,
+					   overrides, top_level_type, 1, skip,
+					   replace, NULL);
+			if (*skip == SKIP_ABORT)
+				return dummy;
+			emitted_backwards = 1;
+		}
 
 		/*
 		 * Compute a name for our current location, for error messages.
@@ -2404,7 +2929,6 @@ static ctf_id_t die_to_ctf(const char *module_name, const char *file_name,
 		 * hard for users to comprehend, and should we move to a hashed
 		 * representation would be entirely useless for this purpose.)
 		 */
-
 		if ((decl_file_name == NULL) ||
 		    (dwarf_decl_line(die, &decl_line_num) < 0)) {
 			decl_file_name = "global";
@@ -2442,12 +2966,12 @@ static ctf_id_t die_to_ctf(const char *module_name, const char *file_name,
 		this_ctf_id = assembly_tab[dwarf_tag(die)](module_name,
 							   file_name,
 							   die, parent_die,
-							   parent_bias, ctf,
-							   parent_ctf_id,
+							   ctf, parent_ctf_id,
 							   locerrstr,
+							   overrides,
 							   top_level_type,
 							   skip,
-							   override ? override :
+							   replace ? replace :
 							   &dummy);
 		dw_ctf_trace("%s: out of assembly function for tag %lx with "
 			     "type ID %li\n", locerrstr,
@@ -2507,7 +3031,7 @@ static ctf_id_t die_to_ctf(const char *module_name, const char *file_name,
 		if ((dwarf_haschildren(die)) && (*skip == SKIP_CONTINUE)) {
 			Dwarf_Die child_die;
 			ctf_id_t new_id;
-			int override = 0;
+			int replace = 0;
 
 			if (dwarf_child(die, &child_die) < 0) {
 				fprintf(stderr, "%s: Cannot recurse to "
@@ -2517,12 +3041,29 @@ static ctf_id_t die_to_ctf(const char *module_name, const char *file_name,
 			}
 
 			new_id = die_to_ctf(module_name, file_name, &child_die,
-					    die, ctf, this_ctf_id, parent_bias,
-					    0, skip, &override, NULL);
+					    die, ctf, this_ctf_id, overrides, 0,
+					    0, skip, &replace, NULL);
 
-			if (override)
+			if (replace)
 				this_ctf_id = new_id;
 		}
+
+		/*
+		 * If we are walking backwards over a bunch of bitfields, this
+		 * is a recursive walk, not an iterative one: return.
+		 */
+		if (backwards)
+			return this_ctf_id;
+
+		/*
+		 * We are not walking backwards, but this is the final stage of
+		 * a bunch of backwards emissions: walk forwards until we hit
+		 * the last one again.
+		 */
+		if (emitted_backwards)
+			while (die_emit_next_backwards(&next_die, die,
+						       overrides) != NULL)
+				*die = next_die;
 
 		/*
 		 * Walk siblings of non-top-level types only: the sibling walk
@@ -2551,7 +3092,28 @@ static void construct_ctf(const char *module_name, const char *file_name,
 			  Dwarf_Die *die, Dwarf_Die *parent_die,
 			  void *unused __unused__)
 {
-	construct_ctf_id(module_name, file_name, die, parent_die);
+	construct_ctf_id(module_name, file_name, die, parent_die, NULL);
+}
+
+/*
+ * Return the next DIE, if that DIE needs to be emitted before this one.
+ */
+static Dwarf_Die *die_emit_next_backwards(Dwarf_Die *next, Dwarf_Die *die,
+					  die_override_t *overrides)
+{
+	if (dwarf_tag(die) == DW_TAG_member &&
+	    dwarf_siblingof(die, next) == 0 &&
+	    dwarf_tag(next) == DW_TAG_member &&
+	    dwarf_hasattr(die, DW_AT_data_member_location) &&
+	    dwarf_hasattr(next, DW_AT_data_member_location) &&
+	    private_dwarf_udata(die, DW_AT_data_member_location, overrides) ==
+	    private_dwarf_udata(next, DW_AT_data_member_location, overrides) &&
+	    dwarf_hasattr(die, DW_AT_bit_offset) &&
+	    dwarf_hasattr(next, DW_AT_bit_offset) &&
+	    private_dwarf_udata(die, DW_AT_bit_offset, overrides) >
+	    private_dwarf_udata(next, DW_AT_bit_offset, overrides))
+		return next;
+	return NULL;
 }
 
 /*
@@ -2591,7 +3153,7 @@ static ctf_id_t lookup_ctf_type(const char *module_name, const char *file_name,
 		     module_name, file_name);
 
 	type_ref = construct_ctf_id(module_name, file_name,
-				    type_die, &cu_die);
+				    type_die, &cu_die, NULL);
 
 	/*
 	 * Pass any error back up.
@@ -2683,9 +3245,8 @@ static int filter_ctf_file_scope(Dwarf_Die *die, Dwarf_Die *parent_die)
 
 /*
  * A CTF assembly filter function which excludes all names not at the global
- * scope, all static symbols, and all names whose names are unlikely to be
- * interesting.  (DTrace userspace contains a similar list, but the two lists
- * need not be in sync.)
+ * scope, and all names whose names are unlikely to be interesting.  (DTrace
+ * userspace contains a similar list, but the two lists need not be in sync.)
  */
 static int filter_ctf_uninteresting(Dwarf_Die *die,
 				    Dwarf_Die *parent_die)
@@ -2700,7 +3261,6 @@ static int filter_ctf_uninteresting(Dwarf_Die *die,
 
 #define strstarts(var, x) (strncmp(var, x, strlen (x)) == 0)
 	return ((dwarf_tag(parent_die) == DW_TAG_compile_unit) &&
-		(dwarf_hasattr(die, DW_AT_external)) &&
 		!((strcmp(sym_name, "__per_cpu_start") == 0) ||
 		  (strcmp(sym_name, "__per_cpu_end") == 0) ||
 		  (strstarts(sym_name, "__crc_")) ||
@@ -2730,20 +3290,21 @@ static int filter_ctf_uninteresting(Dwarf_Die *die,
  */
 static ctf_id_t assemble_ctf_base(const char *module_name,
 				  const char *file_name, Dwarf_Die *die,
-				  Dwarf_Die *parent_die, ulong_t parent_bias,
-				  ctf_file_t *ctf, ctf_id_t parent_ctf_id,
-				  const char *locerrstr, int top_level_type,
-				  enum skip_type *skip, int *override)
+				  Dwarf_Die *parent_die, ctf_file_t *ctf,
+				  ctf_id_t parent_ctf_id, const char *locerrstr,
+				  die_override_t *overrides,
+				  int top_level_type, enum skip_type *skip,
+				  int *replace)
 {
 	typedef ctf_id_t (*ctf_add_fun)(ctf_file_t *, uint_t,
 					const char *, const ctf_encoding_t *);
 
 	const char *name = dwarf_diename(die);
-	Dwarf_Attribute encoding_attr, size_attr;
 	Dwarf_Word encoding, size;
 	ctf_add_fun ctf_add_func;
 	ctf_encoding_t ctf_encoding;
 	size_t encoding_search;
+	die_override_t *bit_size_override, *bit_offset_override;
 
 	struct dwarf_encoding_tab {
 		Dwarf_Word encoding;
@@ -2786,19 +3347,10 @@ static ctf_id_t assemble_ctf_base(const char *module_name,
 	CTF_DW_ENFORCE(name);
 	CTF_DW_ENFORCE(encoding);
 	CTF_DW_ENFORCE(byte_size);
-	CTF_DW_ENFORCE_NOT(bit_size);
 	CTF_DW_ENFORCE_NOT(endianity);
 
-	dwarf_attr(die, DW_AT_encoding, &encoding_attr);
-	dwarf_formudata(&encoding_attr, &encoding);
-
-	if ((dwarf_attr(die, DW_AT_byte_size, &size_attr) == NULL) ||
-	    (dwarf_formudata(&size_attr, &size) < 0)) {
-		fprintf(stderr, "%s: skipping type, cannot get size: %s\n",
-			locerrstr, dwarf_errmsg(dwarf_errno()));
-		*skip = SKIP_ABORT;
-		return CTF_ERROR_REPORTED;
-	}
+	encoding = private_dwarf_udata(die, DW_AT_encoding, overrides);
+	size = private_dwarf_udata(die, DW_AT_byte_size, overrides);
 
 	for (encoding_search = 0; all_encodings[encoding_search].func != 0;
 	     encoding_search++) {
@@ -2821,8 +3373,40 @@ static ctf_id_t assemble_ctf_base(const char *module_name,
 		*skip = SKIP_ABORT;
 		return CTF_ERROR_REPORTED;
 	}
-	ctf_encoding.cte_offset = 0;
-	ctf_encoding.cte_bits = size * 8;
+
+	/*
+	 * Handle bitfields.  Only look at overrides, since bitfields can only
+	 * be members of structures in C, thus derived from the referencing DIE.
+	 * Bitfields are never top-level types in C, even though they are in
+	 * DWARF.
+	 */
+	bit_size_override = private_find_override(die, DW_AT_bit_size,
+						  overrides);
+	bit_offset_override = private_find_override(die, DW_AT_bit_offset,
+						    overrides);
+	if (bit_size_override) {
+		ctf_encoding.cte_bits = bit_size_override->value;
+		top_level_type = 0;
+	} else
+		ctf_encoding.cte_bits = size * 8;
+
+	if (bit_offset_override) {
+#if __BYTE_ORDER == __BIG_ENDIAN
+		ctf_encoding.cte_offset = bit_offset_override->value;
+#else
+		/*
+		 * The figure here counts from the left to the leftmost edge of
+		 * the bitfield: we want to count from the right to the
+		 * rightmost edge.
+		 */
+		ctf_encoding.cte_offset = (size * 8) -
+			bit_offset_override->value - ctf_encoding.cte_bits;
+		dw_ctf_trace("Endianizing cte_offset from %x to %x\n", bit_offset_override->value,
+			     ctf_encoding.cte_offset);
+#endif
+	} else
+		ctf_encoding.cte_offset = 0;
+
 
 	return ctf_add_func(ctf, top_level_type ? CTF_ADD_ROOT : CTF_ADD_NONROOT,
 			    name, &ctf_encoding);
@@ -2834,10 +3418,11 @@ static ctf_id_t assemble_ctf_base(const char *module_name,
 static ctf_id_t assemble_ctf_pointer(const char *module_name,
 				     const char *file_name,
 				     Dwarf_Die *die, Dwarf_Die *parent_die,
-				     ulong_t parent_bias, ctf_file_t *ctf,
-				     ctf_id_t parent_ctf_id,
-				     const char *locerrstr, int top_level_type,
-				     enum skip_type *skip, int *override)
+				     ctf_file_t *ctf, ctf_id_t parent_ctf_id,
+				     const char *locerrstr,
+				     die_override_t *overrides,
+				     int top_level_type,
+				     enum skip_type *skip, int *replace)
 {
 	ctf_id_t type_ref;
 
@@ -2864,10 +3449,12 @@ static ctf_id_t assemble_ctf_pointer(const char *module_name,
  */
 static ctf_id_t assemble_ctf_array(const char *module_name,
 				   const char *file_name, Dwarf_Die *die,
-				   Dwarf_Die *parent_die, ulong_t parent_bias,
-				   ctf_file_t *ctf, ctf_id_t parent_ctf_id,
-				   const char *locerrstr, int top_level_type,
-				   enum skip_type *skip, int *override)
+				   Dwarf_Die *parent_die, ctf_file_t *ctf,
+				   ctf_id_t parent_ctf_id,
+				   const char *locerrstr,
+				   die_override_t *overrides,
+				   int top_level_type,
+				   enum skip_type *skip, int *replace)
 {
 	ctf_id_t type_ref;
 
@@ -2892,13 +3479,13 @@ static ctf_id_t assemble_ctf_array_dimension(const char *module_name,
 					     const char *file_name,
 					     Dwarf_Die *die,
 					     Dwarf_Die *parent_die,
-					     ulong_t parent_bias,
 					     ctf_file_t *ctf,
 					     ctf_id_t parent_ctf_id,
 					     const char *locerrstr,
+					     die_override_t *overrides,
 					     int top_level_type,
 					     enum skip_type *skip,
-					     int *override)
+					     int *replace)
 {
 	ctf_arinfo_t arinfo;
 
@@ -2924,7 +3511,7 @@ static ctf_id_t assemble_ctf_array_dimension(const char *module_name,
 	 * type-so-far, overriding the parent type.
 	 */
 
-	*override = 1;
+	*replace = 1;
 	return ctf_add_array(ctf, top_level_type ? CTF_ADD_ROOT : CTF_ADD_NONROOT,
 			     &arinfo);
 }
@@ -2936,13 +3523,13 @@ static ctf_id_t assemble_ctf_enumeration(const char *module_name,
 					 const char *file_name,
 					 Dwarf_Die *die,
 					 Dwarf_Die *parent_die,
-					 ulong_t parent_bias,
 					 ctf_file_t *ctf,
 					 ctf_id_t parent_ctf_id,
 					 const char *locerrstr,
+					 die_override_t *overrides,
 					 int top_level_type,
 					 enum skip_type *skip,
-					 int *override)
+					 int *replace)
 {
 	const char *name = dwarf_diename(die);
 
@@ -2957,16 +3544,15 @@ static ctf_id_t assemble_ctf_enumerator(const char *module_name,
 					const char *file_name,
 					Dwarf_Die *die,
 					Dwarf_Die *parent_die,
-					ulong_t parent_bias,
 					ctf_file_t *ctf,
 					ctf_id_t parent_ctf_id,
 					const char *locerrstr,
+					die_override_t *overrides,
 					int top_level_type,
 					enum skip_type *skip,
-					int *override)
+					int *replace)
 {
 	const char *name = dwarf_diename(die);
-	Dwarf_Attribute value_attr;
 	Dwarf_Word value;
 	int err;
 
@@ -2975,9 +3561,7 @@ static ctf_id_t assemble_ctf_enumerator(const char *module_name,
 	CTF_DW_ENFORCE_NOT(bit_stride);
 	CTF_DW_ENFORCE_NOT(byte_stride);
 
-	dwarf_attr(die, DW_AT_const_value, &value_attr);
-	dwarf_formudata(&value_attr, &value);
-
+	value = private_dwarf_udata(die, DW_AT_const_value, overrides);
 	err = ctf_add_enumerator(ctf, parent_ctf_id, name, value);
 
 	if (err != 0)
@@ -2993,13 +3577,13 @@ static ctf_id_t assemble_ctf_typedef(const char *module_name,
 				     const char *file_name,
 				     Dwarf_Die *die,
 				     Dwarf_Die *parent_die,
-				     ulong_t parent_bias,
 				     ctf_file_t *ctf,
 				     ctf_id_t parent_ctf_id,
 				     const char *locerrstr,
+				     die_override_t *overrides,
 				     int top_level_type,
 				     enum skip_type *skip,
-				     int *override)
+				     int *replace)
 {
 	const char *name = dwarf_diename(die);
 	ctf_id_t type_ref;
@@ -3023,13 +3607,13 @@ static ctf_id_t assemble_ctf_cvr_qual(const char *module_name,
 				      const char *file_name,
 				      Dwarf_Die *die,
 				      Dwarf_Die *parent_die,
-				      ulong_t paretn_bias,
 				      ctf_file_t *ctf,
 				      ctf_id_t parent_ctf_id,
 				      const char *locerrstr,
+				      die_override_t *overrides,
 				      int top_level_type,
 				      enum skip_type *skip,
-				      int *override)
+				      int *replace)
 {
 	ctf_id_t (*ctf_cvr_fun)(ctf_file_t *, uint_t, ctf_id_t);
 	ctf_id_t type_ref;
@@ -3069,13 +3653,13 @@ static ctf_id_t assemble_ctf_struct_union(const char *module_name,
 					  const char *file_name,
 					  Dwarf_Die *die,
 					  Dwarf_Die *parent_die,
-					  ulong_t parent_bias,
 					  ctf_file_t *ctf,
 					  ctf_id_t parent_ctf_id,
 					  const char *locerrstr,
+					  die_override_t *overrides,
 					  int top_level_type,
 					  enum skip_type *skip,
-					  int *override)
+					  int *replace)
 {
 	ctf_id_t (*ctf_add_sou)(ctf_file_t *, uint_t, const char *);
 
@@ -3168,15 +3752,16 @@ static ctf_id_t assemble_ctf_su_member(const char *module_name,
 				       const char *file_name,
 				       Dwarf_Die *die,
 				       Dwarf_Die *parent_die,
-				       ulong_t parent_bias,
 				       ctf_file_t *ctf,
 				       ctf_id_t parent_ctf_id,
 				       const char *locerrstr,
+				       die_override_t *overrides,
 				       int top_level_type,
 				       enum skip_type *skip,
-				       int *override)
+				       int *replace)
 {
-	ulong_t offset;
+	ulong_t offset = 0;
+	ulong_t bit_offset = 0;
 	ctf_full_id_t *new_type;
 	Dwarf_Attribute type_attr;
 	Dwarf_Die type_die;
@@ -3229,20 +3814,20 @@ static ctf_id_t assemble_ctf_su_member(const char *module_name,
 	dwarf_diecu(&type_die, &cu_die, NULL, NULL);
 
 	/*
-	 * Figure out the offset of this type, in bits.
+	 * Figure out the offset of this type, in bits.  (This is split in two
+	 * for bitfields, where the bitfield itself gets represented elsewhere,
+	 * in the CTF type of the member itself.)
 	 *
 	 * DW_AT_data_bit_offset is the simple case.  DW_AT_data_member_location
 	 * is trickier, and, alas, the DWARF2 variation is the complex one.
 	 */
 	if (dwarf_hasattr(die, DW_AT_data_bit_offset)) {
-		Dwarf_Attribute bit_offset_attr;
-		Dwarf_Word bit_offset;
-
-		dwarf_attr(die, DW_AT_data_bit_offset, &bit_offset_attr);
-		dwarf_formudata(&bit_offset_attr, &bit_offset);
-
-		offset = bit_offset;
-	} else if (dwarf_hasattr(die, DW_AT_data_member_location)) {
+		offset = private_dwarf_udata(die, DW_AT_data_bit_offset,
+					     overrides);
+		bit_offset = offset % 8;
+		offset = offset / 8 * 8;
+	}
+	else if (dwarf_hasattr(die, DW_AT_data_member_location)) {
 		Dwarf_Attribute location_attr;
 
 		dwarf_attr(die, DW_AT_data_member_location, &location_attr);
@@ -3258,6 +3843,11 @@ static ctf_id_t assemble_ctf_su_member(const char *module_name,
 			/*
 			 * Byte offset, with bit_offset of containing
 			 * structure/union added, if present.
+			 *
+			 * (No overrides supported here, yet, due to lack of
+			 * sdata overrides and the desire for consistency.
+			 * We can add them if we start passing down
+			 * DW_AT_data_member_location overrides.)
 			 */
 			if (dwarf_whatform(&location_attr) == DW_FORM_sdata) {
 				Dwarf_Sword location;
@@ -3271,14 +3861,14 @@ static ctf_id_t assemble_ctf_su_member(const char *module_name,
 				offset = location * 8;
 			}
 
-			if (dwarf_hasattr(parent_die, DW_AT_bit_offset)) {
+			if (dwarf_hasattr(die, DW_AT_bit_offset)) {
 				Dwarf_Attribute bit_attr;
 				Dwarf_Word bit;
 
-				dwarf_attr(parent_die, DW_AT_bit_offset,
+				dwarf_attr(die, DW_AT_bit_offset,
 					   &bit_attr);
 				dwarf_formudata(&bit_attr, &bit);
-				offset += bit;
+				bit_offset = bit;
 			}
 			break;
 		}
@@ -3340,17 +3930,28 @@ static ctf_id_t assemble_ctf_su_member(const char *module_name,
 			exit(1);
 		}
 		}
-	} else { /* No offset.  */
-		offset = 0;
-	}
+		/* Fall through. */
+	} else { /* No offset beyond any override.  */
+		die_override_t *o;
 
-	offset += parent_bias;
+		o = private_find_override(die, DW_AT_data_bit_offset,
+					  overrides);
+		if (o) {
+			if (o->op == DIE_OVERRIDE_REPLACE)
+				offset = o->value;
+			else
+				offset += o->value;
+		}
+		bit_offset = offset % 8;
+		offset = offset / 8 * 8;
+	}
 
 	/*
 	 * If this is an unnamed struct/union, call directly back to
 	 * die_to_ctf() to add this struct's members to the current structure,
 	 * merging it seamlessly with its parent (excepting only the member
-	 * offsets).
+	 * offsets).  Use DW_AT_data_bit_offset because it does not require
+	 * the complexity of DW_AT_data_member_location to be faked.
 	 */
 	if (!dwarf_hasattr(die, DW_AT_name)) {
 		Dwarf_Die child_die;
@@ -3371,15 +3972,50 @@ static ctf_id_t assemble_ctf_su_member(const char *module_name,
 		if (dwarf_child(&type_die, &child_die) < 0)
 			return parent_ctf_id;
 
+		die_override_t o[] = {{ dwarf_tag(&child_die),
+					DW_AT_data_bit_offset,
+					DIE_OVERRIDE_ADD,
+					offset }, {0} };
+
 		die_to_ctf(module_name, file_name, &child_die, parent_die, ctf,
-		    parent_ctf_id, offset, 0, skip, &dummy, NULL);
+			   parent_ctf_id, o, 0, 0, skip, &dummy, NULL);
+
 		return parent_ctf_id;
 	}
 
 	/*
 	 * Get the CTF ID of this member's type, by recursive lookup.
+	 *
+	 * If this is a bitfield, we want to note that said type's size and
+	 * bit-offset should be adjusted.
 	 */
-	new_type = construct_ctf_id(module_name, file_name, &type_die, &cu_die);
+	if (dwarf_hasattr(die, DW_AT_bit_size)) {
+		die_override_t o[] =
+			{{ dwarf_tag(&type_die),
+			   DW_AT_bit_size,
+			   DIE_OVERRIDE_REPLACE,
+			   private_dwarf_udata(die, DW_AT_bit_size,
+					       NULL) },
+			 { dwarf_tag(&type_die),
+			   DW_AT_bit_offset,
+			   DIE_OVERRIDE_REPLACE,
+			   bit_offset },
+			 {0} };
+
+		new_type = construct_ctf_id(module_name, file_name, &type_die,
+					    &cu_die, o);
+	} else {
+		if (bit_offset != 0) {
+			fprintf(stderr, "%s:%s: error in member %s: No "
+				"DW_AT_bit_size, but nonzero bit offset of "
+				"%lx in overall offset of %lx\n", locerrstr,
+				dwarf_diename(&cu_die), dwarf_diename(die),
+				bit_offset, offset);
+			return CTF_ERROR_REPORTED;
+		}
+		new_type = construct_ctf_id(module_name, file_name, &type_die,
+					    &cu_die, NULL);
+	}
 
 	if (new_type == NULL) {
 		*skip = SKIP_ABORT;
@@ -3482,19 +4118,34 @@ static ctf_id_t assemble_ctf_variable(const char *module_name,
 				      const char *file_name,
 				      Dwarf_Die *die,
 				      Dwarf_Die *parent_die,
-				      ulong_t parent_bias,
 				      ctf_file_t *ctf,
 				      ctf_id_t parent_ctf_id,
 				      const char *locerrstr,
+				      die_override_t *overrides,
 				      int top_level_type,
 				      enum skip_type *skip,
-				      int *override)
+				      int *replace)
 {
 	const char *name = dwarf_diename(die);
+	char *blacklist_name = NULL;
 	ctf_id_t type_ref;
 	int err;
 
 	CTF_DW_ENFORCE(name);
+
+	/*
+	 * If blacklisted, just skip it.
+	 */
+	blacklist_name = str_appendn(blacklist_name, module_name, "`",
+				     dwarf_diename(die), NULL);
+	if (g_hash_table_lookup_extended(variable_blacklist, blacklist_name,
+					 NULL, NULL)) {
+		dw_ctf_trace("%s: variable %s is blacklisted for static/non-"
+			     "static ambiguity.\n", file_name, blacklist_name);
+		free(blacklist_name);
+		return 0;
+	}
+	free(blacklist_name);
 
 	if ((type_ref = lookup_ctf_type(module_name, file_name, die, ctf,
 					locerrstr)) < 0) {
@@ -3631,6 +4282,51 @@ static Dwarf_Die *private_dwarf_type(Dwarf_Die *die, Dwarf_Die *target_die)
 }
 
 /*
+ * Given a DIE that contains a udata attribute, look up that attribute and
+ * return its value (optionally overridden or modified by the die_overrides).
+ */
+static Dwarf_Word private_dwarf_udata(Dwarf_Die *die, int attribute,
+				      die_override_t *overrides)
+{
+	Dwarf_Attribute attr;
+	Dwarf_Word value;
+	die_override_t *override;
+
+	override = private_find_override(die, attribute, overrides);
+
+	if (override && override->op == DIE_OVERRIDE_REPLACE)
+		return override->value;
+
+	dwarf_attr(die, attribute, &attr);
+	dwarf_formudata(&attr, &value);
+
+	if (override)
+		value += override->value;
+
+	return value;
+}
+
+/*
+ * Find an override in an override list.
+ */
+static die_override_t *private_find_override(Dwarf_Die *die,
+					     int attribute,
+					     die_override_t *overrides)
+{
+	size_t i;
+
+	if (overrides == NULL)
+	    return NULL;
+
+	for (i = 0; overrides[i].tag != 0; i++)
+		if ((overrides[i].tag == dwarf_tag(die)) &&
+		    (overrides[i].attribute == attribute))
+			return &overrides[i];
+
+	return NULL;
+}
+
+/*
  * Determine the dimensions of an array subrange, or 0 if variable.
  */
 static Dwarf_Word private_subrange_dimensions(Dwarf_Die *die)
@@ -3762,6 +4458,23 @@ static char *str_appendn(char *s, ...)
 }
 
 /*
+ * Filter a GList, calling a predicate on it and removing all elements for which
+ * the predicate returns true.
+ */
+static GList *list_filter(GList *list, filter_pred_fun fun, void *data)
+{
+	GList *cur = list;
+	while (cur) {
+		GList *next = cur->next;
+		if (fun(cur->data, data))
+			list = g_list_delete_link(list, cur);
+		cur = next;
+	}
+
+	return list;
+}
+
+/*
  * Figure out the (pathless, suffixless) module name for a given module file (.o
  * or .ko), and return it in a new dynamically allocated string.
  */
@@ -3842,7 +4555,7 @@ static char *rel_abs_file_name(const char *file_name, const char *relative_to)
 
 	abspath = realpath(file_name, NULL);
 	if (abspath == NULL)
-		abspath = strdup(file_name);
+		abspath = xstrdup(file_name);
 
 	if ((dir > -1) && (fchdir(dir) < 0)) {
 		fprintf(stderr, "Cannot return to original directory "

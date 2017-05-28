@@ -262,22 +262,22 @@ EXPORT_SYMBOL(dtrace_invop_remove);
  * Enable an INVOP-based probe, i.e. ensure that an INVOP trap is triggered at
  * the specified address.
  */
-void dtrace_invop_enable(uint8_t *addr)
+void dtrace_invop_enable(asm_instr_t *addr, asm_instr_t opcode)
 {
-	text_poke(addr, ((unsigned char []){INVOP_TRAP_INSTR}), 1);
+	text_poke(addr, ((unsigned char []){opcode}), 1);
 }
 EXPORT_SYMBOL(dtrace_invop_enable);
 
 /*
  * Disable an INVOP-based probe.
  */
-void dtrace_invop_disable(uint8_t *addr, uint8_t opcode)
+void dtrace_invop_disable(asm_instr_t *addr, asm_instr_t opcode)
 {
 	text_poke(addr, ((unsigned char []){opcode}), 1);
 }
 EXPORT_SYMBOL(dtrace_invop_disable);
 
-static inline dtrace_bad_address(void *addr)
+static inline int dtrace_bad_address(void *addr)
 {
 	unsigned long	dummy;
 
@@ -373,10 +373,9 @@ void dtrace_user_stacktrace(stacktrace_state_t *st)
 	bos = current->dtrace_psinfo->ustack;
 
 	st->depth = 1;
-	if (pcs) {
+	if (pcs)
 		*pcs++ = (uint64_t)instruction_pointer(regs);
-		limit--;
-	}
+	limit--;
 
 	if (!limit)
 		goto out;
@@ -391,11 +390,12 @@ void dtrace_user_stacktrace(stacktrace_state_t *st)
 		if (ret)
 			break;
 
-		if (dtrace_user_addr_is_exec(pc) && pcs) {
-			*pcs++ = pc;
+		if (dtrace_user_addr_is_exec(pc)) {
+			if (pcs)
+				*pcs++ = pc;
 			limit--;
+			st->depth++;
 		}
-		st->depth++;
 
 		sp++;
 	}
