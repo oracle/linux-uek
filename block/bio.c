@@ -921,7 +921,11 @@ int submit_bio_wait(int rw, struct bio *bio)
 	bio->bi_private = &ret;
 	bio->bi_end_io = submit_bio_wait_endio;
 	submit_bio(rw, bio);
+	DTRACE_IO(wait__start, struct bio * : (bufinfo_t *, devinfo_t *), bio,
+		  struct file * : fileinfo_t *, NULL);
 	wait_for_completion(&ret.event);
+	DTRACE_IO(wait__done, struct bio * : (bufinfo_t *, devinfo_t *), bio,
+		  struct file * : fileinfo_t *, NULL);
 
 	return ret.error;
 }
@@ -1817,6 +1821,10 @@ void bio_endio(struct bio *bio, int error)
 			bio_put(bio);
 			bio = parent;
 		} else {
+			DTRACE_IO(done, struct bio * :
+				  (bufinfo_t *, devinfo_t *), bio,
+				  struct file * : fileinfo_t *, NULL);
+
 			if (bio->bi_end_io)
 				bio->bi_end_io(bio, error);
 			bio = NULL;

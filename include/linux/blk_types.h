@@ -47,7 +47,7 @@ struct bio {
 	struct bio		*bi_next;	/* request queue link */
 	struct block_device	*bi_bdev;	/* bdev (possibly remapped) */
 #ifdef CONFIG_DTRACE
-	struct block_device	*bi_bdev_orig;	/* bdev before remapping */
+	struct block_device	*bi_bdev_orig;	/* for kABI compatibility */
 #endif
 	unsigned long		bi_flags;	/* status, command, etc */
 	unsigned long		bi_rw;		/* bottom bits READ/WRITE,
