@@ -1906,8 +1906,7 @@ static int bnxt_poll_work(struct bnxt *bp, struct bnxt_napi *bnapi, int budget)
 		/* Sync BD data before updating doorbell */
 		wmb();
 
-		writel(DB_KEY_TX | prod, db);
-		writel(DB_KEY_TX | prod, db);
+		bnxt_db_write(bp, db, DB_KEY_TX | prod);
 	}
 
 	cpr->cp_raw_cons = raw_cons;
