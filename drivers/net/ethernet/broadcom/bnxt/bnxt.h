@@ -1013,6 +1013,7 @@ struct bnxt {
 	#define BNXT_FLAG_FW_LLDP_AGENT	0x80000
 	#define BNXT_FLAG_MULTI_HOST	0x100000
 	#define BNXT_FLAG_SHORT_CMD	0x200000
+	#define BNXT_FLAG_DOUBLE_DB	0x400000
 	#define BNXT_FLAG_CHIP_NITRO_A0	0x1000000
 
 	#define BNXT_FLAG_ALL_CONFIG_FEATS (BNXT_FLAG_TPA |		\
@@ -1233,6 +1234,14 @@ struct bnxt {
 #define SFF_MODULE_ID_QSFP_PLUS			0xd
 #define SFF_MODULE_ID_QSFP28			0x11
 #define BNXT_MAX_PHY_I2C_RESP_SIZE		64
+
+/* For TX and RX ring doorbells */
+static inline void bnxt_db_write(struct bnxt *bp, void __iomem *db, u32 val)
+{
+	writel(val, db);
+	if (bp->flags & BNXT_FLAG_DOUBLE_DB)
+		writel(val, db);
+}
 
 void bnxt_set_ring_params(struct bnxt *);
 int bnxt_set_rx_skb_mode(struct bnxt *bp, bool page_mode);
