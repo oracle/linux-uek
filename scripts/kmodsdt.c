@@ -3,7 +3,7 @@
  * Use is subject to license terms.
  */
 
-#include <autoconf.h>
+#include "../include/generated/autoconf.h"
 
 #define	ELF_TARGET_ALL
 #include <elf.h>
