@@ -101,7 +101,6 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 	 * while we're executing. */
 	if (conn) {
 		mutex_lock(&conn->c_cm_lock);
-
 		/* If the connection is being shut down, bail out
 		 * right away. We return 0 so cm_id doesn't get
 		 * destroyed prematurely */
@@ -121,44 +120,6 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 
 	case RDMA_CM_EVENT_ADDR_RESOLVED:
 		rdma_set_service_type(cm_id, conn->c_tos);
-
-		if (conn->c_tos && conn->c_reconnect) {
-			struct rds_ib_connection *base_ic =
-				conn->c_base_conn->c_transport_data;
-
-			mutex_lock(&conn->c_base_conn->c_cm_lock);
-			if (rds_conn_transition(conn->c_base_conn, RDS_CONN_UP,
-						RDS_CONN_UP)) {
-				ret = rdma_set_ib_paths(cm_id,
-					base_ic->i_cm_id->route.path_rec,
-					base_ic->i_cm_id->route.num_paths);
-				if (!ret) {
-					struct rds_ib_connection *ic =
-						conn->c_transport_data;
-
-					cm_id->route.path_rec[0].sl =
-						ic->i_sl;
-					cm_id->route.path_rec[0].qos_class =
-						conn->c_tos;
-					ret = trans->cm_initiate_connect(cm_id);
-				}
-			} else {
-				ret = 1;
-			}
-			mutex_unlock(&conn->c_base_conn->c_cm_lock);
-
-			if (ret) {
-				rds_rtd(RDS_RTD_CM,
-					"ADDR_RESOLVED: ret %d, calling rds_conn_drop <%pI4,%pI4,%d>\n",
-					ret, &conn->c_laddr,
-					&conn->c_faddr, conn->c_tos);
-				rds_conn_drop(conn, DR_IB_SET_IB_PATH_FAIL);
-				ret = 0;
-			}
-
-			break;
-		}
-
 
 		/* XXX do we need to clean up if this fails? */
 		ret = rdma_resolve_route(cm_id,
@@ -192,9 +153,17 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 			struct rds_ib_connection *ibic;
 
 			ibic = conn->c_transport_data;
-			if (ibic && ibic->i_cm_id == cm_id)
+			if (ibic && ibic->i_cm_id == cm_id) {
+				/* ibacm caches the path record without considering the tos/sl.
+				 * It is considered a match if the <src,dest> matches the
+				 * cache. In order to create qp with the correct sl/vl, RDS
+				 * needs to update the sl manually. As for now, RDS is assuming
+				 * that it is a 1:1 in tos to sl mapping.
+				 */
+				cm_id->route.path_rec[0].sl = conn->c_tos;
+				cm_id->route.path_rec[0].qos_class = conn->c_tos;
 				ret = trans->cm_initiate_connect(cm_id);
-			else {
+			} else {
 				rds_rtd(RDS_RTD_CM,
 					"ROUTE_RESOLVED: calling rds_conn_drop, conn %p <%pI4,%pI4,%d>\n",
 					conn, &conn->c_laddr,
