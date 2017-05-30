@@ -2159,6 +2159,7 @@ static int __kprobes perf_event_nmi_handler(struct notifier_block *self,
 	struct perf_sample_data data;
 	struct cpu_hw_events *cpuc;
 	struct pt_regs *regs;
+	u64 irq_disabled;
 	int i;
 
 	if (!atomic_read(&active_events))
@@ -2187,6 +2188,7 @@ static int __kprobes perf_event_nmi_handler(struct notifier_block *self,
 	    sparc_pmu->num_pcrs == 1)
 		pcr_ops->write_pcr(0, cpuc->pcr[0]);
 
+	irq_disabled = ((regs->tstate & TSTATE_PIL) >> 20) == PIL_NORMAL_MAX;
 	for (i = 0; i < cpuc->n_events; i++) {
 		struct perf_event *event = cpuc->event[i];
 		int pcr_idx = cpuc->current_idx[i];
@@ -2212,8 +2214,16 @@ static int __kprobes perf_event_nmi_handler(struct notifier_block *self,
 		if (!sparc_perf_event_set_period(event, hwc, pcr_idx))
 			continue;
 
-		if (perf_event_overflow(event, &data, regs))
+		if (unlikely(irq_disabled)) {
+			u64 saved_exclude = event->attr.exclude_callchain_user;
+
+			event->attr.exclude_callchain_user = 1;
+			if (perf_event_overflow(event, &data, regs))
+				sparc_pmu_stop(event, 0);
+			event->attr.exclude_callchain_user = saved_exclude;
+		} else if (perf_event_overflow(event, &data, regs)) {
 			sparc_pmu_stop(event, 0);
+		}
 	}
 
 	return NOTIFY_STOP;
