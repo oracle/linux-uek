@@ -1580,6 +1580,7 @@ static irqreturn_t blkif_interrupt(int irq, void *dev_id)
 	unsigned long flags;
 	struct blkfront_ring_info *rinfo = (struct blkfront_ring_info *)dev_id;
 	struct blkfront_info *info = rinfo->dev_info;
+	int error;
 
 	if (unlikely(info->connected != BLKIF_STATE_CONNECTED))
 		return IRQ_HANDLED;
@@ -1623,37 +1624,37 @@ static irqreturn_t blkif_interrupt(int irq, void *dev_id)
 			continue;
 		}
 
-		req->errors = (bret->status == BLKIF_RSP_OKAY) ? 0 : -EIO;
+		error = (bret->status == BLKIF_RSP_OKAY) ? 0 : -EIO;
 		switch (bret->operation) {
 		case BLKIF_OP_DISCARD:
 			if (unlikely(bret->status == BLKIF_RSP_EOPNOTSUPP)) {
 				struct request_queue *rq = info->rq;
 				printk(KERN_WARNING "blkfront: %s: %s op failed\n",
 					   info->gd->disk_name, op_name(bret->operation));
-				req->errors = -EOPNOTSUPP;
+				error = -EOPNOTSUPP;
 				info->feature_discard = 0;
 				info->feature_secdiscard = 0;
 				queue_flag_clear(QUEUE_FLAG_DISCARD, rq);
 				queue_flag_clear(QUEUE_FLAG_SECDISCARD, rq);
 			}
-			blk_mq_complete_request(req);
+			blk_mq_complete_request(req, error);
 			break;
 		case BLKIF_OP_FLUSH_DISKCACHE:
 		case BLKIF_OP_WRITE_BARRIER:
 			if (unlikely(bret->status == BLKIF_RSP_EOPNOTSUPP)) {
 				printk(KERN_WARNING "blkfront: %s: %s op failed\n",
 				       info->gd->disk_name, op_name(bret->operation));
-				req->errors = -EOPNOTSUPP;
+				error = -EOPNOTSUPP;
 			}
 			if (unlikely(bret->status == BLKIF_RSP_ERROR &&
 				     rinfo->shadow[id].req.u.rw.nr_segments == 0)) {
 				printk(KERN_WARNING "blkfront: %s: empty %s op failed\n",
 				       info->gd->disk_name, op_name(bret->operation));
-				req->errors = -EOPNOTSUPP;
+				error = -EOPNOTSUPP;
 			}
-			if (unlikely(req->errors)) {
-				if (req->errors == -EOPNOTSUPP)
-					req->errors = 0;
+			if (unlikely(error)) {
+				if (error == -EOPNOTSUPP)
+					error = 0;
 				info->feature_flush = 0;
 				xlvbd_flush(info);
 			}
@@ -1664,7 +1665,7 @@ static irqreturn_t blkif_interrupt(int irq, void *dev_id)
 				dev_dbg(&info->xbdev->dev, "Bad return from blkdev data "
 					"request: %x\n", bret->status);
 
-			blk_mq_complete_request(req);
+			blk_mq_complete_request(req, error);
 			break;
 		default:
 			BUG();
