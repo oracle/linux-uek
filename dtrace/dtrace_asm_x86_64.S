@@ -19,11 +19,12 @@
  * CDDL HEADER END
  */
 /*
- * Copyright 2010-2014 Oracle, Inc.  All rights reserved.
+ * Copyright 2010-2017 Oracle, Inc.  All rights reserved.
  * Use is subject to license terms.
  */
 
 #include <linux/linkage.h>
+#include <asm/smap.h>
 
 #define CPU_DTRACE_BADADDR	0x0004	/* DTrace fault: bad address */
 
@@ -96,10 +97,12 @@
 	pushq	%rbp
 	movq	%rsp, %rbp
 
+	ASM_STAC
 	xchgq	%rdi, %rsi		# make %rsi source, %rdi dest
 	movq	%rdx, %rcx		# load count
 	repz				# repeat for count ...
 	smovb				#   move from %ds:rsi to %ed:rdi
+	ASM_CLAC
 	leave
 	ret
 	ENDPROC(dtrace_copy)
@@ -133,6 +136,7 @@
 	pushq	%rbp
 	movq	%rsp, %rbp
 
+	ASM_STAC
 0:
 	movb	(%rdi), %al		# load from source
 	movb	%al, (%rsi)		# store to destination
@@ -149,6 +153,7 @@
 	cmpq	$0, %rdx
 	jne	0b
 2:
+	ASM_CLAC
 	leave
 	ret
 
@@ -196,7 +201,9 @@
 #if defined(__x86_64__)
 
 	ENTRY(dtrace_fulword)
+	ASM_STAC
 	movq	(%rdi), %rax
+	ASM_CLAC
 	ret
 	ENDPROC(dtrace_fulword)
 
@@ -215,7 +222,9 @@
 
 	ENTRY(dtrace_fuword8_nocheck)
 	xorq	%rax, %rax
+	ASM_STAC
 	movb	(%rdi), %al
+	ASM_CLAC
 	ret
 	ENDPROC(dtrace_fuword8_nocheck)
 
@@ -234,7 +243,9 @@
 
 	ENTRY(dtrace_fuword16_nocheck)
 	xorq	%rax, %rax
+	ASM_STAC
 	movw	(%rdi), %ax
+	ASM_CLAC
 	ret
 	ENDPROC(dtrace_fuword16_nocheck)
 
@@ -253,7 +264,9 @@
 
 	ENTRY(dtrace_fuword32_nocheck)
 	xorq	%rax, %rax
+	ASM_STAC
 	movl	(%rdi), %eax
+	ASM_CLAC
 	ret
 	ENDPROC(dtrace_fuword32_nocheck)
 
@@ -271,7 +284,9 @@
 #if defined(__x86_64__)
 
 	ENTRY(dtrace_fuword64_nocheck)
+	ASM_STAC
 	movq	(%rdi), %rax
+	ASM_CLAC
 	ret
 	ENDPROC(dtrace_fuword64_nocheck)
 
