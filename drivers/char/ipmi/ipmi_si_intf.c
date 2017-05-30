@@ -643,11 +643,13 @@ static void handle_transaction_done(struct smi_info *smi_info)
 
 		/* We cleared the flags. */
 		smi_info->handlers->get_result(smi_info->si_sm, msg, 3);
-		if (msg[2] != 0) {
-			/* Error clearing flags */
+		if (msg[2] == IPMI_INVALID_COMMAND_ERR)
+			dev_info(smi_info->dev,
+				 "clearing flags command not recognized by SP");
+		else if (msg[2] != IPMI_CC_NO_ERROR)
 			dev_warn(smi_info->dev,
-				 "Error clearing flags: %2.2x\n", msg[2]);
-		}
+				 "Warning: error clearing flags: %2.2x\n",
+				 msg[2]);
 		smi_info->si_state = SI_NORMAL;
 		break;
 	}
