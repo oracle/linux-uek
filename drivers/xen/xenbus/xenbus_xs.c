@@ -875,8 +875,16 @@ static int xenwatch_thread(void *unused)
 
 		if (ent != &watch_events) {
 			event = list_entry(ent, struct xs_watch_event, list);
-			event->handle->callback(event->handle, event->path,
-						event->token);
+			if ( !event->handle->callback_)
+				event->handle->callback(event->handle, event->path,
+							event->token);
+			else {
+				const char *vec[2];
+
+				vec[0] = event->path;
+				vec[1] = event->token;
+				event->handle->callback_(event->handle, vec, 2);
+			}
 			kfree(event);
 		}
 

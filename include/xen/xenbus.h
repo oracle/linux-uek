@@ -60,8 +60,21 @@ struct xenbus_watch
 	const char *node;
 
 	/* Callback (executed in a process context with no locks held). */
+#ifndef __GENKSYMS__
+	void (*callback_)(struct xenbus_watch *,
+			  const char **vec, unsigned int len);
 	void (*callback)(struct xenbus_watch *,
 			 const char *path, const char *token);
+#else
+	/*
+	 * KABI check. We prefer to keep 'callback' name for in-tree code
+	 * to avoid code churning when backporting things. 'callback_' 
+	 * is used for compat callers. Unfortunately KABI checker doesn't
+	 * like the underscored name so we will feed it original name.
+	 */
+	void (*callback)(struct xenbus_watch *,
+			 const char **vec, unsigned int len);
+#endif
 };
 
 

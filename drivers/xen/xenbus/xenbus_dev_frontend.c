@@ -481,6 +481,7 @@ static int xenbus_write_watch(unsigned msg_type, struct xenbus_file_priv *u)
 		}
 
 		watch->watch.callback = watch_fired;
+		watch->watch.callback_ = NULL;
 		watch->dev_data = u;
 
 		err = register_xenbus_watch(&watch->watch);

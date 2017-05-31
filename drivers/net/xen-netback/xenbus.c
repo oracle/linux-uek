@@ -727,6 +727,7 @@ static int xen_register_credit_watch(struct xenbus_device *dev,
 	snprintf(node, maxlen, "%s/rate", dev->nodename);
 	vif->credit_watch.node = node;
 	vif->credit_watch.callback = xen_net_rate_changed;
+	vif->credit_watch.callback_ = NULL;
 	err = register_xenbus_watch(&vif->credit_watch);
 	if (err) {
 		pr_err("Failed to set watcher %s\n", vif->credit_watch.node);
@@ -779,6 +780,7 @@ static int xen_register_mcast_ctrl_watch(struct xenbus_device *dev,
 		 dev->otherend);
 	vif->mcast_ctrl_watch.node = node;
 	vif->mcast_ctrl_watch.callback = xen_mcast_ctrl_changed;
+	vif->mcast_ctrl_watch.callback_ = NULL;
 	err = register_xenbus_watch(&vif->mcast_ctrl_watch);
 	if (err) {
 		pr_err("Failed to set watcher %s\n",
