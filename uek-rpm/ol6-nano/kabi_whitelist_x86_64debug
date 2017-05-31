@@ -395,15 +395,6 @@
 	hrtimer_forward
 	hrtimer_init
 	hrtimer_start
-	ib_alloc_device
-	ib_dealloc_device
-	ib_dispatch_event
-	ib_modify_qp_is_ok
-	ib_rate_to_mult
-	ib_register_device
-	ib_umem_get_attrs
-	ib_umem_release
-	ib_unregister_device
 	icmpv6_send
 	idr_alloc
 	idr_destroy
