@@ -1420,7 +1420,7 @@ static int __ixgbe_notify_dca(struct device *dev, void *data)
 					IXGBE_DCA_CTRL_DCA_MODE_CB2);
 			break;
 		}
-		/* Fall Through since DCA is disabled. */
+		/* fall through - DCA is disabled. */
 	case DCA_PROVIDER_REMOVE:
 		if (adapter->flags & IXGBE_FLAG_DCA_ENABLED) {
 			dca_remove_requester(dev);
@@ -3966,7 +3966,7 @@ static void ixgbe_setup_rdrxctl(struct ixgbe_adapter *adapter)
 	case ixgbe_mac_x550em_a:
 		if (adapter->num_vfs)
 			rdrxctl |= IXGBE_RDRXCTL_PSP;
-		/* fall through for older HW */
+		/* fall through */
 	case ixgbe_mac_82599EB:
 	case ixgbe_mac_X540:
 		/* Disable RSC for ACK packets */
@@ -6614,6 +6614,7 @@ void ixgbe_update_stats(struct ixgbe_adapter *adapter)
 		hwstats->o2bspc += IXGBE_READ_REG(hw, IXGBE_O2BSPC);
 		hwstats->b2ospc += IXGBE_READ_REG(hw, IXGBE_B2OSPC);
 		hwstats->b2ogprc += IXGBE_READ_REG(hw, IXGBE_B2OGPRC);
+		/* fall through */
 	case ixgbe_mac_82599EB:
 		for (i = 0; i < 16; i++)
 			adapter->hw_rx_no_dma_resources +=
@@ -7956,6 +7957,7 @@ static u16 ixgbe_select_queue(struct net_device *dev, struct sk_buff *skb,
 
 		if (adapter->flags & IXGBE_FLAG_FCOE_ENABLED)
 			break;
+		/* fall through */
 	default:
 		return fallback(dev, skb);
 	}
@@ -9039,6 +9041,7 @@ bool ixgbe_wol_supported(struct ixgbe_adapter *adapter, u16 device_id,
 			/* only support first port */
 			if (hw->bus.func != 0)
 				break;
+			/* fall through */
 		case IXGBE_SUBDEV_ID_82599_SP_560FLR:
 		case IXGBE_SUBDEV_ID_82599_SFP:
 		case IXGBE_SUBDEV_ID_82599_RNDC:
