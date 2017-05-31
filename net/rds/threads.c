@@ -177,7 +177,7 @@ void rds_connect_worker(struct work_struct *work)
 	int ret;
 	bool is_tcp = conn->c_trans->t_type == RDS_TRANS_TCP;
 
-	if (is_tcp && cp->cp_index > 1 &&
+	if (is_tcp && cp->cp_index > 0 &&
 	    cp->cp_conn->c_laddr > cp->cp_conn->c_faddr)
 		return;
 	clear_bit(RDS_RECONNECT_PENDING, &cp->cp_flags);
