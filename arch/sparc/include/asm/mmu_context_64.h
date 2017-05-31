@@ -134,25 +134,7 @@ static inline void switch_mm(struct mm_struct *old_mm, struct mm_struct *mm, str
 }
 
 #define deactivate_mm(tsk,mm)	do { } while (0)
-
-/* Activate a new MM instance for the current task. */
-static inline void activate_mm(struct mm_struct *active_mm, struct mm_struct *mm)
-{
-	unsigned long flags;
-	int cpu;
-
-	spin_lock_irqsave(&mm->context.lock, flags);
-	if (!CTX_VALID(mm->context))
-		get_new_mmu_context(mm);
-	cpu = smp_processor_id();
-	if (!cpumask_test_cpu(cpu, mm_cpumask(mm)))
-		cpumask_set_cpu(cpu, mm_cpumask(mm));
-
-	load_secondary_context(mm);
-	__flush_tlb_mm(CTX_HWBITS(mm->context), SECONDARY_CONTEXT);
-	tsb_context_switch(mm);
-	spin_unlock_irqrestore(&mm->context.lock, flags);
-}
+#define activate_mm(active_mm, mm) switch_mm(active_mm, mm, NULL)
 
 #define  __HAVE_ARCH_START_CONTEXT_SWITCH
 static inline void arch_start_context_switch(struct task_struct *prev)
