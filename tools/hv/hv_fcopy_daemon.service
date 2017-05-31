@@ -1,0 +1,9 @@
+[Unit]
+Description=Hyper-V FCOPY daemon
+BindsTo=sys-devices-virtual-misc-vmbus\x21hv_fcopy.device
+
+[Service]
+ExecStart=/usr/sbin/hv_fcopy_daemon -n
+
+[Install]
+WantedBy=multi-user.target
