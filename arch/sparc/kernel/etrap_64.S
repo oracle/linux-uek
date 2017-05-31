@@ -133,7 +133,7 @@ etrap_save:	save	%g2, -STACK_BIAS, %sp
 		stx	%g7, [%sp + PTREGS_OFF + PT_V9_G7]
 		or	%l7, %l0, %l7
 661:		sethi	%hi(TSTATE_TSO | TSTATE_PEF), %l0
-		.section .sun_m7_1insn_patch, "ax"
+		.section .sun4v_adi_1insn_patch, "ax"
 		.word	661b
 		sethi	%hi(TSTATE_TSO | TSTATE_PEF | TSTATE_MCDE), %l0
 		.previous

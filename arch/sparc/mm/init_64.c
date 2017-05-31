@@ -2380,47 +2380,24 @@ static void __init sun4u_linear_pte_xor_finalize(void)
 
 static void __init sun4v_linear_pte_xor_finalize(void)
 {
-	unsigned long pagecv_flag;
-
-	/* Bit 9 of TTE is no longer CV bit on M7 processor and it instead
-	 * enables MCD error. Do not set bit 9 on M7 processor.
-	 */
-	switch (sun4v_chip_type) {
-	case SUN4V_CHIP_SPARC_M7:
-	case SUN4V_CHIP_SPARC_S7:
-		pagecv_flag = 0x00;
-		break;
-	default:
-		pagecv_flag = _PAGE_CV_4V;
-		break;
-	}
 #ifndef CONFIG_DEBUG_PAGEALLOC
-	if (cpu_pgsz_mask & HV_PGSZ_MASK_256MB) {
-		kern_linear_pte_xor[1] = (_PAGE_VALID | _PAGE_SZ256MB_4V) ^
-			PAGE_OFFSET;
-		kern_linear_pte_xor[1] |= (_PAGE_CP_4V | pagecv_flag |
-					   _PAGE_P_4V | _PAGE_W_4V);
-	} else {
+	unsigned long pte = (_PAGE_VALID ^ PAGE_OFFSET) | page_cache4v_flag |
+			     _PAGE_P_4V | _PAGE_W_4V;
+
+	if (cpu_pgsz_mask & HV_PGSZ_MASK_256MB)
+		kern_linear_pte_xor[1] = _PAGE_SZ256MB_4V | pte;
+	else
 		kern_linear_pte_xor[1] = kern_linear_pte_xor[0];
-	}
 
-	if (cpu_pgsz_mask & HV_PGSZ_MASK_2GB) {
-		kern_linear_pte_xor[2] = (_PAGE_VALID | _PAGE_SZ2GB_4V) ^
-			PAGE_OFFSET;
-		kern_linear_pte_xor[2] |= (_PAGE_CP_4V | pagecv_flag |
-					   _PAGE_P_4V | _PAGE_W_4V);
-	} else {
+	if (cpu_pgsz_mask & HV_PGSZ_MASK_2GB)
+		kern_linear_pte_xor[2] = _PAGE_SZ2GB_4V | pte;
+	else
 		kern_linear_pte_xor[2] = kern_linear_pte_xor[1];
-	}
 
-	if (cpu_pgsz_mask & HV_PGSZ_MASK_16GB) {
-		kern_linear_pte_xor[3] = (_PAGE_VALID | _PAGE_SZ16GB_4V) ^
-			PAGE_OFFSET;
-		kern_linear_pte_xor[3] |= (_PAGE_CP_4V | pagecv_flag |
-					   _PAGE_P_4V | _PAGE_W_4V);
-	} else {
+	if (cpu_pgsz_mask & HV_PGSZ_MASK_16GB)
+		kern_linear_pte_xor[3] = _PAGE_SZ16GB_4V | pte;
+	else
 		kern_linear_pte_xor[3] = kern_linear_pte_xor[2];
-	}
 #endif
 }
 
@@ -2526,19 +2503,18 @@ void __init paging_init(void)
 	memset(swapper_4m_tsb, 0x40, sizeof(swapper_4m_tsb));
 #endif
 
-	/* TTE.cv bit on sparc v9 occupies the same position as TTE.mcde
-	 * bit on M7 processor. This is a conflicting usage of the same
-	 * bit. Enabling TTE.cv on M7 would turn on Memory Corruption
-	 * Detection error on all pages and this will lead to problems
-	 * later. Kernel does not run with MCD enabled and hence rest
-	 * of the required steps to fully configure memory corruption
-	 * detection are not taken. We need to ensure TTE.mcde is not
-	 * set on M7 processor. Compute the value of cacheability
-	 * flag for use later taking this into consideration.
+	/* Compute a cacheability flag based on chip type to use when
+	 * initialzing common flags for TTEs.  On processors that support
+	 * Memory Corruption Detection, TTE bit 9 is no longer the TTE.cv
+	 * bit used to control cacheability in a virtually indexed cache
+	 * and is instead the TTE.mcd bit which controls whether MCD is
+	 * enabled for a mapping.
 	 */
 	switch (sun4v_chip_type) {
 	case SUN4V_CHIP_SPARC_M7:
 	case SUN4V_CHIP_SPARC_S7:
+	case SUN4V_CHIP_SPARC_M8:
+	case SUN4V_CHIP_SPARC_S8:
 		page_cache4v_flag = _PAGE_CP_4V;
 		break;
 	default:

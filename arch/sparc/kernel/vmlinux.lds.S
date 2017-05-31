@@ -138,15 +138,15 @@ SECTIONS
 		*(.pause_3insn_patch)
 		__pause_3insn_patch_end = .;
 	}
-	.sun_m7_1insn_patch : {
-		__sun_m7_1insn_patch = .;
-		*(.sun_m7_1insn_patch)
-		__sun_m7_1insn_patch_end = .;
+	.sun4v_adi_1insn_patch : {
+		__sun4v_adi_1insn_patch = .;
+		*(.sun4v_adi_1insn_patch)
+		__sun4v_adi_1insn_patch_end = .;
 	}
-	.sun_m7_2insn_patch : {
-		__sun_m7_2insn_patch = .;
-		*(.sun_m7_2insn_patch)
-		__sun_m7_2insn_patch_end = .;
+	.sun4v_adi_2insn_patch : {
+		__sun4v_adi_2insn_patch = .;
+		*(.sun4v_adi_2insn_patch)
+		__sun4v_adi_2insn_patch_end = .;
 	}
 	PERCPU_SECTION(SMP_CACHE_BYTES)
 
