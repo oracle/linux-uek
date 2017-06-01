@@ -503,6 +503,8 @@ static int xen_cpu_up(unsigned int cpu, struct task_struct *idle)
 	if (rc)
 		return rc;
 
+	xen_setup_vcpu_vsyscall_time_info(cpu);
+
 	rc = HYPERVISOR_vcpu_op(VCPUOP_up, xen_vcpu_nr(cpu), NULL);
 	BUG_ON(rc);
 
@@ -793,6 +795,8 @@ static int xen_hvm_cpu_up(unsigned int cpu, struct task_struct *tidle)
 	WARN_ON(rc);
 	if (!rc)
 		rc =  native_cpu_up(cpu, tidle);
+
+	xen_setup_vcpu_vsyscall_time_info(cpu);
 
 	/*
 	 * We must initialize the slowpath CPU kicker _after_ the native

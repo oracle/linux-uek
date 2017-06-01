@@ -265,4 +265,54 @@ DEFINE_RING_TYPES(xen_netif_rx,
 /* No response: used for auxiliary requests (e.g., xen_netif_extra_info). */
 #define XEN_NETIF_RSP_NULL	 1
 
+/*
+ * Vendor Extensions
+ * =================
+ *
+ * Grant Allocation (struct xen_ext_gref_alloc)
+ * --------------------------------------------
+ *
+ * "feature-staging-grants" advertises the capability for a frontend to provide
+ * a fixed set of grant references to the backend. This is useful when guests
+ * want to avoid the usage of grants and associated overheads by hinting the
+ * backend to map a limited set of pages. Backend either advertises support for
+ * this feature via xenstore as 0 (disabled) or 1 (enabled). The size of the
+ * table is the number of entries for both Tx and Rx pool (512 + 512).
+ *
+ * Frontend advertises the grants through a couple of xenstore entries in
+ * the form of:
+ *
+ * /local/domain/1/device/vif/0/queue-0 = ""
+ * /local/domain/1/device/vif/0/queue-0/tx-pool-ref  = "<ring-ref-tx0>"
+ * /local/domain/1/device/vif/0/queue-0/tx-pool-size = "<nr-entries-tx0>"
+ * /local/domain/1/device/vif/0/queue-0/rx-pool-ref  = "<ring-ref-rx0>"
+ * /local/domain/1/device/vif/0/queue-0/rx-pool-size = "<nr-entries-rx0>"
+ *
+ * These entries describe a list and size of grants to provide to the frontend
+ * Frontend can use this to pregrant certain pages and reuse them for Rx/Tx
+ * requests. The usage of these grant references abide to the same protocol
+ * describe in this document.
+ *
+ * Each entry in the {rx,tx}-pool-ref table has the following format:
+ *
+ *    0     1     2     3     4     5     6     7  octet
+ * +-----+-----+-----+-----+-----+-----+-----+-----+
+ * | grant ref             |  flags    |  padding  |
+ * +-----+-----+-----+-----+-----+-----+-----+-----+
+ *
+ * grant ref: grant reference
+ * flags: flags for the grant reference (e.g. readonly)
+ *
+ */
+struct xen_ext_gref_alloc {
+	grant_ref_t ref;
+
+#define _XEN_EXTF_GREF_readonly    0
+#define XEN_EXTF_GREF_readonly    (1U<<_XEN_EXTF_GREF_readonly)
+	uint16_t flags;
+	uint8_t pad[2];
+};
+
+#define XEN_EXT_MAX_GREF_ALLOC	512
+
 #endif

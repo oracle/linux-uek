@@ -91,13 +91,6 @@ struct xenvif_rx_meta {
  */
 #define MAX_XEN_SKB_FRAGS (65536 / XEN_PAGE_SIZE + 1)
 
-/* It's possible for an skb to have a maximal number of frags
- * but still be less than MAX_BUFFER_OFFSET in size. Thus the
- * worst-case number of copy operations is MAX_XEN_SKB_FRAGS per
- * ring slot.
- */
-#define MAX_GRANT_COPY_OPS (MAX_XEN_SKB_FRAGS * XEN_NETIF_RX_RING_SIZE)
-
 #define NETBACK_INVALID_HANDLE -1
 
 /* To avoid confusion, we define XEN_NETBK_LEGACY_SLOTS_MAX indicating
@@ -133,6 +126,33 @@ struct xenvif_stats {
 	unsigned long tx_frag_overflow;
 };
 
+#define COPY_BATCH_SIZE 64
+
+struct xenvif_copy_state {
+	struct gnttab_copy op[COPY_BATCH_SIZE];
+	RING_IDX idx[COPY_BATCH_SIZE];
+	unsigned int num;
+	struct sk_buff_head *completed;
+};
+
+/* This is the maximum number of grefs per queue in the grant cache. */
+#define XEN_NETBK_GREF_MAP_SIZE 1024
+
+struct xenvif_grant {
+	grant_ref_t ref;
+	grant_handle_t handle;
+	uint32_t flags;
+	struct page *page;
+	struct hlist_node node;
+	atomic_t refcount;
+};
+
+struct xenvif_grant_mapping {
+	struct hlist_head entries[XEN_NETBK_GREF_MAP_SIZE];
+	unsigned int count;
+	void *opaque;
+};
+
 struct xenvif_queue { /* Per-queue data for xenvif */
 	unsigned int id; /* Queue ID, 0-based */
 	char name[QUEUE_NAME_SIZE]; /* DEVNAME-qN */
@@ -159,6 +179,8 @@ struct xenvif_queue { /* Per-queue data for xenvif */
 	/* passed to gnttab_[un]map_refs with pages under (un)mapping */
 	struct page *pages_to_map[MAX_PENDING_REQS];
 	struct page *pages_to_unmap[MAX_PENDING_REQS];
+	/* Tx pregranted buffers in use */
+	struct xenvif_grant *tx_grants[MAX_PENDING_REQS];
 
 	/* This prevents zerocopy callbacks  to race over dealloc_ring */
 	spinlock_t callback_lock;
@@ -183,18 +205,17 @@ struct xenvif_queue { /* Per-queue data for xenvif */
 	char rx_irq_name[IRQ_NAME_SIZE]; /* DEVNAME-qN-rx */
 	struct xen_netif_rx_back_ring rx;
 	struct sk_buff_head rx_queue;
+	/* This prevents from have guestrx thread and ndo_start_xmit to race
+	 * over response creation.
+	 */
+	spinlock_t rx_lock;
 
 	unsigned int rx_queue_max;
 	unsigned int rx_queue_len;
 	unsigned long last_rx_time;
 	bool stalled;
 
-	struct gnttab_copy grant_copy_op[MAX_GRANT_COPY_OPS];
-
-	/* We create one meta structure per ring request we consume, so
-	 * the maximum number is the same as the ring size.
-	 */
-	struct xenvif_rx_meta meta[XEN_NETIF_RX_RING_SIZE];
+	struct xenvif_copy_state rx_copy;
 
 	/* Transmit shaping: allow 'credit_bytes' every 'credit_usec'. */
 	unsigned long   credit_bytes;
@@ -202,6 +223,9 @@ struct xenvif_queue { /* Per-queue data for xenvif */
 	unsigned long   remaining_credit;
 	struct timer_list credit_timeout;
 	u64 credit_window_start;
+
+	/* Permanent grant mappings */
+	struct xenvif_grant_mapping grant;
 
 	/* Statistics */
 	struct xenvif_stats stats;
@@ -231,7 +255,6 @@ struct xenvif {
 
 	/* Frontend feature information. */
 	int gso_mask;
-	int gso_prefix_mask;
 
 	u8 can_sg:1;
 	u8 ip_csum:1;
@@ -318,6 +341,8 @@ void xenvif_kick_thread(struct xenvif_queue *queue);
 
 int xenvif_dealloc_kthread(void *data);
 
+int xenvif_rx_one_skb(struct xenvif_queue *queue, struct sk_buff *skb);
+void xenvif_rx_action(struct xenvif_queue *queue);
 void xenvif_rx_queue_tail(struct xenvif_queue *queue, struct sk_buff *skb);
 
 void xenvif_carrier_on(struct xenvif *vif);
@@ -337,10 +362,12 @@ static inline pending_ring_idx_t nr_pending_reqs(struct xenvif_queue *queue)
 irqreturn_t xenvif_interrupt(int irq, void *dev_id);
 
 extern bool separate_tx_rx_irq;
+extern bool skip_guestrx_thread;
 
 extern unsigned int rx_drain_timeout_msecs;
 extern unsigned int rx_stall_timeout_msecs;
 extern unsigned int xenvif_max_queues;
+extern unsigned int xenvif_gref_mapping_size;
 
 #ifdef CONFIG_DEBUG_FS
 extern struct dentry *xen_netback_dbg_root;
@@ -348,10 +375,27 @@ extern struct dentry *xen_netback_dbg_root;
 
 void xenvif_skb_zerocopy_prepare(struct xenvif_queue *queue,
 				 struct sk_buff *skb);
-void xenvif_skb_zerocopy_complete(struct xenvif_queue *queue);
+void xenvif_skb_zerocopy_complete(struct xenvif_queue *queue,
+				  pending_ring_idx_t prod);
 
 /* Multicast control */
 bool xenvif_mcast_match(struct xenvif *vif, const u8 *addr);
 void xenvif_mcast_addr_list_free(struct xenvif *vif);
+
+/* Static Grant Mappings */
+void xenvif_init_grant(struct xenvif_queue *queue);
+void xenvif_deinit_grant(struct xenvif_queue *queue);
+struct xenvif_grant *xenvif_get_grant(struct xenvif_queue *queue,
+				      grant_ref_t ref);
+void xenvif_put_grant(struct xenvif_queue *queue, struct xenvif_grant *grant);
+
+u32 xenvif_add_gref_mapping(struct xenvif *vif, u32 queue_id, grant_ref_t ref,
+			    u32 size);
+u32 xenvif_put_gref_mapping(struct xenvif *vif, u32 queue_id, grant_ref_t ref,
+			    u32 size);
+
+#ifdef CONFIG_DEBUG_FS
+void xenvif_dump_grant_info(struct xenvif_queue *queue, struct seq_file *m);
+#endif
 
 #endif /* __XEN_NETBACK__COMMON_H__ */

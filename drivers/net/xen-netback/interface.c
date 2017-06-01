@@ -58,15 +58,18 @@ void xenvif_skb_zerocopy_prepare(struct xenvif_queue *queue,
 	atomic_inc(&queue->inflight_packets);
 }
 
-void xenvif_skb_zerocopy_complete(struct xenvif_queue *queue)
+void xenvif_skb_zerocopy_complete(struct xenvif_queue *queue,
+				  pending_ring_idx_t prod)
 {
 	atomic_dec(&queue->inflight_packets);
 
 	/* Wake the dealloc thread _after_ decrementing inflight_packets so
 	 * that if kthread_stop() has already been called, the dealloc thread
-	 * does not wait forever with nothing to wake it.
+	 * does not wait forever with nothing to wake it. But only wake up when
+	 * there are grants to unmap.
 	 */
-	wake_up(&queue->dealloc_wq);
+	if (prod != queue->dealloc_prod)
+		wake_up(&queue->dealloc_wq);
 }
 
 int xenvif_schedulable(struct xenvif *vif)
@@ -181,8 +184,12 @@ static int xenvif_start_xmit(struct sk_buff *skb, struct net_device *dev)
 	cb = XENVIF_RX_CB(skb);
 	cb->expires = jiffies + vif->drain_timeout;
 
-	xenvif_rx_queue_tail(queue, skb);
-	xenvif_kick_thread(queue);
+	if (!skip_guestrx_thread || !queue->grant.count) {
+		xenvif_rx_queue_tail(queue, skb);
+		xenvif_kick_thread(queue);
+	} else if (xenvif_rx_one_skb(queue, skb) < 0) {
+		return NETDEV_TX_BUSY;
+	}
 
 	return NETDEV_TX_OK;
 
@@ -292,9 +299,9 @@ static netdev_features_t xenvif_fix_features(struct net_device *dev,
 
 	if (!vif->can_sg)
 		features &= ~NETIF_F_SG;
-	if (~(vif->gso_mask | vif->gso_prefix_mask) & GSO_BIT(TCPV4))
+	if (~(vif->gso_mask) & GSO_BIT(TCPV4))
 		features &= ~NETIF_F_TSO;
-	if (~(vif->gso_mask | vif->gso_prefix_mask) & GSO_BIT(TCPV6))
+	if (~(vif->gso_mask) & GSO_BIT(TCPV6))
 		features &= ~NETIF_F_TSO6;
 	if (!vif->ip_csum)
 		features &= ~NETIF_F_IP_CSUM;
@@ -439,7 +446,7 @@ struct xenvif *xenvif_alloc(struct device *parent, domid_t domid,
 	dev->netdev_ops	= &xenvif_netdev_ops;
 	dev->hw_features = NETIF_F_SG |
 		NETIF_F_IP_CSUM | NETIF_F_IPV6_CSUM |
-		NETIF_F_TSO | NETIF_F_TSO6;
+		NETIF_F_TSO | NETIF_F_TSO6 | NETIF_F_FRAGLIST;
 	dev->features = dev->hw_features | NETIF_F_RXCSUM;
 	dev->ethtool_ops = &xenvif_ethtool_ops;
 
@@ -492,6 +499,9 @@ int xenvif_init_queue(struct xenvif_queue *queue)
 
 	spin_lock_init(&queue->callback_lock);
 	spin_lock_init(&queue->response_lock);
+	spin_lock_init(&queue->rx_lock);
+
+	xenvif_init_grant(queue);
 
 	/* If ballooning is disabled, this will consume real memory, so you
 	 * better enable it. The long term solution would be to use just a
@@ -510,6 +520,7 @@ int xenvif_init_queue(struct xenvif_queue *queue)
 			  .ctx = NULL,
 			  .desc = i };
 		queue->grant_tx_handle[i] = NETBACK_INVALID_HANDLE;
+		queue->tx_grants[i] = NULL;
 	}
 
 	return 0;
@@ -669,6 +680,7 @@ void xenvif_disconnect(struct xenvif *vif)
 		}
 
 		xenvif_unmap_frontend_rings(queue);
+		xenvif_deinit_grant(queue);
 	}
 
 	xenvif_mcast_addr_list_free(vif);
