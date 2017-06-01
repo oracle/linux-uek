@@ -2013,8 +2013,11 @@ static void get_function_id(struct qed_hwfn *p_hwfn)
 static void qed_hw_set_feat(struct qed_hwfn *p_hwfn)
 {
 	u32 *feat_num = p_hwfn->hw_info.feat_num;
-	struct qed_sb_cnt_info sb_cnt_info;
+	struct qed_sb_cnt_info sb_cnt;
 	u32 non_l2_sbs = 0;
+
+	memset(&sb_cnt, 0, sizeof(sb_cnt));
+	qed_int_get_num_sbs(p_hwfn, &sb_cnt);
 
 	if (IS_ENABLED(CONFIG_QED_RDMA) &&
 	    p_hwfn->hw_info.personality == QED_PCI_ETH_ROCE) {
@@ -2023,7 +2026,7 @@ static void qed_hw_set_feat(struct qed_hwfn *p_hwfn)
 		 * consideration as to how many l2 queues / cnqs we have.
 		 */
 		feat_num[QED_RDMA_CNQ] =
-			min_t(u32, RESC_NUM(p_hwfn, QED_SB) / 2,
+			min_t(u32, sb_cnt.cnt / 2,
 			      RESC_NUM(p_hwfn, QED_RDMA_CNQ_RAM));
 
 		non_l2_sbs = feat_num[QED_RDMA_CNQ];
@@ -2032,14 +2035,11 @@ static void qed_hw_set_feat(struct qed_hwfn *p_hwfn)
 	if (p_hwfn->hw_info.personality == QED_PCI_ETH_ROCE ||
 	    p_hwfn->hw_info.personality == QED_PCI_ETH) {
 		/* Start by allocating VF queues, then PF's */
-		memset(&sb_cnt_info, 0, sizeof(sb_cnt_info));
-		qed_int_get_num_sbs(p_hwfn, &sb_cnt_info);
 		feat_num[QED_VF_L2_QUE] = min_t(u32,
 						RESC_NUM(p_hwfn, QED_L2_QUEUE),
-						sb_cnt_info.iov_cnt);
+						sb_cnt.iov_cnt);
 		feat_num[QED_PF_L2_QUE] = min_t(u32,
-						RESC_NUM(p_hwfn, QED_SB) -
-						non_l2_sbs,
+						sb_cnt.cnt - non_l2_sbs,
 						RESC_NUM(p_hwfn,
 							 QED_L2_QUEUE) -
 						FEAT_NUM(p_hwfn,
@@ -2047,7 +2047,7 @@ static void qed_hw_set_feat(struct qed_hwfn *p_hwfn)
 	}
 
 	if (p_hwfn->hw_info.personality == QED_PCI_ISCSI)
-		feat_num[QED_ISCSI_CQ] = min_t(u32, RESC_NUM(p_hwfn, QED_SB),
+		feat_num[QED_ISCSI_CQ] = min_t(u32, sb_cnt.cnt,
 					       RESC_NUM(p_hwfn,
 							QED_CMDQS_CQS));
 	DP_VERBOSE(p_hwfn,
@@ -2057,7 +2057,7 @@ static void qed_hw_set_feat(struct qed_hwfn *p_hwfn)
 		   (int)FEAT_NUM(p_hwfn, QED_VF_L2_QUE),
 		   (int)FEAT_NUM(p_hwfn, QED_RDMA_CNQ),
 		   (int)FEAT_NUM(p_hwfn, QED_ISCSI_CQ),
-		   RESC_NUM(p_hwfn, QED_SB));
+		   (int)sb_cnt.cnt);
 }
 
 const char *qed_hw_get_resc_name(enum qed_resources res_id)
@@ -2176,7 +2176,6 @@ int qed_hw_get_dflt_resc(struct qed_hwfn *p_hwfn,
 {
 	u8 num_funcs = p_hwfn->num_funcs_on_engine;
 	bool b_ah = QED_IS_AH(p_hwfn->cdev);
-	struct qed_sb_cnt_info sb_cnt_info;
 
 	switch (res_id) {
 	case QED_L2_QUEUE:
@@ -2228,9 +2227,10 @@ int qed_hw_get_dflt_resc(struct qed_hwfn *p_hwfn,
 			*p_resc_num = 1;
 		break;
 	case QED_SB:
-		memset(&sb_cnt_info, 0, sizeof(sb_cnt_info));
-		qed_int_get_num_sbs(p_hwfn, &sb_cnt_info);
-		*p_resc_num = sb_cnt_info.cnt;
+		/* Since we want its value to reflect whether MFW supports
+		 * the new scheme, have a default of 0.
+		 */
+		*p_resc_num = 0;
 		break;
 	default:
 		return -EINVAL;
@@ -2299,11 +2299,6 @@ static int __qed_hw_set_resc_info(struct qed_hwfn *p_hwfn,
 		goto out;
 	}
 
-	/* Special handling for status blocks; Would be revised in future */
-	if (res_id == QED_SB) {
-		*p_resc_num -= 1;
-		*p_resc_start -= p_hwfn->enabled_func_idx;
-	}
 out:
 	/* PQs have to divide by 8 [that's the HW granularity].
 	 * Reduce number so it would fit.
@@ -2400,6 +2395,10 @@ static int qed_hw_get_resc(struct qed_hwfn *p_hwfn, struct qed_ptt *p_ptt)
 			  RESC_END(p_hwfn, QED_ILT) - 1);
 		return -EINVAL;
 	}
+
+	/* This will also learn the number of SBs from MFW */
+	if (qed_int_igu_reset_cam(p_hwfn, p_ptt))
+		return -EINVAL;
 
 	qed_hw_set_feat(p_hwfn);
 
