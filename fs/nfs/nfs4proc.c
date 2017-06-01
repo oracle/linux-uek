@@ -6912,12 +6912,11 @@ static int _nfs4_proc_exchange_id(struct nfs_client *clp, struct rpc_cred *cred,
 	if (status == 0) {
 		clp->cl_clientid = res.clientid;
 		clp->cl_exchange_flags = res.flags;
+		clp->cl_seqid = res.seqid;
 		/* Client ID is not confirmed */
-		if (!(res.flags & EXCHGID4_FLAG_CONFIRMED_R)) {
+		if (!(res.flags & EXCHGID4_FLAG_CONFIRMED_R))
 			clear_bit(NFS4_SESSION_ESTABLISHED,
 					&clp->cl_session->session_state);
-			clp->cl_seqid = res.seqid;
-		}
 
 		kfree(clp->cl_serverowner);
 		clp->cl_serverowner = res.server_owner;
