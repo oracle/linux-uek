@@ -202,8 +202,13 @@ struct scsi_device {
           *
           * The following padding has been inserted before ABI freeze to
           * allow extending the structure while preserving ABI.
+	  *
+	  * The state_mutex struct wouldn't fit in KABI reserved space.
+	  * Use a kmalloc'd storage for it and make it a pointer named
+	  * as state_mutex_kabi to make future cherry-picks referencing
+	  * state_mutex more obvious earlier.
           */
-        UEK_KABI_RESERVED(1)
+	UEK_KABI_USE(1, struct mutex *state_mutex_kabi)
         UEK_KABI_RESERVED(2)
 	unsigned long		sdev_data[0];
 } __attribute__((aligned(sizeof(unsigned long))));
