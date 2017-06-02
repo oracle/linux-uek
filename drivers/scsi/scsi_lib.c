@@ -2859,7 +2859,12 @@ EXPORT_SYMBOL_GPL(sdev_evt_send_simple);
 int
 scsi_device_quiesce(struct scsi_device *sdev)
 {
-	int err = scsi_device_set_state(sdev, SDEV_QUIESCE);
+	int err;
+
+	mutex_lock(sdev->state_mutex_kabi);
+	err = scsi_device_set_state(sdev, SDEV_QUIESCE);
+	mutex_unlock(sdev->state_mutex_kabi);
+
 	if (err)
 		return err;
 
@@ -2887,10 +2892,11 @@ void scsi_device_resume(struct scsi_device *sdev)
 	 * so assume the state is being managed elsewhere (for example
 	 * device deleted during suspend)
 	 */
-	if (sdev->sdev_state != SDEV_QUIESCE ||
-	    scsi_device_set_state(sdev, SDEV_RUNNING))
-		return;
-	scsi_run_queue(sdev->request_queue);
+	mutex_lock(sdev->state_mutex_kabi);
+	if (sdev->sdev_state == SDEV_QUIESCE &&
+	    scsi_device_set_state(sdev, SDEV_RUNNING) == 0)
+		scsi_run_queue(sdev->request_queue);
+	mutex_unlock(sdev->state_mutex_kabi);
 }
 EXPORT_SYMBOL(scsi_device_resume);
 
@@ -3028,7 +3034,9 @@ EXPORT_SYMBOL_GPL(scsi_internal_device_unblock);
 static void
 device_block(struct scsi_device *sdev, void *data)
 {
+	mutex_lock(sdev->state_mutex_kabi);
 	scsi_internal_device_block(sdev);
+	mutex_unlock(sdev->state_mutex_kabi);
 }
 
 static int
@@ -3054,7 +3062,9 @@ EXPORT_SYMBOL_GPL(scsi_target_block);
 static void
 device_unblock(struct scsi_device *sdev, void *data)
 {
+	mutex_lock(sdev->state_mutex_kabi);
 	scsi_internal_device_unblock(sdev, *(enum scsi_device_state *)data);
+	mutex_unlock(sdev->state_mutex_kabi);
 }
 
 static int

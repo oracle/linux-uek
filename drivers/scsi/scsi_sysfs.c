@@ -424,6 +424,7 @@ static void scsi_device_dev_release_usercontext(struct work_struct *work)
 	kfree(sdev->vpd_pg83);
 	kfree(sdev->vpd_pg80);
 	kfree(sdev->inquiry);
+	kfree(sdev->state_mutex_kabi);
 	kfree(sdev);
 
 	if (parent)
@@ -686,7 +687,7 @@ static ssize_t
 store_state_field(struct device *dev, struct device_attribute *attr,
 		  const char *buf, size_t count)
 {
-	int i;
+	int i, ret;
 	struct scsi_device *sdev = to_scsi_device(dev);
 	enum scsi_device_state state = 0;
 
@@ -701,9 +702,11 @@ store_state_field(struct device *dev, struct device_attribute *attr,
 	if (!state)
 		return -EINVAL;
 
-	if (scsi_device_set_state(sdev, state))
-		return -EINVAL;
-	return count;
+	mutex_lock(sdev->state_mutex_kabi);
+	ret = scsi_device_set_state(sdev, state);
+	mutex_unlock(sdev->state_mutex_kabi);
+
+	return ret == 0 ? count : -EINVAL;
 }
 
 static ssize_t
@@ -1062,6 +1065,7 @@ int scsi_sysfs_add_sdev(struct scsi_device *sdev)
 void __scsi_remove_device(struct scsi_device *sdev)
 {
 	struct device *dev = &sdev->sdev_gendev;
+	int res;
 
 	/*
 	 * This cleanup path is not reentrant and while it is impossible
@@ -1072,7 +1076,15 @@ void __scsi_remove_device(struct scsi_device *sdev)
 		return;
 
 	if (sdev->is_visible) {
-		if (scsi_device_set_state(sdev, SDEV_CANCEL) != 0)
+		/*
+		 * If scsi_internal_target_block() is running concurrently,
+		 * wait until it has finished before changing the device state.
+		 */
+		mutex_lock(sdev->state_mutex_kabi);
+		res = scsi_device_set_state(sdev, SDEV_CANCEL);
+		mutex_unlock(sdev->state_mutex_kabi);
+
+		if (res != 0)
 			return;
 
 		bsg_unregister_queue(sdev->request_queue);
@@ -1087,7 +1099,10 @@ void __scsi_remove_device(struct scsi_device *sdev)
 	 * scsi_run_queue() invocations have finished before tearing down the
 	 * device.
 	 */
+	mutex_lock(sdev->state_mutex_kabi);
 	scsi_device_set_state(sdev, SDEV_DEL);
+	mutex_unlock(sdev->state_mutex_kabi);
+
 	blk_cleanup_queue(sdev->request_queue);
 	cancel_work_sync(&sdev->requeue_work);
 
