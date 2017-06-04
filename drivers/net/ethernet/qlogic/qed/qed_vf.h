@@ -46,6 +46,7 @@ struct vf_pf_resc_request {
 	u8 num_mac_filters;
 	u8 num_vlan_filters;
 	u8 num_mc_filters;
+	u8 num_cids;
 	u16 padding;
 };
 
@@ -113,6 +114,17 @@ struct vfpf_acquire_tlv {
 	struct vf_pf_vfdev_info {
 #define VFPF_ACQUIRE_CAP_PRE_FP_HSI     (1 << 0) /* VF pre-FP hsi version */
 #define VFPF_ACQUIRE_CAP_100G		(1 << 1) /* VF can support 100g */
+	/* A requirement for supporting multi-Tx queues on a single queue-zone,
+	 * VF would pass qids as additional information whenever passing queue
+	 * references.
+	 */
+#define VFPF_ACQUIRE_CAP_QUEUE_QIDS     BIT(2)
+
+	/* The VF is using the physical bar. While this is mostly internal
+	 * to the VF, might affect the number of CIDs supported assuming
+	 * QUEUE_QIDS is set.
+	 */
+#define VFPF_ACQUIRE_CAP_PHYSICAL_BAR   BIT(3)
 		u64 capabilities;
 		u8 fw_major;
 		u8 fw_minor;
@@ -193,7 +205,8 @@ struct pfvf_acquire_resp_tlv {
 		u16 chip_rev;
 		u8 dev_type;
 
-		u8 padding;
+		/* Doorbell bar size configured in HW: log(size) or 0 */
+		u8 bar_size;
 
 		struct pfvf_stats_info stats_info;
 
@@ -221,6 +234,7 @@ struct pfvf_acquire_resp_tlv {
 		u8 num_mac_filters;
 		u8 num_vlan_filters;
 		u8 num_mc_filters;
+		u8 num_cids;
 		u8 padding[2];
 	} resc;
 
@@ -635,6 +649,11 @@ struct qed_vf_iov {
 	 * compatibility [with older PFs] we'd still need to store these.
 	 */
 	struct qed_sb_info *sbs_info[PFVF_MAX_SBS_PER_VF];
+
+	/* Determines whether VF utilizes doorbells via limited register
+	 * bar or via the doorbell bar.
+	 */
+	bool b_doorbell_bar;
 };
 
 #ifdef CONFIG_QED_SRIOV
@@ -943,6 +962,8 @@ void qed_iov_vf_task(struct work_struct *work);
 void qed_vf_set_vf_start_tunn_update_param(struct qed_tunnel_info *p_tun);
 int qed_vf_pf_tunnel_param_update(struct qed_hwfn *p_hwfn,
 				  struct qed_tunnel_info *p_tunn);
+
+u32 qed_vf_hw_bar_size(struct qed_hwfn *p_hwfn, enum BAR_ID bar_id);
 #else
 static inline void qed_vf_get_link_params(struct qed_hwfn *p_hwfn,
 					  struct qed_mcp_link_params *params)
@@ -1118,6 +1139,13 @@ static inline int qed_vf_pf_tunnel_param_update(struct qed_hwfn *p_hwfn,
 						struct qed_tunnel_info *p_tunn)
 {
 	return -EINVAL;
+}
+
+static inline u32
+qed_vf_hw_bar_size(struct qed_hwfn  *p_hwfn,
+		   enum BAR_ID bar_id)
+{
+	return 0;
 }
 #endif
 
