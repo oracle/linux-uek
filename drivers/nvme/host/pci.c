@@ -1986,15 +1986,15 @@ static int nvme_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	if (!dev->queues)
 		goto free;
 
+	dev->dev = get_device(&pdev->dev);
+	pci_set_drvdata(pdev, dev);
+
 	result = nvme_dev_map(dev);
 	if (result)
 		goto free;
 
 	INIT_LIST_HEAD(&dev->ctrl.namespaces);
 	mutex_init(&dev->namespaces_mutex);
-	dev->dev = get_device(&pdev->dev);
-	pci_set_drvdata(pdev, dev);
-
 	INIT_WORK(&dev->reset_work, nvme_reset_work);
 	INIT_WORK(&dev->remove_work, nvme_remove_dead_ctrl_work);
 	setup_timer(&dev->watchdog_timer, nvme_watchdog_timer,
