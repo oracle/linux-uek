@@ -455,8 +455,8 @@ void process_status_entry(struct virtual_hba *vhba, struct sts_entry_24xx *sts)
 		if (!(scsi_status & SS_SENSE_LEN_VALID))
 			break;
 
-		if (sense_len >= sizeof(cp->sense_buffer))
-			sense_len = sizeof(cp->sense_buffer);
+		if (sense_len >= SCSI_SENSE_BUFFERSIZE)
+			sense_len = SCSI_SENSE_BUFFERSIZE;
 
 		sp->request_sense_length = sense_len;
 		sp->request_sense_ptr = cp->sense_buffer;
@@ -505,8 +505,8 @@ void process_status_entry(struct virtual_hba *vhba, struct sts_entry_24xx *sts)
 			if (!(scsi_status & SS_SENSE_LEN_VALID))
 				break;
 
-			if (sense_len >= sizeof(cp->sense_buffer))
-				sense_len = sizeof(cp->sense_buffer);
+			if (sense_len >= SCSI_SENSE_BUFFERSIZE)
+				sense_len = SCSI_SENSE_BUFFERSIZE;
 
 			sp->request_sense_length = sense_len;
 			sp->request_sense_ptr = cp->sense_buffer;
