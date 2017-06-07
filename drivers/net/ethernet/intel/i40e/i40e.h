@@ -1,7 +1,7 @@
 /*******************************************************************************
  *
  * Intel Ethernet Controller XL710 Family Linux Driver
- * Copyright(c) 2013 - 2016 Intel Corporation.
+ * Copyright(c) 2013 - 2017 Intel Corporation.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -521,9 +521,8 @@ struct i40e_pf {
 	bool ptp_tx;
 	bool ptp_rx;
 	u16 rss_table_size; /* HW RSS table size */
-	/* These are only valid in NPAR modes */
-	u32 npar_max_bw;
-	u32 npar_min_bw;
+	u32 max_bw;
+	u32 min_bw;
 
 	u32 ioremap_len;
 	u32 fd_inv;
@@ -1015,8 +1014,8 @@ int i40e_ptp_get_ts_config(struct i40e_pf *pf, struct ifreq *ifr);
 void i40e_ptp_init(struct i40e_pf *pf);
 void i40e_ptp_stop(struct i40e_pf *pf);
 int i40e_is_vsi_uplink_mode_veb(struct i40e_vsi *vsi);
-i40e_status i40e_get_npar_bw_setting(struct i40e_pf *pf);
-i40e_status i40e_set_npar_bw_setting(struct i40e_pf *pf);
-i40e_status i40e_commit_npar_bw_setting(struct i40e_pf *pf);
+i40e_status i40e_get_partition_bw_setting(struct i40e_pf *pf);
+i40e_status i40e_set_partition_bw_setting(struct i40e_pf *pf);
+i40e_status i40e_commit_partition_bw_setting(struct i40e_pf *pf);
 void i40e_print_link_message(struct i40e_vsi *vsi, bool isup);
 #endif /* _I40E_H_ */
