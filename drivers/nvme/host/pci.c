@@ -1562,7 +1562,8 @@ static int nvme_delete_queue(struct nvme_queue *nvmeq, u8 opcode)
 	if (IS_ERR(req))
 		return PTR_ERR(req);
 
-	req->timeout = ADMIN_TIMEOUT;
+	req->timeout = 0;
+	req->cmd_flags |= REQ_NO_TIMEOUT;
 	req->end_io_data = nvmeq;
 
 	blk_execute_rq_nowait(q, NULL, req, false,
