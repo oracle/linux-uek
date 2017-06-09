@@ -49,6 +49,8 @@
 #define KERNEL_HAS_ATOMIC64
 #endif
 
+#define RDS_RECONNECT_RETRY_MS 15000
+
 #ifdef RDS_DEBUG
 #define rdsdebug(fmt, args...) pr_debug("%s(): " fmt, __func__ , ##args)
 #else
@@ -318,7 +320,6 @@ struct rds_connection {
 	wait_queue_head_t	c_hs_waitq; /* handshake waitq */
 
 
-	/* used by RDS_CONN_RESET */
 	struct list_head	c_laddr_node;
 
 	u32			c_my_gen_num;
@@ -902,7 +903,7 @@ struct rds_connection *rds_conn_find(struct net *net, struct in6_addr *laddr,
 				     struct in6_addr *faddr,
 				     struct rds_transport *trans, u8 tos,
 				     int dev_if);
-void rds_conn_shutdown(struct rds_conn_path *cp);
+void rds_conn_shutdown(struct rds_conn_path *cp, int restart);
 void rds_conn_destroy(struct rds_connection *conn, int shutdown);
 void rds_conn_reset(struct rds_connection *conn);
 void rds_conn_drop(struct rds_connection *conn, int reason);
