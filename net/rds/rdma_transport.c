@@ -203,6 +203,7 @@ int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 				    "ROUTE_ERROR: conn %p, calling rds_conn_drop <%pI6c,%pI6c,%d>\n",
 				    conn, &conn->c_laddr,
 				    &conn->c_faddr, conn->c_tos);
+			conn->c_reconnect_racing = 0;
 			rds_conn_drop(conn, DR_IB_ROUTE_ERR);
 		}
 		break;
@@ -217,6 +218,7 @@ int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 				    "ADDR_ERROR: conn %p, calling rds_conn_drop <%pI6c,%pI6c,%d>\n",
 				    conn, &conn->c_laddr,
 				    &conn->c_faddr, conn->c_tos);
+			conn->c_reconnect_racing = 0;
 			rds_conn_drop(conn, DR_IB_ADDR_ERR);
 		}
 		break;
@@ -229,12 +231,22 @@ int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 				    "CONN/UNREACHABLE/RMVAL ERR: conn %p, calling rds_conn_drop <%pI6c,%pI6c,%d>\n",
 				    conn, &conn->c_laddr,
 				    &conn->c_faddr, conn->c_tos);
+			conn->c_reconnect_racing = 0;
 			rds_conn_drop(conn, DR_IB_CONNECT_ERR);
 		}
 		break;
 
 	case RDMA_CM_EVENT_REJECTED:
 		err = (int *)event->param.conn.private_data;
+
+		if (conn && event->status == RDS_REJ_CONSUMER_DEFINED &&
+		    *err <= 1) {
+			conn->c_reconnect_racing++;
+			rds_rtd_ptr(RDS_RTD_ERR,
+				    "conn %p, reconnect racing (%d) rds_conn_drop <%pI6c,%pI6c,%d>\n",
+				    conn, conn->c_reconnect_racing, &conn->c_laddr,
+				    &conn->c_faddr, conn->c_tos);
+		}
 
 		if (conn) {
 			if (event->status == RDS_REJ_CONSUMER_DEFINED &&
@@ -278,6 +290,7 @@ int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 				    "ADDR_CHANGE: calling rds_conn_drop <%pI6c,%pI6c,%d>\n",
 				    &conn->c_laddr, &conn->c_faddr,
 				    conn->c_tos);
+			conn->c_reconnect_racing = 0;
 			if (!rds_conn_self_loopback_passive(conn))
 				rds_conn_drop(conn, DR_IB_ADDR_CHANGE);
 		}
@@ -287,6 +300,7 @@ int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 		rds_rtd_ptr(RDS_RTD_CM,
 			    "DISCONNECT event - dropping connection %pI6c->%pI6c tos %d\n",
 			    &conn->c_laddr, &conn->c_faddr, conn->c_tos);
+		conn->c_reconnect_racing = 0;
 		rds_conn_drop(conn, DR_IB_DISCONNECTED_EVENT);
 		break;
 
