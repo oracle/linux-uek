@@ -43,6 +43,35 @@ static inline unsigned long adi_nbits(void)
 	return adi_state.caps.nbits;
 }
 
+static inline unsigned long adi_normalize(long addr)
+{
+	return addr << adi_nbits() >> adi_nbits();
+}
+
+static inline unsigned long adi_pstate_disable(void)
+{
+	unsigned long saved_pstate;
+
+	__asm__ __volatile__(
+		"rdpr   %%pstate, %0    \n\t"
+		"andn   %0, %1, %%g1    \n\t"
+		"wrpr   %%g1, %%pstate  \n\t"
+		: "=&r" (saved_pstate)
+		: "i"   (PSTATE_MCDE)
+		: "g1");
+
+	return saved_pstate;
+}
+
+static inline void adi_pstate_restore(unsigned long saved_pstate)
+{
+	__asm__ __volatile__(
+		"wrpr   %0, %%pstate  \n\t"
+		:
+		: "r" (saved_pstate)
+		: );
+}
+
 #endif	/* __ASSEMBLY__ */
 
 #endif	/* !(__ASM_SPARC64_ADI_H) */

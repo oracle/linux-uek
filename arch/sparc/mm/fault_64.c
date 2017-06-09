@@ -248,6 +248,14 @@ static void __kprobes do_kernel_fault(struct pt_regs *regs, int si_code,
 			}
 			return;
 		}
+		/* M8 misaligned load alternate space; OSA 2017, sec 7.89 */
+		if ((insn &
+			((3<<30) | (0x3f<<19) | (1<<13) | (1<<9))) ==
+			((3<<30) | (0x31<<19) |           (1<<9))) {
+			asi = (regs->tstate >> 24);
+			if ((asi & 0xf2) == 0x82 && handle_ldm_nf(insn, regs))
+					return;
+		}
 	}
 		
 	/* Is this in ex_table? */

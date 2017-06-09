@@ -592,6 +592,91 @@ void handle_ld_nf(u32 insn, struct pt_regs *regs)
 	advance(regs);
 }
 
+int handle_ldm_nf(u32 insn, struct pt_regs *regs)
+{
+	int i, sign_extend_bits = 0, bytes_needed;
+	unsigned long *uregp, saved_pstate = 0;
+	int rd = ((insn >> 25) & 0x1f);
+	int opm = ((insn >> 10) & 0x7);
+	long val, addr;
+	bool is_adi;
+
+	if (regs->tstate & TSTATE_PRIV)
+		return 0;
+
+	perf_sw_event(PERF_COUNT_SW_EMULATION_FAULTS, 1, regs, 0);
+
+	switch (opm) {
+	case 0:
+		sign_extend_bits = 48;
+		/* fall through */
+	case 1:
+		bytes_needed = 2;
+		break;
+	case 2:
+		sign_extend_bits = 32;
+		/* fall through */
+	case 3:
+		bytes_needed = 4;
+		break;
+	case 5:
+		sign_extend_bits = 0;
+		bytes_needed = 8;
+		break;
+	default:
+		return 0;
+	}
+
+	/*
+	 * The LDM* instructions only have a 10 bit immediate so
+	 * it might look like a bug to use compute_effective_address()
+	 * here. But it's ok because LDM*A cannot have any immediate
+	 * offset, so the effective address is always correctly
+	 * calculated using only the registers.
+	 */
+	addr = compute_effective_address(regs, insn, rd);
+
+	/*
+	 * ADI logic here: Since we are emulating a no-fault load,
+	 * we also want to emulate the h/w behavior, which is to actually
+	 * suppress ADI-related faults. So if the application has
+	 * ADI enabled, then let's disable MCD here before attempting
+	 * the access, and use a normalized address as well.
+	 * This is all to ensure that the only potential faults
+	 * are MMU related.
+	 */
+	if ((is_adi = (current->mm && current->mm->context.adi))) {
+		saved_pstate = adi_pstate_disable();
+		addr = adi_normalize(addr);
+	}
+
+	for (i = 0, val = 0; i < bytes_needed; i++) {
+		unsigned char v;
+
+		if (get_user(v, (unsigned char __user *) (addr+i)))
+			v = 0;
+		val = (val << 8) | v;
+	}
+
+	if (is_adi)
+		adi_pstate_restore(saved_pstate);
+
+	if (sign_extend_bits)
+		val = val << sign_extend_bits >> sign_extend_bits;
+
+	maybe_flush_windows(0, 0, rd, 0);
+	uregp = fetch_reg_addr(rd, regs);
+	if (rd < 16)
+		uregp[0] = val;
+	else if (test_thread_64bit_stack(regs->u_regs[UREG_FP]))
+		put_user(val, (long __user *) uregp);
+	else
+		put_user(val, (int __user *) uregp);
+
+	advance(regs);
+	return 1;
+}
+
 void handle_lddfmna(struct pt_regs *regs, unsigned long sfar, unsigned long sfsr)
 {
 	enum ctx_state prev_state = exception_enter();
