@@ -378,7 +378,7 @@ struct rds_connection *rds_conn_find(struct net *net, struct in6_addr *laddr,
 }
 EXPORT_SYMBOL_GPL(rds_conn_find);
 
-void rds_conn_shutdown(struct rds_conn_path *cp)
+void rds_conn_shutdown(struct rds_conn_path *cp, int restart)
 {
 	struct rds_connection *conn = cp->cp_conn;
 
@@ -447,7 +447,7 @@ void rds_conn_shutdown(struct rds_conn_path *cp)
 	 * conn - the reconnect is always triggered by the active peer. */
 	cancel_delayed_work_sync(&cp->cp_conn_w);
 	rcu_read_lock();
-	if (!hlist_unhashed(&conn->c_hash_node)) {
+	if (!hlist_unhashed(&conn->c_hash_node) && restart) {
 		rcu_read_unlock();
 		rds_queue_reconnect(cp);
 	} else {
