@@ -1091,13 +1091,27 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 			rds_ib_stats_inc(s_ib_listen_closed_stale);
 		} else if (rds_conn_state(conn) == RDS_CONN_CONNECTING) {
 			unsigned long now = get_seconds();
+			conn->c_reconnect_racing++;
 
+			/* When a race is detected, one side should fall back
+			 * to passive and let the active side to reconnect.
+			 * If the connection is in CONNECTING and still receive
+			 * multiple back-to-back REQ, it means something is
+			 * horribly wrong. Thus, drop the connection.
+			 */
+			if (conn->c_reconnect_racing > 5) {
+				rds_rtd_ptr(RDS_RTD_CM,
+					    "RDS/IB: conn <%pI6c,%pI6c,%d> back-to-back REQ, reset\n",
+					    &conn->c_laddr, &conn->c_faddr,
+					    conn->c_tos);
+				conn->c_reconnect_racing = 0;
+				rds_conn_drop(conn, DR_IB_REQ_WHILE_CONNECTING);
 			/* After 15 seconds, give up on existing connection
 			 * attempts and make them try again.  At this point
 			 * it's no longer a race but something has gone
-			 * horribly wrong
+			 * horribly wrong.
 			 */
-			if (now > conn->c_connection_start &&
+			} else if (now > conn->c_connection_start &&
 			    now - conn->c_connection_start > 15) {
 				rds_rtd_ptr(RDS_RTD_CM,
 					    "RDS/IB: connection <%pI6c,%pI6c,%d> racing for 15s, forcing reset",
