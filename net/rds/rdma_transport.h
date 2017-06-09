@@ -5,7 +5,7 @@
 #include <rdma/rdma_cm.h>
 #include "rds.h"
 
-#define RDS_RDMA_RESOLVE_TIMEOUT_MS     5000
+#define RDS_RDMA_RESOLVE_TIMEOUT_MS     RDS_RECONNECT_RETRY_MS
 
 /* Per IB specification 7.7.3, service level is a 4-bit field. */
 #define TOS_TO_SL(tos)	((tos) & 0xF)

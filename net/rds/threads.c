@@ -158,8 +158,11 @@ void rds_queue_reconnect(struct rds_conn_path *cp)
 		    rand % cp->cp_reconnect_jiffies, cp->cp_reconnect_jiffies,
 		    conn, &conn->c_laddr, &conn->c_faddr, conn->c_tos);
 
-	queue_delayed_work(cp->cp_wq, &cp->cp_conn_w,
-			   rand % cp->cp_reconnect_jiffies);
+	if (rds_addr_cmp(&conn->c_laddr, &conn->c_faddr))
+		queue_delayed_work(cp->cp_wq, &cp->cp_conn_w, 0);
+	else
+		queue_delayed_work(cp->cp_wq, &cp->cp_conn_w,
+				   msecs_to_jiffies(100));
 
 	cp->cp_reconnect_jiffies = min(cp->cp_reconnect_jiffies * 2,
 					rds_sysctl_reconnect_max_jiffies);
@@ -308,6 +311,7 @@ void rds_reconnect_timeout(struct work_struct *work)
 			    "conn <%pI6c,%pI6c,%d> not up, retry(%d)\n",
 			    &conn->c_laddr, &conn->c_faddr, conn->c_tos,
 			    cp->cp_reconnect_retry_count);
+		cp->cp_reconnect_racing = 0;
 		rds_conn_path_drop(cp, DR_RECONNECT_TIMEOUT);
 	}
 }
@@ -332,7 +336,24 @@ void rds_shutdown_worker(struct work_struct *work)
 			conn->c_tos,
 			conn_drop_reason_str(cp->cp_drop_source));
 
-	rds_conn_shutdown(cp);
+	/* if racing is detected, lower IP backs off and let the higher IP
+	 * drives the reconnect (one-sided reconnect)
+	 */
+	if ((rds_addr_cmp(&conn->c_faddr, &conn->c_laddr) ||
+	     rds_conn_self_loopback_passive(conn)) &&
+	    cp->cp_reconnect_racing) {
+		rds_rtd_ptr(RDS_RTD_CM,
+			    "calling rds_conn_shutdown, conn %p:0 <%pI6c,%pI6c,%d>\n",
+			    conn, &conn->c_laddr, &conn->c_faddr, conn->c_tos);
+		rds_conn_shutdown(cp, 0);
+		queue_delayed_work(cp->cp_wq, &cp->cp_reconn_w,
+				   msecs_to_jiffies(RDS_RECONNECT_RETRY_MS));
+	} else {
+		rds_rtd_ptr(RDS_RTD_CM,
+			    "calling rds_conn_shutdown, conn %p:1 <%pI6c,%pI6c,%d>\n",
+			    conn, &conn->c_laddr, &conn->c_faddr, conn->c_tos);
+		rds_conn_shutdown(cp, 1);
+	}
 }
 
 void rds_threads_exit(void)
