@@ -509,14 +509,6 @@ struct request_queue {
 
 	struct blk_mq_tag_set	*tag_set;
 	struct list_head	tag_set_list;
-#ifndef __GENKSYMS__
-	/*
-	 * Protect concurrent access to mq_usage_counter by
-	 * percpu_ref_switch_to_percpu(), percpu_ref_kill(), and
-	 * percpu_ref_reinit().
-	 */
-	struct mutex		mq_freeze_lock;
-#endif
 };
 
 #define QUEUE_FLAG_QUEUED	1	/* uses generic tag queueing */
