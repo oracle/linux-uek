@@ -148,6 +148,11 @@ SECTIONS
 		*(.sun4v_adi_2insn_patch)
 		__sun4v_adi_2insn_patch_end = .;
 	}
+	.get_tick_patch : {
+		__get_tick_patch = .;
+		*(.get_tick_patch)
+		__get_tick_patch_end = .;
+	}
 	PERCPU_SECTION(SMP_CACHE_BYTES)
 
 	. = ALIGN(PAGE_SIZE);
