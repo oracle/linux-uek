@@ -49,6 +49,10 @@
 #include <linux/cpu.h>
 #include <linux/jump_label.h>
 
+#ifdef CONFIG_DTRACE
+#include <linux/dtrace_fbt.h>
+#endif
+
 #include <asm/sections.h>
 #include <asm/cacheflush.h>
 #include <asm/errno.h>
@@ -2152,6 +2156,10 @@ static int __init populate_kprobe_blacklist(unsigned long *start,
 				(void *)entry);
 			continue;
 		}
+
+#ifdef CONFIG_DTRACE
+		dtrace_fbt_bl_add(entry, NULL);
+#endif
 
 		ent = kmalloc(sizeof(*ent), GFP_KERNEL);
 		if (!ent)
