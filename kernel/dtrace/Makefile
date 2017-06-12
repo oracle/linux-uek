@@ -10,6 +10,6 @@ DT_CORE_ARCH_OBJS		= $(addprefix ../../arch/$(SRCARCH)/kernel/, \
 
 ifdef CONFIG_DT_CORE
 obj-y				+= cyclic.o dtrace_os.o dtrace_cpu.o \
-				   dtrace_sdt_core.o \
+				   dtrace_sdt_core.o dtrace_fbt_core.o \
 				   $(DT_CORE_ARCH_OBJS)
 endif
