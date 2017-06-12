@@ -29,51 +29,29 @@
 #undef BL_DENTRY
 #undef BL_SENTRY
 
-typedef struct _bl_entry {
-	void *addr;
-	const char *name;
-} bl_entry;
-
-static bl_entry	blacklist[] = {
-#define BL_SENTRY(tp, nm)	{ (void *)&nm, __stringify(nm) },
-#define BL_DENTRY(tp, nm)	{ NULL, __stringify(nm) },
-#include "fbt_blacklist.h"
-#undef BL_DENTRY
-#undef BL_SENTRY
-};
-static int	blacklist_len = ARRAY_SIZE(blacklist);
-
-static int bl_entry_cmp(const void *xx, const void *yy)
+static void
+dtrace_fbt_populate_bl(void)
 {
-	bl_entry	*x = (bl_entry *)xx;
-	bl_entry	*y = (bl_entry *)yy;
-
-	if (x->addr > y->addr)
-		return 1;
-	else if (x->addr < y->addr)
-		return -1;
-	else
-		return 0;
+#define	BL_SENTRY(tp, nm)	dtrace_fbt_bl_add((unsigned long)&nm, __stringify(nm));
+#define BL_DENTRY(tp, nm)	dtrace_fbt_bl_add(0, __stringify(nm));
+#include "fbt_blacklist.h"
+#undef BL_SENTRY
+#undef BL_DENTRY
 }
 
 void dtrace_fbt_init(fbt_add_probe_fn fbt_add_probe)
 {
 	loff_t			pos;
 	struct kallsym_iter	sym;
-	size_t			blpos = 0;
 	asm_instr_t		*paddr = NULL;
+	dt_fbt_bl_entry_t	*blent = NULL;
 
 	/*
 	 * Look up any unresolved symbols in the blacklist, and sort the list
 	 * by ascending address.
 	 */
-	for (pos = 0; pos < blacklist_len; pos++) {
-		bl_entry	*be = &blacklist[pos];
-
-		if (!be->addr)
-			be->addr = (void *)kallsyms_lookup_name(be->name);
-	}
-	sort(blacklist, blacklist_len, sizeof(bl_entry), bl_entry_cmp, NULL);
+	dtrace_fbt_populate_bl();
+	blent = dtrace_fbt_bl_first();
 
 	pos = 0;
 	kallsyms_iter_reset(&sym, 0);
@@ -99,15 +77,18 @@ void dtrace_fbt_init(fbt_add_probe_fn fbt_add_probe)
 		if (!core_kernel_text(sym.value))
 			continue;
 
+		/* TODO: Jumplabel blacklist ? */
+
 		/*
-		 * See if the symbol is on the blacklist.  Since both lists are
-		 * sorted by ascending address we can use concurrent traversal
-		 * of both lists.
+		 * See if the symbol is on the FBT's blacklist.  Since both
+		 * iterators are workng in sort order by ascending address we
+		 * can use concurrent traversal.
 		 */
-		while (blpos < blacklist_len &&
-		       blacklist[blpos].addr < (void *)sym.value)
-			blpos++;
-		if (blacklist[blpos].addr == (void *)sym.value)
+		while (blent != NULL &&
+		       dtrace_fbt_bl_entry_addr(blent) < sym.value) {
+			blent = dtrace_fbt_bl_next(blent);
+		}
+		if (dtrace_fbt_bl_entry_addr(blent) == sym.value)
 			continue;
 
 		/*
