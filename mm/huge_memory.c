@@ -1627,6 +1627,7 @@ pmd_t *page_check_address_pmd(struct page *page,
 			      spinlock_t **ptl)
 {
 	pgd_t *pgd;
+	p4d_t *p4d;
 	pud_t *pud;
 	pmd_t *pmd;
 
@@ -1636,7 +1637,10 @@ pmd_t *page_check_address_pmd(struct page *page,
 	pgd = pgd_offset(mm, address);
 	if (!pgd_present(*pgd))
 		return NULL;
-	pud = pud_offset(pgd, address);
+	p4d = p4d_offset(pgd, address);
+	if (!p4d_present(*p4d))
+		return NULL;
+	pud = pud_offset(p4d, address);
 	if (!pud_present(*pud))
 		return NULL;
 	pmd = pmd_offset(pud, address);
@@ -3011,6 +3015,7 @@ static void split_huge_page_address(struct mm_struct *mm,
 				    unsigned long address)
 {
 	pgd_t *pgd;
+	p4d_t *p4d;
 	pud_t *pud;
 	pmd_t *pmd;
 
@@ -3020,7 +3025,11 @@ static void split_huge_page_address(struct mm_struct *mm,
 	if (!pgd_present(*pgd))
 		return;
 
-	pud = pud_offset(pgd, address);
+	p4d = p4d_offset(pgd, address);
+	if (!p4d_present(*p4d))
+		return;
+
+	pud = pud_offset(p4d, address);
 	if (!pud_present(*pud))
 		return;
 
