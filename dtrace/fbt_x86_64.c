@@ -32,7 +32,11 @@
 #include "dtrace_dev.h"
 #include "fbt_impl.h"
 
-#define FBT_ENTRY_PATCHVAL		0xf0
+/*
+ * Use 0xf0 (LOCK Prefix) and X86_TRAP_UD for Invalid Opcode traps to be used.
+ * Use 0xcc (INT 3) and X86_TRAP_BP for Breakpoint traps to be used.
+ */
+#define FBT_ENTRY_PATCHVAL		0xcc
 #define FBT_RETURN_PATCHVAL		0xcc
 
 static uint8_t fbt_invop(struct pt_regs *regs)
