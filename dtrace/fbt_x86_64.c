@@ -33,8 +33,14 @@
 #include "dtrace_dev.h"
 #include "fbt_impl.h"
 
-#define FBT_ENTRY_PATCHVAL		0xf0
+/*
+ * Use 0xf0 (LOCK Prefix) and X86_TRAP_UD for Invalid Opcode traps to be used.
+ * Use 0xcc (INT 3) and X86_TRAP_BP for Breakpoint traps to be used.
+ */
+#define FBT_ENTRY_PATCHVAL		0xcc
+#define FBT_ENTRY_TRAP			X86_TRAP_BP
 #define FBT_RETURN_PATCHVAL		0xcc
+#define FBT_RETURN_TRAP			X86_TRAP_BP
 
 static uint8_t fbt_invop(struct pt_regs *regs)
 {
@@ -51,18 +57,18 @@ static uint8_t fbt_invop(struct pt_regs *regs)
 			 * the TLS thread key calculation.
 			 *
 			 * This is not pretty, but neither is the fact that
-			 * int3 cause handlers to think they are called from
+			 * int3 causes handlers to think they are called from
 			 * within an interrupt.
 			 */
 			this_cpu_core->cpu_dtrace_regs = regs;
 			orig_ax = regs->orig_ax;
 
 			if (fbp->fbp_roffset == 0) {
-				regs->orig_ax = X86_TRAP_UD;
+				regs->orig_ax = FBT_ENTRY_TRAP;
 				dtrace_probe(fbp->fbp_id, regs->di, regs->si,
 					     regs->dx, regs->cx, regs->r8);
 			} else {
-				regs->orig_ax = X86_TRAP_BP;
+				regs->orig_ax = FBT_RETURN_TRAP;
 				dtrace_probe(fbp->fbp_id, fbp->fbp_roffset,
 					     regs->ax, 0, 0, 0);
 			}
