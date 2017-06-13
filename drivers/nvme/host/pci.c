@@ -52,12 +52,6 @@
 #define NVME_AQ_DEPTH		256
 #define SQ_SIZE(depth)		(depth * sizeof(struct nvme_command))
 #define CQ_SIZE(depth)		(depth * sizeof(struct nvme_completion))
-		
-/*
- * We handle AEN commands ourselves and don't even let the
- * block layer know about them.
- */
-#define NVME_AQ_BLKMQ_DEPTH	(NVME_AQ_DEPTH - NVME_NR_AERS)
 
 static int use_threaded_interrupts;
 module_param(use_threaded_interrupts, int, 0);
@@ -98,6 +92,7 @@ struct nvme_dev {
 	unsigned online_queues;
 	unsigned max_qid;
 	int q_depth;
+	int aq_depth;
 	u32 db_stride;
 	struct msix_entry *entry;
 	void __iomem *bar;
@@ -114,6 +109,15 @@ struct nvme_dev {
 	struct nvme_ctrl ctrl;
 	struct completion ioq_wait;
 };
+
+/*
+ * We handle AEN commands ourselves and don't even let the
+ * block layer know about them.
+ */
+static inline unsigned int nvme_aq_blkmq_depth(struct nvme_dev *dev)
+{
+	return dev->aq_depth - NVME_NR_AERS;
+}
 
 static inline struct nvme_dev *to_nvme_dev(struct nvme_ctrl *ctrl)
 {
@@ -735,8 +739,8 @@ static int nvme_process_cq(struct nvme_queue *nvmeq)
 		 * aborts.  We don't even bother to allocate a struct request
 		 * for them but rather special case them here.
 		 */
-		if (unlikely(nvmeq->qid == 0 &&
-				cqe.command_id >= NVME_AQ_BLKMQ_DEPTH)) {
+		if (unlikely(nvmeq->qid == 0 && cqe.command_id
+			     >= nvme_aq_blkmq_depth(nvmeq->dev))) {
 			nvme_complete_async_event(&nvmeq->dev->ctrl, &cqe);
 			continue;
 		}
@@ -794,7 +798,7 @@ static void nvme_pci_submit_async_event(struct nvme_ctrl *ctrl, int aer_idx)
 
 	memset(&c, 0, sizeof(c));
 	c.common.opcode = nvme_admin_async_event;
-	c.common.command_id = NVME_AQ_BLKMQ_DEPTH + aer_idx;
+	c.common.command_id = nvme_aq_blkmq_depth(dev) + aer_idx;
 
 	spin_lock_irq(&nvmeq->q_lock);
 	__nvme_submit_cmd(nvmeq, &c);
@@ -1199,7 +1203,7 @@ static int nvme_alloc_admin_tags(struct nvme_dev *dev)
 		 * Subtract one to leave an empty queue entry for 'Full Queue'
 		 * condition. See NVM-Express 1.2 specification, section 4.1.2.
 		 */
-		dev->admin_tagset.queue_depth = NVME_AQ_BLKMQ_DEPTH - 1;
+		dev->admin_tagset.queue_depth = nvme_aq_blkmq_depth(dev) - 1;
 		dev->admin_tagset.reserved_tags = 1;
 		dev->admin_tagset.timeout = ADMIN_TIMEOUT;
 		dev->admin_tagset.numa_node = dev_to_node(dev->dev);
@@ -1245,7 +1249,7 @@ static int nvme_configure_admin_queue(struct nvme_dev *dev)
 
 	nvmeq = dev->queues[0];
 	if (!nvmeq) {
-		nvmeq = nvme_alloc_queue(dev, 0, dev->admin_tagset.queue_depth + 1);
+		nvmeq = nvme_alloc_queue(dev, 0, dev->aq_depth);
 		if (!nvmeq)
 			return -ENOMEM;
 	}
@@ -1668,6 +1672,7 @@ static int nvme_pci_enable(struct nvme_dev *dev)
 	cap = lo_hi_readq(dev->bar + NVME_REG_CAP);
 
 	dev->q_depth = min_t(int, NVME_CAP_MQES(cap) + 1, NVME_Q_DEPTH);
+	dev->aq_depth = NVME_AQ_DEPTH;
 	dev->db_stride = 1 << NVME_CAP_STRIDE(cap);
 	dev->dbs = dev->bar + 4096;
 
