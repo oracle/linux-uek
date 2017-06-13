@@ -29,7 +29,6 @@
 #include <linux/gfp.h>
 #include <linux/kexec.h>
 #include <linux/crash_dump.h>
-#include <linux/ratelimit.h>
 
 #include <asm/head.h>
 #include <asm/page.h>
@@ -58,7 +57,6 @@
 #include "init_64.h"
 
 unsigned long ctx_nr_bits = DEFAULT_CTX_NR_BITS;
-int max_user_nctx;
 unsigned long kern_linear_pte_xor[4] __read_mostly;
 static unsigned long page_cache4v_flag;
 
@@ -912,12 +910,8 @@ out:
 	mm->context.sparc64_ctx_val = new_ctx | orig_pgsz_bits;
 	spin_unlock(&ctx_alloc_lock);
 
-	if (unlikely(new_version)) {
-		pr_err_ratelimited("Context ID wrapped: %s(%d) CPU%d\n",
-				     current->comm, task_pid_nr(current),
-				     smp_processor_id());
+	if (unlikely(new_version))
 		smp_new_mmu_context_version();
-	}
 }
 
 static int numa_enabled = 1;
@@ -2678,8 +2672,6 @@ void __init paging_init(void)
 
 		sun4u_linear_pte_xor_finalize();
 	}
-
-	max_user_nctx = (1UL << ctx_nr_bits) - 1;
 
 	/* Flush the TLBs and the 4M TSB so that the updated linear
 	 * pte XOR settings are realized for all mappings.

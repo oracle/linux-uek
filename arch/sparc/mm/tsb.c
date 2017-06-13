@@ -14,7 +14,6 @@
 #include <asm/tlb.h>
 #include <asm/oplib.h>
 #include <asm/mdesc.h>
-#include <linux/ratelimit.h>
 
 extern struct tsb swapper_tsb[KERNEL_TSB_NENTRIES];
 
@@ -616,8 +615,6 @@ retry_tsb_alloc:
 	}
 }
 
-static atomic_t nctxs = ATOMIC_INIT(0);
-
 int init_new_context(struct task_struct *tsk, struct mm_struct *mm)
 {
 	unsigned long mm_rss = get_mm_rss(mm);
@@ -626,24 +623,6 @@ int init_new_context(struct task_struct *tsk, struct mm_struct *mm)
 	unsigned long saved_thp_pte_count;
 #endif
 	unsigned int i;
-	int max_nctx = max_user_nctx;
-	int ret = 0;
-	int uid = current_cred()->uid.val;
-
-	/*
-	 * In the worst case, user(s) might use up all contexts and make the
-	 * system unusable.  Give root extra 100 grace ctxs to recover the
-	 * system. E.g by killing some user processes.
-	 */
-	if (uid != 0)
-		max_nctx -= 100;
-
-	if (unlikely(max_nctx <= atomic_inc_return(&nctxs))) {
-		pr_warn_ratelimited("Reached max(%d) number of processes for %s\n",
-				    max_nctx, uid ? "users" : "root");
-		ret = -EAGAIN;
-		goto error;
-	}
 
 	spin_lock_init(&mm->context.lock);
 
@@ -680,16 +659,10 @@ int init_new_context(struct task_struct *tsk, struct mm_struct *mm)
 			 (saved_hugetlb_pte_count + saved_thp_pte_count) *
 			 REAL_HPAGE_PER_HPAGE);
 #endif
+	if (unlikely(!mm->context.tsb_block[MM_TSB_BASE].tsb))
+		return -ENOMEM;
 
-	if (unlikely(!mm->context.tsb_block[MM_TSB_BASE].tsb)) {
-		ret = -ENOMEM;
-		goto error;
-	}
-
-	return ret;
-error:
-	atomic_dec(&nctxs);
-	return ret;
+	return 0;
 }
 
 static void tsb_destroy_one(struct tsb_config *tp)
@@ -710,8 +683,6 @@ void destroy_context(struct mm_struct *mm)
 
 	for (i = 0; i < MM_NUM_TSBS; i++)
 		tsb_destroy_one(&mm->context.tsb_block[i]);
-
-	atomic_dec(&nctxs);
 
 	spin_lock_irqsave(&ctx_alloc_lock, flags);
 
