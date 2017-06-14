@@ -3810,7 +3810,7 @@ static int __init cma_init(void)
 		goto err;
 
 	if (ibnl_add_client(RDMA_NL_RDMA_CM, ARRAY_SIZE(cma_cb_table),
-			     cma_cb_table));
+			     cma_cb_table))
 		printk(KERN_WARNING "RDMA CMA: failed to add netlink callback\n");
 
 	return 0;
