@@ -1465,15 +1465,14 @@ int ip_send_skb(struct net *net, struct sk_buff *skb)
 		if (err > 0)
 			err = net_xmit_errno(err);
 		if (err) {
-			struct iphdr *iph = ip_hdr(skb);
-
 			IP_INC_STATS(net, IPSTATS_MIB_OUTDISCARDS);
+			/* skb may have been freed */
 			DTRACE_IP(drop__out,
-				  struct sk_buff * : pktinfo_t *, skb,
-				  struct sock * : csinfo_t *, skb->sk,
-				  void_ip_t * : ipinfo_t *, iph,
-				  struct net_device * : ifinfo_t *, skb->dev,
-				  struct iphdr * : ipv4info_t *, iph,
+				  struct sk_buff * : pktinfo_t *, NULL,
+				  struct sock * : csinfo_t *, NULL,
+				  void_ip_t * : ipinfo_t *, NULL,
+				  struct net_device * : ifinfo_t *, NULL,
+				  struct iphdr * : ipv4info_t *, NULL,
 				  struct ipv6hdr * : ipv6info_t *, NULL,
 				  char * : string, "packet too short");
 		}
