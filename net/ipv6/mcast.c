@@ -1666,13 +1666,14 @@ out:
 		ICMP6_INC_STATS(net, idev, ICMP6_MIB_OUTMSGS);
 		IP6_UPD_PO_STATS(net, idev, IPSTATS_MIB_OUTMCAST, payload_len);
 	} else {
+		/* skb may have been freed */
 		DTRACE_IP(drop__out,
-		    struct sk_buff * : pktinfo_t *, skb,
-		    struct sock * : csinfo_t *, skb ? skb->sk : NULL,
-		    void_ip_t * : ipinfo_t *, skb ? ipv6_hdr(skb) : NULL,
-		    struct net_device * : ifinfo_t *, skb ? skb->dev : NULL,
+		    struct sk_buff * : pktinfo_t *, NULL,
+		    struct sock * : csinfo_t *, NULL,
+		    void_ip_t * : ipinfo_t *, NULL,
+		    struct net_device * : ifinfo_t *, idev->dev,
 		    struct iphdr * : ipv4info_t *, NULL,
-		    struct ipv6hdr * : ipv6info_t *, skb ? ipv6_hdr(skb) : NULL,
+		    struct ipv6hdr * : ipv6info_t *, NULL,
 		    char * : string, "multicast send error");
 
 		IP6_INC_STATS(net, idev, IPSTATS_MIB_OUTDISCARDS);
@@ -2054,13 +2055,14 @@ out:
 		ICMP6_INC_STATS(net, idev, ICMP6_MIB_OUTMSGS);
 		IP6_UPD_PO_STATS(net, idev, IPSTATS_MIB_OUTMCAST, full_len);
 	} else {
+		/* skb may have been freed */
 		DTRACE_IP(drop__out,
-		    struct sk_buff * : pktinfo_t *, skb,
-		    struct sock * : csinfo_t *, skb ? skb->sk : NULL,
-		    void_ip_t * : ipinfo_t *, skb ? ipv6_hdr(skb) : NULL,
-		    struct net_device * : ifinfo_t *, skb ? skb->dev : NULL,
+		    struct sk_buff * : pktinfo_t *, NULL,
+		    struct sock * : csinfo_t *, sk,
+		    void_ip_t * : ipinfo_t *, NULL,
+		    struct net_device * : ifinfo_t *, idev->dev,
 		    struct iphdr * : ipv4info_t *, NULL,
-		    struct ipv6hdr * : ipv6info_t *, skb ? ipv6_hdr(skb) : NULL,
+		    struct ipv6hdr * : ipv6info_t *, NULL,
 		    char * : string, "multicast send error");
 
 		IP6_INC_STATS(net, idev, IPSTATS_MIB_OUTDISCARDS);
