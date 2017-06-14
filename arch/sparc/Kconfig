@@ -96,6 +96,9 @@ config ARCH_DEFCONFIG
 config ARCH_PROC_KCORE_TEXT
 	def_bool y
 
+config CPU_BIG_ENDIAN
+	def_bool y
+
 config IOMMU_HELPER
 	bool
 	default y if SPARC64
