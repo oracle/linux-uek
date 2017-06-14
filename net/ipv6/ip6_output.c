@@ -1775,15 +1775,15 @@ int ip6_send_skb(struct sk_buff *skb)
 		if (err > 0)
 			err = net_xmit_errno(err);
 		if (err) {
+			/* skb may have been freed */
 			DTRACE_IP(drop__out,
-				  struct sk_buff * : pktinfo_t *, skb,
-				  struct sock * : csinfo_t *, skb->sk,
-				  void_ip_t * : ipinfo_t *, ipv6_hdr(skb),
-				  struct net_device * : ifinfo_t *, skb->dev,
+				  struct sk_buff * : pktinfo_t *, NULL,
+				  struct sock * : csinfo_t *, NULL,
+				  void_ip_t * : ipinfo_t *, NULL,
+				  struct net_device * : ifinfo_t *, NULL,
 				  struct iphdr * : ipv4info_t *, NULL,
-				  struct ipv6hdr * : ipv6info_t *,
-				  ipv6_hdr(skb), char * : string,
-				   "out of memory");
+				  struct ipv6hdr * : ipv6info_t *, NULL,
+				  char * : string, "out of memory");
 
 			IP6_INC_STATS(net, rt->rt6i_idev,
 				      IPSTATS_MIB_OUTDISCARDS);
