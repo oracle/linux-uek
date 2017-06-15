@@ -381,7 +381,7 @@ struct detect_duplicates_state {
 	GHashTable *structs_seen;
 	GList *named_structs;
 	GHashTable *vars_seen;
-	const char *dwfl_file_name;
+	char *dwfl_file_name;
 	Dwarf *dwarf;
 	Dwfl *dwfl;
 	int repeat_detection;
@@ -776,10 +776,11 @@ static char *xstrdup(const char *s) __attribute__((__nonnull__,
 
 /*
  * Filter a GList, calling a predicate on it and removing all elements for which
- * the predicate returns true.
+ * the predicate returns true, calling the free_func on them if set.
  */
 typedef int (*filter_pred_fun) (void *element, void *data);
-static GList *list_filter(GList *list, filter_pred_fun fun, void *data);
+static GList *list_filter(GList *list, filter_pred_fun fun, GDestroyNotify free_func,
+			  void *data);
 
 /*
  * Figure out the (pathless, suffixless) module name for a given module file (.o
@@ -988,6 +989,7 @@ static void init_object_names(const char *object_names_file)
 
 		object_names[object_names_cnt-1] = xstrdup(line);
 	}
+	free(line);
 
 	if (ferror(f)) {
 		fprintf(stderr, "Error reading from %s: %s\n",
@@ -1172,6 +1174,7 @@ static void init_dedup_blacklist(const char *dedup_blacklist_file)
 
 		g_hash_table_insert(dedup_blacklist, xstrdup(line), NULL);
 	}
+	free(line);
 
 	if (ferror(f)) {
 		fprintf(stderr, "Error reading from %s: %s\n",
@@ -1257,6 +1260,7 @@ static void init_member_blacklist(const char *member_blacklist_file,
 
 		g_hash_table_insert(member_blacklist, absolutized, NULL);
 	}
+	free(line);
 
 	if (ferror(f)) {
 		fprintf(stderr, "Error reading from %s: %s\n",
@@ -1963,6 +1967,13 @@ static void scan_duplicates(void)
 
 	dw_ctf_trace("Duplicate detection: primary pass.\n");
 
+	/*
+	 * This is merely flushed between TUs, not recreated: we create it here.
+	 */
+	state.vars_seen = g_hash_table_new_full(g_str_hash,
+						g_str_equal,
+						free, NULL);
+
 	for (i = 0; i < object_names_cnt; i++)
 		process_file(object_names[i], detect_duplicates,
 			     detect_duplicates_tu_init,
@@ -1985,6 +1996,7 @@ static void scan_duplicates(void)
 		state.repeat_detection = 0;
 		state.named_structs = list_filter(state.named_structs,
 						  detect_duplicates_alias_fixup,
+						  free_duplicates_id_file,
 						  &state);
 	} while (state.repeat_detection);
  out:
@@ -2010,16 +2022,8 @@ static void detect_duplicates_tu_init(const char *module_name,
 	struct detect_duplicates_state *state = data;
 
 	state->structs_seen = g_hash_table_new_full(g_str_hash, g_str_equal,
-						    free, free);
-	if (state->module_name == NULL ||
-	    (strcmp(state->module_name, module_name) != 0)) {
-		if (state->module_name != NULL)
-			g_hash_table_remove_all(state->vars_seen);
-		else
-			state->vars_seen = g_hash_table_new_full(g_str_hash,
-								 g_str_equal,
-								 free, NULL);
-	}
+						    free, NULL);
+	g_hash_table_remove_all(state->vars_seen);
 	state->module_name = module_name;
 }
 
@@ -2033,8 +2037,14 @@ static void detect_duplicates_tu_done(const char *module_name,
 {
 	struct detect_duplicates_state *state = data;
 
+	/*
+	 * We have to annul module_name because it is freed between object files
+	 * by process_file().  Since we use that to track whether vars_seen
+	 * needs reconstructing, that means we have to destroy that as well.
+	 */
 	g_hash_table_destroy(state->structs_seen);
 	state->structs_seen = NULL;
+	state->module_name = NULL;
 }
 
 /*
@@ -2047,6 +2057,7 @@ static void detect_duplicates_dwarf_free(struct detect_duplicates_state *state)
 	simple_dwfl_free(state->dwfl);
 	state->dwfl = NULL;
 	state->dwarf = NULL;
+	free(state->dwfl_file_name);
 	state->dwfl_file_name = NULL;
 	if (state->structs_seen)
 		g_hash_table_destroy(state->structs_seen);
@@ -2556,9 +2567,9 @@ static void is_named_struct_union_enum(Dwarf_Die *die, const char *unused,
  * structure, its opaque alias is easy to compute, but the converse is not
  * true.)
  *
- * As a list_filter() filter function, returns 0 if this structure will not need
- * to be checked again (because both its opaque and transparent variants are
- * shared).
+ * As a list_filter() filter function, returns nonzero if this structure will
+ * not need to be checked again (because both its opaque and transparent
+ * variants are shared).
  */
 static int detect_duplicates_alias_fixup(void *id_file_data, void *data)
 {
@@ -2633,10 +2644,12 @@ static int detect_duplicates_alias_fixup(void *id_file_data, void *data)
 		if (state->dwfl_file_name == NULL) {
 			state->dwfl = simple_dwfl_new(id_file->file_name, &mod);
 			state->dwarf = dwfl_module_getdwarf(mod, &dummy);
-			state->dwfl_file_name = id_file->file_name;
+			state->dwfl_file_name = xstrdup(id_file->file_name);
+			if (state->structs_seen)
+				g_hash_table_destroy(state->structs_seen);
 			state->structs_seen = g_hash_table_new_full(g_str_hash,
 								    g_str_equal,
-								    free, free);
+								    free, NULL);
 		}
 		if (!dwarf_offdie(state->dwarf, id_file->dieoff,
 				  &die)) {
@@ -4459,15 +4472,19 @@ static char *str_appendn(char *s, ...)
 
 /*
  * Filter a GList, calling a predicate on it and removing all elements for which
- * the predicate returns true.
+ * the predicate returns true, calling the free_func on them if set.
  */
-static GList *list_filter(GList *list, filter_pred_fun fun, void *data)
+static GList *list_filter(GList *list, filter_pred_fun fun,
+			  GDestroyNotify free_func, void *data)
 {
 	GList *cur = list;
 	while (cur) {
 		GList *next = cur->next;
-		if (fun(cur->data, data))
+		if (fun(cur->data, data)) {
+			if (free_func)
+				free_func(cur->data);
 			list = g_list_delete_link(list, cur);
+		}
 		cur = next;
 	}
 
@@ -4634,6 +4651,7 @@ static void private_per_module_free(void *per_module)
 
 	ctf_close(per_mod->ctf_file);
 	g_hash_table_destroy(per_mod->member_counts);
+	free(per_module);
 }
 
 /*
