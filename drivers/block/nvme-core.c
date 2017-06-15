@@ -1500,6 +1500,29 @@ static int nvme_create_queue(struct nvme_queue *nvmeq, int qid)
 	return result;
 }
 
+static inline bool nvme_controller_ready(struct nvme_dev *dev)
+{
+	struct pci_dev *pdev = dev->pci_dev;
+	int pos;
+	u32 dsn;
+
+	if (pdev->vendor != PCI_VENDOR_ID_SAMSUNG && pdev->device != 0xa821)
+		return true;
+
+	pos = pci_find_ext_capability(pdev, PCI_EXT_CAP_ID_DSN);
+	if (!pos)
+		return true;
+
+	pci_read_config_dword(pdev, pos + 4, &dsn);
+
+	if (dsn == 0xffffffff) {
+		dev_err(&dev->pci_dev->dev, "detected Samsung PM172x HIL reset\n");
+		return false;
+	}
+
+	return true;
+}
+
 static int nvme_wait_ready(struct nvme_dev *dev, u64 cap, bool enabled)
 {
 	unsigned long timeout;
@@ -1507,7 +1530,11 @@ static int nvme_wait_ready(struct nvme_dev *dev, u64 cap, bool enabled)
 
 	timeout = ((NVME_CAP_TIMEOUT(cap) + 1) * HZ / 2) + jiffies;
 
-	while ((readl(&dev->bar->csts) & NVME_CSTS_RDY) != bit) {
+	while (1) {
+		if (nvme_controller_ready(dev) &&
+		  (readl(&dev->bar->csts) & NVME_CSTS_RDY) == bit)
+			break;
+
 		msleep(100);
 		if (fatal_signal_pending(current))
 			return -EINTR;
