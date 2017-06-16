@@ -491,6 +491,7 @@ void rds_conn_destroy(struct rds_connection *conn, int shutdown)
 		conn, &conn->c_laddr, &conn->c_faddr,
 		conn->c_tos);
 
+	conn->c_destroy_in_prog = 1;
 	/* Ensure conn will not be scheduled for reconnect */
 	spin_lock_irq(&rds_conn_lock);
 	hlist_del_init_rcu(&conn->c_hash_node);
