@@ -144,7 +144,7 @@ void rds_queue_reconnect(struct rds_conn_path *cp)
 		cp->cp_reconnect_jiffies);
 
 	/* let peer with smaller addr initiate reconnect, to avoid duels */
-	if (is_tcp && conn->c_laddr > conn->c_faddr)
+	if (is_tcp && !IS_CANONICAL(conn->c_laddr, conn->c_faddr))
 		return;
 
 	set_bit(RDS_RECONNECT_PENDING, &cp->cp_flags);
@@ -178,7 +178,7 @@ void rds_connect_worker(struct work_struct *work)
 	bool is_tcp = conn->c_trans->t_type == RDS_TRANS_TCP;
 
 	if (is_tcp && cp->cp_index > 0 &&
-	    cp->cp_conn->c_laddr > cp->cp_conn->c_faddr)
+	    !IS_CANONICAL(cp->cp_conn->c_laddr, cp->cp_conn->c_faddr))
 		return;
 	clear_bit(RDS_RECONNECT_PENDING, &cp->cp_flags);
 	ret = rds_conn_path_transition(cp, RDS_CONN_DOWN, RDS_CONN_CONNECTING);
