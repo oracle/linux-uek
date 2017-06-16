@@ -166,7 +166,6 @@ int rds_tcp_accept_one(struct socket *sock)
 		 * rds_tcp_accept_one_path.
 		 */
 		rds_tcp_reset_callbacks(new_sock, cp);
-		cp->cp_outgoing = 0;
 		/* rds_connect_path_complete() marks RDS_CONN_UP */
 		rds_connect_path_complete(cp, RDS_CONN_RESETTING);
 	} else {
