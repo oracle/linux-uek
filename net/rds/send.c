@@ -1178,8 +1178,6 @@ static inline int rds_rdma_bytes(struct msghdr *msg, size_t *rdma_bytes)
 	return 0;
 }
 
-static void rds_send_ping(struct rds_connection *conn);
-
 static int rds_send_mprds_hash(struct rds_sock *rs, struct rds_connection *conn)
 {
 	int hash;
@@ -1189,7 +1187,7 @@ static int rds_send_mprds_hash(struct rds_sock *rs, struct rds_connection *conn)
 	else
 		hash = RDS_MPATH_HASH(rs, conn->c_npaths);
 	if (conn->c_npaths == 0 && hash != 0) {
-		rds_send_ping(conn);
+		rds_send_ping(conn, 0);
 
 		if (conn->c_npaths == 0) {
 			wait_event_interruptible(conn->c_hs_waitq,
@@ -1725,10 +1723,10 @@ rds_send_pong(struct rds_conn_path *cp, __be16 dport)
 }
 
 void
-rds_send_ping(struct rds_connection *conn)
+rds_send_ping(struct rds_connection *conn, int cp_index)
 {
 	unsigned long flags;
-	struct rds_conn_path *cp = &conn->c_path[0];
+	struct rds_conn_path *cp = &conn->c_path[cp_index];
 
 	spin_lock_irqsave(&cp->cp_lock, flags);
 	if (conn->c_ping_triggered) {
@@ -1737,6 +1735,6 @@ rds_send_ping(struct rds_connection *conn)
 	}
 	conn->c_ping_triggered = 1;
 	spin_unlock_irqrestore(&cp->cp_lock, flags);
-	rds_send_probe(&conn->c_path[0], cpu_to_be16(RDS_FLAG_PROBE_PORT),
-		       0, 0);
+	rds_send_probe(cp, cpu_to_be16(RDS_FLAG_PROBE_PORT), 0, 0);
 }
+EXPORT_SYMBOL_GPL(rds_send_ping);
