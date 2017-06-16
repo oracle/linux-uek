@@ -1064,6 +1064,7 @@ static struct scsi_host_template aac_driver_template = {
 	.use_clustering			= ENABLE_CLUSTERING,
 	.emulated			= 1,
 	.no_write_same			= 1,
+	.use_blk_tags			= 1,
 };
 
 static void __aac_shutdown(struct aac_dev * aac)
