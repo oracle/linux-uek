@@ -146,11 +146,6 @@ static void __rds_conn_path_init(struct rds_connection *conn,
 	cp->cp_conn = conn;
 	atomic_set(&cp->cp_state, RDS_CONN_DOWN);
 	cp->cp_send_gen = 0;
-	/* cp_outgoing is per-path. So we can only set it here
-	 * for the single-path transports.
-	 */
-	if (!conn->c_trans->t_mp_capable)
-		cp->cp_outgoing = (is_outgoing ? 1 : 0);
 	cp->cp_reconnect_jiffies = 0;
 	cp->cp_reconnect_start = get_seconds();
 	cp->cp_reconnect_warn = 1;
