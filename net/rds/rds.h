@@ -319,7 +319,7 @@ struct rds_connection {
 	/* Protocol version */
 	unsigned int		c_proposed_version;
 	unsigned int		c_version;
-	possible_net_t		c_net;
+	struct net		*c_net;
 
 	/* Qos support */
 	u8                      c_tos;
@@ -338,13 +338,13 @@ struct rds_connection {
 static inline
 struct net *rds_conn_net(struct rds_connection *conn)
 {
-	return read_pnet(&conn->c_net);
+	return conn->c_net;
 }
 
 static inline
 void rds_conn_net_set(struct rds_connection *conn, struct net *net)
 {
-	write_pnet(&conn->c_net, net);
+	conn->c_net = get_net(net);
 }
 
 #define RDS_FLAG_CONG_BITMAP		0x01
