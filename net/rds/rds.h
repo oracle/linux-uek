@@ -224,6 +224,8 @@ enum rds_conn_drop_src {
 	DR_TCP_SEND_FAIL,
 };
 
+#define IS_CANONICAL(laddr, faddr) (htonl(laddr) < htonl(faddr))
+
 /* Per mpath connection state */
 struct rds_conn_path {
 	struct rds_connection	*cp_conn;
