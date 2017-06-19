@@ -222,6 +222,7 @@ static const struct file_operations proc_tag_operations = {
 
 static const struct pid_entry adi_dir_stuff[] = {
 	REG("tags",	S_IRUSR | S_IWUSR, proc_tag_operations),
+	REG("maps",	S_IRUGO, proc_adi_maps_operations),
 };
 
 static int proc_adi_readdir(struct file *file, struct dir_context *ctx)

@@ -1620,4 +1620,39 @@ const struct file_operations proc_tid_numa_maps_operations = {
 	.llseek		= seq_lseek,
 	.release	= proc_map_release,
 };
+
+#ifdef CONFIG_SPARC64
+static int show_adi_map(struct seq_file *m, struct vm_area_struct *vma)
+{
+	if (vma->vm_flags & VM_SPARC_ADI)
+		return show_map(m, vma, 1);
+
+	return 0;
+}
+
+static int show_pid_adi_map(struct seq_file *m, void *v)
+{
+	return show_adi_map(m, v);
+}
+
+static const struct seq_operations proc_pid_adi_maps_op = {
+	.start		= m_start,
+	.next		= m_next,
+	.stop		= m_stop,
+	.show		= show_pid_adi_map,
+};
+
+static int pid_adi_maps_open(struct inode *inode, struct file *file)
+{
+	return do_maps_open(inode, file, &proc_pid_adi_maps_op);
+}
+
+const struct file_operations proc_adi_maps_operations = {
+	.open		= pid_adi_maps_open,
+	.read		= seq_read,
+	.llseek		= seq_lseek,
+	.release	= proc_map_release,
+};
+
+#endif
 #endif /* CONFIG_NUMA */
