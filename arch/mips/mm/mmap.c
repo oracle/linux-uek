@@ -25,6 +25,7 @@ unsigned long arch_get_unmapped_area(struct file *filp, unsigned long addr,
 	unsigned long len, unsigned long pgoff, unsigned long flags)
 {
 	struct vm_area_struct * vmm;
+	unsigned long vm_start;
 	int do_color_align;
 
 	if (len > TASK_SIZE)
@@ -55,7 +56,7 @@ unsigned long arch_get_unmapped_area(struct file *filp, unsigned long addr,
 			addr = PAGE_ALIGN(addr);
 		vmm = find_vma(current->mm, addr);
 		if (TASK_SIZE - len >= addr &&
-		    (!vmm || addr + len <= vmm->vm_start))
+		    (!vmm || addr + len <= vm_start_gap(vmm)))
 			return addr;
 	}
 	addr = current->mm->mmap_base;
