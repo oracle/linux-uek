@@ -1415,22 +1415,22 @@ find Documentation -type d | xargs chmod u+w
     if [ "%{with_pae}" != "0" ]; then \
       mv signing_key.priv.sign.PAE signing_key.priv \
       mv signing_key.x509.sign.PAE signing_key.x509 \
-      %{modsign_cmd} $RPM_BUILD_ROOT/lib/modules/%{KVERREL}.PAE/ %{dgst} \
+      %{modsign_cmd} %{?_smp_mflags} $RPM_BUILD_ROOT/lib/modules/%{KVERREL}.PAE/ %{dgst} \
     fi \
     if [ "%{with_debug}" != "0" ]; then \
       mv signing_key.priv.sign.debug signing_key.priv \
       mv signing_key.x509.sign.debug signing_key.x509 \
-      %{modsign_cmd} $RPM_BUILD_ROOT/lib/modules/%{KVERREL}.debug/ %{dgst} \
+      %{modsign_cmd} %{?_smp_mflags} $RPM_BUILD_ROOT/lib/modules/%{KVERREL}.debug/ %{dgst} \
     fi \
     if [ "%{with_pae_debug}" != "0" ]; then \
       mv signing_key.priv.sign.PAEdebug signing_key.priv \
       mv signing_key.x509.sign.PAEdebug signing_key.x509 \
-      %{modsign_cmd} $RPM_BUILD_ROOT/lib/modules/%{KVERREL}.PAEdebug/ %{dgst} \
+      %{modsign_cmd} %{?_smp_mflags} $RPM_BUILD_ROOT/lib/modules/%{KVERREL}.PAEdebug/ %{dgst} \
     fi \
     if [ "%{with_up}" != "0" ]; then \
       mv signing_key.priv.sign signing_key.priv \
       mv signing_key.x509.sign signing_key.x509 \
-      %{modsign_cmd} $RPM_BUILD_ROOT/lib/modules/%{KVERREL}/ %{dgst} \
+      %{modsign_cmd} %{?_smp_mflags} $RPM_BUILD_ROOT/lib/modules/%{KVERREL}/ %{dgst} \
     fi \
   fi \
 %{nil}

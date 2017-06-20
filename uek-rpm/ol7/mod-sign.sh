@@ -9,21 +9,37 @@
 # This essentially duplicates the 'modules_sign' Kbuild target and runs the
 # same commands for those modules.
 
+parallel=1
+internal=
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -j) parallel=$2
+            shift;;
+        -j*) parallel="$(echo $1 | sed 's,-j,,')";;
+        --single-file) # One job from a parallel multitude.
+                    internal=t;;
+        *) break;;
+    esac
+    shift
+done
+
 moddir=$1
 dgst=$2
-
-modules=`find $moddir -name *.ko`
 
 MODSECKEY="./signing_key.priv"
 MODPUBKEY="./signing_key.x509"
 
-for mod in $modules
-do
-    dir=`dirname $mod`
-    file=`basename $mod`
+if [[ -n $internal ]]; then
+    dir=`dirname $1`
+    file=`basename $1`
 
     ./scripts/sign-file ${dgst} ${MODSECKEY} ${MODPUBKEY} ${dir}/${file} \
        ${dir}/${file}.signed
     mv ${dir}/${file}.signed ${dir}/${file}
     rm -f ${dir}/${file}.{sig,dig}
-done
+    exit 0
+fi
+
+# Parallel case.
+
+find $moddir -name "*.ko" -print0 | xargs -0r -P $parallel -n 1 -I'{}' $0 --single-file '{}' $dgst
