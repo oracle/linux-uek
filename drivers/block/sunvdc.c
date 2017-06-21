@@ -346,7 +346,10 @@ static void vdc_end_one(struct vdc_port *port, struct vio_dring_state *dr,
 		return;
 	}
 
-	if (rqe->size != desc->size) {
+	/* Check for partial IO completion. Not applicable if error
+	 * occurred on server
+	 */
+	if (!err && (rqe->size != desc->size)) {
 		pr_err("%s idx=%u err=%d state=%d size=%lld rsize=%lld\n",
 			__func__, index, err, desc->hdr.state,
 			desc->size, rqe->size);
