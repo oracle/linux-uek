@@ -11,6 +11,7 @@
 #include <asm/adi_64.h>
 
 struct adi_config adi_state;
+EXPORT_SYMBOL(adi_state);
 
 /* mdesc_adi_init() : Parse machine description provided by the
  *	hypervisor to detect ADI capabilities
