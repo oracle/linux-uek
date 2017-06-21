@@ -618,10 +618,10 @@ int fuse_conn_init(struct fuse_conn *fc, int affinity)
 
 	if (affinity == FUSE_CPU) {
 		fc->affinity = FUSE_CPU;
-		fc->nr_nodes = num_possible_cpus();
+		fc->nr_nodes = num_present_cpus();
 	} else if (affinity == FUSE_NUMA) {
 		fc->affinity = FUSE_NUMA;
-		fc->nr_nodes = nr_node_ids;
+		fc->nr_nodes = nr_online_nodes;
 	} else {
 		fc->affinity = FUSE_NONE;
 		fc->nr_nodes = 1;
