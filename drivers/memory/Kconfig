@@ -92,6 +92,15 @@ config JZ4780_NEMC
 	  the Ingenic JZ4780. This controller is used to handle external
 	  memory devices such as NAND and SRAM.
 
+config ADI
+	tristate "SPARC Privileged ADI driver"
+	default m
+	depends on SPARC64
+	help
+	  This driver provides read/write access to MCD versions for
+	  privileged processes.  Intended consumers include crash and
+	  makedumpfile.
+
 source "drivers/memory/tegra/Kconfig"
 
 endif
