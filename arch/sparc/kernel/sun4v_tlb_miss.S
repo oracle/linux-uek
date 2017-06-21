@@ -353,6 +353,7 @@ sun4v_mna:
 	 add	%sp, PTREGS_OFF, %o0
 	ba,a,pt	%xcc, rtrap
 
+	 nop
 	/* Privileged Action.  */
 sun4v_privact:
 	ba,pt	%xcc, etrap

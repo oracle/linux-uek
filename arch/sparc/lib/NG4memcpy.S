@@ -203,6 +203,7 @@ FUNC_NAME:	/* %o0=dst, %o1=src, %o2=len */
 	 nop
 	ba,a,pt		%icc, .Lmedium_noprefetch
 
+	 nop
 .Lexit:	retl
 	 mov		EX_RETVAL(%o3), %o0
 
@@ -378,4 +379,5 @@ FUNC_NAME:	/* %o0=dst, %o1=src, %o2=len */
 	bne,pt		%icc, 1b
 	 EX_ST(STORE(stb, %g1, %o0 - 0x01))
 	ba,a,pt		%icc, .Lexit
+	 nop
 	.size		FUNC_NAME, .-FUNC_NAME

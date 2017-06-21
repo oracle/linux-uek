@@ -576,4 +576,5 @@ c_deferred:
 	call		cheetah_deferred_handler
 	 add		%sp, PTREGS_OFF, %o0
 	ba,a,pt		%xcc, rtrap_irq
+	 nop
 	.size		c_deferred,.-c_deferred
