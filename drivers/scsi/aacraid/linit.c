@@ -1308,6 +1308,10 @@ static int aac_probe_one(struct pci_dev *pdev, const struct pci_device_id *id)
 
 	pci_set_drvdata(pdev, shost);
 
+	error = scsi_init_shared_tag_map(shost, shost->can_queue);
+	if (error)
+		goto out_deinit;
+
 	error = scsi_add_host(shost, &pdev->dev);
 	if (error)
 		goto out_deinit;
