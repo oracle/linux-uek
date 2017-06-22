@@ -169,6 +169,7 @@ int aac_fib_setup(struct aac_dev * dev)
 		fibptr->next = fibptr+1;	/* Forward chain the fibs */
 		sema_init(&fibptr->event_wait, 0);
 		spin_lock_init(&fibptr->event_lock);
+		INIT_LIST_HEAD(&fibptr->fiblink);
 		hw_fib->header.XferState = cpu_to_le32(0xffffffff);
 		hw_fib->header.SenderSize = cpu_to_le16(dev->max_fib_size);
 		fibptr->hw_fib_pa = hw_fib_pa;
@@ -1667,6 +1668,7 @@ int aac_check_health(struct aac_dev * aac)
 			fib->type = FSAFS_NTC_FIB_CONTEXT;
 			fib->size = sizeof (struct fib);
 			fib->data = hw_fib->data;
+			INIT_LIST_HEAD(&fib->fiblink);
 			aif = (struct aac_aifcmd *)hw_fib->data;
 			aif->command = cpu_to_le32(AifCmdEventNotify);
 			aif->seqnum = cpu_to_le32(0xFFFFFFFF);
@@ -1906,6 +1908,7 @@ int aac_command_thread(void *data)
 						memcpy(hw_newfib, hw_fib, sizeof(struct hw_fib));
 						memcpy(newfib, fib, sizeof(struct fib));
 						newfib->hw_fib_va = hw_newfib;
+						INIT_LIST_HEAD(&newfib->fiblink);
 						/*
 						 * Put the FIB onto the
 						 * fibctx's fibs
