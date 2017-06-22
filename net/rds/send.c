@@ -1277,7 +1277,7 @@ int rds_sendmsg(struct socket *sock, struct msghdr *msg, size_t payload_len)
 	if (payload_len) {
 		rm->data.op_sg = rds_message_alloc_sgs(rm, ceil(payload_len, PAGE_SIZE));
 		ret = rds_message_copy_from_user(rm, &msg->msg_iter, GFP_KERNEL,
-						 large_page);
+						 false);
 		if (ret)
 			goto out;
 	}
