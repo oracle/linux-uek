@@ -73,7 +73,7 @@ static int hv_get_hwqueue_size(unsigned long *qsize)
 
 static int __init dax_attach(void)
 {
-	unsigned long minor = DAX_MINOR;
+	unsigned long major, minor, minor_requested;
 	unsigned long max_ccbs;
 	int ret = 0, found_dax = 0;
 	struct mdesc_handle *hp = mdesc_grab();
@@ -106,14 +106,22 @@ static int __init dax_attach(void)
 		if (!strncmp(prop, DAX1_FC_STR, strlen(DAX1_FC_STR))) {
 			msg = "dax1-flow-control";
 			dax_type = DAX1;
+			major = DAX_MAJOR;
+			minor_requested = DAX_MINOR;
 		} else if (!strncmp(prop, DAX2_STR, strlen(DAX2_STR))) {
 			msg = "dax2";
 			dax_type = DAX2;
+			major = DAX2_MAJOR;
+			minor_requested = DAX2_MINOR;
 		} else if (!strncmp(prop, DAX1_STR, strlen(DAX1_STR))) {
 			msg = "dax1-no-flow-control";
 			dax_no_flow_ctl = true;
 			dax_type = DAX1;
+			major = DAX_MAJOR;
+			minor_requested = DAX_MINOR;
 		} else {
+			major = DAX_MAJOR;
+			minor_requested = DAX_MINOR;
 			break;
 		}
 		found_dax = 1;
@@ -129,21 +137,23 @@ static int __init dax_attach(void)
 		}
 	}
 
-	dax_dbg("Registering DAX HV api with minor %ld", minor);
-	if (sun4v_hvapi_register(HV_GRP_M7_DAX, DAX_MAJOR, &minor)) {
+	minor = minor_requested;
+	dax_dbg("Registering DAX HV api with major %ld minor %ld", major,
+		minor);
+	if (sun4v_hvapi_register(HV_GRP_DAX, major, &minor)) {
 		dax_err("hvapi_register failed");
 		if ((force & FORCE_LOAD_ON_ERROR) == 0) {
 			ret = -ENODEV;
 			goto done;
 		}
 	} else {
-		dax_dbg("Max minor supported by HV = %ld", minor);
-		minor = min(minor, DAX_MINOR);
-		dax_dbg("registered DAX major %ld minor %ld ",
-				 DAX_MAJOR, minor);
+		dax_dbg("Max minor supported by HV = %ld (major %ld)", minor,
+			major);
+		minor = min(minor, minor_requested);
+		dax_dbg("registered DAX major %ld minor %ld", major, minor);
 	}
 
-	dax_no_ra_pgsz = (DAX_MAJOR == 1) && (minor == 0) && !dax_has_ra_pgsz();
+	dax_no_ra_pgsz = (major == 1) && (minor == 0) && !dax_has_ra_pgsz();
 	dax_dbg("RA pagesize feature %spresent", dax_no_ra_pgsz ? "not " : "");
 
 	ret = hv_get_hwqueue_size(&max_ccbs);
@@ -287,6 +297,13 @@ static long dax_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 {
 	dax_dbg("cmd=0x%x, f=%p, priv=%p",  cmd, f, f->private_data);
 	switch (cmd) {
+	case DAXIOC_CCB_THR_INIT_V2:
+		if (dax_type != DAX2)
+			return -ENXIO;
+		/*
+		 * fall-through: INIT_V2 is just to test if DAX2 is available,
+		 * but initializing DAX1 and DAX2 is the same
+		 */
 	case DAXIOC_CCB_THR_INIT:
 		return dax_ioctl_ccb_thr_init((void *)arg, f);
 	case DAXIOC_CCB_THR_FINI:

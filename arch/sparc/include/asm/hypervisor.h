@@ -998,6 +998,7 @@ unsigned long sun4v_dax_ccb_submit(void *ccb, int len, long flags,
 #define HV_DAX_CCB_VA_SECONDARY		BIT_FIELD(2UL, 12)
 #define HV_DAX_CCB_VA_NUCLEUS		BIT_FIELD(3UL, 12)
 #define HV_DAX_CCB_VA_PRIVILEGED	BIT(14)
+#define HV_DAX_VA_READ_ADI_DISABLE     BIT(15) /* defined in API 2.0 */
 
 /* dax_ccb_info()
  * TRAP:	HV_FAST_TRAP
@@ -3823,7 +3824,7 @@ struct hv_pci_priq_intx_info {
 #define HV_GRP_SDIO			0x0108
 #define HV_GRP_SDIO_ERR			0x0109
 #define HV_GRP_REBOOT_DATA		0x0110
-#define HV_GRP_M7_DAX			0x0113
+#define HV_GRP_DAX			0x0113
 #define HV_GRP_M7_PERF			0x0114
 #define	HV_GRP_PRIQ			0x011b
 #define	HV_GRP_PRIQ_PCI			0x011c

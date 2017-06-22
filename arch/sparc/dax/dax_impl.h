@@ -108,6 +108,8 @@ extern const struct vm_operations_struct dax_vm_ops;
 #define	DAX_NAME		"dax"
 #define DAX_MINOR		1UL
 #define DAX_MAJOR		1UL
+#define DAX2_MINOR             0UL
+#define DAX2_MAJOR             2UL
 
 #define DAX1_STR    "ORCL,sun4v-dax"
 #define DAX1_FC_STR "ORCL,sun4v-dax-fc"

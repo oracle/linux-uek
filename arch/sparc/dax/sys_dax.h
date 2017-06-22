@@ -56,6 +56,7 @@
 
 /* CCB thread initialization */
 #define	DAXIOC_CCB_THR_INIT	_IOWR(DAXIOC, 6, struct dax_ccb_thr_init_arg)
+#define        DAXIOC_CCB_THR_INIT_V2  _IOWR(DAXIOC, 11, struct dax_ccb_thr_init_arg)
 /* free CCB thread resources */
 #define	DAXIOC_CCB_THR_FINI	_IO(DAXIOC,   2)
 /* CCB CA dequeue */
@@ -78,7 +79,7 @@
 #define DAXIOC_PERF_CLEAR_COUNTERS	_IOW(DAXIOC, 0xBC, void *)
 
 /*
- * DAXIOC_CCB_THR_INIT
+ * DAXIOC_CCB_THR_INIT, DAXIOC_CCB_THR_INIT_V2
  * dcti_ccb_buf_maxlen - return u32 length
  * dcti_compl_maplen - return u64 mmap length
  * dcti_compl_mapoff - return u64 mmap offset

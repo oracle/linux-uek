@@ -82,6 +82,19 @@ needed for the mmap() call so that the user can get access to the completion
 area buffer. Another value returned is the maximum length of the CCB array
 that may be submitted.
 
+CCB_THR_INIT_V2
+
+Initializes the DAX driver for DAX2 if available. If DAX2 is not available,
+returns an error. The user should do the following to determine the DAX version
+on their system:
+
+if (ioctl(CCB_THR_INIT_V2) == SUCCESS)
+	/* DAX2 available on system */
+else if (ioctl(CCB_THR_INIT) == SUCCESS)
+	/* DAX1 available on system */
+else
+	/* no DAX available on system */
+
 CCB_THR_FINI
 
 Destroys a context for a thread. After doing this, the thread can no longer
