@@ -237,7 +237,9 @@ static struct rds_message *rds_ib_send_unmap_op(struct rds_ib_connection *ic,
 void rds_ib_send_init_ring(struct rds_ib_connection *ic)
 {
 	struct rds_ib_send_work *send;
+	u32 num_send_sge = ic->i_frag_pages;
 	u32 i;
+	u32 j;
 
 	for (i = 0, send = ic->i_sends; i < ic->i_send_ring.w_nr; i++, send++) {
 		struct ib_sge *sge;
@@ -253,7 +255,8 @@ void rds_ib_send_init_ring(struct rds_ib_connection *ic)
 		sge->length = sizeof(struct rds_header);
 		sge->lkey = ic->i_mr->lkey;
 
-		send->s_sge[1].lkey = ic->i_mr->lkey;
+		for (j = 1; j <= num_send_sge; j++)
+			send->s_sge[j].lkey = ic->i_mr->lkey;
 	}
 }
 
@@ -561,6 +564,7 @@ int rds_ib_xmit(struct rds_connection *conn, struct rds_message *rm,
 	struct rds_ib_send_work *prev;
 	struct ib_send_wr *failed_wr;
 	struct scatterlist *scat;
+	int remaining_sge = 0;
 	u32 pos;
 	u32 i;
 	u32 work_alloc;
@@ -573,7 +577,6 @@ int rds_ib_xmit(struct rds_connection *conn, struct rds_message *rm,
 	int flow_controlled = 0;
 	int nr_sig = 0;
 
-	BUG_ON(off % ic->i_frag_sz);
 	BUG_ON(hdr_off != 0 && hdr_off != sizeof(struct rds_header));
 
 	/* Do not send cong updates to IB loopback */
@@ -715,6 +718,7 @@ int rds_ib_xmit(struct rds_connection *conn, struct rds_message *rm,
 	prev = NULL;
 	scat = &ic->i_data_op->op_sg[rm->data.op_dmasg];
 	i = 0;
+	remaining_sge = rm->data.op_count - sg;
 	do {
 		unsigned int len = 0;
 
@@ -735,20 +739,27 @@ int rds_ib_xmit(struct rds_connection *conn, struct rds_message *rm,
 		/* Set up the data, if present */
 		if (i < work_alloc
 		    && scat != &rm->data.op_sg[rm->data.op_count]) {
-			len = min((unsigned int)ic->i_frag_sz,
-				  ib_sg_dma_len(dev, scat) - rm->data.op_dmaoff);
-			send->s_wr.num_sge = 2;
+			unsigned int num_sge = min_t(unsigned long, remaining_sge,
+						     ic->i_frag_pages);
+			unsigned int j = 1;
 
-			send->s_sge[1].addr = ib_sg_dma_address(dev, scat);
-			send->s_sge[1].addr += rm->data.op_dmaoff;
-			send->s_sge[1].length = len;
+			send->s_wr.num_sge += num_sge;
+			while (j <= num_sge) {
+				len = min((unsigned int)PAGE_SIZE,
+					  ib_sg_dma_len(dev, scat) - rm->data.op_dmaoff);
+				send->s_sge[j].addr = ib_sg_dma_address(dev, scat);
+				send->s_sge[j].addr += rm->data.op_dmaoff;
+				send->s_sge[j].length = len;
 
-			bytes_sent += len;
-			rm->data.op_dmaoff += len;
-			if (rm->data.op_dmaoff == ib_sg_dma_len(dev, scat)) {
-				scat++;
-				rm->data.op_dmasg++;
-				rm->data.op_dmaoff = 0;
+				bytes_sent += len;
+				rm->data.op_dmaoff += len;
+				if (rm->data.op_dmaoff == ib_sg_dma_len(dev, scat)) {
+					scat++;
+					rm->data.op_dmasg++;
+					rm->data.op_dmaoff = 0;
+				}
+				j++;
+				remaining_sge--;
 			}
 		}
 
