@@ -4311,7 +4311,7 @@ static unsigned long weighted_cpuload(const int cpu)
  */
 static void update_idle_cpu_load(struct rq *this_rq)
 {
-	unsigned long curr_jiffies = READ_ONCE(jiffies);
+	unsigned long curr_jiffies = ACCESS_ONCE(jiffies);
 	unsigned long load = weighted_cpuload(cpu_of(this_rq));
 	unsigned long pending_updates;
 
@@ -4333,7 +4333,7 @@ static void update_idle_cpu_load(struct rq *this_rq)
 void update_cpu_load_nohz(void)
 {
 	struct rq *this_rq = this_rq();
-	unsigned long curr_jiffies = READ_ONCE(jiffies);
+	unsigned long curr_jiffies = ACCESS_ONCE(jiffies);
 	unsigned long pending_updates;
 
 	if (curr_jiffies == this_rq->last_load_update_tick)

@@ -27,8 +27,14 @@ extern __read_mostly int scheduler_running;
 extern unsigned long calc_load_update;
 extern atomic_long_t calc_load_tasks;
 
+extern void calc_global_load_tick(struct rq *this_rq);
 extern long calc_load_fold_active(struct rq *this_rq);
+
+#ifdef CONFIG_SMP
 extern void update_cpu_load_active(struct rq *this_rq);
+#else
+static inline void update_cpu_load_active(struct rq *this_rq) { }
+#endif
 
 /*
  * Helpers for converting nanosecond timing to jiffy resolution

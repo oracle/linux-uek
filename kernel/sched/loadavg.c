@@ -1,7 +1,9 @@
 /*
- *  kernel/sched/proc.c
+ * kernel/sched/loadavg.c
  *
- *  Kernel load calculations, forked from sched/core.c
+ * This file contains the magic bits required to compute the global loadavg
+ * figure. Its a silly number but people think its important. We go through
+ * great pains to make it work on big machines and tickless kernels.
  */
 
 #include <linux/export.h>
@@ -81,7 +83,7 @@ long calc_load_fold_active(struct rq *this_rq)
 	long nr_active, delta = 0;
 
 	nr_active = this_rq->nr_running;
-	nr_active += (long) this_rq->nr_uninterruptible;
+	nr_active += (long)this_rq->nr_uninterruptible;
 
 	if (nr_active != this_rq->calc_load_active) {
 		delta = nr_active - this_rq->calc_load_active;
@@ -186,6 +188,7 @@ void calc_load_enter_idle(void)
 	delta = calc_load_fold_active(this_rq);
 	if (delta) {
 		int idx = calc_load_write_idx();
+
 		atomic_long_add(delta, &calc_load_idle[idx]);
 	}
 }
@@ -241,18 +244,20 @@ fixed_power_int(unsigned long x, unsigned int frac_bits, unsigned int n)
 {
 	unsigned long result = 1UL << frac_bits;
 
-	if (n) for (;;) {
-		if (n & 1) {
-			result *= x;
-			result += 1UL << (frac_bits - 1);
-			result >>= frac_bits;
+	if (n) {
+		for (;;) {
+			if (n & 1) {
+				result *= x;
+				result += 1UL << (frac_bits - 1);
+				result >>= frac_bits;
+			}
+			n >>= 1;
+			if (!n)
+				break;
+			x *= x;
+			x += 1UL << (frac_bits - 1);
+			x >>= frac_bits;
 		}
-		n >>= 1;
-		if (!n)
-			break;
-		x *= x;
-		x += 1UL << (frac_bits - 1);
-		x >>= frac_bits;
 	}
 
 	return result;
@@ -285,7 +290,6 @@ static unsigned long
 calc_load_n(unsigned long load, unsigned long exp,
 	    unsigned long active, unsigned int n)
 {
-
 	return calc_load(load, fixed_power_int(exp, FSHIFT, n), active);
 }
 
@@ -339,6 +343,8 @@ static inline void calc_global_nohz(void) { }
 /*
  * calc_load - update the avenrun load estimates 10 ticks after the
  * CPUs have updated calc_load_tasks.
+ *
+ * Called from the global timer code.
  */
 void calc_global_load(unsigned long ticks)
 {
@@ -370,10 +376,10 @@ void calc_global_load(unsigned long ticks)
 }
 
 /*
- * Called from update_cpu_load() to periodically update this CPU's
+ * Called from scheduler_tick() to periodically update this CPU's
  * active count.
  */
-static void calc_load_account_active(struct rq *this_rq)
+void calc_global_load_tick(struct rq *this_rq)
 {
 	long delta;
 
