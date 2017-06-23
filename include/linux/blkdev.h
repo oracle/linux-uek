@@ -509,6 +509,7 @@ struct request_queue {
 
 	struct blk_mq_tag_set	*tag_set;
 	struct list_head	tag_set_list;
+	UEK_KABI_EXTEND(struct work_struct  timeout_work)
 };
 
 #define QUEUE_FLAG_QUEUED	1	/* uses generic tag queueing */
