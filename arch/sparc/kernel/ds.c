@@ -1501,11 +1501,11 @@ int ds_cap_init(ds_capability_t *cap, ds_ops_t *ops, u32 flags,
 
 		UNLOCK_DS_DEV(ds, ds_flags)
 	}
-	spin_unlock_irqrestore(&ds_dev_list_lock, data_flags);
 
 	if (!found) {
 		pr_err("%s: Error: dom_hdl %llu DS port not found\n",
 		    __func__, domain_hdl);
+		spin_unlock_irqrestore(&ds_dev_list_lock, data_flags);
 		return -ENODEV;
 	}
 
@@ -1519,6 +1519,8 @@ int ds_cap_init(ds_capability_t *cap, ds_ops_t *ops, u32 flags,
 				    "already registered\n", __func__,
 				    cap->svc_id);
 				UNLOCK_DS_DEV(ds, ds_flags)
+				spin_unlock_irqrestore(&ds_dev_list_lock,
+						       data_flags);
 				return -EBUSY;
 			} else {
 				/*
@@ -1537,6 +1539,7 @@ int ds_cap_init(ds_capability_t *cap, ds_ops_t *ops, u32 flags,
 			pr_err("ds-%llu: %s: Failed to add service "
 			    "provider %s", ds->id, __func__, cap->svc_id);
 			UNLOCK_DS_DEV(ds, ds_flags)
+			spin_unlock_irqrestore(&ds_dev_list_lock, data_flags);
 			return -ENOMEM;
 		}
 
@@ -1550,6 +1553,8 @@ int ds_cap_init(ds_capability_t *cap, ds_ops_t *ops, u32 flags,
 				    "already registered\n", __func__,
 				    cap->svc_id);
 				UNLOCK_DS_DEV(ds, ds_flags)
+				spin_unlock_irqrestore(&ds_dev_list_lock,
+						       data_flags);
 				return -EBUSY;
 			} else {
 				/*
@@ -1568,6 +1573,7 @@ int ds_cap_init(ds_capability_t *cap, ds_ops_t *ops, u32 flags,
 			pr_err("ds-%llu: %s: Failed to add service "
 			    "client %s", ds->id, __func__, cap->svc_id);
 			UNLOCK_DS_DEV(ds, ds_flags)
+			spin_unlock_irqrestore(&ds_dev_list_lock, data_flags);
 			return -ENOMEM;
 		}
 	}
@@ -1579,7 +1585,7 @@ int ds_cap_init(ds_capability_t *cap, ds_ops_t *ops, u32 flags,
 	    ds->id, svc_info->id, svc_info->handle, svc_info->is_client);
 
 	UNLOCK_DS_DEV(ds, ds_flags)
-
+	spin_unlock_irqrestore(&ds_dev_list_lock, data_flags);
 	return 0;
 
 }
@@ -1678,11 +1684,11 @@ int ds_cap_send(ds_svc_hdl_t hdl, void *buf, size_t buflen)
 		UNLOCK_DS_DEV(ds, ds_flags)
 	}
 
-	spin_unlock_irqrestore(&ds_dev_list_lock, flags);
 
 	if (svc_info == NULL) {
 		pr_err("%s: Error: no service found "
 		    "for handle %llx\n", __func__, hdl);
+		spin_unlock_irqrestore(&ds_dev_list_lock, flags);
 		return -ENODEV;
 	}
 
@@ -1690,6 +1696,7 @@ int ds_cap_send(ds_svc_hdl_t hdl, void *buf, size_t buflen)
 		pr_err("%s: Error: Service %s not connected.\n", __func__,
 		    svc_info->id);
 		UNLOCK_DS_DEV(ds, ds_flags)
+		spin_unlock_irqrestore(&ds_dev_list_lock, flags);
 		return -ENODEV;
 	}
 
@@ -1700,6 +1707,7 @@ int ds_cap_send(ds_svc_hdl_t hdl, void *buf, size_t buflen)
 		pr_err("ds-%llu: %s: failed to alloc mem for data msg.\n",
 		    ds->id, __func__);
 		UNLOCK_DS_DEV(ds, ds_flags)
+		spin_unlock_irqrestore(&ds_dev_list_lock, flags);
 		return -ENOMEM;
 	}
 	hdr->tag.type = DS_DATA;
@@ -1733,6 +1741,7 @@ int ds_cap_send(ds_svc_hdl_t hdl, void *buf, size_t buflen)
 	kfree(hdr);
 
 	UNLOCK_DS_DEV(ds, ds_flags)
+	spin_unlock_irqrestore(&ds_dev_list_lock, flags);
 
 	return rv;
 }
@@ -4358,10 +4367,10 @@ static int ds_set_pri(void)
 
 		UNLOCK_DS_DEV(ds, ds_flags)
 	}
-	spin_unlock_irqrestore(&ds_dev_list_lock, data_flags);
 
 	if (!found) {
 		pr_err("%s: failed to SP DS.\n", __func__);
+		spin_unlock_irqrestore(&ds_dev_list_lock, data_flags);
 		return -ENODEV;
 	}
 
@@ -4370,11 +4379,13 @@ static int ds_set_pri(void)
 	if (svc_info == NULL) {
 		pr_err("%s: failed to find SP DS pri service.\n", __func__);
 		UNLOCK_DS_DEV(ds, ds_flags)
+		spin_unlock_irqrestore(&ds_dev_list_lock, data_flags);
 		return -ENODEV;
 	}
 	if (!svc_info->is_connected) {
 		pr_err("%s: Error: pri service not connected\n", __func__);
 		UNLOCK_DS_DEV(ds, ds_flags)
+		spin_unlock_irqrestore(&ds_dev_list_lock, data_flags);
 		return -EIO;
 	}
 
@@ -4390,6 +4401,7 @@ static int ds_set_pri(void)
 		pr_err("%s: failed to alloc mem for PRI data msg.\n",
 		    __func__);
 		UNLOCK_DS_DEV(ds, ds_flags)
+		spin_unlock_irqrestore(&ds_dev_list_lock, data_flags);
 		return -ENOMEM;
 	}
 	hdr->tag.type = DS_DATA;
@@ -4402,6 +4414,7 @@ static int ds_set_pri(void)
 		pr_err("%s: ds_submit_data_cb failed.\n ", __func__);
 
 	UNLOCK_DS_DEV(ds, ds_flags)
+	spin_unlock_irqrestore(&ds_dev_list_lock, data_flags);
 
 	return rv;
 }
