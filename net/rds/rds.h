@@ -9,6 +9,7 @@
 #include <linux/module.h>
 #include <linux/moduleparam.h>
 #include <uapi/linux/rds.h>
+#include <linux/sizes.h>
 
 #include "info.h"
 
