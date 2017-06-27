@@ -130,8 +130,10 @@ void rds_rdma_drop_keys(struct rds_sock *rs)
 	struct rds_mr *mr;
 	struct rb_node *node;
 	unsigned long flags;
+	char name[TASK_COMM_LEN];
 
 	/* Release any MRs associated with this socket */
+	get_task_comm(name, current);
 	spin_lock_irqsave(&rs->rs_rdma_lock, flags);
 	while ((node = rb_first(&rs->rs_rdma_keys))) {
 		mr = container_of(node, struct rds_mr, r_rb_node);
@@ -140,6 +142,10 @@ void rds_rdma_drop_keys(struct rds_sock *rs)
 		rb_erase(&mr->r_rb_node, &rs->rs_rdma_keys);
 		RB_CLEAR_NODE(&mr->r_rb_node);
 		spin_unlock_irqrestore(&rs->rs_rdma_lock, flags);
+		trace_printk("RDS: %s pid %d sk closed. Active MR key: %#x %s %s\n",
+			     name, current->pid, mr->r_key,
+			     mr->r_use_once ? ",use once" : "",
+			     mr->r_invalidate ? ",invalidate" : "");
 		rds_destroy_mr(mr);
 		rds_mr_put(mr);
 		spin_lock_irqsave(&rs->rs_rdma_lock, flags);
