@@ -331,25 +331,6 @@ static void __init popc_patch(void)
 	}
 }
 
-static void __init pause_patch(void)
-{
-	struct pause_patch_entry *p;
-
-	p = &__pause_3insn_patch;
-	while (p < &__pause_3insn_patch_end) {
-		unsigned long i, addr = p->addr;
-
-		for (i = 0; i < 3; i++) {
-			*(unsigned int *) (addr +  (i * 4)) = p->insns[i];
-			wmb();
-			__asm__ __volatile__("flush	%0"
-					     : : "r" (addr +  (i * 4)));
-		}
-
-		p++;
-	}
-}
-
 void __init start_early_boot(void)
 {
 	int cpu;
@@ -627,8 +608,6 @@ static void __init init_sparc64_elf_hwcap(void)
 
 	if (sparc64_elf_hwcap & AV_SPARC_POPC)
 		popc_patch();
-	if (sparc64_elf_hwcap & AV_SPARC_PAUSE)
-		pause_patch();
 }
 
 void __init alloc_irqstack_bootmem(void)

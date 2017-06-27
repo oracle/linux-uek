@@ -25,20 +25,9 @@
  * between 40 and 50 cpu cycles.
  *
  * For SPARC-T4 and later we have a special "pause" instruction
- * available.  This is implemented using writes to register %asr27.
- * The cpu will block the number of cycles written into the register,
- * unless a disrupting trap happens first.  SPARC-T4 specifically
- * implements pause with a granularity of 8 cycles.  Each strand has
- * an internal pause counter which decrements every 8 cycles.  So the
- * chip shifts the %asr27 value down by 3 bits, and writes the result
- * into the pause counter.  If a value smaller than 8 is written, the
- * chip blocks for 1 cycle.
+ * available.  NOTE: pause is currently not used due to performance degradation
+ * in M7/M8 platforms.
  *
- * To achieve the same amount of backoff as the three %ccr reads give
- * on earlier chips, we shift the backoff value up by 7 bits.  (Three
- * %ccr reads block for about 128 cycles, 1 << 7 == 128) We write the
- * whole amount we want to block into the pause register, rather than
- * loop writing 128 each time.
  */
 
 #define BACKOFF_LIMIT	(4 * 1024)
@@ -51,25 +40,16 @@
 #define BACKOFF_LABEL(spin_label, continue_label) \
 	spin_label
 
-#define BACKOFF_SPIN(reg, tmp, label)		\
-	mov		reg, tmp;		\
-88:	rd		%ccr, %g0;		\
-	rd		%ccr, %g0;		\
-	rd		%ccr, %g0;		\
-	.section	.pause_3insn_patch,"ax";\
-	.word		88b;			\
-	sllx		tmp, 7, tmp;		\
-	wr		tmp, 0, %asr27;		\
-	clr		tmp;			\
-	.previous;				\
-	brnz,pt		tmp, 88b;		\
-	 sub		tmp, 1, tmp;		\
-	set		BACKOFF_LIMIT, tmp;	\
-	cmp		reg, tmp;		\
-	bg,pn		%xcc, label;		\
-	 nop;					\
-	ba,pt		%xcc, label;		\
-	 sllx		reg, 1, reg;
+#define BACKOFF_SPIN(reg, tmp, label)  \
+   mov   reg, tmp; \
+88:   brnz,pt  tmp, 88b; \
+    sub  tmp, 1, tmp; \
+   set   BACKOFF_LIMIT, tmp; \
+   cmp   reg, tmp; \
+   bg,pn %xcc, label; \
+    nop; \
+   ba,pt %xcc, label; \
+    sllx reg, 1, reg;
 
 #else
 

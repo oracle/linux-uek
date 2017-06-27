@@ -133,11 +133,6 @@ SECTIONS
 		*(.popc_6insn_patch)
 		__popc_6insn_patch_end = .;
 	}
-	.pause_3insn_patch : {
-		__pause_3insn_patch = .;
-		*(.pause_3insn_patch)
-		__pause_3insn_patch_end = .;
-	}
 	.sun4v_adi_1insn_patch : {
 		__sun4v_adi_1insn_patch = .;
 		*(.sun4v_adi_1insn_patch)
