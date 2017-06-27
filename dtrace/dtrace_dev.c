@@ -34,7 +34,7 @@
 #include <linux/miscdevice.h>
 #include <linux/slab.h>
 #include <linux/vmalloc.h>
-#include <asm/uaccess.h>
+#include <linux/uaccess.h>
 
 #include "ctf_api.h"
 #include "dtrace.h"
