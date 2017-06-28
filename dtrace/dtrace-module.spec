@@ -20,7 +20,7 @@
 Name: dtrace-modules-%{kver}
 Summary: dtrace module
 Version: 0.6.1
-Release: 1%{dist}
+Release: 2%{dist}
 Provides: dtrace-modules
 Requires: at
 License: CDDL
@@ -127,6 +127,9 @@ rm -rf %{buildroot}
 /usr/include/linux/dtrace/types.h
 
 %changelog
+* Wed Jun 28 2017 - <kris.van.hees@oracle.com> - 0.6.1-2
+- Change FBT entry probes on x86 to use int3 [Orabug: 26324039]
+- Support x86 CPUs with SMAP (Nick Alcock) [Orabug: 26166784]
 * Wed May 24 2017 - <kris.van.hees@oracle.com> - 0.6.1-1
 - Implement link_ntop() DTrace subroutine logic (Nick Alcock) [Orabug: 25931479]
 - Add canload() for input of *_ntop(), *_nto*() (Tomas Jedlicka)
