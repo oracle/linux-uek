@@ -123,6 +123,14 @@ static void __init check_config(void)
 
 void __init check_bugs(void)
 {
+#ifdef CONFIG_X86_32
+	/*
+	 * Regardless of whether PCID is enumerated, the SDM says
+	 * that it can't be enabled in 32-bit mode.
+	 */
+	setup_clear_cpu_cap(X86_FEATURE_PCID);
+#endif
+
 	identify_boot_cpu();
 #ifndef CONFIG_SMP
 	pr_info("CPU: ");
