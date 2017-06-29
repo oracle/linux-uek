@@ -67,7 +67,7 @@ static int dax_alloc_ram(struct file *filp, struct vm_area_struct *vma)
 		goto done;
 	}
 
-	kva = kzalloc(len, GFP_KERNEL);
+	kva = kzalloc(len, GFP_KERNEL | __GFP_NOWARN);
 	if (kva == NULL)
 		goto done;
 
