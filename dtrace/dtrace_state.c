@@ -301,12 +301,7 @@ static void dtrace_state_clean(dtrace_state_t *state, ktime_t when)
 
 static void dtrace_state_deadman(dtrace_state_t *state, ktime_t when)
 {
-#ifdef FIXME
-	/*
-	 * This may not be needed for Linux - we'll see.
-	 */
 	dtrace_sync();
-#endif
 
 	if (state != dtrace_anon.dta_state &&
 	    time_after_eq(jiffies, state->dts_laststatus + dtrace_deadman_user))
