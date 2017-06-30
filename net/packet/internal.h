@@ -1,6 +1,8 @@
 #ifndef __PACKET_INTERNAL_H__
 #define __PACKET_INTERNAL_H__
 
+#include <linux/refcount.h>
+
 struct packet_mclist {
 	struct packet_mclist	*next;
 	int			ifindex;
@@ -84,7 +86,7 @@ struct packet_fanout {
 	struct sock		*arr[PACKET_FANOUT_MAX];
 	int			next[PACKET_FANOUT_MAX];
 	spinlock_t		lock;
-	atomic_t		sk_ref;
+	refcount_t		sk_ref;
 	struct packet_type	prot_hook ____cacheline_aligned_in_smp;
 };
 
