@@ -14,6 +14,7 @@
 #include <linux/seq_file.h>
 #include <linux/slab.h>
 #include <linux/spinlock.h>
+#include <linux/workqueue.h>
 
 static DEFINE_SPINLOCK(cyclic_lock);
 static int		omni_enabled = 0;
@@ -22,7 +23,14 @@ static int		omni_enabled = 0;
 #define _CYCLIC_CPU_OMNI		(-2)
 #define CYCLIC_IS_OMNI(cyc)		((cyc)->cpu == _CYCLIC_CPU_OMNI)
 
-typedef struct cyclic {
+typedef struct cyclic cyclic_t;
+
+typedef struct cyclic_work {
+	struct work_struct	work;
+	struct cyclic		*cyc;
+} cyclic_work_t;
+
+struct cyclic {
 	struct list_head		list;
 	int				cpu;
 	union {
@@ -31,20 +39,21 @@ typedef struct cyclic {
 			cyc_handler_t		hdlr;
 			uint32_t		pend;
 			struct hrtimer		timr;
-			struct tasklet_struct	task;
+			cyclic_work_t		work;
 		} cyc;
 		struct {
 			cyc_omni_handler_t	hdlr;
 			struct list_head	cycl;
 		} omni;
 	};
-} cyclic_t;
+};
 
 static LIST_HEAD(cyclics);
 
-static void cyclic_fire(uintptr_t arg)
+static void cyclic_fire(struct work_struct *work)
 {
-	cyclic_t	*cyc = (cyclic_t *)arg;
+	cyclic_work_t	*cwork = (cyclic_work_t *)work;
+	cyclic_t	*cyc = cwork->cyc;
 	uint32_t	cpnd, npnd;
 
 	do {
@@ -79,21 +88,21 @@ again:
  * be able to perform a variety of tasks (including calling functions that
  * could sleep), and therefore they cannot be called from interrupt context.
  *
- * We schedule a tasklet to do the actual work.
+ * We schedule a workqueue to do the actual work.
  *
  * But... under heavy load it is possible that the hrtimer will expire again
- * before the tasklet had a chance to run.  That would lead to missed events
+ * before the workqueu had a chance to run.  That would lead to missed events
  * which isn't quite acceptable.  Therefore, we use a counter to record how
  * many times the timer has expired vs how many times the handler has been
  * called.  The counter is incremented by this function upon hrtimer expiration
- * and decremented by the tasklet.  Note that the tasklet is responsible for
- * calling the handler multiple times if the counter indicates that multiple
+ * and decremented by the cyclic_fire.  Note that the workqueue is responsible
+ * for calling the handler multiple times if the counter indicates that multiple
  * invocation are pending.
  *
  * This function is called as hrtimer handler, and therefore runs in interrupt
  * context, which by definition will ensure that manipulation of the 'pend'
  * counter in the cyclic can be done without locking, and changes will appear
- * atomic to the tasklet.
+ * atomic to the cyclic_fire().
  *
  * Moral of the story: the handler may not get called at the absolute times as
  * requested, but it will be called the correct number of times.
@@ -114,13 +123,13 @@ static enum hrtimer_restart cyclic_expire(struct hrtimer *timr)
 	}
 
 	/*
-	 * Increment the 'pend' counter, in case the tasklet is already set to
+	 * Increment the 'pend' counter, in case the work is already set to
 	 * run.  If the counter was 0 upon entry, we need to schedule the
-	 * tasklet.  If the increment wraps the counter back to 0, we admit
+	 * work.  If the increment wraps the counter back to 0, we admit
 	 * defeat, and reset it to its max value.
 	 */
 	if (cyc->cyc.pend++ == 0)
-		tasklet_hi_schedule(&cyc->cyc.task);
+		schedule_work((struct work_struct *)&cyc->cyc.work);
 	else if (cyc->cyc.pend == 0)
 		cyc->cyc.pend = UINT_MAX;
 
@@ -148,7 +157,8 @@ cyclic_t *cyclic_new(int omni)
 		cyc->cyc.pend = 0;
 		hrtimer_init(&cyc->cyc.timr, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
 		cyc->cyc.timr.function = cyclic_expire;
-		tasklet_init(&cyc->cyc.task, cyclic_fire, (uintptr_t)cyc);
+		cyc->cyc.work.cyc = cyc;
+		INIT_WORK((struct work_struct *)&cyc->cyc.work, cyclic_fire);
 	} else {
 		cyc->cpu = _CYCLIC_CPU_OMNI;
 		INIT_LIST_HEAD(&cyc->omni.cycl);
@@ -348,15 +358,15 @@ void cyclic_remove(cyclic_id_t id)
 		 * making this call.  It is therefore guaranteed that 'pend'
 		 * will no longer get incremented.
 		 *
-		 * The call to tasklet_kill() will wait for the tasklet handler
-		 * to finish also, and since the handler always brings 'pend'
-		 * down to zero prior to returning, it is guaranteed that
+		 * The call to cancel_work_sync() will wait for the workqueue
+		 * handler to finish also, and since the handler always brings
+		 * 'pend' down to zero prior to returning, it is guaranteed that
 		 * (1) all pending handler calls will be made before
 		 *     cyclic_remove() returns
 		 * (2) the amount of work to do before returning is finite.
 		 */
 		hrtimer_cancel(&cyc->cyc.timr);
-		tasklet_kill(&cyc->cyc.task);
+		cancel_work_sync((struct work_struct *)&cyc->cyc.work);
 	}
 
 	list_del(&cyc->list);
