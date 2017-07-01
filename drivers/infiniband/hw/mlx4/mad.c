@@ -1107,6 +1107,11 @@ void handle_port_mgmt_change_event(struct work_struct *work)
 			handle_slaves_guid_change(dev, port, tbl_block, change_bitmap);
 		}
 		break;
+	case MLX4_DEV_PMC_SUBTYPE_SL_TO_VL_MAP:
+		pr_debug("Subtype sl to vl map change (0x%x) for "
+			"Port Management Change event received - "
+			 "not supported yet\n", eqe->subtype);
+		break;
 	default:
 		pr_warn("Unsupported subtype 0x%x for "
 			"Port Management Change event\n", eqe->subtype);
