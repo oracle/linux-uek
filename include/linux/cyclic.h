@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010, 2011 Oracle Corporation
+ * Copyright (c) 2010, 2017, Oracle and/or its affiliates. All rights reserved.
  */
 
 #ifndef _CYCLIC_H_
@@ -26,6 +26,8 @@ typedef struct cyc_handler {
 	cyc_level_t cyh_level;
 } cyc_handler_t;
 
+#define CY_INTERVAL_INF (-1)
+
 typedef struct cyc_time {
 	ktime_t cyt_when;
 	ktime_t cyt_interval;
@@ -40,5 +42,6 @@ typedef struct cyc_omni_handler {
 extern cyclic_id_t cyclic_add(cyc_handler_t *, cyc_time_t *);
 extern cyclic_id_t cyclic_add_omni(cyc_omni_handler_t *);
 extern void cyclic_remove(cyclic_id_t);
+extern void cyclic_reprogram(cyclic_id_t, ktime_t);
 
 #endif /* _CYCLIC_H_ */

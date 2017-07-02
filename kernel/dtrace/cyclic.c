@@ -2,13 +2,12 @@
  * FILE:	cyclic.c
  * DESCRIPTION:	Minimal cyclic implementation
  *
- * Copyright (C) 2010, 2011, 2012, 2013, 2017 Oracle Corporation
+ * Copyright (c) 2010, 2017, Oracle and/or its affiliates. All rights reserved.
  */
 
 #include <linux/cpu.h>
 #include <linux/cyclic.h>
 #include <linux/hrtimer.h>
-#include <linux/interrupt.h>
 #include <linux/module.h>
 #include <linux/proc_fs.h>
 #include <linux/seq_file.h>
@@ -137,6 +136,9 @@ done:
 	/*
 	 * Prepare the timer for the next expiration.
 	 */
+	if (cyc->cyc.when.cyt_interval.tv64 == CY_INTERVAL_INF)
+		return HRTIMER_NORESTART;
+
 	hrtimer_forward_now(timr, cyc->cyc.when.cyt_interval);
 
 	return HRTIMER_RESTART;
@@ -167,6 +169,19 @@ cyclic_t *cyclic_new(int omni)
 	return cyc;
 }
 
+static inline void cyclic_restart(cyclic_t *cyc)
+{
+	if (cyc->cyc.when.cyt_interval.tv64 == CY_INTERVAL_INF)
+		return;
+
+	if (cyc->cyc.when.cyt_when.tv64 == 0)
+		hrtimer_start(&cyc->cyc.timr, cyc->cyc.when.cyt_interval,
+			      HRTIMER_MODE_REL_PINNED);
+	else
+		hrtimer_start(&cyc->cyc.timr, cyc->cyc.when.cyt_when,
+			      HRTIMER_MODE_ABS_PINNED);
+}
+
 /*
  * Add a new cyclic to the system.
  */
@@ -186,12 +201,7 @@ cyclic_id_t cyclic_add(cyc_handler_t *hdlr, cyc_time_t *when)
 	cyc->cyc.when = *when;
 	cyc->cyc.hdlr = *hdlr;
 
-	if (cyc->cyc.when.cyt_when == 0)
-		hrtimer_start(&cyc->cyc.timr, cyc->cyc.when.cyt_interval,
-			      HRTIMER_MODE_REL_PINNED);
-	else
-		hrtimer_start(&cyc->cyc.timr, cyc->cyc.when.cyt_when,
-			      HRTIMER_MODE_ABS_PINNED);
+	cyclic_restart(cyc);
 
 	/*
 	 * Let the caller know when the cyclic was added.
@@ -204,12 +214,7 @@ EXPORT_SYMBOL(cyclic_add);
 
 static void cyclic_omni_xcall(cyclic_t *cyc)
 {
-	if (cyc->cyc.when.cyt_when == 0)
-		hrtimer_start(&cyc->cyc.timr, cyc->cyc.when.cyt_interval,
-			      HRTIMER_MODE_REL_PINNED);
-	else
-		hrtimer_start(&cyc->cyc.timr, cyc->cyc.when.cyt_when,
-			      HRTIMER_MODE_ABS_PINNED);
+	cyclic_restart(cyc);
 }
 
 /*
@@ -374,6 +379,68 @@ void cyclic_remove(cyclic_id_t id)
 }
 EXPORT_SYMBOL(cyclic_remove);
 
+typedef struct cyclic_reprog {
+	cyclic_id_t	cycid;
+	ktime_t		delta;
+} cyclic_reprog_t;
+
+static void cyclic_reprogram_xcall(cyclic_reprog_t *creprog)
+{
+	cyclic_reprogram(creprog->cycid, creprog->delta);
+}
+
+/*
+ * Reprogram cyclic to fire with given delta from now.
+ *
+ * The underlying design makes it safe to call cyclic_reprogram from whithin a
+ * cyclic handler without race with cylic_remove. If called from outside of the
+ * cyclic handler it is up to the owner to ensure to not call cyclic_reprogram
+ * after call to cyclic_remove.
+ *
+ * This function cannot be called from interrupt/bottom half contexts.
+ */
+void cyclic_reprogram(cyclic_id_t id, ktime_t delta)
+{
+	cyclic_t	*cyc = (cyclic_t *)id;
+
+	/*
+	 * For omni present cyclic we reprogram child for current CPU.
+	 */
+	if (CYCLIC_IS_OMNI(cyc)) {
+		cyclic_t *c, *n;
+
+		list_for_each_entry_safe(c, n, &cyc->omni.cycl, list) {
+			if (c->cpu != smp_processor_id())
+				continue;
+
+			hrtimer_start(&c->cyc.timr, delta,
+				      HRTIMER_MODE_ABS_PINNED);
+
+			break;
+		}
+
+		return;
+	}
+
+	/*
+	 * Regular cyclic reprogram must ensure that the timer remains bound
+	 * to the CPU it was registered on. In case we are called from
+	 * different CPU we use xcall to trigger reprogram from correct cpu.
+	 */
+	if (cyc->cpu != smp_processor_id()) {
+		cyclic_reprog_t creprog = {
+			.cycid = id,
+			.delta = delta,
+		};
+
+		smp_call_function_single(cyc->cpu, (smp_call_func_t)
+					 cyclic_reprogram_xcall, &creprog, 1);
+	} else {
+		hrtimer_start(&cyc->cyc.timr, delta, HRTIMER_MODE_REL_PINNED);
+	}
+}
+EXPORT_SYMBOL(cyclic_reprogram);
+
 static void *s_start(struct seq_file *seq, loff_t *pos)
 {
 	loff_t		n = *pos;
@@ -416,7 +483,7 @@ static int s_show(struct seq_file *seq, void *p)
 		seq_printf(seq, "Omni-present cyclic:\n");
 		list_for_each_entry(c, &cyc->omni.cycl, list)
 			seq_printf(seq,
-				   "  CPU-%d: %c %lluns hdlr %pB arg %llx\n",
+				   "  CPU-%d: %c %lld ns hdlr %pB arg %llx\n",
 				   c->cpu,
 				   c->cyc.hdlr.cyh_level == CY_HIGH_LEVEL
 					? 'H' : 'l',
@@ -424,7 +491,7 @@ static int s_show(struct seq_file *seq, void *p)
 				   c->cyc.hdlr.cyh_func,
 				   (uint64_t)c->cyc.hdlr.cyh_arg);
 	} else
-		seq_printf(seq, "CPU-%d: %c %lluns hdlr %pB arg %llx\n",
+		seq_printf(seq, "CPU-%d: %c %lld ns hdlr %pB arg %llx\n",
 			   cyc->cpu,
 			   cyc->cyc.hdlr.cyh_level == CY_HIGH_LEVEL
 				? 'H' : 'l',
