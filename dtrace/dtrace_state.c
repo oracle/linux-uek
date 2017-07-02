@@ -285,12 +285,17 @@ void dtrace_vstate_fini(dtrace_vstate_t *vstate)
 
 static void dtrace_state_clean(dtrace_state_t *state, ktime_t when)
 {
+	dtrace_optval_t		*opt = state->dts_options;
+
 	if (state->dts_activity != DTRACE_ACTIVITY_ACTIVE &&
 	    state->dts_activity != DTRACE_ACTIVITY_DRAINING)
 		return;
 
 	dtrace_dynvar_clean(&state->dts_vstate.dtvs_dynvars);
 	dtrace_speculation_clean(state);
+
+	cyclic_reprogram(state->dts_cleaner, ns_to_ktime(
+						opt[DTRACEOPT_CLEANRATE]));
 }
 
 static void dtrace_state_deadman(dtrace_state_t *state, ktime_t when)
@@ -774,9 +779,11 @@ int dtrace_state_go(dtrace_state_t *state, processorid_t *cpu)
 	hdlr.cyh_level = CY_LOW_LEVEL;
 
 	when.cyt_when = ktime_set(0, 0);
-	when.cyt_interval = ns_to_ktime(opt[DTRACEOPT_CLEANRATE]);
+	when.cyt_interval.tv64 = CY_INTERVAL_INF;
 
 	state->dts_cleaner = cyclic_add(&hdlr, &when);
+	cyclic_reprogram(state->dts_cleaner, ns_to_ktime(
+						opt[DTRACEOPT_CLEANRATE]));
 
 	hdlr.cyh_func = (cyc_func_t)dtrace_state_deadman;
 	hdlr.cyh_arg = (uintptr_t)state;
