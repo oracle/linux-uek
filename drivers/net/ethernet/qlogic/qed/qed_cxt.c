@@ -978,7 +978,7 @@ static int qed_ilt_blk_alloc(struct qed_hwfn *p_hwfn,
 	u32 lines, line, sz_left, lines_to_skip = 0;
 
 	/* Special handling for RoCE that supports dynamic allocation */
-	if ((p_hwfn->hw_info.personality == QED_PCI_ETH_ROCE) &&
+	if (QED_IS_RDMA_PERSONALITY(p_hwfn) &&
 	    ((ilt_client == ILT_CLI_CDUT) || ilt_client == ILT_CLI_TSDM))
 		return 0;
 
@@ -1778,7 +1778,7 @@ static void qed_tm_init_pf(struct qed_hwfn *p_hwfn)
 		tm_offset += tm_iids.pf_tids[i];
 	}
 
-	if (p_hwfn->hw_info.personality == QED_PCI_ETH_ROCE)
+	if (QED_IS_RDMA_PERSONALITY(p_hwfn))
 		active_seg_mask = 0;
 
 	STORE_RT_REG(p_hwfn, TM_REG_PF_ENABLE_TASK_RT_OFFSET, active_seg_mask);
@@ -2285,7 +2285,7 @@ qed_cxt_dynamic_ilt_alloc(struct qed_hwfn *p_hwfn,
 		       last_cid_allocated - 1);
 
 		if (!p_hwfn->b_rdma_enabled_in_prs) {
-			/* Enable RoCE search */
+			/* Enable RDMA search */
 			qed_wr(p_hwfn, p_ptt, p_hwfn->rdma_prs_search_reg, 1);
 			p_hwfn->b_rdma_enabled_in_prs = true;
 		}
