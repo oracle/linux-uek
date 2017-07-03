@@ -737,11 +737,25 @@ static long count_dwarf_members(Dwarf_Die *die);
 static Dwarf_Die *private_dwarf_type(Dwarf_Die *die, Dwarf_Die *target_die);
 
 /*
+ * Check for existence of an attribute in a DIE, chasing through
+ * DW_AT_specification if need be.
+ */
+static inline int private_dwarf_hasattr(Dwarf_Die *die,
+					unsigned int search_name);
+
+/*
+ * Return a DIE attribute, chasing through DW_AT_specification if need be.
+ */
+static inline Dwarf_Attribute *private_dwarf_attr(Dwarf_Die *die,
+						  unsigned int search_name,
+						  Dwarf_Attribute *result);
+
+/*
  * Given a DIE that contains a udata attribute, look up that attribute and
  * return its value (optionally overridden or modified by the die_overrides).
  */
-static Dwarf_Word private_dwarf_udata(Dwarf_Die *die, int attribute,
-				      die_override_t *overrides);
+static inline Dwarf_Word private_dwarf_udata(Dwarf_Die *die, int attribute,
+					     die_override_t *overrides);
 
 /*
  * Find an override in an override list.
@@ -1609,12 +1623,12 @@ static char *type_id(Dwarf_Die *die,
 		 * base type, so it must be stored once for each size, even if
 		 * it only appears once for all sizes in the DWARF.
 		 */
-		if (dwarf_hasattr(die, DW_AT_bit_size) ||
+		if (private_dwarf_hasattr(die, DW_AT_bit_size) ||
 		    private_find_override(die, DW_AT_bit_size,
 					  overrides))
 			bit_size = private_dwarf_udata(die, DW_AT_bit_size,
 						       overrides);
-		if (dwarf_hasattr(die, DW_AT_bit_offset) ||
+		if (private_dwarf_hasattr(die, DW_AT_bit_offset) ||
 		    private_find_override(die, DW_AT_bit_offset,
 					  overrides))
 			bit_offset = private_dwarf_udata(die, DW_AT_bit_offset,
@@ -2091,10 +2105,10 @@ static void detect_duplicates(const char *module_name,
 	 * DWARF-4 eventually, support in elfutils is insufficiently robust for
 	 * now (elfutils 0.152).
 	 */
-	if (dwarf_hasattr(die, DW_AT_type)) {
+	if (private_dwarf_hasattr(die, DW_AT_type)) {
 		Dwarf_Attribute type_attr;
 
-		if ((dwarf_attr(die, DW_AT_type, &type_attr) != NULL) &&
+		if ((private_dwarf_attr(die, DW_AT_type, &type_attr) != NULL) &&
 		    (dwarf_whatform(&type_attr) == DW_FORM_ref_sig8)) {
 			fprintf(stderr, "sorry, not yet implemented: %s "
 				"contains DWARF-4 debugging information.\n",
@@ -2212,8 +2226,8 @@ static void detect_duplicates_blacklist_var_dups(Dwarf_Die *die,
 	if (g_hash_table_lookup_extended(state->vars_seen,
 					 dwarf_diename(die),
 					 NULL, &static_var)) {
-		if (!dwarf_hasattr(die, DW_AT_external) &&
-		    !dwarf_hasattr(die, DW_AT_declaration))
+		if (!private_dwarf_hasattr(die, DW_AT_external) &&
+		    !private_dwarf_hasattr(die, DW_AT_declaration))
 			blacklist = 1;
 		if (static_var != NULL)
 			blacklist = 1;
@@ -2225,8 +2239,8 @@ static void detect_duplicates_blacklist_var_dups(Dwarf_Die *die,
 	   */
 		g_hash_table_insert(state->vars_seen,
 				    xstrdup(dwarf_diename(die)),
-				    (!dwarf_hasattr(die, DW_AT_external) &&
-				     !dwarf_hasattr(die, DW_AT_declaration)) ?
+				    (!private_dwarf_hasattr(die, DW_AT_external) &&
+				     !private_dwarf_hasattr(die, DW_AT_declaration)) ?
 				    &static_var : NULL);
 
 	if (blacklist) {
@@ -2346,7 +2360,7 @@ static void mark_seen_contained(Dwarf_Die *die, const char *module_name)
 			 * that if a member has the one, it has the other.
 			 */
 			if (dwarf_tag(&child) == DW_TAG_member &&
-			    !dwarf_hasattr(&child, DW_AT_bit_size))
+			    !private_dwarf_hasattr(&child, DW_AT_bit_size))
 				break;
 
 			die_override_t override[] =
@@ -2497,7 +2511,7 @@ static void mark_shared(Dwarf_Die *die, const char *id, void *data)
 		do
 			if ((dwarf_tag(&child) == DW_TAG_member) &&
 			    !member_blacklisted(&child, die)) {
-				if (dwarf_hasattr(&child, DW_AT_bit_size)) {
+				if (private_dwarf_hasattr(&child, DW_AT_bit_size)) {
 					die_override_t override[] =
 						{{ DW_TAG_base_type,
 						   DW_AT_bit_size,
@@ -2546,7 +2560,7 @@ static void is_named_struct_union_enum(Dwarf_Die *die, const char *unused,
 	if (((dwarf_tag(die) == DW_TAG_structure_type) ||
 	     (dwarf_tag(die) == DW_TAG_union_type) ||
 	     (dwarf_tag(die) == DW_TAG_enumeration_type)) &&
-	    (dwarf_hasattr(die, DW_AT_name)))
+	    (private_dwarf_hasattr(die, DW_AT_name)))
 		*is_sou = 1;
 }
 
@@ -3117,12 +3131,12 @@ static Dwarf_Die *die_emit_next_backwards(Dwarf_Die *next, Dwarf_Die *die,
 	if (dwarf_tag(die) == DW_TAG_member &&
 	    dwarf_siblingof(die, next) == 0 &&
 	    dwarf_tag(next) == DW_TAG_member &&
-	    dwarf_hasattr(die, DW_AT_data_member_location) &&
-	    dwarf_hasattr(next, DW_AT_data_member_location) &&
+	    private_dwarf_hasattr(die, DW_AT_data_member_location) &&
+	    private_dwarf_hasattr(next, DW_AT_data_member_location) &&
 	    private_dwarf_udata(die, DW_AT_data_member_location, overrides) ==
 	    private_dwarf_udata(next, DW_AT_data_member_location, overrides) &&
-	    dwarf_hasattr(die, DW_AT_bit_offset) &&
-	    dwarf_hasattr(next, DW_AT_bit_offset) &&
+	    private_dwarf_hasattr(die, DW_AT_bit_offset) &&
+	    private_dwarf_hasattr(next, DW_AT_bit_offset) &&
 	    private_dwarf_udata(die, DW_AT_bit_offset, overrides) >
 	    private_dwarf_udata(next, DW_AT_bit_offset, overrides))
 		return next;
@@ -3199,7 +3213,7 @@ static ctf_id_t lookup_ctf_type(const char *module_name, const char *file_name,
 /* Assembly functions.  */
 
 #define CTF_DW_ENFORCE(attribute) do 						\
-		if (!dwarf_hasattr(die, (DW_AT_##attribute))) {			\
+		if (!private_dwarf_hasattr(die, (DW_AT_##attribute))) {		\
 			fprintf(stderr, "%s: %s: %lx: skipping type, %s attribute not "	\
 				"present.\n", locerrstr, __func__,		\
 				(unsigned long) dwarf_dieoffset(die), #attribute); \
@@ -3209,7 +3223,7 @@ static ctf_id_t lookup_ctf_type(const char *module_name, const char *file_name,
 	while (0)
 
 #define CTF_DW_ENFORCE_NOT(attribute) do					\
-		if (dwarf_hasattr(die, (DW_AT_##attribute))) {			\
+		if (private_dwarf_hasattr(die, (DW_AT_##attribute))) {		\
 			fprintf(stderr, "%s: %s: %lx: skipping type, %s attribute not "	\
 				"supported.\n", locerrstr, __func__,		\
 				(unsigned long) dwarf_dieoffset(die), #attribute); \
@@ -3818,7 +3832,7 @@ static ctf_id_t assemble_ctf_su_member(const char *module_name,
 	 * (if it is named) or add its members directly (for unnamed types,
 	 * which must be unnamed structs/unions).
 	 */
-	dwarf_attr(die, DW_AT_type, &type_attr);
+	private_dwarf_attr(die, DW_AT_type, &type_attr);
 	if (dwarf_formref_die(&type_attr, &type_die) == NULL) {
 		fprintf(stderr, "%s: nonexistent type reference. "
 			"Corrupted DWARF, cannot continue.\n", locerrstr);
@@ -3834,16 +3848,17 @@ static ctf_id_t assemble_ctf_su_member(const char *module_name,
 	 * DW_AT_data_bit_offset is the simple case.  DW_AT_data_member_location
 	 * is trickier, and, alas, the DWARF2 variation is the complex one.
 	 */
-	if (dwarf_hasattr(die, DW_AT_data_bit_offset)) {
+	if (private_dwarf_hasattr(die, DW_AT_data_bit_offset)) {
 		offset = private_dwarf_udata(die, DW_AT_data_bit_offset,
 					     overrides);
 		bit_offset = offset % 8;
 		offset = offset / 8 * 8;
 	}
-	else if (dwarf_hasattr(die, DW_AT_data_member_location)) {
+	else if (private_dwarf_hasattr(die, DW_AT_data_member_location)) {
 		Dwarf_Attribute location_attr;
 
-		dwarf_attr(die, DW_AT_data_member_location, &location_attr);
+		private_dwarf_attr(die, DW_AT_data_member_location,
+				   &location_attr);
 
 		switch (dwarf_whatform(&location_attr)) {
 		case DW_FORM_data1:
@@ -3874,11 +3889,11 @@ static ctf_id_t assemble_ctf_su_member(const char *module_name,
 				offset = location * 8;
 			}
 
-			if (dwarf_hasattr(die, DW_AT_bit_offset)) {
+			if (private_dwarf_hasattr(die, DW_AT_bit_offset)) {
 				Dwarf_Attribute bit_attr;
 				Dwarf_Word bit;
 
-				dwarf_attr(die, DW_AT_bit_offset,
+				private_dwarf_attr(die, DW_AT_bit_offset,
 					   &bit_attr);
 				dwarf_formudata(&bit_attr, &bit);
 				bit_offset = bit;
@@ -3966,7 +3981,7 @@ static ctf_id_t assemble_ctf_su_member(const char *module_name,
 	 * offsets).  Use DW_AT_data_bit_offset because it does not require
 	 * the complexity of DW_AT_data_member_location to be faked.
 	 */
-	if (!dwarf_hasattr(die, DW_AT_name)) {
+	if (!private_dwarf_hasattr(die, DW_AT_name)) {
 		Dwarf_Die child_die;
 		int dummy = 0;
 
@@ -4002,7 +4017,7 @@ static ctf_id_t assemble_ctf_su_member(const char *module_name,
 	 * If this is a bitfield, we want to note that said type's size and
 	 * bit-offset should be adjusted.
 	 */
-	if (dwarf_hasattr(die, DW_AT_bit_size)) {
+	if (private_dwarf_hasattr(die, DW_AT_bit_size)) {
 		die_override_t o[] =
 			{{ dwarf_tag(&type_die),
 			   DW_AT_bit_size,
@@ -4281,7 +4296,7 @@ static Dwarf_Die *private_dwarf_type(Dwarf_Die *die, Dwarf_Die *target_die)
 {
 	Dwarf_Attribute type_ref_attr;
 
-	if (dwarf_attr(die, DW_AT_type, &type_ref_attr) != NULL) {
+	if (private_dwarf_attr(die, DW_AT_type, &type_ref_attr) != NULL) {
 		if (dwarf_formref_die(&type_ref_attr, target_die) == NULL) {
 			fprintf(stderr, "Corrupt DWARF at offset %lx: ref with "
 				"no target.\n",
@@ -4295,11 +4310,71 @@ static Dwarf_Die *private_dwarf_type(Dwarf_Die *die, Dwarf_Die *target_die)
 }
 
 /*
+ * Check for existence of an attribute in a DIE, chasing through
+ * DW_AT_specification if need be.
+ */
+static inline int private_dwarf_hasattr(Dwarf_Die *die,
+					unsigned int search_name)
+{
+	int hasattr = 0;
+	Dwarf_Attribute spec_ref_attr;
+	Dwarf_Die spec_die;
+
+	/*
+	 * DW_AT_declaration is not forwarded, because non-declarations can
+	 * reference declarations via DW_AT_specification, without implying that
+	 * the referencing DIE is a declaration.
+	 */
+	hasattr = dwarf_hasattr(die, search_name);
+	if (hasattr || (search_name == DW_AT_declaration))
+		return hasattr;
+
+	if (dwarf_attr(die, DW_AT_specification, &spec_ref_attr) != NULL) {
+		if (dwarf_formref_die(&spec_ref_attr, &spec_die) == NULL) {
+			fprintf(stderr, "Corrupt DWARF at offset %lx: ref with "
+				"no target.\n",
+				(unsigned long) dwarf_dieoffset(die));
+			exit(1);
+		}
+		return dwarf_hasattr(&spec_die, search_name);
+	}
+	return hasattr;
+}
+
+/*
+ * Return a DIE attribute, chasing through DW_AT_specification if need be.
+ */
+static inline Dwarf_Attribute *private_dwarf_attr(Dwarf_Die *die,
+						  unsigned int search_name,
+						  Dwarf_Attribute *result)
+{
+	Dwarf_Attribute spec_ref_attr;
+	Dwarf_Die spec_die;
+	Dwarf_Attribute *ret;
+
+	ret = dwarf_attr(die, search_name, result);
+	if (ret != NULL || (search_name == DW_AT_declaration))
+		return ret;
+
+	if (dwarf_attr(die, DW_AT_specification, &spec_ref_attr) != NULL) {
+		if (dwarf_formref_die(&spec_ref_attr, &spec_die) == NULL) {
+			fprintf(stderr, "Corrupt DWARF at offset %lx: ref with "
+				"no target.\n",
+				(unsigned long) dwarf_dieoffset(die));
+			exit(1);
+		}
+		return dwarf_attr(&spec_die, search_name, result);
+	}
+
+	return NULL;
+}
+
+/*
  * Given a DIE that contains a udata attribute, look up that attribute and
  * return its value (optionally overridden or modified by the die_overrides).
  */
-static Dwarf_Word private_dwarf_udata(Dwarf_Die *die, int attribute,
-				      die_override_t *overrides)
+static inline Dwarf_Word private_dwarf_udata(Dwarf_Die *die, int attribute,
+					     die_override_t *overrides)
 {
 	Dwarf_Attribute attr;
 	Dwarf_Word value;
@@ -4310,7 +4385,7 @@ static Dwarf_Word private_dwarf_udata(Dwarf_Die *die, int attribute,
 	if (override && override->op == DIE_OVERRIDE_REPLACE)
 		return override->value;
 
-	dwarf_attr(die, attribute, &attr);
+	private_dwarf_attr(die, attribute, &attr);
 	dwarf_formudata(&attr, &value);
 
 	if (override)
@@ -4348,9 +4423,9 @@ static Dwarf_Word private_subrange_dimensions(Dwarf_Die *die)
 	Dwarf_Attribute nelem_attr;
 	Dwarf_Word nelems;
 
-	if (((dwarf_attr(die, DW_AT_upper_bound, &nelem_attr) == NULL) &&
-	     (dwarf_attr(die, DW_AT_count, &nelem_attr) == NULL)) ||
-	    (!dwarf_hasattr(die, DW_AT_type)))
+	if (((private_dwarf_attr(die, DW_AT_upper_bound, &nelem_attr) == NULL) &&
+	     (private_dwarf_attr(die, DW_AT_count, &nelem_attr) == NULL)) ||
+	    (!private_dwarf_hasattr(die, DW_AT_type)))
 		flexible_array = 1;
 
 	if (!flexible_array)
@@ -4374,7 +4449,7 @@ static Dwarf_Word private_subrange_dimensions(Dwarf_Die *die)
 	 * Upper bounds indicate that we have one more element than that, since
 	 * C starts counting at zero.
 	 */
-	if (dwarf_hasattr(die, DW_AT_upper_bound))
+	if (private_dwarf_hasattr(die, DW_AT_upper_bound))
 		nelems++;
 
 	return nelems;
