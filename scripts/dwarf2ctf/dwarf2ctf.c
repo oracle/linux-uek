@@ -3888,16 +3888,6 @@ static ctf_id_t assemble_ctf_su_member(const char *module_name,
 				dwarf_formudata(&location_attr, &location);
 				offset = location * 8;
 			}
-
-			if (private_dwarf_hasattr(die, DW_AT_bit_offset)) {
-				Dwarf_Attribute bit_attr;
-				Dwarf_Word bit;
-
-				private_dwarf_attr(die, DW_AT_bit_offset,
-					   &bit_attr);
-				dwarf_formudata(&bit_attr, &bit);
-				bit_offset = bit;
-			}
 			break;
 		}
 		case DW_FORM_block1:
@@ -3958,7 +3948,20 @@ static ctf_id_t assemble_ctf_su_member(const char *module_name,
 			exit(1);
 		}
 		}
-		/* Fall through. */
+
+		/*
+		 * Handle the bit offset.
+		 */
+		if (private_dwarf_hasattr(die, DW_AT_bit_offset)) {
+			Dwarf_Attribute bit_attr;
+			Dwarf_Word bit;
+
+			private_dwarf_attr(die, DW_AT_bit_offset,
+					   &bit_attr);
+			dwarf_formudata(&bit_attr, &bit);
+			bit_offset = bit;
+		}
+
 	} else { /* No offset beyond any override.  */
 		die_override_t *o;
 
