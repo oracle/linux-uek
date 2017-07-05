@@ -203,6 +203,9 @@ int dax_map_segment_common(u32 *ccb_addr_type, enum dax_at at,
 				dax_ctx->pages[at][idx] = page;
 				dax_dbg("locked page %p, for VA 0x%lx",
 					page, virtp);
+			} else if (ret == -ERESTARTSYS) {
+				dax_dbg("get_user_pages failed: Fatal signal posted on the current process");
+				return -1;
 			} else {
 				dax_err("get_user_pages for 1 page failed, virtp=0x%lx, ret=%d",
 					virtp, ret);
