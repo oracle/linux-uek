@@ -307,6 +307,7 @@ static inline resource_size_t pci_resource_alignment(struct pci_dev *dev,
 }
 
 void pci_enable_acs(struct pci_dev *dev);
+bool pci_std_toggle_acs_sv(struct pci_dev *dev, bool enable);
 
 struct pci_dev_reset_methods {
 	u16 vendor;

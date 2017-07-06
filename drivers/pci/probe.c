@@ -1485,8 +1485,8 @@ struct pci_dev *pci_alloc_dev(struct pci_bus *bus)
 }
 EXPORT_SYMBOL(pci_alloc_dev);
 
-bool pci_bus_read_dev_vendor_id(struct pci_bus *bus, int devfn, u32 *l,
-				int crs_timeout)
+static bool __pci_bus_read_dev_vendor_id(struct pci_bus *bus, int devfn,
+					 u32 *l, int crs_timeout)
 {
 	int delay = 1;
 
@@ -1523,7 +1523,42 @@ bool pci_bus_read_dev_vendor_id(struct pci_bus *bus, int devfn, u32 *l,
 
 	return true;
 }
-EXPORT_SYMBOL(pci_bus_read_dev_vendor_id);
+
+bool pci_bus_read_dev_vendor_id(struct pci_bus *bus, int devfn, u32 *l,
+				int crs_timeout)
+{
+	bool found;
+	bool enable = false;
+	bool idt_workaround = (bus->self &&
+				(bus->self->vendor == PCI_VENDOR_ID_IDT));
+	/*
+	 * Some IDT switches flag an ACS violation for config reads
+	 * even though the PCI spec allows for it (PCIe 3.1, 6.1.12.1)
+	 * It flags it because the bus number is not properly set in the
+	 * completion. The workaround is to do a dummy write to properly
+	 * latch number once the device is ready for config operations
+	 */
+
+	if (idt_workaround)
+		enable = pci_std_toggle_acs_sv(bus->self, false);
+
+	found = __pci_bus_read_dev_vendor_id(bus, devfn, l, crs_timeout);
+
+	/*
+	 * The fact that we can read the vendor id indicates that the device
+	 * is ready for config operations. Do the write as part of the errata
+	 * workaround.
+	 */
+	if (idt_workaround) {
+		if (found)
+			pci_bus_write_config_word(bus, devfn, PCI_VENDOR_ID, 0);
+		if (enable)
+			pci_std_toggle_acs_sv(bus->self, enable);
+	}
+
+	return found;
+}
+ EXPORT_SYMBOL(pci_bus_read_dev_vendor_id);
 
 /*
  * Read the config data for a PCI device, sanity-check it
