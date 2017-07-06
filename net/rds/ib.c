@@ -2831,11 +2831,13 @@ int rds_ib_inc_to_skb(struct rds_incoming *inc, struct sk_buff *skb)
 	int i;
 	struct rds_ib_incoming *ibinc;
 	struct rds_page_frag *ibfrag;
+	struct scatterlist *sg;
 
 	/* pull out initial pointers */
 	ibinc  = container_of(inc, struct rds_ib_incoming, ii_inc);
 	ibfrag = list_entry(ibinc->ii_frags.next, struct rds_page_frag, f_item);
 	len    = be32_to_cpu(inc->i_hdr.h_len);
+	sg     = ibfrag->f_sg;
 	slen   = len;
 	i      = 0;
 
@@ -2843,11 +2845,10 @@ int rds_ib_inc_to_skb(struct rds_incoming *inc, struct sk_buff *skb)
 	while (NULL != ibfrag && slen > 0) {
 		/* one to one mapping of frags to sg structures */
 		frag = &skb_shinfo(skb)->frags[i];
-
 		/* save off all the sg pieces to the skb frags we are creating */
-		frag->size        = ibfrag->f_sg.length;
-		frag->page_offset = ibfrag->f_sg.offset;
-		frag->page.p      = sg_page(&ibfrag->f_sg);
+		frag->size        = sg->length;
+		frag->page_offset = sg->offset;
+		frag->page.p      = sg_page(sg);
 
 		/* AA:  do we need to bump up the page reference */
 		/* get_page(frag->page); */
@@ -2855,8 +2856,12 @@ int rds_ib_inc_to_skb(struct rds_incoming *inc, struct sk_buff *skb)
 		/* dec the amount of data we are consuming */
 		slen -= frag->size;
 
-		/* bump to the next entry */
-		ibfrag = list_entry(ibfrag->f_item.next, struct rds_page_frag, f_item);
+		sg  = sg_next(sg);
+		if (!sg) {
+			/* bump to the next entry */
+			ibfrag = list_entry(ibfrag->f_item.next, struct rds_page_frag, f_item);
+			sg = ibfrag->f_sg;
+		}
 		i++;
 
 		/* for now we will only have a single chain of fragments in the skb */
