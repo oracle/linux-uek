@@ -1686,6 +1686,7 @@ static inline void sock_orphan(struct sock *sk)
 
 static inline void sock_graft(struct sock *sk, struct socket *parent)
 {
+	WARN_ON(parent->sk);
 	write_lock_bh(&sk->sk_callback_lock);
 	sk->sk_wq = parent->wq;
 	parent->sk = sk;
