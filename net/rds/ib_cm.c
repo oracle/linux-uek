@@ -767,7 +767,7 @@ static int rds_ib_setup_qp(struct rds_connection *conn)
 	qp_attr.cap.max_send_wr = ic->i_send_ring.w_nr + 1 + mr_reg;
 	qp_attr.cap.max_recv_wr = ic->i_recv_ring.w_nr + 1;
 	qp_attr.cap.max_send_sge = rds_ibdev->max_sge;
-	qp_attr.cap.max_recv_sge = RDS_IB_RECV_SGE;
+	qp_attr.cap.max_recv_sge = rds_ibdev->max_sge;
 	qp_attr.sq_sig_type = IB_SIGNAL_REQ_WR;
 	qp_attr.qp_type = IB_QPT_RC;
 	qp_attr.send_cq = ic->i_scq;
