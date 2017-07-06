@@ -50,6 +50,8 @@
 
 #define RDS_WC_MAX 32
 
+#define NUM_RDS_RECV_SG	(PAGE_ALIGN(RDS_MAX_FRAG_SIZE) / PAGE_SIZE)
+
 #define	RDS_IB_CLEAN_CACHE	1
 
 #define RDS_IB_DEFAULT_FREG_PORT_NUM	1
@@ -65,7 +67,7 @@ extern struct list_head rds_ib_devices;
 struct rds_page_frag {
 	struct list_head	f_item;
 	struct list_head	f_cache_entry;
-	struct scatterlist	f_sg;
+	struct scatterlist	f_sg[NUM_RDS_RECV_SG];
 };
 
 struct rds_ib_incoming {
@@ -110,7 +112,7 @@ struct rds_ib_recv_work {
 	struct rds_ib_incoming	*r_ibinc;
 	struct rds_page_frag	*r_frag;
 	struct ib_recv_wr	r_wr;
-	struct ib_sge		r_sge[2];
+	struct ib_sge		r_sge[RDS_IB_MAX_SGE];
 	struct rds_ib_connection	*r_ic;
 	int				r_posted;
 };
