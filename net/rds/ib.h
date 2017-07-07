@@ -435,6 +435,10 @@ struct rds_ib_device {
 	struct rds_ib_port      *ports;
 	struct ib_event_handler event_handler;
 	int			*vector_load;
+	/* Several TOS connections may invoke ibdev_get_unused_vector()
+	 * concurrently, hence we need protection for vector_load
+	 */
+	struct mutex		vector_load_lock;
 
 	/* flag indicating ib_device is under freeing up or is freed up to make
 	 * the race between rds_ib_remove_one() and rds_release() safe.
