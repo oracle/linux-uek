@@ -2045,6 +2045,7 @@ void rds_ib_add_one(struct ib_device *device)
 		printk(KERN_ERR "RDS/IB: failed to allocate vector memoru\n");
 		goto put_dev;
 	}
+	mutex_init(&rds_ibdev->vector_load_lock);
 
 	rds_ibdev->mr = ib_get_dma_mr(rds_ibdev->pd, IB_ACCESS_LOCAL_WRITE);
 	if (IS_ERR(rds_ibdev->mr)) {
