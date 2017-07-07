@@ -86,10 +86,6 @@ config SPARC64
 	select ARCH_USE_QUEUED_RWLOCKS
 	select ARCH_USE_QUEUED_SPINLOCKS
 
-config ARCH_DMA_ADDR_T_64BIT
-	bool
-	default y if SPARC64
-
 config ARCH_DEFCONFIG
 	string
 	default "arch/sparc/configs/sparc32_defconfig" if SPARC32
