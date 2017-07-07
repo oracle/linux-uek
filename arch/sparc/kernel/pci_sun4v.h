@@ -91,5 +91,12 @@ unsigned long pci_sun4v_msg_setvalid(unsigned long devhandle,
 unsigned long pci_sun4v_iov_dev_ready(unsigned long devhandle,
 				      unsigned long pci_device,
 				      unsigned long ready_flag);
+/* Sun4v HV IOMMU v2 APIs */
+unsigned long pci_sun4v_iotsb_conf(unsigned long devhandle,
+				   unsigned long ra,
+				   unsigned long table_size,
+				   unsigned long page_size,
+				   unsigned long dvma_base,
+				   u64 *iotsb_num);
 
 #endif /* !(_PCI_SUN4V_H) */

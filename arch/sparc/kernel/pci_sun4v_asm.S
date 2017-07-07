@@ -372,3 +372,24 @@ ENTRY(pci_sun4v_iov_dev_ready)
 	retl
 	 mov	%o0, %o0
 ENDPROC(pci_sun4v_iov_dev_ready)
+
+	/*
+	 * %o0:	devhandle
+	 * %o1:	r_addr
+	 * %o2:	size
+	 * %o3:	pagesize
+	 * %o4:	virt
+	 *
+	 * returns %o0:	status
+	 *         %o1:	iotsb_handle/iotsb_num
+	 */
+ENTRY(pci_sun4v_iotsb_conf)
+	mov	%o5, %g1
+	mov	HV_FAST_PCI_IOTSB_CONF, %o5
+	ta	HV_FAST_TRAP
+	retl
+	stx	%o1, [%g1]
+1:
+	ret
+	restore
+ENDPROC(pci_sun4v_iotsb_conf)
