@@ -28,6 +28,9 @@
 
 #define NETDEV_UDP_TUNNEL_PUSH_INFO	0x001C
 
+#define ETH_P_IBOE	0x8915		/* Infiniband over Ethernet	*/
+#define ROCE_V2_UDP_DPORT      4791
+
 static DEFINE_MUTEX(rtnl_mutex);
 
 static inline void udp_tunnel_get_rx_info(struct net_device *dev)
