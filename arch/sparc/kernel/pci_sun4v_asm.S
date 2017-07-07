@@ -407,3 +407,39 @@ ENTRY(pci_sun4v_iotsb_bind)
 	retl
 	nop
 ENDPROC(pci_sun4v_iotsb_bind)
+
+	/*
+	 * %o0:	devhandle
+	 * %o1:	iotsb
+	 * %o2:	iotsb_index_and_#iottes
+	 *	  63:48 - #iottes (unsigned integer 16 bits)
+	 *	  47:00 - iotsb_index (unsigned integer 48 bits)
+	 * %o3:	iotte_attributes
+	 * %o4:	io_page_list_p
+	 *
+	 * returns %o0:	status
+	 *         %o1:	#iottes_mapped
+	 */
+ENTRY(pci_sun4v_iotsb_map)
+	mov	%o5, %g1
+	mov	HV_FAST_PCI_IOTSB_MAP, %o5
+	ta	HV_FAST_TRAP
+	retl
+	stx	%o1, [%g1]	/* #mapped */
+ENDPROC(pci_sun4v_iotsb_map)
+
+	/*
+	 * %o0:	devhandle
+	 * %o1:	iotsb
+	 * %o2:	iotsb_index
+	 * %o3:	#iottes
+	 *
+	 * returns %o0:	status
+	 *         %o1:	#iottes_demapped
+	 */
+ENTRY(pci_sun4v_iotsb_demap)
+	mov	HV_FAST_PCI_IOTSB_DEMAP, %o5
+	ta	HV_FAST_TRAP
+	retl
+	stx	%o1, [%o4]	/* #demapped */
+ENDPROC(pci_sun4v_iotsb_demap)
