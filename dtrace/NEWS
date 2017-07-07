@@ -1,9 +1,60 @@
 DTrace Kernel Modules News
 ==========================
 
-Release 0.6.0 (Apr  3rd, 2017)
+Release 0.6.1 (Jul 14th, 2017)
 ------------------------------
-Kernel release: 4.1.12-97.el6uek
+Kernel release: 4.1.12-103.el6uek
+
+New features:
+
+ - The FBT provider now supports loadable kernel modules.  The current
+   implementation does not support creation of probes inside .init sections.
+
+ - FBT supports creation of return probes on SPARC platform.  At the moment the
+   return probe support is limited to functions the optimizer has not turned
+   into a tail call.
+
+ - On all platforms, return probes now provide correct offsets in their arg0 (on
+   both x86 and SPARC).
+
+ - Added link_ntop() subroutine.
+
+ - Added support for new x86 CPUS with SMAP support.
+
+Changes:
+
+ - FBT probes on x86 are now using int3 instead of the LOCK prefix to trigger
+   a probe.
+
+ - The dynamic variable cleanup routine is now self-throttling.  If the
+   opearating system gets too overloaded and is no longer able to do the cleanup
+   with the given period then it no longer tries to run the handler more than
+   once.
+
+Bugfixes:
+
+ - Fixed mutex_* subroutines that were not accessing mutexes correctly, causing
+   incorrect results.
+
+ - The ustackdepth built-in variable was always returning 1 regardless of the
+   depth of the ustack().
+
+ - Fixed various memory accesses to properly check for privileges.
+
+ - When a FBT probe used int3 as its trigger, it was always handled as if it ran
+   in interrupt context, impacting handling of self variables.
+
+ - The deadman timer values have been adjusted to lower values.  DTrace now
+   gives up sooner rather than allowing the watchdog to reboot the host.
+
+ - The deadman routine was not properly checking state of all CPUs, causing it
+   to miss stuck CPUs in some circumstances (though this was hard to notice due
+   to the overly long timer values).
+
+
+Release 0.6.0 (Apr 3rd, 2017)
+------------------------------
+Kernel release: 4.1.12-97.el6uek
 
 New features:
 

@@ -20,7 +20,7 @@
 Name: dtrace-modules-%{kver}
 Summary: dtrace module
 Version: 0.6.1
-Release: 2%{dist}
+Release: 3%{dist}
 Provides: dtrace-modules
 Requires: at
 License: CDDL
@@ -127,6 +127,11 @@ rm -rf %{buildroot}
 /usr/include/linux/dtrace/types.h
 
 %changelog
+* Fri Jul 14 2017 - <tomas.jedlicka@oracle.com> - 0.6.1-3
+- FBT module support and SPARCs return probes [Orabug: 26384179, 26384765]
+- DTrace state cleanmust use dtrace_sync() [Orabug: 26385102]
+- Make dynamic variable cleanup self-throtling [Orabug: 26385177]
+- Restore deadman original timing values [Orabug: 26385159]
 * Wed Jun 28 2017 - <kris.van.hees@oracle.com> - 0.6.1-2
 - Change FBT entry probes on x86 to use int3 [Orabug: 26324039]
 - Support x86 CPUs with SMAP (Nick Alcock) [Orabug: 26166784]
