@@ -99,4 +99,8 @@ unsigned long pci_sun4v_iotsb_conf(unsigned long devhandle,
 				   unsigned long dvma_base,
 				   u64 *iotsb_num);
 
+unsigned long pci_sun4v_iotsb_bind(unsigned long devhandle,
+				   unsigned long iotsb_num,
+				   unsigned int pci_device);
+
 #endif /* !(_PCI_SUN4V_H) */
