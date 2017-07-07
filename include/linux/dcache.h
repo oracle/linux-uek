@@ -587,5 +587,11 @@ static inline struct inode *vfs_select_inode(struct dentry *dentry,
 	return inode;
 }
 
+struct name_snapshot {
+	const char *name;
+	char inline_name[DNAME_INLINE_LEN];
+};
+void take_dentry_name_snapshot(struct name_snapshot *, struct dentry *);
+void release_dentry_name_snapshot(struct name_snapshot *);
 
 #endif	/* __LINUX_DCACHE_H */
