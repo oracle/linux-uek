@@ -178,7 +178,7 @@ EXPORT_SYMBOL_GPL(hwpoison_filter);
  * ``action optional'' if they are not immediately affected by the error
  * ``action required'' if error happened in current execution context
  */
-static int kill_proc(struct task_struct *t, unsigned long addr, int trapno,
+static int kill_proc(struct task_struct *t, unsigned long addr,
 			unsigned long pfn, struct page *page, int flags)
 {
 	struct siginfo si;
@@ -189,9 +189,6 @@ static int kill_proc(struct task_struct *t, unsigned long addr, int trapno,
 	si.si_signo = SIGBUS;
 	si.si_errno = 0;
 	si.si_addr = (void *)addr;
-#ifdef __ARCH_SI_TRAPNO
-	si.si_trapno = trapno;
-#endif
 	si.si_addr_lsb = compound_order(compound_head(page)) + PAGE_SHIFT;
 
 	if ((flags & MF_ACTION_REQUIRED) && t->mm == current->mm) {
@@ -323,7 +320,7 @@ static void add_to_kill(struct task_struct *tsk, struct page *p,
  * Also when FAIL is set do a force kill because something went
  * wrong earlier.
  */
-static void kill_procs(struct list_head *to_kill, int forcekill, int trapno,
+static void kill_procs(struct list_head *to_kill, int forcekill,
 			  bool fail, struct page *page, unsigned long pfn,
 			  int flags)
 {
@@ -348,7 +345,7 @@ static void kill_procs(struct list_head *to_kill, int forcekill, int trapno,
 			 * check for that, but we need to tell the
 			 * process anyways.
 			 */
-			else if (kill_proc(tk->tsk, tk->addr, trapno,
+			else if (kill_proc(tk->tsk, tk->addr,
 					      pfn, page, flags) < 0)
 				pr_err("Memory failure: %#lx: Cannot send advisory machine check signal to %s:%d\n",
 				       pfn, tk->tsk->comm, tk->tsk->pid);
@@ -928,7 +925,7 @@ EXPORT_SYMBOL_GPL(get_hwpoison_page);
  * the pages and send SIGBUS to the processes if the data was dirty.
  */
 static bool hwpoison_user_mappings(struct page *p, unsigned long pfn,
-				  int trapno, int flags, struct page **hpagep)
+				  int flags, struct page **hpagep)
 {
 	enum ttu_flags ttu = TTU_IGNORE_MLOCK | TTU_IGNORE_ACCESS;
 	struct address_space *mapping;
@@ -1018,7 +1015,7 @@ static bool hwpoison_user_mappings(struct page *p, unsigned long pfn,
 	 * any accesses to the poisoned memory.
 	 */
 	forcekill = PageDirty(hpage) || (flags & MF_MUST_KILL);
-	kill_procs(&tokill, forcekill, trapno, !unmap_success, p, pfn, flags);
+	kill_procs(&tokill, forcekill, !unmap_success, p, pfn, flags);
 
 	return unmap_success;
 }
@@ -1046,7 +1043,7 @@ static int identify_page_state(unsigned long pfn, struct page *p,
 	return page_action(ps, p, pfn);
 }
 
-static int memory_failure_hugetlb(unsigned long pfn, int trapno, int flags)
+static int memory_failure_hugetlb(unsigned long pfn, int flags)
 {
 	struct page *p = pfn_to_page(pfn);
 	struct page *head = compound_head(p);
@@ -1106,7 +1103,7 @@ static int memory_failure_hugetlb(unsigned long pfn, int trapno, int flags)
 		goto out;
 	}
 
-	if (!hwpoison_user_mappings(p, pfn, trapno, flags, &head)) {
+	if (!hwpoison_user_mappings(p, pfn, flags, &head)) {
 		action_result(pfn, MF_MSG_UNMAP_FAILED, MF_IGNORED);
 		res = -EBUSY;
 		goto out;
@@ -1121,7 +1118,6 @@ out:
 /**
  * memory_failure - Handle memory failure of a page.
  * @pfn: Page Number of the corrupted page
- * @trapno: Trap number reported in the signal to user space.
  * @flags: fine tune action taken
  *
  * This function is called by the low level machine check code
@@ -1136,7 +1132,7 @@ out:
  * Must run in process context (e.g. a work queue) with interrupts
  * enabled and no spinlocks hold.
  */
-int memory_failure(unsigned long pfn, int trapno, int flags)
+int memory_failure(unsigned long pfn, int flags)
 {
 	struct page *p;
 	struct page *hpage;
@@ -1145,7 +1141,7 @@ int memory_failure(unsigned long pfn, int trapno, int flags)
 	unsigned long page_flags;
 
 	if (!sysctl_memory_failure_recovery)
-		panic("Memory failure from trap %d on page %lx", trapno, pfn);
+		panic("Memory failure on page %lx", pfn);
 
 	if (!pfn_valid(pfn)) {
 		pr_err("Memory failure: %#lx: memory outside kernel control\n",
@@ -1155,7 +1151,7 @@ int memory_failure(unsigned long pfn, int trapno, int flags)
 
 	p = pfn_to_page(pfn);
 	if (PageHuge(p))
-		return memory_failure_hugetlb(pfn, trapno, flags);
+		return memory_failure_hugetlb(pfn, flags);
 	if (TestSetPageHWPoison(p)) {
 		pr_err("Memory failure: %#lx: already hardware poisoned\n",
 			pfn);
@@ -1282,7 +1278,7 @@ int memory_failure(unsigned long pfn, int trapno, int flags)
 	 * When the raw error page is thp tail page, hpage points to the raw
 	 * page after thp split.
 	 */
-	if (!hwpoison_user_mappings(p, pfn, trapno, flags, &hpage)) {
+	if (!hwpoison_user_mappings(p, pfn, flags, &hpage)) {
 		action_result(pfn, MF_MSG_UNMAP_FAILED, MF_IGNORED);
 		res = -EBUSY;
 		goto out;
@@ -1310,7 +1306,6 @@ EXPORT_SYMBOL_GPL(memory_failure);
 
 struct memory_failure_entry {
 	unsigned long pfn;
-	int trapno;
 	int flags;
 };
 
@@ -1326,7 +1321,6 @@ static DEFINE_PER_CPU(struct memory_failure_cpu, memory_failure_cpu);
 /**
  * memory_failure_queue - Schedule handling memory failure of a page.
  * @pfn: Page Number of the corrupted page
- * @trapno: Trap number reported in the signal to user space.
  * @flags: Flags for memory failure handling
  *
  * This function is called by the low level hardware error handler
@@ -1340,13 +1334,12 @@ static DEFINE_PER_CPU(struct memory_failure_cpu, memory_failure_cpu);
  *
  * Can run in IRQ context.
  */
-void memory_failure_queue(unsigned long pfn, int trapno, int flags)
+void memory_failure_queue(unsigned long pfn, int flags)
 {
 	struct memory_failure_cpu *mf_cpu;
 	unsigned long proc_flags;
 	struct memory_failure_entry entry = {
 		.pfn =		pfn,
-		.trapno =	trapno,
 		.flags =	flags,
 	};
 
@@ -1379,7 +1372,7 @@ static void memory_failure_work_func(struct work_struct *work)
 		if (entry.flags & MF_SOFT_OFFLINE)
 			soft_offline_page(pfn_to_page(entry.pfn), entry.flags);
 		else
-			memory_failure(entry.pfn, entry.trapno, entry.flags);
+			memory_failure(entry.pfn, entry.flags);
 	}
 }
 
