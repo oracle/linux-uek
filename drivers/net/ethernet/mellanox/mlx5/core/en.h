@@ -95,7 +95,6 @@
 	(wqes * ALIGN(MLX5_MPWRQ_PAGES_PER_WQE, 8))
 #define MLX5E_VALID_NUM_MTTS(num_mtts) (MLX5_MTT_OCTW(num_mtts) - 1 <= U16_MAX)
 
-#define MLX5_UMR_ALIGN				(2048)
 #define MLX5_MPWRQ_SMALL_PACKET_THRESHOLD	(256)
 
 #define MLX5E_PARAMS_DEFAULT_LRO_WQE_SZ                 (64 * 1024)
@@ -118,8 +117,13 @@
 #define MLX5E_TX_CQ_POLL_BUDGET        128
 #define MLX5E_UPDATE_STATS_INTERVAL    200 /* msecs */
 
-#define MLX5E_ICOSQ_MAX_WQEBBS \
-	(DIV_ROUND_UP(sizeof(struct mlx5e_umr_wqe), MLX5_SEND_WQE_BB))
+#define MLX5E_UMR_WQE_INLINE_SZ \
+	(sizeof(struct mlx5e_umr_wqe) + \
+	 ALIGN(MLX5_MPWRQ_PAGES_PER_WQE * sizeof(struct mlx5_mtt), \
+	       MLX5_UMR_MTT_ALIGNMENT))
+#define MLX5E_UMR_WQEBBS \
+	(DIV_ROUND_UP(MLX5E_UMR_WQE_INLINE_SZ, MLX5_SEND_WQE_BB))
+#define MLX5E_ICOSQ_MAX_WQEBBS MLX5E_UMR_WQEBBS
 
 #define MLX5E_XDP_MIN_INLINE (ETH_HLEN + VLAN_HLEN)
 #define MLX5E_XDP_TX_DS_COUNT \
@@ -191,7 +195,7 @@ struct mlx5e_umr_wqe {
 	struct mlx5_wqe_ctrl_seg       ctrl;
 	struct mlx5_wqe_umr_ctrl_seg   uctrl;
 	struct mlx5_mkey_seg           mkc;
-	struct mlx5_wqe_data_seg       data;
+	struct mlx5_mtt                inline_mtts[0];
 };
 
 extern const char mlx5e_self_tests[][ETH_GSTRING_LEN];
@@ -450,7 +454,6 @@ struct mlx5e_icosq {
 	void __iomem              *uar_map;
 	u32                        sqn;
 	u16                        edge;
-	__be32                     mkey_be;
 	unsigned long              state;
 
 	/* control path */
@@ -475,8 +478,6 @@ struct mlx5e_wqe_frag_info {
 };
 
 struct mlx5e_umr_dma_info {
-	__be64                *mtt;
-	dma_addr_t             mtt_addr;
 	struct mlx5e_dma_info  dma_info[MLX5_MPWRQ_PAGES_PER_WQE];
 	struct mlx5e_umr_wqe   wqe;
 };
@@ -545,7 +546,6 @@ struct mlx5e_rq {
 		} wqe;
 		struct {
 			struct mlx5e_mpw_info *info;
-			void                  *mtt_no_align;
 			u16                    num_strides;
 			u8                     log_stride_sz;
 			bool                   umr_in_progress;
