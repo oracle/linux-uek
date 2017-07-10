@@ -1319,12 +1319,6 @@ EXPORT_SYMBOL(ldc_alloc);
 
 void ldc_unbind(struct ldc_channel *lp)
 {
-	if (lp->flags & LDC_FLAG_REGISTERED_IRQS) {
-		free_irq(lp->cfg.rx_irq, lp);
-		free_irq(lp->cfg.tx_irq, lp);
-		lp->flags &= ~LDC_FLAG_REGISTERED_IRQS;
-	}
-
 	if (lp->flags & LDC_FLAG_REGISTERED_QUEUES) {
 		sun4v_ldc_tx_qconf(lp->id, 0, 0);
 		sun4v_ldc_rx_qconf(lp->id, 0, 0);
@@ -1334,6 +1328,11 @@ void ldc_unbind(struct ldc_channel *lp)
 		free_queue(lp->tx_num_entries, lp->tx_base);
 		free_queue(lp->rx_num_entries, lp->rx_base);
 		lp->flags &= ~LDC_FLAG_ALLOCED_QUEUES;
+	}
+	if (lp->flags & LDC_FLAG_REGISTERED_IRQS) {
+		free_irq(lp->cfg.rx_irq, lp);
+		free_irq(lp->cfg.tx_irq, lp);
+		lp->flags &= ~LDC_FLAG_REGISTERED_IRQS;
 	}
 
 	ldc_set_state(lp, LDC_STATE_INIT);
