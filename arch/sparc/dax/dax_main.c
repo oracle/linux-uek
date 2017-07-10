@@ -1170,7 +1170,7 @@ static int dax_ccb_hv_submit(struct dax_ctx *dax_ctx, union ccb *ccb_buf,
 		 * to hide from the user. For now return
 		 * DAX_SUBMIT_ERR_WOULDBLOCK and let the user library retry.
 		 */
-		dax_err("hcall returned HV_EWOULDBLOCK");
+		dax_dbg("hcall returned HV_EWOULDBLOCK");
 		exec_arg->dce_ccb_status = DAX_SUBMIT_ERR_WOULDBLOCK;
 		break;
 	case HV_ENOMAP:
