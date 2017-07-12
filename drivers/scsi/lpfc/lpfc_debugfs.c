@@ -4500,14 +4500,11 @@ lpfc_debugfs_terminate(struct lpfc_vport *vport)
 #ifdef CONFIG_SCSI_LPFC_DEBUG_FS
 	struct lpfc_hba   *phba = vport->phba;
 
-	if (vport->disc_trc) {
-		kfree(vport->disc_trc);
-		vport->disc_trc = NULL;
-	}
-	if (vport->debug_disc_trc) {
-		debugfs_remove(vport->debug_disc_trc); /* discovery_trace */
-		vport->debug_disc_trc = NULL;
-	}
+	kfree(vport->disc_trc);
+	vport->disc_trc = NULL;
+
+	debugfs_remove(vport->debug_disc_trc); /* discovery_trace */
+	vport->debug_disc_trc = NULL;
 	if (vport->debug_nodelist) {
 		debugfs_remove(vport->debug_nodelist); /* nodelist */
 		vport->debug_nodelist = NULL;
@@ -4577,15 +4574,12 @@ lpfc_debugfs_terminate(struct lpfc_vport *vport)
 			phba->debug_readRef = NULL;
 		}
 
-		if (phba->slow_ring_trc) {
-			kfree(phba->slow_ring_trc);
-			phba->slow_ring_trc = NULL;
-		}
-		if (phba->debug_slow_ring_trc) {
-			/* slow_ring_trace */
-			debugfs_remove(phba->debug_slow_ring_trc);
-			phba->debug_slow_ring_trc = NULL;
-		}
+		kfree(phba->slow_ring_trc);
+		phba->slow_ring_trc = NULL;
+
+		/* slow_ring_trace */
+		debugfs_remove(phba->debug_slow_ring_trc);
+		phba->debug_slow_ring_trc = NULL;
 
 		/*
 		 * iDiag release
