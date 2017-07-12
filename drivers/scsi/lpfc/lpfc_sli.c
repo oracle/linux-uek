@@ -952,6 +952,7 @@ __lpfc_sli_get_sglq(struct lpfc_hba *phba, struct lpfc_iocbq *piocbq)
 			list_remove_head(lpfc_sgl_list, sglq,
 						struct lpfc_sglq, list);
 			if (sglq == start_sglq) {
+				list_add_tail(&sglq->list, lpfc_sgl_list);
 				sglq = NULL;
 				break;
 			} else
