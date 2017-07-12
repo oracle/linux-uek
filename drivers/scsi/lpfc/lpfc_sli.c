@@ -6125,7 +6125,7 @@ lpfc_sli4_get_allocated_extnts(struct lpfc_hba *phba, uint16_t type,
 }
 
 /**
- * lpfc_sli4_repost_els_sgl_list - Repsot the els buffers sgl pages as block
+ * lpfc_sli4_repost_els_sgl_list - Repost the els buffers sgl pages as block
  * @phba: pointer to lpfc hba data structure.
  *
  * This routine walks the list of els buffers that have been allocated and
