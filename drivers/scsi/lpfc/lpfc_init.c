@@ -11456,7 +11456,6 @@ int
 lpfc_fof_queue_create(struct lpfc_hba *phba)
 {
 	struct lpfc_queue *qdesc;
-	uint32_t wqesize;
 
 	/* Create FOF EQ */
 	qdesc = lpfc_sli4_queue_alloc(phba, phba->sli4_hba.eq_esize,
@@ -11477,11 +11476,8 @@ lpfc_fof_queue_create(struct lpfc_hba *phba)
 		phba->sli4_hba.oas_cq = qdesc;
 
 		/* Create OAS WQ */
-		wqesize = (phba->fcp_embed_io) ?
-				LPFC_WQE128_SIZE : phba->sli4_hba.wq_esize;
-		qdesc = lpfc_sli4_queue_alloc(phba, wqesize,
+		qdesc = lpfc_sli4_queue_alloc(phba, phba->sli4_hba.wq_esize,
 					      phba->sli4_hba.wq_ecount);
-
 		if (!qdesc)
 			goto out_error;
 
