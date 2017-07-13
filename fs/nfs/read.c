@@ -199,7 +199,7 @@ static void nfs_initiate_read(struct nfs_pgio_header *hdr,
 	struct inode *inode = hdr->inode;
 	int swap_flags = IS_SWAPFILE(inode) ? NFS_RPC_SWAPFLAGS : 0;
 
-	DTRACE_IO_NFS(start, 0, hdr->args.count, hdr->inode);
+	DTRACE_IO_NFS(start, REQ_OP_READ, hdr->args.count, hdr->inode);
 
 	task_setup_data->flags |= swap_flags;
 	rpc_ops->read_setup(hdr, msg);
@@ -232,7 +232,7 @@ static int nfs_readpage_done(struct rpc_task *task,
 			     struct inode *inode)
 {
 	int status = NFS_PROTO(inode)->read_done(task, hdr);
-	DTRACE_IO_NFS(done, 0, hdr->res.count, hdr->inode);
+	DTRACE_IO_NFS(done, REQ_OP_READ, hdr->res.count, hdr->inode);
 	if (status != 0)
 		return status;
 
