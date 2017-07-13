@@ -10,8 +10,6 @@ BL_SENTRY(typeof(raw_notifier_call_chain), raw_notifier_call_chain)
 BL_DENTRY(void *, hw_breakpoint_exceptions_notify)
 BL_DENTRY(void *, kprobe_exceptions_notify)
 
-BL_SENTRY(typeof(idr_find_slowpath), idr_find_slowpath)
-
 /*
  * Functions used to update vtime in probe context.
  */
@@ -44,7 +42,7 @@ BL_DENTRY(void *, kgdb_ll_trap)
 BL_DENTRY(void *, error_entry)
 BL_DENTRY(void *, xen_int3)
 BL_DENTRY(void *, ftrace_int3_handler)
-BL_SENTRY(typeof(poke_int3_handler), poke_int3_handler)
+BL_DENTRY(typeof(poke_int3_handler), poke_int3_handler)
 BL_DENTRY(void *, fixup_bad_iret)
 BL_DENTRY(void *, xen_adjust_exception_frame)
 BL_DENTRY(void *, paravirt_nop)
@@ -66,3 +64,12 @@ BL_DENTRY(void *, gup_pmd_range)
 BL_DENTRY(void *, gup_huge_pmd)
 BL_DENTRY(void *, gup_pte_range)
 BL_DENTRY(void *, pte_mfn_to_pfn)
+
+/*
+ * Functions used under 4.12 idr_find
+ */
+BL_DENTRY(void *, radix_tree_lookup)
+BL_DENTRY(void *, __radix_tree_lookup)
+BL_DENTRY(void *, radix_tree_load_root)
+BL_DENTRY(void *, radix_tree_descend)
+BL_DENTRY(void *, is_sibling_entry)
