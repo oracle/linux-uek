@@ -63,7 +63,8 @@ static kmem_zone_t *xfs_buf_zone;
 		struct bio bio = {					\
 			.bi_iter.bi_sector = (bp)->b_bn,		\
 			.bi_iter.bi_size = (bp)->b_length,		\
-			.bi_rw = ((bp)->b_flags & XBF_WRITE) != 0,	\
+			.bi_opf = ((bp)->b_flags & XBF_WRITE) ?		\
+			REQ_OP_WRITE : REQ_OP_READ,			\
 			.bi_bdev = (bp)->b_target->bt_bdev,		\
 		};							\
 		DTRACE_IO(name, struct bio * : (bufinfo_t *,		\
