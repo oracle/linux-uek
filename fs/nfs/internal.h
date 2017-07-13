@@ -778,15 +778,15 @@ static inline void nfs_context_set_write_error(struct nfs_open_context *ctx, int
 	set_bit(NFS_CONTEXT_ERROR_WRITE, &ctx->flags);
 }
 
-#define        DTRACE_IO_NFS(name, rw, size, inode)                    \
-	if (DTRACE_IO_ENABLED(name)) {				       \
-		struct bio bio = {					       \
-			.bi_rw = rw,                            \
-			.bi_flags = (1 << BIO_USER_MAPPED),     \
-			.bi_iter.bi_size = size,                \
-			.bi_iter.bi_sector = NFS_FILEID(inode), \
-		};                                              \
-		DTRACE_IO(name, struct bio * : (bufinfo_t *,    \
-			  devinfo_t *), &bio,                   \
-			  struct file * : fileinfo_t *, NULL);  \
+#define	DTRACE_IO_NFS(name, rw, size, inode)			\
+	if (DTRACE_IO_ENABLED(name)) {				\
+		struct bio bio = {				\
+			.bi_opf = rw,				\
+			.bi_flags = (1 << BIO_USER_MAPPED),	\
+			.bi_iter.bi_size = size,		\
+			.bi_iter.bi_sector = NFS_FILEID(inode),	\
+		};						\
+		DTRACE_IO(name, struct bio * : (bufinfo_t *,	\
+			  devinfo_t *), &bio,			\
+			  struct file * : fileinfo_t *, NULL);	\
 }
