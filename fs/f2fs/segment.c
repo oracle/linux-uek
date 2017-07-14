@@ -1843,12 +1843,13 @@ static int build_sit_info(struct f2fs_sb_info *sbi)
 
 	SM_I(sbi)->sit_info = sit_i;
 
-	sit_i->sentries = vzalloc(MAIN_SEGS(sbi) * sizeof(struct seg_entry));
+	sit_i->sentries = kvzalloc(MAIN_SEGS(sbi) * sizeof(struct seg_entry),
+					GFP_KERNEL);
 	if (!sit_i->sentries)
 		return -ENOMEM;
 
 	bitmap_size = f2fs_bitmap_size(MAIN_SEGS(sbi));
-	sit_i->dirty_sentries_bitmap = kzalloc(bitmap_size, GFP_KERNEL);
+	sit_i->dirty_sentries_bitmap = kvzalloc(bitmap_size, GFP_KERNEL);
 	if (!sit_i->dirty_sentries_bitmap)
 		return -ENOMEM;
 
@@ -1867,8 +1868,8 @@ static int build_sit_info(struct f2fs_sb_info *sbi)
 		return -ENOMEM;
 
 	if (sbi->segs_per_sec > 1) {
-		sit_i->sec_entries = vzalloc(MAIN_SECS(sbi) *
-					sizeof(struct sec_entry));
+		sit_i->sec_entries = kvzalloc(MAIN_SECS(sbi) *
+					sizeof(struct sec_entry), GFP_KERNEL);
 		if (!sit_i->sec_entries)
 			return -ENOMEM;
 	}
@@ -1913,12 +1914,12 @@ static int build_free_segmap(struct f2fs_sb_info *sbi)
 	SM_I(sbi)->free_info = free_i;
 
 	bitmap_size = f2fs_bitmap_size(MAIN_SEGS(sbi));
-	free_i->free_segmap = kmalloc(bitmap_size, GFP_KERNEL);
+	free_i->free_segmap = kvmalloc(bitmap_size, GFP_KERNEL);
 	if (!free_i->free_segmap)
 		return -ENOMEM;
 
 	sec_bitmap_size = f2fs_bitmap_size(MAIN_SECS(sbi));
-	free_i->free_secmap = kmalloc(sec_bitmap_size, GFP_KERNEL);
+	free_i->free_secmap = kvmalloc(sec_bitmap_size, GFP_KERNEL);
 	if (!free_i->free_secmap)
 		return -ENOMEM;
 
@@ -2054,7 +2055,7 @@ static int init_victim_secmap(struct f2fs_sb_info *sbi)
 	struct dirty_seglist_info *dirty_i = DIRTY_I(sbi);
 	unsigned int bitmap_size = f2fs_bitmap_size(MAIN_SECS(sbi));
 
-	dirty_i->victim_secmap = kzalloc(bitmap_size, GFP_KERNEL);
+	dirty_i->victim_secmap = kvzalloc(bitmap_size, GFP_KERNEL);
 	if (!dirty_i->victim_secmap)
 		return -ENOMEM;
 	return 0;
@@ -2076,7 +2077,7 @@ static int build_dirty_segmap(struct f2fs_sb_info *sbi)
 	bitmap_size = f2fs_bitmap_size(MAIN_SEGS(sbi));
 
 	for (i = 0; i < NR_DIRTY_TYPE; i++) {
-		dirty_i->dirty_segmap[i] = kzalloc(bitmap_size, GFP_KERNEL);
+		dirty_i->dirty_segmap[i] = kvzalloc(bitmap_size, GFP_KERNEL);
 		if (!dirty_i->dirty_segmap[i])
 			return -ENOMEM;
 	}
@@ -2181,7 +2182,7 @@ static void discard_dirty_segmap(struct f2fs_sb_info *sbi,
 	struct dirty_seglist_info *dirty_i = DIRTY_I(sbi);
 
 	mutex_lock(&dirty_i->seglist_lock);
-	kfree(dirty_i->dirty_segmap[dirty_type]);
+	kvfree(dirty_i->dirty_segmap[dirty_type]);
 	dirty_i->nr_dirty[dirty_type] = 0;
 	mutex_unlock(&dirty_i->seglist_lock);
 }
@@ -2189,7 +2190,7 @@ static void discard_dirty_segmap(struct f2fs_sb_info *sbi,
 static void destroy_victim_secmap(struct f2fs_sb_info *sbi)
 {
 	struct dirty_seglist_info *dirty_i = DIRTY_I(sbi);
-	kfree(dirty_i->victim_secmap);
+	kvfree(dirty_i->victim_secmap);
 }
 
 static void destroy_dirty_segmap(struct f2fs_sb_info *sbi)
@@ -2228,8 +2229,8 @@ static void destroy_free_segmap(struct f2fs_sb_info *sbi)
 	if (!free_i)
 		return;
 	SM_I(sbi)->free_info = NULL;
-	kfree(free_i->free_segmap);
-	kfree(free_i->free_secmap);
+	kvfree(free_i->free_segmap);
+	kvfree(free_i->free_secmap);
 	kfree(free_i);
 }
 
@@ -2249,9 +2250,9 @@ static void destroy_sit_info(struct f2fs_sb_info *sbi)
 	}
 	kfree(sit_i->tmp_map);
 
-	vfree(sit_i->sentries);
-	vfree(sit_i->sec_entries);
-	kfree(sit_i->dirty_sentries_bitmap);
+	kvfree(sit_i->sentries);
+	kvfree(sit_i->sec_entries);
+	kvfree(sit_i->dirty_sentries_bitmap);
 
 	SM_I(sbi)->sit_info = NULL;
 	kfree(sit_i->sit_bitmap);
