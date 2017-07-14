@@ -1416,6 +1416,7 @@ static void nvme_alloc_ns(struct nvme_ctrl *ctrl, unsigned nsid)
 	if (IS_ERR(ns->queue))
 		goto out_release_instance;
 	queue_flag_set_unlocked(QUEUE_FLAG_NONROT, ns->queue);
+	queue_flag_set_unlocked(QUEUE_FLAG_SG_GAPS, ns->queue);
 	ns->queue->queuedata = ns;
 	ns->ctrl = ctrl;
 
