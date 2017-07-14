@@ -12040,6 +12040,10 @@ static int i40e_suspend(struct device *dev)
 
 	set_bit(__I40E_DOWN, &pf->state);
 
+	/* Ensure service task will not be running */
+	del_timer_sync(&pf->service_timer);
+	cancel_work_sync(&pf->service_task);
+
 	if (pf->wol_en && (pf->flags & I40E_FLAG_WOL_MC_MAGIC_PKT_WAKE))
 		i40e_enable_mc_magic_wake(pf);
 
@@ -12077,6 +12081,10 @@ static int i40e_resume(struct device *dev)
 		}
 		i40e_reset_and_rebuild(pf, false, false);
 	}
+
+	/* Restart the service task */
+	mod_timer(&pf->service_timer,
+		  round_jiffies(jiffies + pf->service_timer_period));
 
 	return 0;
 }
