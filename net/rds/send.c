@@ -249,8 +249,8 @@ restart:
 			same_rm = 0;
 		} else {
 			same_rm++;
-			if ((same_rm >= 4096) && printk_ratelimit()) {
-				/* printk(KERN_ERR "RDS: Stuck rm\n"); */
+			if (same_rm >= 4096) {
+				rds_stats_inc(s_send_stuck_rm);
 				ret = -EAGAIN;
 				break;
 			}
