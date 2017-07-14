@@ -78,6 +78,7 @@ static char *rds_stat_names[] = {
 	"qos_threshold_exceeded",
 	"recv_bytes_added_to_sock",
 	"recv_bytes_freed_fromsock",
+	"send_stuck_rm",
 };
 
 void rds_stats_info_copy(struct rds_info_iterator *iter,
