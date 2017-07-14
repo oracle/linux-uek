@@ -2,7 +2,7 @@
  * FILE:	dtrace_util.c
  * DESCRIPTION:	Dynamic Tracing: Architecture utility functions
  *
- * Copyright (C) 2010-2014 Oracle Corporation
+ * Copyright (c) 2010, 2017, Oracle and/or its affiliates. All rights reserved.
  */
 
 #include <linux/dtrace_cpu.h>
