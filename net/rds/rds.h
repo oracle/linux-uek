@@ -853,6 +853,7 @@ struct rds_statistics {
 	uint64_t	s_qos_threshold_exceeded;
 	uint64_t	s_recv_bytes_added_to_socket;
 	uint64_t	s_recv_bytes_removed_from_socket;
+	uint64_t	s_send_stuck_rm;
 };
 
 /* af_rds.c */
