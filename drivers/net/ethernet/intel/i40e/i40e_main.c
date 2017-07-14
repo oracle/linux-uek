@@ -3635,7 +3635,7 @@ static void i40e_free_misc_vector(struct i40e_pf *pf)
 	if (pf->flags & I40E_FLAG_MSIX_ENABLED && pf->msix_entries) {
 		synchronize_irq(pf->msix_entries[0].vector);
 		free_irq(pf->msix_entries[0].vector, pf);
-		clear_bit(__I40E_MISC_IRQ_REQUESTED, pf->state);
+		clear_bit(__I40E_MISC_IRQ_REQUESTED, &pf->state);
 	}
 }
 
@@ -8357,11 +8357,11 @@ static int i40e_setup_misc_vector(struct i40e_pf *pf)
 	int err = 0;
 
 	/* Only request the IRQ once, the first time through. */
-	if (!test_and_set_bit(__I40E_MISC_IRQ_REQUESTED, pf->state)) {
+	if (!test_and_set_bit(__I40E_MISC_IRQ_REQUESTED, &pf->state)) {
 		err = request_irq(pf->msix_entries[0].vector,
 				  i40e_intr, 0, pf->int_name, pf);
 		if (err) {
-			clear_bit(__I40E_MISC_IRQ_REQUESTED, pf->state);
+			clear_bit(__I40E_MISC_IRQ_REQUESTED, &pf->state);
 			dev_info(&pf->pdev->dev,
 				 "request_irq for %s failed: %d\n",
 				 pf->int_name, err);
@@ -12034,7 +12034,10 @@ static int i40e_suspend(struct device *dev)
 	struct i40e_pf *pf = pci_get_drvdata(pdev);
 	struct i40e_hw *hw = &pf->hw;
 
-	set_bit(__I40E_SUSPENDED, &pf->state);
+	/* If we're already suspended, then there is nothing to do */
+	if (test_and_set_bit(__I40E_SUSPENDED, &pf->state))
+		return 0;
+
 	set_bit(__I40E_DOWN, &pf->state);
 
 	if (pf->wol_en && (pf->flags & I40E_FLAG_WOL_MC_MAGIC_PKT_WAKE))
@@ -12058,6 +12061,7 @@ static int i40e_resume(struct device *dev)
 {
 	struct pci_dev *pdev = to_pci_dev(dev);
 	struct i40e_pf *pf = pci_get_drvdata(pdev);
+	u32 err;
 
 	/* handling the reset will rebuild the device state */
 	if (test_and_clear_bit(__I40E_SUSPENDED, &pf->state)) {
