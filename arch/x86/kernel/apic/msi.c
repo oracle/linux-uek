@@ -61,9 +61,11 @@ static int msi_compose_msg(struct pci_dev *pdev, unsigned int irq,
 		return -ENXIO;
 
 	cfg = irq_cfg(irq);
-	err = assign_irq_vector(irq, cfg, apic->target_cpus());
-	if (err)
-		return err;
+	if(!cfg->vector) {
+		err = assign_irq_vector(irq, cfg, apic->target_cpus());
+		if (err)
+			return err;
+	}
 
 	err = apic->cpu_mask_to_apicid_and(cfg->domain,
 					   apic->target_cpus(), &dest);
