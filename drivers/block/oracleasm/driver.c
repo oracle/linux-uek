@@ -1110,9 +1110,10 @@ static int asm_submit_io(struct file *file,
 	struct asm_disk_info *d;
 	struct inode *disk_inode;
 	struct block_device *bdev;
-	struct oracleasm_integrity_v2 *it;
+	struct oracleasm_integrity_v2 it;
 	struct iov_iter iter;
 	struct iovec iov;
+	bool integrity = false;
 
 	if (!ioc || ioc->status_asm_ioc)
 		return -EINVAL;
@@ -1181,10 +1182,23 @@ static int asm_submit_io(struct file *file,
 		goto out_error;
 	}
 
-	if (bdev_get_integrity(bdev))
-		it = (struct oracleasm_integrity_v2 *)ioc->check_asm_ioc;
-	else
-		it = NULL;
+	if (bdev_get_integrity(bdev) && ioc->check_asm_ioc) {
+
+		if (copy_from_user(&it, (struct oracleasm_integrity_v2 *)
+				   ioc->check_asm_ioc, sizeof(it))) {
+			pr_err("%s: Failed to copy integrity descriptor\n",
+			       __func__);
+			ret = -EFAULT;
+			goto out_error;
+		}
+
+		if (asm_integrity_check(&it, bdev) < 0) {
+			ret = -EINVAL;
+			goto out_error;
+		}
+
+		integrity = true;
+	}
 
 	switch (ioc->operation_asm_ioc) {
 		default:
@@ -1193,22 +1207,10 @@ static int asm_submit_io(struct file *file,
 
 		case ASM_READ:
 			rw = READ;
-
-			if (it && asm_integrity_check(it, bdev) < 0) {
-				ret = -ENOMEM;
-				goto out_error;
-			}
-
 			break;
 
 		case ASM_WRITE:
 			rw = WRITE;
-
-			if (it && asm_integrity_check(it, bdev) < 0) {
-				ret = -ENOMEM;
-				goto out_error;
-			}
-
 			break;
 
 		case ASM_NOOP:
@@ -1245,8 +1247,8 @@ static int asm_submit_io(struct file *file,
 	r->r_bio->bi_iter.bi_sector =
 		ioc->first_asm_ioc * (asm_block_size(bdev) >> 9);
 
-	if (it) {
-		ret = asm_integrity_map(it, r, rw == READ);
+	if (integrity) {
+		ret = asm_integrity_map(&it, r, rw == READ);
 
 		if (ret < 0) {
 			pr_err("%s: Could not attach integrity payload\n",
