@@ -25,6 +25,7 @@
  */
 
 #include <linux/dtrace_fbt.h>
+#include <linux/vmalloc.h>
 #include <asm/dtrace_util.h>
 
 #include "dtrace.h"

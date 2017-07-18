@@ -779,7 +779,7 @@ int dtrace_state_go(dtrace_state_t *state, processorid_t *cpu)
 	hdlr.cyh_level = CY_LOW_LEVEL;
 
 	when.cyt_when = ktime_set(0, 0);
-	when.cyt_interval.tv64 = CY_INTERVAL_INF;
+	when.cyt_interval = CY_INTERVAL_INF;
 
 	state->dts_cleaner = cyclic_add(&hdlr, &when);
 	cyclic_reprogram(state->dts_cleaner, ns_to_ktime(
