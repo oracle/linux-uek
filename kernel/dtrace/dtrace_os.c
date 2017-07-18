@@ -75,8 +75,8 @@ void dtrace_os_init(void)
 	 * modules VA range for trampoline anyway so lets pretend a kernel has
 	 * no init section and VA range (0, MODULES_VADDR) is occupied by kernel itself
 	 */
-	dtrace_kmod->module_core = NULL;
-	dtrace_kmod->core_size = MODULES_VADDR;
+	dtrace_kmod->core_layout.base = NULL;
+	dtrace_kmod->core_layout.size = MODULES_VADDR;
 
 	dtrace_kmod->num_ftrace_callsites = dtrace_fbt_nfuncs;
 	dtrace_kmod->state = MODULE_STATE_LIVE;
@@ -111,13 +111,13 @@ void *dtrace_alloc_text(struct module *mp, unsigned long size)
 	void *trampoline;
 
 	/* module range */
-	mp_start = (unsigned long) mp->module_core;
-	mp_end = mp_start + mp->core_size;
+	mp_start = (unsigned long) mp->core_layout.base;
+	mp_end = mp_start + mp->core_layout.size;
 
-	if (mp->module_init != NULL) {
-		mp_start = MIN(mp_start, (unsigned long)mp->module_init);
-		mp_end = MAX(mp_end, (unsigned long)mp->module_init +
-			     mp->init_size);
+	if (mp->init_layout.size) {
+		mp_start = MIN(mp_start, (unsigned long)mp->init_layout.base);
+		mp_end = MAX(mp_end, (unsigned long)mp->init_layout.base +
+			     mp->init_layout.size);
 	}
 
 	/* get trampoline range */
