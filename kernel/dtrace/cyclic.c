@@ -136,7 +136,7 @@ done:
 	/*
 	 * Prepare the timer for the next expiration.
 	 */
-	if (cyc->cyc.when.cyt_interval.tv64 == CY_INTERVAL_INF)
+	if (cyc->cyc.when.cyt_interval == CY_INTERVAL_INF)
 		return HRTIMER_NORESTART;
 
 	hrtimer_forward_now(timr, cyc->cyc.when.cyt_interval);
@@ -171,10 +171,10 @@ cyclic_t *cyclic_new(int omni)
 
 static inline void cyclic_restart(cyclic_t *cyc)
 {
-	if (cyc->cyc.when.cyt_interval.tv64 == CY_INTERVAL_INF)
+	if (cyc->cyc.when.cyt_interval == CY_INTERVAL_INF)
 		return;
 
-	if (cyc->cyc.when.cyt_when.tv64 == 0)
+	if (cyc->cyc.when.cyt_when == 0)
 		hrtimer_start(&cyc->cyc.timr, cyc->cyc.when.cyt_interval,
 			      HRTIMER_MODE_REL_PINNED);
 	else
