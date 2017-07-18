@@ -469,6 +469,10 @@ static void rds_conn_path_destroy(struct rds_conn_path *cp, int shutdown)
 	if (!cp->cp_transport_data)
 		return;
 
+	/* make sure lingering queued work won't try to ref the conn */
+	cancel_delayed_work_sync(&cp->cp_send_w);
+	cancel_delayed_work_sync(&cp->cp_recv_w);
+
 	rds_conn_path_drop(cp, DR_CONN_DESTROY);
 	flush_work(&cp->cp_down_w);
 
@@ -478,10 +482,6 @@ static void rds_conn_path_destroy(struct rds_conn_path *cp, int shutdown)
 	 * module unload and a pending reconn delay work.
 	 */
 	cancel_delayed_work_sync(&cp->cp_reconn_w);
-
-	/* make sure lingering queued work won't try to ref the conn */
-	cancel_delayed_work_sync(&cp->cp_send_w);
-	cancel_delayed_work_sync(&cp->cp_recv_w);
 
 	/* tear down queued messages */
 	list_for_each_entry_safe(rm, rtmp,
@@ -977,6 +977,10 @@ void rds_conn_path_drop(struct rds_conn_path *cp, int reason)
 		    conn->c_trans->t_type == RDS_TRANS_TCP ? "TCP" : "IB",
 		    conn, &conn->c_laddr, &conn->c_faddr,
 		    conn->c_tos);
+
+	if (reason != DR_CONN_DESTROY && test_bit(RDS_DESTROY_PENDING,
+						  &cp->cp_flags))
+		return;
 
 	queue_work(cp->cp_wq, &cp->cp_down_w);
 }
