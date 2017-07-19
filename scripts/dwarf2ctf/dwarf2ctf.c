@@ -822,6 +822,11 @@ int main(int argc, char *argv[])
 
 	trace = getenv("DWARF2CTF_TRACE");
 
+	if (getuid() == 0 || geteuid() == 0) {
+		fprintf(stderr, "dwarf2ctf: run as a regular user, not root.\n");
+		exit(1);
+	}
+
 	if ((argc != 4 && argc != 8) ||
 	    (argc == 4 && strcmp(argv[2], "-e") != 0)) {
 		fprintf(stderr, "Syntax: dwarf2ctf output-file srcdir "
