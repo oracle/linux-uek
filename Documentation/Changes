@@ -49,7 +49,7 @@ Build-time requirements only, for DTrace:
 o  elfutils               0.152                   # eu-readelf --version
 o  pkg-config             0.16                    # pkg-config --version
 o  glib                   2.x                     # pkg-config --exists glib-2.0 && echo present
-o  libdtrace-ctf          0.3
+o  libdtrace-ctf          0.7
 
 Kernel compilation
 ==================
