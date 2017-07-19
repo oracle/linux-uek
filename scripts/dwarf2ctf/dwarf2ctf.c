@@ -1,8 +1,9 @@
 /*
  * dwarf2ctf.c: Read in DWARF[23] debugging information from some set of ELF
- * files, and generate CTF in correspondingly-named files.
+ * files, and generate CTF in correspondingly-named files, or in a single
+ * representation meant for mmapping.
  *
- * (C) 2011 -- 2017 Oracle, Inc.  All rights reserved.
+ * Copyright (c) 2011, 2017, Oracle and/or its affiliates. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -21,6 +22,7 @@
 #include <fcntl.h>
 #include <limits.h>
 #include <endian.h>
+#include <unistd.h>
 
 #include <libelf.h>
 #include <dwarf.h>
@@ -59,9 +61,10 @@ static const char *trace;
 /*
  * Run dwarf2ctf over a single object file or set thereof.
  *
- * output_dir is the directory into which the CTF goes.
+ * output_dir is the directory into which the CTF goes, if 'standalone', or the
+ * CTF archive file name otherwise.
  */
-static void run(char *output_dir);
+static void run(char *output, int standalone);
 
 /*
  * A fully descriptive CTF type ID: both file and type ID in one place.
@@ -255,7 +258,7 @@ static void init_tu_to_modules(void);
  * If this is a local type table, and deduplication is active, make the global
  * type table its parent.
  */
-static ctf_file_t *init_ctf_table(const char *module_name);
+static void init_ctf_table(const char *module_name);
 
 /*
  * A few useful singleton CTF type IDs in the global type table: a void pointer
@@ -404,7 +407,7 @@ static void detect_duplicates(const char *module_name, const char *file_name,
 
 /*
  * Note in the detect_duplicates_id_file list that we will rescan a DIE in
- * a later duplicate detection pass
+ * a later duplicate detection pass.
  *
  * A type_id() callback.
  */
@@ -507,9 +510,9 @@ static void construct_ctf(const char *module_name, const char *file_name,
 
 /*
  * Write out the CTF files from the per_module->ctf_file into files in the
- * output_dir.
+ * output directory (if standalone), or into the output file (otherwise).
  */
-static void write_types(char *output_dir);
+static void write_types(char *output, int standalone);
 
 /*
  * Construct CTF out of each type and return that type's ID and file.
@@ -827,21 +830,21 @@ static void free_duplicates_id_file(void *id_file);
 
 int main(int argc, char *argv[])
 {
-	char *output_dir;
+	char *output;
 
 	trace = getenv("DWARF2CTF_TRACE");
 
 	if ((argc != 4 && argc != 8) ||
 	    (argc == 4 && strcmp(argv[2], "-e") != 0)) {
-		fprintf(stderr, "Syntax: dwarf2ctf outputdir srcdir "
+		fprintf(stderr, "Syntax: dwarf2ctf output-file srcdir "
 			"objects.builtin modules.builtin dedup.blacklist\n");
 		fprintf(stderr, "                  member.blacklist filelist\n");
-		fprintf(stderr, "    or dwarf2ctf outputdir -e filelist\n"
+		fprintf(stderr, "    or dwarf2ctf output-dir -e filelist\n"
 			"for external module use\n");
 		exit(1);
 	}
 
-	output_dir = argv[1];
+	output = argv[1];
 
 	elf_version(EV_CURRENT);
 
@@ -876,7 +879,7 @@ int main(int argc, char *argv[])
 		init_member_blacklist(member_blacklist_file, srcdir);
 		init_object_names(argv[7]);
 
-		run(output_dir);
+		run(output, 0);
 	} else {
 		char *single_object_name;
 		char **all_object_names;
@@ -897,7 +900,7 @@ int main(int argc, char *argv[])
 		for (i = 0; i < all_object_names_cnt; i++) {
 			single_object_name = all_object_names[i];
 
-			run(output_dir);
+			run(output, 1);
 		}
 	}
 
@@ -910,9 +913,10 @@ int main(int argc, char *argv[])
 /*
  * Run dwarf2ctf over a single object file or set thereof.
  *
- * output_dir is the directory into which the CTF goes.
+ * output is the directory into which the CTF goes, if 'standalone', or the
+ * CTF archive file name otherwise.
  */
-static void run(char *output_dir)
+static void run(char *output, int standalone)
 {
 	size_t i;
 
@@ -952,7 +956,7 @@ static void run(char *output_dir)
 	 * necessary linker scripts.
 	 */
 	dw_ctf_trace("Writeout.\n");
-	write_types(output_dir);
+	write_types(output, standalone);
 
 	g_hash_table_destroy(id_to_type);
 	g_hash_table_destroy(id_to_module);
@@ -1355,7 +1359,7 @@ static int member_blacklisted(Dwarf_Die *die, Dwarf_Die *parent_die)
  * If this is a local type table, and deduplication is active, make the global
  * type table its parent.
  */
-static ctf_file_t *init_ctf_table(const char *module_name)
+static void init_ctf_table(const char *module_name)
 {
 	ctf_file_t *ctf_file;
 	per_module_t *new_per_mod;
@@ -1433,7 +1437,7 @@ static ctf_file_t *init_ctf_table(const char *module_name)
 	dw_ctf_trace("Created CTF file for module %s: %p\n",
 		     module_name, ctf_file);
 
-	return ctf_file;
+	return;
 }
 
 /* DWARF walkers.  */
@@ -2034,6 +2038,20 @@ static void detect_duplicates_tu_init(const char *module_name,
 				      void *data)
 {
 	struct detect_duplicates_state *state = data;
+	per_module_t *per_mod;
+
+	/*
+	 * Make sure that even if this module has no types in it we still end up
+	 * generating a CTF file.  (Userspace depends on this, since a CTF file
+	 * with no types in means the module is known and typeless, while no CTF
+	 * file at all means the module is not known.)
+	 */
+
+	per_mod = g_hash_table_lookup(per_module, module_name);
+	if (per_mod == NULL) {
+		init_ctf_table(module_name);
+		dw_ctf_trace("%s: initialized CTF file.\n", module_name);
+	}
 
 	state->structs_seen = g_hash_table_new_full(g_str_hash, g_str_equal,
 						    free, NULL);
@@ -2801,12 +2819,6 @@ static ctf_full_id_t *construct_ctf_id(const char *module_name,
 
 	ctf = lookup_ctf_file(ctf_module);
 
-	if (ctf == NULL) {
-		ctf = init_ctf_table(ctf_module);
-		dw_ctf_trace("%p: %s: initialized CTF file %p\n", &id,
-			     ctf_module, ctf);
-	}
-
 	/*
 	 * Construct the CTF, then insert the top-level CTF entity into the
 	 * id->type hash so that references from other types can find it, and
@@ -3290,6 +3302,7 @@ static int filter_ctf_uninteresting(Dwarf_Die *die,
 	return ((dwarf_tag(parent_die) == DW_TAG_compile_unit) &&
 		!((strcmp(sym_name, "__per_cpu_start") == 0) ||
 		  (strcmp(sym_name, "__per_cpu_end") == 0) ||
+		  (strcmp(sym_name, "_sdt_probes") == 0) ||
 		  (strstarts(sym_name, "__crc_")) ||
 		  (strstarts(sym_name, "__ksymtab_")) ||
 		  (strstarts(sym_name, "__kcrctab_")) ||
@@ -4211,81 +4224,96 @@ static ctf_id_t assemble_ctf_variable(const char *module_name,
 
 /* Writeout.  */
 
-static void write_types(char *output_dir)
+static void write_types(char *output, int standalone)
 {
 	GHashTableIter module_iter;
 	char *module;
 	per_module_t *per_mod;
+	ctf_file_t **ctfs;
+	const char **names;
+	size_t i = 0;
+	size_t ctf_count = g_hash_table_size(per_module);
 
 	/*
-	 * Work over all the modules and write their compressed CTF data out
-	 * into the output directory.  Built-in modules get names ending in
-	 * .builtin.ctf.new; others get names ending in .mod.ctf.new.  The
-	 * makefile moves .ctf.new over the top of .ctf iff it has changed.
+	 * Work over all the modules and write their compressed CTF data out.
+	 * Standalone modules get placed in files in the output directory named
+	 * with names ending in .mod.ctf.new, and the makefile moves .ctf.new
+	 * over the top of .ctf iff it has changed; built-in modules and the
+	 * core kernel and shared type repository are placed into a CTF archive.
 	 */
-
-	if ((mkdir(output_dir, 0777) < 0) && errno != EEXIST) {
-		fprintf(stderr, "Cannot create .ctf directory: %s\n",
-			strerror(errno));
-		exit(1);
+	if (standalone) {
+		if ((mkdir(output, 0777) < 0) && errno != EEXIST) {
+			fprintf(stderr, "Cannot create .ctf directory: %s\n",
+				strerror(errno));
+			exit(1);
+		}
+	} else {
+		ctfs = calloc(ctf_count, sizeof (ctf_file_t *));
+		names = calloc(ctf_count, sizeof (char *));
+		if (!ctfs || !names) {
+			fprintf (stderr, "Out of memory in CTF writeout\n");
+		}
 	}
 
+	/*
+	 * Write the files out (in standalone mode), or construct the arrays of
+	 * module names and files to put in the archive (otherwise).
+	 */
 	g_hash_table_iter_init(&module_iter, per_module);
 	while (g_hash_table_iter_next(&module_iter, (void **) &module,
 				      (void **)&per_mod)) {
-		char *path = NULL;
-		gzFile fd;
-		int builtin_module = 0;
+		int fd;
 
 		dw_ctf_trace("Writing out %s\n", module);
 
-		if ((strcmp(module, "shared_ctf") == 0) ||
-		    (strcmp(module, "vmlinux") == 0))
-			builtin_module = 1;
-		else {
-			size_t module_num;
-
-			for (module_num = 0; module_num < builtin_modules_cnt;
-			     module_num++) {
-				char *module_name = fn_to_module(builtin_modules[module_num]);
-
-				if (strcmp(module_name, module) == 0)
-					builtin_module = 1;
-
-				free(module_name);
-			}
-		}
-
-		path = str_appendn(path, output_dir, "/", module,
-				   builtin_module ? ".builtin" : ".mod",
-				   ".ctf.new", NULL);
-
-		dw_ctf_trace("Writeout path: %s\n", path);
-
 		if (ctf_update(per_mod->ctf_file) < 0) {
 			fprintf(stderr, "Cannot serialize CTF file %s: %s\n",
-				path, ctf_errmsg(ctf_errno(per_mod->ctf_file)));
+				module, ctf_errmsg(ctf_errno(per_mod->ctf_file)));
 			exit(1);
 		}
 
-		if ((fd = gzopen(path, "wb")) == NULL) {
-			fprintf(stderr, "Cannot open CTF file %s for writing: "
-				"%s\n", path, strerror(errno));
-			exit(1);
-		}
-		if (ctf_gzwrite(per_mod->ctf_file, fd) < 0) {
-			fprintf(stderr, "Cannot write to CTF file %s: "
-				"%s\n", path,
-				ctf_errmsg(ctf_errno(per_mod->ctf_file)));
-			exit(1);
-		}
+		if (!standalone) {
+			names[i] = module;
+			ctfs[i] = per_mod->ctf_file;
+			i++;
+		} else {
+			char *path = NULL;
+			path = str_appendn(path, output, "/", module,
+					   ".mod.ctf.new", NULL);
 
-		if (gzclose(fd) != Z_OK) {
-			fprintf(stderr, "Cannot close CTF file %s: %s\n",
-				path, strerror(errno));
+			if ((fd = open(path, O_WRONLY | O_CREAT | O_TRUNC |
+				       O_CLOEXEC, 0666)) < 0) {
+				fprintf(stderr, "Cannot open CTF file %s for "
+					"writing: %s\n", path,
+					strerror(errno));
+				exit(1);
+			}
+			if (ctf_compress_write(per_mod->ctf_file, fd) < 0) {
+				fprintf(stderr, "Cannot write to CTF file %s: "
+					"%s\n", path,
+					ctf_errmsg(ctf_errno(per_mod->ctf_file)));
+				exit(1);
+			}
+			if (close(fd) != 0) {
+				fprintf(stderr, "Cannot close CTF file %s: %s\n",
+					path, strerror(errno));
+				exit(1);
+			}
+			free(path);
+		}
+	}
+
+	if (!standalone) {
+		int err;
+		if ((err = ctf_arc_write(output, ctfs, ctf_count,
+					 names, 4096) != 0)) {
+			fprintf(stderr, "Cannot write to CTF archive %s: %s\n",
+				output, err < ECTF_BASE ? strerror(err) :
+				ctf_errmsg(err));
 			exit(1);
 		}
-		free(path);
+		free(names);
+		free(ctfs);
 	}
 }
 
@@ -4576,7 +4604,7 @@ static GList *list_filter(GList *list, filter_pred_fun fun,
 static char *fn_to_module(const char *file_name)
 {
 	char *module_name;
-	char *chop;
+	char *chop, *dash;
 
 	if ((chop = strrchr(file_name, '/')) != NULL)
 		module_name = xstrdup(++chop);
@@ -4585,6 +4613,13 @@ static char *fn_to_module(const char *file_name)
 
 	if ((chop = strrchr(module_name, '.')) != NULL)
 		*chop = '\0';
+
+	dash = module_name;
+	while (dash != NULL) {
+		dash = strchr(dash, '-');
+		if (dash != NULL)
+			*dash = '_';
+	}
 
 	return module_name;
 }

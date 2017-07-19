@@ -57,7 +57,7 @@ Sphinx\ [#f1]_	       1.3		sphinx-build --version
 elfutils\ [#f2]_       0.156		eu-readelf --version
 pkg-config\ [#f2]_     0.16		pkg-config --version
 glib\ [#f2]_           2.x		pkg-config --exists glib-2.0 && echo present
-libdtrace-ctf\ [#f2]_  0.3
+libdtrace-ctf\ [#f2]_  0.7
 ====================== ===============  ========================================
 
 .. [#f1] Sphinx is needed only to build the Kernel documentation

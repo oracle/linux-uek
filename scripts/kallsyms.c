@@ -1008,7 +1008,8 @@ static void read_modules(const char *modules_builtin)
 	/*
 	 * Read in, stripping off the leading path element, if any, transforming
 	 * the suffix into .o from .ko, and also computing the suffixless,
-	 * pathless name of the module.	 Any elements that don't have files
+	 * pathless name of the module, translating - into _ to match what is
+	 * done for real module names. Any elements that don't have files
 	 * corresponding to them elicit a warning, and do not have their names
 	 * recorded.
 	 */
@@ -1033,10 +1034,17 @@ static void read_modules(const char *modules_builtin)
 
 			if (access(first_slash, R_OK) == 0) {
 				char *module_name = strdup(last_slash);
+				char *dash = module_name;
 
 				last_dot = strrchr(module_name, '.');
 				if (last_dot != NULL)
 					*last_dot = '\0';
+
+				while (dash != NULL) {
+					dash = strchr(dash, '-');
+					if (dash != NULL)
+						*dash = '_';
+				}
 
 				read_module_symbols(builtin_module_len, first_slash,
 					module_symbol_seen);
