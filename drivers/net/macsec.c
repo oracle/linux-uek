@@ -625,7 +625,7 @@ static struct aead_request *macsec_alloc_req(struct crypto_aead *tfm,
 
 	size = ALIGN(size, __alignof__(struct scatterlist));
 	sg_ad_offset = size;
-	size += sizeof(struct scatterlist) * (MAX_SKB_FRAGS + 1);
+	size += sizeof(struct scatterlist) * num_frags;
 
 	tmp = kmalloc(size, GFP_ATOMIC);
 	if (!tmp)
@@ -742,9 +742,8 @@ static struct sk_buff *macsec_encrypt(struct sk_buff *skb,
 		int assoc_len = macsec_hdr_len(tx_sc->send_sci);
                 int data_len = skb->len - secy->icv_len - assoc_len;
 
-                sg_init_table(sg_ad, MAX_SKB_FRAGS + 1);
+                sg_init_table(sg_ad, ret);
                 skb_to_sgvec(skb, sg_ad, 0, assoc_len);
-                sg_init_table(sg, MAX_SKB_FRAGS + 1);
                 skb_to_sgvec(skb, sg, assoc_len, data_len + secy->icv_len);
 	
 		aead_request_set_crypt(req, sg, sg, data_len, iv);
@@ -753,9 +752,8 @@ static struct sk_buff *macsec_encrypt(struct sk_buff *skb,
 		int assoc_len = skb->len - secy->icv_len;
                 int data_len = secy->icv_len;
 
-                sg_init_table(sg_ad, MAX_SKB_FRAGS + 1);
+                sg_init_table(sg_ad, ret);
                 skb_to_sgvec(skb, sg_ad, 0, assoc_len);
-                sg_init_table(sg, MAX_SKB_FRAGS + 1);
                 skb_to_sgvec(skb, sg, assoc_len, data_len);
 
 		aead_request_set_crypt(req, sg, sg, 0, iv);
@@ -968,9 +966,8 @@ static struct sk_buff *macsec_decrypt(struct sk_buff *skb,
                 int assoc_len = macsec_hdr_len(macsec_skb_cb(skb)->has_sci);
                 int data_len = skb->len - assoc_len;
 
-                sg_init_table(sg_ad, MAX_SKB_FRAGS + 1);
+                sg_init_table(sg_ad, ret);
                 skb_to_sgvec(skb, sg_ad, 0, assoc_len);
-                sg_init_table(sg, MAX_SKB_FRAGS + 1);
                 skb_to_sgvec(skb, sg, assoc_len, data_len);
 
                 aead_request_set_crypt(req, sg, sg, data_len, iv);
@@ -986,9 +983,8 @@ static struct sk_buff *macsec_decrypt(struct sk_buff *skb,
                 int assoc_len = skb->len - icv_len;
                 int data_len = icv_len;
 
-                sg_init_table(sg_ad, MAX_SKB_FRAGS + 1);
+                sg_init_table(sg_ad, ret);
                 skb_to_sgvec(skb, sg_ad, 0, assoc_len);
-                sg_init_table(sg, MAX_SKB_FRAGS + 1);
                 skb_to_sgvec(skb, sg, assoc_len, data_len);
 
                 aead_request_set_crypt(req, sg, sg, data_len, iv);
