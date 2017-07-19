@@ -573,7 +573,7 @@ static void ip6_copy_metadata(struct sk_buff *to, struct sk_buff *from)
 
 int ip6_find_1stfragopt(struct sk_buff *skb, u8 **nexthdr)
 {
-	u16 offset = sizeof(struct ipv6hdr);
+	unsigned int offset = sizeof(struct ipv6hdr);
 	struct ipv6_opt_hdr *exthdr =
 				(struct ipv6_opt_hdr *)(ipv6_hdr(skb) + 1);
 	unsigned int packet_len = skb->tail - skb->network_header;
@@ -581,6 +581,7 @@ int ip6_find_1stfragopt(struct sk_buff *skb, u8 **nexthdr)
 	*nexthdr = &ipv6_hdr(skb)->nexthdr;
 
 	while (offset + 1 <= packet_len) {
+		unsigned int len;
 
 		switch (**nexthdr) {
 
@@ -601,14 +602,17 @@ int ip6_find_1stfragopt(struct sk_buff *skb, u8 **nexthdr)
 			return offset;
 		}
 
-		offset += ipv6_optlen(exthdr);
+ 		len = ipv6_optlen(exthdr);
+ 		if (len + offset >= IPV6_MAXPLEN)
+ 			return -EINVAL;
+ 		offset += len;
 		*nexthdr = &exthdr->nexthdr;
 		exthdr = (struct ipv6_opt_hdr *)(skb_network_header(skb) +
 						 offset);
 	}
 
 	return offset;
-}
+	}
 
 static u32 hashidentrnd __read_mostly;
 #define FID_HASH_SZ 16
