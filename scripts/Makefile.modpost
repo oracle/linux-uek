@@ -15,8 +15,9 @@
 # 3)  create one <module>.mod.c file pr. module
 # 4)  create one Module.symvers file with CRC for all exported symbols
 # 5) compute SDT offsets, generate SDT stubs, and compile all .mod.c files
-# 6) generate CTF for the entire kernel, or for the module alone if this is
-#    a build of an external module
+# 6) for external modules, generate CTF for the module (there is an extra,
+#    externally-invoked target that does this for the entire kernel but does
+#    not invoke the rst of the module-building process)
 # 7) final link of the module to a <module.ko> file
 
 # Step 3 is used to place certain information in the module's ELF
@@ -159,10 +160,18 @@ endif
 
 targets += $(modules:.ko=.mod.o)
 
-# Step 6), generate CTF for the entire kernel, or for the module alone if this
-# is a build of an external module.
+# Step 6), generate CTF for the entire kernel (in a separate $(CTF_FILENAME)),
+# or for the module alone if this is a build of an external module.
 
 ifdef CONFIG_CTF
+
+# These are overridden below for standalone modules only.
+module-ctfs-modular-prereq =
+module-ctfs-modular =
+module-ctf-flags =
+cmd_touch_ctf =
+ctf-dir = ///.nonexistent
+cmd-touch-ctf = @:
 
 # This is quite tricky.  If called for non-external-modules, dwarf2ctf needs to
 # be told about all the built-in objects as well as all the external modules --
@@ -170,44 +179,34 @@ ifdef CONFIG_CTF
 # emits the names of the built-in objects into a temporary file, which is
 # then catted and its contents used as prerequisites by this rule.
 #
-# Because we only run dwarf2ctf once (in non-standalone-module mode), and it
-# depends on a stamp file (because its real targets cannot change unless the
-# object files change, in which case a relink of the appropriate modules is
-# triggered anyway), we don't emit a filename in this output.
-#
-# Out-of-tree module CTF gets its own per-module set of stamp files, since its
-# CTF is rebuilt independently.
-#
 # We write the names of the object files to be scanned for CTF content into a
 # file, then use that, to avoid hitting command-line length limits.
 
 ifeq ($(KBUILD_EXTMOD),)
-ctf-dir := .ctf
-quiet_cmd_ctf = CTF
-      cmd_ctf = scripts/dwarf2ctf/dwarf2ctf $(ctf-dir) $(srctree) objects.builtin modules.builtin $(srctree)/scripts/dwarf2ctf/dedup.blacklist $(srctree)/scripts/dwarf2ctf/member.blacklist $(ctf-filelist)
-builtins := $(shell cat objects.builtin 2>/dev/null)
-ctf-stamp := .ctf/ctf.stamp
-ctf-filelist := .ctf/ctf.filelist
-
-# The CTF module depends on the CTF stamp file, in lieu of the builtin
-# CTF files whose names we cannot determine until it is too late.
-
-kernel/ctf/ctf.ko: .ctf/ctf.stamp
+ctf-dir-mk :=
+quiet_cmd_ctf = CTFA
+      cmd_ctf = scripts/dwarf2ctf/dwarf2ctf $(CTF_FILENAME) $(srctree) objects.builtin modules.builtin $(srctree)/scripts/dwarf2ctf/dedup.blacklist $(srctree)/scripts/dwarf2ctf/member.blacklist $(ctf-filelist)
+ctf-builtins := $(CTF_DEBUGDIR)/vmlinux
+ ctf-modules := $(shell find $(CTF_DEBUGDIR) \( -name '*.ko' -o -name '*.ko.debug' \) -print)
+ctf-filelist := .ctf.filelist
+ctf-stamp :=
 
 else
 ctf-dir := $(KBUILD_EXTMOD)/.ctf
+ctf-dir-mk := $(ctf-dir)
 quiet_cmd_ctf = CTF
       cmd_ctf = scripts/dwarf2ctf/dwarf2ctf $(ctf-dir) -e $(ctf-filelist)
-builtins :=
-ctf-stamp := $(ctf-dir)/$(notdir $(M)-extmod).stamp
+ctf-builtins :=
+ctf-modules := $(modules:.ko=.o)
 ctf-filelist := $(ctf-dir)/$(notdir $(M)-extmod).ctf.filelist
+ctf-stamp = $(ctf-dir)/$(notdir $(M)-extmod).stamp
 
-endif
-
-# All the modules' CTF likewise depends on the stamp file.
+# All the modules' CTF depends on the stamp file.
 
 all-module-ctfs = $(addprefix $(ctf-dir)/,$(notdir $(modules:.ko=.mod.ctf)))
 $(all-module-ctfs): $(ctf-stamp)
+
+endif
 
 # This ensures that the (possibly very long) prerequisite list is written out
 # using one shell invocation per prerequisite.
@@ -221,26 +220,30 @@ define add-ctf-filelists-cmd
 	$(foreach file,$(1),$(call add-ctf-filelist-cmd,$(file)))
 endef
 
-$(ctf-filelist): $(builtins) $(modules:.ko=.o) | $(sdtinfo-prereq)
+$(ctf-filelist): $(ctf-builtins) $(ctf-modules) | $(sdtinfo-prereq)
 	@rm -f $(ctf-filelist);
-	@mkdir -p $(ctf-dir);
+	@if [[ -n "$(ctf-dir-mk)" ]]; then \
+		mkdir -p "$(ctf-dir-mk)"; \
+	fi
 	$(call add-ctf-filelists-cmd,$^)
 
-# We depend upon a stamp file in lieu of the builtin modules' CTF files, because
-# the names of the generated CTF files for the builtins are so variable.
-# (Standalone modules get their own per-module stamp files.)
-# The stamp file then depends on the .o files for the modules, and on the
-# sdtinfo files, if any (for the same reason that the sdtstub does).
+ifeq ($(KBUILD_EXTMOD),)
+# The CTF depends on the output CTF file list, and that depends
+# on the .ko files for the modules.
+$(CTF_FILENAME): $(ctf-filelist)
+	$(call if_changed,ctf)
+else
+
+# The CTF depends on the output CTF file list, and that depends
+# on the .o files for the modules, and on the sdtinfo files, if any
+# (for the same reason that the sdtstub does).
 $(ctf-stamp): $(ctf-filelist)
 	$(call if_changed,ctf)
 	@shopt -s nullglob; \
-	for name in $(ctf-dir)/*.builtin.ctf; do \
-		[[ -f $${name}.new ]] || rm -f $$name; \
-	done; \
 	for name in $(ctf-dir)/*.ctf.new; do \
 		$(srctree)/scripts/move-if-change $$name $${name%.new}; \
-	done
-	@touch $(ctf-stamp)
+	done; \
+	touch $(ctf-stamp)
 
 # Expands to the names of the CTF files to be incorporated into this module.
 # The former is used in prerequisite lists, thanks to secondary expansion.
@@ -260,9 +263,6 @@ ctf-module-name = $(addprefix $(ctf-dir)/,$(notdir $(basename $@)).mod.ctf)
 
 module-ctf-flags = $(if $(filter ctf.ko,$(notdir $@)), \
 		   --strip-debug \
-		   $(shell for builtin in $(ctf-dir)/*.builtin.ctf; do \
-			       printf "%s" "--add-section .ctf.$$(basename $$builtin .builtin.ctf)=$$builtin "; \
-			   done), \
 		   --add-section .ctf=$(ctf-module-name))
 
 # We have to put content in our dummy no-CTF files because --add-section
@@ -272,15 +272,9 @@ cmd_touch_ctf = @for name in $(filter $(ctf-dir)/%,$(module-ctfs-modular)); do \
 		    test -f $$name || dd if=/dev/zero of=$$name bs=1 count=1 2>/dev/null; \
 		done
 
-else		# !CONFIG_CTF
+endif		# KBUILD_EXTMOD
 
-module-ctfs-modular-prereq =
-module-ctfs-builtin =
-module-ctf-flags =
-ctf-dir = ///.nonexistent
-cmd-touch-ctf = @:
-
-endif
+endif		# !CONFIG_CTF
 
 # Step 7), final link of the modules with optional arch pass after final link
 ARCH_POSTLINK := $(wildcard $(srctree)/arch/$(SRCARCH)/Makefile.postlink)
