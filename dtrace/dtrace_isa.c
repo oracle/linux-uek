@@ -20,6 +20,7 @@
 #include <linux/mm.h>
 #include <linux/smp.h>
 #include <linux/uaccess.h>
+#include <linux/cpumask.h>
 #include <asm/cacheflush.h>
 #include <asm/ptrace.h>
 #include <asm/stacktrace.h>
@@ -36,10 +37,6 @@ int dtrace_getipl(void)
 	return in_interrupt();
 }
 
-static void dtrace_sync_func(void)
-{
-}
-
 void dtrace_xcall(processorid_t cpu, dtrace_xcall_t func, void *arg)
 {
 	if (cpu == DTRACE_CPUALL) {
@@ -48,14 +45,133 @@ void dtrace_xcall(processorid_t cpu, dtrace_xcall_t func, void *arg)
 		smp_call_function_single(cpu, func, arg, 1);
 }
 
-void dtrace_sync(void)
-{
-	dtrace_xcall(DTRACE_CPUALL, (dtrace_xcall_t)dtrace_sync_func, NULL);
-}
-
 void dtrace_toxic_ranges(void (*func)(uintptr_t, uintptr_t))
 {
 	/* FIXME */
+}
+
+/*
+ * Note:  not called from probe context.  This function is called
+ * asynchronously (and at a regular interval) from outside of probe context
+ * by the DTrace framework to sync shared data which DTrace probe context
+ * may access without locks.
+ *
+ * Whenever the framework updates data which can be accessed from probe context,
+ * the framework then calls dtrace_sync().  dtrace_sync() guarantees all probes
+ * are using the new data before returning.
+ *
+ * See the comment in dtrace_impl.h which describes this algorithm.
+ * The cpuc_in_probe_ctxt flag is an increasing 16-bit count.  It is odd when
+ * in DTrace probe context and even when not in DTrace probe context.
+ * The upper 15 bits are a counter which are incremented when exiting DTrace
+ * probe context.  These upper 15 bits are used to detect "sample aliasing":
+ * i.e. the target CPU is not in DTrace probe context between samples but
+ * continually enters probe context just before being sampled.
+ *
+ * dtrace_sync() loops over NCPUs.  CPUs which are not in DTrace probe context
+ * (cpuc_in_probe_ctxt is even) are removed from the list.  This is repeated
+ * until there are no CPUs left in the sync list.
+ *
+ * In the rare cases where dtrace_sync() loops over all NCPUs more than
+ * dtrace_sync_sample_count times, dtrace_sync() then spins on one CPU's
+ * cpuc_in_probe_ctxt count until the count increments.  This is intended to
+ * avoid sample aliasing.
+ */
+void dtrace_sync(void)
+{
+	/*
+	 * sync_cpus is a bitmap of CPUs that need to be synced with.
+	 */
+	cpumask_t	sync_cpus;
+	uint64_t	sample_count = 0;
+	int		cpuid, sample_cpuid;
+	int		outstanding;
+
+	/*
+	 * Create bitmap of CPUs that need to be synced with.
+	 */
+	cpumask_copy(&sync_cpus, cpu_online_mask);
+	outstanding = 0;
+	for_each_cpu(cpuid, &sync_cpus) {
+		++outstanding;
+
+		/*
+		 * Set a flag to let the CPU know we are syncing with it.
+		 */
+		DTRACE_SYNC_START(cpuid);
+	}
+
+	/*
+	 * The preceding stores by DTRACE_SYNC_START() must complete before
+	 * subsequent loads or stores.  No membar is needed because the
+	 * atomic-add operation in DTRACE_SYNC_START is a memory barrier on
+	 * SPARC and X86.
+	 */
+
+	while (outstanding > 0) {
+		/*
+		 * Loop over the map of CPUs that need to be synced with.
+		 */
+		for_each_cpu(cpuid, &sync_cpus) {
+			if (!DTRACE_SYNC_IN_CRITICAL(cpuid)) {
+
+				/* Clear the CPU's sync request flag */
+				DTRACE_SYNC_END(cpuid);
+
+				/*
+				 * remove cpuid from list of CPUs that
+				 * still need to be synced with.
+				 */
+				DTRACE_SYNC_DONE(cpuid, &sync_cpus);
+				--outstanding;
+			} else {
+				/*
+				 * Remember one of the outstanding CPUs to spin
+				 * on once we reach the sampling limit.
+				 */
+				sample_cpuid = cpuid;
+			}
+		}
+
+		/*
+		 * dtrace_probe may be running in sibling threads in this core.
+		 */
+		if (outstanding > 0) {
+			dtrace_safe_smt_pause();
+
+			/*
+			 * After sample_count loops, spin on one CPU's count
+			 * instead of just checking for odd/even.
+			 */
+			if (++sample_count > dtrace_sync_sample_count) {
+				uint64_t count =
+				    DTRACE_SYNC_CRITICAL_COUNT(sample_cpuid);
+
+				/*
+				 * Spin until critical section count increments.
+				 */
+				if (DTRACE_SYNC_IN_CRITICAL(sample_cpuid)) {
+					while (count ==
+					    DTRACE_SYNC_CRITICAL_COUNT(
+					    sample_cpuid)) {
+
+						dtrace_safe_smt_pause();
+					}
+				}
+
+				DTRACE_SYNC_END(sample_cpuid);
+				DTRACE_SYNC_DONE(sample_cpuid, &sync_cpus);
+				--outstanding;
+			}
+		}
+	}
+
+/*
+ * All preceding loads by DTRACE_SYNC_IN_CRITICAL() and
+ * DTRACE_SYNC_CRITICAL_COUNT() must complete before subsequent loads
+ * or stores.  No membar is needed because the atomic-add operation in
+ * DTRACE_SYNC_END() is a memory barrier on SPARC and X86.
+ */
 }
 
 /*

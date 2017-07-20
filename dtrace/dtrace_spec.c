@@ -281,11 +281,12 @@ void dtrace_speculation_clean_here(dtrace_state_t *state)
 	processorid_t		cpu = smp_processor_id();
 	dtrace_buffer_t		*dest = &state->dts_buffer[cpu];
 	dtrace_specid_t		i;
+	uint32_t		re_entry;
 
-	local_irq_save(cookie);
+	DTRACE_SYNC_ENTER_CRITICAL(cookie, re_entry);
 
 	if (dest->dtb_tomax == NULL) {
-		local_irq_restore(cookie);
+		DTRACE_SYNC_EXIT_CRITICAL(cookie, re_entry);
 		return;
 	}
 
@@ -310,7 +311,7 @@ void dtrace_speculation_clean_here(dtrace_state_t *state)
 		dtrace_speculation_commit(state, cpu, i + 1);
 	}
 
-	local_irq_restore(cookie);
+	DTRACE_SYNC_EXIT_CRITICAL(cookie, re_entry);
 }
 
 void dtrace_speculation_clean(dtrace_state_t *state)
