@@ -759,6 +759,283 @@ extern void dtrace_buffer_polish(dtrace_buffer_t *);
 extern void dtrace_buffer_free(dtrace_buffer_t *);
 
 /*
+ * DTrace framework/probe data synchronization
+ * -------------------------------------------
+ *
+ * The dtrace_sync() facility is used to synchronize global DTrace framework
+ * data with DTrace probe context.  The framework updates data and then calls
+ * dtrace_sync().  dtrace_sync() loops until it observes all CPUs have been out
+ * of probe context at least once.  This ensures all consumers are using the
+ * updated data.
+ *
+ * DTrace probes have several requirements.  First DTrace probe context cannot
+ * block.  DTrace probes execute with interrupts disabled.  Locks cannot be
+ * acquired in DTrace probe context.  A second requirement is that DTrace
+ * probes need to be as high performance as possible to minimize the effect of
+ * enabled probes.
+ *
+ * DTrace framework data changes have their own requirements.  DTrace data
+ * changes/syncs are extremely infrequent compared to DTrace probe firings.
+ * Probes can be in commonly executed code.  A good trade-off is to favor
+ * DTrace probe context performance over DTrace sync performance.
+ *
+ * To meet the above requirements, the DTrace data synchronization algorithm
+ * is lock-less.  The DTrace probe path is wait-free.  The DTrace probe path
+ * is memory-barrier-free in the common case to minimize probe effect.
+ * dtrace_probe has been made membar free in the common case by adding a read
+ * in dtrace_probe and adding an additional write and membar to dtrace_sync().
+ *
+ * A simple algorithm is to have dtrace_probe set a flag for its CPU when
+ * entering DTrace probe context and clear the flag when it exits DTrace probe
+ * context.  A producer of DTrace framework data checks the flag to detect and
+ * synchronize with probe context.  Unfortunately memory ordering issues
+ * complicate the implementation.  Memory barriers are required in probe
+ * context for this simple approach to work.
+ *
+ * A simple implementation to sync with one CPU that works with any memory
+ * ordering model is:
+ *
+ * DTrace probe:
+ *    1. CPU->in_probe_context = B_TRUE;
+ *    2. dtrace_membar_enter()// membar #StoreLoad|#StoreStore
+ *    3. access framework shared data// critical section
+ *    4. dtrace_membar_exit()// membar #LoadStore|#StoreStore
+ *    5. CPU->in_probe_context = B_FALSE;
+ *
+ * DTrace framework dtrace_sync:
+ *    0. update framework shared data
+ *    1. dtrace_membar_enter()// membar #StoreLoad|#StoreStore
+ *    2. while (CPU->in_probe_context == B_TRUE)
+ *    3.     spin
+ *    4. dtrace_membar_exit()// membar #LoadStore|#StoreStore
+ *    5. produce shared dtrace data
+ *
+ * A note on memory ordering
+ * -------------------------
+ *
+ * dtrace_membar_enter() guarantees later loads cannot complete before earlier
+ * stores, and it guarantees later stores cannot complete before earlier stores.
+ * dtrace_membar_enter() is, in SPARC parlance, a membar #StoreLoad|#StoreStore.
+ *
+ * dtrace_membar_exit() guarantees later stores cannot complete before earlier
+ * loads, and it guarantees later stores cannot complete before earlier stores.
+ * dtrace_membar_exit() is, in SPARC parlance, a membar #LoadStore|#StoreStore.
+ *
+ * Please see the SPARC and Intel processor guides on memory ordering.
+ * All sun4v and Fujitsu processors are TSO (Total Store Order).  Modern
+ * supported Intel and AMD processors have similar load and store ordering
+ * to SPARC.  All processors currently supported by Solaris have these memory
+ * ordering properties:
+ * 1) Loads are ordered with respect to earlier loads.
+ * 2) Stores are ordered with respect to earlier stores.
+ * 3a) SPARC Atomic load-store behaves as if it were followed by a
+ *     MEMBAR #LoadLoad, #LoadStore, and #StoreStore.
+ * 3b) X86 Atomic operations serialize load and store.
+ * 4) Stores cannot bypass earlier loads.
+ *
+ * The above implementation details allow the membars to be simplified thus:
+ * A) dtrace_membar_enter() can be reduced to "membar #StoreLoad" on sparc.
+ *    See property number 4 above.
+ *    Since dtrace_membar_enter() is an atomic operation on x86, it cannot be
+ *    reduced further.
+ * B) dtrace_membar_exit() becomes a NOP on both SPARC and x86.
+ *    See properties 2 and 4.
+ *
+ *
+ * Elimination of membar #StoreLoad from dtrace probe context
+ * ----------------------------------------------------------
+ *
+ * Furthermore it is possible to eliminate all memory barriers from the common
+ * dtrace_probe() entry case.  The only membar needed in dtrace_probe is there
+ * to prevent Loads of global DTrace framework data from passing the Store to
+ * the "in_probe_context" flag (i.e. the dtrace_membar_enter()).
+ * A Load at the beginning of the algorithm is also ordered with these later
+ * Loads and Stores: the membar #StoreLoad can be replaced with a early Load of
+ * a "sync_request" flag and a conditional branch on the flag value.
+ *
+ * dtrace_sync() first Stores to the "sync_request" flag, and dtrace_probe()
+ * starts by Loading the flag.  This Load in dtrace_probe() of "sync_request"
+ * is ordered with its later Store to the "in_probe_context" flag and
+ * dtrace_probe's later Loads of DTrace framework data.  dtrace_probe() only
+ * needs a membar #StoreLoad iff the "sync_request" flag is set.
+ *
+ * Optimized Synchronization Algorithm
+ * -----------------------------------
+ *
+ * DTrace probe:
+ * +  1a. request_flag = CPU->sync_request		// Load
+ *    1b. CPU->in_probe_context = B_TRUE		// Store
+ * +  2.  if request_flag > 0
+ *            dtrace_membar_enter()			// membar #StoreLoad
+ *    3. access framework shared data			// critical section
+ * -
+ *    5. CPU->in_probe_context = B_FALSE		// Store
+ *
+ * DTrace framework dtrace_sync:
+ * +  1a. atomically add 1 to CPU->sync_request		// Store and
+ *    1b. dtrace_membar_enter()				// membar #StoreLoad
+ *    2.  while (CPU->in_probe_context == B_TRUE)	// Load
+ *    3.      spin
+ * +  4a. atomically subtract 1 from CPU->sync_request	// Load + Store
+ * -
+ *    5.  produce shared dtrace data
+ *
+ * This algorithm has been proven correct by analysis of all interleaving
+ * scenarios of the above operations with the hardware memory ordering
+ * described above.
+ *
+ * The Load and store of the flag pair is very inexpensive.  The cacheline with
+ * the flag pair is never accessed by a different CPU except by dtrace_sync.
+ * dtrace_sync is very uncommon compared to typical probe firings.  The removal
+ * of membars from DTrace probe context at the expense of a Load and Store and
+ * a conditional branch is a good performance win.
+ *
+ * As implemented there is one pair of flags per CPU.  The flags are in one
+ * cacheline; they could be split into two cachelines if dtrace_sync was more
+ * common.  dtrace_sync loops over all NCPU sets of flags.  dtrace_sync lazily
+ * only does one dtrace_membar_enter() (step 1b) after setting all NCPU
+ * sync_request flags.
+ *
+ * Sample aliasing could cause dtrace_sync() to always sample a CPU's
+ * in_probe_context flag when the CPU is in probe context even if the CPU
+ * left and returned to probe context one or more times since the last sample.
+ * cpuc_in_probe_ctxt is implemented as an even/odd counter instead of a
+ * boolean flag.  cpuc_in_probe_ctxt is odd when in probe context and even
+ * when not in probe context.  Probe context increments cpuc_in_probe_ctxt when
+ * entering and exiting.  dtrace_probe() handles re-entry by not increment the
+ * counter for re-enterant entry and exit.
+ */
+
+/*
+ * dtrace_membar_exit() is a NOP on current SPARC and X86 hardware.
+ * It is defined as an inline asm statement to prevent the C optimizer from
+ * moving C statements around the membar.
+ */
+#define	dtrace_membar_exit()						\
+	__asm__ __volatile__("" ::: "memory")
+
+/*
+ * dtrace_membar_enter() does not need an explicit membar #StoreStore because
+ * modern SPARC hardware is TSO: stores are ordered with other stores.
+ */
+#define	dtrace_membar_enter()						\
+	mb();
+
+#define	dtrace_safe_smt_pause()						\
+	cpu_relax();
+
+/*
+ * Used by dtrace_probe() to flag entry to the the critical section.
+ * dtrace_probe() context may be consuming DTrace framework data.
+ *
+ * cpuc_in_probe_ctxt is odd when in probe context and even when not in
+ * probe context.  The flag must not be incremented when re-entering from
+ * probe context.
+ */
+#define	DTRACE_SYNC_ENTER_CRITICAL(cookie, re_entry)			\
+{									\
+	uint64_t	requests;					\
+	uint64_t	count;						\
+									\
+	local_irq_save(cookie);						\
+									\
+	requests = atomic64_read(&this_cpu_core->cpuc_sync_requests);	\
+									\
+	/* Increment flag iff it is even */				\
+	count = atomic64_read(&this_cpu_core->cpuc_in_probe_ctx);	\
+	re_entry = count & 0x1;						\
+	atomic64_set(&this_cpu_core->cpuc_in_probe_ctx, count | 0x1);	\
+	ASSERT(DTRACE_SYNC_IN_CRITICAL(smp_processor_id()));		\
+									\
+	/*								\
+	 * Later Loads are ordered with respect to the Load of		\
+	 * cpuc_sync_requests.  The Load is also guaranteed to complete	\
+	 * before the store to cpuc_in_probe_ctxt.  Thus a member_enter	\
+	 * is only needed when requests is not 0.  This is very		\
+	 * uncommon.							\
+	 */								\
+	if (requests > 0) {						\
+		dtrace_membar_enter();					\
+	}								\
+}
+
+/*
+ * Used by dtrace_probe() to flag exit from the critical section.
+ * dtrace_probe context is no longer using DTrace framework data.
+ */
+#define	DTRACE_SYNC_EXIT_CRITICAL(cookie, re_entry)			\
+{									\
+	dtrace_membar_exit();						\
+	ASSERT((re_entry | 0x1) ==  0x1);				\
+									\
+	/*								\
+	 * flag must not be incremented when returning to probe context.\
+	 */								\
+	atomic64_add(~re_entry & 0x1, &this_cpu_core->cpuc_in_probe_ctx); \
+	ASSERT(re_entry ==						\
+	    (atomic64_read(&this_cpu_core->cpuc_in_probe_ctx) & 0x1));	\
+	local_irq_restore(cookie);					\
+}
+
+/*
+ * Used by dtrace_sync to inform dtrace_probe it needs to synchronize with
+ * dtrace_sync.  dtrace_probe consumes the cpuc_sync_requests flag to determine
+ * if it needs a membar_enter.  Not called from probe context.
+ *
+ * cpuc_sync_requests must be updated atomically by dtrace_sync because there
+ * may be multiple dtrace_sync operations executing at the same time.
+ * cpuc_sync_requests is a simple count of the number of concurrent
+ * dtrace_sync requests.
+ */
+#define	DTRACE_SYNC_START(cpuid)					\
+{									\
+	atomic64_add(1, &(per_cpu_core(cpuid))->cpuc_sync_requests);	\
+	ASSERT(atomic64_read(&per_cpu_core(cpuid)->cpuc_sync_requests) > 0);	\
+}
+
+/*
+ * Used by dtrace_sync to flag dtrace_probe that it no longer needs to
+ * synchronize with dtrace_sync.  Not called from probe context.
+ */
+#define	DTRACE_SYNC_END(cpuid)						\
+{									\
+	atomic64_add(-1, &(per_cpu_core(cpuid))->cpuc_sync_requests);	\
+	ASSERT(atomic64_read(&per_cpu_core(cpuid)->cpuc_sync_requests) >= 0);	\
+}
+
+/*
+ * The next two macros are used by dtrace_sync to check if the target CPU is in
+ * DTrace probe context.  cpuc_in_probe_ctxt is a monotonically increasing
+ * count which dtrace_probe() increments when entering and exiting probe
+ * context.  The flag is odd when in probe context, and even when not in probe
+ * context.
+ */
+#define	DTRACE_SYNC_IN_CRITICAL(cpuid)					\
+	(atomic64_read(&per_cpu_core(cpuid)->cpuc_in_probe_ctx) & 0x1)
+
+/*
+ * Used to check if the target CPU left and then entered probe context again.
+ */
+#define	DTRACE_SYNC_CRITICAL_COUNT(cpuid)				\
+	(atomic64_read(&per_cpu_core(cpuid)->cpuc_in_probe_ctx))
+
+/*
+ * The next three macros are bitmap operations used by dtrace_sync to keep track
+ * of which CPUs it still needs to synchronize with.
+ */
+#define	DTRACE_SYNC_OUTSTANDING(cpuid, bitmap)				\
+	(cpumask_test_cpu(cpuid, bitmap) == 1)
+
+#define	DTRACE_SYNC_NEEDED(cpuid, bitmap)				\
+	cpumask_set_cpu(cpuid, bitmap)
+
+#define	DTRACE_SYNC_DONE(cpuid, bitmap)					\
+	cpumask_clear_cpu(cpuid, bitmap)
+
+extern uint64_t dtrace_sync_sample_count;
+extern void dtrace_sync(void);
+
+/*
  * DTrace Enabling Functions
  */
 extern dtrace_enabling_t	*dtrace_retained;
@@ -857,7 +1134,6 @@ typedef unsigned long	dtrace_icookie_t;
 
 extern struct mutex	cpu_lock;
 
-extern void dtrace_sync(void);
 extern void dtrace_toxic_ranges(void (*)(uintptr_t, uintptr_t));
 extern void dtrace_vpanic(const char *, va_list);
 extern int dtrace_getipl(void);

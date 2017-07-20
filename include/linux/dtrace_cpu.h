@@ -1,4 +1,6 @@
-/* Copyright (C) 2011-2014 Oracle, Inc. */
+/*
+ * Copyright (c) 2004, 2017, Oracle and/or its affiliates. All rights reserved.
+ */
 
 #ifndef _LINUX_DTRACE_CPU_H_
 #define _LINUX_DTRACE_CPU_H_
@@ -21,6 +23,8 @@ typedef struct cpu_core {
 	ktime_t cpu_dtrace_chillmark;
 	ktime_t cpu_dtrace_chilled;
 	rwlock_t cpu_ft_lock;
+	atomic64_t cpuc_sync_requests;
+	atomic64_t cpuc_in_probe_ctx;
 } cpu_core_t;
 
 DECLARE_PER_CPU_SHARED_ALIGNED(cpu_core_t, dtrace_cpu_core);

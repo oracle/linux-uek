@@ -44,6 +44,7 @@ dtrace_optval_t		dtrace_jstackstrsize_default = 512;
 ktime_t			dtrace_deadman_interval = KTIME_INIT(1, 0);
 ktime_t			dtrace_deadman_timeout = KTIME_INIT(10, 0);
 uint64_t		dtrace_deadman_user = SECS_TO_JIFFIES(30);
+uint64_t		dtrace_sync_sample_count = 100; /* Sampling before counting */
 
 dtrace_id_t		dtrace_probeid_begin;
 dtrace_id_t		dtrace_probeid_end;

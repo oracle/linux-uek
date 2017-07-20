@@ -25,3 +25,9 @@ BL_DENTRY(void *, gup_pud_range)
 BL_DENTRY(void *, gup_pmd_range)
 BL_DENTRY(void *, gup_huge_pmd)
 BL_DENTRY(void *, gup_pte_range)
+
+/*
+ * Functions used in dtrace_sync().
+ */
+BL_DENTRY(void *, find_next_bit)
+BL_DENTRY(void *, _find_next_bit)
