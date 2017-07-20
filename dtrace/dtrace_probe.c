@@ -515,6 +515,7 @@ void dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 	int			onintr;
 	volatile uint16_t	*flags;
 	int			pflag = 0;
+	uint32_t		re_entry;
 
 #ifdef FIXME
 	/*
@@ -526,12 +527,13 @@ void dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 		return;
 #endif
 
+	DTRACE_SYNC_ENTER_CRITICAL(cookie, re_entry);
+
 	/*
 	 * If preemption has already been disabled before we get here, we
 	 * accept it as a free gift.  We just need to make sure that we don't
 	 * re-enable preemption on the way out...
 	 */
-	local_irq_save(cookie);
 	if ((pflag = dtrace_is_preemptive()))
 		dtrace_preempt_off();
 
@@ -547,7 +549,7 @@ void dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 		 */
 		if (pflag)
 			dtrace_preempt_on();
-		local_irq_restore(cookie);
+		DTRACE_SYNC_EXIT_CRITICAL(cookie, re_entry);
 		return;
 	}
 
@@ -557,7 +559,7 @@ void dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 		 */
 		if (pflag)
 			dtrace_preempt_on();
-		local_irq_restore(cookie);
+		DTRACE_SYNC_EXIT_CRITICAL(cookie, re_entry);
 		return;
 	}
 
@@ -574,7 +576,7 @@ void dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 			     pflag);
 		if (pflag)
 			dtrace_preempt_on();
-		local_irq_restore(cookie);
+		DTRACE_SYNC_EXIT_CRITICAL(cookie, re_entry);
 		return;
 	}
 
@@ -1250,7 +1252,7 @@ void dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 
 	if (pflag)
 		dtrace_preempt_on();
-	local_irq_restore(cookie);
+	DTRACE_SYNC_EXIT_CRITICAL(cookie, re_entry);
 
 	if (current->dtrace_sig != 0) {
 		int	sig = current->dtrace_sig;
