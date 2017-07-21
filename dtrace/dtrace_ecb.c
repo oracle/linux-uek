@@ -547,6 +547,11 @@ static dtrace_ecb_t *dtrace_ecb_add(dtrace_state_t *state,
 		}
 
 		ecbs = vzalloc(necbs * sizeof(*ecbs));
+		if (ecbs == NULL) {
+			kfree(ecb);
+			return NULL;
+		}
+
 		if (oecbs != NULL)
 			memcpy(ecbs, oecbs, state->dts_necbs * sizeof(*ecbs));
 
@@ -591,6 +596,9 @@ static dtrace_ecb_t *dtrace_ecb_create(dtrace_state_t *state,
 	ASSERT(state != NULL);
 
 	ecb = dtrace_ecb_add(state, probe);
+	if (ecb == NULL)
+		return NULL;
+
 	ecb->dte_uarg = desc->dted_uarg;
 
 	if ((pred = desc->dted_pred.dtpdd_predicate) != NULL) {
