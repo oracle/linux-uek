@@ -746,8 +746,13 @@ int
 xfs_log_mount_finish(xfs_mount_t *mp)
 {
 	int	error = 0;
+	int	readonly = (mp->m_flags & XFS_MOUNT_RDONLY);
 
 	if (!(mp->m_flags & XFS_MOUNT_NORECOVERY)) {
+		if (readonly) {
+			/* Allow unlinked processing to proceed */
+			mp->m_flags &= ~XFS_MOUNT_RDONLY;
+		}
 		error = xlog_recover_finish(mp->m_log);
 		if (!error)
 			xfs_log_work_queue(mp);
@@ -755,6 +760,9 @@ xfs_log_mount_finish(xfs_mount_t *mp)
 		ASSERT(mp->m_flags & XFS_MOUNT_RDONLY);
 	}
 
+
+	if (readonly)
+		mp->m_flags |= XFS_MOUNT_RDONLY;
 
 	return error;
 }
