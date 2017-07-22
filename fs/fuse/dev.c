@@ -2366,9 +2366,9 @@ int fuse_dev_release(struct inode *inode, struct file *file)
 			wake_up_all(&fn->blocked_waitq);
 			spin_unlock(&fn->lock);
 		}
-		end_queued_requests(fc);
 		end_polls(fc);
 		spin_unlock(&fc->lock);
+		end_queued_requests(fc);
 		fuse_conn_put(fc);
 	}
 
