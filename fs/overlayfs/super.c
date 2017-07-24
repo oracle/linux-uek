@@ -148,8 +148,8 @@ struct dentry *ovl_dentry_real(struct dentry *dentry)
 static void ovl_inode_init(struct inode *inode, struct inode *realinode,
 			   bool is_upper)
 {
-	WRITE_ONCE(inode->i_private, (unsigned long) realinode |
-		   (is_upper ? OVL_ISUPPER_MASK : 0));
+	WRITE_ONCE(inode->i_private, (void *)((unsigned long) realinode |
+		   (is_upper ? OVL_ISUPPER_MASK : 0)));
 }
 
 struct vfsmount *ovl_entry_mnt_real(struct ovl_entry *oe, struct inode *inode,
@@ -234,7 +234,7 @@ void ovl_inode_update(struct inode *inode, struct inode *upperinode)
 	WARN_ON(!upperinode);
 	WARN_ON(!inode_unhashed(inode));
 	WRITE_ONCE(inode->i_private,
-		   (unsigned long) upperinode | OVL_ISUPPER_MASK);
+		   (void *)((unsigned long) upperinode | OVL_ISUPPER_MASK));
 	if (!S_ISDIR(upperinode->i_mode))
 		__insert_inode_hash(inode, (unsigned long) upperinode);
 }
@@ -317,7 +317,7 @@ static struct ovl_entry *ovl_alloc_entry(unsigned int numlower)
 
 static inline struct dentry *ovl_lookup_real(struct super_block *ovl_sb,
 					     struct dentry *dir,
-					     const struct qstr *name)
+					     struct qstr *name)
 {
 	const struct cred *old_cred;
 	struct dentry *dentry;
