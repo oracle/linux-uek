@@ -365,9 +365,9 @@ static int ovl_create_over_whiteout(struct dentry *dentry, struct inode *inode,
 			.ia_valid = ATTR_MODE,
 			.ia_mode = stat->mode,
 		};
-		inode_lock(newdentry->d_inode);
+		mutex_lock(&newdentry->d_inode->i_mutex);
 		err = notify_change(newdentry, &attr, NULL);
-		inode_unlock(newdentry->d_inode);
+		mutex_unlock(&newdentry->d_inode->i_mutex);
 		if (err)
 			goto out_cleanup;
 	}
