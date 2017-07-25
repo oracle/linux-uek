@@ -166,7 +166,7 @@ void dtrace_aggregate_lquantize(uint64_t *lquanta, uint64_t nval,
 	int32_t		base = DTRACE_LQUANTIZE_BASE(arg);
 	uint16_t	step = DTRACE_LQUANTIZE_STEP(arg);
 	uint16_t	levels = DTRACE_LQUANTIZE_LEVELS(arg);
-	int32_t		val = (int32_t)nval, level;
+	int64_t		val = (int64_t)nval, level;
 
 	ASSERT(step != 0);
 	ASSERT(levels != 0);
