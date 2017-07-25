@@ -352,14 +352,7 @@ dtrace_state_t *dtrace_state_create(struct file *file)
 	 * Create a first entry in the aggregation IDR, so that ID 0 is used as
 	 * that gets used as meaning 'none'.
 	 */
-	mutex_unlock(&dtrace_lock);
-	mutex_unlock(&cpu_lock);
-
 	idr_preload(GFP_KERNEL);
-
-	mutex_lock(&cpu_lock);
-	mutex_lock(&dtrace_lock);
-
 	aggid = idr_alloc_cyclic(&state->dts_agg_idr, NULL, 0, 0, GFP_NOWAIT);
 	idr_preload_end();
 
