@@ -164,11 +164,7 @@ success:
 	/*
 	 * Get an ID for the aggregation (add it to the idr).
 	 */
-	mutex_unlock(&dtrace_lock);
-
 	idr_preload(GFP_KERNEL);
-	mutex_lock(&dtrace_lock);
-
 	aggid = idr_alloc_cyclic(&state->dts_agg_idr, agg, 0, 0, GFP_NOWAIT);
 	idr_preload_end();
 	if (aggid < 0) {
