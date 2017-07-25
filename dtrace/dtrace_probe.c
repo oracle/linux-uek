@@ -54,18 +54,24 @@ dtrace_id_t dtrace_probe_create(dtrace_provider_id_t prov, const char *mod,
 	probe = kmem_cache_alloc(dtrace_probe_cachep, __GFP_NOFAIL);
 
 	/*
-	 * The ir_preload() function should be called without holding locks.
+	 * The idr_preload() should be called without holding locks as it may
+	 * block.  At the same time it is required to protect DTrace structures.
+	 * We can't drop it before idr_preload() and acquire after it because
+	 * we can't sleep in atomic context (until we reach idr_preload_end()).
+	 *
+	 * It is better to delay DTrace framework than traced host so the lock
+	 * is being held for the duration of idr allocation.
+	 *
 	 * When the provider is the DTrace core itself, dtrace_lock will be
 	 * held when we enter this function.
 	 */
 	if (provider == dtrace_provider) {
 		ASSERT(MUTEX_HELD(&dtrace_lock));
-		mutex_unlock(&dtrace_lock);
+	} else {
+		mutex_lock(&dtrace_lock);
 	}
 
 	idr_preload(GFP_KERNEL);
-
-	mutex_lock(&dtrace_lock);
 	id = idr_alloc_cyclic(&dtrace_probe_idr, probe, 0, 0, GFP_NOWAIT);
 	idr_preload_end();
 	if (id < 0) {
@@ -1283,16 +1289,7 @@ int dtrace_probe_init(void)
 	 * We need to drop our locks when calling idr_preload(), so we try to
 	 * get them back right after.
 	 */
-	mutex_unlock(&dtrace_lock);
-	mutex_unlock(&dtrace_provider_lock);
-	mutex_unlock(&cpu_lock);
-
 	idr_preload(GFP_KERNEL);
-
-	mutex_lock(&cpu_lock);
-	mutex_lock(&dtrace_provider_lock);
-	mutex_lock(&dtrace_lock);
-
 	id = idr_alloc_cyclic(&dtrace_probe_idr, NULL, 0, 0, GFP_NOWAIT);
 	idr_preload_end();
 
