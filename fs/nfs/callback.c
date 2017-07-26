@@ -77,10 +77,7 @@ nfs4_callback_svc(void *vrqstp)
 
 	set_freezable();
 
-	while (!kthread_freezable_should_stop(NULL)) {
-
-		if (signal_pending(current))
-			flush_signals(current);
+	while (!kthread_should_stop()) {
 		/*
 		 * Listen for a request on the socket
 		 */
@@ -89,8 +86,6 @@ nfs4_callback_svc(void *vrqstp)
 			continue;
 		svc_process(rqstp);
 	}
-	svc_exit_thread(rqstp);
-	module_put_and_exit(0);
 	return 0;
 }
 
@@ -136,10 +131,9 @@ nfs41_callback_svc(void *vrqstp)
 
 	set_freezable();
 
-	while (!kthread_freezable_should_stop(NULL)) {
-
-		if (signal_pending(current))
-			flush_signals(current);
+	while (!kthread_should_stop()) {
+		if (try_to_freeze())
+			continue;
 
 		prepare_to_wait(&serv->sv_cb_waitq, &wq, TASK_INTERRUPTIBLE);
 		spin_lock_bh(&serv->sv_cb_lock);
@@ -155,13 +149,11 @@ nfs41_callback_svc(void *vrqstp)
 				error);
 		} else {
 			spin_unlock_bh(&serv->sv_cb_lock);
-			if (!kthread_should_stop())
-				schedule();
+			schedule();
 			finish_wait(&serv->sv_cb_waitq, &wq);
 		}
+		flush_signals(current);
 	}
-	svc_exit_thread(rqstp);
-	module_put_and_exit(0);
 	return 0;
 }
 
