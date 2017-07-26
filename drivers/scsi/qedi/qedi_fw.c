@@ -43,7 +43,7 @@ static void qedi_process_logout_resp(struct qedi_ctx *qedi,
 
 	cmd = (struct qedi_cmd *)task->dd_data;
 	cqe_logout_response = &cqe->cqe_common.iscsi_hdr.logout_response;
-	spin_lock(&session->back_lock);
+	spin_lock(&session->lock);
 	resp_hdr = (struct iscsi_logout_rsp *)&qedi_conn->gen_pdu.resp_hdr;
 	memset(resp_hdr, 0, sizeof(struct iscsi_hdr));
 	resp_hdr->opcode = cqe_logout_response->opcode;
@@ -77,7 +77,7 @@ static void qedi_process_logout_resp(struct qedi_ctx *qedi,
 	qedi_clear_task_idx(qedi, cmd->task_id);
 	__iscsi_complete_pdu(conn, (struct iscsi_hdr *)resp_hdr, NULL, 0);
 
-	spin_unlock(&session->back_lock);
+	spin_unlock(&session->lock);
 }
 
 static void qedi_process_text_resp(struct qedi_ctx *qedi,
@@ -98,7 +98,7 @@ static void qedi_process_text_resp(struct qedi_ctx *qedi,
 	task_ctx = qedi_get_task_mem(&qedi->tasks, cmd->task_id);
 
 	cqe_text_response = &cqe->cqe_common.iscsi_hdr.text_response;
-	spin_lock(&session->back_lock);
+	spin_lock(&session->lock);
 	resp_hdr_ptr =  (struct iscsi_text_rsp *)&qedi_conn->gen_pdu.resp_hdr;
 	memset(resp_hdr_ptr, 0, sizeof(struct iscsi_hdr));
 	resp_hdr_ptr->opcode = cqe_text_response->opcode;
@@ -145,7 +145,7 @@ static void qedi_process_text_resp(struct qedi_ctx *qedi,
 			     qedi_conn->gen_pdu.resp_buf,
 			     (qedi_conn->gen_pdu.resp_wr_ptr -
 			      qedi_conn->gen_pdu.resp_buf));
-	spin_unlock(&session->back_lock);
+	spin_unlock(&session->lock);
 }
 
 static void qedi_tmf_resp_work(struct work_struct *work)
@@ -175,9 +175,9 @@ static void qedi_tmf_resp_work(struct work_struct *work)
 	iscsi_unblock_session(session->cls_session);
 	qedi_clear_task_idx(qedi, qedi_cmd->task_id);
 
-	spin_lock(&session->back_lock);
+	spin_lock(&session->lock);
 	__iscsi_complete_pdu(conn, (struct iscsi_hdr *)resp_hdr_ptr, NULL, 0);
-	spin_unlock(&session->back_lock);
+	spin_unlock(&session->lock);
 
 exit_tmf_resp:
 	kfree(resp_hdr_ptr);
@@ -209,7 +209,7 @@ static void qedi_process_tmf_resp(struct qedi_ctx *qedi,
 		return;
 	}
 
-	spin_lock(&session->back_lock);
+	spin_lock(&session->lock);
 	resp_hdr_ptr =  (struct iscsi_tm_rsp *)qedi_cmd->tmf_resp_buf;
 	memset(resp_hdr_ptr, 0, sizeof(struct iscsi_tm_rsp));
 
@@ -254,7 +254,7 @@ static void qedi_process_tmf_resp(struct qedi_ctx *qedi,
 	kfree(resp_hdr_ptr);
 
 unblock_sess:
-	spin_unlock(&session->back_lock);
+	spin_unlock(&session->lock);
 }
 
 static void qedi_process_login_resp(struct qedi_ctx *qedi,
@@ -276,7 +276,7 @@ static void qedi_process_login_resp(struct qedi_ctx *qedi,
 	cqe_login_response = &cqe->cqe_common.iscsi_hdr.login_response;
 	task_ctx = qedi_get_task_mem(&qedi->tasks, cmd->task_id);
 
-	spin_lock(&session->back_lock);
+	spin_lock(&session->lock);
 	resp_hdr_ptr =  (struct iscsi_login_rsp *)&qedi_conn->gen_pdu.resp_hdr;
 	memset(resp_hdr_ptr, 0, sizeof(struct iscsi_login_rsp));
 	resp_hdr_ptr->opcode = cqe_login_response->opcode;
@@ -312,7 +312,7 @@ static void qedi_process_login_resp(struct qedi_ctx *qedi,
 			     (qedi_conn->gen_pdu.resp_wr_ptr -
 			     qedi_conn->gen_pdu.resp_buf));
 
-	spin_unlock(&session->back_lock);
+	spin_unlock(&session->lock);
 	QEDI_INFO(&qedi->dbg_ctx, QEDI_LOG_TID,
 		  "Freeing tid=0x%x for cid=0x%x\n",
 		  cmd->task_id, qedi_conn->iscsi_conn_id);
@@ -425,7 +425,7 @@ static int qedi_process_nopin_mesg(struct qedi_ctx *qedi,
 	char bdq_data[QEDI_BDQ_BUF_SIZE];
 	unsigned long flags;
 
-	spin_lock_bh(&session->back_lock);
+	spin_lock_bh(&session->lock);
 	cqe_nop_in = &cqe->cqe_common.iscsi_hdr.nop_in;
 
 	pdu_len = cqe_nop_in->hdr_second_dword &
@@ -477,7 +477,7 @@ static int qedi_process_nopin_mesg(struct qedi_ctx *qedi,
 done:
 	__iscsi_complete_pdu(conn, (struct iscsi_hdr *)hdr, bdq_data, pdu_len);
 
-	spin_unlock_bh(&session->back_lock);
+	spin_unlock_bh(&session->lock);
 	return tgt_async_nop;
 }
 
@@ -496,7 +496,7 @@ static void qedi_process_async_mesg(struct qedi_ctx *qedi,
 	char bdq_data[QEDI_BDQ_BUF_SIZE];
 	unsigned long flags;
 
-	spin_lock_bh(&session->back_lock);
+	spin_lock_bh(&session->lock);
 
 	cqe_async_msg = &cqe->cqe_common.iscsi_hdr.async_msg;
 	pdu_len = cqe_async_msg->hdr_second_dword &
@@ -532,7 +532,7 @@ static void qedi_process_async_mesg(struct qedi_ctx *qedi,
 	__iscsi_complete_pdu(conn, (struct iscsi_hdr *)resp_hdr, bdq_data,
 			     pdu_len);
 
-	spin_unlock_bh(&session->back_lock);
+	spin_unlock_bh(&session->lock);
 }
 
 static void qedi_process_reject_mesg(struct qedi_ctx *qedi,
@@ -548,7 +548,7 @@ static void qedi_process_reject_mesg(struct qedi_ctx *qedi,
 	u32 pld_len, num_bdqs;
 	unsigned long flags;
 
-	spin_lock_bh(&session->back_lock);
+	spin_lock_bh(&session->lock);
 	cqe_reject = &cqe->cqe_common.iscsi_hdr.reject;
 	pld_len = cqe_reject->hdr_second_dword &
 		  ISCSI_REJECT_HDR_DATA_SEG_LEN_MASK;
@@ -574,7 +574,7 @@ static void qedi_process_reject_mesg(struct qedi_ctx *qedi,
 
 	__iscsi_complete_pdu(conn, (struct iscsi_hdr *)hdr,
 			     conn->data, pld_len);
-	spin_unlock_bh(&session->back_lock);
+	spin_unlock_bh(&session->lock);
 }
 
 static void qedi_scsi_completion(struct qedi_ctx *qedi,
@@ -600,7 +600,7 @@ static void qedi_scsi_completion(struct qedi_ctx *qedi,
 	cqe_err_bits =
 		cqe->cqe_common.error_bitmap.error_bits.cqe_error_status_bits;
 
-	spin_lock_bh(&session->back_lock);
+	spin_lock_bh(&session->lock);
 	/* get the scsi command */
 	sc_cmd = cmd->scsi_cmd;
 
@@ -689,7 +689,7 @@ static void qedi_scsi_completion(struct qedi_ctx *qedi,
 	__iscsi_complete_pdu(conn, (struct iscsi_hdr *)hdr,
 			     conn->data, datalen);
 error:
-	spin_unlock_bh(&session->back_lock);
+	spin_unlock_bh(&session->lock);
 }
 
 static void qedi_mtask_completion(struct qedi_ctx *qedi,
@@ -744,9 +744,9 @@ static void qedi_process_nopin_local_cmpl(struct qedi_ctx *qedi,
 	cmd->state = RESPONSE_RECEIVED;
 	qedi_clear_task_idx(qedi, cmd->task_id);
 
-	spin_lock_bh(&session->back_lock);
+	spin_lock_bh(&session->lock);
 	__iscsi_put_task(task);
-	spin_unlock_bh(&session->back_lock);
+	spin_unlock_bh(&session->lock);
 }
 
 static void qedi_process_cmd_cleanup_resp(struct qedi_ctx *qedi,
@@ -802,13 +802,13 @@ static void qedi_process_cmd_cleanup_resp(struct qedi_ctx *qedi,
 
 		if ((tmf_hdr->flags & ISCSI_FLAG_TM_FUNC_MASK) ==
 		    ISCSI_TM_FUNC_ABORT_TASK) {
-			spin_lock_bh(&conn->session->back_lock);
+			spin_lock_bh(&conn->session->lock);
 
 			protoitt = build_itt(get_itt(tmf_hdr->rtt),
 					     conn->session->age);
 			task = iscsi_itt_to_task(conn, protoitt);
 
-			spin_unlock_bh(&conn->session->back_lock);
+			spin_unlock_bh(&conn->session->lock);
 
 			if (!task) {
 				QEDI_NOTICE(&qedi->dbg_ctx,
@@ -838,7 +838,7 @@ static void qedi_process_cmd_cleanup_resp(struct qedi_ctx *qedi,
 			wake_up_interruptible(&qedi_conn->wait_queue);
 		}
 	} else if (qedi_conn->cmd_cleanup_req > 0) {
-		spin_lock_bh(&conn->session->back_lock);
+		spin_lock_bh(&conn->session->lock);
 		qedi_get_proto_itt(qedi, cqe->itid, &ptmp_itt);
 		protoitt = build_itt(ptmp_itt, conn->session->age);
 		task = iscsi_itt_to_task(conn, protoitt);
@@ -847,7 +847,7 @@ static void qedi_process_cmd_cleanup_resp(struct qedi_ctx *qedi,
 			  cqe->itid, protoitt, qedi_conn->cmd_cleanup_cmpl,
 			  qedi_conn->iscsi_conn_id);
 
-		spin_unlock_bh(&conn->session->back_lock);
+		spin_unlock_bh(&conn->session->lock);
 		if (!task) {
 			QEDI_NOTICE(&qedi->dbg_ctx,
 				    "task is null, itid=0x%x, cid=0x%x\n",
@@ -1228,7 +1228,7 @@ int qedi_cleanup_all_io(struct qedi_ctx *qedi, struct qedi_conn *qedi_conn,
 		  in_recovery, lun_reset);
 
 	if (lun_reset)
-		spin_lock_bh(&session->back_lock);
+		spin_lock_bh(&session->lock);
 
 	spin_lock(&qedi_conn->list_lock);
 
@@ -1263,7 +1263,7 @@ int qedi_cleanup_all_io(struct qedi_ctx *qedi, struct qedi_conn *qedi_conn,
 	spin_unlock(&qedi_conn->list_lock);
 
 	if (lun_reset)
-		spin_unlock_bh(&session->back_lock);
+		spin_unlock_bh(&session->lock);
 
 	QEDI_INFO(&qedi->dbg_ctx, QEDI_LOG_SCSI_TM,
 		  "cmd_cleanup_req=%d, cid=0x%x\n",
