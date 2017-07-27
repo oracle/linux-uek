@@ -432,6 +432,11 @@ static void ixgbevf_get_ethtool_stats(struct net_device *netdev,
 		if (!ring) {
 			data[i++] = 0;
 			data[i++] = 0;
+#ifdef BP_EXTENDED_STATS
+			data[i++] = 0;
+			data[i++] = 0;
+			data[i++] = 0;
+#endif
 			continue;
 		}
 
@@ -441,6 +446,12 @@ static void ixgbevf_get_ethtool_stats(struct net_device *netdev,
 			data[i + 1] = ring->stats.bytes;
 		} while (u64_stats_fetch_retry_irq(&ring->syncp, start));
 		i += 2;
+#ifdef BP_EXTENDED_STATS
+		data[i] = ring->stats.yields;
+		data[i + 1] = ring->stats.misses;
+		data[i + 2] = ring->stats.cleaned;
+		i += 3;
+#endif
 	}
 
 	/* populate Rx queue data */
@@ -449,6 +460,11 @@ static void ixgbevf_get_ethtool_stats(struct net_device *netdev,
 		if (!ring) {
 			data[i++] = 0;
 			data[i++] = 0;
+#ifdef BP_EXTENDED_STATS
+			data[i++] = 0;
+			data[i++] = 0;
+			data[i++] = 0;
+#endif
 			continue;
 		}
 
@@ -458,6 +474,12 @@ static void ixgbevf_get_ethtool_stats(struct net_device *netdev,
 			data[i + 1] = ring->stats.bytes;
 		} while (u64_stats_fetch_retry_irq(&ring->syncp, start));
 		i += 2;
+#ifdef BP_EXTENDED_STATS
+		data[i] = ring->stats.yields;
+		data[i + 1] = ring->stats.misses;
+		data[i + 2] = ring->stats.cleaned;
+		i += 3;
+#endif
 	}
 }
 
@@ -485,12 +507,28 @@ static void ixgbevf_get_strings(struct net_device *netdev, u32 stringset,
 			p += ETH_GSTRING_LEN;
 			sprintf(p, "tx_queue_%u_bytes", i);
 			p += ETH_GSTRING_LEN;
+#ifdef BP_EXTENDED_STATS
+			sprintf(p, "tx_queue_%u_bp_napi_yield", i);
+			p += ETH_GSTRING_LEN;
+			sprintf(p, "tx_queue_%u_bp_misses", i);
+			p += ETH_GSTRING_LEN;
+			sprintf(p, "tx_queue_%u_bp_cleaned", i);
+			p += ETH_GSTRING_LEN;
+#endif /* BP_EXTENDED_STATS */
 		}
 		for (i = 0; i < adapter->num_rx_queues; i++) {
 			sprintf(p, "rx_queue_%u_packets", i);
 			p += ETH_GSTRING_LEN;
 			sprintf(p, "rx_queue_%u_bytes", i);
 			p += ETH_GSTRING_LEN;
+#ifdef BP_EXTENDED_STATS
+			sprintf(p, "rx_queue_%u_bp_poll_yield", i);
+			p += ETH_GSTRING_LEN;
+			sprintf(p, "rx_queue_%u_bp_misses", i);
+			p += ETH_GSTRING_LEN;
+			sprintf(p, "rx_queue_%u_bp_cleaned", i);
+			p += ETH_GSTRING_LEN;
+#endif /* BP_EXTENDED_STATS */
 		}
 		break;
 	}
