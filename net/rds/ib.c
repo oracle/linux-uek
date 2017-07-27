@@ -2081,6 +2081,25 @@ sched_initial_failovers(unsigned int tot_devs,
 			   trigger_delay_min_jiffies);
 }
 
+static struct rds_ib_device *rds_ib_find_device_pair(struct net_device *dev,
+						     u8 *port_num)
+{
+	struct net_device *real_dev = rdma_vlan_dev_real_dev(dev) ? : dev;
+	struct rds_ib_device *rds_ibdev;
+	struct ib_device *ibdev;
+
+	list_for_each_entry_rcu(rds_ibdev, &rds_ib_devices, list) {
+		ibdev = rds_ibdev->dev;
+		for (*port_num = 1; *port_num <= ibdev->phys_port_cnt;
+		     (*port_num)++) {
+			if (real_dev == ibdev->get_netdev(ibdev, *port_num))
+				return rds_ibdev;
+		}
+	}
+
+	return NULL;
+}
+
 static int rds_ib_ip_config_init(void)
 {
 	struct net_device	*dev;
@@ -2123,38 +2142,53 @@ static int rds_ib_ip_config_init(void)
 			in6_dev = NULL;
 		tot_devs++;
 		/*
-		 * Note: Enumerate all Infiniband devices
+		 * Note: Enumerate all Infiniband and Ethernet(RoCE) devices
 		 *       that are:
 		 *                - UP
 		 *                - not part of a bond(master or slave)
 		 */
-		if ((dev->type == ARPHRD_INFINIBAND) &&
+		if ((dev->type == ARPHRD_INFINIBAND ||
+		     dev->type == ARPHRD_ETHER) &&
 		    (dev->flags & IFF_UP) &&
 		    !(dev->flags & IFF_SLAVE) &&
 		    !(dev->flags & IFF_MASTER) &&
 		    (in_dev || in6_dev)) {
 			u16 pkey = 0;
 
-			if (ipoib_get_netdev_pkey(dev, &pkey) != 0) {
-				printk(KERN_ERR "RDS/IB: failed to get pkey "
-				       "for devname %s\n", dev->name);
+			if (dev->type == ARPHRD_INFINIBAND) {
+				if (ipoib_get_netdev_pkey(dev, &pkey) != 0) {
+					pr_err("RDS/IB: failed to get pkey for devname %s\n",
+					       dev->name);
+				}
+			} else {
+				/* Use vlan id instead of pkey for
+				 * Ethernet(RoCE) devices
+				 */
+				pkey = rdma_vlan_dev_vlan_id(dev);
 			}
 
-			memcpy(&gid, dev->dev_addr + 4, sizeof gid);
-
-			tot_ibdevs++;
-			list_for_each_entry_rcu(rds_ibdev,
-					&rds_ib_devices, list) {
-				ret = ib_find_cached_gid(rds_ibdev->dev, &gid,
-							 IB_GID_TYPE_IB, NULL,
-							 &port_num, NULL);
-				if (!ret)
-					break;
+			if (dev->type == ARPHRD_INFINIBAND) {
+				memcpy(&gid, dev->dev_addr + 4, sizeof(gid));
+				list_for_each_entry_rcu(rds_ibdev,
+							&rds_ib_devices, list) {
+					ret = ib_find_cached_gid(rds_ibdev->dev,
+								 &gid,
+								 IB_GID_TYPE_IB,
+								 NULL,
+								 &port_num,
+								 NULL);
+					if (!ret)
+						break;
+				}
+			} else {
+				rds_ibdev = rds_ib_find_device_pair(dev,
+								    &port_num);
+				ret = rds_ibdev ? 0 : 1;
 			}
 
 			if (ret) {
-				pr_err("RDS/IB: netdevice %s has no associated ibdevice\n",
-				       dev->name);
+				pr_info("RDS/IB: netdevice %s has no associated ibdevice\n",
+					dev->name);
 			} else {
 				port = rds_ib_init_port(rds_ibdev, dev,
 							port_num, pkey);
@@ -2166,7 +2200,7 @@ static int rds_ib_ip_config_init(void)
 						rds_ib_set_port6(dev, in6_dev,
 								 port);
 				}
-
+				tot_ibdevs++;
 			}
 		}
 		if (in_dev)
@@ -2629,23 +2663,36 @@ static void rds_ib_addintf_after_initscripts(struct work_struct *_work)
 		   (in6_dev && !list_empty(&in6_dev->addr_list))) {
 		u16 pkey = 0;
 
-		if (ipoib_get_netdev_pkey(ndev, &pkey) != 0) {
-			printk(KERN_ERR "RDS/IB: failed to get pkey "
-			       "for devname %s\n", ndev->name);
+		if (ndev->type == ARPHRD_INFINIBAND) {
+			if (ipoib_get_netdev_pkey(ndev, &pkey) != 0) {
+				pr_err("RDS/IB: failed to get pkey for devname %s\n",
+				       ndev->name);
+			}
+		} else {
+			/* Use vlan id instead of pkey for
+			 * Ethernet(RoCE) devices
+			 */
+			pkey = rdma_vlan_dev_vlan_id(ndev);
 		}
 
-		memcpy(&gid, ndev->dev_addr + 4, sizeof gid);
-		list_for_each_entry_rcu(rds_ibdev,
-				&rds_ib_devices, list) {
-			ret = ib_find_cached_gid(rds_ibdev->dev, &gid,
-						 IB_GID_TYPE_IB, NULL,
-						 &port_num, NULL);
-			if (!ret)
-				break;
+		if (ndev->type == ARPHRD_INFINIBAND) {
+			memcpy(&gid, ndev->dev_addr + 4, sizeof(gid));
+			list_for_each_entry_rcu(rds_ibdev,
+						&rds_ib_devices, list) {
+				ret = ib_find_cached_gid(rds_ibdev->dev, &gid,
+							 IB_GID_TYPE_IB, NULL,
+							 &port_num, NULL);
+				if (!ret)
+					break;
+			}
+		} else {
+			rds_ibdev = rds_ib_find_device_pair(ndev, &port_num);
+			ret = rds_ibdev ? 0 : 1;
 		}
+
 		if (ret) {
-			pr_err("RDS/IB: netdevice %s has no associated ibdevice\n",
-			       ndev->name);
+			pr_info("RDS/IB: netdevice %s has no associated ibdevice\n",
+				ndev->name);
 		} else {
 			port = rds_ib_init_port(rds_ibdev, ndev,
 						port_num, pkey);
@@ -2785,7 +2832,8 @@ static int rds_ib_netdev_callback(struct notifier_block *self, unsigned long eve
 	 * structures.
 	 */
 	if (!port && event == NETDEV_UP) {
-		if ((ndev->type == ARPHRD_INFINIBAND) &&
+		if ((ndev->type == ARPHRD_INFINIBAND ||
+		     ndev->type == ARPHRD_ETHER) &&
 				(ndev->flags & IFF_UP) &&
 				!(ndev->flags & IFF_SLAVE) &&
 				!(ndev->flags & IFF_MASTER)) {
