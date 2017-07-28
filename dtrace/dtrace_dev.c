@@ -1126,8 +1126,18 @@ static struct miscdevice helper_dev = {
 
 static void module_add_pdata(void *dmy, struct module *mp)
 {
-	dtrace_module_t	*pdata = kmem_cache_alloc(dtrace_pdata_cachep,
-						  GFP_KERNEL | __GFP_ZERO);
+	dtrace_module_t *pdata;
+
+	/*
+	 * A module may be on its way out before DTrace sets up its module
+	 * handling support.  Do not try to provide anything for modules being
+	 * removed during startup.
+	 */
+	if (mp->state == MODULE_STATE_GOING)
+		return;
+
+	pdata = kmem_cache_alloc(dtrace_pdata_cachep,
+				 GFP_KERNEL | __GFP_ZERO);
 
 	pdata_init(pdata, mp);
 	mp->pdata = pdata;
@@ -1464,7 +1474,6 @@ int dtrace_dev_init(void)
 	 * a pdata object.  Modules loaded after this one will get their pdata
 	 * object assigned using the module notifier hook.
 	 */
-	module_add_pdata(NULL, dtrace_kmod);
 	dtrace_for_each_module(module_add_pdata, NULL);
 
 	/*
@@ -1616,7 +1625,6 @@ void dtrace_dev_exit(void)
 	 * point had their pdata object cleaned up using the module notifier
 	 * hook.
 	 */
-	module_del_pdata(NULL, dtrace_kmod);
 	dtrace_for_each_module(module_del_pdata, NULL);
 
 	/*
