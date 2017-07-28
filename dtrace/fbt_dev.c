@@ -110,9 +110,8 @@ void fbt_provide_module(void *arg, struct module *mp)
 
 	/*
 	 * Do not try to instrument DTrace itself and its modules:
-	 * 	- dtrace module
-	 * 	- ctf module
-	 * 	- all modules depending on dtrace
+	 *      - dtrace module
+	 *      - all modules depending on dtrace
 	 */
 	if (!strncmp(mp->name, "dtrace", 7))
 		return;
