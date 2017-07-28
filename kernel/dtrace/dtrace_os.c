@@ -378,6 +378,46 @@ void dtrace_psinfo_free(struct task_struct *tsk)
 }
 
 /*---------------------------------------------------------------------------*\
+(* MODULE SUPPORT FUNCTIONS                                                  *)
+\*---------------------------------------------------------------------------*/
+extern struct list_head *dtrace_modules;
+
+/*
+ * Iterate over all loaded kernel modules.  This is requried until the linux
+ * kernel receives its own module iterator.
+ */
+void dtrace_for_each_module(for_each_module_fn func, void *arg)
+{
+	struct module *mp;
+
+	if (func == NULL)
+		return;
+
+	mutex_lock(&module_mutex);
+
+	/* The dtrace fake module is not in the list. */
+	func(arg, dtrace_kmod);
+
+	list_for_each_entry(mp, dtrace_modules, list) {
+
+#ifdef MODULES_VADDR
+		if ((uintptr_t)mp < MODULES_VADDR ||
+		    (uintptr_t)mp >= MODULES_END)
+			continue;
+#else
+		if ((uintptr_t)mp < VMALLOC_START ||
+		    (uintptr_t)mp >= VMALLOC_END)
+			continue;
+#endif
+
+		func(arg, mp);
+	}
+
+	mutex_unlock(&module_mutex);
+}
+EXPORT_SYMBOL_GPL(dtrace_for_each_module);
+
+/*---------------------------------------------------------------------------*\
 (* TIME SUPPORT FUNCTIONS                                                    *)
 \*---------------------------------------------------------------------------*/
 dtrace_vtime_state_t	dtrace_vtime_active = 0;

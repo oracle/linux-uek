@@ -42,6 +42,9 @@ typedef enum dtrace_vtime_state {
 
 extern dtrace_vtime_state_t dtrace_vtime_active;
 
+typedef void for_each_module_fn(void *, struct module *);
+extern void dtrace_for_each_module(for_each_module_fn *fn, void *arg);
+
 extern void dtrace_update_time(struct timekeeper *);
 extern ktime_t dtrace_get_walltime(void);
 
