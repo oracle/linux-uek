@@ -459,6 +459,7 @@ kernel/drivers/acpi/apei/einj.ko
 kernel/drivers/acpi/apei/erst-dbg.ko
 kernel/drivers/acpi/video.ko
 kernel/drivers/nvme/host/nvme.ko
+kernel/drivers/nvme/host/nvme-core.ko
 kernel/drivers/pps/pps_core.ko
 kernel/drivers/misc/enclosure.ko
 kernel/drivers/misc/eeprom/eeprom_93cx6.ko
@@ -1139,6 +1140,7 @@ kernel/net/ipv6/netfilter/ip6_tables.ko
 kernel/net/ipv6/netfilter/nft_masq_ipv6.ko
 kernel/net/ipv6/netfilter/nf_nat_ipv6.ko
 kernel/net/ipv6/netfilter/ip6table_raw.ko
+kernel/net/ipv6/netfilter/nf_dup_ipv6.ko
 kernel/net/ipv6/xfrm6_mode_ro.ko
 kernel/net/ipv6/ip6_tunnel.ko
 kernel/net/ipv6/tunnel6.ko
@@ -1208,6 +1210,7 @@ kernel/net/ipv4/netfilter/ipt_CLUSTERIP.ko
 kernel/net/ipv4/netfilter/arpt_mangle.ko
 kernel/net/ipv4/netfilter/iptable_nat.ko
 kernel/net/ipv4/netfilter/nf_defrag_ipv4.ko
+kernel/net/ipv4/netfilter/nf_dup_ipv4.ko
 kernel/net/ipv4/tcp_lp.ko
 kernel/net/ipv4/xfrm4_tunnel.ko
 kernel/net/ipv4/tcp_htcp.ko
