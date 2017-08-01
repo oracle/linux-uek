@@ -568,6 +568,7 @@ net-y		:= net/
 libs-y		:= lib/
 core-y		:= usr/
 virt-y		:= virt/
+dtrace-y	:= dtrace/
 endif # KBUILD_EXTMOD
 
 ifeq ($(dot-config),1)
@@ -950,14 +951,17 @@ core-y		+= kernel/ certs/ mm/ fs/ ipc/ security/ crypto/ block/
 
 vmlinux-dirs	:= $(patsubst %/,%,$(filter %/, $(init-y) $(init-m) \
 		     $(core-y) $(core-m) $(drivers-y) $(drivers-m) \
-		     $(net-y) $(net-m) $(libs-y) $(libs-m) $(virt-y)))
+		     $(net-y) $(net-m) $(libs-y) $(libs-m) $(virt-y) \
+		     $(dtrace-y) $(dtrace-m)))
 
 vmlinux-alldirs	:= $(sort $(vmlinux-dirs) $(patsubst %/,%,$(filter %/, \
-		     $(init-) $(core-) $(drivers-) $(net-) $(libs-) $(virt-))))
+		     $(init-) $(core-) $(drivers-) $(net-) $(libs-) $(virt-) \
+		     $(dtrace-))))
 
 init-y		:= $(patsubst %/, %/built-in.o, $(init-y))
 core-y		:= $(patsubst %/, %/built-in.o, $(core-y))
 drivers-y	:= $(patsubst %/, %/built-in.o, $(drivers-y))
+dtrace-y	:= $(patsubst %/, %/built-in.o, $(dtrace-y))
 net-y		:= $(patsubst %/, %/built-in.o, $(net-y))
 libs-y1		:= $(patsubst %/, %/lib.a, $(libs-y))
 libs-y2		:= $(filter-out %.a, $(patsubst %/, %/built-in.o, $(libs-y)))
@@ -965,7 +969,7 @@ virt-y		:= $(patsubst %/, %/built-in.o, $(virt-y))
 
 # Externally visible symbols (used by link-vmlinux.sh)
 export KBUILD_VMLINUX_INIT := $(head-y) $(init-y)
-export KBUILD_VMLINUX_MAIN := $(core-y) $(libs-y2) $(drivers-y) $(net-y) $(virt-y)
+export KBUILD_VMLINUX_MAIN := $(core-y) $(libs-y2) $(drivers-y) $(net-y) $(virt-y) $(dtrace-y)
 export KBUILD_VMLINUX_LIBS := $(libs-y1)
 export KBUILD_LDS          := arch/$(SRCARCH)/kernel/vmlinux.lds
 export LDFLAGS_vmlinux
