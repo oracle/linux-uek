@@ -1,6 +1,5 @@
 #
-# DTrace Configuration
-# Copyright (C) 2010, 2011, 2012 Oracle Corporation
+# Copyright (c) 2010, 2016, Oracle and/or its affiliates. All rights reserved.
 #
 
 menuconfig DTRACE
