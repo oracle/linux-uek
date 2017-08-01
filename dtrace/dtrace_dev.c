@@ -1407,7 +1407,9 @@ int dtrace_dev_init(void)
 		return rc;
 	}
 
+#if defined(CONFIG_CTF)
 	ctf_forceload();
+#endif
 
 	mutex_lock(&cpu_lock);
 	mutex_lock(&dtrace_provider_lock);
