@@ -1,28 +1,18 @@
 /*
  * FILE:	fasttrap_mod.c
- * DESCRIPTION:	Fasttrap Tracing: module handling
+ * DESCRIPTION:	DTrace - fasttrap provider kernel module
  *
- * CDDL HEADER START
+ * Copyright (c) 2010, 2013, Oracle and/or its affiliates. All rights reserved.
  *
- * The contents of this file are subject to the terms of the
- * Common Development and Distribution License (the "License").
- * You may not use this file except in compliance with the License.
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
  *
- * You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
- * or http://www.opensolaris.org/os/licensing.
- * See the License for the specific language governing permissions
- * and limitations under the License.
- *
- * When distributing Covered Code, include this CDDL HEADER in each
- * file and include the License file at usr/src/OPENSOLARIS.LICENSE.
- * If applicable, add the following below this CDDL HEADER, with the
- * fields enclosed by brackets "[]" replaced with your own identifying
- * information: Portions Copyright [yyyy] [name of copyright owner]
- *
- * CDDL HEADER END
- *
- * Copyright 2010, 2011, 2012, 2013 Oracle, Inc.  All rights reserved.
- * Use is subject to license terms.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  */
 
 #include <linux/module.h>
@@ -34,7 +24,7 @@
 MODULE_AUTHOR("Kris Van Hees (kris.van.hees@oracle.com)");
 MODULE_DESCRIPTION("Fasttrap Tracing");
 MODULE_VERSION("v0.1");
-MODULE_LICENSE("CDDL");
+MODULE_LICENSE("GPL");
 
 static dtrace_mops_t fasttrap_mops = {
 	fasttrap_meta_create_probe,

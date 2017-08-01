@@ -1,27 +1,18 @@
 /*
  * FILE:	dtrace_dev.c
- * DESCRIPTION:	Dynamic Tracing: device file handling
- *
- * CDDL HEADER START
- *
- * The contents of this file are subject to the terms of the
- * Common Development and Distribution License (the "License").
- * You may not use this file except in compliance with the License.
- *
- * You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
- * or http://www.opensolaris.org/os/licensing.
- * See the License for the specific language governing permissions
- * and limitations under the License.
- *
- * When distributing Covered Code, include this CDDL HEADER in each
- * file and include the License file at usr/src/OPENSOLARIS.LICENSE.
- * If applicable, add the following below this CDDL HEADER, with the
- * fields enclosed by brackets "[]" replaced with your own identifying
- * information: Portions Copyright [yyyy] [name of copyright owner]
- *
- * CDDL HEADER END
+ * DESCRIPTION:	DTrace - Framework device driver
  *
  * Copyright (c) 2010, 2017, Oracle and/or its affiliates. All rights reserved.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  */
 
 #include <linux/delay.h>
@@ -38,7 +29,6 @@
 #include "ctf_api.h"
 #include "dtrace.h"
 #include "dtrace_dev.h"
-#include <linux/dtrace/ioctl_debug.h>
 
 extern char			*dtrace_helptrace_buffer;
 extern int			dtrace_helptrace_bufsize;
@@ -90,6 +80,27 @@ int dtrace_enable_nullop(void)
 {
 	return 0;
 }
+
+
+#ifdef CONFIG_DT_DEBUG
+static void dtrace_ioctl_sizes(void)
+{
+#define DBG_PRINT(x) dt_dbg_ioctl("Size of %s: %lx\n", #x, sizeof(x))
+	DBG_PRINT(dtrace_providerdesc_t);
+	DBG_PRINT(dtrace_probedesc_t);
+	DBG_PRINT(dtrace_bufdesc_t);
+	DBG_PRINT(dtrace_eprobedesc_t);
+	DBG_PRINT(dtrace_argdesc_t);
+	DBG_PRINT(dtrace_conf_t);
+	DBG_PRINT(dtrace_status_t);
+	DBG_PRINT(processorid_t);
+	DBG_PRINT(dtrace_aggdesc_t);
+	DBG_PRINT(dtrace_fmtdesc_t);
+	DBG_PRINT(dof_hdr_t);
+#undef DBG_PRINT
+}
+
+#endif
 
 static int dtrace_open(struct inode *inode, struct file *file)
 {
@@ -957,15 +968,6 @@ static long dtrace_ioctl(struct file *file,
 
 	return -ENOTTY;
 }
-
-#ifdef CONFIG_DT_DEBUG
-
-void dtrace_size_dbg_print(const char *type, size_t size)
-{
-	dt_dbg_ioctl("Size of %s: %lx\n", type, size);
-}
-
-#endif
 
 static int dtrace_close(struct inode *inode, struct file *file)
 {
