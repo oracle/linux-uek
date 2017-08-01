@@ -625,7 +625,7 @@ static void ovl_workdir_cleanup_recurse(struct path *path, int level)
 	if (err)
 		goto out;
 
-	inode_lock_nested(dir, I_MUTEX_PARENT);
+	mutex_lock_nested(&dir->i_mutex, I_MUTEX_PARENT);
 	list_for_each_entry(p, &list, l_node) {
 		struct dentry *dentry;
 
@@ -642,7 +642,7 @@ static void ovl_workdir_cleanup_recurse(struct path *path, int level)
 			ovl_workdir_cleanup(dir, path->mnt, dentry, level);
 		dput(dentry);
 	}
-	inode_unlock(dir);
+	mutex_unlock(&dir->i_mutex);
 out:
 	ovl_cache_free(&list);
 }
@@ -661,9 +661,9 @@ void ovl_workdir_cleanup(struct inode *dir, struct vfsmount *mnt,
 	if (err) {
 		struct path path = { .mnt = mnt, .dentry = dentry };
 
-		inode_unlock(dir);
+		mutex_unlock(&dir->i_mutex);
 		ovl_workdir_cleanup_recurse(&path, level + 1);
-		inode_lock_nested(dir, I_MUTEX_PARENT);
+		mutex_lock_nested(&dir->i_mutex, I_MUTEX_PARENT);
 		ovl_cleanup(dir, dentry);
 	}
 }
