@@ -458,7 +458,7 @@ Provides: kernel = %{rpmversion}-%{pkg_release}\
 %endif\
 Requires(pre): %{kernel_prereq}\
 Requires(pre): %{initrd_prereq}\
-Requires(pre): linux-firmware >= 20170224-51.git432444c5.0.1\
+Requires(pre): linux-firmware >= 20170803-56.git7d2c913d.0.1\
 Requires(post): %{_sbindir}/new-kernel-pkg\
 Requires(preun): %{_sbindir}/new-kernel-pkg\
 Conflicts: %{kernel_dot_org_conflicts}\
