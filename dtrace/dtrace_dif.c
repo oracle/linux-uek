@@ -3740,6 +3740,7 @@ next:
 		src = tupregs[argi].dttk_value;
 		if (af == AF_INET) {
 			ipaddr_t	ip4;
+			ipaddr_t_p	ptr4;
 			uint8_t		*ptr8, val;
 
 			/*
@@ -3767,7 +3768,8 @@ next:
 			 * Stringify as a dotted decimal quad.
 			 */
 			*end-- = '\0';
-			ptr8 = (uint8_t *)&ip4;
+			ptr4 = &ip4;
+			ptr8 = (uint8_t *)ptr4;
 			for (i = 3; i >= 0; i--) {
 				val = ptr8[i];
 
