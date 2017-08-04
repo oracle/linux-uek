@@ -618,10 +618,10 @@ int fuse_conn_init(struct fuse_conn *fc, int affinity)
 
 	if (affinity == FUSE_CPU) {
 		fc->affinity = FUSE_CPU;
-		fc->nr_nodes = num_present_cpus();
+		fc->nr_nodes = num_possible_cpus();
 	} else if (affinity == FUSE_NUMA) {
 		fc->affinity = FUSE_NUMA;
-		fc->nr_nodes = nr_online_nodes;
+		fc->nr_nodes = nr_node_ids;
 	} else {
 		fc->affinity = FUSE_NONE;
 		fc->nr_nodes = 1;
@@ -648,7 +648,10 @@ int fuse_conn_init(struct fuse_conn *fc, int affinity)
 	} else {
 		sz = sizeof(struct fuse_node);
 		for (i = 0; i < fc->nr_nodes; i++) {
-			fn = kmalloc_node(sz, GFP_KERNEL, i);
+			if (node_online(i))
+				fn = kmalloc_node(sz, GFP_KERNEL, i);
+			else
+				fn = kmalloc(sz, GFP_KERNEL);
 			if (!fn)
 				goto out;
 			memset(fn, 0, sz);

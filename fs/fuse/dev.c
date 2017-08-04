@@ -71,15 +71,20 @@ static struct fuse_req *__fuse_request_alloc(struct fuse_conn *fc,
 {
 	struct fuse_req *req;
 	struct fuse_node *fn;
+	int nid;
 
 	fn = fuse_get_node(fc);
 
 	if (fc->affinity == FUSE_CPU)
-		req = kmem_cache_alloc_node(fuse_req_cachep, GFP_KERNEL,
-					    cpu_to_node(fn->node_id));
+		nid = cpu_to_node(fn->node_id);
 	else
-		req = kmem_cache_alloc_node(fuse_req_cachep, GFP_KERNEL,
-					    fn->node_id);
+		nid = fn->node_id;
+
+	if (node_online(nid))
+		req = kmem_cache_alloc_node(fuse_req_cachep, GFP_KERNEL, nid);
+	else
+		req = kmem_cache_alloc(fuse_req_cachep, GFP_KERNEL);
+
 	if (req) {
 		struct page **pages;
 		struct fuse_page_desc *page_descs;
