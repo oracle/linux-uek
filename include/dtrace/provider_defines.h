@@ -30,6 +30,7 @@ typedef uintptr_t		dtrace_provider_id_t;
 typedef uintptr_t		dtrace_meta_provider_id_t;
 typedef struct cred	cred_t;
 typedef __be32		ipaddr_t;
+typedef ipaddr_t *	ipaddr_t_p;
 typedef struct in6_addr	in6_addr_t;
 
 struct dtrace_pops;
