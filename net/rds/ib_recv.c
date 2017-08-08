@@ -1374,6 +1374,7 @@ void rds_ib_recv_cqe_handler(struct rds_ib_connection *ic,
 	if (!rds_ib_srq_enabled) {
 		rds_ib_ring_free(&ic->i_recv_ring, 1);
 		rds_ib_recv_refill(conn, 0, 0);
+		rds_ib_stats_inc(s_ib_rx_refill_from_cq);
 	} else {
 		recv->r_ic = ic;
 		recv->r_posted = 0;
@@ -1505,6 +1506,7 @@ int rds_ib_recv_path(struct rds_conn_path *cp)
 	if (!rds_ib_srq_enabled && rds_conn_up(conn)) {
 		rds_ib_attempt_ack(ic);
 		rds_ib_recv_refill(conn, 0, 1);
+		rds_ib_stats_inc(s_ib_rx_refill_from_thread);
 	}
 
 	return ret;
