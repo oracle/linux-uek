@@ -60,7 +60,7 @@ static kmem_zone_t *xfs_buf_zone;
 
 #define	DTRACE_IO_XFS_WAIT(name, bp)					\
 	if (DTRACE_IO_ENABLED(name)) {					\
-		struct bio bio = {					\
+		struct bio bio __maybe_unused = {			\
 			.bi_iter.bi_sector = (bp)->b_bn,		\
 			.bi_iter.bi_size = (bp)->b_length,		\
 			.bi_opf = ((bp)->b_flags & XBF_WRITE) ?		\
