@@ -322,6 +322,11 @@ key_ref_t keyring_search_aux(key_ref_t keyring_ref,
 	long err;
 	int sp, kix;
 
+	if (!match) {
+		key_ref = ERR_PTR(-EINVAL);
+		goto error;
+	}
+
 	keyring = key_ref_to_ptr(keyring_ref);
 	possessed = is_key_possessed(keyring_ref);
 	key_check(keyring);
