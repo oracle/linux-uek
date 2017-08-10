@@ -1142,7 +1142,6 @@ extern unsigned int  rds_sysctl_shutdown_trace_end_time;
 int rds_threads_init(void);
 void rds_threads_exit(void);
 extern struct workqueue_struct *rds_wq;
-extern struct workqueue_struct *rds_tos_wq;
 extern struct workqueue_struct *rds_local_wq;
 void rds_queue_reconnect(struct rds_conn_path *cp, int reason);
 void rds_connect_worker(struct work_struct *);
