@@ -254,7 +254,7 @@ struct rds_conn_path {
 	struct delayed_work     cp_reject_w;
 	struct delayed_work     cp_hb_w;
 	struct delayed_work	cp_reconn_w;
-	struct delayed_work	cp_down_w;
+	struct work_struct	cp_down_w;
 	struct mutex		cp_cm_lock;	/* protect cp_state & cm */
 	wait_queue_head_t	cp_waitq;
 
@@ -1142,7 +1142,7 @@ int rds_threads_init(void);
 void rds_threads_exit(void);
 extern struct workqueue_struct *rds_wq;
 extern struct workqueue_struct *rds_local_wq;
-void rds_queue_reconnect(struct rds_conn_path *cp, int reason);
+void rds_queue_reconnect(struct rds_conn_path *cp);
 void rds_connect_worker(struct work_struct *);
 void rds_shutdown_worker(struct work_struct *);
 void rds_send_worker(struct work_struct *);
