@@ -943,14 +943,6 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 	 * see the comment above rds_queue_reconnect()
 	 */
 	mutex_lock(&conn->c_cm_lock);
-	if (rds_conn_transition(conn, RDS_CONN_DOWN, RDS_CONN_DOWN) &&
-	    (conn->c_laddr < conn->c_faddr)) {
-		rds_rtd(RDS_RTD_CM_EXT_P,
-			"incoming passive connection is trying to connect %p\n",
-			conn);
-		rds_conn_drop(conn, DR_IB_CONN_DROP_RACE);
-		goto out;
-	}
 	if (!rds_conn_transition(conn, RDS_CONN_DOWN, RDS_CONN_CONNECTING)) {
 		/*
 		 * in both of the cases below, the conn is half setup.
@@ -981,39 +973,10 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 					&conn->c_laddr,
 					&conn->c_faddr,
 					conn->c_tos);
-				rds_rtd(RDS_RTD_CM, "RDS/IB: connection "
-					" id %p conn %p "
-					"<%pI4,%pI4,%d> "
-					"racing for 15s, forcing reset\n",
-					cm_id, conn,
-					&conn->c_laddr,
-					&conn->c_faddr,
-					conn->c_tos);
 				rds_conn_drop(conn, DR_IB_REQ_WHILE_CONNECTING);
 				rds_ib_stats_inc(s_ib_listen_closed_stale);
 			} else {
 				/* Wait and see - our connect may still be succeeding */
-				rds_rtd(RDS_RTD_CM, "RDS/IB: connection "
-					" id %p conn %p "
-					"<%pI4,%pI4,%d> "
-					" will be rejected\n",
-					cm_id, conn,
-					&conn->c_laddr,
-					&conn->c_faddr,
-					conn->c_tos);
-				if (test_and_clear_bit(RDS_INITIAL_RECONNECT, &conn->c_flags) ||
-				    (conn->c_laddr > conn->c_faddr) ||
-				    rds_conn_self_loopback_passive(conn)) {
-					rds_rtd(RDS_RTD_CM, "RDS/IB: connection "
-						" id %p conn %p "
-						"<%pI4,%pI4,%d> "
-						" will be rejected as passive conn\n",
-						cm_id, conn,
-						&conn->c_laddr,
-						&conn->c_faddr,
-						conn->c_tos);
-					rds_conn_drop(conn, DR_IB_CONN_DROP_RACE);
-				}
 				rds_ib_stats_inc(s_ib_connect_raced);
 			}
 		}
