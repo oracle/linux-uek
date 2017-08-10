@@ -132,7 +132,6 @@ EXPORT_SYMBOL_GPL(rds_connect_complete);
  */
 void rds_queue_reconnect(struct rds_conn_path *cp, int reason)
 {
-	unsigned long delay = 0;
 	unsigned long rand;
 	struct rds_connection *conn = cp->cp_conn;
 	bool is_tcp = conn->c_trans->t_type == RDS_TRANS_TCP;
@@ -146,31 +145,22 @@ void rds_queue_reconnect(struct rds_conn_path *cp, int reason)
 	if (is_tcp && !IS_CANONICAL(conn->c_laddr, conn->c_faddr))
 		return;
 
-	if (reason == DR_IB_BASE_CONN_DOWN) {
-		cp->cp_reconnect_jiffies = 0;
-		delay = msecs_to_jiffies(500);
-	}
-
 	set_bit(RDS_RECONNECT_PENDING, &cp->cp_flags);
 	if (cp->cp_reconnect_jiffies == 0) {
-		set_bit(RDS_INITIAL_RECONNECT, &cp->cp_flags);
-		get_random_bytes(&rand, sizeof(rand));
 		cp->cp_reconnect_jiffies = rds_sysctl_reconnect_min_jiffies;
-		queue_delayed_work(cp->cp_wq, &cp->cp_conn_w,
-				   delay + (rand % cp->cp_reconnect_jiffies));
+		queue_delayed_work(cp->cp_wq, &cp->cp_conn_w, 0);
 		return;
 	}
 
-	clear_bit(RDS_INITIAL_RECONNECT, &cp->cp_flags);
-	if ((conn->c_laddr > conn->c_faddr) ||
-	    rds_conn_self_loopback_passive(conn))
-		delay = msecs_to_jiffies(15000);
+	get_random_bytes(&rand, sizeof(rand));
 	rds_rtd(RDS_RTD_CM_EXT,
 		"%lu delay %lu ceil conn %p for %pI4 -> %pI4 tos %d\n",
-		delay, cp->cp_reconnect_jiffies,
+		rand % cp->cp_reconnect_jiffies, cp->cp_reconnect_jiffies,
 		conn, &conn->c_laddr, &conn->c_faddr, conn->c_tos);
 
-	queue_delayed_work(cp->cp_wq, &cp->cp_conn_w, delay);
+	queue_delayed_work(cp->cp_wq, &cp->cp_conn_w,
+			   rand % cp->cp_reconnect_jiffies);
+
 	cp->cp_reconnect_jiffies = min(cp->cp_reconnect_jiffies * 2,
 					rds_sysctl_reconnect_max_jiffies);
 }
