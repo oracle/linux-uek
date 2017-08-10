@@ -251,6 +251,7 @@ static struct rds_connection *__rds_conn_create(struct net *net,
 	}
 
 	conn->c_trans = trans;
+
 	init_waitqueue_head(&conn->c_hs_waitq);
 	for (i = 0; i < npaths; i++) {
 		struct rds_conn_path *cp;
@@ -262,7 +263,7 @@ static struct rds_connection *__rds_conn_create(struct net *net,
 		if (conn->c_loopback)
 			cp->cp_wq = rds_local_wq;
 		else
-			cp->cp_wq = tos ? rds_wq : rds_tos_wq;
+			cp->cp_wq = rds_wq;
 	}
 	ret = trans->conn_alloc(conn, gfp);
 	if (ret) {
