@@ -781,7 +781,6 @@ static char *conn_drop_reasons[] = {
 	[DR_IB_CONN_DROP_RACE]		= "race between ESTABLISHED event and drop",
 	[DR_IB_NOT_CONNECTING_STATE]	= "conn is not in CONNECTING state",
 	[DR_IB_QP_EVENT]		= "qp event",
-	[DR_IB_BASE_CONN_DOWN]		= "base conn down",
 	[DR_IB_REQ_WHILE_CONN_UP]	= "incoming REQ in CONN_UP state",
 	[DR_IB_REQ_WHILE_CONNECTING]	= "incoming REQ in CONNECTING state",
 	[DR_IB_PAS_SETUP_QP_FAIL]	= "passive setup_qp failure",
