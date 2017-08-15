@@ -435,16 +435,16 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 # Packages that need to be installed before the kernel is, because the %post
 # scripts use them.
 #
-%define kernel_prereq  fileutils, module-init-tools, initscripts >= 8.11.1-1, kernel-firmware = %{rpmversion}-%{pkg_release}, /sbin/new-kernel-pkg
+%define kernel_prereq  fileutils, module-init-tools, initscripts >= 8.11.1-1, /sbin/new-kernel-pkg
 %define initrd_prereq  dracut-kernel >= 004-242.0.3
 
 #
 # This macro does requires, provides, conflicts, obsoletes for a kernel package.
-#	%%kernel_reqprovconf <subpackage>
+#	%%kernel_reqprovconf [-r] <subpackage>
 # It uses any kernel_<subpackage>_conflicts and kernel_<subpackage>_obsoletes
 # macros defined above.
 #
-%define kernel_reqprovconf \
+%define kernel_reqprovconf(r) \
 Provides: kernel%{?variant} = %{rpmversion}-%{pkg_release}\
 Provides: kernel%{?variant}-%{_target_cpu} = %{rpmversion}-%{pkg_release}%{?1:.%{1}}\
 Provides: kernel%{?variant}-drm = 4.3.0\
@@ -463,7 +463,10 @@ Provides: kernel = %{rpmversion}-%{pkg_release}\
 %endif\
 Requires(pre): %{kernel_prereq}\
 Requires(pre): %{initrd_prereq}\
-Requires(pre): linux-firmware >= 20170803-56.git7d2c913d.0.1\
+%if "x%{?-r}" == "x"\
+Requires(pre): kernel-firmware = %{rpmversion}-%{pkg_release}\
+%endif\
+Requires(pre): linux%{?-r:-nano}-firmware >= 20170803-56.git7d2c913d.0.1\
 Requires(post): /sbin/new-kernel-pkg\
 Requires(preun): /sbin/new-kernel-pkg\
 Conflicts: %{kernel_dot_org_conflicts}\
@@ -624,6 +627,7 @@ input and output, etc.
 Summary: The Linux kernel
 Group: System Environment/Kernel
 License: GPLv2
+%kernel_reqprovconf -r
 %description -n kernel-ueknano
 The kernel package contains the Linux kernel (vmlinuz), the core of any
 Linux operating system.  The kernel handles the basic functions
