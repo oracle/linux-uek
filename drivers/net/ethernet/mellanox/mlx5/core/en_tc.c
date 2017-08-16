@@ -232,6 +232,7 @@ mlx5e_tc_add_nic_flow(struct mlx5e_priv *priv,
 	struct mlx5_flow_destination dest = {};
 	struct mlx5_flow_act flow_act = {
 		.action = attr->action,
+		.has_flow_tag = true,
 		.flow_tag = attr->flow_tag,
 		.encap_id = 0,
 	};
