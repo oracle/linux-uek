@@ -43,13 +43,25 @@ struct workqueue_struct *rds_ib_fmr_wq;
 static DEFINE_PER_CPU(unsigned long, clean_list_grace);
 #define CLEAN_LIST_BUSY_BIT 0
 
+enum rds_ib_fr_state {
+	MR_IS_INVALID,		/* mr ready to be used */
+	MR_IS_VALID,		/* mr in use, marked before posting reg. wr */
+	MR_IS_STALE,		/* mr is possibly corrupt, marked if failure */
+};
+
 /*
  * This is stored as mr->r_trans_private.
  */
 struct rds_ib_mr {
 	struct rds_ib_device	*device;
 	struct rds_ib_mr_pool	*pool;
+	struct rds_ib_connection *ic;
+
 	struct ib_fmr		*fmr;
+	struct ib_mr		*mr;
+	struct ib_fast_reg_page_list	*page_list;
+	enum rds_ib_fr_state	fr_state;
+	struct completion	wr_comp;
 
 	struct xlist_head	xlist;
 
@@ -61,6 +73,9 @@ struct rds_ib_mr {
 	unsigned int		sg_len;
 	u64			*dma;
 	int			sg_dma_len;
+
+	unsigned int		dma_npages;
+	unsigned int		sg_byte_len;
 
 	struct rds_sock		*rs;
 	struct list_head	pool_list;
@@ -88,6 +103,7 @@ struct rds_ib_mr_pool {
 	unsigned long		max_free_pinned;
 	unsigned                unmap_fmr_cpu;
 	struct ib_fmr_attr	fmr_attr;
+	bool			use_fastreg;
 
 	spinlock_t		busy_lock; /* protect ops on 'busy_list' */
 	/* All in use MRs allocated from this pool are listed here. This list
@@ -100,6 +116,11 @@ struct rds_ib_mr_pool {
 static int rds_ib_flush_mr_pool(struct rds_ib_mr_pool *pool, int free_all, struct rds_ib_mr **);
 static void rds_ib_teardown_mr(struct rds_ib_mr *ibmr);
 static void rds_ib_mr_pool_flush_worker(struct work_struct *work);
+
+static int rds_ib_map_fastreg_mr(struct rds_ib_device *rds_ibdev,
+				 struct rds_ib_mr *ibmr,
+				 struct scatterlist *sg, unsigned int sg_len);
+static int rds_ib_fastreg_inv(struct rds_ib_mr *ibmr);
 
 static struct rds_ib_device *rds_ib_get_device(__be32 ipaddr)
 {
@@ -279,6 +300,7 @@ struct rds_ib_mr_pool *rds_ib_create_mr_pool(struct rds_ib_device *rds_ibdev,
 	pool->fmr_attr.max_maps = rds_ibdev->fmr_max_remaps;
 	pool->fmr_attr.page_shift = PAGE_SHIFT;
 	atomic_set(&pool->max_items_soft, pool->max_items);
+	pool->use_fastreg = rds_ibdev->use_fastreg;
 
 	return pool;
 }
@@ -359,8 +381,60 @@ static inline void wait_clean_list_grace(void)
 	}
 }
 
-static struct rds_ib_mr *rds_ib_alloc_fmr(struct rds_ib_device *rds_ibdev,
-					int npages)
+static int rds_ib_init_fastreg_mr(struct rds_ib_device *rds_ibdev,
+				  struct rds_ib_mr_pool *pool,
+				  struct rds_ib_mr *ibmr)
+{
+	struct ib_fast_reg_page_list *page_list = NULL;
+	struct ib_mr *mr = NULL;
+	int err;
+
+	mr = ib_alloc_mr(rds_ibdev->pd, IB_MR_TYPE_MEM_REG, pool->fmr_attr.max_pages);
+	if (IS_ERR(mr)) {
+		err = PTR_ERR(mr);
+		pr_warn("RDS/IB: ib_alloc_fast_reg_mr failed (err=%d)\n", err);
+		return err;
+	}
+
+	page_list = ib_alloc_fast_reg_page_list(rds_ibdev->dev,
+						pool->fmr_attr.max_pages);
+	if (IS_ERR(page_list)) {
+		err = PTR_ERR(page_list);
+
+		pr_warn("RDS/IB: ib_alloc_fast_reg_page_list failed (err=%d)\n",
+			err);
+		ib_dereg_mr(mr);
+		return err;
+	}
+
+	ibmr->page_list = page_list;
+	ibmr->mr = mr;
+	return 0;
+}
+
+static int rds_ib_init_fmr(struct rds_ib_device *rds_ibdev,
+			   struct rds_ib_mr_pool *pool,
+			   struct rds_ib_mr *ibmr)
+{
+	int err;
+
+	ibmr->fmr = ib_alloc_fmr(rds_ibdev->pd,
+			(IB_ACCESS_LOCAL_WRITE |
+			 IB_ACCESS_REMOTE_READ |
+			 IB_ACCESS_REMOTE_WRITE |
+			 IB_ACCESS_REMOTE_ATOMIC),
+			&pool->fmr_attr);
+	if (IS_ERR(ibmr->fmr)) {
+		err = PTR_ERR(ibmr->fmr);
+		ibmr->fmr = NULL;
+		return err;
+	}
+
+	return 0;
+}
+
+static struct rds_ib_mr *rds_ib_alloc_ibmr(struct rds_ib_device *rds_ibdev,
+					   int npages)
 {
 	struct rds_ib_mr_pool *pool;
 	struct rds_ib_mr *ibmr = NULL;
@@ -423,19 +497,16 @@ static struct rds_ib_mr *rds_ib_alloc_fmr(struct rds_ib_device *rds_ibdev,
 		goto out_no_cigar;
 	}
 
-	ibmr->fmr = ib_alloc_fmr(rds_ibdev->pd,
-			(IB_ACCESS_LOCAL_WRITE |
-			 IB_ACCESS_REMOTE_READ |
-			 IB_ACCESS_REMOTE_WRITE|
-			 IB_ACCESS_REMOTE_ATOMIC),
-			&pool->fmr_attr);
-	if (IS_ERR(ibmr->fmr)) {
+	if (rds_ibdev->use_fastreg)
+		err = rds_ib_init_fastreg_mr(rds_ibdev, pool, ibmr);
+	else
+		err = rds_ib_init_fmr(rds_ibdev, pool, ibmr);
+
+	if (err) {
 		int total_pool_size;
 		int prev_8k_max;
 		int prev_1m_max;
 
-		err = PTR_ERR(ibmr->fmr);
-		ibmr->fmr = NULL;
 		if (err != -ENOMEM)
 			goto out_no_cigar;
 
@@ -481,6 +552,9 @@ static struct rds_ib_mr *rds_ib_alloc_fmr(struct rds_ib_device *rds_ibdev,
 	list_add(&ibmr->pool_list, &pool->busy_list);
 	spin_unlock_bh(&pool->busy_lock);
 
+	init_completion(&ibmr->wr_comp);
+	ibmr->fr_state = MR_IS_INVALID; /* not needed bcas of kzalloc */
+
 	ibmr->pool = pool;
 	if (pool->pool_type == RDS_IB_MR_8K_POOL)
 		rds_ib_stats_inc(s_ib_rdma_mr_8k_alloc);
@@ -493,11 +567,8 @@ static struct rds_ib_mr *rds_ib_alloc_fmr(struct rds_ib_device *rds_ibdev,
 	return ibmr;
 
 out_no_cigar:
-	if (ibmr) {
-		if (ibmr->fmr)
-			ib_dealloc_fmr(ibmr->fmr);
+	if (ibmr)
 		kfree(ibmr);
-	}
 	atomic_dec(&pool->item_count);
 	return ERR_PTR(err);
 }
@@ -776,25 +847,47 @@ static int rds_ib_flush_mr_pool(struct rds_ib_mr_pool *pool,
 	if (list_empty(&unmap_list))
 		goto out;
 
-	/* String all ib_mr's onto one list and hand them to ib_unmap_fmr */
-	list_for_each_entry(ibmr, &unmap_list, unmap_list)
-		list_add(&ibmr->fmr->list, &fmr_list);
+	if (!pool->use_fastreg) {
+		/* String all ib_mrs onto one list and hand them to
+		 * ib_unmap_fmr
+		 */
+		list_for_each_entry(ibmr, &unmap_list, unmap_list)
+			list_add(&ibmr->fmr->list, &fmr_list);
 
-	ret = ib_unmap_fmr(&fmr_list);
-	if (ret)
-		printk(KERN_WARNING "RDS/IB: ib_unmap_fmr failed (err=%d)\n", ret);
+		ret = ib_unmap_fmr(&fmr_list);
+		if (ret)
+			pr_warn("RDS/IB: ib_unmap_fmr failed (err=%d)\n", ret);
+	} else {
+		list_for_each_entry(ibmr, &unmap_list, unmap_list) {
+			ret = rds_ib_fastreg_inv(ibmr);
+			if (ret)
+				pr_warn_ratelimited(
+					"RDS/IB: rds_ib_fastreg_inv failed (err=%d)\n",
+					ret);
+		}
+	}
 
 	/* Now we can destroy the DMA mapping and unpin any pages */
 	list_for_each_entry_safe(ibmr, next, &unmap_list, unmap_list) {
 		unpinned += ibmr->sg_len;
 		__rds_ib_teardown_mr(ibmr);
-		if (nfreed < free_goal || ibmr->remap_count >= pool->fmr_attr.max_maps) {
+		if (nfreed < free_goal ||
+		    (!pool->use_fastreg &&
+		     ibmr->remap_count >= pool->fmr_attr.max_maps) ||
+		    (pool->use_fastreg && ibmr->fr_state == MR_IS_STALE)) {
 			if (ibmr->pool->pool_type == RDS_IB_MR_8K_POOL)
 				rds_ib_stats_inc(s_ib_rdma_mr_8k_free);
 			else
 				rds_ib_stats_inc(s_ib_rdma_mr_1m_free);
 			list_del(&ibmr->unmap_list);
-			ib_dealloc_fmr(ibmr->fmr);
+			if (pool->use_fastreg) {
+				if (ibmr->page_list)
+					ib_free_fast_reg_page_list(ibmr->page_list);
+				if (ibmr->mr)
+					ib_dereg_mr(ibmr->mr);
+			} else {
+				ib_dealloc_fmr(ibmr->fmr);
+			}
 			kfree(ibmr);
 			nfreed++;
 		}
@@ -877,7 +970,9 @@ void rds_ib_free_mr(void *trans_private, int invalidate)
 	spin_unlock_bh(&pool->busy_lock);
 
 	/* Return it to the pool's free list */
-	if (ibmr->remap_count >= pool->fmr_attr.max_maps)
+	if ((!rds_ibdev->use_fastreg &&
+	     ibmr->remap_count >= pool->fmr_attr.max_maps) ||
+	    (pool->use_fastreg && ibmr->fr_state == MR_IS_STALE))
 		xlist_add(&ibmr->xlist, &ibmr->xlist, &pool->drop_list);
 	else
 		xlist_add(&ibmr->xlist, &ibmr->xlist, &pool->free_list);
@@ -922,10 +1017,12 @@ void rds_ib_flush_mrs(void)
 }
 
 void *rds_ib_get_mr(struct scatterlist *sg, unsigned long nents,
-		    struct rds_sock *rs, u32 *key_ret)
+		    struct rds_sock *rs, u32 *key_ret,
+		    struct rds_connection *conn)
 {
 	struct rds_ib_device *rds_ibdev;
 	struct rds_ib_mr *ibmr = NULL;
+	struct rds_ib_connection *ic = NULL;
 	int ret;
 
 	rds_ibdev = rds_ib_get_device(rs->rs_bound_addr);
@@ -934,22 +1031,38 @@ void *rds_ib_get_mr(struct scatterlist *sg, unsigned long nents,
 		goto out;
 	}
 
+	if (conn) {
+		ic = conn->c_transport_data;
+	} else if (rds_ibdev->use_fastreg) {
+		/* TODO: Add FRWR support for RDS_GET_MR */
+		ret = -EOPNOTSUPP;
+		goto out;
+	}
+
 	if (!rds_ibdev->mr_8k_pool || !rds_ibdev->mr_1m_pool) {
 		ret = -ENODEV;
 		goto out;
 	}
 
-	ibmr = rds_ib_alloc_fmr(rds_ibdev, nents);
+	ibmr = rds_ib_alloc_ibmr(rds_ibdev, nents);
 	if (IS_ERR(ibmr)) {
 		rds_ib_dev_put(rds_ibdev);
 		return ibmr;
 	}
 
-	ret = rds_ib_map_fmr(rds_ibdev, ibmr, sg, nents);
-	if (ret == 0)
-		*key_ret = ibmr->fmr->rkey;
-	else
-		printk(KERN_WARNING "RDS/IB: map_fmr failed (errno=%d)\n", ret);
+	ibmr->ic = ic;
+
+	if (rds_ibdev->use_fastreg) {
+		ret = rds_ib_map_fastreg_mr(rds_ibdev, ibmr, sg, nents);
+		if (ret == 0)
+			*key_ret = ibmr->mr->rkey;
+	} else {
+		ret = rds_ib_map_fmr(rds_ibdev, ibmr, sg, nents);
+		if (ret == 0)
+			*key_ret = ibmr->fmr->rkey;
+		else
+			pr_warn("RDS/IB: map_fmr failed (errno=%d)\n", ret);
+	}
 
 	ibmr->rs = rs;
 	ibmr->device = rds_ibdev;
@@ -966,3 +1079,219 @@ void *rds_ib_get_mr(struct scatterlist *sg, unsigned long nents,
 	return ibmr;
 }
 
+/* Fastreg related functions */
+
+static int rds_ib_map_scatterlist(struct rds_ib_device *rds_ibdev,
+				  struct rds_ib_mr *ibmr)
+{
+	struct ib_device *dev = rds_ibdev->dev;
+	int i, j, ret, page_cnt;
+	u32 len;
+
+	ibmr->sg_dma_len = ib_dma_map_sg(dev, ibmr->sg, ibmr->sg_len,
+					 DMA_BIDIRECTIONAL);
+	if (unlikely(!ibmr->sg_dma_len)) {
+		pr_warn("RDS/IB: dma_map_sg failed!\n");
+		return -EBUSY;
+	}
+
+	ibmr->sg_byte_len = 0;
+	ibmr->dma_npages = 0;
+	len = 0;
+
+	ret = -EINVAL;
+	for (i = 0; i < ibmr->sg_dma_len; ++i) {
+		unsigned int dma_len = ib_sg_dma_len(dev, &ibmr->sg[i]);
+		u64 dma_addr = ib_sg_dma_address(dev, &ibmr->sg[i]);
+
+		ibmr->sg_byte_len += dma_len;
+		if (dma_addr & ~PAGE_MASK) {
+			if (i > 0)
+				goto out_unmap;
+			else
+				++ibmr->dma_npages;
+		}
+
+		if ((dma_addr + dma_len) & ~PAGE_MASK) {
+			if (i < ibmr->sg_dma_len - 1)
+				goto out_unmap;
+			else
+				++ibmr->dma_npages;
+		}
+
+		len += dma_len;
+	}
+	ibmr->dma_npages += len >> PAGE_SHIFT;
+
+	/* Now gather the dma addrs into one list */
+	if (ibmr->dma_npages > ibmr->pool->fmr_attr.max_pages) {
+		ret = -EMSGSIZE;
+		goto out_unmap;
+	}
+
+	page_cnt = 0;
+	for (i = 0; i < ibmr->sg_dma_len; ++i) {
+		unsigned int dma_len = ib_sg_dma_len(dev, &ibmr->sg[i]);
+		u64 dma_addr = ib_sg_dma_address(dev, &ibmr->sg[i]);
+
+		for (j = 0; j < dma_len; j += PAGE_SIZE)
+			ibmr->page_list->page_list[page_cnt++] =
+				(dma_addr & PAGE_MASK) + j;
+	}
+
+	ibmr->dma_npages = page_cnt;
+	return 0;
+
+out_unmap:
+	return ret;
+}
+
+static int rds_ib_rdma_build_fastreg(struct rds_ib_mr *ibmr)
+{
+	struct ib_fast_reg_wr f_wr;
+	struct ib_send_wr *failed_wr;
+	int ret = 0;
+
+	while (atomic_dec_return(&ibmr->ic->i_fastreg_wrs) <= 0) {
+		atomic_inc(&ibmr->ic->i_fastreg_wrs);
+		/* Depending on how many times schedule() is called,
+		 * we could replace it with wait_event() in future.
+		 */
+		schedule();
+	}
+
+	ib_update_fast_reg_key(ibmr->mr, ibmr->remap_count++);
+	WARN_ON(ibmr->fr_state != MR_IS_INVALID);
+	ibmr->fr_state = MR_IS_VALID;
+
+	memset(&f_wr, 0, sizeof(f_wr));
+	f_wr.wr.wr_id = (u64)ibmr;
+	f_wr.wr.opcode = IB_WR_FAST_REG_MR;
+	f_wr.length = ibmr->sg_byte_len;
+	f_wr.rkey = ibmr->mr->rkey;
+	f_wr.page_list = ibmr->page_list;
+	f_wr.page_list_len = ibmr->dma_npages;
+	f_wr.page_shift = PAGE_SHIFT;
+	f_wr.access_flags = IB_ACCESS_LOCAL_WRITE |
+			    IB_ACCESS_REMOTE_READ |
+			    IB_ACCESS_REMOTE_WRITE;
+	f_wr.iova_start = 0;
+	f_wr.wr.send_flags = IB_SEND_SIGNALED;
+
+	failed_wr = (struct ib_send_wr *)&f_wr;
+	ret = ib_post_send(ibmr->ic->i_cm_id->qp, (struct ib_send_wr *)&f_wr, &failed_wr);
+	BUG_ON(failed_wr != (struct ib_send_wr *)&f_wr);
+	if (ret) {
+		atomic_inc(&ibmr->ic->i_fastreg_wrs);
+		ibmr->fr_state = MR_IS_INVALID;
+		pr_warn_ratelimited("RDS/IB: %s:%d ib_post_send returned %d\n",
+				    __func__, __LINE__, ret);
+		goto out;
+	}
+
+	wait_for_completion(&ibmr->wr_comp);
+	if (ibmr->fr_state == MR_IS_STALE) {
+		/* Registration request failed */
+		ret = -EAGAIN;
+	}
+
+out:
+	return ret;
+}
+
+static int rds_ib_map_fastreg_mr(struct rds_ib_device *rds_ibdev,
+				 struct rds_ib_mr *ibmr,
+				 struct scatterlist *sg, unsigned int sg_len)
+{
+	int ret = 0;
+
+	/* We want to teardown old ibmr values here and fill it up with
+	 * new sg values
+	 */
+	rds_ib_teardown_mr(ibmr);
+
+	ibmr->sg = sg;
+	ibmr->sg_len = sg_len;
+
+	ret = rds_ib_map_scatterlist(rds_ibdev, ibmr);
+	if (ret)
+		goto out;
+
+	ret = rds_ib_rdma_build_fastreg(ibmr);
+	if (ret)
+		goto out;
+
+	if (ibmr->pool->pool_type == RDS_IB_MR_8K_POOL)
+		rds_ib_stats_inc(s_ib_rdma_mr_8k_used);
+	else
+		rds_ib_stats_inc(s_ib_rdma_mr_1m_used);
+
+	return ret;
+
+out:
+	if (ibmr->sg_dma_len) {
+		ib_dma_unmap_sg(rds_ibdev->dev, ibmr->sg, ibmr->sg_len,
+				DMA_BIDIRECTIONAL);
+		ibmr->sg_dma_len = 0;
+	}
+	ibmr->sg = NULL;
+	ibmr->sg_len = 0;
+	return ret;
+}
+
+static int rds_ib_fastreg_inv(struct rds_ib_mr *ibmr)
+{
+	struct ib_send_wr s_wr, *failed_wr;
+	int ret = 0;
+
+	if (ibmr->fr_state != MR_IS_VALID)
+		goto out;
+
+	ibmr->fr_state = MR_IS_INVALID;
+
+	memset(&s_wr, 0, sizeof(s_wr));
+	s_wr.wr_id = (u64)ibmr;
+	s_wr.opcode = IB_WR_LOCAL_INV;
+	s_wr.ex.invalidate_rkey = ibmr->mr->rkey;
+	s_wr.send_flags = IB_SEND_SIGNALED;
+
+	failed_wr = &s_wr;
+	ret = ib_post_send(ibmr->ic->i_cm_id->qp, &s_wr, &failed_wr);
+	BUG_ON(failed_wr != &s_wr);
+	if (ret) {
+		ibmr->fr_state = MR_IS_STALE;
+		pr_warn_ratelimited("RDS/IB: %s:%d ib_post_send returned %d\n",
+				    __func__, __LINE__, ret);
+		goto out;
+	}
+
+	wait_for_completion(&ibmr->wr_comp);
+
+out:
+	return ret;
+}
+
+void rds_ib_mr_cqe_handler(struct rds_ib_connection *ic, struct ib_wc *wc)
+{
+	struct rds_ib_mr *ibmr = (struct rds_ib_mr *)wc->wr_id;
+	enum rds_ib_fr_state fr_state = ibmr->fr_state;
+
+	WARN_ON(ibmr->fr_state == MR_IS_STALE);
+
+	if (wc->status != IB_WC_SUCCESS) {
+		if (rds_conn_up(ic->conn)) {
+			pr_warn("RDS: IB: MR completion <%pI4,%pI4,%d> status %u "
+				"vendor_err %u, disconnecting and reconnecting\n",
+				&ic->conn->c_laddr, &ic->conn->c_faddr,
+				ic->conn->c_tos, wc->status, wc->vendor_err);
+		}
+		ibmr->fr_state = MR_IS_STALE;
+	}
+
+	if (fr_state == MR_IS_INVALID) {
+		complete(&ibmr->wr_comp);
+	} else if (fr_state == MR_IS_VALID) {
+		atomic_inc(&ic->i_fastreg_wrs);
+		complete(&ibmr->wr_comp);
+	}
+}
