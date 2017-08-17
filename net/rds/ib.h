@@ -18,6 +18,7 @@
 
 #define RDS_IB_DEFAULT_RECV_WR		1024
 #define RDS_IB_DEFAULT_SEND_WR		256
+#define RDS_IB_DEFAULT_FREG_WR		256
 #define RDS_IB_DEFAULT_SRQ_MAX_WR       4096
 #define RDS_IB_DEFAULT_SRQ_HWM_REFILL	(RDS_IB_DEFAULT_SRQ_MAX_WR/2)
 #define RDS_IB_DEFAULT_SRQ_LWM_REFILL	(RDS_IB_DEFAULT_SRQ_MAX_WR/10)
@@ -164,6 +165,9 @@ struct rds_ib_connection {
 	struct ib_cq		*i_rcq;
 	struct ib_wc		i_send_wc[RDS_WC_MAX];
 	struct ib_wc		i_recv_wc[RDS_WC_MAX];
+
+	/* Number of wrs available for MR registration(frwr) */
+	atomic_t		i_fastreg_wrs;
 
 	/* interrupt handling */
 	struct tasklet_struct	i_stasklet;
@@ -418,6 +422,7 @@ struct rds_ib_device {
 	struct list_head	conn_list;
 	struct ib_device	*dev;
 	struct ib_pd		*pd;
+	bool			use_fastreg;
 	struct ib_mr		*mr;
 	struct rds_ib_mr_pool	*mr_1m_pool;
 	struct rds_ib_mr_pool   *mr_8k_pool;
@@ -456,7 +461,6 @@ struct rds_ib_device {
 #define IB_ACK_IN_FLIGHT	0
 #define IB_ACK_REQUESTED	1
 
-#define RDS_IB_SEND_OP		(1ULL << 63)
 /* Magic WR_ID for ACKs */
 #define RDS_IB_ACK_WR_ID	(~(u64) 0)
 
@@ -554,6 +558,7 @@ extern struct ib_client rds_ib_client;
 
 extern unsigned int rds_ib_fmr_1m_pool_size;
 extern unsigned int rds_ib_fmr_8k_pool_size;
+extern bool prefer_frwr;
 extern unsigned int rds_ib_retry_count;
 extern unsigned int rds_ib_rnr_retry_count;
 extern unsigned int rds_ib_active_bonding_enabled;
@@ -591,12 +596,14 @@ struct rds_ib_mr_pool *rds_ib_create_mr_pool(struct rds_ib_device *rds_dev, int 
 void rds_ib_get_mr_info(struct rds_ib_device *rds_ibdev, struct rds_info_rdma_connection *iinfo);
 void rds_ib_destroy_mr_pool(struct rds_ib_mr_pool *);
 void *rds_ib_get_mr(struct scatterlist *sg, unsigned long nents,
-		    struct rds_sock *rs, u32 *key_ret);
+		    struct rds_sock *rs, u32 *key_ret,
+		    struct rds_connection *conn);
 void rds_ib_sync_mr(void *trans_private, int dir);
 void rds_ib_free_mr(void *trans_private, int invalidate);
 void rds_ib_flush_mrs(void);
 int rds_ib_fmr_init(void);
 void rds_ib_fmr_exit(void);
+void rds_ib_mr_cqe_handler(struct rds_ib_connection *ic, struct ib_wc *wc);
 
 /* ib_recv.c */
 int rds_ib_recv_init(void);
