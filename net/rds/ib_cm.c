@@ -428,42 +428,54 @@ static void rds_ib_cq_comp_handler_recv(struct ib_cq *cq, void *context)
 	tasklet_schedule(&ic->i_rtasklet);
 }
 
-static void poll_cq(struct rds_ib_connection *ic, struct ib_cq *cq,
-		    struct ib_wc *wcs,
-		    struct rds_ib_ack_state *ack_state,
-		    unsigned int rx)
+static void poll_scq(struct rds_ib_connection *ic, struct ib_cq *cq,
+		     struct ib_wc *wcs)
 {
-	int nr;
-	int i;
+	int nr, i;
 	struct ib_wc *wc;
 
 	while ((nr = ib_poll_cq(cq, RDS_WC_MAX, wcs)) > 0) {
 		for (i = 0; i < nr; i++) {
-			if (rx) {
-				if ((++ic->i_rx_poll_cq % RDS_IB_RX_LIMIT) == 0) {
-					rdsdebug("connection "
-						 "<%pI4,%pI4,%d> "
-						 "RX poll_cq processed %d\n",
-						 &ic->conn->c_laddr,
-						 &ic->conn->c_faddr,
-						 ic->conn->c_tos,
-						 ic->i_rx_poll_cq);
-				}
-			}
 			wc = wcs + i;
 			rdsdebug("wc wr_id 0x%llx status %u byte_len %u imm_data %u\n",
 				 (unsigned long long)wc->wr_id, wc->status, wc->byte_len,
 				 be32_to_cpu(wc->ex.imm_data));
 
-			if (wc->wr_id & RDS_IB_SEND_OP)
+			if (wc->wr_id < (u64)ic->i_send_ring.w_nr ||
+			    wc->wr_id == RDS_IB_ACK_WR_ID)
 				rds_ib_send_cqe_handler(ic, wc);
 			else
-				rds_ib_recv_cqe_handler(ic, wc, ack_state);
+				rds_ib_mr_cqe_handler(ic, wc);
+		}
+	}
+}
+
+static void poll_rcq(struct rds_ib_connection *ic, struct ib_cq *cq,
+		     struct ib_wc *wcs,
+		     struct rds_ib_ack_state *ack_state)
+{
+	int nr, i;
+	struct ib_wc *wc;
+
+	while ((nr = ib_poll_cq(cq, RDS_WC_MAX, wcs)) > 0) {
+		for (i = 0; i < nr; i++) {
+			if ((++ic->i_rx_poll_cq % RDS_IB_RX_LIMIT) == 0) {
+				rdsdebug("connection <%pI4,%pI4,%d>"
+					 " RX poll_cq processed %d\n",
+					 &ic->conn->c_laddr,
+					 &ic->conn->c_faddr,
+					 ic->conn->c_tos,
+					 ic->i_rx_poll_cq);
+			}
+			wc = wcs + i;
+			rdsdebug("wc wr_id 0x%llx status %u byte_len %u imm_data %u\n",
+				 (unsigned long long)wc->wr_id, wc->status,
+				 wc->byte_len, be32_to_cpu(wc->ex.imm_data));
+			rds_ib_recv_cqe_handler(ic, wc, ack_state);
 		}
 
-		if (rx && ic->i_rx_poll_cq >= RDS_IB_RX_LIMIT)
+		if (ic->i_rx_poll_cq >= RDS_IB_RX_LIMIT)
 			break;
-
 	}
 }
 
@@ -471,18 +483,16 @@ void rds_ib_tasklet_fn_send(unsigned long data)
 {
 	struct rds_ib_connection *ic = (struct rds_ib_connection *) data;
 	struct rds_connection *conn = ic->conn;
-	struct rds_ib_ack_state ack_state;
 
-	memset(&ack_state, 0, sizeof(ack_state));
 	rds_ib_stats_inc(s_ib_tasklet_call);
 
 	/* if cq has been already reaped, ignore incoming cq event */
 	 if (atomic_read(&ic->i_cq_quiesce))
 		return;
 
-	poll_cq(ic, ic->i_scq, ic->i_send_wc, &ack_state, 0);
+	poll_scq(ic, ic->i_scq, ic->i_send_wc);
 	ib_req_notify_cq(ic->i_scq, IB_CQ_NEXT_COMP);
-	poll_cq(ic, ic->i_scq, ic->i_send_wc, &ack_state, 0);
+	poll_scq(ic, ic->i_scq, ic->i_send_wc);
 
 	if (rds_conn_up(conn) &&
 	   (!test_bit(RDS_LL_SEND_FULL, &conn->c_flags) ||
@@ -513,9 +523,9 @@ static void rds_ib_rx(struct rds_ib_connection *ic)
 	memset(&ack_state, 0, sizeof(ack_state));
 
 	ic->i_rx_poll_cq = 0;
-	poll_cq(ic, ic->i_rcq, ic->i_recv_wc, &ack_state, 1);
+	poll_rcq(ic, ic->i_rcq, ic->i_recv_wc, &ack_state);
 	ib_req_notify_cq(ic->i_rcq, IB_CQ_SOLICITED);
-	poll_cq(ic, ic->i_rcq, ic->i_recv_wc, &ack_state, 1);
+	poll_rcq(ic, ic->i_rcq, ic->i_recv_wc, &ack_state);
 
 	if (ack_state.ack_next_valid)
 		rds_ib_set_ack(ic, ack_state.ack_next, ack_state.ack_required);
@@ -633,6 +643,7 @@ static int rds_ib_setup_qp(struct rds_connection *conn)
 	struct ib_qp_init_attr qp_attr;
 	struct rds_ib_device *rds_ibdev;
 	int ret;
+	int mr_reg, mr_inv;
 
 	/*
 	 * It's normal to see a null device if an incoming connection races
@@ -642,11 +653,25 @@ static int rds_ib_setup_qp(struct rds_connection *conn)
 	if (!rds_ibdev)
 		return -EOPNOTSUPP;
 
+	/* In the case of FRWR, mr registration and invalidation wrs use the
+	 * same work queue as the send wrs. To make sure that we are not
+	 * overflowing the workqueue, we allocate separately for each operation.
+	 * mr_reg and mr_inv are the wr numbers allocated for reg and inv.
+	 */
+	if (rds_ibdev->use_fastreg) {
+		mr_reg = RDS_IB_DEFAULT_FREG_WR;
+		mr_inv = 1;
+	} else {
+		mr_reg = 0;
+		mr_inv = 0;
+	}
+
 	/* add the conn now so that connection establishment has the dev */
 	rds_ib_add_conn(rds_ibdev, conn);
 
-	if (rds_ibdev->max_wrs < ic->i_send_ring.w_nr + 1)
-		rds_ib_ring_resize(&ic->i_send_ring, rds_ibdev->max_wrs - 1);
+	if (rds_ibdev->max_wrs < ic->i_send_ring.w_nr + 1 + mr_reg + mr_inv)
+		rds_ib_ring_resize(&ic->i_send_ring,
+				   rds_ibdev->max_wrs - 1 - mr_reg - mr_inv);
 	if (rds_ibdev->max_wrs < ic->i_recv_ring.w_nr + 1)
 		rds_ib_ring_resize(&ic->i_recv_ring, rds_ibdev->max_wrs - 1);
 
@@ -656,7 +681,7 @@ static int rds_ib_setup_qp(struct rds_connection *conn)
 
 	ic->i_scq_vector = ibdev_get_unused_vector(rds_ibdev);
 	memset(&cq_attr, 0, sizeof(cq_attr));
-	cq_attr.cqe = ic->i_send_ring.w_nr + 1;
+	cq_attr.cqe = ic->i_send_ring.w_nr + 1 + mr_reg + mr_inv;
 	cq_attr.comp_vector = ic->i_scq_vector;
 	ic->i_scq = ib_create_cq(dev, rds_ib_cq_comp_handler_send,
 				 rds_ib_cq_event_handler, conn,
@@ -709,7 +734,7 @@ static int rds_ib_setup_qp(struct rds_connection *conn)
 	qp_attr.event_handler = rds_ib_qp_event_handler;
 	qp_attr.qp_context = conn;
 	/* + 1 to allow for the single ack message */
-	qp_attr.cap.max_send_wr = ic->i_send_ring.w_nr + 1;
+	qp_attr.cap.max_send_wr = ic->i_send_ring.w_nr + 1 + mr_reg + mr_inv;
 	qp_attr.cap.max_recv_wr = ic->i_recv_ring.w_nr + 1;
 	qp_attr.cap.max_send_sge = rds_ibdev->max_sge;
 	qp_attr.cap.max_recv_sge = RDS_IB_RECV_SGE;
@@ -1189,7 +1214,9 @@ void rds_ib_conn_path_shutdown(struct rds_conn_path *cp)
 		/* quiesce tx and rx completion before tearing down */
 		while (!wait_event_timeout(rds_ib_ring_empty_wait,
 				rds_ib_ring_empty(&ic->i_recv_ring) &&
-				(atomic_read(&ic->i_signaled_sends) == 0),
+				(atomic_read(&ic->i_signaled_sends) == 0) &&
+				(atomic_read(&ic->i_fastreg_wrs) ==
+				 RDS_IB_DEFAULT_FREG_WR),
 				msecs_to_jiffies(5000))) {
 
 			/* Try to reap pending RX completions every 5 secs */
@@ -1340,6 +1367,12 @@ int rds_ib_conn_alloc(struct rds_connection *conn, gfp_t gfp)
 	 */
 	rds_ib_ring_init(&ic->i_send_ring, rds_ib_sysctl_max_send_wr);
 	rds_ib_ring_init(&ic->i_recv_ring, rds_ib_sysctl_max_recv_wr);
+
+	/* Might want to change this hard-coded value to a variable in future.
+	 * Updating this atomic counter will need an update to qp/cq size too.
+	 */
+	atomic_set(&ic->i_fastreg_wrs, RDS_IB_DEFAULT_FREG_WR);
+
 	rds_ib_init_ic_frag(ic);
 
 	ic->conn = conn;
