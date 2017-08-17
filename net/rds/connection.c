@@ -160,6 +160,7 @@ static void __rds_conn_path_init(struct rds_connection *conn,
 	INIT_WORK(&cp->cp_down_w, rds_shutdown_worker);
 	mutex_init(&cp->cp_cm_lock);
 	cp->cp_flags = 0;
+	atomic_set(&cp->cp_rdma_map_pending, 0);
 }
 
 /*
@@ -400,6 +401,8 @@ void rds_conn_shutdown(struct rds_conn_path *cp)
 			   !test_bit(RDS_IN_XMIT, &cp->cp_flags));
 		wait_event(cp->cp_waitq,
 			   !test_bit(RDS_RECV_REFILL, &cp->cp_flags));
+		wait_event(cp->cp_waitq,
+			   (atomic_read(&cp->cp_rdma_map_pending) == 0));
 
 		conn->c_trans->conn_path_shutdown(cp);
 		rds_conn_path_reset(cp);
