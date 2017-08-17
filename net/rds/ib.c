@@ -54,6 +54,7 @@
 unsigned int rds_ib_fmr_1m_pool_size = RDS_FMR_1M_POOL_SIZE;
 unsigned int rds_ib_fmr_8k_pool_size = RDS_FMR_8K_POOL_SIZE;
 unsigned int rds_ib_retry_count = RDS_IB_DEFAULT_RETRY_COUNT;
+bool prefer_frwr;
 unsigned int rds_ib_active_bonding_enabled = 0;
 unsigned int rds_ib_active_bonding_fallback = 1;
 unsigned int rds_ib_active_bonding_trigger_delay_max_msecs; /* = 0; */
@@ -69,6 +70,8 @@ module_param(rds_ib_fmr_8k_pool_size, int, 0444);
 MODULE_PARM_DESC(rds_ib_fmr_8k_pool_size, " Max number of 8k fmr per HCA");
 module_param(rds_ib_retry_count, int, 0444);
 MODULE_PARM_DESC(rds_ib_retry_count, " Number of hw retries before reporting an error");
+module_param(prefer_frwr, bool, 0444);
+MODULE_PARM_DESC(prefer_frwr, "Preference of FRWR over FMR for memory registration(Y/N)");
 module_param(rds_ib_active_bonding_enabled, int, 0444);
 MODULE_PARM_DESC(rds_ib_active_bonding_enabled, " Active Bonding enabled");
 module_param(rds_ib_rnr_retry_count, int, 0444);
@@ -1982,6 +1985,7 @@ void rds_ib_add_one(struct ib_device *device)
 {
 	struct rds_ib_device *rds_ibdev;
 	struct ib_device_attr *dev_attr;
+	bool has_frwr, has_fmr;
 
 	/* Only handle IB (no iWARP) devices */
 	if (device->node_type != RDMA_NODE_IB_CA)
@@ -2052,6 +2056,14 @@ void rds_ib_add_one(struct ib_device *device)
 		rds_ibdev->mr = NULL;
 		goto put_dev;
 	}
+
+	has_frwr = (dev_attr->device_cap_flags & IB_DEVICE_MEM_MGT_EXTENSIONS);
+	has_fmr = (device->alloc_fmr && device->dealloc_fmr &&
+		   device->map_phys_fmr && device->unmap_fmr);
+	rds_ibdev->use_fastreg = (has_frwr && (!has_fmr || prefer_frwr));
+
+	pr_info("RDS/IB: %s will be used for ib_device: %s\n",
+		rds_ibdev->use_fastreg ? "FRWR" : "FMR", device->name);
 
 	rds_ibdev->mr_1m_pool =
 		rds_ib_create_mr_pool(rds_ibdev, RDS_IB_MR_1M_POOL);
