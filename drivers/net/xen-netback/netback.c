@@ -810,7 +810,8 @@ static void xen_netbk_rx_action(struct xen_netbk *netbk)
 			max_slots_needed++;
 
 		/* If the skb may not fit then bail out now */
-		if (!xenvif_rx_ring_slots_available(vif, max_slots_needed)) {
+		if ((npo.meta_prod + max_slots_needed) > ARRAY_SIZE(netbk->meta)
+		    || !xenvif_rx_ring_slots_available(vif, max_slots_needed)) {
 			skb_queue_head(&netbk->rx_queue, skb);
 			break;
 		}
