@@ -15,6 +15,7 @@
 #include <linux/pagemap.h>
 #include <linux/slab.h>
 #include <linux/sched.h>
+#include <linux/cred.h>
 
 #include <asm/uaccess.h>
 
@@ -41,6 +42,7 @@ static ssize_t TA_write(struct file *file, const char *buf, size_t size, loff_t 
 	struct transaction_context *tctxt =
 		TRANSACTION_CONTEXT(file->f_path.dentry->d_inode);
 	struct argresp *ar;
+	const struct dentry *dentry;
 	ssize_t rv = 0;
 
 	if (!tctxt || !tctxt->write_op)
@@ -54,12 +56,13 @@ static ssize_t TA_write(struct file *file, const char *buf, size_t size, loff_t 
 	if (!ar)
 		return -ENOMEM;
 	ar->size = 0;
-	mutex_lock(&file->f_path.dentry->d_inode->i_mutex);
+	dentry = file->f_path.dentry;
+	inode_lock(d_inode(dentry));
 	if (file->private_data)
 		rv = -EINVAL;
 	else
 		file->private_data = ar;
-	mutex_unlock(&file->f_path.dentry->d_inode->i_mutex);
+	inode_unlock(d_inode(dentry));
 	if (rv) {
 		kfree(ar);
 		return rv;
@@ -153,7 +156,7 @@ struct inode *new_transaction_inode(struct super_block *sb, int mode, struct tra
 	inode->i_uid = current_fsuid();
 	inode->i_gid = current_fsgid();
 	inode->i_blocks = 0;
-	inode->i_atime = inode->i_mtime = inode->i_ctime = CURRENT_TIME;
+	inode->i_atime = inode->i_mtime = inode->i_ctime = current_time(inode);
 	inode->i_fop = &transaction_ops;
 	inode->i_ino = (unsigned long)inode;
 

@@ -91,9 +91,9 @@
 #define CREATE_TRACE_POINTS
 #include "trace.h"
 
-#if PAGE_CACHE_SIZE % 1024
-#error Oh no, PAGE_CACHE_SIZE is not divisible by 1k! I cannot cope.
-#endif  /* PAGE_CACHE_SIZE % 1024 */
+#if PAGE_SIZE % 1024
+#error Oh no, PAGE_SIZE is not divisible by 1k! I cannot cope.
+#endif  /* PAGE_SIZE % 1024 */
 
 
 
@@ -140,6 +140,22 @@ static inline unsigned int asm_block_size(struct block_device *bdev)
 		return bdev_logical_block_size(bdev);
 
 	return bdev_physical_block_size(bdev);
+}
+
+void asm_bio_unmap(struct bio *bio)
+{
+	struct bio_vec *bvec;
+	int i;
+
+	bio_for_each_segment_all(bvec, bio, i) {
+		if (bio_data_dir(bio) == READ)
+			set_page_dirty_lock(bvec->bv_page);
+
+		put_page(bvec->bv_page);
+	}
+
+	bio_put(bio);
+	bio_put(bio);
 }
 
 /*
@@ -489,7 +505,7 @@ static int asmfs_mknod(struct inode *dir, struct dentry *dentry, umode_t mode, d
 	inode->i_gid = current_fsgid();
 	inode->i_blocks = 0;
 	inode->i_rdev = 0;
-	inode->i_atime = inode->i_mtime = inode->i_ctime = CURRENT_TIME;
+	inode->i_atime = inode->i_mtime = inode->i_ctime = current_time(dir);
 	init_special_inode(inode, mode, dev);
 
 	d_instantiate(dentry, inode);
@@ -522,7 +538,7 @@ static int asmfs_create(struct inode *dir, struct dentry *dentry, umode_t mode, 
 	inode->i_gid = current_fsgid();
 	inode->i_blocks = 0;
 	inode->i_rdev = 0;
-	inode->i_atime = inode->i_mtime = inode->i_ctime = CURRENT_TIME;
+	inode->i_atime = inode->i_mtime = inode->i_ctime = current_time(dir);
 	inode->i_op = &asmfs_file_inode_operations;
 	inode->i_fop = &asmfs_file_operations;
 
@@ -794,7 +810,7 @@ static int asm_close_disk(struct file *file, unsigned long handle)
 		/* No need for a fast path */
 		add_wait_queue(&ASMFS_FILE(file)->f_wait, &wait);
 		do {
-			set_task_state(tsk, TASK_UNINTERRUPTIBLE);
+			set_current_state(TASK_UNINTERRUPTIBLE);
 
 			if (!atomic_read(&d->d_ios))
 				break;
@@ -810,7 +826,7 @@ static int asm_close_disk(struct file *file, unsigned long handle)
 			 */
 			schedule_timeout(HZ);
 		} while (1);
-		set_task_state(tsk, TASK_RUNNING);
+		set_current_state(TASK_RUNNING);
 		remove_wait_queue(&ASMFS_FILE(file)->f_wait, &wait);
 	}
 	else
@@ -1103,7 +1119,7 @@ static int asm_submit_io(struct file *file,
 			 asm_ioc __user *user_iocp,
 			 asm_ioc *ioc)
 {
-	int ret = 0, rw = READ;
+	int ret = 0, rw = REQ_OP_READ;
 	struct inode *inode = ASMFS_F2I(file);
 	struct asmdisk_find_inode_args args;
 	struct asm_request *r;
@@ -1206,11 +1222,11 @@ static int asm_submit_io(struct file *file,
 			break;
 
 		case ASM_READ:
-			rw = READ;
+			rw = REQ_OP_READ;
 			break;
 
 		case ASM_WRITE:
-			rw = WRITE;
+			rw = REQ_OP_WRITE;
 			break;
 
 		case ASM_NOOP:
@@ -1231,11 +1247,12 @@ static int asm_submit_io(struct file *file,
 		goto out_error;
 	}
 
+	r->r_bio->bi_opf = rw;
 	r->r_bio->bi_bdev = bdev;
 
 	if (r->r_bio->bi_iter.bi_size != r->r_count) {
 		pr_err("%s: Only mapped partial ioc buffer\n", __func__);
-		bio_unmap_user(r->r_bio);
+		asm_bio_unmap(r->r_bio);
 		r->r_bio = NULL;
 		ret = -ENOMEM;
 		goto out_error;
@@ -1253,7 +1270,7 @@ static int asm_submit_io(struct file *file,
 		if (ret < 0) {
 			pr_err("%s: Could not attach integrity payload\n",
 			       __func__);
-			bio_unmap_user(r->r_bio);
+			asm_bio_unmap(r->r_bio);
 			ret = -ENOMEM;
 			goto out_error;
 		}
@@ -1270,7 +1287,7 @@ static int asm_submit_io(struct file *file,
 
 	atomic_set(&r->r_bio_count, 1);
 
-	submit_bio(rw, r->r_bio);
+	submit_bio(r->r_bio);
 
 out_error:
 	if (ret)
@@ -1325,7 +1342,7 @@ static int asm_maybe_wait_io(struct file *file,
 			struct inode *disk_inode;
 
 			ret = 0;
-			set_task_state(tsk, TASK_INTERRUPTIBLE);
+			set_current_state(TASK_INTERRUPTIBLE);
 
 			spin_lock_irq(&afi->f_lock);
 			if (r->r_status & (ASM_COMPLETED |
@@ -1355,7 +1372,7 @@ static int asm_maybe_wait_io(struct file *file,
 				break;
 			}
 		} while (1);
-		set_task_state(tsk, TASK_RUNNING);
+		set_current_state(TASK_RUNNING);
 		remove_wait_queue(&afi->f_wait, &wait);
 		remove_wait_queue(&to->wait, &to_wait);
 
@@ -1463,7 +1480,7 @@ static int asm_wait_completion(struct file *file,
 		struct asmdisk_find_inode_args args;
 
 		ret = 0;
-		set_task_state(tsk, TASK_INTERRUPTIBLE);
+		set_current_state(TASK_INTERRUPTIBLE);
 
 		spin_lock_irq(&afi->f_lock);
 		if (!list_empty(&afi->f_complete)) {
@@ -1493,7 +1510,7 @@ static int asm_wait_completion(struct file *file,
 			break;
 		}
 	} while (1);
-	set_task_state(tsk, TASK_RUNNING);
+	set_current_state(TASK_RUNNING);
 	remove_wait_queue(&afi->f_wait, &wait);
 	remove_wait_queue(&to->wait, &to_wait);
 
@@ -1832,7 +1849,7 @@ static void asm_cleanup_bios(struct file *file)
 		spin_unlock_irq(&afi->f_lock);
 		trace_bio(bio, "unmap");
 		asm_integrity_unmap(bio);
-		bio_unmap_user(bio);
+		asm_bio_unmap(bio);
 		spin_lock_irq(&afi->f_lock);
 	}
 	spin_unlock_irq(&afi->f_lock);
@@ -1906,7 +1923,7 @@ static int asmfs_file_release(struct inode *inode, struct file *file)
 		struct inode *disk_inode;
 		struct asmdisk_find_inode_args args;
 
-		set_task_state(tsk, TASK_UNINTERRUPTIBLE);
+		set_current_state(TASK_UNINTERRUPTIBLE);
 
 		spin_lock_irq(&afi->f_lock);
 		if (list_empty(&afi->f_ios))
@@ -1927,7 +1944,7 @@ static int asmfs_file_release(struct inode *inode, struct file *file)
 
 		io_schedule();
 	} while (1);
-	set_task_state(tsk, TASK_RUNNING);
+	set_current_state(TASK_RUNNING);
 	remove_wait_queue(&afi->f_wait, &wait);
 
 	/* I don't *think* we need the lock here anymore, but... */
@@ -2401,8 +2418,8 @@ static int asmfs_fill_super(struct super_block *sb,
 	struct asmfs_params params;
 	struct qstr name;
 
-	sb->s_blocksize = PAGE_CACHE_SIZE;
-	sb->s_blocksize_bits = PAGE_CACHE_SHIFT;
+	sb->s_blocksize = PAGE_SIZE;
+	sb->s_blocksize_bits = PAGE_SHIFT;
 	sb->s_magic = ASMFS_MAGIC;
 	sb->s_op = &asmfs_ops;
 	sb->s_maxbytes = MAX_NON_LFS;	/* Why? */
@@ -2431,7 +2448,7 @@ static int asmfs_fill_super(struct super_block *sb,
 	inode->i_gid = GLOBAL_ROOT_GID;
 	inode->i_blocks = 0;
 	inode->i_rdev = 0;
-	inode->i_atime = inode->i_mtime = inode->i_ctime = CURRENT_TIME;
+	inode->i_atime = inode->i_mtime = inode->i_ctime = current_time(inode);
 	inode->i_op = &simple_dir_inode_operations;
 	inode->i_fop = &asmfs_dir_operations;
 	/* directory inodes start off with i_nlink == 2 (for "." entry) */
@@ -2444,7 +2461,7 @@ static int asmfs_fill_super(struct super_block *sb,
 
 	name.name = ASM_MANAGER_DISKS;
 	name.len = strlen(ASM_MANAGER_DISKS);
-	name.hash = full_name_hash(name.name, name.len);
+	name.hash = full_name_hash(root, name.name, name.len);
 	dentry = d_alloc(root, &name);
 	if (!dentry)
 		goto out_genocide;
@@ -2456,14 +2473,14 @@ static int asmfs_fill_super(struct super_block *sb,
 	inode->i_mode = S_IFDIR | 0755;
 	inode->i_uid = GLOBAL_ROOT_UID;
 	inode->i_gid = GLOBAL_ROOT_GID;
-	inode->i_atime = inode->i_mtime = inode->i_ctime = CURRENT_TIME;
+	inode->i_atime = inode->i_mtime = inode->i_ctime = current_time(inode);
 	inode->i_op = &asmfs_disk_dir_inode_operations;
 	inode->i_fop = &asmfs_dir_operations;
 	d_add(dentry, inode);
 
 	name.name = ASM_MANAGER_INSTANCES;
 	name.len = strlen(ASM_MANAGER_INSTANCES);
-	name.hash = full_name_hash(name.name, name.len);
+	name.hash = full_name_hash(root, name.name, name.len);
 	dentry = d_alloc(root, &name);
 	if (!dentry)
 		goto out_genocide;
@@ -2475,14 +2492,14 @@ static int asmfs_fill_super(struct super_block *sb,
 	inode->i_mode = S_IFDIR | 0770;
 	inode->i_uid = GLOBAL_ROOT_UID;
 	inode->i_gid = GLOBAL_ROOT_GID;
-	inode->i_atime = inode->i_mtime = inode->i_ctime = CURRENT_TIME;
+	inode->i_atime = inode->i_mtime = inode->i_ctime = current_time(inode);
 	inode->i_op = &asmfs_iid_dir_inode_operations;
 	inode->i_fop = &asmfs_dir_operations;
 	d_add(dentry, inode);
 
 	name.name = asm_operation_files[ASMOP_QUERY_VERSION];
 	name.len = strlen(asm_operation_files[ASMOP_QUERY_VERSION]);
-	name.hash = full_name_hash(name.name, name.len);
+	name.hash = full_name_hash(root, name.name, name.len);
 	dentry = d_alloc(root, &name);
 	if (!dentry)
 		goto out_genocide;
@@ -2494,7 +2511,7 @@ static int asmfs_fill_super(struct super_block *sb,
 
 	name.name = asm_operation_files[ASMOP_GET_IID];
 	name.len = strlen(asm_operation_files[ASMOP_GET_IID]);
-	name.hash = full_name_hash(name.name, name.len);
+	name.hash = full_name_hash(root, name.name, name.len);
 	dentry = d_alloc(root, &name);
 	if (!dentry)
 		goto out_genocide;
@@ -2506,7 +2523,7 @@ static int asmfs_fill_super(struct super_block *sb,
 
 	name.name = asm_operation_files[ASMOP_CHECK_IID];
 	name.len = strlen(asm_operation_files[ASMOP_CHECK_IID]);
-	name.hash = full_name_hash(name.name, name.len);
+	name.hash = full_name_hash(root, name.name, name.len);
 	dentry = d_alloc(root, &name);
 	if (!dentry)
 		goto out_genocide;
@@ -2518,7 +2535,7 @@ static int asmfs_fill_super(struct super_block *sb,
 
 	name.name = asm_operation_files[ASMOP_QUERY_DISK];
 	name.len = strlen(asm_operation_files[ASMOP_QUERY_DISK]);
-	name.hash = full_name_hash(name.name, name.len);
+	name.hash = full_name_hash(root, name.name, name.len);
 	dentry = d_alloc(root, &name);
 	if (!dentry)
 		goto out_genocide;

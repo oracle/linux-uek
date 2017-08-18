@@ -200,7 +200,7 @@ int asm_integrity_map(struct oracleasm_integrity_v2 *it, struct asm_request *r, 
 	trace_integrity(it, r, i);
 
 	while (i < nr_pages)
-		page_cache_release(pages[i++]);
+		put_page(pages[i++]);
 
 	kfree(pages);
 
@@ -224,6 +224,6 @@ void asm_integrity_unmap(struct bio *bio)
 		if (bio_data_dir(bio) == READ)
 			set_page_dirty_lock(iv.bv_page);
 
-		page_cache_release(iv.bv_page);
+		put_page(iv.bv_page);
 	}
 } /* asm_integrity_unmap */
