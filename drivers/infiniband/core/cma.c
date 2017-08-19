@@ -174,6 +174,9 @@ static struct rb_root id_table = RB_ROOT;
 /* Serialize operations of id_table tree */
 static DEFINE_SPINLOCK(id_table_lock);
 static struct workqueue_struct *cma_wq;
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+static struct workqueue_struct *cma_free_wq;
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 static unsigned int cma_pernet_id;
 
 struct cma_pernet {
@@ -2071,6 +2074,29 @@ static void cma_leave_mc_groups(struct rdma_id_private *id_priv)
 	}
 }
 
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+static void __rdma_free(struct work_struct *work)
+{
+	struct rdma_id_private *id_priv;
+
+	id_priv = container_of(work, struct rdma_id_private, work);
+
+	wait_for_completion(&id_priv->comp);
+
+	if (id_priv->internal_id)
+		cma_id_put(id_priv->id.context);
+
+	kfree(id_priv->id.route.path_rec);
+
+	if (id_priv->id.route.addr.dev_addr.sgid_attr)
+		rdma_put_gid_attr(id_priv->id.route.addr.dev_addr.sgid_attr);
+
+	put_net(id_priv->id.route.addr.dev_addr.net);
+	kfree(id_priv);
+
+}
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
+
 static void _destroy_id(struct rdma_id_private *id_priv,
 			enum rdma_cm_state state)
 {
@@ -2092,6 +2118,7 @@ static void _destroy_id(struct rdma_id_private *id_priv,
 
 	cma_release_port(id_priv);
 	cma_id_put(id_priv);
+#ifdef WITHOUT_ORACLE_EXTENSIONS
 	wait_for_completion(&id_priv->comp);
 
 	if (id_priv->internal_id)
@@ -2103,6 +2130,10 @@ static void _destroy_id(struct rdma_id_private *id_priv,
 
 	put_net(id_priv->id.route.addr.dev_addr.net);
 	kfree(id_priv);
+#else
+	INIT_WORK(&id_priv->work, __rdma_free);
+	queue_work(cma_free_wq, &id_priv->work);
+#endif /* WITHOUT_ORACLE_EXTENSIONS */
 }
 
 /*
@@ -5590,7 +5621,11 @@ static struct pernet_operations cma_pernet_operations = {
 
 static int __init cma_init(void)
 {
+#ifdef WITHOUT_ORACLE_EXTENSIONS
 	int ret;
+#else
+	int ret = -ENOMEM;
+#endif /* WITHOUT_ORACLE_EXTENSIONS */
 
 	/*
 	 * There is a rare lock ordering dependency in cma_netdev_callback()
@@ -5609,9 +5644,19 @@ static int __init cma_init(void)
 	if (!cma_wq)
 		return -ENOMEM;
 
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	cma_free_wq = alloc_ordered_workqueue("rdma_cm_fr", WQ_MEM_RECLAIM);
+	if (!cma_free_wq)
+		goto err_wq;
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
+
 	ret = register_pernet_subsys(&cma_pernet_operations);
 	if (ret)
+#ifdef WITHOUT_ORACLE_EXTENSIONS
 		goto err_wq;
+#else
+		goto err_free_wq;
+#endif /* WITHOUT_ORACLE_EXTENSIONS */
 
 	ib_sa_register_client(&sa_client);
 	register_netdevice_notifier(&cma_nb);
@@ -5634,6 +5679,10 @@ err:
 	unregister_netdevice_notifier(&cma_nb);
 	ib_sa_unregister_client(&sa_client);
 	unregister_pernet_subsys(&cma_pernet_operations);
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+err_free_wq:
+	destroy_workqueue(cma_free_wq);
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 err_wq:
 	destroy_workqueue(cma_wq);
 	return ret;
@@ -5647,6 +5696,10 @@ static void __exit cma_cleanup(void)
 	unregister_netdevice_notifier(&cma_nb);
 	ib_sa_unregister_client(&sa_client);
 	unregister_pernet_subsys(&cma_pernet_operations);
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	flush_workqueue(cma_free_wq);
+	destroy_workqueue(cma_free_wq);
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 	destroy_workqueue(cma_wq);
 }
 
