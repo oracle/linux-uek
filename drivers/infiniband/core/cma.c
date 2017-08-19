@@ -160,6 +160,7 @@ static LIST_HEAD(dev_list);
 static LIST_HEAD(listen_any_list);
 static DEFINE_MUTEX(lock);
 static struct workqueue_struct *cma_wq;
+static struct workqueue_struct *cma_free_wq;
 static unsigned int cma_pernet_id;
 
 struct cma_pernet {
@@ -366,6 +367,7 @@ struct rdma_id_private {
 	struct completion	comp;
 	atomic_t		refcount;
 	struct mutex		handler_mutex;
+	struct work_struct	work;  /* garbage coll */
 
 	int			backlog;
 	int			timeout_ms;
@@ -1672,6 +1674,22 @@ static void cma_leave_mc_groups(struct rdma_id_private *id_priv)
 	}
 }
 
+static void __rdma_free(struct work_struct *work)
+{
+	struct rdma_id_private *id_priv;
+
+	id_priv = container_of(work, struct rdma_id_private, work);
+
+	wait_for_completion(&id_priv->comp);
+
+	if (id_priv->internal_id)
+		cma_deref_id(id_priv->id.context);
+
+	kfree(id_priv->id.route.path_rec);
+	put_net(id_priv->id.route.addr.dev_addr.net);
+	kfree(id_priv);
+}
+
 void rdma_destroy_id(struct rdma_cm_id *id)
 {
 	struct rdma_id_private *id_priv;
@@ -1702,14 +1720,8 @@ void rdma_destroy_id(struct rdma_cm_id *id)
 
 	cma_release_port(id_priv);
 	cma_deref_id(id_priv);
-	wait_for_completion(&id_priv->comp);
-
-	if (id_priv->internal_id)
-		cma_deref_id(id_priv->id.context);
-
-	kfree(id_priv->id.route.path_rec);
-	put_net(id_priv->id.route.addr.dev_addr.net);
-	kfree(id_priv);
+	INIT_WORK(&id_priv->work, __rdma_free);
+	queue_work(cma_free_wq, &id_priv->work);
 }
 EXPORT_SYMBOL(rdma_destroy_id);
 
@@ -4648,15 +4660,19 @@ static struct pernet_operations cma_pernet_operations = {
 
 static int __init cma_init(void)
 {
-	int ret;
+	int ret = -ENOMEM;
 
 	cma_wq = alloc_ordered_workqueue("rdma_cm", WQ_MEM_RECLAIM);
 	if (!cma_wq)
 		return -ENOMEM;
 
+	cma_free_wq = alloc_ordered_workqueue("rdma_cm_fr", WQ_MEM_RECLAIM);
+	if (!cma_free_wq)
+		goto err_wq;
+
 	ret = register_pernet_subsys(&cma_pernet_operations);
 	if (ret)
-		goto err_wq;
+		goto err_free_wq;
 
 	ib_sa_register_client(&sa_client);
 	rdma_addr_register_client(&addr_client);
@@ -4675,6 +4691,8 @@ err:
 	unregister_netdevice_notifier(&cma_nb);
 	rdma_addr_unregister_client(&addr_client);
 	ib_sa_unregister_client(&sa_client);
+err_free_wq:
+	destroy_workqueue(cma_free_wq);
 err_wq:
 	destroy_workqueue(cma_wq);
 	return ret;
@@ -4689,6 +4707,8 @@ static void __exit cma_cleanup(void)
 	rdma_addr_unregister_client(&addr_client);
 	ib_sa_unregister_client(&sa_client);
 	unregister_pernet_subsys(&cma_pernet_operations);
+	flush_workqueue(cma_free_wq);
+	destroy_workqueue(cma_free_wq);
 	destroy_workqueue(cma_wq);
 }
 
