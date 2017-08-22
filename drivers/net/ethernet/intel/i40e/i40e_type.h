@@ -604,6 +604,11 @@ struct i40e_hw {
 #define I40E_HW_FLAG_FW_LLDP_STOPPABLE      BIT_ULL(4)
 	u64 flags;
 
+	/* Used in set switch config AQ command */
+	u16 switch_tag;
+	u16 first_tag;
+	u16 second_tag;
+
 	/* debug mask */
 	u32 debug_mask;
 	char err_str[16];
