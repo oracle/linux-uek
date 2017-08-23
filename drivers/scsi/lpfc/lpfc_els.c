@@ -8593,6 +8593,7 @@ lpfc_issue_els_fdisc(struct lpfc_vport *vport, struct lpfc_nodelist *ndlp,
 	pcmd += sizeof(uint32_t); /* Node Name */
 	pcmd += sizeof(uint32_t); /* Node Name */
 	memcpy(pcmd, &vport->fc_nodename, 8);
+	sp->cmn.valid_vendor_ver_level = 0;
 	memset(sp->vendorVersion, 0, sizeof(sp->vendorVersion));
 	lpfc_set_disctmo(vport);
 
