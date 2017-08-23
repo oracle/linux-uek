@@ -3559,6 +3559,7 @@ int megasas_wait_for_outstanding_fusion(struct megasas_instance *instance,
 			}
 		}
 
+		megasas_complete_cmd_dpc_fusion((unsigned long)instance);
 		outstanding = atomic_read(&instance->fw_outstanding);
 		if (!outstanding)
 			goto out;
@@ -3567,8 +3568,6 @@ int megasas_wait_for_outstanding_fusion(struct megasas_instance *instance,
 			dev_notice(&instance->pdev->dev, "[%2d]waiting for %d "
 			       "commands to complete for scsi%d\n", i,
 			       outstanding, instance->host->host_no);
-			megasas_complete_cmd_dpc_fusion(
-				(unsigned long)instance);
 		}
 		msleep(1000);
 	}
