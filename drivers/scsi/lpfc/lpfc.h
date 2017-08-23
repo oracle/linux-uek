@@ -688,7 +688,6 @@ struct lpfc_hba {
 	uint32_t fc_rttov;	/* R_T_TOV timer value */
 	uint32_t fc_altov;	/* AL_TOV timer value */
 	uint32_t fc_crtov;	/* C_R_TOV timer value */
-	uint32_t fc_citov;	/* C_I_TOV timer value */
 
 	struct serv_parm fc_fabparam;	/* fabric service parameters buffer */
 	uint8_t alpa_map[128];	/* AL_PA map from READ_LA */
@@ -708,6 +707,7 @@ struct lpfc_hba {
 	uint32_t RandomData[7];
 	uint8_t  fcp_embed_io;
 	uint8_t  mds_diags_support;
+	uint8_t  bbcredit_support;
 
 	/* HBA Config Parameters */
 	uint32_t cfg_ack0;
@@ -775,6 +775,7 @@ struct lpfc_hba {
 #define LPFC_FDMI_SUPPORT	1	/* FDMI supported? */
 	uint32_t cfg_enable_SmartSAN;
 	uint32_t cfg_enable_mds_diags;
+	uint32_t cfg_enable_bbcr;	/*Enable BB Credit Recovery*/
 	lpfc_vpd_t vpd;		/* vital product data */
 
 	struct pci_dev *pcidev;

@@ -387,6 +387,20 @@ struct lpfc_fcp_eq_hdl {
 	atomic_t fcp_eq_in_use;
 };
 
+/*BB Credit recovery value*/
+struct lpfc_bbscn_params {
+	uint32_t word0;
+#define lpfc_bbscn_min_SHIFT		0
+#define lpfc_bbscn_min_MASK		0x0000000F
+#define lpfc_bbscn_min_WORD		word0
+#define lpfc_bbscn_max_SHIFT		4
+#define lpfc_bbscn_max_MASK		0x0000000F
+#define lpfc_bbscn_max_WORD		word0
+#define lpfc_bbscn_def_SHIFT		8
+#define lpfc_bbscn_def_MASK		0x0000000F
+#define lpfc_bbscn_def_WORD		word0
+};
+
 /* Port Capabilities for SLI4 Parameters */
 struct lpfc_pc_sli4_params {
 	uint32_t supported;
@@ -520,6 +534,7 @@ struct lpfc_sli4_hba {
 	struct msix_entry *msix_entries;
 	uint8_t handler_name[LPFC_SLI4_HANDLER_CNT][LPFC_SLI4_HANDLER_NAME_SZ];
 	struct lpfc_fcp_eq_hdl *fcp_eq_hdl; /* FCP per-WQ handle */
+	struct lpfc_bbscn_params bbscn_params;
 
 	/* Pointers to the constructed SLI4 queues */
 	struct lpfc_queue **hba_eq;/* Event queues for HBA */
