@@ -36,6 +36,7 @@
 #include <linux/firmware.h>
 #include <linux/miscdevice.h>
 #include <linux/percpu.h>
+#include <linux/bitops.h>
 
 #include <scsi/scsi.h>
 #include <scsi/scsi_device.h>
@@ -3381,9 +3382,7 @@ lpfc_get_wwpn(struct lpfc_hba *phba)
 	if (phba->sli_rev == LPFC_SLI_REV4)
 		return be64_to_cpu(wwn);
 	else
-		return (((wwn & 0xffffffff00000000) >> 32) |
-			((wwn & 0x00000000ffffffff) << 32));
-
+		return rol64(wwn, 32);
 }
 
 /**
