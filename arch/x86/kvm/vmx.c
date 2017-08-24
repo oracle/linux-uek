@@ -3556,7 +3556,8 @@ static int hardware_enable(void)
 		wrmsrl(MSR_IA32_FEATURE_CONTROL, old | test_bits);
 	}
 	kvm_cpu_vmxon(phys_addr);
-	ept_sync_global();
+	if (enable_ept)
+		ept_sync_global();
 
 	return 0;
 }
