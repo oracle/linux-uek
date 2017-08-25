@@ -373,7 +373,7 @@ static void rds_ib_cm_fill_conn_param(struct rds_connection *conn,
 				      u32 protocol_version,
 				      u32 max_responder_resources,
 				      u32 max_initiator_depth, u16 frag,
-				      bool isv6)
+				      bool isv6, u8 seq)
 {
 	struct rds_ib_connection *ic = conn->c_transport_data;
 	struct rds_ib_device *rds_ibdev = ic->rds_ibdev;
@@ -403,6 +403,7 @@ static void rds_ib_cm_fill_conn_param(struct rds_connection *conn,
 			    cpu_to_be64(rds_ib_piggyb_ack(ic));
 			dp->ricp_v6.dp_tos = conn->c_tos;
 			dp->ricp_v6.dp_frag_sz = cpu_to_be16(frag);
+			dp->ricp_v6.dp_cm_seq = seq;
 
 			conn_param->private_data = &dp->ricp_v6;
 			conn_param->private_data_len = sizeof(dp->ricp_v6);
@@ -419,6 +420,7 @@ static void rds_ib_cm_fill_conn_param(struct rds_connection *conn,
 			    cpu_to_be64(rds_ib_piggyb_ack(ic));
 			dp->ricp_v4.dp_tos = conn->c_tos;
 			dp->ricp_v4.dp_frag_sz = cpu_to_be16(frag);
+			dp->ricp_v4.dp_cm_seq = seq;
 
 			conn_param->private_data = &dp->ricp_v4;
 			conn_param->private_data_len = sizeof(dp->ricp_v4);
@@ -995,6 +997,8 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 	u32 version;
 	int err = 1;
 	u16 frag;
+	u8 cm_req_seq = 0;
+	bool cm_seq_check_enable = false;
 
 	/* Check whether the remote protocol version matches ours. */
 	version = rds_ib_protocol_compatible(event, isv6);
@@ -1019,12 +1023,16 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 				goto out;
 			}
 		}
+		cm_seq_check_enable = dp->ricp_v6.dp_cm_seq & RDS_CM_RETRY_SEQ_EN;
+		cm_req_seq = IB_GET_CM_SEQ_NUM(dp->ricp_v6.dp_cm_seq);
 	} else {
 		dp_cmn = &dp->ricp_v4.dp_cmn;
 		ipv6_addr_set_v4mapped(dp->ricp_v4.dp_saddr, &s_mapped_addr);
 		ipv6_addr_set_v4mapped(dp->ricp_v4.dp_daddr, &d_mapped_addr);
 		saddr6 = &s_mapped_addr;
 		daddr6 = &d_mapped_addr;
+		cm_seq_check_enable = dp->ricp_v4.dp_cm_seq & RDS_CM_RETRY_SEQ_EN;
+		cm_req_seq = IB_GET_CM_SEQ_NUM(dp->ricp_v4.dp_cm_seq);
 	}
 
 	rds_rtd_ptr(RDS_RTD_CM,
@@ -1076,12 +1084,27 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 	 * see the comment above rds_queue_reconnect()
 	 */
 	mutex_lock(&conn->c_cm_lock);
+	ic = conn->c_transport_data;
+
+	if (ic && cm_seq_check_enable) {
+		if (cm_req_seq != ic->i_prev_seq) {
+			rds_rtd(RDS_RTD_CM_EXT_P,
+				"cm_id %p conn %p updating ic->i_prev_seq %d cm_req_seq %d\n",
+				cm_id, conn, ic->i_prev_seq, cm_req_seq);
+			ic->i_prev_seq = cm_req_seq;
+		} else if (cm_req_seq == ic->i_prev_seq && ic->i_last_rej_seq == cm_req_seq) {
+			rds_rtd(RDS_RTD_CM_EXT_P,
+				"duplicated REQ cm_id %p conn %p reject! ic->i_last_rej_seq %d cm_req_seq %d\n",
+				cm_id, conn, ic->i_last_rej_seq, cm_req_seq);
+			goto out;
+		}
+	}
+
 	if (!rds_conn_transition(conn, RDS_CONN_DOWN, RDS_CONN_CONNECTING)) {
 		/*
 		 * in both of the cases below, the conn is half setup.
 		 * we need to make sure the lower layers don't destroy it
 		 */
-		ic = conn->c_transport_data;
 		if (ic && ic->i_cm_id == cm_id)
 			destroy = 0;
 		if (rds_conn_state(conn) == RDS_CONN_UP) {
@@ -1125,6 +1148,8 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 				rds_ib_stats_inc(s_ib_connect_raced);
 			}
 		}
+		if (ic && cm_seq_check_enable)
+			ic->i_last_rej_seq = cm_req_seq;
 		goto out;
 	}
 
@@ -1172,7 +1197,7 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 	rds_ib_cm_fill_conn_param(conn, &conn_param, &dp_rep, version,
 				  event->param.conn.responder_resources,
 				  event->param.conn.initiator_depth,
-				  frag, isv6);
+				  frag, isv6, cm_req_seq);
 
 	/* rdma_accept() calls rdma_reject() internally if it fails */
 	err = rdma_accept(cm_id, &conn_param);
@@ -1224,6 +1249,7 @@ int rds_ib_cm_initiate_connect(struct rdma_cm_id *cm_id, bool isv6)
 	union rds_ib_conn_priv dp;
 	u16 frag;
 	int ret;
+	u8 seq;
 
 #ifdef CONFIG_RDS_ACL
 
@@ -1265,9 +1291,11 @@ int rds_ib_cm_initiate_connect(struct rdma_cm_id *cm_id, bool isv6)
 		goto out;
 	}
 	frag = rds_ib_set_frag_size(conn, ib_init_frag_size);
+	ic->i_req_sequence = IB_GET_CM_SEQ_NUM(ic->i_req_sequence + 1);
+	seq = RDS_CM_RETRY_SEQ_EN | ic->i_req_sequence;
 	rds_ib_cm_fill_conn_param(conn, &conn_param, &dp,
 				  conn->c_proposed_version, UINT_MAX, UINT_MAX,
-				  frag, isv6);
+				  frag, isv6, seq);
 	ret = rdma_connect(cm_id, &conn_param);
 	if (ret) {
 		pr_warn("RDS/IB: rdma_connect failed (%d)\n", ret);
