@@ -1298,7 +1298,7 @@ static inline int xve_get_misc_info(void)
 
 static inline int xg_vlan_tx_tag_present(struct sk_buff *skb)
 {
-	struct vlan_ethhdr *veth = vlan_eth_hdr(skb);
+	struct vlan_ethhdr *veth = (struct vlan_ethhdr *)(skb->data);
 
 	return veth->h_vlan_proto == htons(ETH_P_8021Q);
 }

@@ -1257,7 +1257,7 @@ void handle_carrier_state(struct xve_dev_priv *priv, char state)
 struct sk_buff *xve_generate_query(struct xve_dev_priv *priv,
 				   struct sk_buff *skb)
 {
-	struct vlan_ethhdr *veth = vlan_eth_hdr(skb);
+	struct vlan_ethhdr *veth = (struct vlan_ethhdr *)(skb->data);
 
 	if ((xg_vlan_tx_tag_present(skb)
 	     && veth->h_vlan_encapsulated_proto == htons(ETH_P_IP))
@@ -1302,7 +1302,7 @@ struct sk_buff *xve_create_arp(struct xve_dev_priv *priv,
 		struct vlan_ethhdr *veth;
 
 		vlan_get_tag(skb_pkt, &vlan_tci);
-		veth = vlan_eth_hdr(skb);
+		veth = (struct vlan_ethhdr *)(skb->data);
 		veth->h_vlan_proto = htons(ETH_P_8021Q);
 		/* now, the TCI */
 		veth->h_vlan_TCI = htons(vlan_tci);
@@ -1432,7 +1432,7 @@ struct sk_buff *xve_create_ndp(struct xve_dev_priv *priv,
 		struct vlan_ethhdr *veth;
 
 		vlan_get_tag(skb_pkt, &vlan_tci);
-		veth = vlan_eth_hdr(skb);
+		veth = (struct vlan_ethhdr *)(skb->data);
 		veth->h_vlan_proto = htons(ETH_P_8021Q);
 		/* now, the TCI */
 		veth->h_vlan_TCI = htons(vlan_tci);
