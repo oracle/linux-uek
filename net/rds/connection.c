@@ -152,7 +152,6 @@ static void __rds_conn_path_init(struct rds_connection *conn,
 	cp->cp_reconnect_drops = 0;
 	cp->cp_reconnect_err = 0;
 	cp->cp_conn->c_proposed_version = RDS_PROTOCOL_VERSION;
-	cp->cp_route_resolved = 1;
 	INIT_DELAYED_WORK(&cp->cp_send_w, rds_send_worker);
 	INIT_DELAYED_WORK(&cp->cp_recv_w, rds_recv_worker);
 	INIT_DELAYED_WORK(&cp->cp_conn_w, rds_connect_worker);
