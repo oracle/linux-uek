@@ -128,7 +128,7 @@ static void qlt_24xx_handle_abts(struct scsi_qla_host *,
  * Global Variables
  */
 static struct kmem_cache *qla_tgt_mgmt_cmd_cachep;
-static struct kmem_cache *qla_tgt_plogi_cachep;
+struct kmem_cache *qla_tgt_plogi_cachep;
 static mempool_t *qla_tgt_mgmt_cmd_mempool;
 static struct workqueue_struct *qla_tgt_wq;
 static DEFINE_MUTEX(qla_tgt_mutex);
