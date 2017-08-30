@@ -39,7 +39,6 @@
 #define c_base_conn		c_path[0].cp_base_conn
 #define c_acl_en		c_path[0].cp_acl_en
 #define c_reconnect_err		c_path[0].cp_reconnect_err
-#define c_route_resolved	c_path[0].cp_route_resolved
 #define c_reject_w		c_path[0].cp_reject_w
 
 #endif /* _RDS_RDS_SINGLE_H */
