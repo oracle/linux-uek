@@ -2707,14 +2707,14 @@ int rds_ib_init(void)
 
 	ret = rds_trans_register(&rds_ib_transport);
 	if (ret)
-		goto out_ibreg;
+		goto out_aux_wq;
 
 	rds_info_register_func(RDS_INFO_IB_CONNECTIONS, rds_ib_ic_info);
 
 	ret = rds_ip_threads_init();
 	if (ret) {
 		printk(KERN_ERR "RDS: failed to create IP thread\n");
-		goto out_ibreg;
+		goto out_aux_wq;
 	}
 
 	rds_ib_ip_excl_ips_init();
@@ -2733,6 +2733,8 @@ int rds_ib_init(void)
 
 out_ip_thread:
 	rds_ip_thread_exit();
+out_aux_wq:
+	destroy_workqueue(rds_aux_wq);
 out_ibreg:
 	rds_ib_unregister_client();
 out_recv:
@@ -2754,7 +2756,6 @@ void rds_ib_exit(void)
 	rds_ib_destroy_nodev_conns();
 	rds_ib_sysctl_exit();
 	rds_ib_recv_exit();
-	flush_workqueue(rds_aux_wq);
 	destroy_workqueue(rds_aux_wq);
 	rds_trans_unregister(&rds_ib_transport);
 	rds_ib_fmr_exit();
