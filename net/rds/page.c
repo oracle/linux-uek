@@ -129,8 +129,8 @@ int rds_page_remainder_alloc(struct scatterlist *scat, unsigned long bytes,
 	/* jump straight to allocation if we're trying for a huge page */
 	if (bytes >= PAGE_SIZE) {
 		if (large_page) {
-			size = min_t(unsigned int, bytes, RDS_MAX_FRAG_SIZE);
-			order = get_order(size);
+			order =  get_order(bytes);
+			size = bytes;
 		} else {
 			order =  0;
 			size = PAGE_SIZE;
