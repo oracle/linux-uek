@@ -220,9 +220,6 @@ int rds_bind(struct socket *sock, struct sockaddr *uaddr, int addr_len)
 	}
 
 	rs->rs_transport = trans;
-	if (rs->rs_transport->t_type == RDS_TRANS_TCP)
-		rs->rs_large_page = false;
-
 	ret = 0;
 
 out:
