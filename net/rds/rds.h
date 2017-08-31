@@ -332,7 +332,7 @@ struct rds_connection {
 	/* Qos support */
 	u8                      c_tos;
 
-	struct rds_conn_path	c_path[RDS_MPATH_WORKERS];
+	struct rds_conn_path	*c_path;
 	wait_queue_head_t	c_hs_waitq; /* handshake waitq */
 
 
