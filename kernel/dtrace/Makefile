@@ -1,5 +1,5 @@
 #
-# Makefile for DTrace
+# Copyright (c) 2017, Oracle and/or its affiliates. All rights reserved.
 #
 
 GCOV_PROFILE := y

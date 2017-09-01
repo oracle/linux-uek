@@ -1,0 +1,17 @@
+#
+# Copyright (c) 2017, Oracle and/or its affiliates. All rights reserved.
+#
+
+DTARCHDIR = ../arch/sparc/dtrace
+
+ccflags-y	+= -Iarch/sparc/dtrace/include -Idtrace
+
+dtrace-obj	+= dtrace_asm_sparc64.o dtrace_isa_sparc64.o
+fasttrap-obj	+= fasttrap_sparc64.o
+fbt-obj		+= fbt_sparc64.o
+sdt-obj		+= sdt_sparc64.o
+
+dtrace-y	+= $(addprefix $(DTARCHDIR)/, $(dtrace-obj))
+fasttrap-y	+= $(addprefix $(DTARCHDIR)/, $(fasttrap-obj))
+fbt-y		+= $(addprefix $(DTARCHDIR)/, $(fbt-obj))
+sdt-y		+= $(addprefix $(DTARCHDIR)/, $(sdt-obj))

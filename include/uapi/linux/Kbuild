@@ -23,6 +23,8 @@ header-y += netfilter_ipv6/
 header-y += usb/
 header-y += wimax/
 
+header-y += dtrace/
+
 genhdr-y += version.h
 
 ifneq ($(wildcard $(srctree)/arch/$(SRCARCH)/include/uapi/asm/a.out.h \
