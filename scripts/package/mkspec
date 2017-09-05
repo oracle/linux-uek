@@ -49,8 +49,8 @@ fi
 echo "BuildRoot: %{_tmppath}/%{name}-%{PACKAGE_VERSION}-root"
 
 if $CTF; then
-echo "BuildRequires: libdtrace-ctf >= 0.5.0"
-echo "BuildRequires: libdtrace-ctf-devel >= 0.5.0"
+echo "BuildRequires: libdtrace-ctf >= 0.7.0"
+echo "BuildRequires: libdtrace-ctf-devel >= 0.7.0"
 fi
 
 echo "Provides: $PROVIDES"
@@ -81,7 +81,7 @@ echo "This package provides kernel headers and makefiles sufficient to build mod
 echo "against the $__KERNELRELEASE kernel package."
 
 if $CTF; then
-echo "Requires: libdtrace-ctf >= 0.5.0"
+echo "Requires: libdtrace-ctf >= 0.7.0"
 fi
 
 echo ""

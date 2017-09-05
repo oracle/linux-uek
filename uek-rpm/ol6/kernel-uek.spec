@@ -530,7 +530,7 @@ BuildRequires: pesign >= 0.10-4
 BuildRequires: hmaccalc
 %endif
 %if %{with_dtrace}
-BuildRequires: libdtrace-ctf-devel >= 0.5.0
+BuildRequires: libdtrace-ctf-devel >= 0.7.0
 %endif
 %if %{with_perf_tui}
 BuildRequires: slang-devel, slang-static
@@ -735,7 +735,7 @@ Requires(pre): /usr/bin/find\
 Requires: elfutils-libelf >= 0.158\
 Requires: elfutils-libs >= 0.158\
 %if %{with_dtrace}\
-Requires: libdtrace-ctf >= 0.5.0\
+Requires: libdtrace-ctf >= 0.7.0\
 %endif\
 %description -n kernel%{?variant}%{?1:-%{1}}-devel\
 This package provides kernel headers and makefiles sufficient to build modules\
