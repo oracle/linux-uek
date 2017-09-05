@@ -535,7 +535,15 @@ config LIBFDT
 #
 # CTF support is select'ed if needed
 #
-source "kernel/ctf/Kconfig"
+config CTF
+        bool "Compact Type Format generation"
+        default n
+        select STRIP_ASM_SYMS
+        depends on DEBUG_INFO && !DEBUG_INFO_REDUCED && !DEBUG_INFO_SPLIT && !DEBUG_INFO_DWARF4 && DTRACE
+        help
+          Emit a compact, compressed description of the kernel's datatypes and
+          global variables into the vmlinux.ctfa archive (for in-tree modules)
+          or into .ctf sections in kernel modules (for out-of-tree modules).
 
 config OID_REGISTRY
 	tristate

@@ -113,7 +113,6 @@ obj-$(CONFIG_TORTURE_TEST) += torture.o
 
 obj-$(CONFIG_HAS_IOMEM) += memremap.o
 obj-$(CONFIG_DTRACE) += dtrace/
-obj-$(CONFIG_CTF) += ctf/
 
 $(obj)/configs.o: $(obj)/config_data.h
 
