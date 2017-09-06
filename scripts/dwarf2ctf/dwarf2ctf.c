@@ -1572,11 +1572,65 @@ static char *type_id(Dwarf_Die *die,
 		id = str_appendn(id, "enum ", dwarf_diename(die), " ", NULL);
 		break;
 	case DW_TAG_structure_type:
-		id = str_appendn(id, "struct ", dwarf_diename(die), " ", NULL);
+	case DW_TAG_union_type: {
+		/*
+		 * Incorporate the sizeof() the structure, if statically known
+		 * (the offset of the last member in the DWARF) so that most
+		 * structures which are redefined on the fly by preprocessor
+		 * defines are disambiguated despite being defined in the same
+		 * place.
+		 *
+		 * Only do this if this is a non-opaque structure/union
+		 * definition: opaque definitions cannot have a size, but if
+		 * they do by some mischance get one, notating it will mess up
+		 * the several other places that manually construct opaque
+		 * structure identifiers (and cannot incorporate a size, since
+		 * they don't know it).
+		 */
+		const char *sou;
+
+		if (strncmp(id, "////", 4) != 0 &&
+		    private_dwarf_hasattr(die, DW_AT_byte_size)) {
+			Dwarf_Attribute size_attr;
+			long long size;
+			char byte_size[24];
+
+			private_dwarf_attr(die, DW_AT_byte_size, &size_attr);
+
+			switch (dwarf_whatform(&size_attr)) {
+			case DW_FORM_data1:
+			case DW_FORM_data2:
+			case DW_FORM_data4:
+			case DW_FORM_data8:
+			case DW_FORM_udata:
+			case DW_FORM_sdata:
+
+				if (dwarf_whatform(&size_attr) ==
+				    DW_FORM_sdata) {
+					Dwarf_Sword dw_size;
+
+					dwarf_formsdata(&size_attr, &dw_size);
+					size = dw_size;
+				} else {
+					Dwarf_Word dw_size;
+
+					dwarf_formudata(&size_attr, &dw_size);
+					size = dw_size;
+				}
+
+				sprintf(byte_size, "%lli", size);
+				id = str_appendn(id, byte_size, "//", NULL);
+			}
+		}
+
+		if (dwarf_tag(die) == DW_TAG_union_type)
+			sou = "union ";
+		else
+			sou = "struct ";
+
+		id = str_appendn(id, sou, dwarf_diename(die), " ", NULL);
 		break;
-	case DW_TAG_union_type:
-		id = str_appendn(id, "union ", dwarf_diename(die), " ", NULL);
-		break;
+	}
 	case DW_TAG_variable:
 		id = str_appendn(id, "var ", dwarf_diename(die), " ", NULL);
 		break;
@@ -2505,6 +2559,7 @@ static int detect_duplicates_alias_fixup(void *id_file_data, void *data)
 
 	char *opaque_id;
 	const char *line_num;
+	const char *type_size;
 	const char *type_name;
 
 	/*
@@ -2521,11 +2576,20 @@ static int detect_duplicates_alias_fixup(void *id_file_data, void *data)
 		exit(1);
 	}
 
-	type_name = strstr(line_num + 1, "//");
-	if (!type_name) {
+	type_size = strstr(line_num + 2, "//");
+	if (!type_size) {
 		fprintf(stderr, "Internal error: type ID %s is corrupt.\n",
 			id_file->id);
 		exit(1);
+	}
+
+	type_name = strstr(type_size + 2, "//");
+	if (!type_name) {
+		/*
+		 * That's OK: the type size is optional, so what we thought was
+		 * the type size is actually the type name.
+		 */
+		type_name = type_size;
 	}
 	type_name += 2;
 
