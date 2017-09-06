@@ -157,7 +157,6 @@ static void __rds_conn_path_init(struct rds_connection *conn,
 	INIT_DELAYED_WORK(&cp->cp_conn_w, rds_connect_worker);
 	INIT_DELAYED_WORK(&cp->cp_hb_w, rds_hb_worker);
 	INIT_DELAYED_WORK(&cp->cp_reconn_w, rds_reconnect_timeout);
-	INIT_DELAYED_WORK(&cp->cp_reject_w, rds_reject_worker);
 	INIT_WORK(&cp->cp_down_w, rds_shutdown_worker);
 	mutex_init(&cp->cp_cm_lock);
 	cp->cp_flags = 0;
@@ -368,7 +367,7 @@ struct rds_connection *rds_conn_find(struct net *net, __be32 laddr,
 }
 EXPORT_SYMBOL_GPL(rds_conn_find);
 
-void rds_conn_shutdown(struct rds_conn_path *cp, int restart)
+void rds_conn_shutdown(struct rds_conn_path *cp)
 {
 	struct rds_connection *conn = cp->cp_conn;
 
@@ -434,7 +433,7 @@ void rds_conn_shutdown(struct rds_conn_path *cp, int restart)
 	 * conn - the reconnect is always triggered by the active peer. */
 	cancel_delayed_work_sync(&cp->cp_conn_w);
 	rcu_read_lock();
-	if (!hlist_unhashed(&conn->c_hash_node) && restart) {
+	if (!hlist_unhashed(&conn->c_hash_node)) {
 		rcu_read_unlock();
 		rds_queue_reconnect(cp);
 	} else {

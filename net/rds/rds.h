@@ -250,7 +250,6 @@ struct rds_conn_path {
 	struct delayed_work	cp_send_w;
 	struct delayed_work	cp_recv_w;
 	struct delayed_work	cp_conn_w;
-	struct delayed_work     cp_reject_w;
 	struct delayed_work     cp_hb_w;
 	struct delayed_work	cp_reconn_w;
 	struct work_struct	cp_down_w;
@@ -279,10 +278,6 @@ struct rds_conn_path {
 	unsigned int		cp_pending_flush;
 
 	unsigned long           cp_hb_start;
-
-	struct rds_connection	*cp_base_conn;
-
-	unsigned int            cp_route_to_base;
 
 	unsigned int		cp_rdsinfo_pending;
 
@@ -899,7 +894,7 @@ struct rds_connection *rds_conn_create_outgoing(struct net *net,
 struct rds_connection *rds_conn_find(struct net *net, __be32 laddr,
 				     __be32 faddr,
 					struct rds_transport *trans, u8 tos);
-void rds_conn_shutdown(struct rds_conn_path *cp, int restart);
+void rds_conn_shutdown(struct rds_conn_path *cp);
 void rds_conn_destroy(struct rds_connection *conn, int shutdown);
 void rds_conn_reset(struct rds_connection *conn);
 void rds_conn_drop(struct rds_connection *conn, int reason);
@@ -1059,7 +1054,6 @@ struct rds_message *rds_send_get_message(struct rds_connection *,
 					 struct rm_rdma_op *);
 int rds_send_internal(struct rds_connection *conn, struct rds_sock *rs,
 		      struct sk_buff *skb, gfp_t gfp);
-void rds_route_to_base(struct rds_connection *conn);
 
 extern unsigned int rds_async_send_enabled;
 
@@ -1137,7 +1131,6 @@ void rds_queue_reconnect(struct rds_conn_path *cp);
 void rds_connect_worker(struct work_struct *);
 void rds_shutdown_worker(struct work_struct *);
 void rds_send_worker(struct work_struct *);
-void rds_reject_worker(struct work_struct *);
 void rds_recv_worker(struct work_struct *);
 void rds_hb_worker(struct work_struct *);
 void rds_reconnect_timeout(struct work_struct *);
