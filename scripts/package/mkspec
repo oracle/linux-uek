@@ -95,7 +95,7 @@ fi
 echo "%build"
 
 if ! $PREBUILT; then
-echo "make clean && make %{?_smp_mflags}"
+echo "make clean && make %{?_smp_mflags} && make %{?_smp_mflags} ctf"
 echo ""
 fi
 

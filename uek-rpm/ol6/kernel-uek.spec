@@ -1086,6 +1086,11 @@ BuildKernel() {
     make -s ARCH=$Arch %{oldconfig_target} > /dev/null
     make -s ARCH=$Arch V=1 %{?_smp_mflags} $MakeTarget %{?sparse_mflags}
     make -s ARCH=$Arch V=1 %{?_smp_mflags} modules %{?sparse_mflags} || exit 1
+%if %{with_dtrace}
+    if [ "$Flavour" != "debug" ]; then
+	make -s ARCH=$Arch V=1 %{?_smp_mflags} ctf %{?sparse_mflags} || exit 1
+    fi
+%endif
 
     # Start installing the results
 %if %{with_debuginfo}
