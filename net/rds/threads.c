@@ -104,7 +104,6 @@ void rds_connect_path_complete(struct rds_conn_path *cp, int curr)
 	cp->cp_connection_start = get_seconds();
 	cp->cp_reconnect = 1;
 	conn->c_proposed_version = RDS_PROTOCOL_VERSION;
-	cp->cp_route_to_base = 0;
 }
 EXPORT_SYMBOL_GPL(rds_connect_path_complete);
 
@@ -263,20 +262,6 @@ void rds_recv_worker(struct work_struct *work)
 	}
 }
 
-void rds_reject_worker(struct work_struct *work)
-{
-	struct rds_conn_path *cp = container_of(work,
-						struct rds_conn_path,
-						cp_reject_w.work);
-
-	WARN_ON(cp->cp_conn->c_trans->t_mp_capable);
-	atomic_set(&cp->cp_state, RDS_CONN_ERROR);
-	rds_rtd(RDS_RTD_CM, "calling rds_conn_shutdown, conn %p:0\n",
-		cp->cp_conn);
-	rds_conn_shutdown(cp, 0);
-	rds_route_to_base(cp->cp_conn);
-}
-
 void rds_hb_worker(struct work_struct *work)
 {
 	struct rds_conn_path *cp = container_of(work,
@@ -365,7 +350,7 @@ void rds_shutdown_worker(struct work_struct *work)
 				conn->c_tos,
 				conn_drop_reason_str(cp->cp_drop_source));
 
-	rds_conn_shutdown(cp, 1);
+	rds_conn_shutdown(cp);
 }
 
 void rds_threads_exit(void)
