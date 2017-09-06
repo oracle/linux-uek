@@ -222,8 +222,8 @@ ssize_t ib_uverbs_get_context(struct ib_uverbs_file *file,
 		goto err;
 	}
 
-	INIT_UDATA(&udata, buf + sizeof(cmd),
-		   (unsigned long) cmd.response + sizeof(resp),
+	ib_uverbs_init_udata(&udata, buf + sizeof(cmd),
+		   u64_to_user_ptr(cmd.response) + sizeof(resp),
 		   in_len - sizeof(cmd) - sizeof(struct ib_uverbs_cmd_hdr),
 		   out_len - sizeof(resp));
 
@@ -269,8 +269,7 @@ ssize_t ib_uverbs_get_context(struct ib_uverbs_file *file,
 		goto err_fd;
 	}
 
-	if (copy_to_user((void __user *) (unsigned long) cmd.response,
-			 &resp, sizeof resp)) {
+	if (copy_to_user(u64_to_user_ptr(cmd.response), &resp, sizeof resp)) {
 		ret = -EFAULT;
 		goto err_file;
 	}
@@ -375,8 +374,7 @@ ssize_t ib_uverbs_query_device(struct ib_uverbs_file *file,
 	memset(&resp, 0, sizeof resp);
 	copy_query_dev_fields(ucontext, &resp, &ucontext->device->attrs);
 
-	if (copy_to_user((void __user *) (unsigned long) cmd.response,
-			 &resp, sizeof resp))
+	if (copy_to_user(u64_to_user_ptr(cmd.response), &resp, sizeof resp))
 		return -EFAULT;
 
 	return in_len;
@@ -459,8 +457,7 @@ ssize_t ib_uverbs_query_port(struct ib_uverbs_file *file,
 	resp.link_layer      = rdma_port_get_link_layer(ib_dev,
 							cmd.port_num);
 
-	if (copy_to_user((void __user *) (unsigned long) cmd.response,
-			 &resp, sizeof resp))
+	if (copy_to_user(u64_to_user_ptr(cmd.response), &resp, sizeof resp))
 		return -EFAULT;
 
 	return in_len;
@@ -484,8 +481,8 @@ ssize_t ib_uverbs_alloc_pd(struct ib_uverbs_file *file,
 	if (copy_from_user(&cmd, buf, sizeof cmd))
 		return -EFAULT;
 
-	INIT_UDATA(&udata, buf + sizeof(cmd),
-		   (unsigned long) cmd.response + sizeof(resp),
+	ib_uverbs_init_udata(&udata, buf + sizeof(cmd),
+		   u64_to_user_ptr(cmd.response) + sizeof(resp),
                    in_len - sizeof(cmd) - sizeof(struct ib_uverbs_cmd_hdr),
                    out_len - sizeof(resp));
 
@@ -513,8 +510,7 @@ ssize_t ib_uverbs_alloc_pd(struct ib_uverbs_file *file,
 	pd->res.type = RDMA_RESTRACK_PD;
 	rdma_restrack_add(&pd->res);
 
-	if (copy_to_user((void __user *) (unsigned long) cmd.response,
-			 &resp, sizeof resp)) {
+	if (copy_to_user(u64_to_user_ptr(cmd.response), &resp, sizeof resp)) {
 		ret = -EFAULT;
 		goto err_copy;
 	}
@@ -551,8 +547,8 @@ ssize_t ib_uverbs_alloc_shpd(struct ib_uverbs_file *file,
 	if (copy_from_user(&cmd, buf, sizeof(cmd)))
 		return -EFAULT;
 
-	INIT_UDATA(&udata, buf + sizeof(cmd),
-		   (unsigned long) cmd.response + sizeof(resp),
+	ib_uverbs_init_udata(&udata, buf + sizeof(cmd),
+		   u64_to_user_ptr(cmd.response) + sizeof(resp),
 		   in_len - sizeof(cmd), out_len - sizeof(resp));
 
 	uobj  = uobj_get_write(UVERBS_OBJECT_PD, cmd.pd_handle,
@@ -593,8 +589,7 @@ ssize_t ib_uverbs_alloc_shpd(struct ib_uverbs_file *file,
 	memset(&resp, 0, sizeof(resp));
 	resp.shpd_handle = shpd->idr_id;
 
-	if (copy_to_user((void __user *) (unsigned long) cmd.response,
-			 &resp, sizeof(resp))) {
+	if (copy_to_user(u64_to_user_ptr(cmd.response), &resp, sizeof(resp))){
 		ret = -EFAULT;
 		goto err_copy;
 	}
@@ -647,8 +642,8 @@ ssize_t ib_uverbs_share_pd(struct ib_uverbs_file *file,
 	if (copy_from_user(&cmd, buf, sizeof(cmd)))
 		return -EFAULT;
 
-	INIT_UDATA(&udata, buf + sizeof(cmd),
-		   (unsigned long) cmd.response + sizeof(resp),
+	ib_uverbs_init_udata(&udata, buf + sizeof(cmd),
+		   u64_to_user_ptr(cmd.response) + sizeof(resp),
 		   in_len - sizeof(cmd), out_len - sizeof(resp));
 
 	mutex_lock(&ib_uverbs_shpd_idr_lock);
@@ -701,8 +696,7 @@ ssize_t ib_uverbs_share_pd(struct ib_uverbs_file *file,
 	memset(&resp, 0, sizeof(resp));
 	resp.pd_handle = uobj->id;
 
-	if (copy_to_user((void __user *) (unsigned long) cmd.response,
-			 &resp, sizeof(resp))) {
+	if (copy_to_user(u64_to_user_ptr(cmd.response), &resp, sizeof(resp))){
 		ret = -EFAULT;
 		goto err_copy;
 	}
@@ -842,8 +836,8 @@ ssize_t ib_uverbs_open_xrcd(struct ib_uverbs_file *file,
 	if (copy_from_user(&cmd, buf, sizeof cmd))
 		return -EFAULT;
 
-	INIT_UDATA(&udata, buf + sizeof(cmd),
-		   (unsigned long) cmd.response + sizeof(resp),
+	ib_uverbs_init_udata(&udata, buf + sizeof(cmd),
+		   u64_to_user_ptr(cmd.response) + sizeof(resp),
                    in_len - sizeof(cmd) - sizeof(struct ib_uverbs_cmd_hdr),
                    out_len - sizeof(resp));
 
@@ -908,8 +902,7 @@ ssize_t ib_uverbs_open_xrcd(struct ib_uverbs_file *file,
 		atomic_inc(&xrcd->usecnt);
 	}
 
-	if (copy_to_user((void __user *) (unsigned long) cmd.response,
-			 &resp, sizeof resp)) {
+	if (copy_to_user(u64_to_user_ptr(cmd.response), &resp, sizeof resp)) {
 		ret = -EFAULT;
 		goto err_copy;
 	}
@@ -1000,8 +993,8 @@ ssize_t ib_uverbs_reg_mr(struct ib_uverbs_file *file,
 	if (copy_from_user(&cmd, buf, sizeof cmd))
 		return -EFAULT;
 
-	INIT_UDATA(&udata, buf + sizeof(cmd),
-		   (unsigned long) cmd.response + sizeof(resp),
+	ib_uverbs_init_udata(&udata, buf + sizeof(cmd),
+		   u64_to_user_ptr(cmd.response) + sizeof(resp),
                    in_len - sizeof(cmd) - sizeof(struct ib_uverbs_cmd_hdr),
                    out_len - sizeof(resp));
 
@@ -1053,8 +1046,7 @@ ssize_t ib_uverbs_reg_mr(struct ib_uverbs_file *file,
 	resp.rkey      = mr->rkey;
 	resp.mr_handle = uobj->id;
 
-	if (copy_to_user((void __user *) (unsigned long) cmd.response,
-			 &resp, sizeof resp)) {
+	if (copy_to_user(u64_to_user_ptr(cmd.response), &resp, sizeof resp)) {
 		ret = -EFAULT;
 		goto err_copy;
 	}
@@ -1093,8 +1085,8 @@ ssize_t ib_uverbs_rereg_mr(struct ib_uverbs_file *file,
 	if (copy_from_user(&cmd, buf, sizeof(cmd)))
 		return -EFAULT;
 
-	INIT_UDATA(&udata, buf + sizeof(cmd),
-		   (unsigned long) cmd.response + sizeof(resp),
+	ib_uverbs_init_udata(&udata, buf + sizeof(cmd),
+		   u64_to_user_ptr(cmd.response) + sizeof(resp),
                    in_len - sizeof(cmd) - sizeof(struct ib_uverbs_cmd_hdr),
                    out_len - sizeof(resp));
 
@@ -1150,8 +1142,7 @@ ssize_t ib_uverbs_rereg_mr(struct ib_uverbs_file *file,
 	resp.lkey      = mr->lkey;
 	resp.rkey      = mr->rkey;
 
-	if (copy_to_user((void __user *)(unsigned long)cmd.response,
-			 &resp, sizeof(resp)))
+	if (copy_to_user(u64_to_user_ptr(cmd.response), &resp, sizeof(resp)))
 		ret = -EFAULT;
 	else
 		ret = in_len;
@@ -1225,8 +1216,8 @@ ssize_t ib_uverbs_reg_mr_relaxed(struct ib_uverbs_file *file,
 	if (copy_from_user(&cmd, buf, sizeof(cmd)))
 		return -EFAULT;
 
-	INIT_UDATA(&udata, buf + sizeof(cmd),
-		   (unsigned long) cmd.response + sizeof(resp),
+	ib_uverbs_init_udata(&udata, buf + sizeof(cmd),
+		   u64_to_user_ptr(cmd.response) + sizeof(resp),
 		   in_len - sizeof(cmd), out_len - sizeof(resp));
 
 	if ((cmd.start & ~PAGE_MASK) != (cmd.hca_va & ~PAGE_MASK))
@@ -1451,8 +1442,7 @@ ssize_t ib_uverbs_reg_mr_relaxed(struct ib_uverbs_file *file,
 	resp.rkey      = fmr->fmr->rkey;
 	resp.mr_handle = uobj->id;
 
-	if (copy_to_user((void __user *) (unsigned long) cmd.response,
-			 &resp, sizeof(resp))) {
+	if (copy_to_user(u64_to_user_ptr(cmd.response), &resp, sizeof(resp))){
 		ret = -EFAULT;
 		goto err_copy;
 	}
@@ -1560,8 +1550,8 @@ ssize_t ib_uverbs_alloc_mw(struct ib_uverbs_file *file,
 		goto err_free;
 	}
 
-	INIT_UDATA(&udata, buf + sizeof(cmd),
-		   (unsigned long)cmd.response + sizeof(resp),
+	ib_uverbs_init_udata(&udata, buf + sizeof(cmd),
+		   u64_to_user_ptr(cmd.response) + sizeof(resp),
 		   in_len - sizeof(cmd) - sizeof(struct ib_uverbs_cmd_hdr),
 		   out_len - sizeof(resp));
 
@@ -1582,8 +1572,7 @@ ssize_t ib_uverbs_alloc_mw(struct ib_uverbs_file *file,
 	resp.rkey      = mw->rkey;
 	resp.mw_handle = uobj->id;
 
-	if (copy_to_user((void __user *)(unsigned long)cmd.response,
-			 &resp, sizeof(resp))) {
+	if (copy_to_user(u64_to_user_ptr(cmd.response), &resp, sizeof(resp))) {
 		ret = -EFAULT;
 		goto err_copy;
 	}
@@ -1639,8 +1628,7 @@ ssize_t ib_uverbs_create_comp_channel(struct ib_uverbs_file *file,
 			       uobj);
 	ib_uverbs_init_event_queue(&ev_file->ev_queue);
 
-	if (copy_to_user((void __user *) (unsigned long) cmd.response,
-			 &resp, sizeof resp)) {
+	if (copy_to_user(u64_to_user_ptr(cmd.response), &resp, sizeof resp)) {
 		uobj_alloc_abort(uobj);
 		return -EFAULT;
 	}
@@ -1775,10 +1763,11 @@ ssize_t ib_uverbs_create_cq(struct ib_uverbs_file *file,
 	if (copy_from_user(&cmd, buf, sizeof(cmd)))
 		return -EFAULT;
 
-	INIT_UDATA(&ucore, buf, (unsigned long)cmd.response, sizeof(cmd), sizeof(resp));
+	ib_uverbs_init_udata(&ucore, buf, u64_to_user_ptr(cmd.response),
+			     sizeof(cmd), sizeof(resp));
 
-	INIT_UDATA(&uhw, buf + sizeof(cmd),
-		   (unsigned long)cmd.response + sizeof(resp),
+	ib_uverbs_init_udata(&uhw, buf + sizeof(cmd),
+		   u64_to_user_ptr(cmd.response) + sizeof(resp),
 		   in_len - sizeof(cmd) - sizeof(struct ib_uverbs_cmd_hdr),
 		   out_len - sizeof(resp));
 
@@ -1859,8 +1848,8 @@ ssize_t ib_uverbs_resize_cq(struct ib_uverbs_file *file,
 	if (copy_from_user(&cmd, buf, sizeof cmd))
 		return -EFAULT;
 
-	INIT_UDATA(&udata, buf + sizeof(cmd),
-		   (unsigned long) cmd.response + sizeof(resp),
+	ib_uverbs_init_udata(&udata, buf + sizeof(cmd),
+		   u64_to_user_ptr(cmd.response) + sizeof(resp),
 		   in_len - sizeof(cmd) - sizeof(struct ib_uverbs_cmd_hdr),
 		   out_len - sizeof(resp));
 
@@ -1874,8 +1863,7 @@ ssize_t ib_uverbs_resize_cq(struct ib_uverbs_file *file,
 
 	resp.cqe = cq->cqe;
 
-	if (copy_to_user((void __user *) (unsigned long) cmd.response,
-			 &resp, sizeof resp.cqe))
+	if (copy_to_user(u64_to_user_ptr(cmd.response), &resp, sizeof resp.cqe))
 		ret = -EFAULT;
 
 out:
@@ -1934,7 +1922,7 @@ ssize_t ib_uverbs_poll_cq(struct ib_uverbs_file *file,
 		return -EINVAL;
 
 	/* we copy a struct ib_uverbs_poll_cq_resp to user space */
-	header_ptr = (void __user *)(unsigned long) cmd.response;
+	header_ptr = u64_to_user_ptr(cmd.response);
 	data_ptr = header_ptr + sizeof resp;
 
 	memset(&resp, 0, sizeof resp);
@@ -2011,8 +1999,7 @@ ssize_t ib_uverbs_destroy_cq(struct ib_uverbs_file *file,
 
 	uobj_put_destroy(uobj);
 
-	if (copy_to_user((void __user *) (unsigned long) cmd.response,
-			 &resp, sizeof resp))
+	if (copy_to_user(u64_to_user_ptr(cmd.response), &resp, sizeof resp))
 		return -EFAULT;
 
 	return in_len;
@@ -2320,10 +2307,10 @@ ssize_t ib_uverbs_create_qp(struct ib_uverbs_file *file,
 	if (copy_from_user(&cmd, buf, sizeof(cmd)))
 		return -EFAULT;
 
-	INIT_UDATA(&ucore, buf, (unsigned long)cmd.response, sizeof(cmd),
-		   resp_size);
-	INIT_UDATA(&uhw, buf + sizeof(cmd),
-		   (unsigned long)cmd.response + resp_size,
+	ib_uverbs_init_udata(&ucore, buf, u64_to_user_ptr(cmd.response),
+		   sizeof(cmd), resp_size);
+	ib_uverbs_init_udata(&uhw, buf + sizeof(cmd),
+		   u64_to_user_ptr(cmd.response) + resp_size,
 		   in_len - sizeof(cmd) - sizeof(struct ib_uverbs_cmd_hdr),
 		   out_len - resp_size);
 
@@ -2419,8 +2406,8 @@ ssize_t ib_uverbs_open_qp(struct ib_uverbs_file *file,
 	if (copy_from_user(&cmd, buf, sizeof cmd))
 		return -EFAULT;
 
-	INIT_UDATA(&udata, buf + sizeof(cmd),
-		   (unsigned long) cmd.response + sizeof(resp),
+	ib_uverbs_init_udata(&udata, buf + sizeof(cmd),
+		   u64_to_user_ptr(cmd.response) + sizeof(resp),
 		   in_len - sizeof(cmd) - sizeof(struct ib_uverbs_cmd_hdr),
 		   out_len - sizeof(resp));
 
@@ -2463,8 +2450,7 @@ ssize_t ib_uverbs_open_qp(struct ib_uverbs_file *file,
 	resp.qpn       = qp->qp_num;
 	resp.qp_handle = obj->uevent.uobject.id;
 
-	if (copy_to_user((void __user *) (unsigned long) cmd.response,
-			 &resp, sizeof resp)) {
+	if (copy_to_user(u64_to_user_ptr(cmd.response), &resp, sizeof resp)) {
 		ret = -EFAULT;
 		goto err_destroy;
 	}
@@ -2575,8 +2561,7 @@ ssize_t ib_uverbs_query_qp(struct ib_uverbs_file *file,
 	resp.max_inline_data        = init_attr->cap.max_inline_data;
 	resp.sq_sig_all             = init_attr->sq_sig_type == IB_SIGNAL_ALL_WR;
 
-	if (copy_to_user((void __user *) (unsigned long) cmd.response,
-			 &resp, sizeof resp))
+	if (copy_to_user(u64_to_user_ptr(cmd.response), &resp, sizeof resp))
 		ret = -EFAULT;
 
 out:
@@ -2774,7 +2759,7 @@ ssize_t ib_uverbs_modify_qp(struct ib_uverbs_file *file,
 	    ~((IB_USER_LEGACY_LAST_QP_ATTR_MASK << 1) - 1))
 		return -EOPNOTSUPP;
 
-	INIT_UDATA(&udata, buf + sizeof(cmd.base), NULL,
+	ib_uverbs_init_udata(&udata, buf + sizeof(cmd.base), NULL,
 		   in_len - sizeof(cmd.base) - sizeof(struct ib_uverbs_cmd_hdr),
 		   out_len);
 
@@ -2843,8 +2828,7 @@ ssize_t ib_uverbs_destroy_qp(struct ib_uverbs_file *file,
 
 	uobj_put_destroy(uobj);
 
-	if (copy_to_user((void __user *) (unsigned long) cmd.response,
-			 &resp, sizeof resp))
+	if (copy_to_user(u64_to_user_ptr(cmd.response), &resp, sizeof resp))
 		return -EFAULT;
 
 	return in_len;
@@ -3027,8 +3011,7 @@ ssize_t ib_uverbs_post_send(struct ib_uverbs_file *file,
 				break;
 		}
 
-	if (copy_to_user((void __user *) (unsigned long) cmd.response,
-			 &resp, sizeof resp))
+	if (copy_to_user(u64_to_user_ptr(cmd.response), &resp, sizeof resp))
 		ret = -EFAULT;
 
 out_put:
@@ -3175,8 +3158,7 @@ ssize_t ib_uverbs_post_recv(struct ib_uverbs_file *file,
 		}
 	}
 
-	if (copy_to_user((void __user *) (unsigned long) cmd.response,
-			 &resp, sizeof resp))
+	if (copy_to_user(u64_to_user_ptr(cmd.response), &resp, sizeof resp))
 		ret = -EFAULT;
 
 out:
@@ -3225,8 +3207,7 @@ ssize_t ib_uverbs_post_srq_recv(struct ib_uverbs_file *file,
 				break;
 		}
 
-	if (copy_to_user((void __user *) (unsigned long) cmd.response,
-			 &resp, sizeof resp))
+	if (copy_to_user(u64_to_user_ptr(cmd.response), &resp, sizeof resp))
 		ret = -EFAULT;
 
 out:
@@ -3259,8 +3240,8 @@ ssize_t ib_uverbs_create_ah(struct ib_uverbs_file *file,
 	if (copy_from_user(&cmd, buf, sizeof cmd))
 		return -EFAULT;
 
-	INIT_UDATA(&udata, buf + sizeof(cmd),
-		   (unsigned long)cmd.response + sizeof(resp),
+	ib_uverbs_init_udata(&udata, buf + sizeof(cmd),
+		   u64_to_user_ptr(cmd.response) + sizeof(resp),
 		   in_len - sizeof(cmd) - sizeof(struct ib_uverbs_cmd_hdr),
 		   out_len - sizeof(resp));
 
@@ -3309,8 +3290,7 @@ ssize_t ib_uverbs_create_ah(struct ib_uverbs_file *file,
 
 	resp.ah_handle = uobj->id;
 
-	if (copy_to_user((void __user *) (unsigned long) cmd.response,
-			 &resp, sizeof resp)) {
+	if (copy_to_user(u64_to_user_ptr(cmd.response), &resp, sizeof resp)) {
 		ret = -EFAULT;
 		goto err_copy;
 	}
@@ -4507,8 +4487,8 @@ ssize_t ib_uverbs_create_srq(struct ib_uverbs_file *file,
 	xcmd.max_sge	 = cmd.max_sge;
 	xcmd.srq_limit	 = cmd.srq_limit;
 
-	INIT_UDATA(&udata, buf + sizeof(cmd),
-		   (unsigned long) cmd.response + sizeof(resp),
+	ib_uverbs_init_udata(&udata, buf + sizeof(cmd),
+		   u64_to_user_ptr(cmd.response) + sizeof(resp),
 		   in_len - sizeof(cmd) - sizeof(struct ib_uverbs_cmd_hdr),
 		   out_len - sizeof(resp));
 
@@ -4533,8 +4513,8 @@ ssize_t ib_uverbs_create_xsrq(struct ib_uverbs_file *file,
 	if (copy_from_user(&cmd, buf, sizeof cmd))
 		return -EFAULT;
 
-	INIT_UDATA(&udata, buf + sizeof(cmd),
-		   (unsigned long) cmd.response + sizeof(resp),
+	ib_uverbs_init_udata(&udata, buf + sizeof(cmd),
+		   u64_to_user_ptr(cmd.response) + sizeof(resp),
 		   in_len - sizeof(cmd) - sizeof(struct ib_uverbs_cmd_hdr),
 		   out_len - sizeof(resp));
 
@@ -4558,7 +4538,7 @@ ssize_t ib_uverbs_modify_srq(struct ib_uverbs_file *file,
 	if (copy_from_user(&cmd, buf, sizeof cmd))
 		return -EFAULT;
 
-	INIT_UDATA(&udata, buf + sizeof cmd, NULL, in_len - sizeof cmd,
+	ib_uverbs_init_udata(&udata, buf + sizeof cmd, NULL, in_len - sizeof cmd,
 		   out_len);
 
 	srq = uobj_get_obj_read(srq, UVERBS_OBJECT_SRQ, cmd.srq_handle, file);
@@ -4608,8 +4588,7 @@ ssize_t ib_uverbs_query_srq(struct ib_uverbs_file *file,
 	resp.max_sge   = attr.max_sge;
 	resp.srq_limit = attr.srq_limit;
 
-	if (copy_to_user((void __user *) (unsigned long) cmd.response,
-			 &resp, sizeof resp))
+	if (copy_to_user(u64_to_user_ptr(cmd.response), &resp, sizeof resp))
 		return -EFAULT;
 
 	return in_len;
@@ -4639,8 +4618,7 @@ ssize_t ib_uverbs_destroy_srq(struct ib_uverbs_file *file,
 
 	uobj_put_destroy(uobj);
 
-	if (copy_to_user((void __user *)(unsigned long)cmd.response,
-			 &resp, sizeof(resp)))
+	if (copy_to_user(u64_to_user_ptr(cmd.response), &resp, sizeof(resp)))
 		return -EFAULT;
 
 	return in_len;
