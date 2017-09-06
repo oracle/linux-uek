@@ -899,16 +899,6 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 	conn->c_acl_en = acl_ret;
 	conn->c_acl_init = 1;
 
-	if (dp->dp_tos && !conn->c_base_conn) {
-		conn->c_base_conn = rds_conn_create(&init_net,
-					dp->dp_daddr, dp->dp_saddr,
-					&rds_ib_transport, 0, GFP_KERNEL);
-		if (IS_ERR(conn->c_base_conn)) {
-			conn = NULL;
-			goto out;
-		}
-	}
-
 	/*
 	 * The connection request may occur while the
 	 * previous connection exist, e.g. in case of failover.
