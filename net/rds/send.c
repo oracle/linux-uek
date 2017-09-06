@@ -1305,43 +1305,7 @@ int rds_sendmsg(struct socket *sock, struct msghdr *msg, size_t payload_len)
 			ret = PTR_ERR(conn);
 			goto out;
 		}
-
-		if (rs->rs_tos && !conn->c_path[0].cp_base_conn) {
-			struct rds_conn_path *cp0 = &conn->c_path[0];
-
-			WARN_ON(conn->c_trans->t_mp_capable);
-			cp0->cp_base_conn = rds_conn_create_outgoing(
-					sock_net(sock->sk),
-					rs->rs_bound_addr, daddr,
-					rs->rs_transport, 0,
-					sock->sk->sk_allocation);
-			if (IS_ERR(cp0->cp_base_conn)) {
-				ret = PTR_ERR(cp0->cp_base_conn);
-				goto out;
-			}
-			rds_rtd(RDS_RTD_CM_EXT, "checking conn %p\n",
-				cp0->cp_base_conn);
-			rds_conn_connect_if_down(cp0->cp_base_conn);
-		}
 		rs->rs_conn = conn;
-	}
-
-	if (conn->c_tos && !rds_conn_up(conn)) {
-		struct rds_conn_path *cp0 = &conn->c_path[0];
-
-		WARN_ON(conn->c_trans->t_mp_capable);
-		if (!rds_conn_up(cp0->cp_base_conn)) {
-			ret = -EAGAIN;
-			goto out;
-		} else if (cp0->cp_base_conn->c_version ==
-				RDS_PROTOCOL_COMPAT_VERSION) {
-			if (!cp0->cp_reconnect || cp0->cp_route_to_base)
-				conn = cp0->cp_base_conn;
-			else {
-				ret = -EAGAIN;
-				goto out;
-			}
-		}
 	}
 
 	/* Parse any control messages the user may have included. */
@@ -1689,31 +1653,6 @@ rds_send_hb(struct rds_connection *conn, int response)
 	rds_send_probe(&conn->c_path[0], 0, 0, flags);
 
 	return 0;
-}
-
-void rds_route_to_base(struct rds_connection *conn)
-{
-	struct rds_message *rm, *tmp;
-	struct rds_conn_path *cp = &conn->c_path[0];
-	struct rds_connection *base_conn = cp->cp_base_conn;
-	unsigned long flags;
-
-	WARN_ON(conn->c_trans->t_mp_capable);
-	BUG_ON(!conn->c_tos || rds_conn_up(conn) || !base_conn ||
-		!list_empty(&cp->cp_retrans));
-
-	spin_lock_irqsave(&base_conn->c_path[0].cp_lock, flags);
-	list_for_each_entry_safe(rm, tmp, &cp->cp_send_queue, m_conn_item) {
-		list_del_init(&rm->m_conn_item);
-		rm->m_inc.i_conn = base_conn;
-		rm->m_inc.i_hdr.h_sequence =
-			cpu_to_be64(base_conn->c_path[0].cp_next_tx_seq++);
-		list_add_tail(&rm->m_conn_item,
-			      &base_conn->c_path[0].cp_send_queue);
-	}
-	spin_unlock_irqrestore(&base_conn->c_path[0].cp_lock, flags);
-	cp->cp_route_to_base = 1;
-	queue_delayed_work(rds_wq, &base_conn->c_path[0].cp_send_w, 0);
 }
 
 int
