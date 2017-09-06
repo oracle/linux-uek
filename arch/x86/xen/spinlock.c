@@ -11,6 +11,7 @@
 #include <linux/slab.h>
 
 #include <asm/paravirt.h>
+#include <asm/qspinlock.h>
 
 #include <xen/interface/xen.h>
 #include <xen/events.h>
@@ -130,6 +131,7 @@ void __init xen_init_spinlocks(void)
 
 	if (!xen_pvspin) {
 		printk(KERN_DEBUG "xen: PV spinlocks disabled\n");
+		static_branch_disable(&virt_spin_lock_key);
 		return;
 	}
 	printk(KERN_DEBUG "xen: PV spinlocks enabled\n");
