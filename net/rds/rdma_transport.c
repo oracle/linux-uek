@@ -235,16 +235,11 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 				pr_warn("Rejected: CSR_DEF err 0, calling rds_conn_drop <%pI4,%pI4,%d>\n",
 					&conn->c_laddr,
 					&conn->c_faddr, conn->c_tos);
-				if (!conn->c_tos) {
+				if (!conn->c_tos)
 					conn->c_proposed_version =
 						RDS_PROTOCOL_COMPAT_VERSION;
-					rds_conn_drop(conn,
-						DR_IB_CONSUMER_DEFINED_REJ);
-				} else  {
-					queue_delayed_work(conn->c_path[0].cp_wq,
-							   &conn->c_reject_w,
-							   msecs_to_jiffies(10));
-				}
+				rds_conn_drop(conn,
+					DR_IB_CONSUMER_DEFINED_REJ);
 			} else if (event->status == RDS_REJ_CONSUMER_DEFINED &&
 				   (*err) == RDS_ACL_FAILURE) {
 				/* Rejection due to ACL violation */
