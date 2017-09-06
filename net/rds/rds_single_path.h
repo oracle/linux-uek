@@ -36,9 +36,7 @@
 #define c_reconn_flags		c_path[0].cp_reconn_flags
 #define c_reconnect		c_path[0].cp_reconnect
 #define c_to_index		c_path[0].cp_to_index
-#define c_base_conn		c_path[0].cp_base_conn
 #define c_acl_en		c_path[0].cp_acl_en
 #define c_reconnect_err		c_path[0].cp_reconnect_err
-#define c_reject_w		c_path[0].cp_reject_w
 
 #endif /* _RDS_RDS_SINGLE_H */
