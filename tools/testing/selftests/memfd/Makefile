@@ -7,7 +7,7 @@ CFLAGS += -I../../../../usr/include/
 all:
 	$(CC) $(CFLAGS) memfd_test.c -o memfd_test
 
-TEST_PROGS := memfd_test
+TEST_PROGS := run_tests.sh
 
 include ../lib.mk
 
