@@ -257,6 +257,7 @@ static int dtrace_ecb_action_add(dtrace_ecb_t *ecb, dtrace_actdesc_t *desc)
 						state, (char *)(uintptr_t)arg);
 			}
 
+		case DTRACEACT_TRACEMEM:
 		case DTRACEACT_LIBACT:
 		case DTRACEACT_DIFEXPR:
 			if (dp == NULL)
