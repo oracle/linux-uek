@@ -5762,7 +5762,7 @@ err_setup_rx:
 err_setup_tx:
 	i40e_vsi_free_tx_resources(vsi);
 	if (vsi == pf->vsi[pf->lan_vsi])
-		i40e_do_reset(pf, BIT_ULL(__I40E_PF_RESET_REQUESTED), true);
+		i40e_do_reset(pf, I40E_PF_RESET_FLAG, true);
 
 	return err;
 }
@@ -5893,7 +5893,7 @@ void i40e_do_reset(struct i40e_pf *pf, u32 reset_flags, bool lock_acquired)
 		wr32(&pf->hw, I40E_GLGEN_RTRIG, val);
 		i40e_flush(&pf->hw);
 
-	} else if (reset_flags & BIT_ULL(__I40E_PF_RESET_REQUESTED)) {
+	} else if (reset_flags & I40E_PF_RESET_FLAG) {
 
 		/* Request a PF Reset
 		 *
@@ -9255,7 +9255,7 @@ static int i40e_set_features(struct net_device *netdev,
 	need_reset = i40e_set_ntuple(pf, features);
 
 	if (need_reset)
-		i40e_do_reset(pf, BIT_ULL(__I40E_PF_RESET_REQUESTED), true);
+		i40e_do_reset(pf, I40E_PF_RESET_FLAG, true);
 
 	return 0;
 }
@@ -9507,8 +9507,7 @@ static int i40e_ndo_bridge_setlink(struct net_device *dev,
 				pf->flags |= I40E_FLAG_VEB_MODE_ENABLED;
 			else
 				pf->flags &= ~I40E_FLAG_VEB_MODE_ENABLED;
-			i40e_do_reset(pf, BIT_ULL(__I40E_PF_RESET_REQUESTED),
-				      true);
+			i40e_do_reset(pf, I40E_PF_RESET_FLAG, true);
 			break;
 		}
 	}
