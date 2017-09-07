@@ -77,6 +77,41 @@ static dtrace_action_t *dtrace_ecb_aggregation_create(dtrace_ecb_t *ecb,
 		break;
 	}
 
+	case DTRACEAGG_LLQUANTIZE: {
+		uint16_t factor = DTRACE_LLQUANTIZE_FACTOR(desc->dtad_arg);
+		uint16_t lmag = DTRACE_LLQUANTIZE_LMAG(desc->dtad_arg);
+		uint16_t hmag = DTRACE_LLQUANTIZE_HMAG(desc->dtad_arg);
+		uint16_t steps = DTRACE_LLQUANTIZE_STEPS(desc->dtad_arg);
+
+		agg->dtag_initial = desc->dtad_arg;
+		agg->dtag_aggregate = dtrace_aggregate_llquantize;
+
+		/*
+		 * 64 is the largest hmag can practically be (for the smallest
+		 * possible value of factor, 2).  libdtrace has already checked
+		 * for overflow, so if hmag > 64, we have corrupted DOF.
+		 */
+		if (factor < 2 || steps == 0 || hmag > 64)
+			goto err;
+
+		/*
+		 * The size of the buffer for an llquantize() is given by:
+		 *   (hmag-lmag+1) logarithmic ranges
+		 *   x
+		 *   (steps - steps/factor) bins per range
+		 *   x
+		 *   2 signs
+		 *   +
+		 *   two overflow bins
+		 *   +
+		 *   one underflow bin
+		 *   +
+		 *   beginning word to encode factor,lmag,hmag,steps
+		 */
+		size = ((hmag-lmag+1)*(steps-steps/factor)*2+4) * sizeof (uint64_t);
+		break;
+	}
+
 	case DTRACEAGG_AVG:
 		agg->dtag_aggregate = dtrace_aggregate_avg;
 		size = sizeof(uint64_t) * 2;

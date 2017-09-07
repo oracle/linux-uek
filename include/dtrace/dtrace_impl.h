@@ -432,6 +432,7 @@ extern void dtrace_aggregate_min(uint64_t *, uint64_t, uint64_t);
 extern void dtrace_aggregate_max(uint64_t *, uint64_t, uint64_t);
 extern void dtrace_aggregate_quantize(uint64_t *, uint64_t, uint64_t);
 extern void dtrace_aggregate_lquantize(uint64_t *, uint64_t, uint64_t);
+extern void dtrace_aggregate_llquantize(uint64_t *, uint64_t, uint64_t);
 extern void dtrace_aggregate_avg(uint64_t *, uint64_t, uint64_t);
 extern void dtrace_aggregate_stddev(uint64_t *, uint64_t, uint64_t);
 extern void dtrace_aggregate_count(uint64_t *, uint64_t, uint64_t);
