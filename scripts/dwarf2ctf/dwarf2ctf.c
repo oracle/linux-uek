@@ -169,30 +169,6 @@ static void init_builtin(const char *builtin_objects_file,
 			 const char *builtin_module_file);
 
 /*
- * The deduplication blacklist bans specific modules that do notably insane
- * things with the preprocessor from participating in deduplication.  The list
- * of sins is short: things like #including two different source files that
- * proceed to add or remove members from structures depending on which source
- * file they were included from.
- *
- * These modules share no types whatsoever with the rest of the kernel.
- *
- * This is, of course, only used if deduplication is turned on.
- */
-static GHashTable *dedup_blacklist;
-
-/*
- * Populate the deduplication blacklist from the dedup_blacklist file.
- */
-static void init_dedup_blacklist(const char *dedup_blacklist_file);
-
-/*
- * See if the given module is blacklisted, and update state accordingly so that
- * type IDs are appropriately augmented.
- */
-static void dedup_blacklisted_module(const char *module_name);
-
-/*
  * The member blacklist bans fields with specific names in specifically named
  * structures, declared in specific source files, from being emitted.  The
  * mapping is from absolute source file name:structure.member to NULL (this is
@@ -827,11 +803,11 @@ int main(int argc, char *argv[])
 		exit(1);
 	}
 
-	if ((argc != 4 && argc != 8) ||
+	if ((argc != 4 && argc != 7) ||
 	    (argc == 4 && strcmp(argv[2], "-e") != 0)) {
 		fprintf(stderr, "Syntax: dwarf2ctf output-file srcdir "
-			"objects.builtin modules.builtin dedup.blacklist\n");
-		fprintf(stderr, "                  member.blacklist filelist\n");
+			"objects.builtin modules.builtin member.blacklist\n");
+		fprintf(stderr, "                  filelist\n");
 		fprintf(stderr, "    or dwarf2ctf output-dir -e filelist\n"
 			"for external module use\n");
 		exit(1);
@@ -860,19 +836,16 @@ int main(int argc, char *argv[])
 		const char *srcdir;
 		char *builtin_objects_file;
 		char *builtin_module_file;
-		char *dedup_blacklist_file;
 		char *member_blacklist_file;
 
                 srcdir = argv[2];
 		builtin_objects_file = argv[3];
 		builtin_module_file = argv[4];
-		dedup_blacklist_file = argv[5];
-		member_blacklist_file = argv[6];
+		member_blacklist_file = argv[5];
 
 		init_builtin(builtin_objects_file, builtin_module_file);
-		init_dedup_blacklist(dedup_blacklist_file);
 		init_member_blacklist(member_blacklist_file, srcdir);
-		init_object_names(argv[7]);
+		init_object_names(argv[6]);
 
 		run(output, 0);
 	} else {
@@ -1117,72 +1090,6 @@ static void init_assembly_tab(void)
 	for (walk = assembly_tab_init; walk->fun != NULL; walk++) {
 		assembly_tab[walk->tag] = walk->fun;
 		assembly_filter_tab[walk->tag] = walk->filter;
-	}
-}
-
-/*
- * Populate the deduplication blacklist from the dedup_blacklist file.
- */
-static void init_dedup_blacklist(const char *dedup_blacklist_file)
-{
-	FILE *f;
-	char *line = NULL;
-	size_t line_size = 0;
-
-	/*
-	 * Not having a deduplication blacklist is not an error.
-	 */
-	if ((f = fopen(dedup_blacklist_file, "r")) == NULL)
-		return;
-
-	dedup_blacklist = g_hash_table_new(g_str_hash, g_str_equal);
-
-	while (getline(&line, &line_size, f) >= 0) {
-		size_t len = strlen(line);
-
-		if (len == 0)
-			continue;
-
-		if (line[len-1] == '\n')
-			line[len-1] = '\0';
-
-
-		g_hash_table_insert(dedup_blacklist, xstrdup(line), NULL);
-	}
-	free(line);
-
-	if (ferror(f)) {
-		fprintf(stderr, "Error reading from %s: %s\n",
-			dedup_blacklist_file, strerror(errno));
-		exit(1);
-	}
-
-	fclose(f);
-}
-
-/*
- * See if the given module is blacklisted, and update state accordingly so that
- * type IDs are appropriately augmented.
- */
-static void dedup_blacklisted_module(const char *module_name)
-{
-	if (dedup_blacklist == NULL)
-		return;
-	if (g_hash_table_lookup_extended(dedup_blacklist, module_name,
-					 NULL, NULL)) {
-		/*
-		 * The prefix goes before the DWARF file pathname, so we pick
-		 * something that is not going to be a valid path on any POSIX
-		 * system.
-		 */
-		free(blacklist_type_prefix);
-		blacklist_type_prefix = NULL;
-		blacklist_type_prefix = str_appendn(blacklist_type_prefix,
-						    "/dev/null/@blacklisted: ",
-						    module_name, "@", NULL);
-	} else {
-		free(blacklist_type_prefix);
-		blacklist_type_prefix = NULL;
 	}
 }
 
@@ -1810,13 +1717,6 @@ static void process_file(const char *file_name,
 			break;
 		}
 
-
-		/*
-		 * This arranges to augment type IDs appropriately for
-		 * dedup-blacklisted modules for everything that uses
-		 * process_file().  We reset it at the end.
-		 */
-		dedup_blacklisted_module(module_name);
 		if (tu_init != NULL)
 			tu_init(module_name, file_name, tu_die, data);
 
@@ -1826,7 +1726,6 @@ static void process_file(const char *file_name,
 		if (tu_done != NULL)
 			tu_done(module_name, file_name, tu_die, data);
 	}
-	dedup_blacklisted_module("");
 
 	free(fn_module_name);
 	simple_dwfl_free(dwfl);
@@ -2085,10 +1984,7 @@ static void detect_duplicates(const char *module_name,
 	 * modules get their names and locations recorded for subsequent passes;
 	 * all type_id()-descendant types are similarly noted.
 	 */
-	if (is_sou && strncmp(id, "////", strlen("////")) != 0 &&
-	    (dedup_blacklist == NULL ||
-	     !g_hash_table_lookup_extended(dedup_blacklist, module_name,
-					   NULL, NULL)))
+	if (is_sou && strncmp(id, "////", strlen("////")) != 0)
 		free(type_id(die, NULL, detect_duplicates_will_rescan, state));
 
 	/*
@@ -2237,8 +2133,8 @@ static enum needs_sharing type_needs_sharing(const char *module_name,
 	/*
 	 * Types not already known about do not need sharing.
 	 *
-	 * Types on the dedup blacklist, types already in the current modules,
-	 * and any types in external-module mode do not even need marking.
+	 * Types already in the current modules and any types in external-module
+	 * mode do not even need marking.
 	 */
 	if (existing_type_module == NULL)
 		return NS_NOT_SHARED;
@@ -2246,11 +2142,6 @@ static enum needs_sharing type_needs_sharing(const char *module_name,
 	if ((strcmp(existing_type_module, module_name) == 0) ||
 	    (strcmp(existing_type_module, "shared_ctf") == 0) ||
 	    (builtin_modules == NULL))
-		return NS_NO_MARKING;
-
-	if (dedup_blacklist != NULL &&
-	    g_hash_table_lookup_extended(dedup_blacklist, module_name,
-					 NULL, NULL))
 		return NS_NO_MARKING;
 
 	return NS_NEEDS_SHARING;
