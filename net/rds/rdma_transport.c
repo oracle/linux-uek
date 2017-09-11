@@ -308,8 +308,12 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 				"ADDR_CHANGE: calling rds_conn_drop <%u.%u.%u.%u,%u.%u.%u.%u,%d>\n",
 				NIPQUAD(conn->c_laddr),	NIPQUAD(conn->c_faddr),
 				conn->c_tos);
-			if (!rds_conn_self_loopback_passive(conn))
+			if (!rds_conn_self_loopback_passive(conn)) {
+				queue_delayed_work(conn->c_path[0].cp_wq,
+						   &conn->c_reconn_w,
+						   msecs_to_jiffies(conn->c_reconnect_retry));
 				rds_conn_drop(conn, DR_IB_ADDR_CHANGE);
+			}
 		}
 		break;
 
