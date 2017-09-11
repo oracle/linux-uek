@@ -2736,8 +2736,9 @@ static int __mlx5_ib_modify_qp(struct ib_qp *ibqp,
 		    (ibqp->qp_type == IB_QPT_XRC_INI) ||
 		    (ibqp->qp_type == IB_QPT_XRC_TGT)) {
 			if (mlx5_lag_is_active(dev->mdev)) {
+				u8 p = mlx5_core_native_port_num(dev->mdev);
 				tx_affinity = (unsigned int)atomic_add_return(1,
-						&dev->roce.next_port) %
+						&dev->roce[p].next_port) %
 						MLX5_MAX_PORTS + 1;
 				context->flags |= cpu_to_be32(tx_affinity << 24);
 			}
@@ -2979,7 +2980,7 @@ int mlx5_ib_modify_qp(struct ib_qp *ibqp, struct ib_qp_attr *attr,
 
 	if ((attr_mask & IB_QP_PORT) &&
 	    (attr->port_num == 0 ||
-	     attr->port_num > MLX5_CAP_GEN(dev->mdev, num_ports))) {
+	     attr->port_num > dev->num_ports)) {
 		mlx5_ib_dbg(dev, "invalid port number %d. number of ports is %d\n",
 			    attr->port_num, dev->num_ports);
 		goto out;
@@ -4299,14 +4300,13 @@ static void to_rdma_ah_attr(struct mlx5_ib_dev *ibdev,
 			    struct rdma_ah_attr *ah_attr,
 			    struct mlx5_qp_path *path)
 {
-	struct mlx5_core_dev *dev = ibdev->mdev;
 
 	memset(ah_attr, 0, sizeof(*ah_attr));
 
 	ah_attr->type = rdma_ah_find_type(&ibdev->ib_dev, path->port);
 	rdma_ah_set_port_num(ah_attr, path->port);
 	if (rdma_ah_get_port_num(ah_attr) == 0 ||
-	    rdma_ah_get_port_num(ah_attr) > MLX5_CAP_GEN(dev, num_ports))
+	    rdma_ah_get_port_num(ah_attr) > ibdev->num_ports)
 		return;
 
 	rdma_ah_set_port_num(ah_attr, path->port);
