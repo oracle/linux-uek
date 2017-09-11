@@ -21,6 +21,7 @@
 #define c_send_w		c_path[0].cp_send_w
 #define c_recv_w		c_path[0].cp_recv_w
 #define c_conn_w		c_path[0].cp_conn_w
+#define c_reconn_w		c_path[0].cp_reconn_w
 #define c_down_w		c_path[0].cp_down_w
 #define c_cm_lock		c_path[0].cp_cm_lock
 #define c_waitq			c_path[0].cp_waitq
@@ -31,6 +32,8 @@
 #define c_acl_init		c_path[0].cp_acl_init
 #define c_connection_start	c_path[0].cp_connection_start
 #define c_reconnect_racing	c_path[0].cp_reconnect_racing
+#define c_reconnect_retry	c_path[0].cp_reconnect_retry
+#define c_reconn_flags		c_path[0].cp_reconn_flags
 #define c_reconnect		c_path[0].cp_reconnect
 #define c_to_index		c_path[0].cp_to_index
 #define c_base_conn		c_path[0].cp_base_conn
