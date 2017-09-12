@@ -212,6 +212,9 @@ struct id_table_entry {
 	struct rb_node rb_node;
 };
 
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+#define CMA_MAX_TOS_MAP	       8
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 struct cma_device {
 	struct list_head	list;
 	struct ib_device	*device;
@@ -220,6 +223,9 @@ struct cma_device {
 	struct list_head	id_list;
 	enum ib_gid_type	*default_gid_type;
 	u8			*default_roce_tos;
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	u8			tos_map[CMA_MAX_TOS_MAP];
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 };
 
 struct rdma_bind_list {
@@ -339,6 +345,27 @@ int cma_set_default_roce_tos(struct cma_device *cma_dev, u32 port,
 
 	return 0;
 }
+
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+u8 cma_get_tos_map(struct cma_device *cma_dev, u8 index)
+{
+	return cma_dev->tos_map[index];
+}
+
+void cma_set_tos_map(struct cma_device *cma_dev, u8 index, u8 value)
+{
+	cma_dev->tos_map[index] = value;
+}
+
+u8 cma_read_tos_for_tos(struct cma_device *dev, u8 tos_or_index)
+{
+	if (tos_or_index >= CMA_MAX_TOS_MAP)
+		return tos_or_index;
+	else
+		return cma_get_tos_map(dev, tos_or_index);
+}
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
+
 struct ib_device *cma_get_ib_dev(struct cma_device *cma_dev)
 {
 	return cma_dev->device;
@@ -3139,6 +3166,10 @@ int rdma_set_ib_path(struct rdma_cm_id *id,
 	struct rdma_id_private *id_priv;
 	struct net_device *ndev;
 	int ret;
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	u8 default_roce_tos;
+	u8 tos;
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 	id_priv = container_of(id, struct rdma_id_private, id);
 	if (!cma_comp_exch(id_priv, RDMA_CM_ADDR_RESOLVED,
@@ -3151,6 +3182,23 @@ int rdma_set_ib_path(struct rdma_cm_id *id,
 		ret = -ENOMEM;
 		goto err;
 	}
+
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	if (!id_priv->cma_dev) {
+		ret = -ENODEV;
+		goto err_free;
+	}
+	default_roce_tos =
+		id_priv->cma_dev->default_roce_tos[id_priv->id.port_num -
+				rdma_start_port(id_priv->cma_dev->device)];
+
+	if (id_priv->tos_set)
+		tos = cma_read_tos_for_tos(id_priv->cma_dev, id_priv->tos);
+	else
+		tos = default_roce_tos;
+
+	id->route.path_rec->traffic_class = tos;
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 	if (rdma_protocol_roce(id->device, id->port_num)) {
 		ndev = cma_iboe_set_path_rec_l2_fields(id_priv);
@@ -3281,7 +3329,14 @@ static int cma_resolve_iboe_route(struct rdma_id_private *id_priv)
 	u8 tos;
 
 	mutex_lock(&id_priv->qp_mutex);
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	if (id_priv->tos_set)
+		tos = cma_read_tos_for_tos(id_priv->cma_dev, id_priv->tos);
+	else
+		tos = default_roce_tos;
+#else
 	tos = id_priv->tos_set ? id_priv->tos : default_roce_tos;
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 	mutex_unlock(&id_priv->qp_mutex);
 
 	work = kzalloc(sizeof *work, GFP_KERNEL);
@@ -5345,6 +5400,12 @@ static int cma_add_one(struct ib_device *device)
 				find_first_bit(&supported_gids, BITS_PER_LONG);
 		cma_dev->default_roce_tos[i - rdma_start_port(device)] = 0;
 	}
+
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	/* Initialize it to default same as user value */
+	for (i = 0; i < CMA_MAX_TOS_MAP; i++)
+		cma_dev->tos_map[i] = i;
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 	init_completion(&cma_dev->comp);
 	refcount_set(&cma_dev->refcount, 1);
