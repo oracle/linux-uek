@@ -192,6 +192,7 @@ static struct idr *cma_pernet_idr(struct net *net, enum rdma_port_space ps)
 	}
 }
 
+#define CMA_MAX_TOS_MAP	8
 struct cma_device {
 	struct list_head	list;
 	struct ib_device	*device;
@@ -200,6 +201,7 @@ struct cma_device {
 	struct list_head	id_list;
 	enum ib_gid_type	*default_gid_type;
 	u8			*default_roce_tos;
+	u8			tos_map[CMA_MAX_TOS_MAP];
 };
 
 struct rdma_bind_list {
@@ -316,6 +318,25 @@ int cma_set_default_roce_tos(struct cma_device *cma_dev, unsigned int port,
 
 	return 0;
 }
+
+u8 cma_get_tos_map(struct cma_device *cma_dev, u8 index)
+{
+	return cma_dev->tos_map[index];
+}
+
+void cma_set_tos_map(struct cma_device *cma_dev, u8 index, u8 value)
+{
+	cma_dev->tos_map[index] = value;
+}
+
+u8 cma_read_tos_for_tos(struct cma_device *dev, u8 tos_or_index)
+{
+	if (tos_or_index >= CMA_MAX_TOS_MAP)
+		return tos_or_index;
+	else
+		return cma_get_tos_map(dev, tos_or_index);
+}
+
 struct ib_device *cma_get_ib_dev(struct cma_device *cma_dev)
 {
 	return cma_dev->device;
@@ -2456,7 +2477,10 @@ int rdma_set_ib_paths(struct rdma_cm_id *id,
 		      struct sa_path_rec *path_rec, int num_paths)
 {
 	struct rdma_id_private *id_priv;
+	u8 default_roce_tos;
 	int ret;
+	u8 tos;
+	int i;
 
 	id_priv = container_of(id, struct rdma_id_private, id);
 	if (!cma_comp_exch(id_priv, RDMA_CM_ADDR_RESOLVED,
@@ -2469,6 +2493,21 @@ int rdma_set_ib_paths(struct rdma_cm_id *id,
 		ret = -ENOMEM;
 		goto err;
 	}
+
+	if (!id_priv->cma_dev) {
+		ret = -ENODEV;
+		goto err;
+	}
+	default_roce_tos = id_priv->cma_dev->default_roce_tos[id_priv->id.port_num -
+					rdma_start_port(id_priv->cma_dev->device)];
+
+	if (id_priv->tos_set)
+		tos = cma_read_tos_for_tos(id_priv->cma_dev, id_priv->tos);
+	else
+		tos = default_roce_tos;
+
+	for (i = 0; i < num_paths; i++)
+		id->route.path_rec[i].traffic_class = tos;
 
 	id->route.num_paths = num_paths;
 	return 0;
@@ -2535,8 +2574,12 @@ static int cma_resolve_iboe_route(struct rdma_id_private *id_priv)
 	enum ib_gid_type gid_type = IB_GID_TYPE_IB;
 	u8 default_roce_tos = id_priv->cma_dev->default_roce_tos[id_priv->id.port_num -
 					rdma_start_port(id_priv->cma_dev->device)];
-	u8 tos = id_priv->tos_set ? id_priv->tos : default_roce_tos;
+	u8 tos;
 
+	if (id_priv->tos_set)
+		tos = cma_read_tos_for_tos(id_priv->cma_dev, id_priv->tos);
+	else
+		tos = default_roce_tos;
 
 	work = kzalloc(sizeof *work, GFP_KERNEL);
 	if (!work)
@@ -4293,6 +4336,10 @@ static void cma_add_one(struct ib_device *device)
 				find_first_bit(&supported_gids, BITS_PER_LONG);
 		cma_dev->default_roce_tos[i - rdma_start_port(device)] = 0;
 	}
+
+	/* Initialize it to default same as user value */
+	for (i = 0; i < CMA_MAX_TOS_MAP; i++)
+		cma_dev->tos_map[i] = i;
 
 	init_completion(&cma_dev->comp);
 	atomic_set(&cma_dev->refcount, 1);
