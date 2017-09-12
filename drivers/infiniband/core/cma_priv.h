@@ -136,4 +136,10 @@ int cma_set_default_roce_tos(struct cma_device *dev, u32 port,
 			     u8 default_roce_tos);
 struct ib_device *cma_get_ib_dev(struct cma_device *dev);
 
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+u8 cma_get_tos_map(struct cma_device *cma_dev, u8 index);
+void cma_set_tos_map(struct cma_device *cma_dev, u8 index, u8 value);
+u8 cma_read_tos_for_tos(struct cma_device *dev, u8 tos_or_index);
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
+
 #endif /* _CMA_PRIV_H */
