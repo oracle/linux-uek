@@ -51,6 +51,9 @@ struct cma_dev_group {
 	char				name[IB_DEVICE_NAME_MAX];
 	struct config_group		device_group;
 	struct config_group		ports_group;
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	struct config_group		tos_group;
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 	struct cma_dev_port_group	*ports;
 };
 
@@ -274,6 +277,189 @@ static const struct config_item_type cma_device_group_type = {
 	.ct_owner	= THIS_MODULE
 };
 
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+static int cma_configfs_tos_params_get(struct config_item *item,
+				       struct cma_device **pcma_dev)
+{
+	struct cma_dev_group *cma_dev_group;
+	struct config_group *group;
+	struct cma_device *cma_dev;
+
+	group = container_of(item, struct config_group, cg_item);
+	cma_dev_group = container_of(group, struct cma_dev_group, tos_group);
+
+	cma_dev = cma_enum_devices_by_ibdev(filter_by_name,
+					    cma_dev_group->name);
+	if (!cma_dev)
+		return -ENODEV;
+
+	*pcma_dev = cma_dev;
+	return 0;
+}
+
+static void cma_configfs_tos_params_put(struct cma_device *cma_dev)
+{
+	cma_dev_put(cma_dev);
+}
+
+static ssize_t roce_tos_map_show(struct config_item *item, u8 tos_index,
+				 char *buf)
+{
+	struct cma_device *cma_dev;
+	ssize_t ret;
+	u8 tos;
+
+	ret = cma_configfs_tos_params_get(item, &cma_dev);
+	if (ret)
+		return ret;
+
+	tos = cma_get_tos_map(cma_dev, tos_index);
+
+	ret = sprintf(buf, "tos_index = %d value = %d\n",
+		      tos_index, tos);
+	cma_configfs_tos_params_put(cma_dev);
+	return ret;
+}
+
+static ssize_t roce_tos_map_store(struct config_item *item, u8 tos_index,
+				  const char *buf, size_t count)
+{
+	struct cma_device *cma_dev;
+	ssize_t ret;
+	u8 value;
+
+	ret = kstrtou8(buf, 0, &value);
+	if (ret)
+		return -EINVAL;
+
+	if (value < 0 || value > 255)
+		return -EINVAL;
+
+	ret = cma_configfs_tos_params_get(item, &cma_dev);
+	if (ret)
+		return ret;
+
+	cma_set_tos_map(cma_dev, tos_index, value);
+
+	cma_configfs_tos_params_put(cma_dev);
+	return count;
+}
+
+static ssize_t roce_tos_map_0_show(struct config_item *item, char *buf)
+{
+	return roce_tos_map_show(item, 0, buf);
+}
+
+static ssize_t roce_tos_map_1_show(struct config_item *item, char *buf)
+{
+	return roce_tos_map_show(item, 1, buf);
+}
+
+static ssize_t roce_tos_map_2_show(struct config_item *item, char *buf)
+{
+	return roce_tos_map_show(item, 2, buf);
+}
+
+static ssize_t roce_tos_map_3_show(struct config_item *item, char *buf)
+{
+	return roce_tos_map_show(item, 3, buf);
+}
+
+static ssize_t roce_tos_map_4_show(struct config_item *item, char *buf)
+{
+	return roce_tos_map_show(item, 4, buf);
+}
+
+static ssize_t roce_tos_map_5_show(struct config_item *item, char *buf)
+{
+	return roce_tos_map_show(item, 5, buf);
+}
+
+static ssize_t roce_tos_map_6_show(struct config_item *item, char *buf)
+{
+	return roce_tos_map_show(item, 6, buf);
+}
+
+static ssize_t roce_tos_map_7_show(struct config_item *item, char *buf)
+{
+	return roce_tos_map_show(item, 7, buf);
+}
+
+static ssize_t roce_tos_map_0_store(struct config_item *item,
+				    const char *buf, size_t count)
+{
+	return roce_tos_map_store(item, 0, buf, count);
+}
+
+static ssize_t roce_tos_map_1_store(struct config_item *item,
+				    const char *buf, size_t count)
+{
+	return roce_tos_map_store(item, 1, buf, count);
+}
+
+static ssize_t roce_tos_map_2_store(struct config_item *item,
+				    const char *buf, size_t count)
+{
+	return roce_tos_map_store(item, 2, buf, count);
+}
+
+static ssize_t roce_tos_map_3_store(struct config_item *item,
+				    const char *buf, size_t count)
+{
+	return roce_tos_map_store(item, 3, buf, count);
+}
+
+static ssize_t roce_tos_map_4_store(struct config_item *item,
+				    const char *buf, size_t count)
+{
+	return roce_tos_map_store(item, 4, buf, count);
+}
+
+static ssize_t roce_tos_map_5_store(struct config_item *item,
+				    const char *buf, size_t count)
+{
+	return roce_tos_map_store(item, 5, buf, count);
+}
+
+static ssize_t roce_tos_map_6_store(struct config_item *item,
+				    const char *buf, size_t count)
+{
+	return roce_tos_map_store(item, 6, buf, count);
+}
+
+static ssize_t roce_tos_map_7_store(struct config_item *item,
+				    const char *buf, size_t count)
+{
+	return roce_tos_map_store(item, 7, buf, count);
+}
+
+CONFIGFS_ATTR(roce_, tos_map_0);
+CONFIGFS_ATTR(roce_, tos_map_1);
+CONFIGFS_ATTR(roce_, tos_map_2);
+CONFIGFS_ATTR(roce_, tos_map_3);
+CONFIGFS_ATTR(roce_, tos_map_4);
+CONFIGFS_ATTR(roce_, tos_map_5);
+CONFIGFS_ATTR(roce_, tos_map_6);
+CONFIGFS_ATTR(roce_, tos_map_7);
+
+static struct configfs_attribute *cma_configfs_tos_map_attributes[] = {
+	&roce_attr_tos_map_0,
+	&roce_attr_tos_map_1,
+	&roce_attr_tos_map_2,
+	&roce_attr_tos_map_3,
+	&roce_attr_tos_map_4,
+	&roce_attr_tos_map_5,
+	&roce_attr_tos_map_6,
+	&roce_attr_tos_map_7,
+	NULL,
+};
+
+static struct config_item_type cma_tos_group_type = {
+	.ct_attrs	= cma_configfs_tos_map_attributes,
+	.ct_owner	= THIS_MODULE
+};
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
+
 static struct config_group *make_cma_dev(struct config_group *group,
 					 const char *name)
 {
@@ -305,6 +491,13 @@ static struct config_group *make_cma_dev(struct config_group *group,
 				    &cma_device_group_type);
 	configfs_add_default_group(&cma_dev_group->ports_group,
 			&cma_dev_group->device_group);
+
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	config_group_init_type_name(&cma_dev_group->tos_group, "tos_map",
+				    &cma_tos_group_type);
+	configfs_add_default_group(&cma_dev_group->tos_group,
+				   &cma_dev_group->device_group);
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 	cma_dev_put(cma_dev);
 	return &cma_dev_group->device_group;
