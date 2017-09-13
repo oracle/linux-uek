@@ -1772,10 +1772,10 @@ qla2x00_alloc_outstanding_cmds(struct qla_hw_data *ha, struct req_que *req)
 	if (!IS_FWI2_CAPABLE(ha))
 		req->num_outstanding_cmds = DEFAULT_OUTSTANDING_COMMANDS;
 	else {
-		if (ha->fw_xcb_count <= ha->fw_iocb_count)
-			req->num_outstanding_cmds = ha->fw_xcb_count;
+		if (ha->cur_fw_xcb_count <= ha->cur_fw_iocb_count)
+			req->num_outstanding_cmds = ha->cur_fw_xcb_count;
 		else
-			req->num_outstanding_cmds = ha->fw_iocb_count;
+			req->num_outstanding_cmds = ha->cur_fw_iocb_count;
 	}
 
 	req->outstanding_cmds = kzalloc(sizeof(srb_t *) *
@@ -1870,9 +1870,7 @@ enable_82xx_npiv:
 						ha->max_npiv_vports =
 						    MIN_MULTI_ID_FABRIC - 1;
 				}
-				qla2x00_get_resource_cnts(vha, NULL,
-				    &ha->fw_xcb_count, NULL, &ha->fw_iocb_count,
-				    &ha->max_npiv_vports, NULL);
+				qla2x00_get_resource_cnts(vha);
 
 				/*
 				 * Allocate the array of outstanding commands
@@ -2275,7 +2273,7 @@ qla2x00_init_rings(scsi_qla_host_t *vha)
 	if (IS_FWI2_CAPABLE(ha)) {
 		mid_init_cb->options = cpu_to_le16(BIT_1);
 		mid_init_cb->init_cb.execution_throttle =
-		    cpu_to_le16(ha->fw_xcb_count);
+		    cpu_to_le16(ha->cur_fw_xcb_count);
 		 ha->flags.dport_enabled =
 		     (mid_init_cb->init_cb.firmware_options_1 & BIT_7) != 0;
 		 ql_dbg(ql_dbg_init, vha, 0x0191, "DPORT Support: %s.\n",
