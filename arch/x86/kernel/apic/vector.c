@@ -137,8 +137,7 @@ static int __assign_irq_vector(int irq, struct apic_chip_data *d,
 	while (cpu < nr_cpu_ids) {
 		int new_cpu, offset;
 
-		/* Get the possible target cpus for @mask/@cpu from the apic */
-		apic->vector_allocation_domain(cpu, vector_cpumask, mask);
+		cpumask_copy(vector_cpumask, cpumask_of(cpu));
 
 		/*
 		 * Clear the offline cpus from @vector_cpumask for searching
@@ -368,6 +367,7 @@ static int x86_vector_alloc_irqs(struct irq_domain *domain, unsigned int virq,
 		irq_data->chip = &lapic_controller;
 		irq_data->chip_data = data;
 		irq_data->hwirq = virq + i;
+		irqd_set_single_target(irq_data);
 		err = assign_irq_vector_policy(virq + i, node, data, info,
 					       irq_data);
 		if (err) {
@@ -375,13 +375,6 @@ static int x86_vector_alloc_irqs(struct irq_domain *domain, unsigned int virq,
 			free_apic_chip_data(data);
 			goto error;
 		}
-		/*
-		 * If the apic destination mode is physical, then the
-		 * effective affinity is restricted to a single target
-		 * CPU. Mark the interrupt accordingly.
-		 */
-		if (!apic->irq_dest_mode)
-			irqd_set_single_target(irq_data);
 	}
 
 	return 0;
@@ -438,7 +431,7 @@ static void __init init_legacy_irqs(void)
 		BUG_ON(!data);
 
 		data->cfg.vector = ISA_IRQ_VECTOR(i);
-		cpumask_setall(data->domain);
+		cpumask_copy(data->domain, cpumask_of(0));
 		irq_set_chip_data(i, data);
 	}
 }
