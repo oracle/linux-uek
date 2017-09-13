@@ -19,7 +19,7 @@
  * | Device Discovery             |       0x2103       | 0x2020-0x2022, |
  * |                              |                    | 0x2011-0x2012, |
  * |                              |                    | 0x2099-0x20a4  |
- * | Queue Command and IO tracing |       0x3075       | 0x300b         |
+ * | Queue Command and IO tracing |       0x3074       | 0x300b         |
  * |                              |                    | 0x3027-0x3028  |
  * |                              |                    | 0x303d-0x3041  |
  * |                              |                    | 0x302d,0x3033  |
@@ -31,7 +31,7 @@
  * |                              |                    | 0x503d,0x5044  |
  * |                              |                    | 0x505f		|
  * | Timer Routines               |       0x6012       |                |
- * | User Space Interactions      |       0x70e3       | 0x7018,0x702e  |
+ * | User Space Interactions      |       0x70e6       | 0x7018,0x702e  |
  * |				  |		       | 0x7020,0x7024  |
  * |                              |                    | 0x7039,0x7045  |
  * |                              |                    | 0x7073-0x7075  |
