@@ -403,11 +403,15 @@ struct srb_iocb {
 			struct completion comp;
 		} abt;
 		struct ct_arg ctarg;
+#define MAX_IOCB_MB_REG 28
+#define SIZEOF_IOCB_MB_REG (MAX_IOCB_MB_REG * sizeof(uint16_t))
 		struct {
-			__le16 in_mb[28]; 	/* fr fw */
-			__le16 out_mb[28];	/* to fw */
+			__le16 in_mb[MAX_IOCB_MB_REG];	/* from FW */
+			__le16 out_mb[MAX_IOCB_MB_REG];	/* to FW */
 			void *out, *in;
 			dma_addr_t out_dma, in_dma;
+			struct completion comp;
+			int rc;
 		} mbx;
 		struct {
 			struct imm_ntfy_from_isp *ntfy;
@@ -445,7 +449,7 @@ typedef struct srb {
 	uint32_t handle;
 	uint16_t flags;
 	uint16_t type;
-	char *name;
+	const char *name;
 	int iocbs;
 	struct qla_qpair *qpair;
 	u32 gen1;	/* scratch */
@@ -3355,6 +3359,8 @@ struct qla_hw_data {
 		uint32_t	dport_enabled:1;
 		uint32_t	fawwpn_enabled:1;
 		/* 35 bits */
+
+		uint32_t	fw_started:1;
 	} flags;
 
 	/* This spinlock is used to protect "io transactions", you must
