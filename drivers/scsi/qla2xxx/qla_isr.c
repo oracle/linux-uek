@@ -1028,9 +1028,6 @@ global_port_update:
 
 		qla2x00_mark_all_devices_lost(vha, 1);
 
-		if (vha->vp_idx == 0 && !qla_ini_mode_enabled(vha))
-			set_bit(SCR_PENDING, &vha->dpc_flags);
-
 		set_bit(LOOP_RESYNC_NEEDED, &vha->dpc_flags);
 		set_bit(LOCAL_LOOP_UPDATE, &vha->dpc_flags);
 		set_bit(VP_CONFIG_OK, &vha->vp_flags);
@@ -1075,7 +1072,9 @@ global_port_update:
 			memset(&ea, 0, sizeof(ea));
 			ea.event = FCME_RSCN;
 			ea.id.b24 = rscn_entry;
+			ea.id.b.rsvd_1 = rscn_entry >> 24;
 			qla2x00_fcport_event_handler(vha, &ea);
+			qla2x00_post_aen_work(vha, FCH_EVT_RSCN, rscn_entry);
 		}
 		break;
 	/* case MBA_RIO_RESPONSE: */
