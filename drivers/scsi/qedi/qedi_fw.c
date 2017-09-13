@@ -2117,7 +2117,7 @@ int qedi_iscsi_send_ioreq(struct iscsi_task *task)
 	cmd_pdu_header.expected_transfer_length = cpu_to_be32(hdr->data_length);
 	cmd_pdu_header.hdr_second_dword = ntoh24(hdr->dlength);
 	cmd_pdu_header.cmd_sn = be32_to_cpu(hdr->cmdsn);
-	cmd_pdu_header.opcode = hdr->opcode;
+	cmd_pdu_header.hdr_first_byte = hdr->opcode;
 	qedi_cpy_scsi_cdb(sc, (u32 *)cmd_pdu_header.cdb);
 
 	/* Fill tx AHS and rx buffer */
