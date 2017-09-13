@@ -3311,6 +3311,10 @@ struct qlt_hw_data {
 
 #define LEAK_EXCHG_THRESH_HOLD_PERCENT 75	/* 75 percent */
 
+#define QLA_EARLY_LINKUP(_ha) \
+	((_ha->flags.n2n_ae || _ha->flags.lip_ae) && \
+	 _ha->flags.fw_started && !_ha->flags.fw_init_done)
+
 /*
  * Qlogic host adapter specific data structure.
 */
@@ -3359,8 +3363,10 @@ struct qla_hw_data {
 		uint32_t	dport_enabled:1;
 		uint32_t	fawwpn_enabled:1;
 		/* 35 bits */
-
+		uint32_t        lip_ae:1;
+		uint32_t        n2n_ae:1;
 		uint32_t	fw_started:1;
+		uint32_t        fw_init_done:1;
 	} flags;
 
 	/* This spinlock is used to protect "io transactions", you must
@@ -3452,7 +3458,6 @@ struct qla_hw_data {
 #define P2P_LOOP  3
 	uint8_t		interrupts_on;
 	uint32_t	isp_abort_cnt;
-
 #define PCI_DEVICE_ID_QLOGIC_ISP2532    0x2532
 #define PCI_DEVICE_ID_QLOGIC_ISP8432    0x8432
 #define PCI_DEVICE_ID_QLOGIC_ISP8001	0x8001
@@ -3919,6 +3924,7 @@ typedef struct scsi_qla_host {
 	struct list_head vp_fcports;	/* list of fcports */
 	struct list_head work_list;
 	spinlock_t work_lock;
+	struct work_struct iocb_work;
 
 	/* Commonly used flags and state information. */
 	struct Scsi_Host *host;
