@@ -441,7 +441,7 @@ struct srb_iocb {
 typedef struct srb {
 	atomic_t ref_count;
 	struct fc_port *fcport;
-	void *vha;
+	struct scsi_qla_host *vha;
 	uint32_t handle;
 	uint16_t flags;
 	uint16_t type;
@@ -455,8 +455,8 @@ typedef struct srb {
 		struct fc_bsg_job *bsg_job;
 		struct srb_cmd scmd;
 	} u;
-	void (*done)(void *, void *, int);
-	void (*free)(void *, void *);
+	void (*done)(void *, int);
+	void (*free)(void *);
 } srb_t;
 
 #define GET_CMD_SP(sp) (sp->u.scmd.cmd)
@@ -3231,6 +3231,7 @@ struct qla_qpair {
 	struct qla_hw_data *hw;
 	struct work_struct q_work;
 	struct list_head qp_list_elem; /* vha->qp_list */
+	struct scsi_qla_host *vha;
 };
 
 struct qla_percpu_qp_hint {
