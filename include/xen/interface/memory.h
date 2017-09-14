@@ -264,4 +264,54 @@ struct xen_remove_from_physmap {
 };
 DEFINE_GUEST_HANDLE_STRUCT(xen_remove_from_physmap);
 
+/*
+ * Used to retreive vnuma topology info.
+ * Use XENMEM_get_vnuma_nodes to obtain number of
+ * nodes before allocating memory for topology.
+ */
+#define XENMEM_get_vnumainfo  26
+
+/* vNUMA node memory ranges */
+struct xen_vmemrange {
+    uint64_t start, end;
+    uint32_t flags;
+    uint32_t nid;
+};
+DEFINE_GUEST_HANDLE_STRUCT(xen_vmemrange);
+
+/*
+ * vNUMA topology specifies vNUMA node number, distance table,
+ * memory ranges and vcpu mapping provided for guests.
+ * XENMEM_get_vnumainfo hypercall expects to see from guest
+ * nr_vnodes, nr_vmemranges and nr_vcpus to indicate available memory.
+ * After filling guests structures, nr_vnodes, nr_vmemranges and nr_vcpus
+ * copied back to guest. Domain returns expected values of nr_vnodes,
+ * nr_vmemranges and nr_vcpus to guest if the values where incorrect.
+ */
+struct xen_vnuma_topology_info {
+   /* IN */
+   domid_t domid;
+   uint16_t pad;
+
+   /* IN/OUT */
+   uint32_t nr_vnodes;
+   uint32_t nr_vcpus;
+   uint32_t nr_vmemranges;
+
+   /* OUT */
+   union {
+       GUEST_HANDLE(uint) h;
+       uint64_t    _pad;
+   } vdistance;
+   union {
+       GUEST_HANDLE(uint) h;
+       uint64_t    _pad;
+   } vcpu_to_vnode;
+   union {
+       GUEST_HANDLE(xen_vmemrange) h;
+       uint64_t    _pad;
+   } vmemrange;
+};
+DEFINE_GUEST_HANDLE_STRUCT(xen_vnuma_topology_info);
+
 #endif /* __XEN_PUBLIC_MEMORY_H__ */
