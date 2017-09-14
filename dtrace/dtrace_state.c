@@ -44,6 +44,7 @@ dtrace_optval_t		dtrace_jstackstrsize_default = 512;
 ktime_t			dtrace_deadman_interval = KTIME_INIT(1, 0);
 ktime_t			dtrace_deadman_timeout = KTIME_INIT(10, 0);
 uint64_t		dtrace_deadman_user = SECS_TO_JIFFIES(30);
+uint64_t		dtrace_sync_sample_count = 100; /* Sampling before counting */
 
 dtrace_id_t		dtrace_probeid_begin;
 dtrace_id_t		dtrace_probeid_end;
@@ -351,14 +352,7 @@ dtrace_state_t *dtrace_state_create(struct file *file)
 	 * Create a first entry in the aggregation IDR, so that ID 0 is used as
 	 * that gets used as meaning 'none'.
 	 */
-	mutex_unlock(&dtrace_lock);
-	mutex_unlock(&cpu_lock);
-
 	idr_preload(GFP_KERNEL);
-
-	mutex_lock(&cpu_lock);
-	mutex_lock(&dtrace_lock);
-
 	aggid = idr_alloc_cyclic(&state->dts_agg_idr, NULL, 0, 0, GFP_NOWAIT);
 	idr_preload_end();
 

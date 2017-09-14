@@ -685,7 +685,7 @@ static inline u32 nfs_fhandle_hash(const struct nfs_fh *fh)
 
 #define	DTRACE_IO_NFS(name, rw, size, inode)			\
 	if (DTRACE_IO_ENABLED(name)) {				\
-		struct bio bio = {				\
+		struct bio bio __maybe_unused = {		\
 			.bi_rw = rw,				\
 			.bi_flags = (1 << BIO_USER_MAPPED),	\
 			.bi_iter.bi_size = size,		\

@@ -188,6 +188,99 @@ void dtrace_aggregate_lquantize(uint64_t *lquanta, uint64_t nval,
 	lquanta[levels + 1] += incr;
 }
 
+static uint64_t dtrace_pow(uint64_t base, uint64_t exp)
+{
+	uint64_t p, r;
+
+	p = base;
+	r = 1;
+	while (exp > 0) {
+		if (exp & 1)
+			r *= p;
+
+		p *= p;
+		exp >>= 1;
+	}
+
+	return (r);
+}
+
+void dtrace_aggregate_llquantize(uint64_t *llquanta, uint64_t nval, uint64_t incr)
+{
+	uint64_t arg = *llquanta++;
+	int factor = DTRACE_LLQUANTIZE_FACTOR(arg);
+	int lmag = DTRACE_LLQUANTIZE_LMAG(arg);
+	int hmag = DTRACE_LLQUANTIZE_HMAG(arg);
+	int steps = DTRACE_LLQUANTIZE_STEPS(arg);
+	int i, signbit, steps_factor, mag, underflow_bin;
+	uint64_t val, bucket_max;
+
+	ASSERT(steps != 0);
+	ASSERT(factor > 1);
+
+	if (nval >> (64 - 1)) {
+		signbit = -1;
+		val = 1 + ~nval;
+	} else {
+		signbit = +1;
+		val = nval;
+	}
+
+	/*
+	 * Compute steps/factor.
+	 * Notice that while we say there are "steps" bins per logarithmic range,
+	 * steps/factor of them actually overlap with lower ranges.
+	 * E.g., if factor=10 and steps=20, for mag=2 we have the 20 bins
+	 *     0 50 100 150 200 250 300 350 ... 800 850 900 950
+	 * but the first two actually belong to lower ranges.
+	 */
+	steps_factor = steps/factor;
+
+	/* the underflow bin is in the middle */
+	underflow_bin = 1 + (hmag-lmag+1) * (steps-steps_factor);
+
+	bucket_max = dtrace_pow(factor, lmag);
+
+	/* check for "underflow" (smaller than the smallest bin) */
+	if ( val < bucket_max ) {
+		llquanta[underflow_bin] += incr;
+		return;
+	}
+
+	/* loop over the logarithmic ranges */
+	i = 0;
+	for (mag = lmag; mag <= hmag; mag++) {
+		bucket_max *= factor;
+		if (val >= bucket_max) continue;
+
+		/*
+		 * We want
+		 *     i = val * steps / bucket_max;
+		 * but val*steps could overflow.  An alternative is
+		 *     i = val / ( bucket_max/steps )
+		 * but bucket_max/steps might not divide evenly.
+		 * (Plus, we end up with an extra divide.)
+		 *
+		 * From Solaris, we inherit constraints on factor and steps
+		 * that mean bucket_max/steps divides evenly when mag>0.
+		 * Meanwhile, if mag==0, val*steps cannot overflow.
+		 * So between our two expressions for i, at least one
+		 * will work and we just have to pick which one to use.
+		 */
+		if (mag == 0) {
+			i = val * steps / bucket_max;
+		} else {
+			i = val / ( bucket_max/steps );
+		}
+
+		// shift for low indices that can never happen
+		i -= steps_factor;
+		break;
+	}
+	i = underflow_bin+signbit*((steps-steps_factor)*(mag-lmag)+i+1);
+	llquanta[i] += incr;
+}
+
 void dtrace_aggregate_avg(uint64_t *data, uint64_t nval, uint64_t arg)
 {
 	data[0]++;
@@ -321,12 +414,12 @@ void dtrace_aggregate(dtrace_aggregation_t *agg, dtrace_buffer_t *dbuf,
 
 	if (!agg->dtag_hasarg)
 		/*
-		 * Currently, only quantize() and lquantize() take additional
-		 * arguments, and they have the same semantics:  an increment
-		 * value that defaults to 1 when not present.  If additional
-		 * aggregating actions take arguments, the setting of the
-		 * default argument value will presumably have to become more
-		 * sophisticated...
+		 * Currently, only quantize(), lquantize() and llquantize()
+		 * take additional arguments, and they have the same semantics:
+		 * an increment value that defaults to 1 when not present.  If
+		 * additional aggregating actions take arguments, the setting
+		 * of the default argument value will presumably have to
+		 * become more sophisticated...
 		 */
 		arg = 1;
 

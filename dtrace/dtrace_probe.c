@@ -53,18 +53,24 @@ dtrace_id_t dtrace_probe_create(dtrace_provider_id_t prov, const char *mod,
 	probe = kmem_cache_alloc(dtrace_probe_cachep, __GFP_NOFAIL);
 
 	/*
-	 * The ir_preload() function should be called without holding locks.
+	 * The idr_preload() should be called without holding locks as it may
+	 * block.  At the same time it is required to protect DTrace structures.
+	 * We can't drop it before idr_preload() and acquire after it because
+	 * we can't sleep in atomic context (until we reach idr_preload_end()).
+	 *
+	 * It is better to delay DTrace framework than traced host so the lock
+	 * is being held for the duration of idr allocation.
+	 *
 	 * When the provider is the DTrace core itself, dtrace_lock will be
 	 * held when we enter this function.
 	 */
 	if (provider == dtrace_provider) {
 		ASSERT(MUTEX_HELD(&dtrace_lock));
-		mutex_unlock(&dtrace_lock);
+	} else {
+		mutex_lock(&dtrace_lock);
 	}
 
 	idr_preload(GFP_KERNEL);
-
-	mutex_lock(&dtrace_lock);
 	id = idr_alloc_cyclic(&dtrace_probe_idr, probe, 0, 0, GFP_NOWAIT);
 	idr_preload_end();
 	if (id < 0) {
@@ -515,6 +521,7 @@ void dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 	int			onintr;
 	volatile uint16_t	*flags;
 	int			pflag = 0;
+	uint32_t		re_entry;
 
 #ifdef FIXME
 	/*
@@ -526,12 +533,13 @@ void dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 		return;
 #endif
 
+	DTRACE_SYNC_ENTER_CRITICAL(cookie, re_entry);
+
 	/*
 	 * If preemption has already been disabled before we get here, we
 	 * accept it as a free gift.  We just need to make sure that we don't
 	 * re-enable preemption on the way out...
 	 */
-	local_irq_save(cookie);
 	if ((pflag = dtrace_is_preemptive()))
 		dtrace_preempt_off();
 
@@ -547,7 +555,7 @@ void dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 		 */
 		if (pflag)
 			dtrace_preempt_on();
-		local_irq_restore(cookie);
+		DTRACE_SYNC_EXIT_CRITICAL(cookie, re_entry);
 		return;
 	}
 
@@ -557,7 +565,7 @@ void dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 		 */
 		if (pflag)
 			dtrace_preempt_on();
-		local_irq_restore(cookie);
+		DTRACE_SYNC_EXIT_CRITICAL(cookie, re_entry);
 		return;
 	}
 
@@ -574,7 +582,7 @@ void dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 			     pflag);
 		if (pflag)
 			dtrace_preempt_on();
-		local_irq_restore(cookie);
+		DTRACE_SYNC_EXIT_CRITICAL(cookie, re_entry);
 		return;
 	}
 
@@ -996,6 +1004,7 @@ void dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 			case DTRACEACT_PRINTA:
 			case DTRACEACT_SYSTEM:
 			case DTRACEACT_FREOPEN:
+			case DTRACEACT_TRACEMEM:
 				break;
 
 			case DTRACEACT_SYM:
@@ -1249,7 +1258,7 @@ void dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 
 	if (pflag)
 		dtrace_preempt_on();
-	local_irq_restore(cookie);
+	DTRACE_SYNC_EXIT_CRITICAL(cookie, re_entry);
 
 	if (current->dtrace_sig != 0) {
 		int	sig = current->dtrace_sig;
@@ -1279,16 +1288,7 @@ int dtrace_probe_init(void)
 	 * We need to drop our locks when calling idr_preload(), so we try to
 	 * get them back right after.
 	 */
-	mutex_unlock(&dtrace_lock);
-	mutex_unlock(&dtrace_provider_lock);
-	mutex_unlock(&cpu_lock);
-
 	idr_preload(GFP_KERNEL);
-
-	mutex_lock(&cpu_lock);
-	mutex_lock(&dtrace_provider_lock);
-	mutex_lock(&dtrace_lock);
-
 	id = idr_alloc_cyclic(&dtrace_probe_idr, NULL, 0, 0, GFP_NOWAIT);
 	idr_preload_end();
 

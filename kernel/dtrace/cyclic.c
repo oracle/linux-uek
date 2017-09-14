@@ -25,7 +25,6 @@
 #include <linux/spinlock.h>
 #include <linux/workqueue.h>
 
-static DEFINE_SPINLOCK(cyclic_lock);
 static int		omni_enabled = 0;
 
 #define _CYCLIC_CPU_UNDEF		(-1)
@@ -345,15 +344,6 @@ cyclic_id_t cyclic_add_omni(cyc_omni_handler_t *omni)
 	for_each_online_cpu(cpu)
 		cyclic_omni_start(cyc, cpu);
 
-#ifdef CONFIG_HOTPLUG_CPU
-	spin_lock_irqsave(&cyclic_lock, flags);
-	if (!omni_enabled) {
-		register_cpu_notifier(&cpu_notifier);
-		omni_enabled = 1;
-	}
-	spin_unlock_irqrestore(&cyclic_lock, flags);
-#endif
-
 	return (cyclic_id_t)cyc;
 }
 EXPORT_SYMBOL(cyclic_add_omni);
@@ -542,9 +532,17 @@ static const struct file_operations	proc_cyclicinfo_ops = {
 	.release	= seq_release,
 };
 
-static int __init proc_cyclicinfo_init(void)
+static int __init cyclic_init(void)
 {
 	proc_create("cyclicinfo", S_IRUSR, NULL, &proc_cyclicinfo_ops);
+
+#ifdef CONFIG_HOTPLUG_CPU
+	if (!omni_enabled) {
+		register_cpu_notifier(&cpu_notifier);
+		omni_enabled = 1;
+	}
+#endif
+
 	return 0;
 }
-module_init(proc_cyclicinfo_init);
+module_init(cyclic_init);

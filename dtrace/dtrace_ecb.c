@@ -77,6 +77,41 @@ static dtrace_action_t *dtrace_ecb_aggregation_create(dtrace_ecb_t *ecb,
 		break;
 	}
 
+	case DTRACEAGG_LLQUANTIZE: {
+		uint16_t factor = DTRACE_LLQUANTIZE_FACTOR(desc->dtad_arg);
+		uint16_t lmag = DTRACE_LLQUANTIZE_LMAG(desc->dtad_arg);
+		uint16_t hmag = DTRACE_LLQUANTIZE_HMAG(desc->dtad_arg);
+		uint16_t steps = DTRACE_LLQUANTIZE_STEPS(desc->dtad_arg);
+
+		agg->dtag_initial = desc->dtad_arg;
+		agg->dtag_aggregate = dtrace_aggregate_llquantize;
+
+		/*
+		 * 64 is the largest hmag can practically be (for the smallest
+		 * possible value of factor, 2).  libdtrace has already checked
+		 * for overflow, so if hmag > 64, we have corrupted DOF.
+		 */
+		if (factor < 2 || steps == 0 || hmag > 64)
+			goto err;
+
+		/*
+		 * The size of the buffer for an llquantize() is given by:
+		 *   (hmag-lmag+1) logarithmic ranges
+		 *   x
+		 *   (steps - steps/factor) bins per range
+		 *   x
+		 *   2 signs
+		 *   +
+		 *   two overflow bins
+		 *   +
+		 *   one underflow bin
+		 *   +
+		 *   beginning word to encode factor,lmag,hmag,steps
+		 */
+		size = ((hmag-lmag+1)*(steps-steps/factor)*2+4) * sizeof (uint64_t);
+		break;
+	}
+
 	case DTRACEAGG_AVG:
 		agg->dtag_aggregate = dtrace_aggregate_avg;
 		size = sizeof(uint64_t) * 2;
@@ -129,11 +164,7 @@ success:
 	/*
 	 * Get an ID for the aggregation (add it to the idr).
 	 */
-	mutex_unlock(&dtrace_lock);
-
 	idr_preload(GFP_KERNEL);
-	mutex_lock(&dtrace_lock);
-
 	aggid = idr_alloc_cyclic(&state->dts_agg_idr, agg, 0, 0, GFP_NOWAIT);
 	idr_preload_end();
 	if (aggid < 0) {
@@ -222,6 +253,7 @@ static int dtrace_ecb_action_add(dtrace_ecb_t *ecb, dtrace_actdesc_t *desc)
 						state, (char *)(uintptr_t)arg);
 			}
 
+		case DTRACEACT_TRACEMEM:
 		case DTRACEACT_LIBACT:
 		case DTRACEACT_DIFEXPR:
 			if (dp == NULL)
@@ -547,6 +579,11 @@ static dtrace_ecb_t *dtrace_ecb_add(dtrace_state_t *state,
 		}
 
 		ecbs = vzalloc(necbs * sizeof(*ecbs));
+		if (ecbs == NULL) {
+			kfree(ecb);
+			return NULL;
+		}
+
 		if (oecbs != NULL)
 			memcpy(ecbs, oecbs, state->dts_necbs * sizeof(*ecbs));
 
@@ -591,6 +628,9 @@ static dtrace_ecb_t *dtrace_ecb_create(dtrace_state_t *state,
 	ASSERT(state != NULL);
 
 	ecb = dtrace_ecb_add(state, probe);
+	if (ecb == NULL)
+		return NULL;
+
 	ecb->dte_uarg = desc->dted_uarg;
 
 	if ((pred = desc->dted_pred.dtpdd_predicate) != NULL) {
