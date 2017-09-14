@@ -2060,10 +2060,6 @@ static void bnxt_free_rx_skbs(struct bnxt *bp)
 			if (!data)
 				continue;
 
-			dma_unmap_single_attrs(&pdev->dev, rx_buf->mapping,
-					       bp->rx_buf_use_size, bp->rx_dir,
-					       &attrs);
-
 			rx_buf->data = NULL;
 
 			if (BNXT_RX_PAGE_MODE(bp)) {
