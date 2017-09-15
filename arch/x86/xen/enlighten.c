@@ -1981,3 +1981,39 @@ void xen_arch_unregister_cpu(int num)
 }
 EXPORT_SYMBOL(xen_arch_unregister_cpu);
 #endif
+
+/* UEK-specific routine */
+int xen_get_host_pages(unsigned long *num_pages)
+{
+	struct xen_memory_map memmap;
+	struct e820entry *e820map;
+	unsigned long sz = 0;
+	int i, rc;
+
+	if (!xen_domain())
+		return -EOPNOTSUPP;
+	if (!xen_initial_domain())
+		return -EPERM;
+
+	memmap.nr_entries = E820_X_MAX;
+	e820map = kmalloc(sizeof(*e820map) * memmap.nr_entries, GFP_KERNEL);
+	if (e820map == NULL)
+		return -ENOMEM;
+	set_xen_guest_handle(memmap.buffer, e820map);
+
+	rc = HYPERVISOR_memory_op(XENMEM_machine_memory_map, &memmap);
+	if (rc)
+		goto out;
+
+	for (i = 0; i < memmap.nr_entries; i++) {
+		if (e820map[i].type == E820_RAM)
+			sz += e820map[i].size;
+	}
+
+	*num_pages = (sz >> PAGE_SHIFT);
+
+ out:
+	kfree(e820map);
+	return rc;
+}
+EXPORT_SYMBOL(xen_get_host_pages);

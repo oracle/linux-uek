@@ -45,6 +45,7 @@ static inline uint32_t xen_cpuid_base(void)
 
 #ifdef CONFIG_XEN
 extern bool xen_hvm_need_lapic(void);
+extern int xen_get_host_pages(unsigned long *num_pages);
 
 static inline bool xen_x2apic_para_available(void)
 {
@@ -54,6 +55,10 @@ static inline bool xen_x2apic_para_available(void)
 static inline bool xen_x2apic_para_available(void)
 {
 	return (xen_cpuid_base() != 0);
+}
+static inline int xen_get_host_pages(unsigned long *num_pages)
+{
+	return -EOPNOTSUPP;
 }
 #endif
 
