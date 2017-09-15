@@ -90,6 +90,8 @@
 
 #include "../kernel/cpu/cpu.h"
 
+#include <asm/e820/types.h>
+
 void *xen_initial_gdt;
 
 static int xen_cpu_up_prepare_pv(unsigned int cpu);
@@ -1487,3 +1489,39 @@ const __initconst struct hypervisor_x86 x86_hyper_xen_pv = {
 	.type			= X86_HYPER_XEN_PV,
 	.runtime.pin_vcpu       = xen_pin_vcpu,
 };
+
+/* UEK-specific routine */
+int xen_get_host_pages(unsigned long *num_pages)
+{
+	struct xen_memory_map memmap;
+	struct e820_entry *e820map;
+	unsigned long sz = 0;
+	int i, rc;
+
+	if (!xen_domain())
+		return -EOPNOTSUPP;
+	if (!xen_initial_domain())
+		return -EPERM;
+
+	memmap.nr_entries = E820_MAX_ENTRIES;
+	e820map = kmalloc(sizeof(*e820map) * memmap.nr_entries, GFP_KERNEL);
+	if (e820map == NULL)
+		return -ENOMEM;
+	set_xen_guest_handle(memmap.buffer, e820map);
+
+	rc = HYPERVISOR_memory_op(XENMEM_machine_memory_map, &memmap);
+	if (rc)
+		goto out;
+
+	for (i = 0; i < memmap.nr_entries; i++) {
+		if (e820map[i].type == E820_TYPE_RAM)
+			sz += e820map[i].size;
+	}
+
+	*num_pages = (sz >> PAGE_SHIFT);
+
+ out:
+	kfree(e820map);
+	return rc;
+}
+EXPORT_SYMBOL(xen_get_host_pages);
