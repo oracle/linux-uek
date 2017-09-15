@@ -105,6 +105,9 @@ static LIST_HEAD(modules);
 #ifdef CONFIG_KGDB_KDB
 struct list_head *kdb_modules = &modules; /* kdb needs the list of modules */
 #endif /* CONFIG_KGDB_KDB */
+#ifdef CONFIG_DTRACE
+struct list_head *dtrace_modules = &modules;
+#endif /* CONFIG_DTRACE */
 
 #ifdef CONFIG_MODULE_SIG
 #ifdef CONFIG_MODULE_SIG_FORCE

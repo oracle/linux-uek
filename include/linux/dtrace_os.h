@@ -1,4 +1,6 @@
-/* Copyright (c) 2011, 2017, Oracle and/or its affiliates. All rights reserved. */
+/*
+ * Copyright (c) 2011, 2017, Oracle and/or its affiliates. All rights reserved.
+ */
 
 #ifndef _LINUX_DTRACE_OS_H_
 #define _LINUX_DTRACE_OS_H_
@@ -12,6 +14,7 @@ typedef uint32_t dtrace_id_t;
 #include <linux/ktime.h>
 #include <linux/mm.h>
 #include <linux/notifier.h>
+#include <linux/timekeeper_internal.h>
 #if defined(CONFIG_DT_FASTTRAP) || defined(CONFIG_DT_FASTTRAP_MODULE)
 #include <linux/uprobes.h>
 #endif
@@ -39,6 +42,10 @@ typedef enum dtrace_vtime_state {
 
 extern dtrace_vtime_state_t dtrace_vtime_active;
 
+typedef void for_each_module_fn(void *, struct module *);
+extern void dtrace_for_each_module(for_each_module_fn *fn, void *arg);
+
+extern void dtrace_update_time(struct timekeeper *);
 extern ktime_t dtrace_get_walltime(void);
 
 extern void dtrace_vtime_enable(void);
@@ -117,6 +124,11 @@ extern int dtrace_tracepoint_disable(pid_t, fasttrap_machtp_t *);
  */
 
 #define dtrace_no_pf(ignore) 0
+
+/*
+ * See kernel/timekeeper.c
+ */
+#define	dtrace_update_time(ignore)
 
 #endif /* CONFIG_DTRACE */
 
