@@ -63,7 +63,7 @@ struct cipher_testvec {
 
 struct aead_testvec {
 	char *key;
-	char *iv;
+	char iv[MAX_IVLEN];
 	char *input;
 	char *assoc;
 	char *result;
@@ -19622,7 +19622,7 @@ static struct aead_testvec aes_gcm_rfc4106_enc_tv_template[] = {
         { /* Generated using Crypto++ */
 		.key    = zeroed_string,
 		.klen	= 20,
-                .iv     = zeroed_string,
+                .iv     = "",
                 .input  = zeroed_string,
                 .ilen   = 16,
                 .assoc  = zeroed_string,
@@ -19654,7 +19654,7 @@ static struct aead_testvec aes_gcm_rfc4106_enc_tv_template[] = {
 			  "\x6d\x6a\x8f\x94\x67\x30\x83\x08"
                           "\x00\x00\x00\x00",
 		.klen	= 20,
-                .iv     = zeroed_string,
+                .iv     = "",
                 .input  = "\x01\x01\x01\x01\x01\x01\x01\x01"
                           "\x01\x01\x01\x01\x01\x01\x01\x01",
                 .ilen   = 16,
@@ -19670,7 +19670,7 @@ static struct aead_testvec aes_gcm_rfc4106_enc_tv_template[] = {
 			  "\x6d\x6a\x8f\x94\x67\x30\x83\x08"
                           "\x00\x00\x00\x00",
 		.klen	= 20,
-                .iv     = zeroed_string,
+                .iv     = "",
                 .input  = "\x01\x01\x01\x01\x01\x01\x01\x01"
                           "\x01\x01\x01\x01\x01\x01\x01\x01",
                 .ilen   = 16,
@@ -19796,7 +19796,7 @@ static struct aead_testvec aes_gcm_rfc4106_dec_tv_template[] = {
         { /* Generated using Crypto++ */
 		.key    = zeroed_string,
 		.klen	= 20,
-                .iv     = zeroed_string,
+                .iv     = "",
 		.input	= "\x03\x88\xDA\xCE\x60\xB6\xA3\x92"
                           "\xF3\x28\xC2\xB9\x71\xB2\xFE\x78"
                           "\x97\xFE\x4C\x23\x37\x42\x01\xE0"
@@ -19828,7 +19828,7 @@ static struct aead_testvec aes_gcm_rfc4106_dec_tv_template[] = {
 			  "\x6d\x6a\x8f\x94\x67\x30\x83\x08"
                           "\x00\x00\x00\x00",
 		.klen	= 20,
-                .iv     = zeroed_string,
+                .iv     = "",
 		.input	= "\x4B\xB1\xB5\xE3\x25\x71\x70\xDE"
                           "\x7F\xC9\x9C\xA5\x14\x19\xF2\xAC"
                           "\x0B\x8F\x88\x69\x17\xE6\xB4\x3C"
@@ -19844,7 +19844,7 @@ static struct aead_testvec aes_gcm_rfc4106_dec_tv_template[] = {
 			  "\x6d\x6a\x8f\x94\x67\x30\x83\x08"
                           "\x00\x00\x00\x00",
 		.klen	= 20,
-                .iv     = zeroed_string,
+                .iv     = "",
 		.input	= "\x4B\xB1\xB5\xE3\x25\x71\x70\xDE"
                           "\x7F\xC9\x9C\xA5\x14\x19\xF2\xAC"
                           "\x90\x92\xB7\xE3\x5F\xA3\x9A\x63"
@@ -19974,7 +19974,7 @@ static struct aead_testvec aes_gcm_rfc4543_enc_tv_template[] = {
 			  "\x90\x6a\xc7\x3c\x36\x13\xa6\x34"
 			  "\x22\x43\x3c\x64",
 		.klen	= 20,
-		.iv	= zeroed_string,
+		.iv	= "",
 		.assoc	= "\x00\x00\x43\x21\x00\x00\x00\x07",
 		.alen	= 8,
 		.input	= "\x45\x00\x00\x30\xda\x3a\x00\x00"
@@ -20004,7 +20004,7 @@ static struct aead_testvec aes_gcm_rfc4543_dec_tv_template[] = {
 			  "\x90\x6a\xc7\x3c\x36\x13\xa6\x34"
 			  "\x22\x43\x3c\x64",
 		.klen	= 20,
-		.iv	= zeroed_string,
+		.iv	= "",
 		.assoc	= "\x00\x00\x43\x21\x00\x00\x00\x07",
 		.alen	= 8,
 		.input	= "\x45\x00\x00\x30\xda\x3a\x00\x00"
@@ -20030,7 +20030,7 @@ static struct aead_testvec aes_gcm_rfc4543_dec_tv_template[] = {
 			  "\x90\x6a\xc7\x3c\x36\x13\xa6\x34"
 			  "\x22\x43\x3c\x64",
 		.klen	= 20,
-		.iv	= zeroed_string,
+		.iv	= "",
 		.assoc	= "\x00\x00\x43\x21\x00\x00\x00\x07",
 		.alen	= 8,
 		.input	= "\x45\x00\x00\x30\xda\x3a\x00\x00"
