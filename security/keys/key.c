@@ -294,8 +294,10 @@ struct key *key_alloc(struct key_type *type, const char *desc,
 
 	if (!(flags & KEY_ALLOC_NOT_IN_QUOTA))
 		key->flags |= 1 << KEY_FLAG_IN_QUOTA;
-	if (flags & KEY_ALLOC_TRUSTED)
-		key->flags |= 1 << KEY_FLAG_TRUSTED;
+	if (flags & KEY_ALLOC_BUILT_IN)
+		key->flags |= 1 << KEY_FLAG_BUILTIN;
+	if (flags & KEY_ALLOC_UID_KEYRING)
+		key->flags |= 1 << KEY_FLAG_UID_KEYRING;
 
 #ifdef KEY_DEBUGGING
 	key->magic = KEY_DEBUG_MAGIC;
@@ -813,7 +815,7 @@ key_ref_t key_create_or_update(key_ref_t keyring_ref,
 	prep.data = payload;
 	prep.datalen = plen;
 	prep.quotalen = index_key.type->def_datalen;
-	prep.trusted = flags & KEY_ALLOC_TRUSTED;
+	prep.trusted = flags & KEY_ALLOC_BUILT_IN;
 	prep.expiry = TIME_T_MAX;
 	if (index_key.type->preparse) {
 		ret = index_key.type->preparse(&prep);
@@ -832,7 +834,7 @@ key_ref_t key_create_or_update(key_ref_t keyring_ref,
 	key_ref = ERR_PTR(-EPERM);
 	if (!prep.trusted && test_bit(KEY_FLAG_TRUSTED_ONLY, &keyring->flags))
 		goto error_free_prep;
-	flags |= prep.trusted ? KEY_ALLOC_TRUSTED : 0;
+	flags |= prep.trusted ? KEY_ALLOC_BUILT_IN : 0;
 
 	ret = __key_link_begin(keyring, &index_key, &edit);
 	if (ret < 0) {

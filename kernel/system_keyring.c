@@ -101,7 +101,7 @@ static __init int load_system_certificate_list(void)
 					   ((KEY_POS_ALL & ~KEY_POS_SETATTR) |
 					   KEY_USR_VIEW | KEY_USR_READ),
 					   KEY_ALLOC_NOT_IN_QUOTA |
-					   KEY_ALLOC_TRUSTED);
+					   KEY_ALLOC_BUILT_IN);
 		if (IS_ERR(key)) {
 			pr_err("Problem loading in-kernel X.509 certificate (%ld)\n",
 			       PTR_ERR(key));
