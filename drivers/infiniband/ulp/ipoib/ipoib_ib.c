@@ -175,7 +175,7 @@ static inline int ipoib_is_valid_arp_address(struct net_device *dev,
 					     struct sk_buff *skb,
 					     __be64 interface_id)
 {
-	struct ipoib_dev_priv *priv = netdev_priv(dev);
+	struct ipoib_dev_priv *priv = ipoib_priv(dev);
 	union ib_gid *sgid;
 
 	sgid = (union ib_gid *)(skb->data + sizeof(struct arphdr) + 4);

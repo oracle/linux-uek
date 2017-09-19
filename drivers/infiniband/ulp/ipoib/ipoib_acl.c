@@ -105,7 +105,7 @@ int extract_guid_subnet_and_ip(const char *buf, char *name, u64 *subnet_prefix,
 static ssize_t show_acl_enabled(struct device *d,
 				struct device_attribute *attr, char *buf)
 {
-	struct ipoib_dev_priv *priv = netdev_priv(to_net_dev(d));
+	struct ipoib_dev_priv *priv = ipoib_priv(to_net_dev(d));
 
 	return sprintf(buf, "%d\n", priv->acl.enabled ? 1 : 0);
 }
@@ -113,7 +113,7 @@ static ssize_t show_acl_enabled(struct device *d,
 static ssize_t set_acl_enabled(struct device *d, struct device_attribute *attr,
 			       const char *buf, size_t count)
 {
-	struct ipoib_dev_priv *priv = netdev_priv(to_net_dev(d));
+	struct ipoib_dev_priv *priv = ipoib_priv(to_net_dev(d));
 
 	priv->acl.enabled = !!strcmp(buf, "0\n");
 	return count;
@@ -125,7 +125,7 @@ static DEVICE_ATTR(acl_enabled, S_IWUSR | S_IRUGO, show_acl_enabled,
 static ssize_t add_acl(struct device *d, struct device_attribute *attr,
 		       const char *buf, size_t count)
 {
-	struct ipoib_dev_priv *priv = netdev_priv(to_net_dev(d));
+	struct ipoib_dev_priv *priv = ipoib_priv(to_net_dev(d));
 	int rc;
 	u64 guid, subnet_prefix;
 	u32 ip;
@@ -158,7 +158,7 @@ static DEVICE_ATTR(add_acl, S_IWUSR, NULL, add_acl);
 static ssize_t delete_acl(struct device *d, struct device_attribute *attr,
 			  const char *buf, size_t count)
 {
-	struct ipoib_dev_priv *priv = netdev_priv(to_net_dev(d));
+	struct ipoib_dev_priv *priv = ipoib_priv(to_net_dev(d));
 	u64 guid, subnet_prefix;
 	int rc;
 	struct ib_cm_acl *instance_acl;
@@ -218,7 +218,7 @@ out:
 static ssize_t show_acl(struct device *d,
 			struct device_attribute *attr, char *buf)
 {
-	struct ipoib_dev_priv *priv = netdev_priv(to_net_dev(d));
+	struct ipoib_dev_priv *priv = ipoib_priv(to_net_dev(d));
 	struct ipoib_instance_acl *results[ACL_BATCH_SZ];
 	unsigned int count, i;
 	unsigned long idx = 0;
@@ -281,7 +281,7 @@ void print_acl_instances_to_buf(char *buf, size_t sz,
 static ssize_t show_acl_instances(struct device *d,
 				  struct device_attribute *attr, char *buf)
 {
-	struct ipoib_dev_priv *priv = netdev_priv(to_net_dev(d));
+	struct ipoib_dev_priv *priv = ipoib_priv(to_net_dev(d));
 
 	/* Per Documentation/filesystems/sysfs.txt buf size is PAGE_SIZE */
 	if (priv->instances_acls.list_count * (INSTANCE_ACL_ID_SZ + 1) + 1 <
@@ -370,7 +370,7 @@ int ipoib_create_acl_sysfs(struct net_device *dev)
 
 void delete_instance_acls(struct net_device *dev)
 {
-	struct ipoib_dev_priv *priv = netdev_priv(dev);
+	struct ipoib_dev_priv *priv = ipoib_priv(dev);
 	struct ipoib_instance_acl *results[ACL_BATCH_SZ];
 	unsigned int count, i;
 	unsigned long idx = 0;
@@ -395,7 +395,7 @@ int ipoib_create_instance_acl(const char *name, struct net_device *dev)
 {
 	u32 inst_name_hash;
 	struct ipoib_instance_acl *instance_acl;
-	struct ipoib_dev_priv *priv = netdev_priv(dev);
+	struct ipoib_dev_priv *priv = ipoib_priv(dev);
 	int rc = 0;
 
 	if (strlen(name) > INSTANCE_ACL_ID_SZ)
@@ -448,7 +448,7 @@ int ipoib_delete_instance_acl(const char *name, struct net_device *dev)
 {
 	u32 inst_name_hash;
 	struct ipoib_instance_acl *instance_acl;
-	struct ipoib_dev_priv *priv = netdev_priv(dev);
+	struct ipoib_dev_priv *priv = ipoib_priv(dev);
 	struct ib_cm_acl_elem *list;
 	ssize_t list_count, i;
 	int rc = 0;
@@ -498,7 +498,7 @@ struct ib_cm_acl *ipoib_get_instance_acl(const char *name,
 {
 	u32 inst_name_hash;
 	struct ipoib_instance_acl *instance_acl;
-	struct ipoib_dev_priv *priv = netdev_priv(dev);
+	struct ipoib_dev_priv *priv = ipoib_priv(dev);
 
 	inst_name_hash = jhash(name, strlen(name), 0);
 	mutex_lock(&priv->instances_acls.lock);
@@ -517,7 +517,7 @@ struct ib_cm_acl *ipoib_get_instance_acl(const char *name,
 void ipoib_init_acl(struct net_device *dev)
 {
 	struct ib_cm_dpp dpp;
-	struct ipoib_dev_priv *priv = netdev_priv(dev);
+	struct ipoib_dev_priv *priv = ipoib_priv(dev);
 
 	INIT_RADIX_TREE(&priv->instances_acls.instances, GFP_KERNEL);
 	priv->instances_acls.list_count = 0;
@@ -531,7 +531,7 @@ void ipoib_init_acl(struct net_device *dev)
 
 void ipoib_clean_acl(struct net_device *dev)
 {
-	struct ipoib_dev_priv *priv = netdev_priv(dev);
+	struct ipoib_dev_priv *priv = ipoib_priv(dev);
 
 	delete_instance_acls(dev);
 

@@ -39,7 +39,7 @@ int ipoib_do_ioctl(struct net_device *dev, struct ifreq *ifr, int cmd)
 {
 	struct ipoib_ioctl_req *rq = (struct ipoib_ioctl_req *)ifr;
 	struct ipoib_ioctl_req_data req_data;
-	struct ipoib_dev_priv *priv = netdev_priv(dev);
+	struct ipoib_dev_priv *priv = ipoib_priv(dev);
 	int rc = 0;
 	struct ib_cm_acl_elem *list;
 	ssize_t list_count, i;
