@@ -153,7 +153,6 @@ kernel/fs/xfs/xfs.ko
 kernel/fs/ext2/ext2.ko
 kernel/fs/overlayfs/overlay.ko
 kernel/kernel/trace/ring_buffer_benchmark.ko
-kernel/kernel/ctf/ctf.ko
 kernel/drivers/hv/hv_balloon.ko
 kernel/drivers/hv/hv_vmbus.ko
 kernel/drivers/hv/hv_utils.ko
