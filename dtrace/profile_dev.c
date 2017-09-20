@@ -77,7 +77,7 @@ static int	profile_ticks[] = {
 static int	profile_max;		/* maximum number of profile probes */
 static atomic_t	profile_total;		/* current number of profile probes */
 
-static void profile_tick_fn(uintptr_t arg, ktime_t when)
+static void profile_tick_fn(uintptr_t arg)
 {
 	profile_probe_t	*prof = (profile_probe_t *)arg;
 	unsigned long	pc = 0, upc = 0;
@@ -104,7 +104,7 @@ static void profile_tick_fn(uintptr_t arg, ktime_t when)
 	dtrace_probe(prof->prof_id, pc, upc, 0, 0, 0);
 }
 
-static void profile_prof_fn(uintptr_t arg, ktime_t when)
+static void profile_prof_fn(uintptr_t arg)
 {
 	profile_probe_percpu_t	*pcpu = (profile_probe_percpu_t *)arg;
 	profile_probe_t		*prof = pcpu->profc_probe;
@@ -112,7 +112,7 @@ static void profile_prof_fn(uintptr_t arg, ktime_t when)
 	struct pt_regs		*regs = get_irq_regs();
 	unsigned long		pc = 0, upc = 0;
 
-	late = ktime_sub(when, pcpu->profc_expected);
+	late = ktime_sub(dtrace_gethrtime(), pcpu->profc_expected);
 	pcpu->profc_expected = ktime_add(pcpu->profc_expected,
 					 pcpu->profc_interval);
 
@@ -151,7 +151,7 @@ static void profile_online(void *arg, processorid_t cpu, cyc_handler_t *hdlr,
 	hdlr->cyh_level = CY_HIGH_LEVEL;
 
 	when->cyt_interval = prof->prof_interval;
-	when->cyt_when = ktime_add(when->cyt_when, when->cyt_interval);
+	when->cyt_when = ktime_add(dtrace_gethrtime(), when->cyt_interval);
 
 	pcpu->profc_expected = when->cyt_when;
 	pcpu->profc_interval = when->cyt_interval;

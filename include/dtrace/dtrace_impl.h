@@ -267,7 +267,7 @@ struct dtrace_state {
 	uint32_t dts_reserve;
 	cyclic_id_t dts_cleaner;
 	cyclic_id_t dts_deadman;
-	uint64_t dts_laststatus;
+	ktime_t dts_laststatus;
 	ktime_t dts_alive;
 	char dts_speculates;
 	char dts_destructive;
