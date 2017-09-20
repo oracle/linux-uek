@@ -854,9 +854,9 @@ static long dtrace_ioctl(struct file *file,
 		 * for setting dts_laststatus to UINT64_MAX before setting
 		 * it to the correct value.
 		 */
-		state->dts_laststatus = UINT64_MAX;
+		state->dts_laststatus = ns_to_ktime(UINT64_MAX);
 		dtrace_membar_producer();
-		state->dts_laststatus = jiffies;
+		state->dts_laststatus = dtrace_gethrtime();
 
 		memset(&stat, 0, sizeof(stat));
 

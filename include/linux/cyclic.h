@@ -16,7 +16,7 @@
 
 typedef uintptr_t	cyclic_id_t;
 typedef uint16_t	cyc_level_t;
-typedef void		(*cyc_func_t)(uintptr_t, ktime_t);
+typedef void		(*cyc_func_t)(uintptr_t);
 
 #define CYCLIC_NONE	((cyclic_id_t)0)
 
