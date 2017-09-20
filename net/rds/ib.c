@@ -1026,7 +1026,6 @@ out:
 static u8 rds_ib_init_port(struct rds_ib_device	*rds_ibdev,
 			   struct net_device	*net_dev,
 			   u8			port_num,
-			   union ib_gid		gid,
 			   uint16_t		pkey)
 {
 	const char *digits = "0123456789";
@@ -1055,7 +1054,6 @@ static u8 rds_ib_init_port(struct rds_ib_device	*rds_ibdev,
 	ip_config[next_port_idx].rds_ibdev = rds_ibdev;
 	ip_config[next_port_idx].ip_active_port = 0;
 	strcpy(ip_config[next_port_idx].if_name, net_dev->name);
-	memcpy(&ip_config[next_port_idx].gid, &gid, sizeof(union ib_gid));
 	ip_config[next_port_idx].pkey = pkey;
 	ip_config[next_port_idx].port_state = RDS_IB_PORT_INIT;
 	ip_config[next_port_idx].port_layerflags = 0x0; /* all clear to begin */
@@ -2155,12 +2153,11 @@ static int rds_ib_ip_config_init(void)
 			}
 
 			if (ret) {
-				printk(KERN_ERR "RDS/IB: GID "RDS_IB_GID_FMT
-					" has no associated port\n",
-					RDS_IB_GID_ARG(gid));
+				pr_err("RDS/IB: netdevice %s has no associated ibdevice\n",
+				       dev->name);
 			} else {
 				port = rds_ib_init_port(rds_ibdev, dev,
-							port_num, gid, pkey);
+							port_num, pkey);
 				if (port > 0) {
 					if (in_dev)
 						rds_ib_set_port4(dev, in_dev,
@@ -2647,12 +2644,11 @@ static void rds_ib_addintf_after_initscripts(struct work_struct *_work)
 				break;
 		}
 		if (ret) {
-			printk(KERN_ERR "RDS/IB: GID "RDS_IB_GID_FMT
-					" has no associated port\n",
-					RDS_IB_GID_ARG(gid));
+			pr_err("RDS/IB: netdevice %s has no associated ibdevice\n",
+			       ndev->name);
 		} else {
 			port = rds_ib_init_port(rds_ibdev, ndev,
-						port_num, gid, pkey);
+						port_num, pkey);
 			if (port > 0) {
 				if (in_dev)
 					rds_ib_set_port4(ndev, in_dev, port);
