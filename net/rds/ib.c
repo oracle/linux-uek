@@ -2020,6 +2020,9 @@ void rds_ib_add_one(struct ib_device *device)
 	if (!rds_ibdev)
 		goto free_attr;
 
+	INIT_LIST_HEAD(&rds_ibdev->ipaddr_list);
+	INIT_LIST_HEAD(&rds_ibdev->conn_list);
+
 	atomic_set(&rds_ibdev->free_dev, 1);
 	mutex_init(&rds_ibdev->free_dev_lock);
 	spin_lock_init(&rds_ibdev->spinlock);
@@ -2102,9 +2105,6 @@ void rds_ib_add_one(struct ib_device *device)
 		rds_ibdev->mr_8k_pool = NULL;
 		goto put_dev;
 	}
-
-	INIT_LIST_HEAD(&rds_ibdev->ipaddr_list);
-	INIT_LIST_HEAD(&rds_ibdev->conn_list);
 
 	if (rds_ib_srq_init(rds_ibdev))
 		goto put_dev;
