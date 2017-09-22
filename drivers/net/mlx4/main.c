@@ -197,7 +197,7 @@ MODULE_PARM_DESC(scale_profile, "Dynamically adjust default profile"
 
 #define MLX4_SCALE_LOG_NUM_QP 20 /* 1 Meg */
 
-static void process_mod_param_profile(void)
+static void process_mod_param_profile(struct mlx4_dev *dev)
 {
 	if (mlx4_scale_profile && !mod_param_profile.num_qp) {
 
@@ -230,12 +230,57 @@ static void process_mod_param_profile(void)
 	default_profile.num_mpt = (mod_param_profile.num_mpt ?
 				  1 << mod_param_profile.num_mpt :
 				  default_profile.num_mpt);
+	/* Dynamically scale num_mtt only if log_num_mtt is not set by user */
+	if (mlx4_scale_profile && !mod_param_profile.num_mtt) {
+		unsigned long totalram_pg;
+		int log_mtt;
+		int ret;
 
-	/*
-	 * Note: default_profile.num_mtt is modified/scaled
-	 * in mlx4_verify_params() along with log_mtts_per_seg
-	 * which is verified with limits checking there.
-	 */
+		/*
+		 * Set the boundary for scalable MTT.
+		 *
+		 * Note:
+		 * Per Mellanox PRM v 1.2, CX supports max 2^37 MTT entries
+		 *
+		 * However, we cap log_num_mtt at 31 (not 37) because
+		 * this driver uses only 32 bit wide variables are to store
+		 * in profiles here.
+		 *
+		 * Recommended Total size of MTT = 2 * physical memory size
+		 *
+		 * We make sure here also the value we set for log_mtt here
+		 * is no less than the hardwired values used before scaling
+		 * which is initialized statically in default_profile
+		 * global declaration!
+		 */
+		totalram_pg = totalram_pages;
+		if (mlx4_is_master(dev)) {
+			ret = xen_get_host_pages(&totalram_pg);
+			if (ret) {
+				totalram_pg = totalram_pages;
+				mlx4_warn(dev, "xen_get_host_pages failed %d\n",
+				       ret);
+			}
+		}
+
+		log_mtt = max(ilog2(default_profile.num_mtt),
+			      min(31, ilog2((totalram_pg << 1) >>
+					log_mtts_per_seg)));
+		default_profile.num_mtt = 1 << log_mtt;
+
+		printk(KERN_INFO "mlx4_core: Scalable default profile "
+		       "parameters are enabled. Effective log_num_mtt "
+		       "is now set to %d.\n", log_mtt);
+	} else {
+		if (mlx4_scale_profile && mod_param_profile.num_mtt)
+			printk(KERN_WARNING
+			       "Both scale_profile and log_num_mtt "
+			       "are set. Ignore scale_profile.\n");
+
+		default_profile.num_mtt = (mod_param_profile.num_mtt ?
+			1 << mod_param_profile.num_mtt :
+			default_profile.num_mtt);
+	}
 
 }
 
@@ -1333,7 +1378,7 @@ static int mlx4_init_hca(struct mlx4_dev *dev)
 			goto err_stop_fw;
 		}
 
-		process_mod_param_profile();
+		process_mod_param_profile(dev);
 		profile = default_profile;
 
 		list_for_each_entry(config, &config_list, list) {
@@ -2511,10 +2556,7 @@ static int __init mlx4_verify_params(void)
 		return -1;
 	}
 
-	/* Dynamically scale num_mtt only if log_num_mtt is not set by user */
-	if (mlx4_scale_profile &&  !mod_param_profile.num_mtt) {
-		int log_mtt;
-
+	if (mlx4_scale_profile && !mod_param_profile.num_mtt)
 		/*
 		 * Note: We make sure log_mtts_per_seg we set here
 		 * is no lower than hardwired value set before scaling
@@ -2522,45 +2564,9 @@ static int __init mlx4_verify_params(void)
 		 * i.e. ilog2(MLX4_MTT_ENTRY_PER_SEG) which is 3!
 		 */
 		log_mtts_per_seg = log_mtts_per_seg ? log_mtts_per_seg : 3;
-
-		/*
-		 * Set the boundary for scalable MTT.
-		 *
-		 * Note:
-		 * Per Mellanox PRM v 1.2, CX supports max 2^37 MTT entries
-		 *
-		 * However, we cap log_num_mtt at 31 (not 37) because
-		 * this driver uses only 32 bit wide variables are to store
-		 * in profiles here.
-		 *
-		 * Recommended Total size of MTT = 2 * physical memory size
-		 *
-		 * We make sure here also the value we set for log_mtt here
-		 * is no less than the hardwired values used before scaling
-		 * which is initialized statically in default_profile
-		 * global declaration!
-		 */
-		log_mtt = max(ilog2(default_profile.num_mtt),
-			      min(31, ilog2((totalram_pages << 1) >>
-					log_mtts_per_seg)));
-		default_profile.num_mtt = 1 << log_mtt;
-
-		printk(KERN_INFO "mlx4_core: Scalable default profile "
-		       "parameters are enabled. Effective log_num_mtt "
-		       "is now set to %d.\n", log_mtt);
-	} else {
-		if (mlx4_scale_profile && mod_param_profile.num_mtt)
-			printk(KERN_WARNING
-			       "Both scale_profile and log_num_mtt "
-			       "are set. Ignore scale_profile.\n");
-
+	else
 		log_mtts_per_seg = log_mtts_per_seg ? log_mtts_per_seg :
 			ilog2(MLX4_MTT_ENTRY_PER_SEG);
-
-		default_profile.num_mtt = (mod_param_profile.num_mtt ?
-			1 << mod_param_profile.num_mtt :
-			default_profile.num_mtt);
-	}
 
 	if ((log_mtts_per_seg < 1) || (log_mtts_per_seg > 7)) {
 		printk(KERN_WARNING "mlx4_core: bad log_mtts_per_seg: %d\n",
