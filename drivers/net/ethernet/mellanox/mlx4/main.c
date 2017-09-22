@@ -232,7 +232,7 @@ enum {
 	MLX4_IF_STATE_EXTENDED
 };
 
-static void process_mod_param_profile(struct mlx4_profile *profile)
+static void process_mod_param_profile(struct mlx4_profile *profile, struct mlx4_dev *dev)
 {
 	struct sysinfo si;
 
@@ -353,7 +353,20 @@ static void process_mod_param_profile(struct mlx4_profile *profile)
 			pr_warn("mlx4_core: Both scale_profile and log_num_mtt are set. Ignore scale_profile.\n");
 		profile->num_mtt_segs = 1 << mod_param_profile.num_mtt_segs;
 	} else {
+		unsigned long totalram_pages = 0;
+		int ret;
+
 		si_meminfo(&si);
+		totalram_pages = si.totalram;
+
+		if (mlx4_is_master(dev)) {
+			ret = xen_get_host_pages(&totalram_pages);
+			if (ret) {
+				totalram_pages = si.totalram;
+				mlx4_warn(dev, "mlx4_core: xen_get_host_pages failed ret = %d \n!", ret);
+			}
+		}
+
 		profile->num_mtt_segs =
 			roundup_pow_of_two(max_t(unsigned,
 						1 << (MLX4_LOG_NUM_MTT -
@@ -361,7 +374,7 @@ static void process_mod_param_profile(struct mlx4_profile *profile)
 						min(1UL <<
 						(MLX4_MAX_LOG_NUM_MTT -
 						log_mtts_per_seg),
-						(si.totalram << 1)
+						(totalram_pages << 1)
 						>> log_mtts_per_seg)));
 		/* set the actual value, so it will be reflected to the user
 		   using the sysfs */
@@ -2246,7 +2259,7 @@ static int mlx4_init_hca(struct mlx4_dev *dev)
 			mlx4_info(dev, "Running from within kdump kernel. Using low memory profile\n");
 			profile = low_mem_profile;
 		} else {
-			process_mod_param_profile(&profile);
+			process_mod_param_profile(&profile, dev);
 		}
 		if (dev->caps.steering_mode ==
 		    MLX4_STEERING_MODE_DEVICE_MANAGED)
