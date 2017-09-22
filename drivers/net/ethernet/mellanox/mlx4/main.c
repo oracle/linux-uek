@@ -522,7 +522,7 @@ int mlx4_get_val(struct mlx4_dbdf2val *tbl, struct pci_dev *pdev, int idx,
 }
 EXPORT_SYMBOL(mlx4_get_val);
 
-static void process_mod_param_profile(struct mlx4_profile *profile)
+static void process_mod_param_profile(struct mlx4_profile *profile, struct mlx4_dev *dev)
 {
 	struct sysinfo si;
 
@@ -548,14 +548,27 @@ static void process_mod_param_profile(struct mlx4_profile *profile)
 	if (mod_param_profile.num_mtt)
 		profile->num_mtt = 1 << mod_param_profile.num_mtt;
 	else {
+		unsigned long totalram_pages = 0;
+		int ret;
+
 		si_meminfo(&si);
+		totalram_pages = si.totalram;
+
+		if (mlx4_is_master(dev)) {
+			ret = xen_get_host_pages(&totalram_pages);
+			if (ret) {
+				totalram_pages = si.totalram;
+				mlx4_warn(dev, "mlx4_core: xen_get_host_pages failed ret = %d \n!", ret);
+			}
+		}
+
 		profile->num_mtt =
 			roundup_pow_of_two(max_t(unsigned,
 						1 << (MLX4_LOG_NUM_MTT - log_mtts_per_seg),
 						min(1UL << 
 						(MLX4_MAX_LOG_NUM_MTT -
 						log_mtts_per_seg),
-						(si.totalram << 1)
+						(totalram_pages << 1)
 						>> log_mtts_per_seg)));
 		/* set the actual value, so it will be reflected to the user
 		   using the sysfs */
@@ -1963,7 +1976,7 @@ static int mlx4_init_hca(struct mlx4_dev *dev)
 		if (mlx4_is_master(dev))
 			mlx4_parav_master_pf_caps(dev);
 
-		process_mod_param_profile(&profile);
+		process_mod_param_profile(&profile, dev);
 		if (dev->caps.steering_mode ==
 		    MLX4_STEERING_MODE_DEVICE_MANAGED)
 			profile.num_mcg = MLX4_FS_NUM_MCG;
