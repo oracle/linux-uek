@@ -1573,7 +1573,6 @@ int rds_ib_setup_fastreg(struct rds_ib_device *rds_ibdev)
 	qp_attr.path_mtu	= IB_MTU_256;
 	qp_attr.dest_qp_num	= rds_ibdev->fastreg_qp->qp_num;
 	qp_attr.rq_psn		= 1;
-	qp_attr.ah_attr.ah_flags	= IB_AH_GRH;
 	qp_attr.ah_attr.ib.dlid		= port_attr.lid;
 	qp_attr.ah_attr.ib.src_path_bits	= 0;
 	qp_attr.ah_attr.sl		= 0;
