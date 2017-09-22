@@ -130,14 +130,6 @@ enum arm_smmu_implementation {
 	QCOM_SMMUV2,
 };
 
-/* Until ACPICA headers cover IORT rev. C */
-#ifndef ACPI_IORT_SMMU_CORELINK_MMU401
-#define ACPI_IORT_SMMU_CORELINK_MMU401	0x4
-#endif
-#ifndef ACPI_IORT_SMMU_CAVIUM_THUNDERX
-#define ACPI_IORT_SMMU_CAVIUM_THUNDERX	0x5
-#endif
-
 struct arm_smmu_s2cr {
 	struct iommu_group		*group;
 	int				count;
