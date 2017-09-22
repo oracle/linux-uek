@@ -1,8 +1,9 @@
 /*
  * dwarf2ctf.c: Read in DWARF[23] debugging information from some set of ELF
- * files, and generate CTF in correspondingly-named files.
+ * files, and generate CTF in correspondingly-named files, or in a single
+ * representation meant for mmapping.
  *
- * (C) 2011 -- 2017 Oracle, Inc.  All rights reserved.
+ * Copyright (c) 2011, 2017, Oracle and/or its affiliates. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -21,6 +22,7 @@
 #include <fcntl.h>
 #include <limits.h>
 #include <endian.h>
+#include <unistd.h>
 
 #include <libelf.h>
 #include <dwarf.h>
@@ -59,9 +61,10 @@ static const char *trace;
 /*
  * Run dwarf2ctf over a single object file or set thereof.
  *
- * output_dir is the directory into which the CTF goes.
+ * output_dir is the directory into which the CTF goes, if 'standalone', or the
+ * CTF archive file name otherwise.
  */
-static void run(char *output_dir);
+static void run(char *output, int standalone);
 
 /*
  * A fully descriptive CTF type ID: both file and type ID in one place.
@@ -175,30 +178,6 @@ static void init_builtin(const char *builtin_objects_file,
 			 const char *builtin_module_file);
 
 /*
- * The deduplication blacklist bans specific modules that do notably insane
- * things with the preprocessor from participating in deduplication.  The list
- * of sins is short: things like #including two different source files that
- * proceed to add or remove members from structures depending on which source
- * file they were included from.
- *
- * These modules share no types whatsoever with the rest of the kernel.
- *
- * This is, of course, only used if deduplication is turned on.
- */
-static GHashTable *dedup_blacklist;
-
-/*
- * Populate the deduplication blacklist from the dedup_blacklist file.
- */
-static void init_dedup_blacklist(const char *dedup_blacklist_file);
-
-/*
- * See if the given module is blacklisted, and update state accordingly so that
- * type IDs are appropriately augmented.
- */
-static void dedup_blacklisted_module(const char *module_name);
-
-/*
  * The member blacklist bans fields with specific names in specifically named
  * structures, declared in specific source files, from being emitted.  The
  * mapping is from absolute source file name:structure.member to NULL (this is
@@ -255,7 +234,7 @@ static void init_tu_to_modules(void);
  * If this is a local type table, and deduplication is active, make the global
  * type table its parent.
  */
-static ctf_file_t *init_ctf_table(const char *module_name);
+static void init_ctf_table(const char *module_name);
 
 /*
  * A few useful singleton CTF type IDs in the global type table: a void pointer
@@ -404,7 +383,7 @@ static void detect_duplicates(const char *module_name, const char *file_name,
 
 /*
  * Note in the detect_duplicates_id_file list that we will rescan a DIE in
- * a later duplicate detection pass
+ * a later duplicate detection pass.
  *
  * A type_id() callback.
  */
@@ -507,9 +486,9 @@ static void construct_ctf(const char *module_name, const char *file_name,
 
 /*
  * Write out the CTF files from the per_module->ctf_file into files in the
- * output_dir.
+ * output directory (if standalone), or into the output file (otherwise).
  */
-static void write_types(char *output_dir);
+static void write_types(char *output, int standalone);
 
 /*
  * Construct CTF out of each type and return that type's ID and file.
@@ -737,11 +716,25 @@ static long count_dwarf_members(Dwarf_Die *die);
 static Dwarf_Die *private_dwarf_type(Dwarf_Die *die, Dwarf_Die *target_die);
 
 /*
+ * Check for existence of an attribute in a DIE, chasing through
+ * DW_AT_specification if need be.
+ */
+static inline int private_dwarf_hasattr(Dwarf_Die *die,
+					unsigned int search_name);
+
+/*
+ * Return a DIE attribute, chasing through DW_AT_specification if need be.
+ */
+static inline Dwarf_Attribute *private_dwarf_attr(Dwarf_Die *die,
+						  unsigned int search_name,
+						  Dwarf_Attribute *result);
+
+/*
  * Given a DIE that contains a udata attribute, look up that attribute and
  * return its value (optionally overridden or modified by the die_overrides).
  */
-static Dwarf_Word private_dwarf_udata(Dwarf_Die *die, int attribute,
-				      die_override_t *overrides);
+static inline Dwarf_Word private_dwarf_udata(Dwarf_Die *die, int attribute,
+					     die_override_t *overrides);
 
 /*
  * Find an override in an override list.
@@ -813,21 +806,26 @@ static void free_duplicates_id_file(void *id_file);
 
 int main(int argc, char *argv[])
 {
-	char *output_dir;
+	char *output;
 
 	trace = getenv("DWARF2CTF_TRACE");
 
-	if ((argc != 4 && argc != 8) ||
+	if (getuid() == 0 || geteuid() == 0) {
+		fprintf(stderr, "dwarf2ctf: run as a regular user, not root.\n");
+		exit(1);
+	}
+
+	if ((argc != 4 && argc != 7) ||
 	    (argc == 4 && strcmp(argv[2], "-e") != 0)) {
-		fprintf(stderr, "Syntax: dwarf2ctf outputdir srcdir "
-			"objects.builtin modules.builtin dedup.blacklist\n");
-		fprintf(stderr, "                  member.blacklist filelist\n");
-		fprintf(stderr, "    or dwarf2ctf outputdir -e filelist\n"
+		fprintf(stderr, "Syntax: dwarf2ctf output-file srcdir "
+			"objects.builtin modules.builtin member.blacklist\n");
+		fprintf(stderr, "                  filelist\n");
+		fprintf(stderr, "    or dwarf2ctf output-dir -e filelist\n"
 			"for external module use\n");
 		exit(1);
 	}
 
-	output_dir = argv[1];
+	output = argv[1];
 
 	elf_version(EV_CURRENT);
 
@@ -848,21 +846,18 @@ int main(int argc, char *argv[])
 		const char *srcdir;
 		char *builtin_objects_file;
 		char *builtin_module_file;
-		char *dedup_blacklist_file;
 		char *member_blacklist_file;
 
                 srcdir = argv[2];
 		builtin_objects_file = argv[3];
 		builtin_module_file = argv[4];
-		dedup_blacklist_file = argv[5];
-		member_blacklist_file = argv[6];
+		member_blacklist_file = argv[5];
 
 		init_builtin(builtin_objects_file, builtin_module_file);
-		init_dedup_blacklist(dedup_blacklist_file);
 		init_member_blacklist(member_blacklist_file, srcdir);
-		init_object_names(argv[7]);
+		init_object_names(argv[6]);
 
-		run(output_dir);
+		run(output, 0);
 	} else {
 		char *single_object_name;
 		char **all_object_names;
@@ -883,7 +878,7 @@ int main(int argc, char *argv[])
 		for (i = 0; i < all_object_names_cnt; i++) {
 			single_object_name = all_object_names[i];
 
-			run(output_dir);
+			run(output, 1);
 		}
 	}
 
@@ -896,9 +891,10 @@ int main(int argc, char *argv[])
 /*
  * Run dwarf2ctf over a single object file or set thereof.
  *
- * output_dir is the directory into which the CTF goes.
+ * output is the directory into which the CTF goes, if 'standalone', or the
+ * CTF archive file name otherwise.
  */
-static void run(char *output_dir)
+static void run(char *output, int standalone)
 {
 	size_t i;
 
@@ -938,7 +934,7 @@ static void run(char *output_dir)
 	 * necessary linker scripts.
 	 */
 	dw_ctf_trace("Writeout.\n");
-	write_types(output_dir);
+	write_types(output, standalone);
 
 	g_hash_table_destroy(id_to_type);
 	g_hash_table_destroy(id_to_module);
@@ -1146,72 +1142,6 @@ static void init_assembly_tab(void)
 }
 
 /*
- * Populate the deduplication blacklist from the dedup_blacklist file.
- */
-static void init_dedup_blacklist(const char *dedup_blacklist_file)
-{
-	FILE *f;
-	char *line = NULL;
-	size_t line_size = 0;
-
-	/*
-	 * Not having a deduplication blacklist is not an error.
-	 */
-	if ((f = fopen(dedup_blacklist_file, "r")) == NULL)
-		return;
-
-	dedup_blacklist = g_hash_table_new(g_str_hash, g_str_equal);
-
-	while (getline(&line, &line_size, f) >= 0) {
-		size_t len = strlen(line);
-
-		if (len == 0)
-			continue;
-
-		if (line[len-1] == '\n')
-			line[len-1] = '\0';
-
-
-		g_hash_table_insert(dedup_blacklist, xstrdup(line), NULL);
-	}
-	free(line);
-
-	if (ferror(f)) {
-		fprintf(stderr, "Error reading from %s: %s\n",
-			dedup_blacklist_file, strerror(errno));
-		exit(1);
-	}
-
-	fclose(f);
-}
-
-/*
- * See if the given module is blacklisted, and update state accordingly so that
- * type IDs are appropriately augmented.
- */
-static void dedup_blacklisted_module(const char *module_name)
-{
-	if (dedup_blacklist == NULL)
-		return;
-	if (g_hash_table_lookup_extended(dedup_blacklist, module_name,
-					 NULL, NULL)) {
-		/*
-		 * The prefix goes before the DWARF file pathname, so we pick
-		 * something that is not going to be a valid path on any POSIX
-		 * system.
-		 */
-		free(blacklist_type_prefix);
-		blacklist_type_prefix = NULL;
-		blacklist_type_prefix = str_appendn(blacklist_type_prefix,
-						    "/dev/null/@blacklisted: ",
-						    module_name, "@", NULL);
-	} else {
-		free(blacklist_type_prefix);
-		blacklist_type_prefix = NULL;
-	}
-}
-
-/*
  * Populate the member blacklist from the member_blacklist file.
  */
 static void init_member_blacklist(const char *member_blacklist_file,
@@ -1341,7 +1271,7 @@ static int member_blacklisted(Dwarf_Die *die, Dwarf_Die *parent_die)
  * If this is a local type table, and deduplication is active, make the global
  * type table its parent.
  */
-static ctf_file_t *init_ctf_table(const char *module_name)
+static void init_ctf_table(const char *module_name)
 {
 	ctf_file_t *ctf_file;
 	per_module_t *new_per_mod;
@@ -1419,7 +1349,7 @@ static ctf_file_t *init_ctf_table(const char *module_name)
 	dw_ctf_trace("Created CTF file for module %s: %p\n",
 		     module_name, ctf_file);
 
-	return ctf_file;
+	return;
 }
 
 /* DWARF walkers.  */
@@ -1609,12 +1539,12 @@ static char *type_id(Dwarf_Die *die,
 		 * base type, so it must be stored once for each size, even if
 		 * it only appears once for all sizes in the DWARF.
 		 */
-		if (dwarf_hasattr(die, DW_AT_bit_size) ||
+		if (private_dwarf_hasattr(die, DW_AT_bit_size) ||
 		    private_find_override(die, DW_AT_bit_size,
 					  overrides))
 			bit_size = private_dwarf_udata(die, DW_AT_bit_size,
 						       overrides);
-		if (dwarf_hasattr(die, DW_AT_bit_offset) ||
+		if (private_dwarf_hasattr(die, DW_AT_bit_offset) ||
 		    private_find_override(die, DW_AT_bit_offset,
 					  overrides))
 			bit_offset = private_dwarf_udata(die, DW_AT_bit_offset,
@@ -1660,11 +1590,65 @@ static char *type_id(Dwarf_Die *die,
 		id = str_appendn(id, "enum ", dwarf_diename(die), " ", NULL);
 		break;
 	case DW_TAG_structure_type:
-		id = str_appendn(id, "struct ", dwarf_diename(die), " ", NULL);
+	case DW_TAG_union_type: {
+		/*
+		 * Incorporate the sizeof() the structure, if statically known
+		 * (the offset of the last member in the DWARF) so that most
+		 * structures which are redefined on the fly by preprocessor
+		 * defines are disambiguated despite being defined in the same
+		 * place.
+		 *
+		 * Only do this if this is a non-opaque structure/union
+		 * definition: opaque definitions cannot have a size, but if
+		 * they do by some mischance get one, notating it will mess up
+		 * the several other places that manually construct opaque
+		 * structure identifiers (and cannot incorporate a size, since
+		 * they don't know it).
+		 */
+		const char *sou;
+
+		if (strncmp(id, "////", 4) != 0 &&
+		    private_dwarf_hasattr(die, DW_AT_byte_size)) {
+			Dwarf_Attribute size_attr;
+			long long size;
+			char byte_size[24];
+
+			private_dwarf_attr(die, DW_AT_byte_size, &size_attr);
+
+			switch (dwarf_whatform(&size_attr)) {
+			case DW_FORM_data1:
+			case DW_FORM_data2:
+			case DW_FORM_data4:
+			case DW_FORM_data8:
+			case DW_FORM_udata:
+			case DW_FORM_sdata:
+
+				if (dwarf_whatform(&size_attr) ==
+				    DW_FORM_sdata) {
+					Dwarf_Sword dw_size;
+
+					dwarf_formsdata(&size_attr, &dw_size);
+					size = dw_size;
+				} else {
+					Dwarf_Word dw_size;
+
+					dwarf_formudata(&size_attr, &dw_size);
+					size = dw_size;
+				}
+
+				sprintf(byte_size, "%lli", size);
+				id = str_appendn(id, byte_size, "//", NULL);
+			}
+		}
+
+		if (dwarf_tag(die) == DW_TAG_union_type)
+			sou = "union ";
+		else
+			sou = "struct ";
+
+		id = str_appendn(id, sou, dwarf_diename(die), " ", NULL);
 		break;
-	case DW_TAG_union_type:
-		id = str_appendn(id, "union ", dwarf_diename(die), " ", NULL);
-		break;
+	}
 	case DW_TAG_variable:
 		id = str_appendn(id, "var ", dwarf_diename(die), " ", NULL);
 		break;
@@ -1847,13 +1831,6 @@ static void process_file(const char *file_name,
 			break;
 		}
 
-
-		/*
-		 * This arranges to augment type IDs appropriately for
-		 * dedup-blacklisted modules for everything that uses
-		 * process_file().  We reset it at the end.
-		 */
-		dedup_blacklisted_module(module_name);
 		if (tu_init != NULL)
 			tu_init(module_name, file_name, tu_die, data);
 
@@ -1863,7 +1840,6 @@ static void process_file(const char *file_name,
 		if (tu_done != NULL)
 			tu_done(module_name, file_name, tu_die, data);
 	}
-	dedup_blacklisted_module("");
 
 	free(fn_module_name);
 	simple_dwfl_free(dwfl);
@@ -2020,6 +1996,20 @@ static void detect_duplicates_tu_init(const char *module_name,
 				      void *data)
 {
 	struct detect_duplicates_state *state = data;
+	per_module_t *per_mod;
+
+	/*
+	 * Make sure that even if this module has no types in it we still end up
+	 * generating a CTF file.  (Userspace depends on this, since a CTF file
+	 * with no types in means the module is known and typeless, while no CTF
+	 * file at all means the module is not known.)
+	 */
+
+	per_mod = g_hash_table_lookup(per_module, module_name);
+	if (per_mod == NULL) {
+		init_ctf_table(module_name);
+		dw_ctf_trace("%s: initialized CTF file.\n", module_name);
+	}
 
 	state->structs_seen = g_hash_table_new_full(g_str_hash, g_str_equal,
 						    free, NULL);
@@ -2091,10 +2081,10 @@ static void detect_duplicates(const char *module_name,
 	 * DWARF-4 eventually, support in elfutils is insufficiently robust for
 	 * now (elfutils 0.152).
 	 */
-	if (dwarf_hasattr(die, DW_AT_type)) {
+	if (private_dwarf_hasattr(die, DW_AT_type)) {
 		Dwarf_Attribute type_attr;
 
-		if ((dwarf_attr(die, DW_AT_type, &type_attr) != NULL) &&
+		if ((private_dwarf_attr(die, DW_AT_type, &type_attr) != NULL) &&
 		    (dwarf_whatform(&type_attr) == DW_FORM_ref_sig8)) {
 			fprintf(stderr, "sorry, not yet implemented: %s "
 				"contains DWARF-4 debugging information.\n",
@@ -2108,10 +2098,7 @@ static void detect_duplicates(const char *module_name,
 	 * modules get their names and locations recorded for subsequent passes;
 	 * all type_id()-descendant types are similarly noted.
 	 */
-	if (is_sou && strncmp(id, "////", strlen("////")) != 0 &&
-	    (dedup_blacklist == NULL ||
-	     !g_hash_table_lookup_extended(dedup_blacklist, module_name,
-					   NULL, NULL)))
+	if (is_sou && strncmp(id, "////", strlen("////")) != 0)
 		free(type_id(die, NULL, detect_duplicates_will_rescan, state));
 
 	/*
@@ -2212,8 +2199,8 @@ static void detect_duplicates_blacklist_var_dups(Dwarf_Die *die,
 	if (g_hash_table_lookup_extended(state->vars_seen,
 					 dwarf_diename(die),
 					 NULL, &static_var)) {
-		if (!dwarf_hasattr(die, DW_AT_external) &&
-		    !dwarf_hasattr(die, DW_AT_declaration))
+		if (!private_dwarf_hasattr(die, DW_AT_external) &&
+		    !private_dwarf_hasattr(die, DW_AT_declaration))
 			blacklist = 1;
 		if (static_var != NULL)
 			blacklist = 1;
@@ -2225,8 +2212,8 @@ static void detect_duplicates_blacklist_var_dups(Dwarf_Die *die,
 	   */
 		g_hash_table_insert(state->vars_seen,
 				    xstrdup(dwarf_diename(die)),
-				    (!dwarf_hasattr(die, DW_AT_external) &&
-				     !dwarf_hasattr(die, DW_AT_declaration)) ?
+				    (!private_dwarf_hasattr(die, DW_AT_external) &&
+				     !private_dwarf_hasattr(die, DW_AT_declaration)) ?
 				    &static_var : NULL);
 
 	if (blacklist) {
@@ -2260,8 +2247,8 @@ static enum needs_sharing type_needs_sharing(const char *module_name,
 	/*
 	 * Types not already known about do not need sharing.
 	 *
-	 * Types on the dedup blacklist, types already in the current modules,
-	 * and any types in external-module mode do not even need marking.
+	 * Types already in the current modules and any types in external-module
+	 * mode do not even need marking.
 	 */
 	if (existing_type_module == NULL)
 		return NS_NOT_SHARED;
@@ -2269,11 +2256,6 @@ static enum needs_sharing type_needs_sharing(const char *module_name,
 	if ((strcmp(existing_type_module, module_name) == 0) ||
 	    (strcmp(existing_type_module, "shared_ctf") == 0) ||
 	    (builtin_modules == NULL))
-		return NS_NO_MARKING;
-
-	if (dedup_blacklist != NULL &&
-	    g_hash_table_lookup_extended(dedup_blacklist, module_name,
-					 NULL, NULL))
 		return NS_NO_MARKING;
 
 	return NS_NEEDS_SHARING;
@@ -2346,7 +2328,7 @@ static void mark_seen_contained(Dwarf_Die *die, const char *module_name)
 			 * that if a member has the one, it has the other.
 			 */
 			if (dwarf_tag(&child) == DW_TAG_member &&
-			    !dwarf_hasattr(&child, DW_AT_bit_size))
+			    !private_dwarf_hasattr(&child, DW_AT_bit_size))
 				break;
 
 			die_override_t override[] =
@@ -2497,7 +2479,7 @@ static void mark_shared(Dwarf_Die *die, const char *id, void *data)
 		do
 			if ((dwarf_tag(&child) == DW_TAG_member) &&
 			    !member_blacklisted(&child, die)) {
-				if (dwarf_hasattr(&child, DW_AT_bit_size)) {
+				if (private_dwarf_hasattr(&child, DW_AT_bit_size)) {
 					die_override_t override[] =
 						{{ DW_TAG_base_type,
 						   DW_AT_bit_size,
@@ -2546,7 +2528,7 @@ static void is_named_struct_union_enum(Dwarf_Die *die, const char *unused,
 	if (((dwarf_tag(die) == DW_TAG_structure_type) ||
 	     (dwarf_tag(die) == DW_TAG_union_type) ||
 	     (dwarf_tag(die) == DW_TAG_enumeration_type)) &&
-	    (dwarf_hasattr(die, DW_AT_name)))
+	    (private_dwarf_hasattr(die, DW_AT_name)))
 		*is_sou = 1;
 }
 
@@ -2582,6 +2564,7 @@ static int detect_duplicates_alias_fixup(void *id_file_data, void *data)
 
 	char *opaque_id;
 	const char *line_num;
+	const char *type_size;
 	const char *type_name;
 
 	/*
@@ -2598,11 +2581,20 @@ static int detect_duplicates_alias_fixup(void *id_file_data, void *data)
 		exit(1);
 	}
 
-	type_name = strstr(line_num + 1, "//");
-	if (!type_name) {
+	type_size = strstr(line_num + 2, "//");
+	if (!type_size) {
 		fprintf(stderr, "Internal error: type ID %s is corrupt.\n",
 			id_file->id);
 		exit(1);
+	}
+
+	type_name = strstr(type_size + 2, "//");
+	if (!type_name) {
+		/*
+		 * That's OK: the type size is optional, so what we thought was
+		 * the type size is actually the type name.
+		 */
+		type_name = type_size;
 	}
 	type_name += 2;
 
@@ -2786,12 +2778,6 @@ static ctf_full_id_t *construct_ctf_id(const char *module_name,
 	}
 
 	ctf = lookup_ctf_file(ctf_module);
-
-	if (ctf == NULL) {
-		ctf = init_ctf_table(ctf_module);
-		dw_ctf_trace("%p: %s: initialized CTF file %p\n", &id,
-			     ctf_module, ctf);
-	}
 
 	/*
 	 * Construct the CTF, then insert the top-level CTF entity into the
@@ -3117,12 +3103,12 @@ static Dwarf_Die *die_emit_next_backwards(Dwarf_Die *next, Dwarf_Die *die,
 	if (dwarf_tag(die) == DW_TAG_member &&
 	    dwarf_siblingof(die, next) == 0 &&
 	    dwarf_tag(next) == DW_TAG_member &&
-	    dwarf_hasattr(die, DW_AT_data_member_location) &&
-	    dwarf_hasattr(next, DW_AT_data_member_location) &&
+	    private_dwarf_hasattr(die, DW_AT_data_member_location) &&
+	    private_dwarf_hasattr(next, DW_AT_data_member_location) &&
 	    private_dwarf_udata(die, DW_AT_data_member_location, overrides) ==
 	    private_dwarf_udata(next, DW_AT_data_member_location, overrides) &&
-	    dwarf_hasattr(die, DW_AT_bit_offset) &&
-	    dwarf_hasattr(next, DW_AT_bit_offset) &&
+	    private_dwarf_hasattr(die, DW_AT_bit_offset) &&
+	    private_dwarf_hasattr(next, DW_AT_bit_offset) &&
 	    private_dwarf_udata(die, DW_AT_bit_offset, overrides) >
 	    private_dwarf_udata(next, DW_AT_bit_offset, overrides))
 		return next;
@@ -3199,7 +3185,7 @@ static ctf_id_t lookup_ctf_type(const char *module_name, const char *file_name,
 /* Assembly functions.  */
 
 #define CTF_DW_ENFORCE(attribute) do 						\
-		if (!dwarf_hasattr(die, (DW_AT_##attribute))) {			\
+		if (!private_dwarf_hasattr(die, (DW_AT_##attribute))) {		\
 			fprintf(stderr, "%s: %s: %lx: skipping type, %s attribute not "	\
 				"present.\n", locerrstr, __func__,		\
 				(unsigned long) dwarf_dieoffset(die), #attribute); \
@@ -3209,7 +3195,7 @@ static ctf_id_t lookup_ctf_type(const char *module_name, const char *file_name,
 	while (0)
 
 #define CTF_DW_ENFORCE_NOT(attribute) do					\
-		if (dwarf_hasattr(die, (DW_AT_##attribute))) {			\
+		if (private_dwarf_hasattr(die, (DW_AT_##attribute))) {		\
 			fprintf(stderr, "%s: %s: %lx: skipping type, %s attribute not "	\
 				"supported.\n", locerrstr, __func__,		\
 				(unsigned long) dwarf_dieoffset(die), #attribute); \
@@ -3276,6 +3262,7 @@ static int filter_ctf_uninteresting(Dwarf_Die *die,
 	return ((dwarf_tag(parent_die) == DW_TAG_compile_unit) &&
 		!((strcmp(sym_name, "__per_cpu_start") == 0) ||
 		  (strcmp(sym_name, "__per_cpu_end") == 0) ||
+		  (strcmp(sym_name, "_sdt_probes") == 0) ||
 		  (strstarts(sym_name, "__crc_")) ||
 		  (strstarts(sym_name, "__ksymtab_")) ||
 		  (strstarts(sym_name, "__kcrctab_")) ||
@@ -3818,7 +3805,7 @@ static ctf_id_t assemble_ctf_su_member(const char *module_name,
 	 * (if it is named) or add its members directly (for unnamed types,
 	 * which must be unnamed structs/unions).
 	 */
-	dwarf_attr(die, DW_AT_type, &type_attr);
+	private_dwarf_attr(die, DW_AT_type, &type_attr);
 	if (dwarf_formref_die(&type_attr, &type_die) == NULL) {
 		fprintf(stderr, "%s: nonexistent type reference. "
 			"Corrupted DWARF, cannot continue.\n", locerrstr);
@@ -3834,16 +3821,17 @@ static ctf_id_t assemble_ctf_su_member(const char *module_name,
 	 * DW_AT_data_bit_offset is the simple case.  DW_AT_data_member_location
 	 * is trickier, and, alas, the DWARF2 variation is the complex one.
 	 */
-	if (dwarf_hasattr(die, DW_AT_data_bit_offset)) {
+	if (private_dwarf_hasattr(die, DW_AT_data_bit_offset)) {
 		offset = private_dwarf_udata(die, DW_AT_data_bit_offset,
 					     overrides);
 		bit_offset = offset % 8;
 		offset = offset / 8 * 8;
 	}
-	else if (dwarf_hasattr(die, DW_AT_data_member_location)) {
+	else if (private_dwarf_hasattr(die, DW_AT_data_member_location)) {
 		Dwarf_Attribute location_attr;
 
-		dwarf_attr(die, DW_AT_data_member_location, &location_attr);
+		private_dwarf_attr(die, DW_AT_data_member_location,
+				   &location_attr);
 
 		switch (dwarf_whatform(&location_attr)) {
 		case DW_FORM_data1:
@@ -3872,16 +3860,6 @@ static ctf_id_t assemble_ctf_su_member(const char *module_name,
 
 				dwarf_formudata(&location_attr, &location);
 				offset = location * 8;
-			}
-
-			if (dwarf_hasattr(die, DW_AT_bit_offset)) {
-				Dwarf_Attribute bit_attr;
-				Dwarf_Word bit;
-
-				dwarf_attr(die, DW_AT_bit_offset,
-					   &bit_attr);
-				dwarf_formudata(&bit_attr, &bit);
-				bit_offset = bit;
 			}
 			break;
 		}
@@ -3943,7 +3921,20 @@ static ctf_id_t assemble_ctf_su_member(const char *module_name,
 			exit(1);
 		}
 		}
-		/* Fall through. */
+
+		/*
+		 * Handle the bit offset.
+		 */
+		if (private_dwarf_hasattr(die, DW_AT_bit_offset)) {
+			Dwarf_Attribute bit_attr;
+			Dwarf_Word bit;
+
+			private_dwarf_attr(die, DW_AT_bit_offset,
+					   &bit_attr);
+			dwarf_formudata(&bit_attr, &bit);
+			bit_offset = bit;
+		}
+
 	} else { /* No offset beyond any override.  */
 		die_override_t *o;
 
@@ -3966,7 +3957,7 @@ static ctf_id_t assemble_ctf_su_member(const char *module_name,
 	 * offsets).  Use DW_AT_data_bit_offset because it does not require
 	 * the complexity of DW_AT_data_member_location to be faked.
 	 */
-	if (!dwarf_hasattr(die, DW_AT_name)) {
+	if (!private_dwarf_hasattr(die, DW_AT_name)) {
 		Dwarf_Die child_die;
 		int dummy = 0;
 
@@ -4002,7 +3993,7 @@ static ctf_id_t assemble_ctf_su_member(const char *module_name,
 	 * If this is a bitfield, we want to note that said type's size and
 	 * bit-offset should be adjusted.
 	 */
-	if (dwarf_hasattr(die, DW_AT_bit_size)) {
+	if (private_dwarf_hasattr(die, DW_AT_bit_size)) {
 		die_override_t o[] =
 			{{ dwarf_tag(&type_die),
 			   DW_AT_bit_size,
@@ -4193,81 +4184,96 @@ static ctf_id_t assemble_ctf_variable(const char *module_name,
 
 /* Writeout.  */
 
-static void write_types(char *output_dir)
+static void write_types(char *output, int standalone)
 {
 	GHashTableIter module_iter;
 	char *module;
 	per_module_t *per_mod;
+	ctf_file_t **ctfs;
+	const char **names;
+	size_t i = 0;
+	size_t ctf_count = g_hash_table_size(per_module);
 
 	/*
-	 * Work over all the modules and write their compressed CTF data out
-	 * into the output directory.  Built-in modules get names ending in
-	 * .builtin.ctf.new; others get names ending in .mod.ctf.new.  The
-	 * makefile moves .ctf.new over the top of .ctf iff it has changed.
+	 * Work over all the modules and write their compressed CTF data out.
+	 * Standalone modules get placed in files in the output directory named
+	 * with names ending in .mod.ctf.new, and the makefile moves .ctf.new
+	 * over the top of .ctf iff it has changed; built-in modules and the
+	 * core kernel and shared type repository are placed into a CTF archive.
 	 */
-
-	if ((mkdir(output_dir, 0777) < 0) && errno != EEXIST) {
-		fprintf(stderr, "Cannot create .ctf directory: %s\n",
-			strerror(errno));
-		exit(1);
+	if (standalone) {
+		if ((mkdir(output, 0777) < 0) && errno != EEXIST) {
+			fprintf(stderr, "Cannot create .ctf directory: %s\n",
+				strerror(errno));
+			exit(1);
+		}
+	} else {
+		ctfs = calloc(ctf_count, sizeof (ctf_file_t *));
+		names = calloc(ctf_count, sizeof (char *));
+		if (!ctfs || !names) {
+			fprintf (stderr, "Out of memory in CTF writeout\n");
+		}
 	}
 
+	/*
+	 * Write the files out (in standalone mode), or construct the arrays of
+	 * module names and files to put in the archive (otherwise).
+	 */
 	g_hash_table_iter_init(&module_iter, per_module);
 	while (g_hash_table_iter_next(&module_iter, (void **) &module,
 				      (void **)&per_mod)) {
-		char *path = NULL;
-		gzFile fd;
-		int builtin_module = 0;
+		int fd;
 
 		dw_ctf_trace("Writing out %s\n", module);
 
-		if ((strcmp(module, "shared_ctf") == 0) ||
-		    (strcmp(module, "vmlinux") == 0))
-			builtin_module = 1;
-		else {
-			size_t module_num;
-
-			for (module_num = 0; module_num < builtin_modules_cnt;
-			     module_num++) {
-				char *module_name = fn_to_module(builtin_modules[module_num]);
-
-				if (strcmp(module_name, module) == 0)
-					builtin_module = 1;
-
-				free(module_name);
-			}
-		}
-
-		path = str_appendn(path, output_dir, "/", module,
-				   builtin_module ? ".builtin" : ".mod",
-				   ".ctf.new", NULL);
-
-		dw_ctf_trace("Writeout path: %s\n", path);
-
 		if (ctf_update(per_mod->ctf_file) < 0) {
 			fprintf(stderr, "Cannot serialize CTF file %s: %s\n",
-				path, ctf_errmsg(ctf_errno(per_mod->ctf_file)));
+				module, ctf_errmsg(ctf_errno(per_mod->ctf_file)));
 			exit(1);
 		}
 
-		if ((fd = gzopen(path, "wb")) == NULL) {
-			fprintf(stderr, "Cannot open CTF file %s for writing: "
-				"%s\n", path, strerror(errno));
-			exit(1);
-		}
-		if (ctf_gzwrite(per_mod->ctf_file, fd) < 0) {
-			fprintf(stderr, "Cannot write to CTF file %s: "
-				"%s\n", path,
-				ctf_errmsg(ctf_errno(per_mod->ctf_file)));
-			exit(1);
-		}
+		if (!standalone) {
+			names[i] = module;
+			ctfs[i] = per_mod->ctf_file;
+			i++;
+		} else {
+			char *path = NULL;
+			path = str_appendn(path, output, "/", module,
+					   ".mod.ctf.new", NULL);
 
-		if (gzclose(fd) != Z_OK) {
-			fprintf(stderr, "Cannot close CTF file %s: %s\n",
-				path, strerror(errno));
+			if ((fd = open(path, O_WRONLY | O_CREAT | O_TRUNC |
+				       O_CLOEXEC, 0666)) < 0) {
+				fprintf(stderr, "Cannot open CTF file %s for "
+					"writing: %s\n", path,
+					strerror(errno));
+				exit(1);
+			}
+			if (ctf_compress_write(per_mod->ctf_file, fd) < 0) {
+				fprintf(stderr, "Cannot write to CTF file %s: "
+					"%s\n", path,
+					ctf_errmsg(ctf_errno(per_mod->ctf_file)));
+				exit(1);
+			}
+			if (close(fd) != 0) {
+				fprintf(stderr, "Cannot close CTF file %s: %s\n",
+					path, strerror(errno));
+				exit(1);
+			}
+			free(path);
+		}
+	}
+
+	if (!standalone) {
+		int err;
+		if ((err = ctf_arc_write(output, ctfs, ctf_count,
+					 names, 4096) != 0)) {
+			fprintf(stderr, "Cannot write to CTF archive %s: %s\n",
+				output, err < ECTF_BASE ? strerror(err) :
+				ctf_errmsg(err));
 			exit(1);
 		}
-		free(path);
+		free(names);
+		free(ctfs);
 	}
 }
 
@@ -4281,7 +4287,7 @@ static Dwarf_Die *private_dwarf_type(Dwarf_Die *die, Dwarf_Die *target_die)
 {
 	Dwarf_Attribute type_ref_attr;
 
-	if (dwarf_attr(die, DW_AT_type, &type_ref_attr) != NULL) {
+	if (private_dwarf_attr(die, DW_AT_type, &type_ref_attr) != NULL) {
 		if (dwarf_formref_die(&type_ref_attr, target_die) == NULL) {
 			fprintf(stderr, "Corrupt DWARF at offset %lx: ref with "
 				"no target.\n",
@@ -4295,11 +4301,71 @@ static Dwarf_Die *private_dwarf_type(Dwarf_Die *die, Dwarf_Die *target_die)
 }
 
 /*
+ * Check for existence of an attribute in a DIE, chasing through
+ * DW_AT_specification if need be.
+ */
+static inline int private_dwarf_hasattr(Dwarf_Die *die,
+					unsigned int search_name)
+{
+	int hasattr = 0;
+	Dwarf_Attribute spec_ref_attr;
+	Dwarf_Die spec_die;
+
+	/*
+	 * DW_AT_declaration is not forwarded, because non-declarations can
+	 * reference declarations via DW_AT_specification, without implying that
+	 * the referencing DIE is a declaration.
+	 */
+	hasattr = dwarf_hasattr(die, search_name);
+	if (hasattr || (search_name == DW_AT_declaration))
+		return hasattr;
+
+	if (dwarf_attr(die, DW_AT_specification, &spec_ref_attr) != NULL) {
+		if (dwarf_formref_die(&spec_ref_attr, &spec_die) == NULL) {
+			fprintf(stderr, "Corrupt DWARF at offset %lx: ref with "
+				"no target.\n",
+				(unsigned long) dwarf_dieoffset(die));
+			exit(1);
+		}
+		return dwarf_hasattr(&spec_die, search_name);
+	}
+	return hasattr;
+}
+
+/*
+ * Return a DIE attribute, chasing through DW_AT_specification if need be.
+ */
+static inline Dwarf_Attribute *private_dwarf_attr(Dwarf_Die *die,
+						  unsigned int search_name,
+						  Dwarf_Attribute *result)
+{
+	Dwarf_Attribute spec_ref_attr;
+	Dwarf_Die spec_die;
+	Dwarf_Attribute *ret;
+
+	ret = dwarf_attr(die, search_name, result);
+	if (ret != NULL || (search_name == DW_AT_declaration))
+		return ret;
+
+	if (dwarf_attr(die, DW_AT_specification, &spec_ref_attr) != NULL) {
+		if (dwarf_formref_die(&spec_ref_attr, &spec_die) == NULL) {
+			fprintf(stderr, "Corrupt DWARF at offset %lx: ref with "
+				"no target.\n",
+				(unsigned long) dwarf_dieoffset(die));
+			exit(1);
+		}
+		return dwarf_attr(&spec_die, search_name, result);
+	}
+
+	return NULL;
+}
+
+/*
  * Given a DIE that contains a udata attribute, look up that attribute and
  * return its value (optionally overridden or modified by the die_overrides).
  */
-static Dwarf_Word private_dwarf_udata(Dwarf_Die *die, int attribute,
-				      die_override_t *overrides)
+static inline Dwarf_Word private_dwarf_udata(Dwarf_Die *die, int attribute,
+					     die_override_t *overrides)
 {
 	Dwarf_Attribute attr;
 	Dwarf_Word value;
@@ -4310,7 +4376,7 @@ static Dwarf_Word private_dwarf_udata(Dwarf_Die *die, int attribute,
 	if (override && override->op == DIE_OVERRIDE_REPLACE)
 		return override->value;
 
-	dwarf_attr(die, attribute, &attr);
+	private_dwarf_attr(die, attribute, &attr);
 	dwarf_formudata(&attr, &value);
 
 	if (override)
@@ -4348,9 +4414,9 @@ static Dwarf_Word private_subrange_dimensions(Dwarf_Die *die)
 	Dwarf_Attribute nelem_attr;
 	Dwarf_Word nelems;
 
-	if (((dwarf_attr(die, DW_AT_upper_bound, &nelem_attr) == NULL) &&
-	     (dwarf_attr(die, DW_AT_count, &nelem_attr) == NULL)) ||
-	    (!dwarf_hasattr(die, DW_AT_type)))
+	if (((private_dwarf_attr(die, DW_AT_upper_bound, &nelem_attr) == NULL) &&
+	     (private_dwarf_attr(die, DW_AT_count, &nelem_attr) == NULL)) ||
+	    (!private_dwarf_hasattr(die, DW_AT_type)))
 		flexible_array = 1;
 
 	if (!flexible_array)
@@ -4374,7 +4440,7 @@ static Dwarf_Word private_subrange_dimensions(Dwarf_Die *die)
 	 * Upper bounds indicate that we have one more element than that, since
 	 * C starts counting at zero.
 	 */
-	if (dwarf_hasattr(die, DW_AT_upper_bound))
+	if (private_dwarf_hasattr(die, DW_AT_upper_bound))
 		nelems++;
 
 	return nelems;
@@ -4498,7 +4564,7 @@ static GList *list_filter(GList *list, filter_pred_fun fun,
 static char *fn_to_module(const char *file_name)
 {
 	char *module_name;
-	char *chop;
+	char *chop, *dash;
 
 	if ((chop = strrchr(file_name, '/')) != NULL)
 		module_name = xstrdup(++chop);
@@ -4507,6 +4573,13 @@ static char *fn_to_module(const char *file_name)
 
 	if ((chop = strrchr(module_name, '.')) != NULL)
 		*chop = '\0';
+
+	dash = module_name;
+	while (dash != NULL) {
+		dash = strchr(dash, '-');
+		if (dash != NULL)
+			*dash = '_';
+	}
 
 	return module_name;
 }
