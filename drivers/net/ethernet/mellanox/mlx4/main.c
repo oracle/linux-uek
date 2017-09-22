@@ -50,6 +50,10 @@
 #include <linux/mlx4/device.h>
 #include <linux/mlx4/doorbell.h>
 
+#if defined(CONFIG_XEN) && defined(CONFIG_X86_64)
+#include <asm/xen/hypervisor.h>
+#endif
+
 #include "mlx4.h"
 #include "fw.h"
 #include "icm.h"
@@ -2326,6 +2330,10 @@ static int mlx4_init_hca(struct mlx4_dev *dev)
 	struct mlx4_config_dev_params params;
 	int err;
 #ifndef WITHOUT_ORACLE_EXTENSIONS
+#if defined(CONFIG_XEN) && defined(CONFIG_X86_64)
+	unsigned long totalram_pages = 0;
+	int ret;
+#endif
 	struct sysinfo si;
 #endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
@@ -2373,6 +2381,18 @@ static int mlx4_init_hca(struct mlx4_dev *dev)
 			pr_info("mlx4_core: Effective log_num_cq is now set to %d.\n",
 				ilog2(profile.num_cq));
 			si_meminfo(&si);
+#if defined(CONFIG_XEN) && defined(CONFIG_X86_64)
+			totalram_pages = si.totalram;
+
+			if (mlx4_is_master(dev)) {
+				ret = xen_get_host_pages(&totalram_pages);
+				if (ret) {
+					totalram_pages = si.totalram;
+					mlx4_warn(dev, "mlx4_core: xen_get_host_pages failed ret = %d \n!", ret);
+				}
+			}
+#endif
+
 			profile.num_mtt =
 				roundup_pow_of_two(max_t(unsigned int,
 							 1 << (MLX4_LOG_NUM_MTT -
@@ -2380,7 +2400,11 @@ static int mlx4_init_hca(struct mlx4_dev *dev)
 							 min(1UL <<
 							    (MLX4_MAX_LOG_NUM_MTT -
 							     log_mtts_per_seg),
+#if defined(CONFIG_XEN) && defined(CONFIG_X86_64)
+							    (totalram_pages << 1)
+#else
 							    (si.totalram << 1)
+#endif
 							    >> log_mtts_per_seg)));
 			pr_info("mlx4_core: log_num_mtt is scaled dynamically. Effective log_num_mtt is now set to %d.\n",
 				ilog2(profile.num_mtt));
