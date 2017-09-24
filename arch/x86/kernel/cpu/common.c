@@ -173,6 +173,20 @@ static int __init x86_pcid_setup(char *s)
 	return 1;
 }
 __setup("nopcid", x86_pcid_setup);
+
+static int __init x86_nokaiser_setup(char *s)
+{
+	/* nokaiser doesn't accept parameters */
+	if (s)
+		return -EINVAL;
+#ifdef CONFIG_KAISER
+	kaiser_enabled = 0;
+	setup_clear_cpu_cap(X86_FEATURE_KAISER);
+	pr_info("nokaiser: KAISER feature disabled\n");
+#endif
+	return 0;
+}
+early_param("nokaiser", x86_nokaiser_setup);
 #endif
 
 static int __init x86_noinvpcid_setup(char *s)
@@ -328,7 +342,7 @@ static __always_inline void setup_smap(struct cpuinfo_x86 *c)
 static void setup_pcid(struct cpuinfo_x86 *c)
 {
 	if (cpu_has(c, X86_FEATURE_PCID)) {
-		if (cpu_has(c, X86_FEATURE_PGE)) {
+		if (cpu_has(c, X86_FEATURE_PGE) || kaiser_enabled) {
 			cr4_set_bits(X86_CR4_PCIDE);
 			/*
 			 * INVPCID has two "groups" of types:
@@ -720,6 +734,10 @@ void __cpuinit get_cpu_cap(struct cpuinfo_x86 *c)
 		c->x86_power = cpuid_edx(0x80000007);
 
 	init_scattered_cpuid_features(c);
+#ifdef CONFIG_KAISER
+	if (kaiser_enabled)
+		set_cpu_cap(c, X86_FEATURE_KAISER);
+#endif
 }
 
 static void __cpuinit identify_cpu_without_cpuid(struct cpuinfo_x86 *c)
@@ -1297,6 +1315,15 @@ void __cpuinit cpu_init(void)
 	unsigned long v;
 	int cpu;
 	int i;
+
+	if (!kaiser_enabled) {
+		/*
+		 * secondary_startup_64() deferred setting PGE in cr4:
+		 * probe_page_size_mask() sets it on the boot cpu,
+		 * but it needs to be set on each secondary cpu.
+		 */
+		cr4_set_bits(X86_CR4_PGE);
+	}
 
 	cpu = stack_smp_processor_id();
 	t = &per_cpu(init_tss, cpu);
