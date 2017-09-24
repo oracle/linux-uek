@@ -160,8 +160,8 @@ ENTRY(secondary_startup_64)
 	 * after the boot processor executes this code.
 	 */
 
-	/* Enable PAE mode and PGE */
-	movl	$(X86_CR4_PAE | X86_CR4_PGE), %eax
+	/* Enable PAE and PSE, but defer PGE until kaiser_enabled is decided */
+	movl	$(X86_CR4_PAE | X86_CR4_PSE), %eax
 	movq	%rax, %cr4
 
 	/* Setup early boot stage 4 level pagetables. */
