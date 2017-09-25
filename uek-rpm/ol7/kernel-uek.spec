@@ -419,7 +419,7 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 
 %ifarch x86_64
 %define kernel_obsoletes kernel-xen <= 2.6.27-0.2.rc0.git6.fc10
-%define kernel_provides kernel%{?variant}-xen = %{rpmversion}-%{pkg_release}
+%define kernel_provides kernel%{?variant}%{?-r:nano}-xen = %{rpmversion}-%{pkg_release}
 %endif
 
 # We moved the drm include files into kernel-headers, make sure there's
@@ -430,22 +430,22 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 # Packages that need to be installed before the kernel is, because the %post
 # scripts use them.
 #
-%define kernel_prereq  fileutils, module-init-tools, initscripts >= 8.11.1-1, kernel-firmware = %{rpmversion}-%{pkg_release}, %{_sbindir}/new-kernel-pkg
+%define kernel_prereq  fileutils, module-init-tools, initscripts >= 8.11.1-1, %{_sbindir}/new-kernel-pkg
 %define initrd_prereq  dracut-kernel >= 033-360.0.3
 
 #
 # This macro does requires, provides, conflicts, obsoletes for a kernel package.
-#	%%kernel_reqprovconf <subpackage>
+#	%%kernel_reqprovconf [-r] <subpackage>
 # It uses any kernel_<subpackage>_conflicts and kernel_<subpackage>_obsoletes
 # macros defined above.
 #
-%define kernel_reqprovconf \
-Provides: kernel%{?variant} = %{rpmversion}-%{pkg_release}\
-Provides: kernel%{?variant}-%{_target_cpu} = %{rpmversion}-%{pkg_release}%{?1:.%{1}}\
-Provides: kernel%{?variant}-drm = 4.3.0\
-Provides: kernel%{?variant}-drm-nouveau = 12\
-Provides: kernel%{?variant}-modeset = 1\
-Provides: kernel%{?variant}-uname-r = %{KVERREL}%{?1:.%{1}}\
+%define kernel_reqprovconf(r) \
+Provides: kernel%{?variant}%{?-r:nano} = %{rpmversion}-%{pkg_release}\
+Provides: kernel%{?variant}%{?-r:nano}-%{_target_cpu} = %{rpmversion}-%{pkg_release}%{?1:.%{1}}\
+Provides: kernel%{?variant}%{?-r:nano}-drm = 4.3.0\
+Provides: kernel%{?variant}%{?-r:nano}-drm-nouveau = 12\
+Provides: kernel%{?variant}%{?-r:nano}-modeset = 1\
+Provides: kernel%{?variant}%{?-r:nano}-uname-r = %{KVERREL}%{?1:.%{1}}\
 Provides: oracleasm = 2.0.5\
 %ifnarch sparc64\
 Provides: x86_energy_perf_policy = %{KVERREL}%{?1:.%{1}}\
@@ -458,7 +458,10 @@ Provides: kernel = %{rpmversion}-%{pkg_release}\
 %endif\
 Requires(pre): %{kernel_prereq}\
 Requires(pre): %{initrd_prereq}\
-Requires(pre): linux-firmware >= 20170803-56.git7d2c913d.0.1\
+%if "x%{?-r}" == "x"\
+Requires(pre): kernel-firmware = %{rpmversion}-%{pkg_release}\
+%endif\
+Requires(pre): linux%{?-r:-nano}-firmware >= 20170803-56.git7d2c913d.0.1\
 Requires(post): %{_sbindir}/new-kernel-pkg\
 Requires(preun): %{_sbindir}/new-kernel-pkg\
 Conflicts: %{kernel_dot_org_conflicts}\
@@ -549,6 +552,7 @@ Source1000: config-x86_64
 Source1001: config-x86_64-debug
 #Source1004: config-sparc
 #Source1005: config-sparc-debug
+Source1006: nano_modules.list
 
 Source25: Module.kabi_x86_64debug
 Source26: Module.kabi_x86_64
@@ -609,6 +613,19 @@ Linux operating system.  The kernel handles the basic functions
 of the operating system: memory allocation, process allocation, device
 input and output, etc.
 
+%ifarch x86_64
+%package -n kernel-ueknano
+Summary: The Linux kernel
+Group: System Environment/Kernel
+License: GPLv2
+%kernel_reqprovconf -r
+Obsoletes: kernel-smp
+%description -n kernel-ueknano
+The kernel package contains the Linux kernel (vmlinuz), the core of any
+Linux operating system.  The kernel handles the basic functions
+of the operating system: memory allocation, process allocation, device
+input and output, etc.
+%endif
 
 %package doc
 Summary: Various documentation bits found in the kernel source
@@ -972,6 +989,11 @@ mkdir -p configs
 %ifarch x86_64
 	cp %{SOURCE1001} configs/config-debug
 	cp %{SOURCE1000} configs/config
+	# Generate modules list for nano package.
+	while read mod
+	do
+		echo "/lib/modules/%{KVERREL}/$mod" >> %{_builddir}/nano_modules.list.path
+	done < %{SOURCE1006}
 %endif #ifarch x86_64
 
 %ifarch i686
@@ -1574,11 +1596,46 @@ ln -sf /lib/firmware/%{rpmversion}-%{pkg_release} /lib/firmware/%{rpmversion}-%{
 %{nil}
 
 #
-# This macro defines a %%preun script for a kernel package.
-#	%%kernel_variant_preun <subpackage>
+# This macro defines a %%post and %% posttrans script for nano kernel package
 #
-%define kernel_variant_preun() \
-%{expand:%%preun %{?1}}\
+%define kernel_variant_nano_post() \
+%posttrans -n kernel-ueknano\
+%{_sbindir}/new-kernel-pkg --package kernel-ueknano --mkinitrd --dracut --depmod --update %{KVERREL} || exit $?\
+%{_sbindir}/new-kernel-pkg --package kernel-ueknano --rpmposttrans %{KVERREL} || exit $?\
+if [ -x /sbin/weak-modules ]\
+then\
+    /sbin/weak-modules --add-kernel %{KVERREL} || exit $?\
+fi\
+\
+%post -n kernel-ueknano\
+if [ `uname -i` == "x86_64" -o `uname -i` == "i386" ] &&\
+   [ -f /etc/sysconfig/kernel ]; then\
+  /bin/sed -r -i -e 's/^DEFAULTKERNEL=.*$/DEFAULTKERNEL=kernel-ueknano/' /etc/sysconfig/kernel || exit $?\
+fi\
+if grep --silent '^hwcap 0 nosegneg$' /etc/ld.so.conf.d/kernel-*.conf 2> /dev/null; then\
+  sed -i '/^hwcap 0 nosegneg$/ s/0/1/' /etc/ld.so.conf.d/kernel-*.conf\
+fi\
+%{_sbindir}/new-kernel-pkg --package kernel-ueknano --install %{KVERREL} || exit $?\
+ln -sf /lib/firmware/%{rpmversion}-%{pkg_release} /lib/firmware/%{rpmversion}-%{pkg_release}.%{_target_cpu}\
+%{nil}
+
+#
+# When uninstalling kernel-ueknano package, the modules get removed but the parent
+# directories are removed automatically as they are not tracked by rpm. This post uninstall scriptlet
+# cleanups the /lib/modules/<version>/kernel and its subdirectories.
+#
+%ifarch x86_64
+%postun -n kernel-ueknano
+	rm -rf /lib/modules/%{KVERREL}
+%{nil}
+%endif
+
+#
+# This macro defines a %%preun script for a kernel package.
+#	%%kernel_variant_preun [-n] <subpackage>
+#
+%define kernel_variant_preun(n:) \
+%{expand:%%preun %{-n} %{?1}}\
 %{_sbindir}/new-kernel-pkg --rminitrd --rmmoddep --remove %{KVERREL}%{?1:.%{1}} || exit $?\
 if [ -x /sbin/weak-modules ]\
 then\
@@ -1589,10 +1646,10 @@ fi\
 
 #
 # This macro defines a %%pre script for a kernel package.
-#	%%kernel_variant_pre <subpackage>
+#	%%kernel_variant_pre [-n] <subpackage>
 #
-%define kernel_variant_pre() \
-%{expand:%%pre %{?1}}\
+%define kernel_variant_pre(n:) \
+%{expand:%%pre %{-n} %{?1}}\
 message="Change references of /dev/hd in /etc/fstab to disk label"\
 if [ -f /etc/fstab ]\
 then\
@@ -1646,6 +1703,12 @@ fi\
 %kernel_variant_post -u -v uek -r (kernel%{variant}|kernel%{variant}-debug|kernel-ovs)
 %else
 %kernel_variant_post -u -v uek -r (kernel%{variant}|kernel%{variant}-debug|kernel-ovs)
+%endif
+
+%ifarch x86_64
+%kernel_variant_pre -n kernel-ueknano
+%kernel_variant_preun -n kernel-ueknano
+%kernel_variant_nano_post
 %endif
 
 %kernel_variant_pre smp
@@ -1711,11 +1774,11 @@ fi
 #
 # This macro defines the %%files sections for a kernel package
 # and its devel and debuginfo packages.
-#	%%kernel_variant_files [-k vmlinux] <condition> <subpackage>
+#	%%kernel_variant_files [-k vmlinux] [-f <files list>] <condition> [-n] <subpackage>
 #
-%define kernel_variant_files(k:) \
+%define kernel_variant_files(k:n:f:) \
 %if %{1}\
-%{expand:%%files %{?2}}\
+%{expand:%%files %{-n} %{?2} %{-f}}\
 %defattr(-,root,root)\
 /%{image_install_path}/%{?-k:%{-k*}}%{!?-k:vmlinuz}-%{KVERREL}%{?2:.%{2}}\
 %if %{with_fips} \
@@ -1725,7 +1788,9 @@ fi
 /boot/symvers-%{KVERREL}%{?2:.%{2}}.gz\
 /boot/config-%{KVERREL}%{?2:.%{2}}\
 %dir /lib/modules/%{KVERREL}%{?2:.%{2}}\
+%if "%{-n*}" != "kernel-ueknano"\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/kernel\
+%endif\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/build\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/source\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/extra\
@@ -1745,6 +1810,7 @@ fi
 /usr/sbin/turbostat\
 %endif\
 %ghost /boot/initramfs-%{KVERREL}%{?2:.%{2}}.img\
+%if "%{-n*}" != "kernel-ueknano"\
 %{expand:%%files %{?2:%{2}-}devel}\
 %defattr(-,root,root)\
 %dir /usr/src/kernels\
@@ -1769,10 +1835,14 @@ fi
 %endif\
 %endif\
 %endif\
+%endif\
 %{nil}
 
 
 %kernel_variant_files %{with_up}
+%ifarch x86_64
+%kernel_variant_files %{with_up} -n kernel-ueknano -f %{_builddir}/nano_modules.list.path
+%endif
 %kernel_variant_files %{with_smp} smp
 %if %{with_up}
 %kernel_variant_files %{with_debug} debug
