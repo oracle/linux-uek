@@ -48,7 +48,10 @@ BL_DENTRY(void *, xen_adjust_exception_frame)
 BL_DENTRY(void *, paravirt_nop)
 BL_DENTRY(void *, ist_enter)
 BL_DENTRY(void *, rcu_nmi_enter)
+BL_DENTRY(void *, rcu_dynticks_curr_cpu_in_eqs)
+BL_DENTRY(void *, rcu_dynticks_eqs_exit)
 BL_DENTRY(void *, rcu_nmi_exit)
+BL_DENTRY(void *, rcu_dynticks_eqs_enter)
 BL_DENTRY(void *, ist_exit)
 
 /*
