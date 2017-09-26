@@ -2,7 +2,7 @@
  * FILE:	cyclic.c
  * DESCRIPTION:	Minimal cyclic implementation
  *
- * Copyright (c) 2010, 2017, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2010, 2011, 2012, 2013, 2017 Oracle Corporation
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -517,12 +517,20 @@ static const struct file_operations	proc_cyclicinfo_ops = {
 
 static int __init cyclic_init(void)
 {
+	int	ret;
+
 	proc_create("cyclicinfo", S_IRUSR, NULL, &proc_cyclicinfo_ops);
 
 #ifdef CONFIG_HOTPLUG_CPU
 	if (!omni_enabled) {
-		register_cpu_notifier(&cpu_notifier);
-		omni_enabled = 1;
+		ret = cpuhp_setup_state_nocalls(CPUHP_AP_CYCLIC_STARTING,
+						"Cyclic omni-timer starting",
+						cyclic_cpu_online,
+						cyclic_cpu_offline);
+		if (ret)
+			pr_warn_once("Cannot enable cyclic omni timer\n");
+		else
+			omni_enabled = 1;
 	}
 #endif
 
