@@ -1570,7 +1570,7 @@ int rds_ib_setup_fastreg(struct rds_ib_device *rds_ibdev)
 	/* Use modify_qp verb to change the state from INIT to RTR */
 	memset(&qp_attr, 0, sizeof(qp_attr));
 	qp_attr.qp_state	= IB_QPS_RTR;
-	qp_attr.path_mtu	= IB_MTU_4096;
+	qp_attr.path_mtu	= IB_MTU_256;
 	qp_attr.dest_qp_num	= rds_ibdev->fastreg_qp->qp_num;
 	qp_attr.rq_psn		= 1;
 	qp_attr.ah_attr.ah_flags	= IB_AH_GRH;
