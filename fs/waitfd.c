@@ -18,7 +18,7 @@
 #include <linux/anon_inodes.h>
 #include <linux/syscalls.h>
 
-long do_wait4(pid_t upid, int __user *stat_addr,
+long kernel_wait4(pid_t upid, int __user *stat_addr,
 	      int options, struct rusage __user *ru);
 
 struct waitfd_ctx {
@@ -40,7 +40,7 @@ static unsigned int waitfd_poll(struct file *file, poll_table *wait)
 	poll_wait_fixed(file, &current->signal->wait_chldexit, wait,
 		POLLIN);
 
-	value = do_wait4(ctx->upid, NULL, ctx->options | WNOHANG | WNOWAIT,
+	value = kernel_wait4(ctx->upid, NULL, ctx->options | WNOHANG | WNOWAIT,
 			 NULL);
 	if (value > 0 || value == -ECHILD)
 		return POLLIN | POLLRDNORM;
@@ -68,7 +68,7 @@ static ssize_t waitfd_read(struct file *file, char __user *buf, size_t count,
 		flags |= WNOHANG;
 
 	do {
-		ret = do_wait4(ctx->upid, stat_addr, flags, NULL);
+		ret = kernel_wait4(ctx->upid, stat_addr, flags, NULL);
 		if (ret == 0)
 			ret = -EAGAIN;
 		if (ret == -ECHILD)
@@ -97,7 +97,7 @@ SYSCALL_DEFINE4(waitfd, int __maybe_unused, which, pid_t, upid, int, options,
 	struct waitfd_ctx *ctx;
 
 	/*
-	 * Options validation from do_wait4(), minus WNOWAIT, which is only used
+	 * Options validation from kernel_wait4(), minus WNOWAIT, which is only used
 	 * by our polling implementation.  If WEXITED or WSTOPPED are provided,
 	 * silently remove them (for backward compatibility with older callers).
 	 */
