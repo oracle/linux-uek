@@ -4,6 +4,7 @@ header-y += bitsperlong.h
 header-y += errno-base.h
 header-y += errno.h
 header-y += fcntl.h
+header-y += hugetlb_encode.h
 header-y += int-l64.h
 header-y += int-ll64.h
 header-y += ioctl.h
