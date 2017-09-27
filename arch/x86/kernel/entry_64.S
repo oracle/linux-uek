@@ -1469,7 +1469,11 @@ idtentry machine_check has_error_code=0 paranoid=1 do_sym=*machine_check_vector(
 /*
  * Save all registers in pt_regs, and switch gs if needed.
  * Use slow, but surefire "are we in kernel?" check.
- * Return: ebx=0: need swapgs on exit, ebx=1: otherwise
+ *
+ * Return: ebx=0: needs swapgs but not SWITCH_USER_CR3 in paranoid_exit
+ *         ebx=1: needs neither swapgs nor SWITCH_USER_CR3 in paranoid_exit
+ *         ebx=2: needs both swapgs and SWITCH_USER_CR3 in paranoid_exit
+ *         ebx=3: needs SWITCH_USER_CR3 but not swapgs in paranoid_exit
  */
 ENTRY(paranoid_entry)
 	XCPT_FRAME 1 15*8
@@ -1490,9 +1494,25 @@ ENTRY(paranoid_entry)
 	testl %edx,%edx
 	js 1f	/* negative -> in kernel */
 	SWAPGS
-	SWITCH_KERNEL_CR3
 	xorl %ebx,%ebx
 1:	ENABLE_IBRS_SAVE_AND_CLOBBER save_reg=%r13d
+#ifdef CONFIG_KAISER
+	/*
+	 * We might have come in between a swapgs and a SWITCH_KERNEL_CR3
+	 * on entry, or between a SWITCH_USER_CR3 and a swapgs on exit.
+	 * Do a conditional SWITCH_KERNEL_CR3: this could safely be done
+	 * unconditionally, but we need to find out whether the reverse
+	 * should be done on return (conveyed to paranoid_exit in %ebx).
+	 */
+	movq	%cr3, %rax
+	testl	$KAISER_SHADOW_PGD_OFFSET, %eax
+	jz	2f
+	orl	$2, %ebx
+	andq	$(~(X86_CR3_PCID_ASID_MASK | KAISER_SHADOW_PGD_OFFSET)), %rax
+	orq	x86_cr3_pcid_noflush, %rax
+	movq	%rax, %cr3
+2:
+#endif
 	ret
 	CFI_ENDPROC
 END(paranoid_entry)
@@ -1506,22 +1526,27 @@ END(paranoid_entry)
  * in syscall entry), so checking for preemption here would
  * be complicated.  Fortunately, we there's no good reason
  * to try to handle preemption here.
+ * On entry: ebx=0: needs swapgs but not SWITCH_USER_CR3
+ *           ebx=1: needs neither swapgs nor SWITCH_USER_CR3
+ *           ebx=2: needs both swapgs and SWITCH_USER_CR3
+ *           ebx=3: needs SWITCH_USER_CR3 but not swapgs
  */
-/* On entry, ebx is "no swapgs" flag (1: don't need swapgs, 0: need it) */
 ENTRY(paranoid_exit)
 	DEFAULT_FRAME
 	DISABLE_INTERRUPTS(CLBR_NONE)
 	TRACE_IRQS_OFF_DEBUG
-	testl %ebx,%ebx				/* swapgs needed? */
-	jnz paranoid_exit_no_swapgs
-	TRACE_IRQS_IRETQ
-	RESTORE_IBRS_CLOBBER save_reg=%r13d
-	SWITCH_USER_CR3_NO_STACK
-	SWAPGS_UNSAFE_STACK
-	jmp paranoid_exit_restore
-paranoid_exit_no_swapgs:
 	TRACE_IRQS_IRETQ_DEBUG
-paranoid_exit_restore:
+#ifdef CONFIG_KAISER
+	testl   $2, %ebx			/* SWITCH_USER_CR3 needed? */
+	jz      paranoid_exit_no_switch
+	SWITCH_USER_CR3
+paranoid_exit_no_switch:
+#endif
+	testl	$1, %ebx			/* swapgs needed? */
+	jnz paranoid_exit_no_swapgs
+	RESTORE_IBRS_CLOBBER save_reg=%r13d
+	SWAPGS_UNSAFE_STACK
+paranoid_exit_no_swapgs:
 	RESTORE_EXTRA_REGS
 	RESTORE_C_REGS
 	REMOVE_PT_GPREGS_FROM_STACK 8
