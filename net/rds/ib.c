@@ -377,6 +377,9 @@ static int rds_ib_conn_info_visitor(struct rds_connection *conn,
 		iinfo->max_send_wr = ic->i_send_ring.w_nr;
 		iinfo->max_recv_wr = ic->i_recv_ring.w_nr;
 		iinfo->max_send_sge = rds_ibdev->max_sge;
+		iinfo->qp_num = ic->i_cm_id->qp->qp_num;
+		iinfo->w_alloc_ctr = ic->i_recv_ring.w_alloc_ctr;
+		iinfo->w_free_ctr  = (u32) atomic_read(&ic->i_recv_ring.w_free_ctr);
 		iinfo->flow_ctl_post_credit =
 			IB_GET_POST_CREDITS(atomic_read(&ic->i_credits));
 		iinfo->flow_ctl_send_credit =
