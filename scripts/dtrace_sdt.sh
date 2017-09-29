@@ -50,7 +50,8 @@ if [ "$opr" = "sdtstub" ]; then
 		END {
 		    if (count) {
 			if (arch == "x86" || arch == "x86_64") {
-			    print "\tret";
+			    print "\txor %eax,%eax";
+			    print "\tretq";
 			} else if (arch == "sparc" || arch == "sparc64") {
 			    print "\tretl";
 			    print "\tnop";
