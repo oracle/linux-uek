@@ -39,7 +39,6 @@
 /*
  * XXX
  *  - build with sparse
- *  - should we limit the size of a mr region?  let transport return failure?
  *  - should we detect duplicate keys on a socket?  hmm.
  *  - an rdma is an mlock, apply rlimit?
  */
@@ -198,6 +197,12 @@ static int __rds_rdma_map(struct rds_sock *rs, struct rds_get_mr_args *args,
 
 	if (!rs->rs_transport->get_mr) {
 		ret = -EOPNOTSUPP;
+		goto out;
+	}
+
+	/* Restrict the size of mr irrespective of underlying transport */
+	if (args->vec.bytes > RDS_MAX_MSG_SIZE) {
+		ret = -EMSGSIZE;
 		goto out;
 	}
 

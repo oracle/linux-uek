@@ -1316,6 +1316,16 @@ int rds_sendmsg(struct socket *sock, struct msghdr *msg, size_t payload_len)
 	if (ret)
 		goto out;
 
+	if (rdma_payload_len > RDS_MAX_MSG_SIZE) {
+		ret = -EMSGSIZE;
+		goto out;
+	}
+
+	if (payload_len > RDS_MAX_MSG_SIZE + PAGE_SIZE) {
+		ret = -EMSGSIZE;
+		goto out;
+	}
+
 	if (payload_len > rds_sk_sndbuf(rs)) {
 		ret = -EMSGSIZE;
 		goto out;
