@@ -245,6 +245,10 @@ struct rds_info_rdma_connection {
 	uint32_t	frag;
 	uint16_t        flow_ctl_post_credit;
 	uint16_t        flow_ctl_send_credit;
+	uint32_t        qp_num;
+	uint32_t        w_alloc_ctr;
+	uint32_t        w_free_ctr;
+
 };
 
 /*
