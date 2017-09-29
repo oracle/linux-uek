@@ -183,9 +183,6 @@ static ssize_t write_mem(struct file *file, const char __user *buf,
 	if (p != *ppos)
 		return -EFBIG;
 
-	if (get_securelevel() > 0)
-		return -EPERM;
-
 	if (!valid_phys_addr_range(p, count))
 		return -EFAULT;
 
@@ -538,9 +535,6 @@ static ssize_t write_kmem(struct file *file, const char __user *buf,
 	char *kbuf; /* k-addr because vwrite() takes vmlist_lock rwlock */
 	int err = 0;
 
-	if (get_securelevel() > 0)
-		return -EPERM;
-
 	if (p < (unsigned long) high_memory) {
 		unsigned long to_write = min_t(unsigned long, count,
 					       (unsigned long)high_memory - p);
@@ -588,9 +582,6 @@ static ssize_t read_port(struct file *file, char __user *buf,
 	unsigned long i = *ppos;
 	char __user *tmp = buf;
 
-	if (get_securelevel() > 0)
-		return -EPERM;
-
 	if (!access_ok(VERIFY_WRITE, buf, count))
 		return -EFAULT;
 	while (count-- > 0 && i < 65536) {
@@ -608,9 +599,6 @@ static ssize_t write_port(struct file *file, const char __user *buf,
 {
 	unsigned long i = *ppos;
 	const char __user *tmp = buf;
-
-	if (get_securelevel() > 0)
-		return -EPERM;
 
 	if (!access_ok(VERIFY_READ, buf, count))
 		return -EFAULT;
@@ -747,6 +735,9 @@ static loff_t memory_lseek(struct file *file, loff_t offset, int orig)
 
 static int open_port(struct inode *inode, struct file *filp)
 {
+	if (get_securelevel() > 0)
+		return -EPERM;
+
 	return capable(CAP_SYS_RAWIO) ? 0 : -EPERM;
 }
 
