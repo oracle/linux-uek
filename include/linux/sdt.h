@@ -11,8 +11,8 @@
 #include <linux/stringify.h>
 
 #define	DTRACE_PROBE(name, ...)	{				\
-	extern void __dtrace_probe_##name(__DTRACE_TYPE_APPLY_DEFAULT(__DTRACE_UINTPTR_EACH, void, ## __VA_ARGS__)); \
-	__dtrace_probe_##name(__DTRACE_ARG_APPLY(__DTRACE_UINTCAST_EACH, ## __VA_ARGS__)); \
+	extern int __dtrace_probe_##name(__DTRACE_TYPE_APPLY_DEFAULT(__DTRACE_UINTPTR_EACH, void, ## __VA_ARGS__)); \
+	(void)__dtrace_probe_##name(__DTRACE_ARG_APPLY(__DTRACE_UINTCAST_EACH, ## __VA_ARGS__)); \
 	asm volatile(".pushsection _dtrace_sdt_names, \"a\", @progbits\n" \
 		     ".ascii \"" __stringify(name) "\"\n"		\
 		     ".byte 0\n"					\
