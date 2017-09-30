@@ -10753,10 +10753,6 @@ lpfc_pci_remove_one_s4(struct pci_dev *pdev)
 	/* Remove FC host and then SCSI host with the physical port */
 	fc_remove_host(shost);
 	scsi_remove_host(shost);
-
-	/* Perform cleanup on the physical port */
-	lpfc_cleanup(vport);
-
 	/*
 	 * Bring down the SLI Layer. This step disables all interrupts,
 	 * clears the rings, discards all mailbox commands, and resets
@@ -10764,6 +10760,10 @@ lpfc_pci_remove_one_s4(struct pci_dev *pdev)
 	 */
 	lpfc_debugfs_terminate(vport);
 	lpfc_sli4_hba_unset(phba);
+
+	/* Perform cleanup on the physical port */
+	lpfc_cleanup(vport);
+
 
 	lpfc_stop_hba_timers(phba);
 	spin_lock_irq(&phba->hbalock);

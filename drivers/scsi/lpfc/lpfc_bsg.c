@@ -2870,7 +2870,7 @@ static int lpfcdiag_loop_post_rxbufs(struct lpfc_hba *phba, uint16_t rxxri,
 		}
 	}
 
-	if (!cmdiocbq || !rxbmp || !rxbpl || !rxbuffer) {
+	if (!cmdiocbq || !rxbmp || !rxbpl || !rxbuffer || !pring) {
 		ret_val = -ENOMEM;
 		goto err_post_rxbufs_exit;
 	}

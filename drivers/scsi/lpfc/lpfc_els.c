@@ -9044,6 +9044,9 @@ void lpfc_fabric_abort_nport(struct lpfc_nodelist *ndlp)
 	struct lpfc_iocbq *tmp_iocb, *piocb;
 	struct lpfc_sli_ring *pring = &phba->sli.ring[LPFC_ELS_RING];
 
+	if (unlikely(!pring))
+		return;
+
 	spin_lock_irq(&phba->hbalock);
 	list_for_each_entry_safe(piocb, tmp_iocb, &phba->fabric_iocb_list,
 				 list) {
@@ -9150,7 +9153,7 @@ lpfc_sli4_els_xri_aborted(struct lpfc_hba *phba,
 				rxid, 1);
 
 			/* Check if TXQ queue needs to be serviced */
-			if (!(list_empty(&pring->txq)))
+			if (pring && !list_empty(&pring->txq))
 				lpfc_worker_wake_up(phba);
 			return;
 		}
