@@ -1096,6 +1096,7 @@ static void rds_ib_cong_recv(struct rds_connection *conn,
 	unsigned int map_off;
 	unsigned int map_page;
 	struct rds_page_frag *frag;
+	struct scatterlist *sg;
 	unsigned long frag_off;
 	unsigned long to_copy;
 	unsigned long copied;
@@ -1114,17 +1115,18 @@ static void rds_ib_cong_recv(struct rds_connection *conn,
 	frag_off = 0;
 
 	copied = 0;
+	sg = frag->f_sg;
 
 	while (copied < RDS_CONG_MAP_BYTES) {
 		uint64_t *src, *dst;
 		unsigned int k;
 
-		to_copy = min(ic->i_frag_sz - frag_off, RDS_CONG_PAGE_SIZE - map_off);
+		to_copy = min(sg->length - frag_off, RDS_CONG_PAGE_SIZE - map_off);
 		BUG_ON(to_copy & 7); /* Must be 64bit aligned. */
 
-		addr = kmap_atomic(sg_page(frag->f_sg));
+		addr = kmap_atomic(sg_page(sg));
 
-		src = addr + frag->f_sg[0].offset + frag_off;
+		src = addr + sg->offset + frag_off;
 		dst = (void *)map->m_page_addrs[map_page] + map_off;
 		for (k = 0; k < to_copy; k += 8) {
 			/* Record ports that became uncongested, ie
@@ -1147,6 +1149,12 @@ static void rds_ib_cong_recv(struct rds_connection *conn,
 			frag = list_entry(frag->f_item.next,
 					  struct rds_page_frag, f_item);
 			frag_off = 0;
+			sg = frag->f_sg;
+		}
+
+		if (frag_off == sg->length) {
+			frag_off = 0;
+			sg = sg_next(sg);
 		}
 	}
 
