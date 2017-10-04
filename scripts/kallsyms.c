@@ -7,7 +7,8 @@
  *
  * Usage: nm -n vmlinux | scripts/kallsyms [--all-symbols]
  *                                         [--symbol-prefix=<prefix char>]
- *                                         [--builtin=modules.builtin] > symbols.S
+ *                                         [--builtin=modules_thick.builtin]
+ *                                         > symbols.S
  *
  *      Table compression uses all the unused char codes on the symbols and
  *  maps these to the most used substrings (tokens). For instance, it might
@@ -115,7 +116,7 @@ static void usage(void)
 {
 	fprintf(stderr, "Usage: kallsyms [--all-symbols] "
 			"[--symbol-prefix=<prefix char>] "
-			"[--base-relative] [--builtin=modules.builtin] "
+			"[--base-relative] [--builtin=modules_thick.builtin] "
 			"< in.map > out.S\n");
 	exit(1);
 }
@@ -533,6 +534,9 @@ static void write_src(void)
 		printf("\t.asciz\t\"%s\"\n", builtin_modules[i]);
 	printf("\n");
 
+	for (i = 0; i < builtin_module_len; i++)
+		free(builtin_modules[i]);
+
 	output_label("kallsyms_symbol_modules");
 	for (i = 0; i < table_cnt; i++)
 		printf("\t.int\t%d\n", table[i].module);
@@ -828,15 +832,14 @@ static void record_relative_base(void)
 /* Built-in module list computation. */
 
 /*
- * Populate the symbol_to_module mapping for one built-in module.
+ * Populate the symbol_to_module mapping for one built-in module, while
+ * tracking whether it is known to exist in other modules.
  */
-static void read_module_symbols(unsigned int module_name,
-				const char *module_path,
+static void read_module_symbols(unsigned int module_name_off,
+				struct simple_dwfl_multi *dwfl,
 				GHashTable *module_symbol_seen)
 {
-	Dwfl *dwfl = simple_dwfl_new(module_path, NULL);
 	Dwarf_Die *tu = NULL;
-	Dwarf_Addr junk;
 	unsigned int *module_idx = NULL;
 	GHashTable *this_module_symbol_seen;
 	GHashTableIter copying_iter;
@@ -846,20 +849,21 @@ static void read_module_symbols(unsigned int module_name,
 	this_module_symbol_seen = g_hash_table_new_full(g_str_hash, g_str_equal,
 							free, NULL);
 
-	while ((tu = dwfl_nextcu(dwfl, tu, &junk)) != NULL) {
+	while ((tu = simple_dwfl_nextcu(dwfl)) != NULL) {
 		Dwarf_Die toplevel;
 		int sib_ret;
 
 		if (dwarf_tag(tu) != DW_TAG_compile_unit) {
 			fprintf(stderr, "Malformed DWARF: non-compile_unit at "
-				"top level in %s.\n", module_path);
+				"top level in %s.\n", dwfl->paths[dwfl->i]);
 			exit(1);
 		}
 
 		switch (dwarf_child(tu, &toplevel)) {
 		case -1: fprintf(stderr, "Warning: looking for toplevel "
 				 "child of %s in %s: %s\n", dwarf_diename(tu),
-				 module_path, dwarf_errmsg(dwarf_errno()));
+				 dwfl->paths[dwfl->i],
+				 dwarf_errmsg(dwarf_errno()));
 			continue;
 		case 1: /* No DIEs at all in this TU */
 			continue;
@@ -878,7 +882,7 @@ static void read_module_symbols(unsigned int module_name,
 						exit(1);
 					}
 
-					*module_idx = module_name;
+					*module_idx = module_name_off;
 				}
 				/*
 				 * If we have never seen this symbol before
@@ -909,7 +913,7 @@ static void read_module_symbols(unsigned int module_name,
 								    NULL);
 				} else {
 					g_hash_table_remove(symbol_to_module,
-							    strdup(dwarf_diename(&toplevel)));
+							    dwarf_diename(&toplevel));
 				}
 			}
 		} while ((sib_ret = dwarf_siblingof(&toplevel, &toplevel)) == 0);
@@ -917,10 +921,10 @@ static void read_module_symbols(unsigned int module_name,
 		if (sib_ret == -1) {
 			fprintf(stderr, "Warning: Cannot advance to next sibling "
 				"of %s in %s: %s\n", dwarf_diename(&toplevel),
-				module_path, dwarf_errmsg(dwarf_errno()));
+				dwfl->paths[dwfl->i],
+				dwarf_errmsg(dwarf_errno()));
 		}
 	}
-	simple_dwfl_free(dwfl);
 
 	/*
 	 * Work over all the symbols seen in this module and note that in future
@@ -957,14 +961,43 @@ static void expand_builtin_modules(void)
 }
 
 /*
+ * Add a single built-in module (possibly composed of many files) to the modules
+ * list.  Take the offset of the current module and return it (purely for
+ * simplicity's sake in the caller).
+ */
+static size_t add_builtin_module(const char *module_name,
+				 char **module_paths, size_t offset,
+				 GHashTable *module_symbol_seen)
+{
+	struct simple_dwfl_multi *multi;
+
+	multi = simple_dwfl_new_multi(module_paths);
+	if (multi == NULL) {
+		fprintf(stderr, "Out of memory iterating over %s\n",
+			module_name);
+		exit(1);
+	}
+
+	read_module_symbols(builtin_module_len, multi, module_symbol_seen);
+	simple_dwfl_free_multi(multi);
+
+	if (builtin_module_size >= builtin_module_len)
+		expand_builtin_modules();
+	builtin_modules[builtin_module_len] = strdup(module_name);
+	builtin_module_offsets[builtin_module_len] = offset;
+	offset += strlen(module_name) + 1;
+	builtin_module_len++;
+
+	return offset;
+}
+
+/*
  * Populate the symbol_to_module mapping for all built-in modules,
  * and the list of built-in modules itself.
  */
 static void read_modules(const char *modules_builtin)
 {
-	FILE *f;
-	char *line = NULL;
-	size_t line_size = 0;
+	struct modules_thick_iter *i;
 	size_t offset = 0;
 
 	/*
@@ -975,8 +1008,12 @@ static void read_modules(const char *modules_builtin)
 	 * functions in kernel header files shared between modules.
 	 */
 	GHashTable *module_symbol_seen;
+	char *module_name = NULL;
+	char **module_paths;
+	size_t j;
 
-	symbol_to_module = g_hash_table_new(g_str_hash, g_str_equal);
+	symbol_to_module = g_hash_table_new_full(g_str_hash, g_str_equal,
+						 free, NULL);
 	module_symbol_seen = g_hash_table_new_full(g_str_hash, g_str_equal,
 						   free, NULL);
 
@@ -998,79 +1035,27 @@ static void read_modules(const char *modules_builtin)
 	builtin_module_len = 1;
 	offset++;
 
-	f = fopen(modules_builtin, "r");
-	if (f == NULL) {
-		fprintf(stderr, "Cannot open builtin module file %s: "
-			"%s\n", modules_builtin, strerror(errno));
-		exit(1);
-	}
-
 	/*
-	 * Read in, stripping off the leading path element, if any, transforming
-	 * the suffix into .o from .ko, and also computing the suffixless,
-	 * pathless name of the module, translating - into _ to match what is
-	 * done for real module names. Any elements that don't have files
-	 * corresponding to them elicit a warning, and do not have their names
-	 * recorded.
+	 * Iterate over all modules in modules_thick.builtin and add each.
 	 */
-	while (getline(&line, &line_size, f) >= 0) {
-		if (line[0] != '\0') {
-			char *first_slash;
-			char *last_slash;
-			char *last_dot;
-
-			first_slash = strchr(line, '/');
-			last_slash = strrchr(line, '/');
-
-			first_slash = (!first_slash) ? line : first_slash + 1;
-			last_slash = (!last_slash) ? line : last_slash + 1;
-
-			last_dot = strrchr(line, '.');
-			if ((last_dot != NULL) &&
-			    ((strcmp(last_dot, ".ko") == 0) ||
-			     (strcmp(last_dot, ".ko\n") == 0))) {
-				strcpy(last_dot, ".o");
-			}
-
-			if (access(first_slash, R_OK) == 0) {
-				char *module_name = strdup(last_slash);
-				char *dash = module_name;
-
-				last_dot = strrchr(module_name, '.');
-				if (last_dot != NULL)
-					*last_dot = '\0';
-
-				while (dash != NULL) {
-					dash = strchr(dash, '-');
-					if (dash != NULL)
-						*dash = '_';
-				}
-
-				read_module_symbols(builtin_module_len, first_slash,
-					module_symbol_seen);
-
-				if (builtin_module_size >= builtin_module_len)
-					expand_builtin_modules();
-				builtin_modules[builtin_module_len] = module_name;
-				builtin_module_offsets[builtin_module_len] = offset;
-				offset += strlen(module_name) + 1;
-				builtin_module_len++;
-			} else {
-				fprintf(stderr, "%s population: module %s is not "
-					"readable.\n", modules_builtin,
-					first_slash);
-			}
-		}
-	}
-	free(line);
-
-	if (ferror(f)) {
-		fprintf(stderr, "Error reading from %s: %s\n",
-			modules_builtin, strerror(errno));
+	i = modules_thick_iter_new(modules_builtin);
+	if (i == NULL) {
+		fprintf(stderr, "Cannot iterate over builtin modules.\n");
 		exit(1);
 	}
 
-	fclose(f);
+	while ((module_paths = modules_thick_iter_next(i, &module_name)) != NULL) {
+		offset = add_builtin_module(module_name, module_paths,
+					    offset, module_symbol_seen);
+		for (j = 0; module_paths[j] != NULL; j++)
+			free(module_paths[j]);
+		free(module_paths);
+		module_paths = NULL;
+	}
+
+	free(module_name);
+	modules_thick_iter_free(i);
+
 	g_hash_table_destroy(module_symbol_seen);
 }
 #else
@@ -1079,7 +1064,7 @@ static void read_modules(const char *unused) {}
 
 int main(int argc, char **argv)
 {
-	const char *modules_builtin = "modules.builtin";
+	const char *modules_builtin = "modules_thick.builtin";
 
 	if (argc >= 1) {
 		int i;

@@ -1005,7 +1005,7 @@ cmd_link-vmlinux =                                                 \
 	$(CONFIG_SHELL) $< $(LD) $(LDFLAGS) $(LDFLAGS_vmlinux) ;    \
 	$(if $(ARCH_POSTLINK), $(MAKE) -f $(ARCH_POSTLINK) $@, true)
 
-vmlinux: scripts/link-vmlinux.sh vmlinux_prereq $(vmlinux-deps) modules.builtin FORCE
+vmlinux: scripts/link-vmlinux.sh vmlinux_prereq $(vmlinux-deps) modules_thick.builtin FORCE
 	+$(call if_changed,link-vmlinux)
 
 # Build samples along the rest of the kernel
@@ -1211,12 +1211,12 @@ all: modules
 # using awk while concatenating to the final file.
 
 PHONY += modules
-modules: $(vmlinux-dirs) $(if $(KBUILD_BUILTIN),vmlinux) modules.builtin objects.builtin
+modules: $(vmlinux-dirs) $(if $(KBUILD_BUILTIN),vmlinux) modules_thick.builtin objects.builtin
 	$(Q)$(AWK) '!x[$$0]++' $(vmlinux-dirs:%=$(objtree)/%/modules.order) > $(objtree)/modules.order
 	@$(kecho) '  Building modules, stage 2.';
 	$(Q)$(MAKE) -f $(srctree)/scripts/Makefile.modpost
 
-ifdef CONFIG_CTF
+ifneq (CONFIG_CTF@CONFIG_KALLMODSYMS,'@')
 
 # We need to force everything to be built, since we need the .o files below.
 KBUILD_BUILTIN := 1
@@ -1224,22 +1224,24 @@ KBUILD_BUILTIN := 1
 # Set a default CTF filename.
 CTF_FILENAME := vmlinux.ctfa
 
-# This contains all the object files that are unconditionally built into the
-# kernel, for consumption by dwarf2ctf in Makefile.modpost.
+# This contains all the object files that are built directly into the
+# kernel (including built-in modules), for consumption by dwarf2ctf in
+# Makefile.modpost.
 # This is made doubly annoying by the presence of '.o' files which are actually
-# empty ar archives.
+# thin ar archives, and the need to support file(1) versions too old to
+# recognize them as archives at all.  (So we assume that everything that is not
+# an ELF object is an archive.)
 ifeq ($(SRCARCH),x86)
 objects.builtin: $(vmlinux-dirs) $(if $(KBUILD_BUILTIN),bzImage) FORCE
 else
 objects.builtin: $(vmlinux-dirs) $(if $(KBUILD_BUILTIN),vmlinux) FORCE
 endif
 	@echo $(KBUILD_VMLINUX_INIT) $(KBUILD_VMLINUX_MAIN) | \
-		tr " " "\n" | grep "\.o$$" | xargs file | \
+		tr " " "\n" | grep "\.o$$" | xargs -r file | \
 		grep ELF | cut -d: -f1 > objects.builtin
 	@for archive in $$(echo $(KBUILD_VMLINUX_INIT) $(KBUILD_VMLINUX_MAIN) |\
-		tr " " "\n" | grep "\.a$$"); do \
-		ar t "$$archive" | grep '\.o$$' | \
-			sed "s,^,$${archive%/*}/," >> objects.builtin; \
+		tr " " "\n" | xargs -r file | grep -v ELF | cut -d: -f1); do \
+		ar t "$$archive" >> objects.builtin; \
 	done
 
 CTF_DEBUGDIR := .
@@ -1308,7 +1310,22 @@ modules modules_install:
 
 endif # CONFIG_MODULES
 
-# modules.builtin is used by kallsyms as well.
+# modules.builtin has a 'thick' form usable by tools that do not understand
+# thin archives, which transforms thin archives to their constituent elements,
+# while retaining the name of the archive (-> module) they are part of before a
+# comma.  The redundant kernel/ on the start of every line is also removed, and
+# the object file name corrected (the tools that use this file work over .o files
+# exclusively).
+
+modules_thick.builtin: modules.builtin vmlinux_prereq $(vmlinux-deps)
+	$(Q)(cat modules.builtin | sed 's,^kernel/,,; s,\.ko$$,.o,' | \
+			while read -r module; do \
+		if ! [[ `file $$module` =~ ' ELF ' ]]; then \
+			ar t $$module | sed 's,^,'"$$module:," >> modules_thick.builtin; \
+		else \
+			printf "%s\n" "$$module" >> modules_thick.builtin; \
+		fi; \
+	done)
 
 modules.builtin: $(vmlinux-dirs:%=%/modules.builtin)
 	$(Q)$(AWK) '!x[$$0]++' $^ > $(objtree)/modules.builtin
@@ -1604,7 +1621,8 @@ clean: $(clean-dirs)
 		-o -name '*.sdtinfo.c' -o -name '*.sdtstub.S' \
 		-o -name '.*.d' -o -name '.*.tmp' -o -name '*.mod.c' \
 		-o -name '*.symtypes' -o -name 'modules.order' \
-		-o -name modules.builtin -o -name 'objects.builtin' \
+		-o -name modules.builtin -o -name modules_thick.builtin \
+		-o -name 'objects.builtin' \
 		-o -name '.tmp_*.o.*' -o -name '*.c.[012]*.*' \
 		-o -name '*.ll' -o -name '*.ctfa' \
 		-o -name '*.gcno' \) -type f -print | xargs rm -f
