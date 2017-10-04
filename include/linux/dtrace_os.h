@@ -54,6 +54,7 @@ extern void dtrace_vtime_switch(struct task_struct *, struct task_struct *);
 extern void dtrace_vtime_suspend(void);
 extern void dtrace_vtime_resume(void);
 extern void dtrace_chill(ktime_t, ktime_t, ktime_t);
+extern ktime_t dtrace_gethrtime(void);
 
 extern void dtrace_skip_instruction(struct pt_regs *);
 

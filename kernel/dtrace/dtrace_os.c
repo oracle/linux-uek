@@ -548,6 +548,19 @@ void dtrace_chill(ktime_t val, ktime_t interval, ktime_t int_max)
 }
 EXPORT_SYMBOL(dtrace_chill);
 
+/* Needed for lockstat probes where we cannot include ktime.h */
+u64 dtrace_gethrtime_ns(void)
+{
+	return ktime_get_raw_fast_ns();
+}
+EXPORT_SYMBOL(dtrace_gethrtime_ns);
+
+ktime_t dtrace_gethrtime(void)
+{
+	return ns_to_ktime(dtrace_gethrtime_ns());
+}
+EXPORT_SYMBOL(dtrace_gethrtime);
+
 void dtrace_stacktrace(stacktrace_state_t *st)
 {
 	struct stack_trace	trace;

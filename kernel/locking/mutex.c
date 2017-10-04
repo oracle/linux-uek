@@ -26,6 +26,7 @@
 #include <linux/interrupt.h>
 #include <linux/debug_locks.h>
 #include <linux/osq_lock.h>
+#include <linux/sdt.h>
 
 /*
  * In the DEBUG case we are using the "NULL fastpath" for mutexes,
@@ -101,6 +102,7 @@ void __sched mutex_lock(struct mutex *lock)
 	 */
 	__mutex_fastpath_lock(&lock->count, __mutex_lock_slowpath);
 	mutex_set_owner(lock);
+	DTRACE_LOCKSTAT(adaptive__acquire, struct mutex *, lock);
 }
 
 EXPORT_SYMBOL(mutex_lock);
@@ -435,6 +437,7 @@ void __sched mutex_unlock(struct mutex *lock)
 	mutex_clear_owner(lock);
 #endif
 	__mutex_fastpath_unlock(&lock->count, __mutex_unlock_slowpath);
+	DTRACE_LOCKSTAT(adaptive__release, struct mutex *, lock);
 }
 
 EXPORT_SYMBOL(mutex_unlock);
@@ -509,6 +512,8 @@ __mutex_lock_common(struct mutex *lock, long state, unsigned int subclass,
 		    struct lockdep_map *nest_lock, unsigned long ip,
 		    struct ww_acquire_ctx *ww_ctx, const bool use_ww_ctx)
 {
+	u64 spinstart = 0, spinend, spintotal = 0;
+	u64 waitstart, waitend, waittotal = 0;
 	struct task_struct *task = current;
 	struct mutex_waiter waiter;
 	unsigned long flags;
@@ -519,6 +524,7 @@ __mutex_lock_common(struct mutex *lock, long state, unsigned int subclass,
 
 	if (mutex_optimistic_spin(lock, ww_ctx, use_ww_ctx)) {
 		/* got the lock, yay! */
+		DTRACE_LOCKSTAT(adaptive__acquire, struct mutex *, lock);
 		preempt_enable();
 		return 0;
 	}
@@ -540,6 +546,9 @@ __mutex_lock_common(struct mutex *lock, long state, unsigned int subclass,
 	waiter.task = task;
 
 	lock_contended(&lock->dep_map, ip);
+
+	if (DTRACE_LOCKSTAT_ENABLED(adaptive__spin))
+		spinstart = dtrace_gethrtime_ns();
 
 	for (;;) {
 		/*
@@ -575,7 +584,16 @@ __mutex_lock_common(struct mutex *lock, long state, unsigned int subclass,
 
 		/* didn't get the lock, go to sleep: */
 		spin_unlock_mutex(&lock->wait_lock, flags);
-		schedule_preempt_disabled();
+
+		if (DTRACE_LOCKSTAT_ENABLED(adaptive__block)) {
+			waitstart = dtrace_gethrtime_ns();
+			schedule_preempt_disabled();
+			waitend = dtrace_gethrtime_ns();
+			if (waitend > waitstart)
+				waittotal += waitend - waitstart;
+		} else
+			schedule_preempt_disabled();
+
 		spin_lock_mutex(&lock->wait_lock, flags);
 	}
 	__set_task_state(task, TASK_RUNNING);
@@ -597,6 +615,19 @@ skip_wait:
 	}
 
 	spin_unlock_mutex(&lock->wait_lock, flags);
+
+	if (DTRACE_LOCKSTAT_ENABLED(adaptive__spin) && spinstart) {
+		spinend = dtrace_gethrtime_ns();
+		spintotal = (spinend > spinstart) ? (spinend - spinstart) : 0;
+		spintotal = (spintotal > waittotal) ?
+			(spintotal - waittotal) : 0;
+		DTRACE_LOCKSTAT(adaptive__spin, struct mutex *, lock,
+				uint64_t, spintotal);
+	}
+	if (DTRACE_LOCKSTAT_ENABLED(adaptive__block) && waittotal)
+		DTRACE_LOCKSTAT(adaptive__block, struct mutex *, lock,
+				uint64_t, waittotal);
+	DTRACE_LOCKSTAT(adaptive__acquire, struct mutex *, lock);
 	preempt_enable();
 	return 0;
 
@@ -605,6 +636,8 @@ err:
 	spin_unlock_mutex(&lock->wait_lock, flags);
 	debug_mutex_free_waiter(&waiter);
 	mutex_release(&lock->dep_map, 1, ip);
+	DTRACE_LOCKSTAT(adaptive__acquire__error, struct mutex *, lock,
+			int, ret);
 	preempt_enable();
 	return ret;
 }
@@ -790,6 +823,7 @@ int __sched mutex_lock_interruptible(struct mutex *lock)
 	ret =  __mutex_fastpath_lock_retval(&lock->count);
 	if (likely(!ret)) {
 		mutex_set_owner(lock);
+		DTRACE_LOCKSTAT(adaptive__acquire, struct mutex *, lock);
 		return 0;
 	} else
 		return __mutex_lock_interruptible_slowpath(lock);
@@ -805,6 +839,7 @@ int __sched mutex_lock_killable(struct mutex *lock)
 	ret = __mutex_fastpath_lock_retval(&lock->count);
 	if (likely(!ret)) {
 		mutex_set_owner(lock);
+		DTRACE_LOCKSTAT(adaptive__acquire, struct mutex *, lock);
 		return 0;
 	} else
 		return __mutex_lock_killable_slowpath(lock);
@@ -901,8 +936,10 @@ int __sched mutex_trylock(struct mutex *lock)
 	int ret;
 
 	ret = __mutex_fastpath_trylock(&lock->count, __mutex_trylock_slowpath);
-	if (ret)
+	if (ret) {
 		mutex_set_owner(lock);
+		DTRACE_LOCKSTAT(adaptive__acquire, struct mutex *, lock);
+	}
 
 	return ret;
 }

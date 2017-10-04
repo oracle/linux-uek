@@ -8,6 +8,7 @@
 #include <linux/compiler.h>
 #include <asm/paravirt.h>
 #include <asm/bitops.h>
+#include <linux/sdt.h>
 
 /*
  * Your basic SMP spinlocks, allowing only a single CPU anywhere
@@ -102,10 +103,14 @@ static __always_inline int arch_spin_value_unlocked(arch_spinlock_t lock)
 static __always_inline void arch_spin_lock(arch_spinlock_t *lock)
 {
 	register struct __raw_tickets inc = { .tail = TICKET_LOCK_INC };
+	u64 spinstart = 0, spinend, spintime;
 
 	inc = xadd(&lock->tickets, inc);
 	if (likely(inc.head == inc.tail))
 		goto out;
+
+	if (DTRACE_LOCKSTAT_ENABLED(spin__spin))
+		spinstart = dtrace_gethrtime_ns();
 
 	for (;;) {
 		unsigned count = SPIN_THRESHOLD;
@@ -122,6 +127,12 @@ clear_slowpath:
 	__ticket_check_and_clear_slowpath(lock, inc.head);
 out:
 	barrier();	/* make sure nothing creeps before the lock is taken */
+	if (DTRACE_LOCKSTAT_ENABLED(spin__spin) && spinstart) {
+		spinend = dtrace_gethrtime_ns();
+		spintime = spinend > spinstart ? spinend - spinstart : 0;
+		DTRACE_LOCKSTAT(spin__spin, spinlock_t *, lock,
+				uint64_t, spintime);
+	}
 }
 
 static __always_inline int arch_spin_trylock(arch_spinlock_t *lock)
