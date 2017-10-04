@@ -153,8 +153,7 @@ static size_t object_names_cnt;
 static void init_object_names(const char *object_names_file);
 
 /*
- * The names of module object files presently built in to the kernel, in the
- * same format as the module names in tu_to_module.
+ * The names of module object files presently built in to the kernel.
  *
  * If this is NULL, an external module is being processed, and type
  * deduplication is disabled.
@@ -163,16 +162,8 @@ static char **builtin_modules;
 static size_t builtin_modules_cnt;
 
 /*
- * The names of object files that are *always* built in to the kernel.
- * (If something is in neither this list nor builtin_modules, it is
- * an external module.)
- */
-static char **builtin_objects;
-static size_t builtin_objects_cnt;
-
-/*
- * Populate the builtin_modules and builtin_objects lists from the
- * objects.builtin and modules.builtin files.
+ * Populate builtin_modules and object_to_module from the objects.builtin and
+ * modules.builtin file.
  */
 static void init_builtin(const char *builtin_objects_file,
 			 const char *builtin_module_file);
@@ -236,18 +227,13 @@ static int member_blacklisted(Dwarf_Die *die, Dwarf_Die *parent_die);
 static GHashTable *variable_blacklist;
 
 /*
- * A mapping from translation unit name to the name of the module that
- * translation unit is part of.  Module names have no trailing suffix.
+ * A mapping from object file name to the name of the module that translation
+ * unit is part of.  Populated as part of builtin_modules population.
  *
- * This table is not complete until the first detect_duplicates pass is over,
- * but names corresponding to builtin modules and objects are populated early.
+ * Actual, real, on-disk .ko modules do not appear here, because the translation
+ * is trivial for them.
  */
-static GHashTable *tu_to_module;
-
-/*
- * Populate the tu_to_module hash with names corresponding to builtin modules.
- */
-static void init_tu_to_modules(void);
+static GHashTable *object_to_module;
 
 /*
  * Initialize a CTF type table, and possibly fill it with those special types
@@ -802,6 +788,8 @@ static GList *list_filter(GList *list, filter_pred_fun fun, GDestroyNotify free_
 /*
  * Figure out the (pathless, suffixless) module name for a given module file (.o
  * or .ko), and return it in a new dynamically allocated string.
+ *
+ * Takes the object_to_module mapping into account.
  */
 static char *fn_to_module(const char *file_name);
 
@@ -855,6 +843,8 @@ int main(int argc, char *argv[])
 	}
 
 	init_assembly_tab();
+	object_to_module = g_hash_table_new_full(g_str_hash, g_str_equal,
+						 free, free);
 
 	/*
 	 * When not building an external module, we run over all the arguments
@@ -904,6 +894,8 @@ int main(int argc, char *argv[])
 		}
 	}
 
+	g_hash_table_destroy(object_to_module);
+
 	if (num_errors > 0)
 		fprintf(stderr, "%li CTF construction errors.\n", num_errors);
 
@@ -929,15 +921,12 @@ static void run(char *output, int standalone)
 					   free, free);
 	id_to_module = g_hash_table_new_full(g_str_hash, g_str_equal,
 					     free, free);
-	tu_to_module = g_hash_table_new_full(g_str_hash, g_str_equal,
-					     free, free);
 	per_module = g_hash_table_new_full(g_str_hash, g_str_equal, free,
 					   private_per_module_free);
 	variable_blacklist = g_hash_table_new_full(g_str_hash, g_str_equal,
 						   free, free);
 
 	dw_ctf_trace("Initializing...\n");
-	init_tu_to_modules();
 
 	if (builtin_modules != NULL)
 		init_ctf_table("shared_ctf");
@@ -960,14 +949,12 @@ static void run(char *output, int standalone)
 
 	g_hash_table_destroy(id_to_type);
 	g_hash_table_destroy(id_to_module);
-	g_hash_table_destroy(tu_to_module);
 	g_hash_table_destroy(per_module);
 }
 
 
 /*
- * Populate the builtin_modules and builtin_objects lists from the
- * objects.builtin and modules.builtin file.
+ * Populate the object_names list from the module filelist.
  */
 static void init_object_names(const char *object_names_file)
 {
@@ -1019,15 +1006,48 @@ static void init_object_names(const char *object_names_file)
 }
 
 /*
- * Populate the builtin_modules and builtin_objects lists from the
- * objects.builtin and modules.builtin file.
+ * Populate builtin_modules and object_to_module from the objects.builtin and
+ * modules.builtin file.
  */
 static void init_builtin(const char *builtin_objects_file,
 			 const char *builtin_module_file)
 {
 	FILE *f;
+	struct modules_thick_iter *i;
 	char *line = NULL;
 	size_t line_size = 0;
+	char *module_name = NULL;
+	char **module_paths;
+
+	/*
+	 * Iterate over all modules in modules_thick.builtin and add each to
+	 * builtin_modules and object_to_module.
+	 */
+	i = modules_thick_iter_new(builtin_module_file);
+	if (i == NULL) {
+		fprintf(stderr, "Cannot iterate over builtin module file.\n");
+		exit(1);
+	}
+
+	while ((module_paths = modules_thick_iter_next(i, &module_name)) != NULL) {
+		size_t j;
+
+		builtin_modules = realloc(builtin_modules,
+					  ++builtin_modules_cnt *
+					  sizeof (char *));
+		builtin_modules[builtin_modules_cnt - 1] = xstrdup(module_name);
+
+		for (j = 0; module_paths[j] != NULL; j++) {
+			dw_ctf_trace("noting built-in module mapping %s -> %s\n",
+				     module_name, module_paths[j]);
+			g_hash_table_replace(object_to_module,
+					     module_paths[j],
+					     xstrdup(module_name));
+		}
+		free(module_paths);
+	}
+	free(module_name);
+	modules_thick_iter_free(i);
 
 	if ((f = fopen(builtin_objects_file, "r")) == NULL) {
 		fprintf(stderr, "Cannot open builtin objects file %s: "
@@ -1036,10 +1056,9 @@ static void init_builtin(const char *builtin_objects_file,
 	}
 
 	/*
-	 * This needs no massaging other than linefeed removal, just reading and
-	 * stashing.
+	 * Those entries in builtin.objects that are not already known are
+	 * unconditionally-built-in object files.
 	 */
-
 	while (getline(&line, &line_size, f) >= 0) {
 		size_t len = strlen(line);
 
@@ -1049,17 +1068,9 @@ static void init_builtin(const char *builtin_objects_file,
 		if (line[len-1] == '\n')
 			line[len-1] = '\0';
 
-		builtin_objects = realloc(builtin_objects,
-					  ++builtin_objects_cnt *
-					  sizeof (char *));
-
-		if (builtin_objects == NULL) {
-			fprintf(stderr, "Out of memory reading %s",
-				builtin_objects_file);
-			exit(1);
-		}
-
-		builtin_objects[builtin_objects_cnt-1] = xstrdup(line);
+		if (!g_hash_table_lookup(object_to_module, line))
+			g_hash_table_replace(object_to_module, xstrdup(line),
+					     xstrdup("vmlinux"));
 	}
 
 	if (ferror(f)) {
@@ -1068,66 +1079,7 @@ static void init_builtin(const char *builtin_objects_file,
 		exit(1);
 	}
 
-	fclose(f);
-
-	if ((f = fopen(builtin_module_file, "r")) == NULL) {
-		fprintf(stderr, "Cannot open builtin module file %s: "
-			"%s\n", builtin_module_file, strerror(errno));
-		exit(1);
-	}
-
-	/*
-	 * Read in, realloc()ing and assigning as we go, stripping off the
-	 * leading path element, if any, and transforming the suffix into .o
-	 * from .ko.  Any elements that don't have files corresponding to them
-	 * elicit a warning.
-	 */
-
-	while (getline(&line, &line_size, f) >= 0) {
-		char *first_slash;
-		char *last_dot;
-
-		if (line[0] == '\0')
-			continue;
-
-		if ((first_slash = strchr(line, '/')) != NULL)
-			first_slash++;
-		else
-			first_slash = line;
-
-		last_dot = strrchr(line, '.');
-		if ((last_dot != NULL) &&
-		    ((strcmp(last_dot, ".ko") == 0) ||
-		     (strcmp(last_dot, ".ko\n") == 0))) {
-			strcpy(last_dot, ".o");
-		}
-
-		if (access(first_slash, R_OK) == 0) {
-			builtin_modules = realloc(builtin_modules,
-						  ++builtin_modules_cnt *
-						  sizeof (char *));
-
-			if (builtin_modules == NULL) {
-				fprintf(stderr, "Out of memory reading %s",
-					builtin_module_file);
-				exit(1);
-			}
-
-			builtin_modules[builtin_modules_cnt-1] = xstrdup(first_slash);
-		} else {
-			fprintf(stderr, "%s population: module %s is not "
-				"readable.\n", builtin_module_file,
-				first_slash);
-		}
-	}
 	free(line);
-
-	if (ferror(f)) {
-		fprintf(stderr, "Error reading from %s: %s\n",
-			builtin_module_file, strerror(errno));
-		exit(1);
-	}
-
 	fclose(f);
 }
 
@@ -1441,69 +1393,6 @@ static void init_ctf_table(const char *module_name)
 }
 
 /* DWARF walkers.  */
-
-/*
- * Compute the mapping from translation unit name to module name for built-in
- * modules and always-built-in object files.
- */
-static void init_tu_to_modules(void)
-{
-	size_t i;
-
-	/*
-	 * Always-built-in object files map from their TU name to 'vmlinux'.
-	 */
-	for (i = 0; i < builtin_objects_cnt; i++) {
-		/*
-		 * Walk over the translation units in the object files and
-		 * construct mappings from each TU to "vmlinux".
-		 */
-
-		Dwfl *dwfl = simple_dwfl_new(builtin_objects[i], NULL);
-		Dwarf_Die *tu = NULL;
-		Dwarf_Addr junk;
-
-		while ((tu = dwfl_nextcu(dwfl, tu, &junk)) != NULL) {
-			const char *tu_name = dwarf_diename(tu);
-
-			if ((tu_name != NULL) &&
-			    (dwarf_tag(tu) == DW_TAG_compile_unit))
-				g_hash_table_replace(tu_to_module,
-						     xstrdup(tu_name),
-						     xstrdup("vmlinux"));
-		}
-		simple_dwfl_free(dwfl);
-	}
-
-	/*
-	 * Built-in modules map from their TU name to their module name.
-	 */
-
-	for (i = 0; i < builtin_modules_cnt; i++) {
-		char *module_name = fn_to_module(builtin_modules[i]);
-
-		/*
-		 * Walk over the translation units in this module and construct
-		 * mappings from each TU to the module name.
-		 */
-
-		Dwfl *dwfl = simple_dwfl_new(builtin_modules[i], NULL);
-		Dwarf_Die *tu = NULL;
-		Dwarf_Addr junk;
-
-		while ((tu = dwfl_nextcu(dwfl, tu, &junk)) != NULL) {
-			const char *tu_name = dwarf_diename(tu);
-
-			if ((tu_name != NULL) &&
-			    (dwarf_tag(tu) == DW_TAG_compile_unit))
-				g_hash_table_replace(tu_to_module,
-						     xstrdup(tu_name),
-						     xstrdup(module_name));
-		}
-		simple_dwfl_free(dwfl);
-		free(module_name);
-	}
-}
 
 /*
  * Type ID computation.
@@ -1835,19 +1724,16 @@ static void process_file(const char *file_name,
 		 *
 		 * Otherwise, note the name of the module to which this TU maps,
 		 * if it is not already known: otherwise, extract that name.
+		 *
+		 * This is purely an optimization: it breaks somewhat for
+		 * multifile modules but this has no effect but a slight
+		 * slowdown.
 		 */
 		if (g_hash_table_lookup_extended(seen_before, tu_name,
 						 NULL, NULL))
 			continue;
 
 		g_hash_table_replace(seen_before, xstrdup(tu_name), NULL);
-
-		if (!g_hash_table_lookup(tu_to_module, tu_name))
-			g_hash_table_replace(tu_to_module,
-					     xstrdup(tu_name),
-					     xstrdup(fn_module_name));
-		else
-			module_name = g_hash_table_lookup(tu_to_module, tu_name);
 
 		/*
 		 * We are only interested in top-level definitions within each
@@ -4600,11 +4486,17 @@ static GList *list_filter(GList *list, filter_pred_fun fun,
 /*
  * Figure out the (pathless, suffixless) module name for a given module file (.o
  * or .ko), and return it in a new dynamically allocated string.
+ *
+ * Takes the object_to_module mapping into account.
  */
 static char *fn_to_module(const char *file_name)
 {
 	char *module_name;
 	char *chop, *dash;
+
+	module_name = g_hash_table_lookup(object_to_module, file_name);
+	if (module_name != NULL)
+		return xstrdup(module_name);
 
 	if ((chop = strrchr(file_name, '/')) != NULL)
 		module_name = xstrdup(++chop);

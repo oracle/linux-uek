@@ -185,7 +185,7 @@ cmd-touch-ctf = @:
 ifeq ($(KBUILD_EXTMOD),)
 ctf-dir-mk :=
 quiet_cmd_ctf = CTFA
-      cmd_ctf = scripts/dwarf2ctf/dwarf2ctf $(CTF_FILENAME) $(srctree) objects.builtin modules.builtin $(srctree)/scripts/dwarf2ctf/dedup.blacklist $(srctree)/scripts/dwarf2ctf/member.blacklist $(ctf-filelist)
+      cmd_ctf = scripts/dwarf2ctf/dwarf2ctf $(CTF_FILENAME) $(srctree) objects.builtin modules_thick.builtin $(srctree)/scripts/dwarf2ctf/dedup.blacklist $(srctree)/scripts/dwarf2ctf/member.blacklist $(ctf-filelist)
 ctf-builtins := $(CTF_DEBUGDIR)/vmlinux
  ctf-modules := $(shell find $(CTF_DEBUGDIR) \( -name '*.ko' -o -name '*.ko.debug' \) -print)
 ctf-filelist := .ctf.filelist
