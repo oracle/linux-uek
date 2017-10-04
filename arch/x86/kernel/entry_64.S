@@ -550,7 +550,8 @@ ENTRY(save_paranoid)
 	jz	2f
 	orl	$2, %ebx
 	andq	$(~(X86_CR3_PCID_ASID_MASK | KAISER_SHADOW_PGD_OFFSET)), %rax
-	orq	x86_cr3_pcid_noflush, %rax
+	/* If PCID enabled, set X86_CR3_PCID_NOFLUSH_BIT */
+	ALTERNATIVE "", "bts $63, %rax", X86_FEATURE_PCID
 	movq	%rax, %cr3
 2:
 #endif
@@ -1821,7 +1822,7 @@ ENTRY(nmi)
 	/* %rax is saved above, so OK to clobber here */
 	ALTERNATIVE "jmp 2f", "movq %cr3, %rax", X86_FEATURE_KAISER
 	/* If PCID enabled, NOFLUSH now and NOFLUSH on return */
-	orq	x86_cr3_pcid_noflush, %rax
+	ALTERNATIVE "", "bts $63, %rax", X86_FEATURE_PCID
 	pushq	%rax
 	/* mask off "user" bit of pgd address and 12 PCID bits: */
 	andq	$(~(X86_CR3_PCID_ASID_MASK | KAISER_SHADOW_PGD_OFFSET)), %rax
@@ -2069,7 +2070,7 @@ end_repeat_nmi:
 	/* %rax is saved above, so OK to clobber here */
 	ALTERNATIVE "jmp 2f", "movq %cr3, %rax", X86_FEATURE_KAISER
 	/* If PCID enabled, NOFLUSH now and NOFLUSH on return */
-	orq	x86_cr3_pcid_noflush, %rax
+	ALTERNATIVE "", "bts $63, %rax", X86_FEATURE_PCID
 	pushq	%rax
 	/* mask off "user" bit of pgd address and 12 PCID bits: */
 	andq	$(~(X86_CR3_PCID_ASID_MASK | KAISER_SHADOW_PGD_OFFSET)), %rax
