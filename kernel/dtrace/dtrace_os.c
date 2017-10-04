@@ -464,6 +464,13 @@ ktime_t dtrace_gethrtime(void)
 }
 EXPORT_SYMBOL(dtrace_gethrtime);
 
+/* Needed for lockstat probes where we cannot include ktime.h */
+u64 dtrace_gethrtime_ns(void)
+{
+	return ktime_get_raw_fast_ns();
+}
+EXPORT_SYMBOL(dtrace_gethrtime_ns);
+
 void dtrace_vtime_enable(void)
 {
 	dtrace_vtime_state_t	old, new;

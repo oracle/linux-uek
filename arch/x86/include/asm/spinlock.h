@@ -9,6 +9,7 @@
 #include <linux/compiler.h>
 #include <asm/paravirt.h>
 #include <asm/bitops.h>
+#include <linux/sdt.h>
 
 /*
  * Your basic SMP spinlocks, allowing only a single CPU anywhere

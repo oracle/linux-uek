@@ -135,6 +135,7 @@ dtrace_mprovider_t sdt_providers[] = {
   { "proc", "__proc_", &stab_attr, DTRACE_PRIV_KERNEL, &sdt_pops, 0 },
   { "io", "__io_", &stab_attr, DTRACE_PRIV_KERNEL, &sdt_pops, 0 },
   { "ip", "__ip_", &stab_attr, DTRACE_PRIV_KERNEL, &sdt_pops, 0 },
+  { "lockstat", "__lockstat_", &stab_attr, DTRACE_PRIV_KERNEL, &sdt_pops, 0 },
   { "tcp", "__tcp_", &stab_attr, DTRACE_PRIV_KERNEL, &sdt_pops, 0 },
   { "udp", "__udp_", &stab_attr, DTRACE_PRIV_KERNEL, &sdt_pops, 0 },
   { "mib", "__mib_", &stab_attr, DTRACE_PRIV_KERNEL, &sdt_pops, 0 },

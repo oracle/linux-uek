@@ -7,6 +7,8 @@
 #ifndef _LINUX_SDT_INTERNAL_H_
 #define _LINUX_SDT_INTERNAL_H_
 
+#include <linux/types.h>
+
 /*
  * This counts the number of args.
  */
@@ -144,5 +146,8 @@
 #define __DTRACE_APPLY_16(m, def, x1, x2, x3, x4, x5, x6, x7, x8, ...) m(x1), m(x2), m(x3), m(x4), m(x5), m(x6), m(x7), m(x8)
 #define __DTRACE_APPLY_17(m, def, x1, x2, x3, x4, x5, x6, x7, x8, ...) m(x1), m(x2), m(x3), m(x4), m(x5), m(x6), m(x7), m(x8)
 #define __DTRACE_APPLY_18(m, def, x1, x2, x3, x4, x5, x6, x7, x8, ...) m(x1), m(x2), m(x3), m(x4), m(x5), m(x6), m(x7), m(x8)
+
+/* Needed for lockstat probes where we cannot include ktime.h */
+extern u64 dtrace_gethrtime_ns(void);
 
 #endif	/* _LINUX_SDT_INTERNAL_H */

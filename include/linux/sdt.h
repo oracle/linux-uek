@@ -169,4 +169,13 @@ typedef struct sdt_probedesc {
 #define	DTRACE_SRP(name, ...)						\
 	DTRACE_PROBE(__srp_##name, ## __VA_ARGS__);
 
+#define	DTRACE_LOCKSTAT_ENABLED(name)					\
+	DTRACE_PROBE_ENABLED(__lockstat_##name)
+
+#define	DTRACE_LOCKSTAT(name, ...)					\
+	DTRACE_PROBE(__lockstat_##name, ## __VA_ARGS__)
+
+#define	DTRACE_LOCKSTAT_RW_WRITER	0
+#define	DTRACE_LOCKSTAT_RW_READER	1
+
 #endif	/* _LINUX_SDT_H_ */

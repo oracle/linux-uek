@@ -28,6 +28,7 @@
 #include <linux/interrupt.h>
 #include <linux/debug_locks.h>
 #include <linux/osq_lock.h>
+#include <linux/sdt.h>
 
 #ifdef CONFIG_DEBUG_MUTEXES
 # include "mutex-debug.h"
@@ -239,6 +240,7 @@ void __sched mutex_lock(struct mutex *lock)
 
 	if (!__mutex_trylock_fast(lock))
 		__mutex_lock_slowpath(lock);
+	DTRACE_LOCKSTAT(adaptive__acquire, struct mutex *, lock);
 }
 EXPORT_SYMBOL(mutex_lock);
 #endif
@@ -608,10 +610,14 @@ static noinline void __sched __mutex_unlock_slowpath(struct mutex *lock, unsigne
 void __sched mutex_unlock(struct mutex *lock)
 {
 #ifndef CONFIG_DEBUG_LOCK_ALLOC
-	if (__mutex_unlock_fast(lock))
+	if (__mutex_unlock_fast(lock)) {
+		DTRACE_LOCKSTAT(adaptive__release, struct mutex *, lock);
 		return;
+	}
 #endif
+
 	__mutex_unlock_slowpath(lock, _RET_IP_);
+	DTRACE_LOCKSTAT(adaptive__release, struct mutex *, lock);
 }
 EXPORT_SYMBOL(mutex_unlock);
 
@@ -739,6 +745,8 @@ __mutex_lock_common(struct mutex *lock, long state, unsigned int subclass,
 		    struct lockdep_map *nest_lock, unsigned long ip,
 		    struct ww_acquire_ctx *ww_ctx, const bool use_ww_ctx)
 {
+	u64 spinstart = 0, spinend, spintotal = 0;
+	u64 waitstart, waitend, waittotal = 0;
 	struct mutex_waiter waiter;
 	bool first = false;
 	struct ww_mutex *ww;
@@ -758,9 +766,11 @@ __mutex_lock_common(struct mutex *lock, long state, unsigned int subclass,
 	if (__mutex_trylock(lock) ||
 	    mutex_optimistic_spin(lock, ww_ctx, use_ww_ctx, NULL)) {
 		/* got the lock, yay! */
+
 		lock_acquired(&lock->dep_map, ip);
 		if (use_ww_ctx && ww_ctx)
 			ww_mutex_set_context_fastpath(ww, ww_ctx);
+		DTRACE_LOCKSTAT(adaptive__acquire, struct mutex *, lock);
 		preempt_enable();
 		return 0;
 	}
@@ -803,6 +813,9 @@ __mutex_lock_common(struct mutex *lock, long state, unsigned int subclass,
 		__mutex_set_flag(lock, MUTEX_FLAG_WAITERS);
 
 	set_current_state(state);
+	if (DTRACE_LOCKSTAT_ENABLED(adaptive__spin))
+		spinstart = dtrace_gethrtime_ns();
+
 	for (;;) {
 		/*
 		 * Once we hold wait_lock, we're serialized against
@@ -830,7 +843,15 @@ __mutex_lock_common(struct mutex *lock, long state, unsigned int subclass,
 		}
 
 		spin_unlock(&lock->wait_lock);
-		schedule_preempt_disabled();
+
+		if (DTRACE_LOCKSTAT_ENABLED(adaptive__block)) {
+			waitstart = dtrace_gethrtime_ns();
+			schedule_preempt_disabled();
+			waitend = dtrace_gethrtime_ns();
+			if (waitend > waitstart)
+				waittotal += waitend - waitstart;
+		} else
+			schedule_preempt_disabled();
 
 		/*
 		 * ww_mutex needs to always recheck its position since its waiter
@@ -872,6 +893,19 @@ skip_wait:
 		ww_mutex_set_context_slowpath(ww, ww_ctx);
 
 	spin_unlock(&lock->wait_lock);
+
+	if (DTRACE_LOCKSTAT_ENABLED(adaptive__spin) && spinstart) {
+		spinend = dtrace_gethrtime_ns();
+		spintotal = (spinend > spinstart) ? (spinend - spinstart) : 0;
+		spintotal = (spintotal > waittotal) ?
+			(spintotal - waittotal) : 0;
+		DTRACE_LOCKSTAT(adaptive__spin, struct mutex *, lock,
+				uint64_t, spintotal);
+	}
+	if (DTRACE_LOCKSTAT_ENABLED(adaptive__block) && waittotal)
+		DTRACE_LOCKSTAT(adaptive__block, struct mutex *, lock,
+				uint64_t, waittotal);
+	DTRACE_LOCKSTAT(adaptive__acquire, struct mutex *, lock);
 	preempt_enable();
 	return 0;
 
@@ -882,6 +916,8 @@ err_early_backoff:
 	spin_unlock(&lock->wait_lock);
 	debug_mutex_free_waiter(&waiter);
 	mutex_release(&lock->dep_map, 1, ip);
+	DTRACE_LOCKSTAT(adaptive__acquire__error, struct mutex *, lock,
+			int, ret);
 	preempt_enable();
 	return ret;
 }
@@ -1096,8 +1132,10 @@ int __sched mutex_lock_interruptible(struct mutex *lock)
 {
 	might_sleep();
 
-	if (__mutex_trylock_fast(lock))
+	if (__mutex_trylock_fast(lock)) {
+		DTRACE_LOCKSTAT(adaptive__acquire, struct mutex *, lock);
 		return 0;
+	}
 
 	return __mutex_lock_interruptible_slowpath(lock);
 }
@@ -1108,8 +1146,10 @@ int __sched mutex_lock_killable(struct mutex *lock)
 {
 	might_sleep();
 
-	if (__mutex_trylock_fast(lock))
+	if (__mutex_trylock_fast(lock)) {
+		DTRACE_LOCKSTAT(adaptive__acquire, struct mutex *, lock);
 		return 0;
+	}
 
 	return __mutex_lock_killable_slowpath(lock);
 }
@@ -1178,8 +1218,10 @@ int __sched mutex_trylock(struct mutex *lock)
 {
 	bool locked = __mutex_trylock(lock);
 
-	if (locked)
+	if (locked) {
 		mutex_acquire(&lock->dep_map, 0, 1, _RET_IP_);
+		DTRACE_LOCKSTAT(adaptive__acquire, struct mutex *, lock);
+	}
 
 	return locked;
 }
