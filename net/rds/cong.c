@@ -138,7 +138,6 @@ static struct rds_cong_map *rds_cong_from_addr(__be32 addr)
 	unsigned long zp;
 	unsigned long i;
 	unsigned long flags;
-	gfp_t mask = GFP_KERNEL | __GFP_ZERO;
 
 	map = kzalloc(sizeof(struct rds_cong_map), GFP_KERNEL);
 	if (!map)
@@ -148,12 +147,12 @@ static struct rds_cong_map *rds_cong_from_addr(__be32 addr)
 	init_waitqueue_head(&map->m_waitq);
 	INIT_LIST_HEAD(&map->m_conn_list);
 
-	zp = __get_free_pages(mask, get_order(RDS_CONG_MAP_BYTES));
-	if (zp == 0)
-		goto out;
-
-	for (i = 0; i < RDS_CONG_MAP_PAGES; i++)
-		map->m_page_addrs[i] = zp + i * RDS_CONG_PAGE_SIZE;
+	for (i = 0; i < RDS_CONG_MAP_PAGES; i++) {
+		zp = get_zeroed_page(GFP_KERNEL);
+		if (zp == 0)
+			goto out;
+		map->m_page_addrs[i] = zp;
+	}
 
 	spin_lock_irqsave(&rds_cong_lock, flags);
 	ret = rds_cong_tree_walk(addr, map);
@@ -166,9 +165,8 @@ static struct rds_cong_map *rds_cong_from_addr(__be32 addr)
 
 out:
 	if (map) {
-		if (zp)
-			__free_pages(virt_to_page(map->m_page_addrs[0]),
-				     get_order(RDS_CONG_MAP_BYTES));
+		for (i = 0; i < RDS_CONG_MAP_PAGES && map->m_page_addrs[i]; i++)
+			free_page(map->m_page_addrs[i]);
 		kfree(map);
 	}
 
@@ -180,7 +178,8 @@ out:
 static struct rds_message *rds_cong_map_pages(unsigned long *page_addrs, unsigned int total_len)
 {
 	struct rds_message *rm;
-	int num_sgs = RDS_CONG_MAP_SGE;
+	unsigned int i;
+	int num_sgs = ceil(total_len, RDS_CONG_PAGE_SIZE);
 	int extra_bytes = num_sgs * sizeof(struct scatterlist);
 
 	rm = rds_message_alloc(extra_bytes, GFP_NOWAIT);
@@ -189,11 +188,15 @@ static struct rds_message *rds_cong_map_pages(unsigned long *page_addrs, unsigne
 
 	set_bit(RDS_MSG_PAGEVEC, &rm->m_flags);
 	rm->m_inc.i_hdr.h_len = cpu_to_be32(total_len);
-	rm->data.op_nents = RDS_CONG_MAP_SGE;
+	rm->data.op_nents = num_sgs;
 	rm->data.op_sg = rds_message_alloc_sgs(rm, num_sgs);
 
-	sg_set_page(&rm->data.op_sg[0], virt_to_page(page_addrs[0]),
-		    total_len, 0);
+	for (i = 0; i < rm->data.op_nents; i++) {
+		sg_set_page(&rm->data.op_sg[i],
+			    virt_to_page(page_addrs[i]),
+			    RDS_CONG_PAGE_SIZE, 0);
+	}
+
 	return rm;
 }
 
@@ -400,14 +403,14 @@ void rds_cong_exit(void)
 {
 	struct rb_node *node;
 	struct rds_cong_map *map;
+	unsigned long i;
 
 	while ((node = rb_first(&rds_cong_tree))) {
 		map = rb_entry(node, struct rds_cong_map, m_rb_node);
 		rdsdebug("freeing map %p\n", map);
 		rb_erase(&map->m_rb_node, &rds_cong_tree);
-		if (map->m_page_addrs[0])
-			__free_pages(virt_to_page(map->m_page_addrs[0]),
-				     get_order(RDS_CONG_MAP_BYTES));
+		for (i = 0; i < RDS_CONG_MAP_PAGES && map->m_page_addrs[i]; i++)
+			free_page(map->m_page_addrs[i]);
 		kfree(map);
 	}
 }
