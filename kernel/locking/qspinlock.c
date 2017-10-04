@@ -294,16 +294,20 @@ static __always_inline u32  __pv_wait_head_or_lock(struct qspinlock *lock,
 void queued_spin_lock_slowpath(struct qspinlock *lock, u32 val)
 {
 	struct mcs_spinlock *prev, *next, *node;
+	u64 spinstart = 0, spinend, spintime;
 	u32 new, old, tail;
 	int idx;
 
 	BUILD_BUG_ON(CONFIG_NR_CPUS >= (1U << _Q_TAIL_CPU_BITS));
 
+	if (DTRACE_LOCKSTAT_ENABLED(spin__spin))
+		spinstart = dtrace_gethrtime_ns();
+
 	if (pv_enabled())
 		goto queue;
 
 	if (virt_spin_lock(lock))
-		return;
+		goto out;
 
 	/*
 	 * wait for in-progress pending->locked hand-overs
@@ -347,7 +351,7 @@ void queued_spin_lock_slowpath(struct qspinlock *lock, u32 val)
 	 * we won the trylock
 	 */
 	if (new == _Q_LOCKED_VAL)
-		return;
+		goto out;
 
 	/*
 	 * we're pending, wait for the owner to go away.
@@ -367,7 +371,7 @@ void queued_spin_lock_slowpath(struct qspinlock *lock, u32 val)
 	 * *,1,0 -> *,0,1
 	 */
 	clear_pending_set_locked(lock);
-	return;
+	goto out;
 
 	/*
 	 * End of pending bit optimistic spinning and beginning of MCS
@@ -504,6 +508,17 @@ release:
 	 * release the node
 	 */
 	__this_cpu_dec(mcs_nodes[0].count);
+
+	/*
+	 * Fire spin-spin probe to note time waiting for a lock.
+	 */
+out:
+	if (DTRACE_LOCKSTAT_ENABLED(spin__spin)) {
+		spinend = dtrace_gethrtime_ns();
+		spintime = spinend > spinstart ? spinend - spinstart : 0;
+		DTRACE_LOCKSTAT(spin__spin, spinlock_t *, lock,
+				uint64_t, spintime);
+	}
 }
 EXPORT_SYMBOL(queued_spin_lock_slowpath);
 
