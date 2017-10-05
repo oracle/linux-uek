@@ -122,6 +122,7 @@ struct nvme_ctrl {
 	u8 event_limit;
 	u8 vwc;
 	u32 vs;
+	unsigned int shutdown_timeout;
 	bool subsystem;
 	unsigned long quirks;
 	struct work_struct scan_work;
