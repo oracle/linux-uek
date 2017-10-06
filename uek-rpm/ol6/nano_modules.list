@@ -65,6 +65,13 @@ kernel/crypto/crypto_null.ko
 kernel/crypto/blowfish_common.ko
 kernel/crypto/twofish_common.ko
 kernel/crypto/crc32.ko
+kernel/dtrace/fasttrap.ko
+kernel/dtrace/fbt.ko
+kernel/dtrace/dtrace.ko
+kernel/dtrace/dt_test.ko
+kernel/dtrace/systrace.ko
+kernel/dtrace/sdt.ko
+kernel/dtrace/profile.ko
 kernel/fs/fat/msdos.ko
 kernel/fs/fat/vfat.ko
 kernel/fs/fat/fat.ko
@@ -162,6 +169,7 @@ kernel/drivers/crypto/qat/qat_common/intel_qat.ko
 kernel/drivers/crypto/padlock-sha.ko
 kernel/drivers/target/target_core_mod.ko
 kernel/drivers/target/target_core_pscsi.ko
+kernel/drivers/target/target_core_user.ko
 kernel/drivers/target/tcm_fc/tcm_fc.ko
 kernel/drivers/target/iscsi/iscsi_target_mod.ko
 kernel/drivers/target/target_core_file.ko
