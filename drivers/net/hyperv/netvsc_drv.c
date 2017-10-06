@@ -1260,8 +1260,15 @@ netvsc_get_rss_hash_opts(struct net_device_context *ndc,
 
 	switch (info->flow_type) {
 	case TCP_V4_FLOW:
+		if (ndc->l4_hash & HV_TCP4_L4HASH)
+			info->data |= l4_flag;
+
+		break;
+
 	case TCP_V6_FLOW:
-		info->data |= l4_flag;
+		if (ndc->l4_hash & HV_TCP6_L4HASH)
+			info->data |= l4_flag;
+
 		break;
 
 	case UDP_V4_FLOW:
@@ -1314,6 +1321,14 @@ static int netvsc_set_rss_hash_opts(struct net_device_context *ndc,
 	if (info->data == (RXH_IP_SRC | RXH_IP_DST |
 			   RXH_L4_B_0_1 | RXH_L4_B_2_3)) {
 		switch (info->flow_type) {
+		case TCP_V4_FLOW:
+			ndc->l4_hash |= HV_TCP4_L4HASH;
+			break;
+
+		case TCP_V6_FLOW:
+			ndc->l4_hash |= HV_TCP6_L4HASH;
+			break;
+
 		case UDP_V4_FLOW:
 			ndc->l4_hash |= HV_UDP4_L4HASH;
 			break;
@@ -1331,6 +1346,14 @@ static int netvsc_set_rss_hash_opts(struct net_device_context *ndc,
 
 	if (info->data == (RXH_IP_SRC | RXH_IP_DST)) {
 		switch (info->flow_type) {
+		case TCP_V4_FLOW:
+			ndc->l4_hash &= ~HV_TCP4_L4HASH;
+			break;
+
+		case TCP_V6_FLOW:
+			ndc->l4_hash &= ~HV_TCP6_L4HASH;
+			break;
+
 		case UDP_V4_FLOW:
 			ndc->l4_hash &= ~HV_UDP4_L4HASH;
 			break;
