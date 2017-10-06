@@ -628,6 +628,7 @@ Summary: The Linux kernel
 Group: System Environment/Kernel
 License: GPLv2
 %kernel_reqprovconf -r
+Obsoletes: kernel-smp
 %description -n kernel-ueknano
 The kernel package contains the Linux kernel (vmlinuz), the core of any
 Linux operating system.  The kernel handles the basic functions
@@ -1645,6 +1646,17 @@ fi\
 /sbin/new-kernel-pkg --package kernel-ueknano --install %{KVERREL} || exit $?\
 ln -sf /lib/firmware/%{rpmversion}-%{pkg_release} /lib/firmware/%{rpmversion}-%{pkg_release}.%{_target_cpu}\
 %{nil}
+
+#
+# When uninstalling kernel-ueknano package, the modules get removed but the parent
+# directories are removed automatically as they are not tracked by rpm. This post uninstall scriptlet
+# cleanups the /lib/modules/<version>/kernel and its subdirectories.
+#
+%ifarch x86_64
+%postun -n kernel-ueknano
+       rm -rf /lib/modules/%{KVERREL}
+%{nil}
+%endif
 
 #
 # This macro defines a %%preun script for a kernel package.
