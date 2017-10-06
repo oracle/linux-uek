@@ -319,7 +319,7 @@ struct queue_limits {
    * allow extending the structure while preserving ABI.
    */
 	UEK_KABI_USE2(1, unsigned int max_dev_sectors, unsigned int unuse)
-        UEK_KABI_RESERVED(2)
+        UEK_KABI_USE(2, unsigned long virt_boundary_mask)
 };
 
 struct request_queue {
@@ -1185,6 +1185,7 @@ static inline struct request *blk_map_queue_find_tag(struct blk_queue_tag *bqt,
 
 #define BLKDEV_DISCARD_SECURE  0x01    /* secure discard */
 
+extern void blk_queue_virt_boundary(struct request_queue *, unsigned long);
 extern int blkdev_issue_flush(struct block_device *, gfp_t, sector_t *);
 extern int blkdev_issue_discard(struct block_device *bdev, sector_t sector,
 		sector_t nr_sects, gfp_t gfp_mask, unsigned long flags);
@@ -1228,6 +1229,11 @@ static inline unsigned long queue_bounce_pfn(struct request_queue *q)
 static inline unsigned long queue_segment_boundary(struct request_queue *q)
 {
 	return q->limits.seg_boundary_mask;
+}
+
+static inline unsigned long queue_virt_boundary(struct request_queue *q)
+{
+	return q->limits.virt_boundary_mask;
 }
 
 static inline unsigned int queue_max_sectors(struct request_queue *q)
