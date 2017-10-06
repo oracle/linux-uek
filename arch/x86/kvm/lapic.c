@@ -1455,6 +1455,32 @@ static void start_sw_tscdeadline(struct kvm_lapic *apic)
 	local_irq_restore(flags);
 }
 
+
+static void update_target_expiration(struct kvm_lapic *apic, uint32_t old_divisor)
+{
+	ktime_t now, remaining;
+	u64 ns_remaining_old, ns_remaining_new;
+
+	apic->lapic_timer.period = (u64)kvm_lapic_get_reg(apic, APIC_TMICT)
+		* APIC_BUS_CYCLE_NS * apic->divide_count;
+	limit_periodic_timer_frequency(apic);
+
+	now = ktime_get();
+	remaining = ktime_sub(apic->lapic_timer.target_expiration, now);
+	if (ktime_to_ns(remaining) < 0)
+		remaining = 0;
+
+	ns_remaining_old = ktime_to_ns(remaining);
+	ns_remaining_new = mul_u64_u32_div(ns_remaining_old,
+	                                   apic->divide_count, old_divisor);
+
+	apic->lapic_timer.tscdeadline +=
+		nsec_to_cycles(apic->vcpu, ns_remaining_new) -
+		nsec_to_cycles(apic->vcpu, ns_remaining_old);
+	apic->lapic_timer.target_expiration = ktime_add_ns(now, ns_remaining_new);
+}
+
+
 static bool set_target_expiration(struct kvm_lapic *apic)
 {
 	ktime_t now;
