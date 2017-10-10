@@ -166,27 +166,30 @@ void rds_ib_init_frag(unsigned int version)
 }
 
 /* Update the RDS IB frag size */
-static void rds_ib_set_frag_size(struct rds_connection *conn, u16 dp_frag)
+static u16 rds_ib_set_frag_size(struct rds_connection *conn, u16 dp_frag)
 {
 	struct rds_ib_connection *ic = conn->c_transport_data;
 	u16 current_frag = ic->i_frag_sz;
 	u16 frag;
 
-	if (ib_init_frag_size != dp_frag) {
-		frag = min_t(unsigned int, dp_frag, ib_init_frag_size);
+	frag = min_t(unsigned int, ib_init_frag_size,
+		     PAGE_ALIGN((ic->i_hca_sge - 1) * PAGE_SIZE));
+
+	if (frag != dp_frag) {
+		frag = min_t(unsigned int, dp_frag, frag);
 		ic->i_frag_sz = rds_ib_get_frag(conn->c_version, frag);
 	} else {
-		ic->i_frag_sz = ib_init_frag_size;
+		ic->i_frag_sz = frag;
 	}
 
-	ic->i_frag_pages =  ic->i_frag_sz / PAGE_SIZE;
-	if (!ic->i_frag_pages)
-		ic->i_frag_pages = 1;
+	ic->i_frag_pages =  ceil(ic->i_frag_sz, PAGE_SIZE);
 
 	pr_debug("RDS/IB: conn <%pI4, %pI4,%d>, Frags <init,ic,dp>: {%d,%d,%d}, updated {%d -> %d}\n",
 		 &conn->c_laddr, &conn->c_faddr, conn->c_tos,
 		 ib_init_frag_size / SZ_1K, ic->i_frag_sz / SZ_1K, dp_frag /  SZ_1K,
 		 current_frag / SZ_1K, ic->i_frag_sz / SZ_1K);
+
+	return ic->i_frag_sz;
 }
 
 /* Init per IC frag size */
@@ -775,6 +778,7 @@ static int rds_ib_setup_qp(struct rds_connection *conn)
 		qp_attr.srq = rds_ibdev->srq->s_srq;
 	}
 
+	ic->i_hca_sge = rds_ibdev->max_sge;
 	/*
 	 * XXX this can fail if max_*_wr is too large?  Are we supposed
 	 * to back off until we get a value that the hardware can support?
@@ -905,6 +909,7 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 	u32 version;
 	int err = 1, destroy = 1;
 	int acl_ret = 0;
+	u16 frag;
 
 	/* Check whether the remote protocol version matches ours. */
 	version = rds_ib_protocol_compatible(event);
@@ -946,7 +951,6 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 	}
 
 	rds_ib_set_protocol(conn, version);
-	rds_ib_set_frag_size(conn, be16_to_cpu(dp->dp_frag_sz));
 
 	conn->c_acl_en = acl_ret;
 	conn->c_acl_init = 1;
@@ -1038,11 +1042,12 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 		rds_conn_drop(conn, DR_IB_PAS_SETUP_QP_FAIL);
 		goto out;
 	}
+	frag = rds_ib_set_frag_size(conn, be16_to_cpu(dp->dp_frag_sz));
 
 	rds_ib_cm_fill_conn_param(conn, &conn_param, &dp_rep, version,
 		event->param.conn.responder_resources,
 		event->param.conn.initiator_depth,
-		ib_init_frag_size);
+		frag);
 
 	/* rdma_accept() calls rdma_reject() internally if it fails */
 	err = rdma_accept(cm_id, &conn_param);
@@ -1092,6 +1097,7 @@ int rds_ib_cm_initiate_connect(struct rdma_cm_id *cm_id)
 	struct rds_ib_connection *ic = conn->c_transport_data;
 	struct rdma_conn_param conn_param;
 	struct rds_ib_connect_private dp;
+	u16 frag;
 	int ret;
 
 #ifdef CONFIG_RDS_ACL
@@ -1133,10 +1139,10 @@ int rds_ib_cm_initiate_connect(struct rdma_cm_id *cm_id)
 		rds_conn_drop(conn, DR_IB_ACT_SETUP_QP_FAIL);
 		goto out;
 	}
-
+	frag = rds_ib_set_frag_size(conn, ib_init_frag_size);
 	rds_ib_cm_fill_conn_param(conn, &conn_param, &dp,
-				conn->c_proposed_version, UINT_MAX, UINT_MAX,
-				ib_init_frag_size);
+				  conn->c_proposed_version, UINT_MAX, UINT_MAX,
+				  frag);
 	ret = rdma_connect(cm_id, &conn_param);
 	if (ret) {
 		pr_warn("RDS/IB: rdma_connect failed (%d)\n", ret);
