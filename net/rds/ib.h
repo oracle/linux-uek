@@ -226,6 +226,7 @@ struct rds_ib_connection {
 	u16			i_frag_cache_sz;
 	u8			i_frag_pages;
 	u8			i_flags;
+	u16			i_hca_sge;
 
 	/* Batched completions */
 	unsigned int		i_unsignaled_wrs;
