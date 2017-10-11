@@ -476,7 +476,9 @@ struct netdev_queue *netdev_pick_tx(struct net_device *dev,
 	int queue_index = 0;
 
 #ifdef CONFIG_XPS
-	if (skb->sender_cpu == 0)
+	u32 sender_cpu = skb->sender_cpu - 1;
+
+	 if (sender_cpu >= (u32)NR_CPUS)	
 		skb->sender_cpu = raw_smp_processor_id() + 1;
 #endif
 
