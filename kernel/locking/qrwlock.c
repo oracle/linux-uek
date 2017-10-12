@@ -33,11 +33,11 @@ struct __qrwlock {
 		atomic_t cnts;
 		struct {
 #ifdef __LITTLE_ENDIAN
-			u8 wmode;	/* Writer mode   */
-			u8 rcnts[3];	/* Reader counts */
+			u8 wlocked;	/* Locked for write? */
+			u8 __lstate[3];
 #else
-			u8 rcnts[3];	/* Reader counts */
-			u8 wmode;	/* Writer mode   */
+			u8 __lstate[3];
+			u8 wlocked;	/* Locked for write? */
 #endif
 		};
 	};
@@ -64,8 +64,7 @@ void queued_read_lock_slowpath(struct qrwlock *lock)
 		 * so spin with ACQUIRE semantics until the lock is available
 		 * without waiting in the queue.
 		 */
-		atomic_cond_read_acquire(&lock->cnts, (VAL & _QW_WMASK)
-					 != _QW_LOCKED);
+		atomic_cond_read_acquire(&lock->cnts, !(VAL & _QW_LOCKED));
 		goto done;
 	}
 	atomic_sub(_QR_BIAS, &lock->cnts);
@@ -81,7 +80,7 @@ void queued_read_lock_slowpath(struct qrwlock *lock)
 	 * that accesses can't leak upwards out of our subsequent critical
 	 * section in the case that the lock is currently held for write.
 	 */
-	atomic_cond_read_acquire(&lock->cnts, (VAL & _QW_WMASK) != _QW_LOCKED);
+	atomic_cond_read_acquire(&lock->cnts, !(VAL & _QW_LOCKED));
 
 	/*
 	 * Signal the next one in queue to become queue head
@@ -115,21 +114,10 @@ void queued_write_lock_slowpath(struct qrwlock *lock)
 	    (atomic_cmpxchg_acquire(&lock->cnts, 0, _QW_LOCKED) == 0))
 		goto unlock;
 
-	/*
-	 * Set the waiting flag to notify readers that a writer is pending,
-	 * or wait for a previous writer to go away.
-	 */
-	for (;;) {
-		struct __qrwlock *l = (struct __qrwlock *)lock;
+	/* Set the waiting flag to notify readers that a writer is pending */
+	atomic_add(_QW_WAITING, &lock->cnts);
 
-		if (!READ_ONCE(l->wmode) &&
-		   (cmpxchg_relaxed(&l->wmode, 0, _QW_WAITING) == 0))
-			break;
-
-		cpu_relax();
-	}
-
-	/* When no more readers, set the locked flag */
+	/* When no more readers or writers, set the locked flag */
 	do {
 		atomic_cond_read_acquire(&lock->cnts, VAL == _QW_WAITING);
 	} while (atomic_cmpxchg_relaxed(&lock->cnts, _QW_WAITING,
