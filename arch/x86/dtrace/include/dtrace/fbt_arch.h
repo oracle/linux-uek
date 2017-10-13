@@ -22,7 +22,7 @@
 #ifndef _X86_64_FBT_ARCH_H
 #define _X86_64_FBT_ARCH_H
 
-#define FBT_AFRAMES	9
+#define FBT_AFRAMES	7
 
 typedef struct fbt_probe {
         char			*fbp_name;	/* name of probe */
