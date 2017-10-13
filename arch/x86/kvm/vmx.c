@@ -1922,6 +1922,8 @@ static void vmx_vcpu_load(struct kvm_vcpu *vcpu, int cpu)
 	if (per_cpu(current_vmcs, cpu) != vmx->loaded_vmcs->vmcs) {
 		per_cpu(current_vmcs, cpu) = vmx->loaded_vmcs->vmcs;
 		vmcs_load(vmx->loaded_vmcs->vmcs);
+		if (boot_cpu_has(X86_FEATURE_SPEC_CTRL))
+			native_wrmsrl(MSR_IA32_PRED_CMD, FEATURE_SET_IBPB);
 	}
 
 	if (vmx->loaded_vmcs->cpu != cpu) {
