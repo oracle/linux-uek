@@ -16,6 +16,7 @@
  */
 
 #include <linux/dtrace_cpu.h>
+#include <asm/unwind.h>
 
 #include "dtrace.h"
 
@@ -124,15 +125,23 @@ DTRACE_FUWORD(64)
 
 uint64_t dtrace_getarg(int argno, int aframes)
 {
-	unsigned long	bp;
-	uint64_t	*st;
-	uint64_t	val;
-	int		i;
+	unsigned long		bp;
+	uint64_t		*st;
+	uint64_t		val;
+	int			i;
+	struct unwind_state	state;
 
-	asm volatile("movq %%rbp,%0" : "=m"(bp));
+	if (this_cpu_core->cpu_dtrace_regs)
+		bp = this_cpu_core->cpu_dtrace_regs->bp;
+	else {
+		unwind_start(&state, current, NULL, NULL);
+		for (i = 0; !unwind_done(&state) && i < aframes;
+		     unwind_next_frame(&state)) {
+			i++;
+		}
 
-	for (i = 0; i < aframes; i++)
-		bp = *((unsigned long *)bp);
+		bp = (unsigned long)state.bp;
+	}
 
 	ASSERT(argno >= 5);
 
