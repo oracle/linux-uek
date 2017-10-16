@@ -167,6 +167,11 @@ bpf_ctx_record_field_size(struct bpf_insn_access_aux *aux, u32 size)
 	aux->ctx_field_size = size;
 }
 
+struct bpf_prog_ops {
+	int (*test_run)(struct bpf_prog *prog, const union bpf_attr *kattr,
+			union bpf_attr __user *uattr);
+};
+
 struct bpf_verifier_ops {
 	/* return eBPF function prototype for verification */
 	const struct bpf_func_proto *(*get_func_proto)(enum bpf_func_id func_id);
@@ -182,8 +187,6 @@ struct bpf_verifier_ops {
 				  const struct bpf_insn *src,
 				  struct bpf_insn *dst,
 				  struct bpf_prog *prog, u32 *target_size);
-	int (*test_run)(struct bpf_prog *prog, const union bpf_attr *kattr,
-			union bpf_attr __user *uattr);
 };
 
 struct bpf_prog_aux {
@@ -194,7 +197,8 @@ struct bpf_prog_aux {
 	u32 id;
 	struct latch_tree_node ksym_tnode;
 	struct list_head ksym_lnode;
-	const struct bpf_verifier_ops *ops;
+	UEK_KABI_REPLACE(const struct bpf_verifier_ops *ops,
+			 const struct bpf_prog_ops *ops)
 	struct bpf_map **used_maps;
 	struct bpf_prog *prog;
 	struct user_struct *user;
@@ -202,6 +206,7 @@ struct bpf_prog_aux {
 		struct work_struct work;
 		struct rcu_head	rcu;
 	};
+	UEK_KABI_EXTEND(const struct bpf_verifier_ops *vops)
 };
 
 struct bpf_array {
@@ -288,8 +293,9 @@ int bpf_prog_array_copy_to_user(struct bpf_prog_array __rcu *progs,
 #ifdef CONFIG_BPF_SYSCALL
 DECLARE_PER_CPU(int, bpf_prog_active);
 
-#define BPF_PROG_TYPE(_id, _ops) \
-	extern const struct bpf_verifier_ops _ops;
+#define BPF_PROG_TYPE(_id, _name) \
+	extern const struct bpf_prog_ops _name ## _prog_ops; \
+	extern const struct bpf_verifier_ops _name ## _verifier_ops;
 #define BPF_MAP_TYPE(_id, _ops) \
 	extern const struct bpf_map_ops _ops;
 #include <linux/bpf_types.h>
