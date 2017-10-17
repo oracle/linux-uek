@@ -2315,7 +2315,7 @@ static int nvme_trans_test_unit_ready(struct nvme_ns *ns,
 					struct sg_io_hdr *hdr,
 					u8 *cmd)
 {
-	if (nvme_ctrl_ready(ns->ctrl))
+	if (!nvme_ctrl_ready(ns->ctrl))
 		return nvme_trans_completion(hdr, SAM_STAT_CHECK_CONDITION,
 					    NOT_READY, SCSI_ASC_LUN_NOT_READY,
 					    SCSI_ASCQ_CAUSE_NOT_REPORTABLE);
