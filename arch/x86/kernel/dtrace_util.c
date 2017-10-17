@@ -64,6 +64,7 @@ int dtrace_die_notifier(struct notifier_block *nb, unsigned long val,
 			void *args)
 {
 	struct die_args		*dargs = args;
+	int			orig_trapnr = 0;
 
 	switch (val) {
 	case DIE_PAGE_FAULT: {
@@ -103,9 +104,7 @@ int dtrace_die_notifier(struct notifier_block *nb, unsigned long val,
 			if (!DTRACE_CPUFLAG_ISSET(CPU_DTRACE_NOFAULT))
 				return NOTIFY_DONE;
 
-			DTRACE_CPUFLAG_SET(CPU_DTRACE_ILLOP);
-
-			dargs->regs->ip += 1;
+			dtrace_handle_badaddr(dargs->regs);
 
 			return NOTIFY_OK | NOTIFY_STOP_MASK;
 		}
@@ -114,6 +113,7 @@ int dtrace_die_notifier(struct notifier_block *nb, unsigned long val,
 		 * ... and instead treat them as the SDT probe point traps that
 		 * they are.
 		 */
+		orig_trapnr = dargs->trapnr;
 		dargs->trapnr = 6;
 	}
 	case DIE_TRAP: {
@@ -150,13 +150,17 @@ int dtrace_die_notifier(struct notifier_block *nb, unsigned long val,
 		default:
 			/*
 			 * This must not have been a trap triggered from a
-			 * probe point.  Re-adjust the instruction pointer
-			 * and let someone else deal with it...
+			 * probe point.  Let someone else deal with it...
+			 *
+			 * If we got here because of a GPF that we thought
+			 * was a UD (due to a bug in some versions of Xen),
+			 * undo our change to dargs->trapnr.
 			 */
-			dargs->regs->ip++;
-		}
+			if (unlikely(orig_trapnr))
+				dargs->trapnr = orig_trapnr;
 
-		return NOTIFY_DONE;
+			return NOTIFY_DONE;
+		}
 	}
 	case DIE_INT3: {
 		dtrace_invop_hdlr_t	*hdlr;
