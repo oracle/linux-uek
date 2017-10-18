@@ -1318,7 +1318,8 @@ endif # CONFIG_MODULES
 # exclusively).
 
 modules_thick.builtin: modules.builtin vmlinux_prereq $(vmlinux-deps)
-	$(Q)(cat modules.builtin | sed 's,^kernel/,,; s,\.ko$$,.o,' | \
+	$(Q)(rm -f modules_thick.builtin; \
+	cat modules.builtin | sed 's,^kernel/,,; s,\.ko$$,.o,' | \
 			while read -r module; do \
 		if ! [[ `file $$module` =~ ' ELF ' ]]; then \
 			ar t $$module | sed 's,^,'"$$module:," >> modules_thick.builtin; \
