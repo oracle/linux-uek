@@ -3652,6 +3652,7 @@ static ctf_id_t assemble_ctf_su_member(const char *module_name,
 	Dwarf_Attribute type_attr;
 	Dwarf_Die type_die;
 	Dwarf_Die cu_die;
+	die_override_t *o;
 	ctf_memb_count_t *member_count;
 	const char *struct_name = dwarf_diename(parent_die);
 
@@ -3707,12 +3708,8 @@ static ctf_id_t assemble_ctf_su_member(const char *module_name,
 	 * DW_AT_data_bit_offset is the simple case.  DW_AT_data_member_location
 	 * is trickier, and, alas, the DWARF2 variation is the complex one.
 	 */
-	if (private_dwarf_hasattr(die, DW_AT_data_bit_offset)) {
-		offset = private_dwarf_udata(die, DW_AT_data_bit_offset,
-					     overrides);
-		bit_offset = offset % 8;
-		offset = offset / 8 * 8;
-	}
+	if (private_dwarf_hasattr(die, DW_AT_data_bit_offset))
+		offset = private_dwarf_udata(die, DW_AT_data_bit_offset, NULL);
 	else if (private_dwarf_hasattr(die, DW_AT_data_member_location)) {
 		Dwarf_Attribute location_attr;
 
@@ -3821,19 +3818,28 @@ static ctf_id_t assemble_ctf_su_member(const char *module_name,
 			bit_offset = bit;
 		}
 
-	} else { /* No offset beyond any override.  */
-		die_override_t *o;
+	}
 
-		o = private_find_override(die, DW_AT_data_bit_offset,
-					  overrides);
-		if (o) {
-			if (o->op == DIE_OVERRIDE_REPLACE)
-				offset = o->value;
-			else
-				offset += o->value;
-		}
-		bit_offset = offset % 8;
-		offset = offset / 8 * 8;
+	/*
+	 * Handle the offset value override.  It does not matter which method
+	 * has been used to get the value.  At this point offset is always
+	 * the bit distance of the member from the structure/union start.
+	 *
+	 * The DW_AT_data_bit_offset override is always used to pass the offset
+	 * around, so that we don't need to add special override handling for
+	 * various forms of the DW_AT_data_member_location as a special case.
+	 * This is safe as it is not possible to have both attributes attached
+	 * to the same DIE per the DWARF4 standard, and if we have one attached
+	 * as an override to a DIE that has the other, we will only ever need to
+	 * use one (since no DIE can be both an unnamed struct/union and a
+	 * bitfield at the same time).
+	 */
+	if ((o = private_find_override(die, DW_AT_data_bit_offset,
+				       overrides)) != NULL) {
+		if (o->op == DIE_OVERRIDE_REPLACE)
+			offset = o->value;
+		else
+			offset += o->value;
 	}
 
 	/*
@@ -3862,6 +3868,12 @@ static ctf_id_t assemble_ctf_su_member(const char *module_name,
 		if (dwarf_child(&type_die, &child_die) < 0)
 			return parent_ctf_id;
 
+		/*
+		 * Add override that will adjust offset of the anonymous
+		 * struct/union members during inlining.  The bit_offset is
+		 * ignored here as it is not expected that a nested
+		 * structure/union will start on a non-byte-aligned boundary.
+		 */
 		die_override_t o[] = {{ dwarf_tag(&child_die),
 					DW_AT_data_bit_offset,
 					DIE_OVERRIDE_ADD,
