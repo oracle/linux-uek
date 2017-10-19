@@ -67,6 +67,12 @@ static const char *trace;
 static void run(char *output, int standalone);
 
 /*
+ * Whether we are deduplicating.  We do not deduplicate if run over external
+ * modules.
+ */
+static int deduplicating;
+
+/*
  * A fully descriptive CTF type ID: both file and type ID in one place.
  */
 typedef struct ctf_full_id {
@@ -153,17 +159,8 @@ static size_t object_names_cnt;
 static void init_object_names(const char *object_names_file);
 
 /*
- * The names of module object files presently built in to the kernel.
- *
- * If this is NULL, an external module is being processed, and type
- * deduplication is disabled.
- */
-static char **builtin_modules;
-static size_t builtin_modules_cnt;
-
-/*
- * Populate builtin_modules and object_to_module from the objects.builtin and
- * modules.builtin file.
+ * Populate and object_to_module from the objects.builtin and modules.builtin
+ * file.
  */
 static void init_builtin(const char *builtin_objects_file,
 			 const char *builtin_module_file);
@@ -204,7 +201,7 @@ static GHashTable *variable_blacklist;
 
 /*
  * A mapping from object file name to the name of the module that translation
- * unit is part of.  Populated as part of builtin_modules population.
+ * unit is part of.
  *
  * Actual, real, on-disk .ko modules do not appear here, because the translation
  * is trivial for them.
@@ -215,7 +212,7 @@ static GHashTable *object_to_module;
  * Initialize a CTF type table, and possibly fill it with those special types
  * that appear in CTF but not in DWARF (such as 'void').  (This filling happens
  * only for the type table named "shared_ctf", unless deduplication is turned
- * off, signified by the builtin_modules list being NULL.)
+ * off.)
  *
  * If this is a local type table, and deduplication is active, make the global
  * type table its parent.
@@ -842,6 +839,7 @@ int main(int argc, char *argv[])
 		builtin_objects_file = argv[3];
 		builtin_module_file = argv[4];
 		member_blacklist_file = argv[5];
+		deduplicating = 1;
 
 		init_builtin(builtin_objects_file, builtin_module_file);
 		init_member_blacklist(member_blacklist_file, srcdir);
@@ -854,6 +852,7 @@ int main(int argc, char *argv[])
 		size_t all_object_names_cnt;
 		size_t i;
 
+		deduplicating = 0;
 		init_object_names(argv[3]);
 
 		/*
@@ -906,7 +905,7 @@ static void run(char *output, int standalone)
 
 	dw_ctf_trace("Initializing...\n");
 
-	if (builtin_modules != NULL)
+	if (deduplicating)
 		init_ctf_table("shared_ctf");
 
 	scan_duplicates();
@@ -984,8 +983,7 @@ static void init_object_names(const char *object_names_file)
 }
 
 /*
- * Populate builtin_modules and object_to_module from the objects.builtin and
- * modules.builtin file.
+ * Populate object_to_module from the objects.builtin and modules.builtin file.
  */
 static void init_builtin(const char *builtin_objects_file,
 			 const char *builtin_module_file)
@@ -999,7 +997,7 @@ static void init_builtin(const char *builtin_objects_file,
 
 	/*
 	 * Iterate over all modules in modules_thick.builtin and add each to
-	 * builtin_modules and object_to_module.
+	 * object_to_module.
 	 */
 	i = modules_thick_iter_new(builtin_module_file);
 	if (i == NULL) {
@@ -1009,11 +1007,6 @@ static void init_builtin(const char *builtin_objects_file,
 
 	while ((module_paths = modules_thick_iter_next(i, &module_name)) != NULL) {
 		size_t j;
-
-		builtin_modules = realloc(builtin_modules,
-					  ++builtin_modules_cnt *
-					  sizeof (char *));
-		builtin_modules[builtin_modules_cnt - 1] = xstrdup(module_name);
 
 		for (j = 0; module_paths[j] != NULL; j++) {
 			dw_ctf_trace("noting built-in module mapping %s -> %s\n",
@@ -1218,7 +1211,7 @@ static int member_blacklisted(Dwarf_Die *die, Dwarf_Die *parent_die)
  * Initialize a CTF type table, and possibly fill it with those special types
  * that appear in CTF but not in DWARF (such as 'void').  (This filling happens
  * only for the type table named "shared_ctf", unless deduplication is turned
- * off, signified by the builtin_modules list being NULL.)
+ * off.)
  *
  * If this is a local type table, and deduplication is active, make the global
  * type table its parent.
@@ -1249,7 +1242,7 @@ static void init_ctf_table(const char *module_name)
 
 	dw_ctf_trace("Initializing module: %s\n", module_name);
 	if ((strcmp(module_name, "shared_ctf") == 0) ||
-	    (builtin_modules == NULL)) {
+	    !deduplicating) {
 		ctf_encoding_t void_encoding = { CTF_INT_SIGNED, 0, 0 };
 		ctf_encoding_t int_encoding = { CTF_INT_SIGNED, 0,
 						sizeof (int) * 8 };
@@ -1841,7 +1834,7 @@ static void scan_duplicates(void)
 			     detect_duplicates_tu_init,
 			     detect_duplicates_tu_done, &state);
 
-	if ((!state.repeat_detection) || (builtin_modules == NULL))
+	if ((!state.repeat_detection) || !deduplicating)
 		goto out;
 
 	do {
@@ -2141,7 +2134,7 @@ static enum needs_sharing type_needs_sharing(const char *module_name,
 
 	if ((strcmp(existing_type_module, module_name) == 0) ||
 	    (strcmp(existing_type_module, "shared_ctf") == 0) ||
-	    (builtin_modules == NULL))
+	    !deduplicating)
 		return NS_NO_MARKING;
 
 	return NS_NEEDS_SHARING;
