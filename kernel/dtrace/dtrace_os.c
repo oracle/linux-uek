@@ -447,14 +447,14 @@ ktime_t dtrace_get_walltime(void)
 {
 	u64 nsec = ktime_get_mono_fast_ns();
 	unsigned int seq;
-	ktime_t *offset;
+	ktime_t offset;
 
 	do {
-		seq = raw_read_seqcount(&dtrace_time.dtwf_seq);
-		offset = dtrace_time.dtwf_offsreal + (seq & 0x1);
+		seq = raw_read_seqcount_latch(&dtrace_time.dtwf_seq);
+		offset = dtrace_time.dtwf_offsreal[seq & 0x1];
 	} while (read_seqcount_retry(&dtrace_time.dtwf_seq, seq));
 
-	return ktime_add_ns(*offset, nsec);
+	return ktime_add_ns(offset, nsec);
 }
 EXPORT_SYMBOL(dtrace_get_walltime);
 
