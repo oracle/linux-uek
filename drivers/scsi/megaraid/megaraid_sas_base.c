@@ -4212,6 +4212,9 @@ megasas_get_pd_list(struct megasas_instance *instance)
 		return ret;
 	}
 
+	ci = instance->pd_list_buf;
+	ci_h = instance->pd_list_buf_h;
+
 	cmd = megasas_get_cmd(instance);
 
 	if (!cmd) {
@@ -4220,15 +4223,6 @@ megasas_get_pd_list(struct megasas_instance *instance)
 	}
 
 	dcmd = &cmd->frame->dcmd;
-
-	ci = pci_alloc_consistent(instance->pdev,
-		  MEGASAS_MAX_PD * sizeof(struct MR_PD_LIST), &ci_h);
-
-	if (!ci) {
-		dev_printk(KERN_DEBUG, &instance->pdev->dev, "Failed to alloc mem for pd_list\n");
-		megasas_return_cmd(instance, cmd);
-		return -ENOMEM;
-	}
 
 	memset(ci, 0, sizeof(*ci));
 	memset(dcmd->mbox.b, 0, MFI_MBOX_SIZE);
@@ -4315,10 +4309,6 @@ megasas_get_pd_list(struct megasas_instance *instance)
 
 	}
 
-	pci_free_consistent(instance->pdev,
-				MEGASAS_MAX_PD * sizeof(struct MR_PD_LIST),
-				ci, ci_h);
-
 	if (ret != DCMD_TIMEOUT)
 		megasas_return_cmd(instance, cmd);
 
@@ -4344,6 +4334,9 @@ megasas_get_ld_list(struct megasas_instance *instance)
 	dma_addr_t ci_h = 0;
 	u32 ld_count;
 
+	ci = instance->ld_list_buf;
+	ci_h = instance->ld_list_buf_h;
+
 	cmd = megasas_get_cmd(instance);
 
 	if (!cmd) {
@@ -4352,16 +4345,6 @@ megasas_get_ld_list(struct megasas_instance *instance)
 	}
 
 	dcmd = &cmd->frame->dcmd;
-
-	ci = pci_alloc_consistent(instance->pdev,
-				sizeof(struct MR_LD_LIST),
-				&ci_h);
-
-	if (!ci) {
-		dev_printk(KERN_DEBUG, &instance->pdev->dev, "Failed to alloc mem in get_ld_list\n");
-		megasas_return_cmd(instance, cmd);
-		return -ENOMEM;
-	}
 
 	memset(ci, 0, sizeof(*ci));
 	memset(dcmd->mbox.b, 0, MFI_MBOX_SIZE);
@@ -4434,8 +4417,6 @@ megasas_get_ld_list(struct megasas_instance *instance)
 		break;
 	}
 
-	pci_free_consistent(instance->pdev, sizeof(struct MR_LD_LIST), ci, ci_h);
-
 	if (ret != DCMD_TIMEOUT)
 		megasas_return_cmd(instance, cmd);
 
@@ -4461,6 +4442,9 @@ megasas_ld_list_query(struct megasas_instance *instance, u8 query_type)
 	dma_addr_t ci_h = 0;
 	u32 tgtid_count;
 
+	ci = instance->ld_targetid_list_buf;
+	ci_h = instance->ld_targetid_list_buf_h;
+
 	cmd = megasas_get_cmd(instance);
 
 	if (!cmd) {
@@ -4470,16 +4454,6 @@ megasas_ld_list_query(struct megasas_instance *instance, u8 query_type)
 	}
 
 	dcmd = &cmd->frame->dcmd;
-
-	ci = pci_alloc_consistent(instance->pdev,
-				  sizeof(struct MR_LD_TARGETID_LIST), &ci_h);
-
-	if (!ci) {
-		dev_warn(&instance->pdev->dev,
-		         "Failed to alloc mem for ld_list_query\n");
-		megasas_return_cmd(instance, cmd);
-		return -ENOMEM;
-	}
 
 	memset(ci, 0, sizeof(*ci));
 	memset(dcmd->mbox.b, 0, MFI_MBOX_SIZE);
@@ -4550,9 +4524,6 @@ megasas_ld_list_query(struct megasas_instance *instance, u8 query_type)
 
 		break;
 	}
-
-	pci_free_consistent(instance->pdev, sizeof(struct MR_LD_TARGETID_LIST),
-		    ci, ci_h);
 
 	if (ret != DCMD_TIMEOUT)
 		megasas_return_cmd(instance, cmd);
@@ -4640,6 +4611,9 @@ megasas_get_ctrl_info(struct megasas_instance *instance)
 
 	ctrl_info = instance->ctrl_info;
 
+	ci = instance->ctrl_info_buf;
+	ci_h = instance->ctrl_info_buf_h;
+
 	cmd = megasas_get_cmd(instance);
 
 	if (!cmd) {
@@ -4648,15 +4622,6 @@ megasas_get_ctrl_info(struct megasas_instance *instance)
 	}
 
 	dcmd = &cmd->frame->dcmd;
-
-	ci = pci_alloc_consistent(instance->pdev,
-				  sizeof(struct megasas_ctrl_info), &ci_h);
-
-	if (!ci) {
-		dev_printk(KERN_DEBUG, &instance->pdev->dev, "Failed to alloc mem for ctrl info\n");
-		megasas_return_cmd(instance, cmd);
-		return -ENOMEM;
-	}
 
 	memset(ci, 0, sizeof(*ci));
 	memset(dcmd->mbox.b, 0, MFI_MBOX_SIZE);
@@ -4738,9 +4703,6 @@ megasas_get_ctrl_info(struct megasas_instance *instance)
 		break;
 
 	}
-
-	pci_free_consistent(instance->pdev, sizeof(struct megasas_ctrl_info),
-			    ci, ci_h);
 
 	megasas_return_cmd(instance, cmd);
 
@@ -6131,6 +6093,7 @@ static inline
 int megasas_alloc_ctrl_dma_buffers(struct megasas_instance *instance)
 {
 	struct pci_dev *pdev = instance->pdev;
+	struct fusion_context *fusion = instance->ctrl_context;
 
 	instance->evt_detail =
 		pci_alloc_consistent(pdev,
@@ -6140,6 +6103,62 @@ int megasas_alloc_ctrl_dma_buffers(struct megasas_instance *instance)
 	if (!instance->evt_detail) {
 		dev_err(&instance->pdev->dev,
 			"Failed to allocate event detail buffer\n");
+		return -ENOMEM;
+	}
+
+	if (fusion) {
+		fusion->ioc_init_request =
+			dma_alloc_coherent(&pdev->dev,
+					   sizeof(struct MPI2_IOC_INIT_REQUEST),
+					   &fusion->ioc_init_request_phys,
+					   GFP_KERNEL);
+
+		if (!fusion->ioc_init_request) {
+			dev_err(&pdev->dev,
+				"Failed to allocate PD list buffer\n");
+			return -ENOMEM;
+		}
+	}
+
+	instance->pd_list_buf =
+		pci_alloc_consistent(pdev,
+				     MEGASAS_MAX_PD * sizeof(struct MR_PD_LIST),
+				     &instance->pd_list_buf_h);
+
+	if (!instance->pd_list_buf) {
+		dev_err(&pdev->dev, "Failed to allocate PD list buffer\n");
+		return -ENOMEM;
+	}
+
+	instance->ctrl_info_buf =
+		pci_alloc_consistent(pdev,
+				     sizeof(struct megasas_ctrl_info),
+				     &instance->ctrl_info_buf_h);
+
+	if (!instance->ctrl_info_buf) {
+		dev_err(&pdev->dev,
+			"Failed to allocate controller info buffer\n");
+		return -ENOMEM;
+	}
+
+	instance->ld_list_buf =
+		pci_alloc_consistent(pdev,
+				     sizeof(struct MR_LD_LIST),
+				     &instance->ld_list_buf_h);
+
+	if (!instance->ld_list_buf) {
+		dev_err(&pdev->dev, "Failed to allocate LD list buffer\n");
+		return -ENOMEM;
+	}
+
+	instance->ld_targetid_list_buf =
+		pci_alloc_consistent(pdev,
+				     sizeof(struct MR_LD_TARGETID_LIST),
+				     &instance->ld_targetid_list_buf_h);
+
+	if (!instance->ld_targetid_list_buf) {
+		dev_err(&pdev->dev,
+			"Failed to allocate LD targetid list buffer\n");
 		return -ENOMEM;
 	}
 
@@ -6192,11 +6211,39 @@ static inline
 void megasas_free_ctrl_dma_buffers(struct megasas_instance *instance)
 {
 	struct pci_dev *pdev = instance->pdev;
+	struct fusion_context *fusion = instance->ctrl_context;
 
 	if (instance->evt_detail)
 		pci_free_consistent(pdev, sizeof(struct megasas_evt_detail),
 				    instance->evt_detail,
 				    instance->evt_detail_h);
+
+	if (fusion && fusion->ioc_init_request)
+		dma_free_coherent(&pdev->dev,
+				  sizeof(struct MPI2_IOC_INIT_REQUEST),
+				  fusion->ioc_init_request,
+				  fusion->ioc_init_request_phys);
+
+	if (instance->pd_list_buf)
+		pci_free_consistent(pdev,
+				    MEGASAS_MAX_PD * sizeof(struct MR_PD_LIST),
+				    instance->pd_list_buf,
+				    instance->pd_list_buf_h);
+
+	if (instance->ld_list_buf)
+		pci_free_consistent(pdev, sizeof(struct MR_LD_LIST),
+				    instance->ld_list_buf,
+				    instance->ld_list_buf_h);
+
+	if (instance->ld_targetid_list_buf)
+		pci_free_consistent(pdev, sizeof(struct MR_LD_TARGETID_LIST),
+				    instance->ld_targetid_list_buf,
+				    instance->ld_targetid_list_buf_h);
+
+	if (instance->ctrl_info_buf)
+		pci_free_consistent(pdev, sizeof(struct megasas_ctrl_info),
+				    instance->ctrl_info_buf,
+				    instance->ctrl_info_buf_h);
 
 	if (instance->system_info_buf)
 		pci_free_consistent(pdev, sizeof(struct MR_DRV_SYSTEM_INFO),
