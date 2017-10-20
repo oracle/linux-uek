@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2006 Oracle.  All rights reserved.
+ * Copyright (c) 2006, 2017 Oracle and/or its affiliates. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -1549,8 +1549,9 @@ int rds_send_internal(struct rds_connection *conn, struct rds_sock *rs,
 	queue_delayed_work(conn->c_path[0].cp_wq,
 			   &conn->c_path[0].cp_send_w, 1);
 
-	rdsdebug("message sent for rs %p, conn %p, len %d, %pI4 : %u -> %pI4 : %u\n",
-		 rs, conn, skb->len, &dst->saddr, dst->sport, &dst->daddr, dst->dport);
+	rdsdebug("message sent for rs %p, conn %p, len %d, %pI4:%u->%pI4:%u\n",
+		 rs, conn, skb->len, &dst->saddr, dst->sport, &dst->daddr,
+		 dst->dport);
 	ret = skb->len;
 
 out:
