@@ -128,6 +128,7 @@ always += tcp_bufs_kern.o
 always += tcp_cong_kern.o
 always += tcp_iw_kern.o
 always += tcp_clamp_kern.o
+always += tcp_basertt_kern.o
 always += xdp_redirect_kern.o
 always += xdp_redirect_map_kern.o
 always += xdp_monitor_kern.o
