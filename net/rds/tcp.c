@@ -35,6 +35,7 @@
 #include <net/tcp.h>
 #include <net/net_namespace.h>
 #include <net/netns/generic.h>
+#include <net/addrconf.h>
 
 #include "rds.h"
 #include "tcp.h"
@@ -264,9 +265,34 @@ out:
 	spin_unlock_irqrestore(&rds_tcp_tc_list_lock, flags);
 }
 
-static int rds_tcp_laddr_check(struct net *net, __be32 addr)
+static int rds_tcp_laddr_check(struct net *net, const struct in6_addr *addr,
+			       __u32 scope_id)
 {
-	if (inet_addr_type(net, addr) == RTN_LOCAL)
+	struct net_device *dev = NULL;
+	int ret;
+
+	if (ipv6_addr_v4mapped(addr)) {
+		if (inet_addr_type(net, addr->s6_addr32[3]) == RTN_LOCAL)
+			return 0;
+		return -EADDRNOTAVAIL;
+	}
+
+	/* If the scope_id is specified, check only those addresses
+	 * hosted on the specified interface.
+	 */
+	if (scope_id != 0) {
+		rcu_read_lock();
+		dev = dev_get_by_index_rcu(net, scope_id);
+		/* scope_id is not valid... */
+		if (!dev) {
+			rcu_read_unlock();
+			return -EADDRNOTAVAIL;
+		}
+	}
+	ret = ipv6_chk_addr(net, addr, dev, 0);
+	if (scope_id != 0)
+		rcu_read_unlock();
+	if (ret)
 		return 0;
 	return -EADDRNOTAVAIL;
 }
