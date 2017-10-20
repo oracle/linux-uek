@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008 Oracle.  All rights reserved.
+ * Copyright (c) 2008, 2017 Oracle and/or its affiliates. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -370,11 +370,11 @@ struct rds_rdma_send_notify {
 
 /* netfilter related components */
 struct rds_nf_hdr {
-	__be32 saddr;     /* source address of request */
-	__be32 daddr;     /* destination address */
-	__be16 sport;     /* source port number */
-	__be16 dport;     /* destination port number */
-	__be16 protocol;  /* rds socket protocol family to use */
+	struct in6_addr	saddr;     /* source address of request */
+	struct in6_addr	daddr;     /* destination address */
+	__be16		sport;     /* source port number */
+	__be16		dport;     /* destination port number */
+	__be16		protocol;  /* rds socket protocol family to use */
 
 #define RDS_NF_HDR_FLAG_BOTH (0x1) /* request needs to go locally and remote */
 #define RDS_NF_HDR_FLAG_DONE (0x2) /* the request is consumed and done */
