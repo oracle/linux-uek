@@ -134,8 +134,8 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 			if (conn) {
 				struct rds_ib_connection *ibic;
 
-				printk(KERN_CRIT "rds dropping connection after rdma_resolve_route failure"
-				       "connection %u.%u.%u.%u->%u.%u.%u.%u\n", NIPQUAD(conn->c_laddr), NIPQUAD(conn->c_faddr));
+				printk(KERN_CRIT "rds dropping connection after rdma_resolve_route failure connection %pI4->%pI4\n",
+				       &conn->c_laddr, &conn->c_faddr);
 				ibic = conn->c_transport_data;
 				if (ibic && ibic->i_cm_id == cm_id)
 					ibic->i_cm_id = NULL;
@@ -167,9 +167,9 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 				ret = trans->cm_initiate_connect(cm_id);
 			} else {
 				rds_rtd(RDS_RTD_CM,
-					"ROUTE_RESOLVED: calling rds_conn_drop, conn %p <%u.%u.%u.%u,%u.%u.%u.%u,%d>\n",
-					conn, NIPQUAD(conn->c_laddr),
-					NIPQUAD(conn->c_faddr), conn->c_tos);
+					"ROUTE_RESOLVED: calling rds_conn_drop, conn %p <%pI4,%pI4,%d>\n",
+					conn, &conn->c_laddr,
+					&conn->c_faddr, conn->c_tos);
 				rds_conn_drop(conn, DR_IB_RDMA_CM_ID_MISMATCH);
 			}
 		}
@@ -194,9 +194,9 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 
 		if (conn) {
 			rds_rtd(RDS_RTD_ERR,
-				"ROUTE_ERROR: conn %p, calling rds_conn_drop <%u.%u.%u.%u,%u.%u.%u.%u,%d>\n",
-				conn, NIPQUAD(conn->c_laddr),
-				NIPQUAD(conn->c_faddr), conn->c_tos);
+				"ROUTE_ERROR: conn %p, calling rds_conn_drop <%pI4,%pI4,%d>\n",
+				conn, &conn->c_laddr,
+				&conn->c_faddr, conn->c_tos);
 			rds_conn_drop(conn, DR_IB_ROUTE_ERR);
 		}
 		break;
@@ -208,9 +208,9 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 	case RDMA_CM_EVENT_ADDR_ERROR:
 		if (conn) {
 			rds_rtd(RDS_RTD_ERR,
-				"ADDR_ERROR: conn %p, calling rds_conn_drop <%u.%u.%u.%u,%u.%u.%u.%u,%d>\n",
-				conn, NIPQUAD(conn->c_laddr),
-				NIPQUAD(conn->c_faddr), conn->c_tos);
+				"ADDR_ERROR: conn %p, calling rds_conn_drop <%pI4,%pI4,%d>\n",
+				conn, &conn->c_laddr,
+				&conn->c_faddr, conn->c_tos);
 			rds_conn_drop(conn, DR_IB_ADDR_ERR);
 		}
 		break;
@@ -220,9 +220,9 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 	case RDMA_CM_EVENT_DEVICE_REMOVAL:
 		if (conn) {
 			rds_rtd(RDS_RTD_ERR,
-				"CONN/UNREACHABLE/RMVAL ERR: conn %p, calling rds_conn_drop <%u.%u.%u.%u,%u.%u.%u.%u,%d>\n",
-				conn, NIPQUAD(conn->c_laddr),
-				NIPQUAD(conn->c_faddr), conn->c_tos);
+				"CONN/UNREACHABLE/RMVAL ERR: conn %p, calling rds_conn_drop <%pI4,%pI4,%d>\n",
+				conn, &conn->c_laddr,
+				&conn->c_faddr, conn->c_tos);
 			rds_conn_drop(conn, DR_IB_CONNECT_ERR);
 		}
 		break;
@@ -234,9 +234,9 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 			if (event->status == RDS_REJ_CONSUMER_DEFINED &&
 			    (*err) == 0) {
 				/* Rejection from RDSV3.1 */
-				pr_warn("Rejected: CSR_DEF err 0, calling rds_conn_drop <%u.%u.%u.%u,%u.%u.%u.%u,%d>\n",
-					NIPQUAD(conn->c_laddr),
-					NIPQUAD(conn->c_faddr), conn->c_tos);
+				pr_warn("Rejected: CSR_DEF err 0, calling rds_conn_drop <%pI4,%pI4,%d>\n",
+					&conn->c_laddr,
+					&conn->c_faddr, conn->c_tos);
 				if (!conn->c_tos)
 					conn->c_proposed_version =
 						RDS_PROTOCOL_COMPAT_VERSION;
@@ -245,17 +245,17 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 			} else if (event->status == RDS_REJ_CONSUMER_DEFINED &&
 				   (*err) == RDS_ACL_FAILURE) {
 				/* Rejection due to ACL violation */
-				pr_err("RDS: IB: conn=%p, <%u.%u.%u.%u,%u.%u.%u.%u,%d> destroyed due to ACL violation\n",
-						conn, NIPQUAD(conn->c_laddr),
-						NIPQUAD(conn->c_faddr),
-						conn->c_tos);
+				pr_err("RDS: IB: conn=%p, <%pI4,%pI4,%d> destroyed due to ACL violation\n",
+				       conn, &conn->c_laddr,
+				       &conn->c_faddr,
+				       conn->c_tos);
 				rds_ib_conn_destroy_init(conn);
 			} else {
 				rds_rtd(RDS_RTD_ERR,
-					"Rejected: *err %d status %d calling rds_conn_drop <%u.%u.%u.%u,%u.%u.%u.%u,%d>\n",
+					"Rejected: *err %d status %d calling rds_conn_drop <%pI4,%pI4,%d>\n",
 					*err, event->status,
-					NIPQUAD(conn->c_laddr),
-					NIPQUAD(conn->c_faddr),
+					&conn->c_laddr,
+					&conn->c_faddr,
 					conn->c_tos);
 				rds_conn_drop(conn, DR_IB_REJECTED_EVENT);
 			}
@@ -264,13 +264,13 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 
 	case RDMA_CM_EVENT_ADDR_CHANGE:
 		rds_rtd(RDS_RTD_CM_EXT,
-			"ADDR_CHANGE event <%u.%u.%u.%u,%u.%u.%u.%u>\n",
-			NIPQUAD(conn->c_laddr),
-			NIPQUAD(conn->c_faddr));
+			"ADDR_CHANGE event <%pI4,%pI4>\n",
+			&conn->c_laddr,
+			&conn->c_faddr);
 		if (conn) {
 			rds_rtd(RDS_RTD_CM,
-				"ADDR_CHANGE: calling rds_conn_drop <%u.%u.%u.%u,%u.%u.%u.%u,%d>\n",
-				NIPQUAD(conn->c_laddr),	NIPQUAD(conn->c_faddr),
+				"ADDR_CHANGE: calling rds_conn_drop <%pI4,%pI4,%d>\n",
+				&conn->c_laddr, &conn->c_faddr,
 				conn->c_tos);
 			if (!rds_conn_self_loopback_passive(conn)) {
 				queue_delayed_work(conn->c_path[0].cp_wq,

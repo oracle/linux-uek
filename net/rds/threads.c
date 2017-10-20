@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2006 Oracle.  All rights reserved.
+ * Copyright (c) 2006, 2017 Oracle and/or its affiliates. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -287,8 +287,8 @@ void rds_hb_worker(struct work_struct *work)
 			cp->cp_hb_start = now;
 		} else if (now - cp->cp_hb_start > rds_conn_hb_timeout) {
 			rds_rtd(RDS_RTD_CM,
-				"RDS/IB: connection <%u.%u.%u.%u,%u.%u.%u.%u,%d> timed out (0x%lx,0x%lx)..discon and recon\n",
-				NIPQUAD(conn->c_laddr),	NIPQUAD(conn->c_faddr),
+				"RDS/IB: connection <%pI4,%pI4,%d> timed out (0x%lx,0x%lx)..discon and recon\n",
+				&conn->c_laddr, &conn->c_faddr,
 				conn->c_tos, cp->cp_hb_start, now);
 			rds_conn_path_drop(cp, DR_HB_TIMEOUT);
 			return;
@@ -342,13 +342,12 @@ void rds_shutdown_worker(struct work_struct *work)
 		rds_sysctl_shutdown_trace_start_time) &&
 	    (now - cp->cp_reconnect_start <
 		rds_sysctl_shutdown_trace_end_time))
-		pr_info("RDS/%s: connection <%u.%u.%u.%u,%u.%u.%u.%u,%d> "
-				"shutdown init due to '%s'\n",
-				(is_tcp ? "TCP" : "IB"),
-				NIPQUAD(conn->c_laddr),
-				NIPQUAD(conn->c_faddr),
-				conn->c_tos,
-				conn_drop_reason_str(cp->cp_drop_source));
+		pr_info("RDS/%s: connection <%pI4,%pI4,%d> shutdown init due to '%s'\n",
+			(is_tcp ? "TCP" : "IB"),
+			&conn->c_laddr,
+			&conn->c_faddr,
+			conn->c_tos,
+			conn_drop_reason_str(cp->cp_drop_source));
 
 	rds_conn_shutdown(cp);
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2006 Oracle.  All rights reserved.
+ * Copyright (c) 2006, 2017 Oracle and/or its affiliates. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -375,9 +375,9 @@ void rds_conn_shutdown(struct rds_conn_path *cp)
 	/* shut it down unless it's down already */
 	if (!rds_conn_path_transition(cp, RDS_CONN_DOWN, RDS_CONN_DOWN)) {
 		rds_rtd(RDS_RTD_CM_EXT,
-			"RDS/%s: shutdown init <%u.%u.%u.%u,%u.%u.%u.%u,%d>, cn	%p, cn->c_p %p\n",
+			"RDS/%s: shutdown init <%pI4,%pI4,%d>, cn	%p, cn->c_p %p\n",
 			conn->c_trans->t_type == RDS_TRANS_TCP ? "TCP" : "IB",
-			NIPQUAD(conn->c_laddr),	NIPQUAD(conn->c_faddr),
+			&conn->c_laddr, &conn->c_faddr,
 			conn->c_tos, conn, conn->c_passive);
 		/*
 		 * Quiesce the connection mgmt handlers before we start tearing
@@ -505,8 +505,8 @@ void rds_conn_destroy(struct rds_connection *conn, int shutdown)
 	int i;
 	int npaths = (conn->c_trans->t_mp_capable ? RDS_MPATH_WORKERS : 1);
 
-	rds_rtd(RDS_RTD_CM, "freeing conn %p <%u.%u.%u.%u,%u.%u.%u.%u,%d>\n",
-		conn, NIPQUAD(conn->c_laddr), NIPQUAD(conn->c_faddr),
+	rds_rtd(RDS_RTD_CM, "freeing conn %p <%pI4,%pI4,%d>\n",
+		conn, &conn->c_laddr, &conn->c_faddr,
 		conn->c_tos);
 
 	conn->c_destroy_in_prog = 1;
@@ -849,25 +849,21 @@ void rds_conn_path_drop(struct rds_conn_path *cp, int reason)
 		cp->cp_reconnect_err = 0;
 		cp->cp_reconnect_racing = 0;
 		if (conn->c_trans->t_type != RDS_TRANS_TCP)
-			printk(KERN_INFO "RDS/IB: connection "
-				"<%u.%u.%u.%u,%u.%u.%u.%u,%d> "
-				"dropped due to '%s'\n",
-				NIPQUAD(conn->c_laddr),
-				NIPQUAD(conn->c_faddr),
-				conn->c_tos,
-				conn_drop_reason_str(cp->cp_drop_source));
+			printk(KERN_INFO "RDS/IB: connection <%pI4,%pI4,%d> dropped due to '%s'\n",
+			       &conn->c_laddr,
+			       &conn->c_faddr,
+			       conn->c_tos,
+			       conn_drop_reason_str(cp->cp_drop_source));
 
 	} else if ((cp->cp_reconnect_warn) &&
 		   (now - cp->cp_reconnect_start > 60)) {
-		printk(KERN_INFO "RDS/%s: re-connect "
-			"<%u.%u.%u.%u,%u.%u.%u.%u,%d> stalling "
-			"for more than 1 min...(drops=%u err=%d)\n",
-			conn->c_trans->t_type == RDS_TRANS_TCP ? "TCP" : "IB",
-			NIPQUAD(conn->c_laddr),
-			NIPQUAD(conn->c_faddr),
-			conn->c_tos,
-			cp->cp_reconnect_drops,
-			cp->cp_reconnect_err);
+		printk(KERN_INFO "RDS/%s: re-connect <%pI4,%pI4,%d> stalling for more than 1 min...(drops=%u err=%d)\n",
+		       conn->c_trans->t_type == RDS_TRANS_TCP ? "TCP" : "IB",
+		       &conn->c_laddr,
+		       &conn->c_faddr,
+		       conn->c_tos,
+		       cp->cp_reconnect_drops,
+		       cp->cp_reconnect_err);
 		cp->cp_reconnect_warn = 0;
 	}
 	cp->cp_reconnect_drops++;
@@ -875,9 +871,9 @@ void rds_conn_path_drop(struct rds_conn_path *cp, int reason)
 	atomic_set(&cp->cp_state, RDS_CONN_ERROR);
 
 	rds_rtd(RDS_RTD_CM_EXT,
-		"RDS/%s: queueing shutdown work, conn %p, <%u.%u.%u.%u,%u.%u.%u.%u,%d>\n",
+		"RDS/%s: queueing shutdown work, conn %p, <%pI4,%pI4,%d>\n",
 		conn->c_trans->t_type == RDS_TRANS_TCP ? "TCP" : "IB",
-		conn, NIPQUAD(conn->c_laddr), NIPQUAD(conn->c_faddr),
+		conn, &conn->c_laddr, &conn->c_faddr,
 		conn->c_tos);
 
 	queue_work(cp->cp_wq, &cp->cp_down_w);
@@ -902,8 +898,8 @@ void rds_conn_path_connect_if_down(struct rds_conn_path *cp)
 	if (rds_conn_path_state(cp) == RDS_CONN_DOWN &&
 	    !test_and_set_bit(RDS_RECONNECT_PENDING, &cp->cp_flags)) {
 		rds_rtd(RDS_RTD_CM_EXT,
-			"queueing connect work, conn %p, <%u.%u.%u.%u,%u.%u.%u.%u,%d>\n",
-			conn, NIPQUAD(conn->c_laddr), NIPQUAD(conn->c_faddr),
+			"queueing connect work, conn %p, <%pI4,%pI4,%d>\n",
+			conn, &conn->c_laddr, &conn->c_faddr,
 			conn->c_tos);
 		queue_delayed_work(cp->cp_wq, &cp->cp_conn_w, 0);
 	}

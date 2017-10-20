@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2006 Oracle.  All rights reserved.
+ * Copyright (c) 2006, 2017 Oracle and/or its affiliates. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -340,8 +340,9 @@ void rds_recv_incoming(struct rds_connection *conn, __be32 saddr, __be32 daddr,
 	int    ret;
 	struct rds_conn_path *cp;
 
-	rdsdebug(KERN_ALERT "incoming:  conn %p, inc %p, %u.%u.%u.%u : %d -> %u.%u.%u.%u : %d\n",
-		 conn, inc, NIPQUAD(saddr), inc->i_hdr.h_sport, NIPQUAD(daddr), inc->i_hdr.h_dport);
+	rdsdebug(KERN_ALERT "incoming: conn %p, inc %p, %pI4:%d -> %pI4:%d\n",
+		 conn, inc, &saddr, inc->i_hdr.h_sport, &daddr,
+		 inc->i_hdr.h_dport);
 
 	/* initialize some globals */
 	rs = NULL;
@@ -378,8 +379,8 @@ void rds_recv_incoming(struct rds_connection *conn, __be32 saddr, __be32 daddr,
 	if (NULL == skb) {
 		/* if we have allocation problems, then we just need to depart */
 		rds_rtd(RDS_RTD_ERR,
-			"failure to allocate space for inc %p, %u.%u.%u.%u -> %u.%d.%u.%u tos %d\n",
-			inc, NIPQUAD(saddr), NIPQUAD(daddr), conn->c_tos);
+			"failure to allocate space for inc %p, %pI4 -> %pI4 tos %d\n",
+			inc, &saddr, &daddr, conn->c_tos);
 		rds_recv_local(cp, saddr, daddr, inc, gfp, rs);
 		/* drop the reference if we had taken one */
 		if (NULL != rs)
@@ -427,8 +428,8 @@ void rds_recv_incoming(struct rds_connection *conn, __be32 saddr, __be32 daddr,
 	/* if we had a failure to convert, then just assuming to continue as local */
 	else {
 		rds_rtd(RDS_RTD_RCV_EXT,
-			"failed to create skb form, conn %p, inc %p, %u.%u.%u.%u -> %u.%u.%u.%u tos %d\n",
-			conn, inc, NIPQUAD(saddr), NIPQUAD(daddr), conn->c_tos);
+			"failed to create skb form, conn %p, inc %p, %pI4 -> %pI4 tos %d\n",
+			conn, inc, &saddr, &daddr, conn->c_tos);
 		ret = 1;
 	}
 
@@ -470,9 +471,8 @@ void rds_recv_incoming(struct rds_connection *conn, __be32 saddr, __be32 daddr,
 	/* we don't really expect an error state from this call that isn't the done above */
 	else {
 		/* we don't really know how to handle this yet - just ignore for now */
-		printk(KERN_ERR "unacceptible state for skb ret %d, conn %p, inc %p, "
-				"%u.%u.%u.%u -> %u.%u.%u.%u\n",
-		       ret, conn, inc, NIPQUAD(saddr), NIPQUAD(daddr));
+		printk(KERN_ERR "unacceptible state for skb ret %d, conn %p, inc %p, %pI4 -> %pI4\n",
+		       ret, conn, inc, &saddr, &daddr);
 	}
 }
 EXPORT_SYMBOL_GPL(rds_recv_incoming);
@@ -482,8 +482,8 @@ rds_recv_drop(struct rds_connection *conn, __be32 saddr, __be32 daddr,
 	      struct rds_incoming *inc, gfp_t gfp)
 {
 	/* drop the existing incoming message */
-	rdsdebug("dropping request on conn %p, inc %p, %u.%u.%u.%u -> %u.%u.%u.%u",
-		 conn, inc, NIPQUAD(saddr), NIPQUAD(daddr));
+	rdsdebug("dropping request on conn %p, inc %p, %pI4 -> %pI4",
+		 conn, inc, &saddr, &daddr);
 }
 
 static void
@@ -509,11 +509,11 @@ rds_recv_route(struct rds_connection *conn, struct rds_incoming *inc,
 
 	/* cannot find a matching connection so drop the request */
 	if (NULL == nconn) {
-		printk(KERN_ALERT "cannot find matching conn for inc %p, %u.%u.%u.%u -> %u.%u.%u.%u\n",
-		       inc, NIPQUAD(dst->saddr), NIPQUAD(dst->daddr));
+		printk(KERN_ALERT "cannot find matching conn for inc %p, %pI4 -> %pI4\n",
+		       inc, &dst->saddr, &dst->daddr);
 
-		rdsdebug("cannot find matching conn for inc %p, %u.%u.%u.%u -> %u.%u.%u.%u",
-			 inc, NIPQUAD(dst->saddr), NIPQUAD(dst->daddr));
+		rdsdebug("cannot find matching conn for inc %p, %pI4 -> %pI4",
+			 inc, &dst->saddr, &dst->daddr);
 		rds_recv_drop(conn, dst->saddr, dst->daddr, inc, gfp);
 	}
 	/* this is a request for our local node, but potentially a different source
@@ -551,8 +551,8 @@ rds_recv_forward(struct rds_conn_path *cp, struct rds_incoming *inc,
 	rs = rds_find_bound(dst->saddr, dst->sport);
 	if (!rs) {
 		rds_rtd(RDS_RTD_RCV,
-			"failed to find output rds_socket dst %u.%u.%u.%u : %u, inc %p, conn %p tos %d\n",
-			NIPQUAD(dst->daddr), dst->dport, inc, conn,
+			"failed to find output rds_socket dst %pI4 : %u, inc %p, conn %p tos %d\n",
+			&dst->daddr, dst->dport, inc, conn,
 			conn->c_tos);
 		rds_stats_inc(s_recv_drop_no_sock);
 		goto out;
@@ -565,8 +565,8 @@ rds_recv_forward(struct rds_conn_path *cp, struct rds_incoming *inc,
 	ret = rds_send_internal(conn, rs, inc->i_skb, gfp);
 	if (len != ret) {
 		rds_rtd(RDS_RTD_RCV,
-			"failed to send rds_data dst %u.%u.%u.%u : %u, inc %p, conn %p tos %d, len %d != ret %d\n",
-			NIPQUAD(dst->daddr), dst->dport, inc, conn, conn->c_tos,
+			"failed to send rds_data dst %pI4 : %u, inc %p, conn %p tos %d, len %d != ret %d\n",
+			&dst->daddr, dst->dport, inc, conn, conn->c_tos,
 			len, ret);
 		goto out;
 	}
@@ -641,8 +641,8 @@ rds_recv_local(struct rds_conn_path *cp, __be32 saddr, __be32 daddr,
 
 	if (inc_hdr_h_sequence != cp->cp_next_rx_seq) {
 		rds_rtd(RDS_RTD_RCV,
-			"conn %p <%u.%u.%u.%u,%u.%u.%u.%u,%d> expect seq# %llu, recved seq# %llu, retrans bit %d\n",
-			conn, NIPQUAD(conn->c_laddr), NIPQUAD(conn->c_faddr),
+			"conn %p <%pI4,%pI4,%d> expect seq# %llu, recved seq# %llu, retrans bit %d\n",
+			conn, &conn->c_laddr, &conn->c_faddr,
 			conn->c_tos, cp->cp_next_rx_seq, inc_hdr_h_sequence,
 			inc->i_hdr.h_flags & RDS_FLAG_RETRANSMITTED);
 	}
