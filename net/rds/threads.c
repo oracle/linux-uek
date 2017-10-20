@@ -82,14 +82,14 @@ void rds_connect_path_complete(struct rds_conn_path *cp, int curr)
 	struct rds_connection *conn = cp->cp_conn;
 
 	if (!rds_conn_path_transition(cp, curr, RDS_CONN_UP)) {
-		pr_warn("RDS: Cannot transition conn <%pI4,%pI4,%d> to state UP, current state is %d\n",
+		pr_warn("RDS: Cannot transition conn <%pI6c,%pI6c,%d> to state UP, current state is %d\n",
 			&conn->c_laddr, &conn->c_faddr, conn->c_tos,
 		atomic_read(&cp->cp_state));
 		rds_conn_path_drop(cp, DR_IB_NOT_CONNECTING_STATE);
 		return;
 	}
 
-	rds_rtd(RDS_RTD_CM_EXT, "conn %p for %pI4 to %pI4 tos %d complete\n",
+	rds_rtd(RDS_RTD_CM_EXT, "conn %p for %pI6c to %pI6c tos %d complete\n",
 		conn, &conn->c_laddr, &conn->c_faddr, conn->c_tos);
 
 	cp->cp_reconnect_jiffies = 0;
@@ -138,12 +138,12 @@ void rds_queue_reconnect(struct rds_conn_path *cp)
 	bool is_tcp = conn->c_trans->t_type == RDS_TRANS_TCP;
 
 	rds_rtd(RDS_RTD_CM_EXT,
-		"conn %p for %pI4 to %pI4 tos %d reconnect jiffies %lu\n", conn,
-		&conn->c_laddr, &conn->c_faddr,	conn->c_tos,
+		"conn %p for %pI6c to %pI6c tos %d reconnect jiffies %lu\n",
+		conn, &conn->c_laddr, &conn->c_faddr, conn->c_tos,
 		cp->cp_reconnect_jiffies);
 
 	/* let peer with smaller addr initiate reconnect, to avoid duels */
-	if (is_tcp && !IS_CANONICAL(conn->c_laddr, conn->c_faddr))
+	if (is_tcp && rds_addr_cmp(&conn->c_laddr, &conn->c_faddr) >= 0)
 		return;
 
 	set_bit(RDS_RECONNECT_PENDING, &cp->cp_flags);
@@ -156,7 +156,7 @@ void rds_queue_reconnect(struct rds_conn_path *cp)
 
 	get_random_bytes(&rand, sizeof(rand));
 	rds_rtd(RDS_RTD_CM_EXT,
-		"%lu delay %lu ceil conn %p for %pI4 -> %pI4 tos %d\n",
+		"%lu delay %lu ceil conn %p for %pI6c -> %pI6c tos %d\n",
 		rand % cp->cp_reconnect_jiffies, cp->cp_reconnect_jiffies,
 		conn, &conn->c_laddr, &conn->c_faddr, conn->c_tos);
 
@@ -177,7 +177,7 @@ void rds_connect_worker(struct work_struct *work)
 	bool is_tcp = conn->c_trans->t_type == RDS_TRANS_TCP;
 
 	if (is_tcp && cp->cp_index > 0 &&
-	    !IS_CANONICAL(cp->cp_conn->c_laddr, cp->cp_conn->c_faddr))
+	    rds_addr_cmp(&cp->cp_conn->c_laddr, &cp->cp_conn->c_faddr) > 0)
 		return;
 	clear_bit(RDS_RECONNECT_PENDING, &cp->cp_flags);
 	ret = rds_conn_path_transition(cp, RDS_CONN_DOWN, RDS_CONN_CONNECTING);
@@ -191,7 +191,7 @@ void rds_connect_worker(struct work_struct *work)
 
 		ret = conn->c_trans->conn_path_connect(cp);
 		rds_rtd(RDS_RTD_CM_EXT,
-			"conn %p for %pI4 to %pI4 tos %d dispatched, ret %d\n",
+			"conn %p for %pI6c to %pI6c tos %d dispatched, ret %d\n",
 			conn, &conn->c_laddr, &conn->c_faddr, conn->c_tos, ret);
 
 		if (ret) {
@@ -287,7 +287,7 @@ void rds_hb_worker(struct work_struct *work)
 			cp->cp_hb_start = now;
 		} else if (now - cp->cp_hb_start > rds_conn_hb_timeout) {
 			rds_rtd(RDS_RTD_CM,
-				"RDS/IB: connection <%pI4,%pI4,%d> timed out (0x%lx,0x%lx)..discon and recon\n",
+				"RDS/IB: connection <%pI6c,%pI6c,%d> timed out (0x%lx,0x%lx)..discon and recon\n",
 				&conn->c_laddr, &conn->c_faddr,
 				conn->c_tos, cp->cp_hb_start, now);
 			rds_conn_path_drop(cp, DR_HB_TIMEOUT);
@@ -305,7 +305,7 @@ void rds_reconnect_timeout(struct work_struct *work)
 	struct rds_connection *conn = cp->cp_conn;
 
 	if (cp->cp_reconnect_retry_count > rds_sysctl_reconnect_max_retries) {
-		pr_info("RDS: connection <%pI4,%pI4,%d> reconnect retries(%d) exceeded, stop retry\n",
+		pr_info("RDS: connection <%pI6c,%pI6c,%d> reconnect retries(%d) exceeded, stop retry\n",
 			&conn->c_laddr, &conn->c_faddr, conn->c_tos,
 			cp->cp_reconnect_retry_count);
 		return;
@@ -318,7 +318,7 @@ void rds_reconnect_timeout(struct work_struct *work)
 		} else {
 			cp->cp_reconnect_retry_count++;
 			rds_rtd(RDS_RTD_CM,
-				"conn <%pI4,%pI4,%d> not up, retry(%d)\n",
+				"conn <%pI6c,%pI6c,%d> not up, retry(%d)\n",
 				&conn->c_laddr, &conn->c_faddr, conn->c_tos,
 				cp->cp_reconnect_retry_count);
 			queue_delayed_work(cp->cp_wq, &cp->cp_reconn_w,
@@ -342,7 +342,7 @@ void rds_shutdown_worker(struct work_struct *work)
 		rds_sysctl_shutdown_trace_start_time) &&
 	    (now - cp->cp_reconnect_start <
 		rds_sysctl_shutdown_trace_end_time))
-		pr_info("RDS/%s: connection <%pI4,%pI4,%d> shutdown init due to '%s'\n",
+		pr_info("RDS/%s: connection <%pI6c,%pI6c,%d> shutdown init due to '%s'\n",
 			(is_tcp ? "TCP" : "IB"),
 			&conn->c_laddr,
 			&conn->c_faddr,
@@ -370,3 +370,50 @@ int rds_threads_init(void)
 
 	return 0;
 }
+
+/* Compare two IPv6 addresses.  Return 0 if the two addresses are equal.
+ * Return 1 if the first is greater.  Return -1 if the second is greater.
+ */
+int rds_addr_cmp(const struct in6_addr *addr1,
+		 const struct in6_addr *addr2)
+{
+#if defined(CONFIG_HAVE_EFFICIENT_UNALIGNED_ACCESS) && BITS_PER_LONG == 64
+	const __be64 *a1, *a2;
+	__be64 x, y;
+
+	a1 = (__be64 *)addr1;
+	a2 = (__be64 *)addr2;
+
+	if (*a1 != *a2) {
+		if (be64_to_cpu(*a1) < be64_to_cpu(*a2))
+			return -1;
+		else
+			return 1;
+	} else {
+		x = be64_to_cpu(*++a1);
+		y = be64_to_cpu(*++a2);
+		if (x < y)
+			return -1;
+		else if (x > y)
+			return 1;
+		else
+			return 0;
+	}
+#else
+	u32 a, b;
+	int i;
+
+	for (i = 0; i < 4; i++) {
+		if (addr1->s6_addr32[i] != addr2->s6_addr32[i]) {
+			a = ntohl(addr1->s6_addr32[i]);
+			b = ntohl(addr2->s6_addr32[i]);
+			if (a < b)
+				return -1;
+			else if (a > b)
+				return 1;
+		}
+	}
+	return 0;
+#endif
+}
+EXPORT_SYMBOL_GPL(rds_addr_cmp);
