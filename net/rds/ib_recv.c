@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2006 Oracle.  All rights reserved.
+ * Copyright (c) 2006, 2017 Oracle and/or its affiliates. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -342,7 +342,7 @@ static struct rds_ib_incoming *rds_ib_refill_one_inc(struct rds_ib_connection *i
 		rds_ib_stats_inc(s_ib_rx_total_incs);
 	}
 	INIT_LIST_HEAD(&ibinc->ii_frags);
-	rds_inc_init(&ibinc->ii_inc, ic->conn, ic->conn->c_faddr);
+	rds_inc_init(&ibinc->ii_inc, ic->conn, &ic->conn->c_faddr);
 
 	return ibinc;
 }
@@ -700,7 +700,7 @@ void rds_ib_recv_refill(struct rds_connection *conn, int prefill, gfp_t gfp)
 		ret = ib_post_recv(ic->i_cm_id->qp, &recv->r_wr, &failed_wr);
 		if (ret) {
 			rds_conn_drop(conn, DR_IB_POST_RECV_FAIL);
-			pr_warn("RDS/IB: recv post on %pI4 returned %d, disconnecting and reconnecting\n",
+			pr_warn("RDS/IB: recv post on %pI6c returned %d, disconnecting and reconnecting\n",
 				&conn->c_faddr, ret);
 			break;
 		}
@@ -1183,7 +1183,7 @@ static void rds_ib_process_recv(struct rds_connection *conn,
 
 	if (data_len < sizeof(struct rds_header)) {
 		rds_conn_drop(conn, DR_IB_HEADER_MISSING);
-		pr_warn("RDS/IB: incoming message from %pI4 didn't inclue a header, disconnecting and reconnecting\n",
+		pr_warn("RDS/IB: incoming message from %pI6c didn't inclue a header, disconnecting and reconnecting\n",
 			&conn->c_faddr);
 		return;
 	}
@@ -1194,7 +1194,7 @@ static void rds_ib_process_recv(struct rds_connection *conn,
 	/* Validate the checksum. */
 	if (!rds_message_verify_checksum(ihdr)) {
 		rds_conn_drop(conn, DR_IB_HEADER_CORRUPTED);
-		pr_warn("RDS/IB: incoming message from %pI4 has corrupted header - forcing a reconnect\n",
+		pr_warn("RDS/IB: incoming message from %pI6c has corrupted header - forcing a reconnect\n",
 			&conn->c_faddr);
 		rds_stats_inc(s_recv_drop_bad_checksum);
 		return;
@@ -1273,10 +1273,10 @@ static void rds_ib_process_recv(struct rds_connection *conn,
 		ic->i_recv_data_rem = 0;
 		ic->i_ibinc = NULL;
 
-		if (ibinc->ii_inc.i_hdr.h_flags == RDS_FLAG_CONG_BITMAP)
+		if (ibinc->ii_inc.i_hdr.h_flags == RDS_FLAG_CONG_BITMAP) {
 			rds_ib_cong_recv(conn, ibinc);
-		else {
-			rds_recv_incoming(conn, conn->c_faddr, conn->c_laddr,
+		} else {
+			rds_recv_incoming(conn, &conn->c_faddr, &conn->c_laddr,
 					  &ibinc->ii_inc, GFP_ATOMIC);
 			state->ack_next = be64_to_cpu(hdr->h_sequence);
 			state->ack_next_valid = 1;
@@ -1303,7 +1303,7 @@ void rds_ib_srq_process_recv(struct rds_connection *conn,
 	struct rds_header *ihdr, *hdr;
 
 	if (data_len < sizeof(struct rds_header)) {
-		printk(KERN_WARNING "RDS: from %pI4 didn't inclue a "
+		printk(KERN_WARNING "RDS: from %pI6c didn't inclue a "
 			"header, disconnecting and "
 			"reconnecting\n",
 			&conn->c_faddr);
@@ -1317,7 +1317,7 @@ void rds_ib_srq_process_recv(struct rds_connection *conn,
 
 	/* Validate the checksum. */
 	if (!rds_message_verify_checksum(ihdr)) {
-		printk(KERN_WARNING "RDS: from %pI4 has corrupted header - "
+		printk(KERN_WARNING "RDS: from %pI6c has corrupted header - "
 			"forcing a reconnect\n",
 			&conn->c_faddr);
 		rds_stats_inc(s_recv_drop_bad_checksum);
@@ -1340,7 +1340,7 @@ void rds_ib_srq_process_recv(struct rds_connection *conn,
 
 	if (!ibinc) {
 		ibinc = recv->r_ibinc;
-		rds_inc_init(&ibinc->ii_inc, ic->conn, ic->conn->c_faddr);
+		rds_inc_init(&ibinc->ii_inc, ic->conn, &ic->conn->c_faddr);
 		recv->r_ibinc = NULL;
 		ic->i_ibinc = ibinc;
 		hdr = &ibinc->ii_inc.i_hdr;
@@ -1373,8 +1373,8 @@ void rds_ib_srq_process_recv(struct rds_connection *conn,
 		if (ibinc->ii_inc.i_hdr.h_flags == RDS_FLAG_CONG_BITMAP)
 			rds_ib_cong_recv(conn, ibinc);
 		else {
-			rds_recv_incoming(conn, conn->c_faddr, conn->c_laddr,
-					&ibinc->ii_inc, GFP_ATOMIC);
+			rds_recv_incoming(conn, &conn->c_faddr, &conn->c_laddr,
+					  &ibinc->ii_inc, GFP_ATOMIC);
 
 			state->ack_next = be64_to_cpu(hdr->h_sequence);
 			state->ack_next_valid = 1;
@@ -1420,7 +1420,7 @@ void rds_ib_recv_cqe_handler(struct rds_ib_connection *ic,
 		if (rds_conn_up(conn) || rds_conn_connecting(conn)) {
 			/* Flush errors are normal while draining the QP */
 			if (wc->status != IB_WC_WR_FLUSH_ERR)
-				pr_warn("RDS/IB: recv completion <%pI4,%pI4,%d> had status %u vendor_err 0x%x, disconnecting and reconnecting\n",
+				pr_warn("RDS/IB: recv completion <%pI6c,%pI6c,%d> had status %u vendor_err 0x%x, disconnecting and reconnecting\n",
 					&conn->c_laddr, &conn->c_faddr, conn->c_tos,
 					wc->status, wc->vendor_err);
 			if (wc->status == IB_WC_LOC_LEN_ERR)
