@@ -39,6 +39,7 @@
 #include <rdma/rdma_cm_ib.h>
 #include <rdma/ib_cache.h>
 #include <rdma/ib_cm.h>
+#include <net/addrconf.h>
 
 #include "rds.h"
 #include "ib.h"
@@ -184,7 +185,7 @@ static u16 rds_ib_set_frag_size(struct rds_connection *conn, u16 dp_frag)
 
 	ic->i_frag_pages =  ceil(ic->i_frag_sz, PAGE_SIZE);
 
-	pr_debug("RDS/IB: conn <%pI4, %pI4,%d>, Frags <init,ic,dp>: {%d,%d,%d}, updated {%d -> %d}\n",
+	pr_debug("RDS/IB: conn <%pI6c, %pI6c,%d>, Frags <init,ic,dp>: {%d,%d,%d}, updated {%d -> %d}\n",
 		 &conn->c_laddr, &conn->c_faddr, conn->c_tos,
 		 ib_init_frag_size / SZ_1K, ic->i_frag_sz / SZ_1K, dp_frag /  SZ_1K,
 		 current_frag / SZ_1K, ic->i_frag_sz / SZ_1K);
@@ -257,27 +258,50 @@ out:
  */
 void rds_ib_cm_connect_complete(struct rds_connection *conn, struct rdma_cm_event *event)
 {
-	const struct rds_ib_connect_private *dp = NULL;
 	struct rds_ib_connection *ic = conn->c_transport_data;
+	const union rds_ib_conn_priv *dp = NULL;
 	struct ib_qp_attr qp_attr;
+	__be16 frag_sz = 0;
+	__be64 ack_seq = 0;
+	__be32 credit = 0;
+	u8 major = 0;
+	u8 minor = 0;
 	int err;
 
-	if (event->param.conn.private_data_len >= sizeof(*dp)) {
-		dp = event->param.conn.private_data;
-
-		/* make sure it isn't empty data */
-		if (dp->dp_protocol_major) {
-			rds_ib_set_protocol(conn,
-				RDS_PROTOCOL(dp->dp_protocol_major,
-				dp->dp_protocol_minor));
-			rds_ib_set_flow_control(conn, be32_to_cpu(dp->dp_credit));
-			rds_ib_set_frag_size(conn, be16_to_cpu(dp->dp_frag_sz));
+	dp = event->param.conn.private_data;
+	if (conn->c_isv6) {
+		if (event->param.conn.private_data_len >=
+		    sizeof(struct rds6_ib_connect_private)) {
+			major = dp->ricp_v6.dp_protocol_major;
+			minor = dp->ricp_v6.dp_protocol_minor;
+			credit = dp->ricp_v6.dp_credit;
+			frag_sz = dp->ricp_v6.dp_frag_sz;
+			/* dp structure start is not guaranteed to be 8 bytes
+			 * aligned.  Since dp_ack_seq is 64-bit extended load
+			 * operations can be used so go through get_unaligned
+			 * to avoid unaligned errors.
+			 */
+			ack_seq = get_unaligned(&dp->ricp_v6.dp_ack_seq);
 		}
+	} else if (event->param.conn.private_data_len >=
+		   sizeof(struct rds_ib_connect_private)) {
+		major = dp->ricp_v4.dp_protocol_major;
+		minor = dp->ricp_v4.dp_protocol_minor;
+		credit = dp->ricp_v4.dp_credit;
+		frag_sz = dp->ricp_v4.dp_frag_sz;
+		ack_seq = get_unaligned(&dp->ricp_v4.dp_ack_seq);
+	}
+
+	/* make sure it isn't empty data */
+	if (major) {
+		rds_ib_set_protocol(conn, RDS_PROTOCOL(major, minor));
+		rds_ib_set_flow_control(conn, be32_to_cpu(credit));
+		rds_ib_set_frag_size(conn, be16_to_cpu(frag_sz));
 	}
 
 	if (conn->c_version < RDS_PROTOCOL_VERSION) {
 		if (conn->c_version != RDS_PROTOCOL_COMPAT_VERSION) {
-			printk(KERN_NOTICE "RDS/IB: Connection to %pI4 version %u.%u failed, no longer supported\n",
+			printk(KERN_NOTICE "RDS/IB: Connection to %pI6c version %u.%u failed, no longer supported\n",
 			       &conn->c_faddr,
 			       RDS_PROTOCOL_MAJOR(conn->c_version),
 			       RDS_PROTOCOL_MINOR(conn->c_version));
@@ -286,7 +310,7 @@ void rds_ib_cm_connect_complete(struct rds_connection *conn, struct rdma_cm_even
 		}
 	}
 
-	printk(KERN_NOTICE "RDS/IB: %s conn %p i_cm_id %p, frag %dKB, connected <%pI4,%pI4,%d> version %u.%u%s%s\n",
+	printk(KERN_NOTICE "RDS/IB: %s conn %p i_cm_id %p, frag %dKB, connected <%pI6c,%pI6c,%d> version %u.%u%s%s\n",
 	       ic->i_active_side ? "Active " : "Passive",
 	       conn, ic->i_cm_id, ic->i_frag_sz / SZ_1K,
 	       &conn->c_laddr, &conn->c_faddr, conn->c_tos,
@@ -332,7 +356,7 @@ void rds_ib_cm_connect_complete(struct rds_connection *conn, struct rdma_cm_even
 		printk(KERN_NOTICE "ib_modify_qp(IB_QP_STATE, RTS): err=%d\n", err);
 
 	/* update ib_device with this local ipaddr */
-	err = rds_ib_update_ipaddr(ic->rds_ibdev, conn->c_laddr);
+	err = rds_ib_update_ipaddr(ic->rds_ibdev, &conn->c_laddr);
 	if (err)
 		printk(KERN_ERR "rds_ib_update_ipaddr failed (%d)\n",
 			err);
@@ -340,14 +364,8 @@ void rds_ib_cm_connect_complete(struct rds_connection *conn, struct rdma_cm_even
 	/* If the peer gave us the last packet it saw, process this as if
 	 * we had received a regular ACK. */
 	if (dp) {
-		/* dp structure start is not guaranteed to be 8 bytes aligned.
-		 * Since dp_ack_seq is 64-bit extended load operations can be
-		 * used so go through get_unaligned to avoid unaligned errors.
-		 */
-		__be64 dp_ack_seq = get_unaligned(&dp->dp_ack_seq);
-
-		if (dp_ack_seq)
-			rds_send_drop_acked(conn, be64_to_cpu(dp_ack_seq),
+		if (ack_seq)
+			rds_send_drop_acked(conn, be64_to_cpu(ack_seq),
 					    NULL);
 	}
 
@@ -355,11 +373,12 @@ void rds_ib_cm_connect_complete(struct rds_connection *conn, struct rdma_cm_even
 }
 
 static void rds_ib_cm_fill_conn_param(struct rds_connection *conn,
-			struct rdma_conn_param *conn_param,
-			struct rds_ib_connect_private *dp,
-			u32 protocol_version,
-			u32 max_responder_resources,
-			u32 max_initiator_depth, u16 frag)
+				      struct rdma_conn_param *conn_param,
+				      union rds_ib_conn_priv *dp,
+				      u32 protocol_version,
+				      u32 max_responder_resources,
+				      u32 max_initiator_depth, u16 frag,
+				      bool isv6)
 {
 	struct rds_ib_connection *ic = conn->c_transport_data;
 	struct rds_ib_device *rds_ibdev = ic->rds_ibdev;
@@ -376,26 +395,53 @@ static void rds_ib_cm_fill_conn_param(struct rds_connection *conn,
 
 	if (dp) {
 		memset(dp, 0, sizeof(*dp));
-		dp->dp_saddr = conn->c_laddr;
-		dp->dp_daddr = conn->c_faddr;
-		dp->dp_protocol_major = RDS_PROTOCOL_MAJOR(protocol_version);
-		dp->dp_protocol_minor = RDS_PROTOCOL_MINOR(protocol_version);
-		dp->dp_protocol_minor_mask = cpu_to_be16(RDS_IB_SUPPORTED_PROTOCOLS);
-		dp->dp_ack_seq = cpu_to_be64(rds_ib_piggyb_ack(ic));
-		dp->dp_tos = conn->c_tos;
+		if (isv6) {
+			dp->ricp_v6.dp_saddr = conn->c_laddr;
+			dp->ricp_v6.dp_daddr = conn->c_faddr;
+			dp->ricp_v6.dp_protocol_major =
+			    RDS_PROTOCOL_MAJOR(protocol_version);
+			dp->ricp_v6.dp_protocol_minor =
+			    RDS_PROTOCOL_MINOR(protocol_version);
+			dp->ricp_v6.dp_protocol_minor_mask =
+			    cpu_to_be16(RDS_IB_SUPPORTED_PROTOCOLS);
+			dp->ricp_v6.dp_ack_seq =
+			    cpu_to_be64(rds_ib_piggyb_ack(ic));
+			dp->ricp_v6.dp_tos = conn->c_tos;
+			dp->ricp_v6.dp_frag_sz = cpu_to_be16(frag);
+
+			conn_param->private_data = &dp->ricp_v6;
+			conn_param->private_data_len = sizeof(dp->ricp_v6);
+		} else {
+			dp->ricp_v4.dp_saddr = conn->c_laddr.s6_addr32[3];
+			dp->ricp_v4.dp_daddr = conn->c_faddr.s6_addr32[3];
+			dp->ricp_v4.dp_protocol_major =
+			    RDS_PROTOCOL_MAJOR(protocol_version);
+			dp->ricp_v4.dp_protocol_minor =
+			    RDS_PROTOCOL_MINOR(protocol_version);
+			dp->ricp_v4.dp_protocol_minor_mask =
+			    cpu_to_be16(RDS_IB_SUPPORTED_PROTOCOLS);
+			dp->ricp_v4.dp_ack_seq =
+			    cpu_to_be64(rds_ib_piggyb_ack(ic));
+			dp->ricp_v4.dp_tos = conn->c_tos;
+			dp->ricp_v4.dp_frag_sz = cpu_to_be16(frag);
+
+			conn_param->private_data = &dp->ricp_v4;
+			conn_param->private_data_len = sizeof(dp->ricp_v4);
+		}
 
 		/* Advertise flow control */
 		if (ic->i_flowctl) {
 			unsigned int credits;
 
-			credits = IB_GET_POST_CREDITS(atomic_read(&ic->i_credits));
-			dp->dp_credit = cpu_to_be32(credits);
-			atomic_sub(IB_SET_POST_CREDITS(credits), &ic->i_credits);
+			credits = IB_GET_POST_CREDITS(
+			    atomic_read(&ic->i_credits));
+			if (isv6)
+				dp->ricp_v6.dp_credit = cpu_to_be32(credits);
+			else
+				dp->ricp_v4.dp_credit = cpu_to_be32(credits);
+			atomic_sub(IB_SET_POST_CREDITS(credits),
+				   &ic->i_credits);
 		}
-
-		dp->dp_frag_sz = cpu_to_be16(frag);
-		conn_param->private_data = dp;
-		conn_param->private_data_len = sizeof(*dp);
 	}
 }
 
@@ -482,7 +528,7 @@ static void poll_rcq(struct rds_ib_connection *ic, struct ib_cq *cq,
 	while ((nr = ib_poll_cq(cq, RDS_WC_MAX, wcs)) > 0) {
 		for (i = 0; i < nr; i++) {
 			if ((++ic->i_rx_poll_cq % RDS_IB_RX_LIMIT) == 0) {
-				rdsdebug("connection <%pI4,%pI4,%d> RX poll_cq processed %d\n",
+				rdsdebug("connection <%pI6c,%pI6c,%d> RX poll_cq processed %d\n",
 					 &ic->conn->c_laddr,
 					 &ic->conn->c_faddr,
 					 ic->conn->c_tos,
@@ -623,7 +669,7 @@ static void rds_ib_qp_event_handler(struct ib_event *event, void *data)
 		break;
 	default:
 		rds_rtd(RDS_RTD_ERR,
-			"Fatal QP Event %u (%s) - connection %pI4->%pI4 tos %d, reconnecting\n",
+			"Fatal QP Event %u (%s) - connection %pI6c->%pI6c tos %d, reconnecting\n",
 			event->event, rds_ib_event_str(event->event),
 			&conn->c_laddr,	&conn->c_faddr, conn->c_tos);
 		rds_conn_drop(conn, DR_IB_QP_EVENT);
@@ -847,11 +893,13 @@ out:
 	return ret;
 }
 
-static u32 rds_ib_protocol_compatible(struct rdma_cm_event *event)
+static u32 rds_ib_protocol_compatible(struct rdma_cm_event *event, bool isv6)
 {
-	const struct rds_ib_connect_private *dp = event->param.conn.private_data;
-	u16 common;
+	const union rds_ib_conn_priv *dp = event->param.conn.private_data;
+	u8 data_len, major, minor;
 	u32 version = 0;
+	__be16 mask;
+	u16 common;
 
 	/*
 	 * rdma_cm private data is odd - when there is any private data in the
@@ -870,61 +918,134 @@ static u32 rds_ib_protocol_compatible(struct rdma_cm_event *event)
 		return 0;
 	}
 
+	if (isv6) {
+		data_len = sizeof(struct rds6_ib_connect_private);
+		major = dp->ricp_v6.dp_protocol_major;
+		minor = dp->ricp_v6.dp_protocol_minor;
+		mask = dp->ricp_v6.dp_protocol_minor_mask;
+	} else {
+		data_len = sizeof(struct rds_ib_connect_private);
+		major = dp->ricp_v4.dp_protocol_major;
+		minor = dp->ricp_v4.dp_protocol_minor;
+		mask = dp->ricp_v4.dp_protocol_minor_mask;
+	}
 	/* Even if len is crap *now* I still want to check it. -ASG */
-	if (event->param.conn.private_data_len < sizeof(*dp)
-	    || dp->dp_protocol_major == 0)
+	if (event->param.conn.private_data_len < data_len || major == 0)
 		return RDS_PROTOCOL_4_0;
 
-	common = be16_to_cpu(dp->dp_protocol_minor_mask) & RDS_IB_SUPPORTED_PROTOCOLS;
-	if (dp->dp_protocol_major == 4 && common) {
+	common = be16_to_cpu(mask) & RDS_IB_SUPPORTED_PROTOCOLS;
+	if (major == 4 && common) {
 		version = RDS_PROTOCOL_4_0;
 		while ((common >>= 1) != 0)
 			version++;
-	} else if (RDS_PROTOCOL_COMPAT_VERSION ==
-		RDS_PROTOCOL(dp->dp_protocol_major, dp->dp_protocol_minor)) {
+	} else if (RDS_PROTOCOL_COMPAT_VERSION == RDS_PROTOCOL(major, minor)) {
 		version = RDS_PROTOCOL_COMPAT_VERSION;
-	} else if (printk_ratelimit()) {
-		printk(KERN_NOTICE "RDS: Connection from %pI4 using "
-			"incompatible protocol version %u.%u\n",
-			&dp->dp_saddr,
-			dp->dp_protocol_major,
-			dp->dp_protocol_minor);
+	} else {
+		if (isv6) {
+			printk_ratelimited(KERN_NOTICE "RDS: Connection from %pI6c using incompatible protocol version %u.%u\n",
+					   &dp->ricp_v6.dp_saddr, major, minor);
+		} else {
+			printk_ratelimited(KERN_NOTICE "RDS: Connection from %pI4 using incompatible protocol version %u.%u\n",
+					   &dp->ricp_v4.dp_saddr, major, minor);
+		}
 	}
 	return version;
 }
 
+/* Given an IPv6 address, find the IB net_device which hosts that address and
+ * return its index.  This is used by the rds_ib_cm_handle_connect() code to
+ * find the interface index of where an incoming request comes from when
+ * the request is using a link local address.
+ *
+ * Note one problem in this search.  It is possible that two interfaces have
+ * the same link local address.  Unfortunately, this cannot be solved unless
+ * the underlying layer gives us the interface which an incoming RDMA connect
+ * request comes from.
+ */
+static u32 __rds_find_ifindex(struct net *net, const struct in6_addr *addr)
+{
+	struct net_device *dev;
+	int idx = 0;
+
+	rcu_read_lock();
+	for_each_netdev_rcu(net, dev) {
+		if (dev->type == ARPHRD_INFINIBAND &&
+		    ipv6_chk_addr(net, addr, dev, 0)) {
+			idx = dev->ifindex;
+			break;
+		}
+	}
+	rcu_read_unlock();
+
+	return idx;
+}
+
 int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
-				    struct rdma_cm_event *event)
+			     struct rdma_cm_event *event, bool isv6)
 {
 	__be64 lguid = cm_id->route.path_rec->sgid.global.interface_id;
 	__be64 fguid = cm_id->route.path_rec->dgid.global.interface_id;
-	const struct rds_ib_connect_private *dp = event->param.conn.private_data;
-	struct rds_ib_connect_private dp_rep;
-	struct rds_connection *conn = NULL;
+	const struct rds_ib_conn_priv_cmn *dp_cmn;
 	struct rds_ib_connection *ic = NULL;
+	struct rds_connection *conn = NULL;
 	struct rdma_conn_param conn_param;
-	u32 version;
-	int err = 1, destroy = 1;
+	const union rds_ib_conn_priv *dp;
+	union rds_ib_conn_priv dp_rep;
+	struct in6_addr s_mapped_addr;
+	struct in6_addr d_mapped_addr;
+	const struct in6_addr *saddr6;
+	const struct in6_addr *daddr6;
+	int destroy = 1;
 	int acl_ret = 0;
+	u32 ifindex = 0;
+	u32 version;
+	int err = 1;
 	u16 frag;
 
 	/* Check whether the remote protocol version matches ours. */
-	version = rds_ib_protocol_compatible(event);
+	version = rds_ib_protocol_compatible(event, isv6);
 	if (!version)
 		goto out;
 
+	dp = event->param.conn.private_data;
+	if (isv6) {
+		dp_cmn = &dp->ricp_v6.dp_cmn;
+		saddr6 = &dp->ricp_v6.dp_saddr;
+		daddr6 = &dp->ricp_v6.dp_daddr;
+		/* If the local address is link local, need to find the
+		 * interface index in order to create a proper RDS
+		 * connection.
+		 */
+		if (ipv6_addr_type(daddr6) & IPV6_ADDR_LINKLOCAL) {
+			/* Using init_net for now ..  */
+			ifindex = __rds_find_ifindex(&init_net, daddr6);
+			/* No index found...  Need to bail out. */
+			if (ifindex == 0) {
+				err = -EOPNOTSUPP;
+				goto out;
+			}
+		}
+	} else {
+		dp_cmn = &dp->ricp_v4.dp_cmn;
+		ipv6_addr_set_v4mapped(dp->ricp_v4.dp_saddr, &s_mapped_addr);
+		ipv6_addr_set_v4mapped(dp->ricp_v4.dp_daddr, &d_mapped_addr);
+		saddr6 = &s_mapped_addr;
+		daddr6 = &d_mapped_addr;
+	}
+
 	rds_rtd(RDS_RTD_CM,
-		"saddr %pI4 daddr %pI4 RDSv%u.%u lguid 0x%llx fguid 0x%llx tos %d\n",
-		&dp->dp_saddr, &dp->dp_daddr,
+		"saddr %pI6c daddr %pI6c RDSv%u.%u lguid 0x%llx fguid 0x%llx tos %d\n",
+		saddr6, daddr6,
 		RDS_PROTOCOL_MAJOR(version),
 		RDS_PROTOCOL_MINOR(version),
 		(unsigned long long)be64_to_cpu(lguid),
 		(unsigned long long)be64_to_cpu(fguid),
-		dp->dp_tos);
+		dp_cmn->ricpc_tos);
 
 #ifdef CONFIG_RDS_ACL
 
-	acl_ret = rds_ib_match_acl(cm_id, dp->dp_saddr);
+	/* XXX IPoIB ACL Only support IPv4 */
+	acl_ret = rds_ib_match_acl(cm_id, saddr6->s6_addr32[3]);
 	if (acl_ret < 0) {
 		err = RDS_ACL_FAILURE;
 		rdsdebug("RDS: IB: passive: rds_ib_match_acl failed\n");
@@ -938,8 +1059,10 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 #endif /* !CONFIG_RDS_ACL */
 
 	/* RDS/IB is not currently netns aware, thus init_net */
-	conn = rds_conn_create(&init_net, dp->dp_daddr, dp->dp_saddr,
-			       &rds_ib_transport, dp->dp_tos, GFP_KERNEL);
+	conn = rds_conn_create(&init_net, daddr6, saddr6,
+			       &rds_ib_transport, dp_cmn->ricpc_tos,
+			       GFP_KERNEL, ifindex);
+
 	if (IS_ERR(conn)) {
 		rds_rtd(RDS_RTD_ERR, "rds_conn_create failed (%ld)\n",
 			PTR_ERR(conn));
@@ -986,7 +1109,7 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 			retry = DIV_ROUND_UP(retry, 1000);
 			if (now > conn->c_connection_start &&
 			    now - conn->c_connection_start > retry) {
-				pr_info("RDS/IB: conn <%pI4,%pI4,%d> racing for more than %lus, retry\n",
+				pr_info("RDS/IB: conn <%pI6c,%pI6c,%d> racing for more than %lus, retry\n",
 					&conn->c_laddr, &conn->c_faddr,
 					conn->c_tos, retry);
 				set_bit(RDS_RECONNECT_TIMEDOUT,
@@ -1009,7 +1132,7 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 	 */
 	conn->c_connection_start = get_seconds();
 
-	rds_ib_set_flow_control(conn, be32_to_cpu(dp->dp_credit));
+	rds_ib_set_flow_control(conn, be32_to_cpu(dp_cmn->ricpc_credit));
 	/* Use ic->i_flowctl as the first post credit to enable
 	 * IB transport flow control. This first post credit is
 	 * deducted after advertise the credit to the remote
@@ -1019,8 +1142,9 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 
 	/* If the peer gave us the last packet it saw, process this as if
 	 * we had received a regular ACK. */
-	if (dp->dp_ack_seq)
-		rds_send_drop_acked(conn, be64_to_cpu(dp->dp_ack_seq), NULL);
+	if (dp_cmn->ricpc_ack_seq)
+		rds_send_drop_acked(conn, be64_to_cpu(dp_cmn->ricpc_ack_seq),
+				    NULL);
 
 	BUG_ON(cm_id->context);
 	BUG_ON(ic->i_cm_id);
@@ -1034,22 +1158,22 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 
 	err = rds_ib_setup_qp(conn);
 	if (err) {
-		pr_warn("RDS/IB: rds_ib_setup_qp failed with err(%d) for conn <%pI4,%pI4,%d>\n",
+		pr_warn("RDS/IB: rds_ib_setup_qp failed with err(%d) for conn <%pI6c,%pI6c,%d>\n",
 			err, &conn->c_laddr, &conn->c_faddr, conn->c_tos);
 		rds_conn_drop(conn, DR_IB_PAS_SETUP_QP_FAIL);
 		goto out;
 	}
-	frag = rds_ib_set_frag_size(conn, be16_to_cpu(dp->dp_frag_sz));
+	frag = rds_ib_set_frag_size(conn, be16_to_cpu(dp_cmn->ricpc_frag_sz));
 
 	rds_ib_cm_fill_conn_param(conn, &conn_param, &dp_rep, version,
-		event->param.conn.responder_resources,
-		event->param.conn.initiator_depth,
-		frag);
+				  event->param.conn.responder_resources,
+				  event->param.conn.initiator_depth,
+				  frag, isv6);
 
 	/* rdma_accept() calls rdma_reject() internally if it fails */
 	err = rdma_accept(cm_id, &conn_param);
 	if (err) {
-		pr_warn("RDS/IB: rdma_accept failed with err(%d) for conn <%pI4,%pI4,%d>\n",
+		pr_warn("RDS/IB: rdma_accept failed with err(%d) for conn <%pI6c,%pI6c,%d>\n",
 			err, &conn->c_laddr, &conn->c_faddr, conn->c_tos);
 		rds_conn_drop(conn, DR_IB_RDMA_ACCEPT_FAIL);
 	}
@@ -1088,20 +1212,20 @@ void rds_ib_conn_destroy_init(struct rds_connection *conn)
 	queue_delayed_work(rds_aux_wq, &work->work, 0);
 }
 
-int rds_ib_cm_initiate_connect(struct rdma_cm_id *cm_id)
+int rds_ib_cm_initiate_connect(struct rdma_cm_id *cm_id, bool isv6)
 {
 	struct rds_connection *conn = cm_id->context;
 	struct rds_ib_connection *ic = conn->c_transport_data;
 	struct rdma_conn_param conn_param;
-	struct rds_ib_connect_private dp;
+	union rds_ib_conn_priv dp;
 	u16 frag;
 	int ret;
 
 #ifdef CONFIG_RDS_ACL
 
-	ret = rds_ib_match_acl(ic->i_cm_id, conn->c_faddr);
+	ret = rds_ib_match_acl(ic->i_cm_id, conn->c_faddr.s6_addr32[3]);
 	if (ret < 0) {
-		pr_err("RDS: IB: active conn=%p, <%pI4,%pI4,%d> destroyed due ACL violation\n",
+		pr_err("RDS: IB: active conn=%p, <%pI6c,%pI6c,%d> destroyed due ACL violation\n",
 		       conn, &conn->c_laddr, &conn->c_faddr,
 		       conn->c_tos);
 		rds_ib_conn_destroy_init(conn);
@@ -1126,7 +1250,7 @@ int rds_ib_cm_initiate_connect(struct rdma_cm_id *cm_id)
 	 */
 	atomic_set(&ic->i_credits, IB_SET_POST_CREDITS(ic->i_flowctl));
 
-	pr_debug("RDS/IB: Initiate conn <%pI4, %pI4,%d> with Frags <init,ic>: {%d,%d}\n",
+	pr_debug("RDS/IB: Initiate conn <%pI6c, %pI6c,%d> with Frags <init,ic>: {%d,%d}\n",
 		 &conn->c_laddr, &conn->c_faddr, conn->c_tos,
 		 ib_init_frag_size / SZ_1K, ic->i_frag_sz / SZ_1K);
 
@@ -1139,7 +1263,7 @@ int rds_ib_cm_initiate_connect(struct rdma_cm_id *cm_id)
 	frag = rds_ib_set_frag_size(conn, ib_init_frag_size);
 	rds_ib_cm_fill_conn_param(conn, &conn_param, &dp,
 				  conn->c_proposed_version, UINT_MAX, UINT_MAX,
-				  frag);
+				  frag, isv6);
 	ret = rdma_connect(cm_id, &conn_param);
 	if (ret) {
 		pr_warn("RDS/IB: rdma_connect failed (%d)\n", ret);
@@ -1162,15 +1286,20 @@ out:
 int rds_ib_conn_path_connect(struct rds_conn_path *cp)
 {
 	struct rds_connection *conn = cp->cp_conn;
-	struct rds_ib_connection *ic = conn->c_transport_data;
-	struct sockaddr_in src, dest;
+	struct sockaddr_storage src, dest;
+	rdma_cm_event_handler handler;
+	struct rds_ib_connection *ic;
 	int ret;
+
+	ic = conn->c_transport_data;
 
 	/* XXX I wonder what affect the port space has */
 	/* delegate cm event handler to rdma_transport */
+	handler = rds_rdma_cm_event_handler;
 	ic->i_cm_id = rdma_create_id(rds_conn_net(conn),
-				     rds_rdma_cm_event_handler, conn,
+				     handler, conn,
 				     RDMA_PS_TCP, IB_QPT_RC);
+
 	if (IS_ERR(ic->i_cm_id)) {
 		ret = PTR_ERR(ic->i_cm_id);
 		ic->i_cm_id = NULL;
@@ -1179,17 +1308,37 @@ int rds_ib_conn_path_connect(struct rds_conn_path *cp)
 	}
 
 	rds_rtd(RDS_RTD_CM_EXT,
-		"RDS/IB: conn init <%pI4,%pI4,%d> cm_id %p\n",
+		"RDS/IB: conn init <%pI6c,%pI6c,%d> cm_id %p\n",
 		&conn->c_laddr, &conn->c_faddr,
 		conn->c_tos, ic->i_cm_id);
 
-	src.sin_family = AF_INET;
-	src.sin_addr.s_addr = (__force u32)conn->c_laddr;
-	src.sin_port = (__force u16)htons(0);
+	if (ipv6_addr_v4mapped(&conn->c_faddr)) {
+		struct sockaddr_in *sin;
 
-	dest.sin_family = AF_INET;
-	dest.sin_addr.s_addr = (__force u32)conn->c_faddr;
-	dest.sin_port = (__force u16)htons(RDS_PORT);
+		sin = (struct sockaddr_in *)&src;
+		sin->sin_family = AF_INET;
+		sin->sin_addr.s_addr = conn->c_laddr.s6_addr32[3];
+		sin->sin_port = (__force u16)htons(0);
+
+		sin = (struct sockaddr_in *)&dest;
+		sin->sin_family = AF_INET;
+		sin->sin_addr.s_addr = conn->c_faddr.s6_addr32[3];
+		sin->sin_port = (__force u16)htons(RDS_PORT);
+	} else {
+		struct sockaddr_in6 *sin6;
+
+		sin6 = (struct sockaddr_in6 *)&src;
+		sin6->sin6_family = AF_INET6;
+		sin6->sin6_addr = conn->c_laddr;
+		sin6->sin6_port = (__force u16)htons(0);
+		sin6->sin6_scope_id = conn->c_dev_if;
+
+		sin6 = (struct sockaddr_in6 *)&dest;
+		sin6->sin6_family = AF_INET6;
+		sin6->sin6_addr = conn->c_faddr;
+		sin6->sin6_port = (__force u16)htons(RDS_TCP_PORT);
+		sin6->sin6_scope_id = conn->c_dev_if;
+	}
 
 	ret = rdma_resolve_addr(ic->i_cm_id, (struct sockaddr *)&src,
 				(struct sockaddr *)&dest,

@@ -367,7 +367,7 @@ void rds_ib_send_cqe_handler(struct rds_ib_connection *ic, struct ib_wc *wc)
 		/* Flush errors are normal while draining the QP */
 		if (!(wc->status == IB_WC_WR_FLUSH_ERR ||
 		    wc->status == IB_WC_RETRY_EXC_ERR))
-			pr_warn("RDS/IB: send completion <%pI4,%pI4,%d> status %u vendor_err 0x%x, disconnecting and reconnecting\n",
+			pr_warn("RDS/IB: send completion <%pI6c,%pI6c,%d> status %u vendor_err 0x%x, disconnecting and reconnecting\n",
 				&conn->c_laddr, &conn->c_faddr, conn->c_tos,
 				wc->status, wc->vendor_err);
 		rds_conn_drop(conn, DR_IB_SEND_COMP_ERR);
@@ -833,7 +833,7 @@ int rds_ib_xmit(struct rds_connection *conn, struct rds_message *rm,
 		 first, &first->s_wr, ret, failed_wr);
 	BUG_ON(failed_wr != &first->s_wr);
 	if (ret) {
-		printk(KERN_WARNING "RDS/IB: ib_post_send to %pI4 "
+		printk(KERN_WARNING "RDS/IB: ib_post_send to %pI6c "
 		       "returned %d\n", &conn->c_faddr, ret);
 		rds_ib_ring_unalloc(&ic->i_send_ring, work_alloc);
 		rds_ib_sub_signaled(ic, nr_sig);
@@ -926,7 +926,7 @@ int rds_ib_xmit_atomic(struct rds_connection *conn, struct rm_atomic_op *op)
 		 send, &send->s_wr, ret, failed_wr);
 	BUG_ON(failed_wr != &send->s_wr);
 	if (ret) {
-		printk(KERN_WARNING "RDS/IB: atomic ib_post_send to %pI4 returned %d\n",
+		printk(KERN_WARNING "RDS/IB: atomic ib_post_send to %pI6c returned %d\n",
 		       &conn->c_faddr, ret);
 		rds_ib_ring_unalloc(&ic->i_send_ring, work_alloc);
 		rds_ib_sub_signaled(ic, nr_sig);
@@ -1097,7 +1097,7 @@ int rds_ib_xmit_rdma(struct rds_connection *conn, struct rm_rdma_op *op)
 		 first, &first->s_wr, ret, failed_wr);
 	BUG_ON(failed_wr != &first->s_wr);
 	if (ret) {
-		printk(KERN_WARNING "RDS/IB: rdma ib_post_send to %pI4 "
+		printk(KERN_WARNING "RDS/IB: rdma ib_post_send to %pI6c "
 		       "returned %d\n", &conn->c_faddr, ret);
 		rds_ib_ring_unalloc(&ic->i_send_ring, work_alloc);
 		rds_ib_sub_signaled(ic, nr_sig);

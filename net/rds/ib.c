@@ -364,9 +364,11 @@ static int rds_ib_conn_info_visitor(struct rds_connection *conn,
 	/* We will only ever look at IB transports */
 	if (conn->c_trans != &rds_ib_transport)
 		return 0;
+	if (conn->c_isv6)
+		return 0;
 
-	iinfo->src_addr = conn->c_laddr;
-	iinfo->dst_addr = conn->c_faddr;
+	iinfo->src_addr = conn->c_laddr.s6_addr32[3];
+	iinfo->dst_addr = conn->c_faddr.s6_addr32[3];
 
 	memset(&iinfo->src_gid, 0, sizeof(iinfo->src_gid));
 	memset(&iinfo->dst_gid, 0, sizeof(iinfo->dst_gid));
@@ -425,20 +427,21 @@ static void rds_ib_ic_info(struct socket *sock, unsigned int len,
  * allowed to influence which paths have priority.  We could call userspace
  * asserting this policy "routing".
  */
-static int rds_ib_laddr_check(struct net *net, __be32 addr)
+static int rds_ib_laddr_check(struct net *net, const struct in6_addr *addr,
+			      __u32 scope_id)
 {
 	int ret;
 	struct rdma_cm_id *cm_id;
 	struct sockaddr_in sin;
 
 	/* Link-local addresses don't play well with IB */
-	if (ipv4_is_linklocal_169(addr)) {
+	if (ipv4_is_linklocal_169(addr->s6_addr32[3])) {
 		pr_info_once("\n");
 		pr_info_once("****************************************************\n");
 		pr_info_once("** WARNING WARNING WARNING WARNING WARNING        **\n");
 		pr_info_once("**                                                **\n");
-		pr_info_once("** RDS/IB: Link local address %pI4 NOT SUPPORTED  **\n",
-			     &addr);
+		pr_info_once("** RDS/IB: Link local address %pI6c NOT SUPPORTED  **\n",
+			     addr);
 		pr_info_once("**                                                **\n");
 		pr_info_once("** HAIP IP addresses should not be used on ORACLE **\n");
 		pr_info_once("** engineered systems                             **\n");
@@ -457,7 +460,7 @@ static int rds_ib_laddr_check(struct net *net, __be32 addr)
 
 	memset(&sin, 0, sizeof(sin));
 	sin.sin_family = AF_INET;
-	sin.sin_addr.s_addr = addr;
+	sin.sin_addr.s_addr = addr->s6_addr32[3];
 
 	/* rdma_bind_addr will only succeed for IB & iWARP devices */
 	ret = rdma_bind_addr(cm_id, (struct sockaddr *)&sin);
@@ -466,9 +469,9 @@ static int rds_ib_laddr_check(struct net *net, __be32 addr)
 	if (ret || !cm_id->device || cm_id->device->node_type != RDMA_NODE_IB_CA)
 		ret = -EADDRNOTAVAIL;
 
-	rdsdebug("addr %pI4 ret %d node type %d\n",
-		&addr, ret,
-		cm_id->device ? cm_id->device->node_type : -1);
+	rdsdebug("addr %pI6c ret %d node type %d\n",
+		 addr, ret,
+		 cm_id->device ? cm_id->device->node_type : -1);
 
 	rdma_destroy_id(cm_id);
 
