@@ -132,8 +132,8 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 			if (conn) {
 				struct rds_ib_connection *ibic;
 
-				printk(KERN_CRIT "rds dropping connection after rdma_resolve_route failure"
-				       "connection %pI4->%pI4\n", &conn->c_laddr, &conn->c_faddr);
+				printk(KERN_CRIT "rds dropping connection after rdma_resolve_route failure connection %pI4->%pI4\n",
+				       &conn->c_laddr, &conn->c_faddr);
 				ibic = conn->c_transport_data;
 				if (ibic && ibic->i_cm_id == cm_id)
 					ibic->i_cm_id = NULL;
@@ -244,9 +244,9 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 				   (*err) == RDS_ACL_FAILURE) {
 				/* Rejection due to ACL violation */
 				pr_err("RDS: IB: conn=%p, <%pI4,%pI4,%d> destroyed due to ACL violation\n",
-						conn, &conn->c_laddr,
-						&conn->c_faddr,
-						conn->c_tos);
+				       conn, &conn->c_laddr,
+				       &conn->c_faddr,
+				       conn->c_tos);
 				rds_ib_conn_destroy_init(conn);
 			} else {
 				rds_rtd(RDS_RTD_ERR,
