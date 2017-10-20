@@ -378,11 +378,10 @@ static int rds_user_reset(struct rds_sock *rs, char __user *optval, int optlen)
 	if (conn) {
 		bool is_tcp = conn->c_trans->t_type == RDS_TRANS_TCP;
 
-		printk(KERN_NOTICE "Resetting RDS/%s connection "
-				"<%pI4,%pI4,%d>\n",
-				is_tcp ? "tcp" : "IB",
-				&reset.src.s_addr,
-				&reset.dst.s_addr, conn->c_tos);
+		printk(KERN_NOTICE "Resetting RDS/%s connection <%pI4,%pI4,%d>\n",
+		       is_tcp ? "tcp" : "IB",
+		       &reset.src.s_addr,
+		       &reset.dst.s_addr, conn->c_tos);
 		rds_user_conn_paths_drop(conn, DR_USER_RESET);
 	}
 done:
