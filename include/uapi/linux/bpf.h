@@ -557,12 +557,22 @@ union bpf_attr {
  * int bpf_setsockopt(bpf_socket, level, optname, optval, optlen)
  *     Calls setsockopt. Not all opts are available, only those with
  *     integer optvals plus TCP_CONGESTION.
- *     Supported levels: SOL_SOCKET and IPROTO_TCP
+ *     Supported levels: SOL_SOCKET and IPPROTO_TCP
  *     @bpf_socket: pointer to bpf_socket
- *     @level: SOL_SOCKET or IPROTO_TCP
+ *     @level: SOL_SOCKET or IPPROTO_TCP
  *     @optname: option name
  *     @optval: pointer to option value
- *     @optlen: length of optval in byes
+ *     @optlen: length of optval in bytes
+ *     Return: 0 or negative error
+ *
+ * int bpf_getsockopt(bpf_socket, level, optname, optval, optlen)
+ *     Calls getsockopt. Not all opts are available.
+ *     Supported levels: IPPROTO_TCP
+ *     @bpf_socket: pointer to bpf_socket
+ *     @level: IPPROTO_TCP
+ *     @optname: option name
+ *     @optval: pointer to option value
+ *     @optlen: length of optval in bytes
  *     Return: 0 or negative error
  *
  * int bpf_skb_adjust_room(skb, len_diff, mode, flags)
@@ -587,6 +597,7 @@ union bpf_attr {
  *	@key: key to insert/update sock in map
  *	@flags: same flags as map update elem
  */
+#ifndef __GENKSYMS__
 #define __BPF_FUNC_MAPPER(FN)		\
 	FN(unspec),			\
 	FN(map_lookup_elem),		\
@@ -642,6 +653,64 @@ union bpf_attr {
 	FN(redirect_map),		\
 	FN(sk_redirect_map),		\
 	FN(sock_map_update),		\
+	FN(getsockopt),
+#else
+#define __BPF_FUNC_MAPPER(FN)		\
+	FN(unspec),			\
+	FN(map_lookup_elem),		\
+	FN(map_update_elem),		\
+	FN(map_delete_elem),		\
+	FN(probe_read),			\
+	FN(ktime_get_ns),		\
+	FN(trace_printk),		\
+	FN(get_prandom_u32),            \
+	FN(get_smp_processor_id),	\
+	FN(skb_store_bytes),		\
+	FN(l3_csum_replace),		\
+	FN(l4_csum_replace),		\
+	FN(tail_call),			\
+	FN(clone_redirect),		\
+	FN(get_current_pid_tgid),	\
+	FN(get_current_uid_gid),	\
+	FN(get_current_comm),		\
+	FN(get_cgroup_classid),		\
+	FN(skb_vlan_push),		\
+	FN(skb_vlan_pop),		\
+	FN(skb_get_tunnel_key),		\
+	FN(skb_set_tunnel_key),		\
+	FN(perf_event_read),		\
+	FN(redirect),			\
+	FN(get_route_realm),		\
+	FN(perf_event_output),		\
+	FN(skb_load_bytes),		\
+	FN(get_stackid),		\
+	FN(csum_diff),			\
+	FN(skb_get_tunnel_opt),		\
+	FN(skb_set_tunnel_opt),		\
+	FN(skb_change_proto),		\
+	FN(skb_change_type),		\
+	FN(skb_under_cgroup),		\
+	FN(get_hash_recalc),		\
+	FN(get_current_task),		\
+	FN(probe_write_user),		\
+	FN(current_task_under_cgroup),	\
+	FN(skb_change_tail),		\
+	FN(skb_pull_data),		\
+	FN(csum_update),		\
+	FN(set_hash_invalid),		\
+	FN(get_numa_node_id),		\
+	FN(skb_change_head),		\
+	FN(xdp_adjust_head),		\
+	FN(probe_read_str),		\
+	FN(get_socket_cookie),		\
+	FN(get_socket_uid),		\
+	FN(set_hash),			\
+	FN(setsockopt),			\
+	FN(skb_adjust_room),		\
+	FN(redirect_map),		\
+	FN(sk_redirect_map),		\
+	FN(sock_map_update),
+#endif
 
 /* integer value in 'imm' field of BPF_CALL instruction selects which helper
  * function eBPF program intends to call
