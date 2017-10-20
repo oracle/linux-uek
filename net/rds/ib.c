@@ -125,6 +125,21 @@ DECLARE_DELAYED_WORK(riif_dlywork, rds_ib_initial_failovers);
 static int timeout_until_initial_failovers;
 static struct workqueue_struct *rds_ip_wq;
 
+/* Return a string representation of an IB port state. */
+static const char *rds_ib_port_state2name(int state)
+{
+	switch (state) {
+	case RDS_IB_PORT_INIT:
+		return "INIT";
+	case RDS_IB_PORT_UP:
+		return "UP";
+	case RDS_IB_PORT_DOWN:
+		return "DOWN";
+	default:
+		return "UNKNOWN";
+	}
+}
+
 /*
  * rds_detected_linklayer_up
  *
@@ -668,10 +683,9 @@ static int rds_ib_move_ip(char			*from_dev,
 
 			if (ret) {
 				printk(KERN_ERR
-					"RDS/IP: failed to set IP %pI4 "
-					"on %s failed (%d)\n",
-					&ip_config[to_port].ip_addr,
-					ip_config[to_port].dev->name, ret);
+				       "RDS/IP: failed to set IP %pI4 on %s failed (%d)\n",
+				       &ip_config[to_port].ip_addr,
+				       ip_config[to_port].dev->name, ret);
 				goto out;
 			}
 		} else if (ret) {
@@ -741,15 +755,13 @@ static int rds_ib_move_ip(char			*from_dev,
 
 	if (ret) {
 		printk(KERN_NOTICE
-		       "RDS/IP: failed to move IP %pI4 "
-		       "from %s to %s\n",
+		       "RDS/IP: failed to move IP %pI4 from %s to %s\n",
 		       &addr, from_dev2, to_dev2);
 	} else {
 		if (strcmp(from_dev2, to_dev2) == 0) {
 			/* from_dev2, to_dev2 are identical */
 			printk(KERN_NOTICE
-			       "RDS/IP: IP %pI4 resurrected on migrated "
-			       "interface %s\n",
+			       "RDS/IP: IP %pI4 resurrected on migrated interface %s\n",
 			       &addr, to_dev2);
 		} else {
 			/* from_dev2, to_dev2 are different! */
@@ -925,8 +937,7 @@ static int rds_ib_testset_ip(u8 port)
 				    ip_config[port].ip_bcast,
 				    ip_config[port].ip_mask);
 		if (ret) {
-			printk(KERN_ERR "RDS/IB: failed to resurrect "
-			       "IP %pI4 on %s failed (%d)\n",
+			printk(KERN_ERR "RDS/IB: failed to resurrect IP %pI4 on %s failed (%d)\n",
 			       &ip_config[port].ip_addr,
 			       ip_config[port].dev->name, ret);
 			goto out;
@@ -936,24 +947,24 @@ static int rds_ib_testset_ip(u8 port)
 		       &ip_config[port].ip_addr,
 		       ip_config[port].dev->name);
 		for (ii = 0; ii < ip_config[port].alias_cnt; ii++) {
+			struct rds_ib_alias *alias;
+
+			alias = &ip_config[port].aliases[ii];
 			ret = rds_ib_set_ip(ip_config[port].dev,
-					ip_config[port].dev->dev_addr,
-					ip_config[port].aliases[ii].if_name,
-					ip_config[port].aliases[ii].ip_addr,
-					ip_config[port].aliases[ii].ip_bcast,
-					ip_config[port].aliases[ii].ip_mask);
+					    ip_config[port].dev->dev_addr,
+					    alias->if_name,
+					    alias->ip_addr,
+					    alias->ip_bcast,
+					    alias->ip_mask);
 			if (ret) {
-				printk(KERN_ERR "RDS/IB: failed to resurrect "
-				       "IP %pI4 "
-				       "on alias %s failed (%d)\n",
-				       &ip_config[port].aliases[ii].ip_addr,
-				       ip_config[port].aliases[ii].if_name,
+				printk(KERN_ERR "RDS/IB: failed to resurrect IP %pI4 on alias %s failed (%d)\n",
+				       &alias->ip_addr,
+				       alias->if_name,
 				       ret);
 				goto out;
 			}
 			printk(KERN_NOTICE
-			       "RDS/IB: IP %pI4 resurrected"
-			       " on alias %s on interface %s\n",
+			       "RDS/IB: IP %pI4 resurrected on alias %s on interface %s\n",
 			       &ip_config[port].ip_addr,
 			       ip_config[port].aliases[ii].if_name,
 			       ip_config[port].dev->name);
@@ -1409,9 +1420,7 @@ static void rds_ib_event_handler(struct ib_event_handler *handler,
 			 "port state transition to " :
 			 "port state transition NONE - "
 			 "port retained in state ")),
-		       (ip_config[port].port_state == RDS_IB_PORT_UP ? "UP" :
-			(ip_config[port].port_state == RDS_IB_PORT_DOWN ?
-			 "DOWN" : "INIT")),
+		       rds_ib_port_state2name(ip_config[port].port_state),
 		       ip_config[port].port_layerflags);
 
 		if (this_port_transition == RDSIBP_TRANSITION_NOOP) {
@@ -1505,9 +1514,7 @@ rds_ib_do_initial_failovers(void)
 			 * port by its IP address!
 			 */
 			if (ip_config[ii].ip_active_port == ii) {
-				printk(KERN_NOTICE "RDS/IB: IP %pI4 "
-				       "deactivated on interface %s "
-				       "(no suitable failover target available)\n",
+				printk(KERN_NOTICE "RDS/IB: IP %pI4 deactivated on interface %s (no suitable failover target available)\n",
 				       &ip_config[ii].ip_addr,
 				       ip_config[ii].dev->name);
 
@@ -1574,31 +1581,30 @@ static void rds_ib_dump_ip_config(void)
 	}
 
 	for (i = 1; i <= ip_port_cnt; i++) {
-		printk(KERN_INFO "RDS/IB: %s/port_%d/%s: "
-			"IP %pI4/%pI4/%pI4 "
-			"state %s\n",
-			((ip_config[i].rds_ibdev) ?
-				((ip_config[i].rds_ibdev->dev) ?
-					ip_config[i].rds_ibdev->dev->name :
-						"No IB device") :
-							"No RDS device"),
-			ip_config[i].port_num,
-			ip_config[i].if_name,
-			&ip_config[i].ip_addr,
-			&ip_config[i].ip_bcast,
-			&ip_config[i].ip_mask,
-			(ip_config[i].port_state ==
-			 RDS_IB_PORT_UP ? "UP" :
-			 (ip_config[i].port_state ==
-			  RDS_IB_PORT_DOWN ? "DOWN" : "INIT")));
+		char *dev_name;
+
+		if (ip_config[i].rds_ibdev)
+			if (ip_config[i].rds_ibdev->dev)
+				dev_name = ip_config[i].rds_ibdev->dev->name;
+			else
+				dev_name = "No IB device";
+		else
+			dev_name = "No RDS device";
+		printk(KERN_INFO "RDS/IB: %s/port_%d/%s: IP %pI4/%pI4/%pI4 state %s\n",
+		       dev_name,
+		       ip_config[i].port_num,
+		       ip_config[i].if_name,
+		       &ip_config[i].ip_addr,
+		       &ip_config[i].ip_bcast,
+		       &ip_config[i].ip_mask,
+		       rds_ib_port_state2name(ip_config[i].port_state));
 
 		for (j = 0; j < ip_config[i].alias_cnt; j++) {
-			printk(KERN_INFO "Alias %s "
-				"IP %pI4/%pI4/%pI4\n",
-				ip_config[i].aliases[j].if_name,
-				&ip_config[i].aliases[j].ip_addr,
-				&ip_config[i].aliases[j].ip_bcast,
-				&ip_config[i].aliases[j].ip_mask);
+			printk(KERN_INFO "Alias %s IP %pI4/%pI4/%pI4\n",
+			       ip_config[i].aliases[j].if_name,
+			       &ip_config[i].aliases[j].ip_addr,
+			       &ip_config[i].aliases[j].ip_bcast,
+			       &ip_config[i].aliases[j].ip_mask);
 		}
 	}
 }
@@ -2616,9 +2622,7 @@ static int rds_ib_netdev_callback(struct notifier_block *self, unsigned long eve
 		(port_transition == RDSIBP_TRANSITION_DOWN ?
 		 "port state transition to " :
 		 "port state transition NONE - port retained in state ")),
-	       (ip_config[port].port_state == RDS_IB_PORT_UP ? "UP" :
-		(ip_config[port].port_state == RDS_IB_PORT_DOWN ?
-		 "DOWN" : "INIT")),
+	       rds_ib_port_state2name(ip_config[port].port_state),
 	       ip_config[port].port_layerflags);
 
 	if (port_transition == RDSIBP_TRANSITION_NOOP) {
