@@ -82,8 +82,9 @@ static char *rds_cm_event_str(enum rdma_cm_event_type type)
 			     ARRAY_SIZE(rds_cm_event_strings), type);
 };
 
-int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
-			      struct rdma_cm_event *event)
+int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
+				  struct rdma_cm_event *event,
+				  bool isv6)
 {
 	/* this can be null in the listening path */
 	struct rds_connection *conn = cm_id->context;
@@ -115,7 +116,7 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 
 	switch (event->event) {
 	case RDMA_CM_EVENT_CONNECT_REQUEST:
-		ret = trans->cm_handle_connect(cm_id, event);
+		ret = trans->cm_handle_connect(cm_id, event, isv6);
 		break;
 
 	case RDMA_CM_EVENT_ADDR_RESOLVED:
@@ -132,7 +133,7 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 			if (conn) {
 				struct rds_ib_connection *ibic;
 
-				printk(KERN_CRIT "rds dropping connection after rdma_resolve_route failure connection %pI4->%pI4\n",
+				printk(KERN_CRIT "rds dropping connection after rdma_resolve_route failure connection %pI6c->%pI6c\n",
 				       &conn->c_laddr, &conn->c_faddr);
 				ibic = conn->c_transport_data;
 				if (ibic && ibic->i_cm_id == cm_id)
@@ -162,10 +163,10 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 				 */
 				cm_id->route.path_rec[0].sl = conn->c_tos;
 				cm_id->route.path_rec[0].qos_class = conn->c_tos;
-				ret = trans->cm_initiate_connect(cm_id);
+				ret = trans->cm_initiate_connect(cm_id, isv6);
 			} else {
 				rds_rtd(RDS_RTD_CM,
-					"ROUTE_RESOLVED: calling rds_conn_drop, conn %p <%pI4,%pI4,%d>\n",
+					"ROUTE_RESOLVED: calling rds_conn_drop, conn %p <%pI6c,%pI6c,%d>\n",
 					conn, &conn->c_laddr,
 					&conn->c_faddr, conn->c_tos);
 				rds_conn_drop(conn, DR_IB_RDMA_CM_ID_MISMATCH);
@@ -180,19 +181,23 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 			printk(KERN_ERR "alloc_page failed .. NO MEM\n");
 			ret = -ENOMEM;
 		} else {
-			r = (struct arpreq *)kmap(page);
-			memset(r, 0, sizeof(struct arpreq));
-			sin = (struct sockaddr_in *)&r->arp_pa;
-			sin->sin_family = AF_INET;
-			sin->sin_addr.s_addr = conn->c_faddr;
-			inet_ioctl(rds_ib_inet_socket, SIOCDARP, (unsigned long) r);
-			kunmap(page);
-			__free_page(page);
+			if (ipv6_addr_v4mapped(&conn->c_faddr)) {
+				r = (struct arpreq *)kmap(page);
+				memset(r, 0, sizeof(struct arpreq));
+				sin = (struct sockaddr_in *)&r->arp_pa;
+				sin->sin_family = AF_INET;
+				sin->sin_addr.s_addr =
+				    conn->c_faddr.s6_addr32[3];
+				inet_ioctl(rds_ib_inet_socket, SIOCDARP,
+					   (unsigned long)r);
+				kunmap(page);
+				__free_page(page);
+			}
 		}
 
 		if (conn) {
 			rds_rtd(RDS_RTD_ERR,
-				"ROUTE_ERROR: conn %p, calling rds_conn_drop <%pI4,%pI4,%d>\n",
+				"ROUTE_ERROR: conn %p, calling rds_conn_drop <%pI6c,%pI6c,%d>\n",
 				conn, &conn->c_laddr,
 				&conn->c_faddr, conn->c_tos);
 			rds_conn_drop(conn, DR_IB_ROUTE_ERR);
@@ -206,7 +211,7 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 	case RDMA_CM_EVENT_ADDR_ERROR:
 		if (conn) {
 			rds_rtd(RDS_RTD_ERR,
-				"ADDR_ERROR: conn %p, calling rds_conn_drop <%pI4,%pI4,%d>\n",
+				"ADDR_ERROR: conn %p, calling rds_conn_drop <%pI6c,%pI6c,%d>\n",
 				conn, &conn->c_laddr,
 				&conn->c_faddr, conn->c_tos);
 			rds_conn_drop(conn, DR_IB_ADDR_ERR);
@@ -218,7 +223,7 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 	case RDMA_CM_EVENT_DEVICE_REMOVAL:
 		if (conn) {
 			rds_rtd(RDS_RTD_ERR,
-				"CONN/UNREACHABLE/RMVAL ERR: conn %p, calling rds_conn_drop <%pI4,%pI4,%d>\n",
+				"CONN/UNREACHABLE/RMVAL ERR: conn %p, calling rds_conn_drop <%pI6c,%pI6c,%d>\n",
 				conn, &conn->c_laddr,
 				&conn->c_faddr, conn->c_tos);
 			rds_conn_drop(conn, DR_IB_CONNECT_ERR);
@@ -232,7 +237,7 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 			if (event->status == RDS_REJ_CONSUMER_DEFINED &&
 			    (*err) == 0) {
 				/* Rejection from RDSV3.1 */
-				pr_warn("Rejected: CSR_DEF err 0, calling rds_conn_drop <%pI4,%pI4,%d>\n",
+				pr_warn("Rejected: CSR_DEF err 0, calling rds_conn_drop <%pI6c,%pI6c,%d>\n",
 					&conn->c_laddr,
 					&conn->c_faddr, conn->c_tos);
 				if (!conn->c_tos)
@@ -243,14 +248,14 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 			} else if (event->status == RDS_REJ_CONSUMER_DEFINED &&
 				   (*err) == RDS_ACL_FAILURE) {
 				/* Rejection due to ACL violation */
-				pr_err("RDS: IB: conn=%p, <%pI4,%pI4,%d> destroyed due to ACL violation\n",
+				pr_err("RDS: IB: conn=%p, <%pI6c,%pI6c,%d> destroyed due to ACL violation\n",
 				       conn, &conn->c_laddr,
 				       &conn->c_faddr,
 				       conn->c_tos);
 				rds_ib_conn_destroy_init(conn);
 			} else {
 				rds_rtd(RDS_RTD_ERR,
-					"Rejected: *err %d status %d calling rds_conn_drop <%pI4,%pI4,%d>\n",
+					"Rejected: *err %d status %d calling rds_conn_drop <%pI6c,%pI6c,%d>\n",
 					*err, event->status,
 					&conn->c_laddr,
 					&conn->c_faddr,
@@ -262,12 +267,12 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 
 	case RDMA_CM_EVENT_ADDR_CHANGE:
 		rds_rtd(RDS_RTD_CM_EXT,
-			"ADDR_CHANGE event <%pI4,%pI4>\n",
+			"ADDR_CHANGE event <%pI6c,%pI6c>\n",
 			&conn->c_laddr,
 			&conn->c_faddr);
 		if (conn) {
 			rds_rtd(RDS_RTD_CM,
-				"ADDR_CHANGE: calling rds_conn_drop <%pI4,%pI4,%d>\n",
+				"ADDR_CHANGE: calling rds_conn_drop <%pI6c,%pI6c,%d>\n",
 				&conn->c_laddr, &conn->c_faddr,
 				conn->c_tos);
 			if (!rds_conn_self_loopback_passive(conn)) {
@@ -281,17 +286,15 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 
 	case RDMA_CM_EVENT_DISCONNECTED:
 		rds_rtd(RDS_RTD_CM,
-			"DISCONNECT event - dropping connection %pI4->%pI4 tos %d\n",
+			"DISCONNECT event - dropping connection %pI6c->%pI6c tos %d\n",
 			&conn->c_laddr, &conn->c_faddr,	conn->c_tos);
 		rds_conn_drop(conn, DR_IB_DISCONNECTED_EVENT);
 		break;
 
 	case RDMA_CM_EVENT_TIMEWAIT_EXIT:
 		if (conn) {
-			printk(KERN_INFO "TIMEWAIT_EXIT event - "
-				"dropping connection "
-				"%pI4->%pI4\n", &conn->c_laddr,
-				 &conn->c_faddr);
+			printk(KERN_INFO "TIMEWAIT_EXIT event - dropping connection %pI6c->%pI6c\n",
+			       &conn->c_laddr, &conn->c_faddr);
 			rds_conn_drop(conn, DR_IB_TIMEWAIT_EXIT);
 		} else
 			printk(KERN_INFO "TIMEWAIT_EXIT event - conn=NULL\n");
@@ -314,50 +317,72 @@ out:
 	return ret;
 }
 
-static int rds_rdma_listen_init(void)
+int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
+			      struct rdma_cm_event *event)
 {
-	struct sockaddr_in sin;
+	return rds_rdma_cm_event_handler_cmn(cm_id, event, false);
+}
+
+static int rds_rdma_listen_init_common(rdma_cm_event_handler handler,
+				       struct sockaddr *sa,
+				       struct rdma_cm_id **ret_cm_id)
+{
 	struct rdma_cm_id *cm_id;
 	int ret;
 
-	cm_id = rdma_create_id(&init_net, rds_rdma_cm_event_handler, NULL, RDMA_PS_TCP,
-			       IB_QPT_RC);
+	cm_id = rdma_create_id(&init_net, handler, NULL, RDMA_PS_TCP, IB_QPT_RC);
 	if (IS_ERR(cm_id)) {
 		ret = PTR_ERR(cm_id);
-		printk(KERN_ERR "RDS/RDMA: failed to setup listener, "
-		       "rdma_create_id() returned %d\n", ret);
+		printk(KERN_ERR "RDS/RDMA: failed to setup listener, rdma_create_id() returned %d\n",
+		       ret);
 		return ret;
 	}
 
-	sin.sin_family = PF_INET,
-	sin.sin_addr.s_addr = (__force u32)htonl(INADDR_ANY);
-	sin.sin_port = (__force u16)htons(RDS_PORT);
-
-	/*
-	 * XXX I bet this binds the cm_id to a device.  If we want to support
+	/* XXX I bet this binds the cm_id to a device.  If we want to support
 	 * fail-over we'll have to take this into consideration.
 	 */
-	ret = rdma_bind_addr(cm_id, (struct sockaddr *)&sin);
+	ret = rdma_bind_addr(cm_id, sa);
 	if (ret) {
-		printk(KERN_ERR "RDS/RDMA: failed to setup listener, "
-		       "rdma_bind_addr() returned %d\n", ret);
+		printk(KERN_ERR "RDS/RDMA: failed to setup listener, rdma_bind_addr() returned %d\n",
+		       ret);
 		goto out;
 	}
 
 	ret = rdma_listen(cm_id, 128);
 	if (ret) {
-		printk(KERN_ERR "RDS/RDMA: failed to setup listener, "
-		       "rdma_listen() returned %d\n", ret);
+		printk(KERN_ERR "RDS/RDMA: failed to setup listener, rdma_listen() returned %d\n",
+		       ret);
 		goto out;
 	}
 
-	rdsdebug("cm %p listening on port %u\n", cm_id, RDS_PORT);
+	rdsdebug("cm %p listening on port %u\n", cm_id,
+		 ntohs(((struct sockaddr_in *)sa)->sin_port));
 
-	rds_rdma_listen_id = cm_id;
+	*ret_cm_id = cm_id;
 	cm_id = NULL;
 out:
 	if (cm_id)
 		rdma_destroy_id(cm_id);
+	return ret;
+}
+
+/* Initialize the RDS RDMA listeners.  We create two listeners for
+ * compatibility reason.  The one on RDS_PORT is used for IPv4
+ * requests only.  The one on RDS_TCP_PORT is used for IPv6 requests
+ * only.  So only IPv6 enabled RDS module will communicate using this
+ * port.
+ */
+static int rds_rdma_listen_init(void)
+{
+	int ret;
+	struct sockaddr_in sin;
+
+	sin.sin_family = PF_INET;
+	sin.sin_addr.s_addr = htonl(INADDR_ANY);
+	sin.sin_port = htons(RDS_PORT);
+	ret = rds_rdma_listen_init_common(rds_rdma_cm_event_handler,
+					  (struct sockaddr *)&sin,
+					  &rds_rdma_listen_id);
 	return ret;
 }
 

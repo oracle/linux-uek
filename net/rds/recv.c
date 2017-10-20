@@ -43,7 +43,8 @@
 
 /* forward prototypes */
 static void
-rds_recv_drop(struct rds_connection *conn, __be32 saddr, __be32 daddr,
+rds_recv_drop(struct rds_connection *conn, struct in6_addr *saddr,
+	      struct in6_addr *daddr,
 	      struct rds_incoming *inc, gfp_t gfp);
 
 static void
@@ -55,7 +56,8 @@ rds_recv_forward(struct rds_conn_path *cp, struct rds_incoming *inc,
 		 gfp_t gfp);
 
 static void
-rds_recv_local(struct rds_conn_path *cp, __be32 saddr, __be32 daddr,
+rds_recv_local(struct rds_conn_path *cp, struct in6_addr *saddr,
+	       struct in6_addr *daddr,
 	       struct rds_incoming *inc, gfp_t gfp, struct rds_sock *rs);
 
 static int
@@ -66,14 +68,14 @@ rds_recv_ok(struct net *net, struct sock *sk, struct sk_buff *skb)
 }
 
 void rds_inc_init(struct rds_incoming *inc, struct rds_connection *conn,
-		  __be32 saddr)
+		  struct in6_addr *saddr)
 {
 	int i;
 
 	atomic_set(&inc->i_refcount, 1);
 	INIT_LIST_HEAD(&inc->i_item);
 	inc->i_conn = conn;
-	inc->i_saddr = saddr;
+	inc->i_saddr = *saddr;
 	inc->i_rdma_cookie = 0;
 	inc->i_oconn = NULL;
 	inc->i_skb   = NULL;
@@ -86,7 +88,7 @@ void rds_inc_init(struct rds_incoming *inc, struct rds_connection *conn,
 EXPORT_SYMBOL_GPL(rds_inc_init);
 
 void rds_inc_path_init(struct rds_incoming *inc, struct rds_conn_path *cp,
-		       __be32 saddr)
+		       struct in6_addr *saddr)
 {
 	int i;
 
@@ -94,7 +96,7 @@ void rds_inc_path_init(struct rds_incoming *inc, struct rds_conn_path *cp,
 	INIT_LIST_HEAD(&inc->i_item);
 	inc->i_conn = cp->cp_conn;
 	inc->i_conn_path = cp;
-	inc->i_saddr = saddr;
+	inc->i_saddr = *saddr;
 	inc->i_rdma_cookie = 0;
 	inc->i_oconn = NULL;
 	inc->i_skb   = NULL;
@@ -150,7 +152,7 @@ static void rds_recv_rcvbuf_delta(struct rds_sock *rs, struct sock *sk,
 		rds_stats_add(s_recv_bytes_removed_from_socket, -delta);
 	now_congested = rs->rs_rcv_bytes > rds_sk_rcvbuf(rs);
 
-	rdsdebug("rs %p (%pI4:%u) recv bytes %d buf %d "
+	rdsdebug("rs %p (%pI6c:%u) recv bytes %d buf %d "
 	  "now_cong %d delta %d\n",
 	  rs, &rs->rs_bound_addr,
 	  ntohs(rs->rs_bound_port), rs->rs_rcv_bytes,
@@ -306,7 +308,7 @@ static void rds_start_mprds(struct rds_connection *conn)
 	struct rds_conn_path *cp;
 
 	if (conn->c_npaths > 1 &&
-	    IS_CANONICAL(conn->c_laddr, conn->c_faddr)) {
+	    rds_addr_cmp(&conn->c_laddr, &conn->c_faddr) < 0) {
 		for (i = 0; i < conn->c_npaths; i++) {
 			cp = &conn->c_path[i];
 			rds_conn_path_connect_if_down(cp);
@@ -330,7 +332,8 @@ static void rds_start_mprds(struct rds_connection *conn)
  * conn.  This lets loopback, who only has one conn for both directions,
  * tell us which roles the addrs in the conn are playing for this message.
  */
-void rds_recv_incoming(struct rds_connection *conn, __be32 saddr, __be32 daddr,
+void rds_recv_incoming(struct rds_connection *conn, struct in6_addr *saddr,
+		       struct in6_addr *daddr,
 		       struct rds_incoming *inc, gfp_t gfp)
 {
 	struct sk_buff *skb;
@@ -340,8 +343,8 @@ void rds_recv_incoming(struct rds_connection *conn, __be32 saddr, __be32 daddr,
 	int    ret;
 	struct rds_conn_path *cp;
 
-	rdsdebug(KERN_ALERT "incoming: conn %p, inc %p, %pI4:%d -> %pI4:%d\n",
-		 conn, inc, &saddr, inc->i_hdr.h_sport, &daddr,
+	rdsdebug(KERN_ALERT "incoming:  conn %p, inc %p, %pI6c : %d -> %pI6c : %d\n",
+		 conn, inc, saddr, inc->i_hdr.h_sport, daddr,
 		 inc->i_hdr.h_dport);
 
 	/* initialize some globals */
@@ -357,7 +360,7 @@ void rds_recv_incoming(struct rds_connection *conn, __be32 saddr, __be32 daddr,
 		cp = &conn->c_path[0];
 
 	/* lets find a socket to which this request belongs */
-	rs = rds_find_bound(daddr, inc->i_hdr.h_dport);
+	rs = rds_find_bound(daddr, inc->i_hdr.h_dport, conn->c_dev_if);
 
 	/* pass it on locally if there is no socket bound, or if netfilter is
 	 * disabled for this socket */
@@ -379,8 +382,8 @@ void rds_recv_incoming(struct rds_connection *conn, __be32 saddr, __be32 daddr,
 	if (NULL == skb) {
 		/* if we have allocation problems, then we just need to depart */
 		rds_rtd(RDS_RTD_ERR,
-			"failure to allocate space for inc %p, %pI4 -> %pI4 tos %d\n",
-			inc, &saddr, &daddr, conn->c_tos);
+			"failure to allocate space for inc %p, %pI6c -> %pI6c tos %d\n",
+			inc, saddr, daddr, conn->c_tos);
 		rds_recv_local(cp, saddr, daddr, inc, gfp, rs);
 		/* drop the reference if we had taken one */
 		if (NULL != rs)
@@ -396,8 +399,8 @@ void rds_recv_incoming(struct rds_connection *conn, __be32 saddr, __be32 daddr,
 	org = rds_nf_hdr_org(skb);
 
 	/* now update our rds_nf_hdr for tracking locations of the request */
-	dst->saddr = saddr;
-	dst->daddr = daddr;
+	dst->saddr = *saddr;
+	dst->daddr = *daddr;
 	dst->sport = inc->i_hdr.h_sport;
 	dst->dport = inc->i_hdr.h_dport;
 	dst->flags = 0;
@@ -430,8 +433,8 @@ void rds_recv_incoming(struct rds_connection *conn, __be32 saddr, __be32 daddr,
 	/* if we had a failure to convert, then just assuming to continue as local */
 	else {
 		rds_rtd(RDS_RTD_RCV_EXT,
-			"failed to create skb form, conn %p, inc %p, %pI4 -> %pI4 tos %d\n",
-			conn, inc, &saddr, &daddr, conn->c_tos);
+			"failed to create skb form, conn %p, inc %p, %pI6c -> %pI6c tos %d\n",
+			conn, inc, saddr, daddr, conn->c_tos);
 		ret = 1;
 	}
 
@@ -446,7 +449,8 @@ void rds_recv_incoming(struct rds_connection *conn, __be32 saddr, __be32 daddr,
 	/* this is the normal good processed state */
 	else if (ret >= 0) {
 		/* check the original header and if changed do the needful */
-		if (dst->saddr == org->saddr && dst->daddr == org->daddr &&
+		if (ipv6_addr_equal(&dst->saddr, &org->saddr) &&
+		    ipv6_addr_equal(&dst->daddr, &org->daddr) &&
 		    conn->c_trans->skb_local(skb)) {
 			rds_recv_local(cp, saddr, daddr, inc, gfp, NULL);
 		}
@@ -473,19 +477,20 @@ void rds_recv_incoming(struct rds_connection *conn, __be32 saddr, __be32 daddr,
 	/* we don't really expect an error state from this call that isn't the done above */
 	else {
 		/* we don't really know how to handle this yet - just ignore for now */
-		printk(KERN_ERR "unacceptible state for skb ret %d, conn %p, inc %p, %pI4 -> %pI4\n",
-		       ret, conn, inc, &saddr, &daddr);
+		printk(KERN_ERR "unacceptible state for skb ret %d, conn %p, inc %p, %pI6c -> %pI6c\n",
+		       ret, conn, inc, saddr, daddr);
 	}
 }
 EXPORT_SYMBOL_GPL(rds_recv_incoming);
 
 static void
-rds_recv_drop(struct rds_connection *conn, __be32 saddr, __be32 daddr,
+rds_recv_drop(struct rds_connection *conn, struct in6_addr *saddr,
+	      struct in6_addr *daddr,
 	      struct rds_incoming *inc, gfp_t gfp)
 {
 	/* drop the existing incoming message */
-	rdsdebug("dropping request on conn %p, inc %p, %pI4 -> %pI4",
-		 conn, inc, &saddr, &daddr);
+	rdsdebug("dropping request on conn %p, inc %p, %pI6c -> %pI6c",
+		 conn, inc, saddr, daddr);
 }
 
 static void
@@ -500,30 +505,31 @@ rds_recv_route(struct rds_connection *conn, struct rds_incoming *inc,
 	org = rds_nf_hdr_org(inc->i_skb);
 
 	/* special case where we are swapping the message back on the same connection */
-	if (dst->saddr == org->daddr && dst->daddr == org->saddr) {
+	if (ipv6_addr_equal(&dst->saddr, &org->daddr) &&
+	    ipv6_addr_equal(&dst->daddr, &org->saddr)) {
 		nconn = conn;
 	} else {
 		/* reroute to a new conn structure, possibly the same one */
 		nconn = rds_conn_find(rds_conn_net(conn),
-				      dst->saddr, dst->daddr, conn->c_trans,
-				      conn->c_tos);
+				      &dst->saddr, &dst->daddr, conn->c_trans,
+				      conn->c_tos, conn->c_dev_if);
 	}
 
 	/* cannot find a matching connection so drop the request */
 	if (NULL == nconn) {
-		printk(KERN_ALERT "cannot find matching conn for inc %p, %pI4 -> %pI4\n",
+		printk(KERN_ALERT "cannot find matching conn for inc %p, %pI6c -> %pI6c\n",
 		       inc, &dst->saddr, &dst->daddr);
 
-		rdsdebug("cannot find matching conn for inc %p, %pI4 -> %pI4",
+		rdsdebug("cannot find matching conn for inc %p, %pI6c -> %pI6c",
 			 inc, &dst->saddr, &dst->daddr);
-		rds_recv_drop(conn, dst->saddr, dst->daddr, inc, gfp);
+		rds_recv_drop(conn, &dst->saddr, &dst->daddr, inc, gfp);
 	}
 	/* this is a request for our local node, but potentially a different source
 	 * either way we process it locally */
 	else if (conn->c_trans->skb_local(inc->i_skb)) {
 		WARN_ON(nconn->c_trans->t_mp_capable);
 		rds_recv_local(&nconn->c_path[0],
-			       dst->saddr, dst->daddr, inc, gfp, NULL);
+			       &dst->saddr, &dst->daddr, inc, gfp, NULL);
 	}
 	/* looks like this request is going out to another node */
 	else {
@@ -550,10 +556,10 @@ rds_recv_forward(struct rds_conn_path *cp, struct rds_incoming *inc,
 	org = rds_nf_hdr_org(inc->i_skb);
 
 	/* find the proper output socket - it should be the local one on which we originated */
-	rs = rds_find_bound(dst->saddr, dst->sport);
+	rs = rds_find_bound(&dst->saddr, dst->sport, conn->c_dev_if);
 	if (!rs) {
 		rds_rtd(RDS_RTD_RCV,
-			"failed to find output rds_socket dst %pI4 : %u, inc %p, conn %p tos %d\n",
+			"failed to find output rds_socket dst %pI6c : %u, inc %p, conn %p tos %d\n",
 			&dst->daddr, dst->dport, inc, conn,
 			conn->c_tos);
 		rds_stats_inc(s_recv_drop_no_sock);
@@ -567,7 +573,7 @@ rds_recv_forward(struct rds_conn_path *cp, struct rds_incoming *inc,
 	ret = rds_send_internal(conn, rs, inc->i_skb, gfp);
 	if (len != ret) {
 		rds_rtd(RDS_RTD_RCV,
-			"failed to send rds_data dst %pI4 : %u, inc %p, conn %p tos %d, len %d != ret %d\n",
+			"failed to send rds_data dst %pI6c : %u, inc %p, conn %p tos %d, len %d != ret %d\n",
 			&dst->daddr, dst->dport, inc, conn, conn->c_tos,
 			len, ret);
 		goto out;
@@ -592,14 +598,14 @@ out:
 		sk, inc->i_skb, NULL, NULL, rds_recv_ok);
 
 	/* then hand the request off to normal local processing on the old connection */
-	rds_recv_local(&inc->i_oconn->c_path[0], org->saddr, org->daddr,
+	rds_recv_local(&inc->i_oconn->c_path[0], &org->saddr, &org->daddr,
 		       inc, gfp, NULL);
-
 }
 
 static void
-rds_recv_local(struct rds_conn_path *cp, __be32 saddr, __be32 daddr,
-	       struct rds_incoming *inc, gfp_t gfp, struct rds_sock *rs)
+rds_recv_local(struct rds_conn_path *cp, struct in6_addr *saddr,
+	       struct in6_addr *daddr, struct rds_incoming *inc, gfp_t gfp,
+	       struct rds_sock *rs)
 {
 	struct sock *sk;
 	unsigned long flags;
@@ -645,7 +651,7 @@ rds_recv_local(struct rds_conn_path *cp, __be32 saddr, __be32 daddr,
 
 	if (inc_hdr_h_sequence != cp->cp_next_rx_seq) {
 		rds_rtd(RDS_RTD_RCV,
-			"conn %p <%pI4,%pI4,%d> expect seq# %llu, recved seq# %llu, retrans bit %d\n",
+			"conn %p <%pI6c,%pI6c,%d> expect seq# %llu, recved seq# %llu, retrans bit %d\n",
 			conn, &conn->c_laddr, &conn->c_faddr,
 			conn->c_tos, cp->cp_next_rx_seq, inc_hdr_h_sequence,
 			inc->i_hdr.h_flags & RDS_FLAG_RETRANSMITTED);
@@ -660,7 +666,8 @@ rds_recv_local(struct rds_conn_path *cp, __be32 saddr, __be32 daddr,
 
 	if (rds_sysctl_ping_enable && inc->i_hdr.h_dport == 0) {
 		if (inc->i_hdr.h_sport == 0) {
-			rdsdebug("ignore ping with 0 sport from 0x%x\n", saddr);
+			rdsdebug("ignore ping with 0 sport from %pI6c\n",
+				 &saddr);
 			goto out;
 		}
 		if (inc->i_hdr.h_flags & RDS_FLAG_HB_PING) {
@@ -691,7 +698,7 @@ rds_recv_local(struct rds_conn_path *cp, __be32 saddr, __be32 daddr,
 	}
 
 	if (!rs)
-		rs = rds_find_bound(daddr, inc->i_hdr.h_dport);
+		rs = rds_find_bound(daddr, inc->i_hdr.h_dport, conn->c_dev_if);
 	if (!rs) {
 		rds_stats_inc(s_recv_drop_no_sock);
 		goto out;
@@ -944,6 +951,7 @@ int rds_recvmsg(struct socket *sock, struct msghdr *msg, size_t size,
 	struct rds_sock *rs = rds_sk_to_rs(sk);
 	long timeo;
 	int ret = 0, nonblock = msg_flags & MSG_DONTWAIT;
+	struct sockaddr_in6 *sin6;
 	struct sockaddr_in *sin;
 	struct rds_incoming *inc = NULL;
 
@@ -992,7 +1000,7 @@ int rds_recvmsg(struct socket *sock, struct msghdr *msg, size_t size,
 			break;
 		}
 
-		rdsdebug("copying inc %p from %pI4:%u to user\n", inc,
+		rdsdebug("copying inc %p from %pI6c:%u to user\n", inc,
 			 &inc->i_conn->c_faddr,
 			 ntohs(inc->i_hdr.h_sport));
 		save = msg->msg_iter;
@@ -1026,13 +1034,26 @@ int rds_recvmsg(struct socket *sock, struct msghdr *msg, size_t size,
 
 		rds_stats_inc(s_recv_delivered);
 
-		sin = (struct sockaddr_in *)msg->msg_name;
-		if (sin) {
-			sin->sin_family = AF_INET;
-			sin->sin_port = inc->i_hdr.h_sport;
-			sin->sin_addr.s_addr = inc->i_saddr;
-			memset(sin->sin_zero, 0, sizeof(sin->sin_zero));
-			msg->msg_namelen = sizeof(*sin);
+		if (msg->msg_name) {
+			if (ipv6_addr_v4mapped(&inc->i_saddr)) {
+				sin = (struct sockaddr_in *)msg->msg_name;
+
+				sin->sin_family = AF_INET;
+				sin->sin_port = inc->i_hdr.h_sport;
+				sin->sin_addr.s_addr =
+				    inc->i_saddr.s6_addr32[3];
+				memset(sin->sin_zero, 0, sizeof(sin->sin_zero));
+				msg->msg_namelen = sizeof(*sin);
+			} else {
+				sin6 = (struct sockaddr_in6 *)msg->msg_name;
+
+				sin6->sin6_family = AF_INET6;
+				sin6->sin6_port = inc->i_hdr.h_sport;
+				sin6->sin6_addr = inc->i_saddr;
+				sin6->sin6_flowinfo = 0;
+				sin6->sin6_scope_id = rs->rs_bound_scope_id;
+				msg->msg_namelen = sizeof(*sin6);
+			}
 		}
 		break;
 	}
@@ -1103,14 +1124,14 @@ int rds_skb_local(struct sk_buff *skb)
 	dst = rds_nf_hdr_dst(skb);
 	org = rds_nf_hdr_org(skb);
 
-	/* just check to see that the destination is still the same */
-	if (dst->daddr == org->daddr && dst->dport == org->dport) {
+	/* Just check to see that the destination is still the same.
+	 * Otherwise, the sport/dport have likely swapped so consider
+	 * it a different node.
+	 */
+	if (ipv6_addr_equal(&dst->daddr, &org->daddr) &&
+	    dst->dport == org->dport)
 		return 1;
-	}
-	/* otherwise, the sport/dport have likely swapped so consider
-	 * it a different node */
-	else {
+	else
 		return 0;
-	}
 }
 EXPORT_SYMBOL(rds_skb_local);
