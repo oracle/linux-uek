@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2006 Oracle.  All rights reserved.
+ * Copyright (c) 2006, 2017 Oracle and/or its affiliates. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -277,12 +277,10 @@ void rds_ib_cm_connect_complete(struct rds_connection *conn, struct rdma_cm_even
 
 	if (conn->c_version < RDS_PROTOCOL_VERSION) {
 		if (conn->c_version != RDS_PROTOCOL_COMPAT_VERSION) {
-			printk(KERN_NOTICE "RDS/IB: Connection to"
-				" %pI4 version %u.%u failed,"
-				" no longer supported\n",
-				&conn->c_faddr,
-				RDS_PROTOCOL_MAJOR(conn->c_version),
-				RDS_PROTOCOL_MINOR(conn->c_version));
+			printk(KERN_NOTICE "RDS/IB: Connection to %pI4 version %u.%u failed, no longer supported\n",
+			       &conn->c_faddr,
+			       RDS_PROTOCOL_MAJOR(conn->c_version),
+			       RDS_PROTOCOL_MINOR(conn->c_version));
 			rds_ib_conn_destroy_init(conn);
 			return;
 		}
@@ -484,8 +482,7 @@ static void poll_rcq(struct rds_ib_connection *ic, struct ib_cq *cq,
 	while ((nr = ib_poll_cq(cq, RDS_WC_MAX, wcs)) > 0) {
 		for (i = 0; i < nr; i++) {
 			if ((++ic->i_rx_poll_cq % RDS_IB_RX_LIMIT) == 0) {
-				rdsdebug("connection <%pI4,%pI4,%d>"
-					 " RX poll_cq processed %d\n",
+				rdsdebug("connection <%pI4,%pI4,%d> RX poll_cq processed %d\n",
 					 &ic->conn->c_laddr,
 					 &ic->conn->c_faddr,
 					 ic->conn->c_tos,
@@ -1105,8 +1102,8 @@ int rds_ib_cm_initiate_connect(struct rdma_cm_id *cm_id)
 	ret = rds_ib_match_acl(ic->i_cm_id, conn->c_faddr);
 	if (ret < 0) {
 		pr_err("RDS: IB: active conn=%p, <%pI4,%pI4,%d> destroyed due ACL violation\n",
-			conn, &conn->c_laddr, &conn->c_faddr,
-			conn->c_tos);
+		       conn, &conn->c_laddr, &conn->c_faddr,
+		       conn->c_tos);
 		rds_ib_conn_destroy_init(conn);
 		return 0;
 	}

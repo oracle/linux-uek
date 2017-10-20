@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2006 Oracle.  All rights reserved.
+ * Copyright (c) 2006, 2017 Oracle and/or its affiliates. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -340,8 +340,9 @@ void rds_recv_incoming(struct rds_connection *conn, __be32 saddr, __be32 daddr,
 	int    ret;
 	struct rds_conn_path *cp;
 
-	rdsdebug(KERN_ALERT "incoming:  conn %p, inc %p, %pI4 : %d -> %pI4 : %d\n",
-		 conn, inc, &saddr, inc->i_hdr.h_sport, &daddr, inc->i_hdr.h_dport);
+	rdsdebug(KERN_ALERT "incoming: conn %p, inc %p, %pI4:%d -> %pI4:%d\n",
+		 conn, inc, &saddr, inc->i_hdr.h_sport, &daddr,
+		 inc->i_hdr.h_dport);
 
 	/* initialize some globals */
 	rs = NULL;
@@ -472,8 +473,7 @@ void rds_recv_incoming(struct rds_connection *conn, __be32 saddr, __be32 daddr,
 	/* we don't really expect an error state from this call that isn't the done above */
 	else {
 		/* we don't really know how to handle this yet - just ignore for now */
-		printk(KERN_ERR "unacceptible state for skb ret %d, conn %p, inc %p, "
-		       "%pI4 -> %pI4\n",
+		printk(KERN_ERR "unacceptible state for skb ret %d, conn %p, inc %p, %pI4 -> %pI4\n",
 		       ret, conn, inc, &saddr, &daddr);
 	}
 }
