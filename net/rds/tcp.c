@@ -43,7 +43,12 @@
 /* only for info exporting */
 static DEFINE_SPINLOCK(rds_tcp_tc_list_lock);
 static LIST_HEAD(rds_tcp_tc_list);
+
+/* rds_tcp_tc_count counts only IPv4 connections.
+ * rds6_tcp_tc_count counts both IPv4 and IPv6 connections.
+ */
 static unsigned int rds_tcp_tc_count;
+static unsigned int rds6_tcp_tc_count;
 
 /* Track rds_tcp_connection structs so they can be cleaned up */
 static DEFINE_SPINLOCK(rds_tcp_conn_lock);
@@ -111,7 +116,9 @@ void rds_tcp_restore_callbacks(struct socket *sock,
 	/* done under the callback_lock to serialize with write_space */
 	spin_lock(&rds_tcp_tc_list_lock);
 	list_del_init(&tc->t_list_item);
-	rds_tcp_tc_count--;
+	rds6_tcp_tc_count--;
+	if (!tc->t_cpath->cp_conn->c_isv6)
+		rds_tcp_tc_count--;
 	spin_unlock(&rds_tcp_tc_list_lock);
 
 	tc->t_sock = NULL;
@@ -198,7 +205,9 @@ void rds_tcp_set_callbacks(struct socket *sock, struct rds_conn_path *cp)
 	/* done under the callback_lock to serialize with write_space */
 	spin_lock(&rds_tcp_tc_list_lock);
 	list_add_tail(&tc->t_list_item, &rds_tcp_tc_list);
-	rds_tcp_tc_count++;
+	if (!tc->t_cpath->cp_conn->c_isv6)
+		rds_tcp_tc_count++;
+	rds6_tcp_tc_count++;
 	spin_unlock(&rds_tcp_tc_list_lock);
 
 	/* accepted sockets need our listen data ready undone */
@@ -219,16 +228,16 @@ void rds_tcp_set_callbacks(struct socket *sock, struct rds_conn_path *cp)
 	write_unlock_bh(&sock->sk->sk_callback_lock);
 }
 
-static void rds_tcp_tc_info(struct socket *rds_sock, unsigned int len,
+/* Handle RDS_INFO_TCP_SOCKETS socket option.  It only returns IPv4
+ * connections for backward compatibility.
+ */
+static void rds_tcp_tc_info(struct socket *sock, unsigned int len,
 			    struct rds_info_iterator *iter,
 			    struct rds_info_lengths *lens)
 {
 	struct rds_info_tcp_socket tsinfo;
 	struct rds_tcp_connection *tc;
 	unsigned long flags;
-	struct sockaddr_in sin;
-	int sinlen;
-	struct socket *sock;
 
 	spin_lock_irqsave(&rds_tcp_tc_list_lock, flags);
 
@@ -236,18 +245,15 @@ static void rds_tcp_tc_info(struct socket *rds_sock, unsigned int len,
 		goto out;
 
 	list_for_each_entry(tc, &rds_tcp_tc_list, t_list_item) {
+		struct inet_sock *inet = inet_sk(tc->t_sock->sk);
 
-		sock = tc->t_sock;
-		if (sock) {
-			sock->ops->getname(sock, (struct sockaddr *)&sin,
-					   &sinlen, 0);
-			tsinfo.local_addr = sin.sin_addr.s_addr;
-			tsinfo.local_port = sin.sin_port;
-			sock->ops->getname(sock, (struct sockaddr *)&sin,
-					   &sinlen, 1);
-			tsinfo.peer_addr = sin.sin_addr.s_addr;
-			tsinfo.peer_port = sin.sin_port;
-		}
+		if (tc->t_cpath->cp_conn->c_isv6)
+			continue;
+
+		tsinfo.local_addr = inet->inet_saddr;
+		tsinfo.local_port = inet->inet_sport;
+		tsinfo.peer_addr = inet->inet_daddr;
+		tsinfo.peer_port = inet->inet_dport;
 
 		tsinfo.hdr_rem = tc->t_tinc_hdr_rem;
 		tsinfo.data_rem = tc->t_tinc_data_rem;
@@ -261,6 +267,48 @@ static void rds_tcp_tc_info(struct socket *rds_sock, unsigned int len,
 out:
 	lens->nr = rds_tcp_tc_count;
 	lens->each = sizeof(tsinfo);
+
+	spin_unlock_irqrestore(&rds_tcp_tc_list_lock, flags);
+}
+
+/* Handle RDS6_INFO_TCP_SOCKETS socket option. It returns both IPv4 and
+ * IPv6 connections. IPv4 connection address is returned in an IPv4 mapped
+ * address.
+ */
+static void rds6_tcp_tc_info(struct socket *sock, unsigned int len,
+			     struct rds_info_iterator *iter,
+			     struct rds_info_lengths *lens)
+{
+	struct rds6_info_tcp_socket tsinfo6;
+	struct rds_tcp_connection *tc;
+	unsigned long flags;
+
+	spin_lock_irqsave(&rds_tcp_tc_list_lock, flags);
+
+	if (len / sizeof(tsinfo6) < rds6_tcp_tc_count)
+		goto out;
+
+	list_for_each_entry(tc, &rds_tcp_tc_list, t_list_item) {
+		struct sock *sk = tc->t_sock->sk;
+		struct inet_sock *inet = inet_sk(sk);
+
+		tsinfo6.local_addr = sk->sk_v6_rcv_saddr;
+		tsinfo6.local_port = inet->inet_sport;
+		tsinfo6.peer_addr = sk->sk_v6_daddr;
+		tsinfo6.peer_port = inet->inet_dport;
+
+		tsinfo6.hdr_rem = tc->t_tinc_hdr_rem;
+		tsinfo6.data_rem = tc->t_tinc_data_rem;
+		tsinfo6.last_sent_nxt = tc->t_last_sent_nxt;
+		tsinfo6.last_expected_una = tc->t_last_expected_una;
+		tsinfo6.last_seen_una = tc->t_last_seen_una;
+
+		rds_info_copy(iter, &tsinfo6, sizeof(tsinfo6));
+	}
+
+out:
+	lens->nr = rds6_tcp_tc_count;
+	lens->each = sizeof(tsinfo6);
 
 	spin_unlock_irqrestore(&rds_tcp_tc_list_lock, flags);
 }
@@ -469,13 +517,18 @@ static __net_init int rds_tcp_init_net(struct net *net)
 		err = -ENOMEM;
 		goto fail;
 	}
-	rtn->rds_tcp_listen_sock = rds_tcp_listen_init(net);
+	rtn->rds_tcp_listen_sock = rds_tcp_listen_init(net, true);
 	if (!rtn->rds_tcp_listen_sock) {
-		pr_warn("could not set up listen sock\n");
-		unregister_net_sysctl_table(rtn->rds_tcp_sysctl);
-		rtn->rds_tcp_sysctl = NULL;
-		err = -EAFNOSUPPORT;
-		goto fail;
+		pr_warn("could not set up IPv6 listen sock\n");
+
+		/* Try IPv4 as some systems disable IPv6 */
+		rtn->rds_tcp_listen_sock = rds_tcp_listen_init(net, false);
+		if (!rtn->rds_tcp_listen_sock) {
+			unregister_net_sysctl_table(rtn->rds_tcp_sysctl);
+			rtn->rds_tcp_sysctl = NULL;
+			err = -EAFNOSUPPORT;
+			goto fail;
+		}
 	}
 	INIT_WORK(&rtn->rds_tcp_accept_w, rds_tcp_accept_worker);
 	return 0;
@@ -642,6 +695,7 @@ static int rds_tcp_skbuf_handler(struct ctl_table *ctl, int write,
 static void __exit rds_tcp_exit(void)
 {
 	rds_info_deregister_func(RDS_INFO_TCP_SOCKETS, rds_tcp_tc_info);
+	rds_info_deregister_func(RDS6_INFO_TCP_SOCKETS, rds6_tcp_tc_info);
 	unregister_pernet_subsys(&rds_tcp_net_ops);
 	if (unregister_netdevice_notifier(&rds_tcp_dev_notifier))
 		pr_warn("could not unregister rds_tcp_dev_notifier\n");
@@ -681,6 +735,7 @@ static int __init rds_tcp_init(void)
 	ret = rds_trans_register(&rds_tcp_transport);
 
 	rds_info_register_func(RDS_INFO_TCP_SOCKETS, rds_tcp_tc_info);
+	rds_info_register_func(RDS6_INFO_TCP_SOCKETS, rds6_tcp_tc_info);
 
 	goto out;
 

@@ -44,10 +44,10 @@
 #include <net/inet_common.h>
 #include <net/ipoib/if_ipoib.h>
 #include <linux/rtnetlink.h>
+#include <net/addrconf.h>
 
 #include "rds.h"
 #include "ib.h"
-#include "tcp.h"
 #include "rds_single_path.h"
 #include <linux/time.h>
 
@@ -109,6 +109,7 @@ LIST_HEAD(ib_nodev_conns);
 struct workqueue_struct *rds_aux_wq;
 
 struct socket	*rds_ib_inet_socket;
+struct socket	*rds_ib_inet6_socket;
 
 static struct rds_ib_port *ip_config;
 static u8	ip_port_cnt = 0;
@@ -355,6 +356,9 @@ struct ib_client rds_ib_client = {
 	.remove = rds_ib_remove_one
 };
 
+/* Remove IB connection information.  This function only reports IPv4
+ * connections for backward compatibility.
+ */
 static int rds_ib_conn_info_visitor(struct rds_connection *conn,
 				    void *buffer)
 {
@@ -396,13 +400,66 @@ static int rds_ib_conn_info_visitor(struct rds_connection *conn,
 		iinfo->max_send_sge = rds_ibdev->max_sge;
 		iinfo->qp_num = ic->i_cm_id->qp->qp_num;
 		iinfo->w_alloc_ctr = ic->i_recv_ring.w_alloc_ctr;
-		iinfo->w_free_ctr  = (u32) atomic_read(&ic->i_recv_ring.w_free_ctr);
+		iinfo->w_free_ctr =
+			(u32)atomic_read(&ic->i_recv_ring.w_free_ctr);
 		iinfo->flow_ctl_post_credit =
 			IB_GET_POST_CREDITS(atomic_read(&ic->i_credits));
 		iinfo->flow_ctl_send_credit =
 			IB_GET_SEND_CREDITS(atomic_read(&ic->i_credits));
 		rds_ib_get_mr_info(rds_ibdev, iinfo);
 		iinfo->cache_allocs = atomic_read(&ic->i_cache_allocs);
+	}
+	return 1;
+}
+
+/* IPv6 version of rds_ib_conn_info_visitor(). */
+static int rds6_ib_conn_info_visitor(struct rds_connection *conn,
+				     void *buffer)
+{
+	struct rds6_info_rdma_connection *iinfo6 = buffer;
+	struct rds_ib_connection *ic = conn->c_transport_data;
+
+	/* We will only ever look at IB transports */
+	if (conn->c_trans != &rds_ib_transport)
+		return 0;
+
+	iinfo6->src_addr = conn->c_laddr;
+	iinfo6->dst_addr = conn->c_faddr;
+
+	memset(&iinfo6->src_gid, 0, sizeof(iinfo6->src_gid));
+	memset(&iinfo6->dst_gid, 0, sizeof(iinfo6->dst_gid));
+
+	if (ic) {
+		iinfo6->tos = conn->c_tos;
+		iinfo6->sl = ic->i_sl;
+		iinfo6->frag = ic->i_frag_sz;
+	}
+
+	if (rds_conn_state(conn) == RDS_CONN_UP) {
+		struct rds_ib_device *rds_ibdev;
+		struct rdma_dev_addr *dev_addr;
+
+		ic = conn->c_transport_data;
+		dev_addr = &ic->i_cm_id->route.addr.dev_addr;
+		rdma_addr_get_sgid(dev_addr,
+				   (union ib_gid *)&iinfo6->src_gid);
+		rdma_addr_get_dgid(dev_addr,
+				   (union ib_gid *)&iinfo6->dst_gid);
+
+		rds_ibdev = ic->rds_ibdev;
+		iinfo6->max_send_wr = ic->i_send_ring.w_nr;
+		iinfo6->max_recv_wr = ic->i_recv_ring.w_nr;
+		iinfo6->max_send_sge = rds_ibdev->max_sge;
+		iinfo6->qp_num = ic->i_cm_id->qp->qp_num;
+		iinfo6->w_alloc_ctr = ic->i_recv_ring.w_alloc_ctr;
+		iinfo6->w_free_ctr =
+			(u32)atomic_read(&ic->i_recv_ring.w_free_ctr);
+		iinfo6->flow_ctl_post_credit =
+			IB_GET_POST_CREDITS(atomic_read(&ic->i_credits));
+		iinfo6->flow_ctl_send_credit =
+			IB_GET_SEND_CREDITS(atomic_read(&ic->i_credits));
+		rds6_ib_get_mr_info(rds_ibdev, iinfo6);
+		iinfo6->cache_allocs = atomic_read(&ic->i_cache_allocs);
 	}
 	return 1;
 }
@@ -416,6 +473,15 @@ static void rds_ib_ic_info(struct socket *sock, unsigned int len,
 				sizeof(struct rds_info_rdma_connection));
 }
 
+/* IPv6 version of rds_ib_ic_info(). */
+static void rds6_ib_ic_info(struct socket *sock, unsigned int len,
+			    struct rds_info_iterator *iter,
+			    struct rds_info_lengths *lens)
+{
+	rds_for_each_conn_info(sock, len, iter, lens,
+			       rds6_ib_conn_info_visitor,
+			       sizeof(struct rds6_info_rdma_connection));
+}
 
 /*
  * Early RDS/IB was built to only bind to an address if there is an IPoIB
@@ -432,10 +498,14 @@ static int rds_ib_laddr_check(struct net *net, const struct in6_addr *addr,
 {
 	int ret;
 	struct rdma_cm_id *cm_id;
+	struct sockaddr_in6 sin6;
 	struct sockaddr_in sin;
+	struct sockaddr *sa;
+	bool isv4;
 
+	isv4 = ipv6_addr_v4mapped(addr);
 	/* Link-local addresses don't play well with IB */
-	if (ipv4_is_linklocal_169(addr->s6_addr32[3])) {
+	if (isv4 && ipv4_is_linklocal_169(addr->s6_addr32[3])) {
 		pr_info_once("\n");
 		pr_info_once("****************************************************\n");
 		pr_info_once("** WARNING WARNING WARNING WARNING WARNING        **\n");
@@ -458,19 +528,52 @@ static int rds_ib_laddr_check(struct net *net, const struct in6_addr *addr,
 	if (IS_ERR(cm_id))
 		return -EADDRNOTAVAIL;
 
-	memset(&sin, 0, sizeof(sin));
-	sin.sin_family = AF_INET;
-	sin.sin_addr.s_addr = addr->s6_addr32[3];
+	if (isv4) {
+		memset(&sin, 0, sizeof(sin));
+		sin.sin_family = AF_INET;
+		sin.sin_addr.s_addr = addr->s6_addr32[3];
+		sa = (struct sockaddr *)&sin;
+	} else {
+		memset(&sin6, 0, sizeof(sin6));
+		sin6.sin6_family = AF_INET6;
+		sin6.sin6_addr = *addr;
+		sin6.sin6_scope_id = scope_id;
+		sa = (struct sockaddr *)&sin6;
+
+		/* XXX Do a special IPv6 link local address check here.  The
+		 * reason is that rdma_bind_addr() always succeeds with IPv6
+		 * link local address regardless if it is configured or not in
+		 * a system.
+		 */
+		if (ipv6_addr_type(addr) & IPV6_ADDR_LINKLOCAL) {
+			struct net_device *dev;
+
+			if (scope_id == 0)
+				return -EADDRNOTAVAIL;
+
+			/* Use init_net for now as RDS is not network
+			 * name space aware.
+			 */
+			dev = dev_get_by_index(&init_net, scope_id);
+			if (!dev)
+				return -EADDRNOTAVAIL;
+			if (!ipv6_chk_addr(&init_net, addr, dev, 1)) {
+				dev_put(dev);
+				return -EADDRNOTAVAIL;
+			}
+			dev_put(dev);
+		}
+	}
 
 	/* rdma_bind_addr will only succeed for IB & iWARP devices */
-	ret = rdma_bind_addr(cm_id, (struct sockaddr *)&sin);
+	ret = rdma_bind_addr(cm_id, sa);
 	/* due to this, we will claim to support iWARP devices unless we
 	   check node_type. */
 	if (ret || !cm_id->device || cm_id->device->node_type != RDMA_NODE_IB_CA)
 		ret = -EADDRNOTAVAIL;
 
-	rdsdebug("addr %pI6c ret %d node type %d\n",
-		 addr, ret,
+	rdsdebug("addr %pI6c%%%u ret %d node type %d\n",
+		 addr, scope_id, ret,
 		 cm_id->device ? cm_id->device->node_type : -1);
 
 	rdma_destroy_id(cm_id);
@@ -2713,8 +2816,16 @@ int rds_ib_init(void)
 		printk(KERN_ERR "RDS/IB: can't create TCP transport socket (%d).\n", -ret);
 		goto out;
 	}
+	ret = sock_create_kern(&init_net, PF_INET6, SOCK_DGRAM, 0,
+			       &rds_ib_inet6_socket);
+	if (ret < 0) {
+		printk(KERN_ERR "RDS/IB: can't create IPv6 configuration socket (%d).\n",
+		       -ret);
+		goto out;
+	}
 
 	sock_net_set(rds_ib_inet_socket->sk, &init_net);
+	sock_net_set(rds_ib_inet6_socket->sk, &init_net);
 
 	/* Initialise the RDS IB fragment size */
 	rds_ib_init_frag(RDS_PROTOCOL_VERSION);
@@ -2746,6 +2857,7 @@ int rds_ib_init(void)
 		goto out_aux_wq;
 
 	rds_info_register_func(RDS_INFO_IB_CONNECTIONS, rds_ib_ic_info);
+	rds_info_register_func(RDS6_INFO_IB_CONNECTIONS, rds6_ib_ic_info);
 
 	ret = rds_ip_threads_init();
 	if (ret) {
@@ -2788,6 +2900,7 @@ void rds_ib_exit(void)
 {
 	unregister_netdevice_notifier(&rds_ib_nb);
 	rds_info_deregister_func(RDS_INFO_IB_CONNECTIONS, rds_ib_ic_info);
+	rds_info_deregister_func(RDS6_INFO_IB_CONNECTIONS, rds6_ib_ic_info);
 	rds_ib_unregister_client();
 	rds_ib_destroy_nodev_conns();
 	rds_ib_sysctl_exit();
