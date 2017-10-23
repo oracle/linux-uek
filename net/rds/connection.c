@@ -37,7 +37,6 @@
 
 #include "rds.h"
 #include "loop.h"
-#include "tcp.h"
 
 #define RDS_CONNECTION_HASH_BITS 12
 #define RDS_CONNECTION_HASH_ENTRIES (1 << RDS_CONNECTION_HASH_BITS)
@@ -556,10 +555,21 @@ void rds_conn_destroy(struct rds_connection *conn, int shutdown)
 }
 EXPORT_SYMBOL_GPL(rds_conn_destroy);
 
-static void rds_conn_message_info(struct socket *sock, unsigned int len,
-				  struct rds_info_iterator *iter,
-				  struct rds_info_lengths *lens,
-				  int want_send)
+static void __rds_inc_msg_cp(struct rds_incoming *inc,
+			     struct rds_info_iterator *iter,
+			     void *saddr, void *daddr, int flip, bool isv6)
+{
+	if (isv6)
+		rds6_inc_info_copy(inc, iter, saddr, daddr, flip);
+	else
+		rds_inc_info_copy(inc, iter, *(__be32 *)saddr,
+				  *(__be32 *)daddr, flip);
+}
+
+static void rds_conn_message_info_cmn(struct socket *sock, unsigned int len,
+				      struct rds_info_iterator *iter,
+				      struct rds_info_lengths *lens,
+				      int want_send, bool isv6)
 {
 	struct hlist_head *head;
 	struct list_head *list;
@@ -570,7 +580,10 @@ static void rds_conn_message_info(struct socket *sock, unsigned int len,
 	size_t i;
 	int j;
 
-	len /= sizeof(struct rds_info_message);
+	if (isv6)
+		len /= sizeof(struct rds6_info_message);
+	else
+		len /= sizeof(struct rds_info_message);
 
 	rcu_read_lock();
 
@@ -595,18 +608,13 @@ static void rds_conn_message_info(struct socket *sock, unsigned int len,
 
 				/* XXX too lazy to maintain counts.. */
 				list_for_each_entry(rm, list, m_conn_item) {
-					__be32 laddr;
-					__be32 faddr;
-
 					total++;
-					laddr = conn->c_laddr.s6_addr32[3];
-					faddr = conn->c_faddr.s6_addr32[3];
 					if (total <= len)
-						rds_inc_info_copy(&rm->m_inc,
-								  iter,
-								  laddr,
-								  faddr,
-								  0);
+						__rds_inc_msg_cp(&rm->m_inc,
+								 iter,
+								 &conn->c_laddr,
+								 &conn->c_faddr,
+								 0, isv6);
 				}
 
 				cp->cp_rdsinfo_pending = 0;
@@ -617,7 +625,26 @@ static void rds_conn_message_info(struct socket *sock, unsigned int len,
 	rcu_read_unlock();
 
 	lens->nr = total;
-	lens->each = sizeof(struct rds_info_message);
+	if (isv6)
+		lens->each = sizeof(struct rds6_info_message);
+	else
+		lens->each = sizeof(struct rds_info_message);
+}
+
+static void rds_conn_message_info(struct socket *sock, unsigned int len,
+				  struct rds_info_iterator *iter,
+				  struct rds_info_lengths *lens,
+				  int want_send)
+{
+	rds_conn_message_info_cmn(sock, len, iter, lens, want_send, false);
+}
+
+static void rds6_conn_message_info(struct socket *sock, unsigned int len,
+				   struct rds_info_iterator *iter,
+				   struct rds_info_lengths *lens,
+				   int want_send)
+{
+	rds_conn_message_info_cmn(sock, len, iter, lens, want_send, true);
 }
 
 static void rds_conn_message_info_send(struct socket *sock, unsigned int len,
@@ -627,12 +654,27 @@ static void rds_conn_message_info_send(struct socket *sock, unsigned int len,
 	rds_conn_message_info(sock, len, iter, lens, 1);
 }
 
+static void rds6_conn_message_info_send(struct socket *sock, unsigned int len,
+					struct rds_info_iterator *iter,
+					struct rds_info_lengths *lens)
+{
+	rds6_conn_message_info(sock, len, iter, lens, 1);
+}
+
 static void rds_conn_message_info_retrans(struct socket *sock,
 					  unsigned int len,
 					  struct rds_info_iterator *iter,
 					  struct rds_info_lengths *lens)
 {
 	rds_conn_message_info(sock, len, iter, lens, 0);
+}
+
+static void rds6_conn_message_info_retrans(struct socket *sock,
+					   unsigned int len,
+					   struct rds_info_iterator *iter,
+					   struct rds_info_lengths *lens)
+{
+	rds6_conn_message_info(sock, len, iter, lens, 0);
 }
 
 void rds_for_each_conn_info(struct socket *sock, unsigned int len,
@@ -727,6 +769,9 @@ static int rds_conn_info_visitor(struct rds_conn_path *cp, void *buffer)
 	struct rds_info_connection *cinfo = buffer;
 	struct rds_connection *conn = cp->cp_conn;
 
+	if (conn->c_isv6)
+		return 0;
+
 	cinfo->next_tx_seq = cp->cp_next_tx_seq;
 	cinfo->next_rx_seq = cp->cp_next_rx_seq;
 	cinfo->laddr = conn->c_laddr.s6_addr32[3];
@@ -750,6 +795,37 @@ static int rds_conn_info_visitor(struct rds_conn_path *cp, void *buffer)
 	return 1;
 }
 
+static int rds6_conn_info_visitor(struct rds_conn_path *cp, void *buffer)
+{
+	struct rds6_info_connection *cinfo6 = buffer;
+	struct rds_connection *conn = cp->cp_conn;
+
+	cinfo6->next_tx_seq = cp->cp_next_tx_seq;
+	cinfo6->next_rx_seq = cp->cp_next_rx_seq;
+	cinfo6->laddr = conn->c_laddr;
+	cinfo6->faddr = conn->c_faddr;
+	cinfo6->tos = conn->c_tos;
+	strncpy(cinfo6->transport, conn->c_trans->t_name,
+		sizeof(cinfo6->transport));
+	cinfo6->flags = 0;
+
+	rds_conn_info_set(cinfo6->flags, test_bit(RDS_IN_XMIT, &cp->cp_flags),
+			  SENDING);
+	/* XXX Future: return the state rather than these funky bits */
+	rds_conn_info_set(cinfo6->flags,
+			  atomic_read(&cp->cp_state) == RDS_CONN_CONNECTING,
+			  CONNECTING);
+	rds_conn_info_set(cinfo6->flags,
+			  atomic_read(&cp->cp_state) == RDS_CONN_UP,
+			  CONNECTED);
+	rds_conn_info_set(cinfo6->flags, cp->cp_pending_flush,
+			  ERROR);
+	/* Just return 1 as there is no error case. This is a helper function
+	 * for rds_walk_conn_path_info() and it wants a return value.
+	 */
+	return 1;
+}
+
 static void rds_conn_info(struct socket *sock, unsigned int len,
 			  struct rds_info_iterator *iter,
 			  struct rds_info_lengths *lens)
@@ -757,6 +833,15 @@ static void rds_conn_info(struct socket *sock, unsigned int len,
 	rds_walk_conn_path_info(sock, len, iter, lens,
 				rds_conn_info_visitor,
 				sizeof(struct rds_info_connection));
+}
+
+static void rds6_conn_info(struct socket *sock, unsigned int len,
+			   struct rds_info_iterator *iter,
+			   struct rds_info_lengths *lens)
+{
+	rds_walk_conn_path_info(sock, len, iter, lens,
+				rds6_conn_info_visitor,
+				sizeof(struct rds6_info_connection));
 }
 
 int rds_conn_init(void)
@@ -772,6 +857,11 @@ int rds_conn_init(void)
 			       rds_conn_message_info_send);
 	rds_info_register_func(RDS_INFO_RETRANS_MESSAGES,
 			       rds_conn_message_info_retrans);
+	rds_info_register_func(RDS6_INFO_CONNECTIONS, rds6_conn_info);
+	rds_info_register_func(RDS6_INFO_SEND_MESSAGES,
+			       rds6_conn_message_info_send);
+	rds_info_register_func(RDS6_INFO_RETRANS_MESSAGES,
+			       rds6_conn_message_info_retrans);
 
 	return 0;
 }
@@ -789,7 +879,11 @@ void rds_conn_exit(void)
 				 rds_conn_message_info_send);
 	rds_info_deregister_func(RDS_INFO_RETRANS_MESSAGES,
 				 rds_conn_message_info_retrans);
-
+	rds_info_deregister_func(RDS6_INFO_CONNECTIONS, rds6_conn_info);
+	rds_info_deregister_func(RDS6_INFO_SEND_MESSAGES,
+				 rds6_conn_message_info_send);
+	rds_info_deregister_func(RDS6_INFO_RETRANS_MESSAGES,
+				 rds6_conn_message_info_retrans);
 }
 
 static char *conn_drop_reasons[] = {
