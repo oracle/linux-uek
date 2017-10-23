@@ -37,7 +37,6 @@
 
 #include "rds.h"
 #include "ib.h"
-#include "tcp.h"
 #include "rds_single_path.h"
 
 static char *rds_ib_wc_status_strings[] = {

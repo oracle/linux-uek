@@ -36,7 +36,6 @@
 #include <linux/list.h>
 
 #include "rds.h"
-#include "tcp.h"
 
 /* When transmitting messages in rds_send_xmit, we need to emerge from
  * time to time and briefly release the CPU. Otherwise the softlock watchdog
@@ -1251,8 +1250,27 @@ int rds_sendmsg(struct socket *sock, struct msghdr *msg, size_t payload_len)
 			break;
 
 		case sizeof(*sin6): {
-			ret = -EPROTONOSUPPORT;
-			goto out;
+			int addr_type;
+
+			if (sin6->sin6_family != AF_INET6) {
+				ret = -EINVAL;
+				goto out;
+			}
+			addr_type = ipv6_addr_type(&sin6->sin6_addr);
+			if (!(addr_type & IPV6_ADDR_UNICAST)) {
+				ret = -EINVAL;
+				goto out;
+			}
+			if (addr_type & IPV6_ADDR_LINKLOCAL &&
+			    sin6->sin6_scope_id == 0) {
+				ret = -EINVAL;
+				goto out;
+			}
+
+			daddr = sin6->sin6_addr;
+			dport = sin6->sin6_port;
+			scope_id = sin6->sin6_scope_id;
+			break;
 		}
 
 		default:

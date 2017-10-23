@@ -1,8 +1,6 @@
 #ifndef _RDS_TCP_H
 #define _RDS_TCP_H
 
-#define RDS_TCP_PORT	16385
-
 struct rds_tcp_incoming {
 	struct rds_incoming	ti_inc;
 	struct sk_buff_head	ti_skb_list;
@@ -65,7 +63,7 @@ void rds_tcp_conn_path_shutdown(struct rds_conn_path *cp);
 void rds_tcp_state_change(struct sock *sk);
 
 /* tcp_listen.c */
-struct socket *rds_tcp_listen_init(struct net *);
+struct socket *rds_tcp_listen_init(struct net *net, bool isv6);
 void rds_tcp_listen_stop(struct socket *sock, struct work_struct *acceptor);
 void rds_tcp_listen_data_ready(struct sock *sk);
 int rds_tcp_accept_one(struct socket *sock);
