@@ -43,7 +43,6 @@
 
 #include "rds.h"
 #include "ib.h"
-#include "tcp.h"
 #include "rds_single_path.h"
 
 static unsigned int rds_ib_max_frag = RDS_MAX_FRAG_SIZE;
@@ -1044,12 +1043,16 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 
 #ifdef CONFIG_RDS_ACL
 
-	/* XXX IPoIB ACL Only support IPv4 */
-	acl_ret = rds_ib_match_acl(cm_id, saddr6->s6_addr32[3]);
-	if (acl_ret < 0) {
-		err = RDS_ACL_FAILURE;
-		rdsdebug("RDS: IB: passive: rds_ib_match_acl failed\n");
-		goto out;
+	/* IPoIB ACL only supports IPv4.  Let all IPv6 traffic pass. */
+	if (ipv6_addr_v4mapped(saddr6)) {
+		acl_ret = rds_ib_match_acl(cm_id, saddr6->s6_addr32[3]);
+		if (acl_ret < 0) {
+			err = RDS_ACL_FAILURE;
+			rdsdebug("RDS: IB: passive: rds_ib_match_acl failed\n");
+			goto out;
+		}
+	} else {
+		acl_ret = 0;
 	}
 
 #else /* !CONFIG_RDS_ACL */
@@ -1223,7 +1226,11 @@ int rds_ib_cm_initiate_connect(struct rdma_cm_id *cm_id, bool isv6)
 
 #ifdef CONFIG_RDS_ACL
 
-	ret = rds_ib_match_acl(ic->i_cm_id, conn->c_faddr.s6_addr32[3]);
+	/* IPoIB ACL only supports IPv4.  Let all IPv6 traffic pass. */
+	if (ipv6_addr_v4mapped(&conn->c_faddr))
+		ret = rds_ib_match_acl(ic->i_cm_id, conn->c_faddr.s6_addr32[3]);
+	else
+		ret = 0;
 	if (ret < 0) {
 		pr_err("RDS: IB: active conn=%p, <%pI6c,%pI6c,%d> destroyed due ACL violation\n",
 		       conn, &conn->c_laddr, &conn->c_faddr,
@@ -1295,7 +1302,10 @@ int rds_ib_conn_path_connect(struct rds_conn_path *cp)
 
 	/* XXX I wonder what affect the port space has */
 	/* delegate cm event handler to rdma_transport */
-	handler = rds_rdma_cm_event_handler;
+	if (conn->c_isv6)
+		handler = rds6_rdma_cm_event_handler;
+	else
+		handler = rds_rdma_cm_event_handler;
 	ic->i_cm_id = rdma_create_id(rds_conn_net(conn),
 				     handler, conn,
 				     RDMA_PS_TCP, IB_QPT_RC);
@@ -1336,7 +1346,7 @@ int rds_ib_conn_path_connect(struct rds_conn_path *cp)
 		sin6 = (struct sockaddr_in6 *)&dest;
 		sin6->sin6_family = AF_INET6;
 		sin6->sin6_addr = conn->c_faddr;
-		sin6->sin6_port = (__force u16)htons(RDS_TCP_PORT);
+		sin6->sin6_port = (__force u16)htons(RDS_CM_PORT);
 		sin6->sin6_scope_id = conn->c_dev_if;
 	}
 
