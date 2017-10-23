@@ -67,6 +67,12 @@
 #define RDS_GET_MR_FOR_DEST		7
 #define RDS_CONN_RESET                  8
 #define SO_RDS_TRANSPORT		9
+/* Socket option to tap receive path latency
+ *	SO_RDS: SO_RDS_MSG_RXPATH_LATENCY
+ *	Format used struct rds_rx_trace_so
+ */
+#define SO_RDS_MSG_RXPATH_LATENCY	10
+#define RDS6_CONN_RESET			11
 
 /* supported values for SO_RDS_TRANSPORT */
 #define	RDS_TRANS_IB	0
@@ -74,17 +80,11 @@
 #define	RDS_TRANS_COUNT	3
 #define	RDS_TRANS_NONE	(~0)
 
-/* Socket option to tap receive path latency
- *	SO_RDS: SO_RDS_MSG_RXPATH_LATENCY
- *	Format used struct rds_rx_trace_so
- */
-#define SO_RDS_MSG_RXPATH_LATENCY	10
-
 /*
  * ioctl commands for SOL_RDS
 */
 #define SIOCRDSSETTOS                   (SIOCPROTOPRIVATE)
-#define SIOCRDSGETTOS                  (SIOCPROTOPRIVATE + 1)
+#define SIOCRDSGETTOS                   (SIOCPROTOPRIVATE + 1)
 #define SIOCRDSENABLENETFILTER          (SIOCPROTOPRIVATE + 2)
 
 #define IPPROTO_OKA (142)
@@ -142,9 +142,9 @@ struct rds_cmsg_rx_trace {
 #define RDS_CMSG_CONG_UPDATE		5
 #define RDS_CMSG_ATOMIC_FADD		6
 #define RDS_CMSG_ATOMIC_CSWP		7
-#define RDS_CMSG_MASKED_ATOMIC_FADD     8
-#define RDS_CMSG_MASKED_ATOMIC_CSWP     9
-#define RDS_CMSG_ASYNC_SEND             10
+#define RDS_CMSG_MASKED_ATOMIC_FADD	8
+#define RDS_CMSG_MASKED_ATOMIC_CSWP	9
+#define RDS_CMSG_ASYNC_SEND		10
 #define RDS_CMSG_RXPATH_LATENCY		11
 
 #define RDS_INFO_FIRST			10000
@@ -159,7 +159,17 @@ struct rds_cmsg_rx_trace {
 #define RDS_INFO_IB_CONNECTIONS		10008
 #define RDS_INFO_CONNECTION_STATS	10009
 #define RDS_INFO_IWARP_CONNECTIONS	10010
-#define RDS_INFO_LAST			10010
+
+/* PF_RDS6 options */
+#define RDS6_INFO_CONNECTIONS		10011
+#define RDS6_INFO_SEND_MESSAGES		10012
+#define RDS6_INFO_RETRANS_MESSAGES	10013
+#define RDS6_INFO_RECV_MESSAGES		10014
+#define RDS6_INFO_SOCKETS		10015
+#define RDS6_INFO_TCP_SOCKETS		10016
+#define RDS6_INFO_IB_CONNECTIONS	10017
+
+#define RDS_INFO_LAST			10017
 
 struct rds_info_counter {
 	u_int8_t	name[32];
@@ -169,7 +179,7 @@ struct rds_info_counter {
 #define RDS_INFO_CONNECTION_FLAG_SENDING	0x01
 #define RDS_INFO_CONNECTION_FLAG_CONNECTING	0x02
 #define RDS_INFO_CONNECTION_FLAG_CONNECTED	0x04
-#define RDS_INFO_CONNECTION_FLAG_ERROR          0x08
+#define RDS_INFO_CONNECTION_FLAG_ERROR		0x08
 
 #define TRANSNAMSIZ	16
 
@@ -183,12 +193,14 @@ struct rds_info_connection {
 	u_int8_t        tos;
 } __attribute__((packed));
 
-struct rds_info_flow {
-	__be32		laddr;
-	__be32		faddr;
-	u_int32_t	bytes;
-	__be16		lport;
-	__be16		fport;
+struct rds6_info_connection {
+	uint64_t	next_tx_seq;
+	uint64_t	next_rx_seq;
+	struct in6_addr	laddr;
+	struct in6_addr	faddr;
+	uint8_t		transport[TRANSNAMSIZ];		/* null term ascii */
+	uint8_t		flags;
+	uint8_t		tos;
 } __attribute__((packed));
 
 #define RDS_INFO_MESSAGE_FLAG_ACK               0x01
@@ -205,6 +217,17 @@ struct rds_info_message {
 	u_int8_t        tos;
 } __attribute__((packed));
 
+struct rds6_info_message {
+	uint64_t	seq;
+	uint32_t	len;
+	struct in6_addr	laddr;
+	struct in6_addr	faddr;
+	__be16		lport;
+	__be16		fport;
+	uint8_t		flags;
+	uint8_t		tos;
+} __attribute__((packed));
+
 struct rds_info_socket {
 	u_int32_t	sndbuf;
 	__be32		bound_addr;
@@ -213,6 +236,16 @@ struct rds_info_socket {
 	__be16		connected_port;
 	u_int32_t	rcvbuf;
 	u_int64_t	inum;
+} __attribute__((packed));
+
+struct rds6_info_socket {
+	uint32_t	sndbuf;
+	struct in6_addr	bound_addr;
+	struct in6_addr	connected_addr;
+	__be16		bound_port;
+	__be16		connected_port;
+	uint32_t	rcvbuf;
+	uint64_t	inum;
 } __attribute__((packed));
 
 struct rds_info_tcp_socket {
@@ -225,6 +258,18 @@ struct rds_info_tcp_socket {
 	u_int32_t       last_sent_nxt;
 	u_int32_t       last_expected_una;
 	u_int32_t       last_seen_una;
+} __attribute__((packed));
+
+struct rds6_info_tcp_socket {
+	struct in6_addr	local_addr;
+	__be16		local_port;
+	struct in6_addr	peer_addr;
+	__be16		peer_port;
+	uint64_t	hdr_rem;
+	uint64_t	data_rem;
+	uint32_t	last_sent_nxt;
+	uint32_t	last_expected_una;
+	uint32_t	last_seen_una;
 } __attribute__((packed));
 
 #define RDS_IB_GID_LEN	16
@@ -249,6 +294,28 @@ struct rds_info_rdma_connection {
 	uint32_t        w_alloc_ctr;
 	uint32_t        w_free_ctr;
 
+};
+
+struct rds6_info_rdma_connection {
+	struct in6_addr	src_addr;
+	struct in6_addr	dst_addr;
+	uint8_t		src_gid[RDS_IB_GID_LEN];
+	uint8_t		dst_gid[RDS_IB_GID_LEN];
+
+	uint32_t	max_send_wr;
+	uint32_t	max_recv_wr;
+	uint32_t	max_send_sge;
+	uint32_t	rdma_mr_max;
+	uint32_t	rdma_mr_size;
+	uint8_t         tos;
+	uint8_t         sl;
+	uint32_t        cache_allocs;
+	uint32_t	frag;
+	uint16_t        flow_ctl_post_credit;
+	uint16_t        flow_ctl_send_credit;
+	uint32_t	qp_num;
+	uint32_t	w_alloc_ctr;
+	uint32_t	w_free_ctr;
 };
 
 /*
@@ -339,6 +406,12 @@ struct rds_reset {
 	struct in_addr	dst;
 };
 
+struct rds6_reset {
+	uint8_t	tos;
+	struct in6_addr	src;
+	struct in6_addr	dst;
+};
+
 struct rds_asend_args {
 	u_int64_t       user_token;
 	u_int64_t       flags;
@@ -349,10 +422,10 @@ struct rds_rdma_send_notify {
 	int32_t		status;
 };
 
-#define RDS_RDMA_SEND_SUCCESS	0
-#define RDS_RDMA_REMOTE_ERROR	1
-#define RDS_RDMA_SEND_CANCELED	2
-#define RDS_RDMA_SEND_DROPPED	3
+#define RDS_RDMA_SEND_SUCCESS		0
+#define RDS_RDMA_REMOTE_ERROR		1
+#define RDS_RDMA_SEND_CANCELED		2
+#define RDS_RDMA_SEND_DROPPED		3
 #define RDS_RDMA_SEND_OTHER_ERROR	4
 
 /*
