@@ -34,7 +34,7 @@
 #include <linux/random.h>
 
 #include "rds.h"
-#include "tcp.h"
+
 static unsigned int rds_conn_hb_timeout = 0;
 module_param(rds_conn_hb_timeout, int, 0444);
 MODULE_PARM_DESC(rds_conn_hb_timeout, " Connection heartbeat timeout");
