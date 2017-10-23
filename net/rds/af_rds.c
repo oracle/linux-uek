@@ -42,7 +42,7 @@
 #include <net/sock.h>
 
 #include "rds.h"
-#include "tcp.h"
+
 /* UNUSED for backwards compat only */
 static unsigned int rds_ib_retry_count = 0xdead;
 module_param(rds_ib_retry_count, int, 0444);
@@ -427,6 +427,51 @@ done:
 	return 0;
 }
 
+static int rds6_user_reset(struct rds_sock *rs, char __user *optval, int optlen)
+{
+	struct rds6_reset reset;
+	struct rds_connection *conn;
+	LIST_HEAD(s_addr_conns);
+
+	if (optlen != sizeof(struct rds6_reset))
+		return -EINVAL;
+
+	if (copy_from_user(&reset, (struct rds6_reset __user *)optval,
+			   sizeof(struct rds6_reset)))
+		return -EFAULT;
+
+	/* Reset all conns associated with source addr */
+	if (ipv6_addr_any(&reset.dst)) {
+		pr_info("RDS: Reset ALL conns for Source %pI6c\n",
+			&reset.src);
+
+		rds_conn_laddr_list(sock_net(rds_rs_to_sk(rs)),
+				    &reset.src, &s_addr_conns);
+		if (list_empty(&s_addr_conns))
+			goto done;
+
+		list_for_each_entry(conn, &s_addr_conns, c_laddr_node)
+			if (conn)
+				rds_user_conn_paths_drop(conn, 1);
+		goto done;
+	}
+
+	conn = rds_conn_find(sock_net(rds_rs_to_sk(rs)),
+			     &reset.src, &reset.dst, rs->rs_transport,
+			     reset.tos, rs->rs_bound_scope_id);
+
+	if (conn) {
+		bool is_tcp = conn->c_trans->t_type == RDS_TRANS_TCP;
+
+		printk(KERN_NOTICE "Resetting RDS/%s connection <%pI6c,%pI6c,%d>\n",
+		       is_tcp ? "tcp" : "IB",
+		       &reset.src, &reset.dst, conn->c_tos);
+		rds_user_conn_paths_drop(conn, DR_USER_RESET);
+	}
+done:
+	return 0;
+}
+
 static int rds_set_transport(struct rds_sock *rs, char __user *optval,
 			     int optlen)
 {
@@ -533,6 +578,13 @@ static int rds_setsockopt(struct socket *sock, int level, int optname,
 		}
 		ret = rds_user_reset(rs, optval, optlen);
 		break;
+	case RDS6_CONN_RESET:
+		if (!ns_capable(net->user_ns, CAP_NET_ADMIN)) {
+			ret =  -EACCES;
+			break;
+		}
+		ret = rds6_user_reset(rs, optval, optlen);
+		break;
 	case SO_RDS_TRANSPORT:
 		lock_sock(sock->sk);
 		ret = rds_set_transport(rs, optval, optlen);
@@ -611,7 +663,9 @@ static int rds_connect(struct socket *sock, struct sockaddr *uaddr,
 {
 	struct sock *sk = sock->sk;
 	struct sockaddr_in *sin;
+	struct sockaddr_in6 *sin6;
 	struct rds_sock *rs = rds_sk_to_rs(sk);
+	int addr_type;
 	int ret = 0;
 
 	lock_sock(sk);
@@ -637,7 +691,23 @@ static int rds_connect(struct socket *sock, struct sockaddr *uaddr,
 		break;
 
 	case sizeof(struct sockaddr_in6):
-		ret = -EPROTONOSUPPORT;
+		sin6 = (struct sockaddr_in6 *)uaddr;
+		if (sin6->sin6_family != AF_INET6) {
+			ret = -EAFNOSUPPORT;
+			break;
+		}
+		addr_type = ipv6_addr_type(&sin6->sin6_addr);
+		if (!(addr_type & IPV6_ADDR_UNICAST)) {
+			ret = -EPROTOTYPE;
+			break;
+		}
+		if (addr_type & IPV6_ADDR_LINKLOCAL &&
+		    sin6->sin6_scope_id == 0) {
+			ret = -EINVAL;
+			break;
+		}
+		rs->rs_conn_addr = sin6->sin6_addr;
+		rs->rs_conn_port = sin6->sin6_port;
 		break;
 
 	default:
@@ -822,6 +892,38 @@ static void rds_sock_inc_info(struct socket *sock, unsigned int len,
 	lens->each = sizeof(struct rds_info_message);
 }
 
+static void rds6_sock_inc_info(struct socket *sock, unsigned int len,
+			       struct rds_info_iterator *iter,
+			       struct rds_info_lengths *lens)
+{
+	struct rds_sock *rs;
+	struct rds_incoming *inc;
+	unsigned int total = 0;
+
+	len /= sizeof(struct rds6_info_message);
+
+	spin_lock_bh(&rds_sock_lock);
+
+	list_for_each_entry(rs, &rds_sock_list, rs_item) {
+		read_lock(&rs->rs_recv_lock);
+
+		/* XXX too lazy to maintain counts.. */
+		list_for_each_entry(inc, &rs->rs_recv_queue, i_item) {
+			total++;
+			if (total <= len)
+				rds6_inc_info_copy(inc, iter, &inc->i_saddr,
+						   &rs->rs_bound_addr, 1);
+		}
+
+		read_unlock(&rs->rs_recv_lock);
+	}
+
+	spin_unlock_bh(&rds_sock_lock);
+
+	lens->nr = total;
+	lens->each = sizeof(struct rds6_info_message);
+}
+
 static void rds_sock_info(struct socket *sock, unsigned int len,
 			  struct rds_info_iterator *iter,
 			  struct rds_info_lengths *lens)
@@ -851,6 +953,39 @@ static void rds_sock_info(struct socket *sock, unsigned int len,
 out:
 	lens->nr = rds_sock_count;
 	lens->each = sizeof(struct rds_info_socket);
+
+	spin_unlock_bh(&rds_sock_lock);
+}
+
+static void rds6_sock_info(struct socket *sock, unsigned int len,
+			   struct rds_info_iterator *iter,
+			   struct rds_info_lengths *lens)
+{
+	struct rds6_info_socket sinfo6;
+	struct rds_sock *rs;
+
+	len /= sizeof(struct rds6_info_socket);
+
+	spin_lock_bh(&rds_sock_lock);
+
+	if (len < rds_sock_count)
+		goto out;
+
+	list_for_each_entry(rs, &rds_sock_list, rs_item) {
+		sinfo6.sndbuf = rds_sk_sndbuf(rs);
+		sinfo6.rcvbuf = rds_sk_rcvbuf(rs);
+		sinfo6.bound_addr = rs->rs_bound_addr;
+		sinfo6.connected_addr = rs->rs_conn_addr;
+		sinfo6.bound_port = rs->rs_bound_port;
+		sinfo6.connected_port = rs->rs_conn_port;
+		sinfo6.inum = sock_i_ino(rds_rs_to_sk(rs));
+
+		rds_info_copy(iter, &sinfo6, sizeof(sinfo6));
+	}
+
+out:
+	lens->nr = rds_sock_count;
+	lens->each = sizeof(struct rds6_info_socket);
 
 	spin_unlock_bh(&rds_sock_lock);
 }
@@ -966,6 +1101,8 @@ static void __exit rds_exit(void)
 	rds_page_exit();
 	rds_info_deregister_func(RDS_INFO_SOCKETS, rds_sock_info);
 	rds_info_deregister_func(RDS_INFO_RECV_MESSAGES, rds_sock_inc_info);
+	rds_info_deregister_func(RDS6_INFO_SOCKETS, rds6_sock_info);
+	rds_info_deregister_func(RDS6_INFO_RECV_MESSAGES, rds6_sock_inc_info);
 }
 
 module_exit(rds_exit);
@@ -1001,6 +1138,8 @@ static int __init rds_init(void)
 
 	rds_info_register_func(RDS_INFO_SOCKETS, rds_sock_info);
 	rds_info_register_func(RDS_INFO_RECV_MESSAGES, rds_sock_inc_info);
+	rds_info_register_func(RDS6_INFO_SOCKETS, rds6_sock_info);
+	rds_info_register_func(RDS6_INFO_RECV_MESSAGES, rds6_sock_inc_info);
 
 	rds_qos_threshold_init();
 

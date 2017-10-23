@@ -35,13 +35,15 @@
  */
 #define RDS_ACL_FAILURE		0x04010020
 
-/*
- * XXX randomly chosen, but at least seems to be unused:
- * #               18464-18768 Unassigned
- * We should do better.  We want a reserved port to discourage unpriv'ed
- * userspace from listening.
+/* The following ports, 16385, 18634, 18635, are registered with IANA as
+ * the ports to be used for RDS over TCP and UDP.  18634 is the historical
+ * value used for the RDMA_CM listener port.  RDS/TCP uses port 16385.  After
+ * IPv6 work, RDMA_CM also uses 16385 as the listener port.  18634 is kept
+ * to ensure compatibility with older RDS modules.
  */
 #define RDS_PORT	18634
+#define RDS_CM_PORT	16385
+#define RDS_TCP_PORT	RDS_CM_PORT
 
 #ifdef ATOMIC64_INIT
 #define KERNEL_HAS_ATOMIC64
@@ -1047,6 +1049,10 @@ int rds_notify_queue_get(struct rds_sock *rs, struct msghdr *msg);
 void rds_inc_info_copy(struct rds_incoming *inc,
 		       struct rds_info_iterator *iter,
 		       __be32 saddr, __be32 daddr, int flip);
+void rds6_inc_info_copy(struct rds_incoming *inc,
+			struct rds_info_iterator *iter,
+			struct in6_addr *saddr, struct in6_addr *daddr,
+			int flip);
 int rds_skb_local(struct sk_buff *skb);
 
 /* send.c */
