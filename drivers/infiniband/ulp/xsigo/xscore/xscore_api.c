@@ -1282,7 +1282,8 @@ static void xscore_reclaim_recv_buffers(struct xscore_conn_ctx *ctx)
 							  desc->sg_mapping[j],
 							  PAGE_SIZE,
 							  DMA_FROM_DEVICE);
-			} else if (desc->skb || desc->vaddr) {
+			} else if ((desc->skb || desc->vaddr) &&
+				(desc->sg_mapping[0])) {
 				ib_dma_unmap_single(ca, desc->sg_mapping[0],
 						    desc->size,
 						    DMA_FROM_DEVICE);
