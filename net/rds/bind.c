@@ -189,9 +189,13 @@ int rds_bind(struct socket *sock, struct sockaddr *uaddr, int addr_len)
 	struct in6_addr v6addr, *binding_addr;
 	struct rds_transport *trans;
 	__u32 scope_id = 0;
+	int addr_type;
 	int ret = 0;
 	__be16 port;
 
+	/* We allow an RDS socket to be bound to either IPv4 or IPv6
+	 * address.
+	 */
 	if (addr_len == sizeof(struct sockaddr_in)) {
 		struct sockaddr_in *sin = (struct sockaddr_in *)uaddr;
 
@@ -202,7 +206,21 @@ int rds_bind(struct socket *sock, struct sockaddr *uaddr, int addr_len)
 		binding_addr = &v6addr;
 		port = sin->sin_port;
 	} else if (addr_len == sizeof(struct sockaddr_in6)) {
-		return -EPROTONOSUPPORT;
+		struct sockaddr_in6 *sin6 = (struct sockaddr_in6 *)uaddr;
+
+		addr_type = ipv6_addr_type(&sin6->sin6_addr);
+		if (sin6->sin6_family != AF_INET6 ||
+		    !(addr_type & IPV6_ADDR_UNICAST)) {
+			return -EINVAL;
+		}
+		/* The scope ID must be specified for link local address. */
+		if (addr_type & IPV6_ADDR_LINKLOCAL) {
+			if (sin6->sin6_scope_id == 0)
+				return -EINVAL;
+			scope_id = sin6->sin6_scope_id;
+		}
+		binding_addr = &sin6->sin6_addr;
+		port = sin6->sin6_port;
 	} else {
 		return -EINVAL;
 	}

@@ -146,7 +146,8 @@ int rds_tcp_accept_one(struct socket *sock)
 
 	inet = inet_sk(new_sock->sk);
 
-	rdsdebug("accepted tcp %pI6c:%u -> %pI6c:%u\n",
+	rdsdebug("accepted family %d tcp %pI6c:%u -> %pI6c:%u\n",
+		 sock->sk->sk_family,
 		 &new_sock->sk->sk_v6_rcv_saddr, ntohs(inet->inet_sport),
 		 &new_sock->sk->sk_v6_daddr, ntohs(inet->inet_dport));
 
@@ -240,15 +241,21 @@ out:
 		ready(sk);
 }
 
-struct socket *rds_tcp_listen_init(struct net *net)
+struct socket *rds_tcp_listen_init(struct net *net, bool isv6)
 {
-	struct sockaddr_in sin;
 	struct socket *sock = NULL;
+	struct sockaddr_storage ss;
+	struct sockaddr_in6 *sin6;
+	struct sockaddr_in *sin;
+	int addr_len;
 	int ret;
 
-	ret = sock_create_kern(net, PF_INET, SOCK_STREAM, IPPROTO_TCP, &sock);
-	if (ret < 0)
+	ret = sock_create_kern(net, isv6 ? PF_INET6 : PF_INET, SOCK_STREAM,
+			       IPPROTO_TCP, &sock);
+	if (ret < 0) {
+		rdsdebug("could not create listener socket: %d\n", ret);
 		goto out;
+	}
 
 	sock->sk->sk_reuse = 1;
 	rds_tcp_nonagle(sock);
@@ -258,13 +265,28 @@ struct socket *rds_tcp_listen_init(struct net *net)
 	sock->sk->sk_data_ready = rds_tcp_listen_data_ready;
 	write_unlock_bh(&sock->sk->sk_callback_lock);
 
-	sin.sin_family = PF_INET;
-	sin.sin_addr.s_addr = (__force u32)htonl(INADDR_ANY);
-	sin.sin_port = (__force u16)htons(RDS_TCP_PORT);
+	if (isv6) {
+		sin6 = (struct sockaddr_in6 *)&ss;
+		sin6->sin6_family = PF_INET6;
+		sin6->sin6_addr = in6addr_any;
+		sin6->sin6_port = (__force u16)htons(RDS_TCP_PORT);
+		sin6->sin6_scope_id = 0;
+		sin6->sin6_flowinfo = 0;
+		addr_len = sizeof(*sin6);
+	} else {
+		sin = (struct sockaddr_in *)&ss;
+		sin->sin_family = PF_INET;
+		sin->sin_addr.s_addr = INADDR_ANY;
+		sin->sin_port = (__force u16)htons(RDS_TCP_PORT);
+		addr_len = sizeof(*sin);
+	}
 
-	ret = sock->ops->bind(sock, (struct sockaddr *)&sin, sizeof(sin));
-	if (ret < 0)
+	ret = sock->ops->bind(sock, (struct sockaddr *)&ss, addr_len);
+	if (ret < 0) {
+		rdsdebug("could not bind %s listener socket: %d\n",
+			 isv6 ? "IPv6" : "IPv4", ret);
 		goto out;
+	}
 
 	ret = sock->ops->listen(sock, 64);
 	if (ret < 0)
