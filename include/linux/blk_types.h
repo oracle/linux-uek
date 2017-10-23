@@ -17,6 +17,19 @@ struct cgroup_subsys_state;
 typedef void (bio_end_io_t) (struct bio *, int);
 typedef void (bio_destructor_t) (struct bio *);
 
+typedef u8 __bitwise blk_status_t;
+#define BLK_STS_OK 0
+#define BLK_STS_NOTSUPP         ((__force blk_status_t)1)
+#define BLK_STS_TIMEOUT         ((__force blk_status_t)2)
+#define BLK_STS_NOSPC           ((__force blk_status_t)3)
+#define BLK_STS_TRANSPORT       ((__force blk_status_t)4)
+#define BLK_STS_TARGET          ((__force blk_status_t)5)
+#define BLK_STS_NEXUS           ((__force blk_status_t)6)
+#define BLK_STS_MEDIUM          ((__force blk_status_t)7)
+#define BLK_STS_PROTECTION      ((__force blk_status_t)8)
+#define BLK_STS_RESOURCE        ((__force blk_status_t)9)
+#define BLK_STS_IOERR           ((__force blk_status_t)10)
+
 /*
  * was unsigned short, but we might as well be ready for > 64kB I/O pages
  */
