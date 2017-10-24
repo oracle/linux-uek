@@ -285,7 +285,7 @@ struct rds_ib_connection {
 
 struct rds_ib_ipaddr {
 	struct list_head	list;
-	__be32			ipaddr;
+	struct in6_addr		ipaddr;
 	struct rcu_head		rcu_head;
 };
 
@@ -384,6 +384,22 @@ enum {
 
 #define RDS_IB_MAX_ALIASES	50
 #define RDS_IB_MAX_PORTS	50
+
+/* Maximum number of IPv6 addresses for each rds_ib_port. */
+#define	RDS_IB_MAX_ADDRS	10
+
+/* This struct is used for storing IPv6 addresses in a rds_ib_port.  Note that
+ * address alias is obsolete and does not apply to IPv6 address.  Broadcast is
+ * also not applicable.
+ *
+ * IPv6 addresses are separated from IPv4 addresses to minimize code changes.
+ * The alias address list should probably be removed in future.
+ */
+struct rds_ib_port_addr {
+	struct in6_addr		addr;
+	u32			prefix_len;
+};
+
 struct rds_ib_port {
 	struct rds_ib_device	*rds_ibdev;
 	unsigned int		failover_group;
@@ -402,6 +418,9 @@ struct rds_ib_port {
 	unsigned int            alias_cnt;
 	struct rds_ib_alias	aliases[RDS_IB_MAX_ALIASES];
 	unsigned long		port_active_ts;
+	int			ifindex;
+	u32			ip6_addrs_cnt; /* No. of IPv6 addresses. */
+	struct rds_ib_port_addr	ip6_addrs[RDS_IB_MAX_ADDRS];
 };
 
 enum {
