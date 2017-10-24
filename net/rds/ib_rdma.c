@@ -122,7 +122,7 @@ static int rds_ib_map_fastreg_mr(struct rds_ib_device *rds_ibdev,
 				 struct scatterlist *sg, unsigned int sg_len);
 static int rds_ib_fastreg_inv(struct rds_ib_mr *ibmr);
 
-static struct rds_ib_device *rds_ib_get_device(__be32 ipaddr)
+static struct rds_ib_device *rds_ib_get_device(struct in6_addr *ipaddr)
 {
 	struct rds_ib_device *rds_ibdev;
 	struct rds_ib_ipaddr *i_ipaddr;
@@ -130,7 +130,7 @@ static struct rds_ib_device *rds_ib_get_device(__be32 ipaddr)
 	rcu_read_lock();
 	list_for_each_entry_rcu(rds_ibdev, &rds_ib_devices, list) {
 		list_for_each_entry_rcu(i_ipaddr, &rds_ibdev->ipaddr_list, list) {
-			if (i_ipaddr->ipaddr == ipaddr) {
+			if (ipv6_addr_equal(&i_ipaddr->ipaddr, ipaddr)) {
 				atomic_inc(&rds_ibdev->refcount);
 				rcu_read_unlock();
 				return rds_ibdev;
@@ -142,7 +142,8 @@ static struct rds_ib_device *rds_ib_get_device(__be32 ipaddr)
 	return NULL;
 }
 
-static int rds_ib_add_ipaddr(struct rds_ib_device *rds_ibdev, __be32 ipaddr)
+static int rds_ib_add_ipaddr(struct rds_ib_device *rds_ibdev,
+			     struct in6_addr *ipaddr)
 {
 	struct rds_ib_ipaddr *i_ipaddr;
 
@@ -150,7 +151,7 @@ static int rds_ib_add_ipaddr(struct rds_ib_device *rds_ibdev, __be32 ipaddr)
 	if (!i_ipaddr)
 		return -ENOMEM;
 
-	i_ipaddr->ipaddr = ipaddr;
+	i_ipaddr->ipaddr = *ipaddr;
 
 	spin_lock_irq(&rds_ibdev->spinlock);
 	list_add_tail_rcu(&i_ipaddr->list, &rds_ibdev->ipaddr_list);
@@ -159,7 +160,8 @@ static int rds_ib_add_ipaddr(struct rds_ib_device *rds_ibdev, __be32 ipaddr)
 	return 0;
 }
 
-static void rds_ib_remove_ipaddr(struct rds_ib_device *rds_ibdev, __be32 ipaddr)
+static void rds_ib_remove_ipaddr(struct rds_ib_device *rds_ibdev,
+				 struct in6_addr *ipaddr)
 {
 	struct rds_ib_ipaddr *i_ipaddr;
 	struct rds_ib_ipaddr *to_free = NULL;
@@ -167,7 +169,7 @@ static void rds_ib_remove_ipaddr(struct rds_ib_device *rds_ibdev, __be32 ipaddr)
 
 	spin_lock_irq(&rds_ibdev->spinlock);
 	list_for_each_entry_rcu(i_ipaddr, &rds_ibdev->ipaddr_list, list) {
-		if (i_ipaddr->ipaddr == ipaddr) {
+		if (ipv6_addr_equal(&i_ipaddr->ipaddr, ipaddr)) {
 			list_del_rcu(&i_ipaddr->list);
 			to_free = i_ipaddr;
 			break;
@@ -184,14 +186,14 @@ int rds_ib_update_ipaddr(struct rds_ib_device *rds_ibdev,
 {
 	struct rds_ib_device *rds_ibdev_old;
 
-	rds_ibdev_old = rds_ib_get_device(ipaddr->s6_addr32[3]);
+	rds_ibdev_old = rds_ib_get_device(ipaddr);
 	if (!rds_ibdev_old)
-		return rds_ib_add_ipaddr(rds_ibdev, ipaddr->s6_addr32[3]);
+		return rds_ib_add_ipaddr(rds_ibdev, ipaddr);
 
 	if (rds_ibdev_old != rds_ibdev) {
-		rds_ib_remove_ipaddr(rds_ibdev_old, ipaddr->s6_addr32[3]);
+		rds_ib_remove_ipaddr(rds_ibdev_old, ipaddr);
 		rds_ib_dev_put(rds_ibdev_old);
-		return rds_ib_add_ipaddr(rds_ibdev, ipaddr->s6_addr32[3]);
+		return rds_ib_add_ipaddr(rds_ibdev, ipaddr);
 	}
 	rds_ib_dev_put(rds_ibdev_old);
 
@@ -1035,7 +1037,7 @@ void *rds_ib_get_mr(struct scatterlist *sg, unsigned long nents,
 	struct rds_ib_connection *ic = NULL;
 	int ret;
 
-	rds_ibdev = rds_ib_get_device(rs->rs_bound_addr.s6_addr32[3]);
+	rds_ibdev = rds_ib_get_device(&rs->rs_bound_addr);
 	if (!rds_ibdev) {
 		ret = -ENODEV;
 		goto out;
