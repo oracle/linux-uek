@@ -481,4 +481,12 @@ static inline int pci_aer_init(struct pci_dev *d) { return -ENODEV; }
 static inline void pci_aer_exit(struct pci_dev *d) { }
 #endif
 
+u32 pci_rebar_get_possible_sizes(struct pci_dev *pdev, int bar);
+int pci_rebar_get_current_size(struct pci_dev *pdev, int bar);
+int pci_rebar_set_size(struct pci_dev *pdev, int bar, int size);
+static inline u64 pci_rebar_size_to_bytes(int size)
+{
+	return 1ULL << (size + 20);
+}
+
 #endif /* DRIVERS_PCI_H */
