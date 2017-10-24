@@ -62,6 +62,7 @@ unsigned int rds_ib_active_bonding_trigger_delay_min_msecs; /* = 0; */
 unsigned int rds_ib_rnr_retry_count = RDS_IB_DEFAULT_RNR_RETRY_COUNT;
 static char *rds_ib_active_bonding_failover_groups = NULL;
 unsigned int rds_ib_active_bonding_arps = RDS_IB_DEFAULT_NUM_ARPS;
+/* Exclude IPv4 link local address. */
 static char *rds_ib_active_bonding_excl_ips = "169.254/16";
 
 module_param(rds_ib_fmr_1m_pool_size, int, 0444);
@@ -114,6 +115,10 @@ struct socket	*rds_ib_inet6_socket;
 static struct rds_ib_port *ip_config;
 static u8	ip_port_cnt = 0;
 static u8	ip_port_max = RDS_IB_MAX_PORTS;
+
+/* Check if a given ip_config[] port is set. */
+#define	IP_PORT_ADDR_SET(idx)	\
+	(ip_config[idx].ip_addr || ip_config[idx].ip6_addrs_cnt)
 
 static struct rds_ib_excl_ips excl_ips_tbl[RDS_IB_MAX_EXCL_IPS];
 static u8       excl_ips_cnt = 0;
@@ -633,12 +638,64 @@ static void rds_ib_send_gratuitous_arp(struct net_device	*out_dev,
 	}
 }
 
-static int rds_ib_set_ip(struct net_device	*out_dev,
-			unsigned char		*dev_addr,
-			char			*if_name,
-			__be32			addr,
-			__be32			bcast,
-			__be32			mask)
+/* Add or remove an IPv6 address to/from an interface. */
+static int rds_ib_change_ip6(int		ifindex,
+			     struct in6_addr	*addr,
+			     u32		prefix_len,
+			     bool		add)
+{
+	struct in6_ifreq ifr6 = { };
+
+	if (!rds_ib_inet6_socket)
+		return -EPROTONOSUPPORT;
+
+	ifr6.ifr6_ifindex = ifindex;
+	ifr6.ifr6_addr = *addr;
+	ifr6.ifr6_prefixlen = prefix_len;
+
+	return inet6_ioctl(rds_ib_inet6_socket, add ? SIOCSIFADDR : SIOCDIFADDR,
+			   (unsigned long)&ifr6);
+}
+
+/* Remove all non-link local IPv6 addresses associated with a given rds_ib_port
+ * (port).
+ */
+static int rds_ib_clear_ip6(u8 port)
+{
+	int i, ret, addrs_cnt;
+
+	if (!rds_ib_inet6_socket)
+		return 0;
+
+	for (i = 0, addrs_cnt = ip_config[port].ip6_addrs_cnt;
+	     i < addrs_cnt; i++) {
+		ret = rds_ib_change_ip6(ip_config[port].ifindex,
+					&ip_config[port].ip6_addrs[i].addr,
+					ip_config[port].ip6_addrs[i].prefix_len,
+					false);
+		if (ret != 0) {
+			/* If the link is administratively marked down, all
+			 * the addresses are already gone so the removal will
+			 * fail.  Continue the removal.
+			 */
+			if (ret != -EADDRNOTAVAIL) {
+				printk(KERN_WARNING "RDS/IP failed to remove %pI6c%%%d from %s\n",
+				       &ip_config[port].ip6_addrs[i].addr,
+				       ip_config[port].ifindex,
+				       ip_config[port].dev->name);
+				return ret;
+			}
+		}
+	}
+	return 0;
+}
+
+static int rds_ib_set_ip4(struct net_device	*out_dev,
+			  unsigned char		*dev_addr,
+			  char			*if_name,
+			  __be32		addr,
+			  __be32		bcast,
+			  __be32		mask)
 {
 	struct ifreq		*ir;
 	struct sockaddr_in	*sin;
@@ -699,21 +756,31 @@ out:
 	return ret;
 }
 
-static int rds_ib_addr_exist(struct net_device *ndev,
-				__be32		addr,
-				char		*if_name)
+static int rds_ib_addr_exist(struct net_device	*ndev,
+			     void		*addr,
+			     char		*if_name,
+			     bool		isv6)
 {
 	struct in_device        *in_dev;
 	struct in_ifaddr        *ifa;
 	struct in_ifaddr        **ifap;
 	int			found = 0;
+	__be32			v4addr;
 
+	if (isv6) {
+		struct in6_addr *v6addr;
+
+		v6addr = (struct in6_addr *)addr;
+		return ipv6_chk_addr(&init_net, v6addr, ndev, 0);
+	}
+
+	v4addr = *(__be32 *)addr;
 	rtnl_lock();
 	in_dev = in_dev_get(ndev);
 	if (in_dev) {
 		for (ifap = &in_dev->ifa_list; (ifa = *ifap);
 			ifap = &ifa->ifa_next) {
-			if (ifa->ifa_address == addr) {
+			if (ifa->ifa_address == v4addr) {
 				found = 1;
 				if (if_name)
 					strcpy(if_name, ifa->ifa_label);
@@ -739,17 +806,82 @@ static void rds_ib_notify_addr_change(__be32 addr)
 		       &addr);
 }
 
-static int rds_ib_move_ip(char			*from_dev,
-			char			*to_dev,
-			u8			from_port,
-			u8			to_port,
-			u8			arp_port,
-			__be32			addr,
-			__be32			bcast,
-			__be32			mask,
-			int			event_type,
-			int                     alias,
-			int			failover)
+/* Move all IPv6 addresses from the net_device of one rds_ib_port to another
+ * (from_port to to_port) and remove those IPv6 addresses from the first
+ * net_device.  If it is failover, the address list is taken from the
+ * from_port.  If it is not a failover (meaning failing back to the original
+ * port), the address list is taken from the to_port (which is the original
+ * port).
+ */
+static void rds_ib_move_ip6(u8 from_port, u8 to_port, bool failover)
+{
+	int i, addrs_cnt, ret;
+	struct rds_ib_port_addr *addr_list;
+	struct in6_addr *addr;
+	int from_ifindex, to_ifindex;
+	u32 prefix_len;
+
+	if (!rds_ib_inet6_socket)
+		return;
+
+	if (failover) {
+		addr_list = ip_config[from_port].ip6_addrs;
+		addrs_cnt = ip_config[from_port].ip6_addrs_cnt;
+	} else {
+		addr_list = ip_config[to_port].ip6_addrs;
+		addrs_cnt = ip_config[to_port].ip6_addrs_cnt;
+	}
+
+	from_ifindex = ip_config[from_port].ifindex;
+	to_ifindex = ip_config[to_port].ifindex;
+
+	for (i = 0; i < addrs_cnt; i++) {
+		addr = &addr_list[i].addr;
+		prefix_len = addr_list[i].prefix_len;
+
+		ret = rds_ib_change_ip6(from_ifindex, addr, prefix_len, false);
+		if (ret != 0) {
+			if (ret != -EADDRNOTAVAIL) {
+				printk(KERN_WARNING "RDS/IP: could not remove %pI6c%%%d/%d from %s (port %d): %d\n",
+				       addr,
+				       ip_config[from_port].ifindex,
+				       prefix_len,
+				       ip_config[from_port].if_name,
+				       from_port,
+				       ret);
+			}
+		}
+		if (rds_ib_addr_exist(ip_config[to_port].dev, addr, NULL, true))
+			continue;
+		if (rds_ib_change_ip6(to_ifindex, addr, prefix_len, true)) {
+			printk(KERN_ERR "RDS/IP: could not add %pI6c%%%d/%d to %s (port %d)\n",
+			       addr,
+			       ip_config[to_port].ifindex,
+			       prefix_len, ip_config[to_port].if_name,
+			       to_port);
+		} else {
+			printk(KERN_NOTICE
+			       "RDS/IP: IP %pI6c%%%d/%d migrated from %s (port %d) to %s (port %d)\n",
+			       addr,
+			       ip_config[from_port].ifindex,
+			       prefix_len,
+			       ip_config[from_port].if_name, from_port,
+			       ip_config[to_port].if_name, to_port);
+		}
+	}
+}
+
+static int rds_ib_move_ip4(char			*from_dev,
+			   char			*to_dev,
+			   u8			from_port,
+			   u8			to_port,
+			   u8			arp_port,
+			   __be32		addr,
+			   __be32		bcast,
+			   __be32		mask,
+			   int			event_type,
+			   int			alias,
+			   int			failover)
 {
 	struct ifreq		*ir;
 	struct sockaddr_in	*sin;
@@ -777,15 +909,15 @@ static int rds_ib_move_ip(char			*from_dev,
 	if (ip_config[to_port].ip_addr) {
 		strcpy(ir->ifr_ifrn.ifrn_name, ip_config[to_port].dev->name);
 		ret = inet_ioctl(rds_ib_inet_socket, SIOCGIFADDR,
-					(unsigned long) ir);
+				 (unsigned long)ir);
 		if (ret == -EADDRNOTAVAIL) {
 			/* Set the IP on new port */
-			ret = rds_ib_set_ip(ip_config[arp_port].dev,
-				ip_config[to_port].dev->dev_addr,
-				ip_config[to_port].dev->name,
-				ip_config[to_port].ip_addr,
-				ip_config[to_port].ip_bcast,
-				ip_config[to_port].ip_mask);
+			ret = rds_ib_set_ip4(ip_config[arp_port].dev,
+					     ip_config[to_port].dev->dev_addr,
+					     ip_config[to_port].dev->name,
+					     ip_config[to_port].ip_addr,
+					     ip_config[to_port].ip_bcast,
+					     ip_config[to_port].ip_mask);
 
 			if (ret) {
 				printk(KERN_ERR
@@ -796,8 +928,8 @@ static int rds_ib_move_ip(char			*from_dev,
 			}
 		} else if (ret) {
 			printk(KERN_ERR
-				"RDS/IP: inet_ioctl(SIOCGIFADDR) "
-				"failed (%d)\n", ret);
+			       "RDS/IP: inet_ioctl(SIOCGIFADDR) failed (%d)\n",
+			       ret);
 			goto out;
 		}
 	}
@@ -820,7 +952,8 @@ static int rds_ib_move_ip(char			*from_dev,
 			in_dev_put(in_dev);
 
 		/* Bailout if IP already exists on target port */
-		if (rds_ib_addr_exist(ip_config[to_port].dev, addr, NULL))
+		if (rds_ib_addr_exist(ip_config[to_port].dev, &addr, NULL,
+				      false))
 			goto out;
 
 		active_port = ip_config[from_port].ip_active_port;
@@ -829,7 +962,7 @@ static int rds_ib_move_ip(char			*from_dev,
 		} else if (ip_config[active_port].port_state ==
 				RDS_IB_PORT_UP) {
 			if (!rds_ib_addr_exist(ip_config[active_port].dev,
-						addr, from_dev2)) {
+					       &addr, from_dev2, false)) {
 				strcpy(from_dev2,
 					ip_config[active_port].dev->name);
 				strcat(from_dev2, ":");
@@ -842,7 +975,7 @@ static int rds_ib_move_ip(char			*from_dev,
 		}
 	} else {
 		if (!rds_ib_addr_exist(ip_config[from_port].dev,
-						addr, from_dev2)) {
+				       &addr, from_dev2, false)) {
 			strcpy(from_dev2, from_dev);
 			strcat(from_dev2, ":");
 			strcat(from_dev2, ip_config[to_port].port_label);
@@ -852,12 +985,12 @@ static int rds_ib_move_ip(char			*from_dev,
 	}
 
 	/* Clear the IP on old port */
-	ret = rds_ib_set_ip(NULL, NULL, from_dev2, 0, 0, 0);
+	ret = rds_ib_set_ip4(NULL, NULL, from_dev2, 0, 0, 0);
 
 	/* Set the IP on new port */
-	ret = rds_ib_set_ip(ip_config[arp_port].dev,
-				ip_config[to_port].dev->dev_addr,
-				to_dev2, addr, bcast, mask);
+	ret = rds_ib_set_ip4(ip_config[arp_port].dev,
+			     ip_config[to_port].dev->dev_addr,
+			     to_dev2, addr, bcast, mask);
 
 	if (ret) {
 		printk(KERN_NOTICE
@@ -963,44 +1096,94 @@ static u8 rds_ib_init_port(struct rds_ib_device	*rds_ibdev,
 	return ip_port_cnt;
 }
 
-static void rds_ib_set_port(struct rds_ib_device	*rds_ibdev,
-				struct net_device	*net_dev,
-				char			*if_name,
-				u8			port,
-				__be32			ip_addr,
-				__be32			ip_bcast,
-				__be32			ip_mask)
+static void rds_ib_set_port4(struct net_device *net_dev,
+			     struct in_device *in_dev,
+			     u8 port)
 {
-	unsigned int	idx, i;
-	__be32          excl_addr = 0;
+	__be32			excl_addr = 0;
+	unsigned int		idx, i;
+	char			*if_name;
+	__be32			ip_addr;
+	__be32			ip_bcast;
+	__be32			ip_mask;
+	struct in_ifaddr	*ifa;
 
-	for (i = 0; i < excl_ips_cnt; i++) {
-		if (!((excl_ips_tbl[i].ip ^ ip_addr) &
-			excl_ips_tbl[i].mask)) {
-			excl_addr = 1;
-			break;
+	for (ifa = in_dev->ifa_list; ifa; ifa = ifa->ifa_next) {
+		if_name = ifa->ifa_label;
+		ip_addr = ifa->ifa_address;
+		ip_bcast = ifa->ifa_broadcast;
+		ip_mask = ifa->ifa_mask;
+
+		for (i = 0; i < excl_ips_cnt; i++) {
+			if (!((excl_ips_tbl[i].ip ^ ip_addr) &
+			      excl_ips_tbl[i].mask)) {
+				excl_addr = 1;
+				break;
+			}
 		}
-	}
 
-	if (!strcmp(net_dev->name, if_name)) {
-		if (excl_addr)
-			ip_addr = ip_bcast = ip_mask = 0;
+		if (!strcmp(net_dev->name, if_name)) {
+			if (excl_addr) {
+				ip_addr = 0;
+				ip_bcast = 0;
+				ip_mask = 0;
+			}
 
-		strcpy(ip_config[port].if_name, if_name);
-		ip_config[port].ip_addr = ip_addr;
-		ip_config[port].ip_bcast = ip_bcast;
-		ip_config[port].ip_mask = ip_mask;
-		ip_config[port].ip_active_port = port;
-	} else if (!excl_addr) {
-		idx = ip_config[port].alias_cnt++;
-		strcpy(ip_config[port].aliases[idx].if_name, if_name);
-		ip_config[port].aliases[idx].ip_addr = ip_addr;
-		ip_config[port].aliases[idx].ip_bcast = ip_bcast;
-		ip_config[port].aliases[idx].ip_mask = ip_mask;
+			strcpy(ip_config[port].if_name, if_name);
+			ip_config[port].ip_addr = ip_addr;
+			ip_config[port].ip_bcast = ip_bcast;
+			ip_config[port].ip_mask = ip_mask;
+			ip_config[port].ip_active_port = port;
+		} else if (!excl_addr) {
+			idx = ip_config[port].alias_cnt++;
+			if (idx >= RDS_IB_MAX_ALIASES) {
+				printk(KERN_WARNING "RDS/IB max number of address alias reached for %s.\n",
+				       if_name);
+				ip_config[port].alias_cnt--;
+				return;
+			}
+
+			strcpy(ip_config[port].aliases[idx].if_name, if_name);
+			ip_config[port].aliases[idx].ip_addr = ip_addr;
+			ip_config[port].aliases[idx].ip_bcast = ip_bcast;
+			ip_config[port].aliases[idx].ip_mask = ip_mask;
+		}
 	}
 }
 
-static int rds_ib_testset_ip(u8 port)
+/* For the given net_device, populate the specified rds_ib_port (port) with
+ * the non-link local IPv6 addresses associated with that device.
+ */
+static void rds_ib_set_port6(struct net_device		*net_dev,
+			     struct inet6_dev		*in6_dev,
+			     u8				port)
+{
+	struct inet6_ifaddr *ifa;
+	u32 idx;
+
+	read_lock_bh(&in6_dev->lock);
+	list_for_each_entry(ifa, &in6_dev->addr_list, if_list) {
+		/* Exclude link local address. */
+		if (ipv6_addr_type(&ifa->addr) & IPV6_ADDR_LINKLOCAL)
+			continue;
+
+		idx = ip_config[port].ip6_addrs_cnt++;
+		if (idx >= RDS_IB_MAX_ADDRS) {
+			printk(KERN_WARNING "RDS/IB max number of IPv6 addresses reached for %s.\n",
+			       net_dev->name);
+			ip_config[port].ip6_addrs_cnt--;
+			break;
+		}
+		ip_config[port].ip6_addrs[idx].addr = ifa->addr;
+		ip_config[port].ip6_addrs[idx].prefix_len = ifa->prefix_len;
+	}
+	read_unlock_bh(&in6_dev->lock);
+
+	ip_config[port].ip_active_port = port;
+	ip_config[port].ifindex = net_dev->ifindex;
+}
+
+static int rds_ib_testset_ip4(u8 port)
 {
 	struct ifreq		*ir;
 	struct sockaddr_in	*sin;
@@ -1036,12 +1219,12 @@ static int rds_ib_testset_ip(u8 port)
 			 (unsigned long) ir);
 	if (ret == -EADDRNOTAVAIL) {
 		/* Set the IP on this port */
-		ret = rds_ib_set_ip(ip_config[port].dev,
-				    ip_config[port].dev->dev_addr,
-				    ip_config[port].dev->name,
-				    ip_config[port].ip_addr,
-				    ip_config[port].ip_bcast,
-				    ip_config[port].ip_mask);
+		ret = rds_ib_set_ip4(ip_config[port].dev,
+				     ip_config[port].dev->dev_addr,
+				     ip_config[port].dev->name,
+				     ip_config[port].ip_addr,
+				     ip_config[port].ip_bcast,
+				     ip_config[port].ip_mask);
 		if (ret) {
 			printk(KERN_ERR "RDS/IB: failed to resurrect IP %pI4 on %s failed (%d)\n",
 			       &ip_config[port].ip_addr,
@@ -1056,12 +1239,12 @@ static int rds_ib_testset_ip(u8 port)
 			struct rds_ib_alias *alias;
 
 			alias = &ip_config[port].aliases[ii];
-			ret = rds_ib_set_ip(ip_config[port].dev,
-					    ip_config[port].dev->dev_addr,
-					    alias->if_name,
-					    alias->ip_addr,
-					    alias->ip_bcast,
-					    alias->ip_mask);
+			ret = rds_ib_set_ip4(ip_config[port].dev,
+					     ip_config[port].dev->dev_addr,
+					     alias->if_name,
+					     alias->ip_addr,
+					     alias->ip_bcast,
+					     alias->ip_mask);
 			if (ret) {
 				printk(KERN_ERR "RDS/IB: failed to resurrect IP %pI4 on alias %s failed (%d)\n",
 				       &alias->ip_addr,
@@ -1072,7 +1255,7 @@ static int rds_ib_testset_ip(u8 port)
 			printk(KERN_NOTICE
 			       "RDS/IB: IP %pI4 resurrected on alias %s on interface %s\n",
 			       &ip_config[port].ip_addr,
-			       ip_config[port].aliases[ii].if_name,
+			       alias->if_name,
 			       ip_config[port].dev->name);
 		}
 	} else if (ret) {
@@ -1090,10 +1273,52 @@ out:
 	return ret;
 }
 
+/* Check if the IPv6 addresses associated with the specifid rds_ib_port (port)
+ * is configured in the port's net_device.  If not, try setting them.
+ */
+static int rds_ib_testset_ip6(u8 port)
+{
+	int i, addrs_cnt;
+	struct net_device *dev;
+	struct in6_addr *addr;
+	u32 prefix_len;
+
+	if (!rds_ib_inet6_socket)
+		return 0;
+
+	for (i = 0, addrs_cnt = ip_config[port].ip6_addrs_cnt;
+	     i < addrs_cnt; i++) {
+		addr = &ip_config[port].ip6_addrs[i].addr;
+		dev = ip_config[port].dev;
+
+		if (rds_ib_addr_exist(dev, addr, NULL, true))
+			continue;
+
+		prefix_len = ip_config[port].ip6_addrs[i].prefix_len;
+		return rds_ib_change_ip6(ip_config[port].ifindex, addr,
+					 prefix_len, true);
+	}
+	return 0;
+}
+
+/* Check if the IP addresses are configured in the specified rds_ib_port
+ * (port) net_device.  If not, try setting them.
+ */
+static int rds_ib_testset_ip(u8 port)
+{
+	int ret;
+
+	ret = rds_ib_testset_ip4(port);
+	if (ret)
+		return ret;
+
+	return rds_ib_testset_ip6(port);
+}
 
 static void rds_ib_do_failover(u8 from_port, u8 to_port, u8 arp_port,
-				int event_type)
+			       int event_type)
 {
+	bool	v4move, v6move;
 	u8      j;
 	int	ret;
 
@@ -1102,7 +1327,9 @@ static void rds_ib_do_failover(u8 from_port, u8 to_port, u8 arp_port,
 		return;
 	}
 
-	if (!ip_config[from_port].ip_addr)
+	v4move = ip_config[from_port].ip_addr != 0;
+	v6move = ip_config[from_port].ip6_addrs_cnt > 0;
+	if (!(v4move || v6move))
 		return;
 
 	if (!to_port) {
@@ -1135,87 +1362,93 @@ static void rds_ib_do_failover(u8 from_port, u8 to_port, u8 arp_port,
 
 	BUG_ON(!to_port);
 
-	if (!rds_ib_move_ip(
-			ip_config[from_port].if_name,
-			ip_config[to_port].if_name,
-			from_port,
-			to_port,
-			arp_port,
-			ip_config[from_port].ip_addr,
-			ip_config[from_port].ip_bcast,
-			ip_config[from_port].ip_mask,
-			event_type,
-			0,
-			1)) {
+	if (v4move && !rds_ib_move_ip4(ip_config[from_port].if_name,
+				       ip_config[to_port].if_name,
+				       from_port,
+				       to_port,
+				       arp_port,
+				       ip_config[from_port].ip_addr,
+				       ip_config[from_port].ip_bcast,
+				       ip_config[from_port].ip_mask,
+				       event_type,
+				       0,
+				       1)) {
 
 		ip_config[from_port].ip_active_port = to_port;
-		for (j = 0; j < ip_config[from_port].
-			     alias_cnt; j++) {
+		for (j = 0; j < ip_config[from_port].alias_cnt; j++) {
+			struct rds_ib_alias *alias;
 
-			ret = rds_ib_move_ip(
-					ip_config[from_port].aliases[j].if_name,
-					ip_config[to_port].if_name,
-					from_port,
-					to_port,
-					arp_port,
-					ip_config[from_port].
-					aliases[j].ip_addr,
-					ip_config[from_port].
-					aliases[j].ip_bcast,
-					ip_config[from_port].
-					aliases[j].ip_mask,
-					event_type,
-					1,
-					1);
+			alias = &ip_config[from_port].aliases[j];
+			ret = rds_ib_move_ip4(alias->if_name,
+					      ip_config[to_port].if_name,
+					      from_port,
+					      to_port,
+					      arp_port,
+					      alias->ip_addr,
+					      alias->ip_bcast,
+					      alias->ip_mask,
+					      event_type,
+					      1,
+					      1);
 		}
+	}
+
+	if (v6move) {
+		rds_ib_move_ip6(from_port, to_port, true);
+		ip_config[from_port].ip_active_port = to_port;
 	}
 }
 
 static void rds_ib_do_failback(u8 port, int event_type)
 {
 	u8      ip_active_port = ip_config[port].ip_active_port;
+	bool	v4move, v6move;
 	u8      j;
 	int     ret;
 
-	if (!ip_config[port].ip_addr)
+	v4move = ip_config[port].ip_addr != 0;
+	v6move = ip_config[port].ip6_addrs_cnt > 0;
+	if (!(v4move || v6move))
 		return;
 
 	if (port != ip_config[port].ip_active_port) {
-		if (!rds_ib_move_ip(
-			ip_config[ip_active_port].if_name,
-			ip_config[port].if_name,
-			ip_active_port,
-			port,
-			ip_active_port,
-			ip_config[port].ip_addr,
-			ip_config[port].ip_bcast,
-			ip_config[port].ip_mask,
-			event_type,
-			0,
-			0)) {
+		char *from_name;
+
+		from_name = ip_config[ip_active_port].if_name;
+		if (v4move && !rds_ib_move_ip4(from_name,
+					       ip_config[port].if_name,
+					       ip_active_port,
+					       port,
+					       ip_active_port,
+					       ip_config[port].ip_addr,
+					       ip_config[port].ip_bcast,
+					       ip_config[port].ip_mask,
+					       event_type,
+					       0,
+					       0)) {
 
 			ip_config[port].ip_active_port = port;
-			for (j = 0; j < ip_config[port].
-				alias_cnt; j++) {
+			for (j = 0; j < ip_config[port].alias_cnt; j++) {
+				struct rds_ib_alias *alias;
 
-				ret = rds_ib_move_ip(
-					ip_config[ip_active_port].
-						if_name,
-					ip_config[port].
-						aliases[j].if_name,
-					ip_active_port,
-					port,
-					ip_active_port,
-					ip_config[port].
-						aliases[j].ip_addr,
-					ip_config[port].
-						aliases[j].ip_bcast,
-					ip_config[port].
-						aliases[j].ip_mask,
-					event_type,
-					1,
-					0);
+				alias = &ip_config[port].aliases[j];
+				ret = rds_ib_move_ip4(from_name,
+						      alias->if_name,
+						      ip_active_port,
+						      port,
+						      ip_active_port,
+						      alias->ip_addr,
+						      alias->ip_bcast,
+						      alias->ip_mask,
+						      event_type,
+						      1,
+						      0);
 			}
+		}
+
+		if (v6move) {
+			rds_ib_move_ip6(ip_active_port, port, false);
+			ip_config[port].ip_active_port = port;
 		}
 	} else {
 		/*
@@ -1266,20 +1499,21 @@ static void rds_ib_failover(struct work_struct *_work)
 			strcpy(if_name, ip_config[work->port].if_name);
 			strcat(if_name, ":");
 			strcat(if_name, ip_config[i].port_label);
-			if_name[IFNAMSIZ-1] = 0;
-			ret = rds_ib_set_ip(NULL, NULL, if_name, 0, 0, 0);
+			if_name[IFNAMSIZ - 1] = 0;
+			ret = rds_ib_set_ip4(NULL, NULL, if_name, 0, 0, 0);
 
 			rds_ib_do_failover(i, 0, 0, work->event_type);
 		}
 	}
 
-	if (ip_config[work->port].ip_addr)
+	if (IP_PORT_ADDR_SET(work->port))
 		rds_ib_do_failover(work->port, 0, 0, work->event_type);
 
 	if (ip_config[work->port].ip_active_port == work->port) {
-		ret = rds_ib_set_ip(NULL, NULL,
-				ip_config[work->port].if_name,
-				0, 0, 0);
+		ret = rds_ib_set_ip4(NULL, NULL,
+				     ip_config[work->port].if_name,
+				     0, 0, 0);
+		ret = rds_ib_clear_ip6(work->port);
 	}
 
  out:
@@ -1305,8 +1539,8 @@ static void rds_ib_failback(struct work_struct *_work)
 
 	for (i = 1; i <= ip_port_cnt; i++) {
 		if (i == port ||
-			ip_config[i].port_state == RDS_IB_PORT_UP ||
-			!ip_config[i].ip_addr)
+		    ip_config[i].port_state == RDS_IB_PORT_UP ||
+		    !IP_PORT_ADDR_SET(i))
 			continue;
 
 		if (ip_config[i].ip_active_port == i) {
@@ -1331,7 +1565,8 @@ static void rds_ib_failback(struct work_struct *_work)
 	if (ip_active_port != ip_config[port].ip_active_port) {
 		for (i = 1; i <= ip_port_cnt; i++) {
 			if (ip_config[i].port_state == RDS_IB_PORT_DOWN &&
-			    i != ip_active_port && ip_config[i].ip_addr &&
+			    i != ip_active_port &&
+			    IP_PORT_ADDR_SET(i) &&
 			    ip_config[i].ip_active_port == ip_active_port &&
 			    ip_config[i].pkey ==
 			    ip_config[ip_active_port].pkey) {
@@ -1606,7 +1841,7 @@ rds_ib_do_initial_failovers(void)
 	for (ii = 1; ii <= ip_port_cnt; ii++) {
 		/* Failover the port */
 		if ((ip_config[ii].port_state == RDS_IB_PORT_DOWN) &&
-		    (ip_config[ii].ip_addr)) {
+		    IP_PORT_ADDR_SET(ii)) {
 
 			rds_ib_do_failover(ii, 0, 0,
 					   RDS_IB_PORT_EVENT_INITIAL_FAILOVERS);
@@ -1624,9 +1859,10 @@ rds_ib_do_initial_failovers(void)
 				       &ip_config[ii].ip_addr,
 				       ip_config[ii].dev->name);
 
-				ret = rds_ib_set_ip(NULL, NULL,
-						    ip_config[ii].if_name,
-						    0, 0, 0);
+				ret = rds_ib_set_ip4(NULL, NULL,
+						     ip_config[ii].if_name,
+						     0, 0, 0);
+				(void)rds_ib_clear_ip6(ii);
 				ports_deactivated++;
 
 			}
@@ -1696,7 +1932,7 @@ static void rds_ib_dump_ip_config(void)
 				dev_name = "No IB device";
 		else
 			dev_name = "No RDS device";
-		printk(KERN_INFO "RDS/IB: %s/port_%d/%s: IP %pI4/%pI4/%pI4 state %s\n",
+		printk(KERN_INFO "RDS/IB: %s/port_%d/%s: IPv4 %pI4/%pI4/%pI4 state %s\n",
 		       dev_name,
 		       ip_config[i].port_num,
 		       ip_config[i].if_name,
@@ -1705,12 +1941,19 @@ static void rds_ib_dump_ip_config(void)
 		       &ip_config[i].ip_mask,
 		       rds_ib_port_state2name(ip_config[i].port_state));
 
+		for (j = 0; j < ip_config[i].ip6_addrs_cnt; j++) {
+			printk(KERN_INFO "IPv6 %pI6c%%%d/%d\n",
+			       &ip_config[i].ip6_addrs[j].addr,
+			       ip_config[i].ifindex,
+			       ip_config[i].ip6_addrs[j].prefix_len);
+		}
+
 		for (j = 0; j < ip_config[i].alias_cnt; j++) {
 			printk(KERN_INFO "Alias %s IP %pI4/%pI4/%pI4\n",
-			       ip_config[i].aliases[j].if_name,
-			       &ip_config[i].aliases[j].ip_addr,
-			       &ip_config[i].aliases[j].ip_bcast,
-			       &ip_config[i].aliases[j].ip_mask);
+				ip_config[i].aliases[j].if_name,
+				&ip_config[i].aliases[j].ip_addr,
+				&ip_config[i].aliases[j].ip_bcast,
+				&ip_config[i].aliases[j].ip_mask);
 		}
 	}
 }
@@ -1843,9 +2086,8 @@ sched_initial_failovers(unsigned int tot_devs,
 static int rds_ib_ip_config_init(void)
 {
 	struct net_device	*dev;
-	struct in_ifaddr	*ifa;
-	struct in_ifaddr	**ifap;
 	struct in_device	*in_dev;
+	struct inet6_dev	*in6_dev;
 	struct rds_ib_device	*rds_ibdev;
 	union ib_gid            gid;
 	int                     ret = 0;
@@ -1877,6 +2119,10 @@ static int rds_ib_ip_config_init(void)
 	read_lock(&dev_base_lock);
 	for_each_netdev(&init_net, dev) {
 		in_dev = in_dev_get(dev);
+		if (rds_ib_inet6_socket)
+			in6_dev = in6_dev_get(dev);
+		else
+			in6_dev = NULL;
 		tot_devs++;
 		/*
 		 * Note: Enumerate all Infiniband devices
@@ -1885,10 +2131,10 @@ static int rds_ib_ip_config_init(void)
 		 *                - not part of a bond(master or slave)
 		 */
 		if ((dev->type == ARPHRD_INFINIBAND) &&
-			(dev->flags & IFF_UP) &&
-			!(dev->flags & IFF_SLAVE) &&
-			!(dev->flags & IFF_MASTER) &&
-			in_dev) {
+		    (dev->flags & IFF_UP) &&
+		    !(dev->flags & IFF_SLAVE) &&
+		    !(dev->flags & IFF_MASTER) &&
+		    (in_dev || in6_dev)) {
 			u16 pkey = 0;
 
 			if (ipoib_get_netdev_pkey(dev, &pkey) != 0) {
@@ -1916,21 +2162,20 @@ static int rds_ib_ip_config_init(void)
 				port = rds_ib_init_port(rds_ibdev, dev,
 							port_num, gid, pkey);
 				if (port > 0) {
-					for (ifap = &in_dev->ifa_list;
-						(ifa = *ifap);
-						ifap = &ifa->ifa_next) {
-						rds_ib_set_port(rds_ibdev, dev,
-							ifa->ifa_label,
-							port,
-							ifa->ifa_address,
-							ifa->ifa_broadcast,
-							ifa->ifa_mask);
-					}
+					if (in_dev)
+						rds_ib_set_port4(dev, in_dev,
+								 port);
+					if (in6_dev)
+						rds_ib_set_port6(dev, in6_dev,
+								 port);
 				}
+
 			}
 		}
 		if (in_dev)
 			in_dev_put(in_dev);
+		if (in6_dev)
+			in6_dev_put(in6_dev);
 	}
 
 	printk(KERN_INFO "RDS/IB: IP configuration..\n");
@@ -1940,6 +2185,7 @@ static int rds_ib_ip_config_init(void)
 	return ret;
 }
 
+/* Only support exclusive IPv4 addresses for now. */
 static int rds_ib_excl_ip(char *str)
 {
 	char *tok, *nxt_tok, *end, *prefix_str;
@@ -2249,12 +2495,14 @@ static void rds_ib_update_ip_config(void)
 {
 	struct net_device	*dev;
 	struct in_device	*in_dev;
+	struct inet6_dev	*in6_dev;
 	int			i;
 
 	read_lock(&dev_base_lock);
 	for_each_netdev(&init_net, dev) {
 		in_dev = in_dev_get(dev);
-		if (in_dev) {
+		in6_dev = in6_dev_get(dev);
+		if (in_dev || in6_dev) {
 			for (i = 1; i <= ip_port_cnt; i++) {
 				if (!strcmp(dev->name, ip_config[i].if_name)) {
 					if (ip_config[i].dev != dev) {
@@ -2268,6 +2516,7 @@ static void rds_ib_update_ip_config(void)
 				}
 			}
 			in_dev_put(in_dev);
+			in6_dev_put(in6_dev);
 		}
 	}
 	read_unlock(&dev_base_lock);
@@ -2358,9 +2607,8 @@ static void rds_ib_addintf_after_initscripts(struct work_struct *_work)
 	struct rds_ib_port_ud_work      *work =
 		container_of(_work, struct rds_ib_port_ud_work, work.work);
 	struct net_device *ndev = work->dev;
-	struct in_ifaddr        *ifa;
-	struct in_ifaddr        **ifap;
 	struct in_device        *in_dev;
+	struct inet6_dev	*in6_dev;
 	union ib_gid            gid;
 	struct rds_ib_device    *rds_ibdev;
 	int                     ret = 0;
@@ -2369,12 +2617,19 @@ static void rds_ib_addintf_after_initscripts(struct work_struct *_work)
 
 	read_lock(&dev_base_lock);
 	in_dev = in_dev_get(ndev);
-	if (in_dev && !in_dev->ifa_list && work->timeout > 0) {
+	if (rds_ib_inet6_socket)
+		in6_dev = in6_dev_get(ndev);
+	else
+		in6_dev = NULL;
+	if (((in_dev && !in_dev->ifa_list) ||
+	     (in6_dev && list_empty(&in6_dev->addr_list))) &&
+	    work->timeout > 0) {
 		INIT_DELAYED_WORK(&work->work,
 				  rds_ib_addintf_after_initscripts);
 		work->timeout -= msecs_to_jiffies(100);
 		queue_delayed_work(rds_ip_wq, &work->work, msecs_to_jiffies(100));
-	} else if (in_dev && in_dev->ifa_list) {
+	} else if ((in_dev && in_dev->ifa_list) ||
+		   (in6_dev && !list_empty(&in6_dev->addr_list))) {
 		u16 pkey = 0;
 
 		if (ipoib_get_netdev_pkey(ndev, &pkey) != 0) {
@@ -2399,16 +2654,11 @@ static void rds_ib_addintf_after_initscripts(struct work_struct *_work)
 			port = rds_ib_init_port(rds_ibdev, ndev,
 						port_num, gid, pkey);
 			if (port > 0) {
-				for (ifap = &in_dev->ifa_list;
-						(ifa = *ifap);
-						ifap = &ifa->ifa_next) {
-					rds_ib_set_port(rds_ibdev, ndev,
-							ifa->ifa_label,
-							port,
-							ifa->ifa_address,
-							ifa->ifa_broadcast,
-							ifa->ifa_mask);
-				}
+				if (in_dev)
+					rds_ib_set_port4(ndev, in_dev, port);
+				if (in6_dev)
+					rds_ib_set_port6(ndev, in6_dev, port);
+
 				/*
 				 * We just added a new interface, which is in
 				 * INIT state and it needs to go to UP or DOWN
@@ -2490,6 +2740,8 @@ static void rds_ib_addintf_after_initscripts(struct work_struct *_work)
 
 	if (in_dev)
 		in_dev_put(in_dev);
+	if (in6_dev)
+		in6_dev_put(in6_dev);
 	read_unlock(&dev_base_lock);
 }
 
@@ -2821,11 +3073,12 @@ int rds_ib_init(void)
 	if (ret < 0) {
 		printk(KERN_ERR "RDS/IB: can't create IPv6 configuration socket (%d).\n",
 		       -ret);
-		goto out;
+		rds_ib_inet6_socket = NULL;
 	}
 
 	sock_net_set(rds_ib_inet_socket->sk, &init_net);
-	sock_net_set(rds_ib_inet6_socket->sk, &init_net);
+	if (rds_ib_inet6_socket)
+		sock_net_set(rds_ib_inet6_socket->sk, &init_net);
 
 	/* Initialise the RDS IB fragment size */
 	rds_ib_init_frag(RDS_PROTOCOL_VERSION);
