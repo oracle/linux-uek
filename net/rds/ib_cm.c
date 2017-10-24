@@ -206,14 +206,14 @@ static inline void rds_ib_init_ic_frag(struct rds_ib_connection *ic)
 *  1 - acl is not enabled
 * -1 - acl match failed
 */
-static int rds_ib_match_acl(struct rdma_cm_id *cm_id, __be32 saddr)
+static int rds_ib_match_acl(struct rdma_cm_id *cm_id,
+			    const struct in6_addr *saddr)
 {
 	struct ib_cm_acl *acl = 0;
 	struct ib_cm_acl_elem *acl_elem = 0;
 	__be64 fguid = cm_id->route.path_rec->dgid.global.interface_id;
 	__be64 fsubnet = cm_id->route.path_rec->dgid.global.subnet_prefix;
 	struct ib_cm_dpp dpp;
-	u32 addr;
 
 	ib_cm_dpp_init(&dpp, cm_id->device, cm_id->port_num,
 		       ntohs(cm_id->route.path_rec->pkey));
@@ -231,14 +231,10 @@ static int rds_ib_match_acl(struct rdma_cm_id *cm_id, __be32 saddr)
 		goto out;
 	}
 
-	addr = be32_to_cpu(saddr);
-	if (!addr)
-		goto out;
-
-	acl_elem = ib_cm_acl_lookup_uuid_ip(acl, acl_elem->uuid, addr);
+	acl_elem = ib_cm_acl_lookup_uuid_ip(acl, acl_elem->uuid, saddr);
 	if (!acl_elem) {
-		pr_err_ratelimited("RDS/IB: IP %pI4 ib_cm_acl_lookup_uuid_ip() failed\n",
-				   &saddr);
+		pr_err_ratelimited("RDS/IB: IP %pI6c ib_cm_acl_lookup_uuid_ip() failed\n",
+				   saddr);
 		goto out;
 	}
 
@@ -1043,16 +1039,11 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 
 #ifdef CONFIG_RDS_ACL
 
-	/* IPoIB ACL only supports IPv4.  Let all IPv6 traffic pass. */
-	if (ipv6_addr_v4mapped(saddr6)) {
-		acl_ret = rds_ib_match_acl(cm_id, saddr6->s6_addr32[3]);
-		if (acl_ret < 0) {
-			err = RDS_ACL_FAILURE;
-			rdsdebug("RDS: IB: passive: rds_ib_match_acl failed\n");
-			goto out;
-		}
-	} else {
-		acl_ret = 0;
+	acl_ret = rds_ib_match_acl(cm_id, saddr6);
+	if (acl_ret < 0) {
+		err = RDS_ACL_FAILURE;
+		rdsdebug("RDS: IB: passive: rds_ib_match_acl failed\n");
+		goto out;
 	}
 
 #else /* !CONFIG_RDS_ACL */
@@ -1226,11 +1217,7 @@ int rds_ib_cm_initiate_connect(struct rdma_cm_id *cm_id, bool isv6)
 
 #ifdef CONFIG_RDS_ACL
 
-	/* IPoIB ACL only supports IPv4.  Let all IPv6 traffic pass. */
-	if (ipv6_addr_v4mapped(&conn->c_faddr))
-		ret = rds_ib_match_acl(ic->i_cm_id, conn->c_faddr.s6_addr32[3]);
-	else
-		ret = 0;
+	ret = rds_ib_match_acl(ic->i_cm_id, &conn->c_faddr);
 	if (ret < 0) {
 		pr_err("RDS: IB: active conn=%p, <%pI6c,%pI6c,%d> destroyed due ACL violation\n",
 		       conn, &conn->c_laddr, &conn->c_faddr,
