@@ -763,13 +763,15 @@ int rds_ib_xmit(struct rds_connection *conn, struct rds_message *rm,
 			}
 		}
 
-		rds_ib_set_wr_signal_state(ic, send, 0);
+		rds_ib_set_wr_signal_state(ic, send, false);
 
 		/*
 		 * Always signal the last one if we're stopping due to flow control.
 		 */
-		if (ic->i_flowctl && flow_controlled && i == (work_alloc-1))
-			send->s_wr.send_flags |= IB_SEND_SIGNALED | IB_SEND_SOLICITED;
+		if (ic->i_flowctl && flow_controlled && i == (work_alloc - 1)) {
+			rds_ib_set_wr_signal_state(ic, send, true);
+			send->s_wr.send_flags |= IB_SEND_SOLICITED;
+		}
 
 		if (send->s_wr.send_flags & IB_SEND_SIGNALED)
 			nr_sig++;
@@ -808,11 +810,8 @@ int rds_ib_xmit(struct rds_connection *conn, struct rds_message *rm,
 		prev->s_op = ic->i_data_op;
 		prev->s_wr.send_flags |= IB_SEND_SOLICITED;
 		if (!(prev->s_wr.send_flags & IB_SEND_SIGNALED) ||
-		     (rm->rdma.op_active && rm->rdma.op_remote_complete)) {
-			ic->i_unsignaled_wrs = rds_ib_sysctl_max_unsig_wrs;
-			prev->s_wr.send_flags |= IB_SEND_SIGNALED;
-			nr_sig++;
-		}
+		    (rm->rdma.op_active && rm->rdma.op_remote_complete))
+			nr_sig += rds_ib_set_wr_signal_state(ic, prev, true);
 		ic->i_data_op = NULL;
 	}
 
