@@ -36,6 +36,7 @@
 #define IB_CM_H
 
 #include <linux/spinlock.h>
+#include <linux/in6.h>
 
 #include <rdma/ib_mad.h>
 #include <rdma/ib_sa.h>
@@ -325,7 +326,7 @@ struct ib_cm_acl_elem {
 	struct rb_node	node;
 	u64		guid;
 	u64		subnet_prefix;
-	u32		ip;
+	struct in6_addr	ip;
 	char		uuid[UUID_SZ];
 	int		ref_count;
 };
@@ -338,12 +339,13 @@ struct ib_cm_acl {
 };
 
 void ib_cm_acl_init(struct ib_cm_acl *acl);
-int ib_cm_acl_insert(struct ib_cm_acl *acl, u64 subnet_prefix, u64 guid, u32 ip,
-		     const char *uuid);
+int ib_cm_acl_insert(struct ib_cm_acl *acl, u64 subnet_prefix, u64 guid,
+		     struct in6_addr *ip, const char *uuid);
 struct ib_cm_acl_elem *ib_cm_acl_lookup(struct ib_cm_acl *acl,
 					u64 subnet_prefix, u64 guid);
 struct ib_cm_acl_elem *ib_cm_acl_lookup_uuid_ip(struct ib_cm_acl *acl,
-						char *uuid, u32 ip);
+						char *uuid,
+						const struct in6_addr *ip);
 int ib_cm_acl_delete(struct ib_cm_acl *acl, u64 subnet_prefix, u64 guid);
 ssize_t ib_cm_acl_size(struct ib_cm_acl *acl);
 void ib_cm_acl_scan(struct ib_cm_acl *acl, struct ib_cm_acl_elem **list,

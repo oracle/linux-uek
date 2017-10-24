@@ -48,6 +48,7 @@
 #include <linux/workqueue.h>
 #include <linux/kdev_t.h>
 #include <linux/etherdevice.h>
+#include <net/ipv6.h>
 
 #include <rdma/ib_cache.h>
 #include <rdma/ib_cm.h>
@@ -839,8 +840,8 @@ void ib_cm_acl_init(struct ib_cm_acl *acl)
 }
 EXPORT_SYMBOL(ib_cm_acl_init);
 
-int ib_cm_acl_insert(struct ib_cm_acl *acl, u64 subnet_prefix, u64 guid, u32 ip,
-		     const char *uuid)
+int ib_cm_acl_insert(struct ib_cm_acl *acl, u64 subnet_prefix, u64 guid,
+		     struct in6_addr *ip, const char *uuid)
 {
 	struct ib_cm_acl_elem *elem;
 	struct rb_node **new, *parent = NULL;
@@ -879,7 +880,7 @@ int ib_cm_acl_insert(struct ib_cm_acl *acl, u64 subnet_prefix, u64 guid, u32 ip,
 		goto err_nomem;
 	elem->guid = guid;
 	elem->subnet_prefix = subnet_prefix;
-	elem->ip = ip;
+	elem->ip = *ip;
 	memcpy(elem->uuid, uuid, UUID_SZ);
 	elem->ref_count = 1;
 	rb_link_node(&elem->node, parent, new);
@@ -944,7 +945,8 @@ struct ib_cm_acl_elem *ib_cm_acl_lookup(struct ib_cm_acl *acl,
 EXPORT_SYMBOL(ib_cm_acl_lookup);
 
 struct ib_cm_acl_elem *ib_cm_acl_lookup_uuid_ip(struct ib_cm_acl *acl,
-						char *uuid, u32 ip)
+						char *uuid,
+						const struct in6_addr *ip)
 {
 	struct ib_cm_acl_elem *elem, *ret = NULL;
 	struct rb_node *node;
@@ -954,7 +956,8 @@ struct ib_cm_acl_elem *ib_cm_acl_lookup_uuid_ip(struct ib_cm_acl *acl,
 	node = rb_first(&acl->allowed_list);
 	while (node) {
 		elem = container_of(node, struct ib_cm_acl_elem, node);
-		if ((ip == elem->ip) && (!memcmp(uuid, elem->uuid, UUID_SZ))) {
+		if (ipv6_addr_equal(ip, &elem->ip) &&
+		    (!memcmp(uuid, elem->uuid, UUID_SZ))) {
 			ret = elem;
 			goto out;
 		}

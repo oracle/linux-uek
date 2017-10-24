@@ -32,6 +32,7 @@
 
 #include <net/arp.h>
 #include <linux/jhash.h>
+#include <net/ipv6.h>
 
 #include "ipoib.h"
 
@@ -44,19 +45,20 @@ int ipoib_do_ioctl(struct net_device *dev, struct ifreq *ifr, int cmd)
 	struct ib_cm_acl_elem *list;
 	ssize_t list_count, i;
 	u64 guid, subnet_prefix;
-	u32 ip;
+	struct in6_addr addr6;
 	char uuid[UUID_SZ];
 	struct ib_cm_acl *acl;
 	char *buf;
 
-	if (cmd < IPOIBACIOCTLSTART || cmd > IPOIBACIOCTLEND) {
+	if (cmd < IPOIBACLIOCTLSTART || cmd > IPOIBACLIOCTLEND) {
 		ipoib_dbg(priv, "invalid ioctl opcode 0x%x\n", cmd);
 		return -EOPNOTSUPP;
 	}
 
 	rc = copy_from_user(&req_data, rq->req_data,
 			    sizeof(struct ipoib_ioctl_req_data));
-	if (rc) {
+
+	if (rc != 0) {
 		ipoib_warn(priv, "ioctl fail to copy request data\n");
 		return -EINVAL;
 	}
@@ -104,6 +106,7 @@ int ipoib_do_ioctl(struct net_device *dev, struct ifreq *ifr, int cmd)
 		req_data.sz = ib_cm_acl_size(acl);
 		break;
 	case IPOIBACLGET:
+	case IPOIBACLNGET:
 		if (!strcmp(req_data.instance_name, DRIVER_ACL_NAME))
 			acl = &priv->acl;
 		else
@@ -113,8 +116,15 @@ int ipoib_do_ioctl(struct net_device *dev, struct ifreq *ifr, int cmd)
 			return -EINVAL;
 
 		ib_cm_acl_scan(acl, &list, &list_count);
+
 		for (i = req_data.from_idx; (i < list_count) &&
 		     (i < req_data.sz) ; i++) {
+			/* Need to skip entries with IPv6 address for old
+			 * IPOIBACLGET command.
+			 */
+			if (cmd == IPOIBACLGET &&
+			    !ipv6_addr_v4mapped(&list[i].ip))
+				continue;
 			rc = copy_to_user(&req_data.subnet_prefixes[i -
 					  req_data.from_idx],
 					  &(list[i].subnet_prefix),
@@ -122,9 +132,24 @@ int ipoib_do_ioctl(struct net_device *dev, struct ifreq *ifr, int cmd)
 			rc |= copy_to_user(&req_data.guids[i -
 					   req_data.from_idx], &(list[i].guid),
 					   sizeof(u64));
-			rc |= copy_to_user(&req_data.ips[i -
-					   req_data.from_idx], &(list[i].ip),
-					   sizeof(u32));
+			if (cmd == IPOIBACLGET)
+				rc |= copy_to_user(&req_data.ips[i -
+						   req_data.from_idx],
+						   &(list[i].ip.s6_addr32[3]),
+						   sizeof(u32));
+			else
+				/* The IPOIBACLNGET command re-uses the same
+				 * ipoib_ioctl_req_data, except that the
+				 * ips should actually be a pointer to a list
+				 * of struct in6_addr.  Here we assume that
+				 * the pointer size to an u32 and in6_addr are
+				 * the same.
+				 */
+				rc |= copy_to_user((struct in6_addr *)
+						   &req_data.ips[i -
+						   req_data.from_idx],
+						   &list[i].ip,
+						   sizeof(list[i].ip));
 			rc |= copy_to_user((req_data.uuids + i * UUID_SZ),
 					   list[i].uuid, UUID_SZ);
 			if (rc) {
@@ -139,9 +164,21 @@ int ipoib_do_ioctl(struct net_device *dev, struct ifreq *ifr, int cmd)
 		req_data.sz = i - req_data.from_idx;
 		break;
 	case IPOIBACLADD:
+	case IPOIBACLNADD:
 		acl = ipoib_get_instance_acl(req_data.instance_name, dev);
 		if (!acl)
 			return -EINVAL;
+
+		if (cmd == IPOIBACLADD) {
+			/* IPOIBACLADD command contains a list of IPv4
+			 * addresses.  Need to convert them to IPv4 mapped
+			 * IPv6 addresses.  Pre-initialize the IPv6 address
+			 * to be an IPv4 mapped address.
+			 */
+			addr6.s6_addr32[0] = 0;
+			addr6.s6_addr32[1] = 0;
+			addr6.s6_addr32[2] = htonl(0xFFFF);
+		}
 
 		for (i = 0; i < req_data.sz; i++) {
 			rc = copy_from_user(&subnet_prefix,
@@ -149,8 +186,19 @@ int ipoib_do_ioctl(struct net_device *dev, struct ifreq *ifr, int cmd)
 					    sizeof(u64));
 			rc |= copy_from_user(&guid, &req_data.guids[i],
 					     sizeof(u64));
-			rc |= copy_from_user(&ip, &req_data.ips[i],
-					     sizeof(u32));
+			if (cmd == IPOIBACLADD)
+				rc |= copy_from_user(&addr6.s6_addr32[3],
+						     &req_data.ips[i],
+						     sizeof(u32));
+			else
+				/* The IPOIBACLNADD command re-uses the same
+				 * ipoib_ioctl_req_data, except that the
+				 * ips should actually be a pointer to a list
+				 * of struct in6_addr.
+				 */
+				rc |= copy_from_user(&addr6,
+						     &req_data.ips[i],
+						     sizeof(addr6));
 			rc |= copy_from_user(&uuid,
 					     (req_data.uuids + i * UUID_SZ),
 					     UUID_SZ);
@@ -160,10 +208,10 @@ int ipoib_do_ioctl(struct net_device *dev, struct ifreq *ifr, int cmd)
 					   i);
 				return -EINVAL;
 			}
-			rc = ib_cm_acl_insert(acl, subnet_prefix, guid, ip,
+			rc = ib_cm_acl_insert(acl, subnet_prefix, guid, &addr6,
 					      uuid);
 			rc |= ib_cm_acl_insert(&priv->acl, subnet_prefix, guid,
-					       ip, uuid);
+					       &addr6, uuid);
 			if (rc) {
 				ipoib_warn(priv,
 					   "ioctl fail to insert index %ld to ACL\n",
