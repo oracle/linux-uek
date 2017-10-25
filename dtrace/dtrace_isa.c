@@ -242,9 +242,7 @@ void dtrace_getpcstack(uint64_t *pcstack, int pcstack_limit, int aframes,
 					STACKTRACE_KERNEL
 				     };
 
-	DTRACE_CPUFLAG_SET(CPU_DTRACE_NOFAULT);
 	dtrace_stacktrace(&st);
-	DTRACE_CPUFLAG_CLEAR(CPU_DTRACE_NOFAULT);
 
 	while (st.depth < st.limit)
 		pcstack[st.depth++] = 0;
