@@ -447,6 +447,9 @@ Provides: kernel%{?variant}%{?-r:nano}-drm-nouveau = 12\
 Provides: kernel%{?variant}%{?-r:nano}-modeset = 1\
 Provides: kernel%{?variant}%{?-r:nano}-uname-r = %{KVERREL}%{?1:.%{1}}\
 Provides: oracleasm = 2.0.5\
+%if "x%{?-r}" != "x"\
+Provides: kernel-uek\
+%endif\
 %ifnarch sparc64\
 Provides: x86_energy_perf_policy = %{KVERREL}%{?1:.%{1}}\
 Provides: turbostat = %{KVERREL}%{?1:.%{1}}\

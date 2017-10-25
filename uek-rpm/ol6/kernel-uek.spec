@@ -424,7 +424,7 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 
 %ifarch x86_64
 %define kernel_obsoletes kernel-xen <= 2.6.27-0.2.rc0.git6.fc10
-%define kernel_provides kernel%{?variant}-xen = %{rpmversion}-%{pkg_release}
+%define kernel_provides kernel%{?variant}%{?-r:nano}-xen = %{rpmversion}-%{pkg_release}
 %endif
 
 # We moved the drm include files into kernel-headers, make sure there's
@@ -445,13 +445,16 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 # macros defined above.
 #
 %define kernel_reqprovconf(r) \
-Provides: kernel%{?variant} = %{rpmversion}-%{pkg_release}\
-Provides: kernel%{?variant}-%{_target_cpu} = %{rpmversion}-%{pkg_release}%{?1:.%{1}}\
-Provides: kernel%{?variant}-drm = 4.3.0\
-Provides: kernel%{?variant}-drm-nouveau = 12\
-Provides: kernel%{?variant}-modeset = 1\
-Provides: kernel%{?variant}-uname-r = %{KVERREL}%{?1:.%{1}}\
+Provides: kernel%{?variant}%{?-r:nano} = %{rpmversion}-%{pkg_release}\
+Provides: kernel%{?variant}%{?-r:nano}-%{_target_cpu} = %{rpmversion}-%{pkg_release}%{?1:.%{1}}\
+Provides: kernel%{?variant}%{?-r:nano}-drm = 4.3.0\
+Provides: kernel%{?variant}%{?-r:nano}-drm-nouveau = 12\
+Provides: kernel%{?variant}%{?-r:nano}-modeset = 1\
+Provides: kernel%{?variant}%{?-r:nano}-uname-r = %{KVERREL}%{?1:.%{1}}\
 Provides: oracleasm = 2.0.5\
+%if "x%{?-r}" != "x"\
+Provides: kernel-uek\
+%endif\
 %ifnarch sparc64\
 Provides: x86_energy_perf_policy = %{KVERREL}%{?1:.%{1}}\
 Provides: turbostat = %{KVERREL}%{?1:.%{1}}\
