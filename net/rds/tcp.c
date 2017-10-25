@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2006 Oracle.  All rights reserved.
+ * Copyright (c) 2006, 2017 Oracle and/or its affiliates. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -340,8 +340,6 @@ static void rds_tcp_destroy_conns(void)
 		rds_conn_destroy(tc->t_cpath->cp_conn, 1);
 }
 
-static void rds_tcp_exit(void);
-
 struct rds_transport rds_tcp_transport = {
 	.laddr_check		= rds_tcp_laddr_check,
 	.xmit_path_prepare	= rds_tcp_xmit_path_prepare,
@@ -356,7 +354,6 @@ struct rds_transport rds_tcp_transport = {
 	.inc_free		= rds_tcp_inc_free,
 	.skb_local              = rds_skb_local,
 	.stats_info_copy	= rds_tcp_stats_info_copy,
-	.exit			= rds_tcp_exit,
 	.t_owner		= THIS_MODULE,
 	.t_name			= "tcp",
 	.t_type			= RDS_TRANS_TCP,
