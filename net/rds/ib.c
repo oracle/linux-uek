@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2006 Oracle.  All rights reserved.
+ * Copyright (c) 2006, 2017 Oracle and/or its affiliates. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -2813,7 +2813,6 @@ struct rds_transport rds_ib_transport = {
 	.cm_handle_connect	= rds_ib_cm_handle_connect,
 	.cm_connect_complete	= rds_ib_cm_connect_complete,
 	.stats_info_copy	= rds_ib_stats_info_copy,
-	.exit			= rds_ib_exit,
 	.get_mr			= rds_ib_get_mr,
 	.sync_mr		= rds_ib_sync_mr,
 	.free_mr		= rds_ib_free_mr,
