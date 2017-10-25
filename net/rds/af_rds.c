@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2006 Oracle.  All rights reserved.
+ * Copyright (c) 2006, 2017 Oracle and/or its affiliates. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -902,7 +902,7 @@ static void rds_qos_threshold_init(void)
 	}
 }
 
-static void rds_exit(void)
+static void __exit rds_exit(void)
 {
 	sock_unregister(rds_family_ops.family);
 	proto_unregister(&rds_proto);
@@ -920,7 +920,7 @@ module_exit(rds_exit);
 
 u32 rds_gen_num;
 
-static int rds_init(void)
+static int __init rds_init(void)
 {
 	int ret;
 
