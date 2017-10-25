@@ -613,7 +613,7 @@ static int rds_tcp_skbuf_handler(struct ctl_table *ctl, int write,
 	return 0;
 }
 
-static void rds_tcp_exit(void)
+static void __exit rds_tcp_exit(void)
 {
 	rds_info_deregister_func(RDS_INFO_TCP_SOCKETS, rds_tcp_tc_info);
 	unregister_pernet_subsys(&rds_tcp_net_ops);
@@ -626,7 +626,7 @@ static void rds_tcp_exit(void)
 }
 module_exit(rds_tcp_exit);
 
-static int rds_tcp_init(void)
+static int __init rds_tcp_init(void)
 {
 	int ret;
 

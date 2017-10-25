@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2009 Oracle.  All rights reserved.
+ * Copyright (c) 2009, 2017 Oracle and/or its affiliates. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -403,7 +403,7 @@ out:
 }
 module_init(rds_rdma_init);
 
-void rds_rdma_exit(void)
+void __exit rds_rdma_exit(void)
 {
 	/* stop listening first to ensure no new connections are attempted */
 	rds_rdma_listen_stop();
