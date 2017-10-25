@@ -72,6 +72,7 @@ kernel/dtrace/dt_test.ko
 kernel/dtrace/systrace.ko
 kernel/dtrace/sdt.ko
 kernel/dtrace/profile.ko
+kernel/vmlinux.ctfa
 kernel/fs/fat/msdos.ko
 kernel/fs/fat/vfat.ko
 kernel/fs/fat/fat.ko
