@@ -693,7 +693,6 @@ struct rds_transport {
 
 	unsigned int (*stats_info_copy)(struct rds_info_iterator *iter,
 					unsigned int avail);
-	void (*exit)(void);
 	void *(*get_mr)(struct scatterlist *sg, unsigned long nr_sg,
 			struct rds_sock *rs, u32 *key_ret,
 			struct rds_connection *conn);
