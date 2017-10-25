@@ -132,8 +132,10 @@ kernel/fs/cachefiles/cachefiles.ko
 kernel/fs/fuse/cuse.ko
 kernel/fs/fuse/fuse.ko
 kernel/fs/squashfs/squashfs.ko
+kernel/fs/binfmt_misc.ko
 kernel/fs/fscache/fscache.ko
 kernel/fs/pstore/ramoops.ko
+kernel/fs/isofs/isofs.ko
 kernel/fs/ecryptfs/ecryptfs.ko
 kernel/fs/mbcache.ko
 kernel/fs/ext4/ext4.ko
@@ -1189,6 +1191,7 @@ kernel/net/ipv4/netfilter/arpt_mangle.ko
 kernel/net/ipv4/netfilter/iptable_nat.ko
 kernel/net/ipv4/netfilter/nf_defrag_ipv4.ko
 kernel/net/ipv4/netfilter/nf_dup_ipv4.ko
+kernel/net/ipv4/ip_vti.ko
 kernel/net/ipv4/tcp_lp.ko
 kernel/net/ipv4/xfrm4_tunnel.ko
 kernel/net/ipv4/tcp_htcp.ko
