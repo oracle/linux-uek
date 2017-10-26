@@ -111,6 +111,7 @@ enum board_idx {
 	BCM58808,
 	NETXTREME_E_VF,
 	NETXTREME_C_VF,
+	NETXTREME_S_VF,
 };
 
 /* indexed by enum above */
@@ -150,6 +151,7 @@ static const struct {
 	[BCM58808] = { "Broadcom BCM58808 NetXtreme-S 10Gb/25Gb/40Gb/50Gb/100Gb Ethernet" },
 	[NETXTREME_E_VF] = { "Broadcom NetXtreme-E Ethernet Virtual Function" },
 	[NETXTREME_C_VF] = { "Broadcom NetXtreme-C Ethernet Virtual Function" },
+	[NETXTREME_S_VF] = { "Broadcom NetXtreme-S Ethernet Virtual Function" },
 };
 
 static const struct pci_device_id bnxt_pci_tbl[] = {
@@ -197,6 +199,7 @@ static const struct pci_device_id bnxt_pci_tbl[] = {
 	{ PCI_VDEVICE(BROADCOM, 0x16dc), .driver_data = NETXTREME_E_VF },
 	{ PCI_VDEVICE(BROADCOM, 0x16e1), .driver_data = NETXTREME_C_VF },
 	{ PCI_VDEVICE(BROADCOM, 0x16e5), .driver_data = NETXTREME_C_VF },
+	{ PCI_VDEVICE(BROADCOM, 0xd800), .driver_data = NETXTREME_S_VF },
 #endif
 	{ 0 }
 };
@@ -221,7 +224,8 @@ static struct workqueue_struct *bnxt_pf_wq;
 
 static bool bnxt_vf_pciid(enum board_idx idx)
 {
-	return (idx == NETXTREME_C_VF || idx == NETXTREME_E_VF);
+	return (idx == NETXTREME_C_VF || idx == NETXTREME_E_VF ||
+		idx == NETXTREME_S_VF);
 }
 
 #define DB_CP_REARM_FLAGS	(DB_KEY_CP | DB_IDX_VALID)
