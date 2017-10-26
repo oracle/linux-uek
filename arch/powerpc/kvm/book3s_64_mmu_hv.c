@@ -794,6 +794,7 @@ static int kvm_handle_hva(struct kvm *kvm, unsigned long hva,
 
 /* Must be called with both HPTE and rmap locked */
 static void kvmppc_unmap_hpte(struct kvm *kvm, unsigned long i,
+			      struct kvm_memory_slot *memslot,
 			      unsigned long *rmapp, unsigned long gfn)
 {
 	__be64 *hptep = (__be64 *) (kvm->arch.hpt.virt + (i << 4));
@@ -825,8 +826,8 @@ static void kvmppc_unmap_hpte(struct kvm *kvm, unsigned long i,
 		/* Harvest R and C */
 		rcbits = be64_to_cpu(hptep[1]) & (HPTE_R_R | HPTE_R_C);
 		*rmapp |= rcbits << KVMPPC_RMAP_RC_SHIFT;
-		if (rcbits & HPTE_R_C)
-			kvmppc_update_rmap_change(rmapp, psize);
+		if ((rcbits & HPTE_R_C) && memslot->dirty_bitmap)
+			kvmppc_update_dirty_map(memslot, gfn, psize);
 		if (rcbits & ~rev[i].guest_rpte) {
 			rev[i].guest_rpte = ptel | rcbits;
 			note_hpte_modification(kvm, &rev[i]);
@@ -864,7 +865,7 @@ static int kvm_unmap_rmapp(struct kvm *kvm, struct kvm_memory_slot *memslot,
 			continue;
 		}
 
-		kvmppc_unmap_hpte(kvm, i, rmapp, gfn);
+		kvmppc_unmap_hpte(kvm, i, memslot, rmapp, gfn);
 		unlock_rmap(rmapp);
 		__unlock_hpte(hptep, be64_to_cpu(hptep[0]));
 	}
@@ -1047,14 +1048,6 @@ static int kvm_test_clear_dirty_npages(struct kvm *kvm, unsigned long *rmapp)
 
  retry:
 	lock_rmap(rmapp);
-	if (*rmapp & KVMPPC_RMAP_CHANGED) {
-		long change_order = (*rmapp & KVMPPC_RMAP_CHG_ORDER)
-			>> KVMPPC_RMAP_CHG_SHIFT;
-		*rmapp &= ~(KVMPPC_RMAP_CHANGED | KVMPPC_RMAP_CHG_ORDER);
-		npages_dirty = 1;
-		if (change_order > PAGE_SHIFT)
-			npages_dirty = 1ul << (change_order - PAGE_SHIFT);
-	}
 	if (!(*rmapp & KVMPPC_RMAP_PRESENT)) {
 		unlock_rmap(rmapp);
 		return npages_dirty;
@@ -1146,7 +1139,7 @@ void kvmppc_harvest_vpa_dirty(struct kvmppc_vpa *vpa,
 long kvmppc_hv_get_dirty_log_hpt(struct kvm *kvm,
 			struct kvm_memory_slot *memslot, unsigned long *map)
 {
-	unsigned long i, j;
+	unsigned long i;
 	unsigned long *rmapp;
 
 	preempt_disable();
@@ -1158,9 +1151,8 @@ long kvmppc_hv_get_dirty_log_hpt(struct kvm *kvm,
 		 * since we always put huge-page HPTEs in the rmap chain
 		 * corresponding to their page base address.
 		 */
-		if (npages && map)
-			for (j = i; npages; ++j, --npages)
-				__set_bit_le(j, map);
+		if (npages)
+			set_dirty_bits(map, i, npages);
 		++rmapp;
 	}
 	preempt_enable();
@@ -1204,7 +1196,6 @@ void kvmppc_unpin_guest_page(struct kvm *kvm, void *va, unsigned long gpa,
 	struct page *page = virt_to_page(va);
 	struct kvm_memory_slot *memslot;
 	unsigned long gfn;
-	unsigned long *rmap;
 	int srcu_idx;
 
 	put_page(page);
@@ -1212,20 +1203,12 @@ void kvmppc_unpin_guest_page(struct kvm *kvm, void *va, unsigned long gpa,
 	if (!dirty)
 		return;
 
-	/* We need to mark this page dirty in the rmap chain */
+	/* We need to mark this page dirty in the memslot dirty_bitmap, if any */
 	gfn = gpa >> PAGE_SHIFT;
 	srcu_idx = srcu_read_lock(&kvm->srcu);
 	memslot = gfn_to_memslot(kvm, gfn);
-	if (memslot) {
-		if (!kvm_is_radix(kvm)) {
-			rmap = &memslot->arch.rmap[gfn - memslot->base_gfn];
-			lock_rmap(rmap);
-			*rmap |= KVMPPC_RMAP_CHANGED;
-			unlock_rmap(rmap);
-		} else if (memslot->dirty_bitmap) {
-			mark_page_dirty(kvm, gfn);
-		}
-	}
+	if (memslot && memslot->dirty_bitmap)
+		set_bit_le(gfn - memslot->base_gfn, memslot->dirty_bitmap);
 	srcu_read_unlock(&kvm->srcu, srcu_idx);
 }
 
@@ -1300,7 +1283,7 @@ static unsigned long resize_hpt_rehash_hpte(struct kvm_resize_hpt *resize,
 			rmapp = &memslot->arch.rmap[gfn - memslot->base_gfn];
 
 			lock_rmap(rmapp);
-			kvmppc_unmap_hpte(kvm, idx, rmapp, gfn);
+			kvmppc_unmap_hpte(kvm, idx, memslot, rmapp, gfn);
 			unlock_rmap(rmapp);
 		}
 
