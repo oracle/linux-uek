@@ -650,7 +650,7 @@ static int bnxt_tc_put_l2_node(struct bnxt *bp,
 			       struct bnxt_tc_flow_node *flow_node)
 {
 	struct bnxt_tc_l2_node *l2_node = flow_node->l2_node;
-	struct bnxt_tc_info *tc_info = &bp->tc_info;
+	struct bnxt_tc_info *tc_info = bp->tc_info;
 	int rc;
 
 	/* remove flow_node from the L2 shared flow list */
@@ -706,7 +706,7 @@ bnxt_tc_get_ref_flow_handle(struct bnxt *bp, struct bnxt_tc_flow *flow,
 			    struct bnxt_tc_flow_node *flow_node,
 			    __le16 *ref_flow_handle)
 {
-	struct bnxt_tc_info *tc_info = &bp->tc_info;
+	struct bnxt_tc_info *tc_info = bp->tc_info;
 	struct bnxt_tc_flow_node *ref_flow_node;
 	struct bnxt_tc_l2_node *l2_node;
 
@@ -821,7 +821,7 @@ static int bnxt_tc_get_ref_decap_handle(struct bnxt *bp,
 					struct bnxt_tc_flow_node *flow_node,
 					__le32 *ref_decap_handle)
 {
-	struct bnxt_tc_info *tc_info = &bp->tc_info;
+	struct bnxt_tc_info *tc_info = bp->tc_info;
 	struct bnxt_tc_flow_node *ref_flow_node;
 	struct bnxt_tc_l2_node *decap_l2_node;
 
@@ -859,7 +859,7 @@ static void bnxt_tc_put_decap_l2_node(struct bnxt *bp,
 				      struct bnxt_tc_flow_node *flow_node)
 {
 	struct bnxt_tc_l2_node *decap_l2_node = flow_node->decap_l2_node;
-	struct bnxt_tc_info *tc_info = &bp->tc_info;
+	struct bnxt_tc_info *tc_info = bp->tc_info;
 	int rc;
 
 	/* remove flow_node from the decap L2 sharing flow list */
@@ -878,7 +878,7 @@ static void bnxt_tc_put_decap_handle(struct bnxt *bp,
 				     struct bnxt_tc_flow_node *flow_node)
 {
 	__le32 decap_handle = flow_node->decap_node->tunnel_handle;
-	struct bnxt_tc_info *tc_info = &bp->tc_info;
+	struct bnxt_tc_info *tc_info = bp->tc_info;
 	int rc;
 
 	if (flow_node->decap_l2_node)
@@ -971,7 +971,7 @@ static int bnxt_tc_get_decap_handle(struct bnxt *bp, struct bnxt_tc_flow *flow,
 				    __le32 *decap_filter_handle)
 {
 	struct ip_tunnel_key *decap_key = &flow->tun_key;
-	struct bnxt_tc_info *tc_info = &bp->tc_info;
+	struct bnxt_tc_info *tc_info = bp->tc_info;
 	struct bnxt_tc_l2_key l2_info = { {0} };
 	struct bnxt_tc_tunnel_node *decap_node;
 	struct ip_tunnel_key tun_key = { 0 };
@@ -1048,7 +1048,7 @@ static void bnxt_tc_put_encap_handle(struct bnxt *bp,
 				     struct bnxt_tc_tunnel_node *encap_node)
 {
 	__le32 encap_handle = encap_node->tunnel_handle;
-	struct bnxt_tc_info *tc_info = &bp->tc_info;
+	struct bnxt_tc_info *tc_info = bp->tc_info;
 	int rc;
 
 	rc = bnxt_tc_put_tunnel_node(bp, &tc_info->encap_table,
@@ -1067,7 +1067,7 @@ static int bnxt_tc_get_encap_handle(struct bnxt *bp, struct bnxt_tc_flow *flow,
 				    __le32 *encap_handle)
 {
 	struct ip_tunnel_key *encap_key = &flow->actions.tun_encap_key;
-	struct bnxt_tc_info *tc_info = &bp->tc_info;
+	struct bnxt_tc_info *tc_info = bp->tc_info;
 	struct bnxt_tc_tunnel_node *encap_node;
 	int rc;
 
@@ -1133,7 +1133,7 @@ static int bnxt_tc_get_tunnel_handle(struct bnxt *bp,
 static int __bnxt_tc_del_flow(struct bnxt *bp,
 			      struct bnxt_tc_flow_node *flow_node)
 {
-	struct bnxt_tc_info *tc_info = &bp->tc_info;
+	struct bnxt_tc_info *tc_info = bp->tc_info;
 	int rc;
 
 	/* send HWRM cmd to free the flow-id */
@@ -1185,7 +1185,7 @@ static int bnxt_tc_add_flow(struct bnxt *bp, u16 src_fid,
 			    struct tc_cls_flower_offload *tc_flow_cmd)
 {
 	struct bnxt_tc_flow_node *new_node, *old_node;
-	struct bnxt_tc_info *tc_info = &bp->tc_info;
+	struct bnxt_tc_info *tc_info = bp->tc_info;
 	struct bnxt_tc_flow *flow;
 	__le32 tunnel_handle = 0;
 	__le16 ref_flow_handle;
@@ -1267,7 +1267,7 @@ done:
 static int bnxt_tc_del_flow(struct bnxt *bp,
 			    struct tc_cls_flower_offload *tc_flow_cmd)
 {
-	struct bnxt_tc_info *tc_info = &bp->tc_info;
+	struct bnxt_tc_info *tc_info = bp->tc_info;
 	struct bnxt_tc_flow_node *flow_node;
 
 	flow_node = rhashtable_lookup_fast(&tc_info->flow_table,
@@ -1286,7 +1286,7 @@ static int bnxt_tc_get_flow_stats(struct bnxt *bp,
 				  struct tc_cls_flower_offload *tc_flow_cmd)
 {
 	struct bnxt_tc_flow_stats stats, *curr_stats, *prev_stats;
-	struct bnxt_tc_info *tc_info = &bp->tc_info;
+	struct bnxt_tc_info *tc_info = bp->tc_info;
 	struct bnxt_tc_flow_node *flow_node;
 	struct bnxt_tc_flow *flow;
 	unsigned long lastused;
@@ -1384,7 +1384,7 @@ static int
 bnxt_tc_flow_stats_batch_update(struct bnxt *bp, int num_flows,
 				struct bnxt_tc_stats_batch stats_batch[])
 {
-	struct bnxt_tc_info *tc_info = &bp->tc_info;
+	struct bnxt_tc_info *tc_info = bp->tc_info;
 	int rc, i;
 
 	rc = bnxt_hwrm_cfa_flow_stats_get(bp, num_flows, stats_batch);
@@ -1411,7 +1411,7 @@ bnxt_tc_flow_stats_batch_prep(struct bnxt *bp,
 			      struct bnxt_tc_stats_batch stats_batch[],
 			      int *num_flows)
 {
-	struct bnxt_tc_info *tc_info = &bp->tc_info;
+	struct bnxt_tc_info *tc_info = bp->tc_info;
 	struct rhashtable_iter *iter = &tc_info->iter;
 	void *flow_node;
 	int rc, i;
@@ -1449,7 +1449,7 @@ done:
 
 void bnxt_tc_flow_stats_work(struct bnxt *bp)
 {
-	struct bnxt_tc_info *tc_info = &bp->tc_info;
+	struct bnxt_tc_info *tc_info = bp->tc_info;
 	int num_flows, rc;
 
 	num_flows = atomic_read(&tc_info->flow_table.nelems);
@@ -1534,7 +1534,7 @@ static const struct rhashtable_params bnxt_tc_tunnel_ht_params = {
 
 int bnxt_init_tc(struct bnxt *bp)
 {
-	struct bnxt_tc_info *tc_info = &bp->tc_info;
+	struct bnxt_tc_info *tc_info;
 	int rc;
 
 	if (bp->hwrm_spec_code < 0x10803) {
@@ -1542,6 +1542,10 @@ int bnxt_init_tc(struct bnxt *bp)
 			    "Firmware does not support TC flower offload.\n");
 		return -ENOTSUPP;
 	}
+
+	tc_info = kzalloc(sizeof(*tc_info), GFP_KERNEL);
+	if (!tc_info)
+		return -ENOMEM;
 	mutex_init(&tc_info->lock);
 
 	/* Counter widths are programmed by FW */
@@ -1551,7 +1555,7 @@ int bnxt_init_tc(struct bnxt *bp)
 	tc_info->flow_ht_params = bnxt_tc_flow_ht_params;
 	rc = rhashtable_init(&tc_info->flow_table, &tc_info->flow_ht_params);
 	if (rc)
-		return rc;
+		goto free_tc_info;
 
 	tc_info->l2_ht_params = bnxt_tc_l2_ht_params;
 	rc = rhashtable_init(&tc_info->l2_table, &tc_info->l2_ht_params);
@@ -1579,6 +1583,7 @@ int bnxt_init_tc(struct bnxt *bp)
 	tc_info->enabled = true;
 	bp->dev->hw_features |= NETIF_F_HW_TC;
 	bp->dev->features |= NETIF_F_HW_TC;
+	bp->tc_info = tc_info;
 	return 0;
 
 destroy_decap_table:
@@ -1589,14 +1594,16 @@ destroy_l2_table:
 	rhashtable_destroy(&tc_info->l2_table);
 destroy_flow_table:
 	rhashtable_destroy(&tc_info->flow_table);
+free_tc_info:
+	kfree(tc_info);
 	return rc;
 }
 
 void bnxt_shutdown_tc(struct bnxt *bp)
 {
-	struct bnxt_tc_info *tc_info = &bp->tc_info;
+	struct bnxt_tc_info *tc_info = bp->tc_info;
 
-	if (!tc_info->enabled)
+	if (!bnxt_tc_flower_enabled(bp))
 		return;
 
 	rhashtable_destroy(&tc_info->flow_table);
@@ -1604,6 +1611,8 @@ void bnxt_shutdown_tc(struct bnxt *bp)
 	rhashtable_destroy(&tc_info->decap_l2_table);
 	rhashtable_destroy(&tc_info->decap_table);
 	rhashtable_destroy(&tc_info->encap_table);
+	kfree(tc_info);
+	bp->tc_info = NULL;
 }
 
 #else

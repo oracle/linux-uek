@@ -7715,7 +7715,7 @@ static int bnxt_setup_tc_block_cb(enum tc_setup_type type, void *type_data,
 {
 	struct bnxt *bp = cb_priv;
 
-	if (BNXT_VF(bp))
+	if (!bnxt_tc_flower_enabled(bp))
 		return -EOPNOTSUPP;
 
 	switch (type) {
