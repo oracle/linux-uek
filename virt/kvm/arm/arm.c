@@ -1460,7 +1460,8 @@ int kvm_arch_irq_bypass_add_producer(struct irq_bypass_consumer *cons,
 	struct kvm_kernel_irqfd *irqfd =
 		container_of(cons, struct kvm_kernel_irqfd, consumer);
 
-	return 0;
+	return kvm_vgic_v4_set_forwarding(irqfd->kvm, prod->irq,
+					  &irqfd->irq_entry);
 }
 void kvm_arch_irq_bypass_del_producer(struct irq_bypass_consumer *cons,
 				      struct irq_bypass_producer *prod)
@@ -1468,7 +1469,8 @@ void kvm_arch_irq_bypass_del_producer(struct irq_bypass_consumer *cons,
 	struct kvm_kernel_irqfd *irqfd =
 		container_of(cons, struct kvm_kernel_irqfd, consumer);
 
-	return;
+	kvm_vgic_v4_unset_forwarding(irqfd->kvm, prod->irq,
+				     &irqfd->irq_entry);
 }
 
 void kvm_arch_irq_bypass_stop(struct irq_bypass_consumer *cons)
