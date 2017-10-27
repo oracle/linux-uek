@@ -1035,6 +1035,8 @@ static void i40evf_configure(struct i40evf_adapter *adapter)
 /**
  * i40evf_up_complete - Finish the last steps of bringing up a connection
  * @adapter: board private structure
+ *
+ * Expects to be called while holding the __I40EVF_IN_CRITICAL_TASK bit lock.
  **/
 static void i40evf_up_complete(struct i40evf_adapter *adapter)
 {
@@ -1052,6 +1054,8 @@ static void i40evf_up_complete(struct i40evf_adapter *adapter)
 /**
  * i40e_down - Shutdown the connection processing
  * @adapter: board private structure
+ *
+ * Expects to be called while holding the __I40EVF_IN_CRITICAL_TASK bit lock.
  **/
 void i40evf_down(struct i40evf_adapter *adapter)
 {
@@ -1060,10 +1064,6 @@ void i40evf_down(struct i40evf_adapter *adapter)
 
 	if (adapter->state <= __I40EVF_DOWN_PENDING)
 		return;
-
-	while (test_and_set_bit(__I40EVF_IN_CRITICAL_TASK,
-				&adapter->crit_section))
-		usleep_range(500, 1000);
 
 	netif_carrier_off(netdev);
 	netif_tx_disable(netdev);
@@ -1097,7 +1097,6 @@ void i40evf_down(struct i40evf_adapter *adapter)
 		adapter->aq_required |= I40EVF_FLAG_AQ_DISABLE_QUEUES;
 	}
 
-	clear_bit(__I40EVF_IN_CRITICAL_TASK, &adapter->crit_section);
 	mod_timer_pending(&adapter->watchdog_timer, jiffies + 1);
 }
 
@@ -1965,8 +1964,6 @@ continue_reset:
 
 	adapter->aq_required |= I40EVF_FLAG_AQ_ADD_MAC_FILTER;
 	adapter->aq_required |= I40EVF_FLAG_AQ_ADD_VLAN_FILTER;
-	clear_bit(__I40EVF_IN_CLIENT_TASK, &adapter->crit_section);
-	clear_bit(__I40EVF_IN_CRITICAL_TASK, &adapter->crit_section);
 	i40evf_misc_irq_enable(adapter);
 
 	mod_timer(&adapter->watchdog_timer, jiffies + 2);
@@ -2003,9 +2000,13 @@ continue_reset:
 		adapter->state = __I40EVF_DOWN;
 		wake_up(&adapter->down_waitqueue);
 	}
+	clear_bit(__I40EVF_IN_CLIENT_TASK, &adapter->crit_section);
+	clear_bit(__I40EVF_IN_CRITICAL_TASK, &adapter->crit_section);
 
 	return;
 reset_err:
+	clear_bit(__I40EVF_IN_CLIENT_TASK, &adapter->crit_section);
+	clear_bit(__I40EVF_IN_CRITICAL_TASK, &adapter->crit_section);
 	dev_err(&adapter->pdev->dev, "failed to allocate resources during reinit\n");
 	i40evf_close(netdev);
 }
@@ -2249,8 +2250,14 @@ static int i40evf_open(struct net_device *netdev)
 		return -EIO;
 	}
 
-	if (adapter->state != __I40EVF_DOWN)
-		return -EBUSY;
+	while (test_and_set_bit(__I40EVF_IN_CRITICAL_TASK,
+				&adapter->crit_section))
+		usleep_range(500, 1000);
+
+	if (adapter->state != __I40EVF_DOWN) {
+		err = -EBUSY;
+		goto err_unlock;
+	}
 
 	/* allocate transmit descriptors */
 	err = i40evf_setup_all_tx_resources(adapter);
@@ -2274,6 +2281,8 @@ static int i40evf_open(struct net_device *netdev)
 
 	i40evf_irq_enable(adapter, true);
 
+	clear_bit(__I40EVF_IN_CRITICAL_TASK, &adapter->crit_section);
+
 	return 0;
 
 err_req_irq:
@@ -2283,6 +2292,8 @@ err_setup_rx:
 	i40evf_free_all_rx_resources(adapter);
 err_setup_tx:
 	i40evf_free_all_tx_resources(adapter);
+err_unlock:
+	clear_bit(__I40EVF_IN_CRITICAL_TASK, &adapter->crit_section);
 
 	return err;
 }
@@ -2306,6 +2317,9 @@ static int i40evf_close(struct net_device *netdev)
 	if (adapter->state <= __I40EVF_DOWN_PENDING)
 		return 0;
 
+	while (test_and_set_bit(__I40EVF_IN_CRITICAL_TASK,
+				&adapter->crit_section))
+		usleep_range(500, 1000);
 
 	set_bit(__I40E_VSI_DOWN, adapter->vsi.state);
 	if (CLIENT_ENABLED(adapter))
@@ -2314,6 +2328,8 @@ static int i40evf_close(struct net_device *netdev)
 	i40evf_down(adapter);
 	adapter->state = __I40EVF_DOWN_PENDING;
 	i40evf_free_traffic_irqs(adapter);
+
+	clear_bit(__I40EVF_IN_CRITICAL_TASK, &adapter->crit_section);
 
 	/* We explicitly don't free resources here because the hardware is
 	 * still active and can DMA into memory. Resources are cleared in
@@ -2998,6 +3014,10 @@ static int i40evf_suspend(struct pci_dev *pdev, pm_message_t state)
 
 	netif_device_detach(netdev);
 
+	while (test_and_set_bit(__I40EVF_IN_CRITICAL_TASK,
+				&adapter->crit_section))
+		usleep_range(500, 1000);
+
 	if (netif_running(netdev)) {
 		rtnl_lock();
 		i40evf_down(adapter);
@@ -3005,6 +3025,8 @@ static int i40evf_suspend(struct pci_dev *pdev, pm_message_t state)
 	}
 	i40evf_free_misc_irq(adapter);
 	i40evf_reset_interrupt_capability(adapter);
+
+	clear_bit(__I40EVF_IN_CRITICAL_TASK, &adapter->crit_section);
 
 	retval = pci_save_state(pdev);
 	if (retval)
