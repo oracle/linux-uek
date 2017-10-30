@@ -7,6 +7,9 @@
 
 #define RDS_RDMA_RESOLVE_TIMEOUT_MS     5000
 
+/* Per IB specification 7.7.3, service level is a 4-bit field. */
+#define TOS_TO_SL(tos)	((tos) & 0xF)
+
 int rds_rdma_conn_connect(struct rds_connection *conn);
 int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 			      struct rdma_cm_event *event);
