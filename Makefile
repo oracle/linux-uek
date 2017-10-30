@@ -1249,8 +1249,7 @@ CTF_DEBUGDIR := .
 ctf: $(CTF_FILENAME)
 PHONY += ctf
 $(CTF_FILENAME):
-	$(Q)$(MAKE) -f $(srctree)/scripts/Makefile.modpost CTF_FILENAME=$(CTF_FILENAME) CTF_DEBUGDIR=$(CTF_DEBUGDIR) $(CTF_FILENAME)
-
+	$(Q)$(MAKE) -f $(srctree)/scripts/Makefile.modpost CTF_FILENAME=$(CTF_FILENAME) CTF_DEBUGDIR=$(CTF_DEBUGDIR) $(CTF_FILENAME) ctf-builtins="$(KBUILD_VMLINUX_INIT) $(KBUILD_VMLINUX_MAIN)"
 else
 PHONY += objects.builtin
 objects.builtin:

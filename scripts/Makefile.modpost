@@ -196,7 +196,7 @@ ctf-dir := $(KBUILD_EXTMOD)/.ctf
 ctf-dir-mk := $(ctf-dir)
 quiet_cmd_ctf = CTF
       cmd_ctf = scripts/dwarf2ctf/dwarf2ctf $(ctf-dir) -e $(ctf-filelist)
-ctf-builtins :=
+override ctf-builtins :=
 ctf-modules := $(modules:.ko=.o)
 ctf-filelist := $(ctf-dir)/$(notdir $(M)-extmod).ctf.filelist
 ctf-stamp = $(ctf-dir)/$(notdir $(M)-extmod).stamp
@@ -208,24 +208,18 @@ $(all-module-ctfs): $(ctf-stamp)
 
 endif
 
-# This ensures that the (possibly very long) prerequisite list is written out
-# using one shell invocation per prerequisite.
-#
-# The empty line in this definition is crucial.
-define add-ctf-filelist-cmd
-	@echo "$(1)" >> $(ctf-filelist)
-
-endef
-define add-ctf-filelists-cmd
-	$(foreach file,$(1),$(call add-ctf-filelist-cmd,$(file)))
-endef
-
 $(ctf-filelist): $(ctf-builtins) $(ctf-modules) | $(sdtinfo-prereq)
 	@rm -f $(ctf-filelist);
 	@if [[ -n "$(ctf-dir-mk)" ]]; then \
 		mkdir -p "$(ctf-dir-mk)"; \
 	fi
-	$(call add-ctf-filelists-cmd,$^)
+	@for obj in $^; do \
+		if [[ `file $$obj` =~ ' ELF ' ]]; then \
+			echo "$$obj" >> $(ctf-filelist); \
+		else \
+			ar t $$obj >> $(ctf-filelist); \
+		fi; \
+	done
 
 ifeq ($(KBUILD_EXTMOD),)
 # The CTF depends on the output CTF file list, and that depends
