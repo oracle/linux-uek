@@ -162,7 +162,7 @@ int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 				 * needs to update the sl manually. As for now, RDS is assuming
 				 * that it is a 1:1 in tos to sl mapping.
 				 */
-				cm_id->route.path_rec[0].sl = conn->c_tos;
+				cm_id->route.path_rec[0].sl = TOS_TO_SL(conn->c_tos);
 				cm_id->route.path_rec[0].qos_class = conn->c_tos;
 				ret = trans->cm_initiate_connect(cm_id, isv6);
 			} else {
