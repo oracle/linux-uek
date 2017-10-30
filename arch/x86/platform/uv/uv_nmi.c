@@ -498,7 +498,7 @@ static void uv_nmi_touch_watchdogs(void)
 
 static atomic_t uv_nmi_kexec_failed;
 
-#if defined(CONFIG_KEXEC_CORE)
+#if defined(CONFIG_KEXEC)
 static void uv_nmi_kdump(int cpu, int master, struct pt_regs *regs)
 {
 	/* Call crash to dump system state */
