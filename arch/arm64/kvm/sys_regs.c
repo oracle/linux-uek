@@ -23,6 +23,7 @@
 #include <linux/bsearch.h>
 #include <linux/kvm_host.h>
 #include <linux/mm.h>
+#include <linux/printk.h>
 #include <linux/uaccess.h>
 
 #include <asm/cacheflush.h>
