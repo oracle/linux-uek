@@ -359,8 +359,8 @@ exit:
 	return fn ? fn(regs, instr) : 1;
 }
 
-static void force_signal_inject(int signal, int code, struct pt_regs *regs,
-				unsigned long address)
+void force_signal_inject(int signal, int code, struct pt_regs *regs,
+			 unsigned long address)
 {
 	siginfo_t info;
 	void __user *pc = (void __user *)instruction_pointer(regs);
@@ -374,7 +374,7 @@ static void force_signal_inject(int signal, int code, struct pt_regs *regs,
 		desc = "illegal memory access";
 		break;
 	default:
-		desc = "bad mode";
+		desc = "unknown or unrecoverable error";
 		break;
 	}
 
