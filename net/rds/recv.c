@@ -361,9 +361,12 @@ void rds_recv_incoming(struct rds_connection *conn, struct in6_addr *saddr,
 	/* lets find a socket to which this request belongs */
 	rs = rds_find_bound(daddr, inc->i_hdr.h_dport, conn->c_dev_if);
 
-	/* pass it on locally if there is no socket bound, or if netfilter is
-	 * disabled for this socket */
-	if (NULL == rs || !rs->rs_netfilter_enabled) {
+	/* Pass it on locally if there is no socket bound, or if netfilter is
+	 * disabled for this socket, or if the underlying transport does not
+	 * support netfilter.
+	 */
+	if (NULL == rs || !rs->rs_netfilter_enabled ||
+	    !conn->c_trans->inc_to_skb) {
 		rds_recv_local(cp, saddr, daddr, inc, gfp, rs);
 
 		/* drop the reference if we had taken one */
