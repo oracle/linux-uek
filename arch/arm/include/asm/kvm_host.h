@@ -299,4 +299,7 @@ static inline bool kvm_arm_harden_branch_predictor(void)
 	return false;
 }
 
+/* All host FP/SIMD state is restored on guest exit, so nothing to save: */
+static inline void kvm_fpsimd_flush_cpu_state(void) {}
+
 #endif /* __ARM_KVM_HOST_H__ */

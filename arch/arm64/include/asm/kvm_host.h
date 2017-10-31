@@ -25,6 +25,7 @@
 #include <linux/types.h>
 #include <linux/kvm_types.h>
 #include <asm/cpufeature.h>
+#include <asm/fpsimd.h>
 #include <asm/kvm.h>
 #include <asm/kvm_asm.h>
 #include <asm/kvm_mmio.h>
@@ -387,6 +388,16 @@ static inline void __cpu_init_stage2(void)
 static inline bool kvm_arm_harden_branch_predictor(void)
 {
 	return cpus_have_const_cap(ARM64_HARDEN_BRANCH_PREDICTOR);
+}
+
+/*
+ * All host FP/SIMD state is restored on guest exit, so nothing needs
+ * doing here except in the SVE case:
+*/
+static inline void kvm_fpsimd_flush_cpu_state(void)
+{
+	if (system_supports_sve())
+		sve_flush_cpu_state();
 }
 
 #endif /* __ARM64_KVM_HOST_H__ */
