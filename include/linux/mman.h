@@ -10,7 +10,7 @@
 
 /*
  * Arrange for legacy / undefined architecture specific flags to be
- * ignored by default in LEGACY_MAP_MASK.
+ * ignored by mmap handling code.
  */
 #ifndef MAP_32BIT
 #define MAP_32BIT 0
@@ -23,6 +23,9 @@
 #endif
 #ifndef MAP_UNINITIALIZED
 #define MAP_UNINITIALIZED 0
+#endif
+#ifndef MAP_SYNC
+#define MAP_SYNC 0
 #endif
 
 /*
@@ -127,7 +130,8 @@ calc_vm_flag_bits(unsigned long flags)
 {
 	return _calc_vm_trans(flags, MAP_GROWSDOWN,  VM_GROWSDOWN ) |
 	       _calc_vm_trans(flags, MAP_DENYWRITE,  VM_DENYWRITE ) |
-	       _calc_vm_trans(flags, MAP_LOCKED,     VM_LOCKED    );
+	       _calc_vm_trans(flags, MAP_LOCKED,     VM_LOCKED    ) |
+	       _calc_vm_trans(flags, MAP_SYNC,	     VM_SYNC      );
 }
 
 unsigned long vm_commit_limit(void);
