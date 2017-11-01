@@ -1,4 +1,6 @@
-/* Copyright (C) 2011-2014 Oracle, Inc. */
+/*
+ * Copyright (c) 2011, 2017, Oracle and/or its affiliates. All rights reserved.
+ */
 
 #ifndef _LINUX_DTRACE_SYSCALL_H_
 #define _LINUX_DTRACE_SYSCALL_H_
@@ -22,8 +24,8 @@ enum dtrace_sce_id {
 #include <asm/dtrace_syscall.h>
 #undef DTRACE_SYSCALL_STUB
 
-typedef long (*dt_sys_call_t)(uintptr_t, uintptr_t, uintptr_t, uintptr_t,
-			      uintptr_t, uintptr_t);
+typedef asmlinkage long (*dt_sys_call_t)(uintptr_t, uintptr_t, uintptr_t,
+					 uintptr_t, uintptr_t, uintptr_t);
 
 typedef struct dtrace_syscalls {
 	const char	*name;

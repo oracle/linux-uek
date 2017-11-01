@@ -32,12 +32,20 @@ asmlinkage long systrace_syscall(uintptr_t, uintptr_t,
 				 uintptr_t, uintptr_t,
 				 uintptr_t, uintptr_t);
 
+asmlinkage long dtrace_stub_ptregs(uintptr_t, uintptr_t,
+				   uintptr_t, uintptr_t,
+				   uintptr_t, uintptr_t);
+
 static systrace_info_t	systrace_info =
 		{
 			&systrace_probe,
 			systrace_stub,
 			systrace_syscall,
-			{},
+			{
+#define DTRACE_SYSCALL_STUB(id, name) \
+				[SCE_##id] dtrace_stub_ptregs,
+#include <asm/dtrace_syscall.h>
+			},
 			{
 #define __SYSCALL_64(nr, sym, compat)		[nr] { __stringify(sym), },
 #define __SYSCALL_COMMON(nr, sym, compat)	__SYSCALL_64(nr, sym, compat)
@@ -56,7 +64,6 @@ asmlinkage long systrace_syscall(uintptr_t arg0, uintptr_t arg1, uintptr_t arg2,
 	dtrace_syscalls_t	*sc;
 
 	sysnum = syscall_get_nr(current, current_pt_regs());
-
 	sc = &systrace_info.sysent[sysnum];
 
 	if ((id = sc->stsy_entry) != DTRACE_IDNONE)
