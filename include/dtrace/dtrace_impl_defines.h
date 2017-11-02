@@ -1,7 +1,7 @@
 /*
  * Dynamic Tracing for Linux - Implementation Defines
  *
- * Copyright (c) 2009, 2016, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2009, 2017, Oracle and/or its affiliates. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -25,8 +25,6 @@
 #include <linux/dtrace/universal.h>
 #include <linux/preempt.h>
 #include <asm/ptrace.h>
-
-#include <dtrace/mod_arch.h>
 
 typedef typeof(instruction_pointer((struct pt_regs *)0))	pc_t;
 

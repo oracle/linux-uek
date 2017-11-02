@@ -32,6 +32,9 @@ extern void dtrace_os_exit(void);
 extern void *dtrace_alloc_text(struct module *, unsigned long);
 extern void dtrace_free_text(void *);
 
+extern void dtrace_mod_pdata_alloc(struct module *);
+extern void dtrace_mod_pdata_free(struct module *);
+
 extern void dtrace_enable(void);
 extern void dtrace_disable(void);
 
@@ -129,6 +132,12 @@ extern int dtrace_tracepoint_disable(pid_t, fasttrap_machtp_t *);
  * See kernel/timekeeper.c
  */
 #define	dtrace_update_time(ignore)
+
+/*
+ * See kernel/dtrace/dtrace_os.c
+ */
+#define dtrace_mod_pdata_alloc(ignore)
+#define dtrace_mod_pdata_free(ignore)
 
 #endif /* CONFIG_DTRACE */
 

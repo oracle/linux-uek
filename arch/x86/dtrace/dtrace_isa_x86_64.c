@@ -2,7 +2,7 @@
  * FILE:	dtrace_isa_x86_64.c
  * DESCRIPTION:	DTrace - x86_64 architecture specific support functions
  *
- * Copyright (c) 2010, 2015, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2010, 2017, Oracle and/or its affiliates. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -224,12 +224,4 @@ ulong_t dtrace_getreg(struct task_struct *task, uint_t reg)
 		DTRACE_CPUFLAG_SET(CPU_DTRACE_ILLOP);
 		return 0;
 	}
-}
-
-void pdata_init(dtrace_module_t *pdata, struct module *mp)
-{
-}
-
-void pdata_cleanup(dtrace_module_t *pdata, struct module *mp)
-{
 }

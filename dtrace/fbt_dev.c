@@ -102,6 +102,10 @@ void fbt_provide_module(void *arg, struct module *mp)
 {
 	struct module_use *use;
 
+	/* When module setup failed do not provide anything. */
+	if (PDATA(mp) == NULL)
+		return;
+
 	/*
 	 * Nothing to do if the module FBT probes were already created.
 	 */

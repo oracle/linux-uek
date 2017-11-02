@@ -53,6 +53,7 @@
 #include <asm/mmu_context.h>
 #include <linux/license.h>
 #include <asm/sections.h>
+#include <linux/dtrace_os.h>
 #include <linux/dtrace_sdt.h>
 #include <linux/tracepoint.h>
 #include <linux/ftrace.h>
@@ -2128,6 +2129,7 @@ void __weak module_arch_freeing_init(struct module *mod)
 /* Free a module, remove from lists, etc. */
 static void free_module(struct module *mod)
 {
+	dtrace_mod_pdata_free(mod);
 	trace_module_free(mod);
 
 	mod_sysfs_teardown(mod);
@@ -3333,6 +3335,7 @@ static struct module *layout_and_allocate(struct load_info *info, int flags)
 	/* Module has been copied to its final place now: return it. */
 	mod = (void *)info->sechdrs[info->index.mod].sh_addr;
 	kmemleak_load_module(mod, info);
+
 	return mod;
 }
 
@@ -3735,6 +3738,9 @@ static int load_module(struct load_info *info, const char __user *uargs,
 
 	/* Ftrace init must be called in the MODULE_STATE_UNFORMED state */
 	ftrace_module_init(mod);
+
+	/* Allocate DTrace per-module data. */
+	dtrace_mod_pdata_alloc(mod);
 
 	/* Finally it's fully formed, ready to start executing. */
 	err = complete_formation(mod, info);

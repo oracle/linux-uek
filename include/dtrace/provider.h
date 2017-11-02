@@ -845,7 +845,11 @@ extern void dtrace_probe(dtrace_id_t, uintptr_t, uintptr_t, uintptr_t,
 									\
   static int __init name##_init(void)					\
   {									\
-	int	ret = 0;						\
+	int	ret = -ENOMEM;						\
+	dtrace_module_t *pdata = THIS_MODULE->pdata;			\
+									\
+	if (pdata == NULL)						\
+		goto failed;						\
 									\
 	ret = name##_dev_init();					\
 	if (ret)							\
@@ -880,7 +884,11 @@ extern void dtrace_probe(dtrace_id_t, uintptr_t, uintptr_t, uintptr_t,
 									\
   static int __init name##_init(void)					\
   {									\
-	int	ret = 0;						\
+	int	ret = -ENOMEM;						\
+	dtrace_module_t *pdata = THIS_MODULE->pdata;			\
+									\
+	if (pdata == NULL)						\
+		goto failed;						\
 									\
 	ret = name##_dev_init();					\
 	if (ret)							\
@@ -914,8 +922,11 @@ extern void dtrace_probe(dtrace_id_t, uintptr_t, uintptr_t, uintptr_t,
 									\
   static int __init name##_init(void)					\
   {									\
-	int			ret = 0;				\
+	int			ret = -ENOMEM;				\
 	dtrace_mprovider_t	*prov;					\
+									\
+	if (pdata == NULL)						\
+		goto failed;						\
 									\
 	ret = name##_dev_init();					\
 	if (ret)							\

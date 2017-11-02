@@ -144,25 +144,3 @@ ulong_t dtrace_getreg(struct task_struct *task, uint_t reg)
 		return 0;
 	}
 }
-
-void pdata_init(dtrace_module_t *pdata, struct module *mp)
-{
-	/*
-	 * Throw away existing data as we don't support reusal at
-	 * the moment.
-	 */
-	if (mp->pdata != NULL) {
-		pdata_cleanup(pdata, mp);
-	}
-
-	pdata->sdt_tab = NULL;
-	pdata->fbt_tab = NULL;
-}
-
-void pdata_cleanup(dtrace_module_t *pdata, struct module *mp)
-{
-	if (pdata->sdt_tab != NULL)
-		dtrace_free_text(pdata->sdt_tab);
-	if (pdata->fbt_tab != NULL)
-		dtrace_free_text(pdata->fbt_tab);
-}

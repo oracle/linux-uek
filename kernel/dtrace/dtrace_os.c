@@ -50,7 +50,8 @@ EXPORT_SYMBOL(dtrace_kmod);
 
 int			dtrace_ustackdepth_max = 2048;
 
-struct kmem_cache	*psinfo_cachep;
+struct kmem_cache	*psinfo_cachep = NULL;
+struct kmem_cache	*dtrace_pdata_cachep = NULL;
 
 void dtrace_os_init(void)
 {
@@ -60,6 +61,16 @@ void dtrace_os_init(void)
 		pr_warn_once("%s: cannot be called twice\n", __func__);
 		return;
 	}
+
+	/*
+	 * Setup for module handling.
+	 */
+	dtrace_pdata_cachep = kmem_cache_create("dtrace_pdata_cache",
+				sizeof(dtrace_module_t), 0,
+				SLAB_HWCACHE_ALIGN|SLAB_PANIC|SLAB_NOTRACK,
+				NULL);
+	if (dtrace_pdata_cachep == NULL)
+		pr_debug("Can't allocate kmem cache for pdata\n");
 
 	/*
 	 * A little bit of magic...
@@ -97,6 +108,8 @@ void dtrace_os_init(void)
 	dtrace_kmod->num_ftrace_callsites = dtrace_fbt_nfuncs;
 	dtrace_kmod->state = MODULE_STATE_LIVE;
 	atomic_inc(&dtrace_kmod->refcnt);
+
+	dtrace_mod_pdata_alloc(dtrace_kmod);
 
 	INIT_LIST_HEAD(&dtrace_kmod->source_list);
 	INIT_LIST_HEAD(&dtrace_kmod->target_list);
@@ -430,6 +443,33 @@ void dtrace_for_each_module(for_each_module_fn func, void *arg)
 	mutex_unlock(&module_mutex);
 }
 EXPORT_SYMBOL_GPL(dtrace_for_each_module);
+
+
+void dtrace_mod_pdata_alloc(struct module *mp)
+{
+	dtrace_module_t *pdata;
+
+	pdata = kmem_cache_alloc(dtrace_pdata_cachep, GFP_KERNEL | __GFP_ZERO);
+	if (pdata == NULL) {
+		mp->pdata = NULL;
+		return;
+	}
+
+	dtrace_mod_pdata_init(pdata);
+	mp->pdata = pdata;
+}
+
+void dtrace_mod_pdata_free(struct module *mp)
+{
+	dtrace_module_t *pdata = mp->pdata;
+
+	if (mp->pdata == NULL)
+		return;
+
+	mp->pdata = NULL;
+	dtrace_mod_pdata_cleanup(pdata);
+	kmem_cache_free(dtrace_pdata_cachep, pdata);
+}
 
 /*---------------------------------------------------------------------------*\
 (* TIME SUPPORT FUNCTIONS                                                    *)

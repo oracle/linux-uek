@@ -230,3 +230,15 @@ out:
 			*pcs++ = 0;
 	}
 }
+
+void dtrace_mod_pdata_init(dtrace_module_t *pdata)
+{
+}
+
+void dtrace_mod_pdata_cleanup(dtrace_module_t *pdata)
+{
+	if (pdata->sdt_tab != NULL)
+		dtrace_free_text(pdata->sdt_tab);
+	if (pdata->fbt_tab != NULL)
+		dtrace_free_text(pdata->fbt_tab);
+}

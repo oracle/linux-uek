@@ -58,7 +58,6 @@ int				dtrace_toxranges;
 static int			dtrace_toxranges_max;
 
 struct kmem_cache		*dtrace_state_cachep;
-struct kmem_cache		*dtrace_pdata_cachep;
 
 struct user_namespace		*init_user_namespace;
 
@@ -1124,42 +1123,6 @@ static struct miscdevice helper_dev = {
 	.fops = &helper_fops,
 };
 
-static void module_add_pdata(void *dmy, struct module *mp)
-{
-	dtrace_module_t *pdata;
-
-	/*
-	 * A module may be on its way out before DTrace sets up its module
-	 * handling support.  Do not try to provide anything for modules being
-	 * removed during startup.
-	 */
-	if (mp->state == MODULE_STATE_GOING)
-		return;
-
-	pdata = kmem_cache_alloc(dtrace_pdata_cachep,
-				 GFP_KERNEL | __GFP_ZERO);
-
-	pdata_init(pdata, mp);
-	mp->pdata = pdata;
-}
-
-static void module_del_pdata(void *dmy, struct module *mp)
-{
-	dtrace_module_t	*pdata = mp->pdata;
-
-	if (pdata == NULL)
-		return;
-
-	pdata_cleanup(pdata, mp);
-	mp->pdata = NULL;
-	kmem_cache_free(dtrace_pdata_cachep, pdata);
-}
-
-static void dtrace_module_loading(struct module *mp)
-{
-	module_add_pdata(NULL, mp);
-}
-
 static void dtrace_module_loaded(struct module *mp)
 {
 	dtrace_provider_t *prv;
@@ -1277,8 +1240,6 @@ static void dtrace_module_unloaded(struct module *mp)
 		if (prv->dtpv_pops.dtps_destroy_module != NULL)
 			prv->dtpv_pops.dtps_destroy_module(prv->dtpv_arg, mp);
 
-	module_del_pdata(NULL, mp);
-
 	mutex_unlock(&dtrace_lock);
 	mutex_unlock(&dtrace_provider_lock);
 }
@@ -1364,10 +1325,6 @@ static int dtrace_mod_notifier(struct notifier_block *nb, unsigned long val,
 		return NOTIFY_DONE;
 
 	switch (val) {
-	case MODULE_STATE_COMING:
-		dtrace_module_loading(mp);
-		break;
-
 	case MODULE_STATE_LIVE:
 		dtrace_module_loaded(mp);
 		break;
@@ -1455,22 +1412,6 @@ int dtrace_dev_init(void)
 				sizeof(dtrace_dstate_percpu_t) * NR_CPUS, 0,
 				SLAB_HWCACHE_ALIGN|SLAB_PANIC|SLAB_NOTRACK,
 				NULL);
-	dtrace_pdata_cachep = kmem_cache_create("dtrace_pdata_cache",
-				sizeof(dtrace_module_t), 0,
-				SLAB_HWCACHE_ALIGN|SLAB_PANIC|SLAB_NOTRACK,
-				NULL);
-
-	/*
-	 * Yes, this is scary...  But we know that DTrace is the consumer for
-	 * the pdata object, and all other DTrace modules (and tracing) cannot
-	 * have started yet.  Therefore, there isn't any code yet that would
-	 * use the pdata object...
-	 *
-	 * We loop through the list of all loaded modules to populate each with
-	 * a pdata object.  Modules loaded after this one will get their pdata
-	 * object assigned using the module notifier hook.
-	 */
-	dtrace_for_each_module(module_add_pdata, NULL);
 
 	/*
 	 * Create the probe hashtables.
@@ -1611,19 +1552,6 @@ void dtrace_dev_exit(void)
 	dtrace_byname = NULL;
 
 	/*
-	 * Yes, this is scary...  But we know that DTrace is the consumer for
-	 * the pdata object, and all other DTrace modules (and tracing) must
-	 * be gone by now.  Therefore, there isn't any code left that would
-	 * use the pdata object...
-	 *
-	 * We loop through the list of all loaded modules to remove the pdata
-	 * object from each one.  Modules that were unloaded prior to this
-	 * point had their pdata object cleaned up using the module notifier
-	 * hook.
-	 */
-	dtrace_for_each_module(module_del_pdata, NULL);
-
-	/*
 	 * If DTrace helper tracing is enabled, we need to free the trace
 	 * buffer.
 	 */
@@ -1631,7 +1559,6 @@ void dtrace_dev_exit(void)
 		vfree(dtrace_helptrace_buffer);
 
 	kmem_cache_destroy(dtrace_state_cachep);
-	kmem_cache_destroy(dtrace_pdata_cachep);
 
 	mutex_unlock(&dtrace_lock);
 	mutex_unlock(&dtrace_provider_lock);

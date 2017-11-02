@@ -257,6 +257,10 @@ void sdt_provide_module(void *arg, struct module *mp)
 	sdt_probe_t		*sdp, *prv;
 	int			idx, len;
 
+	/* When module setup failed do not provide anything. */
+	if (PDATA(mp) == NULL)
+		return;
+
 	/*
 	 * Nothing to do if the module SDT probes were already created.
 	 */
