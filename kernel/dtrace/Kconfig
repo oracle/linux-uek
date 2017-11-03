@@ -1,12 +1,11 @@
 #
-# Copyright (c) 2010, 2016, Oracle and/or its affiliates. All rights reserved.
+# Copyright (c) 2010, 2017, Oracle and/or its affiliates. All rights reserved.
 #
 
 menuconfig DTRACE
 	bool "DTrace (Dynamic Tracing) Support"
 	default y
 	depends on ARCH_SUPPORTS_DTRACE
-	depends on !DEBUG_LOCK_ALLOC
 	select KALLSYMS
 	select KALLMODSYMS
 	select WAITFD

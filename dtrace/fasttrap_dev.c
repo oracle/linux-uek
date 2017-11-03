@@ -51,6 +51,13 @@ static fasttrap_hash_t		fasttrap_procs;
 	((fasttrap_hash_str(name) + (pid)) & fasttrap_provs.fth_mask)
 #define FASTTRAP_PROCS_INDEX(pid) ((pid) & fasttrap_procs.fth_mask)
 
+#define FASTTRAP_TPOINTS_ELEM(pid, pc) \
+	FASTTRAP_ELEM_BUCKET(&fasttrap_tpoints.fth_table[FASTTRAP_TPOINTS_INDEX(pid, pc)])
+#define FASTTRAP_PROVS_ELEM(pid, name) \
+	FASTTRAP_ELEM_BUCKET(&fasttrap_provs.fth_table[FASTTRAP_PROVS_INDEX(pid, name)])
+#define FASTTRAP_PROCS_ELEM(pid)       \
+	FASTTRAP_ELEM_BUCKET(&fasttrap_procs.fth_table[FASTTRAP_PROCS_INDEX(pid)])
+
 #define CLEANUP_NONE		0
 #define CLEANUP_SCHEDULED	1
 #define CLEANUP_DEFERRED	2
@@ -209,7 +216,7 @@ static int fasttrap_tracepoint_enable(fasttrap_probe_t *probe, uint_t index)
 	 */
 	fasttrap_mod_barrier(probe->ftp_gen);
 
-	bucket = &fasttrap_tpoints.fth_table[FASTTRAP_TPOINTS_INDEX(pid, pc)];
+	bucket = FASTTRAP_TPOINTS_ELEM(pid, pc);
 
 	/*
 	 * If the tracepoint has already been enabled, just add our id to the
@@ -365,7 +372,7 @@ static void fasttrap_tracepoint_disable(fasttrap_probe_t *probe, uint_t index)
 	 * Find the tracepoint and make sure that our id is one of the
 	 * ones registered with it.
 	 */
-	bucket = &fasttrap_tpoints.fth_table[FASTTRAP_TPOINTS_INDEX(pid, pc)];
+	bucket = FASTTRAP_TPOINTS_ELEM(pid, pc);
 	mutex_lock(&bucket->ftb_mtx);
 	for (tp = bucket->ftb_data; tp != NULL; tp = tp->ftt_next) {
 		if (tp->ftt_pid == pid && tp->ftt_pc == pc &&
@@ -923,7 +930,7 @@ static void fasttrap_proc_release(fasttrap_proc_t *proc)
 	 */
 	ASSERT(atomic64_read(&proc->ftpc_acount) == 0);
 
-	bucket = &fasttrap_procs.fth_table[FASTTRAP_PROCS_INDEX(pid)];
+	bucket = FASTTRAP_PROCS_ELEM(pid);
 	mutex_lock(&bucket->ftb_mtx);
 
 	fprcp = (fasttrap_proc_t **)&bucket->ftb_data;
@@ -980,7 +987,7 @@ static fasttrap_proc_t *fasttrap_proc_lookup(pid_t pid)
 	fasttrap_bucket_t	*bucket;
 	fasttrap_proc_t		*fprc, *new_fprc;
 
-	bucket = &fasttrap_procs.fth_table[FASTTRAP_PROCS_INDEX(pid)];
+	bucket = FASTTRAP_PROCS_ELEM(pid);
 	mutex_lock(&bucket->ftb_mtx);
 
 	for (fprc = bucket->ftb_data; fprc != NULL; fprc = fprc->ftpc_next) {
@@ -1064,7 +1071,7 @@ static fasttrap_provider_t *fasttrap_provider_lookup(pid_t pid,
 	ASSERT(strlen(name) < sizeof (fp->ftp_name));
 	ASSERT(pa != NULL);
 
-	bucket = &fasttrap_provs.fth_table[FASTTRAP_PROVS_INDEX(pid, name)];
+	bucket = FASTTRAP_PROVS_ELEM(pid, name);
 	mutex_lock(&bucket->ftb_mtx);
 
 	/*
@@ -1262,7 +1269,7 @@ static void fasttrap_pid_cleanup_cb(struct work_struct *work)
 		 * we can't.
 		 */
 		for (i = 0; i < fasttrap_provs.fth_nent; i++) {
-			bucket = &fasttrap_provs.fth_table[i];
+			bucket = FASTTRAP_ELEM_BUCKET(&fasttrap_provs.fth_table[i]);
 			mutex_lock(&bucket->ftb_mtx);
 			fpp = (fasttrap_provider_t **)&bucket->ftb_data;
 
@@ -1379,7 +1386,7 @@ void fasttrap_provider_retire(pid_t pid, const char *name, int mprov)
 
 	ASSERT(strlen(name) < sizeof (fp->ftp_name));
 
-	bucket = &fasttrap_provs.fth_table[FASTTRAP_PROVS_INDEX(pid, name)];
+	bucket = FASTTRAP_PROVS_ELEM(pid, name);
 	mutex_lock(&bucket->ftb_mtx);
 
 	for (fp = bucket->ftb_data; fp != NULL; fp = fp->ftp_next) {
@@ -1491,13 +1498,13 @@ static int fasttrap_init_htable(fasttrap_hash_t *fth, ulong_t nent)
 	ASSERT(fth->fth_nent > 0);
 
 	fth->fth_mask = fth->fth_nent - 1;
-	fth->fth_table = vzalloc(fth->fth_nent * sizeof(fasttrap_bucket_t));
+	fth->fth_table = vzalloc(fth->fth_nent * sizeof(fasttrap_bucket_elem_t));
 
 	if (fth->fth_table == NULL)
 		return -ENOMEM;
 
 	for (i = 0; i < fth->fth_nent; i++)
-		mutex_init(&fth->fth_table[i].ftb_mtx);
+		mutex_init(&fth->fth_table[i].bucket.ftb_mtx);
 
 	return 0;
 }
@@ -1587,8 +1594,9 @@ void fasttrap_dev_exit(void)
 	 */
 	for (i = 0; i < fasttrap_provs.fth_nent; i++) {
 		fasttrap_provider_t	**fpp, *fp;
-		fasttrap_bucket_t	*bucket = &fasttrap_provs.fth_table[i];
+		fasttrap_bucket_t	*bucket;
 
+		bucket = FASTTRAP_ELEM_BUCKET(&fasttrap_provs.fth_table[i]);
 		mutex_lock(&bucket->ftb_mtx);
 		fpp = (fasttrap_provider_t **)&bucket->ftb_data;
 		while ((fp = *fpp) != NULL) {

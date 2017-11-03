@@ -19,6 +19,7 @@
 
 #include <linux/dtrace/fasttrap.h>
 #include <dtrace/fasttrap_arch.h>
+#include <linux/cache.h>
 
 /*
  * Fasttrap Providers, Probes and Tracepoints
@@ -114,17 +115,28 @@ struct fasttrap_probe {
 	fasttrap_id_tp_t ftp_tps[1];		/* flexible array */
 };
 
-typedef struct fasttrap_bucket {
-	struct mutex ftb_mtx;			/* bucket lock */
-	void *ftb_data;				/* data payload */
+typedef struct fasttrap_bucket_elem {
+	union {
+		struct fasttrap_bucket {
+			struct mutex ftb_mtx;	/* bucket lock */
+			void *ftb_data;		/* data payload */
+		} bucket;
 
-	uint8_t ftb_pad[64 - sizeof(struct mutex) - sizeof(void *)];
-} fasttrap_bucket_t;
+		/*
+		 * Fill a cacheline, no matter how large struct mutex is.
+		 */
+		uint8_t ftb_pad[(sizeof (struct fasttrap_bucket) +
+				 L1_CACHE_BYTES - 1) & ~(L1_CACHE_BYTES - 1)];
+	};
+} fasttrap_bucket_elem_t;
+typedef struct fasttrap_bucket fasttrap_bucket_t;
+
+#define FASTTRAP_ELEM_BUCKET(elem) ((fasttrap_bucket_t *) (elem))
 
 typedef struct fasttrap_hash {
 	ulong_t fth_nent;			/* power-of-2 num. of entries */
 	ulong_t fth_mask;			/* fth_nent - 1 */
-	fasttrap_bucket_t *fth_table;		/* array of buckets */
+	fasttrap_bucket_elem_t *fth_table;	/* array of buckets */
 } fasttrap_hash_t;
 
 extern fasttrap_hash_t			fasttrap_tpoints;
