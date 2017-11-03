@@ -270,7 +270,7 @@ void dtrace_psinfo_alloc(struct task_struct *tsk)
 		}
 		psinfo->envp[len] = NULL;
 
-		psinfo->ustack = mm->start_stack;
+		psinfo->ustack = (void *)mm->start_stack;
 
 		mmput(mm);
 	} else {

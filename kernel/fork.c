@@ -1944,7 +1944,7 @@ static __latent_entropy struct task_struct *copy_process(
 	 */
 	if (p->mm && stack_start) {
 		dtrace_psinfo_alloc(p);
-		p->dtrace_psinfo->ustack = stack_start;
+		p->dtrace_psinfo->ustack = (void *)stack_start;
 	}
 
 	/*
