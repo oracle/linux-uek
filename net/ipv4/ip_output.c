@@ -903,7 +903,7 @@ static int __ip_append_data(struct sock *sk,
 	maxnonfragsize = ip_sk_ignore_df(sk) ? 0xFFFF : mtu;
 
 	if (cork->length + length > maxnonfragsize - fragheaderlen) {
-		struct iphdr *iph = ip_hdr(skb);
+		struct iphdr *iph __attribute__((unused)) = ip_hdr(skb);
 
 		ip_local_error(sk, EMSGSIZE, fl4->daddr, inet->inet_dport,
 			       mtu - (opt ? opt->optlen : 0));

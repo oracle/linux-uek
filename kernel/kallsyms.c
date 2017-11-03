@@ -501,11 +501,12 @@ EXPORT_SYMBOL(__print_symbol);
 
 static int get_ksymbol_mod(struct kallsym_iter *iter)
 {
-	iter->builtin_module = 0;
 	int ret = module_get_kallsym(iter->pos - kallsyms_num_syms,
 				     &iter->value, &iter->type,
 				     iter->name, iter->module_name,
 				     &iter->size, &iter->exported);
+	iter->builtin_module = 0;
+
 	if (ret < 0) {
 		iter->pos_mod_end = iter->pos;
 		return 0;
