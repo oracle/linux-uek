@@ -1100,13 +1100,8 @@ bool blk_mq_dispatch_rq_list(struct request_queue *q, struct list_head *list,
 			}
 		}
 
-		if (!got_budget) {
-			ret = blk_mq_get_dispatch_budget(hctx);
-			if (ret == BLK_STS_RESOURCE)
-				break;
-			if (ret != BLK_STS_OK)
-				goto fail_rq;
-		}
+		if (!got_budget && !blk_mq_get_dispatch_budget(hctx))
+			break;
 
 		list_del_init(&rq->queuelist);
 
@@ -1133,7 +1128,6 @@ bool blk_mq_dispatch_rq_list(struct request_queue *q, struct list_head *list,
 			break;
 		}
 
- fail_rq:
 		if (unlikely(ret != BLK_STS_OK)) {
 			errors++;
 			blk_mq_end_request(rq, BLK_STS_IOERR);
@@ -1609,12 +1603,10 @@ static void __blk_mq_try_issue_directly(struct blk_mq_hw_ctx *hctx,
 	if (!blk_mq_get_driver_tag(rq, NULL, false))
 		goto insert;
 
-	ret = blk_mq_get_dispatch_budget(hctx);
-	if (ret == BLK_STS_RESOURCE) {
+	if (!blk_mq_get_dispatch_budget(hctx)) {
 		blk_mq_put_driver_tag(rq);
 		goto insert;
-	} else if (ret != BLK_STS_OK)
-		goto fail_rq;
+	}
 
 	new_cookie = request_to_qc_t(hctx, rq);
 
@@ -1632,7 +1624,6 @@ static void __blk_mq_try_issue_directly(struct blk_mq_hw_ctx *hctx,
 		__blk_mq_requeue_request(rq);
 		goto insert;
 	default:
- fail_rq:
 		*cookie = BLK_QC_T_NONE;
 		blk_mq_end_request(rq, ret);
 		return;

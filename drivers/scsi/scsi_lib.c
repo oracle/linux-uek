@@ -1953,16 +1953,11 @@ static void scsi_mq_put_budget(struct blk_mq_hw_ctx *hctx)
 	put_device(&sdev->sdev_gendev);
 }
 
-static blk_status_t scsi_mq_get_budget(struct blk_mq_hw_ctx *hctx)
+static bool scsi_mq_get_budget(struct blk_mq_hw_ctx *hctx)
 {
 	struct request_queue *q = hctx->queue;
 	struct scsi_device *sdev = q->queuedata;
 	struct Scsi_Host *shost = sdev->host;
-	blk_status_t ret;
-
-	ret = prep_to_mq(scsi_prep_state_check(sdev, NULL));
-	if (ret == BLK_STS_RESOURCE || ret != BLK_STS_OK)
-		return ret;
 
 	if (!get_device(&sdev->sdev_gendev))
 		goto out;
@@ -1973,7 +1968,7 @@ static blk_status_t scsi_mq_get_budget(struct blk_mq_hw_ctx *hctx)
 	if (!scsi_host_queue_ready(q, shost, sdev))
 		goto out_dec_target_busy;
 
-	return BLK_STS_OK;
+	return true;
 
 out_dec_target_busy:
 	if (scsi_target(sdev)->can_queue > 0)
@@ -1983,7 +1978,7 @@ out_dec_device_busy:
 out_put_device:
 	put_device(&sdev->sdev_gendev);
 out:
-	return BLK_STS_RESOURCE;
+	return false;
 }
 
 static blk_status_t scsi_queue_rq(struct blk_mq_hw_ctx *hctx,
