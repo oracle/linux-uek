@@ -101,13 +101,11 @@ int _systrace_enable(void *arg, dtrace_id_t id, void *parg)
 	dt_sys_call_t		intercept = get_intercept(sysnum);
 
 	if (!enabled) {
-		if (cmpxchg((uint32_t *)sc->stsy_tblent,
-			    (uint32_t)sc->stsy_underlying,
-			    (uint32_t)intercept) !=
-		    (uint32_t)sc->stsy_underlying)
+		if (cmpxchg(sc->stsy_tblent, sc->stsy_underlying,
+			    intercept) != sc->stsy_underlying)
 			return 1;
 	} else
-		ASSERT(*(uint32_t *)sc->stsy_tblent == (uint32_t)intercept);
+		ASSERT(*sc->stsy_tblent == intercept);
 
 	if (SYSTRACE_ISENTRY((uintptr_t)parg))
 		sc->stsy_entry = id;
@@ -131,8 +129,7 @@ void _systrace_disable(void *arg, dtrace_id_t id, void *parg)
 	 * the interceptor in place until the last probe is getting disabled.
 	 */
 	if (enabled == 1)
-		(void)cmpxchg((uint32_t *)sc->stsy_tblent, (uint32_t)intercept,
-			      (uint32_t)sc->stsy_underlying);
+		(void)cmpxchg(sc->stsy_tblent, intercept, sc->stsy_underlying);
 
 	if (SYSTRACE_ISENTRY((uintptr_t)parg))
 		sc->stsy_entry = DTRACE_IDNONE;
