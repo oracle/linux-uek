@@ -293,6 +293,11 @@ int dtrace_user_addr_is_exec(uintptr_t addr)
 {
 	struct mm_struct	*mm = current->mm;
 	pgd_t			*pgd;
+
+#if CONFIG_PGTABLE_LEVELS > 3
+	p4d_t			*p4d;
+#endif
+
 	pud_t			*pud;
 	pmd_t			*pmd;
 	pte_t			*pte;
@@ -312,7 +317,18 @@ int dtrace_user_addr_is_exec(uintptr_t addr)
 	if (pgd_none(*pgd) || !pgd_present(*pgd))
 		goto out;
 
+#if CONFIG_PGTABLE_LEVELS > 3
+	p4d = p4d_offset(pgd, addr);
+	if (dtrace_bad_address(p4d))
+		goto out;
+	if (p4d_none(*p4d) || !p4d_present(*p4d))
+		goto out;
+
+	pud = pud_offset(p4d, addr);
+#else
 	pud = pud_offset(pgd, addr);
+#endif
+
 	if (dtrace_bad_address(pud))
 		goto out;
 	if (pud_none(*pud) || !pud_present(*pud))
