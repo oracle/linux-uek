@@ -121,13 +121,13 @@ static inline void kaiser_flush_tlb_on_return_to_user(void)
 
 static inline void __native_flush_tlb(void)
 {
-	preempt_disable();
 	/*
 	 * If current->mm == NULL then we borrow a mm which may change during a
 	 * task switch and therefore we must not be preempted while we write CR3
 	 * back:
 	 */
-	if (kaiser_enabled && this_cpu_has(X86_FEATURE_PCID))
+	preempt_disable();
+	if (kaiser_enabled)
 		kaiser_flush_tlb_on_return_to_user();
 
 	/*
@@ -199,7 +199,7 @@ static inline void __native_flush_tlb_single(unsigned long addr)
 	 */
 
 	if (!this_cpu_has(X86_FEATURE_INVPCID_SINGLE)) {
-		if (kaiser_enabled && this_cpu_has(X86_FEATURE_PCID))
+		if (kaiser_enabled)
 			kaiser_flush_tlb_on_return_to_user();
 		asm volatile("invlpg (%0)" ::"r" (addr) : "memory");
 		return;
