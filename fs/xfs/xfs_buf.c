@@ -65,7 +65,8 @@ static kmem_zone_t *xfs_buf_zone;
 			.bi_iter.bi_size = (bp)->b_length,		\
 			.bi_opf = ((bp)->b_flags & XBF_WRITE) ?		\
 			REQ_OP_WRITE : REQ_OP_READ,			\
-			.bi_bdev = (bp)->b_target->bt_bdev,		\
+			.bi_disk = (bp)->b_target->bt_bdev->bd_disk,	\
+			.bi_partno = (bp)->b_target->bt_bdev->bd_partno,\
 		};							\
 		DTRACE_IO(name, struct bio * : (bufinfo_t *,		\
 			  devinfo_t *), &bio,				\
