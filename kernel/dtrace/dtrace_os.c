@@ -85,8 +85,14 @@ void dtrace_os_init(void)
 	 * modules VA range for trampoline anyway so lets pretend a kernel has
 	 * no init section and VA range (0, MODULES_VADDR) is occupied by kernel itself
 	 */
-	dtrace_kmod->core_layout.base = NULL;
-	dtrace_kmod->core_layout.size = MODULES_VADDR;
+#ifdef CONFIG_X86_64
+	dtrace_kmod->core_layout.base = (void *)__START_KERNEL_map;
+	dtrace_kmod->core_layout.size = KERNEL_IMAGE_SIZE;
+#elif defined(CONFIG_SPARC64)
+	/* Hardcoded see pgtable_64.h */
+	dtrace_kmod->core_layout.base = (void *)0x4000000;
+	dtrace_kmod->core_layout.size = 0x2000000;
+#endif
 
 	dtrace_kmod->num_ftrace_callsites = dtrace_fbt_nfuncs;
 	dtrace_kmod->state = MODULE_STATE_LIVE;
