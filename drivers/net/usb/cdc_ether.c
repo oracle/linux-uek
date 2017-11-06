@@ -229,7 +229,7 @@ int usbnet_generic_cdc_bind(struct usbnet *dev, struct usb_interface *intf)
 				goto bad_desc;
 			}
 			info->ether = (void *) buf;
-			if (info->ether->bLength != sizeof *info->ether) {
+			if (info->ether->bLength != sizeof *info->ether && info->ether->wMaxSegmentSize) {
 				dev_dbg(&intf->dev, "CDC ether len %u\n",
 					info->ether->bLength);
 				goto bad_desc;
