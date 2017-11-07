@@ -288,6 +288,7 @@ kernel/drivers/mtd/nand/diskonchip.ko
 kernel/drivers/mtd/nand/nand_bch.ko
 kernel/drivers/mtd/nand/nand_ids.ko
 kernel/drivers/mtd/nand/nandsim.ko
+kernel/drivers/mtd/cmdlinepart.ko
 kernel/drivers/mmc/core/mmc_core.ko
 kernel/drivers/net/phy/bcm7xxx.ko
 kernel/drivers/net/virtio_net.ko
@@ -417,6 +418,7 @@ kernel/drivers/block/null_blk.ko
 kernel/drivers/block/xen-blkfront.ko
 kernel/drivers/block/zram/zram.ko
 kernel/drivers/block/loop.ko
+kernel/drivers/block/brd.ko
 kernel/drivers/firmware/iscsi_ibft.ko
 kernel/drivers/firmware/edd.ko
 kernel/drivers/cdrom/cdrom.ko
@@ -647,6 +649,7 @@ kernel/drivers/hwmon/gl520sm.ko
 kernel/drivers/hwmon/sch5627.ko
 kernel/drivers/hwmon/lm63.ko
 kernel/drivers/hwmon/amc6821.ko
+kernel/drivers/hwmon/i5500_temp.ko
 kernel/drivers/md/dm-mod.ko
 kernel/drivers/md/dm-cache.ko
 kernel/drivers/md/raid10.ko
@@ -816,6 +819,7 @@ kernel/drivers/xen/xen-gntdev.ko
 kernel/drivers/xen/xen-evtchn.ko
 kernel/drivers/xen/tmem.ko
 kernel/drivers/xen/xen-scsiback.ko
+kernel/drivers/xen/xen-acpi-processor.ko
 kernel/drivers/xen/xenfs/xenfs.ko
 kernel/drivers/i2c/i2c-stub.ko
 kernel/drivers/i2c/i2c-smbus.ko
@@ -1274,6 +1278,7 @@ kernel/arch/x86/crypto/salsa20-x86_64.ko
 kernel/arch/x86/crypto/sha1-ssse3.ko
 kernel/arch/x86/crypto/twofish-x86_64-3way.ko
 kernel/arch/x86/crypto/crc32-pclmul.ko
+kernel/arch/x86/crypto/crct10dif-pclmul.ko
 kernel/arch/x86/kernel/cpu/mcheck/mce-inject.ko
 kernel/arch/x86/kernel/test_nx.ko
 kernel/arch/x86/kvm/kvm-intel.ko
