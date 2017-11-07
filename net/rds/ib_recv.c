@@ -691,14 +691,13 @@ void rds_ib_recv_refill(struct rds_connection *conn, int prefill, gfp_t gfp)
 		if (ret)
 			break;
 
+		for_each_sg(recv->r_frag->f_sg, sg, ic->i_frag_pages, i)
+			rdsdebug("recv %p ibinc %p page %p addr %lu\n", recv,
+				recv->r_ibinc, sg_page(sg),
+				(long)sg_dma_address(sg));
+
 		/* XXX when can this fail? */
 		ret = ib_post_recv(ic->i_cm_id->qp, &recv->r_wr, &failed_wr);
-		if (recv->r_frag)
-			for_each_sg(recv->r_frag->f_sg, sg, ic->i_frag_pages, i)
-				rdsdebug("recv %p ibinc %p page %p addr %lu ret %d\n", recv,
-					 recv->r_ibinc, sg_page(sg),
-					 (long)sg_dma_address(sg),
-					 ret);
 		if (ret) {
 			rds_conn_drop(conn, DR_IB_POST_RECV_FAIL);
 			pr_warn("RDS/IB: recv post on %pI4 returned %d, disconnecting and reconnecting\n",
