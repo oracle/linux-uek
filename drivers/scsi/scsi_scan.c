@@ -1507,9 +1507,8 @@ retry:
 				 */
 				sdev_printk(KERN_ERR, sdev,
 					"Unexpected response"
-					" from lun %llu while scanning, scan"
-					" aborted\n", (unsigned long long)lun);
-				break;
+ 					" from lun %d while scanning,"
+ 					" ignoring device\n", lun);
 			}
 		}
 	}
