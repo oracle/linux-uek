@@ -408,6 +408,7 @@ static int uinput_allocate_device(struct uinput_device *udev)
 	if (!udev->dev)
 		return -ENOMEM;
 
+	udev->dev->flags |= INPUTDEV_FLAGS_SYNTHETIC;
 	udev->dev->event = uinput_dev_event;
 	input_set_drvdata(udev->dev, udev);
 
