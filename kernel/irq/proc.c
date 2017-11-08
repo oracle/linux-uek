@@ -124,8 +124,9 @@ static ssize_t write_irq_affinity(int type, struct file *file,
 		   code to set default SMP affinity. */
 		err = irq_select_affinity_usr(irq, new_value) ? -EINVAL : count;
 	} else {
-		irq_set_affinity(irq, new_value);
-		err = count;
+		err = irq_set_affinity(irq, new_value);
+		if (!err)
+			err = count;
 	}
 
 free_cpumask:
