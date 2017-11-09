@@ -3121,6 +3121,25 @@ out:
 	trace_kvmppc_vcore_wakeup(do_sleep, block_ns);
 }
 
+static int kvmhv_setup_mmu(struct kvm_vcpu *vcpu)
+{
+	int r = 0;
+	struct kvm *kvm = vcpu->kvm;
+
+	mutex_lock(&kvm->lock);
+	if (!kvm->arch.mmu_ready) {
+		if (!kvm_is_radix(kvm))
+			r = kvmppc_hv_setup_htab_rma(vcpu);
+		if (!r) {
+			if (cpu_has_feature(CPU_FTR_ARCH_300))
+				kvmppc_setup_partition_table(kvm);
+			kvm->arch.mmu_ready = 1;
+		}
+	}
+	mutex_unlock(&kvm->lock);
+	return r;
+}
+
 static int kvmppc_run_vcpu(struct kvm_run *kvm_run, struct kvm_vcpu *vcpu)
 {
 	int n_ceded, i, r;
@@ -3181,11 +3200,12 @@ static int kvmppc_run_vcpu(struct kvm_run *kvm_run, struct kvm_vcpu *vcpu)
 		if (!kvm_is_radix(vcpu->kvm) &&
 		    !vcpu->kvm->arch.hpte_setup_done) {
 			spin_unlock(&vc->lock);
-			r = kvmppc_hv_setup_htab_rma(vcpu);
+			r = kvmhv_setup_mmu(vcpu);
 			spin_lock(&vc->lock);
 			if (r) {
 				kvm_run->exit_reason = KVM_EXIT_FAIL_ENTRY;
-				kvm_run->fail_entry.hardware_entry_failure_reason = 0;
+				kvm_run->fail_entry.
+					hardware_entry_failure_reason = 0;
 				vcpu->arch.ret = r;
 				break;
 			}
@@ -3335,10 +3355,10 @@ static int kvmppc_vcpu_run_hv(struct kvm_run *run, struct kvm_vcpu *vcpu)
 			trace_kvm_hcall_exit(vcpu, r);
 			kvmppc_core_prepare_to_enter(vcpu);
 		} else if (r == RESUME_PAGE_FAULT) {
-			srcu_idx = srcu_read_lock(&vcpu->kvm->srcu);
+			srcu_idx = srcu_read_lock(&kvm->srcu);
 			r = kvmppc_book3s_hv_page_fault(run, vcpu,
 				vcpu->arch.fault_dar, vcpu->arch.fault_dsisr);
-			srcu_read_unlock(&vcpu->kvm->srcu, srcu_idx);
+			srcu_read_unlock(&kvm->srcu, srcu_idx);
 		} else if (r == RESUME_PASSTHROUGH) {
 			if (WARN_ON(xive_enabled()))
 				r = H_SUCCESS;
@@ -3358,7 +3378,7 @@ static int kvmppc_vcpu_run_hv(struct kvm_run *run, struct kvm_vcpu *vcpu)
 	mtspr(SPRN_VRSAVE, user_vrsave);
 
 	vcpu->arch.state = KVMPPC_VCPU_NOTREADY;
-	atomic_dec(&vcpu->kvm->arch.vcpus_running);
+	atomic_dec(&kvm->arch.vcpus_running);
 	return r;
 }
 
