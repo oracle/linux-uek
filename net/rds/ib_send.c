@@ -1081,8 +1081,7 @@ int rds_ib_xmit_rdma(struct rds_connection *conn, struct rm_rdma_op *op)
 			rcomp->s_rdma_wr.rkey = op->op_rkey;
 			prev->s_wr.next = &rcomp->s_wr;
 			prev = rcomp;
-			rcomp->s_wr.send_flags = IB_SEND_SIGNALED;
-			nr_sig++;
+			nr_sig += rds_ib_set_wr_signal_state(ic, rcomp, true);
 		}
 
 		prev->s_op = op;
