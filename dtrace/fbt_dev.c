@@ -134,7 +134,7 @@ void fbt_provide_module(void *arg, struct module *mp)
 	dtrace_fbt_init((fbt_add_probe_fn)fbt_provide_probe, mp, NULL);
 }
 
-int _fbt_enable(void *arg, dtrace_id_t id, void *parg)
+int fbt_enable(void *arg, dtrace_id_t id, void *parg)
 {
 	fbt_probe_t	*fbp = parg;
 	fbt_probe_t	*curr;
@@ -160,7 +160,7 @@ int _fbt_enable(void *arg, dtrace_id_t id, void *parg)
 	return 0;
 }
 
-void _fbt_disable(void *arg, dtrace_id_t id, void *parg)
+void fbt_disable(void *arg, dtrace_id_t id, void *parg)
 {
 	fbt_probe_t	*fbp = parg;
 	fbt_probe_t	*curr;

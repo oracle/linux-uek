@@ -34,8 +34,6 @@ static const dtrace_pattr_t syscall_attr = {
 { DTRACE_STABILITY_PRIVATE, DTRACE_STABILITY_PRIVATE, DTRACE_CLASS_ISA },
 };
 
-DT_PROVIDER_POPS(systrace)
-
 static dtrace_pops_t syscall_pops = {
 	.dtps_provide = systrace_provide,
 	.dtps_provide_module = NULL,

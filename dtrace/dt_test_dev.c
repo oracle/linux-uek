@@ -2,7 +2,7 @@
  * FILE:	dt_test_dev.c
  * DESCRIPTION:	DTrace - test provider device driver
  *
- * Copyright (c) 2011, 2016, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2011, 2017, Oracle and/or its affiliates. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -36,14 +36,14 @@ void dt_test_provide(void *arg, const dtrace_probedesc_t *desc)
 				  "dt_test", NULL, "test", 1, NULL);
 }
 
-int _dt_test_enable(void *arg, dtrace_id_t id, void *parg)
+int dt_test_enable(void *arg, dtrace_id_t id, void *parg)
 {
 	enabled = 1;
 
 	return 0;
 }
 
-void _dt_test_disable(void *arg, dtrace_id_t id, void *parg)
+void dt_test_disable(void *arg, dtrace_id_t id, void *parg)
 {
 	enabled = 0;
 }

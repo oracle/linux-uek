@@ -1005,6 +1005,12 @@ SYSCALL_DEFINE2(delete_module, const char __user *, name_user,
 		}
 	}
 
+	/* Try destroying DTrace provider. */
+	if (!dtrace_destroy_prov(mod)) {
+		ret = -EBUSY;
+		goto out;
+	}
+
 	/* Stop the machine so refcounts can't move and disable module. */
 	ret = try_stop_module(mod, flags, &forced);
 	if (ret != 0)

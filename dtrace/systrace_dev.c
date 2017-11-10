@@ -2,7 +2,7 @@
  * FILE:	systrace_dev.c
  * DESCRIPTION:	DTrace - systrace provider device driver
  *
- * Copyright (c) 2010, 2016, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2010, 2017, Oracle and/or its affiliates. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -92,7 +92,7 @@ static dt_sys_call_t get_intercept(int sysnum)
 	}
 }
 
-int _systrace_enable(void *arg, dtrace_id_t id, void *parg)
+int systrace_enable(void *arg, dtrace_id_t id, void *parg)
 {
 	int			sysnum = SYSTRACE_SYSNUM((uintptr_t)parg);
 	dtrace_syscalls_t	*sc = &systrace_info->sysent[sysnum];
@@ -115,7 +115,7 @@ int _systrace_enable(void *arg, dtrace_id_t id, void *parg)
 	return 0;
 }
 
-void _systrace_disable(void *arg, dtrace_id_t id, void *parg)
+void systrace_disable(void *arg, dtrace_id_t id, void *parg)
 {
 	int			sysnum = SYSTRACE_SYSNUM((uintptr_t)parg);
 	dtrace_syscalls_t	*sc = &systrace_info->sysent[sysnum];

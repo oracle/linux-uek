@@ -1302,6 +1302,7 @@ static void fasttrap_pid_cleanup_cb(struct work_struct *work)
 				 * clean out the unenabled probes.
 				 */
 				provid = fp->ftp_provid;
+				mutex_lock(&module_mutex);
 				if (dtrace_unregister(provid) != 0) {
 					if (atomic_read(&fasttrap_total) >
 					    fasttrap_max / 2)
@@ -1314,6 +1315,7 @@ static void fasttrap_pid_cleanup_cb(struct work_struct *work)
 					fasttrap_provider_free(fp);
 
 					module_put(THIS_MODULE); }
+				mutex_unlock(&module_mutex);
 			}
 
 			mutex_unlock(&bucket->ftb_mtx);
@@ -1598,6 +1600,7 @@ void fasttrap_dev_exit(void)
 			mutex_lock(&fp->ftp_mtx);
 			mutex_unlock(&fp->ftp_mtx);
 
+			mutex_lock(&module_mutex);
 			if (dtrace_unregister(fp->ftp_provid) != 0) {
 				fail = 1;
 				fpp = &fp->ftp_next;
@@ -1605,6 +1608,7 @@ void fasttrap_dev_exit(void)
 				*fpp = fp->ftp_next;
 				fasttrap_provider_free(fp);
 			}
+			mutex_unlock(&module_mutex);
 		}
 
 		mutex_unlock(&bucket->ftb_mtx);

@@ -106,8 +106,6 @@ static dtrace_pattr_t perf_attr = {
 { DTRACE_STABILITY_EVOLVING, DTRACE_STABILITY_EVOLVING, DTRACE_CLASS_ISA },
 };
 
-DT_PROVIDER_POPS(sdt)
-
 static dtrace_pops_t sdt_pops = {
 	.dtps_provide = NULL,
 	.dtps_provide_module = sdt_provide_module,

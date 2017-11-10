@@ -34,8 +34,6 @@ static const dtrace_pattr_t fbt_attr = {
 { DTRACE_STABILITY_PRIVATE, DTRACE_STABILITY_PRIVATE, DTRACE_CLASS_ISA },
 };
 
-DT_PROVIDER_POPS(fbt)
-
 static dtrace_pops_t fbt_pops = {
 	.dtps_provide = NULL,
 	.dtps_provide_module = fbt_provide_module,

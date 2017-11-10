@@ -1,7 +1,7 @@
 /*
  * Dynamic Tracing for Linux - test provider
  *
- * Copyright (c) 2011, 2012, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2011, 2017, Oracle and/or its affiliates. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -18,8 +18,8 @@
 #define _DT_TEST_H_
 
 extern void dt_test_provide(void *, const dtrace_probedesc_t *);
-extern int _dt_test_enable(void *arg, dtrace_id_t, void *);
-extern void _dt_test_disable(void *arg, dtrace_id_t, void *);
+extern int dt_test_enable(void *arg, dtrace_id_t, void *);
+extern void dt_test_disable(void *arg, dtrace_id_t, void *);
 extern void dt_test_destroy(void *, dtrace_id_t, void *);
 
 extern dtrace_provider_id_t	dt_test_id;

@@ -352,7 +352,7 @@ void profile_provide(void *arg, const dtrace_probedesc_t *desc)
 	profile_create(interval, name, kind);
 }
 
-int _profile_enable(void *arg, dtrace_id_t id, void *parg)
+int profile_enable(void *arg, dtrace_id_t id, void *parg)
 {
 	profile_probe_t		*prof = parg;
 	cyc_time_t		when;
@@ -393,7 +393,7 @@ int _profile_enable(void *arg, dtrace_id_t id, void *parg)
 	return 0;
 }
 
-void _profile_disable(void *arg, dtrace_id_t id, void *parg)
+void profile_disable(void *arg, dtrace_id_t id, void *parg)
 {
 	profile_probe_t	*prof = parg;
 

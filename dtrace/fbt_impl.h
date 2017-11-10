@@ -35,8 +35,8 @@ extern int fbt_can_patch_return_arch(asm_instr_t *);
 extern int fbt_provide_module_arch(void *, struct module *);
 extern void fbt_provide_module(void *, struct module *);
 extern void fbt_destroy_module(void *, struct module *);
-extern int _fbt_enable(void *, dtrace_id_t, void *);
-extern void _fbt_disable(void *, dtrace_id_t, void *);
+extern int fbt_enable(void *, dtrace_id_t, void *);
+extern void fbt_disable(void *, dtrace_id_t, void *);
 extern uint64_t fbt_getarg(void *, dtrace_id_t, void *, int, int);
 extern void fbt_destroy(void *, dtrace_id_t, void *);
 

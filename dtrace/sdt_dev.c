@@ -373,7 +373,7 @@ void sdt_provide_module(void *arg, struct module *mp)
 	}
 }
 
-int _sdt_enable(void *arg, dtrace_id_t id, void *parg)
+int sdt_enable(void *arg, dtrace_id_t id, void *parg)
 {
 	sdt_probe_t	*sdp = parg;
 	sdt_probe_t	*curr;
@@ -399,7 +399,7 @@ int _sdt_enable(void *arg, dtrace_id_t id, void *parg)
 	return 0;
 }
 
-void _sdt_disable(void *arg, dtrace_id_t id, void *parg)
+void sdt_disable(void *arg, dtrace_id_t id, void *parg)
 {
 	sdt_probe_t	*sdp = parg;
 	sdt_probe_t	*curr;

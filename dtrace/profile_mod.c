@@ -34,8 +34,6 @@ static const dtrace_pattr_t profile_attr = {
 { DTRACE_STABILITY_EVOLVING, DTRACE_STABILITY_EVOLVING, DTRACE_CLASS_COMMON },
 };
 
-DT_PROVIDER_POPS(profile)
-
 static dtrace_pops_t profile_pops = {
 	.dtps_provide = profile_provide,
 	.dtps_provide_module = NULL,

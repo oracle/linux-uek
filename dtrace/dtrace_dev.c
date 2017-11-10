@@ -114,54 +114,40 @@ static int dtrace_open(struct inode *inode, struct file *file)
 #ifdef CONFIG_DT_DEBUG
 	dtrace_ioctl_sizes();
 #endif
+	mutex_lock(&module_mutex);
 	mutex_lock(&dtrace_provider_lock);
 	dtrace_probe_provide(NULL, NULL);
 	mutex_unlock(&dtrace_provider_lock);
+	mutex_unlock(&module_mutex);
 
 	mutex_lock(&cpu_lock);
 	mutex_lock(&dtrace_lock);
-	dtrace_opens++;
-	dtrace_membar_producer();
 
-#ifdef FIXME
 	/*
-	 * Is this relevant for Linux?  Is there an equivalent?
+	 * Do not let a consumer continue if it is not possible to enable
+	 * DTrace.
 	 */
-	if (kdi_dtrace_set(KDI_DTSET_DTRACE_ACTIVATE) != 0) {
-		dtrace_opens--;
+	if (dtrace_enable() != 0) {
 		mutex_unlock(&dtrace_lock);
 		mutex_unlock(&cpu_lock);
 		return -EBUSY;
 	}
-#endif
+
+	dtrace_opens++;
+	dtrace_membar_producer();
 
 	state = dtrace_state_create(file);
 	mutex_unlock(&cpu_lock);
 
 	if (state == NULL) {
-#ifdef FIXME
 		if (--dtrace_opens == 0 && dtrace_anon.dta_enabling == NULL)
-			(void)kdi_dtrace_set(KDI_DTSET_DTRACE_DEACTIVATE);
-#endif
-
+			dtrace_disable();
 		mutex_unlock(&dtrace_lock);
 
 		return -EAGAIN;
 	}
 
 	file->private_data = state;
-
-	/*
-	 * We only want to enable trap handling once, so we'll do it for the
-	 * first open of the DTrace core device file.
-	 * FIXME: If anonymous tracing is enabled, that would have enabled trap
-	 *	  handling already, so we should not do it here again.
-	 */
-	if (dtrace_opens == 1)
-		dtrace_enable();
-
-	dtrace_pmod_add_consumer();
-
 	mutex_unlock(&dtrace_lock);
 
 	return 0;
@@ -519,9 +505,11 @@ static long dtrace_ioctl(struct file *file,
 		 * all providers the opportunity to provide it.
 		 */
 		if (desc.dtpd_id == DTRACE_IDNONE) {
+			mutex_lock(&module_mutex);
 			mutex_lock(&dtrace_provider_lock);
 			dtrace_probe_provide(&desc, NULL);
 			mutex_unlock(&dtrace_provider_lock);
+			mutex_unlock(&module_mutex);
 		}
 
 		if (cmd == DTRACEIOC_PROBEMATCH)  {
@@ -590,15 +578,15 @@ static long dtrace_ioctl(struct file *file,
 		if (desc.dtargd_ndx == DTRACE_ARGNONE)
 			return -EINVAL;
 
+		mutex_lock(&module_mutex);
 		mutex_lock(&dtrace_provider_lock);
-//		mutex_lock(&module_mutex); /* FIXME */
 		mutex_lock(&dtrace_lock);
 
 		probe = dtrace_probe_lookup_id(desc.dtargd_id);
 		if (probe == NULL) {
-			mutex_unlock(&dtrace_provider_lock);
-//			mutex_unlock(&module_mutex); /* FIXME */
 			mutex_unlock(&dtrace_lock);
+			mutex_unlock(&dtrace_provider_lock);
+			mutex_unlock(&module_mutex);
 
 			return -EINVAL;
 		}
@@ -623,8 +611,8 @@ static long dtrace_ioctl(struct file *file,
 				probe->dtpr_arg, &desc);
 		}
 
-//		mutex_unlock(&module_mutex); /* FIXME */
 		mutex_unlock(&dtrace_provider_lock);
+		mutex_unlock(&module_mutex);
 
 		if (copy_to_user(argp, &desc, sizeof(desc)) != 0)
 			return -EFAULT;
@@ -980,29 +968,14 @@ static int dtrace_close(struct inode *inode, struct file *file)
 	 */
 	if (state->dts_anon) {
 		ASSERT(dtrace_anon.dta_state == NULL);
-
 		dtrace_state_destroy(state->dts_anon);
 	}
 
 	dtrace_state_destroy(state);
 	ASSERT(dtrace_opens > 0);
 
-#ifdef FIXME
 	if (--dtrace_opens == 0 && dtrace_anon.dta_enabling == NULL)
-		(void)kdi_dtrace_set(KDI_DTSET_DTRACE_DEACTIVATE);
-#else
-	/*
-	 * Once the last user of DTrace is gone, we can safely disable trap
-	 * handling.
-	 * FIXME: We should not disable it if anonymous tracing is enabled as
-	 *	  we still have probes running in that case even without any
-	 *	  client holding the device file open.
-	 */
-	if (--dtrace_opens == 0)
 		dtrace_disable();
-#endif
-
-	dtrace_pmod_del_consumer();
 
 	mutex_unlock(&dtrace_lock);
 	mutex_unlock(&cpu_lock);
@@ -1127,6 +1100,7 @@ static void dtrace_module_loaded(struct module *mp)
 {
 	dtrace_provider_t *prv;
 
+	mutex_lock(&module_mutex);
 	mutex_lock(&dtrace_provider_lock);
 
 	/*
@@ -1136,6 +1110,7 @@ static void dtrace_module_loaded(struct module *mp)
 		prv->dtpv_pops.dtps_provide_module(prv->dtpv_arg, mp);
 
 	mutex_unlock(&dtrace_provider_lock);
+	mutex_unlock(&module_mutex);
 
 	/*
 	 * If we have any retained enablings, we need to match against them.
@@ -1158,6 +1133,7 @@ static void dtrace_module_unloaded(struct module *mp)
 
 	template.dtpr_mod = mp->name;
 
+	mutex_lock(&module_mutex);
 	mutex_lock(&dtrace_provider_lock);
 	mutex_lock(&dtrace_lock);
 
@@ -1168,6 +1144,7 @@ static void dtrace_module_unloaded(struct module *mp)
 		 */
 		mutex_unlock(&dtrace_lock);
 		mutex_unlock(&dtrace_provider_lock);
+		mutex_unlock(&module_mutex);
 		return;
 	}
 
@@ -1176,6 +1153,7 @@ static void dtrace_module_unloaded(struct module *mp)
 		if (probe->dtpr_ecb != NULL) {
 			mutex_unlock(&dtrace_lock);
 			mutex_unlock(&dtrace_provider_lock);
+			mutex_unlock(&module_mutex);
 
 			/*
 			 * This shouldn't _actually_ be possible -- we're
@@ -1242,6 +1220,7 @@ static void dtrace_module_unloaded(struct module *mp)
 
 	mutex_unlock(&dtrace_lock);
 	mutex_unlock(&dtrace_provider_lock);
+	mutex_unlock(&module_mutex);
 }
 
 /*
@@ -1518,6 +1497,7 @@ int dtrace_dev_init(void)
 void dtrace_dev_exit(void)
 {
 	mutex_lock(&cpu_lock);
+	mutex_lock(&module_mutex);
 	mutex_lock(&dtrace_provider_lock);
 	mutex_lock(&dtrace_lock);
 
@@ -1562,6 +1542,7 @@ void dtrace_dev_exit(void)
 
 	mutex_unlock(&dtrace_lock);
 	mutex_unlock(&dtrace_provider_lock);
+	mutex_unlock(&module_mutex);
 
 	misc_deregister(&helper_dev);
 	misc_deregister(&dtrace_dev);

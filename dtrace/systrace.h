@@ -1,7 +1,7 @@
 /*
  * Dynamic Tracing for Linux - syscall tracing provider
  *
- * Copyright (c) 2011, 2012, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2011, 2017, Oracle and/or its affiliates. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -20,8 +20,8 @@
 #include "dtrace.h"
 
 extern void systrace_provide(void *, const dtrace_probedesc_t *);
-extern int _systrace_enable(void *arg, dtrace_id_t, void *);
-extern void _systrace_disable(void *arg, dtrace_id_t, void *);
+extern int systrace_enable(void *arg, dtrace_id_t, void *);
+extern void systrace_disable(void *arg, dtrace_id_t, void *);
 extern void systrace_destroy(void *, dtrace_id_t, void *);
 
 extern dtrace_provider_id_t	syscall_id;

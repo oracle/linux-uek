@@ -420,8 +420,6 @@ void dtrace_for_each_module(for_each_module_fn func, void *arg)
 	if (func == NULL)
 		return;
 
-	mutex_lock(&module_mutex);
-
 	/* The dtrace fake module is not in the list. */
 	func(arg, dtrace_kmod);
 
@@ -439,8 +437,6 @@ void dtrace_for_each_module(for_each_module_fn func, void *arg)
 
 		func(arg, mp);
 	}
-
-	mutex_unlock(&module_mutex);
 }
 EXPORT_SYMBOL_GPL(dtrace_for_each_module);
 
@@ -469,6 +465,16 @@ void dtrace_mod_pdata_free(struct module *mp)
 	mp->pdata = NULL;
 	dtrace_mod_pdata_cleanup(pdata);
 	kmem_cache_free(dtrace_pdata_cachep, pdata);
+}
+
+int dtrace_destroy_prov(struct module *mp)
+{
+	dtrace_module_t *pdata = mp->pdata;
+
+	if (pdata != NULL && pdata->prov_exit != NULL)
+		return pdata->prov_exit();
+
+	return 1;
 }
 
 /*---------------------------------------------------------------------------*\
@@ -627,12 +633,21 @@ static struct notifier_block	dtrace_die = {
 
 static int	dtrace_enabled = 0;
 
-void dtrace_enable(void)
+/*
+ * DTrace enable/disable must be called with dtrace_lock being held. It is not
+ * possible to check for safety here with an ASSERT as the lock itself is in the
+ * DTrace Framework kernel module.
+ */
+int dtrace_enable(void)
 {
-	if (!dtrace_enabled) {
-		register_die_notifier(&dtrace_die);
-		dtrace_enabled = 1;
-	}
+	if (dtrace_enabled)
+		return 0;
+
+	if (register_die_notifier(&dtrace_die) != 0)
+		return 1;
+
+	dtrace_enabled = 1;
+	return 0;
 }
 EXPORT_SYMBOL(dtrace_enable);
 

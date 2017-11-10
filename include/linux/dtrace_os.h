@@ -34,8 +34,9 @@ extern void dtrace_free_text(void *);
 
 extern void dtrace_mod_pdata_alloc(struct module *);
 extern void dtrace_mod_pdata_free(struct module *);
+extern int dtrace_destroy_prov(struct module *);
 
-extern void dtrace_enable(void);
+extern int dtrace_enable(void);
 extern void dtrace_disable(void);
 
 extern ktime_t dtrace_gethrtime(void);
@@ -138,6 +139,7 @@ extern int dtrace_tracepoint_disable(pid_t, fasttrap_machtp_t *);
  */
 #define dtrace_mod_pdata_alloc(ignore)
 #define dtrace_mod_pdata_free(ignore)
+#define dtrace_destroy_prov(ignore) 1
 
 #endif /* CONFIG_DTRACE */
 

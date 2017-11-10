@@ -29,102 +29,6 @@ dtrace_helpers_t	*dtrace_deferred_pid;
 DEFINE_MUTEX(dtrace_provider_lock);
 DEFINE_MUTEX(dtrace_meta_lock);
 
-static LIST_HEAD(provider_modules);
-
-#ifdef DT_DBG_PMOD
-void dtrace_pmod_debug(void)
-{
-	dtrace_pmod_t	*pmod;
-	int		i = 0;
-
-	mutex_lock(&dtrace_provider_lock);
-	if (list_empty(&provider_modules))
-		pr_info("provider_modules[] is empty\n");
-	else {
-		list_for_each_entry(pmod, &provider_modules, list)
-			pr_info("provider_modules[%3d] = %p (%s)\n",
-				i++, pmod->mod, pmod->mod->name);
-	}
-	mutex_unlock(&dtrace_provider_lock);
-}
-#endif /* CONFIG_DT_DEBUG */
-
-/*
- * Register a kernel module as a container for one or more providers.  This is
- * called during module initialization.
- */
-void dtrace_pmod_register(dtrace_pmod_t *pmod)
-{
-	if (pmod->mod == NULL) {
-		pr_warn("Provider module without a module?  Ignored!\n");
-		return;
-	}
-
-	mutex_lock(&dtrace_provider_lock);
-	list_add(&pmod->list, &provider_modules);
-	mutex_unlock(&dtrace_provider_lock);
-
-	/*
-	 * If there already are consumers, we need to increase the reference
-	 * count on the provider module with the number of consumers.  Failing
-	 * to do so will result in very unhappy module handling when the
-	 * reference count drops below zero.
-	 */
-	mutex_lock(&dtrace_lock);
-	if (dtrace_opens) {
-		preempt_disable();
-		atomic_add(dtrace_opens, &pmod->mod->refcnt);
-		preempt_enable();
-	}
-	mutex_unlock(&dtrace_lock);
-#ifdef DT_DBG_PMOD
-	pr_info("After dtrace_pmod_register(%p):\n", pmod);
-	dtrace_pmod_debug();
-#endif
-}
-EXPORT_SYMBOL(dtrace_pmod_register);
-
-/*
- * Account for a new consumer that opened /dev/dtrace/dtrace.  We can use
- * __module_get() because a module in the provider_modules list is guaranteed
- * to have been initialized, which means __module_get() cannot fail.
- */
-void dtrace_pmod_add_consumer(void)
-{
-	dtrace_pmod_t	*pmod, *next;
-
-	list_for_each_entry_safe(pmod, next, &provider_modules, list)
-		__module_get(pmod->mod);
-}
-
-/*
- * Account for a consumer that is done with its work, thereby closing the
- * /dev/dtrace/dtrace device file.
- */
-void dtrace_pmod_del_consumer(void)
-{
-	dtrace_pmod_t	*pmod, *next;
-
-	list_for_each_entry_safe(pmod, next, &provider_modules, list)
-		module_put(pmod->mod);
-}
-
-/*
- * Deregister a kernel module as a container for providers.  This is called
- * during module exit.
- */
-void dtrace_pmod_unregister(dtrace_pmod_t *pmod)
-{
-	mutex_lock(&dtrace_provider_lock);
-	list_del(&pmod->list);
-	mutex_unlock(&dtrace_provider_lock);
-#ifdef DT_DBG_PMOD
-	pr_info("After dtrace_pmod_unregister(%p):\n", pmod);
-	dtrace_pmod_debug();
-#endif
-}
-EXPORT_SYMBOL(dtrace_pmod_unregister);
-
 /*
  * Register the calling provider with the DTrace core.  This should generally
  * be called by providers during module initialization.
@@ -243,6 +147,7 @@ int dtrace_register(const char *name, const dtrace_pattr_t *pap, uint32_t priv,
 		return 0;
 	}
 
+	mutex_lock(&module_mutex);
 	mutex_lock(&dtrace_provider_lock);
 	mutex_lock(&dtrace_lock);
 
@@ -266,6 +171,7 @@ int dtrace_register(const char *name, const dtrace_pattr_t *pap, uint32_t priv,
 		 */
 		mutex_unlock(&dtrace_lock);
 		mutex_unlock(&dtrace_provider_lock);
+		mutex_unlock(&module_mutex);
 		dtrace_enabling_matchall();
 
 		return 0;
@@ -273,6 +179,7 @@ int dtrace_register(const char *name, const dtrace_pattr_t *pap, uint32_t priv,
 
 	mutex_unlock(&dtrace_lock);
 	mutex_unlock(&dtrace_provider_lock);
+	mutex_unlock(&module_mutex);
 
 	return 0;
 }
@@ -362,6 +269,8 @@ static int dtrace_condense_probe(int id, void *p, void *data)
 /*
  * Unregister the specified provider from the DTrace core.  This should be
  * called by provider during module cleanup.
+ *
+ * The mutex_lock is already held during this call.
  */
 int dtrace_unregister(dtrace_provider_id_t id)
 {
@@ -373,6 +282,8 @@ int dtrace_unregister(dtrace_provider_id_t id)
 					old,
 					NULL
 				     };
+
+	ASSERT(MUTEX_HELD(&module_mutex));
 
 	if (old->dtpv_pops.dtps_enable ==
 	    (int (*)(void *, dtrace_id_t, void *))dtrace_enable_nullop) {
@@ -395,7 +306,6 @@ int dtrace_unregister(dtrace_provider_id_t id)
 		}
 	} else {
 		mutex_lock(&dtrace_provider_lock);
-		/* FIXME: mutex_lock(&mod_lock); */
 		mutex_lock(&dtrace_lock);
 	}
 
@@ -409,7 +319,6 @@ int dtrace_unregister(dtrace_provider_id_t id)
 	     dtrace_anon.dta_state->dts_necbs > 0))) {
 		if (!self) {
 			mutex_unlock(&dtrace_lock);
-			/* FIXME: mutex_unlock(&mod_lock); */
 			mutex_unlock(&dtrace_provider_lock);
 		}
 
@@ -426,7 +335,6 @@ int dtrace_unregister(dtrace_provider_id_t id)
 	if (err < 0) {
 		if (!self) {
 			mutex_unlock(&dtrace_lock);
-			/* FIXME: mutex_unlock(&mod_lock); */
 			mutex_unlock(&dtrace_provider_lock);
 		}
 
@@ -488,7 +396,6 @@ int dtrace_unregister(dtrace_provider_id_t id)
 
 	if (!self) {
 		mutex_unlock(&dtrace_lock);
-		/* FIXME: mutex_unlock(&mod_lock); */
 		mutex_unlock(&dtrace_provider_lock);
 	}
 
