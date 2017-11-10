@@ -84,7 +84,7 @@ void dtrace_sync(void)
 	 */
 	cpumask_t	sync_cpus;
 	uint64_t	sample_count = 0;
-	int		cpuid, sample_cpuid;
+	int		cpuid, sample_cpuid = 0;
 	int		outstanding;
 
 	/*
