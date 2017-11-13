@@ -143,7 +143,7 @@ int asm_integrity_map(struct oracleasm_integrity_v2 *it, struct asm_request *r, 
 	}
 
 	bip->bip_iter.bi_size = len;
-	bip->bip_iter.bi_sector = bio->bi_iter.bi_sector;
+	bip_set_seed(bip, bio->bi_iter.bi_sector);
 
 	/* This is a retry. Prevent reference tag from being remapped again */
 	if (it->it_flags & ASM_IFLAG_REMAPPED)

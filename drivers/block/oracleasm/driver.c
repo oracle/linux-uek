@@ -1111,7 +1111,7 @@ static void asm_end_bio_io(struct bio *bio)
 	if (atomic_dec_and_test(&r->r_bio_count)) {
 		asm_end_ioc(r, r->r_count - (r->r_bio ?
 					     r->r_bio->bi_iter.bi_size : 0),
-			    bio->bi_error);
+			    bio->bi_status);
 	}
 }  /* asm_end_bio_io() */
 
@@ -1248,7 +1248,7 @@ static int asm_submit_io(struct file *file,
 	}
 
 	r->r_bio->bi_opf = rw;
-	r->r_bio->bi_bdev = bdev;
+	bio_set_dev(r->r_bio, bdev);
 
 	if (r->r_bio->bi_iter.bi_size != r->r_count) {
 		pr_err("%s: Only mapped partial ioc buffer\n", __func__);
