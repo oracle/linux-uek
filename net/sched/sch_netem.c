@@ -333,10 +333,8 @@ static psched_tdiff_t tabledist(psched_tdiff_t mu, psched_tdiff_t sigma,
 	return  x / NETEM_DIST_SCALE + (sigma / NETEM_DIST_SCALE) * t + mu;
 }
 
-static psched_time_t packet_len_2_sched_time(unsigned int len, struct netem_sched_data *q)
+static u64 packet_time_ns(u64 len, const struct netem_sched_data *q)
 {
-	u64 ticks;
-
 	len += q->packet_overhead;
 
 	if (q->cell_size) {
@@ -347,10 +345,7 @@ static psched_time_t packet_len_2_sched_time(unsigned int len, struct netem_sche
 		len = cells * (q->cell_size + q->cell_overhead);
 	}
 
-	ticks = (u64)len * NSEC_PER_SEC;
-
-	do_div(ticks, q->rate);
-	return PSCHED_NS2TICKS(ticks);
+	return div64_u64(len * NSEC_PER_SEC, q->rate);
 }
 
 static void tfifo_reset(struct Qdisc *sch)
@@ -559,7 +554,7 @@ static int netem_enqueue(struct sk_buff *skb, struct Qdisc *sch,
 				now = last->time_to_send;
 			}
 
-			delay += packet_len_2_sched_time(qdisc_pkt_len(skb), q);
+			delay += packet_time_ns(qdisc_pkt_len(skb), q);
 		}
 
 		cb->time_to_send = now + delay;
