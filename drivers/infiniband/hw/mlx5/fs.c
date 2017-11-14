@@ -219,6 +219,23 @@ static int parse_flow_attr(struct mlx5_core_dev *mdev,
 	}
 
 	switch (ib_spec->type & ~IB_FLOW_SPEC_INNER) {
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	case IB_FLOW_SPEC_SNIFFER: {
+		bool rx_cap = MLX5_CAP_FLOWTABLE_SNIFFER_RX(mdev,
+					ft_field_support.source_vhca_port);
+		bool tx_cap = MLX5_CAP_FLOWTABLE_SNIFFER_TX(mdev,
+					ft_field_support.source_vhca_port);
+
+		if ((tx_cap && !ib_spec->sniffer.is_rx) ||
+		    (rx_cap && ib_spec->sniffer.is_rx)) {
+			MLX5_SET(fte_match_set_misc, misc_params_v,
+				source_vhca_port, ib_spec->sniffer.port_num);
+			MLX5_SET_TO_ONES(fte_match_set_misc, misc_params_c,
+					source_vhca_port);
+		}
+		break;
+	}
+#endif /* WITHOUT_ORACLE_EXTENSIONS */
 	case IB_FLOW_SPEC_ETH:
 		if (FIELDS_NOT_SUPPORTED(ib_spec->eth.mask, LAST_ETH_FIELD))
 			return -EOPNOTSUPP;
@@ -1237,24 +1254,56 @@ static struct mlx5_ib_flow_handler *create_leftovers_rule(struct mlx5_ib_dev *de
 static struct mlx5_ib_flow_handler *create_sniffer_rule(struct mlx5_ib_dev *dev,
 							struct mlx5_ib_flow_prio *ft_rx,
 							struct mlx5_ib_flow_prio *ft_tx,
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+							struct mlx5_flow_destination *dst,
+							u8 port)
+#else /* WITHOUT_ORACLE_EXTENSIONS */
 							struct mlx5_flow_destination *dst)
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 {
 	struct mlx5_ib_flow_handler *handler_rx;
 	struct mlx5_ib_flow_handler *handler_tx;
 	int err;
+
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	struct {
+		struct ib_flow_attr flow_attr;
+		struct ib_flow_spec_sniffer sniffer;
+	} sniffer_spec = {
+		.flow_attr = {
+			.num_of_specs = 1,
+			.size = sizeof(sniffer_spec)
+		},
+		.sniffer = {
+			.type = IB_FLOW_SPEC_SNIFFER,
+			.size = sizeof(struct ib_flow_spec_sniffer),
+			.port_num = port,
+			.is_rx = true
+		}
+#else /* WITHOUT_ORACLE_EXTENSIONS */
 	static const struct ib_flow_attr flow_attr  = {
 		.num_of_specs = 0,
 		.type = IB_FLOW_ATTR_SNIFFER,
 		.size = sizeof(flow_attr)
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 	};
 
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	handler_rx = create_flow_rule(dev, ft_rx, &sniffer_spec.flow_attr, dst);
+#else /* WITHOUT_ORACLE_EXTENSIONS */
 	handler_rx = create_flow_rule(dev, ft_rx, &flow_attr, dst);
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 	if (IS_ERR(handler_rx)) {
 		err = PTR_ERR(handler_rx);
 		goto err;
 	}
 
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	sniffer_spec.sniffer.is_rx = false;
+	handler_tx = create_flow_rule(dev, ft_tx, &sniffer_spec.flow_attr, dst);
+#else /* WITHOUT_ORACLE_EXTENSIONS */
 	handler_tx = create_flow_rule(dev, ft_tx, &flow_attr, dst);
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 	if (IS_ERR(handler_tx)) {
 		err = PTR_ERR(handler_tx);
 		goto err_tx;
@@ -1382,7 +1431,12 @@ static struct ib_flow *mlx5_ib_create_flow(struct ib_qp *qp,
 		handler = create_leftovers_rule(dev, ft_prio, flow_attr, dst);
 		break;
 	case IB_FLOW_ATTR_SNIFFER:
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+		handler = create_sniffer_rule(dev, ft_prio, ft_prio_tx, dst,
+					      mqp->port);
+#else /* WITHOUT_ORACLE_EXTENSIONS */
 		handler = create_sniffer_rule(dev, ft_prio, ft_prio_tx, dst);
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 		break;
 	default:
 		err = -EINVAL;
