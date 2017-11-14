@@ -336,7 +336,11 @@ struct mlx5_ifc_flow_table_fields_supported_bits {
 	u8         outer_geneve_oam[0x1];
 	u8         outer_geneve_protocol_type[0x1];
 	u8         outer_geneve_opt_len[0x1];
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	u8	   source_vhca_port[0x1];
+#else /* WITHOUT_ORACLE_EXTENSIONS */
 	u8         reserved_at_1e[0x1];
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 	u8         source_eswitch_port[0x1];
 
 	u8         inner_dmac[0x1];
