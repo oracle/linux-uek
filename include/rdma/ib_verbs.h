@@ -1890,6 +1890,9 @@ enum ib_flow_attr_type {
 
 /* Supported steering header types */
 enum ib_flow_spec_type {
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	IB_FLOW_SPEC_SNIFFER		= 0,
+#endif /* WITHOUT_ORACLE_EXTENSIONS */
 	/* L2 headers*/
 	IB_FLOW_SPEC_ETH		= 0x20,
 	IB_FLOW_SPEC_IB			= 0x22,
@@ -2063,6 +2066,15 @@ struct ib_flow_spec_action_handle {
 	struct ib_flow_action	     *act;
 };
 
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+struct ib_flow_spec_sniffer {
+	enum ib_flow_spec_type        type;
+	u16                           size;
+	u32                           port_num;
+	bool                          is_rx;
+};
+#endif /* WITHOUT_ORACLE_EXTENSIONS */
+
 enum ib_counters_description {
 	IB_COUNTER_PACKETS,
 	IB_COUNTER_BYTES,
@@ -2092,6 +2104,9 @@ union ib_flow_spec {
 	struct ib_flow_spec_action_drop drop;
 	struct ib_flow_spec_action_handle action;
 	struct ib_flow_spec_action_count flow_count;
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	struct ib_flow_spec_sniffer	sniffer;
+#endif /* WITHOUT_ORACLE_EXTENSIONS */
 };
 
 struct ib_flow_attr {
