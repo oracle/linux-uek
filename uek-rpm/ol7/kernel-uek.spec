@@ -82,8 +82,6 @@ Summary: The Linux kernel
 %define with_headers   1
 # dtrace
 %define with_dtrace    0
-# kernel-firmware
-%define with_firmware  0
 # kernel-debuginfo
 %define with_debuginfo %{?_without_debuginfo: 0} %{?!_without_debuginfo: 1}
 # kernel-bootwrapper (for creating zImages from kernel + initrd)
@@ -256,7 +254,6 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 %define with_paravirt 0
 %define with_paravirt_debug 0
 %define all_arch_configs kernel-%{version}-*.config
-%define with_firmware  %{?_without_firmware:  0} %{?!_without_firmware:  1}
 %endif
 
 # bootwrapper is only on ppc
@@ -466,8 +463,7 @@ Requires(pre): %{initrd_prereq}\
 %if "x%{?-r}" == "x"\
 Requires(pre): kernel-uek-base = %{rpmversion}-%{pkg_release}\
 %endif\
-#Requires(pre): linux-firmware%{?-r:-base} >= 20170803-56.git7d2c913d.0.1\
-#Requires(pre): linux-%{?-r:nano-}firmware >= 20170803-56.git7d2c913d.0.1\
+Requires(pre): linux-firmware%{?-r:-base} >= 20171027-56.gitbf042913.0.2\
 Requires(post): %{_sbindir}/new-kernel-pkg\
 Requires(preun): %{_sbindir}/new-kernel-pkg\
 Conflicts: %{kernel_dot_org_conflicts}\
@@ -514,6 +510,8 @@ BuildRequires: pkgconfig
 BuildRequires: glib2-devel
 BuildRequires: elfutils-devel
 BuildRequires: bc
+BuildRequires: hostname
+BuildRequires: openssl, openssl-devel
 %if %{with_doc}
 BuildRequires: xmlto
 %endif
@@ -521,7 +519,6 @@ BuildRequires: xmlto
 BuildRequires: sparse >= 0.4.1
 %endif
 %if %{signmodules}
-BuildRequires: openssl
 BuildRequires: gnupg
 BuildRequires: pesign >= 0.10-4
 %endif
@@ -655,22 +652,6 @@ between the Linux kernel and userspace libraries and programs.  The
 header files define structures and constants that are needed for
 building most standard programs and are also needed for rebuilding the
 glibc package.
-
-%package firmware
-Summary: Firmware files used by the Linux kernel
-Group: Development/System
-# This is... complicated.
-# Look at the WHENCE file.
-License: GPL+ and GPLv2+ and MIT and Redistributable, no modification permitted
-%if "x%{?variant}" != "x"
-Provides: kernel-firmware = %{rpmversion}-%{pkg_release}
-%endif
-%ifarch sparc64
-Provides: kernel-firmware = %{rpmversion}-%{pkg_release}
-%endif
-%description firmware
-Kernel firmware includes firmware files required for some devices to
-operate.
 
 %package bootwrapper
 Summary: Boot wrapper files for generating combined kernel + initrd images
@@ -1110,9 +1091,7 @@ BuildKernel() {
 %endif
 
     mkdir -p $RPM_BUILD_ROOT/lib/modules/$KernelVer
-    # Override $(mod-fw) because we don't want it to install any firmware
-    # We'll do that ourselves with 'make firmware_install'
-    make -s ARCH=$Arch INSTALL_MOD_PATH=$RPM_BUILD_ROOT modules_install KERNELRELEASE=$KernelVer mod-fw=
+    make -s ARCH=$Arch INSTALL_MOD_PATH=$RPM_BUILD_ROOT modules_install KERNELRELEASE=$KernelVer
     # check if the modules are being signed
 
 %ifarch %{vdso_arches}
@@ -1541,11 +1520,6 @@ rm -f $RPM_BUILD_ROOT/usr/include/asm*/irq.h
 rm -rf $RPM_BUILD_ROOT/usr/include/drm
 %endif
 
-%if %{with_firmware}
-mkdir -p $RPM_BUILD_ROOT/lib/firmware/%{rpmversion}-%{pkg_release}
-make INSTALL_FW_PATH=$RPM_BUILD_ROOT/lib/firmware/%{rpmversion}-%{pkg_release} firmware_install
-%endif
-
 %if %{with_bootwrapper}
 make DESTDIR=$RPM_BUILD_ROOT bootwrapper_install WRAPPER_OBJDIR=%{_libdir}/kernel-wrapper WRAPPER_DTSDIR=%{_libdir}/kernel-wrapper/dts
 %endif
@@ -1612,7 +1586,6 @@ if grep --silent '^hwcap 0 nosegneg$' /etc/ld.so.conf.d/kernel-*.conf 2> /dev/nu
   sed -i '/^hwcap 0 nosegneg$/ s/0/1/' /etc/ld.so.conf.d/kernel-*.conf\
 fi\
 %{_sbindir}/new-kernel-pkg --package kernel%{?-v:-%{-v*}} --install %{KVERREL}%{!-u:%{?-v:.%{-v*}}} || exit $?\
-ln -sf /lib/firmware/%{rpmversion}-%{pkg_release} /lib/firmware/%{rpmversion}-%{pkg_release}.%{_target_cpu} \
 %{nil}
 
 %postun
@@ -1621,7 +1594,6 @@ then
     /bin/sed -r -i -e 's/^DEFAULTKERNEL=.*$/DEFAULTKERNEL=kernel-uek-base/' /etc/sysconfig/kernel || exit $?
 fi
 %{_sbindir}/new-kernel-pkg --package kernel-uek-base --install %{KVERREL} || exit $?
-ln -sf /lib/firmware/%{rpmversion}-%{pkg_release} /lib/firmware/%{rpmversion}-%{pkg_release}.%{_target_cpu}
 %{_sbindir}/new-kernel-pkg --package kernel-uek-base --mkinitrd --dracut --depmod --update %{KVERREL} || exit $?
 %{_sbindir}/new-kernel-pkg --package kernel-uek-base --rpmposttrans %{KVERREL} || exit $?
 if [ -x /sbin/weak-modules ]
@@ -1651,7 +1623,6 @@ if grep --silent '^hwcap 0 nosegneg$' /etc/ld.so.conf.d/kernel-*.conf 2> /dev/nu
   sed -i '/^hwcap 0 nosegneg$/ s/0/1/' /etc/ld.so.conf.d/kernel-*.conf\
 fi\
 %{_sbindir}/new-kernel-pkg --package kernel-uek-base --install %{KVERREL} || exit $?\
-ln -sf /lib/firmware/%{rpmversion}-%{pkg_release} /lib/firmware/%{rpmversion}-%{pkg_release}.%{_target_cpu}\
 %{nil}
 
 #
@@ -1673,7 +1644,6 @@ ln -sf /lib/firmware/%{rpmversion}-%{pkg_release} /lib/firmware/%{rpmversion}-%{
 if [ -x /sbin/weak-modules ]\
 then\
     /sbin/weak-modules --remove-kernel %{KVERREL}%{?1:.%{1}} || exit $?\
-   rm -f /lib/firmware/%{rpmversion}-%{pkg_release}.%{_target_cpu} \
 fi\
 %{nil}
 
@@ -1770,13 +1740,6 @@ fi
 %if %{with_dtrace}
 %exclude /usr/include/linux/dtrace
 %endif
-%endif
-
-%if %{with_firmware}
-%files firmware
-%defattr(-,root,root)
-/lib/firmware/*
-%doc linux-%{version}-%{release}/firmware/WHENCE
 %endif
 
 %if %{with_bootwrapper}
