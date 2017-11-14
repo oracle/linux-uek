@@ -1782,6 +1782,7 @@ enum ib_flow_attr_type {
 
 /* Supported steering header types */
 enum ib_flow_spec_type {
+	IB_FLOW_SPEC_SNIFFER		= 0,
 	/* L2 headers*/
 	IB_FLOW_SPEC_ETH		= 0x20,
 	IB_FLOW_SPEC_IB			= 0x22,
@@ -1929,6 +1930,13 @@ struct ib_flow_spec_action_drop {
 	u16			      size;
 };
 
+struct ib_flow_spec_sniffer {
+	enum ib_flow_spec_type	      type;
+	u16			      size;
+	u32                           port_num;
+	bool			      is_rx;
+};
+
 union ib_flow_spec {
 	struct {
 		u32			type;
@@ -1942,6 +1950,7 @@ union ib_flow_spec {
 	struct ib_flow_spec_tunnel      tunnel;
 	struct ib_flow_spec_action_tag  flow_tag;
 	struct ib_flow_spec_action_drop drop;
+	struct ib_flow_spec_sniffer	sniffer;
 };
 
 struct ib_flow_attr {

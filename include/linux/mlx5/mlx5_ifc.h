@@ -268,7 +268,8 @@ struct mlx5_ifc_flow_table_fields_supported_bits {
 	u8         outer_gre_protocol[0x1];
 	u8         outer_gre_key[0x1];
 	u8         outer_vxlan_vni[0x1];
-	u8         reserved_at_1a[0x5];
+	u8         reserved_at_1a[0x4];
+	u8         source_vhca_port[0x1];
 	u8         source_eswitch_port[0x1];
 
 	u8         inner_dmac[0x1];
@@ -401,7 +402,8 @@ struct mlx5_ifc_fte_match_set_lyr_2_4_bits {
 };
 
 struct mlx5_ifc_fte_match_set_misc_bits {
-	u8         reserved_at_0[0x8];
+	u8         reserved_at_0[0x4];
+	u8         source_vhca_port[0x4];
 	u8         source_sqn[0x18];
 
 	u8         reserved_at_20[0x10];
