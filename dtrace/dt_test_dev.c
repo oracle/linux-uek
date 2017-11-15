@@ -24,12 +24,12 @@
 #include "dtrace_dev.h"
 #include "dt_test.h"
 
-static dtrace_id_t	pid = 0;
+static dtrace_id_t	pid = DTRACE_IDNONE;
 static int		enabled = 0;
 
 void dt_test_provide(void *arg, const dtrace_probedesc_t *desc)
 {
-	if (dtrace_probe_lookup(dt_test_id, "dt_test", NULL, "test") != 0)
+	if (dtrace_probe_lookup(dt_test_id, "dt_test", NULL, "test") != DTRACE_IDNONE)
 		return;
 
 	pid = dtrace_probe_create(dt_test_id,

@@ -40,6 +40,7 @@ static systrace_info_t	*systrace_info = NULL;
 
 void systrace_provide(void *arg, const dtrace_probedesc_t *desc)
 {
+	int	failed_count = 0;
 	int	i;
 
 	ASSERT(systrace_info != NULL);
@@ -49,6 +50,7 @@ void systrace_provide(void *arg, const dtrace_probedesc_t *desc)
 
 	for (i = 0; i < NR_syscalls; i++) {
 		const char		*nm = systrace_info->sysent[i].name;
+		dtrace_id_t		id;
 		int			sz;
 
 		if (nm == NULL)
@@ -63,20 +65,30 @@ void systrace_provide(void *arg, const dtrace_probedesc_t *desc)
 		else if (sz > 5 && memcmp(nm, "stub_", 5) == 0)
 			nm += 5;
 
-		if (dtrace_probe_lookup(syscall_id, dtrace_kmod->name, nm,
-					"entry") != 0)
-			continue;
+		id = dtrace_probe_lookup(syscall_id, dtrace_kmod->name, nm, "entry");
+		if (id == DTRACE_IDNONE) {
+			id = dtrace_probe_create(syscall_id, dtrace_kmod->name, nm,
+						"entry", SYSTRACE_ARTIFICIAL_FRAMES,
+						(void *)((uintptr_t)SYSTRACE_ENTRY(i)));
+			if (id == DTRACE_IDNONE)
+				failed_count++;
+		}
 
-		dtrace_probe_create(syscall_id, dtrace_kmod->name, nm, "entry",
-				    SYSTRACE_ARTIFICIAL_FRAMES,
-				    (void *)((uintptr_t)SYSTRACE_ENTRY(i)));
-		dtrace_probe_create(syscall_id, dtrace_kmod->name, nm, "return",
-				    SYSTRACE_ARTIFICIAL_FRAMES,
-				    (void *)((uintptr_t)SYSTRACE_RETURN(i)));
+		id = dtrace_probe_lookup(syscall_id, dtrace_kmod->name, nm, "return");
+		if (id == DTRACE_IDNONE) {
+			id = dtrace_probe_create(syscall_id, dtrace_kmod->name, nm,
+						 "return", SYSTRACE_ARTIFICIAL_FRAMES,
+						 (void *)((uintptr_t)SYSTRACE_RETURN(i)));
+			if (id == DTRACE_IDNONE)
+				failed_count++;
+		}
 
 		systrace_info->sysent[i].stsy_entry = DTRACE_IDNONE;
 		systrace_info->sysent[i].stsy_return = DTRACE_IDNONE;
 	}
+
+	if (failed_count > 0)
+		pr_warn("systrace: Failed to provide %d probes (out of memory)\n", failed_count);
 }
 
 static dt_sys_call_t get_intercept(int sysnum)

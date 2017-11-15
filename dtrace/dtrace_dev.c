@@ -1350,10 +1350,12 @@ int dtrace_dev_init(void)
 		pr_err("%s: Can't register misc device %d\n",
 		       helper_dev.name, helper_dev.minor);
 
+		misc_deregister(&dtrace_dev);
 		return rc;
 	}
 
 	mutex_lock(&cpu_lock);
+	mutex_lock(&module_mutex);
 	mutex_lock(&dtrace_provider_lock);
 	mutex_lock(&dtrace_lock);
 
@@ -1361,11 +1363,7 @@ int dtrace_dev_init(void)
 	if (rc) {
 		pr_err("Failed to initialize DTrace core\n");
 
-		mutex_unlock(&dtrace_lock);
-		mutex_unlock(&dtrace_provider_lock);
-		mutex_unlock(&cpu_lock);
-
-		return rc;
+		goto errout;
 	}
 
 #if defined(CONFIG_DT_FASTTRAP) || defined(CONFIG_DT_FASTTRAP_MODULE)
@@ -1392,6 +1390,9 @@ int dtrace_dev_init(void)
 				SLAB_HWCACHE_ALIGN|SLAB_PANIC|SLAB_NOTRACK,
 				NULL);
 
+	/* From now on the failures are results of failed allocations. */
+	rc = -ENOMEM;
+
 	/*
 	 * Create the probe hashtables.
 	 */
@@ -1399,25 +1400,32 @@ int dtrace_dev_init(void)
 				offsetof(dtrace_probe_t, dtpr_mod),
 				offsetof(dtrace_probe_t, dtpr_nextmod),
 				offsetof(dtrace_probe_t, dtpr_prevmod));
+	if (dtrace_bymod == NULL)
+		goto errout;
+
 	dtrace_byfunc = dtrace_hash_create(
 				offsetof(dtrace_probe_t, dtpr_func),
 				offsetof(dtrace_probe_t, dtpr_nextfunc),
 				offsetof(dtrace_probe_t, dtpr_prevfunc));
+	if (dtrace_byfunc == NULL)
+		goto errout;
+
 	dtrace_byname = dtrace_hash_create(
 				offsetof(dtrace_probe_t, dtpr_name),
 				offsetof(dtrace_probe_t, dtpr_nextname),
 				offsetof(dtrace_probe_t, dtpr_prevname));
+	if (dtrace_byname == NULL)
+		goto errout;
 
 	/*
-	 * FIXME, this is a very nonstandard pattern for OOM-checking but
-	 * unavoidable given the absence of OOM-checking elsewhere in this
-	 * function.
+	 * Initialize cred.
 	 */
 	cred = prepare_kernel_cred(NULL);
-	if (cred) {
-		init_user_namespace = cred->user_ns;
-		put_cred(cred);
-	}
+	if (cred == NULL)
+		goto errout;
+
+	init_user_namespace = cred->user_ns;
+	put_cred(cred);
 
 	/*
 	 * Ensure that the X configuration parameter has a legal value.
@@ -1449,12 +1457,20 @@ int dtrace_dev_init(void)
 	dtrace_probeid_begin = dtrace_probe_create(
 				(dtrace_provider_id_t)dtrace_provider, NULL,
 				NULL, "BEGIN", 0, NULL);
+	if (dtrace_probeid_begin == DTRACE_IDNONE)
+		goto errout;
+
 	dtrace_probeid_end = dtrace_probe_create(
 				(dtrace_provider_id_t)dtrace_provider, NULL,
 				NULL, "END", 0, NULL);
+	if (dtrace_probeid_end == DTRACE_IDNONE)
+		goto errout;
+
 	dtrace_probeid_error = dtrace_probe_create(
 				(dtrace_provider_id_t)dtrace_provider, NULL,
 				NULL, "ERROR", 1, NULL);
+	if (dtrace_probeid_error == DTRACE_IDNONE)
+		goto errout;
 
 	dtrace_anon_property();
 
@@ -1485,13 +1501,33 @@ int dtrace_dev_init(void)
 	 */
 #endif
 
-	register_module_notifier(&dtrace_modmgmt);
+	if (register_module_notifier(&dtrace_modmgmt))
+		goto errout;
 
 	mutex_unlock(&dtrace_lock);
 	mutex_unlock(&dtrace_provider_lock);
+	mutex_unlock(&module_mutex);
 	mutex_unlock(&cpu_lock);
 
 	return 0;
+
+errout:
+	if (dtrace_provider != NULL)
+		(void) dtrace_unregister((dtrace_provider_id_t)dtrace_provider);
+
+	dtrace_hash_destroy(dtrace_bymod);
+	dtrace_hash_destroy(dtrace_byfunc);
+	dtrace_hash_destroy(dtrace_byname);
+
+	misc_deregister(&helper_dev);
+	misc_deregister(&dtrace_dev);
+
+	mutex_unlock(&dtrace_lock);
+	mutex_unlock(&dtrace_provider_lock);
+	mutex_unlock(&module_mutex);
+	mutex_unlock(&cpu_lock);
+
+	return rc;
 }
 
 void dtrace_dev_exit(void)

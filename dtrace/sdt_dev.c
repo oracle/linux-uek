@@ -217,7 +217,7 @@ static sdt_argdesc_t *sdt_setup_args(sdt_probedesc_t *sdpd, size_t *sdp_nargdesc
 			if ((args[arg].sda_native == NULL) ||
 			    (args[arg].sda_xlate == NULL)) {
 				pr_warn("Unable to create argdesc list for "
-					"probe %s: out-of-memory\n",
+					"probe %s: out of memory\n",
 					sdpd->sdpd_name);
 				kfree(native);
 				goto full_oom;
@@ -245,7 +245,7 @@ oom_argstr:
 oom:
 	*sdp_nargdesc = 0;
 	pr_warn("Unable to create argdesc list for probe %s: "
-		"out-of-memory\n", sdpd->sdpd_name);
+		"out of memory\n", sdpd->sdpd_name);
 	return NULL;
 }
 
@@ -256,8 +256,9 @@ void sdt_provide_module(void *arg, struct module *mp)
 	sdt_probedesc_t		*sdpd;
 	sdt_probe_t		*sdp, *prv;
 	int			idx, len;
+	int			probes_skipped = 0;
 
-	/* When module setup failed do not provide anything. */
+	/* If module setup has failed then do not provide anything. */
 	if (PDATA(mp) == NULL)
 		return;
 
@@ -314,8 +315,7 @@ void sdt_provide_module(void *arg, struct module *mp)
 
 		nname = kmalloc(len = strlen(name) + 1, GFP_KERNEL);
 		if (nname == NULL) {
-			pr_warn("Unable to create probe %s: out-of-memory\n",
-				name);
+			probes_skipped++;
 			continue;
 		}
 
@@ -331,8 +331,7 @@ void sdt_provide_module(void *arg, struct module *mp)
 
 		sdp = kzalloc(sizeof(sdt_probe_t), GFP_KERNEL);
 		if (sdp == NULL) {
-			pr_warn("Unable to create probe %s: out-of-memory\n",
-				nname);
+			probes_skipped++;
 			continue;
 		}
 
@@ -360,6 +359,16 @@ void sdt_provide_module(void *arg, struct module *mp)
 							  sdpd->sdpd_func,
 							  nname, SDT_AFRAMES,
 							  sdp);
+
+			/*
+			 * If we failed to create the probe just skip it.
+			 */
+			if (sdp->sdp_id == DTRACE_IDNONE) {
+				kfree(sdp);
+				probes_skipped++;
+				continue;
+			}
+
 			PDATA(mp)->sdt_probe_cnt++;
 		}
 
@@ -371,6 +380,10 @@ void sdt_provide_module(void *arg, struct module *mp)
 					SDT_ADDR2NDX(sdp->sdp_patchpoint)];
 		sdt_probetab[SDT_ADDR2NDX(sdp->sdp_patchpoint)] = sdp;
 	}
+
+	if (probes_skipped != 0)
+		pr_warn("sdt: Failed to provide %d probes in %s (out of memory)\n",
+			probes_skipped, mp->name);
 }
 
 int sdt_enable(void *arg, dtrace_id_t id, void *parg)

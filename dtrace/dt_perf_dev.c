@@ -2,7 +2,7 @@
  * FILE:	dt_pref_dev.c
  * DESCRIPTION:	DTrace - perf provider device driver
  *
- * Copyright (c) 2011, 2015, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2011, 2017, Oracle and/or its affiliates. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -25,19 +25,21 @@
 #include "dtrace_dev.h"
 #include "dt_perf.h"
 
-static dtrace_id_t	invoke_pid = 0;
-static dtrace_id_t	result_pid = 0;
+static dtrace_id_t	invoke_pid = DTRACE_IDNONE;
+static dtrace_id_t	result_pid = DTRACE_IDNONE;
 static int		enabled = 0;
 
 void dt_perf_provide(void *arg, const dtrace_probedesc_t *desc)
 {
-	if (dtrace_probe_lookup(dt_perf_id, "dt_perf", NULL, "invoke") != 0)
-		return;
+	if (dtrace_probe_lookup(dt_perf_id, "dt_perf", NULL, "invoke") != DTRACE_IDNONE) {
+		invoke_pid = dtrace_probe_create(dt_perf_id,
+						 "dt_perf", NULL, "invoke", 0, NULL);
+	}
 
-	invoke_pid = dtrace_probe_create(dt_perf_id,
-				  "dt_perf", NULL, "invoke", 0, NULL);
-	result_pid = dtrace_probe_create(dt_perf_id,
-				  "dt_perf", NULL, "result", 0, NULL);
+	if (dtrace_probe_lookup(dt_perf_id, "dt_perf", NULL, "result") == DTRACE_IDNONE) {
+		result_pid = dtrace_probe_create(dt_perf_id,
+						 "dt_perf", NULL, "result", 0, NULL);
+	}
 }
 
 int _dt_perf_enable(void *arg, dtrace_id_t id, void *parg)

@@ -77,6 +77,9 @@ void dtrace_hash_destroy(dtrace_hash_t *hash)
 		ASSERT(hash->dth_tab[i] == NULL);
 #endif
 
+	if (hash == NULL)
+		return;
+
 	vfree(hash->dth_tab);
 	kfree(hash);
 }

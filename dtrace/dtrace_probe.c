@@ -41,6 +41,23 @@ static struct idr		dtrace_probe_idr;
 static struct task_struct	*dtrace_panicked;
 
 /*
+ * Free probe structure (including partially filled in ones).
+ */
+void dtrace_probe_free(dtrace_probe_t *probe)
+{
+	if (probe == NULL)
+		return;
+
+	dtrace_probe_remove_id(probe->dtpr_id);
+
+	kfree(probe->dtpr_mod);
+	kfree(probe->dtpr_func);
+	kfree(probe->dtpr_name);
+
+	kmem_cache_free(dtrace_probe_cachep, probe);
+}
+
+/*
  * Create a new probe.
  */
 dtrace_id_t dtrace_probe_create(dtrace_provider_id_t prov, const char *mod,
@@ -51,7 +68,9 @@ dtrace_id_t dtrace_probe_create(dtrace_provider_id_t prov, const char *mod,
 	dtrace_provider_t	*provider = (dtrace_provider_t *)prov;
 	dtrace_id_t		id;
 
-	probe = kmem_cache_alloc(dtrace_probe_cachep, __GFP_NOFAIL);
+	probe = kmem_cache_alloc(dtrace_probe_cachep, GFP_KERNEL);
+	if (probe == NULL)
+		goto err_probe;
 
 	/*
 	 * The idr_preload() should be called without holding locks as it may
@@ -74,9 +93,8 @@ dtrace_id_t dtrace_probe_create(dtrace_provider_id_t prov, const char *mod,
 	idr_preload(GFP_KERNEL);
 	id = idr_alloc_cyclic(&dtrace_probe_idr, probe, 0, 0, GFP_NOWAIT);
 	idr_preload_end();
-	if (id < 0) {
-		/* FIXME: Need to handle failure */
-	}
+	if (id < 0)
+		goto err_probe;
 
 	probe->dtpr_id = id;
 	probe->dtpr_ecb = NULL;
@@ -85,22 +103,44 @@ dtrace_id_t dtrace_probe_create(dtrace_provider_id_t prov, const char *mod,
 	probe->dtpr_predcache = DTRACE_CACHEIDNONE;
 	probe->dtpr_aframes = aframes;
 	probe->dtpr_provider = provider;
-	probe->dtpr_mod = dtrace_strdup(mod);
-	probe->dtpr_func = dtrace_strdup(func);
-	probe->dtpr_name = dtrace_strdup(name);
+
+	if ((probe->dtpr_mod = dtrace_strdup(mod)) == NULL)
+		goto err_probe;
+
+	if ((probe->dtpr_func = dtrace_strdup(func)) == NULL)
+		goto err_probe;
+
+	if ((probe->dtpr_name = dtrace_strdup(name)) == NULL)
+		goto err_probe;
+
 	probe->dtpr_nextmod = probe->dtpr_prevmod = NULL;
 	probe->dtpr_nextfunc = probe->dtpr_prevfunc = NULL;
 	probe->dtpr_nextname = probe->dtpr_prevname = NULL;
 	probe->dtpr_gen = dtrace_probegen++;
 
-	dtrace_hash_add(dtrace_bymod, probe);
-	dtrace_hash_add(dtrace_byfunc, probe);
-	dtrace_hash_add(dtrace_byname, probe);
+	if (dtrace_hash_add(dtrace_bymod, probe) != 0)
+		goto err_probe;
+
+	if (dtrace_hash_add(dtrace_byfunc, probe) != 0)
+		goto err_hash_byfunc;
+
+	if (dtrace_hash_add(dtrace_byname, probe) != 0)
+		goto err_hash_byname;
 
 	if (provider != dtrace_provider)
 		mutex_unlock(&dtrace_lock);
 
 	return id;
+
+err_hash_byname:
+	dtrace_hash_remove(dtrace_byfunc, probe);
+err_hash_byfunc:
+	dtrace_hash_remove(dtrace_bymod, probe);
+err_probe:
+	dtrace_probe_free(probe);
+	if (provider != dtrace_provider)
+		mutex_unlock(&dtrace_lock);
+	return DTRACE_IDNONE;
 }
 EXPORT_SYMBOL(dtrace_probe_create);
 
@@ -1296,9 +1336,6 @@ int dtrace_probe_init(void)
 	 * We create a ID 0 entry as a sentinel, so we can always depend on it
 	 * being the very first entry.  This is used in functionality that runs
 	 * through the list of probes.
-	 *
-	 * We need to drop our locks when calling idr_preload(), so we try to
-	 * get them back right after.
 	 */
 	idr_preload(GFP_KERNEL);
 	id = idr_alloc_cyclic(&dtrace_probe_idr, NULL, 0, 0, GFP_NOWAIT);

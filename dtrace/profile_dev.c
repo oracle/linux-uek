@@ -188,16 +188,13 @@ static void profile_create(ktime_t interval, const char *name, int kind)
 
 	prof = kzalloc(sizeof(profile_probe_t), GFP_KERNEL);
 	if (prof == NULL) {
-		pr_warn("Unable to create probe %s: out-of-memory\n", name);
+		pr_warn("Unable to create probe %s: out of memory\n", name);
 		return;
 	}
 
 	atomic_inc(&profile_total);
-	if (atomic_read(&profile_total) > profile_max) {
-		kfree(prof);
-		atomic_dec(&profile_total);
-		return;
-	}
+	if (atomic_read(&profile_total) > profile_max)
+		goto errout;
 
 	strcpy(prof->prof_name, name);
 	prof->prof_interval = interval;
@@ -205,6 +202,18 @@ static void profile_create(ktime_t interval, const char *name, int kind)
 	prof->prof_kind = kind;
 	prof->prof_id = dtrace_probe_create(profile_id, NULL, NULL, name,
 					    nr_frames, prof);
+
+	if (prof->prof_id == DTRACE_IDNONE) {
+		pr_warn("Unable to create probe %s: out of memory\n", name);
+		goto errout;
+	}
+
+	return;
+
+errout:
+	kfree(prof);
+	atomic_dec(&profile_total);
+	return;
 }
 
 void profile_provide(void *arg, const dtrace_probedesc_t *desc)

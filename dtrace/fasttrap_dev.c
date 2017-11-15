@@ -787,7 +787,7 @@ void fasttrap_meta_create_probe(void *arg, void *parg,
 	mutex_lock(&provider->ftp_cmtx);
 
 	if (dtrace_probe_lookup(provider->ftp_provid, dhpb->dthpb_mod,
-				dhpb->dthpb_func, dhpb->dthpb_name) != 0) {
+				dhpb->dthpb_func, dhpb->dthpb_name) != DTRACE_IDNONE) {
 		mutex_unlock(&provider->ftp_cmtx);
 		return;
 	}
@@ -797,7 +797,7 @@ void fasttrap_meta_create_probe(void *arg, void *parg,
 
 	pp = kzalloc(offsetof(fasttrap_probe_t, ftp_tps[ntps]), GFP_KERNEL);
 	if (pp == NULL) {
-		pr_warn("Unable to create probe %s: out-of-memory\n",
+		pr_warn("Unable to create probe %s: out of memory\n",
 			dhpb->dthpb_name);
 		mutex_unlock(&provider->ftp_cmtx);
 		return;
@@ -881,12 +881,14 @@ void fasttrap_meta_create_probe(void *arg, void *parg,
 	pp->ftp_id = dtrace_probe_create(provider->ftp_provid, dhpb->dthpb_mod,
 					 dhpb->dthpb_func, dhpb->dthpb_name,
 					 FASTTRAP_OFFSET_AFRAMES, pp);
+	if (pp->ftp_id == DTRACE_IDNONE)
+		goto fail;
 
 	mutex_unlock(&provider->ftp_cmtx);
 	return;
 
 fail:
-	pr_warn("Unable to create probe %s: out-of-memory\n",
+	pr_warn("Unable to create probe %s: out of memory\n",
 		dhpb->dthpb_name);
 
 	for (i = 0; i < ntps; i++)

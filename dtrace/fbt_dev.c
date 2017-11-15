@@ -38,13 +38,20 @@ static void *fbt_provide_probe(struct module *mp, char *func, int type, int
 {
 	fbt_probe_t	*fbp;
 	fbt_probe_t	*prev;
+	int		*skipped = arg;
 
 	switch (type) {
 	case FBT_ENTRY:
 		fbp = kzalloc(sizeof(fbt_probe_t), GFP_KERNEL);
 		fbp->fbp_name = kstrdup(func, GFP_KERNEL);
+		if (fbp->fbp_name == NULL)
+			goto err_probe;
+
 		fbp->fbp_id = dtrace_probe_create(fbt_id, mp->name, func,
 						  "entry", FBT_AFRAMES, fbp);
+		if (fbp->fbp_id == DTRACE_IDNONE)
+			goto err_name;
+
 		fbp->fbp_module = mp;
 		fbp->fbp_loadcnt = 1; /* FIXME */
 		fbp->fbp_primary = 1; /* FIXME */
@@ -66,6 +73,8 @@ static void *fbt_provide_probe(struct module *mp, char *func, int type, int
 
 		fbp = kzalloc(sizeof(fbt_probe_t), GFP_KERNEL);
 		fbp->fbp_name = kstrdup(func, GFP_KERNEL);
+		if (fbp->fbp_name == NULL)
+			goto err_probe;
 
 		prev = (fbt_probe_t *)pfbt;
 		if (prev != NULL) {
@@ -75,6 +84,8 @@ static void *fbt_provide_probe(struct module *mp, char *func, int type, int
 			fbp->fbp_id = dtrace_probe_create(fbt_id, mp->name,
 							  func, "return",
 							  FBT_AFRAMES, fbp);
+			if (fbp->fbp_id == DTRACE_IDNONE)
+				goto err_name;
 		}
 
 		fbp->fbp_module = mp;
@@ -96,13 +107,22 @@ static void *fbt_provide_probe(struct module *mp, char *func, int type, int
 
 		return NULL;
 	}
+
+err_name:
+	kfree(fbp->fbp_name);
+err_probe:
+	kfree(fbp);
+	(*skipped)++;
+
+	return NULL;
 }
 
 void fbt_provide_module(void *arg, struct module *mp)
 {
-	struct module_use *use;
+	struct module_use	*use;
+	int			probes_skipped = 0;
 
-	/* When module setup failed do not provide anything. */
+	/* If module setup has failed then do not provide anything. */
 	if (PDATA(mp) == NULL)
 		return;
 
@@ -131,7 +151,12 @@ void fbt_provide_module(void *arg, struct module *mp)
 	if (!fbt_provide_module_arch(arg, mp))
 		return;
 
-	dtrace_fbt_init((fbt_add_probe_fn)fbt_provide_probe, mp, NULL);
+	dtrace_fbt_init((fbt_add_probe_fn)fbt_provide_probe, mp,
+			&probes_skipped);
+
+	if (probes_skipped != 0)
+		pr_warn("fbt: Failed to provide %d probes in %s (out of memory)\n",
+			probes_skipped, mp->name);
 }
 
 int fbt_enable(void *arg, dtrace_id_t id, void *parg)
