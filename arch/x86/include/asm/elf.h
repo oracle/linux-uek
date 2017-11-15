@@ -284,6 +284,8 @@ do {									\
 	}								\
 } while (0)
 
+extern bool mmap_address_hint_valid(unsigned long addr, unsigned long len);
+
 #ifdef CONFIG_X86_32
 
 #define STACK_RND_MASK (0x7ff)
