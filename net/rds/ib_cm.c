@@ -205,7 +205,8 @@ static int rds_ib_setup_qp(struct rds_connection *conn)
 {
 	struct rds_ib_connection *ic = conn->c_transport_data;
 	struct ib_device *dev = ic->i_cm_id->device;
-	struct ib_qp_init_attr attr;
+	struct ib_cq_init_attr cq_attr;
+	struct ib_qp_init_attr qp_attr;
 	struct rds_ib_device *rds_ibdev;
 	int ret;
 
@@ -231,9 +232,11 @@ static int rds_ib_setup_qp(struct rds_connection *conn)
 	ic->i_pd = rds_ibdev->pd;
 	ic->i_mr = rds_ibdev->mr;
 
+	memset(&cq_attr, 0, sizeof(cq_attr));
+	cq_attr.cqe = ic->i_send_ring.w_nr + 1;
 	ic->i_send_cq = ib_create_cq(dev, rds_ib_send_cq_comp_handler,
 				     rds_ib_cq_event_handler, conn,
-				     ic->i_send_ring.w_nr + 1, 0);
+				     &cq_attr);
 	if (IS_ERR(ic->i_send_cq)) {
 		ret = PTR_ERR(ic->i_send_cq);
 		ic->i_send_cq = NULL;
@@ -241,9 +244,11 @@ static int rds_ib_setup_qp(struct rds_connection *conn)
 		goto out;
 	}
 
+	memset(&cq_attr, 0, sizeof(cq_attr));
+	cq_attr.cqe = ic->i_recv_ring.w_nr;
 	ic->i_recv_cq = ib_create_cq(dev, rds_ib_recv_cq_comp_handler,
 				     rds_ib_cq_event_handler, conn,
-				     ic->i_recv_ring.w_nr, 0);
+				     &cq_attr);
 	if (IS_ERR(ic->i_recv_cq)) {
 		ret = PTR_ERR(ic->i_recv_cq);
 		ic->i_recv_cq = NULL;
@@ -264,24 +269,24 @@ static int rds_ib_setup_qp(struct rds_connection *conn)
 	}
 
 	/* XXX negotiate max send/recv with remote? */
-	memset(&attr, 0, sizeof(attr));
-	attr.event_handler = rds_ib_qp_event_handler;
-	attr.qp_context = conn;
+	memset(&qp_attr, 0, sizeof(qp_attr));
+	qp_attr.event_handler = rds_ib_qp_event_handler;
+	qp_attr.qp_context = conn;
 	/* + 1 to allow for the single ack message */
-	attr.cap.max_send_wr = ic->i_send_ring.w_nr + 1;
-	attr.cap.max_recv_wr = ic->i_recv_ring.w_nr + 1;
-	attr.cap.max_send_sge = rds_ibdev->max_sge;
-	attr.cap.max_recv_sge = RDS_IB_RECV_SGE;
-	attr.sq_sig_type = IB_SIGNAL_REQ_WR;
-	attr.qp_type = IB_QPT_RC;
-	attr.send_cq = ic->i_send_cq;
-	attr.recv_cq = ic->i_recv_cq;
+	qp_attr.cap.max_send_wr = ic->i_send_ring.w_nr + 1;
+	qp_attr.cap.max_recv_wr = ic->i_recv_ring.w_nr + 1;
+	qp_attr.cap.max_send_sge = rds_ibdev->max_sge;
+	qp_attr.cap.max_recv_sge = RDS_IB_RECV_SGE;
+	qp_attr.sq_sig_type = IB_SIGNAL_REQ_WR;
+	qp_attr.qp_type = IB_QPT_RC;
+	qp_attr.send_cq = ic->i_send_cq;
+	qp_attr.recv_cq = ic->i_recv_cq;
 
 	/*
 	 * XXX this can fail if max_*_wr is too large?  Are we supposed
 	 * to back off until we get a value that the hardware can support?
 	 */
-	ret = rdma_create_qp(ic->i_cm_id, ic->i_pd, &attr);
+	ret = rdma_create_qp(ic->i_cm_id, ic->i_pd, &qp_attr);
 	if (ret) {
 		rdsdebug("rdma_create_qp failed: %d\n", ret);
 		goto out;
@@ -516,8 +521,9 @@ int rds_ib_conn_connect(struct rds_connection *conn)
 
 	/* XXX I wonder what affect the port space has */
 	/* delegate cm event handler to rdma_transport */
-	ic->i_cm_id = rdma_create_id(rds_rdma_cm_event_handler, conn,
-				     RDMA_PS_TCP);
+	ic->i_cm_id = rdma_create_id(&init_net,
+				     rds_rdma_cm_event_handler, conn,
+				     RDMA_PS_TCP, IB_QPT_RC);
 	if (IS_ERR(ic->i_cm_id)) {
 		ret = PTR_ERR(ic->i_cm_id);
 		ic->i_cm_id = NULL;
