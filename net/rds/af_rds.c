@@ -159,7 +159,7 @@ static unsigned int rds_poll(struct file *file, struct socket *sock,
 	unsigned int mask = 0;
 	unsigned long flags;
 
-	poll_wait(file, sk->sk_sleep, wait);
+	poll_wait(file, sk_sleep(sk), wait);
 
 	poll_wait(file, &rds_poll_waitq, wait);
 
@@ -250,7 +250,7 @@ static int rds_cong_monitor(struct rds_sock *rs, char __user *optval,
 }
 
 static int rds_setsockopt(struct socket *sock, int level, int optname,
-			  char __user *optval, int optlen)
+			  char __user *optval, unsigned int optlen)
 {
 	struct rds_sock *rs = rds_sk_to_rs(sock->sk);
 	int ret;
@@ -409,14 +409,14 @@ static int __rds_create(struct socket *sock, struct sock *sk, int protocol)
 	return 0;
 }
 
-static int rds_create(struct net *net, struct socket *sock, int protocol)
+static int rds_create(struct net *net, struct socket *sock, int protocol, int kern)
 {
 	struct sock *sk;
 
 	if (sock->type != SOCK_SEQPACKET || protocol)
 		return -ESOCKTNOSUPPORT;
 
-	sk = sk_alloc(net, AF_RDS, GFP_ATOMIC, &rds_proto);
+	sk = sk_alloc(net, AF_RDS, GFP_ATOMIC, &rds_proto, kern);
 	if (!sk)
 		return -ENOMEM;
 
