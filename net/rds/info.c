@@ -100,7 +100,7 @@ void rds_info_deregister_func(int optname, rds_info_func func)
 void rds_info_iter_unmap(struct rds_info_iterator *iter)
 {
 	if (iter->addr != NULL) {
-		kunmap_atomic(iter->addr, KM_USER0);
+		kunmap_atomic(iter->addr);
 		iter->addr = NULL;
 	}
 }
@@ -115,7 +115,7 @@ void rds_info_copy(struct rds_info_iterator *iter, void *data,
 
 	while (bytes) {
 		if (iter->addr == NULL)
-			iter->addr = kmap_atomic(*iter->pages, KM_USER0);
+			iter->addr = kmap_atomic(*iter->pages);
 
 		this = min(bytes, PAGE_SIZE - iter->offset);
 
@@ -130,7 +130,7 @@ void rds_info_copy(struct rds_info_iterator *iter, void *data,
 		iter->offset += this;
 
 		if (iter->offset == PAGE_SIZE) {
-			kunmap_atomic(iter->addr, KM_USER0);
+			kunmap_atomic(iter->addr);
 			iter->addr = NULL;
 			iter->offset = 0;
 			iter->pages++;
@@ -189,7 +189,7 @@ int rds_info_getsockopt(struct socket *sock, int optname, char __user *optval,
 		goto out;
 	}
 	down_read(&current->mm->mmap_sem);
-	ret = get_user_pages(current, current->mm, start, nr_pages, 1, 0,
+	ret = get_user_pages(start, nr_pages, FOLL_WRITE,
 			     pages, NULL);
 	up_read(&current->mm->mmap_sem);
 	if (ret != nr_pages) {

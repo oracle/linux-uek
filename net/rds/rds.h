@@ -330,8 +330,7 @@ struct rds_transport {
 			     struct rds_cong_map *map, unsigned long offset);
 	int (*xmit_rdma)(struct rds_connection *conn, struct rds_rdma_op *op);
 	int (*recv)(struct rds_connection *conn);
-	int (*inc_copy_to_user)(struct rds_incoming *inc, struct iovec *iov,
-				size_t size);
+	int (*inc_copy_to_user)(struct rds_incoming *inc, struct iov_iter *to);
 	void (*inc_purge)(struct rds_incoming *inc);
 	void (*inc_free)(struct rds_incoming *inc);
 
@@ -484,7 +483,7 @@ void rds_sock_put(struct rds_sock *rs);
 void rds_wake_sk_sleep(struct rds_sock *rs);
 static inline void __rds_wake_sk_sleep(struct sock *sk)
 {
-	wait_queue_head_t *waitq = sk->sk_sleep;
+	wait_queue_head_t *waitq = sk_sleep(sk);
 
 	if (!sock_flag(sk, SOCK_DEAD) && waitq)
 		wake_up(waitq);
@@ -558,8 +557,7 @@ rds_conn_connecting(struct rds_connection *conn)
 
 /* message.c */
 struct rds_message *rds_message_alloc(unsigned int nents, gfp_t gfp);
-struct rds_message *rds_message_copy_from_user(struct iovec *first_iov,
-					       size_t total_len);
+struct rds_message *rds_message_copy_from_user(struct iov_iter *from);
 struct rds_message *rds_message_map_pages(unsigned long *page_addrs, unsigned int total_len);
 void rds_message_populate_header(struct rds_header *hdr, __be16 sport,
 				 __be16 dport, u64 seq);
@@ -570,8 +568,7 @@ int rds_message_next_extension(struct rds_header *hdr,
 int rds_message_add_version_extension(struct rds_header *hdr, unsigned int version);
 int rds_message_get_version_extension(struct rds_header *hdr, unsigned int *version);
 int rds_message_add_rdma_dest_extension(struct rds_header *hdr, u32 r_key, u32 offset);
-int rds_message_inc_copy_to_user(struct rds_incoming *inc,
-				 struct iovec *first_iov, size_t size);
+int rds_message_inc_copy_to_user(struct rds_incoming *inc, struct iov_iter *to);
 void rds_message_inc_purge(struct rds_incoming *inc);
 void rds_message_inc_free(struct rds_incoming *inc);
 void rds_message_addref(struct rds_message *rm);
@@ -609,8 +606,8 @@ void rds_inc_init(struct rds_incoming *inc, struct rds_connection *conn,
 void rds_inc_addref(struct rds_incoming *inc);
 void rds_inc_put(struct rds_incoming *inc);
 void rds_recv_incoming(struct rds_connection *conn, __be32 saddr, __be32 daddr,
-		       struct rds_incoming *inc, gfp_t gfp, enum km_type km);
-int rds_recvmsg(struct kiocb *iocb, struct socket *sock, struct msghdr *msg,
+		       struct rds_incoming *inc, gfp_t gfp);
+int rds_recvmsg(struct socket *sock, struct msghdr *msg,
 		size_t size, int msg_flags);
 void rds_clear_recv_queue(struct rds_sock *rs);
 int rds_notify_queue_get(struct rds_sock *rs, struct msghdr *msg);
@@ -619,8 +616,7 @@ void rds_inc_info_copy(struct rds_incoming *inc,
 		       __be32 saddr, __be32 daddr, int flip);
 
 /* send.c */
-int rds_sendmsg(struct kiocb *iocb, struct socket *sock, struct msghdr *msg,
-		size_t payload_len);
+int rds_sendmsg(struct socket *sock, struct msghdr *msg, size_t payload_len);
 void rds_send_reset(struct rds_connection *conn);
 int rds_send_xmit(struct rds_connection *conn);
 struct sockaddr_in;
