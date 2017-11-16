@@ -91,7 +91,7 @@ void rds_ib_add_one(struct ib_device *device)
 			fmr_pool_size;
 
 	rds_ibdev->dev = device;
-	rds_ibdev->pd = ib_alloc_pd(device);
+	rds_ibdev->pd = ib_alloc_pd(device, 0);
 	if (IS_ERR(rds_ibdev->pd))
 		goto free_dev;
 
@@ -124,7 +124,7 @@ free_attr:
 	kfree(dev_attr);
 }
 
-void rds_ib_remove_one(struct ib_device *device)
+void rds_ib_remove_one(struct ib_device *device, void *client_data)
 {
 	struct rds_ib_device *rds_ibdev;
 	struct rds_ib_ipaddr *i_ipaddr, *i_next;
@@ -145,10 +145,7 @@ void rds_ib_remove_one(struct ib_device *device)
 
 	ib_dereg_mr(rds_ibdev->mr);
 
-	while (ib_dealloc_pd(rds_ibdev->pd)) {
-		rdsdebug("Failed to dealloc pd %p\n", rds_ibdev->pd);
-		msleep(1);
-	}
+	ib_dealloc_pd(rds_ibdev->pd);
 
 	list_del(&rds_ibdev->list);
 	kfree(rds_ibdev);
@@ -182,8 +179,8 @@ static int rds_ib_conn_info_visitor(struct rds_connection *conn,
 		ic = conn->c_transport_data;
 		dev_addr = &ic->i_cm_id->route.addr.dev_addr;
 
-		ib_addr_get_sgid(dev_addr, (union ib_gid *) &iinfo->src_gid);
-		ib_addr_get_dgid(dev_addr, (union ib_gid *) &iinfo->dst_gid);
+		rdma_addr_get_sgid(dev_addr, (union ib_gid *) &iinfo->src_gid);
+		rdma_addr_get_dgid(dev_addr, (union ib_gid *) &iinfo->dst_gid);
 
 		rds_ibdev = ib_get_client_data(ic->i_cm_id->device, &rds_ib_client);
 		iinfo->max_send_wr = ic->i_send_ring.w_nr;
@@ -223,7 +220,7 @@ static int rds_ib_laddr_check(__be32 addr)
 	/* Create a CMA ID and try to bind it. This catches both
 	 * IB and iWARP capable NICs.
 	 */
-	cm_id = rdma_create_id(NULL, NULL, RDMA_PS_TCP);
+	cm_id = rdma_create_id(&init_net, NULL, NULL, RDMA_PS_TCP, IB_QPT_RC);
 	if (!cm_id)
 		return -EADDRNOTAVAIL;
 
