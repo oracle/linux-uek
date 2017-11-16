@@ -34,23 +34,18 @@
 
 #include "rdma_transport.h"
 
-static struct rdma_cm_id *rds_iw_listen_id;
+static struct rdma_cm_id *rds_listen_id;
 
 int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 			      struct rdma_cm_event *event)
 {
 	/* this can be null in the listening path */
 	struct rds_connection *conn = cm_id->context;
-	struct rds_transport *trans;
+	struct rds_transport *trans = &rds_ib_transport;
 	int ret = 0;
 
 	rdsdebug("conn %p id %p handling event %u\n", conn, cm_id,
 		 event->event);
-
-	if (cm_id->device->node_type == RDMA_NODE_RNIC)
-		trans = &rds_iw_transport;
-	else
-		trans = &rds_ib_transport;
 
 	/* Prevent shutdown from tearing down the connection
 	 * while we're executing. */
@@ -101,7 +96,7 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 		break;
 
 	case RDMA_CM_EVENT_DISCONNECTED:
-		printk(KERN_WARNING "RDS/IW: DISCONNECT event - dropping connection "
+		printk(KERN_WARNING "RDS: DISCONNECT event - dropping connection "
 			"%pI4->%pI4\n", &conn->c_laddr,
 			 &conn->c_faddr);
 		rds_conn_drop(conn);
@@ -129,10 +124,11 @@ static int __init rds_rdma_listen_init(void)
 	struct rdma_cm_id *cm_id;
 	int ret;
 
-	cm_id = rdma_create_id(rds_rdma_cm_event_handler, NULL, RDMA_PS_TCP);
+	cm_id = rdma_create_id(&init_net, rds_rdma_cm_event_handler, NULL, RDMA_PS_TCP,
+			       IB_QPT_RC);
 	if (IS_ERR(cm_id)) {
 		ret = PTR_ERR(cm_id);
-		printk(KERN_ERR "RDS/IW: failed to setup listener, "
+		printk(KERN_ERR "RDS: failed to setup listener, "
 		       "rdma_create_id() returned %d\n", ret);
 		goto out;
 	}
@@ -147,21 +143,21 @@ static int __init rds_rdma_listen_init(void)
 	 */
 	ret = rdma_bind_addr(cm_id, (struct sockaddr *)&sin);
 	if (ret) {
-		printk(KERN_ERR "RDS/IW: failed to setup listener, "
+		printk(KERN_ERR "RDS: failed to setup listener, "
 		       "rdma_bind_addr() returned %d\n", ret);
 		goto out;
 	}
 
 	ret = rdma_listen(cm_id, 128);
 	if (ret) {
-		printk(KERN_ERR "RDS/IW: failed to setup listener, "
+		printk(KERN_ERR "RDS: failed to setup listener, "
 		       "rdma_listen() returned %d\n", ret);
 		goto out;
 	}
 
 	rdsdebug("cm %p listening on port %u\n", cm_id, RDS_PORT);
 
-	rds_iw_listen_id = cm_id;
+	rds_listen_id = cm_id;
 	cm_id = NULL;
 out:
 	if (cm_id)
@@ -171,10 +167,10 @@ out:
 
 static void rds_rdma_listen_stop(void)
 {
-	if (rds_iw_listen_id) {
-		rdsdebug("cm %p\n", rds_iw_listen_id);
-		rdma_destroy_id(rds_iw_listen_id);
-		rds_iw_listen_id = NULL;
+	if (rds_listen_id) {
+		rdsdebug("cm %p\n", rds_listen_id);
+		rdma_destroy_id(rds_listen_id);
+		rds_listen_id = NULL;
 	}
 }
 
@@ -186,10 +182,6 @@ int __init rds_rdma_init(void)
 	if (ret)
 		goto out;
 
-	ret = rds_iw_init();
-	if (ret)
-		goto err_iw_init;
-
 	ret = rds_ib_init();
 	if (ret)
 		goto err_ib_init;
@@ -197,8 +189,6 @@ int __init rds_rdma_init(void)
 	goto out;
 
 err_ib_init:
-	rds_iw_exit();
-err_iw_init:
 	rds_rdma_listen_stop();
 out:
 	return ret;
@@ -209,6 +199,5 @@ void rds_rdma_exit(void)
 	/* stop listening first to ensure no new connections are attempted */
 	rds_rdma_listen_stop();
 	rds_ib_exit();
-	rds_iw_exit();
 }
 
