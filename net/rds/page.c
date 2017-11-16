@@ -31,6 +31,7 @@
  *
  */
 #include <linux/highmem.h>
+#include <linux/cpu.h>
 
 #include "rds.h"
 
@@ -61,12 +62,12 @@ int rds_page_copy_user(struct page *page, unsigned long offset,
 	else
 		rds_stats_add(s_copy_from_user, bytes);
 
-	addr = kmap_atomic(page, KM_USER0);
+	addr = kmap_atomic(page);
 	if (to_user)
 		ret = __copy_to_user_inatomic(ptr, addr + offset, bytes);
 	else
 		ret = __copy_from_user_inatomic(addr + offset, ptr, bytes);
-	kunmap_atomic(addr, KM_USER0);
+	kunmap_atomic(addr);
 
 	if (ret) {
 		addr = kmap(page);
