@@ -463,7 +463,7 @@ Requires(pre): %{initrd_prereq}\
 %if "x%{?-r}" == "x"\
 Requires(pre): kernel-uek-base = %{rpmversion}-%{pkg_release}\
 %endif\
-Requires(pre): linux-firmware%{?-r:-base} >= 20171027-56.gitbf042913.0.2\
+Requires(pre): linux-firmware >= 20170803-56.git7d2c913d.0.1\
 Requires(post): %{_sbindir}/new-kernel-pkg\
 Requires(preun): %{_sbindir}/new-kernel-pkg\
 Conflicts: %{kernel_dot_org_conflicts}\
