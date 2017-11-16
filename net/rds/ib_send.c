@@ -795,8 +795,8 @@ int rds_ib_xmit_rdma(struct rds_connection *conn, struct rds_rdma_op *op)
 		}
 
 		send->s_wr.opcode = op->r_write ? IB_WR_RDMA_WRITE : IB_WR_RDMA_READ;
-		send->s_wr.wr.rdma.remote_addr = remote_addr;
-		send->s_wr.wr.rdma.rkey = op->r_key;
+		send->s_rdma_wr.remote_addr = remote_addr;
+		send->s_rdma_wr.rkey = op->r_key;
 		send->s_op = op;
 
 		if (num_sge > rds_ibdev->max_sge) {

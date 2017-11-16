@@ -50,10 +50,16 @@ static struct kmem_cache *rds_conn_slab;
 
 static struct hlist_head *rds_conn_bucket(__be32 laddr, __be32 faddr)
 {
+	static u32 rds_hash_secret __read_mostly;
+
+	unsigned long hash;
+
+	net_get_random_once(&rds_hash_secret, sizeof(rds_hash_secret));
+
 	/* Pass NULL, don't need struct net for hash */
-	unsigned long hash = inet_ehashfn(NULL,
-					  be32_to_cpu(laddr), 0,
-					  be32_to_cpu(faddr), 0);
+	hash = __inet_ehashfn(be32_to_cpu(laddr), 0,
+			be32_to_cpu(faddr), 0,
+			rds_hash_secret);
 	return &rds_conn_hash[hash & RDS_CONNECTION_HASH_MASK];
 }
 
@@ -79,9 +85,8 @@ static struct rds_connection *rds_conn_lookup(struct hlist_head *head,
 					      struct rds_transport *trans)
 {
 	struct rds_connection *conn, *ret = NULL;
-	struct hlist_node *pos;
 
-	hlist_for_each_entry(conn, pos, head, c_hash_node) {
+	hlist_for_each_entry_rcu(conn, head, c_hash_node) {
 		if (conn->c_faddr == faddr && conn->c_laddr == laddr &&
 				conn->c_trans == trans) {
 			ret = conn;
@@ -299,7 +304,6 @@ static void rds_conn_message_info(struct socket *sock, unsigned int len,
 				  int want_send)
 {
 	struct hlist_head *head;
-	struct hlist_node *pos;
 	struct list_head *list;
 	struct rds_connection *conn;
 	struct rds_message *rm;
@@ -313,7 +317,7 @@ static void rds_conn_message_info(struct socket *sock, unsigned int len,
 
 	for (i = 0, head = rds_conn_hash; i < ARRAY_SIZE(rds_conn_hash);
 	     i++, head++) {
-		hlist_for_each_entry(conn, pos, head, c_hash_node) {
+		hlist_for_each_entry_rcu(conn, head, c_hash_node) {
 			if (want_send)
 				list = &conn->c_send_queue;
 			else
@@ -363,8 +367,6 @@ void rds_for_each_conn_info(struct socket *sock, unsigned int len,
 {
 	uint64_t buffer[(item_len + 7) / 8];
 	struct hlist_head *head;
-	struct hlist_node *pos;
-	struct hlist_node *tmp;
 	struct rds_connection *conn;
 	unsigned long flags;
 	size_t i;
@@ -376,7 +378,7 @@ void rds_for_each_conn_info(struct socket *sock, unsigned int len,
 
 	for (i = 0, head = rds_conn_hash; i < ARRAY_SIZE(rds_conn_hash);
 	     i++, head++) {
-		hlist_for_each_entry_safe(conn, pos, tmp, head, c_hash_node) {
+		hlist_for_each_entry_rcu(conn, head, c_hash_node) {
 
 			/* XXX no c_lock usage.. */
 			if (!visitor(conn, buffer))

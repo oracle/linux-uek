@@ -152,7 +152,7 @@ static void rds_recv_incoming_exthdrs(struct rds_incoming *inc, struct rds_sock 
  * tell us which roles the addrs in the conn are playing for this message.
  */
 void rds_recv_incoming(struct rds_connection *conn, __be32 saddr, __be32 daddr,
-		       struct rds_incoming *inc, gfp_t gfp, enum km_type km)
+		       struct rds_incoming *inc, gfp_t gfp)
 {
 	struct rds_sock *rs = NULL;
 	struct sock *sk;
@@ -391,7 +391,7 @@ static int rds_cmsg_recv(struct rds_incoming *inc, struct msghdr *msg)
 	return 0;
 }
 
-int rds_recvmsg(struct kiocb *iocb, struct socket *sock, struct msghdr *msg,
+int rds_recvmsg(struct socket *sock, struct msghdr *msg,
 		size_t size, int msg_flags)
 {
 	struct sock *sk = sock->sk;
@@ -421,13 +421,14 @@ int rds_recvmsg(struct kiocb *iocb, struct socket *sock, struct msghdr *msg,
 	}
 
 	while (1) {
+		struct iov_iter save;
 		if (!rds_next_incoming(rs, &inc)) {
 			if (nonblock) {
 				ret = -EAGAIN;
 				break;
 			}
 
-			timeo = wait_event_interruptible_timeout(*sk->sk_sleep,
+			timeo = wait_event_interruptible_timeout(*sk_sleep(sk),
 						rds_next_incoming(rs, &inc),
 						timeo);
 			rdsdebug("recvmsg woke inc %p timeo %ld\n", inc,
@@ -444,8 +445,8 @@ int rds_recvmsg(struct kiocb *iocb, struct socket *sock, struct msghdr *msg,
 		rdsdebug("copying inc %p from %pI4:%u to user\n", inc,
 			 &inc->i_conn->c_faddr,
 			 ntohs(inc->i_hdr.h_sport));
-		ret = inc->i_conn->c_trans->inc_copy_to_user(inc, msg->msg_iov,
-							     size);
+		save = msg->msg_iter;
+		ret = inc->i_conn->c_trans->inc_copy_to_user(inc, &msg->msg_iter);
 		if (ret < 0)
 			break;
 
@@ -458,6 +459,7 @@ int rds_recvmsg(struct kiocb *iocb, struct socket *sock, struct msghdr *msg,
 			rds_inc_put(inc);
 			inc = NULL;
 			rds_stats_inc(s_recv_deliver_raced);
+			msg->msg_iter = save;
 			continue;
 		}
 
