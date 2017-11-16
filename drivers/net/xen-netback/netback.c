@@ -60,7 +60,7 @@ module_param(separate_tx_rx_irq, bool, 0644);
  * this might improve performance on cases where frontend is a
  * copybreak interface or is fully recycling pages.
  */
-bool skip_guestrx_thread;
+bool skip_guestrx_thread = true;
 module_param(skip_guestrx_thread, bool, 0644);
 
 /* The time that packets can stay on the guest Rx internal queue
