@@ -603,7 +603,7 @@ void rds_send_drop_acked(struct rds_connection *conn, u64 ack,
 
 	/* order flag updates with spin locks */
 	if (!list_empty(&list))
-		smp_mb__after_clear_bit();
+		smp_mb__after_atomic();
 
 	spin_unlock_irqrestore(&conn->c_lock, flags);
 
@@ -638,7 +638,7 @@ void rds_send_drop_to(struct rds_sock *rs, struct sockaddr_in *dest)
 
 	/* order flag updates with the rs lock */
 	if (wake)
-		smp_mb__after_clear_bit();
+		smp_mb__after_atomic();
 
 	spin_unlock_irqrestore(&rs->rs_lock, flags);
 
@@ -800,8 +800,7 @@ static int rds_cmsg_send(struct rds_sock *rs, struct rds_message *rm,
 	return ret;
 }
 
-int rds_sendmsg(struct kiocb *iocb, struct socket *sock, struct msghdr *msg,
-		size_t payload_len)
+int rds_sendmsg(struct socket *sock, struct msghdr *msg, size_t payload_len)
 {
 	struct sock *sk = sock->sk;
 	struct rds_sock *rs = rds_sk_to_rs(sk);
@@ -845,7 +844,7 @@ int rds_sendmsg(struct kiocb *iocb, struct socket *sock, struct msghdr *msg,
 		goto out;
 	}
 
-	rm = rds_message_copy_from_user(msg->msg_iov, payload_len);
+	rm = rds_message_copy_from_user(&msg->msg_iter);
 	if (IS_ERR(rm)) {
 		ret = PTR_ERR(rm);
 		rm = NULL;
@@ -908,7 +907,7 @@ int rds_sendmsg(struct kiocb *iocb, struct socket *sock, struct msghdr *msg,
 			goto out;
 		}
 
-		timeo = wait_event_interruptible_timeout(*sk->sk_sleep,
+		timeo = wait_event_interruptible_timeout(*sk_sleep(sk),
 					rds_send_queue_rm(rs, conn, rm,
 							  rs->rs_bound_port,
 							  dport,
