@@ -53,7 +53,11 @@ struct rds_ib_connect_private {
 struct rds_ib_send_work {
 	struct rds_message	*s_rm;
 	struct rds_rdma_op	*s_op;
-	struct ib_send_wr	s_wr;
+	union {
+		struct ib_send_wr	s_wr;
+		struct ib_rdma_wr	s_rdma_wr;
+		struct ib_atomic_wr	s_atomic_wr;
+	};
 	struct ib_sge		s_sge[RDS_IB_MAX_SGE];
 	unsigned long		s_queued;
 };
@@ -242,7 +246,7 @@ static inline void rds_ib_dma_sync_sg_for_device(struct ib_device *dev,
 /* ib.c */
 extern struct rds_transport rds_ib_transport;
 extern void rds_ib_add_one(struct ib_device *device);
-extern void rds_ib_remove_one(struct ib_device *device);
+extern void rds_ib_remove_one(struct ib_device *device, void *client_data);
 extern struct ib_client rds_ib_client;
 
 extern unsigned int fmr_pool_size;
@@ -300,8 +304,7 @@ int rds_ib_recv_refill(struct rds_connection *conn, gfp_t kptr_gfp,
 		       gfp_t page_gfp, int prefill);
 void rds_ib_inc_purge(struct rds_incoming *inc);
 void rds_ib_inc_free(struct rds_incoming *inc);
-int rds_ib_inc_copy_to_user(struct rds_incoming *inc, struct iovec *iov,
-			     size_t size);
+int rds_ib_inc_copy_to_user(struct rds_incoming *inc, struct iov_iter *to);
 void rds_ib_recv_cq_comp_handler(struct ib_cq *cq, void *context);
 void rds_ib_recv_init_ring(struct rds_ib_connection *ic);
 void rds_ib_recv_clear_ring(struct rds_ib_connection *ic);
@@ -350,7 +353,7 @@ extern unsigned long rds_ib_sysctl_max_unsig_wrs;
 extern unsigned long rds_ib_sysctl_max_unsig_bytes;
 extern unsigned long rds_ib_sysctl_max_recv_allocation;
 extern unsigned int rds_ib_sysctl_flow_control;
-extern ctl_table rds_ib_sysctl_table[];
+extern struct ctl_table rds_ib_sysctl_table[];
 
 /*
  * Helper functions for getting/setting the header and data SGEs in
