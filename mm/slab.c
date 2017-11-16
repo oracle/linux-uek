@@ -251,8 +251,8 @@ static void kmem_cache_node_init(struct kmem_cache_node *parent)
 	MAKE_LIST((cachep), (&(ptr)->slabs_free), slabs_free, nodeid);	\
 	} while (0)
 
-#define CFLGS_OBJFREELIST_SLAB	(0x40000000UL)
-#define CFLGS_OFF_SLAB		(0x80000000UL)
+#define CFLGS_OBJFREELIST_SLAB	((slab_flags_t __force)0x40000000UL)
+#define CFLGS_OFF_SLAB		((slab_flags_t __force)0x80000000UL)
 #define	OBJFREELIST_SLAB(x)	((x)->flags & CFLGS_OBJFREELIST_SLAB)
 #define	OFF_SLAB(x)	((x)->flags & CFLGS_OFF_SLAB)
 
@@ -440,7 +440,7 @@ static inline struct array_cache *cpu_cache_get(struct kmem_cache *cachep)
  * Calculate the number of objects and left-over bytes for a given buffer size.
  */
 static unsigned int cache_estimate(unsigned long gfporder, size_t buffer_size,
-		unsigned long flags, size_t *left_over)
+		slab_flags_t flags, size_t *left_over)
 {
 	unsigned int num;
 	size_t slab_size = PAGE_SIZE << gfporder;
@@ -1749,7 +1749,7 @@ static void slabs_destroy(struct kmem_cache *cachep, struct list_head *list)
  * towards high-order requests, this should be changed.
  */
 static size_t calculate_slab_order(struct kmem_cache *cachep,
-				size_t size, unsigned long flags)
+				size_t size, slab_flags_t flags)
 {
 	size_t left_over = 0;
 	int gfporder;
@@ -1876,8 +1876,8 @@ static int __ref setup_cpu_cache(struct kmem_cache *cachep, gfp_t gfp)
 	return 0;
 }
 
-unsigned long kmem_cache_flags(unsigned long object_size,
-	unsigned long flags, const char *name,
+slab_flags_t kmem_cache_flags(unsigned long object_size,
+	slab_flags_t flags, const char *name,
 	void (*ctor)(void *))
 {
 	return flags;
@@ -1885,7 +1885,7 @@ unsigned long kmem_cache_flags(unsigned long object_size,
 
 struct kmem_cache *
 __kmem_cache_alias(const char *name, size_t size, size_t align,
-		   unsigned long flags, void (*ctor)(void *))
+		   slab_flags_t flags, void (*ctor)(void *))
 {
 	struct kmem_cache *cachep;
 
@@ -1903,7 +1903,7 @@ __kmem_cache_alias(const char *name, size_t size, size_t align,
 }
 
 static bool set_objfreelist_slab_cache(struct kmem_cache *cachep,
-			size_t size, unsigned long flags)
+			size_t size, slab_flags_t flags)
 {
 	size_t left;
 
@@ -1926,7 +1926,7 @@ static bool set_objfreelist_slab_cache(struct kmem_cache *cachep,
 }
 
 static bool set_off_slab_cache(struct kmem_cache *cachep,
-			size_t size, unsigned long flags)
+			size_t size, slab_flags_t flags)
 {
 	size_t left;
 
@@ -1960,7 +1960,7 @@ static bool set_off_slab_cache(struct kmem_cache *cachep,
 }
 
 static bool set_on_slab_cache(struct kmem_cache *cachep,
-			size_t size, unsigned long flags)
+			size_t size, slab_flags_t flags)
 {
 	size_t left;
 
@@ -1996,8 +1996,7 @@ static bool set_on_slab_cache(struct kmem_cache *cachep,
  * cacheline.  This can be beneficial if you're counting cycles as closely
  * as davem.
  */
-int
-__kmem_cache_create (struct kmem_cache *cachep, unsigned long flags)
+int __kmem_cache_create(struct kmem_cache *cachep, slab_flags_t flags)
 {
 	size_t ralign = BYTES_PER_WORD;
 	gfp_t gfp;
