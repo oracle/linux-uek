@@ -486,7 +486,7 @@ extern void exit_swap_address_space(unsigned int type);
 #define free_page_and_swap_cache(page) \
 	put_page(page)
 #define free_pages_and_swap_cache(pages, nr) \
-	release_pages((pages), (nr), false);
+	release_pages((pages), (nr));
 
 static inline void show_swap_cache_info(void)
 {
