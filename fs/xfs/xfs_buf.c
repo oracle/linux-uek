@@ -58,13 +58,13 @@ static kmem_zone_t *xfs_buf_zone;
 #define xb_to_gfp(flags) \
 	((((flags) & XBF_READ_AHEAD) ? __GFP_NORETRY : GFP_NOFS) | __GFP_NOWARN)
 
-#define	DTRACE_IO_XFS_WAIT(name, bp)					\
+#define	DTRACE_IO_XFS_WAIT(name, bp, is_write)				\
 	if (DTRACE_IO_ENABLED(name)) {					\
 		struct bio bio __maybe_unused = {			\
 			.bi_iter.bi_sector = (bp)->b_bn,		\
 			.bi_iter.bi_size = (bp)->b_length,		\
-			.bi_opf = ((bp)->b_flags & XBF_WRITE) ?		\
-			REQ_OP_WRITE : REQ_OP_READ,			\
+			.bi_opf = is_write ?				\
+				REQ_OP_WRITE : REQ_OP_READ,		\
 			.bi_disk = (bp)->b_target->bt_bdev->bd_disk,	\
 			.bi_partno = (bp)->b_target->bt_bdev->bd_partno,\
 		};							\
@@ -1498,6 +1498,7 @@ xfs_buf_submit_wait(
 	struct xfs_buf	*bp)
 {
 	int		error;
+	bool		is_write = bp->b_flags & XBF_WRITE;
 
 	trace_xfs_buf_submit_wait(bp, _RET_IP_);
 
@@ -1541,9 +1542,9 @@ xfs_buf_submit_wait(
 
 	/* wait for completion before gathering the error from the buffer */
 	trace_xfs_buf_iowait(bp, _RET_IP_);
-	DTRACE_IO_XFS_WAIT(wait__start, bp);
+	DTRACE_IO_XFS_WAIT(wait__start, bp, is_write);
 	wait_for_completion(&bp->b_iowait);
-	DTRACE_IO_XFS_WAIT(wait__done, bp);
+	DTRACE_IO_XFS_WAIT(wait__done, bp, is_write);
 	trace_xfs_buf_iowait_done(bp, _RET_IP_);
 	error = bp->b_error;
 
