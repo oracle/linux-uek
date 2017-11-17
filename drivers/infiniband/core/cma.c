@@ -2571,6 +2571,7 @@ static int cma_resolve_iboe_route(struct rdma_id_private *id_priv)
 	struct cma_work *work;
 	int ret;
 	struct net_device *ndev = NULL;
+	unsigned long supported_gids;
 	enum ib_gid_type gid_type = IB_GID_TYPE_IB;
 	u8 default_roce_tos = id_priv->cma_dev->default_roce_tos[id_priv->id.port_num -
 					rdma_start_port(id_priv->cma_dev->device)];
@@ -2596,30 +2597,25 @@ static int cma_resolve_iboe_route(struct rdma_id_private *id_priv)
 
 	route->num_paths = 1;
 
-	if (addr->dev_addr.bound_dev_if) {
-		unsigned long supported_gids;
-
-		ndev = dev_get_by_index(&init_net, addr->dev_addr.bound_dev_if);
-		if (!ndev) {
-			ret = -ENODEV;
-			goto err2;
-		}
-
-		supported_gids = roce_gid_type_mask_support(id_priv->id.device,
-							    id_priv->id.port_num);
-		gid_type = cma_route_gid_type(addr->dev_addr.network,
-					      supported_gids,
-					      id_priv->gid_type);
-		route->path_rec->rec_type =
-			sa_conv_gid_to_pathrec_type(gid_type);
-		sa_path_set_ndev(route->path_rec, &init_net);
-		sa_path_set_ifindex(route->path_rec, ndev->ifindex);
+	if (!addr->dev_addr.bound_dev_if) {
+		ret = -ENODEV;
+		goto err2;
 	}
+
+	ndev = dev_get_by_index(&init_net, addr->dev_addr.bound_dev_if);
 	if (!ndev) {
 		ret = -ENODEV;
 		goto err2;
 	}
 
+	supported_gids = roce_gid_type_mask_support(id_priv->id.device,
+						    id_priv->id.port_num);
+	gid_type = cma_route_gid_type(addr->dev_addr.network,
+				      supported_gids,
+				      id_priv->gid_type);
+	route->path_rec->rec_type = sa_conv_gid_to_pathrec_type(gid_type);
+	sa_path_set_ndev(route->path_rec, &init_net);
+	sa_path_set_ifindex(route->path_rec, ndev->ifindex);
 	sa_path_set_dmac(route->path_rec, addr->dev_addr.dst_dev_addr);
 
 	rdma_ip2gid((struct sockaddr *)&id_priv->id.route.addr.src_addr,
