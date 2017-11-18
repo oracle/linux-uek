@@ -1662,6 +1662,7 @@ int rds_ib_setup_fastreg(struct rds_ib_device *rds_ibdev)
 	qp_init_attr.cap.max_recv_wr	= 0;
 	qp_init_attr.cap.max_send_sge	= 0;
 	qp_init_attr.cap.max_recv_sge	= 0;
+	qp_init_attr.sq_sig_type	= IB_SIGNAL_REQ_WR;
 
 	rds_ibdev->fastreg_qp = ib_create_qp(rds_ibdev->pd, &qp_init_attr);
 	if (IS_ERR(rds_ibdev->fastreg_qp)) {
