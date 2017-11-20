@@ -21,7 +21,7 @@ Summary: The Linux kernel
 # % define buildid .local
 
 %define distro_build 0
-%define signmodules 0
+%define signmodules 1
 
 # base_sublevel is the kernel version we're starting with and patching
 # on top of -- for example, 2.6.22-rc7-git1 starts with a 2.6.21 base,
