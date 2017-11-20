@@ -518,6 +518,10 @@ EXPORT_SYMBOL(use_ibrs);
 int use_ibpb;
 EXPORT_SYMBOL(use_ibpb);
 
+/* mutex to serialize IBRS & IBPB control changes */
+DEFINE_MUTEX(spec_ctrl_mutex);
+EXPORT_SYMBOL(spec_ctrl_mutex);
+
 /*
  * Setup routine for controlling SMP activation
  *
