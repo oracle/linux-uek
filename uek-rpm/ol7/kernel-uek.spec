@@ -1792,6 +1792,11 @@ fi
 %if "Y%{?2:%{2}}" != "Y"\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/kernel\
 %endif\
+%if %{with_dtrace}\
+%if ("%{-n*}" == "kernel-uek-base")\
+/lib/modules/%{KVERREL}%{?2:.%{2}}/kernel/vmlinux.ctfa\
+%endif\
+%endif\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/build\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/source\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/extra\
