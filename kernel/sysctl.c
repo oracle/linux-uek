@@ -66,6 +66,7 @@
 #include <linux/kexec.h>
 #include <linux/ksplice.h>
 #include <linux/mount.h>
+#include <linux/mutex.h>
 
 #include <asm/uaccess.h>
 #include <asm/processor.h>
@@ -2844,12 +2845,17 @@ int proc_do_large_bitmap(struct ctl_table *table, int write,
 int proc_dointvec_ibrs_dump(struct ctl_table *table, int write,
 	void __user *buffer, size_t *lenp, loff_t *ppos)
 {
-	int ret;
+	int ret, orig_inuse;
 	unsigned int cpu;
+
 
 	ret = proc_dointvec_minmax(table, write, buffer, lenp, ppos);
 	printk("sysctl_ibrs_enabled = %u, sysctl_ibpb_enabled = %u\n", sysctl_ibrs_enabled, sysctl_ibpb_enabled);
 	printk("use_ibrs = %d, use_ibpb = %d\n", use_ibrs, use_ibpb);
+	mutex_lock(&spec_ctrl_mutex);
+	orig_inuse = use_ibrs;
+	/* temporary halt to ibrs usage to dump ibrs values */
+	clear_ibrs_inuse();
 	for_each_online_cpu(cpu) {
 	       u64 val;
 
@@ -2859,6 +2865,8 @@ int proc_dointvec_ibrs_dump(struct ctl_table *table, int write,
 		       val = 0;
 	       printk("read cpu %d ibrs val %lu\n", cpu, (unsigned long) val);
 	}
+	use_ibrs = orig_inuse;
+	mutex_unlock(&spec_ctrl_mutex);
 	return ret;
 }
 
@@ -2871,6 +2879,7 @@ int proc_dointvec_ibrs_ctrl(struct ctl_table *table, int write,
 	ret = proc_dointvec_minmax(table, write, buffer, lenp, ppos);
 	pr_debug("sysctl_ibrs_enabled = %u, sysctl_ibpb_enabled = %u\n", sysctl_ibrs_enabled, sysctl_ibpb_enabled);
 	pr_debug("before:use_ibrs = %d, use_ibpb = %d\n", use_ibrs, use_ibpb);
+	mutex_lock(&spec_ctrl_mutex);
 	if (sysctl_ibrs_enabled == 0) {
 		/* always set IBRS off */
 		set_ibrs_disabled();
@@ -2894,6 +2903,7 @@ int proc_dointvec_ibrs_ctrl(struct ctl_table *table, int write,
 			/* platform don't support ibrs */
 			sysctl_ibrs_enabled = 0;
 	}
+	mutex_unlock(&spec_ctrl_mutex);
 	pr_debug("after:use_ibrs = %d, use_ibpb = %d\n", use_ibrs, use_ibpb);
 	return ret;
 }
@@ -2906,6 +2916,7 @@ int proc_dointvec_ibpb_ctrl(struct ctl_table *table, int write,
 	ret = proc_dointvec_minmax(table, write, buffer, lenp, ppos);
 	pr_debug("sysctl_ibrs_enabled = %u, sysctl_ibpb_enabled = %u\n", sysctl_ibrs_enabled, sysctl_ibpb_enabled);
 	pr_debug("before:use_ibrs = %d, use_ibpb = %d\n", use_ibrs, use_ibpb);
+	mutex_lock(&spec_ctrl_mutex);
 	if (sysctl_ibpb_enabled == 0)
 		set_ibpb_disabled();
 	else if (sysctl_ibpb_enabled == 1) {
@@ -2914,6 +2925,7 @@ int proc_dointvec_ibpb_ctrl(struct ctl_table *table, int write,
 			/* platform don't support ibpb */
 			sysctl_ibpb_enabled = 0;
 	}
+	mutex_unlock(&spec_ctrl_mutex);
 	pr_debug("after:use_ibrs = %d, use_ibpb = %d\n", use_ibrs, use_ibpb);
 	return ret;
 }

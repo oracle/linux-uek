@@ -54,6 +54,7 @@ int smp_call_function_single_async(int cpu, struct call_single_data *csd);
 /* indicate usage of IBRS to control execution speculation */
 extern int use_ibrs;
 extern u32 sysctl_ibrs_enabled;
+extern struct mutex spec_ctrl_mutex;
 #define ibrs_supported		(use_ibrs & 0x2)
 #define ibrs_disabled		(use_ibrs & 0x4)
 static inline void set_ibrs_inuse(void)
