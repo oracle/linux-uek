@@ -927,7 +927,6 @@ struct ib_cq *mlx5_ib_create_cq(struct ib_device *ibdev,
 				struct ib_udata *udata)
 {
 	int entries = attr->cqe;
-	int vector = attr->comp_vector;
 	struct mlx5_ib_dev *dev = to_mdev(ibdev);
 	struct mlx5_ib_cq *cq;
 	int uninitialized_var(index);
@@ -935,8 +934,6 @@ struct ib_cq *mlx5_ib_create_cq(struct ib_device *ibdev,
 	u32 *cqb = NULL;
 	void *cqc;
 	int cqe_size;
-	unsigned int irqn;
-	int eqn;
 	int err;
 
 	if (entries < 0 ||
@@ -978,7 +975,7 @@ struct ib_cq *mlx5_ib_create_cq(struct ib_device *ibdev,
 		INIT_WORK(&cq->notify_work, notify_soft_wc_handler);
 	}
 
-	err = mlx5_vector2eqn(dev->mdev, vector, &eqn, &irqn);
+	cq->eq = mlx5_core_get_eq(dev->mdev, attr->comp_vector);
 	if (err)
 		goto err_cqb;
 
@@ -988,17 +985,17 @@ struct ib_cq *mlx5_ib_create_cq(struct ib_device *ibdev,
 	MLX5_SET(cqc, cqc, cqe_sz, cqe_sz_to_mlx_sz(cqe_size));
 	MLX5_SET(cqc, cqc, log_cq_size, ilog2(entries));
 	MLX5_SET(cqc, cqc, uar_page, index);
-	MLX5_SET(cqc, cqc, c_eqn, eqn);
+	MLX5_SET(cqc, cqc, c_eqn, cq->eq->eqn);
 	MLX5_SET64(cqc, cqc, dbr_addr, cq->db.dma);
 	if (cq->create_flags & IB_CQ_FLAGS_IGNORE_OVERRUN)
 		MLX5_SET(cqc, cqc, oi, 1);
 
 	err = mlx5_core_create_cq(dev->mdev, &cq->mcq, cqb, inlen);
 	if (err)
-		goto err_cqb;
+		goto err_put_eq;
 
 	mlx5_ib_dbg(dev, "cqn 0x%x\n", cq->mcq.cqn);
-	cq->mcq.irqn = irqn;
+	cq->mcq.irqn = cq->eq->irqn;
 	if (context)
 		cq->mcq.tasklet_ctx.comp = mlx5_ib_cq_comp;
 	else
@@ -1019,6 +1016,9 @@ struct ib_cq *mlx5_ib_create_cq(struct ib_device *ibdev,
 
 err_cmd:
 	mlx5_core_destroy_cq(dev->mdev, &cq->mcq);
+
+err_put_eq:
+	mlx5_core_put_eq(cq->eq);
 
 err_cqb:
 	kvfree(cqb);
@@ -1048,6 +1048,8 @@ int mlx5_ib_destroy_cq(struct ib_cq *cq)
 		destroy_cq_user(mcq, context);
 	else
 		destroy_cq_kernel(dev, mcq);
+
+	mlx5_core_put_eq(mcq->eq);
 
 	kfree(mcq);
 

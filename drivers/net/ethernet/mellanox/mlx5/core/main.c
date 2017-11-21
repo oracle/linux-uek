@@ -682,6 +682,44 @@ static void mlx5_irq_clear_affinity_hints(struct mlx5_core_dev *mdev)
 		mlx5_irq_clear_affinity_hint(mdev, i);
 }
 
+struct mlx5_eq *mlx5_core_get_eq(struct mlx5_core_dev *dev, int vector)
+{
+	struct mlx5_eq_table *table = &dev->priv.eq_table;
+	struct mlx5_eq *tmp_eq;
+	struct mlx5_eq *eq;
+
+	spin_lock(&table->lock);
+	eq = list_entry(table->comp_eqs_list.next, struct mlx5_eq, list);
+	list_for_each_entry(tmp_eq, &table->comp_eqs_list, list) {
+		if (vector || smp_processor_id() == (vector % num_online_cpus())) {
+			if (tmp_eq->index == vector) {
+				eq = tmp_eq;
+				break;
+			}
+		}
+		if (eq->cq_count > tmp_eq->cq_count)
+			eq = tmp_eq;
+	}
+
+	eq->cq_count++;
+	mlx5_core_dbg(dev, "requested %d, chosen %d\n",
+		      vector, eq->index);
+	spin_unlock(&table->lock);
+
+	return eq;
+}
+EXPORT_SYMBOL(mlx5_core_get_eq);
+
+void mlx5_core_put_eq(struct mlx5_eq *eq)
+{
+	struct mlx5_eq_table *table = &eq->dev->priv.eq_table;
+
+	spin_lock(&table->lock);
+	eq->cq_count--;
+	spin_unlock(&table->lock);
+}
+EXPORT_SYMBOL(mlx5_core_put_eq);
+
 int mlx5_vector2eqn(struct mlx5_core_dev *dev, int vector, int *eqn,
 		    unsigned int *irqn)
 {

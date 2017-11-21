@@ -461,6 +461,7 @@ struct mlx5_ib_cq {
 	struct list_head	wc_list;
 	enum ib_cq_notify_flags notify_flags;
 	struct work_struct	notify_work;
+	struct mlx5_eq	       *eq;
 };
 
 struct mlx5_ib_wc {
