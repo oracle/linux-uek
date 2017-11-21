@@ -1087,6 +1087,79 @@ out:
 }
 EXPORT_SYMBOL(mlx5_comp_eqn_get);
 
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+
+struct mlx5_eq_comp *
+mlx5_comp_eqn_get_low(struct mlx5_core_dev *dev, int vecidx, int *eqn)
+{
+	struct mlx5_eq_table *table = dev->priv.eq_table;
+	struct mlx5_eq_comp *ret_eq, *eq;
+	u32 min_usage_count;
+	int err, i_min, i_max, i;
+
+	mutex_lock(&table->comp_lock);
+
+	if (vecidx) {
+		i_min = vecidx == -1 ? 0 : vecidx;
+		i_max = i_min;
+	} else {
+		i_min = 0;
+		i_max = table->max_comp_eqs - 1;
+	}
+
+	ret_eq = NULL;
+	min_usage_count = U32_MAX;
+
+	for (i = i_min; i <= i_max; i++) {
+		eq = xa_load(&table->comp_eqs, i);
+		if (!eq) {
+			err = create_comp_eq(dev, i);
+			if (err < 0) {
+				ret_eq = ERR_PTR(err);
+				goto out;
+			}
+			eq = xa_load(&table->comp_eqs, i);
+			if (!eq) {
+				/* ignore and continue to the next */
+				continue;
+			}
+		}
+
+		if (eq->usage_count < min_usage_count) {
+			ret_eq = eq;
+			min_usage_count = eq->usage_count;
+
+			/* it can't get any better than zero */
+			if (min_usage_count == 0)
+				break;
+		}
+	}
+
+	if (ret_eq) {
+		ret_eq->usage_count++;
+		*eqn = ret_eq->core.eqn;
+	} else
+		ret_eq = ERR_PTR(-ENOENT);
+
+out:
+	mutex_unlock(&table->comp_lock);
+
+	return ret_eq;
+}
+EXPORT_SYMBOL(mlx5_comp_eqn_get_low);
+
+void mlx5_comp_eqn_put_low(struct mlx5_core_dev *dev, struct mlx5_eq_comp *eq)
+{
+	struct mlx5_eq_table *table = dev->priv.eq_table;
+
+	mutex_lock(&table->comp_lock);
+	eq->usage_count--;
+	mutex_unlock(&table->comp_lock);
+}
+EXPORT_SYMBOL(mlx5_comp_eqn_put_low);
+
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
+
 int mlx5_comp_irqn_get(struct mlx5_core_dev *dev, int vector, unsigned int *irqn)
 {
 	struct mlx5_eq_table *table = dev->priv.eq_table;
