@@ -2525,6 +2525,14 @@ struct ib_device_ops {
 	 */
 	int (*get_hw_stats)(struct ib_device *device,
 			    struct rdma_hw_stats *stats, u8 port, int index);
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	/**
+	 * clear_hw_stats - Clear the hw stats
+	 * @ib_device - device whose counters to clear.
+	 * @port - port whose counters to clear.
+	 */
+	int (*clear_hw_stats)(struct ib_device *device, u8 port);
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 	/*
 	 * This function is called once for each port when a ib device is
 	 * registered.

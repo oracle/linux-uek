@@ -958,6 +958,72 @@ static struct attribute *alloc_hsa_lifespan(char *name, u8 port_num)
 	return &hsa->attr;
 }
 
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+static void clear_cached_hw_stats(struct rdma_hw_stats *stats)
+{
+	int i;
+
+	for (i = 0; i < stats->num_counters; i++)
+		stats->value[i] = 0;
+}
+
+static ssize_t set_clear_hw_stats(struct kobject *kobj,
+			      struct attribute *attr,
+			      const char *buf, size_t count)
+{
+	struct hw_stats_attribute *hsa;
+	struct rdma_hw_stats *stats;
+	struct ib_device *dev;
+	struct ib_port *port;
+	int ret;
+
+	hsa = container_of(attr, struct hw_stats_attribute, attr);
+	if (!hsa->port_num) {
+		dev = container_of((struct device *)kobj,
+				   struct ib_device, dev);
+		stats = dev->hw_stats;
+	} else {
+		port = container_of(kobj, struct ib_port, kobj);
+		dev = port->ibdev;
+		stats = port->hw_stats;
+	}
+	if (dev->ops.clear_hw_stats) {
+		ret = dev->ops.clear_hw_stats(dev, hsa->port_num);
+		clear_cached_hw_stats(stats);
+	} else {
+		return -EINVAL;
+	}
+
+	if (ret)
+		return ret;
+	return count;
+}
+
+static ssize_t show_clear_hw_stats(struct kobject *kobj, struct attribute *attr,
+				   char *buf)
+{
+	return sprintf(buf, "%d\n", 0);
+}
+
+static struct attribute *alloc_hsa_clear_stats(char *name, u8 port_num)
+{
+	struct hw_stats_attribute *hsa;
+
+	hsa = kmalloc(sizeof(*hsa), GFP_KERNEL);
+	if (!hsa)
+		return NULL;
+
+	hsa->attr.name = name;
+	hsa->attr.mode = S_IWUSR | S_IRUSR;
+	hsa->store = set_clear_hw_stats;
+	hsa->show = show_clear_hw_stats;
+	hsa->index = 0;
+	hsa->port_num = port_num;
+
+	return &hsa->attr;
+}
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
+
 static void setup_hw_stats(struct ib_device *device, struct ib_port *port,
 			   u8 port_num)
 {
@@ -978,7 +1044,11 @@ static void setup_hw_stats(struct ib_device *device, struct ib_port *port,
 	 * one to NULL terminate the list for the sysfs core code
 	 */
 	hsag = kzalloc(sizeof(*hsag) +
+#ifdef WITHOUT_ORACLE_EXTENSIONS
 		       sizeof(void *) * (stats->num_counters + 2),
+#else
+		       sizeof(void *) * (stats->num_counters + 3),
+#endif /* WITHOUT_ORACLE_EXTENSIONS */
 		       GFP_KERNEL);
 	if (!hsag)
 		goto err_free_stats;
@@ -1005,6 +1075,13 @@ static void setup_hw_stats(struct ib_device *device, struct ib_port *port,
 	hsag->attrs[i] = alloc_hsa_lifespan("lifespan", port_num);
 	if (hsag->attrs[i])
 		sysfs_attr_init(hsag->attrs[i]);
+
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	i++;
+	hsag->attrs[i] = alloc_hsa_clear_stats("clear_counters", port_num);
+	if (hsag->attrs[i])
+		sysfs_attr_init(hsag->attrs[i]);
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 	if (port) {
 		struct kobject *kobj = &port->kobj;
