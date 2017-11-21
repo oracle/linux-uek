@@ -16,6 +16,7 @@ struct mlx5_eq_tasklet {
 	spinlock_t            lock; /* lock completion tasklet list */
 };
 
+#ifdef WITHOUT_ORACLE_EXTENSIONS
 struct mlx5_cq_table {
 	spinlock_t              lock;	/* protect radix tree */
 	struct radix_tree_root  tree;
@@ -34,6 +35,7 @@ struct mlx5_eq {
 	int                     nent;
 	struct mlx5_rsc_debug   *dbg;
 };
+#endif /* WITHOUT_ORACLE_EXTENSIONS */
 
 struct mlx5_eq_async {
 	struct mlx5_eq          core;
@@ -45,6 +47,9 @@ struct mlx5_eq_comp {
 	struct notifier_block   irq_nb;
 	struct mlx5_eq_tasklet  tasklet_ctx;
 	struct list_head        list;
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	int			index;
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 };
 
 static inline struct mlx5_eqe *get_eqe(struct mlx5_eq *eq, u32 entry)
