@@ -1109,6 +1109,10 @@ bool mlx5_lag_is_sriov(struct mlx5_core_dev *dev);
 bool mlx5_lag_is_multipath(struct mlx5_core_dev *dev);
 bool mlx5_lag_is_active(struct mlx5_core_dev *dev);
 struct net_device *mlx5_lag_get_roce_netdev(struct mlx5_core_dev *dev);
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+int mlx5_cmd_query_cong_counter(struct mlx5_core_dev *dev,
+				bool reset, void *out, int out_size);
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 int mlx5_lag_query_cong_counters(struct mlx5_core_dev *dev,
 				 u64 *values,
 				 int num_counters,
