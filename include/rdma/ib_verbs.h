@@ -2602,6 +2602,14 @@ struct ib_device_ops {
 	int (*get_hw_stats)(struct ib_device *device,
 			    struct rdma_hw_stats *stats, u32 port, int index);
 
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	/**
+	 * clear_hw_stats - Clear the hw stats
+	 * @ib_device - device whose counters to clear.
+	 * @port - port whose counters to clear.
+	 */
+	int (*clear_hw_stats)(struct ib_device *device, u32 port);
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 	/**
 	 * modify_hw_stat - Modify the counter configuration
 	 * @enable: true/false when enable/disable a counter
