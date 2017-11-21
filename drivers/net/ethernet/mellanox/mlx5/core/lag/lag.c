@@ -148,6 +148,24 @@ int mlx5_cmd_destroy_vport_lag(struct mlx5_core_dev *dev)
 }
 EXPORT_SYMBOL(mlx5_cmd_destroy_vport_lag);
 
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+int mlx5_cmd_query_cong_counter(struct mlx5_core_dev *dev,
+#else /* WITHOUT_ORACLE_EXTENSIONS */
+static int mlx5_cmd_query_cong_counter(struct mlx5_core_dev *dev,
+#endif /* !WITOUT_ORACLE_EXTENSIONS */
+				       bool reset, void *out, int out_size)
+{
+	u32 in[MLX5_ST_SZ_DW(query_cong_statistics_in)] = { };
+
+	MLX5_SET(query_cong_statistics_in, in, opcode,
+		 MLX5_CMD_OP_QUERY_CONG_STATISTICS);
+	MLX5_SET(query_cong_statistics_in, in, clear, reset);
+	return mlx5_cmd_exec(dev, in, sizeof(in), out, out_size);
+}
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+EXPORT_SYMBOL(mlx5_cmd_query_cong_counter);
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
+
 static void mlx5_infer_tx_disabled(struct lag_tracker *tracker, u8 num_ports,
 				   u8 *ports, int *num_disabled)
 {
