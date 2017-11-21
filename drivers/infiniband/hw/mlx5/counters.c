@@ -274,6 +274,50 @@ mlx5_ib_alloc_hw_port_stats(struct ib_device *ibdev, u32 port_num)
 	return do_alloc_stats(cnts);
 }
 
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+static int mlx5_core_query_q_counter(struct mlx5_core_dev *dev, u16 counter_id,
+			     int reset, void *out, int out_size)
+{
+	u32 in[MLX5_ST_SZ_DW(query_q_counter_in)] = {0};
+
+	MLX5_SET(query_q_counter_in, in, opcode, MLX5_CMD_OP_QUERY_Q_COUNTER);
+	MLX5_SET(query_q_counter_in, in, clear, reset);
+	MLX5_SET(query_q_counter_in, in, counter_set_id, counter_id);
+	return mlx5_cmd_exec(dev, in, sizeof(in), out, out_size);
+}
+
+static int mlx5_ib_clear_hw_stats(struct ib_device *ibdev, u32 port_num)
+{
+	struct mlx5_ib_dev *dev = to_mdev(ibdev);
+	struct mlx5_ib_port *port = &dev->port[port_num - 1];
+	int outlen = MLX5_ST_SZ_BYTES(query_q_counter_out);
+	void *out;
+	int ret;
+
+	out = kvzalloc(outlen, GFP_KERNEL);
+	if (!out)
+		return -ENOMEM;
+
+	ret = mlx5_core_query_q_counter(dev->mdev,
+					port->cnts.set_id, 1,
+					out, outlen);
+	kvfree(out);
+
+	if (ret)
+		return ret;
+
+	outlen = MLX5_ST_SZ_BYTES(query_cong_statistics_out);
+	out = kvzalloc(outlen, GFP_KERNEL);
+	if (!out)
+		return -ENOMEM;
+
+	ret = mlx5_cmd_query_cong_counter(dev->mdev, true, out, outlen);
+
+	kvfree(out);
+	return ret;
+}
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
+
 static int mlx5_ib_query_q_counters(struct mlx5_core_dev *mdev,
 				    const struct mlx5_ib_counters *cnts,
 				    struct rdma_hw_stats *stats,
@@ -1028,6 +1072,9 @@ static int mlx5_ib_modify_stat(struct ib_device *device, u32 port,
 static const struct ib_device_ops hw_stats_ops = {
 	.alloc_hw_port_stats = mlx5_ib_alloc_hw_port_stats,
 	.get_hw_stats = mlx5_ib_get_hw_stats,
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	.clear_hw_stats = mlx5_ib_clear_hw_stats,
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 	.counter_bind_qp = mlx5_ib_counter_bind_qp,
 	.counter_unbind_qp = mlx5_ib_counter_unbind_qp,
 	.counter_dealloc = mlx5_ib_counter_dealloc,
@@ -1044,6 +1091,9 @@ static const struct ib_device_ops hw_switchdev_vport_op = {
 static const struct ib_device_ops hw_switchdev_stats_ops = {
 	.alloc_hw_device_stats = mlx5_ib_alloc_hw_device_stats,
 	.get_hw_stats = mlx5_ib_get_hw_stats,
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	.clear_hw_stats = mlx5_ib_clear_hw_stats,
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 	.counter_bind_qp = mlx5_ib_counter_bind_qp,
 	.counter_unbind_qp = mlx5_ib_counter_unbind_qp,
 	.counter_dealloc = mlx5_ib_counter_dealloc,
