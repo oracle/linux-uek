@@ -2097,6 +2097,13 @@ struct ib_device {
 	int		           (*get_hw_stats)(struct ib_device *device,
 						   struct rdma_hw_stats *stats,
 						   u8 port, int index);
+	/**
+	 * clear_hw_stats - Clear the hw stats
+	 * @ib_device - device whose counters to clear.
+	 * @port - port whose counters to clear.
+	 */
+	int		           (*clear_hw_stats)(struct ib_device *device,
+						     u8 port);
 	int		           (*query_device)(struct ib_device *device,
 						   struct ib_device_attr *device_attr,
 						   struct ib_udata *udata);
