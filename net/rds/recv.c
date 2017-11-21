@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2006 Oracle.  All rights reserved.
+ * Copyright (c) 2006, 2017 Oracle and/or its affiliates. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -358,9 +358,12 @@ void rds_recv_incoming(struct rds_connection *conn, __be32 saddr, __be32 daddr,
 	/* lets find a socket to which this request belongs */
 	rs = rds_find_bound(daddr, inc->i_hdr.h_dport);
 
-	/* pass it on locally if there is no socket bound, or if netfilter is
-	 * disabled for this socket */
-	if (NULL == rs || !rs->rs_netfilter_enabled) {
+	/* Pass it on locally if there is no socket bound, or if netfilter is
+	 * disabled for this socket, or if the underlying transport does not
+	 * support netfilter.
+	 */
+	if (NULL == rs || !rs->rs_netfilter_enabled ||
+	    !conn->c_trans->inc_to_skb) {
 		rds_recv_local(cp, saddr, daddr, inc, gfp, rs);
 
 		/* drop the reference if we had taken one */
