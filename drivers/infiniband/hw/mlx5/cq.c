@@ -958,6 +958,9 @@ int mlx5_ib_create_cq(struct ib_cq *ibcq, const struct ib_cq_init_attr *attr,
 	int vector = attr->comp_vector;
 	struct mlx5_ib_dev *dev = to_mdev(ibdev);
 	struct mlx5_ib_cq *cq = to_mcq(ibcq);
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	struct mlx5_eq_comp *eq;
+#endif
 	u32 out[MLX5_ST_SZ_DW(create_cq_out)];
 	int index;
 	int inlen;
@@ -1002,7 +1005,12 @@ int mlx5_ib_create_cq(struct ib_cq *ibcq, const struct ib_cq_init_attr *attr,
 		INIT_WORK(&cq->notify_work, notify_soft_wc_handler);
 	}
 
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	eq = mlx5_comp_eqn_get_low(dev->mdev, vector, &eqn);
+	err = PTR_ERR_OR_ZERO(eq);
+#else /* WITHOUT_ORACLE_EXTENSIONS */
 	err = mlx5_comp_eqn_get(dev->mdev, vector, &eqn);
+#endif  /* WITHOUT_ORACLE_EXTENSIONS */
 	if (err)
 		goto err_cqb;
 
@@ -1022,7 +1030,11 @@ int mlx5_ib_create_cq(struct ib_cq *ibcq, const struct ib_cq_init_attr *attr,
 
 	err = mlx5_core_create_cq(dev->mdev, &cq->mcq, cqb, inlen, out, sizeof(out));
 	if (err)
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+		goto err_put_eq;
+#else /* WITHOUT_ORACLE_EXTENSIONS */
 		goto err_cqb;
+#endif /* WITHOUT_ORACLE_EXTENSIONS */
 
 	mlx5_ib_dbg(dev, "cqn 0x%x\n", cq->mcq.cqn);
 	if (udata)
@@ -1046,6 +1058,11 @@ int mlx5_ib_create_cq(struct ib_cq *ibcq, const struct ib_cq_init_attr *attr,
 err_cmd:
 	mlx5_core_destroy_cq(dev->mdev, &cq->mcq);
 
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+err_put_eq:
+	mlx5_comp_eqn_put_low(dev->mdev, eq);
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
+
 err_cqb:
 	kvfree(cqb);
 	if (udata)
@@ -1060,6 +1077,10 @@ int mlx5_ib_destroy_cq(struct ib_cq *cq, struct ib_udata *udata)
 	struct mlx5_ib_dev *dev = to_mdev(cq->device);
 	struct mlx5_ib_cq *mcq = to_mcq(cq);
 	int ret;
+
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	mlx5_comp_eqn_put_low(dev->mdev, mcq->mcq.eq);
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 	ret = mlx5_core_destroy_cq(dev->mdev, &mcq->mcq);
 	if (ret)

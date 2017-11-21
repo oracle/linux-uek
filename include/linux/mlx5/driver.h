@@ -1084,6 +1084,10 @@ void mlx5_unregister_debugfs(void);
 void mlx5_fill_page_frag_array_perm(struct mlx5_frag_buf *buf, __be64 *pas, u8 perm);
 void mlx5_fill_page_frag_array(struct mlx5_frag_buf *frag_buf, __be64 *pas);
 int mlx5_comp_eqn_get(struct mlx5_core_dev *dev, u16 vecidx, int *eqn);
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+struct mlx5_eq_comp *mlx5_comp_eqn_get_low(struct mlx5_core_dev *dev, int vecidx, int *eqn);
+void mlx5_comp_eqn_put_low(struct mlx5_core_dev *dev, struct mlx5_eq_comp *eq);
+#endif
 int mlx5_core_attach_mcg(struct mlx5_core_dev *dev, union ib_gid *mgid, u32 qpn);
 int mlx5_core_detach_mcg(struct mlx5_core_dev *dev, union ib_gid *mgid, u32 qpn);
 
