@@ -46,6 +46,9 @@ struct mlx5_eq_comp {
 	struct notifier_block   irq_nb;
 	struct mlx5_eq_tasklet  tasklet_ctx;
 	struct list_head        list;
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	u32                     usage_count;
+#endif
 };
 
 static inline u32 eq_get_size(struct mlx5_eq *eq)
