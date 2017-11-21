@@ -1083,6 +1083,68 @@ clean_irq:
 	return err;
 }
 
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+struct mlx5_eq_comp *mlx5_comp_eqn_get_low(struct mlx5_core_dev *dev, u32 vector, int *eqn)
+{
+	struct mlx5_eq_table *table = dev->priv.eq_table;
+	struct mlx5_eq_comp *ret_eq = NULL;
+	u32 min_cq_count = U32_MAX;
+	int i_min = vector == IB_CQ_FORCE_ZERO_CV ? 0 : vector;
+	int i_max = vector ? i_min : table->max_comp_eqs - 1;
+	int chosen_vector = -1;
+	int i, err;
+
+	mutex_lock(&table->comp_lock);
+	for (i = i_min; i <= i_max; i++) {
+		struct mlx5_eq_comp *eq = xa_load(&table->comp_eqs, i);
+		if (!eq) {
+			/* create new EQ and return it */
+			err = create_comp_eq(dev, i);
+			if (err < 0) {
+				mutex_unlock(&table->comp_lock);
+				return ERR_PTR(err);
+			}
+			ret_eq = xa_load(&table->comp_eqs, i);
+			chosen_vector = i;
+			break;
+		}
+
+		if (eq->cq_count < min_cq_count) {
+			ret_eq = eq;
+			chosen_vector = i;
+			min_cq_count = eq->cq_count;
+			/* if unused EQ is found, just return it */
+			if (min_cq_count == 0)
+				break;
+		}
+	}
+
+	if (!ret_eq) {
+		mutex_unlock(&table->comp_lock);
+		return ERR_PTR(-ENOENT);
+	}
+
+	ret_eq->cq_count++;
+	*eqn = ret_eq->core.eqn;
+	mlx5_core_dbg(dev, "requested %d, chosen %d\n",
+		      vector, chosen_vector);
+	mutex_unlock(&table->comp_lock);
+
+	return ret_eq;
+}
+EXPORT_SYMBOL(mlx5_comp_eqn_get_low);
+
+void mlx5_comp_eqn_put_low(struct mlx5_eq_comp *eq)
+{
+	struct mlx5_eq_table *table = eq->core.dev->priv.eq_table;
+
+	mutex_lock(&table->comp_lock);
+	eq->cq_count--;
+	mutex_unlock(&table->comp_lock);
+}
+EXPORT_SYMBOL(mlx5_comp_eqn_put_low);
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
+
 int mlx5_comp_eqn_get(struct mlx5_core_dev *dev, u16 vecidx, int *eqn)
 {
 	struct mlx5_eq_table *table = dev->priv.eq_table;
