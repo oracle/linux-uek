@@ -982,6 +982,43 @@ int ib_setup_device_attrs(struct ib_device *ibdev)
 	return -EINVAL;
 }
 
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+static void clear_cached_hw_port_stats(struct rdma_hw_stats *stats)
+{
+	int i;
+
+	for (i = 0; i < stats->num_counters; i++)
+		stats->value[i] = 0;
+}
+
+static ssize_t set_clear_hw_port_stats(struct ib_device *ibdev,
+				   struct rdma_hw_stats *stats,
+				   unsigned int index, unsigned int port_num,
+				   const char *buf, size_t count)
+{
+	int ret;
+
+	if (ibdev->ops.clear_hw_stats) {
+		ret = ibdev->ops.clear_hw_stats(ibdev, port_num);
+		clear_cached_hw_port_stats(stats);
+	} else {
+		return -EINVAL;
+	}
+
+	if (ret)
+		return ret;
+	return count;
+}
+
+static ssize_t show_clear_hw_port_stats(struct ib_device *ibdev,
+				   struct rdma_hw_stats *stats,
+				   unsigned int index, unsigned int port_num,
+				   char *buf)
+{
+	return sysfs_emit(buf, "%d\n", 0);
+}
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
+
 static struct hw_stats_port_data *
 alloc_hw_stats_port(struct ib_port *port, struct attribute_group *group)
 {
@@ -1001,11 +1038,19 @@ alloc_hw_stats_port(struct ib_port *port, struct attribute_group *group)
 	 * Two extra attribue elements here, one for the lifespan entry and
 	 * one to NULL terminate the list for the sysfs core code
 	 */
+#ifdef WITHOUT_ORACLE_EXTENSIONS
 	data = kzalloc(struct_size(data, attrs, stats->num_counters + 1),
+#else
+	data = kzalloc(struct_size(data, attrs, stats->num_counters + 2),
+#endif /* WITHOUT_ORACLE_EXTENSIONS */
 		       GFP_KERNEL);
 	if (!data)
 		goto err_free_stats;
+#ifdef WITHOUT_ORACLE_EXTENSIONS
 	group->attrs = kcalloc(stats->num_counters + 2,
+#else
+	group->attrs = kcalloc(stats->num_counters + 3,
+#endif /* WITHOUT_ORACLE_EXTENSIONS */
 				    sizeof(*group->attrs), GFP_KERNEL);
 	if (!group->attrs)
 		goto err_free_data;
@@ -1063,6 +1108,19 @@ static int setup_hw_port_stats(struct ib_port *port,
 	attr->attr.store = hw_stat_port_store;
 	attr->store = set_stats_lifespan;
 	group->attrs[i] = &attr->attr.attr;
+
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	i++;
+	attr = &data->attrs[i];
+	sysfs_attr_init(&attr->attr.attr);
+	attr->attr.attr.name = "clear_counters";
+	attr->attr.attr.mode = S_IWUSR | S_IRUSR;
+	attr->attr.show = hw_stat_port_show;
+	attr->show = show_clear_hw_port_stats;
+	attr->attr.store = hw_stat_port_store;
+	attr->store = set_clear_hw_port_stats;
+	group->attrs[i] = &attr->attr.attr;
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 	port->hw_stats_data = data;
 	return 0;
