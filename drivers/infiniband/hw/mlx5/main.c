@@ -3834,6 +3834,37 @@ static struct rdma_hw_stats *mlx5_ib_alloc_hw_stats(struct ib_device *ibdev,
 					  RDMA_HW_STATS_DEFAULT_LIFESPAN);
 }
 
+static int mlx5_ib_clear_hw_stats(struct ib_device *ibdev, u8 port_num)
+{
+	struct mlx5_ib_dev *dev = to_mdev(ibdev);
+	struct mlx5_ib_port *port = &dev->port[port_num - 1];
+	int outlen = MLX5_ST_SZ_BYTES(query_q_counter_out);
+	void *out;
+	int ret;
+
+	out = kvzalloc(outlen, GFP_KERNEL);
+	if (!out)
+		return -ENOMEM;
+
+	ret = mlx5_core_query_q_counter(dev->mdev,
+					port->cnts.set_id, 1,
+					out, outlen);
+	kvfree(out);
+
+	if (ret)
+		return ret;
+
+	outlen = MLX5_ST_SZ_BYTES(query_cong_statistics_out);
+	out = kvzalloc(outlen, GFP_KERNEL);
+	if (!out)
+		return -ENOMEM;
+
+	ret = mlx5_cmd_query_cong_counter(dev->mdev, true, out, outlen);
+
+	kvfree(out);
+	return ret;
+}
+
 static int mlx5_ib_query_q_counters(struct mlx5_core_dev *mdev,
 				    struct mlx5_ib_port *port,
 				    struct rdma_hw_stats *stats)
@@ -4571,6 +4602,7 @@ static void *mlx5_ib_add(struct mlx5_core_dev *mdev)
 	if (MLX5_CAP_GEN(dev->mdev, max_qp_cnt)) {
 		dev->ib_dev.get_hw_stats	= mlx5_ib_get_hw_stats;
 		dev->ib_dev.alloc_hw_stats	= mlx5_ib_alloc_hw_stats;
+		dev->ib_dev.clear_hw_stats	= mlx5_ib_clear_hw_stats;
 	}
 
 	if (MLX5_CAP_GEN(mdev, xrc)) {
