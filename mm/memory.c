@@ -61,8 +61,6 @@
 #include <linux/string.h>
 #include <linux/dma-debug.h>
 #include <linux/debugfs.h>
-#include <linux/sched.h>
-#include <linux/workqueue.h>
 #include <linux/userfaultfd_k.h>
 
 #include <asm/io.h>
@@ -3953,124 +3951,10 @@ static void clear_gigantic_page(struct page *page,
 		clear_user_highpage(p, addr + i * PAGE_SIZE);
 	}
 }
-
-struct clear_huge_page_work {
-	struct work_struct ws;
-	int index;
-	struct page *page;
-	unsigned long addr;
-	unsigned int pages_per_worker;
-	int is_gigantic_page;
-};
-
-static void clear_mem(struct work_struct *work)
-{
-	int i;
-	struct page *p;
-	struct clear_huge_page_work *w = (struct clear_huge_page_work *)work;
-	unsigned int start, end;
-
-	/* assume total number of pages in divisible by number of workers */
-	start = w->index * w->pages_per_worker;
-	end = (w->index + 1) * w->pages_per_worker;
-
-	might_sleep();
-	if (w->is_gigantic_page) {
-		p = mem_map_offset(w->page, start);
-		for (i = start; i < end; i++,
-					p = mem_map_next(p, w->page, i)) {
-			cond_resched();
-			clear_user_highpage(p, w->addr + (i * PAGE_SIZE));
-		}
-	} else {
-		for (i = start; i < end; i++) {
-			cond_resched();
-			clear_user_highpage((w->page + i),
-					w->addr + (i * PAGE_SIZE));
-		}
-	}
-}
-
-/* use work queue to clear huge pages in parallel */
-static int wq_clear_huge_page(struct page *page, unsigned long addr,
-			unsigned int pages_per_huge_page, int num_workers)
-{
-	int i;
-	struct clear_huge_page_work *work;
-	struct workqueue_struct *wq;
-	unsigned int pages_per_worker;
-	int is_gigantic_page = 0;
-
-	if (unlikely(pages_per_huge_page > MAX_ORDER_NR_PAGES))
-		is_gigantic_page = 1;
-
-	pages_per_worker = pages_per_huge_page/num_workers;
-
-	wq = alloc_workqueue("wq_clear_huge_page", WQ_UNBOUND, num_workers);
-	if (!wq)
-		return -1;
-
-	work = kcalloc(num_workers, sizeof(*work), GFP_KERNEL);
-	if (!work) {
-		destroy_workqueue(wq);
-		return -ENOMEM;
-	}
-
-	for (i = 0; i < num_workers; i++) {
-		INIT_WORK(&work[i].ws, clear_mem);
-		work[i].index = i;
-		work[i].page = page;
-		work[i].addr = addr;
-		work[i].pages_per_worker = pages_per_worker;
-		work[i].is_gigantic_page = is_gigantic_page;
-		queue_work(wq, &work[i].ws);
-	}
-
-	flush_workqueue(wq);
-	destroy_workqueue(wq);
-
-	kfree(work);
-
-	return 0;
-}
-
-
-int derive_num_workers(unsigned int pages_per_huge_page)
-{
-	int num_workers;
-	unsigned long huge_page_size;
-
-	huge_page_size = pages_per_huge_page * PAGE_SIZE;
-
-	/* less than 8MB */
-	if (huge_page_size < 8*1024*1024)
-		num_workers = 4;
-	else    /* 8MB and larger */
-		num_workers = 16;
-
-	return num_workers;
-}
-
 void clear_huge_page(struct page *page,
 		     unsigned long addr, unsigned int pages_per_huge_page)
 {
 	int i;
-	int num_workers;
-
-	/*
-	 * If the number of vCPUs or hardware threads is greater than 16 then
-	 * use multiple threads to clear huge pages. Although we could also
-	 * consider overall system load as a factor in deciding this, for now,
-	 * let us have a simple implementation. And also to reduce the effect
-	 * of worker thread migrations on data locality, let us use this
-	 * implementation on a system with one or two nodes only for now.
-	 */
-	if (num_online_cpus() >= 16 && num_online_nodes() <= 2) {
-		num_workers = derive_num_workers(pages_per_huge_page);
-		if (wq_clear_huge_page(page, addr, pages_per_huge_page,
-			num_workers) == 0)
-		return;
-	}
 
 	if (unlikely(pages_per_huge_page > MAX_ORDER_NR_PAGES)) {
 		clear_gigantic_page(page, addr, pages_per_huge_page);
