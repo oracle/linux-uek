@@ -29,6 +29,7 @@
 #include <linux/hardirq.h>
 #include <linux/mutex.h>
 #include <linux/prefetch.h>
+#include <linux/sdt.h>
 #include <asm/byteorder.h>
 #include <asm/qspinlock.h>
 
