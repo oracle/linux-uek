@@ -2,11 +2,8 @@
 
 header-y += dtrace/
 
-genhdr-y += version.h
-
-ifneq ($(wildcard $(srctree)/arch/$(SRCARCH)/include/uapi/asm/a.out.h \
-		  $(srctree)/arch/$(SRCARCH)/include/asm/a.out.h),)
-header-y += a.out.h
+ifeq ($(wildcard $(srctree)/arch/$(SRCARCH)/include/uapi/asm/a.out.h),)
+no-export-headers += a.out.h
 endif
 
 ifeq ($(wildcard $(srctree)/arch/$(SRCARCH)/include/uapi/asm/kvm.h),)
