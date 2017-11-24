@@ -148,7 +148,7 @@ static void __nft_set_trans_bind(const struct nft_ctx *ctx, struct nft_set *set,
 	struct net *net = ctx->net;
 	struct nft_trans *trans;
 
-	if (!(set->flags & NFT_SET_ANONYMOUS))
+	if (!nft_set_is_anonymous(set))
 		return;
 
 	list_for_each_entry_reverse(trans, &net->nft.commit_list, list) {
@@ -870,7 +870,7 @@ static int nft_flush_table(struct nft_ctx *ctx)
 		if (!nft_is_active_next(ctx->net, set))
 			continue;
 
-		if (set->flags & NFT_SET_ANONYMOUS &&
+		if (nft_set_is_anonymous(set) &&
 		    !list_empty(&set->bindings))
 			continue;
 
@@ -3460,7 +3460,7 @@ int nf_tables_bind_set(const struct nft_ctx *ctx, struct nft_set *set,
 	struct nft_set_binding *i;
 	struct nft_set_iter iter;
 
-	if (!list_empty(&set->bindings) && set->flags & NFT_SET_ANONYMOUS)
+	if (!list_empty(&set->bindings) && nft_set_is_anonymous(set))
 		return -EBUSY;
 
 	if (binding->flags & NFT_SET_MAP) {
@@ -3500,7 +3500,7 @@ void nf_tables_unbind_set(const struct nft_ctx *ctx, struct nft_set *set,
 {
 	list_del_rcu(&binding->list);
 
-	if (list_empty(&set->bindings) && set->flags & NFT_SET_ANONYMOUS) {
+	if (list_empty(&set->bindings) && nft_set_is_anonymous(set)) {
 		list_del_rcu(&set->list);
 		if (event)
 			nf_tables_set_notify(ctx, set, NFT_MSG_DELSET,
@@ -3511,7 +3511,7 @@ EXPORT_SYMBOL_GPL(nf_tables_unbind_set);
 
 void nf_tables_activate_set(const struct nft_ctx *ctx, struct nft_set *set)
 {
-	if (set->flags & NFT_SET_ANONYMOUS)
+	if (nft_set_is_anonymous(set))
 		nft_clear(ctx->net, set);
 
 	nft_use_inc_restore(&set->use);
@@ -3525,7 +3525,7 @@ void nf_tables_deactivate_set(const struct nft_ctx *ctx, struct nft_set *set,
 	switch (phase) {
 	case NFT_TRANS_PREPARE_ERROR:
 		nft_set_trans_unbind(ctx, set);
-		if (set->flags & NFT_SET_ANONYMOUS)
+		if (nft_set_is_anonymous(set))
 			nft_deactivate_next(ctx->net, set);
 		else
 			list_del_rcu(&binding->list);
@@ -3533,7 +3533,7 @@ void nf_tables_deactivate_set(const struct nft_ctx *ctx, struct nft_set *set,
 		nft_use_dec(&set->use);
 		break;
 	case NFT_TRANS_PREPARE:
-		if (set->flags & NFT_SET_ANONYMOUS)
+		if (nft_set_is_anonymous(set))
 			nft_deactivate_next(ctx->net, set);
 
 		nft_use_dec(&set->use);
@@ -3551,7 +3551,7 @@ EXPORT_SYMBOL_GPL(nf_tables_deactivate_set);
 
 void nf_tables_destroy_set(const struct nft_ctx *ctx, struct nft_set *set)
 {
-	if (list_empty(&set->bindings) && set->flags & NFT_SET_ANONYMOUS)
+	if (list_empty(&set->bindings) && nft_set_is_anonymous(set))
 		nft_set_destroy(set);
 }
 EXPORT_SYMBOL_GPL(nf_tables_destroy_set);
@@ -5386,7 +5386,7 @@ static int nf_tables_commit(struct net *net, struct sk_buff *skb)
 			/* This avoids hitting -EBUSY when deleting the table
 			 * from the transaction.
 			 */
-			if (nft_trans_set(trans)->flags & NFT_SET_ANONYMOUS &&
+			if (nft_set_is_anonymous(nft_trans_set(trans)) &&
 			    !list_empty(&nft_trans_set(trans)->bindings))
 				nft_use_dec(&trans->ctx.table->use);
 
