@@ -26,7 +26,7 @@ Summary: The Linux kernel
 # base_sublevel is the kernel version we're starting with and patching
 # on top of -- for example, 2.6.22-rc7-git1 starts with a 2.6.21 base,
 # which yields a base_sublevel of 21.
-%define base_sublevel 0
+%define base_sublevel 2
 
 ## If this is a released kernel ##
 %if 0%{?released_kernel}
