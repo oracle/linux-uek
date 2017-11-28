@@ -53,6 +53,7 @@
 #include <asm/mmu_context.h>
 #include <linux/license.h>
 #include <asm/sections.h>
+#include <linux/dtrace_sdt.h>
 #include <linux/tracepoint.h>
 #include <linux/ftrace.h>
 #include <linux/livepatch.h>
@@ -97,6 +98,9 @@
 DEFINE_MUTEX(module_mutex);
 EXPORT_SYMBOL_GPL(module_mutex);
 static LIST_HEAD(modules);
+#ifdef CONFIG_DTRACE
+struct list_head *dtrace_modules = &modules;
+#endif /* CONFIG_DTRACE */
 
 #ifdef CONFIG_MODULES_TREE_LOOKUP
 
@@ -3570,6 +3574,18 @@ static int complete_formation(struct module *mod, struct load_info *info)
 {
 	int err;
 
+#ifdef CONFIG_DTRACE
+	void *sdt_args, *sdt_names;
+	unsigned int sdt_args_len, sdt_names_len;
+
+	sdt_names = section_objs(info, "_dtrace_sdt_names", 1,
+				 &sdt_names_len);
+	sdt_args = section_objs(info, "_dtrace_sdt_args", 1,
+				&sdt_args_len);
+	dtrace_sdt_register_module(mod, sdt_names, sdt_names_len,
+				   sdt_args, sdt_args_len);
+#endif
+
 	mutex_lock(&module_mutex);
 
 	/* Find duplicate symbols (must be called under lock). */
@@ -4009,7 +4025,7 @@ out:
 }
 
 int module_get_kallsym(unsigned int symnum, unsigned long *value, char *type,
-			char *name, char *module_name, int *exported)
+		       char *name, char *module_name, unsigned long *size, int *exported)
 {
 	struct module *mod;
 
@@ -4026,6 +4042,7 @@ int module_get_kallsym(unsigned int symnum, unsigned long *value, char *type,
 			strlcpy(name, symname(kallsyms, symnum), KSYM_NAME_LEN);
 			strlcpy(module_name, mod->name, MODULE_NAME_LEN);
 			*exported = is_exported(name, *value, mod);
+			*size = kallsyms->symtab[symnum].st_size;
 			preempt_enable();
 			return 0;
 		}

@@ -391,3 +391,6 @@
 382	i386	pkey_free		sys_pkey_free
 383	i386	statx			sys_statx
 384	i386	arch_prctl		sys_arch_prctl			compat_sys_arch_prctl
+# This one is a temporary number, designed for no clashes.
+# Nothing but DTrace should use it.
+473    i386    waitfd                  sys_waitfd

@@ -19,6 +19,8 @@ enum die_val {
 	DIE_CALL,
 	DIE_NMI,
 	DIE_NMIWATCHDOG,
+	DIE_GPF,
+	DIE_PAGE_FAULT,
 };
 
 #endif

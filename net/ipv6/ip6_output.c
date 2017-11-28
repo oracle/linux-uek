@@ -58,6 +58,7 @@
 #include <linux/mroute6.h>
 #include <net/l3mdev.h>
 #include <net/lwtunnel.h>
+#include <linux/sdt.h>
 
 static int ip6_finish_output2(struct net *net, struct sock *sk, struct sk_buff *skb)
 {
@@ -86,6 +87,18 @@ static int ip6_finish_output2(struct net *net, struct sock *sk, struct sk_buff *
 					dev_loopback_xmit);
 
 			if (ipv6_hdr(skb)->hop_limit == 0) {
+				DTRACE_IP(drop__out,
+					  struct sk_buff * : pktinfo_t *, skb,
+					  struct sock * : csinfo_t *, skb->sk,
+					  void_ip_t * : ipinfo_t *,
+					  ipv6_hdr(skb),
+					  struct net_device * : ifinfo_t *,
+					  skb->dev,
+					  struct iphdr * : ipv4info_t *, NULL,
+					  struct ipv6hdr * : ipv6info_t *,
+					  ipv6_hdr(skb),
+					  char * : string, "hoplimit exceeded");
+
 				IP6_INC_STATS(net, idev,
 					      IPSTATS_MIB_OUTDISCARDS);
 				kfree_skb(skb);
@@ -155,6 +168,15 @@ int ip6_output(struct net *net, struct sock *sk, struct sk_buff *skb)
 	skb->dev = dev;
 
 	if (unlikely(idev->cnf.disable_ipv6)) {
+		DTRACE_IP(drop__out,
+			  struct sk_buff * : pktinfo_t *, skb,
+			  struct sock * : csinfo_t *, skb->sk,
+			  void_ip_t * : ipinfo_t *, NULL,
+			  struct net_device * : ifinfo_t *, skb->dev,
+			  struct iphdr * : ipv4info_t *, NULL,
+			  struct ipv6hdr * : ipv6info_t *, NULL,
+			  char * : string, "IPv6 is disabled");
+
 		IP6_INC_STATS(net, idev, IPSTATS_MIB_OUTDISCARDS);
 		kfree_skb(skb);
 		return 0;
@@ -198,6 +220,16 @@ int ip6_xmit(const struct sock *sk, struct sk_buff *skb, struct flowi6 *fl6,
 		if (skb_headroom(skb) < head_room) {
 			struct sk_buff *skb2 = skb_realloc_headroom(skb, head_room);
 			if (!skb2) {
+				DTRACE_IP(drop__out,
+					  struct sk_buff * : pktinfo_t *, skb,
+					  struct sock * : csinfo_t *, skb->sk,
+					  void_ip_t * : ipinfo_t *, NULL,
+					  struct net_device * : ifinfo_t *,
+					  skb->dev,
+					  struct iphdr * : ipv4info_t *, NULL,
+					  struct ipv6hdr * : ipv6info_t *, NULL,
+					  char * : string, "out of memory");
+
 				IP6_INC_STATS(net, ip6_dst_idev(skb_dst(skb)),
 					      IPSTATS_MIB_OUTDISCARDS);
 				kfree_skb(skb);
@@ -254,6 +286,14 @@ int ip6_xmit(const struct sock *sk, struct sk_buff *skb, struct flowi6 *fl6,
 		skb = l3mdev_ip6_out((struct sock *)sk, skb);
 		if (unlikely(!skb))
 			return 0;
+
+		DTRACE_IP(send,
+			  struct sk_buff * : pktinfo_t *, skb,
+			  struct sock * : csinfo_t *, skb->sk,
+			  void_ip_t * : ipinfo_t *, hdr,
+			  struct net_device * : ifinfo_t *, skb->dev,
+			  struct iphdr * : ipv4info_t *, NULL,
+			  struct ipv6hdr * : ipv6info_t *, hdr);
 
 		/* hooks should never assume socket lock is held.
 		 * we promote our socket to non const
@@ -408,22 +448,32 @@ int ip6_forward(struct sk_buff *skb)
 	struct inet6_skb_parm *opt = IP6CB(skb);
 	struct net *net = dev_net(dst->dev);
 	u32 mtu;
+	const char *dropreason;
 
-	if (net->ipv6.devconf_all->forwarding == 0)
+	if (net->ipv6.devconf_all->forwarding == 0) {
+		dropreason = "forwarding disabled";
 		goto error;
+	}
 
-	if (skb->pkt_type != PACKET_HOST)
+	if (skb->pkt_type != PACKET_HOST) {
+		dropreason = "non-host packet type cannot be forwarded";
 		goto drop;
+	}
 
-	if (unlikely(skb->sk))
+	if (unlikely(skb->sk)) {
+		dropreason = "socket found for packet to be forwarded";
 		goto drop;
+	}
 
-	if (skb_warn_if_lro(skb))
+	if (skb_warn_if_lro(skb)) {
+		dropreason = "LRO warning";
 		goto drop;
+	}
 
 	if (!xfrm6_policy_check(NULL, XFRM_POLICY_FWD, skb)) {
 		__IP6_INC_STATS(net, ip6_dst_idev(dst),
 				IPSTATS_MIB_INDISCARDS);
+		dropreason = "forwarding disabled by policy";
 		goto drop;
 	}
 
@@ -453,6 +503,16 @@ int ip6_forward(struct sk_buff *skb)
 	if (hdr->hop_limit <= 1) {
 		/* Force OUTPUT device used as source address */
 		skb->dev = dst->dev;
+
+		DTRACE_IP(drop__out,
+			  struct sk_buff * : pktinfo_t *, skb,
+			  struct sock * : csinfo_t *, skb->sk,
+			  void_ip_t * : ipinfo_t *, hdr,
+			  struct net_device * : ifinfo_t *, skb->dev,
+			  struct iphdr * : ipv4info_t *, NULL,
+			  struct ipv6hdr * : ipv6info_t *, hdr,
+			  char * : string, "hoplimit exceeded");
+
 		icmpv6_send(skb, ICMPV6_TIME_EXCEED, ICMPV6_EXC_HOPLIMIT, 0);
 		__IP6_INC_STATS(net, ip6_dst_idev(dst),
 				IPSTATS_MIB_INHDRERRORS);
@@ -468,6 +528,7 @@ int ip6_forward(struct sk_buff *skb)
 		if (proxied > 0)
 			return ip6_input(skb);
 		else if (proxied < 0) {
+			dropreason = "proxy router cannot forward";
 			__IP6_INC_STATS(net, ip6_dst_idev(dst),
 					IPSTATS_MIB_INDISCARDS);
 			goto drop;
@@ -477,6 +538,7 @@ int ip6_forward(struct sk_buff *skb)
 	if (!xfrm6_route_forward(skb)) {
 		__IP6_INC_STATS(net, ip6_dst_idev(dst),
 				IPSTATS_MIB_INDISCARDS);
+		dropreason = "forwarding disabled for destination";
 		goto drop;
 	}
 	dst = skb_dst(skb);
@@ -515,9 +577,12 @@ int ip6_forward(struct sk_buff *skb)
 
 		/* This check is security critical. */
 		if (addrtype == IPV6_ADDR_ANY ||
-		    addrtype & (IPV6_ADDR_MULTICAST | IPV6_ADDR_LOOPBACK))
+		    addrtype & (IPV6_ADDR_MULTICAST | IPV6_ADDR_LOOPBACK)) {
+			dropreason = "invalid address type for forwarding";
 			goto error;
+		}
 		if (addrtype & IPV6_ADDR_LINKLOCAL) {
+			dropreason = "invalid address type for forwarding";
 			icmpv6_send(skb, ICMPV6_DEST_UNREACH,
 				    ICMPV6_NOT_NEIGHBOUR, 0);
 			goto error;
@@ -531,6 +596,15 @@ int ip6_forward(struct sk_buff *skb)
 	if (ip6_pkt_too_big(skb, mtu)) {
 		/* Again, force OUTPUT device used as source address */
 		skb->dev = dst->dev;
+		DTRACE_IP(drop__out,
+			  struct sk_buff * : pktinfo_t *, skb,
+			  struct sock * : csinfo_t *, skb->sk,
+			  void_ip_t * : ipinfo_t *, hdr,
+			  struct net_device * : ifinfo_t *, skb->dev,
+			  struct iphdr * : ipv4info_t *, NULL,
+			  struct ipv6hdr * : ipv6info_t *, hdr,
+			  char * : string, "packet too big");
+
 		icmpv6_send(skb, ICMPV6_PKT_TOOBIG, 0, mtu);
 		__IP6_INC_STATS(net, ip6_dst_idev(dst),
 				IPSTATS_MIB_INTOOBIGERRORS);
@@ -543,6 +617,7 @@ int ip6_forward(struct sk_buff *skb)
 	if (skb_cow(skb, dst->dev->hard_header_len)) {
 		__IP6_INC_STATS(net, ip6_dst_idev(dst),
 				IPSTATS_MIB_OUTDISCARDS);
+		dropreason = "copy-on-write failed";
 		goto drop;
 	}
 
@@ -561,6 +636,15 @@ int ip6_forward(struct sk_buff *skb)
 error:
 	__IP6_INC_STATS(net, ip6_dst_idev(dst), IPSTATS_MIB_INADDRERRORS);
 drop:
+	DTRACE_IP(drop__out,
+		  struct sk_buff * : pktinfo_t *, skb,
+		  struct sock * : csinfo_t *, skb->sk,
+		  void_ip_t * : ipinfo_t *, hdr,
+		  struct net_device * : ifinfo_t *, skb->dev,
+		  struct iphdr * : ipv4info_t *, NULL,
+		  struct ipv6hdr * : ipv6info_t *, hdr,
+		  char * : string, dropreason);
+
 	kfree_skb(skb);
 	return -EINVAL;
 }
@@ -1240,6 +1324,7 @@ static int __ip6_append_data(struct sock *sk,
 	struct ipv6_txoptions *opt = v6_cork->opt;
 	int csummode = CHECKSUM_NONE;
 	unsigned int maxnonfragsize, headersize;
+	const char *dropreason;
 
 	skb = skb_peek_tail(queue);
 	if (!skb) {
@@ -1268,6 +1353,7 @@ static int __ip6_append_data(struct sock *sk,
 	     sk->sk_protocol == IPPROTO_RAW)) {
 		ipv6_local_rxpmtu(sk, fl6, mtu - headersize +
 				sizeof(struct ipv6hdr));
+		dropreason = "fragmentation needed but disabled";
 		goto emsgsize;
 	}
 
@@ -1281,6 +1367,14 @@ emsgsize:
 		ipv6_local_error(sk, EMSGSIZE, fl6,
 				 mtu - headersize +
 				 sizeof(struct ipv6hdr));
+		DTRACE_IP(drop__out,
+			  struct sk_buff * : pktinfo_t *, skb,
+			  struct sock * : csinfo_t *, skb->sk,
+			  void_ip_t * : ipinfo_t *, NULL,
+			  struct net_device * : ifinfo_t *, skb->dev,
+			  struct iphdr * : ipv4info_t *, NULL,
+			  struct ipv6hdr * : ipv6info_t *, NULL,
+			  char * : string, "packet too big");
 		return -EMSGSIZE;
 	}
 
@@ -1400,8 +1494,11 @@ alloc_new_skb:
 				if (unlikely(!skb))
 					err = -ENOBUFS;
 			}
-			if (!skb)
+			if (!skb) {
+				dropreason = "out of memory";
 				goto error;
+			}
+
 			/*
 			 *	Fill in the control structures
 			 */
@@ -1439,7 +1536,9 @@ alloc_new_skb:
 			    getfrag(from, data + transhdrlen, offset,
 				    copy, fraggap, skb) < 0) {
 				err = -EFAULT;
+				dropreason = "could not get fragment";
 				kfree_skb(skb);
+				skb = NULL;
 				goto error;
 			}
 
@@ -1470,20 +1569,25 @@ alloc_new_skb:
 						offset, copy, off, skb) < 0) {
 				__skb_trim(skb, off);
 				err = -EFAULT;
+				dropreason = "could not get fragment";
 				goto error;
 			}
 		} else {
 			int i = skb_shinfo(skb)->nr_frags;
 
 			err = -ENOMEM;
-			if (!sk_page_frag_refill(sk, pfrag))
+			if (!sk_page_frag_refill(sk, pfrag)) {
+				dropreason = "out of memory";
 				goto error;
+			}
 
 			if (!skb_can_coalesce(skb, i, pfrag->page,
 					      pfrag->offset)) {
 				err = -EMSGSIZE;
-				if (i == MAX_SKB_FRAGS)
+				if (i == MAX_SKB_FRAGS) {
+					dropreason = "too many fragments";
 					goto error;
+				}
 
 				__skb_fill_page_desc(skb, i, pfrag->page,
 						     pfrag->offset, 0);
@@ -1493,8 +1597,10 @@ alloc_new_skb:
 			copy = min_t(int, copy, pfrag->size - pfrag->offset);
 			if (getfrag(from,
 				    page_address(pfrag->page) + pfrag->offset,
-				    offset, copy, skb->len, skb) < 0)
+				    offset, copy, skb->len, skb) < 0) {
+				dropreason = "could not get fragment";
 				goto error_efault;
+			}
 
 			pfrag->offset += copy;
 			skb_frag_size_add(&skb_shinfo(skb)->frags[i - 1], copy);
@@ -1512,6 +1618,15 @@ alloc_new_skb:
 error_efault:
 	err = -EFAULT;
 error:
+	DTRACE_IP(drop__out,
+		  struct sk_buff * : pktinfo_t *, skb,
+		  struct sock * : csinfo_t *, skb ? skb->sk : NULL,
+		  void_ip_t * : ipinfo_t *, NULL,
+		  struct net_device * : ifinfo_t *, skb ? skb->dev : NULL,
+		  struct iphdr * : ipv4info_t *, NULL,
+		  struct ipv6hdr * : ipv6info_t *, NULL,
+		  char * : string, dropreason);
+
 	cork->length -= length;
 	IP6_INC_STATS(sock_net(sk), rt->rt6i_idev, IPSTATS_MIB_OUTDISCARDS);
 	return err;
@@ -1659,9 +1774,20 @@ int ip6_send_skb(struct sk_buff *skb)
 	if (err) {
 		if (err > 0)
 			err = net_xmit_errno(err);
-		if (err)
+		if (err) {
+			/* skb may have been freed */
+			DTRACE_IP(drop__out,
+				  struct sk_buff * : pktinfo_t *, NULL,
+				  struct sock * : csinfo_t *, NULL,
+				  void_ip_t * : ipinfo_t *, NULL,
+				  struct net_device * : ifinfo_t *, NULL,
+				  struct iphdr * : ipv4info_t *, NULL,
+				  struct ipv6hdr * : ipv6info_t *, NULL,
+				  char * : string, "out of memory");
+
 			IP6_INC_STATS(net, rt->rt6i_idev,
 				      IPSTATS_MIB_OUTDISCARDS);
+		}
 	}
 
 	return err;
@@ -1687,9 +1813,19 @@ static void __ip6_flush_pending_frames(struct sock *sk,
 	struct sk_buff *skb;
 
 	while ((skb = __skb_dequeue_tail(queue)) != NULL) {
-		if (skb_dst(skb))
+		if (skb_dst(skb)) {
+			DTRACE_IP(drop__out,
+				  struct sk_buff * : pktinfo_t *, skb,
+				  struct sock * : csinfo_t *, skb->sk,
+				  void_ip_t * : ipinfo_t *, ipv6_hdr(skb),
+				  struct net_device * : ifinfo_t *, skb->dev,
+				  struct iphdr * : ipv4info_t *, NULL,
+				  struct ipv6hdr * : ipv6info_t *,
+				  ipv6_hdr(skb),
+				  char * : string, "flushing pending frames");
 			IP6_INC_STATS(sock_net(sk), ip6_dst_idev(skb_dst(skb)),
 				      IPSTATS_MIB_OUTDISCARDS);
+		}
 		kfree_skb(skb);
 	}
 

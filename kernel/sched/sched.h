@@ -30,6 +30,7 @@
 #include <linux/irq_work.h>
 #include <linux/tick.h>
 #include <linux/slab.h>
+#include <linux/dtrace_cpu.h>
 
 #ifdef CONFIG_PARAVIRT
 #include <asm/paravirt.h>
@@ -797,6 +798,9 @@ struct rq {
 #ifdef CONFIG_CPU_IDLE
 	/* Must be inspected within a rcu lock section */
 	struct cpuidle_state *idle_state;
+#endif
+#ifdef CONFIG_DTRACE
+	cpuinfo_t *dtrace_cpu_info;
 #endif
 };
 

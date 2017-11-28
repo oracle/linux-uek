@@ -1,0 +1,109 @@
+#
+# Copyright (c) 2010, 2016, Oracle and/or its affiliates. All rights reserved.
+#
+
+menuconfig DTRACE
+	bool "DTrace (Dynamic Tracing) Support"
+	default y
+	depends on ARCH_SUPPORTS_DTRACE
+	depends on !DEBUG_LOCK_ALLOC
+	select KALLSYMS
+	select KALLMODSYMS
+	select WAITFD
+	select CTF
+	help
+	  The DTrace dynamic tracing framework.
+
+if DTRACE
+
+config DT_CORE
+	tristate "DTrace core"
+	default m
+	help
+	  The core of DTrace: needed for all providers.
+
+if DT_CORE
+
+config DT_FASTTRAP
+	tristate "Fasttrap Tracing"
+	default m
+	depends on ARCH_SUPPORTS_UPROBES
+	select UPROBE_EVENT
+	help
+	  Userspace tracing, providing the kernel support needed for tracing
+	  userspace programs.  Currently, only statically defined probes
+	  (USDT) are supported.
+
+config DT_PROFILE
+	tristate "Profile Interrupt Tracing"
+	default m
+	help
+	  The profile and tick providers, firing probes at specific intervals.
+
+config DT_SDT
+	tristate "Statically Defined Tracing"
+	default m
+	select KALLSYMS
+	help
+	  Statically defined tracepoints in the kernel.
+
+config DT_SDT_PERF
+	bool "DTrace perf-events Probes"
+	default y
+        depends on DT_SDT
+        select TRACEPOINTS
+	help
+	  Provides the perf provider, containing a DTrace probe for each
+	  perf-events tracepoint in the system.
+
+config DT_FBT
+	tristate "Function boundary tracing"
+	default m
+	select FTRACE
+	help
+	  Provides function boundary tracing for functions in the kernel.
+
+config DT_SYSTRACE
+	tristate "System Call Tracing"
+	default m
+	select FTRACE
+	select FTRACE_SYSCALLS
+	help
+	  Provides DTrace probes at the entry and exit of all system calls,
+	  in the syscall provider.
+
+config DT_DT_TEST
+	tristate "DTrace Test Probe"
+	default m
+	help
+	  A test provider used by the testsuite.
+
+config DT_DT_PERF
+	tristate "DTrace Performance Test Probe"
+	default m
+	help
+	  A test provider used for performance testing.
+
+config DT_DEBUG
+	bool "DTrace debugging"
+	default m
+	help
+	  This controls the inclusion of various piece of code that perform
+	  internal checks within the DTrace core.  It also enables all the
+	  assertions within the DTrace code.
+
+if DT_DEBUG
+
+config DT_DEBUG_MUTEX
+	bool "DTrace mutex debugging"
+	default n
+	help
+	  This controls the use of DTrace specific wrappers to output debug
+	  messages whenever a mutex is locked or unlocked within the DTrace
+	  code (core and providers).
+
+endif	# DT_DEBUG
+
+endif	# DT_CORE
+
+endif   #DTRACE

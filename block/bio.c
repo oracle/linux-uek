@@ -951,7 +951,11 @@ int submit_bio_wait(struct bio *bio)
 	bio->bi_end_io = submit_bio_wait_endio;
 	bio->bi_opf |= REQ_SYNC;
 	submit_bio(bio);
+	DTRACE_IO(wait__start, struct bio * : (bufinfo_t *, devinfo_t *), bio,
+		  struct file * : fileinfo_t *, NULL);
 	wait_for_completion_io(&ret.event);
+	DTRACE_IO(wait__done, struct bio * : (bufinfo_t *, devinfo_t *), bio,
+		  struct file * : fileinfo_t *, NULL);
 
 	return ret.error;
 }
@@ -1850,6 +1854,9 @@ again:
 	}
 
 	blk_throtl_bio_endio(bio);
+	DTRACE_IO(done, struct bio * :
+		  (bufinfo_t *, devinfo_t *), bio,
+		  struct file * : fileinfo_t *, NULL);
 	/* release cgroup info */
 	bio_uninit(bio);
 	if (bio->bi_end_io)

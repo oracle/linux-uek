@@ -62,6 +62,8 @@
 #include <linux/random.h>
 #include <linux/rcuwait.h>
 #include <linux/compat.h>
+#include <linux/sdt.h>
+#include <linux/dtrace_os.h>
 
 #include <linux/uaccess.h>
 #include <asm/unistd.h>
@@ -849,6 +851,14 @@ void __noreturn do_exit(long code)
 	tsk->exit_code = code;
 	taskstats_exit(tsk, group_dead);
 
+	DTRACE_PROC(lwp__exit);
+	if (group_dead)
+		DTRACE_PROC(exit, int, code & 0x80 ? 3 : code & 0x7f ? 2 : 1);
+
+#ifdef CONFIG_DTRACE
+	dtrace_task_cleanup(tsk);
+#endif
+
 	exit_mm();
 
 	if (group_dead)
@@ -1635,7 +1645,10 @@ long kernel_wait4(pid_t upid, int __user *stat_addr, int options,
 	enum pid_type type;
 	long ret;
 
-	if (options & ~(WNOHANG|WUNTRACED|WCONTINUED|
+	/*
+	 * As for wait4(), except that waitfd() additionally needs WNOWAIT.
+	 */
+	if (options & ~(WNOHANG|WNOWAIT|WUNTRACED|WCONTINUED|
 			__WNOTHREAD|__WCLONE|__WALL))
 		return -EINVAL;
 
@@ -1674,7 +1687,13 @@ SYSCALL_DEFINE4(wait4, pid_t, upid, int __user *, stat_addr,
 		int, options, struct rusage __user *, ru)
 {
 	struct rusage r;
-	long err = kernel_wait4(upid, stat_addr, options, ru ? &r : NULL);
+	long err;
+
+	if (options & ~(WNOHANG|WUNTRACED|WCONTINUED|
+			__WNOTHREAD|__WCLONE|__WALL))
+		return -EINVAL;
+
+	err = kernel_wait4(upid, stat_addr, options, ru ? &r : NULL);
 
 	if (err > 0) {
 		if (ru && copy_to_user(ru, &r, sizeof(struct rusage)))

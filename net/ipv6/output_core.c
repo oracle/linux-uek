@@ -9,6 +9,7 @@
 #include <net/addrconf.h>
 #include <net/secure_seq.h>
 #include <linux/netfilter.h>
+#include <linux/sdt.h>
 
 static u32 __ipv6_select_ident(struct net *net, u32 hashrnd,
 			       const struct in6_addr *dst,
@@ -160,6 +161,14 @@ int __ip6_local_out(struct net *net, struct sock *sk, struct sk_buff *skb)
 		return 0;
 
 	skb->protocol = htons(ETH_P_IPV6);
+
+	DTRACE_IP(send,
+		  struct sk_buff * : pktinfo_t *, skb,
+		  struct sock * : csinfo_t *, skb->sk,
+		  void_ip_t * : ipinfo_t *, ipv6_hdr(skb),
+		  struct net_device * : ifinfo_t *, skb->dev,
+		  struct iphdr * : ipv4info_t *, NULL,
+		  struct ipv6hdr * : ipv6info_t *, ipv6_hdr(skb));
 
 	return nf_hook(NFPROTO_IPV6, NF_INET_LOCAL_OUT,
 		       net, sk, skb, NULL, skb_dst(skb)->dev,

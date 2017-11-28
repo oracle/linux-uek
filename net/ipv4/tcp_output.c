@@ -41,6 +41,7 @@
 #include <linux/compiler.h>
 #include <linux/gfp.h>
 #include <linux/module.h>
+#include <linux/sdt.h>
 
 /* People can turn this off for buggy TCP's found in printers etc. */
 int sysctl_tcp_retrans_collapse __read_mostly = 1;
@@ -1105,6 +1106,27 @@ static int tcp_transmit_skb(struct sock *sk, struct sk_buff *skb, int clone_it,
 		tp->data_segs_out += tcp_skb_pcount(skb);
 		tcp_internal_pacing(sk, skb);
 	}
+
+	DTRACE_TCP(send,
+		   struct sk_buff * :  pktinfo_t *, skb,
+		   struct sock * : csinfo_t *, sk,
+		   __dtrace_tcp_void_ip_t * : ipinfo_t *, ip_hdr(skb),
+		   struct tcp_sock * : tcpsinfo_t *, tp,
+		   struct tcphdr * : tcpinfo_t *, tcp_hdr(skb),
+		   int : tcplsinfo_t *, sk->sk_state, int, sk->sk_state,
+		   int, DTRACE_NET_PROBE_OUTBOUND);
+	if (DTRACE_TCP_ENABLED(connect__request) && th->syn &&
+	    th->ack_seq == 0)
+		DTRACE_TCP_NOCHECK(connect__request,
+				   struct sk_buff * : pktinfo_t *, skb,
+				   struct sock * : csinfo_t *, sk,
+				   __dtrace_tcp_void_ip_t * : ipinfo_t *,
+				   ip_hdr(skb),
+				   struct tcp_sock * : tcpsinfo_t *, tp,
+				   struct tcphdr * : tcpinfo_t *, th,
+				   int : tcplsinfo_t *, sk->sk_state,
+				   int, sk->sk_state,
+				   int, DTRACE_NET_PROBE_OUTBOUND);
 
 	if (after(tcb->end_seq, tp->snd_nxt) || tcb->seq == tcb->end_seq)
 		TCP_ADD_STATS(sock_net(sk), TCP_MIB_OUTSEGS,
@@ -3433,6 +3455,13 @@ int tcp_connect(struct sock *sk)
 	tp->retrans_stamp = tcp_time_stamp(tp);
 	tcp_connect_queue_skb(sk, buff);
 	tcp_ecn_send_syn(sk, buff);
+	DTRACE_TCP(state__change, struct sk_buff * : pktinfo_t *, NULL,
+		   struct sock * : csinfo_t *, sk,
+		   __dtrace_tcp_void_ip_t * : ipinfo_t *, ip_hdr(buff),
+		   struct tcp_sock * : tcpsinfo_t *, tp,
+		   struct tcphdr * : tcpinfo_t *, tcp_hdr(buff),
+		   int : tcplsinfo_t *, TCP_CLOSE,
+		   int, sk->sk_state, int, DTRACE_NET_PROBE_OUTBOUND);
 
 	/* Send off SYN; include data in Fast Open. */
 	err = tp->fastopen_req ? tcp_send_syn_data(sk, buff) :

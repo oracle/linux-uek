@@ -21,6 +21,13 @@ if [ "`grep CONFIG_DRM=y .config | cut -f2 -d\=`" = "y" ]; then
 	PROVIDES=kernel-drm
 fi
 
+#
+if [ "`grep CONFIG_CTF=y .config | cut -f2 -d\=`" = "y" ]; then
+	CTF=true
+else
+	CTF=false
+fi
+
 PROVIDES="$PROVIDES kernel-$KERNELRELEASE"
 __KERNELRELEASE=`echo $KERNELRELEASE | sed -e "s/-/_/g"`
 
@@ -38,6 +45,12 @@ echo "Source: kernel-$__KERNELRELEASE.tar.gz"
 fi
 
 echo "BuildRoot: %{_tmppath}/%{name}-%{PACKAGE_VERSION}-root"
+
+if $CTF; then
+echo "BuildRequires: libdtrace-ctf >= 0.5.0"
+echo "BuildRequires: libdtrace-ctf-devel >= 0.5.0"
+fi
+
 echo "Provides: $PROVIDES"
 echo "%define __spec_install_post /usr/lib/rpm/brp-compress || :"
 echo "%define debug_package %{nil}"
@@ -64,6 +77,11 @@ echo "AutoReqProv: no"
 echo "%description -n kernel-devel"
 echo "This package provides kernel headers and makefiles sufficient to build modules"
 echo "against the $__KERNELRELEASE kernel package."
+
+if $CTF; then
+echo "Requires: libdtrace-ctf >= 0.5.0"
+fi
+
 echo ""
 
 if ! $PREBUILT; then
@@ -154,6 +172,7 @@ echo ""
 echo "%files headers"
 echo '%defattr (-, root, root)'
 echo "/usr/include"
+echo "%exclude /usr/include/linux/dtrace"
 echo ""
 if ! $PREBUILT; then
 echo "%files devel"

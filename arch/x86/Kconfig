@@ -335,6 +335,9 @@ config PGTABLE_LEVELS
 	default 3 if X86_PAE
 	default 2
 
+config ARCH_SUPPORTS_DTRACE
+	def_bool y if X86_64
+
 source "init/Kconfig"
 source "kernel/Kconfig.freezer"
 

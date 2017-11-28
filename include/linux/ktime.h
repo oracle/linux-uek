@@ -170,6 +170,14 @@ static inline s64 ktime_divns(const ktime_t kt, s64 div)
 }
 #endif
 
+/*
+ * ktime_nz - Check whether a ktime_v variable is non-zero
+ */
+static inline int ktime_nz(const ktime_t kt)
+{
+	return kt != 0LL;
+}
+
 static inline s64 ktime_to_us(const ktime_t kt)
 {
 	return ktime_divns(kt, NSEC_PER_USEC);

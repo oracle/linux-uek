@@ -27,6 +27,7 @@
 #include <linux/signal_types.h>
 #include <linux/mm_types_task.h>
 #include <linux/task_io_accounting.h>
+#include <linux/dtrace_psinfo.h>
 
 /* task_struct member predeclarations (sorted alphabetically): */
 struct audit_context;
@@ -1068,7 +1069,18 @@ struct task_struct {
 	/* Number of pages to reclaim on returning to userland: */
 	unsigned int			memcg_nr_pages_over_high;
 #endif
+#ifdef CONFIG_DTRACE
+	uint32_t predcache;
+	ktime_t dtrace_vtime;
+	ktime_t dtrace_start;
+	uint8_t dtrace_stop;
+	uint8_t dtrace_sig;
+	dtrace_psinfo_t *dtrace_psinfo;
 
+	void *dtrace_helpers;
+	uint32_t dtrace_probes;
+	uint64_t dtrace_tp_count;
+#endif
 #ifdef CONFIG_UPROBES
 	struct uprobe_task		*utask;
 #endif

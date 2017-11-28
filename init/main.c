@@ -88,6 +88,7 @@
 #include <linux/io.h>
 #include <linux/cache.h>
 #include <linux/rodata_test.h>
+#include <linux/sdt.h>
 
 #include <asm/io.h>
 #include <asm/bugs.h>
@@ -100,6 +101,11 @@ static int kernel_init(void *);
 extern void init_IRQ(void);
 extern void fork_init(void);
 extern void radix_tree_init(void);
+
+#ifdef CONFIG_DTRACE
+extern void dtrace_os_init(void);
+extern void dtrace_cpu_init(void);
+#endif
 
 /*
  * Debug helper: via this flag we know that we are in 'early bootup code'
@@ -706,6 +712,10 @@ asmlinkage __visible void __init start_kernel(void)
 		efi_free_boot_services();
 	}
 
+#ifdef CONFIG_DTRACE
+	dtrace_os_init();
+#endif                                                                        
+
 	/* Do the rest non-__init'ed, we're now alive */
 	rest_init();
 }
@@ -1054,6 +1064,10 @@ static noinline void __init kernel_init_freeable(void)
 	workqueue_init();
 
 	init_mm_internals();
+
+#ifdef CONFIG_DTRACE
+	dtrace_cpu_init();
+#endif
 
 	do_pre_smp_initcalls();
 	lockup_detector_init();

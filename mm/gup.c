@@ -83,6 +83,9 @@ retry:
 	if (unlikely(pmd_bad(*pmd)))
 		return no_page_table(vma, flags);
 
+	if ((flags & FOLL_IMMED) && pte_is_locked(mm, pmd))
+                return no_page_table(vma, flags);
+
 	ptep = pte_offset_map_lock(mm, pmd, address, &ptl);
 	pte = *ptep;
 	if (!pte_present(pte)) {
@@ -374,9 +377,10 @@ static struct page *follow_p4d_mask(struct vm_area_struct *vma,
  *
  * @flags can have FOLL_ flags set, defined in <linux/mm.h>
  *
- * Returns the mapped (struct page *), %NULL if no mapping exists, or
- * an error pointer if there is a mapping to something not represented
- * by a page descriptor (see also vm_normal_page()).
+ * Returns the mapped (struct page *), %NULL if no mapping exists or if
+ * FOLL_IMMED is set and the PTE is locked, or an error pointer if there is a
+ * mapping to something not represented by a page descriptor (see also
+ * vm_normal_page()).
  */
 struct page *follow_page_mask(struct vm_area_struct *vma,
 			      unsigned long address, unsigned int flags,
@@ -486,6 +490,13 @@ static int faultin_page(struct task_struct *tsk, struct vm_area_struct *vma,
 	/* mlock all present pages, but do not fault in new pages */
 	if ((*flags & (FOLL_POPULATE | FOLL_MLOCK)) == FOLL_MLOCK)
 		return -ENOENT;
+
+	if (unlikely(*flags & FOLL_IMMED)) {
+		if (nonblocking)
+			*nonblocking = 0;
+		return -EBUSY;
+	}
+
 	if (*flags & FOLL_WRITE)
 		fault_flags |= FAULT_FLAG_WRITE;
 	if (*flags & FOLL_REMOTE)
@@ -620,11 +631,16 @@ static int check_vma_flags(struct vm_area_struct *vma, unsigned long gup_flags)
  * appropriate) must be called after the page is finished with, and
  * before put_page is called.
  *
- * If @nonblocking != NULL, __get_user_pages will not wait for disk IO
- * or mmap_sem contention, and if waiting is needed to pin all pages,
- * *@nonblocking will be set to 0.  Further, if @gup_flags does not
- * include FOLL_NOWAIT, the mmap_sem will be released via up_read() in
- * this case.
+ * If FOLL_IMMED is set, pinning of pages will cease as soon as a page is
+ * encountered that needs to be faulted in.  (No attempt is made to see if
+ * further pages could be pinned without faulting: the caller must do that, if
+ * desired.)
+ *
+ * If @nonblocking != NULL, __get_user_pages will not wait for disk IO or
+ * mmap_sem contention, and if waiting is needed to pin all pages, or
+ * FOLL_IMMED is set and a fault is needed, *@nonblocking will be set to 0.
+ * Further, if @gup_flags does not include FOLL_NOWAIT, the mmap_sem will be
+ * released via up_read() in this case.
  *
  * A caller using such a combination of @nonblocking and @gup_flags
  * must therefore hold the mmap_sem for reading only, and recognize
@@ -635,7 +651,7 @@ static int check_vma_flags(struct vm_area_struct *vma, unsigned long gup_flags)
  * instead of __get_user_pages. __get_user_pages should be used only if
  * you need some special @gup_flags.
  */
-static long __get_user_pages(struct task_struct *tsk, struct mm_struct *mm,
+long __get_user_pages(struct task_struct *tsk, struct mm_struct *mm,
 		unsigned long start, unsigned long nr_pages,
 		unsigned int gup_flags, struct page **pages,
 		struct vm_area_struct **vmas, int *nonblocking)
@@ -664,7 +680,12 @@ static long __get_user_pages(struct task_struct *tsk, struct mm_struct *mm,
 
 		/* first iteration or cross vma bound */
 		if (!vma || start >= vma->vm_end) {
-			vma = find_extend_vma(mm, start);
+			/* Do not extend stack in no-fault mode. */
+			if (gup_flags & FOLL_IMMED)
+				vma = find_vma(mm, start);
+			else
+				vma = find_extend_vma(mm, start);
+
 			if (!vma && in_gate_area(mm, start)) {
 				int ret;
 				ret = get_gate_page(mm, start & PAGE_MASK,
@@ -692,7 +713,8 @@ retry:
 		 */
 		if (unlikely(fatal_signal_pending(current)))
 			return i ? i : -ERESTARTSYS;
-		cond_resched();
+		if (likely(!(foll_flags & FOLL_IMMED)))
+			cond_resched();
 		page = follow_page_mask(vma, start, foll_flags, &page_mask);
 		if (!page) {
 			int ret;
@@ -740,6 +762,7 @@ next_page:
 	} while (nr_pages);
 	return i;
 }
+EXPORT_SYMBOL(__get_user_pages);
 
 static bool vma_permits_fault(struct vm_area_struct *vma,
 			      unsigned int fault_flags)

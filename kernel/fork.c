@@ -90,6 +90,8 @@
 #include <linux/kcov.h>
 #include <linux/livepatch.h>
 #include <linux/thread_info.h>
+#include <linux/sdt.h>
+#include <linux/dtrace_os.h>
 
 #include <asm/pgtable.h>
 #include <asm/pgalloc.h>
@@ -367,6 +369,9 @@ void put_task_stack(struct task_struct *tsk)
 
 void free_task(struct task_struct *tsk)
 {
+#ifdef CONFIG_DTRACE
+	put_psinfo(tsk);
+#endif
 #ifndef CONFIG_THREAD_INFO_IN_TASK
 	/*
 	 * The task is finally done with both the stack and thread_info,
@@ -585,6 +590,12 @@ static struct task_struct *dup_task_struct(struct task_struct *orig, int node)
 	tsk->fail_nth = 0;
 #endif
 
+#ifdef CONFIG_DTRACE
+	if (likely(tsk->dtrace_psinfo))
+		get_psinfo(tsk);
+
+	dtrace_task_init(tsk);
+#endif
 	return tsk;
 
 free_stack:
@@ -1925,6 +1936,26 @@ static __latent_entropy struct task_struct *copy_process(
 	syscall_tracepoint_update(p);
 	write_unlock_irq(&tasklist_lock);
 
+#ifdef CONFIG_DTRACE
+	/*
+	 * If we're called with stack_start != 0, this is almost certainly a
+	 * thread being created in current.  Make sure it gets its own psinfo
+	 * data, because we need to record a new bottom of stack value.
+	 */
+	if (p->mm && stack_start) {
+		dtrace_psinfo_alloc(p);
+		p->dtrace_psinfo->ustack = (void *)stack_start;
+	}
+
+	/*
+	 * We make this call fairly late into the copy_process() handling,
+	 * because we need to ensure that we can look up this task based on
+	 * its pid using find_task_by_vpid().  We also must ensure that the
+	 * tasklist_lock has been released.
+	 */
+	dtrace_task_fork(current, p);
+#endif
+
 	proc_fork_connector(p);
 	cgroup_post_fork(p);
 	cgroup_threadgroup_change_end(current);
@@ -2083,6 +2114,8 @@ long _do_fork(unsigned long clone_flags,
 		}
 
 		put_pid(pid);
+		DTRACE_PROC(lwp__create, struct task_struct * : (lwpsinfo_t *, psinfo_t *), p);
+		DTRACE_PROC(create, struct task_struct * : psinfo_t *, p);
 	} else {
 		nr = PTR_ERR(p);
 	}

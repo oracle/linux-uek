@@ -16,6 +16,7 @@
 #include <linux/prefetch.h>		/* prefetchw			*/
 #include <linux/context_tracking.h>	/* exception_enter(), ...	*/
 #include <linux/uaccess.h>		/* faulthandler_disabled()	*/
+#include <linux/dtrace_os.h>		/* dtrace_no_pf			*/
 
 #include <asm/cpufeature.h>		/* boot_cpu_has, ...		*/
 #include <asm/traps.h>			/* dotraplinkage, ...		*/
@@ -804,6 +805,16 @@ no_context(struct pt_regs *regs, unsigned long error_code,
 	    (((unsigned long)tsk->stack - 1 - address < PAGE_SIZE) ||
 	     address - ((unsigned long)tsk->stack + THREAD_SIZE) < PAGE_SIZE)) {
 		unsigned long stack = this_cpu_read(orig_ist.ist[DOUBLEFAULT_STACK]) - sizeof(void *);
+
+		/*
+		 * Allow for the possibility that we know what we are doing and
+		 * ignore this fault.  E.g. the address may come from a source
+		 * we cannot trust and it is OK if we cannot access it.
+		 */
+		 if (notify_die(DIE_PAGE_FAULT, "page fault", regs, error_code,
+				14, SIGKILL) == NOTIFY_STOP)
+			return;
+
 		/*
 		 * We're likely to be running with very little stack space
 		 * left.  It's plausible that we'd hit this condition but
@@ -844,8 +855,13 @@ no_context(struct pt_regs *regs, unsigned long error_code,
 
 	/*
 	 * Oops. The kernel tried to access some bad page. We'll have to
-	 * terminate things with extreme prejudice:
+	 * terminate things with extreme prejudice, unless a notifier decides
+	 * to let this one slide.
 	 */
+	if (notify_die(DIE_PAGE_FAULT, "page fault", regs, error_code, 14,
+		       SIGKILL) == NOTIFY_STOP)
+		return;
+
 	flags = oops_begin();
 
 	show_fault_oops(regs, error_code, address);
@@ -1321,6 +1337,10 @@ __do_page_fault(struct pt_regs *regs, unsigned long error_code,
 		return;
 	}
 
+	/*
+	 * From here on, we know this must be a fault in userspace.
+	 */
+
 	/* kprobes don't want to hook the spurious faults: */
 	if (unlikely(kprobes_fault(regs)))
 		return;
@@ -1332,6 +1352,12 @@ __do_page_fault(struct pt_regs *regs, unsigned long error_code,
 		bad_area_nosemaphore(regs, error_code, address, NULL);
 		return;
 	}
+
+	/*
+	 * DTrace doesn't want to either.
+	 */
+	if (unlikely(dtrace_no_pf(regs)))
+		return;
 
 	/*
 	 * If we're in an interrupt, have no user context or are running
@@ -1517,7 +1543,7 @@ trace_page_fault_entries(unsigned long address, struct pt_regs *regs,
  *
  * exception_{enter,exit}() contains all sorts of tracepoints.
  */
-dotraplinkage void notrace
+dotraplinkage int notrace
 do_page_fault(struct pt_regs *regs, unsigned long error_code)
 {
 	unsigned long address = read_cr2(); /* Get the faulting address */
@@ -1529,5 +1555,6 @@ do_page_fault(struct pt_regs *regs, unsigned long error_code)
 
 	__do_page_fault(regs, error_code, address);
 	exception_exit(prev_state);
+	return 0;
 }
 NOKPROBE_SYMBOL(do_page_fault);

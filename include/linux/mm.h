@@ -1356,6 +1356,10 @@ extern int access_remote_vm(struct mm_struct *mm, unsigned long addr,
 extern int __access_remote_vm(struct task_struct *tsk, struct mm_struct *mm,
 		unsigned long addr, void *buf, int len, unsigned int gup_flags);
 
+long __get_user_pages(struct task_struct *tsk, struct mm_struct *mm,
+		      unsigned long start, unsigned long nr_pages,
+		      unsigned int foll_flags, struct page **pages,
+		      struct vm_area_struct **vmas, int *nonblocking);
 long get_user_pages_remote(struct task_struct *tsk, struct mm_struct *mm,
 			    unsigned long start, unsigned long nr_pages,
 			    unsigned int gup_flags, struct page **pages,
@@ -1780,6 +1784,12 @@ static inline void pgtable_page_dtor(struct page *page)
 	*(ptlp) = __ptl;				\
 	spin_lock(__ptl);				\
 	__pte;						\
+})
+
+#define pte_is_locked(mm, pmd)				\
+({							\
+	spinlock_t *__ptl = pte_lockptr(mm, pmd);	\
+	spin_is_locked(__ptl);				\
 })
 
 #define pte_unmap_unlock(pte, ptl)	do {		\
@@ -2369,6 +2379,7 @@ static inline struct page *follow_page(struct vm_area_struct *vma,
 #define FOLL_MLOCK	0x1000	/* lock present pages */
 #define FOLL_REMOTE	0x2000	/* we are working on non-current tsk/mm */
 #define FOLL_COW	0x4000	/* internal GUP flag */
+#define FOLL_IMMED	0x08000000	/* fail if locking, or faulting pages in */
 
 static inline int vm_fault_to_errno(int vm_fault, int foll_flags)
 {

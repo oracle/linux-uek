@@ -18,6 +18,7 @@ static inline void apply_paravirt(struct paravirt_patch_site *start,
 #define __parainstructions_end	NULL
 #endif
 
+extern void add_nops(void *insns, unsigned int len);
 extern void *text_poke_early(void *addr, const void *opcode, size_t len);
 
 /*

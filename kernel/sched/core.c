@@ -26,6 +26,7 @@
 #include <linux/profile.h>
 #include <linux/security.h>
 #include <linux/syscalls.h>
+#include <linux/dtrace_os.h>
 
 #include <asm/switch_to.h>
 #include <asm/tlb.h>
@@ -753,6 +754,9 @@ static void set_load_weight(struct task_struct *p)
 
 static inline void enqueue_task(struct rq *rq, struct task_struct *p, int flags)
 {
+	DTRACE_SCHED(enqueue, struct task_struct * : (lwpsinfo_t *,
+						      psinfo_t *), p,
+		     cpuinfo_t *, rq->dtrace_cpu_info);
 	if (!(flags & ENQUEUE_NOCLOCK))
 		update_rq_clock(rq);
 
@@ -764,6 +768,10 @@ static inline void enqueue_task(struct rq *rq, struct task_struct *p, int flags)
 
 static inline void dequeue_task(struct rq *rq, struct task_struct *p, int flags)
 {
+	DTRACE_SCHED(dequeue, struct task_struct * : (lwpsinfo_t *,
+						      psinfo_t *), p,
+		     cpuinfo_t *, rq->dtrace_cpu_info,
+		     int, 0);
 	if (!(flags & DEQUEUE_NOCLOCK))
 		update_rq_clock(rq);
 
@@ -1982,6 +1990,8 @@ try_to_wake_up(struct task_struct *p, unsigned int state, int wake_flags)
 		goto out;
 
 	trace_sched_waking(p);
+	DTRACE_SCHED(wakeup, struct task_struct * : (lwpsinfo_t *,
+						     psinfo_t *), p);
 
 	/* We're going to change ->state: */
 	success = 1;
@@ -2581,6 +2591,8 @@ prepare_task_switch(struct rq *rq, struct task_struct *prev,
 {
 	sched_info_switch(rq, prev, next);
 	perf_event_task_sched_out(prev, next);
+	DTRACE_SCHED(off__cpu, struct task_struct * : (lwpsinfo_t *,
+						       psinfo_t *), next);
 	fire_sched_out_preempt_notifiers(prev, next);
 	prepare_lock_switch(rq, next);
 	prepare_arch_switch(next);
@@ -2630,6 +2642,11 @@ static struct rq *finish_task_switch(struct task_struct *prev)
 
 	rq->prev_mm = NULL;
 
+#ifdef CONFIG_DTRACE
+	if (dtrace_vtime_active)
+		dtrace_vtime_switch(prev, current);
+#endif
+
 	/*
 	 * A task struct has one reference for the use as "current".
 	 * If a task dies, then it sets TASK_DEAD in tsk->state and calls
@@ -2657,6 +2674,7 @@ static struct rq *finish_task_switch(struct task_struct *prev)
 	finish_lock_switch(rq, prev);
 	finish_arch_post_lock_switch();
 
+	DTRACE_SCHED(on__cpu);
 	fire_sched_in_preempt_notifiers(current);
 	if (mm)
 		mmdrop(mm);
@@ -2741,6 +2759,9 @@ asmlinkage __visible void schedule_tail(struct task_struct *prev)
 
 	if (current->set_child_tid)
 		put_user(task_pid_vnr(current), current->set_child_tid);
+
+	DTRACE_PROC(start);
+	DTRACE_PROC(lwp__start);
 }
 
 /*
@@ -3309,6 +3330,7 @@ static void __sched notrace __schedule(bool preempt)
 
 	switch_count = &prev->nivcsw;
 	if (!preempt && prev->state) {
+		DTRACE_SCHED(sleep);
 		if (unlikely(signal_pending_state(prev->state, prev))) {
 			prev->state = TASK_RUNNING;
 		} else {
@@ -3334,7 +3356,8 @@ static void __sched notrace __schedule(bool preempt)
 			}
 		}
 		switch_count = &prev->nvcsw;
-	}
+	} else
+		DTRACE_SCHED(preempt);
 
 	next = pick_next_task(rq, prev, &rf);
 	clear_tsk_need_resched(prev);
@@ -3366,6 +3389,7 @@ static void __sched notrace __schedule(bool preempt)
 		rq = context_switch(rq, prev, next, &rf);
 	} else {
 		rq->clock_update_flags &= ~(RQCF_ACT_SKIP|RQCF_REQ_SKIP);
+		DTRACE_SCHED(remain__cpu);
 		rq_unlock_irq(rq, &rf);
 	}
 
@@ -3810,6 +3834,9 @@ void set_user_nice(struct task_struct *p, long nice)
 	p->prio = effective_prio(p);
 	delta = p->prio - old_prio;
 
+	DTRACE_SCHED(change__pri, struct task_struct * : (lwpsinfo_t *,
+							  psinfo_t *), p,
+		      int, old_prio);
 	if (queued) {
 		enqueue_task(rq, p, ENQUEUE_RESTORE | ENQUEUE_NOCLOCK);
 		/*
@@ -4830,6 +4857,9 @@ SYSCALL_DEFINE0(sched_yield)
 	rq_unlock(rq, &rf);
 	sched_preempt_enable_no_resched();
 
+	DTRACE_SCHED(surrender,
+		     struct task_struct * : (lwpsinfo_t *, psinfo_t *),
+		     current);
 	schedule();
 
 	return 0;
@@ -4985,8 +5015,12 @@ out_unlock:
 out_irq:
 	local_irq_restore(flags);
 
-	if (yielded > 0)
+	if (yielded > 0) {
+		DTRACE_SCHED(surrender,
+			     struct task_struct * : (lwpsinfo_t *, psinfo_t *),
+			     curr);
 		schedule();
+	}
 
 	return yielded;
 }
@@ -5931,6 +5965,10 @@ void __init sched_init(void)
 #endif /* CONFIG_SMP */
 		init_rq_hrtick(rq);
 		atomic_set(&rq->nr_iowait, 0);
+
+#ifdef CONFIG_DTRACE
+		rq->dtrace_cpu_info = per_cpu_info(i);
+#endif
 	}
 
 	set_load_weight(&init_task);

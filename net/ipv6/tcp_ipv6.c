@@ -68,6 +68,7 @@
 
 #include <crypto/hash.h>
 #include <linux/scatterlist.h>
+#include <linux/sdt.h>
 
 static void	tcp_v6_send_reset(const struct sock *sk, struct sk_buff *skb);
 static void	tcp_v6_reqsk_send_ack(const struct sock *sk, struct sk_buff *skb,
@@ -453,6 +454,20 @@ out:
 	sock_put(sk);
 }
 
+/* Since we want to trace send events in TCP prior to pushing the segment to
+ * IP - where the IP header is added - we need to construct an argument
+ * containing relevant IP info so that TCP probe consumers can utilize it.
+ */
+static inline void dtrace_tcp_build_ipv6hdr(struct in6_addr *saddr,
+					    struct in6_addr *daddr,
+					    struct ipv6hdr *ip6h)
+{
+	ip6h->version = 6;
+	ip6h->payload_len = 0;
+	ip6h->nexthdr = IPPROTO_TCP;
+	ip6h->saddr = *saddr;
+	ip6h->daddr = *daddr;
+}
 
 static int tcp_v6_send_synack(const struct sock *sk, struct dst_entry *dst,
 			      struct flowi *fl,
@@ -486,6 +501,32 @@ static int tcp_v6_send_synack(const struct sock *sk, struct dst_entry *dst,
 		opt = ireq->ipv6_opt;
 		if (!opt)
 			opt = rcu_dereference(np->opt);
+
+		if (DTRACE_TCP_ENABLED(send)) {
+			struct ipv6hdr ip6h;
+
+			dtrace_tcp_build_ipv6hdr(&ireq->ir_v6_loc_addr,
+						 &ireq->ir_v6_rmt_addr, &ip6h);
+
+			/* Do not supply tcp sk - addresses/ports are not
+			 * committed yet - instead translators will fill them
+			 * in from IP/TCP data.
+			 */
+			DTRACE_TCP_NOCHECK(send,
+					   struct sk_buff * :  pktinfo_t *,
+					   NULL,
+					   struct sock * : csinfo_t *, sk,
+					   __dtrace_tcp_void_ip_t * :
+					   ipinfo_t *, &ip6h,
+					   struct tcp_sock * : tcpsinfo_t *,
+					   NULL,
+					   struct tcphdr * : tcpinfo_t *,
+					   tcp_hdr(skb),
+					   int : tcplsinfo_t *, TCP_LISTEN,
+					   int, TCP_LISTEN,
+					   int, DTRACE_NET_PROBE_OUTBOUND);
+		}
+
 		err = ip6_xmit(sk, skb, fl6, sk->sk_mark, opt, np->tclass);
 		rcu_read_unlock();
 		err = net_xmit_eval(err);
@@ -868,6 +909,48 @@ static void tcp_v6_send_response(const struct sock *sk, struct sk_buff *skb, u32
 	dst = ip6_dst_lookup_flow(ctl_sk, &fl6, NULL);
 	if (!IS_ERR(dst)) {
 		skb_dst_set(buff, dst);
+		if (DTRACE_TCP_ENABLED(send) ||
+		    DTRACE_TCP_ENABLED(accept__refused)) {
+			struct ipv6hdr ip6h;
+
+			dtrace_tcp_build_ipv6hdr(&fl6.saddr, &fl6.daddr,
+						 &ip6h);
+
+			/* Do not supply tcp sk - addresses/ports are not
+			 * committed yet - instead translators will fill them
+			 * in from IP/TCP data.
+			 */
+			DTRACE_TCP_NOCHECK(send,
+					   struct sk_buff * :  pktinfo_t *,
+					   NULL,
+					   struct sock * : csinfo_t *, NULL,
+					   __dtrace_tcp_void_ip_t * :
+					   ipinfo_t *, &ip6h,
+					   struct tcp_sock * : tcpsinfo_t *,
+					   NULL,
+					   struct tcphdr * : tcpinfo_t *, t1,
+					   int : tcplsinfo_t *, TCP_CLOSE,
+					   int, TCP_CLOSE,
+					   int, DTRACE_NET_PROBE_OUTBOUND);
+			if (rst && th->syn && th->ack == 0)
+				DTRACE_TCP_NOCHECK(accept__refused,
+						   struct sk_buff * :
+						   pktinfo_t *, NULL,
+						   struct sock * : csinfo_t *,
+						   NULL,
+						   __dtrace_tcp_void_ip_t * :
+						   ipinfo_t *, &ip6h,
+						   struct tcp_sock * :
+						   tcpsinfo_t *, NULL,
+						   struct tcphdr * :
+						   tcpinfo_t *, t1,
+						   int : tcplsinfo_t *,
+						   TCP_CLOSE,
+						   int, TCP_CLOSE,
+						   int,
+						   DTRACE_NET_PROBE_OUTBOUND);
+		}
+
 		ip6_xmit(ctl_sk, buff, &fl6, fl6.flowi6_mark, NULL, tclass);
 		TCP_INC_STATS(net, TCP_MIB_OUTSEGS);
 		if (rst)
@@ -1404,7 +1487,7 @@ static int tcp_v6_rcv(struct sk_buff *skb)
 	const struct tcphdr *th;
 	const struct ipv6hdr *hdr;
 	bool refcounted;
-	struct sock *sk;
+	struct sock *sk = NULL;
 	int ret;
 	struct net *net = dev_net(skb->dev);
 
@@ -1439,6 +1522,15 @@ lookup:
 	if (!sk)
 		goto no_tcp_socket;
 
+	DTRACE_TCP(receive,
+		   struct sk_buff * :  pktinfo_t *, skb,
+		   struct sock * : csinfo_t *, sk,
+		   __dtrace_tcp_void_ip_t * : ipinfo_t *, hdr,
+		   struct tcp_sock * : tcpsinfo_t *, tcp_sk(sk),
+		   struct tcphdr * : tcpinfo_t *, th,
+		   int : tcplsinfo_t *, sk ? sk->sk_state : TCP_CLOSE,
+		   int, sk ? sk->sk_state : TCP_CLOSE,
+		   int, DTRACE_NET_PROBE_INBOUND);
 process:
 	if (sk->sk_state == TCP_TIME_WAIT)
 		goto do_time_wait;
@@ -1536,6 +1628,18 @@ bad_packet:
 	}
 
 discard_it:
+	if (DTRACE_TCP_ENABLED(receive) && skb->pkt_type == PACKET_HOST)
+		DTRACE_TCP_NOCHECK(receive,
+				   struct sk_buff * :  pktinfo_t *, skb,
+				   struct sock * : csinfo_t *, sk,
+				   __dtrace_tcp_void_ip_t * : ipinfo_t *,
+				   ipv6_hdr(skb),
+				   struct tcp_sock * : tcpsinfo_t *, tcp_sk(sk),
+				   struct tcphdr * : tcpinfo_t *, tcp_hdr(skb),
+				   int : tcplsinfo_t *,
+				   sk ? sk->sk_state : TCP_CLOSE,
+				   int, sk ? sk->sk_state : TCP_CLOSE,
+				   int, DTRACE_NET_PROBE_INBOUND);
 	kfree_skb(skb);
 	return 0;
 

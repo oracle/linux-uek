@@ -23,6 +23,7 @@
 #include <linux/slab.h>
 #include <linux/sysctl.h>
 #include <linux/workqueue.h>
+#include <linux/sdt.h>
 #include <net/tcp.h>
 #include <net/inet_common.h>
 #include <net/xfrm.h>
@@ -316,6 +317,20 @@ void tcp_time_wait(struct sock *sk, int state, int timeo)
 		/* Linkage updates. */
 		__inet_twsk_hashdance(tw, sk, &tcp_hashinfo);
 		inet_twsk_put(tw);
+
+		if (DTRACE_TCP_ENABLED(state__change) &&
+		    state != sk->sk_state)
+			DTRACE_TCP_NOCHECK(state__change,
+					   struct sk_buff * : pktinfo_t *, NULL,
+					   struct sock * : csinfo_t *, sk,
+					   __dtrace_tcp_void_ip_t * :
+					   ipinfo_t *, NULL,
+					   struct tcp_sock * : tcpsinfo_t *,
+					   tcp_sk(sk),
+					   struct tcphdr * : tcpinfo_t *, NULL,
+					   int : tcplsinfo_t *, sk->sk_state,
+					   int, state,
+					   int, DTRACE_NET_PROBE_OUTBOUND);
 	} else {
 		/* Sorry, if we're out of memory, just CLOSE this
 		 * socket up.  We've got bigger problems than

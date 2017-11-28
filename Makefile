@@ -568,6 +568,7 @@ net-y		:= net/
 libs-y		:= lib/
 core-y		:= usr/
 virt-y		:= virt/
+dtrace-y	:= dtrace/
 endif # KBUILD_EXTMOD
 
 ifeq ($(dot-config),1)
@@ -950,14 +951,17 @@ core-y		+= kernel/ certs/ mm/ fs/ ipc/ security/ crypto/ block/
 
 vmlinux-dirs	:= $(patsubst %/,%,$(filter %/, $(init-y) $(init-m) \
 		     $(core-y) $(core-m) $(drivers-y) $(drivers-m) \
-		     $(net-y) $(net-m) $(libs-y) $(libs-m) $(virt-y)))
+		     $(net-y) $(net-m) $(libs-y) $(libs-m) $(virt-y) \
+		     $(dtrace-y) $(dtrace-m)))
 
 vmlinux-alldirs	:= $(sort $(vmlinux-dirs) $(patsubst %/,%,$(filter %/, \
-		     $(init-) $(core-) $(drivers-) $(net-) $(libs-) $(virt-))))
+		     $(init-) $(core-) $(drivers-) $(net-) $(libs-) $(virt-) \
+		     $(dtrace-))))
 
 init-y		:= $(patsubst %/, %/built-in.o, $(init-y))
 core-y		:= $(patsubst %/, %/built-in.o, $(core-y))
 drivers-y	:= $(patsubst %/, %/built-in.o, $(drivers-y))
+dtrace-y	:= $(patsubst %/, %/built-in.o, $(dtrace-y))
 net-y		:= $(patsubst %/, %/built-in.o, $(net-y))
 libs-y1		:= $(patsubst %/, %/lib.a, $(libs-y))
 libs-y2		:= $(filter-out %.a, $(patsubst %/, %/built-in.o, $(libs-y)))
@@ -965,7 +969,7 @@ virt-y		:= $(patsubst %/, %/built-in.o, $(virt-y))
 
 # Externally visible symbols (used by link-vmlinux.sh)
 export KBUILD_VMLINUX_INIT := $(head-y) $(init-y)
-export KBUILD_VMLINUX_MAIN := $(core-y) $(libs-y2) $(drivers-y) $(net-y) $(virt-y)
+export KBUILD_VMLINUX_MAIN := $(core-y) $(libs-y2) $(drivers-y) $(net-y) $(virt-y) $(dtrace-y)
 export KBUILD_VMLINUX_LIBS := $(libs-y1)
 export KBUILD_LDS          := arch/$(SRCARCH)/kernel/vmlinux.lds
 export LDFLAGS_vmlinux
@@ -1001,7 +1005,7 @@ cmd_link-vmlinux =                                                 \
 	$(CONFIG_SHELL) $< $(LD) $(LDFLAGS) $(LDFLAGS_vmlinux) ;    \
 	$(if $(ARCH_POSTLINK), $(MAKE) -f $(ARCH_POSTLINK) $@, true)
 
-vmlinux: scripts/link-vmlinux.sh vmlinux_prereq $(vmlinux-deps) FORCE
+vmlinux: scripts/link-vmlinux.sh vmlinux_prereq $(vmlinux-deps) modules_thick.builtin FORCE
 	+$(call if_changed,link-vmlinux)
 
 # Build samples along the rest of the kernel
@@ -1207,17 +1211,49 @@ all: modules
 # using awk while concatenating to the final file.
 
 PHONY += modules
-modules: $(vmlinux-dirs) $(if $(KBUILD_BUILTIN),vmlinux) modules.builtin
+modules: $(vmlinux-dirs) $(if $(KBUILD_BUILTIN),vmlinux) modules_thick.builtin objects.builtin
 	$(Q)$(AWK) '!x[$$0]++' $(vmlinux-dirs:%=$(objtree)/%/modules.order) > $(objtree)/modules.order
 	@$(kecho) '  Building modules, stage 2.';
 	$(Q)$(MAKE) -f $(srctree)/scripts/Makefile.modpost
 
-modules.builtin: $(vmlinux-dirs:%=%/modules.builtin)
-	$(Q)$(AWK) '!x[$$0]++' $^ > $(objtree)/modules.builtin
+ifneq (CONFIG_CTF@CONFIG_KALLMODSYMS,'@')
 
-%/modules.builtin: include/config/auto.conf
-	$(Q)$(MAKE) $(modbuiltin)=$*
+# We need to force everything to be built, since we need the .o files below.
+KBUILD_BUILTIN := 1
 
+# Set a default CTF filename.
+CTF_FILENAME := vmlinux.ctfa
+
+# This contains all the object files that are built directly into the
+# kernel (including built-in modules), for consumption by dwarf2ctf in
+# Makefile.modpost.
+# This is made doubly annoying by the presence of '.o' files which are actually
+# thin ar archives, and the need to support file(1) versions too old to
+# recognize them as archives at all.  (So we assume that everything that is not
+# an ELF object is an archive.)
+ifeq ($(SRCARCH),x86)
+objects.builtin: $(vmlinux-dirs) $(if $(KBUILD_BUILTIN),bzImage) FORCE
+else
+objects.builtin: $(vmlinux-dirs) $(if $(KBUILD_BUILTIN),vmlinux) FORCE
+endif
+	@echo $(KBUILD_VMLINUX_INIT) $(KBUILD_VMLINUX_MAIN) | \
+		tr " " "\n" | grep "\.o$$" | xargs -r file | \
+		grep ELF | cut -d: -f1 > objects.builtin
+	@for archive in $$(echo $(KBUILD_VMLINUX_INIT) $(KBUILD_VMLINUX_MAIN) |\
+		tr " " "\n" | xargs -r file | grep -v ELF | cut -d: -f1); do \
+		ar t "$$archive" >> objects.builtin; \
+	done
+
+CTF_DEBUGDIR := .
+
+ctf: $(CTF_FILENAME)
+PHONY += ctf
+$(CTF_FILENAME):
+	$(Q)$(MAKE) -f $(srctree)/scripts/Makefile.modpost CTF_FILENAME=$(CTF_FILENAME) CTF_DEBUGDIR=$(CTF_DEBUGDIR) $(CTF_FILENAME) ctf-builtins="$(KBUILD_VMLINUX_INIT) $(KBUILD_VMLINUX_MAIN)"
+else
+PHONY += objects.builtin
+objects.builtin:
+endif
 
 # Target to prepare building external modules
 PHONY += modules_prepare
@@ -1239,6 +1275,9 @@ _modinst_:
 	fi
 	@cp -f $(objtree)/modules.order $(MODLIB)/
 	@cp -f $(objtree)/modules.builtin $(MODLIB)/
+	@if [ -f $(objtree)/$(CTF_FILENAME) ] ; then \
+		cp -f $(objtree)/$(CTF_FILENAME) $(MODLIB)/kernel ; \
+	fi
 	$(Q)$(MAKE) -f $(srctree)/scripts/Makefile.modinst
 
 # This depmod is only for convenience to give the initial
@@ -1270,6 +1309,30 @@ modules modules_install:
 
 endif # CONFIG_MODULES
 
+# modules.builtin has a 'thick' form usable by tools that do not understand
+# thin archives, which transforms thin archives to their constituent elements,
+# while retaining the name of the archive (-> module) they are part of before a
+# comma.  The redundant kernel/ on the start of every line is also removed, and
+# the object file name corrected (the tools that use this file work over .o files
+# exclusively).
+
+modules_thick.builtin: modules.builtin vmlinux_prereq $(vmlinux-deps)
+	$(Q)(rm -f modules_thick.builtin; \
+	cat modules.builtin | sed 's,^kernel/,,; s,\.ko$$,.o,' | \
+			while read -r module; do \
+		if ! [[ `file $$module` =~ ' ELF ' ]]; then \
+			ar t $$module | sed 's,^,'"$$module:," >> modules_thick.builtin; \
+		else \
+			printf "%s\n" "$$module" >> modules_thick.builtin; \
+		fi; \
+	done)
+
+modules.builtin: $(vmlinux-dirs:%=%/modules.builtin)
+	$(Q)$(AWK) '!x[$$0]++' $^ > $(objtree)/modules.builtin
+
+%/modules.builtin: include/config/auto.conf
+	$(Q)$(MAKE) $(modbuiltin)=$*
+
 ###
 # Cleaning is done on three levels.
 # make clean     Delete most generated files
@@ -1278,7 +1341,8 @@ endif # CONFIG_MODULES
 # make distclean Remove editor backup files, patch leftover files and the like
 
 # Directories & files removed with 'make clean'
-CLEAN_DIRS  += $(MODVERDIR)
+CLEAN_DIRS  += $(MODVERDIR) .ctf
+CLEAN_FILES += .ctf.filelist
 
 # Directories & files removed with 'make mrproper'
 MRPROPER_DIRS  += include/config usr/include include/generated          \
@@ -1376,6 +1440,8 @@ help:
 	@echo  '                    (requires a recent binutils and recent build (System.map))'
 	@echo  '  dir/file.ko     - Build module including final link'
 	@echo  '  modules_prepare - Set up for building external modules'
+	@echo  '  ctf             - Generate CTF type information for DTrace, installed by '
+	@echo  '                    make modules_install'
 	@echo  '  tags/TAGS	  - Generate tags file for editors'
 	@echo  '  cscope	  - Generate cscope index'
 	@echo  '  gtags           - Generate GNU GLOBAL index'
@@ -1552,11 +1618,13 @@ clean: $(clean-dirs)
 		-o -name '*.ko.*' \
 		-o -name '*.dwo'  \
 		-o -name '*.su'  \
+		-o -name '*.sdtinfo.c' -o -name '*.sdtstub.S' \
 		-o -name '.*.d' -o -name '.*.tmp' -o -name '*.mod.c' \
 		-o -name '*.symtypes' -o -name 'modules.order' \
-		-o -name modules.builtin -o -name '.tmp_*.o.*' \
-		-o -name '*.c.[012]*.*' \
-		-o -name '*.ll' \
+		-o -name modules.builtin -o -name modules_thick.builtin \
+		-o -name 'objects.builtin' \
+		-o -name '.tmp_*.o.*' -o -name '*.c.[012]*.*' \
+		-o -name '*.ll' -o -name '*.ctfa' \
 		-o -name '*.gcno' \) -type f -print | xargs rm -f
 
 # Generate tags for editors

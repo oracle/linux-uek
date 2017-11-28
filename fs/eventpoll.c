@@ -162,6 +162,9 @@ struct epitem {
 	/* Number of active wait queue attached to poll operations */
 	int nwait;
 
+	/* fd always raises this fixed event. */
+	unsigned long fixed_event;
+
 	/* List containing poll wait queues */
 	struct list_head pwqlist;
 
@@ -913,7 +916,7 @@ static int ep_read_events_proc(struct eventpoll *ep, struct list_head *head,
 }
 
 static void ep_ptable_queue_proc(struct file *file, wait_queue_head_t *whead,
-				 poll_table *pt);
+				 poll_table *pt, unsigned long fixed_event);
 
 struct readyevents_arg {
 	struct eventpoll *ep;
@@ -1225,6 +1228,13 @@ out_unlock:
 	if (!(epi->event.events & EPOLLEXCLUSIVE))
 		ewake = 1;
 
+	/*
+	 * If this fd type has a hardwired event which should override the key
+	 * (e.g. if it is waiting on a non-file waitqueue), jam it in here.
+	 */
+	if (epi->fixed_event)
+		key = (void *)epi->fixed_event;
+
 	if ((unsigned long)key & POLLFREE) {
 		/*
 		 * If we race with ep_remove_wait_queue() it can miss
@@ -1249,10 +1259,16 @@ out_unlock:
  * target file wakeup lists.
  */
 static void ep_ptable_queue_proc(struct file *file, wait_queue_head_t *whead,
-				 poll_table *pt)
+				 poll_table *pt, unsigned long fixed_event)
 {
 	struct epitem *epi = ep_item_from_epqueue(pt);
 	struct eppoll_entry *pwq;
+
+	if (fixed_event & !(epi->event.events & fixed_event))
+		return;
+
+	if (fixed_event)
+		epi->fixed_event = fixed_event;
 
 	if (epi->nwait >= 0 && (pwq = kmem_cache_alloc(pwq_cache, GFP_KERNEL))) {
 		init_waitqueue_func_entry(&pwq->wait, ep_poll_callback);
@@ -1452,6 +1468,7 @@ static int ep_insert(struct eventpoll *ep, struct epoll_event *event,
 	ep_set_ffd(&epi->ffd, tfile, fd);
 	epi->event = *event;
 	epi->nwait = 0;
+	epi->fixed_event = 0;
 	epi->next = EP_UNACTIVE_PTR;
 	if (epi->event.events & EPOLLWAKEUP) {
 		error = ep_create_wakeup_source(epi);
@@ -2325,7 +2342,6 @@ static int __init eventpoll_init(void)
 	 * We can have many thousands of epitems, so prevent this from
 	 * using an extra cache line on 64-bit (and smaller) CPUs
 	 */
-	BUILD_BUG_ON(sizeof(void *) <= 8 && sizeof(struct epitem) > 128);
 
 	/* Allocates slab cache used to allocate "struct epitem" items */
 	epi_cache = kmem_cache_create("eventpoll_epi", sizeof(struct epitem),

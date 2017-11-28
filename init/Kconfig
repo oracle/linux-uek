@@ -1221,6 +1221,15 @@ config KALLSYMS_BASE_RELATIVE
 	  time constants, and no relocation pass is required at runtime to fix
 	  up the entries based on the runtime load address of the kernel.
 
+config KALLMODSYMS
+	default y
+	bool "Enable support for /proc/kallmodsyms" if EXPERT
+	depends on KALLSYMS
+	help
+	  This option enables the /proc/kallmodsyms file, which maps symbols
+	  to addresses and their associated modules.  This support requires
+	  a fairly recent elfutils.
+
 config PRINTK
 	default y
 	bool "Enable support for printk" if EXPERT
@@ -1301,6 +1310,20 @@ config EPOLL
 	help
 	  Disabling this option will cause the kernel to be built without
 	  support for epoll family of system calls.
+
+config WAITFD
+	bool "Enable waitfd() system call" if EXPERT
+	select ANON_INODES
+	default n
+	help
+	  Enable the waitfd() system call that allows receiving child state
+	  changes from a file descriptor.
+
+          Note: this system call is not upstream: its syscall number is not
+          finalized, and the call itself should only be used by DTrace.
+
+	  If unsure, say N.
+
 
 config SIGNALFD
 	bool "Enable signalfd() system call" if EXPERT
@@ -1641,6 +1664,8 @@ config PROFILING
 	help
 	  Say Y here to enable the extended profiling support mechanisms used
 	  by profilers such as OProfile.
+
+source "kernel/dtrace/Kconfig"
 
 #
 # Place an empty function call at each tracepoint site. Can be
