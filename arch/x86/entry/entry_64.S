@@ -1083,7 +1083,7 @@ END(\sym)
 
 #ifdef CONFIG_DTRACE
 ENTRY(dtrace_error_exit)
-	RESTORE_EXTRA_REGS
+	POP_EXTRA_REGS
 	DISABLE_INTERRUPTS(CLBR_NONE)
 	TRACE_IRQS_OFF
 
@@ -1122,13 +1122,13 @@ ENTRY(dtrace_error_exit)
 	movq (%rsp),%rdx
 	call printk
 
-	RESTORE_C_REGS
-	REMOVE_PT_GPREGS_FROM_STACK 8
+	POP_C_REGS
+	addq	$8, %rsp	/* skip regs->orig_ax */
 	INTERRUPT_RETURN
 
 dtrace_emu_mov:
-	RESTORE_C_REGS
-	REMOVE_PT_GPREGS_FROM_STACK 8
+	POP_C_REGS
+	addq	$8, %rsp	/* skip regs->orig_ax */
 
 	/* Emulate "mov %rsp, %rbp" instruction. */
 	pushq %rax			/* push temp */
@@ -1141,8 +1141,8 @@ dtrace_emu_mov:
 	INTERRUPT_RETURN
 
 dtrace_emu_push:
-	RESTORE_C_REGS
-	REMOVE_PT_GPREGS_FROM_STACK 8
+	POP_C_REGS
+	addq	$8, %rsp	/* skip regs->orig_ax */
 
 	/*
 	 * Emulate a "pushq %rbp" instruction.  We need to move the stack down
@@ -1169,8 +1169,8 @@ dtrace_emu_push:
 	INTERRUPT_RETURN
 
 dtrace_emu_nop:
-	RESTORE_C_REGS
-	REMOVE_PT_GPREGS_FROM_STACK 8
+	POP_C_REGS
+	addq	$8, %rsp	/* skip regs->orig_ax */
 
 	/* Emulate a "nop" instruction. */
 	incq (%rsp)
@@ -1178,8 +1178,8 @@ dtrace_emu_nop:
 	INTERRUPT_RETURN
 
 dtrace_emu_leave:
-	RESTORE_C_REGS
-	REMOVE_PT_GPREGS_FROM_STACK 8
+	POP_C_REGS
+	addq	$8, %rsp	/* skip regs->orig_ax */
 
 	/*
 	 * Emulate a "leave" instruction.  This is equivalent to the sequence:
@@ -1201,8 +1201,8 @@ dtrace_emu_leave:
 	INTERRUPT_RETURN
 
 dtrace_emu_ret:
-	RESTORE_C_REGS
-	REMOVE_PT_GPREGS_FROM_STACK 8
+	POP_C_REGS
+	addq	$8, %rsp	/* skip regs->orig_ax */
 
 	/* Emulate a "ret" instruction. */
 	pushq %rax			/* push temp */
