@@ -664,3 +664,125 @@ int xen_unregister_device_domain_owner(struct pci_dev *dev)
 }
 EXPORT_SYMBOL_GPL(xen_unregister_device_domain_owner);
 #endif /* CONFIG_XEN_DOM0 */
+
+/*
+ *	Notifier list for kernel code which wants to be called
+ *	to get PXM updates.
+ */
+struct pci_pxm_nb_device {
+	struct atomic_notifier_head n_head;
+	struct pci_dev *pdev;
+	struct list_head list;
+};
+
+static DEFINE_SPINLOCK(pci_pxm_list_spinlock);
+static struct list_head pci_pxm_list = LIST_HEAD_INIT(pci_pxm_list);
+
+/**
+ *	register_pci_pxm_handler - Register function to be called when wanting
+ *				   PXM (NUMA locality) information.
+ *	@nb: Info about handler function to be called
+ *
+ *	Registers a function with code to be called to pci_pxm the
+ *	system.
+ *
+ *	Currently always returns zero, as atomic_notifier_chain_register()
+ *	always returns zero.
+ */
+int register_pci_pxm_handler(struct notifier_block *nb, struct pci_dev *pdev)
+{
+	struct pci_pxm_nb_device *owner, *entry;
+	int rc;
+
+	if (!xen_hvm_domain())
+		return 0;
+
+	spin_lock(&pci_pxm_list_spinlock);
+	list_for_each_entry(entry, &pci_pxm_list, list) {
+		if (entry->pdev == pdev) {
+			spin_unlock(&pci_pxm_list_spinlock);
+			return -EEXIST;
+		}
+	}
+	spin_unlock(&pci_pxm_list_spinlock);
+
+	owner = kzalloc(sizeof(*owner), GFP_KERNEL);
+	if (!owner)
+		return -ENOMEM;
+
+	owner->pdev = pdev;
+	ATOMIC_INIT_NOTIFIER_HEAD(&owner->n_head);
+	rc = atomic_notifier_chain_register(&owner->n_head, nb);
+	if (rc) {
+		kfree(owner);
+		return rc;
+	}
+
+	spin_lock(&pci_pxm_list_spinlock);
+	list_add_tail(&owner->list, &pci_pxm_list);
+	spin_unlock(&pci_pxm_list_spinlock);
+
+	return 0;
+}
+EXPORT_SYMBOL(register_pci_pxm_handler);
+
+/**
+ *	unregister_pci_pxm_handler - Unregister previously registered
+ *				     pci_pxm handler
+ *	@nb: Hook to be unregistered
+ *
+ *	Unregisters a previously registered pci_pxm handler function.
+ *
+ *	Returns zero on success, or -ENOENT on failure.
+ */
+int unregister_pci_pxm_handler(struct notifier_block *nb, struct pci_dev *pdev)
+{
+	struct pci_pxm_nb_device *owner = NULL, *entry;
+	int rc = -ENODEV;
+
+	if (!xen_hvm_domain())
+		return 0;
+
+	spin_lock(&pci_pxm_list_spinlock);
+	list_for_each_entry(entry, &pci_pxm_list, list) {
+		if (entry->pdev == pdev) {
+			owner = entry;
+			break;
+		}
+	}
+	if (owner)
+		list_del(&owner->list);
+
+	spin_unlock(&pci_pxm_list_spinlock);
+
+	if (!owner)
+		return -ENODEV;
+
+	rc = atomic_notifier_chain_unregister(&owner->n_head, nb);
+	kfree(owner);
+
+	return rc;
+}
+EXPORT_SYMBOL(unregister_pci_pxm_handler);
+
+/**
+ *	do_kernel_pci_pxm - Execute kernel PXM handler call chain
+ *
+ *	Calls functions registered with register_pci_pxm_handler.
+ *
+ */
+void do_kernel_pci_update_pxm(struct pci_dev *pdev)
+{
+	struct pci_pxm_nb_device *entry;
+
+	if (!xen_hvm_domain())
+		return;
+
+	spin_lock(&pci_pxm_list_spinlock);
+	list_for_each_entry(entry, &pci_pxm_list, list) {
+		if (entry->pdev == pdev)
+			atomic_notifier_call_chain(&entry->n_head, 0, pdev);
+	}
+	spin_unlock(&pci_pxm_list_spinlock);
+}
+EXPORT_SYMBOL(do_kernel_pci_update_pxm);

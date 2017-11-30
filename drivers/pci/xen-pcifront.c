@@ -22,6 +22,7 @@
 #include <linux/bitops.h>
 #include <linux/time.h>
 #include <linux/ktime.h>
+#include <xen/pci.h>
 #include <linux/swiotlb.h>
 #include <xen/platform_pci.h>
 
@@ -1196,11 +1197,11 @@ static int pcifront_hvm_set_node(struct pci_dev *pci_dev, void *data)
 		    dev->devfn == pci_dev->devfn) {
 			int pxm = dev_to_node(&pci_dev->dev);
 
-			if (pxm == dev->pxm)
-				break;
-
-			dev_info(&pci_dev->dev, "PXM = %d\n", dev->pxm);
-			set_dev_node(&pci_dev->dev, dev->pxm);
+			if (pxm != dev->pxm) {
+				dev_info(&pci_dev->dev, "PXM = %d\n", dev->pxm);
+				set_dev_node(&pci_dev->dev, dev->pxm);
+			}
+			do_kernel_pci_update_pxm(pci_dev);
 			break;
 		}
 	}
