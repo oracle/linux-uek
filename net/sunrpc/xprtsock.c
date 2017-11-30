@@ -2245,6 +2245,7 @@ static void xs_tcp_setup_socket(struct work_struct *work)
 		 */
 	case -ECONNREFUSED:
 	case -ECONNRESET:
+	case -ENETDOWN:
 	case -ENETUNREACH:
 	case -EADDRINUSE:
 	case -ENOBUFS:
