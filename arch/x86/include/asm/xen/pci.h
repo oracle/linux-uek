@@ -79,4 +79,8 @@ static inline void xen_pci_frontend_disable_msix(struct pci_dev *dev)
 #endif /* CONFIG_PCI_XEN */
 #endif /* CONFIG_PCI_MSI */
 
+int register_pci_pxm_handler(struct notifier_block *nb, struct pci_dev *pdev);
+int unregister_pci_pxm_handler(struct notifier_block *nb, struct pci_dev *pdev);
+void do_kernel_pci_update_pxm(struct pci_dev *dev);
+
 #endif	/* _ASM_X86_XEN_PCI_H */
