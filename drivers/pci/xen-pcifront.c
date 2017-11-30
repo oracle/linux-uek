@@ -1217,7 +1217,7 @@ static int pcifront_hvm_notifier(struct notifier_block *nb,
 	struct device *dev = data;
 	struct pci_dev *pci_dev = to_pci_dev(dev);
 
-	if (action == BUS_NOTIFY_ADD_DEVICE) {
+	if (action == BUS_NOTIFY_BOUND_DRIVER) {
 		mutex_lock(&pcifront_devs_mutex);
 		pcifront_hvm_set_node(pci_dev, NULL);
 		mutex_unlock(&pcifront_devs_mutex);
@@ -1357,6 +1357,8 @@ static int pcifront_hvm_add(struct xenbus_device *xdev)
 	return err;
 }
 
+static void walk_pcifront_hvm(void);
+
 static int pcifront_hvm_xenbus_probe(struct xenbus_device *xdev,
 				     const struct xenbus_device_id *id)
 {
@@ -1364,8 +1366,11 @@ static int pcifront_hvm_xenbus_probe(struct xenbus_device *xdev,
 
 	mutex_lock(&pcifront_devs_mutex);
 	err = pcifront_hvm_add(xdev);
-	mutex_unlock(&pcifront_devs_mutex);
 
+	if (!err)
+		walk_pcifront_hvm();
+
+	mutex_unlock(&pcifront_devs_mutex);
 	return err;
 }
 
@@ -1412,12 +1417,10 @@ static struct xenbus_driver xenpci_driver_hvm = {
 	.otherend_changed	= pcifront_hvm_backend_changed,
 };
 
-static void __init walk_pcifront_hvm(void)
+static void walk_pcifront_hvm(void)
 {
 	if (!xen_hvm_domain())
 		return;
-
-	mutex_lock(&pcifront_devs_mutex);
 
 	/*
 	 * PCI devices may have been added during guest init, which means
@@ -1433,7 +1436,6 @@ static void __init walk_pcifront_hvm(void)
 		list_for_each_entry(root_bus, &pci_root_buses, node)
 			pci_walk_bus(root_bus, pcifront_hvm_set_node, NULL);
 	}
-	mutex_unlock(&pcifront_devs_mutex);
 };
 
 static struct xenbus_driver *pcifront_driver = &xenpci_driver;
@@ -1462,7 +1464,6 @@ static int __init pcifront_init(void)
 			bus_unregister_notifier(&pci_bus_type, notifier);
 		return rc;
 	}
-	walk_pcifront_hvm();
 
 	return 0;
 }
