@@ -16,6 +16,7 @@
 #include <linux/sched.h>
 #include <linux/slab.h>
 #include <linux/uaccess.h>
+#include <linux/sched/task_stack.h>
 #include <asm/insn.h>
 #include <asm/pgtable.h>
 #include <asm/ptrace.h>
