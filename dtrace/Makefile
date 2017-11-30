@@ -26,4 +26,4 @@ sdt-y				:= sdt_mod.o sdt_dev.o
 systrace-y			:= systrace_mod.o systrace_dev.o
 dt_test-y			:= dt_test_mod.o dt_test_dev.o
 
-include arch/$(SRCARCH)/dtrace/Makefile.arch
+-include arch/$(SRCARCH)/dtrace/Makefile.arch

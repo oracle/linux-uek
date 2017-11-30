@@ -5,6 +5,8 @@
 #ifndef _LINUX_DTRACE_CPU_H_
 #define _LINUX_DTRACE_CPU_H_
 
+#ifdef CONFIG_DTRACE
+
 #include <linux/ktime.h>
 #include <linux/mutex.h>
 #include <linux/rwlock.h>
@@ -41,4 +43,5 @@ DECLARE_PER_CPU_SHARED_ALIGNED(cpuinfo_t, dtrace_cpu_info);
 
 extern void dtrace_cpu_init(void);
 
+#endif /* CONFIG_DTRACE */
 #endif /* _LINUX_DTRACE_CPU_H_ */

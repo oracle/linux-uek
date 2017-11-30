@@ -3,6 +3,7 @@
 #ifndef _DTRACE_SDT_H_
 #define	_DTRACE_SDT_H_
 
+#ifdef CONFIG_DTRACE
 #include <linux/module.h>
 #include <asm/dtrace_arch.h>
 
@@ -33,4 +34,5 @@ extern void dtrace_sdt_exit(void);
 extern void __init_or_module dtrace_sdt_nop_multi(asm_instr_t **, int *, int);
 extern void dtrace_sdt_init_arch(void);
 
+#endif	/* CONFIG_DTRACE */
 #endif	/* _DTRACE_SDT_H_ */
