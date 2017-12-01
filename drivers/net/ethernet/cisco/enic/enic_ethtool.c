@@ -18,6 +18,7 @@
 
 #include <linux/netdevice.h>
 #include <linux/ethtool.h>
+#include <linux/net_tstamp.h>
 
 #include "enic_res.h"
 #include "enic.h"
@@ -574,6 +575,16 @@ static int enic_set_rxfh(struct net_device *netdev, const u32 *indir,
 	return __enic_set_rsskey(enic);
 }
 
+static int enic_get_ts_info(struct net_device *netdev,
+			    struct ethtool_ts_info *info)
+{
+	info->so_timestamping = SOF_TIMESTAMPING_TX_SOFTWARE |
+				SOF_TIMESTAMPING_RX_SOFTWARE |
+				SOF_TIMESTAMPING_SOFTWARE;
+
+	return 0;
+}
+
 static const struct ethtool_ops enic_ethtool_ops = {
 	.get_settings = enic_get_settings,
 	.get_drvinfo = enic_get_drvinfo,
@@ -593,6 +604,7 @@ static const struct ethtool_ops enic_ethtool_ops = {
 	.get_rxfh_key_size = enic_get_rxfh_key_size,
 	.get_rxfh = enic_get_rxfh,
 	.set_rxfh = enic_set_rxfh,
+	.get_ts_info = enic_get_ts_info,
 };
 
 void enic_set_ethtool_ops(struct net_device *netdev)
