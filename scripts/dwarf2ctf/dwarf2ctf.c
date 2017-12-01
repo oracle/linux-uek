@@ -808,12 +808,17 @@ int main(int argc, char *argv[])
 {
 	char *output;
 
-	trace = getenv("DWARF2CTF_TRACE");
-
 	if (getuid() == 0 || geteuid() == 0) {
-		fprintf(stderr, "dwarf2ctf: run as a regular user, not root.\n");
-		exit(1);
+		fprintf(stderr, "dwarf2ctf: root run: doing nothing.\n");
+		fprintf(stderr, "CTF type information will not be produced.\n");
+		fprintf(stderr, "Please run as a non-root user.\n");
+		/*
+		 * Refuse to produce any output.
+		 */
+		exit(0);
 	}
+
+	trace = getenv("DWARF2CTF_TRACE");
 
 	if ((argc != 4 && argc != 7) ||
 	    (argc == 4 && strcmp(argv[2], "-e") != 0)) {
