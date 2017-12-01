@@ -2746,8 +2746,12 @@ int mlx4_RST2INIT_QP_wrapper(struct mlx4_dev *dev, int slave,
 	int local_qpn = be32_to_cpu(qpc->local_qpn) & 0xffffff;
 	int st = qp_get_st(qpc);
 
-	if ((slave !=  mlx4_master_func_num(dev)) && (st == MLX4_QP_ST_MLX))
-		return -EPERM;
+	if ((slave != mlx4_master_func_num(dev)) && (st == MLX4_QP_ST_MLX)) {
+		int port = (qpc->pri_path.sched_queue >> 6 & 1) + 1;
+
+		if (!mlx4_vf_smi_enabled(dev, slave, port))
+			return -EPERM;
+	}
 
 	err = qp_res_start_move_to(dev, slave, qpn, RES_QP_HW, &qp, 0);
 	if (err)
