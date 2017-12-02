@@ -60,6 +60,7 @@ struct iommu_domain_geometry {
 	dma_addr_t aperture_start; /* First address that can be mapped    */
 	dma_addr_t aperture_end;   /* Last address that can be mapped     */
 	bool force_aperture;       /* DMA only allowed in mappable range? */
+	u64 dma_mask;              /* Mask of the mappable DMA range */
 };
 
 /* Domain feature flags */

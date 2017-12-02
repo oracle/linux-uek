@@ -282,6 +282,19 @@ int iommu_dma_init_domain(struct iommu_domain *domain, dma_addr_t base,
 	base_pfn = max_t(unsigned long, 1, base >> order);
 	end_pfn = (base + size - 1) >> order;
 
+	/*
+	 * Set iommu dma_mask based on size input, since it is possible
+	 * that the iommu aperture_end is bigger than the size input.
+	 */
+	if (domain->geometry.dma_mask == 0)
+		domain->geometry.dma_mask = base + size - 1;
+
+	/*
+	 * Set dma_mask to the smaller against the aperture end.
+	 */
+	if (domain->geometry.dma_mask > domain->geometry.aperture_end)
+		domain->geometry.dma_mask = domain->geometry.aperture_end;
+
 	/* Check the domain allows at least some access to the device... */
 	if (domain->geometry.force_aperture) {
 		if (base > domain->geometry.aperture_end ||
@@ -381,8 +394,13 @@ static dma_addr_t iommu_dma_alloc_iova(struct iommu_domain *domain,
 	if (iova_len < (1 << (IOVA_RANGE_CACHE_MAX_SIZE - 1)))
 		iova_len = roundup_pow_of_two(iova_len);
 
-	if (domain->geometry.force_aperture)
+	if (domain->geometry.force_aperture) {
+		/*
+		 * Let's find the smallest aperture between driver/iommu/acpi
+		 */
 		dma_limit = min(dma_limit, domain->geometry.aperture_end);
+		dma_limit = min(dma_limit, domain->geometry.dma_mask);
+	}
 
 	/* Try to get PCI devices a SAC address */
 	if (dma_limit > DMA_BIT_MASK(32) && dev_is_pci(dev))
