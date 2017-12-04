@@ -144,7 +144,7 @@ if [ "$tok" = "kmod" ]; then
                  v1h = strtonum("0x"substr(v1, 1, d - 8));
                  v1l = strtonum("0x"substr(v1, d - 8 + 1));
 
-                 if (v0l > v1l) {
+                 if (v0l >= v1l) {
                      if (v0h >= v1h) {
                          d = sprintf("%08x%08x", v0h - v1h, v0l - v1l);
                      } else {
@@ -271,9 +271,10 @@ else
     #        Relocation within a section at a specific address
     #
     ${OBJDUMP} -htrj .text ${ofn} | \
-    awk 'function addl(v0, v1, v0h, v0l, v1h, v1l, d, tmp) {
+    awk 'function subl(v0, v1, v0h, v0l, v1h, v1l, d, tmp) {
+		print "subl(%s, %s)", v0, v1;
              tmp = $0;
-             if (length(v0) > 8 || length(v1) > 8) {
+             if (length(v0) > 8) {
                  d = length(v0);
                  v0h = strtonum("0x"substr(v0, 1, d - 8));
                  v0l = strtonum("0x"substr(v0, d - 8 + 1));
@@ -281,18 +282,23 @@ else
                  v1h = strtonum("0x"substr(v1, 1, d - 8));
                  v1l = strtonum("0x"substr(v1, d - 8 + 1));
 
-                 v0h += v1h;
-                 v0l += v1l;
-
-                 d = sprintf("%x", v0l);
-                 if (length(d) > 8)
-                     v0h++;
-
-                 d = sprintf("%08x%08x", v0h, v0l);
+                 if (v0l >= v1l) {
+                     if (v0h >= v1h) {
+                         d = sprintf("%08x%08x", v0h - v1h, v0l - v1l);
+                     } else {
+                         printf "#error Invalid addresses h: %x vs %x", v0, v1 \
+                                                                >"/dev/stderr";
+                         errc++;
+                     }
+                 } else {
+                     printf "#error Invalid addresses l: %x vs %x", v0, v1 \
+                                                                >"/dev/stderr";
+                     errc++;
+                 }
              } else {
                  v0 = strtonum("0x"v0);
                  v1 = strtonum("0x"v1);
-                 d = sprintf("%016x", v0 + v1);
+                 d = sprintf("%016x", v0 - v1);
              }
              $0 = tmp;
 
@@ -312,22 +318,22 @@ else
 	 in_reloc && /__dtrace_probe_/ {
 	     $3 = substr($3, 16);
 	     sub(/[\-+].*$/, "", $3);
-	     print addl(base, $1) " R " $3;
+	     print $1 " R " $3;
 	     next;
 	 }
 
 	 in_reloc && /__dtrace_isenabled_/ {
 	     $3 = substr($3, 20);
 	     sub(/[\-+].*$/, "", $3);
-	     print addl(base, $1) " R ?" $3;
+	     print $1 " R ?" $3;
 	     next;
 	 }
 
 	 / F / {
 	     if ($6 == ".hidden")
-		 print $1 " G " $7;
+		 print subl($1, base) " G " $7;
 	     else
-		 print $1 " F " $6;
+		 print subl($1, base) " F " $6;
 	 }' | \
     sort -k1,2 | \
     awk -v arch=${ARCH} \
@@ -341,7 +347,7 @@ else
                  v1h = strtonum("0x"substr(v1, 1, d - 8));
                  v1l = strtonum("0x"substr(v1, d - 8 + 1));
 
-                 if (v0l > v1l) {
+                 if (v0l >= v1l) {
                      if (v0h >= v1h) {
                          d = sprintf("%08x%08x", v0h - v1h, v0l - v1l);
                      } else {
@@ -421,7 +427,7 @@ else
 	     if (arch == "x86" || arch == "x86_64")
 		 addr = subl(addr, 1);
 
-	     printf "\tPTR\t0x%s\n", addr;
+	     printf "\tPTR\t_text + 0x%s\n", addr;
 	     printf "\tPTR\t%d\n", length($3);
 	     printf "\tPTR\t%d\n", length(fname);
 	     printf "\t.asciz\t\042%s\042\n", $3;
