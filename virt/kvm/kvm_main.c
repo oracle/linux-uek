@@ -2704,9 +2704,7 @@ out_free1:
 		break;
 	}
 	default:
-		vcpu_load(vcpu);
 		r = kvm_arch_vcpu_ioctl(filp, ioctl, arg);
-		vcpu_put(vcpu);
 	}
 out:
 	mutex_unlock(&vcpu->mutex);
