@@ -162,8 +162,6 @@ targets += $(modules:.ko=.mod.o)
 # Step 6), generate CTF for the entire kernel (in a separate $(CTF_FILENAME)),
 # or for the module alone if this is a build of an external module.
 
-ifdef CONFIG_CTF
-
 # These are overridden below for standalone modules only.
 module-ctfs-modular-prereq =
 module-ctfs-modular =
@@ -171,6 +169,8 @@ module-ctf-flags =
 cmd_touch_ctf =
 ctf-dir = ///.nonexistent
 cmd-touch-ctf = @:
+
+ifdef CONFIG_CTF
 
 # This is quite tricky.  If called for non-external-modules, dwarf2ctf needs to
 # be told about all the built-in objects as well as all the external modules --
