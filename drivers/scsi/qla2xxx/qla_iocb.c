@@ -2442,7 +2442,7 @@ qla24xx_els_dcmd_iocb(scsi_qla_host_t *vha, int els_opcode,
 	    fcport->d_id.b.domain, fcport->d_id.b.area, fcport->d_id.b.al_pa);
 
 	sp->type = SRB_ELS_DCMD;
-	sp->name = "ELS_DCMD";
+	sp->name = sp_to_str(SPCN_ELS_DCMD);
 	sp->fcport = fcport;
 	qla2x00_init_timer(sp, ELS_DCMD_TIMEOUT);
 	elsio->timeout = qla2x00_els_dcmd_iocb_timeout;

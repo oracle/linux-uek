@@ -14,7 +14,8 @@ static struct mb_cmd_name {
         uint16_t cmd;
         const char *str;
 } mb_str[] = {
-        {MBC_GET_PORT_DATABASE,         "GPDB"},
+	{0, "unknown mb"},
+	{MBC_GET_PORT_DATABASE,         "GPDB"},
         {MBC_GET_ID_LIST,               "GIDList"},
         {MBC_GET_LINK_PRIV_STATS,       "Stats"},
 };
@@ -24,12 +25,12 @@ static const char *mb_to_str(uint16_t cmd)
         int i;
         struct mb_cmd_name *e;
 
-        for (i = 0; i < ARRAY_SIZE(mb_str); i++) {
+        for (i = 1; i < ARRAY_SIZE(mb_str); i++) {
                 e = mb_str + i;
                 if (cmd == e->cmd)
                         return e->str;
         }
-        return "unknown";
+        return "mb_str[0].str";
 }
 
 /*

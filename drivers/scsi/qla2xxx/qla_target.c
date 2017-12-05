@@ -621,7 +621,7 @@ int qla24xx_async_notify_ack(scsi_qla_host_t *vha, fc_port_t *fcport,
 		goto done;
 
 	sp->type = type;
-	sp->name = "nack";
+	sp->name = sp_to_str(SPCN_NACK);
 
 	qla2x00_init_timer(sp, qla2x00_get_async_timeout(vha)+2);
 

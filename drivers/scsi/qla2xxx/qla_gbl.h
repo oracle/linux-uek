@@ -626,6 +626,7 @@ void qla24xx_handle_gpnid_event(scsi_qla_host_t *, struct event_arg *);
 int qla24xx_post_gpsc_work(struct scsi_qla_host *, fc_port_t *);
 int qla24xx_async_gpsc(scsi_qla_host_t *, fc_port_t *);
 int qla2x00_mgmt_svr_login(scsi_qla_host_t *);
+const char *sp_to_str(uint16_t);
 
 /*
  * Global Function Prototypes in qla_attr.c source file.

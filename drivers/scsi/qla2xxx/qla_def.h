@@ -424,6 +424,37 @@ struct srb_iocb {
 	void (*timeout)(void *);
 };
 
+enum {
+	SPCN_UNKOWN,
+	SPCN_GIDPN,
+	SPCN_GPSC,
+	SPCN_GPNID,
+	SPCN_GPNFT,
+	SPCN_GNNID,
+	SPCN_GFPNID,
+	SPCN_LOGIN,
+	SPCN_LOGOUT,
+	SPCN_ADISC,
+	SPCN_GNLIST,
+	SPCN_GPDB,
+	SPCN_TMF,
+	SPCN_ABORT ,
+	SPCN_NACK,
+	SPCN_BSG_RPT,
+	SPCN_BSG_HST ,
+	SPCN_BSG_CT,
+	SPCN_BSG_FX_MGMT,
+	SPCN_ELS_DCMD,
+	SPCN_FXDISC,
+	SPCN_GIDLIST,
+	SPCN_STATS,
+	SPCN_MB_GPDB,
+};
+struct sp_name {
+        uint16_t cmd;
+        const char *str;
+};
+
 /* Values for srb_ctx type */
 #define SRB_LOGIN_CMD	1
 #define SRB_LOGOUT_CMD	2

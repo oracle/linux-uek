@@ -184,7 +184,7 @@ qla2x00_async_login(struct scsi_qla_host *vha, fc_port_t *fcport,
 	fcport->logout_completed = 0;
 
 	sp->type = SRB_LOGIN_CMD;
-	sp->name = "login";
+	sp->name = sp_to_str(SPCN_LOGIN);
 	qla2x00_init_timer(sp, qla2x00_get_async_timeout(vha) + 2);
 
 	lio = &sp->u.iocb_cmd;
@@ -242,7 +242,7 @@ qla2x00_async_logout(struct scsi_qla_host *vha, fc_port_t *fcport)
 		goto done;
 
 	sp->type = SRB_LOGOUT_CMD;
-	sp->name = "logout";
+	sp->name = sp_to_str(SPCN_LOGOUT);
 	qla2x00_init_timer(sp, qla2x00_get_async_timeout(vha) + 2);
 
 	lio = &sp->u.iocb_cmd;
@@ -294,7 +294,7 @@ qla2x00_async_adisc(struct scsi_qla_host *vha, fc_port_t *fcport,
 		goto done;
 
 	sp->type = SRB_ADISC_CMD;
-	sp->name = "adisc";
+	sp->name = sp_to_str(SPCN_ADISC);
 	qla2x00_init_timer(sp, qla2x00_get_async_timeout(vha) + 2);
 
 	lio = &sp->u.iocb_cmd;
@@ -573,7 +573,7 @@ int qla24xx_async_gnl(struct scsi_qla_host *vha, fc_port_t *fcport)
 	if (!sp)
 		goto done;
 	sp->type = SRB_MB_IOCB;
-	sp->name = "gnlist";
+	sp->name = sp_to_str(SPCN_GNLIST);
 	sp->gen1 = fcport->rscn_gen;
 	sp->gen2 = fcport->login_gen;
 
@@ -708,7 +708,7 @@ int qla24xx_async_gpdb(struct scsi_qla_host *vha, fc_port_t *fcport, u8 opt)
 	memset(pd, 0, max(PORT_DATABASE_SIZE, PORT_DATABASE_24XX_SIZE));
 
 	sp->type = SRB_MB_IOCB;
-	sp->name = "gpdb";
+	sp->name = sp_to_str(SPCN_GPDB);
 	sp->gen1 = fcport->rscn_gen;
 	sp->gen2 = fcport->login_gen;
 	qla2x00_init_timer(sp, qla2x00_get_async_timeout(vha) + 2);
@@ -1175,7 +1175,7 @@ qla2x00_async_tm_cmd(fc_port_t *fcport, uint32_t flags, uint32_t lun,
 
 	tm_iocb = &sp->u.iocb_cmd;
 	sp->type = SRB_TM_CMD;
-	sp->name = "tmf";
+	sp->name = sp_to_str(SPCN_TMF);
 	qla2x00_init_timer(sp, qla2x00_get_async_timeout(vha));
 	tm_iocb->u.tmf.flags = flags;
 	tm_iocb->u.tmf.lun = lun;
@@ -1253,7 +1253,7 @@ qla24xx_async_abort_cmd(srb_t *cmd_sp)
 
 	abt_iocb = &sp->u.iocb_cmd;
 	sp->type = SRB_ABT_CMD;
-	sp->name = "abort";
+	sp->name = sp_to_str(SPCN_ABORT);
 	qla2x00_init_timer(sp, qla2x00_get_async_timeout(vha));
 	abt_iocb->u.abt.cmd_hndl = cmd_sp->handle;
 	sp->done = qla24xx_abort_sp_done;
