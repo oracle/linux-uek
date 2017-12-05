@@ -292,8 +292,8 @@ create_nodes:
 	ha->tgt.dfs_tgt_sess = debugfs_create_file("tgt_sess",
 		S_IRUSR, ha->dfs_dir, vha, &dfs_tgt_sess_ops);
 	if (!ha->tgt.dfs_tgt_sess) {
-		ql_log(ql_log_warn, vha, 0xffff,
-			"Unable to create debugFS tgt_sess node.\n");
+		ql_log(ql_log_warn, vha, 0xd040,
+		    "Unable to create debugFS tgt_sess node.\n");
 		goto out;
 	}
 

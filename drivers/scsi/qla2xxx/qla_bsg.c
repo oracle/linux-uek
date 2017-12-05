@@ -2089,7 +2089,7 @@ qla8044_serdes_op(struct fc_bsg_job *bsg_job)
 		bsg_job->reply->reply_payload_rcv_len = sizeof(sr);
 		break;
 	default:
-		ql_dbg(ql_dbg_user, vha, 0x70cf,
+		ql_dbg(ql_dbg_user, vha, 0x7020,
 		    "Unknown serdes cmd %x.\n", sr.cmd);
 		rval = -EINVAL;
 		break;
