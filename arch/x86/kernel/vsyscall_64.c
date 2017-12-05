@@ -57,6 +57,7 @@ DEFINE_VVAR(int, vgetcpu_mode);
 DEFINE_VVAR(struct vsyscall_gtod_data, vsyscall_gtod_data);
 
 static enum { EMULATE, NATIVE, NONE } vsyscall_mode = EMULATE;
+unsigned long vsyscall_pgprot = __PAGE_KERNEL_VSYSCALL;
 
 static int __init vsyscall_setup(char *str)
 {
@@ -377,10 +378,10 @@ void __init map_vsyscall(void)
 	extern char __vvar_page;
 	unsigned long physaddr_vvar_page = __pa_symbol(&__vvar_page);
 
+	if (vsyscall_mode != NATIVE)
+		vsyscall_pgprot = __PAGE_KERNEL_VVAR;
 	__set_fixmap(VSYSCALL_FIRST_PAGE, physaddr_vsyscall,
-		     vsyscall_mode == NATIVE
-		     ? PAGE_KERNEL_VSYSCALL
-		     : PAGE_KERNEL_VVAR);
+		     __pgprot(vsyscall_pgprot));
 	BUILD_BUG_ON((unsigned long)__fix_to_virt(VSYSCALL_FIRST_PAGE) !=
 		     (unsigned long)VSYSCALL_START);
 
