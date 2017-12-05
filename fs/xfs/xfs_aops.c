@@ -237,15 +237,13 @@ xfs_end_io(
 			goto done;
 		error = xfs_iomap_write_unwritten(ip, ioend->io_offset,
 						  ioend->io_size);
-	} else if (ioend->io_append_trans) {
-		error = xfs_setfilesize_ioend(ioend);
-	} else {
-		ASSERT(!xfs_ioend_is_append(ioend));
 	}
 
 done:
 	if (error)
 		ioend->io_error = error;
+	if (ioend->io_append_trans)
+		xfs_setfilesize_ioend(ioend);
 	xfs_destroy_ioend(ioend);
 }
 
