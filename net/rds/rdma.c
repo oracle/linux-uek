@@ -190,7 +190,7 @@ static int __rds_rdma_map(struct rds_sock *rs, struct rds_get_mr_args *args,
 	long i;
 	int ret;
 
-	if (ipv6_addr_any(&rs->rs_bound_addr)) {
+	if (ipv6_addr_any(&rs->rs_bound_addr) || !rs->rs_transport) {
 		ret = -ENOTCONN; /* XXX not a great errno */
 		goto out;
 	}
