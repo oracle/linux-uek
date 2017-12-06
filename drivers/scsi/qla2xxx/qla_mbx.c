@@ -5703,8 +5703,7 @@ int __qla24xx_parse_gpdb(struct scsi_qla_host *vha, fc_port_t *fcport,
 	uint64_t zero = 0;
 
 	/* Check for logged in state. */
-	if (pd->current_login_state != PDS_PRLI_COMPLETE &&
-		pd->last_login_state != PDS_PRLI_COMPLETE) {
+	if (pd->current_login_state != PDS_PRLI_COMPLETE) {
 		ql_dbg(ql_dbg_mbx, vha, 0x119a,
 		    "Unable to verify login-state (%x/%x) for loop_id %x.\n",
 		    pd->current_login_state, pd->last_login_state,
