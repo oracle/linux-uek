@@ -35,6 +35,7 @@
 *.gcno
 *.ll
 modules.builtin
+modules_thick.builtin
 objects.builtin
 Module.symvers
 *.dwo
