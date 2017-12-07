@@ -785,40 +785,40 @@ int rds_ib_inc_copy_to_user(struct rds_incoming *inc, struct iov_iter *to)
 	struct rds_ib_connection *ic = inc->i_conn->c_transport_data;
 	struct rds_ib_incoming *ibinc;
 	struct rds_page_frag *frag;
-	unsigned long to_copy;
-	unsigned long frag_off = 0;
-	int copied = 0;
-	int ret;
-	u32 len;
+	size_t len, saved_len, to_copy, copied, offset, chunk;
 
 	ibinc = container_of(inc, struct rds_ib_incoming, ii_inc);
 	frag = list_entry(ibinc->ii_frags.next, struct rds_page_frag, f_item);
+
 	len = be32_to_cpu(inc->i_hdr.h_len);
+	if (iov_iter_count(to) < len)
+		len = iov_iter_count(to);
 
-	while (iov_iter_count(to) && copied < len) {
-		if (frag_off == ic->i_frag_sz) {
-			frag = list_entry(frag->f_item.next,
-					  struct rds_page_frag, f_item);
-			frag_off = 0;
-		}
-		to_copy = min_t(unsigned long, iov_iter_count(to),
-				ic->i_frag_sz - frag_off);
-		to_copy = min_t(unsigned long, to_copy, len - copied);
+	saved_len = len;
 
-		/* XXX needs + offset for multiple recvs per page */
+	while (len > 0) {
+		to_copy = len < ic->i_frag_sz ? len : ic->i_frag_sz;
+
 		rds_stats_add(s_copy_to_user, to_copy);
-		ret = copy_page_to_iter(sg_page(&frag->f_sg),
-					frag->f_sg.offset + frag_off,
-					to_copy,
-					to);
-		if (ret != to_copy)
-			return -EFAULT;
 
-		frag_off += to_copy;
-		copied += to_copy;
+		for (copied = 0; copied < to_copy; copied += chunk) {
+			offset = frag->f_sg.offset + copied;
+			chunk = offset < PAGE_SIZE ? PAGE_SIZE - offset : PAGE_SIZE;
+			if (copied + chunk > to_copy)
+				chunk = to_copy - copied;
+
+			if (copy_page_to_iter(sg_page(&frag->f_sg) + (offset >> PAGE_SHIFT),
+					      offset & ~PAGE_MASK,
+					      chunk, to) != chunk)
+				return -EFAULT;
+		}
+
+		frag = list_entry(frag->f_item.next,
+				  struct rds_page_frag, f_item);
+		len -= copied;
 	}
 
-	return copied;
+	return saved_len;
 }
 
 /* ic starts out kzalloc()ed */
