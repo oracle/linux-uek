@@ -389,7 +389,9 @@ static struct rds_page_frag *rds_ib_refill_one_frag(struct rds_ib_connection *ic
 						       PAGE_SIZE, page_mask);
 			if (ret) {
 				for_each_sg(frag->f_sg, s, ic->i_frag_pages, j)
-					__free_pages(sg_page(s), get_order(s->length));
+					/* Its the ith fragment we couldn't allocate */
+					if (j < i)
+						__free_pages(sg_page(s), get_order(s->length));
 				kmem_cache_free(rds_ib_frag_slab, frag);
 				atomic_sub(ic->i_frag_pages, &rds_ib_allocation);
 				return NULL;
@@ -569,7 +571,9 @@ static int rds_ib_srq_prefill_one(struct rds_ib_device *rds_ibdev,
 					       PAGE_SIZE, page_mask);
 		if (ret) {
 			for_each_sg(recv->r_frag->f_sg, s, num_sge, j)
-				__free_pages(sg_page(s), get_order(s->length));
+				/* Its the ith fragment we couldn't allocate */
+				if (j < i)
+					__free_pages(sg_page(s), get_order(s->length));
 			kmem_cache_free(rds_ib_frag_slab, recv->r_frag);
 			goto out;
 		}
