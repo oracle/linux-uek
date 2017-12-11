@@ -780,7 +780,7 @@ static inline void nfs_context_set_write_error(struct nfs_open_context *ctx, int
 
 #define	DTRACE_IO_NFS(name, rw, size, inode)			\
 	if (DTRACE_IO_ENABLED(name)) {				\
-		struct bio bio = {				\
+		struct bio bio __maybe_unused = {		\
 			.bi_opf = rw,				\
 			.bi_flags = (1 << BIO_USER_MAPPED),	\
 			.bi_iter.bi_size = size,		\
