@@ -351,6 +351,15 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 %define kernel_image vmlinux
 %endif
 
+%ifarch aarch64
+%define all_arch_configs kernel-%{version}-aarch64*.config
+%define image_install_path boot
+%define asmarch arm64
+%define hdrarch arm64
+%define make_target Image.gz
+%define kernel_image arch/arm64/boot/Image.gz
+%endif
+
 %if %{nopatches}
 # XXX temporary until last vdso patches are upstream
 %define vdso_arches ppc ppc64
@@ -449,7 +458,7 @@ Provides: oracleasm = 2.0.5\
 %if "x%{?-r}" != "x"\
 Provides: kernel-uek\
 %endif\
-%ifnarch sparc64\
+%ifnarch sparc64 aarch64\
 Provides: x86_energy_perf_policy = %{KVERREL}%{?1:.%{1}}\
 Provides: turbostat = %{KVERREL}%{?1:.%{1}}\
 %endif\
@@ -487,7 +496,7 @@ Version: %{rpmversion}
 Release: %{pkg_release}
 # DO NOT CHANGE THE 'ExclusiveArch' LINE TO TEMPORARILY EXCLUDE AN ARCHITECTURE BUILD.
 # SET %%nobuildarches (ABOVE) INSTEAD
-ExclusiveArch: noarch %{all_x86} x86_64 paravirt paravirt-debug ppc ppc64 ia64 sparc sparc64 s390x alpha alphaev56 %{arm}
+ExclusiveArch: noarch %{all_x86} x86_64 paravirt paravirt-debug ppc ppc64 ia64 sparc sparc64 s390x alpha alphaev56 %{arm} aarch64
 ExclusiveOS: Linux
 
 %kernel_reqprovconf
@@ -556,6 +565,8 @@ Source1001: config-x86_64-debug
 #Source1004: config-sparc
 #Source1005: config-sparc-debug
 Source1006: base_modules
+Source1007: config-aarch64
+Source1008: config-aarch64-debug
 
 Source25: Module.kabi_x86_64debug
 Source26: Module.kabi_x86_64
@@ -983,6 +994,11 @@ mkdir -p configs
 	cp %{SOURCE1004} configs/config
 %endif #ifarch sparc
 
+%ifarch aarch64
+	cp %{SOURCE1008} configs/config-debug
+	cp %{SOURCE1007} configs/config
+%endif #ifarch aarch64
+
 # get rid of unwanted files resulting from patch fuzz
 find . \( -name "*.orig" -o -name "*~" \) -exec rm -f {} \; >/dev/null
 
@@ -1054,6 +1070,15 @@ BuildKernel() {
     make -s ARCH=$Arch %{oldconfig_target} > /dev/null
     make -s ARCH=$Arch V=1 %{?_smp_mflags} $MakeTarget %{?sparse_mflags}
     make -s ARCH=$Arch V=1 %{?_smp_mflags} modules %{?sparse_mflags} || exit 1
+
+%ifarch %{arm} aarch64
+   mkdir -p $RPM_BUILD_ROOT/%{image_install_path}
+   mkdir -p $RPM_BUILD_ROOT/lib/modules/$KernelVer
+   make -s ARCH=$Arch V=1 dtbs dtbs_install INSTALL_DTBS_PATH=$RPM_BUILD_ROOT/%{image_install_path}/dtb-$KernelVer
+   cp -r $RPM_BUILD_ROOT/%{image_install_path}/dtb-$KernelVer $RPM_BUILD_ROOT/lib/modules/$KernelVer/dtb
+   find arch/$Arch/boot/dts -name '*.dtb' -type f | xargs rm -f
+%endif
+
 %if %{with_dtrace}
     if [ "$Flavour" != "debug" ]; then
 	make -s ARCH=$Arch V=1 %{?_smp_mflags} ctf %{?sparse_mflags} || exit 1
@@ -1213,10 +1238,22 @@ hwcap 0 nosegneg"
     if [ -d arch/%{asmarch}/include ]; then
       cp -a --parents arch/%{asmarch}/include $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/
     fi
+%ifarch aarch64
+    cp -a --parents arch/arm/include/asm/xen $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/
+    cp -a --parents arch/arm/include/asm/opcodes.h $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/
+%endif
+%ifarch %{arm}
+    if [ -d arch/%{asmarch}/mach-${Flavour}/include ]; then
+      cp -a --parents arch/%{asmarch}/mach-${Flavour}/include $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/
+    fi
+    # include a few files for 'make prepare'
+    cp -a --parents arch/arm/tools/gen-mach-types $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/
+    cp -a --parents arch/arm/tools/mach-types $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/
+%endif
     cp -a --parents Kbuild $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/
     cp -a --parents kernel/bounds.c $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/
     cp -a --parents arch/%{asmarch}/kernel/asm-offsets.c $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/
-%ifnarch %{sparc}
+%ifnarch %{sparc} aarch64
     cp -a --parents arch/%{asmarch}/kernel/asm-offsets_64.c $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/
 %endif
     cp -a --parents security/selinux/include $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/
@@ -1794,9 +1831,15 @@ fi
 /etc/ld.so.conf.d/kernel-%{KVERREL}%{?2:.%{2}}.conf\
 %endif\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/modules.*\
+%ifnarch aarch64\
 /usr/libexec/perf.%{KVERREL}%{?2:.%{2}}\
 /usr/sbin/perf\
-%ifnarch sparc64\
+%endif\
+%ifarch %{arm} aarch64\
+/lib/modules/%{KVERREL}%{?2:+%{2}}/dtb \
+%ghost /%{image_install_path}/dtb-%{KVERREL}%{?2:+%{2}} \
+%endif\
+%ifnarch sparc64 aarch64\
 /usr/libexec/x86_energy_perf_policy.%{KVERREL}%{?2:.%{2}}\
 /usr/sbin/x86_energy_perf_policy\
 /usr/libexec/turbostat.%{KVERREL}%{?2:.%{2}}\
