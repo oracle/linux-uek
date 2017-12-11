@@ -37,6 +37,7 @@ extern void fbt_provide_module(void *, struct module *);
 extern void fbt_destroy_module(void *, struct module *);
 extern int _fbt_enable(void *, dtrace_id_t, void *);
 extern void _fbt_disable(void *, dtrace_id_t, void *);
+extern uint64_t fbt_getarg(void *, dtrace_id_t, void *, int, int);
 extern void fbt_destroy(void *, dtrace_id_t, void *);
 
 extern dtrace_provider_id_t	fbt_id;

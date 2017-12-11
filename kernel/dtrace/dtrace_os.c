@@ -324,6 +324,16 @@ fail:
 static DEFINE_SPINLOCK(psinfo_lock);
 static dtrace_psinfo_t *psinfo_free_list;
 
+#ifdef CONFIG_DT_DEBUG
+void dt_debug_probe(uint64_t a0, uint64_t a1, uint64_t a2, uint64_t a3,
+		    uint64_t a4, uint64_t a5, uint64_t a6, uint64_t a7)
+{
+	DTRACE_PROBE(test, uint64_t, a0, uint64_t, a1, uint64_t, a2,
+			   uint64_t, a3, uint64_t, a4, uint64_t, a5,
+			   uint64_t, a6, uint64_t, a7);
+}
+#endif
+
 /*
  * Work queue handler to clean up psinfo structures for tasks that no longer
  * exist.
@@ -339,9 +349,7 @@ static void psinfo_cleaner(struct work_struct *work)
 	spin_unlock_irqrestore(&psinfo_lock, flags);
 
 #ifdef CONFIG_DT_DEBUG
-	DTRACE_PROBE(test, uint64_t, 10, uint64_t, 20, uint64_t, 30,
-			   uint64_t, 40, uint64_t, 50, uint64_t, 60,
-			   uint64_t, 70, uint64_t, 80);
+	dt_debug_probe(10, 20, 30, 40, 50, 60, 70, 80);
 #endif
 
 	while (psinfo) {

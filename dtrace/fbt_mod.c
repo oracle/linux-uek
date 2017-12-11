@@ -45,7 +45,11 @@ static dtrace_pops_t fbt_pops = {
 	.dtps_suspend = NULL,
 	.dtps_resume = NULL,
 	.dtps_getargdesc = NULL,
+#ifdef CONFIG_X86_64
+	.dtps_getargval = fbt_getarg,
+#else
 	.dtps_getargval = NULL,
+#endif
 	.dtps_usermode = NULL,
 	.dtps_destroy = fbt_destroy
 };

@@ -56,6 +56,47 @@ static uint8_t fbt_invop(struct pt_regs *regs)
 	return 0;
 }
 
+uint64_t fbt_getarg(void *arg, dtrace_id_t id, void *parg, int argno,
+		    int aframes)
+{
+	struct pt_regs  *regs = this_cpu_core->cpu_dtrace_regs;
+	uint64_t	*st;
+	uint64_t	val;
+
+	if (regs == NULL)
+		return 0;
+
+	switch (argno) {
+	case 0:
+		return regs->di;
+	case 1:
+		return regs->si;
+	case 2:
+		return regs->dx;
+	case 3:
+		return regs->cx;
+	case 4:
+		return regs->r8;
+	case 5:
+		return regs->r9;
+	}
+
+	ASSERT(argno > 5);
+
+	st = (uint64_t *)regs->sp;
+	DTRACE_CPUFLAG_SET(CPU_DTRACE_NOFAULT);
+	/*
+	 * Skip the topmost slot of the stack because that holds the return
+	 * address for the call to the function we are entering.  At this point
+	 * the BP has not been pushed yet, so we are still working within the
+	 * caller's stack frame.
+	 */
+	val = st[1 + argno - 6];
+	DTRACE_CPUFLAG_CLEAR(CPU_DTRACE_NOFAULT);
+
+	return val;
+}
+
 void fbt_provide_probe_arch(fbt_probe_t *fbp, int type, int stype)
 {
 	fbp->fbp_patchval = type == FBT_ENTRY ? FBT_ENTRY_PATCHVAL
