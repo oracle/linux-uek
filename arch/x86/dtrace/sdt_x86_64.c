@@ -17,7 +17,6 @@
 
 #include <linux/sdt.h>
 #include <linux/slab.h>
-#include <linux/uaccess.h>
 #include <linux/vmalloc.h>
 #include <asm/dtrace_util.h>
 
@@ -105,8 +104,7 @@ uint64_t sdt_getarg(void *arg, dtrace_id_t id, void *parg, int argno,
 
 	st = (uint64_t *)regs->sp;
 	DTRACE_CPUFLAG_SET(CPU_DTRACE_NOFAULT);
-	__copy_from_user_inatomic_nocache(&val, (void *)&st[argno - 6],
-					  sizeof(st[0]));
+	val = st[argno - 6];
 	DTRACE_CPUFLAG_CLEAR(CPU_DTRACE_NOFAULT);
 
 	return val;
