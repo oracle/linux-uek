@@ -1785,7 +1785,7 @@ CONFIG_REGMAP_MMIO=y
 CONFIG_REGMAP_IRQ=y
 CONFIG_DMA_SHARED_BUFFER=y
 # CONFIG_DMA_FENCE_TRACE is not set
-CONFIG_DMA_CMA=y
+# CONFIG_DMA_CMA is not set
 
 #
 # Default contiguous memory area size:
