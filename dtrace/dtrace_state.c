@@ -335,14 +335,14 @@ dtrace_state_t *dtrace_state_create(struct file *file)
 	state->dts_epid = DTRACE_EPIDNONE + 1;
 	state->dts_buffer = vzalloc(bufsize);
 	if (state->dts_buffer == NULL) {
-		vfree(state);
+		kfree(state);
 		return NULL;
 	}
 
 	state->dts_aggbuffer = vzalloc(bufsize);
 	if (state->dts_aggbuffer == NULL) {
 		vfree(state->dts_buffer);
-		vfree(state);
+		kfree(state);
 		return NULL;
 	}
 

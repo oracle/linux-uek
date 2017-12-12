@@ -1241,7 +1241,7 @@ endif
 		grep ELF | cut -d: -f1 > objects.builtin
 	@for archive in $$(echo $(KBUILD_VMLINUX_INIT) $(KBUILD_VMLINUX_MAIN) |\
 		tr " " "\n" | xargs -r file | grep -v ELF | cut -d: -f1); do \
-		ar t "$$archive" >> objects.builtin; \
+		$(AR) t "$$archive" >> objects.builtin; \
 	done
 
 CTF_DEBUGDIR := .
@@ -1320,8 +1320,8 @@ modules_thick.builtin: modules.builtin vmlinux_prereq $(vmlinux-deps)
 	$(Q)(rm -f modules_thick.builtin; \
 	cat modules.builtin | sed 's,^kernel/,,; s,\.ko$$,.o,' | \
 			while read -r module; do \
-		if ! [[ `file $$module` =~ ' ELF ' ]]; then \
-			ar t $$module | sed 's,^,'"$$module:," >> modules_thick.builtin; \
+		if file $$module | grep -qvF " ELF "; then \
+			$(AR) t $$module | sed 's,^,'"$$module:," >> modules_thick.builtin; \
 		else \
 			printf "%s\n" "$$module" >> modules_thick.builtin; \
 		fi; \
