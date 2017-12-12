@@ -3468,10 +3468,8 @@ enqueue_entity_load_avg(struct cfs_rq *cfs_rq, struct sched_entity *se)
 static inline void
 dequeue_entity_load_avg(struct cfs_rq *cfs_rq, struct sched_entity *se)
 {
-	cfs_rq->runnable_load_avg =
-		max_t(long, cfs_rq->runnable_load_avg - se->avg.load_avg, 0);
-	cfs_rq->runnable_load_sum =
-		max_t(s64,  cfs_rq->runnable_load_sum - se->avg.load_sum, 0);
+	sub_positive(&cfs_rq->runnable_load_avg, se->avg.load_avg);
+	sub_positive(&cfs_rq->runnable_load_sum, se->avg.load_sum);
 }
 
 #ifndef CONFIG_64BIT
