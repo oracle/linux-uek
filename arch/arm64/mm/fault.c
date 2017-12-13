@@ -592,7 +592,6 @@ static int do_sea(unsigned long addr, unsigned int esr, struct pt_regs *regs)
 {
 	struct siginfo info;
 	const struct fault_info *inf;
-	int ret = 0;
 
 	inf = esr_to_fault_info(esr);
 
@@ -605,7 +604,7 @@ static int do_sea(unsigned long addr, unsigned int esr, struct pt_regs *regs)
 		if (interrupts_enabled(regs))
 			nmi_enter();
 
-		ret = ghes_notify_sea();
+		ghes_notify_sea();
 
 		if (interrupts_enabled(regs))
 			nmi_exit();
@@ -620,7 +619,7 @@ static int do_sea(unsigned long addr, unsigned int esr, struct pt_regs *regs)
 		info.si_addr  = (void __user *)addr;
 	arm64_notify_die(inf->name, regs, &info, esr);
 
-	return ret;
+	return 0;
 }
 
 static const struct fault_info fault_info[] = {
