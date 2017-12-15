@@ -46,6 +46,11 @@
 	popq %rdx;				\
 	popq %rcx;				\
 	popq %rax
+#define __ASM_DISABLE_IBRS_CLOBBER		\
+	movl $MSR_IA32_SPEC_CTRL, %ecx;		\
+	movl $0, %edx;				\
+	movl $0, %eax;				\
+	wrmsr;
 
 .macro ENABLE_IBRS
 ALTERNATIVE "", __stringify(__ASM_ENABLE_IBRS), X86_FEATURE_SPEC_CTRL
@@ -64,6 +69,10 @@ ALTERNATIVE "", __stringify(__ASM_DISABLE_IBRS), X86_FEATURE_SPEC_CTRL
 
 .macro SET_IBPB
 ALTERNATIVE "", __stringify(__ASM_SET_IBPB), X86_FEATURE_SPEC_CTRL
+.endm
+
+.macro DISABLE_IBRS_CLOBBER
+ALTERNATIVE "", __stringify(__ASM_DISABLE_IBRS_CLOBBER), X86_FEATURE_SPEC_CTRL
 .endm
 
 #endif /* __ASSEMBLY__ */
