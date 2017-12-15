@@ -106,6 +106,8 @@ ENTRY(entry_SYSENTER_compat)
 	xorl	%r15d, %r15d		/* nospec   r15 */
 	cld
 
+	ENABLE_IBRS
+
 	/*
 	 * SYSENTER doesn't filter flags, so we need to clear NT and AC
 	 * ourselves.  To save a few cycles, we can check whether
@@ -140,6 +142,7 @@ ENTRY(entry_SYSENTER_compat)
 	/* XEN PV guests always use IRET path */
 	ALTERNATIVE "testl %eax, %eax; jz .Lsyscall_32_done", \
 		    "jmp .Lsyscall_32_done", X86_FEATURE_XENPV
+	DISABLE_IBRS
 	jmp	sysret32_from_system_call
 
 .Lsysenter_fix_flags:
@@ -378,6 +381,8 @@ ENTRY(entry_INT80_compat)
 	pushq   %r15                    /* pt_regs->r15 */
 	xorl	%r15d, %r15d		/* nospec   r15 */
 	cld
+
+	ENABLE_IBRS
 
 	/*
 	 * User mode is traced as though IRQs are on, and the interrupt

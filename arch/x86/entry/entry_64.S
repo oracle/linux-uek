@@ -39,6 +39,7 @@
 #include <asm/frame.h>
 #include <asm/nospec-branch.h>
 #include <asm/dtrace_util.h>
+#include <asm/spec_ctrl.h>
 #include <linux/err.h>
 
 #include "calling.h"
@@ -227,6 +228,8 @@ GLOBAL(entry_SYSCALL_64_after_hwframe)
 
 	PUSH_AND_CLEAR_REGS rax=$-ENOSYS
 
+	ENABLE_IBRS
+
 	TRACE_IRQS_OFF
 
 	/* IRQs are off. */
@@ -302,6 +305,7 @@ GLOBAL(entry_SYSCALL_64_after_hwframe)
 	 * perf profiles. Nothing jumps here.
 	 */
 syscall_return_via_sysret:
+	DISABLE_IBRS
 	/* rcx and r11 are already restored (see code above) */
 	UNWIND_HINT_EMPTY
 	POP_REGS pop_rdi=0 skip_r11rcx=1
@@ -595,6 +599,7 @@ GLOBAL(swapgs_restore_regs_and_return_to_usermode)
 1:
 #endif
 	POP_REGS pop_rdi=0
+	DISABLE_IBRS
 
 	/*
 	 * The stack is now user RDI, orig_ax, RIP, CS, EFLAGS, RSP, SS.
@@ -1282,6 +1287,7 @@ ENTRY(paranoid_entry)
 
 1:
 	SAVE_AND_SWITCH_TO_KERNEL_CR3 scratch_reg=%rax save_reg=%r14
+	ENABLE_IBRS_CLOBBER			/* Clobbers: %[rax,rcx,rdx] */
 
 	ret
 END(paranoid_entry)
@@ -1334,6 +1340,7 @@ ENTRY(error_entry)
 	SWAPGS
 	/* We have user CR3.  Change to kernel CR3. */
 	SWITCH_TO_KERNEL_CR3 scratch_reg=%rax
+	ENABLE_IBRS_CLOBBER
 
 .Lerror_entry_from_usermode_after_swapgs:
 	/* Put us onto the real thread stack. */
@@ -1395,6 +1402,7 @@ ENTRY(error_entry)
 	 */
 	SWAPGS
 	SWITCH_TO_KERNEL_CR3 scratch_reg=%rax
+	ENABLE_IBRS
 
 	/*
 	 * Pretend that the exception came from user mode: set up pt_regs
@@ -1496,6 +1504,7 @@ ENTRY(nmi)
 	SWITCH_TO_KERNEL_CR3 scratch_reg=%rdx
 	movq	%rsp, %rdx
 	movq	PER_CPU_VAR(cpu_current_top_of_stack), %rsp
+	ENABLE_IBRS
 	UNWIND_HINT_IRET_REGS base=%rdx offset=8
 	pushq	5*8(%rdx)	/* pt_regs->ss */
 	pushq	4*8(%rdx)	/* pt_regs->rsp */
