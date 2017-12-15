@@ -762,6 +762,11 @@ void init_speculation_control(struct cpuinfo_x86 *c)
 				sysctl_ibrs_enabled = 1;
 			if (ibpb_inuse)
 				sysctl_ibpb_enabled = 1;
+		} else if (boot_cpu_has(X86_FEATURE_IBPB)) {
+			pr_info_once("FEATURE IBPB Present\n");
+			set_ibpb_supported();
+			if (ibpb_inuse)
+				sysctl_ibpb_enabled = 1;
 		} else {
 			pr_info("FEATURE SPEC_CTRL Not Present\n");
 		}
