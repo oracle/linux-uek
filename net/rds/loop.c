@@ -31,10 +31,8 @@
  *
  */
 #include <linux/kernel.h>
-#include <linux/slab.h>
 #include <linux/in.h>
 
-#include "rds_single_path.h"
 #include "rds.h"
 #include "loop.h"
 
@@ -62,47 +60,43 @@ static int rds_loop_xmit(struct rds_connection *conn, struct rds_message *rm,
 			 unsigned int hdr_off, unsigned int sg,
 			 unsigned int off)
 {
-	struct scatterlist *sgp = &rm->data.op_sg[sg];
-	int ret = sizeof(struct rds_header) +
-			be32_to_cpu(rm->m_inc.i_hdr.h_len);
-
-	/* Do not send cong updates to loopback */
-	if (rm->m_inc.i_hdr.h_flags & RDS_FLAG_CONG_BITMAP) {
-		rds_cong_map_updated(conn->c_fcong, ~(u64) 0);
-		ret = min_t(int, ret, sgp->length - conn->c_xmit_data_off);
-		goto out;
-	}
-
 	BUG_ON(hdr_off || sg || off);
 
 	rds_inc_init(&rm->m_inc, conn, conn->c_laddr);
-	/* For the embedded inc. Matching put is in loop_inc_free() */
-	rds_message_addref(rm);
+	rds_message_addref(rm); /* for the inc */
 
 	rds_recv_incoming(conn, conn->c_laddr, conn->c_faddr, &rm->m_inc,
-			  GFP_KERNEL);
+			  GFP_KERNEL, KM_USER0);
 
 	rds_send_drop_acked(conn, be64_to_cpu(rm->m_inc.i_hdr.h_sequence),
 			    NULL);
 
 	rds_inc_put(&rm->m_inc);
-out:
-	return ret;
+
+	return sizeof(struct rds_header) + be32_to_cpu(rm->m_inc.i_hdr.h_len);
 }
 
-/*
- * See rds_loop_xmit(). Since our inc is embedded in the rm, we
- * make sure the rm lives at least until the inc is done.
- */
-static void rds_loop_inc_free(struct rds_incoming *inc)
+static int rds_loop_xmit_cong_map(struct rds_connection *conn,
+				  struct rds_cong_map *map,
+				  unsigned long offset)
 {
-	struct rds_message *rm = container_of(inc, struct rds_message, m_inc);
+	unsigned long i;
 
-	rds_message_put(rm);
+	BUG_ON(offset);
+	BUG_ON(map != conn->c_lcong);
+
+	for (i = 0; i < RDS_CONG_MAP_PAGES; i++) {
+		memcpy((void *)conn->c_fcong->m_page_addrs[i],
+		       (void *)map->m_page_addrs[i], PAGE_SIZE);
+	}
+
+	rds_cong_map_updated(conn->c_fcong, ~(u64) 0);
+
+	return sizeof(struct rds_header) + RDS_CONG_MAP_BYTES;
 }
 
 /* we need to at least give the thread something to succeed */
-static int rds_loop_recv_path(struct rds_conn_path *cp)
+static int rds_loop_recv(struct rds_connection *conn)
 {
 	return 0;
 }
@@ -123,8 +117,8 @@ static int rds_loop_conn_alloc(struct rds_connection *conn, gfp_t gfp)
 	struct rds_loop_connection *lc;
 	unsigned long flags;
 
-	lc = kzalloc(sizeof(struct rds_loop_connection), gfp);
-	if (!lc)
+	lc = kzalloc(sizeof(struct rds_loop_connection), GFP_KERNEL);
+	if (lc == NULL)
 		return -ENOMEM;
 
 	INIT_LIST_HEAD(&lc->loop_node);
@@ -141,22 +135,18 @@ static int rds_loop_conn_alloc(struct rds_connection *conn, gfp_t gfp)
 static void rds_loop_conn_free(void *arg)
 {
 	struct rds_loop_connection *lc = arg;
-	unsigned long flags;
-
 	rdsdebug("lc %p\n", lc);
-	spin_lock_irqsave(&loop_conns_lock, flags);
 	list_del(&lc->loop_node);
-	spin_unlock_irqrestore(&loop_conns_lock, flags);
 	kfree(lc);
 }
 
-static int rds_loop_conn_path_connect(struct rds_conn_path *cp)
+static int rds_loop_conn_connect(struct rds_connection *conn)
 {
-	rds_connect_complete(cp->cp_conn);
+	rds_connect_complete(conn);
 	return 0;
 }
 
-static void rds_loop_conn_path_shutdown(struct rds_conn_path *cp)
+static void rds_loop_conn_shutdown(struct rds_connection *conn)
 {
 }
 
@@ -185,12 +175,14 @@ void rds_loop_exit(void)
  */
 struct rds_transport rds_loop_transport = {
 	.xmit			= rds_loop_xmit,
-	.recv_path		= rds_loop_recv_path,
+	.xmit_cong_map		= rds_loop_xmit_cong_map,
+	.recv			= rds_loop_recv,
 	.conn_alloc		= rds_loop_conn_alloc,
 	.conn_free		= rds_loop_conn_free,
-	.conn_path_connect	= rds_loop_conn_path_connect,
-	.conn_path_shutdown	= rds_loop_conn_path_shutdown,
+	.conn_connect		= rds_loop_conn_connect,
+	.conn_shutdown		= rds_loop_conn_shutdown,
 	.inc_copy_to_user	= rds_message_inc_copy_to_user,
-	.inc_free		= rds_loop_inc_free,
+	.inc_purge		= rds_message_inc_purge,
+	.inc_free		= rds_message_inc_free,
 	.t_name			= "loopback",
 };
