@@ -6964,11 +6964,14 @@ insert:
 			 */
 			err = merge_extent_mapping(em_tree, existing,
 						   em, start);
-			free_extent_map(existing);
 			if (err) {
+				WARN_ONCE(1, "existing (0x%llx 0x%llx 0x%llx) em (0x%llx 0x%llx 0x%llx)\n",
+					  existing->start, existing->len, existing->block_start,
+					  em->start, em->len, em->block_start);
 				free_extent_map(em);
 				em = NULL;
 			}
+			free_extent_map(existing);
 		} else {
 			free_extent_map(em);
 			em = existing;
