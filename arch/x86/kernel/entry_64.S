@@ -46,6 +46,7 @@
 #include <asm/smap.h>
 #include <asm/pgtable_types.h>
 #include <asm/dtrace_util.h>
+#include <asm/spec_ctrl.h>
 #include <linux/err.h>
 
 /* Avoid __ASSEMBLER__'ifying <linux/audit.h> just for this.  */
@@ -218,6 +219,8 @@ GLOBAL(system_call_after_swapgs)
 
 	movq	%rsp,PER_CPU_VAR(rsp_scratch)
 	movq	PER_CPU_VAR(kernel_stack),%rsp
+
+	ENABLE_IBRS
 
 	/* Construct struct pt_regs on stack */
 	pushq_cfi $__USER_DS			/* pt_regs->ss */
@@ -475,6 +478,7 @@ syscall_return:
 	 * perf profiles.  Nothing jumps here.
 	 */
 syscall_return_via_sysret:
+	DISABLE_IBRS
 	CFI_REMEMBER_STATE
 	/* r11 is already restored (see code above) */
 	RESTORE_C_REGS_EXCEPT_R11
@@ -792,6 +796,7 @@ retint_kernel:
  * which come from interrupts/exception and from syscalls, merge.
  */
 restore_c_regs_and_iret:
+	DISABLE_IBRS
 	RESTORE_C_REGS
 	REMOVE_PT_GPREGS_FROM_STACK 8
 	INTERRUPT_RETURN
@@ -1432,7 +1437,8 @@ ENTRY(paranoid_entry)
 	js 1f	/* negative -> in kernel */
 	SWAPGS
 	xorl %ebx,%ebx
-1:	ret
+1:	ENABLE_IBRS_CLOBBER
+	ret
 	CFI_ENDPROC
 END(paranoid_entry)
 
@@ -1480,6 +1486,7 @@ ENTRY(error_entry)
 	je error_kernelspace
 error_swapgs:
 	SWAPGS
+	ENABLE_IBRS_CLOBBER
 error_sti:
 	TRACE_IRQS_OFF
 	ret
@@ -1510,6 +1517,7 @@ bstep_iret:
 
 error_bad_iret:
 	SWAPGS
+	ENABLE_IBRS
 	mov %rsp,%rdi
 	call fixup_bad_iret
 	mov %rax,%rsp
@@ -1613,6 +1621,7 @@ ENTRY(nmi)
 	cld
 	movq	%rsp, %rdx
 	movq	PER_CPU_VAR(kernel_stack), %rsp
+	ENABLE_IBRS
 	pushq	5*8(%rdx)	/* pt_regs->ss */
 	pushq	4*8(%rdx)	/* pt_regs->rsp */
 	pushq	3*8(%rdx)	/* pt_regs->flags */
