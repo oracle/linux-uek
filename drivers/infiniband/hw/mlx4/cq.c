@@ -801,7 +801,11 @@ repoll:
 			wc->opcode    = IB_WC_LSO;
 			break;
 		case MLX4_OPCODE_FMR:
+#ifdef WITHOUT_ORACLE_EXTENSIONS
 			wc->opcode    = IB_WC_REG_MR;
+#else /* !WITHOUT_ORACLE_EXTENSIONS */
+			wc->opcode    = IB_WC_FAST_REG_MR;
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 			break;
 		case MLX4_OPCODE_LOCAL_INVAL:
 			wc->opcode    = IB_WC_LOCAL_INV;

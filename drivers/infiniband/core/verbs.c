@@ -1554,6 +1554,33 @@ EXPORT_SYMBOL(ib_resize_cq);
 
 /* Memory regions */
 
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+
+struct ib_mr *ib_get_dma_mr(struct ib_pd *pd, int mr_access_flags)
+{
+	struct ib_mr *mr;
+	int err;
+
+	err = ib_check_mr_access(mr_access_flags);
+	if (err)
+		return ERR_PTR(err);
+
+	mr = pd->device->get_dma_mr(pd, mr_access_flags);
+
+	if (!IS_ERR(mr)) {
+		mr->device	= pd->device;
+		mr->pd		= pd;
+		mr->uobject	= NULL;
+		mr->need_inval	= false;
+		atomic_inc(&pd->usecnt);
+	}
+
+	return mr;
+}
+EXPORT_SYMBOL(ib_get_dma_mr);
+
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
+
 int ib_dereg_mr(struct ib_mr *mr)
 {
 	struct ib_pd *pd = mr->pd;
@@ -1600,6 +1627,35 @@ struct ib_mr *ib_alloc_mr(struct ib_pd *pd,
 	return mr;
 }
 EXPORT_SYMBOL(ib_alloc_mr);
+
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+
+struct ib_fast_reg_page_list *ib_alloc_fast_reg_page_list(struct ib_device *device,
+							  int max_page_list_len)
+{
+	struct ib_fast_reg_page_list *page_list;
+
+	if (!device->alloc_fast_reg_page_list)
+		return ERR_PTR(-ENOSYS);
+
+	page_list = device->alloc_fast_reg_page_list(device, max_page_list_len);
+
+	if (!IS_ERR(page_list)) {
+		page_list->device = device;
+		page_list->max_page_list_len = max_page_list_len;
+	}
+
+	return page_list;
+}
+EXPORT_SYMBOL(ib_alloc_fast_reg_page_list);
+
+void ib_free_fast_reg_page_list(struct ib_fast_reg_page_list *page_list)
+{
+	page_list->device->free_fast_reg_page_list(page_list);
+}
+EXPORT_SYMBOL(ib_free_fast_reg_page_list);
+
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 /* "Fast" memory regions */
 

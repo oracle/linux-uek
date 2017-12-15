@@ -797,6 +797,26 @@ void ib_dispatch_event(struct ib_event *event)
 }
 EXPORT_SYMBOL(ib_dispatch_event);
 
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+
+/**
+ * ib_query_device - Query IB device attributes
+ * @device:Device to query
+ * @device_attr:Device attributes
+ *
+ * ib_query_device() returns the attributes of a device through the
+ * @device_attr pointer.
+ */
+int ib_query_device(struct ib_device *device,
+                    struct ib_device_attr *device_attr)
+{
+       struct ib_udata uhw = { .outlen = 0, .inlen = 0 };
+       return device->query_device(device, device_attr, &uhw);
+}
+EXPORT_SYMBOL(ib_query_device);
+
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
+
 /**
  * ib_query_port - Query IB port attributes
  * @device:Device to query

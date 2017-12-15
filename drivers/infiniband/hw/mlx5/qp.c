@@ -66,6 +66,9 @@ static const u32 mlx5_ib_opcode[] = {
 	[IB_WR_ATOMIC_FETCH_AND_ADD]		= MLX5_OPCODE_ATOMIC_FA,
 	[IB_WR_SEND_WITH_INV]			= MLX5_OPCODE_SEND_INVAL,
 	[IB_WR_LOCAL_INV]			= MLX5_OPCODE_UMR,
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	[IB_WR_FAST_REG_MR]			= MLX5_OPCODE_UMR,
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 	[IB_WR_REG_MR]				= MLX5_OPCODE_UMR,
 	[IB_WR_MASKED_ATOMIC_CMP_AND_SWP]	= MLX5_OPCODE_ATOMIC_MASKED_CS,
 	[IB_WR_MASKED_ATOMIC_FETCH_AND_ADD]	= MLX5_OPCODE_ATOMIC_MASKED_FA,
@@ -3176,12 +3179,36 @@ static void set_reg_umr_seg(struct mlx5_wqe_umr_ctrl_seg *umr,
 	umr->mkey_mask = frwr_mkey_mask();
 }
 
+#ifdef WITHOUT_ORACLE_EXTENSIONS
+
 static void set_linv_umr_seg(struct mlx5_wqe_umr_ctrl_seg *umr)
 {
 	memset(umr, 0, sizeof(*umr));
 	umr->mkey_mask = cpu_to_be64(MLX5_MKEY_MASK_FREE);
 	umr->flags = MLX5_UMR_INLINE;
 }
+
+#else /* !WITHOUT_ORACLE_EXTENSIONS */
+
+static void set_frwr_umr_segment(struct mlx5_wqe_umr_ctrl_seg *umr,
+				 struct ib_send_wr *wr, int li)
+{
+	int size = fast_reg_wr(wr)->page_list_len * sizeof(struct mlx5_mtt);
+
+	memset(umr, 0, sizeof(*umr));
+
+	if (li) {
+		umr->mkey_mask = cpu_to_be64(MLX5_MKEY_MASK_FREE);
+		umr->flags = MLX5_UMR_INLINE;
+		return;
+	}
+
+	umr->flags = MLX5_UMR_CHECK_NOT_FREE;
+	umr->xlt_octowords = cpu_to_be16(get_xlt_octo(size));
+	umr->mkey_mask = frwr_mkey_mask();
+}
+
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 static __be64 get_umr_enable_mr_mask(void)
 {
@@ -3303,11 +3330,37 @@ static void set_reg_mkey_seg(struct mlx5_mkey_seg *seg,
 	seg->xlt_oct_size = cpu_to_be32(ndescs);
 }
 
+#ifdef WITHOUT_ORACLE_EXTENSIONS
+
 static void set_linv_mkey_seg(struct mlx5_mkey_seg *seg)
 {
 	memset(seg, 0, sizeof(*seg));
 	seg->status = MLX5_MKEY_STATUS_FREE;
 }
+
+#else /* !WITHOUT_ORACLE_EXTENSIONS */
+
+static void set_mkey_segment(struct mlx5_mkey_seg *seg, struct ib_send_wr *wr,
+			     int li, int *writ)
+{
+	memset(seg, 0, sizeof(*seg));
+	if (li) {
+		seg->status = MLX5_MKEY_STATUS_FREE;
+		return;
+	}
+
+	seg->flags = get_umr_flags(fast_reg_wr(wr)->access_flags) |
+		     MLX5_MKC_ACCESS_MODE_MTT;
+	*writ = seg->flags & (MLX5_PERM_LOCAL_WRITE | IB_ACCESS_REMOTE_WRITE);
+	seg->qpn_mkey7_0 = cpu_to_be32((fast_reg_wr(wr)->rkey & 0xff) | 0xffffff00);
+	seg->flags_pd = cpu_to_be32(MLX5_MKEY_REMOTE_INVAL);
+	seg->start_addr = cpu_to_be64(fast_reg_wr(wr)->iova_start);
+	seg->len = cpu_to_be64(fast_reg_wr(wr)->length);
+	seg->xlt_oct_size = cpu_to_be32((fast_reg_wr(wr)->page_list_len + 1) / 2);
+	seg->log2_page_size = fast_reg_wr(wr)->page_shift;
+}
+
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 static void set_reg_mkey_segment(struct mlx5_mkey_seg *seg, struct ib_send_wr *wr)
 {
@@ -3341,6 +3394,28 @@ static void set_reg_data_seg(struct mlx5_wqe_data_seg *dseg,
 	dseg->byte_count = cpu_to_be32(ALIGN(bcount, 64));
 	dseg->lkey = cpu_to_be32(pd->ibpd.local_dma_lkey);
 }
+
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+
+static void set_frwr_pages(struct mlx5_wqe_data_seg *dseg,
+			   struct ib_send_wr *wr,
+			   struct mlx5_core_dev *mdev,
+			   struct mlx5_ib_pd *pd,
+			   int writ)
+{
+	struct mlx5_ib_fast_reg_page_list *mfrpl = to_mfrpl(fast_reg_wr(wr)->page_list);
+	u64 *page_list = fast_reg_wr(wr)->page_list->page_list;
+	u64 perm = MLX5_EN_RD | (writ ? MLX5_EN_WR : 0);
+	int i;
+
+	for (i = 0; i < fast_reg_wr(wr)->page_list_len; i++)
+		mfrpl->mapped_page_list[i] = cpu_to_be64(page_list[i] | perm);
+	dseg->addr = cpu_to_be64(mfrpl->map);
+	dseg->byte_count = cpu_to_be32(ALIGN(sizeof(u64) * fast_reg_wr(wr)->page_list_len, 64));
+	dseg->lkey = cpu_to_be32(pd->ibpd.local_dma_lkey);
+}
+
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 static __be32 send_ieth(struct ib_send_wr *wr)
 {
@@ -3762,6 +3837,8 @@ static int set_reg_wr(struct mlx5_ib_qp *qp,
 	return 0;
 }
 
+#ifdef WITHOUT_ORACLE_EXTENSIONS
+
 static void set_linv_wr(struct mlx5_ib_qp *qp, void **seg, int *size)
 {
 	set_linv_umr_seg(*seg);
@@ -3775,6 +3852,42 @@ static void set_linv_wr(struct mlx5_ib_qp *qp, void **seg, int *size)
 	if (unlikely((*seg == qp->sq.qend)))
 		*seg = mlx5_get_send_wqe(qp, 0);
 }
+
+#else /* !WITHOUT_ORACLE_EXTENSIONS */
+
+static int set_frwr_li_wr(void **seg, struct ib_send_wr *wr, int *size,
+			  struct mlx5_core_dev *mdev, struct mlx5_ib_pd *pd, struct mlx5_ib_qp *qp)
+{
+	int writ = 0;
+	int li;
+
+	li = wr->opcode == IB_WR_LOCAL_INV ? 1 : 0;
+	if (unlikely(wr->send_flags & IB_SEND_INLINE))
+		return -EINVAL;
+
+	set_frwr_umr_segment(*seg, wr, li);
+	*seg += sizeof(struct mlx5_wqe_umr_ctrl_seg);
+	*size += sizeof(struct mlx5_wqe_umr_ctrl_seg) / 16;
+	if (unlikely((*seg == qp->sq.qend)))
+		*seg = mlx5_get_send_wqe(qp, 0);
+	set_mkey_segment(*seg, wr, li, &writ);
+	*seg += sizeof(struct mlx5_mkey_seg);
+	*size += sizeof(struct mlx5_mkey_seg) / 16;
+	if (unlikely((*seg == qp->sq.qend)))
+		*seg = mlx5_get_send_wqe(qp, 0);
+	if (!li) {
+		if (unlikely(fast_reg_wr(wr)->page_list_len >
+			     fast_reg_wr(wr)->page_list->max_page_list_len))
+			return	-ENOMEM;
+
+		set_frwr_pages(*seg, wr, mdev, pd, writ);
+		*seg += sizeof(struct mlx5_wqe_data_seg);
+		*size += (sizeof(struct mlx5_wqe_data_seg) / 16);
+	}
+	return 0;
+}
+
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 static void dump_wqe(struct mlx5_ib_qp *qp, int idx, int size_16)
 {
@@ -3948,9 +4061,33 @@ int mlx5_ib_post_send(struct ib_qp *ibqp, struct ib_send_wr *wr,
 			case IB_WR_LOCAL_INV:
 				qp->sq.wr_data[idx] = IB_WR_LOCAL_INV;
 				ctrl->imm = cpu_to_be32(wr->ex.invalidate_rkey);
+#ifdef WITHOUT_ORACLE_EXTENSIONS
 				set_linv_wr(qp, &seg, &size);
+#else /* !WITHOUT_ORACLE_EXTENSIONS */
+				err = set_frwr_li_wr(&seg, wr, &size, mdev, to_mpd(ibqp->pd), qp);
+				if (err) {
+					mlx5_ib_warn(dev, "\n");
+					*bad_wr = wr;
+					goto out;
+				}
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 				num_sge = 0;
 				break;
+
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+			case IB_WR_FAST_REG_MR:
+				next_fence = MLX5_FENCE_MODE_INITIATOR_SMALL;
+				qp->sq.wr_data[idx] = IB_WR_FAST_REG_MR;
+				ctrl->imm = cpu_to_be32(fast_reg_wr(wr)->rkey);
+				err = set_frwr_li_wr(&seg, wr, &size, mdev, to_mpd(ibqp->pd), qp);
+				if (err) {
+					mlx5_ib_warn(dev, "\n");
+					*bad_wr = wr;
+					goto out;
+				}
+				num_sge = 0;
+				break;
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 			case IB_WR_REG_MR:
 				qp->sq.wr_data[idx] = IB_WR_REG_MR;

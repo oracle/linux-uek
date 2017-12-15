@@ -935,6 +935,9 @@ enum ib_wc_opcode {
 	IB_WC_FETCH_ADD,
 	IB_WC_LSO,
 	IB_WC_LOCAL_INV,
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	IB_WC_FAST_REG_MR,
+#endif
 	IB_WC_REG_MR,
 	IB_WC_MASKED_COMP_SWAP,
 	IB_WC_MASKED_FETCH_ADD,
@@ -1261,6 +1264,9 @@ enum ib_wr_opcode {
 	IB_WR_SEND_WITH_INV,
 	IB_WR_RDMA_READ_WITH_INV,
 	IB_WR_LOCAL_INV,
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	IB_WR_FAST_REG_MR,
+#endif
 	IB_WR_REG_MR,
 	IB_WR_MASKED_ATOMIC_CMP_AND_SWP,
 	IB_WR_MASKED_ATOMIC_FETCH_AND_ADD,
@@ -1360,6 +1366,26 @@ static inline struct ib_ud_wr *ud_wr(struct ib_send_wr *wr)
 {
 	return container_of(wr, struct ib_ud_wr, wr);
 }
+
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+
+struct ib_fast_reg_wr {
+	struct ib_send_wr	wr;
+	u64			iova_start;
+	struct ib_fast_reg_page_list *page_list;
+	unsigned int		page_shift;
+	unsigned int		page_list_len;
+	u32			length;
+	int			access_flags;
+	u32			rkey;
+};
+
+static inline struct ib_fast_reg_wr *fast_reg_wr(struct ib_send_wr *wr)
+{
+	return container_of(wr, struct ib_fast_reg_wr, wr);
+}
+
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 struct ib_reg_wr {
 	struct ib_send_wr	wr;
@@ -2254,6 +2280,13 @@ struct ib_device {
 	struct ib_fmr *	           (*alloc_fmr)(struct ib_pd *pd,
 						int mr_access_flags,
 						struct ib_fmr_attr *fmr_attr);
+
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	struct ib_fast_reg_page_list * (*alloc_fast_reg_page_list)(struct ib_device *device,
+								   int page_list_len);
+	void			   (*free_fast_reg_page_list)(struct ib_fast_reg_page_list *page_list);
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
+
 	int		           (*map_phys_fmr)(struct ib_fmr *fmr,
 						   u64 *page_list, int list_len,
 						   u64 iova);
@@ -2445,6 +2478,16 @@ static inline bool ib_is_udata_cleared(struct ib_udata *udata,
 	return ret;
 }
 
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+
+struct ib_fast_reg_page_list {
+	struct ib_device       *device;
+	u64		       *page_list;
+	unsigned int		max_page_list_len;
+};
+
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
+
 /**
  * ib_modify_qp_is_ok - Check that the supplied attribute mask
  * contains all required attributes and no attributes not allowed for
@@ -2468,6 +2511,13 @@ int ib_modify_qp_is_ok(enum ib_qp_state cur_state, enum ib_qp_state next_state,
 void ib_register_event_handler(struct ib_event_handler *event_handler);
 void ib_unregister_event_handler(struct ib_event_handler *event_handler);
 void ib_dispatch_event(struct ib_event *event);
+
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+
+int ib_query_device(struct ib_device *device,
+		    struct ib_device_attr *device_attr);
+
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 int ib_query_port(struct ib_device *device,
 		  u8 port_num, struct ib_port_attr *port_attr);
@@ -3247,6 +3297,22 @@ static inline int ib_req_ncomp_notif(struct ib_cq *cq, int wc_cnt)
 		-ENOSYS;
 }
 
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+
+/**
+ * ib_get_dma_mr - Returns a memory region for system memory that is
+ *   usable for DMA.
+ * @pd: The protection domain associated with the memory region.
+ * @mr_access_flags: Specifies the memory access rights.
+ *
+ * Note that the ib_dma_*() functions defined below must be used
+ * to create/destroy addresses used with the Lkey or Rkey returned
+ * by ib_get_dma_mr().
+ */
+struct ib_mr *ib_get_dma_mr(struct ib_pd *pd, int mr_access_flags);
+
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
+
 /**
  * ib_dma_mapping_error - check a DMA addr for error
  * @dev: The device for which the dma_addr was created
@@ -3459,6 +3525,37 @@ int ib_dereg_mr(struct ib_mr *mr);
 struct ib_mr *ib_alloc_mr(struct ib_pd *pd,
 			  enum ib_mr_type mr_type,
 			  u32 max_num_sg);
+
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+
+/**
+ * ib_alloc_fast_reg_page_list - Allocates a page list array
+ * @device - ib device pointer.
+ * @page_list_len - size of the page list array to be allocated.
+ *
+ * This allocates and returns a struct ib_fast_reg_page_list * and a
+ * page_list array that is at least page_list_len in size.  The actual
+ * size is returned in max_page_list_len.  The caller is responsible
+ * for initializing the contents of the page_list array before posting
+ * a send work request with the IB_WC_FAST_REG_MR opcode.
+ *
+ * The page_list array entries must be translated using one of the
+ * ib_dma_*() functions just like the addresses passed to
+ * ib_map_phys_fmr().  Once the ib_post_send() is issued, the struct
+ * ib_fast_reg_page_list must not be modified by the caller until the
+ * IB_WC_FAST_REG_MR work request completes.
+ */
+struct ib_fast_reg_page_list *ib_alloc_fast_reg_page_list(
+				struct ib_device *device, int page_list_len);
+
+/**
+ * ib_free_fast_reg_page_list - Deallocates a previously allocated
+ *   page list array.
+ * @page_list - struct ib_fast_reg_page_list pointer to be deallocated.
+ */
+void ib_free_fast_reg_page_list(struct ib_fast_reg_page_list *page_list);
+
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 /**
  * ib_update_fast_reg_key - updates the key portion of the fast_reg MR

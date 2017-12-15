@@ -111,6 +111,13 @@ static enum ib_wc_opcode get_umr_comp(struct mlx5_ib_wq *wq, int idx)
 	case IB_WR_REG_MR:
 		return IB_WC_REG_MR;
 
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+
+	case IB_WR_FAST_REG_MR:
+		return IB_WC_FAST_REG_MR;
+
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
+
 	default:
 		pr_warn("unknown completion status\n");
 		return 0;

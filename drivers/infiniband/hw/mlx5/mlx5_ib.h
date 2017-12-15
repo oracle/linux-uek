@@ -533,6 +533,16 @@ struct mlx5_ib_mw {
 	int			ndescs;
 };
 
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+
+struct mlx5_ib_fast_reg_page_list {
+	struct ib_fast_reg_page_list	ibfrpl;
+	__be64			       *mapped_page_list;
+	dma_addr_t			map;
+};
+
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
+
 struct mlx5_ib_umr_context {
 	struct ib_cqe		cqe;
 	enum ib_wc_status	status;
@@ -838,6 +848,15 @@ static inline struct mlx5_ib_mw *to_mmw(struct ib_mw *ibmw)
 	return container_of(ibmw, struct mlx5_ib_mw, ibmw);
 }
 
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+
+static inline struct mlx5_ib_fast_reg_page_list *to_mfrpl(struct ib_fast_reg_page_list *ibfrpl)
+{
+	return container_of(ibfrpl, struct mlx5_ib_fast_reg_page_list, ibfrpl);
+}
+
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
+
 int mlx5_ib_db_map_user(struct mlx5_ib_ucontext *context, unsigned long virt,
 			struct mlx5_db *db);
 void mlx5_ib_db_unmap_user(struct mlx5_ib_ucontext *context, struct mlx5_db *db);
@@ -889,6 +908,13 @@ struct ib_mr *mlx5_ib_get_dma_mr(struct ib_pd *pd, int acc);
 struct ib_mr *mlx5_ib_reg_user_mr(struct ib_pd *pd, u64 start, u64 length,
 				  u64 virt_addr, int access_flags,
 				  struct ib_udata *udata);
+
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+struct ib_fast_reg_page_list *mlx5_ib_alloc_fast_reg_page_list(struct ib_device *ibdev,
+							       int page_list_len);
+void mlx5_ib_free_fast_reg_page_list(struct ib_fast_reg_page_list *page_list);
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
+
 struct ib_mw *mlx5_ib_alloc_mw(struct ib_pd *pd, enum ib_mw_type type,
 			       struct ib_udata *udata);
 int mlx5_ib_dealloc_mw(struct ib_mw *mw);
