@@ -94,6 +94,11 @@ void init_scattered_cpuid_features(struct cpuinfo_x86 *c)
 				sysctl_ibrs_enabled = 1;
 			if (ibpb_inuse)
 				sysctl_ibpb_enabled = 1;
+		} else if (boot_cpu_has(X86_FEATURE_IBPB)) {
+			printk_once(KERN_INFO "FEATURE IBPB Present\n");
+			set_ibpb_supported();
+			if (ibpb_inuse)
+				sysctl_ibpb_enabled = 1;
 		} else {
 			printk(KERN_INFO "FEATURE SPEC_CTRL Not Present\n");
 		}
