@@ -49,5 +49,11 @@
 .Lskip_\@:
 .endm
 
+.macro DISABLE_IBRS_CLOBBER
+	ALTERNATIVE "jmp .Lskip_\@", "", X86_FEATURE_SPEC_CTRL
+	WRMSR_ASM $MSR_IA32_SPEC_CTRL, $0
+.Lskip_\@:
+.endm
+
 #endif /* __ASSEMBLY__ */
 #endif /* _ASM_X86_SPEC_CTRL_H */
