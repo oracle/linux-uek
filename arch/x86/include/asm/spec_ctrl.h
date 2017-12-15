@@ -65,6 +65,40 @@ ALTERNATIVE "", __stringify(__ASM_ENABLE_IBRS), X86_FEATURE_SPEC_CTRL
 11:
 .endm
 
+.macro ENABLE_IBRS_SAVE_AND_CLOBBER save_reg:req
+	testl	$1, use_ibrs
+	jz	12f
+
+	movl	$MSR_IA32_SPEC_CTRL, %ecx
+	rdmsr
+	movl	%eax, \save_reg
+
+	movl	$0, %edx
+	movl	$FEATURE_ENABLE_IBRS, %eax
+	wrmsr
+	jmp 22f
+12:
+	lfence
+22:
+.endm
+
+.macro RESTORE_IBRS_CLOBBER save_reg:req
+	testl	$1, use_ibrs
+	jz	13f
+
+	cmpl	$FEATURE_ENABLE_IBRS, \save_reg
+	je	13f
+
+	movl	$MSR_IA32_SPEC_CTRL, %ecx
+	movl	$0, %edx
+	movl	\save_reg, %eax
+	wrmsr
+	jmp 23f
+13:
+	lfence
+23:
+.endm
+
 .macro DISABLE_IBRS
 ALTERNATIVE "", __stringify(__ASM_DISABLE_IBRS), X86_FEATURE_SPEC_CTRL
 .endm

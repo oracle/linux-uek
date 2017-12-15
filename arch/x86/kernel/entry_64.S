@@ -1437,7 +1437,7 @@ ENTRY(paranoid_entry)
 	js 1f	/* negative -> in kernel */
 	SWAPGS
 	xorl %ebx,%ebx
-1:	ENABLE_IBRS_CLOBBER
+1:	ENABLE_IBRS_SAVE_AND_CLOBBER save_reg=%r13d
 	ret
 	CFI_ENDPROC
 END(paranoid_entry)
@@ -1460,6 +1460,7 @@ ENTRY(paranoid_exit)
 	testl %ebx,%ebx				/* swapgs needed? */
 	jnz paranoid_exit_no_swapgs
 	TRACE_IRQS_IRETQ
+	RESTORE_IBRS_CLOBBER save_reg=%r13d
 	SWAPGS_UNSAFE_STACK
 	jmp paranoid_exit_restore
 paranoid_exit_no_swapgs:
@@ -1863,6 +1864,8 @@ end_repeat_nmi:
 	movq %rsp,%rdi
 	movq $-1,%rsi
 	call do_nmi
+
+	RESTORE_IBRS_CLOBBER save_reg=%r13d
 
 	testl %ebx,%ebx				/* swapgs needed? */
 	jnz nmi_restore
