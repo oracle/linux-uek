@@ -15,6 +15,7 @@
 #include <asm/irqflags.h>
 #include <asm/asm.h>
 #include <asm/smap.h>
+#include <asm/spec_ctrl.h>
 #include <linux/linkage.h>
 #include <linux/err.h>
 
@@ -146,6 +147,8 @@ ENTRY(ia32_sysenter_target)
 	cld
 	sub	$(10*8),%rsp /* pt_regs->r8-11,bp,bx,r12-15 not saved */
 	CFI_ADJUST_CFA_OFFSET 10*8
+
+	ENABLE_IBRS
 
 	/*
 	 * no need to do an access_ok check here because rbp has been
@@ -529,6 +532,8 @@ ENTRY(ia32_syscall)
 	sub	$(10*8),%rsp /* pt_regs->r8-11,bp,bx,r12-15 not saved */
 	CFI_ADJUST_CFA_OFFSET 10*8
 
+	ENABLE_IBRS
+
 	orl $TS_COMPAT, ASM_THREAD_INFO(TI_status, %rsp, SIZEOF_PTREGS)
 	testl $_TIF_WORK_SYSCALL_ENTRY, ASM_THREAD_INFO(TI_flags, %rsp, SIZEOF_PTREGS)
 	jnz ia32_tracesys
@@ -546,6 +551,7 @@ ia32_sysret:
 	movq %rax,RAX(%rsp)
 ia32_ret_from_sys_call:
 	CLEAR_RREGS
+	DISABLE_IBRS
 	jmp int_ret_from_sys_call
 
 ia32_tracesys:
