@@ -1216,8 +1216,10 @@ dtrace_emu_ret:
 
 END(dtrace_error_exit)
 
+.pushsection .rodata, "a"
 dtrace_error_msg:
 	.asciz "DTRACE: non-zero (%x) return from trap at %x\n"
+.popsection
 #endif
 
 idtentry divide_error			do_divide_error			has_error_code=0
