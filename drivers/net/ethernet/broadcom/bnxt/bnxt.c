@@ -3072,7 +3072,7 @@ void bnxt_set_tpa_flags(struct bnxt *bp)
 		return;
 	if (bp->dev->features & NETIF_F_LRO)
 		bp->flags |= BNXT_FLAG_LRO;
-	else if (bp->dev->features & NETIF_F_GRO)
+	else if (bp->dev->features & NETIF_F_GRO_HW)
 		bp->flags |= BNXT_FLAG_GRO;
 }
 
@@ -8962,12 +8962,12 @@ static netdev_features_t bnxt_fix_features(struct net_device *dev,
 		features &= ~NETIF_F_NTUPLE;
 
 	if (bp->flags & BNXT_FLAG_NO_AGG_RINGS)
-		features &= ~(NETIF_F_LRO | NETIF_F_GRO);
+		features &= ~(NETIF_F_LRO | NETIF_F_GRO_HW);
 
 	if (!(features & NETIF_F_GRO))
-		features &= ~NETIF_F_GRO;
+		features &= ~NETIF_F_GRO_HW;
 
-	if (features & NETIF_F_GRO)
+	if (features & NETIF_F_GRO_HW)
 		features &= ~NETIF_F_LRO;
 
 	/* Both CTAG and STAG VLAN accelaration on the RX side have to be
@@ -9003,7 +9003,7 @@ static int bnxt_set_features(struct net_device *dev, netdev_features_t features)
 	bool update_tpa = false;
 
 	flags &= ~BNXT_FLAG_ALL_CONFIG_FEATS;
-	if (features & NETIF_F_GRO)
+	if (features & NETIF_F_GRO_HW)
 		flags |= BNXT_FLAG_GRO;
 	else if (features & NETIF_F_LRO)
 		flags |= BNXT_FLAG_LRO;
@@ -10247,8 +10247,8 @@ static int bnxt_get_dflt_rings(struct bnxt *bp, int *max_rx, int *max_tx,
 			return rc;
 		}
 		bp->flags |= BNXT_FLAG_NO_AGG_RINGS;
-		bp->dev->hw_features &= ~(NETIF_F_LRO | NETIF_F_GRO);
-		bp->dev->features &= ~(NETIF_F_LRO | NETIF_F_GRO);
+		bp->dev->hw_features &= ~(NETIF_F_LRO | NETIF_F_GRO_HW);
+		bp->dev->features &= ~(NETIF_F_LRO | NETIF_F_GRO_HW);
 		bnxt_set_ring_params(bp);
 	}
 
@@ -10509,9 +10509,9 @@ static int bnxt_init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 	dev->hw_features |= NETIF_F_HW_VLAN_CTAG_RX | NETIF_F_HW_VLAN_CTAG_TX |
 			    NETIF_F_HW_VLAN_STAG_RX | NETIF_F_HW_VLAN_STAG_TX;
 	if (BNXT_SUPPORTS_TPA(bp))
-		dev->hw_features |= NETIF_F_GRO;
+		dev->hw_features |= NETIF_F_GRO_HW;
 	dev->features |= dev->hw_features | NETIF_F_HIGHDMA;
-	if (dev->features & NETIF_F_GRO)
+	if (dev->features & NETIF_F_GRO_HW)
 		dev->features &= ~NETIF_F_LRO;
 	dev->priv_flags |= IFF_UNICAST_FLT;
 
