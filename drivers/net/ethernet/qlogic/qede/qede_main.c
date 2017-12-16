@@ -548,6 +548,7 @@ static const struct net_device_ops qede_netdev_ops = {
 #endif
 	.ndo_vlan_rx_add_vid = qede_vlan_rx_add_vid,
 	.ndo_vlan_rx_kill_vid = qede_vlan_rx_kill_vid,
+	.ndo_fix_features = qede_fix_features,
 	.ndo_set_features = qede_set_features,
 	.ndo_get_stats64 = qede_get_stats64,
 #ifdef CONFIG_QED_SRIOV
@@ -575,6 +576,7 @@ static const struct net_device_ops qede_netdev_vf_ops = {
 	.ndo_change_mtu = qede_change_mtu,
 	.ndo_vlan_rx_add_vid = qede_vlan_rx_add_vid,
 	.ndo_vlan_rx_kill_vid = qede_vlan_rx_kill_vid,
+	.ndo_fix_features = qede_fix_features,
 	.ndo_set_features = qede_set_features,
 	.ndo_get_stats64 = qede_get_stats64,
 	.ndo_udp_tunnel_add = qede_udp_tunnel_add,
@@ -592,6 +594,7 @@ static const struct net_device_ops qede_netdev_vf_xdp_ops = {
 	.ndo_change_mtu = qede_change_mtu,
 	.ndo_vlan_rx_add_vid = qede_vlan_rx_add_vid,
 	.ndo_vlan_rx_kill_vid = qede_vlan_rx_kill_vid,
+	.ndo_fix_features = qede_fix_features,
 	.ndo_set_features = qede_set_features,
 	.ndo_get_stats64 = qede_get_stats64,
 	.ndo_udp_tunnel_add = qede_udp_tunnel_add,
@@ -679,7 +682,7 @@ static void qede_init_ndev(struct qede_dev *edev)
 	ndev->priv_flags |= IFF_UNICAST_FLT;
 
 	/* user-changeble features */
-	hw_features = NETIF_F_GRO | NETIF_F_SG |
+	hw_features = NETIF_F_GRO | NETIF_F_GRO_HW | NETIF_F_SG |
 		      NETIF_F_IP_CSUM | NETIF_F_IPV6_CSUM |
 		      NETIF_F_TSO | NETIF_F_TSO6;
 
@@ -1235,17 +1238,8 @@ static int qede_alloc_sge_mem(struct qede_dev *edev, struct qede_rx_queue *rxq)
 	dma_addr_t mapping;
 	int i;
 
-	/* Don't perform FW aggregations in case of XDP */
-	if (edev->xdp_prog)
-		edev->gro_disable = 1;
-
 	if (edev->gro_disable)
 		return 0;
-
-	if (edev->ndev->mtu > PAGE_SIZE) {
-		edev->gro_disable = 1;
-		return 0;
-	}
 
 	for (i = 0; i < ETH_TPA_MAX_AGGS_NUM; i++) {
 		struct qede_agg_info *tpa_info = &rxq->tpa_info[i];
@@ -1276,6 +1270,7 @@ static int qede_alloc_sge_mem(struct qede_dev *edev, struct qede_rx_queue *rxq)
 err:
 	qede_free_sge_mem(edev, rxq);
 	edev->gro_disable = 1;
+	edev->ndev->features &= ~NETIF_F_GRO_HW;
 	return -ENOMEM;
 }
 
@@ -1518,7 +1513,7 @@ static void qede_init_fp(struct qede_dev *edev)
 			 edev->ndev->name, queue_id);
 	}
 
-	edev->gro_disable = !(edev->ndev->features & NETIF_F_GRO);
+	edev->gro_disable = !(edev->ndev->features & NETIF_F_GRO_HW);
 }
 
 static int qede_set_real_num_queues(struct qede_dev *edev)
