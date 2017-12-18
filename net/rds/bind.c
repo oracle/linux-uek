@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2006, 2017 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2006, 2018 Oracle and/or its affiliates. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -226,6 +226,12 @@ int rds_bind(struct socket *sock, struct sockaddr *uaddr, int addr_len)
 	}
 
 	lock_sock(sk);
+
+	/* RDS socket does not allow re-binding. */
+	if (!ipv6_addr_any(&rs->rs_bound_addr)) {
+		ret = -EINVAL;
+		goto out;
+	}
 
 	ret = rds_add_bound(rs, binding_addr, &port, scope_id);
 	if (ret)
