@@ -84,4 +84,18 @@ void init_scattered_cpuid_features(struct cpuinfo_x86 *c)
 		if (cap & 2) /* IBRS all the time */
 			set_cpu_cap(c, X86_FEATURE_IBRS_ATT);
 	}
+
+	if (!c->cpu_index) {
+		if (boot_cpu_has(X86_FEATURE_SPEC_CTRL)) {
+			printk(KERN_INFO "FEATURE SPEC_CTRL Present\n");
+			set_ibrs_supported();
+			set_ibpb_supported();
+			if (ibrs_inuse)
+				sysctl_ibrs_enabled = 1;
+			if (ibpb_inuse)
+				sysctl_ibpb_enabled = 1;
+		} else {
+			printk(KERN_INFO "FEATURE SPEC_CTRL Not Present\n");
+		}
+	}
 }
