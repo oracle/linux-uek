@@ -726,7 +726,7 @@ static void apply_forced_caps(struct cpuinfo_x86 *c)
 	}
 }
 
-static void init_speculation_control(struct cpuinfo_x86 *c)
+void init_speculation_control(struct cpuinfo_x86 *c)
 {
 	if (cpu_has(c, X86_FEATURE_ARCH_CAPABILITIES)) {
 		u64 cap;

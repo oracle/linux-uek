@@ -449,6 +449,11 @@ static ssize_t microcode_write(struct file *file, const char __user *buf,
 	if (ret > 0)
 		perf_check_microcode();
 
+	/* check spec_ctrl capabilities */
+	mutex_lock(&spec_ctrl_mutex);
+	init_speculation_control(&boot_cpu_data);
+	mutex_unlock(&spec_ctrl_mutex);
+
 	mutex_unlock(&microcode_mutex);
 	put_online_cpus();
 
