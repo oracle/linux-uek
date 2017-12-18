@@ -2354,6 +2354,16 @@ bytes respectively. Such letter suffixes can also be entirely omitted.
 			noexec=on: enable non-executable mappings (default)
 			noexec=off: disable non-executable mappings
 
+	noibrs          [X86]
+			Don't use indirect branch restricted speculation (IBRS)
+			feature when running in secure environment,
+			to avoid performance overhead.
+
+	noibpb          [X86]
+			Don't use indirect branch prediction barrier (IBPB)
+			feature when running in secure environment,
+			to avoid performance overhead.
+
 	nosmap		[X86]
 			Disable SMAP (Supervisor Mode Access Prevention)
 			even if it is supported by processor.
