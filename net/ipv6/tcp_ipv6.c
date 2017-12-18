@@ -1540,7 +1540,6 @@ process:
 		struct sock *nsk;
 
 		sk = req->rsk_listener;
-		tcp_v6_fill_cb(skb, hdr, th);
 		if (tcp_v6_inbound_md5_hash(sk, skb)) {
 			sk_drops_add(sk, skb);
 			reqsk_put(req);
@@ -1553,8 +1552,12 @@ process:
 		sock_hold(sk);
 		refcounted = true;
 		nsk = NULL;
-		if (!tcp_filter(sk, skb))
+		if (!tcp_filter(sk, skb)) {
+			th = (const struct tcphdr *)skb->data;
+			hdr = ipv6_hdr(skb);
+			tcp_v6_fill_cb(skb, hdr, th);
 			nsk = tcp_check_req(sk, skb, req, false);
+		}
 		if (!nsk) {
 			reqsk_put(req);
 			goto discard_and_relse;
@@ -1578,8 +1581,6 @@ process:
 	if (!xfrm6_policy_check(sk, XFRM_POLICY_IN, skb))
 		goto discard_and_relse;
 
-	tcp_v6_fill_cb(skb, hdr, th);
-
 	if (tcp_v6_inbound_md5_hash(sk, skb))
 		goto discard_and_relse;
 
@@ -1587,6 +1588,7 @@ process:
 		goto discard_and_relse;
 	th = (const struct tcphdr *)skb->data;
 	hdr = ipv6_hdr(skb);
+	tcp_v6_fill_cb(skb, hdr, th);
 
 	skb->dev = NULL;
 
@@ -1687,7 +1689,6 @@ do_time_wait:
 		tcp_v6_timewait_ack(sk, skb);
 		break;
 	case TCP_TW_RST:
-		tcp_v6_restore_cb(skb);
 		tcp_v6_send_reset(sk, skb);
 		inet_twsk_deschedule_put(inet_twsk(sk));
 		goto discard_it;

@@ -313,6 +313,11 @@ void tcp_time_wait(struct sock *sk, int state, int timeo)
 		if (state == TCP_TIME_WAIT)
 			timeo = TCP_TIMEWAIT_LEN;
 
+		/* tw_timer is pinned, so we need to make sure BH are disabled
+		 * in following section, otherwise timer handler could run before
+		 * we complete the initialization.
+		 */
+		local_bh_disable();
 		inet_twsk_schedule(tw, timeo);
 		/* Linkage updates. */
 		__inet_twsk_hashdance(tw, sk, &tcp_hashinfo);
@@ -331,6 +336,7 @@ void tcp_time_wait(struct sock *sk, int state, int timeo)
 					   int : tcplsinfo_t *, sk->sk_state,
 					   int, state,
 					   int, DTRACE_NET_PROBE_OUTBOUND);
+		local_bh_enable();
 	} else {
 		/* Sorry, if we're out of memory, just CLOSE this
 		 * socket up.  We've got bigger problems than
