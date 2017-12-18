@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2006, 2017 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2006, 2018 Oracle and/or its affiliates. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -173,6 +173,17 @@ static int rds_getname(struct socket *sock, struct sockaddr *uaddr,
 			*uaddr_len = sizeof(*sin6);
 		}
 	} else {
+		/* If socket is not yet bound, set the return address family
+		 * to be AF_UNSPEC (value 0) and the address size to be that
+		 * of an IPv4 address.
+		 */
+		if (ipv6_addr_any(&rs->rs_bound_addr)) {
+			sin = (struct sockaddr_in *)uaddr;
+			memset(sin, 0, sizeof(*sin));
+			sin->sin_family = AF_UNSPEC;
+			*uaddr_len = sizeof(*sin);
+			return 0;
+		}
 		if (ipv6_addr_v4mapped(&rs->rs_bound_addr)) {
 			sin = (struct sockaddr_in *)uaddr;
 			memset(sin->sin_zero, 0, sizeof(sin->sin_zero));
