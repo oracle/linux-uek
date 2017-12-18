@@ -8,6 +8,8 @@
 
 #ifdef __ASSEMBLY__
 
+.extern use_ibrs
+
 #define __ASM_ENABLE_IBRS			\
 	pushq %rax;				\
 	pushq %rcx;				\
