@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2006, 2017 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2006, 2018 Oracle and/or its affiliates. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -1287,12 +1287,10 @@ int rds_sendmsg(struct socket *sock, struct msghdr *msg, size_t payload_len)
 	}
 
 	lock_sock(sk);
-	if (ipv6_addr_any(&rs->rs_bound_addr)) {
-		if (ipv6_addr_any(&daddr)) {
-			release_sock(sk);
-			ret = -ENOTCONN;
-			goto out;
-		}
+	if (ipv6_addr_any(&rs->rs_bound_addr) || ipv6_addr_any(&daddr)) {
+		release_sock(sk);
+		ret = -ENOTCONN;
+		goto out;
 	} else if (namelen != 0) {
 		/* Cannot send to an IPv4 address using an IPv6 source
 		 * address and cannot send to an IPv6 address using an
