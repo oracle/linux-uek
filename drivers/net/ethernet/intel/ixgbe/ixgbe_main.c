@@ -1753,7 +1753,8 @@ static void ixgbe_process_skb_fields(struct ixgbe_ring *rx_ring,
 		__vlan_hwaccel_put_tag(skb, htons(ETH_P_8021Q), vid);
 	}
 
-	skb_record_rx_queue(skb, rx_ring->queue_index);
+	if (ixgbe_test_staterr(rx_desc, IXGBE_RXDADV_STAT_SECP))
+		ixgbe_ipsec_rx(rx_ring, rx_desc, skb);
 
 	skb->protocol = eth_type_trans(skb, dev);
 }
