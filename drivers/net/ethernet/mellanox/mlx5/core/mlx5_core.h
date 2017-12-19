@@ -111,6 +111,7 @@ u64 mlx5_read_internal_timer(struct mlx5_core_dev *dev);
 /* This function should only be called after mlx5_cmd_force_teardown_hca */
 void mlx5_core_eq_free_irqs(struct mlx5_core_dev *dev);
 struct mlx5_eq *mlx5_eqn2eq(struct mlx5_core_dev *dev, int eqn);
+u32 mlx5_eq_poll_irq_disabled(struct mlx5_eq *eq);
 void mlx5_cq_tasklet_cb(unsigned long data);
 
 int mlx5_query_pcam_reg(struct mlx5_core_dev *dev, u32 *pcam, u8 feature_group,
