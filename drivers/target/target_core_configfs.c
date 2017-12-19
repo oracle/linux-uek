@@ -1204,6 +1204,7 @@ struct configfs_attribute *passthrough_attrib_attrs[] = {
 EXPORT_SYMBOL(passthrough_attrib_attrs);
 
 TB_CIT_SETUP_DRV(dev_attrib, NULL, NULL);
+TB_CIT_SETUP_DRV(dev_action, NULL, NULL);
 
 /* End functions for struct config_item_type tb_dev_attrib_cit */
 
@@ -2947,6 +2948,10 @@ static struct config_group *target_core_make_subdev(
 
 	config_group_init_type_name(&dev->dev_group, name, &tb->tb_dev_cit);
 
+	config_group_init_type_name(&dev->dev_action_group, "action",
+			&tb->tb_dev_action_cit);
+	configfs_add_default_group(&dev->dev_action_group, &dev->dev_group);
+
 	config_group_init_type_name(&dev->dev_attrib.da_group, "attrib",
 			&tb->tb_dev_attrib_cit);
 	configfs_add_default_group(&dev->dev_attrib.da_group, &dev->dev_group);
@@ -3207,6 +3212,7 @@ static struct config_item_type target_core_cit = {
 void target_setup_backend_cits(struct target_backend *tb)
 {
 	target_core_setup_dev_cit(tb);
+	target_core_setup_dev_action_cit(tb);
 	target_core_setup_dev_attrib_cit(tb);
 	target_core_setup_dev_pr_cit(tb);
 	target_core_setup_dev_wwn_cit(tb);
