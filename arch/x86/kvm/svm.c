@@ -3930,7 +3930,7 @@ static void svm_vcpu_run(struct kvm_vcpu *vcpu)
 
 	local_irq_enable();
 
-	if (static_cpu_has(X86_FEATURE_SPEC_CTRL) &&
+	if (ibrs_inuse &&
 	    svm->spec_ctrl != FEATURE_ENABLE_IBRS)
 		wrmsrl(MSR_IA32_SPEC_CTRL, svm->spec_ctrl);
 
@@ -4026,7 +4026,7 @@ static void svm_vcpu_run(struct kvm_vcpu *vcpu)
 #endif
 		);
 
-	if (static_cpu_has(X86_FEATURE_SPEC_CTRL)) {
+	if (ibrs_inuse) {
 		rdmsrl(MSR_IA32_SPEC_CTRL, svm->spec_ctrl);
 		if (svm->spec_ctrl != FEATURE_ENABLE_IBRS)
 			wrmsrl(MSR_IA32_SPEC_CTRL, FEATURE_ENABLE_IBRS);
