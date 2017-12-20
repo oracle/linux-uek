@@ -92,6 +92,13 @@ struct netbk_rx_meta {
 
 #define MAX_PENDING_REQS 256
 
+/* It's possible for an skb to have a maximal number of frags
+ * but still be less than MAX_BUFFER_OFFSET in size. Thus the
+ * worst-case number of copy operations is MAX_SKB_FRAGS per
+ * ring slot.
+ */
+#define MAX_GRANT_COPY_OPS (MAX_SKB_FRAGS * XEN_NETIF_RX_RING_SIZE)
+
 #define MAX_BUFFER_OFFSET PAGE_SIZE
 
 /* extra field used in struct page */
@@ -138,12 +145,7 @@ struct xen_netbk {
 
 	u16 pending_ring[MAX_PENDING_REQS];
 
-	/*
-	 * Given MAX_BUFFER_OFFSET of 4096 the worst case is that each
-	 * head/fragment page uses 2 copy operations because it
-	 * straddles two buffers in the frontend.
-	 */
-	struct gnttab_copy grant_copy_op[2*XEN_NETIF_RX_RING_SIZE];
+	struct gnttab_copy grant_copy_op[MAX_GRANT_COPY_OPS];
 	struct netbk_rx_meta meta[2*XEN_NETIF_RX_RING_SIZE];
 };
 
@@ -827,7 +829,7 @@ static void xen_netbk_rx_action(struct xen_netbk *netbk)
 	if (!npo.copy_prod)
 		return;
 
-	BUG_ON(npo.copy_prod > ARRAY_SIZE(netbk->grant_copy_op));
+	BUG_ON(npo.copy_prod > MAX_GRANT_COPY_OPS);
 	gnttab_batch_copy(netbk->grant_copy_op, npo.copy_prod);
 
 	while ((skb = __skb_dequeue(&rxq)) != NULL) {
