@@ -5029,7 +5029,7 @@ static void svm_vcpu_run(struct kvm_vcpu *vcpu)
 	 * is no need to worry about the conditional branch over the wrmsr
 	 * being speculatively taken.
 	 */
-	if (svm->spec_ctrl)
+	if (ibrs_inuse && svm->spec_ctrl)
 		native_wrmsrl(MSR_IA32_SPEC_CTRL, svm->spec_ctrl);
 
 	asm volatile (
@@ -5125,9 +5125,9 @@ static void svm_vcpu_run(struct kvm_vcpu *vcpu)
 		);
 
 	/*
-	 * We do not use IBRS in the kernel. If this vCPU has used the
-	 * SPEC_CTRL MSR it may have left it on; save the value and
-	 * turn it off. This is much more efficient than blindly adding
+	 * If this vCPU has used the SPEC_CTRL MSR it may have
+	 * left it on; save the value and restore the host value.
+	 * This is much more efficient than blindly adding
 	 * it to the atomic save/restore list. Especially as the former
 	 * (Saving guest MSRs on vmexit) doesn't even exist in KVM.
 	 *
@@ -5142,7 +5142,9 @@ static void svm_vcpu_run(struct kvm_vcpu *vcpu)
 	if (unlikely(!msr_write_intercepted(vcpu, MSR_IA32_SPEC_CTRL)))
 		svm->spec_ctrl = native_read_msr(MSR_IA32_SPEC_CTRL);
 
-	if (svm->spec_ctrl)
+	if (ibrs_inuse)
+		native_wrmsrl(MSR_IA32_SPEC_CTRL, SPEC_CTRL_IBRS);
+	else if (svm->spec_ctrl)
 		native_wrmsrl(MSR_IA32_SPEC_CTRL, 0);
 
 	/* Eliminate branch target predictions from guest mode */
