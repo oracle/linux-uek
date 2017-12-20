@@ -9,6 +9,7 @@
 #include <linux/crash_core.h>
 #include <linux/utsname.h>
 #include <linux/vmalloc.h>
+#include <linux/kexec.h>
 
 #include <asm/page.h>
 #include <asm/sections.h>
@@ -225,6 +226,44 @@ next:
 	return ck_cmdline;
 }
 
+#ifdef CONFIG_KEXEC_AUTO_RESERVE
+#ifndef arch_default_crash_size
+unsigned long long __init arch_default_crash_size(unsigned long long total_size)
+{
+	/*
+	 * BIOS usually will reserve some memory regions for it's own use.
+	 * so we will get less than actual memory in e820 usable areas.
+	 * We workaround this by round up the total size to 128M which is
+	 * enough for our current 2G kdump auto reserve threshold.
+	 */
+	if (roundup(total_size, 0x8000000) < KEXEC_AUTO_THRESHOLD) {
+		return 0;
+
+	} else {
+		/*
+		 * Filtering logic in kdump initrd requires 2bits per 4K page.
+		 * Hence reserve 2bits per 4K of RAM (or 1byte per 16K of RAM)
+		 * on top of base of 128M (KEXEC_AUTO_RESERVED_SIZE).
+		 */
+		return KEXEC_AUTO_RESERVED_SIZE +
+			roundup((total_size - KEXEC_AUTO_RESERVED_SIZE)
+				/ (1ULL<<14), 1ULL<<20);
+	}
+}
+#define arch_default_crash_size arch_default_crash_size
+#endif
+
+#ifndef arch_default_crash_base
+unsigned long long __init arch_default_crash_base(void)
+{
+	/* 0 means find the base address automatically. */
+	return 0;
+}
+#define arch_default_crash_base arch_default_crash_base
+#endif
+
+#endif /*CONFIG_KEXEC_AUTO_RESERVE*/
+
 static int __init __parse_crashkernel(char *cmdline,
 			     unsigned long long system_ram,
 			     unsigned long long *crash_size,
@@ -249,6 +288,23 @@ static int __init __parse_crashkernel(char *cmdline,
 	if (suffix)
 		return parse_crashkernel_suffix(ck_cmdline, crash_size,
 				suffix);
+
+#ifdef CONFIG_KEXEC_AUTO_RESERVE
+	if (strncmp(ck_cmdline, "auto", 4) == 0) {
+		unsigned long long size;
+
+		size = arch_default_crash_size(system_ram);
+		if (size != 0) {
+			*crash_size = size;
+			*crash_base = arch_default_crash_base();
+			return 0;
+
+		} else {
+			pr_warn("crashkernel=auto resulted in zero bytes of reserved memory.\n");
+			return -ENOMEM;
+		}
+	}
+#endif
 	/*
 	 * if the commandline contains a ':', then that's the extended
 	 * syntax -- if not, it must be the classic syntax

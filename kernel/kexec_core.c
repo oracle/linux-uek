@@ -42,6 +42,7 @@
 
 #include <asm/page.h>
 #include <asm/sections.h>
+#include <asm/setup.h>
 
 #include <crypto/hash.h>
 #include <crypto/sha.h>
