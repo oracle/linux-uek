@@ -8253,10 +8253,15 @@ static void __noclone vmx_vcpu_run(struct kvm_vcpu *vcpu)
 		"mov %%r14, %c[r14](%0) \n\t"
 		"mov %%r15, %c[r15](%0) \n\t"
 #endif
+		"mov %%cr2, %%" _ASM_AX "   \n\t"
+		"mov %%" _ASM_AX ", %c[cr2](%0) \n\t"
+
+		"pop  %%" _ASM_BP "; pop  %%" _ASM_DX " \n\t"
+		"setbe %c[fail](%0) \n\t"
 		/*
-		* Clear host registers marked as clobbered to prevent
-		* speculative use.
-		*/
+		 * Clear host registers marked as clobbered to prevent
+		 * speculative use.
+		 */
 		"xor %%" _ASM_BX ", %%" _ASM_BX " \n\t"
 		"xor %%" _ASM_SI ", %%" _ASM_SI " \n\t"
 		"xor %%" _ASM_DI ", %%" _ASM_DI " \n\t"
@@ -8270,11 +8275,6 @@ static void __noclone vmx_vcpu_run(struct kvm_vcpu *vcpu)
 		"xor %%r14, %%r14 \n\t"
 		"xor %%r15, %%r15 \n\t"
 #endif
-		"mov %%cr2, %%" _ASM_AX "   \n\t"
-		"mov %%" _ASM_AX ", %c[cr2](%0) \n\t"
-
-		"pop  %%" _ASM_BP "; pop  %%" _ASM_DX " \n\t"
-		"setbe %c[fail](%0) \n\t"
 		".pushsection .rodata \n\t"
 		".global vmx_return \n\t"
 		"vmx_return: " _ASM_PTR " 2b \n\t"
