@@ -1881,6 +1881,8 @@ static inline bool xfrm_dst_offload_ok(struct dst_entry *dst)
 	if (!x || !x->type_offload)
 		return false;
 
+	if (!x->xso.offload_handle && !dst->child->xfrm)
+		return true;
 	if (x->xso.offload_handle && (x->xso.dev == dst->path->dev) &&
 	    !dst->child->xfrm)
 		return true;
