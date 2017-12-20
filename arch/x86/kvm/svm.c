@@ -1310,7 +1310,7 @@ static void svm_free_vcpu(struct kvm_vcpu *vcpu)
 	 * The VMCB could be recycled, causing a false negative in svm_vcpu_load;
 	 * block speculative execution.
 	 */
-	if (static_cpu_has(X86_FEATURE_IBPB_SUPPORT))
+	if (ibpb_inuse)
 		wrmsrl(MSR_IA32_PRED_CMD, FEATURE_SET_IBPB);
 }
 
@@ -1342,7 +1342,7 @@ static void svm_vcpu_load(struct kvm_vcpu *vcpu, int cpu)
 	}
 	if (sd->current_vmcb != svm->vmcb) {
 		sd->current_vmcb = svm->vmcb;
-		if (static_cpu_has(X86_FEATURE_IBPB_SUPPORT))
+		if (ibpb_inuse)
 			wrmsrl(MSR_IA32_PRED_CMD, FEATURE_SET_IBPB);
 	}
 
