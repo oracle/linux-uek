@@ -381,16 +381,34 @@ int rds_tcp_laddr_check(struct net *net, const struct in6_addr *addr,
 	return -EADDRNOTAVAIL;
 }
 
+static void rds_tcp_conn_free(void *arg)
+{
+	struct rds_tcp_connection *tc = arg;
+	unsigned long flags;
+
+	rdsdebug("freeing tc %p\n", tc);
+
+	cancel_work_sync(&tc->t_fan_out_w);
+
+	spin_lock_irqsave(&rds_tcp_conn_lock, flags);
+	list_del(&tc->t_tcp_node);
+	spin_unlock_irqrestore(&rds_tcp_conn_lock, flags);
+
+	kmem_cache_free(rds_tcp_conn_slab, tc);
+}
+
 static int rds_tcp_conn_alloc(struct rds_connection *conn, gfp_t gfp)
 {
 	struct rds_tcp_connection *tc;
-	int i;
+	int i, j;
+	int ret = 0;
 
 	for (i = 0; i < RDS_MPATH_WORKERS; i++) {
 		tc = kmem_cache_alloc(rds_tcp_conn_slab, gfp);
-		if (!tc)
-			return -ENOMEM;
-
+		if (!tc) {
+			ret = -ENOMEM;
+			break;
+		}
 		mutex_init(&tc->t_conn_path_lock);
 		tc->t_sock = NULL;
 		tc->t_rtn = NULL;
@@ -410,22 +428,11 @@ static int rds_tcp_conn_alloc(struct rds_connection *conn, gfp_t gfp)
 		rdsdebug("rds_conn_path [%d] tc %p\n", i,
 			 conn->c_path[i].cp_transport_data);
 	}
-	return 0;
-}
-
-static void rds_tcp_conn_free(void *arg)
-{
-	struct rds_tcp_connection *tc = arg;
-	unsigned long flags;
-	rdsdebug("freeing tc %p\n", tc);
-
-	cancel_work_sync(&tc->t_fan_out_w);
-
-	spin_lock_irqsave(&rds_tcp_conn_lock, flags);
-	list_del(&tc->t_tcp_node);
-	spin_unlock_irqrestore(&rds_tcp_conn_lock, flags);
-
-	kmem_cache_free(rds_tcp_conn_slab, tc);
+	if (ret) {
+		for (j = 0; j < i; j++)
+			rds_tcp_conn_free(conn->c_path[j].cp_transport_data);
+	}
+	return ret;
 }
 
 static bool list_has_conn(struct list_head *list, struct rds_connection *conn)
