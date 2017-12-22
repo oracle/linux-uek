@@ -11,6 +11,7 @@
 #include <asm/tlbflush.h>
 #include <asm/paravirt.h>
 #include <asm/mpx.h>
+#include <asm/microcode.h>
 #ifndef CONFIG_PARAVIRT
 static inline void paravirt_activate_mm(struct mm_struct *prev,
 					struct mm_struct *next)
@@ -96,6 +97,9 @@ static inline void switch_mm(struct mm_struct *prev, struct mm_struct *next,
 			     struct task_struct *tsk)
 {
 	unsigned cpu = smp_processor_id();
+
+	if (boot_cpu_has(X86_FEATURE_SPEC_CTRL))
+		native_wrmsrl(MSR_IA32_PRED_CMD, FEATURE_SET_IBPB);
 
 	if (likely(prev != next)) {
 #ifdef CONFIG_SMP
