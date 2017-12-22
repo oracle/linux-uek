@@ -459,11 +459,20 @@ static __cpuidle void mwait_idle(void)
 			smp_mb(); /* quirk */
 		}
 
+		if (boot_cpu_has(X86_FEATURE_SPEC_CTRL))
+			native_wrmsrl(MSR_IA32_SPEC_CTRL, 0);
+
 		__monitor((void *)&current_thread_info()->flags, 0, 0);
-		if (!need_resched())
+		if (!need_resched()) {
 			__sti_mwait(0, 0);
-		else
+			if (boot_cpu_has(X86_FEATURE_SPEC_CTRL))
+				native_wrmsrl(MSR_IA32_SPEC_CTRL,
+				    FEATURE_ENABLE_IBRS);
+		} else {
+			if (boot_cpu_has(X86_FEATURE_SPEC_CTRL))
+				native_wrmsrl(MSR_IA32_SPEC_CTRL, FEATURE_ENABLE_IBRS);
 			local_irq_enable();
+		}
 		trace_cpu_idle_rcuidle(PWR_EVENT_EXIT, smp_processor_id());
 	} else {
 		local_irq_enable();
