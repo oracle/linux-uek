@@ -682,6 +682,11 @@ static void init_intel(struct cpuinfo_x86 *c)
 	init_intel_energy_perf(c);
 
 	init_intel_misc_features(c);
+
+	if (boot_cpu_has(X86_FEATURE_SPEC_CTRL))
+		printk_once(KERN_INFO "FEATURE SPEC_CTRL Present\n");
+	else
+		printk_once(KERN_INFO "FEATURE SPEC_CTRL Not Present\n");
 }
 
 #ifdef CONFIG_X86_32
