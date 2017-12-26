@@ -469,7 +469,11 @@ Requires(pre): %{initrd_prereq}\
 %if "x%{?-r}" == "x"\
 Requires(pre): kernel-firmware = %{rpmversion}-%{pkg_release}\
 %endif\
-Requires(pre): linux%{?-r:-nano}-firmware >= 20170803-56.git7d2c913d.0.1\
+%if "x%{?-r}" != "x"\
+Requires(pre): linux-nano-firmware >= 20171128-56.git17e62881.0.1\
+%else\
+Requires(pre): linux-firmware >= 20171128-56.git17e62881.0.2\
+%endif\
 Requires(post): /sbin/new-kernel-pkg\
 Requires(preun): /sbin/new-kernel-pkg\
 Conflicts: %{kernel_dot_org_conflicts}\
