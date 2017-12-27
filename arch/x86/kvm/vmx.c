@@ -8187,7 +8187,7 @@ static void __noclone vmx_vcpu_run(struct kvm_vcpu *vcpu)
 	if (vcpu->guest_debug & KVM_GUESTDBG_SINGLESTEP)
 		vmx_set_interrupt_shadow(vcpu, 0);
 
-	if (ibpb_inuse &&
+	if (ibrs_inuse &&
 	    vmx->spec_ctrl != SPEC_CTRL_FEATURE_ENABLE_IBRS)
 		wrmsrl(MSR_IA32_SPEC_CTRL, vmx->spec_ctrl);
 
@@ -8317,7 +8317,7 @@ static void __noclone vmx_vcpu_run(struct kvm_vcpu *vcpu)
 #endif
 	      );
 
-	if (ibpb_inuse) {
+	if (ibrs_inuse) {
 		rdmsrl(MSR_IA32_SPEC_CTRL, vmx->spec_ctrl);
 		if (!vmx->spec_ctrl)
 			wrmsrl(MSR_IA32_SPEC_CTRL, SPEC_CTRL_FEATURE_ENABLE_IBRS);
