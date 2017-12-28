@@ -4683,7 +4683,7 @@ static int qlt_24xx_handle_els(struct scsi_qla_host *vha,
 	uint16_t wd3_lo;
 	int res = 0;
 	struct qlt_plogi_ack_t *pla;
-	unsigned long flags;
+	unsigned long flags = 0;
 
 	wwn = wwn_to_u64(iocb->u.isp24.port_name);
 
@@ -4819,8 +4819,14 @@ static int qlt_24xx_handle_els(struct scsi_qla_host *vha,
 		}
 
 		if (sess != NULL) {
-			if (sess->fw_login_state != DSC_LS_PLOGI_PEND &&
-			    sess->fw_login_state != DSC_LS_PLOGI_COMP) {
+			spin_lock_irqsave(&tgt->ha->tgt.sess_lock, flags);
+			switch (sess->fw_login_state) {
+			case DSC_LS_PLOGI_COMP:
+			case DSC_LS_PRLI_COMP:
+				break;
+			default:
+				spin_unlock_irqrestore(&tgt->ha->tgt.sess_lock,
+				    flags);
 				/*
 				 * Impatient initiator sent PRLI before last
 				 * PLOGI could finish. Will force him to re-try,
@@ -4831,6 +4837,8 @@ static int qlt_24xx_handle_els(struct scsi_qla_host *vha,
 				    sess);
 				qlt_send_term_imm_notif(vha, iocb, 1);
 				res = 0;
+				spin_lock_irqsave(&tgt->ha->tgt.sess_lock,
+				    flags);
 				break;
 			}
 
@@ -4854,6 +4862,8 @@ static int qlt_24xx_handle_els(struct scsi_qla_host *vha,
 				sess->port_type = FCT_INITIATOR;
 			else
 				sess->port_type = FCT_TARGET;
+
+			spin_unlock_irqrestore(&tgt->ha->tgt.sess_lock, flags);
 		}
 		res = 1; /* send notify ack */
 
