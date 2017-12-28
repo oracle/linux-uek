@@ -38,6 +38,7 @@ static int qla84xx_init_chip(scsi_qla_host_t *);
 static int qla25xx_init_queues(struct qla_hw_data *);
 static void qla24xx_handle_plogi_done_event(struct scsi_qla_host *,
     struct event_arg *);
+static void qla24xx_handle_gpdb_event(scsi_qla_host_t *, struct event_arg *);
 
 /* SRB Extensions ---------------------------------------------------------- */
 
@@ -287,17 +288,31 @@ done:
 	fcport->flags &= ~FCF_ASYNC_SENT;
 	return rval;
 }
+static
+void qla24xx_handle_adisc_event(scsi_qla_host_t *vha, struct event_arg *ea)
+{
+	qla24xx_handle_gpdb_event(vha, ea);
+}
 
 static void
 qla2x00_async_adisc_sp_done(void *ptr, int res)
 {
 	srb_t *sp = ptr;
 	struct scsi_qla_host *vha = sp->vha;
-	struct srb_iocb *lio = &sp->u.iocb_cmd;
+	struct event_arg ea;
 
-	if (!test_bit(UNLOADING, &vha->dpc_flags))
-		qla2x00_post_async_adisc_done_work(sp->vha, sp->fcport,
-		    lio->u.logio.data);
+	ql_dbg(ql_dbg_disc, vha, 0x2066,
+	    "Async done-%s res %x %8phC\n",
+	    sp->name, res, sp->fcport->port_name);
+
+	memset(&ea, 0, sizeof(ea));
+	ea.event = FCME_ADISC_DONE;
+	ea.rc = res;
+	ea.fcport = sp->fcport;
+	ea.sp = sp;
+
+	qla2x00_fcport_event_handler(vha, &ea);
+
 	sp->free(sp);
 }
 
@@ -330,15 +345,15 @@ qla2x00_async_adisc(struct scsi_qla_host *vha, fc_port_t *fcport,
 		goto done_free_sp;
 
 	ql_dbg(ql_dbg_disc, vha, 0x206f,
-	    "Async-adisc - hdl=%x loopid=%x portid=%02x%02x%02x.\n",
-	    sp->handle, fcport->loop_id, fcport->d_id.b.domain,
-	    fcport->d_id.b.area, fcport->d_id.b.al_pa);
+	    "Async-adisc - hdl=%x loopid=%x portid=%06x %8phC.\n",
+	    sp->handle, fcport->loop_id, fcport->d_id.b24, fcport->port_name);
 	return rval;
 
 done_free_sp:
 	sp->free(sp);
 done:
 	fcport->flags &= ~FCF_ASYNC_SENT;
+	qla2x00_post_async_adisc_work(vha, fcport, data);
 	return rval;
 }
 
@@ -791,7 +806,6 @@ void qla24xx_handle_gpdb_event(scsi_qla_host_t *vha, struct event_arg *ea)
 	int rval = ea->rc;
 	fc_port_t *fcport = ea->fcport;
 	unsigned long flags;
-	u16 opt = ea->sp->u.iocb_cmd.u.mbx.out_mb[10];
 
 	fcport->flags &= ~FCF_ASYNC_SENT;
 
@@ -822,8 +836,7 @@ void qla24xx_handle_gpdb_event(scsi_qla_host_t *vha, struct event_arg *ea)
 	}
 
 	spin_lock_irqsave(&vha->hw->tgt.sess_lock, flags);
-	if (opt != PDO_FORCE_ADISC)
-		ea->fcport->login_gen++;
+	ea->fcport->login_gen++;
 	ea->fcport->deleted = 0;
 	ea->fcport->logout_on_delete = 1;
 
@@ -862,6 +875,7 @@ void qla24xx_handle_gpdb_event(scsi_qla_host_t *vha, struct event_arg *ea)
 
 int qla24xx_fcport_handle_login(struct scsi_qla_host *vha, fc_port_t *fcport)
 {
+	u16 data[2];
 	if (fcport->login_retry == 0)
 		return 0;
 
@@ -939,10 +953,10 @@ int qla24xx_fcport_handle_login(struct scsi_qla_host *vha, fc_port_t *fcport)
 	case DSC_LOGIN_COMPLETE:
 		/* recheck login state */
 		ql_dbg(ql_dbg_disc, vha, 0x20d1,
-		    "%s %d %8phC post gpdb\n",
+		    "%s %d %8phC post adisc\n",
 		    __func__, __LINE__, fcport->port_name);
-
-		qla24xx_post_gpdb_work(vha, fcport, PDO_FORCE_ADISC);
+		data[0] = data[1] = 0;
+		qla2x00_post_async_adisc_work(vha, fcport, data);
 		break;
 
 	default:
@@ -1167,6 +1181,9 @@ void qla2x00_fcport_event_handler(scsi_qla_host_t *vha, struct event_arg *ea)
 		break;
 	case FCME_DELETE_DONE:
 		qla24xx_handle_delete_done_event(vha, ea);
+		break;
+	case FCME_ADISC_DONE:
+		qla24xx_handle_adisc_event(vha, ea);
 		break;
 	default:
 		BUG_ON(1);
