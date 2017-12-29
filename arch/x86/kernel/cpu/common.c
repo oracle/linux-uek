@@ -728,6 +728,14 @@ static void apply_forced_caps(struct cpuinfo_x86 *c)
 
 static void init_speculation_control(struct cpuinfo_x86 *c)
 {
+	if (cpu_has(c, X86_FEATURE_ARCH_CAPABILITIES)) {
+		u64 cap;
+
+		rdmsrl(MSR_IA32_ARCH_CAPABILITIES, cap);
+		if (cap & ARCH_CAP_IBRS_ALL) /* IBRS all the time */
+			set_cpu_cap(c, X86_FEATURE_IBRS_ATT);
+	}
+
 	/*
 	 * The Intel SPEC_CTRL CPUID bit implies IBRS and IBPB support,
 	 * and they also have a different bit for STIBP support. Also,
