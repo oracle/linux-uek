@@ -197,6 +197,7 @@
 #define X86_FEATURE_HWP_PKG_REQ ( 7*32+14) /* Intel HWP_PKG_REQ */
 #define X86_FEATURE_INTEL_PT	( 7*32+15) /* Intel Processor Trace */
 #define X86_FEATURE_SPEC_CTRL	( 7*32+19) /* Control Speculation Control */
+#define X86_FEATURE_STIPB	( 7*32+20) /* Single Thread Indirect Branch Predictors */
 #define X86_FEATURE_IA32_ARCH_CAPS	( 7*32+21) /* Control Speculation Control */
 #define X86_FEATURE_IBRS_ATT	( 7*32+22) /* IBRS all the time */
 
