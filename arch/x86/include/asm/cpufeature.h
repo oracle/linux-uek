@@ -189,6 +189,7 @@
 
 /* Intel-defined CPU features, CPUID level 0x00000007:0 (EDX), word 7 */
 #define X86_FEATURE_ARCH_CAPABILITIES	(7*32+22) /* IA32_ARCH_CAPABILITIES MSR (Intel) */
+#define X86_FEATURE_IBRS_ATT	(7*32+23) /* IBRS all the time */
 
 /* AMD-defined CPU features, CPUID level 0x80000008 (EBX), word 13.
  * But thanks to kABI we have to jam it somewhere else. */
