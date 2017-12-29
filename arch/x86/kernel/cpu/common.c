@@ -754,8 +754,16 @@ void init_speculation_control(struct cpuinfo_x86 *c)
 		set_cpu_cap(c, X86_FEATURE_STIBP);
 
 	if (!c->cpu_index) {
+		bool ignore = false;
+
+		if (xen_pv_domain())
+			ignore = true;
+
 		if (boot_cpu_has(X86_FEATURE_SPEC_CTRL)) {
-			pr_info("FEATURE SPEC_CTRL Present\n");
+			pr_info("FEATURE SPEC_CTRL Present%s\n",
+				ignore ? " but ignored (Xen)" : "");
+			if (ignore)
+				return;
 			set_ibrs_supported();
 			set_ibpb_supported();
 			if (ibrs_inuse)
@@ -763,7 +771,10 @@ void init_speculation_control(struct cpuinfo_x86 *c)
 			if (ibpb_inuse)
 				sysctl_ibpb_enabled = 1;
 		} else if (boot_cpu_has(X86_FEATURE_IBPB)) {
-			pr_info_once("FEATURE IBPB Present\n");
+			pr_info_once("FEATURE IBPB Present%s\n",
+				     ignore ? " but ignored (Xen)" : "");
+			if (ignore)
+				return;
 			set_ibpb_supported();
 			if (ibpb_inuse)
 				sysctl_ibpb_enabled = 1;
