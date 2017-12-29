@@ -48,6 +48,7 @@ void init_scattered_cpuid_features(struct cpuinfo_x86 *c)
 		{ X86_FEATURE_CPB,		CR_EDX, 9, 0x80000007, 0 },
 		{ X86_FEATURE_PROC_FEEDBACK,	CR_EDX,11, 0x80000007, 0 },
 		{ X86_FEATURE_SPEC_CTRL,	CR_EDX,26, 0x00000007, 0 },
+		{ X86_FEATURE_IA32_ARCH_CAPS,   CR_EDX,29, 0x00000007, 0 },
 		{ X86_FEATURE_NPT,		CR_EDX, 0, 0x8000000a, 0 },
 		{ X86_FEATURE_LBRV,		CR_EDX, 1, 0x8000000a, 0 },
 		{ X86_FEATURE_SVML,		CR_EDX, 2, 0x8000000a, 0 },
@@ -74,5 +75,12 @@ void init_scattered_cpuid_features(struct cpuinfo_x86 *c)
 
 		if (regs[cb->reg] & (1 << cb->bit))
 			set_cpu_cap(c, cb->feature);
+	}
+
+	if (cpu_has(c, X86_FEATURE_IA32_ARCH_CAPS)) {
+		u64 cap;
+		rdmsrl(MSR_IA32_ARCH_CAPABILITIES, cap);
+		if (cap & 2) /* IBRS all the time */
+			set_cpu_cap(c, X86_FEATURE_IBRS_ATT);
 	}
 }
