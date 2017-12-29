@@ -86,8 +86,15 @@ void init_scattered_cpuid_features(struct cpuinfo_x86 *c)
 	}
 
 	if (!c->cpu_index) {
+		bool ignore = false;
+
+		if (xen_pv_domain())
+			ignore = true;
+
 		if (boot_cpu_has(X86_FEATURE_SPEC_CTRL)) {
-			printk(KERN_INFO "FEATURE SPEC_CTRL Present\n");
+			printk(KERN_INFO "FEATURE SPEC_CTRL Present%s\n", ignore ? " but ignored (Xen)": "");
+			if (ignore)
+				return;
 			set_ibrs_supported();
 			set_ibpb_supported();
 			if (ibrs_inuse)
@@ -95,7 +102,9 @@ void init_scattered_cpuid_features(struct cpuinfo_x86 *c)
 			if (ibpb_inuse)
 				sysctl_ibpb_enabled = 1;
 		} else if (boot_cpu_has(X86_FEATURE_IBPB)) {
-			printk_once(KERN_INFO "FEATURE IBPB Present\n");
+			printk_once(KERN_INFO "FEATURE IBPB Present%s\n", ignore ? " but ignored (Xen)": "");
+			if (ignore)
+				return;
 			set_ibpb_supported();
 			if (ibpb_inuse)
 				sysctl_ibpb_enabled = 1;
