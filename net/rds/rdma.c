@@ -514,6 +514,9 @@ static int rds_rdma_pages(struct rds_rdma_args *args)
 
 	local_vec = (struct rds_iovec __user *)(unsigned long) args->local_vec_addr;
 
+	if (args->nr_local == 0)
+		return -EINVAL;
+
 	/* figure out the number of pages in the vector */
 	for (i = 0; i < args->nr_local; i++) {
 		if (copy_from_user(&vec, &local_vec[i],
