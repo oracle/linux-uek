@@ -169,20 +169,6 @@ static int __init x86_pcid_setup(char *s)
 	return 1;
 }
 __setup("nopcid", x86_pcid_setup);
-
-static int __init x86_nokaiser_setup(char *s)
-{
-	/* nokaiser doesn't accept parameters */
-	if (s)
-		return -EINVAL;
-#ifdef CONFIG_PAGE_TABLE_ISOLATION
-	kaiser_enabled = 0;
-	setup_clear_cpu_cap(X86_FEATURE_KAISER);
-	pr_info("Kernel/User page tables isolation: disabled\n");
-#endif
-	return 0;
-}
-early_param("nokaiser", x86_nokaiser_setup);
 #endif
 
 static int __init x86_noinvpcid_setup(char *s)
@@ -693,10 +679,6 @@ void __cpuinit get_cpu_cap(struct cpuinfo_x86 *c)
 		c->x86_power = cpuid_edx(0x80000007);
 
 	init_scattered_cpuid_features(c);
-#ifdef CONFIG_PAGE_TABLE_ISOLATION
-	if (kaiser_enabled)
-		set_cpu_cap(c, X86_FEATURE_KAISER);
-#endif
 }
 
 static void __cpuinit identify_cpu_without_cpuid(struct cpuinfo_x86 *c)
