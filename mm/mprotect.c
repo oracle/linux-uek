@@ -29,6 +29,8 @@
 #include <asm/cacheflush.h>
 #include <asm/tlbflush.h>
 
+#include "internal.h"
+
 /*
  * For a prot_numa update we only hold mmap_sem for read so there is a
  * potential race with faulting where a pmd was temporarily none. This
@@ -86,6 +88,11 @@ static unsigned long change_pte_range(struct vm_area_struct *vma, pmd_t *pmd,
 
 				page = vm_normal_page(vma, addr, oldpte);
 				if (!page || PageKsm(page))
+					continue;
+
+				/* Also skip shared copy-on-write pages */
+				if (is_cow_mapping(vma->vm_flags) &&
+				    page_mapcount(page) != 1)
 					continue;
 
 				/* Avoid TLB flush if possible */
