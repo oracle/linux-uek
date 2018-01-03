@@ -233,10 +233,6 @@ xfs_symlink(
 		fs_blocks = xfs_symlink_blocks(mp, pathlen);
 	resblks = XFS_SYMLINK_SPACE_RES(mp, link_name->len, fs_blocks);
 	error = xfs_trans_reserve(tp, &M_RES(mp)->tr_symlink, resblks, 0);
-	if (error == -ENOSPC && fs_blocks == 0) {
-		resblks = 0;
-		error = xfs_trans_reserve(tp, &M_RES(mp)->tr_symlink, 0, 0);
-	}
 	if (error)
 		goto out_trans_cancel;
 
@@ -260,14 +256,6 @@ xfs_symlink(
 		goto out_trans_cancel;
 
 	/*
-	 * Check for ability to enter directory entry, if no space reserved.
-	 */
-	if (!resblks) {
-		error = xfs_dir_canenter(tp, dp, link_name);
-		if (error)
-			goto out_trans_cancel;
-	}
-	/*
 	 * Initialize the bmap freelist prior to calling either
 	 * bmapi or the directory create code.
 	 */
@@ -277,7 +265,7 @@ xfs_symlink(
 	 * Allocate an inode for the symlink.
 	 */
 	error = xfs_dir_ialloc(&tp, dp, S_IFLNK | (mode & ~S_IFMT), 1, 0,
-			       prid, resblks > 0, &ip, NULL);
+			       prid, &ip, NULL);
 	if (error)
 		goto out_trans_cancel;
 
