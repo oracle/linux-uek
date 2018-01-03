@@ -175,7 +175,7 @@ static int __init x86_nokaiser_setup(char *s)
 	/* nokaiser doesn't accept parameters */
 	if (s)
 		return -EINVAL;
-#ifdef CONFIG_KAISER
+#ifdef CONFIG_PAGE_TABLE_ISOLATION
 	kaiser_enabled = 0;
 	setup_clear_cpu_cap(X86_FEATURE_KAISER);
 	pr_info("nokaiser: KAISER feature disabled\n");
@@ -693,7 +693,7 @@ void __cpuinit get_cpu_cap(struct cpuinfo_x86 *c)
 		c->x86_power = cpuid_edx(0x80000007);
 
 	init_scattered_cpuid_features(c);
-#ifdef CONFIG_KAISER
+#ifdef CONFIG_PAGE_TABLE_ISOLATION
 	if (kaiser_enabled)
 		set_cpu_cap(c, X86_FEATURE_KAISER);
 #endif

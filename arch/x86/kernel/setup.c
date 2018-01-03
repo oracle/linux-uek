@@ -842,7 +842,7 @@ void __init setup_arch(char **cmdline_p)
 	 */
 	init_hypervisor_platform();
 
-#ifdef CONFIG_KAISER
+#ifdef CONFIG_PAGE_TABLE_ISOLATION
 	if (xen_pv_domain()) {
 		kaiser_enabled = 0;
 		setup_clear_cpu_cap(X86_FEATURE_KAISER);
