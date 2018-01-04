@@ -997,7 +997,7 @@ void __init setup_arch(char **cmdline_p)
 	 */
 	init_hypervisor_platform();
 
-#ifdef CONFIG_KAISER
+#ifdef CONFIG_PAGE_TABLE_ISOLATION
 	if (xen_pv_domain() ||
 	    boot_cpu_data.x86_vendor == X86_VENDOR_AMD) {
 		kaiser_enabled = 0;

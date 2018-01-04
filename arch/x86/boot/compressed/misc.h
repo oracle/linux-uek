@@ -10,7 +10,7 @@
 #ifdef CONFIG_X86_32
 #define _ASM_X86_DESC_H 1
 #endif
-#undef CONFIG_KAISER
+#undef CONFIG_PAGE_TABLE_ISOLATION
 
 #include <linux/linkage.h>
 #include <linux/screen_info.h>
