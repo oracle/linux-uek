@@ -458,20 +458,28 @@ out:
 }
 
 /*
- * Retrieve from the 'pending_reqs' a free pending_req structure to be used.
+ * For direct requests, retrieve a free entry from list 'pending_free'.
+ * For indirect, allocate with the appropriate number of segements.
  */
-static struct pending_req *alloc_req(struct xen_blkif_ring *ring)
+static struct pending_req *alloc_req(struct xen_blkif_ring *ring, unsigned int nsegs)
 {
 	struct pending_req *req = NULL;
 	unsigned long flags;
 
-	spin_lock_irqsave(&ring->pending_free_lock, flags);
-	if (!list_empty(&ring->pending_free)) {
-		req = list_entry(ring->pending_free.next, struct pending_req,
-				 free_list);
-		list_del(&req->free_list);
+	if (nsegs <= BLKIF_MAX_SEGMENTS_PER_REQUEST) {
+		spin_lock_irqsave(&ring->pending_free_lock, flags);
+		if (!list_empty(&ring->pending_free)) {
+			req = list_entry(ring->pending_free.next,
+						struct pending_req, free_list);
+			list_del(&req->free_list);
+		} else {
+			ring->st_oo_req++;
+		}
+		spin_unlock_irqrestore(&ring->pending_free_lock, flags);
+	} else {
+		req = xen_blkbk_alloc_req(nsegs, true /* indirect req */);
 	}
-	spin_unlock_irqrestore(&ring->pending_free_lock, flags);
+
 	return req;
 }
 
@@ -484,12 +492,17 @@ static void free_req(struct xen_blkif_ring *ring, struct pending_req *req)
 	unsigned long flags;
 	int was_empty;
 
-	spin_lock_irqsave(&ring->pending_free_lock, flags);
-	was_empty = list_empty(&ring->pending_free);
-	list_add(&req->free_list, &ring->pending_free);
-	spin_unlock_irqrestore(&ring->pending_free_lock, flags);
-	if (was_empty)
-		wake_up(&ring->pending_free_wq);
+	if (likely(req->nr_segs <= BLKIF_MAX_SEGMENTS_PER_REQUEST)) {
+		spin_lock_irqsave(&ring->pending_free_lock, flags);
+		was_empty = list_empty(&ring->pending_free);
+		list_add(&req->free_list, &ring->pending_free);
+		spin_unlock_irqrestore(&ring->pending_free_lock, flags);
+
+		if (was_empty)
+			wake_up(&ring->pending_free_wq);
+	} else {
+		xen_blkbk_free_req(req);
+	}
 }
 
 /*
@@ -1040,10 +1053,8 @@ fail_response:
 }
 
 static int dispatch_other_io(struct xen_blkif_ring *ring,
-			     struct blkif_request *req,
-			     struct pending_req *pending_req)
+			     struct blkif_request *req)
 {
-	free_req(ring, pending_req);
 	make_response(ring, req->u.other.id, req->operation,
 		      BLKIF_RSP_EOPNOTSUPP);
 	return -EIO;
@@ -1107,12 +1118,17 @@ static void end_block_io_op(struct bio *bio, int error)
 	bio_put(bio);
 }
 
-static bool validate_rw_op(const struct blkif_request *req, unsigned int nseg)
+static bool validate_io_op(const struct blkif_request *req, unsigned int nseg)
 {
 	unsigned short req_operation = req->operation == BLKIF_OP_INDIRECT ?
 			req->u.indirect.indirect_op : req->operation;
 
-	if (((req->operation == BLKIF_OP_INDIRECT) &&	/* valid indirect-op */
+	/* For discard, nseg is not meaninful */
+	if (unlikely(req_operation == BLKIF_OP_DISCARD))
+		return true;
+
+	if ((req_operation > BLKIF_OP_INDIRECT) ||	/* valid operation? */
+	    ((req->operation == BLKIF_OP_INDIRECT) &&	/* valid indirect-op */
 	     (req_operation != BLKIF_OP_READ) &&
 	     (req_operation != BLKIF_OP_WRITE))) {
 		goto fail;
@@ -1148,9 +1164,10 @@ __do_block_io_op(struct xen_blkif_ring *ring)
 {
 	union blkif_back_rings *blk_rings = &ring->blk_rings;
 	struct blkif_request req;
-	struct pending_req *pending_req;
+	struct pending_req *pending_req = NULL;
 	RING_IDX rc, rp;
 	int more_to_do = 0;
+	bool valid_req;
 
 	rc = blk_rings->common.req_cons;
 	rp = blk_rings->common.sring->req_prod;
@@ -1163,18 +1180,12 @@ __do_block_io_op(struct xen_blkif_ring *ring)
 		return -EACCES;
 	}
 	while (rc != rp) {
+		unsigned int nsegs;
 
 		if (RING_REQUEST_CONS_OVERFLOW(&blk_rings->common, rc))
 			break;
 
 		if (kthread_should_stop()) {
-			more_to_do = 1;
-			break;
-		}
-
-		pending_req = alloc_req(ring);
-		if (NULL == pending_req) {
-			ring->st_oo_req++;
 			more_to_do = 1;
 			break;
 		}
@@ -1192,29 +1203,46 @@ __do_block_io_op(struct xen_blkif_ring *ring)
 		default:
 			BUG();
 		}
-		blk_rings->common.req_cons = ++rc; /* before make_response() */
+
+		nsegs = req.operation == BLKIF_OP_INDIRECT ?
+			req.u.indirect.nr_segments : req.u.rw.nr_segments;
 
 		/* Apply all sanity checks to /private copy/ of request. */
+		valid_req = validate_io_op(&req, nsegs);
+
+		if (valid_req && req.operation != BLKIF_OP_DISCARD) {
+			pending_req = alloc_req(ring, nsegs);
+			if (pending_req == NULL) {
+				/* Get out before updating req_cons */
+				more_to_do = 1;
+				break;
+			}
+		}
+
+		blk_rings->common.req_cons = ++rc; /* before make_response() */
+
 		barrier();
 
-		switch (req.operation) {
-		case BLKIF_OP_READ:
-		case BLKIF_OP_WRITE:
-		case BLKIF_OP_WRITE_BARRIER:
-		case BLKIF_OP_FLUSH_DISKCACHE:
-		case BLKIF_OP_INDIRECT:
-			if (dispatch_rw_block_io(ring, &req, pending_req))
+		if (likely(valid_req)) {
+			switch (req.operation) {
+			case BLKIF_OP_READ:
+			case BLKIF_OP_WRITE:
+			case BLKIF_OP_WRITE_BARRIER:
+			case BLKIF_OP_FLUSH_DISKCACHE:
+			case BLKIF_OP_INDIRECT:
+				if (dispatch_rw_block_io(ring, &req, pending_req))
+					goto done;
+				break;
+			case BLKIF_OP_DISCARD:
+				if (dispatch_discard_io(ring, &req))
+					goto done;
+				break;
+			default:
+				BUG();
+			}
+		} else {
+			if (dispatch_other_io(ring, &req))
 				goto done;
-			break;
-		case BLKIF_OP_DISCARD:
-			free_req(ring, pending_req);
-			if (dispatch_discard_io(ring, &req))
-				goto done;
-			break;
-		default:
-			if (dispatch_other_io(ring, &req, pending_req))
-				goto done;
-			break;
 		}
 
 		/* Yield point for this unbounded loop. */
@@ -1279,19 +1307,11 @@ static int dispatch_rw_block_io(struct xen_blkif_ring *ring,
 		operation = WRITE_FLUSH;
 		break;
 	default:
-		operation = 0; /* make gcc happy */
-		goto fail_response;
-		break;
+		BUG();
 	}
 
-	/* Check that the number of segments is sane. */
 	nseg = req->operation == BLKIF_OP_INDIRECT ?
 	       req->u.indirect.nr_segments : req->u.rw.nr_segments;
-
-	if (validate_rw_op(req, nseg) == false) {
-		/* Haven't submitted any bio's yet. */
-		goto fail_response;
-	}
 
 	preq.nr_sects      = 0;
 
