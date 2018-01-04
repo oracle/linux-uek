@@ -100,6 +100,8 @@
 #define set_mb(var, value) do { var = value; barrier(); } while (0)
 #endif
 
+#define osb() alternative(ASM_NOP3, "lfence", X86_FEATURE_LFENCE_RDTSC)
+
 /*
  * Stop RDTSC speculation. This is needed when you need to use RDTSC
  * (or get_cycles or vread that possibly accesses the TSC) in a defined
