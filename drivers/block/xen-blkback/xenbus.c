@@ -242,7 +242,7 @@ static int xen_blkif_map(struct xen_blkif_ring *ring, grant_ref_t *gref,
 static int xen_blkif_disconnect(struct xen_blkif *blkif)
 {
 	struct pending_req *req, *n;
-	unsigned int j, r;
+	unsigned int r;
 	bool busy = false;
 
 	for (r = 0; r < blkif->nr_rings; r++) {
@@ -280,13 +280,7 @@ static int xen_blkif_disconnect(struct xen_blkif *blkif)
 		list_for_each_entry_safe(req, n, &ring->pending_free, free_list) {
 			list_del(&req->free_list);
 
-			for (j = 0; j < MAX_INDIRECT_SEGMENTS; j++)
-				kfree(req->segments[j]);
-
-			for (j = 0; j < MAX_INDIRECT_PAGES; j++)
-				kfree(req->indirect_pages[j]);
-
-			kfree(req);
+			xen_blkbk_free_req(req);
 			i++;
 		}
 
@@ -923,6 +917,53 @@ again:
 	xenbus_transaction_end(xbt, 1);
 }
 
+void xen_blkbk_free_req(struct pending_req *req)
+{
+	kfree(req->indirect_pages);
+	kfree(req->unmap);
+	kfree(req->unmap_pages);
+	kfree(req->biolist);
+	kfree(req->segments);
+	kfree(req->seg);
+	kfree(req);
+
+	return;
+}
+
+struct pending_req *xen_blkbk_alloc_req(unsigned int nseg, bool indirect)
+{
+	struct pending_req *req;
+
+	BUG_ON(nseg > MAX_INDIRECT_SEGMENTS);
+
+	req = kzalloc(sizeof(*req), GFP_KERNEL);
+	if (!req)
+		return NULL;
+
+	req->seg = kzalloc(nseg * sizeof(*req->seg), GFP_KERNEL);
+	req->segments = kzalloc(nseg * sizeof(*req->segments), GFP_KERNEL);
+	req->biolist = kzalloc(nseg * sizeof(*req->biolist), GFP_KERNEL);
+	req->unmap_pages = kzalloc(nseg * sizeof(*req->unmap_pages), GFP_KERNEL);
+	req->unmap = kzalloc(nseg * sizeof(*req->unmap), GFP_KERNEL);
+
+	if (indirect) {
+		req->indirect_pages = kzalloc(INDIRECT_PAGES(nseg) *
+					      sizeof(*req->indirect_pages),
+					      GFP_KERNEL);
+	} else { /* Not strictly necessary because req is kzalloc'd */
+		req->indirect_pages = NULL;
+	}
+
+	if (!req->seg || !req->biolist || !req->unmap || !req->segments ||
+	    !req->unmap_pages || (indirect && !req->indirect_pages)) {
+
+		xen_blkbk_free_req(req);
+		req = NULL;
+	}
+
+	return req;
+}
+
 /*
  * Each ring may have multi pages, depends on "ring-page-order".
  */
@@ -930,7 +971,7 @@ static int read_per_ring_refs(struct xen_blkif_ring *ring, const char *dir)
 {
 	unsigned int ring_ref[XENBUS_MAX_RING_GRANTS];
 	struct pending_req *req, *n;
-	int err, i, j;
+	int err, i;
 	struct xen_blkif *blkif = ring->blkif;
 	struct xenbus_device *dev = blkif->be->dev;
 	unsigned int ring_page_order, nr_grefs, evtchn;
@@ -982,21 +1023,12 @@ static int read_per_ring_refs(struct xen_blkif_ring *ring, const char *dir)
 	blkif->nr_ring_pages = nr_grefs;
 
 	for (i = 0; i < nr_grefs * XEN_BLKIF_REQS_PER_PAGE; i++) {
-		req = kzalloc(sizeof(*req), GFP_KERNEL);
+		req = xen_blkbk_alloc_req(MAX_INDIRECT_SEGMENTS, true /* indirect */);
+
 		if (!req)
 			goto fail;
+
 		list_add_tail(&req->free_list, &ring->pending_free);
-		for (j = 0; j < MAX_INDIRECT_SEGMENTS; j++) {
-			req->segments[j] = kzalloc(sizeof(*req->segments[0]), GFP_KERNEL);
-			if (!req->segments[j])
-				goto fail;
-		}
-		for (j = 0; j < MAX_INDIRECT_PAGES; j++) {
-			req->indirect_pages[j] = kzalloc(sizeof(*req->indirect_pages[0]),
-							 GFP_KERNEL);
-			if (!req->indirect_pages[j])
-				goto fail;
-		}
 	}
 
 	/* Map the shared frame, irq etc. */
@@ -1011,17 +1043,7 @@ static int read_per_ring_refs(struct xen_blkif_ring *ring, const char *dir)
 fail:
 	list_for_each_entry_safe(req, n, &ring->pending_free, free_list) {
 		list_del(&req->free_list);
-		for (j = 0; j < MAX_INDIRECT_SEGMENTS; j++) {
-			if (!req->segments[j])
-				break;
-			kfree(req->segments[j]);
-		}
-		for (j = 0; j < MAX_INDIRECT_PAGES; j++) {
-			if (!req->indirect_pages[j])
-				break;
-			kfree(req->indirect_pages[j]);
-		}
-		kfree(req);
+		xen_blkbk_free_req(req);
 	}
 	return -ENOMEM;
 

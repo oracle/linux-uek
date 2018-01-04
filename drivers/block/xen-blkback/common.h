@@ -356,13 +356,13 @@ struct pending_req {
 	unsigned short		operation;
 	int			status;
 	struct list_head	free_list;
-	struct grant_page	*segments[MAX_INDIRECT_SEGMENTS];
+	struct grant_page	*segments;
 	/* Indirect descriptors */
-	struct grant_page	*indirect_pages[MAX_INDIRECT_PAGES];
-	struct seg_buf		seg[MAX_INDIRECT_SEGMENTS];
-	struct bio		*biolist[MAX_INDIRECT_SEGMENTS];
-	struct gnttab_unmap_grant_ref unmap[MAX_INDIRECT_SEGMENTS];
-	struct page                   *unmap_pages[MAX_INDIRECT_SEGMENTS];
+	struct grant_page	*indirect_pages;
+	struct seg_buf		*seg;
+	struct bio		**biolist;
+	struct gnttab_unmap_grant_ref *unmap;
+	struct page		**unmap_pages;
 	struct gntab_unmap_queue_data gnttab_unmap_data;
 };
 
@@ -400,6 +400,9 @@ int xen_blkbk_barrier(struct xenbus_transaction xbt,
 		      struct backend_info *be, int state);
 struct xenbus_device *xen_blkbk_xenbus(struct backend_info *be);
 void xen_blkbk_unmap_purged_grants(struct work_struct *work);
+
+struct pending_req *xen_blkbk_alloc_req(unsigned int nseg, bool indirect);
+void xen_blkbk_free_req(struct pending_req *req);
 
 static inline void blkif_get_x86_32_req(struct blkif_request *dst,
 					struct blkif_x86_32_request *src)

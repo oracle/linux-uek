@@ -686,7 +686,7 @@ void xen_blkbk_free_caches(struct xen_blkif_ring *ring)
 
 static unsigned int xen_blkbk_unmap_prepare(
 	struct xen_blkif_ring *ring,
-	struct grant_page **pages,
+	struct grant_page *pages,
 	unsigned int num,
 	struct gnttab_unmap_grant_ref *unmap_ops,
 	struct page **unmap_pages)
@@ -694,16 +694,16 @@ static unsigned int xen_blkbk_unmap_prepare(
 	unsigned int i, invcount = 0;
 
 	for (i = 0; i < num; i++) {
-		if (pages[i]->persistent_gnt != NULL) {
-			put_persistent_gnt(ring, pages[i]->persistent_gnt);
+		if (pages[i].persistent_gnt != NULL) {
+			put_persistent_gnt(ring, pages[i].persistent_gnt);
 			continue;
 		}
-		if (pages[i]->handle == BLKBACK_INVALID_HANDLE)
+		if (pages[i].handle == BLKBACK_INVALID_HANDLE)
 			continue;
-		unmap_pages[invcount] = pages[i]->page;
-		gnttab_set_unmap_op(&unmap_ops[invcount], vaddr(pages[i]->page),
-				    GNTMAP_host_map, pages[i]->handle);
-		pages[i]->handle = BLKBACK_INVALID_HANDLE;
+		unmap_pages[invcount] = pages[i].page;
+		gnttab_set_unmap_op(&unmap_ops[invcount], vaddr(pages[i].page),
+				    GNTMAP_host_map, pages[i].handle);
+		pages[i].handle = BLKBACK_INVALID_HANDLE;
 		invcount++;
        }
 
@@ -746,7 +746,7 @@ static void xen_blkbk_unmap_and_respond(struct pending_req *req)
 {
 	struct gntab_unmap_queue_data* work = &req->gnttab_unmap_data;
 	struct xen_blkif_ring *ring = req->ring;
-	struct grant_page **pages = req->segments;
+	struct grant_page *pages = req->segments;
 	unsigned int invcount;
 
 	invcount = xen_blkbk_unmap_prepare(ring, pages, req->nr_segs,
@@ -771,7 +771,7 @@ static void xen_blkbk_unmap_and_respond(struct pending_req *req)
  * no real need.
  */
 static void xen_blkbk_unmap(struct xen_blkif_ring *ring,
-                            struct grant_page *pages[],
+			    struct grant_page *pages,
                             int num)
 {
 	struct gnttab_unmap_grant_ref unmap[BLKIF_MAX_SEGMENTS_PER_REQUEST];
@@ -795,7 +795,7 @@ static void xen_blkbk_unmap(struct xen_blkif_ring *ring,
 }
 
 static int xen_blkbk_map(struct xen_blkif_ring *ring,
-			 struct grant_page *pages[],
+			 struct grant_page *pages,
 			 int num, bool ro)
 {
 	struct gnttab_map_grant_ref map[BLKIF_MAX_SEGMENTS_PER_REQUEST];
@@ -823,7 +823,7 @@ again:
 		if (use_persistent_gnts) {
 			persistent_gnt = get_persistent_gnt(
 				ring,
-				pages[i]->gref);
+				pages[i].gref);
 		}
 
 		if (persistent_gnt) {
@@ -831,19 +831,19 @@ again:
 			 * We are using persistent grants and
 			 * the grant is already mapped
 			 */
-			pages[i]->page = persistent_gnt->page;
-			pages[i]->persistent_gnt = persistent_gnt;
+			pages[i].page = persistent_gnt->page;
+			pages[i].persistent_gnt = persistent_gnt;
 		} else {
-			if (get_free_page(ring, &pages[i]->page))
+			if (get_free_page(ring, &pages[i].page))
 				goto out_of_memory;
-			addr = vaddr(pages[i]->page);
-			pages_to_gnt[segs_to_map] = pages[i]->page;
-			pages[i]->persistent_gnt = NULL;
+			addr = vaddr(pages[i].page);
+			pages_to_gnt[segs_to_map] = pages[i].page;
+			pages[i].persistent_gnt = NULL;
 			flags = GNTMAP_host_map;
 			if (!use_persistent_gnts && ro)
 				flags |= GNTMAP_readonly;
 			gnttab_set_map_op(&map[segs_to_map++], addr,
-					  flags, pages[i]->gref,
+					  flags, pages[i].gref,
 					  blkif->domid);
 		}
 		map_until = i + 1;
@@ -862,17 +862,17 @@ again:
 	 * the page from the other domain.
 	 */
 	for (seg_idx = last_map, new_map_idx = 0; seg_idx < map_until; seg_idx++) {
-		if (!pages[seg_idx]->persistent_gnt) {
+		if (!pages[seg_idx].persistent_gnt) {
 			/* This is a newly mapped grant */
 			BUG_ON(new_map_idx >= segs_to_map);
 			if (unlikely(map[new_map_idx].status != 0)) {
 				pr_debug("invalid buffer -- could not remap it\n");
-				put_free_pages(ring, &pages[seg_idx]->page, 1);
-				pages[seg_idx]->handle = BLKBACK_INVALID_HANDLE;
+				put_free_pages(ring, &pages[seg_idx].page, 1);
+				pages[seg_idx].handle = BLKBACK_INVALID_HANDLE;
 				ret |= 1;
 				goto next;
 			}
-			pages[seg_idx]->handle = map[new_map_idx].handle;
+			pages[seg_idx].handle = map[new_map_idx].handle;
 		} else {
 			continue;
 		}
@@ -894,14 +894,14 @@ again:
 			}
 			persistent_gnt->gnt = map[new_map_idx].ref;
 			persistent_gnt->handle = map[new_map_idx].handle;
-			persistent_gnt->page = pages[seg_idx]->page;
+			persistent_gnt->page = pages[seg_idx].page;
 			if (add_persistent_gnt(ring,
 			                       persistent_gnt)) {
 				kfree(persistent_gnt);
 				persistent_gnt = NULL;
 				goto next;
 			}
-			pages[seg_idx]->persistent_gnt = persistent_gnt;
+			pages[seg_idx].persistent_gnt = persistent_gnt;
 			pr_debug("grant %u added to the tree of persistent grants, using %u/%u\n",
 				 persistent_gnt->gnt, ring->persistent_gnt_c,
 				 xen_blkif_max_pgrants);
@@ -945,10 +945,10 @@ static int xen_blkbk_map_seg(struct pending_req *pending_req)
 
 static int xen_blkbk_parse_indirect(struct blkif_request *req,
 				    struct pending_req *pending_req,
-				    struct seg_buf seg[],
+				    struct seg_buf *seg,
 				    struct phys_req *preq)
 {
-	struct grant_page **pages = pending_req->indirect_pages;
+	struct grant_page *pages = pending_req->indirect_pages;
 	struct xen_blkif_ring *ring = pending_req->ring;
 	int indirect_grefs, rc, n, nseg, i;
 	struct blkif_request_segment *segments = NULL;
@@ -958,7 +958,7 @@ static int xen_blkbk_parse_indirect(struct blkif_request *req,
 	BUG_ON(indirect_grefs > BLKIF_MAX_INDIRECT_PAGES_PER_REQUEST);
 
 	for (i = 0; i < indirect_grefs; i++)
-		pages[i]->gref = req->u.indirect.indirect_grefs[i];
+		pages[i].gref = req->u.indirect.indirect_grefs[i];
 
 	rc = xen_blkbk_map(ring, pages, indirect_grefs, true);
 	if (rc)
@@ -971,11 +971,11 @@ static int xen_blkbk_parse_indirect(struct blkif_request *req,
 			/* Map indirect segments */
 			if (segments)
 				kunmap_atomic(segments);
-			segments = kmap_atomic(pages[n/SEGS_PER_INDIRECT_FRAME]->page);
+			segments = kmap_atomic(pages[n/SEGS_PER_INDIRECT_FRAME].page);
 		}
 		i = n % SEGS_PER_INDIRECT_FRAME;
 
-		pending_req->segments[n]->gref = segments[i].gref;
+		pending_req->segments[n].gref = segments[i].gref;
 
 		first_sect = READ_ONCE(segments[i].first_sect);
 		last_sect = READ_ONCE(segments[i].last_sect);
@@ -1228,7 +1228,7 @@ static int dispatch_rw_block_io(struct xen_blkif_ring *ring,
 	int operation;
 	struct blk_plug plug;
 	bool drain = false;
-	struct grant_page **pages = pending_req->segments;
+	struct grant_page *pages = pending_req->segments;
 	unsigned short req_operation;
 
 	req_operation = req->operation == BLKIF_OP_INDIRECT ?
@@ -1288,7 +1288,7 @@ static int dispatch_rw_block_io(struct xen_blkif_ring *ring,
 		preq.dev               = req->u.rw.handle;
 		preq.sector_number     = req->u.rw.sector_number;
 		for (i = 0; i < nseg; i++) {
-			pages[i]->gref = req->u.rw.seg[i].gref;
+			pages[i].gref = req->u.rw.seg[i].gref;
 			seg[i].nsec = req->u.rw.seg[i].last_sect -
 				req->u.rw.seg[i].first_sect + 1;
 			seg[i].offset = (req->u.rw.seg[i].first_sect << 9);
@@ -1351,8 +1351,7 @@ static int dispatch_rw_block_io(struct xen_blkif_ring *ring,
 
 	for (i = 0; i < nseg; i++) {
 		while ((bio == NULL) ||
-		       (bio_add_page(bio,
-				     pages[i]->page,
+		       (bio_add_page(bio, pages[i].page,
 				     seg[i].nsec << 9,
 				     seg[i].offset) == 0)) {
 
