@@ -300,7 +300,11 @@ struct tss_struct {
 
 } ____cacheline_aligned;
 
+#ifndef __GENKSYMS__
 DECLARE_PER_CPU_SHARED_ALIGNED_USER_MAPPED(struct tss_struct, cpu_tss);
+#else
+DECLARE_PER_CPU_SHARED_ALIGNED(struct tss_struct, cpu_tss);
+#endif
 
 #ifdef CONFIG_X86_32
 DECLARE_PER_CPU(unsigned long, cpu_current_top_of_stack);

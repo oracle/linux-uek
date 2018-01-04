@@ -714,7 +714,9 @@ const char * const vmstat_text[] = {
 	"nr_slab_unreclaimable",
 	"nr_page_table_pages",
 	"nr_kernel_stack",
+#ifndef __GENKSYMS__
 	"nr_overhead",
+#endif
 	"nr_unstable",
 	"nr_bounce",
 	"nr_vmscan_write",
