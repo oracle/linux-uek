@@ -12,7 +12,12 @@
 #include <asm/disabled-features.h>
 #endif
 
+#ifdef __GENKSYMS__
+/* Make it look like we didn't change it. */
+#define NCAPINTS	13	/* N 32-bit words worth of info */
+#else
 #define NCAPINTS	14	/* N 32-bit words worth of info */
+#endif
 #define NBUGINTS	1	/* N 32-bit bug flags */
 
 /*
