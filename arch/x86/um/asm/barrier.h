@@ -53,8 +53,7 @@
  */
 static inline void rdtsc_barrier(void)
 {
-	alternative_2("", "mfence", X86_FEATURE_MFENCE_RDTSC,
-			  "lfence", X86_FEATURE_LFENCE_RDTSC);
+	alternative("", "lfence", X86_FEATURE_LFENCE_RDTSC);
 }
 
 #endif
