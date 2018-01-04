@@ -4,6 +4,7 @@
 #include <asm/desc.h>
 #include <linux/atomic.h>
 #include <linux/mm_types.h>
+#include <linux/ptrace.h>
 
 #include <trace/events/tlb.h>
 
@@ -98,7 +99,9 @@ static inline void switch_mm(struct mm_struct *prev, struct mm_struct *next,
 {
 	unsigned cpu = smp_processor_id();
 
-	if (boot_cpu_has(X86_FEATURE_SPEC_CTRL))
+	/* Null tsk means switching to kernel, so that's safe */
+	if (boot_cpu_has(X86_FEATURE_SPEC_CTRL) && tsk &&
+	    ___ptrace_may_access(tsk, current, PTRACE_MODE_IBPB))
 		native_wrmsrl(MSR_IA32_PRED_CMD, FEATURE_SET_IBPB);
 
 	if (likely(prev != next)) {
