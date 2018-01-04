@@ -370,6 +370,9 @@ VBD_SHOW_ALLRING(f_req,  "%llu\n");
 VBD_SHOW_ALLRING(ds_req,  "%llu\n");
 VBD_SHOW_ALLRING(rd_sect, "%llu\n");
 VBD_SHOW_ALLRING(wr_sect, "%llu\n");
+VBD_SHOW_ALLRING(oo_req_indirect, "%llu\n");
+VBD_SHOW_ALLRING(req_direct, "%llu\n");
+VBD_SHOW_ALLRING(req_indirect, "%llu\n");
 
 static struct attribute *xen_vbdstat_attrs[] = {
 	&dev_attr_oo_req.attr,
@@ -379,6 +382,9 @@ static struct attribute *xen_vbdstat_attrs[] = {
 	&dev_attr_ds_req.attr,
 	&dev_attr_rd_sect.attr,
 	&dev_attr_wr_sect.attr,
+	&dev_attr_oo_req_indirect.attr,
+	&dev_attr_req_direct.attr,
+	&dev_attr_req_indirect.attr,
 	NULL
 };
 

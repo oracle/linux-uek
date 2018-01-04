@@ -293,6 +293,9 @@ struct xen_blkif_ring {
 	unsigned long long	st_ds_req;
 	unsigned long long	st_rd_sect;
 	unsigned long long	st_wr_sect;
+	unsigned long long	st_req_direct;
+	unsigned long long	st_req_indirect;
+	unsigned long long	st_oo_req_indirect;
 
 	/* Used by the kworker that offload work from the persistent purge. */
 	struct list_head	persistent_purge_list;
