@@ -476,8 +476,13 @@ static struct pending_req *alloc_req(struct xen_blkif_ring *ring, unsigned int n
 			ring->st_oo_req++;
 		}
 		spin_unlock_irqrestore(&ring->pending_free_lock, flags);
+
+		ring->st_req_direct++;
 	} else {
 		req = xen_blkbk_alloc_req(nsegs, true /* indirect req */);
+		if (!req)
+			ring->st_oo_req_indirect++;
+		ring->st_req_indirect++;
 	}
 
 	return req;
@@ -600,18 +605,24 @@ irqreturn_t xen_blkif_be_int(int irq, void *dev_id)
 
 static void print_stats(struct xen_blkif_ring *ring)
 {
-	pr_info("(%s): oo %3llu  |  rd %4llu  |  wr %4llu  |  f %4llu"
-		 "  |  ds %4llu | pg: %4u/%4d\n",
-		 current->comm, ring->st_oo_req,
-		 ring->st_rd_req, ring->st_wr_req,
-		 ring->st_f_req, ring->st_ds_req,
-		 ring->persistent_gnt_c,
-		 xen_blkif_max_pgrants);
+	pr_info("(%s): d   %8llu  |  i %8llu  |  oo %3llu  |"
+		"  ooi %3llu  |  rd %4llu  |  wr %4llu  |  f %4llu"
+		"  |  ds %4llu | pg: %4u/%4d\n", current->comm,
+		ring->st_req_direct, ring->st_req_indirect,
+		ring->st_oo_req, ring->st_oo_req_indirect,
+		ring->st_rd_req, ring->st_wr_req,
+		ring->st_f_req, ring->st_ds_req,
+		ring->persistent_gnt_c,
+		xen_blkif_max_pgrants);
+
 	ring->st_print = jiffies + msecs_to_jiffies(10 * 1000);
 	ring->st_rd_req = 0;
 	ring->st_wr_req = 0;
 	ring->st_oo_req = 0;
 	ring->st_ds_req = 0;
+	ring->st_req_direct = 0;
+	ring->st_req_indirect = 0;
+	ring->st_oo_req_indirect = 0;
 }
 
 int xen_blkif_schedule(void *arg)
