@@ -112,6 +112,18 @@ static const char *spectre_v2_strings[] = {
 
 static enum spectre_v2_mitigation spectre_v2_enabled = SPECTRE_V2_NONE;
 
+/* A module has been loaded. Disable reporting that we're good. */
+void disable_retpoline(void)
+{
+	spectre_v2_enabled = SPECTRE_V2_NONE;
+	pr_err("system may be vulnerable to spectre\n");
+}
+
+bool retpoline_enabled(void)
+{
+	return spectre_v2_enabled != SPECTRE_V2_NONE;
+}
+
 static void __init spec2_print_if_insecure(const char *reason)
 {
 	if (boot_cpu_has_bug(X86_BUG_SPECTRE_V2))
