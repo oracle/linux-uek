@@ -247,8 +247,14 @@ GLOBAL(system_call_after_swapgs)
 	pushq_cfi_reg	r9			/* pt_regs->r9 */
 	pushq_cfi_reg	r10			/* pt_regs->r10 */
 	pushq_cfi_reg	r11			/* pt_regs->r11 */
-	sub	$(6*8),%rsp /* pt_regs->bp,bx,r12-15 not saved */
+	sub	$(6*8),%rsp /* pt_regs->bp,bx,r12-15 not used */
 	CFI_ADJUST_CFA_OFFSET 6*8
+
+	/*
+	 * Clear the unused extra regs for code hygiene.
+	 * Will restore the callee saved extra regs at end of syscall.
+	 */
+	SAVE_EXTRA_REGS
 
 	STUFF_RSB
 
@@ -296,6 +302,7 @@ system_call_fastpath:
 	movq	RIP(%rsp),%rcx
 	CFI_REGISTER	rip,rcx
 	movq	EFLAGS(%rsp),%r11
+	RESTORE_EXTRA_REGS
 	/*CFI_REGISTER	rflags,r11*/
 	movq	RSP(%rsp),%rsp
 	/*
@@ -329,7 +336,6 @@ tracesys:
 	jmp system_call_fastpath	/*      and return to the fast path */
 
 tracesys_phase2:
-	SAVE_EXTRA_REGS
 	movq %rsp, %rdi
 	movl $AUDIT_ARCH_X86_64, %esi
 	movq %rax,%rdx
@@ -393,7 +399,6 @@ int_careful:
 int_very_careful:
 	TRACE_IRQS_ON
 	ENABLE_INTERRUPTS(CLBR_NONE)
-	SAVE_EXTRA_REGS
 	/* Check for syscall exit trace */
 	testl $_TIF_WORK_SYSCALL_EXIT,%edx
 	jz int_signal
