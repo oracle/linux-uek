@@ -4,9 +4,9 @@
  */
 
 #include <linux/mm.h>
+#include <linux/sched.h>
 #include <linux/mmu_context.h>
 #include <linux/module.h>
-#include <linux/sched.h>
 
 #include <asm/mmu_context.h>
 
