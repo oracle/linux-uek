@@ -1015,7 +1015,7 @@ static int read_per_ring_refs(struct xen_blkif_ring *ring, const char *dir)
 	blkif->nr_ring_pages = nr_grefs;
 
 	for (i = 0; i < nr_grefs * XEN_BLKIF_REQS_PER_PAGE; i++) {
-		req = xen_blkbk_alloc_req(MAX_INDIRECT_SEGMENTS, true /* indirect */);
+		req = xen_blkbk_alloc_req(BLKIF_MAX_SEGMENTS_PER_REQUEST, false /* direct */);
 
 		if (!req)
 			goto fail;
