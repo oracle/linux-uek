@@ -250,6 +250,10 @@ GLOBAL(system_call_after_swapgs)
 	sub	$(6*8),%rsp /* pt_regs->bp,bx,r12-15 not saved */
 	CFI_ADJUST_CFA_OFFSET 6*8
 
+	STUFF_RSB
+
+	TRACE_IRQS_OFF
+
 	testl $_TIF_WORK_SYSCALL_ENTRY, ASM_THREAD_INFO(TI_flags, %rsp, SIZEOF_PTREGS)
 	jnz tracesys
 system_call_fastpath:
@@ -688,6 +692,13 @@ END(irq_entries_start)
 	SAVE_C_REGS -RBP
 	/* this goes to 0(%rsp) for unwinder, not for saving the value: */
 	SAVE_EXTRA_REGS_RBP -RBP
+
+	/*
+	 * Have to do stuffing before encoding frame pointer.
+	 * Could add some unnecessary RSB clearing if coming
+	 * from kernel for non-SMEP platform.
+	 */
+	STUFF_RSB
 
 	leaq -RBP(%rsp),%rdi	/* arg1 for \func (pointer to pt_regs) */
 
@@ -1430,6 +1441,14 @@ ENTRY(paranoid_entry)
 	cld
 	SAVE_C_REGS 8
 	SAVE_EXTRA_REGS 8
+
+	/*
+	 * Have to do stuffing before encoding frame pointer.
+	 * Could add some unnecessary RSB clearing if coming
+	 * from kernel for non-SMEP platform.
+	 */
+	STUFF_RSB
+
 	movl $1,%ebx
 	movl $MSR_GS_BASE,%ecx
 	rdmsr
@@ -1482,6 +1501,7 @@ ENTRY(error_entry)
 	cld
 	SAVE_C_REGS 8
 	SAVE_EXTRA_REGS 8
+	STUFF_RSB
 	xorl %ebx,%ebx
 	testl $3,CS+8(%rsp)
 	je error_kernelspace
