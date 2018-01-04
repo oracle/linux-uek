@@ -1505,14 +1505,14 @@ void native_play_dead(void)
 	play_dead_common();
 	tboot_shutdown(TB_SHUTDOWN_WFS);
 
-	if (boot_cpu_has(X86_FEATURE_SPEC_CTRL))
+	if (ibrs_inuse)
 		native_wrmsrl(MSR_IA32_SPEC_CTRL, 0);
 
 	mwait_play_dead();	/* Only returns on failure */
 	if (cpuidle_play_dead())
 		hlt_play_dead();
 
-	if (boot_cpu_has(X86_FEATURE_SPEC_CTRL))
+	if (ibrs_inuse)
 		native_wrmsrl(MSR_IA32_SPEC_CTRL, FEATURE_ENABLE_IBRS);
 }
 

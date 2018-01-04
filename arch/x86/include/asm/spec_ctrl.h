@@ -9,6 +9,7 @@
 #ifdef __ASSEMBLY__
 
 .extern use_ibrs
+.extern use_ibpb
 
 #define __ASM_ENABLE_IBRS			\
 	pushq %rax;				\
@@ -168,7 +169,10 @@ ALTERNATIVE "", __stringify(__ASM_ENABLE_IBRS), X86_FEATURE_SPEC_CTRL
 .endm
 
 .macro DISABLE_IBRS
-ALTERNATIVE "", __stringify(__ASM_DISABLE_IBRS), X86_FEATURE_SPEC_CTRL
+	testl	$1, use_ibrs
+	jz	9f
+	__ASM_DISABLE_IBRS
+9:
 .endm
 
 .macro SET_IBPB

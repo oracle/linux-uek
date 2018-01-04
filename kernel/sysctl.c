@@ -69,6 +69,7 @@
 
 #include <asm/uaccess.h>
 #include <asm/processor.h>
+#include <asm/msr.h>
 
 #ifdef CONFIG_X86
 #include <asm/nmi.h>
@@ -195,6 +196,15 @@ static int proc_dostring_coredump(struct ctl_table *table, int write,
 		void __user *buffer, size_t *lenp, loff_t *ppos);
 #endif
 
+#ifdef CONFIG_X86
+int proc_dointvec_ibrs_ctrl(struct ctl_table *table, int write,
+                 void __user *buffer, size_t *lenp, loff_t *ppos);
+int proc_dointvec_ibpb_ctrl(struct ctl_table *table, int write,
+                 void __user *buffer, size_t *lenp, loff_t *ppos);
+int proc_dointvec_ibrs_dump(struct ctl_table *table, int write,
+                 void __user *buffer, size_t *lenp, loff_t *ppos);
+#endif
+
 #ifdef CONFIG_MAGIC_SYSRQ
 /* Note: sysrq code uses it's own private copy */
 static int __sysrq_enabled = CONFIG_MAGIC_SYSRQ_DEFAULT_ENABLE;
@@ -230,6 +240,12 @@ extern struct ctl_table epoll_table[];
 #ifdef HAVE_ARCH_PICK_MMAP_LAYOUT
 int sysctl_legacy_va_layout;
 #endif
+
+u32 sysctl_ibrs_dump = 0;
+u32 sysctl_ibrs_enabled = 0;
+EXPORT_SYMBOL(sysctl_ibrs_enabled);
+u32 sysctl_ibpb_enabled = 0;
+EXPORT_SYMBOL(sysctl_ibpb_enabled);
 
 /* The default sysctl tables: */
 
@@ -1170,6 +1186,35 @@ static struct ctl_table kern_table[] = {
 		.proc_handler	= proc_dointvec_minmax,
 		.extra1		= &zero,
 		.extra2		= &one,
+	},
+#endif
+#ifdef CONFIG_X86
+	{
+		.procname       = "ibrs_enabled",
+		.data           = &sysctl_ibrs_enabled,
+		.maxlen         = sizeof(unsigned int),
+		.mode           = 0644,
+		.proc_handler   = proc_dointvec_ibrs_ctrl,
+		.extra1         = &zero,
+		.extra2         = &two,
+	},
+	{
+		.procname       = "ibpb_enabled",
+		.data           = &sysctl_ibpb_enabled,
+		.maxlen         = sizeof(unsigned int),
+		.mode           = 0644,
+		.proc_handler   = proc_dointvec_ibpb_ctrl,
+		.extra1         = &zero,
+		.extra2         = &one,
+	},
+	{
+		.procname       = "ibrs_dump",
+		.data           = &sysctl_ibrs_dump,
+		.maxlen         = sizeof(unsigned int),
+		.mode           = 0644,
+		.proc_handler   = proc_dointvec_ibrs_dump,
+		.extra1         = &zero,
+		.extra2         = &one,
 	},
 #endif
 	{ }
@@ -2795,6 +2840,84 @@ int proc_do_large_bitmap(struct ctl_table *table, int write,
 	}
 }
 
+#ifdef CONFIG_X86
+int proc_dointvec_ibrs_dump(struct ctl_table *table, int write,
+	void __user *buffer, size_t *lenp, loff_t *ppos)
+{
+	int ret;
+	unsigned int cpu;
+
+	ret = proc_dointvec_minmax(table, write, buffer, lenp, ppos);
+	printk("sysctl_ibrs_enabled = %u, sysctl_ibpb_enabled = %u\n", sysctl_ibrs_enabled, sysctl_ibpb_enabled);
+	printk("use_ibrs = %d, use_ibpb = %d\n", use_ibrs, use_ibpb);
+	for_each_online_cpu(cpu) {
+	       u64 val;
+
+	       if (boot_cpu_has(X86_FEATURE_SPEC_CTRL))
+		       rdmsrl_on_cpu(cpu, MSR_IA32_SPEC_CTRL, &val);
+	       else
+		       val = 0;
+	       printk("read cpu %d ibrs val %lu\n", cpu, (unsigned long) val);
+	}
+	return ret;
+}
+
+int proc_dointvec_ibrs_ctrl(struct ctl_table *table, int write,
+	void __user *buffer, size_t *lenp, loff_t *ppos)
+{
+	int ret;
+	unsigned int cpu;
+
+	ret = proc_dointvec_minmax(table, write, buffer, lenp, ppos);
+	pr_debug("sysctl_ibrs_enabled = %u, sysctl_ibpb_enabled = %u\n", sysctl_ibrs_enabled, sysctl_ibpb_enabled);
+	pr_debug("before:use_ibrs = %d, use_ibpb = %d\n", use_ibrs, use_ibpb);
+	if (sysctl_ibrs_enabled == 0) {
+		/* always set IBRS off */
+		set_ibrs_disabled();
+		if (ibrs_supported) {
+			for_each_online_cpu(cpu)
+				wrmsrl_on_cpu(cpu, MSR_IA32_SPEC_CTRL, 0x0);
+		}
+	} else if (sysctl_ibrs_enabled == 2) {
+		/* always set IBRS on, even in user space */
+		clear_ibrs_disabled();
+		if (ibrs_supported) {
+			for_each_online_cpu(cpu)
+				wrmsrl_on_cpu(cpu, MSR_IA32_SPEC_CTRL, FEATURE_ENABLE_IBRS);
+		} else {
+			sysctl_ibrs_enabled = 0;
+		}
+	} else if (sysctl_ibrs_enabled == 1) {
+		/* use IBRS in kernel */
+		clear_ibrs_disabled();
+		if (!ibrs_inuse)
+			/* platform don't support ibrs */
+			sysctl_ibrs_enabled = 0;
+	}
+	pr_debug("after:use_ibrs = %d, use_ibpb = %d\n", use_ibrs, use_ibpb);
+	return ret;
+}
+
+int proc_dointvec_ibpb_ctrl(struct ctl_table *table, int write,
+	void __user *buffer, size_t *lenp, loff_t *ppos)
+{
+	int ret;
+
+	ret = proc_dointvec_minmax(table, write, buffer, lenp, ppos);
+	pr_debug("sysctl_ibrs_enabled = %u, sysctl_ibpb_enabled = %u\n", sysctl_ibrs_enabled, sysctl_ibpb_enabled);
+	pr_debug("before:use_ibrs = %d, use_ibpb = %d\n", use_ibrs, use_ibpb);
+	if (sysctl_ibpb_enabled == 0)
+		set_ibpb_disabled();
+	else if (sysctl_ibpb_enabled == 1) {
+		clear_ibpb_disabled();
+		if (!ibpb_inuse)
+			/* platform don't support ibpb */
+			sysctl_ibpb_enabled = 0;
+	}
+	pr_debug("after:use_ibrs = %d, use_ibpb = %d\n", use_ibrs, use_ibpb);
+	return ret;
+}
+#endif
 #else /* CONFIG_PROC_SYSCTL */
 
 int proc_dostring(struct ctl_table *table, int write,
