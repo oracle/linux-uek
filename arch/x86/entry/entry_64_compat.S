@@ -108,6 +108,7 @@ ENTRY(entry_SYSENTER_compat)
 	cld
 
 	ENABLE_IBRS
+	STUFF_RSB_NON_SMEP
 
 	/*
 	 * SYSENTER doesn't filter flags, so we need to clear NT and AC
@@ -384,6 +385,7 @@ ENTRY(entry_INT80_compat)
 	cld
 
 	ENABLE_IBRS
+	STUFF_RSB_NON_SMEP
 
 	/*
 	 * User mode is traced as though IRQs are on, and the interrupt

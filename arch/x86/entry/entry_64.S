@@ -229,6 +229,7 @@ GLOBAL(entry_SYSCALL_64_after_hwframe)
 	PUSH_AND_CLEAR_REGS rax=$-ENOSYS
 
 	ENABLE_IBRS
+	STUFF_RSB_NON_SMEP
 
 	TRACE_IRQS_OFF
 
@@ -530,6 +531,13 @@ END(irq_entries_start)
 /* 0(%rsp): ~(interrupt number) */
 	.macro interrupt func
 	cld
+
+	/*
+	 * Have to do stuffing before encoding frame pointer.
+	 * Could add some unnecessary RSB clearing if coming
+	 * from kernel for non-SMEP platform.
+	 */
+	STUFF_RSB_NON_SMEP
 
 	testb	$3, CS-ORIG_RAX(%rsp)
 	jz	1f
@@ -1276,6 +1284,12 @@ ENTRY(paranoid_entry)
 	UNWIND_HINT_FUNC
 	cld
 	PUSH_AND_CLEAR_REGS save_ret=1
+	/*
+	 * Have to do stuffing before encoding frame pointer.
+	 * Could add some unnecessary RSB clearing if coming
+	 * from kernel for non-SMEP platform.
+	 */
+	STUFF_RSB_NON_SMEP
 	ENCODE_FRAME_POINTER 8
 	movl	$1, %ebx
 	movl	$MSR_GS_BASE, %ecx
@@ -1330,6 +1344,7 @@ ENTRY(error_entry)
 	UNWIND_HINT_FUNC
 	cld
 	PUSH_AND_CLEAR_REGS save_ret=1
+	STUFF_RSB_NON_SMEP
 	ENCODE_FRAME_POINTER 8
 	testb	$3, CS+8(%rsp)
 	jz	.Lerror_kernelspace
