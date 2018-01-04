@@ -56,6 +56,7 @@
 #include <linux/tsacct_kern.h>
 #include <linux/cn_proc.h>
 #include <linux/freezer.h>
+#include <linux/kaiser.h>
 #include <linux/delayacct.h>
 #include <linux/taskstats_kern.h>
 #include <linux/random.h>
@@ -134,6 +135,7 @@ static struct thread_info *alloc_thread_info_node(struct task_struct *tsk,
 
 static inline void free_thread_info(struct thread_info *ti)
 {
+	kaiser_unmap_thread_stack(ti);
 	free_pages((unsigned long)ti, THREAD_SIZE_ORDER);
 }
 #endif
@@ -278,6 +280,10 @@ static struct task_struct *dup_task_struct(struct task_struct *orig)
 	tsk->stack = ti;
 
 	err = prop_local_init_single(&tsk->dirties);
+	if (err)
+		goto out;
+
+	err = kaiser_map_thread_stack(tsk->stack);
 	if (err)
 		goto out;
 
