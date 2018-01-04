@@ -1104,7 +1104,36 @@ static void end_block_io_op(struct bio *bio)
 	bio_put(bio);
 }
 
+static bool validate_rw_op(const struct blkif_request *req, unsigned int nseg)
+{
+	unsigned short req_operation = req->operation == BLKIF_OP_INDIRECT ?
+			req->u.indirect.indirect_op : req->operation;
 
+	if (((req->operation == BLKIF_OP_INDIRECT) &&	/* valid indirect-op */
+	     (req_operation != BLKIF_OP_READ) &&
+	     (req_operation != BLKIF_OP_WRITE))) {
+		goto fail;
+	}
+
+	if (unlikely(nseg == 0)) { /* if nseg == 0, is op in the correct set? */
+		if (req_operation != BLKIF_OP_FLUSH_DISKCACHE &&
+		    req_operation != BLKIF_OP_WRITE_BARRIER)
+			goto fail;
+	} else { /* if nseg > 0, check if nseg makes sense. */
+		if (((req->operation != BLKIF_OP_INDIRECT) &&
+			(nseg > BLKIF_MAX_SEGMENTS_PER_REQUEST)) ||
+		    ((req->operation == BLKIF_OP_INDIRECT) &&
+			(nseg > MAX_INDIRECT_SEGMENTS))) {
+			goto fail;
+		}
+	}
+
+	return true;
+fail:
+	pr_debug("Invalid indirect operation or bad number of "
+			 "segments in request (%d)\n", nseg);
+	return false;
+}
 
 /*
  * Function to copy the from the ring buffer the 'struct blkif_request'
@@ -1232,13 +1261,6 @@ static int dispatch_rw_block_io(struct xen_blkif_ring *ring,
 	req_operation = req->operation == BLKIF_OP_INDIRECT ?
 			req->u.indirect.indirect_op : req->operation;
 
-	if ((req->operation == BLKIF_OP_INDIRECT) &&
-	    (req_operation != BLKIF_OP_READ) &&
-	    (req_operation != BLKIF_OP_WRITE)) {
-		pr_debug("Invalid indirect operation (%u)\n", req_operation);
-		goto fail_response;
-	}
-
 	switch (req_operation) {
 	case BLKIF_OP_READ:
 		ring->st_rd_req++;
@@ -1267,12 +1289,7 @@ static int dispatch_rw_block_io(struct xen_blkif_ring *ring,
 	nseg = req->operation == BLKIF_OP_INDIRECT ?
 	       req->u.indirect.nr_segments : req->u.rw.nr_segments;
 
-	if (unlikely(nseg == 0 && operation_flags != REQ_PREFLUSH) ||
-	    unlikely((req->operation != BLKIF_OP_INDIRECT) &&
-		     (nseg > BLKIF_MAX_SEGMENTS_PER_REQUEST)) ||
-	    unlikely((req->operation == BLKIF_OP_INDIRECT) &&
-		     (nseg > MAX_INDIRECT_SEGMENTS))) {
-		pr_debug("Bad number of segments in request (%d)\n", nseg);
+	if (validate_rw_op(req, nseg) == false) {
 		/* Haven't submitted any bio's yet. */
 		goto fail_response;
 	}
