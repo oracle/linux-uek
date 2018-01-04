@@ -149,6 +149,7 @@ ENTRY(ia32_sysenter_target)
 	CFI_ADJUST_CFA_OFFSET 10*8
 
 	ENABLE_IBRS
+	STUFF_RSB
 
 	/*
 	 * no need to do an access_ok check here because rbp has been
@@ -533,6 +534,7 @@ ENTRY(ia32_syscall)
 	CFI_ADJUST_CFA_OFFSET 10*8
 
 	ENABLE_IBRS
+	STUFF_RSB
 
 	orl $TS_COMPAT, ASM_THREAD_INFO(TI_status, %rsp, SIZEOF_PTREGS)
 	testl $_TIF_WORK_SYSCALL_ENTRY, ASM_THREAD_INFO(TI_flags, %rsp, SIZEOF_PTREGS)
