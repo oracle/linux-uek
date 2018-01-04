@@ -2713,7 +2713,16 @@ static int check_modinfo(struct module *mod, struct load_info *info, int flags)
 
 	if (!get_modinfo(info, "intree"))
 		add_taint_module(mod, TAINT_OOT_MODULE, LOCKDEP_STILL_OK);
-
+#ifdef RETPOLINE
+	if (retpoline_enabled() && !get_modinfo(info, "retpoline")) {
+		if (!test_taint(TAINT_NO_RETPOLINE)) {
+			pr_warn("%s: loading module not compiled with retpoline compiler.\n",
+				mod->name);
+		}
+		add_taint_module(mod, TAINT_NO_RETPOLINE, LOCKDEP_STILL_OK);
+		disable_retpoline();
+	}
+#endif
 	if (get_modinfo(info, "staging")) {
 		add_taint_module(mod, TAINT_CRAP, LOCKDEP_STILL_OK);
 		pr_warn("%s: module is from the staging directory, the quality "

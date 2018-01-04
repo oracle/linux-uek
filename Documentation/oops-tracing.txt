@@ -272,6 +272,9 @@ characters, each representing a particular tainted value.
 
  16: 'K' if the kernel has been live patched.
 
+ 17: 'Z' if a module hasn't been compiled with
+     a retpoline aware compiler and may be vulnerable to data leaks.
+
 The primary reason for the 'Tainted: ' string is to tell kernel
 debuggers if this is a clean kernel or if anything unusual has
 occurred.  Tainting is permanent: even if an offending module is
