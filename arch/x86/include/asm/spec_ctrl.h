@@ -8,6 +8,8 @@
 
 #ifdef __ASSEMBLY__
 
+.extern use_ibrs
+
 #define __ASM_STUFF_RSB				\
 	call	1f;				\
 	pause;					\
@@ -96,7 +98,8 @@
 .endm
 
 .macro ENABLE_IBRS
-	ALTERNATIVE "jmp .Lskip_\@", "", X86_FEATURE_SPEC_CTRL
+	testl	$1, use_ibrs
+	jz	.Lskip_\@
 	PUSH_MSR_REGS
 	WRMSR_ASM $MSR_IA32_SPEC_CTRL, $SPEC_CTRL_IBRS
 	POP_MSR_REGS
@@ -104,7 +107,8 @@
 .endm
 
 .macro DISABLE_IBRS
-	ALTERNATIVE "jmp .Lskip_\@", "", X86_FEATURE_SPEC_CTRL
+	testl	$1, use_ibrs
+	jz	.Lskip_\@
 	PUSH_MSR_REGS
 	WRMSR_ASM $MSR_IA32_SPEC_CTRL, $0
 	POP_MSR_REGS
@@ -146,13 +150,15 @@
 .endm
 
 .macro ENABLE_IBRS_CLOBBER
-	ALTERNATIVE "jmp .Lskip_\@", "", X86_FEATURE_SPEC_CTRL
+	testl	$1, use_ibrs
+	jz	.Lskip_\@
 	WRMSR_ASM $MSR_IA32_SPEC_CTRL, $SPEC_CTRL_IBRS
 .Lskip_\@:
 .endm
 
 .macro DISABLE_IBRS_CLOBBER
-	ALTERNATIVE "jmp .Lskip_\@", "", X86_FEATURE_SPEC_CTRL
+	testl	$1, use_ibrs
+	jz	.Lskip_\@
 	WRMSR_ASM $MSR_IA32_SPEC_CTRL, $0
 .Lskip_\@:
 .endm
