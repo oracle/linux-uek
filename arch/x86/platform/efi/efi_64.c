@@ -74,6 +74,12 @@ void __init efi_call_phys_prelog(void)
 		save_pgd[pgd] = *pgd_offset_k(pgd * PGDIR_SIZE);
 		vaddress = (unsigned long)__va(pgd * PGDIR_SIZE);
 		set_pgd(pgd_offset_k(pgd * PGDIR_SIZE), *pgd_offset_k(vaddress));
+		/*
+		 * pgprot API doesn't clear it for PGD
+		 *
+		 * Will be brought back automatically in _epilog()
+		 */
+		pgd_offset_k(pgd * PGDIR_SIZE)->pgd &= ~_PAGE_NX;
 	}
 	__flush_tlb_all();
 }
