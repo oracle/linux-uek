@@ -2847,14 +2847,14 @@ int proc_dointvec_ibrs_ctrl(struct ctl_table *table, int write,
 		set_ibrs_disabled();
 		if (ibrs_supported) {
 			for_each_online_cpu(cpu)
-				wrmsrl_on_cpu(cpu, MSR_IA32_SPEC_CTRL, 0x0);
+				wrmsrl_on_cpu(cpu, MSR_IA32_SPEC_CTRL, SPEC_CTRL_FEATURE_DISABLE_IBRS);
 		}
 	} else if (sysctl_ibrs_enabled == 2) {
 		/* always set IBRS on, even in user space */
 		clear_ibrs_disabled();
 		if (ibrs_supported) {
 			for_each_online_cpu(cpu)
-				wrmsrl_on_cpu(cpu, MSR_IA32_SPEC_CTRL, FEATURE_ENABLE_IBRS);
+				wrmsrl_on_cpu(cpu, MSR_IA32_SPEC_CTRL, SPEC_CTRL_FEATURE_ENABLE_IBRS);
 		} else {
 			sysctl_ibrs_enabled = 0;
 		}

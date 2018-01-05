@@ -21,7 +21,7 @@
 	pushq %rdx;				\
 	movl $MSR_IA32_SPEC_CTRL, %ecx;		\
 	movl $0, %edx;				\
-	movl $FEATURE_ENABLE_IBRS, %eax;	\
+	movl $SPEC_CTRL_FEATURE_ENABLE_IBRS, %eax;	\
 	wrmsr;					\
 	popq %rdx;				\
 	popq %rcx;				\
@@ -29,7 +29,7 @@
 #define __ASM_ENABLE_IBRS_CLOBBER		\
 	movl $MSR_IA32_SPEC_CTRL, %ecx;		\
 	movl $0, %edx;				\
-	movl $FEATURE_ENABLE_IBRS, %eax;	\
+	movl $SPEC_CTRL_FEATURE_ENABLE_IBRS, %eax;	\
 	wrmsr;
 #define __ASM_DISABLE_IBRS			\
 	pushq %rax;				\
@@ -147,7 +147,7 @@ ALTERNATIVE "", __stringify(__ASM_ENABLE_IBRS), X86_FEATURE_SPEC_CTRL
 	movl	%eax, \save_reg
 
 	movl	$0, %edx
-	movl	$FEATURE_ENABLE_IBRS, %eax
+	movl	$SPEC_CTRL_FEATURE_ENABLE_IBRS, %eax
 	wrmsr
 	jmp 22f
 12:
@@ -159,7 +159,7 @@ ALTERNATIVE "", __stringify(__ASM_ENABLE_IBRS), X86_FEATURE_SPEC_CTRL
 	testl	$SPEC_CTRL_IBRS_INUSE, use_ibrs
 	jz	13f
 
-	cmpl	$FEATURE_ENABLE_IBRS, \save_reg
+	cmpl	$SPEC_CTRL_FEATURE_ENABLE_IBRS, \save_reg
 	je	13f
 
 	movl	$MSR_IA32_SPEC_CTRL, %ecx

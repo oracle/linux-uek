@@ -3931,7 +3931,7 @@ static void svm_vcpu_run(struct kvm_vcpu *vcpu)
 	local_irq_enable();
 
 	if (ibrs_inuse &&
-	    svm->spec_ctrl != FEATURE_ENABLE_IBRS)
+	    svm->spec_ctrl != SPEC_CTRL_FEATURE_ENABLE_IBRS)
 		wrmsrl(MSR_IA32_SPEC_CTRL, svm->spec_ctrl);
 
 	asm volatile (
@@ -4028,8 +4028,8 @@ static void svm_vcpu_run(struct kvm_vcpu *vcpu)
 
 	if (ibrs_inuse) {
 		rdmsrl(MSR_IA32_SPEC_CTRL, svm->spec_ctrl);
-		if (svm->spec_ctrl != FEATURE_ENABLE_IBRS)
-			wrmsrl(MSR_IA32_SPEC_CTRL, FEATURE_ENABLE_IBRS);
+		if (svm->spec_ctrl != SPEC_CTRL_FEATURE_ENABLE_IBRS)
+			wrmsrl(MSR_IA32_SPEC_CTRL, SPEC_CTRL_FEATURE_ENABLE_IBRS);
 	}
 	stuff_RSB();
 

@@ -8188,7 +8188,7 @@ static void __noclone vmx_vcpu_run(struct kvm_vcpu *vcpu)
 		vmx_set_interrupt_shadow(vcpu, 0);
 
 	if (ibpb_inuse &&
-	    vmx->spec_ctrl != FEATURE_ENABLE_IBRS)
+	    vmx->spec_ctrl != SPEC_CTRL_FEATURE_ENABLE_IBRS)
 		wrmsrl(MSR_IA32_SPEC_CTRL, vmx->spec_ctrl);
 
 	atomic_switch_perf_msrs(vmx);
@@ -8320,7 +8320,7 @@ static void __noclone vmx_vcpu_run(struct kvm_vcpu *vcpu)
 	if (ibpb_inuse) {
 		rdmsrl(MSR_IA32_SPEC_CTRL, vmx->spec_ctrl);
 		if (vmx->spec_ctrl)
-			wrmsrl(MSR_IA32_SPEC_CTRL, FEATURE_ENABLE_IBRS);
+			wrmsrl(MSR_IA32_SPEC_CTRL, SPEC_CTRL_FEATURE_ENABLE_IBRS);
 	}
 	stuff_RSB();
 
