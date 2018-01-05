@@ -150,6 +150,17 @@ static inline void atomic_clear_mask(unsigned long mask, unsigned long *addr)
 	raw_local_irq_restore(flags);
 }
 
+/* Observable speculation barrier: ensures that any user
+ * observable speculation doesn't cross the boundary.
+ * Any user observable speculative activity on this CPU
+ * thread before this point either completes, reaches a
+ * state it can no longer cause observable activity, or
+ * is aborted before instructions after the barrier execute.
+ */
+#ifndef osb
+#define osb()	do { } while (0)
+#endif
+
 /* Assume that atomic operations are already serializing */
 #define smp_mb__before_atomic_dec()	barrier()
 #define smp_mb__after_atomic_dec()	barrier()

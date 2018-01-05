@@ -307,6 +307,8 @@ static inline void atomic_or_long(unsigned long *v1, unsigned long v2)
 		     : : "r" ((unsigned)(mask)), "m" (*(addr))	\
 		     : "memory")
 
+#define osb() alternative("", "lfence", X86_FEATURE_LFENCE_RDTSC)
+
 /* Atomic operations are already serializing on x86 */
 #define smp_mb__before_atomic_dec()	barrier()
 #define smp_mb__after_atomic_dec()	barrier()
