@@ -3422,7 +3422,7 @@ static int vmx_set_msr(struct kvm_vcpu *vcpu, struct msr_data *msr_info)
 			return 1;
 
 		/* The STIBP bit doesn't fault even if it's not advertised */
-		if (data & ~(SPEC_CTRL_IBRS | SPEC_CTRL_STIBP))
+		if (data & ~(SPEC_CTRL_FEATURE_ENABLE_IBRS | SPEC_CTRL_STIBP))
 			return 1;
 
 		vmx->spec_ctrl = data;
@@ -9450,7 +9450,8 @@ static void __noclone vmx_vcpu_run(struct kvm_vcpu *vcpu)
 	 * is no need to worry about the conditional branch over the wrmsr
 	 * being speculatively taken.
 	 */
-	if (ibrs_inuse && vmx->spec_ctrl)
+	if (ibrs_inuse &&
+	    vmx->spec_ctrl != SPEC_CTRL_FEATURE_ENABLE_IBRS)
 		native_wrmsrl(MSR_IA32_SPEC_CTRL, vmx->spec_ctrl);
 
 	vmx->__launched = vmx->loaded_vmcs->launched;
@@ -9590,7 +9591,8 @@ static void __noclone vmx_vcpu_run(struct kvm_vcpu *vcpu)
 		vmx->spec_ctrl = native_read_msr(MSR_IA32_SPEC_CTRL);
 
 	if (ibrs_inuse && vmx->spec_ctrl)
-		native_wrmsrl(MSR_IA32_SPEC_CTRL, 0);
+		native_wrmsrl(MSR_IA32_SPEC_CTRL,
+			      SPEC_CTRL_FEATURE_ENABLE_IBRS);
 
 	/* Eliminate branch target predictions from guest mode */
 	vmexit_fill_RSB();

@@ -105,7 +105,7 @@
 	testl	$SPEC_CTRL_IBRS_INUSE, use_ibrs
 	jz	.Lskip_\@
 	PUSH_MSR_REGS
-	WRMSR_ASM $MSR_IA32_SPEC_CTRL, $SPEC_CTRL_IBRS
+	WRMSR_ASM $MSR_IA32_SPEC_CTRL, $SPEC_CTRL_FEATURE_ENABLE_IBRS
 	POP_MSR_REGS
 .Lskip_\@:
 .endm
@@ -128,7 +128,7 @@
 	movl	%eax, \save_reg
 
 	movl	$0, %edx
-	movl	$SPEC_CTRL_IBRS, %eax
+	movl	$SPEC_CTRL_FEATURE_ENABLE_IBRS, %eax
 	wrmsr
 	jmp	.Ldone_\@
 .Lskip_\@:
@@ -140,7 +140,7 @@
 	testl	$SPEC_CTRL_IBRS_INUSE, use_ibrs
 	jz	.Lskip_\@
 
-	cmpl	$SPEC_CTRL_IBRS, \save_reg
+	cmpl	$SPEC_CTRL_FEATURE_ENABLE_IBRS, \save_reg
 	je	.Lskip_\@
 
 	movl	$MSR_IA32_SPEC_CTRL, %ecx
@@ -156,7 +156,7 @@
 .macro ENABLE_IBRS_CLOBBER
 	testl	$SPEC_CTRL_IBRS_INUSE, use_ibrs
 	jz	.Lskip_\@
-	WRMSR_ASM $MSR_IA32_SPEC_CTRL, $SPEC_CTRL_IBRS
+	WRMSR_ASM $MSR_IA32_SPEC_CTRL, $SPEC_CTRL_FEATURE_ENABLE_IBRS
 .Lskip_\@:
 .endm
 

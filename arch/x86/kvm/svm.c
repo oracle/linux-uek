@@ -3734,7 +3734,7 @@ static int svm_set_msr(struct kvm_vcpu *vcpu, struct msr_data *msr)
 			return 1;
 
 		/* The STIBP bit doesn't fault even if it's not advertised */
-		if (data & ~(SPEC_CTRL_IBRS | SPEC_CTRL_STIBP))
+		if (data & ~(SPEC_CTRL_FEATURE_ENABLE_IBRS | SPEC_CTRL_STIBP))
 			return 1;
 
 		svm->spec_ctrl = data;
@@ -5029,7 +5029,8 @@ static void svm_vcpu_run(struct kvm_vcpu *vcpu)
 	 * is no need to worry about the conditional branch over the wrmsr
 	 * being speculatively taken.
 	 */
-	if (ibrs_inuse && svm->spec_ctrl)
+	if (ibrs_inuse &&
+	    svm->spec_ctrl != SPEC_CTRL_FEATURE_ENABLE_IBRS)
 		native_wrmsrl(MSR_IA32_SPEC_CTRL, svm->spec_ctrl);
 
 	asm volatile (
@@ -5143,9 +5144,11 @@ static void svm_vcpu_run(struct kvm_vcpu *vcpu)
 		svm->spec_ctrl = native_read_msr(MSR_IA32_SPEC_CTRL);
 
 	if (ibrs_inuse)
-		native_wrmsrl(MSR_IA32_SPEC_CTRL, SPEC_CTRL_IBRS);
-	else if (svm->spec_ctrl)
-		native_wrmsrl(MSR_IA32_SPEC_CTRL, 0);
+		native_wrmsrl(MSR_IA32_SPEC_CTRL,
+			      SPEC_CTRL_FEATURE_ENABLE_IBRS);
+	else if (svm->spec_ctrl != SPEC_CTRL_FEATURE_ENABLE_IBRS)
+		native_wrmsrl(MSR_IA32_SPEC_CTRL,
+			      SPEC_CTRL_FEATURE_ENABLE_IBRS);
 
 	/* Eliminate branch target predictions from guest mode */
 	vmexit_fill_RSB();

@@ -266,7 +266,8 @@ static inline void indirect_branch_prediction_barrier(void)
 #define firmware_restrict_branch_speculation_start()			\
 do {									\
 	preempt_disable();						\
-	alternative_msr_write(MSR_IA32_SPEC_CTRL, SPEC_CTRL_IBRS,	\
+	alternative_msr_write(MSR_IA32_SPEC_CTRL,			\
+			      SPEC_CTRL_FEATURE_ENABLE_IBRS,		\
 			      X86_FEATURE_USE_IBRS_FW);			\
 } while (0)
 

@@ -40,7 +40,8 @@
 /* Intel MSRs. Some also available on other CPUs */
 
 #define MSR_IA32_SPEC_CTRL		0x00000048 /* Speculation Control */
-#define SPEC_CTRL_IBRS			(1 << 0)   /* Indirect Branch Restricted Speculation */
+#define SPEC_CTRL_FEATURE_DISABLE_IBRS	(0 << 0)
+#define SPEC_CTRL_FEATURE_ENABLE_IBRS	(1 << 0)   /* Indirect Branch Restricted Speculation */
 #define SPEC_CTRL_STIBP			(1 << 1)   /* Single Thread Indirect Branch Predictors */
 
 #define MSR_IA32_PRED_CMD		0x00000049 /* Prediction Command */
