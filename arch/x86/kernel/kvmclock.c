@@ -24,6 +24,7 @@
 #include <linux/percpu.h>
 #include <linux/hardirq.h>
 #include <linux/memblock.h>
+#include <linux/kaiser.h>
 
 #include <asm/x86_init.h>
 #include <asm/reboot.h>
@@ -272,6 +273,13 @@ int __init kvm_setup_vsyscall_timeinfo(void)
 	u8 flags;
 	struct pvclock_vcpu_time_info *vcpu_time;
 	unsigned int size;
+
+	if (!hv_clock)
+		return 0;
+
+	/* FIXME: Need to add pvclock pages to user-space page tables */
+	if (kaiser_enabled)
+		return 0;
 
 	size = PAGE_ALIGN(sizeof(struct pvclock_vsyscall_time_info)*NR_CPUS);
 
