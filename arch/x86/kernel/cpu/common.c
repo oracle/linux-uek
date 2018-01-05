@@ -688,8 +688,8 @@ void get_cpu_cap(struct cpuinfo_x86 *c)
 		c->x86_virt_bits = (eax >> 8) & 0xff;
 		c->x86_phys_bits = eax & 0xff;
 		/* Only look for X86_FEATURE_IBPB. */
-		ebx &= (1u<<12);
-		c->x86_capability[X86_FEATURE_IBPB / 32] = ebx;
+		if (ebx & BIT(12))
+			set_cpu_cap(c, X86_FEATURE_IBPB);
 	}
 #ifdef CONFIG_X86_32
 	else if (cpu_has(c, X86_FEATURE_PAE) || cpu_has(c, X86_FEATURE_PSE36))
