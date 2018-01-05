@@ -12,12 +12,7 @@
 #include <asm/disabled-features.h>
 #endif
 
-#ifdef __GENKSYMS__
-/* Make it look like we didn't change it. */
 #define NCAPINTS	13	/* N 32-bit words worth of info */
-#else
-#define NCAPINTS	14	/* N 32-bit words worth of info */
-#endif
 #define NBUGINTS	1	/* N 32-bit bug flags */
 
 /*
@@ -206,6 +201,11 @@
 #define X86_FEATURE_IA32_ARCH_CAPS	( 7*32+21) /* Control Speculation Control */
 #define X86_FEATURE_IBRS_ATT	( 7*32+22) /* IBRS all the time */
 
+/* AMD-defined CPU features, CPUID level 0x80000008 (EBX), word 13.
+ * But thanks to kABI we have to jam it somewhere else. */
+#define X86_FEATURE_IBPB                (7*32+23) /* Indirect Branch Prediction Barrier */
+
+
 /* Virtualization flags: Linux defined, word 8 */
 #define X86_FEATURE_TPR_SHADOW  ( 8*32+ 0) /* Intel TPR Shadow */
 #define X86_FEATURE_VNMI        ( 8*32+ 1) /* Intel Virtual NMI */
@@ -260,9 +260,6 @@
 
 /* Intel-defined CPU QoS Sub-leaf, CPUID level 0x0000000F:1 (edx), word 12 */
 #define X86_FEATURE_CQM_OCCUP_LLC (12*32+ 0) /* LLC occupancy monitoring if 1 */
-
-/* AMD-defined CPU features, CPUID level 0x80000008 (EBX), word 13 */
-#define X86_FEATURE_IBPB                (13*32+12) /* Indirect Branch Prediction Barrier */
 
 /*
  * BUG word(s)
