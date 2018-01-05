@@ -6,6 +6,10 @@
 #include <asm/cpufeature.h>
 #include <asm/alternative-asm.h>
 
+#define SPEC_CTRL_IBRS_INUSE           (1<<0)  /* OS enables IBRS usage */
+#define SPEC_CTRL_IBRS_SUPPORTED       (1<<1)  /* System supports IBRS */
+#define SPEC_CTRL_IBRS_ADMIN_DISABLED  (1<<2)  /* Admin disables IBRS */
+
 #ifdef __ASSEMBLY__
 
 .extern use_ibrs
@@ -128,14 +132,14 @@ ALTERNATIVE "", __stringify(__ASM_ENABLE_IBRS), X86_FEATURE_SPEC_CTRL
 .endm
 
 .macro ENABLE_IBRS_CLOBBER
-	testl	$1, use_ibrs
+	testl	$SPEC_CTRL_IBRS_INUSE, use_ibrs
 	jz	11f
 	__ASM_ENABLE_IBRS_CLOBBER
 11:
 .endm
 
 .macro ENABLE_IBRS_SAVE_AND_CLOBBER save_reg:req
-	testl	$1, use_ibrs
+	testl	$SPEC_CTRL_IBRS_INUSE, use_ibrs
 	jz	12f
 
 	movl	$MSR_IA32_SPEC_CTRL, %ecx
@@ -152,7 +156,7 @@ ALTERNATIVE "", __stringify(__ASM_ENABLE_IBRS), X86_FEATURE_SPEC_CTRL
 .endm
 
 .macro RESTORE_IBRS_CLOBBER save_reg:req
-	testl	$1, use_ibrs
+	testl	$SPEC_CTRL_IBRS_INUSE, use_ibrs
 	jz	13f
 
 	cmpl	$FEATURE_ENABLE_IBRS, \save_reg
@@ -169,7 +173,7 @@ ALTERNATIVE "", __stringify(__ASM_ENABLE_IBRS), X86_FEATURE_SPEC_CTRL
 .endm
 
 .macro DISABLE_IBRS
-	testl	$1, use_ibrs
+	testl	$SPEC_CTRL_IBRS_INUSE, use_ibrs
 	jz	9f
 	__ASM_DISABLE_IBRS
 9:
