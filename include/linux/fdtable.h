@@ -86,8 +86,10 @@ static inline struct file * fcheck_files(struct files_struct *files, unsigned in
 	struct file * file = NULL;
 	struct fdtable *fdt = files_fdtable(files);
 
-	if (fd < fdt->max_fds)
+	if (fd < fdt->max_fds) {
+		osb();
 		file = rcu_dereference_check_fdtable(files, fdt->fd[fd]);
+	}
 	return file;
 }
 
