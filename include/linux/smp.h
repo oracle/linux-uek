@@ -51,6 +51,7 @@ void on_each_cpu_cond(bool (*cond_func)(int cpu, void *info),
 int smp_call_function_single_async(int cpu, struct call_single_data *csd);
 
 #ifdef CONFIG_X86
+#include <asm/spec_ctrl.h>
 /* indicate usage of IBRS to control execution speculation */
 extern int use_ibrs;
 extern u32 sysctl_ibrs_enabled;
