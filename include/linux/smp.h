@@ -56,24 +56,25 @@ void on_each_cpu_cond(bool (*cond_func)(int cpu, void *info),
 int smp_call_function_single_async(int cpu, call_single_data_t *csd);
 
 #ifdef CONFIG_X86
+#include <asm/spec_ctrl.h>
 /* indicate usage of IBRS to control execution speculation */
 extern unsigned int use_ibrs;
 extern u32 sysctl_ibrs_enabled;
 extern struct mutex spec_ctrl_mutex;
-#define ibrs_supported		(use_ibrs & 0x2)
-#define ibrs_disabled		(use_ibrs & 0x4)
+#define ibrs_supported		(use_ibrs & SPEC_CTRL_IBRS_SUPPORTED)
+#define ibrs_disabled		(use_ibrs & SPEC_CTRL_IBRS_ADMIN_DISABLED)
 static inline void set_ibrs_inuse(void)
 {
 	if (ibrs_supported)
-		use_ibrs |= 0x1;
+		use_ibrs |= SPEC_CTRL_IBRS_INUSE;
 }
 static inline void clear_ibrs_inuse(void)
 {
-	use_ibrs &= ~0x1;
+	use_ibrs &= ~SPEC_CTRL_IBRS_INUSE;
 }
 static inline int check_ibrs_inuse(void)
 {
-	if (use_ibrs & 0x1)
+	if (use_ibrs & SPEC_CTRL_IBRS_INUSE)
 		return 1;
 
 	/* rmb to prevent wrong speculation for security */
@@ -82,19 +83,19 @@ static inline int check_ibrs_inuse(void)
 }
 static inline void set_ibrs_supported(void)
 {
-	use_ibrs |= 0x2;
+	use_ibrs |= SPEC_CTRL_IBRS_SUPPORTED;
 	if (!ibrs_disabled)
 		set_ibrs_inuse();
 }
 static inline void set_ibrs_disabled(void)
 {
-	use_ibrs |= 0x4;
+	use_ibrs |= SPEC_CTRL_IBRS_ADMIN_DISABLED;
 	if (check_ibrs_inuse())
 		clear_ibrs_inuse();
 }
 static inline void clear_ibrs_disabled(void)
 {
-	use_ibrs &= ~0x4;
+	use_ibrs &= ~SPEC_CTRL_IBRS_ADMIN_DISABLED;
 	set_ibrs_inuse();
 }
 #define ibrs_inuse		(check_ibrs_inuse())

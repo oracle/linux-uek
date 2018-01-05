@@ -6,6 +6,10 @@
 #include <asm/cpufeatures.h>
 #include <asm/alternative-asm.h>
 
+#define SPEC_CTRL_IBRS_INUSE           (1<<0)  /* OS enables IBRS usage */
+#define SPEC_CTRL_IBRS_SUPPORTED       (1<<1)  /* System supports IBRS */
+#define SPEC_CTRL_IBRS_ADMIN_DISABLED  (1<<2)  /* Admin disables IBRS */
+
 #ifdef __ASSEMBLY__
 
 .extern use_ibrs
@@ -98,7 +102,7 @@
 .endm
 
 .macro ENABLE_IBRS
-	testl	$1, use_ibrs
+	testl	$SPEC_CTRL_IBRS_INUSE, use_ibrs
 	jz	.Lskip_\@
 	PUSH_MSR_REGS
 	WRMSR_ASM $MSR_IA32_SPEC_CTRL, $SPEC_CTRL_IBRS
@@ -116,7 +120,7 @@
 .endm
 
 .macro ENABLE_IBRS_SAVE_AND_CLOBBER save_reg:req
-	testl	$1, use_ibrs
+	testl	$SPEC_CTRL_IBRS_INUSE, use_ibrs
 	jz	.Lskip_\@
 
 	movl	$MSR_IA32_SPEC_CTRL, %ecx
@@ -133,7 +137,7 @@
 .endm
 
 .macro RESTORE_IBRS_CLOBBER save_reg:req
-	testl	$1, use_ibrs
+	testl	$SPEC_CTRL_IBRS_INUSE, use_ibrs
 	jz	.Lskip_\@
 
 	cmpl	$SPEC_CTRL_IBRS, \save_reg
@@ -150,14 +154,14 @@
 .endm
 
 .macro ENABLE_IBRS_CLOBBER
-	testl	$1, use_ibrs
+	testl	$SPEC_CTRL_IBRS_INUSE, use_ibrs
 	jz	.Lskip_\@
 	WRMSR_ASM $MSR_IA32_SPEC_CTRL, $SPEC_CTRL_IBRS
 .Lskip_\@:
 .endm
 
 .macro DISABLE_IBRS_CLOBBER
-	testl	$1, use_ibrs
+	testl	$SPEC_CTRL_IBRS_INUSE, use_ibrs
 	jz	.Lskip_\@
 	WRMSR_ASM $MSR_IA32_SPEC_CTRL, $0
 .Lskip_\@:
