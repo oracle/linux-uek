@@ -171,5 +171,14 @@
 	ALTERNATIVE __stringify(__ASM_STUFF_RSB), "", X86_FEATURE_SMEP
 .endm
 
+#else
+enum {
+	IBRS_DISABLED,
+	/* in host kernel, disabled in guest and userland */
+	IBRS_ENABLED,
+	/* in host kernel and host userland, disabled in guest */
+	IBRS_ENABLED_USER,
+	IBRS_MAX = IBRS_ENABLED_USER,
+};
 #endif /* __ASSEMBLY__ */
 #endif /* _ASM_X86_SPEC_CTRL_H */
