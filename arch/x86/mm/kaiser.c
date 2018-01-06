@@ -276,6 +276,7 @@ void __init kaiser_init(void)
 
 	if (!kaiser_enabled)
 		return;
+
 	kaiser_init_all_pgds();
 
 	for_each_possible_cpu(cpu) {
@@ -305,6 +306,8 @@ void __init kaiser_init(void)
 				  __PAGE_KERNEL_RO);
 	kaiser_add_user_map_early((void *)VSYSCALL_START, PAGE_SIZE,
 				  __PAGE_KERNEL_VSYSCALL);
+
+	pr_info("Kernel/User page tables isolation: enabled\n");
 }
 
 /* Add a mapping to the shadow mapping, and synchronize the mappings */

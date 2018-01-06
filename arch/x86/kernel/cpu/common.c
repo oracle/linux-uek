@@ -178,7 +178,7 @@ static int __init x86_nokaiser_setup(char *s)
 #ifdef CONFIG_PAGE_TABLE_ISOLATION
 	kaiser_enabled = 0;
 	setup_clear_cpu_cap(X86_FEATURE_KAISER);
-	pr_info("nokaiser: KAISER feature disabled\n");
+	pr_info("Kernel/User page tables isolation: disabled\n");
 #endif
 	return 0;
 }
