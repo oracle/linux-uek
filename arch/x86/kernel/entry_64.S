@@ -1496,7 +1496,7 @@ ENTRY(paranoid_entry)
 	js 1f	/* negative -> in kernel */
 	SWAPGS
 	xorl %ebx,%ebx
-1:	ENABLE_IBRS_SAVE_AND_CLOBBER save_reg=%r13d
+1:
 #ifdef CONFIG_PAGE_TABLE_ISOLATION
 	/*
 	 * We might have come in between a swapgs and a SWITCH_KERNEL_CR3
@@ -1515,6 +1515,7 @@ ENTRY(paranoid_entry)
 	movq	%rax, %cr3
 2:
 #endif
+	ENABLE_IBRS_SAVE_AND_CLOBBER save_reg=%r13d
 	ret
 	CFI_ENDPROC
 END(paranoid_entry)
@@ -2003,6 +2004,7 @@ end_repeat_nmi:
 
 	/* paranoidentry do_nmi, 0; without TRACE_IRQS_OFF */
 	call do_nmi
+	RESTORE_IBRS_CLOBBER save_reg=%r13d
 #ifdef CONFIG_PAGE_TABLE_ISOLATION
 	/*
 	 * Unconditionally restore CR3.  We might be returning to
@@ -2011,9 +2013,6 @@ end_repeat_nmi:
 	 */
 	ALTERNATIVE "", "popq %rax; movq %rax, %cr3", X86_FEATURE_KAISER
 #endif
-
-	RESTORE_IBRS_CLOBBER save_reg=%r13d
-
 	testl %ebx,%ebx				/* swapgs needed? */
 	jnz nmi_restore
 nmi_swapgs:
