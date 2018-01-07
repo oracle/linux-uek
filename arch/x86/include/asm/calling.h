@@ -152,12 +152,12 @@ For 32-bit we have the following conventions - kernel is built with
 	.endm
 
 	.macro ZERO_EXTRA_REGS
-	xorl	%r15d, %r15d
-	xorl	%r14d, %r14d
-	xorl	%r13d, %r13d
-	xorl	%r12d, %r12d
-	xorl	%ebp, %ebp
-	xorl	%ebx, %ebx
+	xorq	%r15, %r15
+	xorq	%r14, %r14
+	xorq	%r13, %r13
+	xorq	%r12, %r12
+	xorq	%rbp, %rbp
+	xorq	%rbx, %rbx
 	.endm
 
 	.macro RESTORE_C_REGS_HELPER rstor_rax=1, rstor_rcx=1, rstor_r11=1, rstor_r8910=1, rstor_rdx=1
