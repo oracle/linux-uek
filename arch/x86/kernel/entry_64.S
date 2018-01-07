@@ -1717,7 +1717,6 @@ ENTRY(nmi)
 	cld
 	movq	%rsp, %rdx
 	movq    PER_CPU_VAR(cpu_current_top_of_stack), %rsp
-	ENABLE_IBRS
 	pushq	5*8(%rdx)	/* pt_regs->ss */
 	pushq	4*8(%rdx)	/* pt_regs->rsp */
 	pushq	3*8(%rdx)	/* pt_regs->flags */
@@ -1759,6 +1758,7 @@ ENTRY(nmi)
 	movq	%rax, %cr3
 2:
 #endif
+	ENABLE_IBRS
 	call	do_nmi
 	DISABLE_IBRS
 #ifdef CONFIG_PAGE_TABLE_ISOLATION
