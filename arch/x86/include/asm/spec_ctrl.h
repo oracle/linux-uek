@@ -128,7 +128,10 @@
 	add $(32*8), %rsp;
 
 .macro ENABLE_IBRS
-ALTERNATIVE "", __stringify(__ASM_ENABLE_IBRS), X86_FEATURE_SPEC_CTRL
+	testl	$SPEC_CTRL_IBRS_INUSE, use_ibrs
+	jz	7f
+	__ASM_ENABLE_IBRS
+7:
 .endm
 
 .macro ENABLE_IBRS_CLOBBER
