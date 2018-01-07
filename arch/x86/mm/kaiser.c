@@ -267,6 +267,9 @@ void __init kaiser_check_boottime_disable(void)
 	char arg[5];
 	int ret;
 
+	if (xen_pv_domain())
+		goto disable;
+
 	ret = cmdline_find_option(boot_command_line, "pti", arg, sizeof(arg));
 	if (ret > 0) {
 		if (!strncmp(arg, "on", 2))
