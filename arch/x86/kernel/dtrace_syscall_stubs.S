@@ -116,7 +116,6 @@
 ENTRY(dtrace_stub_\func)
 	CFI_STARTPROC
 	DEFAULT_FRAME 0, 8
-	SAVE_EXTRA_REGS 8
 	jmp dtrace_sys_\func
 	CFI_ENDPROC
 END(dtrace_stub_\func)
@@ -160,7 +159,6 @@ END(dtrace_stub_execveat)
 ENTRY(dtrace_stub_rt_sigreturn)
 	CFI_STARTPROC
 	DEFAULT_FRAME 0, 8
-	SAVE_EXTRA_REGS 8
 	call dtrace_sys_rt_sigreturn
 	addq    $8, %rsp
 	CFI_ADJUST_CFA_OFFSET -8

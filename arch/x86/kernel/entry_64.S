@@ -257,6 +257,7 @@ GLOBAL(system_call_after_swapgs)
 	 * Will restore the callee saved extra regs at end of syscall.
 	 */
 	SAVE_EXTRA_REGS
+	ZERO_EXTRA_REGS
 
 	STUFF_RSB
 
@@ -287,6 +288,8 @@ system_call_fastpath:
 	 */
 	DISABLE_INTERRUPTS(CLBR_NONE)
 
+	RESTORE_EXTRA_REGS
+
 	/*
 	 * We must check ti flags with interrupts (or at least preemption)
 	 * off because we must *never* return to userspace without
@@ -303,7 +306,6 @@ system_call_fastpath:
 	movq	RIP(%rsp),%rcx
 	CFI_REGISTER	rip,rcx
 	movq	EFLAGS(%rsp),%r11
-	RESTORE_EXTRA_REGS
 	/*CFI_REGISTER	rflags,r11*/
 	RESTORE_C_REGS_EXCEPT_RCX_R11
 	/*
@@ -533,7 +535,6 @@ END(system_call)
 ENTRY(stub_\func)
 	CFI_STARTPROC
 	DEFAULT_FRAME 0, 8		/* offset 8: return address */
-	SAVE_EXTRA_REGS 8
 	jmp sys_\func
 	CFI_ENDPROC
 END(stub_\func)
@@ -617,14 +618,6 @@ END(stub32_execveat)
 ENTRY(stub_rt_sigreturn)
 	CFI_STARTPROC
 	DEFAULT_FRAME 0, 8
-	/*
-	 * SAVE_EXTRA_REGS result is not normally needed:
-	 * sigreturn overwrites all pt_regs->GPREGS.
-	 * But sigreturn can fail (!), and there is no easy way to detect that.
-	 * To make sure RESTORE_EXTRA_REGS doesn't restore garbage on error,
-	 * we SAVE_EXTRA_REGS here.
-	 */
-	SAVE_EXTRA_REGS 8
 	call sys_rt_sigreturn
 return_from_stub:
 	addq	$8, %rsp
@@ -639,7 +632,6 @@ END(stub_rt_sigreturn)
 ENTRY(stub_x32_rt_sigreturn)
 	CFI_STARTPROC
 	DEFAULT_FRAME 0, 8
-	SAVE_EXTRA_REGS 8
 	call sys32_x32_rt_sigreturn
 	jmp  return_from_stub
 	CFI_ENDPROC
