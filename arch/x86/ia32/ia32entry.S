@@ -214,6 +214,9 @@ sysexit_from_sys_call:
 	movl	EFLAGS(%rsp),%r11d	/* User eflags */
 	/*CFI_RESTORE rflags*/
 	TRACE_IRQS_ON
+
+	DISABLE_IBRS
+
 	SWITCH_USER_CR3
 
 	/*
@@ -560,7 +563,6 @@ ia32_sysret:
 	movq %rax,RAX(%rsp)
 ia32_ret_from_sys_call:
 	CLEAR_RREGS
-	DISABLE_IBRS
 	jmp int_ret_from_sys_call
 
 ia32_tracesys:
