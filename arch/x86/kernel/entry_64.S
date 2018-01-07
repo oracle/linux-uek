@@ -514,6 +514,7 @@ syscall_return_via_sysret:
 	CFI_RESTORE_STATE
 
 opportunistic_sysret_failed:
+	DISABLE_IBRS
 	/*
 	 * This opens a window where we have a user CR3, but are
 	 * running in the kernel.  This makes using the CS
@@ -813,6 +814,7 @@ retint_swapgs:		/* return to user-space */
 	DISABLE_INTERRUPTS(CLBR_ANY)
 	TRACE_IRQS_IRETQ
 
+	DISABLE_IBRS
 	SWITCH_USER_CR3
 	SWAPGS
 	jmp	restore_c_regs_and_iret
@@ -840,7 +842,6 @@ retint_kernel:
  * which come from interrupts/exception and from syscalls, merge.
  */
 restore_c_regs_and_iret:
-	DISABLE_IBRS
 	RESTORE_C_REGS
 	REMOVE_PT_GPREGS_FROM_STACK 8
 	INTERRUPT_RETURN
@@ -1759,6 +1760,7 @@ ENTRY(nmi)
 2:
 #endif
 	call	do_nmi
+	DISABLE_IBRS
 #ifdef CONFIG_PAGE_TABLE_ISOLATION
 	/*
 	 * Unconditionally restore CR3.  I know we return to
