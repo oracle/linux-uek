@@ -307,6 +307,7 @@ system_call_fastpath:
 	CFI_REGISTER	rip,rcx
 	movq	EFLAGS(%rsp),%r11
 	/*CFI_REGISTER	rflags,r11*/
+	DISABLE_IBRS
 	RESTORE_C_REGS_EXCEPT_RCX_R11
 	/*
 	 * This opens a window where we have a user CR3, but are
