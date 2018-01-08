@@ -291,14 +291,14 @@ skip:
 
 enable:
 	if (enable)
-		setup_force_cpu_cap(X86_FEATURE_KAISER);
+		setup_force_cpu_cap(X86_FEATURE_PTI);
 
 	return;
 
 disable:
 	pr_info("disabled\n");
 	kaiser_enabled = 0;
-	setup_clear_cpu_cap(X86_FEATURE_KAISER);
+	setup_clear_cpu_cap(X86_FEATURE_PTI);
 }
 
 /*
