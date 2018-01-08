@@ -99,7 +99,6 @@ xfs_iformat_fork(
 	if (error)
 		return error;
 
-
 	if (xfs_is_reflink_inode(ip)) {
 		ASSERT(ip->i_cowfp == NULL);
 		xfs_ifork_init_cow(ip);
