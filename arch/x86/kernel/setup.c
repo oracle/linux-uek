@@ -998,10 +998,10 @@ void __init setup_arch(char **cmdline_p)
 	init_hypervisor_platform();
 
 #ifdef CONFIG_KAISER
-	if (xen_pv_domain()) {
+	if (xen_pv_domain() ||
+	    boot_cpu_data.x86_vendor == X86_VENDOR_AMD) {
 		kaiser_enabled = 0;
 		setup_clear_cpu_cap(X86_FEATURE_KAISER);
-		/* No message logged in this case by design */
 	}
 #endif
 	x86_init.resources.probe_roms();

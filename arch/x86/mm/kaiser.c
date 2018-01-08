@@ -277,6 +277,8 @@ void __init kaiser_init(void)
 
 	if (!kaiser_enabled) {
 		setup_clear_cpu_cap(X86_FEATURE_KAISER);
+		if (!xen_pv_domain())		/* no message for xen pv */
+			pr_info("Kernel/User page tables isolation: disabled\n");
 		return;
 	}
 
@@ -312,6 +314,8 @@ void __init kaiser_init(void)
 				  __PAGE_KERNEL_VVAR);
 	kaiser_add_user_map_early((void *)VSYSCALL_START, PAGE_SIZE,
 				  vsyscall_pgprot);
+
+	pr_info("Kernel/User page tables isolation: enabled\n");
 }
 
 /* Add a mapping to the shadow mapping, and synchronize the mappings */
@@ -415,8 +419,47 @@ static int __init x86_nokaiser_setup(char *s)
 		return -EINVAL;
 
 	kaiser_enabled = 0;
-	pr_info("Kernel/User page tables isolation: disabled\n");
-
 	return 0;
 }
 early_param("nopti", x86_nokaiser_setup);
+
+static int __init x86_pti_setup(char *s)
+{
+
+	if (!strlen(s))
+		return -EINVAL;
+
+	/*
+	 * Code in setup_arch() already takes care of the 'auto' case below.
+	 * If !kaiser_enabled then either xen or AMD CPU.
+	 */
+	if (!strncmp(s, "off", 3)) {
+		if (!kaiser_enabled)
+			return 0;
+
+		kaiser_enabled = 0;
+		setup_clear_cpu_cap(X86_FEATURE_KAISER);
+		return 0;
+	}
+
+	if (!strncmp(s, "on", 2)) {
+		if (kaiser_enabled)
+			return 0;
+
+		/*
+		 * Disabled because of xen or non-impacted CPU
+		 */
+		if (xen_pv_domain())
+			return 0;		/* never enable if xen_pv */
+
+		kaiser_enabled = 1;
+		setup_force_cpu_cap(X86_FEATURE_PTI);
+		return 0;
+	}
+
+	if (!strncmp(s, "auto", 4))	/* already handled in setup_arch() */
+		return 0;
+
+	return -EINVAL;
+}
+__setup("pti=", x86_pti_setup);
