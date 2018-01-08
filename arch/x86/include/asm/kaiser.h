@@ -47,14 +47,14 @@ movq \reg, %cr3
 .endm
 
 .macro SWITCH_KERNEL_CR3
-ALTERNATIVE "jmp 8f", "pushq %rax", X86_FEATURE_KAISER
+ALTERNATIVE "jmp 8f", "pushq %rax", X86_FEATURE_PTI
 _SWITCH_TO_KERNEL_CR3 %rax
 popq %rax
 8:
 .endm
 
 .macro SWITCH_USER_CR3
-ALTERNATIVE "jmp 8f", "pushq %rax", X86_FEATURE_KAISER
+ALTERNATIVE "jmp 8f", "pushq %rax", X86_FEATURE_PTI
 _SWITCH_TO_USER_CR3 %rax %al
 popq %rax
 8:
@@ -63,7 +63,7 @@ popq %rax
 .macro SWITCH_KERNEL_CR3_NO_STACK
 ALTERNATIVE "jmp 8f", \
 	__stringify(movq %rax, PER_CPU_VAR(unsafe_stack_register_backup)), \
-	X86_FEATURE_KAISER
+	X86_FEATURE_PTI
 _SWITCH_TO_KERNEL_CR3 %rax
 movq PER_CPU_VAR(unsafe_stack_register_backup), %rax
 8:
