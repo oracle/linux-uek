@@ -18,6 +18,7 @@
  */
 
 #include <linux/acpi.h>
+#include <linux/arm_sdei.h>
 #include <linux/delay.h>
 #include <linux/init.h>
 #include <linux/spinlock.h>
@@ -834,6 +835,7 @@ static void ipi_cpu_stop(unsigned int cpu)
 	set_cpu_online(cpu, false);
 
 	local_daif_mask();
+	sdei_mask_local_cpu();
 
 	while (1)
 		cpu_relax();
@@ -851,6 +853,7 @@ static void ipi_cpu_crash_stop(unsigned int cpu, struct pt_regs *regs)
 	atomic_dec(&waiting_for_crash_ipi);
 
 	local_irq_disable();
+	sdei_mask_local_cpu();
 
 #ifdef CONFIG_HOTPLUG_CPU
 	if (cpu_ops[cpu]->cpu_die)
@@ -970,6 +973,8 @@ void smp_send_stop(void)
 	if (num_online_cpus() > 1)
 		pr_warning("SMP: failed to stop secondary CPUs %*pbl\n",
 			   cpumask_pr_args(cpu_online_mask));
+
+	sdei_mask_local_cpu();
 }
 
 #ifdef CONFIG_KEXEC_CORE
@@ -988,8 +993,10 @@ void crash_smp_send_stop(void)
 
 	cpus_stopped = 1;
 
-	if (num_online_cpus() == 1)
+	if (num_online_cpus() == 1) {
+		sdei_mask_local_cpu();
 		return;
+	}
 
 	cpumask_copy(&mask, cpu_online_mask);
 	cpumask_clear_cpu(smp_processor_id(), &mask);
@@ -1007,6 +1014,8 @@ void crash_smp_send_stop(void)
 	if (atomic_read(&waiting_for_crash_ipi) > 0)
 		pr_warning("SMP: failed to stop secondary CPUs %*pbl\n",
 			   cpumask_pr_args(&mask));
+
+	sdei_mask_local_cpu();
 }
 
 bool smp_crash_stop_failed(void)
