@@ -149,6 +149,9 @@ ENTRY(ia32_sysenter_target)
 	pushq_cfi %rax
 	cld
 	SAVE_ARGS 0,0,1
+
+	ENABLE_IBRS
+
  	/* no need to do an access_ok check here because rbp has been
  	   32bit zero extended */ 
 1:	movl	(%rbp),%ebp
@@ -173,6 +176,8 @@ sysenter_dispatch:
 	testl	$_TIF_ALLWORK_MASK,TI_flags(%r10)
 	jnz	sysexit_audit
 sysexit_from_sys_call:
+	DISABLE_IBRS
+
 	andl    $~TS_COMPAT,TI_status(%r10)
 	/* clear IF, that popfq doesn't enable interrupts early */
 	andl  $~0x200,EFLAGS-R11(%rsp) 
@@ -291,6 +296,9 @@ ENTRY(ia32_cstar_target)
 	movl	%esp,%r8d
 	CFI_REGISTER	rsp,r8
 	movq	PER_CPU_VAR(kernel_stack),%rsp
+
+	ENABLE_IBRS
+
 	/*
 	 * No need to follow this irqs on/off section: the syscall
 	 * disabled irqs and here we enable it straight after entry:
@@ -334,6 +342,8 @@ cstar_dispatch:
 	testl $_TIF_ALLWORK_MASK,TI_flags(%r10)
 	jnz sysretl_audit
 sysretl_from_sys_call:
+	DISABLE_IBRS
+
 	andl $~TS_COMPAT,TI_status(%r10)
 	RESTORE_ARGS 1,-ARG_SKIP,1,1,1
 	movl RIP-ARGOFFSET(%rsp),%ecx
@@ -418,6 +428,9 @@ ENTRY(ia32_syscall)
 	PARAVIRT_ADJUST_EXCEPTION_FRAME
 	SWAPGS
 	SWITCH_KERNEL_CR3_NO_STACK
+
+	ENABLE_IBRS
+
 	/*
 	 * No need to follow this irqs on/off section: the syscall
 	 * disabled irqs and here we enable it straight after entry:
@@ -429,6 +442,7 @@ ENTRY(ia32_syscall)
 	/* note the registers are not zero extended to the sf.
 	   this could be a problem. */
 	SAVE_ARGS 0,0,1
+
 	GET_THREAD_INFO(%r10)
 	orl   $TS_COMPAT,TI_status(%r10)
 	testl $_TIF_WORK_SYSCALL_ENTRY,TI_flags(%r10)

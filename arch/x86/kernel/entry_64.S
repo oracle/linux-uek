@@ -56,6 +56,7 @@
 #include <asm/alternative-asm.h>
 #include <asm/cpufeature.h>
 #include <asm/kaiser.h>
+#include <asm/msr-index.h>
 
 /* Avoid __ASSEMBLER__'ifying <linux/audit.h> just for this.  */
 #include <linux/elf-em.h>
@@ -414,6 +415,8 @@ ENTRY(save_paranoid)
 	movq	%rax, %cr3
 2:
 #endif
+	ENABLE_IBRS_SAVE_AND_CLOBBER save_reg=%r13d
+
 	ret
 	CFI_ENDPROC
 END(save_paranoid)
@@ -501,6 +504,9 @@ ENTRY(system_call_after_swapgs)
 
 	movq	%rsp,PER_CPU_VAR(old_rsp)
 	movq	PER_CPU_VAR(kernel_stack),%rsp
+
+	ENABLE_IBRS
+
 	/*
 	 * No need to follow this irqs off/on section - it's straight
 	 * and short:
@@ -540,6 +546,9 @@ sysret_check:
 	 */
 	TRACE_IRQS_ON
 	movq RIP-ARGOFFSET(%rsp),%rcx
+
+	DISABLE_IBRS
+
 	CFI_REGISTER	rip,rcx
 	RESTORE_ARGS 0,-ARG_SKIP,1
 	/*CFI_REGISTER	rflags,r11*/
@@ -896,6 +905,8 @@ retint_swapgs:		/* return to user-space */
 	 * switch CR3 in NMIs.  Normal interrupts are OK because
 	 * they are off here.
 	 */
+	DISABLE_IBRS
+
 	SWITCH_USER_CR3
 	SWAPGS
 	jmp restore_args
@@ -1440,6 +1451,9 @@ paranoid_kernel:
 	/* No ALTERNATIVE for X86_FEATURE_PTI: save_paranoid sets %ebx */
 	testl	$2, %ebx		/* SWITCH_USER_CR3 needed? */
 	jz	paranoid_exit_no_switch
+
+	RESTORE_IBRS_CLOBBER save_reg=%r13d
+
 	SWITCH_USER_CR3
 paranoid_exit_no_switch:
 #endif
@@ -1515,6 +1529,7 @@ ENTRY(error_entry)
 	je error_kernelspace
 error_swapgs:
 	SWAPGS
+	ENABLE_IBRS_CLOBBER
 error_sti:
 	TRACE_IRQS_OFF
 	ret
@@ -1593,6 +1608,9 @@ nmi_kernel:
 	/* No ALTERNATIVE for X86_FEATURE_PTI: save_paranoid sets %ebx */
 	testl	$2, %ebx		/* SWITCH_USER_CR3 needed? */
 	jz	nmi_exit_no_switch
+
+	RESTORE_IBRS_CLOBBER save_reg=%r13d
+
 	SWITCH_USER_CR3
 nmi_exit_no_switch:
 #endif

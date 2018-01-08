@@ -1,4 +1,5 @@
 #include <asm/msr-index.h>
+#include <asm/cpufeature.h>
 
 /*
 
