@@ -404,7 +404,7 @@ ENTRY(save_paranoid)
 	 * unconditionally, but we need to find out whether the reverse
 	 * should be done on return (conveyed to paranoid_exit in %ebx).
 	 */
-	ALTERNATIVE "jmp 2f", "movq %cr3, %rax", X86_FEATURE_KAISER
+	ALTERNATIVE "jmp 2f", "movq %cr3, %rax", X86_FEATURE_PTI
 	testl	$KAISER_SHADOW_PGD_OFFSET, %eax
 	jz	2f
 	orl	$2, %ebx
@@ -1437,7 +1437,7 @@ paranoid_kernel:
 	movq	%r12, %rbx		/* restore after paranoid_userspace */
 	TRACE_IRQS_IRETQ 0
 #ifdef CONFIG_PAGE_TABLE_ISOLATION
-	/* No ALTERNATIVE for X86_FEATURE_KAISER: save_paranoid sets %ebx */
+	/* No ALTERNATIVE for X86_FEATURE_PTI: save_paranoid sets %ebx */
 	testl	$2, %ebx		/* SWITCH_USER_CR3 needed? */
 	jz	paranoid_exit_no_switch
 	SWITCH_USER_CR3
@@ -1590,7 +1590,7 @@ ENTRY(nmi)
 nmi_kernel:
 	movq	%r12, %rbx		/* restore after nmi_userspace */
 #ifdef CONFIG_PAGE_TABLE_ISOLATION
-	/* No ALTERNATIVE for X86_FEATURE_KAISER: save_paranoid sets %ebx */
+	/* No ALTERNATIVE for X86_FEATURE_PTI: save_paranoid sets %ebx */
 	testl	$2, %ebx		/* SWITCH_USER_CR3 needed? */
 	jz	nmi_exit_no_switch
 	SWITCH_USER_CR3

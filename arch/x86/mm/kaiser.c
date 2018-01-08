@@ -275,11 +275,11 @@ void __init kaiser_init(void)
 	int cpu;
 
 	if (!kaiser_enabled) {
-		setup_clear_cpu_cap(X86_FEATURE_KAISER);
+		setup_clear_cpu_cap(X86_FEATURE_PTI);
 		return;
 	}
 
-	setup_force_cpu_cap(X86_FEATURE_KAISER);
+	setup_force_cpu_cap(X86_FEATURE_PTI);
 
 	kaiser_init_all_pgds();
 
@@ -432,7 +432,7 @@ static int __init x86_pti_setup(char *s)
 	 */
 	if (!strncmp(s, "off", 3)) {
 		kaiser_enabled = 0;
-		setup_clear_cpu_cap(X86_FEATURE_KAISER);
+		setup_clear_cpu_cap(X86_FEATURE_PTI);
 		pr_info("Kernel/User page tables isolation: disabled\n");
 		return 0;
 	}

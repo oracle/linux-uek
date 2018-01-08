@@ -845,7 +845,7 @@ void __init setup_arch(char **cmdline_p)
 #ifdef CONFIG_PAGE_TABLE_ISOLATION
 	if (xen_pv_domain()) {
 		kaiser_enabled = 0;
-		setup_clear_cpu_cap(X86_FEATURE_KAISER);
+		setup_clear_cpu_cap(X86_FEATURE_PTI);
 		/* No message logged in this case by design */
 	}
 #endif
