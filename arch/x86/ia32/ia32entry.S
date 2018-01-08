@@ -151,6 +151,8 @@ ENTRY(ia32_sysenter_target)
 	sub	$(10*8),%rsp /* pt_regs->r8-11,bp,bx,r12-15 not saved */
 	CFI_ADJUST_CFA_OFFSET 10*8
 
+	SAVE_EXTRA_REGS
+	CLEAR_R8_TO_R15
 	ENABLE_IBRS
 	STUFF_RSB
 
@@ -543,6 +545,8 @@ ENTRY(ia32_syscall)
 	sub	$(10*8),%rsp /* pt_regs->r8-11,bp,bx,r12-15 not saved */
 	CFI_ADJUST_CFA_OFFSET 10*8
 
+	SAVE_EXTRA_REGS
+	CLEAR_R8_TO_R15
 	ENABLE_IBRS
 	STUFF_RSB
 

@@ -160,6 +160,17 @@ For 32-bit we have the following conventions - kernel is built with
 	xorq	%rbx, %rbx
 	.endm
 
+	.macro CLEAR_R8_TO_R15
+	xorq %r15, %r15
+	xorq %r14, %r14
+	xorq %r13, %r13
+	xorq %r12, %r12
+	xorq %r11, %r11
+	xorq %r10, %r10
+	xorq %r9, %r9
+	xorq %r8, %r8
+	.endm
+
 	.macro RESTORE_C_REGS_HELPER rstor_rax=1, rstor_rcx=1, rstor_r11=1, rstor_r8910=1, rstor_rdx=1
 	.if \rstor_r11
 	movq_cfi_restore 6*8, r11
