@@ -1996,6 +1996,8 @@ end_repeat_nmi:
 	DEFAULT_FRAME 0				/* XXX: Do we need this? */
 
 	/* paranoidentry do_nmi, 0; without TRACE_IRQS_OFF */
+	STUFF_RSB
+	ENABLE_IBRS_SAVE_AND_CLOBBER save_reg=%r13d
 	call do_nmi
 	RESTORE_IBRS_CLOBBER save_reg=%r13d
 #ifdef CONFIG_PAGE_TABLE_ISOLATION
