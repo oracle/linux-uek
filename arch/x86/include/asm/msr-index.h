@@ -80,6 +80,11 @@
 #define MSR_IA32_LASTBRANCHTOIP		0x000001dc
 #define MSR_IA32_LASTINTFROMIP		0x000001dd
 #define MSR_IA32_LASTINTTOIP		0x000001de
+#define MSR_IA32_SPEC_CTRL		0x00000048
+#define SPEC_CTRL_FEATURE_DISABLE_IBRS	(0 << 0)
+#define SPEC_CTRL_FEATURE_ENABLE_IBRS	(1 << 0)
+#define SPEC_CTRL_FEATURE_SET_IBPB	(1 << 0)
+#define MSR_IA32_PRED_CMD		0x00000049
 
 /* DEBUGCTLMSR bits (others vary by model): */
 #define DEBUGCTLMSR_LBR			(1UL <<  0) /* last branch recording */
