@@ -515,6 +515,11 @@ xfs_iget_cache_miss(
 	if (error)
 		goto out_destroy;
 
+	if (!xfs_inode_verify_forks(ip)) {
+		error = -EFSCORRUPTED;
+		goto out_destroy;
+	}
+
 	trace_xfs_iget_miss(ip);
 
 
