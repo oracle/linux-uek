@@ -419,3 +419,29 @@ static int __init x86_nokaiser_setup(char *s)
 	return 0;
 }
 early_param("nopti", x86_nokaiser_setup);
+
+static int __init x86_pti_setup(char *s)
+{
+
+	if (!strlen(s))
+		return -EINVAL;
+
+	/*
+	 * Default is pti on.  Only way this routine makes any change
+	 * is if "off" is specified.
+	 */
+	if (!strncmp(s, "off", 3)) {
+		kaiser_enabled = 0;
+		setup_clear_cpu_cap(X86_FEATURE_KAISER);
+		pr_info("Kernel/User page tables isolation: disabled\n");
+		return 0;
+	}
+
+	if (!strncmp(s, "on", 2))
+		return 0;
+	if (!strncmp(s, "auto", 4))
+		return 0;
+
+	return -EINVAL;
+}
+__setup("pti=", x86_pti_setup);
