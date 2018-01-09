@@ -224,6 +224,8 @@ GLOBAL(system_call_after_swapgs)
 
 	ENABLE_IBRS
 
+	TRACE_IRQS_OFF
+
 	/* Construct struct pt_regs on stack */
 	pushq_cfi $__USER_DS			/* pt_regs->ss */
 	pushq_cfi PER_CPU_VAR(rsp_scratch)	/* pt_regs->sp */
@@ -260,8 +262,6 @@ GLOBAL(system_call_after_swapgs)
 	ZERO_EXTRA_REGS
 
 	STUFF_RSB
-
-	TRACE_IRQS_OFF
 
 	testl $_TIF_WORK_SYSCALL_ENTRY, ASM_THREAD_INFO(TI_flags, %rsp, SIZEOF_PTREGS)
 	jnz tracesys
