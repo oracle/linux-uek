@@ -107,7 +107,10 @@
 	PUSH_MSR_REGS
 	WRMSR_ASM $MSR_IA32_SPEC_CTRL, $SPEC_CTRL_FEATURE_ENABLE_IBRS
 	POP_MSR_REGS
+	jmp	.Ldone_\@
 .Lskip_\@:
+	 lfence
+.Ldone_\@:
 .endm
 
 .macro DISABLE_IBRS
@@ -157,7 +160,10 @@
 	testl	$SPEC_CTRL_IBRS_INUSE, use_ibrs
 	jz	.Lskip_\@
 	WRMSR_ASM $MSR_IA32_SPEC_CTRL, $SPEC_CTRL_FEATURE_ENABLE_IBRS
+	jmp	.Ldone_\@
 .Lskip_\@:
+	 lfence
+.Ldone_\@:
 .endm
 
 .macro DISABLE_IBRS_CLOBBER
