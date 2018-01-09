@@ -373,6 +373,10 @@ ENTRY(ia32_cstar_target)
 	movl	%esp,%r8d
 	CFI_REGISTER	rsp,r8
 	movq	PER_CPU_VAR(cpu_current_top_of_stack),%rsp
+
+	ENABLE_IBRS
+	STUFF_RSB
+
 	ENABLE_INTERRUPTS(CLBR_NONE)
 
 	/* Zero-extending 32-bit regs, do not remove */
@@ -435,6 +439,7 @@ sysretl_from_sys_call:
 	xorq	%r9,%r9
 	xorq	%r8,%r8
 	TRACE_IRQS_ON
+	DISABLE_IBRS
 	SWITCH_USER_CR3
 	movl RSP(%rsp),%esp
 	CFI_RESTORE rsp
