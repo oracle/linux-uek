@@ -313,7 +313,6 @@ sysenter_tracesys:
 	testl	$(_TIF_WORK_SYSCALL_ENTRY & ~_TIF_SYSCALL_AUDIT), ASM_THREAD_INFO(TI_flags, %rsp, SIZEOF_PTREGS)
 	jz	sysenter_auditsys
 #endif
-	SAVE_EXTRA_REGS
 	CLEAR_RREGS
 	movq	$-ENOSYS,RAX(%rsp)/* ptrace can change this for a bad syscall */
 	movq	%rsp,%rdi        /* &pt_regs -> arg1 */
