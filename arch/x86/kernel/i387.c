@@ -399,6 +399,9 @@ int xstateregs_set(struct task_struct *target, const struct user_regset *regset,
 	xsave = &target->thread.fpu.state->xsave;
 
 	ret = user_regset_copyin(&pos, &count, &kbuf, &ubuf, xsave, 0, -1);
+	/* xcomp_bv must be 0 when using uncompacted format */
+	if (!ret && xsave->xsave_hdr.xcomp_bv)
+		return -EINVAL;
 	/*
 	 * mxcsr reserved bits must be masked to zero for security reasons.
 	 */
