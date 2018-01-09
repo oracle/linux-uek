@@ -8187,14 +8187,15 @@ static void __noclone vmx_vcpu_run(struct kvm_vcpu *vcpu)
 	if (vcpu->guest_debug & KVM_GUESTDBG_SINGLESTEP)
 		vmx_set_interrupt_shadow(vcpu, 0);
 
-	if (ibrs_inuse &&
-	    vmx->spec_ctrl != SPEC_CTRL_FEATURE_ENABLE_IBRS)
-		wrmsrl(MSR_IA32_SPEC_CTRL, vmx->spec_ctrl);
-
 	atomic_switch_perf_msrs(vmx);
 	debugctlmsr = get_debugctlmsr();
 
 	vmx->__launched = vmx->loaded_vmcs->launched;
+
+	if (ibrs_inuse &&
+	    vmx->spec_ctrl != SPEC_CTRL_FEATURE_ENABLE_IBRS)
+		wrmsrl(MSR_IA32_SPEC_CTRL, vmx->spec_ctrl);
+
 	asm(
 		/* Store host registers */
 		"push %%" _ASM_DX "; push %%" _ASM_BP ";"
@@ -8319,8 +8320,7 @@ static void __noclone vmx_vcpu_run(struct kvm_vcpu *vcpu)
 
 	if (ibrs_inuse) {
 		rdmsrl(MSR_IA32_SPEC_CTRL, vmx->spec_ctrl);
-		if (!vmx->spec_ctrl)
-			wrmsrl(MSR_IA32_SPEC_CTRL, SPEC_CTRL_FEATURE_ENABLE_IBRS);
+		wrmsrl(MSR_IA32_SPEC_CTRL, SPEC_CTRL_FEATURE_ENABLE_IBRS);
 	}
 	stuff_RSB();
 
