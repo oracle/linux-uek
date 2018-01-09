@@ -124,6 +124,10 @@ ENTRY(ia32_sysenter_target)
 	SWAPGS_UNSAFE_STACK
 	SWITCH_KERNEL_CR3_NO_STACK
 	movq	PER_CPU_VAR(cpu_current_top_of_stack), %rsp
+
+	ENABLE_IBRS
+	STUFF_RSB
+
 	ENABLE_INTERRUPTS(CLBR_NONE)
 
 	/* Zero-extending 32-bit regs, do not remove */
@@ -153,8 +157,6 @@ ENTRY(ia32_sysenter_target)
 
 	SAVE_EXTRA_REGS
 	CLEAR_R8_TO_R15
-	ENABLE_IBRS
-	STUFF_RSB
 
 	/*
 	 * no need to do an access_ok check here because rbp has been
