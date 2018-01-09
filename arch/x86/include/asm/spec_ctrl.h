@@ -8,6 +8,7 @@
 #include <asm/microcode.h>
 
 void scan_spec_ctrl_feature(struct cpuinfo_x86 *c);
+void rescan_spec_ctrl_feature(struct cpuinfo_x86 *c);
 bool ibrs_inuse(void);
 bool ibpb_inuse(void);
 

@@ -87,6 +87,7 @@
 #include <xen/xen.h>
 #include <asm/microcode.h>
 #include <asm/processor.h>
+#include <asm/spec_ctrl.h>
 
 MODULE_DESCRIPTION("Microcode Update Driver");
 MODULE_AUTHOR("Tigran Aivazian <tigran@aivazian.fsnet.co.uk>");
@@ -223,6 +224,9 @@ static ssize_t microcode_write(struct file *file, const char __user *buf,
 
 	if (do_microcode_update(buf, len) == 0)
 		ret = (ssize_t)len;
+
+	/* check spec_ctrl capabilities */
+	rescan_spec_ctrl_feature(&boot_cpu_data);
 
 	mutex_unlock(&microcode_mutex);
 	put_online_cpus();
