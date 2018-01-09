@@ -319,6 +319,8 @@ ENTRY(save_args)
 	movq_cfi r10, R10+8-RBP
 	movq_cfi r11, R11+8-RBP
 
+	STUFF_RSB
+
 	leaq -RBP+8(%rsp),%rdi	/* arg1 for handler */
 	movq_cfi rbp, 8		/* push %rbp */
 	leaq 8(%rsp), %rbp		/* mov %rsp, %ebp */
@@ -389,6 +391,9 @@ ENTRY(save_paranoid)
 	movq_cfi r13, R13+8
 	movq_cfi r14, R14+8
 	movq_cfi r15, R15+8
+
+	STUFF_RSB
+
 	movl $1,%ebx
 	movl $MSR_GS_BASE,%ecx
 	rdmsr
@@ -506,6 +511,7 @@ ENTRY(system_call_after_swapgs)
 	movq	PER_CPU_VAR(kernel_stack),%rsp
 
 	ENABLE_IBRS
+	STUFF_RSB
 
 	/*
 	 * No need to follow this irqs off/on section - it's straight
@@ -1517,6 +1523,9 @@ ENTRY(error_entry)
 	movq_cfi r13, R13+8
 	movq_cfi r14, R14+8
 	movq_cfi r15, R15+8
+
+	STUFF_RSB
+
 	/*
 	 * error_entry() always returns with a kernel gsbase and
 	 * CR3.  We must also have a kernel CR3/gsbase before
@@ -1584,11 +1593,13 @@ END(error_exit)
 
 	/* runs on exception stack */
 ENTRY(nmi)
+	STUFF_RSB
 	INTR_FRAME
 	PARAVIRT_ADJUST_EXCEPTION_FRAME
 	pushq_cfi $-1
 	subq $ORIG_RAX-R15, %rsp
 	CFI_ADJUST_CFA_OFFSET ORIG_RAX-R15
+	/* ENABLE_IBRS called in save_paranoid. */
 	call save_paranoid
 	DEFAULT_FRAME 0
 	/* paranoidentry do_nmi, 0; without TRACE_IRQS_OFF */

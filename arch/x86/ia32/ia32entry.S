@@ -151,6 +151,7 @@ ENTRY(ia32_sysenter_target)
 	SAVE_ARGS 0,0,1
 
 	ENABLE_IBRS
+	STUFF_RSB
 
  	/* no need to do an access_ok check here because rbp has been
  	   32bit zero extended */ 
@@ -296,15 +297,16 @@ ENTRY(ia32_cstar_target)
 	movl	%esp,%r8d
 	CFI_REGISTER	rsp,r8
 	movq	PER_CPU_VAR(kernel_stack),%rsp
-
-	ENABLE_IBRS
-
 	/*
 	 * No need to follow this irqs on/off section: the syscall
 	 * disabled irqs and here we enable it straight after entry:
 	 */
 	ENABLE_INTERRUPTS(CLBR_NONE)
 	SAVE_ARGS 8,1,1
+
+	ENABLE_IBRS
+	STUFF_RSB
+
 	movl 	%eax,%eax	/* zero extension */
 	movq	%rax,ORIG_RAX-ARGOFFSET(%rsp)
 	movq	%rcx,RIP-ARGOFFSET(%rsp)
@@ -430,6 +432,7 @@ ENTRY(ia32_syscall)
 	SWITCH_KERNEL_CR3_NO_STACK
 
 	ENABLE_IBRS
+	STUFF_RSB
 
 	/*
 	 * No need to follow this irqs on/off section: the syscall
