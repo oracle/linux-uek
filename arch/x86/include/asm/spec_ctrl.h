@@ -12,6 +12,9 @@ void rescan_spec_ctrl_feature(struct cpuinfo_x86 *c);
 bool ibrs_inuse(void);
 bool ibpb_inuse(void);
 
+void unprotected_firmware_begin(void);
+void unprotected_firmware_end(void);
+
 extern unsigned int dynamic_ibrs;
 extern u32 sysctl_ibrs_enabled;
 extern unsigned int dynamic_ibpb;
