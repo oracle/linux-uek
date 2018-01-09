@@ -1088,9 +1088,7 @@ BuildKernel() {
 %endif
 
 %if %{with_dtrace}
-    if [ "$Flavour" != "debug" ]; then
-	make -s ARCH=$Arch V=1 %{?_smp_mflags} ctf %{?sparse_mflags} || exit 1
-    fi
+    make -s ARCH=$Arch V=1 %{?_smp_mflags} ctf %{?sparse_mflags} || exit 1
 %endif
 
     # Start installing the results
