@@ -131,14 +131,20 @@
 	testl	$SPEC_CTRL_IBRS_INUSE, use_ibrs
 	jz	7f
 	__ASM_ENABLE_IBRS
+	jmp	20f
 7:
+	lfence
+20:
 .endm
 
 .macro ENABLE_IBRS_CLOBBER
 	testl	$SPEC_CTRL_IBRS_INUSE, use_ibrs
 	jz	11f
 	__ASM_ENABLE_IBRS_CLOBBER
+	jmp	21f
 11:
+	lfence
+21:
 .endm
 
 .macro ENABLE_IBRS_SAVE_AND_CLOBBER save_reg:req
