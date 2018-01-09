@@ -399,11 +399,14 @@ ENTRY(ia32_cstar_target)
 	sub	$(10*8),%rsp /* pt_regs->r8-11,bp,bx,r12-15 not saved */
 	CFI_ADJUST_CFA_OFFSET 10*8
 
+	SAVE_EXTRA_REGS
+	CLEAR_R8_TO_R15
 	/*
 	 * no need to do an access_ok check here because r8 has been
 	 * 32bit zero extended
 	 */
 	ASM_STAC
+	movq	R8(%rsp),%r8
 1:	movl	(%r8),%r9d
 	_ASM_EXTABLE(1b,ia32_badarg)
 	ASM_CLAC
@@ -476,7 +479,6 @@ cstar_tracesys:
 	jz cstar_auditsys
 #endif
 	xchgl %r9d,%ebp
-	SAVE_EXTRA_REGS
 	CLEAR_RREGS r9
 	movq $-ENOSYS,RAX(%rsp)	/* ptrace can change this for a bad syscall */
 	movq %rsp,%rdi        /* &pt_regs -> arg1 */
@@ -576,7 +578,6 @@ ia32_ret_from_sys_call:
 	jmp int_ret_from_sys_call
 
 ia32_tracesys:
-	SAVE_EXTRA_REGS
 	CLEAR_RREGS
 	movq $-ENOSYS,RAX(%rsp)	/* ptrace can change this for a bad syscall */
 	movq %rsp,%rdi        /* &pt_regs -> arg1 */
