@@ -80,7 +80,7 @@ ENDPROC(__flush_cache_user_range)
  *	- end     - virtual end address of region
  */
 ENTRY(invalidate_icache_range)
-	uaccess_ttbr0_enable x2, x3
+	uaccess_ttbr0_enable x2, x3, x4
 
 	invalidate_icache_by_line x0, x1, x2, x3, 2f
 	mov	x0, xzr
