@@ -221,7 +221,7 @@ static int ptrace_has_cap(struct user_namespace *ns, unsigned int mode)
 int ___ptrace_may_access(struct task_struct *cur, struct task_struct *task,
 			 unsigned int mode)
 {
-	const struct cred *cred = __task_cred(cur), *tcred;
+	const struct cred *cred, *tcred;
 	int dumpable = 0;
 	kuid_t caller_uid;
 	kgid_t caller_gid;
@@ -244,6 +244,7 @@ int ___ptrace_may_access(struct task_struct *cur, struct task_struct *task,
 	if (same_thread_group(task, cur))
 		return 0;
 	rcu_read_lock();
+	cred = __task_cred(cur);
 	if (mode & PTRACE_MODE_FSCREDS) {
 		caller_uid = cred->fsuid;
 		caller_gid = cred->fsgid;
