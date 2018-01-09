@@ -23,6 +23,7 @@
 #include <asm/i387.h>
 #include <asm/fpu-internal.h>
 #include <asm/debugreg.h>
+#include <asm/spec_ctrl.h>
 
 struct kmem_cache *task_xstate_cachep;
 EXPORT_SYMBOL_GPL(task_xstate_cachep);
@@ -436,10 +437,23 @@ void mwait_idle_with_hints(unsigned long ax, unsigned long cx)
 		if (this_cpu_has(X86_FEATURE_CLFLUSH_MONITOR))
 			clflush((void *)&current_thread_info()->flags);
 
+	       /* CPUs run faster with speculation protection
+		* disabled.  All CPU threads in a core must
+		* disable speculation protection for it to be
+		* disabled.  Disable it while we are idle so the
+		* other hyperthread can run fast.
+		*
+		* Interrupts have been disabled at this point.
+		*/
+
+		unprotected_speculation_begin();
+
 		__monitor((void *)&current_thread_info()->flags, 0, 0);
 		smp_mb();
 		if (!need_resched())
 			__mwait(ax, cx);
+
+		unprotected_speculation_end();
 	}
 }
 
@@ -452,12 +466,17 @@ static void mwait_idle(void)
 		if (this_cpu_has(X86_FEATURE_CLFLUSH_MONITOR))
 			clflush((void *)&current_thread_info()->flags);
 
+		unprotected_speculation_begin();
+
 		__monitor((void *)&current_thread_info()->flags, 0, 0);
 		smp_mb();
-		if (!need_resched())
+		if (!need_resched()) {
 			__sti_mwait(0, 0);
-		else
+			unprotected_speculation_end();
+		} else {
+			unprotected_speculation_end();
 			local_irq_enable();
+		}
 		trace_power_end(smp_processor_id());
 		trace_cpu_idle(PWR_EVENT_EXIT, smp_processor_id());
 	} else
