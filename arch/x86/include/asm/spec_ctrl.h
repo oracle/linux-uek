@@ -135,6 +135,7 @@
 	wrmsr
 	jmp	.Ldone_\@
 .Lskip_\@:
+	movl $SPEC_CTRL_FEATURE_ENABLE_IBRS, \save_reg
 	lfence
 .Ldone_\@:
 .endm
