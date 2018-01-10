@@ -766,18 +766,15 @@ void init_speculation_control(struct cpuinfo_x86 *c)
 				return;
 			set_ibrs_supported();
 			set_ibpb_supported();
-			if (ibrs_inuse)
-				sysctl_ibrs_enabled = 1;
-			if (ibpb_inuse)
-				sysctl_ibpb_enabled = 1;
+			sysctl_ibrs_enabled = ibrs_inuse ? 1 : 0;
+			sysctl_ibpb_enabled = ibpb_inuse ? 1 : 0;
 		} else if (boot_cpu_has(X86_FEATURE_IBPB)) {
 			pr_info_once("FEATURE IBPB Present%s\n",
 				     ignore ? " but ignored (Xen)" : "");
 			if (ignore)
 				return;
 			set_ibpb_supported();
-			if (ibpb_inuse)
-				sysctl_ibpb_enabled = 1;
+			sysctl_ibpb_enabled = ibpb_inuse ? 1 : 0;
 		} else {
 			pr_info("FEATURE SPEC_CTRL Not Present\n");
 		}
