@@ -160,6 +160,7 @@
 	wrmsr
 	jmp 22f
 12:
+	movl $SPEC_CTRL_FEATURE_ENABLE_IBRS, \save_reg
 	lfence
 22:
 .endm
