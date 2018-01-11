@@ -2528,17 +2528,28 @@ int rdma_set_ib_paths(struct rdma_cm_id *id,
 		      struct sa_path_rec *path_rec, int num_paths)
 {
 	struct rdma_id_private *id_priv;
+	struct sa_path_rec *in_path_rec;
+	struct sa_path_rec opa;
 	u8 default_roce_tos;
 	int ret;
 	u8 tos;
 	int i;
+
+	if (rdma_cap_opa_ah(id->device, id->port_num)) {
+		if (num_paths != 1)
+			return -EINVAL;
+		sa_convert_path_ib_to_opa(&opa, path_rec);
+		in_path_rec = &opa;
+	} else {
+		in_path_rec = path_rec;
+	}
 
 	id_priv = container_of(id, struct rdma_id_private, id);
 	if (!cma_comp_exch(id_priv, RDMA_CM_ADDR_RESOLVED,
 			   RDMA_CM_ROUTE_RESOLVED))
 		return -EINVAL;
 
-	id->route.path_rec = kmemdup(path_rec, sizeof *path_rec * num_paths,
+	id->route.path_rec = kmemdup(in_path_rec, sizeof(*in_path_rec) * num_paths,
 				     GFP_KERNEL);
 	if (!id->route.path_rec) {
 		ret = -ENOMEM;
