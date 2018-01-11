@@ -9450,8 +9450,7 @@ static void __noclone vmx_vcpu_run(struct kvm_vcpu *vcpu)
 	 * is no need to worry about the conditional branch over the wrmsr
 	 * being speculatively taken.
 	 */
-	if (ibrs_inuse &&
-	    vmx->spec_ctrl != SPEC_CTRL_FEATURE_ENABLE_IBRS)
+	if (ibrs_inuse)
 		native_wrmsrl(MSR_IA32_SPEC_CTRL, vmx->spec_ctrl);
 
 	vmx->__launched = vmx->loaded_vmcs->launched;
