@@ -843,6 +843,10 @@ static void __init early_identify_cpu(struct cpuinfo_x86 *c)
 
 	setup_force_cpu_cap(X86_FEATURE_ALWAYS);
 
+#ifdef CONFIG_RETPOLINE
+	setup_force_cpu_cap(X86_FEATURE_RETPOLINE);
+#endif
+
 #ifdef CONFIG_X86_32
 	/*
 	 * Regardless of whether PCID is enumerated, the SDM says
