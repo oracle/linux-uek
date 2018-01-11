@@ -233,8 +233,6 @@ static enum spectre_v2_mitigation_cmd __init spectre_v2_parse_cmdline(void)
 	return cmd;
 
 disable:
-	set_ibrs_disabled();
-	set_ibpb_disabled();
 	return SPECTRE_V2_CMD_NONE;
 }
 
@@ -265,11 +263,16 @@ static void __init spectre_v2_select_mitigation(void)
 	 * then nothing to do.
 	 */
 	if (!boot_cpu_has_bug(X86_BUG_SPECTRE_V2) &&
-	    (cmd == SPECTRE_V2_CMD_NONE || cmd == SPECTRE_V2_CMD_AUTO))
+	    (cmd == SPECTRE_V2_CMD_NONE || cmd == SPECTRE_V2_CMD_AUTO)) {
+		set_ibrs_disabled();
+		set_ibpb_disabled();
 		return;
+	}
 
 	switch (cmd) {
 	case SPECTRE_V2_CMD_NONE:
+		set_ibrs_disabled();
+		set_ibpb_disabled();
 		return;
 
 	case SPECTRE_V2_CMD_FORCE:
@@ -313,6 +316,11 @@ retpoline_auto:
 
 	spectre_v2_enabled = mode;
 	pr_info("%s\n", spectre_v2_strings[mode]);
+
+	/* IBRS is unnecessary with retpoline mitigation. */
+	if (mode == SPECTRE_V2_RETPOLINE_GENERIC ||
+	    mode == SPECTRE_V2_RETPOLINE_AMD)
+		set_ibrs_disabled();
 
 	/*
 	 * If neither SMEP nor PTI are available, there is a risk of
