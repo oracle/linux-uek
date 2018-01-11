@@ -10,6 +10,7 @@
 #include <linux/kdebug.h>
 #include <linux/mm.h>
 #include <linux/module.h>
+#include <linux/memory.h>
 #include <linux/notifier.h>
 #include <linux/ptrace.h>
 #include <linux/sched.h>
@@ -269,7 +270,9 @@ EXPORT_SYMBOL(dtrace_invop_remove);
  */
 void dtrace_invop_enable(asm_instr_t *addr, asm_instr_t opcode)
 {
+	mutex_lock(&text_mutex);
 	text_poke(addr, ((unsigned char []){opcode}), 1);
+	mutex_unlock(&text_mutex);
 }
 EXPORT_SYMBOL(dtrace_invop_enable);
 
@@ -278,7 +281,9 @@ EXPORT_SYMBOL(dtrace_invop_enable);
  */
 void dtrace_invop_disable(asm_instr_t *addr, asm_instr_t opcode)
 {
+	mutex_lock(&text_mutex);
 	text_poke(addr, ((unsigned char []){opcode}), 1);
+	mutex_unlock(&text_mutex);
 }
 EXPORT_SYMBOL(dtrace_invop_disable);
 
