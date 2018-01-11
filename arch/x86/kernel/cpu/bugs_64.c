@@ -9,6 +9,8 @@
 #include <linux/device.h>
 #endif
 #include <asm/alternative.h>
+#include <asm/nospec-branch.h>
+#include <asm/cmdline.h>
 #include <asm/bugs.h>
 #include <asm/processor.h>
 #include <asm/mtrr.h>
@@ -38,7 +40,7 @@ EXPORT_SYMBOL(use_ibpb);
 DEFINE_MUTEX(spec_ctrl_mutex);
 EXPORT_SYMBOL(spec_ctrl_mutex);
 
-static void __init spectre_v2_parse_cmdline(void);
+static void __init spectre_v2_select_mitigation(void);
 
 void __init check_bugs(void)
 {
@@ -47,6 +49,10 @@ void __init check_bugs(void)
 	printk(KERN_INFO "CPU: ");
 	print_cpu_info(&boot_cpu_data);
 #endif
+
+	/* Select the proper spectre mitigation before patching alternatives */
+	spectre_v2_select_mitigation();
+
 	alternative_instructions();
 
 	/*
@@ -59,8 +65,46 @@ void __init check_bugs(void)
 	 */
 	if (!direct_gbpages)
 		set_memory_4k((unsigned long)__va(0), 1);
+}
 
-	spectre_v2_parse_cmdline();
+/* The kernel command line selection */
+enum spectre_v2_mitigation_cmd {
+	SPECTRE_V2_CMD_NONE,
+	SPECTRE_V2_CMD_AUTO,
+	SPECTRE_V2_CMD_FORCE,
+	SPECTRE_V2_CMD_RETPOLINE,
+	SPECTRE_V2_CMD_RETPOLINE_GENERIC,
+	SPECTRE_V2_CMD_RETPOLINE_AMD,
+};
+
+static const char *spectre_v2_strings[] = {
+	[SPECTRE_V2_NONE]			= "Vulnerable",
+	[SPECTRE_V2_RETPOLINE_MINIMAL]		= "Vulnerable: Minimal generic ASM retpoline",
+	[SPECTRE_V2_RETPOLINE_MINIMAL_AMD]	= "Vulnerable: Minimal AMD ASM retpoline",
+	[SPECTRE_V2_RETPOLINE_GENERIC]		= "Mitigation: Full generic retpoline",
+	[SPECTRE_V2_RETPOLINE_AMD]		= "Mitigation: Full AMD retpoline",
+};
+
+#undef pr_fmt
+#define pr_fmt(fmt)     "Spectre V2 mitigation: " fmt
+
+static enum spectre_v2_mitigation spectre_v2_enabled = SPECTRE_V2_NONE;
+
+static void __init spec2_print_if_insecure(const char *reason)
+{
+	if (boot_cpu_has_bug(X86_BUG_SPECTRE_V2))
+		pr_info("%s\n", reason);
+}
+
+static void __init spec2_print_if_secure(const char *reason)
+{
+	if (!boot_cpu_has_bug(X86_BUG_SPECTRE_V2))
+		pr_info("%s\n", reason);
+}
+
+static inline bool retp_compiler(void)
+{
+	return __is_defined(RETPOLINE);
 }
 
 static inline bool match_option(const char *arg, int arglen, const char *opt)
@@ -70,13 +114,7 @@ static inline bool match_option(const char *arg, int arglen, const char *opt)
 	return len == arglen && !strncmp(arg, opt, len);
 }
 
-static void spectre_v2_usage_error(const char *str)
-{
-	pr_warn("%s arguments for option spectre_v2. "
-		    "Usage spectre_v2={on|off|auto}\n", str);
-}
-
-static void __init spectre_v2_parse_cmdline(void)
+static enum spectre_v2_mitigation_cmd __init spectre_v2_parse_cmdline(void)
 {
 	char arg[20];
 	int ret;
@@ -93,33 +131,114 @@ static void __init spectre_v2_parse_cmdline(void)
 		set_lfence_disabled();
 	}
 
-
-	if (cmdline_find_option_bool(boot_command_line, "nospectre_v2"))
-		goto disable;
-
 	ret = cmdline_find_option(boot_command_line, "spectre_v2", arg,
-	    sizeof(arg));
-
-	if (ret > 0) {
-
-		if (match_option(arg, ret, "off"))
+				  sizeof(arg));
+	if (ret > 0)  {
+		if (match_option(arg, ret, "off")) {
 			goto disable;
-
-		if (match_option(arg, ret, "on") ||
-			match_option(arg, ret, "auto")) {
-			if (!(ibrs_supported || ibpb_supported))
-				pr_warn("Spectre_v2 mitigation unsupported\n");
-		} else {
-			spectre_v2_usage_error("Invalid");
+		} else if (match_option(arg, ret, "on")) {
+			spec2_print_if_secure("force enabled on command line.");
+			return SPECTRE_V2_CMD_FORCE;
+		} else if (match_option(arg, ret, "retpoline")) {
+			spec2_print_if_insecure("retpoline selected on command line.");
+			return SPECTRE_V2_CMD_RETPOLINE;
+		} else if (match_option(arg, ret, "retpoline,amd")) {
+			if (boot_cpu_data.x86_vendor != X86_VENDOR_AMD) {
+				pr_err("retpoline,amd selected but CPU is not AMD. Switching to AUTO select\n");
+				return SPECTRE_V2_CMD_AUTO;
+			}
+			spec2_print_if_insecure("AMD retpoline selected on command line.");
+			return SPECTRE_V2_CMD_RETPOLINE_AMD;
+		} else if (match_option(arg, ret, "retpoline,generic")) {
+			spec2_print_if_insecure("generic retpoline selected on command line.");
+			return SPECTRE_V2_CMD_RETPOLINE_GENERIC;
+		} else if (match_option(arg, ret, "auto")) {
+			return SPECTRE_V2_CMD_AUTO;
 		}
 	}
 
+	if (!cmdline_find_option_bool(boot_command_line, "nospectre_v2"))
+		return SPECTRE_V2_CMD_AUTO;
+disable:
+	spec2_print_if_insecure("disabled on command line.");
+	return SPECTRE_V2_CMD_NONE;
+}
+
+static void __init spectre_v2_select_mitigation(void)
+{
+	enum spectre_v2_mitigation_cmd cmd = spectre_v2_parse_cmdline();
+	enum spectre_v2_mitigation mode = SPECTRE_V2_NONE;
+
+	/*
+	 * If the CPU is not affected and the command line mode is NONE or AUTO
+	 * then nothing to do.
+	 */
+	if (!boot_cpu_has_bug(X86_BUG_SPECTRE_V2) &&
+	    (cmd == SPECTRE_V2_CMD_NONE || cmd == SPECTRE_V2_CMD_AUTO)) {
+		set_ibrs_disabled();
+		set_ibpb_disabled();
+		set_lfence_disabled();
+		return;
+	}
+
+	switch (cmd) {
+	case SPECTRE_V2_CMD_NONE:
+		set_ibrs_disabled();
+		set_ibpb_disabled();
+		set_lfence_disabled();
+		return;
+
+	case SPECTRE_V2_CMD_FORCE:
+		/* FALLTRHU */
+	case SPECTRE_V2_CMD_AUTO:
+		goto retpoline_auto;
+
+	case SPECTRE_V2_CMD_RETPOLINE_AMD:
+		if (IS_ENABLED(CONFIG_RETPOLINE))
+			goto retpoline_amd;
+		break;
+	case SPECTRE_V2_CMD_RETPOLINE_GENERIC:
+		if (IS_ENABLED(CONFIG_RETPOLINE))
+			goto retpoline_generic;
+		break;
+	case SPECTRE_V2_CMD_RETPOLINE:
+		if (IS_ENABLED(CONFIG_RETPOLINE))
+			goto retpoline_auto;
+		break;
+	}
+	pr_err("kernel not compiled with retpoline; retpoline mitigation not available");
 	return;
 
-disable:
-	set_ibrs_disabled();
-	set_ibpb_disabled();
+retpoline_auto:
+	if (boot_cpu_data.x86_vendor == X86_VENDOR_AMD) {
+	retpoline_amd:
+		if (!boot_cpu_has(X86_FEATURE_LFENCE_RDTSC)) {
+			pr_err("LFENCE not serializing. Switching to generic retpoline\n");
+			goto retpoline_generic;
+		}
+		mode = retp_compiler() ? SPECTRE_V2_RETPOLINE_AMD :
+					 SPECTRE_V2_RETPOLINE_MINIMAL_AMD;
+		setup_force_cpu_cap(X86_FEATURE_RETPOLINE_AMD);
+		setup_force_cpu_cap(X86_FEATURE_RETPOLINE);
+	} else {
+	retpoline_generic:
+		mode = retp_compiler() ? SPECTRE_V2_RETPOLINE_GENERIC :
+					 SPECTRE_V2_RETPOLINE_MINIMAL;
+		setup_force_cpu_cap(X86_FEATURE_RETPOLINE);
+	}
+
+	spectre_v2_enabled = mode;
+	pr_info("%s\n", spectre_v2_strings[mode]);
+
+	/* IBRS is unnecessary with retpoline mitigation. */
+	if (mode == SPECTRE_V2_RETPOLINE_GENERIC ||
+	    mode == SPECTRE_V2_RETPOLINE_AMD) {
+		set_ibrs_disabled();
+		set_lfence_disabled();
+	}
 }
+
+#undef pr_fmt
 
 #ifdef CONFIG_SYSFS
 ssize_t cpu_show_meltdown(struct device *dev,
@@ -146,12 +265,10 @@ ssize_t cpu_show_spectre_v2(struct device *dev,
 {
 	if (!boot_cpu_has_bug(X86_BUG_SPECTRE_V2))
 		return sprintf(buf, "Not affected\n");
-	if (ibrs_inuse || ibpb_inuse || lfence_inuse)
-		return sprintf(buf, "Mitigation: %s%s\n",
-				ibrs_inuse ? "IBRS " :
-					lfence_inuse ? "lfence " : "",
-				ibpb_inuse ? "IBPB" : "");
 
-	return sprintf(buf, "Vulnerable\n");
+	return sprintf(buf, "%s%s%s\n", spectre_v2_strings[spectre_v2_enabled],
+					ibrs_inuse ? ", IBRS" :
+						lfence_inuse ? " lfence " : "",
+					ibpb_inuse ? ", IBPB" : "");
 }
 #endif
