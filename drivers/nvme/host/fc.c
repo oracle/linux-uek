@@ -2930,6 +2930,9 @@ nvme_fc_delete_ctrl(struct nvme_ctrl *nctrl)
 	 * waiting for io to terminate
 	 */
 	nvme_fc_delete_association(ctrl);
+
+	/* resume the io queues so that things will fast fail */
+	nvme_start_queues(nctrl);
 }
 
 static void
