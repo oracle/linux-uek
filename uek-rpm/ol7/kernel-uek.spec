@@ -356,8 +356,8 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 %define image_install_path boot
 %define asmarch arm64
 %define hdrarch arm64
-%define make_target Image.gz
-%define kernel_image arch/arm64/boot/Image.gz
+%define make_target Image
+%define kernel_image arch/arm64/boot/Image
 %endif
 
 %if %{nopatches}
@@ -1098,7 +1098,7 @@ BuildKernel() {
       cp arch/$Arch/boot/zImage.stub $RPM_BUILD_ROOT/%{image_install_path}/zImage.stub-$KernelVer || :
     fi
     %if %{signmodules}
-    %ifarch x86_64
+    %ifarch x86_64 aarch64
 	# Sign the image if we're using EFI
         %pesign -s -i $KernelImage -o $KernelImage.signed -a %{SOURCE21} -c %{SOURCE22} -n oraclesecureboot
         mv $KernelImage.signed $KernelImage
