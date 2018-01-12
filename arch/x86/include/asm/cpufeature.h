@@ -197,14 +197,15 @@
 #define X86_FEATURE_HWP_EPP	( 7*32+13) /* Intel HWP_EPP */
 #define X86_FEATURE_HWP_PKG_REQ ( 7*32+14) /* Intel HWP_PKG_REQ */
 #define X86_FEATURE_INTEL_PT	( 7*32+15) /* Intel Processor Trace */
-#define X86_FEATURE_SPEC_CTRL	( 7*32+19) /* Control Speculation Control */
-#define X86_FEATURE_STIPB	( 7*32+20) /* Single Thread Indirect Branch Predictors */
-#define X86_FEATURE_IA32_ARCH_CAPS	( 7*32+21) /* Control Speculation Control */
-#define X86_FEATURE_IBRS_ATT	( 7*32+22) /* IBRS all the time */
+#define X86_FEATURE_RSB_CTXSW	( 7*32+19) /* Fill RSB on context switches */
+#define X86_FEATURE_SPEC_CTRL	( 7*32+20) /* Control Speculation Control */
+#define X86_FEATURE_STIPB	( 7*32+21) /* Single Thread Indirect Branch Predictors */
+#define X86_FEATURE_IA32_ARCH_CAPS	( 7*32+22) /* Control Speculation Control */
+#define X86_FEATURE_IBRS_ATT	( 7*32+23) /* IBRS all the time */
 
 /* AMD-defined CPU features, CPUID level 0x80000008 (EBX), word 13.
  * But thanks to kABI we have to jam it somewhere else. */
-#define X86_FEATURE_IBPB                (7*32+23) /* Indirect Branch Prediction Barrier */
+#define X86_FEATURE_IBPB                (7*32+24) /* Indirect Branch Prediction Barrier */
 
 
 #define X86_FEATURE_STUFF_RSB	(7*32+28) /* "" Whether to stuff the RSB (usually dependent on !SMEP) */
