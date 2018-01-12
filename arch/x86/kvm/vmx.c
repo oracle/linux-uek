@@ -49,6 +49,7 @@
 #include <asm/apic.h>
 #include <asm/microcode.h>
 #include <asm/spec_ctrl.h>
+#include <asm/nospec-branch.h>
 
 #include "trace.h"
 
@@ -8321,7 +8322,9 @@ static void __noclone vmx_vcpu_run(struct kvm_vcpu *vcpu)
 		rdmsrl(MSR_IA32_SPEC_CTRL, vmx->spec_ctrl);
 		wrmsrl(MSR_IA32_SPEC_CTRL, SPEC_CTRL_FEATURE_ENABLE_IBRS);
 	}
-	stuff_RSB();
+
+	/* Eliminate branch target predictions from guest mode */
+	vmexit_fill_RSB();
 
 	/* MSR_IA32_DEBUGCTLMSR is zeroed on vmexit. Restore it if needed */
 	if (debugctlmsr)
