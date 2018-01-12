@@ -31,6 +31,7 @@
 #include <asm/msr.h>
 #include <asm/segment.h>
 #include <asm/processor-flags.h>
+#include <asm/kaiser.h>
 #include "realmode.h"
 
 	.text
@@ -140,7 +141,7 @@ tr_gdt:
 tr_gdt_end:
 
 	.bss
-	.balign	PAGE_SIZE
+	.balign	KAISER_KERNEL_PGD_ALIGNMENT
 GLOBAL(trampoline_pgd)		.space	PAGE_SIZE
 
 	.balign	8
