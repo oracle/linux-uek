@@ -1,5 +1,6 @@
 #include <linux/io.h>
 #include <linux/memblock.h>
+#include <linux/kaiser.h>
 
 #include <asm/cacheflush.h>
 #include <asm/pgtable.h>
@@ -15,7 +16,8 @@ void __init reserve_real_mode(void)
 	size_t size = PAGE_ALIGN(real_mode_blob_end - real_mode_blob);
 
 	/* Has to be under 1M so we can execute real-mode AP code. */
-	mem = memblock_find_in_range(0, 1<<20, size, PAGE_SIZE);
+	mem = memblock_find_in_range(0, 1 << 20, size,
+				     KAISER_KERNEL_PGD_ALIGNMENT);
 	if (!mem)
 		panic("Cannot allocate trampoline\n");
 
