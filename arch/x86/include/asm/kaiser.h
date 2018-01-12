@@ -19,11 +19,15 @@
 
 #define KAISER_SHADOW_PGD_OFFSET 0x1000
 
+#ifdef CONFIG_PAGE_TABLE_ISOLATION
 /*
  *  A page table address must have this alignment to stay the same when
  *  KAISER_SHADOW_PGD_OFFSET mask is applied
  */
 #define KAISER_KERNEL_PGD_ALIGNMENT (KAISER_SHADOW_PGD_OFFSET << 1)
+#else
+#define KAISER_KERNEL_PGD_ALIGNMENT PAGE_SIZE
+#endif
 
 #ifdef __ASSEMBLY__
 #ifdef CONFIG_PAGE_TABLE_ISOLATION
@@ -76,8 +80,6 @@ movq PER_CPU_VAR(unsafe_stack_register_backup), %rax
 .endm
 
 #else /* CONFIG_PAGE_TABLE_ISOLATION */
-
-#define KAISER_KERNEL_PGD_ALIGNMENT PAGE_SIZE
 
 .macro SWITCH_KERNEL_CR3
 .endm

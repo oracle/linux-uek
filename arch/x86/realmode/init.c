@@ -1,10 +1,10 @@
 #include <linux/io.h>
 #include <linux/memblock.h>
-#include <linux/kaiser.h>
 
 #include <asm/cacheflush.h>
 #include <asm/pgtable.h>
 #include <asm/realmode.h>
+#include <asm/kaiser.h>
 
 struct real_mode_header *real_mode_header;
 u32 *trampoline_cr4_features;
