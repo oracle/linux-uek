@@ -125,4 +125,15 @@ static inline bool guest_cpuid_has_mpx(struct kvm_vcpu *vcpu)
 	best = kvm_find_cpuid_entry(vcpu, 7, 0);
 	return best && (best->ebx & bit(X86_FEATURE_MPX));
 }
+
+/* These are scattered features in cpufeatures.h. */
+#define KVM_CPUID_BIT_IBRS		26
+#define KVM_CPUID_BIT_STIBP		27
+static inline bool guest_cpuid_has_ibrs(struct kvm_vcpu *vcpu)
+{
+	struct kvm_cpuid_entry2 *best;
+
+	best = kvm_find_cpuid_entry(vcpu, 7, 0);
+	return best && (best->edx & bit(KVM_CPUID_BIT_IBRS));
+}
 #endif

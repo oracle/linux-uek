@@ -3168,6 +3168,10 @@ static int svm_get_msr(struct kvm_vcpu *vcpu, struct msr_data *msr_info)
 		msr_info->data = svm->nested.vm_cr_msr;
 		break;
 	case MSR_IA32_SPEC_CTRL:
+		if (!static_cpu_has(X86_FEATURE_IBRS) ||
+		    (!msr_info->host_initiated &&
+		     !guest_cpuid_has_ibrs(vcpu)))
+			return 1;
 		msr_info->data = svm->spec_ctrl;
 		break;
 	case MSR_IA32_UCODE_REV:
@@ -3290,6 +3294,10 @@ static int svm_set_msr(struct kvm_vcpu *vcpu, struct msr_data *msr)
 		vcpu_unimpl(vcpu, "unimplemented wrmsr: 0x%x data 0x%llx\n", ecx, data);
 		break;
 	case MSR_IA32_SPEC_CTRL:
+		if (!static_cpu_has(X86_FEATURE_IBRS) ||
+		    (!msr->host_initiated &&
+		     !guest_cpuid_has_ibrs(vcpu)))
+			return 1;
 		svm->spec_ctrl = data;
 		break;
 	default:

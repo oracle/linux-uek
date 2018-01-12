@@ -58,11 +58,6 @@ u64 kvm_supported_xcr0(void)
 
 #define F(x) bit(X86_FEATURE_##x)
 
-/* These are scattered features in cpufeatures.h. */
-#define KVM_CPUID_BIT_IBRS		26
-#define KVM_CPUID_BIT_STIBP		27
-
-
 /* CPUID[eax=0x80000008].ebx */
 #define KVM_CPUID_BIT_IBPB_SUPPORT	12
 
