@@ -730,6 +730,7 @@ END(irq_entries_start)
 	je 1f
 	SWAPGS
 	SWITCH_KERNEL_CR3
+	ENABLE_IBRS
 1:
 	/*
 	 * Save previous stack pointer, optionally switch to interrupt stack.
