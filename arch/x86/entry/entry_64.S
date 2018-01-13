@@ -543,6 +543,7 @@ END(irq_entries_start)
 	jz	1f
 	SWAPGS
 	call	switch_to_thread_stack
+	ENABLE_IBRS
 1:
 
 	PUSH_AND_CLEAR_REGS
