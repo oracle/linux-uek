@@ -125,8 +125,8 @@ ENTRY(ia32_sysenter_target)
 	SWITCH_KERNEL_CR3_NO_STACK
 	movq	PER_CPU_VAR(cpu_current_top_of_stack), %rsp
 
-	ENABLE_IBRS
 	STUFF_RSB
+	ENABLE_IBRS
 
 	ENABLE_INTERRUPTS(CLBR_NONE)
 
@@ -373,8 +373,8 @@ ENTRY(ia32_cstar_target)
 	CFI_REGISTER	rsp,r8
 	movq	PER_CPU_VAR(cpu_current_top_of_stack),%rsp
 
-	ENABLE_IBRS
 	STUFF_RSB
+	ENABLE_IBRS
 
 	ENABLE_INTERRUPTS(CLBR_NONE)
 
@@ -537,6 +537,10 @@ ENTRY(ia32_syscall)
 	ASM_CLAC			/* Do this early to minimize exposure */
 	SWAPGS
 	SWITCH_KERNEL_CR3_NO_STACK
+
+	STUFF_RSB
+	ENABLE_IBRS
+
 	ENABLE_INTERRUPTS(CLBR_NONE)
 
 	/* Zero-extending 32-bit regs, do not remove */
@@ -555,8 +559,6 @@ ENTRY(ia32_syscall)
 
 	SAVE_EXTRA_REGS
 	CLEAR_R8_TO_R15
-	ENABLE_IBRS
-	STUFF_RSB
 
 	orl $TS_COMPAT, ASM_THREAD_INFO(TI_status, %rsp, SIZEOF_PTREGS)
 	testl $_TIF_WORK_SYSCALL_ENTRY, ASM_THREAD_INFO(TI_flags, %rsp, SIZEOF_PTREGS)
