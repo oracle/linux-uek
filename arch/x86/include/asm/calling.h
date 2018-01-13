@@ -385,6 +385,7 @@ ALTERNATIVE __stringify(__ASM_STUFF_RSB), "", X86_FEATURE_SMEP
 	wrmsr
 	jmp	.Ldone_\@
 .Lskip_\@:
+	movl $SPEC_CTRL_FEATURE_ENABLE_IBRS, \save_reg
 	lfence
 .Ldone_\@:
 .endm
