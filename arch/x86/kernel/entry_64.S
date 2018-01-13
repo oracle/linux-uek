@@ -222,6 +222,7 @@ GLOBAL(system_call_after_swapgs)
 	movq	%rsp,PER_CPU_VAR(rsp_scratch)
 	movq	PER_CPU_VAR(cpu_current_top_of_stack),%rsp
 
+	STUFF_RSB
 	ENABLE_IBRS
 
 	TRACE_IRQS_OFF
@@ -260,8 +261,6 @@ GLOBAL(system_call_after_swapgs)
 	 */
 	SAVE_EXTRA_REGS
 	ZERO_EXTRA_REGS
-
-	STUFF_RSB
 
 	testl $_TIF_WORK_SYSCALL_ENTRY, ASM_THREAD_INFO(TI_flags, %rsp, SIZEOF_PTREGS)
 	jnz tracesys
@@ -1753,6 +1752,7 @@ ENTRY(nmi)
 	movq	%rax, %cr3
 2:
 #endif
+	STUFF_RSB
 	ENABLE_IBRS
 	call	do_nmi
 	DISABLE_IBRS
