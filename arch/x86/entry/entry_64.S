@@ -228,8 +228,8 @@ GLOBAL(entry_SYSCALL_64_after_hwframe)
 
 	PUSH_AND_CLEAR_REGS rax=$-ENOSYS
 
-	ENABLE_IBRS
 	STUFF_RSB_NON_SMEP
+	ENABLE_IBRS
 
 	TRACE_IRQS_OFF
 
@@ -1520,6 +1520,7 @@ ENTRY(nmi)
 	SWITCH_TO_KERNEL_CR3 scratch_reg=%rdx
 	movq	%rsp, %rdx
 	movq	PER_CPU_VAR(cpu_current_top_of_stack), %rsp
+	STUFF_RSB_NON_SMEP
 	ENABLE_IBRS
 	UNWIND_HINT_IRET_REGS base=%rdx offset=8
 	pushq	5*8(%rdx)	/* pt_regs->ss */

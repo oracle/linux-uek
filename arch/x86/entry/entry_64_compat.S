@@ -56,6 +56,9 @@ ENTRY(entry_SYSENTER_compat)
 
 	movq	PER_CPU_VAR(cpu_current_top_of_stack), %rsp
 
+	STUFF_RSB_NON_SMEP
+	ENABLE_IBRS
+
 	/*
 	 * User tracing code (ptrace or signal handlers) might assume that
 	 * the saved RAX contains a 32-bit number when we're invoking a 32-bit
@@ -106,9 +109,6 @@ ENTRY(entry_SYSENTER_compat)
 	pushq   $0			/* pt_regs->r15 = 0 */
 	xorl	%r15d, %r15d		/* nospec   r15 */
 	cld
-
-	ENABLE_IBRS
-	STUFF_RSB_NON_SMEP
 
 	/*
 	 * SYSENTER doesn't filter flags, so we need to clear NT and AC
@@ -249,8 +249,8 @@ GLOBAL(entry_SYSCALL_compat_after_hwframe)
 	pushq   $0			/* pt_regs->r15 = 0 */
 	xorl	%r15d, %r15d		/* nospec   r15 */
 
-	ENABLE_IBRS
 	STUFF_RSB_NON_SMEP
+	ENABLE_IBRS
 
 	/*
 	 * User mode is traced as though IRQs are on, and SYSENTER
@@ -347,6 +347,8 @@ ENTRY(entry_INT80_compat)
 	ASM_CLAC			/* Do this early to minimize exposure */
 	SWAPGS
 
+	STUFF_RSB_NON_SMEP
+
 	/*
 	 * User tracing code (ptrace or signal handlers) might assume that
 	 * the saved RAX contains a 32-bit number when we're invoking a 32-bit
@@ -360,6 +362,8 @@ ENTRY(entry_INT80_compat)
 
 	/* switch to thread stack expects orig_ax to be pushed */
 	call	switch_to_thread_stack
+
+	ENABLE_IBRS
 
 	pushq	%rdi			/* pt_regs->di */
 	pushq	%rsi			/* pt_regs->si */
@@ -387,9 +391,6 @@ ENTRY(entry_INT80_compat)
 	pushq   %r15                    /* pt_regs->r15 */
 	xorl	%r15d, %r15d		/* nospec   r15 */
 	cld
-
-	ENABLE_IBRS
-	STUFF_RSB_NON_SMEP
 
 	/*
 	 * User mode is traced as though IRQs are on, and the interrupt
