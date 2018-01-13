@@ -875,6 +875,7 @@ ENTRY(\sym)
 	.endif
 
 	ASM_CLAC
+	STUFF_RSB_NON_SMEP
 
 	.if \has_error_code == 0
 	pushq	$-1				/* ORIG_RAX: no syscall to restart */
@@ -1284,12 +1285,6 @@ ENTRY(paranoid_entry)
 	UNWIND_HINT_FUNC
 	cld
 	PUSH_AND_CLEAR_REGS save_ret=1
-	/*
-	 * Have to do stuffing before encoding frame pointer.
-	 * Could add some unnecessary RSB clearing if coming
-	 * from kernel for non-SMEP platform.
-	 */
-	STUFF_RSB_NON_SMEP
 	ENCODE_FRAME_POINTER 8
 	movl	$1, %ebx
 	movl	$MSR_GS_BASE, %ecx
@@ -1344,7 +1339,6 @@ ENTRY(error_entry)
 	UNWIND_HINT_FUNC
 	cld
 	PUSH_AND_CLEAR_REGS save_ret=1
-	STUFF_RSB_NON_SMEP
 	ENCODE_FRAME_POINTER 8
 	testb	$3, CS+8(%rsp)
 	jz	.Lerror_kernelspace
