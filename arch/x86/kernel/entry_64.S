@@ -1022,6 +1022,7 @@ ENTRY(\sym)
 	.endif
 
 	ASM_CLAC
+	STUFF_RSB
 	PARAVIRT_ADJUST_EXCEPTION_FRAME
 
 	.ifeq \has_error_code
@@ -1475,13 +1476,6 @@ ENTRY(paranoid_entry)
 	SAVE_C_REGS 8
 	SAVE_EXTRA_REGS 8
 
-	/*
-	 * Have to do stuffing before encoding frame pointer.
-	 * Could add some unnecessary RSB clearing if coming
-	 * from kernel for non-SMEP platform.
-	 */
-	STUFF_RSB
-
 	movl $1,%ebx
 	movl $MSR_GS_BASE,%ecx
 	rdmsr
@@ -1560,7 +1554,6 @@ ENTRY(error_entry)
 	cld
 	SAVE_C_REGS 8
 	SAVE_EXTRA_REGS 8
-	STUFF_RSB
 	/*
 	 * error_entry() always returns with a kernel gsbase and
 	 * CR3.  We must also have a kernel CR3/gsbase before
