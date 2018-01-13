@@ -339,7 +339,10 @@ ALTERNATIVE __stringify(__ASM_STUFF_RSB), "", X86_FEATURE_SMEP
 	PUSH_MSR_REGS
 	WRMSR_ASM $MSR_IA32_SPEC_CTRL, $SPEC_CTRL_FEATURE_DISABLE_IBRS
 	POP_MSR_REGS
+	jmp	.Ldone_\@
 .Lskip_\@:
+	lfence
+.Ldone_\@:
 .endm
 
 .macro SET_IBPB
