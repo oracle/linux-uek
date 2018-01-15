@@ -113,6 +113,13 @@
 	.endm
 
 /*
+ * RAS Error Synchronization barrier
+ */
+	.macro  esb
+	hint    #16
+	.endm
+
+/*
  * Value prediction barrier
  */
 	.macro	csdb
