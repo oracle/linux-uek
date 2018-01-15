@@ -1011,7 +1011,7 @@ int target_configure_device(struct se_device *dev)
 
 	ret = core_setup_alua(dev);
 	if (ret)
-		goto out_free_index;
+		goto out_destroy_device;
 
 	/*
 	 * Startup the struct se_device processing thread
@@ -1062,6 +1062,8 @@ int target_configure_device(struct se_device *dev)
 
 out_free_alua:
 	core_alua_free_lu_gp_mem(dev);
+out_destroy_device:
+	dev->transport->destroy_device(dev);
 out_free_index:
 	mutex_lock(&device_mutex);
 	idr_remove(&devices_idr, dev->dev_index);
