@@ -6,7 +6,7 @@
 
 #include <asm/pat.h>
 #include <asm/processor.h>
-
+#include <asm/spec_ctrl.h>
 #include <asm/apic.h>
 
 struct cpuid_bit {
