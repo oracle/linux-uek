@@ -1651,9 +1651,10 @@ next_rx:
 	rxr->rx_prod = NEXT_RX(prod);
 	rxr->rx_next_cons = NEXT_RX(cons);
 
-next_rx_no_prod_no_len:
 	cpr->rx_packets += 1;
 	cpr->rx_bytes += len;
+
+next_rx_no_prod_no_len:
 	*raw_cons = tmp_raw_cons;
 
 	return rc;
