@@ -37,16 +37,12 @@
 #include <linux/if_link.h>
 #include <net/devlink.h>
 #include <linux/mlx5/device.h>
+#include <linux/mlx5/eswitch.h>
+#include <linux/mlx5/vport.h>
 #include <linux/mlx5/fs.h>
 #include "lib/mpfs.h"
 
 #define MLX5_ESWITCH_MANAGER(mdev) MLX5_CAP_GEN(mdev, eswitch_manager)
-
-enum {
-	SRIOV_NONE,
-	SRIOV_LEGACY,
-	SRIOV_OFFLOADS
-};
 
 #ifdef CONFIG_MLX5_ESWITCH
 
@@ -150,22 +146,6 @@ struct mlx5_esw_sq {
 	struct list_head	 list;
 };
 
-struct mlx5_eswitch_rep {
-	int		       (*load)(struct mlx5_eswitch *esw,
-				       struct mlx5_eswitch_rep *rep);
-	void		       (*unload)(struct mlx5_eswitch *esw,
-					 struct mlx5_eswitch_rep *rep);
-	u16		       vport;
-	u8		       hw_id[ETH_ALEN];
-	struct net_device      *netdev;
-
-	struct mlx5_flow_handle *vport_rx_rule;
-	struct list_head       vport_sqs_list;
-	u16		       vlan;
-	u32		       vlan_refcount;
-	bool		       valid;
-};
-
 struct mlx5_esw_offload {
 	struct mlx5_flow_table *ft_offloads;
 	struct mlx5_flow_group *vport_rx_group;
@@ -237,9 +217,6 @@ int mlx5_eswitch_get_vport_config(struct mlx5_eswitch *esw,
 int mlx5_eswitch_get_vport_stats(struct mlx5_eswitch *esw,
 				 int vport,
 				 struct ifla_vf_stats *vf_stats);
-struct mlx5_flow_handle *
-mlx5_eswitch_add_send_to_vport_rule(struct mlx5_eswitch *esw, int vport,
-				    u32 sqn);
 void mlx5_eswitch_del_send_to_vport_rule(struct mlx5_flow_handle *rule);
 
 struct mlx5_flow_spec;
@@ -291,11 +268,6 @@ int mlx5_devlink_eswitch_inline_mode_get(struct devlink *devlink, u8 *mode);
 int mlx5_eswitch_inline_mode_get(struct mlx5_eswitch *esw, int nvfs, u8 *mode);
 int mlx5_devlink_eswitch_encap_mode_set(struct devlink *devlink, u8 encap);
 int mlx5_devlink_eswitch_encap_mode_get(struct devlink *devlink, u8 *encap);
-void mlx5_eswitch_register_vport_rep(struct mlx5_eswitch *esw,
-				     int vport_index,
-				     struct mlx5_eswitch_rep *rep);
-void mlx5_eswitch_unregister_vport_rep(struct mlx5_eswitch *esw,
-				       int vport_index);
 struct net_device *mlx5_eswitch_get_uplink_netdev(struct mlx5_eswitch *esw);
 
 int mlx5_eswitch_add_vlan_action(struct mlx5_eswitch *esw,

@@ -359,6 +359,7 @@ out:
 	kvfree(spec);
 	return flow_rule;
 }
+EXPORT_SYMBOL(mlx5_eswitch_add_send_to_vport_rule);
 
 void mlx5_eswitch_del_send_to_vport_rule(struct mlx5_flow_handle *rule)
 {
@@ -1204,6 +1205,7 @@ void mlx5_eswitch_register_vport_rep(struct mlx5_eswitch *esw,
 	INIT_LIST_HEAD(&rep->vport_sqs_list);
 	rep->valid = true;
 }
+EXPORT_SYMBOL(mlx5_eswitch_register_vport_rep);
 
 void mlx5_eswitch_unregister_vport_rep(struct mlx5_eswitch *esw,
 				       int vport_index)
@@ -1218,6 +1220,7 @@ void mlx5_eswitch_unregister_vport_rep(struct mlx5_eswitch *esw,
 
 	rep->valid = false;
 }
+EXPORT_SYMBOL(mlx5_eswitch_unregister_vport_rep);
 
 struct net_device *mlx5_eswitch_get_uplink_netdev(struct mlx5_eswitch *esw)
 {
