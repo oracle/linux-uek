@@ -1887,8 +1887,8 @@ int dtrace_helper_slurp(dof_hdr_t *dof, dof_helper_t *dhp)
 
 	dt_dbg_dof("DOF 0x%p from helper {'%s', %p, %p}...\n",
 		   dof, dhp ? dhp->dofhp_mod : "<none>",
-			dhp ? dhp->dofhp_addr : NULL,
-			dhp ? dhp->dofhp_dof : NULL);
+			dhp ? (void *)(dhp->dofhp_addr) : NULL,
+			dhp ? (void *)(dhp->dofhp_dof) : NULL);
 
 	vstate = &dth->dthps_vstate;
 
