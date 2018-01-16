@@ -25,6 +25,29 @@
 #include <asm/pgtable.h>
 #include <asm/set_memory.h>
 #include <asm/intel-family.h>
+#include <asm/spec_ctrl.h>
+
+/*
+ * use IBRS
+ * bit 0 = indicate if ibrs is currently in use
+ * bit 1 = indicate if system supports ibrs
+ * bit 2 = indicate if admin disables ibrs
+ */
+unsigned int use_ibrs;
+EXPORT_SYMBOL(use_ibrs);
+
+/*
+ * use IBRS
+ * bit 0 = indicate if ibpb is currently in use
+ * bit 1 = indicate if system supports ibpb
+ * bit 2 = indicate if admin disables ibpb
+ */
+unsigned int use_ibpb;
+EXPORT_SYMBOL(use_ibpb);
+
+/* mutex to serialize IBRS & IBPB control changes */
+DEFINE_MUTEX(spec_ctrl_mutex);
+EXPORT_SYMBOL(spec_ctrl_mutex);
 
 static void __init spectre_v2_select_mitigation(void);
 
@@ -159,8 +182,14 @@ static enum spectre_v2_mitigation_cmd __init spectre_v2_parse_cmdline(void)
 	int ret, i;
 	enum spectre_v2_mitigation_cmd cmd = SPECTRE_V2_CMD_AUTO;
 
+	if (cmdline_find_option_bool(boot_command_line, "noibrs"))
+		set_ibrs_disabled();
+
+	if (cmdline_find_option_bool(boot_command_line, "noibpb"))
+		set_ibpb_disabled();
+
 	if (cmdline_find_option_bool(boot_command_line, "nospectre_v2"))
-		return SPECTRE_V2_CMD_NONE;
+		goto disable;
 	else {
 		ret = cmdline_find_option(boot_command_line, "spectre_v2", arg, sizeof(arg));
 		if (ret < 0)
@@ -198,7 +227,15 @@ static enum spectre_v2_mitigation_cmd __init spectre_v2_parse_cmdline(void)
 	else
 		spec2_print_if_insecure(mitigation_options[i].option);
 
+	if (cmd == SPECTRE_V2_CMD_NONE)
+		goto disable;
+
 	return cmd;
+
+disable:
+	set_ibrs_disabled();
+	set_ibpb_disabled();
+	return SPECTRE_V2_CMD_NONE;
 }
 
 /* Check for Skylake-like CPUs (for RSB handling) */

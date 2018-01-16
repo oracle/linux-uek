@@ -40,6 +40,7 @@
 #include <asm/processor.h>
 #include <asm/cmdline.h>
 #include <asm/setup.h>
+#include <asm/spec_ctrl.h>
 #include <xen/xen.h>
 
 #define DRIVER_VERSION	"2.2"

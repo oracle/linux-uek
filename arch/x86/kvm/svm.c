@@ -47,6 +47,7 @@
 #include <asm/irq_remapping.h>
 #include <asm/microcode.h>
 #include <asm/nospec-branch.h>
+#include <asm/spec_ctrl.h>
 
 #include <asm/virtext.h>
 #include "trace.h"
