@@ -88,6 +88,7 @@
 #include <asm/processor.h>
 #include <asm/cpu_device_id.h>
 #include <asm/perf_event.h>
+#include <asm/spec_ctrl.h>
 
 MODULE_DESCRIPTION("Microcode Update Driver");
 MODULE_AUTHOR("Tigran Aivazian <tigran@aivazian.fsnet.co.uk>");

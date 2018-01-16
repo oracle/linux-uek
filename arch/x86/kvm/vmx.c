@@ -48,6 +48,7 @@
 #include <asm/kexec.h>
 #include <asm/apic.h>
 #include <asm/microcode.h>
+#include <asm/spec_ctrl.h>
 
 #include "trace.h"
 

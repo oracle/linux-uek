@@ -76,6 +76,7 @@
 #include <asm/nmi.h>
 #include <asm/stacktrace.h>
 #include <asm/io.h>
+#include <asm/spec_ctrl.h>
 #endif
 #ifdef CONFIG_SPARC
 #include <asm/setup.h>

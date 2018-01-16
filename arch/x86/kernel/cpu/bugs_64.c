@@ -10,6 +10,32 @@
 #include <asm/processor.h>
 #include <asm/mtrr.h>
 #include <asm/cacheflush.h>
+#include <asm/spec_ctrl.h>
+#include <asm/cmdline.h>
+
+/*
+ * use IBRS
+ * bit 0 = indicate if ibrs is currently in use
+ * bit 1 = indicate if system supports ibrs
+ * bit 2 = indicate if admin disables ibrs
+ */
+int use_ibrs;
+EXPORT_SYMBOL(use_ibrs);
+
+/*
+ * use IBRS
+ * bit 0 = indicate if ibpb is currently in use
+ * bit 1 = indicate if system supports ibpb
+ * bit 2 = indicate if admin disables ibpb
+ */
+int use_ibpb;
+EXPORT_SYMBOL(use_ibpb);
+
+/* mutex to serialize IBRS & IBPB control changes */
+DEFINE_MUTEX(spec_ctrl_mutex);
+EXPORT_SYMBOL(spec_ctrl_mutex);
+
+static void __init spectre_v2_parse_cmdline(void);
 
 void __init check_bugs(void)
 {
@@ -30,6 +56,67 @@ void __init check_bugs(void)
 	 */
 	if (!direct_gbpages)
 		set_memory_4k((unsigned long)__va(0), 1);
+
+	spectre_v2_parse_cmdline();
+}
+
+static inline bool match_option(const char *arg, int arglen, const char *opt)
+{
+	int len = strlen(opt);
+
+	return len == arglen && !strncmp(arg, opt, len);
+}
+
+static void spectre_v2_usage_error(const char *str)
+{
+	pr_warn("%s arguments for option spectre_v2. "
+		    "Usage spectre_v2={on|off|auto}\n", str);
+}
+
+static void __init spectre_v2_parse_cmdline(void)
+{
+	char arg[20];
+	int ret;
+
+	if (cmdline_find_option_bool(boot_command_line, "noibrs")) {
+		pr_warn("Deprecated command option noibrs. "
+			"Use nospectre_v2 instead.\n");
+		set_ibrs_disabled();
+	}
+
+	if (cmdline_find_option_bool(boot_command_line, "noibpb")) {
+		pr_warn("Deprecated command option noibpb. "
+			"Use nospectre_v2 instead.\n");
+		set_ibpb_disabled();
+	}
+
+	if (cmdline_find_option_bool(boot_command_line, "nospectre_v2"))
+		goto disable;
+
+	ret = cmdline_find_option(boot_command_line, "spectre_v2", arg,
+	    sizeof(arg));
+
+	if (ret > 0) {
+
+		if (match_option(arg, ret, "off"))
+			goto disable;
+
+		if (match_option(arg, ret, "on") ||
+			match_option(arg, ret, "auto")) {
+			if (!(ibrs_supported || ibpb_supported))
+				pr_warn("Spectre_v2 mitigation unsupported\n");
+		} else {
+			spectre_v2_usage_error("Invalid");
+		}
+	} else {
+		spectre_v2_usage_error("Missing");
+	}
+
+	return;
+
+disable:
+	set_ibrs_disabled();
+	set_ibpb_disabled();
 }
 
 #ifdef CONFIG_SYSFS
