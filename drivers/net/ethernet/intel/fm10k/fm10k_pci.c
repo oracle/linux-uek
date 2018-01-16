@@ -194,7 +194,7 @@ static void fm10k_start_service_event(struct fm10k_intfc *interface)
 
 /**
  * fm10k_service_timer - Timer Call-back
- * @data: pointer to interface cast into an unsigned long
+ * @t: pointer to timer data
  **/
 static void fm10k_service_timer(unsigned long data)
 {
@@ -631,7 +631,7 @@ void fm10k_update_stats(struct fm10k_intfc *interface)
 
 /**
  * fm10k_watchdog_flush_tx - flush queues on host not ready
- * @interface - pointer to the device interface structure
+ * @interface: pointer to the device interface structure
  **/
 static void fm10k_watchdog_flush_tx(struct fm10k_intfc *interface)
 {
@@ -661,7 +661,7 @@ static void fm10k_watchdog_flush_tx(struct fm10k_intfc *interface)
 
 /**
  * fm10k_watchdog_subtask - check and bring link up
- * @interface - pointer to the device interface structure
+ * @interface: pointer to the device interface structure
  **/
 static void fm10k_watchdog_subtask(struct fm10k_intfc *interface)
 {
@@ -685,7 +685,7 @@ static void fm10k_watchdog_subtask(struct fm10k_intfc *interface)
 
 /**
  * fm10k_check_hang_subtask - check for hung queues and dropped interrupts
- * @interface - pointer to the device interface structure
+ * @interface: pointer to the device interface structure
  *
  * This function serves two purposes.  First it strobes the interrupt lines
  * in order to make certain interrupts are occurring.  Secondly it sets the
@@ -1977,6 +1977,7 @@ skip_tx_dma_drain:
 /**
  * fm10k_sw_init - Initialize general software structures
  * @interface: host interface private structure to initialize
+ * @ent: PCI device ID entry
  *
  * fm10k_sw_init initializes the interface private data structure.
  * Fields are initialized based on PCI device information and
