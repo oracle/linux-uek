@@ -462,6 +462,8 @@ ENDPROC(native_usergs_sysret64)
 	/* Save rbp so that we can unwind from get_irq_regs() */
 	movq_cfi rbp, 0
 
+	STUFF_RSB /* We have a working stack. */
+
 	/* Save previous stack value */
 	movq %rsp, %rsi
 
@@ -539,6 +541,15 @@ ENTRY(save_paranoid)
 	js 1f	/* negative -> in kernel */
 	SWAPGS
 	xorl %ebx,%ebx
+
+	/*
+	 * Do this only if the interrupt caused a user->kernel
+	 * transition.
+	 * There is one problematic case: where an NMI occurs in the
+	 * kernel entry path before we have had a chance to STUFF_RSB.
+	 * We'll handle that in the NMI path.
+	 */
+	STUFF_RSB
 1:
 #ifdef CONFIG_PAGE_TABLE_ISOLATION
 	/*
@@ -664,6 +675,8 @@ GLOBAL(system_call_after_swapgs)
 
 	movq	%rsp,PER_CPU_VAR(old_rsp)
 	movq	PER_CPU_VAR(kernel_stack),%rsp
+
+	STUFF_RSB /* Have stack will STUFF_RSB */
 
 	ENABLE_IBRS
 	/*
@@ -1670,6 +1683,9 @@ ENTRY(error_entry)
 error_swapgs:
 	SWAPGS
 
+	/* Only need this for a user->kernel transition */
+	STUFF_RSB
+
 	ENABLE_IBRS_CLOBBER
 error_sti:
 	TRACE_IRQS_OFF
@@ -1835,6 +1851,9 @@ ENTRY(nmi)
 	pushq	%r13		/* pt_regs->r13 */
 	pushq	%r14		/* pt_regs->r14 */
 	pushq	%r15		/* pt_regs->r15 */
+
+	/* The NMI caused a user->kernel transition */
+	STUFF_RSB
 
 	/*
 	 * At this point we no longer need to worry about stack damage
@@ -2018,6 +2037,14 @@ first_nmi:
 	pushq_cfi 11*8(%rsp)
 	.endr
 	CFI_DEF_CFA_OFFSET SS+8-RIP
+
+	/*
+	 * Stuff the RSB. This is potentially unnecessary because we know that
+	 * the NMI occured in kernel space. However, we do not know if the NMI
+	 * occured before or after STUFF_RSB had been executed.
+	 * So, Stuff the RSB.
+	 */
+	STUFF_RSB
 
 	/* Everything up to here is safe from nested NMIs */
 
