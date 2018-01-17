@@ -1302,5 +1302,5 @@ int bnxt_close_nic(struct bnxt *, bool, bool);
 int bnxt_check_rings(struct bnxt *bp, int tx, int rx, int tcs, int tx_xdp);
 int bnxt_setup_mq_tc(struct net_device *dev, u8 tc);
 int bnxt_get_max_rings(struct bnxt *, int *, int *, bool);
-void bnxt_restore_pf_fw_resources(struct bnxt *bp);
+int bnxt_restore_pf_fw_resources(struct bnxt *bp);
 #endif
