@@ -3136,6 +3136,7 @@ static int __qedf_probe(struct pci_dev *pdev, int mode)
 	qedf->cmd_mgr = qedf_cmd_mgr_alloc(qedf);
 	if (!qedf->cmd_mgr) {
 		QEDF_ERR(&(qedf->dbg_ctx), "Failed to allocate cmd mgr.\n");
+		rc = -ENOMEM;
 		goto err5;
 	}
 
@@ -3159,6 +3160,7 @@ static int __qedf_probe(struct pci_dev *pdev, int mode)
 		create_workqueue(host_buf);
 	if (!qedf->ll2_recv_wq) {
 		QEDF_ERR(&(qedf->dbg_ctx), "Failed to LL2 workqueue.\n");
+		rc = -ENOMEM;
 		goto err7;
 	}
 
@@ -3202,6 +3204,7 @@ static int __qedf_probe(struct pci_dev *pdev, int mode)
 	if (!qedf->timer_work_queue) {
 		QEDF_ERR(&(qedf->dbg_ctx), "Failed to start timer "
 			  "workqueue.\n");
+		rc = -ENOMEM;
 		goto err7;
 	}
 
