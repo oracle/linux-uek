@@ -15,6 +15,7 @@
 #include <asm/acpi.h>
 #include <asm/mwait.h>
 #include <asm/special_insns.h>
+#include <asm/spec_ctrl.h>
 
 /*
  * Initialize bm_flags based on the CPU cache properties
@@ -166,10 +167,23 @@ void mwait_idle_with_hints(unsigned long ax, unsigned long cx)
 		if (this_cpu_has(X86_FEATURE_CLFLUSH_MONITOR))
 			clflush((void *)&current_thread_info()->flags);
 
+	       /* CPUs run faster with speculation protection
+		* disabled.  All CPU threads in a core must
+		* disable speculation protection for it to be
+		* disabled.  Disable it while we are idle so the
+		* other hyperthread can run fast.
+		*
+		* Interrupts have been disabled at this point.
+		*/
+
+		unprotected_speculation_begin();
+
 		__monitor((void *)&current_thread_info()->flags, 0, 0);
 		smp_mb();
 		if (!need_resched())
 			__mwait(ax, cx);
+
+		unprotected_speculation_end();
 	}
 }
 
