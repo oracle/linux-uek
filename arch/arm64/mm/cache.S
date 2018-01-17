@@ -85,7 +85,7 @@ ENTRY(invalidate_icache_range)
 	invalidate_icache_by_line x0, x1, x2, x3, 2f
 	mov	x0, xzr
 1:
-	uaccess_ttbr0_disable x1
+	uaccess_ttbr0_disable x1, x2
 	ret
 2:
 	mov	x0, #-EFAULT
