@@ -1361,6 +1361,7 @@ struct bnxt {
 	struct bnxt_vf_rep	**vf_reps; /* array of vf-rep ptrs */
 	u16			*cfa_code_map; /* cfa_code -> vf_idx map */
 	struct bnxt_tc_info	tc_info;
+	u8			switch_id[8];
 };
 
 #define BNXT_RX_STATS_OFFSET(counter)			\
