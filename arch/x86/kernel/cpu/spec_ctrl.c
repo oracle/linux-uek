@@ -264,3 +264,18 @@ static int __init debugfs_spec_ctrl(void)
 	return 0;
 }
 late_initcall(debugfs_spec_ctrl);
+
+void unprotected_firmware_begin(void)
+{
+	/*
+	 * rmb prevent unwanted speculation when we
+	 * are setting IBRS
+	 */
+	rmb();
+}
+EXPORT_SYMBOL_GPL(unprotected_firmware_begin);
+
+void unprotected_firmware_end(void)
+{
+}
+EXPORT_SYMBOL_GPL(unprotected_firmware_end);
