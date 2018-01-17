@@ -6451,23 +6451,13 @@ static bool bnxt_drv_busy(struct bnxt *bp)
 		test_bit(BNXT_STATE_READ_STATS, &bp->state));
 }
 
-int bnxt_close_nic(struct bnxt *bp, bool irq_re_init, bool link_re_init)
+static void __bnxt_close_nic(struct bnxt *bp, bool irq_re_init,
+			     bool link_re_init)
 {
-	int rc = 0;
-
-#ifdef CONFIG_BNXT_SRIOV
-	if (bp->sriov_cfg) {
-		rc = wait_event_interruptible_timeout(bp->sriov_cfg_wait,
-						      !bp->sriov_cfg,
-						      BNXT_SRIOV_CFG_WAIT_TMO);
-		if (rc)
-			netdev_warn(bp->dev, "timeout waiting for SRIOV config operation to complete!\n");
-	}
-
 	/* Close the VF-reps before closing PF */
 	if (BNXT_PF(bp))
 		bnxt_vf_reps_close(bp);
-#endif
+
 	/* Change device state to avoid TX queue wake up's */
 	bnxt_tx_disable(bp);
 
@@ -6490,6 +6480,22 @@ int bnxt_close_nic(struct bnxt *bp, bool irq_re_init, bool link_re_init)
 		bnxt_del_napi(bp);
 	}
 	bnxt_free_mem(bp, irq_re_init);
+}
+
+int bnxt_close_nic(struct bnxt *bp, bool irq_re_init, bool link_re_init)
+{
+	int rc = 0;
+
+#ifdef CONFIG_BNXT_SRIOV
+	if (bp->sriov_cfg) {
+		rc = wait_event_interruptible_timeout(bp->sriov_cfg_wait,
+						      !bp->sriov_cfg,
+						      BNXT_SRIOV_CFG_WAIT_TMO);
+		if (rc)
+			netdev_warn(bp->dev, "timeout waiting for SRIOV config operation to complete!\n");
+	}
+#endif
+	__bnxt_close_nic(bp, irq_re_init, link_re_init);
 	return rc;
 }
 
