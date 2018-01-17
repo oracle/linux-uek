@@ -15,6 +15,7 @@ CFLAGS_common.o		:= $(nostackp)
 obj-y			:= intel_cacheinfo.o scattered.o topology.o
 obj-y			+= proc.o capflags.o powerflags.o common.o
 obj-y			+= vmware.o hypervisor.o mshyperv.o
+obj-y			+= spec_ctrl.o
 obj-y			+= rdrand.o
 obj-y			+= match.o
 

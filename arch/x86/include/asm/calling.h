@@ -220,35 +220,52 @@ For 32-bit we have the following conventions - kernel is built with
 .endm
 
 .macro ENABLE_IBRS
-	ALTERNATIVE "jmp 	.Lskip_\@", "", X86_FEATURE_SPEC_CTRL
+	testl	$1, dynamic_ibrs
+	jz	.Lskip_\@
 	PUSH_MSR_REGS
 	WRMSR_ASM $MSR_IA32_SPEC_CTRL, $SPEC_CTRL_FEATURE_ENABLE_IBRS
 	POP_MSR_REGS
+	jmp	.Ldone_\@
 .Lskip_\@:
+	lfence
+.Ldone_\@:
 .endm
 
 .macro DISABLE_IBRS
-	ALTERNATIVE "jmp 	.Lskip_\@", "", X86_FEATURE_SPEC_CTRL
+	testl	$1, dynamic_ibrs
+	jz	.Lskip_\@
 	PUSH_MSR_REGS
 	WRMSR_ASM $MSR_IA32_SPEC_CTRL, $SPEC_CTRL_FEATURE_DISABLE_IBRS
 	POP_MSR_REGS
+	jmp	.Ldone_\@
 .Lskip_\@:
+	lfence
+.Ldone_\@:
 .endm
 
 .macro ENABLE_IBRS_CLOBBER
-	ALTERNATIVE "jmp 	.Lskip_\@", "", X86_FEATURE_SPEC_CTRL
+	testl	$1, dynamic_ibrs
+	jz	.Lskip_\@
 	WRMSR_ASM $MSR_IA32_SPEC_CTRL, $SPEC_CTRL_FEATURE_ENABLE_IBRS
+	jmp	.Ldone_\@
 .Lskip_\@:
+	lfence
+.Ldone_\@:
 .endm
 
 .macro DISABLE_IBRS_CLOBBER
-	ALTERNATIVE "jmp 	.Lskip_\@", "", X86_FEATURE_SPEC_CTRL
+	testl	$1, dynamic_ibrs
+	jz	.Lskip_\@
 	WRMSR_ASM $MSR_IA32_SPEC_CTRL, $SPEC_CTRL_FEATURE_DISABLE_IBRS
+	jmp	.Ldone_\@
 .Lskip_\@:
+	lfence
+.Ldone_\@:
 .endm
 
 .macro ENABLE_IBRS_SAVE_AND_CLOBBER save_reg:req
-	ALTERNATIVE "jmp 	.Lskip_\@", "", X86_FEATURE_SPEC_CTRL
+	testl	$1, dynamic_ibrs
+	jz	.Lskip_\@
 	movl	$MSR_IA32_SPEC_CTRL, %ecx
 	rdmsr
 	movl	%eax, \save_reg
@@ -256,15 +273,22 @@ For 32-bit we have the following conventions - kernel is built with
 	movl	$0, %edx
 	movl	$SPEC_CTRL_FEATURE_ENABLE_IBRS, %eax
 	wrmsr
+	jmp	.Ldone_\@
 .Lskip_\@:
+	lfence
+.Ldone_\@:
 .endm
 
 .macro RESTORE_IBRS_CLOBBER save_reg:req
-	ALTERNATIVE "jmp 	.Lskip_\@", "", X86_FEATURE_SPEC_CTRL
+	testl	$1, dynamic_ibrs
+	jz	.Lskip_\@
 	/* Set IBRS to the value saved in the save_reg */
 	movl    $MSR_IA32_SPEC_CTRL, %ecx
 	movl    $0, %edx
 	movl    \save_reg, %eax
 	wrmsr
+	jmp	.Ldone_\@
 .Lskip_\@:
+	lfence
+.Ldone_\@:
 .endm
