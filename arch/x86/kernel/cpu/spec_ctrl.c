@@ -38,31 +38,38 @@ static bool ibpb_admin_disabled;
 /* mutex to serialize IBRS control changes */
 DEFINE_MUTEX(spec_ctrl_mutex);
 
+static inline void set_ibrs_feature(void)
+{
+	if (!ibrs_admin_disabled) {
+		dynamic_ibrs = 1;
+		ibrs_enabled = IBRS_ENABLED;
+		sysctl_ibrs_enabled = 1;
+	} else {
+		dynamic_ibrs = 0;
+		ibrs_enabled = IBRS_DISABLED;
+	}
+}
+
+static inline void set_ibpb_feature(void)
+{
+	if (!ibpb_admin_disabled) {
+		dynamic_ibpb = 1;
+		ibpb_enabled = IBPB_ENABLED;
+		sysctl_ibpb_enabled = 1;
+	} else {
+		dynamic_ibpb = 0;
+		ibpb_enabled = IBPB_DISABLED;
+	}
+}
 void scan_spec_ctrl_feature(struct cpuinfo_x86 *c)
 {
 	if ((!c->cpu_index) && (boot_cpu_has(X86_FEATURE_SPEC_CTRL))) {
-		printk(KERN_INFO "FEATURE SPEC_CTRL Present\n");
-		if (!ibrs_admin_disabled) {
-			dynamic_ibrs = 1;
-			ibrs_enabled = IBRS_ENABLED;
-			sysctl_ibrs_enabled = 1;
-		} else {
-			dynamic_ibrs = 0;
-			ibrs_enabled = IBRS_DISABLED;
-		}
-		if (!ibpb_admin_disabled) {
-			dynamic_ibpb = 1;
-			ibpb_enabled = IBPB_ENABLED;
-			sysctl_ibpb_enabled = 1;
-		} else {
-			dynamic_ibpb = 0;
-			ibpb_enabled = IBPB_DISABLED;
-		}
+		set_ibrs_feature();
+		set_ibpb_feature();
 
-	} else {
-		printk(KERN_INFO "FEATURE SPEC_CTRL Not Present\n");
 	}
 }
+
 EXPORT_SYMBOL_GPL(scan_spec_ctrl_feature);
 
 /*
@@ -73,14 +80,8 @@ void rescan_spec_ctrl_feature(struct cpuinfo_x86 *c)
 {
 	mutex_lock(&spec_ctrl_mutex);
 	if (boot_cpu_has(X86_FEATURE_SPEC_CTRL)) {
-		if (!ibrs_admin_disabled) {
-			dynamic_ibrs = 1;
-			ibrs_enabled = IBRS_ENABLED;
-		}
-		if (!ibpb_admin_disabled) {
-			dynamic_ibpb = 1;
-			ibpb_enabled = IBPB_ENABLED;
-		}
+		set_ibrs_feature();
+		set_ibpb_feature();
 	}
 	mutex_unlock(&spec_ctrl_mutex);
 }
