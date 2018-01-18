@@ -333,7 +333,7 @@ static ssize_t numa_node_store(struct device *dev,
 		return -EINVAL;
 
 	add_taint(TAINT_FIRMWARE_WORKAROUND, LOCKDEP_STILL_OK);
-	dev_alert(&pdev->dev, FW_BUG "Overriding NUMA node to %d.  Contact your vendor for updates.",
+	pci_alert(pdev, FW_BUG "Overriding NUMA node to %d.  Contact your vendor for updates.",
 		  node);
 
 	dev->numa_node = node;
@@ -396,7 +396,7 @@ static ssize_t msi_bus_store(struct device *dev, struct device_attribute *attr,
 	 */
 	if (!subordinate) {
 		pdev->no_msi = !val;
-		dev_info(&pdev->dev, "MSI/MSI-X %s for future drivers\n",
+		pci_info(pdev, "MSI/MSI-X %s for future drivers\n",
 			 val ? "allowed" : "disallowed");
 		return count;
 	}
@@ -598,7 +598,7 @@ static ssize_t sriov_numvfs_store(struct device *dev,
 
 	/* is PF driver loaded w/callback */
 	if (!pdev->driver || !pdev->driver->sriov_configure) {
-		dev_info(&pdev->dev, "Driver doesn't support SRIOV configuration via sysfs\n");
+		pci_info(pdev, "Driver doesn't support SRIOV configuration via sysfs\n");
 		ret = -ENOENT;
 		goto exit;
 	}
@@ -611,7 +611,7 @@ static ssize_t sriov_numvfs_store(struct device *dev,
 
 	/* enable VFs */
 	if (pdev->sriov->num_VFs) {
-		dev_warn(&pdev->dev, "%d VFs already enabled. Disable before enabling %d VFs\n",
+		pci_warn(pdev, "%d VFs already enabled. Disable before enabling %d VFs\n",
 			 pdev->sriov->num_VFs, num_vfs);
 		ret = -EBUSY;
 		goto exit;
@@ -622,7 +622,7 @@ static ssize_t sriov_numvfs_store(struct device *dev,
 		goto exit;
 
 	if (ret != num_vfs)
-		dev_warn(&pdev->dev, "%d VFs requested; only %d enabled\n",
+		pci_warn(pdev, "%d VFs requested; only %d enabled\n",
 			 num_vfs, ret);
 
 exit:
