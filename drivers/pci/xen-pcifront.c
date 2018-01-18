@@ -262,8 +262,8 @@ static int pci_frontend_enable_msix(struct pci_dev *dev,
 	struct msi_desc *entry;
 
 	if (nvec > SH_INFO_MAX_VEC) {
-		dev_err(&dev->dev, "too much vector for pci frontend: %x."
-				   " Increase SH_INFO_MAX_VEC.\n", nvec);
+		pci_err(dev, "too many vectors (0x%x) for PCI frontend:"
+				   " Increase SH_INFO_MAX_VEC\n", nvec);
 		return -EINVAL;
 	}
 
@@ -282,7 +282,7 @@ static int pci_frontend_enable_msix(struct pci_dev *dev,
 			/* we get the result */
 			for (i = 0; i < nvec; i++) {
 				if (op.msix_entries[i].vector <= 0) {
-					dev_warn(&dev->dev, "MSI-X entry %d is invalid: %d!\n",
+					pci_warn(dev, "MSI-X entry %d is invalid: %d!\n",
 						i, op.msix_entries[i].vector);
 					err = -EINVAL;
 					vector[i] = -1;
@@ -296,7 +296,7 @@ static int pci_frontend_enable_msix(struct pci_dev *dev,
 			err = op.value;
 		}
 	} else {
-		dev_err(&dev->dev, "enable msix get err %x\n", err);
+		pci_err(dev, "enable msix get err %x\n", err);
 	}
 	return err;
 }
@@ -317,7 +317,7 @@ static void pci_frontend_disable_msix(struct pci_dev *dev)
 
 	/* What should do for error ? */
 	if (err)
-		dev_err(&dev->dev, "pci_disable_msix get err %x\n", err);
+		pci_err(dev, "pci_disable_msix get err %x\n", err);
 }
 
 static int pci_frontend_enable_msi(struct pci_dev *dev, int vector[])
@@ -336,13 +336,13 @@ static int pci_frontend_enable_msi(struct pci_dev *dev, int vector[])
 	if (likely(!err)) {
 		vector[0] = op.value;
 		if (op.value <= 0) {
-			dev_warn(&dev->dev, "MSI entry is invalid: %d!\n",
+			pci_warn(dev, "MSI entry is invalid: %d!\n",
 				op.value);
 			err = -EINVAL;
 			vector[0] = -1;
 		}
 	} else {
-		dev_err(&dev->dev, "pci frontend enable msi failed for dev "
+		pci_err(dev, "pci frontend enable msi failed for dev "
 				    "%x:%x\n", op.bus, op.devfn);
 		err = -EINVAL;
 	}
@@ -564,7 +564,7 @@ static void free_root_bus_devs(struct pci_bus *bus)
 	while (!list_empty(&bus->devices)) {
 		dev = container_of(bus->devices.next, struct pci_dev,
 				   bus_list);
-		dev_dbg(&dev->dev, "removing device\n");
+		pci_dbg(dev, "removing device\n");
 		pci_stop_and_remove_bus_device(dev);
 	}
 }
@@ -618,8 +618,7 @@ static pci_ers_result_t pcifront_common_process(int cmd,
 
 	if (pdrv) {
 		if (pdrv->err_handler && pdrv->err_handler->error_detected) {
-			dev_dbg(&pcidev->dev,
-				"trying to call AER service\n");
+			pci_dbg(pcidev, "trying to call AER service\n");
 			if (pcidev) {
 				flag = 1;
 				switch (cmd) {
