@@ -146,7 +146,7 @@ void dtrace_fbt_init(fbt_add_probe_fn fbt_add_probe, struct module *mp,
 						FBT_ENTRY, *addr, addr, 0,
 						NULL, arg);
 					state = 1;
-				} else if (insc > 2)
+				} else if (insc > 10)
 					state = 2;
 				break;
 			case 1: /* look for ret */
