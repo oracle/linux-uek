@@ -2857,6 +2857,44 @@ static bool pci_acs_flags_enabled(struct pci_dev *pdev, u16 acs_flags)
 }
 
 /**
+ * pci_std_enable_acs_sv - enable/disable ACS source validation if
+ * supported by the switch
+ * @dev - pcie switch/RP
+ * @enable - enable (1) or disable (0) source validation
+ *
+ * Returns : < 0 on failure (if SV capability is not implemented)
+ *           previous acs_sv state (0 or 1)
+ */
+int pci_std_enable_acs_sv(struct pci_dev *dev, bool enable)
+{
+	int pos;
+	u16 cap;
+	u16 ctrl;
+	int retval;
+
+	pos = pci_find_ext_capability(dev, PCI_EXT_CAP_ID_ACS);
+	if (!pos)
+		return -ENODEV;
+
+	pci_read_config_word(dev, pos + PCI_ACS_CAP, &cap);
+
+	if (!(cap & PCI_ACS_SV))
+		return -ENODEV;
+
+	pci_read_config_word(dev, pos + PCI_ACS_CTRL, &ctrl);
+
+	retval = !!(ctrl & cap & PCI_ACS_SV);
+	if (enable)
+		ctrl |= (cap & PCI_ACS_SV);
+	else
+		ctrl &= ~(cap & PCI_ACS_SV);
+
+	pci_write_config_word(dev, pos + PCI_ACS_CTRL, ctrl);
+
+	return retval;
+}
+
+/**
  * pci_acs_enabled - test ACS against required flags for a given device
  * @pdev: device to test
  * @acs_flags: required PCI ACS flags
