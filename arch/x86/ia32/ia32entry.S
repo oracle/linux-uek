@@ -128,8 +128,8 @@ ENTRY(ia32_sysenter_target)
 	movq	PER_CPU_VAR(kernel_stack), %rsp
 	addq	$(KERNEL_STACK_OFFSET),%rsp
 
-	ENABLE_IBRS
 	STUFF_RSB
+	ENABLE_IBRS
 	/*
 	 * No need to follow this irqs on/off section: the syscall
 	 * disabled irqs, here we enable it straight after entry:
@@ -429,8 +429,8 @@ ENTRY(ia32_syscall)
 	SWAPGS
 	SWITCH_KERNEL_CR3_NO_STACK
 
-	ENABLE_IBRS
 	STUFF_RSB
+	ENABLE_IBRS
 
 	/*
 	 * No need to follow this irqs on/off section: the syscall

@@ -506,8 +506,8 @@ ENTRY(system_call_after_swapgs)
 	movq	%rsp,PER_CPU_VAR(old_rsp)
 	movq	PER_CPU_VAR(kernel_stack),%rsp
 
-	ENABLE_IBRS
 	STUFF_RSB
+	ENABLE_IBRS
 
 	/*
 	 * No need to follow this irqs off/on section - it's straight
