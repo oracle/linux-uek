@@ -208,6 +208,14 @@
 #define X86_FEATURE_INVPCID	(9*32+10) /* Invalidate Processor Context ID */
 #define X86_FEATURE_RTM		(9*32+11) /* Restricted Transactional Memory */
 
+/*
+ * BUG word(s)
+ */
+#define X86_BUG(x)              (NCAPINTS*32 + (x))
+
+/*Keep the bits consistent with upstream */
+#define X86_BUG_CPU_MELTDOWN   X86_BUG(14) /* CPU is insecure and need PTI */
+
 #if defined(__KERNEL__) && !defined(__ASSEMBLY__)
 
 #include <asm/asm.h>
@@ -251,6 +259,8 @@ extern const char * const x86_power_flags[32];
 	set_cpu_cap(&boot_cpu_data, bit);	\
 	set_bit(bit, (unsigned long *)cpu_caps_set);	\
 } while (0)
+
+#define setup_force_cpu_bug(bit) setup_force_cpu_cap(bit)
 
 #define cpu_has_fpu		boot_cpu_has(X86_FEATURE_FPU)
 #define cpu_has_vme		boot_cpu_has(X86_FEATURE_VME)
