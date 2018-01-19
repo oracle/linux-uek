@@ -319,8 +319,6 @@ ENTRY(save_args)
 	movq_cfi r10, R10+8-RBP
 	movq_cfi r11, R11+8-RBP
 
-	STUFF_RSB
-
 	leaq -RBP+8(%rsp),%rdi	/* arg1 for handler */
 	movq_cfi rbp, 8		/* push %rbp */
 	leaq 8(%rsp), %rbp		/* mov %rsp, %ebp */
@@ -391,8 +389,6 @@ ENTRY(save_paranoid)
 	movq_cfi r13, R13+8
 	movq_cfi r14, R14+8
 	movq_cfi r15, R15+8
-
-	STUFF_RSB
 
 	movl $1,%ebx
 	movl $MSR_GS_BASE,%ecx
@@ -847,6 +843,7 @@ END(interrupt)
 	/* reserve pt_regs for scratch regs and rbp */
 	subq $ORIG_RAX-RBP, %rsp
 	CFI_ADJUST_CFA_OFFSET ORIG_RAX-RBP
+	STUFF_RSB
 	call save_args
 	PARTIAL_FRAME 0
 	call \func
@@ -1087,6 +1084,7 @@ apicinterrupt IRQ_WORK_VECTOR \
 .macro zeroentry sym do_sym
 ENTRY(\sym)
 	INTR_FRAME
+	STUFF_RSB
 	PARAVIRT_ADJUST_EXCEPTION_FRAME
 	pushq_cfi $-1		/* ORIG_RAX: no syscall to restart */
 	subq $ORIG_RAX-R15, %rsp
@@ -1104,6 +1102,7 @@ END(\sym)
 .macro paranoidzeroentry sym do_sym
 ENTRY(\sym)
 	INTR_FRAME
+	STUFF_RSB
 	PARAVIRT_ADJUST_EXCEPTION_FRAME
 	pushq_cfi $-1		/* ORIG_RAX: no syscall to restart */
 	subq $ORIG_RAX-R15, %rsp
@@ -1122,6 +1121,7 @@ END(\sym)
 .macro paranoidzeroentry_ist sym do_sym ist
 ENTRY(\sym)
 	INTR_FRAME
+	STUFF_RSB
 	PARAVIRT_ADJUST_EXCEPTION_FRAME
 	pushq_cfi $-1		/* ORIG_RAX: no syscall to restart */
 	subq $ORIG_RAX-R15, %rsp
@@ -1141,6 +1141,7 @@ END(\sym)
 .macro errorentry sym do_sym
 ENTRY(\sym)
 	XCPT_FRAME
+	STUFF_RSB
 	PARAVIRT_ADJUST_EXCEPTION_FRAME
 	subq $ORIG_RAX-R15, %rsp
 	CFI_ADJUST_CFA_OFFSET ORIG_RAX-R15
@@ -1159,6 +1160,7 @@ END(\sym)
 .macro paranoiderrorentry sym do_sym
 ENTRY(\sym)
 	XCPT_FRAME
+	STUFF_RSB
 	PARAVIRT_ADJUST_EXCEPTION_FRAME
 	subq $ORIG_RAX-R15, %rsp
 	CFI_ADJUST_CFA_OFFSET ORIG_RAX-R15
@@ -1523,8 +1525,6 @@ ENTRY(error_entry)
 	movq_cfi r13, R13+8
 	movq_cfi r14, R14+8
 	movq_cfi r15, R15+8
-
-	STUFF_RSB
 
 	/*
 	 * error_entry() always returns with a kernel gsbase and
