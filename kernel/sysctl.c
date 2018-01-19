@@ -227,6 +227,11 @@ extern struct ctl_table epoll_table[];
 int sysctl_legacy_va_layout;
 #endif
 
+u32 sysctl_ibrs_enabled = 0;
+EXPORT_SYMBOL(sysctl_ibrs_enabled);
+u32 sysctl_ibpb_enabled = 0;
+EXPORT_SYMBOL(sysctl_ibpb_enabled);
+
 /* The default sysctl tables: */
 
 static struct ctl_table root_table[] = {

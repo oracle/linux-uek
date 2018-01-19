@@ -14,6 +14,7 @@
 #include <asm/msr.h>
 #include <asm/bugs.h>
 #include <asm/cpu.h>
+#include <asm/spec_ctrl.h>
 
 #ifdef CONFIG_X86_64
 #include <linux/topology.h>
