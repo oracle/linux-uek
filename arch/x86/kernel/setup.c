@@ -997,6 +997,13 @@ void __init setup_arch(char **cmdline_p)
 	 */
 	init_hypervisor_platform();
 
+#ifdef CONFIG_KAISER
+	if (xen_pv_domain()) {
+		kaiser_enabled = 0;
+		setup_clear_cpu_cap(X86_FEATURE_KAISER);
+		/* No message logged in this case by design */
+	}
+#endif
 	x86_init.resources.probe_roms();
 
 	/* after parse_early_param, so could debug it */
