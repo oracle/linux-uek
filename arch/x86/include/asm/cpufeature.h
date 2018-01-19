@@ -179,6 +179,12 @@
 #define	X86_FEATURE_INVPCID_SINGLE (7*32+ 8) /* Effectively INVPCID && CR4.PCIDE=1 */
 #define X86_FEATURE_SPEC_CTRL	(7*32+19) /* Control Speculation Control */
 
+/* Keep the bits consistent with upstream.
+ * Don't put any comments - as that will show up in /proc/cpuinfo. */
+#define X86_BUG_CPU_MELTDOWN   (7*32+16)
+#define X86_BUG_SPECTRE_V1     (7*32+17)
+#define X86_BUG_SPECTRE_V2     (7*32+18)
+
 /* Because the ALTERNATIVE scheme is for members of the X86_FEATURE club... */
 #define X86_FEATURE_PTI	( 7*32+31) /* CONFIG_PAGE_TABLE_ISOLATION w/o nopti */
 
@@ -207,14 +213,6 @@
 #define X86_FEATURE_ERMS	(9*32+ 9) /* Enhanced REP MOVSB/STOSB */
 #define X86_FEATURE_INVPCID	(9*32+10) /* Invalidate Processor Context ID */
 #define X86_FEATURE_RTM		(9*32+11) /* Restricted Transactional Memory */
-
-/*
- * BUG word(s)
- */
-#define X86_BUG(x)              (NCAPINTS*32 + (x))
-
-/*Keep the bits consistent with upstream */
-#define X86_BUG_CPU_MELTDOWN   X86_BUG(14) /* CPU is insecure and need PTI */
 
 #if defined(__KERNEL__) && !defined(__ASSEMBLY__)
 
