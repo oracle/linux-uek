@@ -168,4 +168,7 @@ config SYS_HYPERVISOR
 	bool
 	default n
 
+config GENERIC_CPU_VULNERABILITIES
+	bool
+
 endmenu
