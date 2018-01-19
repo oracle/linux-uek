@@ -50,11 +50,11 @@ static inline void set_ibrs_feature(void)
 	if (!ibrs_admin_disabled && !ignore) {
 		dynamic_ibrs = 1;
 		ibrs_enabled = IBRS_ENABLED;
-		sysctl_ibrs_enabled = 1;
 	} else {
 		dynamic_ibrs = 0;
 		ibrs_enabled = IBRS_DISABLED;
 	}
+	sysctl_ibrs_enabled = dynamic_ibrs ? 1 : 0;
 }
 
 static inline void set_ibpb_feature(void)
@@ -62,11 +62,11 @@ static inline void set_ibpb_feature(void)
 	if (!ibpb_admin_disabled) {
 		dynamic_ibpb = 1;
 		ibpb_enabled = IBPB_ENABLED;
-		sysctl_ibpb_enabled = 1;
 	} else {
 		dynamic_ibpb = 0;
 		ibpb_enabled = IBPB_DISABLED;
 	}
+	sysctl_ibpb_enabled = dynamic_ibpb ? 1 : 0;
 }
 
 void scan_spec_ctrl_feature(struct cpuinfo_x86 *c)
