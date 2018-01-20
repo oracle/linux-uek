@@ -312,14 +312,6 @@ void __init kaiser_init(void)
 				  __PAGE_KERNEL_VVAR);
 	kaiser_add_user_map_early((void *)VSYSCALL_START, PAGE_SIZE,
 				  vsyscall_pgprot);
-#ifdef CONFIG_PARAVIRT_CLOCK
-	{ int idx;
-	for (idx = 0; idx < PVCLOCK_VSYSCALL_NR_PAGES; idx++) {
-		kaiser_add_user_map_early(
-			(void *)__fix_to_virt(PVCLOCK_FIXMAP_BEGIN + idx),
-				          PAGE_SIZE, __PAGE_KERNEL_VVAR);
-	} }
-#endif
 }
 
 /* Add a mapping to the shadow mapping, and synchronize the mappings */

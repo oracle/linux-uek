@@ -21,6 +21,7 @@
 #include <linux/sched.h>
 #include <linux/gfp.h>
 #include <linux/bootmem.h>
+#include <linux/kaiser.h>
 #include <asm/fixmap.h>
 #include <asm/pvclock.h>
 
@@ -187,6 +188,10 @@ int __init pvclock_init_vsyscall(struct pvclock_vsyscall_time_info *i,
 		__set_fixmap(PVCLOCK_FIXMAP_BEGIN + idx,
 			     __pa(i) + (idx*PAGE_SIZE),
 			     PAGE_KERNEL_VVAR);
+		kaiser_add_mapping((void *)__fix_to_virt(
+				   PVCLOCK_FIXMAP_BEGIN + idx),
+				   PAGE_SIZE,
+				   __PAGE_KERNEL_VVAR);
 	}
 
 
