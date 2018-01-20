@@ -10,6 +10,8 @@
 #include <asm/processor.h>
 #include <asm/mtrr.h>
 #include <asm/cacheflush.h>
+#include <linux/device.h>
+#include <asm/spec_ctrl.h>
 
 void __init check_bugs(void)
 {
@@ -31,3 +33,32 @@ void __init check_bugs(void)
 	if (!direct_gbpages)
 		set_memory_4k((unsigned long)__va(0), 1);
 }
+
+#ifdef CONFIG_SYSFS
+ssize_t cpu_show_meltdown(struct device *dev,
+                         struct device_attribute *attr, char *buf)
+{
+	if (!boot_cpu_has(X86_BUG_CPU_MELTDOWN))
+		return sprintf(buf, "Not affected\n");
+	if (boot_cpu_has(X86_FEATURE_PTI))
+		return sprintf(buf, "Mitigation: PTI\n");
+	return sprintf(buf, "Vulnerable\n");
+}
+
+ssize_t cpu_show_spectre_v1(struct device *dev,
+                           struct device_attribute *attr, char *buf)
+{
+	if (!boot_cpu_has(X86_BUG_SPECTRE_V1)
+		return sprintf(buf, "Not affected\n");
+	return sprintf(buf, "Vulnerable\n");
+}
+
+ssize_t cpu_show_spectre_v2(struct device *dev,
+                           struct device_attribute *attr, char *buf)
+{
+	if (!boot_cpu_has(X86_BUG_SPECTRE_V2) ||
+	    (dynamic_ibrs))
+		return sprintf(buf, "Not affected\n");
+	return sprintf(buf, "Vulnerable\n");
+}
+#endif
