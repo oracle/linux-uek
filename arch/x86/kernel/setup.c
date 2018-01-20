@@ -1001,7 +1001,7 @@ void __init setup_arch(char **cmdline_p)
 	if (xen_pv_domain() ||
 	    boot_cpu_data.x86_vendor == X86_VENDOR_AMD) {
 		kaiser_enabled = 0;
-		setup_clear_cpu_cap(X86_FEATURE_KAISER);
+		setup_clear_cpu_cap(X86_FEATURE_PTI);
 	}
 #endif
 	x86_init.resources.probe_roms();

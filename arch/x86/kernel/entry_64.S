@@ -545,7 +545,7 @@ ENTRY(save_paranoid)
 	 * unconditionally, but we need to find out whether the reverse
 	 * should be done on return (conveyed to paranoid_exit in %ebx).
 	 */
-	ALTERNATIVE "jmp 2f", "movq %cr3, %rax", X86_FEATURE_KAISER
+	ALTERNATIVE "jmp 2f", "movq %cr3, %rax", X86_FEATURE_PTI
 	testl	$KAISER_SHADOW_PGD_OFFSET, %eax
 	jz	2f
 	orl	$2, %ebx
@@ -1566,7 +1566,7 @@ paranoid_kernel:
 	movq	%r12, %rbx		/* restore after paranoid_userspace */
 	TRACE_IRQS_IRETQ_DEBUG 0
 #ifdef CONFIG_PAGE_TABLE_ISOLATION
-	/* No ALTERNATIVE for X86_FEATURE_KAISER: paranoid_entry sets %ebx */
+	/* No ALTERNATIVE for X86_FEATURE_PTI: paranoid_entry sets %ebx */
 	testl	$2, %ebx			/* SWITCH_USER_CR3 needed? */
 	jz	paranoid_exit_no_switch
 	SWITCH_USER_CR3
@@ -1820,7 +1820,7 @@ ENTRY(nmi)
 #ifdef CONFIG_PAGE_TABLE_ISOLATION
 	/* Unconditionally use kernel CR3 for do_nmi() */
 	/* %rax is saved above, so OK to clobber here */
-	ALTERNATIVE "jmp 2f", "movq %cr3, %rax", X86_FEATURE_KAISER
+	ALTERNATIVE "jmp 2f", "movq %cr3, %rax", X86_FEATURE_PTI
 	/* If PCID enabled, NOFLUSH now and NOFLUSH on return */
 	ALTERNATIVE "", "bts $63, %rax", X86_FEATURE_PCID
 	pushq	%rax
@@ -1837,7 +1837,7 @@ ENTRY(nmi)
 	 * kernel code that needs user CR3, but do we ever return
 	 * to "user mode" where we need the kernel CR3?
 	 */
-	ALTERNATIVE "", "popq %rax; movq %rax, %cr3", X86_FEATURE_KAISER
+	ALTERNATIVE "", "popq %rax; movq %rax, %cr3", X86_FEATURE_PTI
 #endif
 
 	/*
@@ -2068,7 +2068,7 @@ end_repeat_nmi:
 #ifdef CONFIG_PAGE_TABLE_ISOLATION
 	/* Unconditionally use kernel CR3 for do_nmi() */
 	/* %rax is saved above, so OK to clobber here */
-	ALTERNATIVE "jmp 2f", "movq %cr3, %rax", X86_FEATURE_KAISER
+	ALTERNATIVE "jmp 2f", "movq %cr3, %rax", X86_FEATURE_PTI
 	/* If PCID enabled, NOFLUSH now and NOFLUSH on return */
 	ALTERNATIVE "", "bts $63, %rax", X86_FEATURE_PCID
 	pushq	%rax
@@ -2099,7 +2099,7 @@ end_repeat_nmi:
 	 * kernel code that needs user CR3, like just just before
 	 * a sysret.
 	 */
-	ALTERNATIVE "", "popq %rax; movq %rax, %cr3", X86_FEATURE_KAISER
+	ALTERNATIVE "", "popq %rax; movq %rax, %cr3", X86_FEATURE_PTI
 #endif
 
 	/* Did the NMI take a page fault? Restore cr2 if it did */

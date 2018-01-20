@@ -276,13 +276,13 @@ void __init kaiser_init(void)
 	int cpu, idx;
 
 	if (!kaiser_enabled) {
-		setup_clear_cpu_cap(X86_FEATURE_KAISER);
+		setup_clear_cpu_cap(X86_FEATURE_PTI);
 		if (!xen_pv_domain())		/* no message for xen pv */
 			pr_info("Kernel/User page tables isolation: disabled\n");
 		return;
 	}
 
-	setup_force_cpu_cap(X86_FEATURE_KAISER);
+	setup_force_cpu_cap(X86_FEATURE_PTI);
 
 	kaiser_init_all_pgds();
 
@@ -438,7 +438,7 @@ static int __init x86_pti_setup(char *s)
 			return 0;
 
 		kaiser_enabled = 0;
-		setup_clear_cpu_cap(X86_FEATURE_KAISER);
+		setup_clear_cpu_cap(X86_FEATURE_PTI);
 		return 0;
 	}
 
