@@ -48,7 +48,7 @@ ssize_t cpu_show_meltdown(struct device *dev,
 ssize_t cpu_show_spectre_v1(struct device *dev,
                            struct device_attribute *attr, char *buf)
 {
-	if (!boot_cpu_has(X86_BUG_SPECTRE_V1)
+	if (!boot_cpu_has(X86_BUG_SPECTRE_V1))
 		return sprintf(buf, "Not affected\n");
 	return sprintf(buf, "Vulnerable\n");
 }
@@ -56,9 +56,12 @@ ssize_t cpu_show_spectre_v1(struct device *dev,
 ssize_t cpu_show_spectre_v2(struct device *dev,
                            struct device_attribute *attr, char *buf)
 {
-	if (!boot_cpu_has(X86_BUG_SPECTRE_V2) ||
-	    (dynamic_ibrs))
-		return sprintf(buf, "Not affected\n");
-	return sprintf(buf, "Vulnerable\n");
+       if (!boot_cpu_has(X86_BUG_SPECTRE_V2))
+               return sprintf(buf, "Not affected\n");
+	if (dynamic_ibrs && dynamic_ibpb)
+		return sprintf(buf, "Mitigation: IBRS IBPB\n");
+	if (!dynamic_ibrs && dynamic_ibpb)
+		return sprintf(buf, "Mitigation: IBPB\n");
+       return sprintf(buf, "Vulnerable\n");
 }
 #endif

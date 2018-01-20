@@ -795,14 +795,7 @@ static void __init early_identify_cpu(struct cpuinfo_x86 *c)
 	if (this_cpu->c_bsp_init)
 		this_cpu->c_bsp_init(c);
 
-	/* Mitigation for MELTDOWN already in place */
-	/* if (c->x86_vendor != X86_VENDOR_AMD)
-	 *	setup_force_cpu_bug(X86_BUG_CPU_MELTDOWN); */
-
-	setup_force_cpu_bug(X86_BUG_SPECTRE_V1);
-
-	/* Mitigation for SPECTRE_V2 already in place */
-	/* setup_force_cpu_bug(X86_BUG_SPECTRE_V2); */
+	setup_smep(c);
 }
 
 void __init early_cpu_init(void)
@@ -1025,6 +1018,14 @@ static void __cpuinit identify_cpu(struct cpuinfo_x86 *c)
 #ifdef CONFIG_NUMA
 	numa_add_cpu(smp_processor_id());
 #endif
+
+#ifndef CONFIG_PAGE_TABLE_ISOLATION
+	if (c->x86_vendor != X86_VENDOR_AMD)
+		setup_force_cpu_bug(X86_BUG_CPU_MELTDOWN);
+#endif
+	setup_force_cpu_bug(X86_BUG_SPECTRE_V1);
+
+	setup_force_cpu_bug(X86_BUG_SPECTRE_V2);
 }
 
 #ifdef CONFIG_X86_64
