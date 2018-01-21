@@ -47,6 +47,9 @@ static ssize_t ibrs_enabled_write(struct file *file,
         ssize_t len;
         unsigned int enable;
 
+	if (!ibrs_supported)
+		return -ENODEV;
+
         len = min(count, sizeof(buf) - 1);
         if (copy_from_user(buf, user_buf, len))
                 return -EFAULT;
@@ -70,11 +73,6 @@ static ssize_t ibrs_enabled_write(struct file *file,
 			spec_ctrl_flush_all_cpus(MSR_IA32_SPEC_CTRL, SPEC_CTRL_FEATURE_DISABLE_IBRS);
 	} else {
 		clear_ibrs_disabled();
-		if (use_ibrs & SPEC_CTRL_IBRS_SUPPORTED)
-			set_ibrs_inuse();
-		else
-			/* Platform don't support IBRS */
-			enable = 0;
 	}
 
 	WRITE_ONCE(sysctl_ibrs_enabled, enable);
