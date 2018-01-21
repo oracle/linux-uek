@@ -108,8 +108,6 @@ static void __init spectre_v2_parse_cmdline(void)
 		} else {
 			spectre_v2_usage_error("Invalid");
 		}
-	} else {
-		spectre_v2_usage_error("Missing");
 	}
 
 	return;
