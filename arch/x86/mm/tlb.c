@@ -14,6 +14,7 @@
 #include <asm/uv/uv.h>
 #include <asm/kaiser.h>
 #include <asm/microcode.h>
+#include <asm/spec_ctrl.h>
 
 DEFINE_PER_CPU_SHARED_ALIGNED(struct tlb_state, cpu_tlbstate)
 			= { &init_mm, 0, };
@@ -116,7 +117,7 @@ void switch_mm_irqs_off(struct mm_struct *prev, struct mm_struct *next,
 {
 	unsigned cpu = smp_processor_id();
 
-	if (boot_cpu_has(X86_FEATURE_SPEC_CTRL))
+	if (dynamic_ibpb)
 		wrmsrl(MSR_IA32_PRED_CMD, SPEC_CTRL_FEATURE_SET_IBPB);
 
 	if (likely(prev != next)) {
