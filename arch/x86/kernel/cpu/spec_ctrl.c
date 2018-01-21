@@ -68,6 +68,21 @@ static inline void set_ibpb_feature(void)
 	}
 	sysctl_ibpb_enabled = dynamic_ibpb ? 1 : 0;
 }
+
+void set_ibrs_disabled(void)
+{
+	dynamic_ibrs = 0;
+	ibrs_enabled = IBRS_DISABLED;
+	sysctl_ibrs_enabled = dynamic_ibrs;
+}
+
+void set_ibpb_disabled(void)
+{
+	dynamic_ibpb = 0;
+	ibpb_enabled = 0;
+	sysctl_ibpb_enabled = dynamic_ibpb;
+}
+
 void scan_spec_ctrl_feature(struct cpuinfo_x86 *c)
 {
 	if ((!c->cpu_index) && (boot_cpu_has(X86_FEATURE_SPEC_CTRL))) {
