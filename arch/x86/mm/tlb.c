@@ -14,6 +14,7 @@
 #include <asm/apic.h>
 #include <asm/uv/uv.h>
 #include <asm/kaiser.h>
+#include <asm/spec_ctrl.h>
 
 /*
  *	TLB flushing, formerly SMP-only
@@ -104,7 +105,7 @@ void switch_mm_irqs_off(struct mm_struct *prev, struct mm_struct *next,
 	unsigned cpu = smp_processor_id();
 
 	/* Null tsk means switching to kernel, so that's safe */
-	if (boot_cpu_has(X86_FEATURE_SPEC_CTRL) && tsk &&
+	if (ibpb_inuse && tsk &&
 	    ___ptrace_may_access(tsk, current, PTRACE_MODE_IBPB))
 		native_wrmsrl(MSR_IA32_PRED_CMD, FEATURE_SET_IBPB);
 
