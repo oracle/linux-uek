@@ -18,7 +18,6 @@
 #include <linux/node.h>
 #include <linux/compiler.h>
 #include <linux/cpumask.h>
-#include <linux/device.h>
 
 struct cpu {
 	int node_id;		/* The node which contains the CPU */
@@ -36,13 +35,6 @@ extern int cpu_add_sysdev_attr_group(struct attribute_group *attrs);
 extern void cpu_remove_sysdev_attr_group(struct attribute_group *attrs);
 
 extern int sched_create_sysfs_power_savings_entries(struct sysdev_class *cls);
-
-extern ssize_t cpu_show_meltdown(struct device *dev,
-                                struct device_attribute *attr, char *buf);
-extern ssize_t cpu_show_spectre_v1(struct device *dev,
-                                  struct device_attribute *attr, char *buf);
-extern ssize_t cpu_show_spectre_v2(struct device *dev,
-                                  struct device_attribute *attr, char *buf);
 
 #ifdef CONFIG_HOTPLUG_CPU
 extern void unregister_cpu(struct cpu *cpu);
