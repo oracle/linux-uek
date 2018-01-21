@@ -326,6 +326,7 @@ ENTRY(save_args)
 	je 1f
 	SWAPGS
 	SWITCH_KERNEL_CR3
+	ENABLE_IBRS
 	/*
 	 * irq_count is used to check if a CPU is already on an interrupt stack
 	 * or not. While this is essentially redundant with preempt_count it is
