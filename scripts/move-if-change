@@ -1,0 +1,7 @@
+#!/bin/sh
+
+if test -r "$2" && cmp -s "$1" "$2"; then
+  rm -f "$1"
+else
+  mv -f "$1" "$2"
+fi

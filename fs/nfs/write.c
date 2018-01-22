@@ -1379,6 +1379,8 @@ static void nfs_initiate_write(struct nfs_pgio_header *hdr,
 	trace_nfs_initiate_write(hdr->inode, hdr->io_start, hdr->good_bytes,
 				 hdr->args.stable);
 
+	DTRACE_IO_NFS(start, REQ_OP_WRITE, hdr->args.count, hdr->inode);
+
 	nfs4_state_protect_write(NFS_SERVER(hdr->inode)->nfs_client,
 				 &task_setup_data->rpc_client, msg, hdr);
 }
@@ -1533,6 +1535,7 @@ static int nfs_writeback_done(struct rpc_task *task,
 	 * depend on tighter cache coherency when writing.
 	 */
 	status = NFS_PROTO(inode)->write_done(task, hdr);
+	DTRACE_IO_NFS(done, REQ_OP_WRITE, hdr->res.count, hdr->inode);
 	if (status != 0)
 		return status;
 

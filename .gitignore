@@ -35,6 +35,8 @@
 *.gcno
 *.ll
 modules.builtin
+modules_thick.builtin
+objects.builtin
 Module.symvers
 *.dwo
 *.su
@@ -115,3 +117,9 @@ all.config
 
 # Kdevelop4
 *.kdev4
+
+#
+# Generated DTrace SDT files
+#
+*.sdtinfo.c
+*.sdtstub.S

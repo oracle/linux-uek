@@ -7,6 +7,7 @@
 # pnmttologo:    Convert pnm files to logo files
 # conmakehash:   Create chartable
 # conmakehash:	 Create arrays for initializing the kernel console tables
+# kmodsdt:       Post-process module .o files for SDT probes
 
 HOST_EXTRACFLAGS += -I$(srctree)/tools/include
 
@@ -19,6 +20,7 @@ hostprogs-$(CONFIG_ASN1)	 += asn1_compiler
 hostprogs-$(CONFIG_MODULE_SIG)	 += sign-file
 hostprogs-$(CONFIG_SYSTEM_TRUSTED_KEYRING) += extract-cert
 hostprogs-$(CONFIG_SYSTEM_EXTRA_CERTIFICATE) += insert-sys-cert
+hostprogs-$(CONFIG_DTRACE)	 += kmodsdt
 
 HOSTCFLAGS_sortextable.o = -I$(srctree)/tools/include
 HOSTCFLAGS_asn1_compiler.o = -I$(srctree)/include
@@ -26,6 +28,21 @@ HOSTLOADLIBES_sign-file = -lcrypto
 HOSTLOADLIBES_extract-cert = -lcrypto
 
 always		:= $(hostprogs-y) $(hostprogs-m)
+
+kallsyms-objs   := kallsyms.o
+
+ifeq ($(CONFIG_KALLMODSYMS),y)
+kallsyms-objs   += eu_simple.o
+
+HOSTCFLAGS_eu_simple.o := -I$(srctree)/scripts
+HOSTCFLAGS_kallsyms.o := $(shell pkg-config --cflags glib-2.0) -I$(srctree)/scripts
+HOSTLOADLIBES_kallsyms := $(shell pkg-config --libs glib-2.0) -ldw
+endif
+
+ifeq ($(CONFIG_DTRACE),y)
+HOSTCFLAGS_kmodsdt.o := -I$(srctree)/include/generated
+HOSTLOADLIBES_kmodsdt := -lelf
+endif
 
 # The following hostprogs-y programs are only build on demand
 hostprogs-y += unifdef
@@ -37,6 +54,7 @@ build_unifdef: $(obj)/unifdef
 
 subdir-$(CONFIG_MODVERSIONS) += genksyms
 subdir-y                     += mod
+subdir-$(CONFIG_CTF)         += dwarf2ctf
 subdir-$(CONFIG_SECURITY_SELINUX) += selinux
 subdir-$(CONFIG_DTC)         += dtc
 subdir-$(CONFIG_GDB_SCRIPTS) += gdb

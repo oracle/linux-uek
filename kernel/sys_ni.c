@@ -213,6 +213,7 @@ cond_syscall(sys_ioprio_set);
 cond_syscall(sys_ioprio_get);
 
 /* New file descriptors */
+cond_syscall(sys_waitfd);
 cond_syscall(sys_signalfd);
 cond_syscall(sys_signalfd4);
 cond_syscall(compat_sys_signalfd);

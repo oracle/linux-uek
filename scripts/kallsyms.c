@@ -5,7 +5,10 @@
  * This software may be used and distributed according to the terms
  * of the GNU General Public License, incorporated herein by reference.
  *
- * Usage: nm -n vmlinux | scripts/kallsyms [--all-symbols] > symbols.S
+ * Usage: nm -n vmlinux | scripts/kallsyms [--all-symbols]
+ *                                         [--symbol-prefix=<prefix char>]
+ *                                         [--builtin=modules_thick.builtin]
+ *                                         > symbols.S
  *
  *      Table compression uses all the unused char codes on the symbols and
  *  maps these to the most used substrings (tokens). For instance, it might
@@ -18,11 +21,26 @@
  *
  */
 
+#define _GNU_SOURCE 1
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
 #include <limits.h>
+#include <errno.h>
+#include <unistd.h>
+
+#include "../include/generated/autoconf.h"
+
+#ifdef CONFIG_KALLMODSYMS
+#include <libelf.h>
+#include <dwarf.h>
+#include <elfutils/libdwfl.h>
+#include <elfutils/libdw.h>
+#include <glib.h>
+
+#include <eu_simple.h>
+#endif
 
 #ifndef ARRAY_SIZE
 #define ARRAY_SIZE(arr) (sizeof(arr) / sizeof(arr[0]))
@@ -36,6 +54,7 @@ struct sym_entry {
 	unsigned int start_pos;
 	unsigned char *sym;
 	unsigned int percpu_absolute;
+	unsigned int module;
 };
 
 struct addr_range {
@@ -71,12 +90,34 @@ int token_profit[0x10000];
 unsigned char best_table[256][2];
 unsigned char best_table_len[256];
 
+#ifdef CONFIG_KALLMODSYMS
+/*
+ * The list of builtin module names.
+ */
+static char **builtin_modules;
+static unsigned int builtin_module_size, builtin_module_len;
+
+/*
+ * A mapping from symbol name to the index of the module it is part of in the
+ * builtin_modules list.  Symbols within the same module share pointers to the
+ * same index allocation (thus this is nearly impossible to free safely, but
+ * quite space-efficient).
+ */
+static GHashTable *symbol_to_module;
+#endif
+
+/*
+ * For each builtin module, its offset from the start of the builtin_module
+ * list, assuming consecutive placement.
+ */
+static unsigned int *builtin_module_offsets;
 
 static void usage(void)
 {
 	fprintf(stderr, "Usage: kallsyms [--all-symbols] "
 			"[--symbol-prefix=<prefix char>] "
-			"[--base-relative] < in.map > out.S\n");
+			"[--base-relative] [--builtin=modules_thick.builtin] "
+			"< in.map > out.S\n");
 	exit(1);
 }
 
@@ -115,6 +156,7 @@ static int read_symbol(FILE *in, struct sym_entry *s)
 {
 	char str[500];
 	char *sym, stype;
+	unsigned int *module;
 	int rc;
 
 	rc = fscanf(in, "%llx %c %499s\n", &s->addr, &stype, str);
@@ -160,6 +202,18 @@ static int read_symbol(FILE *in, struct sym_entry *s)
 	/* exclude debugging symbols */
 	else if (stype == 'N' || stype == 'n')
 		return -1;
+
+#ifdef CONFIG_KALLMODSYMS
+	/* look up the builtin module this is part of (if any). */
+	module = g_hash_table_lookup(symbol_to_module, sym);
+#else
+        module = 0;
+#endif
+
+	if (module)
+		s->module = builtin_module_offsets[*module];
+	else
+		s->module = 0;
 
 	/* include the type field in the symbol name, so that it gets
 	 * compressed together */
@@ -213,6 +267,8 @@ static int symbol_valid(struct sym_entry *s)
 		"kallsyms_markers",
 		"kallsyms_token_table",
 		"kallsyms_token_index",
+		"kallsyms_symbol_modules",
+		"kallsyms_modules",
 
 	/* Exclude linker generated symbols which vary between passes */
 		"_SDA_BASE_",		/* ppc */
@@ -471,8 +527,22 @@ static void write_src(void)
 	for (i = 0; i < 256; i++)
 		printf("\t.short\t%d\n", best_idx[i]);
 	printf("\n");
-}
 
+#ifdef CONFIG_KALLMODSYMS
+	output_label("kallsyms_modules");
+	for (i = 0; i < builtin_module_len; i++)
+		printf("\t.asciz\t\"%s\"\n", builtin_modules[i]);
+	printf("\n");
+
+	for (i = 0; i < builtin_module_len; i++)
+		free(builtin_modules[i]);
+
+	output_label("kallsyms_symbol_modules");
+	for (i = 0; i < table_cnt; i++)
+		printf("\t.int\t%d\n", table[i].module);
+	printf("\n");
+#endif
+}
 
 /* table lookup compression functions */
 
@@ -758,12 +828,248 @@ static void record_relative_base(void)
 			relative_base = table[i].addr;
 }
 
+#ifdef CONFIG_KALLMODSYMS
+/* Built-in module list computation. */
+
+/*
+ * Populate the symbol_to_module mapping for one built-in module, while
+ * tracking whether it is known to exist in other modules.
+ */
+static void read_module_symbols(unsigned int module_name_off,
+				struct simple_dwfl_multi *dwfl,
+				GHashTable *module_symbol_seen)
+{
+	Dwarf_Die *tu = NULL;
+	unsigned int *module_idx = NULL;
+	GHashTable *this_module_symbol_seen;
+	GHashTableIter copying_iter;
+	void *copying_name;
+	void *copying_dummy_value;
+
+	this_module_symbol_seen = g_hash_table_new_full(g_str_hash, g_str_equal,
+							free, NULL);
+
+	while ((tu = simple_dwfl_nextcu(dwfl)) != NULL) {
+		Dwarf_Die toplevel;
+		int sib_ret;
+
+		if (dwarf_tag(tu) != DW_TAG_compile_unit) {
+			fprintf(stderr, "Malformed DWARF: non-compile_unit at "
+				"top level in %s.\n", dwfl->paths[dwfl->i]);
+			exit(1);
+		}
+
+		switch (dwarf_child(tu, &toplevel)) {
+		case -1: fprintf(stderr, "Warning: looking for toplevel "
+				 "child of %s in %s: %s\n", dwarf_diename(tu),
+				 dwfl->paths[dwfl->i],
+				 dwarf_errmsg(dwarf_errno()));
+			continue;
+		case 1: /* No DIEs at all in this TU */
+			continue;
+		default: /* Child DIE's exist. */
+			break;
+		}
+
+		do {
+			if (((dwarf_tag(&toplevel) == DW_TAG_subprogram) ||
+                             (dwarf_tag(&toplevel) == DW_TAG_variable)) &&
+                            !dwarf_hasattr(&toplevel, DW_AT_declaration)) {
+				if (module_idx == NULL) {
+					module_idx = malloc(sizeof(unsigned int));
+					if (module_idx == NULL) {
+						fprintf(stderr, "out of memory\n");
+						exit(1);
+					}
+
+					*module_idx = module_name_off;
+				}
+				/*
+				 * If we have never seen this symbol before
+				 * outside of this module, we note that we have
+				 * now seen it in this module, and track it in
+				 * the symbol_to_module mapping.  Otherwise,
+				 * this symbol appears in multiple modules and
+				 * is not a per-module symbol: *remove* it from
+				 * that mapping, if it is present there.
+				 */
+
+				if (!g_hash_table_lookup_extended(module_symbol_seen,
+								  dwarf_diename(&toplevel),
+								  NULL, NULL)) {
+
+					if (!g_hash_table_lookup_extended (symbol_to_module,
+									   dwarf_diename(&toplevel),
+									   NULL, NULL))
+						g_hash_table_insert(symbol_to_module,
+								    strdup(dwarf_diename(&toplevel)),
+								    module_idx);
+
+					if (!g_hash_table_lookup_extended (this_module_symbol_seen,
+									   dwarf_diename(&toplevel),
+									   NULL, NULL))
+						g_hash_table_insert(this_module_symbol_seen,
+								    strdup(dwarf_diename(&toplevel)),
+								    NULL);
+				} else {
+					g_hash_table_remove(symbol_to_module,
+							    dwarf_diename(&toplevel));
+				}
+			}
+		} while ((sib_ret = dwarf_siblingof(&toplevel, &toplevel)) == 0);
+
+		if (sib_ret == -1) {
+			fprintf(stderr, "Warning: Cannot advance to next sibling "
+				"of %s in %s: %s\n", dwarf_diename(&toplevel),
+				dwfl->paths[dwfl->i],
+				dwarf_errmsg(dwarf_errno()));
+		}
+	}
+
+	/*
+	 * Work over all the symbols seen in this module and note that in future
+	 * they are to be considered symbols that were seen in some other
+	 * module.
+	 */
+	g_hash_table_iter_init(&copying_iter, this_module_symbol_seen);
+	while (g_hash_table_iter_next(&copying_iter, &copying_name,
+				      &copying_dummy_value))
+		g_hash_table_insert(module_symbol_seen,
+				    strdup((char *) copying_name), NULL);
+
+	g_hash_table_destroy(this_module_symbol_seen);
+}
+
+/*
+ * Expand the builtin modules list.
+ */
+static void expand_builtin_modules(void)
+{
+	builtin_module_size += 50;
+
+	builtin_modules = realloc(builtin_modules,
+				  sizeof(*builtin_modules) *
+				  builtin_module_size);
+	builtin_module_offsets = realloc(builtin_module_offsets,
+					 sizeof(*builtin_module_offsets) *
+					 builtin_module_size);
+
+	if (!builtin_modules || !builtin_module_offsets) {
+		fprintf(stderr, "out of memory\n");
+		exit(1);
+	}
+}
+
+/*
+ * Add a single built-in module (possibly composed of many files) to the modules
+ * list.  Take the offset of the current module and return it (purely for
+ * simplicity's sake in the caller).
+ */
+static size_t add_builtin_module(const char *module_name,
+				 char **module_paths, size_t offset,
+				 GHashTable *module_symbol_seen)
+{
+	struct simple_dwfl_multi *multi;
+
+	multi = simple_dwfl_new_multi(module_paths);
+	if (multi == NULL) {
+		fprintf(stderr, "Out of memory iterating over %s\n",
+			module_name);
+		exit(1);
+	}
+
+	read_module_symbols(builtin_module_len, multi, module_symbol_seen);
+	simple_dwfl_free_multi(multi);
+
+	if (builtin_module_size >= builtin_module_len)
+		expand_builtin_modules();
+	builtin_modules[builtin_module_len] = strdup(module_name);
+	builtin_module_offsets[builtin_module_len] = offset;
+	offset += strlen(module_name) + 1;
+	builtin_module_len++;
+
+	return offset;
+}
+
+/*
+ * Populate the symbol_to_module mapping for all built-in modules,
+ * and the list of built-in modules itself.
+ */
+static void read_modules(const char *modules_builtin)
+{
+	struct modules_thick_iter *i;
+	size_t offset = 0;
+
+	/*
+	 * A hash containing a mapping from a symbol name if that symbol has
+	 * been seen in any modules so far.  This is used to filter out symbols
+	 * found in more than one built-in module, on the grounds that they are
+	 * probably symbols from the out-of-line representation of inline
+	 * functions in kernel header files shared between modules.
+	 */
+	GHashTable *module_symbol_seen;
+	char *module_name = NULL;
+	char **module_paths;
+	size_t j;
+
+	symbol_to_module = g_hash_table_new_full(g_str_hash, g_str_equal,
+						 free, NULL);
+	module_symbol_seen = g_hash_table_new_full(g_str_hash, g_str_equal,
+						   free, NULL);
+
+	if (symbol_to_module == NULL || module_symbol_seen == NULL) {
+		fprintf(stderr, "Out of memory");
+		exit(1);
+	}
+
+	/*
+	 * builtin_modules[0] is a null entry signifying a symbol that cannot be
+	 * modular.
+	 */
+	builtin_module_size = 50;
+	builtin_modules = malloc(sizeof(*builtin_modules) *
+				 builtin_module_size);
+	builtin_module_offsets = malloc(sizeof(*builtin_module_offsets) *
+				 builtin_module_size);
+	builtin_modules[0] = strdup("");
+	builtin_module_len = 1;
+	offset++;
+
+	/*
+	 * Iterate over all modules in modules_thick.builtin and add each.
+	 */
+	i = modules_thick_iter_new(modules_builtin);
+	if (i == NULL) {
+		fprintf(stderr, "Cannot iterate over builtin modules.\n");
+		exit(1);
+	}
+
+	while ((module_paths = modules_thick_iter_next(i, &module_name)) != NULL) {
+		offset = add_builtin_module(module_name, module_paths,
+					    offset, module_symbol_seen);
+		for (j = 0; module_paths[j] != NULL; j++)
+			free(module_paths[j]);
+		free(module_paths);
+		module_paths = NULL;
+	}
+
+	free(module_name);
+	modules_thick_iter_free(i);
+
+	g_hash_table_destroy(module_symbol_seen);
+}
+#else
+static void read_modules(const char *unused) {}
+#endif /* CONFIG_KALLMODSYMS */
+
 int main(int argc, char **argv)
 {
-	if (argc >= 2) {
+	const char *modules_builtin = "modules_thick.builtin";
+
+	if (argc >= 1) {
 		int i;
 		for (i = 1; i < argc; i++) {
-			if(strcmp(argv[i], "--all-symbols") == 0)
+			if (strcmp(argv[i], "--all-symbols") == 0)
 				all_symbols = 1;
 			else if (strcmp(argv[i], "--absolute-percpu") == 0)
 				absolute_percpu = 1;
@@ -775,12 +1081,15 @@ int main(int argc, char **argv)
 				symbol_prefix_char = *p;
 			} else if (strcmp(argv[i], "--base-relative") == 0)
 				base_relative = 1;
+			else if (strncmp(argv[i], "--builtin=", 10) == 0)
+				modules_builtin = &argv[i][10];
 			else
 				usage();
 		}
 	} else if (argc != 1)
 		usage();
 
+	read_modules(modules_builtin);
 	read_map(stdin);
 	if (absolute_percpu)
 		make_percpus_absolute();

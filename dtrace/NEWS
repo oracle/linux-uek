@@ -1,0 +1,531 @@
+DTrace Kernel Modules News
+==========================
+
+Release 0.6.0 (Apr  3rd, 2017)
+------------------------------
+Kernel release: 4.1.12-97.el6uek
+
+New features:
+
+ - Userspace tracepoints (USDT) now work on SPARC for both 64- and 32-bit
+   processes.
+
+ - The types and translators used by SDT probes are now acquired from the
+   DTRACE_PROBE macros in the kernel source.  New probe argument types and
+   translations are picked up automatically without needing to change the
+   module at all.  perf-event probe argument types are acquired in the
+   same way.
+
+ - The DTRACE_PROBEn() macros used for SDT probes have been supplanted by a
+   new DTRACE_PROBE() macro which works exactly the same except that you don't
+   need to count the arguments any more and misuses (args with no types, etc)
+   are diagnosed even when CONFIG_DTRACE is disabled.
+
+ - is-enabled probes are now supported for SDT: these are expressions which
+   always return false unless the specified probe is enabled, generally used
+   directly in if statements, and can be used to suppress collection of
+   expensive data only needed for probes until the probes that use them are
+   enabled:
+
+     if (DTRACE_PROBE_ENABLED(probename)) /* expensive stuff */
+
+   Per-provider wrappers for DTRACE_PROBE_ENABLED() can be used, as with
+   DTRACE_PROBE() itself.
+
+ - Function boundary tracing (FBT) is supported for entry probes to most
+   functions in the core kernel.  The current implementation does not support
+   retrieval of function arguments or return probes (except for some limited
+   support on x86_64).  These features are currently under development.
+
+Changes:
+
+ - The implementation of the D 'ustack' action has been moved into the kernel
+   proper.  This change was motivated by the need to access page table
+   structures directly using a lock-free mechanism.
+
+ - Probe processing will be bypassed when the system is entering panic mode,
+   This ensures that DTrace will not cause panic related output to be
+   disrupted.
+
+Bugfixes:
+
+ - Due to a logic error in preemption handling, it was possible that code was
+   being executed under the assumption that preemption was disabled when in
+   fact it was not.
+
+ - Probe processing (probe context) is not re-entrant, yet probes firing as a
+   result of processing another probe would cause re-entry into the processing
+   core, with often horrible effects.  The processing core has been modified to
+   block any re-entry attempt except for ERROR probe processing.  That is a
+   deliberate (and acceptable) exception in the DTrace design.
+
+ - The fast path implementation for obtaining the value of the D 'caller'
+   variable for sparc64 has been corrected.
+
+ - The implemenation of the D 'stack' action has been made more robust, making
+   sure that memory access faults are not fatal.
+
+ - The implementation of the D 'ustack' action has been reworked completely to
+   improve stability and accuracy.
+
+ - The number of stack frames to skip has been adjusted to changes in the
+   implementation of various providers, ensuring that DTrace related frames
+   are skipped as they should.  This makes the D 'stack' action and the D
+   'caller' variable values correct.
+
+ - The implementation of the D 'stackdepth' variable could cause memory writes
+   beyond the end of the DTrace probe scratch buffer.
+
+
+Release 0.5.3 (May 25th, 2016)
+------------------------------
+Kernel release: 4.1.12-43.el6uek
+
+New features:
+
+ - It is now possible to have perf-events presented as DTrace SDT probes.
+   This feature is turned on by default in the kernel.  The probes will
+   appear with the same names as the perf-events and are grouped under the
+   new 'perf' SDT provider.
+
+   In its current implementation, the perf-events DTrace probes do not offer
+   argument type informtation as is seen with standard DTrace SDT probes.
+
+Bugfixes:
+
+ - On sparc64, it was possible to crash the system by unloading and reloading
+   the sdt DTrace multi-provider module due to the handling of memory that is
+   set aside for SDT probe trampolines.  This bug has been fixed.
+
+
+Release 0.5.2 (Feb 3rd, 2016)
+-----------------------------
+Kernel release: 4.1.12-33.el6uek
+
+Bugfixes:
+
+ - When both entry and return probes were enabled for a system call, upon
+   disabling the first, the function pointer in the system call table got
+   reset to its default value even though the 2nd probe might still be
+   active.  This could cause race conditions in the state of the system
+   call probing.
+
+ - Access to the SPARC64 R_L7 register was consistenly failing due to an
+   off-by-one bug.
+
+ - It was possible to read past the beginning of the stack for a user
+   process.  The mechanism for reading stack slots also got updated to
+   increase efficiency, consistency and reliability across architectures.
+
+ - While reading the stack of a userspace process, the stack bias was not
+   being applied for architectures that need it, causing an abundance of
+   essentially invalid values to polute the result.
+
+
+Release 0.5.1 (Nov 17th, 2015)
+------------------------------
+Kernel release: 4.1.12-24.el6uek
+
+Bugfixes:
+
+ - When copyout() or copyoutstr() is used in a D script, safety checks are now
+   enforced to protect against unprivileged memory accesses.
+
+ - The DTrace modules package no longer prevents automated kernel RPM removal
+   when the install limit is reached.
+
+ - It is now possible to access the envp and argv arrays in the psinfo for a
+   task using copyin().  This is the convention across DTrace-capable systems.
+
+
+Release 0.5.0 (Aug 10th, 2015)
+------------------------------
+Kernel release: 4.1.4-4.el6uek
+
+New features:
+
+ - DTrace is now supported on the sparc64 architecture for the following
+   providers: dtrace, profile, syscall, and SDT.
+
+ - The uid / gid handling has been updated to accommodate namespace support
+   at the kernel level (kuid and kgid).  All uid / gid values reported by
+   D subroutines (or obtained from structures) are evaluated based on the
+   initial user namespace.
+
+Changes:
+
+ - Accessing kernel memory under NOFAULT protection now implies NOPF (no
+   page fault) as well.  Previously, NOPF was an option that could be set
+   in addition to NOFAULT.
+
+ - Debugging output has been improved (to be enabled at compile time).
+
+ - The datatype formerly known as sdt_instr_t has been renamed asm_instr_t.
+   The rationale behind this change is that it will be used in code beyond
+   the SDT provider and therefore a more generic name is appropriate.
+
+
+Release 0.4.5 (Jun 17th, 2015)
+------------------------------
+Kernel release: 3.8.13-87.el6uek
+
+New features:
+
+ - It is now possible to use USDT probes in 32-bit applications on 64-bit
+   hosts.
+
+Changes:
+
+ - The code has been restructured to facilitate supporting architectures
+   other than x86_64 in future releases.
+
+ - The d_path() D subroutine requires its argument to be a pointer to a
+   path struct that corresponds to a file that is known to the current
+   task (see bugfixes below).
+
+Bugfixes:
+
+ - Fixed a (minor) memory leak problem with the help tracing facility in
+   DTrace.  Upon loading the dtrace.ko module, a buffer (by default 64K)
+   was being allocated, and it was never released.
+
+ - Stack backtraces are more accurate as a result of various fixes to
+   adjust the number of frames to skip for specific probes.
+
+ - Datatypes have been adjusted to be more carefully specified after a
+   detailed audit in preparation for supporting architectures other than
+   x86_64.
+
+ - The stack depth was being determined by requesting a backtrace to be
+   written into a temporary buffer that was being allocated (vmalloc),
+   which posed significant problems when probes were executing in a
+   context that does not support memory allocations.  The buffer is now
+   obtained from the scratch area of memory that DTrace provides for
+   probe processing.
+
+ - It was possible to cause a system crash by passing an invalid pointer
+   to d_path().  Due to its implementation, it is not possible to depend
+   on safe memory accesses to avoid this.  Instead, the pointer passed as
+   argument must be validated prior to calling d_path() in the kernel.
+
+
+Release 0.4.4 (Mar 12th, 2015)
+------------------------------
+Kernel release: 3.8.13-69.el6uek
+
+Bugfixes:
+
+ - Renamed the dtrace-modules-headers package to dtrace-modules-shared-headers
+   to work around problems in Yum where a symbol has had both versioned and
+   unversioned provides over time.
+
+
+Release 0.4.3 (May 1st, 2014)
+-----------------------------
+Kernel release: 3.8.13-33.el6uek
+
+New features:
+
+ - Timer based profile-* probes (profile provider).  These probes use the
+   omni-present cyclic support in the UEK3 kernel (3.8.13-32 and later) to
+   fire probes at a speciic frequency/interval on every active CPU.
+
+Changes:
+
+ - The pid and ppid variables were being reported based on the kernel task
+   PID, which is not the same as the userspace concept of a PID (for threaded
+   applications).  We now pass (more correctly) the thread group id (tgid).
+
+ - Since userspace doesn't know about thread kernel level) pids, we are now
+   also passing the tgid in the result of ustack, usym, etc...  We pass the
+   tgid in the first slot, and the (kernel) pid in the second slot.
+
+Bugfixes:
+
+ - Major reworking of the dtracce_getufpstack() implementation to handle
+   locking, stack detection, and potential page fault while accessing the
+   stack of a task.
+
+Known problems:
+
+ - As a result of earlier code changes to ensure that all memory allocation
+   requests are checked for failures, the test for auto-resize behaviour of
+   the principal buffer allocations results in the dtrace utility aborted
+   processing rather than continuing operation with the reduced buffer size.
+   This is overall a non-harmful regression that will be addressed in a future
+   release.
+
+
+Release 0.4.2 (Dec 20th, 2013)
+------------------------------
+Kernel release: 3.8.13-22.el6uek
+
+Changes:
+
+ - SDT probe points in kernel modules are now supported.
+
+ - The 'vtimestamp' D variable has been implemented.
+
+
+Release 0.4.1 (Nov  6th, 2013)
+------------------------------
+Kernel release: 3.8.13-16.2.1.el6uek
+
+Changes:
+
+ - It is no longer permissible to have non-unique provider names within the
+   context of a userspace process.  I.e. it is not permissible for the main
+   executable and a loaded shared library, or two loaded shared libraries, to
+   list the same provider name in their DOF sections.
+
+ - A new cyclic implementation has been included in the UEK3 kernel, replacing
+   the more error prone former version.  The modules code has been updated to
+   use that new implementation.
+
+Bugfixes:
+
+ - Lock ordering problems that were inherited from the original code are fixed.
+
+ - Userspace stack memory accesses are now performed in a safe manner.
+
+ - A race condition between speculative tracing buffer cleaning and destroying
+   consumer state has been resolved.
+
+ - A memory leak related to consumer state has been fixed.
+
+ - A provider reference counter calculation problem was resolved.
+
+ - The 'errno' D variable now holds the correct value during syscall:::return
+   probe action execution, i.e. 0 if the syscall completed without an error,
+   and a valid error code if the syscall failed.
+
+
+Release 0.4.0 (Sep 20th, 2013)
+------------------------------
+Kernel release: 3.8.13-16.el6uek
+
+New features:
+
+ - Support for meta-providers, such as fasttrap (used for userspace tracing).
+   A meta-provider implements a framework to instantiate providers dynamically
+   (on demand).
+
+ - Userspace Statically Defined Tracing (USDT) provides support for SDT-alike
+   probes in userspace executable and libraries.  Two types of probes are
+   available: regular SDT-alike probes, and is-enabled probes.
+
+ - The fasttrap provider has been implemented, although it is currently only
+   supporting USDT probes.
+
+Changes:
+
+ - What was previously defined as a meta-provider (see 0.2.0 below) is in fact
+   better defined as a multi-provider, i.e. a provider framework that handles
+   multiple providers that essentially share (the majority of) a single
+   implementation, such as SDT where probes are grouped together into providers
+   even though they are all provided by the same provider (sdt).
+
+ - The DTrace header files in the kernel proper, the kernel modules, and the
+   userspace utility have been restructured to avoid duplication and to offer
+   a more consistent and clean design.  This also offers better support for
+   custom consumers or other DTrace-related utilities.
+
+ - The systrace provider has been updated to account for changes in the Linux
+   kernel (between 2.6.39 and 3.8.13).
+
+Bugfixes:
+
+ - It is now possible to get the correct value for the ERR registers.
+
+ - The ustack() and jstack() actions were not passing the PID correctly as the
+   first element in the result array.
+
+ - The ustack() action implementation has been replaced.
+
+ - Several obscure locking problems have been resolved.
+
+ - Correct handling of arg5 through arg9.
+
+
+Release 0.3.0 (Sep 14th, 2012)
+------------------------------
+Kernel release: 2.6.39-201.0.1.el6uek
+
+New features:
+
+ - The curcpu builtin variable has been implemented as a DIF builtin variable
+   on Linux, providing a pointer to the CPU info structure for the CPU that is
+   currently active.
+
+ - A new DIF subroutine has been implemented: d_path().  This subroutine takes
+   a pointer to a path structure as argument, and returns a string representing
+   the full pathname for that path.
+
+ - The raise() action has been implemented.  This action allows a D script to
+   raise a signal in the current task.
+
+ - The io provider probes has been implemented.  It provides the following SDT
+   probes: start, wait-start, wait-done, and done.
+
+ - The proc provider has been implemented.  It provides the following SDT
+   probes: create, exec, exec-failure, exit, lwp-create, lwp-exit, lwp-start,
+   signal-clear, signal-discard, signal-handle, signal-send, start.
+
+ - The sched provider has been implemented.  It provides the following SDT
+   probes: change-pri, dequeue, enqueue, off-cpu, on-cpu, preempt, remain-cpu,
+   sleep, surrender, tick, wakeup.
+
+ - Argument mappings have been provided for io, proc, and sched provider
+   probes.  This information is used by userspace consumers.
+
+Changes:
+
+ - The invalid operand trap logic previously provided to support SDT probes has
+   been made more generic to support any probes that wish to utilie this
+   facility.
+
+ - The DTrace core module now depends on the core kernel CTF data-module, to
+   ensure that when DTrace modules are loaded on the system, CTF data for the
+   kernel will be available also.
+
+Bugfixes:
+
+ - Various DIF builtin variables that were providing a hardcoded value based on
+   the init task whenever a probe was executing in interrupt context are now
+   providing the actual value from the current task.  In Linux, there is always
+   a valid task structure available as 'current'.
+
+ - The numbering of the registers for the x86_64 architecture has been updated
+   to match the order of registers pushed onto the stack.
+
+ - It is now possible to get the correct value for the DS, ES, FS, and GS
+   registers.
+
+ - SDT probes are now correctly cleaned up when the SDT meta-provider module is
+   unloaded from the system.
+
+ - The rw_read_held() DIF subroutine will now verify whether it can safely
+   access the passed in argument based on the correct argument datatype.
+
+
+Release 0.2.4 (Feb 15th, 2012)
+------------------------------
+Kernel release: 2.6.39-101.0.1.el6uek
+
+Bugfixes:
+
+ - Provider modules now use a reference counter to determine whether any of
+   their probes are currently enabled.  Whenever the reference counter has a
+   value greater than zero, the provider module is referenced to ensure that
+   it cannot be unloaded.  Once the counter drops down to zero, the reference
+   on the module is released.  This prevents providers from being unloaded
+   while some of their probes are still in use (which would typically lead to
+   a kernel panic).
+
+
+Release 0.2.3 (Feb 10th, 2012)
+------------------------------
+Kernel release: 2.6.39-101.0.1.el6uek
+
+Changes:
+
+ - The DTrace core has been updated to support 28 DTrace option settings, to
+   account for the 'quietresize' options that was added to the userspace dtrace
+   consumer utility.
+
+Bugfixes:
+
+ - Various assertions in the DTrace core implementation incorrectly used
+   mutex_is_locked() where the test was meant to determine whether the current
+   task holds the mutex.  This has been corrected.
+
+
+Release 0.2.1 (Jan 31st, 2012)
+------------------------------
+Kernel release: 2.6.39-101.0.1.el6uek
+
+Bugfixes:
+
+ - Failed memory allocations from DIF code no longer trigger kernel warnings.
+
+
+Release 0.2.0 (Jan 25th, 2012)
+------------------------------
+Kernel release: 2.6.39-101.0.1.el6uek
+
+This release brings DTrace for Linux to the 2.6.39 kernel, as an upgrade from
+the previous release based on 2.6.32.
+
+New features:
+
+ - The DTrace core and provider API now support meta-providers, a framework
+   that provides multiple providers using a common implementation.
+
+ - The Statically Defined Tracing (SDT) meta-provider has been implemented.
+   Some of the proc-provider probes are now available using this facility.
+
+Changes:
+
+ - The minimal cyclic implementation has been removed from the DTrace modules
+   because it is now provided by an equivalent GPL impementation in the core
+   kernel.
+
+ - CPU core information is now maintained at the core kernel level.
+
+ - Kernel and module code can now perform safe memory accesses by setting a
+   flag in the CPU core information structure.  If a memory access results in
+   a Page Fault or General Protection Fault, the failure will be noted as a CPU
+   fault, and execution will continue rather than causing a kernel panic.
+
+ - Functionality that depends on walking the stack (determining stack depth, or
+   collecting a backtrace) is now provided by a GPL implementation in the core
+   kernel.
+
+ - In the interest of consistency, a pseudo kernel module structure is created
+   at the core kernel level, representing the main kernel image.  This module
+   structure makes it possible to represent all kernel-level objects equally.
+   This structure provides a list of SDT probe locations in the core kernel.
+
+Bugfixes:
+
+ - Entry and return probes for system calls that use assembly code stubs are
+   now supported (systrace provider).
+
+ - All memory accesses from DIF code that cause a Page Fault or General
+   Protection Fault now correctly cause the ERROR probe to fire rather than
+   causing a kernel panic.
+
+ - Dynamic memory allocations from DIF code can now fail.  Such failures are
+   handled appropriately by the callers.
+
+ - The implementation of the division and modulo operations for signed 64-bit
+   values have been corrected.  This fixes various problems observed with
+   aggregations.
+
+ - The min() and max() aggregation functions now operate with correct (signed)
+   initial values.
+
+ - Code that depended on the idr_empty() function has been rewritten to use a
+   more explicit mechanism, because the logic for determining whether an IDR
+   structure had any elements or not was flawed.
+
+
+Release 0.1.0 (Oct 20th, 2011)
+------------------------------
+Kernel release: 2.6.32-201.0.4.el6uek
+
+First public release.
+
+Features:
+
+ - The vast majority of the DTrace core functionality has been implemented,
+   providing a nearly complete DIF/DOF implementation (including predicates,
+   aggregates, and speculative tracing support), provider API, ioctl interface
+   for userspace consumers, and direct probe invocation.
+
+ - BEGIN, END, and ERROR probes (dtrace provider).
+
+ - Timer based tick-* probes (profile provider).
+
+ - Syscall entry and return probes (systrace provider), with the exception of
+   system calls that rely on assembly code stubs, such as clone().
