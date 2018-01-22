@@ -15,11 +15,8 @@ EXPORT_SYMBOL_GPL(dynamic_ibrs);
 
 enum {
 	IBRS_DISABLED,
-	/* in host kernel, disabled in guest and userland */
 	IBRS_ENABLED,
-	/* in host kernel and host userland, disabled in guest */
-	IBRS_ENABLED_USER,
-	IBRS_MAX = IBRS_ENABLED_USER,
+	IBRS_MAX = IBRS_ENABLED,
 };
 static unsigned int ibrs_enabled;
 static bool ibrs_admin_disabled;
@@ -195,7 +192,7 @@ static ssize_t ibrs_enabled_write(struct file *file,
 
 	if (!boot_cpu_has(X86_FEATURE_IBRS)) {
 		ibrs_enabled = IBRS_DISABLED;
-		return -EINVAL;
+		return -ENODEV;
 	}
 
 	mutex_lock(&spec_ctrl_mutex);
@@ -212,12 +209,6 @@ static ssize_t ibrs_enabled_write(struct file *file,
 		ibrs_admin_disabled = false;
 		dynamic_ibrs |= SPEC_CTRL_IBRS_INUSE;
 
-	} else if (enable == IBRS_ENABLED_USER) {
-		/* enable IBRS all the time in both userspace and kernel */
-		ibrs_admin_disabled = false;
-		dynamic_ibrs &= ~SPEC_CTRL_IBRS_INUSE;
-		spec_ctrl_flush_all_cpus(MSR_IA32_SPEC_CTRL,
-					 SPEC_CTRL_FEATURE_ENABLE_IBRS);
 	}
 
 	ibrs_enabled = enable;
@@ -259,7 +250,7 @@ static ssize_t ibpb_enabled_write(struct file *file,
 
 	if (!boot_cpu_has(X86_FEATURE_IBRS)) {
 		ibpb_enabled = IBPB_DISABLED;
-		return -EINVAL;
+		return -ENODEV;
 	}
 
 	mutex_lock(&spec_ctrl_mutex);
