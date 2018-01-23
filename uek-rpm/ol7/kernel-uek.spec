@@ -231,8 +231,8 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 %define with_kdump 0
 #endif
 
-# don't do debug builds on anything but i686 and x86_64
-%ifnarch i686 x86_64
+# don't do debug builds on anything but i686, x86_64, and aarch64
+%ifnarch i686 x86_64 aarch64
 %define with_debug 0
 %endif
 
@@ -1849,8 +1849,8 @@ fi
 /usr/sbin/perf\
 %endif\
 %ifarch %{arm} aarch64\
-/lib/modules/%{KVERREL}%{?2:+%{2}}/dtb \
-%ghost /%{image_install_path}/dtb-%{KVERREL}%{?2:+%{2}} \
+/lib/modules/%{KVERREL}%{?2:.%{2}}/dtb \
+/%{image_install_path}/dtb-%{KVERREL}%{?2:.%{2}} \
 %endif\
 %ifnarch sparc64 aarch64\
 /usr/libexec/x86_energy_perf_policy.%{KVERREL}%{?2:.%{2}}\
