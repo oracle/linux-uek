@@ -5,6 +5,9 @@
 
 #include <linux/kernel.h>
 #include <linux/init.h>
+#ifdef CONFIG_SYSFS
+#include <linux/device.h>
+#endif
 #include <asm/alternative.h>
 #include <asm/bugs.h>
 #include <asm/processor.h>
