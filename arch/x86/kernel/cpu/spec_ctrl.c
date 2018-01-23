@@ -97,10 +97,63 @@ static const struct file_operations fops_ibrs_enabled = {
         .llseek = default_llseek,
 };
 
+static ssize_t ibpb_enabled_read(struct file *file, char __user *user_buf,
+                                 size_t count, loff_t *ppos)
+{
+        return __enabled_read(file, user_buf, count, ppos, &sysctl_ibpb_enabled);
+}
+
+static ssize_t ibpb_enabled_write(struct file *file,
+				  const char __user *user_buf,
+				  size_t count, loff_t *ppos)
+{
+	char buf[32];
+	ssize_t len;
+	unsigned int enable;
+
+	if (!ibpb_supported)
+		return -ENODEV;
+
+	len = min(count, sizeof(buf) - 1);
+	if (copy_from_user(buf, user_buf, len))
+	return -EFAULT;
+
+	buf[len] = '\0';
+	if (kstrtouint(buf, 0, &enable))
+	return -EINVAL;
+
+	/* Only 0 and 1 are allowed */
+	if (enable > 1)
+		return -EINVAL;
+
+	if (!!enable != !!ibpb_disabled)
+		return count;
+
+	mutex_lock(&spec_ctrl_mutex);
+
+	if (!enable)
+		set_ibpb_disabled();
+	else
+		clear_ibpb_disabled();
+
+	sysctl_ibpb_enabled = enable;
+
+	mutex_unlock(&spec_ctrl_mutex);
+	return count;
+}
+
+static const struct file_operations fops_ibpb_enabled = {
+	.read = ibpb_enabled_read,
+	.write = ibpb_enabled_write,
+	.llseek = default_llseek,
+};
+
 static int __init debugfs_spec_ctrl(void)
 {
         debugfs_create_file("ibrs_enabled", S_IRUSR | S_IWUSR,
                             arch_debugfs_dir, NULL, &fops_ibrs_enabled);
+	debugfs_create_file("ibpb_enabled", S_IRUSR | S_IWUSR,
+			    arch_debugfs_dir, NULL, &fops_ibpb_enabled);
         return 0;
 }
 late_initcall(debugfs_spec_ctrl);
