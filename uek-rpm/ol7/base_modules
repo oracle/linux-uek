@@ -468,6 +468,7 @@ kernel/drivers/net/ethernet/marvell/sky2.ko
 kernel/drivers/net/ethernet/mellanox/mlx4/mlx4_core.ko
 kernel/drivers/net/ethernet/mellanox/mlx4/mlx4_en.ko
 kernel/drivers/net/ethernet/mellanox/mlx5/core/mlx5_core.ko
+kernel/drivers/net/ethernet/mellanox/mlxfw/mlxfw.ko
 kernel/drivers/net/ethernet/neterion/s2io.ko
 kernel/drivers/net/ethernet/neterion/vxge/vxge.ko
 kernel/drivers/net/ethernet/qlogic/netxen/netxen_nic.ko
