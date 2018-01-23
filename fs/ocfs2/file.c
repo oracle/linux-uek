@@ -2322,7 +2322,7 @@ static ssize_t ocfs2_file_write_iter(struct kiocb *iocb,
 	ssize_t written = 0;
 	ssize_t ret;
 	size_t count = iov_iter_count(from), orig_count;
-	loff_t old_size;
+	loff_t old_size, orig_pos;
 	u32 old_clusters;
 	struct file *file = iocb->ki_filp;
 	struct inode *inode = file_inode(file);
@@ -2343,6 +2343,7 @@ static ssize_t ocfs2_file_write_iter(struct kiocb *iocb,
 
 	appending = iocb->ki_flags & IOCB_APPEND ? 1 : 0;
 	direct_io = iocb->ki_flags & IOCB_DIRECT ? 1 : 0;
+	orig_pos = iocb->ki_pos;
 
 	mutex_lock(&inode->i_mutex);
 
@@ -2526,6 +2527,13 @@ out_sems:
 	if (have_alloc_sem)
 		ocfs2_iocb_clear_sem_locked(iocb);
 
+	if (dropped_dio) {
+		loff_t end = orig_pos + orig_count - 1;
+
+		invalidate_inode_pages2_range(file->f_mapping,
+					      orig_pos >> PAGE_CACHE_SHIFT,
+					      end >> PAGE_CACHE_SHIFT);
+	}
 	mutex_unlock(&inode->i_mutex);
 
 	if (written)
