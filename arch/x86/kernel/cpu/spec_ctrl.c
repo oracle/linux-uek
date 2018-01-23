@@ -76,7 +76,7 @@ static ssize_t ibrs_enabled_write(struct file *file,
 		clear_ibrs_disabled();
 	}
 
-	WRITE_ONCE(sysctl_ibrs_enabled, enable);
+	sysctl_ibrs_enabled = enable;
 
 	mutex_unlock(&spec_ctrl_mutex);
 	return count;
