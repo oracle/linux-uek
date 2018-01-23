@@ -14,6 +14,10 @@
  * bit 2 = indicate if admin disables ibrs
  */
 
+u32 sysctl_ibrs_enabled = 0, sysctl_ibpb_enabled = 0;
+EXPORT_SYMBOL(sysctl_ibrs_enabled);
+EXPORT_SYMBOL(sysctl_ibpb_enabled);
+
 static ssize_t __enabled_read(struct file *file, char __user *user_buf,
                               size_t count, loff_t *ppos, unsigned int *field)
 {
