@@ -55,34 +55,26 @@ static ssize_t ibrs_enabled_write(struct file *file,
         if (kstrtouint(buf, 0, &enable))
                 return -EINVAL;
 
-        if (enable > IBRS_MAX)
+	/* Only 0 and 1 are allowed */
+	if (enable > 1)
                 return -EINVAL;
+
+	if (!!enable != !!ibrs_disabled)
+		return count;
 
 	mutex_lock(&spec_ctrl_mutex);
 
-	if (enable == IBRS_DISABLED) {
-		/* disable IBRS usage */
+	if (!enable) {
 		set_ibrs_disabled();
 		if (use_ibrs & SPEC_CTRL_IBRS_SUPPORTED)
 			spec_ctrl_flush_all_cpus(MSR_IA32_SPEC_CTRL, SPEC_CTRL_FEATURE_DISABLE_IBRS);
-	} else if (enable == IBRS_ENABLED) {
-		/* enable IBRS usage in kernel */
+	} else {
 		clear_ibrs_disabled();
 		if (use_ibrs & SPEC_CTRL_IBRS_SUPPORTED)
 			set_ibrs_inuse();
 		else
 			/* Platform don't support IBRS */
-			enable = IBRS_DISABLED;
-	} else if (enable == IBRS_ENABLED_USER) {
-		/* enable IBRS usage in both userspace and kernel */
-		clear_ibrs_disabled();
-		/* don't change IBRS value once we set it to always on */
-		clear_ibrs_inuse();
-		if (use_ibrs & SPEC_CTRL_IBRS_SUPPORTED)
-			spec_ctrl_flush_all_cpus(MSR_IA32_SPEC_CTRL, SPEC_CTRL_FEATURE_ENABLE_IBRS);
-		else
-			/* Platform don't support IBRS */
-			enable = IBRS_DISABLED;
+			enable = 0;
 	}
 
 	WRITE_ONCE(sysctl_ibrs_enabled, enable);
