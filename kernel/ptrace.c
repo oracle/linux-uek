@@ -222,9 +222,10 @@ static int ptrace_has_cap(struct user_namespace *ns, unsigned int mode)
 }
 
 /* Returns 0 on success, -errno on denial. */
-static int __ptrace_may_access(struct task_struct *task, unsigned int mode)
+int ___ptrace_may_access(struct task_struct *cur, struct task_struct *task,
+			 unsigned int mode)
 {
-	const struct cred *cred = current_cred(), *tcred;
+	const struct cred *cred = __task_cred(cur), *tcred;
 
 	/* May we inspect the given task?
 	 * This check is used both for attaching with ptrace
@@ -236,7 +237,7 @@ static int __ptrace_may_access(struct task_struct *task, unsigned int mode)
 	 */
 	int dumpable = 0;
 	/* Don't let security modules deny introspection */
-	if (task == current)
+	if (task == cur)
 		return 0;
 	rcu_read_lock();
 	tcred = __task_cred(task);
@@ -264,7 +265,16 @@ ok:
 	}
 	rcu_read_unlock();
 
-	return security_ptrace_access_check(task, mode);
+	if (!(mode & PTRACE_MODE_NOACCESS_CHK))
+		return security_ptrace_access_check(task, mode);
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(___ptrace_may_access);
+
+static int __ptrace_may_access(struct task_struct *task, unsigned int mode)
+{
+	return ___ptrace_may_access(current, task, mode);
 }
 
 bool ptrace_may_access(struct task_struct *task, unsigned int mode)
