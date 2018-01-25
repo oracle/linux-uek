@@ -462,8 +462,6 @@ ENDPROC(native_usergs_sysret64)
 	/* Save rbp so that we can unwind from get_irq_regs() */
 	movq_cfi rbp, 0
 
-	STUFF_RSB /* We have a working stack. */
-
 	/* Save previous stack value */
 	movq %rsp, %rsi
 
@@ -472,6 +470,8 @@ ENDPROC(native_usergs_sysret64)
 	je 1f
 	SWAPGS
 	SWITCH_KERNEL_CR3
+
+	STUFF_RSB /* We have a working stack. */
 
 	ENABLE_IBRS
 	/*
@@ -542,14 +542,6 @@ ENTRY(save_paranoid)
 	SWAPGS
 	xorl %ebx,%ebx
 
-	/*
-	 * Do this only if the interrupt caused a user->kernel
-	 * transition.
-	 * There is one problematic case: where an NMI occurs in the
-	 * kernel entry path before we have had a chance to STUFF_RSB.
-	 * We'll handle that in the NMI path.
-	 */
-	STUFF_RSB
 1:
 #ifdef CONFIG_PAGE_TABLE_ISOLATION
 	/*
@@ -569,6 +561,12 @@ ENTRY(save_paranoid)
 	movq	%rax, %cr3
 2:
 #endif
+	testl $1, %ebx
+	jnz 3f
+
+	/* Needed only if the interrupt caused a user->kernel transition. */
+	STUFF_RSB
+3:
 	/*
 	 * At this point, SPEC_CTRL could be enabled (executing in the kernel),
 	 * disabled (executing in userspace, executing in kernel but got
@@ -1852,9 +1850,6 @@ ENTRY(nmi)
 	pushq	%r14		/* pt_regs->r14 */
 	pushq	%r15		/* pt_regs->r15 */
 
-	/* The NMI caused a user->kernel transition */
-	STUFF_RSB
-
 	/*
 	 * At this point we no longer need to worry about stack damage
 	 * due to nesting -- we're on the normal thread stack and we're
@@ -1875,6 +1870,9 @@ ENTRY(nmi)
 	movq	%rax, %cr3
 2:
 #endif
+	/* The NMI caused a user->kernel transition */
+	STUFF_RSB
+
 	ENABLE_IBRS_CLOBBER
 
 	call	do_nmi
@@ -2038,14 +2036,6 @@ first_nmi:
 	.endr
 	CFI_DEF_CFA_OFFSET SS+8-RIP
 
-	/*
-	 * Stuff the RSB. This is potentially unnecessary because we know that
-	 * the NMI occured in kernel space. However, we do not know if the NMI
-	 * occured before or after STUFF_RSB had been executed.
-	 * So, Stuff the RSB.
-	 */
-	STUFF_RSB
-
 	/* Everything up to here is safe from nested NMIs */
 
 repeat_nmi:
@@ -2135,6 +2125,14 @@ end_repeat_nmi:
 	movq	%rax, %cr3
 2:
 #endif
+	/*
+	 * Stuff the RSB. This is potentially unnecessary because we know that
+	 * the NMI occured in kernel space. However, we do not know if the NMI
+	 * occured before or after STUFF_RSB had been executed.
+	 * So, Stuff the RSB.
+	 */
+	STUFF_RSB
+
 	/*
 	 * At this point, SPEC_CTRL could be enabled (executing in the kernel),
 	 * disabled (executing in userspace, executing in kernel but got
