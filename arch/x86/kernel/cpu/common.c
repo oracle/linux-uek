@@ -795,8 +795,14 @@ static void __init early_identify_cpu(struct cpuinfo_x86 *c)
 	if (this_cpu->c_bsp_init)
 		this_cpu->c_bsp_init(c);
 
-	if (c->x86_vendor != X86_VENDOR_AMD)
-		setup_force_cpu_bug(X86_BUG_CPU_MELTDOWN);
+	/* Mitigation for MELTDOWN already in place */
+	/* if (c->x86_vendor != X86_VENDOR_AMD)
+	 *	setup_force_cpu_bug(X86_BUG_CPU_MELTDOWN); */
+
+	setup_force_cpu_bug(X86_BUG_SPECTRE_V1);
+
+	/* Mitigation for SPECTRE_V2 already in place */
+	/* setup_force_cpu_bug(X86_BUG_SPECTRE_V2); */
 }
 
 void __init early_cpu_init(void)

@@ -408,6 +408,8 @@ static __always_inline __pure bool __static_cpu_has(u16 bit)
 
 /*Keep the bits consistent with upstream */
 #define X86_BUG_CPU_MELTDOWN	(7*32+16) /* CPU is insecure and need PTI */
+#define X86_BUG_SPECTRE_V1	(7*32+17) /* conditional branches */
+#define X86_BUG_SPECTRE_V2	(7*32+18) /* indirect branches */
 
 #endif /* defined(__KERNEL__) && !defined(__ASSEMBLY__) */
 
