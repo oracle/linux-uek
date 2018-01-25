@@ -264,6 +264,8 @@ extern const char * const x86_power_flags[32];
 	set_bit(bit, (unsigned long *)cpu_caps_set);	\
 } while (0)
 
+#define setup_force_cpu_bug(bit) setup_force_cpu_cap(bit)
+
 #define cpu_has_fpu		boot_cpu_has(X86_FEATURE_FPU)
 #define cpu_has_vme		boot_cpu_has(X86_FEATURE_VME)
 #define cpu_has_de		boot_cpu_has(X86_FEATURE_DE)
@@ -403,6 +405,9 @@ static __always_inline __pure bool __static_cpu_has(u16 bit)
  */
 #define static_cpu_has(bit) boot_cpu_has(bit)
 #endif
+
+/*Keep the bits consistent with upstream */
+#define X86_BUG_CPU_MELTDOWN	(7*32+16) /* CPU is insecure and need PTI */
 
 #endif /* defined(__KERNEL__) && !defined(__ASSEMBLY__) */
 
