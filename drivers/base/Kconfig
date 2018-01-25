@@ -187,6 +187,9 @@ config GENERIC_CPU_DEVICES
 	bool
 	default n
 
+config GENERIC_CPU_VULNERABILITIES
+	bool
+
 config SOC_BUS
 	bool
 
