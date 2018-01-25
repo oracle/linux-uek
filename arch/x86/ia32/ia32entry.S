@@ -126,6 +126,8 @@ ENTRY(ia32_sysenter_target)
 	SWITCH_KERNEL_CR3_NO_STACK
 	movq	PER_CPU_VAR(kernel_stack), %rsp
 	addq	$(KERNEL_STACK_OFFSET),%rsp
+
+	ENABLE_IBRS
 	/*
 	 * No need to follow this irqs on/off section: the syscall
 	 * disabled irqs, here we enable it straight after entry:
@@ -170,6 +172,8 @@ sysenter_dispatch:
 	testl	$_TIF_ALLWORK_MASK,TI_flags+THREAD_INFO(%rsp,RIP-ARGOFFSET)
 	jnz	sysexit_audit
 sysexit_from_sys_call:
+	DISABLE_IBRS
+
 	andl    $~TS_COMPAT,TI_status+THREAD_INFO(%rsp,RIP-ARGOFFSET)
 	/* clear IF, that popfq doesn't enable interrupts early */
 	andl  $~0x200,EFLAGS-R11(%rsp) 
@@ -288,6 +292,8 @@ ENTRY(ia32_cstar_target)
 	movl	%esp,%r8d
 	CFI_REGISTER	rsp,r8
 	movq	PER_CPU_VAR(kernel_stack),%rsp
+
+	ENABLE_IBRS
 	/*
 	 * No need to follow this irqs on/off section: the syscall
 	 * disabled irqs and here we enable it straight after entry:
@@ -329,6 +335,8 @@ cstar_dispatch:
 	testl $_TIF_ALLWORK_MASK,TI_flags+THREAD_INFO(%rsp,RIP-ARGOFFSET)
 	jnz sysretl_audit
 sysretl_from_sys_call:
+	DISABLE_IBRS
+
 	andl $~TS_COMPAT,TI_status+THREAD_INFO(%rsp,RIP-ARGOFFSET)
 	RESTORE_ARGS 0,-ARG_SKIP,0,0,0
 	movl RIP-ARGOFFSET(%rsp),%ecx
@@ -414,6 +422,8 @@ ENTRY(ia32_syscall)
 	PARAVIRT_ADJUST_EXCEPTION_FRAME
 	SWAPGS
 	SWITCH_KERNEL_CR3_NO_STACK
+
+	ENABLE_IBRS
 	/*
 	 * No need to follow this irqs on/off section: the syscall
 	 * disabled irqs and here we enable it straight after entry:

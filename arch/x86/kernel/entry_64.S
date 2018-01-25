@@ -61,6 +61,7 @@
 #include <asm/pgtable_types.h>
 #include <asm/kaiser.h>
 #include <linux/err.h>
+#include <asm/msr-index.h>
 
 /* Avoid __ASSEMBLER__'ifying <linux/audit.h> just for this.  */
 #include <linux/elf-em.h>
@@ -469,6 +470,8 @@ ENDPROC(native_usergs_sysret64)
 	je 1f
 	SWAPGS
 	SWITCH_KERNEL_CR3
+
+	ENABLE_IBRS
 	/*
 	 * irq_count is used to check if a CPU is already on an interrupt stack
 	 * or not. While this is essentially redundant with preempt_count it is
@@ -555,6 +558,17 @@ ENTRY(save_paranoid)
 	movq	%rax, %cr3
 2:
 #endif
+	/*
+	 * At this point, SPEC_CTRL could be enabled (executing in the kernel),
+	 * disabled (executing in userspace, executing in kernel but got
+	 * interrupted and haven't yet executed ENABLE_IBRS.)
+	 * So, we cache the current value and restore it at exit.
+	 *
+	 * Also, note that the corresponding exit path paranoid_exit is
+	 * called from the paranoid* entry points but not from the NMI exit.
+	 */
+
+	ENABLE_IBRS_SAVE_AND_CLOBBER save_reg=%r13d
 	ret
 	CFI_ENDPROC
 END(save_paranoid)
@@ -650,6 +664,8 @@ GLOBAL(system_call_after_swapgs)
 
 	movq	%rsp,PER_CPU_VAR(old_rsp)
 	movq	PER_CPU_VAR(kernel_stack),%rsp
+
+	ENABLE_IBRS
 	/*
 	 * No need to follow this irqs off/on section - it's straight
 	 * and short:
@@ -687,6 +703,9 @@ sysret_check:
 	andl %edi,%edx
 	jnz  sysret_careful
 	CFI_REMEMBER_STATE
+
+	DISABLE_IBRS
+
 	/*
 	 * sysretq will re-enable interrupts:
 	 */
@@ -1083,6 +1102,8 @@ retint_swapgs:		/* return to user-space */
 	 */
 	DISABLE_INTERRUPTS(CLBR_ANY)
 	TRACE_IRQS_IRETQ
+	DISABLE_IBRS
+
 	/*
 	 * This opens a window where we have a user CR3, but are
 	 * running in the kernel.  This makes using the CS
@@ -1565,6 +1586,10 @@ ENTRY(paranoid_exit)
 paranoid_kernel:
 	movq	%r12, %rbx		/* restore after paranoid_userspace */
 	TRACE_IRQS_IRETQ_DEBUG 0
+
+	/* Restore SPEC_CTRL for ebx=all */
+	RESTORE_IBRS_CLOBBER save_reg=%r13d /* Clobbers %rax, %rcx, %rdx */
+
 #ifdef CONFIG_PAGE_TABLE_ISOLATION
 	/* No ALTERNATIVE for X86_FEATURE_PTI: paranoid_entry sets %ebx */
 	testl	$2, %ebx			/* SWITCH_USER_CR3 needed? */
@@ -1644,6 +1669,8 @@ ENTRY(error_entry)
 	je error_kernelspace
 error_swapgs:
 	SWAPGS
+
+	ENABLE_IBRS_CLOBBER
 error_sti:
 	TRACE_IRQS_OFF
 	ret
@@ -1829,7 +1856,11 @@ ENTRY(nmi)
 	movq	%rax, %cr3
 2:
 #endif
+	ENABLE_IBRS_CLOBBER
+
 	call	do_nmi
+
+	DISABLE_IBRS_CLOBBER
 
 #ifdef CONFIG_PAGE_TABLE_ISOLATION
 	/*
@@ -2077,6 +2108,14 @@ end_repeat_nmi:
 	movq	%rax, %cr3
 2:
 #endif
+	/*
+	 * At this point, SPEC_CTRL could be enabled (executing in the kernel),
+	 * disabled (executing in userspace, executing in kernel but got
+	 * interrupted and haven't yet executed ENABLE_IBRS.)
+	 * So, we cache the current value and restore it at exit.
+	 */
+	ENABLE_IBRS_SAVE_AND_CLOBBER save_reg=%r13d /* Clobber %rax, %rcx, %rdx */
+
 	DEFAULT_FRAME 0		/* ???? */
 
 	/*
@@ -2092,6 +2131,8 @@ end_repeat_nmi:
 
 	/* paranoidentry do_nmi, 0; without TRACE_IRQS_OFF */
 	call	do_nmi
+
+	RESTORE_IBRS_CLOBBER save_reg=%r13d
 
 #ifdef CONFIG_PAGE_TABLE_ISOLATION
 	/*
