@@ -1000,8 +1000,21 @@ static void __cpuinit identify_cpu(struct cpuinfo_x86 *c)
 	 */
 	if (c != &boot_cpu_data) {
 		/* AND the already accumulated flags with these */
-		for (i = 0; i < NCAPINTS; i++)
+		for (i = 0; i < NCAPINTS; i++) {
+			/*
+			 * OR, i.e. replicate the bug flags
+			 * The commit 65fc985b37dc2 expands the x86_capability
+			 * which would blow away the kABI. As such we detect these
+			 * X86_BUG and only OR those.
+			 */
+			if (i == (X86_BUG_CPU_MELTDOWN / 32)) {
+				unsigned int mask = (1 << (X86_BUG_CPU_MELTDOWN % 32)) |
+						(1 << (X86_BUG_SPECTRE_V1 % 32)) |
+						(1 << (X86_BUG_SPECTRE_V2 % 32));
+				c->x86_capability[i] |= boot_cpu_data.x86_capability[i] & mask;
+			}
 			boot_cpu_data.x86_capability[i] &= c->x86_capability[i];
+		}
 	}
 
 	/* Init Machine Check Exception if available. */
