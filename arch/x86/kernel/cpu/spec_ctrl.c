@@ -40,7 +40,14 @@ DEFINE_MUTEX(spec_ctrl_mutex);
 
 static inline void set_ibrs_feature(void)
 {
-	if (!ibrs_admin_disabled) {
+       bool ignore = false;
+
+       if (xen_pv_domain())
+               ignore = true;
+
+       printk(KERN_INFO "FEATURE SPEC_CTRL Present%s\n", ignore ? " but ignored (Xen)": "");
+
+       if (!ibrs_admin_disabled && !ignore) {
 		dynamic_ibrs = 1;
 		ibrs_enabled = IBRS_ENABLED;
 		sysctl_ibrs_enabled = 1;
