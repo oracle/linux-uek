@@ -961,7 +961,8 @@ struct bpf_sock_ops {
 
 /* Definitions for bpf_sock_ops_cb_flags */
 #define BPF_SOCK_OPS_RTO_CB_FLAG	(1<<0)
-#define BPF_SOCK_OPS_ALL_CB_FLAGS       0x1		/* Mask of all currently
+#define BPF_SOCK_OPS_RETRANS_CB_FLAG	(1<<1)
+#define BPF_SOCK_OPS_ALL_CB_FLAGS       0x3		/* Mask of all currently
 							 * supported cb flags
 							 */
 
@@ -1002,6 +1003,12 @@ enum {
 					 * Arg1: value of icsk_retransmits
 					 * Arg2: value of icsk_rto
 					 * Arg3: whether RTO has expired
+					 */
+	BPF_SOCK_OPS_RETRANS_CB,	/* Called when skb is retransmitted.
+					 * Arg1: sequence number of 1st byte
+					 * Arg2: # segments
+					 * Arg3: return value of
+					 *       tcp_transmit_skb (0 => success)
 					 */
 };
 
