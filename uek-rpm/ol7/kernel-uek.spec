@@ -20,6 +20,10 @@ Summary: The Linux kernel
 #
 # % define buildid .local
 
+# define _kernel_cc to allow overrides to kernel make invocations.
+# Example:
+# % define _kernel_cc CC=gcc7
+
 %define distro_build 0
 %define signmodules 1
 
@@ -1059,8 +1063,8 @@ BuildKernel() {
     Arch=`head -n 3 .config |grep -e "Linux.*Kernel" |cut -d '/' -f 2 | cut -d ' ' -f 1`
     echo USING ARCH=$Arch
     make -s ARCH=$Arch %{oldconfig_target} > /dev/null
-    make -s ARCH=$Arch V=1 %{?_smp_mflags} $MakeTarget %{?sparse_mflags}
-    make -s ARCH=$Arch V=1 %{?_smp_mflags} modules %{?sparse_mflags} || exit 1
+    make -s ARCH=$Arch V=1 %{?_kernel_cc} %{?_smp_mflags} $MakeTarget %{?sparse_mflags}
+    make -s ARCH=$Arch V=1 %{?_kernel_cc} %{?_smp_mflags} modules %{?sparse_mflags} || exit 1
 
 %ifarch %{arm} aarch64
    mkdir -p $RPM_BUILD_ROOT/%{image_install_path}
@@ -1071,7 +1075,7 @@ BuildKernel() {
 %endif
 
 %if %{with_dtrace}
-    make -s ARCH=$Arch V=1 %{?_smp_mflags} ctf %{?sparse_mflags} || exit 1
+    make -s ARCH=$Arch V=1 %{?_kernel_cc} %{?_smp_mflags} ctf %{?sparse_mflags} || exit 1
 %endif
 
     # Start installing the results
@@ -1105,11 +1109,11 @@ BuildKernel() {
 %endif
 
     mkdir -p $RPM_BUILD_ROOT/lib/modules/$KernelVer
-    make -s ARCH=$Arch INSTALL_MOD_PATH=$RPM_BUILD_ROOT modules_install KERNELRELEASE=$KernelVer
+    make -s ARCH=$Arch %{?_kernel_cc} %{?_smp_mflags} INSTALL_MOD_PATH=$RPM_BUILD_ROOT modules_install KERNELRELEASE=$KernelVer
     # check if the modules are being signed
 
 %ifarch %{vdso_arches}
-    make -s ARCH=$Arch INSTALL_MOD_PATH=$RPM_BUILD_ROOT vdso_install KERNELRELEASE=$KernelVer
+    make -s ARCH=$Arch %{?_kernel_cc} %{?_smp_mflags} INSTALL_MOD_PATH=$RPM_BUILD_ROOT vdso_install KERNELRELEASE=$KernelVer
     if grep '^CONFIG_XEN=y$' .config >/dev/null; then
       echo > ldconfig-kernel.conf "\
 # This directive teaches ldconfig to search in nosegneg subdirectories
