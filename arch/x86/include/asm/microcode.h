@@ -86,6 +86,15 @@ static inline struct microcode_ops * __init init_amd_microcode(void)
 static inline void __exit exit_amd_microcode(void) {}
 #endif
 
+#ifdef CONFIG_MICROCODE_XEN
+extern struct microcode_ops * __init init_xen_microcode(void);
+#else
+static inline struct microcode_ops * __init init_xen_microcode(void)
+{
+	return NULL;
+}
+#endif /* CONFIG_MICROCODE_XEN */
+
 #define MAX_UCODE_COUNT 128
 
 #define QCHAR(a, b, c, d) ((a) + ((b) << 8) + ((c) << 16) + ((d) << 24))

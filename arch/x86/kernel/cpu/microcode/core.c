@@ -40,11 +40,12 @@
 #include <asm/processor.h>
 #include <asm/cmdline.h>
 #include <asm/setup.h>
+#include <xen/xen.h>
 
 #define DRIVER_VERSION	"2.2"
 
 static struct microcode_ops	*microcode_ops;
-static bool dis_ucode_ldr = true;
+static bool dis_ucode_ldr;
 
 bool initrd_gone;
 
@@ -729,7 +730,9 @@ int __init microcode_init(void)
 	if (dis_ucode_ldr)
 		return -EINVAL;
 
-	if (c->x86_vendor == X86_VENDOR_INTEL)
+	if (xen_domain())
+		microcode_ops = init_xen_microcode();
+	else if (c->x86_vendor == X86_VENDOR_INTEL)
 		microcode_ops = init_intel_microcode();
 	else if (c->x86_vendor == X86_VENDOR_AMD)
 		microcode_ops = init_amd_microcode();
