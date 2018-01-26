@@ -557,13 +557,31 @@ union bpf_attr {
  * int bpf_setsockopt(bpf_socket, level, optname, optval, optlen)
  *     Calls setsockopt. Not all opts are available, only those with
  *     integer optvals plus TCP_CONGESTION.
- *     Supported levels: SOL_SOCKET and IPROTO_TCP
+ *     Supported levels: SOL_SOCKET and IPPROTO_TCP
  *     @bpf_socket: pointer to bpf_socket
- *     @level: SOL_SOCKET or IPROTO_TCP
+ *     @level: SOL_SOCKET or IPPROTO_TCP
  *     @optname: option name
  *     @optval: pointer to option value
- *     @optlen: length of optval in byes
+ *     @optlen: length of optval in bytes
  *     Return: 0 or negative error
+ *
+ * int bpf_getsockopt(bpf_socket, level, optname, optval, optlen)
+ *     Calls getsockopt. Not all opts are available.
+ *     Supported levels: IPPROTO_TCP
+ *     @bpf_socket: pointer to bpf_socket
+ *     @level: IPPROTO_TCP
+ *     @optname: option name
+ *     @optval: pointer to option value
+ *     @optlen: length of optval in bytes
+ *     Return: 0 or negative error
+ *
+ * int bpf_sock_ops_cb_flags_set(bpf_sock_ops, flags)
+ *     Set callback flags for sock_ops
+ *     @bpf_sock_ops: pointer to bpf_sock_ops_kern struct
+ *     @flags: flags value
+ *     Return: 0 for no error
+ *             -EINVAL if there is no full tcp socket
+ *             bits in flags that are not supported by current kernel
  *
  * int bpf_skb_adjust_room(skb, len_diff, mode, flags)
  *     Grow or shrink room in sk_buff.
@@ -587,6 +605,7 @@ union bpf_attr {
  *	@key: key to insert/update sock in map
  *	@flags: same flags as map update elem
  */
+#ifndef __GENKSYMS__
 #define __BPF_FUNC_MAPPER(FN)		\
 	FN(unspec),			\
 	FN(map_lookup_elem),		\
@@ -642,6 +661,65 @@ union bpf_attr {
 	FN(redirect_map),		\
 	FN(sk_redirect_map),		\
 	FN(sock_map_update),		\
+	FN(getsockopt),			\
+	FN(sock_ops_cb_flags_set),
+#else
+#define __BPF_FUNC_MAPPER(FN)		\
+	FN(unspec),			\
+	FN(map_lookup_elem),		\
+	FN(map_update_elem),		\
+	FN(map_delete_elem),		\
+	FN(probe_read),			\
+	FN(ktime_get_ns),		\
+	FN(trace_printk),		\
+	FN(get_prandom_u32),            \
+	FN(get_smp_processor_id),	\
+	FN(skb_store_bytes),		\
+	FN(l3_csum_replace),		\
+	FN(l4_csum_replace),		\
+	FN(tail_call),			\
+	FN(clone_redirect),		\
+	FN(get_current_pid_tgid),	\
+	FN(get_current_uid_gid),	\
+	FN(get_current_comm),		\
+	FN(get_cgroup_classid),		\
+	FN(skb_vlan_push),		\
+	FN(skb_vlan_pop),		\
+	FN(skb_get_tunnel_key),		\
+	FN(skb_set_tunnel_key),		\
+	FN(perf_event_read),		\
+	FN(redirect),			\
+	FN(get_route_realm),		\
+	FN(perf_event_output),		\
+	FN(skb_load_bytes),		\
+	FN(get_stackid),		\
+	FN(csum_diff),			\
+	FN(skb_get_tunnel_opt),		\
+	FN(skb_set_tunnel_opt),		\
+	FN(skb_change_proto),		\
+	FN(skb_change_type),		\
+	FN(skb_under_cgroup),		\
+	FN(get_hash_recalc),		\
+	FN(get_current_task),		\
+	FN(probe_write_user),		\
+	FN(current_task_under_cgroup),	\
+	FN(skb_change_tail),		\
+	FN(skb_pull_data),		\
+	FN(csum_update),		\
+	FN(set_hash_invalid),		\
+	FN(get_numa_node_id),		\
+	FN(skb_change_head),		\
+	FN(xdp_adjust_head),		\
+	FN(probe_read_str),		\
+	FN(get_socket_cookie),		\
+	FN(get_socket_uid),		\
+	FN(set_hash),			\
+	FN(setsockopt),			\
+	FN(skb_adjust_room),		\
+	FN(redirect_map),		\
+	FN(sk_redirect_map),		\
+	FN(sock_map_update),
+#endif
 
 /* integer value in 'imm' field of BPF_CALL instruction selects which helper
  * function eBPF program intends to call
@@ -839,8 +917,9 @@ struct bpf_map_info {
 struct bpf_sock_ops {
 	__u32 op;
 	union {
-		__u32 reply;
-		__u32 replylong[4];
+		__u32 args[4];		/* Optionally passed to bpf program */
+		__u32 reply;		/* Returned by bpf program	    */
+		__u32 replylong[4];	/* Optionally returned by bpf prog  */
 	};
 	__u32 family;
 	__u32 remote_ip4;	/* Stored in network byte order */
@@ -849,7 +928,44 @@ struct bpf_sock_ops {
 	__u32 local_ip6[4];	/* Stored in network byte order */
 	__u32 remote_port;	/* Stored in network byte order */
 	__u32 local_port;	/* stored in host byte order */
+	__u32 is_fullsock;	/* Some TCP fields are only valid if
+				 * there is a full socket. If not, the
+				 * fields read as zero.
+				 */
+	__u32 snd_cwnd;
+	__u32 srtt_us;		/* Averaged RTT << 3 in usecs */
+	__u32 bpf_sock_ops_cb_flags; /* flags defined in uapi/linux/tcp.h */
+	__u32 state;
+	__u32 rtt_min;
+	__u32 snd_ssthresh;
+	__u32 rcv_nxt;
+	__u32 snd_nxt;
+	__u32 snd_una;
+	__u32 mss_cache;
+	__u32 ecn_flags;
+	__u32 rate_delivered;
+	__u32 rate_interval_us;
+	__u32 packets_out;
+	__u32 retrans_out;
+	__u32 total_retrans;
+	__u32 segs_in;
+	__u32 data_segs_in;
+	__u32 segs_out;
+	__u32 data_segs_out;
+	__u32 lost_out;
+	__u32 sacked_out;
+	__u32 sk_txhash;
+	__u64 bytes_received;
+	__u64 bytes_acked;
 };
+
+/* Definitions for bpf_sock_ops_cb_flags */
+#define BPF_SOCK_OPS_RTO_CB_FLAG	(1<<0)
+#define BPF_SOCK_OPS_RETRANS_CB_FLAG	(1<<1)
+#define BPF_SOCK_OPS_STATE_CB_FLAG	(1<<2)
+#define BPF_SOCK_OPS_ALL_CB_FLAGS       0x7		/* Mask of all currently
+							 * supported cb flags
+							 */
 
 /* List of known BPF sock_ops operators.
  * New entries can only be added at the end
@@ -877,6 +993,50 @@ enum {
 	BPF_SOCK_OPS_NEEDS_ECN,		/* If connection's congestion control
 					 * needs ECN
 					 */
+	BPF_SOCK_OPS_BASE_RTT,		/* Get base RTT. The correct value is
+					 * based on the path and may be
+					 * dependent on the congestion control
+					 * algorithm. In general it indicates
+					 * a congestion threshold. RTTs above
+					 * this indicate congestion
+					 */
+	BPF_SOCK_OPS_RTO_CB,		/* Called when an RTO has triggered.
+					 * Arg1: value of icsk_retransmits
+					 * Arg2: value of icsk_rto
+					 * Arg3: whether RTO has expired
+					 */
+	BPF_SOCK_OPS_RETRANS_CB,	/* Called when skb is retransmitted.
+					 * Arg1: sequence number of 1st byte
+					 * Arg2: # segments
+					 * Arg3: return value of
+					 *       tcp_transmit_skb (0 => success)
+					 */
+	BPF_SOCK_OPS_STATE_CB,		/* Called when TCP changes state.
+					 * Arg1: old_state
+					 * Arg2: new_state
+					 */
+};
+
+/* List of TCP states. There is a build check in net/ipv4/tcp.c to detect
+ * changes between the TCP and BPF versions. Ideally this should never happen.
+ * If it does, we need to add code to convert them before calling
+ * the BPF sock_ops function.
+ */
+enum {
+	BPF_TCP_ESTABLISHED = 1,
+	BPF_TCP_SYN_SENT,
+	BPF_TCP_SYN_RECV,
+	BPF_TCP_FIN_WAIT1,
+	BPF_TCP_FIN_WAIT2,
+	BPF_TCP_TIME_WAIT,
+	BPF_TCP_CLOSE,
+	BPF_TCP_CLOSE_WAIT,
+	BPF_TCP_LAST_ACK,
+	BPF_TCP_LISTEN,
+	BPF_TCP_CLOSING,	/* Now a valid state */
+	BPF_TCP_NEW_SYN_RECV,
+
+	BPF_TCP_MAX_STATES	/* Leave at the end! */
 };
 
 #define TCP_BPF_IW		1001	/* Set TCP initial congestion window */
