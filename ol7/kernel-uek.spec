@@ -362,6 +362,8 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 %define hdrarch arm64
 %define make_target Image
 %define kernel_image arch/arm64/boot/Image
+BuildRequires: gcc7 >= 7.2.1
+%define _kernel_cc CC=gcc7
 %endif
 
 %if %{nopatches}
