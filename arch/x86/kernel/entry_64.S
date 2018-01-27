@@ -561,10 +561,9 @@ ENTRY(save_paranoid)
 	movq	%rax, %cr3
 2:
 #endif
+	/* For ebx=1, or 3, skip STUFF_RSB (since no user->kernel transition) */
 	testl $1, %ebx
 	jnz 3f
-
-	/* Needed only if the interrupt caused a user->kernel transition. */
 	STUFF_RSB
 3:
 	/*
