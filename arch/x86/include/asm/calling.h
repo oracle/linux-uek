@@ -221,71 +221,71 @@ For 32-bit we have the following conventions - kernel is built with
  * We want to do this as early as possible before any schedule() happens.
  */
 #define __ASM_STUFF_RSB                        \
-       call    1f;                             \
+       call    1901f;                          \
        pause;                                  \
-1:     call    2f;                             \
+1901:  call    1902f;                          \
        pause;                                  \
-2:     call    3f;                             \
+1902:  call    1903f;                          \
        pause;                                  \
-3:     call    4f;                             \
+1903:  call    1904f;                          \
        pause;                                  \
-4:     call    5f;                             \
+1904:  call    1905f;                          \
        pause;                                  \
-5:     call    6f;                             \
+1905:  call    1906f;                          \
        pause;                                  \
-6:     call    7f;                             \
+1906:  call    1907f;                          \
        pause;                                  \
-7:     call    8f;                             \
+1907:  call    1908f;                          \
        pause;                                  \
-8:     call    9f;                             \
+1908:  call    1909f;                          \
        pause;                                  \
-9:     call    10f;                            \
+1909:  call    1910f;                          \
        pause;                                  \
-10:    call    11f;                            \
+1910:  call    1911f;                          \
        pause;                                  \
-11:    call    12f;                            \
+1911:  call    1912f;                          \
        pause;                                  \
-12:    call    13f;                            \
+1912:  call    1913f;                          \
        pause;                                  \
-13:    call    14f;                            \
+1913:  call    1914f;                          \
        pause;                                  \
-14:    call    15f;                            \
+1914:  call    1915f;                          \
        pause;                                  \
-15:    call    16f;                            \
+1915:  call    1916f;                          \
        pause;                                  \
-16:    call    17f;                            \
+1916:  call    1917f;                          \
        pause;                                  \
-17:    call    18f;                            \
+1917:  call    1918f;                          \
        pause;                                  \
-18:    call    19f;                            \
+1918:  call    1919f;                          \
        pause;                                  \
-19:    call    20f;                            \
+1919:  call    1920f;                          \
        pause;                                  \
-20:    call    21f;                            \
+1920:  call    1921f;                          \
        pause;                                  \
-21:    call    22f;                            \
+1921:  call    1922f;                          \
        pause;                                  \
-22:    call    23f;                            \
+1922:  call    1923f;                          \
        pause;                                  \
-23:    call    24f;                            \
+1923:  call    1924f;                          \
        pause;                                  \
-24:    call    25f;                            \
+1924:  call    1925f;                          \
        pause;                                  \
-25:    call    26f;                            \
+1925:  call    1926f;                          \
        pause;                                  \
-26:    call    27f;                            \
+1926:  call    1927f;                          \
        pause;                                  \
-27:    call    28f;                            \
+1927:  call    1928f;                          \
        pause;                                  \
-28:    call    29f;                            \
+1928:  call    1929f;                          \
        pause;                                  \
-29:    call    30f;                            \
+1929:  call    1930f;                          \
        pause;                                  \
-30:    call    31f;                            \
+1930:  call    1931f;                          \
        pause;                                  \
-31:    call    32f;                            \
+1931:  call    1932f;                          \
        pause;                                  \
-32:                                            \
+1932:                                          \
        add $(32*8), %rsp;
 
 .macro STUFF_RSB
