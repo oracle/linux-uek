@@ -40,6 +40,7 @@
 #include <rdma/ib_verbs.h>
 #include <rdma/opa_addr.h>
 #include <rdma/ib_mad.h>
+#include <rdma/restrack.h>
 #include "mad_priv.h"
 
 struct pkey_index_qp_list {
