@@ -160,6 +160,10 @@ struct ib_cq *__ib_alloc_cq(struct ib_device *dev, void *private,
 	if (!cq->wc)
 		goto out_destroy_cq;
 
+	cq->res.type = RDMA_RESTRACK_CQ;
+	cq->res.kern_name = caller;
+	rdma_restrack_add(&cq->res);
+
 	switch (cq->poll_ctx) {
 	case IB_POLL_DIRECT:
 		cq->comp_handler = ib_cq_completion_direct;
@@ -184,6 +188,7 @@ struct ib_cq *__ib_alloc_cq(struct ib_device *dev, void *private,
 
 out_free_wc:
 	kfree(cq->wc);
+	rdma_restrack_del(&cq->res);
 out_destroy_cq:
 	cq->device->destroy_cq(cq);
 	return ERR_PTR(ret);
@@ -215,6 +220,7 @@ void ib_free_cq(struct ib_cq *cq)
 	}
 
 	kfree(cq->wc);
+	rdma_restrack_del(&cq->res);
 	ret = cq->device->destroy_cq(cq);
 	WARN_ON_ONCE(ret);
 }

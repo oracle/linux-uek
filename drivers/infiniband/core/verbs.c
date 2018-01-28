@@ -1546,6 +1546,8 @@ struct ib_cq *ib_create_cq(struct ib_device *device,
 		cq->event_handler = event_handler;
 		cq->cq_context    = cq_context;
 		atomic_set(&cq->usecnt, 0);
+		cq->res.type = RDMA_RESTRACK_CQ;
+		rdma_restrack_add(&cq->res);
 	}
 
 	return cq;
@@ -1564,6 +1566,7 @@ int ib_destroy_cq(struct ib_cq *cq)
 	if (atomic_read(&cq->usecnt))
 		return -EBUSY;
 
+	rdma_restrack_del(&cq->res);
 	return cq->device->destroy_cq(cq);
 }
 EXPORT_SYMBOL(ib_destroy_cq);
