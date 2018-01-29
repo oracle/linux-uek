@@ -89,6 +89,11 @@ static void __init spectre_v2_parse_cmdline(void)
 		set_ibpb_disabled();
 	}
 
+	if (cmdline_find_option_bool(boot_command_line, "nolfence")) {
+		set_lfence_disabled();
+	}
+
+
 	if (cmdline_find_option_bool(boot_command_line, "nospectre_v2"))
 		goto disable;
 

@@ -9,7 +9,7 @@
 #define SPEC_CTRL_IBRS_INUSE           (1<<0)  /* OS enables IBRS usage */
 #define SPEC_CTRL_IBRS_SUPPORTED       (1<<1)  /* System supports IBRS */
 #define SPEC_CTRL_IBRS_ADMIN_DISABLED  (1<<2)  /* Admin disables IBRS */
-
+#define SPEC_CTRL_LFENCE_OFF           (1<<3)  /* No lfence */
 #ifdef __ASSEMBLY__
 
 .extern use_ibrs
@@ -133,6 +133,8 @@
 	__ASM_ENABLE_IBRS
 	jmp	20f
 7:
+	testl  $SPEC_CTRL_LFENCE_OFF, use_ibrs
+	jnz	20f
 	lfence
 20:
 .endm
@@ -143,6 +145,8 @@
 	__ASM_ENABLE_IBRS_CLOBBER
 	jmp	21f
 11:
+	testl  $SPEC_CTRL_LFENCE_OFF, use_ibrs
+	jnz	21f
 	lfence
 21:
 .endm
@@ -161,6 +165,8 @@
 	jmp 22f
 12:
 	movl $SPEC_CTRL_FEATURE_ENABLE_IBRS, \save_reg
+	testl  $SPEC_CTRL_LFENCE_OFF, use_ibrs
+	jnz	22f
 	lfence
 22:
 .endm
@@ -178,6 +184,8 @@
 	wrmsr
 	jmp 23f
 13:
+	testl  $SPEC_CTRL_LFENCE_OFF, use_ibrs
+	jnz	23f
 	lfence
 23:
 .endm
@@ -252,6 +260,11 @@ static inline void clear_ibrs_disabled(void)
 {
 	use_ibrs &= ~SPEC_CTRL_IBRS_ADMIN_DISABLED;
 	set_ibrs_inuse();
+}
+
+static inline void set_lfence_disabled(void)
+{
+	use_ibrs |= SPEC_CTRL_LFENCE_OFF;
 }
 
 /* indicate usage of IBPB to control execution speculation */
