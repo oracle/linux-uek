@@ -21,6 +21,8 @@
 #include <asm/desc.h>
 #include <asm/cmdline.h>
 
+#include <xen/xen.h>
+
 int kaiser_enabled __read_mostly = 1;
 EXPORT_SYMBOL(kaiser_enabled);	/* for inlined TLB flush functions */
 
