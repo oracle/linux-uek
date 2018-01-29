@@ -9,6 +9,8 @@
 #include <asm/spec_ctrl.h>
 #include <asm/apic.h>
 
+#include <xen/xen.h>
+
 struct cpuid_bit {
 	u16 feature;
 	u8 reg;
