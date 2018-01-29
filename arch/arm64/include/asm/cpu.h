@@ -62,6 +62,7 @@ struct cpuinfo_arm64 {
 };
 
 DECLARE_PER_CPU(struct cpuinfo_arm64, cpu_data);
+#define cpu_data(cpu)		per_cpu(cpu_data, (cpu))
 
 void cpuinfo_store_cpu(void);
 void __init cpuinfo_store_boot_cpu(void);

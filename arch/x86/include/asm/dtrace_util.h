@@ -25,9 +25,6 @@ extern void dtrace_invop_disable(asm_instr_t *, asm_instr_t);
 
 extern int dtrace_user_addr_is_exec(uintptr_t);
 
-extern void dtrace_mod_pdata_init(dtrace_module_t *);
-extern void dtrace_mod_pdata_cleanup(dtrace_module_t *);
-
 #endif
 
 #endif /* _X86_DTRACE_UTIL_H */

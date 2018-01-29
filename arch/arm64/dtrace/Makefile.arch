@@ -1,0 +1,17 @@
+#
+# Copyright (c) 2018, Oracle and/or its affiliates. All rights reserved.
+#
+
+DTARCHDIR = ../arch/arm64/dtrace
+
+ccflags-y	+= -Iarch/arm64/dtrace/include -Idtrace
+
+dtrace-obj	+= dtrace_asm_arm64.o dtrace_isa_arm64.o
+fasttrap-obj	+= fasttrap_arm64.o
+fbt-obj		+= fbt_arm64.o
+sdt-obj		+= sdt_arm64.o
+
+dtrace-y	+= $(addprefix $(DTARCHDIR)/, $(dtrace-obj))
+fasttrap-y	+= $(addprefix $(DTARCHDIR)/, $(fasttrap-obj))
+fbt-y		+= $(addprefix $(DTARCHDIR)/, $(fbt-obj))
+sdt-y		+= $(addprefix $(DTARCHDIR)/, $(sdt-obj))

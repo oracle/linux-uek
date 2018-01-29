@@ -19,7 +19,6 @@ typedef uint32_t dtrace_id_t;
 #include <linux/uprobes.h>
 #endif
 #include <asm/unistd.h>
-#include <asm/asm-offsets.h>
 #include <linux/dtrace_cpu.h>
 
 #define DTRACE_IDNONE 0
@@ -59,6 +58,8 @@ extern void dtrace_vtime_enable(void);
 extern void dtrace_vtime_disable(void);
 extern void dtrace_vtime_switch(struct task_struct *, struct task_struct *);
 
+#include <asm/dtrace_util.h>
+
 extern void dtrace_skip_instruction(struct pt_regs *);
 
 extern int dtrace_die_notifier(struct notifier_block *, unsigned long, void *);
@@ -78,8 +79,8 @@ typedef struct stacktrace_state {
 extern void dtrace_stacktrace(stacktrace_state_t *);
 extern void dtrace_user_stacktrace(stacktrace_state_t *);
 extern void dtrace_handle_badaddr(struct pt_regs *);
-
-#include <asm/dtrace_util.h>
+extern void dtrace_mod_pdata_init(dtrace_module_t *pdata);
+extern void dtrace_mod_pdata_cleanup(dtrace_module_t *pdata);
 
 /*
  * This is only safe to call if we know this is a userspace fault

@@ -23,6 +23,7 @@
 #include <linux/mm.h>
 #include <linux/hardirq.h>
 #include <linux/init.h>
+#include <linux/kdebug.h>
 #include <linux/kprobes.h>
 #include <linux/uaccess.h>
 #include <linux/page-flags.h>
@@ -79,6 +80,19 @@ static inline int notify_page_fault(struct pt_regs *regs, unsigned int esr)
 #else
 static inline int notify_page_fault(struct pt_regs *regs, unsigned int esr)
 {
+	return 0;
+}
+#endif
+
+#ifdef CONFIG_DTRACE
+static int dtrace_fault(struct pt_regs *regs, unsigned long addr)
+{
+	preempt_disable();
+	if (notify_die(DIE_PAGE_FAULT, "page fault", regs, addr, 14,
+		       SIGKILL) == NOTIFY_STOP)
+		return 1;
+	preempt_enable();
+
 	return 0;
 }
 #endif
@@ -405,6 +419,10 @@ static int __kprobes do_page_fault(unsigned long addr, unsigned int esr,
 
 	if (notify_page_fault(regs, esr))
 		return 0;
+#ifdef CONFIG_DTRACE
+	if (dtrace_fault(regs, addr))
+		return 0;
+#endif
 
 	tsk = current;
 	mm  = tsk->mm;
