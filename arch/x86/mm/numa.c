@@ -20,6 +20,7 @@
 
 #include "asm/xen/vnuma.h"
 #include "numa_internal.h"
+#include <xen/xen.h>
 
 int __initdata numa_off;
 nodemask_t numa_nodes_parsed __initdata;
