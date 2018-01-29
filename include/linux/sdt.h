@@ -5,7 +5,7 @@
 
 #include <linux/sdt_internal.h>
 
-#ifdef CONFIG_DTRACE
+#if IS_ENABLED(CONFIG_DT_SDT)
 
 #include <asm/dtrace_sdt_arch.h>
 #include <linux/stringify.h>
@@ -67,17 +67,7 @@
 
 #endif
 
-typedef struct sdt_probedesc {
-	char			*sdpd_name;	/* probe name */
-	char			*sdpd_func;	/* probe function */
-#ifndef __GENKSYMS__
-	const char		*sdpd_args;	/* arg string */
-#endif
-	unsigned long		sdpd_offset;	/* offset of call in text */
-	struct sdt_probedesc	*sdpd_next;	/* next static probe */
-} sdt_probedesc_t;
-
-#else /* ! CONFIG_DTRACE */
+#else /* ! IS_ENABLED(CONFIG_DT_SDT) */
 
 /*
  * This apparently redundant call serves to validate the DTRACE_PROBE has the
@@ -89,6 +79,20 @@ typedef struct sdt_probedesc {
 #define	DTRACE_PROBE_ENABLED(name) 0
 #define DTRACE_PROBE_TRACEPOINT(name, ...)
 #define DTRACE_PROTO_TRACEPOINT(name, ...)
+
+#endif /* IS_ENABLED(CONFIG_DT_SDT) */
+
+#ifdef CONFIG_DTRACE
+
+typedef struct sdt_probedesc {
+	char			*sdpd_name;	/* probe name */
+	char			*sdpd_func;	/* probe function */
+#ifndef __GENKSYMS__
+	const char		*sdpd_args;	/* arg string */
+#endif
+	unsigned long		sdpd_offset;	/* offset of call in text */
+	struct sdt_probedesc	*sdpd_next;	/* next static probe */
+} sdt_probedesc_t;
 
 #endif /* CONFIG_DTRACE */
 

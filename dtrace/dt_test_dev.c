@@ -89,9 +89,8 @@ static long dt_test_ioctl(struct file *file,
 		return 0;
 	}
 
-	if (DTRACE_PROBE_ENABLED(sdt__test)) {
-		DTRACE_PROBE(sdt__test__is__enabled)
-	}
+	if (DTRACE_PROBE_ENABLED(sdt__test))
+		DTRACE_PROBE(sdt__test__is__enabled);
 
 	DTRACE_PROBE(sdt__test);
 
