@@ -263,6 +263,9 @@ static inline void clear_ibrs_disabled(void)
 }
 
 extern u32 sysctl_lfence_enabled;
+
+#define lfence_inuse (!(use_ibrs & SPEC_CTRL_LFENCE_OFF))
+
 static inline void set_lfence_disabled(void)
 {
 	use_ibrs |= SPEC_CTRL_LFENCE_OFF;
