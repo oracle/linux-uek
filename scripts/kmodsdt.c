@@ -111,6 +111,8 @@ process_obj(const char *obj)
 	emachine1 = emachine2 = EM_SPARCV9;
 # elif defined(__i386) || defined(__amd64)
 	emachine1 = emachine2 = EM_X86_64;
+# elif defined(__aarch64__)
+	emachine1 = emachine2 = EM_AARCH64;
 # endif
 	symsize = sizeof(Elf64_Sym);
 #else
@@ -120,6 +122,8 @@ process_obj(const char *obj)
 	emachine2 = EM_SPARC32PLUS;
 # elif defined(__i386) || defined(__amd64)
 	emachine1 = emachine2 = EM_386;
+# elif defined(__arm__)
+	emachine1 = emachine2 = EM_ARM;
 # endif
 	symsize = sizeof(Elf32_Sym);
 #endif

@@ -55,6 +55,9 @@ if [ "$opr" = "sdtstub" ]; then
 			} else if (arch == "sparc" || arch == "sparc64") {
 			    print "\tretl";
 			    print "\tnop";
+			} else if (arch == "arm" || arch == "arm64") {
+			    print "\tmov w0, #0x0";
+			    print "\tret";
 			}
 		    }
 		}' > $tfn
@@ -272,7 +275,6 @@ else
     #
     ${OBJDUMP} -htrj .text ${ofn} | \
     awk 'function subl(v0, v1, v0h, v0l, v1h, v1l, d, tmp) {
-		print "subl(%s, %s)", v0, v1;
              tmp = $0;
              if (length(v0) > 8) {
                  d = length(v0);
@@ -427,7 +429,7 @@ else
 	     if (arch == "x86" || arch == "x86_64")
 		 addr = subl(addr, 1);
 
-	     printf "\tPTR\t_text + 0x%s\n", addr;
+	     printf "\tPTR\t_stext + 0x%s\n", addr;
 	     printf "\tPTR\t%d\n", length($3);
 	     printf "\tPTR\t%d\n", length(fname);
 	     printf "\t.asciz\t\042%s\042\n", $3;

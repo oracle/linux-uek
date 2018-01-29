@@ -337,7 +337,11 @@ if [ -n "${CONFIG_KALLSYMS}" ]; then
 	kallsyms .tmp_vmlinux1 .tmp_kallsyms1.o
 
 	if [ -n "${CONFIG_DTRACE}" ]; then
-		vmlinux_link "${sdtstubo} ${sdtinfoo}" .tmp_vmlinux1 "-r"
+		if [ -n "${CONFIG_ARM64}" ]; then
+			vmlinux_link "${sdtstubo} ${sdtinfoo}" .tmp_vmlinux1
+		else
+			vmlinux_link "${sdtstubo} ${sdtinfoo}" .tmp_vmlinux1 "-r"
+		fi
 		sdtinfo .tmp_vmlinux1 ${sdtinfoo}
 	fi
 
