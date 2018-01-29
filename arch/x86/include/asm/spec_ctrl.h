@@ -262,9 +262,17 @@ static inline void clear_ibrs_disabled(void)
 	set_ibrs_inuse();
 }
 
+extern u32 sysctl_lfence_enabled;
 static inline void set_lfence_disabled(void)
 {
 	use_ibrs |= SPEC_CTRL_LFENCE_OFF;
+	sysctl_lfence_enabled = 0;
+}
+
+static inline void clear_lfence_disabled(void)
+{
+	use_ibrs &= ~SPEC_CTRL_LFENCE_OFF;
+	sysctl_lfence_enabled = 1;
 }
 
 /* indicate usage of IBPB to control execution speculation */
