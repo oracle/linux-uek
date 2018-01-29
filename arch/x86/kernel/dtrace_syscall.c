@@ -20,21 +20,19 @@
 (* SYSTEM CALL TRACING SUPPORT                                               *)
 \*---------------------------------------------------------------------------*/
 void (*systrace_probe)(dtrace_id_t, uintptr_t, uintptr_t, uintptr_t, uintptr_t,
-		       uintptr_t, uintptr_t);
+		       uintptr_t, uintptr_t, uintptr_t);
 
 void systrace_stub(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 		   uintptr_t arg2, uintptr_t arg3, uintptr_t arg4,
-		   uintptr_t arg5)
+		   uintptr_t arg5, uintptr_t arg6)
 {
 }
 
-asmlinkage long systrace_syscall(uintptr_t, uintptr_t,
-				 uintptr_t, uintptr_t,
-				 uintptr_t, uintptr_t);
+asmlinkage long systrace_syscall(uintptr_t, uintptr_t, uintptr_t, uintptr_t,
+				 uintptr_t, uintptr_t, uintptr_t);
 
-asmlinkage long dtrace_stub_ptregs(uintptr_t, uintptr_t,
-				   uintptr_t, uintptr_t,
-				   uintptr_t, uintptr_t);
+asmlinkage long dtrace_stub_ptregs(uintptr_t, uintptr_t, uintptr_t, uintptr_t,
+				   uintptr_t, uintptr_t, uintptr_t);
 
 static systrace_info_t	systrace_info =
 		{
@@ -55,8 +53,10 @@ static systrace_info_t	systrace_info =
 		};
 
 
-asmlinkage long systrace_syscall(uintptr_t arg0, uintptr_t arg1, uintptr_t arg2,
-				 uintptr_t arg3, uintptr_t arg4, uintptr_t arg5)
+asmlinkage long systrace_syscall(uintptr_t arg0, uintptr_t arg1,
+				 uintptr_t arg2, uintptr_t arg3,
+				 uintptr_t arg4, uintptr_t arg5,
+				 uintptr_t arg6)
 {
 	long			rc = 0;
 	unsigned long		sysnum;
@@ -67,19 +67,20 @@ asmlinkage long systrace_syscall(uintptr_t arg0, uintptr_t arg1, uintptr_t arg2,
 	sc = &systrace_info.sysent[sysnum];
 
 	if ((id = sc->stsy_entry) != DTRACE_IDNONE)
-		(*systrace_probe)(id, arg0, arg1, arg2, arg3, arg4, arg5);
+		(*systrace_probe)(id, arg0, arg1, arg2, arg3, arg4, arg5,
+				  arg6);
 
 	/*
 	 * FIXME: Add stop functionality for DTrace.
 	 */
 
 	if (sc->stsy_underlying != NULL)
-		rc = (*sc->stsy_underlying)(arg0, arg1, arg2, arg3, arg4,
-					    arg5);
+		rc = (*sc->stsy_underlying)(arg0, arg1, arg2, arg3, arg4, arg5,
+					    arg6);
 
 	if ((id = sc->stsy_return) != DTRACE_IDNONE)
 		(*systrace_probe)(id, (uintptr_t)rc, (uintptr_t)rc,
-				  (uintptr_t)((uint64_t)rc >> 32), 0, 0, 0);
+				  (uintptr_t)((uint64_t)rc >> 32), 0, 0, 0, 0);
 
 	return rc;
 }

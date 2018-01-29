@@ -27,8 +27,6 @@
 
 #include "dtrace.h"
 
-EXPORT_SYMBOL(dtrace_getfp);
-
 DEFINE_MUTEX(cpu_lock);
 EXPORT_SYMBOL(cpu_lock);
 
@@ -337,4 +335,11 @@ int dtrace_getstackdepth(dtrace_mstate_t *mstate, int aframes)
 int dtrace_getustackdepth(void)
 {
 	return dtrace_getufpstack(NULL, NULL, INT_MAX);
+}
+
+void dtrace_probe_error(dtrace_state_t *state, dtrace_epid_t epid, int act,
+			int fltoffs, int flags, uintptr_t addr)
+{
+	dtrace_probe(dtrace_probeid_error, (uintptr_t)state, epid, act,
+		     fltoffs, flags, addr, 0);
 }

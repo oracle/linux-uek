@@ -797,7 +797,7 @@ int dtrace_state_go(dtrace_state_t *state, processorid_t *cpu)
 	state->dts_buffer[*cpu].dtb_flags &= ~DTRACEBUF_INACTIVE;
 
 	dtrace_probe(dtrace_probeid_begin, (uint64_t)(uintptr_t)state, 0, 0, 0,
-		     0);
+		     0, 0, 0);
 	local_irq_restore(cookie);
 
 	/*
@@ -895,7 +895,7 @@ int dtrace_state_stop(dtrace_state_t *state, processorid_t *cpu)
 	local_irq_save(cookie);
 	*cpu = smp_processor_id();
 	dtrace_probe(dtrace_probeid_end, (uint64_t)(uintptr_t)state, 0, 0, 0,
-		     0);
+		     0, 0, 0);
 	local_irq_restore(cookie);
 
 	state->dts_activity = DTRACE_ACTIVITY_STOPPED;

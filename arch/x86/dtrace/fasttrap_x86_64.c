@@ -98,15 +98,20 @@ static void fasttrap_map_args(fasttrap_probe_t *probe, struct pt_regs *regs,
 
 void fasttrap_pid_probe_arch(fasttrap_probe_t *ftp, struct pt_regs *regs)
 {
-	if (ftp->ftp_argmap == NULL)
-		dtrace_probe(ftp->ftp_id, regs->di, regs->si, regs->dx,
-			     regs->cx, regs->r8);
-	else {
-		uintptr_t	t[5];
+	uintptr_t	t[7];
 
+	if (ftp->ftp_argmap == NULL) {
+		uintptr_t	*st = (uintptr_t *)regs->sp;
+
+		__copy_from_user_inatomic_nocache(&t[6], (void *)&st[0],
+						  sizeof(st[0]));
+
+		dtrace_probe(ftp->ftp_id, regs->di, regs->si, regs->dx,
+			     regs->cx, regs->r8, regs->r9, t[6]);
+	} else {
 		fasttrap_map_args(ftp, regs, sizeof(t) / sizeof(t[0]), t);
 		dtrace_probe(ftp->ftp_id, t[0], t[1], t[2], t[3],
-			     t[4]);
+			     t[4], t[5], t[6]);
 	}
 }
 

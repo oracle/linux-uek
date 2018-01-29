@@ -101,7 +101,7 @@ static void profile_tick_fn(uintptr_t arg)
 	else
 		pc = instruction_pointer(regs);
 
-	dtrace_probe(prof->prof_id, pc, upc, 0, 0, 0);
+	dtrace_probe(prof->prof_id, pc, upc, 0, 0, 0, 0, 0);
 }
 
 static void profile_prof_fn(uintptr_t arg)
@@ -134,7 +134,7 @@ static void profile_prof_fn(uintptr_t arg)
 	else
 		pc = instruction_pointer(regs);
 
-	dtrace_probe(prof->prof_id, pc, upc, ktime_to_ns(late), 0, 0);
+	dtrace_probe(prof->prof_id, pc, upc, ktime_to_ns(late), 0, 0, 0, 0);
 }
 
 static void profile_online(void *arg, processorid_t cpu, cyc_handler_t *hdlr,

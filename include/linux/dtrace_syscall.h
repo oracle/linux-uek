@@ -20,12 +20,14 @@ enum dtrace_sce_id {
 
 #define DTRACE_SYSCALL_STUB(t, n) \
 	asmlinkage long dtrace_stub_##n(uintptr_t, uintptr_t, uintptr_t, \
-					uintptr_t, uintptr_t, uintptr_t);
+					uintptr_t, uintptr_t, uintptr_t, \
+					uintptr_t);
 #include <asm/dtrace_syscall.h>
 #undef DTRACE_SYSCALL_STUB
 
 typedef asmlinkage long (*dt_sys_call_t)(uintptr_t, uintptr_t, uintptr_t,
-					 uintptr_t, uintptr_t, uintptr_t);
+					 uintptr_t, uintptr_t, uintptr_t,
+					 uintptr_t);
 
 typedef struct dtrace_syscalls {
 	const char	*name;
@@ -37,7 +39,7 @@ typedef struct dtrace_syscalls {
 
 typedef void (*dtrace_systrace_probe_t)(dtrace_id_t, uintptr_t, uintptr_t,
 					uintptr_t, uintptr_t, uintptr_t,
-					uintptr_t);
+					uintptr_t, uintptr_t);
 
 typedef struct systrace_info {
 	dtrace_systrace_probe_t	*probep;

@@ -797,7 +797,7 @@ extern void *dtrace_probe_arg(dtrace_provider_id_t, dtrace_id_t);
 extern dtrace_id_t dtrace_probe_lookup(dtrace_provider_id_t, const char *,
 				       const char *, const char *);
 extern void dtrace_probe(dtrace_id_t, uintptr_t, uintptr_t, uintptr_t,
-			 uintptr_t, uintptr_t);
+			 uintptr_t, uintptr_t, uintptr_t, uintptr_t);
 
 /*
  * Provider creation.

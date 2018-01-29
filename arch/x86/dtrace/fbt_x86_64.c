@@ -40,11 +40,32 @@ static uint8_t fbt_invop(struct pt_regs *regs)
 		if ((uintptr_t)fbp->fbp_patchpoint == regs->ip) {
 			this_cpu_core->cpu_dtrace_regs = regs;
 			if (fbp->fbp_roffset == 0) {
+				uint64_t	*st;
+				uint64_t	arg6;
+
+				st = (uint64_t *)regs->sp;
+				DTRACE_CPUFLAG_SET(CPU_DTRACE_NOFAULT);
+				/*
+				 * Skip the topmost slot of the stack because
+				 * that holds the return address for the call
+				 * to the function we are entering.  At this
+				 * point the BP has not been pushed yet, so we
+				 * are still working within the caller's stack
+				 * frame.
+				 *
+				 * Also, the first 6 arguments are passed in
+				 * registers, so don't count those to find the
+				 * stack slot to read from.
+				 */
+				arg6 = st[1 + 6 - 6];
+				DTRACE_CPUFLAG_CLEAR(CPU_DTRACE_NOFAULT);
+
 				dtrace_probe(fbp->fbp_id, regs->di, regs->si,
-					     regs->dx, regs->cx, regs->r8);
+					     regs->dx, regs->cx, regs->r8,
+					     regs->r9, arg6);
 			} else {
 				dtrace_probe(fbp->fbp_id, fbp->fbp_roffset,
-					     regs->ax, 0, 0, 0);
+					     regs->ax, 0, 0, 0, 0, 0);
 			}
 
 			this_cpu_core->cpu_dtrace_regs = NULL;

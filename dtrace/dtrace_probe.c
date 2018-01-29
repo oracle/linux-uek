@@ -544,7 +544,8 @@ out:
 }
 
 void dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
-		  uintptr_t arg2, uintptr_t arg3, uintptr_t arg4)
+		  uintptr_t arg2, uintptr_t arg3, uintptr_t arg4,
+		  uintptr_t arg5, uintptr_t arg6)
 {
 	processorid_t		cpuid;
 	dtrace_icookie_t	cookie;
@@ -642,6 +643,8 @@ void dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 	mstate.dtms_arg[2] = arg2;
 	mstate.dtms_arg[3] = arg3;
 	mstate.dtms_arg[4] = arg4;
+	mstate.dtms_arg[5] = arg5;
+	mstate.dtms_arg[6] = arg6;
 
 	for (ecb = probe->dtpr_ecb; ecb != NULL; ecb = ecb->dte_next) {
 		dtrace_predicate_t	*pred = ecb->dte_predicate;

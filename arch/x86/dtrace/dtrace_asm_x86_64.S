@@ -20,54 +20,6 @@
 #define CPU_DTRACE_BADADDR	0x0004	/* DTrace fault: bad address */
 
 #if defined(__x86_64__)
-
-	ENTRY(dtrace_getfp)
-	movq	%rbp, %rax
-	ret
-	ENDPROC(dtrace_getfp)
-
-#elif defined(__i386__)
-
-	ENTRY(dtrace_getfp)
-	movl	%ebp, %eax
-	ret
-	ENDPROC(dtrace_getfp)
-
-#endif	/* __i386__ */
-
-
-#if defined(__x86_64__)
-
-	ENTRY(dtrace_cas32)
-	movl	%esi, %eax
-	lock
-	cmpxchgl %edx, (%rdi)
-	ret
-	ENDPROC(dtrace_cas32)
-
-	ENTRY(dtrace_casptr)
-	movq	%rsi, %rax
-	lock
-	cmpxchgq %rdx, (%rdi)
-	ret
-	ENDPROC(dtrace_casptr)
-
-#elif defined(__i386__)
-
-	ENTRY(dtrace_cas32)
-	ENTRY(dtrace_casptr)
-	movl	4(%esp), %edx
-	movl	8(%esp), %eax
-	movl	12(%esp), %ecx
-	lock
-	cmpxchgl %ecx, (%edx)
-	ret
-	ENDPROC(dtrace_casptr)
-	ENDPROC(dtrace_cas32)
-
-#endif	/* __i386__ */
-
-#if defined(__x86_64__)
 	ENTRY(dtrace_caller)
 	movq	$-1, %rax
 	ret
@@ -191,26 +143,6 @@
 
 #if defined(__x86_64__)
 
-	ENTRY(dtrace_fulword)
-	ASM_STAC
-	movq	(%rdi), %rax
-	ASM_CLAC
-	ret
-	ENDPROC(dtrace_fulword)
-
-#elif defined(__i386__)
-
-	ENTRY(dtrace_fulword)
-	movl	4(%esp), %ecx
-	xorl	%eax, %eax
-	movl	(%ecx), %eax
-	ret
-	ENDPROC(dtrace_fulword)
-
-#endif	/* __i386__ */
-
-#if defined(__x86_64__)
-
 	ENTRY(dtrace_fuword8_nocheck)
 	xorq	%rax, %rax
 	ASM_STAC
@@ -291,44 +223,5 @@
 	movl	4(%ecx), %edx
 	ret
 	ENDPROC(dtrace_fuword64_nocheck)
-
-#endif	/* __i386__ */
-
-#if defined(__x86_64__)
-
-	ENTRY(dtrace_probe_error)
-	pushq	%rbp
-	movq	%rsp, %rbp
-	subq	$0x8, %rsp
-	movq	%r9, (%rsp)
-	movq	%r8, %r9
-	movq	%rcx, %r8
-	movq	%rdx, %rcx
-	movq	%rsi, %rdx
-	movq	%rdi, %rsi
-	movl	dtrace_probeid_error(%rip), %edi
-	call	dtrace_probe
-	addq	$0x8, %rsp
-	leave
-	ret
-	ENDPROC(dtrace_probe_error)
-
-#elif defined(__i386__)
-
-	ENTRY(dtrace_probe_error)
-	pushl	%ebp
-	movl	%esp, %ebp
-	pushl	0x1c(%ebp)
-	pushl	0x18(%ebp)
-	pushl	0x14(%ebp)
-	pushl	0x10(%ebp)
-	pushl	0xc(%ebp)
-	pushl	0x8(%ebp)
-	pushl	dtrace_probeid_error
-	call	dtrace_probe
-	movl	%ebp, %esp
-	popl	%ebp
-	ret
-	ENDPROC(dtrace_probe_error)
 
 #endif	/* __i386__ */

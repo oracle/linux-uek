@@ -35,10 +35,24 @@ static uint8_t sdt_invop(struct pt_regs *regs)
 			if (sdt->sdp_ptype == SDTPT_IS_ENABLED)
 				regs->ax = 1;
 			else {
+				uint64_t	*st;
+				uint64_t	arg6;
+
 				this_cpu_core->cpu_dtrace_regs = regs;
 
+				st = (uint64_t *)regs->sp;
+				DTRACE_CPUFLAG_SET(CPU_DTRACE_NOFAULT);
+				/*
+				 * The first 6 arguments are passed in
+				 * registers, so don't count those to find the
+				 * stack slot to read from.
+				 */
+				arg6 = st[6 - 6];
+				DTRACE_CPUFLAG_CLEAR(CPU_DTRACE_NOFAULT);
+
 				dtrace_probe(sdt->sdp_id, regs->di, regs->si,
-					     regs->dx, regs->cx, regs->r8);
+					     regs->dx, regs->cx, regs->r8,
+					     regs->r9, arg6);
 
 				this_cpu_core->cpu_dtrace_regs = NULL;
 			}

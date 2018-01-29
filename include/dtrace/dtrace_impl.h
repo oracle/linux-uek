@@ -188,7 +188,7 @@ typedef struct dtrace_mstate {
 	uintptr_t dtms_scratch_ptr;
 	size_t dtms_scratch_size;
 	uint32_t dtms_present;
-	uint64_t dtms_arg[5];
+	uint64_t dtms_arg[7];
 	dtrace_epid_t dtms_epid;
 	ktime_t dtms_timestamp;
 	int dtms_stackdepth;
