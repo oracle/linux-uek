@@ -2381,9 +2381,6 @@ static struct inode_operations asmfs_file_inode_operations = {
 	.getattr	= simple_getattr,
 };
 
-/*  See init_asmfs_dir_operations() */
-static struct file_operations asmfs_dir_operations = {0, };
-
 static struct inode_operations asmfs_disk_dir_inode_operations = {
 	.lookup		= simple_lookup,
 	.unlink		= simple_unlink,
