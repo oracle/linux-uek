@@ -1149,9 +1149,16 @@ struct task_struct {
 	/* Used by LSM modules for access restriction: */
 	void				*security;
 #endif
+	/*
+	 * recent_used_cpu is initially set as the last CPU used by a task
+	 * that wakes affine another task. Waker/wakee relationships can
+	 * push tasks around a CPU where each wakeup moves to the next one.
+	 * Tracking a recently used CPU allows a quick search for a recently
+	 * used CPU that may be idle.
+	 */
+	UEK_KABI_USE(1, int recent_used_cpu);
 
 	/* Space for future expansion without breaking kABI. */
-	UEK_KABI_RESERVED(1);
 	UEK_KABI_RESERVED(2);
 	UEK_KABI_RESERVED(3);
 	UEK_KABI_RESERVED(4);
