@@ -427,7 +427,7 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 
 %ifarch x86_64
 %define kernel_obsoletes kernel-xen <= 2.6.27-0.2.rc0.git6.fc10
-%define kernel_provides kernel%{?variant}%{?-r:-base}-xen = %{rpmversion}-%{pkg_release}
+%define kernel_provides kernel%{?variant}-xen = %{rpmversion}-%{pkg_release}
 %endif
 
 # We moved the drm include files into kernel-headers, make sure there's
@@ -443,21 +443,18 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 
 #
 # This macro does requires, provides, conflicts, obsoletes for a kernel package.
-#	%%kernel_reqprovconf [-r] <subpackage>
+#	%%kernel_reqprovconf <subpackage>
 # It uses any kernel_<subpackage>_conflicts and kernel_<subpackage>_obsoletes
 # macros defined above.
 #
-%define kernel_reqprovconf(r) \
-Provides: kernel%{?variant}%{?-r:-base} = %{rpmversion}-%{pkg_release}\
-Provides: kernel%{?variant}%{?-r:-base}-%{_target_cpu} = %{rpmversion}-%{pkg_release}%{?1:.%{1}}\
-Provides: kernel%{?variant}%{?-r:-base}-drm = 4.3.0\
-Provides: kernel%{?variant}%{?-r:-base}-drm-nouveau = 12\
-Provides: kernel%{?variant}%{?-r:-base}-modeset = 1\
-Provides: kernel%{?variant}%{?-r:-base}-uname-r = %{KVERREL}%{?1:.%{1}}\
+%define kernel_reqprovconf \
+Provides: kernel%{?variant} = %{rpmversion}-%{pkg_release}\
+Provides: kernel%{?variant}-%{_target_cpu} = %{rpmversion}-%{pkg_release}%{?1:.%{1}}\
+Provides: kernel%{?variant}-drm = 4.3.0\
+Provides: kernel%{?variant}-drm-nouveau = 12\
+Provides: kernel%{?variant}-modeset = 1\
+Provides: kernel%{?variant}-uname-r = %{KVERREL}%{?1:.%{1}}\
 Provides: oracleasm = 2.0.5\
-%if "x%{?-r}" != "x"\
-Provides: kernel-uek\
-%endif\
 %ifnarch sparc64 aarch64\
 Provides: x86_energy_perf_policy = %{KVERREL}%{?1:.%{1}}\
 Provides: turbostat = %{KVERREL}%{?1:.%{1}}\
@@ -469,9 +466,6 @@ Provides: kernel = %{rpmversion}-%{pkg_release}\
 %endif\
 Requires(pre): %{kernel_prereq}\
 Requires(pre): %{initrd_prereq}\
-%if "x%{?-r}" == "x"\
-Requires(pre): kernel-uek-base = %{rpmversion}-%{pkg_release}\
-%endif\
 Requires(pre): linux-firmware >= 20170803-56.git7d2c913d.0.1\
 Requires(post): %{_sbindir}/new-kernel-pkg\
 Requires(preun): %{_sbindir}/new-kernel-pkg\
@@ -564,7 +558,6 @@ Source1000: config-x86_64
 Source1001: config-x86_64-debug
 #Source1004: config-sparc
 #Source1005: config-sparc-debug
-Source1006: base_modules
 Source1007: config-aarch64
 Source1008: config-aarch64-debug
 
@@ -621,16 +614,6 @@ BuildRoot: %{_tmppath}/kernel-%{KVERREL}-root
 %define __find_requires /usr/lib/rpm/redhat/find-requires kernel
 
 %description
-The kernel package includes all the other modules not included in
-kernel-uek-base package.
-
-%package -n kernel-uek-base
-Summary: The Linux kernel
-Group: System Environment/Kernel
-License: GPLv2
-%kernel_reqprovconf -r
-Obsoletes: kernel-smp
-%description -n kernel-uek-base
 The kernel package contains the Linux kernel (vmlinuz), the core of any
 Linux operating system.  The kernel handles the basic functions
 of the operating system: memory allocation, process allocation, device
@@ -1298,6 +1281,9 @@ hwcap 0 nosegneg"
 
     find $RPM_BUILD_ROOT/lib/modules/$KernelVer -name "*.ko" -type f > modnames
 
+    # mark modules executable so that strip-to-file can strip them
+    xargs --no-run-if-empty chmod u+x < modnames
+
     # Generate a list of modules for block and networking.
     fgrep /drivers/ modnames | xargs --no-run-if-empty nm -upA |
     sed -n 's,^.*/\([^/]*\.ko\):  *U \(.*\)$,\1 \2,p' > drivers.undef
@@ -1317,37 +1303,14 @@ hwcap 0 nosegneg"
     collect_modules_list modesetting \
 			 'drm_crtc_init'
 
-    rm -f modinfo modnames drivers.undef
-    rm -f %{_builddir}/base_modules.path
-    rm -f %{_builddir}/all_other_modules.path
-
-    find $RPM_BUILD_ROOT/lib/modules/$KernelVer -name "*.ko*" -type f > modnames
-
-    # mark modules executable so that strip-to-file can strip them
-    xargs --no-run-if-empty chmod u+x < modnames
-
-%if %{with_compression}
-    modext=".xz"
-%else
-    modext=""
-%endif
-
+    # detect missing or incorrect license tags
+    rm -f modinfo
     while read i
     do
       echo -n "${i#$RPM_BUILD_ROOT/lib/modules/$KernelVer/} " >> modinfo
       /sbin/modinfo -l $i >> modinfo
-
-      mod=$(echo "${i#$RPM_BUILD_ROOT/lib/modules/$KernelVer/}")
-      local found=$(grep "$mod" %{SOURCE1006} 2>/dev/null)
-      if [ X"$found" = X"$mod" ]
-      then
-          echo "/lib/modules/%{KVERREL}/${mod}${modext}" >> %{_builddir}/base_modules.path
-      else
-          echo "/lib/modules/%{KVERREL}/${mod}${modext}" >> %{_builddir}/all_other_modules.path
-      fi
     done < modnames
 
-    # detect missing or incorrect license tags
     egrep -v \
 	  'GPL( v2)?$|Dual BSD/GPL$|Dual MPL/GPL$|GPL and additional rights$' \
 	  modinfo && exit 1
@@ -1631,58 +1594,12 @@ fi\
 %{_sbindir}/new-kernel-pkg --package kernel%{?-v:-%{-v*}} --install %{KVERREL}%{!-u:%{?-v:.%{-v*}}} || exit $?\
 %{nil}
 
-%postun
-if [ `uname -i` == "x86_64" -o `uname -i` == "i386" ] && [ -f /etc/sysconfig/kernel ];
-then
-    /bin/sed -r -i -e 's/^DEFAULTKERNEL=.*$/DEFAULTKERNEL=kernel-uek-base/' /etc/sysconfig/kernel || exit $?
-fi
-%{_sbindir}/new-kernel-pkg --package kernel-uek-base --install %{KVERREL} || exit $?
-%{_sbindir}/new-kernel-pkg --package kernel-uek-base --mkinitrd --dracut --depmod --update %{KVERREL} || exit $?
-%{_sbindir}/new-kernel-pkg --package kernel-uek-base --rpmposttrans %{KVERREL} || exit $?
-if [ -x /sbin/weak-modules ]
-then
-    /sbin/weak-modules --add-kernel %{KVERREL} || exit $?
-fi
-%{nil}
-
-#
-# This macro defines a %%post and %% posttrans script for base kernel package
-#
-%define kernel_uek_base_post() \
-%posttrans -n kernel-uek-base\
-%{_sbindir}/new-kernel-pkg --package kernel-uek-base --mkinitrd --dracut --depmod --update %{KVERREL} || exit $?\
-%{_sbindir}/new-kernel-pkg --package kernel-uek-base --rpmposttrans %{KVERREL} || exit $?\
-if [ -x /sbin/weak-modules ]\
-then\
-    /sbin/weak-modules --add-kernel %{KVERREL} || exit $?\
-fi\
-\
-%post -n kernel-uek-base\
-if [ `uname -i` == "x86_64" -o `uname -i` == "i386" ] &&\
-   [ -f /etc/sysconfig/kernel ]; then\
-  /bin/sed -r -i -e 's/^DEFAULTKERNEL=.*$/DEFAULTKERNEL=kernel-uek-base/' /etc/sysconfig/kernel || exit $?\
-fi\
-if grep --silent '^hwcap 0 nosegneg$' /etc/ld.so.conf.d/kernel-*.conf 2> /dev/null; then\
-  sed -i '/^hwcap 0 nosegneg$/ s/0/1/' /etc/ld.so.conf.d/kernel-*.conf\
-fi\
-%{_sbindir}/new-kernel-pkg --package kernel-uek-base --install %{KVERREL} || exit $?\
-%{nil}
-
-#
-# When uninstalling kernel-uek-base package, the modules get removed but the parent
-# directories are removed automatically as they are not tracked by rpm. This post uninstall scriptlet
-# cleanups the /lib/modules/<version>/kernel and its subdirectories.
-#
-%postun -n kernel-uek-base
-	rm -rf /lib/modules/%{KVERREL}
-%{nil}
-
 #
 # This macro defines a %%preun script for a kernel package.
-#	%%kernel_variant_preun [-n] <subpackage>
+#	%%kernel_variant_preun <subpackage>
 #
-%define kernel_variant_preun(n:) \
-%{expand:%%preun %{-n} %{?1}}\
+%define kernel_variant_preun() \
+%{expand:%%preun %{?1}}\
 %{_sbindir}/new-kernel-pkg --rminitrd --rmmoddep --remove %{KVERREL}%{?1:.%{1}} || exit $?\
 if [ -x /sbin/weak-modules ]\
 then\
@@ -1692,10 +1609,10 @@ fi\
 
 #
 # This macro defines a %%pre script for a kernel package.
-#	%%kernel_variant_pre [-n] <subpackage>
+#	%%kernel_variant_pre <subpackage>
 #
-%define kernel_variant_pre(n:) \
-%{expand:%%pre %{-n} %{?1}}\
+%define kernel_variant_pre() \
+%{expand:%%pre %{?1}}\
 message="Change references of /dev/hd in /etc/fstab to disk label"\
 if [ -f /etc/fstab ]\
 then\
@@ -1746,10 +1663,6 @@ fi\
 %kernel_variant_pre
 %kernel_variant_preun
 %kernel_variant_post -u -v uek -r (kernel%{variant}|kernel%{variant}-debug|kernel-ovs)
-
-%kernel_variant_pre -n kernel-uek-base
-%kernel_variant_preun -n kernel-uek-base
-%kernel_uek_base_post
 
 %kernel_variant_pre smp
 %kernel_variant_preun smp
@@ -1809,13 +1722,12 @@ fi
 #
 # This macro defines the %%files sections for a kernel package
 # and its devel and debuginfo packages.
-#	%%kernel_variant_files [-k vmlinux] [-f <files list>] <condition> [-n] <subpackage>
+#	%%kernel_variant_files [-k vmlinux] <condition> <subpackage>
 #
-%define kernel_variant_files(k:n:f:) \
+%define kernel_variant_files(k:) \
 %if %{1}\
-%{expand:%%files %{-n} %{?2} %{-f}}\
+%{expand:%%files %{?2}}\
 %defattr(-,root,root)\
-%if ("%{-n*}" == "kernel-uek-base" || "Y%{?2:%{2}}" != "Y")\
 /%{image_install_path}/%{?-k:%{-k*}}%{!?-k:vmlinuz}-%{KVERREL}%{?2:.%{2}}\
 %if %{with_fips} \
 /%{image_install_path}/.vmlinuz-%{KVERREL}%{?2:.%{2}}.hmac \
@@ -1824,13 +1736,9 @@ fi
 /boot/symvers-%{KVERREL}%{?2:.%{2}}.gz\
 /boot/config-%{KVERREL}%{?2:.%{2}}\
 %dir /lib/modules/%{KVERREL}%{?2:.%{2}}\
-%if "Y%{?2:%{2}}" != "Y"\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/kernel\
-%endif\
 %if %{with_dtrace}\
-%if ("%{-n*}" == "kernel-uek-base")\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/kernel/vmlinux.ctfa\
-%endif\
 %endif\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/build\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/source\
@@ -1857,8 +1765,6 @@ fi
 /usr/sbin/turbostat\
 %endif\
 %ghost /boot/initramfs-%{KVERREL}%{?2:.%{2}}.img\
-%endif\
-%if "%{-n*}" != "kernel-uek-base"\
 %{expand:%%files %{?2:%{2}-}devel}\
 %defattr(-,root,root)\
 %dir /usr/src/kernels\
@@ -1883,11 +1789,9 @@ fi
 %endif\
 %endif\
 %endif\
-%endif\
 %{nil}
 
-%kernel_variant_files %{with_up} -f %{_builddir}/all_other_modules.path
-%kernel_variant_files %{with_up} -n kernel-uek-base -f %{_builddir}/base_modules.path
+%kernel_variant_files %{with_up}
 %kernel_variant_files %{with_smp} smp
 %if %{with_up}
 %kernel_variant_files %{with_debug} debug
