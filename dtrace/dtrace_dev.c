@@ -1331,6 +1331,9 @@ int dtrace_dev_init(void)
 	int			rc = 0;
 	struct cred		*cred;
 
+	if (kernel_is_locked_down("DTRACE"))
+		return -EPERM;
+
 	/*
 	 * Register the device for the DTrace core.
 	 */
