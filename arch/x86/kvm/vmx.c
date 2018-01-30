@@ -8332,6 +8332,17 @@ static struct kvm_vcpu *vmx_create_vcpu(struct kvm *kvm, unsigned int id)
 	vmx_disable_intercept_for_msr(msr_bitmap, MSR_IA32_BNDCFGS, MSR_TYPE_RW);
 	vmx->msr_bitmap_mode = 0;
 
+	/*
+	 * If the physical CPU or the vCPU of this VM doesn't
+	 * support SPEC_CTRL feature, catch each access to it.
+	 */
+	if (!static_cpu_has(X86_FEATURE_IBRS) ||
+	     !guest_cpuid_has_ibrs(&vmx->vcpu))
+		vmx_enable_intercept_for_msr(
+			msr_bitmap,
+			MSR_IA32_SPEC_CTRL,
+			MSR_TYPE_RW);
+
 	vmx->loaded_vmcs = &vmx->vmcs01;
 
 	if (!vmm_exclusive)
