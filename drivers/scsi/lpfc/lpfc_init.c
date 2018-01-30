@@ -950,6 +950,7 @@ lpfc_hba_clean_txcmplq(struct lpfc_hba *phba)
 	struct lpfc_sli_ring *pring;
 	LIST_HEAD(completions);
 	int i;
+	struct lpfc_iocbq *piocb, *next_iocb;
 
 	for (i = 0; i < psli->num_rings; i++) {
 		pring = &psli->ring[i];
@@ -960,6 +961,9 @@ lpfc_hba_clean_txcmplq(struct lpfc_hba *phba)
 		/* At this point in time the HBA is either reset or DOA. Either
 		 * way, nothing should be on txcmplq as it will NEVER complete.
 		 */
+		list_for_each_entry_safe(piocb, next_iocb,
+					 &pring->txcmplq, list)
+			piocb->iocb_flag &= ~LPFC_IO_ON_TXCMPLQ;
 		list_splice_init(&pring->txcmplq, &completions);
 		pring->txcmplq_cnt = 0;
 
