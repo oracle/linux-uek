@@ -3633,6 +3633,7 @@ lpfc_sli_flush_fcp_rings(struct lpfc_hba *phba)
 	struct lpfc_sli *psli = &phba->sli;
 	struct lpfc_sli_ring  *pring;
 	uint32_t i;
+	struct lpfc_iocbq *piocb, *next_iocb;
 
 	spin_lock_irq(&phba->hbalock);
 	/* Indicate the I/O queues are flushed */
@@ -3647,6 +3648,9 @@ lpfc_sli_flush_fcp_rings(struct lpfc_hba *phba)
 			spin_lock_irq(&pring->ring_lock);
 			/* Retrieve everything on txq */
 			list_splice_init(&pring->txq, &txq);
+			list_for_each_entry_safe(piocb, next_iocb,
+						 &pring->txcmplq, list)
+				piocb->iocb_flag &= ~LPFC_IO_ON_TXCMPLQ;
 			/* Retrieve everything on the txcmplq */
 			list_splice_init(&pring->txcmplq, &txcmplq);
 			pring->txq_cnt = 0;
@@ -3668,6 +3672,9 @@ lpfc_sli_flush_fcp_rings(struct lpfc_hba *phba)
 		spin_lock_irq(&phba->hbalock);
 		/* Retrieve everything on txq */
 		list_splice_init(&pring->txq, &txq);
+		list_for_each_entry_safe(piocb, next_iocb,
+					 &pring->txcmplq, list)
+			piocb->iocb_flag &= ~LPFC_IO_ON_TXCMPLQ;
 		/* Retrieve everything on the txcmplq */
 		list_splice_init(&pring->txcmplq, &txcmplq);
 		pring->txq_cnt = 0;
