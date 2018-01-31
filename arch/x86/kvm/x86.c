@@ -6090,9 +6090,9 @@ static void tsc_khz_changed(void *data)
 	__this_cpu_write(cpu_tsc_khz, khz);
 }
 
+#ifdef CONFIG_X86_64
 static void kvm_hyperv_tsc_notifier(void)
 {
-#ifdef CONFIG_X86_64
 	struct kvm *kvm;
 	struct kvm_vcpu *vcpu;
 	int cpu;
@@ -6124,8 +6124,8 @@ static void kvm_hyperv_tsc_notifier(void)
 		spin_unlock(&ka->pvclock_gtod_sync_lock);
 	}
 	spin_unlock(&kvm_lock);
-#endif
 }
+#endif
 
 static int kvmclock_cpufreq_notifier(struct notifier_block *nb, unsigned long val,
 				     void *data)
@@ -6413,7 +6413,7 @@ int kvm_arch_init(void *opaque)
 #ifdef CONFIG_X86_64
 	pvclock_gtod_register_notifier(&pvclock_gtod_notifier);
 
-	if (x86_hyper_type == X86_HYPER_MS_HYPERV)
+	if (hypervisor_is_type(X86_HYPER_MS_HYPERV))
 		set_hv_tscchange_cb(kvm_hyperv_tsc_notifier);
 #endif
 
@@ -6428,7 +6428,7 @@ out:
 void kvm_arch_exit(void)
 {
 #ifdef CONFIG_X86_64
-	if (x86_hyper_type == X86_HYPER_MS_HYPERV)
+	if (hypervisor_is_type(X86_HYPER_MS_HYPERV))
 		clear_hv_tscchange_cb();
 #endif
 	kvm_lapic_exit();
