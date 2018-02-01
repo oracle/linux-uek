@@ -197,6 +197,13 @@ static enum spectre_v2_mitigation __init ibrs_select(void)
 	return mode;
 }
 
+static void __init disable_ibrs_and_friends(void)
+{
+	set_ibrs_disabled();
+	set_ibpb_disabled();
+	set_lfence_disabled();
+}
+
 static void __init spectre_v2_select_mitigation(void)
 {
 	enum spectre_v2_mitigation_cmd cmd = spectre_v2_parse_cmdline();
@@ -208,17 +215,13 @@ static void __init spectre_v2_select_mitigation(void)
 	 */
 	if (!boot_cpu_has_bug(X86_BUG_SPECTRE_V2) &&
 	    (cmd == SPECTRE_V2_CMD_NONE || cmd == SPECTRE_V2_CMD_AUTO)) {
-		set_ibrs_disabled();
-		set_ibpb_disabled();
-		set_lfence_disabled();
+		disable_ibrs_and_friends();
 		return;
 	}
 
 	switch (cmd) {
 	case SPECTRE_V2_CMD_NONE:
-		set_ibrs_disabled();
-		set_ibpb_disabled();
-		set_lfence_disabled();
+		disable_ibrs_and_friends();
 		return;
 
 	case SPECTRE_V2_CMD_FORCE:
@@ -283,9 +286,7 @@ display:
 	/* IBRS is unnecessary with retpoline mitigation. */
 	if (mode == SPECTRE_V2_RETPOLINE_GENERIC ||
 	    mode == SPECTRE_V2_RETPOLINE_AMD) {
-		set_ibrs_disabled();
-		set_ipbp_disabled();
-		set_lfence_disabled();
+		disable_ibrs_and_friends();
 	}
 }
 
