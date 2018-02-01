@@ -633,6 +633,8 @@ struct vcpu_vmx {
 #endif
 	u64		      spec_ctrl;
 
+	u64 		      arch_capabilities;
+
 	u32 vm_entry_controls_shadow;
 	u32 vm_exit_controls_shadow;
 	/*
@@ -2851,6 +2853,9 @@ static int vmx_get_msr(struct kvm_vcpu *vcpu, u32 msr_index, u64 *pdata)
 	case MSR_IA32_SPEC_CTRL:
 		data = to_vmx(vcpu)->spec_ctrl;
 		break;
+	case MSR_IA32_ARCH_CAPABILITIES:
+		data = to_vmx(vcpu)->arch_capabilities;
+		break;
 	case MSR_IA32_SYSENTER_CS:
 		data = vmcs_read32(GUEST_SYSENTER_CS);
 		break;
@@ -2948,6 +2953,9 @@ static int vmx_set_msr(struct kvm_vcpu *vcpu, struct msr_data *msr_info)
 		break;
 	case MSR_IA32_SPEC_CTRL:
 		to_vmx(vcpu)->spec_ctrl = data;
+		break;
+	case MSR_IA32_ARCH_CAPABILITIES:
+		vmx->arch_capabilities = data;
 		break;
 	case MSR_IA32_CR_PAT:
 		if (vmcs_config.vmentry_ctrl & VM_ENTRY_LOAD_IA32_PAT) {
@@ -4922,6 +4930,8 @@ static int vmx_vcpu_setup(struct vcpu_vmx *vmx)
 		++vmx->nmsrs;
 	}
 
+	if (boot_cpu_has(X86_FEATURE_IA32_ARCH_CAPS))
+		rdmsrl(MSR_IA32_ARCH_CAPABILITIES, vmx->arch_capabilities);
 
 	vm_exit_controls_init(vmx, vmcs_config.vmexit_ctrl);
 
