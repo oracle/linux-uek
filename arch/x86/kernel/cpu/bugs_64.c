@@ -357,8 +357,9 @@ out:
 	 * or deactivated in favour of retpolines the RSB fill on context
 	 * switch is required.
 	 */
-	if ((!boot_cpu_has(X86_FEATURE_PTI) &&
-	     !boot_cpu_has(X86_FEATURE_SMEP)) || is_skylake_era()) {
+	if (((mode != SPECTRE_V2_IBRS) && (mode != SPECTRE_V2_IBRS_LFENCE)) &&
+	    ((!boot_cpu_has(X86_FEATURE_PTI) &&
+	     !boot_cpu_has(X86_FEATURE_SMEP)) || is_skylake_era())) {
 		setup_force_cpu_cap(X86_FEATURE_RSB_CTXSW);
 		pr_info("Filling RSB on context switch\n");
 	}
