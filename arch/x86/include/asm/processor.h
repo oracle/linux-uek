@@ -982,5 +982,6 @@ void df_debug(struct pt_regs *regs, long error_code);
 
 void disable_retpoline(void);
 bool retpoline_enabled(void);
+int refresh_set_spectre_v2_enabled(void);
 
 #endif /* _ASM_X86_PROCESSOR_H */

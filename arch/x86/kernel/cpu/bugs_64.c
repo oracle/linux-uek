@@ -134,6 +134,27 @@ bool retpoline_enabled(void)
 	return false;
 }
 
+int refresh_set_spectre_v2_enabled(void)
+{
+	if (retpoline_enabled())
+		return false;
+
+	if (check_ibrs_inuse())
+		spectre_v2_enabled = SPECTRE_V2_IBRS;
+	else {
+		/*
+		 * If that didn't work (say no microcode or noibrs), we end up using
+		 * lfence on system calls/exceptions/parameters.
+		 */
+		if (lfence_inuse)
+			spectre_v2_enabled = SPECTRE_V2_IBRS_LFENCE;
+		else
+			spectre_v2_enabled = SPECTRE_V2_NONE;
+	}
+
+	return true;
+}
+
 static void __init spec2_print_if_insecure(const char *reason)
 {
 	if (boot_cpu_has_bug(X86_BUG_SPECTRE_V2))
@@ -377,9 +398,7 @@ ssize_t cpu_show_spectre_v2(struct device *dev,
 	if (!boot_cpu_has_bug(X86_BUG_SPECTRE_V2))
 		return sprintf(buf, "Not affected\n");
 
-	return sprintf(buf, "%s%s%s\n", spectre_v2_strings[spectre_v2_enabled],
-					ibrs_inuse ? "" /* As spectre_v2_strings has it. */ :
-						lfence_inuse ? " lfence " : "",
+	return sprintf(buf, "%s%s\n", spectre_v2_strings[spectre_v2_enabled],
 					ibpb_inuse ? ", IBPB" : "");
 }
 #endif
