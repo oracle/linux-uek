@@ -2964,6 +2964,16 @@ static int vmx_set_msr(struct kvm_vcpu *vcpu, struct msr_data *msr_info)
 	case MSR_IA32_SPEC_CTRL:
 		to_vmx(vcpu)->spec_ctrl = data;
 		break;
+	case MSR_IA32_PRED_CMD:
+		if (data & ~FEATURE_SET_IBPB)
+			return 1;
+
+		if (!data)
+			break;
+
+		if (ibpb_inuse)
+			wrmsrl(MSR_IA32_PRED_CMD, FEATURE_SET_IBPB);
+		break;
 	case MSR_IA32_ARCH_CAPABILITIES:
 		vmx->arch_capabilities = data;
 		break;

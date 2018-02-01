@@ -3299,6 +3299,16 @@ static int svm_set_msr(struct kvm_vcpu *vcpu, struct msr_data *msr)
 	case MSR_IA32_SPEC_CTRL:
 		svm->spec_ctrl = data;
 		break;
+	case MSR_IA32_PRED_CMD:
+		if (data & ~FEATURE_SET_IBPB)
+			return 1;
+
+		if (!data)
+			break;
+
+		if (ibpb_inuse)
+			wrmsrl(MSR_IA32_PRED_CMD, FEATURE_SET_IBPB);
+		break;
 	case MSR_AMD64_VIRT_SPEC_CTRL:
 		if (data & ~SPEC_CTRL_SSBD)
 			return 1;
