@@ -81,8 +81,6 @@ static ssize_t ibrs_enabled_write(struct file *file,
 		clear_ibrs_disabled();
 	}
 
-	sysctl_ibrs_enabled = enable;
-
 	mutex_unlock(&spec_ctrl_mutex);
 	return count;
 }
@@ -131,8 +129,6 @@ static ssize_t ibpb_enabled_write(struct file *file,
 		set_ibpb_disabled();
 	else
 		clear_ibpb_disabled();
-
-	sysctl_ibpb_enabled = enable;
 
 	mutex_unlock(&spec_ctrl_mutex);
 	return count;

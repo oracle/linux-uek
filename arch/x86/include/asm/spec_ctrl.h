@@ -254,12 +254,16 @@ static inline void set_ibrs_disabled(void)
 	use_ibrs |= SPEC_CTRL_IBRS_ADMIN_DISABLED;
 	if (check_ibrs_inuse())
 		clear_ibrs_inuse();
+	/* Update what sysfs shows. */
+	sysctl_ibrs_enabled = ibrs_inuse ? 1 : 0;
 }
 
 static inline void clear_ibrs_disabled(void)
 {
 	use_ibrs &= ~SPEC_CTRL_IBRS_ADMIN_DISABLED;
 	set_ibrs_inuse();
+	/* Update what sysfs shows. */
+	sysctl_ibrs_enabled = ibrs_inuse ? 1 : 0;
 }
 
 extern u32 sysctl_lfence_enabled;
@@ -320,12 +324,16 @@ static inline void set_ibpb_disabled(void)
 	use_ibpb |= 0x4;
 	if (check_ibpb_inuse())
 		clear_ibpb_inuse();
+	/* Update what sysfs shows. */
+	sysctl_ibpb_enabled = ibpb_inuse ? 1 : 0;
 }
 
 static inline void clear_ibpb_disabled(void)
 {
 	use_ibpb &= ~0x4;
 	set_ibpb_inuse();
+	/* Update what sysfs shows. */
+	sysctl_ibpb_enabled = ibpb_inuse ? 1 : 0;
 }
 
 #endif /* __ASSEMBLY__ */
