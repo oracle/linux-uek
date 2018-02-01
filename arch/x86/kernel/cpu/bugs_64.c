@@ -121,7 +121,17 @@ void disable_retpoline(void)
 
 bool retpoline_enabled(void)
 {
-	return spectre_v2_enabled != SPECTRE_V2_NONE;
+	switch (spectre_v2_enabled) {
+	case SPECTRE_V2_RETPOLINE_MINIMAL:
+	case SPECTRE_V2_RETPOLINE_MINIMAL_AMD:
+	case SPECTRE_V2_RETPOLINE_GENERIC:
+	case SPECTRE_V2_RETPOLINE_AMD:
+		return true;
+	default:
+		break;
+	}
+
+	return false;
 }
 
 static void __init spec2_print_if_insecure(const char *reason)
