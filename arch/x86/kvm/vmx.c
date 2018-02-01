@@ -9598,6 +9598,9 @@ static void __noclone vmx_vcpu_run(struct kvm_vcpu *vcpu)
 		if (ibrs_inuse)
 			native_wrmsrl(MSR_IA32_SPEC_CTRL,
 				      SPEC_CTRL_FEATURE_ENABLE_IBRS);
+		else if (vmx->spec_ctrl)
+			native_wrmsrl(MSR_IA32_SPEC_CTRL,
+				      SPEC_CTRL_FEATURE_DISABLE_IBRS);
 	}
 
 	/* MSR_IA32_DEBUGCTLMSR is zeroed on vmexit. Restore it if needed */
