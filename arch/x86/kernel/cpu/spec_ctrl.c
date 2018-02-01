@@ -56,6 +56,11 @@ static ssize_t ibrs_enabled_write(struct file *file,
 	if (!ibrs_supported)
 		return -ENODEV;
 
+	if (retpoline_enabled()) {
+		pr_warn("retpoline is enabled. Ignoring request to change ibrs state.\n");
+		return -EINVAL;
+	}
+
         len = min(count, sizeof(buf) - 1);
         if (copy_from_user(buf, user_buf, len))
                 return -EFAULT;
@@ -80,6 +85,7 @@ static ssize_t ibrs_enabled_write(struct file *file,
 	} else {
 		clear_ibrs_disabled();
 	}
+	refresh_set_spectre_v2_enabled();
 
 	mutex_unlock(&spec_ctrl_mutex);
 	return count;
@@ -130,6 +136,8 @@ static ssize_t ibpb_enabled_write(struct file *file,
 	else
 		clear_ibpb_disabled();
 
+	refresh_set_spectre_v2_enabled();
+
 	mutex_unlock(&spec_ctrl_mutex);
 	return count;
 }
@@ -160,8 +168,9 @@ static ssize_t lfence_enabled_write(struct file *file,
 	unsigned int enable;
 
 	/* You have to disable IBRS first. */
-	if (ibrs_inuse) {
-		pr_warn("IBRS is enabled. Ignoring request to change lfence_enabled state.");
+	if (ibrs_inuse || retpoline_enabled()) {
+		pr_warn("%s is enabled. Ignoring request to change lfence_enabled state.\n",
+			ibrs_inuse ? "IBRS" : "retpoline");
 		return -EINVAL;
 	}
 
@@ -183,6 +192,8 @@ static ssize_t lfence_enabled_write(struct file *file,
 		set_lfence_disabled();
 	else
 		clear_lfence_disabled();
+
+	refresh_set_spectre_v2_enabled();
 
 	mutex_unlock(&spec_ctrl_mutex);
 	return count;
