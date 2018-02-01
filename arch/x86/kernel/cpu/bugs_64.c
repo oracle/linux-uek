@@ -189,7 +189,11 @@ static enum spectre_v2_mitigation __init ibrs_select(void)
 	if (mode == SPECTRE_V2_NONE)
 		/* Well, fallback on automatic discovery. */
 		pr_info("IBRS and lfence could not be enabled.\n");
-
+	else {
+		/* OK, some form of IBRS is enabled, lets see if we need to STUFF_RSB */
+		if (!boot_cpu_has(X86_FEATURE_SMEP))
+			setup_force_cpu_cap(X86_FEATURE_STUFF_RSB);
+	}
 	return mode;
 }
 
@@ -265,6 +269,9 @@ retpoline_auto:
 		/* IBRS available. Lets see if we are compiled with retpoline. */
 		if (check_ibrs_inuse() && !retp_compiler()) {
 			mode = SPECTRE_V2_IBRS;
+			/* OK, some form of IBRS is enabled, lets see if we need to STUFF_RSB */
+			if (!boot_cpu_has(X86_FEATURE_SMEP))
+				setup_force_cpu_cap(X86_FEATURE_STUFF_RSB);
 			goto display;
 		}
 		setup_force_cpu_cap(X86_FEATURE_RETPOLINE);
