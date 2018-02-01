@@ -9450,8 +9450,10 @@ static void __noclone vmx_vcpu_run(struct kvm_vcpu *vcpu)
 	 * is no need to worry about the conditional branch over the wrmsr
 	 * being speculatively taken.
 	 */
-	if (ibrs_inuse)
-		native_wrmsrl(MSR_IA32_SPEC_CTRL, vmx->spec_ctrl);
+	if (ibrs_supported) {
+		if (ibrs_inuse || vmx->spec_ctrl)
+			native_wrmsrl(MSR_IA32_SPEC_CTRL, vmx->spec_ctrl);
+	}
 
 	vmx->__launched = vmx->loaded_vmcs->launched;
 	asm(
@@ -9586,15 +9588,17 @@ static void __noclone vmx_vcpu_run(struct kvm_vcpu *vcpu)
 	 * If the L02 MSR bitmap does not intercept the MSR, then we need to
 	 * save it.
 	 */
-	if (unlikely(!msr_write_intercepted(vcpu, MSR_IA32_SPEC_CTRL)))
-		vmx->spec_ctrl = native_read_msr(MSR_IA32_SPEC_CTRL);
-
-	if (ibrs_inuse && !vmx->spec_ctrl)
-		native_wrmsrl(MSR_IA32_SPEC_CTRL,
-			      SPEC_CTRL_FEATURE_ENABLE_IBRS);
 
 	/* Eliminate branch target predictions from guest mode */
 	vmexit_fill_RSB();
+
+	if (ibrs_supported) {
+		if (unlikely(!msr_write_intercepted(vcpu, MSR_IA32_SPEC_CTRL)))
+			vmx->spec_ctrl = native_read_msr(MSR_IA32_SPEC_CTRL);
+		if (ibrs_inuse)
+			native_wrmsrl(MSR_IA32_SPEC_CTRL,
+				      SPEC_CTRL_FEATURE_ENABLE_IBRS);
+	}
 
 	/* MSR_IA32_DEBUGCTLMSR is zeroed on vmexit. Restore it if needed */
 	if (debugctlmsr)

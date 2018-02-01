@@ -5029,9 +5029,10 @@ static void svm_vcpu_run(struct kvm_vcpu *vcpu)
 	 * is no need to worry about the conditional branch over the wrmsr
 	 * being speculatively taken.
 	 */
-	if (ibrs_inuse &&
-	    svm->spec_ctrl != SPEC_CTRL_FEATURE_ENABLE_IBRS)
-		native_wrmsrl(MSR_IA32_SPEC_CTRL, svm->spec_ctrl);
+	if (ibrs_supported) {
+		if (ibrs_inuse || svm->spec_ctrl)
+			native_wrmsrl(MSR_IA32_SPEC_CTRL, svm->spec_ctrl);
+	}
 
 	asm volatile (
 		"push %%" _ASM_BP "; \n\t"
@@ -5140,15 +5141,13 @@ static void svm_vcpu_run(struct kvm_vcpu *vcpu)
 	 * If the L02 MSR bitmap does not intercept the MSR, then we need to
 	 * save it.
 	 */
-	if (unlikely(!msr_write_intercepted(vcpu, MSR_IA32_SPEC_CTRL)))
-		svm->spec_ctrl = native_read_msr(MSR_IA32_SPEC_CTRL);
-
-	if (ibrs_inuse)
-		native_wrmsrl(MSR_IA32_SPEC_CTRL,
-			      SPEC_CTRL_FEATURE_ENABLE_IBRS);
-	else if (svm->spec_ctrl != SPEC_CTRL_FEATURE_ENABLE_IBRS)
-		native_wrmsrl(MSR_IA32_SPEC_CTRL,
-			      SPEC_CTRL_FEATURE_ENABLE_IBRS);
+	if (ibrs_supported) {
+		if (unlikely(!msr_write_intercepted(vcpu, MSR_IA32_SPEC_CTRL)))
+			svm->spec_ctrl = native_read_msr(MSR_IA32_SPEC_CTRL);
+		if (ibrs_inuse)
+			native_wrmsrl(MSR_IA32_SPEC_CTRL,
+				      SPEC_CTRL_FEATURE_ENABLE_IBRS);
+	}
 
 	/* Eliminate branch target predictions from guest mode */
 	vmexit_fill_RSB();
