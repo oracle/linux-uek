@@ -85,6 +85,7 @@ static const char *spectre_v2_strings[] = {
 	[SPECTRE_V2_RETPOLINE_GENERIC]		= "Mitigation: Full generic retpoline",
 	[SPECTRE_V2_RETPOLINE_AMD]		= "Mitigation: Full AMD retpoline",
 	[SPECTRE_V2_IBRS]			= "Mitigation: IBRS",
+	[SPECTRE_V2_IBRS_LFENCE]		= "Mitigation: lfence",
 
 };
 
@@ -169,6 +170,29 @@ disable:
 	return SPECTRE_V2_CMD_NONE;
 }
 
+static enum spectre_v2_mitigation __init ibrs_select(void)
+{
+	enum spectre_v2_mitigation mode = SPECTRE_V2_NONE;
+
+	/* If it is ON, OK, lets use it.*/
+	if (check_ibrs_inuse())
+		mode = SPECTRE_V2_IBRS;
+	else {
+		/*
+		 * If that didn't work (say no microcode or noibrs), we end up using
+		 * lfence on system calls/exceptions/parameters.
+		 */
+		if (lfence_inuse)
+			mode = SPECTRE_V2_IBRS_LFENCE;
+	}
+
+	if (mode == SPECTRE_V2_NONE)
+		/* Well, fallback on automatic discovery. */
+		pr_info("IBRS and lfence could not be enabled.\n");
+
+	return mode;
+}
+
 static void __init spectre_v2_select_mitigation(void)
 {
 	enum spectre_v2_mitigation_cmd cmd = spectre_v2_parse_cmdline();
@@ -211,7 +235,10 @@ static void __init spectre_v2_select_mitigation(void)
 			goto retpoline_auto;
 		break;
 	case SPECTRE_V2_CMD_IBRS:
-		mode = SPECTRE_V2_IBRS;
+		mode = ibrs_select();
+		if (mode == SPECTRE_V2_NONE)
+			goto retpoline_auto;
+
 		goto display;
 		break; /* Not needed but compilers may complain otherwise. */
 	}
@@ -227,12 +254,19 @@ retpoline_auto:
 		}
 		mode = retp_compiler() ? SPECTRE_V2_RETPOLINE_AMD :
 					 SPECTRE_V2_RETPOLINE_MINIMAL_AMD;
+		/* On AMD we do not need IBRS, so lets use the ASM mitigation. */
 		setup_force_cpu_cap(X86_FEATURE_RETPOLINE_AMD);
 		setup_force_cpu_cap(X86_FEATURE_RETPOLINE);
 	} else {
 	retpoline_generic:
 		mode = retp_compiler() ? SPECTRE_V2_RETPOLINE_GENERIC :
 					 SPECTRE_V2_RETPOLINE_MINIMAL;
+
+		/* IBRS available. Lets see if we are compiled with retpoline. */
+		if (check_ibrs_inuse() && !retp_compiler()) {
+			mode = SPECTRE_V2_IBRS;
+			goto display;
+		}
 		setup_force_cpu_cap(X86_FEATURE_RETPOLINE);
 	}
 display:
@@ -243,6 +277,7 @@ display:
 	if (mode == SPECTRE_V2_RETPOLINE_GENERIC ||
 	    mode == SPECTRE_V2_RETPOLINE_AMD) {
 		set_ibrs_disabled();
+		set_ipbp_disabled();
 		set_lfence_disabled();
 	}
 }
