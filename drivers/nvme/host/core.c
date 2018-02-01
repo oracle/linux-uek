@@ -1059,6 +1059,9 @@ static void nvme_set_queue_limits(struct nvme_ctrl *ctrl,
 		blk_queue_chunk_sectors(q, ctrl->stripe_size >> 9);
 	if (ctrl->vwc & NVME_CTRL_VWC_PRESENT)
 		vwc = true;
+
+	blk_queue_virt_boundary(q, ctrl->page_size - 1);
+
 	blk_queue_write_cache(q, vwc, vwc);
 }
 
@@ -1430,7 +1433,6 @@ static void nvme_alloc_ns(struct nvme_ctrl *ctrl, unsigned nsid)
 	if (IS_ERR(ns->queue))
 		goto out_release_instance;
 	queue_flag_set_unlocked(QUEUE_FLAG_NONROT, ns->queue);
-	queue_flag_set_unlocked(QUEUE_FLAG_SG_GAPS, ns->queue);
 	ns->queue->queuedata = ns;
 	ns->ctrl = ctrl;
 

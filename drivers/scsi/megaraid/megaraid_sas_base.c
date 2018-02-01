@@ -1826,9 +1826,7 @@ megasas_set_nvme_device_properties(struct scsi_device *sdev, u32 max_io_size)
 	blk_queue_max_hw_sectors(sdev->request_queue, (max_io_size / 512));
 
 	queue_flag_set_unlocked(QUEUE_FLAG_NOMERGES, sdev->request_queue);
-#ifdef QUEUE_FLAG_SG_GAPS
-	queue_flag_set_unlocked(QUEUE_FLAG_SG_GAPS, sdev->request_queue);
-#endif
+	blk_queue_virt_boundary(sdev->request_queue, mr_nvme_pg_size - 1);
 }
 
 
