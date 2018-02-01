@@ -75,6 +75,7 @@ enum spectre_v2_mitigation_cmd {
 	SPECTRE_V2_CMD_RETPOLINE,
 	SPECTRE_V2_CMD_RETPOLINE_GENERIC,
 	SPECTRE_V2_CMD_RETPOLINE_AMD,
+	SPECTRE_V2_CMD_IBRS,
 };
 
 static const char *spectre_v2_strings[] = {
@@ -83,6 +84,8 @@ static const char *spectre_v2_strings[] = {
 	[SPECTRE_V2_RETPOLINE_MINIMAL_AMD]	= "Vulnerable: Minimal AMD ASM retpoline",
 	[SPECTRE_V2_RETPOLINE_GENERIC]		= "Mitigation: Full generic retpoline",
 	[SPECTRE_V2_RETPOLINE_AMD]		= "Mitigation: Full AMD retpoline",
+	[SPECTRE_V2_IBRS]			= "Mitigation: IBRS",
+
 };
 
 #undef pr_fmt
@@ -154,6 +157,8 @@ static enum spectre_v2_mitigation_cmd __init spectre_v2_parse_cmdline(void)
 			return SPECTRE_V2_CMD_RETPOLINE_GENERIC;
 		} else if (match_option(arg, ret, "auto")) {
 			return SPECTRE_V2_CMD_AUTO;
+		} else if (match_option(arg, ret, "ibrs")) {
+			return SPECTRE_V2_CMD_IBRS;
 		}
 	}
 
@@ -205,6 +210,10 @@ static void __init spectre_v2_select_mitigation(void)
 		if (IS_ENABLED(CONFIG_RETPOLINE))
 			goto retpoline_auto;
 		break;
+	case SPECTRE_V2_CMD_IBRS:
+		mode = SPECTRE_V2_IBRS;
+		goto display;
+		break; /* Not needed but compilers may complain otherwise. */
 	}
 	pr_err("kernel not compiled with retpoline; retpoline mitigation not available");
 	return;
@@ -226,7 +235,7 @@ retpoline_auto:
 					 SPECTRE_V2_RETPOLINE_MINIMAL;
 		setup_force_cpu_cap(X86_FEATURE_RETPOLINE);
 	}
-
+display:
 	spectre_v2_enabled = mode;
 	pr_info("%s\n", spectre_v2_strings[mode]);
 
@@ -267,7 +276,7 @@ ssize_t cpu_show_spectre_v2(struct device *dev,
 		return sprintf(buf, "Not affected\n");
 
 	return sprintf(buf, "%s%s%s\n", spectre_v2_strings[spectre_v2_enabled],
-					ibrs_inuse ? ", IBRS" :
+					ibrs_inuse ? "" /* As spectre_v2_strings has it. */ :
 						lfence_inuse ? " lfence " : "",
 					ibpb_inuse ? ", IBPB" : "");
 }
