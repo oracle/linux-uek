@@ -4032,6 +4032,8 @@ static void svm_vcpu_run(struct kvm_vcpu *vcpu)
 		rdmsrl(MSR_IA32_SPEC_CTRL, svm->spec_ctrl);
 		if (ibrs_inuse)
 			wrmsrl(MSR_IA32_SPEC_CTRL, SPEC_CTRL_FEATURE_ENABLE_IBRS);
+		else if (svm->spec_ctrl)
+			wrmsrl(MSR_IA32_SPEC_CTRL, SPEC_CTRL_FEATURE_DISABLE_IBRS);
 	}
 
 	/* Eliminate branch target predictions from guest mode */
