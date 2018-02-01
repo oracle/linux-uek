@@ -3509,6 +3509,8 @@ bytes respectively. Such letter suffixes can also be entirely omitted.
 			retpoline	  - replace indirect branches
 			retpoline,generic - google's original retpoline
 			retpoline,amd     - AMD-specific minimal thunk
+			ibrs     	  - Use IBRS (if microcode is available).
+					    otherwise will fallback to lfence
 
 			Not specifying this option is equivalent to
 			spectre_v2=auto.
