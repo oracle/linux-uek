@@ -442,6 +442,7 @@ static inline int __do_cpuid_ent(struct kvm_cpuid_entry2 *entry, u32 function,
 			// TSC_ADJUST is emulated
 			entry->ebx |= F(TSC_ADJUST);
 			entry->edx &= kvm_cpuid_7_0_edx_x86_features;
+			/* Aka !ibrs_supported and !ibpb_supported */
 			if ( !boot_cpu_has(X86_FEATURE_SPEC_CTRL) )
 				entry->edx &= !(1u << KVM_CPUID_BIT_SPEC_CTRL);
 			if ( !boot_cpu_has(X86_FEATURE_STIPB) )
