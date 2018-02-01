@@ -141,6 +141,34 @@ static inline const char *spectre_v2_module_string(void)
 static inline const char *spectre_v2_module_string(void) { return ""; }
 #endif
 
+bool retpoline_enabled(void)
+{
+	switch (spectre_v2_enabled) {
+	case SPECTRE_V2_RETPOLINE_MINIMAL:
+	case SPECTRE_V2_RETPOLINE_MINIMAL_AMD:
+	case SPECTRE_V2_RETPOLINE_GENERIC:
+	case SPECTRE_V2_RETPOLINE_AMD:
+		return true;
+	default:
+		break;
+	}
+
+	return false;
+}
+
+int refresh_set_spectre_v2_enabled(void)
+{
+	if (retpoline_enabled())
+		return false;
+
+	if (check_ibrs_inuse())
+		spectre_v2_enabled = SPECTRE_V2_IBRS;
+	else
+		spectre_v2_enabled = SPECTRE_V2_NONE;
+
+	return true;
+}
+
 static void __init spec2_print_if_insecure(const char *reason)
 {
 	if (boot_cpu_has_bug(X86_BUG_SPECTRE_V2))

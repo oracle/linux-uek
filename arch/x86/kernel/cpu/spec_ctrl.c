@@ -50,6 +50,11 @@ static ssize_t ibrs_enabled_write(struct file *file,
 	if (!ibrs_supported)
 		return -ENODEV;
 
+	if (retpoline_enabled()) {
+		pr_warn("retpoline is enabled. Ignoring request to change ibrs state.\n");
+		return -EINVAL;
+	}
+
 	len = min(count, sizeof(buf) - 1);
 	if (copy_from_user(buf, user_buf, len))
 		return -EFAULT;
@@ -75,6 +80,7 @@ static ssize_t ibrs_enabled_write(struct file *file,
 	} else {
 		clear_ibrs_disabled();
 	}
+	refresh_set_spectre_v2_enabled();
 
 	mutex_unlock(&spec_ctrl_mutex);
 	return count;
@@ -125,6 +131,8 @@ static ssize_t ibpb_enabled_write(struct file *file,
 		set_ibpb_disabled();
 	else
 		clear_ibpb_disabled();
+
+	refresh_set_spectre_v2_enabled();
 
 	mutex_unlock(&spec_ctrl_mutex);
 	return count;

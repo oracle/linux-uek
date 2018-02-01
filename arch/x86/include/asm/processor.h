@@ -969,4 +969,8 @@ bool xen_set_default_idle(void);
 
 void stop_this_cpu(void *dummy);
 void df_debug(struct pt_regs *regs, long error_code);
+
+bool retpoline_enabled(void);
+int refresh_set_spectre_v2_enabled(void);
+
 #endif /* _ASM_X86_PROCESSOR_H */
