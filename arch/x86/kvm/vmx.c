@@ -8193,8 +8193,10 @@ static void __noclone vmx_vcpu_run(struct kvm_vcpu *vcpu)
 
 	vmx->__launched = vmx->loaded_vmcs->launched;
 
-	if (ibrs_inuse)
-		wrmsrl(MSR_IA32_SPEC_CTRL, vmx->spec_ctrl);
+	if (ibrs_supported) {
+		if (ibrs_inuse || vmx->spec_ctrl)
+			wrmsrl(MSR_IA32_SPEC_CTRL, vmx->spec_ctrl);
+	}
 
 	asm(
 		/* Store host registers */
@@ -8318,13 +8320,14 @@ static void __noclone vmx_vcpu_run(struct kvm_vcpu *vcpu)
 #endif
 	      );
 
-	if (ibrs_inuse) {
-		rdmsrl(MSR_IA32_SPEC_CTRL, vmx->spec_ctrl);
-		wrmsrl(MSR_IA32_SPEC_CTRL, SPEC_CTRL_FEATURE_ENABLE_IBRS);
-	}
-
 	/* Eliminate branch target predictions from guest mode */
 	vmexit_fill_RSB();
+
+	if (ibrs_supported) {
+		rdmsrl(MSR_IA32_SPEC_CTRL, vmx->spec_ctrl);
+		if (ibrs_inuse)
+			wrmsrl(MSR_IA32_SPEC_CTRL, SPEC_CTRL_FEATURE_ENABLE_IBRS);
+	}
 
 	/* MSR_IA32_DEBUGCTLMSR is zeroed on vmexit. Restore it if needed */
 	if (debugctlmsr)
