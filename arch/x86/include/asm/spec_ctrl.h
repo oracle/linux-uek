@@ -175,7 +175,7 @@
 .endm
 
 .macro STUFF_RSB_NON_SMEP
-	ALTERNATIVE __stringify(__ASM_STUFF_RSB), "", X86_FEATURE_SMEP
+	ALTERNATIVE __stringify(__ASM_STUFF_RSB), "", X86_FEATURE_STUFF_RSB
 .endm
 
 #else

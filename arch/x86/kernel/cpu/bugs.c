@@ -256,6 +256,28 @@ static bool __init is_skylake_era(void)
 	return false;
 }
 
+static enum spectre_v2_mitigation __init ibrs_select(void)
+{
+	enum spectre_v2_mitigation mode = SPECTRE_V2_NONE;
+
+	/* If it is ON, OK, lets use it.*/
+	if (check_ibrs_inuse())
+		mode = SPECTRE_V2_IBRS;
+
+	if (mode == SPECTRE_V2_NONE)
+		/* Well, fallback on automatic discovery. */
+		pr_info("IBRS could not be enabled.\n");
+	else {
+		/*
+		 * OK, some form of IBRS is enabled, lets see if we need
+		 * to STUFF_RSB
+		 */
+		if (!boot_cpu_has(X86_FEATURE_SMEP))
+			setup_force_cpu_cap(X86_FEATURE_STUFF_RSB);
+	}
+	return mode;
+}
+
 static void __init spectre_v2_select_mitigation(void)
 {
 	enum spectre_v2_mitigation_cmd cmd = spectre_v2_parse_cmdline();
@@ -296,7 +318,9 @@ static void __init spectre_v2_select_mitigation(void)
 			goto retpoline_auto;
 		break;
 	case SPECTRE_V2_CMD_IBRS:
-		mode = SPECTRE_V2_IBRS;
+		mode = ibrs_select();
+		if (mode == SPECTRE_V2_NONE)
+			goto retpoline_auto;
 		goto display;
 		break; /* Not needed but compilers may complain otherwise. */
 	}
@@ -312,12 +336,25 @@ retpoline_auto:
 		}
 		mode = retp_compiler() ? SPECTRE_V2_RETPOLINE_AMD :
 					 SPECTRE_V2_RETPOLINE_MINIMAL_AMD;
+		/* On AMD we don't need IBRS, so lets use the ASM mitigation. */
 		setup_force_cpu_cap(X86_FEATURE_RETPOLINE_AMD);
 		setup_force_cpu_cap(X86_FEATURE_RETPOLINE);
 	} else {
 	retpoline_generic:
 		mode = retp_compiler() ? SPECTRE_V2_RETPOLINE_GENERIC :
 					 SPECTRE_V2_RETPOLINE_MINIMAL;
+
+		/* IBRS available. Check if we are compiled with retpoline. */
+		if (check_ibrs_inuse() && !retp_compiler()) {
+			mode = SPECTRE_V2_IBRS;
+			/*
+			 * OK, some form of IBRS is enabled, lets see if
+			 * we need to STUFF_RSB
+			 */
+			if (!boot_cpu_has(X86_FEATURE_SMEP))
+				setup_force_cpu_cap(X86_FEATURE_STUFF_RSB);
+			goto display;
+		}
 		setup_force_cpu_cap(X86_FEATURE_RETPOLINE);
 	}
 display:
@@ -326,8 +363,10 @@ display:
 
 	/* IBRS is unnecessary with retpoline mitigation. */
 	if (mode == SPECTRE_V2_RETPOLINE_GENERIC ||
-	    mode == SPECTRE_V2_RETPOLINE_AMD)
+	    mode == SPECTRE_V2_RETPOLINE_AMD) {
 		set_ibrs_disabled();
+		set_ibpb_disabled();
+	}
 
 	/*
 	 * If neither SMEP nor PTI are available, there is a risk of
