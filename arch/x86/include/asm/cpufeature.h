@@ -207,6 +207,7 @@
 #define X86_FEATURE_IBPB                (7*32+23) /* Indirect Branch Prediction Barrier */
 
 
+#define X86_FEATURE_STUFF_RSB	(7*32+28) /* "" Whether to stuff the RSB (usually dependent on !SMEP) */
 #define X86_FEATURE_RETPOLINE	( 7*32+29) /* Generic Retpoline mitigation for Spectre variant 2 */
 #define X86_FEATURE_RETPOLINE_AMD ( 7*32+30) /* AMD Retpoline mitigation for Spectre variant 2 */
 /* Because the ALTERNATIVE scheme is for members of the X86_FEATURE club... */
