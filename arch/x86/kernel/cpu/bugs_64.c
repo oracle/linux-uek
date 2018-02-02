@@ -330,6 +330,10 @@ retpoline_auto:
 		mode = retp_compiler() ? SPECTRE_V2_RETPOLINE_GENERIC :
 					 SPECTRE_V2_RETPOLINE_MINIMAL;
 
+		pr_info("Options: %s%s\n",
+			check_ibrs_inuse() ? "IBRS " : "",
+			retp_compiler() ? "retpoline" : "");
+
 		/* IBRS available. Lets see if we are compiled with retpoline. */
 		if (check_ibrs_inuse() && !retp_compiler()) {
 			mode = SPECTRE_V2_IBRS;
