@@ -265,6 +265,20 @@ static void __init disable_ibrs_and_friends(void)
 	set_lfence_disabled();
 }
 
+static bool __init retpoline_selected(enum spectre_v2_mitigation_cmd cmd)
+{
+	switch (cmd) {
+	case SPECTRE_V2_CMD_RETPOLINE_AMD:
+	case SPECTRE_V2_CMD_RETPOLINE_GENERIC:
+	case SPECTRE_V2_CMD_RETPOLINE:
+		return true;
+	default:
+		return false;
+		break;
+	}
+	return false;
+}
+
 static void __init spectre_v2_select_mitigation(void)
 {
 	enum spectre_v2_mitigation_cmd cmd = spectre_v2_parse_cmdline();
@@ -335,12 +349,19 @@ retpoline_auto:
 			retp_compiler() ? "retpoline" : "");
 
 		/* IBRS available. Lets see if we are compiled with retpoline. */
-		if (check_ibrs_inuse() && !retp_compiler()) {
-			mode = SPECTRE_V2_IBRS;
-			/* OK, some form of IBRS is enabled, lets see if we need to STUFF_RSB */
-			if (!boot_cpu_has(X86_FEATURE_SMEP))
-				setup_force_cpu_cap(X86_FEATURE_STUFF_RSB);
-			goto display;
+		if (check_ibrs_inuse()) {
+			/*
+			 * If we are on Skylake, use IBRS (if available). But if we
+			 * are forced to use retpoline on Skylake then use that.
+			 */
+			if (!retp_compiler() /* prefer IBRS over minimal ASM */ ||
+			    (retp_compiler() && !retpoline_selected(cmd) && is_skylake_era())) {
+				mode = SPECTRE_V2_IBRS;
+				/* OK, some form of IBRS is enabled, lets see if we need to STUFF_RSB */
+				if (!boot_cpu_has(X86_FEATURE_SMEP))
+					setup_force_cpu_cap(X86_FEATURE_STUFF_RSB);
+				goto display;
+			}
 		}
 		setup_force_cpu_cap(X86_FEATURE_RETPOLINE);
 	}
