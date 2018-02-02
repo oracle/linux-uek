@@ -300,6 +300,7 @@ static int process_msg(void)
 		list_for_each_entry(req, &xs_reply_list, list) {
 			if (req->msg.req_id == state.msg.req_id) {
 				if (req->state == xb_req_state_wait_reply) {
+					req->msg.req_id = req->caller_req_id;
 					req->msg.type = state.msg.type;
 					req->msg.len = state.msg.len;
 					req->body = state.body;
