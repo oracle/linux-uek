@@ -46,7 +46,7 @@ config INFINIBAND_USER_ACCESS_UCM
 
 
 config INFINIBAND_EXP_USER_ACCESS
-	bool "Allow experimental support for Infiniband ABI"
+	bool "Enable the full uverbs ioctl interface (EXPERIMENTAL)"
 	depends on INFINIBAND_USER_ACCESS
 	---help---
 	  IOCTL based ABI support for Infiniband. This allows userspace
