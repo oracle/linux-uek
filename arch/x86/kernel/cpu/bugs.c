@@ -398,6 +398,9 @@ display:
 	    mode == SPECTRE_V2_RETPOLINE_AMD)
 		disable_ibrs_and_friends();
 
+	/* Future CPUs with IBRS_ATT might be able to avoid this. */
+	setup_force_cpu_cap(X86_FEATURE_VMEXIT_RSB_FULL);
+
 	/*
 	 * If neither SMEP nor PTI are available, there is a risk of
 	 * hitting userspace addresses in the RSB after a context switch
