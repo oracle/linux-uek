@@ -49,7 +49,7 @@ void init_scattered_cpuid_features(struct cpuinfo_x86 *c)
 		{ X86_FEATURE_HW_PSTATE,	CR_EDX, 7, 0x80000007, 0 },
 		{ X86_FEATURE_CPB,		CR_EDX, 9, 0x80000007, 0 },
 		{ X86_FEATURE_PROC_FEEDBACK,	CR_EDX,11, 0x80000007, 0 },
-		{ X86_FEATURE_SPEC_CTRL,	CR_EDX,26, 0x00000007, 0 },
+		{ X86_FEATURE_IBRS,		CR_EDX,26, 0x00000007, 0 },
 		{ X86_FEATURE_STIPB,            CR_EDX,27, 0x00000007, 0 },
 		{ X86_FEATURE_IA32_ARCH_CAPS,   CR_EDX,29, 0x00000007, 0 },
 		{ X86_FEATURE_NPT,		CR_EDX, 0, 0x8000000a, 0 },
@@ -96,7 +96,7 @@ void init_scattered_cpuid_features(struct cpuinfo_x86 *c)
 		if (xen_pv_domain())
 			ignore = true;
 
-		if (boot_cpu_has(X86_FEATURE_SPEC_CTRL)) {
+		if (boot_cpu_has(X86_FEATURE_IBRS)) {
 			printk(KERN_INFO "FEATURE SPEC_CTRL Present%s\n", ignore ? " but ignored (Xen)": "");
 			if (ignore)
 				return;
