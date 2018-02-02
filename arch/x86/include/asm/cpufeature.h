@@ -197,8 +197,8 @@
 #define X86_FEATURE_HWP_EPP	( 7*32+13) /* Intel HWP_EPP */
 #define X86_FEATURE_HWP_PKG_REQ ( 7*32+14) /* Intel HWP_PKG_REQ */
 #define X86_FEATURE_INTEL_PT	( 7*32+15) /* Intel Processor Trace */
-#define X86_FEATURE_RSB_CTXSW	( 7*32+19) /* Fill RSB on context switches */
-#define X86_FEATURE_SPEC_CTRL	( 7*32+20) /* Control Speculation Control */
+#define X86_FEATURE_RSB_CTXSW	( 7*32+19) /* "" Fill RSB on context switches */
+#define X86_FEATURE_IBRS	( 7*32+20) /* Control Speculation Control */
 #define X86_FEATURE_STIPB	( 7*32+21) /* Single Thread Indirect Branch Predictors */
 #define X86_FEATURE_IA32_ARCH_CAPS	( 7*32+22) /* Control Speculation Control */
 #define X86_FEATURE_IBRS_ATT	( 7*32+23) /* IBRS all the time */
@@ -210,8 +210,8 @@
 
 #define X86_FEATURE_VMEXIT_RSB_FULL	(7*32+27) /* "" Whether to stuff the RSB on VMEXIT. */
 #define X86_FEATURE_STUFF_RSB	(7*32+28) /* "" Whether to stuff the RSB (usually dependent on !SMEP) */
-#define X86_FEATURE_RETPOLINE	( 7*32+29) /* Generic Retpoline mitigation for Spectre variant 2 */
-#define X86_FEATURE_RETPOLINE_AMD ( 7*32+30) /* AMD Retpoline mitigation for Spectre variant 2 */
+#define X86_FEATURE_RETPOLINE	( 7*32+29) /* "" Generic Retpoline mitigation for Spectre variant 2 */
+#define X86_FEATURE_RETPOLINE_AMD ( 7*32+30) /* "" AMD Retpoline mitigation for Spectre variant 2 */
 /* Because the ALTERNATIVE scheme is for members of the X86_FEATURE club... */
 #define X86_FEATURE_PTI	( 7*32+31) /* CONFIG_PAGE_TABLE_ISOLATION w/o nopti */
 
