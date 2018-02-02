@@ -445,7 +445,7 @@ static inline int __do_cpuid_ent(struct kvm_cpuid_entry2 *entry, u32 function,
 			/* Aka !ibrs_supported and !ibpb_supported */
 			if ( !boot_cpu_has(X86_FEATURE_IBRS) )
 				entry->edx &= !(1u << KVM_CPUID_BIT_IBRS);
-			if ( !boot_cpu_has(X86_FEATURE_STIPB) )
+			if ( !boot_cpu_has(X86_FEATURE_STIBP) )
 				entry->edx &= !(1u << KVM_CPUID_BIT_STIBP);
 		} else {
 			entry->ebx = 0;
