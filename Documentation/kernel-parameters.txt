@@ -3515,6 +3515,14 @@ bytes respectively. Such letter suffixes can also be entirely omitted.
 			Not specifying this option is equivalent to
 			spectre_v2=auto.
 
+	spectre_v2_heuristics=
+			[X86] Control Spectre_v2 variant heuristics.
+
+			off		- disable all heuristics (see below)
+			skylake=off	- do not use IBRS if present on Skylake
+					  instead of retpoline (this is equivalant
+				          to spectre_v2=ibrs).
+
 	spia_io_base=	[HW,MTD]
 	spia_fio_base=
 	spia_pedr=
