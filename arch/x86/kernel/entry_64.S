@@ -1526,6 +1526,9 @@ ENTRY(paranoid_exit)
 	DISABLE_INTERRUPTS(CLBR_NONE)
 	TRACE_IRQS_OFF_DEBUG
 	TRACE_IRQS_IRETQ_DEBUG
+
+	RESTORE_IBRS_CLOBBER save_reg=%r13d
+
 #ifdef CONFIG_PAGE_TABLE_ISOLATION
 	/* No ALTERNATIVE for X86_FEATURE_PTI: paranoid_entry sets %ebx */
 	testl   $2, %ebx			/* SWITCH_USER_CR3 needed? */
@@ -1535,7 +1538,6 @@ paranoid_exit_no_switch:
 #endif
 	testl	$1, %ebx			/* swapgs needed? */
 	jnz paranoid_exit_no_swapgs
-	RESTORE_IBRS_CLOBBER save_reg=%r13d
 	SWAPGS_UNSAFE_STACK
 paranoid_exit_no_swapgs:
 	RESTORE_EXTRA_REGS
