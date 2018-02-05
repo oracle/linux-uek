@@ -45,7 +45,7 @@
 #define DRIVER_VERSION	"2.2"
 
 static struct microcode_ops	*microcode_ops;
-static bool dis_ucode_ldr;
+static bool dis_ucode_ldr = true;
 
 bool initrd_gone;
 
@@ -727,8 +727,20 @@ int __init microcode_init(void)
 	struct cpuinfo_x86 *c = &boot_cpu_data;
 	int error;
 
-	if (dis_ucode_ldr)
+	/* NOTE: dis_ucode_ldr is forced to true to prevent the driver from
+	 * loading on hypervisors. This cannot be changed otherwise VMs
+	 * for certain configs (i.e. QEMU) may not boot properly.
+	 * Therefore, since we want to have the capability to load cpu
+	 * microcode from user-space interface(s) on Xen, we check
+	 * the cmdline value directly instead of using dis_ucode_ldr.
+	 */
+	if (xen_domain()) {
+		if (cmdline_find_option_bool(boot_command_line,
+		    "dis_ucode_ldr"))
+			return -EINVAL;
+	} else if (dis_ucode_ldr) {
 		return -EINVAL;
+	}
 
 	if (xen_domain())
 		microcode_ops = init_xen_microcode();
