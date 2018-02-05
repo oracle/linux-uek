@@ -364,6 +364,7 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 %define kernel_image arch/arm64/boot/Image
 BuildRequires: gcc7 >= 7.2.1
 %define _kernel_cc CC=gcc7
+%define with_headers   1
 %endif
 
 %if %{nopatches}
