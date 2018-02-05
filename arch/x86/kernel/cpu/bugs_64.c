@@ -41,6 +41,40 @@ EXPORT_SYMBOL(use_ibpb);
 DEFINE_MUTEX(spec_ctrl_mutex);
 EXPORT_SYMBOL(spec_ctrl_mutex);
 
+bool use_ibrs_on_skylake = true;
+EXPORT_SYMBOL(use_ibrs_on_skylake);
+
+
+int __init spectre_v2_heuristics_setup(char *p)
+{
+	ssize_t len;
+
+	while (*p) {
+		/* Disable all heuristics. */
+		if (!strncmp(p, "off", 3)) {
+			use_ibrs_on_skylake = false;
+			break;
+		}
+		len = strlen("skylake");
+		if (!strncmp(p, "skylake", len)) {
+			p += len;
+			if (*p == '=')
+				++p;
+			if (*p == '\0')
+				break;
+			if (!strncmp(p, "off", 3))
+				use_ibrs_on_skylake = false;
+		}
+
+		p = strpbrk(p, ",");
+		if (!p)
+			break;
+		p++; /* skip ',' */
+	}
+	return 1;
+}
+__setup("spectre_v2_heuristics=", spectre_v2_heuristics_setup);
+
 static void __init spectre_v2_select_mitigation(void);
 
 void __init check_bugs(void)
@@ -357,7 +391,8 @@ retpoline_auto:
 			 * are forced to use retpoline on Skylake then use that.
 			 */
 			if (!retp_compiler() /* prefer IBRS over minimal ASM */ ||
-			    (retp_compiler() && !retpoline_selected(cmd) && is_skylake_era())) {
+			    (retp_compiler() && !retpoline_selected(cmd) &&
+			     is_skylake_era() && use_ibrs_on_skylake)) {
 				mode = SPECTRE_V2_IBRS;
 				/* OK, some form of IBRS is enabled, lets see if we need to STUFF_RSB */
 				if (!boot_cpu_has(X86_FEATURE_SMEP))
