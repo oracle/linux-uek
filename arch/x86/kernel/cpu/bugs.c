@@ -306,10 +306,12 @@ static enum spectre_v2_mitigation __init ibrs_select(void)
 	return mode;
 }
 
-static void __init disable_ibrs_and_friends(void)
+static void __init disable_ibrs_and_friends(bool disable_ibpb)
 {
 	set_ibrs_disabled();
-	set_ibpb_disabled();
+	/* We need to use IBPB with retpoline if it is available. */
+	if (disable_ibpb)
+		set_ibpb_disabled();
 }
 
 static bool __init retpoline_selected(enum spectre_v2_mitigation_cmd cmd)
@@ -336,13 +338,13 @@ static void __init spectre_v2_select_mitigation(void)
 	 */
 	if (!boot_cpu_has_bug(X86_BUG_SPECTRE_V2) &&
 	    (cmd == SPECTRE_V2_CMD_NONE || cmd == SPECTRE_V2_CMD_AUTO)) {
-		disable_ibrs_and_friends();
+		disable_ibrs_and_friends(true);
 		return;
 	}
 
 	switch (cmd) {
 	case SPECTRE_V2_CMD_NONE:
-		disable_ibrs_and_friends();
+		disable_ibrs_and_friends(true);
 		return;
 
 	case SPECTRE_V2_CMD_FORCE:
@@ -422,7 +424,7 @@ display:
 	/* IBRS is unnecessary with retpoline mitigation. */
 	if (mode == SPECTRE_V2_RETPOLINE_GENERIC ||
 	    mode == SPECTRE_V2_RETPOLINE_AMD)
-		disable_ibrs_and_friends();
+		disable_ibrs_and_friends(false /* Do use IPBP if possible */);
 
 	/* Future CPUs with IBRS_ATT might be able to avoid this. */
 	setup_force_cpu_cap(X86_FEATURE_VMEXIT_RSB_FULL);
