@@ -734,7 +734,7 @@ void init_speculation_control(struct cpuinfo_x86 *c)
 
 		rdmsrl(MSR_IA32_ARCH_CAPABILITIES, cap);
 		if (cap & ARCH_CAP_IBRS_ALL) /* IBRS all the time */
-			set_cpu_cap(c, X86_FEATURE_IBRS_ATT);
+			set_cpu_cap(c, X86_FEATURE_IBRS_ALL);
 	}
 
 	/*
