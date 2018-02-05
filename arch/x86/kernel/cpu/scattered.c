@@ -84,7 +84,7 @@ void init_scattered_cpuid_features(struct cpuinfo_x86 *c)
 		u64 cap;
 		rdmsrl(MSR_IA32_ARCH_CAPABILITIES, cap);
 		if (cap & 2) /* IBRS all the time */
-			set_cpu_cap(c, X86_FEATURE_IBRS_ATT);
+			set_cpu_cap(c, X86_FEATURE_IBRS_ALL);
 	}
 
 	if (cpu_has(c, X86_FEATURE_IBRS))
