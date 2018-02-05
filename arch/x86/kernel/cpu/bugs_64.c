@@ -431,7 +431,7 @@ out:
 	    mode == SPECTRE_V2_RETPOLINE_AMD) {
 		disable_ibrs_and_friends(false /* Do use IPBP if possible */);
 	}
-	/* Future CPUs with IBRS_ATT might be able to avoid this. */
+	/* Future CPUs with IBRS_ALL might be able to avoid this. */
 	setup_force_cpu_cap(X86_FEATURE_VMEXIT_RSB_FULL);
 
 	/* Initialize Indirect Branch Prediction Barrier if supported */

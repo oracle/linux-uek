@@ -201,7 +201,7 @@
 #define X86_FEATURE_IBRS	( 7*32+20) /* Control Speculation Control */
 #define X86_FEATURE_STIBP	( 7*32+21) /* Single Thread Indirect Branch Predictors */
 #define X86_FEATURE_IA32_ARCH_CAPS	( 7*32+22) /* Control Speculation Control */
-#define X86_FEATURE_IBRS_ATT	( 7*32+23) /* IBRS all the time */
+#define X86_FEATURE_IBRS_ALL	( 7*32+23) /* IBRS all the time */
 
 /* AMD-defined CPU features, CPUID level 0x80000008 (EBX), word 13.
  * But thanks to kABI we have to jam it somewhere else. */
