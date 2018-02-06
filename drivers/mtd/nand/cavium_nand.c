@@ -250,8 +250,8 @@ union ndf_cmd {
 #define NDF_ST_REG_MAIN_SM	GENMASK_ULL(2, 0) /* Main SM states */
 
 #define MAX_NAND_NAME_LEN	64
-#define NAND_MAX_PAGESIZE	2048
-#define NAND_MAX_OOBSIZE	64
+#define NAND_MAX_PAGESIZE	4096
+#define NAND_MAX_OOBSIZE	256
 
 /* NAND chip related information */
 struct cvm_nand_chip {
