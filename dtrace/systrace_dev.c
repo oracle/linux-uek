@@ -72,6 +72,8 @@ void systrace_provide(void *arg, const dtrace_probedesc_t *desc)
 						(void *)((uintptr_t)SYSTRACE_ENTRY(i)));
 			if (id == DTRACE_IDNONE)
 				failed_count++;
+
+			systrace_info->sysent[i].stsy_entry = DTRACE_IDNONE;
 		}
 
 		id = dtrace_probe_lookup(syscall_id, dtrace_kmod->name, nm, "return");
@@ -81,10 +83,9 @@ void systrace_provide(void *arg, const dtrace_probedesc_t *desc)
 						 (void *)((uintptr_t)SYSTRACE_RETURN(i)));
 			if (id == DTRACE_IDNONE)
 				failed_count++;
-		}
 
-		systrace_info->sysent[i].stsy_entry = DTRACE_IDNONE;
-		systrace_info->sysent[i].stsy_return = DTRACE_IDNONE;
+			systrace_info->sysent[i].stsy_return = DTRACE_IDNONE;
+		}
 	}
 
 	if (failed_count > 0)
