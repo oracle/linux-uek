@@ -563,4 +563,10 @@ config MTD_NAND_MTK
 	  Enables support for NAND controller on MTK SoCs.
 	  This controller is found on mt27xx, mt81xx, mt65xx SoCs.
 
+config MTD_NAND_CAVIUM
+        tristate "Support for NAND on Cavium Octeon TX SOCs"
+        depends on PCI && HAS_DMA && (ARM64 || COMPILE_TEST)
+        help
+          Enables support for NAND Flash found on Cavium Octeon TX SOCs.
+
 endif # MTD_NAND
