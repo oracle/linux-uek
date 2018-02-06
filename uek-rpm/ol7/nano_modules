@@ -754,7 +754,6 @@ kernel/fs/cachefiles/cachefiles.ko
 kernel/fs/ceph/ceph.ko
 kernel/fs/cifs/cifs.ko
 kernel/fs/cramfs/cramfs.ko
-kernel/fs/crypto/fscrypto.ko
 kernel/fs/dlm/dlm.ko
 kernel/fs/ecryptfs/ecryptfs.ko
 kernel/fs/ext2/ext2.ko
@@ -835,6 +834,7 @@ kernel/lib/bch.ko
 kernel/lib/cordic.ko
 kernel/lib/crc7.ko
 kernel/lib/crc-itu-t.ko
+kernel/lib/libcrc32c.ko
 kernel/lib/lru_cache.ko
 kernel/lib/lz4/lz4_compress.ko
 kernel/lib/lz4/lz4hc_compress.ko
