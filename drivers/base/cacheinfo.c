@@ -86,7 +86,17 @@ static int cache_setup_of_node(unsigned int cpu)
 static inline bool cache_leaves_are_shared(struct cacheinfo *this_leaf,
 					   struct cacheinfo *sib_leaf)
 {
-	return sib_leaf->of_node == this_leaf->of_node;
+	/*
+	 * On arm64, CONFIG_OF and CONFIG_ACPI are enabled, causing this
+	 * function to be used instead of the non-DT version.  However,
+	 * on arm64 we do NOT want to use cache info from DT but we do
+	 * need to provide something for cache structure.  So, when on
+	 * arm64, force the default non-DT assumptions.
+	 */
+	if (IS_ENABLED(CONFIG_ARM64))
+		return !(this_leaf->level == 1);
+	else
+		return sib_leaf->of_node == this_leaf->of_node;
 }
 
 /* OF properties to query for a given cache type */
@@ -238,11 +248,21 @@ static int cache_shared_cpu_map_setup(unsigned int cpu)
 	if (this_cpu_ci->cpu_map_populated)
 		return 0;
 
-	if (of_have_populated_dt())
+	/*
+	 * While there is no official cache property/hierarchy support
+	 * yet in ACPI, RHEL does have a CPU topology hack in place for
+	 * arm64.  So, if we're on arm64, use the default info for the
+	 * cache that can be discovered, at least until ACPI provides
+	 * better information.
+	 */
+	if (acpi_disabled && of_have_populated_dt())
 		ret = cache_setup_of_node(cpu);
-	else if (!acpi_disabled)
-		/* No cache property/hierarchy support yet in ACPI */
-		ret = -ENOTSUPP;
+	else if (!acpi_disabled) {
+		if (!IS_ENABLED(CONFIG_ARM64)) {
+			/* No cache property/hierarchy support yet in ACPI */
+			ret = -ENOTSUPP;
+		}
+	}
 	if (ret)
 		return ret;
 
