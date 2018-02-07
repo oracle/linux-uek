@@ -468,7 +468,7 @@ Provides: turbostat = %{KVERREL}%{?1:.%{1}}\
 %endif\
 Provides: perf = %{KVERREL}%{?1:.%{1}}\
 #Provides: libperf.a = %{KVERREL}%{?1:.%{1}}\
-%ifarch sparc64\
+%ifarch sparc64 aarch64\
 Provides: kernel = %{rpmversion}-%{pkg_release}\
 %endif\
 Requires(pre): %{kernel_prereq}\
@@ -702,7 +702,7 @@ Provides: kernel%{?variant}-devel-%{_target_cpu} = %{version}-%{release}%{?1:.%{
 Provides: kernel%{?variant}-devel = %{version}-%{release}%{?1:.%{1}}\
 Provides: kernel%{?variant}-devel-uname-r = %{KVERREL}%{?1:.%{1}}\
 Provides: dtrace-kernel-headers = 0.6.1\
-%ifarch sparc64\
+%ifarch sparc64 aarch64\
 Provides: kernel-devel = %{version}-%{release}%{?1:.%{1}}\
 %endif\
 AutoReqProv: no\
