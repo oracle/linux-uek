@@ -117,10 +117,12 @@ void switch_mm_irqs_off(struct mm_struct *prev, struct mm_struct *next,
 {
 	unsigned cpu = smp_processor_id();
 
-	if (dynamic_ibpb)
-		wrmsrl(MSR_IA32_PRED_CMD, SPEC_CTRL_FEATURE_SET_IBPB);
-
 	if (likely(prev != next)) {
+
+		if (dynamic_ibpb && tsk && tsk->mm &&
+		    get_dumpable(tsk->mm) != SUID_DUMP_USER)
+			wrmsrl(MSR_IA32_PRED_CMD, SPEC_CTRL_FEATURE_SET_IBPB);
+
 		percpu_write(cpu_tlbstate.state, TLBSTATE_OK);
 		percpu_write(cpu_tlbstate.active_mm, next);
 		cpumask_set_cpu(cpu, mm_cpumask(next));
