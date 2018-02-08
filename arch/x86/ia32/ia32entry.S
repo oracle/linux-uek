@@ -318,10 +318,12 @@ sysenter_tracesys:
 	movq	%rsp,%rdi        /* &pt_regs -> arg1 */
 	call	syscall_trace_enter
 	LOAD_ARGS32  /* reload args from stack in case ptrace changed it */
-	RESTORE_EXTRA_REGS
 	cmpq	$(IA32_NR_syscalls-1),%rax
-	ja	int_ret_from_sys_call /* sysenter_tracesys has set RAX(%rsp) */
+	ja	ia32_bounce_out /* sysenter_tracesys has set RAX(%rsp) */
 	jmp	sysenter_do_call
+ia32_bounce_out:
+	RESTORE_EXTRA_REGS
+	jmp	int_ret_from_sys_call /* sysenter_tracesys has set RAX(%rsp) */
 	CFI_ENDPROC
 ENDPROC(ia32_sysenter_target)
 
@@ -484,10 +486,9 @@ cstar_tracesys:
 	movq %rsp,%rdi        /* &pt_regs -> arg1 */
 	call syscall_trace_enter
 	LOAD_ARGS32 1	/* reload args from stack in case ptrace changed it */
-	RESTORE_EXTRA_REGS
 	xchgl %ebp,%r9d
 	cmpq $(IA32_NR_syscalls-1),%rax
-	ja int_ret_from_sys_call /* cstar_tracesys has set RAX(%rsp) */
+	ja ia32_bounce_out	/* cstar_tracesys has set RAX(%rsp) */
 	jmp cstar_do_call
 END(ia32_cstar_target)
 				
@@ -585,9 +586,8 @@ ia32_tracesys:
 	movq %rsp,%rdi        /* &pt_regs -> arg1 */
 	call syscall_trace_enter
 	LOAD_ARGS32	/* reload args from stack in case ptrace changed it */
-	RESTORE_EXTRA_REGS
 	cmpq $(IA32_NR_syscalls-1),%rax
-	ja  int_ret_from_sys_call	/* ia32_tracesys has set RAX(%rsp) */
+	ja  ia32_bounce_out 	/* ia32_tracesys has set RAX(%rsp) */
 	jmp ia32_do_call
 END(ia32_syscall)
 
