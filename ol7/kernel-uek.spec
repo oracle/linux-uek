@@ -372,7 +372,7 @@ BuildRequires: gcc7 >= 7.2.1
 %define vdso_arches ppc ppc64
 %endif
 
-%define oldconfig_target oldnoconfig
+%define oldconfig_target olddefconfig
 
 # To temporarily exclude an architecture from being built, add it to
 # %nobuildarches. Do _NOT_ use the ExclusiveArch: line, because if we
