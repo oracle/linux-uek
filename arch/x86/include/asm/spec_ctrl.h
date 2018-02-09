@@ -25,6 +25,7 @@ extern unsigned int dynamic_ibrs;
 extern u32 sysctl_ibrs_enabled;
 extern unsigned int dynamic_ibpb;
 extern u32 sysctl_ibpb_enabled;
+extern u32 sysctl_lfence_enabled;
 
 static inline void __disable_indirect_speculation(void)
 {
