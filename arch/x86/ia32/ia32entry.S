@@ -43,12 +43,12 @@
 	movl	%edx,%edx	/* zero extension */
 	.endm
 
-	/* clobbers %eax */	
-	.macro  CLEAR_RREGS offset=0, _r9=rax
+	/* clobbers %eax */
+	.macro  CLEAR_RREGS offset=0
 	xorl 	%eax,%eax
 	movq	%rax,\offset+R11(%rsp)
 	movq	%rax,\offset+R10(%rsp)
-	movq	%\_r9,\offset+R9(%rsp)
+	movq	%rax,\offset+R9(%rsp)
 	movq	%rax,\offset+R8(%rsp)
 	.endm
 
@@ -61,28 +61,15 @@
 	 * this matches the normal truncation of the user-mode value.
 	 * If it's -1 to make us punt the syscall, then (u32)-1 is still
 	 * an appropriately invalid value.
+	 *
+	 * Called only after we return from syscall_trace_enter().
 	 */
-	.macro LOAD_ARGS32 offset, _r9=0
-	.if \_r9
-	movl \offset+16(%rsp),%r9d
-	.endif
-	movl \offset+40(%rsp),%ecx
-	movl \offset+48(%rsp),%edx
-	movl \offset+56(%rsp),%esi
-	movl \offset+64(%rsp),%edi
+	.macro LOAD_ARGS32 offset
+	movl RCX-\offset(%rsp),%ecx
+	movl RDX-\offset(%rsp),%edx
+	movl RSI-\offset(%rsp),%esi
+	movl RDI-\offset(%rsp),%edi
 	movl %eax,%eax			/* zero extension */
-	.endm
-
-	.macro CFI_STARTPROC32 simple
-	CFI_STARTPROC	\simple
-	CFI_UNDEFINED	r8
-	CFI_UNDEFINED	r9
-	CFI_UNDEFINED	r10
-	CFI_UNDEFINED	r11
-	CFI_UNDEFINED	r12
-	CFI_UNDEFINED	r13
-	CFI_UNDEFINED	r14
-	CFI_UNDEFINED	r15
 	.endm
 
 #ifdef CONFIG_PARAVIRT
@@ -118,7 +105,7 @@ ENDPROC(native_irq_enable_sysexit)
  * with the int 0x80 path.
  */
 ENTRY(ia32_sysenter_target)
-	CFI_STARTPROC32	simple
+	CFI_STARTPROC	simple
 	CFI_SIGNAL_FRAME
 	CFI_DEF_CFA	rsp,0
 	CFI_REGISTER	rsp,rbp
@@ -151,14 +138,22 @@ ENTRY(ia32_sysenter_target)
 	pushq_cfi %rax
 	cld
 	SAVE_ARGS 0,1,0
- 	/* no need to do an access_ok check here because rbp has been
- 	   32bit zero extended */ 
+
+	/*
+	 * After the SAVE_REST, we can simplify all the moving back and forth
+	 * between registers. However, we leave it as it is for now.
+	 */
+	SAVE_REST
+
+	/* Retrieve the 6th param (from the top of the user-stack.)
+	   No need to do an access_ok check here because rbp has been
+	   32bit zero extended */
 	ASM_STAC
 1:	movl	(%rbp),%ebp
 	_ASM_EXTABLE(1b,ia32_badarg)
 	ASM_CLAC
-	orl     $TS_COMPAT,TI_status+THREAD_INFO(%rsp,RIP-ARGOFFSET)
-	testl   $_TIF_WORK_SYSCALL_ENTRY,TI_flags+THREAD_INFO(%rsp,RIP-ARGOFFSET)
+	orl     $TS_COMPAT,TI_status+THREAD_INFO(%rsp,RIP)
+	testl   $_TIF_WORK_SYSCALL_ENTRY,TI_flags+THREAD_INFO(%rsp,RIP)
 	CFI_REMEMBER_STATE
 	jnz  sysenter_tracesys
 	cmpq	$(IA32_NR_syscalls-1),%rax
@@ -167,19 +162,21 @@ sysenter_do_call:
 	IA32_ARG_FIXUP
 sysenter_dispatch:
 	call	*ia32_sys_call_table(,%rax,8)
-	movq	%rax,RAX-ARGOFFSET(%rsp)
+	movq	%rax,RAX(%rsp)
 	DISABLE_INTERRUPTS(CLBR_NONE)
 	TRACE_IRQS_OFF
-	testl	$_TIF_ALLWORK_MASK,TI_flags+THREAD_INFO(%rsp,RIP-ARGOFFSET)
+	testl	$_TIF_ALLWORK_MASK,TI_flags+THREAD_INFO(%rsp,RIP)
 	jnz	sysexit_audit
 sysexit_from_sys_call:
 	DISABLE_IBRS
 
-	andl    $~TS_COMPAT,TI_status+THREAD_INFO(%rsp,RIP-ARGOFFSET)
+	andl    $~TS_COMPAT,TI_status+THREAD_INFO(%rsp,RIP)
 	/* clear IF, that popfq doesn't enable interrupts early */
-	andl  $~0x200,EFLAGS-R11(%rsp) 
-	movl	RIP-R11(%rsp),%edx		/* User %eip */
+	andl  $~0x200,EFLAGS(%rsp)
+	movl	RIP(%rsp),%edx		/* User %eip */
 	CFI_REGISTER rip,rdx
+
+	RESTORE_REST
 	RESTORE_ARGS 0,24,0,0,0,0
 	xorq	%r8,%r8
 	xorq	%r9,%r9
@@ -202,18 +199,18 @@ sysexit_from_sys_call:
 	movl %eax,%esi			/* 2nd arg: syscall number */
 	movl $AUDIT_ARCH_I386,%edi	/* 1st arg: audit arch */
 	call __audit_syscall_entry
-	movl RAX-ARGOFFSET(%rsp),%eax	/* reload syscall number */
+	movl RAX(%rsp),%eax	/* reload syscall number */
 	cmpq $(IA32_NR_syscalls-1),%rax
 	ja ia32_badsys
-	movl %ebx,%edi			/* reload 1st syscall arg */
-	movl RCX-ARGOFFSET(%rsp),%esi	/* reload 2nd syscall arg */
-	movl RDX-ARGOFFSET(%rsp),%edx	/* reload 3rd syscall arg */
-	movl RSI-ARGOFFSET(%rsp),%ecx	/* reload 4th syscall arg */
-	movl RDI-ARGOFFSET(%rsp),%r8d	/* reload 5th syscall arg */
+	movl %ebx,%edi		/* reload 1st syscall arg */
+	movl RCX(%rsp),%esi	/* reload 2nd syscall arg */
+	movl RDX(%rsp),%edx	/* reload 3rd syscall arg */
+	movl RSI(%rsp),%ecx	/* reload 4th syscall arg */
+	movl RDI(%rsp),%r8d	/* reload 5th syscall arg */
 	.endm
 
 	.macro auditsys_exit exit
-	testl $(_TIF_ALLWORK_MASK & ~_TIF_SYSCALL_AUDIT),TI_flags+THREAD_INFO(%rsp,RIP-ARGOFFSET)
+	testl $(_TIF_ALLWORK_MASK & ~_TIF_SYSCALL_AUDIT),TI_flags+THREAD_INFO(%rsp,RIP)
 	jnz ia32_ret_from_sys_call
 	TRACE_IRQS_ON
 	ENABLE_INTERRUPTS(CLBR_NONE)
@@ -224,13 +221,15 @@ sysexit_from_sys_call:
 1:	setbe %al		/* 1 if error, 0 if not */
 	movzbl %al,%edi		/* zero-extend that into %edi */
 	call __audit_syscall_exit
-	movq RAX-ARGOFFSET(%rsp),%rax	/* reload syscall return value */
+	movq RAX(%rsp),%rax	/* reload syscall return value */
 	movl $(_TIF_ALLWORK_MASK & ~_TIF_SYSCALL_AUDIT),%edi
 	DISABLE_INTERRUPTS(CLBR_NONE)
 	TRACE_IRQS_OFF
-	testl %edi,TI_flags+THREAD_INFO(%rsp,RIP-ARGOFFSET)
+	testl %edi,TI_flags+THREAD_INFO(%rsp,RIP)
 	jz \exit
-	CLEAR_RREGS -ARGOFFSET
+	CLEAR_RREGS 0
+
+	RESTORE_REST
 	jmp int_with_check
 	.endm
 
@@ -246,19 +245,19 @@ sysexit_audit:
 
 sysenter_tracesys:
 #ifdef CONFIG_AUDITSYSCALL
-	testl	$(_TIF_WORK_SYSCALL_ENTRY & ~_TIF_SYSCALL_AUDIT),TI_flags+THREAD_INFO(%rsp,RIP-ARGOFFSET)
+	testl	$(_TIF_WORK_SYSCALL_ENTRY & ~_TIF_SYSCALL_AUDIT),TI_flags+THREAD_INFO(%rsp,RIP)
 	jz	sysenter_auditsys
 #endif
-	SAVE_REST
-	CLEAR_RREGS
 	movq	$-ENOSYS,RAX(%rsp)/* ptrace can change this for a bad syscall */
 	movq	%rsp,%rdi        /* &pt_regs -> arg1 */
 	call	syscall_trace_enter
-	LOAD_ARGS32 ARGOFFSET  /* reload args from stack in case ptrace changed it */
-	RESTORE_REST
+	LOAD_ARGS32 0		 /* reload args from stack in case ptrace changed it */
 	cmpq	$(IA32_NR_syscalls-1),%rax
-	ja	int_ret_from_sys_call /* sysenter_tracesys has set RAX(%rsp) */
+	ja	ia32_bounce_int_ret /* sysenter_tracesys has set RAX(%rsp) */
 	jmp	sysenter_do_call
+ia32_bounce_int_ret:
+	CLEAR_RREGS 0
+	jmp int_ret_from_sys_call_restore
 	CFI_ENDPROC
 ENDPROC(ia32_sysenter_target)
 
@@ -283,7 +282,7 @@ ENDPROC(ia32_sysenter_target)
  * with the int 0x80 path.
  */
 ENTRY(ia32_cstar_target)
-	CFI_STARTPROC32	simple
+	CFI_STARTPROC	simple
 	CFI_SIGNAL_FRAME
 	CFI_DEF_CFA	rsp,KERNEL_STACK_OFFSET
 	CFI_REGISTER	rip,rcx
@@ -302,18 +301,20 @@ ENTRY(ia32_cstar_target)
 	 */
 	ENABLE_INTERRUPTS(CLBR_NONE)
 	SAVE_ARGS 8,0,0
+	SAVE_REST
+
 	movl 	%eax,%eax	/* zero extension */
-	movq	%rax,ORIG_RAX-ARGOFFSET(%rsp)
-	movq	%rcx,RIP-ARGOFFSET(%rsp)
-	CFI_REL_OFFSET rip,RIP-ARGOFFSET
-	movq	%rbp,RCX-ARGOFFSET(%rsp) /* this lies slightly to ptrace */
+	movq	%rax,ORIG_RAX(%rsp)
+	movq	%rcx,RIP(%rsp)
+	CFI_REL_OFFSET rip,RIP
+	movq	%rbp,RCX(%rsp) /* this lies slightly to ptrace */
 	movl	%ebp,%ecx
-	movq	$__USER32_CS,CS-ARGOFFSET(%rsp)
-	movq	$__USER32_DS,SS-ARGOFFSET(%rsp)
-	movq	%r11,EFLAGS-ARGOFFSET(%rsp)
-	/*CFI_REL_OFFSET rflags,EFLAGS-ARGOFFSET*/
-	movq	%r8,RSP-ARGOFFSET(%rsp)	
-	CFI_REL_OFFSET rsp,RSP-ARGOFFSET
+	movq	$__USER32_CS,CS(%rsp)
+	movq	$__USER32_DS,SS(%rsp)
+	movq	%r11,EFLAGS(%rsp)
+	/*CFI_REL_OFFSET rflags,EFLAGS*/
+	movq	%r8,RSP(%rsp)
+	CFI_REL_OFFSET rsp,RSP
 	/* no need to do an access_ok check here because r8 has been
 	   32bit zero extended */
 	/* hardware stack frame is complete now */
@@ -321,8 +322,8 @@ ENTRY(ia32_cstar_target)
 1:	movl	(%r8),%r9d
 	_ASM_EXTABLE(1b,ia32_badarg)
 	ASM_CLAC
-	orl     $TS_COMPAT,TI_status+THREAD_INFO(%rsp,RIP-ARGOFFSET)
-	testl   $_TIF_WORK_SYSCALL_ENTRY,TI_flags+THREAD_INFO(%rsp,RIP-ARGOFFSET)
+	orl     $TS_COMPAT,TI_status+THREAD_INFO(%rsp,RIP)
+	testl   $_TIF_WORK_SYSCALL_ENTRY,TI_flags+THREAD_INFO(%rsp,RIP)
 	CFI_REMEMBER_STATE
 	jnz   cstar_tracesys
 	cmpq $IA32_NR_syscalls-1,%rax
@@ -331,15 +332,17 @@ cstar_do_call:
 	IA32_ARG_FIXUP 1
 cstar_dispatch:
 	call *ia32_sys_call_table(,%rax,8)
-	movq %rax,RAX-ARGOFFSET(%rsp)
+	movq %rax,RAX(%rsp)
 	DISABLE_INTERRUPTS(CLBR_NONE)
 	TRACE_IRQS_OFF
-	testl $_TIF_ALLWORK_MASK,TI_flags+THREAD_INFO(%rsp,RIP-ARGOFFSET)
+	testl $_TIF_ALLWORK_MASK,TI_flags+THREAD_INFO(%rsp,RIP)
 	jnz sysretl_audit
 sysretl_from_sys_call:
 	DISABLE_IBRS
 
-	andl $~TS_COMPAT,TI_status+THREAD_INFO(%rsp,RIP-ARGOFFSET)
+	andl $~TS_COMPAT,TI_status+THREAD_INFO(%rsp,RIP)
+
+	RESTORE_REST
 	RESTORE_ARGS 0,-ARG_SKIP,0,0,0
 	movl RIP-ARGOFFSET(%rsp),%ecx
 	CFI_REGISTER rip,rcx
@@ -357,9 +360,9 @@ sysretl_from_sys_call:
 #ifdef CONFIG_AUDITSYSCALL
 cstar_auditsys:
 	CFI_RESTORE_STATE
-	movl %r9d,R9-ARGOFFSET(%rsp)	/* register to be clobbered by call */
+	movl %r9d,R9(%rsp)	/* register to be clobbered by call */
 	auditsys_entry_common
-	movl R9-ARGOFFSET(%rsp),%r9d	/* reload 6th syscall arg */
+	movl R9(%rsp),%r9d	/* reload 6th syscall arg */
 	jmp cstar_dispatch
 
 sysretl_audit:
@@ -368,20 +371,25 @@ sysretl_audit:
 
 cstar_tracesys:
 #ifdef CONFIG_AUDITSYSCALL
-	testl $(_TIF_WORK_SYSCALL_ENTRY & ~_TIF_SYSCALL_AUDIT),TI_flags+THREAD_INFO(%rsp,RIP-ARGOFFSET)
+	testl $(_TIF_WORK_SYSCALL_ENTRY & ~_TIF_SYSCALL_AUDIT),TI_flags+THREAD_INFO(%rsp,RIP)
 	jz cstar_auditsys
 #endif
+	/*
+	 * We need to preserve %r9 (and pass it in %ebp, see ecd744eec3aa8),
+	 * restore args registers, clear the callee-clobbered registers
+	 * and then RESTORE_REST (for the int_ret* path.)
+	 */
+	movl %ebp,%r12d  /* %r12/r13: unused, callee saved and restored later */
+	movl %r9d,%r13d
 	xchgl %r9d,%ebp
-	SAVE_REST
-	CLEAR_RREGS 0, r9
 	movq $-ENOSYS,RAX(%rsp)	/* ptrace can change this for a bad syscall */
 	movq %rsp,%rdi        /* &pt_regs -> arg1 */
 	call syscall_trace_enter
-	LOAD_ARGS32 ARGOFFSET, 1  /* reload args from stack in case ptrace changed it */
-	RESTORE_REST
-	xchgl %ebp,%r9d
+	LOAD_ARGS32 0		/* reload args from stack in case ptrace changed it */
+	mov %r12d, %ebp
+	mov %r13d, %r9d
 	cmpq $(IA32_NR_syscalls-1),%rax
-	ja int_ret_from_sys_call /* cstar_tracesys has set RAX(%rsp) */
+	ja ia32_bounce_int_ret	/* cstar_tracesys has set RAX(%rsp) */
 	jmp cstar_do_call
 END(ia32_cstar_target)
 
@@ -413,7 +421,7 @@ ia32_badarg:
  */
 
 ENTRY(ia32_syscall)
-	CFI_STARTPROC32	simple
+	CFI_STARTPROC	simple
 	CFI_SIGNAL_FRAME
 	CFI_DEF_CFA	rsp,SS+8-RIP
 	/*CFI_REL_OFFSET	ss,SS-RIP*/
@@ -438,8 +446,10 @@ ENTRY(ia32_syscall)
 	/* note the registers are not zero extended to the sf.
 	   this could be a problem. */
 	SAVE_ARGS 0,1,0
-	orl $TS_COMPAT,TI_status+THREAD_INFO(%rsp,RIP-ARGOFFSET)
-	testl $_TIF_WORK_SYSCALL_ENTRY,TI_flags+THREAD_INFO(%rsp,RIP-ARGOFFSET)
+	SAVE_REST
+
+	orl $TS_COMPAT,TI_status+THREAD_INFO(%rsp,RIP)
+	testl $_TIF_WORK_SYSCALL_ENTRY,TI_flags+THREAD_INFO(%rsp,RIP)
 	jnz ia32_tracesys
 	cmpq $(IA32_NR_syscalls-1),%rax
 	ja ia32_badsys
@@ -447,26 +457,22 @@ ia32_do_call:
 	IA32_ARG_FIXUP
 	call *ia32_sys_call_table(,%rax,8) # xxx: rip relative
 ia32_sysret:
-	movq %rax,RAX-ARGOFFSET(%rsp)
+	movq %rax,RAX(%rsp)
 ia32_ret_from_sys_call:
-	CLEAR_RREGS -ARGOFFSET
-	jmp int_ret_from_sys_call 
+	jmp ia32_bounce_int_ret
 
-ia32_tracesys:			 
-	SAVE_REST
-	CLEAR_RREGS
+ia32_tracesys:
 	movq $-ENOSYS,RAX(%rsp)	/* ptrace can change this for a bad syscall */
 	movq %rsp,%rdi        /* &pt_regs -> arg1 */
 	call syscall_trace_enter
-	LOAD_ARGS32 ARGOFFSET  /* reload args from stack in case ptrace changed it */
-	RESTORE_REST
+	LOAD_ARGS32 0		/* reload args from stack in case ptrace changed it */
 	cmpq $(IA32_NR_syscalls-1),%rax
-	ja  int_ret_from_sys_call	/* ia32_tracesys has set RAX(%rsp) */
+	ja  ia32_bounce_int_ret	/* ia32_tracesys has set RAX(%rsp) */
 	jmp ia32_do_call
 END(ia32_syscall)
 
 ia32_badsys:
-	movq $0,ORIG_RAX-ARGOFFSET(%rsp)
+	movq $0,ORIG_RAX(%rsp)
 	movq $-ENOSYS,%rax
 	jmp ia32_sysret
 
@@ -476,11 +482,11 @@ ia32_badsys:
 	ALIGN
 GLOBAL(\label)
 	leaq \func(%rip),%rax
-	leaq -ARGOFFSET+8(%rsp),\arg	/* 8 for return address */
-	jmp  ia32_ptregs_common	
+	leaq 8(%rsp),\arg	/* 8 for return address */
+	jmp  ia32_ptregs_common
 	.endm
 
-	CFI_STARTPROC32
+	CFI_STARTPROC
 
 	PTREGSCALL stub32_rt_sigreturn, sys32_rt_sigreturn, %rdi
 	PTREGSCALL stub32_sigreturn, sys32_sigreturn, %rdi
@@ -499,22 +505,27 @@ GLOBAL(stub32_clone)
 ia32_ptregs_common:
 	popq %r11
 	CFI_ENDPROC
-	CFI_STARTPROC32	simple
+	CFI_STARTPROC	simple
 	CFI_SIGNAL_FRAME
-	CFI_DEF_CFA	rsp,SS+8-ARGOFFSET
-	CFI_REL_OFFSET	rax,RAX-ARGOFFSET
-	CFI_REL_OFFSET	rcx,RCX-ARGOFFSET
-	CFI_REL_OFFSET	rdx,RDX-ARGOFFSET
-	CFI_REL_OFFSET	rsi,RSI-ARGOFFSET
-	CFI_REL_OFFSET	rdi,RDI-ARGOFFSET
-	CFI_REL_OFFSET	rip,RIP-ARGOFFSET
-/*	CFI_REL_OFFSET	cs,CS-ARGOFFSET*/
-/*	CFI_REL_OFFSET	rflags,EFLAGS-ARGOFFSET*/
-	CFI_REL_OFFSET	rsp,RSP-ARGOFFSET
-/*	CFI_REL_OFFSET	ss,SS-ARGOFFSET*/
-	SAVE_REST
+	CFI_DEF_CFA	rsp,SS+8
+	CFI_REL_OFFSET	rax,RAX
+	CFI_REL_OFFSET	rcx,RCX
+	CFI_REL_OFFSET	rdx,RDX
+	CFI_REL_OFFSET	rsi,RSI
+	CFI_REL_OFFSET	rdi,RDI
+	CFI_REL_OFFSET	rip,RIP
+/*	CFI_REL_OFFSET	cs,CS */
+/*	CFI_REL_OFFSET	rflags,EFLAGS */
+	CFI_REL_OFFSET	rsp,RSP
+/*	CFI_REL_OFFSET	ss,SS */
+	CFI_REL_OFFSET	rbx, RBX
+	CFI_REL_OFFSET	rbp, RBP
+	CFI_REL_OFFSET	r12, R12
+	CFI_REL_OFFSET	r13, R13
+	CFI_REL_OFFSET	r14, R14
+	CFI_REL_OFFSET	r15, R15
+
 	call *%rax
-	RESTORE_REST
 	jmp  ia32_sysret	/* misbalances the return cache */
 	CFI_ENDPROC
 END(ia32_ptregs_common)
