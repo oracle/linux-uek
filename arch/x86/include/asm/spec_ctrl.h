@@ -27,6 +27,8 @@ extern unsigned int dynamic_ibpb;
 extern u32 sysctl_ibpb_enabled;
 extern u32 sysctl_lfence_enabled;
 
+#define	lfence_inuse (!(dynamic_ibrs & SPEC_CTRL_LFENCE_OFF))
+
 static inline void __disable_indirect_speculation(void)
 {
 	wrmsrl(MSR_IA32_SPEC_CTRL, SPEC_CTRL_FEATURE_ENABLE_IBRS);

@@ -120,10 +120,12 @@ ssize_t cpu_show_spectre_v2(struct device *dev,
 {
 	if (!boot_cpu_has(X86_BUG_SPECTRE_V2))
 		return sprintf(buf, "Not affected\n");
-	if (ibrs_inuse || ibpb_inuse)
+	if (ibrs_inuse || ibpb_inuse || lfence_inuse)
 		return sprintf(buf, "Mitigation: %s%s\n",
-				ibrs_inuse ? "IBRS " : "",
+				ibrs_inuse ? "IBRS " :
+				    lfence_inuse ? "lfence " : "",
 				ibpb_inuse ? "IBPB" : "");
+
 	return sprintf(buf, "Vulnerable\n");
 }
 #endif
