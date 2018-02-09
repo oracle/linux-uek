@@ -10,7 +10,9 @@
 #include <asm/processor.h>
 #include <asm/mtrr.h>
 #include <asm/cacheflush.h>
+#ifdef CONFIG_SYSFS
 #include <linux/device.h>
+#endif
 #include <asm/spec_ctrl.h>
 #include <asm/cmdline.h>
 
