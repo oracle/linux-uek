@@ -675,6 +675,13 @@ GLOBAL(system_call_after_swapgs)
 	 * or when we return to user via sysret_check.
 	 */
 	SAVE_REST
+
+	/*
+	 * Zero the extra registers: we won't re-load them until we exit
+	 * via sysret_check or int_ret_from_sys_call/int_check_syscall_exit_work
+	 */
+	ZERO_EXTRA_REGS
+
 	movq  %rax,ORIG_RAX(%rsp)
 	movq  %rcx,RIP(%rsp)
 	CFI_REL_OFFSET rip,RIP

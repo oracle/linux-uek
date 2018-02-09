@@ -86,6 +86,15 @@ For 32-bit we have the following conventions - kernel is built with
 #define ARGOFFSET	R11
 #define SWFRAME		ORIG_RAX
 
+	.macro ZERO_EXTRA_REGS
+	xorq    %r15, %r15
+	xorq    %r14, %r14
+	xorq    %r13, %r13
+	xorq    %r12, %r12
+	xorq    %rbp, %rbp
+	xorq    %rbx, %rbx
+	.endm
+
 	.macro SAVE_ARGS addskip=0, save_rcx=1, save_r891011=1
 	subq  $9*8+\addskip, %rsp
 	CFI_ADJUST_CFA_OFFSET	9*8+\addskip
