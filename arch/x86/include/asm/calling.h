@@ -95,6 +95,24 @@ For 32-bit we have the following conventions - kernel is built with
 	xorq    %rbx, %rbx
 	.endm
 
+	.macro ZERO_R8_TO_R15 zero_r8=1, zero_r10=1
+	.if \zero_r8
+	xorq %r8, %r8
+	.endif
+
+	xorq %r9, %r9
+
+	.if \zero_r10
+	xorq %r10, %r10
+	.endif
+
+	xorq %r11, %r11
+	xorq %r12, %r12
+	xorq %r13, %r13
+	xorq %r14, %r14
+	xorq %r15, %r15
+	.endm
+
 	.macro SAVE_ARGS addskip=0, save_rcx=1, save_r891011=1
 	subq  $9*8+\addskip, %rsp
 	CFI_ADJUST_CFA_OFFSET	9*8+\addskip

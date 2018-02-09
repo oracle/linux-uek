@@ -145,6 +145,8 @@ ENTRY(ia32_sysenter_target)
 	 */
 	SAVE_REST
 
+	ZERO_R8_TO_R15 1,0 /* %r10 is in use */
+
 	/* Retrieve the 6th param (from the top of the user-stack.)
 	   No need to do an access_ok check here because rbp has been
 	   32bit zero extended */
@@ -303,6 +305,8 @@ ENTRY(ia32_cstar_target)
 	SAVE_ARGS 8,0,0
 	SAVE_REST
 
+	ZERO_R8_TO_R15 0 /* %r8 is in use */
+
 	movl 	%eax,%eax	/* zero extension */
 	movq	%rax,ORIG_RAX(%rsp)
 	movq	%rcx,RIP(%rsp)
@@ -447,6 +451,8 @@ ENTRY(ia32_syscall)
 	   this could be a problem. */
 	SAVE_ARGS 0,1,0
 	SAVE_REST
+
+	ZERO_R8_TO_R15
 
 	orl $TS_COMPAT,TI_status+THREAD_INFO(%rsp,RIP)
 	testl $_TIF_WORK_SYSCALL_ENTRY,TI_flags+THREAD_INFO(%rsp,RIP)
