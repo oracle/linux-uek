@@ -981,8 +981,7 @@ static void __cpuinit identify_cpu(struct cpuinfo_x86 *c)
 	if (c->x86_vendor != X86_VENDOR_AMD)
 		set_cpu_cap(c, X86_BUG_CPU_MELTDOWN);
 
-	/* Mitigation for SPECTRE_V1 already in place */
-	/* set_cpu_cap(c, X86_BUG_SPECTRE_V1); */
+	set_cpu_cap(c, X86_BUG_SPECTRE_V1);
 
 	set_cpu_cap(c, X86_BUG_SPECTRE_V2);
 }
