@@ -542,7 +542,10 @@ EXPORT_SYMBOL(warn_slowpath_null);
  * Called when gcc's -fstack-protector feature is used, and
  * gcc detects corruption of the on-stack canary value
  */
-__visible void __stack_chk_fail(void)
+#if !defined(CONFIG_SIMULATE_GCC44_KABI) || !defined(__GENKSYMS__)
+__visible
+#endif
+void __stack_chk_fail(void)
 {
 	panic("stack-protector: Kernel stack is corrupted in: %p\n",
 		__builtin_return_address(0));

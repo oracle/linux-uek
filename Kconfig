@@ -8,4 +8,9 @@ config SRCARCH
 	string
 	option env="SRCARCH"
 
+# special hack for UEK-OL6 to allow special kABI hacks
+config SIMULATE_GCC44_KABI
+	bool "Simulate the gcc 4.4 kABI"
+	default n
+
 source "arch/$SRCARCH/Kconfig"
