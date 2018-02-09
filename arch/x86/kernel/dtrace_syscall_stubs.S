@@ -146,14 +146,12 @@
  */
 	.macro PTREGSCALL label,func,arg
 ENTRY(\label)
-	PARTIAL_FRAME 1 8		/* offset 8: return address */
-	subq $REST_SKIP, %rsp
-	CFI_ADJUST_CFA_OFFSET REST_SKIP
-	call save_rest
-	DEFAULT_FRAME 0 8		/* offset 8: return address */
-	leaq 8(%rsp), \arg	/* pt_regs pointer */
+	DEFAULT_FRAME 1 8		/* offset 8: return address */
+	leaq 8(%rsp), \arg		/* pt_regs pointer */
+	FIXUP_TOP_OF_STACK %r11, 8
 	call \func
-	jmp ptregscall_common
+	RESTORE_TOP_OF_STACK %r11, 8
+	ret
 	CFI_ENDPROC
 END(\label)
 	.endm
@@ -161,15 +159,11 @@ END(\label)
 	.macro FORK_LIKE func
 ENTRY(dtrace_stub_\func)
 	CFI_STARTPROC
-	popq	%r11			/* save return address */
-	PARTIAL_FRAME 0
-	SAVE_REST
-	pushq	%r11			/* put it back on stack */
+	DEFAULT_FRAME 0 8
 	FIXUP_TOP_OF_STACK %r11, 8
-	DEFAULT_FRAME 0 8		/* offset 8: return address */
 	call dtrace_sys_\func
 	RESTORE_TOP_OF_STACK %r11, 8
-	ret $REST_SKIP			/* pop extended registers */
+	ret
 	CFI_ENDPROC
 END(dtrace_stub_\func)
 	.endm
@@ -182,14 +176,12 @@ END(dtrace_stub_\func)
 ENTRY(dtrace_stub_execve)
 	CFI_STARTPROC
 	addq $8, %rsp
-	PARTIAL_FRAME 0
-	SAVE_REST
+	DEFAULT_FRAME 0
 	FIXUP_TOP_OF_STACK %r11
 	call dtrace_sys_execve
 	RESTORE_TOP_OF_STACK %r11
 	movq %rax,RAX(%rsp)
-	RESTORE_REST
-	jmp int_ret_from_sys_call
+	jmp int_ret_from_sys_call_restore
 	CFI_ENDPROC
 END(dtrace_stub_execve)
 
@@ -200,13 +192,11 @@ END(dtrace_stub_execve)
 ENTRY(dtrace_stub_rt_sigreturn)
 	CFI_STARTPROC
 	addq $8, %rsp
-	PARTIAL_FRAME 0
-	SAVE_REST
+	DEFAULT_FRAME 0
 	movq %rsp,%rdi
 	FIXUP_TOP_OF_STACK %r11
 	call dtrace_sys_rt_sigreturn
 	movq %rax,RAX(%rsp) # fixme, this could be done at the higher layer
-	RESTORE_REST
-	jmp int_ret_from_sys_call
+	jmp int_ret_from_sys_call_restore
 	CFI_ENDPROC
 END(dtrace_stub_rt_sigreturn)
