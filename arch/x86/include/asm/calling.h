@@ -1,5 +1,6 @@
 #include <asm/msr-index.h>
 #include <asm/cpufeature.h>
+#include <asm/spec_ctrl.h>
 
 #include <linux/stringify.h>
 
@@ -322,25 +323,29 @@ ALTERNATIVE __stringify(__ASM_STUFF_RSB), "", X86_FEATURE_SMEP
 .endm
 
 .macro ENABLE_IBRS
-	testl	$1, dynamic_ibrs
+	testl	$SPEC_CTRL_IBRS_INUSE, dynamic_ibrs
 	jz	.Lskip_\@
 	PUSH_MSR_REGS
 	WRMSR_ASM $MSR_IA32_SPEC_CTRL, $SPEC_CTRL_FEATURE_ENABLE_IBRS
 	POP_MSR_REGS
 	jmp	.Ldone_\@
 .Lskip_\@:
+	testl	$SPEC_CTRL_LFENCE_OFF, dynamic_ibrs
+	jnz .Ldone_\@
 	lfence
 .Ldone_\@:
 .endm
 
 .macro DISABLE_IBRS
-	testl	$1, dynamic_ibrs
+	testl	$SPEC_CTRL_IBRS_INUSE, dynamic_ibrs
 	jz	.Lskip_\@
 	PUSH_MSR_REGS
 	WRMSR_ASM $MSR_IA32_SPEC_CTRL, $SPEC_CTRL_FEATURE_DISABLE_IBRS
 	POP_MSR_REGS
 	jmp	.Ldone_\@
 .Lskip_\@:
+	testl	$SPEC_CTRL_LFENCE_OFF, dynamic_ibrs
+	jnz .Ldone_\@
 	lfence
 .Ldone_\@:
 .endm
@@ -354,27 +359,31 @@ ALTERNATIVE __stringify(__ASM_STUFF_RSB), "", X86_FEATURE_SMEP
 .endm
 
 .macro ENABLE_IBRS_CLOBBER
-	testl	$1, dynamic_ibrs
+	testl	$SPEC_CTRL_IBRS_INUSE, dynamic_ibrs
 	jz	.Lskip_\@
 	WRMSR_ASM $MSR_IA32_SPEC_CTRL, $SPEC_CTRL_FEATURE_ENABLE_IBRS
 	jmp	.Ldone_\@
 .Lskip_\@:
+	testl	$SPEC_CTRL_LFENCE_OFF, dynamic_ibrs
+	jnz .Ldone_\@
 	lfence
 .Ldone_\@:
 .endm
 
 .macro DISABLE_IBRS_CLOBBER
-	testl	$1, dynamic_ibrs
+	testl	$SPEC_CTRL_IBRS_INUSE, dynamic_ibrs
 	jz	.Lskip_\@
 	WRMSR_ASM $MSR_IA32_SPEC_CTRL, $SPEC_CTRL_FEATURE_DISABLE_IBRS
 	jmp	.Ldone_\@
 .Lskip_\@:
+	testl	$SPEC_CTRL_LFENCE_OFF, dynamic_ibrs
+	jnz .Ldone_\@
 	lfence
 .Ldone_\@:
 .endm
 
 .macro ENABLE_IBRS_SAVE_AND_CLOBBER save_reg:req
-	testl	$1, dynamic_ibrs
+	testl	$SPEC_CTRL_IBRS_INUSE, dynamic_ibrs
 	jz	.Lskip_\@
 	movl	$MSR_IA32_SPEC_CTRL, %ecx
 	rdmsr
@@ -386,12 +395,14 @@ ALTERNATIVE __stringify(__ASM_STUFF_RSB), "", X86_FEATURE_SMEP
 	jmp	.Ldone_\@
 .Lskip_\@:
 	movl $SPEC_CTRL_FEATURE_ENABLE_IBRS, \save_reg
+	testl	$SPEC_CTRL_LFENCE_OFF, dynamic_ibrs
+	jnz .Ldone_\@
 	lfence
 .Ldone_\@:
 .endm
 
 .macro RESTORE_IBRS_CLOBBER save_reg:req
-	testl	$1, dynamic_ibrs
+	testl	$SPEC_CTRL_IBRS_INUSE, dynamic_ibrs
 	jz	.Lskip_\@
 	/* Set IBRS to the value saved in the save_reg */
 	movl    $MSR_IA32_SPEC_CTRL, %ecx
@@ -400,6 +411,8 @@ ALTERNATIVE __stringify(__ASM_STUFF_RSB), "", X86_FEATURE_SMEP
 	wrmsr
 	jmp	.Ldone_\@
 .Lskip_\@:
+	testl	$SPEC_CTRL_LFENCE_OFF, dynamic_ibrs
+	jnz .Ldone_\@
 	lfence
 .Ldone_\@:
 .endm

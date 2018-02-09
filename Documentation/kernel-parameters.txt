@@ -1678,12 +1678,18 @@ bytes respectively. Such letter suffixes can also be entirely omitted.
 	noibrs		[X86]
 			Don't use indirect branch restricted speculation (IBRS)
 			feature when running in secure environment,
-			to avoid performance overhead.
+			to avoid performance overhead. Disabling this will
+			fallback on using lfence.
 
 	noibpb		[X86]
 			Don't use indirect branch prediction barrier (IBPB)
 			feature when running in secure environment,
 			to avoid performance overhead.
+
+	nolfence        [X86]
+			Don't use lfence on every
+			system-call/interrupt/exception if noibrs has been
+			specified. This is used to avoid performance overhead.
 
 	nosmep		[X86]
 			Disable SMEP (Supervisor Mode Execution Protection)

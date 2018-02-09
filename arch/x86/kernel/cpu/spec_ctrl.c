@@ -48,13 +48,13 @@ static inline void set_ibrs_feature(void)
 	printk(KERN_INFO "FEATURE SPEC_CTRL Present%s\n", ignore ? " but ignored (Xen)": "");
 
 	if (!ibrs_admin_disabled && !ignore) {
-		dynamic_ibrs = 1;
+		dynamic_ibrs |= SPEC_CTRL_IBRS_INUSE;
 		ibrs_enabled = IBRS_ENABLED;
 	} else {
-		dynamic_ibrs = 0;
+		dynamic_ibrs &= ~SPEC_CTRL_IBRS_INUSE;
 		ibrs_enabled = IBRS_DISABLED;
 	}
-	sysctl_ibrs_enabled = dynamic_ibrs ? 1 : 0;
+	sysctl_ibrs_enabled = (dynamic_ibrs & SPEC_CTRL_IBRS_INUSE) ? 1 : 0;
 }
 
 static inline void set_ibpb_feature(void)
@@ -71,7 +71,7 @@ static inline void set_ibpb_feature(void)
 
 void set_ibrs_disabled(void)
 {
-	dynamic_ibrs = 0;
+	dynamic_ibrs &= ~SPEC_CTRL_IBRS_INUSE;
 	ibrs_enabled = IBRS_DISABLED;
 	sysctl_ibrs_enabled = dynamic_ibrs;
 }
@@ -101,7 +101,7 @@ void rescan_spec_ctrl_feature(struct cpuinfo_x86 *c)
 	mutex_lock(&spec_ctrl_mutex);
 	if (boot_cpu_has(X86_FEATURE_SPEC_CTRL)) {
 		if (!ibrs_admin_disabled) {
-			dynamic_ibrs = 1;
+			dynamic_ibrs |= SPEC_CTRL_IBRS_INUSE;
 			ibrs_enabled = IBRS_ENABLED;
 		}
 		if (!ibpb_admin_disabled) {
@@ -142,6 +142,11 @@ static int __init noibpb(char *str)
 	return 0;
 }
 early_param("noibpb", noibpb);
+
+static inline void set_lfence_disabled(void)
+{
+	dynamic_ibrs |= SPEC_CTRL_LFENCE_OFF;
+}
 
 static ssize_t __enabled_read(struct file *file, char __user *user_buf,
 			      size_t count, loff_t *ppos, unsigned int *field)
@@ -198,19 +203,19 @@ static ssize_t ibrs_enabled_write(struct file *file,
 	if (enable == IBRS_DISABLED) {
 		/* disable IBRS usage */
 		ibrs_admin_disabled = true;
-		dynamic_ibrs = 0;
+		dynamic_ibrs &= ~SPEC_CTRL_IBRS_INUSE;
 		spec_ctrl_flush_all_cpus(MSR_IA32_SPEC_CTRL,
 					 SPEC_CTRL_FEATURE_DISABLE_IBRS);
 
 	} else if (enable == IBRS_ENABLED) {
 		/* enable IBRS usage in kernel */
 		ibrs_admin_disabled = false;
-		dynamic_ibrs = 1;
+		dynamic_ibrs |= SPEC_CTRL_IBRS_INUSE;
 
 	} else if (enable == IBRS_ENABLED_USER) {
 		/* enable IBRS all the time in both userspace and kernel */
 		ibrs_admin_disabled = false;
-		dynamic_ibrs = 0;
+		dynamic_ibrs &= ~SPEC_CTRL_IBRS_INUSE;
 		spec_ctrl_flush_all_cpus(MSR_IA32_SPEC_CTRL,
 					 SPEC_CTRL_FEATURE_ENABLE_IBRS);
 	}

@@ -5,7 +5,11 @@
 
 #include <asm/msr-index.h>
 #include <asm/cpufeature.h>
-#include <asm/microcode.h>
+
+#define	SPEC_CTRL_IBRS_INUSE		(1<<0)  /* OS enables IBRS usage */
+#define	SPEC_CTRL_LFENCE_OFF		(1<<3)  /* No lfence */
+
+#ifndef	__ASSEMBLY__
 
 void scan_spec_ctrl_feature(struct cpuinfo_x86 *c);
 void rescan_spec_ctrl_feature(struct cpuinfo_x86 *c);
@@ -58,5 +62,7 @@ static inline void unprotected_speculation_end(void)
 		rmb();
 	}
 }
+
+#endif
 
 #endif /* _ASM_X86_SPEC_CTRL_H */
