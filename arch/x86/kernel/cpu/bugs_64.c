@@ -8,6 +8,7 @@
 #ifdef CONFIG_SYSFS
 #include <linux/device.h>
 #endif
+#include <linux/cpu.h>
 #include <asm/alternative.h>
 #include <asm/nospec-branch.h>
 #include <asm/cmdline.h>
@@ -295,6 +296,15 @@ static enum spectre_v2_mitigation __init ibrs_select(void)
 static void __init disable_ibrs_and_friends(bool disable_ibpb)
 {
 	set_ibrs_disabled();
+	if (use_ibrs & SPEC_CTRL_IBRS_SUPPORTED) {
+		unsigned int cpu;
+
+		get_online_cpus();
+		for_each_online_cpu(cpu)
+			wrmsrl_on_cpu(cpu, MSR_IA32_SPEC_CTRL, SPEC_CTRL_FEATURE_DISABLE_IBRS);
+
+		put_online_cpus();
+	}
 	/* We need to use IBPB with retpoline if it is available. */
 	if (disable_ibpb)
 		set_ibpb_disabled();
