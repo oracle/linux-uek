@@ -60,14 +60,10 @@ static void __init spectre_v2_parse_cmdline(void)
 	int ret;
 
 	if (cmdline_find_option_bool(boot_command_line, "noibrs")) {
-		pr_warn("Deprecated command option noibrs. "
-		    "Use nospectre_v2 instead.\n");
 		set_ibrs_disabled();
 	}
 
 	if (cmdline_find_option_bool(boot_command_line, "noibpb")) {
-		pr_warn("Deprecated command option noibpb. "
-		    "Use nospectre_v2 instead.\n");
 		set_ibpb_disabled();
 	}
 
