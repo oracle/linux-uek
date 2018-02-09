@@ -116,6 +116,7 @@ int __init parse_spcr(bool earlycon)
 			table->serial_port.access_width))) {
 		default:
 			pr_err("Unexpected SPCR Access Width.  Defaulting to byte size\n");
+			/* fall through */
 		case 8:
 			iotype = "mmio";
 			break;
