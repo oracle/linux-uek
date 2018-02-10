@@ -210,6 +210,7 @@ sysexit_from_sys_call:
 	andl    $~TS_COMPAT,ASM_THREAD_INFO(TI_status, %rsp, SIZEOF_PTREGS)
 	movl	RIP(%rsp),%ecx		/* User %eip */
 	CFI_REGISTER rip,rcx
+	RESTORE_EXTRA_REGS
 	RESTORE_RSI_RDI
 	xorl	%edx,%edx		/* avoid info leaks */
 	xorq	%r8,%r8
@@ -291,6 +292,7 @@ sysexit_from_sys_call:
 	testl %edi, ASM_THREAD_INFO(TI_flags, %rsp, SIZEOF_PTREGS)
 	jz \exit
 	CLEAR_RREGS
+	RESTORE_EXTRA_REGS
 	jmp int_with_check
 	.endm
 
@@ -434,6 +436,7 @@ cstar_dispatch:
 	jnz sysretl_audit
 sysretl_from_sys_call:
 	andl $~TS_COMPAT, ASM_THREAD_INFO(TI_status, %rsp, SIZEOF_PTREGS)
+	RESTORE_EXTRA_REGS
 	RESTORE_RSI_RDI_RDX
 	movl RIP(%rsp),%ecx
 	CFI_REGISTER rip,rcx
@@ -578,6 +581,7 @@ ia32_sysret:
 	movq %rax,RAX(%rsp)
 ia32_ret_from_sys_call:
 	CLEAR_RREGS
+	RESTORE_EXTRA_REGS
 	jmp int_ret_from_sys_call
 
 ia32_tracesys:
