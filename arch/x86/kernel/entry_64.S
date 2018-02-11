@@ -522,7 +522,6 @@ system_call_fastpath:
 ret_from_sys_call:
 	movl $_TIF_ALLWORK_MASK,%edi
 	/* edi:	flagmask */
-	RESTORE_REST
 sysret_check:
 	LOCKDEP_SYS_EXIT
 	GET_THREAD_INFO(%rcx)
@@ -536,11 +535,12 @@ sysret_check:
 	 * sysretq will re-enable interrupts:
 	 */
 	TRACE_IRQS_ON
-	movq RIP-ARGOFFSET(%rsp),%rcx
+	movq RIP(%rsp),%rcx
 
 	DISABLE_IBRS
 
 	CFI_REGISTER	rip,rcx
+	RESTORE_REST
 	RESTORE_ARGS 0,-ARG_SKIP,1
 	/*CFI_REGISTER	rflags,r11*/
 	/*
@@ -580,6 +580,7 @@ sysret_signal:
 	 * These all wind up with the iret return path anyway,
 	 * so just join that path right now.
 	 */
+	RESTORE_REST
 	FIXUP_TOP_OF_STACK %r11, -ARGOFFSET
 	jmp int_check_syscall_exit_work
 
@@ -610,7 +611,7 @@ auditsys:
 	 * masked off.
 	 */
 sysret_audit:
-	movq RAX-ARGOFFSET(%rsp),%rsi	/* second arg, syscall return value */
+	movq RAX(%rsp),%rsi	/* second arg, syscall return value */
 	cmpq $0,%rsi		/* is it < 0? */
 	setl %al		/* 1 if so, 0 if not */
 	movzbl %al,%edi		/* zero-extend that into %edi */
