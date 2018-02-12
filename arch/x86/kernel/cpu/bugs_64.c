@@ -21,19 +21,19 @@
 #include <asm/intel-family.h>
 
 /*
- * use IBRS
- * bit 0 = indicate if ibrs is currently in use
- * bit 1 = indicate if system supports ibrs
- * bit 2 = indicate if admin disables ibrs
+ * use_ibrs flags:
+ * SPEC_CTRL_IBRS_INUSE			indicate if ibrs is currently in use
+ * SPEC_CTRL_IBRS_SUPPORTED		indicate if system supports ibrs
+ * SPEC_CTRL_IBRS_ADMIN_DISABLED	indicate if admin disables ibrs
  */
 int use_ibrs;
 EXPORT_SYMBOL(use_ibrs);
 
 /*
- * use IBRS
- * bit 0 = indicate if ibpb is currently in use
- * bit 1 = indicate if system supports ibpb
- * bit 2 = indicate if admin disables ibpb
+ * use_ibpb flags:
+ * SPEC_CTRL_IBPB_INUSE			indicate if ibpb is currently in use
+ * SPEC_CTRL_IBPB_SUPPORTED		indicate if system supports ibpb
+ * SPEC_CTRL_IBPB_ADMIN_DISABLED	indicate if admin disables ibpb
  */
 int use_ibpb;
 EXPORT_SYMBOL(use_ibpb);
