@@ -2,7 +2,7 @@
  * FILE:	dtrace_dev.c
  * DESCRIPTION:	DTrace - Framework device driver
  *
- * Copyright (c) 2010, 2017, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2010, 2018, Oracle and/or its affiliates. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -185,6 +185,8 @@ static long dtrace_ioctl(struct file *file,
 
 		mutex_unlock(&dtrace_provider_lock);
 
+		dt_dbg_ioctl("  Provider '%s' %sfound\n",
+			     pvd.dtvd_name, pvp ? "" : "not ");
 		if (pvp == NULL)
 			return -ESRCH;
 
@@ -499,6 +501,9 @@ static long dtrace_ioctl(struct file *file,
 		desc.dtpd_mod[DTRACE_MODNAMELEN - 1] = '\0';
 		desc.dtpd_func[DTRACE_FUNCNAMELEN - 1] = '\0';
 		desc.dtpd_name[DTRACE_NAMELEN - 1] = '\0';
+		dt_dbg_ioctl("  Probe ID %d %s:%s:%s:%s\n",
+			     desc.dtpd_id, desc.dtpd_provider, desc.dtpd_mod,
+			     desc.dtpd_func, desc.dtpd_name);
 
 		/*
 		 * Before we attempt to match this probe, we want to give

@@ -1,7 +1,7 @@
 /*
  * Dynamic Tracing for Linux
  *
- * Copyright (c) 2010, 2017, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2010, 2018, Oracle and/or its affiliates. All rights reserved.
  * 
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -31,6 +31,7 @@
 #  define DT_DBG_ENABLE
 #  define DT_DBG_IOCTL
 #  define DT_DBG_PROBE
+#  define DT_DBG_PROVIDER
 
 #  define dt_dbg_print(fmt, ...)	pr_debug(fmt, ## __VA_ARGS__)
 
@@ -43,6 +44,7 @@
 #  undef DT_DBG_ENABLE
 #  undef DT_DBG_IOCTL
 #  undef DT_DBG_PROBE
+#  undef DT_DBG_PROVIDER
 
 #  define dt_dbg_print(fmt, ...)	pr_info(fmt, ## __VA_ARGS__)
 
@@ -57,6 +59,7 @@
 # undef DT_DBG_ENABLE
 # undef DT_DBG_IOCTL
 # undef DT_DBG_PROBE
+# undef DT_DBG_PROVIDER
 
 #endif /* CONFIG_DT_DEBUG */
 
@@ -103,6 +106,12 @@
 # define dt_dbg_probe(fmt, ...)		dt_dbg_print(fmt, ## __VA_ARGS__)
 #else
 # define dt_dbg_probe(fmt, ...)
+#endif
+
+#ifdef DT_DBG_PROVIDER
+# define dt_dbg_prov(fmt, ...)		dt_dbg_print(fmt, ## __VA_ARGS__)
+#else
+# define dt_dbg_prov(fmt, ...)
 #endif
 
 #endif /* _DTRACE_DEBUG_H_ */

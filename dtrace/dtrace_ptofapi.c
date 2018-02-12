@@ -2,7 +2,7 @@
  * FILE:	dtrace_ptofapi.c
  * DESCRIPTION:	DTrace - (meta) provider-to-framework API
  *
- * Copyright (c) 2010, 2017, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2010, 2018, Oracle and/or its affiliates. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -85,12 +85,16 @@ int dtrace_register(const char *name, const dtrace_pattr_t *pap, uint32_t priv,
 		return -EINVAL;
 	}
 
+	dt_dbg_prov("Registering provider '%s'...\n", name);
 	provider = kzalloc(sizeof (dtrace_provider_t), GFP_KERNEL);
-	if (provider == NULL)
+	if (provider == NULL) {
+		dt_dbg_prov("  Failed to allocate provider struct\n");
 		return -ENOMEM;
+	}
 	provider->dtpv_name = dtrace_strdup(name);
 	if (provider->dtpv_name == NULL) {
 		kfree(provider);
+		dt_dbg_prov("  Failed to allocate provider name\n");
 		return -ENOMEM;
 	}
 	provider->dtpv_attr = *pap;
@@ -144,6 +148,8 @@ int dtrace_register(const char *name, const dtrace_pattr_t *pap, uint32_t priv,
 		provider->dtpv_next = dtrace_provider;
 		dtrace_provider = provider;
 
+		dt_dbg_prov("  Done registering %s\n", name);
+
 		return 0;
 	}
 
@@ -162,6 +168,7 @@ int dtrace_register(const char *name, const dtrace_pattr_t *pap, uint32_t priv,
 		dtrace_provider = provider;
 
 	if (dtrace_retained != NULL) {
+		dt_dbg_prov("  Processing retained enablings for %s\n", name);
 		dtrace_enabling_provide(provider);
 
 		/*
@@ -174,12 +181,16 @@ int dtrace_register(const char *name, const dtrace_pattr_t *pap, uint32_t priv,
 		mutex_unlock(&module_mutex);
 		dtrace_enabling_matchall();
 
+		dt_dbg_prov("  Done registering %s\n", name);
+
 		return 0;
 	}
 
 	mutex_unlock(&dtrace_lock);
 	mutex_unlock(&dtrace_provider_lock);
 	mutex_unlock(&module_mutex);
+
+	dt_dbg_prov("  Done registering %s\n", name);
 
 	return 0;
 }
@@ -285,6 +296,8 @@ int dtrace_unregister(dtrace_provider_id_t id)
 
 	ASSERT(MUTEX_HELD(&module_mutex));
 
+	dt_dbg_prov("Unregistering provider '%s'...\n", old->dtpv_name);
+
 	if (old->dtpv_pops.dtps_enable ==
 	    (int (*)(void *, dtrace_id_t, void *))dtrace_enable_nullop) {
 		/*
@@ -302,6 +315,9 @@ int dtrace_unregister(dtrace_provider_id_t id)
 			 * We cannot and should not remove the DTrace provider
 			 * if there is any other provider left.
 			 */
+			dt_dbg_prov("  Failed to unregister %s - not last\n",
+				    old->dtpv_name);
+
 			return -EBUSY;
 		}
 	} else {
@@ -322,6 +338,9 @@ int dtrace_unregister(dtrace_provider_id_t id)
 			mutex_unlock(&dtrace_provider_lock);
 		}
 
+		dt_dbg_prov("  Failed to unregister %s - dtrace in use\n",
+			    old->dtpv_name);
+
 		return -EBUSY;
 	}
 
@@ -337,6 +356,9 @@ int dtrace_unregister(dtrace_provider_id_t id)
 			mutex_unlock(&dtrace_lock);
 			mutex_unlock(&dtrace_provider_lock);
 		}
+
+		dt_dbg_prov("  Failed to unregister %s - provider in use\n",
+			    old->dtpv_name);
 
 		return err;
 	}
@@ -401,6 +423,8 @@ int dtrace_unregister(dtrace_provider_id_t id)
 
 	kfree(old->dtpv_name);
 	kfree(old);
+
+	dt_dbg_prov("  Done unregistering\n");
 
 	return 0;
 }
@@ -528,13 +552,17 @@ int dtrace_meta_register(const char *name, const dtrace_mops_t *mops,
 		return -EINVAL;
 	}
 
+	dt_dbg_prov("Registering provider '%s'...\n", name);
 	meta = kzalloc(sizeof(dtrace_meta_t), GFP_KERNEL);
-	if (meta == NULL)
+	if (meta == NULL) {
+		dt_dbg_prov("  Failed to allocate meta provider struct\n");
 		return -ENOMEM;
+	}
 	meta->dtm_mops = *mops;
 	meta->dtm_name = kmalloc(strlen(name) + 1, GFP_KERNEL);
 	if (meta->dtm_name == NULL) {
 		kfree(meta);
+		dt_dbg_prov("  Failed to allocate meta provider name\n");
 		return -ENOMEM;
 	}
 	strcpy(meta->dtm_name, name);
@@ -580,6 +608,8 @@ int dtrace_meta_register(const char *name, const dtrace_mops_t *mops,
 
 	mutex_unlock(&dtrace_meta_lock);
 
+	dt_dbg_prov("  Done registering %s\n", name);
+
 	return 0;
 }
 EXPORT_SYMBOL(dtrace_meta_register);
@@ -588,6 +618,7 @@ int dtrace_meta_unregister(dtrace_meta_provider_id_t id)
 {
 	dtrace_meta_t	**pp, *old = (dtrace_meta_t *)id;
 
+	dt_dbg_prov("Unregistering meta provider '%s'...\n", old->dtm_name);
 	mutex_lock(&dtrace_meta_lock);
 	mutex_lock(&dtrace_lock);
 
@@ -612,6 +643,8 @@ int dtrace_meta_unregister(dtrace_meta_provider_id_t id)
 
 	kfree(old->dtm_name);
 	kfree(old);
+
+	dt_dbg_prov("  Done unregistering\n");
 
 	return 0;
 }
