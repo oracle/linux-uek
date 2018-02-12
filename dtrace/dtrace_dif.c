@@ -1069,9 +1069,16 @@ void dtrace_difo_release(dtrace_difo_t *dp, dtrace_vstate_t *vstate)
 }
 
 /*
- * The key for a thread-local variable consists of the lower 63 bits of the
- * task pid, prefixed by a bit indicating whether an interrupt is active (1) or
- * not (0).
+ * The key for a thread-local variable consists of the lower 60 bits of the
+ * task pid, prefixed by a 4 bits indicating whether a hard_irq is active.
+ * This accounts for a case where some older drivers re-enable interrupts
+ * and can nest in hard irq context.
+ *
+ * All per-cpu idle threads share same pid 0. In this special case we replace
+ * the pid with cpu id (an idle thread is bound to a single cpu). If pid is
+ * not 0 then a NR_CPUS is added. This assures that the thread key for idle
+ * thread never conflicts with regular pids in range 0..NR_CPUS.
+ *
  * We add DIF_VARIABLE_MAX to the pid to assure that the thread key is never
  * equal to a variable identifier.  This is necessary (but not sufficient) to
  * assure that global associative arrays never collide with thread-local
@@ -1086,11 +1093,13 @@ void dtrace_difo_release(dtrace_difo_t *dp, dtrace_vstate_t *vstate)
  */
 #define DTRACE_TLS_THRKEY(where)					\
 	{								\
-		uint_t	intr = in_irq() ? 1 : 0;			\
+		uint_t	intr = hardirq_count() >> HARDIRQ_SHIFT;	\
+		uint_t	cpu = (current->flags & PF_IDLE) ?		\
+				smp_processor_id() : NR_CPUS;		\
 									\
-		(where) = ((current->pid + DIF_VARIABLE_MAX) &		\
-			   (((uint64_t)1 << 63) - 1)) |			\
-			  ((uint64_t)intr << 63);			\
+		(where) = ((current->pid + cpu + DIF_VARIABLE_MAX) &	\
+			   (((uint64_t)1 << 60) - 1)) |			\
+			  ((uint64_t)intr << 60);			\
 	}
 
 #ifndef FIXME
