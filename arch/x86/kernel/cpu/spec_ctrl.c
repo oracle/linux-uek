@@ -10,8 +10,10 @@
 u32 sysctl_ibrs_enabled;
 u32 sysctl_ibpb_enabled;
 u32 sysctl_lfence_enabled = 1;		/* By default it is enabled. */
+u32 sysctl_retpoline_fallback = 1;	/* enabled by default */
 EXPORT_SYMBOL(sysctl_ibrs_enabled);
 EXPORT_SYMBOL(sysctl_ibpb_enabled);
+EXPORT_SYMBOL(sysctl_retpoline_fallback);
 
 static ssize_t __enabled_read(struct file *file, char __user *user_buf,
                               size_t count, loff_t *ppos, unsigned int *field)
@@ -198,6 +200,56 @@ static const struct file_operations fops_lfence_enabled = {
 	.llseek = default_llseek,
 };
 
+static ssize_t retpoline_fallback_read(struct file *file, char __user *user_buf,
+				       size_t count, loff_t *ppos)
+{
+	return __enabled_read(file, user_buf, count, ppos,
+			      &sysctl_retpoline_fallback);
+}
+
+static ssize_t retpoline_fallback_write(struct file *file,
+					const char __user *user_buf,
+					size_t count, loff_t *ppos)
+{
+	char buf[32];
+	ssize_t len;
+	unsigned int enable;
+
+	len = min(count, sizeof(buf) - 1);
+	if (copy_from_user(buf, user_buf, len))
+		return -EFAULT;
+
+	buf[len] = '\0';
+	if (kstrtouint(buf, 0, &enable))
+		return -EINVAL;
+
+	/* Only 0 and 1 are allowed */
+	if (enable > 1)
+		return -EINVAL;
+
+	mutex_lock(&spec_ctrl_mutex);
+
+	if (enable == allow_retpoline_fallback) {
+		/* No change to current state.  Return. */
+		mutex_unlock(&spec_ctrl_mutex);
+		return count;
+	}
+
+	if (enable)
+		set_retpoline_fallback();
+	else
+		clear_retpoline_fallback();
+
+	mutex_unlock(&spec_ctrl_mutex);
+	return count;
+}
+
+static const struct file_operations fops_retpoline_fallback = {
+	.read = retpoline_fallback_read,
+	.write = retpoline_fallback_write,
+	.llseek = default_llseek,
+};
+
 static int __init debugfs_spec_ctrl(void)
 {
         debugfs_create_file("ibrs_enabled", S_IRUSR | S_IWUSR,
@@ -206,6 +258,8 @@ static int __init debugfs_spec_ctrl(void)
 			    arch_debugfs_dir, NULL, &fops_ibpb_enabled);
 	debugfs_create_file("lfence_enabled", S_IRUSR | S_IWUSR,
 			    arch_debugfs_dir, NULL, &fops_lfence_enabled);
+	debugfs_create_file("retpoline_fallback", S_IRUSR | S_IWUSR,
+			     arch_debugfs_dir, NULL, &fops_retpoline_fallback);
         return 0;
 }
 late_initcall(debugfs_spec_ctrl);

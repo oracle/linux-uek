@@ -221,10 +221,14 @@ extern struct mutex spec_ctrl_mutex;
 
 #define ibrs_inuse		(check_ibrs_inuse())
 
-static inline void set_ibrs_inuse(void)
+static inline bool set_ibrs_inuse(void)
 {
-	if (ibrs_supported)
+	if (ibrs_supported) {
 		use_ibrs |= SPEC_CTRL_IBRS_INUSE;
+		return true;
+	} else {
+		return false;
+	}
 }
 
 static inline void clear_ibrs_inuse(void)
@@ -246,7 +250,7 @@ static inline void set_ibrs_supported(void)
 {
 	use_ibrs |= SPEC_CTRL_IBRS_SUPPORTED;
 	if (!ibrs_disabled)
-		set_ibrs_inuse();
+		(void)set_ibrs_inuse();
 }
 
 static inline void set_ibrs_disabled(void)
@@ -261,7 +265,7 @@ static inline void set_ibrs_disabled(void)
 static inline void clear_ibrs_disabled(void)
 {
 	use_ibrs &= ~SPEC_CTRL_IBRS_ADMIN_DISABLED;
-	set_ibrs_inuse();
+	(void)set_ibrs_inuse();
 	/* Update what sysfs shows. */
 	sysctl_ibrs_enabled = ibrs_inuse ? 1 : 0;
 }
@@ -295,10 +299,14 @@ extern u32 sysctl_ibpb_enabled;
 
 #define ibpb_inuse		(check_ibpb_inuse())
 
-static inline void set_ibpb_inuse(void)
+static inline bool set_ibpb_inuse(void)
 {
-	if (ibpb_supported)
+	if (ibpb_supported) {
 		use_ibpb |= SPEC_CTRL_IBPB_INUSE;
+		return true;
+	} else {
+		return false;
+	}
 }
 
 static inline void clear_ibpb_inuse(void)
@@ -320,7 +328,7 @@ static inline void set_ibpb_supported(void)
 {
 	use_ibpb |= SPEC_CTRL_IBPB_SUPPORTED;
 	if (!ibpb_disabled)
-		set_ibpb_inuse();
+		(void)set_ibpb_inuse();
 }
 
 static inline void set_ibpb_disabled(void)
@@ -335,9 +343,40 @@ static inline void set_ibpb_disabled(void)
 static inline void clear_ibpb_disabled(void)
 {
 	use_ibpb &= ~SPEC_CTRL_IBPB_ADMIN_DISABLED;
-	set_ibpb_inuse();
+	(void)set_ibpb_inuse();
 	/* Update what sysfs shows. */
 	sysctl_ibpb_enabled = ibpb_inuse ? 1 : 0;
+}
+
+/*
+ * Allow/disallow falling back to another Spectre v2 mitigation
+ * when disabling retpoline.
+ */
+
+extern int retpoline_fallback;
+extern u32 sysctl_retpoline_fallback;
+
+/* Flags for retpoline_fallback: */
+#define SPEC_CTRL_USE_RETPOLINE_FALLBACK (1<<0)	/* pick new mitigation */
+						/* when disabling retpoline */
+
+#define allow_retpoline_fallback (retpoline_fallback &			\
+				  SPEC_CTRL_USE_RETPOLINE_FALLBACK)
+
+static inline void set_retpoline_fallback(void)
+{
+	retpoline_fallback |= SPEC_CTRL_USE_RETPOLINE_FALLBACK;
+
+	/* Update what sysfs shows. */
+	sysctl_retpoline_fallback = 1;
+}
+
+static inline void clear_retpoline_fallback(void)
+{
+	retpoline_fallback &= ~SPEC_CTRL_USE_RETPOLINE_FALLBACK;
+
+	/* Update what sysfs shows. */
+	sysctl_retpoline_fallback = 0;
 }
 
 #endif /* __ASSEMBLY__ */

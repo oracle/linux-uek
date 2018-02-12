@@ -45,6 +45,13 @@ EXPORT_SYMBOL(spec_ctrl_mutex);
 bool use_ibrs_on_skylake = true;
 EXPORT_SYMBOL(use_ibrs_on_skylake);
 
+/*
+ * retpoline_fallback flags:
+ * SPEC_CTRL_USE_RETPOLINE_FALLBACK	pick retpoline fallback mitigation
+ */
+int retpoline_fallback = SPEC_CTRL_USE_RETPOLINE_FALLBACK;
+EXPORT_SYMBOL(retpoline_fallback);
+
 
 int __init spectre_v2_heuristics_setup(char *p)
 {
@@ -65,6 +72,16 @@ int __init spectre_v2_heuristics_setup(char *p)
 				break;
 			if (!strncmp(p, "off", 3))
 				use_ibrs_on_skylake = false;
+		}
+		len = strlen("retpoline_fallback");
+		if (!strncmp(p, "retpoline_fallback", len)) {
+			p += len;
+			if (*p == '=')
+				++p;
+			if (*p == '\0')
+				break;
+			if (!strncmp(p, "off", 3))
+				clear_retpoline_fallback();
 		}
 
 		p = strpbrk(p, ",");
@@ -147,11 +164,60 @@ static const char *spectre_v2_strings[] = {
 
 static enum spectre_v2_mitigation spectre_v2_enabled = SPECTRE_V2_NONE;
 
-/* A module has been loaded. Disable reporting that we're good. */
+/*
+ * Disable retpoline and attempt to fall back to another Spectre v2 mitigation.
+ * If possible, fall back to IBRS and IBPB.
+ * Failing that, fall back to lfence.
+ * Failing that, indicate that we have no Spectre v2 mitigation.
+ *
+ * Obtains spec_ctrl_mutex before checking/changing Spectre v2 mitigation
+ * state.
+ */
 void disable_retpoline(void)
 {
-	spectre_v2_enabled = SPECTRE_V2_NONE;
-	pr_err("system may be vulnerable to spectre\n");
+	mutex_lock(&spec_ctrl_mutex);
+
+	if (retpoline_enabled()) {
+		pr_err("Disabling Spectre v2 mitigation retpoline.\n");
+	} else {
+		/* retpoline is not enabled.  Return */
+		mutex_unlock(&spec_ctrl_mutex);
+		return;
+	}
+
+	if (allow_retpoline_fallback) {
+		if (!ibrs_inuse) {
+			/* try to enable ibrs */
+			if (set_ibrs_inuse()) {
+				pr_err("Spectre v2 mitigation set to IBRS.\n");
+				spectre_v2_enabled = SPECTRE_V2_IBRS;
+				if (!ibpb_inuse && set_ibpb_inuse()) {
+					pr_err("Spectre v2 mitigation IBPB enabled.\n");
+				}
+			} else {
+				pr_err("Could not enable IBRS.\n");
+				if (lfence_inuse) {
+					pr_err("Spectre v2 mitigation set to lfence.\n");
+					spectre_v2_enabled =
+						SPECTRE_V2_IBRS_LFENCE;
+				} else {
+					pr_err("No Spectre v2 mitigation to fall back to.\n");
+					spectre_v2_enabled = SPECTRE_V2_NONE;
+				}
+			}
+		} else {
+			pr_err("Spectre v2 mitigation IBRS is set.\n");
+			spectre_v2_enabled = SPECTRE_V2_IBRS;
+		}
+	} else {
+		pr_err("Cannot choose another Spectre v2 mitigation because retpoline_fallback is off.\n");
+		spectre_v2_enabled = SPECTRE_V2_NONE;
+	}
+
+	if (spectre_v2_enabled == SPECTRE_V2_NONE)
+		pr_err("system may be vulnerable to spectre\n");
+
+	mutex_unlock(&spec_ctrl_mutex);
 }
 
 bool retpoline_enabled(void)

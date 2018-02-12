@@ -3522,6 +3522,10 @@ bytes respectively. Such letter suffixes can also be entirely omitted.
 			skylake=off	- do not use IBRS if present on Skylake
 					  instead of retpoline (this is equivalant
 				          to spectre_v2=ibrs).
+			retpoline_fallback=off - don't fall back to another
+						 mitigation if a module is
+						 loaded that was not compiled
+						 with retpoline.
 
 	spia_io_base=	[HW,MTD]
 	spia_fio_base=
