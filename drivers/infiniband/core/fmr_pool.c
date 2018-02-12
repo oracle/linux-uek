@@ -311,7 +311,11 @@ static void ib_fmr_cleanup_func(struct kthread_work *work)
 
 	atomic_inc(&pool->flush_ser);
 
+#ifdef WITHOUT_ORACLE_EXTENSIONS
 	wake_up_interruptible(&pool->force_wait);
+#else /* !WITHOUT_ORACLE_EXTENSIONS */
+	wake_up(&pool->force_wait);
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 	if (pool->flush_function)
 		pool->flush_function(pool, pool->flush_arg);
@@ -602,9 +606,15 @@ int ib_flush_fmr_pool(struct ib_fmr_pool *pool)
 	serial = atomic_inc_return(&pool->req_ser);
 	kthread_queue_work(pool->worker, &pool->work);
 
+#ifdef WITHOUT_ORACLE_EXTENSIONS
 	if (wait_event_interruptible(pool->force_wait,
 				     atomic_read(&pool->flush_ser) - serial >= 0))
 		return -EINTR;
+#else /* !WITHOUT_ORACLE_EXTENSIONS */
+
+	wait_event(pool->force_wait, atomic_read(&pool->flush_ser) - serial >= 0);
+
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 	return 0;
 }
