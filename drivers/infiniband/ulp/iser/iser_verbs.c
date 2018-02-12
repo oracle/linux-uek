@@ -187,6 +187,9 @@ int iser_alloc_fmr_pool(struct ib_conn *ib_conn,
 	params.pool_size	 = cmds_max * 2;
 	params.dirty_watermark	 = cmds_max;
 	params.cache		 = 0;
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	params.relaxed           = 0;
+#endif
 	params.flush_function	 = NULL;
 	params.access		 = (IB_ACCESS_LOCAL_WRITE  |
 				    IB_ACCESS_REMOTE_WRITE |

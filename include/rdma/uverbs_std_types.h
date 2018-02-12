@@ -47,6 +47,9 @@ extern const struct uverbs_object_def uverbs_object_srq;
 extern const struct uverbs_object_def uverbs_object_ah;
 extern const struct uverbs_object_def uverbs_object_flow;
 extern const struct uverbs_object_def uverbs_object_mr;
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+extern const struct uverbs_object_def uverbs_object_fmr;
+#endif
 extern const struct uverbs_object_def uverbs_object_mw;
 extern const struct uverbs_object_def uverbs_object_pd;
 extern const struct uverbs_object_def uverbs_object_xrcd;

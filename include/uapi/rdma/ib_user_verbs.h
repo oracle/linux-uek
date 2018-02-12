@@ -380,6 +380,10 @@ struct ib_uverbs_share_pd_resp {
 	__u32 pd_handle;
 };
 
+struct ib_uverbs_flush_relaxed_mr {
+	__u32 pd_handle;
+};
+
 #endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 struct ib_uverbs_dealloc_pd {

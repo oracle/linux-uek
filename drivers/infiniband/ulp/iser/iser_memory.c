@@ -249,7 +249,11 @@ int iser_fast_reg_fmr(struct iscsi_iser_task *iser_task,
 	}
 
 	fmr  = ib_fmr_pool_map_phys(fmr_pool, page_vec->pages,
-				    page_vec->npages, page_vec->pages[0]);
+				    page_vec->npages, page_vec->pages[0]
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+				    , NULL
+#endif
+		);
 	if (IS_ERR(fmr)) {
 		ret = PTR_ERR(fmr);
 		iser_err("ib_fmr_pool_map_phys failed: %d\n", ret);

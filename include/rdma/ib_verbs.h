@@ -2379,6 +2379,8 @@ struct ib_device {
 	int			   (*remove_shpd)(struct ib_device *ibdev,
 						  struct ib_shpd *shpd,
 						  int atinit);
+	int                        (*set_fmr_pd)(struct ib_fmr *fmr,
+						 struct ib_pd *pd);
 #endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 	struct module               *owner;
@@ -2424,7 +2426,20 @@ struct ib_device {
 						     int comp_vector);
 
 	struct uverbs_root_spec		*specs_root;
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	struct ib_pd                *relaxed_pd;
+	struct list_head             relaxed_pool_list;
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 };
+
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+struct ib_relaxed_pool_data {
+	struct ib_fmr_pool *fmr_pool;
+	u32 access_flags;
+	int max_pages;
+	struct list_head pool_list;
+};
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 struct ib_client {
 	char  *name;
@@ -3617,6 +3632,17 @@ static inline u32 ib_inc_rkey(u32 rkey)
 struct ib_fmr *ib_alloc_fmr(struct ib_pd *pd,
 			    int mr_access_flags,
 			    struct ib_fmr_attr *fmr_attr);
+
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+
+/**
+ * ib_set_fmr_pd - set new PD for an FMR
+ * @fmr: The fast memory region to associate with the pd.
+ * @pd: new pd.
+ */
+int ib_set_fmr_pd(struct ib_fmr *fmr, struct ib_pd *pd);
+
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 /**
  * ib_map_phys_fmr - Maps a list of physical pages to a fast memory region.

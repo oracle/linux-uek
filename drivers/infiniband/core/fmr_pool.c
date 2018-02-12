@@ -52,6 +52,11 @@ enum {
 	IB_FMR_HASH_MASK  = IB_FMR_HASH_SIZE - 1
 };
 
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+#define FMR_SPLIT_COUNT 3
+#define FMR_CLEANUP_DELAY msecs_to_jiffies(50)
+#endif
+
 /*
  * If an FMR is not in use, then the list member will point to either
  * its pool's free_list (if the FMR can be mapped again; that is,
@@ -89,6 +94,10 @@ struct ib_fmr_pool {
 	int                       dirty_watermark;
 	int                       dirty_len;
 	struct list_head          free_list;
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	spinlock_t                used_pool_lock;
+	struct list_head          used_list;
+#endif
 	struct list_head          dirty_list;
 	struct hlist_head        *cache_bucket;
 
@@ -98,11 +107,18 @@ struct ib_fmr_pool {
 
 	struct kthread_worker	  *worker;
 	struct kthread_work	  work;
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	struct kthread_delayed_work	  dwork;
+#endif
 
 	atomic_t                  req_ser;
 	atomic_t                  flush_ser;
 
 	wait_queue_head_t         force_wait;
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	struct ib_pd		 *pd;
+	int			  relaxed;
+#endif
 };
 
 static inline u32 ib_fmr_hash(u64 first_page)
@@ -115,7 +131,11 @@ static inline u32 ib_fmr_hash(u64 first_page)
 static inline struct ib_pool_fmr *ib_fmr_cache_lookup(struct ib_fmr_pool *pool,
 						      u64 *page_list,
 						      int  page_list_len,
-						      u64  io_virtual_address)
+						      u64  io_virtual_address
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+						      , struct ib_pd *pd
+#endif
+		)
 {
 	struct hlist_head *bucket;
 	struct ib_pool_fmr *fmr;
@@ -128,6 +148,9 @@ static inline struct ib_pool_fmr *ib_fmr_cache_lookup(struct ib_fmr_pool *pool,
 	hlist_for_each_entry(fmr, bucket, cache_node)
 		if (io_virtual_address == fmr->io_virtual_address &&
 		    page_list_len      == fmr->page_list_len      &&
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+		    pd		       == fmr->pd		  &&
+#endif
 		    !memcmp(page_list, fmr->page_list,
 			    page_list_len * sizeof *page_list))
 			return fmr;
@@ -135,13 +158,106 @@ static inline struct ib_pool_fmr *ib_fmr_cache_lookup(struct ib_fmr_pool *pool,
 	return NULL;
 }
 
-static void ib_fmr_batch_release(struct ib_fmr_pool *pool)
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+
+static void fmr_teardown_mr(struct ib_pool_fmr *fmr)
+{
+
+	if (fmr->sg_len) {
+		ib_dma_unmap_sg(fmr->pd->device,
+				fmr->sg, fmr->sg_len,
+				DMA_BIDIRECTIONAL);
+	}
+
+	/* Release the s/g list */
+	if (fmr->sg_len) {
+		unsigned int i;
+
+		for (i = 0; i < fmr->sg_len; ++i) {
+			struct page *page = sg_page(&fmr->sg[i]);
+
+			/* FIXME we need a way to tell a r/w MR
+			 * from a r/o MR */
+			BUG_ON(irqs_disabled());
+			set_page_dirty(page);
+			put_page(page);
+		}
+		kfree(fmr->sg);
+
+		fmr->sg = NULL;
+		fmr->sg_len = 0;
+	}
+}
+
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
+
+static void ib_fmr_batch_release(struct ib_fmr_pool *pool
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+				 , int unmap_usedonce
+#endif
+	)
 {
 	int                 ret;
 	struct ib_pool_fmr *fmr;
 	LIST_HEAD(unmap_list);
 	LIST_HEAD(fmr_list);
 
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	if (unmap_usedonce) {
+		/* force a flush */
+		struct ib_pool_fmr *fmr;
+		int already_split = 0;
+		int count = 0;
+		LIST_HEAD(temp_list);
+
+		spin_lock_irq(&pool->used_pool_lock);
+		list_splice_init(&pool->used_list, &temp_list);
+		spin_unlock_irq(&pool->used_pool_lock);
+		list_for_each_entry(fmr, &temp_list, list) {
+			/* find first fmr that is not mapped yet */
+			if (fmr->remap_count ==  0 ||
+				(count > (pool->pool_size / FMR_SPLIT_COUNT))) {
+				/* split the list 2 two */
+				list_cut_position(&unmap_list, &temp_list,
+								 &fmr->list);
+				spin_lock_irq(&pool->used_pool_lock);
+				list_splice(&temp_list, &pool->used_list);
+				spin_unlock_irq(&pool->used_pool_lock);
+				already_split = 1;
+				break;
+			} else {
+				hlist_del_init(&fmr->cache_node);
+				fmr->remap_count = 0;
+				list_add_tail(&fmr->fmr->list, &fmr_list);
+				count++;
+			}
+		}
+
+		if (!already_split) {
+			/* All are mapped once */
+			list_splice_tail(&temp_list, &unmap_list);
+		}
+		if (!list_empty(&unmap_list)) {
+			ret = ib_unmap_fmr(&fmr_list);
+			if (ret)
+				pr_warn(PFX "ib_unmap_fmr returned %d\n", ret);
+
+			if (pool->relaxed) {
+				list_for_each_entry(fmr, &unmap_list, list) {
+					fmr_teardown_mr(fmr);
+				}
+			}
+			spin_lock_irq(&pool->pool_lock);
+			list_splice(&unmap_list, &pool->free_list);
+			spin_unlock_irq(&pool->pool_lock);
+		}
+		INIT_LIST_HEAD(&unmap_list);
+		INIT_LIST_HEAD(&fmr_list);
+
+
+	}
+
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 	spin_lock_irq(&pool->pool_lock);
 
 	list_for_each_entry(fmr, &pool->dirty_list, list) {
@@ -170,6 +286,14 @@ static void ib_fmr_batch_release(struct ib_fmr_pool *pool)
 	if (ret)
 		pr_warn(PFX "ib_unmap_fmr returned %d\n", ret);
 
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	if (pool->relaxed) {
+		list_for_each_entry(fmr, &unmap_list, list) {
+			fmr_teardown_mr(fmr);
+		}
+	}
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
+
 	spin_lock_irq(&pool->pool_lock);
 	list_splice(&unmap_list, &pool->free_list);
 	spin_unlock_irq(&pool->pool_lock);
@@ -179,8 +303,14 @@ static void ib_fmr_cleanup_func(struct kthread_work *work)
 {
 	struct ib_fmr_pool *pool = container_of(work, struct ib_fmr_pool, work);
 
+#ifdef WITHOUT_ORACLE_EXTENSIONS
 	ib_fmr_batch_release(pool);
+#else /* !WITHOUT_ORACLE_EXTENSIONS */
+	ib_fmr_batch_release(pool, 0);
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
+
 	atomic_inc(&pool->flush_ser);
+
 	wake_up_interruptible(&pool->force_wait);
 
 	if (pool->flush_function)
@@ -188,7 +318,26 @@ static void ib_fmr_cleanup_func(struct kthread_work *work)
 
 	if (atomic_read(&pool->flush_ser) - atomic_read(&pool->req_ser) < 0)
 		kthread_queue_work(pool->worker, &pool->work);
+
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	if (pool->relaxed)
+		kthread_mod_delayed_work(pool->worker, &pool->dwork, FMR_CLEANUP_DELAY);
+#endif
 }
+
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+/* for relaxed pools only */
+static void ib_fmr_delayed_cleanup_func(struct kthread_work *work)
+{
+	struct ib_fmr_pool *pool = container_of(work, struct ib_fmr_pool, dwork.work);
+
+	ib_fmr_batch_release(pool, 1);
+	if (pool->flush_function)
+		pool->flush_function(pool, pool->flush_arg);
+
+	kthread_queue_delayed_work(pool->worker, &pool->dwork, FMR_CLEANUP_DELAY);
+}
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 /**
  * ib_create_fmr_pool - Create an FMR pool
@@ -210,12 +359,27 @@ struct ib_fmr_pool *ib_create_fmr_pool(struct ib_pd             *pd,
 	if (!params)
 		return ERR_PTR(-EINVAL);
 
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	if (params->cache && params->relaxed)
+		return ERR_PTR(-EINVAL);
+#endif
+
 	device = pd->device;
 	if (!device->alloc_fmr    || !device->dealloc_fmr  ||
 	    !device->map_phys_fmr || !device->unmap_fmr) {
 		pr_info(PFX "Device %s does not support FMRs\n", device->name);
 		return ERR_PTR(-ENOSYS);
 	}
+
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+
+	if (params->relaxed && !device->set_fmr_pd) {
+		pr_info(PFX "Device %s does not support relaxed FMRs\n",
+			device->name);
+		return ERR_PTR(-ENOSYS);
+	}
+
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 	if (!device->attrs.max_map_per_fmr)
 		max_remaps = IB_FMR_MAX_REMAPS;
@@ -231,6 +395,9 @@ struct ib_fmr_pool *ib_create_fmr_pool(struct ib_pd             *pd,
 	pool->flush_arg      = params->flush_arg;
 
 	INIT_LIST_HEAD(&pool->free_list);
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	INIT_LIST_HEAD(&pool->used_list);
+#endif
 	INIT_LIST_HEAD(&pool->dirty_list);
 
 	if (params->cache) {
@@ -255,6 +422,11 @@ struct ib_fmr_pool *ib_create_fmr_pool(struct ib_pd             *pd,
 	atomic_set(&pool->req_ser,   0);
 	atomic_set(&pool->flush_ser, 0);
 	init_waitqueue_head(&pool->force_wait);
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	spin_lock_init(&pool->used_pool_lock);
+	pool->pd = pd;
+	pool->relaxed = params->relaxed;
+#endif
 
 	pool->worker = kthread_create_worker(0, "ib_fmr(%s)", device->name);
 	if (IS_ERR(pool->worker)) {
@@ -263,6 +435,9 @@ struct ib_fmr_pool *ib_create_fmr_pool(struct ib_pd             *pd,
 		goto out_free_pool;
 	}
 	kthread_init_work(&pool->work, ib_fmr_cleanup_func);
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	kthread_init_delayed_work(&pool->dwork, ib_fmr_delayed_cleanup_func);
+#endif
 
 	{
 		struct ib_pool_fmr *fmr;
@@ -284,6 +459,12 @@ struct ib_fmr_pool *ib_create_fmr_pool(struct ib_pd             *pd,
 			fmr->pool             = pool;
 			fmr->remap_count      = 0;
 			fmr->ref_count        = 0;
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+			fmr->pd		      = pd;
+			fmr->page_list_len = 0;
+			fmr->sg		   = NULL;
+			fmr->sg_len        = 0;
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 			INIT_HLIST_NODE(&fmr->cache_node);
 
 			fmr->fmr = ib_alloc_fmr(pd, params->access, &fmr_attr);
@@ -298,6 +479,11 @@ struct ib_fmr_pool *ib_create_fmr_pool(struct ib_pd             *pd,
 			++pool->pool_size;
 		}
 	}
+
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	if (pool->relaxed)
+		kthread_queue_delayed_work(pool->worker, &pool->dwork, FMR_CLEANUP_DELAY);
+#endif
 
 	return pool;
 
@@ -328,20 +514,45 @@ void ib_destroy_fmr_pool(struct ib_fmr_pool *pool)
 	int                 i;
 
 	kthread_destroy_worker(pool->worker);
+#ifdef WITHOUT_ORACLE_EXTENSIONS
 	ib_fmr_batch_release(pool);
+#else /* !WITHOUT_ORACLE_EXTENSIONS */
+	ib_fmr_batch_release(pool, 0);
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 	i = 0;
 	list_for_each_entry_safe(fmr, tmp, &pool->free_list, list) {
+#ifdef WITHOUT_ORACLE_EXTENSIONS
 		if (fmr->remap_count) {
 			INIT_LIST_HEAD(&fmr_list);
 			list_add_tail(&fmr->fmr->list, &fmr_list);
 			ib_unmap_fmr(&fmr_list);
 		}
+#else /* !WITHOUT_ORACLE_EXTENSIONS */
+		ib_set_fmr_pd(fmr->fmr, pool->pd);
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 		ib_dealloc_fmr(fmr->fmr);
 		list_del(&fmr->list);
 		kfree(fmr);
 		++i;
 	}
+
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	list_for_each_entry_safe(fmr, tmp, &pool->used_list, list) {
+		if (fmr->remap_count) {
+			INIT_LIST_HEAD(&fmr_list);
+			list_add_tail(&fmr->fmr->list, &fmr_list);
+			ib_unmap_fmr(&fmr_list);
+			if (pool->relaxed)
+				fmr_teardown_mr(fmr);
+		}
+		ib_set_fmr_pd(fmr->fmr, pool->pd);
+		ib_dealloc_fmr(fmr->fmr);
+		list_del(&fmr->list);
+		kfree(fmr);
+		++i;
+	}
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 	if (i < pool->pool_size)
 		pr_warn(PFX "pool still has %d regions registered\n",
@@ -361,7 +572,9 @@ EXPORT_SYMBOL(ib_destroy_fmr_pool);
 int ib_flush_fmr_pool(struct ib_fmr_pool *pool)
 {
 	int serial;
+#ifdef WITHOUT_ORACLE_EXTENSIONS
 	struct ib_pool_fmr *fmr, *next;
+#endif
 
 	/*
 	 * The free_list holds FMRs that may have been used
@@ -369,12 +582,22 @@ int ib_flush_fmr_pool(struct ib_fmr_pool *pool)
 	 * Put them on the dirty list now so that the cleanup
 	 * thread will reap them too.
 	 */
+#ifdef WITHOUT_ORACLE_EXTENSIONS
+
 	spin_lock_irq(&pool->pool_lock);
 	list_for_each_entry_safe(fmr, next, &pool->free_list, list) {
 		if (fmr->remap_count > 0)
 			list_move(&fmr->list, &pool->dirty_list);
 	}
 	spin_unlock_irq(&pool->pool_lock);
+
+#else /* !WITHOUT_ORACLE_EXTENSIONS */
+
+	spin_lock_irq(&pool->used_pool_lock);
+	list_splice_init(&pool->used_list, &pool->dirty_list);
+	spin_unlock_irq(&pool->used_pool_lock);
+
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 	serial = atomic_inc_return(&pool->req_ser);
 	kthread_queue_work(pool->worker, &pool->work);
@@ -393,13 +616,18 @@ EXPORT_SYMBOL(ib_flush_fmr_pool);
  * @page_list:List of pages to map
  * @list_len:Number of pages in @page_list
  * @io_virtual_address:I/O virtual address for new FMR
+ * @rargs: argument sepecified when relaxed MR is used.
  *
  * Map an FMR from an FMR pool.
  */
 struct ib_pool_fmr *ib_fmr_pool_map_phys(struct ib_fmr_pool *pool_handle,
 					 u64                *page_list,
 					 int                 list_len,
-					 u64                 io_virtual_address)
+					 u64                 io_virtual_address
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+					 , struct ib_fmr_args_relaxed *rargs
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
+		)
 {
 	struct ib_fmr_pool *pool = pool_handle;
 	struct ib_pool_fmr *fmr;
@@ -409,11 +637,20 @@ struct ib_pool_fmr *ib_fmr_pool_map_phys(struct ib_fmr_pool *pool_handle,
 	if (list_len < 1 || list_len > pool->max_pages)
 		return ERR_PTR(-EINVAL);
 
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	if (pool->relaxed && rargs == NULL)
+		return ERR_PTR(-EINVAL);
+#endif
+
 	spin_lock_irqsave(&pool->pool_lock, flags);
 	fmr = ib_fmr_cache_lookup(pool,
 				  page_list,
 				  list_len,
-				  io_virtual_address);
+				  io_virtual_address
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+				  , rargs ? rargs->pd : NULL
+#endif
+		);
 	if (fmr) {
 		/* found in cache */
 		++fmr->ref_count;
@@ -426,6 +663,8 @@ struct ib_pool_fmr *ib_fmr_pool_map_phys(struct ib_fmr_pool *pool_handle,
 		return fmr;
 	}
 
+#ifdef WITHOUT_ORACLE_EXTENSIONS
+
 	if (list_empty(&pool->free_list)) {
 		spin_unlock_irqrestore(&pool->pool_lock, flags);
 		return ERR_PTR(-EAGAIN);
@@ -436,13 +675,57 @@ struct ib_pool_fmr *ib_fmr_pool_map_phys(struct ib_fmr_pool *pool_handle,
 	hlist_del_init(&fmr->cache_node);
 	spin_unlock_irqrestore(&pool->pool_lock, flags);
 
+#else /* !WITHOUT_ORACLE_EXTENSIONS */
+
+	if (list_empty(&pool->free_list)) {
+		spin_unlock_irqrestore(&pool->pool_lock, flags);
+		spin_lock_irqsave(&pool->used_pool_lock, flags);
+		if (list_empty(&pool->used_list)) {
+			spin_unlock_irqrestore(&pool->used_pool_lock, flags);
+			return ERR_PTR(-EAGAIN);
+		}
+		fmr = list_entry(pool->used_list.next, struct ib_pool_fmr,
+				 list);
+		list_del(&fmr->list);
+		hlist_del_init(&fmr->cache_node);
+		spin_unlock_irqrestore(&pool->used_pool_lock, flags);
+	} else {
+		fmr = list_entry(pool->free_list.next, struct ib_pool_fmr,
+				 list);
+		list_del(&fmr->list);
+		hlist_del_init(&fmr->cache_node);
+		spin_unlock_irqrestore(&pool->pool_lock, flags);
+	}
+
+	if (pool->relaxed && fmr->pd != rargs->pd) {
+		result = ib_set_fmr_pd(fmr->fmr, rargs->pd);
+		if (result) {
+			spin_lock_irqsave(&pool->used_pool_lock, flags);
+			list_add(&fmr->list, &pool->used_list);
+			spin_unlock_irqrestore(&pool->used_pool_lock, flags);
+
+			pr_warn(PFX "set_fmr_pd returns %d\n", result);
+
+			return ERR_PTR(result);
+		}
+	}
+
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
+
 	result = ib_map_phys_fmr(fmr->fmr, page_list, list_len,
 				 io_virtual_address);
 
 	if (result) {
+
+#ifdef WITHOUT_ORACLE_EXTENSIONS
 		spin_lock_irqsave(&pool->pool_lock, flags);
 		list_add(&fmr->list, &pool->free_list);
 		spin_unlock_irqrestore(&pool->pool_lock, flags);
+#else /* !WITHOUT_ORACLE_EXTENSIONS */
+		spin_lock_irqsave(&pool->used_pool_lock, flags);
+		list_add(&fmr->list, &pool->used_list);
+		spin_unlock_irqrestore(&pool->used_pool_lock, flags);
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 		pr_warn(PFX "fmr_map returns %d\n", result);
 
@@ -463,6 +746,20 @@ struct ib_pool_fmr *ib_fmr_pool_map_phys(struct ib_fmr_pool *pool_handle,
 		spin_unlock_irqrestore(&pool->pool_lock, flags);
 	}
 
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+
+	if (pool->relaxed) {
+		fmr->pd = rargs->pd;
+		/* if it was mapped earlier */
+		if (fmr->remap_count > 1)
+			fmr_teardown_mr(fmr);
+
+		fmr->sg = rargs->sg;
+		fmr->sg_len = rargs->sg_len;
+	}
+
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
+
 	return fmr;
 }
 EXPORT_SYMBOL(ib_fmr_pool_map_phys);
@@ -481,12 +778,20 @@ int ib_fmr_pool_unmap(struct ib_pool_fmr *fmr)
 
 	pool = fmr->pool;
 
+#ifdef WITHOUT_ORACLE_EXTENSIONS
 	spin_lock_irqsave(&pool->pool_lock, flags);
+#else /* !WITHOUT_ORACLE_EXTENSIONS */
+	spin_lock_irqsave(&pool->used_pool_lock, flags);
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 	--fmr->ref_count;
 	if (!fmr->ref_count) {
 		if (fmr->remap_count < pool->max_remaps) {
+#ifdef WITHOUT_ORACLE_EXTENSIONS
 			list_add_tail(&fmr->list, &pool->free_list);
+#else /* !WITHOUT_ORACLE_EXTENSIONS */
+			list_add_tail(&fmr->list, &pool->used_list);
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 		} else {
 			list_add_tail(&fmr->list, &pool->dirty_list);
 			if (++pool->dirty_len >= pool->dirty_watermark) {
@@ -502,7 +807,11 @@ int ib_fmr_pool_unmap(struct ib_pool_fmr *fmr)
 			fmr, fmr->ref_count);
 #endif
 
+#ifdef WITHOUT_ORACLE_EXTENSIONS
 	spin_unlock_irqrestore(&pool->pool_lock, flags);
+#else /* !WITHOUT_ORACLE_EXTENSIONS */
+	spin_unlock_irqrestore(&pool->used_pool_lock, flags);
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 	return 0;
 }

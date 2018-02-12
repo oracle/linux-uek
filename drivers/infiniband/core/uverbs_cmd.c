@@ -44,6 +44,10 @@
 #include <rdma/uverbs_std_types.h>
 #include "rdma_core.h"
 
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+#include <rdma/ib_fmr_pool.h>
+#endif
+
 #include "uverbs.h"
 #include "core_priv.h"
 
@@ -64,6 +68,113 @@ ib_uverbs_lookup_comp_file(int fd, struct ib_ucontext *context)
 	return container_of(uobj_file, struct ib_uverbs_completion_event_file,
 			    uobj_file);
 }
+
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+
+/*
+ * get the number of pages by looking at the page indices that the start and
+ * end addresses fall in.
+ *
+ * Returns 0 if the vec is invalid.  It is invalid if the number of bytes
+ * causes the address to wrap or overflows an unsigned int.  This comes
+ * from being stored in the 'length' member of 'struct scatterlist'.
+ */
+static unsigned int get_pages_in_range(u64 addr, u64 bytes)
+{
+	if ((addr + bytes <= addr) ||
+	    (bytes > (u64)UINT_MAX))
+		return 0;
+
+	return ((addr + bytes + PAGE_SIZE - 1) >> PAGE_SHIFT) -
+		(addr >> PAGE_SHIFT);
+}
+
+/* Pin user pages*/
+static int fmr_pin_pages(unsigned long user_addr, unsigned int nr_pages,
+			struct page **pages, int write)
+{
+	int ret;
+
+	down_read(&current->mm->mmap_sem);
+	ret = get_user_pages(user_addr, nr_pages,
+			     write ? FOLL_WRITE : 0,
+			     pages, NULL);
+	up_read(&current->mm->mmap_sem);
+
+	if (0 <= ret && (unsigned) ret < nr_pages) {
+		while (ret--)
+			put_page(pages[ret]);
+		ret = -EFAULT;
+	}
+
+	return ret;
+}
+
+static int create_fmr_pool(struct ib_pd *pd, int pages, u32 access)
+{
+
+	int ret = 0;
+	struct ib_fmr_pool_param fmr_param;
+	struct ib_fmr_pool *fmr_pool;
+	struct ib_relaxed_pool_data *pool_data;
+	struct ib_relaxed_pool_data *pos;
+	int found = 0;
+
+	/*create pools - 32k fmrs of 8k buf, 4k fmrs of 1meg  */
+	memset(&fmr_param, 0, sizeof(fmr_param));
+	fmr_param.pool_size         = (pages > 20) ? 8 * 1024 : 32*1024;
+	fmr_param.dirty_watermark   = 512;
+	fmr_param.cache		    = 0;
+	fmr_param.relaxed           = 1;
+	fmr_param.max_pages_per_fmr = pages;
+	fmr_param.page_shift	    = PAGE_SHIFT;
+	fmr_param.access	    = access;
+
+	fmr_pool = ib_create_fmr_pool(pd, &fmr_param);
+
+	if (IS_ERR(fmr_pool)) {
+		ret = PTR_ERR(fmr_pool);
+		goto err_exit;
+	}
+
+	pool_data = kmalloc(sizeof(*pool_data), GFP_KERNEL);
+
+	if (!pool_data) {
+		ret = -ENOMEM;
+		(void)ib_destroy_fmr_pool(fmr_pool);
+		goto err_exit;
+	}
+
+	pool_data->fmr_pool = fmr_pool;
+	pool_data->access_flags = access;
+	pool_data->max_pages = pages;
+	list_for_each_entry(pos, &pd->device->relaxed_pool_list, pool_list) {
+		if (pages <= pos->max_pages) {
+			list_add_tail(&pool_data->pool_list, &pos->pool_list);
+			found  = 1;
+			break;
+		}
+	}
+	if (!found)
+		list_add_tail(&pool_data->pool_list,
+				 &pd->device->relaxed_pool_list);
+
+#ifdef DEBUG
+	pr_info("FMR POOLS :\n");
+	list_for_each_entry(pos, &pd->device->relaxed_pool_list, pool_list) {
+		pr_info("\t pos -> %p, pages = %d, access = %x, pool = %p\n",
+			pos, pos->max_pages, pos->access_flags,
+			pos->fmr_pool);
+	}
+#endif
+
+	return 0;
+
+err_exit:
+	return ret;
+}
+
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 ssize_t ib_uverbs_get_context(struct ib_uverbs_file *file,
 			      struct ib_device *ib_dev,
@@ -1036,6 +1147,362 @@ ssize_t ib_uverbs_dereg_mr(struct ib_uverbs_file *file,
 
 	return ret ?: in_len;
 }
+
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+
+int ib_uverbs_dereg_fmr(struct ib_pool_fmr *fmr)
+{
+	int ret;
+	struct ib_pd *pd;
+
+	pd = fmr->fmr->pd;
+
+	ret = ib_fmr_pool_unmap(fmr);
+	if (ret)
+		return ret;
+
+	atomic_dec(&pd->usecnt);
+
+	return 0;
+}
+
+ssize_t ib_uverbs_reg_mr_relaxed(struct ib_uverbs_file *file,
+				 struct ib_device *ib_dev,
+				 const char __user *buf, int in_len,
+				 int out_len)
+{
+	struct ib_uverbs_reg_mr      cmd;
+	struct ib_uverbs_reg_mr_resp resp;
+	struct ib_udata              udata;
+	struct ib_uobject           *uobj;
+	struct ib_pd                *pd;
+	int                          ret;
+
+	struct ib_relaxed_pool_data *pos;
+	struct ib_fmr_args_relaxed rel_args;
+	unsigned int n;
+	int found = 0;
+	struct page **pages;
+	int page_cnt;
+	u64 *dma_pages;
+	struct scatterlist *sg;
+	struct ib_pool_fmr *fmr;
+	int fmr_mapped = 0;
+
+	if (out_len < sizeof(resp))
+		return -ENOSPC;
+
+	if (copy_from_user(&cmd, buf, sizeof(cmd)))
+		return -EFAULT;
+
+	INIT_UDATA(&udata, buf + sizeof(cmd),
+		   (unsigned long) cmd.response + sizeof(resp),
+		   in_len - sizeof(cmd), out_len - sizeof(resp));
+
+	if ((cmd.start & ~PAGE_MASK) != (cmd.hca_va & ~PAGE_MASK))
+		return -EINVAL;
+
+	/*
+	 * Local write permission is required if remote write or
+	 * remote atomic permission is also requested.
+	 */
+	if (cmd.access_flags &
+	    (IB_ACCESS_REMOTE_ATOMIC | IB_ACCESS_REMOTE_WRITE) &&
+	    !(cmd.access_flags & IB_ACCESS_LOCAL_WRITE))
+		return -EINVAL;
+
+	/* FMRs are limited to less than 1M for now */
+	if (cmd.length >= (1*1024*1024 + PAGE_SIZE - 1))
+		return -EINVAL;
+
+	uobj  = uobj_alloc(uobj_get_type(fmr), file->ucontext);
+	if (IS_ERR(uobj))
+		return PTR_ERR(uobj);
+
+	pd = uobj_get_obj_read(pd, cmd.pd_handle, file->ucontext);
+	if (!pd) {
+		ret = -EINVAL;
+		goto err_free;
+	}
+
+	/* Relaxed MR */
+	/* pd->device has a list of FMR pools, sorted by size & access_flags */
+	/* if pool is already available use that pool and map the address. if
+	   it is not available then allocate a new pool & allocate from there */
+	{
+
+	n = get_pages_in_range(cmd.start, cmd.length);
+	if (n == 0) {
+		ret  = -EINVAL;
+		goto err_put;
+	}
+
+	found = 0;
+
+	list_for_each_entry(pos, &pd->device->relaxed_pool_list, pool_list) {
+		if (cmd.access_flags == pos->access_flags
+			&& n <= pos->max_pages){
+			found = 1;
+			break;
+		}
+	}
+
+	if (!found) {
+		int pagesin8K = (8*1024 + PAGE_SIZE) >> PAGE_SHIFT;
+		int pagesin1M = (1024*1024 + PAGE_SIZE) >> PAGE_SHIFT;
+		struct ib_pd *pool_pd = NULL;
+
+		/*
+		 * If not already allocated, we do (lazy)
+		 * pd allocation for usnic node type devices!
+		 */
+		if (file->device &&
+		    file->device->ib_dev &&
+		    file->device->ib_dev->relaxed_pd == NULL &&
+		    (file->device->ib_dev->node_type == RDMA_NODE_USNIC ||
+		     file->device->ib_dev->node_type == RDMA_NODE_USNIC_UDP)) {
+			file->device->ib_dev->relaxed_pd =
+				ib_alloc_pd(file->device->ib_dev, 0);
+			if (IS_ERR(file->device->ib_dev->relaxed_pd)) {
+				ret = PTR_ERR(file->device->ib_dev->relaxed_pd);
+				file->device->ib_dev->relaxed_pd = NULL;
+				goto err_put;
+			}
+		}
+
+		pool_pd = file->device->ib_dev->relaxed_pd;
+
+		/* Create pool for 8kb buffers */
+		ret = create_fmr_pool(pool_pd, pagesin8K, cmd.access_flags);
+		if (ret < 0)
+			goto err_put;
+
+		/* Create pool for 1mb buffers */
+		ret = create_fmr_pool(pool_pd, pagesin1M, cmd.access_flags);
+		if (ret < 0)
+			goto err_put;
+
+		list_for_each_entry(pos, &pd->device->relaxed_pool_list,
+				    pool_list) {
+			if (cmd.access_flags == pos->access_flags
+					&& n <= pos->max_pages){
+				found = 1;
+				break;
+			}
+		}
+		if  (!found) {
+			ret = -EINVAL;
+			goto err_put;
+		}
+	}
+
+
+	pages = kcalloc(n, sizeof(struct page *), GFP_KERNEL);
+	if (!pages) {
+		ret = -ENOMEM;
+		goto err_put;
+	}
+
+	ret = fmr_pin_pages(cmd.start & PAGE_MASK, n, pages,
+			cmd.access_flags & IB_ACCESS_LOCAL_WRITE ? 1 : 0);
+	if (ret < 0)
+		goto err_pages_alloc;
+
+
+	/* TODO: define following as a separate function */
+	if (1) {
+		u32 len = 0;
+		int sg_dma_len;
+		int i, j;
+
+		page_cnt = 0;
+
+		sg = kcalloc(n, sizeof(*sg), GFP_KERNEL);
+		if (sg == NULL) {
+			ret = -ENOMEM;
+			goto err_unpin;
+		}
+		sg_init_table(sg, n);
+		/* Stick all pages into the scatterlist */
+		for (i = 0 ; i < n; i++)
+			sg_set_page(&sg[i], pages[i], PAGE_SIZE, 0);
+
+		sg_dma_len = ib_dma_map_sg(pd->device, sg, n,
+				DMA_BIDIRECTIONAL);
+		if (unlikely(!sg_dma_len)) {
+			pr_warn("RFMR/IB: dma_map_sg failed!\n");
+			ret = -EBUSY;
+			goto err_free_sg;
+		}
+
+
+		for (i = 0; i < sg_dma_len; ++i) {
+			unsigned int dma_len = ib_sg_dma_len(pd->device,
+							     &sg[i]);
+			u64 dma_addr = ib_sg_dma_address(pd->device, &sg[i]);
+
+			if (dma_addr & ~PAGE_MASK) {
+				if (i > 0) {
+					ret = -EINVAL;
+					goto err_free_sg;
+				} else
+					++page_cnt;
+			}
+			if ((dma_addr + dma_len) & ~PAGE_MASK) {
+				if (i < sg_dma_len - 1) {
+					ret = -EINVAL;
+					goto err_free_sg;
+				} else
+					++page_cnt;
+			}
+
+			len += dma_len;
+		}
+
+		page_cnt += len >> PAGE_SHIFT;
+
+		dma_pages = kmalloc_array(page_cnt, sizeof(u64), GFP_ATOMIC);
+		if (!dma_pages) {
+			ret = -ENOMEM;
+			goto err_free_sg;
+		}
+
+		page_cnt = 0;
+		for (i = 0; i < sg_dma_len; ++i) {
+			unsigned int dma_len = ib_sg_dma_len(pd->device,
+							     &sg[i]);
+			u64 dma_addr = ib_sg_dma_address(pd->device, &sg[i]);
+
+			for (j = 0; j < dma_len; j += PAGE_SIZE) {
+				dma_pages[page_cnt++] =
+					(dma_addr & PAGE_MASK) + j;
+			}
+		}
+	}
+
+
+	rel_args.pd = pd;
+	rel_args.sg = sg;
+	rel_args.sg_len = n;
+
+	fmr = ib_fmr_pool_map_phys(pos->fmr_pool, dma_pages, page_cnt,
+					 cmd.hca_va & PAGE_MASK, &rel_args);
+
+	kfree(dma_pages);
+
+	if (IS_ERR(fmr)) {
+		ret = PTR_ERR(fmr);
+		goto err_free_sg;
+	}
+
+	fmr_mapped = 1;
+
+	kfree(pages);
+
+	}
+
+	fmr->fmr->device  = pd->device;
+	fmr->fmr->pd      = pd;
+	atomic_inc(&pd->usecnt);
+
+	uobj->object = fmr;
+
+	memset(&resp, 0, sizeof(resp));
+	resp.lkey      = fmr->fmr->lkey;
+	resp.rkey      = fmr->fmr->rkey;
+	resp.mr_handle = uobj->id;
+
+	if (copy_to_user((void __user *) (unsigned long) cmd.response,
+			 &resp, sizeof(resp))) {
+		ret = -EFAULT;
+		goto err_copy;
+	}
+
+	uobj_put_obj_read(pd);
+
+	uobj_alloc_commit(uobj);
+
+	return in_len;
+
+err_copy:
+	ib_fmr_pool_unmap(fmr);
+	atomic_dec(&pd->usecnt);
+
+err_free_sg:
+	 /* if mapped already, this will be freed while flushing */
+	if (!fmr_mapped)
+		kfree(sg);
+
+err_unpin:
+	 /* if mapped already, pages will be unpinned during flushing */
+	if (!fmr_mapped)
+		while (n--)
+			put_page(pages[n]);
+
+err_pages_alloc:
+	kfree(pages);
+
+err_put:
+	uobj_put_obj_read(pd);
+
+err_free:
+	uobj_alloc_abort(uobj);
+
+	return ret;
+}
+
+ssize_t ib_uverbs_dereg_mr_relaxed(struct ib_uverbs_file *file,
+				   struct ib_device *ib_dev,
+				   const char __user *buf, int in_len,
+				   int out_len)
+{
+	struct ib_uverbs_dereg_mr cmd;
+	struct ib_uobject	 *uobj;
+	int                       ret;
+
+	if (copy_from_user(&cmd, buf, sizeof(cmd)))
+		return -EFAULT;
+
+	uobj  = uobj_get_write(uobj_get_type(fmr), cmd.mr_handle,
+			       file->ucontext);
+	if (IS_ERR(uobj))
+		return PTR_ERR(uobj);
+
+	ret = uobj_remove_commit(uobj);
+
+	return ret ?: in_len;
+}
+
+ssize_t ib_uverbs_flush_relaxed_mr(struct ib_uverbs_file *file,
+				   struct ib_device *ib_dev,
+				   const char __user *buf,
+				   int in_len, int out_len)
+{
+	struct ib_uverbs_flush_relaxed_mr cmd;
+	struct ib_uobject          *uobj;
+	struct ib_pd               *pd;
+	struct ib_relaxed_pool_data *pos;
+
+	if (copy_from_user(&cmd, buf, sizeof(cmd)))
+		return -EFAULT;
+
+	uobj  = uobj_get_write(uobj_get_type(pd), cmd.pd_handle,
+			       file->ucontext);
+	if (IS_ERR(uobj))
+		return PTR_ERR(uobj);
+
+	/* flush all the pools associated with the pd */
+	pd = uobj->object;
+	list_for_each_entry(pos, &pd->device->relaxed_pool_list, pool_list) {
+		ib_flush_fmr_pool(pos->fmr_pool);
+	}
+
+	uobj_put_write(uobj);
+
+	return in_len;
+}
+
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 ssize_t ib_uverbs_alloc_mw(struct ib_uverbs_file *file,
 			   struct ib_device *ib_dev,

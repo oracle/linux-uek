@@ -62,6 +62,9 @@ struct ib_fmr_pool_param {
 						void               *arg);
 	void                   *flush_arg;
 	unsigned                cache:1;
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	unsigned		relaxed:1;
+#endif
 };
 
 struct ib_pool_fmr {
@@ -72,9 +75,25 @@ struct ib_pool_fmr {
 	int                 ref_count;
 	int                 remap_count;
 	u64                 io_virtual_address;
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	struct ib_pd	   *pd;
+	int		    list_id;
+	struct scatterlist *sg;
+	int		    sg_len;
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 	int                 page_list_len;
 	u64                 page_list[0];
 };
+
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+
+struct ib_fmr_args_relaxed {
+	struct ib_pd       *pd;
+	struct scatterlist *sg;
+	int		    sg_len;
+};
+
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 struct ib_fmr_pool *ib_create_fmr_pool(struct ib_pd             *pd,
 				       struct ib_fmr_pool_param *params);
@@ -86,7 +105,11 @@ int ib_flush_fmr_pool(struct ib_fmr_pool *pool);
 struct ib_pool_fmr *ib_fmr_pool_map_phys(struct ib_fmr_pool *pool_handle,
 					 u64                *page_list,
 					 int                 list_len,
-					 u64                 io_virtual_address);
+					 u64                 io_virtual_address
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+					 , struct ib_fmr_args_relaxed *rargs
+#endif
+	);
 
 int ib_fmr_pool_unmap(struct ib_pool_fmr *fmr);
 

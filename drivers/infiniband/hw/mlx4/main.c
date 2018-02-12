@@ -2770,7 +2770,10 @@ static void *mlx4_ib_add(struct mlx4_dev *dev)
 		(1ull << IB_USER_VERBS_CMD_OPEN_QP)		|
 #ifndef WITHOUT_ORACLE_EXTENSIONS
 		(1ull << IB_USER_VERBS_CMD_ALLOC_SHPD)		|
-		(1ull << IB_USER_VERBS_CMD_SHARE_PD);
+		(1ull << IB_USER_VERBS_CMD_SHARE_PD)		|
+		(1ull << IB_USER_VERBS_CMD_REG_MR_RELAXED)	|
+		(1ull << IB_USER_VERBS_CMD_DEREG_MR_RELAXED)	|
+		(1ull << IB_USER_VERBS_CMD_FLUSH_RELAXED_MR);
 #else /* WITHOUT_ORACLE_EXTENSIONS */
 		0;
 #endif /* WITHOUT_ORACLE_EXTENSIONS */
@@ -2827,6 +2830,7 @@ static void *mlx4_ib_add(struct mlx4_dev *dev)
 	ibdev->ib_dev.alloc_shpd	= mlx4_ib_alloc_shpd;
 	ibdev->ib_dev.share_pd		= mlx4_ib_share_pd;
 	ibdev->ib_dev.remove_shpd	= mlx4_ib_remove_shpd;
+	ibdev->ib_dev.set_fmr_pd	= mlx4_ib_set_fmr_pd;
 #endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 	if ((dev->caps.flags2 & MLX4_DEV_CAP_FLAG2_RSS) &&

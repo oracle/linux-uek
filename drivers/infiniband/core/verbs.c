@@ -1679,6 +1679,25 @@ struct ib_fmr *ib_alloc_fmr(struct ib_pd *pd,
 }
 EXPORT_SYMBOL(ib_alloc_fmr);
 
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+
+int ib_set_fmr_pd(struct ib_fmr *fmr, struct ib_pd *pd)
+{
+	int ret = 0;
+
+	if (fmr->device->set_fmr_pd) {
+		ret = fmr->device->set_fmr_pd(fmr, pd);
+		if (!ret)
+			fmr->pd = pd;
+
+		return ret;
+	} else
+		return -ENOSYS;
+}
+EXPORT_SYMBOL(ib_set_fmr_pd);
+
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
+
 int ib_unmap_fmr(struct list_head *fmr_list)
 {
 	struct ib_fmr *fmr;

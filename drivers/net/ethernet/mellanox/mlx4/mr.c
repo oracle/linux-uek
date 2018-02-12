@@ -1008,6 +1008,17 @@ static inline int mlx4_check_fmr(struct mlx4_fmr *fmr, u64 *page_list,
 	return 0;
 }
 
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+
+int mlx4_set_fmr_pd(struct mlx4_fmr *fmr, u32 pd)
+{
+	fmr->mr.pd = pd;
+	return 0;
+}
+EXPORT_SYMBOL_GPL(mlx4_set_fmr_pd);
+
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
+
 int mlx4_map_phys_fmr(struct mlx4_dev *dev, struct mlx4_fmr *fmr, u64 *page_list,
 		      int npages, u64 iova, u32 *lkey, u32 *rkey)
 {

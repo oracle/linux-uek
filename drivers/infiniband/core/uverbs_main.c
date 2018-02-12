@@ -127,6 +127,9 @@ static ssize_t (*uverbs_cmd_table[])(struct ib_uverbs_file *file,
 	 */
 	[IB_USER_VERBS_CMD_ALLOC_SHPD]		= ib_uverbs_alloc_shpd,
 	[IB_USER_VERBS_CMD_SHARE_PD]		= ib_uverbs_share_pd,
+	[IB_USER_VERBS_CMD_REG_MR_RELAXED]	= ib_uverbs_reg_mr_relaxed,
+	[IB_USER_VERBS_CMD_DEREG_MR_RELAXED]	= ib_uverbs_dereg_mr_relaxed,
+	[IB_USER_VERBS_CMD_FLUSH_RELAXED_MR]	= ib_uverbs_flush_relaxed_mr,
 #endif /* !WITHOUT_ORACLE_EXTENSIONS */
 };
 
@@ -1146,6 +1149,16 @@ static void ib_uverbs_add_one(struct ib_device *device)
 		device->specs_root = uverbs_dev->specs_root;
 	}
 
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+
+	device->relaxed_pd = ib_alloc_pd(device, 0);
+	if (IS_ERR(device->relaxed_pd)) {
+		device->relaxed_pd = NULL;
+		goto err_class;
+	}
+
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
+
 	ib_set_client_data(device, &uverbs_client, uverbs_dev);
 
 	return;
@@ -1243,9 +1256,27 @@ static void ib_uverbs_remove_one(struct ib_device *device, void *client_data)
 {
 	struct ib_uverbs_device *uverbs_dev = client_data;
 	int wait_clients = 1;
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	struct ib_relaxed_pool_data *pos;
+	struct ib_relaxed_pool_data *tmp;
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 	if (!uverbs_dev)
 		return;
+
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+
+	list_for_each_entry_safe(pos, tmp, &device->relaxed_pool_list,
+				 pool_list) {
+		ib_destroy_fmr_pool(pos->fmr_pool);
+		list_del(&pos->pool_list);
+		kfree(pos);
+	}
+
+	ib_dealloc_pd(device->relaxed_pd);
+	device->relaxed_pd = NULL;
+
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 	dev_set_drvdata(uverbs_dev->dev, NULL);
 	device_destroy(uverbs_class, uverbs_dev->cdev.dev);

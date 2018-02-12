@@ -159,6 +159,16 @@ static int uverbs_free_mr(struct ib_uobject *uobject,
 	return ib_dereg_mr((struct ib_mr *)uobject->object);
 }
 
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+
+static int uverbs_free_fmr(struct ib_uobject *uobject,
+			   enum rdma_remove_reason why)
+{
+	return ib_uverbs_dereg_fmr((struct ib_pool_fmr *)uobject->object);
+}
+
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
+
 static int uverbs_free_xrcd(struct ib_uobject *uobject,
 			    enum rdma_remove_reason why)
 {
@@ -185,10 +195,20 @@ static int uverbs_free_pd(struct ib_uobject *uobject,
 
 #ifndef WITHOUT_ORACLE_EXTENSIONS
 	struct ib_shpd *shpd = pd->shpd;
+	struct ib_relaxed_pool_data *pos;
 #endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 	if (why == RDMA_REMOVE_DESTROY && atomic_read(&pd->usecnt))
 		return -EBUSY;
+
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+
+	/* flush all pd reference from HCA - relaxed FMR */
+	list_for_each_entry(pos, &pd->device->relaxed_pool_list, pool_list) {
+		ib_flush_fmr_pool(pos->fmr_pool);
+	}
+
+#endif
 
 	ib_dealloc_pd((struct ib_pd *)uobject->object);
 
@@ -420,6 +440,14 @@ DECLARE_UVERBS_OBJECT(uverbs_object_mr, UVERBS_OBJECT_MR,
 		      /* 1 is used in order to free the MR after all the MWs */
 		      &UVERBS_TYPE_ALLOC_IDR(1, uverbs_free_mr));
 
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+
+DECLARE_UVERBS_OBJECT(uverbs_object_fmr, UVERBS_OBJECT_FMR,
+		      /* 1 is used in order to free the MR after all the MWs */
+		      &UVERBS_TYPE_ALLOC_IDR(1, uverbs_free_fmr));
+
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
+
 DECLARE_UVERBS_OBJECT(uverbs_object_srq, UVERBS_OBJECT_SRQ,
 		      &UVERBS_TYPE_ALLOC_IDR_SZ(sizeof(struct ib_usrq_object), 0,
 						  uverbs_free_srq));
@@ -452,6 +480,9 @@ DECLARE_UVERBS_OBJECT_TREE(uverbs_default_objects,
 			   &uverbs_object_device,
 			   &uverbs_object_pd,
 			   &uverbs_object_mr,
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+			   &uverbs_object_fmr,
+#endif
 			   &uverbs_object_comp_channel,
 			   &uverbs_object_cq,
 			   &uverbs_object_qp,

@@ -47,6 +47,10 @@
 #include <rdma/ib_umem.h>
 #include <rdma/ib_user_verbs.h>
 
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+#include <rdma/ib_fmr_pool.h>
+#endif
+
 #define INIT_UDATA(udata, ibuf, obuf, ilen, olen)			\
 	do {								\
 		(udata)->inbuf  = (const void __user *) (ibuf);		\
@@ -294,8 +298,13 @@ IB_UVERBS_DECLARE_CMD(open_xrcd);
 IB_UVERBS_DECLARE_CMD(close_xrcd);
 
 #ifndef WITHOUT_ORACLE_EXTENSIONS
+int ib_uverbs_dereg_fmr(struct ib_pool_fmr *fmr);
+
 IB_UVERBS_DECLARE_CMD(alloc_shpd);
 IB_UVERBS_DECLARE_CMD(share_pd);
+IB_UVERBS_DECLARE_CMD(reg_mr_relaxed);
+IB_UVERBS_DECLARE_CMD(dereg_mr_relaxed);
+IB_UVERBS_DECLARE_CMD(flush_relaxed_mr);
 #endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 #define IB_UVERBS_DECLARE_EX_CMD(name)				\
