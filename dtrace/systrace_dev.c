@@ -2,7 +2,7 @@
  * FILE:	systrace_dev.c
  * DESCRIPTION:	DTrace - systrace provider device driver
  *
- * Copyright (c) 2010, 2017, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2010, 2018, Oracle and/or its affiliates. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -165,12 +165,6 @@ void systrace_destroy(void *arg, dtrace_id_t id, void *parg)
 		       DTRACE_IDNONE);
 }
 
-static long systrace_ioctl(struct file *file,
-			 unsigned int cmd, unsigned long arg)
-{
-	return -EAGAIN;
-}
-
 static int systrace_open(struct inode *inode, struct file *file)
 {
 	return -EAGAIN;
@@ -183,7 +177,6 @@ static int systrace_close(struct inode *inode, struct file *file)
 
 static const struct file_operations systrace_fops = {
 	.owner  = THIS_MODULE,
-        .unlocked_ioctl = systrace_ioctl,
         .open   = systrace_open,
         .release = systrace_close,
 };

@@ -2,7 +2,7 @@
  * FILE:	fasttrap_dev.c
  * DESCRIPTION:	DTrace - fasttrap provider device driver
  *
- * Copyright (c) 2010, 2017, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2010, 2018, Oracle and/or its affiliates. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -1456,12 +1456,6 @@ void fasttrap_meta_remove(void *arg, dtrace_helper_provdesc_t *dhpv, pid_t pid)
 	fasttrap_provider_retire(pid, dhpv->dthpv_provname, 1);
 }
 
-static long fasttrap_ioctl(struct file *file,
-			 unsigned int cmd, unsigned long arg)
-{
-	return -EAGAIN;
-}
-
 static int fasttrap_open(struct inode *inode, struct file *file)
 {
 	return 0;
@@ -1474,7 +1468,6 @@ static int fasttrap_close(struct inode *inode, struct file *file)
 
 static const struct file_operations fasttrap_fops = {
 	.owner  = THIS_MODULE,
-        .unlocked_ioctl = fasttrap_ioctl,
         .open   = fasttrap_open,
         .release = fasttrap_close,
 };

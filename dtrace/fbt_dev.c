@@ -2,7 +2,7 @@
  * FILE:	fbt_dev.c
  * DESCRIPTION:	DTrace - FBT provider device driver
  *
- * Copyright (c) 2010, 2017, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2010, 2018, Oracle and/or its affiliates. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -239,12 +239,6 @@ void fbt_destroy(void *arg, dtrace_id_t id, void *parg)
 	} while (fbp != NULL);
 }
 
-static long fbt_ioctl(struct file *file,
-			 unsigned int cmd, unsigned long arg)
-{
-	return -EAGAIN;
-}
-
 static int fbt_open(struct inode *inode, struct file *file)
 {
 	return -EAGAIN;
@@ -257,7 +251,6 @@ static int fbt_close(struct inode *inode, struct file *file)
 
 static const struct file_operations fbt_fops = {
 	.owner  = THIS_MODULE,
-        .unlocked_ioctl = fbt_ioctl,
         .open   = fbt_open,
         .release = fbt_close,
 };

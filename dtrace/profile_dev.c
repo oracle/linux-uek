@@ -2,7 +2,7 @@
  * FILE:	profile_dev.c
  * DESCRIPTION:	DTrace - profile provider device driver
  *
- * Copyright (c) 2010, 2017, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2010, 2018, Oracle and/or its affiliates. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -446,7 +446,7 @@ void profile_destroy(void *arg, dtrace_id_t id, void *parg)
 
 static int profile_open(struct inode *inode, struct file *file)
 {
-	return 0;
+	return -EAGAIN;
 }
 
 static int profile_close(struct inode *inode, struct file *file)

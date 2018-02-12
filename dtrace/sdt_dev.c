@@ -2,7 +2,7 @@
  * FILE:	sdt_dev.c
  * DESCRIPTION:	DTrace - SDT provider device driver
  *
- * Copyright (c) 2010, 2017, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2010, 2018, Oracle and/or its affiliates. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -498,12 +498,6 @@ void sdt_destroy(void *arg, dtrace_id_t id, void *parg)
 	}
 }
 
-static long sdt_ioctl(struct file *file,
-			 unsigned int cmd, unsigned long arg)
-{
-	return -EAGAIN;
-}
-
 static int sdt_open(struct inode *inode, struct file *file)
 {
 	return -EAGAIN;
@@ -516,7 +510,6 @@ static int sdt_close(struct inode *inode, struct file *file)
 
 static const struct file_operations sdt_fops = {
 	.owner  = THIS_MODULE,
-        .unlocked_ioctl = sdt_ioctl,
         .open   = sdt_open,
         .release = sdt_close,
 };
