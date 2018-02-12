@@ -1167,10 +1167,18 @@ static void ib_uverbs_add_one(struct ib_device *device)
 
 #ifndef WITHOUT_ORACLE_EXTENSIONS
 
-	device->relaxed_pd = ib_alloc_pd(device, 0);
-	if (IS_ERR(device->relaxed_pd)) {
-		device->relaxed_pd = NULL;
-		goto err_class;
+	device->relaxed_pd = NULL;
+	/*
+	 * Allocate pd if not a usnic device node
+	 * (For usnic devices we do lazy allocation of pd)
+	 */
+	if (device->node_type != RDMA_NODE_USNIC &&
+	    device->node_type != RDMA_NODE_USNIC_UDP) {
+		device->relaxed_pd = ib_alloc_pd(device, 0);
+		if (IS_ERR(device->relaxed_pd)) {
+			device->relaxed_pd = NULL;
+			goto err_class;
+		}
 	}
 
 #endif /* !WITHOUT_ORACLE_EXTENSIONS */
@@ -1289,8 +1297,11 @@ static void ib_uverbs_remove_one(struct ib_device *device, void *client_data)
 		kfree(pos);
 	}
 
-	ib_dealloc_pd(device->relaxed_pd);
-	device->relaxed_pd = NULL;
+	/* free pd if allocated! */
+	if (device->relaxed_pd) {
+		ib_dealloc_pd(device->relaxed_pd);
+		device->relaxed_pd = NULL;
+	}
 
 #endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
