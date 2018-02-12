@@ -7,16 +7,9 @@
 #include <asm/spec_ctrl.h>
 #include <asm/cpufeature.h>
 
-/*
- * use_ibrs
- * bit 0 = indicate if ibrs is currently in use
- * bit 1 = indicate if system supports ibrs
- * bit 2 = indicate if admin disables ibrs
- */
-
-u32 sysctl_ibrs_enabled = 0, sysctl_ibpb_enabled = 0;
-/* By default it is enabled. */
-u32 sysctl_lfence_enabled = 1;
+u32 sysctl_ibrs_enabled;
+u32 sysctl_ibpb_enabled;
+u32 sysctl_lfence_enabled = 1;		/* By default it is enabled. */
 EXPORT_SYMBOL(sysctl_ibrs_enabled);
 EXPORT_SYMBOL(sysctl_ibpb_enabled);
 

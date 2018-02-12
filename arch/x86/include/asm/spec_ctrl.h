@@ -286,25 +286,29 @@ static inline void clear_lfence_disabled(void)
 extern int use_ibpb;
 extern u32 sysctl_ibpb_enabled;
 
-#define ibpb_supported		(use_ibpb & 0x2)
-#define ibpb_disabled		(use_ibpb & 0x4)
+#define SPEC_CTRL_IBPB_INUSE		(1<<0)	/* OS enables IBPB usage */
+#define SPEC_CTRL_IBPB_SUPPORTED	(1<<1)	/* System supports IBPB */
+#define SPEC_CTRL_IBPB_ADMIN_DISABLED	(1<<2)	/* Admin disables IBPB */
+
+#define ibpb_supported		(use_ibpb & SPEC_CTRL_IBPB_SUPPORTED)
+#define ibpb_disabled		(use_ibpb & SPEC_CTRL_IBPB_ADMIN_DISABLED)
 
 #define ibpb_inuse		(check_ibpb_inuse())
 
 static inline void set_ibpb_inuse(void)
 {
 	if (ibpb_supported)
-		use_ibpb |= 0x1;
+		use_ibpb |= SPEC_CTRL_IBPB_INUSE;
 }
 
 static inline void clear_ibpb_inuse(void)
 {
-	use_ibpb &= ~0x1;
+	use_ibpb &= ~SPEC_CTRL_IBPB_INUSE;
 }
 
 static inline int check_ibpb_inuse(void)
 {
-	if (use_ibpb & 0x1)
+	if (use_ibpb & SPEC_CTRL_IBPB_INUSE)
 		return 1;
 	else
 		/* rmb to prevent wrong speculation for security */
@@ -314,14 +318,14 @@ static inline int check_ibpb_inuse(void)
 
 static inline void set_ibpb_supported(void)
 {
-	use_ibpb |= 0x2;
+	use_ibpb |= SPEC_CTRL_IBPB_SUPPORTED;
 	if (!ibpb_disabled)
 		set_ibpb_inuse();
 }
 
 static inline void set_ibpb_disabled(void)
 {
-	use_ibpb |= 0x4;
+	use_ibpb |= SPEC_CTRL_IBPB_ADMIN_DISABLED;
 	if (check_ibpb_inuse())
 		clear_ibpb_inuse();
 	/* Update what sysfs shows. */
@@ -330,7 +334,7 @@ static inline void set_ibpb_disabled(void)
 
 static inline void clear_ibpb_disabled(void)
 {
-	use_ibpb &= ~0x4;
+	use_ibpb &= ~SPEC_CTRL_IBPB_ADMIN_DISABLED;
 	set_ibpb_inuse();
 	/* Update what sysfs shows. */
 	sysctl_ibpb_enabled = ibpb_inuse ? 1 : 0;
