@@ -44,6 +44,7 @@ int ipoib_do_ioctl(struct net_device *dev, struct ifreq *ifr, int cmd)
 	ssize_t list_count, i;
 	u64 guid, subnet_prefix;
 	struct in6_addr addr6;
+	struct in6_addr *ip6s;
 	char uuid[UUID_SZ];
 	struct ib_cm_acl *acl;
 	char *buf;
@@ -117,6 +118,7 @@ int ipoib_do_ioctl(struct net_device *dev, struct ifreq *ifr, int cmd)
 
 		ib_cm_acl_scan(acl, &list, &list_count);
 
+		ip6s = (struct in6_addr *)req_data.ips;
 		for (i = req_data.from_idx; (i < list_count) &&
 		     (i < req_data.sz) ; i++) {
 			/* Need to skip entries with IPv6 address for old
@@ -145,9 +147,8 @@ int ipoib_do_ioctl(struct net_device *dev, struct ifreq *ifr, int cmd)
 				 * the pointer size to an u32 and in6_addr are
 				 * the same.
 				 */
-				rc |= copy_to_user((struct in6_addr *)
-						   &req_data.ips[i -
-						   req_data.from_idx],
+				rc |= copy_to_user(ip6s + i -
+						   req_data.from_idx,
 						   &list[i].ip,
 						   sizeof(list[i].ip));
 			rc |= copy_to_user((req_data.uuids + i * UUID_SZ),
@@ -180,6 +181,7 @@ int ipoib_do_ioctl(struct net_device *dev, struct ifreq *ifr, int cmd)
 			addr6.s6_addr32[2] = htonl(0xFFFF);
 		}
 
+		ip6s = (struct in6_addr *)req_data.ips;
 		for (i = 0; i < req_data.sz; i++) {
 			rc = copy_from_user(&subnet_prefix,
 					    &req_data.subnet_prefixes[i],
@@ -196,8 +198,7 @@ int ipoib_do_ioctl(struct net_device *dev, struct ifreq *ifr, int cmd)
 				 * ips should actually be a pointer to a list
 				 * of struct in6_addr.
 				 */
-				rc |= copy_from_user(&addr6,
-						     &req_data.ips[i],
+				rc |= copy_from_user(&addr6, ip6s + i,
 						     sizeof(addr6));
 			rc |= copy_from_user(&uuid,
 					     (req_data.uuids + i * UUID_SZ),
