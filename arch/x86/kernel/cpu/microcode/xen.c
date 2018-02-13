@@ -1,26 +1,32 @@
 /*
- * Xen microcode update driver
+ * Xen CPU Microcode Update Driver for Linux
+ *
+ * Copyright (c) 2018 Oracle and/or its affiliates. All rights reserved.
+ *
+ * Based on work by:
+ * Tigran Aivazian <aivazian.tigran@gmail.com>
+ * Shaohua Li <shaohua.li@intel.com>
+ * Jeremy Fitzhardinge <jeremy.fitzhardinge@citrix.com>
  *
  * Xen does most of the work here.  We just pass the whole blob into
  * Xen, and it will apply it to all CPUs as appropriate.  Xen will
  * worry about how different CPU models are actually updated.
  */
-#include <linux/sched.h>
-#include <linux/module.h>
 #include <linux/firmware.h>
-#include <linux/vmalloc.h>
+#include <linux/kernel.h>
+#include <linux/module.h>
+#include <linux/sched.h>
 #include <linux/uaccess.h>
-
-#include <asm/microcode.h>
-
-#include <xen/xen.h>
+#include <linux/vmalloc.h>
 #include <xen/interface/platform.h>
 #include <xen/interface/xen.h>
+#include <xen/xen.h>
 
+#include <asm/microcode.h>
 #include <asm/xen/hypercall.h>
 #include <asm/xen/hypervisor.h>
 
-MODULE_DESCRIPTION("Xen microcode update driver");
+MODULE_DESCRIPTION("Xen Microcode Update Driver");
 MODULE_LICENSE("GPL");
 
 struct xen_microcode {
@@ -51,12 +57,13 @@ static int xen_microcode_update(int cpu)
 	err = HYPERVISOR_platform_op(&op);
 
 	if (err != 0)
-		printk(KERN_WARNING "microcode_xen: microcode update failed: %d\n", err);
+		pr_warn("microcode_xen: microcode update failed: %d\n", err);
 
 	return err;
 }
 
-static enum ucode_state xen_request_microcode_fw(int cpu, struct device *device, bool refresh_fw)
+static enum ucode_state xen_request_microcode_fw(int cpu, struct device *device,
+						 bool refresh_fw)
 {
 	char name[36];
 	struct cpuinfo_x86 *c = &cpu_data(cpu);
@@ -74,11 +81,16 @@ static enum ucode_state xen_request_microcode_fw(int cpu, struct device *device,
 		break;
 
 	case X86_VENDOR_AMD:
-		/* Beginning with family 15h AMD uses family-specific firmware files. */
+		/* Beginning with family 15h AMD uses
+		 * family-specific firmware files.
+		 */
 		if (c->x86 >= 0x15)
-			snprintf(name, sizeof(name), "amd-ucode/microcode_amd_fam%.2xh.bin", c->x86);
+			snprintf(name, sizeof(name),
+				 "amd-ucode/microcode_amd_fam%.2xh.bin",
+				 c->x86);
 		else
-			snprintf(name, sizeof(name), "amd-ucode/microcode_amd.bin");
+			snprintf(name, sizeof(name),
+				 "amd-ucode/microcode_amd.bin");
 		break;
 
 	default:
@@ -91,8 +103,7 @@ static enum ucode_state xen_request_microcode_fw(int cpu, struct device *device,
 		return UCODE_NFOUND;
 	}
 
-	/*
-	 * Only bother getting real firmware for cpu 0; the others get
+	/* Only bother getting real firmware for cpu 0; the others get
 	 * dummy placeholders.
 	 */
 	if (cpu == 0)
@@ -105,16 +116,18 @@ static enum ucode_state xen_request_microcode_fw(int cpu, struct device *device,
 		uci->mc = NULL;
 	}
 
-	ret = UCODE_ERROR;
 	uc = vmalloc(sizeof(*uc) + size);
-	if (uc == NULL)
+	if (!uc) {
+		ret = UCODE_ERROR;
 		goto out;
+	}
 
-	ret = UCODE_OK;
 	uc->len = size;
 	memcpy(uc->data, firmware->data, uc->len);
 
 	uci->mc = uc;
+
+	ret = UCODE_OK;
 
 out:
 	release_firmware(firmware);
@@ -123,7 +136,8 @@ out:
 }
 
 static enum ucode_state xen_request_microcode_user(int cpu,
-						   const void __user *buf, size_t size)
+						   const void __user *buf,
+						   size_t size)
 {
 	struct ucode_cpu_info *uci = ucode_cpu_info + cpu;
 	struct xen_microcode *uc;
@@ -131,8 +145,9 @@ static enum ucode_state xen_request_microcode_user(int cpu,
 	size_t unread;
 
 	if (cpu != 0) {
-		/* No real firmware for non-zero cpus; just store a
-		   placeholder */
+		/* No real firmware for non-zero cpus;
+		 * just store a placeholder
+		 */
 		size = 0;
 	}
 
@@ -141,21 +156,22 @@ static enum ucode_state xen_request_microcode_user(int cpu,
 		uci->mc = NULL;
 	}
 
-	ret = UCODE_ERROR;
 	uc = vmalloc(sizeof(*uc) + size);
-	if (uc == NULL)
+	if (uc == NULL) {
+		ret = UCODE_ERROR;
 		goto out;
+	}
 
 	uc->len = size;
 
-	ret = UCODE_NFOUND;
-
-	unread = copy_from_user(uc->data, buf, size);
-
-	if (unread != 0) {
-		printk(KERN_WARNING "failed to read %zd of %zd bytes at %p -> %p\n",
-		       unread, size, buf, uc->data);
-		goto out;
+	if (size) {
+		unread = copy_from_user(uc->data, buf, size);
+		if (unread != 0) {
+			pr_warn("failed to read %zd of %zd bytes at %p -> %p\n",
+				unread, size, buf, uc->data);
+			ret = UCODE_NFOUND;
+			goto out;
+		}
 	}
 
 	ret = UCODE_OK;
@@ -187,11 +203,11 @@ static int xen_collect_cpu_info(int cpu, struct cpu_signature *sig)
 }
 
 static struct microcode_ops microcode_xen_ops = {
-	.request_microcode_user		  = xen_request_microcode_user,
-	.request_microcode_fw             = xen_request_microcode_fw,
-	.collect_cpu_info                 = xen_collect_cpu_info,
-	.apply_microcode                  = xen_microcode_update,
-	.microcode_fini_cpu               = xen_microcode_fini_cpu,
+	.request_microcode_user		= xen_request_microcode_user,
+	.request_microcode_fw		= xen_request_microcode_fw,
+	.collect_cpu_info		= xen_collect_cpu_info,
+	.apply_microcode		= xen_microcode_update,
+	.microcode_fini_cpu		= xen_microcode_fini_cpu,
 };
 
 static int dummy_xen_microcode_update(int cpu)
@@ -199,14 +215,16 @@ static int dummy_xen_microcode_update(int cpu)
 	return 0;
 }
 
-static enum ucode_state dummy_xen_request_microcode_fw(int cpu, struct device *device,
+static enum ucode_state dummy_xen_request_microcode_fw(int cpu,
+						       struct device *device,
 						       bool refresh_fw)
 {
 	return UCODE_OK;
 }
 
 static enum ucode_state dummy_xen_request_microcode_user(int cpu,
-						   const void __user *buf, size_t size)
+							 const void __user *buf,
+							 size_t size)
 {
 	return UCODE_OK;
 }
@@ -216,11 +234,11 @@ static void dummy_xen_microcode_fini_cpu(int cpu)
 }
 
 static struct microcode_ops microcode_dummy_xen_ops = {
-	.request_microcode_user		  = dummy_xen_request_microcode_user,
-	.request_microcode_fw             = dummy_xen_request_microcode_fw,
-	.collect_cpu_info                 = xen_collect_cpu_info,
-	.apply_microcode                  = dummy_xen_microcode_update,
-	.microcode_fini_cpu               = dummy_xen_microcode_fini_cpu,
+	.request_microcode_user		= dummy_xen_request_microcode_user,
+	.request_microcode_fw		= dummy_xen_request_microcode_fw,
+	.collect_cpu_info		= xen_collect_cpu_info,
+	.apply_microcode		= dummy_xen_microcode_update,
+	.microcode_fini_cpu		= dummy_xen_microcode_fini_cpu,
 };
 
 struct microcode_ops * __init init_xen_microcode(void)
