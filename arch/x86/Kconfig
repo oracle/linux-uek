@@ -1156,6 +1156,14 @@ config MICROCODE_AMD
 	  If you select this option, microcode patch loading support for AMD
 	  processors will be enabled.
 
+config MICROCODE_XEN
+	bool "XEN microcode loading support"
+	depends on MICROCODE && XEN_DOM0
+	default MICROCODE
+	select FW_LOADER
+	---help---
+	  This options enables microcode patch loading support on Xen.
+
 config MICROCODE_OLD_INTERFACE
 	def_bool y
 	depends on MICROCODE
