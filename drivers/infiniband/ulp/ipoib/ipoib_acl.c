@@ -76,7 +76,6 @@ void print_acl_instances_to_buf(char *buf, size_t sz,
 			    (strlen(buf) + strlen(results[i]->name) + 1) > sz)
 				return;
 			sprintf(buf, "%s%s\n", buf, results[i]->name);
-			strcat(buf, results[i]->name);
 		}
 
 		if (count)
