@@ -102,12 +102,13 @@ void switch_mm_irqs_off(struct mm_struct *prev, struct mm_struct *next,
 {
 	unsigned cpu = smp_processor_id();
 
-	/* Null tsk means switching to kernel, so that's safe */
-	if (dynamic_ibpb && tsk &&
-	    ___ptrace_may_access(tsk, current, PTRACE_MODE_IBPB))
-		wrmsrl(MSR_IA32_PRED_CMD, SPEC_CTRL_FEATURE_SET_IBPB);
-
 	if (likely(prev != next)) {
+
+		/* Null tsk means switching to kernel, so that's safe */
+		if (dynamic_ibpb && tsk &&
+			get_dumpable(tsk->mm) != SUID_DUMP_USER)
+			wrmsrl(MSR_IA32_PRED_CMD, SPEC_CTRL_FEATURE_SET_IBPB);
+
 		this_cpu_write(cpu_tlbstate.state, TLBSTATE_OK);
 		this_cpu_write(cpu_tlbstate.active_mm, next);
 		cpumask_set_cpu(cpu, mm_cpumask(next));
