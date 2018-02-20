@@ -228,7 +228,9 @@ static ssize_t microcode_write(struct file *file, const char __user *buf,
 		ret = (ssize_t)len;
 
 	/* check spec_ctrl capabilities */
-	rescan_spec_ctrl_feature(&boot_cpu_data);
+	mutex_lock(&spec_ctrl_mutex);
+	init_scattered_cpuid_features(&boot_cpu_data);
+	mutex_unlock(&spec_ctrl_mutex);
 
 	if (ret > 0)
 		perf_check_microcode();

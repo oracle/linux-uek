@@ -10,141 +10,22 @@
 #include <linux/cpu.h>
 #include <asm/msr.h>
 
+/*
+ * dynamic_ibrs
+ * bit 0 = indicate if ibrs/ibpb is currently in use
+ * bit 1 = indicate if system supports ibrs/ibpb
+ * bit 2 = indicate if admin disables ibrs/ibpb
+ */
+
 unsigned int dynamic_ibrs __read_mostly;
 EXPORT_SYMBOL_GPL(dynamic_ibrs);
-
-enum {
-	IBRS_DISABLED,
-	/* in host kernel, disabled in guest and userland */
-	IBRS_ENABLED,
-	/* in host kernel and host userland, disabled in guest */
-	IBRS_ENABLED_USER,
-	IBRS_MAX = IBRS_ENABLED_USER,
-};
-static unsigned int ibrs_enabled;
-static bool ibrs_admin_disabled;
 
 unsigned int dynamic_ibpb __read_mostly;
 EXPORT_SYMBOL_GPL(dynamic_ibpb);
 
-enum {
-	IBPB_DISABLED,
-	IBPB_ENABLED,
-	IBPB_MAX=IBPB_ENABLED
-};
-static unsigned int ibpb_enabled;
-static bool ibpb_admin_disabled;
-
 /* mutex to serialize IBRS control changes */
 DEFINE_MUTEX(spec_ctrl_mutex);
-
-static inline void set_ibrs_feature(void)
-{
-       bool ignore = false;
-
-       if (xen_pv_domain())
-               ignore = true;
-
-       printk(KERN_INFO "FEATURE IBRS Present%s\n", ignore ? " but ignored (Xen)": "");
-
-       if (!ibrs_admin_disabled && !ignore) {
-		dynamic_ibrs = 1;
-		ibrs_enabled = IBRS_ENABLED;
-	} else {
-		dynamic_ibrs = 0;
-		ibrs_enabled = IBRS_DISABLED;
-	}
-	sysctl_ibrs_enabled = dynamic_ibrs ? 1 : 0;
-}
-
-static inline void set_ibpb_feature(void)
-{
-       bool ignore = false;
-
-       if (xen_pv_domain())
-               ignore = true;
-
-       printk(KERN_INFO "FEATURE IBPB Present%s\n", ignore ? " but ignored (Xen)": "");
-
-	if (!ibpb_admin_disabled) {
-		dynamic_ibpb = 1;
-		ibpb_enabled = IBPB_ENABLED;
-	} else {
-		dynamic_ibpb = 0;
-		ibpb_enabled = IBPB_DISABLED;
-	}
-	sysctl_ibpb_enabled = dynamic_ibpb ? 1 : 0;
-}
-
-void set_ibrs_disabled(void)
-{
-	dynamic_ibrs = 0;
-	ibrs_enabled = IBRS_DISABLED;
-	sysctl_ibrs_enabled = dynamic_ibrs;
-}
-
-void set_ibpb_disabled(void)
-{
-	dynamic_ibpb = 0;
-	ibpb_enabled = 0;
-	sysctl_ibpb_enabled = dynamic_ibpb;
-}
-
-void scan_spec_ctrl_feature(struct cpuinfo_x86 *c)
-{
-	if ((!c->cpu_index) && (boot_cpu_has(X86_FEATURE_IBRS))) {
-		set_ibrs_feature();
-		set_ibpb_feature();
-
-	}
-}
-
-EXPORT_SYMBOL_GPL(scan_spec_ctrl_feature);
-
-/*
- * Used after boot phase to rescan spec_ctrl feature,
- * serialize scan with spec_ctrl_mutex.
- */
-void rescan_spec_ctrl_feature(struct cpuinfo_x86 *c)
-{
-	mutex_lock(&spec_ctrl_mutex);
-	if (boot_cpu_has(X86_FEATURE_IBRS)) {
-		set_ibrs_feature();
-		set_ibpb_feature();
-	}
-	mutex_unlock(&spec_ctrl_mutex);
-}
-EXPORT_SYMBOL_GPL(rescan_spec_ctrl_feature);
-
-bool ibrs_inuse(void)
-{
-	return ibrs_enabled == IBRS_ENABLED;
-}
-EXPORT_SYMBOL_GPL(ibrs_inuse);
-
-static int __init noibrs(char *str)
-{
-	ibrs_admin_disabled = true;
-	ibrs_enabled = IBRS_DISABLED;
-
-	return 0;
-}
-early_param("noibrs", noibrs);
-
-bool ibpb_inuse(void)
-{
-	return ibpb_enabled == IBPB_ENABLED;
-}
-EXPORT_SYMBOL_GPL(ibpb_inuse);
-
-static int __init noibpb(char *str)
-{
-	ibpb_admin_disabled = true;
-	ibpb_enabled = IBPB_DISABLED;
-
-	return 0;
-}
-early_param("noibpb", noibpb);
+EXPORT_SYMBOL(spec_ctrl_mutex);
 
 static ssize_t __enabled_read(struct file *file, char __user *user_buf,
 			      size_t count, loff_t *ppos, unsigned int *field)
@@ -159,7 +40,7 @@ static ssize_t __enabled_read(struct file *file, char __user *user_buf,
 static ssize_t ibrs_enabled_read(struct file *file, char __user *user_buf,
 				 size_t count, loff_t *ppos)
 {
-	return __enabled_read(file, user_buf, count, ppos, &ibrs_enabled);
+	return __enabled_read(file, user_buf, count, ppos, &sysctl_ibrs_enabled);
 }
 
 static void spec_ctrl_flush_all_cpus(u32 msr_nr, u64 val)
@@ -180,6 +61,9 @@ static ssize_t ibrs_enabled_write(struct file *file,
 	ssize_t len;
 	unsigned int enable;
 
+	if (!ibrs_supported)
+		return -ENODEV;
+
 	len = min(count, sizeof(buf) - 1);
 	if (copy_from_user(buf, user_buf, len))
 		return -EFAULT;
@@ -188,37 +72,22 @@ static ssize_t ibrs_enabled_write(struct file *file,
 	if (kstrtouint(buf, 0, &enable))
 		return -EINVAL;
 
-	if (enable > IBRS_MAX)
+	if (enable > 1)
 		return -EINVAL;
 
-	if (!boot_cpu_has(X86_FEATURE_IBRS)) {
-		ibrs_enabled = IBRS_DISABLED;
-		return -EINVAL;
-	}
+	if (!!enable != !!ibrs_disabled)
+		return count;
 
 	mutex_lock(&spec_ctrl_mutex);
 
-	if (enable == IBRS_DISABLED) {
-		/* disable IBRS usage */
-		ibrs_admin_disabled = true;
-		dynamic_ibrs = 0;
-		spec_ctrl_flush_all_cpus(MSR_IA32_SPEC_CTRL,
+	if (!enable) {
+		set_ibrs_disabled();
+
+		if (dynamic_ibrs & SPEC_CTRL_IBRS_SUPPORTED)
+			spec_ctrl_flush_all_cpus(MSR_IA32_SPEC_CTRL,
 					 SPEC_CTRL_FEATURE_DISABLE_IBRS);
-
-	} else if (enable == IBRS_ENABLED) {
-		/* enable IBRS usage in kernel */
-		ibrs_admin_disabled = false;
-		dynamic_ibrs = 1;
-
-	} else if (enable == IBRS_ENABLED_USER) {
-		/* enable IBRS all the time in both userspace and kernel */
-		ibrs_admin_disabled = false;
-		dynamic_ibrs = 0;
-		spec_ctrl_flush_all_cpus(MSR_IA32_SPEC_CTRL,
-					 SPEC_CTRL_FEATURE_ENABLE_IBRS);
-	}
-
-	ibrs_enabled = enable;
+	} else
+		clear_ibrs_disabled();
 
 	mutex_unlock(&spec_ctrl_mutex);
 	return count;
@@ -233,7 +102,7 @@ static const struct file_operations fops_ibrs_enabled = {
 static ssize_t ibpb_enabled_read(struct file *file, char __user *user_buf,
 				 size_t count, loff_t *ppos)
 {
-	return __enabled_read(file, user_buf, count, ppos, &ibpb_enabled);
+	return __enabled_read(file, user_buf, count, ppos, &sysctl_ibpb_enabled);
 }
 
 static ssize_t ibpb_enabled_write(struct file *file,
@@ -244,6 +113,9 @@ static ssize_t ibpb_enabled_write(struct file *file,
 	ssize_t len;
 	unsigned int enable;
 
+	if (!ibpb_supported)
+		return -ENODEV;
+
 	len = min(count, sizeof(buf) - 1);
 	if (copy_from_user(buf, user_buf, len))
 		return -EFAULT;
@@ -252,27 +124,18 @@ static ssize_t ibpb_enabled_write(struct file *file,
 	if (kstrtouint(buf, 0, &enable))
 		return -EINVAL;
 
-	if (enable > IBPB_MAX)
+	if (enable > 1)
 		return -EINVAL;
 
-	if (!boot_cpu_has(X86_FEATURE_IBRS)) {
-		ibpb_enabled = IBPB_DISABLED;
-		return -EINVAL;
-	}
+	if (!!enable != !!ibpb_disabled)
+		return count;
 
 	mutex_lock(&spec_ctrl_mutex);
 
-	if (enable == IBPB_DISABLED) {
-		/* disable IBPB usage */
-		ibpb_admin_disabled = true;
-		dynamic_ibpb = 0;
-	} else if (enable == IBPB_ENABLED) {
-		/* enable IBPB */
-		ibpb_admin_disabled = false;
-		dynamic_ibpb = 1;
-	}
-
-	ibpb_enabled = enable;
+	if (!enable)
+		set_ibpb_disabled();
+	else
+		clear_ibpb_disabled();
 
 	mutex_unlock(&spec_ctrl_mutex);
 	return count;

@@ -3,6 +3,7 @@
  *	cpuid space.
  */
 #include <linux/cpu.h>
+#include <linux/export.h>
 
 #include <asm/pat.h>
 #include <asm/processor.h>
@@ -77,13 +78,13 @@ static bool bad_spectre_microcode(struct cpuinfo_x86 *c)
 	return false;
 }
 
-void __cpuinit init_scattered_cpuid_features(struct cpuinfo_x86 *c)
+void init_scattered_cpuid_features(struct cpuinfo_x86 *c)
 {
 	u32 max_level;
 	u32 regs[4];
 	const struct cpuid_bit *cb;
 
-	static const struct cpuid_bit __cpuinitconst cpuid_bits[] = {
+	static const struct cpuid_bit cpuid_bits[] = {
 		{ X86_FEATURE_DTHERM,		CR_EAX, 0, 0x00000006, 0 },
 		{ X86_FEATURE_IDA,		CR_EAX, 1, 0x00000006, 0 },
 		{ X86_FEATURE_ARAT,		CR_EAX, 2, 0x00000006, 0 },
@@ -127,7 +128,24 @@ void __cpuinit init_scattered_cpuid_features(struct cpuinfo_x86 *c)
 	if (cpu_has(c, X86_FEATURE_IBRS))
 		set_cpu_cap(c, X86_FEATURE_IBPB);
 
-	scan_spec_ctrl_feature(c);
+	if (!c->cpu_index) {
+		bool ignore = false;
+
+		if (xen_pv_domain())
+			ignore = true;
+
+		if (boot_cpu_has(X86_FEATURE_IBRS)) {
+			printk(KERN_INFO "FEATURE SPEC_CTRL Present%s\n", ignore ? " but ignored (Xen)": "");
+			if (ignore)
+				return;
+		} else if (boot_cpu_has(X86_FEATURE_IBPB)) {
+			printk_once(KERN_INFO "FEATURE IBPB Present%s\n", ignore ? " but ignored (Xen)": "");
+			if (ignore)
+				return;
+		} else {
+			printk(KERN_INFO "FEATURE SPEC_CTRL Not Present\n");
+		}
+	}
 
 	if ((cpu_has(c, X86_FEATURE_IBRS) ||
 	     cpu_has(c, X86_FEATURE_STIBP)) && bad_spectre_microcode(c)) {
@@ -137,4 +155,15 @@ void __cpuinit init_scattered_cpuid_features(struct cpuinfo_x86 *c)
 		clear_cpu_cap(c, X86_FEATURE_IBPB);
 		clear_cpu_cap(c, X86_FEATURE_STIBP);
 	}
+
+	if (cpu_has(c, X86_FEATURE_IBRS)) {
+		set_ibrs_supported();
+		sysctl_ibrs_enabled = ibrs_inuse ? 1 : 0;
+	}
+
+	if (cpu_has(c, X86_FEATURE_IBPB)) {
+		set_ibpb_supported();
+		sysctl_ibpb_enabled = ibpb_inuse ? 1 : 0;
+	}
 }
+EXPORT_SYMBOL_GPL(init_scattered_cpuid_features);
