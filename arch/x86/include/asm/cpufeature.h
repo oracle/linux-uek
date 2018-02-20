@@ -183,6 +183,10 @@
 #define X86_FEATURE_INVPCID_SINGLE (7*32+10) /* Effectively INVPCID && CR4.PCIDE=1 */
 #define X86_FEATURE_SPEC_CTRL	(7*32+19) /* Control Speculation Control */
 
+/* AMD-defined CPU features, CPUID level 0x80000008 (EBX), word 13.
+ * But thanks to kABI we have to jam it somewhere else. */
+#define X86_FEATURE_IBPB                (7*32+24) /* Indirect Branch Prediction Barrier */
+
 /* Because the ALTERNATIVE scheme is for members of the X86_FEATURE club... */
 #define X86_FEATURE_PTI	(7*32+31) /* CONFIG_PAGE_TABLE_ISOLATION w/o nokaiser */
 

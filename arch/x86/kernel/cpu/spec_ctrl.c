@@ -59,6 +59,13 @@ static inline void set_ibrs_feature(void)
 
 static inline void set_ibpb_feature(void)
 {
+       bool ignore = false;
+
+       if (xen_pv_domain())
+               ignore = true;
+
+       printk(KERN_INFO "FEATURE IBPB Present%s\n", ignore ? " but ignored (Xen)": "");
+
 	if (!ibpb_admin_disabled) {
 		dynamic_ibpb = 1;
 		ibpb_enabled = IBPB_ENABLED;
