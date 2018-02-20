@@ -24,7 +24,7 @@ typedef struct dtrace_module {
 	int             enabled_cnt;
 	size_t          sdt_probe_cnt;
 	size_t          fbt_probe_cnt;
-	prov_exit_f	prov_exit;
+	prov_exit_f	prov_exit;	/* Called with module_mutex held */
 } dtrace_module_t;
 
 #endif /* _X86_DTRACE_ARCH_H */

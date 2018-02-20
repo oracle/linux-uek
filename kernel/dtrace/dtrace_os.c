@@ -2,7 +2,7 @@
  * FILE:	dtrace_os.c
  * DESCRIPTION:	DTrace - OS support functions
  *
- * Copyright (c) 2010, 2017, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2010, 2018, Oracle and/or its affiliates. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -467,6 +467,9 @@ void dtrace_mod_pdata_free(struct module *mp)
 	kmem_cache_free(dtrace_pdata_cachep, pdata);
 }
 
+/*
+ * This function is called with module_mutex held.
+ */
 int dtrace_destroy_prov(struct module *mp)
 {
 	dtrace_module_t *pdata = mp->pdata;

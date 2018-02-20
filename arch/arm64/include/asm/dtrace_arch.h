@@ -24,7 +24,7 @@ typedef struct dtrace_module {
 	asm_instr_t	*sdt_tab;
 	size_t          fbt_probe_cnt;
 	asm_instr_t	*fbt_tab;
-	prov_exit_f	prov_exit;
+	prov_exit_f	prov_exit;	/* Called with module_mutex held */
 } dtrace_module_t;
 
 #endif /* _ASM_ARM64_DTRACE_ARCH_H */

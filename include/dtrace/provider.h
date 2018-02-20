@@ -1,7 +1,7 @@
 /*
  * Dynamic Tracing for Linux - Provider API
  *
- * Copyright (c) 2009, 2017, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2009, 2018, Oracle and/or its affiliates. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -802,14 +802,21 @@ extern void dtrace_probe(dtrace_id_t, uintptr_t, uintptr_t, uintptr_t,
 /*
  * Provider creation.
  */
-
-#define DT_PROVIDER_MODULE(name, priv)					\
-  dtrace_provider_id_t	name##_id;					\
-									\
+#ifdef DTRACE_HAVE_PROV_EXIT
+# define DT_PROV_EXIT(name)						\
+  extern int name##_prov_exit(void);
+#else
+# define DT_PROV_EXIT(name)						\
   static int name##_prov_exit(void)					\
   {									\
-	  return (dtrace_unregister(name##_id) == 0);			\
-  }									\
+	return (dtrace_unregister(name##_id) == 0);			\
+  }
+#endif
+
+#define DT_PROVIDER_MODULE(name, priv)					\
+  dtrace_provider_id_t	name##_id = DTRACE_PROVNONE;			\
+									\
+  DT_PROV_EXIT(name)							\
 									\
   static int __init name##_init(void)					\
   {									\
@@ -844,13 +851,21 @@ extern void dtrace_probe(dtrace_id_t, uintptr_t, uintptr_t, uintptr_t,
   module_init(name##_init);						\
   module_exit(name##_exit);
 
-#define DT_META_PROVIDER_MODULE(name)					\
-  dtrace_meta_provider_id_t	name##_id;				\
-									\
+#ifdef DTRACE_HAVE_PROV_EXIT
+# define DT_META_PROV_EXIT(name)					\
+  extern int name##_prov_exit(void);
+#else
+# define DT_META_PROV_EXIT(name)					\
   static int name##_prov_exit(void)					\
   {									\
 	return (dtrace_meta_unregister(name##_id) == 0);		\
-  }									\
+  }
+#endif
+
+#define DT_META_PROVIDER_MODULE(name)					\
+  dtrace_meta_provider_id_t	name##_id = DTRACE_METAPROVNONE;	\
+									\
+  DT_META_PROV_EXIT(name)						\
 									\
   static int __init name##_init(void)					\
   {									\
