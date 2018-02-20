@@ -1393,7 +1393,7 @@ void __init acpi_generic_reduced_hw_init(void)
 static void __init acpi_reduced_hw_init(void)
 {
 	if (acpi_gbl_reduced_hardware)
-		acpi_generic_reduced_hw_init();
+		x86_init.acpi.reduced_hw_early_init();
 }
 
 /*
