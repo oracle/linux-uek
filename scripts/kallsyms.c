@@ -5,10 +5,10 @@
  * This software may be used and distributed according to the terms
  * of the GNU General Public License, incorporated herein by reference.
  *
- * Usage: nm -n vmlinux | scripts/kallsyms [--all-symbols]
- *                                         [--symbol-prefix=<prefix char>]
- *                                         [--builtin=modules_thick.builtin]
- *                                         > symbols.S
+ * Usage: nm -n -S vmlinux | scripts/kallsyms [--all-symbols]
+ *                                            [--symbol-prefix=<prefix char>]
+ *                                            [--builtin=modules_thick.builtin]
+ *                                            > symbols.S
  *
  *      Table compression uses all the unused char codes on the symbols and
  *  maps these to the most used substrings (tokens). For instance, it might
@@ -50,6 +50,7 @@
 
 struct sym_entry {
 	unsigned long long addr;
+	unsigned long long size;
 	unsigned int len;
 	unsigned int start_pos;
 	unsigned char *sym;
@@ -159,8 +160,9 @@ static int read_symbol(FILE *in, struct sym_entry *s)
 	unsigned int *module;
 	int rc;
 
-	rc = fscanf(in, "%llx %c %499s\n", &s->addr, &stype, str);
-	if (rc != 3) {
+	rc = fscanf(in, "%llx %llx %c %499s\n",
+	    &s->addr, &s->size, &stype, str);
+	if (rc != 4) {
 		if (rc != EOF && fgets(str, 500, in) == NULL)
 			fprintf(stderr, "Read error or end of file.\n");
 		return -1;
@@ -262,6 +264,7 @@ static int symbol_valid(struct sym_entry *s)
 		"kallsyms_addresses",
 		"kallsyms_offsets",
 		"kallsyms_relative_base",
+		"kallsyms_sizes",
 		"kallsyms_num_syms",
 		"kallsyms_names",
 		"kallsyms_markers",
@@ -477,6 +480,11 @@ static void write_src(void)
 		printf("\tPTR\t_text - %#llx\n", _text - relative_base);
 		printf("\n");
 	}
+
+	output_label("kallsyms_sizes");
+	for (i = 0; i < table_cnt; i++)
+		printf("\tPTR\t%#llx\n", table[i].size);
+	printf("\n");
 
 	output_label("kallsyms_num_syms");
 	printf("\tPTR\t%d\n", table_cnt);
@@ -771,6 +779,18 @@ static int compare_symbols(const void *a, const void *b)
 	if (sa->addr > sb->addr)
 		return 1;
 	if (sa->addr < sb->addr)
+		return -1;
+
+	/* zero-size markers before nonzero-size symbols */
+	if (sa->size > 0 && sb->size == 0)
+		return 1;
+	if (sa->size == 0 && sb->size > 0)
+		return -1;
+
+	/* sort by size (large size preceding symbols it encompasses) */
+	if (sa->size < sb->size)
+		return 1;
+	if (sa->size > sb->size)
 		return -1;
 
 	/* sort by "weakness" type */

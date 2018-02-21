@@ -34,6 +34,7 @@
  */
 extern const unsigned long kallsyms_addresses[] __weak;
 extern const int kallsyms_offsets[] __weak;
+extern const unsigned long kallsyms_sizes[] __weak;
 extern const u8 kallsyms_names[] __weak;
 
 /*
@@ -230,54 +231,19 @@ int kallsyms_on_each_symbol(int (*fn)(void *, const char *, struct module *,
 }
 EXPORT_SYMBOL_GPL(kallsyms_on_each_symbol);
 
-static unsigned long get_symbol_size(unsigned long kallsyms_addr)
-{
-	unsigned long size = 0;
-	unsigned long sym_addr = kallsyms_sym_address(kallsyms_addr);
-	unsigned long used_i = 0;
-	unsigned long used_i_addr = 0;
-
-	/*
-	 * __per_cpu_end always has size zero.
-	 */
-	if (sym_addr == (unsigned long)__per_cpu_end)
-		return 0;
-
-	/*
-	 * Search for next non-aliased symbol.  Aliased symbols are symbols with
-	 * the same address.
-	 */
-	if (kallsyms_addr < (kallsyms_num_syms - 1)) {
-		unsigned long i;
-
-		for (i = kallsyms_addr + 1; i < kallsyms_num_syms; i++) {
-			if (kallsyms_sym_address(i) > sym_addr) {
-				size = kallsyms_sym_address(i) - sym_addr;
-				used_i = i;
-				used_i_addr = kallsyms_sym_address(i);
-				break;
-			}
-		}
-	}
-
-	/* If we found no next symbol, we use the end of the section. */
-	if (!size) {
-		unsigned long symbol_end;
-
-		if (is_kernel_inittext(sym_addr))
-			symbol_end = (unsigned long)_einittext;
-		else if (IS_ENABLED(CONFIG_KALLSYMS_ALL))
-			symbol_end = (unsigned long)_end;
-		else
-			symbol_end = (unsigned long)_etext;
-
-		size = symbol_end - sym_addr;
-	}
-
-	return size;
-}
-
-
+/*
+ * The caller passes in an address, and we return an index to the symbol --
+ * potentially also size and offset information.
+ * But an address might map to multiple symbols because:
+ *   - some symbols might have zero size
+ *   - some symbols might be aliases of one another
+ *   - some symbols might span (encompass) others
+ * The symbols should already be ordered so that, for a particular address,
+ * we first have the zero-size ones, then the biggest, then the smallest.
+ * So we find the index by:
+ *   - finding the last symbol with the target address
+ *   - backing the index up so long as both the address and size are unchanged
+ */
 static unsigned long get_symbol_pos(unsigned long addr,
 				    unsigned long *symbolsize,
 				    unsigned long *offset)
@@ -305,11 +271,13 @@ static unsigned long get_symbol_pos(unsigned long addr,
 	/*
 	 * Search for the first aliased symbol.
 	 */
-	while (low && kallsyms_sym_address(low-1) == kallsyms_sym_address(low))
+	while (low
+	    && kallsyms_sym_address(low-1) == kallsyms_sym_address(low)
+	    && kallsyms_sizes[low-1] == kallsyms_sizes[low])
 		--low;
 
 	if (symbolsize)
-		*symbolsize = get_symbol_size(low);
+		*symbolsize = kallsyms_sizes[low];
 	if (offset)
 		*offset = addr - kallsyms_sym_address(low);
 
@@ -543,7 +511,7 @@ static unsigned long get_ksymbol_core(struct kallsym_iter *iter)
 	iter->exported = 0;
 	iter->value = kallsyms_sym_address(iter->pos);
 
-	iter->size = get_symbol_size(iter->pos);
+	iter->size = kallsyms_sizes[iter->pos];
 	iter->type = kallsyms_get_symbol_type(off);
 
 	off = kallsyms_expand_symbol(off, iter->name, ARRAY_SIZE(iter->name));
