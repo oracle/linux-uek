@@ -45,7 +45,7 @@ static inline void set_ibrs_feature(void)
        if (xen_pv_domain())
                ignore = true;
 
-       printk(KERN_INFO "FEATURE SPEC_CTRL Present%s\n", ignore ? " but ignored (Xen)": "");
+       printk(KERN_INFO "FEATURE IBRS Present%s\n", ignore ? " but ignored (Xen)": "");
 
        if (!ibrs_admin_disabled && !ignore) {
 		dynamic_ibrs = 1;
@@ -92,7 +92,7 @@ void set_ibpb_disabled(void)
 
 void scan_spec_ctrl_feature(struct cpuinfo_x86 *c)
 {
-	if ((!c->cpu_index) && (boot_cpu_has(X86_FEATURE_SPEC_CTRL))) {
+	if ((!c->cpu_index) && (boot_cpu_has(X86_FEATURE_IBRS))) {
 		set_ibrs_feature();
 		set_ibpb_feature();
 
@@ -108,7 +108,7 @@ EXPORT_SYMBOL_GPL(scan_spec_ctrl_feature);
 void rescan_spec_ctrl_feature(struct cpuinfo_x86 *c)
 {
 	mutex_lock(&spec_ctrl_mutex);
-	if (boot_cpu_has(X86_FEATURE_SPEC_CTRL)) {
+	if (boot_cpu_has(X86_FEATURE_IBRS)) {
 		set_ibrs_feature();
 		set_ibpb_feature();
 	}
@@ -191,7 +191,7 @@ static ssize_t ibrs_enabled_write(struct file *file,
 	if (enable > IBRS_MAX)
 		return -EINVAL;
 
-	if (!boot_cpu_has(X86_FEATURE_SPEC_CTRL)) {
+	if (!boot_cpu_has(X86_FEATURE_IBRS)) {
 		ibrs_enabled = IBRS_DISABLED;
 		return -EINVAL;
 	}
@@ -255,7 +255,7 @@ static ssize_t ibpb_enabled_write(struct file *file,
 	if (enable > IBPB_MAX)
 		return -EINVAL;
 
-	if (!boot_cpu_has(X86_FEATURE_SPEC_CTRL)) {
+	if (!boot_cpu_has(X86_FEATURE_IBRS)) {
 		ibpb_enabled = IBPB_DISABLED;
 		return -EINVAL;
 	}

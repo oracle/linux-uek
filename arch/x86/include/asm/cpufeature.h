@@ -181,7 +181,7 @@
 #define X86_FEATURE_DTHERM	(7*32+ 7) /* Digital Thermal Sensor */
 #define X86_FEATURE_HW_PSTATE	(7*32+ 8) /* AMD HW-PState */
 #define X86_FEATURE_INVPCID_SINGLE (7*32+10) /* Effectively INVPCID && CR4.PCIDE=1 */
-#define X86_FEATURE_SPEC_CTRL	(7*32+19) /* Control Speculation Control */
+#define X86_FEATURE_IBRS	(7*32+19) /* Control Speculation Control */
 #define X86_FEATURE_STIBP	(7*32+21) /* Single Thread Indirect Branch Predictors */
 
 /* AMD-defined CPU features, CPUID level 0x80000008 (EBX), word 13.

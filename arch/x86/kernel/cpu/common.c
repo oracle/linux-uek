@@ -710,6 +710,14 @@ void __cpuinit get_cpu_cap(struct cpuinfo_x86 *c)
 
 		c->x86_virt_bits = (eax >> 8) & 0xff;
 		c->x86_phys_bits = eax & 0xff;
+
+		/* Only look for X86_FEATURE_{IBPB, IBRS, STIBP}. */
+		if (ebx & BIT(12))
+			set_cpu_cap(c, X86_FEATURE_IBPB);
+		if (ebx & BIT(14))
+			set_cpu_cap(c, X86_FEATURE_IBRS);
+		if (ebx & BIT(15))
+			set_cpu_cap(c, X86_FEATURE_STIBP);
 	}
 #ifdef CONFIG_X86_32
 	else if (cpu_has(c, X86_FEATURE_PAE) || cpu_has(c, X86_FEATURE_PSE36))

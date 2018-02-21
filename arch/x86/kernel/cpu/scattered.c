@@ -94,7 +94,7 @@ void __cpuinit init_scattered_cpuid_features(struct cpuinfo_x86 *c)
 		{ X86_FEATURE_XSAVEOPT,		CR_EAX,	0, 0x0000000d, 1 },
 		{ X86_FEATURE_CPB,		CR_EDX, 9, 0x80000007, 0 },
 		{ X86_FEATURE_HW_PSTATE,	CR_EDX, 7, 0x80000007, 0 },
-		{ X86_FEATURE_SPEC_CTRL,	CR_EDX,26, 0x00000007, 0 },
+		{ X86_FEATURE_IBRS,		CR_EDX,26, 0x00000007, 0 },
 		{ X86_FEATURE_STIBP,            CR_EDX,27, 0x00000007, 0 },
 		{ X86_FEATURE_NPT,		CR_EDX, 0, 0x8000000a, 0 },
 		{ X86_FEATURE_LBRV,		CR_EDX, 1, 0x8000000a, 0 },
@@ -124,16 +124,16 @@ void __cpuinit init_scattered_cpuid_features(struct cpuinfo_x86 *c)
 			set_cpu_cap(c, cb->feature);
 	}
 
-	if (cpu_has(c, X86_FEATURE_SPEC_CTRL))
+	if (cpu_has(c, X86_FEATURE_IBRS))
 		set_cpu_cap(c, X86_FEATURE_IBPB);
 
 	scan_spec_ctrl_feature(c);
 
-	if ((cpu_has(c, X86_FEATURE_SPEC_CTRL) ||
+	if ((cpu_has(c, X86_FEATURE_IBRS) ||
 	     cpu_has(c, X86_FEATURE_STIBP)) && bad_spectre_microcode(c)) {
 		if (&boot_cpu_data == c)
-			pr_warn("Intel Spectre v2 broken microcode detected; disabling SPEC_CTRL/IBRS\n");
-		clear_cpu_cap(c, X86_FEATURE_SPEC_CTRL);
+			pr_warn("Intel Spectre v2 broken microcode detected; disabling IBRS\n");
+		clear_cpu_cap(c, X86_FEATURE_IBRS);
 		clear_cpu_cap(c, X86_FEATURE_IBPB);
 		clear_cpu_cap(c, X86_FEATURE_STIBP);
 	}

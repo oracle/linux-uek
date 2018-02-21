@@ -78,7 +78,7 @@ static void __init spectre_v2_parse_cmdline(void)
 
 		if (match_option(arg, ret, "on") ||
 		    match_option(arg, ret, "auto")) {
-			if (!boot_cpu_has(X86_FEATURE_SPEC_CTRL))
+			if (!boot_cpu_has(X86_FEATURE_IBRS))
 				pr_warn("Spectre_v2 mitigation unsupported\n");
 		} else {
 			spectre_v2_usage_error("Invalid");
