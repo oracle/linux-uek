@@ -2810,6 +2810,11 @@ static int vmx_get_vmx_msr(struct kvm_vcpu *vcpu, u32 msr_index, u64 *pdata)
 	return 0;
 }
 
+static int vmx_get_msr_feature(struct kvm_msr_entry *msr)
+{
+	return 1;
+}
+
 /*
  * Reads an msr value (of 'msr_index') into 'pdata'.
  * Returns 0 on success, non-0 otherwise.
@@ -10599,6 +10604,7 @@ static struct kvm_x86_ops vmx_x86_ops = {
 	.vcpu_put = vmx_vcpu_put,
 
 	.update_db_bp_intercept = update_exception_bitmap,
+	.get_msr_feature = vmx_get_msr_feature,
 	.get_msr = vmx_get_msr,
 	.set_msr = vmx_set_msr,
 	.get_segment_base = vmx_get_segment_base,
