@@ -709,7 +709,11 @@ void blk_trace_shutdown(struct request_queue *q)
  *     Records an action against a request. Will log the bio offset + size.
  *
  **/
-static void blk_add_trace_rq(struct request_queue *q, struct request *rq,
+/* UEK4 OL6: non-static for compatibility with some external modules */
+#ifndef CONFIG_SIMULATE_GCC44_KABI
+static
+#endif
+void blk_add_trace_rq(struct request_queue *q, struct request *rq,
 			     unsigned int nr_bytes, u32 what)
 {
 	struct blk_trace *bt = q->blk_trace;
