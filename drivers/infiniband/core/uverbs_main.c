@@ -670,7 +670,7 @@ err_put_refs:
 	return filp;
 }
 
-static int verify_command_mask(struct ib_device *ib_dev, __u32 command)
+static bool verify_command_mask(struct ib_device *ib_dev, __u32 command)
 {
 	u64 mask;
 
@@ -680,9 +680,9 @@ static int verify_command_mask(struct ib_device *ib_dev, __u32 command)
 		mask = ib_dev->uverbs_ex_cmd_mask;
 
 	if (mask & ((u64)1 << command))
-		return 0;
+		return true;
 
-	return -1;
+	return false;
 }
 
 static bool verify_command_idx(u32 command, bool extended)
@@ -741,7 +741,7 @@ static ssize_t ib_uverbs_write(struct file *filp, const char __user *buf,
 		goto out;
 	}
 
-	if (verify_command_mask(ib_dev, command)) {
+	if (!verify_command_mask(ib_dev, command)) {
 		ret = -EOPNOTSUPP;
 		goto out;
 	}
