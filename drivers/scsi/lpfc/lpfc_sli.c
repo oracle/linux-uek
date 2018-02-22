@@ -299,7 +299,7 @@ lpfc_sli4_eq_clr_intr(struct lpfc_queue *q)
 	bf_set(lpfc_eqcq_doorbell_eqid_hi, &doorbell,
 		(q->queue_id >> LPFC_EQID_HI_FIELD_SHIFT));
 	bf_set(lpfc_eqcq_doorbell_eqid_lo, &doorbell, q->queue_id);
-	writel(doorbell.word0, q->phba->sli4_hba.EQCQDBregaddr);
+	writel(doorbell.word0, q->phba->sli4_hba.EQDBregaddr);
 }
 
 /**
@@ -349,10 +349,10 @@ lpfc_sli4_eq_release(struct lpfc_queue *q, bool arm)
 	bf_set(lpfc_eqcq_doorbell_eqid_hi, &doorbell,
 			(q->queue_id >> LPFC_EQID_HI_FIELD_SHIFT));
 	bf_set(lpfc_eqcq_doorbell_eqid_lo, &doorbell, q->queue_id);
-	writel(doorbell.word0, q->phba->sli4_hba.EQCQDBregaddr);
+	writel(doorbell.word0, q->phba->sli4_hba.EQDBregaddr);
 	/* PCI read to flush PCI pipeline on re-arming for INTx mode */
 	if ((q->phba->intr_type == INTx) && (arm == LPFC_QUEUE_REARM))
-		readl(q->phba->sli4_hba.EQCQDBregaddr);
+		readl(q->phba->sli4_hba.EQDBregaddr);
 	return released;
 }
 
@@ -443,7 +443,7 @@ lpfc_sli4_cq_release(struct lpfc_queue *q, bool arm)
 	bf_set(lpfc_eqcq_doorbell_cqid_hi, &doorbell,
 			(q->queue_id >> LPFC_CQID_HI_FIELD_SHIFT));
 	bf_set(lpfc_eqcq_doorbell_cqid_lo, &doorbell, q->queue_id);
-	writel(doorbell.word0, q->phba->sli4_hba.EQCQDBregaddr);
+	writel(doorbell.word0, q->phba->sli4_hba.CQDBregaddr);
 	return released;
 }
 
@@ -5123,8 +5123,6 @@ lpfc_sli4_arm_cqeq_intr(struct lpfc_hba *phba)
 		for (qidx = 0; qidx < phba->cfg_fcp_io_channel; qidx++)
 			sli4_hba->sli4_eq_release(sli4_hba->hba_eq[qidx],
 							LPFC_QUEUE_REARM);
-
-	}
 
 	if (phba->cfg_fof)
 		sli4_hba->sli4_eq_release(sli4_hba->fof_eq, LPFC_QUEUE_REARM);
