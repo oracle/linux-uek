@@ -43,6 +43,7 @@
 #include "en_accel/ipsec_rxtx.h"
 #include "accel/ipsec.h"
 #include "vxlan.h"
+#include "en/port.h"
 
 struct mlx5e_rq_param {
 	u32			rqc[MLX5_ST_SZ_DW(rqc)];
@@ -3746,7 +3747,7 @@ void mlx5e_build_nic_params(struct mlx5_core_dev *mdev,
 	params->num_channels = max_channels;
 	params->num_tc       = 1;
 
-	mlx5e_get_max_linkspeed(mdev, &link_speed);
+	mlx5e_port_max_linkspeed(mdev, &link_speed);
 	mlx5e_get_pci_bw(mdev, &pci_bw);
 	mlx5_core_dbg(mdev, "Max link speed = %d, PCI BW = %d\n",
 		      link_speed, pci_bw);

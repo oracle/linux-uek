@@ -101,7 +101,6 @@ struct dcbnl_rtnl_ops {
 	/* CEE peer */
 	int (*cee_peer_getpg) (struct net_device *, struct cee_pg *);
 	int (*cee_peer_getpfc) (struct net_device *, struct cee_pfc *);
-
 };
 
 /* This has been split out from dcbnl_ops to avoid breaking kABI */
