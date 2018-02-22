@@ -213,6 +213,15 @@ For 32-bit we have the following conventions - kernel is built with
 	CFI_ADJUST_CFA_OFFSET	-(REST_SKIP)
 	.endm
 
+	.macro ZERO_REST
+	xorq    %r15, %r15
+	xorq    %r14, %r14
+	xorq    %r13, %r13
+	xorq    %r12, %r12
+	xorq    %rbp, %rbp
+	xorq    %rbx, %rbx
+	.endm
+
 	.macro SAVE_ALL
 	SAVE_ARGS
 	SAVE_REST
