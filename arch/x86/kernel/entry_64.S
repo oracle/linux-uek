@@ -349,21 +349,6 @@ ENTRY(save_args)
 END(save_args)
 	.popsection
 
-ENTRY(save_rest)
-	PARTIAL_FRAME 1 REST_SKIP+8
-	movq 5*8+16(%rsp), %r11	/* save return address */
-	movq_cfi rbx, RBX+16
-	movq_cfi rbp, RBP+16
-	movq_cfi r12, R12+16
-	movq_cfi r13, R13+16
-	movq_cfi r14, R14+16
-	movq_cfi r15, R15+16
-	movq %r11, 8(%rsp)	/* return address */
-	FIXUP_TOP_OF_STACK %r11, 16
-	ret
-	CFI_ENDPROC
-END(save_rest)
-
 /* save complete stack frame */
 	.pushsection .kprobes.text, "ax"
 /*
@@ -525,12 +510,11 @@ ENTRY(system_call_after_swapgs)
 	testl $_TIF_WORK_SYSCALL_ENTRY,TI_flags(%rcx)
 	jnz tracesys
 system_call_fastpath:
-	RESTORE_REST
 	cmpq $__NR_syscall_max,%rax
 	ja badsys
 	movq %r10,%rcx
 	call *sys_call_table(,%rax,8)  # XXX:	 rip relative
-	movq %rax,RAX-ARGOFFSET(%rsp)
+	movq %rax,RAX(%rsp)
 /*
  * Syscall return path ending with SYSRET (fast path)
  * Has incomplete stack frame and undefined top of stack.
@@ -538,6 +522,7 @@ system_call_fastpath:
 ret_from_sys_call:
 	movl $_TIF_ALLWORK_MASK,%edi
 	/* edi:	flagmask */
+	RESTORE_REST
 sysret_check:
 	LOCKDEP_SYS_EXIT
 	GET_THREAD_INFO(%rcx)
@@ -599,7 +584,7 @@ sysret_signal:
 	jmp int_check_syscall_exit_work
 
 badsys:
-	movq $-ENOSYS,RAX-ARGOFFSET(%rsp)
+	movq $-ENOSYS,RAX(%rsp)
 	jmp ret_from_sys_call
 
 #ifdef CONFIG_AUDITSYSCALL
@@ -651,13 +636,14 @@ tracesys:
 	 * the value it wants us to use in the table lookup.
 	 */
 	LOAD_ARGS ARGOFFSET, 1
-	RESTORE_REST
 	cmpq $__NR_syscall_max,%rax
-	ja   int_ret_from_sys_call	/* RAX(%rsp) set to -ENOSYS above */
+	ja   1f         /* RAX(%rsp) set to -ENOSYS above */
 	movq %r10,%rcx	/* fixup for C */
 	call *sys_call_table(,%rax,8)
-	movq %rax,RAX-ARGOFFSET(%rsp)
+	movq %rax,RAX(%rsp)
 	/* Use IRET because user could have changed frame */
+1:
+	RESTORE_REST
 
 /*
  * Syscall return path ending with IRET.
@@ -730,14 +716,12 @@ END(system_call)
  */
 	.macro PTREGSCALL label,func,arg
 ENTRY(\label)
-	PARTIAL_FRAME 1 8		/* offset 8: return address */
-	subq $REST_SKIP, %rsp
-	CFI_ADJUST_CFA_OFFSET REST_SKIP
-	call save_rest
-	DEFAULT_FRAME 0 8		/* offset 8: return address */
+	DEFAULT_FRAME 1 8	/* offset 8: return address */
+	FIXUP_TOP_OF_STACK %r11, 8
 	leaq 8(%rsp), \arg	/* pt_regs pointer */
 	call \func
-	jmp ptregscall_common
+	RESTORE_TOP_OF_STACK %r11, 8
+	ret
 	CFI_ENDPROC
 END(\label)
 	.endm
@@ -748,24 +732,10 @@ END(\label)
 	PTREGSCALL stub_sigaltstack, sys_sigaltstack, %rdx
 	PTREGSCALL stub_iopl, sys_iopl, %rsi
 
-ENTRY(ptregscall_common)
-	DEFAULT_FRAME 1 8	/* offset 8: return address */
-	RESTORE_TOP_OF_STACK %r11, 8
-	movq_cfi_restore R15+8, r15
-	movq_cfi_restore R14+8, r14
-	movq_cfi_restore R13+8, r13
-	movq_cfi_restore R12+8, r12
-	movq_cfi_restore RBP+8, rbp
-	movq_cfi_restore RBX+8, rbx
-	ret $REST_SKIP		/* pop extended registers */
-	CFI_ENDPROC
-END(ptregscall_common)
-
 ENTRY(stub_execve)
 	CFI_STARTPROC
 	addq $8, %rsp
-	PARTIAL_FRAME 0
-	SAVE_REST
+	DEFAULT_FRAME 0
 	FIXUP_TOP_OF_STACK %r11
 	movq %rsp, %rcx
 	call sys_execve
@@ -783,8 +753,7 @@ END(stub_execve)
 ENTRY(stub_rt_sigreturn)
 	CFI_STARTPROC
 	addq $8, %rsp
-	PARTIAL_FRAME 0
-	SAVE_REST
+	DEFAULT_FRAME 0
 	movq %rsp,%rdi
 	FIXUP_TOP_OF_STACK %r11
 	call sys_rt_sigreturn
