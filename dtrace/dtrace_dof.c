@@ -2,7 +2,7 @@
  * FILE:	dtrace_dof.c
  * DESCRIPTION:	DTrace - DOF implementation
  *
- * Copyright (c) 2010, 2015, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2010, 2018, Oracle and/or its affiliates. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -15,6 +15,7 @@
  * GNU General Public License for more details.
  */
 
+#include <linux/dtrace_task_impl.h>
 #include <linux/slab.h>
 #include <linux/types.h>
 #include <linux/vmalloc.h>
@@ -1142,7 +1143,11 @@ static dtrace_helpers_t *dtrace_helpers_create(struct task_struct *curr)
 	dtrace_helpers_t	*dth;
 
 	ASSERT(MUTEX_HELD(&dtrace_lock));
-	ASSERT(curr->dtrace_helpers == NULL);
+
+	if (curr->dt_task == NULL)
+		return NULL;
+
+	ASSERT(curr->dt_task->dt_helpers == NULL);
 
 	dth = kzalloc(sizeof(dtrace_helpers_t), GFP_KERNEL);
 	if (dth == NULL)
@@ -1155,7 +1160,7 @@ static dtrace_helpers_t *dtrace_helpers_create(struct task_struct *curr)
 		return NULL;
 	}
 
-	curr->dtrace_helpers = dth;
+	curr->dt_task->dt_helpers = dth;
 	dtrace_helpers++;
 
 	dt_dbg_dof("  Helpers allocated for task 0x%p (%d system-wide)\n",
@@ -1429,7 +1434,10 @@ static int dtrace_helper_action_add(int which, dtrace_ecbdesc_t *ep)
 	if (which < 0 || which >= DTRACE_NHELPER_ACTIONS)
 		return -EINVAL;
 
-	dth = current->dtrace_helpers;
+	if (current->dt_task == NULL)
+		return -ENOMEM;
+
+	dth = current->dt_task->dt_helpers;
 	last = dth->dthps_actions[which];
 	vstate = &dth->dthps_vstate;
 
@@ -1511,7 +1519,10 @@ static int dtrace_helper_provider_add(dof_helper_t *dofhp, int gen)
 
 	ASSERT(MUTEX_HELD(&dtrace_lock));
 
-	dth = current->dtrace_helpers;
+	if (current->dt_task == NULL)
+		return -ENOMEM;
+
+	dth = current->dt_task->dt_helpers;
 	ASSERT(dth != NULL);
 
 	/*
@@ -1877,7 +1888,11 @@ int dtrace_helper_slurp(dof_hdr_t *dof, dof_helper_t *dhp)
 
 	ASSERT(MUTEX_HELD(&dtrace_lock));
 
-	if ((dth = current->dtrace_helpers) == NULL)
+	if (current->dt_task == NULL)
+		return -1;
+
+	dth = current->dt_task->dt_helpers;
+	if (dth == NULL)
 		dth = dtrace_helpers_create(current);
 
 	if (dth == NULL) {
@@ -1989,20 +2004,23 @@ void dtrace_helpers_destroy(struct task_struct *tsk)
 	dtrace_vstate_t		*vstate;
 	int			i;
 
+	if (tsk->dt_task == NULL)
+		return;
+
 	mutex_lock(&dtrace_lock);
 
-	ASSERT(tsk->dtrace_helpers != NULL);
+	ASSERT(tsk->dt_task->dt_helpers != NULL);
 	ASSERT(dtrace_helpers > 0);
 
 	dt_dbg_dof("Helper cleanup: PID %d\n", tsk->pid);
 
-	help = tsk->dtrace_helpers;
+	help = tsk->dt_task->dt_helpers;
 	vstate = &help->dthps_vstate;
 
 	/*
 	 * We're now going to lose the help from this process.
 	 */
-	tsk->dtrace_helpers = NULL;
+	tsk->dt_task->dt_helpers = NULL;
 	dtrace_sync();
 
 	/*
@@ -2075,21 +2093,26 @@ void dtrace_helpers_destroy(struct task_struct *tsk)
 
 void dtrace_helpers_duplicate(struct task_struct *from, struct task_struct *to)
 {
+	dtrace_task_t		*dfrom = from->dt_task;
+	dtrace_task_t		*dto = to->dt_task;
 	dtrace_helpers_t	*help, *newhelp;
 	dtrace_helper_action_t	*helper, *new, *last;
 	dtrace_difo_t		*dp;
 	dtrace_vstate_t		*vstate;
 	int			i, j, sz, hasprovs = 0;
 
+	if (dfrom == NULL || dto == NULL)
+		return;
+
 	mutex_lock(&dtrace_lock);
 
-	ASSERT(from->dtrace_helpers != NULL);
+	ASSERT(dfrom->dt_helpers != NULL);
 	ASSERT(dtrace_helpers > 0);
 
-	help = from->dtrace_helpers;
+	help = dfrom->dt_helpers;
 	newhelp = dtrace_helpers_create(to);
 
-	ASSERT(to->dtrace_helpers != NULL);
+	ASSERT(dto->dt_helpers != NULL);
 
 	newhelp->dthps_generation = help->dthps_generation;
 	vstate = &newhelp->dthps_vstate;
@@ -2161,11 +2184,16 @@ void dtrace_helpers_duplicate(struct task_struct *from, struct task_struct *to)
 int dtrace_helper_destroygen(int gen)
 {
 	struct task_struct	*p = current;
-	dtrace_helpers_t	*dth = p->dtrace_helpers;
+	dtrace_helpers_t	*dth;
 	dtrace_vstate_t		*vstate;
 	int			i;
 
 	ASSERT(MUTEX_HELD(&dtrace_lock));
+
+	if (current->dt_task == NULL)
+		return -ENOMEM;
+
+	dth = current->dt_task->dt_helpers;
 
 	if (dth == NULL || gen > dth->dthps_generation)
 		return -EINVAL;
@@ -2321,7 +2349,7 @@ uint64_t dtrace_helper(int which, dtrace_mstate_t *mstate,
 	uint64_t		sarg0 = mstate->dtms_arg[0];
 	uint64_t		sarg1 = mstate->dtms_arg[1];
 	uint64_t		rval = 0;
-	dtrace_helpers_t	*helpers = current->dtrace_helpers;
+	dtrace_helpers_t	*helpers;
 	dtrace_helper_action_t	*helper;
 	dtrace_vstate_t		*vstate;
 	dtrace_difo_t		*pred;
@@ -2329,6 +2357,10 @@ uint64_t dtrace_helper(int which, dtrace_mstate_t *mstate,
 
 	ASSERT(which >= 0 && which < DTRACE_NHELPER_ACTIONS);
 
+	if (current->dt_task == NULL)
+		return 0;
+
+	helpers = current->dt_task->dt_helpers;
 	if (helpers == NULL)
 		return 0;
 

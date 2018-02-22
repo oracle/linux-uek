@@ -16,6 +16,7 @@
  */
 
 #include <linux/dtrace_cpu.h>
+#include <linux/dtrace_task_impl.h>
 #include <linux/fdtable.h>
 #include <linux/hardirq.h>
 #include <linux/if_arp.h>
@@ -2101,7 +2102,15 @@ static uint64_t __always_inline dtrace_dif_variable(dtrace_mstate_t *mstate,
 	case DIF_VAR_VTIMESTAMP:
 		ASSERT(dtrace_vtime_references != 0);
 
-		return ktime_to_ns(current->dtrace_vtime);
+		if (current->dt_task != NULL)
+			return ktime_to_ns(current->dt_task->dt_vtime);
+
+		/*
+		 * This is not ideal but without any data available
+		 * there is no reasonable default value for vtimestamp
+		 * variable.
+		 */
+		return ktime_to_ns(0);
 
 	case DIF_VAR_IPL:
 		if (!dtrace_priv_kernel(state))
@@ -4600,7 +4609,8 @@ uint64_t dtrace_dif_emulate(dtrace_difo_t *difo, dtrace_mstate_t *mstate,
 			 * Given that we're storing to thread-local data,
 			 * we need to flush our predicate cache.
 			 */
-			current->predcache = 0;
+			if (current->dt_task != NULL)
+				current->dt_task->dt_predcache = 0;
 
 			if (dvar == NULL)
 				break;

@@ -38,6 +38,7 @@
 #include <linux/init_task.h>
 #include <linux/sched/mm.h>
 #include <linux/shmem_fs.h>
+#include <linux/dtrace_task_impl.h>
 
 #if defined(CONFIG_DT_FASTTRAP) || defined(CONFIG_DT_FASTTRAP_MODULE)
 # include <linux/uprobes.h>
@@ -51,17 +52,11 @@ EXPORT_SYMBOL(dtrace_kmod);
 
 int			dtrace_ustackdepth_max = 2048;
 
-struct kmem_cache	*psinfo_cachep = NULL;
 struct kmem_cache	*dtrace_pdata_cachep = NULL;
 
-void dtrace_os_init(void)
+void __init dtrace_os_init(void)
 {
 	size_t module_size;
-
-	if (dtrace_kmod != NULL) {
-		pr_warn_once("%s: cannot be called twice\n", __func__);
-		return;
-	}
 
 	/*
 	 * Setup for module handling.
@@ -115,20 +110,17 @@ void dtrace_os_init(void)
 	INIT_LIST_HEAD(&dtrace_kmod->source_list);
 	INIT_LIST_HEAD(&dtrace_kmod->target_list);
 
-	psinfo_cachep = kmem_cache_create("psinfo_cache",
-				sizeof(dtrace_psinfo_t), 0,
-				SLAB_HWCACHE_ALIGN|SLAB_PANIC,
-				NULL);
-
 	/*
 	 * We need to set up a psinfo structure for PID 0 (swapper).
 	 */
+	dtrace_task_os_init();
+	dtrace_psinfo_os_init();
+	dtrace_task_init(&init_task);
 	dtrace_psinfo_alloc(&init_task);
 
 	dtrace_sdt_init();
 	dtrace_sdt_register(dtrace_kmod);
 }
-EXPORT_SYMBOL(dtrace_os_init);
 
 #define	MIN(a, b)	(((a) < (b)) ? (a) : (b))
 #define	MAX(a, b)	(((a) > (b)) ? (a) : (b))
@@ -168,242 +160,6 @@ void dtrace_free_text(void *ptr)
 	return vfree(ptr);
 }
 EXPORT_SYMBOL(dtrace_free_text);
-
-/*---------------------------------------------------------------------------*\
-(* TASK PSINFO SUPPORT                                                       *)
-\*---------------------------------------------------------------------------*/
-/*
- * Allocate a new dtrace_psinfo_t structure.
- */
-void dtrace_psinfo_alloc(struct task_struct *tsk)
-{
-	dtrace_psinfo_t		*psinfo;
-	struct mm_struct	*mm = NULL;
-
-	if (likely(tsk->dtrace_psinfo)) {
-		put_psinfo(tsk);
-		tsk->dtrace_psinfo = NULL;	/* while we build one */
-	}
-
-	psinfo = kmem_cache_alloc(psinfo_cachep, GFP_KERNEL);
-	if (psinfo == NULL)
-		goto fail;
-
-	mm = get_task_mm(tsk);
-	if (mm) {
-		size_t	len = mm->arg_end - mm->arg_start;
-		int	i = 0;
-		char	*p;
-
-		/*
-		 * Construct the psargs string.
-		 */
-		if (len > 0) {
-			if (len >= PR_PSARGS_SZ)
-				len = PR_PSARGS_SZ - 1;
-
-			i = access_process_vm(tsk, mm->arg_start,
-					      psinfo->psargs, len, 0);
-
-			if (i > 0) {
-				if (i < len)
-					len = i;
-
-				for (i = 0, --len; i < len; i++) {
-					if (psinfo->psargs[i] == '\0')
-						psinfo->psargs[i] = ' ';
-				}
-			}
-		}
-
-		if (i < 0)
-			i = 0;
-
-		while (i < PR_PSARGS_SZ)
-			psinfo->psargs[i++] = 0;
-
-		/*
-		 * Determine the number of arguments.
-		 */
-		psinfo->argc = 0;
-		for (p = (char *)mm->arg_start; p < (char *)mm->arg_end;
-		     psinfo->argc++) {
-			size_t	l = strnlen_user(p, MAX_ARG_STRLEN);
-
-			if (!l)
-				break;
-
-			p += l + 1;
-		}
-
-		/*
-		 * Limit the number of stored argument pointers.
-		 */
-		if ((len = psinfo->argc) >= PR_ARGV_SZ)
-			len = PR_ARGV_SZ - 1;
-
-		psinfo->argv = kmalloc((len + 1) * sizeof(char *),
-					 GFP_KERNEL);
-		if (psinfo->argv == NULL)
-			goto fail;
-
-		/*
-		 * Now populate the array of argument strings.
-		 */
-		for (i = 0, p = (char *)mm->arg_start; i < len; i++) {
-			psinfo->argv[i] = p;
-			p += strnlen_user(p, MAX_ARG_STRLEN) + 1;
-		}
-		psinfo->argv[len] = NULL;
-
-		/*
-		 * Determine the number of environment variables.
-		 */
-		psinfo->envc = 0;
-		for (p = (char *)mm->env_start; p < (char *)mm->env_end;
-		     psinfo->envc++) {
-			size_t	l = strnlen_user(p, MAX_ARG_STRLEN);
-
-			if (!l)
-				break;
-
-			p += l + 1;
-		}
-
-		/*
-		 * Limit the number of stored environment pointers.
-		 */
-		if ((len = psinfo->envc) >= PR_ENVP_SZ)
-			len = PR_ENVP_SZ - 1;
-
-		psinfo->envp = kmalloc((len + 1) * sizeof(char *),
-					 GFP_KERNEL);
-		if (psinfo->envp == NULL)
-			goto fail;
-
-		/*
-		 * Now populate the array of environment variable strings.
-		 */
-		for (i = 0, p = (char *)mm->env_start; i < len; i++) {
-			psinfo->envp[i] = p;
-			p += strnlen_user(p, MAX_ARG_STRLEN) + 1;
-		}
-		psinfo->envp[len] = NULL;
-
-		psinfo->ustack = (void *)mm->start_stack;
-
-		mmput(mm);
-	} else {
-		size_t	len = min(TASK_COMM_LEN, PR_PSARGS_SZ);
-		int	i;
-
-		/*
-		 * We end up here for tasks that do not have managed memory at
-		 * all, which generally means that this is a kernel thread.
-		 * If it is not, this is still safe because we know that tasks
-		 * always have the comm member populated with something (even
-		 * if it would be an empty string).
-		 */
-		memcpy(psinfo->psargs, tsk->comm, len);
-		for (i = len; i < PR_PSARGS_SZ; i++)
-			psinfo->psargs[i] = 0;
-
-		psinfo->argc = 0;
-		psinfo->argv = kmalloc(sizeof(char *), GFP_KERNEL);
-		psinfo->argv[0] = NULL;
-		psinfo->envc = 0;
-		psinfo->envp = kmalloc(sizeof(char *), GFP_KERNEL);
-		psinfo->envp[0] = NULL;
-	}
-
-	atomic_set(&psinfo->usage, 1);
-	tsk->dtrace_psinfo = psinfo;		/* new one */
-
-	return;
-
-fail:
-	if (mm)
-		mmput(mm);
-
-	if (psinfo) {
-		if (psinfo->argv)
-			kfree(psinfo->argv);
-		if (psinfo->envp)
-			kfree(psinfo->envp);
-
-		kmem_cache_free(psinfo_cachep, psinfo);
-	}
-}
-
-static DEFINE_SPINLOCK(psinfo_lock);
-static dtrace_psinfo_t *psinfo_free_list;
-
-#ifdef CONFIG_DT_DEBUG
-void dt_debug_probe(uint64_t a0, uint64_t a1, uint64_t a2, uint64_t a3,
-		    uint64_t a4, uint64_t a5, uint64_t a6, uint64_t a7)
-{
-	DTRACE_PROBE(test, uint64_t, a0, uint64_t, a1, uint64_t, a2,
-			   uint64_t, a3, uint64_t, a4, uint64_t, a5,
-			   uint64_t, a6, uint64_t, a7);
-}
-#endif
-
-/*
- * Work queue handler to clean up psinfo structures for tasks that no longer
- * exist.
- */
-static void psinfo_cleaner(struct work_struct *work)
-{
-	unsigned long	flags;
-	dtrace_psinfo_t	*psinfo;
-
-	spin_lock_irqsave(&psinfo_lock, flags);
-	psinfo = psinfo_free_list;
-	psinfo_free_list = NULL;
-	spin_unlock_irqrestore(&psinfo_lock, flags);
-
-#ifdef CONFIG_DT_DEBUG
-	dt_debug_probe(10, 20, 30, 40, 50, 60, 70, 80);
-#endif
-
-	while (psinfo) {
-		dtrace_psinfo_t	*next = psinfo->next;
-
-		if (psinfo->argv)
-			kfree(psinfo->argv);
-		if (psinfo->envp)
-			kfree(psinfo->envp);
-
-		kmem_cache_free(psinfo_cachep, psinfo);
-		psinfo = next;
-	}
-}
-
-static DECLARE_WORK(psinfo_cleanup, psinfo_cleaner);
-
-/*
- * Schedule a psinfo structure for free'ing.
- */
-void dtrace_psinfo_free(struct task_struct *tsk)
-{
-	unsigned long	flags;
-	dtrace_psinfo_t	*psinfo = tsk->dtrace_psinfo;
-
-	/*
-	 * There are (very few) tasks without psinfo...
-	 */
-	if (unlikely(psinfo == NULL))
-		return;
-
-	tsk->dtrace_psinfo = NULL;
-
-	spin_lock_irqsave(&psinfo_lock, flags);
-	psinfo->next = psinfo_free_list;
-	psinfo_free_list = psinfo;
-	spin_unlock_irqrestore(&psinfo_lock, flags);
-
-	schedule_work(&psinfo_cleanup);
-}
 
 /*---------------------------------------------------------------------------*\
 (* MODULE SUPPORT FUNCTIONS                                                  *)
@@ -569,16 +325,19 @@ EXPORT_SYMBOL(dtrace_vtime_disable);
 
 void dtrace_vtime_switch(struct task_struct *prev, struct task_struct *next)
 {
+	dtrace_task_t *dprev = prev->dt_task;
+	dtrace_task_t *dnext = next->dt_task;
 	ktime_t	now = dtrace_gethrtime();
 
-	if (ktime_nz(prev->dtrace_start)) {
-		prev->dtrace_vtime = ktime_add(prev->dtrace_vtime,
+	if (dprev != NULL && ktime_nz(dprev->dt_start)) {
+		dprev->dt_vtime = ktime_add(dprev->dt_vtime,
 					       ktime_sub(now,
-							 prev->dtrace_start));
-		prev->dtrace_start = ktime_set(0, 0);
+							 dprev->dt_start));
+		dprev->dt_start = ktime_set(0, 0);
 	}
 
-	next->dtrace_start = now;
+	if (dnext != NULL)
+		dnext->dt_start = now;
 }
 
 void dtrace_stacktrace(stacktrace_state_t *st)
@@ -668,54 +427,6 @@ EXPORT_SYMBOL(dtrace_disable);
 /*---------------------------------------------------------------------------*\
 (* USER SPACE TRACING (FASTTRAP) SUPPORT                                     *)
 \*---------------------------------------------------------------------------*/
-void (*dtrace_helpers_cleanup)(struct task_struct *);
-EXPORT_SYMBOL(dtrace_helpers_cleanup);
-void (*dtrace_fasttrap_probes_cleanup)(struct task_struct *);
-EXPORT_SYMBOL(dtrace_fasttrap_probes_cleanup);
-void (*dtrace_helpers_fork)(struct task_struct *, struct task_struct *);
-EXPORT_SYMBOL(dtrace_helpers_fork);
-
-void dtrace_task_reinit(struct task_struct *tsk)
-{
-	tsk->predcache = 0;
-	tsk->dtrace_stop = 0;
-	tsk->dtrace_sig = 0;
-
-	tsk->dtrace_helpers = NULL;
-	tsk->dtrace_probes = 0;
-	tsk->dtrace_tp_count = 0;
-}
-
-void dtrace_task_init(struct task_struct *tsk)
-{
-	dtrace_task_reinit(tsk);
-
-	tsk->dtrace_vtime = ktime_set(0, 0);
-	tsk->dtrace_start = ktime_set(0, 0);
-}
-
-void dtrace_task_fork(struct task_struct *tsk, struct task_struct *child)
-{
-	if (likely(dtrace_helpers_fork == NULL))
-		return;
-
-	if (tsk->dtrace_helpers != NULL)
-		(*dtrace_helpers_fork)(tsk, child);
-}
-
-void dtrace_task_cleanup(struct task_struct *tsk)
-{
-	if (likely(dtrace_helpers_cleanup == NULL))
-		return;
-
-	if (tsk->dtrace_helpers != NULL)
-		(*dtrace_helpers_cleanup)(tsk);
-
-	if (tsk->dtrace_probes) {
-		if (dtrace_fasttrap_probes_cleanup != NULL)
-			(*dtrace_fasttrap_probes_cleanup)(tsk);
-	}
-}
 
 #if defined(CONFIG_DT_FASTTRAP) || defined(CONFIG_DT_FASTTRAP_MODULE)
 int (*dtrace_tracepoint_hit)(fasttrap_machtp_t *, struct pt_regs *, int);
@@ -738,7 +449,7 @@ struct task_struct *register_pid_provider(pid_t pid)
 	get_task_struct(p);
 	rcu_read_unlock();
 
-	if (p->state & TASK_DEAD ||
+	if (p->state & TASK_DEAD || p->dt_task == NULL ||
 	    p->exit_state & (EXIT_ZOMBIE | EXIT_DEAD)) {
 		put_task_struct(p);
 		return NULL;
@@ -749,7 +460,8 @@ struct task_struct *register_pid_provider(pid_t pid)
 	 * when it exits or execs. fasttrap_provider_free() decrements this
 	 * when we're done with this provider.
 	 */
-	p->dtrace_probes++;
+	if (p->dt_task != NULL)
+		p->dt_task->dt_probes++;
 	put_task_struct(p);
 
 	return p;
@@ -779,7 +491,8 @@ void unregister_pid_provider(pid_t pid)
 	read_unlock(&tasklist_lock);
 	rcu_read_unlock();
 
-	p->dtrace_probes--;
+	if (p->dt_task != NULL)
+		p->dt_task->dt_probes--;
 	put_task_struct(p);
 }
 EXPORT_SYMBOL(unregister_pid_provider);
@@ -918,6 +631,11 @@ int dtrace_tracepoint_enable(pid_t pid, uintptr_t addr, int is_ret,
 		return -ESRCH;
 	}
 
+	if (p->dt_task == NULL) {
+		pr_warn("PID %d no dtrace_task\n", pid);
+		return -EFAULT;
+	}
+
 	vma = find_vma(p->mm, addr);
 	if (vma == NULL || vma->vm_file == NULL)
 		return -EFAULT;
@@ -940,7 +658,7 @@ int dtrace_tracepoint_enable(pid_t pid, uintptr_t addr, int is_ret,
 		mtp->fmtp_ino = ino;
 		mtp->fmtp_off = off;
 
-		p->dtrace_tp_count++;
+		p->dt_task->dt_tp_count++;
 	}
 
 	return rc;
@@ -964,8 +682,8 @@ int dtrace_tracepoint_disable(pid_t pid, fasttrap_machtp_t *mtp)
 	 * the victim process (if it still exists).
 	 */
 	p = find_task_by_vpid(pid);
-	if (p)
-		p->dtrace_tp_count--;
+	if (p != NULL && p->dt_task != NULL)
+		p->dt_task->dt_tp_count--;
 
 	return 0;
 }

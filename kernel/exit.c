@@ -855,9 +855,8 @@ void __noreturn do_exit(long code)
 	if (group_dead)
 		DTRACE_PROC(exit, int, code & 0x80 ? 3 : code & 0x7f ? 2 : 1);
 
-#ifdef CONFIG_DTRACE
-	dtrace_task_cleanup(tsk);
-#endif
+	/* Remove DTrace state for this task */
+	dtrace_task_free(tsk);
 
 	exit_mm();
 

@@ -2,7 +2,7 @@
  * FILE:	dtrace_probe.c
  * DESCRIPTION:	DTrace - probe implementation
  *
- * Copyright (c) 2010, 2017, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2010, 2018, Oracle and/or its affiliates. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -16,6 +16,7 @@
  */
 
 #include <linux/dtrace_cpu.h>
+#include <linux/dtrace_task_impl.h>
 #include <linux/hardirq.h>
 #include <linux/idr.h>
 #include <linux/module.h>
@@ -358,6 +359,9 @@ static void dtrace_action_panic(dtrace_ecb_t *ecb)
 
 static void dtrace_action_raise(uint64_t sig)
 {
+	if (current->dt_task == NULL)
+		return;
+
 	if (dtrace_destructive_disallow)
 		return;
 
@@ -370,17 +374,20 @@ static void dtrace_action_raise(uint64_t sig)
 	 * raise() has a queue depth of 1 -- we ignore all subsequent
 	 * invocations of the raise() action.
 	 */
-	if (current->dtrace_sig == 0)
-		current->dtrace_sig = (uint8_t)sig;
+	if (current->dt_task->dt_sig == 0)
+		current->dt_task->dt_sig = (uint8_t)sig;
 }
 
 static void dtrace_action_stop(void)
 {
+	if (current->dt_task == NULL)
+		return;
+
 	if (dtrace_destructive_disallow)
 		return;
 
-	if (!current->dtrace_stop) {
-		current->dtrace_stop = 1;
+	if (!current->dt_task->dt_stop) {
+		current->dt_task->dt_stop = 1;
 //		current->sig_check = 1; /* FIXME */
 //		aston(current);		/* FIXME */
 	}
@@ -561,6 +568,7 @@ void dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 	ktime_t			now;
 	int			pflag = 0;
 	uint32_t		re_entry;
+	dtrace_task_t		*dtsk = current->dt_task;
 
 #ifdef FIXME
 	/*
@@ -587,7 +595,7 @@ void dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 	onintr = in_interrupt();
 
 	if (!onintr && probe->dtpr_predcache != DTRACE_CACHEIDNONE &&
-	    probe->dtpr_predcache == current->predcache) {
+	    dtsk != NULL && probe->dtpr_predcache == dtsk->dt_predcache) {
 		/*
 		 * We have hit in the predicate cache; we know that
 		 * this predicate would evaluate to be false.
@@ -631,9 +639,8 @@ void dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 	now = dtrace_gethrtime();
 	vtime = (dtrace_vtime_references > 0);
 
-	if (vtime && ktime_nz(current->dtrace_start))
-		current->dtrace_vtime = ktime_add(current->dtrace_vtime,
-						  ktime_sub(now, current->dtrace_start));
+	if (vtime && dtsk != NULL && ktime_nz(dtsk->dt_start))
+		dtsk->dt_vtime = ktime_add(dtsk->dt_vtime, ktime_sub(now, dtsk->dt_start));
 
 	mstate.dtms_difo = NULL;
 	mstate.dtms_probe = probe;
@@ -832,7 +839,8 @@ void dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 					 * Update the predicate cache...
 					 */
 					ASSERT(cid == pred->dtp_cacheid);
-					current->predcache = cid;
+					if (dtsk != NULL)
+						dtsk->dt_predcache = cid;
 				}
 
 				dt_dbg_probe("  Predicate not met (%d)\n",
@@ -936,7 +944,7 @@ void dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 				}
 
 				if (DTRACE_USTACK_STRSIZE(rec->dtrd_arg) != 0 &&
-				    current->dtrace_helpers != NULL) {
+				    dtsk != NULL && dtsk->dt_helpers != NULL) {
 					/*
 					 * This is the slow path -- we have
 					 * allocated string space, and we're
@@ -1256,14 +1264,14 @@ void dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 				continue;
 			}
 
-			if (vtime)
+			if (vtime && dtsk != NULL)
 				/*
 				 * Before recursing on dtrace_probe(), we
 				 * need to explicitly clear out our start
 				 * time to prevent it from being accumulated
 				 * into the dtrace_vtime.
 				 */
-				current->dtrace_start = ktime_set(0, 0);
+				dtsk->dt_start = ktime_set(0, 0);
 
 			/*
 			 * Iterate over the actions to figure out which action
@@ -1298,8 +1306,8 @@ void dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 			     id, ecb->dte_epid);
 	}
 
-	if (vtime)
-		current->dtrace_start = dtrace_gethrtime();
+	if (vtime && dtsk != NULL)
+		dtsk->dt_start = dtrace_gethrtime();
 
 	/*
 	 * Only clear the flag if this is not the ERROR probe.  We know that
@@ -1315,10 +1323,10 @@ void dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 		dtrace_preempt_on();
 	DTRACE_SYNC_EXIT_CRITICAL(cookie, re_entry);
 
-	if (current->dtrace_sig != 0) {
-		int	sig = current->dtrace_sig;
+	if (dtsk != NULL && dtsk->dt_sig != 0) {
+		int	sig = dtsk->dt_sig;
 
-		current->dtrace_sig = 0;
+		dtsk->dt_sig = 0;
 
 		send_sig(sig, current, 0);
 	}

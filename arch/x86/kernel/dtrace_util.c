@@ -7,6 +7,7 @@
 
 #include <linux/dtrace_cpu.h>
 #include <linux/dtrace_os.h>
+#include <linux/dtrace_task_impl.h>
 #include <linux/kdebug.h>
 #include <linux/mm.h>
 #include <linux/module.h>
@@ -405,10 +406,10 @@ void dtrace_user_stacktrace(stacktrace_state_t *st)
 	if (!user_mode(regs))
 		goto out;
 
-	if (!current->dtrace_psinfo)
+	if (current->dt_task == NULL)
 		goto out;
 
-	bos = current->dtrace_psinfo->ustack;
+	bos = current->dt_task->dt_ustack;
 
 	st->depth = 1;
 	if (pcs)

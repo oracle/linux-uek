@@ -2,7 +2,7 @@
  * FILE:	dtrace_isa.c
  * DESCRIPTION:	DTrace - architecture specific code
  *
- * Copyright (c) 2010, 2017, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2010, 2018, Oracle and/or its affiliates. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -16,6 +16,7 @@
  */
 
 #include <linux/dtrace_cpu.h>
+#include <linux/dtrace_task_impl.h>
 #include <linux/hardirq.h>
 #include <linux/mm.h>
 #include <linux/smp.h>
@@ -178,11 +179,23 @@ void dtrace_sync(void)
  */
 static int dtrace_fake_copyin(intptr_t addr, size_t size)
 {
-	dtrace_psinfo_t	*psinfo = current->dtrace_psinfo;
-	uintptr_t	argv = (uintptr_t)psinfo->argv;
-	unsigned long	argc = psinfo->argc;
-	uintptr_t	envp = (uintptr_t)psinfo->envp;
-	unsigned long	envc = psinfo->envc;
+	dtrace_psinfo_t	*psinfo;
+	uintptr_t	argv;
+	unsigned long	argc;
+	uintptr_t	envp;
+	unsigned long	envc;
+
+	if (current->dt_task == NULL)
+		return 0;
+
+	psinfo = current->dt_task->dt_psinfo;
+	if (psinfo == NULL)
+		return 0;
+
+	argv = (uintptr_t)psinfo->dtps_argv;
+	argc = psinfo->dtps_argc;
+	envp = (uintptr_t)psinfo->dtps_envp;
+	envc = psinfo->dtps_envc;
 
 	/*
 	 * Ensure addr is within the argv array (or the envp array):
@@ -196,10 +209,10 @@ static int dtrace_fake_copyin(intptr_t addr, size_t size)
 	 * into:
 	 *	addr - argv <= argc * sizeof(psinfo->argv[0]) - size
 	 */
-	return (addr >= argv && addr - argv < argc * sizeof(psinfo->argv[0])
-		    && addr - argv <= argc * sizeof(psinfo->argv[0]) - size) ||
-	       (addr >= envp && addr - envp < envc * sizeof(psinfo->envp[0])
-		    && addr - envp <= envc * sizeof(psinfo->envp[0]) - size);
+	return (addr >= argv && addr - argv < argc * sizeof(psinfo->dtps_argv[0])
+		    && addr - argv <= argc * sizeof(psinfo->dtps_argv[0]) - size) ||
+	       (addr >= envp && addr - envp < envc * sizeof(psinfo->dtps_envp[0])
+		    && addr - envp <= envc * sizeof(psinfo->dtps_envp[0]) - size);
 }
 
 void dtrace_copyin(uintptr_t uaddr, uintptr_t kaddr, size_t size,

@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2017, Oracle and/or its affiliates. All rights reserved.
+# Copyright (c) 2018, Oracle and/or its affiliates. All rights reserved.
 #
 
 GCOV_PROFILE := y
@@ -11,5 +11,6 @@ DT_CORE_ARCH_OBJS		= $(addprefix ../../arch/$(SRCARCH)/kernel/, \
 ifdef CONFIG_DT_CORE
 obj-y				+= cyclic.o dtrace_os.o dtrace_cpu.o \
 				   dtrace_sdt_core.o dtrace_fbt_core.o \
+				   dtrace_task.o dtrace_psinfo.o \
 				   $(DT_CORE_ARCH_OBJS)
 endif

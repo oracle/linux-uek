@@ -20,13 +20,16 @@ typedef uint32_t dtrace_id_t;
 #endif
 #include <asm/unistd.h>
 #include <linux/dtrace_cpu.h>
+#include <linux/dtrace_task.h>
+#include <linux/dtrace_psinfo.h>
 
 #define DTRACE_IDNONE 0
 
 extern struct module	*dtrace_kmod;
 
-extern void dtrace_os_init(void);
-extern void dtrace_os_exit(void);
+extern void dtrace_os_init(void) __init;
+extern void dtrace_psinfo_os_init(void) __init;
+extern void dtrace_task_os_init(void) __init;
 
 extern void *dtrace_alloc_text(struct module *, unsigned long);
 extern void dtrace_free_text(void *);
@@ -97,15 +100,9 @@ static inline int dtrace_no_pf(struct pt_regs *regs)
 	return 0;
 }
 
-extern void dtrace_task_reinit(struct task_struct *);
-extern void dtrace_task_init(struct task_struct *);
-extern void dtrace_task_fork(struct task_struct *, struct task_struct *);
-extern void dtrace_task_cleanup(struct task_struct *);
-
 extern void (*dtrace_helpers_cleanup)(struct task_struct *);
 extern void (*dtrace_fasttrap_probes_cleanup)(struct task_struct *);
-extern void (*dtrace_helpers_fork)(struct task_struct *,
-				   struct task_struct *);
+extern void (*dtrace_helpers_fork)(struct task_struct *, struct task_struct *);
 
 #if defined(CONFIG_DT_FASTTRAP) || defined(CONFIG_DT_FASTTRAP_MODULE)
 typedef struct fasttrap_machtp {

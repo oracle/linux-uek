@@ -1807,11 +1807,10 @@ static int do_execveat_common(int fd, struct filename *filename,
 		goto out;
 
 	/* execve succeeded */
-#ifdef CONFIG_DTRACE
-	dtrace_task_cleanup(current);	/* get rid of probes from old ... */
-	dtrace_task_reinit(current);	/* ... be ready for probes from new */
-	dtrace_psinfo_alloc(current);	/* install new psinfo object */
-#endif
+
+	/* Update DTrace per-task data. */
+	dtrace_task_exec(current);
+
 	current->fs->in_exec = 0;
 	current->in_execve = 0;
 	membarrier_execve(current);
