@@ -233,7 +233,7 @@ static ssize_t microcode_write(struct file *file, const char __user *buf,
 		perf_check_microcode();
 
 	/* check spec_ctrl capabilities */
-	init_scattered_cpuid_features(&boot_cpu_data);
+	init_scattered_cpuid_features(&boot_cpu_data, GET_CPU_CAP_FULL);
 
 	mutex_unlock(&microcode_mutex);
 	put_online_cpus();

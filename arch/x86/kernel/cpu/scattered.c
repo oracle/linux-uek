@@ -86,7 +86,8 @@ static bool bad_spectre_microcode(struct cpuinfo_x86 *c)
 	return false;
 }
 
-void init_scattered_cpuid_features(struct cpuinfo_x86 *c)
+void init_scattered_cpuid_features(struct cpuinfo_x86 *c,
+				   enum get_cpu_cap_behavior behavior)
 {
 	u32 max_level;
 	u32 regs[4];
@@ -149,6 +150,9 @@ void init_scattered_cpuid_features(struct cpuinfo_x86 *c)
 
 	if (cpu_has(c, X86_FEATURE_IBRS))
 		set_cpu_cap(c, X86_FEATURE_IBPB);
+
+	if (behavior == GET_CPU_CAP_MINIMUM)
+		return;
 
 	if (!c->cpu_index) {
 		bool ignore = false;
