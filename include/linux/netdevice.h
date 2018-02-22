@@ -1920,8 +1920,13 @@ struct net_device {
 	struct lock_class_key	*qdisc_running_key;
 	bool			proto_down;
 
+#ifdef CONFIG_DCB
+	/* This has been split out from dcbnl_ops to avoid breaking kABI */
+	UEK_KABI_REPLACE(UEK_KABI_RESERVED_P(1), const struct dcbnl_rtnl_kabi_ops *dcbnl_kabi_ops)
+#else
 	/* Space for future expansion without breaking kABI. */
 	UEK_KABI_RESERVED_P(1);
+#endif
 	UEK_KABI_RESERVED_P(2);
 	UEK_KABI_RESERVED_P(3);
 	UEK_KABI_RESERVED_P(4);
