@@ -59,6 +59,7 @@
 #include "lib/mlx5.h"
 #include "fpga/core.h"
 #include "accel/ipsec.h"
+#include "diag/fw_tracer.h"
 
 MODULE_AUTHOR("Eli Cohen <eli@mellanox.com>");
 MODULE_DESCRIPTION("Mellanox Connect-IB, ConnectX-4 core driver");
@@ -1078,6 +1079,8 @@ static int mlx5_init_once(struct mlx5_core_dev *dev, struct mlx5_priv *priv)
 		goto err_sriov_cleanup;
 	}
 
+	dev->tracer = mlx5_fw_tracer_create(dev);
+
 	return 0;
 
 err_sriov_cleanup:
@@ -1103,6 +1106,7 @@ out:
 
 static void mlx5_cleanup_once(struct mlx5_core_dev *dev)
 {
+	mlx5_fw_tracer_destroy(dev->tracer);
 	mlx5_fpga_cleanup(dev);
 	mlx5_sriov_cleanup(dev);
 	mlx5_eswitch_cleanup(dev->priv.eswitch);
@@ -1256,10 +1260,16 @@ static int mlx5_load_one(struct mlx5_core_dev *dev, struct mlx5_priv *priv,
 		goto err_put_uars;
 	}
 
+	err = mlx5_fw_tracer_init(dev->tracer);
+	if (err) {
+		dev_err(&pdev->dev, "Failed to init FW tracer\n");
+		goto err_fw_tracer;
+	}
+
 	err = alloc_comp_eqs(dev);
 	if (err) {
 		dev_err(&pdev->dev, "Failed to alloc completion EQs\n");
-		goto err_stop_eqs;
+		goto err_comp_eqs;
 	}
 
 	err = mlx5_irq_set_affinity_hints(dev);
@@ -1330,7 +1340,10 @@ err_fs:
 err_affinity_hints:
 	free_comp_eqs(dev);
 
-err_stop_eqs:
+err_comp_eqs:
+	mlx5_fw_tracer_cleanup(dev->tracer);
+
+err_fw_tracer:
 	mlx5_stop_eqs(dev);
 
 err_put_uars:
@@ -1398,6 +1411,7 @@ static int mlx5_unload_one(struct mlx5_core_dev *dev, struct mlx5_priv *priv,
 	mlx5_cleanup_fs(dev);
 	mlx5_irq_clear_affinity_hints(dev);
 	free_comp_eqs(dev);
+	mlx5_fw_tracer_cleanup(dev->tracer);
 	mlx5_stop_eqs(dev);
 	mlx5_put_uars_page(dev, priv->uar);
 	mlx5_free_irq_vectors(dev);
