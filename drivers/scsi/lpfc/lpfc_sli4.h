@@ -536,6 +536,10 @@ struct lpfc_sli4_hba {
 	struct lpfc_fcp_eq_hdl *fcp_eq_hdl; /* FCP per-WQ handle */
 	struct lpfc_bbscn_params bbscn_params;
 
+	void (*sli4_eq_clr_intr)(struct lpfc_queue *q);
+	uint32_t (*sli4_eq_release)(struct lpfc_queue *q, bool arm);
+	uint32_t (*sli4_cq_release)(struct lpfc_queue *q, bool arm);
+
 	/* Pointers to the constructed SLI4 queues */
 	struct lpfc_queue **hba_eq;/* Event queues for HBA */
 	struct lpfc_queue **fcp_cq;/* Fast-path FCP compl queue */
@@ -765,6 +769,7 @@ int lpfc_sli4_add_fcf_record(struct lpfc_hba *, struct fcf_record *);
 void lpfc_sli_remove_dflt_fcf(struct lpfc_hba *);
 int lpfc_sli4_get_els_iocb_cnt(struct lpfc_hba *);
 int lpfc_sli4_init_vpi(struct lpfc_vport *);
+inline void lpfc_sli4_eq_clr_intr(struct lpfc_queue *);
 uint32_t lpfc_sli4_cq_release(struct lpfc_queue *, bool);
 uint32_t lpfc_sli4_eq_release(struct lpfc_queue *, bool);
 void lpfc_sli4_fcfi_unreg(struct lpfc_hba *, uint16_t);
