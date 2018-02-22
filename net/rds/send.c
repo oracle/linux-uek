@@ -1329,11 +1329,6 @@ int rds_sendmsg(struct kiocb *iocb, struct socket *sock, struct msghdr *msg,
 		goto out;
 	}
 
-	if (!rds_conn_up(conn)) {
-		ret = -EAGAIN;
-		goto out;
-	}
-
 	/* Parse any control messages the user may have included. */
 	ret = rds_cmsg_send(rs, rm, msg, &allocated_mr);
 	if (ret)
