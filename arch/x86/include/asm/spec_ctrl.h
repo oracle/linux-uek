@@ -220,7 +220,7 @@ extern void unprotected_firmware_end(void);
 
 static inline bool set_ibrs_inuse(void)
 {
-	if (ibrs_supported) {
+	if (ibrs_supported && !ibrs_disabled) {
 		use_ibrs |= SPEC_CTRL_IBRS_INUSE;
 		return true;
 	} else {
@@ -293,7 +293,7 @@ extern u32 sysctl_ibpb_enabled;
 
 static inline bool set_ibpb_inuse(void)
 {
-	if (ibpb_supported) {
+	if (ibpb_supported && !ibpb_disabled) {
 		use_ibpb |= SPEC_CTRL_IBPB_INUSE;
 		return true;
 	} else {
