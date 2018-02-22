@@ -354,7 +354,7 @@ static __always_inline void setup_pku(struct cpuinfo_x86 *c)
 	 * cpuid bit to be set.  We need to ensure that we
 	 * update that bit in this CPU's "cpu_info".
 	 */
-	get_cpu_cap(c);
+	get_cpu_cap(c, GET_CPU_CAP_FULL);
 }
 
 #ifdef CONFIG_X86_INTEL_MEMORY_PROTECTION_KEYS
@@ -727,7 +727,8 @@ static void apply_forced_caps(struct cpuinfo_x86 *c)
 	}
 }
 
-void init_speculation_control(struct cpuinfo_x86 *c)
+void init_speculation_control(struct cpuinfo_x86 *c,
+			      enum get_cpu_cap_behavior behavior)
 {
 	if (cpu_has(c, X86_FEATURE_ARCH_CAPABILITIES)) {
 		u64 cap;
@@ -756,6 +757,9 @@ void init_speculation_control(struct cpuinfo_x86 *c)
 
 	if (cpu_has(c, X86_FEATURE_IBRS))
 		set_cpu_cap(c, X86_FEATURE_IBPB);
+
+	if (behavior == GET_CPU_CAP_MINIMUM)
+		return;
 
 	if (!c->cpu_index) {
 		bool ignore = false;
@@ -796,7 +800,7 @@ void init_speculation_control(struct cpuinfo_x86 *c)
 	}
 }
 
-void get_cpu_cap(struct cpuinfo_x86 *c)
+void get_cpu_cap(struct cpuinfo_x86 *c, enum get_cpu_cap_behavior behavior)
 {
 	u32 eax, ebx, ecx, edx;
 
@@ -890,7 +894,6 @@ void get_cpu_cap(struct cpuinfo_x86 *c)
 		c->x86_capability[CPUID_8000_000A_EDX] = cpuid_edx(0x8000000a);
 
 	init_scattered_cpuid_features(c);
-	init_speculation_control(c);
 
 	/*
 	 * Clear/Set all flags overridden by options, after probe.
@@ -898,6 +901,12 @@ void get_cpu_cap(struct cpuinfo_x86 *c)
 	 * several times during CPU initialization.
 	 */
 	apply_forced_caps(c);
+
+	/*
+	 * MUST be done after we apply the forced CPU flags as the boot_cpu_has
+	 * has been memset so we may re-enable the bits.
+	 */
+	init_speculation_control(c, behavior);
 }
 
 static void identify_cpu_without_cpuid(struct cpuinfo_x86 *c)
@@ -990,7 +999,7 @@ static void __init early_identify_cpu(struct cpuinfo_x86 *c)
 	if (have_cpuid_p()) {
 		cpu_detect(c);
 		get_cpu_vendor(c);
-		get_cpu_cap(c);
+		get_cpu_cap(c, GET_CPU_CAP_MINIMUM);
 		setup_force_cpu_cap(X86_FEATURE_CPUID);
 
 		if (this_cpu->c_early_init)
@@ -1121,7 +1130,7 @@ static void generic_identify(struct cpuinfo_x86 *c)
 
 	get_cpu_vendor(c);
 
-	get_cpu_cap(c);
+	get_cpu_cap(c, GET_CPU_CAP_FULL);
 
 	if (c->cpuid_level >= 0x00000001) {
 		c->initial_apicid = (cpuid_ebx(1) >> 24) & 0xFF;
