@@ -9897,6 +9897,17 @@ lpfc_get_sli4_parameters(struct lpfc_hba *phba, LPFC_MBOXQ_t *mboxq)
 	phba->sli4_hba.extents_in_use = bf_get(cfg_ext, mbx_sli4_parameters);
 	phba->sli4_hba.rpi_hdrs_in_use = bf_get(cfg_hdrr, mbx_sli4_parameters);
 
+	/* Only embed PBDE for if_type 6 */
+	if (bf_get(lpfc_sli_intf_if_type, &phba->sli4_hba.sli_intf) ==
+	    LPFC_SLI_INTF_IF_TYPE_6) {
+		phba->fcp_embed_pbde = 1;
+	}
+
+	/* PBDE support requires xib be set */
+	if (!bf_get(cfg_xib, mbx_sli4_parameters)) {
+		phba->fcp_embed_pbde = 0;
+	}
+
 	/* Make sure that sge_supp_len can be handled by the driver */
 	if (sli4_params->sge_supp_len > LPFC_MAX_SGE_SIZE)
 		sli4_params->sge_supp_len = LPFC_MAX_SGE_SIZE;
@@ -9910,6 +9921,11 @@ lpfc_get_sli4_parameters(struct lpfc_hba *phba, LPFC_MBOXQ_t *mboxq)
 		phba->fcp_embed_io = 1;
 	else
 		phba->fcp_embed_io = 0;
+
+	lpfc_printf_log(phba, KERN_INFO, LOG_INIT,
+			"6422 XIB %d: FCP %d %d \n",
+			bf_get(cfg_xib, mbx_sli4_parameters),
+			phba->fcp_embed_pbde, phba->fcp_embed_io);
 
 	/*
 	 * Check if the SLI port supports MDS Diagnostics

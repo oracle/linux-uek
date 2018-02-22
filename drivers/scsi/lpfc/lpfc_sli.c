@@ -6671,10 +6671,15 @@ lpfc_sli4_hba_setup(struct lpfc_hba *phba)
 				"0378 No support for fcpi mode.\n");
 		ftr_rsp++;
 	}
-	if (bf_get(lpfc_mbx_rq_ftr_rsp_perfh, &mqe->un.req_ftrs))
-		phba->sli3_options |= LPFC_SLI4_PERFH_ENABLED;
-	else
-		phba->sli3_options &= ~LPFC_SLI4_PERFH_ENABLED;
+
+	/* Performance Hints are ONLY for FCoE */
+	if (phba->hba_flag & HBA_FCOE_MODE) {
+		if (bf_get(lpfc_mbx_rq_ftr_rsp_perfh, &mqe->un.req_ftrs))
+			phba->sli3_options |= LPFC_SLI4_PERFH_ENABLED;
+		else
+			phba->sli3_options &= ~LPFC_SLI4_PERFH_ENABLED;
+	}
+
 	/*
 	 * If the port cannot support the host's requested features
 	 * then turn off the global config parameters to disable the
@@ -8645,6 +8650,12 @@ lpfc_sli4_iocb2wqe(struct lpfc_hba *phba, struct lpfc_iocbq *iocbq,
 		}
 		/* Note, word 10 is already initialized to 0 */
 
+		/* Don't set PBDE for Perf hints, just fcp_embed_pbde */
+		if (phba->fcp_embed_pbde)
+			bf_set(wqe_pbde, &wqe->fcp_iwrite.wqe_com, 1);
+		else
+			bf_set(wqe_pbde, &wqe->fcp_iwrite.wqe_com, 0);
+
 		if (phba->fcp_embed_io) {
 			struct lpfc_scsi_buf *lpfc_cmd;
 			struct sli4_sge *sgl;
@@ -8667,6 +8678,7 @@ lpfc_sli4_iocb2wqe(struct lpfc_hba *phba, struct lpfc_iocbq *iocbq,
 			wqe128->generic.bde.addrLow =  88;  /* Word 22 */
 
 			bf_set(wqe_wqes, &wqe128->fcp_iwrite.wqe_com, 1);
+			bf_set(wqe_dbde, &wqe128->fcp_iwrite.wqe_com, 0);
 
 			/* Word 22-29  FCP CMND Payload */
 			ptr = &wqe128->words[22];
@@ -8704,6 +8716,12 @@ lpfc_sli4_iocb2wqe(struct lpfc_hba *phba, struct lpfc_iocbq *iocbq,
 		}
 		/* Note, word 10 is already initialized to 0 */
 
+		/* Don't set PBDE for Perf hints, just fcp_embed_pbde */
+		if (phba->fcp_embed_pbde)
+			bf_set(wqe_pbde, &wqe->fcp_iread.wqe_com, 1);
+		else
+			bf_set(wqe_pbde, &wqe->fcp_iread.wqe_com, 0);
+
 		if (phba->fcp_embed_io) {
 			struct lpfc_scsi_buf *lpfc_cmd;
 			struct sli4_sge *sgl;
@@ -8726,6 +8744,7 @@ lpfc_sli4_iocb2wqe(struct lpfc_hba *phba, struct lpfc_iocbq *iocbq,
 			wqe128->generic.bde.addrLow =  88;  /* Word 22 */
 
 			bf_set(wqe_wqes, &wqe128->fcp_iread.wqe_com, 1);
+			bf_set(wqe_dbde, &wqe128->fcp_iread.wqe_com, 0);
 
 			/* Word 22-29  FCP CMND Payload */
 			ptr = &wqe128->words[22];
@@ -8784,6 +8803,7 @@ lpfc_sli4_iocb2wqe(struct lpfc_hba *phba, struct lpfc_iocbq *iocbq,
 			wqe128->generic.bde.addrLow =  88;  /* Word 22 */
 
 			bf_set(wqe_wqes, &wqe128->fcp_icmd.wqe_com, 1);
+			bf_set(wqe_dbde, &wqe128->fcp_icmd.wqe_com, 0);
 
 			/* Word 22-29  FCP CMND Payload */
 			ptr = &wqe128->words[22];

@@ -774,6 +774,7 @@ struct lpfc_hba {
 	uint32_t cfg_enable_mds_diags;
 	uint32_t cfg_enable_bbcr;	/*Enable BB Credit Recovery*/
 	uint32_t cfg_enable_dpp;	/* Enable Direct Packet Push */
+	uint32_t fcp_embed_pbde;
 	lpfc_vpd_t vpd;		/* vital product data */
 
 	struct pci_dev *pcidev;
