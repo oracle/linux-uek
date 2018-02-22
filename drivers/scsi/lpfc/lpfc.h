@@ -776,6 +776,7 @@ struct lpfc_hba {
 	uint32_t cfg_enable_SmartSAN;
 	uint32_t cfg_enable_mds_diags;
 	uint32_t cfg_enable_bbcr;	/*Enable BB Credit Recovery*/
+	uint32_t cfg_enable_dpp;	/* Enable Direct Packet Push */
 	lpfc_vpd_t vpd;		/* vital product data */
 
 	struct pci_dev *pcidev;
