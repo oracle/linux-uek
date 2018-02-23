@@ -1431,6 +1431,12 @@ init_card(struct l1oip *hc, int pri, int bundle)
 	return 0;
 }
 
+static void __exit
+l1oip_exit(void)
+{
+	l1oip_cleanup();
+}
+
 static int __init
 l1oip_init(void)
 {
@@ -1501,4 +1507,4 @@ l1oip_init(void)
 }
 
 module_init(l1oip_init);
-module_exit(l1oip_cleanup);
+module_exit(l1oip_exit);
