@@ -1,9 +1,12 @@
-/* Copyright (c) 2013, 2017, Oracle and/or its affiliates. All rights reserved. */
+/* Copyright (c) 2013, 2018, Oracle and/or its affiliates. All rights reserved. */
 
 #ifndef _SPARC_DTRACE_ARCH_H
 #define _SPARC_DTRACE_ARCH_H
 
 #include <linux/module.h>
+
+/* Number of argumens stored inside the mstate. */
+#define	DTRACE_MSTATE_ARGS_MAX		6
 
 typedef uint32_t	asm_instr_t;
 

@@ -3,6 +3,9 @@
 #ifndef _ASM_ARM64_DTRACE_ARCH_H
 #define _ASM_ARM64_DTRACE_ARCH_H
 
+/* Number of argumens stored inside the mstate. */
+#define	DTRACE_MSTATE_ARGS_MAX		7
+
 typedef uint32_t	asm_instr_t;
 
 typedef int (*prov_exit_f)(void);

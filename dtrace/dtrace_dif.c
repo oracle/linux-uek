@@ -2041,8 +2041,7 @@ static uint64_t __always_inline dtrace_dif_variable(dtrace_mstate_t *mstate,
 	case DIF_VAR_ARGS:
 		ASSERT(mstate->dtms_present & DTRACE_MSTATE_ARGS);
 
-		if (ndx >=
-		    sizeof(mstate->dtms_arg) / sizeof(mstate->dtms_arg[0])) {
+		if (ndx >= DTRACE_MSTATE_ARGS_MAX) {
 			int			aframes =
 					mstate->dtms_probe->dtpr_aframes + 1;
 			dtrace_provider_t	*pv;
