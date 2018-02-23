@@ -972,6 +972,7 @@ static const u32 emulated_msrs[] = {
  */
 static u32 msr_based_features[] = {
 	MSR_IA32_ARCH_CAPABILITIES,
+	MSR_F10H_DECFG,
 };
 
 static unsigned int num_msr_based_features;
