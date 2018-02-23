@@ -31,6 +31,7 @@
 static void __cpuinit early_init_intel(struct cpuinfo_x86 *c)
 {
 	u64 misc_enable;
+	u32 microcode = 0;
 
 	/* Unmask CPUID levels if masked: */
 	if (c->x86 > 6 || (c->x86 == 6 && c->x86_model >= 0xd)) {
@@ -47,6 +48,15 @@ static void __cpuinit early_init_intel(struct cpuinfo_x86 *c)
 	if ((c->x86 == 0xf && c->x86_model >= 0x03) ||
 		(c->x86 == 0x6 && c->x86_model >= 0x0e))
 		set_cpu_cap(c, X86_FEATURE_CONSTANT_TSC);
+
+	if (c->x86 >= 6 && !cpu_has(c, X86_FEATURE_IA64)) {
+		unsigned lower_word;
+
+		wrmsr(MSR_IA32_UCODE_REV, 0, 0);
+		/* Required by the SDM */
+		sync_core();
+		rdmsr(MSR_IA32_UCODE_REV, lower_word, microcode);
+	}
 
 	/*
 	 * Atom erratum AAE44/AAF40/AAG38/AAH41:
