@@ -67,7 +67,7 @@ void dtrace_os_init(void)
 	 */
 	dtrace_pdata_cachep = kmem_cache_create("dtrace_pdata_cache",
 				sizeof(dtrace_module_t), 0,
-				SLAB_HWCACHE_ALIGN|SLAB_PANIC|SLAB_NOTRACK,
+				SLAB_HWCACHE_ALIGN|SLAB_PANIC,
 				NULL);
 	if (dtrace_pdata_cachep == NULL)
 		pr_debug("Can't allocate kmem cache for pdata\n");
@@ -116,7 +116,7 @@ void dtrace_os_init(void)
 
 	psinfo_cachep = kmem_cache_create("psinfo_cache",
 				sizeof(dtrace_psinfo_t), 0,
-				SLAB_HWCACHE_ALIGN|SLAB_PANIC|SLAB_NOTRACK,
+				SLAB_HWCACHE_ALIGN|SLAB_PANIC,
 				NULL);
 
 	/*

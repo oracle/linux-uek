@@ -1390,8 +1390,7 @@ int dtrace_dev_init(void)
 
         dtrace_state_cachep = kmem_cache_create("dtrace_state_cache",
 				sizeof(dtrace_dstate_percpu_t) * NR_CPUS, 0,
-				SLAB_HWCACHE_ALIGN|SLAB_PANIC|SLAB_NOTRACK,
-				NULL);
+				SLAB_HWCACHE_ALIGN|SLAB_PANIC, NULL);
 
 	/* From now on the failures are results of failed allocations. */
 	rc = -ENOMEM;
