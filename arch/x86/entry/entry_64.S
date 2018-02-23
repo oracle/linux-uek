@@ -951,21 +951,9 @@ END(\sym)
 
 #ifdef CONFIG_DTRACE
 ENTRY(dtrace_error_exit)
-	POP_EXTRA_REGS
+	UNWIND_HINT_REGS
 	DISABLE_INTERRUPTS(CLBR_NONE)
 	TRACE_IRQS_OFF
-
-#ifdef CONFIG_PREEMPT
-	/* Interrupts are off */
-	/* Check if we need preemption */
-	bt      $9,EFLAGS(%rsp) /* interrupts were off? */
-	jnc     1f
-0:      cmpl    $0,PER_CPU_VAR(__preempt_count)
-	jnz     1f
-	call    preempt_schedule_irq
-	jmp     0b
-1:
-#endif
 
 	/*
 	 * The iretq could re-enable interrupts:
@@ -990,12 +978,12 @@ ENTRY(dtrace_error_exit)
 	movq (%rsp),%rdx
 	call printk
 
-	POP_C_REGS
+	POP_REGS
 	addq	$8, %rsp	/* skip regs->orig_ax */
-	INTERRUPT_RETURN
+	jmp dtrace_retint_kernel
 
 dtrace_emu_mov:
-	POP_C_REGS
+	POP_REGS
 	addq	$8, %rsp	/* skip regs->orig_ax */
 
 	/* Emulate "mov %rsp, %rbp" instruction. */
@@ -1006,10 +994,10 @@ dtrace_emu_mov:
 	movq 32(%rsp),%rbp		/* load %rsp into %rbp */
 	popq %rax			/* pop off temp */
 
-	INTERRUPT_RETURN
+	jmp dtrace_retint_kernel
 
 dtrace_emu_push:
-	POP_C_REGS
+	POP_REGS
 	addq	$8, %rsp	/* skip regs->orig_ax */
 
 	/*
@@ -1034,19 +1022,19 @@ dtrace_emu_push:
 	movq %rbp,(%rax)		/* store %rbp there */
 	popq %rax			/* pop off temp */
 
-	INTERRUPT_RETURN
+	jmp dtrace_retint_kernel
 
 dtrace_emu_nop:
-	POP_C_REGS
+	POP_REGS
 	addq	$8, %rsp	/* skip regs->orig_ax */
 
 	/* Emulate a "nop" instruction. */
 	incq (%rsp)
 
-	INTERRUPT_RETURN
+	jmp dtrace_retint_kernel
 
 dtrace_emu_leave:
-	POP_C_REGS
+	POP_REGS
 	addq	$8, %rsp	/* skip regs->orig_ax */
 
 	/*
@@ -1066,10 +1054,10 @@ dtrace_emu_leave:
 	movq %rax,%rbp			/* set new %rbp */
 	popq %rax			/* pop off temp */
 
-	INTERRUPT_RETURN
+	jmp dtrace_retint_kernel
 
 dtrace_emu_ret:
-	POP_C_REGS
+	POP_REGS
 	addq	$8, %rsp	/* skip regs->orig_ax */
 
 	/* Emulate a "ret" instruction. */
@@ -1079,6 +1067,22 @@ dtrace_emu_ret:
 	movq %rax,8(%rsp)		/* store calling RIP */
 	addq $8,32(%rsp)		/* adjust new %rsp */
 	popq %rax			/* pop off temp */
+
+	/* fallthrough */
+
+dtrace_retint_kernel:
+
+#ifdef CONFIG_PREEMPT
+	/* Interrupts are off */
+	/* Check if we need preemption */
+	bt      $9,2*8(%rsp) /* interrupts were off? (EFLAGS) */
+	jnc     1f
+0:      cmpl    $0,PER_CPU_VAR(__preempt_count)
+	jnz     1f
+	call    preempt_schedule_irq
+	jmp     0b
+1:
+#endif
 
 	INTERRUPT_RETURN
 
