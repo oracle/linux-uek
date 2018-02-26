@@ -768,34 +768,37 @@ void init_speculation_control(struct cpuinfo_x86 *c,
 			ignore = true;
 
 		if (boot_cpu_has(X86_FEATURE_SPEC_CTRL)) {
-			pr_info("FEATURE SPEC_CTRL Present%s\n",
-				ignore ? " but ignored (Xen)" : "");
-			if (ignore)
-				return;
-			mutex_lock(&spec_ctrl_mutex);
-			set_ibrs_supported();
-			/*
-			 * Don't do this after disable_ibrs_and_friends
-			 * as we would re-enable it (say if spectre_v2=off
-			 * is used).
-			 */
-			if (&boot_cpu_data == c)
-				set_ibrs_firmware();
-			set_ibpb_supported();
-			sysctl_ibrs_enabled = ibrs_inuse ? 1 : 0;
-			sysctl_ibpb_enabled = ibpb_inuse ? 1 : 0;
-			mutex_unlock(&spec_ctrl_mutex);
-		} else if (boot_cpu_has(X86_FEATURE_IBPB)) {
-			pr_info_once("FEATURE IBPB Present%s\n",
+			pr_info_once("FEATURE SPEC_CTRL Present%s\n",
 				     ignore ? " but ignored (Xen)" : "");
-			if (ignore)
-				return;
-			mutex_lock(&spec_ctrl_mutex);
-			set_ibpb_supported();
-			sysctl_ibpb_enabled = ibpb_inuse ? 1 : 0;
-			mutex_unlock(&spec_ctrl_mutex);
+			if (!ignore) {
+				mutex_lock(&spec_ctrl_mutex);
+				set_ibrs_supported();
+				/*
+				 * Don't do this after disable_ibrs_and_friends
+				 * as we would re-enable it (say if
+				 * spectre_v2=off is used).
+				 */
+				if (&boot_cpu_data == c)
+					set_ibrs_firmware();
+				set_ibpb_supported();
+				sysctl_ibrs_enabled = ibrs_inuse ? 1 : 0;
+				sysctl_ibpb_enabled = ibpb_inuse ? 1 : 0;
+				mutex_unlock(&spec_ctrl_mutex);
+			}
 		} else {
 			pr_info("FEATURE SPEC_CTRL Not Present\n");
+		}
+		if (boot_cpu_has(X86_FEATURE_IBPB)) {
+			pr_info_once("FEATURE IBPB Present%s\n",
+				     ignore ? " but ignored (Xen)" : "");
+			if (!ignore) {
+				mutex_lock(&spec_ctrl_mutex);
+				set_ibpb_supported();
+				sysctl_ibpb_enabled = ibpb_inuse ? 1 : 0;
+				mutex_unlock(&spec_ctrl_mutex);
+			}
+		} else {
+			pr_info("FEATURE IBPB Not Present\n");
 		}
 	}
 }
