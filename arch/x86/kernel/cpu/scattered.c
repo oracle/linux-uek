@@ -185,23 +185,21 @@ void init_scattered_cpuid_features(struct cpuinfo_x86 *c,
 		clear_cpu_cap(c, X86_FEATURE_STIBP);
 	}
 
-	mutex_lock(&spec_ctrl_mutex);
-
-	if (cpu_has(c, X86_FEATURE_IBRS)) {
-		set_ibrs_supported();
-		/*
-		 * Don't do this after disable_ibrs_and_friends as we would
-		 * re-enable it (say if spectre_v2=off is used).
-		 */
-		if (&boot_cpu_data == c)
+	if (&boot_cpu_data == c) {
+		mutex_lock(&spec_ctrl_mutex);
+		if (cpu_has(c, X86_FEATURE_IBRS)) {
+			set_ibrs_supported();
+			/*
+			 * Don't do this after disable_ibrs_and_friends as we
+			 * would re-enable it (say if spectre_v2=off is used).
+			 */
 			set_ibrs_firmware();
-		sysctl_ibrs_enabled = ibrs_inuse ? 1 : 0;
+			sysctl_ibrs_enabled = ibrs_inuse ? 1 : 0;
+		}
+		if (cpu_has(c, X86_FEATURE_IBPB)) {
+			set_ibpb_supported();
+			sysctl_ibpb_enabled = ibpb_inuse ? 1 : 0;
+		}
+		mutex_unlock(&spec_ctrl_mutex);
 	}
-
-	if (cpu_has(c, X86_FEATURE_IBPB)) {
-		set_ibpb_supported();
-		sysctl_ibpb_enabled = ibpb_inuse ? 1 : 0;
-	}
-
-	mutex_unlock(&spec_ctrl_mutex);
 }
