@@ -61,6 +61,7 @@ int __init spectre_v2_heuristics_setup(char *p)
 		/* Disable all heuristics. */
 		if (!strncmp(p, "off", 3)) {
 			use_ibrs_on_skylake = false;
+			clear_retpoline_fallback();
 			break;
 		}
 		len = strlen("skylake");
