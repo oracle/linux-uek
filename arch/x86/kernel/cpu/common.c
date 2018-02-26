@@ -781,8 +781,6 @@ void init_speculation_control(struct cpuinfo_x86 *c,
 				if (&boot_cpu_data == c)
 					set_ibrs_firmware();
 				set_ibpb_supported();
-				sysctl_ibrs_enabled = ibrs_inuse ? 1 : 0;
-				sysctl_ibpb_enabled = ibpb_inuse ? 1 : 0;
 				mutex_unlock(&spec_ctrl_mutex);
 			}
 		} else {
@@ -794,7 +792,6 @@ void init_speculation_control(struct cpuinfo_x86 *c,
 			if (!ignore) {
 				mutex_lock(&spec_ctrl_mutex);
 				set_ibpb_supported();
-				sysctl_ibpb_enabled = ibpb_inuse ? 1 : 0;
 				mutex_unlock(&spec_ctrl_mutex);
 			}
 		} else {
