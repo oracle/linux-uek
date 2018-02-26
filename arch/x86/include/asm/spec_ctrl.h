@@ -235,11 +235,12 @@ static inline void clear_ibrs_inuse(void)
 
 static inline int check_ibrs_inuse(void)
 {
-	if (use_ibrs & SPEC_CTRL_IBRS_INUSE)
+	if (use_ibrs & SPEC_CTRL_IBRS_INUSE) {
 		return 1;
-	else
+	} else {
 		/* rmb to prevent wrong speculation for security */
 		rmb();
+	}
 	return 0;
 }
 
@@ -308,11 +309,12 @@ static inline void clear_ibpb_inuse(void)
 
 static inline int check_ibpb_inuse(void)
 {
-	if (use_ibpb & SPEC_CTRL_IBPB_INUSE)
+	if (use_ibpb & SPEC_CTRL_IBPB_INUSE) {
 		return 1;
-	else
+	} else {
 		/* rmb to prevent wrong speculation for security */
 		rmb();
+	}
 	return 0;
 }
 
