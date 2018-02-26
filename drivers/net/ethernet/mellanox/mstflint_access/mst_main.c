@@ -321,7 +321,7 @@ static int mst_ioctl(struct inode *inode, struct file *file,
 
 		case PCIMEM:
 			if ((readst.offset + sizeof(u32)) > MST_MEMORY_SIZE) {
-				mst_err("accesing invalid address\n");
+				mst_err("accessing invalid address\n");
 				res = -EINVAL;
 				goto fin;
 			}
@@ -418,13 +418,13 @@ static int mst_ioctl(struct inode *inode, struct file *file,
 		}
 
 		if (readst.size % sizeof(u32)) {
-			mst_err("invalid size. size should be in bytes and devide sizeof(u32)\n");
+			mst_err("invalid size. size should be in bytes and divide sizeof(u32)\n");
 			res = -EINVAL;
 			goto fin;
 		}
 
 		if ((readst.offset + readst.size) > MST_MEMORY_SIZE) {
-			mst_err("accesing invalid address\n");
+			mst_err("accessing invalid address\n");
 			res = -EINVAL;
 			goto fin;
 		}
@@ -476,13 +476,13 @@ static int mst_ioctl(struct inode *inode, struct file *file,
 		}
 
 		if (writest.size % sizeof(u32)) {
-			mst_err("invalid size. size should be in bytes and devide sizeof(u32)\n");
+			mst_err("invalid size. size should be in bytes and divide sizeof(u32)\n");
 			res = -EINVAL;
 			goto fin;
 		}
 
 		if ((writest.offset + writest.size) > MST_MEMORY_SIZE) {
-			mst_err("accesing invalid address\n");
+			mst_err("accessing invalid address\n");
 			res = -EINVAL;
 			goto fin;
 		}
