@@ -3521,7 +3521,7 @@ bytes respectively. Such letter suffixes can also be entirely omitted.
 			off		- disable all heuristics (see below)
 			skylake=off	- do not use IBRS if present on Skylake
 					  instead of retpoline (this is equivalant
-				          to spectre_v2=ibrs).
+				          to spectre_v2=retpoline,generic).
 			retpoline_fallback=off - don't fall back to another
 						 mitigation if a module is
 						 loaded that was not compiled
