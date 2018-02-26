@@ -178,6 +178,8 @@ void init_scattered_cpuid_features(struct cpuinfo_x86 *c)
 		clear_cpu_cap(c, X86_FEATURE_STIBP);
 	}
 
+	mutex_lock(&spec_ctrl_mutex);
+
 	if (cpu_has(c, X86_FEATURE_IBRS)) {
 		set_ibrs_supported();
 		/*
@@ -193,4 +195,6 @@ void init_scattered_cpuid_features(struct cpuinfo_x86 *c)
 		set_ibpb_supported();
 		sysctl_ibpb_enabled = ibpb_inuse ? 1 : 0;
 	}
+
+	mutex_unlock(&spec_ctrl_mutex);
 }
