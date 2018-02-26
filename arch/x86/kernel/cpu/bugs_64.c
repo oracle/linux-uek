@@ -169,18 +169,16 @@ static enum spectre_v2_mitigation spectre_v2_enabled = SPECTRE_V2_NONE;
  * If possible, fall back to IBRS and IBPB.
  * Failing that, indicate that we have no Spectre v2 mitigation.
  *
- * Obtains spec_ctrl_mutex before checking/changing Spectre v2 mitigation
- * state.
+ * Checks that spec_ctrl_mutex is held.
  */
 void disable_retpoline(void)
 {
-	mutex_lock(&spec_ctrl_mutex);
+	BUG_ON(!mutex_is_locked(&spec_ctrl_mutex));
 
 	if (retpoline_enabled()) {
 		pr_err("Disabling Spectre v2 mitigation retpoline.\n");
 	} else {
 		/* retpoline is not enabled.  Return */
-		mutex_unlock(&spec_ctrl_mutex);
 		return;
 	}
 
@@ -209,8 +207,6 @@ void disable_retpoline(void)
 
 	if (spectre_v2_enabled == SPECTRE_V2_NONE)
 		pr_err("system may be vulnerable to spectre\n");
-
-	mutex_unlock(&spec_ctrl_mutex);
 }
 
 bool retpoline_enabled(void)
