@@ -194,12 +194,9 @@ void init_scattered_cpuid_features(struct cpuinfo_x86 *c,
 			 * would re-enable it (say if spectre_v2=off is used).
 			 */
 			set_ibrs_firmware();
-			sysctl_ibrs_enabled = ibrs_inuse ? 1 : 0;
 		}
-		if (cpu_has(c, X86_FEATURE_IBPB)) {
+		if (cpu_has(c, X86_FEATURE_IBPB))
 			set_ibpb_supported();
-			sysctl_ibpb_enabled = ibpb_inuse ? 1 : 0;
-		}
 		mutex_unlock(&spec_ctrl_mutex);
 	}
 }
