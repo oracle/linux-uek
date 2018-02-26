@@ -161,16 +161,19 @@ void init_scattered_cpuid_features(struct cpuinfo_x86 *c,
 			ignore = true;
 
 		if (boot_cpu_has(X86_FEATURE_IBRS)) {
-			printk(KERN_INFO "FEATURE SPEC_CTRL Present%s\n", ignore ? " but ignored (Xen)": "");
-			if (ignore)
-				return;
-		} else if (boot_cpu_has(X86_FEATURE_IBPB)) {
-			printk_once(KERN_INFO "FEATURE IBPB Present%s\n", ignore ? " but ignored (Xen)": "");
-			if (ignore)
-				return;
+			printk_once(KERN_INFO "FEATURE SPEC_CTRL Present%s\n",
+				    ignore ? " but ignored (Xen)": "");
 		} else {
 			printk(KERN_INFO "FEATURE SPEC_CTRL Not Present\n");
 		}
+		if (boot_cpu_has(X86_FEATURE_IBPB)) {
+			printk_once(KERN_INFO "FEATURE IBPB Present%s\n",
+					    ignore ? " but ignored (Xen)": "");
+		} else {
+			printk(KERN_INFO "FEATURE IBPB Not Present\n");
+		}
+		if (ignore)
+			return;
 	}
 
 	if ((cpu_has(c, X86_FEATURE_IBRS) ||
