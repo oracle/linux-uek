@@ -768,6 +768,7 @@ void init_speculation_control(struct cpuinfo_x86 *c)
 				ignore ? " but ignored (Xen)" : "");
 			if (ignore)
 				return;
+			mutex_lock(&spec_ctrl_mutex);
 			set_ibrs_supported();
 			/*
 			 * Don't do this after disable_ibrs_and_friends
@@ -779,13 +780,16 @@ void init_speculation_control(struct cpuinfo_x86 *c)
 			set_ibpb_supported();
 			sysctl_ibrs_enabled = ibrs_inuse ? 1 : 0;
 			sysctl_ibpb_enabled = ibpb_inuse ? 1 : 0;
+			mutex_unlock(&spec_ctrl_mutex);
 		} else if (boot_cpu_has(X86_FEATURE_IBPB)) {
 			pr_info_once("FEATURE IBPB Present%s\n",
 				     ignore ? " but ignored (Xen)" : "");
 			if (ignore)
 				return;
+			mutex_lock(&spec_ctrl_mutex);
 			set_ibpb_supported();
 			sysctl_ibpb_enabled = ibpb_inuse ? 1 : 0;
+			mutex_unlock(&spec_ctrl_mutex);
 		} else {
 			pr_info("FEATURE SPEC_CTRL Not Present\n");
 		}
