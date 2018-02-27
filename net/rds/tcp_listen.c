@@ -132,11 +132,16 @@ int rds_tcp_accept_one(struct socket *sock)
 	if (ret)
 		goto out;
 
-	new_sock->type = sock->type;
-	new_sock->ops = sock->ops;
 	ret = sock->ops->accept(sock, new_sock, O_NONBLOCK);
 	if (ret < 0)
 		goto out;
+
+	new_sock->ops = sock->ops;
+	/* sock_create_lite() does not get a hold on the owner module so we
+	 * need to do it here.  No need to do try_module_get() as the listener
+	 * should have a hold already.
+	 */
+	__module_get(new_sock->ops->owner);
 
 	ret = rds_tcp_keepalive(new_sock);
 	if (ret < 0)
