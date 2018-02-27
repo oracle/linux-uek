@@ -470,6 +470,7 @@ Provides: perf = %{KVERREL}%{?1:.%{1}}\
 #Provides: libperf.a = %{KVERREL}%{?1:.%{1}}\
 %ifarch sparc64 aarch64\
 Provides: kernel = %{rpmversion}-%{pkg_release}\
+Provides: kernel-uname-r = %{KVERREL}%{?1:.%{1}}\
 %endif\
 Requires(pre): %{kernel_prereq}\
 Requires(pre): %{initrd_prereq}\
@@ -704,6 +705,7 @@ Provides: kernel%{?variant}-devel-uname-r = %{KVERREL}%{?1:.%{1}}\
 Provides: dtrace-kernel-headers = 0.6.1\
 %ifarch sparc64 aarch64\
 Provides: kernel-devel = %{version}-%{release}%{?1:.%{1}}\
+Provides: kernel-devel-uname-r = %{KVERREL}%{?1:.%{1}}\
 %endif\
 AutoReqProv: no\
 Requires(pre): /usr/bin/find\
