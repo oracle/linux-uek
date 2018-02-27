@@ -155,7 +155,6 @@ static const char *spectre_v2_strings[] = {
 	[SPECTRE_V2_RETPOLINE_GENERIC]		= "Mitigation: Full generic retpoline",
 	[SPECTRE_V2_RETPOLINE_AMD]		= "Mitigation: Full AMD retpoline",
 	[SPECTRE_V2_IBRS]			= "Mitigation: IBRS",
-	[SPECTRE_V2_IBRS_LFENCE]		= "Mitigation: lfence",
 
 };
 
@@ -167,7 +166,6 @@ static enum spectre_v2_mitigation spectre_v2_enabled = SPECTRE_V2_NONE;
 /*
  * Disable retpoline and attempt to fall back to another Spectre v2 mitigation.
  * If possible, fall back to IBRS and IBPB.
- * Failing that, fall back to lfence.
  * Failing that, indicate that we have no Spectre v2 mitigation.
  *
  * Obtains spec_ctrl_mutex before checking/changing Spectre v2 mitigation
@@ -196,14 +194,8 @@ void disable_retpoline(void)
 				}
 			} else {
 				pr_err("Could not enable IBRS.\n");
-				if (lfence_inuse) {
-					pr_err("Spectre v2 mitigation set to lfence.\n");
-					spectre_v2_enabled =
-						SPECTRE_V2_IBRS_LFENCE;
-				} else {
-					pr_err("No Spectre v2 mitigation to fall back to.\n");
-					spectre_v2_enabled = SPECTRE_V2_NONE;
-				}
+				pr_err("No Spectre v2 mitigation to fall back to.\n");
+				spectre_v2_enabled = SPECTRE_V2_NONE;
 			}
 		} else {
 			pr_err("Spectre v2 mitigation IBRS is set.\n");
@@ -243,14 +235,7 @@ int refresh_set_spectre_v2_enabled(void)
 	if (check_ibrs_inuse())
 		spectre_v2_enabled = SPECTRE_V2_IBRS;
 	else {
-		/*
-		 * If that didn't work (say no microcode or noibrs), we end up using
-		 * lfence on system calls/exceptions/parameters.
-		 */
-		if (lfence_inuse)
-			spectre_v2_enabled = SPECTRE_V2_IBRS_LFENCE;
-		else
-			spectre_v2_enabled = SPECTRE_V2_NONE;
+		spectre_v2_enabled = SPECTRE_V2_NONE;
 	}
 
 	return true;
@@ -291,10 +276,6 @@ static enum spectre_v2_mitigation_cmd __init spectre_v2_parse_cmdline(void)
 
 	if (cmdline_find_option_bool(boot_command_line, "noibpb")) {
 		set_ibpb_disabled();
-	}
-
-	if (cmdline_find_option_bool(boot_command_line, "nolfence")) {
-		set_lfence_disabled();
 	}
 
 	ret = cmdline_find_option(boot_command_line, "spectre_v2", arg,
@@ -339,18 +320,10 @@ static enum spectre_v2_mitigation __init ibrs_select(void)
 	/* If it is ON, OK, lets use it.*/
 	if (check_ibrs_inuse())
 		mode = SPECTRE_V2_IBRS;
-	else {
-		/*
-		 * If that didn't work (say no microcode or noibrs), we end up using
-		 * lfence on system calls/exceptions/parameters.
-		 */
-		if (lfence_inuse)
-			mode = SPECTRE_V2_IBRS_LFENCE;
-	}
 
 	if (mode == SPECTRE_V2_NONE)
 		/* Well, fallback on automatic discovery. */
-		pr_info("IBRS and lfence could not be enabled.\n");
+		pr_info("IBRS could not be enabled.\n");
 	else {
 		/* OK, some form of IBRS is enabled, lets see if we need to STUFF_RSB */
 		if (!boot_cpu_has(X86_FEATURE_SMEP))
@@ -374,7 +347,6 @@ static void __init disable_ibrs_and_friends(bool disable_ibpb)
 	/* We need to use IBPB with retpoline if it is available. */
 	if (disable_ibpb)
 		set_ibpb_disabled();
-	set_lfence_disabled();
 }
 
 static bool __init retpoline_selected(enum spectre_v2_mitigation_cmd cmd)
