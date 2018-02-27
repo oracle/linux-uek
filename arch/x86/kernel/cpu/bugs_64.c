@@ -285,9 +285,15 @@ static void __init disable_ibrs_and_friends(bool disable_ibpb)
 
 		put_online_cpus();
 	}
-	/* We need to use IBPB with retpoline if it is available. */
-	if (disable_ibpb)
+	/*
+	 * We need to use IBPB with retpoline if it is available.
+	 * And also IBRS for firmware paths.
+	 */
+	if (disable_ibpb) {
 		set_ibpb_disabled();
+		disable_ibrs_firmware();
+	} else
+		set_ibrs_firmware();
 }
 
 static bool __init retpoline_selected(enum spectre_v2_mitigation_cmd cmd)
@@ -426,6 +432,9 @@ out:
 	/* Initialize Indirect Branch Prediction Barrier if supported */
 	if (boot_cpu_has(X86_FEATURE_IBPB) && ibpb_inuse)
 		pr_info("Enabling Indirect Branch Prediction Barrier\n");
+
+	if (ibrs_firmware)
+		pr_info("Enabling Restricted Speculation for firmware calls\n");
 }
 
 #undef pr_fmt
@@ -456,7 +465,8 @@ ssize_t cpu_show_spectre_v2(struct device *dev,
 	if (!boot_cpu_has_bug(X86_BUG_SPECTRE_V2))
 		return sprintf(buf, "Not affected\n");
 
-	return sprintf(buf, "%s%s\n", spectre_v2_strings[spectre_v2_enabled],
+	return sprintf(buf, "%s%s%s\n", spectre_v2_strings[spectre_v2_enabled],
+					ibrs_firmware ? ", IBRS_FW" : "",
 					ibpb_inuse ? ", IBPB" : "");
 }
 #endif
