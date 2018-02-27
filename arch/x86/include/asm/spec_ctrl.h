@@ -7,7 +7,6 @@
 #include <asm/cpufeature.h>
 
 #define	SPEC_CTRL_IBRS_INUSE		(1<<0)  /* OS enables IBRS usage */
-#define	SPEC_CTRL_LFENCE_OFF		(1<<3)  /* No lfence */
 
 #ifndef	__ASSEMBLY__
 
@@ -25,9 +24,6 @@ extern unsigned int dynamic_ibrs;
 extern u32 sysctl_ibrs_enabled;
 extern unsigned int dynamic_ibpb;
 extern u32 sysctl_ibpb_enabled;
-extern u32 sysctl_lfence_enabled;
-
-#define	lfence_inuse (!(dynamic_ibrs & SPEC_CTRL_LFENCE_OFF))
 
 static inline void __disable_indirect_speculation(void)
 {

@@ -339,8 +339,6 @@ ALTERNATIVE __stringify(__ASM_STUFF_RSB), "", X86_FEATURE_SMEP
 	POP_MSR_REGS
 	jmp	.Ldone_\@
 .Lskip_\@:
-	testl	$SPEC_CTRL_LFENCE_OFF, dynamic_ibrs
-	jnz .Ldone_\@
 	lfence
 .Ldone_\@:
 .endm
@@ -353,8 +351,6 @@ ALTERNATIVE __stringify(__ASM_STUFF_RSB), "", X86_FEATURE_SMEP
 	POP_MSR_REGS
 	jmp	.Ldone_\@
 .Lskip_\@:
-	testl	$SPEC_CTRL_LFENCE_OFF, dynamic_ibrs
-	jnz .Ldone_\@
 	lfence
 .Ldone_\@:
 .endm
@@ -373,8 +369,6 @@ ALTERNATIVE __stringify(__ASM_STUFF_RSB), "", X86_FEATURE_SMEP
 	WRMSR_ASM $MSR_IA32_SPEC_CTRL, $SPEC_CTRL_FEATURE_ENABLE_IBRS
 	jmp	.Ldone_\@
 .Lskip_\@:
-	testl	$SPEC_CTRL_LFENCE_OFF, dynamic_ibrs
-	jnz .Ldone_\@
 	lfence
 .Ldone_\@:
 .endm
@@ -385,8 +379,6 @@ ALTERNATIVE __stringify(__ASM_STUFF_RSB), "", X86_FEATURE_SMEP
 	WRMSR_ASM $MSR_IA32_SPEC_CTRL, $SPEC_CTRL_FEATURE_DISABLE_IBRS
 	jmp	.Ldone_\@
 .Lskip_\@:
-	testl	$SPEC_CTRL_LFENCE_OFF, dynamic_ibrs
-	jnz .Ldone_\@
 	lfence
 .Ldone_\@:
 .endm
@@ -404,8 +396,6 @@ ALTERNATIVE __stringify(__ASM_STUFF_RSB), "", X86_FEATURE_SMEP
 	jmp	.Ldone_\@
 .Lskip_\@:
 	movl $SPEC_CTRL_FEATURE_ENABLE_IBRS, \save_reg
-	testl	$SPEC_CTRL_LFENCE_OFF, dynamic_ibrs
-	jnz .Ldone_\@
 	lfence
 .Ldone_\@:
 .endm
@@ -420,8 +410,6 @@ ALTERNATIVE __stringify(__ASM_STUFF_RSB), "", X86_FEATURE_SMEP
 	wrmsr
 	jmp	.Ldone_\@
 .Lskip_\@:
-	testl	$SPEC_CTRL_LFENCE_OFF, dynamic_ibrs
-	jnz .Ldone_\@
 	lfence
 .Ldone_\@:
 .endm
