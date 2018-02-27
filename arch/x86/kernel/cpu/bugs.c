@@ -353,9 +353,15 @@ static void __init disable_ibrs_and_friends(bool disable_ibpb)
 
 		put_online_cpus();
 	}
-	/* We need to use IBPB with retpoline if it is available. */
-	if (disable_ibpb)
+	/*
+	 * We need to use IBPB with retpoline if it is available.
+	 * And also IBRS for firmware paths.
+	 */
+	if (disable_ibpb) {
 		set_ibpb_disabled();
+		disable_ibrs_firmware();
+	} else
+		set_ibrs_firmware();
 }
 
 static bool __init retpoline_selected(enum spectre_v2_mitigation_cmd cmd)
@@ -502,7 +508,7 @@ display:
 	 * Retpoline means the kernel is safe because it has no indirect
 	 * branches. But firmware isn't, so use IBRS to protect that.
 	 */
-	if (boot_cpu_has(X86_FEATURE_IBRS)) {
+	if (ibrs_firmware) {
 		setup_force_cpu_cap(X86_FEATURE_USE_IBRS_FW);
 		pr_info("Enabling Restricted Speculation for firmware calls\n");
 	}
@@ -534,7 +540,7 @@ ssize_t cpu_show_spectre_v2(struct device *dev, struct device_attribute *attr, c
 
 	return sprintf(buf, "%s%s%s%s\n", spectre_v2_strings[spectre_v2_enabled],
 		       ibpb_inuse ? ", IBPB" : "",
-		       boot_cpu_has(X86_FEATURE_USE_IBRS_FW) ? ", IBRS_FW" : "",
+		       ibrs_firmware ? ", IBRS_FW" : "",
 		       spectre_v2_module_string());
 }
 #endif

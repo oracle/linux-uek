@@ -769,6 +769,13 @@ void init_speculation_control(struct cpuinfo_x86 *c)
 			if (ignore)
 				return;
 			set_ibrs_supported();
+			/*
+			 * Don't do this after disable_ibrs_and_friends
+			 * as we would re-enable it (say if spectre_v2=off
+			 * is used).
+			 */
+			if (&boot_cpu_data == c)
+				set_ibrs_firmware();
 			set_ibpb_supported();
 			sysctl_ibrs_enabled = ibrs_inuse ? 1 : 0;
 			sysctl_ibpb_enabled = ibpb_inuse ? 1 : 0;

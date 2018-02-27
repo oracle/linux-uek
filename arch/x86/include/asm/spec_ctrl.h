@@ -9,6 +9,7 @@
 #define SPEC_CTRL_IBRS_INUSE           (1<<0)  /* OS enables IBRS usage */
 #define SPEC_CTRL_IBRS_SUPPORTED       (1<<1)  /* System supports IBRS */
 #define SPEC_CTRL_IBRS_ADMIN_DISABLED  (1<<2)  /* Admin disables IBRS */
+#define SPEC_CTRL_IBRS_FIRMWARE        (1<<3)  /* IBRS to be used on firmware paths */
 
 #ifdef __ASSEMBLY__
 
@@ -185,6 +186,7 @@ extern unsigned int use_ibrs;
 extern u32 sysctl_ibrs_enabled;
 extern struct mutex spec_ctrl_mutex;
 
+#define ibrs_firmware		(use_ibrs & SPEC_CTRL_IBRS_FIRMWARE)
 #define ibrs_supported		(use_ibrs & SPEC_CTRL_IBRS_SUPPORTED)
 #define ibrs_disabled		(use_ibrs & SPEC_CTRL_IBRS_ADMIN_DISABLED)
 
@@ -225,6 +227,17 @@ static inline void set_ibrs_disabled(void)
 		clear_ibrs_inuse();
 	/* Update what sysfs shows. */
 	sysctl_ibrs_enabled = ibrs_inuse ? 1 : 0;
+}
+
+static inline void set_ibrs_firmware(void)
+{
+	if (ibrs_supported)
+		use_ibrs |= SPEC_CTRL_IBRS_FIRMWARE;
+}
+
+static inline void disable_ibrs_firmware(void)
+{
+	use_ibrs &= ~SPEC_CTRL_IBRS_FIRMWARE;
 }
 
 static inline void clear_ibrs_disabled(void)

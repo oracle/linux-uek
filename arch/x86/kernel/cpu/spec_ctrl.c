@@ -6,6 +6,7 @@
 #include <linux/cpu.h>
 #include <asm/spec_ctrl.h>
 #include <asm/cpufeature.h>
+#include <asm/microcode.h>
 
 u32 sysctl_ibrs_enabled;
 EXPORT_SYMBOL(sysctl_ibrs_enabled);
@@ -74,11 +75,13 @@ static ssize_t ibrs_enabled_write(struct file *file,
 
 	if (!enable) {
 		set_ibrs_disabled();
+		disable_ibrs_firmware();
 		if (use_ibrs & SPEC_CTRL_IBRS_SUPPORTED)
 			spec_ctrl_flush_all_cpus(MSR_IA32_SPEC_CTRL,
 						 SPEC_CTRL_FEATURE_DISABLE_IBRS);
 	} else {
 		clear_ibrs_disabled();
+		set_ibrs_firmware();
 	}
 	refresh_set_spectre_v2_enabled();
 
