@@ -279,5 +279,6 @@
 #define TCR_TBI0		(UL(1) << 37)
 #define TCR_HA			(UL(1) << 39)
 #define TCR_HD			(UL(1) << 40)
+#define TCR_NFD1		(UL(1) << 54)
 
 #endif
