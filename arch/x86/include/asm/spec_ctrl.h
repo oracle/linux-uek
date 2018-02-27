@@ -9,7 +9,6 @@
 #define SPEC_CTRL_IBRS_INUSE           (1<<0)  /* OS enables IBRS usage */
 #define SPEC_CTRL_IBRS_SUPPORTED       (1<<1)  /* System supports IBRS */
 #define SPEC_CTRL_IBRS_ADMIN_DISABLED  (1<<2)  /* Admin disables IBRS */
-#define SPEC_CTRL_LFENCE_OFF           (1<<3)  /* No lfence */
 
 #ifdef __ASSEMBLY__
 .extern dynamic_ibrs
@@ -74,10 +73,6 @@ static inline void clear_ibrs_disabled(void)
 	sysctl_ibrs_enabled = ibrs_inuse ? 1 : 0;
 }
 
-static inline void set_lfence_disabled(void)
-{
-	dynamic_ibrs |= SPEC_CTRL_LFENCE_OFF;
-}
 
 #define SPEC_CTRL_IBPB_INUSE           (1<<0)  /* OS enables IBPB usage */
 #define SPEC_CTRL_IBPB_SUPPORTED       (1<<1)  /* System supports IBPB */

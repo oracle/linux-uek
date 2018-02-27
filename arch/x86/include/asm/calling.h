@@ -348,8 +348,6 @@ For 32-bit we have the following conventions - kernel is built with
 	POP_MSR_REGS
 	jmp	.Ldone_\@
 .Lskip_\@:
-	testl  $SPEC_CTRL_LFENCE_OFF, dynamic_ibrs
-	jnz	.Ldone_\@
 	lfence
 .Ldone_\@:
 .endm
@@ -362,8 +360,6 @@ For 32-bit we have the following conventions - kernel is built with
 	POP_MSR_REGS
 	jmp	.Ldone_\@
 .Lskip_\@:
-	testl  $SPEC_CTRL_LFENCE_OFF, dynamic_ibrs
-	jnz	.Ldone_\@
 	lfence
 .Ldone_\@:
 .endm
@@ -374,8 +370,6 @@ For 32-bit we have the following conventions - kernel is built with
 	WRMSR_ASM $MSR_IA32_SPEC_CTRL, $SPEC_CTRL_FEATURE_ENABLE_IBRS
 	jmp	.Ldone_\@
 .Lskip_\@:
-	testl  $SPEC_CTRL_LFENCE_OFF, dynamic_ibrs
-	jnz	.Ldone_\@
 	lfence
 .Ldone_\@:
 .endm
@@ -386,8 +380,6 @@ For 32-bit we have the following conventions - kernel is built with
 	WRMSR_ASM $MSR_IA32_SPEC_CTRL, $SPEC_CTRL_FEATURE_DISABLE_IBRS
 	jmp	.Ldone_\@
 .Lskip_\@:
-	testl  $SPEC_CTRL_LFENCE_OFF, dynamic_ibrs
-	jnz	.Ldone_\@
 	lfence
 .Ldone_\@:
 .endm
@@ -404,8 +396,6 @@ For 32-bit we have the following conventions - kernel is built with
 	wrmsr
 	jmp	.Ldone_\@
 .Lskip_\@:
-	testl  $SPEC_CTRL_LFENCE_OFF, dynamic_ibrs
-	jnz	.Ldone_\@
 	lfence
 .Ldone_\@:
 .endm
@@ -420,8 +410,6 @@ For 32-bit we have the following conventions - kernel is built with
 	wrmsr
 	jmp	.Ldone_\@
 .Lskip_\@:
-	testl  $SPEC_CTRL_LFENCE_OFF, dynamic_ibrs
-	jnz	.Ldone_\@
 	movl $SPEC_CTRL_FEATURE_ENABLE_IBRS, \save_reg
 	lfence
 .Ldone_\@:
