@@ -6,6 +6,7 @@
 #include <linux/cpu.h>
 #include <asm/spec_ctrl.h>
 #include <asm/cpufeature.h>
+#include <asm/microcode.h>
 
 u32 sysctl_ibrs_enabled;
 u32 sysctl_ibpb_enabled;
@@ -75,10 +76,12 @@ static ssize_t ibrs_enabled_write(struct file *file,
 
 	if (!enable) {
 		set_ibrs_disabled();
+		disable_ibrs_firmware();
 		if (use_ibrs & SPEC_CTRL_IBRS_SUPPORTED)
 			spec_ctrl_flush_all_cpus(MSR_IA32_SPEC_CTRL, SPEC_CTRL_FEATURE_DISABLE_IBRS);
 	} else {
 		clear_ibrs_disabled();
+		set_ibrs_firmware();
 	}
 	refresh_set_spectre_v2_enabled();
 
@@ -204,3 +207,42 @@ static int __init debugfs_spec_ctrl(void)
         return 0;
 }
 late_initcall(debugfs_spec_ctrl);
+
+#ifdef RETPOLINE
+/*
+ * RETPOLINE does not protect against indirect speculation
+ * in firmware code.  Enable IBRS to protect firmware execution.
+ */
+void unprotected_firmware_begin(void)
+{
+        if (retpoline_enabled() && ibrs_firmware) {
+                native_wrmsrl(MSR_IA32_SPEC_CTRL, SPEC_CTRL_FEATURE_ENABLE_IBRS);
+        } else {
+                /*
+                 * rmb prevents unwanted speculation when we
+                 * are setting IBRS
+                 */
+                rmb();
+        }
+}
+EXPORT_SYMBOL_GPL(unprotected_firmware_begin);
+
+void unprotected_firmware_end(void)
+{
+        if (retpoline_enabled() && ibrs_firmware) {
+                native_wrmsrl(MSR_IA32_SPEC_CTRL, SPEC_CTRL_FEATURE_DISABLE_IBRS);
+        }
+}
+EXPORT_SYMBOL_GPL(unprotected_firmware_end);
+
+#else
+void unprotected_firmware_begin(void)
+{
+}
+EXPORT_SYMBOL_GPL(unprotected_firmware_begin);
+
+void unprotected_firmware_end(void)
+{
+}
+EXPORT_SYMBOL_GPL(unprotected_firmware_end);
+#endif
