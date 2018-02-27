@@ -99,60 +99,6 @@ static const struct file_operations fops_ibrs_enabled = {
 	.llseek = default_llseek,
 };
 
-static ssize_t lfence_enabled_read(struct file *file, char __user *user_buf,
-                                 size_t count, loff_t *ppos)
-{
-	uint32_t dummy = 0;
-
-	if (ibrs_disabled)
-		return __enabled_read(file, user_buf, count, ppos, &sysctl_lfence_enabled);
-
-	return __enabled_read(file, user_buf, count, ppos, &dummy);
-}
-
-static ssize_t lfence_enabled_write(struct file *file,
-				  const char __user *user_buf,
-				  size_t count, loff_t *ppos)
-{
-	char buf[32];
-	ssize_t len;
-	unsigned int enable;
-
-	/* You have to disable IBRS first. */
-	if (ibrs_inuse) {
-		pr_warn("IBRS is enabled. Ignoring request to change lfence_enabled state.");
-		return -EINVAL;
-	}
-
-	len = min(count, sizeof(buf) - 1);
-	if (copy_from_user(buf, user_buf, len))
-		return -EFAULT;
-
-	buf[len] = '\0';
-	if (kstrtouint(buf, 0, &enable))
-		return -EINVAL;
-
-	/* Only 0 and 1 are allowed */
-	if (enable > 1)
-		return -EINVAL;
-
-	mutex_lock(&spec_ctrl_mutex);
-
-	if (!enable)
-		set_lfence_disabled();
-	else
-		clear_lfence_disabled();
-
-	mutex_unlock(&spec_ctrl_mutex);
-	return count;
-}
-
-static const struct file_operations fops_lfence_enabled = {
-	.read = lfence_enabled_read,
-	.write = lfence_enabled_write,
-	.llseek = default_llseek,
-};
-
 static ssize_t ibpb_enabled_read(struct file *file, char __user *user_buf,
 				 size_t count, loff_t *ppos)
 {
@@ -207,8 +153,6 @@ static int __init debugfs_spec_ctrl(void)
 			    arch_debugfs_dir, NULL, &fops_ibrs_enabled);
 	debugfs_create_file("ibpb_enabled", S_IRUSR | S_IWUSR,
 			    arch_debugfs_dir, NULL, &fops_ibpb_enabled);
-	debugfs_create_file("lfence_enabled", S_IRUSR | S_IWUSR,
-			    arch_debugfs_dir, NULL, &fops_lfence_enabled);
 	return 0;
 }
 late_initcall(debugfs_spec_ctrl);

@@ -231,8 +231,6 @@ u32 sysctl_ibrs_enabled = 0;
 EXPORT_SYMBOL(sysctl_ibrs_enabled);
 u32 sysctl_ibpb_enabled = 0;
 EXPORT_SYMBOL(sysctl_ibpb_enabled);
-/* By default it is enabled. */
-u32 sysctl_lfence_enabled = 1;
 
 /* The default sysctl tables: */
 

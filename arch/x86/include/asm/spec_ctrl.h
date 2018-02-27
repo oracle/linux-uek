@@ -74,18 +74,9 @@ static inline void clear_ibrs_disabled(void)
 	sysctl_ibrs_enabled = ibrs_inuse ? 1 : 0;
 }
 
-extern u32 sysctl_lfence_enabled;
-
 static inline void set_lfence_disabled(void)
 {
 	dynamic_ibrs |= SPEC_CTRL_LFENCE_OFF;
-	sysctl_lfence_enabled = 0;
-}
-
-static inline void clear_lfence_disabled(void)
-{
-	dynamic_ibrs &= ~SPEC_CTRL_LFENCE_OFF;
-	sysctl_lfence_enabled = 1;
 }
 
 #define SPEC_CTRL_IBPB_INUSE           (1<<0)  /* OS enables IBPB usage */
