@@ -134,6 +134,7 @@ static int apply_microcode_intel(int cpu)
 	unsigned int val[2];
 	int cpu_num = raw_smp_processor_id();
 	struct cpuinfo_x86 *c = &cpu_data(cpu_num);
+	u32 rev;
 
 	uci = ucode_cpu_info + cpu;
 	mc_intel = uci->mc;
@@ -151,6 +152,18 @@ static int apply_microcode_intel(int cpu)
 	 */
 	if (get_matching_mc(mc_intel, cpu) == 0)
 		return 0;
+
+	/*
+	 * Save us the MSR write below - which is a particular expensive
+	 * operation - when the other hyperthread has updated the microcode
+	 * already.
+	 */
+	rev = intel_get_microcode_revision();
+	if (rev >= mc_intel->hdr.rev) {
+		uci->cpu_sig.rev = rev;
+		c->microcode = rev;
+		return 0;
+	}
 
 	/* write microcode via MSR 0x79 */
 	wrmsr(MSR_IA32_UCODE_WRITE,
