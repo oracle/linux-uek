@@ -245,8 +245,10 @@ static int ipvlan_open(struct net_device *dev)
 	else
 		dev->flags &= ~IFF_NOARP;
 
-	list_for_each_entry(addr, &ipvlan->addrs, anode)
+	rcu_read_lock();
+	list_for_each_entry_rcu(addr, &ipvlan->addrs, anode)
 		ipvlan_ht_addr_add(ipvlan, addr);
+	rcu_read_unlock();
 
 	return dev_uc_add(phy_dev, phy_dev->dev_addr);
 }
@@ -262,8 +264,10 @@ static int ipvlan_stop(struct net_device *dev)
 
 	dev_uc_del(phy_dev, phy_dev->dev_addr);
 
-	list_for_each_entry(addr, &ipvlan->addrs, anode)
+	rcu_read_lock();
+	list_for_each_entry_rcu(addr, &ipvlan->addrs, anode)
 		ipvlan_ht_addr_del(addr);
+	rcu_read_unlock();
 
 	return 0;
 }
@@ -569,6 +573,7 @@ int ipvlan_link_new(struct net *src_net, struct net_device *dev,
 	if (!tb[IFLA_MTU])
 		ipvlan_adjust_mtu(ipvlan, phy_dev);
 	INIT_LIST_HEAD(&ipvlan->addrs);
+	spin_lock_init(&ipvlan->addrs_lock);
 
 	/* If the port-id base is at the MAX value, then wrap it around and
 	 * begin from 0x1 again. This may be due to a busy system where lots
@@ -636,11 +641,13 @@ void ipvlan_link_delete(struct net_device *dev, struct list_head *head)
 	struct ipvl_dev *ipvlan = netdev_priv(dev);
 	struct ipvl_addr *addr, *next;
 
+	spin_lock_bh(&ipvlan->addrs_lock);
 	list_for_each_entry_safe(addr, next, &ipvlan->addrs, anode) {
 		ipvlan_ht_addr_del(addr);
-		list_del(&addr->anode);
+		list_del_rcu(&addr->anode);
 		kfree_rcu(addr, rcu);
 	}
+	spin_unlock_bh(&ipvlan->addrs_lock);
 
 	ida_simple_remove(&ipvlan->port->ida, dev->dev_id);
 	list_del_rcu(&ipvlan->pnode);
@@ -730,8 +737,7 @@ static int ipvlan_device_event(struct notifier_block *unused,
 		if (dev->reg_state != NETREG_UNREGISTERING)
 			break;
 
-		list_for_each_entry_safe(ipvlan, next, &port->ipvlans,
-					 pnode)
+		list_for_each_entry_safe(ipvlan, next, &port->ipvlans, pnode)
 			ipvlan->dev->rtnl_link_ops->dellink(ipvlan->dev,
 							    &lst_kill);
 		unregister_netdevice_many(&lst_kill);
@@ -758,6 +764,7 @@ static int ipvlan_device_event(struct notifier_block *unused,
 	return NOTIFY_DONE;
 }
 
+/* the caller must held the addrs lock */
 static int ipvlan_add_addr(struct ipvl_dev *ipvlan, void *iaddr, bool is_v6)
 {
 	struct ipvl_addr *addr;
@@ -774,7 +781,8 @@ static int ipvlan_add_addr(struct ipvl_dev *ipvlan, void *iaddr, bool is_v6)
 		memcpy(&addr->ip4addr, iaddr, sizeof(struct in_addr));
 		addr->atype = IPVL_IPV4;
 	}
-	list_add_tail(&addr->anode, &ipvlan->addrs);
+
+	list_add_tail_rcu(&addr->anode, &ipvlan->addrs);
 
 	/* If the interface is not up, the address will be added to the hash
 	 * list by ipvlan_open.
@@ -789,27 +797,32 @@ static void ipvlan_del_addr(struct ipvl_dev *ipvlan, void *iaddr, bool is_v6)
 {
 	struct ipvl_addr *addr;
 
+	spin_lock_bh(&ipvlan->addrs_lock);
 	addr = ipvlan_find_addr(ipvlan, iaddr, is_v6);
-	if (!addr)
+	if (!addr) {
+		spin_unlock_bh(&ipvlan->addrs_lock);
 		return;
+	}
 
 	ipvlan_ht_addr_del(addr);
-	list_del(&addr->anode);
+	list_del_rcu(&addr->anode);
+	spin_unlock_bh(&ipvlan->addrs_lock);
 	kfree_rcu(addr, rcu);
-
-	return;
 }
 
 static int ipvlan_add_addr6(struct ipvl_dev *ipvlan, struct in6_addr *ip6_addr)
 {
-	if (ipvlan_addr_busy(ipvlan->port, ip6_addr, true)) {
+	int ret = -EINVAL;
+
+	spin_lock_bh(&ipvlan->addrs_lock);
+	if (ipvlan_addr_busy(ipvlan->port, ip6_addr, true))
 		netif_err(ipvlan, ifup, ipvlan->dev,
 			  "Failed to add IPv6=%pI6c addr for %s intf\n",
 			  ip6_addr, ipvlan->dev->name);
-		return -EINVAL;
-	}
-
-	return ipvlan_add_addr(ipvlan, ip6_addr, true);
+	else
+		ret = ipvlan_add_addr(ipvlan, ip6_addr, true);
+	spin_unlock_bh(&ipvlan->addrs_lock);
+	return ret;
 }
 
 static void ipvlan_del_addr6(struct ipvl_dev *ipvlan, struct in6_addr *ip6_addr)
@@ -877,14 +890,17 @@ static int ipvlan_addr6_validator_event(struct notifier_block *unused,
 
 static int ipvlan_add_addr4(struct ipvl_dev *ipvlan, struct in_addr *ip4_addr)
 {
-	if (ipvlan_addr_busy(ipvlan->port, ip4_addr, false)) {
+	int ret = -EINVAL;
+
+	spin_lock_bh(&ipvlan->addrs_lock);
+	if (ipvlan_addr_busy(ipvlan->port, ip4_addr, false))
 		netif_err(ipvlan, ifup, ipvlan->dev,
 			  "Failed to add IPv4=%pI4 on %s intf.\n",
 			  ip4_addr, ipvlan->dev->name);
-		return -EINVAL;
-	}
-
-	return ipvlan_add_addr(ipvlan, ip4_addr, false);
+	else
+		ret = ipvlan_add_addr(ipvlan, ip4_addr, false);
+	spin_unlock_bh(&ipvlan->addrs_lock);
+	return ret;
 }
 
 static void ipvlan_del_addr4(struct ipvl_dev *ipvlan, struct in_addr *ip4_addr)
