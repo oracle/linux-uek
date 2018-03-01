@@ -68,7 +68,6 @@ struct rdma_id_private {
 	u32			seq_num;
 	u32			qkey;
 	u32			qp_num;
-	pid_t			owner;
 	u32			options;
 	u8			srq;
 	u8			tos;
@@ -79,5 +78,10 @@ struct rdma_id_private {
 	/* cache for mc record params */
 	struct ib_sa_mcmember_rec rec;
 	int is_valid_rec;
+
+	/*
+	 * Internal to RDMA/core, don't use in the drivers
+	 */
+	struct rdma_restrack_entry     res;
 };
 #endif /* _CMA_PRIV_H */
