@@ -2245,7 +2245,6 @@ struct megasas_instance {
 	bool dev_handle;
 	bool fw_sync_cache_support;
 	u32 mfi_frame_size;
-	bool is_ventura;
 	bool msix_combined;
 	u16 max_raid_mapsize;
 	/* preffered count to send as LDIO irrspective of FP capable.*/
