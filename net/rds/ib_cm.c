@@ -1723,13 +1723,20 @@ int rds_ib_setup_fastreg(struct rds_ib_device *rds_ibdev)
 	qp_attr.path_mtu	= IB_MTU_256;
 	qp_attr.dest_qp_num	= rds_ibdev->fastreg_qp->qp_num;
 	qp_attr.rq_psn		= 1;
-	qp_attr.ah_attr.ib.dlid		= port_attr.lid;
-	qp_attr.ah_attr.ib.src_path_bits	= 0;
 	qp_attr.ah_attr.sl		= 0;
 	qp_attr.ah_attr.port_num	= RDS_IB_DEFAULT_FREG_PORT_NUM;
-	qp_attr.ah_attr.grh.hop_limit	= 1;
-	qp_attr.ah_attr.grh.dgid	= dgid;
-	qp_attr.ah_attr.grh.sgid_index	= gid_index;
+	if (rdma_protocol_roce(rds_ibdev->dev, RDS_IB_DEFAULT_FREG_PORT_NUM)) {
+		qp_attr.ah_attr.type		= RDMA_AH_ATTR_TYPE_ROCE;
+		qp_attr.ah_attr.ah_flags        = IB_AH_GRH;
+		qp_attr.ah_attr.grh.dgid	= dgid;
+		qp_attr.ah_attr.grh.sgid_index	= gid_index;
+	} else if (rdma_protocol_ib(rds_ibdev->dev, RDS_IB_DEFAULT_FREG_PORT_NUM)) {
+		qp_attr.ah_attr.type		= RDMA_AH_ATTR_TYPE_IB;
+		qp_attr.ah_attr.ib.dlid		= port_attr.lid;
+	} else {
+		rds_rtd(RDS_RTD_ERR, "Unexpected port type\n");
+		goto clean_up;
+	}
 
 	ret = ib_modify_qp(rds_ibdev->fastreg_qp, &qp_attr, IB_QP_STATE	|
 						IB_QP_AV		|
