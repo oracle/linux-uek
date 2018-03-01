@@ -103,7 +103,11 @@ static void ext4_put_link(struct dentry *dentry, struct nameidata *nd,
 	struct page *page = cookie;
 
 	if (!page) {
-		kfree(nd_get_link(nd));
+		/* NULL page and error link maybe returned for unencrypted inode by
+		 * ext4_follow_link().
+		 */
+		if (!IS_ERR(nd_get_link(nd)))
+			kfree(nd_get_link(nd));
 	} else {
 		kunmap(page);
 		page_cache_release(page);
