@@ -1023,6 +1023,8 @@ ssize_t ib_uverbs_reg_mr(struct ib_uverbs_file *file,
 	mr->pd      = pd;
 	mr->uobject = uobj;
 	atomic_inc(&pd->usecnt);
+	mr->res.type = RDMA_RESTRACK_MR;
+	rdma_restrack_add(&mr->res);
 
 	uobj->object = mr;
 

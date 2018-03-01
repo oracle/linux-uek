@@ -1616,6 +1616,7 @@ int ib_dereg_mr(struct ib_mr *mr)
 	struct ib_pd *pd = mr->pd;
 	int ret;
 
+	rdma_restrack_del(&mr->res);
 	ret = mr->device->dereg_mr(mr);
 	if (!ret)
 		atomic_dec(&pd->usecnt);
@@ -1652,6 +1653,8 @@ struct ib_mr *ib_alloc_mr(struct ib_pd *pd,
 		mr->uobject = NULL;
 		atomic_inc(&pd->usecnt);
 		mr->need_inval = false;
+		mr->res.type = RDMA_RESTRACK_MR;
+		rdma_restrack_add(&mr->res);
 	}
 
 	return mr;
