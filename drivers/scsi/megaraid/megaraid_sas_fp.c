@@ -756,7 +756,6 @@ static u8 mr_spanset_get_phy_params(struct megasas_instance *instance, u32 ld,
 				MR_PdDevHandleGet(r1_alt_pd, map);
 		}
 	} else {
-		*pDevHandle = cpu_to_le16(MR_DEVHANDLE_INVALID);
 		if ((raid->level >= 5) &&
 			((fusion->adapter_type == THUNDERBOLT_SERIES)  ||
 			((fusion->adapter_type == INVADER_SERIES) &&
@@ -873,8 +872,6 @@ u8 MR_GetPhyParams(struct megasas_instance *instance, u32 ld, u64 stripRow,
 					MR_PdDevHandleGet(r1_alt_pd, map);
 		}
 	} else {
-		/* set dev handle as invalid. */
-		*pDevHandle = cpu_to_le16(MR_DEVHANDLE_INVALID);
 		if ((raid->level >= 5) &&
 			((fusion->adapter_type == THUNDERBOLT_SERIES)  ||
 			((fusion->adapter_type == INVADER_SERIES) &&
