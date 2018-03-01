@@ -2679,7 +2679,6 @@ qed_iwarp_ll2_start(struct qed_hwfn *p_hwfn,
 
 	/* Start Unaligned MPA connection */
 	cbs.rx_comp_cb = qed_iwarp_ll2_comp_mpa_pkt;
-	cbs.slowpath_cb = qed_iwarp_ll2_slowpath;
 
 	memset(&data, 0, sizeof(data));
 	data.input.conn_type = QED_LL2_TYPE_IWARP;
