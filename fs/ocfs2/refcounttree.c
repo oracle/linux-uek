@@ -4261,10 +4261,11 @@ out:
 static int ocfs2_reflink(struct dentry *old_dentry, struct inode *dir,
 			 struct dentry *new_dentry, bool preserve)
 {
-	int error;
+	int error, had_lock;
 	struct inode *inode = d_inode(old_dentry);
 	struct buffer_head *old_bh = NULL;
 	struct inode *new_orphan_inode = NULL;
+	struct ocfs2_lock_holder oh;
 
 	if (!ocfs2_refcount_tree(OCFS2_SB(inode->i_sb)))
 		return -EOPNOTSUPP;
@@ -4306,6 +4307,14 @@ static int ocfs2_reflink(struct dentry *old_dentry, struct inode *dir,
 		goto out;
 	}
 
+	had_lock = ocfs2_inode_lock_tracker(new_orphan_inode, NULL, 1,
+					    &oh);
+	if (had_lock < 0) {
+		error = had_lock;
+		mlog_errno(error);
+		goto out;
+	}
+
 	/* If the security isn't preserved, we need to re-initialize them. */
 	if (!preserve) {
 		error = ocfs2_init_security_and_acl(dir, new_orphan_inode,
@@ -4313,14 +4322,15 @@ static int ocfs2_reflink(struct dentry *old_dentry, struct inode *dir,
 		if (error)
 			mlog_errno(error);
 	}
-out:
 	if (!error) {
 		error = ocfs2_mv_orphaned_inode_to_new(dir, new_orphan_inode,
 						       new_dentry);
 		if (error)
 			mlog_errno(error);
 	}
+	ocfs2_inode_unlock_tracker(new_orphan_inode, 1, &oh, had_lock);
 
+out:
 	if (new_orphan_inode) {
 		/*
 		 * We need to open_unlock the inode no matter whether we
