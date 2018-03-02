@@ -185,6 +185,9 @@
 #define X86_BUG_SPECTRE_V1     (7*32+17)
 #define X86_BUG_SPECTRE_V2     (7*32+18)
 
+/* AMD-defined CPU features, CPUID level 0x80000008 (EBX), word 13 */
+#define X86_FEATURE_IBPB	(7*32+20) /* Indirect Branch Prediction Barrier */
+
 /* Because the ALTERNATIVE scheme is for members of the X86_FEATURE club... */
 #define X86_FEATURE_PTI	( 7*32+31) /* CONFIG_PAGE_TABLE_ISOLATION w/o nopti */
 

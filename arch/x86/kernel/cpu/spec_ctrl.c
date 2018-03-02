@@ -88,6 +88,11 @@ void scan_spec_ctrl_feature(struct cpuinfo_x86 *c)
 	if ((!c->cpu_index) && (boot_cpu_has(X86_FEATURE_SPEC_CTRL))) {
 		set_ibrs_feature();
 		set_ibpb_feature();
+	} else if (boot_cpu_has(X86_FEATURE_IBPB)) {
+		printk_once(KERN_INFO "FEATURE IBPB Present\n");
+		set_ibpb_feature();
+		if (ibpb_inuse)
+			sysctl_ibpb_enabled = 1;
 	}
 }
 EXPORT_SYMBOL_GPL(scan_spec_ctrl_feature);
