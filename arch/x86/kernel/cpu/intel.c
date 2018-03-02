@@ -110,10 +110,10 @@ static void __cpuinit early_init_intel(struct cpuinfo_x86 *c)
 		(c->x86 == 0x6 && c->x86_model >= 0x0e))
 		set_cpu_cap(c, X86_FEATURE_CONSTANT_TSC);
 
-	if (cpu_has(c, X86_FEATURE_SPEC_CTRL) && bad_spectre_microcode(c)) {
+	if (cpu_has(c, X86_FEATURE_IBRS) && bad_spectre_microcode(c)) {
 		if (&boot_cpu_data == c)
 			pr_warn("Intel Spectre v2 broken microcode detected; disabling SPEC_CTRL\n");
-		clear_cpu_cap(c, X86_FEATURE_SPEC_CTRL);
+		clear_cpu_cap(c, X86_FEATURE_IBRS);
 	}
 
 	/*
