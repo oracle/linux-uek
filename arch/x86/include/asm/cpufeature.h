@@ -187,6 +187,7 @@
 
 /* AMD-defined CPU features, CPUID level 0x80000008 (EBX), word 13 */
 #define X86_FEATURE_IBPB	(7*32+20) /* Indirect Branch Prediction Barrier */
+#define X86_FEATURE_STIPB      ( 7*32+21) /* Single Thread Indirect Branch Predictors */
 
 /* Because the ALTERNATIVE scheme is for members of the X86_FEATURE club... */
 #define X86_FEATURE_PTI	( 7*32+31) /* CONFIG_PAGE_TABLE_ISOLATION w/o nopti */
