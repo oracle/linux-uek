@@ -269,5 +269,4 @@ then
 	echo Unknown PID, cannot kill qemu command
 fi
 
-parse-torture.sh $resdir/console.log $title
 parse-console.sh $resdir/console.log $title
