@@ -588,6 +588,8 @@ kernel/drivers/usb/storage/ums-sddr09.ko
 kernel/drivers/usb/storage/ums-sddr55.ko
 kernel/drivers/usb/storage/ums-usbat.ko
 kernel/drivers/usb/storage/usb-storage.ko
+kernel/drivers/vfio/mdev/mdev.ko
+kernel/drivers/vfio/mdev/vfio_mdev.ko
 kernel/drivers/vfio/pci/vfio-pci.ko
 kernel/drivers/vfio/vfio_iommu_type1.ko
 kernel/drivers/vfio/vfio.ko
