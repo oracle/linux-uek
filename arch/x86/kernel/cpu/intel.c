@@ -114,6 +114,8 @@ static void __cpuinit early_init_intel(struct cpuinfo_x86 *c)
 		if (&boot_cpu_data == c)
 			pr_warn("Intel Spectre v2 broken microcode detected; disabling SPEC_CTRL\n");
 		clear_cpu_cap(c, X86_FEATURE_IBRS);
+		clear_cpu_cap(c, X86_FEATURE_IBPB);
+		clear_cpu_cap(c, X86_FEATURE_STIBP);
 	}
 
 	/*
