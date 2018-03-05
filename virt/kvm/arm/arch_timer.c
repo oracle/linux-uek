@@ -577,6 +577,7 @@ void kvm_timer_sync_hwstate(struct kvm_vcpu *vcpu)
 
 int kvm_timer_vcpu_reset(struct kvm_vcpu *vcpu)
 {
+	struct arch_timer_cpu *timer = &vcpu->arch.timer_cpu;
 	struct arch_timer_context *vtimer = vcpu_vtimer(vcpu);
 	struct arch_timer_context *ptimer = vcpu_ptimer(vcpu);
 
@@ -589,6 +590,9 @@ int kvm_timer_vcpu_reset(struct kvm_vcpu *vcpu)
 	vtimer->cnt_ctl = 0;
 	ptimer->cnt_ctl = 0;
 	kvm_timer_update_state(vcpu);
+
+	if (timer->enabled && irqchip_in_kernel(vcpu->kvm))
+		kvm_vgic_reset_mapped_irq(vcpu, vtimer->irq.irq);
 
 	return 0;
 }
