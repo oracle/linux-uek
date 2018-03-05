@@ -11310,6 +11310,11 @@ static int prepare_vmcs02(struct kvm_vcpu *vcpu, struct vmcs12 *vmcs12,
 	struct vcpu_vmx *vmx = to_vmx(vcpu);
 	u32 exec_control, vmcs12_exec_ctrl;
 
+	if (vmx->nested.dirty_vmcs12) {
+		prepare_vmcs02_full(vcpu, vmcs12, from_vmentry);
+		vmx->nested.dirty_vmcs12 = false;
+	}
+
 	/*
 	 * First, the fields that are shadowed.  This must be kept in sync
 	 * with vmx_shadow_fields.h.
@@ -11546,11 +11551,6 @@ static int prepare_vmcs02(struct kvm_vcpu *vcpu, struct vmcs12 *vmcs12,
 		vcpu->arch.efer &= ~(EFER_LMA | EFER_LME);
 	/* Note: modifies VM_ENTRY/EXIT_CONTROLS and GUEST/HOST_IA32_EFER */
 	vmx_set_efer(vcpu, vcpu->arch.efer);
-
-	if (vmx->nested.dirty_vmcs12) {
-		prepare_vmcs02_full(vcpu, vmcs12, from_vmentry);
-		vmx->nested.dirty_vmcs12 = false;
-	}
 
 	/*
 	 * Guest state is invalid and unrestricted guest is disabled,
