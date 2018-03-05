@@ -125,6 +125,9 @@
 /* Guest crash data handler available */
 #define HV_X64_GUEST_CRASH_MSR_AVAILABLE		(1 << 10)
 
+/* stimer Direct Mode is available */
+#define HV_X64_STIMER_DIRECT_MODE_AVAILABLE		(1 << 19)
+
 /*
  * Implementation recommendations. Indicates which behaviors the hypervisor
  * recommends the OS implement for optimal performance.
