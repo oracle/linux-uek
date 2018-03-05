@@ -484,15 +484,32 @@ static struct ctl_table netns_core_table[] = {
 
 static __net_init int sysctl_core_net_init(struct net *net)
 {
-	struct ctl_table *tbl;
+	struct ctl_table *tbl, *tbl_ptr;
 
 	tbl = netns_core_table;
 	if (!net_eq(net, &init_net)) {
-		tbl = kmemdup(tbl, sizeof(netns_core_table), GFP_KERNEL);
+		struct ctl_table *ctlp;
+
+		tbl = kmalloc(sizeof(netns_core_table) +
+			      (sizeof(struct ctl_table)) * 4, GFP_KERNEL);
 		if (tbl == NULL)
 			goto err_dup;
 
-		tbl[0].data = &net->core.sysctl_somaxconn;
+		memcpy(tbl, netns_core_table, sizeof(netns_core_table));
+		tbl->data = &net->core.sysctl_somaxconn;
+		tbl_ptr = tbl + ARRAY_SIZE(netns_core_table) - 1;
+		for (ctlp = net_core_table; ctlp->procname; ctlp++) {
+			if ((strcmp(ctlp->procname, "wmem_max") == 0) ||
+			    (strcmp(ctlp->procname, "wmem_default") == 0) ||
+			    (strcmp(ctlp->procname, "rmem_max") == 0) ||
+			    (strcmp(ctlp->procname, "rmem_default") == 0)) {
+				memcpy(tbl_ptr, ctlp, sizeof(struct ctl_table));
+				tbl_ptr->mode = 0444; /* set read-only */
+				tbl_ptr++;
+				continue;
+			}
+		}
+		memset(tbl_ptr, 0, sizeof(struct ctl_table));
 
 		/* Don't export any sysctls to unprivileged users */
 		if (net->user_ns != &init_user_ns) {
