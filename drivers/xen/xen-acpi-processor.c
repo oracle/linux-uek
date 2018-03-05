@@ -53,6 +53,10 @@ static unsigned long *acpi_ids_done;
 static unsigned long *acpi_id_present;
 /* And if there is an _CST definition (or a PBLK) for the ACPI IDs */
 static unsigned long *acpi_id_cst_present;
+/* And if there is an _PSD definition for the ACPI IDs */
+static unsigned long *acpi_id_psd_present;
+/* Which ACPI P-State dependencies for a enumerated processor */
+static struct acpi_psd_package *acpi_psd;
 
 static int push_cxx_to_hypervisor(struct acpi_processor *_pr)
 {
@@ -319,6 +323,70 @@ static unsigned int __init get_max_acpi_id(void)
 	pr_debug("Max ACPI ID: %u\n", max_acpi_id);
 	return max_acpi_id;
 }
+
+static int xen_processor_get_psd(acpi_handle handle,
+				 struct acpi_psd_package *pdomain)
+{
+	int result = 0;
+	acpi_status status = AE_OK;
+	struct acpi_buffer buffer = {ACPI_ALLOCATE_BUFFER, NULL};
+	struct acpi_buffer format = {sizeof("NNNNN"), "NNNNN"};
+	struct acpi_buffer state = {0, NULL};
+	union acpi_object  *psd = NULL;
+
+	status = acpi_evaluate_object(handle, "_PSD", NULL, &buffer);
+	if (ACPI_FAILURE(status)) {
+		return -ENODEV;
+	}
+
+	psd = buffer.pointer;
+	if (!psd || (psd->type != ACPI_TYPE_PACKAGE)) {
+		pr_err("Invalid _PSD data\n");
+		result = -EFAULT;
+		goto end;
+	}
+
+	if (psd->package.count != 1) {
+		pr_err("Invalid _PSD data\n");
+		result = -EFAULT;
+		goto end;
+	}
+
+	state.length = sizeof(struct acpi_psd_package);
+	state.pointer = pdomain;
+
+	status = acpi_extract_package(&(psd->package.elements[0]),
+		&format, &state);
+	if (ACPI_FAILURE(status)) {
+		pr_err("Invalid _PSD data\n");
+		result = -EFAULT;
+		goto end;
+	}
+
+	if (pdomain->num_entries != ACPI_PSD_REV0_ENTRIES) {
+		pr_err("Unknown _PSD:num_entries\n");
+		result = -EFAULT;
+		goto end;
+	}
+
+	if (pdomain->revision != ACPI_PSD_REV0_REVISION) {
+		pr_err("Unknown _PSD:revision\n");
+		result = -EFAULT;
+		goto end;
+	}
+
+	if (pdomain->coord_type != DOMAIN_COORD_TYPE_SW_ALL &&
+	    pdomain->coord_type != DOMAIN_COORD_TYPE_SW_ANY &&
+	    pdomain->coord_type != DOMAIN_COORD_TYPE_HW_ALL) {
+		pr_err("Invalid _PSD:coord_type\n");
+		result = -EFAULT;
+		goto end;
+	}
+end:
+	kfree(buffer.pointer);
+	return result;
+}
+
 /*
  * The read_acpi_id and check_acpi_ids are there to support the Xen
  * oddity of virtual CPUs != physical CPUs in the initial domain.
@@ -372,6 +440,15 @@ read_acpi_id(acpi_handle handle, u32 lvl, void *context, void **rv)
 
 	pr_debug("ACPI CPU%u w/ PBLK:0x%lx\n", acpi_id, (unsigned long)pblk);
 
+	/* It has P-state dependencies */
+	if (!xen_processor_get_psd(handle, &acpi_psd[acpi_id])) {
+		__set_bit(acpi_id, acpi_id_psd_present);
+
+		pr_debug("ACPI CPU%u w/ PST:coord_type = %llu domain = %llu\n",
+			 acpi_id, acpi_psd[acpi_id].coord_type,
+			 acpi_psd[acpi_id].domain);
+	}
+
 	status = acpi_evaluate_object(handle, "_CST", NULL, &buffer);
 	if (ACPI_FAILURE(status)) {
 		if (!pblk)
@@ -382,6 +459,7 @@ read_acpi_id(acpi_handle handle, u32 lvl, void *context, void **rv)
 
 	return AE_OK;
 }
+
 static int check_acpi_ids(struct acpi_processor *pr_backup)
 {
 
@@ -405,6 +483,21 @@ static int check_acpi_ids(struct acpi_processor *pr_backup)
 		return -ENOMEM;
 	}
 
+	acpi_id_psd_present = kcalloc(BITS_TO_LONGS(nr_acpi_bits), sizeof(unsigned long), GFP_KERNEL);
+	if (!acpi_id_psd_present) {
+		kfree(acpi_id_present);
+		kfree(acpi_id_cst_present);
+		return -ENOMEM;
+	}
+
+	acpi_psd = kcalloc(nr_acpi_bits, sizeof(struct acpi_psd_package), GFP_KERNEL);
+	if (!acpi_psd) {
+		kfree(acpi_id_present);
+		kfree(acpi_id_cst_present);
+		kfree(acpi_id_psd_present);
+		return -ENOMEM;
+	}
+
 	acpi_walk_namespace(ACPI_TYPE_PROCESSOR, ACPI_ROOT_OBJECT,
 			    ACPI_UINT32_MAX,
 			    read_acpi_id, NULL, NULL, NULL);
@@ -417,6 +510,10 @@ upload:
 			pr_backup->acpi_id = i;
 			/* Mask out C-states if there are no _CST or PBLK */
 			pr_backup->flags.power = test_bit(i, acpi_id_cst_present);
+			if (test_bit(i, acpi_id_psd_present)) {
+				memcpy(&pr_backup->performance->domain_info,
+				       &acpi_psd[i], sizeof(struct acpi_psd_package));
+			}
 			(void)upload_pm_data(pr_backup);
 		}
 	}
@@ -568,6 +665,9 @@ static void __exit xen_acpi_processor_exit(void)
 	kfree(acpi_ids_done);
 	kfree(acpi_id_present);
 	kfree(acpi_id_cst_present);
+	kfree(acpi_id_psd_present);
+	kfree(acpi_psd);
+
 	for_each_possible_cpu(i) {
 		struct acpi_processor_performance *perf;
 		perf = per_cpu_ptr(acpi_perf_data, i);
