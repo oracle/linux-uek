@@ -793,16 +793,6 @@ int main(int argc, char *argv[])
 {
 	char *output;
 
-	if (getuid() == 0 || geteuid() == 0) {
-		fprintf(stderr, "dwarf2ctf: root run: doing nothing.\n");
-		fprintf(stderr, "CTF type information will not be produced.\n");
-		fprintf(stderr, "Please run as a non-root user.\n");
-		/*
-		 * Refuse to produce any output.
-		 */
-		exit(0);
-	}
-
 	trace = getenv("DWARF2CTF_TRACE");
 
 	if ((argc != 4 && argc != 7) ||
