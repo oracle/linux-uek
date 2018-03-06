@@ -26,7 +26,7 @@ This repository will be refreshed weekly as new development versions are availab
 
 ## Linux Development at Oracle
 
-Oracle is a long-time contributor to Linux and we have always had a strong emphasis on upstreaming and open-sourcing our changes to the kernel. Keeping our changes open source allows us to integrate with upstream Linux kernels quickly, which also means we have state-of-the-art drivers and filesystems, hardware support, and security fixes from the community...in addition to the work we have contributed ourselves.
+Oracle is a long-time contributor to Linux and we have always had a strong emphasis on upstreaming and open-sourcing our changes to the kernel. Keeping our changes open source allows us to integrate with upstream Linux kernels quickly, which also means we have state-of-the-art drivers and filesystems, hardware support, and security fixes from the community...in addition to the work we have contributed ourselves.  [Read more on the Oracle Linux Kernel Blog.](https://blogs.oracle.com/linuxkernel)
 
 Since 2007, Oracle has contributed more than 400,000 lines of code to Linux, and been ranked in the top 15 all-time contributors to Linux through more than 7,500 changesets. If you're using a filesystem other than ext4, chances are it was written at Oracle or contains significant improvements from Oracle: whether it's NFS, where we've been significant contributors for years; btrfs, which was originally written and submitted at Oracle; or xfs, where the upstream kernel maintainer works at Oracle. It's not just OCFS2 and RDS, though those subsystems continue to have their niche use cases. 
 
@@ -47,6 +47,7 @@ enterprise distribution, Oracle Linux is free to download, distribute and use an
 
 * [Oracle Linux documentation](http://docs.oracle.com/en/operating-systems/linux.html)
 * [Oracle Linux blog](https://blogs.oracle.com/linux/)
+* [Oracle Linux kernel blog](https://blogs.oracle.com/linuxkernel)
 * [Twitter](https://twitter.com/oraclelinux) 
 * [Facebook](https://www.facebook.com/OracleLinux/)
 * [YouTube](https://www.youtube.com/user/OracleLinuxChannel/)
