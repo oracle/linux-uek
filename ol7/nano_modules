@@ -663,6 +663,7 @@ kernel/fs/binfmt_misc.ko
 kernel/fs/cachefiles/cachefiles.ko
 kernel/fs/cifs/cifs.ko
 kernel/fs/cramfs/cramfs.ko
+kernel/fs/crypto/fscrypto.ko
 kernel/fs/dlm/dlm.ko
 kernel/fs/ecryptfs/ecryptfs.ko
 kernel/fs/ext2/ext2.ko
