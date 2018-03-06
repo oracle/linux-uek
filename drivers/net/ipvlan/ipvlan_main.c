@@ -157,7 +157,6 @@ static int ipvlan_port_create(struct net_device *dev)
 	if (err)
 		goto err;
 
-	dev->priv_flags |= IFF_IPVLAN_MASTER;
 	return 0;
 
 err:
@@ -170,7 +169,6 @@ static void ipvlan_port_destroy(struct net_device *dev)
 	struct ipvl_port *port = ipvlan_port_get_rtnl(dev);
 	struct sk_buff *skb;
 
-	dev->priv_flags &= ~IFF_IPVLAN_MASTER;
 	if (port->mode == IPVLAN_MODE_L3S) {
 		dev->priv_flags &= ~IFF_L3MDEV_MASTER;
 		ipvlan_unregister_nf_hook(dev_net(dev));
@@ -441,6 +439,12 @@ static const struct header_ops ipvlan_header_ops = {
 	.cache_update	= eth_header_cache_update,
 };
 
+static bool netif_is_ipvlan(const struct net_device *dev)
+{
+	/* both ipvlan and ipvtap devices use the same netdev_ops */
+	return dev->netdev_ops == &ipvlan_netdev_ops;
+}
+
 static int ipvlan_ethtool_get_link_ksettings(struct net_device *dev,
 					     struct ethtool_link_ksettings *cmd)
 {
@@ -575,6 +579,20 @@ int ipvlan_link_new(struct net *src_net, struct net_device *dev,
 	INIT_LIST_HEAD(&ipvlan->addrs);
 	spin_lock_init(&ipvlan->addrs_lock);
 
+	/* TODO Probably put random address here to be presented to the
+	 * world but keep using the physical-dev address for the outgoing
+	 * packets.
+	 */
+	memcpy(dev->dev_addr, phy_dev->dev_addr, ETH_ALEN);
+
+	err = register_netdevice(dev);
+	if (err < 0)
+		return err;
+
+	/* ipvlan_init() would have created the port, if required */
+	port = ipvlan_port_get_rtnl(phy_dev);
+	ipvlan->port = port;
+
 	/* If the port-id base is at the MAX value, then wrap it around and
 	 * begin from 0x1 again. This may be due to a busy system where lots
 	 * of slaves are getting created and deleted.
@@ -598,26 +616,13 @@ int ipvlan_link_new(struct net *src_net, struct net_device *dev,
 	/* Increment id-base to the next slot for the future assignment */
 	port->dev_id_start = err + 1;
 
-	/* TODO Probably put random address here to be presented to the
-	 * world but keep using the physical-dev address for the outgoing
-	 * packets.
-	 */
-	memcpy(dev->dev_addr, phy_dev->dev_addr, ETH_ALEN);
-
-	dev->priv_flags |= IFF_IPVLAN_SLAVE;
-
-	err = register_netdevice(dev);
-	if (err < 0)
+	err = netdev_upper_dev_link(phy_dev, dev);
+	if (err)
 		goto remove_ida;
 
-	err = netdev_upper_dev_link(phy_dev, dev);
-	if (err) {
-		goto unregister_netdev;
-	}
 	err = ipvlan_set_port_mode(port, mode);
-	if (err) {
+	if (err)
 		goto unlink_netdev;
-	}
 
 	list_add_tail_rcu(&ipvlan->pnode, &port->ipvlans);
 	netif_stacked_transfer_operstate(phy_dev, dev);
