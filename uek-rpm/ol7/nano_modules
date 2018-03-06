@@ -313,6 +313,7 @@ kernel/drivers/input/mouse/vsxxxaa.ko
 kernel/drivers/input/serio/hyperv-keyboard.ko
 kernel/drivers/input/serio/serio_raw.ko
 kernel/drivers/input/sparse-keymap.ko
+kernel/drivers/net/ipvlan/ipvlan.ko
 kernel/drivers/leds/leds-clevo-mail.ko
 kernel/drivers/leds/leds-lp3944.ko
 kernel/drivers/md/dm-bio-prison.ko
