@@ -435,11 +435,6 @@ int pkcs7_verify(struct pkcs7_message *pkcs7,
 				sinfo->unsupported_crypto = true;
 				continue;
 			}
-			if (usage == VERIFYING_KEXEC_PE_SIGNATURE &&
-			    ret == -EINVAL) {
-				actual_ret = 0;
-				continue;
-			}
 			kleave(" = %d", ret);
 			return ret;
 		}
