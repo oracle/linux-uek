@@ -25,7 +25,7 @@
 #include <linux/if_bridge.h>
 #include <net/busy_poll.h>
 #include <net/vxlan.h>
-
+#include <linux/compiler.h>
 MODULE_VERSION(DRV_VER);
 MODULE_DESCRIPTION(DRV_DESC " " DRV_VER);
 MODULE_AUTHOR("Emulex Corporation");
@@ -606,7 +606,7 @@ static void accumulate_16bit_val(u32 *acc, u16 val)
 
 	if (wrapped)
 		newacc += 65536;
-	ACCESS_ONCE(*acc) = newacc;
+	WRITE_ONCE(*acc, newacc);
 }
 
 static void populate_erx_stats(struct be_adapter *adapter,
