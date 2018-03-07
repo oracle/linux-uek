@@ -329,9 +329,8 @@ static enum spectre_v2_mitigation __init ibrs_select(void)
 	return mode;
 }
 
-static void __init disable_ibrs_and_friends(bool disable_ibpb)
+static void __init disable_ibrs_and_friends(bool disable)
 {
-	set_ibrs_disabled();
 	if (use_ibrs & SPEC_CTRL_IBRS_SUPPORTED) {
 		unsigned int cpu;
 
@@ -341,15 +340,23 @@ static void __init disable_ibrs_and_friends(bool disable_ibpb)
 
 		put_online_cpus();
 	}
-	/*
-	 * We need to use IBPB with retpoline if it is available.
-	 * And also IBRS for firmware paths.
-	 */
-	if (disable_ibpb) {
+
+	if (disable) {
+		set_ibrs_disabled();
 		set_ibpb_disabled();
 		disable_ibrs_firmware();
-	} else
+	} else {
+		/*
+		 * Clear in-use instead of disabling so that IBRS can be
+		 * set back in use later by disable_retpoline().
+		 */
+		clear_ibrs_inuse();
+		/*
+		 * We need to use IBPB with retpoline if it is available.
+		 * Also IBRS for firmware paths.
+		 */
 		set_ibrs_firmware();
+	}
 }
 
 static bool __init retpoline_selected(enum spectre_v2_mitigation_cmd cmd)
@@ -481,7 +488,7 @@ out:
 	/* IBRS is unnecessary with retpoline mitigation. */
 	if (mode == SPECTRE_V2_RETPOLINE_GENERIC ||
 	    mode == SPECTRE_V2_RETPOLINE_AMD) {
-		disable_ibrs_and_friends(false /* Do use IPBP if possible */);
+		disable_ibrs_and_friends(false /* set not-in-use */);
 	}
 	/* Future CPUs with IBRS_ALL might be able to avoid this. */
 	setup_force_cpu_cap(X86_FEATURE_VMEXIT_RSB_FULL);
