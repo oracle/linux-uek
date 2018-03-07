@@ -48,7 +48,7 @@ static int xen_microcode_update(int cpu)
 	set_xen_guest_handle(op.u.microcode.data, uc->data);
 	op.u.microcode.length = uc->len;
 
-	err = HYPERVISOR_dom0_op(&op);
+	err = HYPERVISOR_platform_op(&op);
 
 	if (err != 0)
 		printk(KERN_WARNING "microcode_xen: microcode update failed: %d\n", err);
@@ -85,7 +85,7 @@ static enum ucode_state xen_request_microcode_fw(int cpu, struct device *device,
 		return UCODE_NFOUND;
 	}
 
-	err = request_firmware(&firmware, name, device);
+	err = request_firmware_direct(&firmware, name, device);
 	if (err) {
 		pr_debug("microcode: data file %s load failed\n", name);
 		return UCODE_NFOUND;
@@ -199,7 +199,8 @@ static int dummy_xen_microcode_update(int cpu)
 	return 0;
 }
 
-static enum ucode_state dummy_xen_request_microcode_fw(int cpu, struct device *device)
+static enum ucode_state dummy_xen_request_microcode_fw(int cpu, struct device *device,
+						       bool refresh_fw)
 {
 	return UCODE_OK;
 }
