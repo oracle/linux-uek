@@ -564,8 +564,6 @@ Source23: turbostat
 
 Source1000: config-x86_64
 Source1001: config-x86_64-debug
-#Source1004: config-sparc
-#Source1005: config-sparc-debug
 Source1007: config-aarch64
 Source1008: config-aarch64-debug
 
@@ -980,11 +978,6 @@ mkdir -p configs
 	cp %{SOURCE1003} configs/config-debug
 	cp %{SOURCE1002} configs/config
 %endif #ifarch i686
-
-%ifarch sparc64
-	cp %{SOURCE1005} configs/config-debug
-	cp %{SOURCE1004} configs/config
-%endif #ifarch sparc
 
 %ifarch aarch64
 	cp %{SOURCE1008} configs/config-debug
