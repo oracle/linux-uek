@@ -1,6 +1,6 @@
 config MSTFLINT_ACCESS
 	tristate "Mellanox Technologies MSTFLINT Secure Boot Access support"
-	select MLX4_CORE
+	depends on PCI
 	help
 	  Mellanox Technologies MSTFLINT_ACCESS functionality.
 
