@@ -2,7 +2,7 @@
  * FILE:	cyclic.c
  * DESCRIPTION:	Minimal cyclic implementation
  *
- * Copyright (c) 2010, 2011, 2012, 2013, 2017 Oracle Corporation
+ * Copyright (c) 2010, 2018, Oracle and/or its affiliates. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -98,7 +98,7 @@ again:
  * We schedule a workqueue to do the actual work.
  *
  * But... under heavy load it is possible that the hrtimer will expire again
- * before the workqueu had a chance to run.  That would lead to missed events
+ * before the workqueue had a chance to run.  That would lead to missed events
  * which isn't quite acceptable.  Therefore, we use a counter to record how
  * many times the timer has expired vs how many times the handler has been
  * called.  The counter is incremented by this function upon hrtimer expiration
@@ -135,7 +135,7 @@ static enum hrtimer_restart cyclic_expire(struct hrtimer *timr)
 	 * defeat, and reset it to its max value.
 	 */
 	if (cyc->cyc.pend++ == 0)
-		schedule_work((struct work_struct *)&cyc->cyc.work);
+		schedule_work_on(cyc->cpu, (struct work_struct *)&cyc->cyc.work);
 	else if (cyc->cyc.pend == 0)
 		cyc->cyc.pend = UINT_MAX;
 
@@ -164,7 +164,7 @@ cyclic_t *cyclic_new(int omni)
 	if (!omni) {
 		cyc->cpu = _CYCLIC_CPU_UNDEF;
 		cyc->cyc.pend = 0;
-		hrtimer_init(&cyc->cyc.timr, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
+		hrtimer_init(&cyc->cyc.timr, CLOCK_MONOTONIC, HRTIMER_MODE_REL_PINNED);
 		cyc->cyc.timr.function = cyclic_expire;
 		cyc->cyc.work.cyc = cyc;
 		INIT_WORK((struct work_struct *)&cyc->cyc.work, cyclic_fire);
