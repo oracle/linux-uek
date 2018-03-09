@@ -274,7 +274,7 @@ static int __init pcie_portdrv_init(void)
 	int retval;
 
 	if (pcie_ports_disabled)
-		return pci_register_driver(&pcie_portdriver);
+		return -EACCES;
 
 	dmi_check_system(pcie_portdrv_dmi_table);
 
