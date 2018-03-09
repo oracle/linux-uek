@@ -490,8 +490,11 @@ struct pci_host_bridge {
 	void (*release_fn)(struct pci_host_bridge *);
 	void *release_data;
 	struct msi_controller *msi;
-	unsigned int ignore_reset_delay:1;	/* for entire hierarchy */
-	unsigned int no_ext_tags:1;		/* no Extended Tags */
+	unsigned int	ignore_reset_delay:1;	/* For entire hierarchy */
+	unsigned int	no_ext_tags:1;		/* No Extended Tags */
+	unsigned int	native_aer:1;		/* OS may use PCIe AER */
+	unsigned int	native_hotplug:1;	/* OS may use PCIe hotplug */
+	unsigned int	native_pme:1;		/* OS may use PCIe PME */
 	/* Resource alignment requirements */
 	resource_size_t (*align_resource)(struct pci_dev *dev,
 			const struct resource *res,
