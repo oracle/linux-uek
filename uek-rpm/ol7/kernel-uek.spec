@@ -86,6 +86,10 @@ Summary: The Linux kernel
 %define with_headers   0
 # dtrace
 %define with_dtrace    0
+# perf
+%define with_perf      0
+# tools
+%define with_tools     0
 # kernel-debuginfo
 %define with_debuginfo %{?_without_debuginfo: 0} %{?!_without_debuginfo: 1}
 # kernel-bootwrapper (for creating zImages from kernel + initrd)
@@ -255,6 +259,8 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 %ifarch noarch
 %define with_up 0
 %define with_headers 0
+%define with_tools 0
+%define with_perf 0
 %define with_paravirt 0
 %define with_paravirt_debug 0
 %define all_arch_configs kernel-%{version}-*.config
@@ -365,6 +371,8 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 BuildRequires: gcc7 >= 7.2.1
 %define _kernel_cc CC=gcc7
 %define with_headers   1
+%define with_perf 1
+%define with_tools 1
 %endif
 
 %if %{nopatches}
@@ -391,6 +399,8 @@ BuildRequires: gcc7 >= 7.2.1
 %define with_pae 0
 %define with_kdump 0
 %define with_debuginfo 0
+%define with_perf 0
+%define with_tools 0
 %define _enable_debug_packages 0
 %define with_paravirt 0
 %define with_paravirt_debug 0
@@ -400,6 +410,9 @@ BuildRequires: gcc7 >= 7.2.1
 %if %{with_pae}
 %define with_pae_debug %{with_debug}
 %endif
+
+# Architectures we build tools/cpupower on
+%define cpupowerarchs aarch64
 
 #
 # Three sets of minimum package version requirements in the form of Conflicts:
@@ -542,6 +555,16 @@ BuildRequires: libdtrace-ctf-devel >= 0.7.0
 %if %{with_perf_tui}
 BuildRequires: slang-devel, slang-static
 %endif
+%if %{with_perf}
+BuildRequires: zlib-devel binutils-devel newt-devel python-devel perl(ExtUtils::Embed) bison flex xz-devel
+BuildRequires: audit-libs-devel
+%ifnarch s390x %{arm}
+BuildRequires: numactl-devel
+%endif
+%endif
+%if %{with_tools}
+BuildRequires: pciutils-devel gettext ncurses-devel
+%endif # with_tools
 BuildConflicts: rhbuildsys(DiskFree) < 500Mb
 
 Source0: linux-%{kversion}.tar.bz2
@@ -575,6 +598,10 @@ Source201: kabi_whitelist_x86_64
 
 Source300: debuginfo-g1.diff
 Source301: debuginfo-g1-minusr-old-elfutils.diff
+
+# Sources for kernel-tools
+Source2000: cpupower.service
+Source2001: cpupower.config
 
 # Here should be only the patches up to the upstream canonical Linus tree.
 
@@ -613,11 +640,13 @@ Patch00: patch-2.6.%{base_sublevel}-git%{gitrev}.bz2
 
 BuildRoot: %{_tmppath}/kernel-%{KVERREL}-root
 
+%ifnarch aarch64
 # Override find_provides to use a script that provides "kernel(symbol) = hash".
 # Pass path of the RPM temp dir containing kabideps to find-provides script.
 %global _use_internal_dependency_generator 0
 %define __find_provides %_sourcedir/find-provides %{_tmppath}
 %define __find_requires /usr/lib/rpm/redhat/find-requires kernel
+%endif
 
 %description
 The kernel package contains the Linux kernel (vmlinuz), the core of any
@@ -669,6 +698,117 @@ Provides: %{name}-debuginfo-common-%{_target_cpu} = %{version}-%{release}
 This package is required by %{name}-debuginfo subpackages.
 It provides the kernel source files common to all builds.
 
+%if %{with_perf}
+%package -n perf
+Summary: Performance monitoring for the Linux kernel
+Group: Development/System
+License: GPLv2
+BuildRequires: asciidoc xmlto gnu-free-mono-fonts
+%description -n perf
+This package contains the perf tool, which enables performance monitoring
+of the Linux kernel.
+
+%package -n perf-debuginfo
+Summary: Debug information for package perf
+Group: Development/Debug
+Requires: %{name}-debuginfo-common-%{_target_cpu} = %{version}-%{release}
+AutoReqProv: no
+%description -n perf-debuginfo
+This package provides debug information for the perf package.
+
+# Note that this pattern only works right to match the .build-id
+# symlinks because of the trailing nonmatching alternation and
+# the leading .*, because of find-debuginfo.sh's buggy handling
+# of matching the pattern against the symlinks file.
+%{expand:%%global debuginfo_args %{?debuginfo_args} -p '.*%%{_bindir}/perf(\.debug)?|.*%%{_libexecdir}/perf-core/.*|.*%%{_libdir}/traceevent/plugins/.*|XXX' -o perf-debuginfo.list}
+
+%package -n python-perf
+Summary: Python bindings for apps which will manipulate perf events
+Group: Development/Libraries
+%description -n python-perf
+The python-perf package contains a module that permits applications
+written in the Python programming language to use the interface
+to manipulate perf events.
+
+%{!?python_sitearch: %global python_sitearch %(%{__python} -c "from distutils.sysconfig import get_python_lib; print get_python_lib(1)")}
+
+%package -n python-perf-debuginfo
+Summary: Debug information for package perf python bindings
+Group: Development/Debug
+Requires: %{name}-debuginfo-common-%{_target_cpu} = %{version}-%{release}
+AutoReqProv: no
+%description -n python-perf-debuginfo
+This package provides debug information for the perf python bindings.
+
+# the python_sitearch macro should already be defined from above
+%{expand:%%global debuginfo_args %{?debuginfo_args} -p '.*%%{python_sitearch}/perf.so(\.debug)?|XXX' -o python-perf-debuginfo.list}
+
+
+%endif # with_perf
+
+%if %{with_tools}
+%package -n kernel-uek-tools
+Summary: Assortment of tools for the Linux kernel
+Group: Development/System
+License: GPLv2
+Provides: kernel-uek-tools
+Provides: kernel-tools
+Provides:  cpupowerutils = 1:009-0.6.p1
+Obsoletes: cpupowerutils < 1:009-0.6.p1
+Provides:  cpufreq-utils = 1:009-0.6.p1
+Provides:  cpufrequtils = 1:009-0.6.p1
+Obsoletes: cpufreq-utils < 1:009-0.6.p1
+Obsoletes: cpufrequtils < 1:009-0.6.p1
+Obsoletes: cpuspeed < 1:1.5-16
+Requires: kernel-uek-tools-libs = %{version}-%{release}
+%define __requires_exclude ^%{_bindir}/python
+%description -n kernel-uek-tools
+This package contains the tools/ directory from the kernel source
+and the supporting documentation.
+
+%package -n kernel-uek-tools-libs
+Summary: Libraries for the kernels-tools
+Group: Development/System
+License: GPLv2
+Provides: kernel-uek-tools-libs
+Provides: kernel-tools-libs
+%description -n kernel-uek-tools-libs
+This package contains the libraries built from the tools/ directory
+from the kernel source.
+
+%package -n kernel-uek-tools-libs-devel
+Summary: Assortment of tools for the Linux kernel
+Group: Development/System
+License: GPLv2
+Requires: kernel-uek-tools = %{version}-%{release}
+Provides:  cpupowerutils-devel = 1:009-0.6.p1
+Obsoletes: cpupowerutils-devel < 1:009-0.6.p1
+Requires: kernel-uek-tools-libs = %{version}-%{release}
+Provides: kernel-uek-tools-devel
+Provides: kernel-uek-tools-libs-devel
+Provides: kernel-tools-devel
+Provides: kernel-tools-libs-devel
+%description -n kernel-uek-tools-libs-devel
+This package contains the development files for the tools/ directory from
+the kernel source.
+
+%package -n kernel-uek-tools-debuginfo
+Summary: Debug information for package kernel-tools
+Group: Development/Debug
+Requires: %{name}-debuginfo-common-%{_target_cpu} = %{version}-%{release}
+AutoReqProv: no
+Provides: kernel-uek-tools-debuginfo
+Provides: kernel-tools-debuginfo
+%description -n kernel-uek-tools-debuginfo
+This package provides debug information for package kernel-tools.
+
+# Note that this pattern only works right to match the .build-id
+# symlinks because of the trailing nonmatching alternation and
+# the leading .*, because of find-debuginfo.sh's buggy handling
+# of matching the pattern against the symlinks file.
+%{expand:%%global debuginfo_args %{?debuginfo_args} -p '.*%%{_bindir}/centrino-decode(\.debug)?|.*%%{_bindir}/powernow-k8-decode(\.debug)?|.*%%{_bindir}/cpupower(\.debug)?|.*%%{_libdir}/libcpupower.*|.*%%{_bindir}/turbostat(\.debug)?|.*%%{_bindir}/x86_energy_perf_policy(\.debug)?|.*%%{_bindir}/tmon(\.debug)?|.*%%{_bindir}/lsgpio(\.debug)?|.*%%{_bindir}/gpio-hammer(\.debug)?|.*%%{_bindir}/gpio-event-mon(\.debug)?|.*%%{_bindir}/iio_event_monitor(\.debug)?|.*%%{_bindir}/iio_generic_buffer(\.debug)?|.*%%{_bindir}/lsiio(\.debug)?|XXX' -o kernel-tools-debuginfo.list}
+
+%endif # with_tools
 
 #
 # This macro creates a kernel-<subpackage>-debuginfo package.
@@ -1376,6 +1516,34 @@ BuildKernel %make_target %kernel_image smp
 BuildKernel vmlinux vmlinux kdump vmlinux
 %endif
 
+%global perf_make \
+  make -s EXTRA_CFLAGS="${RPM_OPT_FLAGS}" LDFLAGS="%{__global_ldflags}" %{?cross_opts} -C tools/perf V=1 NO_PERF_READ_VDSO32=1 NO_PERF_READ_VDSOX32=1 WERROR=0 NO_LIBUNWIND=1 HAVE_CPLUS_DEMANGLE=1 NO_GTK2=1 NO_STRLCPY=1 NO_BIONIC=1 NO_JVMTI=1 prefix=%{_prefix}
+%if %{with_perf}
+# perf
+# make sure check-headers.sh is executable
+chmod +x tools/perf/check-headers.sh
+%{perf_make} DESTDIR=$RPM_BUILD_ROOT all
+%{perf_make} man || %{doc_build_fail}
+%endif # with_perf
+
+%if %{with_tools}
+%ifarch %{cpupowerarchs}
+# cpupower
+# make sure version-gen.sh is executable.
+chmod +x tools/power/cpupower/utils/version-gen.sh
+make %{?_smp_mflags} -C tools/power/cpupower CPUFREQ_BENCH=false
+%endif # cpupowerarchs
+pushd tools/thermal/tmon/
+make
+popd
+pushd tools/iio/
+make
+popd
+pushd tools/gpio/
+make
+popd
+%endif # with_tools
+
 %if %{with_doc}
 # Make the HTML and man pages.
 make -j1  htmldocs mandocs || %{doc_build_fail}
@@ -1528,6 +1696,47 @@ rm -f $RPM_BUILD_ROOT/usr/include/asm*/irq.h
 rm -rf $RPM_BUILD_ROOT/usr/include/drm
 %endif
 
+%if %{with_perf}
+# perf tool binary and supporting scripts/binaries
+%{perf_make} DESTDIR=$RPM_BUILD_ROOT lib=%{_lib} install-bin install-traceevent-plugins
+# remove the 'trace' symlink.
+rm -f %{buildroot}%{_bindir}/trace
+# remove the perf-tips
+rm -rf %{buildroot}%{_docdir}/perf-tip
+
+# python-perf extension
+%{perf_make} DESTDIR=$RPM_BUILD_ROOT install-python_ext
+
+# perf man pages (note: implicit rpm magic compresses them later)
+%{perf_make} DESTDIR=$RPM_BUILD_ROOT try-install-man || %{doc_build_fail}
+%endif # with_perf
+
+%if %{with_tools}
+%ifarch %{cpupowerarchs}
+make -C tools/power/cpupower DESTDIR=$RPM_BUILD_ROOT libdir=%{_libdir} mandir=%{_mandir} CPUFREQ_BENCH=false install
+rm -f %{buildroot}%{_libdir}/*.{a,la}
+%find_lang cpupower
+mv cpupower.lang ../
+chmod 0755 %{buildroot}%{_libdir}/libcpupower.so*
+mkdir -p %{buildroot}%{_unitdir} %{buildroot}%{_sysconfdir}/sysconfig
+install -m644 %{SOURCE2000} %{buildroot}%{_unitdir}/cpupower.service
+install -m644 %{SOURCE2001} %{buildroot}%{_sysconfdir}/sysconfig/cpupower
+%endif # cpupowerarchs
+pushd tools/thermal/tmon
+make INSTALL_ROOT=%{buildroot} install
+popd
+pushd tools/iio
+make DESTDIR=%{buildroot} install
+popd
+pushd tools/gpio
+make DESTDIR=%{buildroot} install
+popd
+pushd tools/kvm/kvm_stat
+make INSTALL_ROOT=%{buildroot} install-tools
+make INSTALL_ROOT=%{buildroot} install-man || %{doc_build_fail}
+popd
+%endif # with_tools
+
 %if %{with_bootwrapper}
 make DESTDIR=$RPM_BUILD_ROOT bootwrapper_install WRAPPER_OBJDIR=%{_libdir}/kernel-wrapper WRAPPER_DTSDIR=%{_libdir}/kernel-wrapper/dts
 %endif
@@ -1542,6 +1751,14 @@ rm -rf $RPM_BUILD_ROOT
 ###
 ### scripts
 ###
+
+%if %{with_tools}
+%post -n kernel-uek-tools-libs
+/sbin/ldconfig
+
+%postun -n kernel-uek-tools-libs
+/sbin/ldconfig
+%endif # with_tools
 
 #
 # This macro defines a %%post script for a kernel*-devel package.
@@ -1706,6 +1923,67 @@ fi
 /usr/sbin/*
 %{_libdir}/kernel-wrapper
 %endif
+
+%if %{with_perf}
+%files -n perf
+%defattr(-,root,root)
+%{_bindir}/perf
+%dir %{_libdir}/traceevent/plugins
+%{_libdir}/traceevent/plugins/*
+%dir %{_libexecdir}/perf-core
+%{_libexecdir}/perf-core/*
+%{_datadir}/perf-core/*
+%{_mandir}/man[1-8]/perf*
+%{_sysconfdir}/bash_completion.d/perf
+%doc linux-%{KVERREL}/tools/perf/Documentation/examples.txt
+
+%files -n python-perf
+%defattr(-,root,root)
+%{python_sitearch}
+
+%if %{with_debuginfo}
+%files -f perf-debuginfo.list -n perf-debuginfo
+%defattr(-,root,root)
+
+%files -f python-perf-debuginfo.list -n python-perf-debuginfo
+%defattr(-,root,root)
+%endif
+%endif # with_perf
+
+%if %{with_tools}
+%files -n kernel-uek-tools -f cpupower.lang
+%defattr(-,root,root)
+%ifarch %{cpupowerarchs}
+%{_bindir}/cpupower
+%{_unitdir}/cpupower.service
+%{_mandir}/man[1-8]/cpupower*
+%config(noreplace) %{_sysconfdir}/sysconfig/cpupower
+%{_bindir}/tmon
+%{_bindir}/iio_event_monitor
+%{_bindir}/iio_generic_buffer
+%{_bindir}/lsiio
+%{_bindir}/lsgpio
+%{_bindir}/gpio-hammer
+%{_bindir}/gpio-event-mon
+%{_mandir}/man1/kvm_stat*
+%{_bindir}/kvm_stat
+%endif # with_tools
+
+%if %{with_debuginfo}
+%files -f kernel-tools-debuginfo.list -n kernel-uek-tools-debuginfo
+%defattr(-,root,root)
+%endif
+
+%ifarch %{cpupowerarchs}
+%files -n kernel-uek-tools-libs
+%{_libdir}/libcpupower.so.0
+%{_libdir}/libcpupower.so.0.0.1
+
+%files -n kernel-uek-tools-libs-devel
+%{_libdir}/libcpupower.so
+%{_includedir}/cpufreq.h
+%endif # cpupowerarchs
+%endif # with_perf
 
 # only some architecture builds need kernel-doc
 %if %{with_doc}
