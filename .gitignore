@@ -58,6 +58,7 @@ modules.builtin
 /linux
 /vmlinux
 /vmlinux.32
+/vmlinux.ctfa
 /vmlinux-gdb.py
 /vmlinuz
 /System.map
