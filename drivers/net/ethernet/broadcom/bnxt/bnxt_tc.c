@@ -1273,11 +1273,8 @@ static int bnxt_tc_del_flow(struct bnxt *bp,
 	flow_node = rhashtable_lookup_fast(&tc_info->flow_table,
 					   &tc_flow_cmd->cookie,
 					   tc_info->flow_ht_params);
-	if (!flow_node) {
-		netdev_info(bp->dev, "ERROR: no flow_node for cookie %lx",
-			    tc_flow_cmd->cookie);
+	if (!flow_node)
 		return -EINVAL;
-	}
 
 	return __bnxt_tc_del_flow(bp, flow_node);
 }
@@ -1294,11 +1291,8 @@ static int bnxt_tc_get_flow_stats(struct bnxt *bp,
 	flow_node = rhashtable_lookup_fast(&tc_info->flow_table,
 					   &tc_flow_cmd->cookie,
 					   tc_info->flow_ht_params);
-	if (!flow_node) {
-		netdev_info(bp->dev, "Error: no flow_node for cookie %lx",
-			    tc_flow_cmd->cookie);
+	if (!flow_node)
 		return -1;
-	}
 
 	flow = &flow_node->flow;
 	curr_stats = &flow->stats;
