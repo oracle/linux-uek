@@ -192,6 +192,9 @@ static ssize_t current_link_speed_show(struct device *dev,
 		return -EINVAL;
 
 	switch (linkstat & PCI_EXP_LNKSTA_CLS) {
+	case PCI_EXP_LNKSTA_CLS_16_0GB:
+		speed = "16 GT/s";
+		break;
 	case PCI_EXP_LNKSTA_CLS_8_0GB:
 		speed = "8 GT/s";
 		break;
