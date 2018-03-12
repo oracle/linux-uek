@@ -214,6 +214,7 @@ const char * const edac_mem_types[] = {
 	[MEM_DDR4]	= "Unbuffered DDR4 RAM",
 	[MEM_RDDR4]	= "Registered DDR4 RAM",
 	[MEM_LRDDR4]	= "Load-Reduced-DDR4-RAM",
+	[MEM_NVDIMM]	= "Non-volatile-RAM",
 };
 EXPORT_SYMBOL_GPL(edac_mem_types);
 
