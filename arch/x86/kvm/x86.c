@@ -2778,9 +2778,15 @@ out:
 	return r;
 }
 
+static inline bool kvm_can_mwait_in_guest(void)
+{
+	return boot_cpu_has(X86_FEATURE_MWAIT) &&
+		!boot_cpu_has_bug(X86_BUG_MONITOR);
+}
+
 int kvm_vm_ioctl_check_extension(struct kvm *kvm, long ext)
 {
-	int r;
+	int r = 0;
 
 	switch (ext) {
 	case KVM_CAP_IRQCHIP:
@@ -2832,8 +2838,9 @@ int kvm_vm_ioctl_check_extension(struct kvm *kvm, long ext)
 	case KVM_CAP_ADJUST_CLOCK:
 		r = KVM_CLOCK_TSC_STABLE;
 		break;
-	case KVM_CAP_X86_GUEST_MWAIT:
-		r = kvm_mwait_in_guest();
+	case KVM_CAP_X86_DISABLE_EXITS:
+		if(kvm_can_mwait_in_guest())
+			r |= KVM_X86_DISABLE_EXITS_MWAIT;
 		break;
 	case KVM_CAP_X86_SMM:
 		/* SMBASE is usually relocated above 1M on modern chipsets,
@@ -2874,7 +2881,6 @@ int kvm_vm_ioctl_check_extension(struct kvm *kvm, long ext)
 		r = KVM_X2APIC_API_VALID_FLAGS;
 		break;
 	default:
-		r = 0;
 		break;
 	}
 	return r;
@@ -4177,6 +4183,16 @@ split_irqchip_unlock:
 		if (cap->args[0] & KVM_X2APIC_API_DISABLE_BROADCAST_QUIRK)
 			kvm->arch.x2apic_broadcast_quirk_disabled = true;
 
+		r = 0;
+		break;
+	case KVM_CAP_X86_DISABLE_EXITS:
+		r = -EINVAL;
+		if (cap->args[0] & ~KVM_X86_DISABLE_VALID_EXITS)
+			break;
+
+		if ((cap->args[0] & KVM_X86_DISABLE_EXITS_MWAIT) &&
+			kvm_can_mwait_in_guest())
+			kvm->arch.mwait_in_guest = true;
 		r = 0;
 		break;
 	default:
