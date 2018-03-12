@@ -105,7 +105,7 @@ void switch_mm_irqs_off(struct mm_struct *prev, struct mm_struct *next,
 	if (likely(prev != next)) {
 
 		/* Null tsk means switching to kernel, so that's safe */
-		if (dynamic_ibpb && tsk &&
+		if (dynamic_ibpb && tsk && tsk->mm &&
 			get_dumpable(tsk->mm) != SUID_DUMP_USER)
 			wrmsrl(MSR_IA32_PRED_CMD, SPEC_CTRL_FEATURE_SET_IBPB);
 
