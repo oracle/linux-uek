@@ -24,6 +24,8 @@
  *
  ******************************************************************************/
 
+#include <linux/module.h>
+#include <linux/moduleparam.h>
 #include <linux/net.h>
 #include <linux/string.h>
 #include <linux/delay.h>
@@ -56,6 +58,12 @@ static DEFINE_IDR(devices_idr);
 static struct se_hba *lun0_hba;
 /* not static, needed by tpg.c */
 struct se_device *g_lun0_dev;
+
+/* SCSI inquiry vendor string is 8 chars space padded + NULL. */
+char g_inquiry_vendor[9] = "LIO-ORG ";
+module_param_string(inquiry_vendor, g_inquiry_vendor,
+		sizeof(g_inquiry_vendor), S_IRUGO|S_IWUSR);
+MODULE_PARM_DESC(inquiry_vendor, "inquiry vendor string override");
 
 sense_reason_t
 transport_lookup_cmd_lun(struct se_cmd *se_cmd, u64 unpacked_lun)
@@ -1022,7 +1030,7 @@ int target_configure_device(struct se_device *dev)
 	 * passthrough because this is being provided by the backend LLD.
 	 */
 	if (!(dev->transport->transport_flags & TRANSPORT_FLAG_PASSTHROUGH)) {
-		strncpy(&dev->t10_wwn.vendor[0], "LIO-ORG", 8);
+		strncpy(&dev->t10_wwn.vendor[0], g_inquiry_vendor, 8);
 		strncpy(&dev->t10_wwn.model[0],
 			dev->transport->inquiry_prod, 16);
 		strncpy(&dev->t10_wwn.revision[0],
