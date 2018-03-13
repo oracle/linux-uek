@@ -22,6 +22,7 @@
 
 #include <linux/kernel.h>
 #include <linux/module.h>
+#include <linux/string.h>
 #include <asm/unaligned.h>
 
 #include <scsi/scsi_proto.h>
@@ -111,9 +112,9 @@ spc_emulate_inquiry_std(struct se_cmd *cmd, unsigned char *buf)
 	memcpy(&buf[8], g_inquiry_vendor, 8);
 	memset(&buf[16], 0x20, 16);
 	memcpy(&buf[16], dev->t10_wwn.model,
-	       min_t(size_t, strlen(dev->t10_wwn.model), 16));
+	       min_t(size_t, strnlen(dev->t10_wwn.model, 16), 16));
 	memcpy(&buf[32], dev->t10_wwn.revision,
-	       min_t(size_t, strlen(dev->t10_wwn.revision), 4));
+	       min_t(size_t, strnlen(dev->t10_wwn.revision, 4), 4));
 	buf[4] = 31; /* Set additional length to 31 */
 
 	return 0;
@@ -128,7 +129,8 @@ spc_emulate_evpd_80(struct se_cmd *cmd, unsigned char *buf)
 	u16 len;
 
 	if (dev->dev_flags & DF_EMULATED_VPD_UNIT_SERIAL) {
-		len = sprintf(&buf[4], "%s", dev->t10_wwn.unit_serial);
+		len = snprintf(&buf[4], INQUIRY_VPD_SERIAL_LEN, "%s",
+				dev->t10_wwn.unit_serial);
 		len++; /* Extra Byte for NULL Terminator */
 		buf[3] = len;
 	}
@@ -179,7 +181,7 @@ spc_emulate_evpd_83(struct se_cmd *cmd, unsigned char *buf)
 	struct t10_alua_lu_gp_member *lu_gp_mem;
 	struct t10_alua_tg_pt_gp *tg_pt_gp;
 	unsigned char *prod = &dev->t10_wwn.model[0];
-	u32 prod_len;
+	u32 prod_len, model_len;
 	u32 unit_serial_len, off = 0;
 	u16 len = 0, id_len;
 
@@ -238,15 +240,22 @@ check_t10_vend_desc:
 	id_len = 8; /* For Vendor field */
 	prod_len = 4; /* For VPD Header */
 	prod_len += 8; /* For Vendor field */
-	prod_len += strlen(prod);
+	model_len = strnlen(prod, 16);
+	prod_len += model_len;
 	prod_len++; /* For : */
 
 	if (dev->dev_flags & DF_EMULATED_VPD_UNIT_SERIAL) {
-		unit_serial_len = strlen(&dev->t10_wwn.unit_serial[0]);
-		unit_serial_len++; /* For NULL Terminator */
-
-		id_len += sprintf(&buf[off+12], "%s:%s", prod,
-				&dev->t10_wwn.unit_serial[0]);
+		unit_serial_len = strnlen(&dev->t10_wwn.unit_serial[0],
+					INQUIRY_VPD_SERIAL_LEN);
+		if (model_len && unit_serial_len) {
+			id_len += snprintf(&buf[off+12],
+					model_len, "%s", prod);
+			id_len += snprintf(&buf[off+12+model_len],
+					unit_serial_len + 1, ":%s",
+					&dev->t10_wwn.unit_serial[0]);
+			/* Extra Byte for NULL Terminator */
+			id_len++;
+		}
 	}
 	buf[off] = 0x2; /* ASCII */
 	buf[off+1] = 0x1; /* T10 Vendor ID */

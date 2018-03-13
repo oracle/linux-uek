@@ -641,8 +641,15 @@ static ssize_t emulate_model_alias_store(struct config_item *item,
 	if (flag) {
 		dev_set_t10_wwn_model_alias(dev);
 	} else {
-		strncpy(&dev->t10_wwn.model[0],
-			dev->transport->inquiry_prod, 16);
+		/*
+		 * If module_parm inquiry_product was set, use that.
+		 */
+		if (g_inquiry_product[0] != '\0')
+			strncpy(&dev->t10_wwn.model[0],
+				g_inquiry_product, 16);
+		else
+			strncpy(&dev->t10_wwn.model[0],
+				dev->transport->inquiry_prod, 16);
 	}
 	da->emulate_model_alias = flag;
 	return count;
