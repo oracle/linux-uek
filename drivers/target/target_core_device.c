@@ -63,6 +63,12 @@ module_param_string(inquiry_vendor, g_inquiry_vendor,
 		sizeof(g_inquiry_vendor), S_IRUGO|S_IWUSR);
 MODULE_PARM_DESC(inquiry_vendor, "inquiry vendor string override");
 
+/* SCSI inquiry product string is 16 chars space padded + NULL. */
+char g_inquiry_product[17] = "";
+module_param_string(inquiry_product, g_inquiry_product,
+		sizeof(g_inquiry_product), S_IRUGO|S_IWUSR);
+MODULE_PARM_DESC(inquiry_product, "inquiry product string override");
+
 sense_reason_t
 transport_lookup_cmd_lun(struct se_cmd *se_cmd, u32 unpacked_lun)
 {
@@ -757,8 +763,15 @@ int se_dev_set_emulate_model_alias(struct se_device *dev, int flag)
 	if (flag) {
 		dev_set_t10_wwn_model_alias(dev);
 	} else {
-		strncpy(&dev->t10_wwn.model[0],
-			dev->transport->inquiry_prod, 16);
+		/*
+		 * If module_parm inquiry_product was set, use that.
+		 */
+		if (g_inquiry_product[0] != '\0')
+			strncpy(&dev->t10_wwn.model[0],
+				g_inquiry_product, 16);
+		else
+			strncpy(&dev->t10_wwn.model[0],
+				dev->transport->inquiry_prod, 16);
 	}
 	dev->dev_attrib.emulate_model_alias = flag;
 
@@ -1614,8 +1627,15 @@ int target_configure_device(struct se_device *dev)
 	 */
 	if (!(dev->transport->transport_flags & TRANSPORT_FLAG_PASSTHROUGH)) {
 		strncpy(&dev->t10_wwn.vendor[0], g_inquiry_vendor, 8);
-		strncpy(&dev->t10_wwn.model[0],
-			dev->transport->inquiry_prod, 16);
+		/*
+		 * If module_parm inquiry_product was set, use that.
+		 */
+		if (g_inquiry_product[0] != '\0')
+			strncpy(&dev->t10_wwn.model[0],
+				g_inquiry_product, 16);
+		else
+			strncpy(&dev->t10_wwn.model[0],
+				dev->transport->inquiry_prod, 16);
 		strncpy(&dev->t10_wwn.revision[0],
 			dev->transport->inquiry_rev, 4);
 	}
