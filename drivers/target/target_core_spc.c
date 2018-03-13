@@ -114,7 +114,7 @@ spc_emulate_inquiry_std(struct se_cmd *cmd, unsigned char *buf)
 
 	buf[7] = 0x2; /* CmdQue=1 */
 
-	memcpy(&buf[8], "LIO-ORG ", 8);
+	memcpy(&buf[8], g_inquiry_vendor, 8);
 	memset(&buf[16], 0x20, 16);
 	memcpy(&buf[16], dev->t10_wwn.model,
 	       min_t(size_t, strlen(dev->t10_wwn.model), 16));
@@ -259,7 +259,7 @@ check_t10_vend_desc:
 	buf[off] = 0x2; /* ASCII */
 	buf[off+1] = 0x1; /* T10 Vendor ID */
 	buf[off+2] = 0x0;
-	memcpy(&buf[off+4], "LIO-ORG", 8);
+	memcpy(&buf[off+4], g_inquiry_vendor, 8);
 	/* Extra Byte for NULL Terminator */
 	id_len++;
 	/* Identifier Length */
