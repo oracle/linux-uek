@@ -20,6 +20,7 @@ extern struct t10_alua_lu_gp *default_lu_gp;
 /* target_core_device.c */
 extern struct mutex g_device_mutex;
 extern struct list_head g_device_list;
+extern char g_inquiry_vendor[];
 
 struct se_dev_entry *core_get_se_deve_from_rtpi(struct se_node_acl *, u16);
 int	core_free_device_list_for_node(struct se_node_acl *,
