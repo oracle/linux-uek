@@ -1218,6 +1218,8 @@ int rds_sendmsg(struct socket *sock, struct msghdr *msg, size_t payload_len)
 	long timeo = sock_sndtimeo(sk, nonblock);
 	size_t total_payload_len = payload_len, rdma_payload_len = 0;
 	struct rds_conn_path *cpath;
+	bool large_page, no_space;
+	unsigned long flags;
 
 	/* Mirror Linux UDP mirror of BSD error message compatibility */
 	/* XXX: Perhaps MSG_MORE someday */
@@ -1258,6 +1260,25 @@ int rds_sendmsg(struct socket *sock, struct msghdr *msg, size_t payload_len)
 	if (payload_len > rds_sk_sndbuf(rs)) {
 		ret = -EMSGSIZE;
 		goto out;
+	}
+
+	/*
+	 * Avoid copying the message from user-space if we already
+	 * know there's no space in the send buffer.
+	 * The check is a negated version of the condition used inside
+	 * function "rds_send_queue_rm": "if (rs->rs_snd_bytes < rds_sk_sndbuf(rs))",
+	 * which needs some reconsideration, as it unexpectedly checks
+	 * if half of the send-buffer space is available, instead of
+	 * checking if the given message would fit.
+	 */
+	if (nonblock) {
+		spin_lock_irqsave(&rs->rs_lock, flags);
+		no_space = rs->rs_snd_bytes >= rds_sk_sndbuf(rs);
+		spin_unlock_irqrestore(&rs->rs_lock, flags);
+		if (no_space) {
+			ret = -EAGAIN;
+			goto out;
+		}
 	}
 
 	/* size of rm including all sgs */
