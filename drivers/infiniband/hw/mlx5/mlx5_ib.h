@@ -135,9 +135,6 @@ struct mlx5_ib_ucontext {
 	/* protect vma_private_list add/del */
 	struct mutex		vma_private_list_mutex;
 
-	unsigned long		upd_xlt_page;
-	/* protect ODP/KSM */
-	struct mutex		upd_xlt_page_mutex;
 	u64			lib_caps;
 };
 
@@ -1221,5 +1218,8 @@ static inline int get_num_uars(struct mlx5_ib_dev *dev,
 {
 	return get_uars_per_sys_page(dev, bfregi->lib_uar_4k) * bfregi->num_sys_pages;
 }
+
+unsigned long mlx5_ib_get_xlt_emergency_page(void);
+void mlx5_ib_put_xlt_emergency_page(void);
 
 #endif /* MLX5_IB_H */
