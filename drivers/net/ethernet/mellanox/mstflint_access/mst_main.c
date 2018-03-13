@@ -40,6 +40,7 @@
 #endif
 #include <linux/pci.h>
 #include <linux/fs.h>
+#include <linux/delay.h>
 #include "mst_kernel.h"
 
 
@@ -59,21 +60,431 @@ LIST_HEAD(mst_devices);
 
 static struct pci_device_id mst_livefish_pci_table[] = {
 	{ PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, 0x01f6) }, 	/* MT27500 [ConnectX-3 Flash Recovery] */
-	{ PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, 0x01f8) }, 	/* MT27520 [ConnectX-3 Pro Flash Recovery] */
+    { PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, 0x01f8) },    /* MT27520 [ConnectX-3 Pro Flash Recovery] */
+    { PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, 0x01ff) },    /* MT27520 [ConnectX-IB Flash Recovery] */
+    { PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, 0x0209) },    /* MT27520 [ConnectX-4 Flash Recovery] */
+    { PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, 0x020b) },    /* MT27520 [ConnectX-4Lx Flash Recovery] */
+    { PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, 0x020d) },    /* MT27520 [ConnectX-5 Flash Recovery] */
+    { PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, 0x0211) },    /* MT27520 [BlueField Flash Recovery] */
 	{ 0, }
 };
 
-static struct pci_device_id mst_bar1_pci_table[] = {
-	{ PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, 0x01011) }, 	/* MT27600 [ConnectX-IB] */
-	{ PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, 0x01ff) }, 	/* MT27600 [ConnectX-IB Flash Recovery] */
+static struct pci_device_id mst_bar_pci_table[] = {
+	{ PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, 4099) }, 	/* MT27600 [ConnectX-3] */
+	{ PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, 4103) }, 	/* MT27600 [ConnectX-3Pro] */
 	{ 0, }
 };
 
 static struct pci_device_id supported_pci_devices[] = {
-	{ PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, 4099) }, 	/* MT27600 [ConnectX-IB] */
-	{ PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, 4103) }, 	/* MT27600 [ConnectX-IB Flash Recovery] */
+	{ PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, 4099) }, 	/* MT27600 [ConnectX-3] */
+	{ PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, 4103) }, 	/* MT27600 [ConnectX-3Pro] */
+    { PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, 4113) },  /* MT27600 [ConnectX-IB] */
+    { PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, 4115) },  /* MT27600 [ConnectX-4] */
+    { PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, 4117) },  /* MT27600 [ConnectX-4Lx] */
+    { PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, 4119) },  /* MT27600 [ConnectX-5] */
+    { PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, 4121) },  /* MT27600 [ConnectX-5EX] */
+    { PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, 41682) },  /* MT27600 [BlueField] */
 	{ 0, }
 };
+
+
+/****************** VSEC SUPPORT ********************/
+
+
+// BIT Slicing macros
+#define ONES32(size)                    ((size)?(0xffffffff>>(32-(size))):0)
+#define MASK32(offset,size)             (ONES32(size)<<(offset))
+
+#define EXTRACT_C(source,offset,size)   ((((unsigned)(source))>>(offset)) & ONES32(size))
+#define EXTRACT(src,start,len)          (((len)==32)?(src):EXTRACT_C(src,start,len))
+
+#define MERGE_C(rsrc1,rsrc2,start,len)  ((((rsrc2)<<(start)) & (MASK32((start),(len)))) | ((rsrc1) & (~MASK32((start),(len)))))
+#define MERGE(rsrc1,rsrc2,start,len)    (((len)==32)?(rsrc2):MERGE_C(rsrc1,rsrc2,start,len))
+
+
+/* Allow minor numbers 0-255 */
+#define MAXMINOR 256
+#define BUFFER_SIZE 256
+#define MLNX_VENDOR_SPECIFIC_CAP_ID 0x9
+#define CRSPACE_DOMAIN 0x2
+#define AS_ICMD      0x3
+#define AS_CR_SPACE  0x2
+#define AS_SEMAPHORE 0xa
+
+/* PCI address space related enum*/
+enum {
+    PCI_CAP_PTR = 0x34,
+    PCI_HDR_SIZE = 0x40,
+    PCI_EXT_SPACE_ADDR = 0xff,
+
+    PCI_CTRL_OFFSET = 0x4, // for space / semaphore / auto-increment bit
+    PCI_COUNTER_OFFSET = 0x8,
+    PCI_SEMAPHORE_OFFSET = 0xc,
+    PCI_ADDR_OFFSET = 0x10,
+    PCI_DATA_OFFSET = 0x14,
+
+    PCI_FLAG_BIT_OFFS = 31,
+
+    PCI_SPACE_BIT_OFFS = 0,
+    PCI_SPACE_BIT_LEN = 16,
+
+    PCI_STATUS_BIT_OFFS = 29,
+    PCI_STATUS_BIT_LEN = 3,
+};
+
+/* Mellanox vendor specific enum */
+enum {
+    CAP_ID = 0x9,
+    IFC_MAX_RETRIES = 0x10000,
+    SEM_MAX_RETRIES = 0x1000
+};
+
+/* PCI operation enum(read or write)*/
+enum {
+    READ_OP = 0,
+    WRITE_OP = 1,
+};
+
+/* VSEC space status enum*/
+enum {
+    SS_UNINITIALIZED = 0,
+    SS_ALL_SPACES_SUPPORTED = 1,
+    SS_NOT_ALL_SPACES_SUPPORTED = 2
+};
+
+
+// VSEC supported macro
+#define VSEC_FULLY_SUPPORTED(dev) (((dev)->vendor_specific_cap) && ((dev)->spaces_support_status == SS_ALL_SPACES_SUPPORTED))
+
+
+static int _vendor_specific_sem(struct mst_dev_data *dev, int state)
+{
+    u32 lock_val;
+    u32 counter = 0;
+    int retries = 0;
+    int ret;
+    if (!state) {// unlock
+        ret = pci_write_config_dword(dev->pci_dev, dev->vendor_specific_cap + PCI_SEMAPHORE_OFFSET, 0);
+        if (ret) return ret;
+    } else { // lock
+        do {
+            if (retries > SEM_MAX_RETRIES) {
+                return -1;
+            }
+            // read semaphore untill 0x0
+            ret = pci_read_config_dword(dev->pci_dev, dev->vendor_specific_cap + PCI_SEMAPHORE_OFFSET, &lock_val);
+            if (ret) return ret;
+
+            if (lock_val) { //semaphore is taken
+                retries++;
+                msleep(1); // wait for current op to end
+                continue;
+            }
+            //read ticket
+            ret = pci_read_config_dword(dev->pci_dev, dev->vendor_specific_cap + PCI_COUNTER_OFFSET, &counter);
+            if (ret) return ret;
+            //write ticket to semaphore dword
+            ret = pci_write_config_dword(dev->pci_dev, dev->vendor_specific_cap + PCI_SEMAPHORE_OFFSET, counter);
+            if (ret) return ret;
+            // read back semaphore make sure ticket == semaphore else repeat
+            ret = pci_read_config_dword(dev->pci_dev, dev->vendor_specific_cap + PCI_SEMAPHORE_OFFSET, &lock_val);
+            if (ret) return ret;
+            retries++;
+        } while (counter != lock_val);
+    }
+    return 0;
+}
+
+static int _wait_on_flag(struct mst_dev_data *dev, u8 expected_val)
+{
+    int retries = 0;
+    int ret;
+    u32 flag;
+    do {
+         if (retries > IFC_MAX_RETRIES) {
+             return -1;
+         }
+
+         ret = pci_read_config_dword(dev->pci_dev, dev->vendor_specific_cap + PCI_ADDR_OFFSET, &flag);
+         if (ret) return ret;
+
+         flag = EXTRACT(flag, PCI_FLAG_BIT_OFFS, 1);
+         retries++;
+         if ((retries & 0xf) == 0) {// dont sleep always
+             //usleep_range(1,5);
+         }
+     } while (flag != expected_val);
+    return 0;
+}
+
+static int _set_addr_space(	struct mst_dev_data *dev, u16 space)
+{
+    // read modify write
+    u32 val;
+    int ret;
+    ret = pci_read_config_dword(dev->pci_dev, dev->vendor_specific_cap + PCI_CTRL_OFFSET, &val);
+    if (ret) return ret;
+    val = MERGE(val, space, PCI_SPACE_BIT_OFFS, PCI_SPACE_BIT_LEN);
+    ret = pci_write_config_dword(dev->pci_dev, dev->vendor_specific_cap + PCI_CTRL_OFFSET, val);
+    if (ret) return ret;
+    // read status and make sure space is supported
+    ret = pci_read_config_dword(dev->pci_dev, dev->vendor_specific_cap + PCI_CTRL_OFFSET, &val);
+    if (ret) return ret;
+
+    if (EXTRACT(val, PCI_STATUS_BIT_OFFS, PCI_STATUS_BIT_LEN) == 0) {
+//        mst_err("CRSPACE %d is not supported !\n", space);
+        return -1;
+    }
+//    mst_err("CRSPACE %d is supported !\n", space);
+    return 0;
+}
+
+static int _pciconf_rw(struct mst_dev_data *dev, unsigned int offset, u32* data, int rw)
+{
+    int ret = 0;
+    u32 address = offset;
+
+    //last 2 bits must be zero as we only allow 30 bits addresses
+    if (EXTRACT(address, 30, 2)) {
+        return -1;
+    }
+
+    address = MERGE(address,(rw ? 1 : 0), PCI_FLAG_BIT_OFFS, 1);
+    if (rw == WRITE_OP) {
+        // write data
+        ret = pci_write_config_dword(dev->pci_dev, dev->vendor_specific_cap + PCI_DATA_OFFSET, *data);
+        if (ret) return ret;
+        // write address
+        ret = pci_write_config_dword(dev->pci_dev, dev->vendor_specific_cap + PCI_ADDR_OFFSET, address);
+        if (ret) return ret;
+        // wait on flag
+        ret = _wait_on_flag(dev, 0);
+    } else {
+        // write address
+        ret = pci_write_config_dword(dev->pci_dev, dev->vendor_specific_cap + PCI_ADDR_OFFSET, address);
+        if (ret) return ret;
+        // wait on flag
+        ret = _wait_on_flag(dev, 1);
+        // read data
+        ret = pci_read_config_dword(dev->pci_dev, dev->vendor_specific_cap + PCI_DATA_OFFSET, data);
+        if (ret) return ret;
+    }
+    return ret;
+}
+
+static int _send_pci_cmd_int(	struct mst_dev_data *dev, int space, unsigned int offset, u32* data, int rw)
+{
+    int ret = 0;
+
+    // take semaphore
+    ret = _vendor_specific_sem(dev, 1);
+    if (ret) {
+        return ret;
+    }
+    // set address space
+    ret = _set_addr_space(dev, space);
+    if (ret) {
+        goto cleanup;
+    }
+    // read/write the data
+    ret = _pciconf_rw(dev, offset, data, rw);
+cleanup:
+    // clear semaphore
+    _vendor_specific_sem(dev, 0);
+    return ret;
+}
+
+static int _block_op(	struct mst_dev_data *dev, int space, unsigned int offset, int size, u32* data, int rw)
+{
+    int i;
+    int ret = 0;
+    int wrote_or_read = size;
+    if (size % 4) {
+        return -1;
+    }
+    // lock semaphore and set address space
+    ret = _vendor_specific_sem(dev, 1);
+    if (ret) {
+         return -1;
+    }
+    // set address space
+    ret = _set_addr_space(dev, space);
+    if (ret) {
+        wrote_or_read = -1;
+        goto cleanup;
+    }
+
+    for (i = 0; i < size ; i += 4) {
+        if (_pciconf_rw(dev, offset + i, &(data[(i >> 2)]), rw)) {
+            wrote_or_read = i;
+            goto cleanup;
+        }
+    }
+cleanup:
+    _vendor_specific_sem(dev, 0);
+    return wrote_or_read;
+}
+
+static int write4_vsec(	struct mst_dev_data *dev, int addresss_domain, unsigned int offset, unsigned int data)
+{
+    int ret;
+
+    ret = _send_pci_cmd_int(dev, addresss_domain, offset, &data, WRITE_OP);
+    if (ret) {
+        return -1;
+    }
+    return 0;
+}
+
+static int read4_vsec(	struct mst_dev_data *dev, int address_space, unsigned int offset, unsigned int* data)
+{
+    int ret;
+    //mst_info("Read from VSEC: offset: %#x\n", offset);
+    ret = _send_pci_cmd_int(dev, address_space, offset, data, READ_OP);
+    if (ret) {
+        return -1;
+    }
+    return 0;
+}
+
+
+
+int pciconf_read4_legacy(struct mst_dev_data *dev, unsigned int offset, unsigned int *data)
+{
+    int res = 0;
+    unsigned int new_offset = offset;
+    //mst_info("pciconf_read4_legacy: offset: %#x\n", offset);
+    if (dev->type != PCICONF) {
+        return -1;
+    }
+    if (dev->wo_addr) {
+        new_offset |= 0x1;
+    }
+    /* write the wanted address to addr register */
+    res = pci_write_config_dword(dev->pci_dev, dev->addr_reg, new_offset);
+    if (res) {
+        mst_err("pci_write_config_dword failed\n");
+        return res;
+    }
+
+    /* read the result from data register */
+    res = pci_read_config_dword(dev->pci_dev, dev->data_reg, data);
+    if (res) {
+        mst_err("pci_read_config_dword failed\n");
+        return res;
+    }
+    return 0;
+}
+
+int pciconf_write4_legacy(struct mst_dev_data *dev, unsigned int offset, unsigned int data)
+{
+    int res = 0;
+    if (dev->type != PCICONF) {
+        return -1;
+    }
+    if (dev->wo_addr) {
+        /*
+         * Write operation with new WO GW
+         * 1. Write data
+         * 2. Write address
+         */
+
+        /* write the data to data register */
+        res = pci_write_config_dword(dev->pci_dev, dev->data_reg, data);
+        if (res) {
+            mst_err("pci_write_config_dword failed\n");
+            return res;
+        }
+        /* write the destination address to addr register */
+        res = pci_write_config_dword(dev->pci_dev, dev->addr_reg, offset);
+        if (res) {
+            mst_err("pci_write_config_dword failed\n");
+            return res;
+        }
+
+    } else {
+        /* write the destination address to addr register */
+        res = pci_write_config_dword(dev->pci_dev, dev->addr_reg, offset);
+        if (res) {
+            mst_err("pci_write_conflig_dword failed\n");
+            return res;
+        }
+
+        /* write the data to data register */
+        res = pci_write_config_dword(dev->pci_dev, dev->data_reg, data);
+        if (res) {
+            mst_err("pci_write_config_dword failed\n");
+            return res;
+        }
+    }
+    return 0;
+}
+
+
+static int write4_block_vsec(	struct mst_dev_data *dev, int address_space, unsigned int offset, int size, u32* data)
+{
+//    mst_info("HERE %#x %#x %#x\n", address_space, offset, *data);
+    return _block_op(dev, address_space, offset, size, data, WRITE_OP);
+}
+
+static int read4_block_vsec(	struct mst_dev_data *dev, int address_space, unsigned int offset, int size, u32* data)
+{
+//    mst_info("HERE %#x %#x %#x\n", address_space, offset, *data);
+    return _block_op(dev, address_space, offset, size, data, READ_OP);
+}
+
+static int get_space_support_status(struct mst_dev_data *dev)
+{
+    int ret;
+//    printk("[MST] Checking if the Vendor CAP %d supports the SPACES in devices\n", vend_cap);
+    if (!dev->vendor_specific_cap) {
+        return 0;
+    }
+    if (dev->spaces_support_status != SS_UNINITIALIZED ) {
+        return 0;
+    }
+    // take semaphore
+    ret = _vendor_specific_sem(dev, 1);
+    if (ret) {
+        mst_err("Failed to lock VSEC semaphore\n");
+        return 1;
+    }
+
+    if( _set_addr_space(dev, AS_CR_SPACE) ||
+       _set_addr_space(dev, AS_ICMD)     ||
+       _set_addr_space(dev, AS_SEMAPHORE)  ) {
+        mst_err("At least one SPACE is not supported\n");
+        dev->spaces_support_status = SS_NOT_ALL_SPACES_SUPPORTED;
+    } else {
+        dev->spaces_support_status = SS_ALL_SPACES_SUPPORTED;
+    }
+    // clear semaphore
+    _vendor_specific_sem(dev, 0);
+    return 0;
+}
+
+
+/********** WO GW ************/
+
+#define WO_REG_ADDR_DATA 0xbadacce5
+#define DEVID_OFFSET     0xf0014
+int is_wo_gw(struct pci_dev* pcidev, unsigned addr_reg)
+{
+    int ret;
+    unsigned int data = 0;
+    ret = pci_write_config_dword(pcidev, addr_reg, DEVID_OFFSET);
+    if (ret) {
+        return 0;
+    }
+    ret = pci_read_config_dword(pcidev, addr_reg, &data);
+    if (ret) {
+        return 0;
+    }
+    if ( data == WO_REG_ADDR_DATA ) {
+        return 1;
+    }
+    return 0;
+}
 
 
 /****************************************************/
@@ -268,7 +679,8 @@ static int mst_ioctl(struct inode *inode, struct file *file,
 			res = -ENODEV;
 			goto fin;
 		}
-
+		// best effort : try to get space spport status if we fail assume we got vsec support.
+        get_space_support_status(dev);
 		paramst.domain 				= pci_domain_nr(dev->pci_dev->bus);
 		paramst.bus 				= dev->pci_dev->bus->number;
 		paramst.slot 				= PCI_SLOT(dev->pci_dev->devfn);
@@ -278,7 +690,14 @@ static int mst_ioctl(struct inode *inode, struct file *file,
 		paramst.vendor				= dev->pci_dev->vendor;
 		paramst.subsystem_device 	= dev->pci_dev->subsystem_device;
 		paramst.subsystem_vendor	= dev->pci_dev->subsystem_vendor;
-
+        if (dev->vendor_specific_cap &&
+             (dev->spaces_support_status == SS_ALL_SPACES_SUPPORTED ||
+              dev->spaces_support_status == SS_UNINITIALIZED)          ) {
+            // assume supported if SS_UNINITIALIZED (since semaphore is locked)
+            paramst.vendor_specific_cap = dev->vendor_specific_cap;
+        } else {
+            paramst.vendor_specific_cap = 0;
+        }
 		if (copy_to_user(user_buf, &paramst, sizeof(struct mst_params))) {
 			res = -EFAULT;
 			goto fin;
@@ -304,19 +723,19 @@ static int mst_ioctl(struct inode *inode, struct file *file,
 
 		switch (dev->type) {
 		case PCICONF:
-			/* write the wanted address to addr register */
-			res = pci_write_config_dword(dev->pci_dev, dev->addr_reg, readst.offset);
-			if (res) {
-				mst_err("pci_write_config_dword failed\n");
-				goto fin;
-			}
+	        if (get_space_support_status(dev)) {
+	            res = -EBUSY;
+	            goto fin;
+	        }
 
-			/* read the result from data register */
-			res = pci_read_config_dword(dev->pci_dev, dev->data_reg, &out);
-			if (res) {
-				mst_err("pci_read_config_dword failed\n");
-				goto fin;
-			}
+	        if ( VSEC_FULLY_SUPPORTED(dev) ) {
+	            res = read4_vsec(dev, readst.address_space, readst.offset, &out);
+	        } else {
+	            res = pciconf_read4_legacy(dev, readst.offset, &out);
+	        }
+	        if (res) {
+	            goto fin;
+	        }
 			break;
 
 		case PCIMEM:
@@ -360,19 +779,15 @@ static int mst_ioctl(struct inode *inode, struct file *file,
 
 		switch (dev->type) {
 		case PCICONF:
-			/* write the destination address to addr register */
-			res = pci_write_config_dword(dev->pci_dev, dev->addr_reg, writest.offset);
-			if (res) {
-				mst_err("pci_write_config_dword failed\n");
-				goto fin;
-			}
-
-			/* write the data to data register */
-			res = pci_write_config_dword(dev->pci_dev, dev->data_reg, writest.data);
-			if (res) {
-				mst_err("pci_write_config_dword failed\n");
-				goto fin;
-			}
+		    if (get_space_support_status(dev)) {
+                res = -EBUSY;
+                goto fin;
+            }
+            if ( VSEC_FULLY_SUPPORTED(dev) ) {
+                res = write4_vsec(dev, writest.address_space, writest.offset, writest.data);
+            } else {
+                res = pciconf_write4_legacy(dev, writest.offset, writest.data);
+            }
 			break;
 
 		case PCIMEM:
@@ -497,6 +912,87 @@ static int mst_ioctl(struct inode *inode, struct file *file,
 		break;
 	}
 
+    case PCICONF_READ4_BUFFER:
+    {
+        struct mst_read4_buffer_st read4_buf;
+        struct mst_read4_buffer_st* rb_udata = (struct mst_read4_buffer_st *)user_buf;
+
+        if (!dev->initialized) {
+            mst_err("device is not initialized\n");
+            res = -ENODEV;
+            goto fin;
+        }
+
+        if (dev->type != PCICONF) {
+            mst_err("wrong type for device\n");
+            res = -EPERM;
+            goto fin;
+        }
+
+        if (get_space_support_status(dev)) {
+            res = -EBUSY;
+            goto fin;
+        }
+
+        if (dev->spaces_support_status != SS_ALL_SPACES_SUPPORTED) {
+            res = -ENOSYS;
+            goto fin;
+        }
+
+
+        if (copy_from_user(&read4_buf, user_buf, sizeof(read4_buf))) {
+            res = -EFAULT;
+            goto fin;
+        }
+
+        res = read4_block_vsec(dev, read4_buf.address_space, read4_buf.offset, read4_buf.size, read4_buf.data);
+        if (res != read4_buf.size) {
+            goto fin;
+        }
+
+        res = copy_to_user(rb_udata, &read4_buf, sizeof(read4_buf)) ? -EFAULT : read4_buf.size;
+        goto fin;
+    }
+    case PCICONF_WRITE4_BUFFER:
+    {
+        struct mst_write4_buffer_st write4_buf;
+        struct mst_write4_buffer_st* wb_udata = (struct mst_write4_buffer_st *)user_buf;
+
+        if (!dev->initialized) {
+            mst_err("device is not initialized\n");
+            res = -ENODEV;
+            goto fin;
+        }
+
+        if (dev->type != PCICONF) {
+            mst_err("wrong type for device\n");
+            res = -EPERM;
+            goto fin;
+        }
+
+
+        if (get_space_support_status(dev)) {
+            res = -EBUSY;
+            goto fin;
+        }
+
+        if (dev->spaces_support_status != SS_ALL_SPACES_SUPPORTED) {
+            res = -ENOSYS;
+            goto fin;
+        }
+
+
+        if (copy_from_user(&write4_buf, user_buf, sizeof(write4_buf))) {
+            res = -EFAULT;
+            goto fin;
+        }
+
+        res = write4_block_vsec(dev, write4_buf.address_space, write4_buf.offset, write4_buf.size, write4_buf.data);
+        if (res != write4_buf.size) goto fin;
+
+        res = copy_to_user(wb_udata, &write4_buf, sizeof(write4_buf)) ? -EFAULT : write4_buf.size;
+        goto fin;
+    }
 	case PCICONF_INIT: {
 		struct mst_pciconf_init_st initst;
 
@@ -520,6 +1016,13 @@ static int mst_ioctl(struct inode *inode, struct file *file,
 
 		dev->addr_reg = initst.addr_reg;
 		dev->data_reg = initst.data_reg;
+
+		dev->wo_addr = is_wo_gw(dev->pci_dev, initst.addr_reg);
+		dev->vendor_specific_cap = pci_find_capability(dev->pci_dev, MLNX_VENDOR_SPECIFIC_CAP_ID);
+		//mst_info("VSEC SUPP: %#x\n", dev->vendor_specific_cap);
+        dev->spaces_support_status = SS_UNINITIALIZED; // init on first op
+
+
 		dev->initialized = 1;
 		break;
 	}
@@ -810,15 +1313,17 @@ static struct mst_dev_data *mst_device_create(enum dev_type type,
 				MST_NAME_SIZE,
 				"%s" MST_PCICONF_DEVICE_NAME,
                                 dbdf);
+
+
 		break;
 	case PCIMEM:
 		dev->addr_reg	= 0;		/* invalid */
 		dev->data_reg	= 0;		/* invalid */
-		dev->bar 	= pci_match_id(mst_bar1_pci_table, pdev) ? 1 : 0;
+		dev->bar 	    = 0;
 		dev->hw_addr 	= ioremap(pci_resource_start(pdev, dev->bar),
 				MST_MEMORY_SIZE);
 		if (dev->hw_addr <= 0) {
-			mst_err("could not map device memory\n");
+			mst_err("could not map device memory, BAR: %x\n", dev->bar);
 			goto out;
 		}
 
@@ -859,6 +1364,15 @@ static struct mst_dev_data *mst_device_create(enum dev_type type,
     cdev_init(&dev->mcdev, &mst_fops);
     cdev_add(&dev->mcdev, dev->my_dev, 1); //TODO check if cdev_add fails
 
+    if (type == PCICONF) {
+        /*
+         * Initialize 5th Gen attributes
+         */
+        dev->wo_addr = is_wo_gw(dev->pci_dev, MST_CONF_ADDR_REG);
+        dev->vendor_specific_cap = pci_find_capability(dev->pci_dev, MLNX_VENDOR_SPECIFIC_CAP_ID);
+        //mst_info("VSEC SUPP: %#x\n", dev->vendor_specific_cap);
+        dev->spaces_support_status = SS_UNINITIALIZED; // init on first op
+    }
 	dev->initialized = 1;
 	list_add_tail(&dev->list, &mst_devices);
 
@@ -936,7 +1450,7 @@ static int __init mst_init(void)
 		 * for livefish devices we only allocate PCICONF
 		 * for non livefish both PCICONF and PCIMEM
 		 */
-		if (!pci_match_id(mst_livefish_pci_table, pdev)) {
+		if (!pci_match_id(mst_livefish_pci_table, pdev) && pci_match_id(mst_bar_pci_table, pdev)) {
 			/* create new mst_device for PCIMEM */
 			dev = mst_device_create(PCIMEM, pdev);
 			if (!dev) {
