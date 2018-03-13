@@ -1128,7 +1128,7 @@ hwcap 0 nosegneg"
     %{__install} -D -m 444 ldconfig-kernel.conf \
         $RPM_BUILD_ROOT/etc/ld.so.conf.d/kernel-$KernelVer.conf
 %endif
-%ifarch %{vdso_arches} sparc64
+%ifarch %{vdso_arches} sparc64 aarch64
 %ifnarch noarch
 # build tools/perf:
     if [ -d tools/perf ]; then
@@ -1752,10 +1752,8 @@ fi
 /etc/ld.so.conf.d/kernel-%{KVERREL}%{?2:.%{2}}.conf\
 %endif\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/modules.*\
-%ifnarch aarch64\
 /usr/libexec/perf.%{KVERREL}%{?2:.%{2}}\
 /usr/sbin/perf\
-%endif\
 %ifarch %{arm} aarch64\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/dtb \
 /%{image_install_path}/dtb-%{KVERREL}%{?2:.%{2}} \
