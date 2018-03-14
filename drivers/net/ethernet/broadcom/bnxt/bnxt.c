@@ -8484,6 +8484,17 @@ static int bnxt_init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 
 	bnxt_hwrm_set_cache_line_size(bp, cache_line_size());
 
+	if (BNXT_PF(bp)) {
+		if (!bnxt_pf_wq) {
+			bnxt_pf_wq =
+				create_singlethread_workqueue("bnxt_pf_wq");
+			if (!bnxt_pf_wq) {
+				dev_err(&pdev->dev, "Unable to create workqueue.\n");
+				goto init_err_pci_clean;
+			}
+		}
+	}
+
 	rc = register_netdev(dev);
 	if (rc)
 		goto init_err_clr_int;
