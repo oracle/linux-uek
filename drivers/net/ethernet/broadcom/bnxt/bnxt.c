@@ -1064,7 +1064,7 @@ static void bnxt_queue_sp_work(struct bnxt *bp)
 	if (BNXT_PF(bp))
 		queue_work(bnxt_pf_wq, &bp->sp_task);
 	else
-		bnxt_queue_sp_work(bp);
+		schedule_work(&bp->sp_task);
 }
 
 static void bnxt_cancel_sp_work(struct bnxt *bp)
@@ -8483,6 +8483,17 @@ static int bnxt_init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 		device_set_wakeup_capable(&pdev->dev, false);
 
 	bnxt_hwrm_set_cache_line_size(bp, cache_line_size());
+
+	if (BNXT_PF(bp)) {
+		if (!bnxt_pf_wq) {
+			bnxt_pf_wq =
+				create_singlethread_workqueue("bnxt_pf_wq");
+			if (!bnxt_pf_wq) {
+				dev_err(&pdev->dev, "Unable to create workqueue.\n");
+				goto init_err_pci_clean;
+			}
+		}
+	}
 
 	rc = register_netdev(dev);
 	if (rc)
