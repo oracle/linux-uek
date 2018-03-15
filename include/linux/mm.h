@@ -2510,7 +2510,10 @@ void warn_alloc(gfp_t gfp_mask, nodemask_t *nodemask, const char *fmt, ...);
 
 extern void setup_per_cpu_pageset(void);
 
+void update_kswapd_threads(void);
+
 /* page_alloc.c */
+extern int kswapd_threads;
 extern int min_free_kbytes;
 extern int watermark_boost_factor;
 extern int watermark_scale_factor;

@@ -157,6 +157,14 @@ struct scan_control {
 	struct reclaim_state reclaim_state;
 };
 
+/*
+ * Number of active kswapd threads
+ */
+#define DEF_KSWAPD_THREADS_PER_NODE 1
+int kswapd_threads = DEF_KSWAPD_THREADS_PER_NODE;
+static int kswapd_threads_current = DEF_KSWAPD_THREADS_PER_NODE;
+static struct task_struct *kswapd_list[MAX_NUMNODES][MAX_KSWAPD_THREADS];
+
 #ifdef ARCH_HAS_PREFETCHW
 #define prefetchw_prev_lru_page(_page, _base, _field)			\
 	do {								\
@@ -4427,6 +4435,73 @@ unsigned long shrink_all_memory(unsigned long nr_to_reclaim)
 }
 #endif /* CONFIG_HIBERNATION */
 
+static void update_kswapd_threads_node(int nid)
+{
+	pg_data_t *pgdat;
+	int drop, increase;
+	int last_idx, start_idx, hid;
+	int nr_threads = kswapd_threads_current;
+
+	pgdat = NODE_DATA(nid);
+	last_idx = nr_threads - 1;
+	if (kswapd_threads < nr_threads) {
+		drop = nr_threads - kswapd_threads;
+		for (hid = last_idx; hid > (last_idx - drop); hid--) {
+			if (kswapd_list[nid][hid]) {
+				kthread_stop(kswapd_list[nid][hid]);
+				kswapd_list[nid][hid] = NULL;
+			}
+		}
+	} else {
+		increase = kswapd_threads - nr_threads;
+		start_idx = last_idx + 1;
+		for (hid = start_idx; hid < (start_idx + increase); hid++) {
+			kswapd_list[nid][hid] = kthread_run(kswapd, pgdat,
+						"kswapd%d:%d", nid, hid);
+			if (IS_ERR(kswapd_list[nid][hid])) {
+				pr_err("Failed to start kswapd%d on node %d\n",
+				       hid, nid);
+				kswapd_list[nid][hid] = NULL;
+				/*
+				 * We are out of resources. Do not start any
+				 * more threads.
+				 */
+				break;
+			}
+		}
+	}
+}
+
+/*
+ * When kswapd_threads is updated from userspace, this function is called
+ * to start required new kswapd threads or kill off extra  kswapd threads
+ */
+void update_kswapd_threads(void)
+{
+	int nid;
+
+	if (kswapd_threads_current == kswapd_threads)
+		return;
+
+	/*
+	 * This function updates the number of currently running kswapd
+	 * threads and kills off or starts up kswapd to match what has
+	 * been requested from userspace. Memory hotplug functions also
+	 * start up and kill off kswapd threads and use
+	 * kswapd_threads_current to determine the number of threads to
+	 * start or kill. To avoid race condition between the two, take
+	 * memory hotplug lock.
+	 */
+	mem_hotplug_begin();
+	for_each_node_state(nid, N_MEMORY)
+		update_kswapd_threads_node(nid);
+
+	pr_info("kswapd_thread count changed, old:%d new:%d\n",
+		kswapd_threads_current, kswapd_threads);
+	kswapd_threads_current = kswapd_threads;
+	mem_hotplug_done();
+}
+
 /*
  * This kswapd start function will be called by init and node-hot-add.
  * On node-hot-add, kswapd will moved to proper cpus if cpus are hot-added.
@@ -4434,17 +4509,26 @@ unsigned long shrink_all_memory(unsigned long nr_to_reclaim)
 void kswapd_run(int nid)
 {
 	pg_data_t *pgdat = NODE_DATA(nid);
+	int hid, nr_threads;
 
-	if (pgdat->kswapd)
+	if (kswapd_list[nid][0])
 		return;
 
-	pgdat->kswapd = kthread_run(kswapd, pgdat, "kswapd%d", nid);
-	if (IS_ERR(pgdat->kswapd)) {
-		/* failure at boot is fatal */
-		BUG_ON(system_state < SYSTEM_RUNNING);
-		pr_err("Failed to start kswapd on node %d\n", nid);
-		pgdat->kswapd = NULL;
+	nr_threads = kswapd_threads;
+	for (hid = 0; hid < nr_threads; hid++) {
+		kswapd_list[nid][hid] = kthread_run(kswapd, pgdat,
+						"kswapd%d:%d", nid, hid);
+		if (IS_ERR(kswapd_list[nid][hid])) {
+			/* failure at boot is fatal */
+			BUG_ON(system_state < SYSTEM_RUNNING);
+			pr_err("Failed to start kswapd%d on node %d\n",
+				hid, nid);
+			kswapd_list[nid][hid] = NULL;
+			break;
+		}
 	}
+
+	kswapd_threads_current = nr_threads;
 }
 
 /*
@@ -4453,11 +4537,14 @@ void kswapd_run(int nid)
  */
 void kswapd_stop(int nid)
 {
-	struct task_struct *kswapd = NODE_DATA(nid)->kswapd;
+	int hid;
+	int nr_threads = kswapd_threads_current;
 
-	if (kswapd) {
-		kthread_stop(kswapd);
-		NODE_DATA(nid)->kswapd = NULL;
+	for (hid = 0; hid < nr_threads; hid++) {
+		if (kswapd_list[nid][hid]) {
+			kthread_stop(kswapd_list[nid][hid]);
+			kswapd_list[nid][hid] = NULL;
+		}
 	}
 }
 
