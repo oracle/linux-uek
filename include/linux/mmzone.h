@@ -34,6 +34,7 @@
  * will not.
  */
 #define PAGE_ALLOC_COSTLY_ORDER 3
+#define MAX_KSWAPD_THREADS 16
 
 enum {
 	MIGRATE_UNMOVABLE,
@@ -909,6 +910,8 @@ static inline int is_highmem(struct zone *zone)
 
 /* These two functions are used to setup the per zone pages min values */
 struct ctl_table;
+int kswapd_threads_sysctl_handler(struct ctl_table *, int,
+				  void __user *, size_t *, loff_t *);
 int min_free_kbytes_sysctl_handler(struct ctl_table *, int,
 					void __user *, size_t *, loff_t *);
 int watermark_scale_factor_sysctl_handler(struct ctl_table *, int,
