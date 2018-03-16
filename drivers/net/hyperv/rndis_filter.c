@@ -942,12 +942,11 @@ static bool netvsc_device_idle(const struct netvsc_device *nvdev)
 	return true;
 }
 
-static void rndis_filter_halt_device(struct rndis_device *dev)
+static void rndis_filter_halt_device(struct netvsc_device *nvdev,
+				     struct rndis_device *dev)
 {
 	struct rndis_request *request;
 	struct rndis_halt_request *halt;
-	struct net_device_context *net_device_ctx = netdev_priv(dev->ndev);
-	struct netvsc_device *nvdev = rtnl_dereference(net_device_ctx->nvdev);
 
 	/* Attempt to do a rndis device halt */
 	request = get_rndis_request(dev, RNDIS_MSG_HALT,
@@ -1350,7 +1349,7 @@ void rndis_filter_device_remove(struct hv_device *dev,
 	struct rndis_device *rndis_dev = net_dev->extension;
 
 	/* Halt and release the rndis device */
-	rndis_filter_halt_device(rndis_dev);
+	rndis_filter_halt_device(net_dev, rndis_dev);
 
 	net_dev->extension = NULL;
 
