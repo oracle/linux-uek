@@ -47,6 +47,9 @@
 #include <rdma/ib_umem.h>
 #include <rdma/ib_user_verbs.h>
 
+#define UVERBS_MODULE_NAME ib_uverbs
+#include <rdma/uverbs_named_ioctl.h>
+
 #ifndef WITHOUT_ORACLE_EXTENSIONS
 #include <rdma/ib_fmr_pool.h>
 #endif
