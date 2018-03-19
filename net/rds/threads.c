@@ -102,6 +102,8 @@ void rds_connect_path_complete(struct rds_conn_path *cp, int curr)
 
 	cp->cp_connection_start = get_seconds();
 	cp->cp_reconnect = 1;
+	/* reset route resolution flag */
+	cp->cp_route_resolved = 0;
 	conn->c_proposed_version = RDS_PROTOCOL_VERSION;
 }
 EXPORT_SYMBOL_GPL(rds_connect_path_complete);
