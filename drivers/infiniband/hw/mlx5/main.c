@@ -4656,6 +4656,7 @@ static void *mlx5_ib_add(struct mlx5_core_dev *mdev)
 	dev->ib_dev.uverbs_ex_cmd_mask |=
 			(1ull << IB_USER_VERBS_EX_CMD_CREATE_FLOW) |
 			(1ull << IB_USER_VERBS_EX_CMD_DESTROY_FLOW);
+	dev->ib_dev.driver_id = RDMA_DRIVER_MLX5;
 
 	if (ll == IB_LINK_LAYER_ETHERNET) {
 		dev->ib_dev.create_wq	 = mlx5_ib_create_wq;

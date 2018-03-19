@@ -1295,7 +1295,7 @@ int rxe_register_device(struct rxe_dev *rxe)
 		       PTR_ERR(rxe->tfm));
 		return PTR_ERR(rxe->tfm);
 	}
-
+	dev->driver_id = RDMA_DRIVER_RXE;
 	err = ib_register_device(dev, NULL);
 	if (err) {
 		pr_warn("%s failed with error %d\n", __func__, err);
