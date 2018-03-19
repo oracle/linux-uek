@@ -257,6 +257,7 @@ static int pvrdma_register_device(struct pvrdma_dev *dev)
 	ret = ib_register_device(&dev->ib_dev, NULL);
 	if (ret)
 		goto err_qp_free;
+	dev->ib_dev.driver_id = RDMA_DRIVER_VMW_PVRDMA;
 
 	for (i = 0; i < ARRAY_SIZE(pvrdma_class_attributes); ++i) {
 		ret = device_create_file(&dev->ib_dev.dev,

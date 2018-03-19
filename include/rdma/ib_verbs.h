@@ -64,6 +64,7 @@
 #include <linux/cgroup_rdma.h>
 #include <uapi/rdma/ib_user_verbs.h>
 #include <rdma/restrack.h>
+#include <uapi/rdma/rdma_user_ioctl.h>
 
 #define IB_FW_VERSION_NAME_MAX	ETHTOOL_FWVERS_LEN
 
@@ -2458,6 +2459,7 @@ struct ib_device {
 						     int comp_vector);
 
 	struct uverbs_root_spec		*specs_root;
+	enum rdma_driver_id		driver_id;
 #ifndef WITHOUT_ORACLE_EXTENSIONS
 	struct ib_pd                *relaxed_pd;
 	struct list_head             relaxed_pool_list;
