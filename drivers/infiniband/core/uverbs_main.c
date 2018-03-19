@@ -967,10 +967,8 @@ static const struct file_operations uverbs_fops = {
 	.open	 = ib_uverbs_open,
 	.release = ib_uverbs_close,
 	.llseek	 = no_llseek,
-#if IS_ENABLED(CONFIG_INFINIBAND_EXP_USER_ACCESS)
 	.unlocked_ioctl = ib_uverbs_ioctl,
 	.compat_ioctl = ib_uverbs_ioctl,
-#endif
 };
 
 static const struct file_operations uverbs_mmap_fops = {
@@ -980,10 +978,8 @@ static const struct file_operations uverbs_mmap_fops = {
 	.open	 = ib_uverbs_open,
 	.release = ib_uverbs_close,
 	.llseek	 = no_llseek,
-#if IS_ENABLED(CONFIG_INFINIBAND_EXP_USER_ACCESS)
 	.unlocked_ioctl = ib_uverbs_ioctl,
 	.compat_ioctl = ib_uverbs_ioctl,
-#endif
 };
 
 static struct ib_client uverbs_client = {
