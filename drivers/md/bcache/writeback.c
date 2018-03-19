@@ -434,7 +434,7 @@ static int bch_writeback_thread(void *arg)
 
 			if (kthread_should_stop()) {
 				set_current_state(TASK_RUNNING);
-				return 0;
+				break;
 			}
 
 			schedule();
@@ -447,7 +447,6 @@ static int bch_writeback_thread(void *arg)
 		if (searched_full_index &&
 		    RB_EMPTY_ROOT(&dc->writeback_keys.keys)) {
 			atomic_set(&dc->has_dirty, 0);
-			cached_dev_put(dc);
 			SET_BDEV_STATE(&dc->sb, BDEV_STATE_CLEAN);
 			bch_write_bdev_super(dc, NULL);
 			/*
@@ -474,6 +473,9 @@ static int bch_writeback_thread(void *arg)
 				delay = schedule_timeout_interruptible(delay);
 		}
 	}
+
+	dc->writeback_thread = NULL;
+	cached_dev_put(dc);
 
 	return 0;
 }
@@ -539,10 +541,13 @@ int bch_cached_dev_writeback_start(struct cached_dev *dc)
 	if (!dc->writeback_write_wq)
 		return -ENOMEM;
 
+	cached_dev_get(dc);
 	dc->writeback_thread = kthread_create(bch_writeback_thread, dc,
 					      "bcache_writeback");
-	if (IS_ERR(dc->writeback_thread))
+	if (IS_ERR(dc->writeback_thread)) {
+		cached_dev_put(dc);
 		return PTR_ERR(dc->writeback_thread);
+	}
 
 	schedule_delayed_work(&dc->writeback_rate_update,
 			      dc->writeback_rate_update_seconds * HZ);
