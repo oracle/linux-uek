@@ -271,7 +271,7 @@ struct rds_conn_path {
 	unsigned int		cp_rdsinfo_pending;
 
 	unsigned int		cp_reconnect_racing;
-
+	unsigned int		cp_route_resolved;
 	enum rds_conn_drop_src	cp_drop_source;
 
 	unsigned char		cp_acl_init;
@@ -312,7 +312,6 @@ struct rds_connection {
 	int			c_to_index;
 
 	unsigned int		c_reconnect;
-
 	/* Qos support */
 	u8                      c_tos;
 
