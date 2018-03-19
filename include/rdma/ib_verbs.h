@@ -2532,11 +2532,9 @@ static inline int ib_copy_to_udata(struct ib_udata *udata, void *src, size_t len
 	return copy_to_user(udata->outbuf, src, len) ? -EFAULT : 0;
 }
 
-static inline bool ib_is_udata_cleared(struct ib_udata *udata,
-				       size_t offset,
-				       size_t len)
+static inline bool ib_is_buffer_cleared(const void __user *p,
+					size_t len)
 {
-	const void __user *p = udata->inbuf + offset;
 	bool ret;
 	u8 *buf;
 
@@ -2561,6 +2559,13 @@ struct ib_fast_reg_page_list {
 };
 
 #endif /* !WITHOUT_ORACLE_EXTENSIONS */
+
+static inline bool ib_is_udata_cleared(struct ib_udata *udata,
+				      size_t offset,
+				      size_t len)
+{
+	return ib_is_buffer_cleared(udata->inbuf + offset, len);
+}
 
 /**
  * ib_modify_qp_is_ok - Check that the supplied attribute mask
