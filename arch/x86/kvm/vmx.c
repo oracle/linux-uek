@@ -9803,6 +9803,16 @@ static void __noclone vmx_vcpu_run(struct kvm_vcpu *vcpu)
 }
 STACK_FRAME_NON_STANDARD(vmx_vcpu_run);
 
+static struct kvm *vmx_vm_alloc(void)
+{
+	return kzalloc(sizeof(struct kvm), GFP_KERNEL);
+}
+
+static void vmx_vm_free(struct kvm *kvm)
+{
+	kfree(kvm);
+}
+
 static void vmx_switch_vmcs(struct kvm_vcpu *vcpu, struct loaded_vmcs *vmcs)
 {
 	struct vcpu_vmx *vmx = to_vmx(vcpu);
@@ -12458,6 +12468,8 @@ static struct kvm_x86_ops vmx_x86_ops __ro_after_init = {
 	.has_emulated_msr = vmx_has_emulated_msr,
 
 	.vm_init = vmx_vm_init,
+	.vm_alloc = vmx_vm_alloc,
+	.vm_free = vmx_vm_free,
 
 	.vcpu_create = vmx_create_vcpu,
 	.vcpu_free = vmx_free_vcpu,
