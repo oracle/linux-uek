@@ -284,12 +284,12 @@ qla2x00_init_timer(srb_t *sp, unsigned long tmo)
 	sp->u.iocb_cmd.timer.expires = jiffies + tmo * HZ;
 	sp->u.iocb_cmd.timer.data = (unsigned long)sp;
 	sp->u.iocb_cmd.timer.function = qla2x00_sp_timeout;
-	add_timer(&sp->u.iocb_cmd.timer);
 	sp->free = qla2x00_sp_free;
 	if (IS_QLAFX00(sp->vha->hw) && (sp->type == SRB_FXIOCB_DCMD))
 		init_completion(&sp->u.iocb_cmd.u.fxiocb.fxiocb_comp);
 	if (sp->type == SRB_ELS_DCMD)
 		init_completion(&sp->u.iocb_cmd.u.els_logo.comp);
+	add_timer(&sp->u.iocb_cmd.timer);
 }
 
 static inline int
