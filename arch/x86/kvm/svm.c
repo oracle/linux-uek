@@ -5295,6 +5295,11 @@ static int svm_set_tss_addr(struct kvm *kvm, unsigned int addr)
 	return 0;
 }
 
+static int svm_set_identity_map_addr(struct kvm *kvm, u64 ident_addr)
+{
+	return 0;
+}
+
 static void svm_flush_tlb(struct kvm_vcpu *vcpu, bool invalidate_gpa)
 {
 	struct vcpu_svm *svm = to_svm(vcpu);
@@ -6985,6 +6990,7 @@ static struct kvm_x86_ops svm_x86_ops __ro_after_init = {
 	.apicv_post_state_restore = avic_post_state_restore,
 
 	.set_tss_addr = svm_set_tss_addr,
+	.set_identity_map_addr = svm_set_identity_map_addr,
 	.get_tdp_level = get_npt_level,
 	.get_mt_mask = svm_get_mt_mask,
 
