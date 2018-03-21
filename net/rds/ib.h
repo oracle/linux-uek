@@ -303,152 +303,6 @@ struct rds_ib_srq {
 	struct delayed_work        s_rearm_w;
 };
 
-struct rds_ib_alias {
-	char                    if_name[IFNAMSIZ];
-	__be32			ip_addr;
-	__be32			ip_bcast;
-	__be32			ip_mask;
-};
-
-enum {
-	RDS_IB_PORT_INIT = 0,
-	RDS_IB_PORT_UP,
-	RDS_IB_PORT_DOWN,
-};
-
-/*
- * Bit flags to keep track of layers of RDS
- * ports that are UP/DOWN separately stored
- * in field "port_layerflags" of "struct rds_ib_port"
- * data structure declared below.
- *
- * The structure also uses field "port_state" as
- * a composite UP/DOWN state derived from the
- * setting of the "port_layerflags" field bits.
- *
- * Layer 1: HWPORTUP - HCA port UP
- * Layer 2: LINKUP - Link UP
- * Layer 3: NETDEVUP - netdev layer UP
- *
- *  +-----------------------------------------------------------------+
- *  | ALL THREE Flags need to be UP(set) for a port_state to be UP for|
- *  | failback.                                                       |
- *  | ANY ONE  Flag being DOWN (clear) triggers failover.             |
- *  +-----------------------------------------------------------------+
- */
-#define RDSIBP_STATUS_HWPORTUP	          0x0001U /* HCA port UP */
-#define RDSIBP_STATUS_LINKUP              0x0002U /* Link layer UP */
-#define RDSIBP_STATUS_NETDEVUP            0x0004U /* NETDEV layer UP */
-#define RDSIBP_STATUS_ALLUP               (RDSIBP_STATUS_HWPORTUP \
-					   | RDSIBP_STATUS_LINKUP \
-					   | RDSIBP_STATUS_NETDEVUP)
-
-/*
- *
- * Design notes for failover/failback processing:
- *
- * Opportunity for checking and setting status of above
- * "port_layerflags: bits done at:
- *
- *  (1) module load time:
- *         rds_ib_ip_config_init()
- *  (2)  HW port status changes:
- *         rds_ib_event_handler()
- *  (3) link layer status changes: NETDEV_CHANGE handling in
- *         rds_ib_netdev_callback()
- *  (4) netdevice layer status changes: NETDEV_UP/NETDEV_DOWN handling in
- *         rds_ib_netdev_callback()
- *
- * Caveats:
- *    (a) A link-layer LINKUP detection can be used to mark HW port HWPORTUP
- *        also. Used because VM guests rebooting do not get the HW port UP
- *        events during boot (presumably) because the VM server has the
- *        HW ports up and no real transitions are happening.[module init
- *        code will show link layer up on VM reboots but not for bare metal,
- *        also on module load (after an unload)]
- *
- *    (b) The HW port down/up usually causes the link layer NETDEV_CHANGE
- *        trigger but NOT always! If due to any hardware issues if HW ports
- *        momentarily bounce, but such "port-bounces" do not generate
- *        corresponding link layer NETDEV_CHANGE events!
- *
- *    (c) Event processing in (2)-(4) above triggers failover/failback
- *        processing but initialization in (1) does detection but not
- *        processing as RDS module load processing happens before devices
- *        have come up.
- *
- *        For initial/boot time failover processing, a separate delayed
- *        processing is launched to run after link layer and netdev is UP!
- *
- */
-
-#define RDS_IB_MAX_ALIASES	50
-#define RDS_IB_MAX_PORTS	50
-
-/* Maximum number of IPv6 addresses for each rds_ib_port. */
-#define	RDS_IB_MAX_ADDRS	10
-
-/* This struct is used for storing IPv6 addresses in a rds_ib_port.  Note that
- * address alias is obsolete and does not apply to IPv6 address.  Broadcast is
- * also not applicable.
- *
- * IPv6 addresses are separated from IPv4 addresses to minimize code changes.
- * The alias address list should probably be removed in future.
- */
-struct rds_ib_port_addr {
-	struct in6_addr		addr;
-	u32			prefix_len;
-};
-
-struct rds_ib_port {
-	struct rds_ib_device	*rds_ibdev;
-	unsigned int		failover_group;
-	struct net_device	*dev;
-	unsigned int            port_state;
-	u32                     port_layerflags;
-	u8			port_num;
-	union ib_gid            gid;
-	char			port_label[4];
-	char                    if_name[IFNAMSIZ];
-	__be32			ip_addr;
-	__be32			ip_bcast;
-	__be32			ip_mask;
-	unsigned int            ip_active_port;
-	uint16_t		pkey;
-	unsigned int            alias_cnt;
-	struct rds_ib_alias	aliases[RDS_IB_MAX_ALIASES];
-	unsigned long		port_active_ts;
-	int			ifindex;
-	u32			ip6_addrs_cnt; /* No. of IPv6 addresses. */
-	struct rds_ib_port_addr	ip6_addrs[RDS_IB_MAX_ADDRS];
-};
-
-enum {
-	RDSIBP_TRANSITION_NOOP,
-	RDSIBP_TRANSITION_UP,
-	RDSIBP_TRANSITION_DOWN
-};
-
-#define RDS_IB_MAX_EXCL_IPS     20
-struct rds_ib_excl_ips {
-	__be32                  ip;
-	__be32                  prefix;
-	__be32                  mask;
-};
-
-enum {
-	RDS_IB_PORT_EVENT_INITIAL_FAILOVERS,
-	RDS_IB_PORT_EVENT_IB,
-	RDS_IB_PORT_EVENT_NET,
-};
-
-struct rds_ib_port_ud_work {
-	struct delayed_work             work;
-	struct net_device		*dev;
-	unsigned int                    port;
-	int				timeout;
-	int				event_type;
-};
 
 struct rds_ib_conn_drop_work {
 	struct delayed_work             work;
@@ -619,15 +473,11 @@ extern unsigned int rds_ib_fmr_8k_pool_size;
 extern bool prefer_frwr;
 extern unsigned int rds_ib_retry_count;
 extern unsigned int rds_ib_rnr_retry_count;
-extern unsigned int rds_ib_active_bonding_enabled;
-extern unsigned int rds_ib_active_bonding_fallback;
 
 extern spinlock_t ib_nodev_conns_lock;
 extern struct list_head ib_nodev_conns;
 
 extern struct socket *rds_ib_inet_socket;
-
-extern struct delayed_work riif_dlywork;
 
 /* ib_cm.c */
 int rds_ib_conn_alloc(struct rds_connection *conn, gfp_t gfp);
@@ -746,11 +596,6 @@ extern unsigned long rds_ib_sysctl_max_unsig_wrs;
 extern unsigned long rds_ib_sysctl_max_unsig_bytes;
 extern unsigned long rds_ib_sysctl_max_recv_allocation;
 extern unsigned int rds_ib_sysctl_flow_control;
-extern unsigned int rds_ib_sysctl_active_bonding;
-extern unsigned int rds_ib_sysctl_trigger_active_bonding;
 extern unsigned int rds_ib_sysctl_disable_unmap_fmr_cpu;
-extern unsigned long rds_ib_active_bonding_failback_min_jiffies;
-extern unsigned long rds_ib_active_bonding_failback_max_jiffies;
-extern unsigned long rds_ib_sysctl_active_bonding_failback_jiffies;
 
 #endif
