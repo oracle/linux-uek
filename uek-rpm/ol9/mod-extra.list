@@ -108,6 +108,7 @@ pcf50633.ko
 plx_pci.ko
 pn_pep.ko
 pppoatm.ko
+resilient_rdmaip.ko
 rose.ko
 rtc-pcf50633.ko
 sch_atm.ko
