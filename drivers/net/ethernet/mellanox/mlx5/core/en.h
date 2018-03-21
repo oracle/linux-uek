@@ -184,6 +184,7 @@ static inline int mlx5e_get_max_num_channels(struct mlx5_core_dev *mdev)
 struct mlx5e_tx_wqe {
 	struct mlx5_wqe_ctrl_seg ctrl;
 	struct mlx5_wqe_eth_seg  eth;
+	struct mlx5_wqe_data_seg data[0];
 };
 
 struct mlx5e_rx_wqe {
@@ -394,7 +395,6 @@ struct mlx5e_txqsq {
 	u32                        sqn;
 	u16                        max_inline;
 	u8                         min_inline_mode;
-	u16                        edge;
 	struct device             *pdev;
 	struct mlx5e_tstamp       *tstamp;
 	__be32                     mkey_be;
@@ -453,7 +453,6 @@ struct mlx5e_icosq {
 	struct mlx5_wq_cyc         wq;
 	void __iomem              *uar_map;
 	u32                        sqn;
-	u16                        edge;
 	unsigned long              state;
 
 	/* control path */

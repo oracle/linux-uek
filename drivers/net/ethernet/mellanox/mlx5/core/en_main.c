@@ -1017,8 +1017,6 @@ static int mlx5e_alloc_icosq(struct mlx5e_channel *c,
 	if (err)
 		goto err_sq_wq_destroy;
 
-	sq->edge = mlx5_wq_cyc_get_size(wq) - MLX5E_ICOSQ_MAX_WQEBBS;
-
 	return 0;
 
 err_sq_wq_destroy:
@@ -1089,8 +1087,6 @@ static int mlx5e_alloc_txqsq(struct mlx5e_channel *c,
 	err = mlx5e_alloc_txqsq_db(sq, cpu_to_node(c->cpu));
 	if (err)
 		goto err_sq_wq_destroy;
-
-	sq->edge = mlx5_wq_cyc_get_size(wq) - MLX5_SEND_WQE_MAX_WQEBBS;
 
 	return 0;
 
