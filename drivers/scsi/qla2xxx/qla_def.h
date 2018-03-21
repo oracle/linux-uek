@@ -2983,8 +2983,14 @@ enum scan_flags_t {
 	SF_QUEUED = BIT_1,
 };
 
+enum fc4type_t {
+	FS_FC4TYPE_FCP	= BIT_0,
+	FS_FC4TYPE_NVME	= BIT_1,
+};
+
 struct fab_scan_rp {
 	port_id_t id;
+	enum fc4type_t fc4type;
 	u8 port_name[8];
 	u8 node_name[8];
 };
@@ -3276,6 +3282,7 @@ struct qla_work_evt {
 		} nack;
 		struct {
 			u8 fc4_type;
+			srb_t *sp;
 		} gpnft;
 	 } u;
 };
