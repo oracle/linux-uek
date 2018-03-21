@@ -752,6 +752,20 @@ static void init_speculation_control(struct cpuinfo_x86 *c)
 	}
 	if (cpu_has(c, X86_FEATURE_INTEL_STIBP))
 		set_cpu_cap(c, X86_FEATURE_STIBP);
+
+	if (!c->cpu_index) {
+		if (boot_cpu_has(X86_FEATURE_SPEC_CTRL)) {
+			pr_info("FEATURE SPEC_CTRL Present\n");
+			set_ibrs_supported();
+			set_ibpb_supported();
+			if (ibrs_inuse)
+				sysctl_ibrs_enabled = 1;
+			if (ibpb_inuse)
+				sysctl_ibpb_enabled = 1;
+		} else {
+			pr_info("FEATURE SPEC_CTRL Not Present\n");
+		}
+	}
 }
 
 void get_cpu_cap(struct cpuinfo_x86 *c)

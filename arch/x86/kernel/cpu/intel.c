@@ -682,20 +682,6 @@ static void init_intel(struct cpuinfo_x86 *c)
 	init_intel_energy_perf(c);
 
 	init_intel_misc_features(c);
-
-	if (!c->cpu_index) {
-		if (boot_cpu_has(X86_FEATURE_SPEC_CTRL)) {
-			pr_info("FEATURE SPEC_CTRL Present\n");
-			set_ibrs_supported();
-			set_ibpb_supported();
-			if (ibrs_inuse)
-				sysctl_ibrs_enabled = 1;
-			if (ibpb_inuse)
-				sysctl_ibpb_enabled = 1;
-		} else {
-			pr_info("FEATURE SPEC_CTRL Not Present\n");
-		}
-	}
 }
 
 #ifdef CONFIG_X86_32
