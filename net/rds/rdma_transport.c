@@ -461,8 +461,6 @@ void __exit rds_rdma_exit(void)
 {
 	/* stop listening first to ensure no new connections are attempted */
 	rds_rdma_listen_stop();
-	/* cancel initial ib failover work if still active*/
-	cancel_delayed_work_sync(&riif_dlywork);
 	rds_ib_exit();
 }
 module_exit(rds_rdma_exit);
