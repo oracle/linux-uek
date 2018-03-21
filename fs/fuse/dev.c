@@ -1096,7 +1096,6 @@ __releases(nn->lock)
 	struct fuse_in_header ih = {
 		.opcode = FUSE_FORGET,
 		.nodeid = forget->forget_one.nodeid,
-		.unique = fuse_get_unique(nn->fc),
 		.len = sizeof(ih) + sizeof(arg),
 	};
 
@@ -1105,6 +1104,7 @@ __releases(nn->lock)
 	if (nbytes < ih.len)
 		return -EINVAL;
 
+	ih.unique = fuse_get_unique(nn->fc);
 	err = fuse_copy_one(cs, &ih, sizeof(ih));
 	if (!err)
 		err = fuse_copy_one(cs, &arg, sizeof(arg));
@@ -1127,7 +1127,6 @@ __releases(nn->lock)
 	struct fuse_batch_forget_in arg = { .count = 0 };
 	struct fuse_in_header ih = {
 		.opcode = FUSE_BATCH_FORGET,
-		.unique = fuse_get_unique(nn->fc),
 		.len = sizeof(ih) + sizeof(arg),
 	};
 
@@ -1141,6 +1140,7 @@ __releases(nn->lock)
 	spin_unlock(&nn->lock);
 
 	arg.count = count;
+	ih.unique = fuse_get_unique(nn->fc);
 	ih.len += count * sizeof(struct fuse_forget_one);
 	err = fuse_copy_one(cs, &ih, sizeof(ih));
 	if (!err)
