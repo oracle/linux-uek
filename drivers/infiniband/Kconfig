@@ -80,6 +80,17 @@ config INFINIBAND_ADDR_TRANS_CONFIGFS
 	  This allows the user to config the default GID type that the CM
 	  uses for each device, when initiaing new connections.
 
+config INFINIBAND_RESILIENT_RDMAIP
+	tristate "InfiniBand Resilient RDMAIP"
+	depends on PCI
+	depends on INET
+	depends on IPV6
+	depends on INFINIBAND
+
+	---help---
+	  Resilient RDMA IP support. This provides a HA solution for RDMA
+	  capable devices.
+
 if INFINIBAND_USER_ACCESS || !INFINIBAND_USER_ACCESS
 source "drivers/infiniband/hw/mthca/Kconfig"
 source "drivers/infiniband/hw/qib/Kconfig"
