@@ -98,7 +98,7 @@ void mlx5_cq_completion(struct mlx5_core_dev *dev, u32 cqn)
 	spin_unlock(&table->lock);
 
 	if (!cq) {
-		mlx5_core_warn(dev, "Completion event for bogus CQ 0x%x\n", cqn);
+		mlx5_core_dbg(dev, "Completion event for bogus CQ 0x%x\n", cqn);
 		return;
 	}
 
