@@ -3851,8 +3851,10 @@ static void mlx5e_build_nic_netdev(struct net_device *netdev)
 	netdev->netdev_ops = &mlx5e_netdev_ops;
 
 #ifdef CONFIG_MLX5_CORE_EN_DCB
-	if (MLX5_CAP_GEN(mdev, vport_group_manager) && MLX5_CAP_GEN(mdev, qos))
+	if (MLX5_CAP_GEN(mdev, vport_group_manager) && MLX5_CAP_GEN(mdev, qos)) {
 		netdev->dcbnl_ops = &mlx5e_dcbnl_ops;
+		netdev->dcbnl_kabi_ops = &mlx5e_dcbnl_kabi_ops;
+	}
 #endif
 
 	netdev->watchdog_timeo    = 15 * HZ;
