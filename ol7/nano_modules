@@ -130,6 +130,8 @@ kernel/drivers/cpufreq/pcc-cpufreq.ko
 kernel/drivers/cpufreq/speedstep-lib.ko
 kernel/drivers/crypto/padlock-aes.ko
 kernel/drivers/crypto/padlock-sha.ko
+kernel/drivers/crypto/qat/qat_c62x/qat_c62x.ko
+kernel/drivers/crypto/qat/qat_c62xvf/qat_c62xvf.ko
 kernel/drivers/crypto/qat/qat_common/intel_qat.ko
 kernel/drivers/crypto/qat/qat_dh895xcc/qat_dh895xcc.ko
 kernel/drivers/dax/dax_pmem.ko
