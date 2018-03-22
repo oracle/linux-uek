@@ -28,8 +28,6 @@
 #include "dtrace_dev.h"
 #include "fasttrap_impl.h"
 
-#define FIX_FORCE_UNIQUE_PROVNAME_PER_PID
-
 #define FASTTRAP_MAX_DEFAULT	250000
 static uint32_t			fasttrap_max;
 static uint64_t			fasttrap_pid_count;
@@ -75,8 +73,10 @@ static struct kmem_cache	*tracepoint_cachep;
 static volatile uint64_t	fasttrap_mod_gen;
 
 static void fasttrap_pid_cleanup(void);
+static void fasttrap_probes_cleanup(struct task_struct *);
 
-static int fasttrap_pid_probe(fasttrap_machtp_t *mtp, struct pt_regs *regs) {
+static int fasttrap_pid_probe(fasttrap_machtp_t *mtp, struct pt_regs *regs,
+			      int is_ret) {
 	fasttrap_tracepoint_t	*tp = container_of(mtp, fasttrap_tracepoint_t,
 						   ftt_mtp);
 	fasttrap_id_t		*id;
@@ -100,13 +100,21 @@ static int fasttrap_pid_probe(fasttrap_machtp_t *mtp, struct pt_regs *regs) {
 
 	this_cpu_core->cpu_dtrace_regs = regs;
 
-	for (id = tp->ftt_ids; id != NULL; id = id->fti_next) {
-		fasttrap_probe_t	*ftp = id->fti_probe;
+	if (!is_ret) {
+		for (id = tp->ftt_ids; id != NULL; id = id->fti_next) {
+			fasttrap_probe_t	*ftp = id->fti_probe;
 
-		if (id->fti_ptype == DTFTP_IS_ENABLED)
-			is_enabled = 1;
-		else
-			fasttrap_pid_probe_arch(ftp, regs);
+			if (id->fti_ptype == DTFTP_IS_ENABLED)
+				is_enabled = 1;
+			else
+				fasttrap_pid_probe_arch(ftp, regs);
+		}
+	} else {
+		for (id = tp->ftt_retids; id != NULL; id = id->fti_next) {
+			fasttrap_probe_t	*ftp = id->fti_probe;
+
+			fasttrap_pid_retprobe_arch(ftp, regs);
+		}
 	}
 
 	this_cpu_core->cpu_dtrace_regs = NULL;
@@ -135,9 +143,11 @@ static void fasttrap_enable_callbacks(void)
 	if (fasttrap_pid_count == 0) {
 		ASSERT(dtrace_tracepoint_hit == NULL);
 
+		dtrace_fasttrap_probes_cleanup = &fasttrap_probes_cleanup;
 		dtrace_tracepoint_hit = &fasttrap_pid_probe;
 	}
 
+	ASSERT(dtrace_fasttrap_probes_cleanup == &fasttrap_probes_cleanup);
 	ASSERT(dtrace_tracepoint_hit == &fasttrap_pid_probe);
 
 	fasttrap_pid_count++;
@@ -162,6 +172,7 @@ static void fasttrap_disable_callbacks(void)
 		}
 
 		dtrace_tracepoint_hit = NULL;
+		dtrace_fasttrap_probes_cleanup = NULL;
 
 		for_each_present_cpu(cpu) {
 			cpu_core_t	*cpuc = per_cpu_core(cpu);
@@ -260,6 +271,11 @@ again:
 		case DTFTP_ENTRY:
 		case DTFTP_OFFSETS:
 		case DTFTP_IS_ENABLED:
+			if (tp->ftt_ids == NULL)	/* return tp */
+				continue;
+
+			ASSERT(tp->ftt_retids == NULL);
+
 			id->fti_next = tp->ftt_ids;
 			dtrace_membar_producer();
 			tp->ftt_ids = id;
@@ -268,6 +284,11 @@ again:
 
 		case DTFTP_RETURN:
 		case DTFTP_POST_OFFSETS:
+			if (tp->ftt_retids == NULL)	/* non-return tp */
+				continue;
+
+			ASSERT(tp->ftt_ids == NULL);
+
 			id->fti_next = tp->ftt_retids;
 			dtrace_membar_producer();
 			tp->ftt_retids = id;
@@ -307,14 +328,11 @@ again:
 		 * indicate that this tracepoint must still be disabled
 		 * by calling fasttrap_tracepoint_disable().
 		 */
-		rc = dtrace_tracepoint_enable(pid, pc, &new_tp->ftt_mtp);
-		if (rc != 0) {
-			pr_warn("FASTTRAP: Failed to enable tp "
-				"(PID %d, pc %lx): rc %d\n", pid, pc, rc);
-			rc = FASTTRAP_ENABLE_PARTIAL;
-		}
+		rc = dtrace_tracepoint_enable(pid, pc,
+					      id->fti_ptype == DTFTP_RETURN,
+					      &new_tp->ftt_mtp);
 
-		return rc;
+		return rc ? FASTTRAP_ENABLE_PARTIAL : 0;
 	}
 
 	mutex_unlock(&bucket->ftb_mtx);
@@ -370,14 +388,24 @@ static void fasttrap_tracepoint_disable(fasttrap_probe_t *probe, uint_t index)
 
 	/*
 	 * Find the tracepoint and make sure that our id is one of the
-	 * ones registered with it.
+	 * ones registered with it.  Return probes are linked in their
+	 * own tracepoint, even though they share the (pi, pc) pair with
+	 * entry probes.
 	 */
 	bucket = FASTTRAP_TPOINTS_ELEM(pid, pc);
 	mutex_lock(&bucket->ftb_mtx);
 	for (tp = bucket->ftb_data; tp != NULL; tp = tp->ftt_next) {
-		if (tp->ftt_pid == pid && tp->ftt_pc == pc &&
-		    tp->ftt_proc == prov->ftp_proc)
-			break;
+		if (tp->ftt_pid != pid || tp->ftt_pc != pc ||
+		    tp->ftt_proc != prov->ftp_proc)
+			continue;
+
+		if (id->fti_ptype == DTFTP_RETURN && tp->ftt_retids == NULL)
+			continue;
+
+		if (id->fti_ptype != DTFTP_RETURN && tp->ftt_ids == NULL)
+			continue;
+
+		break;
 	}
 
 	/*
@@ -702,20 +730,17 @@ static const dtrace_pattr_t pid_attr = {
 };
 
 static dtrace_pops_t pid_pops = {
-#ifdef FIXME
-	fasttrap_pid_provide,
-	NULL,
-	NULL,
-	NULL,
-	fasttrap_pid_enable,
-	fasttrap_pid_disable,
-	NULL,
-	NULL,
-	fasttrap_pid_getargdesc,
-	fasttrap_pid_getarg,
-	NULL,
-	fasttrap_pid_destroy
-#endif
+	.dtps_provide = fasttrap_pid_provide,
+	.dtps_provide_module = NULL,
+	.dtps_destroy_module = NULL,
+	.dtps_enable = fasttrap_pid_enable,
+	.dtps_disable = fasttrap_pid_disable,
+	.dtps_suspend = NULL,
+	.dtps_resume = NULL,
+	.dtps_getargdesc = fasttrap_pid_getargdesc,
+	.dtps_getargval = fasttrap_pid_getarg,
+	.dtps_usermode = NULL,
+	.dtps_destroy = fasttrap_pid_destroy
 };
 
 static dtrace_pops_t usdt_pops = {
@@ -1080,18 +1105,10 @@ static fasttrap_provider_t *fasttrap_provider_lookup(pid_t pid,
 	for (fp = bucket->ftb_data; fp != NULL; fp = fp->ftp_next) {
 		if (fp->ftp_pid == pid && strcmp(fp->ftp_name, name) == 0 &&
 		    !fp->ftp_retired) {
-#ifdef FIX_FORCE_UNIQUE_PROVNAME_PER_PID
-			/*
-			 * We disallow multiple providers with the same name
-			 * for a given PID.
-			 */
-			mutex_unlock(&bucket->ftb_mtx);
-			return NULL;
-#else
 			mutex_lock(&fp->ftp_mtx);
 			mutex_unlock(&bucket->ftb_mtx);
+
 			return fp;
-#endif
 		}
 	}
 
@@ -1136,6 +1153,7 @@ static fasttrap_provider_t *fasttrap_provider_lookup(pid_t pid,
 			mutex_unlock(&bucket->ftb_mtx);
 			fasttrap_provider_free(new_fp);
 			put_cred(cred);
+
 			return fp;
 		}
 	}
@@ -1168,6 +1186,7 @@ static fasttrap_provider_t *fasttrap_provider_lookup(pid_t pid,
 	mutex_unlock(&bucket->ftb_mtx);
 
 	put_cred(cred);
+
 	return new_fp;
 
 fail:
@@ -1232,8 +1251,6 @@ void *fasttrap_meta_provide(void *arg, dtrace_helper_provdesc_t *dhpv,
 
 	mutex_unlock(&provider->ftp_mtx);
 
-	__module_get(THIS_MODULE);
-
 	return provider;
 }
 
@@ -1256,6 +1273,7 @@ static void fasttrap_pid_cleanup_cb(struct work_struct *work)
 		return;
 	}
 
+	dt_dbg_prov("Fasttrap provider cleanup callback processing...\n");
 	while (fasttrap_cleanup_work) {
 		fasttrap_cleanup_work = 0;
 		mutex_unlock(&fasttrap_cleanup_mtx);
@@ -1274,10 +1292,22 @@ static void fasttrap_pid_cleanup_cb(struct work_struct *work)
 			fpp = (fasttrap_provider_t **)&bucket->ftb_data;
 
 			while ((fp = *fpp) != NULL) {
+				dt_dbg_prov("  Trying to unregister %s%d "
+					    "(%smarked)\n",
+					    fp->ftp_name, fp->ftp_pid,
+					    fp->ftp_marked ? "not " : "");
 				if (!fp->ftp_marked) {
 					fpp = &fp->ftp_next;
 					continue;
 				}
+
+				dt_dbg_prov("    ccount %llu, mcount %llu "
+					    "rcount %llu, %sretired, "
+					    "%smarked\n",
+					    fp->ftp_ccount, fp->ftp_mcount,
+					    fp->ftp_rcount,
+					    fp->ftp_retired ? "" : "not ",
+					    fp->ftp_marked ? "" : "not ");
 
 				mutex_lock(&fp->ftp_mtx);
 
@@ -1322,8 +1352,7 @@ static void fasttrap_pid_cleanup_cb(struct work_struct *work)
 				} else {
 					*fpp = fp->ftp_next;
 					fasttrap_provider_free(fp);
-
-					module_put(THIS_MODULE); }
+				}
 				mutex_unlock(&module_mutex);
 			}
 
@@ -1346,6 +1375,9 @@ static void fasttrap_pid_cleanup_cb(struct work_struct *work)
 	 * (if detach fails).
 	 */
 	if (later > 0) {
+		dt_dbg_prov("  Some providers were not removed "
+			    " (state %d, later = %d)\n",
+			    fasttrap_cleanup_state, later);
 		if (fasttrap_cleanup_state == CLEANUP_DEFERRED)
 			fasttrap_cleanup_work = 1;
 		else {
@@ -1362,6 +1394,8 @@ static void fasttrap_pid_cleanup_cb(struct work_struct *work)
 
 	mutex_unlock(&fasttrap_cleanup_mtx);
 	in = 0;
+
+	dt_dbg_prov("Fasttrap provider cleanup callback done\n");
 }
 
 static DECLARE_DELAYED_WORK(fasttrap_cleanup, fasttrap_pid_cleanup_cb);
@@ -1385,6 +1419,9 @@ void fasttrap_provider_retire(pid_t pid, const char *name, int mprov)
 	dtrace_provider_id_t	provid;
 
 	ASSERT(strlen(name) < sizeof (fp->ftp_name));
+
+	dt_dbg_prov("Retiring %s %sprovider for PID %d\n",
+		    name, mprov ? "meta-" : "", pid);
 
 	bucket = FASTTRAP_PROVS_ELEM(pid, name);
 	mutex_lock(&bucket->ftb_mtx);
@@ -1445,6 +1482,11 @@ void fasttrap_provider_retire(pid_t pid, const char *name, int mprov)
 	fasttrap_pid_cleanup();
 }
 
+static void fasttrap_probes_cleanup(struct task_struct *tsk)
+{
+	fasttrap_provider_retire(tsk->pid, FASTTRAP_PID_NAME, 0);
+}
+
 void fasttrap_meta_remove(void *arg, dtrace_helper_provdesc_t *dhpv, pid_t pid)
 {
 	/*
@@ -1454,6 +1496,254 @@ void fasttrap_meta_remove(void *arg, dtrace_helper_provdesc_t *dhpv, pid_t pid)
 	 * the provider on death row.
 	 */
 	fasttrap_provider_retire(pid, dhpv->dthpv_provname, 1);
+}
+
+static int fasttrap_add_probe(fasttrap_probe_spec_t *probe)
+{
+	fasttrap_provider_t	*provider;
+	fasttrap_probe_t	*pp;
+	fasttrap_tracepoint_t	*tp;
+	uint64_t		*offs = NULL;
+	uint64_t		noffs;
+	char			*name;
+	int			aframes, retired;
+
+
+	switch (probe->ftps_type) {
+	case DTFTP_ENTRY:
+		name = "entry";
+		aframes = FASTTRAP_ENTRY_AFRAMES;
+		break;
+	case DTFTP_RETURN:
+		name = "return";
+		aframes = FASTTRAP_RETURN_AFRAMES;
+		break;
+	case DTFTP_OFFSETS:
+		if (probe->ftps_glen <= 0)
+			return -EINVAL;
+
+		name = "<offsets>";
+		aframes = FASTTRAP_OFFSET_AFRAMES;
+		offs = fasttrap_glob_offsets(probe, &noffs);
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	provider = fasttrap_provider_lookup(probe->ftps_pid, FASTTRAP_PID_NAME,
+					    &pid_attr);
+	if (provider == NULL)
+		return -ESRCH;
+
+	/*
+	 * Increment the consumer reference count on the provider to indicate
+	 * that a new probe is being associated with the provider.  This makes
+	 * sure that the provider will not be removed while we are working with
+	 * it.
+	 *
+	 * This also means that we can drop the provider lock.
+	 */
+	provider->ftp_ccount++;
+	mutex_unlock(&provider->ftp_mtx);
+
+	/*
+	 * Grab the probe creation lock for this provider to ensure consistency
+	 * between dtrace_probe_lookup() and dtrace_probe_create() because
+	 * other threads might be creating probes also.
+	 */
+	mutex_lock(&provider->ftp_cmtx);
+
+	if (probe->ftps_type == DTFTP_OFFSETS) {
+		int	i;
+
+		for (i = 0; i < noffs; i++) {
+			char	ostr[sizeof(*offs) + 1];
+
+			snprintf(ostr, sizeof(ostr), "%llx", offs[i]);
+			if (dtrace_probe_lookup(provider->ftp_provid,
+						probe->ftps_mod,
+						probe->ftps_func, ostr) != 0)
+				continue;
+
+			atomic_add(1, &fasttrap_total);
+			if (atomic_read(&fasttrap_total) > fasttrap_max)
+				goto fail_reset;
+
+			pp = kzalloc(sizeof(fasttrap_probe_t), GFP_KERNEL);
+			if (pp == NULL)
+				goto fail_reset;
+
+			pp->ftp_prov = provider;
+			pp->ftp_pid = provider->ftp_pid;
+			pp->ftp_ntps = 1;
+
+			tp = kmem_cache_alloc(tracepoint_cachep, GFP_KERNEL);
+			if (tp == NULL)
+				goto fail_reset;
+
+			tp->ftt_proc = provider->ftp_proc;
+			tp->ftt_pc = probe->ftps_pc + offs[i];
+			tp->ftt_pid = provider->ftp_pid;
+			memset(&tp->ftt_mtp, 0, sizeof(fasttrap_machtp_t));
+			tp->ftt_ids = NULL;
+			tp->ftt_retids = NULL;
+			tp->ftt_next = NULL;
+
+			pp->ftp_tps[0].fit_tp = tp;
+			pp->ftp_tps[0].fit_id.fti_probe = pp;
+			pp->ftp_tps[0].fit_id.fti_ptype = probe->ftps_type;
+
+			pp->ftp_id = dtrace_probe_create(provider->ftp_provid,
+							 probe->ftps_mod,
+							 probe->ftps_func, ostr,
+							 aframes, pp);
+			if (pp->ftp_id == DTRACE_IDNONE) {
+				kmem_cache_free(tracepoint_cachep, tp);
+				kfree(pp);
+
+				goto fail_reset;
+			}
+		}
+	} else if (dtrace_probe_lookup(provider->ftp_provid, probe->ftps_mod,
+				       probe->ftps_func, name) == 0) {
+		atomic_add(1, &fasttrap_total);
+		if (atomic_read(&fasttrap_total) > fasttrap_max)
+			goto fail_reset;
+
+		pp = kzalloc(sizeof(fasttrap_probe_t), GFP_KERNEL);
+		if (pp == NULL)
+			goto fail_reset;
+
+		pp->ftp_prov = provider;
+		pp->ftp_pid = provider->ftp_pid;
+		pp->ftp_ntps = 1;
+
+		tp = kmem_cache_alloc(tracepoint_cachep, GFP_KERNEL);
+		if (tp == NULL)
+			goto fail_reset;
+
+		tp->ftt_proc = provider->ftp_proc;
+		tp->ftt_pc = probe->ftps_pc;
+		tp->ftt_pid = provider->ftp_pid;
+		memset(&tp->ftt_mtp, 0, sizeof(fasttrap_machtp_t));
+		tp->ftt_ids = NULL;
+		tp->ftt_retids = NULL;
+		tp->ftt_next = NULL;
+
+		pp->ftp_tps[0].fit_tp = tp;
+		pp->ftp_tps[0].fit_id.fti_probe = pp;
+		pp->ftp_tps[0].fit_id.fti_ptype = probe->ftps_type;
+
+		pp->ftp_id = dtrace_probe_create(provider->ftp_provid,
+						 probe->ftps_mod,
+						 probe->ftps_func, name,
+						 aframes, pp);
+		if (pp->ftp_id == DTRACE_IDNONE) {
+			kmem_cache_free(tracepoint_cachep, tp);
+			kfree(pp);
+
+			goto fail_reset;
+		}
+	}
+
+	mutex_unlock(&provider->ftp_cmtx);
+
+	/*
+	 * The provider is still around because of the consumer reference
+	 * count that we incremented.  If another thread tried to clean up the
+	 * provider while we were using it (because the process called exec or
+	 * exit), we'll trigger a cleanup.
+	 */
+	mutex_lock(&provider->ftp_mtx);
+	provider->ftp_ccount--;
+	retired = provider->ftp_retired;
+	mutex_unlock(&provider->ftp_mtx);
+
+	if (retired)
+		fasttrap_pid_cleanup();
+
+	return 0;
+
+fail_reset:
+	atomic_add(-1, &fasttrap_total);
+
+	/*
+	 * If we failed to create the probe, it usually means we ran out of
+	 * memory.  We'll try to remove this provider to free some.  This
+	 * usually happens when a user accidentally triggers the creation of
+	 * a very large amount of probes (e.g. pid587:::).
+	 */
+	mutex_unlock(&provider->ftp_cmtx);
+
+	kfree(offs);
+
+	mutex_lock(&provider->ftp_mtx);
+	provider->ftp_ccount--;
+	provider->ftp_marked = 1;
+	mutex_unlock(&provider->ftp_mtx);
+
+	fasttrap_pid_cleanup();
+
+	return -ENOMEM;
+}
+
+static long fasttrap_ioctl(struct file *file,
+			 unsigned int cmd, unsigned long arg)
+{
+	void __user	*argp = (void __user *)arg;
+
+	if (cmd == FASTTRAPIOC_MAKEPROBE) {
+		fasttrap_probe_spec_t __user	*uprobe = argp;
+		fasttrap_probe_spec_t		*probe;
+		uint8_t				glen;
+		size_t				size;
+		int				ret;
+		char				*c;
+
+		dt_dbg_ioctl("PID IOCTL MAKEPROBE (cmd %#x), argp %p\n",
+			     cmd, argp);
+
+		if (copy_from_user(&glen, &uprobe->ftps_glen,
+				   sizeof(uprobe->ftps_glen)))
+			return -EFAULT;
+
+		size = sizeof(fasttrap_probe_spec_t) +
+		       sizeof(probe->ftps_gstr[0]) * (glen - 1);
+
+		if (size > 1024 * 1024)
+			return -ENOMEM;
+
+		probe = kmalloc(size, GFP_KERNEL);
+		if (!probe)
+			return -ENOMEM;
+
+		if (copy_from_user(probe, uprobe, size) != 0) {
+			ret = -EFAULT;
+			goto err;
+		}
+
+		for (c = &probe->ftps_func[0]; *c != '\0'; c++) {
+			if (*c < 0x20 || 0x7f <= *c) {
+				ret = -EINVAL;
+				goto err;
+			}
+		}
+
+		for (c = &probe->ftps_mod[0]; *c != '\0'; c++) {
+			if (*c < 0x20 || 0x7f <= *c) {
+				ret = -EINVAL;
+				goto err;
+			}
+		}
+
+		ret = fasttrap_add_probe(probe);
+err:
+		kfree(probe);
+
+		return ret;
+	}
+
+	return -EAGAIN;
 }
 
 static int fasttrap_open(struct inode *inode, struct file *file)
@@ -1468,6 +1758,7 @@ static int fasttrap_close(struct inode *inode, struct file *file)
 
 static const struct file_operations fasttrap_fops = {
 	.owner  = THIS_MODULE,
+        .unlocked_ioctl = fasttrap_ioctl,
         .open   = fasttrap_open,
         .release = fasttrap_close,
 };
@@ -1553,10 +1844,16 @@ fail:
 	return ret;
 }
 
-void fasttrap_dev_exit(void)
+/*
+ * This function is called with module_mutex held.
+ */
+int fasttrap_prov_exit(void)
 {
 	int	fail = 0;
 	ulong_t	i;
+
+	if (dtrace_meta_unregister(fasttrap_id) != 0)
+		return 0;
 
 	/*
 	 * Prevent any new timeouts from running by setting fasttrap_timeout
@@ -1603,7 +1900,6 @@ void fasttrap_dev_exit(void)
 			mutex_lock(&fp->ftp_mtx);
 			mutex_unlock(&fp->ftp_mtx);
 
-			mutex_lock(&module_mutex);
 			if (dtrace_unregister(fp->ftp_provid) != 0) {
 				fail = 1;
 				fpp = &fp->ftp_next;
@@ -1611,13 +1907,11 @@ void fasttrap_dev_exit(void)
 				*fpp = fp->ftp_next;
 				fasttrap_provider_free(fp);
 			}
-			mutex_unlock(&module_mutex);
 		}
 
 		mutex_unlock(&bucket->ftb_mtx);
 	}
 
-#ifdef FIXME
 	if (fail) {
 		uint_t	work;
 
@@ -1635,20 +1929,16 @@ void fasttrap_dev_exit(void)
 			fasttrap_pid_cleanup();
 
 		dtrace_meta_register("fasttrap", &fasttrap_mops, NULL,
-				     &fasttrap_meta_id);
+				     &fasttrap_id);
 
-		return (DDI_FAILURE);
+		return 0;
 	}
-#else
-	/*
-	 * If we fail to detach, we are in lots of trouble because Linux does
-	 * not allow us to fail on a module unload.  We try to continue anyway
-	 * since triggering an OOPS at this point is even worse.
-	 */
-	if (fail)
-		pr_err("Unrecoverable error removing the fasttrap provider\n");
-#endif
 
+	return 1;
+}
+
+void fasttrap_dev_exit(void)
+{
 #ifdef DEBUG
 	mutex_lock(&fasttrap_count_mtx);
 	ASSERT(fasttrap_pid_count == 0);

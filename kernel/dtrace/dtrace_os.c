@@ -37,6 +37,7 @@
 #include <asm/ptrace.h>
 #include <linux/init_task.h>
 #include <linux/sched/mm.h>
+#include <linux/shmem_fs.h>
 
 #if defined(CONFIG_DT_FASTTRAP) || defined(CONFIG_DT_FASTTRAP_MODULE)
 # include <linux/uprobes.h>
@@ -717,7 +718,7 @@ void dtrace_task_cleanup(struct task_struct *tsk)
 }
 
 #if defined(CONFIG_DT_FASTTRAP) || defined(CONFIG_DT_FASTTRAP_MODULE)
-int (*dtrace_tracepoint_hit)(fasttrap_machtp_t *, struct pt_regs *);
+int (*dtrace_tracepoint_hit)(fasttrap_machtp_t *, struct pt_regs *, int);
 EXPORT_SYMBOL(dtrace_tracepoint_hit);
 
 struct task_struct *register_pid_provider(pid_t pid)
@@ -729,15 +730,12 @@ struct task_struct *register_pid_provider(pid_t pid)
 	 * result of a vfork(2)), and isn't a zombie (but may be in fork).
 	 */
 	rcu_read_lock();
-	read_lock(&tasklist_lock);
 	if ((p = find_task_by_vpid(pid)) == NULL) {
-		read_unlock(&tasklist_lock);
 		rcu_read_unlock();
 		return NULL;
 	}
 
 	get_task_struct(p);
-	read_unlock(&tasklist_lock);
 	rcu_read_unlock();
 
 	if (p->state & TASK_DEAD ||
@@ -786,7 +784,96 @@ void unregister_pid_provider(pid_t pid)
 }
 EXPORT_SYMBOL(unregister_pid_provider);
 
-static int handler(struct uprobe_consumer *self, struct pt_regs *regs)
+int dtrace_copy_code(pid_t pid, uint8_t *buf, uintptr_t addr, size_t size)
+{
+	struct task_struct	*p;
+	struct inode		*ino;
+	struct vm_area_struct	*vma;
+	struct address_space	*map;
+	loff_t			off;
+	int			rc = 0;
+
+	/*
+	 * First we determine the inode and offset that 'addr' refers to in the
+	 * task referenced by 'pid'.
+	 */
+	rcu_read_lock();
+	p = find_task_by_vpid(pid);
+	if (!p) {
+		rcu_read_unlock();
+		pr_warn("PID %d not found\n", pid);
+		return -ESRCH;
+	}
+	get_task_struct(p);
+	rcu_read_unlock();
+
+	down_write(&p->mm->mmap_sem);
+	vma = find_vma(p->mm, addr);
+	if (vma == NULL || vma->vm_file == NULL) {
+		rc = -EFAULT;
+		goto out;
+	}
+
+	ino = vma->vm_file->f_mapping->host;
+	map = ino->i_mapping;
+	off = ((loff_t)vma->vm_pgoff << PAGE_SHIFT) + (addr - vma->vm_start);
+
+	if (map->a_ops->readpage == NULL && !shmem_mapping(ino->i_mapping)) {
+		rc = -EIO;
+		goto out;
+	}
+
+	/*
+	 * Armed with inode and offset, we can start reading pages...
+	 */
+	do {
+		int		len;
+		struct page	*page;
+		void		*kaddr;
+
+		/*
+		 * We cannot read beyond the end of the inode content.
+		 */
+		if (off >= i_size_read(ino))
+			break;
+
+		len = min_t(int, size, PAGE_SIZE - (off & ~PAGE_MASK));
+
+		/*
+		 * Make sure that the page we're tring to read is populated and
+		 * in page cache.
+		 */
+		if (map->a_ops->readpage)
+			page = read_mapping_page(map, off >> PAGE_SHIFT,
+						 vma->vm_file);
+		else
+			page = shmem_read_mapping_page(map, off >> PAGE_SHIFT);
+
+		if (IS_ERR(page)) {
+			rc = PTR_ERR(page);
+			break;
+		}
+
+		kaddr = kmap_atomic(page);
+		memcpy(buf, kaddr + (off & ~PAGE_MASK), len);
+		kunmap_atomic(kaddr);
+		put_page(page);
+
+		buf += len;
+		off += len;
+		size -= len;
+	} while (size > 0);
+
+out:
+	up_write(&p->mm->mmap_sem);
+	put_task_struct(p);
+
+	return rc;
+}
+EXPORT_SYMBOL(dtrace_copy_code);
+
+static int handler(struct uprobe_consumer *self, struct pt_regs *regs,
+		   int is_ret)
 {
 	fasttrap_machtp_t	*mtp = container_of(self, fasttrap_machtp_t,
 						    fmtp_cns);
@@ -796,13 +883,24 @@ static int handler(struct uprobe_consumer *self, struct pt_regs *regs)
 	if (dtrace_tracepoint_hit == NULL)
 		pr_warn("Fasttrap probes, but no handler\n");
 	else
-		rc = (*dtrace_tracepoint_hit)(mtp, regs);
+		rc = (*dtrace_tracepoint_hit)(mtp, regs, is_ret);
 	read_unlock(&this_cpu_core->cpu_ft_lock);
 
 	return rc;
 }
 
-int dtrace_tracepoint_enable(pid_t pid, uintptr_t addr,
+static int prb_handler(struct uprobe_consumer *self, struct pt_regs *regs)
+{
+	return handler(self, regs, 0);
+}
+
+static int ret_handler(struct uprobe_consumer *self, unsigned long func,
+		       struct pt_regs *regs)
+{
+	return handler(self, regs, 1);
+}
+
+int dtrace_tracepoint_enable(pid_t pid, uintptr_t addr, int is_ret,
 			     fasttrap_machtp_t *mtp)
 {
 	struct task_struct	*p;
@@ -827,7 +925,10 @@ int dtrace_tracepoint_enable(pid_t pid, uintptr_t addr,
 	ino = vma->vm_file->f_mapping->host;
 	off = ((loff_t)vma->vm_pgoff << PAGE_SHIFT) + (addr - vma->vm_start);
 
-	mtp->fmtp_cns.handler = handler;
+	if (is_ret)
+		mtp->fmtp_cns.ret_handler = ret_handler;
+	else
+		mtp->fmtp_cns.handler = prb_handler;
 
 	rc = uprobe_register(ino, off, &mtp->fmtp_cns);
 
@@ -850,15 +951,8 @@ int dtrace_tracepoint_disable(pid_t pid, fasttrap_machtp_t *mtp)
 {
 	struct task_struct	*p;
 
-	if (!mtp || !mtp->fmtp_ino) {
-		pr_warn("DTRACE: Tracepoint was never enabled\n");
+	if (!mtp || !mtp->fmtp_ino)
 		return -ENOENT;
-	}
-
-	if (!mtp->fmtp_cns.handler) {
-		pr_warn("DTRACE: No handler for tracepoint\n");
-		return -ENOENT;
-	}
 
 	uprobe_unregister(mtp->fmtp_ino, mtp->fmtp_off, &mtp->fmtp_cns);
 

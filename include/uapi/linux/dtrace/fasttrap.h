@@ -2,7 +2,7 @@
  * Licensed under the Universal Permissive License v 1.0 as shown at
  * http://oss.oracle.com/licenses/upl.
  *
- * Copyright (c) 2009, 2013, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2009, 2018, Oracle and/or its affiliates. All rights reserved.
  */
 
 /*
@@ -26,14 +26,14 @@ typedef enum fasttrap_probe_type {
 } fasttrap_probe_type_t;
 
 typedef struct fasttrap_probe_spec {
-	pid_t ftps_pid;
-	fasttrap_probe_type_t ftps_type;
-	char ftps_func[DTRACE_FUNCNAMELEN];
-	char ftps_mod[DTRACE_MODNAMELEN];
-	uint64_t ftps_pc;
-	uint64_t ftps_size;
-	uint64_t ftps_noffs;
-	uint64_t ftps_offs[1];
+	pid_t ftps_pid;				/* task PID */
+	fasttrap_probe_type_t ftps_type;	/* probe type */
+	char ftps_func[DTRACE_FUNCNAMELEN];	/* probe function */
+	char ftps_mod[DTRACE_MODNAMELEN];	/* probe module */
+	uint64_t ftps_pc;			/* probe address */
+	uint64_t ftps_size;			/* function size (in bytes) */
+	uint8_t ftps_glen;			/* glob pattern length */
+	char ftps_gstr[1];			/* glob pattern string */
 } fasttrap_probe_spec_t;
 
 typedef uint8_t		fasttrap_instr_t;

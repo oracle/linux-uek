@@ -2,7 +2,7 @@
  * FILE:	dtrace_util.c
  * DESCRIPTION:	Dynamic Tracing: Architecture utility functions
  *
- * Copyright (c) 2010, 2017, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2010, 2018, Oracle and/or its affiliates. All rights reserved.
  */
 
 #include <linux/dtrace_cpu.h>
@@ -24,20 +24,33 @@
 #include <asm/dtrace_arch.h>
 #include <asm/dtrace_util.h>
 
+int dtrace_instr_size(const asm_instr_t *addr)
+{
+	struct insn		insn;
+
+	kernel_insn_init(&insn, addr, MAX_INSN_SIZE);
+	insn_get_length(&insn);
+
+	return insn_complete(&insn) ? insn.length : -1;
+}
+EXPORT_SYMBOL(dtrace_instr_size);
+
 /*
  * Move the instruction pointer forward to the next instruction, effectiely
  * skipping the current one.
  */
-void dtrace_skip_instruction(struct pt_regs *regs) {
-	struct insn		insn;
+void dtrace_skip_instruction(struct pt_regs *regs)
+{
+	int	delta;
 
-	kernel_insn_init(&insn, (void *)regs->ip, MAX_INSN_SIZE);
-	insn_get_length(&insn);
+	delta = dtrace_instr_size((asm_instr_t *)regs->ip);
+	BUG_ON(delta <= 0);
 
-	regs->ip += insn.length;
+	regs->ip += delta;
 }
 
-void dtrace_handle_badaddr(struct pt_regs *regs) {
+void dtrace_handle_badaddr(struct pt_regs *regs)
+{
 	unsigned long	addr = read_cr2();
 
 	DTRACE_CPUFLAG_SET(CPU_DTRACE_BADADDR);

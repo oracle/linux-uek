@@ -1,7 +1,7 @@
 /*
  * Dynamic Tracing for Linux - fasttrap provider
  *
- * Copyright (c) 2010, 2017, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2010, 2018, Oracle and/or its affiliates. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -103,8 +103,6 @@ struct fasttrap_probe {
 	dtrace_id_t ftp_id;			/* DTrace probe identifier */
 	pid_t ftp_pid;				/* pid for this probe */
 	fasttrap_provider_t *ftp_prov;		/* this probe's provider */
-	uintptr_t ftp_faddr;			/* associated function's addr */
-	size_t ftp_fsize;			/* associated function's size */
 	uint64_t ftp_gen;			/* modification generation */
 	uint64_t ftp_ntps;			/* number of tracepoints */
 	uint8_t *ftp_argmap;			/* native to translated args */
@@ -149,11 +147,16 @@ extern fasttrap_hash_t			fasttrap_tpoints;
 	(((pc) / sizeof (fasttrap_instr_t) + (pid)) &			      \
 	 fasttrap_tpoints.fth_mask)
 
-extern void fasttrap_usdt_args64_arch(fasttrap_probe_t *probe, struct pt_regs *regs,
-				      int argc, uintptr_t *argv);
+extern uint64_t *fasttrap_glob_offsets(fasttrap_probe_spec_t *probe,
+				       uint64_t *np);
+extern uint64_t fasttrap_pid_getarg(void *arg, dtrace_id_t id, void *parg,
+				    int argno, int aframes);
 extern uint64_t fasttrap_usdt_getarg(void *arg, dtrace_id_t id, void *parg,
 				     int argno, int aframes);
-extern void fasttrap_pid_probe_arch(fasttrap_probe_t *ftp, struct pt_regs *regs);
+extern void fasttrap_pid_probe_arch(fasttrap_probe_t *ftp,
+				    struct pt_regs *regs);
+extern void fasttrap_pid_retprobe_arch(fasttrap_probe_t *ftp,
+				       struct pt_regs *regs);
 extern void fasttrap_set_enabled(struct pt_regs *regs);
 
 extern void fasttrap_meta_create_probe(void *, void *,
@@ -162,6 +165,7 @@ extern void *fasttrap_meta_provide(void *, dtrace_helper_provdesc_t *, pid_t);
 extern void fasttrap_meta_remove(void *, dtrace_helper_provdesc_t *, pid_t);
 
 extern dtrace_meta_provider_id_t	fasttrap_id;
+extern dtrace_mops_t			fasttrap_mops;
 
 extern int fasttrap_dev_init(void);
 extern void fasttrap_dev_exit(void);

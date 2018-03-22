@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011, 2017, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2011, 2018, Oracle and/or its affiliates. All rights reserved.
  */
 
 #ifndef _LINUX_DTRACE_OS_H_
@@ -60,6 +60,7 @@ extern void dtrace_vtime_switch(struct task_struct *, struct task_struct *);
 
 #include <asm/dtrace_util.h>
 
+extern int dtrace_instr_size(const asm_instr_t *);
 extern void dtrace_skip_instruction(struct pt_regs *);
 
 extern int dtrace_die_notifier(struct notifier_block *, unsigned long, void *);
@@ -113,12 +114,13 @@ typedef struct fasttrap_machtp {
 	struct uprobe_consumer	fmtp_cns;
 } fasttrap_machtp_t;
 
-extern int (*dtrace_tracepoint_hit)(fasttrap_machtp_t *, struct pt_regs *);
+extern int (*dtrace_tracepoint_hit)(fasttrap_machtp_t *, struct pt_regs *, int);
 
 extern struct task_struct *register_pid_provider(pid_t);
 extern void unregister_pid_provider(pid_t);
 
-extern int dtrace_tracepoint_enable(pid_t, uintptr_t, fasttrap_machtp_t *);
+extern int dtrace_copy_code(pid_t, uint8_t *, uintptr_t, size_t);
+extern int dtrace_tracepoint_enable(pid_t, uintptr_t, int, fasttrap_machtp_t *);
 extern int dtrace_tracepoint_disable(pid_t, fasttrap_machtp_t *);
 #endif /* CONFIG_DT_FASTTRAP || CONFIG_DT_FASTTRAP_MODULE */
 

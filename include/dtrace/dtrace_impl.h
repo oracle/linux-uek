@@ -1,7 +1,7 @@
 /*
  * Dynamic Tracing for Linux - Implementation
  *
- * Copyright (c) 2009, 2017, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2009, 2018, Oracle and/or its affiliates. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -1113,6 +1113,8 @@ extern void dtrace_state_destroy(dtrace_state_t *);
 /*
  * DTrace Utility Functions
  */
+extern int dtrace_isglob(const char *);
+extern int dtrace_gmatch(const char *, const char *);
 extern void *dtrace_vzalloc(unsigned long);
 extern void *dtrace_vzalloc_try(unsigned long);
 extern char *dtrace_strdup(const char *);

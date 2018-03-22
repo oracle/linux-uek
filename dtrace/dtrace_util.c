@@ -2,7 +2,7 @@
  * FILE:	dtrace_util.c
  * DESCRIPTION:	DTrace - utility functions
  *
- * Copyright (c) 2010, 2016, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2010, 2018, Oracle and/or its affiliates. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -21,6 +21,115 @@
 #include <asm/pgtable.h>
 
 #include "dtrace.h"
+
+int dtrace_isglob(const char *s)
+{
+	char	c;
+
+	while ((c = *s++) != '\0') {
+		if (c == '[' || c == '?' || c == '*' || c == '\\')
+			return 1;
+	}
+
+	return 0;
+}
+EXPORT_SYMBOL(dtrace_isglob);
+
+int dtrace_gmatch(const char *s, const char *p)
+{
+	const char	*olds = s;
+	char		sc;
+	char		pc;
+
+	sc = *s++;
+	pc = *p++;
+
+	if (!pc)
+		return !sc;
+
+	switch (pc) {
+	case '[': {
+		int	ok = 0;
+		char	lc = '\0';
+		int	inv = 0;
+
+		if (!sc)
+			return 0;
+
+		if (*p == '!') {
+			inv = 1;
+			p++;
+		}
+
+		pc = *p++;
+		do {
+			if (pc == '-' && lc && *p != ']') {
+				pc = *p++;
+				if (pc == '\\')
+					pc = *p++;
+
+				if (inv) {
+					if (sc < lc || sc > pc)
+						ok++;
+					else
+						return 0;
+				} else {
+					if (lc <= sc && sc <= pc)
+						ok++;
+				}
+			} else if (pc == '\\') {
+				pc = *p++;
+			}
+
+			lc = sc;
+
+			if (inv) {
+				if (sc != lc)
+					ok++;
+				else
+					return 0;
+			} else {
+				if (sc == lc)
+					ok++;
+			}
+
+			pc = *p++;
+		} while (pc != ']');
+
+		return ok ? dtrace_gmatch(s, p) : 0;
+	}
+	case '\\':
+		pc = *p++;
+		if (!pc)
+			return 0;
+
+		/* fall-through */
+	default:
+		if (pc != sc)
+			return 0;
+
+		/* fall-through */
+	case '?':
+		return sc ? dtrace_gmatch(s, p) : 0;
+	case '*':
+		while (*p == '*')
+			p++;
+
+		if (!*p)
+			return 1;
+
+		s = olds;
+		while (*s) {
+			if (dtrace_gmatch(s, p))
+				return 1;
+
+			s++;
+		}
+
+		return 0;
+	}
+}
+EXPORT_SYMBOL(dtrace_gmatch);
 
 int dtrace_badattr(const dtrace_attribute_t *a)
 {

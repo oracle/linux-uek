@@ -2,7 +2,7 @@
  * FILE:	fasttrap_mod.c
  * DESCRIPTION:	DTrace - fasttrap provider kernel module
  *
- * Copyright (c) 2010, 2013, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2010, 2018, Oracle and/or its affiliates. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -17,6 +17,8 @@
 
 #include <linux/module.h>
 
+#define DTRACE_HAVE_PROV_EXIT
+
 #include "dtrace.h"
 #include "dtrace_dev.h"
 #include "fasttrap_impl.h"
@@ -26,7 +28,7 @@ MODULE_DESCRIPTION("Fasttrap Tracing");
 MODULE_VERSION("v0.1");
 MODULE_LICENSE("GPL");
 
-static dtrace_mops_t fasttrap_mops = {
+dtrace_mops_t fasttrap_mops = {
 	fasttrap_meta_create_probe,
 	fasttrap_meta_provide,
 	fasttrap_meta_remove

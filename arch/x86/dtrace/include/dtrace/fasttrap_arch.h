@@ -1,7 +1,7 @@
 /*
  * Dynamic Tracing for Linux - Fasttrap provider implementation defines
  *
- * Copyright (c) 2016, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2016, 2018, Oracle and/or its affiliates. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -22,6 +22,8 @@
 #ifndef _X86_64_FASTTRAP_ARCH_H
 #define _X86_64_FASTTRAP_ARCH_H
 
-#define FASTTRAP_OFFSET_AFRAMES	3
+#define FASTTRAP_ENTRY_AFRAMES	8
+#define FASTTRAP_RETURN_AFRAMES	8
+#define FASTTRAP_OFFSET_AFRAMES	8
 
 #endif /* _X86_64_FASTTRAP_ARCH_H */
