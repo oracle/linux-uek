@@ -25,10 +25,13 @@
 	};
 };
 
-/* uart0 communicates with the BT module */
+/* No BT, restore the serial console on the same place U-boot has,
+ * no flow control.
+ */
+
 &uart0 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&uart0_gpio32 &gpclk2_gpio43>;
+	pinctrl-0 = <&uart0_gpio14>;
 	status = "okay";
 };
 
@@ -36,7 +39,7 @@
 &uart1 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&uart1_gpio14>;
-	status = "okay";
+	status = "disabled";
 };
 
 /* SDHCI is used to control the SDIO for wireless */
