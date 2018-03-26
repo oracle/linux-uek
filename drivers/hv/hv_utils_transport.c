@@ -67,10 +67,6 @@ static ssize_t hvt_op_read(struct file *file, char __user *buf,
 	hvt->outmsg = NULL;
 	hvt->outmsg_len = 0;
 
-	if (hvt->on_read)
-		hvt->on_read();
-	hvt->on_read = NULL;
-
 out_unlock:
 	mutex_unlock(&hvt->outmsg_lock);
 	return ret;
@@ -181,8 +177,7 @@ static void hvt_cn_callback(struct cn_msg *msg, struct netlink_skb_parms *nsp)
 		pr_warn("hvt_cn_callback: unexpected netlink message!\n");
 }
 
-int hvutil_transport_send(struct hvutil_transport *hvt, void *msg, int len,
-			  void (*on_read_cb)(void))
+int hvutil_transport_send(struct hvutil_transport *hvt, void *msg, int len)
 {
 	struct cn_msg *cn_msg;
 	int ret = 0;
@@ -199,13 +194,6 @@ int hvutil_transport_send(struct hvutil_transport *hvt, void *msg, int len,
 		memcpy(cn_msg->data, msg, len);
 		ret = cn_netlink_send(cn_msg, 0, 0, GFP_ATOMIC);
 		kfree(cn_msg);
-		/*
-		 * We don't know when netlink messages are delivered but unlike
-		 * in CHARDEV mode we're not blocked and we can send next
-		 * messages right away.
-		 */
-		if (on_read_cb)
-			on_read_cb();
 		return ret;
 	}
 	/* HVUTIL_TRANSPORT_CHARDEV */
@@ -219,7 +207,6 @@ int hvutil_transport_send(struct hvutil_transport *hvt, void *msg, int len,
 	if (hvt->outmsg) {
 		memcpy(hvt->outmsg, msg, len);
 		hvt->outmsg_len = len;
-		hvt->on_read = on_read_cb;
 		wake_up_interruptible(&hvt->outmsg_q);
 	} else
 		ret = -ENOMEM;
