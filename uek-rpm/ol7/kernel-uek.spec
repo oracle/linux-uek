@@ -296,6 +296,7 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 #%define all_arch_configs kernel-%{version}-x86_64*.config
 %define image_install_path boot
 %define kernel_image arch/x86/boot/bzImage
+%define with_tools 1
 %endif
 
 %ifarch ppc64
@@ -563,7 +564,7 @@ BuildRequires: numactl-devel
 %endif
 %endif
 %if %{with_tools}
-BuildRequires: pciutils-devel gettext ncurses-devel
+BuildRequires: asciidoc pciutils-devel gettext ncurses-devel
 %endif # with_tools
 BuildConflicts: rhbuildsys(DiskFree) < 500Mb
 
@@ -753,6 +754,10 @@ Group: Development/System
 License: GPLv2
 Provides: kernel-uek-tools
 Provides: kernel-tools
+Obsoletes: qemu-kvm-tools
+Obsoletes: qemu-kvm-tools-ev
+Provides: qemu-kvm-tools
+%ifarch %{cpupowerarchs}
 Provides:  cpupowerutils = 1:009-0.6.p1
 Obsoletes: cpupowerutils < 1:009-0.6.p1
 Provides:  cpufreq-utils = 1:009-0.6.p1
@@ -761,6 +766,7 @@ Obsoletes: cpufreq-utils < 1:009-0.6.p1
 Obsoletes: cpufrequtils < 1:009-0.6.p1
 Obsoletes: cpuspeed < 1:1.5-16
 Requires: kernel-uek-tools-libs = %{version}-%{release}
+%endif # cpupowerarchs
 %define __requires_exclude ^%{_bindir}/python
 %description -n kernel-uek-tools
 This package contains the tools/ directory from the kernel source
@@ -1951,9 +1957,9 @@ fi
 %endif # with_perf
 
 %if %{with_tools}
+%ifarch %{cpupowerarchs}
 %files -n kernel-uek-tools -f cpupower.lang
 %defattr(-,root,root)
-%ifarch %{cpupowerarchs}
 %{_bindir}/cpupower
 %{_unitdir}/cpupower.service
 %{_mandir}/man[1-8]/cpupower*
@@ -1967,7 +1973,14 @@ fi
 %{_bindir}/gpio-event-mon
 %{_mandir}/man1/kvm_stat*
 %{_bindir}/kvm_stat
-%endif # with_tools
+%endif # cpupowerarchs
+
+%ifarch x86_64
+%files -n kernel-uek-tools
+%defattr(-,root,root)
+%{_mandir}/man1/kvm_stat*
+%{_bindir}/kvm_stat
+%endif
 
 %if %{with_debuginfo}
 %files -f kernel-tools-debuginfo.list -n kernel-uek-tools-debuginfo
@@ -1983,7 +1996,7 @@ fi
 %{_libdir}/libcpupower.so
 %{_includedir}/cpufreq.h
 %endif # cpupowerarchs
-%endif # with_perf
+%endif # with_tools
 
 # only some architecture builds need kernel-doc
 %if %{with_doc}
