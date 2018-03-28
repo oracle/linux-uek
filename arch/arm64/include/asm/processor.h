@@ -37,7 +37,6 @@
 #include <linux/string.h>
 
 #include <asm/alternative.h>
-#include <asm/fpsimd.h>
 #include <asm/hw_breakpoint.h>
 #include <asm/lse.h>
 #include <asm/pgtable-hwdef.h>
@@ -107,7 +106,8 @@ struct thread_struct {
 #ifdef CONFIG_COMPAT
 	unsigned long		tp2_value;
 #endif
-	struct fpsimd_state	fpsimd_state;
+	struct user_fpsimd_state fpsimd_state;
+	unsigned int		fpsimd_cpu;
 	void			*sve_state;	/* SVE registers, if any */
 	unsigned int		sve_vl;		/* SVE vector length */
 	unsigned int		sve_vl_onexec;	/* SVE vl after next exec */
