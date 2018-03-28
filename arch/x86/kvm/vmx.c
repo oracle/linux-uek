@@ -4769,6 +4769,7 @@ static void vmx_vcpu_reset(struct kvm_vcpu *vcpu)
 	struct msr_data apic_base_msr;
 
 	vmx->rmode.vm86_active = 0;
+	vmx->spec_ctrl = 0;
 
 	vmx->vcpu.arch.regs[VCPU_REGS_RDX] = get_rdx_init_val();
 	kvm_set_cr8(&vmx->vcpu, 0);
