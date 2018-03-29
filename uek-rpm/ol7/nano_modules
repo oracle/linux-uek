@@ -584,6 +584,7 @@ kernel/drivers/vfio/vfio_virqfd.ko
 kernel/drivers/vhost/vhost.ko
 kernel/drivers/vhost/vhost_net.ko
 kernel/drivers/vhost/vhost_scsi.ko
+kernel/drivers/vhost/vhost_vsock.ko
 kernel/drivers/video/backlight/lcd.ko
 kernel/drivers/video/backlight/platform_lcd.ko
 kernel/drivers/video/fbdev/aty/aty128fb.ko
@@ -821,6 +822,7 @@ kernel/net/ipv4/netfilter/nf_nat_pptp.ko
 kernel/net/ipv4/netfilter/nf_nat_proto_gre.ko
 kernel/net/ipv4/netfilter/nf_nat_snmp_basic.ko
 kernel/net/ipv4/netfilter/nf_reject_ipv4.ko
+kernel/net/ipv4/netfilter/nf_socket_ipv4.ko
 kernel/net/ipv4/netfilter/nf_tables_arp.ko
 kernel/net/ipv4/netfilter/nf_tables_ipv4.ko
 kernel/net/ipv4/netfilter/nft_chain_nat_ipv4.ko
@@ -880,6 +882,7 @@ kernel/net/ipv6/netfilter/nf_log_ipv6.ko
 kernel/net/ipv6/netfilter/nf_nat_ipv6.ko
 kernel/net/ipv6/netfilter/nf_nat_masquerade_ipv6.ko
 kernel/net/ipv6/netfilter/nf_reject_ipv6.ko
+kernel/net/ipv6/netfilter/nf_socket_ipv6.ko
 kernel/net/ipv6/netfilter/nf_tables_ipv6.ko
 kernel/net/ipv6/netfilter/nft_chain_nat_ipv6.ko
 kernel/net/ipv6/netfilter/nft_chain_route_ipv6.ko
@@ -958,6 +961,7 @@ kernel/net/netfilter/nfnetlink_log.ko
 kernel/net/netfilter/nfnetlink_queue.ko
 kernel/net/netfilter/nf_synproxy_core.ko
 kernel/net/netfilter/nf_tables_inet.ko
+kernel/net/netfilter/nf_tables_netdev.ko
 kernel/net/netfilter/nf_tables.ko
 kernel/net/netfilter/nft_compat.ko
 kernel/net/netfilter/nft_counter.ko
@@ -1063,6 +1067,7 @@ kernel/net/sched/act_vlan.ko
 kernel/net/sched/cls_basic.ko
 kernel/net/sched/cls_bpf.ko
 kernel/net/sched/cls_flow.ko
+kernel/net/sched/cls_flower.ko
 kernel/net/sched/cls_fw.ko
 kernel/net/sched/cls_route.ko
 kernel/net/sched/cls_rsvp6.ko
@@ -1104,6 +1109,8 @@ kernel/net/sunrpc/auth_gss/rpcsec_gss_krb5.ko
 kernel/net/sunrpc/sunrpc.ko
 kernel/net/sunrpc/xprtrdma/rpcrdma.ko
 kernel/net/unix/unix_diag.ko
+kernel/net/vmw_vsock/vmw_vsock_virtio_transport.ko
+kernel/net/vmw_vsock/vmw_vsock_virtio_transport_common.ko
 kernel/net/vmw_vsock/vsock.ko
 kernel/net/xfrm/xfrm_ipcomp.ko
 kernel/virt/lib/irqbypass.ko
