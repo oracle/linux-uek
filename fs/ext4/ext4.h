@@ -3171,4 +3171,7 @@ static inline void ext4_clear_io_unwritten_flag(ext4_io_end_t *io_end)
 
 #endif	/* __KERNEL__ */
 
+#define EFSBADCRC      EBADMSG         /* Bad CRC detected */
+#define EFSCORRUPTED   EUCLEAN         /* Filesystem is corrupted */
+
 #endif	/* _EXT4_H */
