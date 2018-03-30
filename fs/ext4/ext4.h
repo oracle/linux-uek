@@ -2234,4 +2234,7 @@ extern struct mutex ext4__aio_mutex[EXT4_WQ_HASH_SZ];
 
 #endif	/* __KERNEL__ */
 
+#define EFSBADCRC      EBADMSG         /* Bad CRC detected */
+#define EFSCORRUPTED   EUCLEAN         /* Filesystem is corrupted */
+
 #endif	/* _EXT4_H */
