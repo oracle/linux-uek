@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2006, 2017 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2006, 2018 Oracle and/or its affiliates. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -947,7 +947,7 @@ static u32 rds_ib_protocol_compatible(struct rdma_cm_event *event, bool isv6)
 	return version;
 }
 
-/* Given an IPv6 address, find the IB net_device which hosts that address and
+/* Given an IPv6 address, find the net_device which hosts that address and
  * return its index.  This is used by the rds_ib_cm_handle_connect() code to
  * find the interface index of where an incoming request comes from when
  * the request is using a link local address.
@@ -964,8 +964,7 @@ static u32 __rds_find_ifindex(struct net *net, const struct in6_addr *addr)
 
 	rcu_read_lock();
 	for_each_netdev_rcu(net, dev) {
-		if (dev->type == ARPHRD_INFINIBAND &&
-		    ipv6_chk_addr(net, addr, dev, 0)) {
+		if (ipv6_chk_addr(net, addr, dev, 0)) {
 			idx = dev->ifindex;
 			break;
 		}
