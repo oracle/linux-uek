@@ -8,6 +8,7 @@ obj-$(CONFIG_PCIEPORTBUS)	+= pcieportdrv.o
 
 obj-$(CONFIG_PCIEASPM)		+= aspm.o
 obj-$(CONFIG_PCIEAER)		+= aer/
-obj-$(CONFIG_PCIE_PME)		+= pme.o
-obj-$(CONFIG_PCIE_DPC)		+= pcie-dpc.o
-obj-$(CONFIG_PCIE_PTM)		+= ptm.o
+obj-$(CONFIG_PCIE_PME) += pme.o
+
+obj-$(CONFIG_PCIE_DPC) += dpc.o
+obj-$(CONFIG_PCIE_PTM) += ptm.o
