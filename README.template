@@ -10,7 +10,7 @@ The source for UEK has always been available at [oss.oracle.com](https://oss.ora
 
 This repository hosts source code for UEK versions which are in development and in production. 
 
-| UEK Release | Linux Kernel version | Release Status | Target Arch | Target Userspace Distribution(s) |
+| UEK Release and Tag | Linux Kernel version | Release Status | Target Arch | Target Userspace Distribution(s) |
 |--------------------|-----------------------------|----------------------|-----------------|--------------------------------------------|
 | ##uek5/master## | v4.14 | Development | `x86_64`, `aarch64` | Oracle Linux 7 |
 | ##uek4/master## | v4.1 | Production | `x86_64`, `SPARC` | Oracle Linux 6, Oracle Linux 7 |
