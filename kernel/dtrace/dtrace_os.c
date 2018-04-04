@@ -375,7 +375,7 @@ void dtrace_stacktrace(stacktrace_state_t *st)
 	 * Since ULONG_MAX inever a valid PC, we can just check for that.
 	 */
 	st->depth = trace.nr_entries;
-#ifdef CONFIG_X86_64
+#if defined(CONFIG_X86_64) || defined(CONFIG_ARM64)
 	if (trace.nr_entries && st->pcs[trace.nr_entries - 1] == ULONG_MAX)
 		st->depth = trace.nr_entries - 1;
 #endif
