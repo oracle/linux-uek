@@ -74,6 +74,7 @@
 	__skb_checksum_complete
 	__skb_get_hash
 	__skb_gso_segment
+	__stack_chk_fail
 	__sw_hweight32
 	__symbol_get
 	__symbol_put
@@ -907,6 +908,7 @@
 	blk_fetch_request
 	mempool_create
 	elevator_init
+	__stack_chk_fail
 	blk_queue_physical_block_size
 	blk_execute_rq
 	bd_set_size
