@@ -286,16 +286,16 @@ dma_unmap_wqe_err:
 	return -ENOMEM;
 }
 
-static inline void mlx5e_fill_sq_edge(struct mlx5e_txqsq *sq,
-				      struct mlx5_wq_cyc *wq,
-				      u16 pi)
+static inline void mlx5e_fill_sq_frag_edge(struct mlx5e_txqsq *sq,
+					   struct mlx5_wq_cyc *wq,
+					   u16 pi, u16 frag_pi)
 {
 	struct mlx5e_tx_wqe_info *edge_wi, *wi = &sq->db.wqe_info[pi];
-	u8 nnops = mlx5_wq_cyc_get_size(wq) - pi;
+	u8 nnops = mlx5_wq_cyc_get_frag_size(wq) - frag_pi;
 
 	edge_wi = wi + nnops;
 
-	/* fill sq edge with nops to avoid wqe wrap around */
+	/* fill sq frag edge with nops to avoid wqe wrapping two pages */
 	for (; wi < edge_wi; wi++) {
 		wi->skb        = NULL;
 		wi->num_wqebbs = 1;
@@ -348,8 +348,8 @@ static netdev_tx_t mlx5e_sq_xmit(struct mlx5e_txqsq *sq, struct sk_buff *skb,
 	unsigned char *skb_data = skb->data;
 	unsigned int skb_len = skb->len;
 	u16 ds_cnt, ds_cnt_inl = 0;
+	u16 headlen, ihs, frag_pi;
 	u8 num_wqebbs, opcode;
-	u16 headlen, ihs;
 	u32 num_bytes;
 	int num_dma;
 	__be16 mss;
@@ -385,8 +385,9 @@ static netdev_tx_t mlx5e_sq_xmit(struct mlx5e_txqsq *sq, struct sk_buff *skb,
 	}
 
 	num_wqebbs = DIV_ROUND_UP(ds_cnt, MLX5_SEND_WQEBB_NUM_DS);
-	if (unlikely(pi + num_wqebbs > mlx5_wq_cyc_get_size(wq))) {
-		mlx5e_fill_sq_edge(sq, wq, pi);
+	frag_pi = mlx5_wq_cyc_ctr2fragix(wq, sq->pc);
+	if (unlikely(frag_pi + num_wqebbs > mlx5_wq_cyc_get_frag_size(wq))) {
+		mlx5e_fill_sq_frag_edge(sq, wq, pi, frag_pi);
 		mlx5e_sq_fetch_wqe(sq, &wqe, &pi);
 	}
 
@@ -436,7 +437,7 @@ netdev_tx_t mlx5e_xmit(struct sk_buff *skb, struct net_device *dev)
 	struct mlx5e_priv *priv = netdev_priv(dev);
 	struct mlx5e_txqsq *sq = priv->txq2sq[skb_get_queue_mapping(skb)];
 	struct mlx5_wq_cyc *wq = &sq->wq;
-	u16 pi = sq->pc & wq->sz_m1;
+	u16 pi = mlx5_wq_cyc_ctr2ix(wq, sq->pc);
 	struct mlx5e_tx_wqe *wqe = mlx5_wq_cyc_get_wqe(wq, pi);
 
 	memset(wqe, 0, sizeof(*wqe));
@@ -604,9 +605,9 @@ netdev_tx_t mlx5i_sq_xmit(struct mlx5e_txqsq *sq, struct sk_buff *skb,
 
 	unsigned char *skb_data = skb->data;
 	unsigned int skb_len = skb->len;
+	u16 headlen, ihs, pi, frag_pi;
 	u16 ds_cnt, ds_cnt_inl = 0;
 	u8 num_wqebbs, opcode;
-	u16 headlen, ihs, pi;
 	u32 num_bytes;
 	int num_dma;
 	__be16 mss;
@@ -642,8 +643,9 @@ netdev_tx_t mlx5i_sq_xmit(struct mlx5e_txqsq *sq, struct sk_buff *skb,
 	}
 
 	num_wqebbs = DIV_ROUND_UP(ds_cnt, MLX5_SEND_WQEBB_NUM_DS);
-	if (unlikely(pi + num_wqebbs > mlx5_wq_cyc_get_size(wq))) {
-		mlx5e_fill_sq_edge(sq, wq, pi);
+	frag_pi = mlx5_wq_cyc_ctr2fragix(wq, sq->pc);
+	if (unlikely(frag_pi + num_wqebbs > mlx5_wq_cyc_get_frag_size(wq))) {
+		mlx5e_fill_sq_frag_edge(sq, wq, pi, frag_pi);
 		mlx5i_sq_fetch_wqe(sq, &wqe, &pi);
 	}
 
