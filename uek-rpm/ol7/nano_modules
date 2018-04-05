@@ -153,6 +153,7 @@ kernel/drivers/edac/sb_edac.ko
 kernel/drivers/edac/x38_edac.ko
 kernel/drivers/firmware/edd.ko
 kernel/drivers/firmware/iscsi_ibft.ko
+kernel/drivers/gpu/drm/virtio/virtio-gpu.ko
 kernel/drivers/hv/hv_balloon.ko
 kernel/drivers/hv/hv_utils.ko
 kernel/drivers/hv/hv_vmbus.ko
