@@ -830,11 +830,30 @@ static int dtrace_dof_relocate(dof_hdr_t *dof, dof_sec_t *sec, uint64_t ubase)
 				return -1;
 			}
 
-			dt_dbg_dof("      Relocate 0x%llx + 0x%llx = 0x%llx\n",
-				   *(uint64_t *)taddr, ubase,
-				   *(uint64_t *)taddr + ubase);
+			/*
+			 * This is a bit ugly but it is necessary for arm64,
+			 * where the linking of shared libraries retains the
+			 * relocation records for the .SUNW_dof section.  In
+			 * that case, the runtime loader already performed the
+			 * relocation, so we do not have to do anything here.
+			 *
+			 * We check for this situation by comparing the target
+			 * address against the base address (ubase).  If it is
+			 * larger, we assume the relocation already took place.
+			 */
+			if (*(uint64_t *)taddr > ubase)
+				dt_dbg_dof("      Relocation by runtime " \
+					   "loader: 0x%llx (base 0x%llx)\n",
+					   *(uint64_t *)taddr, ubase);
+			else {
+				dt_dbg_dof("      Relocate 0x%llx + 0x%llx " \
+					   "= 0x%llx\n",
+					   *(uint64_t *)taddr, ubase,
+					   *(uint64_t *)taddr + ubase);
 
-			*(uint64_t *)taddr += ubase;
+				*(uint64_t *)taddr += ubase;
+			}
+
 			break;
 		default:
 			dtrace_dof_error(dof, "invalid relocation type");
