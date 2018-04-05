@@ -316,6 +316,12 @@ struct ib_cq_caps {
 	u16     max_cq_moderation_period;
 };
 
+struct ib_dm_alloc_attr {
+	u64	length;
+	u32	alignment;
+	u32	flags;
+};
+
 struct ib_device_attr {
 	u64			fw_ver;
 	__be64			sys_image_guid;
@@ -1795,6 +1801,14 @@ struct ib_qp {
 	struct rdma_restrack_entry     res;
 };
 
+struct ib_dm {
+	struct ib_device  *device;
+	u32		   length;
+	u32		   flags;
+	struct ib_uobject *uobject;
+	atomic_t	   usecnt;
+};
+
 struct ib_mr {
 	struct ib_device  *device;
 	struct ib_pd	  *pd;
@@ -2475,7 +2489,11 @@ struct ib_device {
 	int			   (*modify_flow_action_esp)(struct ib_flow_action *action,
 							     const struct ib_flow_action_attrs_esp *attr,
 							     struct uverbs_attr_bundle *attrs);
-
+	struct ib_dm *             (*alloc_dm)(struct ib_device *device,
+					       struct ib_ucontext *context,
+					       struct ib_dm_alloc_attr *attr,
+					       struct uverbs_attr_bundle *attrs);
+	int                        (*dealloc_dm)(struct ib_dm *dm);
 	/**
 	 * rdma netdev operation
 	 *
