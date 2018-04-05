@@ -426,7 +426,7 @@ struct vm_operations_struct {
 					  unsigned long addr);
 
 	/* Space for future expansion without breaking kABI. */
-	UEK_KABI_RESERVED_P(1);
+	UEK_KABI_USE_P(1, unsigned long (*pagesize)(struct vm_area_struct * area));
 	UEK_KABI_RESERVED_P(2);
 	UEK_KABI_RESERVED_P(3);
 	UEK_KABI_RESERVED_P(4);
