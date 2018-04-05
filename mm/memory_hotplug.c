@@ -562,6 +562,7 @@ static int __remove_section(struct zone *zone, struct mem_section *ms,
  * @zone: zone from which pages need to be removed
  * @phys_start_pfn: starting pageframe (must be aligned to start of a section)
  * @nr_pages: number of pages to remove (must be multiple of section size)
+ * @altmap: alternative device page map or %NULL if default memmap is used
  *
  * Generic helper function to remove section mappings and sysfs entries
  * for the section of the memory we are removing. Caller needs to make
@@ -1058,6 +1059,7 @@ static void rollback_node_hotadd(int nid, pg_data_t *pgdat)
 
 /**
  * try_online_node - online a node if offlined
+ * @nid: the node ID
  *
  * called by cpu_up() to online a node without onlined memory.
  */
@@ -1841,6 +1843,7 @@ static int check_and_unmap_cpu_on_node(pg_data_t *pgdat)
 
 /**
  * try_offline_node
+ * @nid: the node ID
  *
  * Offline a node if all memory sections and cpus of the node are removed.
  *
@@ -1884,6 +1887,9 @@ EXPORT_SYMBOL(try_offline_node);
 
 /**
  * remove_memory
+ * @nid: the node ID
+ * @start: physical address of the region to remove
+ * @size: size of the region to remove
  *
  * NOTE: The caller must call lock_device_hotplug() to serialize hotplug
  * and online/offline operations before this call, as required by
