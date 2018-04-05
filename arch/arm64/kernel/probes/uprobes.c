@@ -183,7 +183,7 @@ static int uprobe_single_step_handler(struct pt_regs *regs,
 	struct uprobe_task *utask = current->utask;
 
 	if (user_mode(regs)) {
-		WARN_ON(utask &&
+		WARN_ON(utask && utask->active_uprobe &&
 			(instruction_pointer(regs) != utask->xol_vaddr + 4));
 
 		if (uprobe_post_sstep_notifier(regs))
