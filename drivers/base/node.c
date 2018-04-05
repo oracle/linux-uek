@@ -405,6 +405,8 @@ int register_mem_sect_under_node(struct memory_block *mem_blk, int nid,
 
 	if (!mem_blk)
 		return -EFAULT;
+
+	mem_blk->nid = nid;
 	if (!node_online(nid))
 		return 0;
 
