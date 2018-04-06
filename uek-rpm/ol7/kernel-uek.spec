@@ -1327,6 +1327,9 @@ hwcap 0 nosegneg"
     mkdir -p $RPM_BUILD_ROOT/lib/modules/$KernelVer/weak-updates
     # first copy everything
     cp --parents `find  -type f -name "Makefile*" -o -name "Kconfig*"` $RPM_BUILD_ROOT/lib/modules/$KernelVer/build
+if grep -q '^CONFIG_STACK_VALIDATION=y' .config ; then
+    cp --parents `find tools/objtool -type f -executable` $RPM_BUILD_ROOT/lib/modules/$KernelVer/build
+fi
     cp Module.symvers $RPM_BUILD_ROOT/lib/modules/$KernelVer/build
     cp System.map $RPM_BUILD_ROOT/lib/modules/$KernelVer/build
     if [ -s Module.markers ]; then
