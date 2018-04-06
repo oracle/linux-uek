@@ -70,6 +70,7 @@ void set_ibrs_disabled(void)
 {
 	dynamic_ibrs &= ~SPEC_CTRL_IBRS_INUSE;
 	ibrs_enabled = IBRS_DISABLED;
+	ibrs_admin_disabled = true;
 	sysctl_ibrs_enabled = dynamic_ibrs;
 }
 
@@ -77,6 +78,7 @@ void set_ibpb_disabled(void)
 {
 	dynamic_ibpb = 0;
 	ibpb_enabled = 0;
+	ibpb_admin_disabled = true;
 	sysctl_ibpb_enabled = dynamic_ibpb;
 }
 
