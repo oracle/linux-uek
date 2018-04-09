@@ -27,9 +27,9 @@ typedef uint32_t dtrace_id_t;
 
 extern struct module	*dtrace_kmod;
 
-extern void dtrace_os_init(void) __init;
-extern void dtrace_psinfo_os_init(void) __init;
-extern void dtrace_task_os_init(void) __init;
+extern void __init dtrace_os_init(void);
+extern void __init dtrace_psinfo_os_init(void);
+extern void __init dtrace_task_os_init(void);
 
 extern void *dtrace_alloc_text(struct module *, unsigned long);
 extern void dtrace_free_text(void *);

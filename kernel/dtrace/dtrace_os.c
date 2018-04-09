@@ -47,7 +47,13 @@
 /*---------------------------------------------------------------------------*\
 (* OS SPECIFIC DTRACE SETUP                                                  *)
 \*---------------------------------------------------------------------------*/
-struct module		*dtrace_kmod = NULL;
+
+/*
+ * DTrace pseudo module that represents vmlinux (the kernel itself).
+ * Since we populate its sdt data members only once, it can be marked
+ * as RO after init.
+ */
+struct module		*dtrace_kmod __ro_after_init = NULL;
 EXPORT_SYMBOL(dtrace_kmod);
 
 int			dtrace_ustackdepth_max = 2048;
@@ -56,8 +62,6 @@ struct kmem_cache	*dtrace_pdata_cachep = NULL;
 
 void __init dtrace_os_init(void)
 {
-	size_t module_size;
-
 	/*
 	 * Setup for module handling.
 	 */
@@ -76,15 +80,13 @@ void __init dtrace_os_init(void)
 	 * DTrace uses an architecture-specific structure (hidden from us here)
 	 * to hold some data.
 	 */
-	module_size = ALIGN(sizeof(struct module), 8);
-	dtrace_kmod = module_alloc(module_size);
+	dtrace_kmod = kmalloc(sizeof(struct module), GFP_KERNEL | __GFP_ZERO);
 	if (dtrace_kmod == NULL) {
 		pr_warning("%s: cannot allocate kernel pseudo-module\n",
 			   __func__);
 		return;
 	}
 
-	memset(dtrace_kmod, 0, module_size);
 	strlcpy(dtrace_kmod->name, "vmlinux", MODULE_NAME_LEN);
 
 	/*

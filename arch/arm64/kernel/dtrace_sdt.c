@@ -2,7 +2,7 @@
  * FILE:        dtrace_sdt.c
  * DESCRIPTION: Dynamic Tracing: SDT registration code (arch-specific)
  *
- * Copyright (C) 2018 Oracle Corporation
+ * Copyright (c) 2018, Oracle and/or its affiliates. All rights reserved.
  */
 
 #include <linux/module.h>
@@ -22,12 +22,4 @@ void __init_or_module dtrace_sdt_nop_multi(asm_instr_t **addrs,
 		*addr = NOP_INSTR;
 		flush_icache_range((uintptr_t)addr, (uintptr_t)(addr + 1));
 	}
-}
-
-/*
- * Perform architecture dependent initialization for SDT.  On arm64, we need
- * not do anything.
- */
-void dtrace_sdt_init_arch(void)
-{
 }

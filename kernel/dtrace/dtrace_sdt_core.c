@@ -2,7 +2,7 @@
  * FILE:        dtrace_sdt_core.c
  * DESCRIPTION: DTrace - SDT probes
  *
- * Copyright (c) 2010, 2017, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2010, 2018, Oracle and/or its affiliates. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -185,7 +185,7 @@ void dtrace_sdt_stash_args(const char *module_name,
  * Register the SDT probes for the core kernel, i.e. SDT probes that reside in
  * vmlinux.  For SDT probes in kernel modules, we use dtrace_mod_notifier().
  */
-void dtrace_sdt_register(struct module *mp)
+void __init dtrace_sdt_register(struct module *mp)
 {
 	int			i, cnt;
 	dtrace_sdt_probeinfo_t	*pi =
@@ -343,7 +343,7 @@ void dtrace_sdt_register_module(struct module *mp,
 	vfree(is_enabled);
 }
 
-void dtrace_sdt_init(void)
+void __init dtrace_sdt_init(void)
 {
 	dtrace_sdt_init_arch();
 }
