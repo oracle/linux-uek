@@ -88,12 +88,14 @@ enum {
 	RDS_RTD_TCP			= 1 << 28,	/* 0x10000000 */
 };
 
-#define rds_rtd_printk(format, arg...)		\
-	trace_printk("%d: " format, __LINE__, ## arg)
-
 #define rds_rtd(enabling_bit, format, arg...)				     \
 	do { if (likely(!(enabling_bit & kernel_rds_rt_debug_bitmap))) break;\
-		 rds_rtd_printk(format, ## arg);			     \
+		trace_printk("%d: " format, __LINE__, ## arg);		     \
+	} while (0)
+
+#define rds_rtd_ptr(enabling_bit, format, arg...)			      \
+	do { if (likely(!(enabling_bit & kernel_rds_rt_debug_bitmap))) break; \
+		__trace_printk(_THIS_IP_, "%d: " format, __LINE__, ## arg);   \
 	} while (0)
 
 /* XXX is there one of these somewhere? */
