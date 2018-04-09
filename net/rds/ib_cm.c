@@ -663,10 +663,10 @@ static void rds_ib_qp_event_handler(struct ib_event *event, void *data)
 		complete(&ic->i_last_wqe_complete);
 		break;
 	default:
-		rds_rtd(RDS_RTD_ERR,
-			"Fatal QP Event %u (%s) - connection %pI6c->%pI6c tos %d, reconnecting\n",
-			event->event, rds_ib_event_str(event->event),
-			&conn->c_laddr,	&conn->c_faddr, conn->c_tos);
+		rds_rtd_ptr(RDS_RTD_ERR,
+			    "Fatal QP Event %u (%s) - connection %pI6c->%pI6c tos %d, reconnecting\n",
+			    event->event, rds_ib_event_str(event->event),
+			    &conn->c_laddr, &conn->c_faddr, conn->c_tos);
 		rds_conn_drop(conn, DR_IB_QP_EVENT);
 		break;
 	}
@@ -1027,14 +1027,14 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 		daddr6 = &d_mapped_addr;
 	}
 
-	rds_rtd(RDS_RTD_CM,
-		"saddr %pI6c daddr %pI6c RDSv%u.%u lguid 0x%llx fguid 0x%llx tos %d\n",
-		saddr6, daddr6,
-		RDS_PROTOCOL_MAJOR(version),
-		RDS_PROTOCOL_MINOR(version),
-		(unsigned long long)be64_to_cpu(lguid),
-		(unsigned long long)be64_to_cpu(fguid),
-		dp_cmn->ricpc_tos);
+	rds_rtd_ptr(RDS_RTD_CM,
+		    "saddr %pI6c daddr %pI6c RDSv%u.%u lguid 0x%llx fguid 0x%llx tos %d\n",
+		    saddr6, daddr6,
+		    RDS_PROTOCOL_MAJOR(version),
+		    RDS_PROTOCOL_MINOR(version),
+		    (unsigned long long)be64_to_cpu(lguid),
+		    (unsigned long long)be64_to_cpu(fguid),
+		    dp_cmn->ricpc_tos);
 
 #ifdef CONFIG_RDS_ACL
 
