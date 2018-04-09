@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2006, 2017 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2006, 2018 Oracle and/or its affiliates. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -1339,10 +1339,10 @@ static void rds_ib_do_failover(u8 from_port, u8 to_port, u8 arp_port,
 
 		if (!to_port) {
 			/* we tried, but did not get a failover port! */
-			rds_rtd(RDS_RTD_ERR,
-				"RDS/IB: IP %pI4 failed to migrate from %s: no matching dest port avail!\n",
-				&ip_config[from_port].ip_addr,
-				ip_config[from_port].if_name);
+			rds_rtd_ptr(RDS_RTD_ERR,
+				    "RDS/IB: IP %pI4 failed to migrate from %s: no matching dest port avail!\n",
+				    &ip_config[from_port].ip_addr,
+				    ip_config[from_port].if_name);
 			return;
 		}
 	} else {
