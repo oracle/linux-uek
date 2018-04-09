@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2009, 2017 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2009, 2018 Oracle and/or its affiliates. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -166,10 +166,10 @@ int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 				cm_id->route.path_rec[0].qos_class = conn->c_tos;
 				ret = trans->cm_initiate_connect(cm_id, isv6);
 			} else {
-				rds_rtd(RDS_RTD_CM,
-					"ROUTE_RESOLVED: calling rds_conn_drop, conn %p <%pI6c,%pI6c,%d>\n",
-					conn, &conn->c_laddr,
-					&conn->c_faddr, conn->c_tos);
+				rds_rtd_ptr(RDS_RTD_CM,
+					    "ROUTE_RESOLVED: calling rds_conn_drop, conn %p <%pI6c,%pI6c,%d>\n",
+					    conn, &conn->c_laddr,
+					    &conn->c_faddr, conn->c_tos);
 				rds_conn_drop(conn, DR_IB_RDMA_CM_ID_MISMATCH);
 			}
 		}
@@ -197,10 +197,10 @@ int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 		}
 
 		if (conn) {
-			rds_rtd(RDS_RTD_ERR,
-				"ROUTE_ERROR: conn %p, calling rds_conn_drop <%pI6c,%pI6c,%d>\n",
-				conn, &conn->c_laddr,
-				&conn->c_faddr, conn->c_tos);
+			rds_rtd_ptr(RDS_RTD_ERR,
+				    "ROUTE_ERROR: conn %p, calling rds_conn_drop <%pI6c,%pI6c,%d>\n",
+				    conn, &conn->c_laddr,
+				    &conn->c_faddr, conn->c_tos);
 			rds_conn_drop(conn, DR_IB_ROUTE_ERR);
 		}
 		break;
@@ -211,10 +211,10 @@ int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 
 	case RDMA_CM_EVENT_ADDR_ERROR:
 		if (conn) {
-			rds_rtd(RDS_RTD_ERR,
-				"ADDR_ERROR: conn %p, calling rds_conn_drop <%pI6c,%pI6c,%d>\n",
-				conn, &conn->c_laddr,
-				&conn->c_faddr, conn->c_tos);
+			rds_rtd_ptr(RDS_RTD_ERR,
+				    "ADDR_ERROR: conn %p, calling rds_conn_drop <%pI6c,%pI6c,%d>\n",
+				    conn, &conn->c_laddr,
+				    &conn->c_faddr, conn->c_tos);
 			rds_conn_drop(conn, DR_IB_ADDR_ERR);
 		}
 		break;
@@ -223,10 +223,10 @@ int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 	case RDMA_CM_EVENT_UNREACHABLE:
 	case RDMA_CM_EVENT_DEVICE_REMOVAL:
 		if (conn) {
-			rds_rtd(RDS_RTD_ERR,
-				"CONN/UNREACHABLE/RMVAL ERR: conn %p, calling rds_conn_drop <%pI6c,%pI6c,%d>\n",
-				conn, &conn->c_laddr,
-				&conn->c_faddr, conn->c_tos);
+			rds_rtd_ptr(RDS_RTD_ERR,
+				    "CONN/UNREACHABLE/RMVAL ERR: conn %p, calling rds_conn_drop <%pI6c,%pI6c,%d>\n",
+				    conn, &conn->c_laddr,
+				    &conn->c_faddr, conn->c_tos);
 			rds_conn_drop(conn, DR_IB_CONNECT_ERR);
 		}
 		break;
@@ -255,27 +255,27 @@ int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 				       conn->c_tos);
 				rds_ib_conn_destroy_init(conn);
 			} else {
-				rds_rtd(RDS_RTD_ERR,
-					"Rejected: *err %d status %d calling rds_conn_drop <%pI6c,%pI6c,%d>\n",
-					*err, event->status,
-					&conn->c_laddr,
-					&conn->c_faddr,
-					conn->c_tos);
+				rds_rtd_ptr(RDS_RTD_ERR,
+					    "Rejected: *err %d status %d calling rds_conn_drop <%pI6c,%pI6c,%d>\n",
+					    *err, event->status,
+					    &conn->c_laddr,
+					    &conn->c_faddr,
+					    conn->c_tos);
 				rds_conn_drop(conn, DR_IB_REJECTED_EVENT);
 			}
 		}
 		break;
 
 	case RDMA_CM_EVENT_ADDR_CHANGE:
-		rds_rtd(RDS_RTD_CM_EXT,
-			"ADDR_CHANGE event <%pI6c,%pI6c>\n",
-			&conn->c_laddr,
-			&conn->c_faddr);
+		rds_rtd_ptr(RDS_RTD_CM_EXT,
+			    "ADDR_CHANGE event <%pI6c,%pI6c>\n",
+			    &conn->c_laddr,
+			    &conn->c_faddr);
 		if (conn) {
-			rds_rtd(RDS_RTD_CM,
-				"ADDR_CHANGE: calling rds_conn_drop <%pI6c,%pI6c,%d>\n",
-				&conn->c_laddr, &conn->c_faddr,
-				conn->c_tos);
+			rds_rtd_ptr(RDS_RTD_CM,
+				    "ADDR_CHANGE: calling rds_conn_drop <%pI6c,%pI6c,%d>\n",
+				    &conn->c_laddr, &conn->c_faddr,
+				    conn->c_tos);
 			if (!rds_conn_self_loopback_passive(conn)) {
 				queue_delayed_work(conn->c_path[0].cp_wq,
 						   &conn->c_reconn_w,
@@ -286,9 +286,9 @@ int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 		break;
 
 	case RDMA_CM_EVENT_DISCONNECTED:
-		rds_rtd(RDS_RTD_CM,
-			"DISCONNECT event - dropping connection %pI6c->%pI6c tos %d\n",
-			&conn->c_laddr, &conn->c_faddr,	conn->c_tos);
+		rds_rtd_ptr(RDS_RTD_CM,
+			    "DISCONNECT event - dropping connection %pI6c->%pI6c tos %d\n",
+			    &conn->c_laddr, &conn->c_faddr, conn->c_tos);
 		rds_conn_drop(conn, DR_IB_DISCONNECTED_EVENT);
 		break;
 
