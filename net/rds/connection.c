@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2006, 2017 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2006, 2018 Oracle and/or its affiliates. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -387,11 +387,12 @@ void rds_conn_shutdown(struct rds_conn_path *cp)
 
 	/* shut it down unless it's down already */
 	if (!rds_conn_path_transition(cp, RDS_CONN_DOWN, RDS_CONN_DOWN)) {
-		rds_rtd(RDS_RTD_CM_EXT,
-			"RDS/%s: shutdown init <%pI6c,%pI6c,%d>, cn %p, cn->c_p %p\n",
-			conn->c_trans->t_type == RDS_TRANS_TCP ? "TCP" : "IB",
-			&conn->c_laddr, &conn->c_faddr,
-			conn->c_tos, conn, conn->c_passive);
+		rds_rtd_ptr(RDS_RTD_CM_EXT,
+			    "RDS/%s: shutdown init <%pI6c,%pI6c,%d>, cn %p, cn->c_p %p\n",
+			    conn->c_trans->t_type == RDS_TRANS_TCP ? "TCP" :
+			    "IB",
+			    &conn->c_laddr, &conn->c_faddr,
+			    conn->c_tos, conn, conn->c_passive);
 		/*
 		 * Quiesce the connection mgmt handlers before we start tearing
 		 * things down. We don't hold the mutex for the entire
@@ -518,9 +519,9 @@ void rds_conn_destroy(struct rds_connection *conn, int shutdown)
 	int i;
 	int npaths = (conn->c_trans->t_mp_capable ? RDS_MPATH_WORKERS : 1);
 
-	rds_rtd(RDS_RTD_CM, "freeing conn %p <%pI6c,%pI6c,%d>\n",
-		conn, &conn->c_laddr, &conn->c_faddr,
-		conn->c_tos);
+	rds_rtd_ptr(RDS_RTD_CM, "freeing conn %p <%pI6c,%pI6c,%d>\n",
+		    conn, &conn->c_laddr, &conn->c_faddr,
+		    conn->c_tos);
 
 	conn->c_destroy_in_prog = 1;
 	/* Ensure conn will not be scheduled for reconnect */
@@ -987,11 +988,11 @@ void rds_conn_path_drop(struct rds_conn_path *cp, int reason)
 
 	atomic_set(&cp->cp_state, RDS_CONN_ERROR);
 
-	rds_rtd(RDS_RTD_CM_EXT,
-		"RDS/%s: queueing shutdown work, conn %p, <%pI6c,%pI6c,%d>\n",
-		conn->c_trans->t_type == RDS_TRANS_TCP ? "TCP" : "IB",
-		conn, &conn->c_laddr, &conn->c_faddr,
-		conn->c_tos);
+	rds_rtd_ptr(RDS_RTD_CM_EXT,
+		    "RDS/%s: queueing shutdown work, conn %p, <%pI6c,%pI6c,%d>\n",
+		    conn->c_trans->t_type == RDS_TRANS_TCP ? "TCP" : "IB",
+		    conn, &conn->c_laddr, &conn->c_faddr,
+		    conn->c_tos);
 
 	queue_work(cp->cp_wq, &cp->cp_down_w);
 }
@@ -1014,10 +1015,10 @@ void rds_conn_path_connect_if_down(struct rds_conn_path *cp)
 
 	if (rds_conn_path_state(cp) == RDS_CONN_DOWN &&
 	    !test_and_set_bit(RDS_RECONNECT_PENDING, &cp->cp_flags)) {
-		rds_rtd(RDS_RTD_CM_EXT,
-			"queueing connect work, conn %p, <%pI6c,%pI6c,%d>\n",
-			conn, &conn->c_laddr, &conn->c_faddr,
-			conn->c_tos);
+		rds_rtd_ptr(RDS_RTD_CM_EXT,
+			    "queueing connect work, conn %p, <%pI6c,%pI6c,%d>\n",
+			    conn, &conn->c_laddr, &conn->c_faddr,
+			    conn->c_tos);
 		queue_delayed_work(cp->cp_wq, &cp->cp_conn_w, 0);
 	}
 }

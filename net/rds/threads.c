@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2006, 2017 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2006, 2018 Oracle and/or its affiliates. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -89,8 +89,9 @@ void rds_connect_path_complete(struct rds_conn_path *cp, int curr)
 		return;
 	}
 
-	rds_rtd(RDS_RTD_CM_EXT, "conn %p for %pI6c to %pI6c tos %d complete\n",
-		conn, &conn->c_laddr, &conn->c_faddr, conn->c_tos);
+	rds_rtd_ptr(RDS_RTD_CM_EXT,
+		    "conn %p for %pI6c to %pI6c tos %d complete\n",
+		    conn, &conn->c_laddr, &conn->c_faddr, conn->c_tos);
 
 	cp->cp_reconnect_jiffies = 0;
 	cp->cp_reconnect_retry = rds_sysctl_reconnect_retry_ms;
@@ -137,10 +138,10 @@ void rds_queue_reconnect(struct rds_conn_path *cp)
 	struct rds_connection *conn = cp->cp_conn;
 	bool is_tcp = conn->c_trans->t_type == RDS_TRANS_TCP;
 
-	rds_rtd(RDS_RTD_CM_EXT,
-		"conn %p for %pI6c to %pI6c tos %d reconnect jiffies %lu\n",
-		conn, &conn->c_laddr, &conn->c_faddr, conn->c_tos,
-		cp->cp_reconnect_jiffies);
+	rds_rtd_ptr(RDS_RTD_CM_EXT,
+		    "conn %p for %pI6c to %pI6c tos %d reconnect jiffies %lu\n",
+		    conn, &conn->c_laddr, &conn->c_faddr, conn->c_tos,
+		    cp->cp_reconnect_jiffies);
 
 	/* let peer with smaller addr initiate reconnect, to avoid duels */
 	if (is_tcp && rds_addr_cmp(&conn->c_laddr, &conn->c_faddr) >= 0)
@@ -155,10 +156,10 @@ void rds_queue_reconnect(struct rds_conn_path *cp)
 	}
 
 	get_random_bytes(&rand, sizeof(rand));
-	rds_rtd(RDS_RTD_CM_EXT,
-		"%lu delay %lu ceil conn %p for %pI6c -> %pI6c tos %d\n",
-		rand % cp->cp_reconnect_jiffies, cp->cp_reconnect_jiffies,
-		conn, &conn->c_laddr, &conn->c_faddr, conn->c_tos);
+	rds_rtd_ptr(RDS_RTD_CM_EXT,
+		    "%lu delay %lu ceil conn %p for %pI6c -> %pI6c tos %d\n",
+		    rand % cp->cp_reconnect_jiffies, cp->cp_reconnect_jiffies,
+		    conn, &conn->c_laddr, &conn->c_faddr, conn->c_tos);
 
 	queue_delayed_work(cp->cp_wq, &cp->cp_conn_w,
 			   rand % cp->cp_reconnect_jiffies);
@@ -190,9 +191,10 @@ void rds_connect_worker(struct work_struct *work)
 		cp->cp_drop_source = DR_DEFAULT;
 
 		ret = conn->c_trans->conn_path_connect(cp);
-		rds_rtd(RDS_RTD_CM_EXT,
-			"conn %p for %pI6c to %pI6c tos %d dispatched, ret %d\n",
-			conn, &conn->c_laddr, &conn->c_faddr, conn->c_tos, ret);
+		rds_rtd_ptr(RDS_RTD_CM_EXT,
+			    "conn %p for %pI6c to %pI6c tos %d dispatched, ret %d\n",
+			    conn, &conn->c_laddr, &conn->c_faddr, conn->c_tos,
+			    ret);
 
 		if (ret) {
 			if (rds_conn_path_transition(cp,
@@ -286,10 +288,10 @@ void rds_hb_worker(struct work_struct *work)
 			}
 			cp->cp_hb_start = now;
 		} else if (now - cp->cp_hb_start > rds_conn_hb_timeout) {
-			rds_rtd(RDS_RTD_CM,
-				"RDS/IB: connection <%pI6c,%pI6c,%d> timed out (0x%lx,0x%lx)..discon and recon\n",
-				&conn->c_laddr, &conn->c_faddr,
-				conn->c_tos, cp->cp_hb_start, now);
+			rds_rtd_ptr(RDS_RTD_CM,
+				    "RDS/IB: connection <%pI6c,%pI6c,%d> timed out (0x%lx,0x%lx)..discon and recon\n",
+				    &conn->c_laddr, &conn->c_faddr,
+				    conn->c_tos, cp->cp_hb_start, now);
 			rds_conn_path_drop(cp, DR_HB_TIMEOUT);
 			return;
 		}
@@ -317,10 +319,10 @@ void rds_reconnect_timeout(struct work_struct *work)
 					   msecs_to_jiffies(100));
 		} else {
 			cp->cp_reconnect_retry_count++;
-			rds_rtd(RDS_RTD_CM,
-				"conn <%pI6c,%pI6c,%d> not up, retry(%d)\n",
-				&conn->c_laddr, &conn->c_faddr, conn->c_tos,
-				cp->cp_reconnect_retry_count);
+			rds_rtd_ptr(RDS_RTD_CM,
+				    "conn <%pI6c,%pI6c,%d> not up, retry(%d)\n",
+				    &conn->c_laddr, &conn->c_faddr, conn->c_tos,
+				    cp->cp_reconnect_retry_count);
 			queue_delayed_work(cp->cp_wq, &cp->cp_reconn_w,
 					   msecs_to_jiffies(cp->cp_reconnect_retry));
 			set_bit(RDS_RECONNECT_TIMEDOUT, &cp->cp_reconn_flags);

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2006, 2017 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2006, 2018 Oracle and/or its affiliates. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -383,9 +383,9 @@ void rds_recv_incoming(struct rds_connection *conn, struct in6_addr *saddr,
 	skb = alloc_skb(sizeof(struct rds_nf_hdr) * 2, gfp);
 	if (NULL == skb) {
 		/* if we have allocation problems, then we just need to depart */
-		rds_rtd(RDS_RTD_ERR,
-			"failure to allocate space for inc %p, %pI6c -> %pI6c tos %d\n",
-			inc, saddr, daddr, conn->c_tos);
+		rds_rtd_ptr(RDS_RTD_ERR,
+			    "failure to allocate space for inc %p, %pI6c -> %pI6c tos %d\n",
+			    inc, saddr, daddr, conn->c_tos);
 		rds_recv_local(cp, saddr, daddr, inc, gfp, rs);
 		/* drop the reference if we had taken one */
 		if (NULL != rs)
@@ -434,9 +434,9 @@ void rds_recv_incoming(struct rds_connection *conn, struct in6_addr *saddr,
 	}
 	/* if we had a failure to convert, then just assuming to continue as local */
 	else {
-		rds_rtd(RDS_RTD_RCV_EXT,
-			"failed to create skb form, conn %p, inc %p, %pI6c -> %pI6c tos %d\n",
-			conn, inc, saddr, daddr, conn->c_tos);
+		rds_rtd_ptr(RDS_RTD_RCV_EXT,
+			    "failed to create skb form, conn %p, inc %p, %pI6c -> %pI6c tos %d\n",
+			    conn, inc, saddr, daddr, conn->c_tos);
 		ret = 1;
 	}
 
@@ -560,10 +560,10 @@ rds_recv_forward(struct rds_conn_path *cp, struct rds_incoming *inc,
 	/* find the proper output socket - it should be the local one on which we originated */
 	rs = rds_find_bound(&dst->saddr, dst->sport, conn->c_dev_if);
 	if (!rs) {
-		rds_rtd(RDS_RTD_RCV,
-			"failed to find output rds_socket dst %pI6c : %u, inc %p, conn %p tos %d\n",
-			&dst->daddr, dst->dport, inc, conn,
-			conn->c_tos);
+		rds_rtd_ptr(RDS_RTD_RCV,
+			    "failed to find output rds_socket dst %pI6c : %u, inc %p, conn %p tos %d\n",
+			    &dst->daddr, dst->dport, inc, conn,
+			    conn->c_tos);
 		rds_stats_inc(s_recv_drop_no_sock);
 		goto out;
 	}
@@ -574,10 +574,10 @@ rds_recv_forward(struct rds_conn_path *cp, struct rds_incoming *inc,
 	/* now lets see if we can send it all */
 	ret = rds_send_internal(conn, rs, inc->i_skb, gfp);
 	if (len != ret) {
-		rds_rtd(RDS_RTD_RCV,
-			"failed to send rds_data dst %pI6c : %u, inc %p, conn %p tos %d, len %d != ret %d\n",
-			&dst->daddr, dst->dport, inc, conn, conn->c_tos,
-			len, ret);
+		rds_rtd_ptr(RDS_RTD_RCV,
+			    "failed to send rds_data dst %pI6c : %u, inc %p, conn %p tos %d, len %d != ret %d\n",
+			    &dst->daddr, dst->dport, inc, conn, conn->c_tos,
+			    len, ret);
 		goto out;
 	}
 
@@ -652,11 +652,11 @@ rds_recv_local(struct rds_conn_path *cp, struct in6_addr *saddr,
 	inc_hdr_h_sequence = be64_to_cpu(inc->i_hdr.h_sequence);
 
 	if (inc_hdr_h_sequence != cp->cp_next_rx_seq) {
-		rds_rtd(RDS_RTD_RCV,
-			"conn %p <%pI6c,%pI6c,%d> expect seq# %llu, recved seq# %llu, retrans bit %d\n",
-			conn, &conn->c_laddr, &conn->c_faddr,
-			conn->c_tos, cp->cp_next_rx_seq, inc_hdr_h_sequence,
-			inc->i_hdr.h_flags & RDS_FLAG_RETRANSMITTED);
+		rds_rtd_ptr(RDS_RTD_RCV,
+			    "conn %p <%pI6c,%pI6c,%d> expect seq# %llu, recved seq# %llu, retrans bit %d\n",
+			    conn, &conn->c_laddr, &conn->c_faddr,
+			    conn->c_tos, cp->cp_next_rx_seq, inc_hdr_h_sequence,
+			    inc->i_hdr.h_flags & RDS_FLAG_RETRANSMITTED);
 	}
 
 	if (inc_hdr_h_sequence < cp->cp_next_rx_seq
