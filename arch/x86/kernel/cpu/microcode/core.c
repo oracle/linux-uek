@@ -233,6 +233,10 @@ static int __init save_microcode_in_initrd(void)
 	struct cpuinfo_x86 *c = &boot_cpu_data;
 	int ret = -EINVAL;
 
+	/* Microcode from Xen Dom0's initrd will be loaded by the hypervisor */
+	if (xen_domain())
+		return 0;
+
 	switch (c->x86_vendor) {
 	case X86_VENDOR_INTEL:
 		if (c->x86 >= 6)
@@ -783,9 +787,13 @@ int __init microcode_init(void)
 	if (error)
 		goto out_ucode_group;
 
-	register_syscore_ops(&mc_syscore_ops);
-	cpuhp_setup_state_nocalls(CPUHP_AP_ONLINE_DYN, "x86/microcode:online",
-				  mc_cpu_online, mc_cpu_down_prep);
+	/* Xen is responsible for loading microcode on sus/resume and hotplug */
+	if (!xen_domain()) {
+		register_syscore_ops(&mc_syscore_ops);
+		cpuhp_setup_state_nocalls(CPUHP_AP_ONLINE_DYN,
+					  "x86/microcode:online",
+					  mc_cpu_online, mc_cpu_down_prep);
+	}
 
 	pr_info("Microcode Update Driver: v%s.", DRIVER_VERSION);
 
