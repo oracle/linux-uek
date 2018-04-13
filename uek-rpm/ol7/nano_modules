@@ -68,6 +68,7 @@ kernel/crypto/rmd320.ko
 kernel/crypto/salsa20_generic.ko
 kernel/crypto/seed.ko
 kernel/crypto/serpent_generic.ko
+kernel/crypto/sha3_generic.ko
 kernel/crypto/tcrypt.ko
 kernel/crypto/tea.ko
 kernel/crypto/tgr192.ko
