@@ -2823,9 +2823,7 @@ static int module_sig_check(struct load_info *info, int flags,
 		if (sig_enforce) {
 			pr_notice("%s is rejected\n", reason);
 			return -EKEYREJECTED;
-		}
-
-		if (can_do_ima_check && is_ima_appraise_enabled())
+		} else if (can_do_ima_check && is_ima_appraise_enabled())
 			return 0;
 		if (kernel_is_locked_down(reason))
 			return -EPERM;

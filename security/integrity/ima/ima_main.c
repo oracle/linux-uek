@@ -402,6 +402,7 @@ static int read_idmap[READING_MAX_ID] = {
 int ima_post_read_file(struct file *file, void *buf, loff_t size,
 		       enum kernel_read_file_id read_id)
 {
+	bool sig_enforce = is_module_sig_enforced();
 	enum ima_hooks func;
 
 	if (!file && read_id == READING_FIRMWARE) {
@@ -411,7 +412,11 @@ int ima_post_read_file(struct file *file, void *buf, loff_t size,
 		return 0;
 	}
 
-	if (!file && read_id == READING_MODULE) /* MODULE_SIG_FORCE enabled */
+	/*
+	 * If both IMA-appraisal and appended signature verification are
+	 * enabled, rely on the appended signature verification.
+	 */
+	if (sig_enforce && read_id == READING_MODULE)
 		return 0;
 
 	if (!file || !buf || size == 0) { /* should never happen */
