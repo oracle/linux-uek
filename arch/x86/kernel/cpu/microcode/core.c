@@ -600,8 +600,11 @@ static int __init microcode_init(void)
 	if (error)
 		goto out_ucode_group;
 
-	register_syscore_ops(&mc_syscore_ops);
-	register_hotcpu_notifier(&mc_cpu_notifier);
+	/* Xen is responsible for loading microcode on sus/resume and hotplug */
+	if (!xen_domain()) {
+		register_syscore_ops(&mc_syscore_ops);
+		register_hotcpu_notifier(&mc_cpu_notifier);
+	}
 
 	pr_info("Microcode Update Driver: v" MICROCODE_VERSION
 		" <tigran@aivazian.fsnet.co.uk>, Peter Oruba\n");
@@ -634,8 +637,10 @@ static void __exit microcode_exit(void)
 
 	microcode_dev_exit();
 
-	unregister_hotcpu_notifier(&mc_cpu_notifier);
-	unregister_syscore_ops(&mc_syscore_ops);
+	if (!xen_domain()) {
+		unregister_hotcpu_notifier(&mc_cpu_notifier);
+		unregister_syscore_ops(&mc_syscore_ops);
+	}
 
 	sysfs_remove_group(&cpu_subsys.dev_root->kobj,
 			   &cpu_root_microcode_group);

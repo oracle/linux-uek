@@ -22,6 +22,7 @@
 #include <asm/microcode_amd.h>
 #include <asm/processor.h>
 #include <asm/cmdline.h>
+#include <xen/xen.h>
 
 static bool __init check_loader_disabled_bsp(void)
 {
@@ -110,6 +111,10 @@ int __init save_microcode_in_initrd(void)
 {
 	struct cpuinfo_x86 *c = &boot_cpu_data;
 
+	/* Microcode from Xen Dom0's initrd will be loaded by the hypervisor */
+	if (xen_domain())
+		return 0;
+	
 	switch (c->x86_vendor) {
 	case X86_VENDOR_INTEL:
 		if (c->x86 >= 6)
