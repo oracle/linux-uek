@@ -1,5 +1,7 @@
 # Oracle Linux: Unbreakable Enterprise Kernel (UEK)
 
+# DISCLAIMER: We make no claims this Kernel is unbreakable.
+
 ## Introducing UEK
 
 The Unbreakable Enterprise Kernel (UEK) is a Linux kernel built by Oracle and supported via Oracle Linux support. Its focus is performance, stability, and minimal backports by tracking the mainline source code as closely as is practical. UEK is well-tested and used to run Oracle's Engineered Systems, Oracle Cloud Infrastructure, and large enterprise deployments for Oracle customers.
