@@ -1252,6 +1252,16 @@ static inline u16 evmcs_read16(unsigned long field)
 	return *(u16 *)((char *)current_evmcs + offset);
 }
 
+static inline void evmcs_touch_msr_bitmap(void)
+{
+	if (unlikely(!current_evmcs))
+		return;
+
+	if (current_evmcs->hv_enlightenments_control.msr_bitmap)
+		current_evmcs->hv_clean_fields &=
+			~HV_VMX_ENLIGHTENED_CLEAN_FIELD_MSR_BITMAP;
+}
+
 static void evmcs_load(u64 phys_addr)
 {
 	struct hv_vp_assist_page *vp_ap =
@@ -1336,6 +1346,7 @@ static inline u32 evmcs_read32(unsigned long field) { return 0; }
 static inline u16 evmcs_read16(unsigned long field) { return 0; }
 static inline void evmcs_load(u64 phys_addr) {}
 static inline void evmcs_sanitize_exec_ctrls(struct vmcs_config *vmcs_conf) {}
+static inline void evmcs_touch_msr_bitmap(void) {}
 #endif /* IS_ENABLED(CONFIG_HYPERV) */
 
 static inline bool is_exception_n(u32 intr_info, u8 vector)
@@ -4400,6 +4411,14 @@ static int alloc_loaded_vmcs(struct loaded_vmcs *loaded_vmcs)
 		if (!loaded_vmcs->msr_bitmap)
 			goto out_vmcs;
 		memset(loaded_vmcs->msr_bitmap, 0xff, PAGE_SIZE);
+
+		if (static_branch_unlikely(&enable_evmcs) &&
+		    (ms_hyperv.nested_features & HV_X64_NESTED_MSR_BITMAP)) {
+			struct hv_enlightened_vmcs *evmcs =
+				(struct hv_enlightened_vmcs *)loaded_vmcs->vmcs;
+
+			evmcs->hv_enlightenments_control.msr_bitmap = 1;
+		}
 	}
 	return 0;
 
@@ -5519,6 +5538,9 @@ static void __always_inline vmx_disable_intercept_for_msr(unsigned long *msr_bit
 	if (!cpu_has_vmx_msr_bitmap())
 		return;
 
+	if (static_branch_unlikely(&enable_evmcs))
+		evmcs_touch_msr_bitmap();
+
 	/*
 	 * See Intel PRM Vol. 3, 20.6.9 (MSR-Bitmap Address). Early manuals
 	 * have the write-low and read-high bitmap offsets the wrong way round.
@@ -5553,6 +5575,9 @@ static void __always_inline vmx_enable_intercept_for_msr(unsigned long *msr_bitm
 
 	if (!cpu_has_vmx_msr_bitmap())
 		return;
+
+	if (static_branch_unlikely(&enable_evmcs))
+		evmcs_touch_msr_bitmap();
 
 	/*
 	 * See Intel PRM Vol. 3, 20.6.9 (MSR-Bitmap Address). Early manuals
