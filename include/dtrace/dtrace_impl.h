@@ -937,6 +937,7 @@ extern void dtrace_buffer_free(dtrace_buffer_t *);
 	uint64_t	requests;					\
 	uint64_t	count;						\
 									\
+	preempt_disable();						\
 	local_irq_save(cookie);						\
 									\
 	requests = atomic64_read(&this_cpu_core->cpuc_sync_requests);	\
@@ -975,6 +976,7 @@ extern void dtrace_buffer_free(dtrace_buffer_t *);
 	ASSERT(re_entry ==						\
 	    (atomic64_read(&this_cpu_core->cpuc_in_probe_ctx) & 0x1));	\
 	local_irq_restore(cookie);					\
+	preempt_enable();						\
 }
 
 /*

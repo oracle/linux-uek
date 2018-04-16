@@ -5,8 +5,6 @@
 #ifndef _LINUX_DTRACE_OS_H_
 #define _LINUX_DTRACE_OS_H_
 
-typedef uint32_t dtrace_id_t;
-
 #ifndef HEADERS_CHECK
 
 #ifdef CONFIG_DTRACE
@@ -22,8 +20,6 @@ typedef uint32_t dtrace_id_t;
 #include <linux/dtrace_cpu.h>
 #include <linux/dtrace_task.h>
 #include <linux/dtrace_psinfo.h>
-
-#define DTRACE_IDNONE 0
 
 extern struct module	*dtrace_kmod;
 

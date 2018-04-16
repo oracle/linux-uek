@@ -590,7 +590,6 @@ int dtrace_state_go(dtrace_state_t *state, processorid_t *cpu)
 	cyc_time_t		when;
 	int			rval = 0, i,
 				bufsize = NR_CPUS * sizeof (dtrace_buffer_t);
-	dtrace_icookie_t	cookie;
 
 	mutex_lock(&cpu_lock);
 	mutex_lock(&dtrace_lock);
@@ -791,14 +790,12 @@ int dtrace_state_go(dtrace_state_t *state, processorid_t *cpu)
 	 * probe (the data from this CPU will be processed first at user
 	 * level) and to manually activate the buffer for this CPU.
 	 */
-	local_irq_save(cookie);
 	*cpu = smp_processor_id();
 //	ASSERT(state->dts_buffer[*cpu].dtb_flags & DTRACEBUF_INACTIVE);
 	state->dts_buffer[*cpu].dtb_flags &= ~DTRACEBUF_INACTIVE;
 
 	dtrace_probe(dtrace_probeid_begin, (uint64_t)(uintptr_t)state, 0, 0, 0,
 		     0, 0, 0);
-	local_irq_restore(cookie);
 
 	/*
 	 * We may have had an exit action from a BEGIN probe; only change our
@@ -855,8 +852,6 @@ out:
 
 int dtrace_state_stop(dtrace_state_t *state, processorid_t *cpu)
 {
-	dtrace_icookie_t	cookie;
-
 	ASSERT(MUTEX_HELD(&dtrace_lock));
 
 	if (state->dts_activity != DTRACE_ACTIVITY_ACTIVE &&
@@ -892,11 +887,9 @@ int dtrace_state_stop(dtrace_state_t *state, processorid_t *cpu)
 	 */
 	state->dts_reserve = 0;
 
-	local_irq_save(cookie);
 	*cpu = smp_processor_id();
 	dtrace_probe(dtrace_probeid_end, (uint64_t)(uintptr_t)state, 0, 0, 0,
 		     0, 0, 0);
-	local_irq_restore(cookie);
 
 	state->dts_activity = DTRACE_ACTIVITY_STOPPED;
 	dtrace_sync();

@@ -566,9 +566,9 @@ void dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 	int			vtime;
 	volatile uint16_t	*flags;
 	ktime_t			now;
-	int			pflag = 0;
 	uint32_t		re_entry;
 	dtrace_task_t		*dtsk = current->dt_task;
+	dtrace_id_t		old_id;
 
 #ifdef FIXME
 	/*
@@ -583,12 +583,17 @@ void dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 	DTRACE_SYNC_ENTER_CRITICAL(cookie, re_entry);
 
 	/*
-	 * If preemption has already been disabled before we get here, we
-	 * accept it as a free gift.  We just need to make sure that we don't
-	 * re-enable preemption on the way out...
+	 * Probe context is not re-entrant, unless we're getting called to
+	 * process an ERROR probe.
 	 */
-	if ((pflag = dtrace_is_preemptive()))
-		dtrace_preempt_off();
+	flags = (volatile uint16_t *)&this_cpu_core->cpuc_dtrace_flags;
+	if (re_entry && id != dtrace_probeid_error) {
+		dt_dbg_probe("Attempt to fire probe from within a probe " \
+			     "(ID %d, CPoID %d, U %d)\n", id,
+			     (int)this_cpu_core->cpuc_current_probe, cpuid);
+		DTRACE_SYNC_EXIT_CRITICAL(cookie, re_entry);
+		return;
+	}
 
 	probe = dtrace_probe_lookup_id(id);
 	cpuid = smp_processor_id();
@@ -596,45 +601,17 @@ void dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 
 	if (!onintr && probe->dtpr_predcache != DTRACE_CACHEIDNONE &&
 	    dtsk != NULL && probe->dtpr_predcache == dtsk->dt_predcache) {
-		/*
-		 * We have hit in the predicate cache; we know that
-		 * this predicate would evaluate to be false.
-		 */
-		if (pflag)
-			dtrace_preempt_on();
 		DTRACE_SYNC_EXIT_CRITICAL(cookie, re_entry);
 		return;
 	}
 
 	if (oops_in_progress) {
-		/*
-		 * We don't trace anything if we're panicking.
-		 */
-		if (pflag)
-			dtrace_preempt_on();
 		DTRACE_SYNC_EXIT_CRITICAL(cookie, re_entry);
 		return;
 	}
 
-	flags = (volatile uint16_t *)&this_cpu_core->cpuc_dtrace_flags;
-
-	/*
-	 * Probe context is not re-entrant, unless we're getting called to
-	 * process an ERROR probe.
-	 */
-	if ((*flags & CPU_DTRACE_PROBE_CTX) && id != dtrace_probeid_error) {
-		dt_dbg_probe("Attempt to fire probe from within a probe " \
-			     "(ID %d, CPoID %d, U %d, pflag %d)\n", id,
-			     (int)this_cpu_core->cpu_dtrace_caller, cpuid,
-			     pflag);
-		if (pflag)
-			dtrace_preempt_on();
-		DTRACE_SYNC_EXIT_CRITICAL(cookie, re_entry);
-		return;
-	}
-
-	*flags |= CPU_DTRACE_PROBE_CTX;
-	this_cpu_core->cpu_dtrace_caller = id;
+	old_id = this_cpu_core->cpuc_current_probe;
+	this_cpu_core->cpuc_current_probe = id;
 
 	now = dtrace_gethrtime();
 	vtime = (dtrace_vtime_references > 0);
@@ -1309,18 +1286,7 @@ void dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 	if (vtime && dtsk != NULL)
 		dtsk->dt_start = dtrace_gethrtime();
 
-	/*
-	 * Only clear the flag if this is not the ERROR probe.  We know that
-	 * an ERROR probe executes from within another probe, and therefore
-	 * we need to retain the probe context flag in the flags.
-	 */
-	if (id != dtrace_probeid_error) {
-		*flags &= ~CPU_DTRACE_PROBE_CTX;
-		this_cpu_core->cpu_dtrace_caller = 0;
-	}
-
-	if (pflag)
-		dtrace_preempt_on();
+	this_cpu_core->cpuc_current_probe = old_id;
 	DTRACE_SYNC_EXIT_CRITICAL(cookie, re_entry);
 
 	if (dtsk != NULL && dtsk->dt_sig != 0) {

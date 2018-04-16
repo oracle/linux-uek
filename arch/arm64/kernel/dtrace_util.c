@@ -44,9 +44,8 @@ int dtrace_die_notifier(struct notifier_block *nb, unsigned long val,
 		return NOTIFY_OK | NOTIFY_STOP_MASK;
 	}
 	case DIE_OOPS: {
-		pr_info("DTrace: probe ctx %d last probe %ld\n",
-		       !!DTRACE_CPUFLAG_ISSET(CPU_DTRACE_PROBE_CTX),
-		       this_cpu_core->cpu_dtrace_caller);
+		pr_info("DTrace: last probe %u\n",
+		       this_cpu_core->cpuc_current_probe);
 		return NOTIFY_DONE;
 	}
 	default:

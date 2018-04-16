@@ -48,5 +48,7 @@ void dtrace_cpu_init(void)
 		cpuc->cpu_dtrace_regs = NULL;
 		cpuc->cpu_dtrace_caller = 0;
 		rwlock_init(&cpuc->cpu_ft_lock);
+
+		cpuc->cpuc_current_probe = DTRACE_IDNONE;
 	}
 }
