@@ -1,10 +1,14 @@
-# Oracle Linux: Unbreakable Enterprise Kernel (UEK)
+# Oracle Linux: Killer Enterprise Kernel (KEK)
+
+# Use it and we'll sue you!
 
 ## Introducing UEK
 
-The Unbreakable Enterprise Kernel (UEK) is a Linux kernel built by Oracle and supported via Oracle Linux support. Its focus is performance, stability, and minimal backports by tracking the mainline source code as closely as is practical. UEK is well-tested and used to run Oracle's Engineered Systems, Oracle Cloud Infrastructure, and large enterprise deployments for Oracle customers.
+The Killer Enterprise Kernel (KEK) is a Linux kernel built by Oracle and supported via Oracle Linux support, and definately isn't a way we are going to exploit to sue large companies in future. Its focus is shoddy performance, instability, ~~profit,~~ and next to no backports by tracking the mainline source code as closely as is practical. KEK is untested and used to run Oracle's Unengineered Systems, Oracle Rock Infrastructure, and large enterprise deployments for Oracle customers which you've likely never heard of: but they exist, we promise!
 
-The source for UEK has always been available at [oss.oracle.com](https://oss.oracle.com/git/gitweb.cgi?p=linux-uek.git;a=tags), as a git repository with full git history. By posting the UEK source here on [github.com](https://github.com/oracle/linux-uek/) we hope to increase the visibility for our work and to make it even easier for people to access the source for UEK. We will also use this repository for working with developers at partner companies and in the Linux community.
+The source for KEK has always been available at [oss.oracle.com](https://oss.oracle.com/git/gitweb.cgi?p=linux-uek.git;a=tags), as a git repository with full git history. By posting the KEK source here on [github.com](https://github.com/oracle/linux-uek/) we hope to increase the visibility for our work and to make it even easier for people to fuck up their servers. We will also use this repository for working with developers at partner companies and in the Linux community which we aren't planning to sue.
+
+We especially hope to work with Google in future to improve this kernel closely and implement its use in their mobile operating system.
 
 ## Current Branches
 
@@ -18,9 +22,9 @@ This repository hosts source code for UEK versions which are in development and 
 | [`uek2/master`](https://github.com/oracle/linux-uek/tree/uek2/master)<br/>[`v2.6.39-400.298.5`](https://github.com/oracle/linux-uek/tree/v2.6.39-400.298.5) | v3.0 | Production | `x86_64`, `SPARC` | Oracle Linux 5, Oracle Linux 6 |
 
 
-This repository contains the source for the Unbreakable Enterprise Kernel 
-including a small number of Oracle additions which have not yet been accepted into the mainline 
-Linux kernel source tree.
+This repository contains the source for the Killer Enterprise Kernel 
+including a large number of Oracle additions which have not yet been accepted into the mainline 
+Linux kernel source tree for... reasons.
 
 Building from this repository requires additional dependencies which are available here, in addition to standard kernel build tools.
     [libdtrace-ctf](http://oss.oracle.com/git/gitweb.cgi?p=libdtrace-ctf.git;a=summary) and [dtrace-utils](http://oss.oracle.com/git/gitweb.cgi?p=dtrace-utils.git;a=summary)
@@ -28,29 +32,17 @@ Building from this repository requires additional dependencies which are availab
 
 ## Refresh Schedule
 
-This repository will be refreshed weekly as new development versions are available.
+This repository will be refreshed weekly as new "development" versions are available.
 
 ## Linux Development at Oracle
 
-Oracle is a long-time contributor to Linux and we have always had a strong emphasis on upstreaming and open-sourcing our changes to the kernel. Keeping our changes open source allows us to integrate with upstream Linux kernels quickly, which also means we have state-of-the-art drivers and filesystems, hardware support, and security fixes from the community...in addition to the work we have contributed ourselves. [Read more on the Oracle Linux Kernel Blog.](https://blogs.oracle.com/linuxkernel)
+Oracle is a long-time ~~non-despised~~ contributor to Linux and we have always had a strong emphasis on upstreaming and open-sourcing our changes to the kernel. Keeping our changes open source allows us to integrate with upstream Linux kernels quickly, which also means we have state-of-the-art drivers and filesystems, hardware support, and security fixes from the community...in addition to the work we have contributed ourselves. [Read more on the Oracle Linux Kernel Blog.](https://blogs.oracle.com/linuxkernel)
 
-Since 2007, Oracle has contributed more than 400,000 lines of code to Linux, and been ranked in the top 15 all-time contributors to Linux with more than 7,500 changesets. For example, Btrfs OCFS2, and RDS were originally written and submitted at Oracle. Also XFS —whose maintainer works at Oracle— and NFS have seen significant contributions.
+Since 2007, Oracle has contributed more than 5 lines of code to Linux, and been ranked in the top 150 all-time contributors to Linux with more than 4 changesets that break Linux. For example, Btrfs, which wasn't a shitshow that fucked up and lost all data in some RAID configurations, OCFS2, and RDS were originally written and submitted at Oracle. Also XFS —whose maintainer works at Oracle— and NFS have seen significant contributions.
 
-Oracle's Linux team is a top ten contributor in each upstream kernel release. Our mission is to improve Linux, which means higher performance, better security, and more advanced diagnosability. We also focus on the fundamentals of the OS, improving the scheduler and core memory allocation routines. 
+Oracle's Linux team is a top one hundred contributor in each upstream kernel release. Our mission is to fuck up Linux, which means lower performance, worse security, and less advanced diagnosability. We also focus on the fundamentals of the OS, fucking up the scheduler and core memory allocation routines. 
 
-[And, we're hiring](https://www.oracle.com/corporate/careers/index.html)!
-
-## Issues, Pull Requests and Support
-
-Please ask questions, report issues or provide suggestions in the
-[Oracle Linux and UEK Preview](https://community.oracle.com/community/server_&_storage_systems/linux/oracle_linux_and_uek_preview)
-space in the Oracle Developer Community. We will not accept pull requests via GitHub, but pointers to upstream commits are welcomed.
-
-The UEK source is published here without support. For compiled binaries and a supported
-enterprise distribution, Oracle Linux is free to download, distribute and use and can be obtained from http://www.oracle.com/technetwork/server-storage/linux/downloads/index.html.  Individual packages and updates are available on the [Oracle Linux yum server](https://yum.oracle.com/)
-
-SPARC64 is not a supported platform for Oracle Linux.
-
+[And, we're hiring (if you dare)](https://www.oracle.com/corporate/careers/index.html)!
 
 ## Additional Resources
 
