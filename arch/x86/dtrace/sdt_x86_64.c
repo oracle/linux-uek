@@ -35,13 +35,14 @@ static uint8_t sdt_invop(struct pt_regs *regs)
 			if (sdt->sdp_ptype == SDTPT_IS_ENABLED)
 				regs->ax = 1;
 			else {
+				struct pt_regs *old_regs = this_cpu_core->cpu_dtrace_regs;
 				this_cpu_core->cpu_dtrace_regs = regs;
 
 				dtrace_probe(sdt->sdp_id, regs->di, regs->si,
 					     regs->dx, regs->cx, regs->r8,
 					     regs->r9, 0);
 
-				this_cpu_core->cpu_dtrace_regs = NULL;
+				this_cpu_core->cpu_dtrace_regs = old_regs;
 			}
 
 			return DTRACE_INVOP_NOPS;
