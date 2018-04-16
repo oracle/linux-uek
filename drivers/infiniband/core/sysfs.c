@@ -60,6 +60,9 @@ struct ib_port {
 	struct attribute_group gid_group;
 	struct attribute_group pkey_group;
 	struct attribute_group *pma_table;
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	struct attribute_group *pma_orcl_ext;
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 	struct attribute_group *hw_stats_ag;
 	struct rdma_hw_stats   *hw_stats;
 	u8                     port_num;
@@ -670,6 +673,41 @@ static struct attribute_group pma_group_noietf = {
 	.attrs  = pma_attrs_noietf
 };
 
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+#define PORT_PMA_ATTR_ORCL_EXT(_name, _counter, _width, _offset)	\
+struct port_table_attribute port_pma_attr_ext_##_name = {		\
+	.attr  = __ATTR(_name, 0444, show_pma_counter, NULL),	\
+	.index = (_offset) | ((_width) << 16) | ((_counter) << 24),	\
+	.attr_id = IB_PMA_PORT_COUNTERS_EXT,				\
+}
+
+static PORT_PMA_ATTR_ORCL_EXT(port_xmit_data_64,		0, 64,  64);
+static PORT_PMA_ATTR_ORCL_EXT(port_rcv_data_64,			0, 64,  128);
+static PORT_PMA_ATTR_ORCL_EXT(port_xmit_packets_64,		0, 64,  192);
+static PORT_PMA_ATTR_ORCL_EXT(port_rcv_packets_64,		0, 64,  256);
+static PORT_PMA_ATTR_ORCL_EXT(port_unicast_xmit_packets,	0, 64,  320);
+static PORT_PMA_ATTR_ORCL_EXT(port_unicast_rcv_packets,		0, 64,  384);
+static PORT_PMA_ATTR_ORCL_EXT(port_multicast_xmit_packets,	0, 64,  448);
+static PORT_PMA_ATTR_ORCL_EXT(port_multicast_rcv_packets,	0, 64,  512);
+
+static struct attribute *pma_attrs_orcl_ext[] = {
+	&port_pma_attr_ext_port_xmit_data_64.attr.attr,
+	&port_pma_attr_ext_port_rcv_data_64.attr.attr,
+	&port_pma_attr_ext_port_xmit_packets_64.attr.attr,
+	&port_pma_attr_ext_port_rcv_packets_64.attr.attr,
+	&port_pma_attr_ext_port_unicast_xmit_packets.attr.attr,
+	&port_pma_attr_ext_port_unicast_rcv_packets.attr.attr,
+	&port_pma_attr_ext_port_multicast_xmit_packets.attr.attr,
+	&port_pma_attr_ext_port_multicast_rcv_packets.attr.attr,
+	NULL
+};
+
+static struct attribute_group pma_group_orcl_ext = {
+	.name  = "counters_ext",
+	.attrs  = pma_attrs_orcl_ext
+};
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
+
 static void ib_port_release(struct kobject *kobj)
 {
 	struct ib_port *p = container_of(kobj, struct ib_port, kobj);
@@ -1160,11 +1198,24 @@ static int add_port(struct ib_core_device *coredev, int port_num)
 			goto err_put_gid_attrs;
 	}
 
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	p->pma_orcl_ext = &pma_group_orcl_ext;
+	if (!strncmp(device->name, "mlx4_", 5)) {
+		ret = sysfs_create_group(&p->kobj, p->pma_orcl_ext);
+		if (ret)
+			goto err_remove_pma;
+	}
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
+
 	p->gid_group.name  = "gids";
 	p->gid_group.attrs = alloc_group_attrs(show_port_gid, attr.gid_tbl_len);
 	if (!p->gid_group.attrs) {
 		ret = -ENOMEM;
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+		goto err_remove_pma_orcl_ext;
+#else
 		goto err_remove_pma;
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 	}
 
 	ret = sysfs_create_group(&p->kobj, &p->gid_group);
@@ -1269,6 +1320,12 @@ err_free_gid:
 
 	kfree(p->gid_group.attrs);
 	p->gid_group.attrs = NULL;
+
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+err_remove_pma_orcl_ext:
+	if (p->pma_orcl_ext)
+		sysfs_remove_group(&p->kobj, p->pma_orcl_ext);
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 err_remove_pma:
 	if (p->pma_table)
@@ -1396,6 +1453,10 @@ void ib_free_port_attrs(struct ib_core_device *coredev)
 
 		if (port->pma_table)
 			sysfs_remove_group(p, port->pma_table);
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+		if (port->pma_orcl_ext)
+			sysfs_remove_group(p, port->pma_orcl_ext);
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 		sysfs_remove_group(p, &port->pkey_group);
 		sysfs_remove_group(p, &port->gid_group);
 		sysfs_remove_group(&port->gid_attr_group->kobj,
