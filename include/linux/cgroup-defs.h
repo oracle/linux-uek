@@ -19,6 +19,7 @@
 #include <linux/percpu-rwsem.h>
 #include <linux/workqueue.h>
 #include <linux/bpf-cgroup.h>
+#include <linux/uek_kabi.h>
 
 #ifdef CONFIG_CGROUPS
 
@@ -370,6 +371,23 @@ struct cgroup {
 	/* used to store eBPF programs */
 	struct cgroup_bpf bpf;
 
+	/* Space for future expansion without breaking kABI. */
+	UEK_KABI_RESERVED(1);
+	UEK_KABI_RESERVED(2);
+	UEK_KABI_RESERVED(3);
+	UEK_KABI_RESERVED(4);
+	UEK_KABI_RESERVED(5);
+	UEK_KABI_RESERVED(6);
+	UEK_KABI_RESERVED(7);
+	UEK_KABI_RESERVED(8);
+	UEK_KABI_RESERVED(9);
+	UEK_KABI_RESERVED(10);
+	UEK_KABI_RESERVED(11);
+	UEK_KABI_RESERVED(12);
+	UEK_KABI_RESERVED(13);
+	UEK_KABI_RESERVED(14);
+	UEK_KABI_RESERVED(15);
+
 	/* ids of the ancestors at each level including self */
 	int ancestor_ids[];
 };
@@ -601,6 +619,10 @@ struct cgroup_subsys {
 	 * specifies the mask of subsystems that this one depends on.
 	 */
 	unsigned int depends_on;
+
+	/* Space for future expansion without breaking kABI. */
+	UEK_KABI_RESERVED_P(1);
+	UEK_KABI_RESERVED_P(2);
 };
 
 extern struct percpu_rw_semaphore cgroup_threadgroup_rwsem;
