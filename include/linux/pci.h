@@ -35,6 +35,7 @@
 #include <uapi/linux/pci.h>
 
 #include <linux/pci_ids.h>
+#include <linux/uek_kabi.h>
 
 /*
  * The PCI interface treats multi-function devices as independent
@@ -442,6 +443,12 @@ struct pci_dev {
 	char *driver_override; /* Driver name to force a match */
 
 	unsigned long priv_flags; /* Private flags for the pci driver */
+
+	/* Space for future expansion without breaking kABI. */
+	UEK_KABI_RESERVED(1);
+	UEK_KABI_RESERVED(2);
+	UEK_KABI_RESERVED(3);
+	UEK_KABI_RESERVED(4);
 };
 
 static inline struct pci_dev *pci_physfn(struct pci_dev *dev)
@@ -758,6 +765,9 @@ struct pci_driver {
 	const struct attribute_group **groups;
 	struct device_driver	driver;
 	struct pci_dynids dynids;
+
+	/* Space for future expansion without breaking kABI. */
+	UEK_KABI_RESERVED_P(1);
 };
 
 #define	to_pci_driver(drv) container_of(drv, struct pci_driver, driver)
