@@ -51,6 +51,7 @@
 #include <uapi/linux/if_bonding.h>
 #include <uapi/linux/pkt_cls.h>
 #include <linux/hashtable.h>
+#include <linux/uek_kabi.h>
 
 struct netpoll_info;
 struct device;
@@ -823,6 +824,12 @@ struct xfrmdev_ops {
 	void	(*xdo_dev_state_free) (struct xfrm_state *x);
 	bool	(*xdo_dev_offload_ok) (struct sk_buff *skb,
 				       struct xfrm_state *x);
+
+	/* Space for future expansion without breaking kABI */
+	UEK_KABI_RESERVED_P(1);
+	UEK_KABI_RESERVED_P(2);
+	UEK_KABI_RESERVED_P(3);
+	UEK_KABI_RESERVED_P(4);
 };
 #endif
 
@@ -1312,6 +1319,14 @@ struct net_device_ops {
 	int			(*ndo_xdp_xmit)(struct net_device *dev,
 						struct xdp_buff *xdp);
 	void			(*ndo_xdp_flush)(struct net_device *dev);
+
+	/* Space for future expansion without breaking kABI. */
+	UEK_KABI_RESERVED_P(1);
+	UEK_KABI_RESERVED_P(2);
+	UEK_KABI_RESERVED_P(3);
+	UEK_KABI_RESERVED_P(4);
+	UEK_KABI_RESERVED_P(5);
+	UEK_KABI_RESERVED_P(6);
 };
 
 /**
@@ -1898,6 +1913,13 @@ struct net_device {
 	struct lock_class_key	*qdisc_tx_busylock;
 	struct lock_class_key	*qdisc_running_key;
 	bool			proto_down;
+
+	/* Space for future expansion without breaking kABI. */
+	UEK_KABI_RESERVED_P(1);
+	UEK_KABI_RESERVED_P(2);
+	UEK_KABI_RESERVED_P(3);
+	UEK_KABI_RESERVED_P(4);
+	UEK_KABI_RESERVED_P(5);
 };
 #define to_net_dev(d) container_of(d, struct net_device, dev)
 
@@ -2199,6 +2221,12 @@ struct packet_type {
 					    struct sock *sk);
 	void			*af_packet_priv;
 	struct list_head	list;
+
+	/* Space for future expansion without breaking kABI. */
+	UEK_KABI_RESERVED(1);
+	UEK_KABI_RESERVED(2);
+	UEK_KABI_RESERVED(3);
+	UEK_KABI_RESERVED(4);
 };
 
 struct offload_callbacks {
