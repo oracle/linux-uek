@@ -10,6 +10,7 @@
 #include <linux/seq_file.h>
 #include <linux/blk-mq.h>
 #include <scsi/scsi.h>
+#include <linux/uek_kabi.h>
 
 struct request_queue;
 struct block_device;
@@ -502,6 +503,14 @@ struct scsi_host_template {
 	 */
 	unsigned int cmd_size;
 	struct scsi_host_cmd_pool *cmd_pool;
+
+	/* Space for future expansion without breaking kABI. */
+	UEK_KABI_RESERVED_P(1);
+	UEK_KABI_RESERVED_P(2);
+	UEK_KABI_RESERVED_P(3);
+	UEK_KABI_RESERVED_P(4);
+	UEK_KABI_RESERVED_P(5);
+	UEK_KABI_RESERVED_P(6);
 };
 
 /*
@@ -736,6 +745,14 @@ struct Scsi_Host {
 	 */
 	unsigned long hostdata[0]  /* Used for storage of host specific stuff */
 		__attribute__ ((aligned (sizeof(unsigned long))));
+
+	/* Space for future expansion without breaking kABI. */
+	UEK_KABI_RESERVED_P(1);
+	UEK_KABI_RESERVED_P(2);
+	UEK_KABI_RESERVED_P(3);
+	UEK_KABI_RESERVED_P(4);
+	UEK_KABI_RESERVED_P(5);
+	UEK_KABI_RESERVED_P(6);
 };
 
 #define		class_to_shost(d)	\
