@@ -25,6 +25,7 @@
 #include <linux/err.h>
 #include <linux/page_ref.h>
 #include <linux/memremap.h>
+#include <linux/uek_kabi.h>
 
 struct mempolicy;
 struct anon_vma;
@@ -423,6 +424,16 @@ struct vm_operations_struct {
 	 */
 	struct page *(*find_special_page)(struct vm_area_struct *vma,
 					  unsigned long addr);
+
+	/* Space for future expansion without breaking kABI. */
+	UEK_KABI_RESERVED_P(1);
+	UEK_KABI_RESERVED_P(2);
+	UEK_KABI_RESERVED_P(3);
+	UEK_KABI_RESERVED_P(4);
+	UEK_KABI_RESERVED_P(5);
+	UEK_KABI_RESERVED_P(6);
+	UEK_KABI_RESERVED_P(7);
+	UEK_KABI_RESERVED_P(8);
 };
 
 struct mmu_gather;
