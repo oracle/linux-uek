@@ -15,6 +15,7 @@ struct Scsi_Host;
 struct scsi_driver;
 
 #include <scsi/scsi_device.h>
+#include <linux/uek_kabi.h>
 
 /*
  * MAX_COMMAND_SIZE is:
@@ -149,6 +150,14 @@ struct scsi_cmnd {
 	int flags;		/* Command flags */
 
 	unsigned char tag;	/* SCSI-II queued command tag */
+
+	/* Space for future expansion without breaking kABI. */
+	UEK_KABI_RESERVED(1);
+	UEK_KABI_RESERVED(2);
+	UEK_KABI_RESERVED(3);
+	UEK_KABI_RESERVED(4);
+	UEK_KABI_RESERVED(5);
+	UEK_KABI_RESERVED(6);
 };
 
 /*

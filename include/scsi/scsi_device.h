@@ -8,6 +8,7 @@
 #include <linux/blkdev.h>
 #include <scsi/scsi.h>
 #include <linux/atomic.h>
+#include <linux/uek_kabi.h>
 
 struct device;
 struct request_queue;
@@ -223,6 +224,18 @@ struct scsi_device {
 	enum scsi_device_state sdev_state;
 	struct task_struct	*quiesced_by;
 	unsigned long		sdev_data[0];
+
+	/* Space for future expansion without breaking kABI. */
+	UEK_KABI_RESERVED(1);
+	UEK_KABI_RESERVED(2);
+	UEK_KABI_RESERVED(3);
+	UEK_KABI_RESERVED(4);
+	UEK_KABI_RESERVED(5);
+	UEK_KABI_RESERVED(6);
+	UEK_KABI_RESERVED(7);
+	UEK_KABI_RESERVED(8);
+	UEK_KABI_RESERVED(9);
+	UEK_KABI_RESERVED(10);
 } __attribute__((aligned(sizeof(unsigned long))));
 
 #define	to_scsi_device(d)	\
@@ -308,6 +321,14 @@ struct scsi_target {
 	void 			*hostdata; /* available to low-level driver */
 	unsigned long		starget_data[0]; /* for the transport */
 	/* starget_data must be the last element!!!! */
+
+	/* Space for future expansion without breaking kABI. */
+	UEK_KABI_RESERVED(1);
+	UEK_KABI_RESERVED(2);
+	UEK_KABI_RESERVED(3);
+	UEK_KABI_RESERVED(4);
+	UEK_KABI_RESERVED(5);
+	UEK_KABI_RESERVED(6);
 } __attribute__((aligned(sizeof(unsigned long))));
 
 #define to_scsi_target(d)	container_of(d, struct scsi_target, dev)
