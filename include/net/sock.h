@@ -72,6 +72,7 @@
 #include <net/tcp_states.h>
 #include <linux/net_tstamp.h>
 #include <net/smc.h>
+#include <linux/uek_kabi.h>
 
 /*
  * This structure really needs to be cleaned up.
@@ -477,6 +478,11 @@ struct sock {
 	void                    (*sk_destruct)(struct sock *sk);
 	struct sock_reuseport __rcu	*sk_reuseport_cb;
 	struct rcu_head		sk_rcu;
+
+	/* Space for future expansion without breaking kABI. */
+	UEK_KABI_RESERVED_P(1);
+	UEK_KABI_RESERVED_P(2);
+	UEK_KABI_RESERVED_P(3);
 };
 
 enum sk_pacing {

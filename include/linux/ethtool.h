@@ -16,6 +16,7 @@
 #include <linux/bitmap.h>
 #include <linux/compat.h>
 #include <uapi/linux/ethtool.h>
+#include <linux/uek_kabi.h>
 
 #ifdef CONFIG_COMPAT
 
@@ -390,5 +391,13 @@ struct ethtool_ops {
 				      struct ethtool_fecparam *);
 	int	(*set_fecparam)(struct net_device *,
 				      struct ethtool_fecparam *);
+
+	/* Space for future expansion without breaking kABI. */
+	UEK_KABI_RESERVED_P(1);
+	UEK_KABI_RESERVED_P(2);
+	UEK_KABI_RESERVED_P(3);
+	UEK_KABI_RESERVED_P(4);
+	UEK_KABI_RESERVED_P(5);
+	UEK_KABI_RESERVED_P(6);
 };
 #endif /* _LINUX_ETHTOOL_H */

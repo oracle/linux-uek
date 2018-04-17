@@ -17,6 +17,7 @@
 #include <net/rtnetlink.h>
 #include <net/lwtunnel.h>
 #include <net/dst_cache.h>
+#include <linux/uek_kabi.h>
 
 #if IS_ENABLED(CONFIG_IPV6)
 #include <net/ipv6.h>
@@ -139,6 +140,15 @@ struct ip_tunnel {
 	__u32			fwmark;
 	bool			collect_md;
 	bool			ignore_df;
+
+	/* Space for future expansion without breaking kABI. */
+	UEK_KABI_RESERVED(1);
+	UEK_KABI_RESERVED(2);
+	UEK_KABI_RESERVED(3);
+	UEK_KABI_RESERVED(4);
+	UEK_KABI_RESERVED(5);
+	UEK_KABI_RESERVED(6);
+	UEK_KABI_RESERVED(7);
 };
 
 #define TUNNEL_CSUM		__cpu_to_be16(0x01)

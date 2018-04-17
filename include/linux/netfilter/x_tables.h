@@ -6,6 +6,7 @@
 #include <linux/netdevice.h>
 #include <linux/static_key.h>
 #include <linux/netfilter.h>
+#include <linux/uek_kabi.h>
 #include <uapi/linux/netfilter/x_tables.h>
 
 /* Test a struct->invflags and a boolean for inequality */
@@ -217,6 +218,12 @@ struct xt_target {
 	unsigned short proto;
 
 	unsigned short family;
+
+	/* Space for future expansion without breaking kABI. */
+	UEK_KABI_RESERVED(1);
+	UEK_KABI_RESERVED(2);
+	UEK_KABI_RESERVED(3);
+	UEK_KABI_RESERVED(4);
 };
 
 /* Furniture shopping... */
