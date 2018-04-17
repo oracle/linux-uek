@@ -27,6 +27,7 @@
 #include <linux/percpu-refcount.h>
 #include <linux/scatterlist.h>
 #include <linux/blkzoned.h>
+#include <linux/uek_kabi.h>
 
 struct module;
 struct scsi_ioctl_command;
@@ -364,6 +365,10 @@ struct queue_limits {
 	unsigned char		cluster;
 	unsigned char		raid_partial_stripes_expensive;
 	enum blk_zoned_model	zoned;
+
+	/* Space for future expansion without breaking kABI. */
+	UEK_KABI_RESERVED(1);
+	UEK_KABI_RESERVED(2);
 };
 
 #ifdef CONFIG_BLK_DEV_ZONED
@@ -619,6 +624,9 @@ struct request_queue {
 
 #define BLK_MAX_WRITE_HINTS	5
 	u64			write_hints[BLK_MAX_WRITE_HINTS];
+
+	/* Space for future expansion without breaking kABI. */
+	UEK_KABI_RESERVED_P(1);
 };
 
 #define QUEUE_FLAG_QUEUED	0	/* uses generic tag queueing */
