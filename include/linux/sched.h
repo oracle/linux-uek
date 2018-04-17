@@ -28,6 +28,7 @@
 #include <linux/mm_types_task.h>
 #include <linux/task_io_accounting.h>
 #include <linux/dtrace_task.h>
+#include <linux/uek_kabi.h>
 
 /* task_struct member predeclarations (sorted alphabetically): */
 struct audit_context;
@@ -409,6 +410,14 @@ struct sched_entity {
 	 */
 	struct sched_avg		avg ____cacheline_aligned_in_smp;
 #endif
+
+	/* Space for future expansion without breaking kABI. */
+	UEK_KABI_RESERVED(1);
+	UEK_KABI_RESERVED(2);
+	UEK_KABI_RESERVED(3);
+	UEK_KABI_RESERVED(4);
+	UEK_KABI_RESERVED(5);
+	UEK_KABI_RESERVED(6);
 };
 
 struct sched_rt_entity {
@@ -1100,6 +1109,20 @@ struct task_struct {
 	/* Used by LSM modules for access restriction: */
 	void				*security;
 #endif
+
+	/* Space for future expansion without breaking kABI. */
+	UEK_KABI_RESERVED(1);
+	UEK_KABI_RESERVED(2);
+	UEK_KABI_RESERVED(3);
+	UEK_KABI_RESERVED(4);
+	UEK_KABI_RESERVED(5);
+	UEK_KABI_RESERVED(6);
+	UEK_KABI_RESERVED(7);
+	UEK_KABI_RESERVED(8);
+	UEK_KABI_RESERVED(9);
+	UEK_KABI_RESERVED(10);
+	UEK_KABI_RESERVED(11);
+	UEK_KABI_RESERVED(12);
 
 	/*
 	 * New fields for task_struct should be added above here, so that
