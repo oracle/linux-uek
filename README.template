@@ -23,7 +23,7 @@ including a small number of Oracle additions which have not yet been accepted in
 Linux kernel source tree.
 
 Building from this repository requires additional dependencies which are available here, in addition to standard kernel build tools.
-    [libdtrace-ctf](http://oss.oracle.com/git/gitweb.cgi?p=libdtrace-ctf.git;a=summary) and [dtrace-utils](http://oss.oracle.com/git/gitweb.cgi?p=dtrace-utils.git;a=summary)
+    [libdtrace-ctf](https://github.com/oracle/libdtrace-ctf/) and [dtrace-utils](https://github.com/oracle/dtrace-utils/)
 
 
 ## Refresh Schedule
