@@ -43,6 +43,40 @@
 .Lskip_\@:
 .endm
 
+.macro ENABLE_IBRS_SAVE_AND_CLOBBER save_reg:req
+	testl	$1, use_ibrs
+	jz	.Lskip_\@
+
+	movl	$MSR_IA32_SPEC_CTRL, %ecx
+	rdmsr
+	movl	%eax, \save_reg
+
+	movl	$0, %edx
+	movl	$SPEC_CTRL_IBRS, %eax
+	wrmsr
+	jmp	.Ldone_\@
+.Lskip_\@:
+	lfence
+.Ldone_\@:
+.endm
+
+.macro RESTORE_IBRS_CLOBBER save_reg:req
+	testl	$1, use_ibrs
+	jz	.Lskip_\@
+
+	cmpl	$SPEC_CTRL_IBRS, \save_reg
+	je	.Lskip_\@
+
+	movl	$MSR_IA32_SPEC_CTRL, %ecx
+	movl	$0, %edx
+	movl	\save_reg, %eax
+	wrmsr
+	jmp	.Ldone_\@
+.Lskip_\@:
+	lfence
+.Ldone_\@:
+.endm
+
 .macro ENABLE_IBRS_CLOBBER
 	ALTERNATIVE "jmp .Lskip_\@", "", X86_FEATURE_SPEC_CTRL
 	WRMSR_ASM $MSR_IA32_SPEC_CTRL, $SPEC_CTRL_IBRS
