@@ -620,7 +620,8 @@ dotraplinkage int notrace do_int3(struct pt_regs *regs, long error_code)
 	if ((ret & NOTIFY_STOP_MASK) == NOTIFY_STOP_MASK) {
 		ret = notifier_to_errno(ret);
 		goto exit;
-	}
+	} else
+		ret = 0;
 
 	cond_local_irq_enable(regs);
 	do_trap(X86_TRAP_BP, SIGTRAP, "int3", regs, error_code, NULL);
