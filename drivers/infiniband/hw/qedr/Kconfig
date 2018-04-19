@@ -3,6 +3,7 @@ config INFINIBAND_QEDR
 	depends on 64BIT && QEDE
 	depends on PCI
 	select QED_LL2
+	select QED_OOO
 	select QED_RDMA
 	---help---
 	  This driver provides low-level InfiniBand over Ethernet
