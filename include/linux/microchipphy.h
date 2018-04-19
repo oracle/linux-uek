@@ -78,4 +78,7 @@
 #define LAN88XX_EXT_PAGE_TR_LOW_DATA		17
 #define LAN88XX_EXT_PAGE_TR_HIGH_DATA		18
 
+/* Registers specific to the LAN7800/LAN7850 embedded phy */
+#define LAN78XX_PHY_LED_MODE_SELECT		(0x1D)
+
 #endif /* _MICROCHIPPHY_H */
