@@ -538,7 +538,8 @@ ssize_t cpu_show_spectre_v2(struct device *dev, struct device_attribute *attr, c
 	if (!boot_cpu_has_bug(X86_BUG_SPECTRE_V2))
 		return sprintf(buf, "Not affected\n");
 
-	return sprintf(buf, "%s%s%s%s\n", spectre_v2_strings[spectre_v2_enabled],
+	return sprintf(buf, "%s%s%s%s%s\n", spectre_v2_strings[spectre_v2_enabled],
+		       ibrs_inuse && (spectre_v2_enabled != SPECTRE_V2_IBRS) ? ", IBRS" : "",
 		       ibpb_inuse ? ", IBPB" : "",
 		       ibrs_firmware ? ", IBRS_FW" : "",
 		       spectre_v2_module_string());
