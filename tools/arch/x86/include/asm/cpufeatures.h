@@ -13,8 +13,8 @@
 /*
  * Defines x86 CPU feature bits
  */
-#define NCAPINTS			22	   /* N 32-bit words worth of info */
-#define NBUGINTS			2	   /* N 32-bit bug flags */
+#define NCAPINTS			24	   /* N 32-bit words worth of info */
+#define NBUGINTS			3	   /* N 32-bit bug flags */
 
 /*
  * Note: If the comment begins with a quoted string, that string is used
