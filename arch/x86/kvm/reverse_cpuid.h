@@ -116,6 +116,8 @@ static __always_inline void reverse_cpuid_check(unsigned int x86_leaf)
 	BUILD_BUG_ON(x86_leaf == CPUID_LNX_3);
 	BUILD_BUG_ON(x86_leaf == CPUID_LNX_4);
 	BUILD_BUG_ON(x86_leaf == CPUID_LNX_5);
+	BUILD_BUG_ON(x86_leaf == CPUID_KABI_RESERVED_1);
+	BUILD_BUG_ON(x86_leaf == CPUID_KABI_RESERVED_2);
 	BUILD_BUG_ON(x86_leaf >= ARRAY_SIZE(reverse_cpuid));
 	BUILD_BUG_ON(reverse_cpuid[x86_leaf].function == 0);
 }
