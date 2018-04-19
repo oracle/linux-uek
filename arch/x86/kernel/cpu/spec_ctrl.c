@@ -83,10 +83,10 @@ void set_ibpb_disabled(void)
 void scan_spec_ctrl_feature(struct cpuinfo_x86 *c)
 {
 	if (!c->cpu_index) {
-		if (boot_cpu_has(X86_FEATURE_IBRS)) {
+		if (cpu_has(c, X86_FEATURE_IBRS)) {
 			set_ibrs_feature();
 			set_ibpb_feature();
-		} else if (boot_cpu_has(X86_FEATURE_IBPB)) {
+		} else if (cpu_has(c, X86_FEATURE_IBPB)) {
 			printk_once(KERN_INFO "FEATURE IBPB Present\n");
 			set_ibpb_feature();
 			if (ibpb_inuse)
@@ -103,7 +103,7 @@ EXPORT_SYMBOL_GPL(scan_spec_ctrl_feature);
 void rescan_spec_ctrl_feature(struct cpuinfo_x86 *c)
 {
 	mutex_lock(&spec_ctrl_mutex);
-	if (boot_cpu_has(X86_FEATURE_IBRS)) {
+	if (cpu_has(c, X86_FEATURE_IBRS)) {
 		if (!ibrs_admin_disabled) {
 			dynamic_ibrs |= SPEC_CTRL_IBRS_INUSE;
 			ibrs_enabled = IBRS_ENABLED;
