@@ -3325,7 +3325,6 @@ static ctf_id_t assemble_ctf_array(const char *module_name,
 {
 	ctf_id_t type_ref;
 
-	CTF_DW_ENFORCE_NOT(name);
 	CTF_DW_ENFORCE_NOT(ordering);
 	CTF_DW_ENFORCE_NOT(bit_stride);
 	CTF_DW_ENFORCE_NOT(byte_stride);
