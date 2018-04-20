@@ -4401,8 +4401,7 @@ static char *str_appendn(char *s, ...)
 	s = realloc(s, len + 1);
 	if (s == NULL) {
 		fprintf(stderr, "Out of memory appending a string of length "
-			"%li to a string of length %li\n", strlen(append),
-			s_len);
+			"%li to a string of length %li\n", len - s_len, s_len);
 		exit(1);
 	}
 
