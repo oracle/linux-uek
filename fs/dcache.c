@@ -1469,10 +1469,16 @@ void shrink_dcache_parent(struct dentry *parent)
 		data.found = 0;
 
 		d_walk(parent, &data, select_collect, NULL);
+
+		if (!list_empty(&data.dispose)) {
+			shrink_dentry_list(&data.dispose);
+			continue;
+		}
+
+		cond_resched();
+
 		if (!data.found)
 			break;
-
-		shrink_dentry_list(&data.dispose);
 	}
 }
 EXPORT_SYMBOL(shrink_dcache_parent);
