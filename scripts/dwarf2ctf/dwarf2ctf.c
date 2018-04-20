@@ -1165,19 +1165,12 @@ static int member_blacklisted(Dwarf_Die *die, Dwarf_Die *parent_die)
 		return 0;
 
 	/*
-	 * If the compiler is now emitting members without decl_files, we
-	 * want to know.
+	 * The compiler can define its own structures, which appear in no decl_file.
+	 *
+	 * We can't blacklist them with this mechanism, so skip them.
 	 */
-	if (fname == NULL) {
-		static int warned = 0;
-
-		if (!warned)
-			fprintf(stderr, "Warning: member_blacklisted() called with "
-			    "NULL decl_file, which should never happen.\n");
-
-		warned = 1;
+	if (__builtin_expect(fname == NULL, 0))
 		return 0;
-	}
 
 	fname = abs_file_name(fname);
 
