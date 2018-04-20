@@ -767,7 +767,7 @@ void init_speculation_control(struct cpuinfo_x86 *c,
 		if (xen_pv_domain())
 			ignore = true;
 
-		if (boot_cpu_has(X86_FEATURE_SPEC_CTRL)) {
+		if (cpu_has(c, X86_FEATURE_SPEC_CTRL)) {
 			pr_info_once("FEATURE SPEC_CTRL Present%s\n",
 				     ignore ? " but ignored (Xen)" : "");
 			if (!ignore) {
@@ -778,15 +778,14 @@ void init_speculation_control(struct cpuinfo_x86 *c,
 				 * as we would re-enable it (say if
 				 * spectre_v2=off is used).
 				 */
-				if (&boot_cpu_data == c)
-					set_ibrs_firmware();
+				set_ibrs_firmware();
 				set_ibpb_supported();
 				mutex_unlock(&spec_ctrl_mutex);
 			}
 		} else {
 			pr_info("FEATURE SPEC_CTRL Not Present\n");
 		}
-		if (boot_cpu_has(X86_FEATURE_IBPB)) {
+		if (cpu_has(c, X86_FEATURE_IBPB)) {
 			pr_info_once("FEATURE IBPB Present%s\n",
 				     ignore ? " but ignored (Xen)" : "");
 			if (!ignore) {
