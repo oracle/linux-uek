@@ -975,6 +975,7 @@ bool xen_set_default_idle(void);
 
 void stop_this_cpu(void *dummy);
 void df_debug(struct pt_regs *regs, long error_code);
+void microcode_check(void);
 
 bool retpoline_enabled(void);
 int refresh_set_spectre_v2_enabled(void);
