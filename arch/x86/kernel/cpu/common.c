@@ -1805,7 +1805,7 @@ void microcode_check(void)
 	 */
 	memcpy(&info.x86_capability, &boot_cpu_data.x86_capability, sizeof(info.x86_capability));
 
-	get_cpu_cap(&info);
+	get_cpu_cap(&info, GET_CPU_CAP_MINIMUM);
 
 	if (!memcmp(&info.x86_capability, &boot_cpu_data.x86_capability, sizeof(info.x86_capability)))
 		return;
