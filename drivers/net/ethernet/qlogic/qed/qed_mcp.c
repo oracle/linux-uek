@@ -2538,7 +2538,6 @@ err0:
 
 static int
 qed_mcp_get_nvm_image_att(struct qed_hwfn *p_hwfn,
-			  struct qed_ptt *p_ptt,
 			  enum qed_nvm_images image_id,
 			  struct qed_nvm_image_att *p_image_att)
 {
@@ -2576,7 +2575,6 @@ qed_mcp_get_nvm_image_att(struct qed_hwfn *p_hwfn,
 }
 
 int qed_mcp_get_nvm_image(struct qed_hwfn *p_hwfn,
-			  struct qed_ptt *p_ptt,
 			  enum qed_nvm_images image_id,
 			  u8 *p_buffer, u32 buffer_len)
 {
@@ -2585,7 +2583,7 @@ int qed_mcp_get_nvm_image(struct qed_hwfn *p_hwfn,
 
 	memset(p_buffer, 0, buffer_len);
 
-	rc = qed_mcp_get_nvm_image_att(p_hwfn, p_ptt, image_id, &image_att);
+	rc = qed_mcp_get_nvm_image_att(p_hwfn, image_id, &image_att);
 	if (rc)
 		return rc;
 
