@@ -11,7 +11,6 @@
 #ifndef	__ASSEMBLY__
 
 void scan_spec_ctrl_feature(struct cpuinfo_x86 *c);
-void rescan_spec_ctrl_feature(struct cpuinfo_x86 *c);
 bool ibrs_inuse(void);
 bool ibpb_inuse(void);
 void set_ibrs_disabled(void);

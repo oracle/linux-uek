@@ -98,27 +98,6 @@ void scan_spec_ctrl_feature(struct cpuinfo_x86 *c)
 }
 EXPORT_SYMBOL_GPL(scan_spec_ctrl_feature);
 
-/*
- * Used after boot phase to rescan spec_ctrl feature,
- * serialize scan with spec_ctrl_mutex.
- */
-void rescan_spec_ctrl_feature(struct cpuinfo_x86 *c)
-{
-	mutex_lock(&spec_ctrl_mutex);
-	if (cpu_has(c, X86_FEATURE_IBRS)) {
-		if (!ibrs_admin_disabled) {
-			dynamic_ibrs |= SPEC_CTRL_IBRS_INUSE;
-			ibrs_enabled = IBRS_ENABLED;
-		}
-		if (!ibpb_admin_disabled) {
-			dynamic_ibpb = 1;
-			ibpb_enabled = IBPB_ENABLED;
-		}
-	}
-	mutex_unlock(&spec_ctrl_mutex);
-}
-EXPORT_SYMBOL_GPL(rescan_spec_ctrl_feature);
-
 bool ibrs_inuse(void)
 {
 	return ibrs_enabled == IBRS_ENABLED;
