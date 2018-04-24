@@ -631,7 +631,7 @@ void __cpuinit cpu_detect(struct cpuinfo_x86 *c)
 	}
 }
 
-void __cpuinit get_cpu_cap(struct cpuinfo_x86 *c)
+void get_cpu_cap(struct cpuinfo_x86 *c, enum get_cpu_cap_behavior behavior)
 {
 	u32 tfms, xlvl;
 	u32 ebx;
@@ -684,8 +684,9 @@ void __cpuinit get_cpu_cap(struct cpuinfo_x86 *c)
 	if (c->extended_cpuid_level >= 0x80000007)
 		c->x86_power = cpuid_edx(0x80000007);
 
-	init_scattered_cpuid_features(c);
+	init_scattered_cpuid_features(c, behavior);
 }
+EXPORT_SYMBOL_GPL(get_cpu_cap);
 
 static void __cpuinit identify_cpu_without_cpuid(struct cpuinfo_x86 *c)
 {
@@ -749,7 +750,7 @@ static void __init early_identify_cpu(struct cpuinfo_x86 *c)
 
 	get_cpu_vendor(c);
 
-	get_cpu_cap(c);
+	get_cpu_cap(c, GET_CPU_CAP_MINIMUM);
 
 	if (this_cpu->c_early_init)
 		this_cpu->c_early_init(c);
@@ -828,7 +829,7 @@ static void __cpuinit generic_identify(struct cpuinfo_x86 *c)
 
 	get_cpu_vendor(c);
 
-	get_cpu_cap(c);
+	get_cpu_cap(c, GET_CPU_CAP_FULL);
 
 	if (c->cpuid_level >= 0x00000001) {
 		c->initial_apicid = (cpuid_ebx(1) >> 24) & 0xFF;

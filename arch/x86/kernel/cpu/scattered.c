@@ -25,7 +25,8 @@ enum cpuid_regs {
 	CR_EBX
 };
 
-void __cpuinit init_scattered_cpuid_features(struct cpuinfo_x86 *c)
+void __cpuinit init_scattered_cpuid_features(struct cpuinfo_x86 *c,
+					enum get_cpu_cap_behavior behavior)
 {
 	u32 max_level;
 	u32 regs[4];
@@ -75,5 +76,13 @@ void __cpuinit init_scattered_cpuid_features(struct cpuinfo_x86 *c)
 	if (cpu_has(c, X86_FEATURE_IBRS))
 		set_cpu_cap(c, X86_FEATURE_IBPB);
 
+	if (behavior == GET_CPU_CAP_MINIMUM)
+		return;
+
+	/*
+	 * MUST be done after we apply the forced CPU flags as the boot_cpu_has
+	 * has been memset so we may re-enable the bits.
+	 */
 	scan_spec_ctrl_feature(c);
 }
+EXPORT_SYMBOL_GPL(init_scattered_cpuid_features);

@@ -32,8 +32,7 @@ struct cpu_dev {
 extern const struct cpu_dev *const __x86_cpu_dev_start[],
 			    *const __x86_cpu_dev_end[];
 
-extern void get_cpu_cap(struct cpuinfo_x86 *c);
+extern void get_cpu_cap(struct cpuinfo_x86 *c, enum get_cpu_cap_behavior);
 extern void cpu_detect_cache_sizes(struct cpuinfo_x86 *c);
-extern void get_cpu_cap(struct cpuinfo_x86 *c);
 
 #endif
