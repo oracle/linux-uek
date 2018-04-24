@@ -81,7 +81,7 @@ Summary: The Linux kernel
 # kernel-debug
 %define with_debug     1
 # kernel-doc
-%define with_doc       0
+%define with_doc       1
 # kernel-headers
 %define with_headers   0
 # dtrace
@@ -258,6 +258,7 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 # don't build noarch kernels or headers (duh)
 %ifarch noarch
 %define with_up 0
+%define with_compression 0
 %define with_headers 0
 %define with_tools 0
 %define with_perf 0
@@ -537,9 +538,6 @@ BuildRequires: elfutils-devel
 BuildRequires: bc
 BuildRequires: hostname
 BuildRequires: openssl, openssl-devel
-%if %{with_doc}
-BuildRequires: xmlto
-%endif
 %if %{with_sparse}
 BuildRequires: sparse >= 0.4.1
 %endif
@@ -1557,12 +1555,8 @@ popd
 %endif # with_tools
 
 %if %{with_doc}
-# Make the HTML and man pages.
-make -j1  htmldocs mandocs || %{doc_build_fail}
-
-# sometimes non-world-readable files sneak into the kernel source tree
-chmod -R a=rX Documentation
-find Documentation -type d | xargs chmod u+w
+# Make the HTML pages.
+make -j1 htmldocs || %{doc_build_fail}
 %endif
 
 %define dgst $((grep '^CONFIG_MODULE_SIG_SHA512=y$' .config >/dev/null && grep '^CONFIG_MODULE_SIG_HASH=\"sha512\"$' .config >/dev/null && echo sha512) || (grep '^CONFIG_MODULE_SIG_SHA256=y$' .config >/dev/null && grep '^CONFIG_MODULE_SIG_HASH=\"sha256\"$' .config >/dev/null && echo sha256))
@@ -1648,18 +1642,10 @@ find Documentation -type d | xargs chmod u+w
 cd linux-%{version}-%{release}
 
 %if %{with_doc}
-docdir=$RPM_BUILD_ROOT%{_datadir}/doc/kernel-doc-%{rpmversion}
-man9dir=$RPM_BUILD_ROOT%{_datadir}/man/man9
-
-# copy the source over
+# copy the output files
+docdir=$RPM_BUILD_ROOT%{_datadir}/doc/kernel%{variant}-doc-%{rpmversion}
 mkdir -p $docdir
-tar -f - --exclude=man --exclude='.*' -c Documentation | tar xf - -C $docdir
-
-# Install man pages for the kernel API.
-mkdir -p $man9dir
-find Documentation/DocBook/man -name '*.9.gz' -print0 |
-xargs -0 --no-run-if-empty %{__install} -m 444 -t $man9dir $m
-ls $man9dir | grep -q '' || > $man9dir/BROKEN
+cp -a Documentation/output/* $docdir
 %endif
 
 %ifnarch noarch
@@ -2010,14 +1996,12 @@ fi
 %endif # cpupowerarchs
 %endif # with_tools
 
-# only some architecture builds need kernel-doc
+# only some architecture builds need kernel%{variant}-doc
 %if %{with_doc}
 %files doc
 %defattr(-,root,root)
-%{_datadir}/doc/kernel-doc-%{rpmversion}/Documentation/*
-%dir %{_datadir}/doc/kernel-doc-%{rpmversion}/Documentation
-%dir %{_datadir}/doc/kernel-doc-%{rpmversion}
-%{_datadir}/man/man9/*
+%{_datadir}/doc/kernel%{variant}-doc-%{rpmversion}/*
+%dir %{_datadir}/doc/kernel%{variant}-doc-%{rpmversion}
 %endif
 
 # This is %{image_install_path} on an arch where that includes ELF files,
