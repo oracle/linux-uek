@@ -485,8 +485,10 @@ int mlx4_ib_demux_cm_handler(struct ib_device *ibdev, int port, int *slave,
 
 	pv_cm_id = get_remote_comm_id(mad);
 	//TRACE("pv_cm_id = 0x%x\n", pv_cm_id);
-	if (mad->mad_hdr.attr_id == CM_REP_ATTR_ID)
+	if ((mad->mad_hdr.attr_id == CM_REP_ATTR_ID) ||
+		(mad->mad_hdr.attr_id == CM_RTU_ATTR_ID)) {
 		sched_or_cancel = ID_CANCEL_DELETE;
+	}
 	id = id_map_get(ibdev, (int *)&pv_cm_id, -1, -1, sched_or_cancel);
 
 	if (!id) {
