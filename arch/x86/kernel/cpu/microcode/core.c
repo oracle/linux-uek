@@ -452,11 +452,11 @@ static ssize_t microcode_write(struct file *file, const char __user *buf,
 	if (do_microcode_update(buf, len) == 0)
 		ret = (ssize_t)len;
 
-	if (ret > 0)
+	if (ret > 0) {
 		perf_check_microcode();
 
-	/* check spec_ctrl capabilities */
-	init_speculation_control(&cpu_data(0), GET_CPU_CAP_FULL);
+		get_cpu_cap(&cpu_data(0), GET_CPU_CAP_FULL);
+	}
 
 	mutex_unlock(&microcode_mutex);
 	put_online_cpus();
@@ -607,8 +607,10 @@ static int microcode_reload_late(void)
 	atomic_set(&late_cpus_out, 0);
 
 	ret = stop_machine_cpuslocked(__reload_late, NULL, cpu_online_mask);
-	if (ret > 0)
-		microcode_check();
+	if (ret > 0) {
+		if (microcode_check())
+			get_cpu_cap(&cpu_data(0), GET_CPU_CAP_FULL);
+	}
 
 	return ret;
 }
@@ -868,8 +870,16 @@ int __init microcode_init(void)
 	mutex_lock(&microcode_mutex);
 
 	error = subsys_interface_register(&mc_cpu_interface);
-	if (!error)
+	if (!error) {
 		perf_check_microcode();
+
+		/*
+		 * mc_device_add will update microcode for all CPUs.
+		 * Probe CPU capabilities.
+		 */
+		get_cpu_cap(&cpu_data(0), GET_CPU_CAP_FULL);
+	}
+
 	mutex_unlock(&microcode_mutex);
 	put_online_cpus();
 

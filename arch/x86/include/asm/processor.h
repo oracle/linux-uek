@@ -193,6 +193,8 @@ void print_cpu_msr(struct cpuinfo_x86 *);
 extern void init_scattered_cpuid_features(struct cpuinfo_x86 *c);
 extern void init_speculation_control(struct cpuinfo_x86 *c,
 				     enum get_cpu_cap_behavior behavior);
+extern void get_cpu_cap(struct cpuinfo_x86 *c,
+			enum get_cpu_cap_behavior behavior);
 extern u32 get_scattered_cpuid_leaf(unsigned int level,
 				    unsigned int sub_leaf,
 				    enum cpuid_regs_idx reg);
@@ -975,7 +977,7 @@ bool xen_set_default_idle(void);
 
 void stop_this_cpu(void *dummy);
 void df_debug(struct pt_regs *regs, long error_code);
-void microcode_check(void);
+bool microcode_check(void);
 
 bool retpoline_enabled(void);
 int refresh_set_spectre_v2_enabled(void);
