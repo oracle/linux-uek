@@ -37,14 +37,17 @@ int no_iommu __read_mostly;
 /* Set this to 1 if there is a HW IOMMU in the system */
 int iommu_detected __read_mostly = 0;
 
-/*
- * This variable becomes 1 if iommu=pt is passed on the kernel command line.
- * If this variable is 1, IOMMU implementations do no DMA translation for
- * devices and allow every device to access to whole physical memory. This is
- * useful if a user wants to use an IOMMU only for KVM device assignment to
- * guests and not for driver dma translation.
+/* Setting this to 1 enables IOMMU in passthrough(pt) mode which is
+ * mandatory for things like KVM device assignment to guests. In pt
+ * mode, IOMMU implementations do no DMA translation for devices and
+ * allow every device to access to whole physical memory. This is
+ * useful for users who want to use DMAR for device assignment or
+ * interrupt remapping but not for DMA translation due to performance
+ * reasons. Most of the usecases need iommu=pt so setting this to 1
+ * by default make sense. Pass iommu=nopt in kernel command-line to
+ * explicitly disable pt mode.
  */
-int iommu_pass_through __read_mostly;
+int iommu_pass_through __read_mostly = 1;
 
 extern struct iommu_table_entry __iommu_table[], __iommu_table_end[];
 
@@ -209,6 +212,8 @@ static __init int iommu_setup(char *p)
 #endif
 		if (!strncmp(p, "pt", 2))
 			iommu_pass_through = 1;
+		if (!strncmp(p, "nopt", 4))
+			iommu_pass_through = 0;
 
 		gart_parse_options(p);
 

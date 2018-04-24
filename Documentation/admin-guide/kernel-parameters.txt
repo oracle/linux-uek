@@ -1681,7 +1681,8 @@
 		nomerge
 		forcesac
 		soft
-		pt		[x86, IA-64]
+		pt		[x86, IA-64] default on
+		nopt		[x86, IA-64]
 		nobypass	[PPC/POWERNV]
 			Disable IOMMU bypass, using IOMMU for PCI devices.
 
