@@ -207,13 +207,16 @@ void rds_ib_recv_free_caches(struct rds_ib_connection *ic)
 	free_percpu(ic->i_cache_frags.percpu);
 
 	list_for_each_entry_safe(frag, frag_tmp, &list, f_cache_entry) {
+		int cache_frag_pages = ceil(ic->i_frag_cache_sz, PAGE_SIZE);
+
 		list_del(&frag->f_cache_entry);
 		WARN_ON(!list_empty(&frag->f_item));
-		rds_ib_recv_free_frag(frag, ic->i_frag_pages);
-		atomic_sub(ic->i_frag_pages, &rds_ib_allocation);
+		rds_ib_recv_free_frag(frag, cache_frag_pages);
+		atomic_sub(cache_frag_pages, &rds_ib_allocation);
 		kmem_cache_free(rds_ib_frag_slab, frag);
-		atomic_sub(ic->i_frag_sz / 1024, &ic->i_cache_allocs);
-		rds_ib_stats_add(s_ib_recv_removed_from_cache, ic->i_frag_sz);
+		atomic_sub(ic->i_frag_cache_sz / 1024, &ic->i_cache_allocs);
+		rds_ib_stats_add(s_ib_recv_removed_from_cache, ic->i_frag_cache_sz);
+
 	}
 }
 
