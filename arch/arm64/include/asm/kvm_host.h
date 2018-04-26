@@ -440,4 +440,8 @@ static inline void kvm_arm_vhe_guest_exit(void)
 {
 	local_daif_restore(DAIF_PROCCTX_NOIRQ);
 }
+
+void kvm_vcpu_load_sysregs(struct kvm_vcpu *vcpu);
+void kvm_vcpu_put_sysregs(struct kvm_vcpu *vcpu);
+
 #endif /* __ARM64_KVM_HOST_H__ */
