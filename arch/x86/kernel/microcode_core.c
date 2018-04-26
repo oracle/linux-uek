@@ -229,7 +229,7 @@ static ssize_t microcode_write(struct file *file, const char __user *buf,
 
 	/* check spec_ctrl capabilities */
 	mutex_lock(&spec_ctrl_mutex);
-	init_scattered_cpuid_features(&boot_cpu_data);
+	init_scattered_cpuid_features(&cpu_data(0));
 	mutex_unlock(&spec_ctrl_mutex);
 
 	if (ret > 0)
