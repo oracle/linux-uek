@@ -184,6 +184,7 @@ void init_scattered_cpuid_features(struct cpuinfo_x86 *c,
 		clear_cpu_cap(c, X86_FEATURE_IBRS);
 		clear_cpu_cap(c, X86_FEATURE_IBPB);
 		clear_cpu_cap(c, X86_FEATURE_STIBP);
+		clear_cpu_cap(c, X86_FEATURE_RDS);
 	}
 
 	if (c->cpu_index == 0) {
