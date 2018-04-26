@@ -93,33 +93,49 @@ disable:
 }
 
 #ifdef CONFIG_SYSFS
-ssize_t cpu_show_meltdown(struct device *dev,
-                         struct device_attribute *attr, char *buf)
+ssize_t cpu_show_common(struct device *dev, struct device_attribute *attr,
+			char *buf, unsigned int bug)
 {
-	if (!boot_cpu_has(X86_BUG_CPU_MELTDOWN))
+	if (!boot_cpu_has(bug))
 		return sprintf(buf, "Not affected\n");
-	if (boot_cpu_has(X86_FEATURE_PTI))
-		return sprintf(buf, "Mitigation: PTI\n");
+
+	switch (bug) {
+	case X86_BUG_CPU_MELTDOWN:
+		if (boot_cpu_has(X86_FEATURE_PTI))
+			return sprintf(buf, "Mitigation: PTI\n");
+
+		break;
+
+	case X86_BUG_SPECTRE_V1:
+		return sprintf(buf, "Mitigation: lfence\n");
+
+	case X86_BUG_SPECTRE_V2:
+		if (ibrs_inuse || ibpb_inuse)
+			return sprintf(buf, "Mitigation: %s%s\n",
+				       ibrs_inuse ? "IBRS " : "",
+				       ibpb_inuse ? "IBPB" : "");
+		break;
+
+	default:
+		break;
+	}
+
 	return sprintf(buf, "Vulnerable\n");
 }
 
-ssize_t cpu_show_spectre_v1(struct device *dev,
-                           struct device_attribute *attr, char *buf)
+ssize_t cpu_show_meltdown(struct device *dev, struct device_attribute *attr, char *buf)
 {
-	if (!boot_cpu_has(X86_BUG_SPECTRE_V1))
-		return sprintf(buf, "Not affected\n");
-	return sprintf(buf, "Mitigation: lfence\n");
+	return cpu_show_common(dev, attr, buf, X86_BUG_CPU_MELTDOWN);
+}
+
+ssize_t cpu_show_spectre_v1(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	return cpu_show_common(dev, attr, buf, X86_BUG_SPECTRE_V1);
 }
 
 ssize_t cpu_show_spectre_v2(struct device *dev,
                            struct device_attribute *attr, char *buf)
 {
-	if (!boot_cpu_has(X86_BUG_SPECTRE_V2))
-		return sprintf(buf, "Not affected\n");
-	if (ibrs_inuse || ibpb_inuse)
-		return sprintf(buf, "Mitigation: %s%s\n",
-				ibrs_inuse ? "IBRS " : "",
-				ibpb_inuse ? "IBPB" : "");
-	return sprintf(buf, "Vulnerable\n");
+	return cpu_show_common(dev, attr, buf, X86_BUG_SPECTRE_V2);
 }
 #endif
