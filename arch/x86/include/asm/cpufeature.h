@@ -208,7 +208,7 @@
 #define X86_FEATURE_IBPB                (7*32+24) /* Indirect Branch Prediction Barrier */
 
 #define X86_FEATURE_RDS		( 7*32+25) /* Reduced Data Speculation */
-
+#define X86_FEATURE_SPEC_STORE_BYPASS_DISABLE ( 7*32+26) /* "" Disable Speculative Store Bypass. */
 #define X86_FEATURE_VMEXIT_RSB_FULL	(7*32+27) /* "" Whether to stuff the RSB on VMEXIT. */
 #define X86_FEATURE_STUFF_RSB	(7*32+28) /* "" Whether to stuff the RSB (usually dependent on !SMEP) */
 #define X86_FEATURE_RETPOLINE	( 7*32+29) /* "" Generic Retpoline mitigation for Spectre variant 2 */
