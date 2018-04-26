@@ -209,6 +209,26 @@ u64 x86_spec_ctrl_get_default(void)
 }
 EXPORT_SYMBOL_GPL(x86_spec_ctrl_get_default);
 
+void x86_spec_ctrl_set_guest(u64 guest_spec_ctrl)
+{
+	if (!ibrs_supported)
+		return;
+	if (ibrs_inuse || x86_spec_ctrl_base != guest_spec_ctrl)
+		wrmsrl(MSR_IA32_SPEC_CTRL, guest_spec_ctrl);
+}
+EXPORT_SYMBOL_GPL(x86_spec_ctrl_set_guest);
+
+void x86_spec_ctrl_restore_host(u64 guest_spec_ctrl)
+{
+	if (!ibrs_supported)
+		return;
+	if (ibrs_inuse)
+		wrmsrl(MSR_IA32_SPEC_CTRL, x86_spec_ctrl_priv);
+	else if (x86_spec_ctrl_base != guest_spec_ctrl)
+		wrmsrl(MSR_IA32_SPEC_CTRL, x86_spec_ctrl_base);
+}
+EXPORT_SYMBOL_GPL(x86_spec_ctrl_restore_host);
+
 #ifdef RETPOLINE
 static bool spectre_v2_bad_module;
 
