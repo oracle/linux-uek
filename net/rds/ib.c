@@ -617,7 +617,7 @@ int rds_ib_init(void)
 
 	ret = rds_ib_fmr_init();
 	if (ret)
-		goto out;
+		goto kernel_sock;
 
 	ret = rds_ib_sysctl_init();
 	if (ret)
@@ -656,6 +656,9 @@ out_sysctl:
 	rds_ib_sysctl_exit();
 out_fmr_exit:
 	rds_ib_fmr_exit();
+kernel_sock:
+	sock_release(rds_ib_inet_socket);
+	rds_ib_inet_socket = NULL;
 out:
 	return ret;
 }
@@ -672,6 +675,11 @@ void rds_ib_exit(void)
 	destroy_workqueue(rds_aux_wq);
 	rds_trans_unregister(&rds_ib_transport);
 	rds_ib_fmr_exit();
+
+	if (rds_ib_inet_socket) {
+		sock_release(rds_ib_inet_socket);
+		rds_ib_inet_socket = NULL;
+	}
 }
 
 struct rds_transport rds_ib_transport = {
