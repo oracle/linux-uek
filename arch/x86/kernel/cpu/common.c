@@ -794,6 +794,25 @@ static bool __cpuinit cpu_vulnerable_to_meltdown(struct cpuinfo_x86 *c)
 	return true;
 }
 
+static void __cpuinit cpu_set_bug_bits(struct cpuinfo_x86 *c)
+{
+	if (x86_match_cpu(cpu_no_speculation))
+		return;
+
+	setup_force_cpu_bug(X86_BUG_SPECTRE_V1);
+	setup_force_cpu_bug(X86_BUG_SPECTRE_V2);
+
+	if (!cpu_vulnerable_to_meltdown(c))
+		return;
+
+	if (!cpu_has_eager_fpu) {
+		pr_warn_once("eager_fpu is disabled. You are now susceptible "
+			     "to CVE-2018-3665.\n");
+	}
+
+	setup_force_cpu_bug(X86_BUG_CPU_MELTDOWN);
+}
+
 /*
  * Do minimum CPU detection early.
  * Fields really needed: vendor, cpuid_level, family, model, mask,
@@ -1072,15 +1091,7 @@ static void __cpuinit identify_cpu(struct cpuinfo_x86 *c)
 	numa_add_cpu(smp_processor_id());
 #endif
 
-	if (!x86_match_cpu(cpu_no_speculation)) {
-		if (cpu_vulnerable_to_meltdown(c))
-			setup_force_cpu_bug(X86_BUG_CPU_MELTDOWN);
-		setup_force_cpu_bug(X86_BUG_SPECTRE_V1);
-		setup_force_cpu_bug(X86_BUG_SPECTRE_V2);
-
-		if (!cpu_has_eager_fpu)
-			pr_warn_once("eager_fpu is disabled. You are now susceptible to CVE-2018-3665.\n");
-	}
+	cpu_set_bug_bits(c);
 }
 
 #ifdef CONFIG_X86_64
