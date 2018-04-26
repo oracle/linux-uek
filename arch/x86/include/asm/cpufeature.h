@@ -197,6 +197,7 @@
 #define X86_FEATURE_HWP_EPP	( 7*32+13) /* Intel HWP_EPP */
 #define X86_FEATURE_HWP_PKG_REQ ( 7*32+14) /* Intel HWP_PKG_REQ */
 #define X86_FEATURE_INTEL_PT	( 7*32+15) /* Intel Processor Trace */
+#define X86_FEATURE_AMD_RDS	( 7*32+18) /* "" AMD RDS implementation */
 #define X86_FEATURE_RSB_CTXSW	( 7*32+19) /* "" Fill RSB on context switches */
 #define X86_FEATURE_IBRS	( 7*32+20) /* Control Speculation Control */
 #define X86_FEATURE_STIBP	( 7*32+21) /* Single Thread Indirect Branch Predictors */
