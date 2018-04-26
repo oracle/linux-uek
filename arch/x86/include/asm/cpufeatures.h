@@ -216,6 +216,7 @@
 #define X86_FEATURE_IBRS_ALL		( 7*32+23) /* IBRS all the time */
 #define X86_FEATURE_VMEXIT_RSB_FULL	( 7*32+27) /* "" Whether to stuff the RSB on VMEXIT. */
 #define X86_FEATURE_STUFF_RSB		( 7*32+28) /* "" Whether to stuff the RSB (usually dependent on !SMEP) */
+#define X86_FEATURE_SPEC_STORE_BYPASS_DISABLE	( 7*32+29) /* "" Disable Speculative Store Bypass. */
 
 /* Virtualization flags: Linux defined, word 8 */
 #define X86_FEATURE_TPR_SHADOW		( 8*32+ 0) /* Intel TPR Shadow */
