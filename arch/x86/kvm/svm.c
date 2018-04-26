@@ -5402,10 +5402,7 @@ static void svm_vcpu_run(struct kvm_vcpu *vcpu)
 	 * is no need to worry about the conditional branch over the wrmsr
 	 * being speculatively taken.
 	 */
-	if (ibrs_supported) {
-		if (ibrs_inuse || svm->spec_ctrl || x86_spec_ctrl_base)
-			native_wrmsrl(MSR_IA32_SPEC_CTRL, svm->spec_ctrl);
-	}
+	x86_spec_ctrl_set_guest(svm->spec_ctrl);
 
 	asm volatile (
 		"push %%" _ASM_BP "; \n\t"
@@ -5517,11 +5514,9 @@ static void svm_vcpu_run(struct kvm_vcpu *vcpu)
 	if (ibrs_supported) {
 		if (unlikely(!msr_write_intercepted(vcpu, MSR_IA32_SPEC_CTRL)))
 			svm->spec_ctrl = native_read_msr(MSR_IA32_SPEC_CTRL);
-		if (ibrs_inuse)
-			native_wrmsrl(MSR_IA32_SPEC_CTRL, x86_spec_ctrl_priv);
-		else if (svm->spec_ctrl)
-			native_wrmsrl(MSR_IA32_SPEC_CTRL, x86_spec_ctrl_base);
 	}
+
+	x86_spec_ctrl_restore_host(svm->spec_ctrl);
 
 	/* Eliminate branch target predictions from guest mode */
 	vmexit_fill_RSB();
