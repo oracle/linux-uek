@@ -289,6 +289,7 @@
 #define X86_BUG_CPU_MELTDOWN	X86_BUG(14) /* CPU is insecure and need PTI */
 #define X86_BUG_SPECTRE_V1	X86_BUG(15) /* conditional branches */
 #define X86_BUG_SPECTRE_V2	X86_BUG(16) /* indirect branches */
+#define X86_BUG_SPEC_STORE_BYPASS	X86_BUG(17) /* CPU is affected by speculative store bypass attack */
 
 #if defined(__KERNEL__) && !defined(__ASSEMBLY__)
 
