@@ -134,11 +134,11 @@ void init_scattered_cpuid_features(struct cpuinfo_x86 *c)
 		if (xen_pv_domain())
 			ignore = true;
 
-		if (boot_cpu_has(X86_FEATURE_IBRS)) {
+		if (cpu_has(c, X86_FEATURE_IBRS)) {
 			printk(KERN_INFO "FEATURE SPEC_CTRL Present%s\n", ignore ? " but ignored (Xen)": "");
 			if (ignore)
 				return;
-		} else if (boot_cpu_has(X86_FEATURE_IBPB)) {
+		} else if (cpu_has(c, X86_FEATURE_IBPB)) {
 			printk_once(KERN_INFO "FEATURE IBPB Present%s\n", ignore ? " but ignored (Xen)": "");
 			if (ignore)
 				return;
@@ -149,7 +149,7 @@ void init_scattered_cpuid_features(struct cpuinfo_x86 *c)
 
 	if ((cpu_has(c, X86_FEATURE_IBRS) ||
 	     cpu_has(c, X86_FEATURE_STIBP)) && bad_spectre_microcode(c)) {
-		if (&boot_cpu_data == c)
+		if (c->cpu_index == 0)
 			pr_warn("Intel Spectre v2 broken microcode detected; disabling IBRS\n");
 		clear_cpu_cap(c, X86_FEATURE_IBRS);
 		clear_cpu_cap(c, X86_FEATURE_IBPB);
