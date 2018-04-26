@@ -3929,10 +3929,7 @@ static void svm_vcpu_run(struct kvm_vcpu *vcpu)
 
 	local_irq_enable();
 
-	if (ibrs_supported) {
-		if (ibrs_inuse || svm->spec_ctrl || x86_spec_ctrl_base)
-			wrmsrl(MSR_IA32_SPEC_CTRL, svm->spec_ctrl);
-	}
+	x86_spec_ctrl_set_guest(svm->spec_ctrl);
 	asm volatile (
 		"push %%" _ASM_BP "; \n\t"
 		"mov %c[rbx](%[svm]), %%" _ASM_BX " \n\t"
@@ -4027,10 +4024,8 @@ static void svm_vcpu_run(struct kvm_vcpu *vcpu)
 
 	if (ibrs_supported) {
 		rdmsrl(MSR_IA32_SPEC_CTRL, svm->spec_ctrl);
-		if (ibrs_inuse)
-			native_wrmsrl(MSR_IA32_SPEC_CTRL, x86_spec_ctrl_priv);
-		else if (svm->spec_ctrl)
-			native_wrmsrl(MSR_IA32_SPEC_CTRL, x86_spec_ctrl_base);
+
+		x86_spec_ctrl_restore_host(svm->spec_ctrl);
 	}
 
 	/* Eliminate branch target predictions from guest mode */

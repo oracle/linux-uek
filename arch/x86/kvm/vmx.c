@@ -8201,10 +8201,7 @@ static void __noclone vmx_vcpu_run(struct kvm_vcpu *vcpu)
 
 	vmx->__launched = vmx->loaded_vmcs->launched;
 
-	if (ibrs_supported) {
-		if (ibrs_inuse || vmx->spec_ctrl || x86_spec_ctrl_base)
-			wrmsrl(MSR_IA32_SPEC_CTRL, vmx->spec_ctrl);
-	}
+	x86_spec_ctrl_set_guest(vmx->spec_ctrl);
 
 	asm(
 		/* Store host registers */
@@ -8333,10 +8330,8 @@ static void __noclone vmx_vcpu_run(struct kvm_vcpu *vcpu)
 
 	if (ibrs_supported) {
 		rdmsrl(MSR_IA32_SPEC_CTRL, vmx->spec_ctrl);
-		if (ibrs_inuse)
-			native_wrmsrl(MSR_IA32_SPEC_CTRL, x86_spec_ctrl_priv);
-		else if (vmx->spec_ctrl)
-			native_wrmsrl(MSR_IA32_SPEC_CTRL, x86_spec_ctrl_base);
+
+		x86_spec_ctrl_restore_host(vmx->spec_ctrl);
 	}
 
 	/* MSR_IA32_DEBUGCTLMSR is zeroed on vmexit. Restore it if needed */
