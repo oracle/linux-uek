@@ -555,7 +555,7 @@ BuildRequires: libdtrace-ctf-devel >= 0.8.0
 BuildRequires: slang-devel, slang-static
 %endif
 %if %{with_perf}
-BuildRequires: zlib-devel binutils-devel newt-devel python-devel perl(ExtUtils::Embed) bison flex xz-devel
+BuildRequires: zlib-devel binutils-devel newt-devel python-devel bison flex xz-devel
 BuildRequires: audit-libs-devel
 %ifnarch s390x %{arm}
 BuildRequires: numactl-devel
@@ -1277,7 +1277,7 @@ hwcap 0 nosegneg"
 # build tools/perf:
     if [ -d tools/perf ]; then
 	cd tools/perf
-	make all
+	make NO_LIBPERL=1 all
 # and install it:
 #	mkdir -p $RPM_BUILD_ROOT/usr/bin/$KernelVer/
 	mkdir -p $RPM_BUILD_ROOT/usr/libexec/
