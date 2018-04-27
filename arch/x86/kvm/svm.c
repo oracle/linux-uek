@@ -171,7 +171,7 @@ static DEFINE_PER_CPU(u64, current_tsc_ratio);
 
 static const struct svm_direct_access_msrs {
 	u32 index;   /* Index of the MSR */
-	bool always; /* True if intercept is always on */
+	bool always; /* True if direct msr access is always on */
 } direct_access_msrs[] = {
 	{ .index = MSR_STAR,				.always = true  },
 	{ .index = MSR_IA32_SYSENTER_CS,		.always = true  },
@@ -187,8 +187,8 @@ static const struct svm_direct_access_msrs {
 	{ .index = MSR_IA32_LASTBRANCHTOIP,		.always = false },
 	{ .index = MSR_IA32_LASTINTFROMIP,		.always = false },
 	{ .index = MSR_IA32_LASTINTTOIP,		.always = false },
-	{ .index = MSR_IA32_SPEC_CTRL,			.always = false },
-	{ .index = MSR_IA32_PRED_CMD,			.always = false },
+	{ .index = MSR_IA32_SPEC_CTRL,			.always = true },
+	{ .index = MSR_IA32_PRED_CMD,			.always = true },
 	{ .index = MSR_INVALID,				.always = false },
 };
 
@@ -805,9 +805,6 @@ static void svm_vcpu_init_msrpm(u32 *msrpm)
 
 		set_msr_interception(msrpm, direct_access_msrs[i].index, 1, 1);
 	}
-
-	set_msr_interception(msrpm, MSR_IA32_SPEC_CTRL, 0, 0);
-	set_msr_interception(msrpm, MSR_IA32_PRED_CMD,  0, 0);
 }
 
 static void add_msr_offset(u32 offset)
