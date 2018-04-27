@@ -121,13 +121,13 @@ static void rdmaip_dump_ip_config_entry(u8 port)
 	else
 		strncpy(devname, "No RDMAIP device", RDMAIP_MAX_NAME_LEN);
 
-	pr_info("rdmaip: %s/port_%d/%s:\tIPv4 %pI4/%pI4/%pI4\tLink Status: %s\n",
+	pr_info("rdmaip: %s/port_%d/%s:  IPv4 %pI4/%pI4/%pI4  Link Status: %s\n",
 		devname, cfg->port_num, cfg->if_name,
 		&cfg->ip_addr, &cfg->ip_bcast,
 		&cfg->ip_mask, rdmaip_portstate2name(cfg->port_state));
 
 	for (i = 0; i < cfg->ip6_addrs_cnt; i++) {
-		pr_info("rdmaip: \t\t\t\tIPv6 %pI6c%%%d/%d\n",
+		pr_info("rdmaip:   IPv6 %pI6c%%%d/%d\n",
 			&cfg->ip6_addrs[i].addr, cfg->ifindex,
 			cfg->ip6_addrs[i].prefix_len);
 	}
