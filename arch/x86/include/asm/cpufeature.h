@@ -207,6 +207,7 @@
  * But thanks to kABI we have to jam it somewhere else. */
 #define X86_FEATURE_IBPB                (7*32+24) /* Indirect Branch Prediction Barrier */
 
+#define X86_FEATURE_RDS		( 7*32+25) /* Reduced Data Speculation */
 
 #define X86_FEATURE_VMEXIT_RSB_FULL	(7*32+27) /* "" Whether to stuff the RSB on VMEXIT. */
 #define X86_FEATURE_STUFF_RSB	(7*32+28) /* "" Whether to stuff the RSB (usually dependent on !SMEP) */
