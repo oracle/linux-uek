@@ -135,8 +135,8 @@
 #define SPEC_CTRL_FEATURE_DISABLE_IBRS	(0 << 0)
 #define SPEC_CTRL_IBRS			(1 << 0)
 #define SPEC_CTRL_FEATURE_ENABLE_IBRS	(1 << 0)
-#define SPEC_CTRL_RDS			(1 << 2) /* Reduced Data Speculation */
-
+#define SPEC_CTRL_RDS_SHIFT		2          /* Reduced Data Speculation bit */
+#define SPEC_CTRL_RDS			(1 << SPEC_CTRL_RDS_SHIFT)   /* Reduced Data Speculation */
 
 #define MSR_IA32_SPEC_CTRL		0x00000048
 #define MSR_IA32_PRED_CMD		0x00000049
