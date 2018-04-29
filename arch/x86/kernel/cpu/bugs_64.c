@@ -17,6 +17,7 @@
 #include <asm/mtrr.h>
 #include <asm/cacheflush.h>
 #include <asm/spec_ctrl.h>
+#include <asm/spec-ctrl.h>
 #include <asm/cmdline.h>
 #include <asm/intel-family.h>
 
