@@ -7,6 +7,7 @@
 
 #include <asm/cpufeature.h>
 #include <asm/spec_ctrl.h>
+#include <asm/spec-ctrl.h>
 #include <asm/nospec-branch.h>
 #include <asm/microcode.h>
 

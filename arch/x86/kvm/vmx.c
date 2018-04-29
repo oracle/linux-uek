@@ -54,6 +54,7 @@
 #include <asm/microcode.h>
 #include <asm/nospec-branch.h>
 #include <asm/spec_ctrl.h>
+#include <asm/spec-ctrl.h>
 
 #include "trace.h"
 #include "pmu.h"
