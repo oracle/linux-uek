@@ -1055,6 +1055,13 @@ static DEVICE_ATTR(abi_version, S_IRUGO, show_dev_abi_version, NULL);
 static CLASS_ATTR_STRING(abi_version, S_IRUGO,
 			 __stringify(IB_USER_VERBS_ABI_VERSION));
 
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+
+static CLASS_ATTR_STRING(uek_abi_version, S_IRUGO,
+			 __stringify(IB_USER_VERBS_UEK_ABI_VERSION));
+
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
+
 static dev_t overflow_maj;
 static DECLARE_BITMAP(overflow_map, IB_UVERBS_MAX_DEVICES);
 
@@ -1375,6 +1382,16 @@ static int __init ib_uverbs_init(void)
 		pr_err("user_verbs: couldn't create abi_version attribute\n");
 		goto out_class;
 	}
+
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+
+	ret = class_create_file(uverbs_class, &class_attr_uek_abi_version.attr);
+	if (ret) {
+		pr_err("user_verbs: couldn't create uek_abi_version attribute\n");
+		goto out_class;
+	}
+
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 	ret = ib_register_client(&uverbs_client);
 	if (ret) {
