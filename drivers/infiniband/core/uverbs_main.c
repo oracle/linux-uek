@@ -1103,6 +1103,13 @@ static int ib_uverbs_create_uapi(struct ib_device *device,
 	return 0;
 }
 
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+
+static CLASS_ATTR_STRING(uek_abi_version, S_IRUGO,
+			 __stringify(IB_USER_VERBS_UEK_ABI_VERSION));
+
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
+
 static int ib_uverbs_add_one(struct ib_device *device)
 {
 	int devnum;
@@ -1274,6 +1281,16 @@ static int __init ib_uverbs_init(void)
 		pr_err("user_verbs: couldn't create abi_version attribute\n");
 		goto out_class;
 	}
+
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+
+	ret = class_create_file(&uverbs_class, &class_attr_uek_abi_version.attr);
+	if (ret) {
+		pr_err("user_verbs: couldn't create uek_abi_version attribute\n");
+		goto out_class;
+	}
+
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 	ret = ib_register_client(&uverbs_client);
 	if (ret) {
