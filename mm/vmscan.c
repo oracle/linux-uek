@@ -3812,7 +3812,7 @@ int kswapd_run(int nid)
 	nr_threads = kswapd_threads;
 	for (hid = 0; hid < nr_threads; hid++) {
 		kswapd_list[nid][hid] = kthread_run(kswapd, pgdat,
-						    "kswapd%d", nid, hid);
+						    "kswapd%d:%d", nid, hid);
 		if (IS_ERR(kswapd_list[nid][hid])) {
 			/* failure at boot is fatal */
 			BUG_ON(system_state < SYSTEM_RUNNING);
