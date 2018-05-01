@@ -4893,7 +4893,6 @@ static int qlt_24xx_handle_els(struct scsi_qla_host *vha,
 			switch (sess->disc_state) {
 			case DSC_LOGIN_PEND:
 			case DSC_GPDB:
-			case DSC_GPSC:
 			case DSC_UPD_FCPORT:
 			case DSC_LOGIN_COMPLETE:
 			case DSC_ADISC:
