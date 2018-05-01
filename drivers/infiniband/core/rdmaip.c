@@ -1879,12 +1879,7 @@ void rdmaip_ip_failover_groups_init(void)
 		while (tok) {
 			for (i = 1; i <= ip_port_cnt; i++) {
 				if (!strcmp(tok, ip_config[i].if_name)) {
-					if (!ip_config[i].failover_group)
-						ip_config[i].failover_group =
-							grp_id;
-					else
-						pr_warn("rdmaip: %s is already part of another failover group\n",
-							tok);
+					ip_config[i].failover_group = grp_id;
 					break;
 				}
 			}
