@@ -18,7 +18,7 @@ __cert_list_end:
 	.globl system_extra_cert
 	.size system_extra_cert, CONFIG_SYSTEM_EXTRA_CERTIFICATE_SIZE
 system_extra_cert:
-	.fill CONFIG_SYSTEM_EXTRA_CERTIFICATE_SIZE, 1, 0
+	.incbin "certs/extra_cert_placeholder"
 
 	.align 4
 	.globl system_extra_cert_used
