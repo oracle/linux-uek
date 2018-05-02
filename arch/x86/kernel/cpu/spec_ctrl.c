@@ -78,7 +78,7 @@ static ssize_t ibrs_enabled_write(struct file *file,
 		disable_ibrs_firmware();
 		if (use_ibrs & SPEC_CTRL_IBRS_SUPPORTED)
 			spec_ctrl_flush_all_cpus(MSR_IA32_SPEC_CTRL,
-						 SPEC_CTRL_FEATURE_DISABLE_IBRS);
+						 x86_spec_ctrl_base);
 	} else {
 		clear_ibrs_disabled();
 		set_ibrs_firmware();

@@ -14,6 +14,8 @@
 #ifdef __ASSEMBLY__
 
 .extern use_ibrs
+.extern x86_spec_ctrl_priv
+.extern x86_spec_ctrl_base
 
 #define __ASM_STUFF_RSB				\
 	call	1f;				\
@@ -106,7 +108,7 @@
 	testl	$SPEC_CTRL_IBRS_INUSE, use_ibrs
 	jz	.Lskip_\@
 	PUSH_MSR_REGS
-	WRMSR_ASM $MSR_IA32_SPEC_CTRL, $SPEC_CTRL_FEATURE_ENABLE_IBRS
+	WRMSR_ASM $MSR_IA32_SPEC_CTRL, x86_spec_ctrl_priv
 	POP_MSR_REGS
 	jmp	.Ldone_\@
 .Lskip_\@:
@@ -118,7 +120,7 @@
 	testl	$1, use_ibrs
 	jz	.Lskip_\@
 	PUSH_MSR_REGS
-	WRMSR_ASM $MSR_IA32_SPEC_CTRL, $0
+	WRMSR_ASM $MSR_IA32_SPEC_CTRL, x86_spec_ctrl_base
 	POP_MSR_REGS
 .Lskip_\@:
 .endm
@@ -132,11 +134,11 @@
 	movl	%eax, \save_reg
 
 	movl	$0, %edx
-	movl	$SPEC_CTRL_FEATURE_ENABLE_IBRS, %eax
+	movl	x86_spec_ctrl_priv, %eax
 	wrmsr
 	jmp	.Ldone_\@
 .Lskip_\@:
-	movl $SPEC_CTRL_FEATURE_ENABLE_IBRS, \save_reg
+	movl	x86_spec_ctrl_priv, \save_reg
 	lfence
 .Ldone_\@:
 .endm
@@ -145,8 +147,8 @@
 	testl	$SPEC_CTRL_IBRS_INUSE, use_ibrs
 	jz	.Lskip_\@
 
-	cmpl	$SPEC_CTRL_FEATURE_ENABLE_IBRS, \save_reg
-	je	.Lskip_\@
+	testl	$SPEC_CTRL_FEATURE_ENABLE_IBRS, \save_reg
+	jnz	.Lskip_\@
 
 	movl	$MSR_IA32_SPEC_CTRL, %ecx
 	movl	$0, %edx
@@ -161,7 +163,7 @@
 .macro ENABLE_IBRS_CLOBBER
 	testl	$SPEC_CTRL_IBRS_INUSE, use_ibrs
 	jz	.Lskip_\@
-	WRMSR_ASM $MSR_IA32_SPEC_CTRL, $SPEC_CTRL_FEATURE_ENABLE_IBRS
+	WRMSR_ASM $MSR_IA32_SPEC_CTRL, x86_spec_ctrl_priv
 	jmp	.Ldone_\@
 .Lskip_\@:
 	 lfence
@@ -171,7 +173,7 @@
 .macro DISABLE_IBRS_CLOBBER
 	testl	$SPEC_CTRL_IBRS_INUSE, use_ibrs
 	jz	.Lskip_\@
-	WRMSR_ASM $MSR_IA32_SPEC_CTRL, $0
+	WRMSR_ASM $MSR_IA32_SPEC_CTRL, x86_spec_ctrl_base
 .Lskip_\@:
 .endm
 
@@ -180,6 +182,10 @@
 .endm
 
 #else
+
+/* Defined in bugs.c */
+extern u64 x86_spec_ctrl_priv;
+extern u64 x86_spec_ctrl_base;
 
 /* indicate usage of IBRS to control execution speculation */
 extern unsigned int use_ibrs;
@@ -198,6 +204,8 @@ static inline void set_ibrs_inuse(void)
 		use_ibrs |= SPEC_CTRL_IBRS_INUSE;
 		/* Update what sysfs shows. */
 		sysctl_ibrs_enabled = true;
+		/* When entering kernel */
+		x86_spec_ctrl_priv |= SPEC_CTRL_FEATURE_ENABLE_IBRS;
 	}
 }
 
@@ -206,6 +214,11 @@ static inline void clear_ibrs_inuse(void)
 	use_ibrs &= ~SPEC_CTRL_IBRS_INUSE;
 	/* Update what sysfs shows. */
 	sysctl_ibrs_enabled = false;
+	/*
+	 * This is stricly not needed as the use_ibrs guards against the
+	 * the use of the MSR so these values wouldn't be touched.
+	 */
+	x86_spec_ctrl_priv &= ~(SPEC_CTRL_FEATURE_ENABLE_IBRS);
 }
 
 static inline int check_ibrs_inuse(void)
