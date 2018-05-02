@@ -464,7 +464,7 @@ struct mlx5e_icosq {
 static inline bool
 mlx5e_wqc_has_room_for(struct mlx5_wq_cyc *wq, u16 cc, u16 pc, u16 n)
 {
-	return (((wq->sz_m1 & (cc - pc)) >= n) || (cc == pc));
+	return (mlx5_wq_cyc_ctr2ix(wq, cc - pc) >= n) || (cc == pc);
 }
 
 struct mlx5e_dma_info {
@@ -963,10 +963,21 @@ static inline bool mlx5e_tunnel_inner_ft_supported(struct mlx5_core_dev *mdev)
 		MLX5_CAP_FLOWTABLE_NIC_RX(mdev, ft_field_support.inner_ip_version));
 }
 
+static inline void mlx5e_sq_fetch_wqe(struct mlx5e_txqsq *sq,
+				      struct mlx5e_tx_wqe **wqe,
+				      u16 *pi)
+{
+	struct mlx5_wq_cyc *wq = &sq->wq;
+
+	*pi  = mlx5_wq_cyc_ctr2ix(wq, sq->pc);
+	*wqe = mlx5_wq_cyc_get_wqe(wq, *pi);
+	memset(*wqe, 0, sizeof(**wqe));
+}
+
 static inline
 struct mlx5e_tx_wqe *mlx5e_post_nop(struct mlx5_wq_cyc *wq, u32 sqn, u16 *pc)
 {
-	u16                         pi   = *pc & wq->sz_m1;
+	u16                         pi   = mlx5_wq_cyc_ctr2ix(wq, *pc);
 	struct mlx5e_tx_wqe        *wqe  = mlx5_wq_cyc_get_wqe(wq, pi);
 	struct mlx5_wqe_ctrl_seg   *cseg = &wqe->ctrl;
 

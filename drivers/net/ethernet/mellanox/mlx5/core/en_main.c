@@ -894,13 +894,15 @@ err_free_rq:
 static void mlx5e_activate_rq(struct mlx5e_rq *rq)
 {
 	struct mlx5e_icosq *sq = &rq->channel->icosq;
-	u16 pi = sq->pc & sq->wq.sz_m1;
+	struct mlx5_wq_cyc *wq = &sq->wq;
 	struct mlx5e_tx_wqe *nopwqe;
+
+	u16 pi = mlx5_wq_cyc_ctr2ix(wq, sq->pc);
 
 	set_bit(MLX5E_RQ_STATE_ENABLED, &rq->state);
 	sq->db.ico_wqe[pi].opcode     = MLX5_OPCODE_NOP;
-	nopwqe = mlx5e_post_nop(&sq->wq, sq->sqn, &sq->pc);
-	mlx5e_notify_hw(&sq->wq, sq->pc, sq->uar_map, &nopwqe->ctrl);
+	nopwqe = mlx5e_post_nop(wq, sq->sqn, &sq->pc);
+	mlx5e_notify_hw(wq, sq->pc, sq->uar_map, &nopwqe->ctrl);
 }
 
 static void mlx5e_deactivate_rq(struct mlx5e_rq *rq)
@@ -943,6 +945,7 @@ static int mlx5e_alloc_xdpsq(struct mlx5e_channel *c,
 {
 	void *sqc_wq               = MLX5_ADDR_OF(sqc, param->sqc, wq);
 	struct mlx5_core_dev *mdev = c->mdev;
+	struct mlx5_wq_cyc *wq = &sq->wq;
 	int err;
 
 	sq->pdev      = c->pdev;
@@ -952,10 +955,10 @@ static int mlx5e_alloc_xdpsq(struct mlx5e_channel *c,
 	sq->min_inline_mode = params->tx_min_inline_mode;
 
 	param->wq.db_numa_node = cpu_to_node(c->cpu);
-	err = mlx5_wq_cyc_create(mdev, &param->wq, sqc_wq, &sq->wq, &sq->wq_ctrl);
+	err = mlx5_wq_cyc_create(mdev, &param->wq, sqc_wq, wq, &sq->wq_ctrl);
 	if (err)
 		return err;
-	sq->wq.db = &sq->wq.db[MLX5_SND_DBR];
+	wq->db = &wq->db[MLX5_SND_DBR];
 
 	err = mlx5e_alloc_xdpsq_db(sq, cpu_to_node(c->cpu));
 	if (err)
@@ -998,22 +1001,23 @@ static int mlx5e_alloc_icosq(struct mlx5e_channel *c,
 {
 	void *sqc_wq               = MLX5_ADDR_OF(sqc, param->sqc, wq);
 	struct mlx5_core_dev *mdev = c->mdev;
+	struct mlx5_wq_cyc *wq = &sq->wq;
 	int err;
 
 	sq->channel   = c;
 	sq->uar_map   = mdev->mlx5e_res.bfreg.map;
 
 	param->wq.db_numa_node = cpu_to_node(c->cpu);
-	err = mlx5_wq_cyc_create(mdev, &param->wq, sqc_wq, &sq->wq, &sq->wq_ctrl);
+	err = mlx5_wq_cyc_create(mdev, &param->wq, sqc_wq, wq, &sq->wq_ctrl);
 	if (err)
 		return err;
-	sq->wq.db = &sq->wq.db[MLX5_SND_DBR];
+	wq->db = &wq->db[MLX5_SND_DBR];
 
 	err = mlx5e_alloc_icosq_db(sq, cpu_to_node(c->cpu));
 	if (err)
 		goto err_sq_wq_destroy;
 
-	sq->edge = (sq->wq.sz_m1 + 1) - MLX5E_ICOSQ_MAX_WQEBBS;
+	sq->edge = mlx5_wq_cyc_get_size(wq) - MLX5E_ICOSQ_MAX_WQEBBS;
 
 	return 0;
 
@@ -1062,6 +1066,7 @@ static int mlx5e_alloc_txqsq(struct mlx5e_channel *c,
 {
 	void *sqc_wq               = MLX5_ADDR_OF(sqc, param->sqc, wq);
 	struct mlx5_core_dev *mdev = c->mdev;
+	struct mlx5_wq_cyc *wq = &sq->wq;
 	int err;
 
 	sq->pdev      = c->pdev;
@@ -1076,16 +1081,16 @@ static int mlx5e_alloc_txqsq(struct mlx5e_channel *c,
 		set_bit(MLX5E_SQ_STATE_IPSEC, &sq->state);
 
 	param->wq.db_numa_node = cpu_to_node(c->cpu);
-	err = mlx5_wq_cyc_create(mdev, &param->wq, sqc_wq, &sq->wq, &sq->wq_ctrl);
+	err = mlx5_wq_cyc_create(mdev, &param->wq, sqc_wq, wq, &sq->wq_ctrl);
 	if (err)
 		return err;
-	sq->wq.db    = &sq->wq.db[MLX5_SND_DBR];
+	wq->db    = &wq->db[MLX5_SND_DBR];
 
 	err = mlx5e_alloc_txqsq_db(sq, cpu_to_node(c->cpu));
 	if (err)
 		goto err_sq_wq_destroy;
 
-	sq->edge = (sq->wq.sz_m1 + 1) - MLX5_SEND_WQE_MAX_WQEBBS;
+	sq->edge = mlx5_wq_cyc_get_size(wq) - MLX5_SEND_WQE_MAX_WQEBBS;
 
 	return 0;
 
@@ -1274,6 +1279,7 @@ static inline void netif_tx_disable_queue(struct netdev_queue *txq)
 static void mlx5e_deactivate_txqsq(struct mlx5e_txqsq *sq)
 {
 	struct mlx5e_channel *c = sq->channel;
+	struct mlx5_wq_cyc *wq = &sq->wq;
 
 	clear_bit(MLX5E_SQ_STATE_ENABLED, &sq->state);
 	/* prevent netif_tx_wake_queue */
@@ -1282,12 +1288,13 @@ static void mlx5e_deactivate_txqsq(struct mlx5e_txqsq *sq)
 	netif_tx_disable_queue(sq->txq);
 
 	/* last doorbell out, godspeed .. */
-	if (mlx5e_wqc_has_room_for(&sq->wq, sq->cc, sq->pc, 1)) {
+	if (mlx5e_wqc_has_room_for(wq, sq->cc, sq->pc, 1)) {
+		u16 pi = mlx5_wq_cyc_ctr2ix(wq, sq->pc);
 		struct mlx5e_tx_wqe *nop;
 
-		sq->db.wqe_info[(sq->pc & sq->wq.sz_m1)].skb = NULL;
-		nop = mlx5e_post_nop(&sq->wq, sq->sqn, &sq->pc);
-		mlx5e_notify_hw(&sq->wq, sq->pc, sq->uar_map, &nop->ctrl);
+		sq->db.wqe_info[pi].skb = NULL;
+		nop = mlx5e_post_nop(wq, sq->sqn, &sq->pc);
+		mlx5e_notify_hw(wq, sq->pc, sq->uar_map, &nop->ctrl);
 	}
 }
 
