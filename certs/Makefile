@@ -16,7 +16,12 @@ ifeq ($(CONFIG_SYSTEM_TRUSTED_KEYRING),y)
 $(eval $(call config_filename,SYSTEM_TRUSTED_KEYS))
 
 # GCC doesn't include .incbin files in -MD generated dependencies (PR#66871)
-$(obj)/system_certificates.o: $(obj)/x509_certificate_list
+ifeq ($(CONFIG_SYSTEM_EXTRA_CERTIFICATE),y)
+system_certs_incbin = $(obj)/x509_certificate_list $(obj)/extra_cert_placeholder
+else
+system_certs_incbin = $(obj)/x509_certificate_list
+endif
+$(obj)/system_certificates.o: $(system_certs_incbin)
 
 # Cope with signing_key.x509 existing in $(srctree) not $(objtree)
 AFLAGS_system_certificates.o := -I$(srctree)
@@ -24,12 +29,22 @@ AFLAGS_system_certificates.o := -I$(srctree)
 quiet_cmd_extract_certs  = EXTRACT_CERTS   $(patsubst "%",%,$(2))
       cmd_extract_certs  = scripts/extract-cert $(2) $@
 
-targets += x509_certificate_list
+targets += $(system_certs_incbin)
 $(obj)/x509_certificate_list: scripts/extract-cert $(SYSTEM_TRUSTED_KEYS_SRCPREFIX)$(SYSTEM_TRUSTED_KEYS_FILENAME) FORCE
 	$(call if_changed,extract_certs,$(SYSTEM_TRUSTED_KEYS_SRCPREFIX)$(CONFIG_SYSTEM_TRUSTED_KEYS))
+
+ifeq ($(CONFIG_SYSTEM_EXTRA_CERTIFICATE),y)
+# Generate incompressible bytes. Use seed to make it reproducible
+quiet_cmd_placeholder = EXTRA_CERT_PLACEHOLDER
+      cmd_placeholder = perl -e 'srand(0); printf("%c", int(rand(256))) for (1..$(2))' > $@
+
+$(obj)/extra_cert_placeholder: FORCE
+	$(call if_changed,placeholder,$(CONFIG_SYSTEM_EXTRA_CERTIFICATE_SIZE))
+endif # CONFIG_SYSTEM_EXTRA_CERTIFICATE
+
 endif # CONFIG_SYSTEM_TRUSTED_KEYRING
 
-clean-files := x509_certificate_list .x509.list
+clean-files := $(system_certs_incbin) .x509.list
 
 ifeq ($(CONFIG_MODULE_SIG),y)
 ###############################################################################
