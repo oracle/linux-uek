@@ -26,12 +26,26 @@ quiet_cmd_extract_certs  = CERT    $@
       cmd_extract_certs  = $(obj)/extract-cert "$(extract-cert-in)" $@
 extract-cert-in = $(filter-out $(obj)/extract-cert, $(real-prereqs))
 
-$(obj)/system_certificates.o: $(obj)/x509_certificate_list
+ifeq ($(CONFIG_SYSTEM_EXTRA_CERTIFICATE),y)
+system_certs_incbin = $(obj)/x509_certificate_list $(obj)/extra_cert_placeholder
+else
+system_certs_incbin = $(obj)/x509_certificate_list
+endif
+$(obj)/system_certificates.o: $(system_certs_incbin)
 
 $(obj)/x509_certificate_list: $(CONFIG_SYSTEM_TRUSTED_KEYS) $(obj)/extract-cert FORCE
 	$(call if_changed,extract_certs)
 
-targets += x509_certificate_list
+ifeq ($(CONFIG_SYSTEM_EXTRA_CERTIFICATE),y)
+# Generate incompressible bytes. Use seed to make it reproducible
+quiet_cmd_placeholder = EXTRA_CERT_PLACEHOLDER
+	cmd_placeholder = perl -e 'srand(0); printf("%c", int(rand(256))) for (1..$(2))' > $@
+
+$(obj)/extra_cert_placeholder: FORCE
+	$(call if_changed,placeholder,$(CONFIG_SYSTEM_EXTRA_CERTIFICATE_SIZE))
+endif # CONFIG_SYSTEM_EXTRA_CERTIFICATE
+
+targets += $(system_certs_incbin)
 
 # If module signing is requested, say by allyesconfig, but a key has not been
 # supplied, then one will need to be generated to make sure the build does not
@@ -82,6 +96,7 @@ $(obj)/x509_revocation_list: $(CONFIG_SYSTEM_REVOCATION_KEYS) $(obj)/extract-cer
 
 targets += x509_revocation_list
 
+clean-files += $(system_certs_incbin)
 hostprogs := extract-cert
 
 HOSTCFLAGS_extract-cert.o = $(shell $(HOSTPKG_CONFIG) --cflags libcrypto 2> /dev/null) -I$(srctree)/scripts
