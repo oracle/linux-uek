@@ -469,6 +469,7 @@ Requires(pre): linux-nano-firmware >= 20171128-57.git17e62881.0.2\
 %else\
 Requires(pre): linux-firmware >= 20171128-57.git17e62881.0.2\
 %endif\
+Requires(pre): system-release\
 Requires(post): %{_sbindir}/new-kernel-pkg\
 Requires(preun): %{_sbindir}/new-kernel-pkg\
 Conflicts: %{kernel_dot_org_conflicts}\
