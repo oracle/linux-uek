@@ -114,6 +114,10 @@ void __init check_bugs(void)
 	 */
 	if (boot_cpu_has(X86_FEATURE_IBRS)) {
 		rdmsrl(MSR_IA32_SPEC_CTRL, x86_spec_ctrl_base);
+		if (x86_spec_ctrl_base & SPEC_CTRL_IBRS) {
+			pr_warn("SPEC CTRL MSR (0x%16llx) has IBRS set during boot, clearing it.", x86_spec_ctrl_base);
+			x86_spec_ctrl_base &= ~(SPEC_CTRL_IBRS);
+		}
 		x86_spec_ctrl_priv = x86_spec_ctrl_base;
 	}
 	/* Select the proper spectre mitigation before patching alternatives */
