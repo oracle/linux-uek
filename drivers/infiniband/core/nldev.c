@@ -119,7 +119,8 @@ static int fill_dev_info(struct sk_buff *msg, struct ib_device *device)
 
 	BUILD_BUG_ON(sizeof(device->attrs.device_cap_flags) != sizeof(u64));
 	if (nla_put_u64_64bit(msg, RDMA_NLDEV_ATTR_CAP_FLAGS,
-			      device->attrs.device_cap_flags, 0))
+			      device->attrs.device_cap_flags,
+			      RDMA_NLDEV_ATTR_PAD))
 		return -EMSGSIZE;
 
 	ib_get_device_fw_str(device, fw);
@@ -128,10 +129,12 @@ static int fill_dev_info(struct sk_buff *msg, struct ib_device *device)
 		return -EMSGSIZE;
 
 	if (nla_put_u64_64bit(msg, RDMA_NLDEV_ATTR_NODE_GUID,
-			      be64_to_cpu(device->node_guid), 0))
+			      be64_to_cpu(device->node_guid),
+			      RDMA_NLDEV_ATTR_PAD))
 		return -EMSGSIZE;
 	if (nla_put_u64_64bit(msg, RDMA_NLDEV_ATTR_SYS_IMAGE_GUID,
-			      be64_to_cpu(device->attrs.sys_image_guid), 0))
+			      be64_to_cpu(device->attrs.sys_image_guid),
+			      RDMA_NLDEV_ATTR_PAD))
 		return -EMSGSIZE;
 	if (nla_put_u8(msg, RDMA_NLDEV_ATTR_DEV_NODE_TYPE, device->node_type))
 		return -EMSGSIZE;
@@ -156,11 +159,11 @@ static int fill_port_info(struct sk_buff *msg,
 
 	BUILD_BUG_ON(sizeof(attr.port_cap_flags) > sizeof(u64));
 	if (nla_put_u64_64bit(msg, RDMA_NLDEV_ATTR_CAP_FLAGS,
-			      (u64)attr.port_cap_flags, 0))
+			      (u64)attr.port_cap_flags, RDMA_NLDEV_ATTR_PAD))
 		return -EMSGSIZE;
 	if (rdma_protocol_ib(device, port) &&
 	    nla_put_u64_64bit(msg, RDMA_NLDEV_ATTR_SUBNET_PREFIX,
-			      attr.subnet_prefix, 0))
+			      attr.subnet_prefix, RDMA_NLDEV_ATTR_PAD))
 		return -EMSGSIZE;
 	if (rdma_protocol_ib(device, port)) {
 		if (nla_put_u32(msg, RDMA_NLDEV_ATTR_LID, attr.lid))
@@ -188,8 +191,8 @@ static int fill_res_info_entry(struct sk_buff *msg,
 
 	if (nla_put_string(msg, RDMA_NLDEV_ATTR_RES_SUMMARY_ENTRY_NAME, name))
 		goto err;
-	if (nla_put_u64_64bit(msg,
-			      RDMA_NLDEV_ATTR_RES_SUMMARY_ENTRY_CURR, curr, 0))
+	if (nla_put_u64_64bit(msg, RDMA_NLDEV_ATTR_RES_SUMMARY_ENTRY_CURR, curr,
+			      RDMA_NLDEV_ATTR_PAD))
 		goto err;
 
 	nla_nest_end(msg, entry_attr);
@@ -388,7 +391,7 @@ static int fill_res_cq_entry(struct sk_buff *msg, struct netlink_callback *cb,
 	if (nla_put_u32(msg, RDMA_NLDEV_ATTR_RES_CQE, cq->cqe))
 		goto err;
 	if (nla_put_u64_64bit(msg, RDMA_NLDEV_ATTR_RES_USECNT,
-			      atomic_read(&cq->usecnt), 0))
+			      atomic_read(&cq->usecnt), RDMA_NLDEV_ATTR_PAD))
 		goto err;
 
 	/* Poll context is only valid for kernel CQs */
@@ -424,11 +427,12 @@ static int fill_res_mr_entry(struct sk_buff *msg, struct netlink_callback *cb,
 		if (nla_put_u32(msg, RDMA_NLDEV_ATTR_RES_LKEY, mr->lkey))
 			goto err;
 		if (nla_put_u64_64bit(msg, RDMA_NLDEV_ATTR_RES_IOVA,
-				      mr->iova, 0))
+				      mr->iova, RDMA_NLDEV_ATTR_PAD))
 			goto err;
 	}
 
-	if (nla_put_u64_64bit(msg, RDMA_NLDEV_ATTR_RES_MRLEN, mr->length, 0))
+	if (nla_put_u64_64bit(msg, RDMA_NLDEV_ATTR_RES_MRLEN, mr->length,
+			      RDMA_NLDEV_ATTR_PAD))
 		goto err;
 
 	if (fill_res_name_pid(msg, res))
@@ -463,7 +467,7 @@ static int fill_res_pd_entry(struct sk_buff *msg, struct netlink_callback *cb,
 			goto err;
 	}
 	if (nla_put_u64_64bit(msg, RDMA_NLDEV_ATTR_RES_USECNT,
-			      atomic_read(&pd->usecnt), 0))
+			      atomic_read(&pd->usecnt), RDMA_NLDEV_ATTR_PAD))
 		goto err;
 	if ((pd->flags & IB_PD_UNSAFE_GLOBAL_RKEY) &&
 	    nla_put_u32(msg, RDMA_NLDEV_ATTR_RES_UNSAFE_GLOBAL_RKEY,
