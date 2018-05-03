@@ -490,6 +490,7 @@ Provides: kernel-uname-r = %{KVERREL}%{?1:.%{1}}\
 Requires(pre): %{kernel_prereq}\
 Requires(pre): %{initrd_prereq}\
 Requires(pre): linux-firmware >= 20180113-60.git65b1c68\
+Requires(pre): system-release\
 Requires(post): %{_sbindir}/new-kernel-pkg\
 Requires(preun): %{_sbindir}/new-kernel-pkg\
 Conflicts: %{kernel_dot_org_conflicts}\
