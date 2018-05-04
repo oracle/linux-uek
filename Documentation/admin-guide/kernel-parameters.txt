@@ -3975,6 +3975,8 @@
 				 via prctl. Speculative Store Bypass is enabled
 				 for a process by default. The state of the control
 				 is inherited on fork.
+			userspace - Disable Speculative Store Bypass when entering
+				 userspace.
 
 			Not specifying this option is equivalent to
 			spec_store_bypass_disable=auto.
@@ -3986,6 +3988,8 @@
 			skylake=off	- do not use IBRS if present on Skylake
 					  instead of retpoline (this is equivalant
 				          to spectre_v2=retpoline,generic).
+			rds=off         - do not activate the Speculative Store Bypass
+                                          mitigation if doing IBRS.
 
 	spia_io_base=	[HW,MTD]
 	spia_fio_base=

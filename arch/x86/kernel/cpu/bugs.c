@@ -54,6 +54,7 @@ EXPORT_SYMBOL(spec_ctrl_mutex);
 bool use_ibrs_on_skylake = true;
 EXPORT_SYMBOL(use_ibrs_on_skylake);
 
+bool use_ibrs_with_rds = true;
 
 int __init spectre_v2_heuristics_setup(char *p)
 {
@@ -63,6 +64,7 @@ int __init spectre_v2_heuristics_setup(char *p)
 		/* Disable all heuristics. */
 		if (!strncmp(p, "off", 3)) {
 			use_ibrs_on_skylake = false;
+			use_ibrs_with_rds = false;
 			break;
 		}
 		len = strlen("skylake");
@@ -74,6 +76,16 @@ int __init spectre_v2_heuristics_setup(char *p)
 				break;
 			if (!strncmp(p, "off", 3))
 				use_ibrs_on_skylake = false;
+		}
+		len = strlen("rds");
+		if (!strncmp(p, "rds", len)) {
+			p += len;
+			if (*p == '=')
+				++p;
+			if (*p == '\0')
+				break;
+			if (!strncmp(p, "off", 3))
+				use_ibrs_with_rds = false;
 		}
 
 		p = strpbrk(p, ",");
@@ -87,6 +99,7 @@ __setup("spectre_v2_heuristics=", spectre_v2_heuristics_setup);
 
 static void __init spectre_v2_select_mitigation(void);
 static void __init ssb_select_mitigation(void);
+static bool rds_ibrs_selected(void);
 
 /*
  * Our boot-time value of the SPEC_CTRL MSR. We read it once so that any
@@ -213,14 +226,18 @@ void x86_spec_ctrl_set(u64 val)
 		/*
 		 * Only two states are allowed - with IBRS or without.
 		 */
-		if (check_ibrs_inuse()) {
+		if (rds_ibrs_selected()) {
 			if (val & SPEC_CTRL_IBRS)
 				host = x86_spec_ctrl_priv;
 			else
-				host = val;
-		} else
-			host = x86_spec_ctrl_base | val;
-
+				host = val & ~(SPEC_CTRL_RDS);
+		} else {
+			if (ibrs_inuse)
+				host = x86_spec_ctrl_priv;
+			else
+				host = x86_spec_ctrl_base;
+			host |= val;
+		}
 		wrmsrl(MSR_IA32_SPEC_CTRL, host);
 	}
 }
@@ -588,7 +605,8 @@ retpoline_auto:
 			 */
 			if (!retp_compiler() /* prefer IBRS over minimal ASM */ ||
 			    (retp_compiler() && !retpoline_selected(cmd) &&
-			     is_skylake_era() && use_ibrs_on_skylake)) {
+			     ((is_skylake_era() && use_ibrs_on_skylake) ||
+			      (rds_ibrs_selected() && use_ibrs_with_rds)))) {
 				/* Start the engine! */
 				mode = ibrs_select();
 				if (mode == SPECTRE_V2_IBRS)
@@ -650,18 +668,25 @@ display:
 
 static enum ssb_mitigation ssb_mode = SPEC_STORE_BYPASS_NONE;
 
+bool rds_ibrs_selected(void)
+{
+	return (ssb_mode == SPEC_STORE_BYPASS_USERSPACE);
+}
+
 /* The kernel command line selection */
 enum ssb_mitigation_cmd {
 	SPEC_STORE_BYPASS_CMD_NONE,
 	SPEC_STORE_BYPASS_CMD_AUTO,
 	SPEC_STORE_BYPASS_CMD_ON,
 	SPEC_STORE_BYPASS_CMD_PRCTL,
+	SPEC_STORE_BYPASS_CMD_USERSPACE,
 };
 
 static const char *ssb_strings[] = {
 	[SPEC_STORE_BYPASS_NONE]	= "Vulnerable",
 	[SPEC_STORE_BYPASS_DISABLE]	= "Mitigation: Speculative Store Bypass disabled",
-	[SPEC_STORE_BYPASS_PRCTL]	= "Mitigation: Speculative Store Bypass disabled via prctl"
+	[SPEC_STORE_BYPASS_PRCTL]	= "Mitigation: Speculative Store Bypass disabled via prctl",
+	[SPEC_STORE_BYPASS_USERSPACE]	= "Mitigation: Speculative Store Bypass disabled for userspace"
 };
 
 static const struct {
@@ -672,6 +697,7 @@ static const struct {
 	{ "on",		SPEC_STORE_BYPASS_CMD_ON },    /* Disable Speculative Store Bypass */
 	{ "off",	SPEC_STORE_BYPASS_CMD_NONE },  /* Don't touch Speculative Store Bypass */
 	{ "prctl",	SPEC_STORE_BYPASS_CMD_PRCTL }, /* Disable Speculative Store Bypass via prctl */
+	{ "userspace",	SPEC_STORE_BYPASS_CMD_USERSPACE }, /* Disable Speculative Store Bypass for userspace */
 };
 
 static enum ssb_mitigation_cmd __init ssb_parse_cmdline(void)
@@ -721,14 +747,21 @@ static enum ssb_mitigation_cmd __init __ssb_select_mitigation(void)
 
 	switch (cmd) {
 	case SPEC_STORE_BYPASS_CMD_AUTO:
-		/* Choose prctl as the default mode */
-		mode = SPEC_STORE_BYPASS_PRCTL;
+		/* Choose prctl as the default mode unless IBRS is enabled. */
+		if (spectre_v2_enabled == SPECTRE_V2_IBRS)
+			mode = SPEC_STORE_BYPASS_USERSPACE;
+		else
+			mode = SPEC_STORE_BYPASS_PRCTL;
 		break;
 	case SPEC_STORE_BYPASS_CMD_ON:
 		mode = SPEC_STORE_BYPASS_DISABLE;
 		break;
 	case SPEC_STORE_BYPASS_CMD_PRCTL:
 		mode = SPEC_STORE_BYPASS_PRCTL;
+		break;
+	case SPEC_STORE_BYPASS_CMD_USERSPACE:
+		if (boot_cpu_data.x86_vendor == X86_VENDOR_INTEL)
+			mode = SPEC_STORE_BYPASS_USERSPACE;
 		break;
 	case SPEC_STORE_BYPASS_CMD_NONE:
 		break;
@@ -740,8 +773,11 @@ static enum ssb_mitigation_cmd __init __ssb_select_mitigation(void)
 	 *  - X86_FEATURE_RDS - CPU is able to turn off speculative store bypass
 	 *  - X86_FEATURE_SPEC_STORE_BYPASS_DISABLE - engage the mitigation
 	 */
-	if (mode == SPEC_STORE_BYPASS_DISABLE) {
+	if (mode == SPEC_STORE_BYPASS_DISABLE)
 		setup_force_cpu_cap(X86_FEATURE_SPEC_STORE_BYPASS_DISABLE);
+
+	if (mode == SPEC_STORE_BYPASS_DISABLE ||
+	    mode == SPEC_STORE_BYPASS_USERSPACE) {
 		/*
 		 * Intel uses the SPEC CTRL MSR Bit(2) for this, while AMD uses
 		 * a completely different MSR and bit dependent on family.
@@ -749,11 +785,16 @@ static enum ssb_mitigation_cmd __init __ssb_select_mitigation(void)
 		switch (boot_cpu_data.x86_vendor) {
 		case X86_VENDOR_INTEL:
 			x86_spec_ctrl_base |= SPEC_CTRL_RDS;
-			x86_spec_ctrl_mask &= ~SPEC_CTRL_RDS;
-			x86_spec_ctrl_set(SPEC_CTRL_RDS);
+			if (mode == SPEC_STORE_BYPASS_DISABLE) {
+				x86_spec_ctrl_mask &= ~(SPEC_CTRL_RDS);
+				x86_spec_ctrl_set(SPEC_CTRL_RDS);
+			}
+			else
+				x86_spec_ctrl_priv &= ~(SPEC_CTRL_RDS);
 			break;
 		case X86_VENDOR_AMD:
-			x86_amd_rds_enable();
+			if (mode == SPEC_STORE_BYPASS_DISABLE)
+				x86_amd_rds_enable();
 			break;
 		}
 	}
@@ -792,6 +833,7 @@ static int ssb_prctl_set(unsigned long ctrl)
 static int ssb_prctl_get(void)
 {
 	switch (ssb_mode) {
+	case SPEC_STORE_BYPASS_USERSPACE:
 	case SPEC_STORE_BYPASS_DISABLE:
 		return PR_SPEC_DISABLE;
 	case SPEC_STORE_BYPASS_PRCTL:
@@ -830,7 +872,7 @@ int arch_prctl_spec_ctrl_get(unsigned long which)
 
 void x86_spec_ctrl_setup_ap(void)
 {
-	if (boot_cpu_has(X86_FEATURE_IBRS))
+	if (boot_cpu_has(X86_FEATURE_IBRS) && ssb_mode != SPEC_STORE_BYPASS_USERSPACE)
 		x86_spec_ctrl_set(x86_spec_ctrl_base & ~x86_spec_ctrl_mask);
 
 	if (ssb_mode == SPEC_STORE_BYPASS_DISABLE)
