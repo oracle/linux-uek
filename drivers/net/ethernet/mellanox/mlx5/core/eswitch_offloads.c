@@ -93,11 +93,11 @@ mlx5_eswitch_add_offloaded_rule(struct mlx5_eswitch *esw,
 				struct mlx5_flow_spec *spec,
 				struct mlx5_esw_flow_attr *attr)
 {
-	struct mlx5_flow_destination dest[2] = {};
+	struct mlx5_flow_destination dest[MLX5_MAX_FLOW_FWD_VPORTS + 1] = {};
 	struct mlx5_flow_act flow_act = {0};
 	struct mlx5_fc *counter = NULL;
 	struct mlx5_flow_handle *rule;
-	int i = 0;
+	int j, i = 0;
 
 	if (esw->mode != SRIOV_OFFLOADS)
 		return ERR_PTR(-EOPNOTSUPP);
@@ -119,9 +119,16 @@ mlx5_eswitch_add_offloaded_rule(struct mlx5_eswitch *esw,
 	}
 
 	if (flow_act.action & MLX5_FLOW_CONTEXT_ACTION_FWD_DEST) {
-		dest[i].type = MLX5_FLOW_DESTINATION_TYPE_VPORT;
-		dest[i].vport.num = attr->out_rep->vport;
-		i++;
+		for (j = attr->mirror_count; j < attr->out_count; j++) {
+			dest[i].type = MLX5_FLOW_DESTINATION_TYPE_VPORT;
+			dest[i].vport.num = attr->out_rep[j]->vport;
+			if (MLX5_CAP_ESW(esw->dev, merged_eswitch)) {
+				dest[i].vport.vhca_id =
+					MLX5_CAP_GEN(attr->out_mdev[j], vhca_id);
+				dest[i].vport.vhca_id_valid = 1;
+			}
+			i++;
+		}
 	}
 	if (flow_act.action & MLX5_FLOW_CONTEXT_ACTION_COUNT) {
 		counter = mlx5_fc_create(esw->dev, true);
@@ -201,7 +208,7 @@ esw_vlan_action_get_vport(struct mlx5_esw_flow_attr *attr, bool push, bool pop)
 	struct mlx5_eswitch_rep *in_rep, *out_rep, *vport = NULL;
 
 	in_rep  = attr->in_rep;
-	out_rep = attr->out_rep;
+	out_rep = attr->out_rep[0];
 
 	if (push)
 		vport = in_rep;
@@ -222,7 +229,7 @@ static int esw_add_vlan_action_check(struct mlx5_esw_flow_attr *attr,
 		goto out_notsupp;
 
 	in_rep  = attr->in_rep;
-	out_rep = attr->out_rep;
+	out_rep = attr->out_rep[0];
 
 	if (push && in_rep->vport == MLX5_VPORT_UPLINK)
 		goto out_notsupp;
@@ -273,7 +280,7 @@ int mlx5_eswitch_add_vlan_action(struct mlx5_eswitch *esw,
 
 	if (!push && !pop && fwd) {
 		/* tracks VF --> wire rules without vlan push action */
-		if (attr->out_rep->vport == MLX5_VPORT_UPLINK) {
+		if (attr->out_rep[0]->vport == MLX5_VPORT_UPLINK) {
 			vport->vlan_refcount++;
 			attr->vlan_handled = true;
 		}
@@ -333,7 +340,7 @@ int mlx5_eswitch_del_vlan_action(struct mlx5_eswitch *esw,
 
 	if (!push && !pop && fwd) {
 		/* tracks VF --> wire rules without vlan push action */
-		if (attr->out_rep->vport == MLX5_VPORT_UPLINK)
+		if (attr->out_rep[0]->vport == MLX5_VPORT_UPLINK)
 			vport->vlan_refcount--;
 
 		return 0;

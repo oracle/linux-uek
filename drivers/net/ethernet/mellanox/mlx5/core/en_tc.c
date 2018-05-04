@@ -370,7 +370,8 @@ mlx5e_tc_add_fdb_flow(struct mlx5e_priv *priv,
 		}
 		out_priv = netdev_priv(encap_dev);
 		rpriv = out_priv->ppriv;
-		attr->out_rep = rpriv->rep;
+		attr->out_rep[attr->out_count] = rpriv->rep;
+		attr->out_mdev[attr->out_count++] = out_priv->mdev;
 	}
 
 	err = mlx5_eswitch_add_vlan_action(esw, attr);
@@ -2065,6 +2066,8 @@ static int parse_tc_vlan_action(struct mlx5e_priv *priv,
 		return -EOPNOTSUPP;
 	}
 
+	/* Original code snippet has been refactored into this function in ebefb2471f476 */
+	attr->mirror_count = attr->out_count;
 	attr->total_vlan = vlan_idx + 1;
 
 	return 0;
@@ -2103,6 +2106,7 @@ static int parse_tc_fdb_actions(struct mlx5e_priv *priv, struct tcf_exts *exts,
 				return err;
 
 			attr->action |= MLX5_FLOW_CONTEXT_ACTION_MOD_HDR;
+			attr->mirror_count = attr->out_count;
 			continue;
 		}
 
@@ -2114,12 +2118,18 @@ static int parse_tc_fdb_actions(struct mlx5e_priv *priv, struct tcf_exts *exts,
 			return -EOPNOTSUPP;
 		}
 
-		if (is_tcf_mirred_egress_redirect(a)) {
+		if (is_tcf_mirred_egress_redirect(a) || is_tcf_mirred_egress_mirror(a)) {
 			int ifindex = tcf_mirred_ifindex(a);
 			struct net_device *out_dev;
 			struct mlx5e_priv *out_priv;
 
 			out_dev = __dev_get_by_index(dev_net(priv->netdev), ifindex);
+
+			if (attr->out_count >= MLX5_MAX_FLOW_FWD_VPORTS) {
+				pr_err("can't support more than %d output ports, can't offload forwarding\n",
+				       attr->out_count);
+				return -EOPNOTSUPP;
+			}
 
 			if (switchdev_port_same_parent_id(priv->netdev,
 							  out_dev)) {
@@ -2127,7 +2137,8 @@ static int parse_tc_fdb_actions(struct mlx5e_priv *priv, struct tcf_exts *exts,
 					MLX5_FLOW_CONTEXT_ACTION_COUNT;
 				out_priv = netdev_priv(out_dev);
 				rpriv = out_priv->ppriv;
-				attr->out_rep = rpriv->rep;
+				attr->out_rep[attr->out_count] = rpriv->rep;
+				attr->out_mdev[attr->out_count++] = out_priv->mdev;
 			} else if (encap) {
 				parse_attr->mirred_ifindex = ifindex;
 				parse_attr->tun_info = *info;
@@ -2150,6 +2161,7 @@ static int parse_tc_fdb_actions(struct mlx5e_priv *priv, struct tcf_exts *exts,
 				encap = true;
 			else
 				return -EOPNOTSUPP;
+			attr->mirror_count = attr->out_count;
 			continue;
 		}
 
@@ -2172,6 +2184,11 @@ static int parse_tc_fdb_actions(struct mlx5e_priv *priv, struct tcf_exts *exts,
 
 	if (!actions_match_supported(priv, exts, parse_attr, flow))
 		return -EOPNOTSUPP;
+
+	if (attr->out_count > 1 && !mlx5_esw_has_fwd_fdb(priv->mdev)) {
+		netdev_warn_once(priv->netdev, "current firmware doesn't support split rule for port mirroring\n");
+		return -EOPNOTSUPP;
+	}
 
 	return err;
 }
