@@ -197,6 +197,8 @@ extern char __indirect_thunk_end[];
 /* Speculation control prctl */
 int arch_prctl_spec_ctrl_get(struct task_struct *task, unsigned long which);
 int arch_prctl_spec_ctrl_set(struct task_struct *task, unsigned long which, unsigned long ctrl);
+/* Speculation control for seccomp enforced mitigation */
+void arch_seccomp_spec_mitigate(struct task_struct *task);
 
 /*
  * On VMEXIT we must ensure that no RSB predictions learned in the guest
