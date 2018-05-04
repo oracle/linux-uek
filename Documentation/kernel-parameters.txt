@@ -3523,6 +3523,8 @@ bytes respectively. Such letter suffixes can also be entirely omitted.
 						 mitigation if a module is
 						 loaded that was not compiled
 						 with retpoline.
+			rds=off         - do not activate the Speculative Store Bypass
+                                          mitigation if doing IBRS.
 
 	spec_store_bypass_disable=
 			[HW] Control Speculative Store Bypass (SSB) Disable mitigation
@@ -3554,6 +3556,8 @@ bytes respectively. Such letter suffixes can also be entirely omitted.
 				 via prctl. Speculative Store Bypass is enabled
 				 for a process by default. The state of the control
 				 is inherited on fork.
+			userspace - Disable Speculative Store Bypass when entering
+				 userspace.
 
 			Not specifying this option is equivalent to
 			spec_store_bypass_disable=auto.
