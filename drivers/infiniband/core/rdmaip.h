@@ -148,12 +148,12 @@ MODULE_PARM_DESC(rdmaip_active_bonding_failback,
 unsigned int rdmaip_trigger_delay_max_msecs = 75000;
 module_param(rdmaip_trigger_delay_max_msecs, int, 0444);
 MODULE_PARM_DESC(rdmaip_trigger_delay_max_msecs,
-		"  Maximum delay in msec before failover during boot is triggered");
+		" Maximum delay in msec before failover during boot is triggered");
 
 unsigned int rdmaip_trigger_delay_min_msecs = 20000;
 module_param(rdmaip_trigger_delay_min_msecs, int, 0444);
 MODULE_PARM_DESC(rdmaip_trigger_delay_min_msecs,
-		"  Minum delay in msec before failover during boot is triggered");
+		" Minimum delay in msec before failover during boot is triggered");
 
 /*
  * rdmaip_active_bonding_failover_groups allows
@@ -172,7 +172,7 @@ MODULE_PARM_DESC(rdmaip_active_bonding_failover_groups,
 unsigned int rdmaip_active_bonding_arps = RDMAIP_DEFAULT_NUM_ARPS;
 module_param(rdmaip_active_bonding_arps, int, 0444);
 MODULE_PARM_DESC(rdmaip_active_bonding_arps,
-		 " Number ARP requiest to send when IP moved");
+		 " Number of ARP requests to send when IP moved");
 
 struct socket	*rdmaip_inet_socket;
 struct socket	*rdmaip_inet6_socket;
