@@ -42,9 +42,13 @@
 #include "icm.h"
 #include "fw.h"
 
+/*
+ * We allocate in as big chunks as we can, up to a maximum of 256 KB
+ * per chunk.
+ */
 enum {
-	MLX4_ICM_ALLOC_SIZE	= 1 << 13,
-	MLX4_TABLE_CHUNK_SIZE	= 1 << 13
+	MLX4_ICM_ALLOC_SIZE	= 1 << 18,
+	MLX4_TABLE_CHUNK_SIZE	= 1 << 18
 };
 
 static void mlx4_free_icm_pages(struct mlx4_dev *dev, struct mlx4_icm_chunk *chunk)
