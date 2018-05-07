@@ -29,7 +29,7 @@ struct xen_microcode {
 	char data[0];
 };
 
-static int xen_microcode_update(int cpu)
+static enum ucode_state xen_microcode_update(int cpu)
 {
 	int err;
 	struct xen_platform_op op;
@@ -42,7 +42,7 @@ static int xen_microcode_update(int cpu)
 		 * other cpus explicitly (besides, these vcpu numbers
 		 * have no relationship to underlying physical cpus).
 		 */
-		return 0;
+		return UCODE_OK;
 	}
 
 	op.cmd = XENPF_microcode_update;
@@ -51,10 +51,12 @@ static int xen_microcode_update(int cpu)
 
 	err = HYPERVISOR_platform_op(&op);
 
-	if (err != 0)
+	if (err != 0) {
 		pr_warn("microcode_xen: microcode update failed: %d\n", err);
+		return UCODE_ERROR;
+	}
 
-	return err;
+	return UCODE_OK;
 }
 
 static enum ucode_state xen_request_microcode_fw(int cpu, struct device *device,
