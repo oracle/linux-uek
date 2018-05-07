@@ -1266,7 +1266,11 @@ CTF_FILENAME := vmlinux.ctfa
 ifeq ($(SRCARCH),x86)
 objects.builtin: $(vmlinux-dirs) $(if $(KBUILD_BUILTIN),bzImage) FORCE
 else
+ifeq ($(SRCARCH),arm64)
+objects.builtin: $(vmlinux-dirs) $(if $(KBUILD_BUILTIN),Image) FORCE
+else
 objects.builtin: $(vmlinux-dirs) $(if $(KBUILD_BUILTIN),vmlinux) FORCE
+endif
 endif
 	@echo $(KBUILD_VMLINUX_INIT) $(KBUILD_VMLINUX_MAIN) | \
 		tr " " "\n" | grep "\.o$$" | xargs -r file | \
