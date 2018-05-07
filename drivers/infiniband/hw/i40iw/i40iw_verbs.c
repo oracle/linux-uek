@@ -393,6 +393,7 @@ static struct i40iw_pbl *i40iw_get_pbl(unsigned long va,
 
 	list_for_each_entry(iwpbl, pbl_list, list) {
 		if (iwpbl->user_base == va) {
+			iwpbl->on_list = false;
 			list_del(&iwpbl->list);
 			return iwpbl;
 		}
@@ -1880,6 +1881,7 @@ static struct ib_mr *i40iw_reg_user_mr(struct ib_pd *pd,
 			goto error;
 		spin_lock_irqsave(&ucontext->qp_reg_mem_list_lock, flags);
 		list_add_tail(&iwpbl->list, &ucontext->qp_reg_mem_list);
+		iwpbl->on_list = true;
 		spin_unlock_irqrestore(&ucontext->qp_reg_mem_list_lock, flags);
 		break;
 	case IW_MEMREG_TYPE_CQ:
@@ -1890,6 +1892,7 @@ static struct ib_mr *i40iw_reg_user_mr(struct ib_pd *pd,
 
 		spin_lock_irqsave(&ucontext->cq_reg_mem_list_lock, flags);
 		list_add_tail(&iwpbl->list, &ucontext->cq_reg_mem_list);
+		iwpbl->on_list = true;
 		spin_unlock_irqrestore(&ucontext->cq_reg_mem_list_lock, flags);
 		break;
 	case IW_MEMREG_TYPE_MEM:
@@ -2027,14 +2030,18 @@ static void i40iw_del_memlist(struct i40iw_mr *iwmr,
 	switch (iwmr->type) {
 	case IW_MEMREG_TYPE_CQ:
 		spin_lock_irqsave(&ucontext->cq_reg_mem_list_lock, flags);
-		if (!list_empty(&ucontext->cq_reg_mem_list))
+		if (iwpbl->on_list) {
+			iwpbl->on_list = false;
 			list_del(&iwpbl->list);
+		}
 		spin_unlock_irqrestore(&ucontext->cq_reg_mem_list_lock, flags);
 		break;
 	case IW_MEMREG_TYPE_QP:
 		spin_lock_irqsave(&ucontext->qp_reg_mem_list_lock, flags);
-		if (!list_empty(&ucontext->qp_reg_mem_list))
+		if (iwpbl->on_list) {
+			iwpbl->on_list = false;
 			list_del(&iwpbl->list);
+		}
 		spin_unlock_irqrestore(&ucontext->qp_reg_mem_list_lock, flags);
 		break;
 	default:
