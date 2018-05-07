@@ -1,9 +1,9 @@
 /*
  * uek_abi.h - Oracle kabi abstraction header
  *
- * (C) 2018 Oracle, Inc.  All rights reserved.
+ * Copyright (c) 2018 Oracle and/or its affiliates. All rights reserved.
  *
- * This file is released under the GPLv2.
+ * This file is released under the GPLv2 license.
  * See the file COPYING for more details.
  */
 
