@@ -3443,6 +3443,8 @@ static int bnxt_hwrm_do_send_msg(struct bnxt *bp, void *msg, u32 msg_len,
 			return -1;
 		}
 	} else {
+		int j;
+
 		/* Check if response len is updated */
 		resp_len = bp->hwrm_cmd_resp_addr + HWRM_RESP_LEN_OFFSET;
 		for (i = 0; i < tmo_count; i++) {
@@ -3461,22 +3463,24 @@ static int bnxt_hwrm_do_send_msg(struct bnxt *bp, void *msg, u32 msg_len,
 
 		if (i >= tmo_count) {
 			netdev_err(bp->dev, "Error (timeout: %d) msg {0x%x 0x%x} len:%d\n",
-				   timeout, le16_to_cpu(req->req_type),
+				   HWRM_TOTAL_TIMEOUT(i),
+				   le16_to_cpu(req->req_type),
 				   le16_to_cpu(req->seq_id), len);
 			return -1;
 		}
 
 		/* Last word of resp contains valid bit */
 		valid = bp->hwrm_cmd_resp_addr + len - 4;
-		for (i = 0; i < 5; i++) {
+		for (j = 0; j < HWRM_VALID_BIT_DELAY_USEC; j++) {
 			if (le32_to_cpu(*valid) & HWRM_RESP_VALID_MASK)
 				break;
 			udelay(1);
 		}
 
-		if (i >= 5) {
+		if (j >= HWRM_VALID_BIT_DELAY_USEC) {
 			netdev_err(bp->dev, "Error (timeout: %d) msg {0x%x 0x%x} len:%d v:%d\n",
-				   timeout, le16_to_cpu(req->req_type),
+				   HWRM_TOTAL_TIMEOUT(i),
+				   le16_to_cpu(req->req_type),
 				   le16_to_cpu(req->seq_id), len, *valid);
 			return -1;
 		}
