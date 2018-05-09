@@ -77,6 +77,7 @@
 #include <asm/realmode.h>
 #include <asm/misc.h>
 #include <asm/microcode.h>
+#include <asm/spec-ctrl.h>
 
 /* Number of siblings per CPU package */
 int smp_num_siblings = 1;
@@ -234,6 +235,8 @@ static void notrace start_secondary(void *unused)
 	 * Check TSC synchronization with the BP:
 	 */
 	check_tsc_sync_target();
+
+	speculative_store_bypass_ht_init();
 
 	/*
 	 * Enable the espfix hack for this CPU
@@ -1190,6 +1193,8 @@ void __init native_smp_prepare_cpus(unsigned int max_cpus)
 		uv_system_init();
 
 	set_mtrr_aps_delayed_init();
+
+	speculative_store_bypass_ht_init();
 }
 
 void arch_enable_nonboot_cpus_begin(void)
