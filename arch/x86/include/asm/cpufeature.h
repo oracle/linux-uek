@@ -197,7 +197,7 @@
 #define X86_FEATURE_HWP_EPP	( 7*32+13) /* Intel HWP_EPP */
 #define X86_FEATURE_HWP_PKG_REQ ( 7*32+14) /* Intel HWP_PKG_REQ */
 #define X86_FEATURE_INTEL_PT	( 7*32+15) /* Intel Processor Trace */
-#define X86_FEATURE_AMD_RDS	( 7*32+18) /* "" AMD RDS implementation */
+#define X86_FEATURE_AMD_SSBD	( 7*32+18) /* "" AMD RDS implementation */
 #define X86_FEATURE_RSB_CTXSW	( 7*32+19) /* "" Fill RSB on context switches */
 #define X86_FEATURE_IBRS	( 7*32+20) /* Control Speculation Control */
 #define X86_FEATURE_STIBP	( 7*32+21) /* Single Thread Indirect Branch Predictors */
@@ -208,7 +208,7 @@
  * But thanks to kABI we have to jam it somewhere else. */
 #define X86_FEATURE_IBPB                (7*32+24) /* Indirect Branch Prediction Barrier */
 
-#define X86_FEATURE_RDS		( 7*32+25) /* Reduced Data Speculation */
+#define X86_FEATURE_SSBD		( 7*32+25) /* Speculative Store Bypass Disable */
 #define X86_FEATURE_SPEC_STORE_BYPASS_DISABLE ( 7*32+26) /* "" Disable Speculative Store Bypass. */
 #define X86_FEATURE_VMEXIT_RSB_FULL	(7*32+27) /* "" Whether to stuff the RSB on VMEXIT. */
 #define X86_FEATURE_STUFF_RSB	(7*32+28) /* "" Whether to stuff the RSB (usually dependent on !SMEP) */

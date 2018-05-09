@@ -49,9 +49,9 @@
 #define MSR_IA32_ARCH_CAPABILITIES	0x0000010a
 #define ARCH_CAP_RDCL_NO		(1 << 0)   /* Not susceptible to Meltdown */
 #define ARCH_CAP_IBRS_ALL		(1 << 1)   /* Enhanced IBRS support */
-#define ARCH_CAP_RDS_NO			(1 << 4)   /*
+#define ARCH_CAP_SSBD_NO			(1 << 4)   /*
 						    * Not susceptible to Speculative Store Bypass
-						    * attack, so no Reduced Data Speculation control
+						    * attack, so no Speculative Store Bypass Disable control
 						    * required.
 						    */
 
@@ -135,8 +135,8 @@
 #define SPEC_CTRL_FEATURE_DISABLE_IBRS	(0 << 0)
 #define SPEC_CTRL_IBRS			(1 << 0)
 #define SPEC_CTRL_FEATURE_ENABLE_IBRS	(1 << 0)
-#define SPEC_CTRL_RDS_SHIFT		2          /* Reduced Data Speculation bit */
-#define SPEC_CTRL_RDS			(1 << SPEC_CTRL_RDS_SHIFT)   /* Reduced Data Speculation */
+#define SPEC_CTRL_SSBD_SHIFT		2          /* Speculative Store Bypass Disable bit */
+#define SPEC_CTRL_SSBD			(1 << SPEC_CTRL_SSBD_SHIFT)   /* Speculative Store Bypass Disable */
 
 #define MSR_IA32_SPEC_CTRL		0x00000048
 #define MSR_IA32_PRED_CMD		0x00000049

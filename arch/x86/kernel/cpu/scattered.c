@@ -110,7 +110,7 @@ void init_scattered_cpuid_features(struct cpuinfo_x86 *c,
 		{ X86_FEATURE_IBRS,		CR_EDX,26, 0x00000007, 0 },
 		{ X86_FEATURE_STIBP,            CR_EDX,27, 0x00000007, 0 },
 		{ X86_FEATURE_IA32_ARCH_CAPS,   CR_EDX,29, 0x00000007, 0 },
-		{ X86_FEATURE_RDS,		CR_EDX,31, 0x00000007, 0 },
+		{ X86_FEATURE_SSBD,		CR_EDX,31, 0x00000007, 0 },
 		{ X86_FEATURE_HW_PSTATE,	CR_EDX, 7, 0x80000007, 0 },
 		{ X86_FEATURE_CPB,		CR_EDX, 9, 0x80000007, 0 },
 		{ X86_FEATURE_PROC_FEEDBACK,	CR_EDX,11, 0x80000007, 0 },
@@ -184,7 +184,7 @@ void init_scattered_cpuid_features(struct cpuinfo_x86 *c,
 		clear_cpu_cap(c, X86_FEATURE_IBRS);
 		clear_cpu_cap(c, X86_FEATURE_IBPB);
 		clear_cpu_cap(c, X86_FEATURE_STIBP);
-		clear_cpu_cap(c, X86_FEATURE_RDS);
+		clear_cpu_cap(c, X86_FEATURE_SSBD);
 	}
 
 	if (c->cpu_index == 0) {

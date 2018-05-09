@@ -61,7 +61,7 @@ u64 kvm_supported_xcr0(void)
 /* These are scattered features in cpufeatures.h. */
 #define KVM_CPUID_BIT_IBRS		26
 #define KVM_CPUID_BIT_STIBP		27
-#define KVM_CPUID_BIT_RDS		31
+#define KVM_CPUID_BIT_SSBD		31
 
 
 /* CPUID[eax=0x80000008].ebx */
@@ -366,7 +366,7 @@ static inline int __do_cpuid_ent(struct kvm_cpuid_entry2 *entry, u32 function,
 		F(XSAVEOPT) | F(XSAVEC) | F(XGETBV1) | f_xsaves;
 
 	const u32 kvm_cpuid_7_0_edx_x86_features = KF(IBRS) | KF(STIBP) |
-		KF(RDS);
+		KF(SSBD);
 
 	/* cpuid 0x80000008.ebx */
 	const u32 kvm_cpuid_80000008_ebx_x86_features =
@@ -449,8 +449,8 @@ static inline int __do_cpuid_ent(struct kvm_cpuid_entry2 *entry, u32 function,
 				entry->edx &= ~(1u << KVM_CPUID_BIT_IBRS);
 			if ( !boot_cpu_has(X86_FEATURE_STIBP) )
 				entry->edx &= ~(1u << KVM_CPUID_BIT_STIBP);
-			if ( !boot_cpu_has(X86_FEATURE_RDS) )
-				entry->edx &= ~(1u << KVM_CPUID_BIT_RDS);
+			if ( !boot_cpu_has(X86_FEATURE_SSBD) )
+				entry->edx &= ~(1u << KVM_CPUID_BIT_SSBD);
 		} else {
 			entry->ebx = 0;
 			entry->edx = 0;

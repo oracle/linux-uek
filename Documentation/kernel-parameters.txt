@@ -3523,7 +3523,7 @@ bytes respectively. Such letter suffixes can also be entirely omitted.
 						 mitigation if a module is
 						 loaded that was not compiled
 						 with retpoline.
-			rds=off         - do not activate the Speculative Store Bypass
+			ssbd=off         - do not activate the Speculative Store Bypass
                                           mitigation if doing IBRS.
 
 	spec_store_bypass_disable=
