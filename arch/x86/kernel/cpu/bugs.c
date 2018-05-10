@@ -142,7 +142,7 @@ void __init check_bugs(void)
 	 * have unknown values. AMD64_LS_CFG MSR is cached in the early AMD
 	 * init code as it is not enumerated and depends on the family.
 	 */
-	if (boot_cpu_has(X86_FEATURE_IBRS)) {
+	if (boot_cpu_has(X86_FEATURE_MSR_SPEC_CTRL)) {
 		rdmsrl(MSR_IA32_SPEC_CTRL, x86_spec_ctrl_base);
 		if (x86_spec_ctrl_base & SPEC_CTRL_IBRS) {
 			pr_warn("SPEC CTRL MSR (0x%16llx) has IBRS set during boot, clearing it.", x86_spec_ctrl_base);
@@ -265,6 +265,7 @@ void x86_spec_ctrl_set_guest(u64 guest_spec_ctrl)
 		return;
 	}
 
+	/* Intel controls SSB in MSR_SPEC_CTRL */
 	if (boot_cpu_data.x86_vendor == X86_VENDOR_INTEL)
 		host |= ssbd_tif_to_spec_ctrl(current_thread_info()->flags);
 
@@ -285,6 +286,7 @@ void x86_spec_ctrl_restore_host(u64 guest_spec_ctrl)
 		return;
 	}
 
+	/* Intel controls SSB in MSR_SPEC_CTRL */
 	if (boot_cpu_data.x86_vendor == X86_VENDOR_INTEL)
 		host |= ssbd_tif_to_spec_ctrl(current_thread_info()->flags);
 
@@ -915,7 +917,7 @@ int arch_prctl_spec_ctrl_get(struct task_struct *task, unsigned long which)
 
 void x86_spec_ctrl_setup_ap(void)
 {
-	if (boot_cpu_has(X86_FEATURE_IBRS) && ssb_mode != SPEC_STORE_BYPASS_USERSPACE)
+	if (boot_cpu_has(X86_FEATURE_MSR_SPEC_CTRL) && ssb_mode != SPEC_STORE_BYPASS_USERSPACE)
 		x86_spec_ctrl_set(x86_spec_ctrl_base & ~x86_spec_ctrl_mask);
 
 	if (ssb_mode == SPEC_STORE_BYPASS_DISABLE)
