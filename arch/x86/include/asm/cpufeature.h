@@ -197,6 +197,7 @@
 #define X86_FEATURE_HWP_EPP	( 7*32+13) /* Intel HWP_EPP */
 #define X86_FEATURE_HWP_PKG_REQ ( 7*32+14) /* Intel HWP_PKG_REQ */
 #define X86_FEATURE_INTEL_PT	( 7*32+15) /* Intel Processor Trace */
+#define X86_FEATURE_ZEN		( 7*32+17) /* "" CPU is AMD family 0x17 (Zen) */
 #define X86_FEATURE_AMD_SSBD	( 7*32+18) /* "" AMD RDS implementation */
 #define X86_FEATURE_RSB_CTXSW	( 7*32+19) /* "" Fill RSB on context switches */
 #define X86_FEATURE_IBRS	( 7*32+20) /* Control Speculation Control */
