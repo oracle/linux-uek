@@ -3173,6 +3173,9 @@ static int svm_get_msr(struct kvm_vcpu *vcpu, unsigned ecx, u64 *data)
 	case MSR_IA32_SPEC_CTRL:
 		*data = svm->spec_ctrl;
 		break;
+	case MSR_AMD64_VIRT_SPEC_CTRL:
+		*data = svm->virt_spec_ctrl;
+		break;
 	case MSR_IA32_UCODE_REV:
 		*data = 0x01000065;
 		break;
@@ -3290,6 +3293,12 @@ static int svm_set_msr(struct kvm_vcpu *vcpu, struct msr_data *msr)
 		break;
 	case MSR_IA32_SPEC_CTRL:
 		svm->spec_ctrl = data;
+		break;
+	case MSR_AMD64_VIRT_SPEC_CTRL:
+		if (data & ~SPEC_CTRL_SSBD)
+			return 1;
+
+		svm->virt_spec_ctrl = data;
 		break;
 	default:
 		return kvm_set_msr_common(vcpu, msr);
@@ -4149,6 +4158,11 @@ static bool svm_cpu_has_accelerated_tpr(void)
 	return false;
 }
 
+static bool svm_has_emulated_msr(int index)
+{
+		return true;
+}
+
 static u64 svm_get_mt_mask(struct kvm_vcpu *vcpu, gfn_t gfn, bool is_mmio)
 {
 	return 0;
@@ -4424,6 +4438,7 @@ static struct kvm_x86_ops svm_x86_ops = {
 	.hardware_enable = svm_hardware_enable,
 	.hardware_disable = svm_hardware_disable,
 	.cpu_has_accelerated_tpr = svm_cpu_has_accelerated_tpr,
+	.has_emulated_msr = svm_has_emulated_msr,
 
 	.vcpu_create = svm_create_vcpu,
 	.vcpu_free = svm_free_vcpu,

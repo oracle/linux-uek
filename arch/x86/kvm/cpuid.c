@@ -66,6 +66,7 @@ u64 kvm_supported_xcr0(void)
 
 /* CPUID[eax=0x80000008].ebx */
 #define KVM_CPUID_BIT_IBPB_SUPPORT	12
+#define KVM_CPUID_BIT_VIRT_SSBD		25
 
 #define KF(x) bit(KVM_CPUID_BIT_##x)
 
@@ -370,7 +371,7 @@ static inline int __do_cpuid_ent(struct kvm_cpuid_entry2 *entry, u32 function,
 
 	/* cpuid 0x80000008.ebx */
 	const u32 kvm_cpuid_80000008_ebx_x86_features =
-		KF(IBPB_SUPPORT);
+		KF(IBPB_SUPPORT) | KF(VIRT_SSBD);
 
 	/* all calls to cpuid_count() should be made on the same cpu */
 	get_cpu();
@@ -600,9 +601,17 @@ static inline int __do_cpuid_ent(struct kvm_cpuid_entry2 *entry, u32 function,
 			g_phys_as = phys_as;
 		entry->eax = g_phys_as | (virt_as << 8);
 		entry->edx = 0;
+
+		if (boot_cpu_has(X86_FEATURE_VIRT_SSBD))
+			entry->ebx |= KF(VIRT_SSBD);
+
 		entry->ebx &= kvm_cpuid_80000008_ebx_x86_features;
+
 		if ( !boot_cpu_has(X86_FEATURE_IBPB) )
-			entry->ebx &= !(1u << KVM_CPUID_BIT_IBPB_SUPPORT);
+			entry->ebx &= ~(1u << KVM_CPUID_BIT_IBPB_SUPPORT);
+
+		if (boot_cpu_has(X86_FEATURE_AMD_SSBD))
+			entry->ebx |= KF(VIRT_SSBD);
 		break;
 	}
 	case 0x80000019:
