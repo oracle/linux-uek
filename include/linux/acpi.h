@@ -1276,4 +1276,17 @@ int acpi_irq_get(acpi_handle handle, unsigned int index, struct resource *res)
 }
 #endif
 
+#ifdef CONFIG_ACPI_LPIT
+int lpit_read_residency_count_address(u64 *address);
+#else
+static inline int lpit_read_residency_count_address(u64 *address)
+{
+	return -EINVAL;
+}
+#endif
+
+int find_acpi_cpu_topology(unsigned int cpu, int level);
+int find_acpi_cpu_topology_package(unsigned int cpu);
+int find_acpi_cpu_cache_topology(unsigned int cpu, int level);
+
 #endif	/*_LINUX_ACPI_H*/
