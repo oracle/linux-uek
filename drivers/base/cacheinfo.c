@@ -227,13 +227,18 @@ static inline bool cache_leaves_are_shared(struct cacheinfo *this_leaf,
 					   struct cacheinfo *sib_leaf)
 {
 	/*
-	 * For non-DT systems, assume unique level 1 cache, system-wide
+	 * For non-DT/ACPI systems, assume unique level 1 caches, system-wide
 	 * shared caches for all other levels. This will be used only if
 	 * arch specific code has not populated shared_cpu_map
 	 */
 	return !(this_leaf->level == 1);
 }
 #endif
+
+int __weak cache_setup_acpi(unsigned int cpu)
+{
+	return -ENOTSUPP;
+}
 
 static int cache_shared_cpu_map_setup(unsigned int cpu)
 {
@@ -255,11 +260,17 @@ static int cache_shared_cpu_map_setup(unsigned int cpu)
 	if (acpi_disabled && of_have_populated_dt())
 		ret = cache_setup_of_node(cpu);
 	else if (!acpi_disabled) {
-		if (!IS_ENABLED(CONFIG_ARM64)) {
-			/* No cache property/hierarchy support yet in ACPI */
-			ret = -ENOTSUPP;
+		/* ACPI now supports cache property/hierarchy */
+		ret = cache_setup_acpi(cpu);
+		if (ret && IS_ENABLED(CONFIG_ARM64)) {
+			/* Not all ARM64 machine has PPTT entry in ACPI table.
+			 * If cache_setup_acpi() fails then fall back to
+			 * original path.
+			 */
+			ret = 0;
 		}
 	}
+
 	if (ret)
 		return ret;
 
@@ -310,7 +321,8 @@ static void cache_shared_cpu_map_remove(unsigned int cpu)
 			cpumask_clear_cpu(cpu, &sib_leaf->shared_cpu_map);
 			cpumask_clear_cpu(sibling, &this_leaf->shared_cpu_map);
 		}
-		of_node_put(this_leaf->fw_token);
+		if (of_have_populated_dt())
+			of_node_put(this_leaf->fw_token);
 	}
 }
 
