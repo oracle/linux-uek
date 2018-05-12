@@ -254,16 +254,6 @@ void x86_spec_ctrl_set(u64 val)
 }
 EXPORT_SYMBOL_GPL(x86_spec_ctrl_set);
 
-u64 x86_spec_ctrl_get_default(void)
-{
-	u64 msrval = x86_spec_ctrl_base;
-
-	if (boot_cpu_data.x86_vendor == X86_VENDOR_INTEL)
-		msrval |= ssbd_tif_to_spec_ctrl(current_thread_info()->flags);
-	return msrval;
-}
-EXPORT_SYMBOL_GPL(x86_spec_ctrl_get_default);
-
 void
 x86_virt_spec_ctrl(u64 guest_spec_ctrl, u64 guest_virt_spec_ctrl, bool setguest)
 {

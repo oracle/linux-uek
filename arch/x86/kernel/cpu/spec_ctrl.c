@@ -216,7 +216,7 @@ late_initcall(debugfs_spec_ctrl);
 void unprotected_firmware_begin(void)
 {
         if (retpoline_enabled() && ibrs_firmware) {
-		u64 val = x86_spec_ctrl_get_default() | SPEC_CTRL_FEATURE_ENABLE_IBRS;
+		u64 val = x86_spec_ctrl_base | SPEC_CTRL_FEATURE_ENABLE_IBRS;
 
 		native_wrmsrl(MSR_IA32_SPEC_CTRL, val);
         } else {
@@ -232,7 +232,7 @@ EXPORT_SYMBOL_GPL(unprotected_firmware_begin);
 void unprotected_firmware_end(void)
 {
         if (retpoline_enabled() && ibrs_firmware) {
-		u64 val = x86_spec_ctrl_get_default();
+		u64 val = x86_spec_ctrl_base;
 
 		native_wrmsrl(MSR_IA32_SPEC_CTRL, val);
         }
