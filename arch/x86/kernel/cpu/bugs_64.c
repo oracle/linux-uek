@@ -367,7 +367,7 @@ void disable_retpoline(void)
 		if (!ibrs_inuse) {
 			/* try to enable ibrs */
 			if (set_ibrs_inuse()) {
-				pr_err("Spectre v2 mitigation set to IBRS.\n");
+				pr_err("Spectre v2 mitigation set to IBRS and retpoline.\n");
 				spectre_v2_enabled = SPECTRE_V2_IBRS;
 				if (!ibpb_inuse && set_ibpb_inuse()) {
 					pr_err("Spectre v2 mitigation IBPB enabled.\n");
