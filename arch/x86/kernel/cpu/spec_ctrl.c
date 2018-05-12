@@ -5,6 +5,7 @@
 #include <linux/uaccess.h>
 #include <linux/cpu.h>
 #include <asm/spec_ctrl.h>
+#include <asm/nospec-branch.h>
 #include <asm/cpufeature.h>
 #include <asm/microcode.h>
 
@@ -215,7 +216,9 @@ late_initcall(debugfs_spec_ctrl);
 void unprotected_firmware_begin(void)
 {
         if (retpoline_enabled() && ibrs_firmware) {
-                native_wrmsrl(MSR_IA32_SPEC_CTRL, SPEC_CTRL_FEATURE_ENABLE_IBRS);
+		u64 val = x86_spec_ctrl_get_default() | SPEC_CTRL_FEATURE_ENABLE_IBRS;
+
+		native_wrmsrl(MSR_IA32_SPEC_CTRL, val);
         } else {
                 /*
                  * rmb prevents unwanted speculation when we
@@ -229,7 +232,9 @@ EXPORT_SYMBOL_GPL(unprotected_firmware_begin);
 void unprotected_firmware_end(void)
 {
         if (retpoline_enabled() && ibrs_firmware) {
-                native_wrmsrl(MSR_IA32_SPEC_CTRL, SPEC_CTRL_FEATURE_DISABLE_IBRS);
+		u64 val = x86_spec_ctrl_get_default();
+
+		native_wrmsrl(MSR_IA32_SPEC_CTRL, val);
         }
 }
 EXPORT_SYMBOL_GPL(unprotected_firmware_end);
