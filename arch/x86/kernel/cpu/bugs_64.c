@@ -124,7 +124,7 @@ EXPORT_SYMBOL_GPL(x86_spec_ctrl_base);
  * The vendor and possibly platform specific bits which can be modified in
  * x86_spec_ctrl_base.
  */
-static u64 x86_spec_ctrl_mask = ~SPEC_CTRL_IBRS;
+static u64 x86_spec_ctrl_mask = SPEC_CTRL_IBRS;
 
 /*
  * Our knob on entering the kernel to enable and disable IBRS.
@@ -160,6 +160,10 @@ void __init check_bugs(void)
 		}
 		x86_spec_ctrl_priv = x86_spec_ctrl_base;
 	}
+
+	/* Allow STIBP in MSR_SPEC_CTRL if supported */
+	if (boot_cpu_has(X86_FEATURE_STIBP))
+		x86_spec_ctrl_mask |= SPEC_CTRL_STIBP;
 
 	/* Select the proper spectre mitigation before patching alternatives */
 	spectre_v2_select_mitigation();
@@ -231,7 +235,7 @@ void x86_spec_ctrl_set(u64 val)
 {
 	u64 host;
 
-	if (val & x86_spec_ctrl_mask)
+	if (val & ~x86_spec_ctrl_mask)
 		WARN_ONCE(1, "SPEC_CTRL MSR value 0x%16llx is unknown.\n", val);
 	else {
 		/*
@@ -257,22 +261,44 @@ EXPORT_SYMBOL_GPL(x86_spec_ctrl_set);
 void
 x86_virt_spec_ctrl(u64 guest_spec_ctrl, u64 guest_virt_spec_ctrl, bool setguest)
 {
+	u64 msrval, guestval, hostval = x86_spec_ctrl_base;
 	struct thread_info *ti = current_thread_info();
-	u64 msr, host = x86_spec_ctrl_base;
 
 	if (ibrs_supported) {
+		/*
+		 * Restrict guest_spec_ctrl to supported values. Clear the
+		 * modifiable bits in the host base value and or the
+		 * modifiable bits from the guest value.
+		 */
+		if (ibrs_inuse)
+			/*
+			 * Except on IBRS we don't want to use host base value
+			 * but rather the privilege value which has IBRS set.
+			 */
+			hostval = x86_spec_ctrl_priv;
+
+		guestval = hostval & ~x86_spec_ctrl_mask;
+		guestval |= guest_spec_ctrl & x86_spec_ctrl_mask;
+
 		if (ibrs_inuse) {
-			msr = setguest ? guest_spec_ctrl : x86_spec_ctrl_priv;
-			wrmsrl(MSR_IA32_SPEC_CTRL, msr);
+			/* You may wonder why we don't just jump to the
+			 * 'if (hostval ! guestval)' conditional to save an MSR.
+			 * (by say the guest MSR value is IBRS and hostval being
+			 * that too) - the reason is that on some platforms the
+			 * SPEC_CTRL MSR is like a reset button, not latched.
+			 */
+			msrval = setguest ? guestval : hostval;
+			wrmsrl(MSR_IA32_SPEC_CTRL, msrval);
 			return;
 		}
+
 		/* SSBD controlled in MSR_SPEC_CTRL */
 		if (static_cpu_has(X86_FEATURE_SSBD))
-			host |= ssbd_tif_to_spec_ctrl(ti->flags);
+			hostval |= ssbd_tif_to_spec_ctrl(ti->flags);
 
-		if (host != guest_spec_ctrl) {
-			msr = setguest ? guest_spec_ctrl : host;
-			wrmsrl(MSR_IA32_SPEC_CTRL, msr);
+		if (hostval != guestval) {
+			msrval = setguest ? guestval : hostval;
+			wrmsrl(MSR_IA32_SPEC_CTRL, msrval);
 		}
 	}
 }
@@ -766,10 +792,11 @@ static enum ssb_mitigation __init __ssb_select_mitigation(void)
 		switch (boot_cpu_data.x86_vendor) {
 		case X86_VENDOR_INTEL:
 			x86_spec_ctrl_base |= SPEC_CTRL_SSBD;
-			if (mode == SPEC_STORE_BYPASS_DISABLE) {
-				x86_spec_ctrl_mask &= ~SPEC_CTRL_SSBD;
+			x86_spec_ctrl_mask |= SPEC_CTRL_SSBD;
+
+			if (mode == SPEC_STORE_BYPASS_DISABLE)
 				x86_spec_ctrl_set(SPEC_CTRL_SSBD);
-			} else
+			else
 				x86_spec_ctrl_priv &= ~(SPEC_CTRL_SSBD);
 			break;
 		case X86_VENDOR_AMD:
@@ -882,7 +909,7 @@ int arch_prctl_spec_ctrl_get(struct task_struct *task, unsigned long which)
 void x86_spec_ctrl_setup_ap(void)
 {
 	if (boot_cpu_has(X86_FEATURE_IBRS) && ssb_mode != SPEC_STORE_BYPASS_USERSPACE)
-		x86_spec_ctrl_set(x86_spec_ctrl_base & ~x86_spec_ctrl_mask);
+		x86_spec_ctrl_set(x86_spec_ctrl_base & x86_spec_ctrl_mask);
 
 	if (ssb_mode == SPEC_STORE_BYPASS_DISABLE)
 		x86_amd_ssbd_enable();

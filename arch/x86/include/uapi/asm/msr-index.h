@@ -135,6 +135,7 @@
 #define SPEC_CTRL_FEATURE_DISABLE_IBRS	(0 << 0)
 #define SPEC_CTRL_IBRS			(1 << 0)
 #define SPEC_CTRL_FEATURE_ENABLE_IBRS	(1 << 0)
+#define SPEC_CTRL_STIBP			(1 << 1)
 #define SPEC_CTRL_SSBD_SHIFT		2          /* Speculative Store Bypass Disable bit */
 #define SPEC_CTRL_SSBD			(1 << SPEC_CTRL_SSBD_SHIFT)   /* Speculative Store Bypass Disable */
 
