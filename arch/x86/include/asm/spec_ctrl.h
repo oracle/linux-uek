@@ -221,8 +221,6 @@ static inline int check_ibrs_inuse(void)
 static inline void set_ibrs_supported(void)
 {
 	use_ibrs |= SPEC_CTRL_IBRS_SUPPORTED;
-	if (!ibrs_disabled)
-		set_ibrs_inuse();
 }
 
 static inline void set_ibrs_disabled(void)
