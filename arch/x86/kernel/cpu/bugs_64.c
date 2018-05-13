@@ -100,7 +100,15 @@ static void __init spectre_v2_select_mitigation(void);
  * Our boot-time value of the SPEC_CTRL MSR. We read it once so that any
  * writes to SPEC_CTRL contain whatever reserved bits have been set.
  */
-static u64 x86_spec_ctrl_base;
+u64 x86_spec_ctrl_base;
+EXPORT_SYMBOL_GPL(x86_spec_ctrl_base);
+
+/*
+ * Our knob on entering the kernel to enable and disable IBRS.
+ * Inherits value from x86_spec_ctrl_base.
+ */
+u64 x86_spec_ctrl_priv;
+EXPORT_SYMBOL_GPL(x86_spec_ctrl_priv);
 
 void __init check_bugs(void)
 {
@@ -113,8 +121,11 @@ void __init check_bugs(void)
 	 * Read the SPEC_CTRL MSR to account for reserved bits which may
 	 * have unknown values.
 	 */
-       if (boot_cpu_has(X86_FEATURE_IBRS))
+       if (boot_cpu_has(X86_FEATURE_IBRS)) {
 		rdmsrl(MSR_IA32_SPEC_CTRL, x86_spec_ctrl_base);
+
+		x86_spec_ctrl_priv = x86_spec_ctrl_base;
+	}
 
 	/* Select the proper spectre mitigation before patching alternatives */
 	spectre_v2_select_mitigation();
@@ -178,10 +189,24 @@ static enum spectre_v2_mitigation spectre_v2_enabled = SPECTRE_V2_NONE;
 
 void x86_spec_ctrl_set(u64 val)
 {
+	u64 host;
+
 	if (val & ~SPEC_CTRL_IBRS)
 		WARN_ONCE(1, "SPEC_CTRL MSR value 0x%16llx is unknown.\n", val);
-	else
-		wrmsrl(MSR_IA32_SPEC_CTRL, x86_spec_ctrl_base | val);
+	else {
+		/*
+		 * Only two states are allowed - with IBRS or without.
+		 */
+		if (check_ibrs_inuse()) {
+			if (val & SPEC_CTRL_IBRS)
+				host = x86_spec_ctrl_priv;
+			else
+				host = val;
+		} else
+			host = x86_spec_ctrl_base | val;
+
+		wrmsrl(MSR_IA32_SPEC_CTRL, host);
+	}
 }
 EXPORT_SYMBOL_GPL(x86_spec_ctrl_set);
 
@@ -366,7 +391,8 @@ static void __init disable_ibrs_and_friends(bool disable)
 
 		get_online_cpus();
 		for_each_online_cpu(cpu)
-			wrmsrl_on_cpu(cpu, MSR_IA32_SPEC_CTRL, SPEC_CTRL_FEATURE_DISABLE_IBRS);
+			wrmsrl_on_cpu(cpu, MSR_IA32_SPEC_CTRL,
+				      x86_spec_ctrl_base & ~SPEC_CTRL_FEATURE_ENABLE_IBRS);
 
 		put_online_cpus();
 	}

@@ -3,6 +3,7 @@
 
 #include <linux/sched.h>
 #include <asm/spec_ctrl.h>
+#include <asm/nospec-branch.h>
 #include <asm/microcode.h>
 
 #define MWAIT_SUBSTATE_MASK		0xf
@@ -60,14 +61,14 @@ static inline void mwait_idle_with_hints(unsigned long eax, unsigned long ecx)
 		}
 
 		if (ibrs_inuse)
-			native_wrmsrl(MSR_IA32_SPEC_CTRL, SPEC_CTRL_FEATURE_DISABLE_IBRS);
+			x86_spec_ctrl_set(SPEC_CTRL_FEATURE_DISABLE_IBRS);
 
 		__monitor((void *)&current_thread_info()->flags, 0, 0);
 		if (!need_resched())
 			__mwait(eax, ecx);
 
 		if (ibrs_inuse)
-			native_wrmsrl(MSR_IA32_SPEC_CTRL, SPEC_CTRL_FEATURE_ENABLE_IBRS);
+			x86_spec_ctrl_set(SPEC_CTRL_FEATURE_ENABLE_IBRS);
 	}
 	current_clr_polling();
 }

@@ -15,6 +15,8 @@
 
 .extern use_ibrs
 .extern use_ibpb
+.extern x86_spec_ctrl_priv
+.extern x86_spec_ctrl_base
 
 #define __ASM_ENABLE_IBRS			\
 	pushq %rax;				\
@@ -22,7 +24,7 @@
 	pushq %rdx;				\
 	movl $MSR_IA32_SPEC_CTRL, %ecx;		\
 	movl $0, %edx;				\
-	movl $SPEC_CTRL_FEATURE_ENABLE_IBRS, %eax;	\
+	movl x86_spec_ctrl_priv, %eax;		\
 	wrmsr;					\
 	popq %rdx;				\
 	popq %rcx;				\
@@ -30,7 +32,7 @@
 #define __ASM_ENABLE_IBRS_CLOBBER		\
 	movl $MSR_IA32_SPEC_CTRL, %ecx;		\
 	movl $0, %edx;				\
-	movl $SPEC_CTRL_FEATURE_ENABLE_IBRS, %eax;	\
+	movl x86_spec_ctrl_priv, %eax;		\
 	wrmsr;
 #define __ASM_DISABLE_IBRS			\
 	pushq %rax;				\
@@ -38,7 +40,7 @@
 	pushq %rdx;				\
 	movl $MSR_IA32_SPEC_CTRL, %ecx;		\
 	movl $0, %edx;				\
-	movl $0, %eax;				\
+	movl x86_spec_ctrl_base, %eax;		\
 	wrmsr;					\
 	popq %rdx;				\
 	popq %rcx;				\
@@ -57,7 +59,7 @@
 #define __ASM_DISABLE_IBRS_CLOBBER		\
 	movl $MSR_IA32_SPEC_CTRL, %ecx;		\
 	movl $0, %edx;				\
-	movl $0, %eax;				\
+	movl x86_spec_ctrl_base, %eax;		\
 	wrmsr;
 
 #define __ASM_STUFF_RSB				\
@@ -170,8 +172,8 @@
 	testl	$SPEC_CTRL_IBRS_INUSE, use_ibrs
 	jz	13f
 
-	cmpl	$SPEC_CTRL_FEATURE_ENABLE_IBRS, \save_reg
-	je	13f
+	testl	$SPEC_CTRL_FEATURE_ENABLE_IBRS, \save_reg
+	jnz	13f
 
 	movl	$MSR_IA32_SPEC_CTRL, %ecx
 	movl	$0, %edx
@@ -204,6 +206,10 @@ ALTERNATIVE __stringify(__ASM_STUFF_RSB), "", X86_FEATURE_STUFF_RSB
 
 #else
 
+/* Defined in bugs_64.c */
+extern u64 x86_spec_ctrl_priv;
+extern u64 x86_spec_ctrl_base;
+
 /* indicate usage of IBRS to control execution speculation */
 extern int use_ibrs;
 extern u32 sysctl_ibrs_enabled;
@@ -224,6 +230,8 @@ static inline bool set_ibrs_inuse(void)
 		use_ibrs |= SPEC_CTRL_IBRS_INUSE;
 		/* Update what sysfs shows. */
 		sysctl_ibrs_enabled = true;
+		/* When entering kernel */
+		x86_spec_ctrl_priv |= SPEC_CTRL_FEATURE_ENABLE_IBRS;
 		return true;
 	} else {
 		return false;
@@ -235,6 +243,12 @@ static inline void clear_ibrs_inuse(void)
 	use_ibrs &= ~SPEC_CTRL_IBRS_INUSE;
 	/* Update what sysfs shows. */
 	sysctl_ibrs_enabled = false;
+	/*
+        * This is stricly not needed as the use_ibrs guards against the
+        * the use of the MSR so these values wouldn't be touched.
+        */
+       x86_spec_ctrl_priv &= ~(SPEC_CTRL_FEATURE_ENABLE_IBRS);
+
 }
 
 static inline int check_ibrs_inuse(void)
