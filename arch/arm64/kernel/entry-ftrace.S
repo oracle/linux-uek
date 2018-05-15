@@ -106,7 +106,7 @@ ENTRY(_mcount)
 
 	mcount_get_pc	x0		//       function's pc
 	mcount_get_lr	x1		//       function's lr (= parent's pc)
-	blr	x2			//   (*ftrace_trace_function)(pc, lr);
+	blr_nospec	x2		//       (*ftrace_trace_function)(pc, lr);
 
 #ifndef CONFIG_FUNCTION_GRAPH_TRACER
 skip_ftrace_call:			//   return;
