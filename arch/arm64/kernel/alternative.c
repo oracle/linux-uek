@@ -86,15 +86,32 @@ static u32 get_alt_insn(struct alt_instr *alt, __le32 *insnptr, __le32 *altinsnp
 		s32 orig_offset, new_offset;
 		unsigned long target;
 
-		/*
-		 * If we're replacing an adrp instruction, which uses PC-relative
-		 * immediate addressing, adjust the offset to reflect the new
-		 * PC. adrp operates on 4K aligned addresses.
-		 */
 		orig_offset  = aarch64_insn_adrp_get_offset(insn);
 		target = align_down(altinsnptr, SZ_4K) + orig_offset;
-		new_offset = target - align_down(insnptr, SZ_4K);
-		insn = aarch64_insn_adrp_set_offset(insn, new_offset);
+
+		if (branch_insn_requires_update(alt, target)) {
+			/*
+			 * If we're replacing an adrp instruction, which uses
+			 * PC-relative immediate addressing, adjust the offset
+			 * to reflect the new PC. adrp operates on 4K aligned
+			 * addresses.
+			 */
+			new_offset = target - align_down(insnptr, SZ_4K);
+			insn = aarch64_insn_adrp_set_offset(insn, new_offset);
+		}
+	} else if (aarch64_insn_is_adr(insn)) {
+		s32 offset = aarch64_insn_adr_get_offset(insn);
+		unsigned long target;
+
+		target = (unsigned long)altinsnptr + offset;
+
+		if (branch_insn_requires_update(alt, target)) {
+			/*
+			 * Disallow adr instructions for targets outside
+			 * of our alt block.
+			 */
+			BUG();
+		}
 	} else if (aarch64_insn_uses_literal(insn)) {
 		/*
 		 * Disallow patching unhandled instructions using PC relative
