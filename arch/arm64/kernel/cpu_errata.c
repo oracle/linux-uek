@@ -444,6 +444,18 @@ static inline const char *spectre_v2_module_string(void)
 	return spectre_v2_bad_module ? " - vulnerable module loaded" : "";
 }
 
+#ifdef CONFIG_SYSFS
+
+ssize_t cpu_show_spectre_v2(struct device *dev,
+			    struct device_attribute *attr,
+			    char *buf)
+{
+	return sprintf(buf, "%s%s\n", spectre_v2_strings[spectre_v2_enabled],
+		       spectre_v2_module_string());
+}
+
+#endif
+
 static void
 enable_retpoline(const struct arm64_cpu_capabilities *entry)
 {
