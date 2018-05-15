@@ -484,6 +484,50 @@ out_printmsg:
 	return required;
 }
 
+static inline bool retp_compiler(void)
+{
+	return __is_defined(RETPOLINE);
+}
+
+/* The Spectre V2 mitigation variants */
+enum spectre_v2_mitigation {
+	SPECTRE_V2_NOT_AFFECTED,
+	SPECTRE_V2_RETPOLINE_MINIMAL,
+	SPECTRE_V2_RETPOLINE_GENERIC,
+};
+
+static const char *spectre_v2_strings[] = {
+	[SPECTRE_V2_NOT_AFFECTED]	= "Not affected",
+	[SPECTRE_V2_RETPOLINE_MINIMAL]	= "Vulnerable: Minimal ASM retpoline",
+	[SPECTRE_V2_RETPOLINE_GENERIC]	= "Mitigation: Full retpoline",
+};
+
+static enum spectre_v2_mitigation spectre_v2_enabled = SPECTRE_V2_NOT_AFFECTED;
+
+static bool spectre_v2_bad_module;
+
+bool retpoline_module_ok(bool has_retpoline)
+{
+	if (has_retpoline)
+		return true;
+
+	pr_err("System may be vulnerable to spectre v2\n");
+	spectre_v2_bad_module = true;
+	return false;
+}
+
+static inline const char *spectre_v2_module_string(void)
+{
+	return spectre_v2_bad_module ? " - vulnerable module loaded" : "";
+}
+
+static void
+enable_retpoline(const struct arm64_cpu_capabilities *entry)
+{
+	spectre_v2_enabled = retp_compiler() ? SPECTRE_V2_RETPOLINE_GENERIC :
+					       SPECTRE_V2_RETPOLINE_MINIMAL;
+}
+
 /* known invulnerable cores */
 static const struct midr_range arm64_ssb_cpus[] = {
 	MIDR_ALL_VERSIONS(MIDR_CORTEX_A35),
@@ -927,6 +971,13 @@ const struct arm64_cpu_capabilities arm64_errata[] = {
 		.desc = "Cavium ThunderX2 erratum 219 (PRFM removal)",
 		.capability = ARM64_WORKAROUND_CAVIUM_TX2_219_PRFM,
 		ERRATA_MIDR_RANGE_LIST(tx2_family_cpus),
+	},
+#endif
+#ifdef CONFIG_RETPOLINE
+	{
+		.capability = ARM64_RETPOLINE,
+		ERRATA_MIDR_ALL_VERSIONS(MIDR_APM_POTENZA),
+		.cpu_enable = enable_retpoline,
 	},
 #endif
 	{
