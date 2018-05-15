@@ -2,7 +2,7 @@
  * FILE:	dtrace_state.c
  * DESCRIPTION:	DTrace - consumer state implementation
  *
- * Copyright (c) 2010, 2017, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2010, 2018, Oracle and/or its affiliates. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -556,6 +556,29 @@ static int dtrace_state_buffers(dtrace_state_t *state)
 	return 0;
 }
 
+static void dtrace_begin_probe(dtrace_state_t *state)
+{
+	processorid_t		cpuid = smp_processor_id();
+
+	ASSERT(state->dts_buffer[cpuid].dtb_flags & DTRACEBUF_INACTIVE);
+	state->dts_buffer[cpuid].dtb_flags &= ~DTRACEBUF_INACTIVE;
+
+	dtrace_probe(dtrace_probeid_begin, (uint64_t)(uintptr_t)state, 0, 0, 0,
+		     0, 0, 0);
+
+	/*
+	 * We may have had an exit action from a BEGIN probe; only change our
+	 * state to ACTIVE if we're still in WARMUP.
+	 */
+	ASSERT(state->dts_activity == DTRACE_ACTIVITY_WARMUP ||
+	       state->dts_activity == DTRACE_ACTIVITY_DRAINING);
+
+	if (state->dts_activity == DTRACE_ACTIVITY_WARMUP)
+		state->dts_activity = DTRACE_ACTIVITY_ACTIVE;
+
+	dtrace_membar_enter();
+}
+
 static void dtrace_state_prereserve(dtrace_state_t *state)
 {
 	dtrace_ecb_t	*ecb;
@@ -590,6 +613,7 @@ int dtrace_state_go(dtrace_state_t *state, processorid_t *cpu)
 	cyc_time_t		when;
 	int			rval = 0, i,
 				bufsize = NR_CPUS * sizeof (dtrace_buffer_t);
+	processorid_t           cpuid;
 
 	mutex_lock(&cpu_lock);
 	mutex_lock(&dtrace_lock);
@@ -611,6 +635,17 @@ int dtrace_state_go(dtrace_state_t *state, processorid_t *cpu)
 	}
 
 	dtrace_state_prereserve(state);
+
+	/*
+	 * If a cpu has been selected check if its value is valid and
+	 * the cpu is online.
+	 */
+	cpuid = opt[DTRACEOPT_CPU];
+	if (cpuid != DTRACE_CPUALL &&
+	   (cpuid < 0 || cpuid >= NR_CPUS || !cpu_online(cpuid))) {
+		rval = -ENXIO;
+		goto out;
+	}
 
 	/*
 	 * Now we want to do is try to allocate our speculations.
@@ -785,27 +820,14 @@ int dtrace_state_go(dtrace_state_t *state, processorid_t *cpu)
 	state->dts_activity = DTRACE_ACTIVITY_WARMUP;
 
 	/*
-	 * Now it's time to actually fire the BEGIN probe.  We need to disable
-	 * interrupts here both to record the CPU on which we fired the BEGIN
-	 * probe (the data from this CPU will be processed first at user
-	 * level) and to manually activate the buffer for this CPU.
+	 * Issue xcall even when the BEGIN probe fires on current CPU.  The
+	 * underlying implementation of SMP will turn it into direct function
+	 * call.  It is not allowed to turn off interrupts so we need to pick 
+	 * a cpu first and then xcall it.  This way a begin probe will always
+	 * fire on the expected cpu.
 	 */
-	*cpu = smp_processor_id();
-//	ASSERT(state->dts_buffer[*cpu].dtb_flags & DTRACEBUF_INACTIVE);
-	state->dts_buffer[*cpu].dtb_flags &= ~DTRACEBUF_INACTIVE;
-
-	dtrace_probe(dtrace_probeid_begin, (uint64_t)(uintptr_t)state, 0, 0, 0,
-		     0, 0, 0);
-
-	/*
-	 * We may have had an exit action from a BEGIN probe; only change our
-	 * state to ACTIVE if we're still in WARMUP.
-	 */
-	ASSERT(state->dts_activity == DTRACE_ACTIVITY_WARMUP ||
-	       state->dts_activity == DTRACE_ACTIVITY_DRAINING);
-
-	if (state->dts_activity == DTRACE_ACTIVITY_WARMUP)
-		state->dts_activity = DTRACE_ACTIVITY_ACTIVE;
+	*cpu = (cpuid == DTRACE_CPUALL) ? smp_processor_id() : cpuid;
+	dtrace_xcall(*cpu, (dtrace_xcall_t)dtrace_begin_probe, state);
 
 	/*
 	 * Regardless of whether or not now we're in ACTIVE or DRAINING, we
@@ -850,8 +872,20 @@ out:
 	return rval;
 }
 
+static void dtrace_end_probe(dtrace_state_t *state)
+{
+	dtrace_probe(dtrace_probeid_end, (uint64_t)(uintptr_t)state, 0, 0, 0,
+		     0, 0, 0);
+
+	state->dts_activity = DTRACE_ACTIVITY_STOPPED;
+
+	dtrace_membar_enter();
+}
+
 int dtrace_state_stop(dtrace_state_t *state, processorid_t *cpu)
 {
+	processorid_t cpuid = state->dts_options[DTRACEOPT_CPU];
+
 	ASSERT(MUTEX_HELD(&dtrace_lock));
 
 	if (state->dts_activity != DTRACE_ACTIVITY_ACTIVE &&
@@ -887,13 +921,14 @@ int dtrace_state_stop(dtrace_state_t *state, processorid_t *cpu)
 	 */
 	state->dts_reserve = 0;
 
-	*cpu = smp_processor_id();
-	dtrace_probe(dtrace_probeid_end, (uint64_t)(uintptr_t)state, 0, 0, 0,
-		     0, 0, 0);
+	/*
+	 * Same as for BEGIN probe in dtrace_state_go().  The END probe must
+	 * also fire on the enabled cpu.
+	 */
+	*cpu = (cpuid == DTRACE_CPUALL) ? smp_processor_id() : cpuid;
+	dtrace_xcall(*cpu, (dtrace_xcall_t)dtrace_end_probe, state);
 
-	state->dts_activity = DTRACE_ACTIVITY_STOPPED;
 	dtrace_sync();
-
 	return 0;
 }
 
