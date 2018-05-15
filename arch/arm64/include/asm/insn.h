@@ -460,6 +460,8 @@ u32 aarch64_set_branch_offset(u32 insn, s32 offset);
 int aarch64_insn_patch_text_nosync(void *addr, u32 insn);
 int aarch64_insn_patch_text(void *addrs[], u32 insns[], int cnt);
 
+s32 aarch64_insn_adr_get_offset(u32 insn);
+u32 aarch64_insn_adr_set_offset(u32 insn, s32 offset);
 s32 aarch64_insn_adrp_get_offset(u32 insn);
 u32 aarch64_insn_adrp_set_offset(u32 insn, s32 offset);
 
