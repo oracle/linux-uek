@@ -3,9 +3,13 @@
 #ifndef _ASM_ARM64_NOSPEC_BRANCH_H_
 #define _ASM_ARM64_NOSPEC_BRANCH_H_
 
+#include <asm/alternative.h>
+#include <asm/cpucaps.h>
+
 #ifdef __ASSEMBLY__
 
 .macro retpoline
+alternative_if ARM64_RETPOLINE
 	str	x30, [sp, #-16]!
 	bl	101f
 100: //speculation trap
@@ -16,6 +20,7 @@
 	ret
 102: //non-spec code
 	ldr	x30, [sp], #16
+alternative_else_nop_endif
 .endm
 
 .macro br_nospec reg
