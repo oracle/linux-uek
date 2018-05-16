@@ -2,8 +2,6 @@
 # Copyright (c) 2018, Oracle and/or its affiliates. All rights reserved.
 #
 
-GCOV_PROFILE := y
-
 DT_CORE_ARCH_OBJS		= $(addprefix ../../arch/$(SRCARCH)/kernel/, \
 				    dtrace_syscall.o dtrace_syscall_stubs.o \
 				    dtrace_fbt.o dtrace_sdt.o dtrace_util.o)
