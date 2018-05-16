@@ -370,8 +370,7 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 %define hdrarch arm64
 %define make_target Image
 %define kernel_image arch/arm64/boot/Image
-BuildRequires: gcc7 >= 7.2.1
-%define _kernel_cc CC=gcc7
+BuildRequires: oracle-armtoolset-1 >= 1.0-0
 %define with_headers   1
 %define with_perf 1
 %define with_tools 1
