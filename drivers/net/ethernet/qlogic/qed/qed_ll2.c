@@ -299,6 +299,7 @@ static void qed_ll2_txq_flush(struct qed_hwfn *p_hwfn, u8 connection_handle)
 	struct qed_ll2_tx_packet *p_pkt = NULL;
 	struct qed_ll2_info *p_ll2_conn;
 	struct qed_ll2_tx_queue *p_tx;
+	unsigned long flags = 0;
 	dma_addr_t tx_frag;
 
 	p_ll2_conn = qed_ll2_handle_sanity_inactive(p_hwfn, connection_handle);
@@ -307,6 +308,7 @@ static void qed_ll2_txq_flush(struct qed_hwfn *p_hwfn, u8 connection_handle)
 
 	p_tx = &p_ll2_conn->tx_queue;
 
+	spin_lock_irqsave(&p_tx->lock, flags);
 	while (!list_empty(&p_tx->active_descq)) {
 		p_pkt = list_first_entry(&p_tx->active_descq,
 					 struct qed_ll2_tx_packet, list_entry);
@@ -316,6 +318,7 @@ static void qed_ll2_txq_flush(struct qed_hwfn *p_hwfn, u8 connection_handle)
 		list_del(&p_pkt->list_entry);
 		b_last_packet = list_empty(&p_tx->active_descq);
 		list_add_tail(&p_pkt->list_entry, &p_tx->free_descq);
+		spin_unlock_irqrestore(&p_tx->lock, flags);
 		if (p_ll2_conn->input.conn_type == QED_LL2_TYPE_OOO) {
 			struct qed_ooo_buffer *p_buffer;
 
@@ -335,7 +338,9 @@ static void qed_ll2_txq_flush(struct qed_hwfn *p_hwfn, u8 connection_handle)
 						      b_last_frag,
 						      b_last_packet);
 		}
+		spin_lock_irqsave(&p_tx->lock, flags);
 	}
+	spin_unlock_irqrestore(&p_tx->lock, flags);
 }
 
 static int qed_ll2_txq_completion(struct qed_hwfn *p_hwfn, void *p_cookie)
@@ -528,6 +533,7 @@ static void qed_ll2_rxq_flush(struct qed_hwfn *p_hwfn, u8 connection_handle)
 	struct qed_ll2_info *p_ll2_conn = NULL;
 	struct qed_ll2_rx_packet *p_pkt = NULL;
 	struct qed_ll2_rx_queue *p_rx;
+	unsigned long flags = 0;
 
 	p_ll2_conn = qed_ll2_handle_sanity_inactive(p_hwfn, connection_handle);
 	if (!p_ll2_conn)
@@ -535,13 +541,14 @@ static void qed_ll2_rxq_flush(struct qed_hwfn *p_hwfn, u8 connection_handle)
 
 	p_rx = &p_ll2_conn->rx_queue;
 
+	spin_lock_irqsave(&p_rx->lock, flags);
 	while (!list_empty(&p_rx->active_descq)) {
 		p_pkt = list_first_entry(&p_rx->active_descq,
 					 struct qed_ll2_rx_packet, list_entry);
 		if (!p_pkt)
 			break;
-
 		list_move_tail(&p_pkt->list_entry, &p_rx->free_descq);
+		spin_unlock_irqrestore(&p_rx->lock, flags);
 
 		if (p_ll2_conn->input.conn_type == QED_LL2_TYPE_OOO) {
 			struct qed_ooo_buffer *p_buffer;
@@ -560,7 +567,9 @@ static void qed_ll2_rxq_flush(struct qed_hwfn *p_hwfn, u8 connection_handle)
 						      cookie,
 						      rx_buf_addr, b_last);
 		}
+		spin_lock_irqsave(&p_rx->lock, flags);
 	}
+	spin_unlock_irqrestore(&p_rx->lock, flags);
 }
 
 static bool
