@@ -129,6 +129,7 @@ kernel/drivers/char/virtio_console.ko
 kernel/drivers/cpufreq/acpi-cpufreq.ko
 kernel/drivers/cpufreq/pcc-cpufreq.ko
 kernel/drivers/cpufreq/speedstep-lib.ko
+kernel/drivers/crypto/ccp/ccp.ko
 kernel/drivers/crypto/padlock-aes.ko
 kernel/drivers/crypto/padlock-sha.ko
 kernel/drivers/crypto/qat/qat_c62x/qat_c62x.ko
