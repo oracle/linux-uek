@@ -770,6 +770,15 @@ static struct ctl_table ipv4_table[] = {
 		.extra1		= &zero,
 		.extra2		= &one,
 	},
+	{
+		.procname	= "fib_multipath_hash_policy",
+		.data		= &sysctl_fib_multipath_hash_policy,
+		.maxlen		= sizeof(int),
+		.mode		= 0644,
+		.proc_handler	= proc_dointvec_minmax,
+		.extra1		= &zero,
+		.extra2		= &one,
+	},
 #endif
 	{ }
 };

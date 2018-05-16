@@ -46,6 +46,7 @@
 
 #ifdef CONFIG_IP_ROUTE_MULTIPATH
 extern int sysctl_fib_multipath_use_neigh;
+extern int sysctl_fib_multipath_hash_policy;
 #endif
 
 struct fib_nh;

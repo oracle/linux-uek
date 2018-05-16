@@ -192,6 +192,8 @@ EXPORT_SYMBOL(ip_tos2prio);
 int sysctl_fib_multipath_use_neigh = 0;
 EXPORT_SYMBOL(sysctl_fib_multipath_use_neigh);
 
+int sysctl_fib_multipath_hash_policy = 0;
+EXPORT_SYMBOL(sysctl_fib_multipath_hash_policy);
 #endif
 
 static DEFINE_PER_CPU(struct rt_cache_stat, rt_cache_stat);
@@ -1679,6 +1681,96 @@ out:
 	return err;
 }
 
+#ifdef CONFIG_IP_ROUTE_MULTIPATH
+/* To make ICMP packets follow the right flow, the multipath hash is
+ * calculated from the inner IP addresses.
+ */
+static void ip_multipath_l3_keys(const struct sk_buff *skb,
+				 struct flow_keys *hash_keys)
+{
+	const struct iphdr *outer_iph = ip_hdr(skb);
+	const struct iphdr *inner_iph;
+	const struct icmphdr *icmph;
+	struct iphdr _inner_iph;
+	struct icmphdr _icmph;
+
+	hash_keys->src = outer_iph->saddr;
+	hash_keys->dst = outer_iph->daddr;
+	if (likely(outer_iph->protocol != IPPROTO_ICMP))
+		return;
+
+	if (unlikely((outer_iph->frag_off & htons(IP_OFFSET)) != 0))
+		return;
+
+	icmph = skb_header_pointer(skb, outer_iph->ihl * 4, sizeof(_icmph),
+				   &_icmph);
+	if (!icmph)
+		return;
+
+	if (icmph->type != ICMP_DEST_UNREACH &&
+	    icmph->type != ICMP_REDIRECT &&
+	    icmph->type != ICMP_TIME_EXCEEDED &&
+	    icmph->type != ICMP_PARAMETERPROB)
+		return;
+
+	inner_iph = skb_header_pointer(skb,
+				       outer_iph->ihl * 4 + sizeof(_icmph),
+				       sizeof(_inner_iph), &_inner_iph);
+	if (!inner_iph)
+		return;
+	hash_keys->src = inner_iph->saddr;
+	hash_keys->dst = inner_iph->daddr;
+}
+
+/* if skb is set it will be used and fl4 can be NULL */
+int fib_multipath_hash(const struct fib_info *fi, const struct flowi4 *fl4,
+		       const struct sk_buff *skb)
+{
+	struct flow_keys hash_keys;
+	u32 mhash;
+
+	switch (sysctl_fib_multipath_hash_policy) {
+	case 0:
+		memset(&hash_keys, 0, sizeof(hash_keys));
+		if (skb) {
+			ip_multipath_l3_keys(skb, &hash_keys);
+		} else {
+			hash_keys.src = fl4->saddr;
+			hash_keys.dst = fl4->daddr;
+		}
+		break;
+	case 1:
+		/* skb is currently provided only when forwarding */
+		if (skb) {
+			struct flow_keys keys;
+
+			/* short-circuit if we already have L4 hash present */
+			if (skb->l4_hash)
+				return skb_get_hash_raw(skb) >> 1;
+			memset(&hash_keys, 0, sizeof(hash_keys));
+			skb_flow_dissect(skb, &keys);
+
+			hash_keys.src = keys.src;
+			hash_keys.dst = keys.dst;
+			hash_keys.port16[0] = keys.port16[0];
+			hash_keys.port16[1] = keys.port16[1];
+		} else {
+			memset(&hash_keys, 0, sizeof(hash_keys));
+
+			hash_keys.src = fl4->saddr;
+			hash_keys.dst = fl4->daddr;
+			hash_keys.port16[0] = fl4->fl4_sport;
+			hash_keys.port16[1] = fl4->fl4_dport;
+		}
+		break;
+	}
+	mhash = flow_hash_from_keys(&hash_keys);
+
+	return mhash >> 1;
+}
+EXPORT_SYMBOL_GPL(fib_multipath_hash);
+#endif /* CONFIG_IP_ROUTE_MULTIPATH */
+
 static int ip_mkroute_input(struct sk_buff *skb,
 			    struct fib_result *res,
 			    const struct flowi4 *fl4,
@@ -1689,7 +1781,7 @@ static int ip_mkroute_input(struct sk_buff *skb,
 	if (res->fi && res->fi->fib_nhs > 1) {
 		int h;
 
-		h = fib_multipath_hash(saddr, daddr);
+		h = fib_multipath_hash(res->fi, NULL, skb);
 		fib_select_multipath(res, h);
 	}
 #endif
@@ -2233,7 +2325,7 @@ struct rtable *__ip_route_output_key(struct net *net, struct flowi4 *fl4)
 	if (res.fi->fib_nhs > 1 && fl4->flowi4_oif == 0) {
 		int h;
 
-		h = fib_multipath_hash(fl4->saddr, fl4->daddr);
+		h = fib_multipath_hash(res.fi, fl4, NULL);
 		fib_select_multipath(&res, h);
 	}
 	else

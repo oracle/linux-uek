@@ -310,13 +310,10 @@ int fib_sync_down_dev(struct net_device *dev, int force);
 int fib_sync_down_addr(struct net *net, __be32 local);
 int fib_sync_up(struct net_device *dev);
 
-extern u32 fib_multipath_secret __read_mostly;
-
-static inline int fib_multipath_hash(__be32 saddr, __be32 daddr)
-{
-	return jhash_2words(saddr, daddr, fib_multipath_secret) >> 1;
-}
-
+#ifdef CONFIG_IP_ROUTE_MULTIPATH
+int fib_multipath_hash(const struct fib_info *fi, const struct flowi4 *fl4,
+		       const struct sk_buff *skb);
+#endif
 void fib_select_multipath(struct fib_result *res, int hash);
 
 /* Exported by fib_trie.c */
