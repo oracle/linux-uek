@@ -88,8 +88,6 @@
 #include "multicalls.h"
 #include "pmu.h"
 
-#include "../kernel/cpu/cpu.h" /* get_cpu_cap() */
-
 void *xen_initial_gdt;
 
 static int xen_cpu_up_prepare_pv(unsigned int cpu);
@@ -1251,6 +1249,13 @@ asmlinkage __visible void __init xen_start_kernel(void)
 
 	/* Prevent unwanted bits from being set in PTEs. */
 	__supported_pte_mask &= ~_PAGE_GLOBAL;
+
+	/* Work out if we support NX. */
+	if ((cpuid_eax(0x80000000) >= 0x80000001) &&
+	    (cpuid_edx(0x80000001) & (1U << (X86_FEATURE_NX & 31))))
+		__supported_pte_mask |= _PAGE_NX;
+	else
+		__supported_pte_mask &= ~_PAGE_NX;
 
 	/*
 	 * Prevent page tables from being allocated in highmem, even
