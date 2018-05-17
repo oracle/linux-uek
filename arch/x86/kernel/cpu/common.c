@@ -16,6 +16,7 @@
 #include <linux/smp.h>
 #include <linux/io.h>
 #include <linux/syscore_ops.h>
+#include <xen/xen.h>
 
 #include <asm/stackprotector.h>
 #include <asm/perf_event.h>
