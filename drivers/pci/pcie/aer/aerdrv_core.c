@@ -486,14 +486,14 @@ static pci_ers_result_t reset_link(struct pci_dev *dev)
 }
 
 /**
- * do_fatal_recovery - handle fatal error recovery process
+ * pcie_do_fatal_recovery - handle fatal error recovery process
  * @dev: pointer to a pci_dev data structure of agent detecting an error
  *
  * Invoked when an error is fatal. Once being invoked, removes the devices
  * beneath this AER agent, followed by reset link e.g. secondary bus reset
  * followed by re-enumeration of devices.
  */
-static void do_fatal_recovery(struct pci_dev *dev)
+static void pcie_do_fatal_recovery(struct pci_dev *dev)
 {
 	struct pci_dev *udev;
 	struct pci_bus *parent;
@@ -542,14 +542,14 @@ static void do_fatal_recovery(struct pci_dev *dev)
 }
 
 /**
- * do_nonfatal_recovery - handle nonfatal error recovery process
+ * pcie_do_nonfatal_recovery - handle nonfatal error recovery process
  * @dev: pointer to a pci_dev data structure of agent detecting an error
  *
  * Invoked when an error is nonfatal. Once being invoked, broadcast
  * error detected message to all downstream drivers within a hierarchy in
  * question and return the returned code.
  */
-static void do_nonfatal_recovery(struct pci_dev *dev)
+static void pcie_do_nonfatal_recovery(struct pci_dev *dev)
 {
 	pci_ers_result_t status;
 	enum pci_channel_state state;
@@ -617,9 +617,9 @@ static void handle_error_source(struct pci_dev *dev, struct aer_err_info *info)
 			pci_write_config_dword(dev, pos + PCI_ERR_COR_STATUS,
 					info->status);
 	} else if (info->severity == AER_NONFATAL)
-		do_nonfatal_recovery(dev);
+		pcie_do_nonfatal_recovery(dev);
 	else if (info->severity == AER_FATAL)
-		do_fatal_recovery(dev);
+		pcie_do_fatal_recovery(dev);
 }
 
 #ifdef CONFIG_ACPI_APEI_PCIEAER
@@ -684,9 +684,9 @@ static void aer_recover_work_func(struct work_struct *work)
 		}
 		cper_print_aer(pdev, entry.severity, entry.regs);
 		if (entry.severity == AER_NONFATAL)
-			do_nonfatal_recovery(pdev);
+			pcie_do_nonfatal_recovery(pdev);
 		else if (entry.severity == AER_FATAL)
-			do_fatal_recovery(pdev);
+			pcie_do_fatal_recovery(pdev);
 		pci_dev_put(pdev);
 	}
 }
