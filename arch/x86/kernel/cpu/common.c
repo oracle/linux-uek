@@ -854,7 +854,7 @@ static void cpu_set_bug_bits(struct cpuinfo_x86 *c)
 		rdmsrl(X86_FEATURE_IA32_ARCH_CAPS, ia32_cap);
 
 	if (!x86_match_cpu(cpu_no_spec_store_bypass) &&
-	   !(ia32_cap & ARCH_CAP_SSBD_NO))
+	   !(ia32_cap & ARCH_CAP_SSB_NO))
 		setup_force_cpu_bug(X86_BUG_SPEC_STORE_BYPASS);
 
 	if (x86_match_cpu(cpu_no_speculation))
