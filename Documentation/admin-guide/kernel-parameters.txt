@@ -3996,7 +3996,7 @@
 			skylake=off	- do not use IBRS if present on Skylake
 					  instead of retpoline (this is equivalant
 				          to spectre_v2=retpoline,generic).
-			rds=off         - do not activate the Speculative Store Bypass
+			ssbd=off         - do not activate the Speculative Store Bypass
                                           mitigation if doing IBRS.
 
 	spia_io_base=	[HW,MTD]
