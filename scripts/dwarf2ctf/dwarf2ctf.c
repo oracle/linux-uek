@@ -3845,8 +3845,15 @@ static ctf_id_t assemble_ctf_su_member(const char *module_name,
 		/*
 		 * Anonymous structure or union with no members. Silently skip.
 		 */
-		if (dwarf_child(&type_die, &child_die) < 0)
+		switch (dwarf_child(&type_die, &child_die)) {
+		case -1:
+			*skip = SKIP_ABORT;
+			return CTF_ERROR_REPORTED;
+		case 1: /* No DIEs at all in this aggregate */
 			return parent_ctf_id;
+		default: /* Child DIEs exist.  */
+			break;
+		}
 
 		/*
 		 * Add override that will adjust offset of the anonymous
