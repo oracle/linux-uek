@@ -100,10 +100,13 @@ static inline void task_name(struct seq_file *m, struct task_struct *p)
 {
 	char *buf;
 	size_t size;
-	char tcomm[sizeof(p->comm)];
+	char tcomm[64];
 	int ret;
 
-	get_task_comm(tcomm, p);
+	if (p->flags & PF_WQ_WORKER)
+		wq_worker_comm(tcomm, sizeof(tcomm), p);
+	else
+		__get_task_comm(tcomm, sizeof(tcomm), p);
 
 	seq_puts(m, "Name:\t");
 
