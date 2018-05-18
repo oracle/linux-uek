@@ -100,6 +100,12 @@ EXPORT_SYMBOL_GPL(x86_spec_ctrl_base);
 u64 x86_spec_ctrl_priv;
 EXPORT_SYMBOL_GPL(x86_spec_ctrl_priv);
 
+/*
+ * The vendor and possibly platform specific bits which can be modified in
+ * x86_spec_ctrl_base.
+ */
+static u64 __ro_after_init x86_spec_ctrl_mask = ~SPEC_CTRL_IBRS;
+
 void __init check_bugs(void)
 {
 	identify_boot_cpu();
@@ -191,7 +197,7 @@ void x86_spec_ctrl_set(u64 val)
 {
 	u64 host;
 
-	if (val & ~(SPEC_CTRL_IBRS | SPEC_CTRL_RDS))
+	if (val & x86_spec_ctrl_mask)
 		WARN_ONCE(1, "SPEC_CTRL MSR value 0x%16llx is unknown.\n", val);
 	else {
 		/*
@@ -692,6 +698,7 @@ static enum ssb_mitigation_cmd __init __ssb_select_mitigation(void)
 		switch (boot_cpu_data.x86_vendor) {
 		case X86_VENDOR_INTEL:
 			x86_spec_ctrl_base |= SPEC_CTRL_RDS;
+			x86_spec_ctrl_mask &= ~SPEC_CTRL_RDS;
 			x86_spec_ctrl_set(SPEC_CTRL_RDS);
 			break;
 		case X86_VENDOR_AMD:
@@ -715,7 +722,7 @@ static void ssb_select_mitigation()
 void x86_spec_ctrl_setup_ap(void)
 {
 	if (boot_cpu_has(X86_FEATURE_IBRS))
-		x86_spec_ctrl_set(x86_spec_ctrl_base & (SPEC_CTRL_IBRS | SPEC_CTRL_RDS));
+		x86_spec_ctrl_set(x86_spec_ctrl_base & ~x86_spec_ctrl_mask);
 }
 
 #ifdef CONFIG_SYSFS
