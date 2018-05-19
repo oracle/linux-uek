@@ -1523,10 +1523,13 @@ static void rds_ib_failback(struct work_struct *_work)
 		container_of(_work, struct rds_ib_port_ud_work, work.work);
 	u8				i, ip_active_port, port = work->port;
 
-	if (ip_config[port].port_state == RDS_IB_PORT_INIT) {
+	if ((ip_config[port].port_state == RDS_IB_PORT_INIT) ||
+	    (ip_config[port].port_state == RDS_IB_PORT_DOWN)) {
 		printk(KERN_ERR "RDS/IB: devname %s failback request "
-		       "with port_state in INIT state!",
-		       ip_config[port].dev->name);
+		       "with port_state in %s state!",
+		       ip_config[port].dev->name,
+		       ip_config[port].port_state == RDS_IB_PORT_INIT ?
+		       "INIT" : "DOWN");
 		goto out;
 	}
 
