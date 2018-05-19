@@ -197,6 +197,7 @@ static u8 rdmaip_get_failover_port(u8 port)
 
 	for (i = 1; i <= ip_port_cnt; i++) {
 		if ((i != port) &&
+		    ip_config[i].failover_group &&
 		    (ip_config[i].failover_group ==
 		     ip_config[port].failover_group) &&
 		    (ip_config[i].pkey_vlan == ip_config[port].pkey_vlan) &&
@@ -1316,7 +1317,8 @@ static void rdmaip_event_handler(struct ib_event_handler *handler,
 			  rdmaip_portstate2name(ip_config[port].port_state),
 			  ip_config[port].port_layerflags);
 
-		if (this_port_transition == RDMAIP_PORT_TRANSITION_NOOP)
+		if ((this_port_transition == RDMAIP_PORT_TRANSITION_NOOP) ||
+			!ip_config[port].failover_group)
 			continue;
 
 		work = kzalloc(sizeof(*work), GFP_ATOMIC);
@@ -1412,6 +1414,7 @@ static void rdmaip_do_initial_failovers(void)
 	for (ii = 1; ii <= ip_port_cnt; ii++) {
 		/* Failover the port */
 		if ((ip_config[ii].port_state == RDMAIP_PORT_DOWN) &&
+		    (ip_config[ii].failover_group) &&
 		    (RDMAIP_PORT_ADDR_SET(ii))) {
 
 			rdmaip_do_failover(ii, 0, 0);
@@ -2474,7 +2477,8 @@ static int rdmaip_netdev_callback(struct notifier_block *self,
 		  rdmaip_portstate2name(ip_config[port].port_state),
 		  ip_config[port].port_layerflags);
 
-	if (port_transition == RDMAIP_PORT_TRANSITION_NOOP)
+	if ((port_transition == RDMAIP_PORT_TRANSITION_NOOP) ||
+		!ip_config[port].failover_group)
 		return NOTIFY_DONE;
 
 	work = kzalloc(sizeof(*work), GFP_ATOMIC);
