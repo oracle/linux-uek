@@ -1054,6 +1054,9 @@ static void kvmppc_complete_mmio_load(struct kvm_vcpu *vcpu,
 		kvmppc_set_gpr(vcpu, vcpu->arch.io_gpr, gpr);
 		break;
 	case KVM_MMIO_REG_FPR:
+		if (vcpu->kvm->arch.kvm_ops->giveup_ext)
+			vcpu->kvm->arch.kvm_ops->giveup_ext(vcpu, MSR_FP);
+
 		VCPU_FPR(vcpu, vcpu->arch.io_gpr & KVM_MMIO_REG_MASK) = gpr;
 		break;
 #ifdef CONFIG_PPC_BOOK3S
@@ -1067,6 +1070,9 @@ static void kvmppc_complete_mmio_load(struct kvm_vcpu *vcpu,
 #endif
 #ifdef CONFIG_VSX
 	case KVM_MMIO_REG_VSX:
+		if (vcpu->kvm->arch.kvm_ops->giveup_ext)
+			vcpu->kvm->arch.kvm_ops->giveup_ext(vcpu, MSR_VSX);
+
 		if (vcpu->arch.mmio_vsx_copy_type == KVMPPC_VSX_COPY_DWORD)
 			kvmppc_set_vsr_dword(vcpu, gpr);
 		else if (vcpu->arch.mmio_vsx_copy_type == KVMPPC_VSX_COPY_WORD)
@@ -1081,6 +1087,9 @@ static void kvmppc_complete_mmio_load(struct kvm_vcpu *vcpu,
 #endif
 #ifdef CONFIG_ALTIVEC
 	case KVM_MMIO_REG_VMX:
+		if (vcpu->kvm->arch.kvm_ops->giveup_ext)
+			vcpu->kvm->arch.kvm_ops->giveup_ext(vcpu, MSR_VEC);
+
 		kvmppc_set_vmx_dword(vcpu, gpr);
 		break;
 #endif
