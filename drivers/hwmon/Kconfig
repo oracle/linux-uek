@@ -1761,6 +1761,18 @@ config SENSORS_OXP
 
 		Can also be built as a module. In that case it will be called oxp-sensors.
 
+config SENSORS_OPBMC
+	tristate "Oracle Pilot Board Management Controller"
+	depends on X86 && PCI
+	default m
+	help
+	  Say Y here to include support for the Oracle Pilot BMC hardware
+	  monitoring. This driver only works on Oracle hardware containing
+	  a Pilot BMC chip.
+
+	  This driver can also be built as a module. If so, the module
+	  will be called opbmc.
+
 config SENSORS_PCF8591
 	tristate "Philips PCF8591 ADC/DAC"
 	depends on I2C
