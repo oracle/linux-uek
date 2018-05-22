@@ -150,6 +150,7 @@ kernel/drivers/hv/hv_vmbus.ko
 kernel/drivers/hwmon/coretemp.ko
 kernel/drivers/hwmon/i5500_temp.ko
 kernel/drivers/hwmon/k10temp.ko
+kernel/drivers/hwmon/opbmc.ko
 kernel/drivers/i2c/algos/i2c-algo-bit.ko
 kernel/drivers/i2c/busses/i2c-designware-core.ko
 kernel/drivers/i2c/busses/i2c-designware-platform.ko
