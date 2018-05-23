@@ -150,8 +150,6 @@ enum {
 #define RDS_MPATH_WORKERS       8
 #define RDS_MPATH_HASH(rs, n) (jhash_1word((rs)->rs_bound_port, \
 			       (rs)->rs_hash_initval) & ((n) - 1))
-/* Bits for c_reconn_flags */
-#define RDS_RECONNECT_TIMEDOUT	0
 enum rds_conn_drop_src {
 	/* rds-core */
 	DR_DEFAULT,
@@ -303,6 +301,15 @@ struct rds_connection {
 	unsigned int		c_proposed_version;
 	unsigned int		c_version;
 	struct net		*c_net;
+
+	/* Re-connect stall diagnostics */
+	unsigned long           c_reconnect_start;
+	unsigned int            c_reconnect_drops;
+	int                     c_reconnect_warn;
+	int                     c_reconnect_err;
+	int			c_to_index;
+
+	unsigned int		c_reconnect;
 
 	/* Qos support */
 	u8                      c_tos;
@@ -1124,8 +1131,6 @@ extern unsigned long rds_sysctl_trace_flags;
 extern unsigned int  rds_sysctl_trace_level;
 extern unsigned int  rds_sysctl_shutdown_trace_start_time;
 extern unsigned int  rds_sysctl_shutdown_trace_end_time;
-extern unsigned long rds_sysctl_reconnect_retry_ms;
-extern unsigned int rds_sysctl_reconnect_max_retries;
 
 /* threads.c */
 int rds_threads_init(void);
