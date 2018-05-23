@@ -812,6 +812,23 @@ static enum ssb_mitigation __init __ssb_select_mitigation(void)
 		break;
 	}
 
+	if (spectre_v2_enabled == SPECTRE_V2_IBRS) {
+		switch (mode) {
+		case SPEC_STORE_BYPASS_SECCOMP:
+		case SPEC_STORE_BYPASS_PRCTL:
+			/* Not much we can do except switch the mode to userspace. */
+			pr_info("from '%s' to '%s' as IBRS is enabled\n",
+				ssb_strings[mode], ssb_strings[SPEC_STORE_BYPASS_USERSPACE]);
+			mode = SPEC_STORE_BYPASS_USERSPACE;
+			break;
+		case SPEC_STORE_BYPASS_DISABLE:
+			/* Need to set the x86_spec_ctrl_mask and friends. */
+			break;
+		default:
+			break;
+		}
+	}
+
 	/*
 	 * We have three CPU feature flags that are in play here:
 	 *  - X86_BUG_SPEC_STORE_BYPASS - CPU is susceptible.
@@ -832,8 +849,12 @@ static enum ssb_mitigation __init __ssb_select_mitigation(void)
 			x86_spec_ctrl_base |= SPEC_CTRL_SSBD;
 			x86_spec_ctrl_mask |= SPEC_CTRL_SSBD;
 
-			if (mode == SPEC_STORE_BYPASS_DISABLE)
+			if (mode == SPEC_STORE_BYPASS_DISABLE) {
 				x86_spec_ctrl_set(SPEC_CTRL_SSBD);
+				if (spectre_v2_enabled == SPECTRE_V2_IBRS) {
+					x86_spec_ctrl_priv |= SPEC_CTRL_SSBD;
+				}
+			}
 			else
 				x86_spec_ctrl_priv &= ~(SPEC_CTRL_SSBD);
 			break;
