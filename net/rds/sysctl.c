@@ -52,13 +52,6 @@ unsigned int rds_sysctl_ping_enable = 1;
 unsigned int rds_sysctl_shutdown_trace_start_time;
 unsigned int rds_sysctl_shutdown_trace_end_time;
 
-unsigned long rds_sysctl_reconnect_retry_ms = 1000;
-static unsigned long reconnect_retry_ms_min = 100;
-static unsigned long reconnect_retry_ms_max = 15000;
-
-unsigned int rds_sysctl_reconnect_max_retries = 60;
-static unsigned long reconnect_min_retries = 15;
-
 /*
  * We have official values, but must maintain the sysctl interface for existing
  * software that expects to find these values here.
@@ -133,25 +126,6 @@ static struct ctl_table rds_sysctl_rds_table[] = {
 		.maxlen         = sizeof(int),
 		.mode           = 0644,
 		.proc_handler   = &proc_dointvec,
-
-	},
-	{
-		.procname       = "reconnect_retry_ms",
-		.data		= &rds_sysctl_reconnect_retry_ms,
-		.maxlen         = sizeof(unsigned long),
-		.mode           = 0644,
-		.proc_handler   = proc_dointvec_minmax,
-		.extra1		= &reconnect_retry_ms_min,
-		.extra2		= &reconnect_retry_ms_max,
-	},
-	{
-		.procname       = "reconnect_max_retries",
-		.data		= &rds_sysctl_reconnect_max_retries,
-		.maxlen         = sizeof(unsigned int),
-		.mode           = 0644,
-		.proc_handler   = proc_dointvec_minmax,
-		.extra1		= &reconnect_min_retries,
-		.extra2		= &rds_sysctl_reconnect_max_retries,
 	},
 	{ }
 };
