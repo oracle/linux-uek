@@ -933,6 +933,8 @@ struct net_device_context {
 	u32 vf_alloc;
 	/* Serial number of the VF to team with */
 	u32 vf_serial;
+
+	struct failover *failover;
 };
 
 /* Per channel data */
