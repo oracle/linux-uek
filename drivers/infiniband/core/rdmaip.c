@@ -1357,14 +1357,18 @@ static void rdmaip_update_ip_addrs(int port)
 
 	if (!(RDMAIP_IPV4_ADDR_SET(port))) {
 		in_dev = in_dev_get(ndev);
-		rdmaip_init_ip4_addrs(ndev, in_dev, port);
-		in_dev_put(in_dev);
+		if (in_dev) {
+			rdmaip_init_ip4_addrs(ndev, in_dev, port);
+			in_dev_put(in_dev);
+		}
 	}
 
 	if (!(RDMAIP_IPV6_ADDR_SET(port))) {
 		in6_dev = in6_dev_get(ndev);
-		rdmaip_init_ip6_addrs(ndev, in6_dev, port);
-		in6_dev_put(in6_dev);
+		if (in6_dev) {
+			rdmaip_init_ip6_addrs(ndev, in6_dev, port);
+			in6_dev_put(in6_dev);
+		}
 	}
 }
 
