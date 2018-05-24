@@ -2720,7 +2720,7 @@ static int check_modinfo(struct module *mod, struct load_info *info, int flags)
 #ifdef RETPOLINE
 	mutex_lock(&spec_ctrl_mutex);
 
-	if (retpoline_enabled() && !get_modinfo(info, "retpoline")) {
+	if (retpoline_only_enabled() && !get_modinfo(info, "retpoline")) {
 		if (!test_taint(TAINT_NO_RETPOLINE)) {
 			pr_warn("%s: loading module not compiled with retpoline compiler.\n",
 				mod->name);

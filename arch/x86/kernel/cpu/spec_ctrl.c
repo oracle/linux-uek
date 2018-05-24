@@ -52,7 +52,7 @@ static ssize_t ibrs_enabled_write(struct file *file,
 	if (!ibrs_supported)
 		return -ENODEV;
 
-	if (retpoline_enabled()) {
+	if (retpoline_only_enabled()) {
 		pr_warn("retpoline is enabled. Ignoring request to change ibrs state.\n");
 		return -EINVAL;
 	}
@@ -215,7 +215,8 @@ late_initcall(debugfs_spec_ctrl);
  */
 void unprotected_firmware_begin(void)
 {
-        if (retpoline_enabled() && ibrs_firmware) {
+
+	if (retpoline_only_enabled() && ibrs_firmware) {
 		u64 val = x86_spec_ctrl_base | SPEC_CTRL_FEATURE_ENABLE_IBRS;
 
 		native_wrmsrl(MSR_IA32_SPEC_CTRL, val);
@@ -231,7 +232,8 @@ EXPORT_SYMBOL_GPL(unprotected_firmware_begin);
 
 void unprotected_firmware_end(void)
 {
-        if (retpoline_enabled() && ibrs_firmware) {
+
+	if (retpoline_only_enabled() && ibrs_firmware) {
 		u64 val = x86_spec_ctrl_base;
 
 		native_wrmsrl(MSR_IA32_SPEC_CTRL, val);

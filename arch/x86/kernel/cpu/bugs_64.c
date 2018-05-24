@@ -356,7 +356,7 @@ void disable_retpoline(void)
 {
 	BUG_ON(!mutex_is_locked(&spec_ctrl_mutex));
 
-	if (retpoline_enabled()) {
+	if (retpoline_only_enabled()) {
 		pr_err("Disabling Spectre v2 mitigation retpoline.\n");
 	} else {
 		/* retpoline is not enabled.  Return */
@@ -368,7 +368,6 @@ void disable_retpoline(void)
 			/* try to enable ibrs */
 			if (set_ibrs_inuse()) {
 				pr_err("Spectre v2 mitigation set to IBRS and retpoline.\n");
-				spectre_v2_enabled = SPECTRE_V2_IBRS;
 				if (!ibpb_inuse && set_ibpb_inuse()) {
 					pr_err("Spectre v2 mitigation IBPB enabled.\n");
 				}
@@ -377,9 +376,6 @@ void disable_retpoline(void)
 				pr_err("No Spectre v2 mitigation to fall back to.\n");
 				spectre_v2_enabled = SPECTRE_V2_NONE;
 			}
-		} else {
-			pr_err("Spectre v2 mitigation IBRS is set.\n");
-			spectre_v2_enabled = SPECTRE_V2_IBRS;
 		}
 	} else {
 		pr_err("Cannot choose another Spectre v2 mitigation because retpoline_fallback is off.\n");
@@ -390,7 +386,7 @@ void disable_retpoline(void)
 		pr_err("system may be vulnerable to spectre\n");
 }
 
-bool retpoline_enabled(void)
+static bool retpoline_enabled(void)
 {
 	switch (spectre_v2_enabled) {
 	case SPECTRE_V2_RETPOLINE_MINIMAL:
@@ -403,6 +399,11 @@ bool retpoline_enabled(void)
 	}
 
 	return false;
+}
+
+bool retpoline_only_enabled(void)
+{
+	return (retpoline_enabled() && !ibrs_inuse);
 }
 
 int refresh_set_spectre_v2_enabled(void)
