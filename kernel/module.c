@@ -165,6 +165,12 @@ static BLOCKING_NOTIFIER_HEAD(module_notify_list);
  * Protected by module_mutex. */
 static unsigned long module_addr_min = -1UL, module_addr_max = 0;
 
+#ifdef CONFIG_RETPOLINE
+/* Allow loading of non-retpoline modules. */
+int retpoline_modules_only;
+core_param(retpoline_modules_only, retpoline_modules_only, bint, 0);
+#endif
+
 int register_module_notifier(struct notifier_block *nb)
 {
 	return blocking_notifier_chain_register(&module_notify_list, nb);
@@ -2718,6 +2724,10 @@ static int check_modinfo(struct module *mod, struct load_info *info, int flags)
 	if (!get_modinfo(info, "intree"))
 		add_taint_module(mod, TAINT_OOT_MODULE, LOCKDEP_STILL_OK);
 #ifdef RETPOLINE
+	if (!get_modinfo(info, "retpoline") && retpoline_modules_only) {
+		return -ENOEXEC;
+	}
+
 	mutex_lock(&spec_ctrl_mutex);
 
 	if (retpoline_only_enabled() && !get_modinfo(info, "retpoline")) {
