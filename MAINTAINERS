@@ -3988,6 +3988,14 @@ T:	git git://linuxtv.org/anttip/media_tree.git
 S:	Maintained
 F:	drivers/media/tuners/fc2580*
 
+FAILOVER MODULE
+M:	Sridhar Samudrala <sridhar.samudrala@intel.com>
+L:	netdev@vger.kernel.org
+S:	Supported
+F:	net/core/failover.c
+F:	include/net/failover.h
+F:	Documentation/networking/failover.rst
+
 FANOTIFY
 M:	Eric Paris <eparis@redhat.com>
 S:	Maintained
