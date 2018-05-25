@@ -101,6 +101,15 @@ static void nvme_ns_remove(struct nvme_ns *ns);
 static int nvme_revalidate_disk(struct gendisk *disk);
 static void nvme_put_subsystem(struct nvme_subsystem *subsys);
 
+static void nvme_queue_scan(struct nvme_ctrl *ctrl)
+{
+	/*
+	 * Only new queue scan work when admin and IO queues are both alive
+	 */
+	if (ctrl->state == NVME_CTRL_LIVE)
+		queue_work(nvme_wq, &ctrl->scan_work);
+}
+
 int nvme_reset_ctrl(struct nvme_ctrl *ctrl)
 {
 	if (!nvme_change_ctrl_state(ctrl, NVME_CTRL_RESETTING))
@@ -3215,16 +3224,6 @@ static void nvme_scan_work(struct work_struct *work)
 	up_write(&ctrl->namespaces_rwsem);
 	kfree(id);
 }
-
-void nvme_queue_scan(struct nvme_ctrl *ctrl)
-{
-	/*
-	 * Only new queue scan work when admin and IO queues are both alive
-	 */
-	if (ctrl->state == NVME_CTRL_LIVE)
-		queue_work(nvme_wq, &ctrl->scan_work);
-}
-EXPORT_SYMBOL_GPL(nvme_queue_scan);
 
 /*
  * This function iterates the namespace list unlocked to allow recovery from
