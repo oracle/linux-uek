@@ -61,7 +61,6 @@ struct rds_ib_mr {
 
 	struct ib_fmr		*fmr;
 	struct ib_mr		*mr;
-	struct ib_fast_reg_page_list	*page_list;
 	enum rds_ib_fr_state	fr_state;
 	struct completion	wr_comp;
 
@@ -73,11 +72,7 @@ struct rds_ib_mr {
 
 	struct scatterlist	*sg;
 	unsigned int		sg_len;
-	u64			*dma;
 	int			sg_dma_len;
-
-	unsigned int		dma_npages;
-	unsigned int		sg_byte_len;
 
 	struct rds_sock		*rs;
 	struct list_head	pool_list;
@@ -398,7 +393,6 @@ static int rds_ib_init_fastreg_mr(struct rds_ib_device *rds_ibdev,
 				  struct rds_ib_mr_pool *pool,
 				  struct rds_ib_mr *ibmr)
 {
-	struct ib_fast_reg_page_list *page_list = NULL;
 	struct ib_mr *mr = NULL;
 	int err;
 
@@ -409,18 +403,6 @@ static int rds_ib_init_fastreg_mr(struct rds_ib_device *rds_ibdev,
 		return err;
 	}
 
-	page_list = ib_alloc_fast_reg_page_list(rds_ibdev->dev,
-						pool->fmr_attr.max_pages);
-	if (IS_ERR(page_list)) {
-		err = PTR_ERR(page_list);
-
-		pr_warn("RDS/IB: ib_alloc_fast_reg_page_list failed (err=%d)\n",
-			err);
-		ib_dereg_mr(mr);
-		return err;
-	}
-
-	ibmr->page_list = page_list;
 	ibmr->mr = mr;
 	return 0;
 }
@@ -893,8 +875,6 @@ static int rds_ib_flush_mr_pool(struct rds_ib_mr_pool *pool,
 			list_del(&ibmr->unmap_list);
 			if (pool->use_fastreg) {
 				__rds_ib_teardown_mr(ibmr);
-				if (ibmr->page_list)
-					ib_free_fast_reg_page_list(ibmr->page_list);
 				if (ibmr->mr)
 					ib_dereg_mr(ibmr->mr);
 			} else {
@@ -1093,8 +1073,7 @@ static int rds_ib_map_scatterlist(struct rds_ib_device *rds_ibdev,
 				  struct scatterlist *sg, unsigned int sg_len)
 {
 	struct ib_device *dev = rds_ibdev->dev;
-	int i, j, ret, page_cnt;
-	u32 len;
+	int ret, off = 0;
 	int sg_dma_len;
 
 	sg_dma_len = ib_dma_map_sg(dev, sg, sg_len, DMA_BIDIRECTIONAL);
@@ -1103,51 +1082,13 @@ static int rds_ib_map_scatterlist(struct rds_ib_device *rds_ibdev,
 		return -EBUSY;
 	}
 
-	ibmr->sg_byte_len = 0;
-	ibmr->dma_npages = 0;
-	len = 0;
-
-	ret = -EINVAL;
-	for (i = 0; i < sg_dma_len; ++i) {
-		unsigned int dma_len = ib_sg_dma_len(dev, &sg[i]);
-		u64 dma_addr = ib_sg_dma_address(dev, &sg[i]);
-
-		ibmr->sg_byte_len += dma_len;
-		if (dma_addr & ~PAGE_MASK) {
-			if (i > 0)
-				goto out_unmap;
-			else
-				++ibmr->dma_npages;
-		}
-
-		if ((dma_addr + dma_len) & ~PAGE_MASK) {
-			if (i < sg_dma_len - 1)
-				goto out_unmap;
-			else
-				++ibmr->dma_npages;
-		}
-
-		len += dma_len;
-	}
-	ibmr->dma_npages += len >> PAGE_SHIFT;
-
-	/* Now gather the dma addrs into one list */
-	if (ibmr->dma_npages > ibmr->pool->fmr_attr.max_pages) {
-		ret = -EMSGSIZE;
+	ret = ib_map_mr_sg_zbva(ibmr->mr, sg, sg_len, &off, PAGE_SIZE);
+	if (unlikely(ret != sg_len)) {
+		ibmr->fr_state = MR_IS_STALE;
+		ret = ret < 0 ? ret : -EINVAL;
 		goto out_unmap;
 	}
 
-	page_cnt = 0;
-	for (i = 0; i < sg_dma_len; ++i) {
-		unsigned int dma_len = ib_sg_dma_len(dev, &sg[i]);
-		u64 dma_addr = ib_sg_dma_address(dev, &sg[i]);
-
-		for (j = 0; j < dma_len; j += PAGE_SIZE)
-			ibmr->page_list->page_list[page_cnt++] =
-				(dma_addr & PAGE_MASK) + j;
-	}
-
-	ibmr->dma_npages = page_cnt;
 	return sg_dma_len;
 
 out_unmap:
@@ -1159,7 +1100,7 @@ out_unmap:
 static int rds_ib_rdma_build_fastreg(struct rds_ib_device *rds_ibdev,
 				     struct rds_ib_mr *ibmr)
 {
-	struct ib_fast_reg_wr fastreg_wr;
+	struct ib_reg_wr reg_wr;
 	struct ib_send_wr inv_wr, *failed_wr, *first_wr = NULL;
 	struct ib_qp *qp;
 	atomic_t *n_wrs;
@@ -1198,24 +1139,20 @@ static int rds_ib_rdma_build_fastreg(struct rds_ib_device *rds_ibdev,
 
 	ib_update_fast_reg_key(ibmr->mr, ibmr->remap_count++);
 
-	memset(&fastreg_wr, 0, sizeof(fastreg_wr));
-	fastreg_wr.wr.wr_id = (u64)ibmr;
-	fastreg_wr.wr.opcode = IB_WR_FAST_REG_MR;
-	fastreg_wr.length = ibmr->sg_byte_len;
-	fastreg_wr.rkey = ibmr->mr->rkey;
-	fastreg_wr.page_list = ibmr->page_list;
-	fastreg_wr.page_list_len = ibmr->dma_npages;
-	fastreg_wr.page_shift = PAGE_SHIFT;
-	fastreg_wr.access_flags = IB_ACCESS_LOCAL_WRITE |
+	memset(&reg_wr, 0, sizeof(reg_wr));
+	reg_wr.wr.wr_id		= (u64)ibmr;
+	reg_wr.wr.opcode	= IB_WR_REG_MR;
+	reg_wr.mr		= ibmr->mr;
+	reg_wr.key		= ibmr->mr->rkey;
+	reg_wr.access		= IB_ACCESS_LOCAL_WRITE |
 				  IB_ACCESS_REMOTE_READ |
 				  IB_ACCESS_REMOTE_WRITE;
-	fastreg_wr.iova_start = 0;
-	fastreg_wr.wr.send_flags = IB_SEND_SIGNALED;
+	reg_wr.wr.send_flags	= IB_SEND_SIGNALED;
 
 	if (!first_wr)
-		first_wr = &fastreg_wr.wr;
+		first_wr = &reg_wr.wr;
 	else
-		first_wr->next = &fastreg_wr.wr;
+		first_wr->next = &reg_wr.wr;
 
 	ret = ib_post_send(qp, first_wr, &failed_wr);
 	if (ret) {
