@@ -90,6 +90,7 @@
 #include <linux/rodata_test.h>
 #include <linux/sdt.h>
 #include <linux/ktask.h>
+#include <linux/mem_encrypt.h>
 
 #include <asm/io.h>
 #include <asm/bugs.h>
