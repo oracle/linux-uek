@@ -214,6 +214,10 @@ static void rdmaip_send_gratuitous_arp(struct net_device *out_dev,
 {
 	int i;
 
+	if (out_dev)
+		RDMAIP_DBG2_PTR("Sending GARP message on %s IP addr %pI4\n",
+				out_dev->name, (void *)&ip_addr);
+
 	/* Send multiple ARPs to improve reliability */
 	for (i = 0; i < rdmaip_active_bonding_arps; i++) {
 		arp_send(ARPOP_REQUEST, ETH_P_ARP, ip_addr, out_dev, ip_addr,
@@ -445,7 +449,7 @@ static void rdmaip_move_ip6(u8 from_port, u8 to_port, bool failover)
 }
 
 static int rdmaip_move_ip4(char *from_dev, char *to_dev, u8 from_port,
-			   u8 to_port, u8 arp_port, __be32 addr, __be32 bcast,
+			   u8 to_port, __be32 addr, __be32 bcast,
 			   __be32 mask, int alias, bool failover)
 {
 	struct ifreq		*ir;
@@ -480,7 +484,7 @@ static int rdmaip_move_ip4(char *from_dev, char *to_dev, u8 from_port,
 				    &ip_config[to_port].ip_addr);
 
 			/* Set the IP on new port */
-			ret = rdmaip_set_ip4(ip_config[arp_port].dev,
+			ret = rdmaip_set_ip4(ip_config[to_port].dev,
 				ip_config[to_port].dev->dev_addr,
 				ip_config[to_port].dev->name,
 				ip_config[to_port].ip_addr,
@@ -560,7 +564,7 @@ static int rdmaip_move_ip4(char *from_dev, char *to_dev, u8 from_port,
 	ret = rdmaip_set_ip4(NULL, NULL, from_dev2, 0, 0, 0);
 
 	/* Set the IP on new port */
-	ret = rdmaip_set_ip4(ip_config[arp_port].dev,
+	ret = rdmaip_set_ip4(ip_config[to_port].dev,
 			     ip_config[to_port].dev->dev_addr, to_dev2, addr,
 			     bcast, mask);
 
@@ -890,7 +894,7 @@ static int rdmaip_testset_ip(u8 port)
 	return rdmaip_testset_ip6(port);
 }
 
-static void rdmaip_do_failover(u8 from_port, u8 to_port, u8 arp_port)
+static void rdmaip_do_failover(u8 from_port, u8 to_port)
 {
 	bool	v4move, v6move;
 	u8      j;
@@ -904,8 +908,8 @@ static void rdmaip_do_failover(u8 from_port, u8 to_port, u8 arp_port)
 	v4move = RDMAIP_IPV4_ADDR_SET(from_port);
 	v6move = RDMAIP_IPV6_ADDR_SET(from_port);
 
-	RDMAIP_DBG3("from:%d to:%d arpport:%d v4:%d v6:%d\n", from_port,
-		    to_port, arp_port, v4move, v6move);
+	RDMAIP_DBG3("from:%d to:%d v4:%d v6:%d\n", from_port,
+		    to_port, v4move, v6move);
 
 	if (!(v4move || v6move)) {
 		RDMAIP_DBG2("No IPv4 or IPv6 addresses configured\n");
@@ -934,12 +938,9 @@ static void rdmaip_do_failover(u8 from_port, u8 to_port, u8 arp_port)
 		}
 	}
 
-	if (!arp_port)
-		arp_port = to_port;
-
 	if (v4move && !rdmaip_move_ip4(ip_config[from_port].if_name,
 			    ip_config[to_port].if_name,
-			    from_port, to_port, arp_port,
+			    from_port, to_port,
 			    ip_config[from_port].ip_addr,
 			    ip_config[from_port].ip_bcast,
 			    ip_config[from_port].ip_mask, 0, true)) {
@@ -951,7 +952,7 @@ static void rdmaip_do_failover(u8 from_port, u8 to_port, u8 arp_port)
 			alias = &ip_config[from_port].aliases[j];
 			ret = rdmaip_move_ip4(alias->if_name,
 					     ip_config[to_port].if_name,
-					     from_port, to_port, arp_port,
+					     from_port, to_port,
 					     alias->ip_addr,
 					     alias->ip_bcast,
 					     alias->ip_mask, 1, true);
@@ -986,7 +987,7 @@ static void rdmaip_do_failback(u8 port)
 
 		if (v4move && !rdmaip_move_ip4(from_name,
 					       ip_config[port].if_name,
-					       ipap, port, ipap,
+					       ipap, port,
 					       ip_config[port].ip_addr,
 					       ip_config[port].ip_bcast,
 					       ip_config[port].ip_mask,
@@ -1000,7 +1001,7 @@ static void rdmaip_do_failback(u8 port)
 
 				ret = rdmaip_move_ip4(from_name,
 						      alias->if_name,
-						      ipap, port, ipap,
+						      ipap, port,
 						      alias->ip_addr,
 						      alias->ip_bcast,
 						      alias->ip_mask,
@@ -1065,12 +1066,12 @@ static void rdmaip_failover(struct work_struct *_work)
 			if_name[IFNAMSIZ - 1] = 0;
 			ret = rdmaip_set_ip4(NULL, NULL, if_name, 0, 0, 0);
 
-			rdmaip_do_failover(i, 0, 0);
+			rdmaip_do_failover(i, 0);
 		}
 	}
 
 	if (RDMAIP_PORT_ADDR_SET(work->port))
-		rdmaip_do_failover(work->port, 0, 0);
+		rdmaip_do_failover(work->port, 0);
 
 	if (ip_config[work->port].ip_active_port == work->port) {
 		ret = rdmaip_set_ip4(NULL, NULL,
@@ -1105,21 +1106,21 @@ static void rdmaip_failback(struct work_struct *_work)
 
 		if (ip_config[i].ip_active_port == i) {
 			RDMAIP_DBG3("ip_active_port == i : %d\n", i);
-			rdmaip_do_failover(i, 0, ip_active_port);
+			rdmaip_do_failover(i, 0);
 		} else if ((ip_config[i].ip_active_port == port) &&
 			   (ip_config[i].pkey_vlan ==
 				ip_config[port].pkey_vlan)) {
 			RDMAIP_DBG3("ip_active_port == port : %d\n", i);
-			rdmaip_do_failover(i, port, ip_active_port);
+			rdmaip_do_failover(i, port);
 		} else if (ip_config[ip_config[i].ip_active_port].port_state ==
 			   RDMAIP_PORT_DOWN) {
 			RDMAIP_DBG3("ip_active_port is DOWN : %d\n", i);
-			rdmaip_do_failover(i, 0, ip_active_port);
+			rdmaip_do_failover(i, 0);
 		} else if ((ip_config[port].failover_group ==
 				ip_config[i].failover_group) &&
 			   (ip_config[i].pkey_vlan ==
 				ip_config[port].pkey_vlan)) {
-			rdmaip_do_failover(i, port, ip_active_port);
+			rdmaip_do_failover(i, port);
 		}
 	}
 
@@ -1132,8 +1133,7 @@ static void rdmaip_failback(struct work_struct *_work)
 			    ip_config[i].ip_active_port == ip_active_port &&
 			    ip_config[i].pkey_vlan ==
 			    ip_config[ip_active_port].pkey_vlan) {
-				rdmaip_do_failover(i, ip_active_port,
-						   ip_active_port);
+				rdmaip_do_failover(i, ip_active_port);
 			}
 		}
 	}
@@ -1421,7 +1421,7 @@ static void rdmaip_do_initial_failovers(void)
 		    (ip_config[ii].failover_group) &&
 		    (RDMAIP_PORT_ADDR_SET(ii))) {
 
-			rdmaip_do_failover(ii, 0, 0);
+			rdmaip_do_failover(ii, 0);
 
 			/*
 			 * reset IP addr of DOWN port to 0 if the
