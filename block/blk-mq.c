@@ -336,6 +336,7 @@ static struct request *blk_mq_rq_ctx_init(struct blk_mq_alloc_data *data,
 	rq->next_rq = NULL;
 
 	data->ctx->rq_dispatched[op_is_sync(op)]++;
+	refcount_set(&rq->ref, 1);
 	return rq;
 }
 
@@ -465,13 +466,27 @@ struct request *blk_mq_alloc_request_hctx(struct request_queue *q,
 }
 EXPORT_SYMBOL_GPL(blk_mq_alloc_request_hctx);
 
+static void __blk_mq_free_request(struct request *rq)
+{
+	struct request_queue *q = rq->q;
+	struct blk_mq_ctx *ctx = rq->mq_ctx;
+	struct blk_mq_hw_ctx *hctx = blk_mq_map_queue(q, ctx->cpu);
+	const int sched_tag = rq->internal_tag;
+
+	if (rq->tag != -1)
+		blk_mq_put_tag(hctx, hctx->tags, ctx, rq->tag);
+	if (sched_tag != -1)
+		blk_mq_put_tag(hctx, hctx->sched_tags, ctx, sched_tag);
+	blk_mq_sched_restart(hctx);
+	blk_queue_exit(q);
+}
+
 void blk_mq_free_request(struct request *rq)
 {
 	struct request_queue *q = rq->q;
 	struct elevator_queue *e = q->elevator;
 	struct blk_mq_ctx *ctx = rq->mq_ctx;
 	struct blk_mq_hw_ctx *hctx = blk_mq_map_queue(q, ctx->cpu);
-	const int sched_tag = rq->internal_tag;
 
 	if (rq->rq_flags & RQF_ELVPRIV) {
 		if (e && e->type->ops.mq.finish_request)
@@ -490,12 +505,8 @@ void blk_mq_free_request(struct request *rq)
 
 	clear_bit(REQ_ATOM_STARTED, &rq->atomic_flags);
 	clear_bit(REQ_ATOM_POLL_SLEPT, &rq->atomic_flags);
-	if (rq->tag != -1)
-		blk_mq_put_tag(hctx, hctx->tags, ctx, rq->tag);
-	if (sched_tag != -1)
-		blk_mq_put_tag(hctx, hctx->sched_tags, ctx, sched_tag);
-	blk_mq_sched_restart(hctx);
-	blk_queue_exit(q);
+	if (refcount_dec_and_test(&rq->ref))
+		__blk_mq_free_request(rq);
 }
 EXPORT_SYMBOL_GPL(blk_mq_free_request);
 
@@ -792,6 +803,7 @@ static void blk_mq_check_expired(struct blk_mq_hw_ctx *hctx,
 		struct request *rq, void *priv, bool reserved)
 {
 	struct blk_mq_timeout_data *data = priv;
+	struct blk_mq_ctx *ctx = rq->mq_ctx;
 
 	if (!test_bit(REQ_ATOM_STARTED, &rq->atomic_flags))
 		return;
@@ -810,8 +822,22 @@ static void blk_mq_check_expired(struct blk_mq_hw_ctx *hctx,
 	 *   this rq won't be timed out too.
 	 */
 	if (time_after_eq(jiffies, rq->deadline)) {
+		/*
+		 * We have reason to believe the request may be expired. Take a
+		 * reference on the request to lock this request lifetime into
+		 * its currently allocated context to prevent it from being
+		 * reallocated in the event the completion by-passes
+		 * this timeout handler.
+		 *
+		 * If the reference was already released, then the driver
+		 * beat the timeout handler to posting a natural completion.
+		 */
+		if (!refcount_inc_not_zero(&rq->ref))
+			return;
 		if (!blk_mark_rq_complete(rq))
 			blk_mq_rq_timed_out(rq, reserved);
+		if (refcount_dec_and_test(&rq->ref))
+			__blk_mq_free_request(rq);
 	} else if (!data->next_set || time_after(data->next, rq->deadline)) {
 		data->next = rq->deadline;
 		data->next_set = 1;
