@@ -213,6 +213,7 @@ static void blk_mq_rq_ctx_init(struct request_queue *q, struct blk_mq_ctx *ctx,
 	rq->next_rq = NULL;
 
 	ctx->rq_dispatched[rw_is_sync(rw_flags)]++;
+	refcount_set(&rq->ref, 1);
 }
 
 static struct request *
@@ -297,7 +298,8 @@ void blk_mq_free_hctx_request(struct blk_mq_hw_ctx *hctx, struct request *rq)
 	struct blk_mq_ctx *ctx = rq->mq_ctx;
 
 	ctx->rq_completed[rq_is_sync(rq)]++;
-	__blk_mq_free_request(hctx, ctx, rq);
+	if (refcount_dec_and_test(&rq->ref))
+		__blk_mq_free_request(hctx, ctx, rq);
 
 }
 EXPORT_SYMBOL_GPL(blk_mq_free_hctx_request);
@@ -604,6 +606,7 @@ static void blk_mq_check_expired(struct blk_mq_hw_ctx *hctx,
 		struct request *rq, void *priv, bool reserved)
 {
 	struct blk_mq_timeout_data *data = priv;
+	struct blk_mq_ctx *ctx = rq->mq_ctx;
 
 	if (!test_bit(REQ_ATOM_STARTED, &rq->atomic_flags))
 		return;
@@ -612,8 +615,22 @@ static void blk_mq_check_expired(struct blk_mq_hw_ctx *hctx,
 		return;
 
 	if (time_after_eq(jiffies, rq->deadline)) {
+		/*
+		 * We have reason to believe the request may be expired. Take a
+		 * reference on the request to lock this request lifetime into
+		 * its currently allocated context to prevent it from being
+		 * reallocated in the event the completion by-passes this
+		 * timeout handler.
+		 *
+		 * If the reference was already released, then the driver
+		 * beat the timeout handler to posting a natural completion.
+		 */
+		if (!refcount_inc_not_zero(&rq->ref))
+			return;
 		if (!blk_mark_rq_complete(rq))
 			blk_mq_rq_timed_out(rq, reserved);
+		if (refcount_dec_and_test(&rq->ref))
+			__blk_mq_free_request(hctx, ctx, rq);
 	} else if (!data->next_set || time_after(data->next, rq->deadline)) {
 		data->next = rq->deadline;
 		data->next_set = 1;

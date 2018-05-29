@@ -25,6 +25,7 @@
 #include <linux/uek_kabi.h>
 
 #include <asm/scatterlist.h>
+#include <linux/refcount.h>
 
 struct module;
 struct scsi_ioctl_command;
@@ -115,6 +116,7 @@ struct request {
 
 	u64 cmd_flags;
 	enum rq_cmd_type_bits cmd_type;
+	UEK_KABI_FILL_HOLE(refcount_t ref)
 	unsigned long atomic_flags;
 
 	int cpu;
