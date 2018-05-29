@@ -122,6 +122,12 @@ extern const struct cpumask *cpu_coregroup_mask(int cpu);
 #define topology_physical_package_id(cpu)	(cpu_data(cpu).phys_proc_id)
 #define topology_core_id(cpu)			(cpu_data(cpu).cpu_core_id)
 
+#ifdef CONFIG_SMP
+bool topology_is_primary_thread(unsigned int cpu);
+#else
+static inline bool topology_is_primary_thread(unsigned int cpu) { return true; }
+#endif
+
 #ifdef ENABLE_TOPO_DEFINES
 #define topology_core_cpumask(cpu)		(per_cpu(cpu_core_map, cpu))
 #define topology_thread_cpumask(cpu)		(per_cpu(cpu_sibling_map, cpu))

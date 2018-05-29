@@ -115,6 +115,12 @@ static inline bool apic_is_x2apic_enabled(void)
 	return msr & X2APIC_ENABLE;
 }
 
+#ifdef CONFIG_SMP
+bool apic_id_is_primary_thread(unsigned int id);
+#else
+static inline bool apic_id_is_primary_thread(unsigned int id) { return false; }
+#endif
+
 #ifdef CONFIG_X86_X2APIC
 /*
  * Make previous memory operations globally visible before

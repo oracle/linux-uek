@@ -270,6 +270,15 @@ static void notrace start_secondary(void *unused)
 	cpu_startup_entry(CPUHP_ONLINE);
 }
 
+/**
+ * topology_is_primary_thread - Check whether CPU is the primary SMT thread
+ * @cpu:	CPU to check
+ */
+bool topology_is_primary_thread(unsigned int cpu)
+{
+	return apic_id_is_primary_thread(per_cpu(x86_cpu_to_apicid, cpu));
+}
+
 void __init smp_store_boot_cpu_info(void)
 {
 	int id = 0; /* CPU 0 */
