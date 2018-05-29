@@ -223,6 +223,7 @@ struct request {
 
 	unsigned int timeout;
 
+	UEK_KABI_FILL_HOLE(refcount_t ref)
 	void *special;		/* opaque pointer available for LLD use */
 
 	unsigned int extra_len;	/* length of alignment and padding */
