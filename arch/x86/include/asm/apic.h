@@ -172,6 +172,12 @@ static inline void disable_local_APIC(void) { }
 static inline void lapic_update_tsc_freq(void) { }
 #endif /* !CONFIG_X86_LOCAL_APIC */
 
+#ifdef CONFIG_SMP
+bool apic_id_is_primary_thread(unsigned int id);
+#else
+static inline bool apic_id_is_primary_thread(unsigned int id) { return false; }
+#endif
+
 #ifdef CONFIG_X86_X2APIC
 /*
  * Make previous memory operations globally visible before
