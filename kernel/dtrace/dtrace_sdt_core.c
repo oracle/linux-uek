@@ -29,6 +29,14 @@
 #include <asm-generic/sections.h>
 
 const char		*sdt_prefix = "__dtrace_probe_";
+int			dtrace_nosdt;
+
+/*
+ * Compiled-in SDT probe data.
+ */
+extern const unsigned long	dtrace_sdt_probes[];
+extern const char		dtrace_sdt_strings[];
+extern const unsigned long	dtrace_sdt_nprobes;
 
 /*
  * Markers of core-kernel sdt_args and sdt_names sections.
@@ -38,8 +46,8 @@ extern const char __stop_dtrace_sdt_args[];
 extern const char __start_dtrace_sdt_names[];
 extern const char __stop_dtrace_sdt_names[];
 
-static int sdt_probe_set(sdt_probedesc_t *sdp, char *name, char *func,
-			 uintptr_t addr, asm_instr_t **paddr,\
+static int sdt_probe_set(sdt_probedesc_t *sdp, const char *name,
+			 const char *func, uintptr_t addr, asm_instr_t **paddr,
 			 sdt_probedesc_t *prv)
 {
 	if ((sdp->sdpd_name = kstrdup(name, GFP_KERNEL)) == NULL) {
@@ -188,9 +196,6 @@ void dtrace_sdt_stash_args(const char *module_name,
 void __init dtrace_sdt_register(struct module *mp)
 {
 	int			i, cnt;
-	dtrace_sdt_probeinfo_t	*pi =
-				(dtrace_sdt_probeinfo_t *)&dtrace_sdt_probes;
-	void			*nextpi;
 	sdt_probedesc_t		*sdps;
 	asm_instr_t		**addrs;
 	int			*is_enabled;
@@ -209,7 +214,7 @@ void __init dtrace_sdt_register(struct module *mp)
 	mp->sdt_probes = NULL;
 	mp->sdt_probec = 0;
 
-	if (dtrace_sdt_nprobes == 0)
+	if (dtrace_sdt_nprobes == 0 || dtrace_nosdt)
 		return;
 
 	/*
@@ -241,23 +246,25 @@ void __init dtrace_sdt_register(struct module *mp)
 		return;
 	}
 
-	for (i = cnt = 0; cnt < dtrace_sdt_nprobes; i++) {
-		char	*func = pi->name + pi->name_len + 1;
+	for (i = cnt = 0; i < dtrace_sdt_nprobes; i++) {
+		uintptr_t	addr, poff, foff;
+		const char	*fname = &dtrace_sdt_strings[foff];
+		const char	*pname;
 
-		is_enabled[cnt] = (pi->name[0] == '?');
+		addr = dtrace_sdt_probes[i * 3];	/* address */
+		poff = dtrace_sdt_probes[i * 3 + 1];	/* probe name offset */
+		foff = dtrace_sdt_probes[i * 3 + 2];	/* func name offset */
+		pname = &dtrace_sdt_strings[poff];
+		fname = &dtrace_sdt_strings[foff];
 
-		if (sdt_probe_set(&sdps[cnt], pi->name, func, pi->addr,
-				  &addrs[cnt],
+		is_enabled[cnt] = (pname[0] == '?');
+
+		if (sdt_probe_set(&sdps[cnt], pname, fname, addr, &addrs[cnt],
 				  cnt > 0 ? &sdps[cnt - 1] : NULL))
-			pr_warning("%s: failed to add SDT probe %s\n",
-				   __func__, pi->name);
+			pr_warn("%s: failed to add SDT probe %s for %s\n",
+				__func__, pname, fname);
 		else
 			cnt++;
-
-		nextpi = (void *)pi + sizeof(dtrace_sdt_probeinfo_t)
-			+ roundup(pi->name_len + 1 +
-				  pi->func_len + 1, BITS_PER_LONG / 8);
-		pi = nextpi;
 	}
 
 	mp->sdt_probes = sdps;
@@ -293,9 +300,9 @@ end:
 
 static int __init nosdt(char *str)
 {
-        dtrace_sdt_nprobes = 0;
+	dtrace_nosdt = 1;
 
-        return 0;
+	return 0;
 }
 
 early_param("nosdt", nosdt);

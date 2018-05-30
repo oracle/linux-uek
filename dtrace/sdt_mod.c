@@ -115,10 +115,10 @@ static dtrace_pops_t sdt_pops = {
 	.dtps_suspend = NULL,
 	.dtps_resume = NULL,
 	.dtps_getargdesc = sdt_getargdesc,
-#ifdef CONFIG_X86_64
-	.dtps_getargval = sdt_getarg,
-#else
+#ifdef CONFIG_SPARC64
 	.dtps_getargval = NULL,
+#else
+	.dtps_getargval = sdt_getarg,
 #endif
 	.dtps_usermode = NULL,
 	.dtps_destroy = sdt_destroy,
