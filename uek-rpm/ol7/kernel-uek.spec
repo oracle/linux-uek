@@ -83,7 +83,7 @@ Summary: The Linux kernel
 # kernel-doc
 %define with_doc       1
 # kernel-headers
-%define with_headers   0
+%define with_headers   1
 # dtrace
 %define with_dtrace    0
 # perf
@@ -667,11 +667,12 @@ You'll want to install this package if you need a reference to the
 options that can be passed to Linux kernel modules at load time.
 
 
+%if %{with_headers}
 %package headers
 Summary: Header files for the Linux kernel for use by glibc
 Group: Development/System
-Obsoletes: glibc-kernheaders
-Obsoletes: kernel-headers
+Conflicts: glibc-kernheaders
+Conflicts: kernel-headers
 Provides: kernel-headers
 Provides: glibc-kernheaders = 3.0-46
 %description headers
@@ -680,6 +681,7 @@ between the Linux kernel and userspace libraries and programs.  The
 header files define structures and constants that are needed for
 building most standard programs and are also needed for rebuilding the
 glibc package.
+%endif
 
 %package bootwrapper
 Summary: Boot wrapper files for generating combined kernel + initrd images
