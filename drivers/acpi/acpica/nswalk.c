@@ -205,6 +205,9 @@ acpi_ns_walk_namespace(acpi_object_type type,
 		start_node = acpi_gbl_root_node;
 	}
 
+	if (start_node == NULL)
+		return_ACPI_STATUS(AE_OK);
+
 	/* Null child means "get first node" */
 
 	parent_node = start_node;
