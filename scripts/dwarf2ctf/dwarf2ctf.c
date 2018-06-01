@@ -3880,12 +3880,12 @@ static ctf_id_t assemble_ctf_su_member(const char *module_name,
 	 */
 	if (private_dwarf_hasattr(die, DW_AT_bit_size)) {
 		die_override_t o[] =
-			{{ dwarf_tag(&type_die),
+			{{ DW_TAG_base_type,
 			   DW_AT_bit_size,
 			   DIE_OVERRIDE_REPLACE,
 			   private_dwarf_udata(die, DW_AT_bit_size,
 					       NULL) },
-			 { dwarf_tag(&type_die),
+			 { DW_TAG_base_type,
 			   DW_AT_bit_offset,
 			   DIE_OVERRIDE_REPLACE,
 			   bit_offset },
