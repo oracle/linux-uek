@@ -8927,11 +8927,14 @@ static int i40e_sw_init(struct i40e_pf *pf)
 {
 	int err = 0;
 	int size;
+	int msi_flags = I40E_FLAG_MSI_ENABLED | I40E_FLAG_MSIX_ENABLED;
 
 	/* Set default capability flags */
-	pf->flags = I40E_FLAG_RX_CSUM_ENABLED |
-		    I40E_FLAG_MSI_ENABLED     |
-		    I40E_FLAG_MSIX_ENABLED;
+	pf->flags = I40E_FLAG_RX_CSUM_ENABLED;
+
+	/* Enable MSI/MSI-X if not in kdump kernel */
+	if (!reset_devices)
+		pf->flags |= msi_flags;
 
 	/* Set default ITR */
 	pf->rx_itr_default = I40E_ITR_DYNAMIC | I40E_ITR_RX_DEF;
