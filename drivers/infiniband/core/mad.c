@@ -39,7 +39,9 @@
 #include <linux/dma-mapping.h>
 #include <linux/slab.h>
 #include <linux/module.h>
+#include <linux/idr.h>
 #include <rdma/ib_cache.h>
+#include <linux/spinlock.h>
 
 #include "mad_priv.h"
 #include "mad_rmpp.h"
@@ -62,8 +64,6 @@ MODULE_PARM_DESC(recv_queue_size, "Size of receive queue in number of work reque
 static struct kmem_cache *ib_mad_cache;
 
 static struct list_head ib_mad_port_list;
-static u32 ib_mad_client_id = 0;
-
 /* Port list lock */
 static DEFINE_SPINLOCK(ib_mad_port_list_lock);
 
@@ -85,6 +85,48 @@ static int add_nonoui_reg_req(struct ib_mad_reg_req *mad_reg_req,
 static int add_oui_reg_req(struct ib_mad_reg_req *mad_reg_req,
 			   struct ib_mad_agent_private *agent_priv);
 
+static DEFINE_IDA(ib_mad_client_ids);
+#define AGENT_ID_LIMIT BIT(24)
+static DEFINE_SPINLOCK(get_id_lock);
+
+static int get_id_cyclic(void)
+{
+	int ret, id, next;
+	unsigned long flags;
+	static int ida_next = 1;
+	struct ida *ida = &ib_mad_client_ids;
+	int start = 1;
+	int end = AGENT_ID_LIMIT;
+
+again:
+	if (!ida_pre_get(ida, GFP_KERNEL))
+		return -ENOMEM;
+
+	spin_lock_irqsave(&get_id_lock, flags);
+	next = (ida_next >= end) ? start : ida_next;
+
+	ret = ida_get_new_above(ida, next, &id);
+	if (!ret) {
+		if (id > end) {
+			ida_remove(ida, id);
+			if (next == start) {
+				ret = -ENOSPC;
+			} else {
+				ida_next = start;
+				spin_unlock_irqrestore(&get_id_lock, flags);
+				goto again;
+			}
+		} else {
+			ida_next = id + 1;
+			ret = id;
+		}
+	}
+	spin_unlock_irqrestore(&get_id_lock, flags);
+
+	if (unlikely(ret == -EAGAIN))
+		goto again;
+	return ret;
+}
 /*
  * Returns a ib_mad_port_private structure or NULL for a device/port
  * Assumes ib_mad_port_list_lock is being held
@@ -212,7 +254,7 @@ struct ib_mad_agent *ib_register_mad_agent(struct ib_device *device,
 	int ret2, qpn;
 	unsigned long flags;
 	u8 mgmt_class, vclass;
-
+	int ib_mad_client_id;
 	/* Validate parameters */
 	qpn = get_spl_qp_index(qp_type);
 	if (qpn == -1) {
@@ -375,8 +417,16 @@ struct ib_mad_agent *ib_register_mad_agent(struct ib_device *device,
 	atomic_set(&mad_agent_priv->refcount, 1);
 	init_completion(&mad_agent_priv->comp);
 
+	ib_mad_client_id = get_id_cyclic();
+	if (ib_mad_client_id < 0) {
+		pr_err("Couldn't allocate agent tid; errcode: %#x\n",
+			ib_mad_client_id);
+		ret = ERR_PTR(ib_mad_client_id);
+		goto error4;
+	}
+	mad_agent_priv->agent.hi_tid = (u32)ib_mad_client_id;
+
 	spin_lock_irqsave(&port_priv->reg_lock, flags);
-	mad_agent_priv->agent.hi_tid = ++ib_mad_client_id;
 
 	/*
 	 * Make sure MAD registration (if supplied)
@@ -567,6 +617,7 @@ static void unregister_mad_agent(struct ib_mad_agent_private *mad_agent_priv)
 {
 	struct ib_mad_port_private *port_priv;
 	unsigned long flags;
+	u32 ib_mad_client_id;
 
 	/* Note that we could still be handling received MADs */
 
@@ -577,6 +628,8 @@ static void unregister_mad_agent(struct ib_mad_agent_private *mad_agent_priv)
 	cancel_mads(mad_agent_priv);
 	port_priv = mad_agent_priv->qp_info->port_priv;
 	cancel_delayed_work(&mad_agent_priv->timed_work);
+
+	ib_mad_client_id = mad_agent_priv->agent.hi_tid;
 
 	spin_lock_irqsave(&port_priv->reg_lock, flags);
 	remove_mad_reg_req(mad_agent_priv);
@@ -592,6 +645,9 @@ static void unregister_mad_agent(struct ib_mad_agent_private *mad_agent_priv)
 	kfree(mad_agent_priv->reg_req);
 	ib_dereg_mr(mad_agent_priv->agent.mr);
 	kfree(mad_agent_priv);
+	spin_lock_irqsave(&get_id_lock, flags);
+	ida_remove(&ib_mad_client_ids, ib_mad_client_id);
+	spin_unlock_irqrestore(&get_id_lock, flags);
 }
 
 static void unregister_mad_snoop(struct ib_mad_snoop_private *mad_snoop_priv)
@@ -3164,7 +3220,7 @@ static int __init ib_mad_init_module(void)
 		ret = -EINVAL;
 		goto error2;
 	}
-
+	ida_init(&ib_mad_client_ids);
 	return 0;
 
 error2:
@@ -3177,6 +3233,7 @@ static void __exit ib_mad_cleanup_module(void)
 {
 	ib_unregister_client(&mad_client);
 	kmem_cache_destroy(ib_mad_cache);
+	ida_destroy(&ib_mad_client_ids);
 }
 
 module_init(ib_mad_init_module);
