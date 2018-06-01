@@ -765,6 +765,12 @@ void init_speculation_control(struct cpuinfo_x86 *c,
 		set_cpu_cap(c, X86_FEATURE_MSR_SPEC_CTRL);
 	}
 
+	if (cpu_has(c, X86_FEATURE_AMD_SSBD)) {
+		set_cpu_cap(c, X86_FEATURE_SSBD);
+		set_cpu_cap(c, X86_FEATURE_MSR_SPEC_CTRL);
+		clear_cpu_cap(c, X86_FEATURE_VIRT_SSBD);
+	}
+
 	if (behavior == GET_CPU_CAP_MINIMUM)
 		return;
 
