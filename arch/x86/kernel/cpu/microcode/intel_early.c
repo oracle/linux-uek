@@ -255,7 +255,7 @@ static unsigned int _save_mc(struct microcode_intel **mc_saved,
 		mc_saved_hdr = (struct microcode_header_intel *)mc_saved[i];
 		sig	     = mc_saved_hdr->sig;
 		pf	     = mc_saved_hdr->pf;
-		new_rev	     = mc_hdr->rev;
+		new_rev	     = mc_saved_hdr->rev;
 
 		if (!get_matching_sig(sig, pf, new_rev, ucode_ptr))
 			continue;
