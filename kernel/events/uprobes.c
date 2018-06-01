@@ -1536,6 +1536,16 @@ static unsigned long get_trampoline_vaddr(void)
 	return trampoline_vaddr;
 }
 
+/*
+ * Verify whether a return address is a trampoline address or a regular return
+ * address.  This is used by stack unwinders to determine whether a return
+ * address in a stack trace needs to be adjusted.
+ */
+bool uprobe_return_addr_is_hijacked(unsigned long addr)
+{
+	return addr == get_trampoline_vaddr();
+}
+
 static void cleanup_return_instances(struct uprobe_task *utask, bool chained,
 					struct pt_regs *regs)
 {
