@@ -1263,10 +1263,6 @@ asmlinkage __visible void __init xen_start_kernel(void)
 	 */
 	__userpte_alloc_gfp &= ~__GFP_HIGHMEM;
 
-	/* Work out if we support NX */
-	get_cpu_cap(&boot_cpu_data, GET_CPU_CAP_FULL);
-	x86_configure_nx();
-
 	/* Get mfn list */
 	xen_build_dynamic_phys_to_machine();
 
