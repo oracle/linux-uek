@@ -1240,6 +1240,11 @@ static int drbg_make_shadow(struct drbg_state *drbg, struct drbg_state **shadow)
 	drbg_copy_drbg(drbg, tmp);
 	/* only make a link to the test buffer, as we only read that data */
 	tmp->test_data = drbg->test_data;
+	if (list_empty(&drbg->test_data.list)) {
+		/* In test mode, tmp->test_data.list should be an empty
+		 * list as well */
+		INIT_LIST_HEAD(&tmp->test_data.list);
+	}
 	spin_unlock_bh(&drbg->drbg_lock);
 	*shadow = tmp;
 	return 0;
