@@ -526,13 +526,6 @@ static int apic_retrigger_irq(struct irq_data *irq_data)
 	return 1;
 }
 
-void apic_ack_edge(struct irq_data *data)
-{
-	irq_complete_move(irqd_cfg(data));
-	irq_move_irq(data);
-	ack_APIC_irq();
-}
-
 static int apic_set_affinity(struct irq_data *irq_data,
 			     const struct cpumask *dest, bool force)
 {
@@ -547,6 +540,18 @@ static int apic_set_affinity(struct irq_data *irq_data,
 
 	err = assign_irq_vector(irq, data, dest, irq_data);
 	return err ? err : IRQ_SET_MASK_OK;
+}
+
+void apic_ack_irq(struct irq_data *irqd)
+{
+	irq_move_irq(irqd);
+	ack_APIC_irq();
+}
+
+void apic_ack_edge(struct irq_data *irqd)
+{
+	irq_complete_move(irqd_cfg(irqd));
+	apic_ack_irq(irqd);
 }
 
 static struct irq_chip lapic_controller = {
