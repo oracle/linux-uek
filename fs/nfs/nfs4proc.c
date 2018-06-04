@@ -4983,12 +4983,21 @@ nfs4_init_nonuniform_client_string(struct nfs_client *clp,
 		return strlcpy(buf, clp->cl_owner_id, len);
 
 	rcu_read_lock();
-	result = scnprintf(buf, len, "Linux NFSv4.0 %s/%s %s",
-				clp->cl_ipaddr,
-				rpc_peeraddr2str(clp->cl_rpcclient,
-							RPC_DISPLAY_ADDR),
-				rpc_peeraddr2str(clp->cl_rpcclient,
-							RPC_DISPLAY_PROTO));
+	if (nfs4_client_id_uniquifier[0] != '\0')
+		result = scnprintf(buf, len, "Linux NFSv4.0 %s/%s/%s %s",
+				   clp->cl_rpcclient->cl_nodename,
+				   nfs4_client_id_uniquifier,
+				   rpc_peeraddr2str(clp->cl_rpcclient,
+						    RPC_DISPLAY_ADDR),
+				   rpc_peeraddr2str(clp->cl_rpcclient,
+						    RPC_DISPLAY_PROTO));
+	else
+		result = scnprintf(buf, len, "Linux NFSv4.0 %s/%s %s",
+				   clp->cl_rpcclient->cl_nodename,
+				   rpc_peeraddr2str(clp->cl_rpcclient,
+						    RPC_DISPLAY_ADDR),
+				   rpc_peeraddr2str(clp->cl_rpcclient,
+						    RPC_DISPLAY_PROTO));
 	rcu_read_unlock();
 	clp->cl_owner_id = kstrdup(buf, GFP_KERNEL);
 	return result;
