@@ -250,7 +250,8 @@ void nvme_complete_rq(struct request *req)
 	blk_status_t status = nvme_error_status(req);
 
 	if (unlikely(status != BLK_STS_OK && nvme_req_needs_retry(req))) {
-		if (nvme_req_needs_failover(req, status)) {
+		if ((req->cmd_flags & REQ_NVME_MPATH) &&
+		    blk_path_error(status)) {
 			nvme_failover_req(req);
 			return;
 		}
