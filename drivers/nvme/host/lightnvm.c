@@ -465,6 +465,68 @@ static int nvme_nvm_set_bb_tbl(struct nvm_dev *nvmdev, struct ppa_addr *ppas,
 	return ret;
 }
 
+/*
+ * Expect the lba in device format
+ */
+static int nvme_nvm_get_chk_meta(struct nvm_dev *ndev,
+				 struct nvm_chk_meta *meta,
+				 sector_t slba, int nchks)
+{
+	struct nvm_geo *geo = &ndev->geo;
+	struct nvme_ns *ns = ndev->q->queuedata;
+	struct nvme_ctrl *ctrl = ns->ctrl;
+	struct nvme_nvm_chk_meta *dev_meta = (struct nvme_nvm_chk_meta *)meta;
+	struct ppa_addr ppa;
+	size_t left = nchks * sizeof(struct nvme_nvm_chk_meta);
+	size_t log_pos, offset, len;
+	int ret, i, max_len;
+
+	/*
+	 * limit requests to maximum 256K to avoid issuing arbitrary large
+	 * requests when the device does not specific a maximum transfer size.
+	 */
+	max_len = min_t(unsigned int, ctrl->max_hw_sectors << 9, 256 * 1024);
+
+	/* Normalize lba address space to obtain log offset */
+	ppa.ppa = slba;
+	ppa = dev_to_generic_addr(ndev, ppa);
+
+	log_pos = ppa.m.chk;
+	log_pos += ppa.m.pu * geo->num_chk;
+	log_pos += ppa.m.grp * geo->num_lun * geo->num_chk;
+
+	offset = log_pos * sizeof(struct nvme_nvm_chk_meta);
+
+	while (left) {
+		len = min_t(unsigned int, left, max_len);
+
+		ret = nvme_get_log(ctrl, ns->head->ns_id,
+				NVME_NVM_LOG_REPORT_CHUNK, 0, dev_meta, len,
+				offset);
+		if (ret) {
+			dev_err(ctrl->device, "Get REPORT CHUNK log error\n");
+			break;
+		}
+
+		for (i = 0; i < len; i += sizeof(struct nvme_nvm_chk_meta)) {
+			meta->state = dev_meta->state;
+			meta->type = dev_meta->type;
+			meta->wi = dev_meta->wi;
+			meta->slba = le64_to_cpu(dev_meta->slba);
+			meta->cnlb = le64_to_cpu(dev_meta->cnlb);
+			meta->wp = le64_to_cpu(dev_meta->wp);
+
+			meta++;
+			dev_meta++;
+		}
+
+		offset += len;
+		left -= len;
+	}
+
+	return ret;
+}
+
 static inline void nvme_nvm_rqtocmd(struct nvm_rq *rqd, struct nvme_ns *ns,
 				    struct nvme_nvm_command *c)
 {
