@@ -356,12 +356,8 @@ void disable_retpoline(void)
 {
 	BUG_ON(!mutex_is_locked(&spec_ctrl_mutex));
 
-	if (retpoline_only_enabled()) {
-		pr_err("Disabling Spectre v2 mitigation retpoline.\n");
-	} else {
-		/* retpoline is not enabled.  Return */
+	if (!retpoline_only_enabled())
 		return;
-	}
 
 	if (allow_retpoline_fallback) {
 		if (!ibrs_inuse) {
