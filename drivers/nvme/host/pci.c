@@ -1497,11 +1497,13 @@ static int nvme_create_queue(struct nvme_queue *nvmeq, int qid)
 	 */
 	vector = dev->num_vecs == 1 ? 0 : qid;
 	result = adapter_alloc_cq(dev, qid, nvmeq, vector);
-	if (result < 0)
-		goto out;
+	if (result)
+		return result;
 
 	result = adapter_alloc_sq(dev, qid, nvmeq);
 	if (result < 0)
+		return result;
+	else if (result)
 		goto release_cq;
 
 	/*
@@ -1523,7 +1525,6 @@ release_sq:
 	adapter_delete_sq(dev, qid);
 release_cq:
 	adapter_delete_cq(dev, qid);
-out:
 	return result;
 }
 
