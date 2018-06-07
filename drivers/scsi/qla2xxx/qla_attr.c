@@ -1513,6 +1513,22 @@ qla2x00_max_speed_sup_show(struct device *dev, struct device_attribute *attr,
 	    ha->max_speed_sup ? "32Gps" : "16Gps");
 }
 
+qla2x00_dif_bundle_statistics_show(struct device *dev,
+    struct device_attribute *attr, char *buf)
+{
+	scsi_qla_host_t *vha = shost_priv(class_to_shost(dev));
+	struct qla_hw_data *ha = vha->hw;
+
+	return scnprintf(buf, PAGE_SIZE,
+	    "cross=%llu read=%llu write=%llu kalloc=%llu dma_alloc=%llu unusable=%u\n",
+	    ha->dif_bundle_crossed_pages,
+	    ha->dif_bundle_reads,
+	    ha->dif_bundle_writes,
+	    ha->dif_bundle_kallocs,
+	    ha->dif_bundle_dma_allocs,
+	    ha->pool.unusable.count);
+}
+
 static DEVICE_ATTR(driver_version, S_IRUGO, qla2x00_drvr_version_show, NULL);
 static DEVICE_ATTR(fw_version, S_IRUGO, qla2x00_fw_version_show, NULL);
 static DEVICE_ATTR(serial_num, S_IRUGO, qla2x00_serial_num_show, NULL);
@@ -1560,6 +1576,8 @@ static DEVICE_ATTR(allow_cna_fw_dump, S_IRUGO | S_IWUSR,
 static DEVICE_ATTR(pep_version, S_IRUGO, qla2x00_pep_version_show, NULL);
 static DEVICE_ATTR(min_link_speed, S_IRUGO, qla2x00_min_link_speed_show, NULL);
 static DEVICE_ATTR(max_speed_sup, S_IRUGO, qla2x00_max_speed_sup_show, NULL);
+static DEVICE_ATTR(dif_bundle_statistics, S_IRUGO,
+    qla2x00_dif_bundle_statistics_show, NULL);
 
 struct device_attribute *qla2x00_host_attrs[] = {
 	&dev_attr_driver_version,
@@ -1596,6 +1614,7 @@ struct device_attribute *qla2x00_host_attrs[] = {
 	&dev_attr_pep_version,
 	&dev_attr_min_link_speed,
 	&dev_attr_max_speed_sup,
+	&dev_attr_dif_bundle_statistics,
 	NULL,
 };
 
