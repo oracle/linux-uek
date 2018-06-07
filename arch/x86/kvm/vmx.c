@@ -54,7 +54,6 @@
 #include <asm/microcode.h>
 #include <asm/nospec-branch.h>
 #include <asm/spec_ctrl.h>
-#include <asm/spec-ctrl.h>
 
 #include "trace.h"
 #include "pmu.h"
@@ -9500,6 +9499,7 @@ static void __noclone vmx_vcpu_run(struct kvm_vcpu *vcpu)
 	x86_spec_ctrl_set_guest(vmx->spec_ctrl, 0);
 
 	vmx->__launched = vmx->loaded_vmcs->launched;
+
 	asm(
 		/* Store host registers */
 		"push %%" _ASM_DX "; push %%" _ASM_BP ";"
