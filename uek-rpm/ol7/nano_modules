@@ -643,6 +643,7 @@ kernel/drivers/xen/xen-gntalloc.ko
 kernel/drivers/xen/xen-gntdev.ko
 kernel/drivers/xen/xen-privcmd.ko
 kernel/drivers/xen/xen-scsiback.ko
+kernel/drivers/xen/ovmapi.ko
 kernel/dtrace/dtrace.ko
 kernel/dtrace/dt_test.ko
 kernel/dtrace/fasttrap.ko
