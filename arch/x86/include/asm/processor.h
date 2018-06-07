@@ -32,6 +32,7 @@ struct vm86;
 #include <linux/err.h>
 #include <linux/irqflags.h>
 #include <linux/mem_encrypt.h>
+#include <linux/uek_kabi.h>
 
 /*
  * We handle most unaligned accesses in hardware.  On the other hand
@@ -131,8 +132,10 @@ struct cpuinfo_x86 {
 	u16			cpu_core_id;
 	/* Index into per_cpu list: */
 	u16			cpu_index;
-	u32			microcode;
+#ifndef __GENKSYMS__
 	unsigned		initialized : 1;
+#endif
+	u32			microcode;
 } __randomize_layout;
 
 struct cpuid_regs {
