@@ -2264,6 +2264,7 @@ SYSCALL_DEFINE5(prctl, int, option, unsigned long, arg2, unsigned long, arg3,
 		if (arg4 || arg5)
 			return -EINVAL;
 		error = arch_prctl_spec_ctrl_set(me, arg2, arg3);
+		break;
 	default:
 		error = -EINVAL;
 		break;
