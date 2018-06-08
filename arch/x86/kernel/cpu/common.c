@@ -853,6 +853,54 @@ static void __cpuinit generic_identify(struct cpuinfo_x86 *c)
 	detect_nopl(c);
 }
 
+/* "Small Core" Processors (Atom) */
+#define INTEL_FAM6_ATOM_PINEVIEW	0x1C
+#define INTEL_FAM6_ATOM_LINCROFT	0x26
+#define INTEL_FAM6_ATOM_PENWELL		0x27
+#define INTEL_FAM6_ATOM_CLOVERVIEW	0x35
+#define INTEL_FAM6_ATOM_CEDARVIEW	0x36
+#define X86_VENDOR_ANY			0xffff
+/*
+ * Check if CPU has speculation.
+ */
+static int cpu_has_no_speculation(struct cpuinfo_x86 *c) {
+	switch(c->x86_vendor) {
+		case X86_VENDOR_INTEL:
+			switch(c->x86) {
+				case 6:
+					switch(c->x86_model) {
+						case INTEL_FAM6_ATOM_CEDARVIEW:
+						case INTEL_FAM6_ATOM_CLOVERVIEW:
+						case INTEL_FAM6_ATOM_LINCROFT:
+						case INTEL_FAM6_ATOM_PENWELL:
+						case INTEL_FAM6_ATOM_PINEVIEW:
+							return 1;
+						default:
+							return 0;
+					}
+				case 5:
+					return 1;
+				default:
+					return 0;
+			}
+		case X86_VENDOR_CENTAUR:
+				if(c->x86 == 5)
+					return 1;
+				else
+					return 0;
+		case X86_VENDOR_NSC:
+				if(c->x86 == 5)
+					return 1;
+				else
+					return 0;
+		case X86_VENDOR_ANY:
+				if(c->x86 == 4)
+					return 1;
+				else
+					return 0;
+	}
+	return 0;
+}
 /*
  * This does the hard work of actually picking apart the CPU stuff...
  */
@@ -990,6 +1038,9 @@ static void __cpuinit identify_cpu(struct cpuinfo_x86 *c)
 	set_cpu_cap(c, X86_BUG_SPECTRE_V1);
 
 	set_cpu_cap(c, X86_BUG_SPECTRE_V2);
+
+	if ((!cpu_has_eager_fpu) && (!cpu_has_no_speculation(c)))
+		pr_warn_once("eager_fpu is disabled. You are now susceptible to CVE-2018-3665.\n");
 }
 
 #ifdef CONFIG_X86_64
