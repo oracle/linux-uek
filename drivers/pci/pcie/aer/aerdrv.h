@@ -77,6 +77,4 @@ struct aer_rpc {
 					 */
 };
 
-irqreturn_t aer_irq(int irq, void *context);
-
 #endif /* _AERDRV_H_ */
