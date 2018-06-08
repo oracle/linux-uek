@@ -78,8 +78,6 @@ struct aer_rpc {
 };
 
 extern struct bus_type pcie_port_bus_type;
-void aer_print_error(struct pci_dev *dev, struct aer_err_info *info);
-void aer_print_port_info(struct pci_dev *dev, struct aer_err_info *info);
 irqreturn_t aer_irq(int irq, void *context);
 
 #endif /* _AERDRV_H_ */
