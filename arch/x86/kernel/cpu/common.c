@@ -27,6 +27,7 @@
 #include <asm/proto.h>
 #include <asm/setup.h>
 #include <asm/apic.h>
+#include <asm/cpu_device_id.h>
 #include <asm/desc.h>
 #include <asm/i387.h>
 #include <asm/fpu-internal.h>
@@ -891,6 +892,27 @@ static void __cpuinit generic_identify(struct cpuinfo_x86 *c)
 	detect_nopl(c);
 }
 
+/* "Small Core" Processors (Atom) */
+#define INTEL_FAM6_ATOM_PINEVIEW	0x1C
+#define INTEL_FAM6_ATOM_LINCROFT	0x26
+#define INTEL_FAM6_ATOM_PENWELL		0x27
+#define INTEL_FAM6_ATOM_CLOVERVIEW	0x35
+#define INTEL_FAM6_ATOM_CEDARVIEW	0x36
+
+static const __initconst struct x86_cpu_id cpu_no_speculation[] = {
+	{ X86_VENDOR_INTEL,	6, INTEL_FAM6_ATOM_CEDARVIEW,	X86_FEATURE_ANY },
+	{ X86_VENDOR_INTEL,	6, INTEL_FAM6_ATOM_CLOVERVIEW,	X86_FEATURE_ANY },
+	{ X86_VENDOR_INTEL,	6, INTEL_FAM6_ATOM_LINCROFT,	X86_FEATURE_ANY },
+	{ X86_VENDOR_INTEL,	6, INTEL_FAM6_ATOM_PENWELL,	X86_FEATURE_ANY },
+	{ X86_VENDOR_INTEL,	6, INTEL_FAM6_ATOM_PINEVIEW,	X86_FEATURE_ANY },
+	{ X86_VENDOR_AMD },
+	{ X86_VENDOR_CENTAUR,	5 },
+	{ X86_VENDOR_INTEL,	5 },
+	{ X86_VENDOR_NSC,	5 },
+	{ X86_VENDOR_ANY,	4 },
+	{}
+};
+
 /*
  * This does the hard work of actually picking apart the CPU stuff...
  */
@@ -1034,6 +1056,9 @@ static void __cpuinit identify_cpu(struct cpuinfo_x86 *c)
 	setup_force_cpu_bug(X86_BUG_SPECTRE_V1);
 
 	setup_force_cpu_bug(X86_BUG_SPECTRE_V2);
+
+	if ((!cpu_has_eager_fpu) && !(x86_match_cpu(cpu_no_speculation)))
+		pr_warn_once("eager_fpu is disabled. You are now susceptible to CVE-2018-3665.\n");
 }
 
 #ifdef CONFIG_X86_64
