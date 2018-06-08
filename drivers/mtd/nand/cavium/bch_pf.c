@@ -187,6 +187,11 @@ static int bch_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 	struct bch_device *bch;
 	int err;
 
+	/* unsafe on CN81XX pass 1.0/1.1 */
+	if (MIDR_IS_CPU_MODEL_RANGE(read_cpuid_id(),
+			MIDR_OCTEON_T81, 0x00, 0x01))
+		return -ENODEV;
+
 	bch = devm_kzalloc(dev, sizeof(*bch), GFP_KERNEL);
 	if (!bch)
 		return -ENOMEM;
