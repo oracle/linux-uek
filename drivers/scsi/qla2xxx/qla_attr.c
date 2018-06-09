@@ -1513,6 +1513,7 @@ qla2x00_max_speed_sup_show(struct device *dev, struct device_attribute *attr,
 	    ha->max_speed_sup ? "32Gps" : "16Gps");
 }
 
+static ssize_t
 qla2x00_dif_bundle_statistics_show(struct device *dev,
     struct device_attribute *attr, char *buf)
 {
