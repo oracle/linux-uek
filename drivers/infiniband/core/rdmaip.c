@@ -1086,9 +1086,12 @@ static void rdmaip_failback(struct work_struct *_work)
 		container_of(_work, struct rdmaip_port_ud_work, work.work);
 	u8				i, ip_active_port, port = work->port;
 
-	if (ip_config[port].port_state == RDMAIP_PORT_INIT) {
-		pr_err("rdmaip: devname %s failback request with port_state in INIT state!",
-		       ip_config[port].dev->name);
+	if ((ip_config[port].port_state == RDMAIP_PORT_INIT) ||
+	    (ip_config[port].port_state == RDMAIP_PORT_DOWN)) {
+		pr_err("rdmaip: devname %s failback request with port_state in %s state!",
+		       ip_config[port].dev->name,
+		       ip_config[port].port_state == RDMAIP_PORT_INIT ?
+		       "INIT":"DOWN");
 		goto out;
 	}
 
