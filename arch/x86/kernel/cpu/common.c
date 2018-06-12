@@ -866,6 +866,9 @@ static void cpu_set_bug_bits(struct cpuinfo_x86 *c)
 	if (x86_match_cpu(cpu_no_meltdown))
 		return;
 
+	if (!cpu_has_eager_fpu)
+		pr_warn_once("eager_fpu is disabled. You are now susceptible to CVE-2018-3665.\n");
+
 	/* Rogue Data Cache Load? No! */
 	if (ia32_cap & ARCH_CAP_RDCL_NO)
 		return;

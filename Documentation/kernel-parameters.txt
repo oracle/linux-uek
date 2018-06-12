@@ -946,10 +946,10 @@ bytes respectively. Such letter suffixes can also be entirely omitted.
 			Documentation/dynamic-debug-howto.txt for details.
 
 	eagerfpu=	[X86]
-			on	enable eager fpu restore
+			on	enable eager fpu restore (default scheme)
 			off	disable eager fpu restore
-			auto	selects the default scheme, which automatically
-				enables eagerfpu restore for xsaveopt.
+			auto	enable eager fpu restore when xsaveopt is
+				available, disable otherwise.
 
 	early_ioremap_debug [KNL]
 			Enable debug messages in early_ioremap support. This
