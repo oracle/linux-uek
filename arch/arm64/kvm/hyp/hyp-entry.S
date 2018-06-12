@@ -101,6 +101,7 @@ alternative_endif
 	do_el2_call
 
 	eret
+ENDPROC(el1_sync)
 
 el1_hvc_guest:
 	/*
@@ -115,6 +116,7 @@ el1_hvc_guest:
 	mov	x0, x1
 	add	sp, sp, #16
 	eret
+ENDPROC(el1_hvc_guest)
 
 el1_trap:
 	/*
@@ -135,18 +137,21 @@ alternative_else_nop_endif
 
 	mov	x0, #ARM_EXCEPTION_TRAP
 	b	__guest_exit
+ENDPROC(el1_trap)
 
 el1_irq:
 	stp     x0, x1, [sp, #-16]!
 	ldr	x1, [sp, #16 + 8]
 	mov	x0, #ARM_EXCEPTION_IRQ
 	b	__guest_exit
+ENDPROC(el1_irq)
 
 el1_error:
 	stp     x0, x1, [sp, #-16]!
 	ldr	x1, [sp, #16 + 8]
 	mov	x0, #ARM_EXCEPTION_EL1_SERROR
 	b	__guest_exit
+ENDPROC(el1_error)
 
 el2_error:
 	/*
@@ -169,6 +174,7 @@ el2_error:
 	b.ne	__hyp_panic
 	mov	x0, #(1 << ARM_EXIT_WITH_SERROR_BIT)
 	eret
+ENDPROC(el2_error)
 
 ENTRY(__hyp_do_panic)
 	mov	lr, #(PSR_F_BIT | PSR_I_BIT | PSR_A_BIT | PSR_D_BIT |\

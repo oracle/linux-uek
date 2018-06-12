@@ -456,6 +456,7 @@ __bad_stack:
 	/* Time to die */
 	bl	handle_bad_stack
 	ASM_BUG()
+END(__bad_stack)
 #endif /* CONFIG_VMAP_STACK */
 
 /*
@@ -622,6 +623,7 @@ el1_preempt:
 	ldr	x0, [tsk, #TSK_TI_FLAGS]	// get new tasks TI_FLAGS
 	tbnz	x0, #TIF_NEED_RESCHED, 1b	// needs rescheduling?
 	ret	x24
+END(el1_preempt)
 #endif
 
 /*
@@ -886,6 +888,7 @@ ret_fast_syscall:
 ret_fast_syscall_trace:
 	enable_irq				// enable interrupts
 	b	__sys_trace_return_skipped	// we already saved x0
+END(ret_fast_syscall)
 
 /*
  * Ok, we need to do extra processing, enter the slow path.
@@ -898,6 +901,7 @@ work_pending:
 #endif
 	ldr	x1, [tsk, #TSK_TI_FLAGS]	// re-check for single-step
 	b	finish_ret_to_user
+END(work_pending)
 /*
  * "slow" syscall return path.
  */
@@ -958,7 +962,6 @@ ni_sys:
 	mov	x0, sp
 	bl	do_ni_syscall
 	b	ret_fast_syscall
-ENDPROC(el0_svc)
 
 	/*
 	 * This is the really slow path.  We're going to be doing context
@@ -995,6 +998,7 @@ __ni_sys_trace:
 	mov	x0, sp
 	bl	do_ni_syscall
 	b	__sys_trace_return
+ENDPROC(el0_svc)
 
 	.popsection				// .entry.text
 
