@@ -751,6 +751,20 @@ static bool __cpuinit cpu_vulnerable_to_meltdown(struct cpuinfo_x86 *c)
 	return true;
 }
 
+static const __initconst struct x86_cpu_id cpu_no_l1tf[] = {
+	/* in addition to cpu_no_speculation */
+	{ X86_VENDOR_INTEL,     6,      INTEL_FAM6_ATOM_SILVERMONT1     },
+	{ X86_VENDOR_INTEL,     6,      INTEL_FAM6_ATOM_SILVERMONT2     },
+	{ X86_VENDOR_INTEL,     6,      INTEL_FAM6_ATOM_AIRMONT         },
+	{ X86_VENDOR_INTEL,     6,      INTEL_FAM6_ATOM_MERRIFIELD1     },
+	{ X86_VENDOR_INTEL,     6,      INTEL_FAM6_ATOM_MERRIFIELD2     },
+	{ X86_VENDOR_INTEL,     6,      INTEL_FAM6_ATOM_GOLDMONT        },
+	{ X86_VENDOR_INTEL,     6,      INTEL_FAM6_ATOM_DENVERTON       },
+	{ X86_VENDOR_INTEL,     6,      INTEL_FAM6_ATOM_GEMINI_LAKE     },
+	{ X86_VENDOR_INTEL,     6,      INTEL_FAM6_XEON_PHI_KNL         },
+	{}
+};
+
 static void __cpuinit cpu_set_bug_bits(struct cpuinfo_x86 *c)
 {
 	if (x86_match_cpu(cpu_no_speculation))
@@ -766,6 +780,11 @@ static void __cpuinit cpu_set_bug_bits(struct cpuinfo_x86 *c)
 
 	if (!cpu_has_eager_fpu)
 		pr_warn_once("eager_fpu is disabled. You are now susceptible to CVE-2018-3665.\n");
+
+	if (x86_match_cpu(cpu_no_l1tf))
+		return;
+
+	setup_force_cpu_bug(X86_BUG_L1TF);
 }
 
 /*
