@@ -3,6 +3,8 @@
 #include <linux/ioport.h>
 #include <linux/swap.h>
 #include <linux/memblock.h>
+#include <linux/swapfile.h>
+#include <linux/swapops.h>
 
 #include <asm/cacheflush.h>
 #include <asm/e820.h>
@@ -412,3 +414,16 @@ void free_initrd_mem(unsigned long start, unsigned long end)
 	free_init_pages("initrd memory", start, PAGE_ALIGN(end));
 }
 #endif
+
+unsigned long max_swapfile_size(void)
+{
+	unsigned long pages;
+
+	pages = generic_max_swapfile_size();
+
+	if (boot_cpu_has(X86_BUG_L1TF)) {
+		/* Limit the swap file size to MAX_PA/2 for L1TF workaround */
+		pages = min_t(unsigned long, l1tf_pfn_limit() + 1, pages);
+	}
+	return pages;
+}
