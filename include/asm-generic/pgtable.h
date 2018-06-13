@@ -716,4 +716,16 @@ static inline pmd_t pmd_mknuma(pmd_t pmd)
 
 #endif /* !__ASSEMBLY__ */
 
+#ifndef __HAVE_ARCH_PFN_MODIFY_ALLOWED
+static inline bool pfn_modify_allowed(unsigned long pfn, pgprot_t prot)
+{
+	return true;
+}
+
+static inline bool arch_has_pfn_modify_check(void)
+{
+	return false;
+}
+#endif
+
 #endif /* _ASM_GENERIC_PGTABLE_H */
