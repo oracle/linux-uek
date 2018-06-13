@@ -777,6 +777,21 @@ static const struct x86_cpu_id cpu_no_meltdown[] = {
 	{}
 };
 
+static const __initconst struct x86_cpu_id cpu_no_l1tf[] = {
+       /* in addition to cpu_no_speculation */
+       { X86_VENDOR_INTEL,     6,      INTEL_FAM6_ATOM_SILVERMONT1     },
+       { X86_VENDOR_INTEL,     6,      INTEL_FAM6_ATOM_SILVERMONT2     },
+       { X86_VENDOR_INTEL,     6,      INTEL_FAM6_ATOM_AIRMONT         },
+       { X86_VENDOR_INTEL,     6,      INTEL_FAM6_ATOM_MERRIFIELD1     },
+       { X86_VENDOR_INTEL,     6,      INTEL_FAM6_ATOM_MERRIFIELD2     },
+       { X86_VENDOR_INTEL,     6,      INTEL_FAM6_ATOM_GOLDMONT        },
+       { X86_VENDOR_INTEL,     6,      INTEL_FAM6_ATOM_DENVERTON       },
+       { X86_VENDOR_INTEL,     6,      INTEL_FAM6_ATOM_GEMINI_LAKE     },
+       { X86_VENDOR_INTEL,     6,      INTEL_FAM6_XEON_PHI_KNL         },
+       { X86_VENDOR_INTEL,     6,      INTEL_FAM6_XEON_PHI_KNM         },
+       {}
+};
+
 static bool __cpuinit cpu_vulnerable_to_meltdown(struct cpuinfo_x86 *c)
 {
 	u64 ia32_cap = 0;
@@ -811,6 +826,11 @@ static void __cpuinit cpu_set_bug_bits(struct cpuinfo_x86 *c)
 	}
 
 	setup_force_cpu_bug(X86_BUG_CPU_MELTDOWN);
+
+	if (x86_match_cpu(cpu_no_l1tf))
+		return;
+
+	setup_force_cpu_bug(X86_BUG_L1TF);
 }
 
 /*

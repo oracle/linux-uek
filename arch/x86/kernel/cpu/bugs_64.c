@@ -13,8 +13,10 @@
 #include <linux/device.h>
 #include <asm/spec_ctrl.h>
 #include <asm/cmdline.h>
+#include <asm/e820.h>
 
 static void __init spectre_v2_parse_cmdline(void);
+static void __init l1tf_select_mitigation(void);
 
 void __init check_bugs(void)
 {
@@ -37,6 +39,8 @@ void __init check_bugs(void)
 		set_memory_4k((unsigned long)__va(0), 1);
 
 	spectre_v2_parse_cmdline();
+
+	l1tf_select_mitigation();
 }
 
 static inline bool match_option(const char *arg, int arglen, const char *opt)
@@ -92,6 +96,32 @@ disable:
 	set_ibpb_disabled();
 }
 
+static void __init l1tf_select_mitigation(void)
+{
+	u64 half_pa;
+
+	if (!boot_cpu_has(X86_BUG_L1TF))
+		return;
+
+#if PAGETABLE_LEVELS == 2
+	pr_warn("Kernel not compiled for PAE. No mitigation for L1TF\n");
+	return;
+#endif
+
+	/*
+	 * This is extremely unlikely to happen because almost all
+	 * systems have far more MAX_PA/2 than RAM can be fit into
+	 * DIMM slots.
+	 */
+	half_pa = (u64)l1tf_pfn_limit() << PAGE_SHIFT;
+	if (e820_any_mapped(half_pa, ULLONG_MAX - half_pa, E820_RAM)) {
+		pr_warn("System has more than MAX_PA/2 memory. L1TF mitigation not effective.\n");
+		return;
+	}
+
+	setup_force_cpu_cap(X86_FEATURE_L1TF_PTEINV);
+}
+
 #ifdef CONFIG_SYSFS
 ssize_t cpu_show_common(struct device *dev, struct device_attribute *attr,
 			char *buf, unsigned int bug)
@@ -116,6 +146,11 @@ ssize_t cpu_show_common(struct device *dev, struct device_attribute *attr,
 				       ibpb_inuse ? "IBPB" : "");
 		break;
 
+	case X86_BUG_L1TF:
+		if (boot_cpu_has(X86_FEATURE_L1TF_PTEINV))
+			return sprintf(buf, "Mitigation: Page Table Inversion\n");
+		break;
+
 	default:
 		break;
 	}
@@ -137,5 +172,10 @@ ssize_t cpu_show_spectre_v2(struct device *dev,
                            struct device_attribute *attr, char *buf)
 {
 	return cpu_show_common(dev, attr, buf, X86_BUG_SPECTRE_V2);
+}
+
+ssize_t cpu_show_l1tf(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	return cpu_show_common(dev, attr, buf, X86_BUG_L1TF);
 }
 #endif

@@ -195,6 +195,9 @@
  * But thanks to kABI we have to jam it somewhere else. */
 #define X86_FEATURE_IBPB                (7*32+24) /* Indirect Branch Prediction Barrier */
 
+#define X86_BUG_L1TF		(7*32+28) /* CPU is affected by L1 Terminal Fault */
+#define X86_FEATURE_L1TF_PTEINV	(7*32+29) /* "" L1TF workaround PTE inversion */
+
 /* Because the ALTERNATIVE scheme is for members of the X86_FEATURE club... */
 #define X86_FEATURE_PTI	(7*32+31) /* CONFIG_PAGE_TABLE_ISOLATION w/o nokaiser */
 
