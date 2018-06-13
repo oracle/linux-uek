@@ -65,6 +65,7 @@
 &sdhci {
 	pinctrl-names = "default";
 	pinctrl-0 = <&emmc_gpio48>;
+	status = "okay";
 	bus-width = <4>;
 };
 
