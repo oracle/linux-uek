@@ -173,13 +173,16 @@ static inline int pgd_large(pgd_t pgd) { return 0; }
  *
  * |     ...            | 11| 10|  9|8|7|6|5| 4| 3|2|1|0| <- bit number
  * |     ...            |SW3|SW2|SW1|G|L|D|A|CD|WT|U|W|P| <- bit names
- * | TYPE (59-63) |  OFFSET (9-58)  |0|X|X|X| X| X|X|X|0| <- swp entry
+ * | TYPE (59-63) | ~OFFSET (9-58)  |0|X|X|X| X| X|X|X|0| <- swp entry
  *
  * G (8) is aliased and used as a PROT_NONE indicator for
  * !present ptes.  We need to start storing swap entries above
  * there.  We also need to avoid using A and D because of an
  * erratum where they can be incorrectly set by hardware on
  * non-present PTEs.
+ *
+ * The offset is inverted by a binary not operation to make the high
+ * physical bits set.
  */
 #define SWP_TYPE_BITS (_PAGE_BIT_FILE - _PAGE_BIT_PRESENT - 1)
 
@@ -194,13 +197,15 @@ static inline int pgd_large(pgd_t pgd) { return 0; }
 #define __swp_type(x) ((x).val >> (64 - SWP_TYPE_BITS))
 
 /* Shift up (to get rid of type), then down to get value */
-#define __swp_offset(x) ((x).val << SWP_TYPE_BITS >> SWP_OFFSET_SHIFT)
+#define __swp_offset(x) (~(x).val << SWP_TYPE_BITS >> SWP_OFFSET_SHIFT)
 
 /*
  * Shift the offset up "too far" by TYPE bits, then down again
+ * The offset is inverted by a binary not operation to make the high
+ * physical bits set.
  */
 #define __swp_entry(type, offset) ((swp_entry_t) { \
-	((unsigned long)(offset) << SWP_OFFSET_SHIFT >> SWP_TYPE_BITS) \
+	(~(unsigned long)(offset) << SWP_OFFSET_SHIFT >> SWP_TYPE_BITS) \
 	| ((unsigned long)(type) << (64-SWP_TYPE_BITS)) })
 
 #define __pte_to_swp_entry(pte)		((swp_entry_t) { pte_val((pte)) })
