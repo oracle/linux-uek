@@ -214,24 +214,35 @@ ext4_xattr_check_names(struct ext4_xattr_entry *entry, void *end,
 }
 
 static inline int
-ext4_xattr_check_block(struct inode *inode, struct buffer_head *bh)
+__ext4_xattr_check_block(struct inode *inode, struct buffer_head *bh,
+				const char *function, unsigned int line)
 {
-	int error;
-
-	if (buffer_verified(bh))
-		return 0;
+	int error = -EFSCORRUPTED;
 
 	if (BHDR(bh)->h_magic != cpu_to_le32(EXT4_XATTR_MAGIC) ||
 	    BHDR(bh)->h_blocks != cpu_to_le32(1))
-		return -EIO;
+		goto errout;
+	if (buffer_verified(bh))
+		return 0;
+
+	error = -EFSBADCRC;
 	if (!ext4_xattr_block_csum_verify(inode, bh->b_blocknr, BHDR(bh)))
-		return -EIO;
+		goto errout;
 	error = ext4_xattr_check_names(BFIRST(bh), bh->b_data + bh->b_size,
 				       bh->b_data);
-	if (!error)
+errout:
+	if (error)
+		ext4_error_inode(inode, function, line, 0,
+				   "corrupted xattr block %llu",
+				   (unsigned long long) bh->b_blocknr);
+	else
 		set_buffer_verified(bh);
 	return error;
 }
+
+#define ext4_xattr_check_block(inode, bh) \
+        __ext4_xattr_check_block((inode), (bh),  __func__, __LINE__)
+
 
 static inline int
 ext4_xattr_check_entry(struct ext4_xattr_entry *entry, size_t size)
