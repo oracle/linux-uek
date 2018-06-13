@@ -67,10 +67,11 @@
 #define X86_FEATURE_3DNOWEXT	( 1*32+30) /* AMD 3DNow! extensions */
 #define X86_FEATURE_3DNOW	( 1*32+31) /* 3DNow! */
 
-/* Transmeta-defined CPU features, CPUID level 0x80860001, word 2 */
-#define X86_FEATURE_RECOVERY	( 2*32+ 0) /* CPU in recovery mode */
-#define X86_FEATURE_LONGRUN	( 2*32+ 1) /* Longrun power control */
-#define X86_FEATURE_LRTI	( 2*32+ 3) /* LongRun table interface */
+/*
+ * Auxiliary flags completing word 6: Linux defined - For features scattered
+ * in various CPUID levels like 0x6, 0xA etc, word 2
+ */
+#define X86_FEATURE_L1TF_PTEINV		( 2*32+0) /* "" L1TF workaround PTE inversion */
 
 /* Other features, Linux-defined mapping, word 3 */
 /* This range is used for feature bits which conflict or are synthesized */
@@ -294,6 +295,7 @@
 #define X86_BUG_SPECTRE_V1	X86_BUG(15) /* conditional branches */
 #define X86_BUG_SPECTRE_V2	X86_BUG(16) /* indirect branches */
 #define X86_BUG_SPEC_STORE_BYPASS	X86_BUG(17) /* CPU is affected by speculative store bypass attack */
+#define X86_BUG_L1TF			X86_BUG(18) /* CPU is affected by L1 Terminal Fault */
 
 #if defined(__KERNEL__) && !defined(__ASSEMBLY__)
 
