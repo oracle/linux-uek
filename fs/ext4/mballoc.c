@@ -1299,6 +1299,24 @@ static void mb_set_bits(void *bm, int cur, int len)
 	}
 }
 
+void ext4_set_bits(void *bm, int cur, int len)
+{
+	__u32 *addr;
+
+	len = cur + len;
+	while (cur < len) {
+		if ((cur & 31) == 0 && (len - cur) >= 32) {
+			/* fast path: set whole word at once */
+			addr = bm + (cur >> 3);
+			*addr = 0xffffffff;
+			cur += 32;
+			continue;
+		}
+		mb_set_bit(cur, bm);
+		cur++;
+	}
+}
+
 static void mb_free_blocks(struct inode *inode, struct ext4_buddy *e4b,
 			  int first, int count)
 {
@@ -2252,7 +2270,9 @@ int ext4_mb_add_groupinfo(struct super_block *sb, ext4_group_t group,
 	 * initialize bb_free to be able to skip
 	 * empty groups without initialization
 	 */
-	if (desc->bg_flags & cpu_to_le16(EXT4_BG_BLOCK_UNINIT)) {
+	if (EXT4_HAS_RO_COMPAT_FEATURE(sb, 
+		EXT4_FEATURE_RO_COMPAT_GDT_CSUM) &&
+	    (desc->bg_flags & cpu_to_le16(EXT4_BG_BLOCK_UNINIT))) {
 		meta_group_info[i]->bb_free =
 			ext4_free_blocks_after_init(sb, group, desc);
 	} else {
@@ -2795,8 +2815,11 @@ ext4_mb_mark_diskspace_used(struct ext4_allocation_context *ac,
 		}
 	}
 #endif
-	mb_set_bits(bitmap_bh->b_data, ac->ac_b_ex.fe_start,ac->ac_b_ex.fe_len);
-	if (gdp->bg_flags & cpu_to_le16(EXT4_BG_BLOCK_UNINIT)) {
+	ext4_set_bits(bitmap_bh->b_data, ac->ac_b_ex.fe_start,
+		      ac->ac_b_ex.fe_len);
+	if (EXT4_HAS_RO_COMPAT_FEATURE(sb, 
+		EXT4_FEATURE_RO_COMPAT_GDT_CSUM) &&
+	    (gdp->bg_flags & cpu_to_le16(EXT4_BG_BLOCK_UNINIT))) {
 		gdp->bg_flags &= cpu_to_le16(~EXT4_BG_BLOCK_UNINIT);
 		ext4_free_blks_set(sb, gdp,
 					ext4_free_blocks_after_init(sb,
