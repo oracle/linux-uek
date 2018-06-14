@@ -28,6 +28,8 @@
 #include <linux/syscalls.h>
 #include <linux/dtrace_os.h>
 
+#include <linux/kcov.h>
+
 #include <asm/switch_to.h>
 #include <asm/tlb.h>
 #ifdef CONFIG_PARAVIRT
@@ -2613,6 +2615,7 @@ static inline void
 prepare_task_switch(struct rq *rq, struct task_struct *prev,
 		    struct task_struct *next)
 {
+	kcov_prepare_switch(prev);
 	sched_info_switch(rq, prev, next);
 	perf_event_task_sched_out(prev, next);
 	DTRACE_SCHED(off__cpu, struct task_struct * : (lwpsinfo_t *,
@@ -2620,6 +2623,7 @@ prepare_task_switch(struct rq *rq, struct task_struct *prev,
 	fire_sched_out_preempt_notifiers(prev, next);
 	prepare_lock_switch(rq, next);
 	prepare_arch_switch(next);
+	kcov_finish_switch(current);
 }
 
 /**
