@@ -859,16 +859,17 @@ static void __cpuinit generic_identify(struct cpuinfo_x86 *c)
 #define INTEL_FAM6_ATOM_PENWELL		0x27
 #define INTEL_FAM6_ATOM_CLOVERVIEW	0x35
 #define INTEL_FAM6_ATOM_CEDARVIEW	0x36
-#define X86_VENDOR_ANY			0xffff
+
 /*
  * Check if CPU has speculation.
  */
-static int cpu_has_no_speculation(struct cpuinfo_x86 *c) {
-	switch(c->x86_vendor) {
+static int cpu_has_no_speculation(const struct cpuinfo_x86 *c) {
+
+	switch (c->x86_vendor) {
 		case X86_VENDOR_INTEL:
-			switch(c->x86) {
+			switch (c->x86) {
 				case 6:
-					switch(c->x86_model) {
+					switch (c->x86_model) {
 						case INTEL_FAM6_ATOM_CEDARVIEW:
 						case INTEL_FAM6_ATOM_CLOVERVIEW:
 						case INTEL_FAM6_ATOM_LINCROFT:
@@ -884,23 +885,16 @@ static int cpu_has_no_speculation(struct cpuinfo_x86 *c) {
 					return 0;
 			}
 		case X86_VENDOR_CENTAUR:
-				if(c->x86 == 5)
-					return 1;
-				else
-					return 0;
 		case X86_VENDOR_NSC:
-				if(c->x86 == 5)
-					return 1;
-				else
-					return 0;
-		case X86_VENDOR_ANY:
-				if(c->x86 == 4)
-					return 1;
-				else
-					return 0;
+			return (c->x86 == 5 ? 1 : 0);
+		case X86_VENDOR_AMD:
+			return 1;
+		default:
+			return (c->x86 == 4 ? 1 : 0);
 	}
 	return 0;
 }
+
 /*
  * This does the hard work of actually picking apart the CPU stuff...
  */
