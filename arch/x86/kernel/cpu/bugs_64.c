@@ -21,6 +21,7 @@
 #include <asm/spec-ctrl.h>
 #include <asm/cmdline.h>
 #include <asm/intel-family.h>
+#include <asm/hypervisor.h>
 #include <asm/e820.h>
 #include <asm/vmx.h>
 
@@ -1117,6 +1118,9 @@ static ssize_t cpu_show_common(struct device *dev, struct device_attribute *attr
 	case X86_BUG_CPU_MELTDOWN:
 		if (boot_cpu_has(X86_FEATURE_PTI))
 			return sprintf(buf, "Mitigation: PTI\n");
+
+		if (x86_hyper == &x86_hyper_xen)
+			return sprintf(buf, "Unknown (XEN PV detected, hypervisor mitigation required)\n");
 
 		break;
 
