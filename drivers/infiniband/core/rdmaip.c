@@ -1893,7 +1893,8 @@ void rdmaip_ip_failover_groups_init(void)
 				}
 			}
 			tok = nxt_tok;
-			nxt_tok = strchr(str, ',');
+			if (nxt_tok)
+				nxt_tok = strchr(nxt_tok, ',');
 			if (nxt_tok) {
 				*nxt_tok = '\0';
 				nxt_tok++;
@@ -1901,7 +1902,8 @@ void rdmaip_ip_failover_groups_init(void)
 		}
 
 		grp = nxt_grp;
-		nxt_grp = strchr(str, ';');
+		if (nxt_grp)
+			nxt_grp = strchr(nxt_grp, ';');
 		if (nxt_grp) {
 			*nxt_grp = '\0';
 			nxt_grp++;
