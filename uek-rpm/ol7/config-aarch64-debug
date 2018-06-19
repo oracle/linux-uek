@@ -540,6 +540,7 @@ CONFIG_PCIE_ROCKCHIP=m
 #
 # Kernel Features
 #
+CONFIG_RETPOLINE=y
 
 #
 # ARM errata workarounds via the alternatives framework
