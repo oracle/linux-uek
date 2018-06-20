@@ -697,6 +697,9 @@ void get_cpu_cap(struct cpuinfo_x86 *c, enum get_cpu_cap_behavior behavior)
 		cpuid_count(0x00000007, 0, &eax, &ebx, &ecx, &edx);
 
 		c->x86_capability[9] = ebx;
+
+		if (edx & BIT(28))
+			set_cpu_cap(c, X86_FEATURE_FLUSH_L1D);
 	}
 
 	/* Extended state features: level 0x0000000d */

@@ -72,6 +72,7 @@
  * in various CPUID levels like 0x6, 0xA etc, word 2
  */
 #define X86_FEATURE_L1TF_PTEINV		( 2*32+0) /* "" L1TF workaround PTE inversion */
+#define X86_FEATURE_FLUSH_L1D		( 2*32+1) /* Flush L1D cache */
 
 /* Other features, Linux-defined mapping, word 3 */
 /* This range is used for feature bits which conflict or are synthesized */
