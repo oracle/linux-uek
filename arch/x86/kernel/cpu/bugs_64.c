@@ -96,6 +96,8 @@ disable:
 	set_ibpb_disabled();
 }
 
+#undef pr_fmt
+#define pr_fmt(fmt)	"L1TF: " fmt
 static void __init l1tf_select_mitigation(void)
 {
 	u64 half_pa;
@@ -121,6 +123,7 @@ static void __init l1tf_select_mitigation(void)
 
 	setup_force_cpu_cap(X86_FEATURE_L1TF_PTEINV);
 }
+#undef pr_fmt
 
 #ifdef CONFIG_SYSFS
 ssize_t cpu_show_common(struct device *dev, struct device_attribute *attr,
