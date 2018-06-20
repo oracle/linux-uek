@@ -111,6 +111,16 @@ static long dt_test_ioctl(struct file *file,
 	DTRACE_PROBE(sdt__test__arg6, int, 1, int, 2, int, 3, int, 4, int, 5, int, 6);
 	DTRACE_PROBE(sdt__test__arg7, int, 1, int, 2, int, 3, int, 4, int, 5, int, 6, int, 7);
 	DTRACE_PROBE(sdt__test__arg8, int, 1, int, 2, int, 3, int, 4, int, 5, int, 6, int, 7, int, 8);
+	DTRACE_PROBE(sdt__test__arg9, int, 1, int, 2, int, 3, int, 4, int, 5, int, 6, int, 7, int, 8, int, 9);
+	DTRACE_PROBE(sdt__test__arga, int, 1, int, 2, int, 3, int, 4, int, 5, int, 6, int, 7, int, 8, int, 9, int, 10);
+	DTRACE_PROBE(sdt__test__argb, int, 1, int, 2, int, 3, int, 4, int, 5, int, 6, int, 7, int, 8, int, 9, int, 10, int, 11);
+	DTRACE_PROBE(sdt__test__argc, int, 1, int, 2, int, 3, int, 4, int, 5, int, 6, int, 7, int, 8, int, 9, int, 10, int, 11, int, 12);
+	DTRACE_PROBE(sdt__test__argd, int, 1, int, 2, int, 3, int, 4, int, 5, int, 6, int, 7, int, 8, int, 9, int, 10, int, 11, int, 12, int, 13);
+	DTRACE_PROBE(sdt__test__arge, int, 1, int, 2, int, 3, int, 4, int, 5, int, 6, int, 7, int, 8, int, 9, int, 10, int, 11, int, 12, int, 13, int, 14);
+	DTRACE_PROBE(sdt__test__argf, int, 1, int, 2, int, 3, int, 4, int, 5, int, 6, int, 7, int, 8, int, 9, int, 10, int, 11, int, 12, int, 13, int, 14, int, 15);
+	DTRACE_PROBE(sdt__test__argg, int, 1, int, 2, int, 3, int, 4, int, 5, int, 6, int, 7, int, 8, int, 9, int, 10, int, 11, int, 12, int, 13, int, 14, int, 15, int, 16);
+	DTRACE_PROBE(sdt__test__argh, int, 1, int, 2, int, 3, int, 4, int, 5, int, 6, int, 7, int, 8, int, 9, int, 10, int, 11, int, 12, int, 13, int, 14, int, 15, int, 16, int, 17);
+	DTRACE_PROBE(sdt__test__argi, int, 1, int, 2, int, 3, int, 4, int, 5, int, 6, int, 7, int, 8, int, 9, int, 10, int, 11, int, 12, int, 13, int, 14, int, 15, int, 16, int, 17, int, 18);
 
 	return -EAGAIN;
 }
