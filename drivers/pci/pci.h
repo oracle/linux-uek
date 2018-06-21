@@ -474,6 +474,7 @@ static inline bool cavium_t93_rev_b0(void)
 void pci_no_aer(void);
 void pci_aer_init(struct pci_dev *dev);
 void pci_aer_exit(struct pci_dev *dev);
+extern const struct attribute_group aer_stats_attr_group;
 #else
 static inline void pci_no_aer(void) { }
 static inline int pci_aer_init(struct pci_dev *d) { return -ENODEV; }
