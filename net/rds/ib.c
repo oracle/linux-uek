@@ -3262,5 +3262,56 @@ done:
 	return ret;
 }
 
+void rds_ib_flush_arp_entry(struct in6_addr *prot_addr)
+{
+	struct sockaddr_in *sin;
+	struct page *page;
+	struct arpreq *r;
+	int ret;
+	int i;
+
+	if (!ipv6_addr_v4mapped(prot_addr)) {
+		/* Addressed by bug 28220027 */
+		pr_err("IPv6 addresses are not flushed from ARP cache");
+		return;
+	}
+
+	page = alloc_page(GFP_HIGHUSER);
+	if (!page) {
+		pr_err("alloc_page failed");
+		return;
+	}
+
+	r = (struct arpreq *)kmap(page);
+	if (!r) {
+		pr_err("kmap failed");
+		goto out_free;
+	}
+
+	memset(r, 0, sizeof(*r));
+	sin = (struct sockaddr_in *)&r->arp_pa;
+	sin->sin_family = AF_INET;
+	sin->sin_addr.s_addr = prot_addr->s6_addr32[3];
+
+	for (i = 1; i <= ip_port_cnt; ++i) {
+		r->arp_flags = ATF_PERM;
+		strcpy(r->arp_dev, ip_config[i].if_name);
+		ret = inet_ioctl(rds_ib_inet_socket, SIOCDARP, (unsigned long)r);
+		if ((ret == -ENOENT) || (ret == -ENXIO)) {
+			r->arp_flags |= ATF_PUBL;
+			ret = inet_ioctl(rds_ib_inet_socket, SIOCDARP, (unsigned long)r);
+		}
+
+		if (ret && (ret != -ENOENT) && (ret != -ENXIO))
+			pr_err("SIOCDARP failed, err %d, addr %pI4, flags 0x%x, device %s",
+			       ret, &sin->sin_addr.s_addr, r->arp_flags, r->arp_dev);
+	}
+
+	kunmap(page);
+
+out_free:
+	__free_page(page);
+}
+
 MODULE_LICENSE("GPL");
 
