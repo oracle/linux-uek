@@ -112,6 +112,16 @@ static inline void vcpu_set_hcr(struct kvm_vcpu *vcpu, unsigned long hcr)
 	vcpu->arch.hcr = hcr;
 }
 
+static inline void vcpu_clear_wfe_traps(struct kvm_vcpu *vcpu)
+{
+	vcpu->arch.hcr &= ~HCR_TWE;
+}
+
+static inline void vcpu_set_wfe_traps(struct kvm_vcpu *vcpu)
+{
+	vcpu->arch.hcr |= HCR_TWE;
+}
+
 static inline bool vcpu_mode_is_32bit(const struct kvm_vcpu *vcpu)
 {
 	return 1;
