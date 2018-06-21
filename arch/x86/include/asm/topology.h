@@ -124,8 +124,10 @@ extern const struct cpumask *cpu_coregroup_mask(int cpu);
 
 #ifdef CONFIG_SMP
 bool topology_is_primary_thread(unsigned int cpu);
+bool topology_smt_supported(void);
 #else
 static inline bool topology_is_primary_thread(unsigned int cpu) { return true; }
+static inline bool topology_smt_supported(void) { return false; }
 #endif
 
 #ifdef ENABLE_TOPO_DEFINES

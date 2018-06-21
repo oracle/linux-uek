@@ -279,6 +279,14 @@ bool topology_is_primary_thread(unsigned int cpu)
 	return apic_id_is_primary_thread(per_cpu(x86_cpu_to_apicid, cpu));
 }
 
+/**
+ * topology_smt_supported - Check whether SMT is supported by the CPUs
+ */
+bool topology_smt_supported(void)
+{
+	return smp_num_siblings > 1;
+}
+
 void __init smp_store_boot_cpu_info(void)
 {
 	int id = 0; /* CPU 0 */
