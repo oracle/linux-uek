@@ -311,6 +311,9 @@ void rds_ib_send_cqe_handler(struct rds_ib_connection *ic, struct ib_wc *wc)
 	oldest = rds_ib_ring_oldest(&ic->i_send_ring);
 
 	completed = rds_ib_ring_completed(&ic->i_send_ring, wc->wr_id, oldest);
+	/* Avoid compiler warning for uninitialized use of send and opcode */
+	if (unlikely(!completed))
+		return;
 
 	for (i = 0; i < completed; i++) {
 		struct rds_message *rm;
