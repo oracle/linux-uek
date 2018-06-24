@@ -2039,18 +2039,6 @@ struct ib_flow *ib_create_flow(struct ib_qp *qp,
 }
 EXPORT_SYMBOL(ib_create_flow);
 
-int ib_destroy_flow(struct ib_flow *flow_id)
-{
-	int err;
-	struct ib_qp *qp = flow_id->qp;
-
-	err = qp->device->destroy_flow(flow_id);
-	if (!err)
-		atomic_dec(&qp->usecnt);
-	return err;
-}
-EXPORT_SYMBOL(ib_destroy_flow);
-
 int ib_check_mr_status(struct ib_mr *mr, u32 check_mask,
 		       struct ib_mr_status *mr_status)
 {
