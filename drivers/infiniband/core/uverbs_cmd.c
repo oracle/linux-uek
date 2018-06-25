@@ -4317,6 +4317,11 @@ int ib_uverbs_ex_create_flow(struct ib_uverbs_file *file,
 		goto err_put;
 	}
 
+	if (!qp->device->create_flow) {
+		err = -EOPNOTSUPP;
+		goto err_put;
+	}
+
 	flow_attr = kzalloc(sizeof(*flow_attr) + cmd.flow_attr.num_of_specs *
 			    sizeof(union ib_flow_spec), GFP_KERNEL);
 	if (!flow_attr) {
