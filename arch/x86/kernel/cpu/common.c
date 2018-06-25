@@ -809,6 +809,12 @@ void init_speculation_control(struct cpuinfo_x86 *c,
 			pr_info("FEATURE IBPB Not Present\n");
 		}
 	}
+
+	if (!xen_pv_domain()) {
+		mutex_lock(&spec_ctrl_mutex);
+		update_cpu_ibrs(c);
+		mutex_unlock(&spec_ctrl_mutex);
+	}
 }
 
 void get_cpu_cap(struct cpuinfo_x86 *c, enum get_cpu_cap_behavior behavior)
