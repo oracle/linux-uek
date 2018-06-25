@@ -131,7 +131,7 @@
 	add $(32*8), %rsp;
 
 .macro ENABLE_IBRS
-	testl	$SPEC_CTRL_IBRS_INUSE, use_ibrs
+	testl	$SPEC_CTRL_IBRS_INUSE, PER_CPU_VAR(cpu_ibrs)
 	jz	7f
 	__ASM_ENABLE_IBRS
 	jmp	20f
@@ -141,7 +141,7 @@
 .endm
 
 .macro ENABLE_IBRS_CLOBBER
-	testl	$SPEC_CTRL_IBRS_INUSE, use_ibrs
+	testl	$SPEC_CTRL_IBRS_INUSE, PER_CPU_VAR(cpu_ibrs)
 	jz	11f
 	__ASM_ENABLE_IBRS_CLOBBER
 	jmp	21f
@@ -151,7 +151,7 @@
 .endm
 
 .macro ENABLE_IBRS_SAVE_AND_CLOBBER save_reg:req
-	testl	$SPEC_CTRL_IBRS_INUSE, use_ibrs
+	testl	$SPEC_CTRL_IBRS_INUSE, PER_CPU_VAR(cpu_ibrs)
 	jz	12f
 
 	movl	$MSR_IA32_SPEC_CTRL, %ecx
@@ -169,7 +169,7 @@
 .endm
 
 .macro RESTORE_IBRS_CLOBBER save_reg:req
-	testl	$SPEC_CTRL_IBRS_INUSE, use_ibrs
+	testl	$SPEC_CTRL_IBRS_INUSE, PER_CPU_VAR(cpu_ibrs)
 	jz	13f
 
 	testl	$SPEC_CTRL_FEATURE_ENABLE_IBRS, \save_reg
@@ -186,7 +186,7 @@
 .endm
 
 .macro DISABLE_IBRS
-	testl	$SPEC_CTRL_IBRS_INUSE, use_ibrs
+	testl	$SPEC_CTRL_IBRS_INUSE, PER_CPU_VAR(cpu_ibrs)
 	jz	9f
 	__ASM_DISABLE_IBRS
 9:
@@ -210,8 +210,19 @@ ALTERNATIVE __stringify(__ASM_STUFF_RSB), "", X86_FEATURE_STUFF_RSB
 extern u64 x86_spec_ctrl_priv;
 extern u64 x86_spec_ctrl_base;
 
-/* indicate usage of IBRS to control execution speculation */
+/*
+ * Indicate usage of IBRS to control execution speculation.
+ *
+ * IBRS usage is defined globally with the use_ibrs variable, and
+ * per-cpu with the per-cpu variable cpu_ibrs. During the boot,
+ * the boot cpu will set the initial value of use_ibrs and the
+ * per-cpu value of all online cpus which support IBRS. If, after
+ * that, a cpu comes online or has its microcode updated, it will
+ * set its own per-cpu value based on the value of use_ibrs and
+ * the IBRS capability of the cpu.
+ */
 extern int use_ibrs;
+DECLARE_PER_CPU(unsigned int, cpu_ibrs);
 extern u32 sysctl_ibrs_enabled;
 extern struct mutex spec_ctrl_mutex;
 
@@ -222,12 +233,34 @@ extern void unprotected_firmware_end(void);
 #define ibrs_supported		(use_ibrs & SPEC_CTRL_IBRS_SUPPORTED)
 #define ibrs_disabled		(use_ibrs & SPEC_CTRL_IBRS_ADMIN_DISABLED)
 
-#define ibrs_inuse		(check_ibrs_inuse())
+#define ibrs_inuse		(cpu_ibrs_inuse())
+
+static inline void update_cpu_ibrs(struct cpuinfo_x86 *cpu)
+{
+	struct cpuinfo_x86 *cpu_info;
+
+	/*
+	 * IBRS can be set at boot time while cpu capabilities
+	 * haven't been copied from boot_cpu_data yet.
+	 */
+	cpu_info = (cpu->initialized) ? cpu : &boot_cpu_data;
+	per_cpu(cpu_ibrs, cpu->cpu_index) =
+	    cpu_has(cpu_info, X86_FEATURE_IBRS) ? use_ibrs : 0;
+}
+
+static inline void update_cpu_ibrs_all(void)
+{
+	int cpu_index;
+
+	for_each_online_cpu(cpu_index)
+		update_cpu_ibrs(&cpu_data(cpu_index));
+}
 
 static inline bool set_ibrs_inuse(void)
 {
 	if (ibrs_supported && !ibrs_disabled) {
 		use_ibrs |= SPEC_CTRL_IBRS_INUSE;
+		update_cpu_ibrs_all();
 		/* Update what sysfs shows. */
 		sysctl_ibrs_enabled = true;
 		/* When entering kernel */
@@ -241,6 +274,7 @@ static inline bool set_ibrs_inuse(void)
 static inline void clear_ibrs_inuse(void)
 {
 	use_ibrs &= ~SPEC_CTRL_IBRS_INUSE;
+	update_cpu_ibrs_all();
 	/* Update what sysfs shows. */
 	sysctl_ibrs_enabled = false;
 	/*
@@ -260,6 +294,11 @@ static inline int check_ibrs_inuse(void)
 		rmb();
 	}
 	return 0;
+}
+
+static inline int cpu_ibrs_inuse(void)
+{
+	return (this_cpu_read(cpu_ibrs) & SPEC_CTRL_IBRS_INUSE) ? 1 : 0;
 }
 
 static inline void set_ibrs_supported(void)

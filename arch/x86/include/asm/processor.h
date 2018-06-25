@@ -29,6 +29,7 @@ struct mm_struct;
 #include <linux/math64.h>
 #include <linux/err.h>
 #include <linux/irqflags.h>
+#include <linux/uek_kabi.h>
 
 /*
  * We handle most unaligned accesses in hardware.  On the other hand
@@ -130,6 +131,7 @@ struct cpuinfo_x86 {
 	/* Index into per_cpu list: */
 	u16			cpu_index;
 	u32			microcode;
+	UEK_KABI_EXTEND(unsigned initialized : 1)
 };
 
 #define X86_VENDOR_INTEL	0

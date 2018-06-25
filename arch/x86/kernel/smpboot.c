@@ -277,6 +277,7 @@ void __init smp_store_boot_cpu_info(void)
 
 	*c = boot_cpu_data;
 	c->cpu_index = id;
+	c->initialized = true;
 }
 
 /*
@@ -287,13 +288,16 @@ void smp_store_cpu_info(int id)
 {
 	struct cpuinfo_x86 *c = &cpu_data(id);
 
-	*c = boot_cpu_data;
+	/* Copy boot_cpu_data only on the first bringup */
+	if (!c->initialized)
+		*c = boot_cpu_data;
 	c->cpu_index = id;
 	/*
 	 * During boot time, CPU0 has this setup already. Save the info when
 	 * bringing up AP or offlined CPU0.
 	 */
 	identify_secondary_cpu(c);
+	c->initialized = true;
 }
 
 static bool

@@ -31,6 +31,9 @@
 int use_ibrs;
 EXPORT_SYMBOL(use_ibrs);
 
+DEFINE_PER_CPU(unsigned int, cpu_ibrs) = 0;
+EXPORT_PER_CPU_SYMBOL(cpu_ibrs);
+
 /*
  * use_ibpb flags:
  * SPEC_CTRL_IBPB_INUSE			indicate if ibpb is currently in use
@@ -983,7 +986,7 @@ static ssize_t cpu_show_common(struct device *dev, struct device_attribute *attr
 
 	case X86_BUG_SPECTRE_V2:
 		return sprintf(buf, "%s%s%s%s\n", spectre_v2_strings[spectre_v2_enabled],
-			       ibrs_inuse && retpoline_enabled() ? ", IBRS" : "",
+			       (check_ibrs_inuse() && retpoline_enabled()) ? ", IBRS" : "",
 			       ibrs_firmware ? ", IBRS_FW" : "",
 			       ibpb_inuse ? ", IBPB" : "");
 
