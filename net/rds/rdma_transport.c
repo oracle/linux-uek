@@ -90,9 +90,6 @@ int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 	/* this can be null in the listening path */
 	struct rds_connection *conn = cm_id->context;
 	struct rds_transport *trans = &rds_ib_transport;
-	struct page *page;
-	struct arpreq *r;
-	struct sockaddr_in *sin;
 	int ret = 0;
 	int *err;
 
@@ -178,24 +175,7 @@ int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 
 	case RDMA_CM_EVENT_ROUTE_ERROR:
 		/* IP might have been moved so flush the ARP entry and retry */
-		page = alloc_page(GFP_HIGHUSER);
-		if (!page) {
-			printk(KERN_ERR "alloc_page failed .. NO MEM\n");
-			ret = -ENOMEM;
-		} else {
-			if (ipv6_addr_v4mapped(&conn->c_faddr)) {
-				r = (struct arpreq *)kmap(page);
-				memset(r, 0, sizeof(struct arpreq));
-				sin = (struct sockaddr_in *)&r->arp_pa;
-				sin->sin_family = AF_INET;
-				sin->sin_addr.s_addr =
-				    conn->c_faddr.s6_addr32[3];
-				inet_ioctl(rds_ib_inet_socket, SIOCDARP,
-					   (unsigned long)r);
-				kunmap(page);
-				__free_page(page);
-			}
-		}
+		rds_ib_flush_arp_entry(&conn->c_faddr);
 
 		if (conn) {
 			rds_rtd_ptr(RDS_RTD_ERR,

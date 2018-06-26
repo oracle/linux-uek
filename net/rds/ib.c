@@ -30,7 +30,10 @@
  * SOFTWARE.
  *
  */
+#include <linux/if_arp.h>
+#include <linux/sockios.h>
 #include <net/addrconf.h>
+#include <net/inet_common.h>
 
 #include "ib.h"
 #include "rds_single_path.h"
@@ -463,6 +466,34 @@ static int rds_ib_laddr_check(struct net *net, const struct in6_addr *addr,
 	return ret;
 }
 
+/* Detect possible link-layers in order to flush ARP correctly */
+static void detect_link_layers(struct ib_device *ibdev)
+{
+	if (ibdev->get_link_layer) {
+		u8 port;
+
+		for (port = 1; port <= ibdev->phys_port_cnt; ++port) {
+			switch (ibdev->get_link_layer(ibdev, port)) {
+			case IB_LINK_LAYER_UNSPECIFIED:
+				rds_ib_transport.t_ll_ib_detected = true;
+				rds_ib_transport.t_ll_eth_detected = true;
+				break;
+
+			case IB_LINK_LAYER_INFINIBAND:
+				rds_ib_transport.t_ll_ib_detected = true;
+				break;
+
+			case IB_LINK_LAYER_ETHERNET:
+				rds_ib_transport.t_ll_eth_detected = true;
+				break;
+			}
+		}
+	} else {
+		rds_ib_transport.t_ll_ib_detected = true;
+		rds_ib_transport.t_ll_eth_detected = true;
+	}
+}
+
 void rds_ib_add_one(struct ib_device *device)
 {
 	struct rds_ib_device *rds_ibdev;
@@ -476,6 +507,8 @@ void rds_ib_add_one(struct ib_device *device)
 	/* Only handle IB (no iWARP) devices */
 	if (device->node_type != RDMA_NODE_IB_CA)
 		return;
+
+	detect_link_layers(device);
 
 	dev_attr = kmalloc(sizeof(*dev_attr), GFP_KERNEL);
 	if (!dev_attr)
@@ -772,5 +805,97 @@ done:
 	return ret;
 }
 
-MODULE_LICENSE("GPL");
+static void __flush_arp_entry(struct arpreq *r, char name[IFNAMSIZ])
+{
+	int ret;
 
+	r->arp_flags = ATF_PERM;
+	((struct sockaddr_in *)&r->arp_netmask)->sin_addr.s_addr = htonl(0);
+	strcpy(r->arp_dev, name);
+	ret = inet_ioctl(rds_ib_inet_socket, SIOCDARP, (unsigned long)r);
+	if ((ret == -ENOENT) || (ret == -ENXIO)) {
+		r->arp_flags |= ATF_PUBL;
+		((struct sockaddr_in *)&r->arp_netmask)->sin_addr.s_addr = htonl(0xFFFFFFFF);
+		ret = inet_ioctl(rds_ib_inet_socket, SIOCDARP, (unsigned long)r);
+	}
+
+	if (ret && (ret != -ENOENT) && (ret != -ENXIO))
+		pr_err("SIOCDARP failed, err %d, addr %pI4, flags 0x%x, device %s\n",
+		       ret, &((struct sockaddr_in *)r)->sin_addr.s_addr,
+		       r->arp_flags, r->arp_dev);
+}
+
+static void __flush_eth_arp_entry(struct arpreq *r)
+{
+	struct rds_ib_device *rds_ibdev;
+
+	down_read(&rds_ib_devices_lock);
+	list_for_each_entry(rds_ibdev, &rds_ib_devices, list) {
+		struct ib_device *ibdev = rds_ibdev->dev;
+		u8 port;
+
+		if (!ibdev->get_netdev)
+			continue;
+
+		for (port = 1; port <= ibdev->phys_port_cnt; ++port) {
+			struct net_device *ndev = ibdev->get_netdev(ibdev, port);
+
+			if (ndev)
+				__flush_arp_entry(r, ndev->name);
+		}
+	}
+	up_read(&rds_ib_devices_lock);
+}
+
+static void __flush_ib_arp_entry(struct arpreq *r)
+{
+	struct net_device *ndev;
+
+	read_lock(&dev_base_lock);
+	for_each_netdev(&init_net, ndev)
+		if (ndev->type == ARPHRD_INFINIBAND)
+			__flush_arp_entry(r, ndev->name);
+	read_unlock(&dev_base_lock);
+}
+
+void rds_ib_flush_arp_entry(struct in6_addr *prot_addr)
+{
+	struct sockaddr_in *sin;
+	struct page *page;
+	struct arpreq *r;
+
+	if (!ipv6_addr_v4mapped(prot_addr)) {
+		/* Addressed by bug 28220027 */
+		pr_err("IPv6 addresses are not flushed from ARP cache");
+		return;
+	}
+
+	page = alloc_page(GFP_HIGHUSER);
+	if (!page) {
+		pr_err("alloc_page failed");
+		return;
+	}
+
+	r = (struct arpreq *)kmap(page);
+	if (!r) {
+		pr_err("kmap failed");
+		goto out_free;
+	}
+
+	memset(r, 0, sizeof(struct arpreq));
+	sin = (struct sockaddr_in *)&r->arp_pa;
+	sin->sin_family = AF_INET;
+	sin->sin_addr.s_addr = prot_addr->s6_addr32[3];
+
+	if (rds_ib_transport.t_ll_eth_detected)
+		__flush_eth_arp_entry(r);
+	if (rds_ib_transport.t_ll_ib_detected)
+		__flush_ib_arp_entry(r);
+
+	kunmap(page);
+
+out_free:
+	__free_page(page);
+}
+
+MODULE_LICENSE("GPL");
