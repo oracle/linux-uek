@@ -467,6 +467,7 @@ extern struct workqueue_struct *rds_aux_wq;
 extern struct rds_transport rds_ib_transport;
 extern void rds_ib_add_one(struct ib_device *device);
 extern void rds_ib_remove_one(struct ib_device *device, void *client_data);
+extern void rds_ib_flush_arp_entry(struct in6_addr *prot_addr);
 void rds_ib_srq_exit(struct rds_ib_device *rds_ibdev);
 int rds_ib_srq_init(struct rds_ib_device *rds_ibdev);
 
