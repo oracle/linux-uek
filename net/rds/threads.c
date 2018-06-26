@@ -160,7 +160,7 @@ void rds_queue_reconnect(struct rds_conn_path *cp)
 		    rand % cp->cp_reconnect_jiffies, cp->cp_reconnect_jiffies,
 		    conn, &conn->c_laddr, &conn->c_faddr, conn->c_tos);
 
-	if (rds_addr_cmp(&conn->c_laddr, &conn->c_faddr))
+	if (rds_addr_cmp(&conn->c_laddr, &conn->c_faddr) >= 0)
 		queue_delayed_work(cp->cp_wq, &cp->cp_conn_w, 0);
 	else
 		queue_delayed_work(cp->cp_wq, &cp->cp_conn_w,
@@ -338,10 +338,10 @@ void rds_shutdown_worker(struct work_struct *work)
 			conn->c_tos,
 			conn_drop_reason_str(cp->cp_drop_source));
 
-	/* if racing is detected, lower IP backs off and let the higher IP
-	 * drives the reconnect (one-sided reconnect)
+	/* If racing is detected, the bigger IP backs off and lets the
+	 * smaller IP drive the reconnect (one-sided reconnect).
 	 */
-	if ((rds_addr_cmp(&conn->c_faddr, &conn->c_laddr) ||
+	if ((rds_addr_cmp(&conn->c_laddr, &conn->c_faddr) < 0 ||
 	     rds_conn_self_loopback_passive(conn)) &&
 	    cp->cp_reconnect_racing) {
 		rds_rtd_ptr(RDS_RTD_CM,
