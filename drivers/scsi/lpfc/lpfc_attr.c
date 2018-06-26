@@ -5405,6 +5405,14 @@ LPFC_BBCR_ATTR_RW(enable_bbcr, 1, 0, 1, "Enable BBC Recovery");
  */
 LPFC_ATTR_RW(enable_dpp, 1, 0, 1, "Enable Direct Packet Push");
 
+/*
+ * lpfc_enable_pbde: Enable PBDE on PRISM - G7
+ *       0  = PBDE on G7 disabled
+ *       1  = PBDE on G7 enabled (default)
+ * Value range is [0,1]. Default value is 1
+ */
+LPFC_ATTR_R(enable_pbde, 1, 0, 1, "Enable PBDE support on PRISM");
+
 struct device_attribute *lpfc_hba_attrs[] = {
 	&dev_attr_nvme_info,
 	&dev_attr_bg_info,
@@ -5516,6 +5524,7 @@ struct device_attribute *lpfc_hba_attrs[] = {
 	&dev_attr_lpfc_enable_mds_diags,
 	&dev_attr_lpfc_enable_bbcr,
 	&dev_attr_lpfc_enable_dpp,
+	&dev_attr_lpfc_enable_pbde,
 	NULL,
 };
 
@@ -6532,6 +6541,7 @@ lpfc_get_cfgparam(struct lpfc_hba *phba)
 	lpfc_nvme_io_channel_init(phba, lpfc_nvme_io_channel);
 	lpfc_enable_bbcr_init(phba, lpfc_enable_bbcr);
 	lpfc_enable_dpp_init(phba, lpfc_enable_dpp);
+	lpfc_enable_pbde_init(phba, lpfc_enable_pbde);
 
 	if (phba->sli_rev != LPFC_SLI_REV4) {
 		/* NVME only supported on SLI4 */
