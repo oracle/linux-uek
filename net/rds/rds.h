@@ -663,7 +663,9 @@ struct rds_transport {
 	struct list_head	t_item;
 	struct module		*t_owner;
 	unsigned int		t_prefer_loopback:1,
-				t_mp_capable:1;
+				t_mp_capable:1,
+				t_ll_ib_detected:1,
+				t_ll_eth_detected:1;
 	unsigned int		t_type;
 
 	int (*laddr_check)(struct net *net, const struct in6_addr *addr,
