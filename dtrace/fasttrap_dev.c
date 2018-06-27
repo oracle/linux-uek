@@ -84,7 +84,7 @@ static int fasttrap_pid_probe(fasttrap_machtp_t *mtp, struct pt_regs *regs,
 
 	/*
 	 * Verify that this probe event is actually related to the current
-	 * task.  If not, ignore it.
+	 * process (task group).  If not, ignore it.
 	 *
 	 * TODO: The underlying probe mechanism should register a single
 	 * 	 handler for the (inode, offset) combination.  When the handler
@@ -92,7 +92,7 @@ static int fasttrap_pid_probe(fasttrap_machtp_t *mtp, struct pt_regs *regs,
 	 * 	 tracepoints associated with the OS-level probe, looking for
 	 * 	 one that is related to the current task.
 	 */
-	if (tp->ftt_pid != current->pid)
+	if (tp->ftt_pid != current->tgid)
 		return 0;
 
 	if (atomic64_read(&tp->ftt_proc->ftpc_acount) == 0)
