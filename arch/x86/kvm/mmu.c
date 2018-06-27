@@ -2733,6 +2733,10 @@ static bool kvm_is_mmio_pfn(kvm_pfn_t pfn)
 	return true;
 }
 
+/* Bits which may be returned by set_spte() */
+#define SET_SPTE_WRITE_PROTECTED_PT	BIT(0)
+#define SET_SPTE_NEED_REMOTE_TLB_FLUSH	BIT(1)
+
 static int set_spte(struct kvm_vcpu *vcpu, u64 *sptep,
 		    unsigned pte_access, int level,
 		    gfn_t gfn, kvm_pfn_t pfn, bool speculative,
@@ -2809,7 +2813,7 @@ static int set_spte(struct kvm_vcpu *vcpu, u64 *sptep,
 		if (mmu_need_write_protect(vcpu, gfn, can_unsync)) {
 			pgprintk("%s: found shadow page for %llx, marking ro\n",
 				 __func__, gfn);
-			ret = 1;
+			ret |= SET_SPTE_WRITE_PROTECTED_PT;
 			pte_access &= ~ACC_WRITE_MASK;
 			spte &= ~(PT_WRITABLE_MASK | SPTE_MMU_WRITEABLE);
 		}
@@ -2825,7 +2829,7 @@ static int set_spte(struct kvm_vcpu *vcpu, u64 *sptep,
 
 set_pte:
 	if (mmu_spte_update(sptep, spte))
-		kvm_flush_remote_tlbs(vcpu->kvm);
+		ret |= SET_SPTE_NEED_REMOTE_TLB_FLUSH;
 done:
 	return ret;
 }
@@ -2836,6 +2840,7 @@ static int mmu_set_spte(struct kvm_vcpu *vcpu, u64 *sptep, unsigned pte_access,
 {
 	int was_rmapped = 0;
 	int rmap_count;
+	int set_spte_ret;
 	int ret = RET_PF_RETRY;
 
 	pgprintk("%s: spte %llx write_fault %d gfn %llx\n", __func__,
@@ -2863,12 +2868,15 @@ static int mmu_set_spte(struct kvm_vcpu *vcpu, u64 *sptep, unsigned pte_access,
 			was_rmapped = 1;
 	}
 
-	if (set_spte(vcpu, sptep, pte_access, level, gfn, pfn, speculative,
-	      true, host_writable)) {
+	set_spte_ret = set_spte(vcpu, sptep, pte_access, level, gfn, pfn,
+				speculative, true, host_writable);
+	if (set_spte_ret & SET_SPTE_WRITE_PROTECTED_PT) {
 		if (write_fault)
 			ret = RET_PF_EMULATE;
 		kvm_make_request(KVM_REQ_TLB_FLUSH, vcpu);
 	}
+	if (set_spte_ret & SET_SPTE_NEED_REMOTE_TLB_FLUSH)
+		kvm_flush_remote_tlbs(vcpu->kvm);
 
 	if (unlikely(is_mmio_spte(*sptep)))
 		ret = RET_PF_EMULATE;
