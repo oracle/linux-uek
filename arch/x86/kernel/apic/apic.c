@@ -2001,16 +2001,6 @@ bool apic_id_is_primary_thread(unsigned int apicid)
 	return !(apicid & mask);
 }
 
-/**
- * apic_id_disabled - Check whether APIC ID is disabled via SMT control
- * @id:	APIC ID to check
- */
-bool apic_id_disabled(unsigned int id)
-{
-	return (cpu_smt_control == CPU_SMT_FORCE_DISABLED &&
-		!apic_id_is_primary_thread(id));
-}
-
 int generic_processor_info(int apicid, int version)
 {
 	int cpu, max = nr_cpu_ids;
@@ -2074,15 +2064,6 @@ int generic_processor_info(int apicid, int version)
 			"  Processor %d/0x%x ignored.\n", max, thiscpu, apicid);
 
 		disabled_cpus++;
-		return -EINVAL;
-	}
-
-	/*
-	 * If SMT is force disabled and the APIC ID belongs to
-	 * a secondary thread, ignore it.
-	 */
-	if (apic_id_disabled(apicid)) {
-		pr_info_once("Ignoring secondary SMT threads\n");
 		return -EINVAL;
 	}
 

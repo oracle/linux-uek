@@ -117,10 +117,8 @@ static inline bool apic_is_x2apic_enabled(void)
 
 #ifdef CONFIG_SMP
 bool apic_id_is_primary_thread(unsigned int id);
-bool apic_id_disabled(unsigned int id);
 #else
 static inline bool apic_id_is_primary_thread(unsigned int id) { return false; }
-static inline bool apic_id_disabled(unsigned int id) { return false; }
 #endif
 
 #ifdef CONFIG_X86_X2APIC
