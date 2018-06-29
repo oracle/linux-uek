@@ -29,6 +29,7 @@
 #ifdef CONFIG_SMP
 /* Serializes the updates to cpu_online_mask, cpu_present_mask */
 static DEFINE_MUTEX(cpu_add_remove_lock);
+DEFINE_PER_CPU(bool, booted_once);
 
 /*
  * The following two APIs (cpu_maps_update_begin/done) must be used when
@@ -510,8 +511,19 @@ early_param("nosmt", smt_cmdline_disable);
 
 static inline bool cpu_smt_allowed(unsigned int cpu)
 {
-	return cpu_smt_control == CPU_SMT_ENABLED ||
-		topology_is_primary_thread(cpu);
+	if (cpu_smt_control == CPU_SMT_ENABLED)
+		return true;
+
+	if (topology_is_primary_thread(cpu))
+		return true;
+
+	/*
+	 * On x86 it's required to boot all logical CPUs at least once so
+	 * that the init code can get a chance to set CR4.MCE on each
+	 * CPU. Otherwise, a broadacasted MCE observing CR4.MCE=0b on any
+	 * core will shutdown the machine.
+	 */
+	return !per_cpu(booted_once, cpu);
 }
 #else
 static inline bool cpu_smt_allowed(unsigned int cpu) { return true; }
@@ -565,6 +577,18 @@ out_notify:
 		__cpu_notify(CPU_UP_CANCELED | mod, hcpu, nr_calls, NULL);
 out:
 	cpu_hotplug_done();
+
+	/*
+	 * SMT soft disabling on X86 requires to bring the CPU out of the
+	 * BIOS 'wait for SIPI' state in order to set the CR4.MCE bit.  The
+	 * CPU marked itself as booted_once in cpu_notify_starting() so the
+	 * cpu_smt_allowed() check will now return false if this is not the
+	 * primary sibling.
+	*/
+	if (!cpu_smt_allowed(cpu)) {
+		_cpu_down(cpu, 0);
+		ret = -ECANCELED;
+	}
 
 	return ret;
 }
@@ -760,6 +784,7 @@ void notify_cpu_starting(unsigned int cpu)
 	if (frozen_cpus != NULL && cpumask_test_cpu(cpu, frozen_cpus))
 		val = CPU_STARTING_FROZEN;
 #endif /* CONFIG_PM_SLEEP_SMP */
+	this_cpu_write(booted_once, true);
 	cpu_notify(val, (void *)(long)cpu);
 }
 
