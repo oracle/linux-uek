@@ -542,6 +542,9 @@ struct kvm_vcpu_arch {
 	struct {
 		bool pv_unhalted;
 	} pv;
+
+	/* Flush the L1 Data cache for L1TF mitigation on VMENTER */
+	bool l1tf_flush_l1d;
 };
 
 struct kvm_lpage_info {
@@ -666,6 +669,7 @@ struct kvm_vcpu_stat {
 	u32 signal_exits;
 	u32 irq_window_exits;
 	u32 nmi_window_exits;
+	u64 l1d_flush;
 	u32 halt_exits;
 	u32 halt_successful_poll;
 	u32 halt_wakeup;
