@@ -20,13 +20,13 @@
  * bch_vf is held by cavium_nand, or a possible dmaengine client
  * bch_bp is ref to BF driver, whether VF sees it at this security level or not
  */
-static void *bch_pf;
+static void *bch_pf = (void *)(-EPROBE_DEFER);
 #ifdef DEBUG
 static int waits[3]; /*visible wait-loop count*/
 module_param_array(waits, int, NULL, 0444);
 #define WAIT_COUNT(n)	(void)(waits[n]++)
 #else
-static struct bch_vf *bch_vf;
+static struct bch_vf *bch_vf = (void *)(-EPROBE_DEFER);
 #define WAIT_COUNT(n)	(void)0
 #endif
 
@@ -263,15 +263,17 @@ void *cavm_bch_getv(void)
 {
 	if (!bch_vf)
 		return NULL;
-	try_module_get(THIS_MODULE);
 	bch_pf = cavm_bch_getp();
+	if (IS_ERR_OR_NULL(bch_pf))
+		return bch_pf;
+	try_module_get(THIS_MODULE);
 	return bch_vf;
 }
 EXPORT_SYMBOL(cavm_bch_getv);
 
 void cavm_bch_putv(void *token)
 {
-	if (token) {
+	if (!IS_ERR_OR_NULL(token)) {
 		module_put(THIS_MODULE);
 		cavm_bch_putp(bch_pf);
 	}
