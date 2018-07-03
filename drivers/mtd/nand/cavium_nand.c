@@ -351,8 +351,10 @@ static u8 cvm_nand_read_byte(struct mtd_info *mtd)
 	struct nand_chip *nand = mtd_to_nand(mtd);
 	struct cvm_nfc *tn = to_cvm_nfc(nand->controller);
 
-	if (tn->use_status)
+	if (tn->use_status) {
+		tn->use_status = false;
 		return *tn->stat;
+	}
 
 	if (tn->buf.data_index < tn->buf.data_len)
 		return tn->buf.dmabuf[tn->buf.data_index++];
