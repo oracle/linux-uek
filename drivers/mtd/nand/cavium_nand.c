@@ -261,6 +261,8 @@ struct cvm_nand_chip {
 	struct ndf_set_tm_par_cmd timings;	/* timing parameters */
 	int selected_page;
 	bool oob_access;
+	int row_bytes;
+	int col_bytes;
 };
 
 struct cvm_nand_buf {
@@ -319,7 +321,7 @@ static int ndf_get_column_bits(struct nand_chip *nand)
 	if (!nand)
 		page_size = default_page_size;
 	else
-		page_size = nand->onfi_params.byte_per_page;
+		page_size = le32_to_cpu(nand->onfi_params.byte_per_page);
 	return get_bitmask_order(page_size - 1);
 }
 
@@ -421,6 +423,7 @@ static void set_timings(struct ndf_set_tm_par_cmd *tp,
 	tp->tm_par5 = sWC - sWH + 1;
 	tp->tm_par6 = sWB;
 	tp->tm_par7 = 0;
+	tp->tim_mult++; /* overcompensate for bad math */
 
 	/* TODO: comment parameter re-use */
 
@@ -529,15 +532,16 @@ static bool ndf_dma_done(struct cvm_nfc *tn)
 {
 	u64 dma_cfg, ndf_int;
 
+	/* Enable bit should be clear after a transfer */
+	dma_cfg = readq(tn->base + NDF_DMA_CFG);
+	if (!(dma_cfg & NDF_DMA_CFG_EN))
+		return true;
+
 	/* Check DMA done bit */
 	ndf_int = readq(tn->base + NDF_INT);
 	if (!(ndf_int & NDF_INT_DMA_DONE))
 		return false;
 
-	/* Enable bit should be clear after a transfer */
-	dma_cfg = readq(tn->base + NDF_DMA_CFG);
-	if (dma_cfg & NDF_DMA_CFG_EN)
-		return false;
 	return true;
 }
 
@@ -651,20 +655,15 @@ static int ndf_queue_cmd_ale(struct cvm_nfc *tn, int addr_bytes,
 
 	if (addr_bytes == 1) {
 		cmd.u.ale_cmd.adr_byt1 = addr & 0xff;
-	} else if (addr_bytes == 2) {
+	} else if (addr_bytes < 4) {
 		cmd.u.ale_cmd.adr_byt1 = addr & 0xff;
 		cmd.u.ale_cmd.adr_byt2 = (addr >> 8) & 0xff;
-	} else if (addr_bytes == 4) {
+		cmd.u.ale_cmd.adr_byt3 = (addr >> 16) & 0xff;
+	} else if (addr_bytes) {
 		cmd.u.ale_cmd.adr_byt1 =  column & 0xff;
 		cmd.u.ale_cmd.adr_byt2 = (column >> 8) & 0xff;
 		cmd.u.ale_cmd.adr_byt3 = row & 0xff;
 		cmd.u.ale_cmd.adr_byt4 = (row >> 8) & 0xff;
-	} else if (addr_bytes > 4) {
-		cmd.u.ale_cmd.adr_byt1 =  column & 0xff;
-		cmd.u.ale_cmd.adr_byt2 = (column >> 8) & 0xff;
-		cmd.u.ale_cmd.adr_byt3 = row & 0xff;
-		cmd.u.ale_cmd.adr_byt4 = (row >> 8) & 0xff;
-		/* row bits above 16 */
 		cmd.u.ale_cmd.adr_byt5 = (row >> 16) & 0xff;
 		cmd.u.ale_cmd.adr_byt6 = (row >> 24) & 0xff;
 		cmd.u.ale_cmd.adr_byt7 = (row >> 32) & 0xff;
@@ -706,8 +705,9 @@ static int ndf_build_pre_cmd(struct cvm_nfc *tn, int cmd1,
 	} else {
 		cvm_nand = to_cvm_nand(nand);
 		timings = &cvm_nand->timings;
-		page_size = nand->onfi_params.byte_per_page;
-		if (nand->onfi_params.features & ONFI_FEATURE_16_BIT_BUS)
+		page_size = le32_to_cpu(nand->onfi_params.byte_per_page);
+		if (le16_to_cpu(nand->onfi_params.features) &
+				ONFI_FEATURE_16_BIT_BUS)
 			width = 2;
 		else
 			width = 1;
@@ -790,8 +790,8 @@ static void ndf_setup_dma(struct cvm_nfc *tn, int is_write,
 	dma_cfg = FIELD_PREP(NDF_DMA_CFG_RW, is_write) |
 		  FIELD_PREP(NDF_DMA_CFG_SIZE, (len >> 3) - 1);
 	dma_cfg |= NDF_DMA_CFG_EN;
-	writeq(dma_cfg, tn->base + NDF_DMA_CFG);
 	writeq(bus_addr, tn->base + NDF_DMA_ADR);
+	writeq(dma_cfg, tn->base + NDF_DMA_CFG);
 }
 
 static int cvm_nand_reset(struct cvm_nfc *tn)
@@ -827,11 +827,11 @@ static int cvm_nand_set_features(struct mtd_info *mtd,
 	memcpy(tn->buf.dmabuf, subfeature_para, 4);
 	memset(tn->buf.dmabuf + 4, 0, 4);
 
+	ndf_setup_dma(tn, 1, tn->buf.dmaaddr, 8);
+
 	rc = ndf_queue_cmd_write(tn, 8);
 	if (rc)
 		return rc;
-
-	ndf_setup_dma(tn, 0, tn->buf.dmaaddr, 8);
 
 	rc = ndf_wait_for_busy_done(tn);
 	if (rc)
@@ -856,7 +856,7 @@ static int ndf_read(struct cvm_nfc *tn, int cmd1, int addr_bytes, u64 addr,
 	if (!nand)
 		timing_mode = default_onfi_timing;
 	else
-		timing_mode = nand->onfi_params.async_timing_mode;
+		timing_mode = le16_to_cpu(nand->onfi_params.async_timing_mode);
 
 	/* Build the command and address cycles */
 	rc = ndf_build_pre_cmd(tn, cmd1, addr_bytes, addr, cmd2);
@@ -879,8 +879,7 @@ static int ndf_read(struct cvm_nfc *tn, int cmd1, int addr_bytes, u64 addr,
 		return rc;
 
 	memset(&cmd, 0, sizeof(cmd));
-	if (timing_mode == ONFI_TIMING_MODE_4 ||
-	    timing_mode == ONFI_TIMING_MODE_5)
+	if (timing_mode >= 4)
 		cmd.u.rd_cmd.opcode = NDF_OP_RD_EDO_CMD;
 	else
 		cmd.u.rd_cmd.opcode = NDF_OP_RD_CMD;
@@ -924,9 +923,13 @@ static int ndf_read(struct cvm_nfc *tn, int cmd1, int addr_bytes, u64 addr,
 int ndf_page_read(struct cvm_nfc *tn, u64 addr, int len)
 {
 	int rc;
+	struct nand_chip *nand = tn->controller.active;
+	struct cvm_nand_chip *chip = to_cvm_nand(nand);
+	int addr_bytes = chip->row_bytes + chip->col_bytes;
 
 	memset(tn->buf.dmabuf, 0xff, len);
-	rc = ndf_read(tn, NAND_CMD_READ0, 4, addr, NAND_CMD_READSTART, len);
+	rc = ndf_read(tn, NAND_CMD_READ0, addr_bytes,
+		addr, NAND_CMD_READSTART, len);
 	if (rc)
 		return rc;
 
@@ -938,9 +941,12 @@ static int ndf_block_erase(struct cvm_nfc *tn, u64 addr)
 {
 	struct nand_chip *nand = tn->controller.active;
 	int row, rc;
+	struct cvm_nand_chip *chip = to_cvm_nand(nand);
+	int addr_bytes = chip->row_bytes;
 
 	row = addr >> ndf_get_column_bits(nand);
-	rc = ndf_build_pre_cmd(tn, NAND_CMD_ERASE1, 2, row, NAND_CMD_ERASE2);
+	rc = ndf_build_pre_cmd(tn, NAND_CMD_ERASE1, addr_bytes,
+		row, NAND_CMD_ERASE2);
 	if (rc)
 		return rc;
 
@@ -963,12 +969,15 @@ static int ndf_block_erase(struct cvm_nfc *tn, u64 addr)
 static int ndf_page_write(struct cvm_nfc *tn, u64 addr)
 {
 	int len, rc;
+	struct nand_chip *nand = tn->controller.active;
+	struct cvm_nand_chip *chip = to_cvm_nand(nand);
+	int addr_bytes = chip->row_bytes + chip->col_bytes;
 
 	len = tn->buf.data_len - tn->buf.data_index;
 	WARN_ON_ONCE(len & 0x7);
 
 	ndf_setup_dma(tn, 1, tn->buf.dmaaddr + tn->buf.data_index, len);
-	rc = ndf_build_pre_cmd(tn, NAND_CMD_SEQIN, 4, addr, 0);
+	rc = ndf_build_pre_cmd(tn, NAND_CMD_SEQIN, addr_bytes, addr, 0);
 	if (rc)
 		return rc;
 
@@ -1072,7 +1081,7 @@ static void cvm_nand_cmdfunc(struct mtd_info *mtd, unsigned int command,
 	case NAND_CMD_PARAM:
 		tn->buf.data_index = column;
 		memset(tn->buf.dmabuf, 0xff, tn->buf.dmabuflen);
-		rc = ndf_read(tn, command, 1, 0, 0, 2048);
+		rc = ndf_read(tn, command, 1, 0, 0, default_page_size);
 		if (rc < 0)
 			dev_err(tn->dev, "PARAM failed with %d\n", rc);
 		else
@@ -1099,6 +1108,8 @@ static void cvm_nand_cmdfunc(struct mtd_info *mtd, unsigned int command,
 			cvm_nand->oob_access = true;
 		tn->buf.data_index = column;
 		tn->buf.data_len = column;
+		if (cvm_nand->oob_access)
+			tn->buf.data_len += mtd->oobsize;
 		cvm_nand->selected_page = page_addr;
 		break;
 
@@ -1144,6 +1155,30 @@ static int cvm_nfc_chip_init_timings(struct cvm_nand_chip *chip,
 		return PTR_ERR(timings);
 
 	return cvm_nfc_chip_set_timings(chip, timings);
+}
+
+static void cvm_nfc_chip_sizing(struct nand_chip *nand)
+{
+	struct cvm_nand_chip *chip = to_cvm_nand(nand);
+	struct mtd_info *mtd = nand_to_mtd(nand);
+
+	chip->row_bytes = nand->onfi_params.addr_cycles & 0xf;
+	chip->col_bytes = nand->onfi_params.addr_cycles >> 4;
+
+	pr_debug("nand features supported %4.4x\n",
+		le16_to_cpu(nand->onfi_params.features));
+	pr_debug("nand optional cmds %4.4x\n",
+		le16_to_cpu(nand->onfi_params.opt_cmd));
+	pr_debug("nand async timings %4.4x\n",
+		le16_to_cpu(nand->onfi_params.async_timing_mode));
+	pr_debug("nand cache timings %4.4x\n",
+		le16_to_cpu(nand->onfi_params.program_cache_timing_mode));
+	pr_debug("nand sizes: page 2^%d, erase 2^%d, chip 2^%d\n",
+		nand->page_shift, nand->phys_erase_shift, nand->chip_shift);
+	pr_debug("mtd sizes: write(col) %d 2^%d, erase(row) %d 2^%d, subpage 2^%d\n",
+		mtd->writesize, mtd->writesize_shift,
+		mtd->erasesize, mtd->erasesize_shift,
+		mtd->subpage_sft);
 }
 
 static int cvm_nfc_chip_init(struct cvm_nfc *tn, struct device *dev,
@@ -1194,6 +1229,8 @@ static int cvm_nfc_chip_init(struct cvm_nfc *tn, struct device *dev,
 		dev_err(dev, "could not configure chip timings: %d\n", ret);
 		return ret;
 	}
+
+	cvm_nfc_chip_sizing(nand);
 
 	ret = nand_scan_tail(mtd);
 	if (ret) {
