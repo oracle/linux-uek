@@ -1,0 +1,27 @@
+#
+# Cavium OcteonTX Nand flash controller and BCH/copy engine
+#
+config MTD_NAND_CAVIUM
+        tristate "Support for NAND on Cavium Octeon TX SOCs"
+        depends on PCI && HAS_DMA && (ARM64 || COMPILE_TEST)
+	default MTD_NAND if ARCH_THUNDER
+	default N
+        help
+          Enables support for NAND Flash found some Cavium Octeon TX SOCs.
+	  Only one of the possible 8 NAND chips is currently supported.
+	  Either software ECC or the hardware BCH engine may be used.
+
+	  To compile this as a module, choose M here.
+
+config CAVIUM_BCH
+	tristate "Cavium BCH driver"
+	depends on MTD_NAND_CAVIUM || COMPILE_TEST
+	depends on PCI_MSI && 64BIT
+	default MTD_NAND_CAVIUM
+	help
+	  Support for Cavium BCH block found in octeon-tx series of
+	  processors.
+	  Currently used for hardware assist to MTD_NAND_CAVIUM,
+	  potentially also usable as a general dma_engine.
+
+	  To compile this as a module, choose M here.
