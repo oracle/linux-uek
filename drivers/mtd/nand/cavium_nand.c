@@ -260,7 +260,7 @@ struct cvm_nand_chip {
 	int cs;					/* chip select 0..7 */
 	struct ndf_set_tm_par_cmd timings;	/* timing parameters */
 	int selected_page;
-	bool oob_access;
+	bool oob_only;
 	bool iface_set;
 	int iface_mode;
 	int row_bytes;
@@ -667,8 +667,8 @@ static int ndf_queue_cmd_ale(struct cvm_nfc *tn, int addr_bytes,
 	cmd.u.ale_cmd.adr_byte_num = addr_bytes;
 
 	/* set column bit for OOB area, assume OOB follows page */
-	if (cvm_nand && cvm_nand->oob_access)
-		column |= page_size;
+	if (cvm_nand && cvm_nand->oob_only)
+		column += page_size;
 
 	switch (addr_bytes) {
 	/* 4-8 bytes: 2 bytes column, then row */
@@ -723,6 +723,7 @@ static int ndf_queue_cmd_write(struct cvm_nfc *tn, int len)
 	return ndf_submit(tn, &cmd);
 }
 
+/* TODO: split addr into page/col, and can then remove oob_only hack */
 static int ndf_build_pre_cmd(struct cvm_nfc *tn, int cmd1,
 			     int addr_bytes, u64 addr, int cmd2)
 {
@@ -1031,7 +1032,7 @@ static int ndf_page_write(struct cvm_nfc *tn, u64 addr)
 	int addr_bytes = chip->row_bytes + chip->col_bytes;
 
 	len = tn->buf.data_len - tn->buf.data_index;
-	chip->oob_access = (tn->buf.data_len > nand->mtd.writesize);
+	chip->oob_only = (tn->buf.data_index >= nand->mtd.writesize);
 	WARN_ON_ONCE(len & 0x7);
 
 	ndf_setup_dma(tn, 1, tn->buf.dmaaddr + tn->buf.data_index, len);
@@ -1082,11 +1083,11 @@ static void cvm_nand_cmdfunc(struct mtd_info *mtd, unsigned int command,
 	}
 
 	tn->use_status = false;
-	cvm_nand->oob_access = false;
 
 	switch (command) {
 	case NAND_CMD_READID:
 		tn->buf.data_index = 0;
+		cvm_nand->oob_only = false;
 		memset(tn->buf.dmabuf, 0xff, 8);
 		rc = ndf_read(tn, command, 1, column, 0, 8);
 		if (rc < 0)
@@ -1096,7 +1097,7 @@ static void cvm_nand_cmdfunc(struct mtd_info *mtd, unsigned int command,
 		break;
 
 	case NAND_CMD_READOOB:
-		cvm_nand->oob_access = true;
+		cvm_nand->oob_only = true;
 		addr <<= nand->page_shift;
 		if (!nand->mtd.writesize)
 			ws = default_page_size;
@@ -1113,6 +1114,7 @@ static void cvm_nand_cmdfunc(struct mtd_info *mtd, unsigned int command,
 		break;
 
 	case NAND_CMD_READ0:
+		cvm_nand->oob_only = false;
 		tn->buf.data_index = 0;
 		tn->buf.data_len = 0;
 		rc = ndf_page_read(tn,
@@ -1126,6 +1128,7 @@ static void cvm_nand_cmdfunc(struct mtd_info *mtd, unsigned int command,
 		break;
 
 	case NAND_CMD_STATUS:
+		/* used in oob/not states */
 		tn->use_status = true;
 		memset(tn->stat, 0xff, 8);
 		rc = ndf_read(tn, command, 0, 0, 0, 8);
@@ -1134,12 +1137,14 @@ static void cvm_nand_cmdfunc(struct mtd_info *mtd, unsigned int command,
 		break;
 
 	case NAND_CMD_RESET:
+		/* used in oob/not states */
 		rc = cvm_nand_reset(tn);
 		if (rc < 0)
 			dev_err(tn->dev, "RESET failed with %d\n", rc);
 		break;
 
 	case NAND_CMD_PARAM:
+		cvm_nand->oob_only = false;
 		tn->buf.data_index = 0;
 		memset(tn->buf.dmabuf, 0xff, tn->buf.dmabuflen);
 		rc = ndf_read(tn, command, 1, 0, 0, default_page_size);
@@ -1165,8 +1170,7 @@ static void cvm_nand_cmdfunc(struct mtd_info *mtd, unsigned int command,
 		break;
 
 	case NAND_CMD_SEQIN:
-		if (column == mtd->writesize)
-			cvm_nand->oob_access = true;
+		cvm_nand->oob_only = (column >= mtd->writesize);
 		tn->buf.data_index = column;
 		tn->buf.data_len = column;
 
@@ -1181,6 +1185,7 @@ static void cvm_nand_cmdfunc(struct mtd_info *mtd, unsigned int command,
 		break;
 
 	case NAND_CMD_SET_FEATURES:
+		cvm_nand->oob_only = false;
 		/* assume tn->buf.data_len == 4 of data has been set there */
 		rc = cvm_nand_set_features(mtd, nand,
 					page_addr, tn->buf.dmabuf);
@@ -1189,6 +1194,7 @@ static void cvm_nand_cmdfunc(struct mtd_info *mtd, unsigned int command,
 		break;
 
 	case NAND_CMD_GET_FEATURES:
+		cvm_nand->oob_only = false;
 		rc = cvm_nand_get_features(mtd, nand,
 					page_addr, tn->buf.dmabuf);
 		if (!rc) {
