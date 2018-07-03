@@ -1075,7 +1075,6 @@ static void cvm_nand_cmdfunc(struct mtd_info *mtd, unsigned int command,
 	struct cvm_nand_chip *cvm_nand = to_cvm_nand(nand);
 	struct cvm_nfc *tn = to_cvm_nfc(nand->controller);
 	u64 addr = page_addr;
-	int ws;
 	int rc;
 
 	tn->selected_chip = cvm_nand->cs;
@@ -1101,10 +1100,6 @@ static void cvm_nand_cmdfunc(struct mtd_info *mtd, unsigned int command,
 	case NAND_CMD_READOOB:
 		cvm_nand->oob_only = true;
 		addr <<= nand->page_shift;
-		if (!nand->mtd.writesize)
-			ws = default_page_size;
-		else
-			ws = nand->mtd.writesize;
 		tn->buf.data_index = 0;
 		tn->buf.data_len = 0;
 		rc = ndf_page_read(tn, addr, mtd->oobsize);
@@ -1123,7 +1118,7 @@ static void cvm_nand_cmdfunc(struct mtd_info *mtd, unsigned int command,
 				column + (page_addr << nand->page_shift),
 				(1 << nand->page_shift) + mtd->oobsize);
 
-		if (rc < (1 << nand->page_shift) + mtd->oobsize)
+		if (rc < mtd->writesize + mtd->oobsize)
 			dev_err(tn->dev, "READ0 failed with %d\n", rc);
 		else
 			tn->buf.data_len = rc;
@@ -1149,7 +1144,8 @@ static void cvm_nand_cmdfunc(struct mtd_info *mtd, unsigned int command,
 		cvm_nand->oob_only = false;
 		tn->buf.data_index = 0;
 		memset(tn->buf.dmabuf, 0xff, tn->buf.dmabuflen);
-		rc = ndf_read(tn, command, 1, 0, 0, default_page_size);
+		rc = ndf_read(tn, command, 1, 0, 0,
+			min(tn->buf.dmabuflen, 3 * 512));
 		if (rc < 0)
 			dev_err(tn->dev, "PARAM failed with %d\n", rc);
 		else
@@ -1430,8 +1426,6 @@ static int cvm_nfc_probe(struct pci_dev *pdev,
 	init_waitqueue_head(&tn->controller.wq);
 	INIT_LIST_HEAD(&tn->chips);
 
-	memset(tn->buf.dmabuf, 0xff, tn->buf.dmabuflen);
-
 	pci_set_drvdata(pdev, tn);
 	ret = pcim_enable_device(pdev);
 	if (ret)
@@ -1440,24 +1434,24 @@ static int cvm_nfc_probe(struct pci_dev *pdev,
 	if (ret)
 		return ret;
 	tn->base = pcim_iomap(pdev, 0, pci_resource_len(pdev, 0));
-	if (!tn->base)
-		return -EINVAL;
+	if (!tn->base) {
+		ret = -EINVAL;
+		goto release;
+	}
 
 	ret = pci_alloc_irq_vectors(pdev, 1, 1, PCI_IRQ_MSIX);
 	if (ret < 0)
-		return ret;
-	ret = devm_request_irq(dev, pci_irq_vector(pdev, 0),
-			       cvm_nfc_isr, 0, "nand-flash-controller", tn);
-	if (ret)
-		return ret;
+		goto release;
 
 	tn->clk = devm_clk_get(dev, NULL);
-	if (IS_ERR(tn->clk))
-		return PTR_ERR(tn->clk);
+	if (IS_ERR(tn->clk)) {
+		ret = PTR_ERR(tn->clk);
+		goto release;
+	}
 
 	ret = clk_prepare_enable(tn->clk);
 	if (ret)
-		return ret;
+		goto release;
 
 	if (dma_set_mask_and_coherent(dev, DMA_BIT_MASK(64)))
 		dev_err(dev, "64 bit DMA mask not available\n");
@@ -1467,26 +1461,34 @@ static int cvm_nfc_probe(struct pci_dev *pdev,
 					     &tn->buf.dmaaddr, GFP_KERNEL);
 	if (!tn->buf.dmabuf) {
 		ret = -ENOMEM;
-		goto error;
+		goto unclk;
 	}
 
 	tn->stat = dmam_alloc_coherent(dev, 8, &tn->stat_addr, GFP_KERNEL);
 	if (!tn->stat) {
 		ret = -ENOMEM;
-		goto error;
+		goto unclk;
 	}
+
+	ret = devm_request_irq(dev, pci_irq_vector(pdev, 0),
+			       cvm_nfc_isr, 0, "nand-flash-controller", tn);
+	if (ret)
+		goto unclk;
 
 	cvm_nfc_init(tn);
 	ret = cvm_nfc_chips_init(tn);
 	if (ret) {
 		dev_err(dev, "failed to init nand chips\n");
-		goto error;
+		goto unclk;
 	}
 	dev_info(&pdev->dev, "probed\n");
 	return 0;
 
-error:
+unclk:
 	clk_disable_unprepare(tn->clk);
+release:
+	pci_release_regions(pdev);
+	pci_set_drvdata(pdev, NULL);
 	return ret;
 }
 
@@ -1495,6 +1497,9 @@ static void cvm_nfc_remove(struct pci_dev *pdev)
 	struct cvm_nfc *tn = pci_get_drvdata(pdev);
 	struct cvm_nand_chip *chip;
 
+	if (!tn)
+		return;
+
 	while (!list_empty(&tn->chips)) {
 		chip = list_first_entry(&tn->chips, struct cvm_nand_chip,
 					node);
@@ -1502,6 +1507,7 @@ static void cvm_nfc_remove(struct pci_dev *pdev)
 		list_del(&chip->node);
 	}
 	clk_disable_unprepare(tn->clk);
+	pci_release_regions(pdev);
 }
 
 #ifdef CONFIG_PM_SLEEP
