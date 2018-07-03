@@ -5,6 +5,7 @@
 #include <linux/blkdev.h>
 #include <linux/sbitmap.h>
 #include <linux/srcu.h>
+#include <linux/uek_kabi.h>
 
 struct blk_mq_tags;
 struct blk_flush_queue;
@@ -35,6 +36,8 @@ struct blk_mq_hw_ctx {
 
 	struct blk_mq_ctx	**ctxs;
 	unsigned int		nr_ctx;
+
+	UEK_KABI_FILL_HOLE(unsigned int dispatch_busy)
 
 	wait_queue_entry_t	dispatch_wait;
 	atomic_t		wait_index;
