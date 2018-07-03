@@ -666,21 +666,38 @@ static int ndf_queue_cmd_ale(struct cvm_nfc *tn, int addr_bytes,
 	if (cvm_nand && cvm_nand->oob_access)
 		column |= page_size;
 
-	if (addr_bytes == 1) {
-		cmd.u.ale_cmd.adr_byt1 = addr & 0xff;
-	} else if (addr_bytes < 4) {
-		cmd.u.ale_cmd.adr_byt1 = addr & 0xff;
-		cmd.u.ale_cmd.adr_byt2 = (addr >> 8) & 0xff;
-		cmd.u.ale_cmd.adr_byt3 = (addr >> 16) & 0xff;
-	} else if (addr_bytes) {
-		cmd.u.ale_cmd.adr_byt1 =  column & 0xff;
-		cmd.u.ale_cmd.adr_byt2 = (column >> 8) & 0xff;
-		cmd.u.ale_cmd.adr_byt3 = row & 0xff;
-		cmd.u.ale_cmd.adr_byt4 = (row >> 8) & 0xff;
-		cmd.u.ale_cmd.adr_byt5 = (row >> 16) & 0xff;
-		cmd.u.ale_cmd.adr_byt6 = (row >> 24) & 0xff;
-		cmd.u.ale_cmd.adr_byt7 = (row >> 32) & 0xff;
+	switch (addr_bytes) {
+	/* 4-8 bytes: 2 bytes column, then row */
+	case 8:
 		cmd.u.ale_cmd.adr_byt8 = (row >> 40) & 0xff;
+		/* fall thru */
+	case 7:
+		cmd.u.ale_cmd.adr_byt7 = (row >> 32) & 0xff;
+		/* fall thru */
+	case 6:
+		cmd.u.ale_cmd.adr_byt6 = (row >> 24) & 0xff;
+		/* fall thru */
+	case 5:
+		cmd.u.ale_cmd.adr_byt5 = (row >> 16) & 0xff;
+		/* fall thru */
+	case 4:
+		cmd.u.ale_cmd.adr_byt4 = (row >> 8) & 0xff;
+		cmd.u.ale_cmd.adr_byt3 = row & 0xff;
+		cmd.u.ale_cmd.adr_byt2 = (column >> 8) & 0xff;
+		cmd.u.ale_cmd.adr_byt1 =  column & 0xff;
+		break;
+	/* 1-3 bytes: just the row address */
+	case 3:
+		cmd.u.ale_cmd.adr_byt3 = (addr >> 16) & 0xff;
+		/* fall thru */
+	case 2:
+		cmd.u.ale_cmd.adr_byt2 = (addr >> 8) & 0xff;
+		/* fall thru */
+	case 1:
+		cmd.u.ale_cmd.adr_byt1 = addr & 0xff;
+		break;
+	default:
+		break;
 	}
 
 	cmd.u.ale_cmd.alen1 = t3;
