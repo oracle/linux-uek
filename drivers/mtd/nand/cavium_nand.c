@@ -1349,8 +1349,9 @@ static int cvm_nfc_chip_init(struct cvm_nfc *tn, struct device *dev,
 	return 0;
 }
 
-static int cvm_nfc_chips_init(struct cvm_nfc *tn, struct device *dev)
+static int cvm_nfc_chips_init(struct cvm_nfc *tn)
 {
+	struct device *dev = tn->dev;
 	struct device_node *np = dev->of_node;
 	struct device_node *nand_np;
 	int nr_chips = of_get_child_count(np);
@@ -1474,7 +1475,7 @@ static int cvm_nfc_probe(struct pci_dev *pdev,
 	}
 
 	cvm_nfc_init(tn);
-	ret = cvm_nfc_chips_init(tn, dev);
+	ret = cvm_nfc_chips_init(tn);
 	if (ret) {
 		dev_err(dev, "failed to init nand chips\n");
 		goto error;
@@ -1501,6 +1502,41 @@ static void cvm_nfc_remove(struct pci_dev *pdev)
 	clk_disable_unprepare(tn->clk);
 }
 
+#ifdef CONFIG_PM_SLEEP
+static int cvm_nfc_suspend(struct pci_dev *pdev, pm_message_t unused)
+{
+	struct cvm_nfc *tn = pci_get_drvdata(pdev);
+	struct cvm_nand_chip *chip;
+
+	list_for_each_entry(chip, &tn->chips, node)
+		chip->iface_set = false;
+	clk_disable_unprepare(tn->clk);
+
+	return 0;
+}
+
+static int cvm_nfc_resume(struct pci_dev *pdev)
+{
+	struct cvm_nfc *tn = pci_get_drvdata(pdev);
+	int ret = clk_prepare_enable(tn->clk);
+
+	if (ret) {
+		dev_err(tn->dev, "failed to enable clk\n");
+		return ret;
+	}
+
+	/* can some of this be skipped, or refactored... */
+	cvm_nfc_init(tn);
+	ret = cvm_nfc_chips_init(tn);
+	if (ret) {
+		dev_err(tn->dev, "failed to resume nand chips\n");
+		return ret;
+	}
+
+	return 0;
+}
+#endif
+
 static const struct pci_device_id cvm_nfc_pci_id_table[] = {
 	{ PCI_DEVICE(PCI_VENDOR_ID_CAVIUM, 0xa04f) },
 	{ 0, }
@@ -1513,6 +1549,10 @@ static struct pci_driver cvm_nfc_pci_driver = {
 	.id_table	= cvm_nfc_pci_id_table,
 	.probe		= cvm_nfc_probe,
 	.remove		= cvm_nfc_remove,
+#ifdef CONFIG_PM_SLEEP
+	.suspend	= cvm_nfc_suspend,
+	.resume		= cvm_nfc_resume,
+#endif
 };
 
 module_pci_driver(cvm_nfc_pci_driver);
