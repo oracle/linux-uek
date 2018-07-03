@@ -1,7 +1,7 @@
 /*
  * Cavium cn8xxx NAND flash controller (NDF) driver.
  *
- * Copyright (C) 2017 Cavium Inc.
+ * Copyright (C) 2018 Cavium Inc.
  * Authors: Jan Glauber <jglauber@cavium.com>
  *
  * This file is licensed under the terms of the GNU General Public
@@ -23,6 +23,8 @@
 #include <linux/of.h>
 #include <linux/pci.h>
 #include <linux/slab.h>
+
+#include "bch_vf.h"
 
 /*
  * The NDF_CMD queue takes commands between 16 - 128 bit.
@@ -294,6 +296,11 @@ struct cvm_nfc {
 	bool use_status;
 
 	struct cvm_nand_buf buf;
+	union bch_resp *bch_resp;
+	dma_addr_t bch_rhandle;
+
+	/* BCH of all-0xff, so erased pages read as error-free */
+	unsigned char *eccmask;
 };
 
 /* settable timings - 0..7 select timing of alen1..4/clen1..3/etc */
@@ -302,6 +309,7 @@ enum tm_idx {
 	t1, t2, t3, t4, t5, t6, t7, /* settable per ONFI-timing mode */
 };
 
+static struct bch_vf *bch_vf;
 static inline struct cvm_nand_chip *to_cvm_nand(struct nand_chip *nand)
 {
 	return container_of(nand, struct cvm_nand_chip, nand);
@@ -315,24 +323,14 @@ static inline struct cvm_nfc *to_cvm_nfc(struct nand_hw_control *ctrl)
 /* default parameters used for probing chips */
 #define MAX_ONFI_MODE	5
 static int default_onfi_timing;
+static int slew_ns = 2; /* default timing padding */
+module_param(slew_ns, int, 0644);
+static int def_ecc_size = 1024; /* 1024 best for sw_bch, <= 4095 for hw_bch */
+module_param(def_ecc_size, int, 0644);
+
 static int default_width = 1; /* 8 bit */
 static int default_page_size = 2048;
 static struct ndf_set_tm_par_cmd default_timing_parms;
-
-/*
- * Get the number of bits required to encode the column bits. This
- * does not include bits required for the OOB area.
- */
-static int ndf_get_column_bits(struct nand_chip *nand)
-{
-	if (!nand)
-		return get_bitmask_order(default_page_size - 1);
-
-	if (!nand->mtd.writesize_shift)
-		nand->mtd.writesize_shift =
-			get_bitmask_order(nand->mtd.writesize - 1);
-	return nand->mtd.writesize_shift;
-}
 
 static irqreturn_t cvm_nfc_isr(int irq, void *dev_id)
 {
@@ -397,16 +395,24 @@ static void cvm_nand_select_chip(struct mtd_info *mtd, int chip)
 	return;
 }
 
-static inline int timing_to_cycle(u32 timing, unsigned long clock)
+static inline int timing_to_cycle(u32 psec, unsigned long clock)
 {
 	unsigned int ns;
-	int margin = 2;
+	int ticks;
 
-	ns = DIV_ROUND_UP(timing, 1000);
+	ns = DIV_ROUND_UP(psec, 1000);
+	ns += slew_ns;
 
 	clock /= 1000000; /* no rounding needed since clock is multiple of 1MHz */
 	ns *= clock;
-	return DIV_ROUND_UP(ns, 1000) + margin;
+
+	ticks = DIV_ROUND_UP(ns, 1000);
+
+	/* actual delay is (tm_parX+1)<<tim_mult */
+	if (ticks)
+		ticks--;
+
+	return ticks;
 }
 
 static void set_timings(struct cvm_nand_chip *chip,
@@ -577,6 +583,7 @@ static int ndf_wait(struct cvm_nfc *tn)
 static int ndf_wait_idle(struct cvm_nfc *tn)
 {
 	u64 val;
+	u64 dval = 0;
 	int rc;
 	int pause = 100;
 	u64 tot_us = USEC_PER_SEC / 10;
@@ -585,7 +592,8 @@ static int ndf_wait_idle(struct cvm_nfc *tn)
 			val, val & NDF_ST_REG_EXE_IDLE, pause, tot_us);
 	if (!rc)
 		rc = readq_poll_timeout(tn->base + NDF_DMA_CFG,
-			val, !(val & NDF_DMA_CFG_EN), pause, tot_us);
+			dval, !(dval & NDF_DMA_CFG_EN), pause, tot_us);
+
 	return rc;
 }
 
@@ -657,11 +665,10 @@ static int ndf_queue_cmd_cle(struct cvm_nfc *tn, int command)
 }
 
 static int ndf_queue_cmd_ale(struct cvm_nfc *tn, int addr_bytes,
-			     struct nand_chip *nand, u64 addr, int page_size)
+			     struct nand_chip *nand, u64 page,
+			     u32 col, int page_size)
 {
 	struct cvm_nand_chip *cvm_nand = (nand) ? to_cvm_nand(nand) : NULL;
-	int column = addr & (page_size - 1);
-	u64 row = addr >> ndf_get_column_bits(nand);
 	union ndf_cmd cmd;
 
 	memset(&cmd, 0, sizeof(cmd));
@@ -670,37 +677,38 @@ static int ndf_queue_cmd_ale(struct cvm_nfc *tn, int addr_bytes,
 
 	/* set column bit for OOB area, assume OOB follows page */
 	if (cvm_nand && cvm_nand->oob_only)
-		column += page_size;
+		col += page_size;
 
+	/* page is u64 for this generality, even if cmdfunc() passes int */
 	switch (addr_bytes) {
-	/* 4-8 bytes: 2 bytes column, then row */
+	/* 4-8 bytes: page, then 2-byte col */
 	case 8:
-		cmd.u.ale_cmd.adr_byt8 = (row >> 40) & 0xff;
+		cmd.u.ale_cmd.adr_byt8 = (page >> 40) & 0xff;
 		/* fall thru */
 	case 7:
-		cmd.u.ale_cmd.adr_byt7 = (row >> 32) & 0xff;
+		cmd.u.ale_cmd.adr_byt7 = (page >> 32) & 0xff;
 		/* fall thru */
 	case 6:
-		cmd.u.ale_cmd.adr_byt6 = (row >> 24) & 0xff;
+		cmd.u.ale_cmd.adr_byt6 = (page >> 24) & 0xff;
 		/* fall thru */
 	case 5:
-		cmd.u.ale_cmd.adr_byt5 = (row >> 16) & 0xff;
+		cmd.u.ale_cmd.adr_byt5 = (page >> 16) & 0xff;
 		/* fall thru */
 	case 4:
-		cmd.u.ale_cmd.adr_byt4 = (row >> 8) & 0xff;
-		cmd.u.ale_cmd.adr_byt3 = row & 0xff;
-		cmd.u.ale_cmd.adr_byt2 = (column >> 8) & 0xff;
-		cmd.u.ale_cmd.adr_byt1 =  column & 0xff;
+		cmd.u.ale_cmd.adr_byt4 = (page >> 8) & 0xff;
+		cmd.u.ale_cmd.adr_byt3 = page & 0xff;
+		cmd.u.ale_cmd.adr_byt2 = (col >> 8) & 0xff;
+		cmd.u.ale_cmd.adr_byt1 =  col & 0xff;
 		break;
-	/* 1-3 bytes: just the row address */
+	/* 1-3 bytes: just the page address */
 	case 3:
-		cmd.u.ale_cmd.adr_byt3 = (addr >> 16) & 0xff;
+		cmd.u.ale_cmd.adr_byt3 = (page >> 16) & 0xff;
 		/* fall thru */
 	case 2:
-		cmd.u.ale_cmd.adr_byt2 = (addr >> 8) & 0xff;
+		cmd.u.ale_cmd.adr_byt2 = (page >> 8) & 0xff;
 		/* fall thru */
 	case 1:
-		cmd.u.ale_cmd.adr_byt1 = addr & 0xff;
+		cmd.u.ale_cmd.adr_byt1 = page & 0xff;
 		break;
 	default:
 		break;
@@ -725,9 +733,8 @@ static int ndf_queue_cmd_write(struct cvm_nfc *tn, int len)
 	return ndf_submit(tn, &cmd);
 }
 
-/* TODO: split addr into page/col, and can then remove oob_only hack */
 static int ndf_build_pre_cmd(struct cvm_nfc *tn, int cmd1,
-			     int addr_bytes, u64 addr, int cmd2)
+		 int addr_bytes, u64 page, u32 col, int cmd2)
 {
 	struct nand_chip *nand = tn->controller.active;
 	struct cvm_nand_chip *cvm_nand;
@@ -774,7 +781,8 @@ static int ndf_build_pre_cmd(struct cvm_nfc *tn, int cmd1,
 		if (rc)
 			return rc;
 
-		rc = ndf_queue_cmd_ale(tn, addr_bytes, nand, addr, page_size);
+		rc = ndf_queue_cmd_ale(tn, addr_bytes, nand,
+					page, col, page_size);
 		if (rc)
 			return rc;
 	}
@@ -845,7 +853,7 @@ static int cvm_nand_reset(struct cvm_nfc *tn)
 {
 	int rc;
 
-	rc = ndf_build_pre_cmd(tn, NAND_CMD_RESET, 0, 0, 0);
+	rc = ndf_build_pre_cmd(tn, NAND_CMD_RESET, 0, 0, 0, 0);
 	if (rc)
 		return rc;
 
@@ -854,15 +862,14 @@ static int cvm_nand_reset(struct cvm_nfc *tn)
 		return rc;
 
 	rc = ndf_build_post_cmd(tn, t2);
-	//mdelay(1);
 	if (rc)
 		return rc;
 
 	return 0;
 }
 
-static int ndf_read(struct cvm_nfc *tn, int cmd1, int addr_bytes, u64 addr,
-		    int cmd2, int len)
+static int ndf_read(struct cvm_nfc *tn, int cmd1, int addr_bytes,
+		    u64 page, u32 col, int cmd2, int len)
 {
 	dma_addr_t bus_addr = tn->use_status ? tn->stat_addr : tn->buf.dmaaddr;
 	struct nand_chip *nand = tn->controller.active;
@@ -876,7 +883,7 @@ static int ndf_read(struct cvm_nfc *tn, int cmd1, int addr_bytes, u64 addr,
 		timing_mode = nand->onfi_timing_mode_default;
 
 	/* Build the command and address cycles */
-	rc = ndf_build_pre_cmd(tn, cmd1, addr_bytes, addr, cmd2);
+	rc = ndf_build_pre_cmd(tn, cmd1, addr_bytes, page, col, cmd2);
 	if (rc)
 		return rc;
 
@@ -930,7 +937,7 @@ static int cvm_nand_get_features(struct mtd_info *mtd,
 				      struct nand_chip *chip, int feature_addr,
 				      u8 *subfeature_para)
 {
-	struct nand_chip *nand = mtd_to_nand(mtd);
+	struct nand_chip *nand = chip;
 	struct cvm_nfc *tn = to_cvm_nfc(nand->controller);
 	int len = 8;
 	int rc;
@@ -938,7 +945,7 @@ static int cvm_nand_get_features(struct mtd_info *mtd,
 	memset(tn->buf.dmabuf, 0xff, len);
 	tn->buf.data_index = 0;
 	tn->buf.data_len = 0;
-	rc = ndf_read(tn, NAND_CMD_GET_FEATURES, 1, feature_addr, 0, len);
+	rc = ndf_read(tn, NAND_CMD_GET_FEATURES, 1, feature_addr, 0, 0, len);
 	if (rc)
 		return rc;
 
@@ -951,12 +958,13 @@ static int cvm_nand_set_features(struct mtd_info *mtd,
 				      struct nand_chip *chip, int feature_addr,
 				      u8 *subfeature_para)
 {
-	struct nand_chip *nand = mtd_to_nand(mtd);
+	struct nand_chip *nand = chip;
 	struct cvm_nfc *tn = to_cvm_nfc(nand->controller);
-	int rc;
 	const int len = ONFI_SUBFEATURE_PARAM_LEN;
+	int rc;
 
-	rc = ndf_build_pre_cmd(tn, NAND_CMD_SET_FEATURES, 1, feature_addr, 0);
+	rc = ndf_build_pre_cmd(tn, NAND_CMD_SET_FEATURES,
+				1, feature_addr, 0, 0);
 	if (rc)
 		return rc;
 
@@ -974,7 +982,6 @@ static int cvm_nand_set_features(struct mtd_info *mtd,
 		return rc;
 
 	rc = ndf_build_post_cmd(tn, t2);
-	//mdelay(1);
 	if (rc)
 		return rc;
 
@@ -985,7 +992,7 @@ static int cvm_nand_set_features(struct mtd_info *mtd,
  * Read a page from NAND. If the buffer has room, the out of band
  * data will be included.
  */
-static int ndf_page_read(struct cvm_nfc *tn, u64 addr, int len)
+static int ndf_page_read(struct cvm_nfc *tn, u64 page, int col, int len)
 {
 	struct nand_chip *nand = tn->controller.active;
 	struct cvm_nand_chip *chip = to_cvm_nand(nand);
@@ -993,20 +1000,19 @@ static int ndf_page_read(struct cvm_nfc *tn, u64 addr, int len)
 
 	memset(tn->buf.dmabuf, 0xff, len);
 	return ndf_read(tn, NAND_CMD_READ0, addr_bytes,
-		    addr, NAND_CMD_READSTART, len);
+		    page, col, NAND_CMD_READSTART, len);
 }
 
 /* Erase a NAND block */
-static int ndf_block_erase(struct cvm_nfc *tn, u64 addr)
+static int ndf_block_erase(struct cvm_nfc *tn, u64 page_addr)
 {
 	struct nand_chip *nand = tn->controller.active;
-	int row, rc;
 	struct cvm_nand_chip *chip = to_cvm_nand(nand);
 	int addr_bytes = chip->row_bytes;
+	int rc;
 
-	row = addr >> ndf_get_column_bits(nand);
 	rc = ndf_build_pre_cmd(tn, NAND_CMD_ERASE1, addr_bytes,
-		row, NAND_CMD_ERASE2);
+		page_addr, 0, NAND_CMD_ERASE2);
 	if (rc)
 		return rc;
 
@@ -1026,7 +1032,7 @@ static int ndf_block_erase(struct cvm_nfc *tn, u64 addr)
 /*
  * Write a page (or less) to NAND.
  */
-static int ndf_page_write(struct cvm_nfc *tn, u64 addr)
+static int ndf_page_write(struct cvm_nfc *tn, int page)
 {
 	int len, rc;
 	struct nand_chip *nand = tn->controller.active;
@@ -1038,7 +1044,7 @@ static int ndf_page_write(struct cvm_nfc *tn, u64 addr)
 	WARN_ON_ONCE(len & 0x7);
 
 	ndf_setup_dma(tn, 1, tn->buf.dmaaddr + tn->buf.data_index, len);
-	rc = ndf_build_pre_cmd(tn, NAND_CMD_SEQIN, addr_bytes, addr, 0);
+	rc = ndf_build_pre_cmd(tn, NAND_CMD_SEQIN, addr_bytes, page, 0, 0);
 	if (rc)
 		return rc;
 
@@ -1074,7 +1080,6 @@ static void cvm_nand_cmdfunc(struct mtd_info *mtd, unsigned int command,
 	struct nand_chip *nand = mtd_to_nand(mtd);
 	struct cvm_nand_chip *cvm_nand = to_cvm_nand(nand);
 	struct cvm_nfc *tn = to_cvm_nfc(nand->controller);
-	u64 addr = page_addr;
 	int rc;
 
 	tn->selected_chip = cvm_nand->cs;
@@ -1089,8 +1094,7 @@ static void cvm_nand_cmdfunc(struct mtd_info *mtd, unsigned int command,
 	case NAND_CMD_READID:
 		tn->buf.data_index = 0;
 		cvm_nand->oob_only = false;
-		memset(tn->buf.dmabuf, 0xff, 8);
-		rc = ndf_read(tn, command, 1, column, 0, 8);
+		rc = ndf_read(tn, command, 1, column, 0, 0, 8);
 		if (rc < 0)
 			dev_err(tn->dev, "READID failed with %d\n", rc);
 		else
@@ -1099,10 +1103,9 @@ static void cvm_nand_cmdfunc(struct mtd_info *mtd, unsigned int command,
 
 	case NAND_CMD_READOOB:
 		cvm_nand->oob_only = true;
-		addr <<= nand->page_shift;
 		tn->buf.data_index = 0;
 		tn->buf.data_len = 0;
-		rc = ndf_page_read(tn, addr, mtd->oobsize);
+		rc = ndf_page_read(tn, page_addr, column, mtd->oobsize);
 		if (rc < mtd->oobsize)
 			dev_err(tn->dev, "READOOB failed with %d\n",
 				tn->buf.data_len);
@@ -1115,8 +1118,8 @@ static void cvm_nand_cmdfunc(struct mtd_info *mtd, unsigned int command,
 		tn->buf.data_index = 0;
 		tn->buf.data_len = 0;
 		rc = ndf_page_read(tn,
-				column + (page_addr << nand->page_shift),
-				(1 << nand->page_shift) + mtd->oobsize);
+				page_addr, column,
+				mtd->writesize + mtd->oobsize);
 
 		if (rc < mtd->writesize + mtd->oobsize)
 			dev_err(tn->dev, "READ0 failed with %d\n", rc);
@@ -1127,8 +1130,7 @@ static void cvm_nand_cmdfunc(struct mtd_info *mtd, unsigned int command,
 	case NAND_CMD_STATUS:
 		/* used in oob/not states */
 		tn->use_status = true;
-		memset(tn->stat, 0xff, 8);
-		rc = ndf_read(tn, command, 0, 0, 0, 8);
+		rc = ndf_read(tn, command, 0, 0, 0, 0, 8);
 		if (rc < 0)
 			dev_err(tn->dev, "STATUS failed with %d\n", rc);
 		break;
@@ -1143,8 +1145,7 @@ static void cvm_nand_cmdfunc(struct mtd_info *mtd, unsigned int command,
 	case NAND_CMD_PARAM:
 		cvm_nand->oob_only = false;
 		tn->buf.data_index = 0;
-		memset(tn->buf.dmabuf, 0xff, tn->buf.dmabuflen);
-		rc = ndf_read(tn, command, 1, 0, 0,
+		rc = ndf_read(tn, command, 1, 0, 0, 0,
 			min(tn->buf.dmabuflen, 3 * 512));
 		if (rc < 0)
 			dev_err(tn->dev, "PARAM failed with %d\n", rc);
@@ -1157,7 +1158,7 @@ static void cvm_nand_cmdfunc(struct mtd_info *mtd, unsigned int command,
 		break;
 
 	case NAND_CMD_ERASE1:
-		if (ndf_block_erase(tn, page_addr << nand->page_shift))
+		if (ndf_block_erase(tn, page_addr))
 			dev_err(tn->dev, "ERASE1 failed\n");
 		break;
 
@@ -1176,8 +1177,7 @@ static void cvm_nand_cmdfunc(struct mtd_info *mtd, unsigned int command,
 		break;
 
 	case NAND_CMD_PAGEPROG:
-		rc = ndf_page_write(tn,
-			cvm_nand->selected_page << nand->page_shift);
+		rc = ndf_page_write(tn, cvm_nand->selected_page);
 		if (rc)
 			dev_err(tn->dev, "PAGEPROG failed with %d\n", rc);
 		break;
@@ -1274,12 +1274,515 @@ static int cvm_nand_setup_data_interface(struct mtd_info *mtd, int chipnr,
 	return rc;
 }
 
+#ifdef DEBUG
+# define DEBUG_INIT	1
+# define DEBUG_READ	2
+# define DEBUG_WRITE	4
+# define DEBUG_ALL	7
+static int trace = DEBUG_INIT;
+module_param(trace, int, 0644);
+# define DEV_DBG(D, d, f, ...) do { \
+		if ((D) & trace) \
+			dev_dbg(d, f, ##__VA_ARGS__); \
+	} while (0)
+#else
+# define DEV_DBG(D, d, f, ...) (void)0
+#endif
+
+#if IS_ENABLED(CONFIG_CAVIUM_BCH)
+static void cavm_bch_reset(void)
+{
+	cavm_bch_putv(bch_vf);
+	bch_vf = cavm_bch_getv();
+}
+
+/*
+ * Given a page, calculate the ECC code
+ *
+ * chip:	Pointer to NAND chip data structure
+ * buf:		Buffer to calculate ECC on
+ * code:	Buffer to hold ECC data
+ *
+ * Return 0 on success or -1 on failure
+ */
+static int octeon_nand_bch_calculate_ecc_internal(struct mtd_info *mtd,
+	      dma_addr_t ihandle, uint8_t *code)
+{
+	struct nand_chip *nand = mtd_to_nand(mtd);
+	struct cvm_nfc *tn = to_cvm_nfc(nand->controller);
+	int rc;
+	int i;
+	static uint8_t *ecc_buffer;
+	static int ecc_size;
+	static dma_addr_t ecc_handle;
+	union bch_resp *r = tn->bch_resp;
+
+	if (!ecc_buffer || ecc_size < nand->ecc.size) {
+		ecc_size = nand->ecc.size;
+		ecc_buffer = dma_alloc_coherent(tn->dev, ecc_size,
+					&ecc_handle, GFP_KERNEL);
+	}
+
+	memset(ecc_buffer, 0, nand->ecc.bytes);
+
+	r->u16 = 0;
+	wmb(); /* flush done=0 before making request */
+
+	rc = cavm_bch_encode(bch_vf, ihandle, nand->ecc.size,
+			     nand->ecc.strength,
+			     ecc_handle, tn->bch_rhandle);
+
+	if (!rc) {
+		cavm_bch_wait(bch_vf, r, tn->bch_rhandle);
+	} else {
+
+		dev_err(tn->dev, "octeon_bch_encode failed\n");
+		return -1;
+	}
+
+	if (!r->s.done || r->s.uncorrectable) {
+		dev_err(tn->dev,
+			"%s timeout, done:%d uncorr:%d corr:%d erased:%d\n",
+			__func__, r->s.done, r->s.uncorrectable,
+			r->s.num_errors, r->s.erased);
+		cavm_bch_reset();
+		return -1;
+	}
+
+	memcpy(code, ecc_buffer, nand->ecc.bytes);
+
+	for (i = 0; i < nand->ecc.bytes; i++)
+		code[i] ^= tn->eccmask[i];
+
+	return tn->bch_resp->s.num_errors;
+}
+
+/*
+ * Given a page, calculate the ECC code
+ *
+ * mtd:        MTD block structure
+ * dat:        raw data (unused)
+ * ecc_code:   buffer for ECC
+ */
+static int octeon_nand_bch_calculate(struct mtd_info *mtd,
+		const uint8_t *dat, uint8_t *ecc_code)
+{
+	struct nand_chip *nand = mtd_to_nand(mtd);
+	struct cvm_nfc *tn = to_cvm_nfc(nand->controller);
+	dma_addr_t handle = dma_map_single(tn->dev, (u8 *)dat,
+				nand->ecc.size, DMA_TO_DEVICE);
+	int ret;
+
+	ret = octeon_nand_bch_calculate_ecc_internal(
+			mtd, handle, (void *)ecc_code);
+
+	dma_unmap_single(tn->dev, handle,
+				nand->ecc.size, DMA_TO_DEVICE);
+	return ret;
+}
+/*
+ * Detect and correct multi-bit ECC for a page
+ *
+ * mtd:        MTD block structure
+ * dat:        raw data read from the chip
+ * read_ecc:   ECC from the chip (unused)
+ * isnull:     unused
+ *
+ * Returns number of bits corrected or -1 if unrecoverable
+ */
+static int octeon_nand_bch_correct(struct mtd_info *mtd, u_char *dat,
+		u_char *read_ecc, u_char *isnull)
+{
+	struct nand_chip *nand = mtd_to_nand(mtd);
+	struct cvm_nfc *tn = to_cvm_nfc(nand->controller);
+	int i = nand->ecc.size + nand->ecc.bytes;
+	static uint8_t *data_buffer;
+	static dma_addr_t ihandle;
+	static int buffer_size;
+	dma_addr_t ohandle;
+	union bch_resp *r = tn->bch_resp;
+	int rc;
+
+	if (i > buffer_size) {
+		if (buffer_size)
+			dma_free_coherent(tn->dev, buffer_size,
+					data_buffer, ihandle);
+		data_buffer = dma_alloc_coherent(tn->dev, i,
+						&ihandle, GFP_KERNEL);
+		if (!data_buffer) {
+			dev_err(tn->dev,
+				"%s: Could not allocate %d bytes for buffer\n",
+				__func__, i);
+			goto error;
+		}
+		buffer_size = i;
+	}
+
+	memcpy(data_buffer, dat, nand->ecc.size);
+	memcpy(data_buffer + nand->ecc.size,
+			read_ecc, nand->ecc.bytes);
+
+	for (i = 0; i < nand->ecc.bytes; i++)
+		data_buffer[nand->ecc.size + i] ^= tn->eccmask[i];
+
+	r->u16 = 0;
+	wmb(); /* flush done=0 before making request */
+
+	ohandle = dma_map_single(tn->dev, dat, nand->ecc.size, DMA_FROM_DEVICE);
+	rc = cavm_bch_decode(bch_vf, ihandle, nand->ecc.size,
+			     nand->ecc.strength, ohandle, tn->bch_rhandle);
+
+	if (!rc)
+		cavm_bch_wait(bch_vf, r, tn->bch_rhandle);
+
+	dma_unmap_single(tn->dev, ohandle, nand->ecc.size, DMA_FROM_DEVICE);
+
+	if (rc) {
+		dev_err(tn->dev, "cavm_bch_decode failed\n");
+		goto error;
+	}
+
+	if (!r->s.done) {
+		dev_err(tn->dev, "Error: BCH engine timeout\n");
+		cavm_bch_reset();
+		goto error;
+	}
+
+	if (r->s.erased) {
+		DEV_DBG(DEBUG_ALL, tn->dev, "Info: BCH block is erased\n");
+		return 0;
+	}
+
+	if (r->s.uncorrectable) {
+		DEV_DBG(DEBUG_ALL, tn->dev,
+			"Cannot correct NAND block, response: 0x%x\n",
+			r->u16);
+		goto error;
+	}
+
+	return r->s.num_errors;
+
+error:
+	DEV_DBG(DEBUG_ALL, tn->dev, "Error performing bch correction\n");
+	return -1;
+}
+
+void octeon_nand_bch_hwctl(struct mtd_info *mtd, int mode)
+{
+	/* Do nothing. */
+}
+
+static int octeon_nand_hw_bch_read_page(struct mtd_info *mtd,
+					struct nand_chip *chip, uint8_t *buf,
+					int oob_required, int page)
+{
+	struct nand_chip *nand = mtd_to_nand(mtd);
+	struct cvm_nfc *tn = to_cvm_nfc(nand->controller);
+	int i, eccsize = chip->ecc.size, ret;
+	int eccbytes = chip->ecc.bytes;
+	int eccsteps = chip->ecc.steps;
+	uint8_t *p;
+	uint8_t *ecc_code = chip->buffers->ecccode;
+	unsigned int max_bitflips = 0;
+
+	/* chip->read_buf() insists on sequential order, we do OOB first */
+	memcpy(chip->oob_poi, tn->buf.dmabuf + mtd->writesize, mtd->oobsize);
+
+	/* Use private buffer as input for ECC correction */
+	p = tn->buf.dmabuf;
+
+	ret = mtd_ooblayout_get_eccbytes(mtd, ecc_code, chip->oob_poi, 0,
+					 chip->ecc.total);
+	if (ret)
+		return ret;
+
+	for (i = 0; eccsteps; eccsteps--, i += eccbytes, p += eccsize) {
+		int stat;
+
+		DEV_DBG(DEBUG_READ, tn->dev,
+			"Correcting block offset %lx, ecc offset %x\n",
+			p - buf, i);
+		stat = chip->ecc.correct(mtd, p, &ecc_code[i], NULL);
+
+		if (stat < 0) {
+			mtd->ecc_stats.failed++;
+			DEV_DBG(DEBUG_ALL, tn->dev,
+				"Cannot correct NAND page %d\n", page);
+		} else {
+			mtd->ecc_stats.corrected += stat;
+			max_bitflips = max_t(unsigned int, max_bitflips, stat);
+		}
+	}
+
+	/* Copy corrected data to caller's buffer now */
+	memcpy(buf, tn->buf.dmabuf, mtd->writesize);
+
+	return max_bitflips;
+}
+
+static int octeon_nand_hw_bch_write_page(struct mtd_info *mtd,
+					 struct nand_chip *chip,
+					 const uint8_t *buf, int oob_required,
+					 int page)
+{
+	struct cvm_nfc *tn = to_cvm_nfc(chip->controller);
+	int i, eccsize = chip->ecc.size, ret;
+	int eccbytes = chip->ecc.bytes;
+	int eccsteps = chip->ecc.steps;
+	const uint8_t *p;
+	uint8_t *ecc_calc = chip->buffers->ecccalc;
+
+	DEV_DBG(DEBUG_WRITE, tn->dev, "%s(buf?%p, oob%d p%x)\n",
+		__func__, buf, oob_required, page);
+	for (i = 0; i < chip->ecc.total; i++)
+		ecc_calc[i] = 0xFF;
+
+	/* Copy the page data from caller's buffers to private buffer */
+	chip->write_buf(mtd, buf, mtd->writesize);
+	/* Use private date as source for ECC calculation */
+	p = tn->buf.dmabuf;
+
+	/* Hardware ECC calculation */
+	for (i = 0; eccsteps; eccsteps--, i += eccbytes, p += eccsize) {
+		int ret;
+
+		ret = chip->ecc.calculate(mtd, p, &ecc_calc[i]);
+
+		if (ret < 0)
+			DEV_DBG(DEBUG_WRITE, tn->dev,
+				"calculate(mtd, p?%p, &ecc_calc[%d]?%p) returned %d\n",
+				p, i, &ecc_calc[i], ret);
+
+		DEV_DBG(DEBUG_WRITE, tn->dev,
+			"block offset %lx, ecc offset %x\n", p - buf, i);
+	}
+
+	ret = mtd_ooblayout_set_eccbytes(mtd, ecc_calc, chip->oob_poi, 0,
+					 chip->ecc.total);
+	if (ret)
+		return ret;
+
+	/* Store resulting OOB into private buffer, will be sent to HW */
+	chip->write_buf(mtd, chip->oob_poi, mtd->oobsize);
+
+	return 0;
+}
+
+/**
+ * nand_write_page_raw - [INTERN] raw page write function
+ * @mtd: mtd info structure
+ * @chip: nand chip info structure
+ * @buf: data buffer
+ * @oob_required: must write chip->oob_poi to OOB
+ * @page: page number to write
+ *
+ * Not for syndrome calculating ECC controllers, which use a special oob layout.
+ */
+static int octeon_nand_write_page_raw(struct mtd_info *mtd,
+				      struct nand_chip *chip,
+				      const uint8_t *buf, int oob_required,
+				      int page)
+{
+	chip->write_buf(mtd, buf, mtd->writesize);
+	if (oob_required)
+		chip->write_buf(mtd, chip->oob_poi, mtd->oobsize);
+
+	return 0;
+}
+
+/**
+ * octeon_nand_write_oob_std - [REPLACEABLE] the most common OOB data write
+ *                             function
+ * @mtd: mtd info structure
+ * @chip: nand chip info structure
+ * @page: page number to write
+ */
+static int octeon_nand_write_oob_std(struct mtd_info *mtd,
+				     struct nand_chip *chip,
+				     int page)
+{
+	int status = 0;
+	const uint8_t *buf = chip->oob_poi;
+	int length = mtd->oobsize;
+
+	chip->cmdfunc(mtd, NAND_CMD_SEQIN, mtd->writesize, page);
+	chip->write_buf(mtd, buf, length);
+	/* Send command to program the OOB data */
+	chip->cmdfunc(mtd, NAND_CMD_PAGEPROG, -1, -1);
+
+	status = chip->waitfunc(mtd, chip);
+
+	return status & NAND_STATUS_FAIL ? -EIO : 0;
+}
+
+/**
+ * octeon_nand_read_page_raw - [INTERN] read raw page data without ecc
+ * @mtd: mtd info structure
+ * @chip: nand chip info structure
+ * @buf: buffer to store read data
+ * @oob_required: caller requires OOB data read to chip->oob_poi
+ * @page: page number to read
+ *
+ * Not for syndrome calculating ECC controllers, which use a special oob layout.
+ */
+static int octeon_nand_read_page_raw(struct mtd_info *mtd,
+				     struct nand_chip *chip,
+				     uint8_t *buf, int oob_required, int page)
+{
+	chip->read_buf(mtd, buf, mtd->writesize);
+	if (oob_required)
+		chip->read_buf(mtd, chip->oob_poi, mtd->oobsize);
+	return 0;
+}
+
+static int octeon_nand_read_oob_std(struct mtd_info *mtd,
+				    struct nand_chip *chip,
+				    int page)
+
+{
+	chip->cmdfunc(mtd, NAND_CMD_READOOB, 0, page);
+	chip->read_buf(mtd, chip->oob_poi, mtd->oobsize);
+	return 0;
+}
+
+static int octeon_nand_calc_bch_ecc_strength(struct nand_chip *nand)
+{
+	struct mtd_info *mtd = nand_to_mtd(nand);
+	struct nand_ecc_ctrl *ecc = &nand->ecc;
+	struct cvm_nfc *tn = to_cvm_nfc(nand->controller);
+	int nsteps = mtd->writesize / ecc->size;
+	int oobchunk = mtd->oobsize / nsteps;
+
+	/* ecc->strength determines ecc_level and OOB's ecc_bytes. */
+	const u8 strengths[]  = {4, 8, 16, 24, 32, 40, 48, 56, 60, 64};
+	/* first set the desired ecc_level to match strengths[] */
+	int index = ARRAY_SIZE(strengths) - 1;
+	int need;
+
+	while (index > 0 && !(ecc->options & NAND_ECC_MAXIMIZE) &&
+			strengths[index - 1] >= ecc->strength)
+		index--;
+	do {
+		need = DIV_ROUND_UP(15 * strengths[index], 8);
+		if (need <= oobchunk - 2)
+			break;
+	} while (index > 0);
+	ecc->strength = strengths[index];
+	ecc->bytes = need;
+
+	if (!tn->eccmask)
+		tn->eccmask = devm_kzalloc(tn->dev, ecc->bytes, GFP_KERNEL);
+	if (!tn->eccmask)
+		return -ENOMEM;
+
+	return 0;
+}
+
+/* sample the BCH signature of an erased (all 0xff) page,
+ * to XOR into all page traffic, so erased pages have no ECC errors
+ */
+static int cvm_bch_save_empty_eccmask(struct nand_chip *nand)
+{
+	struct mtd_info *mtd = nand_to_mtd(nand);
+	struct cvm_nfc *tn = to_cvm_nfc(nand->controller);
+	unsigned int eccsize = nand->ecc.size;
+	unsigned int eccbytes = nand->ecc.bytes;
+	uint8_t erased_ecc[eccbytes];
+	dma_addr_t erased_handle;
+	unsigned char *erased_page = dma_alloc_coherent(tn->dev, eccsize,
+					&erased_handle, GFP_KERNEL);
+	int i;
+	int rc = 0;
+
+	if (!erased_page)
+		return -ENOMEM;
+
+	memset(erased_page, 0xff, eccsize);
+	memset(erased_ecc, 0, eccbytes);
+
+	rc = octeon_nand_bch_calculate_ecc_internal(mtd,
+				erased_handle, erased_ecc);
+
+	dma_free_coherent(tn->dev, eccsize, erased_page, erased_handle);
+
+	for (i = 0; i < eccbytes; i++)
+		tn->eccmask[i] = erased_ecc[i] ^ 0xff;
+
+	return rc;
+}
+#endif /*CONFIG_CAVIUM_BCH*/
+
 static void cvm_nfc_chip_sizing(struct nand_chip *nand)
 {
 	struct cvm_nand_chip *chip = to_cvm_nand(nand);
+	struct mtd_info *mtd = nand_to_mtd(nand);
+	struct nand_ecc_ctrl *ecc = &nand->ecc;
 
 	chip->row_bytes = nand->onfi_params.addr_cycles & 0xf;
 	chip->col_bytes = nand->onfi_params.addr_cycles >> 4;
+
+	/*
+	 * HW_BCH using Cavium BCH engine, or SOFT_BCH laid out in
+	 * HW_BCH-compatible fashion, depending on devtree advice
+	 * and kernel config.
+	 * BCH/NFC hardware capable of subpage ops, not implemented.
+	 */
+	mtd_set_ooblayout(mtd, &nand_ooblayout_lp_ops);
+	nand->options |= NAND_NO_SUBPAGE_WRITE;
+
+	if (ecc->mode != NAND_ECC_NONE) {
+		int nsteps = ecc->steps ?: 1;
+
+		if (ecc->size && ecc->size != mtd->writesize)
+			nsteps = mtd->writesize / ecc->size;
+		else if (mtd->writesize > def_ecc_size &&
+				!(mtd->writesize & (def_ecc_size - 1)))
+			nsteps = mtd->writesize / def_ecc_size;
+		ecc->steps = nsteps;
+		ecc->size = mtd->writesize / nsteps;
+		ecc->bytes = mtd->oobsize / nsteps;
+
+		/*
+		 * no subpage ops, but set subpage-shift to match ecc->steps
+		 * so mtd_nandbiterrs tests appropriate boundaries
+		 */
+		if (!mtd->subpage_sft && !(ecc->steps & (ecc->steps - 1)))
+			mtd->subpage_sft = fls(ecc->steps) - 1;
+
+#if IS_ENABLED(CONFIG_CAVIUM_BCH)
+		if (ecc->mode != NAND_ECC_SOFT && bch_vf &&
+				!octeon_nand_calc_bch_ecc_strength(nand)) {
+			struct cvm_nfc *tn = to_cvm_nfc(nand->controller);
+			struct device *dev = tn->dev;
+
+			dev_info(dev, "Using hardware BCH engine support\n");
+			ecc->mode = NAND_ECC_HW_SYNDROME;
+			ecc->algo = NAND_ECC_BCH;
+			ecc->read_page = octeon_nand_hw_bch_read_page;
+			ecc->write_page = octeon_nand_hw_bch_write_page;
+			ecc->read_page_raw = octeon_nand_read_page_raw;
+			ecc->write_page_raw = octeon_nand_write_page_raw;
+			ecc->read_oob = octeon_nand_read_oob_std;
+			ecc->write_oob = octeon_nand_write_oob_std;
+
+			ecc->calculate = octeon_nand_bch_calculate;
+			ecc->correct = octeon_nand_bch_correct;
+			ecc->hwctl = octeon_nand_bch_hwctl;
+
+			DEV_DBG(DEBUG_INIT, tn->dev,
+				"NAND chip %d using hw_bch\n",
+				tn->selected_chip);
+			DEV_DBG(DEBUG_INIT, tn->dev,
+				" %d bytes ECC per %d byte block\n",
+				ecc->bytes, ecc->size);
+			DEV_DBG(DEBUG_INIT, tn->dev,
+				" for %d bits of correction per block.",
+				ecc->strength);
+
+			cvm_bch_save_empty_eccmask(nand);
+		}
+#endif /*CONFIG_CAVIUM_BCH*/
+	}
 }
 
 static int cvm_nfc_chip_init(struct cvm_nfc *tn, struct device *dev,
@@ -1457,14 +1960,18 @@ static int cvm_nfc_probe(struct pci_dev *pdev,
 		dev_err(dev, "64 bit DMA mask not available\n");
 
 	tn->buf.dmabuflen = NAND_MAX_PAGESIZE + NAND_MAX_OOBSIZE;
-	tn->buf.dmabuf = dmam_alloc_coherent(dev, tn->buf.dmabuflen,
+	tn->buf.dmabuf = dma_alloc_coherent(dev, tn->buf.dmabuflen,
 					     &tn->buf.dmaaddr, GFP_KERNEL);
 	if (!tn->buf.dmabuf) {
 		ret = -ENOMEM;
 		goto unclk;
 	}
 
-	tn->stat = dmam_alloc_coherent(dev, 8, &tn->stat_addr, GFP_KERNEL);
+	/* one hw-bch response, for one outstanding transaction */
+	tn->bch_resp = dma_alloc_coherent(dev, sizeof(*tn->bch_resp),
+					&tn->bch_rhandle, GFP_KERNEL);
+
+	tn->stat = dma_alloc_coherent(dev, 8, &tn->stat_addr, GFP_KERNEL);
 	if (!tn->stat) {
 		ret = -ENOMEM;
 		goto unclk;
@@ -1475,13 +1982,17 @@ static int cvm_nfc_probe(struct pci_dev *pdev,
 	if (ret)
 		goto unclk;
 
+#if IS_ENABLED(CONFIG_CAVIUM_BCH)
+	bch_vf = cavm_bch_getv();
+#endif
+
 	cvm_nfc_init(tn);
 	ret = cvm_nfc_chips_init(tn);
 	if (ret) {
 		dev_err(dev, "failed to init nand chips\n");
 		goto unclk;
 	}
-	dev_info(&pdev->dev, "probed\n");
+	dev_info(dev, "probed\n");
 	return 0;
 
 unclk:
@@ -1508,6 +2019,13 @@ static void cvm_nfc_remove(struct pci_dev *pdev)
 	}
 	clk_disable_unprepare(tn->clk);
 	pci_release_regions(pdev);
+
+#if IS_ENABLED(CONFIG_CAVIUM_BCH)
+	if (bch_vf)
+		cavm_bch_putv(bch_vf);
+#endif
+
+	pci_set_drvdata(pdev, NULL);
 }
 
 #ifdef CONFIG_PM_SLEEP
