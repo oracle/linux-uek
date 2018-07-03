@@ -179,6 +179,8 @@ exit:
 	return ret;
 }
 
+static void *token = (void *)(-EPROBE_DEFER);
+
 static int bch_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 {
 	struct device *dev = &pdev->dev;
@@ -234,6 +236,7 @@ static int bch_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 	INIT_LIST_HEAD(&bch->list);
 	mutex_lock(&octeontx_bch_devices_lock);
 	list_add(&bch->list, &octeontx_bch_devices);
+	token = (void *)pdev;
 	mutex_unlock(&octeontx_bch_devices_lock);
 
 	if (!no_vf)
@@ -258,6 +261,7 @@ static void bch_remove(struct pci_dev *pdev)
 		return;
 
 	mutex_lock(&octeontx_bch_devices_lock);
+	token = ERR_PTR(-EPROBE_DEFER);
 	bch_disable(bch);
 	list_for_each_entry(curr, &octeontx_bch_devices, list) {
 		if (curr == bch) {
@@ -279,7 +283,7 @@ static void bch_remove(struct pci_dev *pdev)
 void *cavm_bch_getp(void)
 {
 	try_module_get(THIS_MODULE);
-	return (void *)1;
+	return token;
 }
 EXPORT_SYMBOL(cavm_bch_getp);
 

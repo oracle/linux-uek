@@ -1290,6 +1290,21 @@ module_param(trace, int, 0644);
 #endif
 
 #if IS_ENABLED(CONFIG_CAVIUM_BCH)
+
+/*
+ * Optional BCH driver is not built into cavium_nand,
+ * because the engine can also be used in copy mode as a dma-engine
+ * (not implemented, but a good reson to keep modules separate).
+ * Kconfig defaults BCH=y when NAND=y, and BCH=m when NAND=m,
+ * but there's no means to *enforce* this in Kconfig,
+ * so check at build time.
+ */
+# if defined(CONFIG_CAVIUM_BCH_MODULE)
+#  if !defined(CONFIG_MTD_NAND_CAVIUM_MODULE)
+#   error if CONFIG_CAVIUM_BCH=m, CONFIG_MTD_NAND_CAVIUM=m is required
+#  endif
+# endif
+
 static void cavm_bch_reset(void)
 {
 	cavm_bch_putv(bch_vf);
@@ -1662,11 +1677,13 @@ static int octeon_nand_calc_bch_ecc_strength(struct nand_chip *nand)
 	while (index > 0 && !(ecc->options & NAND_ECC_MAXIMIZE) &&
 			strengths[index - 1] >= ecc->strength)
 		index--;
+
 	do {
 		need = DIV_ROUND_UP(15 * strengths[index], 8);
 		if (need <= oobchunk - 2)
 			break;
 	} while (index > 0);
+
 	ecc->strength = strengths[index];
 	ecc->bytes = need;
 
@@ -1750,7 +1767,8 @@ static void cvm_nfc_chip_sizing(struct nand_chip *nand)
 			mtd->subpage_sft = fls(ecc->steps) - 1;
 
 #if IS_ENABLED(CONFIG_CAVIUM_BCH)
-		if (ecc->mode != NAND_ECC_SOFT && bch_vf &&
+		if (ecc->mode != NAND_ECC_SOFT &&
+				!IS_ERR_OR_NULL(bch_vf) &&
 				!octeon_nand_calc_bch_ecc_strength(nand)) {
 			struct cvm_nfc *tn = to_cvm_nfc(nand->controller);
 			struct device *dev = tn->dev;
@@ -1920,6 +1938,12 @@ static int cvm_nfc_probe(struct pci_dev *pdev,
 	struct cvm_nfc *tn;
 	int ret;
 
+#if IS_ENABLED(CONFIG_CAVIUM_BCH)
+	bch_vf = cavm_bch_getv();
+	if (IS_ERR(bch_vf))
+		return PTR_ERR(bch_vf);
+#endif
+
 	tn = devm_kzalloc(dev, sizeof(*tn), GFP_KERNEL);
 	if (!tn)
 		return -ENOMEM;
@@ -1981,10 +2005,6 @@ static int cvm_nfc_probe(struct pci_dev *pdev,
 			       cvm_nfc_isr, 0, "nand-flash-controller", tn);
 	if (ret)
 		goto unclk;
-
-#if IS_ENABLED(CONFIG_CAVIUM_BCH)
-	bch_vf = cavm_bch_getv();
-#endif
 
 	cvm_nfc_init(tn);
 	ret = cvm_nfc_chips_init(tn);

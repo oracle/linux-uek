@@ -19,9 +19,10 @@ config CAVIUM_BCH
 	depends on PCI_MSI && 64BIT
 	default MTD_NAND_CAVIUM
 	help
-	  Support for Cavium BCH block found in octeon-tx series of
-	  processors.
+	  Optional support for Cavium BCH block found in OcteonTX
+	  series of SoCs.
 	  Currently used for hardware assist to MTD_NAND_CAVIUM,
 	  potentially also usable as a general dma_engine.
 
-	  To compile this as a module, choose M here.
+	  If being used with MTD_NAND_CAVIUM=y, choose Y here,
+	  otherwise, to compile this as a module, choose M here.
