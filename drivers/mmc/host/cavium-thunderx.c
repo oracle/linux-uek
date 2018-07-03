@@ -120,7 +120,7 @@ static int thunder_mmc_probe(struct pci_dev *pdev,
 	 * Clear out any pending interrupts that may be left over from
 	 * bootloader. Writing 1 to the bits clears them.
 	 */
-	writeq(127, host->base + MIO_EMM_INT_EN(host));
+	writeq(127, host->base + MIO_EMM_INT(host));
 	writeq(3, host->base + MIO_EMM_DMA_INT_ENA_W1C(host));
 	/* Clear DMA FIFO */
 	writeq(BIT_ULL(16), host->base + MIO_EMM_DMA_FIFO_CFG(host));
