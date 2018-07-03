@@ -261,6 +261,8 @@ struct cvm_nand_chip {
 	struct ndf_set_tm_par_cmd timings;	/* timing parameters */
 	int selected_page;
 	bool oob_access;
+	bool iface_set;
+	int iface_mode;
 	int row_bytes;
 	int col_bytes;
 };
@@ -311,7 +313,8 @@ static inline struct cvm_nfc *to_cvm_nfc(struct nand_hw_control *ctrl)
 }
 
 /* default parameters used for probing chips */
-static int default_onfi_timing; /* = 0; */
+#define MAX_ONFI_MODE	5
+static int default_onfi_timing;
 static int default_width = 1; /* 8 bit */
 static int default_page_size = 2048;
 static struct ndf_set_tm_par_cmd default_timing_parms;
@@ -404,7 +407,8 @@ static inline int timing_to_cycle(u32 timing, unsigned long clock)
 	return DIV_ROUND_UP(ns, 1000) + margin;
 }
 
-static void set_timings(struct ndf_set_tm_par_cmd *tp,
+static void set_timings(struct cvm_nand_chip *chip,
+			struct ndf_set_tm_par_cmd *tp,
 			const struct nand_sdr_timings *timings,
 			unsigned long sclk)
 {
@@ -445,17 +449,17 @@ static int set_default_timings(struct cvm_nfc *tn,
 {
 	unsigned long sclk = clk_get_rate(tn->clk);
 
-	set_timings(&default_timing_parms, timings, sclk);
+	set_timings(NULL, &default_timing_parms, timings, sclk);
 	return 0;
 }
 
 static int cvm_nfc_chip_set_timings(struct cvm_nand_chip *chip,
-					 const struct nand_sdr_timings *timings)
+		 const struct nand_sdr_timings *timings)
 {
 	struct cvm_nfc *tn = to_cvm_nfc(chip->nand.controller);
 	unsigned long sclk = clk_get_rate(tn->clk);
 
-	set_timings(&chip->timings, timings, sclk);
+	set_timings(chip, &chip->timings, timings, sclk);
 	return 0;
 }
 
@@ -850,14 +854,14 @@ static int cvm_nand_reset(struct cvm_nfc *tn)
 	//mdelay(1);
 	if (rc)
 		return rc;
+
 	return 0;
 }
 
 static int ndf_read(struct cvm_nfc *tn, int cmd1, int addr_bytes, u64 addr,
 		    int cmd2, int len)
 {
-	dma_addr_t bus_addr = (cmd1 != NAND_CMD_STATUS) ?
-			      tn->buf.dmaaddr : tn->stat_addr;
+	dma_addr_t bus_addr = tn->use_status ? tn->stat_addr : tn->buf.dmaaddr;
 	struct nand_chip *nand = tn->controller.active;
 	int timing_mode, bytes, rc;
 	union ndf_cmd cmd;
@@ -917,6 +921,27 @@ static int ndf_read(struct cvm_nfc *tn, int cmd1, int addr_bytes, u64 addr,
 	}
 
 	return bytes;
+}
+
+static int cvm_nand_get_features(struct mtd_info *mtd,
+				      struct nand_chip *chip, int feature_addr,
+				      u8 *subfeature_para)
+{
+	struct nand_chip *nand = mtd_to_nand(mtd);
+	struct cvm_nfc *tn = to_cvm_nfc(nand->controller);
+	int len = 8;
+	int rc;
+
+	memset(tn->buf.dmabuf, 0xff, len);
+	tn->buf.data_index = 0;
+	tn->buf.data_len = 0;
+	rc = ndf_read(tn, NAND_CMD_GET_FEATURES, 1, feature_addr, 0, len);
+	if (rc)
+		return rc;
+
+	memcpy(subfeature_para, tn->buf.dmabuf, ONFI_SUBFEATURE_PARAM_LEN);
+
+	return 0;
 }
 
 static int cvm_nand_set_features(struct mtd_info *mtd,
@@ -1155,41 +1180,94 @@ static void cvm_nand_cmdfunc(struct mtd_info *mtd, unsigned int command,
 			dev_err(tn->dev, "PAGEPROG failed with %d\n", rc);
 		break;
 
+	case NAND_CMD_SET_FEATURES:
+		/* assume tn->buf.data_len == 4 of data has been set there */
+		rc = cvm_nand_set_features(mtd, nand,
+					page_addr, tn->buf.dmabuf);
+		if (rc)
+			dev_err(tn->dev, "SET_FEATURES failed with %d\n", rc);
+		break;
+
+	case NAND_CMD_GET_FEATURES:
+		rc = cvm_nand_get_features(mtd, nand,
+					page_addr, tn->buf.dmabuf);
+		if (!rc) {
+			tn->buf.data_index = 0;
+			tn->buf.data_len = 4;
+		} else {
+			dev_err(tn->dev, "GET_FEATURES failed with %d\n", rc);
+		}
+		break;
+
 	default:
 		WARN_ON_ONCE(1);
 		dev_err(tn->dev, "unhandled nand cmd: %x\n", command);
 	}
 }
 
-static int cvm_nfc_chip_init_timings(struct cvm_nand_chip *chip,
-					   struct device_node *np)
+static int cvm_nand_waitfunc(struct mtd_info *mtd, struct nand_chip *chip)
 {
-	const struct nand_sdr_timings *timings;
-	int ret, mode;
+	struct cvm_nfc *tn = to_cvm_nfc(chip->controller);
+	int ret;
 
-	mode = onfi_get_async_timing_mode(&chip->nand);
-	if (mode == ONFI_TIMING_MODE_UNKNOWN) {
-		mode = chip->nand.onfi_timing_mode_default;
-	} else {
-		u8 feature[ONFI_SUBFEATURE_PARAM_LEN] = {};
+	ret = ndf_wait_idle(tn);
+	return (ret < 0) ? -EIO : 0;
+}
 
-		mode = fls(mode) - 1;
-		if (mode < 0)
-			mode = 0;
+/* check compatibility with ONFI timing mode#N, and optionally apply */
+static int cvm_nand_setup_data_interface(struct mtd_info *mtd, int chipnr,
+	const struct nand_data_interface *conf)
+{
+	struct nand_chip *nand = mtd_to_nand(mtd);
+	struct cvm_nand_chip *chip = to_cvm_nand(nand);
+	int rc;
+	static u64 tWC_N[MAX_ONFI_MODE+2]; /* cache a mode signature */
+	int mode; /* deduced mode number, for reporting and restricting */
 
-		feature[0] = mode;
-		ret = chip->nand.onfi_set_features(&chip->nand.mtd, &chip->nand,
-						ONFI_FEATURE_ADDR_TIMING_MODE,
-						feature);
-		if (ret)
-			return ret;
+	nand->select_chip(mtd, chipnr);
+
+	/*
+	 * Cache timing modes for reporting, and reducing needless change.
+	 *
+	 * Challenge: caller does not pass ONFI mode#, but reporting the mode
+	 * and restricting to a maximum, or a list, are useful for diagnosing
+	 * new hardware.  So use tWC_min, distinct and monotonic across modes,
+	 * to discover the requested/accepted mode number
+	 */
+	for (mode = MAX_ONFI_MODE; mode >= 0 && !tWC_N[0]; mode--) {
+		const struct nand_sdr_timings *t;
+
+		t = onfi_async_timing_mode_to_sdr_timings(mode);
+		if (!t)
+			continue;
+		tWC_N[mode] = t->tWC_min;
 	}
 
-	timings = onfi_async_timing_mode_to_sdr_timings(mode);
-	if (IS_ERR(timings))
-		return PTR_ERR(timings);
-
-	return cvm_nfc_chip_set_timings(chip, timings);
+	if (!conf) {
+		rc = -EINVAL;
+	} else if (nand->data_interface &&
+			chip->iface_set && chip->iface_mode == mode) {
+		/*
+		 * Cases:
+		 * - called from nand_reset, which clears DDR timing
+		 *   mode back to SDR.  BUT if we're already in SDR,
+		 *   timing mode persists over resets.
+		 *   While mtd/nand layer only supports SDR,
+		 *   this is always safe. And this driver only supports SDR.
+		 *
+		 * - called from post-power-event nand_reset (maybe
+		 *   NFC+flash power down, or system hibernate.
+		 *   Address this when CONFIG_PM support added
+		 */
+		rc = 0;
+	} else {
+		rc = cvm_nfc_chip_set_timings(chip, &conf->timings.sdr);
+		if (!rc) {
+			chip->iface_mode = mode;
+			chip->iface_set = true;
+		}
+	}
+	return rc;
 }
 
 static void cvm_nfc_chip_sizing(struct nand_chip *nand)
@@ -1230,10 +1308,13 @@ static int cvm_nfc_chip_init(struct cvm_nfc *tn, struct device *dev,
 
 	nand->select_chip = cvm_nand_select_chip;
 	nand->cmdfunc = cvm_nand_cmdfunc;
-	nand->onfi_set_features = cvm_nand_set_features;
+	nand->waitfunc = cvm_nand_waitfunc;
 	nand->read_byte = cvm_nand_read_byte;
 	nand->read_buf = cvm_nand_read_buf;
 	nand->write_buf = cvm_nand_write_buf;
+	nand->onfi_set_features = cvm_nand_set_features;
+	nand->onfi_get_features = cvm_nand_get_features;
+	nand->setup_data_interface = cvm_nand_setup_data_interface;
 
 	mtd = nand_to_mtd(nand);
 	mtd->dev.parent = dev;
@@ -1242,12 +1323,6 @@ static int cvm_nfc_chip_init(struct cvm_nfc *tn, struct device *dev,
 	ret = nand_scan_ident(mtd, 1, NULL);
 	if (ret)
 		return ret;
-
-	ret = cvm_nfc_chip_init_timings(chip, np);
-	if (ret) {
-		dev_err(dev, "could not configure chip timings: %d\n", ret);
-		return ret;
-	}
 
 	cvm_nfc_chip_sizing(nand);
 
