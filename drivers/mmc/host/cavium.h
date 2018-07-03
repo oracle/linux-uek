@@ -84,6 +84,7 @@ struct cvm_mmc_host {
 
 	struct gpio_desc *global_pwr_gpiod;
 	atomic_t shared_power_users;
+	bool powered;
 
 	struct cvm_mmc_slot *slot[CAVIUM_MAX_MMC];
 	struct platform_device *slot_pdev[CAVIUM_MAX_MMC];
