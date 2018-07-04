@@ -189,6 +189,7 @@ quiet_cmd_ctf = CTFA
 ctf-builtins := $(CTF_DEBUGDIR)/vmlinux
  ctf-modules := $(shell find $(CTF_DEBUGDIR) \( -name '*.ko' -o -name '*.ko.debug' \) -print)
 ctf-filelist := .ctf.filelist
+ctf-filelist-raw := .ctf.filelist.raw
 ctf-stamp :=
 
 else
@@ -199,6 +200,7 @@ quiet_cmd_ctf = CTF
 override ctf-builtins :=
 ctf-modules := $(modules:.ko=.o)
 ctf-filelist := $(ctf-dir)/$(notdir $(M)-extmod).ctf.filelist
+ctf-filelist-raw := $(ctf-dir)/$(notdir $(M)-extmod).ctf.filelist.raw
 ctf-stamp = $(ctf-dir)/$(notdir $(M)-extmod).stamp
 
 # All the modules' CTF depends on the stamp file.
@@ -208,18 +210,33 @@ $(all-module-ctfs): $(ctf-stamp)
 
 endif
 
-$(ctf-filelist): $(ctf-builtins) $(ctf-modules) | $(sdtinfo-prereq)
-	@rm -f $(ctf-filelist);
+# Files in the CTF filelist may be archives which need expanding, or ordinary
+# object files.  The list may also be much too long to appear on a single shell
+# command line.  The blank line at the end of this recipe is crucial: without
+# it, all the invocations would be fused into one shell command.
+define one-ctf-filelist-arg =
+	@echo "$(1)" >> $(2)
+
+endef
+
+$(ctf-filelist-raw): $(ctf-builtins) $(ctf-modules) | $(sdtinfo-prereq)
+	@rm -f $(ctf-filelist-raw);
 	@if [[ -n "$(ctf-dir-mk)" ]]; then \
 		mkdir -p "$(ctf-dir-mk)"; \
 	fi
-	@for obj in $^; do \
-		if [[ `file $$obj` =~ ' ELF ' ]]; then \
-			echo "$$obj" >> $(ctf-filelist); \
-		else \
-			ar t $$obj >> $(ctf-filelist); \
-		fi; \
-	done
+	$(foreach obj,$^,$(call one-ctf-filelist-arg,$(obj),$(ctf-filelist-raw)))
+
+$(ctf-filelist): $(ctf-filelist-raw)
+	@rm -f $(ctf-filelist);
+	@xargs -r file < $(ctf-filelist-raw) | \
+		while read -r namecolon type; do \
+			name="$${namecolon%:}"; \
+			if [[ $$type =~ 'ELF ' ]]; then \
+				echo "$$name" >> $(ctf-filelist); \
+			else \
+				$(AR) t "$$name" >> $(ctf-filelist); \
+			fi; \
+		done
 
 ifeq ($(KBUILD_EXTMOD),)
 # The CTF depends on the output CTF file list, and that depends

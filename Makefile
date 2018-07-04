@@ -1378,7 +1378,7 @@ modules.builtin: $(vmlinux-dirs:%=%/modules.builtin)
 
 # Directories & files removed with 'make clean'
 CLEAN_DIRS  += $(MODVERDIR) .ctf
-CLEAN_FILES += .ctf.filelist
+CLEAN_FILES += .ctf.filelist .ctf.filelist.raw
 
 # Directories & files removed with 'make mrproper'
 MRPROPER_DIRS  += include/config usr/include include/generated          \
