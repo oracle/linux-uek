@@ -3,7 +3,7 @@
  * files, and generate CTF in correspondingly-named files, or in a single
  * representation meant for mmapping.
  *
- * Copyright (c) 2011, 2017, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2011, 2018, Oracle and/or its affiliates. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -232,27 +232,40 @@ static ctf_id_t ctf_funcptr_type;
  *
  * (Used so that a caller of construct_ctf_id() that wants a type to be created
  * can override aspects of that type.)
+ *
+ * The 'chain', if set, causes the various private_*() functions that handle
+ * overrides to look back along the chain to find a suitable attribute.  The
+ * chain must be set on the last element in the array.  The search for
+ * attributes terminates at the first match.
+ *
+ * Note: this is not a particularly generic implementation: a better approach
+ * would be to keep walking the chain on DIE_OVERRIDE_ADD, and keep adding until
+ * we are done: but we have only one user of ADD, and it implements the addition
+ * itself because it is adding to a value from a different DIE: so this added
+ * generality is not needed yet.
  */
 typedef struct die_override {
 	int tag;
 	int attribute;
 	enum { DIE_OVERRIDE_REPLACE, DIE_OVERRIDE_ADD } op;
 	Dwarf_Sword value;
+	struct die_override *chain;
 } die_override_t;
 
 /*
  * Compute the type ID of a DWARF DIE (with possibly-overridden attributes) and
- * return it in a new dynamically- allocated string.
+ * return it in a new dynamically-allocated string.
  *
  * Optionally, call a callback with the computed ID once we know it (this is a
  * recursive process, so the callback can be called multiple times as the ID
- * is built up).  The overrides are not passed down to the callback.
+ * is built up).
  *
  * An ID of NULL indicates that this DIE has no ID and need not be considered.
  */
 static char *type_id(Dwarf_Die *die, die_override_t *overrides,
 		     void (*fun)(Dwarf_Die *die,
 				 const char *id,
+				 die_override_t *overrides,
 				 void *data),
 		     void *data) __attribute__((__warn_unused_result__));
 
@@ -365,12 +378,25 @@ static void detect_duplicates(const char *module_name, const char *file_name,
 			      void *data);
 
 /*
+ * Do the underlying marking of a DIE as shared, iff need be.  (No variable
+ * blacklisting, non-opaque structure checks, or anything else needed only by
+ * top-level DIEs.)
+ *
+ * This function may be called multiple times for overridden DIEs that are
+ * dependent types of bitfields.
+ */
+static void detect_duplicates_mark_inner_die(const char *module_name, Dwarf_Die *die,
+					     const char *id, die_override_t *overrides,
+					     void *data);
+
+/*
  * Note in the detect_duplicates_id_file list that we will rescan a DIE in
  * a later duplicate detection pass.
  *
  * A type_id() callback.
  */
 static void detect_duplicates_will_rescan(Dwarf_Die *die, const char *id,
+					  die_override_t *overrides,
 					  void *data);
 
 /*
@@ -388,6 +414,7 @@ static void detect_duplicates_blacklist_var_dups(Dwarf_Die *die,
  * level) as duplicates.
  */
 static void detect_duplicates_typeid(Dwarf_Die *die, const char *id,
+				     die_override_t *overrides,
 				     void *data);
 
 /*
@@ -397,7 +424,8 @@ static void detect_duplicates_typeid(Dwarf_Die *die, const char *id,
  * possibly be found in a module different from that of their containing
  * aggregate, any more than a structure member can).
  */
-static void mark_seen_contained(Dwarf_Die *die, const char *module_name);
+static void mark_seen_contained(Dwarf_Die *die, const char *module_name,
+				die_override_t *overrides, void *data);
 
 /*
  * Determine if some type (whose ultimate base type is an non-opaque structure,
@@ -421,7 +449,7 @@ static void mark_shared_by_name(ctf_file_t *ctf, ctf_id_t ctf_id,
  * A type_id() callback.
  */
 static void is_named_struct_union_enum(Dwarf_Die *die, const char *unused,
-				       void *data);
+				       die_override_t *overrides, void *data);
 
 /*
  * Set up state for detect_duplicates().  A tu_init() callback.
@@ -456,7 +484,7 @@ static enum needs_sharing type_needs_sharing(const char *module_name, const char
  *
  * A type_id() callback (though also called directly).
  */
-static void mark_shared(Dwarf_Die *die, const char *id,
+static void mark_shared(Dwarf_Die *die, const char *id, die_override_t *overrides,
 			void *data);
 
 /*
@@ -513,6 +541,7 @@ static Dwarf_Die *die_emit_next_backwards(Dwarf_Die *next, Dwarf_Die *die,
  */
 static ctf_id_t lookup_ctf_type(const char *module_name, const char *file_name,
 				Dwarf_Die *die, ctf_file_t *ctf,
+				die_override_t *overrides,
 				const char *locerrstr);
 
 /*
@@ -1309,11 +1338,24 @@ static void init_ctf_table(const char *module_name)
  *
  * This function is the hottest hot spot in dwarf2ctf, so is somewhat
  * aggressively optimized.
+ *
+ * The "overrides" allow the overriding of DWARF attributes, so that the
+ * machinery notices different DWARF from what actually appears in the
+ * debuginfo, so that the CTF that is emitted is suitably modified (and possibly
+ * duplicated).  This is mostly used by type_id() to generate different IDs for
+ * dependent types of bitfields, but can be used for other purposes too, such as
+ * adjusting the offsets of types in unnamed structures, etc.  Overrides are
+ * passed down if provided: overrides relating to bitfields are only applied by
+ * type_id() if no other overrides are provided.
+ *
+ * In general, you do not need to pass overrides down if you know you will only
+ * be called directly on top-level DIEs, but otherwise, you should do so.
  */
 static char *type_id(Dwarf_Die *die,
 		     die_override_t *overrides,
 		     void (*fun)(Dwarf_Die *die,
 				 const char *id,
+				 die_override_t *overrides,
 				 void *data),
 		     void *data)
 {
@@ -1330,17 +1372,19 @@ static char *type_id(Dwarf_Die *die,
 
 	/*
 	 * The ID of a function pointer is '//fp//', as a special case,
-	 * with no location, ever.
+	 * with no location or overrides, ever.
 	 */
 	if (dwarf_tag(die) == DW_TAG_subroutine_type) {
 		id = xstrdup("//fp//");
 		if (fun)
-			fun(die, id, data);
+			fun(die, id, NULL, data);
 		return id;
 	}
 
 	/*
 	 * If we have a type DIE, generate it first, passing any overrides down.
+	 * If there are no overrides, look for a bit_size and bit_offset and pass
+	 * them down as well.
 	 *
 	 * Otherwise, note the location of this DIE, providing scoping
 	 * information for all types based upon this one.  Location elements are
@@ -1354,9 +1398,36 @@ static char *type_id(Dwarf_Die *die,
 	 * appear inside an [].)
 	 */
 	if (dwarf_tag(die) != DW_TAG_subrange_type) {
-		if (dwarf_tag(die) != DW_TAG_base_type)
-			id = type_id(private_dwarf_type(die, &type_die),
-				     overrides, fun, data);
+		if (dwarf_tag(die) != DW_TAG_base_type) {
+			Dwarf_Die *diep = private_dwarf_type(die, &type_die);
+
+			/*
+			 * bit_size and bit_offset go together: we can assume
+			 * that if a member has the one, it has the other.
+			 */
+			if (diep) {
+				if (private_dwarf_hasattr(die, DW_AT_bit_size)) {
+					die_override_t o[] =
+						{{ DW_TAG_base_type,
+						   DW_AT_bit_size,
+						   DIE_OVERRIDE_REPLACE,
+						   private_dwarf_udata(die,
+								       DW_AT_bit_size,
+								       NULL),
+						   NULL },
+						 { DW_TAG_base_type,
+						   DW_AT_bit_offset,
+						   DIE_OVERRIDE_REPLACE,
+						   private_dwarf_udata(die,
+								       DW_AT_bit_offset,
+								       NULL),
+						   overrides },
+						 {0}};
+					id = type_id(diep, o, fun, data);
+				} else
+					id = type_id(diep, overrides, fun, data);
+			}
+		}
 
 		/*
 		 * Location information.  We use cached realpath() results, and
@@ -1606,7 +1677,7 @@ static char *type_id(Dwarf_Die *die,
 	}
 
 	if (fun && decorated)
-		fun(die, id, data);
+		fun(die, id, overrides, data);
 
 	return id;
 }
@@ -1980,6 +2051,22 @@ static void detect_duplicates(const char *module_name,
 	if (parent_die != NULL && dwarf_tag(die) == DW_TAG_variable)
 		detect_duplicates_blacklist_var_dups(die, state);
 
+	detect_duplicates_mark_inner_die(module_name, die, id, NULL, data);
+	free(id);
+}
+
+/*
+ * Do the underlying marking of a DIE as shared, iff need be.  (No variable
+ * blacklisting, non-opaque structure checks, or anything else needed only by
+ * top-level DIEs.)
+ *
+ * This function may be called multiple times for overridden DIEs that are
+ * dependent types of bitfields.
+ */
+static void detect_duplicates_mark_inner_die(const char *module_name, Dwarf_Die *die,
+					     const char *id, die_override_t *overrides,
+					     void *data)
+{
 	/*
 	 * If we know of a single module incorporating this type, and it is not
 	 * the same as the module we are currently in, then this type is
@@ -1993,8 +2080,8 @@ static void detect_duplicates(const char *module_name,
 	 */
 	switch (type_needs_sharing(module_name, id)) {
 	case NS_NEEDS_SHARING:
-		mark_shared(die, NULL, data);
-		mark_seen_contained(die, "shared_ctf");
+		mark_shared(die, NULL, overrides, data);
+		mark_seen_contained(die, "shared_ctf", overrides, data);
 		/* Fall through */
 	case NS_NO_MARKING:
 		/*
@@ -2004,7 +2091,6 @@ static void detect_duplicates(const char *module_name,
 		 * module at a time, and id_to_module will be a trivial
 		 * mapping.)
 		 */
-		free(id);
 		return;
 	case NS_NOT_SHARED:
 		break;
@@ -2016,9 +2102,9 @@ static void detect_duplicates(const char *module_name,
 	 */
 
 	dw_ctf_trace("Marking %s as seen in %s\n", id, module_name);
-	g_hash_table_replace(id_to_module, id, xstrdup(module_name));
-	mark_seen_contained(die, module_name);
-	free(type_id(die, NULL, detect_duplicates_typeid, data));
+	g_hash_table_replace(id_to_module, xstrdup(id), xstrdup(module_name));
+	mark_seen_contained(die, module_name, overrides, data);
+	free(type_id(die, overrides, detect_duplicates_typeid, data));
 }
 
 /*
@@ -2028,7 +2114,7 @@ static void detect_duplicates(const char *module_name,
  * A type_id() callback.
  */
 static void detect_duplicates_will_rescan(Dwarf_Die *die, const char *id,
-					  void *data)
+					  die_override_t *overrides, void *data)
 {
 	struct detect_duplicates_state *state = data;
 	struct detect_duplicates_id_file *id_file;
@@ -2134,12 +2220,12 @@ static enum needs_sharing type_needs_sharing(const char *module_name,
  * level) as duplicates.
  */
 static void detect_duplicates_typeid(Dwarf_Die *die, const char *id,
-				     void *data)
+				     die_override_t *overrides, void *data)
 {
 	struct detect_duplicates_state *state = data;
 
-	detect_duplicates(state->module_name, state->file_name, die, NULL,
-			  data);
+	detect_duplicates_mark_inner_die(state->module_name, die, id, overrides,
+					 data);
 }
 
 /*
@@ -2149,7 +2235,8 @@ static void detect_duplicates_typeid(Dwarf_Die *die, const char *id,
  * cannot possibly be found in a module different from that of their containing
  * aggregate, any more than a structure member can).
  */
-static void mark_seen_contained(Dwarf_Die *die, const char *module_name)
+static void mark_seen_contained(Dwarf_Die *die, const char *module_name,
+				die_override_t *overrides, void *data)
 {
 	const char *err;
 	Dwarf_Die child;
@@ -2183,7 +2270,8 @@ static void mark_seen_contained(Dwarf_Die *die, const char *module_name)
 	 *
 	 * (Bit-field members are not skipped: they use different CTF from their
 	 * non-bitfield equivalents, even though they refer to the same
-	 * top-level DIE.)
+	 * top-level DIE.  The actual different CTF is handled by type_id()
+	 * itself, but we do have to call it.)
 	 */
 	int sib_ret;
 
@@ -2192,60 +2280,25 @@ static void mark_seen_contained(Dwarf_Die *die, const char *module_name)
 		case DW_TAG_member: {
 			/*
 			 * bit_size and bit_offset go together: we can assume
-			 * that if a member has the one, it has the other.
+			 * that if a member has the one, it has the other,
+			 * is a bitfield, and needs recursive marking.
 			 */
 			if (dwarf_tag(&child) == DW_TAG_member &&
 			    !private_dwarf_hasattr(&child, DW_AT_bit_size))
 				break;
 
-			die_override_t override[] =
-				{{ DW_TAG_base_type,
-				   DW_AT_bit_size,
-				   DIE_OVERRIDE_REPLACE,
-				   private_dwarf_udata(&child, DW_AT_bit_size,
-						       NULL) },
-				 { DW_TAG_base_type,
-				   DW_AT_bit_offset,
-				   DIE_OVERRIDE_REPLACE,
-				   private_dwarf_udata(&child, DW_AT_bit_offset,
-						       NULL) },
-				 {0}};
-
-			char *id = type_id(&child, override, NULL, NULL);
-
-			/*
-			 * We also have to do shared checking in here, since
-			 * this type does not exist at the DWARF top level.
-			 */
-			switch (type_needs_sharing(module_name, id)) {
-			case NS_NEEDS_SHARING:
-				g_hash_table_replace(id_to_module, id,
-						     xstrdup("shared_ctf"));
-				dw_ctf_trace("Marking bitfield member %s as "
-					     "shared\n", id);
-
-				break;
-			case NS_NO_MARKING:
-				free(id);
-				break;
-			case NS_NOT_SHARED:
-				g_hash_table_replace(id_to_module, id,
-						     xstrdup(module_name));
-				dw_ctf_trace("Marking bitfield member %s as seen in %s\n",
-					     id, module_name);
-				break;
-			}
+			free(type_id(&child, overrides, detect_duplicates_typeid, data));
 			break;
 		}
 		case DW_TAG_structure_type:
 		case DW_TAG_union_type:
-			mark_seen_contained(&child, module_name);
+			mark_seen_contained(&child, module_name, overrides, data);
 			/* fall through */
 		default:
 			if (dwarf_tag(&child) <= assembly_len &&
 			    assembly_tab[dwarf_tag(&child)] != NULL) {
 
-				char *id = type_id(&child, NULL, NULL, NULL);
+				char *id = type_id(&child, overrides, NULL, NULL);
 
 				dw_ctf_trace("Marking member %s as seen in %s\n", id,
 					     module_name);
@@ -2274,7 +2327,8 @@ static void mark_seen_contained(Dwarf_Die *die, const char *module_name)
  *
  * A type_id() callback (though also called directly).
  */
-static void mark_shared(Dwarf_Die *die, const char *id, void *data)
+static void mark_shared(Dwarf_Die *die, const char *id,
+			die_override_t *overrides, void *data)
 {
 	struct detect_duplicates_state *state = data;
 	const char *existing_module;
@@ -2284,7 +2338,7 @@ static void mark_shared(Dwarf_Die *die, const char *id, void *data)
 	 * throwing the result away.
 	 */
 	if (id == NULL) {
-		free(type_id(die, NULL, mark_shared, state));
+		free(type_id(die, overrides, mark_shared, state));
 		return;
 	}
 
@@ -2338,36 +2392,15 @@ static void mark_shared(Dwarf_Die *die, const char *id, void *data)
 
 		/*
 		 * We are only interested in non-blacklisted children of type
-		 * DW_TAG_member.  As above, bitfields get an override to
-		 * denote the bitfieldness of their parent type.
+		 * DW_TAG_member.
 		 */
 		int sib_ret;
 
 		do
 			if ((dwarf_tag(&child) == DW_TAG_member) &&
-			    !member_blacklisted(&child, die)) {
-				if (private_dwarf_hasattr(&child, DW_AT_bit_size)) {
-					die_override_t override[] =
-						{{ DW_TAG_base_type,
-						   DW_AT_bit_size,
-						   DIE_OVERRIDE_REPLACE,
-						   private_dwarf_udata(&child,
-								       DW_AT_bit_size,
-								       NULL) },
-						 { DW_TAG_base_type,
-						   DW_AT_bit_offset,
-						   DIE_OVERRIDE_REPLACE,
-						   private_dwarf_udata(&child,
-								       DW_AT_bit_offset,
-								       NULL) },
-						 {0}};
-
-					free(type_id(&child, override,
-						     mark_shared, state));
-				} else
-					free(type_id(&child, NULL,
-						     mark_shared, state));
-			}
+			    !member_blacklisted(&child, die))
+				free(type_id(&child, overrides,
+					     mark_shared, state));
 		while ((sib_ret = dwarf_siblingof(&child, &child)) == 0);
 
 		if (sib_ret == -1)
@@ -2388,7 +2421,7 @@ static void mark_shared(Dwarf_Die *die, const char *id, void *data)
  * A type_id() callback.
  */
 static void is_named_struct_union_enum(Dwarf_Die *die, const char *unused,
-				       void *data)
+				       die_override_t *overrides, void *data)
 {
 	int *is_sou = data;
 
@@ -2518,8 +2551,8 @@ static int detect_duplicates_alias_fixup(void *id_file_data, void *data)
 				id_file->id);
 			exit(1);
 		}
-		mark_shared(&die, NULL, state);
-		made_shared = 1;
+		mark_shared(&die, NULL, NULL, state);
+ 		made_shared = 1;
 	}
 
 	/*
@@ -2988,6 +3021,7 @@ static Dwarf_Die *die_emit_next_backwards(Dwarf_Die *next, Dwarf_Die *die,
  */
 static ctf_id_t lookup_ctf_type(const char *module_name, const char *file_name,
 				Dwarf_Die *die, ctf_file_t *ctf,
+				die_override_t *overrides,
 				const char *locerrstr)
 {
 	Dwarf_Die tmp;
@@ -3019,7 +3053,7 @@ static ctf_id_t lookup_ctf_type(const char *module_name, const char *file_name,
 		     module_name, file_name);
 
 	type_ref = construct_ctf_id(module_name, file_name,
-				    type_die, &cu_die, NULL);
+				    type_die, &cu_die, overrides);
 
 	/*
 	 * Pass any error back up.
@@ -3268,12 +3302,18 @@ static ctf_id_t assemble_ctf_base(const char *module_name,
 		 */
 		ctf_encoding.cte_offset = (size * 8) -
 			bit_offset_override->value - ctf_encoding.cte_bits;
-		dw_ctf_trace("Endianizing cte_offset from %x to %x\n", bit_offset_override->value,
+		dw_ctf_trace("Endianizing cte_offset from %x to %x\n",
+			     (unsigned int) bit_offset_override->value,
 			     ctf_encoding.cte_offset);
 #endif
 	} else
 		ctf_encoding.cte_offset = 0;
 
+#ifdef DEBUG
+	if (bit_size_override || bit_offset_override)
+		dw_ctf_trace("Bitfield overrides: bit size %i; bit offset %i\n",
+			     ctf_encoding.cte_bits, ctf_encoding.cte_offset);
+#endif
 
 	return ctf_add_func(ctf, top_level_type ? CTF_ADD_ROOT : CTF_ADD_NONROOT,
 			    name, &ctf_encoding);
@@ -3294,7 +3334,7 @@ static ctf_id_t assemble_ctf_pointer(const char *module_name,
 	ctf_id_t type_ref;
 
 	if ((type_ref = lookup_ctf_type(module_name, file_name, die, ctf,
-					locerrstr)) < 0) {
+					overrides, locerrstr)) < 0) {
 		*skip = SKIP_ABORT;
 		return CTF_ERROR_REPORTED;
 	}
@@ -3330,7 +3370,7 @@ static ctf_id_t assemble_ctf_array(const char *module_name,
 	CTF_DW_ENFORCE_NOT(byte_stride);
 
 	if ((type_ref = lookup_ctf_type(module_name, file_name, die, ctf,
-					locerrstr)) < 0) {
+					overrides, locerrstr)) < 0) {
 		*skip = SKIP_ABORT;
 		return CTF_ERROR_REPORTED;
 	}
@@ -3365,7 +3405,8 @@ static ctf_id_t assemble_ctf_array_dimension(const char *module_name,
 	arinfo.ctr_contents = parent_ctf_id;
 
 	if ((arinfo.ctr_index = lookup_ctf_type(module_name, file_name, die,
-						ctf, locerrstr)) < 0) {
+						ctf, overrides,
+						locerrstr)) < 0) {
 		*skip = SKIP_ABORT;
 		return CTF_ERROR_REPORTED;
 	}
@@ -3457,7 +3498,7 @@ static ctf_id_t assemble_ctf_typedef(const char *module_name,
 	CTF_DW_ENFORCE(name);
 
 	if ((type_ref = lookup_ctf_type(module_name, file_name, die, ctf,
-					locerrstr)) < 0) {
+					overrides, locerrstr)) < 0) {
 		*skip = SKIP_ABORT;
 		return CTF_ERROR_REPORTED;
 	}
@@ -3496,7 +3537,7 @@ static ctf_id_t assemble_ctf_cvr_qual(const char *module_name,
 	}
 
 	if ((type_ref = lookup_ctf_type(module_name, file_name, die, ctf,
-					locerrstr)) < 0) {
+					overrides, locerrstr)) < 0) {
 		*skip = SKIP_ABORT;
 		return CTF_ERROR_REPORTED;
 	}
@@ -3863,7 +3904,7 @@ static ctf_id_t assemble_ctf_su_member(const char *module_name,
 		die_override_t o[] = {{ dwarf_tag(&child_die),
 					DW_AT_data_bit_offset,
 					DIE_OVERRIDE_ADD,
-					offset }, {0} };
+					offset, overrides }, {0} };
 
 		die_to_ctf(module_name, file_name, &child_die, parent_die, ctf,
 			   parent_ctf_id, o, 0, 0, skip, &dummy, NULL);
@@ -3883,11 +3924,13 @@ static ctf_id_t assemble_ctf_su_member(const char *module_name,
 			   DW_AT_bit_size,
 			   DIE_OVERRIDE_REPLACE,
 			   private_dwarf_udata(die, DW_AT_bit_size,
-					       NULL) },
+					       NULL),
+			   NULL },
 			 { DW_TAG_base_type,
 			   DW_AT_bit_offset,
 			   DIE_OVERRIDE_REPLACE,
-			   bit_offset },
+			   bit_offset,
+			   overrides },
 			 {0} };
 
 		new_type = construct_ctf_id(module_name, file_name, &type_die,
@@ -4036,7 +4079,7 @@ static ctf_id_t assemble_ctf_variable(const char *module_name,
 	free(blacklist_name);
 
 	if ((type_ref = lookup_ctf_type(module_name, file_name, die, ctf,
-					locerrstr)) < 0) {
+					overrides, locerrstr)) < 0) {
 		*skip = SKIP_ABORT;
 		return CTF_ERROR_REPORTED;
 	}
@@ -4270,7 +4313,8 @@ static inline Dwarf_Word private_dwarf_udata(Dwarf_Die *die, int attribute,
 }
 
 /*
- * Find an override in an override list.
+ * Find an override in an override list, walking up the chained overrides if
+ * need be, until one is found.
  */
 static die_override_t *private_find_override(Dwarf_Die *die,
 					     int attribute,
@@ -4281,10 +4325,16 @@ static die_override_t *private_find_override(Dwarf_Die *die,
 	if (overrides == NULL)
 	    return NULL;
 
-	for (i = 0; overrides[i].tag != 0; i++)
-		if ((overrides[i].tag == dwarf_tag(die)) &&
-		    (overrides[i].attribute == attribute))
-			return &overrides[i];
+	while (overrides) {
+		die_override_t *chain = NULL;
+		for (i = 0; overrides[i].tag != 0; i++) {
+			chain = overrides[i].chain;
+			if ((overrides[i].tag == dwarf_tag(die)) &&
+			    (overrides[i].attribute == attribute))
+				return &overrides[i];
+		}
+		overrides = chain;
+	}
 
 	return NULL;
 }
