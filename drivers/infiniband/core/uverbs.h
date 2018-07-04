@@ -128,7 +128,7 @@ struct ib_uverbs_async_event_file {
 };
 
 struct ib_uverbs_completion_event_file {
-	struct ib_uobject_file			uobj_file;
+	struct ib_uobject			uobj;
 	struct ib_uverbs_event_queue		ev_queue;
 };
 
