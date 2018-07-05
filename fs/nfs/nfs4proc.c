@@ -1666,6 +1666,10 @@ nfs4_opendata_check_deleg(struct nfs4_opendata *data, struct nfs4_state *state)
 		nfs_inode_reclaim_delegation(state->inode,
 					     data->owner->so_cred,
 					     &data->o_res);
+
+	if (data->o_res.do_recall)
+		nfs_async_inode_return_delegation(state->inode,
+						  &data->o_res.delegation);
 }
 
 /*
