@@ -16,7 +16,6 @@
 
 #include <asm/pgtable.h>
 #include <linux/uaccess.h>
-#include <asm/tlbflush.h>
 
 /*
  * Free all pages allocated for subpage protection maps and pointers.
