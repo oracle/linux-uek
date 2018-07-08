@@ -36,6 +36,7 @@
 #include <linux/ip.h>
 #include <linux/cache.h>
 #include <linux/security.h>
+#include <linux/uek_kabi.h>
 
 /* IPv4 datagram length is stored into 16bit field (tot_len) */
 #define IP_MAX_MTU	0xFFFFU
@@ -63,7 +64,7 @@ struct rtable {
 	__be32			rt_gateway;
 
 	/* Miscellaneous cached information */
-	u32			rt_pmtu;
+	UEK_KABI_REPLACE(u32 rt_pmtu, u32 rt_mtu_locked: 1; u32 rt_pmtu:31)
 
 	u32			rt_table_id;
 
