@@ -475,7 +475,7 @@ extern int nfs4_sequence_done(struct rpc_task *task,
 			      struct nfs4_sequence_res *res);
 
 extern void nfs4_free_lock_state(struct nfs_server *server, struct nfs4_lock_state *lsp);
-
+extern int nfs4_proc_commit(struct file *dst, __u64 offset, __u32 count, struct nfs_commitres *res);
 extern const nfs4_stateid zero_stateid;
 
 /* nfs4super.c */
