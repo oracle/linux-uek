@@ -108,7 +108,7 @@
 	testl	$SPEC_CTRL_IBRS_INUSE, PER_CPU_VAR(cpu_ibrs)
 	jz	.Lskip_\@
 	PUSH_MSR_REGS
-	WRMSR_ASM $MSR_IA32_SPEC_CTRL, x86_spec_ctrl_priv
+	WRMSR_ASM $MSR_IA32_SPEC_CTRL, PER_CPU_VAR(x86_spec_ctrl_priv_cpu)
 	POP_MSR_REGS
 	jmp	.Ldone_\@
 .Lskip_\@:
@@ -134,11 +134,11 @@
 	movl	%eax, \save_reg
 
 	movl	$0, %edx
-	movl	x86_spec_ctrl_priv, %eax
+	movl	PER_CPU_VAR(x86_spec_ctrl_priv_cpu), %eax
 	wrmsr
 	jmp	.Ldone_\@
 .Lskip_\@:
-	movl	x86_spec_ctrl_priv, \save_reg
+	movl	PER_CPU_VAR(x86_spec_ctrl_priv_cpu), \save_reg
 	lfence
 .Ldone_\@:
 .endm
@@ -163,7 +163,7 @@
 .macro ENABLE_IBRS_CLOBBER
 	testl	$SPEC_CTRL_IBRS_INUSE, PER_CPU_VAR(cpu_ibrs)
 	jz	.Lskip_\@
-	WRMSR_ASM $MSR_IA32_SPEC_CTRL, x86_spec_ctrl_priv
+	WRMSR_ASM $MSR_IA32_SPEC_CTRL, PER_CPU_VAR(x86_spec_ctrl_priv_cpu)
 	jmp	.Ldone_\@
 .Lskip_\@:
 	 lfence
@@ -185,6 +185,7 @@
 
 /* Defined in bugs.c */
 extern u64 x86_spec_ctrl_priv;
+DECLARE_PER_CPU(u64, x86_spec_ctrl_priv_cpu);
 extern u64 x86_spec_ctrl_base;
 
 /*
@@ -208,6 +209,19 @@ extern struct mutex spec_ctrl_mutex;
 #define ibrs_disabled		(use_ibrs & SPEC_CTRL_IBRS_ADMIN_DISABLED)
 
 #define ibrs_inuse		(cpu_ibrs_inuse())
+
+static inline void update_cpu_spec_ctrl(int cpu)
+{
+	per_cpu(x86_spec_ctrl_priv_cpu, cpu) = x86_spec_ctrl_priv;
+}
+
+static inline void update_cpu_spec_ctrl_all(void)
+{
+	int cpu_index;
+
+	for_each_online_cpu(cpu_index)
+		update_cpu_spec_ctrl(cpu_index);
+}
 
 static inline void update_cpu_ibrs(struct cpuinfo_x86 *cpu)
 {
@@ -239,6 +253,8 @@ static inline void set_ibrs_inuse(void)
 		sysctl_ibrs_enabled = true;
 		/* When entering kernel */
 		x86_spec_ctrl_priv |= SPEC_CTRL_FEATURE_ENABLE_IBRS;
+		/* Update per-cpu spec_ctrl */
+		update_cpu_spec_ctrl_all();
 	}
 }
 
@@ -253,6 +269,7 @@ static inline void clear_ibrs_inuse(void)
 	 * the use of the MSR so these values wouldn't be touched.
 	 */
 	x86_spec_ctrl_priv &= ~(SPEC_CTRL_FEATURE_ENABLE_IBRS);
+	update_cpu_spec_ctrl_all();
 }
 
 static inline int check_ibrs_inuse(void)

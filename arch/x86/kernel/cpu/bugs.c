@@ -117,6 +117,8 @@ EXPORT_SYMBOL_GPL(x86_spec_ctrl_base);
  */
 u64 x86_spec_ctrl_priv;
 EXPORT_SYMBOL_GPL(x86_spec_ctrl_priv);
+DEFINE_PER_CPU(u64, x86_spec_ctrl_priv_cpu) = 0;
+EXPORT_PER_CPU_SYMBOL(x86_spec_ctrl_priv_cpu);
 
 /*
  * The vendor and possibly platform specific bits which can be modified in
@@ -152,6 +154,7 @@ void __init check_bugs(void)
 			x86_spec_ctrl_base &= ~(SPEC_CTRL_IBRS);
 		}
 		x86_spec_ctrl_priv = x86_spec_ctrl_base;
+		update_cpu_spec_ctrl_all();
 	}
 
 	/* Allow STIBP in MSR_SPEC_CTRL if supported */
@@ -236,12 +239,12 @@ void x86_spec_ctrl_set(u64 val)
 		 */
 		if (ssbd_ibrs_selected()) {
 			if (val & SPEC_CTRL_IBRS)
-				host = x86_spec_ctrl_priv;
+				host = this_cpu_read(x86_spec_ctrl_priv_cpu);
 			else
 				host = val & ~(SPEC_CTRL_SSBD);
 		} else {
 			if (ibrs_inuse)
-				host = x86_spec_ctrl_priv;
+				host = this_cpu_read(x86_spec_ctrl_priv_cpu);
 			else
 				host = x86_spec_ctrl_base;
 			host |= val;
@@ -268,7 +271,7 @@ x86_virt_spec_ctrl(u64 guest_spec_ctrl, u64 guest_virt_spec_ctrl, bool setguest)
 			 * Except on IBRS we don't want to use host base value
 			 * but rather the privilege value which has IBRS set.
 			 */
-			hostval = x86_spec_ctrl_priv;
+			hostval = this_cpu_read(x86_spec_ctrl_priv_cpu);
 
 		guestval = hostval & ~x86_spec_ctrl_mask;
 		guestval |= guest_spec_ctrl & x86_spec_ctrl_mask;
@@ -786,11 +789,6 @@ static enum ssb_mitigation __init __ssb_select_mitigation(void)
 
 	switch (cmd) {
 	case SPEC_STORE_BYPASS_CMD_AUTO:
-		/* Choose prctl as the default mode unless IBRS is enabled. */
-		if (spectre_v2_enabled == SPECTRE_V2_IBRS) {
-			mode = SPEC_STORE_BYPASS_USERSPACE;
-			break;
-		}
 	case SPEC_STORE_BYPASS_CMD_SECCOMP:
 		/*
 		 * Choose prctl+seccomp as the default mode if seccomp is
@@ -813,23 +811,6 @@ static enum ssb_mitigation __init __ssb_select_mitigation(void)
 		break;
 	case SPEC_STORE_BYPASS_CMD_NONE:
 		break;
-	}
-
-	if (spectre_v2_enabled == SPECTRE_V2_IBRS) {
-		switch (mode) {
-		case SPEC_STORE_BYPASS_SECCOMP:
-		case SPEC_STORE_BYPASS_PRCTL:
-			/* Not much we can do except switch the mode to userspace. */
-			pr_info("from '%s' to '%s' as IBRS is enabled\n",
-				ssb_strings[mode], ssb_strings[SPEC_STORE_BYPASS_USERSPACE]);
-			mode = SPEC_STORE_BYPASS_USERSPACE;
-			break;
-		case SPEC_STORE_BYPASS_DISABLE:
-			/* Need to set the x86_spec_ctrl_mask and friends. */
-			break;
-		default:
-			break;
-		}
 	}
 
 	/*
@@ -860,6 +841,8 @@ static enum ssb_mitigation __init __ssb_select_mitigation(void)
 			}
 			else
 				x86_spec_ctrl_priv &= ~(SPEC_CTRL_SSBD);
+
+			update_cpu_spec_ctrl_all();
 			break;
 		case X86_VENDOR_AMD:
 			if (mode == SPEC_STORE_BYPASS_DISABLE)
