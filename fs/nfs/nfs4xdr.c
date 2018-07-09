@@ -7752,6 +7752,7 @@ const struct rpc_procinfo nfs4_procedures[] = {
 	PROC42(LAYOUTSTATS,	enc_layoutstats,	dec_layoutstats),
 	PROC42(CLONE,		enc_clone,		dec_clone),
 	PROC42(COPY,		enc_copy,		dec_copy),
+	PROC42(OFFLOAD_CANCEL,	enc_offload_cancel,	dec_offload_cancel),
 	PROC(LOOKUPP,		enc_lookupp,		dec_lookupp),
 };
 
