@@ -1385,6 +1385,7 @@ struct nfs42_copy_args {
 	u64				dst_pos;
 
 	u64				count;
+	bool				sync;
 };
 
 struct nfs42_write_res {
