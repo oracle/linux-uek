@@ -67,6 +67,7 @@ struct kvm_stats_debugfs_item debugfs_entries[] = {
 	{ "exit_validity", VCPU_STAT(exit_validity) },
 	{ "exit_stop_request", VCPU_STAT(exit_stop_request) },
 	{ "exit_external_request", VCPU_STAT(exit_external_request) },
+	{ "exit_io_request", VCPU_STAT(exit_io_request) },
 	{ "exit_external_interrupt", VCPU_STAT(exit_external_interrupt) },
 	{ "exit_instruction", VCPU_STAT(exit_instruction) },
 	{ "exit_pei", VCPU_STAT(exit_pei) },
@@ -141,13 +142,33 @@ static int nested;
 module_param(nested, int, S_IRUGO);
 MODULE_PARM_DESC(nested, "Nested virtualization support");
 
-/* upper facilities limit for kvm */
-unsigned long kvm_s390_fac_list_mask[16] = { FACILITIES_KVM };
 
-unsigned long kvm_s390_fac_list_mask_size(void)
+/*
+ * For now we handle at most 16 double words as this is what the s390 base
+ * kernel handles and stores in the prefix page. If we ever need to go beyond
+ * this, this requires changes to code, but the external uapi can stay.
+ */
+#define SIZE_INTERNAL 16
+
+/*
+ * Base feature mask that defines default mask for facilities. Consists of the
+ * defines in FACILITIES_KVM and the non-hypervisor managed bits.
+ */
+static unsigned long kvm_s390_fac_base[SIZE_INTERNAL] = { FACILITIES_KVM };
+/*
+ * Extended feature mask. Consists of the defines in FACILITIES_KVM_CPUMODEL
+ * and defines the facilities that can be enabled via a cpu model.
+ */
+static unsigned long kvm_s390_fac_ext[SIZE_INTERNAL] = { FACILITIES_KVM_CPUMODEL };
+
+static unsigned long kvm_s390_fac_size(void)
 {
-	BUILD_BUG_ON(ARRAY_SIZE(kvm_s390_fac_list_mask) > S390_ARCH_FAC_MASK_SIZE_U64);
-	return ARRAY_SIZE(kvm_s390_fac_list_mask);
+	BUILD_BUG_ON(SIZE_INTERNAL > S390_ARCH_FAC_MASK_SIZE_U64);
+	BUILD_BUG_ON(SIZE_INTERNAL > S390_ARCH_FAC_LIST_SIZE_U64);
+	BUILD_BUG_ON(SIZE_INTERNAL * sizeof(unsigned long) >
+		sizeof(S390_lowcore.stfle_fac_list));
+
+	return SIZE_INTERNAL;
 }
 
 /* available cpu features supported by kvm */
@@ -668,6 +689,8 @@ static int kvm_s390_set_mem_control(struct kvm *kvm, struct kvm_device_attr *att
 		mutex_lock(&kvm->lock);
 		if (!kvm->created_vcpus) {
 			kvm->arch.use_cmma = 1;
+			/* Not compatible with cmma. */
+			kvm->arch.use_pfmfi = 0;
 			ret = 0;
 		}
 		mutex_unlock(&kvm->lock);
@@ -1560,7 +1583,7 @@ static int kvm_s390_get_cmma_bits(struct kvm *kvm,
 		return -EINVAL;
 	/* CMMA is disabled or was not used, or the buffer has length zero */
 	bufsize = min(args->count, KVM_S390_CMMA_SIZE_MAX);
-	if (!bufsize || !kvm->mm->context.use_cmma) {
+	if (!bufsize || !kvm->mm->context.uses_cmm) {
 		memset(args, 0, sizeof(*args));
 		return 0;
 	}
@@ -1637,7 +1660,7 @@ static int kvm_s390_get_cmma_bits(struct kvm *kvm,
 /*
  * This function sets the CMMA attributes for the given pages. If the input
  * buffer has zero length, no action is taken, otherwise the attributes are
- * set and the mm->context.use_cmma flag is set.
+ * set and the mm->context.uses_cmm flag is set.
  */
 static int kvm_s390_set_cmma_bits(struct kvm *kvm,
 				  const struct kvm_s390_cmma_log *args)
@@ -1687,9 +1710,9 @@ static int kvm_s390_set_cmma_bits(struct kvm *kvm,
 	srcu_read_unlock(&kvm->srcu, srcu_idx);
 	up_read(&kvm->mm->mmap_sem);
 
-	if (!kvm->mm->context.use_cmma) {
+	if (!kvm->mm->context.uses_cmm) {
 		down_write(&kvm->mm->mmap_sem);
-		kvm->mm->context.use_cmma = 1;
+		kvm->mm->context.uses_cmm = 1;
 		up_write(&kvm->mm->mmap_sem);
 	}
 out:
@@ -1943,20 +1966,15 @@ int kvm_arch_init_vm(struct kvm *kvm, unsigned long type)
 	if (!kvm->arch.sie_page2)
 		goto out_err;
 
-	/* Populate the facility mask initially. */
-	memcpy(kvm->arch.model.fac_mask, S390_lowcore.stfle_fac_list,
-	       sizeof(S390_lowcore.stfle_fac_list));
-	for (i = 0; i < S390_ARCH_FAC_LIST_SIZE_U64; i++) {
-		if (i < kvm_s390_fac_list_mask_size())
-			kvm->arch.model.fac_mask[i] &= kvm_s390_fac_list_mask[i];
-		else
-			kvm->arch.model.fac_mask[i] = 0UL;
-	}
-
-	/* Populate the facility list initially. */
 	kvm->arch.model.fac_list = kvm->arch.sie_page2->fac_list;
-	memcpy(kvm->arch.model.fac_list, kvm->arch.model.fac_mask,
-	       S390_ARCH_FAC_LIST_SIZE_BYTE);
+
+	for (i = 0; i < kvm_s390_fac_size(); i++) {
+		kvm->arch.model.fac_mask[i] = S390_lowcore.stfle_fac_list[i] &
+					      (kvm_s390_fac_base[i] |
+					       kvm_s390_fac_ext[i]);
+		kvm->arch.model.fac_list[i] = S390_lowcore.stfle_fac_list[i] &
+					      kvm_s390_fac_base[i];
+	}
 
 	/* we are always in czam mode - even on pre z14 machines */
 	set_kvm_facility(kvm->arch.model.fac_mask, 138);
@@ -2004,6 +2022,7 @@ int kvm_arch_init_vm(struct kvm *kvm, unsigned long type)
 
 	kvm->arch.css_support = 0;
 	kvm->arch.use_irqchip = 0;
+	kvm->arch.use_pfmfi = sclp.has_pfmfi;
 	kvm->arch.epoch = 0;
 
 	spin_lock_init(&kvm->arch.start_stop_lock);
@@ -2428,8 +2447,6 @@ int kvm_s390_vcpu_setup_cmma(struct kvm_vcpu *vcpu)
 	vcpu->arch.sie_block->cbrlo = get_zeroed_page(GFP_KERNEL);
 	if (!vcpu->arch.sie_block->cbrlo)
 		return -ENOMEM;
-
-	vcpu->arch.sie_block->ecb2 &= ~ECB2_PFMFI;
 	return 0;
 }
 
@@ -2465,7 +2482,7 @@ int kvm_arch_vcpu_setup(struct kvm_vcpu *vcpu)
 	if (test_kvm_facility(vcpu->kvm, 73))
 		vcpu->arch.sie_block->ecb |= ECB_TE;
 
-	if (test_kvm_facility(vcpu->kvm, 8) && sclp.has_pfmfi)
+	if (test_kvm_facility(vcpu->kvm, 8) && vcpu->kvm->arch.use_pfmfi)
 		vcpu->arch.sie_block->ecb2 |= ECB2_PFMFI;
 	if (test_kvm_facility(vcpu->kvm, 130))
 		vcpu->arch.sie_block->ecb2 |= ECB2_IEP;
@@ -2994,7 +3011,7 @@ retry:
 
 	if (kvm_check_request(KVM_REQ_START_MIGRATION, vcpu)) {
 		/*
-		 * Disable CMMA virtualization; we will emulate the ESSA
+		 * Disable CMM virtualization; we will emulate the ESSA
 		 * instruction manually, in order to provide additional
 		 * functionalities needed for live migration.
 		 */
@@ -3004,11 +3021,11 @@ retry:
 
 	if (kvm_check_request(KVM_REQ_STOP_MIGRATION, vcpu)) {
 		/*
-		 * Re-enable CMMA virtualization if CMMA is available and
-		 * was used.
+		 * Re-enable CMM virtualization if CMMA is available and
+		 * CMM has been used.
 		 */
 		if ((vcpu->kvm->arch.use_cmma) &&
-		    (vcpu->kvm->mm->context.use_cmma))
+		    (vcpu->kvm->mm->context.uses_cmm))
 			vcpu->arch.sie_block->ecb2 |= ECB2_CMMA;
 		goto retry;
 	}
@@ -4013,7 +4030,7 @@ static int __init kvm_s390_init(void)
 	}
 
 	for (i = 0; i < 16; i++)
-		kvm_s390_fac_list_mask[i] |=
+		kvm_s390_fac_base[i] |=
 			S390_lowcore.stfle_fac_list[i] & nonhyp_mask(i);
 
 	return kvm_init(NULL, sizeof(struct kvm_vcpu), 0, THIS_MODULE);

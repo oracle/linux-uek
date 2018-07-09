@@ -719,7 +719,12 @@ static struct sk_buff *receive_mergeable(struct net_device *dev,
 		if (unlikely(hdr->hdr.gso_type))
 			goto err_xdp;
 
-		/* This happens when rx buffer size is underestimated */
+		/* This happens when rx buffer size is underestimated
+		 * or headroom is not enough because of the buffer
+		 * was refilled before XDP is set. This should only
+		 * happen for the first several packets, so we don't
+		 * care much about its performance.
+		 */
 		if (unlikely(num_buf > 1 ||
 			     headroom < virtnet_get_headroom(vi))) {
 			/* linearize data for XDP */
@@ -773,7 +778,7 @@ static struct sk_buff *receive_mergeable(struct net_device *dev,
 			}
 			*xdp_xmit = true;
 			if (unlikely(xdp_page != page))
-				goto err_xdp;
+				put_page(page);
 			rcu_read_unlock();
 			goto xdp_xmit;
 		case XDP_REDIRECT:

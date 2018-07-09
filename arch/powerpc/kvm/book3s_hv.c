@@ -740,6 +740,8 @@ static int kvmppc_h_set_mode(struct kvm_vcpu *vcpu, unsigned long mflags,
 	case H_SET_MODE_RESOURCE_SET_DAWR:
 		if (!kvmppc_power8_compatible(vcpu))
 			return H_P2;
+		if (!ppc_breakpoint_available())
+			return H_P2;
 		if (mflags)
 			return H_UNSUPPORTED_FLAG_START;
 		if (value2 & DABRX_HYP)
@@ -2419,6 +2421,7 @@ static void init_vcore_to_run(struct kvmppc_vcore *vc)
 	vc->in_guest = 0;
 	vc->napping_threads = 0;
 	vc->conferring_threads = 0;
+	vc->tb_offset_applied = 0;
 }
 
 static bool can_dynamic_split(struct kvmppc_vcore *vc, struct core_info *cip)

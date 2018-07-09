@@ -26,13 +26,6 @@ static bool group1_trap;
 static bool common_trap;
 static bool gicv4_enable;
 
-void vgic_v3_set_npie(struct kvm_vcpu *vcpu)
-{
-	struct vgic_v3_cpu_if *cpuif = &vcpu->arch.vgic_cpu.vgic_v3;
-
-	cpuif->vgic_hcr |= ICH_HCR_NPIE;
-}
-
 void vgic_v3_set_underflow(struct kvm_vcpu *vcpu)
 {
 	struct vgic_v3_cpu_if *cpuif = &vcpu->arch.vgic_cpu.vgic_v3;
@@ -54,17 +47,23 @@ void vgic_v3_fold_lr_state(struct kvm_vcpu *vcpu)
 	int lr;
 	unsigned long flags;
 
-	cpuif->vgic_hcr &= ~(ICH_HCR_UIE | ICH_HCR_NPIE);
+	cpuif->vgic_hcr &= ~ICH_HCR_UIE;
 
 	for (lr = 0; lr < vgic_cpu->used_lrs; lr++) {
 		u64 val = cpuif->vgic_lr[lr];
-		u32 intid;
+		u32 intid, cpuid;
 		struct vgic_irq *irq;
+		bool is_v2_sgi = false;
 
-		if (model == KVM_DEV_TYPE_ARM_VGIC_V3)
+		cpuid = val & GICH_LR_PHYSID_CPUID;
+		cpuid >>= GICH_LR_PHYSID_CPUID_SHIFT;
+
+		if (model == KVM_DEV_TYPE_ARM_VGIC_V3) {
 			intid = val & ICH_LR_VIRTUAL_ID_MASK;
-		else
+		} else {
 			intid = val & GICH_LR_VIRTUALID;
+			is_v2_sgi = vgic_irq_is_sgi(intid);
+		}
 
 		/* Notify fds when the guest EOI'ed a level-triggered IRQ */
 		if (lr_signals_eoi_mi(val) && vgic_valid_spi(vcpu->kvm, intid))
@@ -80,28 +79,23 @@ void vgic_v3_fold_lr_state(struct kvm_vcpu *vcpu)
 		/* Always preserve the active bit */
 		irq->active = !!(val & ICH_LR_ACTIVE_BIT);
 
+		if (irq->active && is_v2_sgi)
+			irq->active_source = cpuid;
+
 		/* Edge is the only case where we preserve the pending bit */
 		if (irq->config == VGIC_CONFIG_EDGE &&
 		    (val & ICH_LR_PENDING_BIT)) {
 			irq->pending_latch = true;
 
-			if (vgic_irq_is_sgi(intid) &&
-			    model == KVM_DEV_TYPE_ARM_VGIC_V2) {
-				u32 cpuid = val & GICH_LR_PHYSID_CPUID;
-
-				cpuid >>= GICH_LR_PHYSID_CPUID_SHIFT;
+			if (is_v2_sgi)
 				irq->source |= (1 << cpuid);
-			}
 		}
 
 		/*
 		 * Clear soft pending state when level irqs have been acked.
-		 * Always regenerate the pending state.
 		 */
-		if (irq->config == VGIC_CONFIG_LEVEL) {
-			if (!(val & ICH_LR_PENDING_BIT))
-				irq->pending_latch = false;
-		}
+		if (irq->config == VGIC_CONFIG_LEVEL && !(val & ICH_LR_STATE))
+			irq->pending_latch = false;
 
 		/*
 		 * Level-triggered mapped IRQs are special because we only
@@ -135,8 +129,45 @@ void vgic_v3_populate_lr(struct kvm_vcpu *vcpu, struct vgic_irq *irq, int lr)
 {
 	u32 model = vcpu->kvm->arch.vgic.vgic_model;
 	u64 val = irq->intid;
+	bool allow_pending = true, is_v2_sgi;
 
-	if (irq_is_pending(irq)) {
+	is_v2_sgi = (vgic_irq_is_sgi(irq->intid) &&
+		     model == KVM_DEV_TYPE_ARM_VGIC_V2);
+
+	if (irq->active) {
+		val |= ICH_LR_ACTIVE_BIT;
+		if (is_v2_sgi)
+			val |= irq->active_source << GICH_LR_PHYSID_CPUID_SHIFT;
+		if (vgic_irq_is_multi_sgi(irq)) {
+			allow_pending = false;
+			val |= ICH_LR_EOI;
+		}
+	}
+
+	if (irq->hw) {
+		val |= ICH_LR_HW;
+		val |= ((u64)irq->hwintid) << ICH_LR_PHYS_ID_SHIFT;
+		/*
+		 * Never set pending+active on a HW interrupt, as the
+		 * pending state is kept at the physical distributor
+		 * level.
+		 */
+		if (irq->active)
+			allow_pending = false;
+	} else {
+		if (irq->config == VGIC_CONFIG_LEVEL) {
+			val |= ICH_LR_EOI;
+
+			/*
+			 * Software resampling doesn't work very well
+			 * if we allow P+A, so let's not do that.
+			 */
+			if (irq->active)
+				allow_pending = false;
+		}
+	}
+
+	if (allow_pending && irq_is_pending(irq)) {
 		val |= ICH_LR_PENDING_BIT;
 
 		if (irq->config == VGIC_CONFIG_EDGE)
@@ -149,27 +180,11 @@ void vgic_v3_populate_lr(struct kvm_vcpu *vcpu, struct vgic_irq *irq, int lr)
 			BUG_ON(!src);
 			val |= (src - 1) << GICH_LR_PHYSID_CPUID_SHIFT;
 			irq->source &= ~(1 << (src - 1));
-			if (irq->source)
+			if (irq->source) {
 				irq->pending_latch = true;
+				val |= ICH_LR_EOI;
+			}
 		}
-	}
-
-	if (irq->active)
-		val |= ICH_LR_ACTIVE_BIT;
-
-	if (irq->hw) {
-		val |= ICH_LR_HW;
-		val |= ((u64)irq->hwintid) << ICH_LR_PHYS_ID_SHIFT;
-		/*
-		 * Never set pending+active on a HW interrupt, as the
-		 * pending state is kept at the physical distributor
-		 * level.
-		 */
-		if (irq->active && irq_is_pending(irq))
-			val &= ~ICH_LR_PENDING_BIT;
-	} else {
-		if (irq->config == VGIC_CONFIG_LEVEL)
-			val |= ICH_LR_EOI;
 	}
 
 	/*
@@ -274,7 +289,6 @@ void vgic_v3_enable(struct kvm_vcpu *vcpu)
 	 * anyway.
 	 */
 	vgic_v3->vgic_vmcr = 0;
-	vgic_v3->vgic_elrsr = ~0;
 
 	/*
 	 * If we are emulating a GICv3, we do it in an non-GICv2-compatible

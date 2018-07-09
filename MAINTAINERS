@@ -6383,7 +6383,7 @@ S:	Maintained
 F:	Documentation/networking/netvsc.txt
 F:	arch/x86/include/asm/mshyperv.h
 F:	arch/x86/include/asm/trace/hyperv.h
-F:	arch/x86/include/uapi/asm/hyperv.h
+F:	arch/x86/include/asm/hyperv-tlfs.h
 F:	arch/x86/kernel/cpu/mshyperv.c
 F:	arch/x86/hyperv
 F:	drivers/hid/hid-hyperv.c
@@ -11077,6 +11077,7 @@ M:	"Michael S. Tsirkin" <mst@redhat.com>
 L:	qemu-devel@nongnu.org
 S:	Maintained
 F:	drivers/firmware/qemu_fw_cfg.c
+F:	include/uapi/linux/qemu_fw_cfg.h
 
 QIB DRIVER
 M:	Mike Marciniszyn <infinipath@intel.com>
