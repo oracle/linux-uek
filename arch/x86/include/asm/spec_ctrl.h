@@ -24,7 +24,7 @@
 	pushq %rdx;				\
 	movl $MSR_IA32_SPEC_CTRL, %ecx;		\
 	movl $0, %edx;				\
-	movl x86_spec_ctrl_priv, %eax;		\
+	movl PER_CPU_VAR(x86_spec_ctrl_priv_cpu), %eax;	\
 	wrmsr;					\
 	popq %rdx;				\
 	popq %rcx;				\
@@ -32,7 +32,7 @@
 #define __ASM_ENABLE_IBRS_CLOBBER		\
 	movl $MSR_IA32_SPEC_CTRL, %ecx;		\
 	movl $0, %edx;				\
-	movl x86_spec_ctrl_priv, %eax;		\
+	movl PER_CPU_VAR(x86_spec_ctrl_priv_cpu), %eax;	\
 	wrmsr;
 #define __ASM_DISABLE_IBRS			\
 	pushq %rax;				\
@@ -208,6 +208,7 @@ ALTERNATIVE __stringify(__ASM_STUFF_RSB), "", X86_FEATURE_STUFF_RSB
 
 /* Defined in bugs_64.c */
 extern u64 x86_spec_ctrl_priv;
+DECLARE_PER_CPU(u64, x86_spec_ctrl_priv_cpu);
 extern u64 x86_spec_ctrl_base;
 
 /*
@@ -234,6 +235,19 @@ extern void unprotected_firmware_end(void);
 #define ibrs_disabled		(use_ibrs & SPEC_CTRL_IBRS_ADMIN_DISABLED)
 
 #define ibrs_inuse		(cpu_ibrs_inuse())
+
+static inline void update_cpu_spec_ctrl(int cpu)
+{
+	per_cpu(x86_spec_ctrl_priv_cpu, cpu) = x86_spec_ctrl_priv;
+}
+
+static inline void update_cpu_spec_ctrl_all(void)
+{
+	int cpu_index;
+
+	for_each_online_cpu(cpu_index)
+		update_cpu_spec_ctrl(cpu_index);
+}
 
 static inline void update_cpu_ibrs(struct cpuinfo_x86 *cpu)
 {
@@ -265,6 +279,8 @@ static inline bool set_ibrs_inuse(void)
 		sysctl_ibrs_enabled = true;
 		/* When entering kernel */
 		x86_spec_ctrl_priv |= SPEC_CTRL_FEATURE_ENABLE_IBRS;
+		/* Update per-cpu spec_ctrl */
+		update_cpu_spec_ctrl_all();
 		return true;
 	} else {
 		return false;
@@ -278,11 +294,11 @@ static inline void clear_ibrs_inuse(void)
 	/* Update what sysfs shows. */
 	sysctl_ibrs_enabled = false;
 	/*
-        * This is stricly not needed as the use_ibrs guards against the
-        * the use of the MSR so these values wouldn't be touched.
-        */
-       x86_spec_ctrl_priv &= ~(SPEC_CTRL_FEATURE_ENABLE_IBRS);
-
+	 * This is stricly not needed as the use_ibrs guards against the
+	 * the use of the MSR so these values wouldn't be touched.
+	 */
+	x86_spec_ctrl_priv &= ~(SPEC_CTRL_FEATURE_ENABLE_IBRS);
+	update_cpu_spec_ctrl_all();
 }
 
 static inline int check_ibrs_inuse(void)

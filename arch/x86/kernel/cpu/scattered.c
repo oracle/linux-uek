@@ -205,6 +205,7 @@ void init_scattered_cpuid_features(struct cpuinfo_x86 *c,
 	if (!xen_pv_domain()) {
 		mutex_lock(&spec_ctrl_mutex);
 		update_cpu_ibrs(c);
+		update_cpu_spec_ctrl(c->cpu_index);
 		mutex_unlock(&spec_ctrl_mutex);
 	}
 }
