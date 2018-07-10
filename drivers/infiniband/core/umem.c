@@ -178,6 +178,7 @@ struct ib_umem *ib_umem_get(struct ib_ucontext *context, unsigned long addr,
 	need_release = 1;
 	sg_list_start = umem->sg_head.sgl;
 
+	down_read(&current->mm->mmap_sem);
 	while (npages) {
 		down_read(&current->mm->mmap_sem);
 		ret = get_user_pages_longterm(cur_base,
@@ -207,6 +208,7 @@ struct ib_umem *ib_umem_get(struct ib_ucontext *context, unsigned long addr,
 		/* preparing for next loop */
 		sg_list_start = sg;
 	}
+	up_read(&current->mm->mmap_sem);
 
 	umem->nmap = ib_dma_map_sg_attrs(context->device,
 				  umem->sg_head.sgl,
