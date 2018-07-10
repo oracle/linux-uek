@@ -400,6 +400,8 @@ void rds_conn_shutdown(struct rds_conn_path *cp, int restart)
 		mutex_lock(&cp->cp_cm_lock);
 		if (!rds_conn_path_transition(cp, RDS_CONN_UP,
 					      RDS_CONN_DISCONNECTING) &&
+		    !rds_conn_path_transition(cp, RDS_CONN_CONNECTING,
+					      RDS_CONN_DISCONNECTING) &&
 		    !rds_conn_path_transition(cp, RDS_CONN_ERROR,
 					      RDS_CONN_DISCONNECTING)) {
 			rds_conn_path_drop(cp, DR_INV_CONN_STATE);
@@ -411,11 +413,12 @@ void rds_conn_shutdown(struct rds_conn_path *cp, int restart)
 		wait_event(cp->cp_waitq,
 			   !test_bit(RDS_IN_XMIT, &cp->cp_flags));
 		wait_event(cp->cp_waitq,
-			   !test_bit(RDS_RECV_REFILL, &cp->cp_flags));
+			   !test_and_set_bit(RDS_RECV_REFILL, &cp->cp_flags));
 		wait_event(cp->cp_waitq,
 			   (atomic_read(&cp->cp_rdma_map_pending) == 0));
 
 		conn->c_trans->conn_path_shutdown(cp);
+		clear_bit(RDS_RECV_REFILL, &cp->cp_flags);
 		rds_conn_path_reset(cp);
 
 		if (!rds_conn_path_transition(cp, RDS_CONN_DISCONNECTING,
