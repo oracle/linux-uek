@@ -501,9 +501,7 @@ ssize_t ib_uverbs_alloc_pd(struct ib_uverbs_file *file,
 		goto err_copy;
 	}
 
-	uobj_alloc_commit(uobj);
-
-	return in_len;
+	return uobj_alloc_commit(uobj, in_len);
 
 err_copy:
 	ib_dealloc_pd(pd);
@@ -692,9 +690,7 @@ ssize_t ib_uverbs_share_pd(struct ib_uverbs_file *file,
 		goto err_copy;
 	}
 
-	uobj_alloc_commit(uobj);
-
-	return in_len;
+	return uobj_alloc_commit(uobj, in_len);
 
 err_copy:
 	ib_dealloc_pd(pd);
@@ -906,9 +902,7 @@ ssize_t ib_uverbs_open_xrcd(struct ib_uverbs_file *file,
 
 	mutex_unlock(&file->device->xrcd_tree_mutex);
 
-	uobj_alloc_commit(&obj->uobject);
-
-	return in_len;
+	return uobj_alloc_commit(&obj->uobject, in_len);
 
 err_copy:
 	if (inode) {
@@ -1051,9 +1045,7 @@ ssize_t ib_uverbs_reg_mr(struct ib_uverbs_file *file,
 
 	uobj_put_obj_read(pd);
 
-	uobj_alloc_commit(uobj);
-
-	return in_len;
+	return uobj_alloc_commit(uobj, in_len);
 
 err_copy:
 	ib_dereg_mr(mr);
@@ -1454,9 +1446,7 @@ ssize_t ib_uverbs_reg_mr_relaxed(struct ib_uverbs_file *file,
 
 	uobj_put_obj_read(pd);
 
-	uobj_alloc_commit(uobj);
-
-	return in_len;
+	return uobj_alloc_commit(uobj, in_len);
 
 err_copy:
 	ib_fmr_pool_unmap(fmr);
@@ -1596,9 +1586,7 @@ ssize_t ib_uverbs_alloc_mw(struct ib_uverbs_file *file,
 	}
 
 	uobj_put_obj_read(pd);
-	uobj_alloc_commit(uobj);
-
-	return in_len;
+	return uobj_alloc_commit(uobj, in_len);
 
 err_copy:
 	uverbs_dealloc_mw(mw);
@@ -1655,8 +1643,7 @@ ssize_t ib_uverbs_create_comp_channel(struct ib_uverbs_file *file,
 		return -EFAULT;
 	}
 
-	uobj_alloc_commit(uobj);
-	return in_len;
+	return uobj_alloc_commit(uobj, in_len);
 }
 
 static struct ib_ucq_object *create_cq(struct ib_uverbs_file *file,
@@ -1737,7 +1724,9 @@ static struct ib_ucq_object *create_cq(struct ib_uverbs_file *file,
 	if (ret)
 		goto err_cb;
 
-	uobj_alloc_commit(&obj->uobject);
+	ret = uobj_alloc_commit(&obj->uobject, 0);
+	if (ret)
+		return ERR_PTR(ret);
 	return obj;
 
 err_cb:
@@ -2295,9 +2284,7 @@ static int create_qp(struct ib_uverbs_file *file,
 	if (ind_tbl)
 		uobj_put_obj_read(ind_tbl);
 
-	uobj_alloc_commit(&obj->uevent.uobject);
-
-	return 0;
+	return uobj_alloc_commit(&obj->uevent.uobject, 0);
 err_cb:
 	ib_destroy_qp(qp);
 
@@ -2501,10 +2488,7 @@ ssize_t ib_uverbs_open_qp(struct ib_uverbs_file *file,
 	qp->uobject = &obj->uevent.uobject;
 	uobj_put_read(xrcd_uobj);
 
-
-	uobj_alloc_commit(&obj->uevent.uobject);
-
-	return in_len;
+	return uobj_alloc_commit(&obj->uevent.uobject, in_len);
 
 err_destroy:
 	ib_destroy_qp(qp);
@@ -3362,9 +3346,7 @@ ssize_t ib_uverbs_create_ah(struct ib_uverbs_file *file,
 	}
 
 	uobj_put_obj_read(pd);
-	uobj_alloc_commit(uobj);
-
-	return in_len;
+	return uobj_alloc_commit(uobj, in_len);
 
 err_copy:
 	rdma_destroy_ah(ah);
@@ -3910,8 +3892,7 @@ int ib_uverbs_ex_create_wq(struct ib_uverbs_file *file,
 
 	uobj_put_obj_read(pd);
 	uobj_put_obj_read(cq);
-	uobj_alloc_commit(&obj->uevent.uobject);
-	return 0;
+	return uobj_alloc_commit(&obj->uevent.uobject, 0);
 
 err_copy:
 	ib_destroy_wq(wq);
@@ -4158,8 +4139,7 @@ int ib_uverbs_ex_create_rwq_ind_table(struct ib_uverbs_file *file,
 	for (j = 0; j < num_read_wqs; j++)
 		uobj_put_obj_read(wqs[j]);
 
-	uobj_alloc_commit(uobj);
-	return 0;
+	return uobj_alloc_commit(uobj, 0);
 
 err_copy:
 	ib_destroy_rwq_ind_table(rwq_ind_tbl);
@@ -4367,11 +4347,10 @@ int ib_uverbs_ex_create_flow(struct ib_uverbs_file *file,
 		goto err_copy;
 
 	uobj_put_obj_read(qp);
-	uobj_alloc_commit(uobj);
 	kfree(flow_attr);
 	if (cmd.flow_attr.num_of_specs)
 		kfree(kern_flow_attr);
-	return 0;
+	return uobj_alloc_commit(uobj, 0);
 err_copy:
 	if (!qp->device->destroy_flow(flow_id))
 		atomic_dec(&qp->usecnt);
@@ -4523,9 +4502,7 @@ static int __uverbs_create_xsrq(struct ib_uverbs_file *file,
 		uobj_put_obj_read(attr.ext.cq);
 
 	uobj_put_obj_read(pd);
-	uobj_alloc_commit(&obj->uevent.uobject);
-
-	return 0;
+	return uobj_alloc_commit(&obj->uevent.uobject, 0);
 
 err_copy:
 	ib_destroy_srq(srq);
