@@ -957,7 +957,7 @@ void x86_spec_ctrl_setup_ap(void)
 #define pr_fmt(fmt)	"L1TF: " fmt
 
 #if IS_ENABLED(CONFIG_KVM_INTEL)
-enum vmx_l1d_flush_state l1tf_vmx_mitigation __read_mostly = VMENTER_L1D_FLUSH_AUTO;
+enum vmx_l1d_flush_state l1tf_vmx_mitigation = VMENTER_L1D_FLUSH_AUTO;
 EXPORT_SYMBOL_GPL(l1tf_vmx_mitigation);
 #endif
 
