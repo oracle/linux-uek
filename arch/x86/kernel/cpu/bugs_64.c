@@ -151,6 +151,13 @@ u64 x86_amd_ls_cfg_ssbd_mask;
 void __init check_bugs(void)
 {
 	identify_boot_cpu();
+
+	/*
+	 * identify_boot_cpu() initialized SMT support information, let the
+	 * core code know.
+	 */
+	cpu_smt_check_topology();
+
 #if !defined(CONFIG_SMP)
 	printk(KERN_INFO "CPU: ");
 	print_cpu_info(&boot_cpu_data);
