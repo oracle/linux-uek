@@ -1214,7 +1214,6 @@ BuildKernel() {
    mkdir -p $RPM_BUILD_ROOT/%{image_install_path}
    mkdir -p $RPM_BUILD_ROOT/lib/modules/$KernelVer
    make -s ARCH=$Arch V=1 dtbs dtbs_install INSTALL_DTBS_PATH=$RPM_BUILD_ROOT/%{image_install_path}/dtb-$KernelVer
-   cp -r $RPM_BUILD_ROOT/%{image_install_path}/dtb-$KernelVer $RPM_BUILD_ROOT/lib/modules/$KernelVer/dtb
    find arch/$Arch/boot/dts -name '*.dtb' -type f | xargs rm -f
 %endif
 
@@ -2044,7 +2043,6 @@ fi
 /usr/libexec/perf.%{KVERREL}%{?2:.%{2}}\
 /usr/sbin/perf\
 %ifarch %{arm} aarch64\
-/lib/modules/%{KVERREL}%{?2:.%{2}}/dtb \
 /%{image_install_path}/dtb-%{KVERREL}%{?2:.%{2}} \
 %endif\
 %ifnarch sparc64 aarch64\
