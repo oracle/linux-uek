@@ -12940,6 +12940,11 @@ static int __init vmx_setup_l1d_flush(void)
 	if (!boot_cpu_has_bug(X86_BUG_L1TF))
 		return 0;
 
+	if (!enable_ept) {
+		l1tf_vmx_mitigation = VMENTER_L1D_FLUSH_EPT_DISABLED;
+		return 0;
+	}
+
 	l1tf_vmx_mitigation = vmentry_l1d_flush;
 
 	if (vmentry_l1d_flush == VMENTER_L1D_FLUSH_NEVER)
@@ -12964,56 +12969,6 @@ static void vmx_cleanup_l1d_flush(void)
 	}
 	/* Restore state so sysfs ignores VMX */
 	l1tf_vmx_mitigation = VMENTER_L1D_FLUSH_AUTO;
-}
-
-static int __init vmx_init(void)
-{
-#if IS_ENABLED(CONFIG_HYPERV)
-	/*
-	 * Enlightened VMCS usage should be recommended and the host needs
-	 * to support eVMCS v1 or above. We can also disable eVMCS support
-	 * with module parameter.
-	 */
-	if (enlightened_vmcs &&
-	    ms_hyperv.hints & HV_X64_ENLIGHTENED_VMCS_RECOMMENDED &&
-	    (ms_hyperv.nested_features & HV_X64_ENLIGHTENED_VMCS_VERSION) >=
-	    KVM_EVMCS_VERSION) {
-		int cpu;
-
-		/* Check that we have assist pages on all online CPUs */
-		for_each_online_cpu(cpu) {
-			if (!hv_get_vp_assist_page(cpu)) {
-				enlightened_vmcs = false;
-				break;
-			}
-		}
-
-		if (enlightened_vmcs) {
-			pr_info("KVM: vmx: using Hyper-V Enlightened VMCS\n");
-			static_branch_enable(&enable_evmcs);
-		}
-	} else {
-		enlightened_vmcs = false;
-	}
-#endif
-
-	int r = vmx_setup_l1d_flush();
-	if (r)
-		return r;
-
-	r = kvm_init(&vmx_x86_ops, sizeof(struct vcpu_vmx),
-		     __alignof__(struct vcpu_vmx), THIS_MODULE);
-	if (r) {
-		vmx_cleanup_l1d_flush();
-		return r;
-	}
-
-#ifdef CONFIG_KEXEC_CORE
-	rcu_assign_pointer(crash_vmclear_loaded_vmcss,
-			   crash_vmclear_local_loaded_vmcss);
-#endif
-
-	return 0;
 }
 
 static void __exit vmx_exit(void)
@@ -13050,6 +13005,58 @@ static void __exit vmx_exit(void)
 
 	vmx_cleanup_l1d_flush();
 }
+module_exit(vmx_exit);
 
-module_init(vmx_init)
-module_exit(vmx_exit)
+static int __init vmx_init(void)
+{
+#if IS_ENABLED(CONFIG_HYPERV)
+	/*
+	 * Enlightened VMCS usage should be recommended and the host needs
+	 * to support eVMCS v1 or above. We can also disable eVMCS support
+	 * with module parameter.
+	 */
+	if (enlightened_vmcs &&
+	    ms_hyperv.hints & HV_X64_ENLIGHTENED_VMCS_RECOMMENDED &&
+	    (ms_hyperv.nested_features & HV_X64_ENLIGHTENED_VMCS_VERSION) >=
+	    KVM_EVMCS_VERSION) {
+		int cpu;
+
+		/* Check that we have assist pages on all online CPUs */
+		for_each_online_cpu(cpu) {
+			if (!hv_get_vp_assist_page(cpu)) {
+				enlightened_vmcs = false;
+				break;
+			}
+		}
+
+		if (enlightened_vmcs) {
+			pr_info("KVM: vmx: using Hyper-V Enlightened VMCS\n");
+			static_branch_enable(&enable_evmcs);
+		}
+	} else {
+		enlightened_vmcs = false;
+	}
+#endif
+
+	int r = kvm_init(&vmx_x86_ops, sizeof(struct vcpu_vmx),
+		     __alignof__(struct vcpu_vmx), THIS_MODULE);
+	if (r)
+		return r;
+
+	/*
+	 * Must be called after kvm_init() so enable_ept is properly set up
+	 */
+	r = vmx_setup_l1d_flush();
+	if (r) {
+		vmx_exit();
+		return r;
+	}
+
+#ifdef CONFIG_KEXEC_CORE
+	rcu_assign_pointer(crash_vmclear_loaded_vmcss,
+			   crash_vmclear_local_loaded_vmcss);
+#endif
+
+	return 0;
+}
+module_init(vmx_init);
