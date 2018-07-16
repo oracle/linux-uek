@@ -782,6 +782,8 @@ struct mlx5_rsvd_gids {
 	struct ida ida;
 };
 
+struct mlx5_fw_tracer;
+
 struct mlx5_core_dev {
 	struct pci_dev	       *pdev;
 	/* sync pci state */
@@ -823,6 +825,7 @@ struct mlx5_core_dev {
 #ifdef CONFIG_RFS_ACCEL
 	struct cpu_rmap         *rmap;
 #endif
+	struct mlx5_fw_tracer	*tracer;
 };
 
 struct mlx5_db {
