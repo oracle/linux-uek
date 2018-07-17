@@ -954,8 +954,11 @@ static int rds_ib_move_ip4(char			*from_dev,
 
 		/* Bailout if IP already exists on target port */
 		if (rds_ib_addr_exist(ip_config[to_port].dev, &addr, NULL,
-				      false))
+				      false)) {
+			printk(KERN_ERR "RDS/IP: Address already exist\n");
+			ret = -EADDRINUSE;
 			goto out;
+		}
 
 		active_port = ip_config[from_port].ip_active_port;
 		if (alias || active_port == from_port) {
@@ -1380,17 +1383,13 @@ static void rds_ib_do_failover(u8 from_port, u8 to_port, u8 arp_port,
 			struct rds_ib_alias *alias;
 
 			alias = &ip_config[from_port].aliases[j];
-			ret = rds_ib_move_ip4(alias->if_name,
-					      ip_config[to_port].if_name,
-					      from_port,
-					      to_port,
-					      arp_port,
-					      alias->ip_addr,
-					      alias->ip_bcast,
-					      alias->ip_mask,
-					      event_type,
-					      1,
-					      1);
+			rds_ib_move_ip4(alias->if_name,
+					ip_config[to_port].if_name,
+					from_port, to_port, arp_port,
+					alias->ip_addr,
+					alias->ip_bcast,
+					alias->ip_mask,
+					event_type, 1, 1);
 		}
 	}
 
@@ -1433,17 +1432,14 @@ static void rds_ib_do_failback(u8 port, int event_type)
 				struct rds_ib_alias *alias;
 
 				alias = &ip_config[port].aliases[j];
-				ret = rds_ib_move_ip4(from_name,
-						      alias->if_name,
-						      ip_active_port,
-						      port,
-						      ip_active_port,
-						      alias->ip_addr,
-						      alias->ip_bcast,
-						      alias->ip_mask,
-						      event_type,
-						      1,
-						      0);
+				rds_ib_move_ip4(from_name, alias->if_name,
+						ip_active_port,
+						port,
+						ip_active_port,
+						alias->ip_addr,
+						alias->ip_bcast,
+						alias->ip_mask,
+						event_type, 1, 0);
 			}
 		}
 
