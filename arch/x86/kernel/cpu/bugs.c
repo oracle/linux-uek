@@ -114,9 +114,12 @@ int __init spectre_v2_heuristics_setup(char *p)
 __setup("spectre_v2_heuristics=", spectre_v2_heuristics_setup);
 
 static void __init spectre_v2_select_mitigation(void);
-static void __init ssb_select_mitigation(void);
+static enum ssb_mitigation __init ssb_select_mitigation(void);
+static void __init ssb_init(void);
 static bool ssbd_ibrs_selected(void);
 static void __init l1tf_select_mitigation(void);
+
+static enum ssb_mitigation ssb_mode = SPEC_STORE_BYPASS_NONE;
 
 /*
  * Our boot-time value of the SPEC_CTRL MSR. We read it once so that any
@@ -181,14 +184,17 @@ void __init check_bugs(void)
 	if (boot_cpu_has(X86_FEATURE_STIBP))
 		x86_spec_ctrl_mask |= SPEC_CTRL_STIBP;
 
+	/*
+	 * Select proper mitigation for any exposure to the Speculative Store
+	 * Bypass vulnerability.  Required by spectre_v2_select_mitigation.
+	 */
+	ssb_mode = ssb_select_mitigation();
+
 	/* Select the proper spectre mitigation before patching alternatives */
 	spectre_v2_select_mitigation();
 
-	/*
-	 * Select proper mitigation for any exposure to the Speculative Store
-	 * Bypass vulnerability.
-	 */
-	ssb_select_mitigation();
+	/* Relies on the result of spectre_v2_select_mitigation. */
+	ssb_init();
 
 	l1tf_select_mitigation();
 
@@ -722,8 +728,6 @@ display:
 #undef pr_fmt
 #define pr_fmt(fmt)	"Speculative Store Bypass: " fmt
 
-static enum ssb_mitigation ssb_mode = SPEC_STORE_BYPASS_NONE;
-
 bool ssbd_ibrs_selected(void)
 {
 	return (ssb_mode == SPEC_STORE_BYPASS_USERSPACE);
@@ -790,7 +794,7 @@ static enum ssb_mitigation_cmd __init ssb_parse_cmdline(void)
 	return cmd;
 }
 
-static enum ssb_mitigation __init __ssb_select_mitigation(void)
+static enum ssb_mitigation __init ssb_select_mitigation(void)
 {
 	enum ssb_mitigation mode = SPEC_STORE_BYPASS_NONE;
 	enum ssb_mitigation_cmd cmd;
@@ -830,17 +834,22 @@ static enum ssb_mitigation __init __ssb_select_mitigation(void)
 		break;
 	}
 
+	return mode;
+}
+
+static void __init ssb_init(void)
+{
 	/*
 	 * We have three CPU feature flags that are in play here:
 	 *  - X86_BUG_SPEC_STORE_BYPASS - CPU is susceptible.
 	 *  - X86_FEATURE_SSBD - CPU is able to turn off speculative store bypass
 	 *  - X86_FEATURE_SPEC_STORE_BYPASS_DISABLE - engage the mitigation
 	 */
-	if (mode == SPEC_STORE_BYPASS_DISABLE)
+	if (ssb_mode == SPEC_STORE_BYPASS_DISABLE)
 		setup_force_cpu_cap(X86_FEATURE_SPEC_STORE_BYPASS_DISABLE);
 
-	if (mode == SPEC_STORE_BYPASS_DISABLE ||
-	    mode == SPEC_STORE_BYPASS_USERSPACE) {
+	if (ssb_mode == SPEC_STORE_BYPASS_DISABLE ||
+	    ssb_mode == SPEC_STORE_BYPASS_USERSPACE) {
 		/*
 		 * Intel uses the SPEC CTRL MSR Bit(2) for this, while AMD uses
 		 * a completely different MSR and bit dependent on family.
@@ -850,7 +859,7 @@ static enum ssb_mitigation __init __ssb_select_mitigation(void)
 			x86_spec_ctrl_base |= SPEC_CTRL_SSBD;
 			x86_spec_ctrl_mask |= SPEC_CTRL_SSBD;
 
-			if (mode == SPEC_STORE_BYPASS_DISABLE) {
+			if (ssb_mode == SPEC_STORE_BYPASS_DISABLE) {
 				x86_spec_ctrl_set(SPEC_CTRL_SSBD);
 				if (spectre_v2_enabled == SPECTRE_V2_IBRS) {
 					x86_spec_ctrl_priv |= SPEC_CTRL_SSBD;
@@ -862,18 +871,11 @@ static enum ssb_mitigation __init __ssb_select_mitigation(void)
 			update_cpu_spec_ctrl_all();
 			break;
 		case X86_VENDOR_AMD:
-			if (mode == SPEC_STORE_BYPASS_DISABLE)
+			if (ssb_mode == SPEC_STORE_BYPASS_DISABLE)
 				x86_amd_ssb_disable();
 			break;
 		}
 	}
-
-	return mode;
-}
-
-static void ssb_select_mitigation(void)
-{
-	ssb_mode = __ssb_select_mitigation();
 
 	if (boot_cpu_has_bug(X86_BUG_SPEC_STORE_BYPASS))
 		pr_info("%s\n", ssb_strings[ssb_mode]);
