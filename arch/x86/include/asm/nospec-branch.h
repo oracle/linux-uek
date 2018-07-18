@@ -239,7 +239,13 @@ enum spectre_v2_mitigation {
 	SPECTRE_V2_IBRS,
 };
 
-extern void x86_spec_ctrl_set(u64);
+enum spec_ctrl_set_context {
+	SPEC_CTRL_INITIAL,	/* boottime and CPU hotplug */
+	SPEC_CTRL_IDLE_ENTER,
+	SPEC_CTRL_IDLE_EXIT,
+};
+
+extern void x86_spec_ctrl_set(enum spec_ctrl_set_context);
 
 /* The Speculative Store Bypass disable variants */
 enum ssb_mitigation {

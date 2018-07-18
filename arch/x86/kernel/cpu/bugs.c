@@ -255,31 +255,49 @@ static const char *spectre_v2_strings[] = {
 
 static enum spectre_v2_mitigation spectre_v2_enabled = SPECTRE_V2_NONE;
 
-void x86_spec_ctrl_set(u64 val)
+void x86_spec_ctrl_set(enum spec_ctrl_set_context context)
 {
 	u64 host;
 
-	if (val & ~x86_spec_ctrl_mask)
-		WARN_ONCE(1, "SPEC_CTRL MSR value 0x%16llx is unknown.\n", val);
-	else {
+	switch (context) {
+	case SPEC_CTRL_INITIAL:
 		/*
-		 * Only two states are allowed - with IBRS or without.
+		 * Initial write of the MSR on this CPU.  Done to turn on SSBD
+		 * if it is always enabled in privileged mode
+		 * (spec_store_bypass_disable=on).  Use the base bits to avoid
+		 * IBRS needlessly being enabled before userspace is running.
 		 */
-		if (ssbd_userspace_selected()) {
-			if (val & SPEC_CTRL_IBRS)
-				host = this_cpu_read(x86_spec_ctrl_priv_cpu);
-			else
-				host = (x86_spec_ctrl_base | val) &
-				       ~SPEC_CTRL_SSBD;
-		} else {
-			if (ibrs_inuse && (val & SPEC_CTRL_IBRS))
-				host = this_cpu_read(x86_spec_ctrl_priv_cpu);
-			else
-				host = x86_spec_ctrl_base;
-			host |= val;
-		}
-		wrmsrl(MSR_IA32_SPEC_CTRL, host);
+		host = x86_spec_ctrl_base;
+		break;
+	case SPEC_CTRL_IDLE_ENTER:
+		/*
+		 * If IBRS is in use, disable it to avoid performance impact
+		 * during idle.  Same idea for SSBD.
+		 *
+		 * The SSBD bit remains set if forced to be always on with
+		 * spec_store_bypass_disable=on; otherwise, the only time it
+		 * can be set, and so require unsetting, is =userspace.
+		 */
+		host = x86_spec_ctrl_base;
+		if (ssbd_userspace_selected())
+			host &= ~SPEC_CTRL_SSBD;
+		break;
+	case SPEC_CTRL_IDLE_EXIT:
+		/*
+		 * Privileged bits meaningful only when IBRS is in use, in
+		 * which case it is enabled now.
+		 */
+		if (ibrs_inuse)
+			host = this_cpu_read(x86_spec_ctrl_priv_cpu);
+		else
+			host = x86_spec_ctrl_base;
+		break;
+	default:
+		WARN_ONCE(1, "unknown spec_ctrl_set_context %#x\n", context);
+		return;
 	}
+
+	wrmsrl(MSR_IA32_SPEC_CTRL, host);
 }
 EXPORT_SYMBOL_GPL(x86_spec_ctrl_set);
 
@@ -848,7 +866,7 @@ static void __init ssb_init(void)
 			x86_spec_ctrl_mask |= SPEC_CTRL_SSBD;
 
 			if (ssb_mode == SPEC_STORE_BYPASS_DISABLE) {
-				x86_spec_ctrl_set(SPEC_CTRL_SSBD);
+				x86_spec_ctrl_set(SPEC_CTRL_INITIAL);
 				if (spectre_v2_enabled == SPECTRE_V2_IBRS) {
 					x86_spec_ctrl_priv |= SPEC_CTRL_SSBD;
 				}
@@ -962,8 +980,12 @@ int arch_prctl_spec_ctrl_get(struct task_struct *task, unsigned long which)
 
 void x86_spec_ctrl_setup_ap(void)
 {
+	/*
+	 * Skip the call if ssb_mode is USERSPACE since the SPEC_CTRL MSR will
+	 * be set on every userspace/kernel transition anyway.
+	 */
 	if (boot_cpu_has(X86_FEATURE_MSR_SPEC_CTRL) && ssb_mode != SPEC_STORE_BYPASS_USERSPACE)
-		x86_spec_ctrl_set(x86_spec_ctrl_base & x86_spec_ctrl_mask);
+		x86_spec_ctrl_set(SPEC_CTRL_INITIAL);
 
 	if (ssb_mode == SPEC_STORE_BYPASS_DISABLE)
 		x86_amd_ssb_disable();
