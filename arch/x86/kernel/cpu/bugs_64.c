@@ -127,7 +127,7 @@ __setup("spectre_v2_heuristics=", spectre_v2_heuristics_setup);
 static void __init spectre_v2_select_mitigation(void);
 static enum ssb_mitigation __init ssb_select_mitigation(void);
 static void __init ssb_init(void);
-static bool ssbd_ibrs_selected(void);
+static bool ssbd_userspace_selected(void);
 static void __init l1tf_select_mitigation(void);
 
 static enum ssb_mitigation ssb_mode = SPEC_STORE_BYPASS_NONE;
@@ -275,7 +275,7 @@ void x86_spec_ctrl_set(u64 val)
 		/*
 		 * Only two states are allowed - with IBRS or without.
 		 */
-		if (ssbd_ibrs_selected()) {
+		if (ssbd_userspace_selected()) {
 			if (val & SPEC_CTRL_IBRS)
 				host = this_cpu_read(x86_spec_ctrl_priv_cpu);
 			else
@@ -754,7 +754,7 @@ static void __init spectre_v2_select_mitigation(void)
 			if (!retp_compiler() /* prefer IBRS over minimal ASM */ ||
 			    (retp_compiler() && !retpoline_selected(cmd) &&
 			     ((is_skylake_era() && use_ibrs_on_skylake) ||
-			      (ssbd_ibrs_selected() && use_ibrs_with_ssbd)))) {
+			      (ssbd_userspace_selected() && use_ibrs_with_ssbd)))) {
 
 				/* Start the engine! */
 				ibrs_select(&mode);
@@ -803,7 +803,7 @@ out:
 
 #define pr_fmt(fmt)	"Speculative Store Bypass: " fmt
 
-bool ssbd_ibrs_selected(void)
+static bool ssbd_userspace_selected(void)
 {
 	return (ssb_mode == SPEC_STORE_BYPASS_USERSPACE);
 }
