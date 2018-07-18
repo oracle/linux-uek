@@ -520,6 +520,7 @@ static int rdmaip_move_ip4(char *from_dev, char *to_dev, u8 from_port,
 		if (rdmaip_addr_exist(ip_config[to_port].dev, &addr, NULL,
 				      false)) {
 			pr_err("rdmaip_mov_ip: Address already exist\n");
+			ret = -EADDRINUSE;
 			goto out;
 		}
 
@@ -948,12 +949,12 @@ static void rdmaip_do_failover(u8 from_port, u8 to_port, u8 arp_port)
 			struct rdmaip_alias *alias;
 
 			alias = &ip_config[from_port].aliases[j];
-			ret = rdmaip_move_ip4(alias->if_name,
-					     ip_config[to_port].if_name,
-					     from_port, to_port, arp_port,
-					     alias->ip_addr,
-					     alias->ip_bcast,
-					     alias->ip_mask, 1, true);
+			rdmaip_move_ip4(alias->if_name,
+					ip_config[to_port].if_name,
+					from_port, to_port, arp_port,
+					alias->ip_addr,
+					alias->ip_bcast,
+					alias->ip_mask, 1, true);
 		}
 	}
 
@@ -997,13 +998,13 @@ static void rdmaip_do_failback(u8 port)
 
 				alias = &ip_config[port].aliases[j];
 
-				ret = rdmaip_move_ip4(from_name,
-						      alias->if_name,
-						      ipap, port, ipap,
-						      alias->ip_addr,
-						      alias->ip_bcast,
-						      alias->ip_mask,
-						      1, false);
+				rdmaip_move_ip4(from_name,
+						alias->if_name,
+						ipap, port, ipap,
+						alias->ip_addr,
+						alias->ip_bcast,
+						alias->ip_mask,
+						1, false);
 			}
 		}
 
