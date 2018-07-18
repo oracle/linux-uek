@@ -613,16 +613,16 @@ static __cpuidle void mwait_idle(void)
 		}
 
 		if (ibrs_inuse)
-			x86_spec_ctrl_set(SPEC_CTRL_FEATURE_DISABLE_IBRS);
+			x86_spec_ctrl_set(SPEC_CTRL_IDLE_ENTER);
 
 		__monitor((void *)&current_thread_info()->flags, 0, 0);
 		if (!need_resched()) {
 			__sti_mwait(0, 0);
 			if (ibrs_inuse)
-				x86_spec_ctrl_set(SPEC_CTRL_FEATURE_ENABLE_IBRS);
+				x86_spec_ctrl_set(SPEC_CTRL_IDLE_EXIT);
 		} else {
 			if (ibrs_inuse)
-				x86_spec_ctrl_set(SPEC_CTRL_FEATURE_ENABLE_IBRS);
+				x86_spec_ctrl_set(SPEC_CTRL_IDLE_EXIT);
 			local_irq_enable();
 		}
 		trace_cpu_idle_rcuidle(PWR_EVENT_EXIT, smp_processor_id());
