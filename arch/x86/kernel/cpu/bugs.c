@@ -82,8 +82,8 @@ int __init spectre_v2_heuristics_setup(char *p)
 			if (!strncmp(p, "off", 3))
 				use_ibrs_on_skylake = false;
 		}
-		len = strlen("rds");
-		if (!strncmp(p, "rds", len)) {
+		len = strlen("ssbd");
+		if (!strncmp(p, "ssbd", len)) {
 			p += len;
 			if (*p == '=')
 				++p;
