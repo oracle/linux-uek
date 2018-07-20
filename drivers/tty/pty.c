@@ -7,6 +7,8 @@
  *
  */
 
+/* This is a test */
+
 #include <linux/module.h>
 #include <linux/errno.h>
 #include <linux/interrupt.h>
