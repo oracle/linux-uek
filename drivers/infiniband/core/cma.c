@@ -92,6 +92,9 @@ static int debug_level;
 module_param_named(debug_level, debug_level, int, 0644);
 MODULE_PARM_DESC(debug_level, "debug level default=0");
 
+static bool match_net_dev_ignore_port = true;
+module_param(match_net_dev_ignore_port, bool, 0644);
+
 static const char * const cma_events[] = {
 	[RDMA_CM_EVENT_ADDR_RESOLVED]	 = "address resolved",
 	[RDMA_CM_EVENT_ADDR_ERROR]	 = "address error",
@@ -1460,7 +1463,8 @@ static bool cma_match_net_dev(const struct rdma_cm_id *id,
 
 	if (!net_dev)
 		/* This request is an AF_IB request or a RoCE request */
-		return (!id->port_num || id->port_num == port_num) &&
+		return (match_net_dev_ignore_port ||
+			!id->port_num || id->port_num == port_num) &&
 		       (addr->src_addr.ss_family == AF_IB ||
 			cma_protocol_roce_dev_port(id->device, port_num));
 
