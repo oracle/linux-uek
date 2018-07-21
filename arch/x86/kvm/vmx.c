@@ -8046,12 +8046,16 @@ static void vmx_l1d_flush(struct kvm_vcpu *vcpu)
 	 * 'always'
 	 */
 	if (likely(static_key_enabled(&vmx_l1d_flush_cond))) {
+		bool flush_l1d = vcpu->arch.l1tf_flush_l1d;
+
 		/*
 		 * Clear the flush bit, it gets set again either from
 		 * vcpu_run() or from one of the unsafe VMEXIT
 		 * handlers.
 		 */
 		vcpu->arch.l1tf_flush_l1d = false;
+		if (!flush_l1d)
+			return;
 	}
 
 	vcpu->stat.l1d_flush++;
@@ -8501,10 +8505,8 @@ static void __noclone vmx_vcpu_run(struct kvm_vcpu *vcpu)
 
 	x86_spec_ctrl_set_guest(vmx->spec_ctrl, 0);
 
-	if (unlikely(static_key_enabled(&vmx_l1d_should_flush))) {
-		if (vcpu->arch.l1tf_flush_l1d)
-			vmx_l1d_flush(vcpu);
-	}
+	if (unlikely(static_key_enabled(&vmx_l1d_should_flush)))
+		vmx_l1d_flush(vcpu);
 
 	asm(
 		/* Store host registers */
