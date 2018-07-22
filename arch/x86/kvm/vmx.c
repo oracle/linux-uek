@@ -8303,7 +8303,6 @@ static void vmx_handle_external_intr(struct kvm_vcpu *vcpu)
 			[ss]"i"(__KERNEL_DS),
 			[cs]"i"(__KERNEL_CS)
 			);
-		vcpu->arch.l1tf_flush_l1d = true;
 	} else
 		local_irq_enable();
 }
