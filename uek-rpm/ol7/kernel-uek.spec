@@ -100,6 +100,9 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 5
 %define with_perf_tui  1
 # module compression
 %define with_compression 1
+#build kernel with 4k & 64k page size for aarch64
+%define with_4k_ps %{?_with_4k_ps: %{_with_4k_ps}} %{?!_with_4k_ps: 0}
+%define with_4k_ps_debug %{?_with_4k_ps_debug: %{_with_4k_ps_debug}} %{?!_with_4k_ps_debug: 0}
 
 # Build the kernel-doc package, but don't fail the build if it botches.
 # Here "true" means "continue" and "false" means "fail the build".
@@ -242,6 +245,12 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 # don't do debug builds on anything but i686, x86_64, and aarch64
 %ifnarch i686 x86_64 aarch64
 %define with_debug 0
+%endif
+
+# don't do 4k/64k page size kernels for arch except aarch64
+%ifnarch aarch64
+%define with_4k_ps      0
+%define with_4k_ps_debug 0
 %endif
 
 # only package docs noarch
@@ -938,6 +947,15 @@ This package includes a kdump version of the Linux kernel. It is
 required only on machines which will use the kexec-based kernel crash dump
 mechanism.
 
+%define variant_summary A aarch64 kernel with 4k page size.
+%kernel_variant_package 4k
+%description 4k
+This package includes 4k page size for aarch64 kernel.
+
+%define variant_summary The Aarch64 Linux kernel compiled with extra debugging enabled
+%kernel_variant_package 4k-debug
+%description 4k-debug
+This package include debug kernel for 4k page size.
 
 %prep
 # do a few sanity-checks for --with *only builds
@@ -1198,6 +1216,14 @@ BuildKernel() {
     %endif
 
     if [ "$Flavour" == "debug" ]; then
+	cp configs/config-debug .config
+    elif [ "$Flavour" == "4k" ]; then
+	sed -i '/^CONFIG_ARM64_[0-9]\+K_PAGES=/d' configs/config
+	echo 'CONFIG_ARM64_4K_PAGES=y' >> configs/config
+	cp configs/config .config
+    elif [ "$Flavour" == "4k-debug" ]; then
+	sed -i '/^CONFIG_ARM64_[0-9]\+K_PAGES=/d' configs/config-debug
+	echo 'CONFIG_ARM64_4K_PAGES=y' >> configs/config-debug
 	cp configs/config-debug .config
     else
 	cp configs/config .config
@@ -1526,6 +1552,14 @@ BuildKernel %make_target %kernel_image smp
 BuildKernel vmlinux vmlinux kdump vmlinux
 %endif
 
+%if %{with_4k_ps}
+BuildKernel %make_target %kernel_image 4k
+%endif
+
+%if %{with_4k_ps_debug}
+BuildKernel %make_target %kernel_image 4k-debug
+%endif
+
 %global perf_make \
   make -s EXTRA_CFLAGS="${RPM_OPT_FLAGS}" LDFLAGS="%{__global_ldflags}" %{?cross_opts} -C tools/perf V=1 NO_PERF_READ_VDSO32=1 NO_PERF_READ_VDSOX32=1 WERROR=0 NO_LIBUNWIND=1 HAVE_CPLUS_DEMANGLE=1 NO_GTK2=1 NO_STRLCPY=1 NO_BIONIC=1 NO_JVMTI=1 prefix=%{_prefix}
 %if %{with_perf}
@@ -1811,9 +1845,9 @@ fi\
 [ -f /etc/default/grub ] && . /etc/default/grub\
 DIST_DTFILE="/boot/dtb-%{KVERREL}%{!-u:%{?-v:.%{-v*}}}/$GRUB_DEFAULT_DTB"\
 if [ -f "$DIST_DTFILE" ]; then\
-    %{_sbindir}/new-kernel-pkg --package kernel%{?-v:-%{-v*}} --install %{KVERREL}%{!-u:%{?-v:.%{-v*}}} "--devtree=$DIST_DTFILE" || exit $?\
+    %{_sbindir}/new-kernel-pkg --package kernel%{!-u:-uek}%{?-v:-%{-v*}} --install %{KVERREL}%{!-u:%{?-v:.%{-v*}}} "--devtree=$DIST_DTFILE" || exit $?\
 else\
-    %{_sbindir}/new-kernel-pkg --package kernel%{?-v:-%{-v*}} --install %{KVERREL}%{!-u:%{?-v:.%{-v*}}} || exit $?\
+    %{_sbindir}/new-kernel-pkg --package kernel%{!-u:-uek}%{?-v:-%{-v*}} --install %{KVERREL}%{!-u:%{?-v:.%{-v*}}} || exit $?\
 fi\
 %{nil}
 
@@ -1902,6 +1936,10 @@ fi\
 %kernel_variant_post -v PAEdebug -r (kernel|kernel-smp|kernel-xen)
 %kernel_variant_preun PAEdebug
 %kernel_variant_pre PAEdebug
+
+%kernel_variant_pre 4k
+%kernel_variant_preun 4k
+%kernel_variant_post -v 4k -r (kernel%{variant}|kernel%{variant}-debug)
 
 if [ -x /sbin/ldconfig ]
 then
@@ -2085,5 +2123,8 @@ fi
 %kernel_variant_files %{with_pae} PAE
 %kernel_variant_files %{with_pae_debug} PAEdebug
 %kernel_variant_files -k vmlinux %{with_kdump} kdump
+
+%kernel_variant_files %{with_4k_ps} 4k
+%kernel_variant_files %{with_4k_ps_debug} 4k-debug
 
 %changelog
