@@ -72,18 +72,18 @@ struct mst_params {
 #define MST_READ4 _IOR(MST_BYTE_ACCESS_MAGIC, 1, struct mst_read4_st)
 
 struct mst_read4_st {
-        unsigned int address_space;
-        unsigned int offset;
-        unsigned int data; /*OUT*/
+	unsigned int address_space;
+	unsigned int offset;
+	unsigned int data; /*OUT*/
 };
 
 
 #define MST_WRITE4 _IOW(MST_BYTE_ACCESS_MAGIC, 2, struct mst_write4_st)
 
 struct mst_write4_st {
-        unsigned int address_space;
-        unsigned int offset;
-        unsigned int data;
+	unsigned int address_space;
+	unsigned int offset;
+	unsigned int data;
 };
 
 
@@ -113,20 +113,20 @@ struct mst_write_block_st {
 };
 
 
-#define PCICONF_READ4_BUFFER  _IOR (MST_BLOCK_ACCESS_MAGIC, 3, struct mst_read4_st)
+#define PCICONF_READ4_BUFFER  _IOR(MST_BLOCK_ACCESS_MAGIC, 3, struct mst_read4_st)
 struct mst_read4_buffer_st {
-        unsigned int address_space;
-        unsigned int offset;
-        int size;
-        unsigned int data[PCICONF_MAX_BUFFER_SIZE/4]; /*OUT*/
+	unsigned int address_space;
+	unsigned int offset;
+	int size;
+	unsigned int data[PCICONF_MAX_BUFFER_SIZE/4]; /*OUT*/
 };
 
-#define PCICONF_WRITE4_BUFFER _IOW (MST_BLOCK_ACCESS_MAGIC, 4, struct mst_write4_buffer_st)
+#define PCICONF_WRITE4_BUFFER _IOW(MST_BLOCK_ACCESS_MAGIC, 4, struct mst_write4_buffer_st)
 struct mst_write4_buffer_st {
-        unsigned int address_space;
-        unsigned int offset;
-        int size;
-        unsigned int data[PCICONF_MAX_BUFFER_SIZE/4]; /*IN*/
+	unsigned int address_space;
+	unsigned int offset;
+	int size;
+	unsigned int data[PCICONF_MAX_BUFFER_SIZE/4]; /*IN*/
 };
 /****************************************************/
 /*

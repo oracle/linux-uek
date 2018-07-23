@@ -37,7 +37,7 @@
 
 /****************************************************/
 int pci_read4_vpd(struct mst_dev_data *dev, unsigned int timeout,
-		unsigned offset, u32 *buf)
+		unsigned int offset, u32 *buf)
 {
 	struct pci_dev *pci_dev = dev->pci_dev;
 	int vpd_cap = dev->vpd_cap_addr;
@@ -99,7 +99,7 @@ int pci_read4_vpd(struct mst_dev_data *dev, unsigned int timeout,
 EXPORT_SYMBOL(pci_read4_vpd);
 
 int pci_write4_vpd(struct mst_dev_data *dev, unsigned int timeout,
-		unsigned offset, u32 buf)
+		unsigned int offset, u32 buf)
 {
 	struct pci_dev *pci_dev = dev->pci_dev;
 	int vpd_cap = dev->vpd_cap_addr;
