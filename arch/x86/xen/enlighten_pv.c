@@ -88,6 +88,8 @@
 #include "multicalls.h"
 #include "pmu.h"
 
+#include "../kernel/cpu/cpu.h"
+
 void *xen_initial_gdt;
 
 static int xen_cpu_up_prepare_pv(unsigned int cpu);
@@ -1247,6 +1249,9 @@ asmlinkage __visible void __init xen_start_kernel(void)
 	xen_setup_gdt(0);
 
 	xen_init_irq_ops();
+
+	/* Determine virtual and physical address sizes */
+	get_cpu_address_sizes(&boot_cpu_data);
 
 	/* Let's presume PV guests always boot on vCPU with id 0. */
 	per_cpu(xen_vcpu_id, 0) = 0;

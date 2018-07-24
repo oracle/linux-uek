@@ -925,7 +925,7 @@ void get_cpu_cap(struct cpuinfo_x86 *c, enum get_cpu_cap_behavior behavior)
 	init_speculation_control(c, behavior);
 }
 
-static void get_cpu_address_sizes(struct cpuinfo_x86 *c)
+void get_cpu_address_sizes(struct cpuinfo_x86 *c)
 {
 	u32 eax, ebx, ecx, edx;
 
