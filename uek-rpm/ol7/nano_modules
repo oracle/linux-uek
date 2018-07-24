@@ -385,6 +385,7 @@ kernel/drivers/net/macvlan.ko
 kernel/drivers/net/macvtap.ko
 kernel/drivers/net/mdio.ko
 kernel/drivers/net/mii.ko
+kernel/drivers/net/net_failover.ko
 kernel/drivers/net/netconsole.ko
 kernel/drivers/net/phy/bcm7xxx.ko
 kernel/drivers/net/phy/bcm-phy-lib.ko
@@ -781,6 +782,7 @@ kernel/net/bridge/netfilter/ebt_vlan.ko
 kernel/net/bridge/netfilter/nf_log_bridge.ko
 kernel/net/bridge/netfilter/nf_tables_bridge.ko
 kernel/net/bridge/netfilter/nft_meta_bridge.ko
+kernel/net/core/failover.ko
 kernel/net/core/pktgen.ko
 kernel/net/dccp/dccp_diag.ko
 kernel/net/dccp/dccp_ipv4.ko
