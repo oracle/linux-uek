@@ -1,34 +1,8 @@
+// SPDX-License-Identifier: GPL-2.0 OR Linux-OpenIB
 /*
- * Copyright (c) 2011-2014 Mellanox Technologies, Inc. All rights reserved.
- *
- * This software is available to you under a choice of one of two
- * licenses.  You may choose to be licensed under the terms of the GNU
- * General Public License (GPL) Version 2, available from the file
- * COPYING in the main directory of this source tree, or the
- * OpenIB.org BSD license below:
- *
- *     Redistribution and use in source and binary forms, with or
- *     without modification, are permitted provided that the following
- *     conditions are met:
- *
- *      - Redistributions of source code must retain the above
- *        copyright notice, this list of conditions and the following
- *        disclaimer.
- *
- *      - Redistributions in binary form must reproduce the above
- *        copyright notice, this list of conditions and the following
- *        disclaimer in the documentation and/or other materials
- *        provided with the distribution.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
- * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
- * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
- * NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS
- * BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN
- * ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
- * SOFTWARE.
+ * Copyright (c) 2018, Mellanox Technologies inc.  All rights reserved.
  */
+
 #include <linux/version.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
@@ -167,7 +141,7 @@ static int _vendor_specific_sem(struct mst_dev_data *dev, int state)
 
 			if (lock_val) { //semaphore is taken
 				retries++;
-				msleep(1); // wait for current op to end
+				udelay(1000); // wait for current op to end
 				continue;
 			}
 			//read ticket
@@ -929,7 +903,7 @@ static int mst_ioctl(struct inode *inode, struct file *file,
 		}
 
 		if (dev->spaces_support_status != SS_ALL_SPACES_SUPPORTED) {
-			res = -ENOSYS;
+			res = -EOPNOTSUPP;
 			goto fin;
 		}
 
@@ -968,7 +942,7 @@ static int mst_ioctl(struct inode *inode, struct file *file,
 		}
 
 		if (dev->spaces_support_status != SS_ALL_SPACES_SUPPORTED) {
-			res = -ENOSYS;
+			res = -EOPNOTSUPP;
 			goto fin;
 		}
 
@@ -1209,7 +1183,7 @@ static int mst_ioctl(struct inode *inode, struct file *file,
 
 fin:
 	if (IS_LOCK_NEEDED(dev))
-	mutex_unlock(&dev->lock);
+		mutex_unlock(&dev->lock);
 fin_err:
 	return res;
 }
@@ -1277,12 +1251,8 @@ static struct mst_dev_data *mst_device_create(enum dev_type type,
 	char dbdf[20];
 
 	dev = kzalloc(sizeof(struct mst_dev_data), GFP_KERNEL);
-	if (!dev) {
-		mst_err("failed allocating new %s device with id=0x%x\n",
-				dev_type_to_str(type),
-				pdev->device);
+	if (!dev)
 		return NULL;
-	}
 
 	sprintf(dbdf, "%4.4x:%2.2x:%2.2x.%1.1x", pci_domain_nr(pdev->bus),
 			pdev->bus->number, PCI_SLOT(pdev->devfn), PCI_FUNC(pdev->devfn));
@@ -1326,13 +1296,13 @@ static struct mst_dev_data *mst_device_create(enum dev_type type,
 		mst_err("failed to allocate chrdev_region\n");
 	dev->cl = class_create(THIS_MODULE, dev->name);
 	if (dev->cl == NULL) {
-		printk(KERN_ALERT "Class creation failed\n");
+		pr_alert("Class creation failed\n");
 		unregister_chrdev_region(dev->my_dev, 1);
 		goto out;
 	}
 
 	if (device_create(dev->cl, NULL, dev->my_dev, NULL, dev->name) == NULL) {
-		printk(KERN_ALERT "Device creation failed\n");
+		pr_alert("Device creation failed\n");
 		class_destroy(dev->cl);
 		unregister_chrdev_region(dev->my_dev, 1);
 		goto out;
