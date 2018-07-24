@@ -61,10 +61,10 @@ struct mst_params {
 	unsigned int func;
 	unsigned int bar;
 	unsigned int device;
-    unsigned int vendor;
+	unsigned int vendor;
 	unsigned int subsystem_device;
-    unsigned int subsystem_vendor;
-    unsigned int vendor_specific_cap;
+	unsigned int subsystem_vendor;
+	unsigned int vendor_specific_cap;
 };
 
 /****************************************************/

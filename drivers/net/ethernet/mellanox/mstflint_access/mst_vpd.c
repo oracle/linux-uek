@@ -51,9 +51,8 @@ int pci_read4_vpd(struct mst_dev_data *dev, unsigned int timeout,
 		return -ENODEV;
 	}
 
-	if (!timeout) {
+	if (!timeout)
 		timeout = MST_VPD_DEFAULT_TOUT;
-	}
 
 	/* sets F bit to zero and write VPD addr */
 	addr = (0x7fff & offset);
@@ -83,9 +82,8 @@ int pci_read4_vpd(struct mst_dev_data *dev, unsigned int timeout,
 		cond_resched();
 	}
 
-	if (!done) {
+	if (!done)
 		return -ETIMEDOUT;
-	}
 
 	/* read data */
 	res = pci_read_config_dword(pci_dev, vpd_cap + PCI_VPD_DATA, buf);
@@ -113,9 +111,8 @@ int pci_write4_vpd(struct mst_dev_data *dev, unsigned int timeout,
 		return -ENODEV;
 	}
 
-	if (!timeout) {
+	if (!timeout)
 		timeout = MST_VPD_DEFAULT_TOUT;
-	}
 
 	/* write data */
 	res = pci_write_config_dword(pci_dev, vpd_cap + PCI_VPD_DATA, buf);
@@ -152,9 +149,8 @@ int pci_write4_vpd(struct mst_dev_data *dev, unsigned int timeout,
 		cond_resched();
 	}
 
-	if (!done) {
+	if (!done)
 		return -ETIMEDOUT;
-	}
 
 	return res;
 }

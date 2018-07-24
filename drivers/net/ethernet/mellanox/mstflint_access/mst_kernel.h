@@ -87,7 +87,7 @@ enum dev_type {
 struct mst_dev_data {
 	int					addr_reg;				/* PCICONF address register */
 	int					data_reg;				/* PCICONF data register */
-    int                 wo_addr;
+	int                 wo_addr;
 	unsigned int		bar;					/* PCIMEM bar */
 	void				*hw_addr;				/* PCIMEM memory start */
 	char				name[MST_NAME_SIZE];	/* name of character device */
@@ -99,15 +99,15 @@ struct mst_dev_data {
 	int					major;					/* device major number */
 	int					initialized;			/* indicate if init done */
 
-    dev_t               my_dev;
-    struct cdev         mcdev;
-    struct class        *cl;
+	dev_t               my_dev;
+	struct cdev         mcdev;
+	struct class        *cl;
 
 	unsigned char		connectx_wa_slots;		/* wa for pci bug */
     /* Vendor specific capability address */
-    int vendor_specific_cap;
+	int vendor_specific_cap;
     /* status on VSEC supported spaces*/
-    int spaces_support_status;
+	int spaces_support_status;
 };
 
 
