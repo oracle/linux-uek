@@ -1243,10 +1243,9 @@ int rds_sendmsg(struct socket *sock, struct msghdr *msg, size_t payload_len)
 			ret = -EINVAL;
 			goto out;
 		}
-		switch (namelen) {
-		case sizeof(*usin):
-			if (usin->sin_family != AF_INET ||
-			    usin->sin_addr.s_addr == htonl(INADDR_ANY) ||
+		switch (usin->sin_family) {
+		case AF_INET:
+			if (usin->sin_addr.s_addr == htonl(INADDR_ANY) ||
 			    usin->sin_addr.s_addr == htonl(INADDR_BROADCAST) ||
 			    IN_MULTICAST(ntohl(usin->sin_addr.s_addr))) {
 				ret = -EINVAL;
@@ -1256,27 +1255,43 @@ int rds_sendmsg(struct socket *sock, struct msghdr *msg, size_t payload_len)
 			dport = usin->sin_port;
 			break;
 
-		case sizeof(*sin6): {
+		case AF_INET6: {
 			int addr_type;
 
-			if (sin6->sin6_family != AF_INET6) {
+			if (namelen < sizeof(*sin6)) {
 				ret = -EINVAL;
 				goto out;
 			}
 			addr_type = ipv6_addr_type(&sin6->sin6_addr);
 			if (!(addr_type & IPV6_ADDR_UNICAST)) {
-				ret = -EINVAL;
-				goto out;
+				__be32 addr4;
+
+				if (!(addr_type & IPV6_ADDR_MAPPED)) {
+					ret = -EINVAL;
+					goto out;
+				}
+
+				/* It is a mapped address.  Need to do some
+				 * sanity checks.
+				 */
+				addr4 = sin6->sin6_addr.s6_addr32[3];
+				if (addr4 == htonl(INADDR_ANY) ||
+				    addr4 == htonl(INADDR_BROADCAST) ||
+				    IN_MULTICAST(ntohl(addr4))) {
+					return -EINVAL;
+					goto out;
+				}
 			}
-			if (addr_type & IPV6_ADDR_LINKLOCAL &&
-			    sin6->sin6_scope_id == 0) {
-				ret = -EINVAL;
-				goto out;
+			if (addr_type & IPV6_ADDR_LINKLOCAL) {
+				if (sin6->sin6_scope_id == 0) {
+					ret = -EINVAL;
+					goto out;
+				}
+				scope_id = sin6->sin6_scope_id;
 			}
 
 			daddr = sin6->sin6_addr;
 			dport = sin6->sin6_port;
-			scope_id = sin6->sin6_scope_id;
 			break;
 		}
 
