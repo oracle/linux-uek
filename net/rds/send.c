@@ -1324,6 +1324,19 @@ int rds_sendmsg(struct socket *sock, struct msghdr *msg, size_t payload_len)
 			ret = -EOPNOTSUPP;
 			goto out;
 		}
+		/* If the socket is already bound to a link local address,
+		 * it can only send to peers on the same link.  But allow
+		 * communicating beween link local and non-link local address.
+		 */
+		if (scope_id != rs->rs_bound_scope_id) {
+			if (!scope_id) {
+				scope_id = rs->rs_bound_scope_id;
+			} else if (rs->rs_bound_scope_id) {
+				release_sock(sk);
+				ret = -EINVAL;
+				goto out;
+			}
+		}
 	}
 	release_sock(sk);
 
