@@ -1,0 +1,11 @@
+--- find-debuginfo.sh.orig	2018-07-24 16:56:39.078515151 -0700
++++ find-debuginfo.sh	2018-07-24 16:56:46.757431723 -0700
+@@ -198,7 +198,7 @@ make_id_link()
+ get_debugfn()
+ {
+   dn=$(dirname "${1#$RPM_BUILD_ROOT}")
+-  bn=$(basename "$1" .debug).debug
++  bn=$(basename "$1").debug
+ 
+   debugdn=${debugdir}${dn}
+   debugfn=${debugdn}/${bn}
