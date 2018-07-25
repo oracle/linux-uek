@@ -78,7 +78,8 @@ bail:
  * smaller ip address, we recycle conns in RDS_CONN_ERROR on the passive side
  * by moving them to CONNECTING in this function.
  */
-struct rds_tcp_connection *rds_tcp_accept_one_path(struct rds_connection *conn)
+static struct rds_tcp_connection *
+rds_tcp_accept_one_path(struct rds_connection *conn)
 {
 	int i;
 	int npaths = max_t(int, 1, conn->c_npaths);
@@ -274,15 +275,15 @@ struct socket *rds_tcp_listen_init(struct net *net, bool isv6)
 		sin6 = (struct sockaddr_in6 *)&ss;
 		sin6->sin6_family = PF_INET6;
 		sin6->sin6_addr = in6addr_any;
-		sin6->sin6_port = (__force u16)htons(RDS_TCP_PORT);
+		sin6->sin6_port = htons(RDS_TCP_PORT);
 		sin6->sin6_scope_id = 0;
 		sin6->sin6_flowinfo = 0;
 		addr_len = sizeof(*sin6);
 	} else {
 		sin = (struct sockaddr_in *)&ss;
 		sin->sin_family = PF_INET;
-		sin->sin_addr.s_addr = INADDR_ANY;
-		sin->sin_port = (__force u16)htons(RDS_TCP_PORT);
+		sin->sin_addr.s_addr = htonl(INADDR_ANY);
+		sin->sin_port = htons(RDS_TCP_PORT);
 		addr_len = sizeof(*sin);
 	}
 
