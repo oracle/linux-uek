@@ -535,7 +535,7 @@ static int rds_recv_track_latency(struct rds_sock *rs, char __user *optval,
 	if (optlen != sizeof(struct rds_rx_trace_so))
 		return -EFAULT;
 
-	if (copy_from_user(&trace, (struct rds_rx_trace_so *)optval, sizeof(trace)))
+	if (copy_from_user(&trace, optval, sizeof(trace)))
 		return -EFAULT;
 
 	rs->rs_rx_traces = trace.rx_traces;
@@ -688,12 +688,12 @@ static int rds_connect(struct socket *sock, struct sockaddr *uaddr,
 			ret = -EAFNOSUPPORT;
 			break;
 		}
-		if (sin->sin_addr.s_addr == INADDR_ANY) {
+		if (sin->sin_addr.s_addr == htonl(INADDR_ANY)) {
 			ret = -EDESTADDRREQ;
 			break;
 		}
 		if (IN_MULTICAST(ntohl(sin->sin_addr.s_addr)) ||
-		    sin->sin_addr.s_addr == INADDR_BROADCAST) {
+		    sin->sin_addr.s_addr == htonl(INADDR_BROADCAST)) {
 			ret = -EINVAL;
 			break;
 		}
@@ -785,7 +785,7 @@ static int __rds_create(struct socket *sock, struct sock *sk, int protocol)
 	rs->rs_rdma_keys = RB_ROOT;
 	rs->poison = 0xABABABAB;
 	rs->rs_tos = 0;
-	rs->rs_conn = 0;
+	rs->rs_conn = NULL;
 	rs->rs_netfilter_enabled = 0;
 	rs->rs_rx_traces = 0;
 

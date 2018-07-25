@@ -122,7 +122,7 @@ void rds_conn_laddr_list(struct net *net, struct in6_addr *laddr,
  * and receiving over this connection again in the future.  It is up to
  * the transport to have serialized this call with its send and recv.
  */
-void rds_conn_path_reset(struct rds_conn_path *cp)
+static void rds_conn_path_reset(struct rds_conn_path *cp)
 {
 	struct rds_connection *conn = cp->cp_conn;
 
@@ -679,12 +679,12 @@ static void rds6_conn_message_info_retrans(struct socket *sock,
 }
 
 void rds_for_each_conn_info(struct socket *sock, unsigned int len,
-			  struct rds_info_iterator *iter,
-			  struct rds_info_lengths *lens,
-			  int (*visitor)(struct rds_connection *, void *),
-			  size_t item_len)
+			    struct rds_info_iterator *iter,
+			    struct rds_info_lengths *lens,
+			    int (*visitor)(struct rds_connection *, void *),
+			    u64 *buffer,
+			    size_t item_len)
 {
-	uint64_t buffer[(item_len + 7) / 8];
 	struct hlist_head *head;
 	struct rds_connection *conn;
 	size_t i;
@@ -716,13 +716,14 @@ void rds_for_each_conn_info(struct socket *sock, unsigned int len,
 }
 EXPORT_SYMBOL_GPL(rds_for_each_conn_info);
 
-void rds_walk_conn_path_info(struct socket *sock, unsigned int len,
-			     struct rds_info_iterator *iter,
-			     struct rds_info_lengths *lens,
-			     int (*visitor)(struct rds_conn_path *, void *),
-			     size_t item_len)
+static void rds_walk_conn_path_info(struct socket *sock, unsigned int len,
+				    struct rds_info_iterator *iter,
+				    struct rds_info_lengths *lens,
+				    int (*visitor)(struct rds_conn_path *,
+						   void *),
+				    u64 *buffer,
+				    size_t item_len)
 {
-	u64  buffer[(item_len + 7) / 8];
 	struct hlist_head *head;
 	struct rds_connection *conn;
 	size_t i;
@@ -831,8 +832,10 @@ static void rds_conn_info(struct socket *sock, unsigned int len,
 			  struct rds_info_iterator *iter,
 			  struct rds_info_lengths *lens)
 {
+	u64 buffer[(sizeof(struct rds_info_connection) + 7) / 8];
+
 	rds_walk_conn_path_info(sock, len, iter, lens,
-				rds_conn_info_visitor,
+				rds_conn_info_visitor, buffer,
 				sizeof(struct rds_info_connection));
 }
 
@@ -840,8 +843,10 @@ static void rds6_conn_info(struct socket *sock, unsigned int len,
 			   struct rds_info_iterator *iter,
 			   struct rds_info_lengths *lens)
 {
+	u64 buffer[(sizeof(struct rds6_info_connection) + 7) / 8];
+
 	rds_walk_conn_path_info(sock, len, iter, lens,
-				rds6_conn_info_visitor,
+				rds6_conn_info_visitor, buffer,
 				sizeof(struct rds6_info_connection));
 }
 
