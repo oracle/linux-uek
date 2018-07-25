@@ -1246,8 +1246,8 @@ int rds_sendmsg(struct socket *sock, struct msghdr *msg, size_t payload_len)
 		switch (namelen) {
 		case sizeof(*usin):
 			if (usin->sin_family != AF_INET ||
-			    usin->sin_addr.s_addr == INADDR_ANY ||
-			    usin->sin_addr.s_addr == INADDR_BROADCAST ||
+			    usin->sin_addr.s_addr == htonl(INADDR_ANY) ||
+			    usin->sin_addr.s_addr == htonl(INADDR_BROADCAST) ||
 			    IN_MULTICAST(ntohl(usin->sin_addr.s_addr))) {
 				ret = -EINVAL;
 				goto out;
@@ -1660,9 +1660,8 @@ out:
  * send out a probe. Can be shared by rds_send_ping,
  * rds_send_pong, rds_send_hb.
  */
-int
-rds_send_probe(struct rds_conn_path *cp, __be16 sport,
-	       __be16 dport, u8 h_flags)
+static int rds_send_probe(struct rds_conn_path *cp, __be16 sport,
+			  __be16 dport, u8 h_flags)
 {
 	struct rds_message *rm;
 	unsigned long flags;
@@ -1698,8 +1697,8 @@ rds_send_probe(struct rds_conn_path *cp, __be16 sport,
 
 	if (RDS_HS_PROBE(be16_to_cpu(sport), be16_to_cpu(dport)) &&
 	    cp->cp_conn->c_trans->t_mp_capable) {
-		u16 npaths = cpu_to_be16(RDS_MPATH_WORKERS);
-		u32 my_gen_num = cpu_to_be32(cp->cp_conn->c_my_gen_num);
+		__be16 npaths = cpu_to_be16(RDS_MPATH_WORKERS);
+		__be32 my_gen_num = cpu_to_be32(cp->cp_conn->c_my_gen_num);
 
 		rds_message_add_extension(&rm->m_inc.i_hdr,
 					  RDS_EXTHDR_NPATHS, &npaths,
