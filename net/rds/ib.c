@@ -352,9 +352,11 @@ static void rds_ib_ic_info(struct socket *sock, unsigned int len,
 			   struct rds_info_iterator *iter,
 			   struct rds_info_lengths *lens)
 {
+	u64 buffer[(sizeof(struct rds_info_rdma_connection) + 7) / 8];
+
 	rds_for_each_conn_info(sock, len, iter, lens,
-				rds_ib_conn_info_visitor,
-				sizeof(struct rds_info_rdma_connection));
+			       rds_ib_conn_info_visitor, buffer,
+			       sizeof(struct rds_info_rdma_connection));
 }
 
 /* IPv6 version of rds_ib_ic_info(). */
@@ -362,8 +364,10 @@ static void rds6_ib_ic_info(struct socket *sock, unsigned int len,
 			    struct rds_info_iterator *iter,
 			    struct rds_info_lengths *lens)
 {
+	u64 buffer[(sizeof(struct rds6_info_rdma_connection) + 7) / 8];
+
 	rds_for_each_conn_info(sock, len, iter, lens,
-			       rds6_ib_conn_info_visitor,
+			       rds6_ib_conn_info_visitor, buffer,
 			       sizeof(struct rds6_info_rdma_connection));
 }
 
