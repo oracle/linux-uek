@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2006, 2017 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2006, 2018 Oracle and/or its affiliates. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -129,8 +129,8 @@ int rds_tcp_conn_path_connect(struct rds_conn_path *cp)
 		addrlen = sizeof(sin6);
 	} else {
 		sin.sin_family = AF_INET;
-		sin.sin_addr.s_addr = (__force u32)conn->c_laddr.s6_addr32[3];
-		sin.sin_port = (__force u16)htons(0);
+		sin.sin_addr.s_addr = conn->c_laddr.s6_addr32[3];
+		sin.sin_port = 0;
 		addr = (struct sockaddr *)&sin;
 		addrlen = sizeof(sin);
 	}
@@ -152,8 +152,8 @@ int rds_tcp_conn_path_connect(struct rds_conn_path *cp)
 		addrlen = sizeof(sin6);
 	} else {
 		sin.sin_family = AF_INET;
-		sin.sin_addr.s_addr = (__force u32)conn->c_faddr.s6_addr32[3];
-		sin.sin_port = (__force u16)htons(RDS_TCP_PORT);
+		sin.sin_addr.s_addr = conn->c_faddr.s6_addr32[3];
+		sin.sin_port = htons(RDS_TCP_PORT);
 		addr = (struct sockaddr *)&sin;
 		addrlen = sizeof(sin);
 	}
