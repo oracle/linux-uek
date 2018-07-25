@@ -48,12 +48,12 @@
 static struct rdma_cm_id *rds_rdma_listen_id;
 static struct rdma_cm_id *rds6_rdma_listen_id;
 
-int unload_allowed __initdata;
+static int unload_allowed __initdata;
 
 module_param_named(module_unload_allowed, unload_allowed, int, 0);
 MODULE_PARM_DESC(module_unload_allowed, "Allow this module to be unloaded or not (default 0 for NO)");
 
-int rds_rdma_resolve_to_ms[] = {1000, 1000, 2000, 4000, 5000};
+static int rds_rdma_resolve_to_ms[] = {1000, 1000, 2000, 4000, 5000};
 
 static char *rds_cm_event_strings[] = {
 #define RDS_CM_EVENT_STRING(foo) \
@@ -83,9 +83,9 @@ static char *rds_cm_event_str(enum rdma_cm_event_type type)
 			     ARRAY_SIZE(rds_cm_event_strings), type);
 };
 
-int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
-				  struct rdma_cm_event *event,
-				  bool isv6)
+static int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
+					 struct rdma_cm_event *event,
+					 bool isv6)
 {
 	/* this can be null in the listening path */
 	struct rds_connection *conn = cm_id->context;
