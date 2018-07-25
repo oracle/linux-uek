@@ -437,18 +437,23 @@ static int rds_ib_laddr_check(struct net *net, const struct in6_addr *addr,
 		if (ipv6_addr_type(addr) & IPV6_ADDR_LINKLOCAL) {
 			struct net_device *dev;
 
-			if (scope_id == 0)
-				return -EADDRNOTAVAIL;
+			if (scope_id == 0) {
+				ret = -EADDRNOTAVAIL;
+				goto out;
+			}
 
 			/* Use init_net for now as RDS is not network
 			 * name space aware.
 			 */
 			dev = dev_get_by_index(&init_net, scope_id);
-			if (!dev)
-				return -EADDRNOTAVAIL;
+			if (!dev) {
+				ret = -EADDRNOTAVAIL;
+				goto out;
+			}
 			if (!ipv6_chk_addr(&init_net, addr, dev, 1)) {
 				dev_put(dev);
-				return -EADDRNOTAVAIL;
+				ret = -EADDRNOTAVAIL;
+				goto out;
 			}
 			dev_put(dev);
 		}
@@ -465,6 +470,7 @@ static int rds_ib_laddr_check(struct net *net, const struct in6_addr *addr,
 		 addr, scope_id, ret,
 		 cm_id->device ? cm_id->device->node_type : -1);
 
+out:
 	rdma_destroy_id(cm_id);
 
 	return ret;

@@ -285,7 +285,8 @@ struct rds_connection {
 	struct hlist_node	c_hash_node;
 	struct in6_addr		c_laddr;
 	struct in6_addr		c_faddr;
-	int			c_dev_if; /* c_laddr's interface index */
+	int			c_dev_if; /* ifindex uses for this conn */
+	int			c_bound_if; /* ifindex of c_laddr */
 	unsigned int		c_loopback:1,
 				c_isv6:1,
 				c_ping_triggered:1,
