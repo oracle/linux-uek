@@ -966,7 +966,7 @@ static u32 __rds_find_ifindex(struct net *net, const struct in6_addr *addr)
 
 	rcu_read_lock();
 	for_each_netdev_rcu(net, dev) {
-		if (ipv6_chk_addr(net, addr, dev, 0)) {
+		if (ipv6_chk_addr(net, addr, dev, 1)) {
 			idx = dev->ifindex;
 			break;
 		}
@@ -1010,12 +1010,16 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 		dp_cmn = &dp->ricp_v6.dp_cmn;
 		saddr6 = &dp->ricp_v6.dp_saddr;
 		daddr6 = &dp->ricp_v6.dp_daddr;
-		/* If the local address is link local, need to find the
+		/* If either address is link local, need to find the
 		 * interface index in order to create a proper RDS
 		 * connection.
 		 */
-		if (ipv6_addr_type(daddr6) & IPV6_ADDR_LINKLOCAL) {
-			/* Using init_net for now ..  */
+		if (ipv6_addr_type(daddr6) & IPV6_ADDR_LINKLOCAL ||
+		    ipv6_addr_type(saddr6) & IPV6_ADDR_LINKLOCAL) {
+			/* Using init_net for now ..  If peer address is
+			 * link local, we also use our address to find the
+			 * correct index.
+			 */
 			ifindex = __rds_find_ifindex(&init_net, daddr6);
 			/* No index found...  Need to bail out. */
 			if (ifindex == 0) {
