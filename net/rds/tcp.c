@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2006, 2017 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2006, 2018 Oracle and/or its affiliates. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -337,10 +337,9 @@ static int rds_tcp_laddr_check(struct net *net, const struct in6_addr *addr,
 			rcu_read_unlock();
 			return -EADDRNOTAVAIL;
 		}
+		rcu_read_unlock();
 	}
 	ret = ipv6_chk_addr(net, addr, dev, 0);
-	if (scope_id != 0)
-		rcu_read_unlock();
 	if (ret)
 		return 0;
 	return -EADDRNOTAVAIL;
