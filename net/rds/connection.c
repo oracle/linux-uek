@@ -221,6 +221,16 @@ static struct rds_connection *__rds_conn_create(struct net *net,
 	conn->c_isv6 = !ipv6_addr_v4mapped(laddr);
 	conn->c_faddr = *faddr;
 	conn->c_dev_if = dev_if;
+	/* If the local address is link local, set c_bound_if to be the
+	 * index used for this connection.  Otherwise, set it to 0 as
+	 * the socket is not bound to an interface.  c_bound_if is used
+	 * to look up a socket when a packet is received
+	 */
+	if (ipv6_addr_type(laddr) & IPV6_ADDR_LINKLOCAL)
+		conn->c_bound_if = dev_if;
+	else
+		conn->c_bound_if = 0;
+
 	rds_conn_net_set(conn, net);
 
 	conn->c_tos = tos;

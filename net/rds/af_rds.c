@@ -743,10 +743,22 @@ static int rds_connect(struct socket *sock, struct sockaddr *uaddr,
 				break;
 			}
 		}
-		if (addr_type & IPV6_ADDR_LINKLOCAL &&
-		    sin6->sin6_scope_id == 0) {
-			ret = -EINVAL;
-			break;
+		if (addr_type & IPV6_ADDR_LINKLOCAL) {
+			/* If socket is arleady bound to a link local address,
+			 * the peer address must be on the same link.
+			 */
+			if (sin6->sin6_scope_id == 0 ||
+			    (!ipv6_addr_any(&rs->rs_bound_addr) &&
+			     rs->rs_bound_scope_id &&
+			     sin6->sin6_scope_id != rs->rs_bound_scope_id)) {
+				ret = -EINVAL;
+				break;
+			}
+			/* Remember the connected address scope ID.  It will
+			 * be checked against the binding local address when
+			 * the socket is bound.
+			 */
+			rs->rs_bound_scope_id = sin6->sin6_scope_id;
 		}
 		rs->rs_conn_addr = sin6->sin6_addr;
 		rs->rs_conn_port = sin6->sin6_port;
