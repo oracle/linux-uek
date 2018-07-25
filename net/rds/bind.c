@@ -198,22 +198,37 @@ int rds_bind(struct socket *sock, struct sockaddr *uaddr, int addr_len)
 	/* We allow an RDS socket to be bound to either IPv4 or IPv6
 	 * address.
 	 */
-	if (addr_len == sizeof(struct sockaddr_in)) {
+	if (uaddr->sa_family == AF_INET) {
 		struct sockaddr_in *sin = (struct sockaddr_in *)uaddr;
 
-		if (sin->sin_family != AF_INET ||
-		    sin->sin_addr.s_addr == htonl(INADDR_ANY))
+		if (addr_len < sizeof(struct sockaddr_in) ||
+		    sin->sin_addr.s_addr == htonl(INADDR_ANY) ||
+		    sin->sin_addr.s_addr == htonl(INADDR_BROADCAST) ||
+		    IN_MULTICAST(ntohl(sin->sin_addr.s_addr)))
 			return -EINVAL;
 		ipv6_addr_set_v4mapped(sin->sin_addr.s_addr, &v6addr);
 		binding_addr = &v6addr;
 		port = sin->sin_port;
-	} else if (addr_len == sizeof(struct sockaddr_in6)) {
+	} else if (uaddr->sa_family == AF_INET6) {
 		struct sockaddr_in6 *sin6 = (struct sockaddr_in6 *)uaddr;
 
-		addr_type = ipv6_addr_type(&sin6->sin6_addr);
-		if (sin6->sin6_family != AF_INET6 ||
-		    !(addr_type & IPV6_ADDR_UNICAST)) {
+		if (addr_len < sizeof(struct sockaddr_in6))
 			return -EINVAL;
+		addr_type = ipv6_addr_type(&sin6->sin6_addr);
+		if (!(addr_type & IPV6_ADDR_UNICAST)) {
+			__be32 addr4;
+
+			if (!(addr_type & IPV6_ADDR_MAPPED))
+				return -EINVAL;
+
+			/* It is a mapped address.  Need to do some sanity
+			 * checks.
+			 */
+			addr4 = sin6->sin6_addr.s6_addr32[3];
+			if (addr4 == htonl(INADDR_ANY) ||
+			    addr4 == htonl(INADDR_BROADCAST) ||
+			    IN_MULTICAST(ntohl(addr4)))
+				return -EINVAL;
 		}
 		/* The scope ID must be specified for link local address. */
 		if (addr_type & IPV6_ADDR_LINKLOCAL) {
