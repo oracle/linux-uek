@@ -385,7 +385,7 @@ int rds_addr_cmp(const struct in6_addr *addr1,
 {
 #if defined(CONFIG_HAVE_EFFICIENT_UNALIGNED_ACCESS) && BITS_PER_LONG == 64
 	const __be64 *a1, *a2;
-	__be64 x, y;
+	u64 x, y;
 
 	a1 = (__be64 *)addr1;
 	a2 = (__be64 *)addr2;
