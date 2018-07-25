@@ -153,8 +153,8 @@ enum {
 
 /* Max number of multipaths per RDS connection. Must be a power of 2 */
 #define RDS_MPATH_WORKERS       8
-#define RDS_MPATH_HASH(rs, n) (jhash_1word((rs)->rs_bound_port, \
-			       (rs)->rs_hash_initval) & ((n) - 1))
+#define RDS_MPATH_HASH(rs, n) (jhash_1word((__force u32)(rs)->rs_bound_port, \
+					   (rs)->rs_hash_initval) & ((n) - 1))
 enum rds_conn_drop_src {
 	/* rds-core */
 	DR_DEFAULT,
@@ -917,10 +917,11 @@ void rds_conn_laddr_list(struct net *net, struct in6_addr *laddr,
 void rds_conn_connect_if_down(struct rds_connection *conn);
 void rds_conn_path_connect_if_down(struct rds_conn_path *conn);
 void rds_for_each_conn_info(struct socket *sock, unsigned int len,
-			  struct rds_info_iterator *iter,
-			  struct rds_info_lengths *lens,
-			  int (*visitor)(struct rds_connection *, void *),
-			  size_t item_len);
+			    struct rds_info_iterator *iter,
+			    struct rds_info_lengths *lens,
+			    int (*visitor)(struct rds_connection *, void *),
+			    u64 *buffer,
+			    size_t item_len);
 char *conn_drop_reason_str(enum rds_conn_drop_src reason);
 
 static inline int
