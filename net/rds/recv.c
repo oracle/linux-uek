@@ -359,7 +359,7 @@ void rds_recv_incoming(struct rds_connection *conn, struct in6_addr *saddr,
 		cp = &conn->c_path[0];
 
 	/* lets find a socket to which this request belongs */
-	rs = rds_find_bound(daddr, inc->i_hdr.h_dport, conn->c_dev_if);
+	rs = rds_find_bound(daddr, inc->i_hdr.h_dport, conn->c_bound_if);
 
 	/* Pass it on locally if there is no socket bound, or if netfilter is
 	 * disabled for this socket, or if the underlying transport does not
@@ -558,7 +558,7 @@ rds_recv_forward(struct rds_conn_path *cp, struct rds_incoming *inc,
 	org = rds_nf_hdr_org(inc->i_skb);
 
 	/* find the proper output socket - it should be the local one on which we originated */
-	rs = rds_find_bound(&dst->saddr, dst->sport, conn->c_dev_if);
+	rs = rds_find_bound(&dst->saddr, dst->sport, conn->c_bound_if);
 	if (!rs) {
 		rds_rtd_ptr(RDS_RTD_RCV,
 			    "failed to find output rds_socket dst %pI6c : %u, inc %p, conn %p tos %d\n",
@@ -700,7 +700,8 @@ rds_recv_local(struct rds_conn_path *cp, struct in6_addr *saddr,
 	}
 
 	if (!rs)
-		rs = rds_find_bound(daddr, inc->i_hdr.h_dport, conn->c_dev_if);
+		rs = rds_find_bound(daddr, inc->i_hdr.h_dport,
+				    conn->c_bound_if);
 	if (!rs) {
 		rds_stats_inc(s_recv_drop_no_sock);
 		goto out;
