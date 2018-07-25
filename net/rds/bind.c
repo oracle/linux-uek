@@ -49,9 +49,11 @@ static struct bind_bucket bind_hash_table[BIND_HASH_SIZE];
 static struct bind_bucket *hash_to_bucket(struct in6_addr *addr, __be16 port)
 {
 	return bind_hash_table +
-		(jhash_3words(addr->s6_addr32[0] ^ addr->s6_addr32[1],
-			      addr->s6_addr32[2] ^ addr->s6_addr32[3],
-			      (u32)port, 0) & (BIND_HASH_SIZE - 1));
+		(jhash_3words((__force u32)(addr->s6_addr32[0] ^
+					    addr->s6_addr32[1]),
+			      (__force u32)(addr->s6_addr32[2] ^
+					    addr->s6_addr32[3]),
+			      (__force u32)port, 0) & (BIND_HASH_SIZE - 1));
 }
 
 /*
@@ -200,7 +202,7 @@ int rds_bind(struct socket *sock, struct sockaddr *uaddr, int addr_len)
 		struct sockaddr_in *sin = (struct sockaddr_in *)uaddr;
 
 		if (sin->sin_family != AF_INET ||
-		    sin->sin_addr.s_addr == INADDR_ANY)
+		    sin->sin_addr.s_addr == htonl(INADDR_ANY))
 			return -EINVAL;
 		ipv6_addr_set_v4mapped(sin->sin_addr.s_addr, &v6addr);
 		binding_addr = &v6addr;
