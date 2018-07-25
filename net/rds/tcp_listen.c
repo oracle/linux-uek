@@ -123,6 +123,8 @@ int rds_tcp_accept_one(struct socket *sock)
 	struct rds_tcp_connection *rs_tcp = NULL;
 	int conn_state;
 	struct rds_conn_path *cp;
+	struct in6_addr *my_addr, *peer_addr;
+	int dev_if;
 
 	if (!sock) /* module unload or netns delete in progress */
 		return -ENETUNREACH;
@@ -137,11 +139,14 @@ int rds_tcp_accept_one(struct socket *sock)
 	if (ret < 0)
 		goto out;
 
-	new_sock->ops = sock->ops;
 	/* sock_create_lite() does not get a hold on the owner module so we
-	 * need to do it here.  No need to do try_module_get() as the listener
-	 * should have a hold already.
+	 * need to do it here.  Note that sock_release() uses sock->ops to
+	 * determine if it needs to decrement the reference count.  So set
+	 * sock->ops after calling accept() in case that fails.  And there's
+	 * no need to do try_module_get() as the listener should have a hold
+	 * already.
 	 */
+	new_sock->ops = sock->ops;
 	__module_get(new_sock->ops->owner);
 
 	ret = rds_tcp_keepalive(new_sock);
@@ -152,16 +157,29 @@ int rds_tcp_accept_one(struct socket *sock)
 
 	inet = inet_sk(new_sock->sk);
 
+	my_addr = &new_sock->sk->sk_v6_rcv_saddr;
+	peer_addr = &new_sock->sk->sk_v6_daddr;
 	rdsdebug("accepted family %d tcp %pI6c:%u -> %pI6c:%u\n",
 		 sock->sk->sk_family,
-		 &new_sock->sk->sk_v6_rcv_saddr, ntohs(inet->inet_sport),
-		 &new_sock->sk->sk_v6_daddr, ntohs(inet->inet_dport));
+		 my_addr, ntohs(inet->inet_sport),
+		 peer_addr, ntohs(inet->inet_dport));
 
+	/* sk_bound_dev_if is not set if the peer address is not link local
+	 * address.  In this case, it happens that mcast_oif is set.  So
+	 * just use it.
+	 */
+	if ((ipv6_addr_type(my_addr) & IPV6_ADDR_LINKLOCAL) &&
+	    !(ipv6_addr_type(peer_addr) & IPV6_ADDR_LINKLOCAL)) {
+		struct ipv6_pinfo *inet6;
+
+		inet6 = inet6_sk(new_sock->sk);
+		dev_if = inet6->mcast_oif;
+	} else {
+		dev_if = new_sock->sk->sk_bound_dev_if;
+	}
 	conn = rds_conn_create(sock_net(sock->sk),
-			       &new_sock->sk->sk_v6_rcv_saddr,
-			       &new_sock->sk->sk_v6_daddr,
-			       &rds_tcp_transport, 0, GFP_KERNEL,
-			       new_sock->sk->sk_bound_dev_if);
+			       my_addr, peer_addr,
+			       &rds_tcp_transport, 0, GFP_KERNEL, dev_if);
 	if (IS_ERR(conn)) {
 		ret = PTR_ERR(conn);
 		goto out;
