@@ -96,7 +96,6 @@ static DEFINE_SPINLOCK(map_lock);
 static DECLARE_BITMAP(dev_map, IB_UVERBS_MAX_DEVICES);
 
 static ssize_t (*uverbs_cmd_table[])(struct ib_uverbs_file *file,
-				     struct ib_device *ib_dev,
 				     const char __user *buf, int in_len,
 				     int out_len) = {
 	[IB_USER_VERBS_CMD_GET_CONTEXT]		= ib_uverbs_get_context,
@@ -150,7 +149,6 @@ static ssize_t (*uverbs_cmd_table[])(struct ib_uverbs_file *file,
 };
 
 static int (*uverbs_ex_cmd_table[])(struct ib_uverbs_file *file,
-				    struct ib_device *ib_dev,
 				    struct ib_udata *ucore,
 				    struct ib_udata *uhw) = {
 	[IB_USER_VERBS_EX_CMD_CREATE_FLOW]	= ib_uverbs_ex_create_flow,
@@ -809,7 +807,7 @@ static ssize_t ib_uverbs_write(struct file *filp, const char __user *buf,
 	buf += sizeof(hdr);
 
 	if (!extended) {
-		ret = uverbs_cmd_table[command](file, ib_dev, buf,
+		ret = uverbs_cmd_table[command](file, buf,
 						hdr.in_words * 4,
 						hdr.out_words * 4);
 	} else {
@@ -828,7 +826,7 @@ static ssize_t ib_uverbs_write(struct file *filp, const char __user *buf,
 					ex_hdr.provider_in_words * 8,
 					ex_hdr.provider_out_words * 8);
 
-		ret = uverbs_ex_cmd_table[command](file, ib_dev, &ucore, &uhw);
+		ret = uverbs_ex_cmd_table[command](file, &ucore, &uhw);
 		ret = (ret) ? : count;
 	}
 
