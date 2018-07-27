@@ -1223,7 +1223,10 @@ qla24xx_walk_and_build_prot_sglist(struct qla_hw_data *ha, srb_t *sp,
 		    difctx->dif_bundl_len, difctx->no_dif_bundl);
 
 		track_difbundl_buf = used_dsds = difctx->no_dif_bundl;
-		sp->flags |= SRB_DIF_BUNDL_DMA_VALID;
+		if (sp)
+			sp->flags |= SRB_DIF_BUNDL_DMA_VALID;
+		else
+			tc->prot_flags = DIF_BUNDL_DMA_VALID;
 
 		list_for_each_entry_safe(dif_dsd, nxt_dsd,
 		    &difctx->ldif_dma_hndl_list, list) {
@@ -1557,6 +1560,25 @@ qla24xx_build_scsi_crc_2_iocbs(srb_t *sp, struct cmd_type_crc_2 *cmd_pkt,
 				tot_prot_dsds, NULL))
 			goto crc_queuing_error;
 
+		if (sp->flags & SRB_DIF_BUNDL_DMA_VALID) {
+			u32 actual_dseg_cnt = 0;
+			/* Correct the DIF SGEs from upper layer to actual local SGEs used
+			* cmd_pkt->dseg_count includes prot_dsds (tot_dsds) obtained from upper layer
+			* Corrected dseg_count = present dsge_count + (local SGEs - prot_dsds counted)
+			*/
+			ql_dbg(ql_dbg_tgt+ql_dbg_verbose, vha, 0xffff,
+				"%s: cmd_pkt->dseg_count:%x, tot_dsds:%x, tot_prot_dsds: %x crc_ctx_pkt->no_dif_bundl:%x\n", __func__,
+				le16_to_cpu(cmd_pkt->dseg_count), tot_dsds, tot_prot_dsds, crc_ctx_pkt->no_dif_bundl);
+
+			actual_dseg_cnt = le16_to_cpu(cmd_pkt->dseg_count) + (crc_ctx_pkt->no_dif_bundl - tot_prot_dsds);
+
+			ql_dbg(ql_dbg_tgt+ql_dbg_verbose, vha, 0xffff,
+				"%s: Corrected cmd_pkt->dseg_count:%x, actual_dseg_cnt:%x\n", __func__,
+				le16_to_cpu(cmd_pkt->dseg_count), actual_dseg_cnt);
+			cmd_pkt->dseg_count = cpu_to_le16(actual_dseg_cnt);
+
+			BUG_ON(le16_to_cpu(cmd_pkt->dseg_count) != (tot_dsds + (crc_ctx_pkt->no_dif_bundl - tot_prot_dsds)));
+		}
 		ql_dbg(ql_dbg_tgt+ql_dbg_verbose, vha, 0xe0aa,
 		    "%s: crc_ctx_pkt=%p:\n", __func__, crc_ctx_pkt);
 	}

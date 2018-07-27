@@ -2859,6 +2859,27 @@ qlt_build_ctio_crc2_pkt(struct qla_tgt_prm *prm, scsi_qla_host_t *vha)
 		if (qla24xx_walk_and_build_prot_sglist(ha, NULL, cur_dsd,
 			prm->prot_seg_cnt, cmd))
 			goto crc_queuing_error;
+
+		if (cmd->prot_flags & DIF_BUNDL_DMA_VALID) {
+			u32 actual_dseg_cnt = 0;
+
+			/* Correct the DIF SGEs from upper layer to actual local SGEs used
+			* pkt->dseg_count includes prot_dsds (tot_dsds) obtained from upper layer
+			* Corrected dseg_count = present dsge_count + (local SGEs - prot_dsds counted)
+			*/
+			ql_dbg(ql_dbg_tgt+ql_dbg_verbose, vha, 0xffff,
+				"%s: cmd_pkt->dseg_count:%x, tot_dsds:%x, tot_prot_dsds: %x crc_ctx_pkt->no_dif_bundl:%x\n", __func__,
+				le16_to_cpu(pkt->dseg_count), prm->tot_dsds, prm->prot_seg_cnt, crc_ctx_pkt->no_dif_bundl);
+
+			actual_dseg_cnt = le16_to_cpu(pkt->dseg_count) + (crc_ctx_pkt->no_dif_bundl - prm->prot_seg_cnt);
+
+			ql_dbg(ql_dbg_tgt+ql_dbg_verbose, vha, 0xffff,
+				"%s: Corrected cmd_pkt->dseg_count:%x, actual_dseg_cnt:%x\n", __func__,
+				le16_to_cpu(pkt->dseg_count), actual_dseg_cnt);
+			pkt->dseg_count = cpu_to_le16(actual_dseg_cnt);
+
+			BUG_ON(le16_to_cpu(pkt->dseg_count) != (prm->tot_dsds + (crc_ctx_pkt->no_dif_bundl - prm->prot_seg_cnt)));
+		}
 	}
 	return QLA_SUCCESS;
 
@@ -3722,6 +3743,42 @@ static void qlt_do_ctio_completion(struct scsi_qla_host *vha, uint32_t handle,
 	cmd->cmd_sent_to_fw = 0;
 
 	qlt_unmap_sg(vha, cmd);
+
+	if (cmd->prot_flags & DIF_BUNDL_DMA_VALID) {
+		/* Release the local DMA buffers used for DIF PI */
+		struct crc_context *difctx = cmd->ctx;
+		struct dsd_dma *dif_dsd, *nxt_dsd;
+
+		list_for_each_entry_safe(dif_dsd, nxt_dsd,
+		    &difctx->ldif_dma_hndl_list, list) {
+			list_del(&dif_dsd->list);
+			dma_pool_free(ha->dif_bundl_pool, dif_dsd->dsd_addr,
+			    dif_dsd->dsd_list_dma);
+			kfree(dif_dsd);
+			difctx->no_dif_bundl--;
+		}
+
+		list_for_each_entry_safe(dif_dsd, nxt_dsd,
+		    &difctx->ldif_dsd_list, list) {
+			list_del(&dif_dsd->list);
+			dma_pool_free(ha->dl_dma_pool, dif_dsd->dsd_addr,
+			    dif_dsd->dsd_list_dma);
+			kfree(dif_dsd);
+			difctx->no_ldif_dsd--;
+		}
+
+		if (difctx->no_ldif_dsd) {
+			ql_dbg(ql_dbg_tgt+ql_dbg_verbose, vha, 0xe022,
+			    "%s: difctx->no_ldif_dsd=%x\n",
+			    __func__, difctx->no_ldif_dsd);
+		}
+
+		if (difctx->no_dif_bundl) {
+			ql_dbg(ql_dbg_tgt+ql_dbg_verbose, vha, 0xe022,
+			    "%s: difctx->no_dif_bundl=%x\n",
+			    __func__, difctx->no_dif_bundl);
+		}
+	}
 
 	if (unlikely(status != CTIO_SUCCESS)) {
 		switch (status & 0xFFFF) {

@@ -895,6 +895,8 @@ struct qla_tgt_cmd {
 	uint32_t prot_sg_cnt;
 	uint32_t blk_sz;
 	struct crc_context *ctx;
+#define	DIF_BUNDL_DMA_VALID 1
+	uint16_t prot_flags;
 
 	uint64_t jiffies_at_alloc;
 	uint64_t jiffies_at_free;
