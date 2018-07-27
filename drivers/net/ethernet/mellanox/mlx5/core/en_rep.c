@@ -111,6 +111,10 @@ static void mlx5e_rep_update_sw_counters(struct mlx5e_priv *priv)
 	struct mlx5e_sq_stats *sq_stats;
 	int i, j;
 
+	read_lock(&priv->stats_lock);
+	if (!priv->channels_active)
+	        goto out;
+
 	memset(s, 0, sizeof(*s));
 	for (i = 0; i < priv->channels.num; i++) {
 		struct mlx5e_channel *c = priv->channels.c[i];
@@ -127,12 +131,8 @@ static void mlx5e_rep_update_sw_counters(struct mlx5e_priv *priv)
 			s->tx_bytes		+= sq_stats->bytes;
 		}
 	}
-}
-
-static void mlx5e_rep_update_stats(struct mlx5e_priv *priv)
-{
-	mlx5e_rep_update_sw_counters(priv);
-	mlx5e_rep_update_hw_counters(priv);
+out:
+	read_unlock(&priv->stats_lock);
 }
 
 static void mlx5e_rep_get_ethtool_stats(struct net_device *dev,
@@ -756,6 +756,8 @@ mlx5e_get_sw_stats64(const struct net_device *dev,
 	struct mlx5e_priv *priv = netdev_priv(dev);
 	struct mlx5e_sw_stats *sstats = &priv->stats.sw;
 
+	mlx5e_rep_update_sw_counters(priv);
+
 	stats->rx_packets = sstats->rx_packets;
 	stats->rx_bytes   = sstats->rx_bytes;
 	stats->tx_packets = sstats->tx_packets;
@@ -938,7 +940,7 @@ static const struct mlx5e_profile mlx5e_rep_profile = {
 	.cleanup_rx		= mlx5e_cleanup_rep_rx,
 	.init_tx		= mlx5e_init_rep_tx,
 	.cleanup_tx		= mlx5e_cleanup_nic_tx,
-	.update_stats           = mlx5e_rep_update_stats,
+	.update_stats           = mlx5e_rep_update_hw_counters,
 	.max_nch		= mlx5e_get_rep_max_num_channels,
 	.update_carrier		= NULL,
 	.rx_handlers.handle_rx_cqe       = mlx5e_handle_rx_cqe_rep,

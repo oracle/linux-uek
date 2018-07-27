@@ -99,7 +99,7 @@ static int mlx5e_grp_sw_fill_stats(struct mlx5e_priv *priv, u64 *data, int idx)
 	return idx;
 }
 
-static void mlx5e_grp_sw_update_stats(struct mlx5e_priv *priv)
+void mlx5e_grp_sw_update_stats(struct mlx5e_priv *priv)
 {
 	struct mlx5e_sw_stats temp, *s = &temp;
 	struct mlx5e_rq_stats *rq_stats;
@@ -108,6 +108,9 @@ static void mlx5e_grp_sw_update_stats(struct mlx5e_priv *priv)
 	int i, j;
 
 	memset(s, 0, sizeof(*s));
+	read_lock(&priv->stats_lock);
+	if (!priv->channels_active)
+		goto out;
 	for (i = 0; i < priv->channels.num; i++) {
 		struct mlx5e_channel *c = priv->channels.c[i];
 
@@ -160,6 +163,8 @@ static void mlx5e_grp_sw_update_stats(struct mlx5e_priv *priv)
 	}
 
 	memcpy(&priv->stats.sw, s, sizeof(*s));
+out:
+	read_unlock(&priv->stats_lock);
 }
 
 static const struct counter_desc q_stats_desc[] = {
@@ -1091,7 +1096,6 @@ const struct mlx5e_stats_grp mlx5e_stats_grps[] = {
 		.get_num_stats = mlx5e_grp_sw_get_num_stats,
 		.fill_strings = mlx5e_grp_sw_fill_strings,
 		.fill_stats = mlx5e_grp_sw_fill_stats,
-		.update_stats_mask = MLX5E_NDO_UPDATE_STATS,
 		.update_stats = mlx5e_grp_sw_update_stats,
 	},
 	{
