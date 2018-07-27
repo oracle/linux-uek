@@ -8046,14 +8046,23 @@ static void vmx_l1d_flush(struct kvm_vcpu *vcpu)
 	 * 'always'
 	 */
 	if (likely(static_key_enabled(&vmx_l1d_flush_cond))) {
-		bool flush_l1d = vcpu->arch.l1tf_flush_l1d;
+		bool flush_l1d;
 
 		/*
-		 * Clear the flush bit, it gets set again either from
-		 * vcpu_run() or from one of the unsafe VMEXIT
-		 * handlers.
+		 * Clear the per-vcpu flush bit, it gets set again
+		 * either from vcpu_run() or from one of the unsafe
+		 * VMEXIT handlers.
 		 */
+		flush_l1d = vcpu->arch.l1tf_flush_l1d;
 		vcpu->arch.l1tf_flush_l1d = false;
+
+		/*
+		 * Clear the per-cpu flush bit, it gets set again from
+		 * the interrupt handlers.
+		 */
+		flush_l1d |= kvm_get_cpu_l1tf_flush_l1d();
+		kvm_clear_cpu_l1tf_flush_l1d();
+
 		if (!flush_l1d)
 			return;
 	}
