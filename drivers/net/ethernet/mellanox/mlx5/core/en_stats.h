@@ -90,9 +90,6 @@ struct mlx5e_sw_stats {
 	u64 rx_cache_busy;
 	u64 rx_cache_waive;
 	u64 ch_eq_rearm;
-
-	/* Special handling counters */
-	u64 link_down_events_phy;
 };
 
 struct mlx5e_qcounter_stats {
