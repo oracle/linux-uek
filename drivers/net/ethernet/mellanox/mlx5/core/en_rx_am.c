@@ -270,8 +270,8 @@ static void mlx5e_am_sample(struct mlx5e_rq *rq,
 			    struct mlx5e_rx_am_sample *s)
 {
 	s->time	     = ktime_get();
-	s->pkt_ctr   = rq->stats.packets;
-	s->byte_ctr  = rq->stats.bytes;
+	s->pkt_ctr   = rq->stats->packets;
+	s->byte_ctr  = rq->stats->bytes;
 	s->event_ctr = rq->cq.event_ctr;
 }
 
