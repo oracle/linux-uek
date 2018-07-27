@@ -405,6 +405,7 @@ static netdev_tx_t mlx5e_sq_xmit(struct mlx5e_txqsq *sq, struct sk_buff *skb,
 		if (skb_vlan_tag_present(skb)) {
 			mlx5e_insert_vlan(eseg->inline_hdr.start, skb,
 					  ihs - VLAN_HLEN, &skb_data, &skb_len);
+			sq->stats.added_vlan_packets++;
 		} else {
 			memcpy(eseg->inline_hdr.start, skb_data, ihs);
 			mlx5e_tx_skb_pull_inline(&skb_data, &skb_len, ihs);
@@ -414,6 +415,7 @@ static netdev_tx_t mlx5e_sq_xmit(struct mlx5e_txqsq *sq, struct sk_buff *skb,
 	} else if (skb_vlan_tag_present(skb)) {
 		eseg->insert.type = cpu_to_be16(MLX5_ETH_WQE_INSERT_VLAN);
 		eseg->insert.vlan_tci = cpu_to_be16(skb_vlan_tag_get(skb));
+		sq->stats.added_vlan_packets++;
 	}
 
 	num_dma = mlx5e_txwqe_build_dsegs(sq, skb, skb_data, headlen, dseg);
