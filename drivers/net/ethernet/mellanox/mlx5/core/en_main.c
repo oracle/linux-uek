@@ -190,6 +190,7 @@ static void mlx5e_update_sw_counters(struct mlx5e_priv *priv)
 	struct mlx5e_sw_stats temp, *s = &temp;
 	struct mlx5e_rq_stats *rq_stats;
 	struct mlx5e_sq_stats *sq_stats;
+	struct mlx5e_ch_stats *ch_stats;
 	int i, j;
 
 	memset(s, 0, sizeof(*s));
@@ -197,6 +198,7 @@ static void mlx5e_update_sw_counters(struct mlx5e_priv *priv)
 		struct mlx5e_channel *c = priv->channels.c[i];
 
 		rq_stats = &c->rq.stats;
+		ch_stats = &c->stats;
 
 		s->rx_packets	+= rq_stats->packets;
 		s->rx_bytes	+= rq_stats->bytes;
@@ -221,6 +223,7 @@ static void mlx5e_update_sw_counters(struct mlx5e_priv *priv)
 		s->rx_cache_empty += rq_stats->cache_empty;
 		s->rx_cache_busy  += rq_stats->cache_busy;
 		s->rx_cache_waive += rq_stats->cache_waive;
+		s->ch_eq_rearm += ch_stats->eq_rearm;
 
 		for (j = 0; j < priv->channels.params.num_tc; j++) {
 			sq_stats = &c->sq[j].stats;
