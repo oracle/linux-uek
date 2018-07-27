@@ -1100,7 +1100,7 @@ int
 qla24xx_walk_and_build_prot_sglist(struct qla_hw_data *ha, srb_t *sp,
     uint32_t *cur_dsd, uint16_t tot_dsds, struct qla_tgt_cmd *tc)
 {
-	struct dsd_dma *dsd_ptr, *dif_dsd, *nxt_dsd;
+	struct dsd_dma *dsd_ptr = NULL, *dif_dsd, *nxt_dsd;
 	struct scatterlist *sg, *sgl;
 	struct crc_context *difctx = NULL;
 	struct scsi_qla_host *vha;
@@ -1117,6 +1117,9 @@ qla24xx_walk_and_build_prot_sglist(struct qla_hw_data *ha, srb_t *sp,
 		vha = sp->vha;
 		difctx = sp->u.scmd.ctx;
 		direction_to_device = cmd->sc_data_direction == DMA_TO_DEVICE;
+		ql_dbg(ql_dbg_tgt+ql_dbg_verbose, vha, 0xe021,
+		  "%s: scsi_cmnd: %p, crc_ctx: %p, sp: %p\n",
+			__func__, cmd, difctx, sp);
 	} else if (tc) {
 		vha = tc->vha;
 		sgl = tc->prot_sg;
@@ -1156,13 +1159,14 @@ qla24xx_walk_and_build_prot_sglist(struct qla_hw_data *ha, srb_t *sp,
 		ha->dif_bundle_reads++;
 	}
 
-	/* if test override is on, then do local dma alloc for writes */
 	if (ql2xdifbundlinginternalbuffers) {
 		dif_local_dma_alloc = direction_to_device;
 	}
 
 	if (dif_local_dma_alloc) {
-		u8 track_difbundl_buf = 0;
+		u32 track_difbundl_buf = 0;
+		u32 ldma_sg_len = 0;
+		u8 ldma_needed = 1;
 		difctx->no_dif_bundl = 0;
 		difctx->dif_bundl_len = 0;
 
@@ -1173,56 +1177,66 @@ qla24xx_walk_and_build_prot_sglist(struct qla_hw_data *ha, srb_t *sp,
 			u32 sglen = sg_dma_len(sg);
 
 			ql_dbg(ql_dbg_tgt+ql_dbg_verbose, vha, 0xe023,
-			    "%s: sg[%x] (phys=%llx sglen=%x)\n",
-			    __func__, i, sg_phys(sg), sglen);
+			    "%s: sg[%x] (phys=%llx sglen=%x) ldma_sg_len: %x " \
+			    "dif_bundl_len: %x ldma_needed: %x\n", 
+			    __func__, i, sg_phys(sg), sglen, ldma_sg_len,
+			    difctx->dif_bundl_len, ldma_needed);
 
 			while (sglen) {
 				u32 xfrlen = 0;
 
-				/* allocate list item  to store the DMA buffers */
-				dsd_ptr = kzalloc(sizeof(*dsd_ptr), GFP_ATOMIC);
-				if (!dsd_ptr) {
-					ql_dbg(ql_dbg_tgt, vha, 0xe024,
-					    "%s: failed alloc dsd_ptr\n", __func__);
-					return 1;
-				}
-				ha->dif_bundle_kallocs++;
+				if (ldma_needed) {
+					/* allocate list item  to store the DMA buffers */
+					dsd_ptr = kzalloc(sizeof(*dsd_ptr), GFP_ATOMIC);
+					if (!dsd_ptr) {
+						ql_dbg(ql_dbg_tgt, vha, 0xe024,
+						    "%s: failed alloc dsd_ptr\n", __func__);
+						return 1;
+					}
+					ha->dif_bundle_kallocs++;
 
-				/* allocate dma buffer */
-				dsd_ptr->dsd_addr = dma_pool_alloc(ha->dif_bundl_pool,
-				    GFP_ATOMIC, &dsd_ptr->dsd_list_dma);
-				if (!dsd_ptr->dsd_addr) {
-					ql_dbg(ql_dbg_tgt, vha, 0xe024,
-					    "%s: failed alloc ->dsd_addr\n", __func__);
-					/* need to cleanup only this dsd_ptr */
-					/* rest will be done by sp_free_dma() */
-					kfree(dsd_ptr);
-					ha->dif_bundle_kallocs--;
-					return 1;
+					/* allocate dma buffer */
+					dsd_ptr->dsd_addr = dma_pool_alloc(ha->dif_bundl_pool,
+					    GFP_ATOMIC, &dsd_ptr->dsd_list_dma);
+					if (!dsd_ptr->dsd_addr) {
+						ql_dbg(ql_dbg_tgt, vha, 0xe024,
+						    "%s: failed alloc ->dsd_ptr\n", __func__);
+						/* need to cleanup only this dsd_ptr */
+						/* rest will be done by sp_free_dma() */
+						kfree(dsd_ptr);
+						ha->dif_bundle_kallocs--;
+						return 1;
+					}
+					ha->dif_bundle_dma_allocs++;
+					ldma_needed = 0;
+					difctx->no_dif_bundl++;
+					list_add_tail(&dsd_ptr->list,
+					    &difctx->ldif_dma_hndl_list);
 				}
-				ha->dif_bundle_dma_allocs++;
 
 				/* xfrlen is min of dma pool size and sglen */
-				xfrlen = (sglen > DIF_BUNDLING_DMA_POOL_SIZE) ?
-				    DIF_BUNDLING_DMA_POOL_SIZE : sglen;
+				xfrlen = (sglen > (DIF_BUNDLING_DMA_POOL_SIZE - ldma_sg_len)) ?
+				    DIF_BUNDLING_DMA_POOL_SIZE - ldma_sg_len : sglen;
 
 				/* replace with local allocated dma buffer */
 				sg_pcopy_to_buffer(sgl, sg_nents(sgl),
-				    dsd_ptr->dsd_addr, xfrlen, difctx->dif_bundl_len);
+				    dsd_ptr->dsd_addr + ldma_sg_len, xfrlen, difctx->dif_bundl_len);
 				difctx->dif_bundl_len += xfrlen;
 				sglen -= xfrlen;
-				difctx->no_dif_bundl++;
 
-				list_add_tail(&dsd_ptr->list,
-				    &difctx->ldif_dma_hndl_list);
+				ldma_sg_len += xfrlen;
+				if (ldma_sg_len == DIF_BUNDLING_DMA_POOL_SIZE || sg_is_last(sg)) {
+					ldma_needed = 1;
+					ldma_sg_len = 0;
+				}
 			}
 		}
 
-		ql_dbg(ql_dbg_tgt+ql_dbg_verbose, vha, 0xe025,
-		    "dif_bundl_len=%x, no_dif_bundl=%x\n",
-		    difctx->dif_bundl_len, difctx->no_dif_bundl);
-
 		track_difbundl_buf = used_dsds = difctx->no_dif_bundl;
+		ql_dbg(ql_dbg_tgt+ql_dbg_verbose, vha, 0xe025,
+		    "dif_bundl_len=%x, no_dif_bundl=%x track_difbundl_buf: %x\n",
+		    difctx->dif_bundl_len, difctx->no_dif_bundl, track_difbundl_buf);
+
 		if (sp)
 			sp->flags |= SRB_DIF_BUNDL_DMA_VALID;
 		else
@@ -1391,6 +1405,9 @@ qla24xx_build_scsi_crc_2_iocbs(srb_t *sp, struct cmd_type_crc_2 *cmd_pkt,
 	vha = sp->vha;
 	ha = vha->hw;
 
+	ql_dbg(ql_dbg_tgt+ql_dbg_verbose, vha, 0xffff,
+		"%s: sp: %p, cmd_pkt: %p, tot_dsds:%x, tot_prot_dsds: %x \n", __func__,
+		sp, cmd_pkt, tot_dsds, tot_prot_dsds);
 	/* No data transfer */
 	data_bytes = scsi_bufflen(cmd);
 	if (!data_bytes || cmd->sc_data_direction == DMA_NONE) {
@@ -1567,15 +1584,17 @@ qla24xx_build_scsi_crc_2_iocbs(srb_t *sp, struct cmd_type_crc_2 *cmd_pkt,
 			* Corrected dseg_count = present dsge_count + (local SGEs - prot_dsds counted)
 			*/
 			ql_dbg(ql_dbg_tgt+ql_dbg_verbose, vha, 0xffff,
-				"%s: cmd_pkt->dseg_count:%x, tot_dsds:%x, tot_prot_dsds: %x crc_ctx_pkt->no_dif_bundl:%x\n", __func__,
-				le16_to_cpu(cmd_pkt->dseg_count), tot_dsds, tot_prot_dsds, crc_ctx_pkt->no_dif_bundl);
+			    "%s: cmd_pkt: %p, cmd_pkt->dseg_count:%x, tot_dsds:%x, " \
+			    "tot_prot_dsds: %x crc_ctx_pkt->no_dif_bundl:%x\n",
+			    __func__, cmd_pkt, le16_to_cpu(cmd_pkt->dseg_count),
+			    tot_dsds, tot_prot_dsds, crc_ctx_pkt->no_dif_bundl);
 
 			actual_dseg_cnt = le16_to_cpu(cmd_pkt->dseg_count) + (crc_ctx_pkt->no_dif_bundl - tot_prot_dsds);
 
+			cmd_pkt->dseg_count = cpu_to_le16(actual_dseg_cnt);
 			ql_dbg(ql_dbg_tgt+ql_dbg_verbose, vha, 0xffff,
 				"%s: Corrected cmd_pkt->dseg_count:%x, actual_dseg_cnt:%x\n", __func__,
 				le16_to_cpu(cmd_pkt->dseg_count), actual_dseg_cnt);
-			cmd_pkt->dseg_count = cpu_to_le16(actual_dseg_cnt);
 
 			BUG_ON(le16_to_cpu(cmd_pkt->dseg_count) != (tot_dsds + (crc_ctx_pkt->no_dif_bundl - tot_prot_dsds)));
 		}

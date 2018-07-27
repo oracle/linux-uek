@@ -2506,6 +2506,9 @@ check_scsi_status:
 		break;
 
 	case CS_DIF_ERROR:
+		ql_log(ql_log_info, vha, 0xffff,
+			"%s: DIF_Error cp: %p, sp: %p, sts24: %p\n",
+			__func__, cp, sp, sts24);
 		logit = qla2x00_handle_dif_error(sp, sts24);
 		res = cp->result;
 		break;
