@@ -8382,7 +8382,7 @@ static int handle_vmon(struct kvm_vcpu *vcpu)
 
 	/* CPL=0 must be checked manually. */
 	if (vmx_get_cpl(vcpu)) {
-		kvm_queue_exception(vcpu, UD_VECTOR);
+		kvm_inject_gp(vcpu, 0);
 		return 1;
 	}
 
