@@ -20,6 +20,7 @@
 #include <asm/pgalloc.h>
 #include <asm/desc.h>
 #include <asm/cmdline.h>
+#include <asm/sections.h>
 
 #include <xen/xen.h>
 

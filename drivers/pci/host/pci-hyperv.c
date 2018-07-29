@@ -52,6 +52,7 @@
 #include <linux/pci.h>
 #include <linux/semaphore.h>
 #include <linux/irqdomain.h>
+#include <linux/irq.h>
 #include <linux/msi.h>
 #include <linux/hyperv.h>
 #include <asm/mshyperv.h>

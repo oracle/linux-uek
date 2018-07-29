@@ -53,6 +53,8 @@
 #include <linux/stackprotector.h>
 #include <linux/gfp.h>
 #include <linux/cpuidle.h>
+#include <linux/irq.h>
+#include <linux/irqdesc.h>
 
 #include <asm/acpi.h>
 #include <asm/desc.h>
@@ -78,6 +80,7 @@
 #include <asm/misc.h>
 #include <asm/microcode.h>
 #include <asm/spec-ctrl.h>
+#include <asm/hw_irq.h>
 
 /* Number of siblings per CPU package */
 int smp_num_siblings = 1;

@@ -21,6 +21,7 @@
 #include <asm/xen/hypervisor.h>
 #include <asm/xen/hypercall.h>
 #include <asm/xen/vnuma.h>
+#include <asm/sections.h>
 
 #include <xen/xen.h>
 #include <xen/page.h>

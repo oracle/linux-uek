@@ -40,6 +40,7 @@
 #include <asm/fixmap.h>
 #include <asm/realmode.h>
 #include <asm/time.h>
+#include <asm/sections.h>
 
 /*
  * We allocate runtime services regions bottom-up, starting from -4G, i.e.

@@ -55,6 +55,8 @@
 #include <asm/mce.h>
 #include <asm/tsc.h>
 #include <asm/hypervisor.h>
+#include <asm/irq_regs.h>
+#include <asm/hw_irq.h>
 
 unsigned int num_processors;
 

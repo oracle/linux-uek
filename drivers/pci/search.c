@@ -11,6 +11,7 @@
 #include <linux/slab.h>
 #include <linux/module.h>
 #include <linux/interrupt.h>
+#include <linux/irq.h>
 #include "pci.h"
 
 DECLARE_RWSEM(pci_bus_sem);

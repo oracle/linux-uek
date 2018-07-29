@@ -10,6 +10,7 @@
 #include <linux/ctype.h>
 #include <linux/slab.h>
 #include <linux/pnp.h>
+
 #include "base.h"
 
 static int compare_func(const char *ida, const char *idb)

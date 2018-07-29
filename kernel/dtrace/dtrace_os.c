@@ -34,6 +34,7 @@
 #include <linux/kallsyms.h>
 #include <linux/workqueue.h>
 #include <asm/ptrace.h>
+#include <asm/uaccess.h>
 
 #if defined(CONFIG_DT_FASTTRAP) || defined(CONFIG_DT_FASTTRAP_MODULE)
 # include <linux/uprobes.h>

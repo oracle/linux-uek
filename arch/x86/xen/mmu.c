@@ -67,6 +67,7 @@
 #include <asm/init.h>
 #include <asm/pat.h>
 #include <asm/smp.h>
+#include <asm/sections.h>
 
 #include <asm/xen/hypercall.h>
 #include <asm/xen/hypervisor.h>

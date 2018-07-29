@@ -25,6 +25,7 @@
 #include <linux/delay.h>
 #include <linux/slab.h>
 #include <linux/kfifo.h>
+#include <linux/irq.h>
 #include "aerdrv.h"
 
 static bool forceload;

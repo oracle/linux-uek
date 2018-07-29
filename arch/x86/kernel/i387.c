@@ -19,6 +19,7 @@
 #include <asm/i387.h>
 #include <asm/fpu-internal.h>
 #include <asm/user.h>
+#include <asm/irq_regs.h>
 
 static DEFINE_PER_CPU(bool, in_kernel_fpu);
 

@@ -28,6 +28,7 @@
 #include <asm/kprobes.h>
 #include <asm/ftrace.h>
 #include <asm/nops.h>
+#include <asm/sections.h>
 
 #ifdef CONFIG_DYNAMIC_FTRACE
 

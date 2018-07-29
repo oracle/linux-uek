@@ -33,6 +33,7 @@
 #include <linux/slab.h>
 #include <linux/mutex.h>
 #include <linux/time.h>
+#include <linux/irq.h>
 #include <asm/io.h>
 
 /***************
