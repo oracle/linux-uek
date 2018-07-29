@@ -3,7 +3,6 @@
 #define _ASM_X86_HARDIRQ_H
 
 #include <linux/threads.h>
-#include <linux/irq.h>
 #include <linux/uek_kabi.h>
 
 typedef struct {
