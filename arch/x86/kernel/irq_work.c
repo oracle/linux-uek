@@ -9,11 +9,13 @@
 #include <linux/hardirq.h>
 #include <asm/apic.h>
 #include <asm/trace/irq_vectors.h>
+#include <asm/hardirq.h>
 
 static inline void irq_work_entering_irq(void)
 {
 	irq_enter();
 	ack_APIC_irq();
+	kvm_set_cpu_l1tf_flush_l1d();
 }
 
 static inline void __smp_irq_work_interrupt(void)

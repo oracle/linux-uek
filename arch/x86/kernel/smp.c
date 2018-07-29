@@ -253,6 +253,7 @@ finish:
 static inline void __smp_reschedule_interrupt(void)
 {
 	inc_irq_stat(irq_resched_count);
+	kvm_set_cpu_l1tf_flush_l1d();
 	scheduler_ipi();
 }
 
