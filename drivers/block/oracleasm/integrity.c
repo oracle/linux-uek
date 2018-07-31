@@ -213,9 +213,9 @@ int asm_integrity_map(struct oracleasm_integrity_v2 *it, struct asm_request *r, 
 
 void asm_integrity_unmap(struct bio *bio)
 {
-	struct bio_vec iv;
-	struct bvec_iter iter;
 	struct bio_integrity_payload *bip = bio_integrity(bio);
+	struct bio_vec *iv;
+	unsigned int i;
 
 	if (!bip)
 		return;
@@ -227,10 +227,12 @@ void asm_integrity_unmap(struct bio *bio)
 	if (bip->bip_flags & BIP_BLOCK_INTEGRITY)
 		return;
 
-	bip_for_each_vec(iv, bio_integrity(bio), iter) {
-		if (bio_data_dir(bio) == READ)
-			set_page_dirty_lock(iv.bv_page);
+	iv = bip->bip_vec;
 
-		put_page(iv.bv_page);
+	for (i = 0 ; i < bip->bip_vcnt; i++, iv++) {
+		if (bio_data_dir(bio) == READ)
+			set_page_dirty_lock(iv->bv_page);
+
+		put_page(iv->bv_page);
 	}
 } /* asm_integrity_unmap */
