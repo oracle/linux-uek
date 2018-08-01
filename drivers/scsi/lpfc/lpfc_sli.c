@@ -10090,6 +10090,12 @@ lpfc_sli_abort_els_cmpl(struct lpfc_hba *phba, struct lpfc_iocbq *cmdiocb,
 
 		spin_lock_irq(&phba->hbalock);
 		if (phba->sli_rev < LPFC_SLI_REV4) {
+			if (irsp->ulpCommand == CMD_ABORT_XRI_CX &&
+			    irsp->ulpStatus == IOSTAT_LOCAL_REJECT &&
+			    irsp->un.ulpWord[4] == IOERR_ABORT_REQUESTED) {
+				spin_unlock_irq(&phba->hbalock);
+				goto release_iocb;
+			}
 			if (abort_iotag != 0 &&
 				abort_iotag <= phba->sli.last_iotag)
 				abort_iocb =
@@ -10111,6 +10117,7 @@ lpfc_sli_abort_els_cmpl(struct lpfc_hba *phba, struct lpfc_iocbq *cmdiocb,
 
 		spin_unlock_irq(&phba->hbalock);
 	}
+release_iocb:
 	lpfc_sli_release_iocbq(phba, cmdiocb);
 	return;
 }
@@ -10168,6 +10175,7 @@ lpfc_sli_abort_iotag_issue(struct lpfc_hba *phba, struct lpfc_sli_ring *pring,
 	int ring_number;
 	int retval;
 	unsigned long iflags;
+	struct lpfc_nodelist *ndlp;
 
 	/*
 	 * There are certain command types we don't want to abort.  And we
@@ -10196,9 +10204,13 @@ lpfc_sli_abort_iotag_issue(struct lpfc_hba *phba, struct lpfc_sli_ring *pring,
 	if (phba->sli_rev == LPFC_SLI_REV4) {
 		iabt->un.acxri.abortIoTag = cmdiocb->sli4_xritag;
 		iabt->un.acxri.abortContextTag = cmdiocb->iotag;
-	}
-	else
+	} else {
 		iabt->un.acxri.abortIoTag = icmd->ulpIoTag;
+		if (pring->ringno == LPFC_ELS_RING) {
+			ndlp = (struct lpfc_nodelist *)(cmdiocb->context1);
+			iabt->un.acxri.abortContextTag = ndlp->nlp_rpi;
+		}
+	}
 	iabt->ulpLe = 1;
 	iabt->ulpClass = icmd->ulpClass;
 
