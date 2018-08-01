@@ -577,7 +577,7 @@ void rds_ib_tasklet_fn_send(unsigned long data)
 
 	if (rds_conn_up(conn) &&
 	   (!test_bit(RDS_LL_SEND_FULL, &conn->c_flags) ||
-	    test_bit(0, &conn->c_map_queued)))
+	    test_bit(RCMQ_BITOFF_CONGU_PENDING, &conn->c_map_queued)))
 		rds_send_xmit(&ic->conn->c_path[0]);
 }
 
