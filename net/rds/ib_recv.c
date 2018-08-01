@@ -1114,11 +1114,18 @@ static void rds_ib_cong_recv(struct rds_connection *conn,
 	uint64_t uncongested = 0;
 	void *addr;
 
-	/* catch completely corrupt packets */
-	if (be32_to_cpu(ibinc->ii_inc.i_hdr.h_len) != RDS_CONG_MAP_BYTES)
-		return;
-
 	map = conn->c_fcong;
+
+	/* catch completely corrupt packets */
+	if (be32_to_cpu(ibinc->ii_inc.i_hdr.h_len) != RDS_CONG_MAP_BYTES) {
+		pr_warn_ratelimited("RDS: received corrupt congestion update, expected header length: %d, received header length: %d on conn %p <%pI6c, %pI6c, %d> remote map %p remote IP %pI6c\n",
+				    RDS_CONG_MAP_BYTES,
+				    be32_to_cpu(ibinc->ii_inc.i_hdr.h_len),
+				    conn, &conn->c_laddr, &conn->c_faddr,
+				    conn->c_tos, map, &map->m_addr);
+		return;
+	}
+
 	map_page = 0;
 	map_off = 0;
 

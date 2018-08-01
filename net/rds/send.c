@@ -256,13 +256,25 @@ restart:
 		}
 
 		/*
-		 * If between sending messages, we can send a pending congestion
-		 * map update.
+		 * If between sending messages, we can send a pending
+		 * congestion map update.
 		 */
-		if (!rm && test_and_clear_bit(0, &conn->c_map_queued)) {
+		if (!rm && test_bit(RCMQ_BITOFF_CONGU_PENDING,
+				    &conn->c_map_queued)) {
 			rm = rds_cong_update_alloc(conn);
 			if (IS_ERR(rm)) {
+				pr_warn_ratelimited("RDS: Congestion update allocation deferred: conn %p<%pI6c, %pI6c, %d>\n",
+						    conn, &conn->c_laddr,
+						    &conn->c_faddr,
+						    conn->c_tos);
+				/* Set bit to mark deferred cong update */
+				set_bit(RCMQ_BITOFF_CONGU_ALLOC_DEFER,
+					&conn->c_map_queued);
 				ret = PTR_ERR(rm);
+
+				/** Note: pending congestion update
+				 * remains set!
+				 */
 				break;
 			}
 			rm->data.op_active = 1;
@@ -270,6 +282,19 @@ restart:
 			rm->m_inc.i_conn = cp->cp_conn;
 
 			cp->cp_xmit_rm = rm;
+
+			/* clear deferred alloc if set  */
+			if (test_and_clear_bit(RCMQ_BITOFF_CONGU_ALLOC_DEFER,
+					       &conn->c_map_queued)) {
+				pr_warn_ratelimited("RDS: Deferred congestion update allocated: conn %p<%pI6c, %pI6c, %d>\n",
+						    conn, &conn->c_laddr,
+						    &conn->c_faddr,
+						    conn->c_tos);
+			}
+
+			/* clear pending congestion update */
+			clear_bit(RCMQ_BITOFF_CONGU_PENDING,
+				  &conn->c_map_queued);
 		}
 
 		/*
@@ -492,6 +517,12 @@ over_batch:
 	 * We have an extra generation check here so that if someone manages
 	 * to jump in after our release_in_xmit, we'll see that they have done
 	 * some work and we will skip our goto
+	 *
+	 * (Note: We check not just for more messages on send queue but also
+	 *  for congestion update that might still be pending if GFP_NOWAIT
+	 *  allocation failed earlier. Retrying for it in this call will also
+	 *  be capped at "send_batch_count" attempts as it is for data messages
+	 *  before getting rescheduled.)
 	 */
 	if (ret == 0) {
 		bool raced;
@@ -499,8 +530,9 @@ over_batch:
 		smp_mb();
 		raced = send_gen != READ_ONCE(cp->cp_send_gen);
 
-		if ((test_bit(0, &conn->c_map_queued) ||
-		    !list_empty(&cp->cp_send_queue)) && !raced) {
+		if ((test_bit(RCMQ_BITOFF_CONGU_PENDING,
+			      &conn->c_map_queued) ||
+		     !list_empty(&cp->cp_send_queue)) && !raced) {
 			if (batch_count < send_batch_count)
 				goto restart;
 			queue_delayed_work(cp->cp_wq, &cp->cp_send_w, 1);
