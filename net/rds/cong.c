@@ -245,7 +245,8 @@ void rds_cong_queue_updates(struct rds_cong_map *map)
 	spin_lock_irqsave(&rds_cong_lock, flags);
 
 	list_for_each_entry(conn, &map->m_conn_list, c_map_item) {
-		if (!test_and_set_bit(0, &conn->c_map_queued)) {
+		if (!test_and_set_bit(RCMQ_BITOFF_CONGU_PENDING,
+				      &conn->c_map_queued)) {
 			rds_stats_inc(s_cong_update_queued);
 			queue_delayed_work(conn->c_path[0].cp_wq,
 					   &conn->c_path[0].cp_send_w, 0);
