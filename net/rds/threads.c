@@ -94,7 +94,7 @@ void rds_connect_path_complete(struct rds_conn_path *cp, int curr)
 		    conn, &conn->c_laddr, &conn->c_faddr, conn->c_tos);
 
 	cp->cp_reconnect_jiffies = 0;
-	set_bit(0, &conn->c_map_queued);
+	set_bit(RCMQ_BITOFF_CONGU_PENDING, &conn->c_map_queued);
 	queue_delayed_work(cp->cp_wq, &cp->cp_send_w, 0);
 	queue_delayed_work(cp->cp_wq, &cp->cp_recv_w, 0);
 	queue_delayed_work(cp->cp_wq, &cp->cp_hb_w, 0);
