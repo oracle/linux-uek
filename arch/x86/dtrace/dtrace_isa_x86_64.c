@@ -193,7 +193,7 @@ ulong_t dtrace_getreg(struct task_struct *task, uint_t reg)
 		/*
 		 * Convert register alias index into register mapping index.
 		 */
-		reg -= REG_TRAPNO + 1;
+		reg -= REG_GS + 1;
 
 		if (reg >= sizeof(regmap) / sizeof(int)) {
 			DTRACE_CPUFLAG_SET(CPU_DTRACE_ILLOP);
