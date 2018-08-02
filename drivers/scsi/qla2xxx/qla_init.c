@@ -46,17 +46,16 @@ qla2x00_sp_timeout(unsigned long __data)
 {
 	srb_t *sp = (srb_t *)__data;
 	struct srb_iocb *iocb;
-	scsi_qla_host_t *vha = sp->vha;
 	struct req_que *req;
 	unsigned long flags;
 
-	spin_lock_irqsave(&vha->hw->hardware_lock, flags);
-	req = vha->hw->req_q_map[0];
+	spin_lock_irqsave(sp->qpair->qp_lock_ptr, flags);
+	req = sp->qpair->req;
 	req->outstanding_cmds[sp->handle] = NULL;
 	iocb = &sp->u.iocb_cmd;
+	spin_unlock_irqrestore(sp->qpair->qp_lock_ptr, flags);
 	iocb->timeout(sp);
-	sp->free(sp);
-	spin_unlock_irqrestore(&vha->hw->hardware_lock, flags);
+	//sp->free(sp);
 }
 
 void
@@ -97,7 +96,8 @@ qla2x00_async_iocb_timeout(void *data)
 	srb_t *sp = data;
 	fc_port_t *fcport = sp->fcport;
 	struct srb_iocb *lio = &sp->u.iocb_cmd;
-	struct event_arg ea;
+	int rc, h;
+	unsigned long flags;
 
 	if (fcport) {
 		ql_dbg(ql_dbg_disc, fcport->vha, 0x2071,
@@ -112,31 +112,48 @@ qla2x00_async_iocb_timeout(void *data)
 
 	switch (sp->type) {
 	case SRB_LOGIN_CMD:
-		if (!fcport)
-			break;
-		/* Retry as needed. */
-		lio->u.logio.data[0] = MBS_COMMAND_ERROR;
-		lio->u.logio.data[1] = lio->u.logio.flags & SRB_LOGIN_RETRIED ?
-			QLA_LOGIO_LOGIN_RETRIED : 0;
-		memset(&ea, 0, sizeof(ea));
-		ea.event = FCME_PLOGI_DONE;
-		ea.fcport = sp->fcport;
-		ea.data[0] = lio->u.logio.data[0];
-		ea.data[1] = lio->u.logio.data[1];
-		ea.sp = sp;
-		qla24xx_handle_plogi_done_event(fcport->vha, &ea);
+		rc = qla24xx_async_abort_cmd(sp, false);
+		if (rc) {
+			/* Retry as needed. */
+			lio->u.logio.data[0] = MBS_COMMAND_ERROR;
+			lio->u.logio.data[1] =
+				lio->u.logio.flags & SRB_LOGIN_RETRIED ?
+				QLA_LOGIO_LOGIN_RETRIED : 0;
+			spin_lock_irqsave(sp->qpair->qp_lock_ptr, flags);
+			for (h = 1; h < sp->qpair->req->num_outstanding_cmds;
+			    h++) {
+				if (sp->qpair->req->outstanding_cmds[h] ==
+				    sp) {
+					sp->qpair->req->outstanding_cmds[h] =
+					    NULL;
+					break;
+				}
+			}
+			spin_unlock_irqrestore(sp->qpair->qp_lock_ptr, flags);
+			sp->done(sp, QLA_FUNCTION_TIMEOUT);
+		}
 		break;
 	case SRB_LOGOUT_CMD:
-		if (!fcport)
-			break;
-		qlt_logo_completion_handler(fcport, QLA_FUNCTION_TIMEOUT);
-		break;
 	case SRB_CT_PTHRU_CMD:
 	case SRB_MB_IOCB:
 	case SRB_NACK_PLOGI:
 	case SRB_NACK_PRLI:
 	case SRB_NACK_LOGO:
-		sp->done(sp, QLA_FUNCTION_TIMEOUT);
+		rc = qla24xx_async_abort_cmd(sp, false);
+		if (rc) {
+			spin_lock_irqsave(sp->qpair->qp_lock_ptr, flags);
+			for (h = 1; h < sp->qpair->req->num_outstanding_cmds;
+			    h++) {
+				if (sp->qpair->req->outstanding_cmds[h] ==
+				    sp) {
+					sp->qpair->req->outstanding_cmds[h] =
+					    NULL;
+					break;
+				}
+			}
+			spin_unlock_irqrestore(sp->qpair->qp_lock_ptr, flags);
+			sp->done(sp, QLA_FUNCTION_TIMEOUT);
+		}
 		break;
 	}
 }
@@ -1249,7 +1266,7 @@ qla24xx_abort_iocb_timeout(void *data)
 	struct srb_iocb *abt = &sp->u.iocb_cmd;
 
 	abt->u.abt.comp_status = CS_TIMEOUT;
-	complete(&abt->u.abt.comp);
+	sp->done(sp, QLA_FUNCTION_TIMEOUT);
 }
 
 static void
@@ -1258,12 +1275,16 @@ qla24xx_abort_sp_done(void *ptr, int res)
 	srb_t *sp = ptr;
 	struct srb_iocb *abt = &sp->u.iocb_cmd;
 
-	del_timer(&sp->u.iocb_cmd.timer);
-	complete(&abt->u.abt.comp);
+	if (del_timer(&sp->u.iocb_cmd.timer)) {
+		if (sp->flags & SRB_WAKEUP_ON_COMP)
+			complete(&abt->u.abt.comp);
+		else
+			sp->free(sp);
+	}
 }
 
 int
-qla24xx_async_abort_cmd(srb_t *cmd_sp)
+qla24xx_async_abort_cmd(srb_t *cmd_sp, bool wait)
 {
 	scsi_qla_host_t *vha = cmd_sp->vha;
 	fc_port_t *fcport = cmd_sp->fcport;
@@ -1278,6 +1299,9 @@ qla24xx_async_abort_cmd(srb_t *cmd_sp)
 	abt_iocb = &sp->u.iocb_cmd;
 	sp->type = SRB_ABT_CMD;
 	sp->name = sp_to_str(SPCN_ABORT);
+	if (wait)
+		sp->flags = SRB_WAKEUP_ON_COMP;
+
 	abt_iocb->timeout = qla24xx_abort_iocb_timeout;
 	init_completion(&abt_iocb->u.abt.comp);
 	qla2x00_init_timer(sp, qla2x00_get_async_timeout(vha));
@@ -1293,10 +1317,11 @@ qla24xx_async_abort_cmd(srb_t *cmd_sp)
 	    "Abort command issued - hdl=%x, target_id=%x\n",
 	    cmd_sp->handle, fcport->tgt_id);
 
-	wait_for_completion(&abt_iocb->u.abt.comp);
-
-	rval = abt_iocb->u.abt.comp_status == CS_COMPLETE ?
-	    QLA_SUCCESS : QLA_FUNCTION_FAILED;
+	if (wait) {
+		wait_for_completion(&abt_iocb->u.abt.comp);
+		rval = abt_iocb->u.abt.comp_status == CS_COMPLETE ?
+			QLA_SUCCESS : QLA_FUNCTION_FAILED;
+	}
 
 done_free_sp:
 	sp->free(sp);
@@ -1330,7 +1355,7 @@ qla24xx_async_abort_command(srb_t *sp)
 		return qlafx00_fx_disc(vha, &vha->hw->mr.fcport,
 		    FXDISC_ABORT_IOCTL);
 
-	return qla24xx_async_abort_cmd(sp);
+	return qla24xx_async_abort_cmd(sp, true);
 }
 
 static void
