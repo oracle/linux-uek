@@ -828,9 +828,9 @@ static void qla24xx_handle_gnl_done_event(scsi_qla_host_t *vha,
 				break;	
 			}
 			break;
-			case ISP_CFG_N:
-				fcport->fw_login_state = current_login_state;
-				fcport->d_id = id;
+		case ISP_CFG_N:
+			fcport->fw_login_state = current_login_state;
+			fcport->d_id = id;
 			switch (current_login_state) {
 			case DSC_LS_PRLI_PEND:
 				/*
@@ -4456,7 +4456,7 @@ qla2x00_configure_hba(scsi_qla_host_t *vha)
 	id.b.al_pa = al_pa;
 	id.b.rsvd_1 = 0;
 	spin_lock_irqsave(&ha->hardware_lock, flags);
-	if (topo != 2)
+	if (!(topo == 2 && ha->flags.n2n_bigger))
 		qlt_update_host_map(vha, id);
 	spin_unlock_irqrestore(&ha->hardware_lock, flags);
 
