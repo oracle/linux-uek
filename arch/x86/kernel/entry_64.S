@@ -1441,6 +1441,8 @@ ENTRY(xen_failsafe_callback)
 	ALLOC_PT_GPREGS_ON_STACK
 	SAVE_C_REGS
 	SAVE_EXTRA_REGS
+	xorl %ebx,%ebx
+	incl %ebx
 	jmp error_exit
 	CFI_ENDPROC
 END(xen_failsafe_callback)
