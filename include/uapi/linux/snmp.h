@@ -56,6 +56,9 @@ enum
 	IPSTATS_MIB_ECT1PKTS,			/* InECT1Pkts */
 	IPSTATS_MIB_ECT0PKTS,			/* InECT0Pkts */
 	IPSTATS_MIB_CEPKTS,			/* InCEPkts */
+#ifndef __GENKSYMS__
+	IPSTATS_MIB_REASM_OVERLAPS,		/* ReasmOverlaps */
+#endif
 	__IPSTATS_MIB_MAX
 };
 
