@@ -56,7 +56,6 @@
 #include <scsi/scsi_dbg.h>
 #include <linux/dmi.h>
 
-#include "kcompat.h"
 #include "megaraid_sas_fusion.h"
 #include "megaraid_sas.h"
 
@@ -3486,14 +3485,15 @@ complete_cmd_fusion(struct megasas_instance *instance, u32 MSIxIndex)
  */
 void megasas_sync_irqs(unsigned long instance_addr)
 {
-	u32 count, i;
 	struct megasas_instance *instance =
 		(struct megasas_instance *)instance_addr;
+	int i;
 
-	count = instance->msix_vectors > 0 ? instance->msix_vectors : 1;
-
-	for (i = 0; i < count; i++)
-		synchronize_irq(pci_irq_vector(instance->pdev, i));
+	if (instance->msix_vectors)
+		for (i = 0; i < instance->msix_vectors; i++)
+			synchronize_irq(instance->msixentry[i].vector);
+	else
+		synchronize_irq(instance->pdev->irq);
 }
 
 /**
