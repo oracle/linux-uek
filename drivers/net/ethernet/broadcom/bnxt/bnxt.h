@@ -1412,6 +1412,7 @@ struct bnxt {
 	u8			switch_id[8];
 	struct dentry		*debugfs_pdev;
 	struct dentry		*debugfs_dim;
+	struct device		*hwmon_dev;
 };
 
 #define BNXT_RX_STATS_OFFSET(counter)			\
