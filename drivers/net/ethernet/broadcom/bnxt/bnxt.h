@@ -1144,7 +1144,6 @@ struct bnxt {
 	atomic_t		intr_sem;
 
 	u32			flags;
-	#define BNXT_FLAG_DCB_ENABLED	0x1
 	#define BNXT_FLAG_VF		0x2
 	#define BNXT_FLAG_LRO		0x4
 #ifdef CONFIG_INET
@@ -1173,11 +1172,8 @@ struct bnxt {
 					 BNXT_FLAG_ROCEV2_CAP)
 	#define BNXT_FLAG_NO_AGG_RINGS	0x20000
 	#define BNXT_FLAG_RX_PAGE_MODE	0x40000
-	#define BNXT_FLAG_FW_LLDP_AGENT	0x80000
 	#define BNXT_FLAG_MULTI_HOST	0x100000
-	#define BNXT_FLAG_SHORT_CMD	0x200000
 	#define BNXT_FLAG_DOUBLE_DB	0x400000
-	#define BNXT_FLAG_FW_DCBX_AGENT	0x800000
 	#define BNXT_FLAG_CHIP_NITRO_A0	0x1000000
 	#define BNXT_FLAG_ROCE_MIRROR_CAP	0x4000000
 	#define BNXT_FLAG_NEW_RM	0x8000000
@@ -1195,7 +1191,6 @@ struct bnxt {
 #define BNXT_SINGLE_PF(bp)	(BNXT_PF(bp) && !BNXT_NPAR(bp) && !BNXT_MH(bp))
 #define BNXT_CHIP_TYPE_NITRO_A0(bp) ((bp)->flags & BNXT_FLAG_CHIP_NITRO_A0)
 #define BNXT_RX_PAGE_MODE(bp)	((bp)->flags & BNXT_FLAG_RX_PAGE_MODE)
-#define BNXT_NEW_RM(bp)		((bp)->flags & BNXT_FLAG_NEW_RM)
 
 /* Chip class phase 4 and later */
 #define BNXT_CHIP_P4_PLUS(bp)			\
@@ -1291,6 +1286,13 @@ struct bnxt {
 
 	u32			msg_enable;
 
+	u32			fw_cap;
+	#define BNXT_FW_CAP_SHORT_CMD	0x00000001
+	#define BNXT_FW_CAP_LLDP_AGENT	0x00000002
+	#define BNXT_FW_CAP_DCBX_AGENT	0x00000004
+	#define BNXT_FW_CAP_NEW_RM	0x00000008
+
+#define BNXT_NEW_RM(bp)		((bp)->fw_cap & BNXT_FW_CAP_NEW_RM)
 	u32			hwrm_spec_code;
 	u16			hwrm_cmd_seq;
 	u32			hwrm_intr_seq_id;
