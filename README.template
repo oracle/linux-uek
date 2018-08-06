@@ -22,9 +22,7 @@ This repository contains the source for the Unbreakable Enterprise Kernel
 including a small number of Oracle additions which have not yet been accepted into the mainline 
 Linux kernel source tree.
 
-Building from this repository requires additional dependencies which are available here, in addition to standard kernel build tools.
-    [libdtrace-ctf](https://github.com/oracle/libdtrace-ctf/) and [dtrace-utils](https://github.com/oracle/dtrace-utils/)
-
+Building from this repository requires [libdtrace-ctf](https://github.com/oracle/libdtrace-ctf/ in addition to standard kernel build tools.
 
 ## Refresh Schedule
 
