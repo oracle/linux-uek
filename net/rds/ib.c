@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2006, 2017 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2006, 2018 Oracle and/or its affiliates. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -296,6 +296,7 @@ static int rds_ib_conn_info_visitor(struct rds_connection *conn,
 	return 1;
 }
 
+#if IS_ENABLED(CONFIG_IPV6)
 /* IPv6 version of rds_ib_conn_info_visitor(). */
 static int rds6_ib_conn_info_visitor(struct rds_connection *conn,
 				     void *buffer)
@@ -347,6 +348,7 @@ static int rds6_ib_conn_info_visitor(struct rds_connection *conn,
 	}
 	return 1;
 }
+#endif
 
 static void rds_ib_ic_info(struct socket *sock, unsigned int len,
 			   struct rds_info_iterator *iter,
@@ -359,6 +361,7 @@ static void rds_ib_ic_info(struct socket *sock, unsigned int len,
 			       sizeof(struct rds_info_rdma_connection));
 }
 
+#if IS_ENABLED(CONFIG_IPV6)
 /* IPv6 version of rds_ib_ic_info(). */
 static void rds6_ib_ic_info(struct socket *sock, unsigned int len,
 			    struct rds_info_iterator *iter,
@@ -370,6 +373,7 @@ static void rds6_ib_ic_info(struct socket *sock, unsigned int len,
 			       rds6_ib_conn_info_visitor, buffer,
 			       sizeof(struct rds6_info_rdma_connection));
 }
+#endif
 
 /*
  * Early RDS/IB was built to only bind to an address if there is an IPoIB
@@ -386,7 +390,9 @@ static int rds_ib_laddr_check(struct net *net, const struct in6_addr *addr,
 {
 	int ret;
 	struct rdma_cm_id *cm_id;
+#if IS_ENABLED(CONFIG_IPV6)
 	struct sockaddr_in6 sin6;
+#endif
 	struct sockaddr_in sin;
 	struct sockaddr *sa;
 	bool isv4;
@@ -423,6 +429,7 @@ static int rds_ib_laddr_check(struct net *net, const struct in6_addr *addr,
 		sin.sin_addr.s_addr = addr->s6_addr32[3];
 		sa = (struct sockaddr *)&sin;
 	} else {
+#if IS_ENABLED(CONFIG_IPV6)
 		memset(&sin6, 0, sizeof(sin6));
 		sin6.sin6_family = AF_INET6;
 		sin6.sin6_addr = *addr;
@@ -457,6 +464,10 @@ static int rds_ib_laddr_check(struct net *net, const struct in6_addr *addr,
 			}
 			dev_put(dev);
 		}
+#else
+		ret = -EADDRNOTAVAIL;
+		goto out;
+#endif
 	}
 
 	/* rdma_bind_addr will only succeed for IB & iWARP devices */
@@ -685,7 +696,9 @@ int rds_ib_init(void)
 		goto out_aux_wq;
 
 	rds_info_register_func(RDS_INFO_IB_CONNECTIONS, rds_ib_ic_info);
+#if IS_ENABLED(CONFIG_IPV6)
 	rds_info_register_func(RDS6_INFO_IB_CONNECTIONS, rds6_ib_ic_info);
+#endif
 
 	goto out;
 
@@ -710,7 +723,9 @@ out:
 void rds_ib_exit(void)
 {
 	rds_info_deregister_func(RDS_INFO_IB_CONNECTIONS, rds_ib_ic_info);
+#if IS_ENABLED(CONFIG_IPV6)
 	rds_info_deregister_func(RDS6_INFO_IB_CONNECTIONS, rds6_ib_ic_info);
+#endif
 	rds_ib_unregister_client();
 	rds_ib_destroy_nodev_conns();
 	rds_ib_sysctl_exit();
