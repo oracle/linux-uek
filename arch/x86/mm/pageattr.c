@@ -911,8 +911,8 @@ static int populate_pmd(struct cpa_data *cpa,
 
 		pmd = pmd_offset(pud, start);
 
-		set_pmd(pmd, __pmd(cpa->pfn << PAGE_SHIFT | _PAGE_PSE |
-				   massage_pgprot(pgprot)));
+		set_pmd(pmd, pmd_mkhuge(pfn_pmd(cpa->pfn,
+					canon_pgprot(pgprot))));
 
 		start	  += PMD_SIZE;
 		cpa->pfn  += PMD_SIZE >> PAGE_SHIFT;
@@ -982,8 +982,13 @@ static int populate_pud(struct cpa_data *cpa, unsigned long start, pgd_t *pgd,
 	 * Map everything starting from the Gb boundary, possibly with 1G pages
 	 */
 	while (end - start >= PUD_SIZE) {
-		set_pud(pud, __pud(cpa->pfn << PAGE_SHIFT | _PAGE_PSE |
-				   massage_pgprot(pgprot)));
+		pudval_t v;
+		phys_addr_t pfn = (phys_addr_t)cpa->pfn << PAGE_SHIFT;
+		pfn ^= protnone_mask(pgprot_val(canon_pgprot(pgprot)));
+		pfn &= ((signed long)PUD_PAGE_MASK) & __PHYSICAL_MASK;
+
+		v = native_pud_val(__pud(pfn | pgprot_val(canon_pgprot(pgprot))));
+		set_pud(pud, native_make_pud(v | _PAGE_PSE));
 
 		start	  += PUD_SIZE;
 		cpa->pfn  += PUD_SIZE >> PAGE_SHIFT;
