@@ -185,20 +185,25 @@ static int rds_getname(struct socket *sock, struct sockaddr *uaddr,
 				memset(sin, 0, sizeof(*sin));
 				sin->sin_family = AF_UNSPEC;
 				*uaddr_len = sizeof(*sin);
+				return 0;
 			}
 
-			if (ipv6_addr_type(&rs->rs_conn_addr) &
-			    IPV6_ADDR_MAPPED) {
-				sin = (struct sockaddr_in *)uaddr;
-				memset(sin, 0, sizeof(*sin));
-				sin->sin_family = AF_INET;
-				*uaddr_len = sizeof(*sin);
+#if IS_ENABLED(CONFIG_IPV6)
+			if (!(ipv6_addr_type(&rs->rs_conn_addr) &
+			      IPV6_ADDR_MAPPED)) {
+				sin6 = (struct sockaddr_in6 *)uaddr;
+				memset(sin, 0, sizeof(*sin6));
+				sin->sin_family = AF_INET6;
+				*uaddr_len = sizeof(*sin6);
+				return 0;
 			}
+#endif
 
-			sin6 = (struct sockaddr_in6 *)uaddr;
-			memset(sin6, 0, sizeof(*sin6));
-			sin6->sin6_family = AF_INET6;
-			*uaddr_len = sizeof(*sin6);
+			sin = (struct sockaddr_in *)uaddr;
+			memset(sin, 0, sizeof(*sin));
+			sin->sin_family = AF_INET;
+			*uaddr_len = sizeof(*sin);
+			return 0;
 		}
 		if (ipv6_addr_v4mapped(&rs->rs_bound_addr)) {
 			sin = (struct sockaddr_in *)uaddr;
@@ -454,6 +459,7 @@ done:
 	return 0;
 }
 
+#if IS_ENABLED(CONFIG_IPV6)
 static int rds6_user_reset(struct rds_sock *rs, char __user *optval, int optlen)
 {
 	struct rds6_reset reset;
@@ -498,6 +504,7 @@ static int rds6_user_reset(struct rds_sock *rs, char __user *optval, int optlen)
 done:
 	return 0;
 }
+#endif
 
 static int rds_set_transport(struct rds_sock *rs, char __user *optval,
 			     int optlen)
@@ -605,6 +612,7 @@ static int rds_setsockopt(struct socket *sock, int level, int optname,
 		}
 		ret = rds_user_reset(rs, optval, optlen);
 		break;
+#if IS_ENABLED(CONFIG_IPV6)
 	case RDS6_CONN_RESET:
 		if (!ns_capable(net->user_ns, CAP_NET_ADMIN)) {
 			ret =  -EACCES;
@@ -612,6 +620,7 @@ static int rds_setsockopt(struct socket *sock, int level, int optname,
 		}
 		ret = rds6_user_reset(rs, optval, optlen);
 		break;
+#endif
 	case SO_RDS_TRANSPORT:
 		lock_sock(sock->sk);
 		ret = rds_set_transport(rs, optval, optlen);
@@ -690,9 +699,7 @@ static int rds_connect(struct socket *sock, struct sockaddr *uaddr,
 {
 	struct sock *sk = sock->sk;
 	struct sockaddr_in *sin;
-	struct sockaddr_in6 *sin6;
 	struct rds_sock *rs = rds_sk_to_rs(sk);
-	int addr_type;
 	int ret = 0;
 
 	lock_sock(sk);
@@ -717,7 +724,11 @@ static int rds_connect(struct socket *sock, struct sockaddr *uaddr,
 		rs->rs_conn_port = sin->sin_port;
 		break;
 
-	case AF_INET6:
+#if IS_ENABLED(CONFIG_IPV6)
+	case AF_INET6: {
+		struct sockaddr_in6 *sin6;
+		int addr_type;
+
 		sin6 = (struct sockaddr_in6 *)uaddr;
 		if (addr_len < sizeof(struct sockaddr_in6)) {
 			ret = -EINVAL;
@@ -763,6 +774,8 @@ static int rds_connect(struct socket *sock, struct sockaddr *uaddr,
 		rs->rs_conn_addr = sin6->sin6_addr;
 		rs->rs_conn_port = sin6->sin6_port;
 		break;
+	}
+#endif
 
 	default:
 		ret = -EINVAL;
@@ -946,6 +959,7 @@ static void rds_sock_inc_info(struct socket *sock, unsigned int len,
 	lens->each = sizeof(struct rds_info_message);
 }
 
+#if IS_ENABLED(CONFIG_IPV6)
 static void rds6_sock_inc_info(struct socket *sock, unsigned int len,
 			       struct rds_info_iterator *iter,
 			       struct rds_info_lengths *lens)
@@ -977,6 +991,7 @@ static void rds6_sock_inc_info(struct socket *sock, unsigned int len,
 	lens->nr = total;
 	lens->each = sizeof(struct rds6_info_message);
 }
+#endif
 
 static void rds_sock_info(struct socket *sock, unsigned int len,
 			  struct rds_info_iterator *iter,
@@ -1011,6 +1026,7 @@ out:
 	spin_unlock_bh(&rds_sock_lock);
 }
 
+#if IS_ENABLED(CONFIG_IPV6)
 static void rds6_sock_info(struct socket *sock, unsigned int len,
 			   struct rds_info_iterator *iter,
 			   struct rds_info_lengths *lens)
@@ -1043,6 +1059,7 @@ out:
 
 	spin_unlock_bh(&rds_sock_lock);
 }
+#endif
 
 static unsigned long parse_ul(char *ptr, unsigned long max)
 {
@@ -1155,8 +1172,10 @@ static void __exit rds_exit(void)
 	rds_page_exit();
 	rds_info_deregister_func(RDS_INFO_SOCKETS, rds_sock_info);
 	rds_info_deregister_func(RDS_INFO_RECV_MESSAGES, rds_sock_inc_info);
+#if IS_ENABLED(CONFIG_IPV6)
 	rds_info_deregister_func(RDS6_INFO_SOCKETS, rds6_sock_info);
 	rds_info_deregister_func(RDS6_INFO_RECV_MESSAGES, rds6_sock_inc_info);
+#endif
 }
 
 module_exit(rds_exit);
@@ -1192,8 +1211,10 @@ static int __init rds_init(void)
 
 	rds_info_register_func(RDS_INFO_SOCKETS, rds_sock_info);
 	rds_info_register_func(RDS_INFO_RECV_MESSAGES, rds_sock_inc_info);
+#if IS_ENABLED(CONFIG_IPV6)
 	rds_info_register_func(RDS6_INFO_SOCKETS, rds6_sock_info);
 	rds_info_register_func(RDS6_INFO_RECV_MESSAGES, rds6_sock_inc_info);
+#endif
 
 	rds_qos_threshold_init();
 
