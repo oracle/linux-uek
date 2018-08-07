@@ -156,7 +156,7 @@ void __init check_bugs(void)
 	 * identify_boot_cpu() initialized SMT support information, let the
 	 * core code know.
 	 */
-	cpu_smt_check_topology();
+	cpu_smt_check_topology_early();
 
 #if !defined(CONFIG_SMP)
 	printk(KERN_INFO "CPU: ");
