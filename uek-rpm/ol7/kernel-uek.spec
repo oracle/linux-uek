@@ -5,7 +5,7 @@
 %define _unpackaged_files_terminate_build       0
 %define _missing_doc_files_terminate_build      0
 
-Summary: The Linux kernel
+Summary: Oracle Unbreakable Enterprise Kernel Release 5
 
 # For a stable, released kernel, released_kernel should be 1. For rawhide
 # and/or a kernel built from an rc or git snapshot, released_kernel should
