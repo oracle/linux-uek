@@ -51,11 +51,11 @@ static bool address_needs_relocation_fixup(struct alt_instr *alt, unsigned long 
 	unsigned long replptr;
 
 	if (kernel_text_address(addr) || core_kernel_data(addr))
-		return 1;
+		return true;
 
 	replptr = (unsigned long)ALT_REPL_PTR(alt);
 	if (addr >= replptr && addr <= (replptr + alt->alt_len))
-		return 0;
+		return false;
 
 	/*
 	 * Branching into *another* alternate sequence is doomed, and
