@@ -14,6 +14,67 @@
 #include "otx2_reg.h"
 #include "otx2_common.h"
 
+int otx2_detach_resources(struct mbox *mbox)
+{
+	struct rsrc_detach *detach;
+
+	detach = otx2_mbox_alloc_msg_DETACH_RESOURCES(mbox);
+	if (!detach)
+		return -ENOMEM;
+
+	/* detach all */
+	detach->partial = false;
+
+	/* Send detach request to AF */
+	otx2_mbox_msg_send(&mbox->mbox, 0);
+	return 0;
+}
+
+int otx2_attach_npa_nix(struct otx2_nic *pfvf)
+{
+	struct rsrc_attach *attach;
+	struct msg_req *msix;
+	int err;
+
+	/* Get memory to put this msg */
+	attach = otx2_mbox_alloc_msg_ATTACH_RESOURCES(&pfvf->mbox);
+	if (!attach)
+		return -ENOMEM;
+
+	attach->npalf = true;
+	attach->nixlf = true;
+
+	/* Send attach request to AF */
+	err = otx2_sync_mbox_msg(&pfvf->mbox);
+	if (err)
+		return err;
+
+	/* Get NPA and NIX MSIX vector offsets */
+	msix = otx2_mbox_alloc_msg_MSIX_OFFSET(&pfvf->mbox);
+	if (!msix)
+		return -ENOMEM;
+
+	err = otx2_sync_mbox_msg(&pfvf->mbox);
+	if (err)
+		return err;
+
+	if (pfvf->hw.npa_msixoff == MSIX_VECTOR_INVALID ||
+	    pfvf->hw.nix_msixoff == MSIX_VECTOR_INVALID) {
+		dev_err(pfvf->dev,
+			"RVUPF: Invalid MSIX vector offset for NPA/NIX\n");
+		return -EINVAL;
+	}
+	return 0;
+}
+
+/* Mbox message handlers */
+void mbox_handler_MSIX_OFFSET(struct otx2_nic *pfvf,
+			      struct msix_offset_rsp *rsp)
+{
+	pfvf->hw.npa_msixoff = rsp->npa_msixoff;
+	pfvf->hw.nix_msixoff = rsp->nix_msixoff;
+}
+
 void otx2_disable_msix(struct otx2_nic *pfvf)
 {
 	struct otx2_hw *hw = &pfvf->hw;
