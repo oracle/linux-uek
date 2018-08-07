@@ -8,7 +8,8 @@ struct pci_ats {
 	int pos;        /* capability position */
 	int stu;        /* Smallest Translation Unit */
 	int qdep;       /* Invalidate Queue Depth */
-	int ref_cnt;    /* Physical Function reference count */
+	/* number of VFs with ATS enabled */
+	UEK_KABI_REPLACE(int ref_cnt, atomic_t ref_cnt)
 	unsigned int is_enabled:1;      /* Enable bit is set */
 };
 
