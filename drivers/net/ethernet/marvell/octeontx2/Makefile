@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: GPL-2.0
+#
+# Makefile for Marvell's OcteonTX2 ethernet device drivers
+#
+
+obj-$(CONFIG_OCTEONTX2_PF) += octeontx2_nicpf.o
+
+octeontx2_nicpf-y := otx2_pf.o
