@@ -40,6 +40,8 @@ struct otx2_hw {
 
 	/* MSI-X*/
 	u16			num_vec;
+	u16			npa_msixoff; /* Offset of NPA vectors */
+	u16			nix_msixoff; /* Offset of NIX vectors */
 	bool			*irq_allocated;
 	char			*irq_name;
 };
@@ -97,4 +99,12 @@ MBOX_MESSAGES
 
 int otx2_enable_msix(struct otx2_hw *hw);
 void otx2_disable_msix(struct otx2_nic *pfvf);
+
+/* RVU block related APIs */
+int otx2_attach_npa_nix(struct otx2_nic *pfvf);
+int otx2_detach_resources(struct mbox *mbox);
+
+/* Mbox handlers */
+void mbox_handler_MSIX_OFFSET(struct otx2_nic *pf, struct msix_offset_rsp *rsp);
+
 #endif /* OTX2_COMMON_H */
