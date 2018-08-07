@@ -596,7 +596,7 @@ Source200: kabi_whitelist_x86_64debug
 Source201: kabi_whitelist_x86_64
 
 Source300: debuginfo-g1.diff
-Source301: debuginfo-g1-minusr-old-elfutils.diff
+Source301: find-debuginfo.sh.ol7.diff
 
 # Sources for kernel-tools
 Source2000: cpupower.service
@@ -1106,9 +1106,8 @@ ApplyPatch %{stable_patch_01}
 # to support -g1.  (This is a patch of *RPM*, not of the kernel,
 # so it is not governed by nopatches.)
 cp %{_rpmconfigdir}/find-debuginfo.sh %{_builddir}
-patch %{_builddir}/find-debuginfo.sh %{SOURCE300} || \
-      { mv -f %{_builddir}/find-debuginfo.sh.orig %{_builddir}/find-debuginfo.sh && \
-        patch %{_builddir}/find-debuginfo.sh %{SOURCE301}; }
+patch %{_builddir}/find-debuginfo.sh %{SOURCE300} && \
+patch %{_builddir}/find-debuginfo.sh %{SOURCE301}
 chmod +x %{_builddir}/find-debuginfo.sh
 
 # only deal with configs if we are going to build for the arch
