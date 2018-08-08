@@ -184,6 +184,9 @@
 #define X86_FEATURE_IBRS	(7*32+19) /* Control Speculation Control */
 #define X86_FEATURE_STIBP	(7*32+21) /* Single Thread Indirect Branch Predictors */
 
+/* Intel-defined CPU features, CPUID level 0x00000007:0 (EDX), word 7 */
+#define X86_FEATURE_ARCH_CAPABILITIES	(7*32+22) /* IA32_ARCH_CAPABILITIES MSR (Intel) */
+
 /* AMD-defined CPU features, CPUID level 0x80000008 (EBX), word 13.
  * But thanks to kABI we have to jam it somewhere else. */
 #define X86_FEATURE_IBPB                (7*32+24) /* Indirect Branch Prediction Barrier */
