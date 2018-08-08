@@ -46,6 +46,11 @@
 
 #define MSR_PLATFORM_INFO		0x000000ce
 #define MSR_MTRRcap			0x000000fe
+
+#define MSR_IA32_ARCH_CAPABILITIES	0x0000010a
+#define ARCH_CAP_RDCL_NO		(1 << 0)  /* Not susceptible to Meltdown */
+#define ARCH_CAP_IBRS_ALL		(1 << 1)  /* Enhanced IBRS support */
+
 #define MSR_IA32_BBL_CR_CTL		0x00000119
 #define MSR_IA32_BBL_CR_CTL3		0x0000011e
 
