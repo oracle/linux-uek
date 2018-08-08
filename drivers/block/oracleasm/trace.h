@@ -211,6 +211,7 @@ TRACE_EVENT(integrity,
 		__field(unsigned int	, pages		)
 		__field(unsigned int	, format	)
 		__field(unsigned int	, flags		)
+		__field(void *		, buf		)
 	),
 
 	TP_fast_assign(
@@ -219,11 +220,13 @@ TRACE_EVENT(integrity,
 		__entry->pages		= nr_pages;
 		__entry->format		= it->it_format;
 		__entry->flags		= it->it_flags;
+		__entry->buf		= (void *)it->it_buf;
 	),
 
-	TP_printk("     ioc=%p prot_bytes=%u nr_pages=%u format=%s flags=%s",
+	TP_printk("     ioc=%p prot_bytes=%u nr_pages=%u format=%s flags=%s buf=%p",
 		  __entry->ioc, __entry->bytes, __entry->pages,
-		  show_ifmt(__entry->format), show_iflags(__entry->flags))
+		  show_ifmt(__entry->format), show_iflags(__entry->flags),
+		  __entry->buf)
 );
 
 #endif	/* _TRACE_ORACLEASM_H */

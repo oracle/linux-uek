@@ -1247,6 +1247,7 @@ static int asm_submit_io(struct file *file,
 		goto out_error;
 	}
 
+	r->r_bio->bi_private = r;
 	r->r_bio->bi_opf = rw;
 	r->r_bio->bi_bdev = bdev;
 
@@ -1257,6 +1258,8 @@ static int asm_submit_io(struct file *file,
 		ret = -ENOMEM;
 		goto out_error;
 	}
+
+	trace_bio(r->r_bio, "map");
 
 	/* Block layer always uses 512-byte sector addressing,
 	 * regardless of logical and physical block size.
@@ -1281,7 +1284,6 @@ static int asm_submit_io(struct file *file,
 	 * end_io on the child "real" bio
 	 */
 	r->r_bio->bi_end_io = asm_end_bio_io;
-	r->r_bio->bi_private = r;
 
 	r->r_elapsed = jiffies;  /* Set start time */
 
