@@ -24,8 +24,20 @@
 
 #define NAME_SIZE                               32
 
+#define RQ_QLEN		1024
+#define SQ_QLEN		1024
+
+#define DMA_BUFFER_LEN	1536 /* In multiples of 128bytes */
+#define RCV_FRAG_LEN	(SKB_DATA_ALIGN(DMA_BUFFER_LEN + NET_SKB_PAD) + \
+			 SKB_DATA_ALIGN(sizeof(struct skb_shared_info)))
+
 struct otx2_pool {
 	struct qmem		*stack;
+	struct qmem		*fc_addr;
+	u16			rbsize;
+	u32			page_offset;
+	u16			pageref;
+	struct page		*page;
 };
 
 struct otx2_qset {
@@ -126,6 +138,30 @@ static inline __uint128_t otx2_read128(const void __iomem *addr)
 		(((__uint128_t)le64_to_cpu(otx2_high(h, l))) << 64);
 }
 
+/* Free pointer to a pool/aura */
+static inline void otx2_aura_freeptr(struct otx2_nic *pfvf,
+				     int aura, s64 buf)
+{
+	__uint128_t val;
+
+	val = (__uint128_t)buf;
+	val |= ((__uint128_t)aura | BIT_ULL(63)) << 64;
+
+	otx2_write128(val, pfvf->reg_base + NPA_LF_AURA_OP_FREE0);
+}
+
+/* Update page ref count */
+static inline void otx2_get_page(struct otx2_pool *pool)
+{
+	if (!pool->page)
+		return;
+
+	if (pool->pageref)
+		page_ref_add(pool->page, pool->pageref);
+	pool->pageref = 0;
+	pool->page = NULL;
+}
+
 /* Mbox APIs */
 static inline int otx2_sync_mbox_msg(struct mbox *mbox)
 {
@@ -162,6 +198,8 @@ int otx2_attach_npa_nix(struct otx2_nic *pfvf);
 int otx2_detach_resources(struct mbox *mbox);
 int otx2_config_npa(struct otx2_nic *pfvf);
 int otx2_config_nix(struct otx2_nic *pfvf);
+int otx2_sq_aura_pool_init(struct otx2_nic *pfvf);
+int otx2_rq_aura_pool_init(struct otx2_nic *pfvf);
 
 /* Mbox handlers */
 void mbox_handler_MSIX_OFFSET(struct otx2_nic *pfvf,
