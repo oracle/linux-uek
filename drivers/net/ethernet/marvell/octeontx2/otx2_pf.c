@@ -274,6 +274,16 @@ static int otx2_open(struct net_device *netdev)
 	if (err)
 		return err;
 
+	/* Init Auras and pools used by NIX RQ, for free buffer ptrs */
+	err = otx2_rq_aura_pool_init(pf);
+	if (err)
+		return err;
+
+	/* Init Auras and pools used by NIX SQ, for queueing SQEs */
+	err = otx2_sq_aura_pool_init(pf);
+	if (err)
+		return err;
+
 	/* NIX init */
 	err = otx2_config_nix(pf);
 	if (err)

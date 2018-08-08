@@ -15,6 +15,39 @@
 #include "otx2_common.h"
 #include "otx2_struct.h"
 
+static dma_addr_t otx2_alloc_rbuf(struct otx2_nic *pfvf, struct otx2_pool *pool)
+{
+	dma_addr_t iova;
+
+	/* Check if request can be accommodated in previous allocated page */
+	if (pool->page &&
+	    ((pool->page_offset + pool->rbsize) <= PAGE_SIZE)) {
+		pool->pageref++;
+		goto ret;
+	}
+
+	otx2_get_page(pool);
+
+	/* Allocate a new page */
+	pool->page = alloc_pages(GFP_KERNEL | __GFP_COMP | __GFP_NOWARN, 0);
+	if (!pool->page)
+		return -ENOMEM;
+
+	pool->page_offset = 0;
+ret:
+	iova = (u64)dma_map_page_attrs(pfvf->dev, pool->page,
+				       pool->page_offset, pool->rbsize,
+				       DMA_FROM_DEVICE, DMA_ATTR_SKIP_CPU_SYNC);
+	if (dma_mapping_error(pfvf->dev, iova)) {
+		if (!pool->page_offset)
+			__free_pages(pool->page, 0);
+		pool->page = NULL;
+		return -ENOMEM;
+	}
+	pool->page_offset += pool->rbsize;
+	return iova;
+}
+
 int otx2_config_nix(struct otx2_nic *pfvf)
 {
 	struct nix_lf_alloc_req  *nixlf;
@@ -42,6 +75,222 @@ int otx2_config_nix(struct otx2_nic *pfvf)
 	nixlf->rx_cfg = BIT_ULL(33) | BIT_ULL(35) | BIT_ULL(37);
 
 	return otx2_sync_mbox_msg(&pfvf->mbox);
+}
+
+static void otx2_aura_pool_free(struct otx2_nic *pfvf)
+{
+	struct otx2_pool *pool;
+	int pool_id;
+
+	if (!pfvf->qset.pool)
+		return;
+
+	for (pool_id = 0; pool_id < pfvf->hw.pool_cnt; pool_id++) {
+		pool = &pfvf->qset.pool[pool_id];
+		qmem_free(pfvf->dev, pool->stack);
+		qmem_free(pfvf->dev, pool->fc_addr);
+	}
+	devm_kfree(pfvf->dev, pfvf->qset.pool);
+}
+
+static int otx2_aura_init(struct otx2_nic *pfvf, int aura_id,
+			  int pool_id, int numptrs)
+{
+	struct npa_aq_enq_req *aq;
+	struct otx2_pool *pool;
+	int err;
+
+	pool = &pfvf->qset.pool[pool_id];
+
+	/* Allocate memory for HW to update Aura count.
+	 * Alloc one cache line, so that it fits all FC_STYPE modes.
+	 */
+	if (!pool->fc_addr) {
+		err = qmem_alloc(pfvf->dev, &pool->fc_addr, 1, OTX2_ALIGN);
+		if (err)
+			return err;
+	}
+
+	/* Initialize this aura's context via AF */
+	aq = otx2_mbox_alloc_msg_NPA_AQ_ENQ(&pfvf->mbox);
+	if (!aq) {
+		/* Shared mbox memory buffer is full, flush it and retry */
+		err = otx2_sync_mbox_msg(&pfvf->mbox);
+		if (err)
+			return err;
+		aq = otx2_mbox_alloc_msg_NPA_AQ_ENQ(&pfvf->mbox);
+		if (!aq)
+			return -ENOMEM;
+	}
+
+	aq->aura_id = aura_id;
+	/* Will be filled by AF with correct pool context address */
+	aq->aura.pool_addr = pool_id;
+	aq->aura.pool_caching = 1;
+	aq->aura.shift = ilog2(numptrs) - 8;
+	aq->aura.count = numptrs;
+	aq->aura.limit = numptrs;
+	aq->aura.ena = 1;
+	aq->aura.fc_ena = 1;
+	aq->aura.fc_addr = pool->fc_addr->iova;
+	aq->aura.fc_hyst_bits = 0; /* Store count on all updates */
+
+	/* Fill AQ info */
+	aq->ctype = NPA_AQ_CTYPE_AURA;
+	aq->op = NPA_AQ_INSTOP_INIT;
+
+	return 0;
+}
+
+static int otx2_pool_init(struct otx2_nic *pfvf, u16 pool_id,
+			  int stack_pages, int numptrs, int buf_size)
+{
+	struct npa_aq_enq_req *aq;
+	struct otx2_pool *pool;
+	int err;
+
+	pool = &pfvf->qset.pool[pool_id];
+	/* Alloc memory for stack which is used to store buffer pointers */
+	err = qmem_alloc(pfvf->dev, &pool->stack,
+			 stack_pages, pfvf->hw.stack_pg_bytes);
+	if (err)
+		return err;
+
+	pool->rbsize = buf_size;
+
+	/* Initialize this pool's context via AF */
+	aq = otx2_mbox_alloc_msg_NPA_AQ_ENQ(&pfvf->mbox);
+	if (!aq) {
+		/* Shared mbox memory buffer is full, flush it and retry */
+		err = otx2_sync_mbox_msg(&pfvf->mbox);
+		if (err) {
+			qmem_free(pfvf->dev, pool->stack);
+			return err;
+		}
+		aq = otx2_mbox_alloc_msg_NPA_AQ_ENQ(&pfvf->mbox);
+		if (!aq) {
+			qmem_free(pfvf->dev, pool->stack);
+			return -ENOMEM;
+		}
+	}
+
+	aq->aura_id = pool_id;
+	aq->pool.stack_base = pool->stack->iova;
+	aq->pool.stack_caching = 1;
+	aq->pool.ena = 1;
+	aq->pool.buf_size = buf_size / 128;
+	aq->pool.stack_max_pages = stack_pages;
+	aq->pool.shift = ilog2(numptrs) - 8;
+	aq->pool.ptr_start = 0;
+	aq->pool.ptr_end = ~0ULL;
+
+	/* Fill AQ info */
+	aq->ctype = NPA_AQ_CTYPE_POOL;
+	aq->op = NPA_AQ_INSTOP_INIT;
+
+	return 0;
+}
+
+int otx2_sq_aura_pool_init(struct otx2_nic *pfvf)
+{
+	int pool_id, stack_pages, num_sqbs;
+	struct otx2_hw *hw = &pfvf->hw;
+	struct otx2_pool *pool;
+	int err, ptr;
+	s64 bufptr;
+
+	/* Calculate number of SQBs needed.
+	 *
+	 * For a 128byte SQE, and 4K size SQB, 31 SQEs will fit in one SQB.
+	 * Last SQE is used for pointing to next SQB.
+	 */
+	num_sqbs = (hw->sqb_size / 128) - 1;
+	num_sqbs = (SQ_QLEN + num_sqbs) / num_sqbs;
+
+	/* Get no of stack pages needed */
+	stack_pages =
+		(num_sqbs + hw->stack_pg_ptrs - 1) / hw->stack_pg_ptrs;
+
+	for (pool_id = hw->rx_queues; pool_id < hw->pool_cnt; pool_id++) {
+		/* Initialize aura context */
+		err = otx2_aura_init(pfvf, pool_id, pool_id, num_sqbs);
+		if (err)
+			goto fail;
+
+		/* Initialize pool context */
+		err = otx2_pool_init(pfvf, pool_id, stack_pages,
+				     num_sqbs, hw->sqb_size);
+		if (err)
+			goto fail;
+	}
+
+	/* Flush accumulated messages */
+	err = otx2_sync_mbox_msg(&pfvf->mbox);
+	if (err)
+		goto fail;
+
+	/* Allocate pointers and free them to aura/pool */
+	for (pool_id = hw->rx_queues; pool_id < hw->pool_cnt; pool_id++) {
+		pool = &pfvf->qset.pool[pool_id];
+		for (ptr = 0; ptr < num_sqbs; ptr++) {
+			bufptr = otx2_alloc_rbuf(pfvf, pool);
+			if (bufptr <= 0)
+				return bufptr;
+			otx2_aura_freeptr(pfvf, pool_id, bufptr);
+		}
+		otx2_get_page(pool);
+	}
+
+	return 0;
+fail:
+	otx2_aura_pool_free(pfvf);
+	return err;
+}
+
+int otx2_rq_aura_pool_init(struct otx2_nic *pfvf)
+{
+	struct otx2_hw *hw = &pfvf->hw;
+	int stack_pages, pool_id;
+	struct otx2_pool *pool;
+	int err, ptr;
+	s64 bufptr;
+
+	stack_pages =
+		(RQ_QLEN + hw->stack_pg_ptrs - 1) / hw->stack_pg_ptrs;
+
+	for (pool_id = 0; pool_id < hw->rx_queues; pool_id++) {
+		/* Initialize aura context */
+		err = otx2_aura_init(pfvf, pool_id, pool_id, RQ_QLEN);
+		if (err)
+			goto fail;
+
+		err = otx2_pool_init(pfvf, pool_id, stack_pages,
+				     RQ_QLEN, RCV_FRAG_LEN);
+		if (err)
+			goto fail;
+	}
+
+	/* Flush accumulated messages */
+	err = otx2_sync_mbox_msg(&pfvf->mbox);
+	if (err)
+		goto fail;
+
+	/* Allocate pointers and free them to aura/pool */
+	for (pool_id = 0; pool_id < hw->rx_queues; pool_id++) {
+		pool = &pfvf->qset.pool[pool_id];
+		for (ptr = 0; ptr < RQ_QLEN; ptr++) {
+			bufptr = otx2_alloc_rbuf(pfvf, pool);
+			if (bufptr <= 0)
+				return bufptr;
+			otx2_aura_freeptr(pfvf, pool_id, bufptr);
+		}
+		otx2_get_page(pool);
+	}
+
+	return 0;
+fail:
+	otx2_aura_pool_free(pfvf);
+	return err;
 }
 
 int otx2_config_npa(struct otx2_nic *pfvf)
