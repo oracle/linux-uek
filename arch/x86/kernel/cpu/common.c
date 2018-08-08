@@ -842,6 +842,13 @@ static void __init early_identify_cpu(struct cpuinfo_x86 *c)
 		this_cpu->c_bsp_init(c);
 
 	setup_smep(c);
+
+#ifdef CONFIG_PAGE_TABLE_ISOLATION
+	if (!x86_match_cpu(cpu_no_speculation)) {
+		if (!cpu_vulnerable_to_meltdown(c))
+			kaiser_enabled = 0;
+	}
+#endif
 }
 
 void __init early_cpu_init(void)
