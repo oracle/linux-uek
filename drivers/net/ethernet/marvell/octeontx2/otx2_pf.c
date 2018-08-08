@@ -58,6 +58,12 @@ static void otx2_process_pfaf_mbox_msg(struct otx2_nic *pf,
 	case MBOX_MSG_MSIX_OFFSET:
 		mbox_handler_MSIX_OFFSET(pf, (struct msix_offset_rsp *)msg);
 		break;
+	case MBOX_MSG_NPA_LF_ALLOC:
+		mbox_handler_NPA_LF_ALLOC(pf, (struct npa_lf_alloc_rsp *)msg);
+		break;
+	case MBOX_MSG_NIX_LF_ALLOC:
+		mbox_handler_NIX_LF_ALLOC(pf, (struct nix_lf_alloc_rsp *)msg);
+		break;
 	default:
 		if (msg->rc)
 			dev_err(pf->dev,
@@ -257,6 +263,21 @@ static int otx2_open(struct net_device *netdev)
 	if (err)
 		return err;
 
+	pf->qset.cq_cnt = pf->hw.rx_queues + pf->hw.tx_queues;
+
+	/* Check if MAC address from AF is valid or else set a random MAC */
+	if (is_zero_ether_addr(netdev->dev_addr))
+		eth_hw_addr_random(netdev);
+
+	/* NPA init */
+	err = otx2_config_npa(pf);
+	if (err)
+		return err;
+
+	/* NIX init */
+	err = otx2_config_nix(pf);
+	if (err)
+		return err;
 	return 0;
 }
 

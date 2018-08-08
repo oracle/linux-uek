@@ -24,6 +24,17 @@
 
 #define NAME_SIZE                               32
 
+struct otx2_pool {
+	struct qmem		*stack;
+};
+
+struct otx2_qset {
+#define OTX2_MAX_CQ_CNT		64
+	u16			cq_cnt;
+	u16			xqe_size; /* Size of CQE i.e 128 or 512 bytes*/
+	struct otx2_pool	*pool;
+};
+
 struct  mbox {
 	struct otx2_mbox	mbox;
 	struct work_struct	mbox_wrk;
@@ -37,6 +48,12 @@ struct otx2_hw {
 	u16                     rx_queues;
 	u16                     tx_queues;
 	u16			max_queues;
+	u16			pool_cnt;
+
+	/* NPA */
+	u32			stack_pg_ptrs;  /* No of ptrs per stack page */
+	u32			stack_pg_bytes; /* Size of stack page */
+	u16			sqb_size;
 
 	/* MSI-X*/
 	u16			num_vec;
@@ -52,10 +69,13 @@ struct otx2_nic {
 	struct device		*dev;
 	struct net_device	*netdev;
 
-	u16			pcifunc;
+	struct otx2_qset	qset;
 	struct otx2_hw		hw;
 	struct mbox		mbox;
 	struct workqueue_struct *mbox_wq;
+	u16			pcifunc;
+	u16			rx_chan_base;
+	u16			tx_chan_base;
 };
 
 /* Register read/write APIs */
@@ -103,8 +123,15 @@ void otx2_disable_msix(struct otx2_nic *pfvf);
 /* RVU block related APIs */
 int otx2_attach_npa_nix(struct otx2_nic *pfvf);
 int otx2_detach_resources(struct mbox *mbox);
+int otx2_config_npa(struct otx2_nic *pfvf);
+int otx2_config_nix(struct otx2_nic *pfvf);
 
 /* Mbox handlers */
-void mbox_handler_MSIX_OFFSET(struct otx2_nic *pf, struct msix_offset_rsp *rsp);
+void mbox_handler_MSIX_OFFSET(struct otx2_nic *pfvf,
+			      struct msix_offset_rsp *rsp);
+void mbox_handler_NPA_LF_ALLOC(struct otx2_nic *pfvf,
+			       struct npa_lf_alloc_rsp *rsp);
+void mbox_handler_NIX_LF_ALLOC(struct otx2_nic *pfvf,
+			       struct nix_lf_alloc_rsp *rsp);
 
 #endif /* OTX2_COMMON_H */
