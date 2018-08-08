@@ -220,6 +220,13 @@ void asm_integrity_unmap(struct bio *bio)
 	if (!bip)
 		return;
 
+	/*
+	 * We may end up here if the user is running an old ASMLIB
+	 * without integrity support.
+	 */
+	if (bip->bip_flags & BIP_BLOCK_INTEGRITY)
+		return;
+
 	bip_for_each_vec(iv, bio_integrity(bio), iter) {
 		if (bio_data_dir(bio) == READ)
 			set_page_dirty_lock(iv.bv_page);
