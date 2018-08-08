@@ -5936,7 +5936,7 @@ static int select_idle_cpu(struct task_struct *p, struct sched_domain *sd, int t
 	u64 avg_cost, avg_idle;
 	u64 time, cost;
 	s64 delta;
-	int cpu, limit, floor, nr = INT_MAX;
+	int cpu, limit, floor, target_tmp, nr = INT_MAX;
 	int this = smp_processor_id();
 	int si_cpu = -1;
 
@@ -5969,9 +5969,15 @@ static int select_idle_cpu(struct task_struct *p, struct sched_domain *sd, int t
 		}
 	}
 
-	time = cpu_clock(this);
+	if (per_cpu(next_cpu, target) != -1)
+		target_tmp = per_cpu(next_cpu, target);
+	else
+		target_tmp = target;
 
-	for_each_cpu_wrap(cpu, sched_domain_span(sd), target) {
+	time = local_clock();
+
+	for_each_cpu_wrap(cpu, sched_domain_span(sd), target_tmp) {
+		per_cpu(next_cpu, target) = cpu;
 		if (!--nr)
 			return si_cpu;
 		if (!cpumask_test_cpu(cpu, p->cpus_ptr))
