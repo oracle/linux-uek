@@ -89,6 +89,43 @@ static inline u64 otx2_read64(struct otx2_nic *nic, u64 offset)
 	return readq(nic->reg_base + offset);
 }
 
+/* With the absence of API for 128-bit IO memory access for arm64,
+ * implement required operations at place.
+ */
+#ifdef __BIG_ENDIAN
+#define otx2_high(high, low)   (low)
+#define otx2_low(high, low)    (high)
+#else
+#define otx2_high(high, low)   (high)
+#define otx2_low(high, low)    (low)
+#endif
+
+static inline void otx2_write128(__uint128_t val, void __iomem *addr)
+{
+	__uint128_t *__addr = (__force __uint128_t *)addr;
+	u64 h, l;
+
+	otx2_low(h, l) = (__force u64)cpu_to_le64(val);
+	otx2_high(h, l) = (__force u64)cpu_to_le64(val >> 64);
+
+	asm volatile("stp %x[x0], %x[x1], %x[p1]"
+		: [p1]"=Ump"(*__addr)
+		: [x0]"r"(l), [x1]"r"(h));
+}
+
+static inline __uint128_t otx2_read128(const void __iomem *addr)
+{
+	__uint128_t *__addr = (__force __uint128_t *)addr;
+	u64 h, l;
+
+	asm volatile("ldp %x[x0], %x[x1], %x[p1]"
+		: [x0]"=r"(l), [x1]"=r"(h)
+		: [p1]"Ump"(*__addr));
+
+	return (__uint128_t)le64_to_cpu(otx2_low(h, l)) |
+		(((__uint128_t)le64_to_cpu(otx2_high(h, l))) << 64);
+}
+
 /* Mbox APIs */
 static inline int otx2_sync_mbox_msg(struct mbox *mbox)
 {
