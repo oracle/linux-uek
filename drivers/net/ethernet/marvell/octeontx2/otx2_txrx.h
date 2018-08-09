@@ -11,6 +11,8 @@
 #ifndef OTX2_TXRX_H
 #define OTX2_TXRX_H
 
+#include <linux/iommu.h>
+
 #define RQ_QLEN		1024
 #define SQ_QLEN		1024
 #define DMA_BUFFER_LEN	1536 /* In multiples of 128bytes */
@@ -53,6 +55,15 @@ struct otx2_qset {
 	struct otx2_cq_poll	*napi;
 	struct otx2_cq_queue	*cq;
 };
+
+/* Translate IOVA to physical address */
+static inline u64 otx2_iova_to_phys(void *iommu_domain, dma_addr_t dma_addr)
+{
+	/* Translation is installed only when IOMMU is present */
+	if (iommu_domain)
+		return iommu_iova_to_phys(iommu_domain, dma_addr);
+	return dma_addr;
+}
 
 int otx2_poll(struct napi_struct *napi, int budget);
 #endif /* OTX2_TXRX_H */
