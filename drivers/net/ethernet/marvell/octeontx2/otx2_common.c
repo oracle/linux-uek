@@ -15,7 +15,7 @@
 #include "otx2_common.h"
 #include "otx2_struct.h"
 
-static dma_addr_t otx2_alloc_rbuf(struct otx2_nic *pfvf, struct otx2_pool *pool)
+dma_addr_t otx2_alloc_rbuf(struct otx2_nic *pfvf, struct otx2_pool *pool)
 {
 	dma_addr_t iova;
 
