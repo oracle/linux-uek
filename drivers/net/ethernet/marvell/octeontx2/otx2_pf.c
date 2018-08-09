@@ -15,6 +15,7 @@
 #include <linux/of.h>
 #include <linux/if_vlan.h>
 #include <net/ip.h>
+#include <linux/iommu.h>
 
 #include "otx2_reg.h"
 #include "otx2_common.h"
@@ -546,6 +547,22 @@ static int otx2_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	err = otx2_set_real_num_queues(netdev, hw->tx_queues, hw->rx_queues);
 	if (err)
 		goto err_detach_rsrc;
+
+	/* NPA's pool is a stack to which SW frees buffer pointers via Aura.
+	 * HW allocates buffer pointer from stack and uses it for DMA'ing
+	 * ingress packet. In some scenarios HW can free back allocated buffer
+	 * pointers to pool. This makes it impossible for SW to maintain a
+	 * parallel list where physical addresses of buffer pointers (IOVAs)
+	 * given to HW can be saved for later reference.
+	 *
+	 * So the only way to convert Rx packet's buffer address is to use
+	 * IOMMU's iova_to_phys() handler which translates the address by
+	 * walking through the translation tables.
+	 *
+	 * So check if device is binded to IOMMU, otherwise translation is
+	 * not needed.
+	 */
+	pf->iommu_domain = iommu_get_domain_for_dev(dev);
 
 	netdev->netdev_ops = &otx2_netdev_ops;
 	err = register_netdev(netdev);

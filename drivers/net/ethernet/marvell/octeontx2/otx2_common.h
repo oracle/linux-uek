@@ -68,6 +68,7 @@ struct otx2_nic {
 	struct pci_dev		*pdev;
 	struct device		*dev;
 	struct net_device	*netdev;
+	void			*iommu_domain;
 
 	struct otx2_qset	qset;
 	struct otx2_hw		hw;
@@ -202,6 +203,7 @@ int otx2_config_nix(struct otx2_nic *pfvf);
 int otx2_config_nix_queues(struct otx2_nic *pfvf);
 int otx2_txschq_config(struct otx2_nic *pfvf, int lvl);
 int otx2_txsch_alloc(struct otx2_nic *pfvf);
+dma_addr_t otx2_alloc_rbuf(struct otx2_nic *pfvf, struct otx2_pool *pool);
 
 /* Mbox handlers */
 void mbox_handler_MSIX_OFFSET(struct otx2_nic *pfvf,
