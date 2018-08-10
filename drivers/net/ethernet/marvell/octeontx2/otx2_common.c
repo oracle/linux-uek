@@ -15,6 +15,33 @@
 #include "otx2_common.h"
 #include "otx2_struct.h"
 
+void otx2_set_irq_affinity(struct otx2_nic *pfvf)
+{
+	struct otx2_hw *hw = &pfvf->hw;
+	int vec, cpu, irq, cint;
+
+	vec = hw->nix_msixoff + NIX_LF_CINT_VEC_START;
+	cpu = cpumask_first(cpu_online_mask);
+
+	/* CQ interrupts */
+	for (cint = 0; cint < pfvf->hw.cint_cnt; cint++, vec++) {
+		if (!hw->irq_allocated[vec])
+			continue;
+
+		if (!alloc_cpumask_var(&hw->affinity_mask[vec], GFP_KERNEL))
+			return;
+
+		cpumask_set_cpu(cpu, hw->affinity_mask[vec]);
+
+		irq = pci_irq_vector(pfvf->pdev, vec);
+		irq_set_affinity_hint(irq, hw->affinity_mask[vec]);
+
+		cpu = cpumask_next(cpu, cpu_online_mask);
+		if (unlikely(cpu >= nr_cpu_ids))
+			cpu = 0;
+	}
+}
+
 dma_addr_t otx2_alloc_rbuf(struct otx2_nic *pfvf, struct otx2_pool *pool)
 {
 	dma_addr_t iova;
@@ -735,6 +762,9 @@ void otx2_disable_msix(struct otx2_nic *pfvf)
 		if (irq < (hw->nix_msixoff + NIX_LF_CINT_VEC_START)) {
 			free_irq(pci_irq_vector(pfvf->pdev, irq), pfvf);
 		} else {
+			irq_set_affinity_hint(pci_irq_vector(pfvf->pdev, irq),
+					      NULL);
+			free_cpumask_var(hw->affinity_mask[irq]);
 			free_irq(pci_irq_vector(pfvf->pdev, irq),
 				 &qset->napi[qidx++]);
 		}
@@ -744,6 +774,7 @@ void otx2_disable_msix(struct otx2_nic *pfvf)
 
 freemem:
 	hw->num_vec = 0;
+	kfree(hw->affinity_mask);
 	kfree(hw->irq_allocated);
 	kfree(hw->irq_name);
 	hw->irq_allocated = NULL;
@@ -752,7 +783,7 @@ freemem:
 
 int otx2_enable_msix(struct otx2_hw *hw)
 {
-	int ret;
+	int ret = -ENOMEM;
 
 	hw->num_vec = pci_msix_vec_count(hw->pdev);
 
@@ -761,10 +792,13 @@ int otx2_enable_msix(struct otx2_hw *hw)
 		return -ENOMEM;
 
 	hw->irq_allocated = kcalloc(hw->num_vec, sizeof(bool), GFP_KERNEL);
-	if (!hw->irq_allocated) {
-		kfree(hw->irq_name);
-		return -ENOMEM;
-	}
+	if (!hw->irq_allocated)
+		goto freemem;
+
+	hw->affinity_mask = kcalloc(hw->num_vec, sizeof(cpumask_var_t),
+				    GFP_KERNEL);
+	if (!hw->affinity_mask)
+		goto freemem;
 
 	/* Enable MSI-X */
 	ret = pci_alloc_irq_vectors(hw->pdev, hw->num_vec, hw->num_vec,
@@ -773,9 +807,13 @@ int otx2_enable_msix(struct otx2_hw *hw)
 		dev_err(&hw->pdev->dev,
 			"Request for #%d msix vectors failed, ret %d\n",
 			hw->num_vec, ret);
-		kfree(hw->irq_allocated);
-		kfree(hw->irq_name);
+		goto freemem;
 	}
 
 	return 0;
+freemem:
+	kfree(hw->affinity_mask);
+	kfree(hw->irq_allocated);
+	kfree(hw->irq_name);
+	return ret;
 }

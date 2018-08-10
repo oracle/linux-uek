@@ -518,6 +518,8 @@ static int otx2_open(struct net_device *netdev)
 		otx2_write64(pf, NIX_LF_CINTX_ENA_W1S(qidx), BIT_ULL(0));
 	}
 
+	otx2_set_irq_affinity(pf);
+
 	err = otx2_rxtx_enable(pf, true);
 	if (err)
 		goto cleanup;
