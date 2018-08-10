@@ -36,6 +36,8 @@
 #include <asm/msr.h>
 #include <asm/pat.h>
 #include <asm/cpufeature.h>
+#include <asm/intel-family.h>
+#include <asm/cpu_device_id.h>
 
 #ifdef CONFIG_X86_LOCAL_APIC
 #include <asm/uv/uv.h>
@@ -714,6 +716,41 @@ static void __cpuinit identify_cpu_without_cpuid(struct cpuinfo_x86 *c)
 #endif
 }
 
+static const __cpuinitconst struct x86_cpu_id cpu_no_speculation[] = {
+	{ X86_VENDOR_INTEL,	6, INTEL_FAM6_ATOM_CEDARVIEW,	X86_FEATURE_ANY },
+	{ X86_VENDOR_INTEL,	6, INTEL_FAM6_ATOM_CLOVERVIEW,	X86_FEATURE_ANY },
+	{ X86_VENDOR_INTEL,	6, INTEL_FAM6_ATOM_LINCROFT,	X86_FEATURE_ANY },
+	{ X86_VENDOR_INTEL,	6, INTEL_FAM6_ATOM_PENWELL,	X86_FEATURE_ANY },
+	{ X86_VENDOR_INTEL,	6, INTEL_FAM6_ATOM_PINEVIEW,	X86_FEATURE_ANY },
+	{ X86_VENDOR_CENTAUR,	5 },
+	{ X86_VENDOR_INTEL,	5 },
+	{ X86_VENDOR_NSC,	5 },
+	{ X86_VENDOR_ANY,	4 },
+	{}
+};
+
+static const __cpuinitconst struct x86_cpu_id cpu_no_meltdown[] = {
+	{ X86_VENDOR_AMD },
+	{}
+};
+
+static bool __cpuinit cpu_vulnerable_to_meltdown(struct cpuinfo_x86 *c)
+{
+	u64 ia32_cap = 0;
+
+	if (x86_match_cpu(cpu_no_meltdown))
+		return false;
+
+	if (cpu_has(c, X86_FEATURE_IA32_ARCH_CAPS))
+		rdmsrl(MSR_IA32_ARCH_CAPABILITIES, ia32_cap);
+
+	/* Rogue Data Cache Load? No! */
+	if (ia32_cap & ARCH_CAP_RDCL_NO)
+		return false;
+
+	return true;
+}
+
 /*
  * Do minimum CPU detection early.
  * Fields really needed: vendor, cpuid_level, family, model, mask,
@@ -821,6 +858,7 @@ static void __cpuinit generic_identify(struct cpuinfo_x86 *c)
 	if (!have_cpuid_p())
 		identify_cpu_without_cpuid(c);
 
+
 	/* cyrix could have cpuid enabled via c_identify()*/
 	if (!have_cpuid_p())
 		return;
@@ -851,48 +889,6 @@ static void __cpuinit generic_identify(struct cpuinfo_x86 *c)
 	get_model_name(c); /* Default name */
 
 	detect_nopl(c);
-}
-
-/* "Small Core" Processors (Atom) */
-#define INTEL_FAM6_ATOM_PINEVIEW	0x1C
-#define INTEL_FAM6_ATOM_LINCROFT	0x26
-#define INTEL_FAM6_ATOM_PENWELL		0x27
-#define INTEL_FAM6_ATOM_CLOVERVIEW	0x35
-#define INTEL_FAM6_ATOM_CEDARVIEW	0x36
-
-/*
- * Check if CPU has speculation.
- */
-static int cpu_has_no_speculation(const struct cpuinfo_x86 *c) {
-
-	switch (c->x86_vendor) {
-		case X86_VENDOR_INTEL:
-			switch (c->x86) {
-				case 6:
-					switch (c->x86_model) {
-						case INTEL_FAM6_ATOM_CEDARVIEW:
-						case INTEL_FAM6_ATOM_CLOVERVIEW:
-						case INTEL_FAM6_ATOM_LINCROFT:
-						case INTEL_FAM6_ATOM_PENWELL:
-						case INTEL_FAM6_ATOM_PINEVIEW:
-							return 1;
-						default:
-							return 0;
-					}
-				case 5:
-					return 1;
-				default:
-					return 0;
-			}
-		case X86_VENDOR_CENTAUR:
-		case X86_VENDOR_NSC:
-			return (c->x86 == 5 ? 1 : 0);
-		case X86_VENDOR_AMD:
-			return 1;
-		default:
-			return (c->x86 == 4 ? 1 : 0);
-	}
-	return 0;
 }
 
 /*
@@ -1026,15 +1022,17 @@ static void __cpuinit identify_cpu(struct cpuinfo_x86 *c)
 	numa_add_cpu(smp_processor_id());
 #endif
 
-	if (c->x86_vendor != X86_VENDOR_AMD)
-		set_cpu_cap(c, X86_BUG_CPU_MELTDOWN);
+	if (!x86_match_cpu(cpu_no_speculation)) {
 
-	set_cpu_cap(c, X86_BUG_SPECTRE_V1);
+		if (cpu_vulnerable_to_meltdown(c)) {
+			setup_force_cpu_bug(X86_BUG_CPU_MELTDOWN);
+			if (!cpu_has_eager_fpu) 
+				pr_warn_once("eager_fpu is disabled. You are now susceptible to CVE-2018-3665.\n");
+		}
 
-	set_cpu_cap(c, X86_BUG_SPECTRE_V2);
-
-	if ((!cpu_has_eager_fpu) && (!cpu_has_no_speculation(c)))
-		pr_warn_once("eager_fpu is disabled. You are now susceptible to CVE-2018-3665.\n");
+		setup_force_cpu_bug(X86_BUG_SPECTRE_V1);
+		setup_force_cpu_bug(X86_BUG_SPECTRE_V2);
+	}
 }
 
 #ifdef CONFIG_X86_64
