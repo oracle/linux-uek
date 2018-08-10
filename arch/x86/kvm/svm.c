@@ -1380,7 +1380,6 @@ static void init_vmcb(struct vcpu_svm *svm)
 	set_intercept(svm, INTERCEPT_RDPMC);
 	set_intercept(svm, INTERCEPT_CPUID);
 	set_intercept(svm, INTERCEPT_INVD);
-	set_intercept(svm, INTERCEPT_HLT);
 	set_intercept(svm, INTERCEPT_INVLPG);
 	set_intercept(svm, INTERCEPT_INVLPGA);
 	set_intercept(svm, INTERCEPT_IOIO_PROT);
@@ -1398,10 +1397,13 @@ static void init_vmcb(struct vcpu_svm *svm)
 	set_intercept(svm, INTERCEPT_XSETBV);
 	set_intercept(svm, INTERCEPT_RSM);
 
-	if (!kvm_mwait_in_guest()) {
+	if (!kvm_mwait_in_guest(svm->vcpu.kvm)) {
 		set_intercept(svm, INTERCEPT_MONITOR);
 		set_intercept(svm, INTERCEPT_MWAIT);
 	}
+
+	if (!kvm_hlt_in_guest(svm->vcpu.kvm))
+		set_intercept(svm, INTERCEPT_HLT);
 
 	control->iopm_base_pa = __sme_set(iopm_base);
 	control->msrpm_base_pa = __sme_set(__pa(svm->msrpm));
@@ -1458,7 +1460,8 @@ static void init_vmcb(struct vcpu_svm *svm)
 	svm->nested.vmcb = 0;
 	svm->vcpu.arch.hflags = 0;
 
-	if (boot_cpu_has(X86_FEATURE_PAUSEFILTER)) {
+	if (boot_cpu_has(X86_FEATURE_PAUSEFILTER) &&
+	    !kvm_pause_in_guest(svm->vcpu.kvm)) {
 		control->pause_filter_count = 3000;
 		set_intercept(svm, INTERCEPT_PAUSE);
 	}
