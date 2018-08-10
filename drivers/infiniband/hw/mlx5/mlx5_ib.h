@@ -729,6 +729,7 @@ struct mlx5_ib_multiport_info {
 
 struct mlx5_ib_dev {
 	struct ib_device		ib_dev;
+	const struct uverbs_object_tree_def *driver_trees[6];
 	struct mlx5_core_dev		*mdev;
 	struct mlx5_roce		roce[MLX5_MAX_PORTS];
 	int				num_ports;

@@ -557,7 +557,6 @@ void uverbs_free_spec_tree(struct uverbs_root_spec *root)
 
 	kfree(root);
 }
-EXPORT_SYMBOL(uverbs_free_spec_tree);
 
 struct uverbs_root_spec *uverbs_alloc_spec_tree(unsigned int num_trees,
 						const struct uverbs_object_tree_def **trees)
@@ -662,4 +661,3 @@ free_root:
 	uverbs_free_spec_tree(root_spec);
 	return ERR_PTR(res);
 }
-EXPORT_SYMBOL(uverbs_alloc_spec_tree);
