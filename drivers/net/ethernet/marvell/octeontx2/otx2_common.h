@@ -32,6 +32,49 @@
 #define NIX_LF_ERR_VEC		0x81
 #define NIX_LF_POISON_VEC	0x82
 
+/* NIX TX stats */
+enum nix_stat_lf_tx {
+	TX_UCAST	= 0x0,
+	TX_BCAST	= 0x1,
+	TX_MCAST	= 0x2,
+	TX_DROP		= 0x3,
+	TX_OCTS		= 0x4,
+	TX_STATS_ENUM_LAST,
+};
+
+/* NIX RX stats */
+enum nix_stat_lf_rx {
+	RX_OCTS		= 0x0,
+	RX_UCAST	= 0x1,
+	RX_BCAST	= 0x2,
+	RX_MCAST	= 0x3,
+	RX_DROP		= 0x4,
+	RX_DROP_OCTS	= 0x5,
+	RX_FCS		= 0x6,
+	RX_ERR		= 0x7,
+	RX_DRP_BCAST	= 0x8,
+	RX_DRP_MCAST	= 0x9,
+	RX_DRP_L3BCAST	= 0xa,
+	RX_DRP_L3MCAST	= 0xb,
+	RX_STATS_ENUM_LAST,
+};
+
+struct  otx2_dev_stats {
+	u64 rx_bytes;
+	u64 rx_frames;
+	u64 rx_ucast_frames;
+	u64 rx_bcast_frames;
+	u64 rx_mcast_frames;
+	u64 rx_drops;
+
+	u64 tx_bytes;
+	u64 tx_frames;
+	u64 tx_ucast_frames;
+	u64 tx_bcast_frames;
+	u64 tx_mcast_frames;
+	u64 tx_drops;
+};
+
 struct  mbox {
 	struct otx2_mbox	mbox;
 	struct work_struct	mbox_wrk;
@@ -42,6 +85,7 @@ struct  mbox {
 
 struct otx2_hw {
 	struct pci_dev		*pdev;
+	struct otx2_dev_stats	dev_stats;
 	u16                     rx_queues;
 	u16                     tx_queues;
 	u16			max_queues;
@@ -224,6 +268,9 @@ void otx2_ctx_disable(struct mbox *mbox, int type, bool npa);
 
 int otx2_napi_handler(struct otx2_cq_queue *cq,
 		      struct otx2_nic *pfvf, int budget);
+void otx2_get_dev_stats(struct otx2_nic *pfvf);
+void otx2_get_stats64(struct net_device *netdev,
+		      struct rtnl_link_stats64 *stats);
 void otx2_set_irq_affinity(struct otx2_nic *pfvf);
 
 /* Mbox handlers */
