@@ -586,6 +586,7 @@ static const struct net_device_ops otx2_netdev_ops = {
 	.ndo_open		= otx2_open,
 	.ndo_stop		= otx2_stop,
 	.ndo_start_xmit		= otx2_xmit,
+	.ndo_get_stats64	= otx2_get_stats64,
 };
 
 static int otx2_probe(struct pci_dev *pdev, const struct pci_device_id *id)
