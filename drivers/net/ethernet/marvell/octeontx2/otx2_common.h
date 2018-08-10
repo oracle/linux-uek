@@ -58,6 +58,7 @@ struct otx2_hw {
 	u16			nix_msixoff; /* Offset of NIX vectors */
 	bool			*irq_allocated;
 	char			*irq_name;
+	cpumask_var_t           *affinity_mask;
 
 	u8			cint_cnt; /* CQ interrupt count */
 	u16		txschq_list[NIX_TXSCH_LVL_CNT][MAX_TXSCHQ_PER_FUNC];
@@ -223,6 +224,7 @@ void otx2_ctx_disable(struct mbox *mbox, int type, bool npa);
 
 int otx2_napi_handler(struct otx2_cq_queue *cq,
 		      struct otx2_nic *pfvf, int budget);
+void otx2_set_irq_affinity(struct otx2_nic *pfvf);
 
 /* Mbox handlers */
 void mbox_handler_MSIX_OFFSET(struct otx2_nic *pfvf,
