@@ -732,6 +732,10 @@ static int otx2_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	 */
 	pf->iommu_domain = iommu_get_domain_for_dev(dev);
 
+	netdev->hw_features = (NETIF_F_RXCSUM |
+			       NETIF_F_IP_CSUM | NETIF_F_IPV6_CSUM);
+	netdev->features |= netdev->hw_features;
+
 	netdev->netdev_ops = &otx2_netdev_ops;
 
 	/* MTU range: 68 - 9190 */
