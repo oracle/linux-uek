@@ -275,6 +275,8 @@ void otx2_get_stats64(struct net_device *netdev,
 void otx2_set_irq_affinity(struct otx2_nic *pfvf);
 int otx2_hw_set_mac_addr(struct otx2_nic *pfvf, struct net_device *netdev);
 int otx2_set_mac_address(struct net_device *netdev, void *p);
+int otx2_change_mtu(struct net_device *netdev, int new_mtu);
+int otx2_hw_set_mtu(struct otx2_nic *pfvf, int mtu);
 
 /* Mbox handlers */
 void mbox_handler_MSIX_OFFSET(struct otx2_nic *pfvf,
