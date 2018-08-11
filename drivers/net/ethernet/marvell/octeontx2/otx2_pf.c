@@ -599,12 +599,36 @@ static int otx2_stop(struct net_device *netdev)
 	return 0;
 }
 
+static void otx2_set_rx_mode(struct net_device *netdev)
+{
+	struct otx2_nic *pf = netdev_priv(netdev);
+	struct nix_rx_mode *req;
+
+	if (!(netdev->flags & IFF_UP))
+		return;
+
+	req = otx2_mbox_alloc_msg_NIX_SET_RX_MODE(&pf->mbox);
+	if (!req)
+		return;
+
+	req->mode = NIX_RX_MODE_UCAST;
+
+	/* We don't support MAC address filtering yet */
+	if (netdev->flags & IFF_PROMISC)
+		req->mode |= NIX_RX_MODE_PROMISC;
+	else if (netdev->flags & IFF_ALLMULTI)
+		req->mode |= NIX_RX_MODE_ALLMULTI;
+
+	otx2_sync_mbox_msg_busy_poll(&pf->mbox);
+}
+
 static const struct net_device_ops otx2_netdev_ops = {
 	.ndo_open		= otx2_open,
 	.ndo_stop		= otx2_stop,
 	.ndo_start_xmit		= otx2_xmit,
 	.ndo_set_mac_address    = otx2_set_mac_address,
 	.ndo_change_mtu         = otx2_change_mtu,
+	.ndo_set_rx_mode        = otx2_set_rx_mode,
 	.ndo_get_stats64	= otx2_get_stats64,
 };
 
