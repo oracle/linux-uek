@@ -15,6 +15,44 @@
 #include "otx2_common.h"
 #include "otx2_struct.h"
 
+/* Sync MAC address with RVU */
+int otx2_hw_set_mac_addr(struct otx2_nic *pfvf, struct net_device *netdev)
+{
+	struct nix_set_mac_addr *req;
+
+	req = otx2_mbox_alloc_msg_NIX_SET_MAC_ADDR(&pfvf->mbox);
+	if (!req)
+		return -ENOMEM;
+
+	ether_addr_copy(req->mac_addr, netdev->dev_addr);
+
+	return otx2_sync_mbox_msg(&pfvf->mbox);
+}
+
+int otx2_set_mac_address(struct net_device *netdev, void *p)
+{
+	struct otx2_nic *pfvf = netdev_priv(netdev);
+	struct sockaddr *addr = p;
+
+	if (!is_valid_ether_addr(addr->sa_data))
+		return -EADDRNOTAVAIL;
+
+	memcpy(netdev->dev_addr, addr->sa_data, netdev->addr_len);
+
+	/* If mbox irq (i.e MSIX) is disabled then mark this
+	 * change as pending and return, AF will be synced
+	 * once irqs are re-enabled.
+	 */
+	if (pfvf->hw.num_vec) {
+		if (otx2_hw_set_mac_addr(pfvf, netdev))
+			return -EBUSY;
+	} else {
+		pfvf->set_mac_pending = true;
+	}
+
+	return 0;
+}
+
 void otx2_get_dev_stats(struct otx2_nic *pfvf)
 {
 	struct otx2_dev_stats *dev_stats = &pfvf->hw.dev_stats;
@@ -782,7 +820,11 @@ void mbox_handler_NIX_LF_ALLOC(struct otx2_nic *pfvf,
 	pfvf->hw.sqb_size = rsp->sqb_size;
 	pfvf->rx_chan_base = rsp->rx_chan_base;
 	pfvf->tx_chan_base = rsp->tx_chan_base;
-	ether_addr_copy(pfvf->netdev->dev_addr, rsp->mac_addr);
+	/* If a MAC address change is pending then don't
+	 * overwrite 'netdev->dev_addr'.
+	 */
+	if (!pfvf->set_mac_pending)
+		ether_addr_copy(pfvf->netdev->dev_addr, rsp->mac_addr);
 }
 
 void mbox_handler_MSIX_OFFSET(struct otx2_nic *pfvf,

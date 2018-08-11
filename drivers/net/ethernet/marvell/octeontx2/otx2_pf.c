@@ -484,8 +484,20 @@ static int otx2_open(struct net_device *netdev)
 	}
 
 	/* Check if MAC address from AF is valid or else set a random MAC */
-	if (is_zero_ether_addr(netdev->dev_addr))
+	if (is_zero_ether_addr(netdev->dev_addr)) {
 		eth_hw_addr_random(netdev);
+		err = otx2_hw_set_mac_addr(pf, netdev);
+		if (err)
+			goto cleanup;
+	}
+
+	/* Sync new MAC address to AF, if a change is pending */
+	if (pf->set_mac_pending) {
+		err = otx2_hw_set_mac_addr(pf, netdev);
+		if (err)
+			goto cleanup;
+		pf->set_mac_pending = false;
+	}
 
 	/* Register CQ IRQ handlers */
 	vec = pf->hw.nix_msixoff + NIX_LF_CINT_VEC_START;
@@ -586,6 +598,7 @@ static const struct net_device_ops otx2_netdev_ops = {
 	.ndo_open		= otx2_open,
 	.ndo_stop		= otx2_stop,
 	.ndo_start_xmit		= otx2_xmit,
+	.ndo_set_mac_address    = otx2_set_mac_address,
 	.ndo_get_stats64	= otx2_get_stats64,
 };
 
