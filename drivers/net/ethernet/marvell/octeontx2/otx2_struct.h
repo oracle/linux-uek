@@ -28,6 +28,21 @@ enum nix_send_ldtype {
 	NIX_SEND_LDTYPE_LDWB = 0x2,
 };
 
+/* CSUM offload */
+enum nix_sendl3type {
+	NIX_SENDL3TYPE_NONE,
+	NIX_SENDL3TYPE_IP4,
+	NIX_SENDL3TYPE_IP4_CKSUM,
+	NIX_SENDL3TYPE_IP6,
+};
+
+enum nix_sendl4type {
+	NIX_SENDL4TYPE_NONE,
+	NIX_SENDL4TYPE_TCP_CKSUM,
+	NIX_SENDL4TYPE_SCTP_CKSUM,
+	NIX_SENDL4TYPE_UDP_CKSUM,
+};
+
 /* NIX wqe/cqe types */
 enum nix_xqe_type {
 	NIX_XQE_TYPE_INVALID   = 0x0,
