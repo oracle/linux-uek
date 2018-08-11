@@ -120,6 +120,7 @@ struct otx2_nic {
 	struct mbox		mbox;
 	struct workqueue_struct *mbox_wq;
 	bool			intf_down;
+	bool			set_mac_pending;
 	u16			pcifunc;
 	u16			rx_chan_base;
 	u16			tx_chan_base;
@@ -272,6 +273,8 @@ void otx2_get_dev_stats(struct otx2_nic *pfvf);
 void otx2_get_stats64(struct net_device *netdev,
 		      struct rtnl_link_stats64 *stats);
 void otx2_set_irq_affinity(struct otx2_nic *pfvf);
+int otx2_hw_set_mac_addr(struct otx2_nic *pfvf, struct net_device *netdev);
+int otx2_set_mac_address(struct net_device *netdev, void *p);
 
 /* Mbox handlers */
 void mbox_handler_MSIX_OFFSET(struct otx2_nic *pfvf,
