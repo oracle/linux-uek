@@ -48,6 +48,107 @@ ret:
 	return iova;
 }
 
+static int otx2_rq_init(struct otx2_nic *pfvf, u16 qidx)
+{
+	struct nix_aq_enq_req *aq;
+
+	/* Get memory to put this msg */
+	aq = otx2_mbox_alloc_msg_NIX_AQ_ENQ(&pfvf->mbox);
+	if (!aq)
+		return -ENOMEM;
+
+	aq->rq.cq = qidx;
+	aq->rq.ena = 1;
+	aq->rq.pb_caching = 1;
+	aq->rq.lpb_aura = qidx; /* Use large packet buffer aura */
+	aq->rq.lpb_sizem1 = (DMA_BUFFER_LEN / 8) - 1;
+	aq->rq.xqe_imm_size = 0; /* Copying of packet to CQE not needed */
+
+	/* Fill AQ info */
+	aq->qidx = qidx;
+	aq->ctype = NIX_AQ_CTYPE_RQ;
+	aq->op = NIX_AQ_INSTOP_INIT;
+
+	return otx2_sync_mbox_msg(&pfvf->mbox);
+}
+
+static int otx2_sq_init(struct otx2_nic *pfvf, u16 qidx)
+{
+	struct nix_aq_enq_req *aq;
+
+	/* Get memory to put this msg */
+	aq = otx2_mbox_alloc_msg_NIX_AQ_ENQ(&pfvf->mbox);
+	if (!aq)
+		return -ENOMEM;
+
+	aq->sq.cq = pfvf->hw.rx_queues + qidx;
+	aq->sq.max_sqe_size = NIX_MAXSQESZ_W16; /* 128 byte */
+	aq->sq.cq_ena = 1;
+	aq->sq.ena = 1;
+	aq->sq.smq = 0;
+	aq->sq.smq_rr_quantum = DMA_BUFFER_LEN / 4;
+	aq->sq.default_chan = pfvf->tx_chan_base;
+	aq->sq.sqe_stype = NIX_STYPE_STF; /* Cache SQB */
+	aq->sq.sqb_aura = pfvf->hw.rx_queues + qidx;
+
+	/* Fill AQ info */
+	aq->qidx = qidx;
+	aq->ctype = NIX_AQ_CTYPE_SQ;
+	aq->op = NIX_AQ_INSTOP_INIT;
+
+	return otx2_sync_mbox_msg(&pfvf->mbox);
+}
+
+static int otx2_cq_init(struct otx2_nic *pfvf, u16 qidx)
+{
+	struct nix_aq_enq_req *aq;
+
+	/* Get memory to put this msg */
+	aq = otx2_mbox_alloc_msg_NIX_AQ_ENQ(&pfvf->mbox);
+	if (!aq)
+		return -ENOMEM;
+
+	aq->cq.ena = 1;
+	aq->cq.qsize = Q_SIZE_4K;
+	aq->cq.caching = 1;
+	aq->cq.base = 1;
+
+	/* Fill AQ info */
+	aq->qidx = qidx;
+	aq->ctype = NIX_AQ_CTYPE_CQ;
+	aq->op = NIX_AQ_INSTOP_INIT;
+
+	return otx2_sync_mbox_msg(&pfvf->mbox);
+}
+
+int otx2_config_nix_queues(struct otx2_nic *pfvf)
+{
+	int qidx, err;
+
+	/* Initialize RX queues */
+	for (qidx = 0; qidx < pfvf->hw.rx_queues; qidx++) {
+		err = otx2_rq_init(pfvf, qidx);
+		if (err)
+			return err;
+	}
+
+	/* Initialize TX queues */
+	for (qidx = 0; qidx < pfvf->hw.tx_queues; qidx++) {
+		err = otx2_sq_init(pfvf, qidx);
+		if (err)
+			return err;
+	}
+
+	/* Initialize completion queues */
+	for (qidx = 0; qidx < pfvf->qset.cq_cnt; qidx++) {
+		err = otx2_cq_init(pfvf, qidx);
+		if (err)
+			return err;
+	}
+
+	return 0;
+}
+
 int otx2_config_nix(struct otx2_nic *pfvf)
 {
 	struct nix_lf_alloc_req  *nixlf;
