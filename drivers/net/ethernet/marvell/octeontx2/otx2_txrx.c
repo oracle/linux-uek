@@ -224,6 +224,8 @@ static void otx2_rcv_pkt_handler(struct otx2_nic *pfvf,
 
 	skb_record_rx_queue(skb, cq->cq_idx);
 	skb->protocol = eth_type_trans(skb, pfvf->netdev);
+	if (pfvf->netdev->features & NETIF_F_RXCSUM)
+		skb->ip_summed = CHECKSUM_UNNECESSARY;
 
 	if (pfvf->netdev->features & NETIF_F_GRO)
 		napi_gro_receive(&qset->napi[cq->cint_idx].napi, skb);
@@ -378,9 +380,12 @@ static bool otx2_sqe_add_sg(struct otx2_nic *pfvf, struct otx2_snd_queue *sq,
 
 /* Add SQE header subdescriptor structure */
 static void otx2_sqe_add_hdr(struct otx2_nic *pfvf, struct otx2_snd_queue *sq,
-			     struct nix_sqe_hdr_s *sqe_hdr, int len, u16 qidx)
+			     struct nix_sqe_hdr_s *sqe_hdr,
+			     struct sk_buff *skb, u16 qidx)
 {
-	sqe_hdr->total = len;
+	int proto = 0;
+
+	sqe_hdr->total = skb->len;
 	/* Don't free Tx buffers to Aura */
 	sqe_hdr->df = 1;
 	sqe_hdr->aura = sq->aura_id;
@@ -389,6 +394,27 @@ static void otx2_sqe_add_hdr(struct otx2_nic *pfvf, struct otx2_snd_queue *sq,
 	sqe_hdr->sq = qidx;
 	/* Set SQE identifier which will be used later for freeing SKB */
 	sqe_hdr->sqe_id = sq->head;
+
+	/* Offload TCP/UDP checksum to HW */
+	if (skb->ip_summed == CHECKSUM_PARTIAL) {
+		sqe_hdr->ol3ptr = skb_network_offset(skb);
+		sqe_hdr->ol4ptr = skb_transport_offset(skb);
+
+		if (skb->protocol == htons(ETH_P_IP)) {
+			proto = ip_hdr(skb)->protocol;
+			/* In case of TSO, HW needs this to be explicitly set.
+			 * So set this always, instead of adding a check.
+			 */
+			sqe_hdr->ol3type = NIX_SENDL3TYPE_IP4_CKSUM;
+		} else if (skb->protocol == htons(ETH_P_IPV6)) {
+			proto = ipv6_hdr(skb)->nexthdr;
+		}
+
+		if (proto == IPPROTO_TCP)
+			sqe_hdr->ol4type = NIX_SENDL4TYPE_TCP_CKSUM;
+		else if (proto == IPPROTO_UDP)
+			sqe_hdr->ol4type = NIX_SENDL4TYPE_UDP_CKSUM;
+	}
 }
 
 bool otx2_sq_append_skb(struct net_device *netdev, struct otx2_snd_queue *sq,
@@ -409,7 +435,7 @@ bool otx2_sq_append_skb(struct net_device *netdev, struct otx2_snd_queue *sq,
 	/* Set SQE's SEND_HDR */
 	memset(sq->sqe_base, 0, sq->sqe_size);
 	sqe_hdr = (struct nix_sqe_hdr_s *)(sq->sqe_base);
-	otx2_sqe_add_hdr(pfvf, sq, sqe_hdr, skb->len, qidx);
+	otx2_sqe_add_hdr(pfvf, sq, sqe_hdr, skb, qidx);
 	offset = sizeof(*sqe_hdr);
 
 	num_segs = skb_shinfo(skb)->nr_frags + 1;
