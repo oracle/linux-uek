@@ -217,6 +217,17 @@ static inline int otx2_sync_mbox_msg(struct mbox *mbox)
 	return otx2_mbox_wait_for_rsp(&mbox->mbox, 0);
 }
 
+/* Use this API to send mbox msgs in atomic context
+ * where sleeping is not allowed
+ */
+static inline int otx2_sync_mbox_msg_busy_poll(struct mbox *mbox)
+{
+	if (!otx2_mbox_nonempty(&mbox->mbox, 0))
+		return 0;
+	otx2_mbox_msg_send(&mbox->mbox, 0);
+	return otx2_mbox_busy_poll_for_rsp(&mbox->mbox, 0);
+}
+
 #define M(_name, _id, _req_type, _rsp_type)				\
 static struct _req_type __maybe_unused					\
 *otx2_mbox_alloc_msg_ ## _name(struct mbox *mbox)			\
