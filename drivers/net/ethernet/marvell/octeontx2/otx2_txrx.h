@@ -13,6 +13,7 @@
 
 #include <linux/etherdevice.h>
 #include <linux/iommu.h>
+#include <linux/if_vlan.h>
 
 #define LBK_CHAN_BASE	0x000
 #define SDP_CHAN_BASE	0x700
@@ -23,6 +24,10 @@
 #define DMA_BUFFER_LEN	1536 /* In multiples of 128bytes */
 #define RCV_FRAG_LEN	(SKB_DATA_ALIGN(DMA_BUFFER_LEN + NET_SKB_PAD) + \
 			 SKB_DATA_ALIGN(sizeof(struct skb_shared_info)))
+
+#define	OTX2_ETH_HLEN		(VLAN_ETH_HLEN + VLAN_HLEN)
+#define OTX2_MIN_MTU		ETH_MIN_MTU
+#define OTX2_MAX_MTU		(9212 - OTX2_ETH_HLEN)
 
 #define OTX2_MAX_FRAGS_IN_SQE	9
 

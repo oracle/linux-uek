@@ -53,6 +53,38 @@ int otx2_set_mac_address(struct net_device *netdev, void *p)
 	return 0;
 }
 
+int otx2_hw_set_mtu(struct otx2_nic *pfvf, int mtu)
+{
+	struct nix_frs_cfg *req;
+
+	if (!pfvf->hw.num_vec)
+		return -EINVAL;
+
+	req = otx2_mbox_alloc_msg_NIX_SET_HW_FRS(&pfvf->mbox);
+	if (!req)
+		return -ENOMEM;
+
+	req->update_smq = true;
+	req->maxlen = mtu + OTX2_ETH_HLEN;
+	return otx2_sync_mbox_msg(&pfvf->mbox);
+}
+
+int otx2_change_mtu(struct net_device *netdev, int new_mtu)
+{
+	struct otx2_nic *pfvf = netdev_priv(netdev);
+	int err;
+
+	if (netif_running(netdev)) {
+		err = otx2_hw_set_mtu(pfvf, new_mtu);
+		if (err)
+			return err;
+	}
+	netdev_info(netdev, "Changing MTU from %d to %d\n",
+		    netdev->mtu, new_mtu);
+	netdev->mtu = new_mtu;
+	return 0;
+}
+
 void otx2_get_dev_stats(struct otx2_nic *pfvf)
 {
 	struct otx2_dev_stats *dev_stats = &pfvf->hw.dev_stats;
@@ -194,8 +226,8 @@ int otx2_txschq_config(struct otx2_nic *pfvf, int lvl)
 	if (lvl == NIX_TXSCH_LVL_SMQ) {
 		/* Set min and max Tx packet lengths */
 		req->reg[0] = NIX_AF_SMQX_CFG(schq);
-		req->regval[0] = (pfvf->netdev->mtu << 8) | NIC_HW_MIN_FRS;
-
+		req->regval[0] = ((pfvf->netdev->mtu  + OTX2_ETH_HLEN) << 8) |
+				   OTX2_MIN_MTU;
 		req->num_regs++;
 		/* MDQ config */
 		parent =  hw->txschq_list[NIX_TXSCH_LVL_TL4][0];
