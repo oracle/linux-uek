@@ -252,6 +252,37 @@ static int otx2_set_real_num_queues(struct net_device *netdev,
 	return err;
 }
 
+static int otx2_init_hw_resources(struct otx2_nic *pf)
+{
+	int err;
+
+	/* NPA init */
+	err = otx2_config_npa(pf);
+	if (err)
+		return err;
+
+	/* NIX init */
+	err = otx2_config_nix(pf);
+	if (err)
+		return err;
+
+	/* Init Auras and pools used by NIX RQ, for free buffer ptrs */
+	err = otx2_rq_aura_pool_init(pf);
+	if (err)
+		return err;
+
+	/* Init Auras and pools used by NIX SQ, for queueing SQEs */
+	err = otx2_sq_aura_pool_init(pf);
+	if (err)
+		return err;
+
+	err = otx2_config_nix_queues(pf);
+	if (err)
+		return err;
+
+	return 0;
+}
+
 static int otx2_open(struct net_device *netdev)
 {
 	struct otx2_nic *pf = netdev_priv(netdev);
@@ -269,25 +300,10 @@ static int otx2_open(struct net_device *netdev)
 	if (is_zero_ether_addr(netdev->dev_addr))
 		eth_hw_addr_random(netdev);
 
-	/* NPA init */
-	err = otx2_config_npa(pf);
+	err = otx2_init_hw_resources(pf);
 	if (err)
 		return err;
 
-	/* Init Auras and pools used by NIX RQ, for free buffer ptrs */
-	err = otx2_rq_aura_pool_init(pf);
-	if (err)
-		return err;
-
-	/* Init Auras and pools used by NIX SQ, for queueing SQEs */
-	err = otx2_sq_aura_pool_init(pf);
-	if (err)
-		return err;
-
-	/* NIX init */
-	err = otx2_config_nix(pf);
-	if (err)
-		return err;
 	return 0;
 }
 
