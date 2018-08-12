@@ -3947,9 +3947,9 @@ static void svm_vcpu_run(struct kvm_vcpu *vcpu)
 
 	clgi();
 
-	local_irq_enable();
-
 	x86_spec_ctrl_set_guest(svm->spec_ctrl, svm->virt_spec_ctrl);
+
+	local_irq_enable();
 
 	asm volatile (
 		"push %%" _ASM_BP "; \n\t"
@@ -4055,15 +4055,15 @@ static void svm_vcpu_run(struct kvm_vcpu *vcpu)
 #endif
 #endif
 
+	reload_tss(vcpu);
+
+	local_irq_disable();
+
 	if (ibrs_supported) {
 		rdmsrl(MSR_IA32_SPEC_CTRL, svm->spec_ctrl);
 
 		x86_spec_ctrl_restore_host(svm->spec_ctrl, svm->virt_spec_ctrl);
 	}
-
-	reload_tss(vcpu);
-
-	local_irq_disable();
 
 	vcpu->arch.cr2 = svm->vmcb->save.cr2;
 	vcpu->arch.regs[VCPU_REGS_RAX] = svm->vmcb->save.rax;
