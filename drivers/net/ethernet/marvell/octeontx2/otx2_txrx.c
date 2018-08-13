@@ -84,7 +84,7 @@ static void otx2_dma_unmap_skb_frags(struct otx2_nic *pfvf, struct sg_list *sg)
 
 static void otx2_snd_pkt_handler(struct otx2_nic *pfvf,
 				 struct otx2_cq_queue *cq, void *cqe,
-				 int budget)
+				 int budget, int *tx_pkts, int *tx_bytes)
 {
 	struct nix_cqe_hdr_s *cqe_hdr = (struct nix_cqe_hdr_s *)cqe;
 	struct nix_send_comp_s *snd_comp;
@@ -106,6 +106,8 @@ static void otx2_snd_pkt_handler(struct otx2_nic *pfvf,
 
 	skb = (struct sk_buff *)sg->skb;
 	if (skb) {
+		*tx_bytes += skb->len;
+		(*tx_pkts)++;
 		otx2_dma_unmap_skb_frags(pfvf, sg);
 		napi_consume_skb(skb, budget);
 		sg->skb = (u64)NULL;
@@ -267,12 +269,15 @@ int otx2_napi_handler(struct otx2_cq_queue *cq,
 	int processed_cqe = 0, workdone = 0;
 	int cq_head, cq_tail, pool_ptrs = 0;
 	struct nix_cqe_hdr_s *cqe_hdr;
+	int tx_pkts = 0, tx_bytes = 0;
+	struct netdev_queue *txq;
 	u64 cq_status;
 	s64 bufptr;
 
 	cq_status = otx2_nix_cq_op_status(pfvf, cq->cq_idx);
 	cq_head = (cq_status >> 20) & 0xFFFFF;
 	cq_tail = cq_status & 0xFFFFF;
+
 	/* Since multiple CQs may be mapped to same CINT,
 	 * check if there are valid CQEs in this CQ.
 	 */
@@ -295,13 +300,19 @@ int otx2_napi_handler(struct otx2_cq_queue *cq,
 			workdone++;
 			break;
 		case NIX_XQE_TYPE_SEND:
-			otx2_snd_pkt_handler(pfvf, cq, cqe_hdr, budget);
+			otx2_snd_pkt_handler(pfvf, cq, cqe_hdr, budget,
+					     &tx_pkts, &tx_bytes);
 		}
 		processed_cqe++;
 	}
 
 	otx2_write64(pfvf, NIX_LF_CQ_OP_DOOR,
 		     ((u64)cq->cq_idx << 32) | processed_cqe);
+
+	if (tx_pkts) {
+		txq = netdev_get_tx_queue(pfvf->netdev, cq->cint_idx);
+		netdev_tx_completed_queue(txq, tx_pkts, tx_bytes);
+	}
 
 	if (!pool_ptrs)
 		return 0;
@@ -470,6 +481,7 @@ static void otx2_sqe_add_hdr(struct otx2_nic *pfvf, struct otx2_snd_queue *sq,
 bool otx2_sq_append_skb(struct net_device *netdev, struct otx2_snd_queue *sq,
 			struct sk_buff *skb, u16 qidx)
 {
+	struct netdev_queue *txq = netdev_get_tx_queue(netdev, qidx);
 	struct otx2_nic *pfvf = netdev_priv(netdev);
 	struct nix_sqe_hdr_s *sqe_hdr;
 	int offset, num_segs;
@@ -511,6 +523,8 @@ bool otx2_sq_append_skb(struct net_device *netdev, struct otx2_snd_queue *sq,
 	}
 
 	sqe_hdr->sizem1 = (offset / 16) - 1;
+
+	netdev_tx_sent_queue(txq, skb->len);
 
 	/* Packet data stores should finish before SQE is flushed to HW */
 	dma_wmb();
