@@ -961,6 +961,8 @@ void mbox_handler_NIX_LF_ALLOC(struct otx2_nic *pfvf,
 	 */
 	if (!pfvf->set_mac_pending)
 		ether_addr_copy(pfvf->netdev->dev_addr, rsp->mac_addr);
+	pfvf->hw.lso_tsov4_idx = rsp->lso_tsov4_idx;
+	pfvf->hw.lso_tsov6_idx = rsp->lso_tsov6_idx;
 }
 
 void mbox_handler_MSIX_OFFSET(struct otx2_nic *pfvf,
