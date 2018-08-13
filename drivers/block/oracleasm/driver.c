@@ -1011,6 +1011,7 @@ static void asm_finish_io(struct asm_request *r)
 	if (r->r_error)
 		r->r_status |= ASM_ERROR;
 	r->r_status |= ASM_COMPLETED;
+	r->r_elapsed = ((jiffies - r->r_elapsed) * 1000000) / HZ;
 
 	spin_unlock_irqrestore(&afi->f_lock, flags);
 
@@ -1022,8 +1023,6 @@ static void asm_finish_io(struct asm_request *r)
 			atomic_set(&d->d_ios, 0);
 		}
 	}
-
-	r->r_elapsed = ((jiffies - r->r_elapsed) * 1000000) / HZ;
 
 	wake_up(&afi->f_wait);
 }  /* asm_finish_io() */
