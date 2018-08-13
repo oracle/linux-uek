@@ -1051,7 +1051,7 @@ static int populate_pud(struct cpa_data *cpa, unsigned long start, pgd_t *pgd,
 		pfn ^= protnone_mask(pgprot_val(canon_pgprot(pud_pgprot)));
 		pfn &= ((((signed long)PUD_PAGE_MASK) & __PHYSICAL_MASK));
 
-		pudval_t v = native_pud_val(__pud(pfn | massage_pgprot(pud_pgprot)));
+		pudval_t v = native_pud_val(__pud(pfn | massage_pgprot(canon_pgprot(pud_pgprot))));
 		set_pud(pud, native_make_pud(v | _PAGE_PSE));
 
 		start	  += PUD_SIZE;
