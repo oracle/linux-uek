@@ -75,6 +75,16 @@ struct  otx2_dev_stats {
 	u64 tx_drops;
 };
 
+/* RSS configuration */
+struct otx2_rss_info {
+	bool enable;
+	u32 flowkey_cfg;
+	u16 rss_size;
+	u8  ind_tbl[MAX_RSS_INDIR_TBL_SIZE];
+#define RSS_HASH_KEY_SIZE	44   /* 352 bit key */
+	u8  key[RSS_HASH_KEY_SIZE];
+};
+
 struct  mbox {
 	struct otx2_mbox	mbox;
 	struct work_struct	mbox_wrk;
@@ -86,6 +96,7 @@ struct  mbox {
 struct otx2_hw {
 	struct pci_dev		*pdev;
 	struct otx2_dev_stats	dev_stats;
+	struct otx2_rss_info	rss_info;
 	u16                     rx_queues;
 	u16                     tx_queues;
 	u16			max_queues;
@@ -288,6 +299,12 @@ int otx2_hw_set_mac_addr(struct otx2_nic *pfvf, struct net_device *netdev);
 int otx2_set_mac_address(struct net_device *netdev, void *p);
 int otx2_change_mtu(struct net_device *netdev, int new_mtu);
 int otx2_hw_set_mtu(struct otx2_nic *pfvf, int mtu);
+
+/* RSS configuration APIs*/
+int otx2_rss_init(struct otx2_nic *pfvf);
+int otx2_set_flowkey_cfg(struct otx2_nic *pfvf);
+void otx2_set_rss_key(struct otx2_nic *pfvf);
+int otx2_set_rss_table(struct otx2_nic *pfvf);
 
 /* Mbox handlers */
 void mbox_handler_MSIX_OFFSET(struct otx2_nic *pfvf,

@@ -10,6 +10,7 @@
 
 #include <linux/interrupt.h>
 #include <linux/pci.h>
+#include <linux/ethtool.h>
 
 #include "otx2_reg.h"
 #include "otx2_common.h"
@@ -83,6 +84,106 @@ int otx2_change_mtu(struct net_device *netdev, int new_mtu)
 		    netdev->mtu, new_mtu);
 	netdev->mtu = new_mtu;
 	return 0;
+}
+
+int otx2_set_flowkey_cfg(struct otx2_nic *pfvf)
+{
+	struct otx2_rss_info *rss = &pfvf->hw.rss_info;
+	struct nix_rss_flowkey_cfg *req;
+
+	req = otx2_mbox_alloc_msg_NIX_RSS_FLOWKEY_CFG(&pfvf->mbox);
+	if (!req)
+		return -ENOMEM;
+	req->mcam_index = -1; /* Default or reserved index */
+	req->flowkey_cfg = rss->flowkey_cfg;
+	req->group = DEFAULT_RSS_CONTEXT_GROUP;
+
+	return otx2_sync_mbox_msg(&pfvf->mbox);
+}
+
+int otx2_set_rss_table(struct otx2_nic *pfvf)
+{
+	struct otx2_rss_info *rss = &pfvf->hw.rss_info;
+	struct mbox *mbox = &pfvf->mbox;
+	struct nix_aq_enq_req *aq;
+	int idx, err;
+
+	/* Get memory to put this msg */
+	for (idx = 0; idx < rss->rss_size; idx++) {
+		aq = otx2_mbox_alloc_msg_NIX_AQ_ENQ(mbox);
+		if (!aq) {
+			/* The shared memory buffer can be full.
+			 * Flush it and retry
+			 */
+			err = otx2_sync_mbox_msg(mbox);
+			if (err)
+				return err;
+			aq = otx2_mbox_alloc_msg_NIX_AQ_ENQ(mbox);
+			if (!aq)
+				return -ENOMEM;
+		}
+
+		aq->rss.rq = rss->ind_tbl[idx];
+
+		/* Fill AQ info */
+		aq->qidx = idx;
+		aq->ctype = NIX_AQ_CTYPE_RSS;
+		aq->op = NIX_AQ_INSTOP_INIT;
+	}
+	return otx2_sync_mbox_msg(mbox);
+}
+
+void otx2_set_rss_key(struct otx2_nic *pfvf)
+{
+	struct otx2_rss_info *rss = &pfvf->hw.rss_info;
+	u64 *key = (u64 *)&rss->key[4];
+	int idx;
+
+	/* 352bit or 44byte key needs to be configured as below
+	 * NIX_LF_RX_SECRETX0 = key<351:288>
+	 * NIX_LF_RX_SECRETX1 = key<287:224>
+	 * NIX_LF_RX_SECRETX2 = key<223:160>
+	 * NIX_LF_RX_SECRETX3 = key<159:96>
+	 * NIX_LF_RX_SECRETX4 = key<95:32>
+	 * NIX_LF_RX_SECRETX5<63:32> = key<31:0>
+	 */
+	otx2_write64(pfvf, NIX_LF_RX_SECRETX(5),
+		     (u64)(*((u32 *)&rss->key)) << 32);
+	idx = sizeof(rss->key) / sizeof(u64);
+	while (idx > 0) {
+		idx--;
+		otx2_write64(pfvf, NIX_LF_RX_SECRETX(idx), *key++);
+	}
+}
+
+int otx2_rss_init(struct otx2_nic *pfvf)
+{
+	struct otx2_rss_info *rss = &pfvf->hw.rss_info;
+	int idx, ret = 0;
+
+	/* Enable RSS */
+	rss->enable = true;
+	rss->rss_size = sizeof(rss->ind_tbl);
+
+	/* Init RSS key here */
+	netdev_rss_key_fill(rss->key, sizeof(rss->key));
+	otx2_set_rss_key(pfvf);
+
+	/* Default indirection table */
+	for (idx = 0; idx < rss->rss_size; idx++)
+		rss->ind_tbl[idx] =
+			ethtool_rxfh_indir_default(idx, pfvf->hw.rx_queues);
+
+	ret = otx2_set_rss_table(pfvf);
+	if (ret)
+		return ret;
+
+	/* Default flowkey or hash config to be used for generating flow tag */
+	rss->flowkey_cfg = FLOW_KEY_TYPE_IPV4 | FLOW_KEY_TYPE_IPV6 |
+			   FLOW_KEY_TYPE_TCP | FLOW_KEY_TYPE_UDP |
+			   FLOW_KEY_TYPE_SCTP;
+
+	return otx2_set_flowkey_cfg(pfvf);
 }
 
 void otx2_get_dev_stats(struct otx2_nic *pfvf)
@@ -463,6 +564,8 @@ int otx2_config_nix(struct otx2_nic *pfvf)
 	nixlf->rq_cnt = pfvf->hw.rx_queues;
 	nixlf->sq_cnt = pfvf->hw.tx_queues;
 	nixlf->cq_cnt = pfvf->qset.cq_cnt;
+	nixlf->rss_sz = MAX_RSS_INDIR_TBL_SIZE;
+	nixlf->rss_grps = 1; /* Single RSS indir table supported, for now */
 	nixlf->xqe_sz = NIX_XQESZ_W16;
 	/* We don't know absolute NPA LF idx attached.
 	 * AF will replace 'RVU_DEFAULT_PF_FUNC' with
