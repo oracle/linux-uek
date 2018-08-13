@@ -233,8 +233,8 @@ static void otx2_rcv_pkt_handler(struct otx2_nic *pfvf,
 
 #define CQE_ADDR(CQ, idx) ((CQ)->cqe_base + ((CQ)->cqe_size * (idx)))
 
-static int otx2_napi_handler(struct otx2_cq_queue *cq, struct otx2_nic *pfvf,
-			     int budget)
+int otx2_napi_handler(struct otx2_cq_queue *cq,
+		      struct otx2_nic *pfvf, int budget)
 {
 	struct otx2_pool *rbpool = cq->rbpool;
 	int processed_cqe = 0, workdone = 0;
