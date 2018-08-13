@@ -777,7 +777,7 @@ static const struct x86_cpu_id cpu_no_meltdown[] = {
 	{}
 };
 
-static const __initconst struct x86_cpu_id cpu_no_l1tf[] = {
+static const struct x86_cpu_id cpu_no_l1tf[] = {
        /* in addition to cpu_no_speculation */
        { X86_VENDOR_INTEL,     6,      INTEL_FAM6_ATOM_SILVERMONT1     },
        { X86_VENDOR_INTEL,     6,      INTEL_FAM6_ATOM_SILVERMONT2     },
