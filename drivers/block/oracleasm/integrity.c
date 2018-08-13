@@ -235,4 +235,6 @@ void asm_integrity_unmap(struct bio *bio)
 
 		put_page(iv->bv_page);
 	}
+
+	bio_integrity_free(bio);
 } /* asm_integrity_unmap */

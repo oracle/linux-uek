@@ -102,7 +102,7 @@ EXPORT_SYMBOL(bio_integrity_alloc);
  * Description: Used to free the integrity portion of a bio. Usually
  * called from bio_free().
  */
-static void bio_integrity_free(struct bio *bio)
+void bio_integrity_free(struct bio *bio)
 {
 	struct bio_integrity_payload *bip = bio_integrity(bio);
 	struct bio_set *bs = bio->bi_pool;
@@ -122,6 +122,7 @@ static void bio_integrity_free(struct bio *bio)
 	bio->bi_integrity = NULL;
 	bio->bi_opf &= ~REQ_INTEGRITY;
 }
+EXPORT_SYMBOL(bio_integrity_free);
 
 /**
  * bio_integrity_add_page - Attach integrity metadata
@@ -395,7 +396,9 @@ bool __bio_integrity_endio(struct bio *bio)
 		return false;
 	}
 
-	bio_integrity_free(bio);
+	if (bip->bip_flags & BIP_BLOCK_INTEGRITY)
+		bio_integrity_free(bio);
+
 	return true;
 }
 
