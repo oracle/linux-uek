@@ -972,12 +972,40 @@ enum vmx_l1d_flush_state l1tf_vmx_mitigation = VMENTER_L1D_FLUSH_AUTO;
 EXPORT_SYMBOL_GPL(l1tf_vmx_mitigation);
 #endif
 
+static void __init parse_l1tf_cmdline(void)
+{
+	char arg[12];
+	int ret;
+
+	ret = cmdline_find_option(boot_command_line, "l1tf", arg,
+				  sizeof(arg));
+	if (ret <= 0)
+		return;
+
+	if (match_option(arg, ret, "off"))
+		l1tf_mitigation = L1TF_MITIGATION_OFF;
+	else if (match_option(arg, ret, "flush,nowarn"))
+		l1tf_mitigation = L1TF_MITIGATION_FLUSH_NOWARN;
+	else if (match_option(arg, ret, "flush"))
+		l1tf_mitigation = L1TF_MITIGATION_FLUSH;
+	else if (match_option(arg, ret, "flush,nosmt"))
+		l1tf_mitigation = L1TF_MITIGATION_FLUSH_NOSMT;
+	else if (match_option(arg, ret, "full"))
+		l1tf_mitigation = L1TF_MITIGATION_FULL;
+	else if (match_option(arg, ret, "full,force"))
+		l1tf_mitigation = L1TF_MITIGATION_FULL_FORCE;
+	else
+		pr_warn("l1tf: unknown option %s\n", arg);
+}
+
 static void __init l1tf_select_mitigation(void)
 {
 	u64 half_pa;
 
 	if (!boot_cpu_has_bug(X86_BUG_L1TF))
 		return;
+
+	parse_l1tf_cmdline();
 
 	switch (l1tf_mitigation) {
 	case L1TF_MITIGATION_OFF:
@@ -1011,31 +1039,6 @@ static void __init l1tf_select_mitigation(void)
 
 	setup_force_cpu_cap(X86_FEATURE_L1TF_PTEINV);
 }
-
-static int __init l1tf_cmdline(char *str)
-{
-	if (!boot_cpu_has_bug(X86_BUG_L1TF))
-		return 0;
-
-	if (!str)
-		return -EINVAL;
-
-	if (!strcmp(str, "off"))
-		l1tf_mitigation = L1TF_MITIGATION_OFF;
-	else if (!strcmp(str, "flush,nowarn"))
-		l1tf_mitigation = L1TF_MITIGATION_FLUSH_NOWARN;
-	else if (!strcmp(str, "flush"))
-		l1tf_mitigation = L1TF_MITIGATION_FLUSH;
-	else if (!strcmp(str, "flush,nosmt"))
-		l1tf_mitigation = L1TF_MITIGATION_FLUSH_NOSMT;
-	else if (!strcmp(str, "full"))
-		l1tf_mitigation = L1TF_MITIGATION_FULL;
-	else if (!strcmp(str, "full,force"))
-		l1tf_mitigation = L1TF_MITIGATION_FULL_FORCE;
-
-	return 0;
-}
-early_param("l1tf", l1tf_cmdline);
 
 #undef pr_fmt
 
