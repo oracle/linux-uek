@@ -331,6 +331,69 @@ static int otx2_init_hw_resources(struct otx2_nic *pf)
 	return 0;
 }
 
+static void otx2_free_hw_resources(struct otx2_nic *pf)
+{
+	struct otx2_qset *qset = &pf->qset;
+	struct mbox *mbox = &pf->mbox;
+	struct otx2_snd_queue *sq;
+	struct otx2_cq_queue *cq;
+	int err, qidx, cqe_count;
+	struct msg_req *req;
+
+	/* Stop transmission */
+	err = otx2_txschq_stop(pf);
+	if (err)
+		dev_err(pf->dev, "RVUPF: Failed to stop/free TX schedulers\n");
+
+	/* Disable SQs */
+	otx2_ctx_disable(mbox, NIX_AQ_CTYPE_SQ, false);
+	for (qidx = 0; qidx < pf->hw.tx_queues; qidx++) {
+		sq = &qset->sq[qidx];
+		qmem_free(pf->dev, sq->sqe);
+		kfree(sq->sg);
+	}
+
+	/* Free SQB pointers */
+	otx2_free_aura_ptr(pf, NIX_AQ_CTYPE_SQ);
+
+	/* Disable RQs */
+	otx2_ctx_disable(mbox, NIX_AQ_CTYPE_RQ, false);
+
+	/*Dequeue all CQEs */
+	for (qidx = 0; qidx < qset->cq_cnt; qidx++) {
+		cq = &qset->cq[qidx];
+		cqe_count = otx2_read64(pf, NIX_LF_CINTX_CNT(cq->cint_idx));
+		cqe_count &= 0xFFFFFFFF;
+		if (cqe_count)
+			otx2_napi_handler(cq, pf, cqe_count);
+	}
+
+	/* Free RQ buffer pointers*/
+	otx2_free_aura_ptr(pf, NIX_AQ_CTYPE_RQ);
+
+	/* Disable CQs*/
+	otx2_ctx_disable(mbox, NIX_AQ_CTYPE_CQ, false);
+	for (qidx = 0; qidx < qset->cq_cnt; qidx++) {
+		cq = &qset->cq[qidx];
+		qmem_free(pf->dev, cq->cqe);
+	}
+
+	/* Reset NIX LF */
+	req = otx2_mbox_alloc_msg_NIX_LF_FREE(mbox);
+	if (req)
+		WARN_ON(otx2_sync_mbox_msg(mbox));
+
+	/* Disable NPA Pool and Aura hw context */
+	otx2_ctx_disable(mbox, NPA_AQ_CTYPE_POOL, true);
+	otx2_ctx_disable(mbox, NPA_AQ_CTYPE_AURA, true);
+	otx2_aura_pool_free(pf);
+
+	/* Reset NPA LF */
+	req = otx2_mbox_alloc_msg_NPA_LF_FREE(mbox);
+	if (req)
+		WARN_ON(otx2_sync_mbox_msg(mbox));
+}
+
 static netdev_tx_t otx2_xmit(struct sk_buff *skb, struct net_device *netdev)
 
 {
@@ -506,6 +569,7 @@ static int otx2_stop(struct net_device *netdev)
 	}
 
 	netif_tx_disable(netdev);
+	otx2_free_hw_resources(pf);
 	otx2_disable_msix(pf);
 
 	otx2_disable_napi(pf);

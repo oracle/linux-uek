@@ -128,6 +128,16 @@ static inline __uint128_t otx2_read128(const void __iomem *addr)
 		(((__uint128_t)le64_to_cpu(otx2_high(h, l))) << 64);
 }
 
+/* Alloc pointer from pool/aura */
+static inline u64 otx2_aura_allocptr(struct otx2_nic *pfvf, int aura)
+{
+	atomic64_t *ptr = (__force atomic64_t *)(pfvf->reg_base
+				+ NPA_LF_AURA_OP_ALLOCX(0));
+	u64 incr = (u64)aura | BIT_ULL(63);
+
+	return atomic64_fetch_add_relaxed(incr, ptr);
+}
+
 /* Free pointer to a pool/aura */
 static inline void otx2_aura_freeptr(struct otx2_nic *pfvf,
 				     int aura, s64 buf)
@@ -200,12 +210,19 @@ int otx2_detach_resources(struct mbox *mbox);
 int otx2_config_npa(struct otx2_nic *pfvf);
 int otx2_sq_aura_pool_init(struct otx2_nic *pfvf);
 int otx2_rq_aura_pool_init(struct otx2_nic *pfvf);
+void otx2_aura_pool_free(struct otx2_nic *pfvf);
+void otx2_free_aura_ptr(struct otx2_nic *pfvf, int type);
 int otx2_config_nix(struct otx2_nic *pfvf);
 int otx2_config_nix_queues(struct otx2_nic *pfvf);
 int otx2_txschq_config(struct otx2_nic *pfvf, int lvl);
 int otx2_txsch_alloc(struct otx2_nic *pfvf);
+int otx2_txschq_stop(struct otx2_nic *pfvf);
 dma_addr_t otx2_alloc_rbuf(struct otx2_nic *pfvf, struct otx2_pool *pool);
 int otx2_rxtx_enable(struct otx2_nic *pfvf, bool enable);
+void otx2_ctx_disable(struct mbox *mbox, int type, bool npa);
+
+int otx2_napi_handler(struct otx2_cq_queue *cq,
+		      struct otx2_nic *pfvf, int budget);
 
 /* Mbox handlers */
 void mbox_handler_MSIX_OFFSET(struct otx2_nic *pfvf,
