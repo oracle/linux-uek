@@ -29,6 +29,7 @@
 #define OTX2_MIN_MTU		ETH_MIN_MTU
 #define OTX2_MAX_MTU		(9212 - OTX2_ETH_HLEN)
 
+#define OTX2_MAX_GSO_SEGS	255
 #define OTX2_MAX_FRAGS_IN_SQE	9
 
 struct sg_list {

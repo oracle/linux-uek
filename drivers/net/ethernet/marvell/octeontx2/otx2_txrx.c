@@ -403,6 +403,31 @@ static bool otx2_sqe_add_sg(struct otx2_nic *pfvf, struct otx2_snd_queue *sq,
 	return true;
 }
 
+/* Add SQE extended header subdescriptor */
+static void otx2_sqe_add_ext(struct otx2_nic *pfvf, struct otx2_snd_queue *sq,
+			     struct sk_buff *skb, int *offset)
+{
+	struct nix_sqe_ext_s *ext;
+
+	if (!skb_shinfo(skb)->gso_size)
+		return;
+
+	ext = (struct nix_sqe_ext_s *)(sq->sqe_base + *offset);
+	ext->subdc = NIX_SUBDC_EXT;
+	if (skb_shinfo(skb)->gso_size) {
+		ext->lso = 1;
+		/* Is this TSOv4 or TSOv6, other GSO offloads not supported */
+		if (skb_shinfo(skb)->gso_type & SKB_GSO_TCPV4)
+			ext->lso_format = pfvf->hw.lso_tsov4_idx;
+		else
+			ext->lso_format = pfvf->hw.lso_tsov6_idx;
+		ext->lso_sb = skb_transport_offset(skb) + tcp_hdrlen(skb);
+		ext->lso_mps = skb_shinfo(skb)->gso_size;
+	}
+
+	*offset += sizeof(*ext);
+}
+
 /* Add SQE header subdescriptor structure */
 static void otx2_sqe_add_hdr(struct otx2_nic *pfvf, struct otx2_snd_queue *sq,
 			     struct nix_sqe_hdr_s *sqe_hdr,
@@ -475,6 +500,9 @@ bool otx2_sq_append_skb(struct net_device *netdev, struct otx2_snd_queue *sq,
 		}
 		num_segs = skb_shinfo(skb)->nr_frags + 1;
 	}
+
+	/* Add extended header if needed */
+	otx2_sqe_add_ext(pfvf, sq, skb, &offset);
 
 	/* Add SG subdesc with data frags */
 	if (!otx2_sqe_add_sg(pfvf, sq, skb, num_segs, &offset)) {

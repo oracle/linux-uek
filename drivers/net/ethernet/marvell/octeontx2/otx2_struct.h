@@ -284,6 +284,56 @@ struct nix_sqe_hdr_s {
 #endif
 };
 
+/* NIX send extended header subdescriptor structure */
+struct nix_sqe_ext_s {
+#if defined(__BIG_ENDIAN_BITFIELD)  /* W0 */
+	u64 subdc         : 4;
+	u64 mark_en       : 1;
+	u64 markform      : 7;
+	u64 markptr       : 8;
+	u64 shp_ra        : 2;
+	u64 shp_dis       : 1;
+	u64 shp_chg       : 9;
+	u64 rsvd_31_29    : 3;
+	u64 lso_format    : 5;
+	u64 lso_sb        : 8;
+	u64 tstmp         : 1;
+	u64 lso           : 1;
+	u64 lso_mps       : 14;
+#else
+	u64 lso_mps       : 14;
+	u64 lso           : 1;
+	u64 tstmp         : 1;
+	u64 lso_sb        : 8;
+	u64 lso_format    : 5;
+	u64 rsvd_31_29    : 3;
+	u64 shp_chg       : 9;
+	u64 shp_dis       : 1;
+	u64 shp_ra        : 2;
+	u64 markptr       : 8;
+	u64 markform      : 7;
+	u64 mark_en       : 1;
+	u64 subdc         : 4;
+#endif
+#if defined(__BIG_ENDIAN_BITFIELD)  /* W1 */
+	u64 rsvd_127_114  : 14;
+	u64 vlan1_ins_ena : 1;
+	u64 vlan0_ins_ena : 1;
+	u64 vlan1_ins_tci : 16;
+	u64 vlan1_ins_ptr : 8;
+	u64 vlan0_ins_tci : 16;
+	u64 vlan0_ins_ptr : 8;
+#else
+	u64 vlan0_ins_ptr : 8;
+	u64 vlan0_ins_tci : 16;
+	u64 vlan1_ins_ptr : 8;
+	u64 vlan1_ins_tci : 16;
+	u64 vlan0_ins_ena : 1;
+	u64 vlan1_ins_ena : 1;
+	u64 rsvd_127_114  : 14;
+#endif
+};
+
 struct nix_sqe_sg_s {
 #if defined(__BIG_ENDIAN_BITFIELD)  /* W0 */
 	u64 subdc	: 4;

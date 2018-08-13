@@ -117,6 +117,10 @@ struct otx2_hw {
 
 	u8			cint_cnt; /* CQ interrupt count */
 	u16		txschq_list[NIX_TXSCH_LVL_CNT][MAX_TXSCHQ_PER_FUNC];
+
+	/* For TSO segmentation */
+	u8			lso_tsov4_idx;
+	u8			lso_tsov6_idx;
 };
 
 struct otx2_nic {
