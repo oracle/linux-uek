@@ -112,6 +112,29 @@ static void otx2_snd_pkt_handler(struct otx2_nic *pfvf,
 	}
 }
 
+static inline void otx2_set_rxhash(struct otx2_nic *pfvf,
+				   struct nix_cqe_hdr_s *cqe_hdr,
+				   struct sk_buff *skb)
+{
+	enum pkt_hash_types hash_type = PKT_HASH_TYPE_NONE;
+	struct otx2_rss_info *rss;
+	u32 hash = 0;
+
+	if (!(pfvf->netdev->features & NETIF_F_RXHASH))
+		return;
+
+	rss = &pfvf->hw.rss_info;
+	if (rss->flowkey_cfg) {
+		if (rss->flowkey_cfg &
+		    ~(FLOW_KEY_TYPE_IPV4 | FLOW_KEY_TYPE_IPV6))
+			hash_type = PKT_HASH_TYPE_L4;
+		else
+			hash_type = PKT_HASH_TYPE_L3;
+		hash = cqe_hdr->flow_tag;
+	}
+	skb_set_hash(skb, hash, hash_type);
+}
+
 static void otx2_skb_add_frag(struct otx2_nic *pfvf,
 			      struct sk_buff *skb, u64 iova, int len)
 {
@@ -221,6 +244,8 @@ static void otx2_rcv_pkt_handler(struct otx2_nic *pfvf,
 
 	if (!skb)
 		return;
+
+	otx2_set_rxhash(pfvf, cqe_hdr, skb);
 
 	skb_record_rx_queue(skb, cq->cq_idx);
 	skb->protocol = eth_type_trans(skb, pfvf->netdev);
