@@ -147,7 +147,7 @@ int asm_integrity_map(struct oracleasm_integrity_v2 *it, struct asm_request *r, 
 
 	/* This is a retry. Prevent reference tag from being remapped again */
 	if (it->it_flags & ASM_IFLAG_REMAPPED)
-		bip->bip_flags |= 1 << BIP_MAPPED_INTEGRITY;
+		bip->bip_flags |= BIP_MAPPED_INTEGRITY;
 
 	if (it->it_flags & ASM_IFLAG_IP_CHECKSUM)
 		bip->bip_flags |= BIP_IP_CHECKSUM;
