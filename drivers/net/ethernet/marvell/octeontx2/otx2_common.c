@@ -416,6 +416,7 @@ static int otx2_rq_init(struct otx2_nic *pfvf, u16 qidx)
 	aq->rq.lpb_aura = qidx; /* Use large packet buffer aura */
 	aq->rq.lpb_sizem1 = (DMA_BUFFER_LEN / 8) - 1;
 	aq->rq.xqe_imm_size = 0; /* Copying of packet to CQE not needed */
+	aq->rq.flow_tagw = 32; /* Copy full 32bit flow_tag to CQE header */
 
 	/* Fill AQ info */
 	aq->qidx = qidx;
