@@ -116,6 +116,7 @@ struct otx2_hw {
 	cpumask_var_t           *affinity_mask;
 
 	u8			cint_cnt; /* CQ interrupt count */
+	u16			rqpool_cnt;
 	u16		txschq_list[NIX_TXSCH_LVL_CNT][MAX_TXSCHQ_PER_FUNC];
 
 	/* For TSO segmentation */
