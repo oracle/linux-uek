@@ -307,15 +307,25 @@ static void release_bar(struct pci_dev *pdev)
 	pci_release_regions(pdev);
 }
 
+/* FW reserves 16 EQs for itself, PRM definition to find this is in progress */
+#define MLX5_FW_RESERVED_EQS 16
 static int mlx5_alloc_irq_vectors(struct mlx5_core_dev *dev)
 {
 	struct mlx5_priv *priv = &dev->priv;
 	struct mlx5_eq_table *table = &priv->eq_table;
-	int num_eqs = MLX5_CAP_GEN(dev, max_num_eqs) ?
-		      MLX5_CAP_GEN(dev, max_num_eqs) :
-		      1 << MLX5_CAP_GEN(dev, log_max_eq);
+	int max_num_eq = MLX5_CAP_GEN(dev, max_num_eqs);
+	int num_eqs;
 	int nvec;
 	int err;
+
+	if (max_num_eq) {
+		num_eqs = max_num_eq;
+	} else {
+		num_eqs = 1 << MLX5_CAP_GEN(dev, log_max_eq);
+		num_eqs -= MLX5_FW_RESERVED_EQS;
+		if (num_eqs <= 0)
+			return -ENOMEM;
+	}
 
 	nvec = MLX5_CAP_GEN(dev, num_ports) * num_online_cpus() +
 	       MLX5_EQ_VEC_COMP_BASE;
