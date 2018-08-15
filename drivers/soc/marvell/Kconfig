@@ -1,0 +1,13 @@
+#
+# MARVELL SoC drivers
+#
+
+menu "Marvell SoC drivers"
+
+config OCTEONTX2_AF
+	tristate "OcteonTX2 RVU Admin Function driver"
+	depends on ARM64 && PCI
+	---help---
+	  This driver supports Marvell's OcteonTX2 Resource Virtualization
+	  Unit's admin function manager which manages all RVU HW resources.
+endmenu
