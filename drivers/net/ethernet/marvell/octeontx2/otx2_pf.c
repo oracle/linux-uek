@@ -110,6 +110,96 @@ static void otx2_pfaf_mbox_handler(struct work_struct *work)
 	otx2_write64(af_mbox->pfvf, RVU_PF_INT, BIT_ULL(0));
 }
 
+static int otx2_mbox_up_handler_CGX_LINK_EVENT(struct otx2_nic *pf,
+					       struct cgx_link_info_msg *msg,
+					       struct msg_rsp *rsp)
+{
+	struct cgx_link_user_info *linfo = &msg->link_info;
+	struct net_device *netdev = pf->netdev;
+
+	pr_info("%s NIC Link is %s\n",
+		netdev->name, linfo->link_up ? "UP" : "DOWN");
+	if (linfo->link_up) {
+		netif_carrier_on(netdev);
+		netif_tx_start_all_queues(netdev);
+	} else {
+		netif_tx_stop_all_queues(netdev);
+		netif_carrier_off(netdev);
+	}
+	return 0;
+}
+
+static int otx2_process_mbox_msg_up(struct otx2_nic *pf,
+				    struct mbox_msghdr *req)
+{
+	/* Check if valid, if not reply with a invalid msg */
+	if (req->sig != OTX2_MBOX_REQ_SIG) {
+		otx2_reply_invalid_msg(&pf->mbox.mbox_up, 0, 0, req->id);
+		return -ENODEV;
+	}
+
+	switch (req->id) {
+#define M(_name, _id, _req_type, _rsp_type)				\
+	case _id: {							\
+		struct _rsp_type *rsp;					\
+		int err;						\
+									\
+		rsp = (struct _rsp_type *)otx2_mbox_alloc_msg(		\
+			&pf->mbox.mbox_up, 0,				\
+			sizeof(struct _rsp_type));			\
+		if (!rsp)						\
+			return -ENOMEM;					\
+									\
+		rsp->hdr.id = _id;					\
+		rsp->hdr.sig = OTX2_MBOX_RSP_SIG;			\
+		rsp->hdr.pcifunc = 0;					\
+		rsp->hdr.rc = 0;					\
+									\
+		err = otx2_mbox_up_handler_ ## _name(			\
+			pf, (struct _req_type *)req, rsp);		\
+		return err;						\
+	}
+MBOX_UP_CGX_MESSAGES
+#undef M
+		break;
+	default:
+		otx2_reply_invalid_msg(&pf->mbox.mbox_up, 0, 0, req->id);
+		return -ENODEV;
+	}
+	return 0;
+}
+
+static void otx2_pfaf_mbox_up_handler(struct work_struct *work)
+{
+	struct mbox *af_mbox = container_of(work, struct mbox, mbox_up_wrk);
+	struct otx2_mbox *mbox = &af_mbox->mbox_up;
+	struct otx2_nic *pf = af_mbox->pfvf;
+	struct otx2_mbox_dev *mdev = &mbox->dev[0];
+	struct mbox_hdr *rsp_hdr;
+	struct mbox_msghdr *msg;
+	int offset, id;
+	int err;
+
+	rsp_hdr = (struct mbox_hdr *)(mdev->mbase + mbox->rx_start);
+	if (rsp_hdr->num_msgs == 0)
+		return;
+
+	offset = mbox->rx_start + ALIGN(sizeof(*rsp_hdr), MBOX_MSG_ALIGN);
+
+	for (id = 0; id < rsp_hdr->num_msgs; id++) {
+		msg = (struct mbox_msghdr *)(mdev->mbase + offset);
+
+		err = otx2_process_mbox_msg_up(pf, msg);
+		if (err) {
+			dev_warn(pf->dev, "Error %d when processing message %s from AF\n",
+				 err, otx2_mbox_id2name(msg->id));
+		}
+		offset = mbox->rx_start + msg->next_msgoff;
+	}
+
+	otx2_mbox_msg_send(mbox, 0);
+}
+
 static irqreturn_t otx2_pfaf_mbox_intr_handler(int irq, void *pf_irq)
 {
 	struct otx2_nic *pf = (struct otx2_nic *)pf_irq;
@@ -126,6 +216,13 @@ static irqreturn_t otx2_pfaf_mbox_intr_handler(int irq, void *pf_irq)
 	hdr = (struct mbox_hdr *)(mdev->mbase + mbox->rx_start);
 	if (hdr->num_msgs)
 		queue_work(pf->mbox_wq, &pf->mbox.mbox_wrk);
+
+	/* Check for AF => PF notification messages */
+	mbox = &pf->mbox.mbox_up;
+	mdev = &mbox->dev[0];
+	hdr = (struct mbox_hdr *)(mdev->mbase + mbox->rx_start);
+	if (hdr->num_msgs)
+		queue_work(pf->mbox_wq, &pf->mbox.mbox_up_wrk);
 
 	/* Clear the IRQ */
 	otx2_write64(pf, RVU_PF_INT, BIT_ULL(0));
@@ -199,6 +296,7 @@ static void otx2_pfaf_mbox_destroy(struct otx2_nic *pf)
 		iounmap((void __iomem *)mbox->mbox.hwbase);
 
 	otx2_mbox_destroy(&mbox->mbox);
+	otx2_mbox_destroy(&mbox->mbox_up);
 }
 
 static int otx2_pfaf_mbox_init(struct otx2_nic *pf)
@@ -231,12 +329,33 @@ static int otx2_pfaf_mbox_init(struct otx2_nic *pf)
 	if (err)
 		goto exit;
 
+	err = otx2_mbox_init(&mbox->mbox_up, hwbase, pf->pdev, pf->reg_base,
+			     MBOX_DIR_PFAF_UP, 1);
+	if (err)
+		goto exit;
+
 	INIT_WORK(&mbox->mbox_wrk, otx2_pfaf_mbox_handler);
+	INIT_WORK(&mbox->mbox_up_wrk, otx2_pfaf_mbox_up_handler);
 
 	return 0;
 exit:
 	destroy_workqueue(pf->mbox_wq);
 	return err;
+}
+
+static int otx2_cgx_config_linkevents(struct otx2_nic *pf, bool enable)
+{
+	struct msg_req *msg;
+
+	if (enable)
+		msg = otx2_mbox_alloc_msg_CGX_START_LINKEVENTS(&pf->mbox);
+	else
+		msg = otx2_mbox_alloc_msg_CGX_STOP_LINKEVENTS(&pf->mbox);
+
+	if (!msg)
+		return -ENOMEM;
+
+	return otx2_sync_mbox_msg(&pf->mbox);
 }
 
 static int otx2_cgx_config_loopback(struct otx2_nic *pf, bool enable)
@@ -562,9 +681,9 @@ static int otx2_open(struct net_device *netdev)
 		goto cleanup;
 
 	pf->intf_down = false;
-	netif_carrier_on(netdev);
-	netif_tx_start_all_queues(netdev);
 
+	/* Enable link notifications */
+	otx2_cgx_config_linkevents(pf, true);
 	return 0;
 
 cleanup:
@@ -586,6 +705,9 @@ static int otx2_stop(struct net_device *netdev)
 
 	/* First stop packet Rx/Tx at CGX */
 	otx2_rxtx_enable(pf, false);
+
+	/* Disable link notifications */
+	otx2_cgx_config_linkevents(pf, false);
 
 	pf->intf_down = true;
 	/* 'intf_down' may be checked on any cpu */
