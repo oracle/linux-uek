@@ -19,6 +19,8 @@
 
 #define DRV_NAME	"octeontx2-nicpf"
 #define DRV_VERSION	"1.0"
+#define DRV_VF_NAME	"octeontx2-nicvf"
+#define DRV_VF_VERSION	"1.0"
 
 struct otx2_stat {
 	char name[ETH_GSTRING_LEN];
@@ -578,3 +580,82 @@ void otx2_set_ethtool_ops(struct net_device *netdev)
 {
 	netdev->ethtool_ops = &otx2_ethtool_ops;
 }
+
+/* VF's ethtool APIs */
+static void otx2vf_get_drvinfo(struct net_device *netdev,
+			       struct ethtool_drvinfo *info)
+{
+	struct otx2_nic *vf = netdev_priv(netdev);
+
+	strlcpy(info->driver, DRV_VF_NAME, sizeof(info->driver));
+	strlcpy(info->version, DRV_VF_VERSION, sizeof(info->version));
+	strlcpy(info->bus_info, pci_name(vf->pdev), sizeof(info->bus_info));
+}
+
+static void otx2vf_get_strings(struct net_device *netdev, u32 sset, u8 *data)
+{
+	struct otx2_nic *vf = netdev_priv(netdev);
+	int stats;
+
+	if (sset != ETH_SS_STATS)
+		return;
+
+	for (stats = 0; stats < otx2_n_dev_stats; stats++) {
+		memcpy(data, otx2_dev_stats[stats].name, ETH_GSTRING_LEN);
+		data += ETH_GSTRING_LEN;
+	}
+
+	otx2_get_qset_strings(vf, &data, 0);
+}
+
+static void otx2vf_get_ethtool_stats(struct net_device *netdev,
+				     struct ethtool_stats *stats, u64 *data)
+{
+	struct otx2_nic *vf = netdev_priv(netdev);
+	int stat;
+
+	otx2_get_dev_stats(vf);
+
+	for (stat = 0; stat < otx2_n_dev_stats; stat++) {
+		*data = ((u64 *)&vf->hw.dev_stats)[otx2_dev_stats[stat].index];
+		data++;
+	}
+
+	otx2_get_qset_stats(vf, stats, &data);
+}
+
+static int otx2vf_get_sset_count(struct net_device *netdev, int sset)
+{
+	struct otx2_nic *vf = netdev_priv(netdev);
+
+	if (sset != ETH_SS_STATS)
+		return -EINVAL;
+
+	return otx2_n_dev_stats +
+	       otx2_n_queue_stats * (vf->hw.rx_queues + vf->hw.tx_queues);
+}
+
+static const struct ethtool_ops otx2vf_ethtool_ops = {
+	.get_drvinfo		= otx2vf_get_drvinfo,
+	.get_strings		= otx2vf_get_strings,
+	.get_ethtool_stats	= otx2vf_get_ethtool_stats,
+	.get_sset_count		= otx2vf_get_sset_count,
+	.set_channels		= otx2_set_channels,
+	.get_channels		= otx2_get_channels,
+	.get_rxnfc		= otx2_get_rxnfc,
+	.set_rxnfc              = otx2_set_rxnfc,
+	.get_rxfh_key_size	= otx2_get_rxfh_key_size,
+	.get_rxfh_indir_size	= otx2_get_rxfh_indir_size,
+	.get_rxfh		= otx2_get_rxfh,
+	.set_rxfh		= otx2_set_rxfh,
+	.get_ringparam		= otx2_get_ringparam,
+	.set_ringparam		= otx2_set_ringparam,
+	.get_coalesce		= otx2_get_coalesce,
+	.set_coalesce		= otx2_set_coalesce,
+};
+
+void otx2vf_set_ethtool_ops(struct net_device *netdev)
+{
+	netdev->ethtool_ops = &otx2vf_ethtool_ops;
+}
+EXPORT_SYMBOL(otx2vf_set_ethtool_ops);
