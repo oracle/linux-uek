@@ -77,6 +77,8 @@ struct rvu_pfvf {
 	struct qmem	*aura_ctx;
 	struct qmem	*pool_ctx;
 	struct qmem	*npa_qints_ctx;
+	unsigned long	*aura_bmap;
+	unsigned long	*pool_bmap;
 };
 
 struct rvu_hwinfo {
