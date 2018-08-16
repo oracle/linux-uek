@@ -94,6 +94,17 @@ static inline struct nix_hw *get_nix_hw(struct rvu_hwinfo *hw, int blkaddr)
 	return NULL;
 }
 
+static void nix_rx_sync(struct rvu *rvu, int blkaddr)
+{
+	int err;
+
+	/*Sync all in flight RX packets to LLC/DRAM */
+	rvu_write64(rvu, blkaddr, NIX_AF_RX_SW_SYNC, BIT_ULL(0));
+	err = rvu_poll_reg(rvu, blkaddr, NIX_AF_RX_SW_SYNC, BIT_ULL(0), true);
+	if (err)
+		dev_err(rvu->dev, "NIX RX software sync failed\n");
+}
+
 static bool is_valid_txschq(struct rvu *rvu, int blkaddr,
 			    int lvl, u16 pcifunc, u16 schq)
 {
@@ -2154,4 +2165,40 @@ void rvu_nix_freemem(struct rvu *rvu)
 	qmem_free(rvu->dev, mcast->mce_ctx);
 	qmem_free(rvu->dev, mcast->mcast_buf);
 	mutex_destroy(&mcast->mce_lock);
+}
+
+void rvu_nix_lf_teardown(struct rvu *rvu, u16 pcifunc, int blkaddr, int nixlf)
+{
+	struct rvu_pfvf *pfvf = rvu_get_pfvf(rvu, pcifunc);
+	struct hwctx_disable_req ctx_req;
+	struct msg_req req;
+	int err;
+
+	ctx_req.hdr.pcifunc = pcifunc;
+	req.hdr.pcifunc = pcifunc;
+	/* Stop packet Rx/Tx */
+	req.hdr.id = MBOX_MSG_CGX_STOP_RXTX;
+	rvu_cgx_config_rxtx(rvu, pcifunc, false);
+
+	/* Cleanup NPC MCAM entries, free Tx scheduler queues being used */
+	nix_interface_deinit(rvu, pcifunc, nixlf);
+	nix_rx_sync(rvu, blkaddr);
+	nix_txschq_free(rvu, pcifunc);
+
+	ctx_req.ctype = NIX_AQ_CTYPE_SQ;
+	err = nix_lf_hwctx_disable(rvu, &ctx_req);
+	if (err)
+		dev_err(rvu->dev, "SQ ctx disable failed\n");
+
+	ctx_req.ctype = NIX_AQ_CTYPE_RQ;
+	err = nix_lf_hwctx_disable(rvu, &ctx_req);
+	if (err)
+		dev_err(rvu->dev, "RQ ctx disable failed\n");
+
+	ctx_req.ctype = NIX_AQ_CTYPE_CQ;
+	err = nix_lf_hwctx_disable(rvu, &ctx_req);
+	if (err)
+		dev_err(rvu->dev, "CQ ctx disable failed\n");
+
+	nix_ctx_free(rvu, pfvf);
 }

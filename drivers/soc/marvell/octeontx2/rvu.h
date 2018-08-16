@@ -305,6 +305,8 @@ int rvu_mbox_handler_CGX_INTLBK_DISABLE(struct rvu *rvu, struct msg_req *req,
 					struct msg_rsp *rsp);
 
 /* NPA APIs */
+int rvu_npa_init(struct rvu *rvu);
+void rvu_npa_lf_teardown(struct rvu *rvu, u16 pcifunc, int npalf);
 int rvu_mbox_handler_NPA_AQ_ENQ(struct rvu *rvu,
 				struct npa_aq_enq_req *req,
 				struct npa_aq_enq_rsp *rsp);
@@ -316,12 +318,12 @@ int rvu_mbox_handler_NPA_LF_ALLOC(struct rvu *rvu,
 				  struct npa_lf_alloc_rsp *rsp);
 int rvu_mbox_handler_NPA_LF_FREE(struct rvu *rvu, struct msg_req *req,
 				 struct msg_rsp *rsp);
-int rvu_npa_init(struct rvu *rvu);
 
 /* NIX APIs */
 int rvu_nix_init(struct rvu *rvu);
 void rvu_nix_freemem(struct rvu *rvu);
 int rvu_get_nixlf_count(struct rvu *rvu);
+void rvu_nix_lf_teardown(struct rvu *rvu, u16 pcifunc, int blkaddr, int npalf);
 int rvu_mbox_handler_NIX_LF_ALLOC(struct rvu *rvu,
 				  struct nix_lf_alloc_req *req,
 				  struct nix_lf_alloc_rsp *rsp);

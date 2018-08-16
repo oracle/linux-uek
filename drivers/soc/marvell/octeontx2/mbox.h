@@ -123,6 +123,7 @@ M(READY,		0x001, msg_req, ready_msg_rsp)			\
 M(ATTACH_RESOURCES,	0x002, rsrc_attach, msg_rsp)			\
 M(DETACH_RESOURCES,	0x003, rsrc_detach, msg_rsp)			\
 M(MSIX_OFFSET,		0x004, msg_req, msix_offset_rsp)		\
+M(VF_FLR,		0x006, msg_req, msg_rsp)			\
 /* CGX mbox IDs (range 0x200 - 0x3FF) */				\
 M(CGX_START_RXTX,	0x200, msg_req, msg_rsp)			\
 M(CGX_STOP_RXTX,	0x201, msg_req, msg_rsp)			\
@@ -189,6 +190,13 @@ struct msg_req {
  */
 struct msg_rsp {
 	struct mbox_msghdr hdr;
+};
+
+/* RVU mailbox error codes
+ * Range 256 - 300.
+ */
+enum rvu_af_status {
+	RVU_INVALID_VF_ID           = -256,
 };
 
 struct ready_msg_rsp {

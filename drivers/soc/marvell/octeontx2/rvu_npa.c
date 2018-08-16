@@ -459,3 +459,20 @@ int rvu_npa_init(struct rvu *rvu)
 
 	return 0;
 }
+
+void rvu_npa_lf_teardown(struct rvu *rvu, u16 pcifunc, int npalf)
+{
+	struct rvu_pfvf *pfvf = rvu_get_pfvf(rvu, pcifunc);
+	struct hwctx_disable_req ctx_req;
+
+	/* Disable all pools */
+	ctx_req.hdr.pcifunc = pcifunc;
+	ctx_req.ctype = NPA_AQ_CTYPE_POOL;
+	npa_lf_hwctx_disable(rvu, &ctx_req);
+
+	/* Disable all auras */
+	ctx_req.ctype = NPA_AQ_CTYPE_AURA;
+	npa_lf_hwctx_disable(rvu, &ctx_req);
+
+	npa_ctx_free(rvu, pfvf);
+}
