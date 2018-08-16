@@ -814,6 +814,15 @@ static void xen_netbk_rx_action(struct xen_netbk *netbk)
 		/* If the skb may not fit then bail out now */
 		if ((npo.meta_prod + max_slots_needed) > ARRAY_SIZE(netbk->meta)
 		    || !xenvif_rx_ring_slots_available(vif, max_slots_needed)) {
+
+			if (unlikely(!vif->netbk)) {
+				pr_warn("skb is dropped for vif%u.%u because its netbk is NULL\n",
+					vif->domid, vif->handle);
+				xenvif_put(vif);
+				dev_kfree_skb(skb);
+				continue;
+			}
+
 			skb_queue_head(&netbk->rx_queue, skb);
 			break;
 		}
