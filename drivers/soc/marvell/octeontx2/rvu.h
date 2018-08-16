@@ -87,6 +87,9 @@ struct rvu_pfvf {
 	struct qmem	*rss_ctx;
 	struct qmem	*cq_ints_ctx;
 	struct qmem	*nix_qints_ctx;
+	unsigned long	*sq_bmap;
+	unsigned long	*rq_bmap;
+	unsigned long	*cq_bmap;
 
 	u8		mac_addr[ETH_ALEN]; /* MAC address of this PF/VF */
 };
