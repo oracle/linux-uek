@@ -624,6 +624,336 @@ create_failed:
 	debugfs_remove_recursive(rvu->rvu_dbg.cgx_root);
 }
 
+/* Dumps given nix_sq's context */
+static void print_nix_sq_ctx(struct nix_aq_enq_rsp *rsp)
+{
+	struct  nix_sq_ctx_s *sq_ctx = &rsp->sq;
+
+	pr_info("W0: sqe_way_mask \t\t%d\nW0: cq \t\t\t\t%d\n",
+		sq_ctx->sqe_way_mask, sq_ctx->cq);
+	pr_info("W0: sdp_mcast \t\t\t%d\nW0: substream \t\t\t0x%03x\n",
+		sq_ctx->sdp_mcast, sq_ctx->substream);
+	pr_info("W0: qint_idx \t\t\t%d\nW0: ena \t\t\t\t%d\n\n",
+		sq_ctx->qint_idx, sq_ctx->ena);
+
+	pr_info("W1: sqb_count \t\t\t%d\nW1: default_chan \t\t%d\n",
+		sq_ctx->sqb_count, sq_ctx->default_chan);
+	pr_info("W1: smq_rr_quantum \t\t%d\nW1: sso_ena \t\t\t%d\n",
+		sq_ctx->smq_rr_quantum, sq_ctx->sso_ena);
+	pr_info("W1: xoff \t\t\t%d\nW1: cq_ena \t\t\t%d\nW1: smq\t\t\t\t%d\n\n",
+		sq_ctx->xoff, sq_ctx->cq_ena, sq_ctx->smq);
+
+	pr_info("W2: sqe_stype \t\t\t%d\nW2: sq_int_ena \t\t\t%d\n",
+		sq_ctx->sqe_stype, sq_ctx->sq_int_ena);
+	pr_info("W2: sq_int  \t\t\t%d\nW2: sqb_aura \t\t\t%d\n",
+		sq_ctx->sq_int, sq_ctx->sqb_aura);
+	pr_info("W2: smq_rr_count \t\t%d\n\n",  sq_ctx->smq_rr_count);
+
+	pr_info("W3: smq_next_sq_vld\t\t%d\nW3: smq_pend\t\t\t%d\n",
+		sq_ctx->smq_next_sq_vld, sq_ctx->smq_pend);
+	pr_info("W3: smenq_next_sqb_vld  \t\t%d\nW3: head_offset\t\t\t%d\n",
+		sq_ctx->smenq_next_sqb_vld, sq_ctx->head_offset);
+	pr_info("W3: smenq_offset\t\t\t%d\nW3: tail_offset \t\t\t%d\n",
+		sq_ctx->smenq_offset, sq_ctx->tail_offset);
+	pr_info("W3: smq_lso_segnum \t\t%d\nW3: smq_next_sq \t\t\t%d\n",
+		sq_ctx->smq_lso_segnum, sq_ctx->smq_next_sq);
+	pr_info("W3: mnq_dis \t\t\t%d\nW3: lmt_dis \t\t\t%d\n",
+		sq_ctx->mnq_dis, sq_ctx->lmt_dis);
+	pr_info("W3: cq_limit\t\t\t%d\nW3: max_sqe_size\t\t\t%d\n\n",
+		sq_ctx->cq_limit, sq_ctx->max_sqe_size);
+
+	pr_info("W4: next_sqb \t\t\t%llx\n\n", sq_ctx->next_sqb);
+	pr_info("W5: tail_sqb \t\t\t%llx\n\n", sq_ctx->tail_sqb);
+	pr_info("W6: smenq_sqb \t\t\t%llx\n\n", sq_ctx->smenq_sqb);
+	pr_info("W7: smenq_next_sqb \t\t%llx\n\n", sq_ctx->smenq_next_sqb);
+	pr_info("W8: head_sqb \t\t\t%llx\n\n", sq_ctx->head_sqb);
+
+	pr_info("W9: vfi_lso_vld \t\t\t%d\nW9: vfi_lso_vlan1_ins_ena\t%d\n",
+		sq_ctx->vfi_lso_vld, sq_ctx->vfi_lso_vlan1_ins_ena);
+	pr_info("W9: vfi_lso_vlan0_ins_ena\t%d\nW9: vfi_lso_mps\t\t\t%d\n",
+		sq_ctx->vfi_lso_vlan0_ins_ena, sq_ctx->vfi_lso_mps);
+	pr_info("W9: vfi_lso_sb\t\t\t%d\nW9: vfi_lso_sizem1\t\t%d\n",
+		sq_ctx->vfi_lso_sb, sq_ctx->vfi_lso_sizem1);
+	pr_info("W9: vfi_lso_total\t\t%d\n\n",  sq_ctx->vfi_lso_total);
+
+	pr_info("W10: scm_lso_rem  \t\t%llu\n\n", (u64)sq_ctx->scm_lso_rem);
+	pr_info("W11: octs \t\t\t%llu\n\n", (u64)sq_ctx->octs);
+	pr_info("W12: pkts \t\t\t%llu\n\n", (u64)sq_ctx->pkts);
+	pr_info("W14: dropped_octs \t\t%llu\n\n", (u64)sq_ctx->dropped_octs);
+	pr_info("W15: dropped_pkts \t\t%llu\n\n", (u64)sq_ctx->dropped_pkts);
+}
+
+/* Dumps given nix_rq's context */
+static void print_nix_rq_ctx(struct nix_aq_enq_rsp *rsp)
+{
+	struct  nix_rq_ctx_s *rq_ctx = &rsp->rq;
+
+	pr_info("W0: wqe_aura \t\t\t%d\nW0: substream \t\t\t0x%03x\n",
+		rq_ctx->wqe_aura, rq_ctx->substream);
+	pr_info("W0: cq \t\t\t\t%d\nW0: ena_wqwd \t\t\t%d\n",
+		rq_ctx->cq, rq_ctx->ena_wqwd);
+	pr_info("W0: ipsech_ena \t\t\t%d\nW0: sso_ena \t\t\t%d\n",
+		rq_ctx->ipsech_ena, rq_ctx->sso_ena);
+	pr_info("W0: ena \t\t\t\t%d\n\n", rq_ctx->ena);
+
+	pr_info("W1: lpb_drop_ena \t\t%d\nW1: spb_drop_ena \t\t%d\n",
+		rq_ctx->lpb_drop_ena, rq_ctx->spb_drop_ena);
+	pr_info("W1: xqe_drop_ena \t\t%d\nW1: wqe_caching \t\t\t%d\n",
+		rq_ctx->xqe_drop_ena, rq_ctx->wqe_caching);
+	pr_info("W1: pb_caching \t\t\t%d\nW1: sso_tt \t\t\t%d\n",
+		rq_ctx->pb_caching, rq_ctx->sso_tt);
+	pr_info("W1: sso_grp \t\t\t%d\nW1: lpb_aura \t\t\t%d\n",
+		rq_ctx->sso_grp, rq_ctx->lpb_aura);
+	pr_info("W1: spb_aura \t\t\t%d\n\n", rq_ctx->spb_aura);
+
+	pr_info("W2: xqe_hdr_split \t\t%d\nW2: xqe_imm_copy \t\t%d\n",
+		rq_ctx->xqe_hdr_split, rq_ctx->xqe_imm_copy);
+	pr_info("W2: xqe_imm_size \t\t%d\nW2: later_skip \t\t\t%d\n",
+		rq_ctx->xqe_imm_size, rq_ctx->later_skip);
+	pr_info("W2: first_skip \t\t\t%d\nW2: lpb_sizem1 \t\t\t%d\n",
+		rq_ctx->first_skip, rq_ctx->lpb_sizem1);
+	pr_info("W2: spb_ena \t\t\t%d\nW2: wqe_skip \t\t\t%d\n",
+		rq_ctx->spb_ena, rq_ctx->wqe_skip);
+	pr_info("W2: spb_sizem1 \t\t\t%d\n\n", rq_ctx->spb_sizem1);
+
+	pr_info("W3: spb_pool_pass \t\t%d\nW3: spb_pool_drop \t\t%d\n",
+		rq_ctx->spb_pool_pass, rq_ctx->spb_pool_drop);
+	pr_info("W3: spb_aura_pass \t\t%d\nW3: spb_aura_drop \t\t%d\n",
+		rq_ctx->spb_aura_pass, rq_ctx->spb_aura_drop);
+	pr_info("W3: wqe_pool_pass \t\t%d\nW3: wqe_pool_drop \t\t%d\n",
+		rq_ctx->wqe_pool_pass, rq_ctx->wqe_pool_drop);
+	pr_info("W3: xqe_pass \t\t\t%d\nW3: xqe_drop \t\t\t%d\n\n",
+		rq_ctx->xqe_pass, rq_ctx->xqe_drop);
+
+	pr_info("W4: qint_idx \t\t\t%d\nW4: rq_int_ena \t\t\t%d\n",
+		rq_ctx->qint_idx, rq_ctx->rq_int_ena);
+	pr_info("W4: rq_int \t\t\t%d\nW4: lpb_pool_pass \t\t%d\n",
+		rq_ctx->rq_int, rq_ctx->lpb_pool_pass);
+	pr_info("W4: lpb_pool_drop \t\t%d\nW4: lpb_aura_pass \t\t%d\n",
+		rq_ctx->lpb_pool_drop, rq_ctx->lpb_aura_pass);
+	pr_info("W4: lpb_aura_drop \t\t%d\n\n", rq_ctx->lpb_aura_drop);
+
+	pr_info("W5: flow_tagw \t\t\t%d\nW5: bad_utag \t\t\t%d\n",
+		rq_ctx->flow_tagw, rq_ctx->bad_utag);
+	pr_info("W5: good_utag \t\t\t%d\nW5: ltag \t\t\t%d\n\n",
+		rq_ctx->good_utag, rq_ctx->ltag);
+
+	pr_info("W6: octs \t\t\t%llu\n\n", (u64)rq_ctx->octs);
+	pr_info("W7: pkts \t\t\t%llu\n\n", (u64)rq_ctx->pkts);
+	pr_info("W8: drop_octs \t\t\t%llu\n\n", (u64)rq_ctx->drop_octs);
+	pr_info("W9: drop_pkts \t\t\t%llu\n\n", (u64)rq_ctx->drop_pkts);
+	pr_info("W10: re_pkts \t\t\t%llu\n", (u64)rq_ctx->re_pkts);
+}
+
+/* Dumps given nix_cq's context */
+static void print_nix_cq_ctx(struct nix_aq_enq_rsp *rsp)
+{
+	struct  nix_cq_ctx_s *cq_ctx = &rsp->cq;
+
+	pr_info("W0: base \t\t\t%llx\n\n", cq_ctx->base);
+
+	pr_info("W1: wrptr \t\t\t%llx\n", (u64)cq_ctx->wrptr);
+	pr_info("W1: avg_con \t\t\t%d\nW1: cint_idx \t\t\t%d\n",
+		cq_ctx->avg_con, cq_ctx->cint_idx);
+	pr_info("W1: cq_err \t\t\t%d\nW1: qint_idx \t\t\t%d\n",
+		cq_ctx->cq_err, cq_ctx->qint_idx);
+	pr_info("W1: bpid  \t\t\t%d\nW1: bp_ena \t\t\t%d\n\n",
+		cq_ctx->bpid, cq_ctx->bp_ena);
+
+	pr_info("W2: update_time \t\t\t%d\nW2:avg_level \t\t\t%d\n",
+		cq_ctx->update_time, cq_ctx->avg_level);
+	pr_info("W2: head \t\t\t%d\nW2:tail \t\t\t\t%d\n\n",
+		cq_ctx->head, cq_ctx->tail);
+
+	pr_info("W3: cq_err_int_ena \t\t%d\nW3:cq_err_int \t\t\t%d\n",
+		cq_ctx->cq_err_int_ena, cq_ctx->cq_err_int);
+	pr_info("W3: qsize \t\t\t%d\nW3:caching \t\t\t%d\n",
+		cq_ctx->qsize, cq_ctx->caching);
+	pr_info("W3: substream \t\t\t0x%03x\nW3: ena \t\t\t\t%d\n",
+		cq_ctx->substream, cq_ctx->ena);
+	pr_info("W3: drop_ena \t\t\t%d\nW3: drop \t\t\t%d\n",
+		cq_ctx->drop_ena, cq_ctx->drop);
+	pr_info("W3: dp \t\t\t\t%d\n\n", cq_ctx->dp);
+}
+
+static void read_nix_ctx(struct rvu *rvu, bool all, int nixlf,
+			 int id, int ctype, char *ctype_string)
+{
+	void (*print_nix_ctx)(struct nix_aq_enq_rsp *rsp) = NULL;
+	int blkaddr, qidx, rc, max_id = 0;
+	struct rvu_hwinfo *hw = rvu->hw;
+	struct nix_aq_enq_req aq_req;
+	struct nix_aq_enq_rsp rsp;
+	struct rvu_block *block;
+	struct rvu_pfvf *pfvf;
+	u64 pcifunc;
+
+	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NIX, 0);
+	if (blkaddr < 0)
+		return;
+
+	block = &hw->block[blkaddr];
+	if (nixlf < 0 || nixlf >= block->lf.max) {
+		pr_info("Invalid NIX LF, Valid range 0-%d\n",
+			block->lf.max - 1);
+		return;
+	}
+
+	pcifunc = block->fn_map[nixlf];
+	if (!pcifunc) {
+		pr_info("This NIX LF is not attached to any RVU PFFUNC\n");
+		return;
+	}
+
+	pfvf = rvu_get_pfvf(rvu, pcifunc);
+	if ((ctype == NIX_AQ_CTYPE_SQ) && (!pfvf->sq_ctx)) {
+		pr_info("SQ context is not initialized\n");
+		return;
+	} else if ((ctype == NIX_AQ_CTYPE_RQ) && (!pfvf->rq_ctx)) {
+		pr_info("RQ context is not initialized\n");
+		return;
+	} else if ((ctype == NIX_AQ_CTYPE_CQ) && (!pfvf->cq_ctx)) {
+		pr_info("CQ context is not initialized\n");
+		return;
+	}
+
+	if (ctype == NIX_AQ_CTYPE_SQ) {
+		max_id =  pfvf->sq_ctx->qsize;
+		print_nix_ctx = print_nix_sq_ctx;
+	} else if (ctype == NIX_AQ_CTYPE_RQ) {
+		max_id =  pfvf->rq_ctx->qsize;
+		print_nix_ctx = print_nix_rq_ctx;
+	} else if (ctype == NIX_AQ_CTYPE_CQ) {
+		max_id =  pfvf->cq_ctx->qsize;
+		print_nix_ctx = print_nix_cq_ctx;
+	}
+
+	if (id < 0 || id >= max_id) {
+		pr_info("Invalid %s_ctx valid range 0-%d\n",
+			ctype_string, max_id - 1);
+		return;
+	}
+
+	memset(&aq_req, 0, sizeof(struct nix_aq_enq_req));
+	aq_req.hdr.pcifunc = pcifunc;
+	aq_req.ctype = ctype;
+	aq_req.op = NIX_AQ_INSTOP_READ;
+	if (all)
+		id = 0;
+	else
+		max_id = id + 1;
+	for (qidx = id; qidx < max_id; qidx++) {
+		aq_req.qidx = qidx;
+		pr_info("=====%s_ctx for nixlf:%d and qidx:%d is=====\n",
+			ctype_string, nixlf, aq_req.qidx);
+		rc = rvu_mbox_handler_NIX_AQ_ENQ(rvu, &aq_req, &rsp);
+		if (rc) {
+			pr_info("Failed to read the context\n");
+			return;
+		}
+		print_nix_ctx(&rsp);
+	}
+}
+
+static ssize_t rvu_dbg_nix_ctx_display(struct file *filp,
+				       const char __user *buffer,
+				       size_t count, loff_t *ppos, int ctype)
+{
+	struct rvu *rvu = filp->private_data;
+	char *cmd_buf, *ctype_string;
+	int nixlf, id = 0;
+	bool all = false;
+
+	if ((*ppos != 0) || !count)
+		return 0;
+	switch (ctype) {
+	case NIX_AQ_CTYPE_SQ:
+		ctype_string = "sq";
+		break;
+	case NIX_AQ_CTYPE_RQ:
+		ctype_string = "rq";
+		break;
+	case NIX_AQ_CTYPE_CQ:
+	default:
+		ctype_string = "cq";
+		break;
+	}
+
+	cmd_buf = kzalloc(count + 1, GFP_KERNEL);
+
+	if (!cmd_buf)
+		return count;
+	if (parse_cmd_buffer_ctx(cmd_buf, &count, buffer,
+				 &nixlf, &id, &all) < 0) {
+		pr_info("Usage: echo <nixlf> [%s number/all] > %s_ctx\n",
+			ctype_string, ctype_string);
+	} else {
+		read_nix_ctx(rvu, all, nixlf, id, ctype, ctype_string);
+	}
+
+	kfree(cmd_buf);
+	return count;
+}
+
+static ssize_t rvu_dbg_nix_sq_ctx_display(struct file *filp,
+					  const char __user *buffer,
+					  size_t count, loff_t *ppos)
+{
+	return  rvu_dbg_nix_ctx_display(filp, buffer,
+					count, ppos, NIX_AQ_CTYPE_SQ);
+}
+RVU_DEBUG_FOPS(nix_sq_ctx, NULL, nix_sq_ctx_display);
+
+static ssize_t rvu_dbg_nix_rq_ctx_display(struct file *filp,
+					  const char __user *buffer,
+					  size_t count, loff_t *ppos)
+{
+	return  rvu_dbg_nix_ctx_display(filp, buffer,
+					count, ppos, NIX_AQ_CTYPE_RQ);
+}
+RVU_DEBUG_FOPS(nix_rq_ctx, NULL, nix_rq_ctx_display);
+
+static ssize_t rvu_dbg_nix_cq_ctx_display(struct file *filp,
+					   const char __user *buffer,
+					    size_t count, loff_t *ppos)
+{
+	return  rvu_dbg_nix_ctx_display(filp, buffer,
+					count, ppos, NIX_AQ_CTYPE_CQ);
+}
+RVU_DEBUG_FOPS(nix_cq_ctx, NULL, nix_cq_ctx_display);
+
+static void rvu_dbg_nix_init(struct rvu *rvu)
+{
+	const struct device *dev = &rvu->pdev->dev;
+	struct dentry *pfile;
+
+	rvu->rvu_dbg.nix = debugfs_create_dir("nix", rvu->rvu_dbg.root);
+	if (!rvu->rvu_dbg.nix) {
+		pr_info("create debugfs dir failed for nix\n");
+		return;
+	}
+
+	pfile = debugfs_create_file("sq_ctx", 0600, rvu->rvu_dbg.nix, rvu,
+				    &rvu_dbg_nix_sq_ctx_fops);
+	if (!pfile)
+		goto create_failed;
+
+	pfile = debugfs_create_file("rq_ctx", 0600, rvu->rvu_dbg.nix, rvu,
+				    &rvu_dbg_nix_rq_ctx_fops);
+	if (!pfile)
+		goto create_failed;
+
+	pfile = debugfs_create_file("cq_ctx", 0600, rvu->rvu_dbg.nix, rvu,
+				    &rvu_dbg_nix_cq_ctx_fops);
+	if (!pfile)
+		goto create_failed;
+
+	return;
+create_failed:
+	dev_err(dev, "Failed to create debugfs dir/file for NIX\n");
+	debugfs_remove_recursive(rvu->rvu_dbg.nix);
+}
+
 void rvu_dbg_init(struct rvu *rvu)
 {
 	struct device *dev = &rvu->pdev->dev;
@@ -642,6 +972,8 @@ void rvu_dbg_init(struct rvu *rvu)
 	rvu_dbg_npa_init(rvu);
 
 	rvu_dbg_cgx_init(rvu);
+
+	rvu_dbg_nix_init(rvu);
 
 	return;
 
