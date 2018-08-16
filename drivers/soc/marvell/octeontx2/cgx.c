@@ -599,6 +599,20 @@ static int cgx_lmac_verify_fwi_version(struct cgx *cgx)
 		return 0;
 }
 
+static void cgx_lmac_link_up(struct cgx *cgx)
+{
+	struct device *dev = &cgx->pdev->dev;
+	int i, err;
+
+	/* Do Link up for all the lmacs */
+	for (i = 0; i < cgx->lmac_count; i++) {
+		err = cgx_fwi_link_change(cgx, i, true);
+		if (err)
+			dev_info(dev, "cgx port %d:%d Link up command failed\n",
+				 cgx->cgx_id, i);
+	}
+}
+
 static int cgx_lmac_init(struct cgx *cgx)
 {
 	struct lmac *lmac;
@@ -701,6 +715,7 @@ static int cgx_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	if (err)
 		goto err_release_lmac;
 
+	cgx_lmac_link_up(cgx);
 
 	return 0;
 
