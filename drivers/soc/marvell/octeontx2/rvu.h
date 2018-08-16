@@ -415,4 +415,14 @@ int rvu_mbox_handler_NPC_MCAM_DIS_ENTRY(struct rvu *rvu,
 int rvu_mbox_handler_NPC_MCAM_SHIFT_ENTRY(struct rvu *rvu,
 			struct npc_mcam_shift_entry_req *req,
 			struct npc_mcam_shift_entry_rsp *rsp);
+int rvu_mbox_handler_NPC_MCAM_ALLOC_COUNTER(struct rvu *rvu,
+				struct npc_mcam_alloc_counter_req *req,
+				struct npc_mcam_alloc_counter_rsp *rsp);
+int rvu_mbox_handler_NPC_MCAM_FREE_COUNTER(struct rvu *rvu,
+		struct npc_mcam_oper_counter_req *req, struct msg_rsp *rsp);
+int rvu_mbox_handler_NPC_MCAM_CLEAR_COUNTER(struct rvu *rvu,
+		struct npc_mcam_oper_counter_req *req, struct msg_rsp *rsp);
+int rvu_mbox_handler_NPC_MCAM_COUNTER_STATS(struct rvu *rvu,
+			struct npc_mcam_oper_counter_req *req,
+			struct npc_mcam_oper_counter_rsp *rsp);
 #endif /* RVU_H */

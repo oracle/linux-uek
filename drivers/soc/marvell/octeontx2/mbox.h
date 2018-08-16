@@ -156,6 +156,12 @@ M(NPC_MCAM_ENA_ENTRY,   0x6003, npc_mcam_ena_dis_entry_req, msg_rsp)	\
 M(NPC_MCAM_DIS_ENTRY,   0x6004, npc_mcam_ena_dis_entry_req, msg_rsp)	\
 M(NPC_MCAM_SHIFT_ENTRY, 0x6005, npc_mcam_shift_entry_req,		\
 				npc_mcam_shift_entry_rsp)		\
+M(NPC_MCAM_ALLOC_COUNTER, 0x6006, npc_mcam_alloc_counter_req,		\
+				  npc_mcam_alloc_counter_rsp)		\
+M(NPC_MCAM_FREE_COUNTER,  0x6007, npc_mcam_oper_counter_req, msg_rsp)	\
+M(NPC_MCAM_CLEAR_COUNTER, 0x6009, npc_mcam_oper_counter_req, msg_rsp)	\
+M(NPC_MCAM_COUNTER_STATS, 0x600a, npc_mcam_oper_counter_req,		\
+				  npc_mcam_oper_counter_rsp)		\
 /* NIX mbox IDs (range 0x8000 - 0xFFFF) */				\
 M(NIX_LF_ALLOC,		0x8000, nix_lf_alloc_req, nix_lf_alloc_rsp)	\
 M(NIX_LF_FREE,		0x8001, msg_req, msg_rsp)			\
@@ -621,6 +627,32 @@ struct npc_mcam_shift_entry_req {
 struct npc_mcam_shift_entry_rsp {
 	struct mbox_msghdr hdr;
 	u16 failed_entry_idx; /* Index in 'curr_entry', not entry itself */
+};
+
+struct npc_mcam_alloc_counter_req {
+	struct mbox_msghdr hdr;
+	u8  contig;	/* Contiguous counters ? */
+#define NPC_MAX_NONCONTIG_COUNTERS       64
+	u16 count;	/* Number of counters requested */
+};
+
+struct npc_mcam_alloc_counter_rsp {
+	struct mbox_msghdr hdr;
+	u16 cntr;   /* Counter allocated or start index if contiguous.
+		     * Invalid incase of non-contiguous.
+		     */
+	u16 count;  /* Number of counters allocated */
+	u16 cntr_list[NPC_MAX_NONCONTIG_COUNTERS];
+};
+
+struct npc_mcam_oper_counter_req {
+	struct mbox_msghdr hdr;
+	u16 cntr;   /* Free a counter or clear/fetch it's stats */
+};
+
+struct npc_mcam_oper_counter_rsp {
+	struct mbox_msghdr hdr;
+	u64 stat;  /* valid only while fetching counter's stats */
 };
 
 #endif /* MBOX_H */
