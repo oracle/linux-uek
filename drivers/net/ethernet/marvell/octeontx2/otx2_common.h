@@ -18,6 +18,7 @@
 
 /* PCI device IDs */
 #define PCI_DEVID_OCTEONTX2_RVU_PF              0xA063
+#define PCI_DEVID_OCTEONTX2_RVU_AFVF		0xA0F8
 
 /* PCI BAR nos */
 #define PCI_CFG_REG_BAR_NUM                     2
@@ -146,6 +147,8 @@ struct otx2_nic {
 	u8			cq_time_wait;
 	u32			cq_ecount_wait;
 	struct work_struct	reset_task;
+
+	int (*register_mbox_intr)(struct otx2_nic *);
 };
 
 /* Register read/write APIs */

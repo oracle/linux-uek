@@ -174,4 +174,10 @@ config OCTEONTX2_PF
 	---help---
 	  This driver supports Marvell's OcteonTX2 NIC physical function.
 
+config OCTEONTX2_VF
+	tristate "Marvell OcteonTX2 NIC virtual function driver"
+	depends on OCTEONTX2_PF
+	---help---
+	  This driver supports Marvell's OcteonTX2 NIC virtual function.
+
 endif # NET_VENDOR_MARVELL
