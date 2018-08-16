@@ -292,6 +292,13 @@ ret:
 	return iova;
 }
 
+void otx2_tx_timeout(struct net_device *netdev)
+{
+	struct otx2_nic *pfvf = netdev_priv(netdev);
+
+	schedule_work(&pfvf->reset_task);
+}
+
 static int otx2_get_link(struct otx2_nic *pfvf)
 {
 	int link = 0;
