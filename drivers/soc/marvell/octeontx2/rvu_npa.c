@@ -196,11 +196,63 @@ static int rvu_npa_aq_enq_inst(struct rvu *rvu, struct npa_aq_enq_req *req,
 	return 0;
 }
 
+static int npa_lf_hwctx_disable(struct rvu *rvu, struct hwctx_disable_req *req)
+{
+	struct rvu_pfvf *pfvf = rvu_get_pfvf(rvu, req->hdr.pcifunc);
+	struct npa_aq_enq_req aq_req;
+	unsigned long *bmap;
+	int id, cnt = 0;
+	int err = 0, rc;
+
+	if (!pfvf->pool_ctx || !pfvf->aura_ctx)
+		return NPA_AF_ERR_AQ_ENQUEUE;
+
+	memset(&aq_req, 0, sizeof(struct npa_aq_enq_req));
+	aq_req.hdr.pcifunc = req->hdr.pcifunc;
+
+	if (req->ctype == NPA_AQ_CTYPE_POOL) {
+		aq_req.pool.ena = 0;
+		aq_req.pool_mask.ena = 1;
+		cnt = pfvf->pool_ctx->qsize;
+		bmap = pfvf->pool_bmap;
+	} else if (req->ctype == NPA_AQ_CTYPE_AURA) {
+		aq_req.aura.ena = 0;
+		aq_req.aura_mask.ena = 1;
+		cnt = pfvf->aura_ctx->qsize;
+		bmap = pfvf->aura_bmap;
+	}
+
+	aq_req.ctype = req->ctype;
+	aq_req.op = NPA_AQ_INSTOP_WRITE;
+
+	for (id = 0; id < cnt; id++) {
+		if (!test_bit(id, bmap))
+			continue;
+		aq_req.aura_id = id;
+		rc = rvu_npa_aq_enq_inst(rvu, &aq_req, NULL);
+		if (rc) {
+			err = rc;
+			dev_err(rvu->dev, "Failed to disable %s:%d context\n",
+				(req->ctype == NPA_AQ_CTYPE_AURA) ?
+				"Aura" : "Pool", id);
+		}
+	}
+
+	return err;
+}
+
 int rvu_mbox_handler_NPA_AQ_ENQ(struct rvu *rvu,
 				struct npa_aq_enq_req *req,
 				struct npa_aq_enq_rsp *rsp)
 {
 	return rvu_npa_aq_enq_inst(rvu, req, rsp);
+}
+
+int rvu_mbox_handler_NPA_HWCTX_DISABLE(struct rvu *rvu,
+				       struct hwctx_disable_req *req,
+				       struct msg_rsp *rsp)
+{
+	return npa_lf_hwctx_disable(rvu, req);
 }
 
 static void npa_ctx_free(struct rvu *rvu, struct rvu_pfvf *pfvf)
