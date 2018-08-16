@@ -122,6 +122,9 @@ struct otx2_hw {
 	/* For TSO segmentation */
 	u8			lso_tsov4_idx;
 	u8			lso_tsov6_idx;
+
+	u64			cgx_rx_stats[CGX_RX_STATS_COUNT];
+	u64			cgx_tx_stats[CGX_TX_STATS_COUNT];
 };
 
 struct otx2_nic {
@@ -322,5 +325,17 @@ void mbox_handler_NIX_LF_ALLOC(struct otx2_nic *pfvf,
 			       struct nix_lf_alloc_rsp *rsp);
 void mbox_handler_NIX_TXSCH_ALLOC(struct otx2_nic *pf,
 				  struct nix_txsch_alloc_rsp *rsp);
+void mbox_handler_CGX_STATS(struct otx2_nic *pfvf,
+			    struct cgx_stats_rsp *rsp);
 
+/* Device stats APIs */
+void otx2_update_lmac_stats(struct otx2_nic *pfvf);
+int otx2_update_rq_stats(struct otx2_nic *pfvf, int qidx);
+int otx2_update_sq_stats(struct otx2_nic *pfvf, int qidx);
+void otx2_set_ethtool_ops(struct net_device *netdev);
+
+int otx2_open(struct net_device *netdev);
+int otx2_stop(struct net_device *netdev);
+int otx2_set_real_num_queues(struct net_device *netdev,
+			     int tx_queues, int rx_queues);
 #endif /* OTX2_COMMON_H */

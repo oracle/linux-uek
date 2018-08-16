@@ -70,6 +70,9 @@ static void otx2_process_pfaf_mbox_msg(struct otx2_nic *pf,
 		mbox_handler_NIX_TXSCH_ALLOC(pf,
 					     (struct nix_txsch_alloc_rsp *)msg);
 		break;
+	case MBOX_MSG_CGX_STATS:
+		mbox_handler_CGX_STATS(pf, (struct cgx_stats_rsp *)msg);
+		break;
 	default:
 		if (msg->rc)
 			dev_err(pf->dev,
@@ -373,8 +376,8 @@ static int otx2_cgx_config_loopback(struct otx2_nic *pf, bool enable)
 	return otx2_sync_mbox_msg(&pf->mbox);
 }
 
-static int otx2_set_real_num_queues(struct net_device *netdev,
-				    int tx_queues, int rx_queues)
+int otx2_set_real_num_queues(struct net_device *netdev,
+			     int tx_queues, int rx_queues)
 {
 	int err;
 
@@ -568,7 +571,7 @@ static netdev_tx_t otx2_xmit(struct sk_buff *skb, struct net_device *netdev)
 	return NETDEV_TX_OK;
 }
 
-static int otx2_open(struct net_device *netdev)
+int otx2_open(struct net_device *netdev)
 {
 	struct otx2_nic *pf = netdev_priv(netdev);
 	struct otx2_cq_poll *cq_poll = NULL;
@@ -590,6 +593,10 @@ static int otx2_open(struct net_device *netdev)
 	if (!qset->napi)
 		return -ENOMEM;
 
+	qset->cqe_cnt = qset->cqe_cnt ? qset->cqe_cnt : Q_COUNT(Q_SIZE_4K);
+	qset->sqe_cnt = qset->sqe_cnt ? qset->sqe_cnt : Q_COUNT(Q_SIZE_1K);
+
+	err = -ENOMEM;
 	qset->cq = kcalloc(pf->qset.cq_cnt,
 			   sizeof(struct otx2_cq_queue), GFP_KERNEL);
 	if (!qset->cq)
@@ -598,6 +605,11 @@ static int otx2_open(struct net_device *netdev)
 	qset->sq = kcalloc(pf->hw.tx_queues,
 			   sizeof(struct otx2_snd_queue), GFP_KERNEL);
 	if (!qset->sq)
+		goto freemem;
+
+	qset->rq = kcalloc(pf->hw.rx_queues,
+			   sizeof(struct otx2_rcv_queue), GFP_KERNEL);
+	if (!qset->rq)
 		goto freemem;
 
 	err = otx2_init_hw_resources(pf);
@@ -696,7 +708,7 @@ freemem:
 	return err;
 }
 
-static int otx2_stop(struct net_device *netdev)
+int otx2_stop(struct net_device *netdev)
 {
 	struct otx2_nic *pf = netdev_priv(netdev);
 	struct otx2_cq_poll *cq_poll = NULL;
@@ -927,6 +939,7 @@ static int otx2_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 		goto err_detach_rsrc;
 	}
 
+	otx2_set_ethtool_ops(netdev);
 	return 0;
 
 err_detach_rsrc:
