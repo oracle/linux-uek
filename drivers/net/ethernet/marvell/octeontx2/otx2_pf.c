@@ -580,7 +580,7 @@ int otx2_open(struct net_device *netdev)
 
 	netif_carrier_off(netdev);
 
-	err = otx2_register_mbox_intr(pf);
+	err = pf->register_mbox_intr(pf);
 	if (err)
 		return err;
 
@@ -869,6 +869,8 @@ static int otx2_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	hw->tx_queues = qcount;
 	hw->max_queues = qcount;
 	hw->rqpool_cnt = qcount;
+
+	pf->register_mbox_intr = otx2_register_mbox_intr;
 
 	/* Map CSRs */
 	pf->reg_base = pcim_iomap(pdev, PCI_CFG_REG_BAR_NUM, 0);
