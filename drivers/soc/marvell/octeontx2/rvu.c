@@ -754,6 +754,94 @@ init:
 		rvu_scan_block(rvu, block);
 	}
 
+	err = rvu_npa_init(rvu);
+	if (err)
+		return err;
+
+	return 0;
+}
+
+/* NPA and NIX admin queue APIs */
+int qmem_alloc(struct device *dev, struct qmem **q,
+	       int qsize, int entry_sz)
+{
+	struct qmem *qmem;
+	int aligned_addr;
+
+	if (!qsize)
+		return -EINVAL;
+
+	*q = devm_kzalloc(dev, sizeof(*qmem), GFP_KERNEL);
+	if (!*q)
+		return -ENOMEM;
+	qmem = *q;
+
+	qmem->entry_sz = entry_sz;
+	qmem->alloc_sz = (qsize * entry_sz) + OTX2_ALIGN;
+	qmem->base = dma_zalloc_coherent(dev, qmem->alloc_sz,
+					 &qmem->iova, GFP_KERNEL);
+	if (!qmem->base)
+		return -ENOMEM;
+
+	qmem->qsize = qsize;
+
+	aligned_addr = ALIGN((u64)qmem->iova, OTX2_ALIGN);
+	qmem->align = (aligned_addr - qmem->iova);
+	qmem->base += qmem->align;
+	qmem->iova += qmem->align;
+	return 0;
+}
+EXPORT_SYMBOL(qmem_alloc);
+
+void qmem_free(struct device *dev, struct qmem *qmem)
+{
+	if (!qmem)
+		return;
+
+	if (qmem->base)
+		dma_free_coherent(dev, qmem->alloc_sz,
+				  qmem->base - qmem->align,
+				  qmem->iova - qmem->align);
+	devm_kfree(dev, qmem);
+}
+EXPORT_SYMBOL(qmem_free);
+
+void rvu_aq_free(struct rvu *rvu, struct admin_queue *aq)
+{
+	if (!aq)
+		return;
+
+	qmem_free(rvu->dev, aq->inst);
+	qmem_free(rvu->dev, aq->res);
+	devm_kfree(rvu->dev, aq);
+}
+
+int rvu_aq_alloc(struct rvu *rvu, struct admin_queue **ad_queue,
+		 int qsize, int inst_size, int res_size)
+{
+	struct admin_queue *aq;
+	int err;
+
+	*ad_queue = devm_kzalloc(rvu->dev, sizeof(*aq), GFP_KERNEL);
+	if (!*ad_queue)
+		return -ENOMEM;
+	aq = *ad_queue;
+
+	/* Alloc memory for instructions i.e AQ */
+	err = qmem_alloc(rvu->dev, &aq->inst, qsize, inst_size);
+	if (err) {
+		devm_kfree(rvu->dev, aq);
+		return err;
+	}
+
+	/* Alloc memory for results */
+	err = qmem_alloc(rvu->dev, &aq->res, qsize, res_size);
+	if (err) {
+		rvu_aq_free(rvu, aq);
+		return err;
+	}
+
+	spin_lock_init(&aq->lock);
 	return 0;
 }
 
