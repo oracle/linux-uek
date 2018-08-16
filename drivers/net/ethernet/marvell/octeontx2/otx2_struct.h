@@ -17,6 +17,17 @@ enum nix_cqesz_e {
 	NIX_XQESZ_W16 = 0x1,
 };
 
+enum nix_sqes_e {
+	NIX_SQESZ_W16 = 0x0,
+	NIX_SQESZ_W8 = 0x1,
+};
+
+enum nix_send_ldtype {
+	NIX_SEND_LDTYPE_LDD  = 0x0,
+	NIX_SEND_LDTYPE_LDT  = 0x1,
+	NIX_SEND_LDTYPE_LDWB = 0x2,
+};
+
 /* NIX wqe/cqe types */
 enum nix_xqe_type {
 	NIX_XQE_TYPE_INVALID   = 0x0,
@@ -200,6 +211,87 @@ struct nix_rx_sg_s {
 	u64 segs       : 2;
 	u64 rsvd_59_50 : 10;
 	u64 subdc      : 4;
+#endif
+};
+
+struct nix_send_comp_s {
+#if defined(__BIG_ENDIAN_BITFIELD)	/* W0 */
+	u64 rsvd_24_63  : 40;
+	u64 sqe_id	: 16;
+	u64 status	: 8;
+#else
+	u64 status	: 8;
+	u64 sqe_id	: 16;
+	u64 rsvd_24_63	: 40;
+#endif
+};
+
+/* NIX SQE header structure */
+struct nix_sqe_hdr_s {
+#if defined(__BIG_ENDIAN_BITFIELD)
+	u64 sq			: 20; /* W0 */
+	u64 pnc			: 1;
+	u64 sizem1		: 3;
+	u64 aura		: 20;
+	u64 df			: 1;
+	u64 reserved_18		: 1;
+	u64 total		: 18;
+#else
+	u64 total		: 18;
+	u64 reserved_18		: 1;
+	u64 df			: 1;
+	u64 aura		: 20;
+	u64 sizem1		: 3;
+	u64 pnc			: 1;
+	u64 sq			: 20;
+#endif
+#if defined(__BIG_ENDIAN_BITFIELD)    /* W1 */
+	u64 sqe_id		:16;
+	u64 il4type		:4;
+	u64 il3type		:4;
+	u64 ol4type		:4;
+	u64 ol3type		:4;
+	u64 il4ptr		:8;
+	u64 il3ptr		:8;
+	u64 ol4ptr		:8;
+	u64 ol3ptr		:8;
+#else
+	u64 ol3ptr		:8;
+	u64 ol4ptr		:8;
+	u64 il3ptr		:8;
+	u64 il4ptr		:8;
+	u64 ol3type		:4;
+	u64 ol4type		:4;
+	u64 il3type		:4;
+	u64 il4type		:4;
+	u64 sqe_id		:16;
+
+#endif
+};
+
+struct nix_sqe_sg_s {
+#if defined(__BIG_ENDIAN_BITFIELD)  /* W0 */
+	u64 subdc	: 4;
+	u64 ld_type	: 2;
+	u64 i3		: 1;
+	u64 i2		: 1;
+	u64 i1		: 1;
+	u64 rsvd_54_50	: 5;
+	u64 segs	: 2;
+	u64 seg3_size	: 16;
+	u64 seg2_size	: 16;
+	u64 seg1_size	: 16;
+#else
+	u64 seg1_size	: 16;
+	u64 seg2_size	: 16;
+	u64 seg3_size	: 16;
+	u64 segs	: 2;
+	u64 rsvd_54_50	: 5;
+	u64 i1		: 1;
+	u64 i2		: 1;
+	u64 i3		: 1;
+	u64 ld_type	: 2;
+	u64 subdc	: 4;
 #endif
 };
 
