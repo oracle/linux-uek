@@ -180,6 +180,9 @@ int rvu_get_blkaddr(struct rvu *rvu, int blktype, u16 pcifunc)
 	bool is_pf;
 
 	switch (blktype) {
+	case BLKTYPE_NPC:
+		blkaddr = BLKADDR_NPC;
+		goto exit;
 	case BLKTYPE_NPA:
 		blkaddr = BLKADDR_NPA;
 		goto exit;
@@ -564,6 +567,7 @@ static void rvu_free_hw_resources(struct rvu *rvu)
 	int id, max_msix;
 	u64 cfg;
 
+	rvu_npc_freemem(rvu);
 	rvu_nix_freemem(rvu);
 
 	/* Free block LF bitmaps */
@@ -774,6 +778,10 @@ init:
 		return err;
 
 	err = rvu_nix_init(rvu);
+	if (err)
+		return err;
+
+	err = rvu_npc_init(rvu);
 	if (err)
 		return err;
 
