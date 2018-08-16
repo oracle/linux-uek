@@ -1092,6 +1092,51 @@ create_failed:
 	debugfs_remove_recursive(rvu->rvu_dbg.nix);
 }
 
+/* NPC debugfs APIs */
+static ssize_t rvu_dbg_npc_rx_miss_stats_display(struct file *filp,
+						 char __user *buffer,
+						 size_t count, loff_t *ppos)
+{
+	struct rvu *rvu = filp->private_data;
+	struct npc_mcam *mcam;
+	int blkaddr;
+
+	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NPC, 0);
+	if (blkaddr < 0)
+		return 0;
+
+	mcam = &rvu->hw->mcam;
+
+	pr_info("\nNPC MCAM RX miss action stats\n");
+	pr_info("\t\tStat %d: \t%lld\n", mcam->rx_miss_act_cntr,
+		rvu_read64(rvu, blkaddr,
+			   NPC_AF_MATCH_STATX(mcam->rx_miss_act_cntr)));
+
+	return 0;
+}
+RVU_DEBUG_FOPS(npc_rx_miss_act, npc_rx_miss_stats_display, NULL);
+
+static void rvu_dbg_npc_init(struct rvu *rvu)
+{
+	const struct device *dev = &rvu->pdev->dev;
+	struct dentry *pfile;
+
+	rvu->rvu_dbg.npc = debugfs_create_dir("npc", rvu->rvu_dbg.root);
+	if (!rvu->rvu_dbg.npc)
+		return;
+
+	pfile = debugfs_create_file("rx_miss_act_stats", 0444, rvu->rvu_dbg.npc,
+				    rvu, &rvu_dbg_npc_rx_miss_act_fops);
+	if (!pfile)
+		goto create_failed;
+
+	return;
+
+create_failed:
+	dev_err(dev, "Failed to create debugfs dir/file for NPC\n");
+	debugfs_remove_recursive(rvu->rvu_dbg.npc);
+}
+
 void rvu_dbg_init(struct rvu *rvu)
 {
 	struct device *dev = &rvu->pdev->dev;
@@ -1112,6 +1157,8 @@ void rvu_dbg_init(struct rvu *rvu)
 	rvu_dbg_cgx_init(rvu);
 
 	rvu_dbg_nix_init(rvu);
+
+	rvu_dbg_npc_init(rvu);
 
 	return;
 

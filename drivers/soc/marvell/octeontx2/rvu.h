@@ -39,6 +39,7 @@ struct rvu_debugfs {
 	struct dentry *lmac;
 	struct dentry *npa;
 	struct dentry *nix;
+	struct dentry *npc;
 };
 #endif
 
@@ -106,6 +107,7 @@ struct npc_mcam {
 	u16	lprio_start;
 	u16	hprio_count;
 	u16	hprio_end;
+	u16	rx_miss_act_cntr; /* Counter for RX MISS action */
 };
 
 /* Structure for per RVU func info ie PF/VF */

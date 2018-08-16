@@ -812,6 +812,13 @@ static int npc_mcam_rsrcs_init(struct rvu *rvu, int blkaddr)
 	mcam->hprio_count = mcam->lprio_count;
 	mcam->hprio_end = mcam->hprio_count;
 
+	/* Reserve last counter for MCAM RX miss action which is set to
+	 * drop pkt. This way we will know how many pkts didn't match
+	 * any MCAM entry.
+	 */
+	mcam->counters.max--;
+	mcam->rx_miss_act_cntr = mcam->counters.max;
+
 	/* Allocate bitmap for managing MCAM counters and memory
 	 * for saving counter to RVU PFFUNC allocation mapping.
 	 */
@@ -849,6 +856,7 @@ free_mem:
 int rvu_npc_init(struct rvu *rvu)
 {
 	struct npc_pkind *pkind = &rvu->hw->pkind;
+	struct npc_mcam *mcam = &rvu->hw->mcam;
 	u64 keyz = NPC_MCAM_KEY_X2;
 	int blkaddr, err;
 
@@ -910,9 +918,13 @@ int rvu_npc_init(struct rvu *rvu)
 	rvu_write64(rvu, blkaddr, NPC_AF_INTFX_MISS_ACT(NIX_INTF_TX),
 		    NIX_TX_ACTIONOP_UCAST_DEFAULT);
 
-	/* If MCAM lookup doesn't result in a match, drop the received packet */
+	/* If MCAM lookup doesn't result in a match, drop the received packet.
+	 * And map this action to a counter to count dropped pkts.
+	 */
 	rvu_write64(rvu, blkaddr, NPC_AF_INTFX_MISS_ACT(NIX_INTF_RX),
 		    NIX_RX_ACTIONOP_DROP);
+	rvu_write64(rvu, blkaddr, NPC_AF_INTFX_MISS_STAT_ACT(NIX_INTF_RX),
+		    BIT_ULL(9) | mcam->rx_miss_act_cntr);
 
 	return 0;
 }
