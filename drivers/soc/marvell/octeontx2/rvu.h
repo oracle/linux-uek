@@ -34,6 +34,9 @@
 #ifdef CONFIG_DEBUG_FS
 struct rvu_debugfs {
 	struct dentry *root;
+	struct dentry *cgx_root;
+	struct dentry *cgx;
+	struct dentry *lmac;
 	struct dentry *npa;
 };
 #endif
