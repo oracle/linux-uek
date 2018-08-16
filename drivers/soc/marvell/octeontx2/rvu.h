@@ -34,6 +34,7 @@
 #ifdef CONFIG_DEBUG_FS
 struct rvu_debugfs {
 	struct dentry *root;
+	struct dentry *npa;
 };
 #endif
 
@@ -343,6 +344,8 @@ int rvu_mbox_handler_CGX_INTLBK_DISABLE(struct rvu *rvu, struct msg_req *req,
 /* NPA APIs */
 int rvu_npa_init(struct rvu *rvu);
 void rvu_npa_lf_teardown(struct rvu *rvu, u16 pcifunc, int npalf);
+int rvu_npa_aq_enq_inst(struct rvu *rvu, struct npa_aq_enq_req *req,
+			struct npa_aq_enq_rsp *rsp);
 int rvu_mbox_handler_NPA_AQ_ENQ(struct rvu *rvu,
 				struct npa_aq_enq_req *req,
 				struct npa_aq_enq_rsp *rsp);
