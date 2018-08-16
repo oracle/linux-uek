@@ -403,4 +403,16 @@ int rvu_mbox_handler_NPC_MCAM_ALLOC_ENTRY(struct rvu *rvu,
 int rvu_mbox_handler_NPC_MCAM_FREE_ENTRY(struct rvu *rvu,
 					 struct npc_mcam_free_entry_req *req,
 					 struct msg_rsp *rsp);
+int rvu_mbox_handler_NPC_MCAM_WRITE_ENTRY(struct rvu *rvu,
+					  struct npc_mcam_write_entry_req *req,
+					  struct msg_rsp *rsp);
+int rvu_mbox_handler_NPC_MCAM_ENA_ENTRY(struct rvu *rvu,
+					struct npc_mcam_ena_dis_entry_req *req,
+					struct msg_rsp *rsp);
+int rvu_mbox_handler_NPC_MCAM_DIS_ENTRY(struct rvu *rvu,
+					struct npc_mcam_ena_dis_entry_req *req,
+					struct msg_rsp *rsp);
+int rvu_mbox_handler_NPC_MCAM_SHIFT_ENTRY(struct rvu *rvu,
+			struct npc_mcam_shift_entry_req *req,
+			struct npc_mcam_shift_entry_rsp *rsp);
 #endif /* RVU_H */
