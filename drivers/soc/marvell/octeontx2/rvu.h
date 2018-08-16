@@ -429,4 +429,9 @@ int rvu_mbox_handler_NPC_MCAM_CLEAR_COUNTER(struct rvu *rvu,
 int rvu_mbox_handler_NPC_MCAM_COUNTER_STATS(struct rvu *rvu,
 			struct npc_mcam_oper_counter_req *req,
 			struct npc_mcam_oper_counter_rsp *rsp);
+int rvu_mbox_handler_NPC_MCAM_ALLOC_AND_WRITE_ENTRY(struct rvu *rvu,
+			  struct npc_mcam_alloc_and_write_entry_req *req,
+			  struct npc_mcam_alloc_and_write_entry_rsp *rsp);
+int rvu_mbox_handler_NPC_GET_KEX_CFG(struct rvu *rvu, struct msg_req *req,
+				     struct npc_get_kex_cfg_rsp *rsp);
 #endif /* RVU_H */

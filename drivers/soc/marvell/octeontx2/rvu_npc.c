@@ -1796,3 +1796,94 @@ int rvu_mbox_handler_NPC_MCAM_COUNTER_STATS(struct rvu *rvu,
 
 	return 0;
 }
+
+int rvu_mbox_handler_NPC_MCAM_ALLOC_AND_WRITE_ENTRY(struct rvu *rvu,
+			  struct npc_mcam_alloc_and_write_entry_req *req,
+			  struct npc_mcam_alloc_and_write_entry_rsp *rsp)
+{
+	struct npc_mcam_alloc_counter_req cntr_req;
+	struct npc_mcam_alloc_counter_rsp cntr_rsp;
+	struct npc_mcam_alloc_entry_req entry_req;
+	struct npc_mcam_alloc_entry_rsp entry_rsp;
+	struct npc_mcam *mcam = &rvu->hw->mcam;
+	u16 entry = NPC_MCAM_ENTRY_INVALID;
+	u16 cntr = NPC_MCAM_ENTRY_INVALID;
+	int blkaddr, rc;
+
+	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NPC, 0);
+	if (blkaddr < 0)
+		return NPC_MCAM_INVALID_REQ;
+
+	if ((req->intf != NIX_INTF_RX) && (req->intf != NIX_INTF_TX))
+		return NPC_MCAM_INVALID_REQ;
+
+	/* Try to allocate a MCAM entry */
+	entry_req.hdr.pcifunc = req->hdr.pcifunc;
+	entry_req.contig = true;
+	entry_req.priority = req->priority;
+	entry_req.ref_entry = req->ref_entry;
+	entry_req.count = 1;
+
+	rc = rvu_mbox_handler_NPC_MCAM_ALLOC_ENTRY(rvu,
+						   &entry_req, &entry_rsp);
+	if (rc)
+		return rc;
+
+	if (!entry_rsp.count)
+		return NPC_MCAM_ALLOC_FAILED;
+
+	entry = entry_rsp.entry;
+
+	if (!req->alloc_cntr)
+		goto write_entry;
+
+	/* Now allocate counter */
+	cntr_req.hdr.pcifunc = req->hdr.pcifunc;
+	cntr_req.contig = true;
+	cntr_req.count = 1;
+
+	rc = rvu_mbox_handler_NPC_MCAM_ALLOC_COUNTER(rvu, &cntr_req, &cntr_rsp);
+	if (rc) {
+		/* Free allocated MCAM entry */
+		mutex_lock(&mcam->lock);
+		mcam->entry2pfvf_map[entry] = 0;
+		npc_mcam_clear_bit(mcam, entry);
+		mutex_unlock(&mcam->lock);
+		return rc;
+	}
+
+	cntr = cntr_rsp.cntr;
+
+write_entry:
+	mutex_lock(&mcam->lock);
+	npc_config_mcam_entry(rvu, mcam, blkaddr, entry, req->intf,
+			      &req->entry_data, req->enable_entry);
+
+	if (req->alloc_cntr)
+		npc_map_mcam_entry_and_cntr(rvu, mcam, blkaddr, entry, cntr);
+	mutex_unlock(&mcam->lock);
+
+	rsp->entry = entry;
+	rsp->cntr = cntr;
+
+	return 0;
+}
+
+int rvu_mbox_handler_NPC_GET_KEX_CFG(struct rvu *rvu, struct msg_req *req,
+				     struct npc_get_kex_cfg_rsp *rsp)
+{
+	int blkaddr;
+
+	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NPC, 0);
+	if (blkaddr < 0)
+		return NPC_MCAM_INVALID_REQ;
+
+	/* Return the current NPC Rx & Tx interface's
+	 * KEY width and nibble config.
+	 */
+	rsp->rx_keyx_cfg = rvu_read64(rvu, blkaddr,
+				      NPC_AF_INTFX_KEX_CFG(NIX_INTF_RX));
+	rsp->tx_keyx_cfg = rvu_read64(rvu, blkaddr,
+				      NPC_AF_INTFX_KEX_CFG(NIX_INTF_TX));
+	return 0;
+}
