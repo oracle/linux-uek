@@ -564,6 +564,8 @@ static void rvu_free_hw_resources(struct rvu *rvu)
 	int id, max_msix;
 	u64 cfg;
 
+	rvu_nix_freemem(rvu);
+
 	/* Free block LF bitmaps */
 	for (id = 0; id < BLK_COUNT; id++) {
 		block = &hw->block[id];
