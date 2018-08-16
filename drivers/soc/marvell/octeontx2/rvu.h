@@ -14,6 +14,7 @@
 #include "rvu_struct.h"
 #include "common.h"
 #include "mbox.h"
+#include "rvu_validation.h"
 
 /* PCI device IDs */
 #define	PCI_DEVID_OCTEONTX2_RVU_AF		0xA065
@@ -155,6 +156,10 @@ struct rvu_pfvf {
 	/* Broadcast pkt replication info */
 	u16			bcast_mce_idx;
 	struct nix_mce_list	bcast_mce_list;
+
+	/* For resource limits */
+	struct pci_dev	*pdev;
+	struct kobject	*limits_kobj;
 };
 
 struct nix_txsch {
@@ -209,6 +214,7 @@ struct rvu {
 	struct rvu_hwinfo       *hw;
 	struct rvu_pfvf		*pf;
 	struct rvu_pfvf		*hwvf;
+	struct rvu_limits	pf_limits;
 	struct mutex		rsrc_lock; /* Serialize resource alloc/free */
 	int			vfs; /* Number of VFs attached to RVU */
 
@@ -282,6 +288,7 @@ void rvu_free_rsrc(struct rsrc_bmap *rsrc, int id);
 int rvu_rsrc_free_count(struct rsrc_bmap *rsrc);
 int rvu_alloc_rsrc_contig(struct rsrc_bmap *rsrc, int nrsrc);
 bool rvu_rsrc_check_contig(struct rsrc_bmap *rsrc, int nrsrc);
+u16 rvu_get_rsrc_mapcount(struct rvu_pfvf *pfvf, int blktype);
 int rvu_get_pf(u16 pcifunc);
 struct rvu_pfvf *rvu_get_pfvf(struct rvu *rvu, int pcifunc);
 void rvu_get_pf_numvfs(struct rvu *rvu, int pf, int *numvfs, int *hwvf);
