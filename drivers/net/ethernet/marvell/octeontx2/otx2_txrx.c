@@ -16,6 +16,12 @@
 #include "otx2_struct.h"
 #include "otx2_txrx.h"
 
+/* Flush SQE written to LMT to SQB */
+static inline u64 otx2_lmt_flush(uint64_t addr)
+{
+	return atomic64_fetch_xor_relaxed(0, (atomic64_t *)addr);
+}
+
 static inline u64 otx2_nix_cq_op_status(struct otx2_nic *pfvf, int cq_idx)
 {
 	u64 incr = (u64)cq_idx << 32;
@@ -41,6 +47,69 @@ static inline unsigned int frag_num(unsigned int i)
 #else
 	return i;
 #endif
+}
+
+static dma_addr_t otx2_dma_map_skb_frag(struct otx2_nic *pfvf,
+					struct sk_buff *skb, int seg, int *len)
+{
+	const struct skb_frag_struct *frag;
+	struct page *page;
+	int offset;
+
+	/* First segment is always skb->data */
+	if (!seg) {
+		page = virt_to_page(skb->data);
+		offset = offset_in_page(skb->data);
+		*len = skb_headlen(skb);
+	} else {
+		frag = &skb_shinfo(skb)->frags[seg - 1];
+		page = skb_frag_page(frag);
+		offset = frag->page_offset;
+		*len = skb_frag_size(frag);
+	}
+	return dma_map_page_attrs(pfvf->dev, page, offset, *len,
+				  DMA_TO_DEVICE, DMA_ATTR_SKIP_CPU_SYNC);
+}
+
+static void otx2_dma_unmap_skb_frags(struct otx2_nic *pfvf, struct sg_list *sg)
+{
+	int seg;
+
+	for (seg = 0; seg < sg->num_segs; seg++) {
+		dma_unmap_page_attrs(pfvf->dev, sg->dma_addr[seg],
+				     sg->size[seg], DMA_TO_DEVICE,
+				     DMA_ATTR_SKIP_CPU_SYNC);
+	}
+}
+
+static void otx2_snd_pkt_handler(struct otx2_nic *pfvf,
+				 struct otx2_cq_queue *cq, void *cqe,
+				 int budget)
+{
+	struct nix_cqe_hdr_s *cqe_hdr = (struct nix_cqe_hdr_s *)cqe;
+	struct nix_send_comp_s *snd_comp;
+	struct sk_buff *skb = NULL;
+	struct otx2_snd_queue *sq;
+	struct sg_list *sg;
+
+	snd_comp = (struct nix_send_comp_s *)(cqe + sizeof(*cqe_hdr));
+	if (snd_comp->status) {
+		/* tx packet error handling*/
+		dev_info(pfvf->dev, "TX%d: Error in send CQ entry\n",
+			 cq->cint_idx);
+	}
+
+	/* Barrier, so that update to sq by other cpus is visible */
+	smp_mb();
+	sq = &pfvf->qset.sq[cq->cint_idx];
+	sg = &sq->sg[snd_comp->sqe_id];
+
+	skb = (struct sk_buff *)sg->skb;
+	if (skb) {
+		otx2_dma_unmap_skb_frags(pfvf, sg);
+		napi_consume_skb(skb, budget);
+		sg->skb = (u64)NULL;
+	}
 }
 
 static void otx2_skb_add_frag(struct otx2_nic *pfvf,
@@ -198,6 +267,8 @@ static int otx2_napi_handler(struct otx2_cq_queue *cq, struct otx2_nic *pfvf,
 			otx2_rcv_pkt_handler(pfvf, cq, cqe_hdr, &pool_ptrs);
 			workdone++;
 			break;
+		case NIX_XQE_TYPE_SEND:
+			otx2_snd_pkt_handler(pfvf, cq, cqe_hdr, budget);
 		}
 		processed_cqe++;
 	}
@@ -253,4 +324,125 @@ int otx2_poll(struct napi_struct *napi, int budget)
 			     BIT_ULL(0));
 	}
 	return workdone;
+}
+
+#define MAX_SEGS_PER_SG	3
+/* Add SQE scatter/gather subdescriptor structure */
+static bool otx2_sqe_add_sg(struct otx2_nic *pfvf, struct otx2_snd_queue *sq,
+			    struct sk_buff *skb, int num_segs, int *offset)
+{
+	struct nix_sqe_sg_s *sg = NULL;
+	u64 dma_addr, *iova = NULL;
+	u16 *sg_lens = NULL;
+	int seg, len;
+
+	sq->sg[sq->head].num_segs = 0;
+
+	for (seg = 0; seg < num_segs; seg++) {
+		if ((seg % MAX_SEGS_PER_SG) == 0) {
+			sg = (struct nix_sqe_sg_s *)(sq->sqe_base + *offset);
+			sg->ld_type = NIX_SEND_LDTYPE_LDD;
+			sg->subdc = NIX_SUBDC_SG;
+			sg->segs = 0;
+			sg_lens = (void *)sg;
+			iova = (void *)sg + sizeof(*sg);
+			/* Next subdc always starts at a 16byte boundary.
+			 * So if sg->segs is whether 2 or 3, offset += 16bytes.
+			 */
+			if ((num_segs - seg) >= (MAX_SEGS_PER_SG - 1))
+				*offset += sizeof(*sg) + (2 * sizeof(u64));
+			else
+				*offset += sizeof(*sg) + sizeof(u64);
+		}
+		dma_addr = otx2_dma_map_skb_frag(pfvf, skb, seg, &len);
+		if (dma_mapping_error(pfvf->dev, dma_addr))
+			return false;
+
+		sg_lens[frag_num(seg % MAX_SEGS_PER_SG)] = len;
+		sg->segs++;
+		*iova++ = dma_addr;
+
+		/* Save DMA mapping info for later unmapping */
+		sq->sg[sq->head].dma_addr[seg] = dma_addr;
+		sq->sg[sq->head].size[seg] = len;
+		sq->sg[sq->head].num_segs++;
+	}
+
+	sq->sg[sq->head].skb = (u64)skb;
+	return true;
+}
+
+/* Add SQE header subdescriptor structure */
+static void otx2_sqe_add_hdr(struct otx2_nic *pfvf, struct otx2_snd_queue *sq,
+			     struct nix_sqe_hdr_s *sqe_hdr, int len, u16 qidx)
+{
+	sqe_hdr->total = len;
+	/* Don't free Tx buffers to Aura */
+	sqe_hdr->df = 1;
+	sqe_hdr->aura = sq->aura_id;
+	/* Post a CQE Tx after pkt transmission */
+	sqe_hdr->pnc = 1;
+	sqe_hdr->sq = qidx;
+	/* Set SQE identifier which will be used later for freeing SKB */
+	sqe_hdr->sqe_id = sq->head;
+}
+
+bool otx2_sq_append_skb(struct net_device *netdev, struct otx2_snd_queue *sq,
+			struct sk_buff *skb, u16 qidx)
+{
+	struct otx2_nic *pfvf = netdev_priv(netdev);
+	struct nix_sqe_hdr_s *sqe_hdr;
+	int offset, num_segs;
+	u64 status;
+
+	/* Check if there is room for new SQE.
+	 * 'Num of SQBs freed to SQ's pool - SQ's Aura count'
+	 * will give free SQE count.
+	 */
+	if (!(sq->num_sqbs - *sq->aura_fc_addr))
+		goto fail;
+
+	/* Set SQE's SEND_HDR */
+	memset(sq->sqe_base, 0, sq->sqe_size);
+	sqe_hdr = (struct nix_sqe_hdr_s *)(sq->sqe_base);
+	otx2_sqe_add_hdr(pfvf, sq, sqe_hdr, skb->len, qidx);
+	offset = sizeof(*sqe_hdr);
+
+	num_segs = skb_shinfo(skb)->nr_frags + 1;
+
+	/* If SKB doesn't fit in a single SQE, linearize it.
+	 * TODO: Consider adding JUMP descriptor instead.
+	 */
+	if (num_segs > OTX2_MAX_FRAGS_IN_SQE) {
+		if (__skb_linearize(skb)) {
+			dev_kfree_skb_any(skb);
+			return true;
+		}
+		num_segs = skb_shinfo(skb)->nr_frags + 1;
+	}
+
+	/* Add SG subdesc with data frags */
+	if (!otx2_sqe_add_sg(pfvf, sq, skb, num_segs, &offset)) {
+		otx2_dma_unmap_skb_frags(pfvf, &sq->sg[sq->head]);
+		return false;
+	}
+
+	sqe_hdr->sizem1 = (offset / 16) - 1;
+
+	/* Packet data stores should finish before SQE is flushed to HW */
+	dma_wmb();
+
+	do {
+		memcpy(sq->lmt_addr, sqe_hdr, offset);
+		status = otx2_lmt_flush(sq->io_addr);
+	} while (status == 0);
+
+	sq->head++;
+	sq->head &= (SQ_QLEN - 1);
+
+	return true;
+fail:
+	netdev_warn(pfvf->netdev, "SQ%d full, SQB count %d Aura count %lld\n",
+		    qidx, sq->num_sqbs, *sq->aura_fc_addr);
+	return false;
 }
