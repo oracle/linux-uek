@@ -18,6 +18,66 @@
 #include "rvu_struct.h"
 #include "rvu_reg.h"
 #include "rvu.h"
+#include "cgx.h"
+
+enum {
+	CGX_STAT0,
+	CGX_STAT1,
+	CGX_STAT2,
+	CGX_STAT3,
+	CGX_STAT4,
+	CGX_STAT5,
+	CGX_STAT6,
+	CGX_STAT7,
+	CGX_STAT8,
+	CGX_STAT9,
+	CGX_STAT10,
+	CGX_STAT11,
+	CGX_STAT12,
+	CGX_STAT13,
+	CGX_STAT14,
+	CGX_STAT15,
+	CGX_STAT16,
+	CGX_STAT17,
+	CGX_STAT18,
+};
+
+static char *cgx_rx_stats_fields[] = {
+	[CGX_STAT0]	= "Received packets",
+	[CGX_STAT1]	= "Octets of received packets",
+	[CGX_STAT2]	= "Received PAUSE packets",
+	[CGX_STAT3]	= "Received PAUSE and control packets",
+	[CGX_STAT4]	= "Filtered DMAC0 (NIX-bound) packets",
+	[CGX_STAT5]	= "Filtered DMAC0 (NIX-bound) octets",
+	[CGX_STAT6]	= "Packets dropped due to RX FIFO full",
+	[CGX_STAT7]	= "Octets dropped due to RX FIFO full",
+	[CGX_STAT8]	= "Error packets",
+	[CGX_STAT9]	= "Filtered DMAC1 (NCSI-bound) packets",
+	[CGX_STAT10]	= "Filtered DMAC1 (NCSI-bound) octets",
+	[CGX_STAT11]	= "NCSI-bound packets dropped",
+	[CGX_STAT12]	= "NCSI-bound octets dropped",
+};
+
+static char *cgx_tx_stats_fields[] = {
+	[CGX_STAT0]	= "Packets dropped due to excessive collisions",
+	[CGX_STAT1]	= "Packets dropped due to excessive deferral",
+	[CGX_STAT2]	= "Multiple collisions before successful transmission",
+	[CGX_STAT3]	= "Single collisions before successful transmission",
+	[CGX_STAT4]	= "Total octets sent on the interface",
+	[CGX_STAT5]	= "Total frames sent on the interface",
+	[CGX_STAT6]	= "Packets sent with an octet count < 64",
+	[CGX_STAT7]	= "Packets sent with an octet count == 64",
+	[CGX_STAT8]	= "Packets sent with an octet count of 65–127",
+	[CGX_STAT9]	= "Packets sent with an octet count of 128-255",
+	[CGX_STAT10]	= "Packets sent with an octet count of 256-511",
+	[CGX_STAT11]	= "Packets sent with an octet count of 512-1023",
+	[CGX_STAT12]	= "Packets sent with an octet count of 1024-1518",
+	[CGX_STAT13]	= "Packets sent with an octet count of > 1518",
+	[CGX_STAT14]	= "Packets sent to a broadcast DMAC",
+	[CGX_STAT15]	= "Packets sent to the multicast DMAC",
+	[CGX_STAT16]	= "Transmit underflow and were truncated",
+	[CGX_STAT17]    = "Control/PAUSE packets sent",
+};
 
 #define rvu_dbg_NULL NULL
 #define RVU_DEBUG_FOPS(name, read_op, write_op) \
@@ -470,6 +530,100 @@ create_failed:
 	debugfs_remove_recursive(rvu->rvu_dbg.npa);
 }
 
+static int cgx_print_stats(void *cgxd, int lmac_id)
+{
+	int stat = 0, err = 0;
+	u64 tx_stat, rx_stat;
+
+	/* Rx stats */
+	pr_info("\n=======RX_STATS======\n\n");
+	while (stat < CGX_RX_STATS_COUNT) {
+		err = cgx_get_rx_stats(cgxd, lmac_id, stat, &rx_stat);
+		if (err)
+			return err;
+		pr_info("%s: %llu\n", cgx_rx_stats_fields[stat], rx_stat);
+		stat++;
+	}
+
+	/* Tx stats */
+	stat = 0;
+	pr_info("\n=======TX_STATS======\n\n");
+	while (stat < CGX_TX_STATS_COUNT) {
+		err = cgx_get_tx_stats(cgxd, lmac_id, stat, &tx_stat);
+		if (err)
+			return err;
+		pr_info("%s: %llu\n", cgx_tx_stats_fields[stat], tx_stat);
+		stat++;
+	}
+	return err;
+}
+
+static ssize_t rvu_dbg_cgx_stat_display(struct file *filp,
+					char __user *buffer,
+					size_t count, loff_t *ppos)
+{
+	void *data = filp->private_data;
+	struct dentry *current_dir;
+	int err = 0, lmac_id = 0;
+	char *subtoken, *buf;
+
+	current_dir = filp->f_path.dentry->d_parent;
+	buf = kzalloc(strlen(current_dir->d_name.name), GFP_KERNEL);
+	if (!buf)
+		return count;
+
+	memcpy(buf, current_dir->d_name.name,
+	       strlen(current_dir->d_name.name));
+
+	subtoken = strsep(&buf, "c");
+	if (kstrtoint(buf, 10, &lmac_id) >= 0) {
+		err = cgx_print_stats(data, lmac_id);
+		if (err)
+			goto stat_display_done;
+	}
+
+stat_display_done:
+	kfree(buf);
+	return err;
+}
+RVU_DEBUG_FOPS(cgx_stat, cgx_stat_display, NULL);
+
+static void rvu_dbg_cgx_init(struct rvu *rvu)
+{
+	const struct device *dev = &rvu->pdev->dev;
+	struct dentry *pfile;
+	int i, lmac_id;
+	char dname[20];
+	void *cgx;
+
+	rvu->rvu_dbg.cgx_root = debugfs_create_dir("cgx", rvu->rvu_dbg.root);
+
+	for (i = 0; i < cgx_get_cgx_cnt(); i++) {
+		cgx = cgx_get_pdata(i);
+		/* cgx debugfs dir */
+		sprintf(dname, "cgx%d", i);
+		rvu->rvu_dbg.cgx = debugfs_create_dir(dname,
+					rvu->rvu_dbg.cgx_root);
+		for (lmac_id = 0; lmac_id < cgx_get_lmac_cnt(cgx); lmac_id++) {
+			/* lmac debugfs dir */
+			sprintf(dname, "lmac%d", lmac_id);
+			rvu->rvu_dbg.lmac =
+				debugfs_create_dir(dname, rvu->rvu_dbg.cgx);
+
+			pfile =	debugfs_create_file("stats", 0600,
+						    rvu->rvu_dbg.lmac, cgx,
+						    &rvu_dbg_cgx_stat_fops);
+			if (!pfile)
+				goto create_failed;
+		}
+	}
+	return;
+
+create_failed:
+	dev_err(dev, "Failed to create debugfs dir/file for CGX\n");
+	debugfs_remove_recursive(rvu->rvu_dbg.cgx_root);
+}
+
 void rvu_dbg_init(struct rvu *rvu)
 {
 	struct device *dev = &rvu->pdev->dev;
@@ -486,6 +640,8 @@ void rvu_dbg_init(struct rvu *rvu)
 		goto create_failed;
 
 	rvu_dbg_npa_init(rvu);
+
+	rvu_dbg_cgx_init(rvu);
 
 	return;
 
