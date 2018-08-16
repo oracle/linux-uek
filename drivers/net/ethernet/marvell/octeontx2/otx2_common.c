@@ -16,6 +16,11 @@
 #include "otx2_common.h"
 #include "otx2_struct.h"
 
+static inline void otx2_nix_rq_op_stats(struct queue_stats *stats,
+					struct otx2_nic *pfvf, int qidx);
+static inline void otx2_nix_sq_op_stats(struct queue_stats *stats,
+					struct otx2_nic *pfvf, int qidx);
+
 /* Sync MAC address with RVU */
 int otx2_hw_set_mac_addr(struct otx2_nic *pfvf, struct net_device *netdev)
 {
@@ -184,6 +189,41 @@ int otx2_rss_init(struct otx2_nic *pfvf)
 			   FLOW_KEY_TYPE_SCTP;
 
 	return otx2_set_flowkey_cfg(pfvf);
+}
+
+void otx2_update_lmac_stats(struct otx2_nic *pfvf)
+{
+	struct msg_req *req;
+
+	if (!netif_running(pfvf->netdev))
+		return;
+	req = otx2_mbox_alloc_msg_CGX_STATS(&pfvf->mbox);
+	if (!req)
+		return;
+
+	otx2_sync_mbox_msg(&pfvf->mbox);
+}
+
+int otx2_update_rq_stats(struct otx2_nic *pfvf, int qidx)
+{
+	struct otx2_rcv_queue *rq = &pfvf->qset.rq[qidx];
+
+	if (!pfvf->qset.rq)
+		return 0;
+
+	otx2_nix_rq_op_stats(&rq->stats, pfvf, qidx);
+	return 1;
+}
+
+int otx2_update_sq_stats(struct otx2_nic *pfvf, int qidx)
+{
+	struct otx2_snd_queue *sq = &pfvf->qset.sq[qidx];
+
+	if (!pfvf->qset.sq)
+		return 0;
+
+	otx2_nix_sq_op_stats(&sq->stats, pfvf, qidx);
+	return 1;
 }
 
 void otx2_get_dev_stats(struct otx2_nic *pfvf)
@@ -451,17 +491,21 @@ static int otx2_sq_init(struct otx2_nic *pfvf, u16 qidx)
 		return err;
 
 	sq->sqe_base = sq->sqe->base;
-	sq->sg = kcalloc((SQ_QLEN + 1), sizeof(struct sg_list), GFP_KERNEL);
+	sq->sg = kcalloc((qset->sqe_cnt + 1),
+			 sizeof(struct sg_list), GFP_KERNEL);
 	if (!sq->sg)
 		return -ENOMEM;
 
 	sq->head = 0;
 	sq->num_sqbs = (pfvf->hw.sqb_size / sq->sqe_size) - 1;
-	sq->num_sqbs = (SQ_QLEN + sq->num_sqbs) / sq->num_sqbs;
+	sq->num_sqbs = (qset->sqe_cnt + sq->num_sqbs) / sq->num_sqbs;
 	sq->aura_id = pool_id;
 	sq->aura_fc_addr = pool->fc_addr->base;
 	sq->lmt_addr = (__force u64 *)(pfvf->reg_base + LMT_LF_LMTLINEX(qidx));
 	sq->io_addr = (__force u64)(pfvf->reg_base + NIX_LF_OP_SENDX(0));
+
+	sq->stats.bytes = 0;
+	sq->stats.pkts = 0;
 
 	/* Get memory to put this msg */
 	aq = otx2_mbox_alloc_msg_NIX_AQ_ENQ(&pfvf->mbox);
@@ -495,7 +539,7 @@ static int otx2_cq_init(struct otx2_nic *pfvf, u16 qidx)
 	int err, pool_id;
 
 	cq = &qset->cq[qidx];
-	cq->cqe_cnt = Q_COUNT(Q_SIZE_4K);
+	cq->cqe_cnt = qset->cqe_cnt;
 	cq->cqe_size = pfvf->qset.xqe_size;
 
 	/* Allocate memory for CQEs */
@@ -520,7 +564,7 @@ static int otx2_cq_init(struct otx2_nic *pfvf, u16 qidx)
 		return -ENOMEM;
 
 	aq->cq.ena = 1;
-	aq->cq.qsize = Q_SIZE_4K;
+	aq->cq.qsize = Q_SIZE(cq->cqe_cnt, 4);
 	aq->cq.caching = 1;
 	aq->cq.base = cq->cqe->iova;
 	aq->cq.cint_idx = (qidx < pfvf->hw.rx_queues) ? qidx
@@ -745,6 +789,7 @@ static int otx2_pool_init(struct otx2_nic *pfvf, u16 pool_id,
 
 int otx2_sq_aura_pool_init(struct otx2_nic *pfvf)
 {
+	struct otx2_qset *qset = &pfvf->qset;
 	int pool_id, stack_pages, num_sqbs;
 	struct otx2_hw *hw = &pfvf->hw;
 	struct otx2_pool *pool;
@@ -757,7 +802,7 @@ int otx2_sq_aura_pool_init(struct otx2_nic *pfvf)
 	 * Last SQE is used for pointing to next SQB.
 	 */
 	num_sqbs = (hw->sqb_size / 128) - 1;
-	num_sqbs = (SQ_QLEN + num_sqbs) / num_sqbs;
+	num_sqbs = (qset->sqe_cnt + num_sqbs) / num_sqbs;
 
 	/* Get no of stack pages needed */
 	stack_pages =
@@ -951,7 +996,44 @@ void otx2_ctx_disable(struct mbox *mbox, int type, bool npa)
 	WARN_ON(otx2_sync_mbox_msg(mbox));
 }
 
+static inline void otx2_nix_rq_op_stats(struct queue_stats *stats,
+					struct otx2_nic *pfvf, int qidx)
+{
+	u64 incr = (u64)qidx << 32;
+	atomic64_t *ptr;
+
+	ptr = (__force atomic64_t *)(pfvf->reg_base + NIX_LF_RQ_OP_OCTS);
+	stats->bytes = atomic64_fetch_add_relaxed(incr, ptr);
+
+	ptr = (__force atomic64_t *)(pfvf->reg_base + NIX_LF_RQ_OP_PKTS);
+	stats->pkts = atomic64_fetch_add_relaxed(incr, ptr);
+}
+
+static inline void otx2_nix_sq_op_stats(struct queue_stats *stats,
+					struct otx2_nic *pfvf, int qidx)
+{
+	u64 incr = (u64)qidx << 32;
+	atomic64_t *ptr;
+
+	ptr = (__force atomic64_t *)(pfvf->reg_base + NIX_LF_SQ_OP_OCTS);
+	stats->bytes = atomic64_fetch_add_relaxed(incr, ptr);
+
+	ptr = (__force atomic64_t *)(pfvf->reg_base + NIX_LF_SQ_OP_PKTS);
+	stats->pkts = atomic64_fetch_add_relaxed(incr, ptr);
+}
+
 /* Mbox message handlers */
+void mbox_handler_CGX_STATS(struct otx2_nic *pfvf,
+			    struct cgx_stats_rsp *rsp)
+{
+	int id;
+
+	for (id = 0; id < CGX_RX_STATS_COUNT; id++)
+		pfvf->hw.cgx_rx_stats[id] = rsp->rx_stats[id];
+	for (id = 0; id < CGX_TX_STATS_COUNT; id++)
+		pfvf->hw.cgx_tx_stats[id] = rsp->tx_stats[id];
+}
+
 void mbox_handler_NIX_TXSCH_ALLOC(struct otx2_nic *pf,
 				  struct nix_txsch_alloc_rsp *rsp)
 {
