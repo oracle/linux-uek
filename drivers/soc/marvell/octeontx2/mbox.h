@@ -15,6 +15,7 @@
 #include <linux/sizes.h>
 
 #include "rvu_struct.h"
+#include "common.h"
 
 #define MBOX_SIZE		SZ_64K
 
@@ -150,7 +151,9 @@ M(NPA_HWCTX_DISABLE,	0x403, hwctx_disable_req, msg_rsp)		\
 M(NIX_LF_ALLOC,		0x8000, nix_lf_alloc_req, nix_lf_alloc_rsp)	\
 M(NIX_LF_FREE,		0x8001, msg_req, msg_rsp)			\
 M(NIX_AQ_ENQ,		0x8002, nix_aq_enq_req, nix_aq_enq_rsp)		\
-M(NIX_HWCTX_DISABLE,	0x8003, hwctx_disable_req, msg_rsp)
+M(NIX_HWCTX_DISABLE,	0x8003, hwctx_disable_req, msg_rsp)		\
+M(NIX_TXSCH_ALLOC,	0x8004, nix_txsch_alloc_req, nix_txsch_alloc_rsp) \
+M(NIX_TXSCH_FREE,	0x8005, msg_req, msg_rsp)
 
 /* Messages initiated by AF (range 0xC00 - 0xDFF) */
 #define MBOX_UP_CGX_MESSAGES						\
@@ -411,6 +414,27 @@ struct nix_aq_enq_rsp {
 		struct nix_rsse_s   rss;
 		struct nix_rx_mce_s mce;
 	};
+};
+
+/* Tx scheduler/shaper mailbox messages */
+
+#define MAX_TXSCHQ_PER_FUNC		128
+
+struct nix_txsch_alloc_req {
+	struct mbox_msghdr hdr;
+	/* Scheduler queue count request at each level */
+	u16 schq_contig[NIX_TXSCH_LVL_CNT]; /* No of contiguous queues */
+	u16 schq[NIX_TXSCH_LVL_CNT]; /* No of non-contiguous queues */
+};
+
+struct nix_txsch_alloc_rsp {
+	struct mbox_msghdr hdr;
+	/* Scheduler queue count allocated at each level */
+	u16 schq_contig[NIX_TXSCH_LVL_CNT];
+	u16 schq[NIX_TXSCH_LVL_CNT];
+	/* Scheduler queue list allocated at each level */
+	u16 schq_contig_list[NIX_TXSCH_LVL_CNT][MAX_TXSCHQ_PER_FUNC];
+	u16 schq_list[NIX_TXSCH_LVL_CNT][MAX_TXSCHQ_PER_FUNC];
 };
 
 #endif /* MBOX_H */
