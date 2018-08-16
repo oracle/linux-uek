@@ -11,6 +11,8 @@
 #ifndef CGX_H
 #define CGX_H
 
+#include "cgx_fw_if.h"
+
  /* PCI device IDs */
 #define	PCI_DEVID_OCTEONTX2_CGX		0xA059
 
@@ -24,8 +26,35 @@
 /* Registers */
 #define CGXX_CMRX_RX_ID_MAP		0x060
 #define CGXX_CMRX_RX_LMACS		0x128
+#define CGXX_SCRATCH0_REG		0x1050
+#define CGXX_SCRATCH1_REG		0x1058
+#define CGX_CONST			0x2000
+
+#define CGX_COMMAND_REG			CGXX_SCRATCH1_REG
+#define CGX_EVENT_REG			CGXX_SCRATCH0_REG
+#define CGX_CMD_TIMEOUT			2200 /* msecs */
+
+#define CGX_NVEC			37
+#define CGX_LMAC_FWI			0
+
+struct cgx_link_event {
+	struct cgx_lnk_sts lstat;
+	u8 cgx_id;
+	u8 lmac_id;
+};
+
+/**
+ * struct cgx_event_cb
+ * @notify_link_chg:	callback for link change notification
+ * @data:	data passed to callback function
+ */
+struct cgx_event_cb {
+	int (*notify_link_chg)(struct cgx_link_event *, void *);
+	void *data;
+};
 
 int cgx_get_cgx_cnt(void);
 int cgx_get_lmac_cnt(void *cgxd);
 void *cgx_get_pdata(int cgx_id);
+int cgx_lmac_evh_register(struct cgx_event_cb *cb, void *cgxd, int lmac_id);
 #endif /* CGX_H */
