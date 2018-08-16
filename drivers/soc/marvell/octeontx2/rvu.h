@@ -31,6 +31,12 @@
 #define RVU_PFVF_FUNC_SHIFT	0
 #define RVU_PFVF_FUNC_MASK	0x3FF
 
+#ifdef CONFIG_DEBUG_FS
+struct rvu_debugfs {
+	struct dentry *root;
+};
+#endif
+
 struct rvu_work {
 	struct	work_struct work;
 	struct	rvu *rvu;
@@ -228,6 +234,11 @@ struct rvu {
 	struct			workqueue_struct *cgx_evh_wq;
 	spinlock_t		cgx_evq_lock; /* cgx event queue lock */
 	struct list_head	cgx_evq_head; /* cgx event queue head */
+
+	/* DebugFS */
+#ifdef CONFIG_DEBUG_FS
+	struct rvu_debugfs	rvu_dbg;
+#endif /* CONFIG_DEBUG_FS */
 };
 
 static inline void rvu_write64(struct rvu *rvu, u64 block, u64 offset, u64 val)
@@ -434,4 +445,12 @@ int rvu_mbox_handler_NPC_MCAM_ALLOC_AND_WRITE_ENTRY(struct rvu *rvu,
 			  struct npc_mcam_alloc_and_write_entry_rsp *rsp);
 int rvu_mbox_handler_NPC_GET_KEX_CFG(struct rvu *rvu, struct msg_req *req,
 				     struct npc_get_kex_cfg_rsp *rsp);
+
+#ifdef CONFIG_DEBUG_FS
+void rvu_dbg_init(struct rvu *rvu);
+void rvu_dbg_exit(struct rvu *rvu);
+#else
+static inline void rvu_dbg_init(struct rvu *rvu) {}
+static inline void rvu_dbg_exit(struct rvu *rvu) {}
+#endif /* CONFIG_DEBUG_FS*/
 #endif /* RVU_H */
