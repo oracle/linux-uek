@@ -38,6 +38,7 @@ struct rvu_debugfs {
 	struct dentry *cgx;
 	struct dentry *lmac;
 	struct dentry *npa;
+	struct dentry *nix;
 };
 #endif
 
