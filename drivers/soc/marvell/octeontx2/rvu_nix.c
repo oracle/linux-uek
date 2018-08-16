@@ -16,6 +16,50 @@
 #include "rvu.h"
 #include "cgx.h"
 
+static int nix_calibrate_x2p(struct rvu *rvu, int blkaddr)
+{
+	int idx, err;
+	u64 status;
+
+	/* Start X2P bus calibration */
+	rvu_write64(rvu, blkaddr, NIX_AF_CFG,
+		    rvu_read64(rvu, blkaddr, NIX_AF_CFG) | BIT_ULL(9));
+	/* Wait for calibration to complete */
+	err = rvu_poll_reg(rvu, blkaddr,
+			   NIX_AF_STATUS, BIT_ULL(10), false);
+	if (err) {
+		dev_err(rvu->dev, "NIX X2P bus calibration failed\n");
+		return err;
+	}
+
+	status = rvu_read64(rvu, blkaddr, NIX_AF_STATUS);
+	/* Check if CGX devices are ready */
+	for (idx = 0; idx < cgx_get_cgx_cnt(); idx++) {
+		if (status & (BIT_ULL(16 + idx)))
+			continue;
+		dev_err(rvu->dev,
+			"CGX%d didn't respond to NIX X2P calibration\n", idx);
+		err = -EBUSY;
+	}
+
+	/* Check if LBK is ready */
+	if (!(status & BIT_ULL(19))) {
+		dev_err(rvu->dev,
+			"LBK didn't respond to NIX X2P calibration\n");
+		err = -EBUSY;
+	}
+
+	/* Clear 'calibrate_x2p' bit */
+	rvu_write64(rvu, blkaddr, NIX_AF_CFG,
+		    rvu_read64(rvu, blkaddr, NIX_AF_CFG) & ~BIT_ULL(9));
+	if (err || (status & 0x3FFULL))
+		dev_err(rvu->dev,
+			"NIX X2P calibration failed, status 0x%llx\n", status);
+	if (err)
+		return err;
+	return 0;
+}
+
 static int nix_aq_init(struct rvu *rvu, struct rvu_block *block)
 {
 	u64 cfg;
@@ -62,6 +106,11 @@ int rvu_nix_init(struct rvu *rvu)
 	if (blkaddr < 0)
 		return 0;
 	block = &hw->block[blkaddr];
+
+	/* Calibrate X2P bus to check if CGX/LBK links are fine */
+	err = nix_calibrate_x2p(rvu, blkaddr);
+	if (err)
+		return err;
 
 	/* Initialize admin queue */
 	err = nix_aq_init(rvu, block);
