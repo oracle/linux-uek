@@ -146,6 +146,14 @@ M(NPA_LF_FREE,		0x401, msg_req, msg_rsp)			\
 M(NPA_AQ_ENQ,		0x402, npa_aq_enq_req, npa_aq_enq_rsp)		\
 M(NPA_HWCTX_DISABLE,	0x403, hwctx_disable_req, msg_rsp)		\
 /* SSO/SSOW mbox IDs (range 0x600 - 0x7FF) */				\
+M(SSO_LF_ALLOC,		0x600, sso_lf_alloc_req, sso_lf_alloc_rsp)	\
+M(SSO_LF_FREE,		0x601, sso_lf_free_req, msg_rsp)		\
+M(SSOW_LF_ALLOC,	0x602, ssow_lf_alloc_req, msg_rsp)		\
+M(SSOW_LF_FREE,		0x603, ssow_lf_free_req, msg_rsp)		\
+M(SSO_HW_SETCONFIG,	0x604, sso_hw_setconfig, msg_rsp)		\
+M(SSO_GRP_SET_PRIORITY,	0x605, sso_grp_priority, msg_rsp)		\
+M(SSO_GRP_GET_PRIORITY,	0x606, sso_grp_priority, sso_grp_priority)	\
+M(SSO_WS_CACHE_INV,	0x607, msg_req, msg_rsp)			\
 /* TIM mbox IDs (range 0x800 - 0x9FF) */				\
 /* CPT mbox IDs (range 0xA00 - 0xBFF) */				\
 /* NPC mbox IDs (range 0x6000 - 0x7FFF) */				\
@@ -567,6 +575,71 @@ struct nix_frs_cfg {
 	u8	sdp_link;      /* Set SDP RX link */
 	u16	maxlen;
 	u16	minlen;
+};
+
+/* SSO mailbox error codes
+ * Range 501 - 600.
+ */
+enum sso_af_status {
+	SSO_AF_ERR_PARAM	= -501,
+	SSO_AF_ERR_LF_INVALID	= -502,
+	SSO_AF_ERR_AF_LF_ALLOC	= -503,
+};
+
+struct sso_lf_alloc_req {
+	struct mbox_msghdr hdr;
+	int node;
+	u16 hwgrps;
+};
+
+struct sso_lf_alloc_rsp {
+	struct mbox_msghdr hdr;
+	u32	xaq_buf_size;
+	u32	xaq_wq_entries;
+	u32	in_unit_entries;
+	u16	hwgrps;
+};
+
+struct sso_lf_free_req {
+	struct mbox_msghdr hdr;
+	int node;
+	u16 hwgrps;
+};
+
+/* SSOW mailbox error codes
+ * Range 601 - 700.
+ */
+enum ssow_af_status {
+	SSOW_AF_ERR_PARAM	= -601,
+	SSOW_AF_ERR_LF_INVALID	= -602,
+	SSOW_AF_ERR_AF_LF_ALLOC	= -603,
+};
+
+struct ssow_lf_alloc_req {
+	struct mbox_msghdr hdr;
+	int node;
+	u16 hws;
+};
+
+struct ssow_lf_free_req {
+	struct mbox_msghdr hdr;
+	int node;
+	u16 hws;
+};
+
+struct sso_hw_setconfig {
+	struct mbox_msghdr hdr;
+	u32	npa_aura_id;
+	u32	npa_pf_func;
+	u16	hwgrps;
+};
+
+struct sso_grp_priority {
+	struct mbox_msghdr hdr;
+	u16 grp;
+	u8 priority;
+	u8 affinity;
+	u8 weight;
 };
 
 /* NPC mbox message structs */

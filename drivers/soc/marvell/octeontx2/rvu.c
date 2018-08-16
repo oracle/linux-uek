@@ -579,6 +579,7 @@ static void rvu_free_hw_resources(struct rvu *rvu)
 
 	rvu_npc_freemem(rvu);
 	rvu_nix_freemem(rvu);
+	rvu_sso_freemem(rvu);
 
 	/* Free block LF bitmaps */
 	for (id = 0; id < BLK_COUNT; id++) {
@@ -794,6 +795,10 @@ init:
 		return err;
 
 	err = rvu_npc_init(rvu);
+	if (err)
+		return err;
+
+	err = rvu_sso_init(rvu);
 	if (err)
 		return err;
 
@@ -1790,6 +1795,10 @@ static void rvu_blklf_teardown(struct rvu *rvu, u16 pcifunc, u8 blkaddr)
 			rvu_nix_lf_teardown(rvu, pcifunc, block->addr, lf);
 		else if (block->addr == BLKADDR_NPA)
 			rvu_npa_lf_teardown(rvu, pcifunc, lf);
+		else if (block->addr == BLKADDR_SSO)
+			rvu_sso_lf_teardown(rvu, lf);
+		else if (block->addr == BLKADDR_SSOW)
+			rvu_ssow_lf_teardown(rvu, lf);
 
 		err = rvu_lf_reset(rvu, block, lf);
 		if (err) {
