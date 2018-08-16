@@ -266,4 +266,7 @@ int rvu_mbox_handler_NIX_LF_FREE(struct rvu *rvu, struct msg_req *req,
 int rvu_mbox_handler_NIX_AQ_ENQ(struct rvu *rvu,
 				struct nix_aq_enq_req *req,
 				struct nix_aq_enq_rsp *rsp);
+int rvu_mbox_handler_NIX_HWCTX_DISABLE(struct rvu *rvu,
+				       struct hwctx_disable_req *req,
+				       struct msg_rsp *rsp);
 #endif /* RVU_H */
