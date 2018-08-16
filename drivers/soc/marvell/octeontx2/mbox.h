@@ -159,7 +159,8 @@ M(NIX_STATS_RST,	0x8007, msg_req, msg_rsp)			\
 M(NIX_VTAG_CFG,		0x8008, nix_vtag_config, msg_rsp)		\
 M(NIX_RSS_FLOWKEY_CFG,  0x8009, nix_rss_flowkey_cfg, msg_rsp)		\
 M(NIX_SET_MAC_ADDR,	0x800a, nix_set_mac_addr, msg_rsp)		\
-M(NIX_SET_RX_MODE,	0x800b, nix_rx_mode, msg_rsp)
+M(NIX_SET_RX_MODE,	0x800b, nix_rx_mode, msg_rsp)			\
+M(NIX_SET_HW_FRS,	0x800c, nix_frs_cfg, msg_rsp)
 
 /* Messages initiated by AF (range 0xC00 - 0xDFF) */
 #define MBOX_UP_CGX_MESSAGES						\
@@ -509,6 +510,15 @@ struct nix_rx_mode {
 #define NIX_RX_MODE_PROMISC	BIT(1)
 #define NIX_RX_MODE_ALLMULTI	BIT(2)
 	u16	mode;
+};
+
+struct nix_frs_cfg {
+	struct mbox_msghdr hdr;
+	u8	update_smq;    /* Update SMQ's min/max lens */
+	u8	update_minlen; /* Set minlen also */
+	u8	sdp_link;      /* Set SDP RX link */
+	u16	maxlen;
+	u16	minlen;
 };
 
 #endif /* MBOX_H */
