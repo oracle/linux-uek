@@ -133,7 +133,7 @@ static int nix_interface_init(struct rvu *rvu, u16 pcifunc, int type, int nixlf)
 {
 	struct rvu_pfvf *pfvf = rvu_get_pfvf(rvu, pcifunc);
 	u8 cgx_id, lmac_id;
-	int pkind, pf;
+	int pkind, pf, vf;
 	int err;
 
 	pf = rvu_get_pf(pcifunc);
@@ -159,6 +159,14 @@ static int nix_interface_init(struct rvu *rvu, u16 pcifunc, int type, int nixlf)
 		rvu_npc_set_pkind(rvu, pkind, pfvf);
 		break;
 	case NIX_INTF_TYPE_LBK:
+		vf = (pcifunc & RVU_PFVF_FUNC_MASK) - 1;
+		pfvf->rx_chan_base = NIX_CHAN_LBK_CHX(0, vf);
+		pfvf->tx_chan_base = vf & 0x1 ? NIX_CHAN_LBK_CHX(0, vf - 1) :
+						NIX_CHAN_LBK_CHX(0, vf + 1);
+		pfvf->rx_chan_cnt = 1;
+		pfvf->tx_chan_cnt = 1;
+		rvu_npc_install_promisc_entry(rvu, pcifunc, nixlf,
+					      pfvf->rx_chan_base, false);
 		break;
 	}
 
@@ -672,7 +680,7 @@ int rvu_mbox_handler_NIX_LF_ALLOC(struct rvu *rvu,
 				  struct nix_lf_alloc_req *req,
 				  struct nix_lf_alloc_rsp *rsp)
 {
-	int nixlf, qints, hwctx_size, err, rc = 0;
+	int nixlf, qints, hwctx_size, intf, err, rc = 0;
 	struct rvu_hwinfo *hw = rvu->hw;
 	u16 pcifunc = req->hdr.pcifunc;
 	struct rvu_block *block;
@@ -817,7 +825,8 @@ int rvu_mbox_handler_NIX_LF_ALLOC(struct rvu *rvu,
 	/* Config Rx pkt length, csum checks and apad  enable / disable */
 	rvu_write64(rvu, blkaddr, NIX_AF_LFX_RX_CFG(nixlf), req->rx_cfg);
 
-	err = nix_interface_init(rvu, pcifunc, NIX_INTF_TYPE_CGX, nixlf);
+	intf = is_afvf(pcifunc) ? NIX_INTF_TYPE_LBK : NIX_INTF_TYPE_CGX;
+	err = nix_interface_init(rvu, pcifunc, intf, nixlf);
 	if (err)
 		goto free_mem;
 
@@ -1339,6 +1348,10 @@ static int nix_update_bcast_mce_list(struct rvu *rvu, u16 pcifunc, bool add)
 	struct nix_hw *nix_hw;
 	struct rvu_pfvf *pfvf;
 	int blkaddr;
+
+	/* Broadcast pkt replication is not needed for AF's VFs, hence skip */
+	if (is_afvf(pcifunc))
+		return 0;
 
 	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NIX, pcifunc);
 	if (blkaddr < 0)
