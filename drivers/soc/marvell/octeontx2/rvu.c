@@ -771,6 +771,10 @@ init:
 	if (err)
 		return err;
 
+	err = rvu_nix_init(rvu);
+	if (err)
+		return err;
+
 	return 0;
 }
 
