@@ -554,6 +554,7 @@ fail:
 		    qidx, sq->num_sqbs, *sq->aura_fc_addr);
 	return false;
 }
+EXPORT_SYMBOL(otx2_sq_append_skb);
 
 int otx2_rxtx_enable(struct otx2_nic *pfvf, bool enable)
 {
