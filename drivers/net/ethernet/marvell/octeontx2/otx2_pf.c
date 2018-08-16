@@ -631,6 +631,18 @@ static void otx2_set_rx_mode(struct net_device *netdev)
 	otx2_sync_mbox_msg_busy_poll(&pf->mbox);
 }
 
+static void otx2_reset_task(struct work_struct *work)
+{
+	struct otx2_nic *pf = container_of(work, struct otx2_nic, reset_task);
+
+	if (!netif_running(pf->netdev))
+		return;
+
+	otx2_stop(pf->netdev);
+	otx2_open(pf->netdev);
+	netif_trans_update(pf->netdev);
+}
+
 static const struct net_device_ops otx2_netdev_ops = {
 	.ndo_open		= otx2_open,
 	.ndo_stop		= otx2_stop,
@@ -639,6 +651,7 @@ static const struct net_device_ops otx2_netdev_ops = {
 	.ndo_change_mtu         = otx2_change_mtu,
 	.ndo_set_rx_mode        = otx2_set_rx_mode,
 	.ndo_get_stats64	= otx2_get_stats64,
+	.ndo_tx_timeout         = otx2_tx_timeout,
 };
 
 static int otx2_probe(struct pci_dev *pdev, const struct pci_device_id *id)
@@ -753,6 +766,8 @@ static int otx2_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	/* MTU range: 68 - 9190 */
 	netdev->min_mtu = OTX2_MIN_MTU;
 	netdev->max_mtu = OTX2_MAX_MTU;
+
+	INIT_WORK(&pf->reset_task, otx2_reset_task);
 
 	err = register_netdev(netdev);
 	if (err) {
