@@ -24,15 +24,42 @@
 #define DRV_NAME	"OcteonTX2 CGX driver"
 #define DRV_VERSION	"1.0"
 
+/**
+ * struct lmac
+ * @wq_cmd_cmplt:	waitq to keep the process blocked until cmd completion
+ * @cmd_lock:		Lock to serialize the command interface
+ * @resp:		command response
+ * @event_cb:		callback for linkchange events
+ * @cmd_pend:		flag set before new command is started
+ *			flag cleared after command response is received
+ * @cgx:		parent cgx port
+ * @lmac_id:		lmac port id
+ * @name:		lmac port name
+ */
+struct lmac {
+	wait_queue_head_t wq_cmd_cmplt;
+	struct mutex cmd_lock;
+	struct cgx_evt_sts resp;
+	struct cgx_event_cb event_cb;
+	bool cmd_pend;
+	struct cgx *cgx;
+	u8 lmac_id;
+	char *name;
+};
+
 struct cgx {
 	void __iomem		*reg_base;
 	struct pci_dev		*pdev;
 	u8			cgx_id;
 	u8			lmac_count;
+	struct lmac		*lmac_idmap[MAX_LMAC_PER_CGX];
 	struct list_head	cgx_list;
 };
 
 static LIST_HEAD(cgx_list);
+
+/* CGX PHY management internal APIs */
+static int cgx_fwi_link_change(struct cgx *cgx, int lmac_id, bool en);
 
 /* Supported devices */
 static const struct pci_device_id cgx_id_table[] = {
@@ -46,9 +73,22 @@ MODULE_LICENSE("GPL v2");
 MODULE_VERSION(DRV_VERSION);
 MODULE_DEVICE_TABLE(pci, cgx_id_table);
 
+static void cgx_write(struct cgx *cgx, u64 lmac, u64 offset, u64 val)
+{
+	writeq(val, cgx->reg_base + (lmac << 18) + offset);
+}
+
 static u64 cgx_read(struct cgx *cgx, u64 lmac, u64 offset)
 {
 	return readq(cgx->reg_base + (lmac << 18) + offset);
+}
+
+static inline struct lmac *lmac_pdata(u8 lmac_id, struct cgx *cgx)
+{
+	if (!cgx || lmac_id >= MAX_LMAC_PER_CGX)
+		return NULL;
+
+	return cgx->lmac_idmap[lmac_id];
 }
 
 int cgx_get_cgx_cnt(void)
@@ -86,18 +126,308 @@ void *cgx_get_pdata(int cgx_id)
 }
 EXPORT_SYMBOL(cgx_get_pdata);
 
-static void cgx_lmac_init(struct cgx *cgx)
+/* CGX Firmware interface low level support */
+static int cgx_fwi_cmd_send(struct cgx_cmd *cmd, struct cgx_evt_sts *rsp,
+			    struct lmac *lmac)
 {
+	struct cgx *cgx = lmac->cgx;
+	union cgx_cmdreg creg;
+	union cgx_evtreg ereg;
+	struct device *dev;
+	int err = 0;
+
+	/* Ensure no other command is in progress */
+	err = mutex_lock_interruptible(&lmac->cmd_lock);
+	if (err)
+		return err;
+
+	/* Ensure command register is free */
+	creg.val = cgx_read(cgx, lmac->lmac_id,  CGX_COMMAND_REG);
+	if (creg.cmd.own != CGX_CMD_OWN_NS) {
+		err = -EBUSY;
+		goto unlock;
+	}
+
+	/* Update ownership in command request */
+	cmd->own = CGX_CMD_OWN_FIRMWARE;
+
+	/* Mark this lmac as pending, before we start */
+	lmac->cmd_pend = true;
+
+	/* Start command in hardware */
+	creg.cmd = *cmd;
+	cgx_write(cgx, lmac->lmac_id, CGX_COMMAND_REG, creg.val);
+	creg.val = cgx_read(cgx, lmac->lmac_id,  CGX_COMMAND_REG);
+
+	/* Ensure command is completed without errors */
+	if (!wait_event_timeout(lmac->wq_cmd_cmplt, !lmac->cmd_pend,
+				msecs_to_jiffies(CGX_CMD_TIMEOUT))) {
+		dev = &cgx->pdev->dev;
+		ereg.val = cgx_read(cgx, lmac->lmac_id,  CGX_EVENT_REG);
+		if (ereg.val) {
+			dev_err(dev, "cgx port %d:%d: No event for response\n",
+				cgx->cgx_id, lmac->lmac_id);
+			/* copy event */
+			lmac->resp = ereg.evt_sts;
+		} else {
+			dev_err(dev, "cgx port %d:%d cmd timeout\n",
+				cgx->cgx_id, lmac->lmac_id);
+			err = -EIO;
+			goto unlock;
+		}
+	}
+
+	/* we have a valid command response */
+	smp_rmb(); /* Ensure the latest updates are visible */
+	*rsp = lmac->resp;
+
+unlock:
+	mutex_unlock(&lmac->cmd_lock);
+
+	return err;
+}
+
+static inline int cgx_fwi_cmd_generic(struct cgx_cmd *req,
+				      struct cgx_evt_sts *rsp,
+				      struct cgx *cgx, int lmac_id)
+{
+	struct lmac *lmac;
+	int err;
+
+	lmac = lmac_pdata(lmac_id, cgx);
+	if (!lmac)
+		return -ENODEV;
+
+	err = cgx_fwi_cmd_send(req, rsp, lmac);
+
+	/* Check for valid response */
+	if (!err) {
+		if (rsp->stat == CGX_STAT_FAIL)
+			return -EIO;
+		else
+			return 0;
+	}
+
+	return err;
+}
+
+/* Hardware event handlers */
+static inline void cgx_link_change_handler(struct cgx_lnk_sts *lstat,
+					   struct lmac *lmac)
+{
+	struct cgx *cgx = lmac->cgx;
+	struct cgx_link_event event;
+	struct device *dev = &cgx->pdev->dev;
+
+	event.lstat = *lstat;
+	event.cgx_id = cgx->cgx_id;
+	event.lmac_id = lmac->lmac_id;
+
+	if (!lmac->event_cb.notify_link_chg) {
+		dev_dbg(dev, "cgx port %d:%d Link change handler null",
+			cgx->cgx_id, lmac->lmac_id);
+		if (lstat->err_type != CGX_ERR_NONE) {
+			dev_err(dev, "cgx port %d:%d Link error %x\n",
+				cgx->cgx_id, lmac->lmac_id, lstat->err_type);
+		}
+		dev_info(dev, "cgx port %d:%d Link status %s, speed %x\n",
+			 cgx->cgx_id, lmac->lmac_id,
+			lstat->link_up ? "UP" : "DOWN", lstat->speed);
+		return;
+	}
+
+	if (lmac->event_cb.notify_link_chg(&event, lmac->event_cb.data))
+		dev_err(dev, "event notification failure\n");
+}
+
+static inline bool cgx_cmdresp_is_linkevent(struct cgx_evt_sts *rsp)
+{
+	if (rsp->id == CGX_CMD_LINK_BRING_UP ||
+	    rsp->id == CGX_CMD_LINK_BRING_DOWN)
+		return true;
+	else
+		return false;
+}
+
+static inline bool cgx_event_is_linkevent(struct cgx_evt_sts *evt)
+{
+	if (evt->id == CGX_EVT_LINK_CHANGE)
+		return true;
+	else
+		return false;
+}
+
+static irqreturn_t cgx_fwi_event_handler(int irq, void *data)
+{
+	struct lmac *lmac = data;
+	struct cgx *cgx = lmac->cgx;
+	struct cgx_evt_sts event;
+	union cgx_evtreg ereg;
+	struct device *dev;
+
+	ereg.val = cgx_read(cgx, lmac->lmac_id, CGX_EVENT_REG);
+	if (!ereg.evt_sts.ack)
+		return IRQ_NONE;
+
+	dev = &cgx->pdev->dev;
+
+	event = ereg.evt_sts;
+
+	switch (event.evt_type) {
+	case CGX_EVT_CMD_RESP:
+		/* Copy the response. Since only one command is active at a
+		 * time, there is no way a response can get overwritten
+		 */
+		lmac->resp = event;
+		/* Ensure response is updated before thread context starts */
+		smp_wmb();
+
+		/* There wont be separate events for link change initiated from
+		 * software; Hence report the command responses as events
+		 */
+		if (cgx_cmdresp_is_linkevent(&event))
+			cgx_link_change_handler(&ereg.link_sts, lmac);
+
+		/* Release thread waiting for completion  */
+		lmac->cmd_pend = false;
+		wake_up_interruptible(&lmac->wq_cmd_cmplt);
+		break;
+	case CGX_EVT_ASYNC:
+		if (cgx_event_is_linkevent(&event))
+			cgx_link_change_handler(&ereg.link_sts, lmac);
+		break;
+	default:
+		dev_err(dev, "cgx port %d:%d Unknown event received\n",
+			cgx->cgx_id, lmac->lmac_id);
+	}
+
+	/*  Any new event or command response will be posted by firmware
+	 *  only after the current status is acked.
+	 */
+	cgx_write(lmac->cgx, lmac->lmac_id, CGX_EVENT_REG, 0);
+
+	return IRQ_HANDLED;
+}
+
+/* APIs for PHY management using CGX firmware interface */
+
+/* callback registration for hardware events like link change */
+int cgx_lmac_evh_register(struct cgx_event_cb *cb, void *cgxd, int lmac_id)
+{
+	struct lmac *lmac;
+	struct cgx *cgx = cgxd;
+
+	lmac = lmac_pdata(lmac_id, cgx);
+	if (!lmac)
+		return -ENODEV;
+
+	lmac->event_cb = *cb;
+
+	return 0;
+}
+EXPORT_SYMBOL(cgx_lmac_evh_register);
+
+static int cgx_fwi_link_change(struct cgx *cgx, int lmac_id, bool enable)
+{
+	struct cgx_cmd req = { 0 };
+	struct cgx_evt_sts rsp;
+
+	if (enable)
+		req.id = CGX_CMD_LINK_BRING_UP;
+	else
+		req.id = CGX_CMD_LINK_BRING_DOWN;
+
+	return cgx_fwi_cmd_generic(&req, &rsp, cgx, lmac_id);
+}
+EXPORT_SYMBOL(cgx_fwi_link_change);
+
+static inline int cgx_fwi_read_version(struct cgx_ver_s *ver, struct cgx *cgx)
+{
+	struct cgx_cmd req = { 0 };
+	union cgx_evtreg event;
+	int err;
+
+	req.id = CGX_CMD_GET_FW_VER;
+
+	err = cgx_fwi_cmd_generic(&req, &event.evt_sts, cgx, 0);
+	if (!err)
+		*ver = event.ver;
+
+	return err;
+}
+
+static int cgx_lmac_verify_fwi_version(struct cgx *cgx)
+{
+	struct cgx_ver_s ver;
+	struct device *dev = &cgx->pdev->dev;
+	int err;
+
+	err = cgx_fwi_read_version(&ver, cgx);
+	dev_dbg(dev, "Firmware command interface version = %d.%d\n",
+		ver.major_ver, ver.minor_ver);
+	if (err || ver.major_ver != CGX_FIRMWARE_MAJOR_VER ||
+	    ver.minor_ver != CGX_FIRMWARE_MINOR_VER)
+		return -EIO;
+	else
+		return 0;
+}
+
+static int cgx_lmac_init(struct cgx *cgx)
+{
+	struct lmac *lmac;
+	int i, err;
+
 	cgx->lmac_count = cgx_read(cgx, 0, CGXX_CMRX_RX_LMACS) & 0x7;
 	if (cgx->lmac_count > MAX_LMAC_PER_CGX)
 		cgx->lmac_count = MAX_LMAC_PER_CGX;
+
+	for (i = 0; i < cgx->lmac_count; i++) {
+		lmac = kcalloc(1, sizeof(struct lmac), GFP_KERNEL);
+		if (!lmac)
+			return -ENOMEM;
+		lmac->name = kcalloc(1, sizeof("cgx_fwi_xxx_yyy"), GFP_KERNEL);
+		if (!lmac->name)
+			return -ENOMEM;
+		sprintf(lmac->name, "cgx_fwi_%d_%d", cgx->cgx_id, i);
+		lmac->lmac_id = i;
+		lmac->cgx = cgx;
+		init_waitqueue_head(&lmac->wq_cmd_cmplt);
+		mutex_init(&lmac->cmd_lock);
+		err = request_irq(pci_irq_vector(cgx->pdev,
+						 CGX_LMAC_FWI + i * 9),
+				   cgx_fwi_event_handler, 0, lmac->name, lmac);
+		if (err)
+			return err;
+
+		/* Add reference */
+		cgx->lmac_idmap[i] = lmac;
+	}
+
+	return cgx_lmac_verify_fwi_version(cgx);
+}
+
+static int cgx_lmac_exit(struct cgx *cgx)
+{
+	struct lmac *lmac;
+	int i;
+
+	/* Free all lmac related resources */
+	for (i = 0; i < cgx->lmac_count; i++) {
+		lmac = cgx->lmac_idmap[i];
+		if (!lmac)
+			continue;
+		kfree(lmac->name);
+		kfree(lmac);
+	}
+
+	return 0;
 }
 
 static int cgx_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 {
-	int err;
 	struct device *dev = &pdev->dev;
 	struct cgx *cgx;
+	int err, nvec;
 
 	cgx = devm_kzalloc(dev, sizeof(*cgx), GFP_KERNEL);
 	if (!cgx)
@@ -127,14 +457,28 @@ static int cgx_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 		goto err_release_regions;
 	}
 
+	nvec = CGX_NVEC;
+	err = pci_alloc_irq_vectors(pdev, nvec, nvec, PCI_IRQ_MSIX);
+	if (err < 0 || err != nvec) {
+		dev_err(dev, "Request for %d msix vectors failed, err %d\n",
+			nvec, err);
+		goto err_release_regions;
+	}
+
 	list_add(&cgx->cgx_list, &cgx_list);
 	cgx->cgx_id = cgx_get_cgx_cnt() - 1;
-	cgx_lmac_init(cgx);
+
+	err = cgx_lmac_init(cgx);
+	if (err)
+		goto err_release_lmac;
+
 
 	return 0;
 
-err_release_regions:
+err_release_lmac:
+	cgx_lmac_exit(cgx);
 	list_del(&cgx->cgx_list);
+err_release_regions:
 	pci_release_regions(pdev);
 err_disable_device:
 	pci_disable_device(pdev);
@@ -146,6 +490,7 @@ static void cgx_remove(struct pci_dev *pdev)
 {
 	struct cgx *cgx = pci_get_drvdata(pdev);
 
+	cgx_lmac_exit(cgx);
 	list_del(&cgx->cgx_list);
 	pci_release_regions(pdev);
 	pci_disable_device(pdev);
