@@ -163,7 +163,33 @@ static int otx2_rq_init(struct otx2_nic *pfvf, u16 qidx)
 
 static int otx2_sq_init(struct otx2_nic *pfvf, u16 qidx)
 {
+	int pool_id = pfvf->hw.rx_queues + qidx;
+	struct otx2_qset *qset = &pfvf->qset;
+	struct otx2_snd_queue *sq;
 	struct nix_aq_enq_req *aq;
+	struct otx2_pool *pool;
+	int err;
+
+	pool = &pfvf->qset.pool[pool_id];
+	sq = &qset->sq[qidx];
+	sq->sqe_size = NIX_SQESZ_W16 ? 64 : 128;
+
+	err = qmem_alloc(pfvf->dev, &sq->sqe, 1, sq->sqe_size);
+	if (err)
+		return err;
+
+	sq->sqe_base = sq->sqe->base;
+	sq->sg = kcalloc((SQ_QLEN + 1), sizeof(struct sg_list), GFP_KERNEL);
+	if (!sq->sg)
+		return -ENOMEM;
+
+	sq->head = 0;
+	sq->num_sqbs = (pfvf->hw.sqb_size / sq->sqe_size) - 1;
+	sq->num_sqbs = (SQ_QLEN + sq->num_sqbs) / sq->num_sqbs;
+	sq->aura_id = pool_id;
+	sq->aura_fc_addr = pool->fc_addr->base;
+	sq->lmt_addr = (__force u64 *)(pfvf->reg_base + LMT_LF_LMTLINEX(qidx));
+	sq->io_addr = (__force u64)(pfvf->reg_base + NIX_LF_OP_SENDX(0));
 
 	/* Get memory to put this msg */
 	aq = otx2_mbox_alloc_msg_NIX_AQ_ENQ(&pfvf->mbox);
