@@ -122,7 +122,8 @@ static inline struct mbox_msghdr *otx2_mbox_alloc_msg(struct otx2_mbox *mbox,
 M(READY,		0x001, msg_req, ready_msg_rsp)			\
 M(ATTACH_RESOURCES,	0x002, rsrc_attach, msg_rsp)			\
 M(DETACH_RESOURCES,	0x003, rsrc_detach, msg_rsp)			\
-M(MSIX_OFFSET,		0x004, msg_req, msix_offset_rsp)		\
+M(FREE_RSRC_CNT,	0x004, msg_req, free_rsrcs_rsp)			\
+M(MSIX_OFFSET,		0x005, msg_req, msix_offset_rsp)		\
 M(VF_FLR,		0x006, msg_req, msg_rsp)			\
 /* CGX mbox IDs (range 0x200 - 0x3FF) */				\
 M(CGX_START_RXTX,	0x200, msg_req, msg_rsp)			\
@@ -253,6 +254,21 @@ struct rsrc_detach {
 	u8 ssow:1;
 	u8 timlfs:1;
 	u8 cptlfs:1;
+};
+
+/*
+ * Number of resources available to the caller.
+ * In reply to MBOX_MSG_FREE_RSRC_CNT.
+ */
+struct free_rsrcs_rsp {
+	struct mbox_msghdr hdr;
+	u16 schq[NIX_TXSCH_LVL_CNT];
+	u16  sso;
+	u16  tim;
+	u16  ssow;
+	u16  cpt;
+	u8   npa;
+	u8   nix;
 };
 
 #define MSIX_VECTOR_INVALID	0xFFFF
