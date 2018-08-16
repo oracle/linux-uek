@@ -394,6 +394,7 @@ int otx2_set_real_num_queues(struct net_device *netdev,
 			   "Failed to set no of Rx queues: %d\n", rx_queues);
 	return err;
 }
+EXPORT_SYMBOL(otx2_set_real_num_queues);
 
 static irqreturn_t otx2_cq_intr_handler(int irq, void *cq_irq)
 {
@@ -705,6 +706,7 @@ freemem:
 	kfree(qset->napi);
 	return err;
 }
+EXPORT_SYMBOL(otx2_open);
 
 int otx2_stop(struct net_device *netdev)
 {
@@ -754,6 +756,7 @@ int otx2_stop(struct net_device *netdev)
 	memset(qset, 0, sizeof(*qset));
 	return 0;
 }
+EXPORT_SYMBOL(otx2_stop);
 
 static void otx2_set_rx_mode(struct net_device *netdev)
 {
