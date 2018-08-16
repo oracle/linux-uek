@@ -461,3 +461,21 @@ int rvu_mbox_handler_CGX_STOP_LINKEVENTS(struct rvu *rvu, struct msg_req *req,
 	rvu_cgx_config_linkevents(rvu, req->hdr.pcifunc, false);
 	return 0;
 }
+
+int rvu_mbox_handler_CGX_GET_LINKINFO(struct rvu *rvu, struct msg_req *req,
+				      struct cgx_link_info_msg *rsp)
+{
+	u8 cgx_id, lmac_id;
+	int pf, err;
+
+	pf = rvu_get_pf(req->hdr.pcifunc);
+
+	if (!is_pf_cgxmapped(rvu, pf))
+		return -ENODEV;
+
+	rvu_get_cgx_lmac_id(rvu->pf2cgxlmac_map[pf], &cgx_id, &lmac_id);
+
+	err = cgx_get_link_info(rvu_cgx_pdata(cgx_id, rvu), lmac_id,
+				&rsp->link_info);
+	return err;
+}
