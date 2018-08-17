@@ -191,7 +191,24 @@ static int otx2_sq_init(struct otx2_nic *pfvf, u16 qidx)
 
 static int otx2_cq_init(struct otx2_nic *pfvf, u16 qidx)
 {
+	struct otx2_qset *qset = &pfvf->qset;
 	struct nix_aq_enq_req *aq;
+	struct otx2_cq_queue *cq;
+	int err;
+
+	cq = &qset->cq[qidx];
+	cq->cqe_cnt = Q_COUNT(Q_SIZE_4K);
+	cq->cqe_size = pfvf->qset.xqe_size;
+
+	/* Allocate memory for CQEs */
+	err = qmem_alloc(pfvf->dev, &cq->cqe, cq->cqe_cnt, cq->cqe_size);
+	if (err)
+		return err;
+
+	/* Save CQE CPU base for faster reference */
+	cq->cqe_base = cq->cqe->base;
+	cq->rbpool = &qset->pool[qidx];
+	cq->cq_idx = qidx;
 
 	/* Get memory to put this msg */
 	aq = otx2_mbox_alloc_msg_NIX_AQ_ENQ(&pfvf->mbox);
@@ -201,7 +218,10 @@ static int otx2_cq_init(struct otx2_nic *pfvf, u16 qidx)
 	aq->cq.ena = 1;
 	aq->cq.qsize = Q_SIZE_4K;
 	aq->cq.caching = 1;
-	aq->cq.base = 1;
+	aq->cq.base = cq->cqe->iova;
+	aq->cq.cint_idx = (qidx < pfvf->hw.rx_queues) ? qidx
+				: (qidx - pfvf->hw.rx_queues);
+	cq->cint_idx = aq->cq.cint_idx;
 
 	/* Fill AQ info */
 	aq->qidx = qidx;
@@ -607,8 +627,9 @@ void mbox_handler_MSIX_OFFSET(struct otx2_nic *pfvf,
 
 void otx2_disable_msix(struct otx2_nic *pfvf)
 {
+	struct otx2_qset *qset = &pfvf->qset;
 	struct otx2_hw *hw = &pfvf->hw;
-	int irq;
+	int irq, qidx = 0;
 
 	if (!hw->irq_allocated)
 		goto freemem;
@@ -617,7 +638,12 @@ void otx2_disable_msix(struct otx2_nic *pfvf)
 	for (irq = 0; irq < hw->num_vec; irq++) {
 		if (!hw->irq_allocated[irq])
 			continue;
-		free_irq(pci_irq_vector(hw->pdev, irq), pfvf);
+		if (irq < (hw->nix_msixoff + NIX_LF_CINT_VEC_START)) {
+			free_irq(pci_irq_vector(pfvf->pdev, irq), pfvf);
+		} else {
+			free_irq(pci_irq_vector(pfvf->pdev, irq),
+				 &qset->napi[qidx++]);
+		}
 	}
 
 	pci_free_irq_vectors(hw->pdev);
