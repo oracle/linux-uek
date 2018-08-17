@@ -48,6 +48,95 @@ ret:
 	return iova;
 }
 
+static int otx2_get_link(struct otx2_nic *pfvf)
+{
+	int link = 0;
+	u16 map;
+
+	/* cgx lmac link */
+	if (pfvf->tx_chan_base >= 0x800) {
+		map = pfvf->tx_chan_base & 0x7FF;
+		link = 4 * ((map >> 8) & 0xF) + ((map >> 4) & 0xF);
+	}
+	/* LBK channel */
+	if (pfvf->tx_chan_base >= 0 && pfvf->tx_chan_base < 0x700)
+		link = 12;
+
+	return link;
+}
+
+int otx2_txschq_config(struct otx2_nic *pfvf, int lvl)
+{
+	struct nix_txschq_config *req;
+	struct otx2_hw *hw = &pfvf->hw;
+	u64 schq, parent;
+
+	req = otx2_mbox_alloc_msg_NIX_TXSCHQ_CFG(&pfvf->mbox);
+	if (!req)
+		return -ENOMEM;
+
+	req->lvl = lvl;
+	req->num_regs = 1;
+
+	schq = hw->txschq_list[lvl][0];
+	/* Set topology e.t.c configuration */
+	if (lvl == NIX_TXSCH_LVL_SMQ) {
+		/* Set min and max Tx packet lengths */
+		req->reg[0] = NIX_AF_SMQX_CFG(schq);
+		req->regval[0] = (pfvf->netdev->mtu << 8) | NIC_HW_MIN_FRS;
+
+		req->num_regs++;
+		/* MDQ config */
+		parent =  hw->txschq_list[NIX_TXSCH_LVL_TL4][0];
+		req->reg[1] = NIX_AF_MDQX_PARENT(schq);
+		req->regval[1] = parent << 16;
+		req->num_regs++;
+		/* Set DWRR quantum */
+		req->reg[2] = NIX_AF_MDQX_SCHEDULE(schq);
+		req->regval[2] = pfvf->netdev->mtu;
+	} else if (lvl == NIX_TXSCH_LVL_TL4) {
+		parent =  hw->txschq_list[NIX_TXSCH_LVL_TL3][0];
+		req->reg[0] = NIX_AF_TL4X_PARENT(schq);
+		req->regval[0] = parent << 16;
+	} else if (lvl == NIX_TXSCH_LVL_TL3) {
+		parent = hw->txschq_list[NIX_TXSCH_LVL_TL2][0];
+		req->reg[0] = NIX_AF_TL3X_PARENT(schq);
+		req->regval[0] = parent << 16;
+		req->num_regs++;
+		req->reg[1] = NIX_AF_TL3_TL2X_LINKX_CFG(schq,
+							otx2_get_link(pfvf));
+		/* Enable this queue and backpressure */
+		req->regval[1] = BIT_ULL(13) | BIT_ULL(12);
+	} else if (lvl == NIX_TXSCH_LVL_TL2) {
+		parent =  hw->txschq_list[NIX_TXSCH_LVL_TL1][0];
+		req->reg[0] = NIX_AF_TL2X_PARENT(schq);
+		req->regval[0] = parent << 16;
+	} else if (lvl == NIX_TXSCH_LVL_TL1) {
+		/* Set DWRR quantum */
+		req->reg[0] = NIX_AF_TL1X_SCHEDULE(schq);
+		req->regval[0] = pfvf->netdev->mtu;
+	}
+
+	return otx2_sync_mbox_msg(&pfvf->mbox);
+}
+
+int otx2_txsch_alloc(struct otx2_nic *pfvf)
+{
+	struct nix_txsch_alloc_req *req;
+	int lvl;
+
+	/* Get memory to put this msg */
+	req = otx2_mbox_alloc_msg_NIX_TXSCH_ALLOC(&pfvf->mbox);
+	if (!req)
+		return -ENOMEM;
+
+	/* Request one schq per level */
+	for (lvl = 0; lvl < NIX_TXSCH_LVL_CNT; lvl++)
+		req->schq[lvl] = 1;
+
+	return otx2_sync_mbox_msg(&pfvf->mbox);
+}
+
 static int otx2_rq_init(struct otx2_nic *pfvf, u16 qidx)
 {
 	struct nix_aq_enq_req *aq;
@@ -85,7 +174,8 @@ static int otx2_sq_init(struct otx2_nic *pfvf, u16 qidx)
 	aq->sq.max_sqe_size = NIX_MAXSQESZ_W16; /* 128 byte */
 	aq->sq.cq_ena = 1;
 	aq->sq.ena = 1;
-	aq->sq.smq = 0;
+	/* Only one SMQ is allocated, map all SQ's to that SMQ  */
+	aq->sq.smq = pfvf->hw.txschq_list[NIX_TXSCH_LVL_SMQ][0];
 	aq->sq.smq_rr_quantum = DMA_BUFFER_LEN / 4;
 	aq->sq.default_chan = pfvf->tx_chan_base;
 	aq->sq.sqe_stype = NIX_STYPE_STF; /* Cache SQB */
@@ -480,6 +570,18 @@ int otx2_attach_npa_nix(struct otx2_nic *pfvf)
 }
 
 /* Mbox message handlers */
+void mbox_handler_NIX_TXSCH_ALLOC(struct otx2_nic *pf,
+				  struct nix_txsch_alloc_rsp *rsp)
+{
+	int lvl, schq;
+
+	/* Setup transmit scheduler list */
+	for (lvl = 0; lvl < NIX_TXSCH_LVL_CNT; lvl++)
+		for (schq = 0; schq < rsp->schq[lvl]; schq++)
+			pf->hw.txschq_list[lvl][schq] =
+				rsp->schq_list[lvl][schq];
+}
+
 void mbox_handler_NPA_LF_ALLOC(struct otx2_nic *pfvf,
 			       struct npa_lf_alloc_rsp *rsp)
 {

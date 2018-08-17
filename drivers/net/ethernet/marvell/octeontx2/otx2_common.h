@@ -73,6 +73,8 @@ struct otx2_hw {
 	u16			nix_msixoff; /* Offset of NIX vectors */
 	bool			*irq_allocated;
 	char			*irq_name;
+
+	u16		txschq_list[NIX_TXSCH_LVL_CNT][MAX_TXSCHQ_PER_FUNC];
 };
 
 struct otx2_nic {
@@ -201,6 +203,8 @@ int otx2_sq_aura_pool_init(struct otx2_nic *pfvf);
 int otx2_rq_aura_pool_init(struct otx2_nic *pfvf);
 int otx2_config_nix(struct otx2_nic *pfvf);
 int otx2_config_nix_queues(struct otx2_nic *pfvf);
+int otx2_txschq_config(struct otx2_nic *pfvf, int lvl);
+int otx2_txsch_alloc(struct otx2_nic *pfvf);
 
 /* Mbox handlers */
 void mbox_handler_MSIX_OFFSET(struct otx2_nic *pfvf,
@@ -209,5 +213,7 @@ void mbox_handler_NPA_LF_ALLOC(struct otx2_nic *pfvf,
 			       struct npa_lf_alloc_rsp *rsp);
 void mbox_handler_NIX_LF_ALLOC(struct otx2_nic *pfvf,
 			       struct nix_lf_alloc_rsp *rsp);
+void mbox_handler_NIX_TXSCH_ALLOC(struct otx2_nic *pf,
+				  struct nix_txsch_alloc_rsp *rsp);
 
 #endif /* OTX2_COMMON_H */

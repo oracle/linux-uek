@@ -64,6 +64,10 @@ static void otx2_process_pfaf_mbox_msg(struct otx2_nic *pf,
 	case MBOX_MSG_NIX_LF_ALLOC:
 		mbox_handler_NIX_LF_ALLOC(pf, (struct nix_lf_alloc_rsp *)msg);
 		break;
+	case MBOX_MSG_NIX_TXSCH_ALLOC:
+		mbox_handler_NIX_TXSCH_ALLOC(pf,
+					     (struct nix_txsch_alloc_rsp *)msg);
+		break;
 	default:
 		if (msg->rc)
 			dev_err(pf->dev,
@@ -254,7 +258,7 @@ static int otx2_set_real_num_queues(struct net_device *netdev,
 
 static int otx2_init_hw_resources(struct otx2_nic *pf)
 {
-	int err;
+	int err, lvl;
 
 	/* NPA init */
 	err = otx2_config_npa(pf);
@@ -276,9 +280,19 @@ static int otx2_init_hw_resources(struct otx2_nic *pf)
 	if (err)
 		return err;
 
+	err = otx2_txsch_alloc(pf);
+	if (err)
+		return err;
+
 	err = otx2_config_nix_queues(pf);
 	if (err)
 		return err;
+
+	for (lvl = 0; lvl < NIX_TXSCH_LVL_CNT; lvl++) {
+		err = otx2_txschq_config(pf, lvl);
+		if (err)
+			return err;
+	}
 
 	return 0;
 }
