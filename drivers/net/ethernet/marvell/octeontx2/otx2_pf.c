@@ -674,12 +674,10 @@ int otx2_open(struct net_device *netdev)
 		pf->hw.irq_allocated[vec] = true;
 		vec++;
 
-		/* Configure CQE interrupt coalescing parameters.
-		 * Set ECOUNT_WAIT and QCOUNT_WAIT to non-zero values.
-		 * TODO: Add timer expiry coalescing as well,
-		 * for now trigger a IRQ when CQE count >= 1.
-		 */
-		otx2_write64(pf, NIX_LF_CINTX_WAIT(qidx), 0x00);
+		/* Configure CQE interrupt coalescing parameters */
+		otx2_write64(pf, NIX_LF_CINTX_WAIT(qidx),
+			     ((u64)pf->cq_time_wait << 48) |
+			     pf->cq_ecount_wait);
 
 		/* Enable CQ IRQ */
 		otx2_write64(pf, NIX_LF_CINTX_INT(qidx), BIT_ULL(0));
@@ -900,6 +898,9 @@ static int otx2_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	err = otx2_set_real_num_queues(netdev, hw->tx_queues, hw->rx_queues);
 	if (err)
 		goto err_detach_rsrc;
+
+	pf->cq_time_wait = CQ_TIMER_THRESH_DEFAULT;
+	pf->cq_ecount_wait = CQ_CQE_THRESH_DEFAULT;
 
 	/* NPA's pool is a stack to which SW frees buffer pointers via Aura.
 	 * HW allocates buffer pointer from stack and uses it for DMA'ing
