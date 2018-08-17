@@ -5782,7 +5782,7 @@ static int select_idle_cpu(struct task_struct *p, struct sched_domain *sd, int t
 
 	if (sched_feat(SIS_PROP)) {
 		u64 span_avg = sd->span_weight * avg_idle;
-		floor = cpumask_weight(topology_sibling_cpumask(target));
+		floor = topology_sibling_weight(target);
 		if (floor < 2)
 			floor = 2;
 		limit = floor << 1;
