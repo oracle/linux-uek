@@ -54,12 +54,12 @@ static int otx2_get_link(struct otx2_nic *pfvf)
 	u16 map;
 
 	/* cgx lmac link */
-	if (pfvf->tx_chan_base >= 0x800) {
+	if (pfvf->tx_chan_base >= CGX_CHAN_BASE) {
 		map = pfvf->tx_chan_base & 0x7FF;
 		link = 4 * ((map >> 8) & 0xF) + ((map >> 4) & 0xF);
 	}
 	/* LBK channel */
-	if (pfvf->tx_chan_base >= 0 && pfvf->tx_chan_base < 0x700)
+	if (pfvf->tx_chan_base < SDP_CHAN_BASE)
 		link = 12;
 
 	return link;

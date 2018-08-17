@@ -14,6 +14,10 @@
 #include <linux/etherdevice.h>
 #include <linux/iommu.h>
 
+#define LBK_CHAN_BASE	0x000
+#define SDP_CHAN_BASE	0x700
+#define CGX_CHAN_BASE	0x800
+
 #define RQ_QLEN		1024
 #define SQ_QLEN		1024
 #define DMA_BUFFER_LEN	1536 /* In multiples of 128bytes */
