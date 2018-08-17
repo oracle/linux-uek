@@ -455,6 +455,14 @@ static int otx2_open(struct net_device *netdev)
 		otx2_write64(pf, NIX_LF_CINTX_ENA_W1S(qidx), BIT_ULL(0));
 	}
 
+	err = otx2_rxtx_enable(pf, true);
+	if (err)
+		goto cleanup;
+
+	pf->intf_down = false;
+	netif_carrier_on(netdev);
+	netif_tx_start_all_queues(netdev);
+
 	return 0;
 
 cleanup:
@@ -473,6 +481,13 @@ static int otx2_stop(struct net_device *netdev)
 	struct otx2_cq_poll *cq_poll = NULL;
 	struct otx2_qset *qset = &pf->qset;
 	int qidx, vec;
+
+	/* First stop packet Rx/Tx at CGX */
+	otx2_rxtx_enable(pf, false);
+
+	pf->intf_down = true;
+	/* 'intf_down' may be checked on any cpu */
+	smp_wmb();
 
 	netif_carrier_off(netdev);
 	netif_tx_stop_all_queues(netdev);

@@ -319,6 +319,10 @@ int otx2_poll(struct napi_struct *napi, int budget)
 		/* Exit polling */
 		napi_complete(napi);
 
+		/* If interface is going down, don't re-enable IRQ */
+		if (pfvf->intf_down)
+			return workdone;
+
 		/* Re-enable interrupts */
 		otx2_write64(pfvf, NIX_LF_CINTX_ENA_W1S(cq_poll->cint_idx),
 			     BIT_ULL(0));
@@ -445,4 +449,22 @@ fail:
 	netdev_warn(pfvf->netdev, "SQ%d full, SQB count %d Aura count %lld\n",
 		    qidx, sq->num_sqbs, *sq->aura_fc_addr);
 	return false;
+}
+
+int otx2_rxtx_enable(struct otx2_nic *pfvf, bool enable)
+{
+	struct msg_req *msg;
+
+	if (pfvf->tx_chan_base < CGX_CHAN_BASE)
+		return 0;
+
+	if (enable)
+		msg = otx2_mbox_alloc_msg_CGX_START_RXTX(&pfvf->mbox);
+	else
+		msg = otx2_mbox_alloc_msg_CGX_STOP_RXTX(&pfvf->mbox);
+
+	if (!msg)
+		return -ENOMEM;
+
+	return otx2_sync_mbox_msg(&pfvf->mbox);
 }
