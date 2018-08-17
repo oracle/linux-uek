@@ -190,6 +190,10 @@ static inline int cpu_to_mem(int cpu)
 #ifndef topology_sibling_cpumask
 #define topology_sibling_cpumask(cpu)		cpumask_of(cpu)
 #endif
+#ifndef topology_sibling_weight
+#define topology_sibling_weight(cpu)	\
+		cpumask_weight(topology_sibling_cpumask(cpu))
+#endif
 #ifndef topology_core_cpumask
 #define topology_core_cpumask(cpu)		cpumask_of(cpu)
 #endif

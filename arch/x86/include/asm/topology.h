@@ -111,6 +111,7 @@ extern const struct cpumask *cpu_coregroup_mask(int cpu);
 #ifdef CONFIG_SMP
 #define topology_core_cpumask(cpu)		(per_cpu(cpu_core_map, cpu))
 #define topology_sibling_cpumask(cpu)		(per_cpu(cpu_sibling_map, cpu))
+#define topology_sibling_weight(cpu)	(per_cpu(cpumask_weight_sibling, cpu))
 
 extern unsigned int __max_logical_packages;
 #define topology_max_packages()			(__max_logical_packages)

@@ -93,6 +93,10 @@ DEFINE_PER_CPU_READ_MOSTLY(u16, cpu_llc_id) = BAD_APICID;
 DEFINE_PER_CPU_READ_MOSTLY(cpumask_var_t, cpu_sibling_map);
 EXPORT_PER_CPU_SYMBOL(cpu_sibling_map);
 
+/* representing number of HT siblings of each CPU */
+DEFINE_PER_CPU_READ_MOSTLY(unsigned int, cpumask_weight_sibling);
+EXPORT_PER_CPU_SYMBOL(cpumask_weight_sibling);
+
 /* representing HT and core siblings of each logical CPU */
 DEFINE_PER_CPU_READ_MOSTLY(cpumask_var_t, cpu_core_map);
 EXPORT_PER_CPU_SYMBOL(cpu_core_map);
@@ -495,6 +499,8 @@ void set_cpu_sibling_map(int cpu)
 
 	if (!has_mp) {
 		cpumask_set_cpu(cpu, topology_sibling_cpumask(cpu));
+		per_cpu(cpumask_weight_sibling, cpu) =
+		    cpumask_weight(topology_sibling_cpumask(cpu));
 		cpumask_set_cpu(cpu, cpu_llc_shared_mask(cpu));
 		cpumask_set_cpu(cpu, topology_core_cpumask(cpu));
 		c->booted_cores = 1;
@@ -504,8 +510,12 @@ void set_cpu_sibling_map(int cpu)
 	for_each_cpu(i, cpu_sibling_setup_mask) {
 		o = &cpu_data(i);
 
-		if ((i == cpu) || (has_smt && match_smt(c, o)))
+		if ((i == cpu) || (has_smt && match_smt(c, o))) {
 			link_mask(topology_sibling_cpumask, cpu, i);
+			threads = cpumask_weight(topology_sibling_cpumask(cpu));
+			per_cpu(cpumask_weight_sibling, cpu) = threads;
+			per_cpu(cpumask_weight_sibling, i) = threads;
+		}
 
 		if ((i == cpu) || (has_mp && match_llc(c, o)))
 			link_mask(cpu_llc_shared_mask, cpu, i);
@@ -1138,6 +1148,8 @@ static __init void disable_smp(void)
 	else
 		physid_set_mask_of_physid(0, &phys_cpu_present_map);
 	cpumask_set_cpu(0, topology_sibling_cpumask(0));
+	per_cpu(cpumask_weight_sibling, 0) =
+	    cpumask_weight(topology_sibling_cpumask(0));
 	cpumask_set_cpu(0, topology_core_cpumask(0));
 }
 
@@ -1490,12 +1502,16 @@ static void remove_siblinginfo(int cpu)
 			cpu_data(sibling).booted_cores--;
 	}
 
-	for_each_cpu(sibling, topology_sibling_cpumask(cpu))
+	for_each_cpu(sibling, topology_sibling_cpumask(cpu)) {
 		cpumask_clear_cpu(cpu, topology_sibling_cpumask(sibling));
+		per_cpu(cpumask_weight_sibling, sibling) =
+		    cpumask_weight(topology_sibling_cpumask(sibling));
+	}
 	for_each_cpu(sibling, cpu_llc_shared_mask(cpu))
 		cpumask_clear_cpu(cpu, cpu_llc_shared_mask(sibling));
 	cpumask_clear(cpu_llc_shared_mask(cpu));
 	cpumask_clear(topology_sibling_cpumask(cpu));
+	per_cpu(cpumask_weight_sibling, cpu) = 0;
 	cpumask_clear(topology_core_cpumask(cpu));
 	c->phys_proc_id = 0;
 	c->cpu_core_id = 0;
