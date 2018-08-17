@@ -14,6 +14,7 @@
 #include <mbox.h>
 
 #include "otx2_reg.h"
+#include "otx2_txrx.h"
 
 /* PCI device IDs */
 #define PCI_DEVID_OCTEONTX2_RVU_PF              0xA063
@@ -24,28 +25,12 @@
 
 #define NAME_SIZE                               32
 
-#define RQ_QLEN		1024
-#define SQ_QLEN		1024
-
-#define DMA_BUFFER_LEN	1536 /* In multiples of 128bytes */
-#define RCV_FRAG_LEN	(SKB_DATA_ALIGN(DMA_BUFFER_LEN + NET_SKB_PAD) + \
-			 SKB_DATA_ALIGN(sizeof(struct skb_shared_info)))
-
-struct otx2_pool {
-	struct qmem		*stack;
-	struct qmem		*fc_addr;
-	u16			rbsize;
-	u32			page_offset;
-	u16			pageref;
-	struct page		*page;
-};
-
-struct otx2_qset {
-#define OTX2_MAX_CQ_CNT		64
-	u16			cq_cnt;
-	u16			xqe_size; /* Size of CQE i.e 128 or 512 bytes*/
-	struct otx2_pool	*pool;
-};
+/* NIX LF interrupts range*/
+#define NIX_LF_QINT_VEC_START	0x00
+#define NIX_LF_CINT_VEC_START	0x40
+#define NIX_LF_GINT_VEC		0x80
+#define NIX_LF_ERR_VEC		0x81
+#define NIX_LF_POISON_VEC	0x82
 
 struct  mbox {
 	struct otx2_mbox	mbox;
@@ -74,6 +59,7 @@ struct otx2_hw {
 	bool			*irq_allocated;
 	char			*irq_name;
 
+	u8			cint_cnt; /* CQ interrupt count */
 	u16		txschq_list[NIX_TXSCH_LVL_CNT][MAX_TXSCHQ_PER_FUNC];
 };
 
@@ -192,6 +178,17 @@ static struct _req_type __maybe_unused					\
 MBOX_MESSAGES
 #undef M
 
+#define	RVU_PFVF_PF_SHIFT	10
+#define	RVU_PFVF_PF_MASK	0x3F
+#define	RVU_PFVF_FUNC_SHIFT	0
+#define	RVU_PFVF_FUNC_MASK	0x3FF
+
+static inline int rvu_get_pf(u16 pcifunc)
+{
+	return (pcifunc >> RVU_PFVF_PF_SHIFT) & RVU_PFVF_PF_MASK;
+}
+
+/* MSI-X APIs */
 int otx2_enable_msix(struct otx2_hw *hw);
 void otx2_disable_msix(struct otx2_nic *pfvf);
 

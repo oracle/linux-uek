@@ -18,6 +18,7 @@
 
 #include "otx2_reg.h"
 #include "otx2_common.h"
+#include "otx2_txrx.h"
 
 #define DRV_NAME	"octeontx2-nicpf"
 #define DRV_STRING	"Marvell OcteonTX2 NIC Physical Function Driver"
@@ -256,6 +257,38 @@ static int otx2_set_real_num_queues(struct net_device *netdev,
 	return err;
 }
 
+static irqreturn_t otx2_cq_intr_handler(int irq, void *cq_irq)
+{
+	struct otx2_cq_poll *cq_poll = (struct otx2_cq_poll *)cq_irq;
+	struct otx2_nic *pf = (struct otx2_nic *)cq_poll->dev;
+	int qidx = cq_poll->cint_idx;
+
+	/* Disable interrupts.
+	 *
+	 * Completion interrupts behave in a level-triggered interrupt
+	 * fashion, and hence have to be cleared only after it is serviced.
+	 */
+	otx2_write64(pf, NIX_LF_CINTX_ENA_W1C(qidx), BIT_ULL(0));
+
+	/* Schedule NAPI */
+	napi_schedule_irqoff(&cq_poll->napi);
+
+	return IRQ_HANDLED;
+}
+
+static void otx2_disable_napi(struct otx2_nic *pf)
+{
+	struct otx2_qset *qset = &pf->qset;
+	struct otx2_cq_poll *cq_poll;
+	int qidx;
+
+	for (qidx = 0; qidx < pf->hw.cint_cnt; qidx++) {
+		cq_poll = &qset->napi[qidx];
+		napi_disable(&cq_poll->napi);
+		netif_napi_del(&cq_poll->napi);
+	}
+}
+
 static int otx2_init_hw_resources(struct otx2_nic *pf)
 {
 	int err, lvl;
@@ -300,7 +333,9 @@ static int otx2_init_hw_resources(struct otx2_nic *pf)
 static int otx2_open(struct net_device *netdev)
 {
 	struct otx2_nic *pf = netdev_priv(netdev);
-	int err = 0;
+	struct otx2_cq_poll *cq_poll = NULL;
+	struct otx2_qset *qset = &pf->qset;
+	int err = 0, qidx, vec;
 
 	netif_carrier_off(netdev);
 
@@ -309,24 +344,117 @@ static int otx2_open(struct net_device *netdev)
 		return err;
 
 	pf->qset.cq_cnt = pf->hw.rx_queues + pf->hw.tx_queues;
+	/* RQ and SQs are mapped to different CQs,
+	 * so find out max CQ IRQs (i.e CINTs) needed.
+	 */
+	pf->hw.cint_cnt = max(pf->hw.rx_queues, pf->hw.tx_queues);
+	qset->napi = kcalloc(pf->hw.cint_cnt, sizeof(*cq_poll), GFP_KERNEL);
+	if (!qset->napi)
+		return -ENOMEM;
+
+	qset->cq = kcalloc(pf->qset.cq_cnt,
+			   sizeof(struct otx2_cq_queue), GFP_KERNEL);
+	if (!qset->cq)
+		goto freemem;
+
+	err = otx2_init_hw_resources(pf);
+	if (err)
+		goto freemem;
+
+	/* Register NAPI handler */
+	for (qidx = 0; qidx < pf->hw.cint_cnt; qidx++) {
+		cq_poll = &qset->napi[qidx];
+		cq_poll->cint_idx = qidx;
+		/* RQ0 & SQ0 are mapped to CINT0 and so on..
+		 * 'cq_ids[0]' points to RQ's CQ and
+		 * 'cq_ids[1]' points to SQ's CQ and
+		 */
+		cq_poll->cq_ids[0] =
+			(qidx <  pf->hw.rx_queues) ? qidx : CINT_INVALID_CQ;
+		cq_poll->cq_ids[1] = (qidx < pf->hw.tx_queues) ?
+				      qidx + pf->hw.rx_queues : CINT_INVALID_CQ;
+		cq_poll->dev = (void *)pf;
+		netif_napi_add(netdev, &cq_poll->napi,
+			       otx2_poll, NAPI_POLL_WEIGHT);
+		napi_enable(&cq_poll->napi);
+	}
 
 	/* Check if MAC address from AF is valid or else set a random MAC */
 	if (is_zero_ether_addr(netdev->dev_addr))
 		eth_hw_addr_random(netdev);
 
-	err = otx2_init_hw_resources(pf);
-	if (err)
-		return err;
+	/* Register CQ IRQ handlers */
+	vec = pf->hw.nix_msixoff + NIX_LF_CINT_VEC_START;
+	for (qidx = 0; qidx < pf->hw.cint_cnt; qidx++) {
+		sprintf(&pf->hw.irq_name[vec * NAME_SIZE], "%s-rxtx-%d",
+			pf->netdev->name, qidx);
+
+		err = request_irq(pci_irq_vector(pf->pdev, vec),
+				  otx2_cq_intr_handler, 0,
+				  &pf->hw.irq_name[vec * NAME_SIZE],
+				  &qset->napi[qidx]);
+		if (err) {
+			dev_err(pf->dev,
+				"RVUPF%d: IRQ registration failed for CQ%d\n",
+				rvu_get_pf(pf->pcifunc), qidx);
+			goto cleanup;
+		}
+		pf->hw.irq_allocated[vec] = true;
+		vec++;
+
+		/* Configure CQE interrupt coalescing parameters.
+		 * Set ECOUNT_WAIT and QCOUNT_WAIT to non-zero values.
+		 * TODO: Add timer expiry coalescing as well,
+		 * for now trigger a IRQ when CQE count >= 1.
+		 */
+		otx2_write64(pf, NIX_LF_CINTX_WAIT(qidx), 0x00);
+
+		/* Enable CQ IRQ */
+		otx2_write64(pf, NIX_LF_CINTX_INT(qidx), BIT_ULL(0));
+		otx2_write64(pf, NIX_LF_CINTX_ENA_W1S(qidx), BIT_ULL(0));
+	}
 
 	return 0;
+
+cleanup:
+	otx2_disable_napi(pf);
+	otx2_disable_msix(pf);
+freemem:
+	kfree(qset->cq);
+	kfree(qset->napi);
+	return err;
 }
 
 static int otx2_stop(struct net_device *netdev)
 {
 	struct otx2_nic *pf = netdev_priv(netdev);
+	struct otx2_cq_poll *cq_poll = NULL;
+	struct otx2_qset *qset = &pf->qset;
+	int qidx, vec;
 
+	netif_carrier_off(netdev);
+	netif_tx_stop_all_queues(netdev);
+
+	/* Cleanup CQ NAPI and IRQ */
+	vec = pf->hw.nix_msixoff + NIX_LF_CINT_VEC_START;
+	for (qidx = 0; qidx < pf->hw.cint_cnt; qidx++) {
+		/* Disable interrupt */
+		otx2_write64(pf, NIX_LF_CINTX_ENA_W1C(qidx), BIT_ULL(0));
+
+		synchronize_irq(pci_irq_vector(pf->pdev, vec));
+
+		cq_poll = &qset->napi[qidx];
+		napi_synchronize(&cq_poll->napi);
+		vec++;
+	}
+
+	netif_tx_disable(netdev);
 	otx2_disable_msix(pf);
 
+	otx2_disable_napi(pf);
+	kfree(qset->cq);
+	kfree(qset->napi);
+	memset(qset, 0, sizeof(*qset));
 	return 0;
 }
 
@@ -370,7 +498,7 @@ static int otx2_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	pci_set_master(pdev);
 
 	/* Set number of queues */
-	qcount = num_online_cpus();
+	qcount = min_t(int, num_online_cpus(), OTX2_MAX_CQ_CNT);
 
 	netdev = alloc_etherdev_mqs(sizeof(*pf), qcount, qcount);
 	if (!netdev) {
