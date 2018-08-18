@@ -38,9 +38,6 @@ obj-y				+= clk/
 # really early.
 obj-$(CONFIG_DMADEVICES)	+= dma/
 
-# SOC specific infrastructure drivers.
-obj-y				+= soc/
-
 obj-$(CONFIG_VIRTIO)		+= virtio/
 obj-$(CONFIG_XEN)		+= xen/
 
@@ -57,6 +54,9 @@ obj-y				+= char/
 
 # iommu/ comes before gpu as gpu are using iommu controllers
 obj-$(CONFIG_IOMMU_SUPPORT)	+= iommu/
+
+# SOC specific infrastructure drivers.
+obj-y				+= soc/
 
 # gpu/ comes after char for AGP vs DRM startup and after iommu
 obj-y				+= gpu/
