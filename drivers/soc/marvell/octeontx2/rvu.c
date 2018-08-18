@@ -2265,21 +2265,21 @@ static int rvu_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	if (err)
 		goto err_flr;
 
-	/* Enable AF's VFs (if any) */
-	err = rvu_enable_sriov(rvu);
+	err = rvu_policy_init(rvu);
 	if (err)
 		goto err_irq;
 
-	err = rvu_policy_init(rvu);
+	/* Enable AF's VFs (if any) */
+	err = rvu_enable_sriov(rvu);
 	if (err)
-		goto err_sriov;
+		goto err_policy;
 
 	/* Initialize debugfs */
 	rvu_dbg_init(rvu);
 
 	return 0;
-err_sriov:
-	rvu_disable_sriov(rvu);
+err_policy:
+	rvu_policy_destroy(rvu);
 err_irq:
 	rvu_unregister_interrupts(rvu);
 err_flr:
