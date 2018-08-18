@@ -181,8 +181,9 @@ static int otx2vf_register_mbox_intr(struct otx2_nic *vf)
 	otx2_mbox_alloc_msg_READY(&vf->mbox);
 	err = otx2_sync_mbox_msg(&vf->mbox);
 	if (err) {
-		dev_err(vf->dev, "AF is not responding to mailbox\n");
-		return err;
+		dev_warn(vf->dev,
+			 "AF not responding to mailbox, deferring probe\n");
+		return -EPROBE_DEFER;
 	}
 
 	return 0;

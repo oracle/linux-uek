@@ -274,7 +274,7 @@ static int otx2_register_mbox_intr(struct otx2_nic *pf)
 	if (err) {
 		dev_warn(pf->dev,
 			 "AF not responding to mailbox, deferring probe\n");
-		return err;
+		return -EPROBE_DEFER;
 	}
 	return 0;
 }
