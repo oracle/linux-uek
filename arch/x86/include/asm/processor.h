@@ -178,9 +178,9 @@ static inline int hlt_works(int cpu)
 
 extern void cpu_detect(struct cpuinfo_x86 *c);
 
-static inline unsigned long l1tf_pfn_limit(void)
+static inline unsigned long long l1tf_pfn_limit(void)
 {
-	return BIT(boot_cpu_data.x86_phys_bits - 1 - PAGE_SHIFT) - 1;
+	return (1ULL << (boot_cpu_data.x86_phys_bits - 1 - PAGE_SHIFT)) - 1;
 }
 
 extern void early_cpu_init(void);
