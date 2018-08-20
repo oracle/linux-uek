@@ -466,7 +466,7 @@ static inline void cgx_link_change_handler(struct cgx_lnk_sts *lstat,
 		dev_dbg(dev, "cgx port %d:%d Link change handler null",
 			cgx->cgx_id, lmac->lmac_id);
 		if (lstat->err_type != CGX_ERR_NONE) {
-			dev_err(dev, "cgx port %d:%d Link error %x\n",
+			dev_err(dev, "cgx port %d:%d Link error %d\n",
 				cgx->cgx_id, lmac->lmac_id, lstat->err_type);
 		}
 		dev_info(dev, "cgx port %d:%d Link is %s %d Mbps\n",
@@ -669,6 +669,7 @@ static int cgx_lmac_exit(struct cgx *cgx)
 		lmac = cgx->lmac_idmap[i];
 		if (!lmac)
 			continue;
+		free_irq(pci_irq_vector(cgx->pdev, CGX_LMAC_FWI + i * 9), lmac);
 		kfree(lmac->name);
 		kfree(lmac);
 	}
@@ -748,6 +749,7 @@ static void cgx_remove(struct pci_dev *pdev)
 
 	cgx_lmac_exit(cgx);
 	list_del(&cgx->cgx_list);
+	pci_free_irq_vectors(pdev);
 	pci_release_regions(pdev);
 	pci_disable_device(pdev);
 	pci_set_drvdata(pdev, NULL);
