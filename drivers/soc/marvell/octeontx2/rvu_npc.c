@@ -538,11 +538,11 @@ void rvu_npc_disable_mcam_entries(struct rvu *rvu, u16 pcifunc, int nixlf)
 	}
 }
 
-#define LDATA_EXTRACT_CONFIG(intf, lid, ltype, ld, cfg) \
+#define SET_KEX_LD(intf, lid, ltype, ld, cfg)	\
 	rvu_write64(rvu, blkaddr,			\
 		NPC_AF_INTFX_LIDX_LTX_LDX_CFG(intf, lid, ltype, ld), cfg)
 
-#define LDATA_FLAGS_CONFIG(intf, ld, flags, cfg)	\
+#define SET_KEX_LDFLAGS(intf, ld, flags, cfg)	\
 	rvu_write64(rvu, blkaddr,			\
 		NPC_AF_INTFX_LDATAX_FLAGSX_CFG(intf, ld, flags), cfg)
 
@@ -561,15 +561,15 @@ static void npc_config_ldata_extract(struct rvu *rvu, int blkaddr)
 	 */
 	for (lid = 0; lid < lid_count; lid++) {
 		for (ltype = 0; ltype < 16; ltype++) {
-			LDATA_EXTRACT_CONFIG(NIX_INTF_RX, lid, ltype, 0, 0ULL);
-			LDATA_EXTRACT_CONFIG(NIX_INTF_RX, lid, ltype, 1, 0ULL);
-			LDATA_EXTRACT_CONFIG(NIX_INTF_TX, lid, ltype, 0, 0ULL);
-			LDATA_EXTRACT_CONFIG(NIX_INTF_TX, lid, ltype, 1, 0ULL);
+			SET_KEX_LD(NIX_INTF_RX, lid, ltype, 0, 0ULL);
+			SET_KEX_LD(NIX_INTF_RX, lid, ltype, 1, 0ULL);
+			SET_KEX_LD(NIX_INTF_TX, lid, ltype, 0, 0ULL);
+			SET_KEX_LD(NIX_INTF_TX, lid, ltype, 1, 0ULL);
 
-			LDATA_FLAGS_CONFIG(NIX_INTF_RX, 0, ltype, 0ULL);
-			LDATA_FLAGS_CONFIG(NIX_INTF_RX, 1, ltype, 0ULL);
-			LDATA_FLAGS_CONFIG(NIX_INTF_TX, 0, ltype, 0ULL);
-			LDATA_FLAGS_CONFIG(NIX_INTF_TX, 1, ltype, 0ULL);
+			SET_KEX_LDFLAGS(NIX_INTF_RX, 0, ltype, 0ULL);
+			SET_KEX_LDFLAGS(NIX_INTF_RX, 1, ltype, 0ULL);
+			SET_KEX_LDFLAGS(NIX_INTF_TX, 0, ltype, 0ULL);
+			SET_KEX_LDFLAGS(NIX_INTF_TX, 1, ltype, 0ULL);
 		}
 	}
 
@@ -582,7 +582,7 @@ static void npc_config_ldata_extract(struct rvu *rvu, int blkaddr)
 	/* Start placing extracted data/flags from 64bit onwards, for now */
 	/* Extract DMAC from the packet */
 	cfg = (0x05 << 16) | BIT_ULL(7) | NPC_PARSE_RESULT_DMAC_OFFSET;
-	LDATA_EXTRACT_CONFIG(NIX_INTF_RX, NPC_LID_LA, NPC_LT_LA_ETHER, 0, cfg);
+	SET_KEX_LD(NIX_INTF_RX, NPC_LID_LA, NPC_LT_LA_ETHER, 0, cfg);
 }
 
 static void npc_config_kpuaction(struct rvu *rvu, int blkaddr,
@@ -1881,21 +1881,47 @@ write_entry:
 	return 0;
 }
 
+#define GET_KEX_CFG(intf) \
+	rvu_read64(rvu, BLKADDR_NPC, NPC_AF_INTFX_KEX_CFG(intf))
+
+#define GET_KEX_FLAGS(ld) \
+	rvu_read64(rvu, BLKADDR_NPC, NPC_AF_KEX_LDATAX_FLAGS_CFG(ld))
+
+#define GET_KEX_LD(intf, lid, lt, ld)	\
+	rvu_read64(rvu, BLKADDR_NPC,	\
+		NPC_AF_INTFX_LIDX_LTX_LDX_CFG(intf, lid, lt, ld))
+
+#define GET_KEX_LDFLAGS(intf, ld, fl)	\
+	rvu_read64(rvu, BLKADDR_NPC,	\
+		NPC_AF_INTFX_LDATAX_FLAGSX_CFG(intf, ld, fl))
+
 int rvu_mbox_handler_NPC_GET_KEX_CFG(struct rvu *rvu, struct msg_req *req,
 				     struct npc_get_kex_cfg_rsp *rsp)
 {
-	int blkaddr;
+	int lid, lt, ld, fl;
 
-	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NPC, 0);
-	if (blkaddr < 0)
-		return NPC_MCAM_INVALID_REQ;
+	rsp->rx_keyx_cfg = GET_KEX_CFG(NIX_INTF_RX);
+	rsp->tx_keyx_cfg = GET_KEX_CFG(NIX_INTF_TX);
+	for (lid = 0; lid < NPC_MAX_LID; lid++) {
+		for (lt = 0; lt < NPC_MAX_LT; lt++) {
+			for (ld = 0; ld < NPC_MAX_LD; ld++) {
+				rsp->intf_lid_lt_ld[NIX_INTF_RX][lid][lt][ld] =
+					GET_KEX_LD(NIX_INTF_RX, lid, lt, ld);
+				rsp->intf_lid_lt_ld[NIX_INTF_TX][lid][lt][ld] =
+					GET_KEX_LD(NIX_INTF_TX, lid, lt, ld);
+			}
+		}
+	}
+	for (ld = 0; ld < NPC_MAX_LD; ld++)
+		rsp->kex_ld_flags[ld] = GET_KEX_FLAGS(ld);
 
-	/* Return the current NPC Rx & Tx interface's
-	 * KEY width and nibble config.
-	 */
-	rsp->rx_keyx_cfg = rvu_read64(rvu, blkaddr,
-				      NPC_AF_INTFX_KEX_CFG(NIX_INTF_RX));
-	rsp->tx_keyx_cfg = rvu_read64(rvu, blkaddr,
-				      NPC_AF_INTFX_KEX_CFG(NIX_INTF_TX));
+	for (ld = 0; ld < NPC_MAX_LD; ld++) {
+		for (fl = 0; fl < NPC_MAX_LFL; fl++) {
+			rsp->intf_ld_flags[NIX_INTF_RX][ld][fl] =
+					GET_KEX_LDFLAGS(NIX_INTF_RX, ld, fl);
+			rsp->intf_ld_flags[NIX_INTF_TX][ld][fl] =
+					GET_KEX_LDFLAGS(NIX_INTF_TX, ld, fl);
+		}
+	}
 	return 0;
 }
