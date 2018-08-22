@@ -7708,23 +7708,72 @@ int bnxt_setup_mq_tc(struct net_device *dev, u8 tc)
 	return 0;
 }
 
+#ifdef CONFIG_BNXT_FLOWER_OFFLOAD
+#ifdef HAVE_TC_SETUP_BLOCK
+static int bnxt_setup_tc_block_cb(enum tc_setup_type type, void *type_data,
+				  void *cb_priv)
+{
+	struct bnxt *bp = cb_priv;
+
+	if (BNXT_VF(bp))
+		return -EOPNOTSUPP;
+
+	switch (type) {
+	case TC_SETUP_CLSFLOWER:
+		return bnxt_tc_setup_flower(bp, bp->pf.fw_fid, type_data);
+	default:
+		return -EOPNOTSUPP;
+	}
+}
+
+static int bnxt_setup_tc_block(struct net_device *dev,
+			       struct tc_block_offload *f)
+{
+	struct bnxt *bp = netdev_priv(dev);
+
+	if (f->binder_type != TCF_BLOCK_BINDER_TYPE_CLSACT_INGRESS)
+		return -EOPNOTSUPP;
+
+	switch (f->command) {
+	case TC_BLOCK_BIND:
+		return tcf_block_cb_register(f->block, bnxt_setup_tc_block_cb,
+					     bp, bp);
+	case TC_BLOCK_UNBIND:
+		tcf_block_cb_unregister(f->block, bnxt_setup_tc_block_cb, bp);
+		return 0;
+	default:
+		return -EOPNOTSUPP;
+	}
+}
+
+#else
+
 static int bnxt_setup_flower(struct net_device *dev,
 			     struct tc_cls_flower_offload *cls_flower)
 {
 	struct bnxt *bp = netdev_priv(dev);
 
-	if (BNXT_VF(bp))
+	if (!bnxt_tc_flower_enabled(bp))
 		return -EOPNOTSUPP;
 
 	return bnxt_tc_setup_flower(bp, bp->pf.fw_fid, cls_flower);
 }
+#endif
+#endif
 
 static int bnxt_setup_tc(struct net_device *dev, enum tc_setup_type type,
 			 void *type_data)
 {
 	switch (type) {
+#ifdef CONFIG_BNXT_FLOWER_OFFLOAD
+#ifdef HAVE_TC_SETUP_BLOCK
+	case TC_SETUP_BLOCK:
+		return bnxt_setup_tc_block(dev, type_data);
+#else
 	case TC_SETUP_CLSFLOWER:
 		return bnxt_setup_flower(dev, type_data);
+#endif
+#endif
 	case TC_SETUP_MQPRIO: {
 		struct tc_mqprio_qopt *mqprio = type_data;
 
@@ -8121,7 +8170,9 @@ static void bnxt_remove_one(struct pci_dev *pdev)
 
 	if (BNXT_PF(bp)) {
 		bnxt_sriov_disable(bp);
+#ifdef CONFIG_VF_REPS
 		bnxt_dl_unregister(bp);
+#endif
 	}
 
 	pci_disable_pcie_error_reporting(pdev);
@@ -8589,8 +8640,10 @@ static int bnxt_init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 	if (rc)
 		goto init_err_cleanup_tc;
 
+#ifdef CONFIG_VF_REPS
 	if (BNXT_PF(bp))
 		bnxt_dl_register(bp);
+#endif
 
 	netdev_info(dev, "%s found at mem %lx, node addr %pM\n",
 		    board_info[ent->driver_data].name,

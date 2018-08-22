@@ -11,7 +11,9 @@
 #include <linux/etherdevice.h>
 #include <linux/rtnetlink.h>
 #include <linux/jhash.h>
+#ifdef HAVE_TC_SETUP_TYPE
 #include <net/pkt_cls.h>
+#endif
 
 #include "bnxt_hsi.h"
 #include "bnxt.h"
@@ -19,7 +21,7 @@
 #include "bnxt_devlink.h"
 #include "bnxt_tc.h"
 
-#ifdef CONFIG_BNXT_SRIOV
+#ifdef CONFIG_VF_REPS
 
 #define CFA_HANDLE_INVALID		0xffff
 #define VF_IDX_INVALID			0xffff
@@ -116,10 +118,14 @@ bnxt_vf_rep_get_stats64(struct net_device *dev,
 	stats->tx_bytes = vf_rep->tx_stats.bytes;
 }
 
-static int bnxt_vf_rep_setup_tc(struct net_device *dev, enum tc_setup_type type,
-				void *type_data)
+#ifdef CONFIG_BNXT_FLOWER_OFFLOAD
+#ifdef HAVE_TC_SETUP_TYPE
+#ifdef HAVE_TC_SETUP_BLOCK
+static int bnxt_vf_rep_setup_tc_block_cb(enum tc_setup_type type,
+					 void *type_data,
+					 void *cb_priv)
 {
-	struct bnxt_vf_rep *vf_rep = netdev_priv(dev);
+	struct bnxt_vf_rep *vf_rep = cb_priv;
 	struct bnxt *bp = vf_rep->bp;
 	int vf_fid = bp->pf.vf[vf_rep->vf_idx].fw_fid;
 
@@ -130,6 +136,78 @@ static int bnxt_vf_rep_setup_tc(struct net_device *dev, enum tc_setup_type type,
 		return -EOPNOTSUPP;
 	}
 }
+
+static int bnxt_vf_rep_setup_tc_block(struct net_device *dev,
+				      struct tc_block_offload *f)
+{
+	struct bnxt_vf_rep *vf_rep = netdev_priv(dev);
+
+	if (f->binder_type != TCF_BLOCK_BINDER_TYPE_CLSACT_INGRESS)
+		return -EOPNOTSUPP;
+
+	switch (f->command) {
+	case TC_BLOCK_BIND:
+		return tcf_block_cb_register(f->block,
+					     bnxt_vf_rep_setup_tc_block_cb,
+					     vf_rep, vf_rep);
+		return 0;
+	case TC_BLOCK_UNBIND:
+		tcf_block_cb_unregister(f->block,
+					bnxt_vf_rep_setup_tc_block_cb, vf_rep);
+		return 0;
+	default:
+		return -EOPNOTSUPP;
+	}
+}
+
+#endif
+
+static int bnxt_vf_rep_setup_tc(struct net_device *dev, enum tc_setup_type type,
+				void *type_data)
+{
+	switch (type) {
+#ifdef HAVE_TC_SETUP_BLOCK
+	case TC_SETUP_BLOCK:
+		return bnxt_vf_rep_setup_tc_block(dev, type_data);
+#else
+	case TC_SETUP_CLSFLOWER: {
+		struct bnxt_vf_rep *vf_rep = netdev_priv(dev);
+		struct bnxt *bp = vf_rep->bp;
+		int vf_fid = bp->pf.vf[vf_rep->vf_idx].fw_fid;
+
+		return bnxt_tc_setup_flower(bp, vf_fid, type_data);
+	}
+#endif
+	default:
+		return -EOPNOTSUPP;
+	}
+}
+#else
+#ifdef HAVE_CHAIN_INDEX
+static int bnxt_vf_rep_setup_tc(struct net_device *dev, u32 handle,
+				u32 chain_index, __be16 proto,
+				struct tc_to_netdev *ntc)
+#else
+static int bnxt_vf_rep_setup_tc(struct net_device *dev, u32 handle,
+				__be16 proto, struct tc_to_netdev *ntc)
+#endif
+{
+	struct bnxt_vf_rep *vf_rep = netdev_priv(dev);
+
+	if (!bnxt_tc_flower_enabled(vf_rep->bp))
+		return -EOPNOTSUPP;
+
+	switch (ntc->type) {
+	case TC_SETUP_CLSFLOWER:
+		return bnxt_tc_setup_flower(vf_rep->bp,
+					    bnxt_vf_rep_get_fid(dev),
+					    ntc->cls_flower);
+	default:
+		return -EOPNOTSUPP;
+	}
+}
+#endif /* HAVE_TC_SETUP_TYPE */
+#endif /* CONFIG_BNXT_FLOWER_OFFLOAD */
 
 struct net_device *bnxt_get_vf_rep(struct bnxt *bp, u16 cfa_code)
 {
@@ -200,7 +278,9 @@ static const struct net_device_ops bnxt_vf_rep_netdev_ops = {
 	.ndo_stop		= bnxt_vf_rep_close,
 	.ndo_start_xmit		= bnxt_vf_rep_xmit,
 	.ndo_get_stats64	= bnxt_vf_rep_get_stats64,
+#ifdef CONFIG_BNXT_FLOWER_OFFLOAD
 	.ndo_setup_tc		= bnxt_vf_rep_setup_tc,
+#endif
 	.ndo_get_phys_port_name = bnxt_vf_rep_get_phys_port_name
 };
 
@@ -493,4 +573,4 @@ done:
 	return rc;
 }
 
-#endif
+#endif /* CONFIG_VF_REPS */

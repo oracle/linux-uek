@@ -14,6 +14,7 @@
 #include "bnxt_vfr.h"
 #include "bnxt_devlink.h"
 
+#ifdef CONFIG_VF_REPS
 static const struct devlink_ops bnxt_dl_ops = {
 #ifdef CONFIG_BNXT_SRIOV
 	.eswitch_mode_set = bnxt_dl_eswitch_mode_set,
@@ -63,3 +64,4 @@ void bnxt_dl_unregister(struct bnxt *bp)
 	devlink_unregister(dl);
 	devlink_free(dl);
 }
+#endif

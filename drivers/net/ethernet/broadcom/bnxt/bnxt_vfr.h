@@ -10,7 +10,7 @@
 #ifndef BNXT_VFR_H
 #define BNXT_VFR_H
 
-#ifdef CONFIG_BNXT_SRIOV
+#ifdef CONFIG_VF_REPS
 
 #define	MAX_CFA_CODE			65536
 
@@ -33,6 +33,10 @@ int bnxt_dl_eswitch_mode_get(struct devlink *devlink, u16 *mode);
 int bnxt_dl_eswitch_mode_set(struct devlink *devlink, u16 mode);
 
 #else
+
+static inline void bnxt_vf_reps_destroy(struct bnxt *bp)
+{
+}
 
 static inline void bnxt_vf_reps_close(struct bnxt *bp)
 {
@@ -60,5 +64,5 @@ static inline bool bnxt_dev_is_vf_rep(struct net_device *dev)
 {
 	return false;
 }
-#endif /* CONFIG_BNXT_SRIOV */
+#endif /* CONFIG_VF_REPS */
 #endif /* BNXT_VFR_H */
