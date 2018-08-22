@@ -189,7 +189,7 @@
 #define X86_FEATURE_IBPB	(7*32+20) /* Indirect Branch Prediction Barrier */
 #define X86_FEATURE_STIBP      ( 7*32+21) /* Single Thread Indirect Branch Predictors */
 #define X86_FEATURE_IA32_ARCH_CAPS	(7*32+22) /* Control Speculation Control */
-#define X86_FEATURE_IBRS_ATT	(7*32+22) /* IBRS all the time */
+#define X86_FEATURE_IBRS_ATT	(7*32+23) /* IBRS all the time */
 
 /* Because the ALTERNATIVE scheme is for members of the X86_FEATURE club... */
 #define X86_FEATURE_PTI	( 7*32+31) /* CONFIG_PAGE_TABLE_ISOLATION w/o nopti */
