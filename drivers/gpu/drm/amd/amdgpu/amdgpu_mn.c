@@ -157,10 +157,11 @@ static void amdgpu_mn_invalidate_node(struct amdgpu_mn_node *node,
  * We block for all BOs between start and end to be idle and
  * unmap them by move them into system domain again.
  */
-static void amdgpu_mn_invalidate_range_start(struct mmu_notifier *mn,
-					     struct mm_struct *mm,
-					     unsigned long start,
-					     unsigned long end)
+static int amdgpu_mn_invalidate_range_start(struct mmu_notifier *mn,
+					    struct mm_struct *mm,
+					    unsigned long start,
+					    unsigned long end,
+					    bool blockable)
 {
 	struct amdgpu_mn *rmn = container_of(mn, struct amdgpu_mn, mn);
 	struct interval_tree_node *it;
@@ -181,6 +182,7 @@ static void amdgpu_mn_invalidate_range_start(struct mmu_notifier *mn,
 	}
 
 	mutex_unlock(&rmn->lock);
+	return 0;
 }
 
 static const struct mmu_notifier_ops amdgpu_mn_ops = {
