@@ -11,9 +11,4 @@
 #define __DTRACE_SDT_ISENABLED_PROTO void
 #define __DTRACE_SDT_ISENABLED_ARGS
 
-extern asm_instr_t dtrace_sdt_peek(asm_instr_t *addr);
-extern void dtrace_sdt_poke(asm_instr_t *addr, asm_instr_t opcode);
-extern void dtrace_sdt_start(void *arg);
-extern void dtrace_sdt_stop(void *arg);
-
 #endif /* _ASM_ARM64_DTRACE_SDT_ARCH_H */

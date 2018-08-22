@@ -13,6 +13,8 @@
 #include <linux/ptrace.h>
 #include <linux/uaccess.h>
 #include <linux/uprobes.h>
+#include <asm/debug-monitors.h>
+#include <asm/insn.h>
 
 void dtrace_skip_instruction(struct pt_regs *regs)
 {
@@ -229,6 +231,34 @@ out:
 			*pcs++ = 0;
 	}
 }
+
+asm_instr_t dtrace_text_peek(asm_instr_t *addr)
+{
+	asm_instr_t	opcode;
+
+	aarch64_insn_read(addr, &opcode);
+
+	return opcode;
+}
+EXPORT_SYMBOL(dtrace_text_peek);
+
+void dtrace_text_poke(asm_instr_t *addr, asm_instr_t opcode)
+{
+	aarch64_insn_patch_text_nosync(addr, opcode);
+}
+EXPORT_SYMBOL(dtrace_text_poke);
+
+void dtrace_brk_start(void *arg)
+{
+	register_break_hook((struct break_hook *)arg);
+}
+EXPORT_SYMBOL(dtrace_brk_start);
+
+void dtrace_brk_stop(void *arg)
+{
+	unregister_break_hook((struct break_hook *)arg);
+}
+EXPORT_SYMBOL(dtrace_brk_stop);
 
 void dtrace_mod_pdata_init(dtrace_module_t *pdata)
 {

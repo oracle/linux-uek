@@ -53,8 +53,8 @@ static int sdt_brk_hook(struct pt_regs *regs, unsigned int esr)
 
 void sdt_provide_probe_arch(sdt_probe_t *sdp, struct module *mp, int idx)
 {
-	sdp->sdp_patchval = BRK64_OPCODE_DPROBES;
-	sdp->sdp_savedval = dtrace_sdt_peek(sdp->sdp_patchpoint);
+	sdp->sdp_patchval = BRK64_OPCODE_DPROBE_SDT;
+	sdp->sdp_savedval = dtrace_text_peek(sdp->sdp_patchpoint);
 }
 
 int sdt_provide_module_arch(void *arg, struct module *mp)
@@ -68,29 +68,29 @@ void sdt_destroy_module(void *arg, struct module *mp)
 
 void sdt_enable_arch(sdt_probe_t *sdp, dtrace_id_t id, void *arg)
 {
-	dtrace_sdt_poke(sdp->sdp_patchpoint, sdp->sdp_patchval);
+	dtrace_text_poke(sdp->sdp_patchpoint, sdp->sdp_patchval);
 }
 
 void sdt_disable_arch(sdt_probe_t *sdp, dtrace_id_t id, void *arg)
 {
-	dtrace_sdt_poke(sdp->sdp_patchpoint, sdp->sdp_savedval);
+	dtrace_text_poke(sdp->sdp_patchpoint, sdp->sdp_savedval);
 }
 
-static struct break_hook dtrace_break_hook = {
+static struct break_hook dtrace_sdt_break_hook = {
 	.esr_mask = BRK64_ESR_MASK,
-	.esr_val = BRK64_ESR_DPROBES,
+	.esr_val = BRK64_ESR_DPROBES_SDT,
 	.fn = sdt_brk_hook,
 };
 
 int sdt_dev_init_arch(void)
 {
-	dtrace_sdt_start(&dtrace_break_hook);
+	dtrace_brk_start(&dtrace_sdt_break_hook);
 	return 0;
 }
 
 void sdt_dev_exit_arch(void)
 {
-	dtrace_sdt_stop(&dtrace_break_hook);
+	dtrace_brk_stop(&dtrace_sdt_break_hook);
 }
 
 uint64_t sdt_getarg(void *arg, dtrace_id_t id, void *parg, int argno,

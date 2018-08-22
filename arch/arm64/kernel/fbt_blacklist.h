@@ -1,24 +1,19 @@
 /*
- * FIXME:
- * This is a placeholder.
- */
-
-/*
  * Functions used in die notifier chain calling.
  */
-BL_DENTRY(void *, notify_die)
+BL_SENTRY(void *, notify_die)
 BL_DENTRY(void *, notifier_call_chain)
-BL_DENTRY(typeof(__atomic_notifier_call_chain), __atomic_notifier_call_chain)
-BL_DENTRY(typeof(atomic_notifier_call_chain), atomic_notifier_call_chain)
-BL_DENTRY(typeof(__raw_notifier_call_chain), __raw_notifier_call_chain)
-BL_DENTRY(typeof(raw_notifier_call_chain), raw_notifier_call_chain)
+BL_SENTRY(typeof(__atomic_notifier_call_chain), __atomic_notifier_call_chain)
+BL_SENTRY(typeof(atomic_notifier_call_chain), atomic_notifier_call_chain)
+BL_SENTRY(typeof(__raw_notifier_call_chain), __raw_notifier_call_chain)
+BL_SENTRY(typeof(raw_notifier_call_chain), raw_notifier_call_chain)
 BL_DENTRY(void *, hw_breakpoint_exceptions_notify)
 BL_DENTRY(void *, kprobe_exceptions_notify)
 
 /*
  * Functions used to update vtime in probe context.
  */
-BL_DENTRY(typeof(ktime_get_raw_fast_ns), ktime_get_raw_fast_ns)
+BL_SENTRY(typeof(ktime_get_raw_fast_ns), ktime_get_raw_fast_ns)
 BL_DENTRY(void *, raw_read_seqcount)
 BL_DENTRY(void *, read_seqcount_retry)
 BL_DENTRY(void *, __read_seqcount_retry)

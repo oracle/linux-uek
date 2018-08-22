@@ -36,6 +36,7 @@
 #include <asm/thread_info.h>
 #include <asm/asm-uaccess.h>
 #include <asm/unistd.h>
+#include <asm/debug-monitors.h>
 
 /*
  * Context tracking subsystem.  Used to instrument transitions
@@ -267,7 +268,7 @@ alternative_else_nop_endif
 	*/
 	.endm
 
-	.macro	kernel_exit, el
+	.macro	kernel_exit, el, fbt_emu = 0
 	.if	\el != 0
 	/* Restore the task's original addr_limit. */
 	ldr	x20, [sp, #S_ORIG_ADDR_LIMIT]
@@ -335,7 +336,11 @@ alternative_else_nop_endif
 
 	msr	elr_el1, x21			// set up the return data
 	msr	spsr_el1, x22
-	ldp	x0, x1, [sp, #16 * 0]
+
+	/*
+	 * No need to restore x0 and x1 - we may still clobber them.  We will
+	 * restore them right before we return.
+	 */
 	ldp	x2, x3, [sp, #16 * 1]
 	ldp	x4, x5, [sp, #16 * 2]
 	ldp	x6, x7, [sp, #16 * 3]
@@ -351,7 +356,30 @@ alternative_else_nop_endif
 	ldp	x26, x27, [sp, #16 * 13]
 	ldp	x28, x29, [sp, #16 * 14]
 	ldr	lr, [sp, #S_LR]
+
+	.if	\fbt_emu != 0			// FBT emulation needed?
+	mrs	x0, esr_el1			// check if ESR is FBT probe
+	and	x0, x0, #0x1f			// ... mask code
+	cmp	x0, #BRK64_ESR_DPROBES_FBT	// ... compare with FBT code
+	bne	6f				// not FBT -> skip next section
+
+	mrs	x0, elr_el1			// retrieve xeceptionx link reg
+	add	x0, x0, #0x4			// advance to next instr
+	msr	elr_el1, x0			// set exception link reg
+
+	ldp	x0, x1, [sp, #16 * 0]		// done with x0, restore orig
 	add	sp, sp, #S_FRAME_SIZE		// restore sp
+	mov	x29, sp				// instr we put probe on
+	b	7f				// FBT done -> branch to eret
+
+6:
+	ldp	x0, x1, [sp, #16 * 0]		// done with x0, restore orig
+	add	sp, sp, #S_FRAME_SIZE		// restore sp
+7:
+	.else
+	ldp	x0, x1, [sp, #16 * 0]		// done with x0, restore orig
+	add	sp, sp, #S_FRAME_SIZE		// restore sp
+	.endif
 
 	.if	\el == 0
 alternative_insn eret, nop, ARM64_UNMAP_KERNEL_AT_EL0
@@ -611,7 +639,11 @@ el1_dbg:
 	mrs	x0, far_el1
 	mov	x2, sp				// struct pt_regs
 	bl	do_debug_exception
+#if IS_ENABLED(CONFIG_DT_FBT)
+	kernel_exit 1, 1
+#else
 	kernel_exit 1
+#endif
 el1_inv:
 	// TODO: add support for undefined instructions in kernel mode
 	enable_dbg
