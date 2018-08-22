@@ -667,11 +667,27 @@ static void cvm_mmc_dma_request(struct mmc_host *mmc,
 	struct cvm_mmc_host *host = slot->host;
 	struct mmc_data *data;
 	u64 emm_dma, addr;
+	int seg;
 
 	if (!mrq->data || !mrq->data->sg || !mrq->data->sg_len ||
 	    !mrq->stop || mrq->stop->opcode != MMC_STOP_TRANSMISSION) {
 		dev_err(&mmc->card->dev,
 			"Error: cmv_mmc_dma_request no data\n");
+		goto error;
+	}
+
+	/* cleared by successful termination */
+	mrq->cmd->error = -EINVAL;
+
+	/* unaligned multi-block DMA has problems, so forbid all unaligned */
+	for (seg = 0; seg < mrq->data->sg_len; seg++) {
+		struct scatterlist *sg = &mrq->data->sg[seg];
+		u64 align = (sg->offset | sg->length | sg->dma_address);
+
+		if (!(align & 7))
+			continue;
+		dev_info(&mmc->card->dev,
+			"Error:64bit alignment required\n");
 		goto error;
 	}
 
@@ -713,7 +729,6 @@ static void cvm_mmc_dma_request(struct mmc_host *mmc,
 	return;
 
 error:
-	mrq->cmd->error = -EINVAL;
 	if (mrq->done)
 		mrq->done(mrq);
 	host->release_bus(host);
