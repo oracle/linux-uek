@@ -151,16 +151,19 @@ static void hmm_invalidate_range(struct hmm *hmm,
 	up_read(&hmm->mirrors_sem);
 }
 
-static void hmm_invalidate_range_start(struct mmu_notifier *mn,
+static int hmm_invalidate_range_start(struct mmu_notifier *mn,
 				       struct mm_struct *mm,
 				       unsigned long start,
-				       unsigned long end)
+				       unsigned long end,
+				       bool blockable)
 {
 	struct hmm *hmm = mm->hmm;
 
 	VM_BUG_ON(!hmm);
 
 	atomic_inc(&hmm->sequence);
+
+	return 0;
 }
 
 static void hmm_invalidate_range_end(struct mmu_notifier *mn,

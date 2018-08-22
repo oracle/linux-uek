@@ -118,10 +118,11 @@ static void radeon_mn_release(struct mmu_notifier *mn,
  * We block for all BOs between start and end to be idle and
  * unmap them by move them into system domain again.
  */
-static void radeon_mn_invalidate_range_start(struct mmu_notifier *mn,
-					     struct mm_struct *mm,
-					     unsigned long start,
-					     unsigned long end)
+static int radeon_mn_invalidate_range_start(struct mmu_notifier *mn,
+					    struct mm_struct *mm,
+					    unsigned long start,
+					    unsigned long end,
+					    bool blockable)
 {
 	struct radeon_mn *rmn = container_of(mn, struct radeon_mn, mn);
 	struct interval_tree_node *it;
@@ -164,8 +165,9 @@ static void radeon_mn_invalidate_range_start(struct mmu_notifier *mn,
 			radeon_bo_unreserve(bo);
 		}
 	}
-	
+
 	mutex_unlock(&rmn->lock);
+	return 0;
 }
 
 static const struct mmu_notifier_ops radeon_mn_ops = {

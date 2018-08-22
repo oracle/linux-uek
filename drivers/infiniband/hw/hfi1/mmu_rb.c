@@ -67,9 +67,10 @@ struct mmu_rb_handler {
 
 static unsigned long mmu_node_start(struct mmu_rb_node *);
 static unsigned long mmu_node_last(struct mmu_rb_node *);
-static inline void mmu_notifier_range_start(struct mmu_notifier *,
-					    struct mm_struct *,
-					    unsigned long, unsigned long);
+static inline int mmu_notifier_range_start(struct mmu_notifier *,
+					   struct mm_struct *,
+					   unsigned long, unsigned long,
+					   bool blockable);
 static void mmu_notifier_mem_invalidate(struct mmu_notifier *,
 					struct mm_struct *,
 					unsigned long, unsigned long);
@@ -287,12 +288,14 @@ void hfi1_mmu_rb_remove(struct mmu_rb_handler *handler,
 	handler->ops->remove(handler->ops_arg, node);
 }
 
-static inline void mmu_notifier_range_start(struct mmu_notifier *mn,
-					    struct mm_struct *mm,
-					    unsigned long start,
-					    unsigned long end)
+static inline int mmu_notifier_range_start(struct mmu_notifier *mn,
+					   struct mm_struct *mm,
+					   unsigned long start,
+					   unsigned long end,
+					   bool blockable)
 {
 	mmu_notifier_mem_invalidate(mn, mm, start, end);
+	return 0;
 }
 
 static void mmu_notifier_mem_invalidate(struct mmu_notifier *mn,
@@ -323,6 +326,8 @@ static void mmu_notifier_mem_invalidate(struct mmu_notifier *mn,
 
 	if (added)
 		queue_work(handler->wq, &handler->del_work);
+
+	return 0;
 }
 
 /*
