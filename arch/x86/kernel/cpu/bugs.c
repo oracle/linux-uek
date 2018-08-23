@@ -515,29 +515,16 @@ static bool __init is_skylake_era(void)
 	return false;
 }
 
-static enum spectre_v2_mitigation __init ibrs_select(void)
+static void __init ibrs_select(enum spectre_v2_mitigation *mode)
 {
-	enum spectre_v2_mitigation mode = SPECTRE_V2_NONE;
-
 	/* Turn it on (if possible) */
 	set_ibrs_inuse();
-
-	/* If it is ON, OK, lets use it.*/
-	if (check_ibrs_inuse())
-		mode = SPECTRE_V2_IBRS;
-
-	if (mode == SPECTRE_V2_NONE)
-		/* Well, fallback on automatic discovery. */
-		pr_info("IBRS could not be enabled.\n");
-	else {
-		/*
-		 * OK, some form of IBRS is enabled, lets see if we need
-		 * to STUFF_RSB
-		 */
+	if (check_ibrs_inuse()) {
+		*mode = SPECTRE_V2_IBRS;
 		if (!boot_cpu_has(X86_FEATURE_SMEP))
 			setup_force_cpu_cap(X86_FEATURE_STUFF_RSB);
-	}
-	return mode;
+	} else
+		pr_info("IBRS could not be enabled.\n");
 }
 
 static void __init disable_ibrs_and_friends(bool disable_ibpb)
@@ -615,7 +602,7 @@ static void __init spectre_v2_select_mitigation(void)
 			goto retpoline_auto;
 		break;
 	case SPECTRE_V2_CMD_IBRS:
-		mode = ibrs_select();
+		ibrs_select(&mode);
 		if (mode == SPECTRE_V2_NONE)
 			goto retpoline_auto;
 		goto display;
@@ -657,8 +644,9 @@ retpoline_auto:
 			    (retp_compiler() && !retpoline_selected(cmd) &&
 			     ((is_skylake_era() && use_ibrs_on_skylake) ||
 			      (ssbd_ibrs_selected() && use_ibrs_with_ssbd)))) {
+
 				/* Start the engine! */
-				mode = ibrs_select();
+				ibrs_select(&mode);
 				if (mode == SPECTRE_V2_IBRS)
 					goto display;
 				/* But if we can't, then just use retpoline */
