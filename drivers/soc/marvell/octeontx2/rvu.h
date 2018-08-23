@@ -445,7 +445,8 @@ int rvu_mbox_handler_NIX_HWCTX_DISABLE(struct rvu *rvu,
 int rvu_mbox_handler_NIX_TXSCH_ALLOC(struct rvu *rvu,
 				     struct nix_txsch_alloc_req *req,
 				     struct nix_txsch_alloc_rsp *rsp);
-int rvu_mbox_handler_NIX_TXSCH_FREE(struct rvu *rvu, struct msg_req *req,
+int rvu_mbox_handler_NIX_TXSCH_FREE(struct rvu *rvu,
+				    struct nix_txsch_free_req *req,
 				    struct msg_rsp *rsp);
 int rvu_mbox_handler_NIX_TXSCHQ_CFG(struct rvu *rvu,
 			struct nix_txschq_config *req, struct msg_rsp *rsp);
