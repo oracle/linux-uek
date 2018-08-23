@@ -1,6 +1,5 @@
 /* Broadcom NetXtreme-C/E network driver.
  *
- * Copyright (c) 2014-2016 Broadcom Corporation
  * Copyright (c) 2016-2017 Broadcom Limited
  *
  * This program is free software; you can redistribute it and/or modify
@@ -8,20 +7,14 @@
  * the Free Software Foundation.
  */
 
-#include <linux/pci.h>
-#include <linux/version.h>
-#include <linux/ethtool.h>
-#include <linux/skbuff.h>
-#include <linux/rtnetlink.h>
-#include <linux/netdevice.h>
-#include <linux/etherdevice.h>
-#if !defined(NEW_FLOW_KEYS) && defined(HAVE_FLOW_KEYS)
-#include <net/flow_keys.h>
-#endif
-#include <linux/sched.h>
+#ifndef BNXT_COMPAT_H
+#define BNXT_COMPAT_H
 
-#ifdef HAVE_TC_CLS_FLOWER_OFFLOAD
-#include <net/pkt_cls.h>
-#endif
 
 #define ETH_RESET_AP (1<<8)
+
+#define REG_STATE_REGISTERED	0x1
+
+bool xdp_rxq_info_is_reg(struct xdp_rxq_info *xdp_rxq);
+
+#endif
