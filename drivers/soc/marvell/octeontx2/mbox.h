@@ -181,7 +181,7 @@ M(NIX_LF_FREE,		0x8001, msg_req, msg_rsp)			\
 M(NIX_AQ_ENQ,		0x8002, nix_aq_enq_req, nix_aq_enq_rsp)		\
 M(NIX_HWCTX_DISABLE,	0x8003, hwctx_disable_req, msg_rsp)		\
 M(NIX_TXSCH_ALLOC,	0x8004, nix_txsch_alloc_req, nix_txsch_alloc_rsp) \
-M(NIX_TXSCH_FREE,	0x8005, msg_req, msg_rsp)			\
+M(NIX_TXSCH_FREE,	0x8005, nix_txsch_free_req, msg_rsp)		\
 M(NIX_TXSCHQ_CFG,	0x8006, nix_txschq_config, msg_rsp)		\
 M(NIX_STATS_RST,	0x8007, msg_req, msg_rsp)			\
 M(NIX_VTAG_CFG,		0x8008, nix_vtag_config, msg_rsp)		\
@@ -504,6 +504,16 @@ struct nix_txsch_alloc_rsp {
 	/* Scheduler queue list allocated at each level */
 	u16 schq_contig_list[NIX_TXSCH_LVL_CNT][MAX_TXSCHQ_PER_FUNC];
 	u16 schq_list[NIX_TXSCH_LVL_CNT][MAX_TXSCHQ_PER_FUNC];
+};
+
+struct nix_txsch_free_req {
+	struct mbox_msghdr hdr;
+#define TXSCHQ_FREE_ALL BIT_ULL(0)
+	u16 flags;
+	/* Scheduler queue level to be freed */
+	u16 schq_lvl;
+	/* List of scheduler queues to be freed */
+	u16 schq;
 };
 
 struct nix_txschq_config {
