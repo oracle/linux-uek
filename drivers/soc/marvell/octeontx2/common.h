@@ -154,14 +154,6 @@ enum nix_scheduler {
 #define DEFAULT_RSS_CONTEXT_GROUP	0
 #define MAX_RSS_INDIR_TBL_SIZE		256 /* 1 << Max adder bits */
 
-/* NIX flow tag, key type flags */
-#define FLOW_KEY_TYPE_PORT	BIT(0)
-#define FLOW_KEY_TYPE_IPV4	BIT(1)
-#define FLOW_KEY_TYPE_IPV6	BIT(2)
-#define FLOW_KEY_TYPE_TCP	BIT(3)
-#define FLOW_KEY_TYPE_UDP	BIT(4)
-#define FLOW_KEY_TYPE_SCTP	BIT(5)
-
 /* NIX flow tag algorithm indices, max is 31 */
 enum {
 	FLOW_KEY_ALG_PORT,
