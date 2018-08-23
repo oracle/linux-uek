@@ -1613,7 +1613,7 @@ static int get_flowkey_alg_idx(u32 flow_cfg)
 
 int rvu_mbox_handler_NIX_RSS_FLOWKEY_CFG(struct rvu *rvu,
 					 struct nix_rss_flowkey_cfg *req,
-					 struct msg_rsp *rsp)
+					 struct nix_rss_flowkey_cfg_rsp *rsp)
 {
 	struct rvu_hwinfo *hw = rvu->hw;
 	u16 pcifunc = req->hdr.pcifunc;
@@ -1628,7 +1628,7 @@ int rvu_mbox_handler_NIX_RSS_FLOWKEY_CFG(struct rvu *rvu,
 		return NIX_AF_ERR_AF_LF_INVALID;
 
 	alg_idx = get_flowkey_alg_idx(req->flowkey_cfg);
-
+	rsp->alg_idx = alg_idx;
 	rvu_npc_update_flowkey_alg_idx(rvu, pcifunc, nixlf, req->group,
 				       alg_idx, req->mcam_index);
 	return 0;
