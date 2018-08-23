@@ -417,6 +417,7 @@ enum nix_af_status {
 	NIX_AF_INVAL_TXSCHQ_CFG     = -412,
 	NIX_AF_SMQ_FLUSH_FAILED     = -413,
 	NIX_AF_ERR_LF_RESET         = -414,
+	NIX_AF_ERR_RSS_NOSPC_FIELD  = -415,
 };
 
 /* For NIX LF context alloc and init */
