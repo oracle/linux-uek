@@ -406,10 +406,26 @@ int otx2_txschq_config(struct otx2_nic *pfvf, int lvl)
 		parent =  hw->txschq_list[NIX_TXSCH_LVL_TL1][0];
 		req->reg[0] = NIX_AF_TL2X_PARENT(schq);
 		req->regval[0] = parent << 16;
+
+		req->num_regs++;
+		req->reg[1] = NIX_AF_TL2X_SCHEDULE(schq);
+		req->regval[1] = TXSCH_TL1_DFLT_RR_PRIO << 24;
 	} else if (lvl == NIX_TXSCH_LVL_TL1) {
+		/* Default config for TL1.
+		 * For VF this is always ignored.
+		 */
+
 		/* Set DWRR quantum */
 		req->reg[0] = NIX_AF_TL1X_SCHEDULE(schq);
-		req->regval[0] = pfvf->netdev->mtu;
+		req->regval[0] = TXSCH_TL1_DFLT_RR_QTM;
+
+		req->num_regs++;
+		req->reg[1] = NIX_AF_TL1X_TOPOLOGY(schq);
+		req->regval[1] = (TXSCH_TL1_DFLT_RR_PRIO << 1);
+
+		req->num_regs++;
+		req->reg[2] = NIX_AF_TL1X_CIR(schq);
+		req->regval[2] = 0;
 	}
 
 	return otx2_sync_mbox_msg(&pfvf->mbox);
@@ -434,7 +450,7 @@ int otx2_txsch_alloc(struct otx2_nic *pfvf)
 
 int otx2_txschq_stop(struct otx2_nic *pfvf)
 {
-	struct msg_req *free_req;
+	struct nix_txsch_free_req *free_req;
 	int lvl, schq;
 
 	/* Free the transmit schedulers */
@@ -442,6 +458,7 @@ int otx2_txschq_stop(struct otx2_nic *pfvf)
 	if (!free_req)
 		return -ENOMEM;
 
+	free_req->flags = TXSCHQ_FREE_ALL;
 	WARN_ON(otx2_sync_mbox_msg(&pfvf->mbox));
 
 	/* Clear the txschq list */
