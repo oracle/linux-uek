@@ -1584,54 +1584,16 @@ int rvu_mbox_handler_NIX_STATS_RST(struct rvu *rvu, struct msg_req *req,
 }
 
 /* Returns the ALG index to be set into NPC_RX_ACTION */
-static int get_flowkey_alg_idx(u32 flow_cfg)
+static int get_flowkey_alg_idx(struct nix_hw *nix_hw, u32 flow_cfg)
 {
-	u32 ip_cfg;
+	int i;
 
-	flow_cfg &= ~FLOW_KEY_TYPE_PORT;
-	ip_cfg = FLOW_KEY_TYPE_IPV4 | FLOW_KEY_TYPE_IPV6;
-	if (flow_cfg == ip_cfg)
-		return FLOW_KEY_ALG_IP;
-	else if (flow_cfg == (ip_cfg | FLOW_KEY_TYPE_TCP))
-		return FLOW_KEY_ALG_TCP;
-	else if (flow_cfg == (ip_cfg | FLOW_KEY_TYPE_UDP))
-		return FLOW_KEY_ALG_UDP;
-	else if (flow_cfg == (ip_cfg | FLOW_KEY_TYPE_SCTP))
-		return FLOW_KEY_ALG_SCTP;
-	else if (flow_cfg == (ip_cfg | FLOW_KEY_TYPE_TCP | FLOW_KEY_TYPE_UDP))
-		return FLOW_KEY_ALG_TCP_UDP;
-	else if (flow_cfg == (ip_cfg | FLOW_KEY_TYPE_TCP | FLOW_KEY_TYPE_SCTP))
-		return FLOW_KEY_ALG_TCP_SCTP;
-	else if (flow_cfg == (ip_cfg | FLOW_KEY_TYPE_UDP | FLOW_KEY_TYPE_SCTP))
-		return FLOW_KEY_ALG_UDP_SCTP;
-	else if (flow_cfg == (ip_cfg | FLOW_KEY_TYPE_TCP |
-			      FLOW_KEY_TYPE_UDP | FLOW_KEY_TYPE_SCTP))
-		return FLOW_KEY_ALG_TCP_UDP_SCTP;
+	/* Scan over exiting algo entries to find a match */
+	for (i = 0; i < nix_hw->flowkey.in_use; i++)
+		if (nix_hw->flowkey.flowkey[i] == flow_cfg)
+			return i;
 
-	return FLOW_KEY_ALG_PORT;
-}
-
-int rvu_mbox_handler_NIX_RSS_FLOWKEY_CFG(struct rvu *rvu,
-					 struct nix_rss_flowkey_cfg *req,
-					 struct nix_rss_flowkey_cfg_rsp *rsp)
-{
-	struct rvu_hwinfo *hw = rvu->hw;
-	u16 pcifunc = req->hdr.pcifunc;
-	int alg_idx, nixlf, blkaddr;
-
-	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NIX, pcifunc);
-	if (blkaddr < 0)
-		return NIX_AF_ERR_AF_LF_INVALID;
-
-	nixlf = rvu_get_lf(rvu, &hw->block[blkaddr], pcifunc, 0);
-	if (nixlf < 0)
-		return NIX_AF_ERR_AF_LF_INVALID;
-
-	alg_idx = get_flowkey_alg_idx(req->flowkey_cfg);
-	rsp->alg_idx = alg_idx;
-	rvu_npc_update_flowkey_alg_idx(rvu, pcifunc, nixlf, req->group,
-				       alg_idx, req->mcam_index);
-	return 0;
+	return -ERANGE;
 }
 
 static int set_flowkey_fields(struct nix_rx_flowkey_alg *alg, u32 flow_cfg)
@@ -1765,65 +1727,137 @@ static int set_flowkey_fields(struct nix_rx_flowkey_alg *alg, u32 flow_cfg)
 		return NIX_AF_ERR_RSS_NOSPC_FIELD;
 }
 
-static void nix_rx_flowkey_alg_cfg(struct rvu *rvu, int blkaddr)
+static int reserve_flowkey_alg_idx(struct rvu *rvu, int blkaddr, u32 flow_cfg)
 {
-	u64 field[FLOW_KEY_ALG_MAX][FIELDS_PER_ALG];
+	u64 field[FIELDS_PER_ALG];
+	struct nix_hw *nix_hw;
+	int fid, rc;
+
+	nix_hw = get_nix_hw(rvu->hw, blkaddr);
+	if (!nix_hw)
+		return -EINVAL;
+
+	/* No room to add new flow hash algoritham */
+	if (nix_hw->flowkey.in_use >= FLOW_KEY_ALG_MAX)
+		return NIX_AF_ERR_RSS_NOSPC_ALGO;
+
+	/* Generate algo fields for the given flow_cfg */
+	rc = set_flowkey_fields((struct nix_rx_flowkey_alg *)field, flow_cfg);
+	if (rc)
+		return rc;
+
+	/* Update ALGX_FIELDX register with generated fields */
+	for (fid = 0; fid < FIELDS_PER_ALG; fid++)
+		rvu_write64(rvu, blkaddr,
+			NIX_AF_RX_FLOW_KEY_ALGX_FIELDX(nix_hw->flowkey.in_use,
+			fid), field[fid]);
+
+	/* Store the flow_cfg for futher lookup */
+	rc = nix_hw->flowkey.in_use;
+	nix_hw->flowkey.flowkey[rc] = flow_cfg;
+	nix_hw->flowkey.in_use++;
+
+	return rc;
+}
+
+int rvu_mbox_handler_NIX_RSS_FLOWKEY_CFG(struct rvu *rvu,
+					 struct nix_rss_flowkey_cfg *req,
+					 struct nix_rss_flowkey_cfg_rsp *rsp)
+{
+	struct rvu_hwinfo *hw = rvu->hw;
+	u16 pcifunc = req->hdr.pcifunc;
+	int alg_idx, nixlf, blkaddr;
+	struct nix_hw *nix_hw;
+
+	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NIX, pcifunc);
+	if (blkaddr < 0)
+		return NIX_AF_ERR_AF_LF_INVALID;
+
+	nixlf = rvu_get_lf(rvu, &hw->block[blkaddr], pcifunc, 0);
+	if (nixlf < 0)
+		return NIX_AF_ERR_AF_LF_INVALID;
+
+	nix_hw = get_nix_hw(rvu->hw, blkaddr);
+	if (!nix_hw)
+		return -EINVAL;
+
+	alg_idx = get_flowkey_alg_idx(nix_hw, req->flowkey_cfg);
+	/* Failed to get algo index from the exiting list, reserve new  */
+	if (alg_idx < 0) {
+		alg_idx = reserve_flowkey_alg_idx(rvu, blkaddr,
+					req->flowkey_cfg);
+		if (alg_idx < 0)
+			return alg_idx;
+	}
+	rsp->alg_idx = alg_idx;
+	rvu_npc_update_flowkey_alg_idx(rvu, pcifunc, nixlf, req->group,
+				       alg_idx, req->mcam_index);
+	return 0;
+}
+
+static int nix_rx_flowkey_alg_cfg(struct rvu *rvu, int blkaddr)
+{
 	u32 flowkey_cfg, minkey_cfg;
-	int alg, fid;
+	int alg, fid, rc;
 
-	memset(&field, 0, sizeof(u64) * FLOW_KEY_ALG_MAX * FIELDS_PER_ALG);
-
-	/* Only incoming channel number */
-	flowkey_cfg = FLOW_KEY_TYPE_PORT;
-	set_flowkey_fields((void *)&field[FLOW_KEY_ALG_PORT], flowkey_cfg);
-
-	/* For a incoming pkt if none of the fields match then flowkey
-	 * will be zero, hence tag generated will also be zero.
-	 * RSS entry at rsse_index = NIX_AF_LF()_RSS_GRP()[OFFSET] will
-	 * be used to queue the packet.
-	 */
+	/* Disable all flow key algx fieldx */
+	for (alg = 0; alg < FLOW_KEY_ALG_MAX; alg++) {
+		for (fid = 0; fid < FIELDS_PER_ALG; fid++)
+			rvu_write64(rvu, blkaddr,
+			NIX_AF_RX_FLOW_KEY_ALGX_FIELDX(alg, fid), 0);
+	}
 
 	/* IPv4/IPv6 SIP/DIPs */
 	flowkey_cfg = FLOW_KEY_TYPE_IPV4 | FLOW_KEY_TYPE_IPV6;
-	set_flowkey_fields((void *)&field[FLOW_KEY_ALG_IP], flowkey_cfg);
+	rc = reserve_flowkey_alg_idx(rvu, blkaddr, flowkey_cfg);
+	if (rc < 0)
+		return rc;
 
 	/* TCPv4/v6 4-tuple, SIP, DIP, Sport, Dport */
 	minkey_cfg = flowkey_cfg;
 	flowkey_cfg = minkey_cfg | FLOW_KEY_TYPE_TCP;
-	set_flowkey_fields((void *)&field[FLOW_KEY_ALG_TCP], flowkey_cfg);
+	rc = reserve_flowkey_alg_idx(rvu, blkaddr, flowkey_cfg);
+	if (rc < 0)
+		return rc;
 
 	/* UDPv4/v6 4-tuple, SIP, DIP, Sport, Dport */
 	flowkey_cfg = minkey_cfg | FLOW_KEY_TYPE_UDP;
-	set_flowkey_fields((void *)&field[FLOW_KEY_ALG_UDP], flowkey_cfg);
+	rc = reserve_flowkey_alg_idx(rvu, blkaddr, flowkey_cfg);
+	if (rc < 0)
+		return rc;
 
 	/* SCTPv4/v6 4-tuple, SIP, DIP, Sport, Dport */
 	flowkey_cfg = minkey_cfg | FLOW_KEY_TYPE_SCTP;
-	set_flowkey_fields((void *)&field[FLOW_KEY_ALG_SCTP], flowkey_cfg);
+	rc = reserve_flowkey_alg_idx(rvu, blkaddr, flowkey_cfg);
+	if (rc < 0)
+		return rc;
 
 	/* TCP/UDP v4/v6 4-tuple, rest IP pkts 2-tuple */
 	flowkey_cfg = minkey_cfg | FLOW_KEY_TYPE_TCP | FLOW_KEY_TYPE_UDP;
-	set_flowkey_fields((void *)&field[FLOW_KEY_ALG_TCP_UDP], flowkey_cfg);
+	rc = reserve_flowkey_alg_idx(rvu, blkaddr, flowkey_cfg);
+	if (rc < 0)
+		return rc;
 
 	/* TCP/SCTP v4/v6 4-tuple, rest IP pkts 2-tuple */
 	flowkey_cfg = minkey_cfg | FLOW_KEY_TYPE_TCP | FLOW_KEY_TYPE_SCTP;
-	set_flowkey_fields((void *)&field[FLOW_KEY_ALG_TCP_SCTP], flowkey_cfg);
+	rc = reserve_flowkey_alg_idx(rvu, blkaddr, flowkey_cfg);
+	if (rc < 0)
+		return rc;
 
 	/* UDP/SCTP v4/v6 4-tuple, rest IP pkts 2-tuple */
 	flowkey_cfg = minkey_cfg | FLOW_KEY_TYPE_UDP | FLOW_KEY_TYPE_SCTP;
-	set_flowkey_fields((void *)&field[FLOW_KEY_ALG_UDP_SCTP], flowkey_cfg);
+	rc = reserve_flowkey_alg_idx(rvu, blkaddr, flowkey_cfg);
+	if (rc < 0)
+		return rc;
 
 	/* TCP/UDP/SCTP v4/v6 4-tuple, rest IP pkts 2-tuple */
 	flowkey_cfg = minkey_cfg | FLOW_KEY_TYPE_TCP |
 		      FLOW_KEY_TYPE_UDP | FLOW_KEY_TYPE_SCTP;
-	set_flowkey_fields((void *)&field[FLOW_KEY_ALG_TCP_UDP_SCTP],
-			   flowkey_cfg);
+	rc = reserve_flowkey_alg_idx(rvu, blkaddr, flowkey_cfg);
+	if (rc < 0)
+		return rc;
 
-	for (alg = 0; alg < FLOW_KEY_ALG_MAX; alg++) {
-		for (fid = 0; fid < FIELDS_PER_ALG; fid++)
-			rvu_write64(rvu, blkaddr,
-				    NIX_AF_RX_FLOW_KEY_ALGX_FIELDX(alg, fid),
-				    field[alg][fid]);
-	}
+	return 0;
 }
 
 int rvu_mbox_handler_NIX_SET_MAC_ADDR(struct rvu *rvu,
@@ -2219,7 +2253,9 @@ int rvu_nix_init(struct rvu *rvu)
 		rvu_write64(rvu, blkaddr, NIX_AF_RX_DEF_OIP4,
 			    (NPC_LID_LC << 8) | (NPC_LT_LC_IP << 4) | 0x0F);
 
-		nix_rx_flowkey_alg_cfg(rvu, blkaddr);
+		err = nix_rx_flowkey_alg_cfg(rvu, blkaddr);
+		if (err)
+			return err;
 
 		/* Initialize CGX/LBK/SDP link credits, min/max pkt lengths */
 		nix_link_config(rvu, blkaddr);
