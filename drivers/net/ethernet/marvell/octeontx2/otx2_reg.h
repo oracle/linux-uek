@@ -140,6 +140,7 @@
 #define NIX_AF_TL1X_CIR(a)		(0xC20 | (a) << 16)
 #define NIX_AF_TL1X_TOPOLOGY(a)		(0xC80 | (a) << 16)
 #define NIX_AF_TL2X_PARENT(a)		(0xE88 | (a) << 16)
+#define NIX_AF_TL2X_SCHEDULE(a)		(0xE00 | (a) << 16)
 #define NIX_AF_TL3X_PARENT(a)		(0x1088 | (a) << 16)
 #define NIX_AF_TL4X_PARENT(a)		(0x1288 | (a) << 16)
 #define NIX_AF_MDQX_SCHEDULE(a)		(0x1400 | (a) << 16)
