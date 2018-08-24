@@ -52,7 +52,6 @@
 
 struct otx2_mbox_dev {
 	void	    *mbase;   /* This dev's mbox region */
-	void        *txmem;   /* Local memory allocated for framing mbox msgs */
 	spinlock_t  mbox_lock;
 	u16         msg_size; /* Total msg size to be sent */
 	u16         rsp_size; /* Total rsp size to be sure the reply is ok */
