@@ -146,6 +146,8 @@ static irqreturn_t otx2vf_vfaf_mbox_intr_handler(int irq, void *vf_irq)
 static int otx2vf_register_mbox_intr(struct otx2_nic *vf)
 {
 	struct otx2_hw *hw = &vf->hw;
+	struct msg_req *req;
+	struct mbox_msghdr *rsp_hdr;
 	char *irq_name;
 	int err;
 
@@ -178,7 +180,10 @@ static int otx2vf_register_mbox_intr(struct otx2_nic *vf)
 	otx2_write64(vf, RVU_VF_INT_ENA_W1S, BIT_ULL(0));
 
 	/* Check mailbox communication with PF */
-	otx2_mbox_alloc_msg_READY(&vf->mbox);
+	req = otx2_mbox_alloc_msg_READY(&vf->mbox);
+	if (!req)
+		return -ENOMEM;
+
 	err = otx2_sync_mbox_msg(&vf->mbox);
 	if (err) {
 		dev_warn(vf->dev,
@@ -186,7 +191,11 @@ static int otx2vf_register_mbox_intr(struct otx2_nic *vf)
 		return -EPROBE_DEFER;
 	}
 
-	return 0;
+	rsp_hdr = otx2_mbox_get_rsp(&vf->mbox.mbox, 0, &req->hdr);
+	if (IS_ERR(rsp_hdr))
+		return PTR_ERR(rsp_hdr);
+
+	return rsp_hdr->rc;
 }
 
 static void otx2vf_disable_mbox_intr(struct otx2_nic *vf)
