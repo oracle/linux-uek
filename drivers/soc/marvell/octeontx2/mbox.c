@@ -36,20 +36,8 @@ EXPORT_SYMBOL(otx2_mbox_reset);
 
 void otx2_mbox_destroy(struct otx2_mbox *mbox)
 {
-	struct otx2_mbox_dev *mdev;
-	int devid;
-
 	mbox->reg_base = NULL;
 	mbox->hwbase = NULL;
-
-	if (!mbox->dev)
-		return;
-
-	for (devid = 0; devid < mbox->ndevs; devid++) {
-		mdev = &mbox->dev[devid];
-		if (mdev->txmem)
-			devm_kfree(&mbox->pdev->dev, mdev->txmem);
-	}
 
 	kfree(mbox->dev);
 	mbox->dev = NULL;
@@ -134,15 +122,6 @@ int otx2_mbox_init(struct otx2_mbox *mbox, void *hwbase, struct pci_dev *pdev,
 	for (devid = 0; devid < ndevs; devid++) {
 		mdev = &mbox->dev[devid];
 		mdev->mbase = mbox->hwbase + (devid * MBOX_SIZE);
-		mdev->txmem = devm_kmalloc(&pdev->dev,
-					   mbox->tx_size - msgs_offset,
-					   GFP_KERNEL);
-		if (!mdev->txmem) {
-			dev_err(&pdev->dev,
-				"Unable to alloc local send mbox region\n");
-			otx2_mbox_destroy(mbox);
-			return -ENOMEM;
-		}
 		spin_lock_init(&mdev->mbox_lock);
 		/* Init header to reset value */
 		otx2_mbox_reset(mbox, devid);
@@ -189,9 +168,6 @@ void otx2_mbox_msg_send(struct otx2_mbox *mbox, int devid)
 	struct mbox_hdr *rx_hdr =
 		(struct mbox_hdr *)(mdev->mbase  + mbox->rx_start);
 
-	memcpy(mdev->mbase + mbox->tx_start + msgs_offset, mdev->txmem,
-	       mdev->msg_size);
-
 	spin_lock(&mdev->mbox_lock);
 	/* Reset header for next messages */
 	mdev->msg_size = 0;
@@ -202,7 +178,8 @@ void otx2_mbox_msg_send(struct otx2_mbox *mbox, int devid)
 	smp_wmb();
 
 	/* num_msgs != 0 signals to the peer that the buffer has a number of
-	 * messages.  So this should be written after copying txmem
+	 * messages.  So this should be written after writing all the messages
+	 * to the shared memory.
 	 */
 	tx_hdr->num_msgs = mdev->num_msgs;
 	rx_hdr->num_msgs = 0;
@@ -235,7 +212,8 @@ struct mbox_msghdr *otx2_mbox_alloc_msg_rsp(struct otx2_mbox *mbox, int devid,
 		mdev->num_msgs = 0;
 	mdev->num_msgs++;
 
-	msghdr = (struct mbox_msghdr *)(mdev->txmem + mdev->msg_size);
+	msghdr = (struct mbox_msghdr *)(mdev->mbase + mbox->tx_start +
+					msgs_offset + mdev->msg_size);
 	/* Clear the whole msg region */
 	memset(msghdr, 0, sizeof(*msghdr) + size);
 	/* Init message header with reset values */
