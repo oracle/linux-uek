@@ -101,6 +101,8 @@ int otx2_mbox_wait_for_rsp(struct otx2_mbox *mbox, int devid);
 int otx2_mbox_busy_poll_for_rsp(struct otx2_mbox *mbox, int devid);
 struct mbox_msghdr *otx2_mbox_alloc_msg_rsp(struct otx2_mbox *mbox, int devid,
 					    int size, int size_rsp);
+struct mbox_msghdr *otx2_mbox_get_rsp(struct otx2_mbox *mbox, int devid,
+				      struct mbox_msghdr *msg);
 int otx2_reply_invalid_msg(struct otx2_mbox *mbox, int devid,
 			   u16 pcifunc, u16 id);
 bool otx2_mbox_nonempty(struct otx2_mbox *mbox, int devid);

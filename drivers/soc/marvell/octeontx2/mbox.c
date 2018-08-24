@@ -228,6 +228,35 @@ exit:
 }
 EXPORT_SYMBOL(otx2_mbox_alloc_msg_rsp);
 
+struct mbox_msghdr *otx2_mbox_get_rsp(struct otx2_mbox *mbox, int devid,
+				      struct mbox_msghdr *msg)
+{
+	struct otx2_mbox_dev *mdev = &mbox->dev[devid];
+	unsigned long imsg = mbox->tx_start + msgs_offset;
+	unsigned long irsp = mbox->rx_start + msgs_offset;
+	u16 msgs;
+
+	if (mdev->num_msgs != mdev->msgs_acked)
+		return ERR_PTR(-ENODEV);
+
+	for (msgs = 0; msgs < mdev->msgs_acked; msgs++) {
+		struct mbox_msghdr *pmsg = mdev->mbase + imsg;
+		struct mbox_msghdr *prsp = mdev->mbase + irsp;
+
+		if (msg == pmsg) {
+			if (pmsg->id != prsp->id)
+				return ERR_PTR(-ENODEV);
+			return prsp;
+		}
+
+		imsg = pmsg->next_msgoff;
+		irsp = prsp->next_msgoff;
+	}
+
+	return ERR_PTR(-ENODEV);
+}
+EXPORT_SYMBOL(otx2_mbox_get_rsp);
+
 int
 otx2_reply_invalid_msg(struct otx2_mbox *mbox, int devid, u16 pcifunc, u16 id)
 {
