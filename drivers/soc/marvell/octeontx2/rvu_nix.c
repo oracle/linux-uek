@@ -1068,6 +1068,14 @@ int rvu_mbox_handler_NIX_TXSCH_ALLOC(struct rvu *rvu,
 		return -EINVAL;
 
 	mutex_lock(&rvu->rsrc_lock);
+
+	/* Check if full request can be accommodated */
+	if (rvu_check_txsch_policy(rvu, req, pcifunc)) {
+		dev_err(rvu->dev, "Func 0x%x: TXSCH policy check failed\n",
+			pcifunc);
+		goto err;
+	}
+
 	for (lvl = 0; lvl < NIX_TXSCH_LVL_CNT; lvl++) {
 		txsch = &nix_hw->txsch[lvl];
 		req_schq = req->schq_contig[lvl] + req->schq[lvl];
