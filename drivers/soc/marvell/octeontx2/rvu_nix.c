@@ -2578,20 +2578,26 @@ void rvu_nix_lf_teardown(struct rvu *rvu, u16 pcifunc, int blkaddr, int nixlf)
 	nix_rx_sync(rvu, blkaddr);
 	nix_txschq_free(rvu, pcifunc);
 
-	ctx_req.ctype = NIX_AQ_CTYPE_SQ;
-	err = nix_lf_hwctx_disable(rvu, &ctx_req);
-	if (err)
-		dev_err(rvu->dev, "SQ ctx disable failed\n");
+	if (pfvf->sq_ctx) {
+		ctx_req.ctype = NIX_AQ_CTYPE_SQ;
+		err = nix_lf_hwctx_disable(rvu, &ctx_req);
+		if (err)
+			dev_err(rvu->dev, "SQ ctx disable failed\n");
+	}
 
-	ctx_req.ctype = NIX_AQ_CTYPE_RQ;
-	err = nix_lf_hwctx_disable(rvu, &ctx_req);
-	if (err)
-		dev_err(rvu->dev, "RQ ctx disable failed\n");
+	if (pfvf->rq_ctx) {
+		ctx_req.ctype = NIX_AQ_CTYPE_RQ;
+		err = nix_lf_hwctx_disable(rvu, &ctx_req);
+		if (err)
+			dev_err(rvu->dev, "RQ ctx disable failed\n");
+	}
 
-	ctx_req.ctype = NIX_AQ_CTYPE_CQ;
-	err = nix_lf_hwctx_disable(rvu, &ctx_req);
-	if (err)
-		dev_err(rvu->dev, "CQ ctx disable failed\n");
+	if (pfvf->cq_ctx) {
+		ctx_req.ctype = NIX_AQ_CTYPE_CQ;
+		err = nix_lf_hwctx_disable(rvu, &ctx_req);
+		if (err)
+			dev_err(rvu->dev, "CQ ctx disable failed\n");
+	}
 
 	nix_ctx_free(rvu, pfvf);
 }
