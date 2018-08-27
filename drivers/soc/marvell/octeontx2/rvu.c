@@ -1956,7 +1956,7 @@ static int rvu_register_interrupts(struct rvu *rvu)
 
 	/* Register FLR interrupt handler */
 	sprintf(&rvu->irq_name[RVU_AF_INT_VEC_PFFLR * NAME_SIZE],
-		"RVUPFAF FLR");
+		"RVUAF FLR");
 	ret = request_irq(pci_irq_vector(rvu->pdev, RVU_AF_INT_VEC_PFFLR),
 			  rvu_flr_intr_handler, 0,
 			  &rvu->irq_name[RVU_AF_INT_VEC_PFFLR * NAME_SIZE],
@@ -1983,14 +1983,14 @@ static int rvu_register_interrupts(struct rvu *rvu)
 
 	/* Register MBOX0 interrupt. */
 	offset += RVU_PF_INT_VEC_VFPF_MBOX0;
-	sprintf(&rvu->irq_name[offset * NAME_SIZE], "RVUVFPF MBOX0");
+	sprintf(&rvu->irq_name[offset * NAME_SIZE], "RVUAFVF Mbox0");
 	ret = request_irq(pci_irq_vector(rvu->pdev, offset),
 			  rvu_mbox_intr_handler, 0,
 			  &rvu->irq_name[offset * NAME_SIZE],
 			  rvu);
 	if (ret)
 		dev_err(rvu->dev,
-			"RVUAF: IRQ registration failed for MBOX0\n");
+			"RVUAF: IRQ registration failed for Mbox0\n");
 
 	rvu->irq_allocated[offset] = true;
 
@@ -1998,14 +1998,14 @@ static int rvu_register_interrupts(struct rvu *rvu)
 	 * simply increment current offset by 1.
 	 */
 	offset += 1;
-	sprintf(&rvu->irq_name[offset * NAME_SIZE], "RVUVFPF MBOX1");
+	sprintf(&rvu->irq_name[offset * NAME_SIZE], "RVUAFVF Mbox1");
 	ret = request_irq(pci_irq_vector(rvu->pdev, offset),
 			  rvu_mbox_intr_handler, 0,
 			  &rvu->irq_name[offset * NAME_SIZE],
 			  rvu);
 	if (ret)
 		dev_err(rvu->dev,
-			"RVUAF: IRQ registration failed for MBOX1\n");
+			"RVUAF: IRQ registration failed for Mbox1\n");
 
 	rvu->irq_allocated[offset] = true;
 
