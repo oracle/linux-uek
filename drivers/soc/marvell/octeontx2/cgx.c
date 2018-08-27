@@ -21,7 +21,8 @@
 
 #include "cgx.h"
 
-#define DRV_NAME	"OcteonTX2 CGX driver"
+#define DRV_NAME	"octeontx2-cgx"
+#define DRV_STRING      "Marvell OcteonTX2 CGX/MAC Driver"
 #define DRV_VERSION	"1.0"
 
 /**
@@ -76,7 +77,7 @@ static const struct pci_device_id cgx_id_table[] = {
 };
 
 MODULE_AUTHOR("Marvell International Ltd.");
-MODULE_DESCRIPTION("Marvell OcteonTX2 CGX/MAC Driver");
+MODULE_DESCRIPTION(DRV_STRING);
 MODULE_LICENSE("GPL v2");
 MODULE_VERSION(DRV_VERSION);
 MODULE_DEVICE_TABLE(pci, cgx_id_table);
@@ -764,7 +765,7 @@ static struct pci_driver cgx_driver = {
 
 static int __init cgx_init_module(void)
 {
-	pr_info("%s, ver %s\n", DRV_NAME, DRV_VERSION);
+	pr_info("%s: %s\n", DRV_NAME, DRV_STRING);
 
 	return pci_register_driver(&cgx_driver);
 }
