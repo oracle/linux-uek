@@ -481,6 +481,10 @@ void rvu_npc_install_bcast_match_entry(struct rvu *rvu, u16 pcifunc,
 void rvu_npc_disable_mcam_entries(struct rvu *rvu, u16 pcifunc, int nixlf);
 void rvu_npc_update_flowkey_alg_idx(struct rvu *rvu, u16 pcifunc, int nixlf,
 				    int group, int alg_idx, int mcam_index);
+void rvu_npc_get_mcam_entry_alloc_info(struct rvu *rvu, u16 pcifunc,
+				int blkaddr, int *alloc_cnt, int *enable_cnt);
+void rvu_npc_get_mcam_counter_alloc_info(struct rvu *rvu, u16 pcifunc,
+				int blkaddr, int *alloc_cnt, int *enable_cnt);
 int rvu_mbox_handler_NPC_MCAM_ALLOC_ENTRY(struct rvu *rvu,
 					  struct npc_mcam_alloc_entry_req *req,
 					  struct npc_mcam_alloc_entry_rsp *rsp);
