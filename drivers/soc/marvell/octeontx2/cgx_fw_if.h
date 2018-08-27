@@ -41,7 +41,6 @@ enum cgx_error_type {
 	CGX_ERR_RX_EQU_FAIL,
 	CGX_ERR_SPUX_BER_FAIL,
 	CGX_ERR_SPUX_RSFEC_ALGN_FAIL,   /* = 22 */
-	/* FIXME : add more error types when adding support for new modes */
 };
 
 /* LINK speed types */
@@ -98,8 +97,6 @@ enum cgx_stat {
 };
 
 enum cgx_cmd_own {
-	/* set by kernel/uefi/u-boot after posting a new request to ATF */
-	/* set by firmware */
 	CGX_CMD_OWN_NS,
 	CGX_CMD_OWN_FIRMWARE,
 };
@@ -108,11 +105,7 @@ enum cgx_cmd_own {
  * This acts as the status register
  * Provides details on command ack/status, link status, error details
  */
-
-/* CAUTION : below structures are placed in order based on the bit positions
- * For any updates/new bitfields, corresponding structures needs to be updated
- */
-struct cgx_evt_sts {			/* start from bit 0 */
+struct cgx_evt_sts {
 	uint64_t ack:1;
 	uint64_t evt_type:1;		/* cgx_evt_type */
 	uint64_t stat:1;		/* cgx_stat */
@@ -120,42 +113,44 @@ struct cgx_evt_sts {			/* start from bit 0 */
 	uint64_t reserved:55;
 };
 
-/* all the below structures are in the same memory location of SCRATCHX(0)
- * value can be read/written based on command ID
- */
-
-/* Resp to command IDs with command status as CGX_STAT_FAIL
+/* Response to command IDs with command status as CGX_STAT_FAIL
  *
  * Not applicable for commands :
  * CGX_CMD_LINK_BRING_UP/DOWN/CGX_EVT_LINK_CHANGE
  * check struct cgx_lnk_sts comments
  */
-struct cgx_err_sts_s {			/* start from bit 9 */
+struct cgx_err_sts_s {
 	uint64_t reserved1:9;
 	uint64_t type:10;		/* cgx_error_type */
 	uint64_t reserved2:35;
 };
 
-/* Resp to cmd ID as CGX_CMD_GET_FW_VER with cmd status as CGX_STAT_SUCCESS */
-struct cgx_ver_s {			/* start from bit 9 */
+/* Response to cmd ID as CGX_CMD_GET_FW_VER with cmd status as
+ * CGX_STAT_SUCCESS
+ */
+struct cgx_ver_s {
 	uint64_t reserved1:9;
 	uint64_t major_ver:4;
 	uint64_t minor_ver:4;
 	uint64_t reserved2:47;
 };
 
-/* Resp to cmd ID as CGX_CMD_GET_MAC_ADDR with cmd status as CGX_STAT_SUCCESS */
-struct cgx_mac_addr_s {			/* start from bit 9 */
+/* Response to cmd ID as CGX_CMD_GET_MAC_ADDR with cmd status as
+ * CGX_STAT_SUCCESS
+ */
+struct cgx_mac_addr_s {
 	uint64_t reserved1:9;
 	uint64_t local_mac_addr:48;
 	uint64_t reserved2:7;
 };
 
-/* Resp to cmd ID - CGX_CMD_LINK_BRING_UP/DOWN, event ID CGX_EVT_LINK_CHANGE
+/* Response to cmd ID - CGX_CMD_LINK_BRING_UP/DOWN, event ID CGX_EVT_LINK_CHANGE
  * status can be either CGX_STAT_FAIL or CGX_STAT_SUCCESS
+ *
  * In case of CGX_STAT_FAIL, it indicates CGX configuration failed
  * when processing link up/down/change command.
  * Both err_type and current link status will be updated
+ *
  * In case of CGX_STAT_SUCCESS, err_type will be CGX_ERR_NONE and current
  * link status will be updated
  */
@@ -180,21 +175,17 @@ union cgx_evtreg {
 /* scratchx(1) CSR used for non-secure SW->ATF communication
  * This CSR acts as a command register
  */
-struct cgx_cmd {			/* start from bit 2 */
+struct cgx_cmd {
 	uint64_t own:2;			/* cgx_csr_own */
 	uint64_t id:6;			/* cgx_request_id */
 	uint64_t reserved2:56;
 };
 
-/* all the below structures are in the same memory location of SCRATCHX(1)
- * corresponding arguments for command Id needs to be updated
- */
-
 /* Any command using enable/disable as an argument need
  * to pass the option via this structure.
  * Ex: Loopback, HiGig...
  */
-struct cgx_ctl_args {			/* start from bit 8 */
+struct cgx_ctl_args {
 	uint64_t reserved1:8;
 	uint64_t enable:1;
 	uint64_t reserved2:55;
@@ -208,7 +199,7 @@ struct cgx_mtu_args {
 };
 
 /* command argument to be passed for cmd ID - CGX_CMD_LINK_CHANGE */
-struct cgx_link_change_args {		/* start from bit 8 */
+struct cgx_link_change_args {
 	uint64_t reserved1:8;
 	uint64_t link_up:1;
 	uint64_t full_duplex:1;
@@ -229,7 +220,6 @@ union cgx_cmdreg {
 	struct cgx_mtu_args mtu_size;
 	struct cgx_irq_cfg irq_cfg; /* Input to CGX_CMD_IRQ_ENABLE */
 	struct cgx_link_change_args lnk_args;/* Input to CGX_CMD_LINK_CHANGE */
-	/* any other arg for command id * like : mtu, dmac filtering control */
 };
 
 #endif /* __CGX_FW_INTF_H__ */
