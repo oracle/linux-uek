@@ -999,6 +999,42 @@ void rvu_npc_freemem(struct rvu *rvu)
 	mutex_destroy(&mcam->lock);
 }
 
+void rvu_npc_get_mcam_entry_alloc_info(struct rvu *rvu, u16 pcifunc,
+				int blkaddr, int *alloc_cnt, int *enable_cnt)
+{
+	struct npc_mcam *mcam = &rvu->hw->mcam;
+	int entry;
+
+	*alloc_cnt = 0;
+	*enable_cnt = 0;
+
+	for (entry = 0; entry < mcam->bmap_entries; entry++) {
+		if (mcam->entry2pfvf_map[entry] == pcifunc) {
+			(*alloc_cnt)++;
+			if (is_mcam_entry_enabled(rvu, mcam, blkaddr, entry))
+				(*enable_cnt)++;
+		}
+	}
+}
+
+void rvu_npc_get_mcam_counter_alloc_info(struct rvu *rvu, u16 pcifunc,
+				int blkaddr, int *alloc_cnt, int *enable_cnt)
+{
+	struct npc_mcam *mcam = &rvu->hw->mcam;
+	int cntr;
+
+	*alloc_cnt = 0;
+	*enable_cnt = 0;
+
+	for (cntr = 0; cntr < mcam->counters.max; cntr++) {
+		if (mcam->cntr2pfvf_map[cntr] == pcifunc) {
+			(*alloc_cnt)++;
+			if (mcam->cntr_refcnt[cntr])
+				(*enable_cnt)++;
+		}
+	}
+}
+
 static int npc_mcam_verify_entry(struct npc_mcam *mcam,
 				 u16 pcifunc, int entry)
 {
