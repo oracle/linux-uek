@@ -541,10 +541,12 @@ static irqreturn_t cgx_fwi_event_handler(int irq, void *data)
 			cgx->cgx_id, lmac->lmac_id);
 	}
 
-	/*  Any new event or command response will be posted by firmware
-	 *  only after the current status is acked.
+	/* Any new event or command response will be posted by firmware
+	 * only after the current status is acked.
+	 * Ack the interrupt register as well.
 	 */
 	cgx_write(lmac->cgx, lmac->lmac_id, CGX_EVENT_REG, 0);
+	cgx_write(lmac->cgx, lmac->lmac_id, CGXX_CMRX_INT, FW_CGX_INT);
 
 	return IRQ_HANDLED;
 }
@@ -652,6 +654,10 @@ static int cgx_lmac_init(struct cgx *cgx)
 				   cgx_fwi_event_handler, 0, lmac->name, lmac);
 		if (err)
 			return err;
+
+		/* Enable interrupt */
+		cgx_write(cgx, lmac->lmac_id, CGXX_CMRX_INT_ENA_W1S,
+			  FW_CGX_INT);
 
 		/* Add reference */
 		cgx->lmac_idmap[i] = lmac;
