@@ -501,4 +501,17 @@ static struct pci_driver otx2vf_driver = {
 	.remove = otx2vf_remove,
 };
 
-module_pci_driver(otx2vf_driver);
+static int __init otx2vf_init_module(void)
+{
+	pr_info("%s: %s\n", DRV_NAME, DRV_STRING);
+
+	return pci_register_driver(&otx2vf_driver);
+}
+
+static void __exit otx2vf_cleanup_module(void)
+{
+	pci_unregister_driver(&otx2vf_driver);
+}
+
+module_init(otx2vf_init_module);
+module_exit(otx2vf_cleanup_module);
