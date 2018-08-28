@@ -15,6 +15,16 @@
 #include <linux/module.h>
 #include <linux/pci.h>
 #include <linux/spinlock.h>
+#ifdef CONFIG_MRVL_OCTEONTX_EL0_INTR
+#include <linux/arm-smccc.h>
+#include <linux/cdev.h>
+#include <linux/device.h>
+#include <linux/moduleparam.h>
+#include <linux/uaccess.h>
+#include <linux/mmu_context.h>
+#include <linux/ioctl.h>
+#include <linux/fs.h>
+#endif
 
 #define GPIO_RX_DAT	0x0
 #define GPIO_TX_SET	0x8
@@ -41,6 +51,50 @@
 #define GLITCH_FILTER_400NS ((4u << GPIO_BIT_CFG_FIL_SEL_SHIFT) | \
 			     (9u << GPIO_BIT_CFG_FIL_CNT_SHIFT))
 
+#ifdef CONFIG_MRVL_OCTEONTX_EL0_INTR
+#define DEVICE_NAME	"otx-gpio-ctr"
+#define OTX_IOC_MAGIC	0xF2
+#define MAX_GPIO	80
+
+static struct device *otx_device;
+static struct class *otx_class;
+static struct cdev *otx_cdev;
+static dev_t otx_dev;
+static DEFINE_SPINLOCK(el3_inthandler_lock);
+static int gpio_in_use;
+static int gpio_installed[MAX_GPIO];
+static struct thread_info *gpio_installed_threads[MAX_GPIO];
+static struct task_struct *gpio_installed_tasks[MAX_GPIO];
+
+/* THUNDERX SMC definitons */
+/* X1 - gpio_num, X2 - sp, X3 - cpu, X4 - ttbr0 */
+#define THUNDERX_INSTALL_GPIO_INT       0x43000801
+/* X1 - gpio_num */
+#define THUNDERX_REMOVE_GPIO_INT        0x43000802
+
+struct intr_hand {
+	u64	mask;
+	char	name[50];
+	u64	coffset;
+	u64	soffset;
+	irqreturn_t (*handler)(int, void *);
+};
+
+struct otx_gpio_usr_data {
+	u64	isr_base;
+	u64	sp;
+	u64	cpu;
+	u64	gpio_num;
+};
+
+
+#define OTX_IOC_SET_GPIO_HANDLER \
+	_IOW(OTX_IOC_MAGIC, 1, struct otx_gpio_usr_data)
+
+#define OTX_IOC_CLR_GPIO_HANDLER \
+	_IO(OTX_IOC_MAGIC, 2)
+#endif
+
 struct thunderx_gpio;
 
 struct thunderx_line {
@@ -60,6 +114,162 @@ struct thunderx_gpio {
 	unsigned long		od_mask[2];
 	int			base_msi;
 };
+
+#ifdef CONFIG_MRVL_OCTEONTX_EL0_INTR
+static inline int __install_el3_inthandler(unsigned long gpio_num,
+					   unsigned long sp,
+					   unsigned long cpu,
+					   unsigned long ttbr0)
+{
+	struct arm_smccc_res res;
+	unsigned long flags;
+	int retval = -1;
+
+	spin_lock_irqsave(&el3_inthandler_lock, flags);
+	if (!gpio_installed[gpio_num]) {
+		lock_context(current->group_leader->mm, gpio_num);
+		arm_smccc_smc(THUNDERX_INSTALL_GPIO_INT, gpio_num,
+			      sp, cpu, ttbr0, 0, 0, 0, &res);
+		if (res.a0 == 0) {
+			gpio_installed[gpio_num] = 1;
+			gpio_installed_threads[gpio_num]
+				= current_thread_info();
+			gpio_installed_tasks[gpio_num]
+				= current->group_leader;
+			retval = 0;
+		} else {
+			unlock_context_by_index(gpio_num);
+		}
+	}
+	spin_unlock_irqrestore(&el3_inthandler_lock, flags);
+	return retval;
+}
+
+static inline int __remove_el3_inthandler(unsigned long gpio_num)
+{
+	struct arm_smccc_res res;
+	unsigned long flags;
+	unsigned int retval;
+
+	spin_lock_irqsave(&el3_inthandler_lock, flags);
+	if (gpio_installed[gpio_num]) {
+		arm_smccc_smc(THUNDERX_REMOVE_GPIO_INT, gpio_num,
+			      0, 0, 0, 0, 0, 0, &res);
+		gpio_installed[gpio_num] = 0;
+		gpio_installed_threads[gpio_num] = NULL;
+		gpio_installed_tasks[gpio_num] = NULL;
+		unlock_context_by_index(gpio_num);
+		retval = 0;
+	} else {
+		retval = -1;
+	}
+	spin_unlock_irqrestore(&el3_inthandler_lock, flags);
+	return retval;
+}
+
+static long otx_dev_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
+{
+	int err = 0;
+	struct otx_gpio_usr_data gpio_usr;
+	u64 gpio_ttbr, gpio_isr_base, gpio_sp, gpio_cpu, gpio_num;
+	int ret;
+	//struct task_struct *task = current;
+
+	if (!gpio_in_use)
+		return -EINVAL;
+
+	if (_IOC_TYPE(cmd) != OTX_IOC_MAGIC)
+		return -ENOTTY;
+
+	if (_IOC_DIR(cmd) & _IOC_READ)
+		err = !access_ok(VERIFY_WRITE, (void __user *)arg,
+				 _IOC_SIZE(cmd));
+	else if (_IOC_TYPE(cmd) & _IOC_WRITE)
+		err = !access_ok(VERIFY_READ, (void __user *)arg,
+				 _IOC_SIZE(cmd));
+
+	if (err)
+		return -EFAULT;
+
+	switch (cmd) {
+	case OTX_IOC_SET_GPIO_HANDLER: /*Install GPIO ISR handler*/
+		ret = copy_from_user(&gpio_usr, (void *)arg, _IOC_SIZE(cmd));
+		if (gpio_usr.gpio_num >= MAX_GPIO)
+			return -EINVAL;
+		if (ret)
+			return -EFAULT;
+		gpio_ttbr = 0;
+		//TODO: reserve a asid to avoid asid rollovers
+		asm volatile("mrs %0, ttbr0_el1\n\t" : "=r"(gpio_ttbr));
+		gpio_isr_base = gpio_usr.isr_base;
+		gpio_sp = gpio_usr.sp;
+		gpio_cpu = gpio_usr.cpu;
+		gpio_num = gpio_usr.gpio_num;
+		ret = __install_el3_inthandler(gpio_num, gpio_sp,
+					       gpio_cpu, gpio_isr_base);
+		if (ret != 0)
+			return -EEXIST;
+		break;
+	case OTX_IOC_CLR_GPIO_HANDLER: /*Clear GPIO ISR handler*/
+		gpio_usr.gpio_num = arg;
+		if (gpio_usr.gpio_num >= MAX_GPIO)
+			return -EINVAL;
+		ret = __remove_el3_inthandler(gpio_usr.gpio_num);
+		if (ret != 0)
+			return -ENOENT;
+		break;
+	default:
+		return -ENOTTY;
+	}
+	return 0;
+}
+
+static void cleanup_el3_irqs(struct task_struct *task)
+{
+	int i;
+
+	for (i = 0; i < MAX_GPIO; i++) {
+		if (gpio_installed[i] &&
+		    gpio_installed_tasks[i] &&
+		    ((gpio_installed_tasks[i] == task) ||
+			(gpio_installed_tasks[i] == task->group_leader))) {
+			pr_alert("Exiting, removing handler for GPIO %d\n",
+				 i);
+			__remove_el3_inthandler(i);
+			pr_alert("Exited, removed handler for GPIO %d\n",
+				 i);
+		} else {
+			if (gpio_installed[i] &&
+			    (gpio_installed_threads[i]
+			     == current_thread_info()))
+				pr_alert(
+	    "Exiting, thread info matches, not removing handler for GPIO %d\n",
+					 i);
+		}
+	}
+}
+
+static int otx_dev_open(struct inode *inode, struct file *fp)
+{
+	gpio_in_use = 1;
+	return 0;
+}
+
+static int otx_dev_release(struct inode *inode, struct file *fp)
+{
+	if (gpio_in_use == 0)
+		return -EINVAL;
+	gpio_in_use = 0;
+	return 0;
+}
+
+static const struct file_operations fops = {
+	.owner = THIS_MODULE,
+	.open = otx_dev_open,
+	.release = otx_dev_release,
+	.unlocked_ioctl = otx_dev_ioctl
+};
+#endif
 
 static unsigned int bit_cfg_reg(unsigned int line)
 {
@@ -611,7 +821,65 @@ static int thunderx_gpio_probe(struct pci_dev *pdev,
 
 	dev_info(dev, "ThunderX GPIO: %d lines with base %d.\n",
 		 ngpio, chip->base);
+
+#ifdef CONFIG_MRVL_OCTEONTX_EL0_INTR
+	/* Register task cleanup handler */
+	err = task_cleanup_handler_add(cleanup_el3_irqs);
+	if (err != 0) {
+		dev_err(dev, "Failed to register cleanup handler: %d\n", err);
+		goto cleanup_handler_err;
+	}
+
+	/* create a character device */
+	err = alloc_chrdev_region(&otx_dev, 1, 1, DEVICE_NAME);
+	if (err != 0) {
+		dev_err(dev, "Failed to create device: %d\n", err);
+		goto alloc_chrdev_err;
+	}
+
+	otx_cdev = cdev_alloc();
+	if (!otx_cdev) {
+		err = -ENODEV;
+		goto cdev_alloc_err;
+	}
+
+	cdev_init(otx_cdev, &fops);
+	err = cdev_add(otx_cdev, otx_dev, 1);
+	if (err < 0) {
+		err = -ENODEV;
+		goto cdev_add_err;
+	}
+
+	/* create new class for sysfs*/
+	otx_class = class_create(THIS_MODULE, DEVICE_NAME);
+	if (IS_ERR(otx_class)) {
+		err = -ENODEV;
+		goto class_create_err;
+	}
+
+	otx_device = device_create(otx_class, NULL, otx_dev, NULL,
+				     DEVICE_NAME);
+	if (IS_ERR(otx_device)) {
+		err = -ENODEV;
+		goto device_create_err;
+	}
+#endif
+
 	return 0;
+
+#ifdef CONFIG_MRVL_OCTEONTX_EL0_INTR
+device_create_err:
+	class_destroy(otx_class);
+
+class_create_err:
+cdev_add_err:
+	cdev_del(otx_cdev);
+cdev_alloc_err:
+	unregister_chrdev_region(otx_dev, 1);
+alloc_chrdev_err:
+	task_cleanup_handler_remove(cleanup_el3_irqs);
+cleanup_handler_err:
+#endif
 out:
 	pci_set_drvdata(pdev, NULL);
 	return err;
