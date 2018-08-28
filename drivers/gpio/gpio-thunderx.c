@@ -16,7 +16,6 @@
 #include <linux/pci.h>
 #include <linux/spinlock.h>
 
-
 #define GPIO_RX_DAT	0x0
 #define GPIO_TX_SET	0x8
 #define GPIO_TX_CLR	0x10
@@ -518,7 +517,14 @@ static int thunderx_gpio_probe(struct pci_dev *pdev,
 		u64 c = readq(txgpio->register_base + GPIO_CONST);
 
 		ngpio = c & GPIO_CONST_GPIOS_MASK;
-		txgpio->base_msi = (c >> 8) & 0xff;
+
+		/* Workaround for Errata 34800 */
+		if (MIDR_IS_CPU_MODEL_RANGE(read_cpuid_id(),
+		    MIDR_MRVL_OCTEONTX2_96XX, 0x00, 0xf)) {
+			txgpio->base_msi = 0x36;
+		} else {
+			txgpio->base_msi = (c >> 8) & 0xff;
+		}
 	}
 
 	txgpio->msix_entries = devm_kzalloc(dev,
