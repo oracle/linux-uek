@@ -595,6 +595,14 @@ config QCOM_FALKOR_ERRATUM_E1041
 
 endmenu
 
+config MRVL_OCTEONTX_EL0_INTR
+	bool "Handle interrupts in EL0 via EL3"
+	default y
+	help
+	  Handle certain interrupts in EL0 with the help of EL3 firmware to achieve
+	  low latency and also not break task isolation.
+	  Generally implemented and tested on OcteonTx and its successive
+	  generation CPUs.
 
 choice
 	prompt "Page size"
