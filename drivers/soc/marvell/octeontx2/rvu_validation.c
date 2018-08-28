@@ -225,7 +225,6 @@ static int rvu_txsch_count_rsrc(struct rvu *rvu, int lvl, u16 pcifunc,
 int rvu_mbox_handler_FREE_RSRC_CNT(struct rvu *rvu, struct msg_req *req,
 				   struct free_rsrcs_rsp *rsp)
 {
-	struct nix_hw *nix_hw = rvu->hw->nix0;
 	struct rvu_hwinfo *hw = rvu->hw;
 	u16 pcifunc = req->hdr.pcifunc;
 	struct rvu_block *block;
