@@ -66,7 +66,9 @@
 #include <linux/bsearch.h>
 #include <linux/dynamic_debug.h>
 #include <linux/audit.h>
+#ifndef __GENKSYMS__
 #include <linux/ima.h>
+#endif
 #include <uapi/linux/module.h>
 #include "module-internal.h"
 
