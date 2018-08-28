@@ -154,10 +154,30 @@ static inline int pgd_large(pgd_t pgd) { return 0; }
 /* PUD - Level3 access */
 
 /* PMD  - Level 2 access */
-#define pte_to_pgoff(pte) ((pte_val((pte)) & PHYSICAL_PAGE_MASK) >> PAGE_SHIFT)
-#define pgoff_to_pte(off) ((pte_t) { .pte = ((off) << PAGE_SHIFT) |	\
-					    _PAGE_FILE })
-#define PTE_FILE_MAX_BITS __PHYSICAL_MASK_SHIFT
+/*
+ * To mitigate L1TF, invert the offset bits when installing it in the PTE with
+ * pgoff_to_pte and uninvert them when extracting it with pte_to_pgoff.
+ */
+#define pte_to_pgoff(pte) ((~pte_val((pte)) & PHYSICAL_PAGE_MASK) >> PAGE_SHIFT)
+#define pgoff_to_pte(off) ((pte_t) { .pte =				\
+				((~off & (PHYSICAL_PAGE_MASK>>PAGE_SHIFT)) \
+				 << PAGE_SHIFT) | _PAGE_FILE })
+#ifdef PTE_FILE_MAX_BITS
+#error "must be undefined to activate pte_file_max_bits()"
+#endif
+static inline int pte_file_max_bits(void)
+{
+	/*
+	 * Set the highest allowed nonlinear pgoff to 1 bit less than
+	 * x86_phys_bits to guarantee the inversion of the highest bit
+	 * in the pgoff_to_pte conversion. The lowest x86_phys_bits is
+	 * 36 so x86 implementations with 36 bits will find themselves
+	 * unable to keep using remap_file_pages() with file offsets
+	 * above 128TiB (calculated as 1<<(36-1+PAGE_SHIFT)). More
+	 * recent CPUs will retain much higher max file offset limits.
+	 */
+	return min(__PHYSICAL_MASK_SHIFT, boot_cpu_data.x86_phys_bits - 1);
+}
 
 /* PTE - Level 1 access. */
 
