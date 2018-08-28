@@ -146,8 +146,13 @@ SYSCALL_DEFINE5(remap_file_pages, unsigned long, start, unsigned long, size,
 		return err;
 
 	/* Can we represent this offset inside this architecture's pte's? */
+#ifdef PTE_FILE_MAX_BITS
 #if PTE_FILE_MAX_BITS < BITS_PER_LONG
 	if (pgoff + (size >> PAGE_SHIFT) >= (1UL << PTE_FILE_MAX_BITS))
+		return err;
+#endif
+#else /* PTE_FILE_MAX_BITS */
+	if (pgoff + (size >> PAGE_SHIFT) >= (1UL << pte_file_max_bits()))
 		return err;
 #endif
 

@@ -177,12 +177,31 @@ static inline pmd_t native_pmdp_get_and_clear(pmd_t *pmdp)
 #endif
 
 /*
- * Bits 0, 6 and 7 are taken in the low part of the pte,
- * put the 32 bits of offset into the high part.
+ * Bits 0, 6 and 7 are taken in the low part of the pte.
+ * The 32 bits of offset is split into both the lower and upper 32 bits
+ * of the pte as follows:
+ *
+ * Bits  0-08: _PAGE_FILE
+ * Bits  9-24: low 16 bits of the offset
+ * Bits 25-31: 1s
+ * --------------
+ * Bits 32-47: 1s
+ * Bits 48-63: high 16 bits of the offset
+ *
+ * So unless the system has more than (MAX-PA - 32M) of memory, the offset
+ * entry won't match any of the physical memory addresses.
  */
-#define pte_to_pgoff(pte) ((pte).pte_high)
-#define pgoff_to_pte(off)						\
-	((pte_t) { { .pte_low = _PAGE_FILE, .pte_high = (off) } })
+#define _PGOFF_ENTRY_SHIFT	9
+#define _PGOFF_HI16_MASK	0xffff0000
+#define _PGOFF_LO16_MASK	0x0000ffff
+
+#define pte_to_pgoff(pte)			\
+	(((pte).pte_high & _PGOFF_HI16_MASK) |	\
+	(((pte).pte_low >>_PGOFF_ENTRY_SHIFT) & _PGOFF_LO16_MASK))
+#define pgoff_to_pte(off) ((pte_t) { {		\
+	.pte_low = _PAGE_FILE |			\
+	(((off) | _PGOFF_HI16_MASK) << _PGOFF_ENTRY_SHIFT),	\
+	.pte_high = (off) | _PGOFF_LO16_MASK } })
 #define PTE_FILE_MAX_BITS       32
 
 /* Encode and de-code a swap entry */
