@@ -581,7 +581,6 @@ static int cgx_fwi_link_change(struct cgx *cgx, int lmac_id, bool enable)
 
 	return cgx_fwi_cmd_generic(&req, &rsp, cgx, lmac_id);
 }
-EXPORT_SYMBOL(cgx_fwi_link_change);
 
 static inline int cgx_fwi_read_version(struct cgx_ver_s *ver, struct cgx *cgx)
 {
@@ -603,6 +602,9 @@ static int cgx_lmac_verify_fwi_version(struct cgx *cgx)
 	struct cgx_ver_s ver;
 	struct device *dev = &cgx->pdev->dev;
 	int err;
+
+	if (!cgx->lmac_count)
+		return 0;
 
 	err = cgx_fwi_read_version(&ver, cgx);
 	dev_dbg(dev, "Firmware command interface version = %d.%d\n",
