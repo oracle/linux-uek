@@ -227,8 +227,6 @@ struct xen_vbd {
 	sector_t		size;
 	unsigned int		flush_support:1;
 	unsigned int		discard_secure:1;
-	unsigned int		feature_gnt_persistent:1;
-	unsigned int		overflow_max_grants:1;
 };
 
 struct backend_info;
@@ -331,6 +329,8 @@ struct xen_blkif {
 	/* All rings for this device. */
 	struct xen_blkif_ring	*rings;
 	unsigned int		nr_rings;
+	unsigned int		feature_gnt_persistent:1;
+	unsigned int		overflow_max_grants:1;
 };
 
 struct seg_buf {

@@ -1085,8 +1085,8 @@ static int connect_ring(struct backend_info *be)
 	}
 	pers_grants = xenbus_read_unsigned(dev->otherend, "feature-persistent",
 					   0);
-	be->blkif->vbd.feature_gnt_persistent = pers_grants;
-	be->blkif->vbd.overflow_max_grants = 0;
+	be->blkif->feature_gnt_persistent = pers_grants;
+	be->blkif->overflow_max_grants = 0;
 
 	/*
 	 * Read the number of hardware queues from frontend.

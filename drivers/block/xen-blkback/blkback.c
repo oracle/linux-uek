@@ -216,8 +216,8 @@ static int add_persistent_gnt(struct xen_blkif_ring *ring,
 	struct xen_blkif *blkif = ring->blkif;
 
 	if (ring->persistent_gnt_c >= xen_blkif_max_pgrants) {
-		if (!blkif->vbd.overflow_max_grants)
-			blkif->vbd.overflow_max_grants = 1;
+		if (!blkif->overflow_max_grants)
+			blkif->overflow_max_grants = 1;
 		return -EBUSY;
 	}
 	/* Figure out where to put new node */
@@ -376,7 +376,7 @@ static void purge_persistent_gnt(struct xen_blkif_ring *ring)
 
 	if (ring->persistent_gnt_c < xen_blkif_max_pgrants ||
 	    (ring->persistent_gnt_c == xen_blkif_max_pgrants &&
-	    !ring->blkif->vbd.overflow_max_grants)) {
+	    !ring->blkif->overflow_max_grants)) {
 		goto out;
 	}
 
@@ -447,7 +447,7 @@ finished:
 	}
 
 	ring->persistent_gnt_c -= (total - num_clean);
-	ring->blkif->vbd.overflow_max_grants = 0;
+	ring->blkif->overflow_max_grants = 0;
 
 	/* We can defer this work */
 	schedule_work(&ring->persistent_purge_work);
@@ -667,7 +667,7 @@ int xen_blkif_schedule(void *arg)
 						 kthread_should_stop());
 
 purge_gnt_list:
-		if (blkif->vbd.feature_gnt_persistent &&
+		if (blkif->feature_gnt_persistent &&
 		    time_after(jiffies, ring->next_lru)) {
 			purge_persistent_gnt(ring);
 			ring->next_lru = jiffies + msecs_to_jiffies(LRU_INTERVAL);
@@ -833,7 +833,7 @@ static int xen_blkbk_map(struct xen_blkif_ring *ring,
 	int use_persistent_gnts;
 	struct xen_blkif *blkif = ring->blkif;
 
-	use_persistent_gnts = (blkif->vbd.feature_gnt_persistent);
+	use_persistent_gnts = (blkif->feature_gnt_persistent);
 
 	/*
 	 * Fill out preq.nr_sects with proper amount of sectors, and setup
@@ -931,8 +931,8 @@ again:
 				 xen_blkif_max_pgrants);
 			goto next;
 		}
-		if (use_persistent_gnts && !blkif->vbd.overflow_max_grants) {
-			blkif->vbd.overflow_max_grants = 1;
+		if (use_persistent_gnts && !blkif->overflow_max_grants) {
+			blkif->overflow_max_grants = 1;
 			pr_debug("domain %u, device %#x is using maximum number of persistent grants\n",
 			         blkif->domid, blkif->vbd.handle);
 		}
