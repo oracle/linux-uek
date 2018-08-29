@@ -897,6 +897,13 @@ static void thunderx_gpio_remove(struct pci_dev *pdev)
 	irq_domain_remove(txgpio->irqd);
 
 	pci_set_drvdata(pdev, NULL);
+
+	device_destroy(otx_class, otx_dev);
+	class_destroy(otx_class);
+	cdev_del(otx_cdev);
+	unregister_chrdev_region(otx_dev, 1);
+
+	task_cleanup_handler_remove(cleanup_el3_irqs);
 }
 
 static const struct pci_device_id thunderx_gpio_id_table[] = {
