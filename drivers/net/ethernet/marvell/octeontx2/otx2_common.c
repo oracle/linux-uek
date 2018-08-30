@@ -397,11 +397,6 @@ int otx2_txschq_config(struct otx2_nic *pfvf, int lvl)
 		parent = hw->txschq_list[NIX_TXSCH_LVL_TL2][0];
 		req->reg[0] = NIX_AF_TL3X_PARENT(schq);
 		req->regval[0] = parent << 16;
-		req->num_regs++;
-		req->reg[1] = NIX_AF_TL3_TL2X_LINKX_CFG(schq,
-							otx2_get_link(pfvf));
-		/* Enable this queue and backpressure */
-		req->regval[1] = BIT_ULL(13) | BIT_ULL(12);
 	} else if (lvl == NIX_TXSCH_LVL_TL2) {
 		parent =  hw->txschq_list[NIX_TXSCH_LVL_TL1][0];
 		req->reg[0] = NIX_AF_TL2X_PARENT(schq);
@@ -410,6 +405,13 @@ int otx2_txschq_config(struct otx2_nic *pfvf, int lvl)
 		req->num_regs++;
 		req->reg[1] = NIX_AF_TL2X_SCHEDULE(schq);
 		req->regval[1] = TXSCH_TL1_DFLT_RR_PRIO << 24;
+
+		req->num_regs++;
+		req->reg[2] = NIX_AF_TL3_TL2X_LINKX_CFG(schq,
+							otx2_get_link(pfvf));
+		/* Enable this queue and backpressure */
+		req->regval[2] = BIT_ULL(13) | BIT_ULL(12);
+
 	} else if (lvl == NIX_TXSCH_LVL_TL1) {
 		/* Default config for TL1.
 		 * For VF this is always ignored.
