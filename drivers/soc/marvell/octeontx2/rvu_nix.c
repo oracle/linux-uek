@@ -964,10 +964,10 @@ static void nix_reset_tx_linkcfg(struct rvu *rvu, int blkaddr,
 	if (lvl == NIX_TXSCH_LVL_TL4)
 		rvu_write64(rvu, blkaddr, NIX_AF_TL4X_SDP_LINK_CFG(schq), 0x00);
 
-	if (lvl != NIX_TXSCH_LVL_TL3)
+	if (lvl != NIX_TXSCH_LVL_TL2)
 		return;
 
-	/* Reset TL3's CGX or LBK link config */
+	/* Reset TL2's CGX or LBK link config */
 	for (link = 0; link < (hw->cgx_links + hw->lbk_links); link++)
 		rvu_write64(rvu, blkaddr,
 			    NIX_AF_TL3_TL2X_LINKX_CFG(schq, link), 0x00);
@@ -1185,7 +1185,7 @@ static int nix_txschq_free(struct rvu *rvu, u16 pcifunc)
 	/* Disable TL2/3 queue links before SMQ flush*/
 	mutex_lock(&rvu->rsrc_lock);
 	for (lvl = NIX_TXSCH_LVL_TL4; lvl < NIX_TXSCH_LVL_CNT; lvl++) {
-		if ((lvl != NIX_TXSCH_LVL_TL3) && (lvl != NIX_TXSCH_LVL_TL4))
+		if ((lvl != NIX_TXSCH_LVL_TL2) && (lvl != NIX_TXSCH_LVL_TL4))
 			continue;
 
 		txsch = &nix_hw->txsch[lvl];
