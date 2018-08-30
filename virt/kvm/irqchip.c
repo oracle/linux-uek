@@ -23,12 +23,16 @@ int kvm_irq_map_gsi(struct kvm *kvm,
 {
 	struct kvm_irq_routing_table *irq_rt;
 	struct kvm_kernel_irq_routing_entry *e;
-	int n = 0;
+	int n = 0, index;
 
 	irq_rt = srcu_dereference_check(kvm->irq_routing, &kvm->irq_srcu,
 					lockdep_is_held(&kvm->irq_lock));
 	if (irq_rt && gsi < irq_rt->nr_rt_entries) {
-		hlist_for_each_entry(e, &irq_rt->map[gsi], link) {
+		struct hlist_head *head;
+
+		index = array_index_nospec(gsi, irq_rt->nr_rt_entries);
+		head = &irq_rt->map[index];
+		hlist_for_each_entry(e, head, link) {
 			entries[n] = *e;
 			++n;
 		}
