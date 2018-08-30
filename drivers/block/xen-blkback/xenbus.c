@@ -26,13 +26,18 @@
 /* On the XenBus the max length of 'ring-ref%u'. */
 #define RINGREF_NAME_LEN (20)
 
+struct blkif_params {
+	unsigned int major;
+	unsigned int minor;
+	unsigned int readonly;
+	unsigned int cdrom;
+};
+
 struct backend_info {
 	struct xenbus_device	*dev;
 	struct xen_blkif	*blkif;
 	struct xenbus_watch	backend_watch;
-	unsigned		major;
-	unsigned		minor;
-	char			*mode;
+	struct blkif_params	params;
 };
 
 static struct kmem_cache *xen_blkif_cachep;
@@ -311,7 +316,6 @@ static void xen_blkif_free(struct xen_blkif *blkif)
 {
 	WARN_ON(xen_blkif_disconnect(blkif));
 	xen_vbd_free(&blkif->vbd);
-	kfree(blkif->be->mode);
 	kfree(blkif->be);
 
 	/* Make sure everything is drained before shutting down */
@@ -400,8 +404,8 @@ static const struct attribute_group xen_vbdstat_group = {
 	}								\
 	static DEVICE_ATTR(name, S_IRUGO, show_##name, NULL)
 
-VBD_SHOW(physical_device, "%x:%x\n", be->major, be->minor);
-VBD_SHOW(mode, "%s\n", be->mode);
+VBD_SHOW(physical_device, "%x:%x\n", be->params.major, be->params.minor);
+VBD_SHOW(mode, "%s\n", be->params.readonly ? "r":"w");
 
 static int xenvbd_sysfs_addif(struct xenbus_device *dev)
 {
@@ -443,8 +447,7 @@ static void xen_vbd_free(struct xen_vbd *vbd)
 }
 
 static int xen_vbd_create(struct xen_blkif *blkif, blkif_vdev_t handle,
-			  unsigned major, unsigned minor, int readonly,
-			  int cdrom)
+			  struct blkif_params *p)
 {
 	struct xen_vbd *vbd;
 	struct block_device *bdev;
@@ -452,10 +455,10 @@ static int xen_vbd_create(struct xen_blkif *blkif, blkif_vdev_t handle,
 
 	vbd = &blkif->vbd;
 	vbd->handle   = handle;
-	vbd->readonly = readonly;
+	vbd->readonly = p->readonly;
 	vbd->type     = 0;
 
-	vbd->pdevice  = MKDEV(major, minor);
+	vbd->pdevice  = MKDEV(p->major, p->minor);
 
 	bdev = blkdev_get_by_dev(vbd->pdevice, vbd->readonly ?
 				 FMODE_READ : FMODE_WRITE, NULL);
@@ -475,7 +478,7 @@ static int xen_vbd_create(struct xen_blkif *blkif, blkif_vdev_t handle,
 	}
 	vbd->size = vbd_sz(vbd);
 
-	if (vbd->bdev->bd_disk->flags & GENHD_FL_CD || cdrom)
+	if (vbd->bdev->bd_disk->flags & GENHD_FL_CD || p->cdrom)
 		vbd->type |= VDISK_CDROM;
 	if (vbd->bdev->bd_disk->flags & GENHD_FL_REMOVABLE)
 		vbd->type |= VDISK_REMOVABLE;
@@ -487,8 +490,8 @@ static int xen_vbd_create(struct xen_blkif *blkif, blkif_vdev_t handle,
 	if (q && blk_queue_secdiscard(q))
 		vbd->discard_secure = true;
 
-	pr_debug("Successful creation of handle=%04x (dom=%u)\n",
-		handle, blkif->domid);
+	pr_debug("Successful creation of handle=%04x (dom=%u), device %x:%x\n",
+		handle, blkif->domid, p->major, p->minor);
 	return 0;
 }
 static int xen_blkbk_remove(struct xenbus_device *dev)
@@ -497,7 +500,7 @@ static int xen_blkbk_remove(struct xenbus_device *dev)
 
 	pr_debug("%s %p %d\n", __func__, dev, dev->otherend_id);
 
-	if (be->major || be->minor)
+	if (be->params.major || be->params.minor)
 		xenvbd_sysfs_delif(dev);
 
 	if (be->backend_watch.node) {
@@ -658,6 +661,54 @@ fail:
 	return err;
 }
 
+static int
+xenbus_scan_be_params(struct blkif_params *p, struct xenbus_device *dev,
+			unsigned long *handle)
+{
+	int err;
+	char *device_type;
+	char *mode;
+
+	err = xenbus_scanf(XBT_NIL, dev->nodename, "physical-device", "%x:%x",
+			   &p->major, &p->minor);
+	if (XENBUS_EXIST_ERR(err)) {
+		/*
+		 * Since this watch will fire once immediately after it is
+		 * registered, we expect this.  Ignore it, and wait for the
+		 * hotplug scripts.
+		 */
+		return err;
+	}
+	if (err != 2) {
+		xenbus_dev_fatal(dev, err, "reading physical-device");
+		return err;
+	}
+
+	mode = xenbus_read(XBT_NIL, dev->nodename, "mode", NULL);
+	if (IS_ERR(mode)) {
+		err = PTR_ERR(mode);
+		xenbus_dev_fatal(dev, err, "reading mode");
+		return err;
+	}
+
+	p->readonly = strchr(mode, 'w') == NULL ? 1 : 0;
+	kfree(mode);
+
+	p->cdrom = 0;
+
+	device_type = xenbus_read(XBT_NIL, dev->otherend, "device-type", NULL);
+	if (!IS_ERR(device_type)) {
+		p->cdrom = strcmp(device_type, "cdrom") == 0;
+		kfree(device_type);
+	}
+
+	/* Front end dir is a number, which is used as the handle. */
+	err = kstrtoul(strrchr(dev->otherend, '/') + 1, 0, handle);
+	if (err)
+		return err;
+
+	return 0;
+}
 
 /*
  * Callback received when the hotplug scripts have placed the physical-device
@@ -668,88 +719,54 @@ static void backend_changed(struct xenbus_watch *watch,
 			    const char *path, const char *token)
 {
 	int err;
-	unsigned major;
-	unsigned minor;
 	struct backend_info *be
 		= container_of(watch, struct backend_info, backend_watch);
 	struct xenbus_device *dev = be->dev;
-	int cdrom = 0;
 	unsigned long handle;
-	char *device_type;
+	struct blkif_params p;
 
 	pr_debug("%s %p %d\n", __func__, dev, dev->otherend_id);
 
-	err = xenbus_scanf(XBT_NIL, dev->nodename, "physical-device", "%x:%x",
-			   &major, &minor);
-	if (XENBUS_EXIST_ERR(err)) {
-		/*
-		 * Since this watch will fire once immediately after it is
-		 * registered, we expect this.  Ignore it, and wait for the
-		 * hotplug scripts.
-		 */
-		return;
-	}
-	if (err != 2) {
-		xenbus_dev_fatal(dev, err, "reading physical-device");
-		return;
-	}
-
-	if (be->major | be->minor) {
-		if (be->major != major || be->minor != minor)
-			pr_warn("changing physical device (from %x:%x to %x:%x) not supported.\n",
-				be->major, be->minor, major, minor);
-		return;
-	}
-
-	be->mode = xenbus_read(XBT_NIL, dev->nodename, "mode", NULL);
-	if (IS_ERR(be->mode)) {
-		err = PTR_ERR(be->mode);
-		be->mode = NULL;
-		xenbus_dev_fatal(dev, err, "reading mode");
-		return;
-	}
-
-	device_type = xenbus_read(XBT_NIL, dev->otherend, "device-type", NULL);
-	if (!IS_ERR(device_type)) {
-		cdrom = strcmp(device_type, "cdrom") == 0;
-		kfree(device_type);
-	}
-
-	/* Front end dir is a number, which is used as the handle. */
-	err = kstrtoul(strrchr(dev->otherend, '/') + 1, 0, &handle);
-	if (err) {
-		kfree(be->mode);
-		be->mode = NULL;
-		return;
-	}
-
-	be->major = major;
-	be->minor = minor;
-
-	err = xen_vbd_create(be->blkif, handle, major, minor,
-			     !strchr(be->mode, 'w'), cdrom);
-
+	err = xenbus_scan_be_params(&p, dev, &handle);
 	if (err)
-		xenbus_dev_fatal(dev, err, "creating vbd structure");
-	else {
-		err = xenvbd_sysfs_addif(dev);
-		if (err) {
-			xen_vbd_free(&be->blkif->vbd);
-			xenbus_dev_fatal(dev, err, "creating sysfs entries");
-		}
+		return;
+
+	if (be->params.major | be->params.minor) {
+		err = -EINVAL;
+		if (be->params.major != p.major || be->params.minor != p.minor)
+			pr_warn("changing physical device (from %x:%x to %x:%x) not supported.\n",
+				be->params.major, be->params.minor,
+				p.major, p.minor);
+		goto out;
 	}
 
+	err = xen_vbd_create(be->blkif, handle, &p);
 	if (err) {
-		kfree(be->mode);
-		be->mode = NULL;
-		be->major = 0;
-		be->minor = 0;
-	} else {
-		/* We're potentially connected now */
-		xen_update_blkif_status(be->blkif);
+		xenbus_dev_fatal(dev, err, "creating vbd structure");
+		goto out;
 	}
-}
 
+	be->params = p;
+
+	err = xenvbd_sysfs_addif(dev);
+	if (err) {
+		xen_vbd_free(&be->blkif->vbd);
+		xenbus_dev_fatal(dev, err, "creating sysfs entries");
+		goto sysfs_out;
+	}
+
+	/* We're potentially connected now */
+	xen_update_blkif_status(be->blkif);
+
+sysfs_out:
+	/*
+	 * In case of failure reset the params.
+	 */
+	if (err)
+		memset(&be->params, 0, sizeof(be->params));
+out:
+	return;
+}
 
 /*
  * Callback received when the frontend's state changes.
