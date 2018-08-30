@@ -26,6 +26,7 @@
 #include <linux/export.h>
 #include <linux/math64.h>
 #include <linux/slab.h>
+#include <linux/nospec.h>
 #include <asm/processor.h>
 #include <asm/msr.h>
 #include <asm/page.h>
@@ -135,7 +136,11 @@ static inline bool kvm_apic_map_get_logical_dest(struct kvm_apic_map *map,
 		u32 max_apic_id = map->max_apic_id;
 
 		if (offset <= max_apic_id) {
-			u8 cluster_size = min(max_apic_id - offset + 1, 16U);
+			u8 cluster_size;
+
+			offset = array_index_nospec(offset, max_apic_id + 1);
+
+			cluster_size = min(max_apic_id - offset + 1, 16U);
 
 			offset = array_index_nospec(offset, map->max_apic_id + 1);
 			*cluster = &map->phys_map[offset];
