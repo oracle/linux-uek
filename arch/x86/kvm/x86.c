@@ -16,6 +16,7 @@
  *   Ben-Ami Yassour <benami@il.ibm.com>
  */
 
+#include <linux/nospec.h>
 #include <linux/kvm_host.h>
 #include "irq.h"
 #include "mmu.h"
@@ -2485,6 +2486,8 @@ static int set_msr_mce(struct kvm_vcpu *vcpu, struct msr_data *msr_info)
 		if (msr >= MSR_IA32_MC0_CTL &&
 		    msr < MSR_IA32_MCx_CTL(bank_num)) {
 			u32 offset = msr - MSR_IA32_MC0_CTL;
+			u32 num_offset = MSR_IA32_MCx_CTL(bank_num) -
+			    MSR_IA32_MC0_CTL;
 			/* only 0 or all 1s can be written to IA32_MCi_CTL
 			 * some Linux kernels though clear bit 10 in bank 4 to
 			 * workaround a BIOS/GART TBL issue on AMD K8s, ignore
@@ -2501,6 +2504,7 @@ static int set_msr_mce(struct kvm_vcpu *vcpu, struct msr_data *msr_info)
 					return -1;
 			}
 
+			offset = array_index_nospec(offset, num_offset);
 			vcpu->arch.mce_banks[offset] = data;
 			break;
 		}
@@ -2912,6 +2916,9 @@ static int get_msr_mce(struct kvm_vcpu *vcpu, u32 msr, u64 *pdata, bool host)
 		if (msr >= MSR_IA32_MC0_CTL &&
 		    msr < MSR_IA32_MCx_CTL(bank_num)) {
 			u32 offset = msr - MSR_IA32_MC0_CTL;
+			u32 num_offset = MSR_IA32_MCx_CTL(bank_num) -
+			    MSR_IA32_MC0_CTL;
+			offset = array_index_nospec(offset, num_offset);
 			data = vcpu->arch.mce_banks[offset];
 			break;
 		}
