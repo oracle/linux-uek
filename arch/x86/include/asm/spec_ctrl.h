@@ -204,6 +204,8 @@ DECLARE_PER_CPU(unsigned int, cpu_ibrs);
 extern u32 sysctl_ibrs_enabled;
 extern struct mutex spec_ctrl_mutex;
 
+DECLARE_STATIC_KEY_FALSE(retpoline_enabled_key);
+
 #define ibrs_firmware		(use_ibrs & SPEC_CTRL_IBRS_FIRMWARE)
 #define ibrs_supported		(use_ibrs & SPEC_CTRL_IBRS_SUPPORTED)
 #define ibrs_disabled		(use_ibrs & SPEC_CTRL_IBRS_ADMIN_DISABLED)

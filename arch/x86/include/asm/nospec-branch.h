@@ -3,6 +3,8 @@
 #ifndef _ASM_X86_NOSPEC_BRANCH_H_
 #define _ASM_X86_NOSPEC_BRANCH_H_
 
+#include <linux/jump_label.h>
+
 #include <asm/alternative.h>
 #include <asm/alternative-asm.h>
 #include <asm/cpufeatures.h>
@@ -53,6 +55,8 @@
 	add	$(BITS_PER_LONG/8) * nr, sp;
 
 #ifdef __ASSEMBLY__
+
+.extern retpoline_enabled_key
 
 /*
  * This should be used immediately before a retpoline alternative.  It tells
@@ -114,6 +118,10 @@
  */
 .macro JMP_NOSPEC reg:req
 #ifdef CONFIG_RETPOLINE
+	STATIC_JUMP_IF_TRUE .Lretpoline_jmp_\@, retpoline_enabled_key, def=0
+	ANNOTATE_RETPOLINE_SAFE
+	jmp	*\reg
+.Lretpoline_jmp_\@:
 	ANNOTATE_NOSPEC_ALTERNATIVE
 	ALTERNATIVE_2 __stringify(ANNOTATE_RETPOLINE_SAFE; jmp *\reg),	\
 		__stringify(RETPOLINE_JMP \reg), X86_FEATURE_RETPOLINE,	\
@@ -125,10 +133,16 @@
 
 .macro CALL_NOSPEC reg:req
 #ifdef CONFIG_RETPOLINE
+	STATIC_JUMP_IF_TRUE .Lretpoline_call_\@, retpoline_enabled_key, def=0
+	ANNOTATE_RETPOLINE_SAFE
+	call	*\reg
+	jmp	.Ldone_call_\@
+.Lretpoline_call_\@:
 	ANNOTATE_NOSPEC_ALTERNATIVE
 	ALTERNATIVE_2 __stringify(ANNOTATE_RETPOLINE_SAFE; call *\reg),	\
 		__stringify(RETPOLINE_CALL \reg), X86_FEATURE_RETPOLINE,\
 		__stringify(lfence; ANNOTATE_RETPOLINE_SAFE; call *\reg), X86_FEATURE_RETPOLINE_AMD
+.Ldone_call_\@:
 #else
 	call	*\reg
 #endif
@@ -184,10 +198,14 @@
  * here, anyway.
  */
 # define CALL_NOSPEC						\
-	ALTERNATIVE(						\
+	"910: .byte " __stringify(STATIC_KEY_INIT_NOP) "\n"	\
+	".pushsection __jump_table, \"aw\"\n"			\
+	_ASM_ALIGN "\n"						\
+	_ASM_PTR "910b, 904f, retpoline_enabled_key\n"		\
+	".popsection\n"						\
 	ANNOTATE_RETPOLINE_SAFE					\
-	"call *%[thunk_target]\n",				\
-	"       jmp    904f;\n"					\
+	"	call *%[thunk_target];\n"			\
+	"	jmp   905f;\n"					\
 	"       .align 16\n"					\
 	"901:	call   903f;\n"					\
 	"902:	pause;\n"					\
@@ -198,8 +216,8 @@
 	"       pushl  %[thunk_target];\n"			\
 	"       ret;\n"						\
 	"       .align 16\n"					\
-	"904:	call   901b;\n",				\
-	X86_FEATURE_RETPOLINE)
+	"904:	call   901b;\n"					\
+	"905:"
 
 # define THUNK_TARGET(addr) [thunk_target] "rm" (addr)
 #else /* No retpoline for C / inline asm */
