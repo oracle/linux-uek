@@ -126,6 +126,7 @@ int kvm_hv_get_assist_page(struct kvm_vcpu *vcpu);
 static inline struct kvm_vcpu_hv_stimer *to_hv_stimer(struct kvm_vcpu *vcpu,
 						      int timer_index)
 {
+	timer_index = array_index_nospec(timer_index, HV_SYNIC_STIMER_COUNT);
 	return &to_hv_vcpu(vcpu)->stimer[timer_index];
 }
 
