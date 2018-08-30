@@ -230,6 +230,8 @@ extern struct mutex spec_ctrl_mutex;
 extern void unprotected_firmware_begin(void);
 extern void unprotected_firmware_end(void);
 
+DECLARE_STATIC_KEY_FALSE(retpoline_enabled_key);
+
 #define ibrs_firmware		(use_ibrs & SPEC_CTRL_IBRS_FIRMWARE)
 #define ibrs_supported		(use_ibrs & SPEC_CTRL_IBRS_SUPPORTED)
 #define ibrs_disabled		(use_ibrs & SPEC_CTRL_IBRS_ADMIN_DISABLED)

@@ -3,6 +3,8 @@
 #ifndef _ASM_X86_NOSPEC_BRANCH_H_
 #define _ASM_X86_NOSPEC_BRANCH_H_
 
+#include <linux/jump_label.h>
+
 #include <asm/alternative.h>
 #include <asm/alternative-asm.h>
 #include <asm/cpufeature.h>
@@ -53,6 +55,8 @@
 
 #ifdef __ASSEMBLY__
 
+.extern retpoline_enabled_key
+
 /*
  * These are the bare retpoline primitives for indirect jmp and call.
  * Do not use these directly; they only exist to make the ALTERNATIVE
@@ -88,6 +92,9 @@
  */
 .macro JMP_NOSPEC reg:req
 #ifdef CONFIG_RETPOLINE
+	STATIC_JUMP_IF_TRUE .Lretpoline_jmp_\@, retpoline_enabled_key, def=0
+	jmp	*\reg
+.Lretpoline_jmp_\@:
 	ALTERNATIVE_2 __stringify(jmp *\reg),				\
 		__stringify(RETPOLINE_JMP \reg), X86_FEATURE_RETPOLINE,	\
 		__stringify(lfence; jmp *\reg), X86_FEATURE_RETPOLINE_AMD
@@ -98,9 +105,14 @@
 
 .macro CALL_NOSPEC reg:req
 #ifdef CONFIG_RETPOLINE
+	STATIC_JUMP_IF_TRUE .Lretpoline_call_\@, retpoline_enabled_key, def=0
+	call	*\reg
+	jmp	.Ldone_call_\@
+.Lretpoline_call_\@:
 	ALTERNATIVE_2 __stringify(call *\reg),				\
 		__stringify(RETPOLINE_CALL \reg), X86_FEATURE_RETPOLINE,\
 		__stringify(lfence; call *\reg), X86_FEATURE_RETPOLINE_AMD
+.Ldone_call_\@:
 #else
 	call	*\reg
 #endif
@@ -140,8 +152,14 @@
  * otherwise we'll run out of registers. We don't care about CET
  * here, anyway.
  */
-# define CALL_NOSPEC ALTERNATIVE("call *%[thunk_target]\n",	\
-	"       jmp    904f;\n"					\
+# define CALL_NOSPEC						\
+	"910: .byte " __stringify(STATIC_KEY_INIT_NOP) "\n"	\
+	".pushsection __jump_table, \"aw\"\n"			\
+	_ASM_ALIGN "\n"						\
+	_ASM_PTR "910b, 904f, retpoline_enabled_key\n"		\
+	".popsection\n"						\
+	"	call *%[thunk_target];\n"			\
+	"	jmp   905f;\n"					\
 	"       .align 16\n"					\
 	"901:	call   903f;\n"					\
 	"902:	pause;\n"					\
@@ -152,8 +170,8 @@
 	"       pushl  %[thunk_target];\n"			\
 	"       ret;\n"						\
 	"       .align 16\n"					\
-	"904:	call   901b;\n",				\
-	X86_FEATURE_RETPOLINE)
+	"904:	call   901b;\n"					\
+	"905:"
 
 # define THUNK_TARGET(addr) [thunk_target] "rm" (addr)
 #else /* No retpoline for C / inline asm */

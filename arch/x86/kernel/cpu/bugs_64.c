@@ -63,6 +63,9 @@ int retpoline_fallback = SPEC_CTRL_USE_RETPOLINE_FALLBACK;
 EXPORT_SYMBOL(retpoline_fallback);
 
 
+DEFINE_STATIC_KEY_FALSE(retpoline_enabled_key);
+EXPORT_SYMBOL(retpoline_enabled_key);
+
 int __init spectre_v2_heuristics_setup(char *p)
 {
 	ssize_t len;
@@ -583,6 +586,21 @@ static void __init spectre_v2_select_mitigation(void)
 		return;
 	}
 
+	/*
+	 * Set the retpoline capability to advertise that that retpoline
+	 * is available, however the retpoline feature is enabled via
+	 * the retpoline_enabled_key static key.
+	 */
+	if (IS_ENABLED(CONFIG_RETPOLINE)) {
+		setup_force_cpu_cap(X86_FEATURE_RETPOLINE);
+		if (boot_cpu_data.x86_vendor == X86_VENDOR_AMD) {
+			if (!boot_cpu_has(X86_FEATURE_LFENCE_RDTSC))
+				pr_err("Spectre mitigation: LFENCE not serializing, setting up generic retpoline\n");
+			else
+				setup_force_cpu_cap(X86_FEATURE_RETPOLINE_AMD);
+		}
+	}
+
 	switch (cmd) {
 	case SPECTRE_V2_CMD_NONE:
 		disable_ibrs_and_friends(true);
@@ -617,17 +635,12 @@ static void __init spectre_v2_select_mitigation(void)
 	goto out;
 
 retpoline_auto:
-	if (boot_cpu_data.x86_vendor == X86_VENDOR_AMD) {
+	if (boot_cpu_data.x86_vendor == X86_VENDOR_AMD &&
+	    boot_cpu_has(X86_FEATURE_LFENCE_RDTSC)) {
 	retpoline_amd:
-		if (!boot_cpu_has(X86_FEATURE_LFENCE_RDTSC)) {
-			pr_err("LFENCE not serializing. Switching to generic retpoline\n");
-			goto retpoline_generic;
-		}
 		mode = retp_compiler() ? SPECTRE_V2_RETPOLINE_AMD :
 					 SPECTRE_V2_RETPOLINE_MINIMAL_AMD;
 		/* On AMD we do not need IBRS, so lets use the ASM mitigation. */
-		setup_force_cpu_cap(X86_FEATURE_RETPOLINE_AMD);
-		setup_force_cpu_cap(X86_FEATURE_RETPOLINE);
 	} else {
 	retpoline_generic:
 		mode = retp_compiler() ? SPECTRE_V2_RETPOLINE_GENERIC :
@@ -656,8 +669,9 @@ retpoline_auto:
 				/* But if we can't, then just use retpoline */
 			}
 		}
-		setup_force_cpu_cap(X86_FEATURE_RETPOLINE);
 	}
+	/* Enable retpoline */
+	static_branch_enable(&retpoline_enabled_key);
 display:
 	spectre_v2_enabled = mode;
 	pr_info("%s\n", spectre_v2_strings[mode]);
