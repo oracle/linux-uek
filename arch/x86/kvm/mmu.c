@@ -24,6 +24,7 @@
 #include "kvm_cache_regs.h"
 #include "cpuid.h"
 
+#include <linux/nospec.h>
 #include <linux/kvm_host.h>
 #include <linux/types.h>
 #include <linux/string.h>
@@ -951,8 +952,14 @@ static void mmu_free_pte_list_desc(struct pte_list_desc *pte_list_desc)
 
 static gfn_t kvm_mmu_page_get_gfn(struct kvm_mmu_page *sp, int index)
 {
-	if (!sp->role.direct)
+	if (!sp->role.direct) {
+		/*
+		 * According to mmu.txt, there are 512 gfns in the array, when
+		 * role.direct is false
+		 */
+		index = array_index_nospec(index, 512);
 		return sp->gfns[index];
+	}
 
 	return sp->gfn + (index << ((sp->role.level - 1) * PT64_LEVEL_BITS));
 }
@@ -2405,8 +2412,10 @@ static void shadow_walk_init(struct kvm_shadow_walk_iterator *iterator,
 		--iterator->level;
 
 	if (iterator->level == PT32E_ROOT_LEVEL) {
-		iterator->shadow_addr
-			= vcpu->arch.mmu.pae_root[(addr >> 30) & 3];
+		u8 index;
+
+		index = array_index_nospec((addr >> 30) & 3, 4);
+		iterator->shadow_addr = vcpu->arch.mmu.pae_root[index];
 		iterator->shadow_addr &= PT64_BASE_ADDR_MASK;
 		--iterator->level;
 		if (!iterator->shadow_addr)
