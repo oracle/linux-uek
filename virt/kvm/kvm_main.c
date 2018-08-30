@@ -803,8 +803,12 @@ static void update_memslots(struct kvm_memslots *slots,
 			    struct kvm_memory_slot *new)
 {
 	int id = new->id;
-	int i = slots->id_to_index[id];
+	int i;
 	struct kvm_memory_slot *mslots = slots->memslots;
+
+	id = array_index_nospec(id, KVM_MEM_SLOTS_NUM);
+
+	i = slots->id_to_index[id];
 
 	WARN_ON(mslots[i].id != id);
 	if (!new->npages) {
@@ -2872,12 +2876,15 @@ static int kvm_ioctl_create_device(struct kvm *kvm,
 	struct kvm_device_ops *ops = NULL;
 	struct kvm_device *dev;
 	bool test = cd->flags & KVM_CREATE_DEVICE_TEST;
+	u32 dev_type;
 	int ret;
 
 	if (cd->type >= ARRAY_SIZE(kvm_device_ops_table))
 		return -ENODEV;
 
-	ops = kvm_device_ops_table[cd->type];
+	dev_type = array_index_nospec(cd->type,
+				      ARRAY_SIZE(kvm_device_ops_table));
+	ops = kvm_device_ops_table[dev_type];
 	if (ops == NULL)
 		return -ENODEV;
 
