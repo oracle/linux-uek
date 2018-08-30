@@ -875,8 +875,12 @@ static void update_memslots(struct kvm_memslots *slots,
 			    enum kvm_mr_change change)
 {
 	int id = new->id;
-	int i = slots->id_to_index[id];
+	int i;
 	struct kvm_memory_slot *mslots = slots->memslots;
+
+	id = array_index_nospec(id, KVM_MEM_SLOTS_NUM);
+
+	i = slots->id_to_index[id];
 
 	WARN_ON(mslots[i].id != id);
 	switch (change) {
