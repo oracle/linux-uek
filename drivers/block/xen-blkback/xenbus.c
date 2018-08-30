@@ -19,26 +19,13 @@
 #include <stdarg.h>
 #include <linux/module.h>
 #include <linux/kthread.h>
+#include <linux/rwsem.h>
 #include <xen/events.h>
 #include <xen/grant_table.h>
 #include "common.h"
 
 /* On the XenBus the max length of 'ring-ref%u'. */
 #define RINGREF_NAME_LEN (20)
-
-struct blkif_params {
-	unsigned int major;
-	unsigned int minor;
-	unsigned int readonly;
-	unsigned int cdrom;
-};
-
-struct backend_info {
-	struct xenbus_device	*dev;
-	struct xen_blkif	*blkif;
-	struct xenbus_watch	backend_watch;
-	struct blkif_params	params;
-};
 
 static struct kmem_cache *xen_blkif_cachep;
 static void connect(struct backend_info *);
@@ -195,6 +182,7 @@ static struct xen_blkif *xen_blkif_alloc(domid_t domid)
 	atomic_set(&blkif->refcnt, 1);
 	init_completion(&blkif->drain_complete);
 	INIT_WORK(&blkif->free_work, xen_blkif_deferred_free);
+	init_rwsem(&blkif->vbd_lock);
 
 	return blkif;
 }
@@ -790,6 +778,7 @@ static void backend_changed(struct xenbus_watch *watch,
 	struct blkif_params oldp, newp;
 	struct xen_vbd vbd;
 	bool swap = false;
+	int locked = 0;
 
 	pr_debug("%s %p %d\n", __func__, dev, dev->otherend_id);
 
@@ -799,9 +788,17 @@ static void backend_changed(struct xenbus_watch *watch,
 
 	if (be->params.major | be->params.minor) {
 		err = validate_swap_params(be, &newp);
-		if (err)
+
+		if (!err) {
+			locked = down_write_trylock(&be->blkif->vbd_lock);
+			if (locked)
+				swap = true;
+			else
+				err = -EAGAIN;
+		}
+
+		if (err) /* !valid || !locked */
 			goto out;
-		swap = true;
 	}
 
 	err = xen_vbd_create(be->blkif, handle, &newp, &vbd);
@@ -818,6 +815,12 @@ static void backend_changed(struct xenbus_watch *watch,
 	be->params = newp;
 
 	if (swap) {
+		if (be->blkif->vbd.bdev == NULL) {
+			/* Should not happen; Bail out */
+			WARN(1, "xen-blkback: invalid blkif->vbd.bdev\n");
+			goto flush_sysfs_out;
+		}
+
 		/* Flush, invalidate extant mappings */
 		err = flush_bdev_mapping(dev, &be->blkif->vbd);
 		if (err) {
@@ -871,6 +874,8 @@ out:
 		xenbus_dev_fatal(dev, err,
 			"Failed in writing oracle/active-physical-device");
 	}
+	if (locked)
+		up_write(&be->blkif->vbd_lock);
 }
 
 /*
@@ -976,11 +981,14 @@ static void connect(struct backend_info *be)
 
 	pr_debug("%s %s\n", __func__, dev->otherend);
 
+	down_read(&be->blkif->vbd_lock);
+
 	/* Supply the information about the device the frontend needs */
 again:
 	err = xenbus_transaction_start(&xbt);
 	if (err) {
 		xenbus_dev_fatal(dev, err, "starting transaction");
+		up_read(&be->blkif->vbd_lock);
 		return;
 	}
 
@@ -1040,9 +1048,11 @@ again:
 		xenbus_dev_fatal(dev, err, "%s: switching to Connected state",
 				 dev->nodename);
 
+	up_read(&be->blkif->vbd_lock);
 	return;
  abort:
 	xenbus_transaction_end(xbt, 1);
+	up_read(&be->blkif->vbd_lock);
 }
 
 void xen_blkbk_free_req(struct pending_req *req)

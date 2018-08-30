@@ -331,6 +331,21 @@ struct xen_blkif {
 	unsigned int		nr_rings;
 	unsigned int		feature_gnt_persistent:1;
 	unsigned int		overflow_max_grants:1;
+	struct rw_semaphore	vbd_lock;
+};
+
+struct blkif_params {
+	unsigned int major;
+	unsigned int minor;
+	unsigned int readonly;
+	unsigned int cdrom;
+};
+
+struct backend_info {
+	struct xenbus_device	*dev;
+	struct xen_blkif	*blkif;
+	struct xenbus_watch	backend_watch;
+	struct blkif_params	params;
 };
 
 struct seg_buf {

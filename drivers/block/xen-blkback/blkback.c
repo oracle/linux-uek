@@ -42,6 +42,7 @@
 #include <linux/delay.h>
 #include <linux/freezer.h>
 #include <linux/bitmap.h>
+#include <linux/rwsem.h>
 
 #include <xen/events.h>
 #include <xen/page.h>
@@ -531,6 +532,10 @@ static int xen_vbd_translate(struct phys_req *req, struct xen_blkif *blkif,
 			goto out;
 	}
 
+	/*
+	 * vbd_translate is always called with vbd_lock held so we can
+	 * safely dereference it
+	 */
 	req->dev  = vbd->pdevice;
 	req->bdev = vbd->bdev;
 	rc = 0;
@@ -541,11 +546,19 @@ static int xen_vbd_translate(struct phys_req *req, struct xen_blkif *blkif,
 
 static void xen_vbd_resize(struct xen_blkif *blkif)
 {
-	struct xen_vbd *vbd = &blkif->vbd;
+	struct xen_vbd *vbd;
 	struct xenbus_transaction xbt;
 	int err;
 	struct xenbus_device *dev = xen_blkbk_xenbus(blkif->be);
-	unsigned long long new_size = vbd_sz(vbd);
+	unsigned long long new_size;
+
+	down_read(&blkif->vbd_lock);
+	vbd = &blkif->vbd;
+	new_size = vbd_sz(vbd);
+	if (likely(vbd->size == new_size)) {
+		up_read(&blkif->vbd_lock);
+		return;
+	}
 
 	pr_info("VBD Resize: Domid: %d, Device: (%d, %d)\n",
 		blkif->domid, MAJOR(vbd->pdevice), MINOR(vbd->pdevice));
@@ -555,6 +568,7 @@ again:
 	err = xenbus_transaction_start(&xbt);
 	if (err) {
 		pr_warn("Error starting transaction\n");
+		up_read(&blkif->vbd_lock);
 		return;
 	}
 	err = xenbus_printf(xbt, dev->nodename, "sectors", "%llu",
@@ -579,9 +593,11 @@ again:
 		goto again;
 	if (err)
 		pr_warn("Error ending transaction\n");
+	up_read(&blkif->vbd_lock);
 	return;
 abort:
 	xenbus_transaction_end(xbt, 1);
+	up_read(&blkif->vbd_lock);
 }
 
 /*
@@ -629,7 +645,6 @@ int xen_blkif_schedule(void *arg)
 {
 	struct xen_blkif_ring *ring = arg;
 	struct xen_blkif *blkif = ring->blkif;
-	struct xen_vbd *vbd = &blkif->vbd;
 	unsigned long timeout;
 	int ret;
 
@@ -637,8 +652,7 @@ int xen_blkif_schedule(void *arg)
 	while (!kthread_should_stop()) {
 		if (try_to_freeze())
 			continue;
-		if (unlikely(vbd->size != vbd_sz(vbd)))
-			xen_vbd_resize(blkif);
+		xen_vbd_resize(blkif);
 
 		timeout = msecs_to_jiffies(LRU_INTERVAL);
 
@@ -1234,6 +1248,12 @@ __do_block_io_op(struct xen_blkif_ring *ring)
 
 		barrier();
 
+		/*
+		 * To ensure that this vbd hangs around, we hold onto the lock
+		 * until completion
+		 */
+		down_read(&ring->blkif->vbd_lock);
+
 		if (likely(valid_req)) {
 			switch (req.operation) {
 			case BLKIF_OP_READ:
@@ -1479,6 +1499,8 @@ static void make_response(struct xen_blkif_ring *ring, u64 id,
 	unsigned long     flags;
 	union blkif_back_rings *blk_rings;
 	int notify;
+
+	up_read(&ring->blkif->vbd_lock);
 
 	spin_lock_irqsave(&ring->blk_ring_lock, flags);
 	blk_rings = &ring->blk_rings;
