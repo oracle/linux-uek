@@ -14,6 +14,7 @@
  *   Xiao Guangrong <guangrong.xiao@linux.intel.com>
  */
 
+#include <linux/nospec.h>
 #include <linux/kvm_host.h>
 #include <asm/mtrr.h>
 
@@ -256,6 +257,16 @@ static int fixed_msr_to_range_index(u32 msr)
 	return fixed_mtrr_seg_unit_range_index(seg, unit);
 }
 
+static int fixed_msr_end_range_index(u32 msr)
+{
+	int seg, unit;
+
+	if (!fixed_msr_to_seg_unit(msr, &seg, &unit))
+		return -1;
+
+	return fixed_mtrr_seg_end_range_index(seg);
+}
+
 static int fixed_mtrr_addr_to_seg(u64 addr)
 {
 	struct fixed_mtrr_segment *mtrr_seg;
@@ -377,9 +388,11 @@ int kvm_mtrr_set_msr(struct kvm_vcpu *vcpu, u32 msr, u64 data)
 		return 1;
 
 	index = fixed_msr_to_range_index(msr);
-	if (index >= 0)
+	if (index >= 0) {
+		index = array_index_nospec(index,
+		    fixed_msr_end_range_index(msr));
 		*(u64 *)&vcpu->arch.mtrr_state.fixed_ranges[index] = data;
-	else if (msr == MSR_MTRRdefType)
+	} else if (msr == MSR_MTRRdefType)
 		vcpu->arch.mtrr_state.deftype = data;
 	else if (msr == MSR_IA32_CR_PAT)
 		vcpu->arch.pat = data;
@@ -410,9 +423,11 @@ int kvm_mtrr_get_msr(struct kvm_vcpu *vcpu, u32 msr, u64 *pdata)
 		return 1;
 
 	index = fixed_msr_to_range_index(msr);
-	if (index >= 0)
+	if (index >= 0) {
+		index = array_index_nospec(index,
+		    fixed_msr_end_range_index(msr));
 		*pdata = *(u64 *)&vcpu->arch.mtrr_state.fixed_ranges[index];
-	else if (msr == MSR_MTRRdefType)
+	} else if (msr == MSR_MTRRdefType)
 		*pdata = vcpu->arch.mtrr_state.deftype;
 	else if (msr == MSR_IA32_CR_PAT)
 		*pdata = vcpu->arch.pat;
