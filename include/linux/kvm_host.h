@@ -646,9 +646,11 @@ static inline struct kvm_memslots *kvm_vcpu_memslots(struct kvm_vcpu *vcpu)
 static inline struct kvm_memory_slot *
 id_to_memslot(struct kvm_memslots *slots, int id)
 {
-	int index = slots->id_to_index[id];
+	int index;
 	struct kvm_memory_slot *slot;
 
+	id = array_index_nospec(id, KVM_MEM_SLOTS_NUM);
+	index = slots->id_to_index[id];
 	slot = &slots->memslots[index];
 
 	WARN_ON(slot->id != id);
