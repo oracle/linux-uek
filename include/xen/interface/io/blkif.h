@@ -76,6 +76,33 @@ typedef uint64_t blkif_sector_t;
  */
 
 /*
+ * Vendor Extensions
+ * =================
+ *
+ * Volume Swapping:
+ *
+ * blkback plugs in the backing volume based on changes to the "physical-device"
+ * xenstore key.
+ *
+ * Once the backing volume is plugged in, blkback writes to the
+ * "oracle/active-physical-device" with the now active volume, and
+ * "oracle/physical-device-status" with the error code. The error
+ * code follows backend OS convention. On Linux, defined in
+ * /usr/include/asm/errno*h.
+ *
+ * For instance, the toolstack plugging in a guest disk would write:
+ *
+ * /local/domain/0/backend/vbd/<domid>/51712/physical-device  = "1a:2"
+ *
+ * And backend would validate and plug in the new physical device and its
+ * status (e.g. in case of errors):
+ *
+ * /local/domain/0/backend/vbd/<domid>/51712/oracle/active-physical-device = "1a:2"
+ * /local/domain/0/backend/vbd/<domid>/51712/oracle/physical-device-status = "0"
+ *
+ */
+
+/*
  * REQUEST CODES.
  */
 #define BLKIF_OP_READ              0

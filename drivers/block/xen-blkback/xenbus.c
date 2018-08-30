@@ -591,6 +591,35 @@ int xen_blkbk_barrier(struct xenbus_transaction xbt,
 	return err;
 }
 
+static int xen_emit_oracle_phys_device(struct xenbus_device *dev,
+					u32 major, u32 minor, int status)
+{
+	struct xenbus_transaction xbt;
+	int err;
+
+	err = xenbus_transaction_start(&xbt);
+	if (err)
+		return err;
+
+	err = xenbus_printf(xbt, dev->nodename, "oracle/active-physical-device",
+				"%x:%x", major, minor);
+	if (err)
+		goto abort;
+
+	err = xenbus_printf(xbt, dev->nodename,
+				"oracle/physical-device-change-status",
+				"%d", status);
+	if (err)
+		goto abort;
+	xenbus_transaction_end(xbt, 0);
+
+	return 0;
+
+abort:
+	xenbus_transaction_end(xbt, 1);
+	return err;
+}
+
 /*
  * Entry point to this code when a new device is created.  Allocate the basic
  * structures, and watch the store waiting for the hotplug scripts to tell us
@@ -638,6 +667,11 @@ static int xen_blkbk_probe(struct xenbus_device *dev,
 
 	/* setup back pointer */
 	be->blkif->be = be;
+
+	err = xen_emit_oracle_phys_device(dev, 0, 0, 0);
+
+	if (err)
+		pr_warn("Failed writing oracle/active-physical-device\n");
 
 	err = xenbus_watch_pathfmt(dev, &be->backend_watch, backend_changed,
 				   "%s/%s", dev->nodename, "physical-device");
@@ -765,7 +799,20 @@ sysfs_out:
 	if (err)
 		memset(&be->params, 0, sizeof(be->params));
 out:
-	return;
+	/*
+	 * err  = 0: emit new vbd, err = 0 to the xenbus
+	 * err != 0: emit unchanged vbd, err to the xenbus
+	 */
+	err = xen_emit_oracle_phys_device(dev, be->params.major,
+						be->params.minor, err);
+	if (err) {
+		/*
+		 * Fatal failure because user-space might be waiting
+		 * on this xenbus entry.
+		 */
+		xenbus_dev_fatal(dev, err,
+			"Failed in writing oracle/active-physical-device");
+	}
 }
 
 /*
