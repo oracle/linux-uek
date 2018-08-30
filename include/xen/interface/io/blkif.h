@@ -81,21 +81,22 @@ typedef uint64_t blkif_sector_t;
  *
  * Volume Swapping:
  *
- * blkback plugs in the backing volume based on changes to the "physical-device"
- * xenstore key.
+ * blkback plugs or swaps in the backing volume based on changes to the
+ * "physical-device" xenstore key.
  *
- * Once the backing volume is plugged in, blkback writes to the
- * "oracle/active-physical-device" with the now active volume, and
- * "oracle/physical-device-status" with the error code. The error
- * code follows backend OS convention. On Linux, defined in
+ * Once the backing volume is plugged or swapped in, blkback writes to the
+ * "oracle/active-physical-device" with the now active volume (or the old device
+ * on failed swap), and "oracle/physical-device-status" with the error code.
+ * The error code follows backend OS convention. On Linux, defined in
  * /usr/include/asm/errno*h.
  *
- * For instance, the toolstack plugging in a guest disk would write:
+ * For instance, a toolstack plugging in or hot-swapping a guest disk would
+ * write:
  *
  * /local/domain/0/backend/vbd/<domid>/51712/physical-device  = "1a:2"
  *
- * And backend would validate and plug in the new physical device and its
- * status (e.g. in case of errors):
+ * This would be validated by the backend which would plug or swap in the new
+ * physical device and update the device and its error status:
  *
  * /local/domain/0/backend/vbd/<domid>/51712/oracle/active-physical-device = "1a:2"
  * /local/domain/0/backend/vbd/<domid>/51712/oracle/physical-device-status = "0"

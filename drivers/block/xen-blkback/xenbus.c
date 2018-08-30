@@ -86,6 +86,19 @@ static int blkback_name(struct xen_blkif *blkif, char *buf)
 	return 0;
 }
 
+static int
+flush_bdev_mapping(struct xenbus_device *dev, struct xen_vbd *vbd)
+{
+	int err;
+
+	err = filemap_write_and_wait(vbd->bdev->bd_inode->i_mapping);
+
+	if (!err)
+		invalidate_inode_pages2(vbd->bdev->bd_inode->i_mapping);
+
+	return err;
+}
+
 static void xen_update_blkif_status(struct xen_blkif *blkif)
 {
 	int err;
@@ -112,12 +125,11 @@ static void xen_update_blkif_status(struct xen_blkif *blkif)
 		return;
 	}
 
-	err = filemap_write_and_wait(blkif->vbd.bdev->bd_inode->i_mapping);
+	err = flush_bdev_mapping(blkif->be->dev, &blkif->vbd);
 	if (err) {
 		xenbus_dev_error(blkif->be->dev, err, "block flush");
 		return;
 	}
-	invalidate_inode_pages2(blkif->vbd.bdev->bd_inode->i_mapping);
 
 	for (i = 0; i < blkif->nr_rings; i++) {
 		ring = &blkif->rings[i];
@@ -447,13 +459,11 @@ static void xen_vbd_free(struct xen_vbd *vbd)
 }
 
 static int xen_vbd_create(struct xen_blkif *blkif, blkif_vdev_t handle,
-			  struct blkif_params *p)
+			  struct blkif_params *p, struct xen_vbd *vbd)
 {
-	struct xen_vbd *vbd;
 	struct block_device *bdev;
 	struct request_queue *q;
 
-	vbd = &blkif->vbd;
 	vbd->handle   = handle;
 	vbd->readonly = p->readonly;
 	vbd->type     = 0;
@@ -744,6 +754,26 @@ xenbus_scan_be_params(struct blkif_params *p, struct xenbus_device *dev,
 	return 0;
 }
 
+static int
+validate_swap_params(struct backend_info *be, struct blkif_params *p)
+{
+	int err = -EINVAL;
+
+	if (be->params.major != p->major ||
+	    be->params.minor != p->minor) {
+		if (be->params.readonly == p->readonly &&
+		    be->params.cdrom == p->cdrom) {
+			err = 0;
+		}
+	}
+
+	pr_warn("changing physical device (from %x:%x to %x:%x)%s.\n",
+			be->params.major, be->params.minor,
+			p->major, p->minor,
+			err ? " not supported":"");
+	return err;
+}
+
 /*
  * Callback received when the hotplug scripts have placed the physical-device
  * node.  Read it and the mode node, and create a vbd.  If the frontend is
@@ -757,47 +787,75 @@ static void backend_changed(struct xenbus_watch *watch,
 		= container_of(watch, struct backend_info, backend_watch);
 	struct xenbus_device *dev = be->dev;
 	unsigned long handle;
-	struct blkif_params p;
+	struct blkif_params oldp, newp;
+	struct xen_vbd vbd;
+	bool swap = false;
 
 	pr_debug("%s %p %d\n", __func__, dev, dev->otherend_id);
 
-	err = xenbus_scan_be_params(&p, dev, &handle);
+	err = xenbus_scan_be_params(&newp, dev, &handle);
 	if (err)
 		return;
 
 	if (be->params.major | be->params.minor) {
-		err = -EINVAL;
-		if (be->params.major != p.major || be->params.minor != p.minor)
-			pr_warn("changing physical device (from %x:%x to %x:%x) not supported.\n",
-				be->params.major, be->params.minor,
-				p.major, p.minor);
-		goto out;
+		err = validate_swap_params(be, &newp);
+		if (err)
+			goto out;
+		swap = true;
 	}
 
-	err = xen_vbd_create(be->blkif, handle, &p);
+	err = xen_vbd_create(be->blkif, handle, &newp, &vbd);
 	if (err) {
 		xenbus_dev_fatal(dev, err, "creating vbd structure");
 		goto out;
 	}
 
-	be->params = p;
+	/*
+	 * Save the current params: any errors after this
+	 * point and we will have to restore them.
+	 */
+	oldp = be->params;
+	be->params = newp;
 
-	err = xenvbd_sysfs_addif(dev);
-	if (err) {
+	if (swap) {
+		/* Flush, invalidate extant mappings */
+		err = flush_bdev_mapping(dev, &be->blkif->vbd);
+		if (err) {
+			/*
+			 * In case of flush error, free the new vbd
+			 * and continue with the old one.
+			 */
+			xen_vbd_free(&vbd);
+			xenbus_dev_error(dev, err, "bdev flush error");
+			goto flush_sysfs_out;
+		}
+
+		/* Free old vbd and switch over to the new one */
 		xen_vbd_free(&be->blkif->vbd);
-		xenbus_dev_fatal(dev, err, "creating sysfs entries");
-		goto sysfs_out;
+		be->blkif->vbd = vbd;
+	} else {
+		be->blkif->vbd = vbd;
+
+		/* We have a new vbd, add sysfs entries */
+		err = xenvbd_sysfs_addif(dev);
+		if (err) {
+			xen_vbd_free(&be->blkif->vbd);
+			xenbus_dev_fatal(dev, err, "creating sysfs entries");
+			goto flush_sysfs_out;
+		}
+
+		/* We're potentially connected now */
+		xen_update_blkif_status(be->blkif);
 	}
 
-	/* We're potentially connected now */
-	xen_update_blkif_status(be->blkif);
-
-sysfs_out:
+flush_sysfs_out:
 	/*
-	 * In case of failure reset the params.
+	 * In case of failure we continue with the unchanged
+	 * vbd (which in case of the !swap case might be NULL.)
+	 * Switch over to the saved params.
 	 */
 	if (err)
-		memset(&be->params, 0, sizeof(be->params));
+		be->params = oldp;
 out:
 	/*
 	 * err  = 0: emit new vbd, err = 0 to the xenbus
