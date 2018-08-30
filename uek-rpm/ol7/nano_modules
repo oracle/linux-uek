@@ -661,7 +661,6 @@ kernel/fs/dlm/dlm.ko
 kernel/fs/ecryptfs/ecryptfs.ko
 kernel/fs/ext2/ext2.ko
 kernel/fs/ext4/ext4.ko
-kernel/fs/f2fs/f2fs.ko
 kernel/fs/fat/fat.ko
 kernel/fs/fat/msdos.ko
 kernel/fs/fat/vfat.ko
