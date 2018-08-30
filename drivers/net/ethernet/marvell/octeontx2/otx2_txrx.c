@@ -254,10 +254,7 @@ static void otx2_rcv_pkt_handler(struct otx2_nic *pfvf,
 	if (pfvf->netdev->features & NETIF_F_RXCSUM)
 		skb->ip_summed = CHECKSUM_UNNECESSARY;
 
-	if (pfvf->netdev->features & NETIF_F_GRO)
-		napi_gro_receive(&qset->napi[cq->cint_idx].napi, skb);
-	else
-		netif_receive_skb(skb);
+	napi_gro_receive(&qset->napi[cq->cint_idx].napi, skb);
 }
 
 #define CQE_ADDR(CQ, idx) ((CQ)->cqe_base + ((CQ)->cqe_size * (idx)))
