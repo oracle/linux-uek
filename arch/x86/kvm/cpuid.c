@@ -14,6 +14,7 @@
 #include <linux/vmalloc.h>
 #include <linux/uaccess.h>
 #include <linux/sched/stat.h>
+#include <linux/nospec.h>
 
 #include <asm/processor.h>
 #include <asm/user.h>
@@ -929,6 +930,7 @@ static int move_to_next_stateful_cpuid_entry(struct kvm_vcpu *vcpu, int i)
 	/* when no next entry is found, the current entry[i] is reselected */
 	do {
 		j = (j + 1) % nent;
+		j = array_index_nospec(j, nent);
 		ej = &vcpu->arch.cpuid_entries[j];
 	} while (ej->function != e->function);
 
