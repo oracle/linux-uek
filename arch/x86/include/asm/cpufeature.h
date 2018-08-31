@@ -181,6 +181,9 @@
 #define X86_FEATURE_DTHERM	(7*32+ 7) /* Digital Thermal Sensor */
 #define X86_FEATURE_HW_PSTATE	(7*32+ 8) /* AMD HW-PState */
 #define X86_FEATURE_INVPCID_SINGLE (7*32+10) /* Effectively INVPCID && CR4.PCIDE=1 */
+#define X86_BUG_CPU_MELTDOWN	(7*32+16) /* CPU is insecure and need PTI */
+#define X86_BUG_SPECTRE_V1	(7*32+17) /* conditional branches */
+#define X86_BUG_SPECTRE_V2	(7*32+18) /* indirect branches */
 #define X86_FEATURE_IBRS	(7*32+19) /* Control Speculation Control */
 #define X86_FEATURE_STIBP	(7*32+21) /* Single Thread Indirect Branch Predictors */
 
@@ -412,11 +415,6 @@ static __always_inline __pure bool __static_cpu_has(u16 bit)
  */
 #define static_cpu_has(bit) boot_cpu_has(bit)
 #endif
-
-/*Keep the bits consistent with upstream */
-#define X86_BUG_CPU_MELTDOWN	(7*32+16) /* CPU is insecure and need PTI */
-#define X86_BUG_SPECTRE_V1	(7*32+17) /* conditional branches */
-#define X86_BUG_SPECTRE_V2	(7*32+18) /* indirect branches */
 
 #endif /* defined(__KERNEL__) && !defined(__ASSEMBLY__) */
 
