@@ -187,6 +187,8 @@ void __init check_bugs(void)
 
 	l1tf_select_mitigation();
 
+	l1tf_select_mitigation();
+
 #ifdef CONFIG_X86_32
 	/*
 	 * Check whether we are able to run this kernel safely on SMP.
@@ -692,16 +694,12 @@ display:
 	setup_force_cpu_cap(X86_FEATURE_VMEXIT_RSB_FULL);
 
 	/*
-	 * If neither SMEP nor PTI are available, there is a risk of
-	 * hitting userspace addresses in the RSB after a context switch
-	 * from a shallow call stack to a deeper one. To prevent this fill
-	 * the entire RSB, even when using IBRS.
+	 * If spectre v2 protection has been enabled, unconditionally fill
+	 * RSB during a context switch; this protects against two independent
+	 * issues:
 	 *
-	 * Skylake era CPUs have a separate issue with *underflow* of the
-	 * RSB, when they will predict 'ret' targets from the generic BTB.
-	 * The proper mitigation for this is IBRS. If IBRS is not supported
-	 * or deactivated in favour of retpolines the RSB fill on context
-	 * switch is required.
+	 *	- RSB underflow (and switch to BTB) on Skylake+
+	 *	- SpectreRSB variant of spectre v2 on X86_BUG_SPECTRE_V2 CPUs
 	 */
 	if ((mode != SPECTRE_V2_IBRS) &&
 	    ((!boot_cpu_has(X86_FEATURE_PTI) &&
