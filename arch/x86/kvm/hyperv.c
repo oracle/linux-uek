@@ -19,6 +19,8 @@
  */
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 
+#include <linux/nospec.h>
+
 #include "x86.h"
 #include "lapic.h"
 #include "ioapic.h"
@@ -67,6 +69,7 @@ static void stimer_mark_pending(struct kvm_vcpu_hv_stimer *stimer,
 
 static inline u64 synic_read_sint(struct kvm_vcpu_hv_synic *synic, int sint)
 {
+	sint = array_index_nospec(sint, HV_SYNIC_SINT_COUNT);
 	return atomic64_read(&synic->sint[sint]);
 }
 
@@ -176,6 +179,7 @@ static int synic_set_sint(struct kvm_vcpu_hv_synic *synic, int sint,
 	 */
 	old_vector = synic_read_sint(synic, sint) & HV_SYNIC_SINT_VECTOR_MASK;
 
+	sint = array_index_nospec(sint, HV_SYNIC_SINT_COUNT);
 	atomic64_set(&synic->sint[sint], data);
 
 	synic_update_vector(synic, old_vector);
@@ -437,7 +441,7 @@ static int syndbg_get_msr(struct kvm_vcpu *vcpu, u32 msr, u64 *pdata, bool host)
 static int synic_get_msr(struct kvm_vcpu_hv_synic *synic, u32 msr, u64 *pdata,
 			 bool host)
 {
-	int ret;
+	int ret, sint;
 
 	if (!synic->active && !host)
 		return 1;
@@ -460,7 +464,9 @@ static int synic_get_msr(struct kvm_vcpu_hv_synic *synic, u32 msr, u64 *pdata,
 		*pdata = 0;
 		break;
 	case HV_X64_MSR_SINT0 ... HV_X64_MSR_SINT15:
-		*pdata = atomic64_read(&synic->sint[msr - HV_X64_MSR_SINT0]);
+		sint = array_index_nospec(msr - HV_X64_MSR_SINT0,
+		    HV_SYNIC_SINT_COUNT);
+		*pdata = atomic64_read(&synic->sint[sint]);
 		break;
 	default:
 		ret = 1;
