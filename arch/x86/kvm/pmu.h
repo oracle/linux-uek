@@ -86,8 +86,12 @@ static inline bool pmc_is_enabled(struct kvm_pmc *pmc)
 static inline struct kvm_pmc *get_gp_pmc(struct kvm_pmu *pmu, u32 msr,
 					 u32 base)
 {
-	if (msr >= base && msr < base + pmu->nr_arch_gp_counters)
-		return &pmu->gp_counters[msr - base];
+	if (msr >= base && msr < base + pmu->nr_arch_gp_counters) {
+		int offset = array_index_nospec(msr - base,
+						pmu->nr_arch_gp_counters);
+
+		return &pmu->gp_counters[offset];
+	}
 
 	return NULL;
 }
@@ -97,8 +101,11 @@ static inline struct kvm_pmc *get_fixed_pmc(struct kvm_pmu *pmu, u32 msr)
 {
 	int base = MSR_CORE_PERF_FIXED_CTR0;
 
-	if (msr >= base && msr < base + pmu->nr_arch_fixed_counters)
-		return &pmu->fixed_counters[msr - base];
+	if (msr >= base && msr < base + pmu->nr_arch_fixed_counters) {
+		int offset = array_index_nospec(msr - base,
+						pmu->nr_arch_fixed_counters);
+		return &pmu->fixed_counters[offset];
+	}
 
 	return NULL;
 }
