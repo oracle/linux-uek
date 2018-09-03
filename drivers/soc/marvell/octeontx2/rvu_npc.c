@@ -328,11 +328,11 @@ void rvu_npc_install_ucast_entry(struct rvu *rvu, u16 pcifunc,
 
 	/* Match ingress channel and DMAC */
 	entry.kw[0] = chan;
-	entry.kw_mask[0] = ~chan & 0xFFFULL;
+	entry.kw_mask[0] = 0xFFFULL;
 
 	kwi = NPC_PARSE_RESULT_DMAC_OFFSET / sizeof(u64);
 	entry.kw[kwi] = mac;
-	entry.kw_mask[kwi] = ~mac & (BIT_ULL(48) - 1);
+	entry.kw_mask[kwi] = BIT_ULL(48) - 1;
 
 	/* Don't change the action if entry is already enabled
 	 * Otherwise RSS action may get overwritten.
@@ -371,12 +371,12 @@ void rvu_npc_install_promisc_entry(struct rvu *rvu, u16 pcifunc,
 					 nixlf, NIXLF_PROMISC_ENTRY);
 
 	entry.kw[0] = chan;
-	entry.kw_mask[0] = ~chan & 0xFFFULL;
+	entry.kw_mask[0] = 0xFFFULL;
 
 	if (allmulti) {
 		kwi = NPC_PARSE_RESULT_DMAC_OFFSET / sizeof(u64);
 		entry.kw[kwi] = BIT_ULL(40); /* LSB bit of 1st byte in DMAC */
-		entry.kw_mask[kwi] = 0x00;
+		entry.kw_mask[kwi] = BIT_ULL(40);
 	}
 
 	*(u64 *)&action = 0x00;
@@ -459,7 +459,7 @@ void rvu_npc_install_bcast_match_entry(struct rvu *rvu, u16 pcifunc,
 	 *
 	 **/
 	entry.kw[0] = BIT_ULL(13) | chan;
-	entry.kw_mask[0] = ~entry.kw[0] & (BIT_ULL(13) | 0xFFFULL);
+	entry.kw_mask[0] = (BIT_ULL(13) | 0xFFFULL);
 
 	*(u64 *)&action = 0x00;
 #ifdef MCAST_MCE
