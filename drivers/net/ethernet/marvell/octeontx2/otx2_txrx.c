@@ -143,13 +143,13 @@ static void otx2_skb_add_frag(struct otx2_nic *pfvf,
 	struct page *page;
 	void *va;
 
-	dma_unmap_page_attrs(pfvf->dev, iova, RCV_FRAG_LEN,
-			     DMA_FROM_DEVICE, DMA_ATTR_SKIP_CPU_SYNC);
-
 	va = phys_to_virt(otx2_iova_to_phys(pfvf->iommu_domain, iova));
 	page = virt_to_page(va);
 	skb_add_rx_frag(skb, skb_shinfo(skb)->nr_frags, page,
 			va - page_address(page), len, RCV_FRAG_LEN);
+
+	dma_unmap_page_attrs(pfvf->dev, iova, RCV_FRAG_LEN,
+			     DMA_FROM_DEVICE, DMA_ATTR_SKIP_CPU_SYNC);
 }
 
 static inline struct sk_buff *
