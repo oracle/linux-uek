@@ -63,8 +63,14 @@ EXPORT_SYMBOL(use_ibrs_on_skylake);
 
 bool use_ibrs_with_ssbd = true;
 
+/*
+ * Retpoline variables.
+ */
+static enum spectre_v2_mitigation retpoline_mode = SPECTRE_V2_NONE;
 DEFINE_STATIC_KEY_FALSE(retpoline_enabled_key);
 EXPORT_SYMBOL(retpoline_enabled_key);
+
+static bool __init is_skylake_era(void);
 
 int __init spectre_v2_heuristics_setup(char *p)
 {
@@ -377,32 +383,67 @@ static inline const char *spectre_v2_module_string(void)
 static inline const char *spectre_v2_module_string(void) { return ""; }
 #endif
 
-bool retpoline_enabled(void)
+static inline bool retp_compiler(void)
 {
-	switch (spectre_v2_enabled) {
-	case SPECTRE_V2_RETPOLINE_MINIMAL:
-	case SPECTRE_V2_RETPOLINE_MINIMAL_AMD:
-	case SPECTRE_V2_RETPOLINE_GENERIC:
-	case SPECTRE_V2_RETPOLINE_AMD:
-		return true;
-	default:
-		break;
-	}
-
-	return false;
+	return __is_defined(RETPOLINE);
 }
 
-int refresh_set_spectre_v2_enabled(void)
+bool retpoline_enabled(void)
+{
+	return static_key_enabled(&retpoline_enabled_key);
+}
+
+void retpoline_enable(void)
+{
+	static_branch_enable(&retpoline_enabled_key);
+}
+
+void retpoline_disable(void)
+{
+	static_branch_disable(&retpoline_enabled_key);
+}
+
+static void retpoline_init(void)
+{
+	/*
+	 * Set the retpoline capability to advertise that that retpoline
+	 * is available, however the retpoline feature is enabled via
+	 * the retpoline_enabled_key static key.
+	 *
+	 * By default, we don't provide retpoline on Skylake. However,
+	 * the feature will be provided if it is selected from the boot
+	 * sequence.
+	 */
+	if (!is_skylake_era())
+		setup_force_cpu_cap(X86_FEATURE_RETPOLINE);
+
+	if (boot_cpu_data.x86_vendor == X86_VENDOR_AMD) {
+		if (!boot_cpu_has(X86_FEATURE_LFENCE_RDTSC))
+			pr_err("Spectre mitigation: LFENCE not serializing, setting up generic retpoline\n");
+		else
+			setup_force_cpu_cap(X86_FEATURE_RETPOLINE_AMD);
+	}
+
+	if (boot_cpu_data.x86_vendor == X86_VENDOR_AMD &&
+	    boot_cpu_has(X86_FEATURE_LFENCE_RDTSC)) {
+		retpoline_mode = retp_compiler() ?
+			SPECTRE_V2_RETPOLINE_AMD :
+			SPECTRE_V2_RETPOLINE_MINIMAL_AMD;
+	} else {
+		retpoline_mode = retp_compiler() ?
+			SPECTRE_V2_RETPOLINE_GENERIC :
+			SPECTRE_V2_RETPOLINE_MINIMAL;
+	}
+}
+
+void refresh_set_spectre_v2_enabled(void)
 {
 	if (retpoline_enabled())
-		return false;
-
-	if (check_ibrs_inuse())
+		spectre_v2_enabled = retpoline_mode;
+	else if (check_ibrs_inuse())
 		spectre_v2_enabled = SPECTRE_V2_IBRS;
 	else
 		spectre_v2_enabled = SPECTRE_V2_NONE;
-
-	return true;
 }
 
 static void __init spec2_print_if_insecure(const char *reason)
@@ -415,11 +456,6 @@ static void __init spec2_print_if_secure(const char *reason)
 {
 	if (!boot_cpu_has_bug(X86_BUG_SPECTRE_V2))
 		pr_info("%s selected on command line.\n", reason);
-}
-
-static inline bool retp_compiler(void)
-{
-	return __is_defined(RETPOLINE);
 }
 
 static inline bool match_option(const char *arg, int arglen, const char *opt)
@@ -574,74 +610,35 @@ static void __init spectre_v2_select_mitigation(void)
 	enum spectre_v2_mitigation_cmd cmd = spectre_v2_parse_cmdline();
 	enum spectre_v2_mitigation mode = SPECTRE_V2_NONE;
 
+	if (IS_ENABLED(CONFIG_RETPOLINE))
+		retpoline_init();
+
 	/*
-	 * If the CPU is not affected and the command line mode is NONE or AUTO
-	 * then nothing to do.
+	 * If the command line mode is NONE, or if the CPU is not affected
+	 * and the command line mode is AUTO, then nothing to do.
 	 */
-	if (!boot_cpu_has_bug(X86_BUG_SPECTRE_V2) &&
-	    (cmd == SPECTRE_V2_CMD_NONE || cmd == SPECTRE_V2_CMD_AUTO)) {
+	if (cmd == SPECTRE_V2_CMD_NONE ||
+	    (!boot_cpu_has_bug(X86_BUG_SPECTRE_V2) &&
+	     cmd == SPECTRE_V2_CMD_AUTO)) {
 		disable_ibrs_and_friends(true);
 		return;
 	}
 
-	/*
-	 * Set the retpoline capability to advertise that that retpoline
-	 * is available, however the retpoline feature is enabled via
-	 * the retpoline_enabled_key static key.
-	 */
-	if (IS_ENABLED(CONFIG_RETPOLINE)) {
-		setup_force_cpu_cap(X86_FEATURE_RETPOLINE);
-		if (boot_cpu_data.x86_vendor == X86_VENDOR_AMD) {
-			if (!boot_cpu_has(X86_FEATURE_LFENCE_RDTSC))
-				pr_err("Spectre mitigation: LFENCE not serializing, setting up generic retpoline\n");
-			else
-				setup_force_cpu_cap(X86_FEATURE_RETPOLINE_AMD);
+	if (cmd == SPECTRE_V2_CMD_IBRS || !IS_ENABLED(CONFIG_RETPOLINE)) {
+		ibrs_select(&mode);
+		if (mode != SPECTRE_V2_NONE)
+			goto display;
+		if (!IS_ENABLED(CONFIG_RETPOLINE)) {
+			pr_err("Spectre mitigation: kernel not compiled with retpoline; no mitigation available!");
+			return;
 		}
 	}
 
-	switch (cmd) {
-	case SPECTRE_V2_CMD_NONE:
-		disable_ibrs_and_friends(true);
-		return;
+	mode = retpoline_mode;
 
-	case SPECTRE_V2_CMD_FORCE:
-	case SPECTRE_V2_CMD_AUTO:
-		if (IS_ENABLED(CONFIG_RETPOLINE))
-			goto retpoline_auto;
-		break;
-	case SPECTRE_V2_CMD_RETPOLINE_AMD:
-		if (IS_ENABLED(CONFIG_RETPOLINE))
-			goto retpoline_amd;
-		break;
-	case SPECTRE_V2_CMD_RETPOLINE_GENERIC:
-		if (IS_ENABLED(CONFIG_RETPOLINE))
-			goto retpoline_generic;
-		break;
-	case SPECTRE_V2_CMD_RETPOLINE:
-		if (IS_ENABLED(CONFIG_RETPOLINE))
-			goto retpoline_auto;
-		break;
-	case SPECTRE_V2_CMD_IBRS:
-		ibrs_select(&mode);
-		if (mode == SPECTRE_V2_NONE)
-			goto retpoline_auto;
-		goto display;
-		break; /* Not needed but compilers may complain otherwise. */
-	}
-	pr_err("Spectre mitigation: kernel not compiled with retpoline; no mitigation available!");
-	return;
-
-retpoline_auto:
-	if (boot_cpu_data.x86_vendor == X86_VENDOR_AMD &&
-	    boot_cpu_has(X86_FEATURE_LFENCE_RDTSC)) {
-	retpoline_amd:
-		mode = retp_compiler() ? SPECTRE_V2_RETPOLINE_AMD :
-					 SPECTRE_V2_RETPOLINE_MINIMAL_AMD;
-		/* On AMD we don't need IBRS, so lets use the ASM mitigation. */
-	} else {
-	retpoline_generic:
-		mode = retp_compiler() ? SPECTRE_V2_RETPOLINE_GENERIC :
-					 SPECTRE_V2_RETPOLINE_MINIMAL;
+	/* On AMD we don't need IBRS, so lets use the ASM mitigation. */
+	if (mode != SPECTRE_V2_RETPOLINE_AMD ||
+	    mode != SPECTRE_V2_RETPOLINE_MINIMAL_AMD) {
 
 		pr_info("Options: %s%s%s\n",
 			ibrs_supported ? "IBRS " : "",
@@ -668,8 +665,17 @@ retpoline_auto:
 			}
 		}
 	}
-	/* Enable retpoline */
-	static_branch_enable(&retpoline_enabled_key);
+
+	/*
+	 * We are enabling retpoline so advertise the retpoline feature.
+	 * This only needs to be done for Skylake because the feature
+	 * is already provided on other platforms.
+	 */
+	if (is_skylake_era())
+		setup_force_cpu_cap(X86_FEATURE_RETPOLINE);
+
+	retpoline_enable();
+
 display:
 	spectre_v2_enabled = mode;
 	pr_info("%s\n", spectre_v2_strings[mode]);
