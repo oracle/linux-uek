@@ -43,14 +43,9 @@ static ssize_t ibrs_enabled_write(struct file *file,
 	if (!ibrs_supported)
 		return -ENODEV;
 
-	if (retpoline_enabled()) {
-		pr_warn("retpoline is enabled. Ignoring request to change ibrs state.\n");
-		return -EINVAL;
-	}
-
-        len = min(count, sizeof(buf) - 1);
-        if (copy_from_user(buf, user_buf, len))
-                return -EFAULT;
+	len = min(count, sizeof(buf) - 1);
+	if (copy_from_user(buf, user_buf, len))
+		return -EFAULT;
 
         buf[len] = '\0';
         if (kstrtouint(buf, 0, &enable))
@@ -175,6 +170,66 @@ static const struct file_operations fops_retpoline_fallback = {
 	.llseek = default_llseek,
 };
 
+#ifdef CONFIG_RETPOLINE
+
+static ssize_t retpoline_enabled_read(struct file *file, char __user *user_buf,
+				 size_t count, loff_t *ppos)
+{
+	u32 sysctl_retpoline_enabled = retpoline_enabled() ? 1 : 0;
+
+	return __enabled_read(file, user_buf, count, ppos,
+			      &sysctl_retpoline_enabled);
+}
+
+static ssize_t retpoline_enabled_write(struct file *file,
+				       const char __user *user_buf,
+				       size_t count, loff_t *ppos)
+{
+	char buf[32];
+	ssize_t len;
+	unsigned int enable;
+
+	len = min(count, sizeof(buf) - 1);
+	if (copy_from_user(buf, user_buf, len))
+		return -EFAULT;
+
+	buf[len] = '\0';
+	if (kstrtouint(buf, 0, &enable))
+		return -EINVAL;
+
+	/* Only 0 and 1 are allowed */
+	if (enable > 1)
+		return -EINVAL;
+
+	/*
+	 * The retpoline feature is always present except on Skylake
+	 * if the system wasn't explicitly booted with retpoline.
+	 */
+	if (enable && !boot_cpu_has(X86_FEATURE_RETPOLINE)) {
+		pr_warn("Retpoline is disabled by default on Skylake-generation system.\n");
+		pr_warn("Use the 'spectre_v2=retpoline' parameter to boot with retpoline.\n");
+		return -EINVAL;
+	}
+
+	if (enable) {
+		if (test_taint(TAINT_NO_RETPOLINE))
+			pr_warn("Enabling retpoline with a module not compiled with retpoline compiler.\n");
+		change_spectre_v2_mitigation(SPECTRE_V2_ENABLE_RETPOLINE);
+	} else {
+		change_spectre_v2_mitigation(SPECTRE_V2_DISABLE_RETPOLINE);
+	}
+
+	return count;
+}
+
+static const struct file_operations fops_retpoline_enabled = {
+	.read = retpoline_enabled_read,
+	.write = retpoline_enabled_write,
+	.llseek = default_llseek,
+};
+
+#endif /* CONFIG_RETPOLINE */
+
 static int __init debugfs_spec_ctrl(void)
 {
         debugfs_create_file("ibrs_enabled", S_IRUSR | S_IWUSR,
@@ -183,6 +238,11 @@ static int __init debugfs_spec_ctrl(void)
 			    arch_debugfs_dir, NULL, &fops_ibpb_enabled);
 	debugfs_create_file("retpoline_fallback", S_IRUSR | S_IWUSR,
 			     arch_debugfs_dir, NULL, &fops_retpoline_fallback);
+	if (IS_ENABLED(CONFIG_RETPOLINE)) {
+		debugfs_create_file("retpoline_enabled",
+				    0600, arch_debugfs_dir, NULL,
+				    &fops_retpoline_enabled);
+	}
         return 0;
 }
 late_initcall(debugfs_spec_ctrl);
