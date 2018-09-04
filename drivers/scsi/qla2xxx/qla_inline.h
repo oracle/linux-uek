@@ -233,6 +233,7 @@ qla2xxx_get_qpair_sp(struct qla_qpair *qpair, fc_port_t *fcport, gfp_t flag)
 	sp->fcport = fcport;
 	sp->iocbs = 1;
 	sp->vha = qpair->vha;
+	sp->qpair = qpair;
 done:
 	if (!sp)
 		QLA_QPAIR_MARK_NOT_BUSY(qpair);
@@ -264,6 +265,7 @@ qla2x00_get_sp(scsi_qla_host_t *vha, fc_port_t *fcport, gfp_t flag)
 	sp->fcport = fcport;
 	sp->iocbs = 1;
 	sp->vha = vha;
+	sp->qpair = vha->hw->base_qpair;
 done:
 	if (!sp)
 		QLA_VHA_MARK_NOT_BUSY(vha);

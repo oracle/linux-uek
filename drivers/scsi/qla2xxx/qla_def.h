@@ -3217,6 +3217,7 @@ struct rsp_que {
 	struct qla_msix_entry *msix;
 	struct req_que *req;
 	srb_t *status_srb; /* status continuation entry */
+	struct qla_qpair *qpair;
 
 	dma_addr_t  dma_fx00;
 	response_t *ring_fx00;
@@ -3257,6 +3258,7 @@ struct req_que {
 struct qla_qpair {
 	spinlock_t qp_lock;
 	atomic_t ref_count;
+	spinlock_t *qp_lock_ptr;
 	/* distill these fields down to 'online=0/1'
 	 * ha->flags.eeh_busy
 	 * ha->flags.pci_channel_io_perm_failure
