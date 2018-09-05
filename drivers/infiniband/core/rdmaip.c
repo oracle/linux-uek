@@ -1998,6 +1998,10 @@ static void rdmaip_device_remove(struct ib_device *device, void *client_data)
 	down_write(&rdmaip_devlist_lock);
 	list_del_rcu(&rdmaip_dev->list);
 	up_write(&rdmaip_devlist_lock);
+
+	RDMAIP_DBG2("Deallocating  rdmaip_dev %p name: %s\n",
+		    rdmaip_dev, device->name);
+	kfree(rdmaip_dev);
 }
 
 
