@@ -373,6 +373,16 @@ static int crypt_iv_plain64be_gen(struct crypt_config *cc, u8 *iv,
 	return 0;
 }
 
+static int crypt_iv_plain64me_gen(struct crypt_config *cc, u8 *iv,
+				  struct dm_crypt_request *dmreq)
+{
+	memset(iv, 0, cc->iv_size);
+	/* iv_size is at least of size u64; usually it is 16 bytes */
+	*(__be64 *)&iv[0] = cpu_to_be64(dmreq->iv_sector);
+
+	return 0;
+}
+
 static int crypt_iv_essiv_gen(struct crypt_config *cc, u8 *iv,
 			      struct dm_crypt_request *dmreq)
 {
@@ -1097,6 +1107,10 @@ static const struct crypt_iv_operations crypt_iv_plain64_ops = {
 
 static const struct crypt_iv_operations crypt_iv_plain64be_ops = {
 	.generator = crypt_iv_plain64be_gen
+};
+
+static struct crypt_iv_operations crypt_iv_plain64me_ops = {
+	.generator = crypt_iv_plain64me_gen
 };
 
 static const struct crypt_iv_operations crypt_iv_essiv_ops = {
@@ -2861,6 +2875,8 @@ static int crypt_ctr_ivmode(struct dm_target *ti, const char *ivmode)
 		cc->iv_gen_ops = &crypt_iv_plain_ops;
 	else if (strcmp(ivmode, "plain64") == 0)
 		cc->iv_gen_ops = &crypt_iv_plain64_ops;
+	else if (strcmp(ivmode, "plain64me") == 0)
+		cc->iv_gen_ops = &crypt_iv_plain64me_ops;
 	else if (strcmp(ivmode, "plain64be") == 0)
 		cc->iv_gen_ops = &crypt_iv_plain64be_ops;
 	else if (strcmp(ivmode, "essiv") == 0)
