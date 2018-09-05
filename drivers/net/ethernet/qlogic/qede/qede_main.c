@@ -563,7 +563,7 @@ qede_setup_tc_offload(struct net_device *dev, enum tc_setup_type type,
 	struct tc_mqprio_qopt *mqprio;
 
 	switch (type) {
-	case TC_SETUP_QDISC_MQPRIO:
+	case TC_SETUP_MQPRIO:
 		mqprio = type_data;
 
 		mqprio->hw = TC_MQPRIO_HW_OFFLOAD_TCS;
