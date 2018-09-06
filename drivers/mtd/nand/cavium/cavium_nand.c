@@ -1860,7 +1860,7 @@ static int cvm_nfc_chip_init(struct cvm_nfc *tn, struct device *dev,
 	ret = mtd_device_register(mtd, NULL, 0);
 	if (ret) {
 		dev_err(dev, "failed to register mtd device: %d\n", ret);
-		nand_release(mtd);
+		nand_release(mtd_to_nand(mtd));
 		return ret;
 	}
 
@@ -2034,7 +2034,7 @@ static void cvm_nfc_remove(struct pci_dev *pdev)
 	while (!list_empty(&tn->chips)) {
 		chip = list_first_entry(&tn->chips, struct cvm_nand_chip,
 					node);
-		nand_release(&chip->nand.mtd);
+		nand_release(&chip->nand);
 		list_del(&chip->node);
 	}
 	clk_disable_unprepare(tn->clk);
