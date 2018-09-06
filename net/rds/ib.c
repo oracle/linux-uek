@@ -270,8 +270,6 @@ static int rds_ib_conn_info_visitor(struct rds_connection *conn,
 	if (rds_conn_state(conn) == RDS_CONN_UP) {
 		struct rds_ib_device *rds_ibdev;
 
-		ic = conn->c_transport_data;
-
 		rdma_read_gids(ic->i_cm_id, (union ib_gid *)&iinfo->src_gid,
 			       (union ib_gid *)&iinfo->dst_gid);
 
@@ -320,7 +318,6 @@ static int rds6_ib_conn_info_visitor(struct rds_connection *conn,
 	if (rds_conn_state(conn) == RDS_CONN_UP) {
 		struct rds_ib_device *rds_ibdev;
 
-		ic = conn->c_transport_data;
 		rdma_read_gids(ic->i_cm_id, (union ib_gid *)&iinfo6->src_gid,
 			       (union ib_gid *)&iinfo6->dst_gid);
 		rds_ibdev = ic->rds_ibdev;
