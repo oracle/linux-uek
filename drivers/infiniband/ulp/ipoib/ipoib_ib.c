@@ -290,7 +290,7 @@ static void ipoib_ib_handle_rx_wc(struct net_device *dev, struct ib_wc *wc)
 	skb_pull(skb, IB_GRH_BYTES);
 
 	skb->protocol = ((struct ipoib_header *) skb->data)->proto;
-	skb_add_pseudo_hdr(skb);
+	skb_pull(skb, IPOIB_ENCAP_LEN);
 
 	++dev->stats.rx_packets;
 	dev->stats.rx_bytes += skb->len;
@@ -322,6 +322,9 @@ static void ipoib_ib_handle_rx_wc(struct net_device *dev, struct ib_wc *wc)
 			goto drop;
 		}
 	}
+
+	skb_push(skb, IPOIB_ENCAP_LEN);
+	skb_add_pseudo_hdr(skb);
 
 	skb->dev = dev;
 	if ((dev->features & NETIF_F_RXCSUM) &&
