@@ -292,11 +292,6 @@ static void ipoib_ib_handle_rx_wc(struct net_device *dev, struct ib_wc *wc)
 	skb->protocol = ((struct ipoib_header *) skb->data)->proto;
 	skb_pull(skb, IPOIB_ENCAP_LEN);
 
-	++dev->stats.rx_packets;
-	dev->stats.rx_bytes += skb->len;
-	if (skb->pkt_type == PACKET_MULTICAST)
-		dev->stats.multicast++;
-
 	if (unlikely(be16_to_cpu(skb->protocol) == ETH_P_ARP)) {
 		if (priv->acl.enabled) {
 			subnet_prefix = be64_to_cpu(sgid->global.subnet_prefix);
@@ -322,6 +317,11 @@ static void ipoib_ib_handle_rx_wc(struct net_device *dev, struct ib_wc *wc)
 			goto drop;
 		}
 	}
+
+	++dev->stats.rx_packets;
+	dev->stats.rx_bytes += skb->len;
+	if (skb->pkt_type == PACKET_MULTICAST)
+		dev->stats.multicast++;
 
 	skb_push(skb, IPOIB_ENCAP_LEN);
 	skb_add_pseudo_hdr(skb);
