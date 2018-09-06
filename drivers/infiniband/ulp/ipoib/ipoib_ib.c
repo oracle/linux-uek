@@ -297,8 +297,8 @@ static void ipoib_ib_handle_rx_wc(struct net_device *dev, struct ib_wc *wc)
 						   guid))
 				drop = IPOIB_DROP_ACL;
 			if (drop) {
-				goto drop;
 				priv->arp_blocked++;
+				goto drop;
 			}
 		}
 		priv->arp_accepted++;
