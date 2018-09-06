@@ -4917,8 +4917,8 @@ int handle_ud(struct kvm_vcpu *vcpu)
 	struct x86_exception e;
 
 	if (force_emulation_prefix &&
-	    kvm_read_guest_virt(&vcpu->arch.emulate_ctxt,
-				kvm_get_linear_rip(vcpu), sig, sizeof(sig), &e) == 0 &&
+	    kvm_read_guest_virt(vcpu, kvm_get_linear_rip(vcpu),
+				sig, sizeof(sig), &e) == 0 &&
 	    memcmp(sig, "\xf\xbkvm", sizeof(sig)) == 0) {
 		kvm_rip_write(vcpu, kvm_rip_read(vcpu) + sizeof(sig));
 		emul_type = 0;
