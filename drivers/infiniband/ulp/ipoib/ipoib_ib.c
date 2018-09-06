@@ -290,12 +290,12 @@ static void ipoib_ib_handle_rx_wc(struct net_device *dev, struct ib_wc *wc)
 	skb_pull(skb, IB_GRH_BYTES);
 
 	skb->protocol = ((struct ipoib_header *) skb->data)->proto;
-	skb_pull(skb, IPOIB_ENCAP_LEN);
 
-	if (unlikely(be16_to_cpu(skb->protocol) == ETH_P_ARP)) {
-		if (priv->acl.enabled) {
-			subnet_prefix = be64_to_cpu(sgid->global.subnet_prefix);
-			guid = be64_to_cpu(sgid->global.interface_id);
+	if (priv->acl.enabled) {
+		skb_pull(skb, IPOIB_ENCAP_LEN);
+		subnet_prefix = be64_to_cpu(sgid->global.subnet_prefix);
+		guid = be64_to_cpu(sgid->global.interface_id);
+		if (unlikely(be16_to_cpu(skb->protocol) == ETH_P_ARP)) {
 			if (!(wc->wc_flags & IB_WC_GRH))
 				drop = IPOIB_DROP_NO_GRH;
 			else if (!ipoib_is_valid_arp_address(dev, skb,
@@ -308,14 +308,13 @@ static void ipoib_ib_handle_rx_wc(struct net_device *dev, struct ib_wc *wc)
 				priv->arp_blocked++;
 				goto drop;
 			}
-		}
-		priv->arp_accepted++;
-	} else {
-		if (priv->acl.enabled) {
+			priv->arp_accepted++;
+		} else {
 			priv->ud_blocked++;
 			drop = IPOIB_DROP_NON_CM_PACKRT;
 			goto drop;
 		}
+		skb_push(skb, IPOIB_ENCAP_LEN);
 	}
 
 	++dev->stats.rx_packets;
@@ -323,7 +322,6 @@ static void ipoib_ib_handle_rx_wc(struct net_device *dev, struct ib_wc *wc)
 	if (skb->pkt_type == PACKET_MULTICAST)
 		dev->stats.multicast++;
 
-	skb_push(skb, IPOIB_ENCAP_LEN);
 	skb_add_pseudo_hdr(skb);
 
 	skb->dev = dev;
