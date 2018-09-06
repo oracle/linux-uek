@@ -284,9 +284,6 @@ static void ipoib_ib_handle_rx_wc(struct net_device *dev, struct ib_wc *wc)
 
 	skb->truesize = SKB_TRUESIZE(skb->len);
 
-	++dev->stats.rx_packets;
-	dev->stats.rx_bytes += skb->len;
-
 	if (unlikely(be16_to_cpu(skb->protocol) == ETH_P_ARP)) {
 		if (priv->acl.enabled) {
 			subnet_prefix = be64_to_cpu(sgid->global.subnet_prefix);
@@ -311,6 +308,9 @@ static void ipoib_ib_handle_rx_wc(struct net_device *dev, struct ib_wc *wc)
 			drop = IPOIB_DROP_NON_CM_PACKRT;
 			goto drop;
 		}
+
+	++dev->stats.rx_packets;
+	dev->stats.rx_bytes += skb->len;
 
 	skb_push(skb, IPOIB_ENCAP_LEN);
 	skb_add_pseudo_hdr(skb);
