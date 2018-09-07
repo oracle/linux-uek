@@ -245,6 +245,17 @@ static void cgx_lmac_event_handler_init(struct rvu *rvu)
 					"%d:%d handler register failed\n",
 					cgx, lmac);
 		}
+		/* Ensure event handler registration is completed, before
+		 * we turn on the links
+		 */
+		mb();
+
+		/* Start the link up procedure on all lmac ports */
+		err = cgx_lmac_linkup_start(cgxd);
+		if (err)
+			dev_err(rvu->dev,
+				"Link up process failed to start on cgx %d\n",
+				cgx);
 	}
 }
 
