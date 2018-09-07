@@ -18,6 +18,7 @@
 #include <linux/of.h>
 #include <linux/of_mdio.h>
 #include <linux/of_net.h>
+#include <linux/kthread.h>
 
 #include "cgx.h"
 
@@ -620,8 +621,9 @@ static int cgx_lmac_verify_fwi_version(struct cgx *cgx)
 		return 0;
 }
 
-static void cgx_lmac_link_up(struct cgx *cgx)
+static int cgx_lmac_linkup_thread(void *data)
 {
+	struct cgx *cgx = data;
 	struct device *dev = &cgx->pdev->dev;
 	int i, err;
 
@@ -632,7 +634,23 @@ static void cgx_lmac_link_up(struct cgx *cgx)
 			dev_info(dev, "cgx port %d:%d Link up command failed\n",
 				 cgx->cgx_id, i);
 	}
+	do_exit(0);
 }
+
+int cgx_lmac_linkup_start(void *cgxd)
+{
+	struct cgx *cgx = cgxd;
+	struct task_struct *task;
+
+	/* Start the linkup procedure of lmac ports in the background */
+	task = kthread_run(cgx_lmac_linkup_thread, cgx, "cgx%d_linkup_thread",
+			      cgx->cgx_id);
+	if (IS_ERR(task))
+		return PTR_ERR(task);
+
+	return 0;
+}
+EXPORT_SYMBOL(cgx_lmac_linkup_start);
 
 static int cgx_lmac_init(struct cgx *cgx)
 {
@@ -742,8 +760,6 @@ static int cgx_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	err = cgx_lmac_init(cgx);
 	if (err)
 		goto err_release_lmac;
-
-	cgx_lmac_link_up(cgx);
 
 	return 0;
 
