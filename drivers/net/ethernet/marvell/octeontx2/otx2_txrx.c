@@ -561,9 +561,9 @@ int otx2_rxtx_enable(struct otx2_nic *pfvf, bool enable)
 		return 0;
 
 	if (enable)
-		msg = otx2_mbox_alloc_msg_CGX_START_RXTX(&pfvf->mbox);
+		msg = otx2_mbox_alloc_msg_NIX_LF_START_RX(&pfvf->mbox);
 	else
-		msg = otx2_mbox_alloc_msg_CGX_STOP_RXTX(&pfvf->mbox);
+		msg = otx2_mbox_alloc_msg_NIX_LF_STOP_RX(&pfvf->mbox);
 
 	if (!msg)
 		return -ENOMEM;

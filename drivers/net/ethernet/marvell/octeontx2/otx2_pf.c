@@ -725,7 +725,7 @@ int otx2_stop(struct net_device *netdev)
 	struct otx2_qset *qset = &pf->qset;
 	int qidx, vec;
 
-	/* First stop packet Rx/Tx at CGX */
+	/* First stop packet Rx/Tx */
 	otx2_rxtx_enable(pf, false);
 
 	/* Disable link notifications */
