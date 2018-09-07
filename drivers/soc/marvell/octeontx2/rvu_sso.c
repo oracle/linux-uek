@@ -51,15 +51,15 @@ static void rvu_sso_hwgrp_config_thresh(struct rvu *rvu, int blkaddr, int lf)
 	rvu_write64(rvu, blkaddr, SSO_AF_HWGRPX_TAQ_THR(lf), grp_thr);
 
 	if (add)
-		rvu_write64(rvu, blkaddr, SSO_AF_AW_ADD,
-			    (add & SSO_AF_AW_ADD_RSVD_FREE_MASK) <<
-			    SSO_AF_AW_ADD_RSVD_FREE_SHIFT);
+		rvu_write64(rvu, blkaddr, SSO_AF_TAQ_ADD,
+			    (add & SSO_AF_TAQ_RSVD_FREE_MASK) <<
+			    SSO_AF_TAQ_ADD_RSVD_FREE_SHIFT);
 }
 
 int rvu_sso_lf_teardown(struct rvu *rvu, int lf)
 {
 	int blkaddr, err;
-	u64 reg;
+	u64 reg, add;
 
 	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_SSO, 0);
 	if (blkaddr < 0)
@@ -118,18 +118,33 @@ int rvu_sso_lf_teardown(struct rvu *rvu, int lf)
 	rvu_write64(rvu, blkaddr, SSO_AF_HWGRPX_DS_PC(lf), 0x0);
 	rvu_write64(rvu, blkaddr, SSO_AF_HWGRPX_XAQ_LIMIT(lf), 0x0);
 	rvu_write64(rvu, blkaddr, SSO_AF_HWGRPX_IU_ACCNT(lf), 0x0);
+
+	reg = rvu_read64(rvu, blkaddr, SSO_AF_HWGRPX_IAQ_THR(lf)) &
+		SSO_HWGRP_IAQ_RSVD_THR_MASK;
+	add = SSO_HWGRP_IAQ_RSVD_THR - reg;
 	reg = (SSO_HWGRP_IAQ_MAX_THR_MASK << SSO_HWGRP_IAQ_MAX_THR_SHIFT) |
-	      0x2;
+	      SSO_HWGRP_IAQ_RSVD_THR;
 	rvu_write64(rvu, blkaddr, SSO_AF_HWGRPX_IAQ_THR(lf), reg);
+	if (add)
+		rvu_write64(rvu, blkaddr, SSO_AF_AW_ADD,
+			    (add & SSO_AF_AW_ADD_RSVD_FREE_MASK) <<
+			    SSO_AF_AW_ADD_RSVD_FREE_SHIFT);
+
+	reg = rvu_read64(rvu, blkaddr, SSO_AF_HWGRPX_TAQ_THR(lf)) &
+		SSO_HWGRP_TAQ_RSVD_THR_MASK;
+	add = SSO_HWGRP_TAQ_RSVD_THR - reg;
 	reg = (SSO_HWGRP_TAQ_MAX_THR_MASK << SSO_HWGRP_TAQ_MAX_THR_SHIFT) |
-	      0x3;
+	      SSO_HWGRP_TAQ_RSVD_THR;
 	rvu_write64(rvu, blkaddr, SSO_AF_HWGRPX_TAQ_THR(lf), reg);
+	if (add)
+		rvu_write64(rvu, blkaddr, SSO_AF_TAQ_ADD,
+			    (add & SSO_AF_TAQ_RSVD_FREE_MASK) <<
+			    SSO_AF_TAQ_ADD_RSVD_FREE_SHIFT);
 
 	rvu_write64(rvu, blkaddr, SSO_AF_XAQX_HEAD_PTR(lf), 0x0);
 	rvu_write64(rvu, blkaddr, SSO_AF_XAQX_TAIL_PTR(lf), 0x0);
 	rvu_write64(rvu, blkaddr, SSO_AF_XAQX_HEAD_NEXT(lf), 0x0);
 	rvu_write64(rvu, blkaddr, SSO_AF_XAQX_TAIL_NEXT(lf), 0x0);
-
 	return 0;
 }
 
