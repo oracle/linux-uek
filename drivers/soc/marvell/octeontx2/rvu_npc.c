@@ -919,12 +919,21 @@ int rvu_npc_init(struct rvu *rvu)
 	struct npc_pkind *pkind = &rvu->hw->pkind;
 	struct npc_mcam *mcam = &rvu->hw->mcam;
 	u64 keyz = NPC_MCAM_KEY_X2;
-	int blkaddr, err;
+	int blkaddr, entry, bank, err;
+	u64 cfg;
 
 	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NPC, 0);
 	if (blkaddr < 0) {
 		dev_err(rvu->dev, "%s: NPC block not implemented\n", __func__);
 		return -ENODEV;
+	}
+
+	/* First disable all MCAM entries, to stop traffic towards NIXLFs */
+	cfg = rvu_read64(rvu, blkaddr, NPC_AF_CONST);
+	for (bank = 0; bank < ((cfg >> 44) & 0xF); bank++) {
+		for (entry = 0; entry < ((cfg >> 28) & 0xFFFF); entry++)
+			rvu_write64(rvu, blkaddr,
+				    NPC_AF_MCAMEX_BANKX_CFG(entry, bank), 0);
 	}
 
 	/* Allocate resource bimap for pkind*/

@@ -786,15 +786,15 @@ init:
 		rvu_scan_block(rvu, block);
 	}
 
+	err = rvu_npc_init(rvu);
+	if (err)
+		return err;
+
 	err = rvu_npa_init(rvu);
 	if (err)
 		return err;
 
 	err = rvu_nix_init(rvu);
-	if (err)
-		return err;
-
-	err = rvu_npc_init(rvu);
 	if (err)
 		return err;
 
