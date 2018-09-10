@@ -186,12 +186,35 @@ long kvmppc_gpa_to_ua(struct kvm *kvm, unsigned long gpa,
 EXPORT_SYMBOL_GPL(kvmppc_gpa_to_ua);
 
 #ifdef CONFIG_KVM_BOOK3S_HV_POSSIBLE
-static void kvmppc_rm_clear_tce(struct iommu_table *tbl, unsigned long entry)
+static long iommu_tce_xchg_rm(struct mm_struct *mm, struct iommu_table *tbl,
+		unsigned long entry, unsigned long *hpa,
+		enum dma_data_direction *direction)
+{
+	long ret;
+
+	ret = tbl->it_ops->exchange_rm(tbl, entry, hpa, direction);
+
+	if (!ret && ((*direction == DMA_FROM_DEVICE) ||
+				(*direction == DMA_BIDIRECTIONAL))) {
+		__be64 *pua = IOMMU_TABLE_USERSPACE_ENTRY_RM(tbl, entry);
+		/*
+		 * kvmppc_rm_tce_iommu_do_map() updates the UA cache after
+		 * calling this so we still get here a valid UA.
+		 */
+		if (pua && *pua)
+			mm_iommu_ua_mark_dirty_rm(mm, be64_to_cpu(*pua));
+	}
+
+	return ret;
+}
+
+static void kvmppc_rm_clear_tce(struct kvm *kvm, struct iommu_table *tbl,
+		unsigned long entry)
 {
 	unsigned long hpa = 0;
 	enum dma_data_direction dir = DMA_NONE;
 
-	iommu_tce_xchg_rm(tbl, entry, &hpa, &dir);
+	iommu_tce_xchg_rm(kvm->mm, tbl, entry, &hpa, &dir);
 }
 
 static long kvmppc_rm_tce_iommu_mapped_dec(struct kvm *kvm,
@@ -227,7 +250,7 @@ static long kvmppc_rm_tce_iommu_do_unmap(struct kvm *kvm,
 	unsigned long hpa = 0;
 	long ret;
 
-	if (iommu_tce_xchg_rm(tbl, entry, &hpa, &dir))
+	if (iommu_tce_xchg_rm(kvm->mm, tbl, entry, &hpa, &dir))
 		/*
 		 * real mode xchg can fail if struct page crosses
 		 * a page boundary
@@ -239,7 +262,7 @@ static long kvmppc_rm_tce_iommu_do_unmap(struct kvm *kvm,
 
 	ret = kvmppc_rm_tce_iommu_mapped_dec(kvm, tbl, entry);
 	if (ret)
-		iommu_tce_xchg_rm(tbl, entry, &hpa, &dir);
+		iommu_tce_xchg_rm(kvm->mm, tbl, entry, &hpa, &dir);
 
 	return ret;
 }
@@ -289,7 +312,7 @@ static long kvmppc_rm_tce_iommu_do_map(struct kvm *kvm, struct iommu_table *tbl,
 	if (WARN_ON_ONCE_RM(mm_iommu_mapped_inc(mem)))
 		return H_CLOSED;
 
-	ret = iommu_tce_xchg_rm(tbl, entry, &hpa, &dir);
+	ret = iommu_tce_xchg_rm(kvm->mm, tbl, entry, &hpa, &dir);
 	if (ret) {
 		mm_iommu_mapped_dec(mem);
 		/*
@@ -378,7 +401,7 @@ long kvmppc_rm_h_put_tce(struct kvm_vcpu *vcpu, unsigned long liobn,
 			return ret;
 
 		WARN_ON_ONCE_RM(1);
-		kvmppc_rm_clear_tce(stit->tbl, entry);
+		kvmppc_rm_clear_tce(vcpu->kvm, stit->tbl, entry);
 	}
 
 	kvmppc_tce_put(stt, entry, tce);
@@ -527,7 +550,7 @@ long kvmppc_rm_h_put_tce_indirect(struct kvm_vcpu *vcpu,
 				goto unlock_exit;
 
 			WARN_ON_ONCE_RM(1);
-			kvmppc_rm_clear_tce(stit->tbl, entry);
+			kvmppc_rm_clear_tce(vcpu->kvm, stit->tbl, entry);
 		}
 
 		kvmppc_tce_put(stt, entry + i, tce);
@@ -578,7 +601,7 @@ long kvmppc_rm_h_stuff_tce(struct kvm_vcpu *vcpu,
 				return ret;
 
 			WARN_ON_ONCE_RM(1);
-			kvmppc_rm_clear_tce(stit->tbl, entry);
+			kvmppc_rm_clear_tce(vcpu->kvm, stit->tbl, entry);
 		}
 	}
 
