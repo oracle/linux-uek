@@ -41,6 +41,9 @@ struct rvu_debugfs {
 	struct dentry *npa;
 	struct dentry *nix;
 	struct dentry *npc;
+	struct dentry *sso;
+	struct dentry *sso_hwgrp;
+	struct dentry *sso_hws;
 };
 #endif
 
