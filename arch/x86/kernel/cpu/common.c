@@ -774,7 +774,7 @@ void init_speculation_control(struct cpuinfo_x86 *c,
 	if (behavior == GET_CPU_CAP_MINIMUM)
 		return;
 
-	if (!c->cpu_index) {
+	if (c == &boot_cpu_data) {
 		bool ignore = false;
 
 		if (xen_pv_domain())
