@@ -95,8 +95,7 @@
 	STATIC_JUMP_IF_TRUE .Lretpoline_jmp_\@, retpoline_enabled_key, def=0
 	jmp	*\reg
 .Lretpoline_jmp_\@:
-	ALTERNATIVE_2 __stringify(jmp *\reg),				\
-		__stringify(RETPOLINE_JMP \reg), X86_FEATURE_RETPOLINE,	\
+	ALTERNATIVE __stringify(RETPOLINE_JMP \reg), \
 		__stringify(lfence; jmp *\reg), X86_FEATURE_RETPOLINE_AMD
 #else
 	jmp	*\reg
@@ -109,8 +108,7 @@
 	call	*\reg
 	jmp	.Ldone_call_\@
 .Lretpoline_call_\@:
-	ALTERNATIVE_2 __stringify(call *\reg),				\
-		__stringify(RETPOLINE_CALL \reg), X86_FEATURE_RETPOLINE,\
+	ALTERNATIVE __stringify(RETPOLINE_CALL \reg), \
 		__stringify(lfence; call *\reg), X86_FEATURE_RETPOLINE_AMD
 .Ldone_call_\@:
 #else
@@ -140,10 +138,17 @@
  * the 64-bit one is dependent on RETPOLINE not CONFIG_RETPOLINE.
  */
 # define CALL_NOSPEC						\
-	ALTERNATIVE(						\
-	"call *%[thunk_target]\n",				\
-	"call __x86_indirect_thunk_%V[thunk_target]\n",		\
-	X86_FEATURE_RETPOLINE)
+	"901: .byte " __stringify(STATIC_KEY_INIT_NOP) "\n"	\
+	".pushsection __jump_table, \"aw\"\n"			\
+	_ASM_ALIGN "\n"						\
+	_ASM_PTR "901b, 902f, retpoline_enabled_key\n"		\
+	".popsection\n"						\
+	"	call *%[thunk_target];\n"			\
+	"	jmp   903f;\n"					\
+	"       .align 16\n"					\
+	"902:	call __x86_indirect_thunk_%V[thunk_target];\n"	\
+	"903:"
+
 # define THUNK_TARGET(addr) [thunk_target] "r" (addr)
 
 #elif defined(CONFIG_X86_32) && defined(CONFIG_RETPOLINE)
