@@ -11,7 +11,9 @@
 #include <linux/etherdevice.h>
 #include <linux/rtnetlink.h>
 #include <linux/jhash.h>
+#ifdef HAVE_TC_SETUP_TYPE
 #include <net/pkt_cls.h>
+#endif
 
 #include "bnxt_hsi.h"
 #include "bnxt.h"
@@ -19,7 +21,7 @@
 #include "bnxt_devlink.h"
 #include "bnxt_tc.h"
 
-#ifdef CONFIG_BNXT_SRIOV
+#ifdef CONFIG_VF_REPS
 
 #define CFA_HANDLE_INVALID		0xffff
 #define VF_IDX_INVALID			0xffff
@@ -61,6 +63,31 @@ static int hwrm_cfa_vfr_free(struct bnxt *bp, u16 vf_idx)
 	rc = hwrm_send_message(bp, &req, sizeof(req), HWRM_CMD_TIMEOUT);
 	if (rc)
 		netdev_info(bp->dev, "%s error rc=%d", __func__, rc);
+	return rc;
+}
+
+static int bnxt_hwrm_vfr_qcfg(struct bnxt *bp, struct bnxt_vf_rep *vf_rep,
+			      u16 *max_mtu)
+{
+	struct hwrm_func_qcfg_output *resp = bp->hwrm_cmd_resp_addr;
+	struct hwrm_func_qcfg_input req = {0};
+	u16 mtu;
+	int rc;
+
+	bnxt_hwrm_cmd_hdr_init(bp, &req, HWRM_FUNC_QCFG, -1, -1);
+	req.fid = cpu_to_le16(bp->pf.vf[vf_rep->vf_idx].fw_fid);
+
+	mutex_lock(&bp->hwrm_cmd_lock);
+
+	rc = _hwrm_send_message(bp, &req, sizeof(req), HWRM_CMD_TIMEOUT);
+	if (!rc) {
+		mtu = le16_to_cpu(resp->max_mtu_configured);
+		if (!mtu)
+			*max_mtu = BNXT_MAX_MTU;
+		else
+			*max_mtu = mtu;
+	}
+	mutex_unlock(&bp->hwrm_cmd_lock);
 	return rc;
 }
 
@@ -116,12 +143,20 @@ bnxt_vf_rep_get_stats64(struct net_device *dev,
 	stats->tx_bytes = vf_rep->tx_stats.bytes;
 }
 
-static int bnxt_vf_rep_setup_tc(struct net_device *dev, enum tc_setup_type type,
-				void *type_data)
+#ifdef CONFIG_BNXT_FLOWER_OFFLOAD
+#ifdef HAVE_TC_SETUP_TYPE
+#ifdef HAVE_TC_SETUP_BLOCK
+static int bnxt_vf_rep_setup_tc_block_cb(enum tc_setup_type type,
+					 void *type_data,
+					 void *cb_priv)
 {
-	struct bnxt_vf_rep *vf_rep = netdev_priv(dev);
+	struct bnxt_vf_rep *vf_rep = cb_priv;
 	struct bnxt *bp = vf_rep->bp;
 	int vf_fid = bp->pf.vf[vf_rep->vf_idx].fw_fid;
+
+	if (!bnxt_tc_flower_enabled(vf_rep->bp) ||
+	    !tc_cls_can_offload_and_chain0(bp->dev, type_data))
+		return -EOPNOTSUPP;
 
 	switch (type) {
 	case TC_SETUP_CLSFLOWER:
@@ -130,6 +165,77 @@ static int bnxt_vf_rep_setup_tc(struct net_device *dev, enum tc_setup_type type,
 		return -EOPNOTSUPP;
 	}
 }
+
+static int bnxt_vf_rep_setup_tc_block(struct net_device *dev,
+				      struct tc_block_offload *f)
+{
+	struct bnxt_vf_rep *vf_rep = netdev_priv(dev);
+
+	if (f->binder_type != TCF_BLOCK_BINDER_TYPE_CLSACT_INGRESS)
+		return -EOPNOTSUPP;
+
+	switch (f->command) {
+	case TC_BLOCK_BIND:
+		return tcf_block_cb_register(f->block,
+					     bnxt_vf_rep_setup_tc_block_cb,
+					     vf_rep, vf_rep);
+	case TC_BLOCK_UNBIND:
+		tcf_block_cb_unregister(f->block,
+					bnxt_vf_rep_setup_tc_block_cb, vf_rep);
+		return 0;
+	default:
+		return -EOPNOTSUPP;
+	}
+}
+
+#endif
+
+static int bnxt_vf_rep_setup_tc(struct net_device *dev, enum tc_setup_type type,
+				void *type_data)
+{
+	switch (type) {
+#ifdef HAVE_TC_SETUP_BLOCK
+	case TC_SETUP_BLOCK:
+		return bnxt_vf_rep_setup_tc_block(dev, type_data);
+#else
+	case TC_SETUP_CLSFLOWER: {
+		struct bnxt_vf_rep *vf_rep = netdev_priv(dev);
+		struct bnxt *bp = vf_rep->bp;
+		int vf_fid = bp->pf.vf[vf_rep->vf_idx].fw_fid;
+
+		return bnxt_tc_setup_flower(bp, vf_fid, type_data);
+	}
+#endif
+	default:
+		return -EOPNOTSUPP;
+	}
+}
+#else
+#ifdef HAVE_CHAIN_INDEX
+static int bnxt_vf_rep_setup_tc(struct net_device *dev, u32 handle,
+				u32 chain_index, __be16 proto,
+				struct tc_to_netdev *ntc)
+#else
+static int bnxt_vf_rep_setup_tc(struct net_device *dev, u32 handle,
+				__be16 proto, struct tc_to_netdev *ntc)
+#endif
+{
+	struct bnxt_vf_rep *vf_rep = netdev_priv(dev);
+
+	if (!bnxt_tc_flower_enabled(vf_rep->bp))
+		return -EOPNOTSUPP;
+
+	switch (ntc->type) {
+	case TC_SETUP_CLSFLOWER:
+		return bnxt_tc_setup_flower(vf_rep->bp,
+					    bnxt_vf_rep_get_fid(dev),
+					    ntc->cls_flower);
+	default:
+		return -EOPNOTSUPP;
+	}
+}
+#endif /* HAVE_TC_SETUP_TYPE */
+#endif /* CONFIG_BNXT_FLOWER_OFFLOAD */
 
 struct net_device *bnxt_get_vf_rep(struct bnxt *bp, u16 cfa_code)
 {
@@ -200,7 +306,9 @@ static const struct net_device_ops bnxt_vf_rep_netdev_ops = {
 	.ndo_stop		= bnxt_vf_rep_close,
 	.ndo_start_xmit		= bnxt_vf_rep_xmit,
 	.ndo_get_stats64	= bnxt_vf_rep_get_stats64,
+#ifdef CONFIG_BNXT_FLOWER_OFFLOAD
 	.ndo_setup_tc		= bnxt_vf_rep_setup_tc,
+#endif
 	.ndo_get_phys_port_name = bnxt_vf_rep_get_phys_port_name
 };
 
@@ -327,6 +435,7 @@ static void bnxt_vf_rep_netdev_init(struct bnxt *bp, struct bnxt_vf_rep *vf_rep,
 				    struct net_device *dev)
 {
 	struct net_device *pf_dev = bp->dev;
+	u16 max_mtu;
 
 	dev->netdev_ops = &bnxt_vf_rep_netdev_ops;
 	dev->ethtool_ops = &bnxt_vf_rep_ethtool_ops;
@@ -342,6 +451,10 @@ static void bnxt_vf_rep_netdev_init(struct bnxt *bp, struct bnxt_vf_rep *vf_rep,
 	bnxt_vf_rep_eth_addr_gen(bp->pf.mac_addr, vf_rep->vf_idx,
 				 dev->perm_addr);
 	ether_addr_copy(dev->dev_addr, dev->perm_addr);
+	/* Set VF-Rep's max-mtu to the corresponding VF's max-mtu */
+	if (!bnxt_hwrm_vfr_qcfg(bp, vf_rep, &max_mtu))
+		dev->max_mtu = max_mtu;
+	dev->min_mtu = ETH_ZLEN;
 }
 
 static int bnxt_pcie_dsn_get(struct bnxt *bp, u8 dsn[])
@@ -475,9 +588,14 @@ int bnxt_dl_eswitch_mode_set(struct devlink *devlink, u16 mode)
 		break;
 
 	case DEVLINK_ESWITCH_MODE_SWITCHDEV:
+		if (bp->hwrm_spec_code < 0x10803) {
+			netdev_warn(bp->dev, "FW does not support SRIOV E-Switch SWITCHDEV mode\n");
+			rc = -ENOTSUPP;
+			goto done;
+		}
+
 		if (pci_num_vf(bp->pdev) == 0) {
-			netdev_info(bp->dev,
-				    "Enable VFs before setting switchdev mode");
+			netdev_info(bp->dev, "Enable VFs before setting switchdev mode");
 			rc = -EPERM;
 			goto done;
 		}
@@ -493,4 +611,4 @@ done:
 	return rc;
 }
 
-#endif
+#endif /* CONFIG_VF_REPS */

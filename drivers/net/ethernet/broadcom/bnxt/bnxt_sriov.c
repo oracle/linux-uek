@@ -1,7 +1,7 @@
 /* Broadcom NetXtreme-C/E network driver.
  *
  * Copyright (c) 2014-2016 Broadcom Corporation
- * Copyright (c) 2016-2017 Broadcom Limited
+ * Copyright (c) 2016-2018 Broadcom Limited
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -121,6 +121,23 @@ int bnxt_set_vf_spoofchk(struct net_device *dev, int vf_id, bool setting)
 	return rc;
 }
 
+int bnxt_set_vf_trust(struct net_device *dev, int vf_id, bool trusted)
+{
+	struct bnxt *bp = netdev_priv(dev);
+	struct bnxt_vf_info *vf;
+
+	if (bnxt_vf_ndo_prep(bp, vf_id))
+		return -EINVAL;
+
+	vf = &bp->pf.vf[vf_id];
+	if (trusted)
+		vf->flags |= BNXT_VF_TRUST;
+	else
+		vf->flags &= ~BNXT_VF_TRUST;
+
+	return 0;
+}
+
 int bnxt_get_vf_config(struct net_device *dev, int vf_id,
 		       struct ifla_vf_info *ivi)
 {
@@ -147,6 +164,7 @@ int bnxt_get_vf_config(struct net_device *dev, int vf_id,
 	else
 		ivi->qos = 0;
 	ivi->spoofchk = !!(vf->flags & BNXT_VF_SPOOFCHK);
+	ivi->trusted = !!(vf->flags & BNXT_VF_TRUST);
 	if (!(vf->flags & BNXT_VF_LINK_FORCED))
 		ivi->linkstate = IFLA_VF_LINK_STATE_AUTO;
 	else if (vf->flags & BNXT_VF_LINK_UP)
@@ -444,13 +462,13 @@ static int bnxt_hwrm_func_vf_resc_cfg(struct bnxt *bp, int num_vfs)
 	vf_vnics = hw_resc->max_vnics - bp->nr_vnics;
 	vf_vnics = min_t(u16, vf_vnics, vf_rx_rings);
 
-	req.min_rsscos_ctx = cpu_to_le16(1);
-	req.max_rsscos_ctx = cpu_to_le16(1);
+	req.min_rsscos_ctx = cpu_to_le16(BNXT_VF_MIN_RSS_CTX);
+	req.max_rsscos_ctx = cpu_to_le16(BNXT_VF_MAX_RSS_CTX);
 	if (pf->vf_resv_strategy == BNXT_VF_RESV_STRATEGY_MINIMAL) {
 		req.min_cmpl_rings = cpu_to_le16(1);
 		req.min_tx_rings = cpu_to_le16(1);
 		req.min_rx_rings = cpu_to_le16(1);
-		req.min_l2_ctxs = cpu_to_le16(1);
+		req.min_l2_ctxs = cpu_to_le16(BNXT_VF_MIN_L2_CTX);
 		req.min_vnics = cpu_to_le16(1);
 		req.min_stat_ctx = cpu_to_le16(1);
 		req.min_hw_ring_grps = cpu_to_le16(1);
@@ -465,7 +483,7 @@ static int bnxt_hwrm_func_vf_resc_cfg(struct bnxt *bp, int num_vfs)
 		req.min_cmpl_rings = cpu_to_le16(vf_cp_rings);
 		req.min_tx_rings = cpu_to_le16(vf_tx_rings);
 		req.min_rx_rings = cpu_to_le16(vf_rx_rings);
-		req.min_l2_ctxs = cpu_to_le16(4);
+		req.min_l2_ctxs = cpu_to_le16(BNXT_VF_MAX_L2_CTX);
 		req.min_vnics = cpu_to_le16(vf_vnics);
 		req.min_stat_ctx = cpu_to_le16(vf_stat_ctx);
 		req.min_hw_ring_grps = cpu_to_le16(vf_ring_grps);
@@ -473,7 +491,7 @@ static int bnxt_hwrm_func_vf_resc_cfg(struct bnxt *bp, int num_vfs)
 	req.max_cmpl_rings = cpu_to_le16(vf_cp_rings);
 	req.max_tx_rings = cpu_to_le16(vf_tx_rings);
 	req.max_rx_rings = cpu_to_le16(vf_rx_rings);
-	req.max_l2_ctxs = cpu_to_le16(4);
+	req.max_l2_ctxs = cpu_to_le16(BNXT_VF_MAX_L2_CTX);
 	req.max_vnics = cpu_to_le16(vf_vnics);
 	req.max_stat_ctx = cpu_to_le16(vf_stat_ctx);
 	req.max_hw_ring_grps = cpu_to_le16(vf_ring_grps);
@@ -492,18 +510,16 @@ static int bnxt_hwrm_func_vf_resc_cfg(struct bnxt *bp, int num_vfs)
 	}
 	mutex_unlock(&bp->hwrm_cmd_lock);
 	if (pf->active_vfs) {
-		u16 n = 1;
+		u16 n = pf->active_vfs;
 
-		if (pf->vf_resv_strategy != BNXT_VF_RESV_STRATEGY_MINIMAL)
-			n = pf->active_vfs;
-
-		hw_resc->max_tx_rings -= vf_tx_rings * n;
-		hw_resc->max_rx_rings -= vf_rx_rings * n;
-		hw_resc->max_hw_ring_grps -= vf_ring_grps * n;
-		hw_resc->max_cp_rings -= vf_cp_rings * n;
+		hw_resc->max_tx_rings -= le16_to_cpu(req.min_tx_rings) * n;
+		hw_resc->max_rx_rings -= le16_to_cpu(req.min_rx_rings) * n;
+		hw_resc->max_hw_ring_grps -= le16_to_cpu(req.min_hw_ring_grps) *
+					     n;
+		hw_resc->max_cp_rings -= le16_to_cpu(req.min_cmpl_rings) * n;
 		hw_resc->max_rsscos_ctxs -= pf->active_vfs;
-		hw_resc->max_stat_ctxs -= vf_stat_ctx * n;
-		hw_resc->max_vnics -= vf_vnics * n;
+		hw_resc->max_stat_ctxs -= le16_to_cpu(req.min_stat_ctx) * n;
+		hw_resc->max_vnics -= le16_to_cpu(req.min_vnics) * n;
 
 		rc = pf->active_vfs;
 	}
@@ -793,6 +809,9 @@ static int bnxt_hwrm_fwd_resp(struct bnxt *bp, struct bnxt_vf_info *vf,
 	struct hwrm_fwd_resp_input req = {0};
 	struct hwrm_fwd_resp_output *resp = bp->hwrm_cmd_resp_addr;
 
+	if (BNXT_FWD_RESP_SIZE_ERR(msg_size))
+		return -EINVAL;
+
 	bnxt_hwrm_cmd_hdr_init(bp, &req, HWRM_FWD_RESP, -1, -1);
 
 	/* Set the new target id */
@@ -829,6 +848,9 @@ static int bnxt_hwrm_fwd_err_resp(struct bnxt *bp, struct bnxt_vf_info *vf,
 	struct hwrm_reject_fwd_resp_input req = {0};
 	struct hwrm_reject_fwd_resp_output *resp = bp->hwrm_cmd_resp_addr;
 
+	if (BNXT_REJ_FWD_RESP_SIZE_ERR(msg_size))
+		return -EINVAL;
+
 	bnxt_hwrm_cmd_hdr_init(bp, &req, HWRM_REJECT_FWD_RESP, -1, -1);
 	/* Set the new target id */
 	req.target_id = cpu_to_le16(vf->fw_fid);
@@ -861,6 +883,9 @@ static int bnxt_hwrm_exec_fwd_resp(struct bnxt *bp, struct bnxt_vf_info *vf,
 	struct hwrm_exec_fwd_resp_input req = {0};
 	struct hwrm_exec_fwd_resp_output *resp = bp->hwrm_cmd_resp_addr;
 
+	if (BNXT_EXEC_FWD_RESP_SIZE_ERR(msg_size))
+		return -EINVAL;
+
 	bnxt_hwrm_cmd_hdr_init(bp, &req, HWRM_EXEC_FWD_RESP, -1, -1);
 	/* Set the new target id */
 	req.target_id = cpu_to_le16(vf->fw_fid);
@@ -886,18 +911,20 @@ exec_fwd_resp_exit:
 	return rc;
 }
 
-static int bnxt_vf_store_mac(struct bnxt *bp, struct bnxt_vf_info *vf)
+static int bnxt_vf_configure_mac(struct bnxt *bp, struct bnxt_vf_info *vf)
 {
 	u32 msg_size = sizeof(struct hwrm_func_vf_cfg_input);
 	struct hwrm_func_vf_cfg_input *req =
 		(struct hwrm_func_vf_cfg_input *)vf->hwrm_cmd_req_addr;
 
-	/* Only allow VF to set a valid MAC address if the PF assigned MAC
-	 * address is zero
+	/* Allow VF to set a valid MAC address, if trust is set to on or
+	 * if the PF assigned MAC address is zero
 	 */
 	if (req->enables & cpu_to_le32(FUNC_VF_CFG_REQ_ENABLES_DFLT_MAC_ADDR)) {
 		if (is_valid_ether_addr(req->dflt_mac_addr) &&
-		    !is_valid_ether_addr(vf->mac_addr)) {
+		    ((vf->flags & BNXT_VF_TRUST) ||
+		     !is_valid_ether_addr(vf->mac_addr) ||
+		     ether_addr_equal(req->dflt_mac_addr, vf->mac_addr))) {
 			ether_addr_copy(vf->vf_mac_addr, req->dflt_mac_addr);
 			return bnxt_hwrm_exec_fwd_resp(bp, vf, msg_size);
 		}
@@ -913,19 +940,29 @@ static int bnxt_vf_validate_set_mac(struct bnxt *bp, struct bnxt_vf_info *vf)
 		(struct hwrm_cfa_l2_filter_alloc_input *)vf->hwrm_cmd_req_addr;
 	bool mac_ok = false;
 
-	/* VF MAC address must first match PF MAC address, if it is valid.
+	if (!is_valid_ether_addr((const u8 *)req->l2_addr))
+		return bnxt_hwrm_fwd_err_resp(bp, vf, msg_size);
+
+	/* Allow VF to set a valid MAC address, if trust is set to on.
+	 * Or VF MAC address must first match MAC address in PF's context.
 	 * Otherwise, it must match the VF MAC address if firmware spec >=
 	 * 1.2.2
 	 */
-	if (is_valid_ether_addr(vf->mac_addr)) {
+	if (vf->flags & BNXT_VF_TRUST) {
+		mac_ok = true;
+	} else if (is_valid_ether_addr(vf->mac_addr)) {
 		if (ether_addr_equal((const u8 *)req->l2_addr, vf->mac_addr))
 			mac_ok = true;
 	} else if (is_valid_ether_addr(vf->vf_mac_addr)) {
 		if (ether_addr_equal((const u8 *)req->l2_addr, vf->vf_mac_addr))
 			mac_ok = true;
-	} else if (bp->hwrm_spec_code < 0x10202) {
-		mac_ok = true;
 	} else {
+		/* There are two cases:
+		 * 1.If firmware spec < 0x10202,VF MAC address is not forwarded
+		 *   to the PF and so it doesn't have to match
+		 * 2.Allow VF to modify it's own MAC when PF has not assigned a
+		 *   valid MAC address and firmware spec >= 0x10202
+		 */
 		mac_ok = true;
 	}
 	if (mac_ok)
@@ -951,7 +988,9 @@ static int bnxt_vf_set_link(struct bnxt *bp, struct bnxt_vf_info *vf)
 		memcpy(&phy_qcfg_resp, &bp->link_info.phy_qcfg_resp,
 		       sizeof(phy_qcfg_resp));
 		mutex_unlock(&bp->hwrm_cmd_lock);
+		phy_qcfg_resp.resp_len = cpu_to_le16(sizeof(phy_qcfg_resp));
 		phy_qcfg_resp.seq_id = phy_qcfg_req->seq_id;
+		phy_qcfg_resp.valid = 1;
 
 		if (vf->flags & BNXT_VF_LINK_UP) {
 			/* if physical link is down, force link up on VF */
@@ -993,7 +1032,7 @@ static int bnxt_vf_req_validate_snd(struct bnxt *bp, struct bnxt_vf_info *vf)
 
 	switch (req_type) {
 	case HWRM_FUNC_VF_CFG:
-		rc = bnxt_vf_store_mac(bp, vf);
+		rc = bnxt_vf_configure_mac(bp, vf);
 		break;
 	case HWRM_CFA_L2_FILTER_ALLOC:
 		rc = bnxt_vf_validate_set_mac(bp, vf);
