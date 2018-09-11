@@ -160,4 +160,14 @@ enum uverbs_methods_actions_counters_ops {
 	UVERBS_METHOD_COUNTERS_READ,
 };
 
+enum uverbs_methods_device {
+	UVERBS_METHOD_INFO_HANDLES = 1,
+};
+
+enum uverbs_attrs_info_handles_id {
+	UVERBS_ATTR_INFO_OBJECT_ID,
+	UVERBS_ATTR_INFO_TOTAL_HANDLES,
+	UVERBS_ATTR_INFO_HANDLES_LIST,
+};
+
 #endif
