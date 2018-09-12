@@ -45,16 +45,7 @@ int otx2_set_mac_address(struct net_device *netdev, void *p)
 
 	memcpy(netdev->dev_addr, addr->sa_data, netdev->addr_len);
 
-	/* If mbox irq (i.e MSIX) is disabled then mark this
-	 * change as pending and return, AF will be synced
-	 * once irqs are re-enabled.
-	 */
-	if (pfvf->hw.num_vec) {
-		if (otx2_hw_set_mac_addr(pfvf, netdev))
-			return -EBUSY;
-	} else {
-		pfvf->set_mac_pending = true;
-	}
+	otx2_hw_set_mac_addr(pfvf, netdev);
 
 	return 0;
 }
@@ -63,9 +54,6 @@ EXPORT_SYMBOL(otx2_set_mac_address);
 int otx2_hw_set_mtu(struct otx2_nic *pfvf, int mtu)
 {
 	struct nix_frs_cfg *req;
-
-	if (!pfvf->hw.num_vec)
-		return -EINVAL;
 
 	req = otx2_mbox_alloc_msg_NIX_SET_HW_FRS(&pfvf->mbox);
 	if (!req)
@@ -275,7 +263,7 @@ void otx2_get_stats64(struct net_device *netdev,
 }
 EXPORT_SYMBOL(otx2_get_stats64);
 
-void otx2_set_irq_affinity(struct otx2_nic *pfvf)
+void otx2_set_cints_affinity(struct otx2_nic *pfvf)
 {
 	struct otx2_hw *hw = &pfvf->hw;
 	int vec, cpu, irq, cint;
@@ -285,9 +273,6 @@ void otx2_set_irq_affinity(struct otx2_nic *pfvf)
 
 	/* CQ interrupts */
 	for (cint = 0; cint < pfvf->hw.cint_cnt; cint++, vec++) {
-		if (!hw->irq_allocated[vec])
-			continue;
-
 		if (!alloc_cpumask_var(&hw->affinity_mask[vec], GFP_KERNEL))
 			return;
 
@@ -1123,11 +1108,7 @@ void mbox_handler_NIX_LF_ALLOC(struct otx2_nic *pfvf,
 	pfvf->hw.sqb_size = rsp->sqb_size;
 	pfvf->rx_chan_base = rsp->rx_chan_base;
 	pfvf->tx_chan_base = rsp->tx_chan_base;
-	/* If a MAC address change is pending then don't
-	 * overwrite 'netdev->dev_addr'.
-	 */
-	if (!pfvf->set_mac_pending)
-		ether_addr_copy(pfvf->netdev->dev_addr, rsp->mac_addr);
+	ether_addr_copy(pfvf->netdev->dev_addr, rsp->mac_addr);
 	pfvf->hw.lso_tsov4_idx = rsp->lso_tsov4_idx;
 	pfvf->hw.lso_tsov6_idx = rsp->lso_tsov6_idx;
 }
@@ -1141,76 +1122,19 @@ void mbox_handler_MSIX_OFFSET(struct otx2_nic *pfvf,
 }
 EXPORT_SYMBOL(mbox_handler_MSIX_OFFSET);
 
-void otx2_disable_msix(struct otx2_nic *pfvf)
+void otx2_free_cints(struct otx2_nic *pfvf, int n)
 {
 	struct otx2_qset *qset = &pfvf->qset;
 	struct otx2_hw *hw = &pfvf->hw;
-	int irq, qidx = 0;
+	int irq, qidx;
 
-	if (!hw->irq_allocated)
-		goto freemem;
+	for (qidx = 0, irq = hw->nix_msixoff + NIX_LF_CINT_VEC_START;
+	     qidx < n;
+	     qidx++, irq++) {
+		int vector = pci_irq_vector(pfvf->pdev, irq);
 
-	/* Free all registered IRQ handlers */
-	for (irq = 0; irq < hw->num_vec; irq++) {
-		if (!hw->irq_allocated[irq])
-			continue;
-		if (irq < (hw->nix_msixoff + NIX_LF_CINT_VEC_START)) {
-			free_irq(pci_irq_vector(pfvf->pdev, irq), pfvf);
-		} else {
-			irq_set_affinity_hint(pci_irq_vector(pfvf->pdev, irq),
-					      NULL);
-			free_cpumask_var(hw->affinity_mask[irq]);
-			free_irq(pci_irq_vector(pfvf->pdev, irq),
-				 &qset->napi[qidx++]);
-		}
+		irq_set_affinity_hint(vector, NULL);
+		free_cpumask_var(hw->affinity_mask[irq]);
+		free_irq(vector, &qset->napi[qidx]);
 	}
-
-	pci_free_irq_vectors(hw->pdev);
-
-freemem:
-	hw->num_vec = 0;
-	kfree(hw->affinity_mask);
-	kfree(hw->irq_allocated);
-	kfree(hw->irq_name);
-	hw->irq_allocated = NULL;
-	hw->irq_name = NULL;
 }
-EXPORT_SYMBOL(otx2_disable_msix);
-
-int otx2_enable_msix(struct otx2_hw *hw)
-{
-	int ret = -ENOMEM;
-
-	hw->num_vec = pci_msix_vec_count(hw->pdev);
-
-	hw->irq_name = kmalloc_array(hw->num_vec, NAME_SIZE, GFP_KERNEL);
-	if (!hw->irq_name)
-		return -ENOMEM;
-
-	hw->irq_allocated = kcalloc(hw->num_vec, sizeof(bool), GFP_KERNEL);
-	if (!hw->irq_allocated)
-		goto freemem;
-
-	hw->affinity_mask = kcalloc(hw->num_vec, sizeof(cpumask_var_t),
-				    GFP_KERNEL);
-	if (!hw->affinity_mask)
-		goto freemem;
-
-	/* Enable MSI-X */
-	ret = pci_alloc_irq_vectors(hw->pdev, hw->num_vec, hw->num_vec,
-				    PCI_IRQ_MSIX);
-	if (ret < 0) {
-		dev_err(&hw->pdev->dev,
-			"Request for #%d msix vectors failed, ret %d\n",
-			hw->num_vec, ret);
-		goto freemem;
-	}
-
-	return 0;
-freemem:
-	kfree(hw->affinity_mask);
-	kfree(hw->irq_allocated);
-	kfree(hw->irq_name);
-	return ret;
-}
-EXPORT_SYMBOL(otx2_enable_msix);
