@@ -1113,20 +1113,11 @@ static int dax_load_hole(struct address_space *mapping, void *entry,
 	struct inode *inode = mapping->host;
 	unsigned long vaddr = vmf->address;
 	int vmf_ret = VM_FAULT_NOPAGE;
-	struct page *zero_page;
-	pfn_t pfn;
+	pfn_t pfn = pfn_to_pfn_t(my_zero_pfn(vaddr));
 
-	zero_page = ZERO_PAGE(0);
-	if (unlikely(!zero_page)) {
-		vmf_ret = VM_FAULT_OOM;
-		goto out;
-	}
-
-	pfn = page_to_pfn_t(zero_page);
 	dax_insert_mapping_entry(mapping, vmf, entry, pfn, RADIX_DAX_ZERO_PAGE,
 			false);
 	vmf_ret = vmf_insert_mixed(vmf->vma, vaddr, pfn);
-out:
 	trace_dax_load_hole(inode, vmf, vmf_ret);
 	return vmf_ret;
 }
