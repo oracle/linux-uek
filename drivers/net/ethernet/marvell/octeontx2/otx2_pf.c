@@ -238,31 +238,22 @@ static int otx2_register_mbox_intr(struct otx2_nic *pf)
 	struct otx2_hw *hw = &pf->hw;
 	struct msg_req *req;
 	struct mbox_msghdr *rsp_hdr;
+	char *irq_name;
 	int err;
 
-	/* Skip if MSIX is already initialized */
-	if (hw->num_vec)
-		return 0;
-
-	/* Enable MSI-X */
-	err = otx2_enable_msix(hw);
-	if (err)
-		return err;
-
 	/* Register mailbox interrupt handler */
-	sprintf(&hw->irq_name[RVU_PF_INT_VEC_AFPF_MBOX * NAME_SIZE],
-		"RVUPFAF Mbox");
-	err = request_irq(pci_irq_vector(pf->pdev, RVU_PF_INT_VEC_AFPF_MBOX),
-			  otx2_pfaf_mbox_intr_handler, 0,
-			  &hw->irq_name[RVU_PF_INT_VEC_AFPF_MBOX * NAME_SIZE],
-			  pf);
+	irq_name = &hw->irq_name[RVU_PF_INT_VEC_AFPF_MBOX * NAME_SIZE];
+	snprintf(irq_name, NAME_SIZE, "RVUPFAF Mbox");
+	err = devm_request_irq(pf->dev,
+			       pci_irq_vector(pf->pdev,
+					      RVU_PF_INT_VEC_AFPF_MBOX),
+			       otx2_pfaf_mbox_intr_handler, 0,
+			       irq_name, pf);
 	if (err) {
 		dev_err(pf->dev,
 			"RVUPF: IRQ registration failed for PFAF mbox irq\n");
 		return err;
 	}
-
-	hw->irq_allocated[RVU_PF_INT_VEC_AFPF_MBOX] = true;
 
 	/* Enable mailbox interrupt for msgs coming from AF.
 	 * First clear to avoid spurious interrupts, if any.
@@ -591,10 +582,6 @@ int otx2_open(struct net_device *netdev)
 
 	netif_carrier_off(netdev);
 
-	err = pf->register_mbox_intr(pf);
-	if (err)
-		return err;
-
 	pf->qset.cq_cnt = pf->hw.rx_queues + pf->hw.tx_queues;
 	/* RQ and SQs are mapped to different CQs,
 	 * so find out max CQ IRQs (i.e CINTs) needed.
@@ -611,21 +598,21 @@ int otx2_open(struct net_device *netdev)
 	qset->cq = kcalloc(pf->qset.cq_cnt,
 			   sizeof(struct otx2_cq_queue), GFP_KERNEL);
 	if (!qset->cq)
-		goto freemem;
+		goto err_free_mem;
 
 	qset->sq = kcalloc(pf->hw.tx_queues,
 			   sizeof(struct otx2_snd_queue), GFP_KERNEL);
 	if (!qset->sq)
-		goto freemem;
+		goto err_free_mem;
 
 	qset->rq = kcalloc(pf->hw.rx_queues,
 			   sizeof(struct otx2_rcv_queue), GFP_KERNEL);
 	if (!qset->rq)
-		goto freemem;
+		goto err_free_mem;
 
 	err = otx2_init_hw_resources(pf);
 	if (err)
-		goto freemem;
+		goto err_free_mem;
 
 	/* Register NAPI handler */
 	for (qidx = 0; qidx < pf->hw.cint_cnt; qidx++) {
@@ -650,39 +637,31 @@ int otx2_open(struct net_device *netdev)
 		eth_hw_addr_random(netdev);
 		err = otx2_hw_set_mac_addr(pf, netdev);
 		if (err)
-			goto cleanup;
-	}
-
-	/* Sync new MAC address to AF, if a change is pending */
-	if (pf->set_mac_pending) {
-		err = otx2_hw_set_mac_addr(pf, netdev);
-		if (err)
-			goto cleanup;
-		pf->set_mac_pending = false;
+			goto err_disable_napi;
 	}
 
 	/* Set default MTU in HW */
 	err = otx2_hw_set_mtu(pf, netdev->mtu);
 	if (err)
-		goto cleanup;
+		goto err_disable_napi;
 
 	/* Register CQ IRQ handlers */
 	vec = pf->hw.nix_msixoff + NIX_LF_CINT_VEC_START;
 	for (qidx = 0; qidx < pf->hw.cint_cnt; qidx++) {
-		sprintf(&pf->hw.irq_name[vec * NAME_SIZE], "%s-rxtx-%d",
-			pf->netdev->name, qidx);
+		char *irq_name = &pf->hw.irq_name[vec * NAME_SIZE];
+
+		snprintf(irq_name, NAME_SIZE, "%s-rxtx-%d", pf->netdev->name,
+			 qidx);
 
 		err = request_irq(pci_irq_vector(pf->pdev, vec),
-				  otx2_cq_intr_handler, 0,
-				  &pf->hw.irq_name[vec * NAME_SIZE],
+				  otx2_cq_intr_handler, 0, irq_name,
 				  &qset->napi[qidx]);
 		if (err) {
 			dev_err(pf->dev,
 				"RVUPF%d: IRQ registration failed for CQ%d\n",
 				rvu_get_pf(pf->pcifunc), qidx);
-			goto cleanup;
+			goto err_free_cints;
 		}
-		pf->hw.irq_allocated[vec] = true;
 		vec++;
 
 		/* Configure CQE interrupt coalescing parameters */
@@ -695,11 +674,11 @@ int otx2_open(struct net_device *netdev)
 		otx2_write64(pf, NIX_LF_CINTX_ENA_W1S(qidx), BIT_ULL(0));
 	}
 
-	otx2_set_irq_affinity(pf);
+	otx2_set_cints_affinity(pf);
 
 	err = otx2_rxtx_enable(pf, true);
 	if (err)
-		goto cleanup;
+		goto err_free_cints;
 
 	pf->intf_down = false;
 
@@ -707,10 +686,11 @@ int otx2_open(struct net_device *netdev)
 	otx2_cgx_config_linkevents(pf, true);
 	return 0;
 
-cleanup:
+err_free_cints:
+	otx2_free_cints(pf, qidx);
+err_disable_napi:
 	otx2_disable_napi(pf);
-	otx2_disable_msix(pf);
-freemem:
+err_free_mem:
 	kfree(qset->sq);
 	kfree(qset->cq);
 	kfree(qset->napi);
@@ -753,7 +733,7 @@ int otx2_stop(struct net_device *netdev)
 
 	netif_tx_disable(netdev);
 	otx2_free_hw_resources(pf);
-	otx2_disable_msix(pf);
+	otx2_free_cints(pf, pf->hw.cint_cnt);
 
 	otx2_disable_napi(pf);
 
@@ -834,8 +814,9 @@ static int otx2_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	struct otx2_nic *pf;
 	struct otx2_hw *hw;
 	int    err, qcount;
+	int    num_vec = pci_msix_vec_count(pdev);
 
-	err = pci_enable_device(pdev);
+	err = pcim_enable_device(pdev);
 	if (err) {
 		dev_err(dev, "Failed to enable PCI device\n");
 		return err;
@@ -844,7 +825,7 @@ static int otx2_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	err = pci_request_regions(pdev, DRV_NAME);
 	if (err) {
 		dev_err(dev, "PCI request regions failed 0x%x\n", err);
-		goto err_disable_device;
+		return err;
 	}
 
 	err = pci_set_dma_mask(pdev, DMA_BIT_MASK(48));
@@ -883,32 +864,44 @@ static int otx2_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	hw->max_queues = qcount;
 	hw->rqpool_cnt = qcount;
 
-	pf->register_mbox_intr = otx2_register_mbox_intr;
+	hw->irq_name = devm_kmalloc_array(&hw->pdev->dev, num_vec, NAME_SIZE,
+					  GFP_KERNEL);
+	if (!hw->irq_name)
+		goto err_free_netdev;
+
+	hw->affinity_mask = devm_kcalloc(&hw->pdev->dev, num_vec,
+					 sizeof(cpumask_var_t), GFP_KERNEL);
+	if (!hw->affinity_mask)
+		goto err_free_netdev;
+
+	err = pci_alloc_irq_vectors(hw->pdev, num_vec, num_vec, PCI_IRQ_MSIX);
+	if (err < 0)
+		goto err_free_netdev;
 
 	/* Map CSRs */
 	pf->reg_base = pcim_iomap(pdev, PCI_CFG_REG_BAR_NUM, 0);
 	if (!pf->reg_base) {
 		dev_err(dev, "Unable to map physical function CSRs, aborting\n");
 		err = -ENOMEM;
-		goto err_free_netdev;
+		goto err_free_irq_vectors;
 	}
 
 	/* Init PF <=> AF mailbox stuff */
 	err = otx2_pfaf_mbox_init(pf);
 	if (err)
-		goto err_free_netdev;
+		goto err_free_irq_vectors;
 
 	/* Register mailbox interrupt */
 	err = otx2_register_mbox_intr(pf);
 	if (err)
-		goto err_irq;
+		goto err_mbox_destroy;
 
 	/* Request AF to attach NPA and NIX LFs to this PF.
 	 * NIX and NPA LFs are needed for this PF to function as a NIC.
 	 */
 	err = otx2_attach_npa_nix(pf);
 	if (err)
-		goto err_irq;
+		goto err_disable_mbox_intr;
 
 	err = otx2_set_real_num_queues(netdev, hw->tx_queues, hw->rx_queues);
 	if (err)
@@ -960,16 +953,17 @@ static int otx2_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 
 err_detach_rsrc:
 	otx2_detach_resources(&pf->mbox);
-err_irq:
-	otx2_disable_msix(pf);
+err_disable_mbox_intr:
+	otx2_disable_mbox_intr(pf);
+err_mbox_destroy:
 	otx2_pfaf_mbox_destroy(pf);
+err_free_irq_vectors:
+	pci_free_irq_vectors(hw->pdev);
 err_free_netdev:
 	pci_set_drvdata(pdev, NULL);
 	free_netdev(netdev);
 err_release_regions:
 	pci_release_regions(pdev);
-err_disable_device:
-	pci_disable_device(pdev);
 	return err;
 }
 
@@ -985,15 +979,15 @@ static void otx2_remove(struct pci_dev *pdev)
 	unregister_netdev(netdev);
 
 	otx2_disable_mbox_intr(pf);
-	otx2_disable_msix(pf);
+
 	otx2_detach_resources(&pf->mbox);
 	otx2_pfaf_mbox_destroy(pf);
 
+	pci_free_irq_vectors(pf->pdev);
 	pci_set_drvdata(pdev, NULL);
 	free_netdev(netdev);
 
 	pci_release_regions(pdev);
-	pci_disable_device(pdev);
 }
 
 static struct pci_driver otx2_pf_driver = {

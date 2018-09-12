@@ -109,10 +109,8 @@ struct otx2_hw {
 	u16			sqb_size;
 
 	/* MSI-X*/
-	u16			num_vec;
 	u16			npa_msixoff; /* Offset of NPA vectors */
 	u16			nix_msixoff; /* Offset of NIX vectors */
-	bool			*irq_allocated;
 	char			*irq_name;
 	cpumask_var_t           *affinity_mask;
 
@@ -140,15 +138,12 @@ struct otx2_nic {
 	struct mbox		mbox;
 	struct workqueue_struct *mbox_wq;
 	bool			intf_down;
-	bool			set_mac_pending;
 	u16			pcifunc;
 	u16			rx_chan_base;
 	u16			tx_chan_base;
 	u8			cq_time_wait;
 	u32			cq_ecount_wait;
 	struct work_struct	reset_task;
-
-	int (*register_mbox_intr)(struct otx2_nic *);
 };
 
 /* Register read/write APIs */
@@ -283,8 +278,8 @@ static inline int rvu_get_pf(u16 pcifunc)
 }
 
 /* MSI-X APIs */
-int otx2_enable_msix(struct otx2_hw *hw);
-void otx2_disable_msix(struct otx2_nic *pfvf);
+void otx2_free_cints(struct otx2_nic *pfvf, int n);
+void otx2_set_cints_affinity(struct otx2_nic *pfvf);
 
 /* RVU block related APIs */
 int otx2_attach_npa_nix(struct otx2_nic *pfvf);
@@ -308,7 +303,6 @@ int otx2_napi_handler(struct otx2_cq_queue *cq,
 void otx2_get_dev_stats(struct otx2_nic *pfvf);
 void otx2_get_stats64(struct net_device *netdev,
 		      struct rtnl_link_stats64 *stats);
-void otx2_set_irq_affinity(struct otx2_nic *pfvf);
 int otx2_hw_set_mac_addr(struct otx2_nic *pfvf, struct net_device *netdev);
 int otx2_set_mac_address(struct net_device *netdev, void *p);
 int otx2_change_mtu(struct net_device *netdev, int new_mtu);
