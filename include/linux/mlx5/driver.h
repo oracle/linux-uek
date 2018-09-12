@@ -358,7 +358,7 @@ struct mlx5_frag_buf {
 };
 
 struct mlx5_frag_buf_ctrl {
-	struct mlx5_frag_buf	frag_buf;
+	struct mlx5_buf_list   *frags;
 	u32			sz_m1;
 #ifndef __GENKSYMS__
 	u16			frag_sz_m1;
@@ -970,10 +970,12 @@ static inline u32 mlx5_base_mkey(const u32 key)
 	return key & 0xffffff00u;
 }
 
-static inline void mlx5_fill_fbc_offset(u8 log_stride, u8 log_sz,
+static inline void mlx5_init_fbc_offset(struct mlx5_buf_list *frags,
+					u8 log_stride, u8 log_sz,
 					u16 strides_offset,
 					struct mlx5_frag_buf_ctrl *fbc)
 {
+	fbc->frags      = frags;
 	fbc->log_stride = log_stride;
 	fbc->log_sz     = log_sz;
 	fbc->sz_m1	= (1 << fbc->log_sz) - 1;
@@ -982,18 +984,11 @@ static inline void mlx5_fill_fbc_offset(u8 log_stride, u8 log_sz,
 	fbc->strides_offset = strides_offset;
 }
 
-static inline void mlx5_fill_fbc(u8 log_stride, u8 log_sz,
+static inline void mlx5_init_fbc(struct mlx5_buf_list *frags,
+				 u8 log_stride, u8 log_sz,
 				 struct mlx5_frag_buf_ctrl *fbc)
 {
-	mlx5_fill_fbc_offset(log_stride, log_sz, 0, fbc);
-}
-
-static inline void mlx5_core_init_cq_frag_buf(struct mlx5_frag_buf_ctrl *fbc,
-					      void *cqc)
-{
-	mlx5_fill_fbc(6 + MLX5_GET(cqc, cqc, cqe_sz),
-		      MLX5_GET(cqc, cqc, log_cq_size),
-		      fbc);
+	mlx5_init_fbc_offset(frags, log_stride, log_sz, 0, fbc);
 }
 
 static inline void *mlx5_frag_buf_get_wqe(struct mlx5_frag_buf_ctrl *fbc,
@@ -1004,8 +999,7 @@ static inline void *mlx5_frag_buf_get_wqe(struct mlx5_frag_buf_ctrl *fbc,
 	ix  += fbc->strides_offset;
 	frag = ix >> fbc->log_frag_strides;
 
-	return fbc->frag_buf.frags[frag].buf +
-		((fbc->frag_sz_m1 & ix) << fbc->log_stride);
+	return fbc->frags[frag].buf + ((fbc->frag_sz_m1 & ix) << fbc->log_stride);
 }
 
 static inline u32
