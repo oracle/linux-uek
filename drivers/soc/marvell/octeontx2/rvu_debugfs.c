@@ -546,7 +546,8 @@ static ssize_t rvu_dbg_npa_ndc_cache_display(struct file *filp,
 					     char __user *buffer,
 					     size_t count, loff_t *ppos)
 {
-	return ndc_blk_cache_stats(filp->private_data, NPA0_U, BLKADDR_NDC2);
+	return ndc_blk_cache_stats(filp->private_data, NPA0_U,
+				   BLKADDR_NDC_NPA0);
 }
 RVU_DEBUG_FOPS(npa_ndc_cache, npa_ndc_cache_display, NULL);
 
@@ -570,7 +571,7 @@ static ssize_t rvu_dbg_npa_ndc_hits_miss_display(struct file *filp,
 						 size_t count, loff_t *ppos)
 {
 	return ndc_blk_hits_miss_stats(filp->private_data,
-				      NPA0_U, BLKADDR_NDC2);
+				      NPA0_U, BLKADDR_NDC_NPA0);
 }
 RVU_DEBUG_FOPS(npa_ndc_hits_miss, npa_ndc_hits_miss_display, NULL);
 
@@ -1010,7 +1011,8 @@ static ssize_t rvu_dbg_nix_ndc_rx_cache_display(struct file *filp,
 						char __user *buffer,
 						size_t count, loff_t *ppos)
 {
-	return ndc_blk_cache_stats(filp->private_data, NIX0_RX, BLKADDR_NDC0);
+	return ndc_blk_cache_stats(filp->private_data, NIX0_RX,
+				   BLKADDR_NDC_NIX0_RX);
 }
 RVU_DEBUG_FOPS(nix_ndc_rx_cache, nix_ndc_rx_cache_display, NULL);
 
@@ -1018,7 +1020,8 @@ static ssize_t rvu_dbg_nix_ndc_tx_cache_display(struct file *filp,
 						char __user *buffer,
 						size_t count, loff_t *ppos)
 {
-	return ndc_blk_cache_stats(filp->private_data, NIX0_TX, BLKADDR_NDC1);
+	return ndc_blk_cache_stats(filp->private_data, NIX0_TX,
+				   BLKADDR_NDC_NIX0_TX);
 }
 RVU_DEBUG_FOPS(nix_ndc_tx_cache, nix_ndc_tx_cache_display, NULL);
 
@@ -1027,7 +1030,7 @@ static ssize_t rvu_dbg_nix_ndc_rx_hits_miss_display(struct file *filp,
 						    size_t count, loff_t *ppos)
 {
 	return ndc_blk_hits_miss_stats(filp->private_data,
-				      NPA0_U, BLKADDR_NDC0);
+				      NPA0_U, BLKADDR_NDC_NIX0_RX);
 }
 RVU_DEBUG_FOPS(nix_ndc_rx_hits_miss, nix_ndc_rx_hits_miss_display, NULL);
 
@@ -1036,7 +1039,7 @@ static ssize_t rvu_dbg_nix_ndc_tx_hits_miss_display(struct file *filp,
 						    size_t count, loff_t *ppos)
 {
 	return ndc_blk_hits_miss_stats(filp->private_data,
-				      NPA0_U, BLKADDR_NDC1);
+				      NPA0_U, BLKADDR_NDC_NIX0_TX);
 }
 RVU_DEBUG_FOPS(nix_ndc_tx_hits_miss, nix_ndc_tx_hits_miss_display, NULL);
 
