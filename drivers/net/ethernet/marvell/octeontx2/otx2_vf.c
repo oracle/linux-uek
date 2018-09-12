@@ -151,27 +151,17 @@ static int otx2vf_register_mbox_intr(struct otx2_nic *vf)
 	char *irq_name;
 	int err;
 
-	/* Skip if MSIX is already initialized */
-	if (hw->num_vec)
-		return 0;
-
-	/* Enable MSI-X */
-	err = otx2_enable_msix(hw);
-	if (err)
-		return err;
-
 	/* Register mailbox interrupt handler */
 	irq_name = &hw->irq_name[RVU_VF_INT_VEC_MBOX * NAME_SIZE];
-	sprintf(irq_name, "RVUVFAF Mbox");
-	err = request_irq(pci_irq_vector(vf->pdev, RVU_VF_INT_VEC_MBOX),
-			  otx2vf_vfaf_mbox_intr_handler, 0, irq_name, vf);
+	snprintf(irq_name, NAME_SIZE, "RVUVFAF Mbox");
+	err = devm_request_irq(vf->dev,
+			       pci_irq_vector(vf->pdev, RVU_VF_INT_VEC_MBOX),
+			       otx2vf_vfaf_mbox_intr_handler, 0, irq_name, vf);
 	if (err) {
 		dev_err(vf->dev,
 			"RVUPF: IRQ registration failed for VFAF mbox irq\n");
 		return err;
 	}
-
-	hw->irq_allocated[RVU_VF_INT_VEC_MBOX] = true;
 
 	/* Enable mailbox interrupt for msgs coming from PF.
 	 * First clear to avoid spurious interrupts, if any.
@@ -361,8 +351,9 @@ static int otx2vf_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	struct otx2_nic *vf;
 	struct otx2_hw *hw;
 	int err, qcount, n;
+	int num_vec = pci_msix_vec_count(pdev);
 
-	err = pci_enable_device(pdev);
+	err = pcim_enable_device(pdev);
 	if (err) {
 		dev_err(dev, "Failed to enable PCI device\n");
 		return err;
@@ -371,7 +362,7 @@ static int otx2vf_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	err = pci_request_regions(pdev, DRV_NAME);
 	if (err) {
 		dev_err(dev, "PCI request regions failed 0x%x\n", err);
-		goto err_disable_device;
+		return err;
 	}
 
 	err = pci_set_dma_mask(pdev, DMA_BIT_MASK(48));
@@ -402,7 +393,6 @@ static int otx2vf_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	vf->pdev = pdev;
 	vf->dev = dev;
 	vf->iommu_domain = iommu_get_domain_for_dev(dev);
-	vf->register_mbox_intr = otx2vf_register_mbox_intr;
 	hw = &vf->hw;
 	hw->pdev = vf->pdev;
 	hw->rx_queues = qcount;
@@ -410,27 +400,41 @@ static int otx2vf_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	hw->max_queues = qcount;
 	hw->rqpool_cnt = qcount;
 
+	hw->irq_name = devm_kmalloc_array(&hw->pdev->dev, num_vec, NAME_SIZE,
+					  GFP_KERNEL);
+	if (!hw->irq_name)
+		goto err_free_netdev;
+
+	hw->affinity_mask = devm_kcalloc(&hw->pdev->dev, num_vec,
+					 sizeof(cpumask_var_t), GFP_KERNEL);
+	if (!hw->affinity_mask)
+		goto err_free_netdev;
+
+	err = pci_alloc_irq_vectors(hw->pdev, num_vec, num_vec, PCI_IRQ_MSIX);
+	if (err < 0)
+		goto err_free_netdev;
+
 	vf->reg_base = pcim_iomap(pdev, PCI_CFG_REG_BAR_NUM, 0);
 	if (!vf->reg_base) {
 		dev_err(dev, "Unable to map physical function CSRs, aborting\n");
 		err = -ENOMEM;
-		goto err_free_netdev;
+		goto err_free_irq_vectors;
 	}
 
 	/* Init VF <=> PF mailbox stuff */
 	err = otx2vf_vfaf_mbox_init(vf);
 	if (err)
-		goto err_free_netdev;
+		goto err_free_irq_vectors;
 
 	/* Register mailbox interrupt */
 	err = otx2vf_register_mbox_intr(vf);
 	if (err)
-		goto err_irq;
+		goto err_mbox_destroy;
 
 	/* Request AF to attach NPA and LIX LFs to this AF */
 	err = otx2_attach_npa_nix(vf);
 	if (err)
-		goto err_irq;
+		goto err_disable_mbox_intr;
 
 	err = otx2_set_real_num_queues(netdev, qcount, qcount);
 	if (err)
@@ -467,16 +471,17 @@ static int otx2vf_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 
 err_detach_rsrc:
 	otx2_detach_resources(&vf->mbox);
-err_irq:
-	otx2_disable_msix(vf);
+err_disable_mbox_intr:
+	otx2vf_disable_mbox_intr(vf);
+err_mbox_destroy:
 	otx2vf_vfaf_mbox_destroy(vf);
+err_free_irq_vectors:
+	pci_free_irq_vectors(hw->pdev);
 err_free_netdev:
 	pci_set_drvdata(pdev, NULL);
 	free_netdev(netdev);
 err_release_regions:
 	pci_release_regions(pdev);
-err_disable_device:
-	pci_disable_device(pdev);
 	return err;
 }
 
@@ -492,15 +497,15 @@ static void otx2vf_remove(struct pci_dev *pdev)
 	unregister_netdev(netdev);
 
 	otx2vf_disable_mbox_intr(vf);
-	otx2_disable_msix(vf);
+
 	otx2_detach_resources(&vf->mbox);
 	otx2vf_vfaf_mbox_destroy(vf);
 
+	pci_free_irq_vectors(vf->pdev);
 	pci_set_drvdata(pdev, NULL);
 	free_netdev(netdev);
 
 	pci_release_regions(pdev);
-	pci_disable_device(pdev);
 }
 
 static struct pci_driver otx2vf_driver = {
