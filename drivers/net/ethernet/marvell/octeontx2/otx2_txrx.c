@@ -557,9 +557,6 @@ int otx2_rxtx_enable(struct otx2_nic *pfvf, bool enable)
 {
 	struct msg_req *msg;
 
-	if (pfvf->tx_chan_base < CGX_CHAN_BASE)
-		return 0;
-
 	if (enable)
 		msg = otx2_mbox_alloc_msg_NIX_LF_START_RX(&pfvf->mbox);
 	else
