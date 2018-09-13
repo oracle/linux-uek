@@ -222,8 +222,10 @@ struct rds_ib_connection {
 	/* tx */
 	struct rds_ib_work_ring	i_send_ring;
 	struct rm_data_op	*i_data_op;
-	struct rds_header	*i_send_hdrs;
-	u64			i_send_hdrs_dma;
+	struct rds_header	**i_send_hdrs;
+	dma_addr_t		*i_send_hdrs_dma;
+	struct scatterlist	*i_send_hdrs_sg;
+
 	struct rds_ib_send_work *i_sends;
 	atomic_t		i_signaled_sends;
 
@@ -233,8 +235,9 @@ struct rds_ib_connection {
 	struct rds_ib_work_ring	i_recv_ring;
 	struct rds_ib_incoming	*i_ibinc;
 	u32			i_recv_data_rem;
-	struct rds_header	*i_recv_hdrs;
-	u64			i_recv_hdrs_dma;
+	struct rds_header	**i_recv_hdrs;
+	dma_addr_t		*i_recv_hdrs_dma;
+	struct scatterlist	*i_recv_hdrs_sg;
 	struct rds_ib_recv_work *i_recvs;
 	u64			i_ack_recv;	/* last ACK received */
 
