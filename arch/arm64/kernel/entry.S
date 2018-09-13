@@ -360,9 +360,13 @@ alternative_else_nop_endif
 	.if	\fbt_emu != 0			// FBT emulation needed?
 	mrs	x0, esr_el1			// check if ESR is FBT probe
 	and	x0, x0, #0x1f			// ... mask code
-	cmp	x0, #BRK64_ESR_DPROBES_FBT	// ... compare with FBT code
-	bne	6f				// not FBT -> skip next section
+	cmp	x0, #BRK64_ESR_DPROBES_FBE	// ... compare with FBE code
+	beq	6f				// FBT entry -> emulate instr.
+	cmp	x0, #BRK64_ESR_DPROBES_FBR	// ... compare with FBR code
+	beq	7f				// FBT return -> emulate instr.
+	b	8f				// not FBT -> skip next section
 
+6:
 	mrs	x0, elr_el1			// retrieve xeceptionx link reg
 	add	x0, x0, #0x4			// advance to next instr
 	msr	elr_el1, x0			// set exception link reg
@@ -370,12 +374,21 @@ alternative_else_nop_endif
 	ldp	x0, x1, [sp, #16 * 0]		// done with x0, restore orig
 	add	sp, sp, #S_FRAME_SIZE		// restore sp
 	mov	x29, sp				// instr we put probe on
-	b	7f				// FBT done -> branch to eret
+	b	9f				// FBT done -> branch to eret
 
-6:
+7:
+	msr	elr_el1, lr			// set exception link reg to
+						// link register value, to
+						// simulate the 'ret' instr.
+
 	ldp	x0, x1, [sp, #16 * 0]		// done with x0, restore orig
 	add	sp, sp, #S_FRAME_SIZE		// restore sp
-7:
+	b	9f				// FBT done -> branch to eret
+
+8:
+	ldp	x0, x1, [sp, #16 * 0]		// done with x0, restore orig
+	add	sp, sp, #S_FRAME_SIZE		// restore sp
+9:
 	.else
 	ldp	x0, x1, [sp, #16 * 0]		// done with x0, restore orig
 	add	sp, sp, #S_FRAME_SIZE		// restore sp

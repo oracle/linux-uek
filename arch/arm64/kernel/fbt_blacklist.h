@@ -36,6 +36,9 @@ BL_DENTRY(void *, hpet_readl)
 /* kvm_clock */
 BL_DENTRY(void *, kvm_clock_get_cycles)
 BL_DENTRY(void *, kvm_clock_read)
+/* arm_arch */
+BL_DENTRY(void *, arch_counter_get_cntvct);
+BL_DENTRY(void *, arch_counter_read);
 
 /*
  * Functions used in trap handling.

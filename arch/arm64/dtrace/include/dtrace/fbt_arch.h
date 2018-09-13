@@ -40,7 +40,6 @@ typedef struct fbt_probe {
 	char			*fbp_name;	/* name of probe */
 	dtrace_id_t		fbp_id;		/* probe ID */
 	struct module		*fbp_module;	/* defining module */
-	int			fbp_loadcnt;	/* load count for module */
 	int			fbp_primary;	/* non-zero if primary mod */
 	asm_instr_t		*fbp_patchpoint;/* patch point */
 	asm_instr_t		fbp_patchval;	/* instruction to patch */

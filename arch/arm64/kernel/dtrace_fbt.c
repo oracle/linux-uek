@@ -9,6 +9,7 @@
 #include <linux/kallsyms.h>
 #include <linux/dtrace_os.h>
 #include <linux/dtrace_fbt.h>
+#include <linux/dtrace_task_impl.h>
 #include <linux/slab.h>
 #include <linux/sort.h>
 #include <asm/insn.h>
@@ -56,6 +57,7 @@ void dtrace_fbt_init(fbt_add_probe_fn fbt_add_probe, struct module *mp,
 	while (kallsyms_iter_update(&sym, pos++)) {
 		asm_instr_t	*addr, *end;
 		asm_instr_t	instr;
+		void		*fbtp = NULL;
 
 		/*
 		 * There is no point considering non-function symbols for FBT,
@@ -161,10 +163,22 @@ void dtrace_fbt_init(fbt_add_probe_fn fbt_add_probe, struct module *mp,
 
 		addr++;
 		instr = le32_to_cpu(*addr);
+		if (instr != FBT_MOV_FP_SP)
+			continue;
 
-		if (instr == FBT_MOV_FP_SP) {
-			fbt_add_probe(mp, sym.name, FBT_ENTRY, instr, addr, 0,
-				      NULL, arg);
+		fbt_add_probe(mp, sym.name, FBT_ENTRY, instr, addr, 0, NULL,
+			      arg);
+
+		while (++addr < end) {
+			uintptr_t	off;
+
+			instr = le32_to_cpu(*addr);
+			if (!aarch64_insn_is_ret(instr))
+				continue;
+
+			off = (uintptr_t)addr - sym.value;
+			fbtp = fbt_add_probe(mp, sym.name, FBT_RETURN, instr,
+					     addr, off, fbtp, arg);
 		}
 	}
 }
