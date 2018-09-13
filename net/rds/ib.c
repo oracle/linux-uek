@@ -825,7 +825,7 @@ static void __flush_arp_entry(struct arpreq *r, char name[IFNAMSIZ])
 
 	r->arp_flags = ATF_PERM;
 	((struct sockaddr_in *)&r->arp_netmask)->sin_addr.s_addr = htonl(0);
-	strcpy(r->arp_dev, name);
+	strncpy(r->arp_dev, name, IFNAMSIZ);
 	ret = inet_ioctl(rds_ib_inet_socket, SIOCDARP, (unsigned long)r);
 	if ((ret == -ENOENT) || (ret == -ENXIO)) {
 		r->arp_flags |= ATF_PUBL;
@@ -863,13 +863,40 @@ static void __flush_eth_arp_entry(struct arpreq *r)
 
 static void __flush_ib_arp_entry(struct arpreq *r)
 {
+	const int nmbr_dev_per_realloc = 10;
 	struct net_device *ndev;
+	char *dev_array = NULL;
+	int dev_found = 0;
+	int dev_left = 0;
+	char *ret;
+	int i;
 
-	read_lock(&dev_base_lock);
-	for_each_netdev(&init_net, ndev)
-		if (ndev->type == ARPHRD_INFINIBAND)
-			__flush_arp_entry(r, ndev->name);
-	read_unlock(&dev_base_lock);
+	rcu_read_lock();
+	for_each_netdev_rcu(&init_net, ndev) {
+		if (ndev->type != ARPHRD_INFINIBAND)
+			continue;
+
+		if (!dev_left) {
+			ret = krealloc(dev_array,
+				       (dev_found + nmbr_dev_per_realloc) * IFNAMSIZ,
+				       GFP_ATOMIC);
+			if (!ret) {
+				pr_err("krealloc failed");
+				break;
+			}
+			dev_array = ret;
+			dev_left = nmbr_dev_per_realloc;
+		}
+		strncpy(dev_array + dev_found * IFNAMSIZ, ndev->name, IFNAMSIZ);
+		++dev_found;
+		--dev_left;
+	}
+	rcu_read_unlock();
+
+	for (i = 0; i < dev_found; ++i)
+		__flush_arp_entry(r, dev_array + i * IFNAMSIZ);
+
+	kfree(dev_array);
 }
 
 void rds_ib_flush_arp_entry(struct in6_addr *prot_addr)
