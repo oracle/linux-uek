@@ -32,7 +32,11 @@
 #define VMACACHE_MASK (VMACACHE_SIZE - 1)
 
 struct vmacache {
+#ifndef __GENKSYMS__
+	u64 seqnum;
+#else
 	u32 seqnum;
+#endif
 	struct vm_area_struct *vmas[VMACACHE_SIZE];
 };
 
