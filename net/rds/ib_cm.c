@@ -32,6 +32,9 @@
  */
 #include <linux/kernel.h>
 #include <linux/in.h>
+#include <linux/scatterlist.h>
+#include <linux/slab.h>
+#include <linux/gfp.h>
 #include <linux/vmalloc.h>
 #include <linux/version.h>
 #include <linux/kconfig.h>
@@ -82,6 +85,12 @@ static char *rds_ib_event_str(enum ib_event_type type)
 			     ARRAY_SIZE(rds_ib_event_type_strings), type);
 };
 
+#define ROUNDED_HDR_SIZE roundup_pow_of_two(sizeof(struct rds_header))
+#define HDRS_PER_PAGE 	(PAGE_SIZE / ROUNDED_HDR_SIZE)
+#define NMBR_SEND_HDR_PAGES \
+	((ic->i_send_ring.w_nr + HDRS_PER_PAGE - 1) / HDRS_PER_PAGE)
+#define NMBR_RECV_HDR_PAGES \
+	((ic->i_recv_ring.w_nr + HDRS_PER_PAGE - 1) / HDRS_PER_PAGE)
 /*
  * Set the selected protocol version
  */
@@ -793,6 +802,119 @@ static void rds_rdma_conn_delayed_free_worker(struct work_struct *work)
 	rds_ib_dev_put(rds_ibdev);
 }
 
+static void rds_ib_free_unmap_hdrs(struct ib_device *dev,
+				   struct rds_header ***_hdrs,
+				   dma_addr_t **_dma,
+				   struct scatterlist **_sg,
+				   const int nmbr_hdr_pages,
+				   enum dma_data_direction direction)
+{
+	struct rds_header **hdrs = *_hdrs;
+	struct scatterlist *sg = *_sg;
+	dma_addr_t *dma = *_dma;
+	int i;
+
+	if (sg)
+		for (i = 0; i < nmbr_hdr_pages; ++i) {
+			ib_dma_unmap_sg(dev, sg + i, 1, direction);
+			__free_page(sg_page(sg + i));
+		}
+
+	vfree(sg);
+	vfree(dma);
+	vfree(hdrs);
+	*_sg = NULL;
+	*_dma = NULL;
+	*_hdrs = NULL;
+}
+
+static int rds_ib_alloc_map_hdrs(struct ib_device *dev,
+				 struct rds_header ***_hdrs,
+				 dma_addr_t **_dma,
+				 struct scatterlist **_sg,
+				 const int n,
+				 const int nmbr_hdr_pages,
+				 enum dma_data_direction direction)
+{
+	struct rds_header **hdrs;
+	struct scatterlist *sg;
+	dma_addr_t *dma;
+	int i, j, k;
+	int ret;
+
+	hdrs = *_hdrs = vzalloc_node(sizeof(struct rds_header *) * n,
+				     ibdev_to_node(dev));
+	if (!hdrs) {
+		rds_rtd(RDS_RTD_ERR, "vzalloc_node for hdrs\n");
+		return -ENOMEM;
+	}
+
+	dma = *_dma = vzalloc_node(sizeof(dma_addr_t *) * n,
+				   ibdev_to_node(dev));
+	if (!dma) {
+		ret = -ENOMEM;
+		rds_rtd(RDS_RTD_ERR, "vzalloc_node for dma failed\n");
+		goto hdrs_out;
+	}
+
+	sg = *_sg = vzalloc_node(sizeof(struct scatterlist) * nmbr_hdr_pages,
+				 ibdev_to_node(dev));
+	if (!sg) {
+		ret = -ENOMEM;
+		rds_rtd(RDS_RTD_ERR, "vzalloc_node for sg failed\n");
+		goto dma_out;
+	}
+
+	for (i = 0; i < nmbr_hdr_pages; i++) {
+		ret = rds_page_remainder_alloc(sg + i, PAGE_SIZE, GFP_KERNEL);
+		if (ret) {
+			rds_rtd(RDS_RTD_ERR, "rds_page_remainder_alloc for %dth page failed\n", i);
+			for (j = 0; j < i; ++j)
+				__free_page(sg_page(sg + j));
+			goto sg_out;
+		}
+	}
+
+	for (i = 0; i < nmbr_hdr_pages; i++) {
+		ret = ib_dma_map_sg(dev, sg + i, 1, direction);
+		if (ret != 1) {
+			ret = -EIO;
+			rds_rtd(RDS_RTD_ERR, "ib_dma_map_sg failed for %dth page\n", i);
+			for (j = 0; j < i; ++j)
+				ib_dma_unmap_sg(dev, sg + j, 1, direction);
+			goto page_remainder;
+		}
+	}
+
+	for (i = 0, j = 0; i < nmbr_hdr_pages; i++, j += HDRS_PER_PAGE)
+		for (k = 0; k < HDRS_PER_PAGE; k++) {
+			if (j + k >= n)
+				break;
+			hdrs[j + k] = (struct rds_header *)(sg_virt(sg + i) + k * ROUNDED_HDR_SIZE);
+			dma[j + k] = sg_dma_address(sg + i) + k * ROUNDED_HDR_SIZE;
+		}
+
+	return 0;
+
+page_remainder:
+	for (i = 0; i < nmbr_hdr_pages; ++i)
+		__free_page(sg_page(sg + i));
+
+sg_out:
+	vfree(sg);
+	*_sg = NULL;
+
+dma_out:
+	vfree(dma);
+	*_dma = NULL;
+
+hdrs_out:
+	vfree(hdrs);
+	*_hdrs = NULL;
+
+	return ret;
+}
+
 /* When an rds_ib_connection is shutdown, it is dissociated with the underlying
  * RDMA device.  All the resource tied to the device should be freed.  For
  * fail over optimization, the resource is not freed immediately.  After the
@@ -812,23 +934,19 @@ static void __rds_rdma_conn_dev_rele(struct rds_ib_connection *ic)
 
 	WARN_ON(ic->i_saved_rds_ibdev);
 
-	if (ic->i_send_hdrs) {
-		ib_dma_free_coherent(dev,
-				     ic->i_send_ring.w_nr *
-				     sizeof(struct rds_header),
-				     ic->i_send_hdrs,
-				     ic->i_send_hdrs_dma);
-		ic->i_send_hdrs = NULL;
-	}
+	rds_ib_free_unmap_hdrs(dev,
+			       &ic->i_send_hdrs,
+			       &ic->i_send_hdrs_dma,
+			       &ic->i_send_hdrs_sg,
+			       NMBR_SEND_HDR_PAGES,
+			       DMA_TO_DEVICE);
 
-	if (ic->i_recv_hdrs) {
-		ib_dma_free_coherent(dev,
-				     ic->i_recv_ring.w_nr *
-				     sizeof(struct rds_header),
-				     ic->i_recv_hdrs,
-				     ic->i_recv_hdrs_dma);
-		ic->i_recv_hdrs = NULL;
-	}
+	rds_ib_free_unmap_hdrs(dev,
+			       &ic->i_recv_hdrs,
+			       &ic->i_recv_hdrs_dma,
+			       &ic->i_recv_hdrs_sg,
+			       NMBR_RECV_HDR_PAGES,
+			       DMA_FROM_DEVICE);
 
 	if (ic->i_ack) {
 		ib_dma_free_coherent(dev, sizeof(struct rds_header),
@@ -1009,58 +1127,51 @@ static int rds_ib_setup_qp(struct rds_connection *conn)
 		goto out;
 	}
 
-	ic->i_send_hdrs = ib_dma_alloc_coherent(dev,
-					   ic->i_send_ring.w_nr *
-						sizeof(struct rds_header),
-					   &ic->i_send_hdrs_dma, GFP_KERNEL);
-	if (!ic->i_send_hdrs) {
-		ret = -ENOMEM;
-		rds_rtd(RDS_RTD_ERR, "ib_dma_alloc_coherent send failed\n");
-		goto out;
-	}
-
-	if (!rds_ib_srq_enabled) {
-		ic->i_recv_hdrs = ib_dma_alloc_coherent(dev,
-					ic->i_recv_ring.w_nr *
-					sizeof(struct rds_header),
-					&ic->i_recv_hdrs_dma, GFP_KERNEL);
-		if (!ic->i_recv_hdrs) {
-			ret = -ENOMEM;
-			rds_rtd(RDS_RTD_ERR,
-				"ib_dma_alloc_coherent recv failed\n");
-			goto out;
-		}
-	}
-
 	ic->i_ack = ib_dma_alloc_coherent(dev, sizeof(struct rds_header),
 				       &ic->i_ack_dma, GFP_KERNEL);
 	if (!ic->i_ack) {
 		ret = -ENOMEM;
 		rds_rtd(RDS_RTD_ERR, "ib_dma_alloc_coherent ack failed\n");
-		goto out;
+		goto qp_out;
 	}
 
-	ic->i_sends = vmalloc_node(ic->i_send_ring.w_nr * sizeof(struct rds_ib_send_work),
+	ic->i_sends = vzalloc_node(sizeof(struct rds_ib_send_work) * ic->i_send_ring.w_nr,
 				   ibdev_to_node(dev));
 	if (!ic->i_sends) {
 		ret = -ENOMEM;
-		rds_rtd(RDS_RTD_ERR, "send allocation failed\n");
-		goto out;
+		rds_rtd(RDS_RTD_ERR, "vzalloc_node for i_sends failed\n");
+		goto ack_out;
 	}
-	memset(ic->i_sends, 0, ic->i_send_ring.w_nr * sizeof(struct rds_ib_send_work));
 
-	if (!rds_ib_srq_enabled) {
-		ic->i_recvs = vmalloc(ic->i_recv_ring.w_nr *
-				sizeof(struct rds_ib_recv_work));
-		if (!ic->i_recvs) {
-			ret = -ENOMEM;
-			rds_rtd(RDS_RTD_ERR, "recv allocation failed\n");
-			goto out;
-		}
-		memset(ic->i_recvs, 0, ic->i_recv_ring.w_nr * sizeof(struct rds_ib_recv_work));
+	ic->i_recvs = vzalloc_node(sizeof(struct rds_ib_recv_work) * ic->i_recv_ring.w_nr,
+				   ibdev_to_node(dev));
+	if (!ic->i_recvs) {
+		ret = -ENOMEM;
+		rds_rtd(RDS_RTD_ERR, "vzalloc_node for i_recvs failed\n");
+		goto sends_out;
 	}
 
 	rds_ib_recv_init_ack(ic);
+
+	ret = rds_ib_alloc_map_hdrs(dev,
+				    &ic->i_send_hdrs,
+				    &ic->i_send_hdrs_dma,
+				    &ic->i_send_hdrs_sg,
+				    ic->i_send_ring.w_nr,
+				    NMBR_SEND_HDR_PAGES,
+				    DMA_TO_DEVICE);
+	if (ret)
+		goto recvs_out;
+
+	ret = rds_ib_alloc_map_hdrs(dev,
+				    &ic->i_recv_hdrs,
+				    &ic->i_recv_hdrs_dma,
+				    &ic->i_recv_hdrs_sg,
+				    ic->i_recv_ring.w_nr,
+				    NMBR_RECV_HDR_PAGES,
+				    DMA_FROM_DEVICE);
+	if (ret)
+		goto send_hdrs_out;
 
 	/* Everything is set up, add the conn now so that connection
 	 * establishment has the dev.
@@ -1069,6 +1180,27 @@ static int rds_ib_setup_qp(struct rds_connection *conn)
 
 	rdsdebug("conn %p pd %p mr %p cq %p\n", conn, ic->i_pd, ic->i_mr, ic->i_rcq);
 
+	goto out;
+
+send_hdrs_out:
+	rds_ib_free_unmap_hdrs(dev,
+			       &ic->i_send_hdrs,
+			       &ic->i_send_hdrs_dma,
+			       &ic->i_send_hdrs_sg,
+			       NMBR_SEND_HDR_PAGES,
+			       DMA_TO_DEVICE);
+
+recvs_out:
+	vfree(ic->i_recvs);
+	ic->i_recvs = NULL;
+sends_out:
+	vfree(ic->i_sends);
+	ic->i_sends = NULL;
+ack_out:
+	ib_dma_free_coherent(dev, sizeof(struct rds_header),
+			     ic->i_ack, ic->i_ack_dma);
+qp_out:
+	rdma_destroy_qp(ic->i_cm_id);
 out:
 	/* As this conn is already partially associated with the rds_ibdev
 	 * if an error happens, we need to clean up this partial association
