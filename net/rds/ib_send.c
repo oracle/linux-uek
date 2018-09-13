@@ -250,7 +250,7 @@ void rds_ib_send_init_ring(struct rds_ib_connection *ic)
 		send->s_wr.ex.imm_data = 0;
 
 		sge = &send->s_sge[0];
-		sge->addr = ic->i_send_hdrs_dma + (i * sizeof(struct rds_header));
+		sge->addr = ic->i_send_hdrs_dma[i];
 		sge->length = sizeof(struct rds_header);
 		sge->lkey = ic->i_mr->lkey;
 
@@ -738,11 +738,10 @@ int rds_ib_xmit(struct rds_connection *conn, struct rds_message *rm,
 		send->s_queued = jiffies;
 		send->s_op = NULL;
 
-		send->s_sge[0].addr = ic->i_send_hdrs_dma
-			+ (pos * sizeof(struct rds_header));
+		send->s_sge[0].addr = ic->i_send_hdrs_dma[pos];
 		send->s_sge[0].length = sizeof(struct rds_header);
 
-		memcpy(&ic->i_send_hdrs[pos], &rm->m_inc.i_hdr, sizeof(struct rds_header));
+		memcpy(ic->i_send_hdrs[pos], &rm->m_inc.i_hdr, sizeof(struct rds_header));
 
 		/* Set up the data, if present */
 		if (i < work_alloc
@@ -788,7 +787,7 @@ int rds_ib_xmit(struct rds_connection *conn, struct rds_message *rm,
 			 &send->s_wr, send->s_wr.num_sge, send->s_wr.next);
 
 		if (ic->i_flowctl && adv_credits) {
-			struct rds_header *hdr = &ic->i_send_hdrs[pos];
+			struct rds_header *hdr = ic->i_send_hdrs[pos];
 
 			/* add credit and redo the header checksum */
 			hdr->h_credit = adv_credits;
