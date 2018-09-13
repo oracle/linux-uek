@@ -1,6 +1,8 @@
 #ifndef _LINUX_MM_TYPES_H
 #define _LINUX_MM_TYPES_H
 
+#include <linux/mm_types_task.h>
+
 #include <linux/auxvec.h>
 #include <linux/types.h>
 #include <linux/threads.h>
@@ -373,7 +375,11 @@ struct kioctx_table;
 struct mm_struct {
 	struct vm_area_struct *mmap;		/* list of VMAs */
 	struct rb_root mm_rb;
+#ifndef __GENKSYMS__ 
+	u64 vmacache_seqnum;
+#else
 	u32 vmacache_seqnum;                   /* per-thread vmacache */
+#endif
 #ifdef CONFIG_MMU
 	unsigned long (*get_unmapped_area) (struct file *filp,
 				unsigned long addr, unsigned long len,

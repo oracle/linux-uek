@@ -35,6 +35,7 @@ struct sched_param {
 #include <linux/sem.h>
 #include <linux/shm.h>
 #include <linux/signal.h>
+#include <linux/mm_types_task.h>
 #include <linux/compiler.h>
 #include <linux/completion.h>
 #include <linux/pid.h>
