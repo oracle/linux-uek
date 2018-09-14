@@ -10,6 +10,7 @@
 
 #include <linux/etherdevice.h>
 #include <net/ip.h>
+#include <net/tso.h>
 
 #include "otx2_reg.h"
 #include "otx2_common.h"
@@ -80,6 +81,7 @@ static void otx2_dma_unmap_skb_frags(struct otx2_nic *pfvf, struct sg_list *sg)
 				     sg->size[seg], DMA_TO_DEVICE,
 				     DMA_ATTR_SKIP_CPU_SYNC);
 	}
+	sg->num_segs = 0;
 }
 
 static void otx2_snd_pkt_handler(struct otx2_nic *pfvf,
@@ -376,6 +378,22 @@ int otx2_poll(struct napi_struct *napi, int budget)
 	return workdone;
 }
 
+static inline void otx2_sqe_flush(struct otx2_snd_queue *sq, int size)
+{
+	u64 status;
+
+	/* Packet data stores should finish before SQE is flushed to HW */
+	dma_wmb();
+
+	do {
+		memcpy(sq->lmt_addr, sq->sqe_base, size);
+		status = otx2_lmt_flush(sq->io_addr);
+	} while (status == 0);
+
+	sq->head++;
+	sq->head &= (SQ_QLEN - 1);
+}
+
 #define MAX_SEGS_PER_SG	3
 /* Add SQE scatter/gather subdescriptor structure */
 static bool otx2_sqe_add_sg(struct otx2_nic *pfvf, struct otx2_snd_queue *sq,
@@ -486,6 +504,187 @@ static void otx2_sqe_add_hdr(struct otx2_nic *pfvf, struct otx2_snd_queue *sq,
 	}
 }
 
+static int otx2_dma_map_tso_skb(struct otx2_nic *pfvf,
+				struct otx2_snd_queue *sq,
+				struct sk_buff *skb, int sqe, int hdr_len)
+{
+	int num_segs = skb_shinfo(skb)->nr_frags + 1;
+	struct sg_list *sg = &sq->sg[sqe];
+	u64 dma_addr;
+	int seg, len;
+
+	sg->num_segs = 0;
+
+	/* Get payload length at skb->data */
+	len = skb_headlen(skb) - hdr_len;
+
+	for (seg = 0; seg < num_segs; seg++) {
+		/* Skip skb->data, if there is no payload */
+		if (!seg && !len)
+			continue;
+		dma_addr = otx2_dma_map_skb_frag(pfvf, skb, seg, &len);
+		if (dma_mapping_error(pfvf->dev, dma_addr))
+			goto unmap;
+
+		/* Save DMA mapping info for later unmapping */
+		sg->dma_addr[sg->num_segs] = dma_addr;
+		sg->size[sg->num_segs] = len;
+		sg->num_segs++;
+	}
+	return 0;
+unmap:
+	otx2_dma_unmap_skb_frags(pfvf, sg);
+	return -EINVAL;
+}
+
+static u64 otx2_tso_frag_dma_addr(struct otx2_snd_queue *sq,
+				  struct sk_buff *skb, int seg,
+				  u64 seg_addr, int hdr_len, int sqe)
+{
+	const struct skb_frag_struct *frag;
+	struct sg_list *sg = &sq->sg[sqe];
+	int offset;
+
+	if (seg < 0)
+		return sg->dma_addr[0] + (seg_addr - (u64)skb->data);
+
+	frag = &skb_shinfo(skb)->frags[seg];
+	offset = (u64)(page_address(frag->page.p) + frag->page_offset);
+	offset = seg_addr - offset;
+	if (skb_headlen(skb) - hdr_len)
+		seg++;
+	return sg->dma_addr[seg] + offset;
+}
+
+static void otx2_sqe_tso_add_sg(struct otx2_snd_queue *sq,
+				struct sg_list *list, int *offset)
+{
+	struct nix_sqe_sg_s *sg = NULL;
+	u16 *sg_lens = NULL;
+	u64 *iova = NULL;
+	int seg;
+
+	/* Add SG descriptors with buffer addresses */
+	for (seg = 0; seg < list->num_segs; seg++) {
+		if ((seg % MAX_SEGS_PER_SG) == 0) {
+			sg = (struct nix_sqe_sg_s *)(sq->sqe_base + *offset);
+			sg->ld_type = NIX_SEND_LDTYPE_LDD;
+			sg->subdc = NIX_SUBDC_SG;
+			sg->segs = 0;
+			sg_lens = (void *)sg;
+			iova = (void *)sg + sizeof(*sg);
+			/* Next subdc always starts at a 16byte boundary.
+			 * So if sg->segs is whether 2 or 3, offset += 16bytes.
+			 */
+			if ((list->num_segs - seg) >= (MAX_SEGS_PER_SG - 1))
+				*offset += sizeof(*sg) + (3 * sizeof(u64));
+			else
+				*offset += sizeof(*sg) + sizeof(u64);
+		}
+		sg_lens[frag_num(seg % MAX_SEGS_PER_SG)] = list->size[seg];
+		*iova++ = list->dma_addr[seg];
+		sg->segs++;
+	}
+}
+
+static void otx2_sq_append_tso(struct otx2_nic *pfvf, struct otx2_snd_queue *sq,
+			       struct sk_buff *skb, u16 qidx)
+{
+	struct netdev_queue *txq = netdev_get_tx_queue(pfvf->netdev, qidx);
+	int hdr_len = skb_transport_offset(skb) + tcp_hdrlen(skb);
+	int tcp_data, seg_len, pkt_len, offset;
+	struct nix_sqe_hdr_s *sqe_hdr;
+	int first_sqe = sq->head;
+	struct sg_list list;
+	struct tso_t tso;
+
+	/* Map SKB's fragments to DMA.
+	 * It's done here to avoid mapping for every TSO segment's packet.
+	 */
+	if (otx2_dma_map_tso_skb(pfvf, sq, skb, first_sqe, hdr_len)) {
+		dev_kfree_skb_any(skb);
+		return;
+	}
+
+	netdev_tx_sent_queue(txq, skb->len);
+
+	tso_start(skb, &tso);
+	tcp_data = skb->len - hdr_len;
+	while (tcp_data > 0) {
+		char *hdr;
+
+		seg_len = min_t(int, skb_shinfo(skb)->gso_size, tcp_data);
+		tcp_data -= seg_len;
+
+		/* Set SQE's SEND_HDR */
+		memset(sq->sqe_base, 0, sq->sqe_size);
+		sqe_hdr = (struct nix_sqe_hdr_s *)(sq->sqe_base);
+		otx2_sqe_add_hdr(pfvf, sq, sqe_hdr, skb, qidx);
+		offset = sizeof(*sqe_hdr);
+
+		/* Add TSO segment's pkt header */
+		hdr = sq->tso_hdrs->base + (sq->head * TSO_HEADER_SIZE);
+		tso_build_hdr(skb, hdr, &tso, seg_len, tcp_data == 0);
+		list.dma_addr[0] =
+			sq->tso_hdrs->iova + (sq->head * TSO_HEADER_SIZE);
+		list.size[0] = hdr_len;
+		list.num_segs = 1;
+
+		/* Add TSO segment's payload data fragments */
+		pkt_len = hdr_len;
+		while (seg_len > 0) {
+			int size;
+
+			size = min_t(int, tso.size, seg_len);
+
+			list.size[list.num_segs] = size;
+			list.dma_addr[list.num_segs] =
+				otx2_tso_frag_dma_addr(sq, skb,
+						       tso.next_frag_idx - 1,
+						       (u64)tso.data, hdr_len,
+						       first_sqe);
+			list.num_segs++;
+			pkt_len += size;
+			seg_len -= size;
+			tso_build_data(skb, &tso, size);
+		}
+		sqe_hdr->total = pkt_len;
+		otx2_sqe_tso_add_sg(sq, &list, &offset);
+
+		/* DMA mappings and skb needs to be freed only after last
+		 * TSO segment is transmitted out. So set 'PNC' only for
+		 * last segment. Also point last segment's sqe_id to first
+		 * segment's SQE index where skb address and DMA mappings
+		 * are saved.
+		 */
+		if (!tcp_data) {
+			sqe_hdr->pnc = 1;
+			sqe_hdr->sqe_id = first_sqe;
+			sq->sg[first_sqe].skb = (u64)skb;
+		} else {
+			sqe_hdr->pnc = 0;
+		}
+
+		sqe_hdr->sizem1 = (offset / 16) - 1;
+
+		/* Flush SQE to HW */
+		otx2_sqe_flush(sq, offset);
+	}
+}
+
+static int otx2_get_sqe_count(struct otx2_nic *pfvf, struct sk_buff *skb)
+{
+	if (!skb_shinfo(skb)->gso_size)
+		return 1;
+
+	/* HW TSO */
+	if (skb_shinfo(skb)->gso_size && pfvf->hw.hw_tso)
+		return 1;
+
+	/* SW TSO */
+	return skb_shinfo(skb)->gso_segs;
+}
+
 bool otx2_sq_append_skb(struct net_device *netdev, struct otx2_snd_queue *sq,
 			struct sk_buff *skb, u16 qidx)
 {
@@ -493,20 +692,14 @@ bool otx2_sq_append_skb(struct net_device *netdev, struct otx2_snd_queue *sq,
 	struct otx2_nic *pfvf = netdev_priv(netdev);
 	struct nix_sqe_hdr_s *sqe_hdr;
 	int offset, num_segs;
-	u64 status;
 
 	/* Check if there is room for new SQE.
 	 * 'Num of SQBs freed to SQ's pool - SQ's Aura count'
 	 * will give free SQE count.
 	 */
-	if (!(sq->num_sqbs - *sq->aura_fc_addr))
+	if (((sq->num_sqbs - *sq->aura_fc_addr) * sq->sqe_per_sqb) <
+	    otx2_get_sqe_count(pfvf, skb))
 		goto fail;
-
-	/* Set SQE's SEND_HDR */
-	memset(sq->sqe_base, 0, sq->sqe_size);
-	sqe_hdr = (struct nix_sqe_hdr_s *)(sq->sqe_base);
-	otx2_sqe_add_hdr(pfvf, sq, sqe_hdr, skb, qidx);
-	offset = sizeof(*sqe_hdr);
 
 	num_segs = skb_shinfo(skb)->nr_frags + 1;
 
@@ -521,6 +714,17 @@ bool otx2_sq_append_skb(struct net_device *netdev, struct otx2_snd_queue *sq,
 		num_segs = skb_shinfo(skb)->nr_frags + 1;
 	}
 
+	if (skb_shinfo(skb)->gso_size && !pfvf->hw.hw_tso) {
+		otx2_sq_append_tso(pfvf, sq, skb, qidx);
+		return true;
+	}
+
+	/* Set SQE's SEND_HDR */
+	memset(sq->sqe_base, 0, sq->sqe_size);
+	sqe_hdr = (struct nix_sqe_hdr_s *)(sq->sqe_base);
+	otx2_sqe_add_hdr(pfvf, sq, sqe_hdr, skb, qidx);
+	offset = sizeof(*sqe_hdr);
+
 	/* Add extended header if needed */
 	otx2_sqe_add_ext(pfvf, sq, skb, &offset);
 
@@ -534,16 +738,8 @@ bool otx2_sq_append_skb(struct net_device *netdev, struct otx2_snd_queue *sq,
 
 	netdev_tx_sent_queue(txq, skb->len);
 
-	/* Packet data stores should finish before SQE is flushed to HW */
-	dma_wmb();
-
-	do {
-		memcpy(sq->lmt_addr, sqe_hdr, offset);
-		status = otx2_lmt_flush(sq->io_addr);
-	} while (status == 0);
-
-	sq->head++;
-	sq->head &= (SQ_QLEN - 1);
+	/* Flush SQE to HW */
+	otx2_sqe_flush(sq, offset);
 
 	return true;
 fail:
