@@ -289,6 +289,11 @@ static void cvm_mmc_switch_to(struct cvm_mmc_slot *slot)
 
 	writeq(slot->cached_rca, host->base + MIO_EMM_RCA(host));
 	emm_switch = slot->cached_switch;
+	/* Due to errata 29956 the clock is not set properly when the
+	 * bus_id is non-zero.
+	 */
+	set_bus_id(&emm_switch, 0);
+	do_switch(host, emm_switch & GENMASK_ULL(0, 31));
 	set_bus_id(&emm_switch, slot->bus_id);
 	do_switch(host, emm_switch);
 	host->powered = true;
