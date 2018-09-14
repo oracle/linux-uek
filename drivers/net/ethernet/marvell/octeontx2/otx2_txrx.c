@@ -400,7 +400,7 @@ static bool otx2_sqe_add_sg(struct otx2_nic *pfvf, struct otx2_snd_queue *sq,
 			 * So if sg->segs is whether 2 or 3, offset += 16bytes.
 			 */
 			if ((num_segs - seg) >= (MAX_SEGS_PER_SG - 1))
-				*offset += sizeof(*sg) + (2 * sizeof(u64));
+				*offset += sizeof(*sg) + (3 * sizeof(u64));
 			else
 				*offset += sizeof(*sg) + sizeof(u64);
 		}
