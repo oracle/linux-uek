@@ -30,10 +30,10 @@ enum nix_send_ldtype {
 
 /* CSUM offload */
 enum nix_sendl3type {
-	NIX_SENDL3TYPE_NONE,
-	NIX_SENDL3TYPE_IP4,
-	NIX_SENDL3TYPE_IP4_CKSUM,
-	NIX_SENDL3TYPE_IP6,
+	NIX_SENDL3TYPE_NONE = 0x0,
+	NIX_SENDL3TYPE_IP4  = 0x2,
+	NIX_SENDL3TYPE_IP4_CKSUM = 0x3,
+	NIX_SENDL3TYPE_IP6 = 0x4,
 };
 
 enum nix_sendl4type {
