@@ -11,14 +11,17 @@
 #ifndef OTX2_COMMON_H
 #define OTX2_COMMON_H
 
-#include <mbox.h>
+#include <linux/pci.h>
 
+#include <mbox.h>
 #include "otx2_reg.h"
 #include "otx2_txrx.h"
 
 /* PCI device IDs */
 #define PCI_DEVID_OCTEONTX2_RVU_PF              0xA063
 #define PCI_DEVID_OCTEONTX2_RVU_AFVF		0xA0F8
+
+#define PCI_SUBSYS_DEVID_96XX_RVU_PFVF		0xB200
 
 /* PCI BAR nos */
 #define PCI_CFG_REG_BAR_NUM                     2
@@ -121,6 +124,7 @@ struct otx2_hw {
 	/* For TSO segmentation */
 	u8			lso_tsov4_idx;
 	u8			lso_tsov6_idx;
+	u8			hw_tso;
 
 	u64			cgx_rx_stats[CGX_RX_STATS_COUNT];
 	u64			cgx_tx_stats[CGX_TX_STATS_COUNT];
@@ -145,6 +149,12 @@ struct otx2_nic {
 	u32			cq_ecount_wait;
 	struct work_struct	reset_task;
 };
+
+static inline bool is_9xxx_pass1_silicon(struct pci_dev *pdev)
+{
+	return (pdev->revision == 0x00) &&
+		(pdev->subsystem_device == PCI_SUBSYS_DEVID_96XX_RVU_PFVF);
+}
 
 /* Register read/write APIs */
 static inline void otx2_write64(struct otx2_nic *nic, u64 offset, u64 val)

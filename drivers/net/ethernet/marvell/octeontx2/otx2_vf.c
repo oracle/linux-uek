@@ -441,7 +441,8 @@ static int otx2vf_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 		goto err_detach_rsrc;
 
 	netdev->hw_features = NETIF_F_RXCSUM | NETIF_F_IP_CSUM |
-			      NETIF_F_IPV6_CSUM | NETIF_F_RXHASH;
+			      NETIF_F_IPV6_CSUM | NETIF_F_RXHASH |
+			      NETIF_F_SG | NETIF_F_TSO | NETIF_F_TSO6;
 	netdev->features = netdev->hw_features;
 
 	netdev->netdev_ops = &otx2vf_netdev_ops;
