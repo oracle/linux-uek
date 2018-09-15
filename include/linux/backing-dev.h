@@ -19,6 +19,7 @@
 #include <linux/atomic.h>
 #include <linux/sysctl.h>
 #include <linux/workqueue.h>
+#include <linux/uek_kabi.h>
 
 struct page;
 struct device;
@@ -105,6 +106,7 @@ struct backing_dev_info {
 	struct dentry *debug_dir;
 	struct dentry *debug_stats;
 #endif
+	UEK_KABI_EXTEND(struct device *owner)
 };
 
 struct backing_dev_info *inode_to_bdi(struct inode *inode);
@@ -116,6 +118,7 @@ __printf(3, 4)
 int bdi_register(struct backing_dev_info *bdi, struct device *parent,
 		const char *fmt, ...);
 int bdi_register_dev(struct backing_dev_info *bdi, dev_t dev);
+int bdi_register_owner(struct backing_dev_info *bdi, struct device *owner);
 int __must_check bdi_setup_and_register(struct backing_dev_info *, char *);
 void bdi_start_writeback(struct backing_dev_info *bdi, long nr_pages,
 			enum wb_reason reason);
