@@ -114,7 +114,7 @@ struct ib_umem *ib_umem_get(struct ib_ucontext *context, unsigned long addr,
 		umem = kzalloc(sizeof(struct ib_umem_odp), GFP_KERNEL);
 		if (!umem)
 			return ERR_PTR(-ENOMEM);
-		umem->odp_data = to_ib_umem_odp(umem);
+		umem->is_odp = 1;
 	} else {
 		umem = kzalloc(sizeof(*umem), GFP_KERNEL);
 		if (!umem)
@@ -250,7 +250,7 @@ EXPORT_SYMBOL(ib_umem_get);
 static void __ib_umem_release_tail(struct ib_umem *umem)
 {
 	mmdrop(umem->owning_mm);
-	if (umem->odp_data)
+	if (umem->is_odp)
 		kfree(to_ib_umem_odp(umem));
 	else
 		kfree(umem);
@@ -275,7 +275,7 @@ void ib_umem_release(struct ib_umem *umem)
 {
 	struct ib_ucontext *context = umem->context;
 
-	if (umem->odp_data) {
+	if (umem->is_odp) {
 		ib_umem_odp_release(to_ib_umem_odp(umem));
 		__ib_umem_release_tail(umem);
 		return;
@@ -313,7 +313,7 @@ int ib_umem_page_count(struct ib_umem *umem)
 	int n;
 	struct scatterlist *sg;
 
-	if (umem->odp_data)
+	if (umem->is_odp)
 		return ib_umem_num_pages(umem);
 
 	n = 0;
