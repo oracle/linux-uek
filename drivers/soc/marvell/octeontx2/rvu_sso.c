@@ -186,6 +186,8 @@ int rvu_mbox_handler_SSO_HW_SETCONFIG(struct rvu *rvu,
 	/* Initialize XAQ ring */
 	for (hwgrp = 0; hwgrp < req->hwgrps; hwgrp++) {
 		lf = rvu_get_lf(rvu, &hw->block[blkaddr], pcifunc, hwgrp);
+		if (lf < 0)
+			return SSO_AF_ERR_LF_INVALID;
 
 		/* Disable and drain previous config */
 		rvu_write64(rvu, blkaddr, SSO_AF_HWGRPX_AW_CFG(lf), 0x0);
@@ -242,6 +244,9 @@ int rvu_mbox_handler_SSO_GRP_SET_PRIORITY(struct rvu *rvu,
 			(req->priority & 0x7));
 
 	lf = rvu_get_lf(rvu, &hw->block[blkaddr], pcifunc, req->grp);
+	if (lf < 0)
+		return SSO_AF_ERR_LF_INVALID;
+
 	rvu_write64(rvu, blkaddr, SSO_AF_HWGRPX_PRI(lf), regval);
 
 	return 0;
@@ -261,6 +266,9 @@ int rvu_mbox_handler_SSO_GRP_GET_PRIORITY(struct rvu *rvu,
 		return SSO_AF_ERR_LF_INVALID;
 
 	lf = rvu_get_lf(rvu, &hw->block[blkaddr], pcifunc, req->grp);
+	if (lf < 0)
+		return SSO_AF_ERR_LF_INVALID;
+
 	regval = rvu_read64(rvu, blkaddr, SSO_AF_HWGRPX_PRI(lf));
 
 	rsp->weight = (regval >> 16) & 0x3f;
@@ -349,6 +357,9 @@ int rvu_mbox_handler_SSO_LF_ALLOC(struct rvu *rvu, struct sso_lf_alloc_req *req,
 
 	for (hwgrp = 0; hwgrp < req->hwgrps; hwgrp++) {
 		ssolf = rvu_get_lf(rvu, &hw->block[blkaddr], pcifunc, hwgrp);
+		if (ssolf < 0)
+			return SSO_AF_ERR_LF_INVALID;
+
 		/* All groups assigned to single SR-IOV function must be
 		 * assigned same unique in-unit accounting index.
 		 */
@@ -384,7 +395,7 @@ int rvu_mbox_handler_SSO_LF_FREE(struct rvu *rvu, struct sso_lf_free_req *req,
 	/* Perform reset of SSO HW GRPs */
 	for (hwgrp = 0; hwgrp < req->hwgrps; hwgrp++) {
 		lf = rvu_get_lf(rvu, &hw->block[blkaddr], pcifunc, hwgrp);
-		if (lf == -ENOENT)
+		if (lf < 0)
 			return SSO_AF_ERR_LF_INVALID;
 
 		err = rvu_sso_lf_teardown(rvu, lf);
@@ -431,7 +442,7 @@ int rvu_mbox_handler_SSO_WS_CACHE_INV(struct rvu *rvu, struct msg_req *req,
 
 	for (hws = 0; hws < num_lfs; hws++) {
 		ssowlf = rvu_get_lf(rvu, block, pcifunc, hws);
-		if (ssowlf == -ENOENT)
+		if (ssowlf < 0)
 			return SSOW_AF_ERR_LF_INVALID;
 
 		/* Reset this SSO LF GWS cache */
@@ -469,7 +480,7 @@ int rvu_mbox_handler_SSOW_LF_FREE(struct rvu *rvu,
 
 	for (hws = 0; hws < req->hws; hws++) {
 		ssowlf = rvu_get_lf(rvu, &hw->block[blkaddr], pcifunc, hws);
-		if (ssowlf == -ENOENT)
+		if (ssowlf < 0)
 			return SSOW_AF_ERR_LF_INVALID;
 
 		err = rvu_ssow_lf_teardown(rvu, ssowlf);
