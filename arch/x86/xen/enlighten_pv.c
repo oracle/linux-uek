@@ -1201,6 +1201,7 @@ asmlinkage __visible void __init xen_start_kernel(void)
 		return;
 
 	xen_domain_type = XEN_PV_DOMAIN;
+	xen_start_flags = xen_start_info->flags;
 
 	xen_setup_features();
 

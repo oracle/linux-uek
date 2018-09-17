@@ -61,6 +61,18 @@ config PCI_STUB
 
 	  When in doubt, say N.
 
+config PCI_PF_STUB
+	tristate "PCI PF Stub driver"
+	depends on PCI
+	depends on PCI_IOV
+	help
+	  Say Y or M here if you want to enable support for devices that
+	  require SR-IOV support, while at the same time the PF itself is
+	  not providing any actual services on the host itself such as
+	  storage or networking.
+
+	  When in doubt, say N.
+
 config XEN_PCIDEV_FRONTEND
         tristate "Xen PCI Frontend"
         depends on PCI && X86 && XEN
@@ -70,15 +82,6 @@ config XEN_PCIDEV_FRONTEND
         help
           The PCI device frontend driver allows the kernel to import arbitrary
           PCI devices from a PCI backend to support PCI driver domains.
-
-config HT_IRQ
-	bool "Interrupts on hypertransport devices"
-	default y
-	depends on PCI && X86_LOCAL_APIC
-	help
-	   This allows native hypertransport devices to use interrupts.
-
-	   If unsure say Y.
 
 config PCI_ATS
 	bool
@@ -125,6 +128,7 @@ config PCI_PASID
 
 config PCI_LABEL
 	def_bool y if (DMI || ACPI)
+	depends on PCI
 	select NLS
 
 config PCI_HYPERV
@@ -135,7 +139,6 @@ config PCI_HYPERV
           PCI devices from a PCI backend to support PCI driver domains.
 
 source "drivers/pci/hotplug/Kconfig"
-source "drivers/pci/dwc/Kconfig"
-source "drivers/pci/host/Kconfig"
+source "drivers/pci/controller/Kconfig"
 source "drivers/pci/endpoint/Kconfig"
 source "drivers/pci/switch/Kconfig"
