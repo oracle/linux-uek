@@ -12,7 +12,7 @@
 #include <asm/asm-bug.h>
 
 #define __BUG_FLAGS(flags)				\
-	asm volatile (__stringify(ASM_BUG_FLAGS(flags)));
+	asm volatile (__stringify(ASM_BUG_FLAGS(flags)) :: [file] "i"(&__FILE__[0]));
 
 #define BUG() do {					\
 	__BUG_FLAGS(0);					\
