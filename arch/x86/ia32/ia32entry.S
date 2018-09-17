@@ -410,7 +410,7 @@ ENTRY(ia32_cstar_target)
 	 * 32bit zero extended
 	 */
 	ASM_STAC
-	movq	R8(%rsp),%r8
+	movq	RSP(%rsp),%r8
 1:	movl	(%r8),%r9d
 	_ASM_EXTABLE(1b,ia32_badarg)
 	ASM_CLAC
