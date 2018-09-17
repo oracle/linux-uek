@@ -9,6 +9,7 @@
 
 #ifdef CONFIG_DEBUG_BUGVERBOSE
 #define _BUGVERBOSE_LOCATION(file, line) __BUGVERBOSE_LOCATION(file, line)
+#ifdef __ASSEMBLY__
 #define __BUGVERBOSE_LOCATION(file, line)			\
 		.pushsection .rodata.str,"aMS",@progbits,1;	\
 	14472:	.string file;					\
@@ -16,6 +17,11 @@
 								\
 		.long 14472b - .;				\
 		.short line;
+#else /* __ASSEMBLY__ */
+#define __BUGVERBOSE_LOCATION(__, line)				\
+		.long %[file] - 14470b;				\
+		.short line;
+#endif /* __ASSEMBLY__ */
 #else
 #define _BUGVERBOSE_LOCATION(file, line)
 #endif
