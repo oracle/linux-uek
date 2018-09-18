@@ -155,6 +155,7 @@ M(SSO_HW_SETCONFIG,	0x604, sso_hw_setconfig, msg_rsp)		\
 M(SSO_GRP_SET_PRIORITY,	0x605, sso_grp_priority, msg_rsp)		\
 M(SSO_GRP_GET_PRIORITY,	0x606, sso_grp_priority, sso_grp_priority)	\
 M(SSO_WS_CACHE_INV,	0x607, msg_req, msg_rsp)			\
+M(SSO_GRP_QOS_CONFIG,	0x608, sso_grp_qos_cfg, msg_rsp)		\
 /* TIM mbox IDs (range 0x800 - 0x9FF) */				\
 /* CPT mbox IDs (range 0xA00 - 0xBFF) */				\
 /* NPC mbox IDs (range 0x6000 - 0x7FFF) */				\
@@ -610,6 +611,7 @@ enum sso_af_status {
 	SSO_AF_ERR_PARAM	= -501,
 	SSO_AF_ERR_LF_INVALID	= -502,
 	SSO_AF_ERR_AF_LF_ALLOC	= -503,
+	SSO_AF_ERR_GRP_EBUSY	= -504,
 };
 
 struct sso_lf_alloc_req {
@@ -666,6 +668,14 @@ struct sso_grp_priority {
 	u8 priority;
 	u8 affinity;
 	u8 weight;
+};
+
+struct sso_grp_qos_cfg {
+	struct mbox_msghdr hdr;
+	u16 grp;
+	u32 xaq_limit;
+	u16 taq_thr;
+	u16 iaq_thr;
 };
 
 /* NPC mbox message structs */
