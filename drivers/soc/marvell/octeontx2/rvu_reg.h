@@ -601,6 +601,7 @@
 #define NDC_AF_INTR_ENA_W1C		(0x00070)
 #define NDC_AF_ACTIVE_PC		(0x00078)
 #define NDC_AF_BP_TEST_ENABLE		(0x001F8)
+#define NDC_AF_BP_TEST(a)		(0x00200 | (a) << 3)
 #define NDC_AF_BLK_RST			(0x002F0)
 #define NDC_PRIV_AF_INT_CFG		(0x002F8)
 #define NDC_AF_HASHX(a)			(0x00300 | (a) << 3)

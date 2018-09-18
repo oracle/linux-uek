@@ -11,10 +11,14 @@
 #ifndef RVU_H
 #define RVU_H
 
+#include <linux/pci.h>
 #include "rvu_struct.h"
 #include "common.h"
 #include "mbox.h"
 #include "rvu_validation.h"
+
+/* Subsystem Device ID */
+#define PCI_SUBSYS_DEVID_96XX			0xB200
 
 /* PCI device IDs */
 #define	PCI_DEVID_OCTEONTX2_RVU_AF		0xA065
@@ -303,6 +307,14 @@ static inline u64 rvupf_read64(struct rvu *rvu, u64 offset)
 	return readq(rvu->pfreg_base + offset);
 }
 
+static inline bool is_rvu_9xxx_A0(struct rvu *rvu)
+{
+	struct pci_dev *pdev = rvu->pdev;
+
+	return (pdev->revision == 0x00) &&
+		(pdev->subsystem_device == PCI_SUBSYS_DEVID_96XX);
+}
+
 /* Function Prototypes
  * RVU
  */
@@ -324,6 +336,8 @@ void rvu_get_pf_numvfs(struct rvu *rvu, int pf, int *numvfs, int *hwvf);
 bool is_block_implemented(struct rvu_hwinfo *hw, int blkaddr);
 int rvu_get_lf(struct rvu *rvu, struct rvu_block *block, u16 pcifunc, u16 slot);
 int rvu_lf_reset(struct rvu *rvu, struct rvu_block *block, int lf);
+int rvu_lf_reset_ndc_errata_workaround(struct rvu *rvu, struct rvu_block *block,
+				   int lf);
 int rvu_get_blkaddr(struct rvu *rvu, int blktype, u16 pcifunc);
 int rvu_poll_reg(struct rvu *rvu, u64 block, u64 offset, u64 mask, bool zero);
 
@@ -534,6 +548,12 @@ int rvu_mbox_handler_NPC_MCAM_ALLOC_AND_WRITE_ENTRY(struct rvu *rvu,
 int rvu_mbox_handler_NPC_GET_KEX_CFG(struct rvu *rvu, struct msg_req *req,
 				     struct npc_get_kex_cfg_rsp *rsp);
 
+/* NDC APIs */
+int rvu_ndc_sync(struct rvu *rvu, int lfblkid, int lfidx, u64 lfoffset,
+		 int ndcblkid);
+
+int rvu_ndc_sync_errata_workaround(struct rvu *rvu, int lfblkaddr, int lfidx,
+				   u64 lfoffset, int ndcblkaddr);
 #ifdef CONFIG_DEBUG_FS
 void rvu_dbg_init(struct rvu *rvu);
 void rvu_dbg_exit(struct rvu *rvu);

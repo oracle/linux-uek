@@ -381,6 +381,10 @@ int rvu_lf_reset(struct rvu *rvu, struct rvu_block *block, int lf)
 	if (!block->implemented)
 		return 0;
 
+	if (((block->type == BLKTYPE_NIX || block->type == BLKTYPE_NPA)) &&
+	    (is_rvu_9xxx_A0(rvu)))
+		return rvu_lf_reset_ndc_errata_workaround(rvu, block, lf);
+
 	rvu_write64(rvu, block->addr, block->lfreset_reg, lf | BIT_ULL(12));
 	err = rvu_poll_reg(rvu, block->addr, block->lfreset_reg, BIT_ULL(12),
 			   true);
