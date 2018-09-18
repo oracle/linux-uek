@@ -172,9 +172,6 @@ static void cgx_notify_pfs(struct cgx_link_event *event, struct rvu *rvu)
 
 		/* check if notification is enabled */
 		if (!test_bit(pfid, &rvu->pf_notify_bmap)) {
-			dev_info(rvu->dev, "cgx %d: lmac %d Link status %s\n",
-				 event->cgx_id, event->lmac_id,
-				 linfo->link_up ? "UP" : "DOWN");
 			continue;
 		}
 

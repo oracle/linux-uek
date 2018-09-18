@@ -617,8 +617,17 @@ create_failed:
 
 static int cgx_print_stats(void *cgxd, int lmac_id)
 {
+	struct cgx_link_user_info linfo;
 	int stat = 0, err = 0;
 	u64 tx_stat, rx_stat;
+
+	/* Link status */
+	pr_info("\n=======Link Status======\n\n");
+	err = cgx_get_link_info(cgxd, lmac_id, &linfo);
+	if (err)
+		pr_info("Failed to read link status\n");
+	pr_info("\nLink is %s %d Mbps\n\n",
+		linfo.link_up ? "UP" : "DOWN", linfo.speed);
 
 	/* Rx stats */
 	pr_info("\n=======RX_STATS======\n\n");
