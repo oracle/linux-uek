@@ -244,11 +244,8 @@ static int otx2_register_mbox_intr(struct otx2_nic *pf)
 	/* Register mailbox interrupt handler */
 	irq_name = &hw->irq_name[RVU_PF_INT_VEC_AFPF_MBOX * NAME_SIZE];
 	snprintf(irq_name, NAME_SIZE, "RVUPFAF Mbox");
-	err = devm_request_irq(pf->dev,
-			       pci_irq_vector(pf->pdev,
-					      RVU_PF_INT_VEC_AFPF_MBOX),
-			       otx2_pfaf_mbox_intr_handler, 0,
-			       irq_name, pf);
+	err = request_irq(pci_irq_vector(pf->pdev, RVU_PF_INT_VEC_AFPF_MBOX),
+			  otx2_pfaf_mbox_intr_handler, 0, irq_name, pf);
 	if (err) {
 		dev_err(pf->dev,
 			"RVUPF: IRQ registration failed for PFAF mbox irq\n");
@@ -282,8 +279,11 @@ static int otx2_register_mbox_intr(struct otx2_nic *pf)
 
 static void otx2_disable_mbox_intr(struct otx2_nic *pf)
 {
+	int vector = pci_irq_vector(pf->pdev, RVU_PF_INT_VEC_AFPF_MBOX);
+
 	/* Disable AF => PF mailbox IRQ */
 	otx2_write64(pf, RVU_PF_INT_ENA_W1C, BIT_ULL(0));
+	free_irq(vector, pf);
 }
 
 static void otx2_pfaf_mbox_destroy(struct otx2_nic *pf)
