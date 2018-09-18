@@ -188,8 +188,6 @@ void __init check_bugs(void)
 
 	l1tf_select_mitigation();
 
-	l1tf_select_mitigation();
-
 #ifdef CONFIG_X86_32
 	/*
 	 * Check whether we are able to run this kernel safely on SMP.
