@@ -32,15 +32,6 @@ static ssize_t ibrs_enabled_read(struct file *file, char __user *user_buf,
 	return __enabled_read(file, user_buf, count, ppos, &sysctl_ibrs_enabled);
 }
 
-static void spec_ctrl_flush_all_cpus(u32 msr_nr, u64 val)
-{
-	int cpu;
-	get_online_cpus();
-	for_each_online_cpu(cpu)
-		wrmsrl_on_cpu(cpu, msr_nr, val);
-	put_online_cpus();
-}
-
 static ssize_t ibrs_enabled_write(struct file *file,
                                   const char __user *user_buf,
                                   size_t count, loff_t *ppos)
@@ -52,7 +43,7 @@ static ssize_t ibrs_enabled_write(struct file *file,
 	if (!ibrs_supported)
 		return -ENODEV;
 
-	if (retpoline_only_enabled()) {
+	if (retpoline_enabled()) {
 		pr_warn("retpoline is enabled. Ignoring request to change ibrs state.\n");
 		return -EINVAL;
 	}
@@ -69,23 +60,11 @@ static ssize_t ibrs_enabled_write(struct file *file,
 	if (enable > 1)
                 return -EINVAL;
 
-	if (!!enable != !!ibrs_disabled)
-		return count;
+	if (enable)
+		change_spectre_v2_mitigation(SPECTRE_V2_ENABLE_IBRS);
+	else
+		change_spectre_v2_mitigation(SPECTRE_V2_DISABLE_IBRS);
 
-	mutex_lock(&spec_ctrl_mutex);
-
-	if (!enable) {
-		set_ibrs_disabled();
-		disable_ibrs_firmware();
-		if (use_ibrs & SPEC_CTRL_IBRS_SUPPORTED)
-			spec_ctrl_flush_all_cpus(MSR_IA32_SPEC_CTRL, x86_spec_ctrl_base);
-	} else {
-		clear_ibrs_disabled();
-		set_ibrs_firmware();
-	}
-	refresh_set_spectre_v2_enabled();
-
-	mutex_unlock(&spec_ctrl_mutex);
 	return count;
 }
 
@@ -216,7 +195,7 @@ late_initcall(debugfs_spec_ctrl);
 void unprotected_firmware_begin(void)
 {
 
-	if (retpoline_only_enabled() && ibrs_firmware) {
+	if (retpoline_enabled() && ibrs_firmware) {
 		u64 val = x86_spec_ctrl_base | SPEC_CTRL_FEATURE_ENABLE_IBRS;
 
 		native_wrmsrl(MSR_IA32_SPEC_CTRL, val);
@@ -233,7 +212,7 @@ EXPORT_SYMBOL_GPL(unprotected_firmware_begin);
 void unprotected_firmware_end(void)
 {
 
-	if (retpoline_only_enabled() && ibrs_firmware) {
+	if (retpoline_enabled() && ibrs_firmware) {
 		u64 val = x86_spec_ctrl_base;
 
 		native_wrmsrl(MSR_IA32_SPEC_CTRL, val);

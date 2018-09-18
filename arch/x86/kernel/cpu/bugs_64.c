@@ -63,8 +63,14 @@ int retpoline_fallback = SPEC_CTRL_USE_RETPOLINE_FALLBACK;
 EXPORT_SYMBOL(retpoline_fallback);
 
 
+/*
+ * Retpoline variables.
+ */
+static enum spectre_v2_mitigation retpoline_mode = SPECTRE_V2_NONE;
 DEFINE_STATIC_KEY_FALSE(retpoline_enabled_key);
 EXPORT_SYMBOL(retpoline_enabled_key);
+
+static bool __init is_skylake_era(void);
 
 int __init spectre_v2_heuristics_setup(char *p)
 {
@@ -373,74 +379,211 @@ static void x86_amd_ssbd_enable(void)
 }
 
 /*
- * Disable retpoline and attempt to fall back to another Spectre v2 mitigation.
- * If possible, fall back to IBRS and IBPB.
- * Failing that, indicate that we have no Spectre v2 mitigation.
- *
- * Checks that spec_ctrl_mutex is held.
+ * Attempt to fall back to another Spectre v2 mitigation (IBRS and IBPB).
+ * Failing that, we keep retpoline enabled but the system will be
+ * reported as vulnerable.
  */
-void disable_retpoline(void)
+void find_retpoline_alternative(void)
 {
-	BUG_ON(!mutex_is_locked(&spec_ctrl_mutex));
-
-	if (!retpoline_only_enabled())
+	if (!retpoline_enabled())
 		return;
 
 	if (allow_retpoline_fallback) {
 		if (!ibrs_inuse) {
 			/* try to enable ibrs */
-			if (set_ibrs_inuse()) {
-				pr_err("Spectre v2 mitigation set to IBRS and retpoline.\n");
+			if (ibrs_supported) {
+				change_spectre_v2_mitigation(SPECTRE_V2_ENABLE_IBRS);
+				pr_notice("Spectre v2 mitigation set to IBRS.\n");
 				if (!ibpb_inuse && set_ibpb_inuse()) {
-					pr_err("Spectre v2 mitigation IBPB enabled.\n");
+					pr_notice("Spectre v2 mitigation IBPB enabled.\n");
 				}
 			} else {
 				pr_err("Could not enable IBRS.\n");
 				pr_err("No Spectre v2 mitigation to fall back to.\n");
-				spectre_v2_enabled = SPECTRE_V2_NONE;
+				refresh_set_spectre_v2_enabled();
 			}
 		}
 	} else {
 		pr_err("Cannot choose another Spectre v2 mitigation because retpoline_fallback is off.\n");
-		spectre_v2_enabled = SPECTRE_V2_NONE;
+		refresh_set_spectre_v2_enabled();
 	}
-
-	if (spectre_v2_enabled == SPECTRE_V2_NONE)
-		pr_err("system may be vulnerable to spectre\n");
 }
 
-static bool retpoline_enabled(void)
+static inline bool retp_compiler(void)
 {
-	switch (spectre_v2_enabled) {
-	case SPECTRE_V2_RETPOLINE_MINIMAL:
-	case SPECTRE_V2_RETPOLINE_MINIMAL_AMD:
-	case SPECTRE_V2_RETPOLINE_GENERIC:
-	case SPECTRE_V2_RETPOLINE_AMD:
-		return true;
-	default:
+	return __is_defined(RETPOLINE);
+}
+
+bool retpoline_enabled(void)
+{
+	return static_key_enabled(&retpoline_enabled_key);
+}
+
+void retpoline_enable(void)
+{
+	static_branch_enable(&retpoline_enabled_key);
+}
+
+void retpoline_disable(void)
+{
+	static_branch_disable(&retpoline_enabled_key);
+}
+
+static void retpoline_init(void)
+{
+	/*
+	 * Set the retpoline capability to advertise that that retpoline
+	 * is available, however the retpoline feature is enabled via
+	 * the retpoline_enabled_key static key.
+	 *
+	 * By default, we don't provide retpoline on Skylake. However,
+	 * the feature will be provided if it is selected from the boot
+	 * sequence.
+	 */
+	if (!is_skylake_era())
+		setup_force_cpu_cap(X86_FEATURE_RETPOLINE);
+
+	if (boot_cpu_data.x86_vendor == X86_VENDOR_AMD) {
+		if (!boot_cpu_has(X86_FEATURE_LFENCE_RDTSC))
+			pr_err("Spectre mitigation: LFENCE not serializing, setting up generic retpoline\n");
+		else
+			setup_force_cpu_cap(X86_FEATURE_RETPOLINE_AMD);
+	}
+
+	if (boot_cpu_data.x86_vendor == X86_VENDOR_AMD &&
+	    boot_cpu_has(X86_FEATURE_LFENCE_RDTSC)) {
+		retpoline_mode = retp_compiler() ?
+			SPECTRE_V2_RETPOLINE_AMD :
+			SPECTRE_V2_RETPOLINE_MINIMAL_AMD;
+	} else {
+		retpoline_mode = retp_compiler() ?
+			SPECTRE_V2_RETPOLINE_GENERIC :
+			SPECTRE_V2_RETPOLINE_MINIMAL;
+	}
+}
+
+static void spec_ctrl_flush_all_cpus(u32 msr_nr, u64 val)
+{
+	int cpu;
+
+	get_online_cpus();
+	for_each_online_cpu(cpu)
+		wrmsrl_on_cpu(cpu, msr_nr, val);
+	put_online_cpus();
+}
+
+void change_spectre_v2_mitigation(enum spectre_v2_mitigation_action action)
+{
+	bool ibrs_requested, ibrs_fw_requested, retpoline_requested;
+	bool ibrs_used, ibrs_fw_used, retpoline_used;
+	int changes = 0;
+
+	mutex_lock(&spec_ctrl_mutex);
+
+	/*
+	 * Define the current state.
+	 *
+	 * IBRS firmware is enabled if either IBRS or retpoline is enabled.
+	 * If both IBRS and retpoline are disabled, then IBRS firmware is
+	 * disabled too.
+	 */
+
+	ibrs_used = !ibrs_disabled;
+	retpoline_used = !!retpoline_enabled();
+	ibrs_fw_used = (ibrs_used || retpoline_used);
+
+	/*
+	 * Define the requested state.
+	 *
+	 * Enabling IBRS will disable retpoline, and respectively enabling
+	 * retpoline will disable IBRS. On the other hand, disabling a
+	 * mitigation won't impact other mitigations.
+	 *
+	 */
+
+	ibrs_requested = ibrs_used;
+	retpoline_requested = retpoline_used;
+	ibrs_fw_requested = ibrs_fw_used;
+
+	switch (action) {
+
+	case SPECTRE_V2_ENABLE_IBRS:
+		ibrs_requested = true;
+		ibrs_fw_requested = true;
+		retpoline_requested = false;
+		break;
+
+	case SPECTRE_V2_DISABLE_IBRS:
+		ibrs_requested = false;
+		ibrs_fw_requested = retpoline_used;
+		retpoline_requested = retpoline_used;
+		break;
+
+	case SPECTRE_V2_ENABLE_RETPOLINE:
+		ibrs_requested = false;
+		ibrs_fw_requested = true;
+		retpoline_requested = true;
+		break;
+
+	case SPECTRE_V2_DISABLE_RETPOLINE:
+		ibrs_requested = ibrs_used;
+		ibrs_fw_requested = ibrs_used;
+		retpoline_requested = false;
 		break;
 	}
 
-	return false;
-}
+	/* Switch to the requested mitigation state. */
 
-bool retpoline_only_enabled(void)
-{
-	return (retpoline_enabled() && !ibrs_inuse);
-}
-
-int refresh_set_spectre_v2_enabled(void)
-{
-	if (retpoline_enabled())
-		return false;
-
-	if (check_ibrs_inuse())
-		spectre_v2_enabled = SPECTRE_V2_IBRS;
-	else {
-		spectre_v2_enabled = SPECTRE_V2_NONE;
+	if (ibrs_requested != ibrs_used) {
+		if (ibrs_requested) {
+			clear_ibrs_disabled();
+		} else {
+			set_ibrs_disabled();
+			if (use_ibrs & SPEC_CTRL_IBRS_SUPPORTED) {
+				spec_ctrl_flush_all_cpus(MSR_IA32_SPEC_CTRL,
+							 x86_spec_ctrl_base);
+			}
+		}
+		changes++;
 	}
 
-	return true;
+	if (retpoline_requested != retpoline_used) {
+		if (retpoline_requested)
+			retpoline_enable();
+		else
+			retpoline_disable();
+		changes++;
+	}
+
+	if (ibrs_fw_requested != ibrs_fw_used) {
+		if (ibrs_fw_requested)
+			set_ibrs_firmware();
+		else
+			disable_ibrs_firmware();
+		changes++;
+	}
+
+	if (changes > 0)
+		refresh_set_spectre_v2_enabled();
+
+	mutex_unlock(&spec_ctrl_mutex);
+}
+
+void refresh_set_spectre_v2_enabled(void)
+{
+	if (retpoline_enabled()) {
+		/*
+		 * If retpoline is enabled and a non-retpoline module is
+		 * loaded then set spectre_v2_enabled to SPECTRE_V2_NONE
+		 * to indicate that the system is vulnerable.
+		 */
+		spectre_v2_enabled = test_taint(TAINT_NO_RETPOLINE) ?
+			SPECTRE_V2_NONE : retpoline_mode;
+	} else if (check_ibrs_inuse()) {
+		spectre_v2_enabled = SPECTRE_V2_IBRS;
+	} else {
+		spectre_v2_enabled = SPECTRE_V2_NONE;
+	}
 }
 
 static void __init spec2_print_if_insecure(const char *reason)
@@ -453,11 +596,6 @@ static void __init spec2_print_if_secure(const char *reason)
 {
 	if (!boot_cpu_has_bug(X86_BUG_SPECTRE_V2))
 		pr_info("%s\n", reason);
-}
-
-static inline bool retp_compiler(void)
-{
-	return __is_defined(RETPOLINE);
 }
 
 static inline bool match_option(const char *arg, int arglen, const char *opt)
@@ -576,75 +714,35 @@ static void __init spectre_v2_select_mitigation(void)
 	enum spectre_v2_mitigation_cmd cmd = spectre_v2_parse_cmdline();
 	enum spectre_v2_mitigation mode = SPECTRE_V2_NONE;
 
+	if (IS_ENABLED(CONFIG_RETPOLINE))
+		retpoline_init();
+
 	/*
-	 * If the CPU is not affected and the command line mode is NONE or AUTO
-	 * then nothing to do.
+	 * If the command line mode is NONE, or if the CPU is not affected
+	 * and the command line mode is AUTO, then nothing to do.
 	 */
-	if (!boot_cpu_has_bug(X86_BUG_SPECTRE_V2) &&
-	    (cmd == SPECTRE_V2_CMD_NONE || cmd == SPECTRE_V2_CMD_AUTO)) {
+	if (cmd == SPECTRE_V2_CMD_NONE ||
+	    (!boot_cpu_has_bug(X86_BUG_SPECTRE_V2) &&
+	     cmd == SPECTRE_V2_CMD_AUTO)) {
 		disable_ibrs_and_friends(true);
 		return;
 	}
 
-	/*
-	 * Set the retpoline capability to advertise that that retpoline
-	 * is available, however the retpoline feature is enabled via
-	 * the retpoline_enabled_key static key.
-	 */
-	if (IS_ENABLED(CONFIG_RETPOLINE)) {
-		setup_force_cpu_cap(X86_FEATURE_RETPOLINE);
-		if (boot_cpu_data.x86_vendor == X86_VENDOR_AMD) {
-			if (!boot_cpu_has(X86_FEATURE_LFENCE_RDTSC))
-				pr_err("Spectre mitigation: LFENCE not serializing, setting up generic retpoline\n");
-			else
-				setup_force_cpu_cap(X86_FEATURE_RETPOLINE_AMD);
+	if (cmd == SPECTRE_V2_CMD_IBRS || !IS_ENABLED(CONFIG_RETPOLINE)) {
+		ibrs_select(&mode);
+		if (mode != SPECTRE_V2_NONE)
+			goto display;
+		if (!IS_ENABLED(CONFIG_RETPOLINE)) {
+			pr_err("Spectre mitigation: kernel not compiled with retpoline; no mitigation available!");
+			goto out;
 		}
 	}
 
-	switch (cmd) {
-	case SPECTRE_V2_CMD_NONE:
-		disable_ibrs_and_friends(true);
-		return;
+	mode = retpoline_mode;
 
-	case SPECTRE_V2_CMD_FORCE:
-		/* FALLTRHU */
-	case SPECTRE_V2_CMD_AUTO:
-		goto retpoline_auto;
-
-	case SPECTRE_V2_CMD_RETPOLINE_AMD:
-		if (IS_ENABLED(CONFIG_RETPOLINE))
-			goto retpoline_amd;
-		break;
-	case SPECTRE_V2_CMD_RETPOLINE_GENERIC:
-		if (IS_ENABLED(CONFIG_RETPOLINE))
-			goto retpoline_generic;
-		break;
-	case SPECTRE_V2_CMD_RETPOLINE:
-		if (IS_ENABLED(CONFIG_RETPOLINE))
-			goto retpoline_auto;
-		break;
-	case SPECTRE_V2_CMD_IBRS:
-		ibrs_select(&mode);
-		if (mode == SPECTRE_V2_NONE)
-			goto retpoline_auto;
-
-		goto display;
-		break; /* Not needed but compilers may complain otherwise. */
-	}
-	pr_err("kernel not compiled with retpoline; retpoline mitigation not available");
-	goto out;
-
-retpoline_auto:
-	if (boot_cpu_data.x86_vendor == X86_VENDOR_AMD &&
-	    boot_cpu_has(X86_FEATURE_LFENCE_RDTSC)) {
-	retpoline_amd:
-		mode = retp_compiler() ? SPECTRE_V2_RETPOLINE_AMD :
-					 SPECTRE_V2_RETPOLINE_MINIMAL_AMD;
-		/* On AMD we do not need IBRS, so lets use the ASM mitigation. */
-	} else {
-	retpoline_generic:
-		mode = retp_compiler() ? SPECTRE_V2_RETPOLINE_GENERIC :
-					 SPECTRE_V2_RETPOLINE_MINIMAL;
+	/* On AMD we don't need IBRS, so lets use the ASM mitigation. */
+	if (mode != SPECTRE_V2_RETPOLINE_AMD ||
+	    mode != SPECTRE_V2_RETPOLINE_MINIMAL_AMD) {
 
 		pr_info("Options: %s%s%s\n",
 			ibrs_supported ? "IBRS " : "",
@@ -670,8 +768,17 @@ retpoline_auto:
 			}
 		}
 	}
-	/* Enable retpoline */
-	static_branch_enable(&retpoline_enabled_key);
+
+	/*
+	 * We are enabling retpoline so advertise the retpoline feature.
+	 * This only needs to be done for Skylake because the feature
+	 * is already provided on other platforms.
+	 */
+	if (is_skylake_era())
+		setup_force_cpu_cap(X86_FEATURE_RETPOLINE);
+
+	retpoline_enable();
+
 display:
 	spectre_v2_enabled = mode;
 	pr_info("%s\n", spectre_v2_strings[mode]);
@@ -1137,8 +1244,7 @@ static ssize_t cpu_show_common(struct device *dev, struct device_attribute *attr
 		return sprintf(buf, "Mitigation: lfence\n");
 
 	case X86_BUG_SPECTRE_V2:
-		return sprintf(buf, "%s%s%s%s\n", spectre_v2_strings[spectre_v2_enabled],
-			       (check_ibrs_inuse() && retpoline_enabled()) ? ", IBRS" : "",
+		return sprintf(buf, "%s%s%s\n", spectre_v2_strings[spectre_v2_enabled],
 			       ibrs_firmware ? ", IBRS_FW" : "",
 			       ibpb_inuse ? ", IBPB" : "");
 

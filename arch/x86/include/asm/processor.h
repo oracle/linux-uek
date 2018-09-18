@@ -995,9 +995,18 @@ bool xen_set_default_idle(void);
 void stop_this_cpu(void *dummy);
 void df_debug(struct pt_regs *regs, long error_code);
 
-void disable_retpoline(void);
-bool retpoline_only_enabled(void);
-int refresh_set_spectre_v2_enabled(void);
+enum spectre_v2_mitigation_action {
+	SPECTRE_V2_DISABLE_IBRS,
+	SPECTRE_V2_ENABLE_IBRS,
+	SPECTRE_V2_DISABLE_RETPOLINE,
+	SPECTRE_V2_ENABLE_RETPOLINE
+};
+
+void retpoline_disable(void);
+bool retpoline_enabled(void);
+void find_retpoline_alternative(void);
+void change_spectre_v2_mitigation(enum spectre_v2_mitigation_action);
+void refresh_set_spectre_v2_enabled(void);
 
 enum l1tf_mitigations {
 	L1TF_MITIGATION_OFF,
