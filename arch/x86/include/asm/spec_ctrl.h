@@ -337,7 +337,7 @@ static inline void clear_ibrs_disabled(void)
 
 static inline void set_ibrs_firmware(void)
 {
-	if (ibrs_supported && !ibrs_disabled)
+	if (ibrs_supported)
 		use_ibrs |= SPEC_CTRL_IBRS_FIRMWARE;
 }
 
