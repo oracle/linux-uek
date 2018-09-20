@@ -683,8 +683,10 @@ static void rvu_dbg_cgx_init(struct rvu *rvu)
 
 	rvu->rvu_dbg.cgx_root = debugfs_create_dir("cgx", rvu->rvu_dbg.root);
 
-	for (i = 0; i < cgx_get_cgx_cnt(); i++) {
-		cgx = cgx_get_pdata(i);
+	for (i = 0; i < cgx_get_cgxcnt_max(); i++) {
+		cgx = rvu_cgx_pdata(i, rvu);
+		if (!cgx)
+			continue;
 		/* cgx debugfs dir */
 		sprintf(dname, "cgx%d", i);
 		rvu->rvu_dbg.cgx = debugfs_create_dir(dname,
