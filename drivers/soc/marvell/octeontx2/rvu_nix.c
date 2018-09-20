@@ -1014,7 +1014,7 @@ rvu_get_tl1_schqs(struct rvu *rvu,
 		schq_base = (cgx_id * MAX_LMAC_PER_CGX + lmac_id) * 2;
 		break;
 	case NIX_INTF_TYPE_LBK:
-		schq_base = rvu->cgx_cnt * MAX_LMAC_PER_CGX * 2;
+		schq_base = rvu->cgx_cnt_max * MAX_LMAC_PER_CGX * 2;
 		break;
 	default:
 		return -ENODEV;
@@ -2416,8 +2416,10 @@ static int nix_calibrate_x2p(struct rvu *rvu, int blkaddr)
 
 	status = rvu_read64(rvu, blkaddr, NIX_AF_STATUS);
 	/* Check if CGX devices are ready */
-	for (idx = 0; idx < cgx_get_cgx_cnt(); idx++) {
-		if (status & (BIT_ULL(16 + idx)))
+	for (idx = 0; idx < rvu->cgx_cnt_max; idx++) {
+		/* Skip when cgx port is not available */
+		if (!rvu_cgx_pdata(idx, rvu) ||
+		    (status & (BIT_ULL(16 + idx))))
 			continue;
 		dev_err(rvu->dev,
 			"CGX%d didn't respond to NIX X2P calibration\n", idx);
