@@ -1097,6 +1097,10 @@ static void ib_uverbs_add_one(struct ib_device *device)
 	struct ib_uverbs_device *uverbs_dev;
 	int ret;
 
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	device->relaxed_pd = NULL;
+#endif
+
 	if (!device->alloc_ucontext)
 		return;
 
@@ -1174,7 +1178,6 @@ static void ib_uverbs_add_one(struct ib_device *device)
 
 #ifndef WITHOUT_ORACLE_EXTENSIONS
 
-	device->relaxed_pd = NULL;
 	/*
 	 * Allocate pd if not a usnic device node
 	 * (For usnic devices we do lazy allocation of pd)
