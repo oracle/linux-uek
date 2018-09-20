@@ -411,8 +411,9 @@ struct pci_dev {
 	unsigned int	io_window_1k:1;	/* Intel P2P bridge 1K I/O windows */
 	unsigned int	irq_managed:1;
 	unsigned int	has_secondary_link:1;
-	unsigned int	non_compliant_bars:1;	/* broken BARs; ignore them */
-	unsigned int	is_probed:1;		/* device probing in progress */
+	unsigned int	non_compliant_bars:1;	/* Broken BARs; ignore them */
+	unsigned int	is_probed:1;		/* Device probing in progress */
+	unsigned int	link_active_reporting:1;/* Device capable of reporting link active */
 	pci_dev_flags_t dev_flags;
 	atomic_t	enable_cnt;	/* pci_enable_device has been called */
 
