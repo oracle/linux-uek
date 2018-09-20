@@ -404,8 +404,8 @@ void pci_enable_acs(struct pci_dev *dev);
 int pci_std_enable_acs_sv(struct pci_dev *dev, bool enable);
 
 /* PCI error reporting and recovery */
-void pcie_do_fatal_recovery(struct pci_dev *dev, u32 service);
-void pcie_do_nonfatal_recovery(struct pci_dev *dev);
+void pcie_do_recovery(struct pci_dev *dev, enum pci_channel_state state,
+		      u32 service);
 
 bool pcie_wait_for_link(struct pci_dev *pdev, bool active);
 #ifdef CONFIG_PCIEASPM
