@@ -1082,7 +1082,7 @@ static int __dev_alloc_name(struct net *net, const char *name, char *buf)
 
 		if (ifnames_skip) {
 			int j; 
-			for (j = 0; j < ifnames_skip; j++) 
+			for (j = 0; j < ifnames_skip && j < max_netdevices; j++)
 				set_bit(j, inuse); 
 		}
 
