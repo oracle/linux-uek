@@ -1582,7 +1582,7 @@ end:
 		mdev->msgs_acked++;
 	}
 
-	otx2_mbox_reset(mbox, 0);
+	otx2_mbox_reset(mbox, devid);
 }
 
 static inline void rvu_afpf_mbox_up_handler(struct work_struct *work)
