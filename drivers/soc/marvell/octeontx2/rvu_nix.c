@@ -2598,9 +2598,6 @@ void rvu_nix_lf_teardown(struct rvu *rvu, u16 pcifunc, int blkaddr, int nixlf)
 
 	ctx_req.hdr.pcifunc = pcifunc;
 	req.hdr.pcifunc = pcifunc;
-	/* Stop packet Rx/Tx */
-	req.hdr.id = MBOX_MSG_CGX_STOP_RXTX;
-	rvu_cgx_config_rxtx(rvu, pcifunc, false);
 
 	/* Cleanup NPC MCAM entries, free Tx scheduler queues being used */
 	nix_interface_deinit(rvu, pcifunc, nixlf);
