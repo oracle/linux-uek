@@ -676,17 +676,19 @@ int otx2_config_nix(struct otx2_nic *pfvf)
 
 void otx2_free_aura_ptr(struct otx2_nic *pfvf, int type)
 {
-	int pool_id, pool_start = 0, pool_end = 0;
+	int pool_id, pool_start = 0, pool_end = 0, size = 0;
 	struct otx2_pool *pool;
 	u64 iova, pa;
 
 	if (type == NIX_AQ_CTYPE_SQ) {
 		pool_start = pfvf->hw.rx_queues;
 		pool_end = pfvf->hw.pool_cnt;
+		size = pfvf->hw.sqb_size;
 	}
 	if (type == NIX_AQ_CTYPE_RQ) {
 		pool_start = 0;
 		pool_end = pfvf->hw.rqpool_cnt;
+		size = RCV_FRAG_LEN;
 	}
 
 	/* Free SQB and RQB pointers from the aura pool */
@@ -695,7 +697,7 @@ void otx2_free_aura_ptr(struct otx2_nic *pfvf, int type)
 		iova = otx2_aura_allocptr(pfvf, pool_id);
 		while (iova) {
 			pa = otx2_iova_to_phys(pfvf->iommu_domain, iova);
-			dma_unmap_page_attrs(pfvf->dev, iova, RCV_FRAG_LEN,
+			dma_unmap_page_attrs(pfvf->dev, iova, size,
 					     DMA_FROM_DEVICE,
 					     DMA_ATTR_SKIP_CPU_SYNC);
 			put_page(virt_to_page(phys_to_virt(pa)));
