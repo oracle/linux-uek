@@ -696,6 +696,9 @@ void otx2_free_aura_ptr(struct otx2_nic *pfvf, int type)
 		pool = &pfvf->qset.pool[pool_id];
 		iova = otx2_aura_allocptr(pfvf, pool_id);
 		while (iova) {
+			if (type == NIX_AQ_CTYPE_RQ)
+				iova -= NET_SKB_PAD;
+
 			pa = otx2_iova_to_phys(pfvf->iommu_domain, iova);
 			dma_unmap_page_attrs(pfvf->dev, iova, size,
 					     DMA_FROM_DEVICE,
@@ -920,7 +923,7 @@ int otx2_rq_aura_pool_init(struct otx2_nic *pfvf)
 			bufptr = otx2_alloc_rbuf(pfvf, pool);
 			if (bufptr <= 0)
 				return bufptr;
-			otx2_aura_freeptr(pfvf, pool_id, bufptr);
+			otx2_aura_freeptr(pfvf, pool_id, bufptr + NET_SKB_PAD);
 		}
 		otx2_get_page(pool);
 	}

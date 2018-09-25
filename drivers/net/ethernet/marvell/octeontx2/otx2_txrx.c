@@ -145,6 +145,7 @@ static void otx2_skb_add_frag(struct otx2_nic *pfvf,
 	struct page *page;
 	void *va;
 
+	iova -= NET_SKB_PAD;
 	va = phys_to_virt(otx2_iova_to_phys(pfvf->iommu_domain, iova));
 	page = virt_to_page(va);
 	skb_add_rx_frag(skb, skb_shinfo(skb)->nr_frags, page,
@@ -160,6 +161,7 @@ otx2_get_rcv_skb(struct otx2_nic *pfvf, u64 iova, int len, int apad)
 	struct sk_buff *skb;
 	void *va;
 
+	iova -= NET_SKB_PAD;
 	va = phys_to_virt(otx2_iova_to_phys(pfvf->iommu_domain, iova));
 	skb = build_skb(va, RCV_FRAG_LEN);
 	if (!skb) {
@@ -167,7 +169,7 @@ otx2_get_rcv_skb(struct otx2_nic *pfvf, u64 iova, int len, int apad)
 		return NULL;
 	}
 
-	skb_reserve(skb, apad);
+	skb_reserve(skb, apad + NET_SKB_PAD);
 	skb_put(skb, len);
 
 	dma_unmap_page_attrs(pfvf->dev, iova - apad, RCV_FRAG_LEN,
@@ -332,7 +334,7 @@ int otx2_napi_handler(struct otx2_cq_queue *cq,
 		bufptr = otx2_alloc_rbuf(pfvf, rbpool);
 		if (bufptr <= 0)
 			break;
-		otx2_aura_freeptr(pfvf, cq->cq_idx, bufptr);
+		otx2_aura_freeptr(pfvf, cq->cq_idx, bufptr + NET_SKB_PAD);
 		pool_ptrs--;
 	}
 	otx2_get_page(rbpool);
