@@ -39,6 +39,9 @@
 #define MCI_STATUS_PCC   (1ULL<<57)  /* processor context corrupt */
 #define MCI_STATUS_S	 (1ULL<<56)  /* Signaled machine check */
 #define MCI_STATUS_AR	 (1ULL<<55)  /* Action required */
+#define MCI_STATUS_CEC_SHIFT   38           /* Corrected Error Count */
+#define MCI_STATUS_CEC_MASK    GENMASK_ULL(52,38)
+#define MCI_STATUS_CEC(c)      (((c) & MCI_STATUS_CEC_MASK) >> MCI_STATUS_CEC_SHIFT)
 
 /* AMD-specific bits */
 #define MCI_STATUS_TCC		(1ULL<<55)  /* Task context corrupt */
