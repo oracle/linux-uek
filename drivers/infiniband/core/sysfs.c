@@ -1396,9 +1396,6 @@ int ib_device_register_sysfs(struct ib_device *device,
 	int ret;
 	int i;
 
-	ret = dev_set_name(class_dev, "%s", device->name);
-	if (ret)
-		return ret;
 
 	ret = device_add(class_dev);
 	if (ret)

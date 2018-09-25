@@ -1193,7 +1193,6 @@ int rxe_register_device(struct rxe_dev *rxe)
 	int i;
 	struct ib_device *dev = &rxe->ib_dev;
 
-	strlcpy(dev->name, "rxe%d", IB_DEVICE_NAME_MAX);
 	strlcpy(dev->node_desc, "rxe", sizeof(dev->node_desc));
 
 	dev->owner = THIS_MODULE;
@@ -1296,7 +1295,7 @@ int rxe_register_device(struct rxe_dev *rxe)
 		return PTR_ERR(rxe->tfm);
 	}
 	dev->driver_id = RDMA_DRIVER_RXE;
-	err = ib_register_device(dev, NULL);
+	err = ib_register_device(dev, "rxe%d", NULL);
 	if (err) {
 		pr_warn("%s failed with error %d\n", __func__, err);
 		goto err1;

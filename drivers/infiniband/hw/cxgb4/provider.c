@@ -537,7 +537,6 @@ int c4iw_register_device(struct c4iw_dev *dev)
 
 	pr_debug("%s c4iw_dev %p\n", __func__, dev);
 	BUG_ON(!dev->rdev.lldi.ports[0]);
-	strlcpy(dev->ibdev.name, "cxgb4_%d", IB_DEVICE_NAME_MAX);
 	memset(&dev->ibdev.node_guid, 0, sizeof(dev->ibdev.node_guid));
 	memcpy(&dev->ibdev.node_guid, dev->rdev.lldi.ports[0]->dev_addr, 6);
 	dev->ibdev.owner = THIS_MODULE;
@@ -624,7 +623,7 @@ int c4iw_register_device(struct c4iw_dev *dev)
 	       sizeof(dev->ibdev.iwcm->ifname));
 
 	dev->ibdev.driver_id = RDMA_DRIVER_CXGB4;
-	ret = ib_register_device(&dev->ibdev, NULL);
+	ret = ib_register_device(&dev->ibdev, "cxgb4_%d", NULL);
 	if (ret)
 		goto bail1;
 
