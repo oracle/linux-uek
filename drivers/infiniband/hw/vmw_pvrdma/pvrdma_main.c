@@ -170,7 +170,6 @@ static int pvrdma_register_device(struct pvrdma_dev *dev)
 	int ret = -1;
 	int i = 0;
 
-	strlcpy(dev->ib_dev.name, "vmw_pvrdma%d", IB_DEVICE_NAME_MAX);
 	dev->ib_dev.node_guid = dev->dsr->caps.node_guid;
 	dev->sys_image_guid = dev->dsr->caps.sys_image_guid;
 	dev->flags = 0;
@@ -254,7 +253,7 @@ static int pvrdma_register_device(struct pvrdma_dev *dev)
 		goto err_cq_free;
 	spin_lock_init(&dev->qp_tbl_lock);
 
-	ret = ib_register_device(&dev->ib_dev, NULL);
+	ret = ib_register_device(&dev->ib_dev, "vmw_pvrdma%d", NULL);
 	if (ret)
 		goto err_qp_free;
 	dev->ib_dev.driver_id = RDMA_DRIVER_VMW_PVRDMA;

@@ -4541,12 +4541,6 @@ static void *mlx5_ib_add(struct mlx5_core_dev *mdev)
 	if (mlx5_use_mad_ifc(dev))
 		get_ext_port_caps(dev);
 
-	if (!mlx5_lag_is_active(mdev))
-		name = "mlx5_%d";
-	else
-		name = "mlx5_bond_%d";
-
-	strlcpy(dev->ib_dev.name, name, IB_DEVICE_NAME_MAX);
 	dev->ib_dev.owner		= THIS_MODULE;
 	dev->ib_dev.node_type		= RDMA_NODE_IB_CA;
 	dev->ib_dev.local_dma_lkey	= 0 /* not supported for now */;
@@ -4761,7 +4755,12 @@ static void *mlx5_ib_add(struct mlx5_core_dev *mdev)
 	if (err)
 		goto err_bfreg;
 
-	err = ib_register_device(&dev->ib_dev, NULL);
+        if (!mlx5_lag_is_active(dev->mdev))
+                name = "mlx5_%d";
+        else
+                name = "mlx5_bond_%d";
+ 
+        err = ib_register_device(&dev->ib_dev, name, NULL);
 	if (err)
 		goto err_fp_bfreg;
 
