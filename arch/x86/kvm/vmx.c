@@ -2810,8 +2810,6 @@ static bool update_transition_efer(struct vcpu_vmx *vmx, int efer_offset)
 		ignore_bits &= ~(u64)EFER_SCE;
 #endif
 
-	clear_atomic_switch_msr(vmx, MSR_EFER);
-
 	/*
 	 * On EPT, we can't emulate NX, so we must switch EFER atomically.
 	 * On CPUs that support "load IA32_EFER", always switch EFER
@@ -2824,8 +2822,12 @@ static bool update_transition_efer(struct vcpu_vmx *vmx, int efer_offset)
 		if (guest_efer != host_efer)
 			add_atomic_switch_msr(vmx, MSR_EFER,
 					      guest_efer, host_efer, false);
+		else
+			clear_atomic_switch_msr(vmx, MSR_EFER);
 		return false;
 	} else {
+		clear_atomic_switch_msr(vmx, MSR_EFER);
+
 		guest_efer &= ~ignore_bits;
 		guest_efer |= host_efer & ignore_bits;
 
