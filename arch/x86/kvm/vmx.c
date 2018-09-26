@@ -8094,35 +8094,37 @@ static int handle_monitor(struct kvm_vcpu *vcpu)
 
 /*
  * The following 3 functions, nested_vmx_succeed()/failValid()/failInvalid(),
- * set the success or error code of an emulated VMX instruction, as specified
- * by Vol 2B, VMX Instruction Reference, "Conventions".
+ * set the success or error code of an emulated VMX instruction (as specified
+ * by Vol 2B, VMX Instruction Reference, "Conventions"), and skip the emulated
+ * instruction.
  */
-static void nested_vmx_succeed(struct kvm_vcpu *vcpu)
+static int nested_vmx_succeed(struct kvm_vcpu *vcpu)
 {
 	vmx_set_rflags(vcpu, vmx_get_rflags(vcpu)
 			& ~(X86_EFLAGS_CF | X86_EFLAGS_PF | X86_EFLAGS_AF |
 			    X86_EFLAGS_ZF | X86_EFLAGS_SF | X86_EFLAGS_OF));
+	return kvm_skip_emulated_instruction(vcpu);
 }
 
-static void nested_vmx_failInvalid(struct kvm_vcpu *vcpu)
+static int nested_vmx_failInvalid(struct kvm_vcpu *vcpu)
 {
 	vmx_set_rflags(vcpu, (vmx_get_rflags(vcpu)
 			& ~(X86_EFLAGS_PF | X86_EFLAGS_AF | X86_EFLAGS_ZF |
 			    X86_EFLAGS_SF | X86_EFLAGS_OF))
 			| X86_EFLAGS_CF);
+	return kvm_skip_emulated_instruction(vcpu);
 }
 
-static void nested_vmx_failValid(struct kvm_vcpu *vcpu,
-					u32 vm_instruction_error)
+static int nested_vmx_failValid(struct kvm_vcpu *vcpu,
+				u32 vm_instruction_error)
 {
-	if (to_vmx(vcpu)->nested.current_vmptr == -1ull) {
-		/*
-		 * failValid writes the error number to the current VMCS, which
-		 * can't be done there isn't a current VMCS.
-		 */
-		nested_vmx_failInvalid(vcpu);
-		return;
-	}
+	/*
+	 * failValid writes the error number to the current VMCS, which
+	 * can't be done if there isn't a current VMCS.
+	 */
+	if (to_vmx(vcpu)->nested.current_vmptr == -1ull)
+		return nested_vmx_failInvalid(vcpu);
+
 	vmx_set_rflags(vcpu, (vmx_get_rflags(vcpu)
 			& ~(X86_EFLAGS_CF | X86_EFLAGS_PF | X86_EFLAGS_AF |
 			    X86_EFLAGS_SF | X86_EFLAGS_OF))
@@ -8132,6 +8134,7 @@ static void nested_vmx_failValid(struct kvm_vcpu *vcpu,
 	 * We don't need to force a shadow sync because
 	 * VM_INSTRUCTION_ERROR is not shadowed
 	 */
+	return kvm_skip_emulated_instruction(vcpu);
 }
 
 static void nested_vmx_abort(struct kvm_vcpu *vcpu, u32 indicator)
@@ -8373,10 +8376,9 @@ static int handle_vmon(struct kvm_vcpu *vcpu)
 		return 1;
 	}
 
-	if (vmx->nested.vmxon) {
-		nested_vmx_failValid(vcpu, VMXERR_VMXON_IN_VMX_ROOT_OPERATION);
-		return kvm_skip_emulated_instruction(vcpu);
-	}
+	if (vmx->nested.vmxon)
+		return nested_vmx_failValid(vcpu,
+			VMXERR_VMXON_IN_VMX_ROOT_OPERATION);
 
 	if ((vmx->msr_ia32_feature_control & VMXON_NEEDED_FEATURES)
 			!= VMXON_NEEDED_FEATURES) {
@@ -8395,21 +8397,17 @@ static int handle_vmon(struct kvm_vcpu *vcpu)
 	 * Note - IA32_VMX_BASIC[48] will never be 1 for the nested case;
 	 * which replaces physical address width with 32
 	 */
-	if (!PAGE_ALIGNED(vmptr) || (vmptr >> cpuid_maxphyaddr(vcpu))) {
-		nested_vmx_failInvalid(vcpu);
-		return kvm_skip_emulated_instruction(vcpu);
-	}
+	if (!PAGE_ALIGNED(vmptr) || (vmptr >> cpuid_maxphyaddr(vcpu)))
+		return nested_vmx_failInvalid(vcpu);
 
 	page = kvm_vcpu_gpa_to_page(vcpu, vmptr);
-	if (is_error_page(page)) {
-		nested_vmx_failInvalid(vcpu);
-		return kvm_skip_emulated_instruction(vcpu);
-	}
+	if (is_error_page(page))
+		return nested_vmx_failInvalid(vcpu);
+
 	if (*(u32 *)kmap(page) != VMCS12_REVISION) {
 		kunmap(page);
 		kvm_release_page_clean(page);
-		nested_vmx_failInvalid(vcpu);
-		return kvm_skip_emulated_instruction(vcpu);
+		return nested_vmx_failInvalid(vcpu);
 	}
 	kunmap(page);
 	kvm_release_page_clean(page);
@@ -8419,8 +8417,7 @@ static int handle_vmon(struct kvm_vcpu *vcpu)
 	if (ret)
 		return ret;
 
-	nested_vmx_succeed(vcpu);
-	return kvm_skip_emulated_instruction(vcpu);
+	return nested_vmx_succeed(vcpu);
 }
 
 /*
@@ -8521,8 +8518,7 @@ static int handle_vmoff(struct kvm_vcpu *vcpu)
 	if (!nested_vmx_check_permission(vcpu))
 		return 1;
 	free_nested(to_vmx(vcpu));
-	nested_vmx_succeed(vcpu);
-	return kvm_skip_emulated_instruction(vcpu);
+	return nested_vmx_succeed(vcpu);
 }
 
 /* Emulate the VMCLEAR instruction */
@@ -8538,15 +8534,13 @@ static int handle_vmclear(struct kvm_vcpu *vcpu)
 	if (nested_vmx_get_vmptr(vcpu, &vmptr))
 		return 1;
 
-	if (!PAGE_ALIGNED(vmptr) || (vmptr >> cpuid_maxphyaddr(vcpu))) {
-		nested_vmx_failValid(vcpu, VMXERR_VMCLEAR_INVALID_ADDRESS);
-		return kvm_skip_emulated_instruction(vcpu);
-	}
+	if (!PAGE_ALIGNED(vmptr) || (vmptr >> cpuid_maxphyaddr(vcpu)))
+		return nested_vmx_failValid(vcpu,
+			VMXERR_VMCLEAR_INVALID_ADDRESS);
 
-	if (vmptr == vmx->nested.vmxon_ptr) {
-		nested_vmx_failValid(vcpu, VMXERR_VMCLEAR_VMXON_POINTER);
-		return kvm_skip_emulated_instruction(vcpu);
-	}
+	if (vmptr == vmx->nested.vmxon_ptr)
+		return nested_vmx_failValid(vcpu,
+			VMXERR_VMCLEAR_VMXON_POINTER);
 
 	if (vmptr == vmx->nested.current_vmptr)
 		nested_release_vmcs12(vmx);
@@ -8555,8 +8549,7 @@ static int handle_vmclear(struct kvm_vcpu *vcpu)
 			vmptr + offsetof(struct vmcs12, launch_state),
 			&zero, sizeof(zero));
 
-	nested_vmx_succeed(vcpu);
-	return kvm_skip_emulated_instruction(vcpu);
+	return nested_vmx_succeed(vcpu);
 }
 
 static int nested_vmx_run(struct kvm_vcpu *vcpu, bool launch);
@@ -8712,20 +8705,6 @@ static void copy_vmcs12_to_shadow(struct vcpu_vmx *vmx)
 	vmcs_load(vmx->loaded_vmcs->vmcs);
 }
 
-/*
- * VMX instructions which assume a current vmcs12 (i.e., that VMPTRLD was
- * used before) all generate the same failure when it is missing.
- */
-static int nested_vmx_check_vmcs12(struct kvm_vcpu *vcpu)
-{
-	struct vcpu_vmx *vmx = to_vmx(vcpu);
-	if (vmx->nested.current_vmptr == -1ull) {
-		nested_vmx_failInvalid(vcpu);
-		return 0;
-	}
-	return 1;
-}
-
 static int handle_vmread(struct kvm_vcpu *vcpu)
 {
 	unsigned long field;
@@ -8738,8 +8717,8 @@ static int handle_vmread(struct kvm_vcpu *vcpu)
 	if (!nested_vmx_check_permission(vcpu))
 		return 1;
 
-	if (!nested_vmx_check_vmcs12(vcpu))
-		return kvm_skip_emulated_instruction(vcpu);
+	if (to_vmx(vcpu)->nested.current_vmptr == -1ull)
+		return nested_vmx_failInvalid(vcpu);
 
 	if (!is_guest_mode(vcpu))
 		vmcs12 = get_vmcs12(vcpu);
@@ -8748,20 +8727,18 @@ static int handle_vmread(struct kvm_vcpu *vcpu)
 		 * When vmcs->vmcs_link_pointer is -1ull, any VMREAD
 		 * to shadowed-field sets the ALU flags for VMfailInvalid.
 		 */
-		if (get_vmcs12(vcpu)->vmcs_link_pointer == -1ull) {
-			nested_vmx_failInvalid(vcpu);
-			return kvm_skip_emulated_instruction(vcpu);
-		}
+		if (get_vmcs12(vcpu)->vmcs_link_pointer == -1ull)
+			return nested_vmx_failInvalid(vcpu);
 		vmcs12 = get_shadow_vmcs12(vcpu);
 	}
 
 	/* Decode instruction info and find the field to read */
 	field = kvm_register_readl(vcpu, (((vmx_instruction_info) >> 28) & 0xf));
 	/* Read the field, zero-extended to a u64 field_value */
-	if (vmcs12_read_any(vmcs12, field, &field_value) < 0) {
-		nested_vmx_failValid(vcpu, VMXERR_UNSUPPORTED_VMCS_COMPONENT);
-		return kvm_skip_emulated_instruction(vcpu);
-	}
+	if (vmcs12_read_any(vmcs12, field, &field_value) < 0)
+		return nested_vmx_failValid(vcpu,
+			VMXERR_UNSUPPORTED_VMCS_COMPONENT);
+
 	/*
 	 * Now copy part of this value to register or memory, as requested.
 	 * Note that the number of bits actually copied is 32 or 64 depending
@@ -8779,8 +8756,7 @@ static int handle_vmread(struct kvm_vcpu *vcpu)
 					    (is_long_mode(vcpu) ? 8 : 4), NULL);
 	}
 
-	nested_vmx_succeed(vcpu);
-	return kvm_skip_emulated_instruction(vcpu);
+	return nested_vmx_succeed(vcpu);
 }
 
 
@@ -8805,8 +8781,8 @@ static int handle_vmwrite(struct kvm_vcpu *vcpu)
 	if (!nested_vmx_check_permission(vcpu))
 		return 1;
 
-	if (!nested_vmx_check_vmcs12(vcpu))
-		return kvm_skip_emulated_instruction(vcpu);
+	if (vmx->nested.current_vmptr == -1ull)
+		return nested_vmx_failInvalid(vcpu);
 
 	if (vmx_instruction_info & (1u << 10))
 		field_value = kvm_register_readl(vcpu,
@@ -8829,11 +8805,9 @@ static int handle_vmwrite(struct kvm_vcpu *vcpu)
 	 * VMCS," then the "read-only" fields are actually read/write.
 	 */
 	if (vmcs_field_readonly(field) &&
-	    !nested_cpu_has_vmwrite_any_field(vcpu)) {
-		nested_vmx_failValid(vcpu,
+	    !nested_cpu_has_vmwrite_any_field(vcpu))
+		return nested_vmx_failValid(vcpu,
 			VMXERR_VMWRITE_READ_ONLY_VMCS_COMPONENT);
-		return kvm_skip_emulated_instruction(vcpu);
-	}
 
 	if (!is_guest_mode(vcpu))
 		vmcs12 = get_vmcs12(vcpu);
@@ -8842,18 +8816,14 @@ static int handle_vmwrite(struct kvm_vcpu *vcpu)
 		 * When vmcs->vmcs_link_pointer is -1ull, any VMWRITE
 		 * to shadowed-field sets the ALU flags for VMfailInvalid.
 		 */
-		if (get_vmcs12(vcpu)->vmcs_link_pointer == -1ull) {
-			nested_vmx_failInvalid(vcpu);
-			return kvm_skip_emulated_instruction(vcpu);
-		}
+		if (get_vmcs12(vcpu)->vmcs_link_pointer == -1ull)
+			return nested_vmx_failInvalid(vcpu);
 		vmcs12 = get_shadow_vmcs12(vcpu);
-
 	}
 
-	if (vmcs12_write_any(vmcs12, field, field_value) < 0) {
-		nested_vmx_failValid(vcpu, VMXERR_UNSUPPORTED_VMCS_COMPONENT);
-		return kvm_skip_emulated_instruction(vcpu);
-	}
+	if (vmcs12_write_any(vmcs12, field, field_value) < 0)
+		return nested_vmx_failValid(vcpu,
+			VMXERR_UNSUPPORTED_VMCS_COMPONENT);
 
 	/*
 	 * Do not track vmcs12 dirty-state if in guest-mode
@@ -8875,8 +8845,7 @@ static int handle_vmwrite(struct kvm_vcpu *vcpu)
 		}
 	}
 
-	nested_vmx_succeed(vcpu);
-	return kvm_skip_emulated_instruction(vcpu);
+	return nested_vmx_succeed(vcpu);
 }
 
 static void set_current_vmptr(struct vcpu_vmx *vmx, gpa_t vmptr)
@@ -8904,33 +8873,29 @@ static int handle_vmptrld(struct kvm_vcpu *vcpu)
 	if (nested_vmx_get_vmptr(vcpu, &vmptr))
 		return 1;
 
-	if (!PAGE_ALIGNED(vmptr) || (vmptr >> cpuid_maxphyaddr(vcpu))) {
-		nested_vmx_failValid(vcpu, VMXERR_VMPTRLD_INVALID_ADDRESS);
-		return kvm_skip_emulated_instruction(vcpu);
-	}
+	if (!PAGE_ALIGNED(vmptr) || (vmptr >> cpuid_maxphyaddr(vcpu)))
+		return nested_vmx_failValid(vcpu,
+			VMXERR_VMPTRLD_INVALID_ADDRESS);
 
-	if (vmptr == vmx->nested.vmxon_ptr) {
-		nested_vmx_failValid(vcpu, VMXERR_VMPTRLD_VMXON_POINTER);
-		return kvm_skip_emulated_instruction(vcpu);
-	}
+	if (vmptr == vmx->nested.vmxon_ptr)
+		return nested_vmx_failValid(vcpu,
+			VMXERR_VMPTRLD_VMXON_POINTER);
 
 	if (vmx->nested.current_vmptr != vmptr) {
 		struct vmcs12 *new_vmcs12;
 		struct page *page;
 		page = kvm_vcpu_gpa_to_page(vcpu, vmptr);
-		if (is_error_page(page)) {
-			nested_vmx_failInvalid(vcpu);
-			return kvm_skip_emulated_instruction(vcpu);
-		}
+		if (is_error_page(page))
+			return nested_vmx_failInvalid(vcpu);
+
 		new_vmcs12 = kmap(page);
 		if (new_vmcs12->hdr.revision_id != VMCS12_REVISION ||
 		    (new_vmcs12->hdr.shadow_vmcs &&
 		     !nested_cpu_has_vmx_shadow_vmcs(vcpu))) {
 			kunmap(page);
 			kvm_release_page_clean(page);
-			nested_vmx_failValid(vcpu,
+			return nested_vmx_failValid(vcpu,
 				VMXERR_VMPTRLD_INCORRECT_VMCS_REVISION_ID);
-			return kvm_skip_emulated_instruction(vcpu);
 		}
 
 		nested_release_vmcs12(vmx);
@@ -8945,8 +8910,7 @@ static int handle_vmptrld(struct kvm_vcpu *vcpu)
 		set_current_vmptr(vmx, vmptr);
 	}
 
-	nested_vmx_succeed(vcpu);
-	return kvm_skip_emulated_instruction(vcpu);
+	return nested_vmx_succeed(vcpu);
 }
 
 /* Emulate the VMPTRST instruction */
@@ -8969,8 +8933,7 @@ static int handle_vmptrst(struct kvm_vcpu *vcpu)
 		kvm_inject_page_fault(vcpu, &e);
 		return 1;
 	}
-	nested_vmx_succeed(vcpu);
-	return kvm_skip_emulated_instruction(vcpu);
+	return nested_vmx_succeed(vcpu);
 }
 
 /* Emulate the INVEPT instruction */
@@ -9000,11 +8963,9 @@ static int handle_invept(struct kvm_vcpu *vcpu)
 
 	types = (vmx->nested.msrs.ept_caps >> VMX_EPT_EXTENT_SHIFT) & 6;
 
-	if (type >= 32 || !(types & (1 << type))) {
-		nested_vmx_failValid(vcpu,
+	if (type >= 32 || !(types & (1 << type)))
+		return nested_vmx_failValid(vcpu,
 				VMXERR_INVALID_OPERAND_TO_INVEPT_INVVPID);
-		return kvm_skip_emulated_instruction(vcpu);
-	}
 
 	/* According to the Intel VMX instruction reference, the memory
 	 * operand is read even if it isn't needed (e.g., for type==global)
@@ -9026,14 +8987,13 @@ static int handle_invept(struct kvm_vcpu *vcpu)
 	case VMX_EPT_EXTENT_CONTEXT:
 		kvm_mmu_sync_roots(vcpu);
 		kvm_make_request(KVM_REQ_TLB_FLUSH, vcpu);
-		nested_vmx_succeed(vcpu);
 		break;
 	default:
 		BUG_ON(1);
 		break;
 	}
 
-	return kvm_skip_emulated_instruction(vcpu);
+	return nested_vmx_succeed(vcpu);
 }
 
 static u16 nested_get_vpid02(struct kvm_vcpu *vcpu)
@@ -9072,11 +9032,9 @@ static int handle_invvpid(struct kvm_vcpu *vcpu)
 	types = (vmx->nested.msrs.vpid_caps &
 			VMX_VPID_EXTENT_SUPPORTED_MASK) >> 8;
 
-	if (type >= 32 || !(types & (1 << type))) {
-		nested_vmx_failValid(vcpu,
+	if (type >= 32 || !(types & (1 << type)))
+		return nested_vmx_failValid(vcpu,
 			VMXERR_INVALID_OPERAND_TO_INVEPT_INVVPID);
-		return kvm_skip_emulated_instruction(vcpu);
-	}
 
 	/* according to the intel vmx instruction reference, the memory
 	 * operand is read even if it isn't needed (e.g., for type==global)
@@ -9088,21 +9046,17 @@ static int handle_invvpid(struct kvm_vcpu *vcpu)
 		kvm_inject_page_fault(vcpu, &e);
 		return 1;
 	}
-	if (operand.vpid >> 16) {
-		nested_vmx_failValid(vcpu,
+	if (operand.vpid >> 16)
+		return nested_vmx_failValid(vcpu,
 			VMXERR_INVALID_OPERAND_TO_INVEPT_INVVPID);
-		return kvm_skip_emulated_instruction(vcpu);
-	}
 
 	vpid02 = nested_get_vpid02(vcpu);
 	switch (type) {
 	case VMX_VPID_EXTENT_INDIVIDUAL_ADDR:
 		if (!operand.vpid ||
-		    is_noncanonical_address(operand.gla, vcpu)) {
-			nested_vmx_failValid(vcpu,
+		    is_noncanonical_address(operand.gla, vcpu))
+			return nested_vmx_failValid(vcpu,
 				VMXERR_INVALID_OPERAND_TO_INVEPT_INVVPID);
-			return kvm_skip_emulated_instruction(vcpu);
-		}
 		if (cpu_has_vmx_invvpid_individual_addr()) {
 			__invvpid(VMX_VPID_EXTENT_INDIVIDUAL_ADDR,
 				vpid02, operand.gla);
@@ -9111,11 +9065,9 @@ static int handle_invvpid(struct kvm_vcpu *vcpu)
 		break;
 	case VMX_VPID_EXTENT_SINGLE_CONTEXT:
 	case VMX_VPID_EXTENT_SINGLE_NON_GLOBAL:
-		if (!operand.vpid) {
-			nested_vmx_failValid(vcpu,
+		if (!operand.vpid)
+			return nested_vmx_failValid(vcpu,
 				VMXERR_INVALID_OPERAND_TO_INVEPT_INVVPID);
-			return kvm_skip_emulated_instruction(vcpu);
-		}
 		__vmx_flush_tlb(vcpu, vpid02, false);
 		break;
 	case VMX_VPID_EXTENT_ALL_CONTEXT:
@@ -9126,9 +9078,7 @@ static int handle_invvpid(struct kvm_vcpu *vcpu)
 		return kvm_skip_emulated_instruction(vcpu);
 	}
 
-	nested_vmx_succeed(vcpu);
-
-	return kvm_skip_emulated_instruction(vcpu);
+	return nested_vmx_succeed(vcpu);
 }
 
 static int handle_invpcid(struct kvm_vcpu *vcpu)
@@ -12842,8 +12792,8 @@ static int nested_vmx_run(struct kvm_vcpu *vcpu, bool launch)
 	if (!nested_vmx_check_permission(vcpu))
 		return 1;
 
-	if (!nested_vmx_check_vmcs12(vcpu))
-		goto out;
+	if (vmx->nested.current_vmptr == -1ull)
+		return nested_vmx_failInvalid(vcpu);
 
 	vmcs12 = get_vmcs12(vcpu);
 
@@ -12853,10 +12803,8 @@ static int nested_vmx_run(struct kvm_vcpu *vcpu, bool launch)
 	 * rather than RFLAGS.ZF, and no error number is stored to the
 	 * VM-instruction error field.
 	 */
-	if (vmcs12->hdr.shadow_vmcs) {
-		nested_vmx_failInvalid(vcpu);
-		goto out;
-	}
+	if (vmcs12->hdr.shadow_vmcs)
+		return nested_vmx_failInvalid(vcpu);
 
 	if (enable_shadow_vmcs)
 		copy_shadow_to_vmcs12(vmx);
@@ -12871,24 +12819,18 @@ static int nested_vmx_run(struct kvm_vcpu *vcpu, bool launch)
 	 * for misconfigurations which will anyway be caught by the processor
 	 * when using the merged vmcs02.
 	 */
-	if (interrupt_shadow & KVM_X86_SHADOW_INT_MOV_SS) {
-		nested_vmx_failValid(vcpu,
-				     VMXERR_ENTRY_EVENTS_BLOCKED_BY_MOV_SS);
-		goto out;
-	}
+	if (interrupt_shadow & KVM_X86_SHADOW_INT_MOV_SS)
+		return nested_vmx_failValid(vcpu,
+			VMXERR_ENTRY_EVENTS_BLOCKED_BY_MOV_SS);
 
-	if (vmcs12->launch_state == launch) {
-		nested_vmx_failValid(vcpu,
+	if (vmcs12->launch_state == launch)
+		return nested_vmx_failValid(vcpu,
 			launch ? VMXERR_VMLAUNCH_NONCLEAR_VMCS
 			       : VMXERR_VMRESUME_NONLAUNCHED_VMCS);
-		goto out;
-	}
 
 	ret = check_vmentry_prereqs(vcpu, vmcs12);
-	if (ret) {
-		nested_vmx_failValid(vcpu, ret);
-		goto out;
-	}
+	if (ret)
+		return nested_vmx_failValid(vcpu, ret);
 
 	/*
 	 * We're finally done with prerequisite checking, and can start with
@@ -12927,9 +12869,6 @@ static int nested_vmx_run(struct kvm_vcpu *vcpu, bool launch)
 		return kvm_vcpu_halt(vcpu);
 	}
 	return 1;
-
-out:
-	return kvm_skip_emulated_instruction(vcpu);
 }
 
 /*
@@ -13658,7 +13597,7 @@ static void nested_vmx_vmexit(struct kvm_vcpu *vcpu, u32 exit_reason,
 
 		return;
 	}
-	
+
 	/*
 	 * After an early L2 VM-entry failure, we're now back
 	 * in L1 which thinks it just finished a VMLAUNCH or
@@ -13666,9 +13605,7 @@ static void nested_vmx_vmexit(struct kvm_vcpu *vcpu, u32 exit_reason,
 	 * flag and the VM-instruction error field of the VMCS
 	 * accordingly, and skip the emulated instruction.
 	 */
-	nested_vmx_failValid(vcpu, VMXERR_ENTRY_INVALID_CONTROL_FIELD);
-
-	kvm_skip_emulated_instruction(vcpu);
+	(void)nested_vmx_failValid(vcpu, VMXERR_ENTRY_INVALID_CONTROL_FIELD);
 
 	/*
 	 * Restore L1's host state to KVM's software model.  We're here
