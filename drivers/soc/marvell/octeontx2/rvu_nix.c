@@ -2458,10 +2458,10 @@ static int nix_aq_init(struct rvu *rvu, struct rvu_block *block)
 	/* Set admin queue endianness */
 	cfg = rvu_read64(rvu, block->addr, NIX_AF_CFG);
 #ifdef __BIG_ENDIAN
-	cfg |= BIT_ULL(1);
+	cfg |= BIT_ULL(8);
 	rvu_write64(rvu, block->addr, NIX_AF_CFG, cfg);
 #else
-	cfg &= ~BIT_ULL(1);
+	cfg &= ~BIT_ULL(8);
 	rvu_write64(rvu, block->addr, NIX_AF_CFG, cfg);
 #endif
 
