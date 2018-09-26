@@ -357,7 +357,7 @@ void rvu_npc_install_promisc_entry(struct rvu *rvu, u16 pcifunc,
 	struct npc_mcam *mcam = &rvu->hw->mcam;
 	struct mcam_entry entry = { {0} };
 	struct nix_rx_action action;
-	int blkaddr, index, kwi;
+	int blkaddr, ucast_idx, index, kwi;
 
 	/* Only PF or AF VF can add a promiscuous entry */
 	if ((pcifunc & RVU_PFVF_FUNC_MASK) && !is_afvf(pcifunc))
@@ -379,9 +379,21 @@ void rvu_npc_install_promisc_entry(struct rvu *rvu, u16 pcifunc,
 		entry.kw_mask[kwi] = BIT_ULL(40);
 	}
 
-	*(u64 *)&action = 0x00;
-	action.op = NIX_RX_ACTIONOP_UCAST;
-	action.pf_func = pcifunc;
+	ucast_idx = npc_get_nixlf_mcam_index(mcam, pcifunc,
+					nixlf, NIXLF_UCAST_ENTRY);
+
+	/* If the corresponding PF's ucast action is RSS,
+	 * use the same action for promisc also
+	 */
+	if (is_mcam_entry_enabled(rvu, mcam, blkaddr, ucast_idx))
+		*(u64 *)&action = npc_get_mcam_action(rvu, mcam,
+							blkaddr, ucast_idx);
+
+	if (action.op != NIX_RX_ACTIONOP_RSS) {
+		*(u64 *)&action = 0x00;
+		action.op = NIX_RX_ACTIONOP_UCAST;
+		action.pf_func = pcifunc;
+	}
 
 	entry.action = *(u64 *)&action;
 	npc_config_mcam_entry(rvu, mcam, blkaddr, index,
@@ -521,6 +533,22 @@ void rvu_npc_update_flowkey_alg_idx(struct rvu *rvu, u16 pcifunc, int nixlf,
 
 	rvu_write64(rvu, blkaddr,
 		    NPC_AF_MCAMEX_BANKX_ACTION(index, bank), *(u64 *)&action);
+
+	index = npc_get_nixlf_mcam_index(mcam, pcifunc,
+				nixlf, NIXLF_PROMISC_ENTRY);
+
+	/* If PF's promiscuous entry is enabled,
+	 * Set RSS action for that entry as well
+	 */
+	if (is_mcam_entry_enabled(rvu, mcam, blkaddr, index)) {
+		bank = npc_get_bank(mcam, index);
+		index &= (mcam->banksize - 1);
+
+		rvu_write64(rvu, blkaddr,
+			NPC_AF_MCAMEX_BANKX_ACTION(index, bank),
+			*(u64 *)&action);
+	}
+
 }
 
 static void npc_enadis_default_entries(struct rvu *rvu, u16 pcifunc,
