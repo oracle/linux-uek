@@ -114,6 +114,12 @@ static void nix_rx_sync(struct rvu *rvu, int blkaddr)
 	err = rvu_poll_reg(rvu, blkaddr, NIX_AF_RX_SW_SYNC, BIT_ULL(0), true);
 	if (err)
 		dev_err(rvu->dev, "NIX RX software sync failed\n");
+
+	/* As per a HW errata in 9xxx A0 silicon, HW may clear SW_SYNC[ENA]
+	 * bit too early. Hence wait for 50us more.
+	 */
+	if (is_rvu_9xxx_A0(rvu))
+		udelay(50);
 }
 
 static bool is_valid_txschq(struct rvu *rvu, int blkaddr,
@@ -2491,6 +2497,14 @@ int rvu_nix_init(struct rvu *rvu)
 	if (blkaddr < 0)
 		return 0;
 	block = &hw->block[blkaddr];
+
+	/* As per a HW errata in 9xxx A0 silicon, NIX may corrupt
+	 * internal state when conditional clocks are turned off.
+	 * Hence enable them.
+	 */
+	if (is_rvu_9xxx_A0(rvu))
+		rvu_write64(rvu, blkaddr, NIX_AF_CFG,
+			    rvu_read64(rvu, blkaddr, NIX_AF_CFG) | 0x1EULL);
 
 	/* Calibrate X2P bus to check if CGX/LBK links are fine */
 	err = nix_calibrate_x2p(rvu, blkaddr);
