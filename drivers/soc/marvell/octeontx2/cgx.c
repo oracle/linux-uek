@@ -642,6 +642,9 @@ int cgx_lmac_linkup_start(void *cgxd)
 	struct cgx *cgx = cgxd;
 	struct task_struct *task;
 
+	if (!cgx)
+		return -ENODEV;
+
 	/* Start the linkup procedure of lmac ports in the background */
 	task = kthread_run(cgx_lmac_linkup_thread, cgx, "cgx%d_linkup_thread",
 			      cgx->cgx_id);
