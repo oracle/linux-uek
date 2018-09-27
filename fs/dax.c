@@ -450,6 +450,7 @@ bool dax_lock_mapping_entry(struct page *page)
 			spin_unlock_irq(&mapping->tree_lock);
 			break;
 		} else if (IS_ERR(entry)) {
+			spin_unlock_irq(&mapping->tree_lock);
 			WARN_ON_ONCE(PTR_ERR(entry) != -EAGAIN);
 			continue;
 		}
