@@ -1128,7 +1128,7 @@ static void rds_qos_threshold_init(void)
 	tok = str;
 	while (tok) {
 		char *qos_str, *threshold_str;
-		
+
 		qos_str = tok;
 		threshold_str = strchr(tok, ':');
 		if (threshold_str) {
