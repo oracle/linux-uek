@@ -963,16 +963,53 @@ static NVM_DEV_ATTR_RO(hw_sector_size);
 static NVM_DEV_ATTR_RO(oob_sector_size);
 static NVM_DEV_ATTR_RO(read_typ);
 static NVM_DEV_ATTR_RO(read_max);
-static NVM_DEV_ATTR_RO(prog_typ);
-static NVM_DEV_ATTR_RO(prog_max);
-static NVM_DEV_ATTR_RO(erase_typ);
-static NVM_DEV_ATTR_RO(erase_max);
-static NVM_DEV_ATTR_RO(multiplane_modes);
-static NVM_DEV_ATTR_RO(media_capabilities);
-static NVM_DEV_ATTR_RO(max_phys_secs);
+
+/* 1.2 values */
+static NVM_DEV_ATTR_12_RO(vendor_opcode);
+static NVM_DEV_ATTR_12_RO(device_mode);
+static NVM_DEV_ATTR_12_RO(ppa_format);
+static NVM_DEV_ATTR_12_RO(media_manager);
+static NVM_DEV_ATTR_12_RO(media_type);
+static NVM_DEV_ATTR_12_RO(flash_media_type);
+static NVM_DEV_ATTR_12_RO(num_channels);
+static NVM_DEV_ATTR_12_RO(num_luns);
+static NVM_DEV_ATTR_12_RO(num_planes);
+static NVM_DEV_ATTR_12_RO(num_blocks);
+static NVM_DEV_ATTR_12_RO(num_pages);
+static NVM_DEV_ATTR_12_RO(page_size);
+static NVM_DEV_ATTR_12_RO(hw_sector_size);
+static NVM_DEV_ATTR_12_RO(oob_sector_size);
+static NVM_DEV_ATTR_12_RO(prog_typ);
+static NVM_DEV_ATTR_12_RO(prog_max);
+static NVM_DEV_ATTR_12_RO(erase_typ);
+static NVM_DEV_ATTR_12_RO(erase_max);
+static NVM_DEV_ATTR_12_RO(multiplane_modes);
+static NVM_DEV_ATTR_12_RO(media_capabilities);
+static NVM_DEV_ATTR_12_RO(max_phys_secs);
+
+/* 2.0 values */
+static NVM_DEV_ATTR_20_RO(groups);
+static NVM_DEV_ATTR_20_RO(punits);
+static NVM_DEV_ATTR_20_RO(chunks);
+static NVM_DEV_ATTR_20_RO(clba);
+static NVM_DEV_ATTR_20_RO(ws_min);
+static NVM_DEV_ATTR_20_RO(ws_opt);
+static NVM_DEV_ATTR_20_RO(maxoc);
+static NVM_DEV_ATTR_20_RO(maxocpu);
+static NVM_DEV_ATTR_20_RO(mw_cunits);
+static NVM_DEV_ATTR_20_RO(write_typ);
+static NVM_DEV_ATTR_20_RO(write_max);
+static NVM_DEV_ATTR_20_RO(reset_typ);
+static NVM_DEV_ATTR_20_RO(reset_max);
 
 static struct attribute *nvm_dev_attrs[] = {
+	/* version agnostic attrs */
 	&dev_attr_version.attr,
+	&dev_attr_capabilities.attr,
+	&dev_attr_read_typ.attr,
+	&dev_attr_read_max.attr,
+
+	/* 1.2 attrs */
 	&dev_attr_vendor_opcode.attr,
 	&dev_attr_capabilities.attr,
 	&dev_attr_device_mode.attr,
@@ -989,8 +1026,6 @@ static struct attribute *nvm_dev_attrs[] = {
 	&dev_attr_page_size.attr,
 	&dev_attr_hw_sector_size.attr,
 	&dev_attr_oob_sector_size.attr,
-	&dev_attr_read_typ.attr,
-	&dev_attr_read_max.attr,
 	&dev_attr_prog_typ.attr,
 	&dev_attr_prog_max.attr,
 	&dev_attr_erase_typ.attr,
@@ -998,22 +1033,58 @@ static struct attribute *nvm_dev_attrs[] = {
 	&dev_attr_multiplane_modes.attr,
 	&dev_attr_media_capabilities.attr,
 	&dev_attr_max_phys_secs.attr,
+
+	/* 2.0 attrs */
+	&dev_attr_groups.attr,
+	&dev_attr_punits.attr,
+	&dev_attr_chunks.attr,
+	&dev_attr_clba.attr,
+	&dev_attr_ws_min.attr,
+	&dev_attr_ws_opt.attr,
+	&dev_attr_maxoc.attr,
+	&dev_attr_maxocpu.attr,
+	&dev_attr_mw_cunits.attr,
+
+	&dev_attr_write_typ.attr,
+	&dev_attr_write_max.attr,
+	&dev_attr_reset_typ.attr,
+	&dev_attr_reset_max.attr,
+
 	NULL,
 };
 
-static const struct attribute_group nvm_dev_attr_group = {
+static umode_t nvm_dev_attrs_visible(struct kobject *kobj,
+				     struct attribute *attr, int index)
+{
+	struct device *dev = container_of(kobj, struct device, kobj);
+	struct gendisk *disk = dev_to_disk(dev);
+	struct nvme_ns *ns = disk->private_data;
+	struct nvm_dev *ndev = ns->ndev;
+	struct device_attribute *dev_attr =
+		container_of(attr, typeof(*dev_attr), attr);
+
+	if (!ndev)
+		return 0;
+
+	if (dev_attr->show == nvm_dev_attr_show)
+		return attr->mode;
+
+	switch (ndev->geo.major_ver_id) {
+	case 1:
+		if (dev_attr->show == nvm_dev_attr_show_12)
+			return attr->mode;
+		break;
+	case 2:
+		if (dev_attr->show == nvm_dev_attr_show_20)
+			return attr->mode;
+		break;
+	}
+
+	return 0;
+}
+
+const struct attribute_group nvme_nvm_attr_group = {
 	.name		= "lightnvm",
 	.attrs		= nvm_dev_attrs,
+	.is_visible	= nvm_dev_attrs_visible,
 };
-
-int nvme_nvm_register_sysfs(struct nvme_ns *ns)
-{
-	return sysfs_create_group(&disk_to_dev(ns->disk)->kobj,
-					&nvm_dev_attr_group);
-}
-
-void nvme_nvm_unregister_sysfs(struct nvme_ns *ns)
-{
-	sysfs_remove_group(&disk_to_dev(ns->disk)->kobj,
-					&nvm_dev_attr_group);
-}
