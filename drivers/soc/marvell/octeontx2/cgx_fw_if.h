@@ -40,7 +40,8 @@ enum cgx_error_type {
 	CGX_ERR_TRAINING_FAIL,
 	CGX_ERR_RX_EQU_FAIL,
 	CGX_ERR_SPUX_BER_FAIL,
-	CGX_ERR_SPUX_RSFEC_ALGN_FAIL,   /* = 22 */
+	CGX_ERR_SPUX_RSFEC_ALGN_FAIL,
+	CGX_ERR_SPUX_MARKER_LOCK_FAIL,
 };
 
 /* LINK speed types */
@@ -75,8 +76,6 @@ enum cgx_cmd_id {
 	CGX_CMD_LINK_STATE_CHANGE,
 	CGX_CMD_MODE_CHANGE,		/* hot plug support */
 	CGX_CMD_INTF_SHUTDOWN,
-	CGX_CMD_IRQ_ENABLE,
-	CGX_CMD_IRQ_DISABLE,
 };
 
 /* async event ids */
@@ -140,7 +139,12 @@ struct cgx_ver_s {
  */
 struct cgx_mac_addr_s {
 	uint64_t reserved1:9;
-	uint64_t local_mac_addr:48;
+	uint64_t addr_0:8;
+	uint64_t addr_1:8;
+	uint64_t addr_2:8;
+	uint64_t addr_3:8;
+	uint64_t addr_4:8;
+	uint64_t addr_5:8;
 	uint64_t reserved2:7;
 };
 
@@ -207,18 +211,11 @@ struct cgx_link_change_args {
 	uint64_t reserved2:50;
 };
 
-struct cgx_irq_cfg {
-	uint64_t reserved1:8;
-	uint64_t irq_phys:32;
-	uint64_t reserved2:24;
-};
-
 union cgx_cmdreg {
 	u64 val;
 	struct cgx_cmd cmd;
 	struct cgx_ctl_args cmd_args;
 	struct cgx_mtu_args mtu_size;
-	struct cgx_irq_cfg irq_cfg; /* Input to CGX_CMD_IRQ_ENABLE */
 	struct cgx_link_change_args lnk_args;/* Input to CGX_CMD_LINK_CHANGE */
 };
 
