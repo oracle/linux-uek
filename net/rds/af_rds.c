@@ -328,8 +328,9 @@ static int rds_cancel_sent_to(struct rds_sock *rs, char __user *optval,
 			      int len)
 {
 	struct sockaddr_in6 sin6;
-	struct sockaddr_in sin;
+	int cpy_len;
 	int ret = 0;
+	bool is_v4;
 
 	/* racing with another thread binding seems ok here */
 	if (ipv6_addr_any(&rs->rs_bound_addr)) {
@@ -340,20 +341,37 @@ static int rds_cancel_sent_to(struct rds_sock *rs, char __user *optval,
 	if (len < sizeof(struct sockaddr_in)) {
 		ret = -EINVAL;
 		goto out;
-	} else if (len < sizeof(struct sockaddr_in6)) {
-		/* Assume IPv4 */
-		if (copy_from_user(&sin, optval, sizeof(struct sockaddr_in))) {
-			ret = -EFAULT;
-			goto out;
-		}
-		ipv6_addr_set_v4mapped(sin.sin_addr.s_addr, &sin6.sin6_addr);
-		sin6.sin6_port = sin.sin_port;
-	} else {
-		if (copy_from_user(&sin6, optval,
-				   sizeof(struct sockaddr_in6))) {
-			ret = -EFAULT;
-			goto out;
-		}
+	}
+
+	/* Lets restrict copying to at most sizeof(sin6) */
+	cpy_len = min_t(int, (int)sizeof(sin6), len);
+	if (copy_from_user(&sin6, optval, cpy_len)) {
+		ret = -EFAULT;
+		goto out;
+	}
+
+	/* We only support IPv4 and IPv6 */
+	if (sin6.sin6_family != AF_INET && sin6.sin6_family != AF_INET6) {
+		ret = -EINVAL;
+		goto out;
+	}
+
+	is_v4 = (sin6.sin6_family == AF_INET);
+
+	/* Check that the bound address matches the supplied af */
+	if (ipv6_addr_v4mapped(&rs->rs_bound_sin6.sin6_addr) != is_v4) {
+		ret = -EINVAL;
+		goto out;
+	}
+
+	if (is_v4) {
+		const struct sockaddr_in *sin4p = (struct sockaddr_in *)&sin6;
+
+		ipv6_addr_set_v4mapped(sin4p->sin_addr.s_addr, &sin6.sin6_addr);
+		sin6.sin6_port = sin4p->sin_port;
+	} else if (cpy_len != sizeof(sin6)) {
+		ret = -EINVAL;
+		goto out;
 	}
 
 	rds_send_drop_to(rs, &sin6);
