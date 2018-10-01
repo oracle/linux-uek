@@ -930,6 +930,9 @@ static int rvu_lookup_rsrc(struct rvu *rvu, struct rvu_block *block,
 {
 	u64 val;
 
+	if (block->type == BLKTYPE_TIM && is_rvu_9xxx_A0(rvu))
+		return rvu_lf_lookup_tim_errata(rvu, block, pcifunc, slot);
+
 	val = ((u64)pcifunc << 24) | (slot << 16) | (1ULL << 13);
 	rvu_write64(rvu, block->addr, block->lookup_reg, val);
 	/* Wait for the lookup to finish */
