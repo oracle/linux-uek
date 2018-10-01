@@ -573,6 +573,9 @@ int rvu_mbox_handler_TIM_DISABLE_RING(struct rvu *rvu,
 				      struct tim_ring_req *req,
 				      struct msg_rsp *rsp);
 
+int rvu_lf_lookup_tim_errata(struct rvu *rvu, struct rvu_block *block,
+		u16 pcifunc, int slot);
+
 #ifdef CONFIG_DEBUG_FS
 void rvu_dbg_init(struct rvu *rvu);
 void rvu_dbg_exit(struct rvu *rvu);
