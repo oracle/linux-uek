@@ -554,6 +554,25 @@ int rvu_ndc_sync(struct rvu *rvu, int lfblkid, int lfidx, u64 lfoffset,
 
 int rvu_ndc_sync_errata_workaround(struct rvu *rvu, int lfblkaddr, int lfidx,
 				   u64 lfoffset, int ndcblkaddr);
+
+/* TIM APIs */
+int rvu_tim_init(struct rvu *rvu);
+int rvu_mbox_handler_TIM_LF_ALLOC(struct rvu *rvu,
+				  struct tim_lf_alloc_req *req,
+				  struct tim_lf_alloc_rsp *rsp);
+int rvu_mbox_handler_TIM_LF_FREE(struct rvu *rvu,
+				 struct tim_ring_req *req,
+				 struct msg_rsp *rsp);
+int rvu_mbox_handler_TIM_CONFIG_RING(struct rvu *rvu,
+				     struct tim_config_req *req,
+				     struct msg_rsp *rsp);
+int rvu_mbox_handler_TIM_ENABLE_RING(struct rvu *rvu,
+				     struct tim_ring_req *req,
+				     struct tim_enable_rsp *rsp);
+int rvu_mbox_handler_TIM_DISABLE_RING(struct rvu *rvu,
+				      struct tim_ring_req *req,
+				      struct msg_rsp *rsp);
+
 #ifdef CONFIG_DEBUG_FS
 void rvu_dbg_init(struct rvu *rvu);
 void rvu_dbg_exit(struct rvu *rvu);
