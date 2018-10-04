@@ -1937,6 +1937,17 @@ int mlx4_INIT_HCA(struct mlx4_dev *dev, struct mlx4_init_hca_param *param)
 	if (dev->caps.flags & MLX4_DEV_CAP_FLAG_RSS_IP_FRAG)
 		*(inbox + INIT_HCA_FLAGS_OFFSET / 4) |= cpu_to_be32(1 << 13);
 
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	/* Disable P_Key Violation Traps for fw version 2.35.6312 and
+	 * newer. This because said fw version counts the P_Key
+	 * Violations, a feature missing from earlier versions.
+	 */
+	if (dev->caps.fw_ver >= mlx4_fw_ver(2, 35, 6312)) {
+		*(inbox + INIT_HCA_FLAGS_OFFSET / 4) |= cpu_to_be32(1 << 15);
+		mlx4_info(dev, "P_Key Violation Traps disabled\n");
+	}
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
+
 	/* CX3 is capable of extending CQEs/EQEs from 32 to 64 bytes */
 	if (dev->caps.flags & MLX4_DEV_CAP_FLAG_64B_EQE) {
 		*(inbox + INIT_HCA_EQE_CQE_OFFSETS / 4) |= cpu_to_be32(1 << 29);
