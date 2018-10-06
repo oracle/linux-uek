@@ -366,7 +366,7 @@ static inline void rvu_get_cgx_lmac_id(u8 map, u8 *cgx_id, u8 *lmac_id)
 	*lmac_id = (map & 0xF);
 }
 
-int rvu_cgx_probe(struct rvu *rvu);
+int rvu_cgx_init(struct rvu *rvu);
 int rvu_check_cgx_driver(struct rvu *rvu);
 void rvu_cgx_wq_destroy(struct rvu *rvu);
 void *rvu_cgx_pdata(u8 cgx_id, struct rvu *rvu);
