@@ -1723,7 +1723,7 @@ static int nix_setup_bcast_tables(struct rvu *rvu, struct nix_hw *nix_hw)
 	u64 cfg;
 
 	/* Skip PF0 (i.e AF) */
-	for (pf = 1; pf < (rvu->hw->cgx_links + 1); pf++) {
+	for (pf = 1; pf < (rvu->cgx_mapped_pfs + 1); pf++) {
 		cfg = rvu_read64(rvu, BLKADDR_RVUM, RVU_PRIV_PFX_CFG(pf));
 		/* If PF is not enabled, nothing to do */
 		if (!((cfg >> 20) & 0x01))
@@ -2377,7 +2377,11 @@ static void nix_link_config(struct rvu *rvu, int blkaddr)
 	 */
 	for (cgx = 0; cgx < hw->cgx; cgx++) {
 		lmac_cnt = cgx_get_lmac_cnt(rvu_cgx_pdata(cgx, rvu));
+		/* Skip when cgx is not available or lmac cnt is zero */
+		if (lmac_cnt <= 0)
+			continue;
 		tx_credits = ((CGX_FIFO_LEN / lmac_cnt) - NIC_HW_MAX_FRS) / 16;
+
 		/* Enable credits and set credit pkt count to max allowed */
 		tx_credits =  (tx_credits << 12) | (0x1FF << 2) | BIT_ULL(1);
 		slink = cgx * hw->lmac_per_cgx;
