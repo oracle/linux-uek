@@ -3540,6 +3540,7 @@ static int hugetlb_no_page(struct mm_struct *mm, struct vm_area_struct *vma,
 	struct page *page;
 	pte_t new_pte;
 	spinlock_t *ptl;
+	struct hugetlbfs_inode_info *hinode_info = HUGETLBFS_I(mapping->host);
 
 	/*
 	 * Currently, we are forced to kill the process in the event the
@@ -3570,15 +3571,19 @@ retry:
 			u32 hash;
 
 			/*
-			 * hugetlb_fault_mutex must be dropped before
-			 * handling userfault.  Reacquire after handling
-			 * fault to make calling code simpler.
+			 * hugetlb_fault_mutex and truncation mutex must be
+			 * dropped before handling userfault.  Reacquire after
+			 * handling fault to make calling code simpler.
 			 */
 			hash = hugetlb_fault_mutex_hash(h, mm, vma, mapping,
 							idx, address);
 			mutex_unlock(&hugetlb_fault_mutex_table[hash]);
+			up_read(&hinode_info->trunc_rwsem);
+
 			ret = handle_userfault(vma, address, flags,
 						VM_UFFD_MISSING);
+
+			down_read(&hinode_info->trunc_rwsem);
 			mutex_lock(&hugetlb_fault_mutex_table[hash]);
 			goto out;
 		}
@@ -3726,6 +3731,7 @@ int hugetlb_fault(struct mm_struct *mm, struct vm_area_struct *vma,
 	struct hstate *h = hstate_vma(vma);
 	struct address_space *mapping;
 	int need_wait_lock = 0;
+	struct hugetlbfs_inode_info *hinode_info;
 
 	address &= huge_page_mask(h);
 
@@ -3748,10 +3754,16 @@ int hugetlb_fault(struct mm_struct *mm, struct vm_area_struct *vma,
 	idx = vma_hugecache_offset(h, vma, address);
 
 	/*
-	 * Serialize hugepage allocation and instantiation, so that we don't
-	 * get spurious allocation failures if two CPUs race to instantiate
-	 * the same page in the page cache.
+	 * Use truncate mutex to serialize truncation and page faults.  This
+	 * prevents ANY faults from happening on the file during truncation.
+	 * The fault mutex serializes hugepage allocation and instantiation
+	 * on the same page.  This prevents spurious allocation failures if
+	 * two CPUs race to instantiate the same page in the page cache.
+	 *
+	 * Acquire truncate mutex BEFORE fault mutex.
 	 */
+	hinode_info = HUGETLBFS_I(mapping->host);
+	down_read(&hinode_info->trunc_rwsem);
 	hash = hugetlb_fault_mutex_hash(h, mm, vma, mapping, idx, address);
 	mutex_lock(&hugetlb_fault_mutex_table[hash]);
 
@@ -3839,6 +3851,7 @@ out_ptl:
 	}
 out_mutex:
 	mutex_unlock(&hugetlb_fault_mutex_table[hash]);
+	up_read(&hinode_info->trunc_rwsem);
 	/*
 	 * Generally it's safe to hold refcount during waiting page lock. But
 	 * here we just wait to defer the next page fault to avoid busy loop and
