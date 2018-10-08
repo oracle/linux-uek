@@ -1692,11 +1692,19 @@ int mlx4_QUERY_FW(struct mlx4_dev *dev)
 	MLX4_GET(lg, outbox, QUERY_FW_MAX_CMD_OFFSET);
 	cmd->max_cmds = 1 << lg;
 
+#ifdef WITHOUT_ORACLE_EXTENSIONS
 	mlx4_dbg(dev, "FW version %d.%d.%03d (cmd intf rev %d), max commands %d\n",
 		 (int) (dev->caps.fw_ver >> 32),
 		 (int) (dev->caps.fw_ver >> 16) & 0xffff,
 		 (int) dev->caps.fw_ver & 0xffff,
 		 cmd_if_rev, cmd->max_cmds);
+#else
+	mlx4_info(dev, "FW version %d.%d.%03d (cmd intf rev %d), max commands %d\n",
+		  (int)(dev->caps.fw_ver >> 32),
+		  (int)(dev->caps.fw_ver >> 16) & 0xffff,
+		  (int)dev->caps.fw_ver & 0xffff,
+		  cmd_if_rev, cmd->max_cmds);
+#endif /* WITHOUT_ORACLE_EXTENSIONS */
 
 	MLX4_GET(fw->catas_offset, outbox, QUERY_FW_ERR_START_OFFSET);
 	MLX4_GET(fw->catas_size,   outbox, QUERY_FW_ERR_SIZE_OFFSET);
