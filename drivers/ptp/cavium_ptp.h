@@ -46,6 +46,17 @@ struct cavium_ptp_clock {
 	struct cavium_ptp_clock_info *cavium_ptp_info;
 };
 
+struct thunder_ptp_clock {
+	void __iomem *reg_base;
+	struct pci_dev *pdev;
+	struct cavium_ptp_clock *cavium_ptp_clock;
+	struct cavium_ptp_clock_info cavium_ptp_info;
+	s64 ptp_adjust;
+};
+
+extern struct thunder_ptp_clock *thunder_ptp_clock;
+s64 thunder_get_adjtime(void);
+
 extern struct cavium_ptp_clock *cavium_ptp_register(
 	struct cavium_ptp_clock_info *info, struct device *dev);
 extern void cavium_ptp_remove(struct cavium_ptp_clock *cavium_ptp_clock);
