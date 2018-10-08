@@ -2301,8 +2301,9 @@ static int lio_get_ts_info(struct net_device *netdev,
 		SOF_TIMESTAMPING_RX_SOFTWARE |
 		SOF_TIMESTAMPING_SOFTWARE;
 
-	if (lio->ptp_clock)
-		info->phc_index = ptp_clock_index(lio->ptp_clock);
+	if (lio->cavium_ptp_clock)
+		info->phc_index = ptp_clock_index(
+				lio->cavium_ptp_clock->ptp_clock);
 	else
 		info->phc_index = -1;
 
