@@ -1331,6 +1331,10 @@
 			        hardware thread id mappings.
 				Format: <cpu>:<hwthread>
 
+	hv_nopvspin	[X86,HYPER_V] Disables the paravirt spinlock optimizations
+				      which allow the hypervisor to 'idle' the
+				      guest on lock contention.
+
 	keep_bootcon	[KNL]
 			Do not unregister boot console at start. This is only
 			useful for debugging when something happens in the window
