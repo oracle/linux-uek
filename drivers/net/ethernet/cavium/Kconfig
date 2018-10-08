@@ -57,6 +57,7 @@ config LIQUIDIO
 	tristate "Cavium LiquidIO support"
 	depends on 64BIT
 	imply PTP_1588_CLOCK
+	select PTP_1588_CLOCK_CAVIUM_PTP
 	select FW_LOADER
 	select LIBCRC32C
 	---help---
