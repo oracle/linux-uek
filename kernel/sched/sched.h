@@ -287,6 +287,7 @@ struct cfs_bandwidth {
 #ifndef __GENKSYMS__
         int expires_seq;
         short idle, period_active;
+	bool distribute_running;
 #else
         int idle, period_active;
 #endif
