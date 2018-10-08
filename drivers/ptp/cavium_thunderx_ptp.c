@@ -33,12 +33,7 @@
 /* PCI device IDs */
 #define PCI_DEVICE_ID_THUNDER_PTP	0xA00C
 
-struct thunder_ptp_clock {
-	void __iomem *reg_base;
-	struct pci_dev *pdev;
-	struct cavium_ptp_clock *cavium_ptp_clock;
-	struct cavium_ptp_clock_info cavium_ptp_info;
-};
+struct thunder_ptp_clock *thunder_ptp_clock;
 
 /*
  * Register access functions
@@ -72,13 +67,30 @@ static void thunder_ptp_reg_write(struct cavium_ptp_clock_info *info,
 	writeq_relaxed(val, addr);
 }
 
+static void thunder_ptp_adjtime(struct cavium_ptp_clock_info *info,
+				   s64 delta)
+{
+	struct thunder_ptp_clock *thunder_ptp_clock =
+		container_of(info, struct thunder_ptp_clock, cavium_ptp_info);
+
+	thunder_ptp_clock->ptp_adjust = delta;
+}
+
+s64 thunder_get_adjtime(void)
+{
+	if (!thunder_ptp_clock)
+		return 0;
+
+	return thunder_ptp_clock->ptp_adjust;
+}
+EXPORT_SYMBOL(thunder_get_adjtime);
+
 /* module operations */
 
 static int thunder_ptp_probe(struct pci_dev *pdev,
 				 const struct pci_device_id *ent)
 {
 	int err;
-	struct thunder_ptp_clock *thunder_ptp_clock = NULL;
 	struct device *dev = &pdev->dev;
 
 	thunder_ptp_clock = devm_kzalloc(dev, sizeof(*thunder_ptp_clock),
@@ -119,7 +131,7 @@ static int thunder_ptp_probe(struct pci_dev *pdev,
 		.name = "ThunderX PTP",
 		.reg_read = thunder_ptp_reg_read,
 		.reg_write = thunder_ptp_reg_write,
-		.adjtime_clbck = NULL,
+		.adjtime_clbck = thunder_ptp_adjtime,
 	};
 	thunder_ptp_clock->cavium_ptp_clock = cavium_ptp_register(
 		&thunder_ptp_clock->cavium_ptp_info, dev);

@@ -108,7 +108,11 @@ static int cavium_ptp_adjtime(struct ptp_clock_info *ptp_info, s64 delta)
 
 	/* notify child module about the time adjust */
 	if (cavium_ptp_info->adjtime_clbck)
-		cavium_ptp_info->adjtime_clbck(cavium_ptp_info, delta);
+		cavium_ptp_info->adjtime_clbck(cavium_ptp_info,
+					       cavium_ptp_clock->ptp_adjust);
+
+	/* Sync, for network driver to get latest value */
+	smp_mb();
 
 	return 0;
 }
