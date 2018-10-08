@@ -23,7 +23,7 @@
 
 #ifndef __OCTEON_NETWORK_H__
 #define __OCTEON_NETWORK_H__
-#include <linux/ptp_clock_kernel.h>
+#include "../drivers/ptp/cavium_ptp.h"
 
 #define LIO_MAX_MTU_SIZE (OCTNET_MAX_FRM_SIZE - OCTNET_FRM_HEADER_SIZE)
 #define LIO_MIN_MTU_SIZE ETH_MIN_MTU
@@ -116,13 +116,10 @@ struct lio {
 	/** Copy of ctrl reg in phy */
 	u32 led_ctrl_val;
 
-	/* PTP clock information */
-	struct ptp_clock_info ptp_info;
-	struct ptp_clock *ptp_clock;
-	s64 ptp_adjust;
-
-	/* for atomic access to Octeon PTP reg and data struct */
-	spinlock_t ptp_lock;
+	/* Cavium PTP clock information */
+	struct cavium_ptp_clock_info cavium_ptp_info;
+	struct cavium_ptp_clock *cavium_ptp_clock;
+	s64 ptp_adjust; /* shadow copy of adjust for fast operations */
 
 	/* Interface info */
 	u32	intf_open;

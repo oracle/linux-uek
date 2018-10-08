@@ -69,6 +69,34 @@ config PTP_1588_CLOCK_IXP46X
 	  To compile this driver as a module, choose M here: the module
 	  will be called ptp_ixp46x.
 
+config PTP_1588_CLOCK_CAVIUM_PTP
+	tristate "Cavium PTP coprocessor as PTP clock"
+	select PTP_1588_CLOCK
+	default y
+	help
+          This driver adds support for using the Cavium PTP coprocessor as a
+          PTP clock. This clock is only useful if your PTP programs are getting
+          hardware time stamps on the PTP Ethernet packets using the
+          SO_TIMESTAMPING API.
+
+	  To compile this driver as a module, choose M here: the module
+	  will be called ptp_ixp46x.
+
+config PTP_1588_CLOCK_CAVIUM_THUNDERX_PTP
+	tristate "Cavium Thunder PTP coprocessor as PTP clock"
+	depends on 64BIT
+	default ARCH_THUNDER
+	select PTP_1588_CLOCK_CAVIUM_PTP
+	default y
+	help
+          This driver adds support for using the Cavium PTP coprocessor present
+          in ThunderX SoC as a PTP clock. This clock is only useful if your PTP
+          programs are getting hardware time stamps on the PTP Ethernet packets
+          using the SO_TIMESTAMPING API.
+
+	  To compile this driver as a module, choose M here: the module
+	  will be called ptp_ixp46x.
+
 comment "Enable PHYLIB and NETWORK_PHY_TIMESTAMPING to see the additional clocks."
 	depends on PHYLIB=n || NETWORK_PHY_TIMESTAMPING=n
 

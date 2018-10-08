@@ -19,6 +19,7 @@
 #include <linux/interrupt.h>
 #include <linux/pci.h>
 #include <linux/firmware.h>
+#include "../drivers/ptp/cavium_ptp.h"
 #include <net/vxlan.h>
 #include <linux/kthread.h>
 #include "liquidio_common.h"
@@ -1711,6 +1712,32 @@ static void free_netsgbuf(void *buf)
 	tx_buffer_free(skb);
 }
 
+u64 lio_cavium_ptp_reg_read(struct cavium_ptp_clock_info *info, u64 offset)
+{
+	struct lio *lio = container_of(info, struct lio, cavium_ptp_info);
+	struct octeon_device *oct = (struct octeon_device *)lio->oct_dev;
+
+	return lio_pci_readq(oct, CN6XXX_MIO_PTP_BASE + offset);
+}
+
+void lio_cavium_ptp_reg_write(struct cavium_ptp_clock_info *info,
+			      u64 offset, u64 val)
+{
+	struct lio *lio = container_of(info, struct lio, cavium_ptp_info);
+	struct octeon_device *oct = (struct octeon_device *)lio->oct_dev;
+
+	lio_pci_writeq(oct, val, CN6XXX_MIO_PTP_BASE + offset);
+}
+
+static void lio_cavium_ptp_adjtime(struct cavium_ptp_clock_info *info,
+				   s64 delta)
+{
+	struct lio *lio = container_of(info, struct lio, cavium_ptp_info);
+
+	/* ptp_adjust is read without spin_lock */
+	lio->ptp_adjust = delta;
+}
+
 /**
  * \brief Unmap and free gather buffer with response
  * @param buf buffer
@@ -1755,170 +1782,6 @@ static void free_netsgbuf_with_resp(void *buf)
 	/* Don't free the skb yet */
 
 	check_txq_state(lio, skb);
-}
-
-/**
- * \brief Adjust ptp frequency
- * @param ptp PTP clock info
- * @param ppb how much to adjust by, in parts-per-billion
- */
-static int liquidio_ptp_adjfreq(struct ptp_clock_info *ptp, s32 ppb)
-{
-	struct lio *lio = container_of(ptp, struct lio, ptp_info);
-	struct octeon_device *oct = (struct octeon_device *)lio->oct_dev;
-	u64 comp, delta;
-	unsigned long flags;
-	bool neg_adj = false;
-
-	if (ppb < 0) {
-		neg_adj = true;
-		ppb = -ppb;
-	}
-
-	/* The hardware adds the clock compensation value to the
-	 * PTP clock on every coprocessor clock cycle, so we
-	 * compute the delta in terms of coprocessor clocks.
-	 */
-	delta = (u64)ppb << 32;
-	do_div(delta, oct->coproc_clock_rate);
-
-	spin_lock_irqsave(&lio->ptp_lock, flags);
-	comp = lio_pci_readq(oct, CN6XXX_MIO_PTP_CLOCK_COMP);
-	if (neg_adj)
-		comp -= delta;
-	else
-		comp += delta;
-	lio_pci_writeq(oct, comp, CN6XXX_MIO_PTP_CLOCK_COMP);
-	spin_unlock_irqrestore(&lio->ptp_lock, flags);
-
-	return 0;
-}
-
-/**
- * \brief Adjust ptp time
- * @param ptp PTP clock info
- * @param delta how much to adjust by, in nanosecs
- */
-static int liquidio_ptp_adjtime(struct ptp_clock_info *ptp, s64 delta)
-{
-	unsigned long flags;
-	struct lio *lio = container_of(ptp, struct lio, ptp_info);
-
-	spin_lock_irqsave(&lio->ptp_lock, flags);
-	lio->ptp_adjust += delta;
-	spin_unlock_irqrestore(&lio->ptp_lock, flags);
-
-	return 0;
-}
-
-/**
- * \brief Get hardware clock time, including any adjustment
- * @param ptp PTP clock info
- * @param ts timespec
- */
-static int liquidio_ptp_gettime(struct ptp_clock_info *ptp,
-				struct timespec64 *ts)
-{
-	u64 ns;
-	unsigned long flags;
-	struct lio *lio = container_of(ptp, struct lio, ptp_info);
-	struct octeon_device *oct = (struct octeon_device *)lio->oct_dev;
-
-	spin_lock_irqsave(&lio->ptp_lock, flags);
-	ns = lio_pci_readq(oct, CN6XXX_MIO_PTP_CLOCK_HI);
-	ns += lio->ptp_adjust;
-	spin_unlock_irqrestore(&lio->ptp_lock, flags);
-
-	*ts = ns_to_timespec64(ns);
-
-	return 0;
-}
-
-/**
- * \brief Set hardware clock time. Reset adjustment
- * @param ptp PTP clock info
- * @param ts timespec
- */
-static int liquidio_ptp_settime(struct ptp_clock_info *ptp,
-				const struct timespec64 *ts)
-{
-	u64 ns;
-	unsigned long flags;
-	struct lio *lio = container_of(ptp, struct lio, ptp_info);
-	struct octeon_device *oct = (struct octeon_device *)lio->oct_dev;
-
-	ns = timespec64_to_ns(ts);
-
-	spin_lock_irqsave(&lio->ptp_lock, flags);
-	lio_pci_writeq(oct, ns, CN6XXX_MIO_PTP_CLOCK_HI);
-	lio->ptp_adjust = 0;
-	spin_unlock_irqrestore(&lio->ptp_lock, flags);
-
-	return 0;
-}
-
-/**
- * \brief Check if PTP is enabled
- * @param ptp PTP clock info
- * @param rq request
- * @param on is it on
- */
-static int
-liquidio_ptp_enable(struct ptp_clock_info *ptp __attribute__((unused)),
-		    struct ptp_clock_request *rq __attribute__((unused)),
-		    int on __attribute__((unused)))
-{
-	return -EOPNOTSUPP;
-}
-
-/**
- * \brief Open PTP clock source
- * @param netdev network device
- */
-static void oct_ptp_open(struct net_device *netdev)
-{
-	struct lio *lio = GET_LIO(netdev);
-	struct octeon_device *oct = (struct octeon_device *)lio->oct_dev;
-
-	spin_lock_init(&lio->ptp_lock);
-
-	snprintf(lio->ptp_info.name, 16, "%s", netdev->name);
-	lio->ptp_info.owner = THIS_MODULE;
-	lio->ptp_info.max_adj = 250000000;
-	lio->ptp_info.n_alarm = 0;
-	lio->ptp_info.n_ext_ts = 0;
-	lio->ptp_info.n_per_out = 0;
-	lio->ptp_info.pps = 0;
-	lio->ptp_info.adjfreq = liquidio_ptp_adjfreq;
-	lio->ptp_info.adjtime = liquidio_ptp_adjtime;
-	lio->ptp_info.gettime64 = liquidio_ptp_gettime;
-	lio->ptp_info.settime64 = liquidio_ptp_settime;
-	lio->ptp_info.enable = liquidio_ptp_enable;
-
-	lio->ptp_adjust = 0;
-
-	lio->ptp_clock = ptp_clock_register(&lio->ptp_info,
-					     &oct->pci_dev->dev);
-
-	if (IS_ERR(lio->ptp_clock))
-		lio->ptp_clock = NULL;
-}
-
-/**
- * \brief Init PTP clock
- * @param oct octeon device
- */
-static void liquidio_ptp_init(struct octeon_device *oct)
-{
-	u64 clock_comp, cfg;
-
-	clock_comp = (u64)NSEC_PER_SEC << 32;
-	do_div(clock_comp, oct->coproc_clock_rate);
-	lio_pci_writeq(oct, clock_comp, CN6XXX_MIO_PTP_CLOCK_COMP);
-
-	/* Enable */
-	cfg = lio_pci_readq(oct, CN6XXX_MIO_PTP_CLOCK_CFG);
-	lio_pci_writeq(oct, cfg | 0x01, CN6XXX_MIO_PTP_CLOCK_CFG);
 }
 
 /**
@@ -2061,9 +1924,21 @@ static int liquidio_open(struct net_device *netdev)
 			oct->droq[0]->ops.poll_mode = 1;
 	}
 
-	if (oct->ptp_enable)
-		oct_ptp_open(netdev);
+	/* On 4.9 there's check
+	 *	if (oct->ptp_enable)
+	 *		oct_ptp_open(netdev);
+	 */
 
+	lio->ptp_adjust = 0;
+	lio->cavium_ptp_info = (struct cavium_ptp_clock_info) {
+		.clock_rate = oct->coproc_clock_rate,
+		.name = netdev->name,
+		.reg_read = lio_cavium_ptp_reg_read,
+		.reg_write = lio_cavium_ptp_reg_write,
+		.adjtime_clbck = lio_cavium_ptp_adjtime,
+	};
+	lio->cavium_ptp_clock = cavium_ptp_register(&lio->cavium_ptp_info,
+						    &oct->pci_dev->dev);
 	ifstate_set(lio, LIO_IFSTATE_RUNNING);
 
 	/* Ready for link status updates */
@@ -2131,9 +2006,9 @@ static int liquidio_stop(struct net_device *netdev)
 		cleanup_tx_poll_fn(netdev);
 	}
 
-	if (lio->ptp_clock) {
-		ptp_clock_unregister(lio->ptp_clock);
-		lio->ptp_clock = NULL;
+	if (lio->cavium_ptp_clock) {
+		cavium_ptp_remove(lio->cavium_ptp_clock);
+		lio->cavium_ptp_clock = NULL;
 	}
 
 	dev_info(&oct->pci_dev->dev, "%s interface is stopped\n", netdev->name);
@@ -3766,8 +3641,6 @@ static int liquidio_init_nic_module(struct octeon_device *oct)
 		dev_err(&oct->pci_dev->dev, "Setup NIC devices failed\n");
 		goto octnet_init_failure;
 	}
-
-	liquidio_ptp_init(oct);
 
 	dev_dbg(&oct->pci_dev->dev, "Network interfaces ready\n");
 
