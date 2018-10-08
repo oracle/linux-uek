@@ -34,6 +34,7 @@
 #define PCI_DEVICE_ID_THUNDER_PTP	0xA00C
 
 struct thunder_ptp_clock *thunder_ptp_clock;
+EXPORT_SYMBOL(thunder_ptp_clock);
 
 /*
  * Register access functions
@@ -85,6 +86,33 @@ s64 thunder_get_adjtime(void)
 }
 EXPORT_SYMBOL(thunder_get_adjtime);
 
+#define PCI_DEVICE_ID_CAVIUM_RST 0xA00E
+#define DEFAULT_SCLK_MUL	 16
+#define RST_BOOT		 0x1600
+
+/* Get SCLK multiplier from RST block */
+static u64 thunder_get_sclk_mul(void)
+{
+	struct pci_dev *rstdev;
+	void __iomem *rst_base = NULL;
+	u64 sclk_mul = DEFAULT_SCLK_MUL;
+
+	rstdev = pci_get_device(PCI_VENDOR_ID_CAVIUM,
+				PCI_DEVICE_ID_CAVIUM_RST, NULL);
+	if (!rstdev)
+		return sclk_mul;
+
+	rst_base = ioremap(pci_resource_start(rstdev, 0),
+			   pci_resource_len(rstdev, 0));
+	if (rst_base) {
+		sclk_mul = readq_relaxed(rst_base + RST_BOOT);
+		sclk_mul = (sclk_mul >> 33) & 0x3F;
+		iounmap(rst_base);
+	}
+
+	return sclk_mul;
+}
+
 /* module operations */
 
 static int thunder_ptp_probe(struct pci_dev *pdev,
@@ -124,10 +152,10 @@ static int thunder_ptp_probe(struct pci_dev *pdev,
 
 	/* register the cavium_ptp_clock */
 	thunder_ptp_clock->cavium_ptp_info = (struct cavium_ptp_clock_info) {
-		/* \TODO Below we need to give the SCLK which is:
+		/* Below we need to give the SCLK which is:
 		 * PLL_REF_CLK (= 50 MHz) × [PNR_MUL]
-		 * PNR_MUL can be obtained from RST_BOOT[PNR_MUL] */
-		.clock_rate = 16ull * 50000000ull,
+		 */
+		.clock_rate = thunder_get_sclk_mul() * 50000000ull,
 		.name = "ThunderX PTP",
 		.reg_read = thunder_ptp_reg_read,
 		.reg_write = thunder_ptp_reg_write,
