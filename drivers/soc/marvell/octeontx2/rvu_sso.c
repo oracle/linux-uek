@@ -502,7 +502,7 @@ int rvu_sso_init(struct rvu *rvu)
 	u64 iaq_free_cnt, iaq_rsvd, iaq_max, iaq_rsvd_cnt = 0;
 	u64 taq_free_cnt, taq_rsvd, taq_max, taq_rsvd_cnt = 0;
 	struct sso_rsrc *sso = &rvu->hw->sso;
-	int blkaddr, hwgrp, err;
+	int blkaddr, hwgrp, grpmsk, hws, err;
 	u64 reg;
 
 	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_SSO, 0);
@@ -585,6 +585,19 @@ int rvu_sso_init(struct rvu *rvu)
 		rvu_write64(rvu, blkaddr, SSO_AF_TAQ_CNT,
 			    (taq_rsvd_cnt & SSO_AF_TAQ_RSVD_FREE_MASK) <<
 			    SSO_AF_TAQ_RSVD_FREE_SHIFT);
+	}
+
+	/* Unset the HWS Hardware Group Mask.
+	 * The hardware group mask should be set by PF/VF
+	 * using SSOW_LF_GWS_GRPMSK_CHG based on the LF allocations.
+	 */
+	for (grpmsk = 0; grpmsk < (sso->sso_hwgrps / 64); grpmsk++) {
+		for (hws = 0; hws < sso->sso_hws; hws++) {
+			rvu_write64(rvu, blkaddr,
+				   SSO_AF_HWSX_SX_GRPMSKX(hws, 0, grpmsk), 0x0);
+			rvu_write64(rvu, blkaddr,
+				   SSO_AF_HWSX_SX_GRPMSKX(hws, 1, grpmsk), 0x0);
+		}
 	}
 
 	/* Allocate SSO_AF_CONST::HWS + 1. As the total number of pf/vf are
