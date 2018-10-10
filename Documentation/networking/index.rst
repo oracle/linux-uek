@@ -7,6 +7,7 @@ Contents:
    :maxdepth: 2
 
    batman-adv
+   fm10k
    kapi
    z8530book
 
