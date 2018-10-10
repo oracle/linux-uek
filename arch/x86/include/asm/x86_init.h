@@ -297,4 +297,6 @@ extern void x86_early_init_platform_quirks(void);
 extern void x86_init_noop(void);
 extern void x86_init_uint_noop(unsigned int unused);
 
+void x86_verify_bootdata_version(void);
+
 #endif
