@@ -991,6 +991,9 @@ static const struct rdma_nl_cbs nldev_cb_table[RDMA_NLDEV_NUM_OPS] = {
 		.doit = nldev_get_doit,
 		.dump = nldev_get_dumpit,
 	},
+	[RDMA_NLDEV_CMD_SET] = {
+		.flags = RDMA_NL_ADMIN_PERM,
+	},
 	[RDMA_NLDEV_CMD_PORT_GET] = {
 		.doit = nldev_port_get_doit,
 		.dump = nldev_port_get_dumpit,
