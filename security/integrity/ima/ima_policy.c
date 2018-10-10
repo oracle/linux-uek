@@ -156,6 +156,13 @@ static struct ima_rule_entry default_appraise_rules[] __ro_after_init = {
 #endif
 };
 
+static struct ima_rule_entry lock_down_rules[] __ro_after_init = {
+	{.action = APPRAISE, .func = MODULE_CHECK,
+	 .flags = IMA_FUNC | IMA_DIGSIG_REQUIRED},
+	{.action = APPRAISE, .func = POLICY_CHECK,
+	 .flags = IMA_FUNC | IMA_DIGSIG_REQUIRED},
+};
+
 static struct ima_rule_entry secure_boot_rules[] __ro_after_init = {
 	{.action = APPRAISE, .func = MODULE_CHECK,
 	 .flags = IMA_FUNC | IMA_DIGSIG_REQUIRED},
@@ -431,6 +438,7 @@ void __init ima_init_policy(void)
 	int measure_entries = 0;
 	int appraise_entries = 0;
 	int secure_boot_entries = 0;
+	int lock_down_entries = 0;
 	bool kernel_locked_down = __kernel_is_locked_down(NULL, false);
 
 	/* if !ima_policy set entries = 0 so we load NO default rules */
@@ -440,8 +448,10 @@ void __init ima_init_policy(void)
 	if (ima_use_appraise_tcb)
 		appraise_entries = ARRAY_SIZE(default_appraise_rules);
 
-	if (ima_use_secure_boot || kernel_locked_down)
+	if (ima_use_secure_boot)
 		secure_boot_entries = ARRAY_SIZE(secure_boot_rules);
+	else if (kernel_locked_down)
+		lock_down_entries = ARRAY_SIZE(lock_down_rules);
 
 	for (i = 0; i < measure_entries; i++)
 		list_add_tail(&dont_measure_rules[i].list, &ima_default_rules);
@@ -478,6 +488,19 @@ void __init ima_init_policy(void)
 			if (entry)
 				list_add_tail(&entry->list, &ima_policy_rules);
 		}
+	}
+
+	for (i = 0; i < lock_down_entries; i++) {
+		struct ima_rule_entry *entry;
+
+		/* Include for builtin policies */
+		list_add_tail(&lock_down_rules[i].list, &ima_default_rules);
+
+		/* Include for custom policies */
+		entry = kmemdup(&lock_down_rules[i], sizeof(*entry),
+				GFP_KERNEL);
+		if (entry)
+			list_add_tail(&entry->list, &ima_policy_rules);
 	}
 
 	for (i = 0; i < appraise_entries; i++) {
