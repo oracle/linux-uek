@@ -2460,6 +2460,48 @@ linkcfg:
 	return 0;
 }
 
+int rvu_mbox_handler_NIX_SET_RX_CFG(struct rvu *rvu, struct nix_rx_cfg *req,
+				    struct msg_rsp *rsp)
+{
+	int nixlf, blkaddr;
+	struct rvu_hwinfo *hw = rvu->hw;
+	u16 pcifunc = req->hdr.pcifunc;
+	struct rvu_block *block;
+	struct rvu_pfvf *pfvf;
+	u64 cfg;
+
+	pfvf = rvu_get_pfvf(rvu, pcifunc);
+	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NIX, pcifunc);
+	if (!pfvf->nixlf || (blkaddr < 0))
+		return NIX_AF_ERR_AF_LF_INVALID;
+
+	block = &hw->block[blkaddr];
+	nixlf = rvu_get_lf(rvu, block, pcifunc, 0);
+	if (nixlf < 0)
+		return NIX_AF_ERR_AF_LF_INVALID;
+
+	cfg = rvu_read64(rvu, blkaddr, NIX_AF_LFX_RX_CFG(nixlf));
+	/* Set the pktio configuration */
+	if (req->len_verify & BIT(0))
+		cfg |= BIT_ULL(41);
+	else
+		cfg &= ~BIT_ULL(41);
+
+	if (req->len_verify & BIT(1))
+		cfg |= BIT_ULL(40);
+	else
+		cfg &= ~BIT_ULL(40);
+
+	if (req->csum_verify & BIT(0))
+		cfg |= BIT_ULL(37);
+	else
+		cfg &= ~BIT_ULL(37);
+
+	rvu_write64(rvu, blkaddr, NIX_AF_LFX_RX_CFG(nixlf), cfg);
+
+	return 0;
+}
+
 static void nix_link_config(struct rvu *rvu, int blkaddr)
 {
 	struct rvu_hwinfo *hw = rvu->hw;
