@@ -577,7 +577,10 @@ void hugetlb_fix_reserve_counts(struct inode *inode, bool restore_reserve)
 	if (restore_reserve && rsv_adjust) {
 		struct hstate *h = hstate_inode(inode);
 
-		hugetlb_acct_memory(h, 1);
+		if (hugetlb_acct_memory(h, 1)) {
+			printk(KERN_ALERT "HUGERSV hugetlb_fix_reserve_counts: hugetlb_acct_memory failure!!!\n");
+			dump_stack();
+		}
 	}
 }
 
@@ -936,6 +939,10 @@ retry_cpuset:
 					break;
 
 				SetPagePrivate(page);
+				if (!h->resv_huge_pages) {
+					printk(KERN_ALERT "HUGERSV dequeue_huge_page_vma: resv_huge_pages going negative!!!\n");
+					dump_stack();
+				}
 				h->resv_huge_pages--;
 				break;
 			}
@@ -1585,6 +1592,10 @@ static int gather_surplus_pages(struct hstate *h, int delta)
 
 	needed = (h->resv_huge_pages + delta) - h->free_huge_pages;
 	if (needed <= 0) {
+		if (((long)(h->resv_huge_pages) + (long)delta) < 0) {
+			printk(KERN_ALERT "HUGERSV gather_surplus_pages: resv_huge_pages going negative!!!\n");
+			dump_stack();
+		}
 		h->resv_huge_pages += delta;
 		return 0;
 	}
@@ -1631,6 +1642,10 @@ retry:
 	 * before they are reserved.
 	 */
 	needed += allocated;
+	if (((long)(h->resv_huge_pages) + (long)delta) < 0) {
+		printk(KERN_ALERT "HUGERSV gather_surplus_pages: resv_huge_pages going negative!!!\n");
+		dump_stack();
+	}
 	h->resv_huge_pages += delta;
 	ret = 0;
 
@@ -1669,6 +1684,10 @@ static void return_unused_surplus_pages(struct hstate *h,
 	unsigned long nr_pages;
 
 	/* Uncommit the reservation */
+	if (((long)(h->resv_huge_pages) - (long)unused_resv_pages) < 0) {
+		printk(KERN_ALERT "HUGERSV return_unused_surplus_pages: resv_huge_pages going negative!!!\n");
+		dump_stack();
+	}
 	h->resv_huge_pages -= unused_resv_pages;
 
 	/* Cannot return gigantic pages currently */
@@ -1929,20 +1948,26 @@ struct page *alloc_huge_page(struct vm_area_struct *vma,
 	set_page_private(page, (unsigned long)spool);
 
 	map_commit = vma_commit_reservation(h, vma, addr);
-	if (unlikely(map_chg > map_commit)) {
-		/*
-		 * The page was added to the reservation map between
-		 * vma_needs_reservation and vma_commit_reservation.
-		 * This indicates a race with hugetlb_reserve_pages.
-		 * Adjust for the subpool count incremented above AND
-		 * in hugetlb_reserve_pages for the same page.  Also,
-		 * the reservation count added in hugetlb_reserve_pages
-		 * no longer applies.
-		 */
-		long rsv_adjust;
+	if (unlikely(map_chg != map_commit)) {
+		if (unlikely(map_chg > map_commit)) {
+			/*
+			 * The page was added to the reservation map between
+			 * vma_needs_reservation and vma_commit_reservation.
+			 * This indicates a race with hugetlb_reserve_pages.
+			 * Adjust for the subpool count incremented above AND
+			 * in hugetlb_reserve_pages for the same page.  Also,
+			 * the reservation count added in hugetlb_reserve_pages
+			 * no longer applies.
+			 */
+			long rsv_adjust;
 
-		rsv_adjust = hugepage_subpool_put_pages(spool, 1);
-		hugetlb_acct_memory(h, -rsv_adjust);
+			rsv_adjust = hugepage_subpool_put_pages(spool, 1);
+			hugetlb_acct_memory(h, -rsv_adjust);
+		} else {
+			/* map_chg < map_commit */
+			printk(KERN_ALERT "HUGERSV alloc_huge_page: map_chg < map_commit!!!\n");
+			dump_stack();
+		}
 	}
 	return page;
 
@@ -4239,19 +4264,25 @@ int hugetlb_reserve_pages(struct inode *inode,
 	if (!vma || vma->vm_flags & VM_MAYSHARE) {
 		long add = region_add(resv_map, from, to);
 
-		if (unlikely(chg > add)) {
-			/*
-			 * pages in this range were added to the reserve
-			 * map between region_chg and region_add.  This
-			 * indicates a race with alloc_huge_page.  Adjust
-			 * the subpool and reserve counts modified above
-			 * based on the difference.
-			 */
-			long rsv_adjust;
+		if (unlikely(chg != add)) {
+			if (unlikely(chg > add)) {
+				/*
+				 * pages in this range were added to the reserve
+				 * map between region_chg and region_add.  This
+				 * indicates a race with alloc_huge_page.  Adjust
+				 * the subpool and reserve counts modified above
+				 * based on the difference.
+				 */
+				long rsv_adjust;
 
-			rsv_adjust = hugepage_subpool_put_pages(spool,
-								chg - add);
-			hugetlb_acct_memory(h, -rsv_adjust);
+				rsv_adjust = hugepage_subpool_put_pages(spool,
+									chg - add);
+				hugetlb_acct_memory(h, -rsv_adjust);
+			} else {
+				/* chg < add */
+				printk(KERN_ALERT "HUGERSV hugetlb_reserve_pages: chg < add !!!\n");
+				dump_stack();
+			}
 		}
 	}
 	return 0;
