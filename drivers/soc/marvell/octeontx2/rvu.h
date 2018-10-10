@@ -501,6 +501,9 @@ int rvu_mbox_handler_NIX_LF_STOP_RX(struct rvu *rvu, struct msg_req *req,
 int rvu_mbox_handler_NIX_MARK_FORMAT_CFG(struct rvu *rvu,
 					 struct nix_mark_format_cfg  *req,
 					 struct nix_mark_format_cfg_rsp *rsp);
+int rvu_mbox_handler_NIX_SET_RX_CFG(struct rvu *rvu, struct nix_rx_cfg *req,
+				struct msg_rsp *rsp);
+
 
 /* NPC APIs */
 int rvu_npc_init(struct rvu *rvu);
