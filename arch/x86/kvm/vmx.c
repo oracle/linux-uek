@@ -13430,7 +13430,7 @@ static void vmx_cleanup_l1d_flush(void)
 	l1tf_vmx_mitigation = VMENTER_L1D_FLUSH_AUTO;
 }
 
-static void __exit vmx_exit(void)
+static void vmx_exit(void)
 {
 #ifdef CONFIG_KEXEC_CORE
 	RCU_INIT_POINTER(crash_vmclear_loaded_vmcss, NULL);
@@ -13468,6 +13468,8 @@ module_exit(vmx_exit);
 
 static int __init vmx_init(void)
 {
+	int r;
+
 #if IS_ENABLED(CONFIG_HYPERV)
 	/*
 	 * Enlightened VMCS usage should be recommended and the host needs
@@ -13497,7 +13499,7 @@ static int __init vmx_init(void)
 	}
 #endif
 
-	int r = kvm_init(&vmx_x86_ops, sizeof(struct vcpu_vmx),
+	r = kvm_init(&vmx_x86_ops, sizeof(struct vcpu_vmx),
 		     __alignof__(struct vcpu_vmx), THIS_MODULE);
 	if (r)
 		return r;
