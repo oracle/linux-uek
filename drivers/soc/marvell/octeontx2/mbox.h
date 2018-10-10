@@ -197,7 +197,8 @@ M(NIX_SET_MAC_ADDR,	0x800a, nix_set_mac_addr, msg_rsp)		\
 M(NIX_SET_RX_MODE,	0x800b, nix_rx_mode, msg_rsp)			\
 M(NIX_SET_HW_FRS,	0x800c, nix_frs_cfg, msg_rsp)			\
 M(NIX_LF_START_RX,	0x800d, msg_req, msg_rsp)			\
-M(NIX_LF_STOP_RX,	0x800e, msg_req, msg_rsp)
+M(NIX_LF_STOP_RX,	0x800e, msg_req, msg_rsp)			\
+M(NIX_MARK_FORMAT_CFG,	0x800f, nix_mark_format_cfg, nix_mark_format_cfg_rsp)
 
 /* Messages initiated by AF (range 0xC00 - 0xDFF) */
 #define MBOX_UP_CGX_MESSAGES						\
@@ -428,6 +429,7 @@ enum nix_af_status {
 	NIX_AF_ERR_LF_RESET         = -414,
 	NIX_AF_ERR_RSS_NOSPC_FIELD  = -415,
 	NIX_AF_ERR_RSS_NOSPC_ALGO   = -416,
+	NIX_AF_ERR_MARK_CFG_FAIL    = -417,
 };
 
 /* For NIX LF context alloc and init */
@@ -590,6 +592,20 @@ struct nix_rss_flowkey_cfg_rsp {
 struct nix_set_mac_addr {
 	struct mbox_msghdr hdr;
 	u8 mac_addr[ETH_ALEN]; /* MAC address to be set for this pcifunc */
+};
+
+struct nix_mark_format_cfg {
+	struct mbox_msghdr hdr;
+	u8 offset;
+	u8 y_mask;
+	u8 y_val;
+	u8 r_mask;
+	u8 r_val;
+};
+
+struct nix_mark_format_cfg_rsp {
+	struct mbox_msghdr hdr;
+	u8 mark_format_idx;
 };
 
 struct nix_rx_mode {

@@ -193,6 +193,12 @@ struct nix_txsch {
 #define TXSCH_MAP(__func, __flags)	((__func & 0xFFFF) | (__flags << 16))
 };
 
+struct nix_mark_format {
+	u8 total;
+	u8 in_use;
+	u32 *cfg;
+};
+
 struct npc_pkind {
 	struct rsrc_bmap rsrc;
 	u32	*pfchan_map;
@@ -208,6 +214,7 @@ struct nix_hw {
 	struct nix_txsch txsch[NIX_TXSCH_LVL_CNT]; /* Tx schedulers */
 	struct nix_mcast mcast;
 	struct nix_flowkey flowkey;
+	struct nix_mark_format mark_format;
 };
 
 struct rvu_hwinfo {
@@ -448,6 +455,8 @@ int rvu_mbox_handler_NPA_LF_FREE(struct rvu *rvu, struct msg_req *req,
 /* NIX APIs */
 bool is_nixlf_attached(struct rvu *rvu, u16 pcifunc);
 int rvu_nix_init(struct rvu *rvu);
+int rvu_nix_reserve_mark_format(struct rvu *rvu, struct nix_hw *nix_hw,
+				int blkaddr, u32 cfg);
 void rvu_nix_freemem(struct rvu *rvu);
 int rvu_get_nixlf_count(struct rvu *rvu);
 void rvu_nix_lf_teardown(struct rvu *rvu, u16 pcifunc, int blkaddr, int npalf);
@@ -489,6 +498,9 @@ int rvu_mbox_handler_NIX_LF_START_RX(struct rvu *rvu, struct msg_req *req,
 				      struct msg_rsp *rsp);
 int rvu_mbox_handler_NIX_LF_STOP_RX(struct rvu *rvu, struct msg_req *req,
 				     struct msg_rsp *rsp);
+int rvu_mbox_handler_NIX_MARK_FORMAT_CFG(struct rvu *rvu,
+					 struct nix_mark_format_cfg  *req,
+					 struct nix_mark_format_cfg_rsp *rsp);
 
 /* NPC APIs */
 int rvu_npc_init(struct rvu *rvu);
