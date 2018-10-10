@@ -266,7 +266,7 @@ void x86_spec_ctrl_set(u64 val)
 			else
 				host = val & ~(SPEC_CTRL_SSBD);
 		} else {
-			if (ibrs_inuse)
+			if (ibrs_inuse && (val & SPEC_CTRL_IBRS))
 				host = this_cpu_read(x86_spec_ctrl_priv_cpu);
 			else
 				host = x86_spec_ctrl_base;
