@@ -461,11 +461,6 @@ static int otx2_init_hw_resources(struct otx2_nic *pf)
 	if (err)
 		return err;
 
-	/* Initialize RSS */
-	err = otx2_rss_init(pf);
-	if (err)
-		return err;
-
 	for (lvl = 0; lvl < NIX_TXSCH_LVL_CNT; lvl++) {
 		err = otx2_txschq_config(pf, lvl);
 		if (err)
@@ -644,6 +639,11 @@ int otx2_open(struct net_device *netdev)
 
 	/* Set default MTU in HW */
 	err = otx2_hw_set_mtu(pf, netdev->mtu);
+	if (err)
+		goto err_disable_napi;
+
+	/* Initialize RSS */
+	err = otx2_rss_init(pf);
 	if (err)
 		goto err_disable_napi;
 
