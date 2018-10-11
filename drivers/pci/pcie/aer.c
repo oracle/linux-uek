@@ -1231,7 +1231,7 @@ static irqreturn_t aer_isr(int irq, void *context)
  *
  * Invoked when Root Port detects AER messages.
  */
-irqreturn_t aer_irq(int irq, void *context)
+static irqreturn_t aer_irq(int irq, void *context)
 {
 	struct pcie_device *pdev = (struct pcie_device *)context;
 	struct aer_rpc *rpc = get_service_data(pdev);
@@ -1251,7 +1251,6 @@ irqreturn_t aer_irq(int irq, void *context)
 
 	return IRQ_WAKE_THREAD;
 }
-EXPORT_SYMBOL_GPL(aer_irq);
 
 static int set_device_error_reporting(struct pci_dev *dev, void *data)
 {
