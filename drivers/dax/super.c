@@ -86,6 +86,7 @@ bool __bdev_dax_supported(struct block_device *bdev, int blocksize)
 {
 	struct dax_device *dax_dev;
 	struct request_queue *q;
+	bool dax_enabled = false;
 	pgoff_t pgoff;
 	int err, id;
 	void *kaddr;
@@ -132,6 +133,31 @@ bool __bdev_dax_supported(struct block_device *bdev, int blocksize)
 		return false;
 	}
 
+	if (IS_ENABLED(CONFIG_FS_DAX_LIMITED) && pfn_t_special(pfn)) {
+		/*
+		 * An arch that has enabled the pmem api should also
+		 * have its drivers support pfn_t_devmap()
+		 *
+		 * This is a developer warning and should not trigger in
+		 * production. dax_flush() will crash since it depends
+		 * on being able to do (page_address(pfn_to_page())).
+		 */
+		WARN_ON(IS_ENABLED(CONFIG_ARCH_HAS_PMEM_API));
+		dax_enabled = true;
+	} else if (pfn_t_devmap(pfn)) {
+		struct dev_pagemap *pgmap;
+
+		pgmap = get_dev_pagemap(pfn_t_to_pfn(pfn), NULL);
+		if (pgmap && pgmap->type == MEMORY_DEVICE_FS_DAX)
+			dax_enabled = true;
+		put_dev_pagemap(pgmap);
+	}
+
+	if (!dax_enabled) {
+		pr_debug("%s: error: dax access failed (%ld)\n",
+				bdevname(bdev, buf), len);
+		return false;
+	}
 	return true;
 }
 EXPORT_SYMBOL_GPL(__bdev_dax_supported);
@@ -172,8 +198,7 @@ static ssize_t write_cache_show(struct device *dev,
 	if (!dax_dev)
 		return -ENXIO;
 
-	rc = sprintf(buf, "%d\n", !!test_bit(DAXDEV_WRITE_CACHE,
-				&dax_dev->flags));
+	rc = sprintf(buf, "%d\n", !!dax_write_cache_enabled(dax_dev));
 	put_dax(dax_dev);
 	return rc;
 }
@@ -191,10 +216,8 @@ static ssize_t write_cache_store(struct device *dev,
 
 	if (rc)
 		len = rc;
-	else if (write_cache)
-		set_bit(DAXDEV_WRITE_CACHE, &dax_dev->flags);
 	else
-		clear_bit(DAXDEV_WRITE_CACHE, &dax_dev->flags);
+		dax_write_cache(dax_dev, write_cache);
 
 	put_dax(dax_dev);
 	return len;
@@ -272,11 +295,21 @@ size_t dax_copy_from_iter(struct dax_device *dax_dev, pgoff_t pgoff, void *addr,
 }
 EXPORT_SYMBOL_GPL(dax_copy_from_iter);
 
+size_t dax_copy_to_iter(struct dax_device *dax_dev, pgoff_t pgoff, void *addr,
+		size_t bytes, struct iov_iter *i)
+{
+	if (!dax_alive(dax_dev))
+		return 0;
+
+	return dax_dev->ops->copy_to_iter(dax_dev, pgoff, addr, bytes, i);
+}
+EXPORT_SYMBOL_GPL(dax_copy_to_iter);
+
 #ifdef CONFIG_ARCH_HAS_PMEM_API
 void arch_wb_cache_pmem(void *addr, size_t size);
 void dax_flush(struct dax_device *dax_dev, void *addr, size_t size)
 {
-	if (unlikely(!test_bit(DAXDEV_WRITE_CACHE, &dax_dev->flags)))
+	if (unlikely(!dax_write_cache_enabled(dax_dev)))
 		return;
 
 	arch_wb_cache_pmem(addr, size);

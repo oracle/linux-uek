@@ -379,6 +379,20 @@ static inline void xfs_ifunlock(struct xfs_inode *ip)
 					>> XFS_ILOCK_SHIFT)
 
 /*
+ * Layouts are broken in the BREAK_WRITE case to ensure that
+ * layout-holders do not collide with local writes. Additionally,
+ * layouts are broken in the BREAK_UNMAP case to make sure the
+ * layout-holder has a consistent view of the file's extent map. While
+ * BREAK_WRITE breaks can be satisfied by recalling FL_LAYOUT leases,
+ * BREAK_UNMAP breaks additionally require waiting for busy dax-pages to
+ * go idle.
+ */
+enum layout_break_reason {
+        BREAK_WRITE,
+        BREAK_UNMAP,
+};
+
+/*
  * For multiple groups support: if S_ISGID bit is set in the parent
  * directory, group of new file is set to that of the parent, and
  * new subdirectory gets S_ISGID bit from parent.
@@ -447,6 +461,8 @@ int	xfs_zero_eof(struct xfs_inode *ip, xfs_off_t offset,
 		     xfs_fsize_t isize, bool *did_zeroing);
 int	xfs_zero_range(struct xfs_inode *ip, xfs_off_t pos, xfs_off_t count,
 		bool *did_zero);
+int	xfs_break_layouts(struct inode *inode, uint *iolock,
+		enum layout_break_reason reason);
 
 /* from xfs_iops.c */
 extern void xfs_setup_inode(struct xfs_inode *ip);
