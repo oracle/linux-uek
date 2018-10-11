@@ -189,6 +189,7 @@ static __always_inline ssize_t __mcopy_atomic_hugetlb(struct mm_struct *dst_mm,
 	pgoff_t idx;
 	u32 hash;
 	struct address_space *mapping;
+	struct hugetlbfs_inode_info *hinode_info;
 
 	/*
 	 * There is no default zero huge page for all huge page sizes as
@@ -265,10 +266,12 @@ retry:
 		VM_BUG_ON(dst_addr & ~huge_page_mask(h));
 
 		/*
-		 * Serialize via hugetlb_fault_mutex
+		 * Serialize via truncation and hugetlb_fault_mutex
 		 */
 		idx = linear_page_index(dst_vma, dst_addr);
 		mapping = dst_vma->vm_file->f_mapping;
+		hinode_info = HUGETLBFS_I(mapping->host);
+		down_read(&hinode_info->trunc_rwsem);
 		hash = hugetlb_fault_mutex_hash(h, mapping, idx, dst_addr);
 		mutex_lock(&hugetlb_fault_mutex_table[hash]);
 
@@ -276,6 +279,7 @@ retry:
 		dst_pte = huge_pte_alloc(dst_mm, dst_addr, huge_page_size(h));
 		if (!dst_pte) {
 			mutex_unlock(&hugetlb_fault_mutex_table[hash]);
+			up_read(&hinode_info->trunc_rwsem);
 			goto out_unlock;
 		}
 
@@ -283,6 +287,7 @@ retry:
 		dst_pteval = huge_ptep_get(dst_pte);
 		if (!huge_pte_none(dst_pteval)) {
 			mutex_unlock(&hugetlb_fault_mutex_table[hash]);
+			up_read(&hinode_info->trunc_rwsem);
 			goto out_unlock;
 		}
 
@@ -290,6 +295,7 @@ retry:
 						dst_addr, src_addr, &page);
 
 		mutex_unlock(&hugetlb_fault_mutex_table[hash]);
+		up_read(&hinode_info->trunc_rwsem);
 		vm_alloc_shared = vm_shared;
 
 		cond_resched();
