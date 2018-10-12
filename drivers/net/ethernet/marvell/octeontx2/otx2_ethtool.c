@@ -127,6 +127,8 @@ static void otx2_get_strings(struct net_device *netdev, u32 sset, u8 *data)
 		sprintf(data, "cgx_txstat%d: ", stats);
 		data += ETH_GSTRING_LEN;
 	}
+
+	strcpy(data, "reset_count");
 }
 
 static void otx2_get_qset_stats(struct otx2_nic *pfvf,
@@ -185,6 +187,7 @@ static void otx2_get_ethtool_stats(struct net_device *netdev,
 		*(data++) = pfvf->hw.cgx_rx_stats[stat];
 	for (stat = 0; stat < CGX_TX_STATS_COUNT; stat++)
 		*(data++) = pfvf->hw.cgx_tx_stats[stat];
+	*(data++) = pfvf->reset_count;
 }
 
 static int otx2_get_sset_count(struct net_device *netdev, int sset)
@@ -198,7 +201,7 @@ static int otx2_get_sset_count(struct net_device *netdev, int sset)
 	qstats_count = otx2_n_queue_stats *
 		       (pfvf->hw.rx_queues + pfvf->hw.tx_queues);
 	return otx2_n_dev_stats + otx2_n_pcpu_stats + qstats_count +
-		CGX_RX_STATS_COUNT + CGX_TX_STATS_COUNT;
+		CGX_RX_STATS_COUNT + CGX_TX_STATS_COUNT + 1;
 }
 
 /* Get no of queues device supports and current queue count */
