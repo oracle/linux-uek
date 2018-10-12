@@ -20,6 +20,7 @@
 #include "otx2_reg.h"
 #include "otx2_common.h"
 #include "otx2_txrx.h"
+#include "otx2_struct.h"
 
 #define DRV_NAME	"octeontx2-nicpf"
 #define DRV_STRING	"Marvell OcteonTX2 NIC Physical Function Driver"
@@ -397,6 +398,94 @@ int otx2_set_real_num_queues(struct net_device *netdev,
 }
 EXPORT_SYMBOL(otx2_set_real_num_queues);
 
+static irqreturn_t otx2_q_intr_handler(int irq, void *data)
+{
+	struct otx2_nic *pf = data;
+	atomic64_t *ptr;
+	u64 qidx = 0;
+	u64 val;
+
+	/* CQ */
+	for (qidx = 0; qidx < pf->qset.cq_cnt; qidx++) {
+		ptr = pf->reg_base + NIX_LF_CQ_OP_INT;
+		val = atomic64_fetch_add_relaxed((qidx << 32) |
+						 NIX_CQERRINT_BITS, ptr);
+
+		if (!(val & (NIX_CQERRINT_BITS | BIT_ULL(42))))
+			continue;
+
+		if (val & BIT_ULL(42)) {
+			dev_err(pf->dev, "CQ%lld: error reading NIX_LF_CQ_OP_INT\n",
+				qidx);
+		} else {
+			if (val & BIT_ULL(NIX_CQERRINT_DOOR_ERR))
+				dev_err(pf->dev, "CQ%lld: Doorbell error",
+					qidx);
+			if (val & BIT_ULL(NIX_CQERRINT_WR_FULL))
+				dev_err(pf->dev, "CQ%lld: Write full. A CQE to be added has been dropped because the CQ is full",
+					qidx);
+			if (val & BIT_ULL(NIX_CQERRINT_CQE_FAULT))
+				dev_err(pf->dev, "CQ%lld: Memory fault on CQE write to LLC/DRAM",
+					qidx);
+		}
+
+		schedule_work(&pf->reset_task);
+	}
+
+	/* RQ */
+	for (qidx = 0; qidx < pf->hw.rx_queues; qidx++) {
+		ptr = pf->reg_base + NIX_LF_RQ_OP_INT;
+		val = atomic64_fetch_add_relaxed((qidx << 32) | NIX_RQINT_BITS,
+						 ptr);
+		if (!(val & (NIX_RQINT_BITS | BIT_ULL(42))))
+			continue;
+
+		if (val & BIT_ULL(42)) {
+			dev_err(pf->dev, "RQ%lld: error reading NIX_LF_RQ_OP_INT\n",
+				qidx);
+		} else {
+			if (val & BIT_ULL(NIX_RQINT_DROP))
+				dev_err(pf->dev, "RQ%lld: RX packet was dropped",
+					qidx);
+			if (val & BIT_ULL(NIX_RQINT_RED))
+				dev_err(pf->dev, "RQ%lld: RX packet was RED dropped",
+					qidx);
+		}
+
+		schedule_work(&pf->reset_task);
+	}
+
+	/* SQ */
+	for (qidx = 0; qidx < pf->hw.tx_queues; qidx++) {
+		ptr = pf->reg_base + NIX_LF_SQ_OP_INT;
+		val = atomic64_fetch_add_relaxed((qidx << 32) | NIX_SQINT_BITS,
+						 ptr);
+		if (!(val & (NIX_SQINT_BITS | BIT_ULL(42))))
+			continue;
+
+		if (val & BIT_ULL(42)) {
+			dev_err(pf->dev, "SQ%lld: error reading NIX_LF_SQ_OP_INT\n",
+				qidx);
+		} else {
+			if (val & BIT_ULL(NIX_SQINT_LMT_ERR))
+				dev_err(pf->dev, "SQ%lld: LMT store error",
+					qidx);
+			if (val & BIT_ULL(NIX_SQINT_MNQ_ERR))
+				dev_err(pf->dev, "SQ%lld: Meta-descriptor enqueue error",
+					qidx);
+			if (val & BIT_ULL(NIX_SQINT_SEND_ERR))
+				dev_err(pf->dev, "SQ%lld: Send error", qidx);
+			if (val & BIT_ULL(NIX_SQINT_SQB_ALLOC_FAIL))
+				dev_err(pf->dev, "SQ%lld: SQB allocation failed",
+					qidx);
+		}
+
+		schedule_work(&pf->reset_task);
+	}
+
+	return IRQ_HANDLED;
+}
+
 static irqreturn_t otx2_cq_intr_handler(int irq, void *cq_irq)
 {
 	struct otx2_cq_poll *cq_poll = (struct otx2_cq_poll *)cq_irq;
@@ -576,6 +665,7 @@ int otx2_open(struct net_device *netdev)
 	struct otx2_cq_poll *cq_poll = NULL;
 	struct otx2_qset *qset = &pf->qset;
 	int err = 0, qidx, vec;
+	char *irq_name;
 
 	netif_carrier_off(netdev);
 
@@ -647,10 +737,28 @@ int otx2_open(struct net_device *netdev)
 	if (err)
 		goto err_disable_napi;
 
+	/* Register Queue IRQ handlers */
+	vec = pf->hw.nix_msixoff + NIX_LF_QINT_VEC_START;
+	irq_name = &pf->hw.irq_name[vec * NAME_SIZE];
+
+	snprintf(irq_name, NAME_SIZE, "%s-qerr", pf->netdev->name);
+
+	err = request_irq(pci_irq_vector(pf->pdev, vec),
+			  otx2_q_intr_handler, 0, irq_name, pf);
+	if (err) {
+		dev_err(pf->dev,
+			"RVUPF%d: IRQ registration failed for QERR\n",
+			rvu_get_pf(pf->pcifunc));
+		goto err_disable_napi;
+	}
+
+	/* Enable QINT IRQ */
+	otx2_write64(pf, NIX_LF_QINTX_ENA_W1S(0), BIT_ULL(0));
+
 	/* Register CQ IRQ handlers */
 	vec = pf->hw.nix_msixoff + NIX_LF_CINT_VEC_START;
 	for (qidx = 0; qidx < pf->hw.cint_cnt; qidx++) {
-		char *irq_name = &pf->hw.irq_name[vec * NAME_SIZE];
+		irq_name = &pf->hw.irq_name[vec * NAME_SIZE];
 
 		snprintf(irq_name, NAME_SIZE, "%s-rxtx-%d", pf->netdev->name,
 			 qidx);
@@ -690,6 +798,11 @@ int otx2_open(struct net_device *netdev)
 
 err_free_cints:
 	otx2_free_cints(pf, qidx);
+	vec = pci_irq_vector(pf->pdev,
+			     pf->hw.nix_msixoff + NIX_LF_QINT_VEC_START);
+	otx2_write64(pf, NIX_LF_QINTX_ENA_W1C(0), BIT_ULL(0));
+	synchronize_irq(vec);
+	free_irq(vec, pf);
 err_disable_napi:
 	otx2_disable_napi(pf);
 	otx2_free_hw_resources(pf);
@@ -720,6 +833,13 @@ int otx2_stop(struct net_device *netdev)
 
 	netif_carrier_off(netdev);
 	netif_tx_stop_all_queues(netdev);
+
+	/* Cleanup Queue IRQ */
+	vec = pci_irq_vector(pf->pdev,
+			     pf->hw.nix_msixoff + NIX_LF_QINT_VEC_START);
+	otx2_write64(pf, NIX_LF_QINTX_ENA_W1C(0), BIT_ULL(0));
+	synchronize_irq(vec);
+	free_irq(vec, pf);
 
 	/* Cleanup CQ NAPI and IRQ */
 	vec = pf->hw.nix_msixoff + NIX_LF_CINT_VEC_START;
