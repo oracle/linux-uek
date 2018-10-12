@@ -16,6 +16,7 @@
 #include "otx2_reg.h"
 #include "otx2_common.h"
 #include "otx2_struct.h"
+#include "otx2_struct.h"
 
 static inline void otx2_nix_rq_op_stats(struct queue_stats *stats,
 					struct otx2_nic *pfvf, int qidx);
@@ -483,6 +484,8 @@ static int otx2_rq_init(struct otx2_nic *pfvf, u16 qidx)
 	aq->rq.lpb_sizem1 = (DMA_BUFFER_LEN / 8) - 1;
 	aq->rq.xqe_imm_size = 0; /* Copying of packet to CQE not needed */
 	aq->rq.flow_tagw = 32; /* Copy full 32bit flow_tag to CQE header */
+	aq->rq.rq_int_ena = NIX_RQINT_BITS;
+	aq->rq.qint_idx = 0;
 
 	/* Fill AQ info */
 	aq->qidx = qidx;
@@ -548,6 +551,8 @@ static int otx2_sq_init(struct otx2_nic *pfvf, u16 qidx)
 	aq->sq.default_chan = pfvf->tx_chan_base;
 	aq->sq.sqe_stype = NIX_STYPE_STF; /* Cache SQB */
 	aq->sq.sqb_aura = pfvf->hw.rx_queues + qidx;
+	aq->sq.sq_int_ena = NIX_SQINT_BITS;
+	aq->sq.qint_idx = 0;
 
 	/* Fill AQ info */
 	aq->qidx = qidx;
@@ -597,6 +602,9 @@ static int otx2_cq_init(struct otx2_nic *pfvf, u16 qidx)
 				: (qidx - pfvf->hw.rx_queues);
 	cq->cint_idx = aq->cq.cint_idx;
 
+	aq->cq.cq_err_int_ena = NIX_CQERRINT_BITS;
+	aq->cq.qint_idx = 0;
+
 	/* Fill AQ info */
 	aq->qidx = qidx;
 	aq->ctype = NIX_AQ_CTYPE_CQ;
@@ -635,8 +643,8 @@ int otx2_config_nix_queues(struct otx2_nic *pfvf)
 
 int otx2_config_nix(struct otx2_nic *pfvf)
 {
-	struct nix_lf_alloc_req  *nixlf;
-	struct mbox_msghdr *rsp_hdr;
+	struct nix_lf_alloc_req *nixlf;
+	struct nix_lf_alloc_rsp *rsp;
 	int err;
 
 	pfvf->qset.xqe_size = NIX_XQESZ_W16 ? 128 : 512;
@@ -667,11 +675,15 @@ int otx2_config_nix(struct otx2_nic *pfvf)
 	if (err)
 		return err;
 
-	rsp_hdr = otx2_mbox_get_rsp(&pfvf->mbox.mbox, 0, &nixlf->hdr);
-	if (IS_ERR(rsp_hdr))
-		return PTR_ERR(rsp_hdr);
+	rsp = (struct nix_lf_alloc_rsp *)otx2_mbox_get_rsp(&pfvf->mbox.mbox, 0,
+							   &nixlf->hdr);
+	if (IS_ERR(rsp))
+		return PTR_ERR(rsp);
 
-	return rsp_hdr->rc;
+	if (rsp->qints < 1)
+		return -ENXIO;
+
+	return rsp->hdr.rc;
 }
 
 void otx2_free_aura_ptr(struct otx2_nic *pfvf, int type)
