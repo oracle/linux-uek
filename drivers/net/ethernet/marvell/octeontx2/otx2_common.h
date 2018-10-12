@@ -79,6 +79,13 @@ struct  otx2_dev_stats {
 	u64 tx_drops;
 };
 
+struct  otx2_pcpu_stats {
+	u64 rq_drops;
+	u64 rq_red_drops;
+
+	struct u64_stats_sync syncp;
+};
+
 /* RSS configuration */
 struct otx2_rss_info {
 	bool enable;
@@ -100,6 +107,7 @@ struct  mbox {
 struct otx2_hw {
 	struct pci_dev		*pdev;
 	struct otx2_dev_stats	dev_stats;
+	struct otx2_pcpu_stats  __percpu *pcpu_stats;
 	struct otx2_rss_info	rss_info;
 	u16                     rx_queues;
 	u16                     tx_queues;
