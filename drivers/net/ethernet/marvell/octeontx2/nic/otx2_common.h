@@ -157,6 +157,7 @@ struct otx2_nic {
 	u8			cq_time_wait;
 	u32			cq_ecount_wait;
 	struct work_struct	reset_task;
+	u64			reset_count;
 	u16			rxvlan_entry;
 	bool			rxvlan_alloc;
 

@@ -1054,6 +1054,7 @@ static void otx2_reset_task(struct work_struct *work)
 		return;
 
 	otx2_stop(pf->netdev);
+	pf->reset_count++;
 	otx2_open(pf->netdev);
 	netif_trans_update(pf->netdev);
 }
