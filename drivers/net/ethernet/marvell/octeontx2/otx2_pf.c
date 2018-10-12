@@ -443,16 +443,13 @@ static irqreturn_t otx2_q_intr_handler(int irq, void *data)
 		if (val & BIT_ULL(42)) {
 			dev_err(pf->dev, "RQ%lld: error reading NIX_LF_RQ_OP_INT\n",
 				qidx);
+			schedule_work(&pf->reset_task);
 		} else {
 			if (val & BIT_ULL(NIX_RQINT_DROP))
-				dev_err(pf->dev, "RQ%lld: RX packet was dropped",
-					qidx);
+				this_cpu_inc(pf->hw.pcpu_stats->rq_drops);
 			if (val & BIT_ULL(NIX_RQINT_RED))
-				dev_err(pf->dev, "RQ%lld: RX packet was RED dropped",
-					qidx);
+				this_cpu_inc(pf->hw.pcpu_stats->rq_red_drops);
 		}
-
-		schedule_work(&pf->reset_task);
 	}
 
 	/* SQ */
@@ -664,8 +661,13 @@ int otx2_open(struct net_device *netdev)
 	struct otx2_nic *pf = netdev_priv(netdev);
 	struct otx2_cq_poll *cq_poll = NULL;
 	struct otx2_qset *qset = &pf->qset;
-	int err = 0, qidx, vec;
+	int err = 0, qidx, vec, cpu;
 	char *irq_name;
+
+	/* Clear percpu stats */
+	for_each_possible_cpu(cpu)
+		memset(per_cpu_ptr(pf->hw.pcpu_stats, cpu), 0,
+		       sizeof(struct otx2_pcpu_stats));
 
 	netif_carrier_off(netdev);
 
@@ -1001,18 +1003,24 @@ static int otx2_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	if (err < 0)
 		goto err_free_netdev;
 
+	hw->pcpu_stats = netdev_alloc_pcpu_stats(struct otx2_pcpu_stats);
+	if (!hw->pcpu_stats) {
+		err = -ENOMEM;
+		goto err_free_irq_vectors;
+	}
+
 	/* Map CSRs */
 	pf->reg_base = pcim_iomap(pdev, PCI_CFG_REG_BAR_NUM, 0);
 	if (!pf->reg_base) {
 		dev_err(dev, "Unable to map physical function CSRs, aborting\n");
 		err = -ENOMEM;
-		goto err_free_irq_vectors;
+		goto err_free_pcpu_stats;
 	}
 
 	/* Init PF <=> AF mailbox stuff */
 	err = otx2_pfaf_mbox_init(pf);
 	if (err)
-		goto err_free_irq_vectors;
+		goto err_free_pcpu_stats;
 
 	/* Register mailbox interrupt */
 	err = otx2_register_mbox_intr(pf);
@@ -1083,6 +1091,8 @@ err_disable_mbox_intr:
 	otx2_disable_mbox_intr(pf);
 err_mbox_destroy:
 	otx2_pfaf_mbox_destroy(pf);
+err_free_pcpu_stats:
+	free_percpu(hw->pcpu_stats);
 err_free_irq_vectors:
 	pci_free_irq_vectors(hw->pdev);
 err_free_netdev:
@@ -1097,18 +1107,20 @@ static void otx2_remove(struct pci_dev *pdev)
 {
 	struct net_device *netdev = pci_get_drvdata(pdev);
 	struct otx2_nic *pf;
+	struct otx2_hw *hw;
 
 	if (!netdev)
 		return;
 
 	pf = netdev_priv(netdev);
+	hw = &pf->hw;
 	unregister_netdev(netdev);
 
 	otx2_disable_mbox_intr(pf);
 
 	otx2_detach_resources(&pf->mbox);
 	otx2_pfaf_mbox_destroy(pf);
-
+	free_percpu(hw->pcpu_stats);
 	pci_free_irq_vectors(pf->pdev);
 	pci_set_drvdata(pdev, NULL);
 	free_netdev(netdev);
