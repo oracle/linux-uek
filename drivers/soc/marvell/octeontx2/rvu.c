@@ -561,9 +561,9 @@ setup_vfmsix:
 	cfg = rvu_read64(rvu, BLKADDR_RVUM, RVU_PRIV_CONST);
 	max_msix = cfg & 0xFFFFF;
 	phy_addr = rvu_read64(rvu, BLKADDR_RVUM, RVU_AF_MSIXTR_BASE);
-	iova = dma_map_single(rvu->dev, (void *)phy_addr,
-			      max_msix * PCI_MSIX_ENTRY_SIZE,
-			      DMA_BIDIRECTIONAL);
+	iova = dma_map_resource(rvu->dev, phy_addr,
+				max_msix * PCI_MSIX_ENTRY_SIZE,
+				DMA_BIDIRECTIONAL, 0);
 	if (dma_mapping_error(rvu->dev, iova))
 		return -ENOMEM;
 
@@ -607,9 +607,9 @@ static void rvu_free_hw_resources(struct rvu *rvu)
 		return;
 	cfg = rvu_read64(rvu, BLKADDR_RVUM, RVU_PRIV_CONST);
 	max_msix = cfg & 0xFFFFF;
-	dma_unmap_single(rvu->dev, rvu->msix_base_iova,
-			 max_msix * PCI_MSIX_ENTRY_SIZE,
-			 DMA_BIDIRECTIONAL);
+	dma_unmap_resource(rvu->dev, rvu->msix_base_iova,
+			   max_msix * PCI_MSIX_ENTRY_SIZE,
+			   DMA_BIDIRECTIONAL, 0);
 
 	mutex_destroy(&rvu->rsrc_lock);
 }
