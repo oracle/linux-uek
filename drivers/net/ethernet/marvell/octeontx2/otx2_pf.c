@@ -692,6 +692,7 @@ err_free_cints:
 	otx2_free_cints(pf, qidx);
 err_disable_napi:
 	otx2_disable_napi(pf);
+	otx2_free_hw_resources(pf);
 err_free_mem:
 	kfree(qset->sq);
 	kfree(qset->cq);
