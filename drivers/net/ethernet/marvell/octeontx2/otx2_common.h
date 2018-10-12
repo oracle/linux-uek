@@ -156,6 +156,7 @@ struct otx2_nic {
 	u8			cq_time_wait;
 	u32			cq_ecount_wait;
 	struct work_struct	reset_task;
+	u64			reset_count;
 };
 
 static inline bool is_9xxx_pass1_silicon(struct pci_dev *pdev)
