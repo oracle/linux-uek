@@ -2232,8 +2232,11 @@ static void bnxt_free_ring(struct bnxt *bp, struct bnxt_ring_mem_info *rmem)
 static int bnxt_alloc_ring(struct bnxt *bp, struct bnxt_ring_mem_info *rmem)
 {
 	struct pci_dev *pdev = bp->pdev;
+	u64 valid_bit = 0;
 	int i;
 
+	if (rmem->flags & (BNXT_RMEM_VALID_PTE_FLAG | BNXT_RMEM_RING_PTE_FLAG))
+		valid_bit = PTU_PTE_VALID;
 	if (rmem->nr_pages > 1) {
 		rmem->pg_tbl = dma_alloc_coherent(&pdev->dev,
 						  rmem->nr_pages * 8,
@@ -2244,6 +2247,8 @@ static int bnxt_alloc_ring(struct bnxt *bp, struct bnxt_ring_mem_info *rmem)
 	}
 
 	for (i = 0; i < rmem->nr_pages; i++) {
+		u64 extra_bits = valid_bit;
+
 		rmem->pg_arr[i] = dma_alloc_coherent(&pdev->dev,
 						     rmem->page_size,
 						     &rmem->dma_arr[i],
@@ -2251,8 +2256,16 @@ static int bnxt_alloc_ring(struct bnxt *bp, struct bnxt_ring_mem_info *rmem)
 		if (!rmem->pg_arr[i])
 			return -ENOMEM;
 
-		if (rmem->nr_pages > 1)
-			rmem->pg_tbl[i] = cpu_to_le64(rmem->dma_arr[i]);
+		if (rmem->nr_pages > 1) {
+			if (i == rmem->nr_pages - 2 &&
+			    (rmem->flags & BNXT_RMEM_RING_PTE_FLAG))
+				extra_bits |= PTU_PTE_NEXT_TO_LAST;
+			else if (i == rmem->nr_pages - 1 &&
+				 (rmem->flags & BNXT_RMEM_RING_PTE_FLAG))
+				extra_bits |= PTU_PTE_LAST;
+			rmem->pg_tbl[i] =
+				cpu_to_le64(rmem->dma_arr[i] | extra_bits);
+		}
 	}
 
 	if (rmem->vmem_size) {
