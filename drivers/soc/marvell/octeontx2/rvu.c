@@ -828,7 +828,7 @@ init:
 	return 0;
 
 cgx_err:
-	rvu_cgx_wq_destroy(rvu);
+	rvu_cgx_exit(rvu);
 msix_err:
 	rvu_reset_msix(rvu);
 	return err;
@@ -2523,7 +2523,7 @@ err_flr:
 err_mbox:
 	rvu_mbox_destroy(&rvu->afpf_wq_info);
 err_hwsetup:
-	rvu_cgx_wq_destroy(rvu);
+	rvu_cgx_exit(rvu);
 	rvu_reset_all_blocks(rvu);
 	rvu_free_hw_resources(rvu);
 err_release_regions:
@@ -2545,7 +2545,7 @@ static void rvu_remove(struct pci_dev *pdev)
 	rvu_policy_destroy(rvu);
 	rvu_unregister_interrupts(rvu);
 	rvu_flr_wq_destroy(rvu);
-	rvu_cgx_wq_destroy(rvu);
+	rvu_cgx_exit(rvu);
 	rvu_mbox_destroy(&rvu->afpf_wq_info);
 	rvu_disable_sriov(rvu);
 	rvu_reset_all_blocks(rvu);
