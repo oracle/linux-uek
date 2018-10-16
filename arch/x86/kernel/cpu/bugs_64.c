@@ -435,13 +435,8 @@ static void retpoline_init(void)
 	 * Set the retpoline capability to advertise that that retpoline
 	 * is available, however the retpoline feature is enabled via
 	 * the retpoline_enabled_key static key.
-	 *
-	 * By default, we don't provide retpoline on Skylake. However,
-	 * the feature will be provided if it is selected from the boot
-	 * sequence.
 	 */
-	if (!is_skylake_era())
-		setup_force_cpu_cap(X86_FEATURE_RETPOLINE);
+	setup_force_cpu_cap(X86_FEATURE_RETPOLINE);
 
 	if (boot_cpu_data.x86_vendor == X86_VENDOR_AMD) {
 		if (!boot_cpu_has(X86_FEATURE_LFENCE_RDTSC))
@@ -768,14 +763,6 @@ static void __init spectre_v2_select_mitigation(void)
 			}
 		}
 	}
-
-	/*
-	 * We are enabling retpoline so advertise the retpoline feature.
-	 * This only needs to be done for Skylake because the feature
-	 * is already provided on other platforms.
-	 */
-	if (is_skylake_era())
-		setup_force_cpu_cap(X86_FEATURE_RETPOLINE);
 
 	retpoline_enable();
 

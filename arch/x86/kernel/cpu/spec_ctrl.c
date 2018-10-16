@@ -201,16 +201,6 @@ static ssize_t retpoline_enabled_write(struct file *file,
 	if (enable > 1)
 		return -EINVAL;
 
-	/*
-	 * The retpoline feature is always present except on Skylake
-	 * if the system wasn't explicitly booted with retpoline.
-	 */
-	if (enable && !boot_cpu_has(X86_FEATURE_RETPOLINE)) {
-		pr_warn("Retpoline is disabled by default on Skylake-generation system.\n");
-		pr_warn("Use the 'spectre_v2=retpoline' parameter to boot with retpoline.\n");
-		return -EINVAL;
-	}
-
 	if (enable) {
 		if (test_taint(TAINT_NO_RETPOLINE))
 			pr_warn("Enabling retpoline with a module not compiled with retpoline compiler.\n");
