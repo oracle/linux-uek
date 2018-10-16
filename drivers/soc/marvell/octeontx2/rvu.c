@@ -560,6 +560,8 @@ setup_vfmsix:
 	cfg = rvu_read64(rvu, BLKADDR_RVUM, RVU_PRIV_CONST);
 	max_msix = cfg & 0xFFFFF;
 	phy_addr = rvu_read64(rvu, BLKADDR_RVUM, RVU_AF_MSIXTR_BASE);
+	/* Register save */
+	rvu->msixtr_base_phy = phy_addr;
 	iova = dma_map_resource(rvu->dev, phy_addr,
 				max_msix * PCI_MSIX_ENTRY_SIZE,
 				DMA_BIDIRECTIONAL, 0);
@@ -570,6 +572,13 @@ setup_vfmsix:
 	rvu->msix_base_iova = iova;
 
 	return 0;
+}
+
+static void rvu_reset_msix(struct rvu *rvu)
+{
+	/* Restore msixtr base register */
+	rvu_write64(rvu, BLKADDR_RVUM, RVU_AF_MSIXTR_BASE,
+		    rvu->msixtr_base_phy);
 }
 
 static void rvu_free_hw_resources(struct rvu *rvu)
@@ -610,6 +619,7 @@ static void rvu_free_hw_resources(struct rvu *rvu)
 			   max_msix * PCI_MSIX_ENTRY_SIZE,
 			   DMA_BIDIRECTIONAL, 0);
 
+	rvu_reset_msix(rvu);
 	mutex_destroy(&rvu->rsrc_lock);
 }
 
@@ -780,8 +790,10 @@ init:
 		/* Allocate memory for block LF/slot to pcifunc mapping info */
 		block->fn_map = devm_kcalloc(rvu->dev, block->lf.max,
 					     sizeof(u16), GFP_KERNEL);
-		if (!block->fn_map)
-			return -ENOMEM;
+		if (!block->fn_map) {
+			err = -ENOMEM;
+			goto msix_err;
+		}
 
 		/* Scan all blocks to check if low level firmware has
 		 * already provisioned any of the resources to a PF/VF.
@@ -791,11 +803,11 @@ init:
 
 	err = rvu_npc_init(rvu);
 	if (err)
-		goto exit;
+		goto msix_err;
 
 	err = rvu_cgx_init(rvu);
 	if (err)
-		goto exit;
+		goto msix_err;
 
 	err = rvu_npa_init(rvu);
 	if (err)
@@ -817,7 +829,8 @@ init:
 
 cgx_err:
 	rvu_cgx_wq_destroy(rvu);
-exit:
+msix_err:
+	rvu_reset_msix(rvu);
 	return err;
 }
 
