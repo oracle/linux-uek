@@ -962,6 +962,7 @@ struct kvm_ppc_resize_hpt {
 #define KVM_CAP_PPC_NESTED_HV 160	/* unimplemented in UEK5 */
 #define KVM_CAP_HYPERV_SEND_IPI 161
 #define KVM_CAP_COALESCED_PIO 162
+#define KVM_CAP_HYPERV_ENLIGHTENED_VMCS 163
 
 #ifdef KVM_CAP_IRQ_ROUTING
 
