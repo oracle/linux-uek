@@ -545,13 +545,13 @@ int ib_register_device(struct ib_device *device, const char *name,
 	ret = setup_port_pkey_list(device);
 	if (ret) {
 		pr_warn("Couldn't create per port_pkey_list\n");
-		goto out;
+		goto port_cleanup;
 	}
 
 	ret = ib_cache_setup_one(device);
 	if (ret) {
 		pr_warn("Couldn't set up InfiniBand P_Key/GID cache\n");
-		goto port_cleanup;
+		goto pkey_cleanup;
 	}
 
 	ret = ib_device_register_rdmacg(device);
@@ -593,6 +593,8 @@ cg_cleanup:
 cache_cleanup:
 	ib_cache_cleanup_one(device);
 	ib_cache_release_one(device);
+pkey_cleanup:
+	kfree(device->port_pkey_list);
 port_cleanup:
 	kfree(device->port_immutable);
 out:
