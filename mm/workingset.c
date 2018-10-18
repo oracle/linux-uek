@@ -394,9 +394,15 @@ static unsigned long count_shadow_nodes(struct shrinker *shrinker,
 	 * PAGE_SIZE / radix_tree_nodes / node_entries * 8 / PAGE_SIZE
 	 */
 #ifdef CONFIG_MEMCG
-	if (sc->memcg)
-		pages = page_counter_read(&sc->memcg->memory);
-	else
+	if (sc->memcg) {
+		struct lruvec *lruvec;
+
+		pages = mem_cgroup_node_nr_lru_pages(sc->memcg, sc->nid,
+						     LRU_ALL);
+		lruvec = mem_cgroup_lruvec(NODE_DATA(sc->nid), sc->memcg);
+		pages += lruvec_page_state(lruvec, NR_SLAB_RECLAIMABLE);
+		pages += lruvec_page_state(lruvec, NR_SLAB_UNRECLAIMABLE);
+	} else
 #endif
 		pages = node_present_pages(sc->nid);
 
