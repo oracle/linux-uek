@@ -5,7 +5,7 @@ lib-y		:= bitops.o clear_user.o delay.o copy_from_user.o	\
 		   memcmp.o strcmp.o strncmp.o strlen.o			\
 		   strnlen.o strchr.o strrchr.o
 
-lib-$(CONFIG_RETPOLINE)	:= retpoline.o
+lib-$(CONFIG_RETPOLINE)	+= retpoline.o
 
 # Tell the compiler to treat all general purpose registers (with the
 # exception of the IP registers, which are already handled by the caller
