@@ -196,8 +196,7 @@ int
 xfs_reflink_trim_around_shared(
 	struct xfs_inode	*ip,
 	struct xfs_bmbt_irec	*irec,
-	bool			*shared,
-	bool			*trimmed)
+	bool			*shared)
 {
 	xfs_agnumber_t		agno;
 	xfs_agblock_t		agbno;
@@ -223,7 +222,7 @@ xfs_reflink_trim_around_shared(
 	if (error)
 		return error;
 
-	*shared = *trimmed = false;
+	*shared = false;
 	if (fbno == NULLAGBLOCK) {
 		/* No shared blocks at all. */
 		return 0;
@@ -236,8 +235,6 @@ xfs_reflink_trim_around_shared(
 		 */
 		irec->br_blockcount = flen;
 		*shared = true;
-		if (flen != aglen)
-			*trimmed = true;
 		return 0;
 	} else {
 		/*
@@ -247,7 +244,6 @@ xfs_reflink_trim_around_shared(
 		 * start of the shared region.
 		 */
 		irec->br_blockcount = fbno - agbno;
-		*trimmed = true;
 		return 0;
 	}
 }
@@ -270,7 +266,7 @@ xfs_reflink_reserve_cow(
 	struct xfs_ifork	*ifp = XFS_IFORK_PTR(ip, XFS_COW_FORK);
 	struct xfs_bmbt_irec	got;
 	int			error = 0;
-	bool			eof = false, trimmed;
+	bool			eof = false;
 	struct xfs_iext_cursor	icur;
 
 	/*
@@ -293,7 +289,7 @@ xfs_reflink_reserve_cow(
 	}
 
 	/* Trim the mapping to the nearest shared extent boundary. */
-	error = xfs_reflink_trim_around_shared(ip, imap, shared, &trimmed);
+	error = xfs_reflink_trim_around_shared(ip, imap, shared);
 	if (error)
 		return error;
 
@@ -385,7 +381,6 @@ xfs_find_trim_cow_extent(
 	xfs_filblks_t		count_fsb = imap->br_blockcount;
 	struct xfs_iext_cursor	icur;
 	struct xfs_bmbt_irec	got;
-	bool			trimmed;
 
 	*found = false;
 
@@ -395,7 +390,7 @@ xfs_find_trim_cow_extent(
 	 */
 	if (!xfs_iext_lookup_extent(ip, ip->i_cowfp, offset_fsb, &icur, &got) ||
 	    got.br_startoff > offset_fsb)
-		return xfs_reflink_trim_around_shared(ip, imap, shared, &trimmed);
+		return xfs_reflink_trim_around_shared(ip, imap, shared);
 
 	*shared = true;
 	if (isnullstartblock(got.br_startblock)) {
