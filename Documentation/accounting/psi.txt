@@ -35,7 +35,7 @@ Pressure interface
 Pressure information for each resource is exported through the
 respective file in /proc/pressure/ -- cpu, memory, and io.
 
-In both cases, the format for CPU is as such:
+The format for CPU is as such:
 
 some avg10=0.00 avg60=0.00 avg300=0.00 total=0
 
