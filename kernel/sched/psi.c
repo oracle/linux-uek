@@ -154,7 +154,7 @@ static struct psi_group psi_system = {
 	.pcpu = &system_group_pcpu,
 };
 
-static void psi_clock(struct work_struct *work);
+static void psi_update_work(struct work_struct *work);
 
 static void group_init(struct psi_group *group)
 {
@@ -163,7 +163,7 @@ static void group_init(struct psi_group *group)
 	for_each_possible_cpu(cpu)
 		seqcount_init(&per_cpu_ptr(group->pcpu, cpu)->seq);
 	group->next_update = sched_clock() + psi_period;
-	INIT_DELAYED_WORK(&group->clock_work, psi_clock);
+	INIT_DELAYED_WORK(&group->clock_work, psi_update_work);
 	mutex_init(&group->stat_lock);
 }
 
@@ -354,7 +354,7 @@ out:
 	return nonidle_total;
 }
 
-static void psi_clock(struct work_struct *work)
+static void psi_update_work(struct work_struct *work)
 {
 	struct delayed_work *dwork;
 	struct psi_group *group;
