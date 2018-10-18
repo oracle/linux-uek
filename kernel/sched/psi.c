@@ -197,17 +197,26 @@ static bool test_state(unsigned int *tasks, enum psi_states state)
 	}
 }
 
-static u32 get_recent_time(struct psi_group *group, int cpu,
-			   enum psi_states state)
+static void get_recent_times(struct psi_group *group, int cpu, u32 *times)
 {
 	struct psi_group_cpu *groupc = per_cpu_ptr(group->pcpu, cpu);
+	unsigned int tasks[NR_PSI_TASK_COUNTS];
+	u64 now, state_start;
 	unsigned int seq;
-	u32 time, delta;
+	int s;
 
+	/* Snapshot a coherent view of the CPU state */
 	do {
 		seq = read_seqcount_begin(&groupc->seq);
+		now = cpu_clock(cpu);
+		memcpy(times, groupc->times, sizeof(groupc->times));
+		memcpy(tasks, groupc->tasks, sizeof(groupc->tasks));
+		state_start = groupc->state_start;
+	} while (read_seqcount_retry(&groupc->seq, seq));
 
-		time = groupc->times[state];
+	/* Calculate state time deltas against the previous snapshot */
+	for (s = 0; s < NR_PSI_STATES; s++) {
+		u32 delta;
 		/*
 		 * In addition to already concluded states, we also
 		 * incorporate currently active states on the CPU,
@@ -217,14 +226,14 @@ static u32 get_recent_time(struct psi_group *group, int cpu,
 		 * (u32) and our reported pressure close to what's
 		 * actually happening.
 		 */
-		if (test_state(groupc->tasks, state))
-			time += cpu_clock(cpu) - groupc->state_start;
-	} while (read_seqcount_retry(&groupc->seq, seq));
+		if (test_state(tasks, s))
+			times[s] += now - state_start;
 
-	delta = time - groupc->times_prev[state];
-	groupc->times_prev[state] = time;
+		delta = times[s] - groupc->times_prev[s];
+		groupc->times_prev[s] = times[s];
 
-	return delta;
+		times[s] = delta;
+	}
 }
 
 static void calc_avgs(unsigned long avg[3], int missed_periods,
@@ -267,18 +276,16 @@ static bool update_stats(struct psi_group *group)
 	 * loading, or even entirely idle CPUs.
 	 */
 	for_each_possible_cpu(cpu) {
+		u32 times[NR_PSI_STATES];
 		u32 nonidle;
 
-		nonidle = get_recent_time(group, cpu, PSI_NONIDLE);
-		nonidle = nsecs_to_jiffies(nonidle);
+		get_recent_times(group, cpu, times);
+
+		nonidle = nsecs_to_jiffies(times[PSI_NONIDLE]);
 		nonidle_total += nonidle;
 
-		for (s = 0; s < PSI_NONIDLE; s++) {
-			u32 delta;
-
-			delta = get_recent_time(group, cpu, s);
-			deltas[s] += (u64)delta * nonidle;
-		}
+		for (s = 0; s < PSI_NONIDLE; s++)
+			deltas[s] += (u64)times[s] * nonidle;
 	}
 
 	/*
