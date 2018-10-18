@@ -120,7 +120,7 @@
 	testl	$SPEC_CTRL_IBRS_INUSE, PER_CPU_VAR(cpu_ibrs)
 	jz	.Lskip_\@
 	PUSH_MSR_REGS
-	WRMSR_ASM $MSR_IA32_SPEC_CTRL, x86_spec_ctrl_base
+	WRMSR_ASM $MSR_IA32_SPEC_CTRL, PER_CPU_VAR(x86_spec_ctrl_restore)
 	POP_MSR_REGS
 .Lskip_\@:
 .endm
@@ -147,8 +147,8 @@
 	testl	$SPEC_CTRL_IBRS_INUSE, PER_CPU_VAR(cpu_ibrs)
 	jz	.Lskip_\@
 
-	testl	$SPEC_CTRL_FEATURE_ENABLE_IBRS, \save_reg
-	jnz	.Lskip_\@
+	cmp	\save_reg, PER_CPU_VAR(x86_spec_ctrl_priv_cpu)
+	je     .Lskip_\@
 
 	movl	$MSR_IA32_SPEC_CTRL, %ecx
 	movl	$0, %edx
@@ -186,6 +186,7 @@
 /* Defined in bugs.c */
 extern u64 x86_spec_ctrl_priv;
 DECLARE_PER_CPU(u64, x86_spec_ctrl_priv_cpu);
+DECLARE_PER_CPU(u64, x86_spec_ctrl_restore);
 extern u64 x86_spec_ctrl_base;
 
 /*
@@ -215,6 +216,7 @@ DECLARE_STATIC_KEY_FALSE(retpoline_enabled_key);
 static inline void update_cpu_spec_ctrl(int cpu)
 {
 	per_cpu(x86_spec_ctrl_priv_cpu, cpu) = x86_spec_ctrl_priv;
+	per_cpu(x86_spec_ctrl_restore, cpu) = x86_spec_ctrl_base;
 }
 
 static inline void update_cpu_spec_ctrl_all(void)
