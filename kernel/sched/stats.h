@@ -132,7 +132,7 @@ static inline void psi_task_tick(struct rq *rq)
 		return;
 
 	if (unlikely(rq->curr->flags & PF_MEMSTALL))
-		psi_memstall_tick(rq->curr, rq->cpu);
+		psi_memstall_tick(rq->curr, cpu_of(rq));
 }
 #else /* CONFIG_PSI */
 static inline void psi_enqueue(struct task_struct *p, bool wakeup) {}
