@@ -15,7 +15,6 @@
 
 .extern use_ibrs
 .extern x86_spec_ctrl_priv
-.extern x86_spec_ctrl_base
 
 #define __ASM_STUFF_RSB				\
 	call	1f;				\
@@ -168,13 +167,6 @@
 .Lskip_\@:
 	 lfence
 .Ldone_\@:
-.endm
-
-.macro DISABLE_IBRS_CLOBBER
-	testl	$SPEC_CTRL_IBRS_INUSE, PER_CPU_VAR(cpu_ibrs)
-	jz	.Lskip_\@
-	WRMSR_ASM $MSR_IA32_SPEC_CTRL, x86_spec_ctrl_base
-.Lskip_\@:
 .endm
 
 .macro STUFF_RSB_NON_SMEP
