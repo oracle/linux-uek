@@ -202,8 +202,8 @@ lpfc_sli4_set_rsp_sgl_last(struct lpfc_hba *phba,
 static void
 lpfc_update_stats(struct lpfc_hba *phba, struct  lpfc_scsi_buf *lpfc_cmd)
 {
-	struct lpfc_rport_data *rdata = lpfc_cmd->rdata;
-	struct lpfc_nodelist *pnode = rdata->pnode;
+	struct lpfc_rport_data *rdata;
+	struct lpfc_nodelist *pnode;
 	struct scsi_cmnd *cmd = lpfc_cmd->pCmd;
 	unsigned long flags;
 	struct Scsi_Host  *shost = cmd->device->host;
@@ -211,17 +211,19 @@ lpfc_update_stats(struct lpfc_hba *phba, struct  lpfc_scsi_buf *lpfc_cmd)
 	unsigned long latency;
 	int i;
 
-	if (cmd->result)
+	if (!vport->stat_data_enabled ||
+	    vport->stat_data_blocked ||
+	    (cmd->result))
 		return;
 
 	latency = jiffies_to_msecs((long)jiffies - (long)lpfc_cmd->start_time);
+	rdata = lpfc_cmd->rdata;
+	pnode = rdata->pnode;
 
 	spin_lock_irqsave(shost->host_lock, flags);
-	if (!vport->stat_data_enabled ||
-		vport->stat_data_blocked ||
-		!pnode ||
-		!pnode->lat_data ||
-		(phba->bucket_type == LPFC_NO_BUCKET)) {
+	if (!pnode ||
+	    !pnode->lat_data ||
+	    (phba->bucket_type == LPFC_NO_BUCKET)) {
 		spin_unlock_irqrestore(shost->host_lock, flags);
 		return;
 	}
@@ -995,6 +997,11 @@ lpfc_get_scsi_buf_s3(struct lpfc_hba *phba, struct lpfc_nodelist *ndlp)
 		spin_unlock(&phba->scsi_buf_list_put_lock);
 	}
 	spin_unlock_irqrestore(&phba->scsi_buf_list_get_lock, iflag);
+
+	if (lpfc_ndlp_check_qdepth(phba, ndlp) && lpfc_cmd) {
+		atomic_inc(&ndlp->cmd_pending);
+		lpfc_cmd->flags |= LPFC_SBUF_BUMP_QDEPTH;
+	}
 	return  lpfc_cmd;
 }
 /**
@@ -1044,6 +1051,11 @@ lpfc_get_scsi_buf_s4(struct lpfc_hba *phba, struct lpfc_nodelist *ndlp)
 	spin_unlock_irqrestore(&phba->scsi_buf_list_get_lock, iflag);
 	if (!found)
 		return NULL;
+
+	if (lpfc_ndlp_check_qdepth(phba, ndlp)) {
+		atomic_inc(&ndlp->cmd_pending);
+		lpfc_cmd->flags |= LPFC_SBUF_BUMP_QDEPTH;
+	}
 	return  lpfc_cmd;
 }
 /**
@@ -1134,7 +1146,10 @@ lpfc_release_scsi_buf_s4(struct lpfc_hba *phba, struct lpfc_scsi_buf *psb)
 static void
 lpfc_release_scsi_buf(struct lpfc_hba *phba, struct lpfc_scsi_buf *psb)
 {
+	if ((psb->flags & LPFC_SBUF_BUMP_QDEPTH) && psb->ndlp)
+		atomic_dec(&psb->ndlp->cmd_pending);
 
+	psb->flags &= ~LPFC_SBUF_BUMP_QDEPTH;
 	phba->lpfc_release_scsi_buf(phba, psb);
 }
 
@@ -4130,7 +4145,6 @@ lpfc_scsi_cmd_iocb_cmpl(struct lpfc_hba *phba, struct lpfc_iocbq *pIocbIn,
 		msecs_to_jiffies(vport->cfg_max_scsicmpl_time))) {
 		spin_lock_irqsave(shost->host_lock, flags);
 		if (pnode && NLP_CHK_NODE_ACT(pnode)) {
-			atomic_dec(&pnode->cmd_pending);
 			if (pnode->cmd_qdepth >
 				atomic_read(&pnode->cmd_pending) &&
 				(atomic_read(&pnode->cmd_pending) >
@@ -4143,14 +4157,20 @@ lpfc_scsi_cmd_iocb_cmpl(struct lpfc_hba *phba, struct lpfc_iocbq *pIocbIn,
 			pnode->last_change_time = jiffies;
 		}
 		spin_unlock_irqrestore(shost->host_lock, flags);
-	} else if (pnode && NLP_CHK_NODE_ACT(pnode)) {
-		atomic_dec(&pnode->cmd_pending);
 	}
 	lpfc_scsi_unprep_dma_buf(phba, lpfc_cmd);
 
-	spin_lock_irqsave(&phba->hbalock, flags);
-	lpfc_cmd->pCmd = NULL;
-	spin_unlock_irqrestore(&phba->hbalock, flags);
+	/* If pCmd was set to NULL from abort path, do not call scsi_done */
+	if (xchg(&lpfc_cmd->pCmd, NULL) == NULL) {
+		lpfc_printf_vlog(vport, KERN_INFO, LOG_FCP,
+				 "0711 FCP cmd already NULL, sid: 0x%06x, "
+				 "did: 0x%06x, oxid: 0x%04x\n",
+				 vport->fc_myDID,
+				 (pnode) ? pnode->nlp_DID : 0,
+				 phba->sli_rev == LPFC_SLI_REV4 ?
+				 lpfc_cmd->cur_iocbq.sli4_xritag : 0xffff);
+		return;
+	}
 
 	/* The sdev is not guaranteed to be valid post scsi_done upcall. */
 	cmd->scsi_done(cmd);
@@ -4568,33 +4588,36 @@ lpfc_queuecommand(struct Scsi_Host *shost, struct scsi_cmnd *cmnd)
 	 */
 	if (!ndlp || !NLP_CHK_NODE_ACT(ndlp))
 		goto out_tgt_busy;
-	if (atomic_read(&ndlp->cmd_pending) >= ndlp->cmd_qdepth) {
-		lpfc_printf_vlog(vport, KERN_INFO, LOG_FCP_ERROR,
-				 "3377 Target Queue Full, scsi Id:%d Qdepth:%d"
-				 " Pending command:%d"
-				 " WWNN:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x, "
-				 " WWPN:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x",
-				 ndlp->nlp_sid, ndlp->cmd_qdepth,
-				 atomic_read(&ndlp->cmd_pending),
-				 ndlp->nlp_nodename.u.wwn[0],
-				 ndlp->nlp_nodename.u.wwn[1],
-				 ndlp->nlp_nodename.u.wwn[2],
-				 ndlp->nlp_nodename.u.wwn[3],
-				 ndlp->nlp_nodename.u.wwn[4],
-				 ndlp->nlp_nodename.u.wwn[5],
-				 ndlp->nlp_nodename.u.wwn[6],
-				 ndlp->nlp_nodename.u.wwn[7],
-				 ndlp->nlp_portname.u.wwn[0],
-				 ndlp->nlp_portname.u.wwn[1],
-				 ndlp->nlp_portname.u.wwn[2],
-				 ndlp->nlp_portname.u.wwn[3],
-				 ndlp->nlp_portname.u.wwn[4],
-				 ndlp->nlp_portname.u.wwn[5],
-				 ndlp->nlp_portname.u.wwn[6],
-				 ndlp->nlp_portname.u.wwn[7]);
-		goto out_tgt_busy;
+	if (lpfc_ndlp_check_qdepth(phba, ndlp)) {
+		if (atomic_read(&ndlp->cmd_pending) >= ndlp->cmd_qdepth) {
+			lpfc_printf_vlog(vport, KERN_INFO, LOG_FCP_ERROR,
+					 "3377 Target Queue Full, scsi Id:%d "
+					 "Qdepth:%d Pending command:%d"
+					 " WWNN:%02x:%02x:%02x:%02x:"
+					 "%02x:%02x:%02x:%02x, "
+					 " WWPN:%02x:%02x:%02x:%02x:"
+					 "%02x:%02x:%02x:%02x",
+					 ndlp->nlp_sid, ndlp->cmd_qdepth,
+					 atomic_read(&ndlp->cmd_pending),
+					 ndlp->nlp_nodename.u.wwn[0],
+					 ndlp->nlp_nodename.u.wwn[1],
+					 ndlp->nlp_nodename.u.wwn[2],
+					 ndlp->nlp_nodename.u.wwn[3],
+					 ndlp->nlp_nodename.u.wwn[4],
+					 ndlp->nlp_nodename.u.wwn[5],
+					 ndlp->nlp_nodename.u.wwn[6],
+					 ndlp->nlp_nodename.u.wwn[7],
+					 ndlp->nlp_portname.u.wwn[0],
+					 ndlp->nlp_portname.u.wwn[1],
+					 ndlp->nlp_portname.u.wwn[2],
+					 ndlp->nlp_portname.u.wwn[3],
+					 ndlp->nlp_portname.u.wwn[4],
+					 ndlp->nlp_portname.u.wwn[5],
+					 ndlp->nlp_portname.u.wwn[6],
+					 ndlp->nlp_portname.u.wwn[7]);
+			goto out_tgt_busy;
+		}
 	}
-	atomic_inc(&ndlp->cmd_pending);
 
 	lpfc_cmd = lpfc_get_scsi_buf(phba, ndlp);
 	if (lpfc_cmd == NULL) {
@@ -4612,6 +4635,7 @@ lpfc_queuecommand(struct Scsi_Host *shost, struct scsi_cmnd *cmnd)
 	 */
 	lpfc_cmd->pCmd  = cmnd;
 	lpfc_cmd->rdata = rdata;
+	lpfc_cmd->ndlp = ndlp;
 	lpfc_cmd->timeout = 0;
 	lpfc_cmd->start_time = jiffies;
 	cmnd->host_scribble = (unsigned char *)lpfc_cmd;
@@ -4694,7 +4718,6 @@ lpfc_queuecommand(struct Scsi_Host *shost, struct scsi_cmnd *cmnd)
 	lpfc_scsi_unprep_dma_buf(phba, lpfc_cmd);
 	lpfc_release_scsi_buf(phba, lpfc_cmd);
  out_host_busy:
-	atomic_dec(&ndlp->cmd_pending);
 	return SCSI_MLQUEUE_HOST_BUSY;
 
  out_tgt_busy:
@@ -4727,7 +4750,7 @@ lpfc_abort_handler(struct scsi_cmnd *cmnd)
 	struct lpfc_scsi_buf *lpfc_cmd;
 	IOCB_t *cmd, *icmd;
 	int ret = SUCCESS, status = 0;
-	struct lpfc_sli_ring *pring_s4;
+	struct lpfc_sli_ring *pring_s4 = NULL;
 	int ret_val;
 	unsigned long flags;
 	DECLARE_WAIT_QUEUE_HEAD_ONSTACK(waitq);
@@ -4757,8 +4780,25 @@ lpfc_abort_handler(struct scsi_cmnd *cmnd)
 	}
 
 	iocb = &lpfc_cmd->cur_iocbq;
+	if (phba->sli_rev == LPFC_SLI_REV4) {
+		if (!(phba->cfg_fof) ||
+		    (!(iocb->iocb_flag & LPFC_IO_FOF))) {
+			pring_s4 =
+				phba->sli4_hba.fcp_wq[iocb->hba_wqidx]->pring;
+		} else {
+			iocb->hba_wqidx = 0;
+			pring_s4 = phba->sli4_hba.oas_wq->pring;
+		}
+		if (!pring_s4) {
+			ret = FAILED;
+			goto out_unlock;
+		}
+		spin_lock(&pring_s4->ring_lock);
+	}
 	/* the command is in process of being cancelled */
 	if (!(iocb->iocb_flag & LPFC_IO_ON_TXCMPLQ)) {
+		if (phba->sli_rev == LPFC_SLI_REV4)
+			spin_unlock(&pring_s4->ring_lock);
 		spin_unlock_irqrestore(&phba->hbalock, flags);
 		lpfc_printf_vlog(vport, KERN_WARNING, LOG_FCP,
 			"3169 SCSI Layer abort requested I/O has been "
@@ -4772,6 +4812,8 @@ lpfc_abort_handler(struct scsi_cmnd *cmnd)
 	 * see the completion before the eh fired. Just return SUCCESS.
 	 */
 	if (lpfc_cmd->pCmd != cmnd) {
+		if (phba->sli_rev == LPFC_SLI_REV4)
+			spin_unlock(&pring_s4->ring_lock);
 		lpfc_printf_vlog(vport, KERN_WARNING, LOG_FCP,
 			"3170 SCSI Layer abort requested I/O has been "
 			"completed by LLD.\n");
@@ -4784,6 +4826,8 @@ lpfc_abort_handler(struct scsi_cmnd *cmnd)
 	if (iocb->iocb_flag & LPFC_DRIVER_ABORTED) {
 		lpfc_printf_vlog(vport, KERN_WARNING, LOG_FCP,
 			 "3389 SCSI Layer I/O Abort Request is pending\n");
+		if (phba->sli_rev == LPFC_SLI_REV4)
+			spin_unlock(&pring_s4->ring_lock);
 		spin_unlock_irqrestore(&phba->hbalock, flags);
 		goto wait_for_cmpl;
 	}
@@ -4791,6 +4835,8 @@ lpfc_abort_handler(struct scsi_cmnd *cmnd)
 	abtsiocb = __lpfc_sli_get_iocbq(phba);
 	if (abtsiocb == NULL) {
 		ret = FAILED;
+		if (phba->sli_rev == LPFC_SLI_REV4)
+			spin_unlock(&pring_s4->ring_lock);
 		goto out_unlock;
 	}
 
@@ -4828,14 +4874,9 @@ lpfc_abort_handler(struct scsi_cmnd *cmnd)
 
 	abtsiocb->iocb_cmpl = lpfc_sli_abort_fcp_cmpl;
 	abtsiocb->vport = vport;
+	lpfc_cmd->waitq = &waitq;
 	if (phba->sli_rev == LPFC_SLI_REV4) {
-		pring_s4 = lpfc_sli4_calc_ring(phba, abtsiocb);
-		if (pring_s4 == NULL) {
-			ret = FAILED;
-			goto out_unlock;
-		}
 		/* Note: both hbalock and ring_lock must be set here */
-		spin_lock(&pring_s4->ring_lock);
 		ret_val = __lpfc_sli_issue_iocb(phba, pring_s4->ringno,
 						abtsiocb, 0);
 		spin_unlock(&pring_s4->ring_lock);
@@ -4848,6 +4889,17 @@ lpfc_abort_handler(struct scsi_cmnd *cmnd)
 
 
 	if (ret_val == IOCB_ERROR) {
+		if (phba->sli_rev == LPFC_SLI_REV4)
+			spin_lock_irqsave(&pring_s4->ring_lock, flags);
+		else
+			spin_lock_irqsave(&phba->hbalock, flags);
+		/* Indicate the IO is not being aborted by the driver. */
+		iocb->iocb_flag &= ~LPFC_DRIVER_ABORTED;
+		lpfc_cmd->waitq = NULL;
+		if (phba->sli_rev == LPFC_SLI_REV4)
+			spin_unlock_irqrestore(&pring_s4->ring_lock, flags);
+		else
+			spin_unlock_irqrestore(&phba->hbalock, flags);
 		lpfc_sli_release_iocbq(phba, abtsiocb);
 		ret = FAILED;
 		goto out;
@@ -4858,7 +4910,6 @@ lpfc_abort_handler(struct scsi_cmnd *cmnd)
 			&phba->sli.sli3_ring[LPFC_FCP_RING], HA_R0RE_REQ);
 
 wait_for_cmpl:
-	lpfc_cmd->waitq = &waitq;
 	/* Wait for abort to complete */
 	wait_event_timeout(waitq,
 			  (lpfc_cmd->pCmd != cmnd),
@@ -5019,6 +5070,7 @@ lpfc_send_taskmgmt(struct lpfc_vport *vport, struct scsi_cmnd *cmnd,
 	lpfc_cmd->timeout = phba->cfg_task_mgmt_tmo;
 	lpfc_cmd->rdata = rdata;
 	lpfc_cmd->pCmd = cmnd;
+	lpfc_cmd->ndlp = pnode;
 
 	status = lpfc_scsi_prep_task_mgmt_cmd(vport, lpfc_cmd, lun_id,
 					   task_mgmt_cmd);
