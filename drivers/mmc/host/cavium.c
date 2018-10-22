@@ -853,12 +853,29 @@ retry:
 	writeq(emm_cmd, host->base + MIO_EMM_CMD(host));
 }
 
+static u32 max_supported_frequency(struct cvm_mmc_host *host)
+{
+	/* Default maximum freqeuncey is 52000000 for chip prior to 9X */
+	u32 max_frequency = MHZ_52;
+
+	if (is_mmc_otx2(host)) {
+		/* Default max frequency is 200MHz for 9X chips */
+		max_frequency = MHZ_200;
+
+		/* Erratum is only applicable pass A0 */
+		if (is_mmc_otx2_A0(host))
+			max_frequency = MHZ_100;
+	}
+	return max_frequency;
+}
+
 static void cvm_mmc_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 {
 	struct cvm_mmc_slot *slot = mmc_priv(mmc);
 	struct cvm_mmc_host *host = slot->host;
 	int clk_period = 0, power_class = 10, bus_width = 0;
 	u64 clock, emm_switch;
+	u32 max_f;
 
 	if (ios->power_mode == MMC_POWER_OFF) {
 		if (host->powered) {
@@ -902,8 +919,10 @@ static void cvm_mmc_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 
 	/* Change the clock frequency. */
 	clock = ios->clock;
-	if (clock > 52000000)
-		clock = 52000000;
+	max_f = max_supported_frequency(host);
+
+	if (clock > max_f)
+		clock = max_f;
 	slot->clock = clock;
 
 	if (clock)
@@ -986,6 +1005,7 @@ static int cvm_mmc_of_parse(struct device *dev, struct cvm_mmc_slot *slot)
 	u32 id, cmd_skew = 0, dat_skew = 0, bus_width = 0;
 	struct device_node *node = dev->of_node;
 	struct mmc_host *mmc = slot->mmc;
+	u32 max_frequency;
 	int ret;
 
 	ret = of_property_read_u32(node, "reg", &id);
@@ -1029,12 +1049,14 @@ static int cvm_mmc_of_parse(struct device *dev, struct cvm_mmc_slot *slot)
 			mmc->caps |= MMC_CAP_4_BIT_DATA;
 	}
 
+	max_frequency = max_supported_frequency(slot->host);
+
 	/* Set maximum and minimum frequency */
 	if (!mmc->f_max)
 		of_property_read_u32(node, "spi-max-frequency", &mmc->f_max);
-	if (!mmc->f_max || mmc->f_max > 52000000)
-		mmc->f_max = 52000000;
-	mmc->f_min = 400000;
+	if (!mmc->f_max || mmc->f_max > max_frequency)
+		mmc->f_max = max_frequency;
+	mmc->f_min = KHZ_400;
 
 	/* Sampling register settings, period in picoseconds */
 	of_property_read_u32(node, "cavium,cmd-clk-skew", &cmd_skew);
