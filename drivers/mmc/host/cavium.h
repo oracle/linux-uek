@@ -19,8 +19,18 @@
 #include <linux/of.h>
 #include <linux/scatterlist.h>
 #include <linux/semaphore.h>
+#include <linux/pci.h>
 
 #define CAVIUM_MAX_MMC		4
+
+/* Subsystem Device ID */
+#define PCI_SUBSYS_DEVID_96XX	0xB200
+#define PCI_SUBSYS_DEVID_95XX   0xB300
+
+#define KHZ_400 (400000)
+#define MHZ_52  (52000000)
+#define MHZ_100 (100000000)
+#define MHZ_200 (200000000)
 
 /* DMA register addresses */
 #define MIO_EMM_DMA_FIFO_CFG(x)	(0x00 + x->reg_off_dma)
@@ -56,6 +66,7 @@ struct cvm_mmc_host {
 	struct device *dev;
 	void __iomem *base;
 	void __iomem *dma_base;
+	struct pci_dev *pdev;
 	int reg_off;
 	int reg_off_dma;
 	u64 emm_cfg;
@@ -213,4 +224,19 @@ int cvm_mmc_of_slot_probe(struct device *dev, struct cvm_mmc_host *host);
 int cvm_mmc_of_slot_remove(struct cvm_mmc_slot *slot);
 extern const char *cvm_mmc_irq_names[];
 
+static inline bool is_mmc_otx2(struct cvm_mmc_host *host)
+{
+	struct pci_dev *pdev = host->pdev;
+
+	return (pdev->subsystem_device == PCI_SUBSYS_DEVID_96XX) ||
+		(pdev->subsystem_device == PCI_SUBSYS_DEVID_95XX);
+}
+
+static inline bool is_mmc_otx2_A0(struct cvm_mmc_host *host)
+{
+	struct pci_dev *pdev = host->pdev;
+
+	return (pdev->revision == 0x00) &&
+		(pdev->subsystem_device == PCI_SUBSYS_DEVID_96XX);
+}
 #endif
