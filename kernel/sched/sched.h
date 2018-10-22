@@ -30,6 +30,7 @@
 #include <linux/irq_work.h>
 #include <linux/tick.h>
 #include <linux/slab.h>
+#include <linux/cgroup.h>
 #include <linux/dtrace_cpu.h>
 
 #ifdef CONFIG_PARAVIRT
@@ -38,7 +39,6 @@
 
 #include "cpupri.h"
 #include "cpudeadline.h"
-#include "cpuacct.h"
 
 #ifdef CONFIG_SCHED_DEBUG
 # define SCHED_WARN_ON(x)	WARN_ONCE(x, #x)
