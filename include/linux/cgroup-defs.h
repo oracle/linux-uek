@@ -680,7 +680,12 @@ struct cgroup_subsys {
 	unsigned int depends_on;
 
 	/* Space for future expansion without breaking kABI. */
+#ifndef __GENKSYMS__
+	int (*css_extra_stat_show)(struct seq_file *seq,
+				   struct cgroup_subsys_state *css);
+#else
 	UEK_KABI_RESERVED_P(1);
+#endif
 	UEK_KABI_RESERVED_P(2);
 };
 
