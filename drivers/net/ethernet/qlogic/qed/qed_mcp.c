@@ -1805,6 +1805,9 @@ int qed_mcp_get_transceiver_data(struct qed_hwfn *p_hwfn,
 {
 	u32 transceiver_info;
 
+	*p_transceiver_type = ETH_TRANSCEIVER_TYPE_NONE;
+	*p_transceiver_state = ETH_TRANSCEIVER_STATE_UPDATING;
+
 	if (IS_VF(p_hwfn->cdev))
 		return -EINVAL;
 
@@ -1812,9 +1815,6 @@ int qed_mcp_get_transceiver_data(struct qed_hwfn *p_hwfn,
 		DP_NOTICE(p_hwfn, "MFW is not initialized!\n");
 		return -EBUSY;
 	}
-
-	*p_transceiver_type = ETH_TRANSCEIVER_TYPE_NONE;
-	*p_transceiver_state = ETH_TRANSCEIVER_STATE_UPDATING;
 
 	transceiver_info = qed_rd(p_hwfn, p_ptt,
 				  p_hwfn->mcp_info->port_addr +
