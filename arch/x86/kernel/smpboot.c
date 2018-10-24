@@ -1693,15 +1693,13 @@ void native_play_dead(void)
 	play_dead_common();
 	tboot_shutdown(TB_SHUTDOWN_WFS);
 
-	if (ibrs_inuse)
-		x86_spec_ctrl_set(SPEC_CTRL_IDLE_ENTER);
+	x86_spec_ctrl_set(SPEC_CTRL_IDLE_ENTER);
 
 	mwait_play_dead();	/* Only returns on failure */
 	if (cpuidle_play_dead())
 		hlt_play_dead();
 
-	if (ibrs_inuse)
-		x86_spec_ctrl_set(SPEC_CTRL_IDLE_EXIT);
+	x86_spec_ctrl_set(SPEC_CTRL_IDLE_EXIT);
 }
 
 #else /* ... !CONFIG_HOTPLUG_CPU */
