@@ -4066,7 +4066,7 @@
 			seccomp - Same as "prctl" above, but all seccomp threads
 				  will disable SSB unless they explicitly opt out.
 			userspace - Disable Speculative Store Bypass when entering
-				 userspace.
+				  userspace. Deprecated.
 
 			Not specifying this option is equivalent to
 			spec_store_bypass_disable=auto.
