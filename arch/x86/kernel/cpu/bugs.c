@@ -116,7 +116,6 @@ __setup("spectre_v2_heuristics=", spectre_v2_heuristics_setup);
 static void __init spectre_v2_select_mitigation(void);
 static enum ssb_mitigation __init ssb_select_mitigation(void);
 static void __init ssb_init(void);
-static bool ssbd_userspace_selected(void);
 static void __init l1tf_select_mitigation(void);
 
 static enum ssb_mitigation ssb_mode = SPEC_STORE_BYPASS_NONE;
@@ -677,8 +676,7 @@ static void __init spectre_v2_select_mitigation(void)
 			 */
 			if (!retp_compiler() /* prefer IBRS over minimal ASM */ ||
 			    (retp_compiler() && !retpoline_selected(cmd) &&
-			     ((is_skylake_era() && use_ibrs_on_skylake) ||
-			      (ssbd_userspace_selected() && use_ibrs_with_ssbd)))) {
+			     ((is_skylake_era() && use_ibrs_on_skylake)))) {
 
 				/* Start the engine! */
 				ibrs_select(&mode);
@@ -737,11 +735,6 @@ display:
 #undef pr_fmt
 #define pr_fmt(fmt)	"Speculative Store Bypass: " fmt
 
-static bool ssbd_userspace_selected(void)
-{
-	return (ssb_mode == SPEC_STORE_BYPASS_USERSPACE);
-}
-
 /* The kernel command line selection */
 enum ssb_mitigation_cmd {
 	SPEC_STORE_BYPASS_CMD_NONE,
@@ -749,7 +742,7 @@ enum ssb_mitigation_cmd {
 	SPEC_STORE_BYPASS_CMD_ON,
 	SPEC_STORE_BYPASS_CMD_PRCTL,
 	SPEC_STORE_BYPASS_CMD_SECCOMP,
-	SPEC_STORE_BYPASS_CMD_USERSPACE,
+	SPEC_STORE_BYPASS_CMD_USERSPACE /* Deprecated */
 };
 
 static const char *ssb_strings[] = {
@@ -757,7 +750,6 @@ static const char *ssb_strings[] = {
 	[SPEC_STORE_BYPASS_DISABLE]	= "Mitigation: Speculative Store Bypass disabled",
 	[SPEC_STORE_BYPASS_PRCTL]	= "Mitigation: Speculative Store Bypass disabled via prctl",
 	[SPEC_STORE_BYPASS_SECCOMP]	= "Mitigation: Speculative Store Bypass disabled via prctl and seccomp",
-	[SPEC_STORE_BYPASS_USERSPACE]	= "Mitigation: Speculative Store Bypass disabled for userspace"
 };
 
 static const struct {
@@ -769,7 +761,7 @@ static const struct {
 	{ "off",	SPEC_STORE_BYPASS_CMD_NONE },    /* Don't touch Speculative Store Bypass */
 	{ "prctl",	SPEC_STORE_BYPASS_CMD_PRCTL },   /* Disable Speculative Store Bypass via prctl */
 	{ "seccomp",	SPEC_STORE_BYPASS_CMD_SECCOMP }, /* Disable Speculative Store Bypass via prctl and seccomp */
-	{ "userspace",	SPEC_STORE_BYPASS_CMD_USERSPACE }, /* Disable Speculative Store Bypass for userspace */
+	{ "userspace",	SPEC_STORE_BYPASS_CMD_USERSPACE }, /* Disable Speculative Store Bypass for userspace (deprecated) */
 };
 
 static enum ssb_mitigation_cmd __init ssb_parse_cmdline(void)
@@ -836,8 +828,10 @@ static enum ssb_mitigation __init ssb_select_mitigation(void)
 		mode = SPEC_STORE_BYPASS_PRCTL;
 		break;
 	case SPEC_STORE_BYPASS_CMD_USERSPACE:
+		pr_warn("spec_store_bypass_disable=userspace is deprecated. "
+			"Disabling Speculative Store Bypass\n");
 		if (boot_cpu_data.x86_vendor == X86_VENDOR_INTEL)
-			mode = SPEC_STORE_BYPASS_USERSPACE;
+			mode = SPEC_STORE_BYPASS_DISABLE;
 		break;
 	case SPEC_STORE_BYPASS_CMD_NONE:
 		break;
@@ -857,8 +851,7 @@ static void __init ssb_init(void)
 	if (ssb_mode == SPEC_STORE_BYPASS_DISABLE)
 		setup_force_cpu_cap(X86_FEATURE_SPEC_STORE_BYPASS_DISABLE);
 
-	if (ssb_mode == SPEC_STORE_BYPASS_DISABLE ||
-	    ssb_mode == SPEC_STORE_BYPASS_USERSPACE) {
+	if (ssb_mode == SPEC_STORE_BYPASS_DISABLE) {
 		/*
 		 * Intel uses the SPEC CTRL MSR Bit(2) for this, while AMD uses
 		 * a completely different MSR and bit dependent on family.
@@ -867,11 +860,9 @@ static void __init ssb_init(void)
 		case X86_VENDOR_INTEL:
 			x86_spec_ctrl_base |= SPEC_CTRL_SSBD;
 			x86_spec_ctrl_mask |= SPEC_CTRL_SSBD;
+			x86_spec_ctrl_priv |= SPEC_CTRL_SSBD;
 
-			if (ssb_mode == SPEC_STORE_BYPASS_DISABLE) {
-				x86_spec_ctrl_set(SPEC_CTRL_INITIAL);
-				x86_spec_ctrl_priv |= SPEC_CTRL_SSBD;
-			}
+			x86_spec_ctrl_set(SPEC_CTRL_INITIAL);
 
 			update_cpu_spec_ctrl_all();
 			break;
@@ -950,7 +941,6 @@ void arch_seccomp_spec_mitigate(struct task_struct *task)
 static int ssb_prctl_get(struct task_struct *task)
 {
 	switch (ssb_mode) {
-	case SPEC_STORE_BYPASS_USERSPACE:
 	case SPEC_STORE_BYPASS_DISABLE:
 		return PR_SPEC_DISABLE;
 	case SPEC_STORE_BYPASS_SECCOMP:
@@ -979,11 +969,7 @@ int arch_prctl_spec_ctrl_get(struct task_struct *task, unsigned long which)
 
 void x86_spec_ctrl_setup_ap(void)
 {
-	/*
-	 * Skip the call if ssb_mode is USERSPACE since the SPEC_CTRL MSR will
-	 * be set on every userspace/kernel transition anyway.
-	 */
-	if (boot_cpu_has(X86_FEATURE_MSR_SPEC_CTRL) && ssb_mode != SPEC_STORE_BYPASS_USERSPACE)
+	if (boot_cpu_has(X86_FEATURE_MSR_SPEC_CTRL))
 		x86_spec_ctrl_set(SPEC_CTRL_INITIAL);
 
 	if (ssb_mode == SPEC_STORE_BYPASS_DISABLE)
