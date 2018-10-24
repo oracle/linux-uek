@@ -110,15 +110,13 @@ static inline void mwait_idle_with_hints(unsigned long eax, unsigned long ecx)
 			mb();
 		}
 
-		if (ibrs_inuse)
-			x86_spec_ctrl_set(SPEC_CTRL_IDLE_ENTER);
+		x86_spec_ctrl_set(SPEC_CTRL_IDLE_ENTER);
 
 		__monitor((void *)&current_thread_info()->flags, 0, 0);
 		if (!need_resched())
 			__mwait(eax, ecx);
 
-		if (ibrs_inuse)
-			x86_spec_ctrl_set(SPEC_CTRL_IDLE_EXIT);
+		x86_spec_ctrl_set(SPEC_CTRL_IDLE_EXIT);
 	}
 	current_clr_polling();
 }

@@ -175,9 +175,10 @@ void __init check_bugs(void)
 	 */
 	if (boot_cpu_has(X86_FEATURE_MSR_SPEC_CTRL)) {
 		rdmsrl(MSR_IA32_SPEC_CTRL, x86_spec_ctrl_base);
-		if (x86_spec_ctrl_base & SPEC_CTRL_IBRS) {
-			pr_warn("SPEC CTRL MSR (0x%16llx) has IBRS set during boot, clearing it.", x86_spec_ctrl_base);
-			x86_spec_ctrl_base &= ~(SPEC_CTRL_IBRS);
+		if (x86_spec_ctrl_base & (SPEC_CTRL_IBRS | SPEC_CTRL_SSBD)) {
+			pr_warn("SPEC CTRL MSR (0x%16llx) has IBRS and/or "
+				"SSBD set during boot, clearing it.", x86_spec_ctrl_base);
+			x86_spec_ctrl_base &= ~(SPEC_CTRL_IBRS | SPEC_CTRL_SSBD);
 		}
 		x86_spec_ctrl_priv = x86_spec_ctrl_base;
 		update_cpu_spec_ctrl_all();
@@ -262,6 +263,10 @@ void x86_spec_ctrl_set(enum spec_ctrl_set_context context)
 {
 	u64 host;
 
+	if (context != SPEC_CTRL_INITIAL &&
+	    this_cpu_read(x86_spec_ctrl_priv_cpu) == x86_spec_ctrl_base)
+		return;
+
 	switch (context) {
 	case SPEC_CTRL_INITIAL:
 		/*
@@ -274,32 +279,27 @@ void x86_spec_ctrl_set(enum spec_ctrl_set_context context)
 		break;
 	case SPEC_CTRL_IDLE_ENTER:
 		/*
-		 * If IBRS is in use, disable it to avoid performance impact
-		 * during idle.  Same idea for SSBD.
-		 *
-		 * The SSBD bit remains set if forced to be always on with
-		 * spec_store_bypass_disable=on; otherwise, the only time it
-		 * can be set, and so require unsetting, is =userspace.
+		 * If IBRS/SSBD are in use, disable them to avoid performance impact
+		 * during idle.
 		 */
-		host = x86_spec_ctrl_base;
-		if (ssbd_userspace_selected())
-			host &= ~SPEC_CTRL_SSBD;
+		host = x86_spec_ctrl_base & ~SPEC_CTRL_SSBD;
 		break;
 	case SPEC_CTRL_IDLE_EXIT:
-		/*
-		 * Privileged bits meaningful only when IBRS is in use, in
-		 * which case it is enabled now.
-		 */
-		if (ibrs_inuse)
-			host = this_cpu_read(x86_spec_ctrl_priv_cpu);
-		else
-			host = x86_spec_ctrl_base;
+		host = this_cpu_read(x86_spec_ctrl_priv_cpu);
 		break;
 	default:
 		WARN_ONCE(1, "unknown spec_ctrl_set_context %#x\n", context);
 		return;
 	}
 
+	/*
+	 * Note that when MSR_IA32_SPEC_CTRL is not available both
+	 * per_cpu(x86_spec_ctrl_priv_cpu ) and x86_spec_ctrl_base
+	 * are zero. Therefore we don't need to explicitly check for
+	 * MSR presence.
+	 * And for SPEC_CTRL_INITIAL we are only called when we know
+	 * the MSR exists.
+	 */
 	wrmsrl(MSR_IA32_SPEC_CTRL, host);
 }
 EXPORT_SYMBOL_GPL(x86_spec_ctrl_set);
@@ -874,12 +874,8 @@ static void __init ssb_init(void)
 
 			if (ssb_mode == SPEC_STORE_BYPASS_DISABLE) {
 				x86_spec_ctrl_set(SPEC_CTRL_INITIAL);
-				if (spectre_v2_enabled == SPECTRE_V2_IBRS) {
-					x86_spec_ctrl_priv |= SPEC_CTRL_SSBD;
-				}
+				x86_spec_ctrl_priv |= SPEC_CTRL_SSBD;
 			}
-			else
-				x86_spec_ctrl_priv &= ~(SPEC_CTRL_SSBD);
 
 			update_cpu_spec_ctrl_all();
 			break;
