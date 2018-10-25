@@ -2664,7 +2664,7 @@ int rvu_nix_init(struct rvu *rvu)
 	 */
 	if (is_rvu_9xxx_A0(rvu))
 		rvu_write64(rvu, blkaddr, NIX_AF_CFG,
-			    rvu_read64(rvu, blkaddr, NIX_AF_CFG) | 0x1EULL);
+			    rvu_read64(rvu, blkaddr, NIX_AF_CFG) | 0x5EULL);
 
 	/* Calibrate X2P bus to check if CGX/LBK links are fine */
 	err = nix_calibrate_x2p(rvu, blkaddr);
