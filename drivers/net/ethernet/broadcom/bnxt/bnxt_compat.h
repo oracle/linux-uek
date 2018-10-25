@@ -17,4 +17,6 @@
 
 bool xdp_rxq_info_is_reg(struct xdp_rxq_info *xdp_rxq);
 
+void pcie_print_link_status(struct pci_dev *dev);
+
 #endif
