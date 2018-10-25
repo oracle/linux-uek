@@ -123,6 +123,9 @@ void time64_to_tm(time64_t totalsecs, int offset, struct tm *result)
 
 #ifndef XDP_PACKET_HEADROOM
 #define XDP_PACKET_HEADROOM     0
+
+void pcie_print_link_status(struct pci_dev *dev);
+
 #endif
 
 struct netdev_xdp;
