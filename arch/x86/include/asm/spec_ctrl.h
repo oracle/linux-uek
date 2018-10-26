@@ -6,10 +6,22 @@
 #include <asm/cpufeatures.h>
 #include <asm/alternative-asm.h>
 
-#define SPEC_CTRL_IBRS_INUSE           (1<<0)  /* OS enables IBRS usage */
-#define SPEC_CTRL_IBRS_SUPPORTED       (1<<1)  /* System supports IBRS */
-#define SPEC_CTRL_IBRS_ADMIN_DISABLED  (1<<2)  /* Admin disables IBRS */
+/*
+ * IBRS Flags.
+ *
+ * Note that we use dedicated bits to specify if basic IBRS is
+ * in use (SPEC_CTRL_BASIC_IBRS_INUSE) or enhanced IBRS is in use
+ * (SPEC_CTRL_ENHCD_IBRS_INUSE), instead of combining multiple
+ * bits (e.g. SPEC_CTRL_BASIC_IBRS_INUSE | SPEC_CTRL_ENHCD_IBRS_SUPPORTED).
+ * This is to optimize testing when checking if basic or enhanced
+ * IBRS is in use, in particular for assembly code.
+ */
+#define SPEC_CTRL_BASIC_IBRS_INUSE     (1<<0)  /* OS enables basic IBRS usage */
+#define SPEC_CTRL_IBRS_SUPPORTED       (1<<1)  /* System supports IBRS (basic or enhanced) */
+#define SPEC_CTRL_IBRS_ADMIN_DISABLED  (1<<2)  /* Admin disables IBRS (basic and enhanced) */
 #define SPEC_CTRL_IBRS_FIRMWARE        (1<<3)  /* IBRS to be used on firmware paths */
+#define SPEC_CTRL_ENHCD_IBRS_SUPPORTED (1<<4)  /* System supports enhanced IBRS */
+#define SPEC_CTRL_ENHCD_IBRS_INUSE     (1<<5)  /* OS enables enhanced IBRS usage */
 
 #ifdef __ASSEMBLY__
 
@@ -104,7 +116,7 @@
 .endm
 
 .macro ENABLE_IBRS
-	testl	$SPEC_CTRL_IBRS_INUSE, PER_CPU_VAR(cpu_ibrs)
+	testl	$SPEC_CTRL_BASIC_IBRS_INUSE, PER_CPU_VAR(cpu_ibrs)
 	jz	.Lskip_\@
 	PUSH_MSR_REGS
 	WRMSR_ASM $MSR_IA32_SPEC_CTRL, PER_CPU_VAR(x86_spec_ctrl_priv_cpu)
@@ -116,7 +128,7 @@
 .endm
 
 .macro DISABLE_IBRS
-	testl	$SPEC_CTRL_IBRS_INUSE, PER_CPU_VAR(cpu_ibrs)
+	testl	$SPEC_CTRL_BASIC_IBRS_INUSE, PER_CPU_VAR(cpu_ibrs)
 	jz	.Lskip_\@
 	PUSH_MSR_REGS
 	WRMSR_ASM $MSR_IA32_SPEC_CTRL, PER_CPU_VAR(x86_spec_ctrl_restore)
@@ -125,7 +137,7 @@
 .endm
 
 .macro ENABLE_IBRS_SAVE_AND_CLOBBER save_reg:req
-	testl	$SPEC_CTRL_IBRS_INUSE, PER_CPU_VAR(cpu_ibrs)
+	testl	$SPEC_CTRL_BASIC_IBRS_INUSE, PER_CPU_VAR(cpu_ibrs)
 	jz	.Lskip_\@
 
 	movl	$MSR_IA32_SPEC_CTRL, %ecx
@@ -143,7 +155,7 @@
 .endm
 
 .macro RESTORE_IBRS_CLOBBER save_reg:req
-	testl	$SPEC_CTRL_IBRS_INUSE, PER_CPU_VAR(cpu_ibrs)
+	testl	$SPEC_CTRL_BASIC_IBRS_INUSE, PER_CPU_VAR(cpu_ibrs)
 	jz	.Lskip_\@
 
 	cmp	\save_reg, PER_CPU_VAR(x86_spec_ctrl_priv_cpu)
@@ -160,7 +172,7 @@
 .endm
 
 .macro ENABLE_IBRS_CLOBBER
-	testl	$SPEC_CTRL_IBRS_INUSE, PER_CPU_VAR(cpu_ibrs)
+	testl	$SPEC_CTRL_BASIC_IBRS_INUSE, PER_CPU_VAR(cpu_ibrs)
 	jz	.Lskip_\@
 	WRMSR_ASM $MSR_IA32_SPEC_CTRL, PER_CPU_VAR(x86_spec_ctrl_priv_cpu)
 	jmp	.Ldone_\@
@@ -173,7 +185,9 @@
 	ALTERNATIVE __stringify(__ASM_STUFF_RSB), "", X86_FEATURE_STUFF_RSB
 .endm
 
-#else
+#else /* __ASSEMBLY__ */
+
+#include <linux/cpu.h>
 
 /* Defined in bugs.c */
 extern u64 x86_spec_ctrl_priv;
@@ -202,8 +216,16 @@ DECLARE_STATIC_KEY_FALSE(retpoline_enabled_key);
 #define ibrs_firmware		(use_ibrs & SPEC_CTRL_IBRS_FIRMWARE)
 #define ibrs_supported		(use_ibrs & SPEC_CTRL_IBRS_SUPPORTED)
 #define ibrs_disabled		(use_ibrs & SPEC_CTRL_IBRS_ADMIN_DISABLED)
+#define eibrs_supported		(use_ibrs & SPEC_CTRL_ENHCD_IBRS_SUPPORTED)
 
-#define ibrs_inuse		(cpu_ibrs_inuse())
+static inline void spec_ctrl_flush_all_cpus(u32 msr_nr, u64 val)
+{
+	int cpu;
+	get_online_cpus();
+	for_each_online_cpu(cpu)
+		wrmsrl_on_cpu(cpu, msr_nr, val);
+	put_online_cpus();
+}
 
 static inline void update_cpu_spec_ctrl(int cpu)
 {
@@ -242,21 +264,31 @@ static inline void update_cpu_ibrs_all(void)
 
 static inline void set_ibrs_inuse(void)
 {
-	if (ibrs_supported && !ibrs_disabled) {
-		use_ibrs |= SPEC_CTRL_IBRS_INUSE;
-		update_cpu_ibrs_all();
-		/* Update what sysfs shows. */
-		sysctl_ibrs_enabled = true;
-		/* When entering kernel */
-		x86_spec_ctrl_priv |= SPEC_CTRL_FEATURE_ENABLE_IBRS;
-		/* Update per-cpu spec_ctrl */
-		update_cpu_spec_ctrl_all();
-	}
+	if (!ibrs_supported || ibrs_disabled)
+		return;
+
+	use_ibrs &= ~(SPEC_CTRL_BASIC_IBRS_INUSE | SPEC_CTRL_ENHCD_IBRS_INUSE);
+
+	if (eibrs_supported)
+		/* Enhanced IBRS is available */
+		use_ibrs |= SPEC_CTRL_ENHCD_IBRS_INUSE;
+	else
+		/* Basic IBRS is available */
+		use_ibrs |= SPEC_CTRL_BASIC_IBRS_INUSE;
+
+	/* Propagate the change to each cpu */
+	update_cpu_ibrs_all();
+	/* Update what sysfs shows */
+	sysctl_ibrs_enabled = true;
+	/* When entering kernel */
+	x86_spec_ctrl_priv |= SPEC_CTRL_FEATURE_ENABLE_IBRS;
+	/* Update per-cpu spec_ctrl */
+	update_cpu_spec_ctrl_all();
 }
 
 static inline void clear_ibrs_inuse(void)
 {
-	use_ibrs &= ~SPEC_CTRL_IBRS_INUSE;
+	use_ibrs &= ~(SPEC_CTRL_BASIC_IBRS_INUSE | SPEC_CTRL_ENHCD_IBRS_INUSE);
 	update_cpu_ibrs_all();
 	/* Update what sysfs shows. */
 	sysctl_ibrs_enabled = false;
@@ -268,9 +300,9 @@ static inline void clear_ibrs_inuse(void)
 	update_cpu_spec_ctrl_all();
 }
 
-static inline int check_ibrs_inuse(void)
+static inline int check_basic_ibrs_inuse(void)
 {
-	if (use_ibrs & SPEC_CTRL_IBRS_INUSE)
+	if (use_ibrs & SPEC_CTRL_BASIC_IBRS_INUSE)
 		return 1;
 
 	/* rmb to prevent wrong speculation for security */
@@ -278,9 +310,21 @@ static inline int check_ibrs_inuse(void)
 	return 0;
 }
 
-static inline int cpu_ibrs_inuse(void)
+static inline int check_ibrs_inuse(void)
 {
-	return (this_cpu_read(cpu_ibrs) & SPEC_CTRL_IBRS_INUSE) ? 1 : 0;
+	if (use_ibrs & (SPEC_CTRL_BASIC_IBRS_INUSE |
+		SPEC_CTRL_ENHCD_IBRS_INUSE))
+		return 1;
+
+	/* rmb to prevent wrong speculation for security */
+	rmb();
+	return 0;
+}
+
+static inline int cpu_ibrs_inuse_any(void)
+{
+	return (this_cpu_read(cpu_ibrs) &
+	    (SPEC_CTRL_BASIC_IBRS_INUSE | SPEC_CTRL_ENHCD_IBRS_INUSE)) ? 1 : 0;
 }
 
 static inline void set_ibrs_supported(void)
@@ -293,6 +337,11 @@ static inline void set_ibrs_disabled(void)
 	use_ibrs |= SPEC_CTRL_IBRS_ADMIN_DISABLED;
 	if (check_ibrs_inuse())
 		clear_ibrs_inuse();
+}
+
+static inline void set_ibrs_enhanced(void)
+{
+	use_ibrs |= SPEC_CTRL_ENHCD_IBRS_SUPPORTED;
 }
 
 static inline void set_ibrs_firmware(void)

@@ -20,16 +20,6 @@ enum mitigation_action {
 	MITIGATION_ENABLE_RETPOLINE
 };
 
-static void spec_ctrl_flush_all_cpus(u32 msr_nr, u64 val)
-{
-	int cpu;
-
-	get_online_cpus();
-	for_each_online_cpu(cpu)
-		wrmsrl_on_cpu(cpu, msr_nr, val);
-	put_online_cpus();
-}
-
 static void change_mitigation(enum mitigation_action action)
 {
 	bool ibrs_requested, ibrs_fw_requested, retpoline_requested;
