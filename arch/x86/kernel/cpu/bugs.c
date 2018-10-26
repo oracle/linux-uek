@@ -35,9 +35,12 @@
 
 /*
  * use_ibrs flags:
- * SPEC_CTRL_IBRS_INUSE			indicate if ibrs is currently in use
- * SPEC_CTRL_IBRS_SUPPORTED		indicate if system supports ibrs
- * SPEC_CTRL_IBRS_ADMIN_DISABLED	indicate if admin disables ibrs
+ * SPEC_CTRL_BASIC_IBRS_INUSE		basic ibrs is currently in use
+ * SPEC_CTRL_IBRS_SUPPORTED		system supports basic ibrs
+ * SPEC_CTRL_IBRS_ADMIN_DISABLED	admin disables ibrs (basic and enhanced)
+ * SPEC_CTRL_IBRS_FIRMWARE		ibrs to be used on firmware paths
+ * SPEC_CTRL_ENHCD_IBRS_SUPPORTED	system supports enhanced ibrs
+ * SPEC_CTRL_ENHCD_IBRS_INUSE		nhanced ibrs is currently in use
  */
 unsigned int use_ibrs;
 EXPORT_SYMBOL(use_ibrs);
@@ -250,7 +253,8 @@ static const char *spectre_v2_strings[] = {
 	[SPECTRE_V2_RETPOLINE_MINIMAL_AMD]	= "Vulnerable: Minimal AMD ASM retpoline",
 	[SPECTRE_V2_RETPOLINE_GENERIC]		= "Mitigation: Full generic retpoline",
 	[SPECTRE_V2_RETPOLINE_AMD]		= "Mitigation: Full AMD retpoline",
-	[SPECTRE_V2_IBRS]			= "Mitigation: IBRS",
+	[SPECTRE_V2_IBRS]			= "Mitigation: Basic IBRS",
+	[SPECTRE_V2_IBRS_ENHANCED]		= "Mitigation: Enhanced IBRS",
 };
 
 #undef pr_fmt
@@ -315,7 +319,7 @@ x86_virt_spec_ctrl(u64 guest_spec_ctrl, u64 guest_virt_spec_ctrl, bool setguest)
 		 * modifiable bits in the host base value and or the
 		 * modifiable bits from the guest value.
 		 */
-		if (ibrs_inuse)
+		if (cpu_ibrs_inuse_any())
 			/*
 			 * Except on IBRS we don't want to use host base value
 			 * but rather the privilege value which has IBRS set.
@@ -325,7 +329,7 @@ x86_virt_spec_ctrl(u64 guest_spec_ctrl, u64 guest_virt_spec_ctrl, bool setguest)
 		guestval = hostval & ~x86_spec_ctrl_mask;
 		guestval |= guest_spec_ctrl & x86_spec_ctrl_mask;
 
-		if (ibrs_inuse) {
+		if (cpu_ibrs_inuse_any()) {
 			/* You may wonder why we don't just jump to the
 			 * 'if (hostval ! guestval)' conditional to save an MSR.
 			 * (by say the guest MSR value is IBRS and hostval being
@@ -464,7 +468,8 @@ void refresh_set_spectre_v2_enabled(void)
 	if (retpoline_enabled())
 		spectre_v2_enabled = retpoline_mode;
 	else if (check_ibrs_inuse())
-		spectre_v2_enabled = SPECTRE_V2_IBRS;
+		spectre_v2_enabled = (check_basic_ibrs_inuse() ?
+			SPECTRE_V2_IBRS : SPECTRE_V2_IBRS_ENHANCED);
 	else
 		spectre_v2_enabled = SPECTRE_V2_NONE;
 }
@@ -583,27 +588,30 @@ static void __init ibrs_select(enum spectre_v2_mitigation *mode)
 {
 	/* Turn it on (if possible) */
 	set_ibrs_inuse();
-	if (check_ibrs_inuse()) {
-		*mode = SPECTRE_V2_IBRS;
-		if (!boot_cpu_has(X86_FEATURE_SMEP))
-			setup_force_cpu_cap(X86_FEATURE_STUFF_RSB);
-	} else
+	if (!check_ibrs_inuse()) {
 		pr_info("IBRS could not be enabled.\n");
+		return;
+	}
+	/* Determine the specific IBRS variant in use */
+	*mode = (check_basic_ibrs_inuse() ?
+		SPECTRE_V2_IBRS : SPECTRE_V2_IBRS_ENHANCED);
+
+	if (boot_cpu_has(X86_FEATURE_SMEP))
+		return;
+
+	setup_force_cpu_cap(X86_FEATURE_STUFF_RSB);
+
+	if (*mode == SPECTRE_V2_IBRS_ENHANCED)
+		pr_warn("Enhanced IBRS might not provide full mitigation against Spectre v2 if SMEP is not available.\n");
 }
 
 static void __init disable_ibrs_and_friends(bool disable_ibpb)
 {
 	set_ibrs_disabled();
-	if (use_ibrs & SPEC_CTRL_IBRS_SUPPORTED) {
-		unsigned int cpu;
-
-		get_online_cpus();
-		for_each_online_cpu(cpu)
-			wrmsrl_on_cpu(cpu, MSR_IA32_SPEC_CTRL,
-				      x86_spec_ctrl_base & ~SPEC_CTRL_FEATURE_ENABLE_IBRS);
-
-		put_online_cpus();
-	}
+	if (use_ibrs & SPEC_CTRL_IBRS_SUPPORTED)
+		/* Disable IBRS an all cpus */
+		spec_ctrl_flush_all_cpus(MSR_IA32_SPEC_CTRL,
+			x86_spec_ctrl_base & ~SPEC_CTRL_FEATURE_ENABLE_IBRS);
 	/*
 	 * We need to use IBPB with retpoline if it is available.
 	 * And also IBRS for firmware paths.
@@ -664,7 +672,7 @@ static void __init spectre_v2_select_mitigation(void)
 	    mode != SPECTRE_V2_RETPOLINE_MINIMAL_AMD) {
 
 		pr_info("Options: %s%s%s\n",
-			ibrs_supported ? "IBRS " : "",
+			ibrs_supported ? (eibrs_supported ? "IBRS(enhanced) " : "IBRS(basic) ") : "",
 			check_ibpb_inuse() ? "IBPB " : "",
 			retp_compiler() ? "retpoline" : "");
 
@@ -681,7 +689,8 @@ static void __init spectre_v2_select_mitigation(void)
 
 				/* Start the engine! */
 				ibrs_select(&mode);
-				if (mode == SPECTRE_V2_IBRS)
+				if (mode == SPECTRE_V2_IBRS ||
+					mode == SPECTRE_V2_IBRS_ENHANCED)
 					goto display;
 				/* But if we can't, then just use retpoline */
 			}
@@ -1149,8 +1158,7 @@ static ssize_t cpu_show_common(struct device *dev, struct device_attribute *attr
 		return sprintf(buf, "Mitigation: __user pointer sanitization\n");
 
 	case X86_BUG_SPECTRE_V2:
-		return sprintf(buf, "%s%s%s%s%s\n", spectre_v2_strings[spectre_v2_enabled],
-			       (check_ibrs_inuse() && (spectre_v2_enabled != SPECTRE_V2_IBRS)) ? ", IBRS" : "",
+		return sprintf(buf, "%s%s%s%s\n", spectre_v2_strings[spectre_v2_enabled],
 			       ibpb_inuse ? ", IBPB" : "",
 			       ibrs_firmware ? ", IBRS_FW" : "",
 			       spectre_v2_module_string());
