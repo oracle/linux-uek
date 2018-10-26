@@ -103,6 +103,7 @@ enum asm_operation_types
 	ASMOP_CLOSE_DISK,
 	ASMOP_IO32,
 	ASMOP_IO64,
+	ASMOP_QUERY_HANDLE,
 	ASM_NUM_OPERATIONS  /* This must always be last */
 };
 
@@ -215,6 +216,15 @@ struct oracleasm_get_iid_v2
 /*00*/	struct oracleasm_abi_info	gi_abi;
 /*10*/	__u64				gi_iid;
 /*18*/
+};
+
+struct oracleasm_query_handle_v2
+{
+/*00*/	struct oracleasm_abi_info	qh_abi;
+/*10*/	__u64				qh_handle;
+	__u32				qh_max_sectors;
+	__u32				qh_hardsect_size;
+	__u32				qh_feature;
 };
 
 #endif  /* _ORACLEASM_ABI_H */
