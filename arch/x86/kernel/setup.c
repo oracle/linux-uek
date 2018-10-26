@@ -71,6 +71,7 @@
 #include <linux/tboot.h>
 #include <linux/jiffies.h>
 #include <linux/mem_encrypt.h>
+#include <linux/slaunch.h>
 
 #include <linux/usb/xhci-dbgp.h>
 #include <video/edid.h>
@@ -1056,6 +1057,8 @@ void __init setup_arch(char **cmdline_p)
 #else
 	early_gart_iommu_check();
 #endif
+
+	slaunch_setup();
 
 	/*
 	 * partially used pages are not usable - thus

@@ -40,6 +40,7 @@
 #include <linux/slab.h>
 #include <linux/iommu.h>
 #include <linux/limits.h>
+#include <linux/slaunch.h>
 #include <asm/irq_remapping.h>
 #include <asm/iommu_table.h>
 
@@ -642,6 +643,9 @@ parse_dmar_table(void)
 	 * SINIT saved in SinitMleData in TXT heap (which is DMA protected)
 	 */
 	dmar_tbl = tboot_get_dmar_table(dmar_tbl);
+
+	/* If Secure Launch is active, it has similar logic */
+	dmar_tbl = slaunch_get_dmar_table(dmar_tbl);
 
 	dmar = (struct acpi_table_dmar *)dmar_tbl;
 	if (!dmar)
