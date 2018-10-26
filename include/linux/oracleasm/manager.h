@@ -106,6 +106,7 @@ static char *asm_operation_files[] = {
 	[ASMOP_QUERY_VERSION]	= ".query_version",
  	[ASMOP_GET_IID]		= ".get_iid",
  	[ASMOP_CHECK_IID]	= ".check_iid",
+	[ASMOP_QUERY_HANDLE]	= ".query_handle",
  	[ASMOP_QUERY_DISK]	= ".query_disk",
 
 	/*
@@ -219,7 +220,7 @@ static inline char *asm_operation_path(const char *manager,
 
 	if (!manager || !*manager)
 		return NULL;
-	if (op > ASM_LAST_TRANSACTION_OP)
+	if (op > ASM_LAST_TRANSACTION_OP && op != ASMOP_QUERY_HANDLE)
 		return NULL;
 
 	len = strlen(manager) + strlen("/") +
