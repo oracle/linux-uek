@@ -482,6 +482,14 @@ Protocol:	2.00+
 	    - If 1, KASLR enabled.
 	    - If 0, KASLR disabled.
 
+  Bit 2 (kernel internal): SLAUNCH_FLAG
+
+	- Used internally by the setup kernel to communicate
+	  Secure Launch status to kernel proper.
+
+	    - If 1, Secure Launch enabled.
+	    - If 0, Secure Launch disabled.
+
   Bit 5 (write): QUIET_FLAG
 
 	- If 0, print early messages.
@@ -1027,6 +1035,19 @@ Offset/size:	0x000c/4
 ============	==============
 
   This field contains maximal allowed type for setup_data and setup_indirect structs.
+
+============	=================
+Field name:	mle_header_offset
+Offset/size:	0x0010/4
+============	=================
+
+  This field contains the offset to the Secure Launch Measured Launch Environment
+  (MLE) header. This offset is used to locate information needed during a secure
+  late launch using Intel TXT. If the offset is zero, the kernel does not have
+  Secure Launch capabilities. The MLE entry point is called from TXT on the BSP
+  following a success measured launch. The specific state of the processors is
+  outlined in the TXT Software Development Guide, the latest can be found here:
+  https://www.intel.com/content/dam/www/public/us/en/documents/guides/intel-txt-software-development-guide.pdf
 
 
 The Image Checksum
