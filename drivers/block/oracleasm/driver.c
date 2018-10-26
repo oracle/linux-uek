@@ -253,6 +253,7 @@ static ssize_t asmfs_svc_query_version(struct file *file, char *buf, size_t size
 static ssize_t asmfs_svc_get_iid(struct file *file, char *buf, size_t size);
 static ssize_t asmfs_svc_check_iid(struct file *file, char *buf, size_t size);
 static ssize_t asmfs_svc_query_disk(struct file *file, char *buf, size_t size);
+static ssize_t asmfs_svc_query_handle(struct file *file, char *buf, size_t size);
 static ssize_t asmfs_svc_open_disk(struct file *file, char *buf, size_t size);
 static ssize_t asmfs_svc_close_disk(struct file *file, char *buf, size_t size);
 static ssize_t asmfs_svc_io32(struct file *file, char *buf, size_t size);
@@ -271,6 +272,7 @@ static struct transaction_context trans_contexts[] = {
 #if BITS_PER_LONG == 64
 	[ASMOP_IO64]			= {asmfs_svc_io64},
 #endif
+	[ASMOP_QUERY_HANDLE]		= {asmfs_svc_query_handle},
 };
 
 static struct inode *asmdisk_alloc_inode(struct super_block *sb)
@@ -385,6 +387,15 @@ static int asmdisk_test(struct inode *inode, void *data)
 	unsigned long handle = (unsigned long)(d->d_bdev);
 
 	return (d->d_inode == args->fa_inode) && (handle == args->fa_handle);
+}
+
+static int asmdisk_test_noinode(struct inode *inode, void *data)
+{
+	struct asmdisk_find_inode_args *args = data;
+	struct asm_disk_info *d = ASMDISK_I(inode);
+	unsigned long handle = (unsigned long)(d->d_bdev);
+
+	return handle == args->fa_handle;
 }
 
 static int asmdisk_set(struct inode *inode, void *data)
@@ -2328,6 +2339,64 @@ out_error:
 #endif  /* BITS_PER_LONG == 64 */
 
 
+static ssize_t asmfs_svc_query_handle(struct file *file, char *buf, size_t size)
+{
+	struct oracleasm_query_handle_v2 *qh_info;
+	struct asmdisk_find_inode_args args;
+	struct inode *disk_inode;
+	struct asm_disk_info *d;
+	struct block_device *bdev;
+	unsigned int lsecsz = 0;
+	int ret;
+
+	if (size != sizeof(struct oracleasm_query_handle_v2))
+		return -EINVAL;
+
+	qh_info = (struct oracleasm_query_handle_v2 *)buf;
+
+	ret = asmfs_verify_abi(&qh_info->qh_abi);
+	if (ret)
+		goto out;
+
+	ret = -EBADR;
+	if (qh_info->qh_abi.ai_size != sizeof(struct oracleasm_query_handle_v2))
+		goto out;
+
+	ret = -EBADRQC;
+	if (qh_info->qh_abi.ai_type != ASMOP_QUERY_HANDLE)
+		goto out;
+
+	args.fa_handle = (unsigned long)qh_info->qh_handle;
+	args.fa_inode = 0;
+	disk_inode = ilookup5(asmdisk_mnt->mnt_sb, qh_info->qh_handle,
+			      asmdisk_test_noinode, &args);
+	if (!disk_inode) {
+		ret = -ENODEV;
+		goto out;
+	}
+
+	d = ASMDISK_I(disk_inode);
+	iput(disk_inode);
+	bdev = d->d_bdev;
+
+	qh_info->qh_max_sectors = compute_max_sectors(bdev);
+	qh_info->qh_hardsect_size = asm_block_size(bdev);
+	qh_info->qh_feature = asm_integrity_format(bdev) & ASM_INTEGRITY_QDF_MASK;
+	if (use_logical_block_size == false) {
+		lsecsz = ilog2(bdev_logical_block_size(bdev));
+		qh_info->qh_feature |= lsecsz << ASM_LSECSZ_SHIFT
+			& ASM_LSECSZ_MASK;
+	}
+
+	trace_queryhandle(bdev, qh_info);
+	ret = 0;
+
+out:
+	qh_info->qh_abi.ai_status = ret;
+	return size;
+}
+
+
 /*
  * Because each of these operations need to access the filp->private,
  * we must multiplex.
@@ -2368,10 +2437,15 @@ static ssize_t asmfs_file_read(struct file *file, char *buf, size_t size, loff_t
 			ret = asmfs_svc_io64(file, (char *)buf, size);
 			break;
 #endif  /* BITS_PER_LONG == 64 */
+
+		case ASMOP_QUERY_HANDLE:
+			ret = asmfs_svc_query_handle(file, (char *)buf, size);
+			break;
 	}
 
 	return ret;
 }
+
 
 static struct file_operations asmfs_file_operations = {
 	.open		= asmfs_file_open,
@@ -2540,6 +2614,18 @@ static int asmfs_fill_super(struct super_block *sb,
 		goto out_genocide;
 	inode = new_transaction_inode(sb, 0770,
 				      &trans_contexts[ASMOP_QUERY_DISK]);
+	if (!inode)
+		goto out_genocide;
+	d_add(dentry, inode);
+
+	name.name = asm_operation_files[ASMOP_QUERY_HANDLE];
+	name.len = strlen(asm_operation_files[ASMOP_QUERY_HANDLE]);
+	name.hash = full_name_hash(root, name.name, name.len);
+	dentry = d_alloc(root, &name);
+	if (!dentry)
+		goto out_genocide;
+	inode = new_transaction_inode(sb, 0770,
+				      &trans_contexts[ASMOP_QUERY_HANDLE]);
 	if (!inode)
 		goto out_genocide;
 	d_add(dentry, inode);

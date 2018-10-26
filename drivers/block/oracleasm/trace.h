@@ -197,6 +197,38 @@ TRACE_EVENT(querydisk,
 		  show_ifmt(__entry->integrity))
 );
 
+TRACE_EVENT(queryhandle,
+
+	TP_PROTO(struct block_device *bdev, struct oracleasm_query_handle_v2 *qh),
+
+	TP_ARGS(bdev, qh),
+
+	TP_STRUCT__entry(
+		__field(void *		, bdev		)
+		__field(void *		, qh		)
+		__field(dev_t		, dev		)
+		__field(sector_t	, max		)
+		__field(unsigned int	, pbs		)
+		__field(unsigned int	, lbs		)
+		__field(unsigned char	, integrity	)
+	),
+
+	TP_fast_assign(
+		__entry->bdev		= bdev;
+		__entry->qh		= qh;
+		__entry->dev		= bdev->bd_dev ? bdev->bd_dev : 0;
+		__entry->max		= qh->qh_max_sectors;
+		__entry->pbs		= qh->qh_hardsect_size;
+		__entry->lbs		= 1 << (qh->qh_feature >> ASM_LSECSZ_SHIFT);
+		__entry->integrity	= qh->qh_feature & ASM_INTEGRITY_QDF_MASK;
+	),
+
+	TP_printk("   dev=%u:%u max_blocks=%llu pbs=%u lbs=%u integrity=%s",
+		  MAJOR(__entry->dev), MINOR(__entry->dev),
+		  (unsigned long long)__entry->max, __entry->pbs, __entry->lbs,
+		  show_ifmt(__entry->integrity))
+);
+
 TRACE_EVENT(integrity,
 
 	TP_PROTO(struct oracleasm_integrity_v2 *it,
