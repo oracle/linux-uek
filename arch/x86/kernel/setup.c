@@ -24,6 +24,7 @@
 #include <linux/static_call.h>
 #include <linux/swiotlb.h>
 #include <linux/tboot.h>
+#include <linux/slaunch.h>
 #include <linux/usb/xhci-dbgp.h>
 #include <linux/vmalloc.h>
 
@@ -1019,6 +1020,8 @@ void __init setup_arch(char **cmdline_p)
 #else
 	early_gart_iommu_check();
 #endif
+
+	slaunch_setup_txt();
 
 	/*
 	 * partially used pages are not usable - thus
