@@ -210,11 +210,17 @@ struct nix_flowkey {
 	int in_use;
 };
 
+struct nix_lso {
+	u8 total;
+	u8 in_use;
+};
+
 struct nix_hw {
 	struct nix_txsch txsch[NIX_TXSCH_LVL_CNT]; /* Tx schedulers */
 	struct nix_mcast mcast;
 	struct nix_flowkey flowkey;
 	struct nix_mark_format mark_format;
+	struct nix_lso lso;
 };
 
 struct rvu_hwinfo {
@@ -504,7 +510,9 @@ int rvu_mbox_handler_NIX_MARK_FORMAT_CFG(struct rvu *rvu,
 					 struct nix_mark_format_cfg_rsp *rsp);
 int rvu_mbox_handler_NIX_SET_RX_CFG(struct rvu *rvu, struct nix_rx_cfg *req,
 				struct msg_rsp *rsp);
-
+int rvu_mbox_handler_NIX_LSO_FORMAT_CFG(struct rvu *rvu,
+					struct nix_lso_format_cfg *req,
+					struct nix_lso_format_cfg_rsp *rsp);
 
 /* NPC APIs */
 int rvu_npc_init(struct rvu *rvu);
