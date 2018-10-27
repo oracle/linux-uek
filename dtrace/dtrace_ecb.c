@@ -376,6 +376,10 @@ static int dtrace_ecb_action_add(dtrace_ecb_t *ecb, dtrace_actdesc_t *desc)
 			break;
 		}
 
+		case DTRACEACT_PCAP:
+			size = dp->dtdo_rtype.dtdt_size;
+			break;
+
 		default:
 			return -EINVAL;
 		}
