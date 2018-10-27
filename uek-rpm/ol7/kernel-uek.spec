@@ -855,7 +855,7 @@ Provides: kernel%{?variant}-xen-devel = %{version}-%{release}%{?1:.%{1}}\
 Provides: kernel%{?variant}-devel-%{_target_cpu} = %{version}-%{release}%{?1:.%{1}}\
 Provides: kernel%{?variant}-devel = %{version}-%{release}%{?1:.%{1}}\
 Provides: kernel%{?variant}-devel-uname-r = %{KVERREL}%{?1:.%{1}}\
-Provides: dtrace-kernel-headers = 1.1.0\
+Provides: dtrace-kernel-headers = 1.2.0\
 %ifarch sparc64 aarch64\
 Provides: kernel-devel = %{version}-%{release}%{?1:.%{1}}\
 Provides: kernel-devel-uname-r = %{KVERREL}%{?1:.%{1}}\
