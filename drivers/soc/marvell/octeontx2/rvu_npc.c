@@ -435,7 +435,9 @@ void rvu_npc_install_bcast_match_entry(struct rvu *rvu, u16 pcifunc,
 	struct npc_mcam *mcam = &rvu->hw->mcam;
 	struct mcam_entry entry = { {0} };
 	struct nix_rx_action action;
+#ifdef MCAST_MCE
 	struct rvu_pfvf *pfvf;
+#endif
 	int blkaddr, index;
 
 	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NPC, 0);
@@ -445,7 +447,9 @@ void rvu_npc_install_bcast_match_entry(struct rvu *rvu, u16 pcifunc,
 	/* Only PF can add a bcast match entry */
 	if (pcifunc & RVU_PFVF_FUNC_MASK)
 		return;
+#ifdef MCAST_MCE
 	pfvf = rvu_get_pfvf(rvu, pcifunc & ~RVU_PFVF_FUNC_MASK);
+#endif
 
 	index = npc_get_nixlf_mcam_index(mcam, pcifunc,
 					 nixlf, NIXLF_BCAST_ENTRY);
