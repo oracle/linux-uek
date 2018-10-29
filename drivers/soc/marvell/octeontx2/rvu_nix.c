@@ -961,9 +961,7 @@ int rvu_mbox_handler_NIX_MARK_FORMAT_CFG(struct rvu *rvu,
 					 struct nix_mark_format_cfg  *req,
 					 struct nix_mark_format_cfg_rsp *rsp)
 {
-	struct rvu_hwinfo *hw = rvu->hw;
 	u16 pcifunc = req->hdr.pcifunc;
-	struct rvu_block *block;
 	struct nix_hw *nix_hw;
 	struct rvu_pfvf *pfvf;
 	int blkaddr, rc;
@@ -977,8 +975,6 @@ int rvu_mbox_handler_NIX_MARK_FORMAT_CFG(struct rvu *rvu,
 	nix_hw = get_nix_hw(rvu->hw, blkaddr);
 	if (!nix_hw)
 		return -EINVAL;
-
-	block = &hw->block[blkaddr];
 
 	cfg = (((u32) req->offset & 0x7) << 16) |
 	      (((u32) req->y_mask & 0xF) << 12) |
@@ -2397,9 +2393,7 @@ int rvu_mbox_handler_NIX_SET_HW_FRS(struct rvu *rvu, struct nix_frs_cfg *req,
 	if (!nix_hw)
 		return -EINVAL;
 
-	if (req->sdp_link && (req->maxlen > SDP_HW_MAX_FRS))
-		return NIX_AF_ERR_FRS_INVALID;
-	else if (req->maxlen > NIC_HW_MAX_FRS)
+	if (!req->sdp_link && req->maxlen > NIC_HW_MAX_FRS)
 		return NIX_AF_ERR_FRS_INVALID;
 
 	if (req->update_minlen && (req->minlen < NIC_HW_MIN_FRS))
@@ -2779,11 +2773,9 @@ void rvu_nix_lf_teardown(struct rvu *rvu, u16 pcifunc, int blkaddr, int nixlf)
 {
 	struct rvu_pfvf *pfvf = rvu_get_pfvf(rvu, pcifunc);
 	struct hwctx_disable_req ctx_req;
-	struct msg_req req;
 	int err;
 
 	ctx_req.hdr.pcifunc = pcifunc;
-	req.hdr.pcifunc = pcifunc;
 
 	/* Cleanup NPC MCAM entries, free Tx scheduler queues being used */
 	nix_interface_deinit(rvu, pcifunc, nixlf);

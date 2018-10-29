@@ -659,7 +659,7 @@ static ssize_t rvu_dbg_cgx_stat_display(struct file *filp,
 	void *data = filp->private_data;
 	struct dentry *current_dir;
 	int err = 0, lmac_id = 0;
-	char *subtoken, *buf;
+	char *buf;
 
 	current_dir = filp->f_path.dentry->d_parent;
 	buf = kzalloc(strlen(current_dir->d_name.name), GFP_KERNEL);
@@ -669,7 +669,6 @@ static ssize_t rvu_dbg_cgx_stat_display(struct file *filp,
 	memcpy(buf, current_dir->d_name.name,
 	       strlen(current_dir->d_name.name));
 
-	subtoken = strsep(&buf, "c");
 	if (kstrtoint(buf, 10, &lmac_id) >= 0) {
 		err = cgx_print_stats(data, lmac_id);
 		if (err)
@@ -1828,7 +1827,7 @@ RVU_DEBUG_FOPS(sso_hwgrp_ient_wlk, sso_hwgrp_ient_wlk_display, NULL);
 RVU_DEBUG_FOPS(sso_hwgrp_fl_wlk, sso_hwgrp_fl_wlk_display, NULL);
 RVU_DEBUG_FOPS(sso_hws_info, NULL, sso_hws_info_display);
 
-void rvu_dbg_sso_init(struct rvu *rvu)
+static void rvu_dbg_sso_init(struct rvu *rvu)
 {
 	const struct device *dev = &rvu->pdev->dev;
 	struct dentry *pfile;
