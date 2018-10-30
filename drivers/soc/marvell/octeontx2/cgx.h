@@ -25,8 +25,6 @@
 #define CGX_FIFO_LEN			65536 /* 64K for both Rx & Tx */
 #define CGX_OFFSET(x)			((x) * MAX_LMAC_PER_CGX)
 
-#define FW_CGX_INT			(1 << 1) /* Bitfield used in INT reg */
-
 /* Registers */
 #define CGXX_CMRX_CFG			0x00
 #define CMR_EN				BIT_ULL(55)
@@ -34,8 +32,9 @@
 #define DATA_PKT_RX_EN			BIT_ULL(54)
 #define CGX_LMAC_TYPE_SHIFT		40
 #define CGX_LMAC_TYPE_MASK		0xF
-#define CGXX_CMRX_INT			0x40
-#define CGXX_CMRX_INT_ENA_W1S		0x58
+#define CGXX_CMRX_INT			0x040
+#define FW_CGX_INT			BIT_ULL(1)
+#define CGXX_CMRX_INT_ENA_W1S		0x058
 #define CGXX_CMRX_RX_ID_MAP		0x060
 #define CGXX_CMRX_RX_STAT0		0x070
 #define CGXX_CMRX_RX_LMACS		0x128
