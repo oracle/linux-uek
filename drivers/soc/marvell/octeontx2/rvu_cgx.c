@@ -138,8 +138,8 @@ skip_add:
 /* This is called from interrupt context and is expected to be atomic */
 static int cgx_lmac_postevent(struct cgx_link_event *event, void *data)
 {
-	struct rvu *rvu = data;
 	struct cgx_evq_entry *qentry;
+	struct rvu *rvu = data;
 
 	/* post event to the event queue */
 	qentry = kmalloc(sizeof(*qentry), GFP_ATOMIC);
@@ -260,7 +260,7 @@ static void rvu_cgx_wq_destroy(struct rvu *rvu)
 
 int rvu_cgx_init(struct rvu *rvu)
 {
-	int cgx, lmac, err;
+	int cgx, err;
 	void *cgxd;
 
 	/* CGX port id starts from 0 and are not necessarily contiguous
@@ -301,13 +301,11 @@ int rvu_cgx_init(struct rvu *rvu)
 		cgxd = rvu_cgx_pdata(cgx, rvu);
 		if (!cgxd)
 			continue;
-		for (lmac = 0; lmac < cgx_get_lmac_cnt(cgxd); lmac++) {
-			err = cgx_lmac_linkup_start(cgxd);
-			if (err)
-				dev_err(rvu->dev,
-					"Link up process failed to start on cgx %d\n",
-					cgx);
-		}
+		err = cgx_lmac_linkup_start(cgxd);
+		if (err)
+			dev_err(rvu->dev,
+				"Link up process failed to start on cgx %d\n",
+				cgx);
 	}
 
 	return 0;

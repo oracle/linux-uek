@@ -227,8 +227,8 @@ static inline u8 cgx_get_lmac_type(struct cgx *cgx, int lmac_id)
 int cgx_lmac_internal_loopback(void *cgxd, int lmac_id, bool enable)
 {
 	struct cgx *cgx = cgxd;
-	u64 cfg;
 	u8 lmac_type;
+	u64 cfg;
 
 	if (!cgx || lmac_id >= cgx->lmac_count)
 		return -ENODEV;
@@ -434,8 +434,8 @@ static inline void link_status_user_format(u64 lstat,
 
 	linfo->link_up = FIELD_GET(RESP_LINKSTAT_UP, lstat);
 	linfo->full_duplex = FIELD_GET(RESP_LINKSTAT_FDUPLEX, lstat);
-	linfo->lmac_type_id = cgx_get_lmac_type(cgx, lmac_id);
 	linfo->speed = cgx_speed_mbps[FIELD_GET(RESP_LINKSTAT_SPEED, lstat)];
+	linfo->lmac_type_id = cgx_get_lmac_type(cgx, lmac_id);
 	lmac_string = cgx_lmactype_string[linfo->lmac_type_id];
 	strncpy(linfo->lmac_type, lmac_string, LMACTYPE_STR_LEN - 1);
 }
@@ -507,16 +507,15 @@ static inline bool cgx_event_is_linkevent(u64 event)
 static irqreturn_t cgx_fwi_event_handler(int irq, void *data)
 {
 	struct lmac *lmac = data;
-	struct cgx *cgx = lmac->cgx;
-	struct device *dev;
+	struct cgx *cgx;
 	u64 event;
+
+	cgx = lmac->cgx;
 
 	event = cgx_read(cgx, lmac->lmac_id, CGX_EVENT_REG);
 
 	if (!FIELD_GET(EVTREG_ACK, event))
 		return IRQ_NONE;
-
-	dev = &cgx->pdev->dev;
 
 	switch (FIELD_GET(EVTREG_EVT_TYPE, event)) {
 	case CGX_EVT_CMD_RESP:
@@ -558,8 +557,8 @@ static irqreturn_t cgx_fwi_event_handler(int irq, void *data)
 /* callback registration for hardware events like link change */
 int cgx_lmac_evh_register(struct cgx_event_cb *cb, void *cgxd, int lmac_id)
 {
-	struct lmac *lmac;
 	struct cgx *cgx = cgxd;
+	struct lmac *lmac;
 
 	lmac = lmac_pdata(lmac_id, cgx);
 	if (!lmac)
