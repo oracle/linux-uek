@@ -18,6 +18,22 @@ struct rds_tcp_net {
 
 	int			sndbuf_size;
 	int			rcvbuf_size;
+
+	/* only for info exporting */
+	spinlock_t		rds_tcp_tc_list_lock;
+	struct list_head	rds_tcp_tc_list;
+
+	/* rds_tcp_tc_count counts only IPv4 connections.
+	 * rds6_tcp_tc_count counts both IPv4 and IPv6 connections.
+	 */
+	unsigned int		rds_tcp_tc_count;
+#if IS_ENABLED(CONFIG_IPV6)
+	unsigned int		rds6_tcp_tc_count;
+#endif
+
+	/* Track rds_tcp_connection structs so they can be cleaned up */
+	spinlock_t		rds_tcp_conn_lock;
+	struct list_head	rds_tcp_conn_list;
 };
 
 struct rds_tcp_incoming {
@@ -70,10 +86,13 @@ struct rds_tcp_connection {
 /* tcp.c */
 extern int rds_tcp_netid;
 void rds_tcp_tune(struct socket *sock);
-void rds_tcp_set_callbacks(struct socket *sock, struct rds_conn_path *cp);
-void rds_tcp_reset_callbacks(struct socket *sock, struct rds_conn_path *cp);
+void rds_tcp_set_callbacks(struct socket *sock, struct rds_conn_path *cp,
+			   struct rds_tcp_net *rtn);
+void rds_tcp_reset_callbacks(struct socket *sock, struct rds_conn_path *cp,
+			     struct rds_tcp_net *rtn);
 void rds_tcp_restore_callbacks(struct socket *sock,
-			       struct rds_tcp_connection *tc);
+			       struct rds_tcp_connection *tc,
+			       struct rds_tcp_net *rtn);
 u32 rds_tcp_write_seq(struct rds_tcp_connection *tc);
 u32 rds_tcp_snd_una(struct rds_tcp_connection *tc);
 u64 rds_tcp_map_seq(struct rds_tcp_connection *tc, u32 seq);
