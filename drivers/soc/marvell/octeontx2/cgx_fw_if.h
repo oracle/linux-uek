@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: GPL-2.0
-/* Marvell OcteonTx2 CGX driver
+/* SPDX-License-Identifier: GPL-2.0
+ * Marvell OcteonTx2 CGX driver
  *
  * Copyright (C) 2018 Marvell International Ltd.
  *
@@ -10,6 +10,9 @@
 
 #ifndef __CGX_FW_INTF_H__
 #define __CGX_FW_INTF_H__
+
+#include <linux/bitops.h>
+#include <linux/bitfield.h>
 
 #define CGX_FIRMWARE_MAJOR_VER		1
 #define CGX_FIRMWARE_MINOR_VER		0
@@ -100,53 +103,40 @@ enum cgx_cmd_own {
 	CGX_CMD_OWN_FIRMWARE,
 };
 
+/* m - bit mask
+ * y - value to be written in the bitrange
+ * x - input value whose bitrange to be modified
+ */
+#define FIELD_SET(m, y, x)		\
+	(((x) & ~(m)) |			\
+	FIELD_PREP((m), (y)))
+
 /* scratchx(0) CSR used for ATF->non-secure SW communication.
  * This acts as the status register
- * Provides details on command ack/status, link status, error details
+ * Provides details on command ack/status, command response, error details
  */
-struct cgx_evt_sts {
-	uint64_t ack:1;
-	uint64_t evt_type:1;		/* cgx_evt_type */
-	uint64_t stat:1;		/* cgx_stat */
-	uint64_t id:6;			/* cgx_evt_id/cgx_cmd_id */
-	uint64_t reserved:55;
-};
+#define EVTREG_ACK		BIT_ULL(0)
+#define EVTREG_EVT_TYPE		BIT_ULL(1)
+#define EVTREG_STAT		BIT_ULL(2)
+#define EVTREG_ID		GENMASK_ULL(8, 3)
 
 /* Response to command IDs with command status as CGX_STAT_FAIL
  *
  * Not applicable for commands :
  * CGX_CMD_LINK_BRING_UP/DOWN/CGX_EVT_LINK_CHANGE
- * check struct cgx_lnk_sts comments
  */
-struct cgx_err_sts_s {
-	uint64_t reserved1:9;
-	uint64_t type:10;		/* cgx_error_type */
-	uint64_t reserved2:35;
-};
+#define EVTREG_ERRTYPE		GENMASK_ULL(18, 9)
 
 /* Response to cmd ID as CGX_CMD_GET_FW_VER with cmd status as
  * CGX_STAT_SUCCESS
  */
-struct cgx_ver_s {
-	uint64_t reserved1:9;
-	uint64_t major_ver:4;
-	uint64_t minor_ver:4;
-	uint64_t reserved2:47;
-};
+#define RESP_MAJOR_VER		GENMASK_ULL(12, 9)
+#define RESP_MINOR_VER		GENMASK_ULL(16, 13)
 
 /* Response to cmd ID as CGX_CMD_GET_MAC_ADDR with cmd status as
  * CGX_STAT_SUCCESS
  */
-struct cgx_mac_addr_s {
-	uint64_t reserved1:9;
-	uint64_t addr_0:8;
-	uint64_t addr_1:8;
-	uint64_t addr_2:8;
-	uint64_t addr_3:8;
-	uint64_t addr_4:8;
-	uint64_t addr_5:8;
-	uint64_t reserved2:7;
-};
+#define RESP_MAC_ADDR		GENMASK_ULL(56, 9)
 
 /* Response to cmd ID - CGX_CMD_LINK_BRING_UP/DOWN, event ID CGX_EVT_LINK_CHANGE
  * status can be either CGX_STAT_FAIL or CGX_STAT_SUCCESS
@@ -167,56 +157,29 @@ struct cgx_lnk_sts {
 	uint64_t reserved2:39;
 };
 
-union cgx_evtreg {
-	u64 val;
-	struct cgx_evt_sts evt_sts; /* common for all commands/events */
-	struct cgx_lnk_sts link_sts; /* response to LINK_BRINGUP/DOWN/CHANGE */
-	struct cgx_ver_s ver;		/* response to CGX_CMD_GET_FW_VER */
-	struct cgx_mac_addr_s mac_addr;	/* response to CGX_CMD_GET_MAC_ADDR */
-	struct cgx_err_sts_s err;	/* response if evt_status = CMD_FAIL */
-};
+#define RESP_LINKSTAT_UP		GENMASK_ULL(9, 9)
+#define RESP_LINKSTAT_FDUPLEX		GENMASK_ULL(10, 10)
+#define RESP_LINKSTAT_SPEED		GENMASK_ULL(14, 11)
+#define RESP_LINKSTAT_ERRTYPE		GENMASK_ULL(24, 15)
 
 /* scratchx(1) CSR used for non-secure SW->ATF communication
  * This CSR acts as a command register
  */
-struct cgx_cmd {
-	uint64_t own:2;			/* cgx_csr_own */
-	uint64_t id:6;			/* cgx_request_id */
-	uint64_t reserved2:56;
-};
+#define CMDREG_OWN	BIT_ULL(0)
+#define CMDREG_ID	GENMASK_ULL(7, 2)
 
 /* Any command using enable/disable as an argument need
- * to pass the option via this structure.
+ * to set this bitfield.
  * Ex: Loopback, HiGig...
  */
-struct cgx_ctl_args {
-	uint64_t reserved1:8;
-	uint64_t enable:1;
-	uint64_t reserved2:55;
-};
+#define CMDREG_ENABLE	BIT_ULL(8)
 
 /* command argument to be passed for cmd ID - CGX_CMD_SET_MTU */
-struct cgx_mtu_args {
-	uint64_t reserved1:8;
-	uint64_t size:16;
-	uint64_t reserved2:40;
-};
+#define CMDMTU_SIZE	GENMASK_ULL(23, 8)
 
 /* command argument to be passed for cmd ID - CGX_CMD_LINK_CHANGE */
-struct cgx_link_change_args {
-	uint64_t reserved1:8;
-	uint64_t link_up:1;
-	uint64_t full_duplex:1;
-	uint64_t speed:4;		/* cgx_link_speed */
-	uint64_t reserved2:50;
-};
-
-union cgx_cmdreg {
-	u64 val;
-	struct cgx_cmd cmd;
-	struct cgx_ctl_args cmd_args;
-	struct cgx_mtu_args mtu_size;
-	struct cgx_link_change_args lnk_args;/* Input to CGX_CMD_LINK_CHANGE */
-};
+#define CMDLINKCHANGE_LINKUP	BIT_ULL(8)
+#define CMDLINKCHANGE_FULLDPLX	BIT_ULL(9)
+#define CMDLINKCHANGE_SPEED	GENMASK_ULL(13, 10)
 
 #endif /* __CGX_FW_INTF_H__ */
