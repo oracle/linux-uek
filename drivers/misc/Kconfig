@@ -506,6 +506,14 @@ config PCI_ENDPOINT_TEST
            Enable this configuration option to enable the host side test driver
            for PCI Endpoint.
 
+config MARVELL_OTX_BPHY_CTR
+	bool "Marvell OcteonTX BPHY Control driver"
+	---help---
+	  Enables BPHY control driver which handles ioctl calls
+	  to set/clear IRQ handlers in EL3 using SMC calls.
+	  The purpose of this is to handle some BPHY Interrupts in
+	  user space directly without kernel's intervention.
+
 source "drivers/misc/c2port/Kconfig"
 source "drivers/misc/eeprom/Kconfig"
 source "drivers/misc/cb710/Kconfig"
