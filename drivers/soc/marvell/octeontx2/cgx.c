@@ -43,7 +43,7 @@
 struct lmac {
 	wait_queue_head_t wq_cmd_cmplt;
 	struct mutex cmd_lock;
-	struct cgx_evt_sts resp;
+	u64 resp;
 	struct cgx_link_user_info link_info;
 	struct cgx_event_cb event_cb;
 	spinlock_t event_cb_lock;
@@ -328,14 +328,12 @@ int cgx_lmac_rx_tx_enable(void *cgxd, int lmac_id, bool enable)
 EXPORT_SYMBOL(cgx_lmac_rx_tx_enable);
 
 /* CGX Firmware interface low level support */
-static int cgx_fwi_cmd_send(struct cgx_cmd *cmd, struct cgx_evt_sts *rsp,
-			    struct lmac *lmac)
+static int cgx_fwi_cmd_send(u64 req, u64 *resp, struct lmac *lmac)
 {
 	struct cgx *cgx = lmac->cgx;
-	union cgx_cmdreg creg;
-	union cgx_evtreg ereg;
 	struct device *dev;
 	int err = 0;
+	u64 cmd;
 
 	/* Ensure no other command is in progress */
 	err = mutex_lock_interruptible(&lmac->cmd_lock);
@@ -343,44 +341,34 @@ static int cgx_fwi_cmd_send(struct cgx_cmd *cmd, struct cgx_evt_sts *rsp,
 		return err;
 
 	/* Ensure command register is free */
-	creg.val = cgx_read(cgx, lmac->lmac_id,  CGX_COMMAND_REG);
-	if (creg.cmd.own != CGX_CMD_OWN_NS) {
+	cmd = cgx_read(cgx, lmac->lmac_id,  CGX_COMMAND_REG);
+	if (FIELD_GET(CMDREG_OWN, cmd) != CGX_CMD_OWN_NS) {
 		err = -EBUSY;
 		goto unlock;
 	}
 
 	/* Update ownership in command request */
-	cmd->own = CGX_CMD_OWN_FIRMWARE;
+	req = FIELD_SET(CMDREG_OWN, CGX_CMD_OWN_FIRMWARE, req);
 
 	/* Mark this lmac as pending, before we start */
 	lmac->cmd_pend = true;
 
 	/* Start command in hardware */
-	creg.cmd = *cmd;
-	cgx_write(cgx, lmac->lmac_id, CGX_COMMAND_REG, creg.val);
-	creg.val = cgx_read(cgx, lmac->lmac_id,  CGX_COMMAND_REG);
+	cgx_write(cgx, lmac->lmac_id, CGX_COMMAND_REG, req);
 
 	/* Ensure command is completed without errors */
 	if (!wait_event_timeout(lmac->wq_cmd_cmplt, !lmac->cmd_pend,
 				msecs_to_jiffies(CGX_CMD_TIMEOUT))) {
 		dev = &cgx->pdev->dev;
-		ereg.val = cgx_read(cgx, lmac->lmac_id,  CGX_EVENT_REG);
-		if (ereg.val) {
-			dev_err(dev, "cgx port %d:%d: No event for response\n",
-				cgx->cgx_id, lmac->lmac_id);
-			/* copy event */
-			lmac->resp = ereg.evt_sts;
-		} else {
-			dev_err(dev, "cgx port %d:%d cmd timeout\n",
-				cgx->cgx_id, lmac->lmac_id);
-			err = -EIO;
-			goto unlock;
-		}
+		dev_err(dev, "cgx port %d:%d cmd timeout\n",
+			cgx->cgx_id, lmac->lmac_id);
+		err = -EIO;
+		goto unlock;
 	}
 
 	/* we have a valid command response */
 	smp_rmb(); /* Ensure the latest updates are visible */
-	*rsp = lmac->resp;
+	*resp = lmac->resp;
 
 unlock:
 	mutex_unlock(&lmac->cmd_lock);
@@ -388,8 +376,7 @@ unlock:
 	return err;
 }
 
-static inline int cgx_fwi_cmd_generic(struct cgx_cmd *req,
-				      struct cgx_evt_sts *rsp,
+static inline int cgx_fwi_cmd_generic(u64 req, u64 *resp,
 				      struct cgx *cgx, int lmac_id)
 {
 	struct lmac *lmac;
@@ -399,11 +386,11 @@ static inline int cgx_fwi_cmd_generic(struct cgx_cmd *req,
 	if (!lmac)
 		return -ENODEV;
 
-	err = cgx_fwi_cmd_send(req, rsp, lmac);
+	err = cgx_fwi_cmd_send(req, resp, lmac);
 
 	/* Check for valid response */
 	if (!err) {
-		if (rsp->stat == CGX_STAT_FAIL)
+		if (FIELD_GET(EVTREG_STAT, *resp) == CGX_STAT_FAIL)
 			return -EIO;
 		else
 			return 0;
@@ -439,32 +426,35 @@ static inline void cgx_link_usertable_init(void)
 	cgx_lmactype_string[LMAC_MODE_USXGMII] = "USXGMII";
 }
 
-static inline void link_status_user_format(struct cgx_lnk_sts *lstat,
+static inline void link_status_user_format(u64 lstat,
 					   struct cgx_link_user_info *linfo,
 					   struct cgx *cgx, u8 lmac_id)
 {
 	char *lmac_string;
 
-	linfo->link_up = lstat->link_up;
-	linfo->full_duplex = lstat->full_duplex;
+	linfo->link_up = FIELD_GET(RESP_LINKSTAT_UP, lstat);
+	linfo->full_duplex = FIELD_GET(RESP_LINKSTAT_FDUPLEX, lstat);
 	linfo->lmac_type_id = cgx_get_lmac_type(cgx, lmac_id);
-	linfo->speed = cgx_speed_mbps[lstat->speed];
+	linfo->speed = cgx_speed_mbps[FIELD_GET(RESP_LINKSTAT_SPEED, lstat)];
 	lmac_string = cgx_lmactype_string[linfo->lmac_type_id];
 	strncpy(linfo->lmac_type, lmac_string, LMACTYPE_STR_LEN - 1);
 }
 
 /* Hardware event handlers */
-static inline void cgx_link_change_handler(struct cgx_lnk_sts *lstat,
+static inline void cgx_link_change_handler(u64 lstat,
 					   struct lmac *lmac)
 {
 	struct cgx_link_user_info *linfo;
 	struct cgx *cgx = lmac->cgx;
 	struct cgx_link_event event;
 	struct device *dev;
+	int err_type;
 
 	dev = &cgx->pdev->dev;
 
 	link_status_user_format(lstat, &event.link_uinfo, cgx, lmac->lmac_id);
+	err_type = FIELD_GET(RESP_LINKSTAT_ERRTYPE, lstat);
+
 	event.cgx_id = cgx->cgx_id;
 	event.lmac_id = lmac->lmac_id;
 
@@ -478,9 +468,9 @@ static inline void cgx_link_change_handler(struct cgx_lnk_sts *lstat,
 	if (!lmac->event_cb.notify_link_chg) {
 		dev_dbg(dev, "cgx port %d:%d Link change handler null",
 			cgx->cgx_id, lmac->lmac_id);
-		if (lstat->err_type != CGX_ERR_NONE) {
+		if (err_type != CGX_ERR_NONE) {
 			dev_err(dev, "cgx port %d:%d Link error %d\n",
-				cgx->cgx_id, lmac->lmac_id, lstat->err_type);
+				cgx->cgx_id, lmac->lmac_id, err_type);
 		}
 		dev_info(dev, "cgx port %d:%d Link is %s %d Mbps\n",
 			 cgx->cgx_id, lmac->lmac_id,
@@ -494,18 +484,21 @@ err:
 	spin_unlock(&lmac->event_cb_lock);
 }
 
-static inline bool cgx_cmdresp_is_linkevent(struct cgx_evt_sts *rsp)
+static inline bool cgx_cmdresp_is_linkevent(u64 event)
 {
-	if (rsp->id == CGX_CMD_LINK_BRING_UP ||
-	    rsp->id == CGX_CMD_LINK_BRING_DOWN)
+	u8 id;
+
+	id = FIELD_GET(EVTREG_ID, event);
+	if (id == CGX_CMD_LINK_BRING_UP ||
+	    id == CGX_CMD_LINK_BRING_DOWN)
 		return true;
 	else
 		return false;
 }
 
-static inline bool cgx_event_is_linkevent(struct cgx_evt_sts *evt)
+static inline bool cgx_event_is_linkevent(u64 event)
 {
-	if (evt->id == CGX_EVT_LINK_CHANGE)
+	if (FIELD_GET(EVTREG_ID, event) == CGX_EVT_LINK_CHANGE)
 		return true;
 	else
 		return false;
@@ -515,19 +508,17 @@ static irqreturn_t cgx_fwi_event_handler(int irq, void *data)
 {
 	struct lmac *lmac = data;
 	struct cgx *cgx = lmac->cgx;
-	struct cgx_evt_sts event;
-	union cgx_evtreg ereg;
 	struct device *dev;
+	u64 event;
 
-	ereg.val = cgx_read(cgx, lmac->lmac_id, CGX_EVENT_REG);
-	if (!ereg.evt_sts.ack)
+	event = cgx_read(cgx, lmac->lmac_id, CGX_EVENT_REG);
+
+	if (!FIELD_GET(EVTREG_ACK, event))
 		return IRQ_NONE;
 
 	dev = &cgx->pdev->dev;
 
-	event = ereg.evt_sts;
-
-	switch (event.evt_type) {
+	switch (FIELD_GET(EVTREG_EVT_TYPE, event)) {
 	case CGX_EVT_CMD_RESP:
 		/* Copy the response. Since only one command is active at a
 		 * time, there is no way a response can get overwritten
@@ -539,20 +530,17 @@ static irqreturn_t cgx_fwi_event_handler(int irq, void *data)
 		/* There wont be separate events for link change initiated from
 		 * software; Hence report the command responses as events
 		 */
-		if (cgx_cmdresp_is_linkevent(&event))
-			cgx_link_change_handler(&ereg.link_sts, lmac);
+		if (cgx_cmdresp_is_linkevent(event))
+			cgx_link_change_handler(event, lmac);
 
 		/* Release thread waiting for completion  */
 		lmac->cmd_pend = false;
 		wake_up_interruptible(&lmac->wq_cmd_cmplt);
 		break;
 	case CGX_EVT_ASYNC:
-		if (cgx_event_is_linkevent(&event))
-			cgx_link_change_handler(&ereg.link_sts, lmac);
+		if (cgx_event_is_linkevent(event))
+			cgx_link_change_handler(event, lmac);
 		break;
-	default:
-		dev_err(dev, "cgx port %d:%d Unknown event received\n",
-			cgx->cgx_id, lmac->lmac_id);
 	}
 
 	/* Any new event or command response will be posted by firmware
@@ -604,46 +592,45 @@ EXPORT_SYMBOL(cgx_lmac_evh_unregister);
 
 static int cgx_fwi_link_change(struct cgx *cgx, int lmac_id, bool enable)
 {
-	struct cgx_cmd req = { 0 };
-	struct cgx_evt_sts rsp;
+	u64 req = 0;
+	u64 resp;
 
 	if (enable)
-		req.id = CGX_CMD_LINK_BRING_UP;
+		req = FIELD_SET(CMDREG_ID, CGX_CMD_LINK_BRING_UP, req);
 	else
-		req.id = CGX_CMD_LINK_BRING_DOWN;
+		req = FIELD_SET(CMDREG_ID, CGX_CMD_LINK_BRING_DOWN, req);
 
-	return cgx_fwi_cmd_generic(&req, &rsp, cgx, lmac_id);
+	return cgx_fwi_cmd_generic(req, &resp, cgx, lmac_id);
 }
 
-static inline int cgx_fwi_read_version(struct cgx_ver_s *ver, struct cgx *cgx)
+static inline int cgx_fwi_read_version(u64 *resp, struct cgx *cgx)
 {
-	struct cgx_cmd req = { 0 };
-	union cgx_evtreg event;
-	int err;
+	u64 req = 0;
 
-	req.id = CGX_CMD_GET_FW_VER;
-
-	err = cgx_fwi_cmd_generic(&req, &event.evt_sts, cgx, 0);
-	if (!err)
-		*ver = event.ver;
-
-	return err;
+	req = FIELD_SET(CMDREG_ID, CGX_CMD_GET_FW_VER, req);
+	return cgx_fwi_cmd_generic(req, resp, cgx, 0);
 }
 
 static int cgx_lmac_verify_fwi_version(struct cgx *cgx)
 {
-	struct cgx_ver_s ver;
 	struct device *dev = &cgx->pdev->dev;
+	int major_ver, minor_ver;
+	u64 resp;
 	int err;
 
 	if (!cgx->lmac_count)
 		return 0;
 
-	err = cgx_fwi_read_version(&ver, cgx);
+	err = cgx_fwi_read_version(&resp, cgx);
+	if (err)
+		return err;
+
+	major_ver = FIELD_GET(RESP_MAJOR_VER, resp);
+	minor_ver = FIELD_GET(RESP_MINOR_VER, resp);
 	dev_dbg(dev, "Firmware command interface version = %d.%d\n",
-		ver.major_ver, ver.minor_ver);
-	if (err || ver.major_ver != CGX_FIRMWARE_MAJOR_VER ||
-	    ver.minor_ver != CGX_FIRMWARE_MINOR_VER)
+		major_ver, minor_ver);
+	if (major_ver != CGX_FIRMWARE_MAJOR_VER ||
+	    minor_ver != CGX_FIRMWARE_MINOR_VER)
 		return -EIO;
 	else
 		return 0;
