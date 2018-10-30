@@ -620,7 +620,7 @@ static int srao_decode_notifier(struct notifier_block *nb, unsigned long val,
 
 	if (mce_usable_address(mce) && (mce->severity == MCE_AO_SEVERITY)) {
 		pfn = mce->addr >> PAGE_SHIFT;
-		if (memory_failure(pfn, 0))
+		if (!memory_failure(pfn, 0))
 			mce_unmap_kpfn(pfn);
 	}
 
