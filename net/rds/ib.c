@@ -907,7 +907,7 @@ static int rds_ib_move_ip4(char			*from_dev,
 	sin->sin_family = AF_INET;
 
 	/* Set the primary IP if it hasn't been set */
-	if (ip_config[to_port].ip_addr) {
+	if (ip_config[to_port].ip_addr && failover) {
 		strcpy(ir->ifr_ifrn.ifrn_name, ip_config[to_port].dev->name);
 		ret = inet_ioctl(rds_ib_inet_socket, SIOCGIFADDR,
 				 (unsigned long)ir);
