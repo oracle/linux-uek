@@ -423,9 +423,7 @@ int otx2_txschq_config(struct otx2_nic *pfvf, int lvl)
 int otx2_txsch_alloc(struct otx2_nic *pfvf)
 {
 	struct nix_txsch_alloc_req *req;
-	struct mbox_msghdr *rsp_hdr;
-	int lvl;
-	int err;
+	int lvl, err;
 
 	/* Get memory to put this msg */
 	req = otx2_mbox_alloc_msg_NIX_TXSCH_ALLOC(&pfvf->mbox);
@@ -439,12 +437,7 @@ int otx2_txsch_alloc(struct otx2_nic *pfvf)
 	err = otx2_sync_mbox_msg(&pfvf->mbox);
 	if (err)
 		return err;
-
-	rsp_hdr = otx2_mbox_get_rsp(&pfvf->mbox.mbox, 0, &req->hdr);
-	if (IS_ERR(rsp_hdr))
-		return PTR_ERR(rsp_hdr);
-
-	return rsp_hdr->rc;
+	return 0;
 }
 
 int otx2_txschq_stop(struct otx2_nic *pfvf)
@@ -950,7 +943,6 @@ int otx2_config_npa(struct otx2_nic *pfvf)
 {
 	struct otx2_qset *qset = &pfvf->qset;
 	struct npa_lf_alloc_req  *npalf;
-	struct mbox_msghdr *rsp_hdr;
 	struct otx2_hw *hw = &pfvf->hw;
 	int aura_cnt, err;
 
@@ -979,12 +971,7 @@ int otx2_config_npa(struct otx2_nic *pfvf)
 	err = otx2_sync_mbox_msg(&pfvf->mbox);
 	if (err)
 		return err;
-
-	rsp_hdr = otx2_mbox_get_rsp(&pfvf->mbox.mbox, 0, &npalf->hdr);
-	if (IS_ERR(rsp_hdr))
-		return PTR_ERR(rsp_hdr);
-
-	return rsp_hdr->rc;
+	return 0;
 }
 
 int otx2_detach_resources(struct mbox *mbox)
@@ -1008,7 +995,6 @@ int otx2_attach_npa_nix(struct otx2_nic *pfvf)
 {
 	struct rsrc_attach *attach;
 	struct msg_req *msix;
-	struct mbox_msghdr *rsp_hdr;
 	int err;
 
 	/* Get memory to put this msg */
@@ -1032,13 +1018,6 @@ int otx2_attach_npa_nix(struct otx2_nic *pfvf)
 	err = otx2_sync_mbox_msg(&pfvf->mbox);
 	if (err)
 		return err;
-
-	rsp_hdr = otx2_mbox_get_rsp(&pfvf->mbox.mbox, 0, &msix->hdr);
-	if (IS_ERR(rsp_hdr))
-		return PTR_ERR(rsp_hdr);
-
-	if (rsp_hdr->rc)
-		return rsp_hdr->rc;
 
 	if (pfvf->hw.npa_msixoff == MSIX_VECTOR_INVALID ||
 	    pfvf->hw.nix_msixoff == MSIX_VECTOR_INVALID) {

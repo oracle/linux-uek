@@ -238,7 +238,6 @@ static int otx2_register_mbox_intr(struct otx2_nic *pf)
 {
 	struct otx2_hw *hw = &pf->hw;
 	struct msg_req *req;
-	struct mbox_msghdr *rsp_hdr;
 	char *irq_name;
 	int err;
 
@@ -270,12 +269,7 @@ static int otx2_register_mbox_intr(struct otx2_nic *pf)
 			 "AF not responding to mailbox, deferring probe\n");
 		return -EPROBE_DEFER;
 	}
-
-	rsp_hdr = otx2_mbox_get_rsp(&pf->mbox.mbox, 0, &req->hdr);
-	if (IS_ERR(rsp_hdr))
-		return PTR_ERR(rsp_hdr);
-
-	return rsp_hdr->rc;
+	return 0;
 }
 
 static void otx2_disable_mbox_intr(struct otx2_nic *pf)
