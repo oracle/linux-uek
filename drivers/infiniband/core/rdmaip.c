@@ -904,7 +904,6 @@ static void rdmaip_do_failover(u8 from_port, u8 to_port)
 {
 	bool	v4move, v6move;
 	u8      j;
-	int	ret;
 
 	if (!from_port) {
 		RDMAIP_DBG2("rdmaip: NULL from_port\n");
@@ -1942,9 +1941,6 @@ static void rdmaip_device_add(struct ib_device *device)
 		RDMAIP_DBG2("Failed to allocate memory for rdmaip_dev\n");
 		return;
 	}
-
-	INIT_LIST_HEAD(&rdmaip_dev->ipaddr_list);
-
 	rdmaip_dev->dev = device;
 
 	INIT_IB_EVENT_HANDLER(&rdmaip_dev->event_handler,
