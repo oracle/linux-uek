@@ -66,7 +66,6 @@ struct port_info {
 
 struct rdmaip_device {
 	struct list_head	list;
-	struct list_head	ipaddr_list;
 	struct ib_device	*dev;
 	struct ib_event_handler	event_handler;
 	struct port_info	pinfo[RDMAIP_MAX_PHYS_PORTS];

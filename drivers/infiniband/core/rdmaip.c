@@ -1948,9 +1948,6 @@ static int rdmaip_device_add(struct ib_device *device)
 		RDMAIP_DBG2("Failed to allocate memory for rdmaip_dev\n");
 		return -ENOMEM;
 	}
-
-	INIT_LIST_HEAD(&rdmaip_dev->ipaddr_list);
-
 	rdmaip_dev->dev = device;
 
 	INIT_IB_EVENT_HANDLER(&rdmaip_dev->event_handler,
