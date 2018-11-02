@@ -338,7 +338,7 @@ static void emmc_io_drive_setup(struct cvm_mmc_slot *slot)
 	u64 ioctl_cfg;
 	struct cvm_mmc_host *host = slot->host;
 
-	if (!is_mmc_8xxx(slot->host)) {
+	if (!is_mmc_8xxx(host)) {
 		if ((slot->drive < 0) || (slot->slew < 0))
 			return;
 		/* Setup the emmc interface current drive
@@ -633,10 +633,13 @@ irqreturn_t cvm_mmc_interrupt(int irq, void *dev_id)
 
 	/* follow CMD6 timing/width with IMMEDIATE switch */
 	if (slot && slot->cmd6_pending) {
-		if (host_done && !req->cmd->error)
+		if (host_done && !req->cmd->error) {
 			do_switch(host, slot->want_switch);
-		else if (slot)
+			emmc_io_drive_setup(slot);
+			cvm_mmc_configure_delay(slot);
+		} else if (slot) {
 			slot->cmd6_pending = false;
+		}
 	}
 
 	host->current_req = NULL;
@@ -801,15 +804,15 @@ static void cvm_mmc_dma_request(struct mmc_host *mmc,
 	u64 emm_dma, addr, int_enable_mask = 0;
 	int seg;
 
+	/* cleared by successful termination */
+	mrq->cmd->error = -EINVAL;
+
 	if (!mrq->data || !mrq->data->sg || !mrq->data->sg_len ||
 	    !mrq->stop || mrq->stop->opcode != MMC_STOP_TRANSMISSION) {
 		dev_err(&mmc->card->dev,
 			"Error: cmv_mmc_dma_request no data\n");
 		goto error;
 	}
-
-	/* cleared by successful termination */
-	mrq->cmd->error = -EINVAL;
 
 	/* unaligned multi-block DMA has problems, so forbid all unaligned */
 	for (seg = 0; seg < mrq->data->sg_len; seg++) {
@@ -826,13 +829,11 @@ static void cvm_mmc_dma_request(struct mmc_host *mmc,
 	cvm_mmc_switch_to(slot);
 
 	data = mrq->data;
+
 	pr_debug("DMA request  blocks: %d  block_size: %d  total_size: %d\n",
 		 data->blocks, data->blksz, data->blocks * data->blksz);
 	if (data->timeout_ns)
 		set_wdog(slot, data->timeout_ns);
-
-	WARN_ON(host->current_req);
-	host->current_req = mrq;
 
 	emm_dma = prepare_ext_dma(mmc, mrq);
 	addr = prepare_dma(host, data);
@@ -841,7 +842,11 @@ static void cvm_mmc_dma_request(struct mmc_host *mmc,
 		goto error;
 	}
 
+	mrq->host = mmc;
 	host->dma_active = true;
+	WARN_ON(host->current_req);
+	host->current_req = mrq;
+
 	int_enable_mask = MIO_EMM_INT_CMD_ERR | MIO_EMM_INT_DMA_DONE |
 			MIO_EMM_INT_DMA_ERR;
 
@@ -989,8 +994,8 @@ static void cvm_mmc_request(struct mmc_host *mmc, struct mmc_request *mrq)
 	mods = cvm_mmc_get_cr_mods(cmd);
 
 	WARN_ON(host->current_req);
-	host->current_req = mrq;
 	mrq->host = mmc;
+	host->current_req = mrq;
 
 	if (cmd->data) {
 		if (cmd->data->flags & MMC_DATA_READ)
@@ -1036,7 +1041,187 @@ retry:
 	writeq(emm_cmd, host->base + MIO_EMM_CMD(host));
 	if (cmd->opcode == MMC_SWITCH)
 		udelay(1300);
+}
 
+static void cvm_mmc_wait_done(struct mmc_request *cvm_mrq)
+{
+	complete(&cvm_mrq->completion);
+}
+
+static int cvm_mmc_r1_cmd(struct mmc_host *mmc, u32 *statp, u32 opcode)
+{
+	static struct mmc_command cmd = {};
+	static struct mmc_request cvm_mrq = {};
+
+	if (!opcode)
+		opcode = MMC_SEND_STATUS;
+	cmd.opcode = opcode;
+	if (mmc->card)
+		cmd.arg = mmc->card->rca << 16;
+	else
+		cmd.arg = 1 << 16;
+	cmd.flags = MMC_RSP_SPI_R2 | MMC_RSP_R1 | MMC_CMD_AC;
+	cmd.data = NULL;
+	cvm_mrq.cmd = &cmd;
+
+	init_completion(&cvm_mrq.completion);
+	cvm_mrq.done = cvm_mmc_wait_done;
+
+	cvm_mmc_request(mmc, &cvm_mrq);
+	if (!wait_for_completion_timeout(&cvm_mrq.completion,
+			msecs_to_jiffies(10))) {
+		mmc_abort_tuning(mmc, opcode);
+		return -ETIMEDOUT;
+	}
+
+	if (statp)
+		*statp = cmd.resp[0];
+
+	return cvm_mrq.cmd->error;
+}
+
+static int cvm_mmc_get_ext_csd(struct mmc_host *mmc, u32 *statp, u32 unused)
+{
+	int err = 0;
+	u8 *ext_csd;
+	static struct mmc_command cmd = {};
+	static struct mmc_data data = {};
+	static struct mmc_request cvm_mrq = {};
+	static struct scatterlist sg;
+	struct mmc_card *card = mmc->card;
+
+	/* EXT_CSD supported only after ver 3 */
+	if (card && card->csd.mmca_vsn <= CSD_SPEC_VER_3)
+		return -EOPNOTSUPP;
+	/*
+	 * As the ext_csd is so large and mostly unused, we don't store the
+	 * raw block in mmc_card.
+	 */
+	ext_csd = kzalloc(BLKSZ_EXT_CSD, GFP_KERNEL);
+	if (!ext_csd)
+		return -ENOMEM;
+
+	cvm_mrq.cmd = &cmd;
+	cvm_mrq.data = &data;
+	cmd.data = &data;
+
+	cmd.opcode = MMC_SEND_EXT_CSD;
+	cmd.arg = 0;
+	cmd.flags = MMC_RSP_SPI_R1 | MMC_RSP_R1 | MMC_CMD_ADTC;
+
+	data.blksz = BLKSZ_EXT_CSD;
+	data.blocks = 1;
+	data.flags = MMC_DATA_READ;
+	data.sg = &sg;
+	data.sg_len = 1;
+
+	sg_init_one(&sg, ext_csd, BLKSZ_EXT_CSD);
+
+	/* set timeout */
+	if (card) {
+		/* SD cards use a 100 multiplier rather than 10 */
+		u32 mult = mmc_card_sd(card) ? 100 : 10;
+
+		data.timeout_ns = card->csd.taac_ns * mult;
+		data.timeout_clks = card->csd.taac_clks * mult;
+	} else {
+		data.timeout_ns = 50 * NSEC_PER_MSEC;
+	}
+
+	init_completion(&cvm_mrq.completion);
+	cvm_mrq.done = cvm_mmc_wait_done;
+
+	cvm_mmc_request(mmc, &cvm_mrq);
+	if (!wait_for_completion_timeout(&cvm_mrq.completion,
+			msecs_to_jiffies(100))) {
+		mmc_abort_tuning(mmc, cmd.opcode);
+		err = -ETIMEDOUT;
+	}
+
+	data.sg_len = 0; /* FIXME: catch over-time completions? */
+	kfree(ext_csd);
+
+	if (err)
+		return err;
+
+	if (statp)
+		*statp = cvm_mrq.cmd->resp[0];
+
+	return cvm_mrq.cmd->error;
+}
+
+/* adjusters for the 4 otx2 delay line taps */
+struct adj {
+	const char *name;
+	u64 mask;
+	int (*test)(struct mmc_host *mmc, u32 *statp, u32 opcode);
+	u32 opcode;
+	bool ddr_only;
+};
+
+static int adjust_tuning(struct mmc_host *mmc, struct adj *adj, u32 opcode)
+{
+	int err, start_run = -1, best_run = 0, best_start = -1;
+	bool prev_ok = false;
+	u64 timing, tap;
+	struct cvm_mmc_slot *slot = mmc_priv(mmc);
+	struct cvm_mmc_host *host = slot->host;
+	char how[MAX_NO_OF_TAPS+1] = "";
+
+	/* loop over range+1 to simplify processing */
+	for (tap = 0; tap <= MAX_NO_OF_TAPS; tap++, prev_ok = !err) {
+		if (tap < MAX_NO_OF_TAPS) {
+			timing = readq(host->base + MIO_EMM_TIMING(host));
+			timing &= ~adj->mask;
+			timing |= (tap << __bf_shf(adj->mask));
+			writeq(timing, host->base + MIO_EMM_TIMING(host));
+
+			err = adj->test(mmc, NULL, opcode);
+
+			how[tap] = "-+"[!err];
+		} else {
+			/*
+			 * putting the end+1 case in loop simplifies
+			 * logic, allowing 'prev_ok' to process a
+			 * sweet spot in tuning which extends to wall.
+			 */
+			err = -EINVAL;
+		}
+
+		if (!err) {
+			/*
+			 * If no CRC/etc errors in response, but previous
+			 * failed, note the start of a new run
+			 */
+			if (!prev_ok)
+				start_run = tap;
+		} else if (prev_ok) {
+			int run = tap - 1 - start_run;
+
+			/* did we just exit a wider sweet spot? */
+			if (start_run >= 0 && run > best_run) {
+				best_start = start_run;
+				best_run = run;
+			}
+		}
+	}
+
+	if (best_start < 0) {
+		dev_warn(host->dev, "%s tuning %s failed\n",
+			mmc_hostname(mmc), adj->name);
+		return -EINVAL;
+	}
+
+	tap = best_start + best_run / 2;
+	how[tap] = '@';
+	dev_dbg(host->dev, "%s/%s %d/%lld/%d %s\n",
+		mmc_hostname(mmc), adj->name,
+		best_start, tap, best_start + best_run,
+		how);
+	slot->taps &= ~adj->mask;
+	slot->taps |= (tap << __bf_shf(adj->mask));
+	cvm_mmc_set_timing(slot);
+	return 0;
 }
 
 static u32 max_supported_frequency(struct cvm_mmc_host *host)
@@ -1057,6 +1242,7 @@ static u32 max_supported_frequency(struct cvm_mmc_host *host)
 
 static void cvm_mmc_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 {
+
 	struct cvm_mmc_slot *slot = mmc_priv(mmc);
 	struct cvm_mmc_host *host = slot->host;
 	int clk_period = 0, power_class = 10, bus_width = 0;
@@ -1176,11 +1362,67 @@ out:
 	host->release_bus(host);
 }
 
+static struct adj adj[] = {
+	{ "CMD_IN", MIO_EMM_TIMING_CMD_IN,
+		cvm_mmc_r1_cmd, MMC_SEND_STATUS, },
+	{ "CMD_OUT", MIO_EMM_TIMING_CMD_OUT,
+		cvm_mmc_r1_cmd, MMC_SEND_STATUS, },
+	{ "DATA_IN", MIO_EMM_TIMING_DATA_IN,
+		cvm_mmc_get_ext_csd, },
+	{ "DATA_OUT", MIO_EMM_TIMING_DATA_OUT,
+		cvm_mmc_r1_cmd, 0, true, },
+	{ NULL, },
+};
+
+static int cvm_execute_tuning(struct mmc_host *mmc, u32 opcode)
+{
+	struct cvm_mmc_slot *slot = mmc_priv(mmc);
+	struct adj *a;
+	int ret;
+
+	dev_info(slot->host->dev, "%s re-tuning\n", mmc_hostname(mmc));
+
+	for (a = adj; a->name; a++) {
+		if (a->ddr_only && !cvm_is_mmc_timing_ddr(slot))
+			continue;
+
+		ret = adjust_tuning(mmc, a,
+			a->opcode ?: opcode);
+
+		if (ret)
+			return ret;
+	}
+
+	cvm_mmc_set_timing(slot);
+	slot->tuned = true;
+	return 0;
+}
+
+static void cvm_mmc_reset(struct mmc_host *mmc)
+{
+	struct cvm_mmc_slot *slot = mmc_priv(mmc);
+	struct cvm_mmc_host *host = slot->host;
+	u64 r;
+
+	cvm_mmc_reset_bus(slot);
+
+	r = FIELD_PREP(MIO_EMM_CMD_VAL, 1) |
+		FIELD_PREP(MIO_EMM_CMD_BUS_ID, slot->bus_id);
+
+	writeq(r, host->base + MIO_EMM_CMD(host));
+
+	do {
+		r = readq(host->base + MIO_EMM_RSP_STS(host));
+	} while (!(r & MIO_EMM_RSP_STS_CMD_DONE));
+}
+
 static const struct mmc_host_ops cvm_mmc_ops = {
 	.request        = cvm_mmc_request,
 	.set_ios        = cvm_mmc_set_ios,
 	.get_ro		= mmc_gpio_get_ro,
 	.get_cd		= mmc_gpio_get_cd,
+	.hw_reset	= cvm_mmc_reset,
+	.execute_tuning = cvm_execute_tuning,
 };
 
 static void cvm_mmc_set_clock(struct cvm_mmc_slot *slot, unsigned int clock)
@@ -1355,6 +1597,7 @@ int cvm_mmc_of_slot_probe(struct device *dev, struct cvm_mmc_host *host)
 	mmc->max_blk_size = 512;
 	/* DMA block count field is 15 bits */
 	mmc->max_blk_count = 32767;
+	mmc_can_retune(mmc);
 
 	slot->clock = mmc->f_min;
 	slot->bus_id = id;
