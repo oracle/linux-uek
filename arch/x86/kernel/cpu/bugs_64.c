@@ -436,7 +436,7 @@ void find_retpoline_alternative(void)
 
 static inline bool retp_compiler(void)
 {
-	return __is_defined(RETPOLINE);
+	return __is_defined(CONFIG_RETPOLINE);
 }
 
 bool retpoline_enabled(void)
