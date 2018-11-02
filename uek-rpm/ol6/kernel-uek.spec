@@ -436,7 +436,7 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 # scripts use them.
 #
 %define kernel_prereq  fileutils, module-init-tools, initscripts >= 8.11.1-1, /sbin/new-kernel-pkg
-%define initrd_prereq  dracut-kernel >= 004-242.0.3
+%define initrd_prereq  dracut-kernel >= 004-347
 
 #
 # This macro does requires, provides, conflicts, obsoletes for a kernel package.
