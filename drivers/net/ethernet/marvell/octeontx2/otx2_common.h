@@ -250,10 +250,16 @@ static inline void otx2_get_page(struct otx2_pool *pool)
 /* Mbox APIs */
 static inline int otx2_sync_mbox_msg(struct mbox *mbox)
 {
+	int err;
+
 	if (!otx2_mbox_nonempty(&mbox->mbox, 0))
 		return 0;
 	otx2_mbox_msg_send(&mbox->mbox, 0);
-	return otx2_mbox_wait_for_rsp(&mbox->mbox, 0);
+	err = otx2_mbox_wait_for_rsp(&mbox->mbox, 0);
+	if (err)
+		return err;
+
+	return otx2_mbox_check_rsp_msgs(&mbox->mbox, 0);
 }
 
 /* Use this API to send mbox msgs in atomic context
@@ -261,10 +267,16 @@ static inline int otx2_sync_mbox_msg(struct mbox *mbox)
  */
 static inline int otx2_sync_mbox_msg_busy_poll(struct mbox *mbox)
 {
+	int err;
+
 	if (!otx2_mbox_nonempty(&mbox->mbox, 0))
 		return 0;
 	otx2_mbox_msg_send(&mbox->mbox, 0);
-	return otx2_mbox_busy_poll_for_rsp(&mbox->mbox, 0);
+	err = otx2_mbox_busy_poll_for_rsp(&mbox->mbox, 0);
+	if (err)
+		return err;
+
+	return otx2_mbox_check_rsp_msgs(&mbox->mbox, 0);
 }
 
 #define M(_name, _id, _req_type, _rsp_type)				\
