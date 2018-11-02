@@ -1404,6 +1404,11 @@ ssize_t ib_uverbs_reg_mr_relaxed(struct ib_uverbs_file *file,
 
 
 	rel_args.pd = pd;
+	if (pd->device->get_pd_ident)
+		rel_args.pd_ident = pd->device->get_pd_ident(pd);
+	else
+		rel_args.pd_ident = 0;
+
 	rel_args.sg = sg;
 	rel_args.sg_len = n;
 

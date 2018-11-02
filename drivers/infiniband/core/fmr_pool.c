@@ -366,7 +366,7 @@ struct ib_fmr_pool *ib_create_fmr_pool(struct ib_pd             *pd,
 	int i;
 	int ret;
 	int max_remaps;
-
+	u32 pd_ident = 0;
 	if (!params)
 		return ERR_PTR(-EINVAL);
 
@@ -389,6 +389,8 @@ struct ib_fmr_pool *ib_create_fmr_pool(struct ib_pd             *pd,
 			device->name);
 		return ERR_PTR(-ENOSYS);
 	}
+	if (params->relaxed && device->get_pd_ident)
+		pd_ident = device->get_pd_ident(pd);
 
 #endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
@@ -471,6 +473,7 @@ struct ib_fmr_pool *ib_create_fmr_pool(struct ib_pd             *pd,
 			fmr->ref_count        = 0;
 #ifndef WITHOUT_ORACLE_EXTENSIONS
 			fmr->pd		      = pd;
+			fmr->pd_ident         = pd_ident;
 			fmr->page_list_len = 0;
 			fmr->sg		   = NULL;
 			fmr->sg_len        = 0;
@@ -711,7 +714,8 @@ struct ib_pool_fmr *ib_fmr_pool_map_phys(struct ib_fmr_pool *pool_handle,
 	}
 	spin_unlock_irqrestore(&pool->pool_lock, flags);
 
-	if (pool->relaxed && fmr->pd != rargs->pd) {
+	if (pool->relaxed &&
+		(fmr->pd != rargs->pd || fmr->pd_ident != rargs->pd_ident)) {
 		result = ib_set_fmr_pd(fmr->fmr, rargs->pd);
 		if (result) {
 			spin_lock_irqsave(&pool->pool_lock, flags);
@@ -722,6 +726,7 @@ struct ib_pool_fmr *ib_fmr_pool_map_phys(struct ib_fmr_pool *pool_handle,
 
 			return ERR_PTR(result);
 		}
+		fmr->pd_ident = rargs->pd_ident;
 	}
 
 #endif /* !WITHOUT_ORACLE_EXTENSIONS */
@@ -763,6 +768,7 @@ struct ib_pool_fmr *ib_fmr_pool_map_phys(struct ib_fmr_pool *pool_handle,
 
 	if (pool->relaxed) {
 		fmr->pd = rargs->pd;
+		fmr->pd_ident = rargs->pd_ident;
 		/* if it was mapped earlier */
 		if (fmr->remap_count > 1)
 			fmr_teardown_mr(fmr);

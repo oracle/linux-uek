@@ -1818,6 +1818,7 @@ struct ib_mw {
 struct ib_fmr {
 	struct ib_device	*device;
 	struct ib_pd		*pd;
+	int			 pd_ident;
 	struct list_head	list;
 	u32			lkey;
 	u32			rkey;
@@ -2402,6 +2403,7 @@ struct ib_device {
 						  int atinit);
 	int                        (*set_fmr_pd)(struct ib_fmr *fmr,
 						 struct ib_pd *pd);
+	u32			   (*get_pd_ident)(struct ib_pd *pd);
 #endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 	struct module               *owner;
