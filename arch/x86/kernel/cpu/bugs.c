@@ -426,7 +426,7 @@ static inline const char *spectre_v2_module_string(void) { return ""; }
 
 static inline bool retp_compiler(void)
 {
-	return __is_defined(RETPOLINE);
+	return __is_defined(CONFIG_RETPOLINE);
 }
 
 bool retpoline_enabled(void)
