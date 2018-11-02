@@ -259,8 +259,6 @@ enum spectre_v2_mitigation_cmd {
 
 static const char *spectre_v2_strings[] = {
 	[SPECTRE_V2_NONE]			= "Vulnerable",
-	[SPECTRE_V2_RETPOLINE_MINIMAL]		= "Vulnerable: Minimal generic ASM retpoline",
-	[SPECTRE_V2_RETPOLINE_MINIMAL_AMD]	= "Vulnerable: Minimal AMD ASM retpoline",
 	[SPECTRE_V2_RETPOLINE_GENERIC]		= "Mitigation: Full generic retpoline",
 	[SPECTRE_V2_RETPOLINE_AMD]		= "Mitigation: Full AMD retpoline",
 	[SPECTRE_V2_IBRS]			= "Mitigation: Basic IBRS",
@@ -434,11 +432,6 @@ void find_retpoline_alternative(void)
 	}
 }
 
-static inline bool retp_compiler(void)
-{
-	return __is_defined(CONFIG_RETPOLINE);
-}
-
 bool retpoline_enabled(void)
 {
 	return static_key_enabled(&retpoline_enabled_key);
@@ -471,15 +464,10 @@ static void retpoline_init(void)
 	}
 
 	if (boot_cpu_data.x86_vendor == X86_VENDOR_AMD &&
-	    boot_cpu_has(X86_FEATURE_LFENCE_RDTSC)) {
-		retpoline_mode = retp_compiler() ?
-			SPECTRE_V2_RETPOLINE_AMD :
-			SPECTRE_V2_RETPOLINE_MINIMAL_AMD;
-	} else {
-		retpoline_mode = retp_compiler() ?
-			SPECTRE_V2_RETPOLINE_GENERIC :
-			SPECTRE_V2_RETPOLINE_MINIMAL;
-	}
+	    boot_cpu_has(X86_FEATURE_LFENCE_RDTSC))
+		retpoline_mode = SPECTRE_V2_RETPOLINE_AMD;
+	else
+		retpoline_mode = SPECTRE_V2_RETPOLINE_GENERIC;
 }
 
 static void __init retpoline_activate(enum spectre_v2_mitigation mode)
@@ -749,8 +737,6 @@ static void __init disable_ibrs_and_friends(bool disable_ibpb)
 static bool __init retpoline_mode_selected(enum spectre_v2_mitigation mode)
 {
 	switch (mode) {
-	case SPECTRE_V2_RETPOLINE_MINIMAL:
-	case SPECTRE_V2_RETPOLINE_MINIMAL_AMD:
 	case SPECTRE_V2_RETPOLINE_GENERIC:
 	case SPECTRE_V2_RETPOLINE_AMD:
 		return true;
@@ -780,7 +766,7 @@ select_auto_mitigation_mode(enum spectre_v2_mitigation_cmd cmd)
 	pr_info("Options: %s%s%s\n",
 		ibrs_supported ? (eibrs_supported ? "IBRS(enhanced) " : "IBRS(basic) ") : "",
 		check_ibpb_inuse() ? "IBPB " : "",
-		retp_compiler() ? "retpoline" : "");
+		IS_ENABLED(CONFIG_RETPOLINE) ? "retpoline" : "");
 
 	/*
 	 * On AMD, if we have retpoline then favor it over IBRS.
@@ -790,8 +776,7 @@ select_auto_mitigation_mode(enum spectre_v2_mitigation_cmd cmd)
 	 * should be adjusted accordingly.
 	 */
 	if ((IS_ENABLED(CONFIG_RETPOLINE)) &&
-		(retpoline_mode == SPECTRE_V2_RETPOLINE_AMD ||
-		retpoline_mode == SPECTRE_V2_RETPOLINE_MINIMAL_AMD)) {
+		(retpoline_mode == SPECTRE_V2_RETPOLINE_AMD)) {
 		return retpoline_mode;
 	}
 
@@ -813,8 +798,7 @@ select_auto_mitigation_mode(enum spectre_v2_mitigation_cmd cmd)
 	} else if (IS_ENABLED(CONFIG_RETPOLINE)) {
 		/* On Skylake, basic IBRS is preferred over retpoline */
 		if (ibrs_supported && !ibrs_disabled) {
-			if (!retp_compiler() /* prefer IBRS over minimal ASM */ ||
-				(is_skylake_era() && use_ibrs_on_skylake)) {
+			if (is_skylake_era() && use_ibrs_on_skylake) {
 				/* Start the engine! */
 				ibrs_select(&auto_mode);
 				BUG_ON(auto_mode != SPECTRE_V2_IBRS);
@@ -823,7 +807,6 @@ select_auto_mitigation_mode(enum spectre_v2_mitigation_cmd cmd)
 		}
 		/* retpoline mode has been initialized by retpoline_init() */
 		return retpoline_mode;
-
 	} else {
 		/* If retpoline is not available, basic IBRS will do */
 		ibrs_select(&auto_mode);
