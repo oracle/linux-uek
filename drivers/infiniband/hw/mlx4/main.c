@@ -1411,7 +1411,12 @@ static int mlx4_ib_dealloc_pd(struct ib_pd *pd)
 
 	return 0;
 }
-
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+static u32 mlx4_ib_get_pd_ident(struct ib_pd *pd)
+{
+	return to_mpd(pd)->pdn;
+}
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 static struct ib_xrcd *mlx4_ib_alloc_xrcd(struct ib_device *ibdev,
 					  struct ib_ucontext *context,
 					  struct ib_udata *udata)
@@ -2964,6 +2969,7 @@ static void *mlx4_ib_add(struct mlx4_dev *dev)
 	ibdev->ib_dev.share_pd		= mlx4_ib_share_pd;
 	ibdev->ib_dev.remove_shpd	= mlx4_ib_remove_shpd;
 	ibdev->ib_dev.set_fmr_pd	= mlx4_ib_set_fmr_pd;
+	ibdev->ib_dev.get_pd_ident	= mlx4_ib_get_pd_ident;
 #endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 	if ((dev->caps.flags2 & MLX4_DEV_CAP_FLAG2_RSS) &&

@@ -77,6 +77,7 @@ struct ib_pool_fmr {
 	u64                 io_virtual_address;
 #ifndef WITHOUT_ORACLE_EXTENSIONS
 	struct ib_pd	   *pd;
+	u32                 pd_ident;
 	int		    list_id;
 	struct scatterlist *sg;
 	int		    sg_len;
@@ -89,6 +90,7 @@ struct ib_pool_fmr {
 
 struct ib_fmr_args_relaxed {
 	struct ib_pd       *pd;
+	u32                 pd_ident;
 	struct scatterlist *sg;
 	int		    sg_len;
 };
