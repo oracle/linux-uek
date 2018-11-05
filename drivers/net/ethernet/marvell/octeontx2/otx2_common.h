@@ -29,6 +29,11 @@
 
 #define NAME_SIZE                               32
 
+enum arua_mapped_qtypes {
+	AURA_NIX_RQ,
+	AURA_NIX_SQ,
+};
+
 /* NIX LF interrupts range*/
 #define NIX_LF_QINT_VEC_START	0x00
 #define NIX_LF_CINT_VEC_START	0x40
@@ -113,6 +118,8 @@ struct otx2_hw {
 	u16                     tx_queues;
 	u16			max_queues;
 	u16			pool_cnt;
+	u16			rqpool_cnt;
+	u16			sqpool_cnt;
 
 	/* NPA */
 	u32			stack_pg_ptrs;  /* No of ptrs per stack page */
@@ -126,7 +133,6 @@ struct otx2_hw {
 	cpumask_var_t           *affinity_mask;
 
 	u8			cint_cnt; /* CQ interrupt count */
-	u16			rqpool_cnt;
 	u16		txschq_list[NIX_TXSCH_LVL_CNT][MAX_TXSCHQ_PER_FUNC];
 
 	/* For TSO segmentation */
@@ -245,6 +251,15 @@ static inline void otx2_get_page(struct otx2_pool *pool)
 		page_ref_add(pool->page, pool->pageref);
 	pool->pageref = 0;
 	pool->page = NULL;
+}
+
+static inline int otx2_get_pool_idx(struct otx2_nic *pfvf, int type, int idx)
+{
+	if (type == AURA_NIX_SQ)
+		return pfvf->hw.rqpool_cnt + idx;
+
+	/* AURA_NIX_RQ */
+	return idx;
 }
 
 /* Mbox APIs */

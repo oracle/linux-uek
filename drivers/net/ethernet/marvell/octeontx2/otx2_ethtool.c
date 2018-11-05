@@ -238,7 +238,6 @@ static int otx2_set_channels(struct net_device *dev,
 
 	pfvf->hw.rx_queues = channel->rx_count;
 	pfvf->hw.tx_queues = channel->tx_count;
-	pfvf->hw.rqpool_cnt = channel->rx_count;
 	err = otx2_set_real_num_queues(dev, pfvf->hw.tx_queues,
 				       pfvf->hw.rx_queues);
 	pfvf->qset.cq_cnt = pfvf->hw.tx_queues +  pfvf->hw.rx_queues;
