@@ -259,4 +259,34 @@ struct nix_rx_action {
 #endif
 };
 
+struct nix_rx_vtag_action {
+#if defined(__BIG_ENDIAN_BITFIELD)
+	u64     rsvd_63_48      :16;
+	u64     vtag1_valid     :1;
+	u64     vtag1_type      :3;
+	u64     rsvd_43         :1;
+	u64     vtag1_lid       :3;
+	u64     vtag1_relptr    :8;
+	u64     rsvd_31_16      :16;
+	u64     vtag0_valid     :1;
+	u64     vtag0_type      :3;
+	u64     rsvd_11         :1;
+	u64     vtag0_lid       :3;
+	u64     vtag0_relptr    :8;
+#else
+	u64     vtag0_relptr    :8;
+	u64     vtag0_lid       :3;
+	u64     rsvd_11         :1;
+	u64     vtag0_type      :3;
+	u64     vtag0_valid     :1;
+	u64     rsvd_31_16      :16;
+	u64     vtag1_relptr    :8;
+	u64     vtag1_lid       :3;
+	u64     rsvd_43         :1;
+	u64     vtag1_type      :3;
+	u64     vtag1_valid     :1;
+	u64     rsvd_63_48      :16;
+#endif
+};
+
 #endif /* NPC_H */
