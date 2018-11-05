@@ -258,6 +258,18 @@ static void otx2_rcv_pkt_handler(struct otx2_nic *pfvf,
 	if (pfvf->netdev->features & NETIF_F_RXCSUM)
 		skb->ip_summed = CHECKSUM_UNNECESSARY;
 
+	/* This holds true on condition RX VLAN offloads are enabled and
+	 * 802.1AD or 802.1Q VLANs were found in frame.
+	 */
+	if (parse->vtag0_gone) {
+		if (skb->protocol == htons(ETH_P_8021Q))
+			__vlan_hwaccel_put_tag(skb, htons(ETH_P_8021AD),
+					       parse->vtag0_tci);
+		else
+			__vlan_hwaccel_put_tag(skb, htons(ETH_P_8021Q),
+					       parse->vtag0_tci);
+	}
+
 	napi_gro_receive(&qset->napi[cq->cint_idx].napi, skb);
 }
 

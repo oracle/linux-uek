@@ -378,6 +378,34 @@ static int otx2_cgx_config_loopback(struct otx2_nic *pf, bool enable)
 	return otx2_sync_mbox_msg(&pf->mbox);
 }
 
+static int otx2_enable_rxvlan(struct otx2_nic *pf, bool enable)
+{
+	struct nix_vtag_config *req;
+	struct mbox_msghdr *rsp_hdr;
+	int err;
+
+	req = otx2_mbox_alloc_msg_NIX_VTAG_CFG(&pf->mbox);
+	if (!req)
+		return -ENOMEM;
+
+	req->vtag_size = 0;
+	req->cfg_type = 1;
+	/* must be set to zero */
+	req->rx.vtag_type = 0;
+	req->rx.strip_vtag = enable;
+	req->rx.capture_vtag = enable;
+
+	err = otx2_sync_mbox_msg(&pf->mbox);
+	if (err)
+		return err;
+
+	rsp_hdr = otx2_mbox_get_rsp(&pf->mbox.mbox, 0, &req->hdr);
+	if (IS_ERR(rsp_hdr))
+		return PTR_ERR(rsp_hdr);
+
+	return rsp_hdr->rc;
+}
+
 int otx2_set_real_num_queues(struct net_device *netdev,
 			     int tx_queues, int rx_queues)
 {
@@ -397,6 +425,54 @@ int otx2_set_real_num_queues(struct net_device *netdev,
 	return err;
 }
 EXPORT_SYMBOL(otx2_set_real_num_queues);
+
+static void otx2_alloc_rxvlan(struct otx2_nic *pf)
+{
+	netdev_features_t old, wanted = NETIF_F_HW_VLAN_STAG_RX |
+					NETIF_F_HW_VLAN_CTAG_RX;
+	struct mbox_msghdr *rsp_hdr;
+	struct msg_req *req;
+	int err;
+
+	req = otx2_mbox_alloc_msg_NIX_RXVLAN_ALLOC(&pf->mbox);
+	if (!req)
+		return;
+
+	err = otx2_sync_mbox_msg(&pf->mbox);
+	if (err)
+		return;
+
+	rsp_hdr = otx2_mbox_get_rsp(&pf->mbox.mbox, 0, &req->hdr);
+	if (IS_ERR(rsp_hdr))
+		return;
+
+	old = pf->netdev->hw_features;
+	if (rsp_hdr->rc) {
+		/* in case of failure during rxvlan allocation
+		 * features must be updated accordingly
+		 */
+		dev_info(pf->dev,
+			 "Disabling RX VLAN offload due to non-availability of MCAM space\n");
+		pf->netdev->hw_features &= ~wanted;
+		pf->netdev->features &= ~wanted;
+	} else if (!(pf->netdev->hw_features & wanted)) {
+		/* we are recovering from the previous failure */
+		pf->netdev->hw_features |= wanted;
+		err = otx2_enable_rxvlan(pf, true);
+		if (!err)
+			pf->netdev->features |= wanted;
+	} else if (pf->netdev->features & wanted) {
+		/* interface is going up */
+		err = otx2_enable_rxvlan(pf, true);
+		if (err) {
+			pf->netdev->features &= ~wanted;
+			netdev_features_change(pf->netdev);
+		}
+	}
+
+	if (old != pf->netdev->hw_features)
+		netdev_features_change(pf->netdev);
+}
 
 static irqreturn_t otx2_q_intr_handler(int irq, void *data)
 {
@@ -796,6 +872,10 @@ int otx2_open(struct net_device *netdev)
 
 	/* Enable link notifications */
 	otx2_cgx_config_linkevents(pf, true);
+
+	/* Alloc rxvlan entry in MCAM */
+	otx2_alloc_rxvlan(pf);
+
 	return 0;
 
 err_free_cints:
@@ -873,6 +953,17 @@ int otx2_stop(struct net_device *netdev)
 }
 EXPORT_SYMBOL(otx2_stop);
 
+static netdev_features_t otx2_fix_features(struct net_device *dev,
+					   netdev_features_t features)
+{
+	if (features & NETIF_F_HW_VLAN_CTAG_RX)
+		features |= NETIF_F_HW_VLAN_STAG_RX;
+	else
+		features &= ~NETIF_F_HW_VLAN_STAG_RX;
+
+	return features;
+}
+
 static void otx2_set_rx_mode(struct net_device *netdev)
 {
 	struct otx2_nic *pf = netdev_priv(netdev);
@@ -918,6 +1009,11 @@ static int otx2_set_features(struct net_device *netdev,
 	if ((changed & NETIF_F_LOOPBACK) && netif_running(netdev))
 		return otx2_cgx_config_loopback(pf,
 						features & NETIF_F_LOOPBACK);
+
+	if ((changed & NETIF_F_HW_VLAN_CTAG_RX) && netif_running(netdev))
+		return otx2_enable_rxvlan(pf,
+					  features & NETIF_F_HW_VLAN_CTAG_RX);
+
 	return 0;
 }
 
@@ -925,6 +1021,7 @@ static const struct net_device_ops otx2_netdev_ops = {
 	.ndo_open		= otx2_open,
 	.ndo_stop		= otx2_stop,
 	.ndo_start_xmit		= otx2_xmit,
+	.ndo_fix_features	= otx2_fix_features,
 	.ndo_set_mac_address    = otx2_set_mac_address,
 	.ndo_change_mtu         = otx2_change_mtu,
 	.ndo_set_rx_mode        = otx2_set_rx_mode,
@@ -1063,7 +1160,9 @@ static int otx2_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 
 	netdev->hw_features = (NETIF_F_RXCSUM | NETIF_F_IP_CSUM |
 			       NETIF_F_IPV6_CSUM | NETIF_F_RXHASH |
-			       NETIF_F_SG | NETIF_F_TSO | NETIF_F_TSO6);
+			       NETIF_F_SG | NETIF_F_TSO | NETIF_F_TSO6 |
+			       NETIF_F_HW_VLAN_STAG_RX |
+			       NETIF_F_HW_VLAN_CTAG_RX);
 	netdev->features |= netdev->hw_features;
 	netdev->hw_features |= NETIF_F_LOOPBACK;
 
