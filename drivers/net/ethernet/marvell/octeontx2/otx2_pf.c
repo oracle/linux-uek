@@ -587,7 +587,16 @@ static void otx2_disable_napi(struct otx2_nic *pf)
 
 static int otx2_init_hw_resources(struct otx2_nic *pf)
 {
+	struct otx2_hw *hw = &pf->hw;
 	int err, lvl;
+
+	/* Set required NPA LF's pool counts
+	 * Auras and Pools are used in a 1:1 mapping,
+	 * so, aura count = pool count.
+	 */
+	hw->rqpool_cnt = hw->rx_queues;
+	hw->sqpool_cnt = hw->tx_queues;
+	hw->pool_cnt = hw->rqpool_cnt + hw->sqpool_cnt;
 
 	/* NPA init */
 	err = otx2_config_npa(pf);
@@ -651,7 +660,7 @@ static void otx2_free_hw_resources(struct otx2_nic *pf)
 	}
 
 	/* Free SQB pointers */
-	otx2_free_aura_ptr(pf, NIX_AQ_CTYPE_SQ);
+	otx2_free_aura_ptr(pf, AURA_NIX_SQ);
 
 	/* Disable RQs */
 	otx2_ctx_disable(mbox, NIX_AQ_CTYPE_RQ, false);
@@ -666,7 +675,7 @@ static void otx2_free_hw_resources(struct otx2_nic *pf)
 	}
 
 	/* Free RQ buffer pointers*/
-	otx2_free_aura_ptr(pf, NIX_AQ_CTYPE_RQ);
+	otx2_free_aura_ptr(pf, AURA_NIX_RQ);
 
 	/* Disable CQs*/
 	otx2_ctx_disable(mbox, NIX_AQ_CTYPE_CQ, false);
@@ -1079,7 +1088,6 @@ static int otx2_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	hw->rx_queues = qcount;
 	hw->tx_queues = qcount;
 	hw->max_queues = qcount;
-	hw->rqpool_cnt = qcount;
 
 	hw->irq_name = devm_kmalloc_array(&hw->pdev->dev, num_vec, NAME_SIZE,
 					  GFP_KERNEL);

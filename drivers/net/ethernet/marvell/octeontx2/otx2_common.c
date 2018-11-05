@@ -461,7 +461,7 @@ int otx2_txschq_stop(struct otx2_nic *pfvf)
 	return 0;
 }
 
-static int otx2_rq_init(struct otx2_nic *pfvf, u16 qidx)
+static int otx2_rq_init(struct otx2_nic *pfvf, u16 qidx, u16 lpb_aura)
 {
 	struct nix_aq_enq_req *aq;
 
@@ -473,7 +473,7 @@ static int otx2_rq_init(struct otx2_nic *pfvf, u16 qidx)
 	aq->rq.cq = qidx;
 	aq->rq.ena = 1;
 	aq->rq.pb_caching = 1;
-	aq->rq.lpb_aura = qidx; /* Use large packet buffer aura */
+	aq->rq.lpb_aura = lpb_aura; /* Use large packet buffer aura */
 	aq->rq.lpb_sizem1 = (DMA_BUFFER_LEN / 8) - 1;
 	aq->rq.xqe_imm_size = 0; /* Copying of packet to CQE not needed */
 	aq->rq.flow_tagw = 32; /* Copy full 32bit flow_tag to CQE header */
@@ -488,16 +488,15 @@ static int otx2_rq_init(struct otx2_nic *pfvf, u16 qidx)
 	return otx2_sync_mbox_msg(&pfvf->mbox);
 }
 
-static int otx2_sq_init(struct otx2_nic *pfvf, u16 qidx)
+static int otx2_sq_init(struct otx2_nic *pfvf, u16 qidx, u16 sqb_aura)
 {
-	int pool_id = pfvf->hw.rx_queues + qidx;
 	struct otx2_qset *qset = &pfvf->qset;
 	struct otx2_snd_queue *sq;
 	struct nix_aq_enq_req *aq;
 	struct otx2_pool *pool;
 	int err;
 
-	pool = &pfvf->qset.pool[pool_id];
+	pool = &pfvf->qset.pool[sqb_aura];
 	sq = &qset->sq[qidx];
 	sq->sqe_size = NIX_SQESZ_W16 ? 64 : 128;
 
@@ -521,7 +520,7 @@ static int otx2_sq_init(struct otx2_nic *pfvf, u16 qidx)
 	sq->head = 0;
 	sq->sqe_per_sqb = (pfvf->hw.sqb_size / sq->sqe_size) - 1;
 	sq->num_sqbs = (qset->sqe_cnt + sq->sqe_per_sqb) / sq->sqe_per_sqb;
-	sq->aura_id = pool_id;
+	sq->aura_id = sqb_aura;
 	sq->aura_fc_addr = pool->fc_addr->base;
 	sq->lmt_addr = (__force u64 *)(pfvf->reg_base + LMT_LF_LMTLINEX(qidx));
 	sq->io_addr = (__force u64)(pfvf->reg_base + NIX_LF_OP_SENDX(0));
@@ -543,7 +542,7 @@ static int otx2_sq_init(struct otx2_nic *pfvf, u16 qidx)
 	aq->sq.smq_rr_quantum = DMA_BUFFER_LEN / 4;
 	aq->sq.default_chan = pfvf->tx_chan_base;
 	aq->sq.sqe_stype = NIX_STYPE_STF; /* Cache SQB */
-	aq->sq.sqb_aura = pfvf->hw.rx_queues + qidx;
+	aq->sq.sqb_aura = sqb_aura;
 	aq->sq.sq_int_ena = NIX_SQINT_BITS;
 	aq->sq.qint_idx = 0;
 
@@ -573,7 +572,7 @@ static int otx2_cq_init(struct otx2_nic *pfvf, u16 qidx)
 
 	/* Save CQE CPU base for faster reference */
 	cq->cqe_base = cq->cqe->base;
-	cq->rbpool = &qset->pool[qidx];
+
 	/* In case where all RQs auras point to single pool,
 	 * all CQs receive buffer pool also point to same pool.
 	 */
@@ -612,14 +611,18 @@ int otx2_config_nix_queues(struct otx2_nic *pfvf)
 
 	/* Initialize RX queues */
 	for (qidx = 0; qidx < pfvf->hw.rx_queues; qidx++) {
-		err = otx2_rq_init(pfvf, qidx);
+		u16 lpb_aura = otx2_get_pool_idx(pfvf, AURA_NIX_RQ, qidx);
+
+		err = otx2_rq_init(pfvf, qidx, lpb_aura);
 		if (err)
 			return err;
 	}
 
 	/* Initialize TX queues */
 	for (qidx = 0; qidx < pfvf->hw.tx_queues; qidx++) {
-		err = otx2_sq_init(pfvf, qidx);
+		u16 sqb_aura = otx2_get_pool_idx(pfvf, AURA_NIX_SQ, qidx);
+
+		err = otx2_sq_init(pfvf, qidx, sqb_aura);
 		if (err)
 			return err;
 	}
@@ -685,13 +688,13 @@ void otx2_free_aura_ptr(struct otx2_nic *pfvf, int type)
 	struct otx2_pool *pool;
 	u64 iova, pa;
 
-	if (type == NIX_AQ_CTYPE_SQ) {
-		pool_start = pfvf->hw.rx_queues;
-		pool_end = pfvf->hw.pool_cnt;
+	if (type == AURA_NIX_SQ) {
+		pool_start = otx2_get_pool_idx(pfvf, type, 0);
+		pool_end = pool_start + pfvf->hw.sqpool_cnt;
 		size = pfvf->hw.sqb_size;
 	}
-	if (type == NIX_AQ_CTYPE_RQ) {
-		pool_start = 0;
+	if (type == AURA_NIX_RQ) {
+		pool_start = otx2_get_pool_idx(pfvf, type, 0);
 		pool_end = pfvf->hw.rqpool_cnt;
 		size = RCV_FRAG_LEN;
 	}
@@ -701,7 +704,7 @@ void otx2_free_aura_ptr(struct otx2_nic *pfvf, int type)
 		pool = &pfvf->qset.pool[pool_id];
 		iova = otx2_aura_allocptr(pfvf, pool_id);
 		while (iova) {
-			if (type == NIX_AQ_CTYPE_RQ)
+			if (type == AURA_NIX_RQ)
 				iova -= NET_SKB_PAD;
 
 			pa = otx2_iova_to_phys(pfvf->iommu_domain, iova);
@@ -766,11 +769,6 @@ static int otx2_aura_init(struct otx2_nic *pfvf, int aura_id,
 	aq->aura.pool_caching = 1;
 	aq->aura.shift = ilog2(numptrs) - 8;
 	aq->aura.count = numptrs;
-	/* In case where all RQ's auras points to a single pool,
-	 * buffer pointers are freed to Aura 0 only.
-	 */
-	if (pool_id != aura_id)
-		aq->aura.count = 0;
 	aq->aura.limit = numptrs;
 	aq->aura.ena = 1;
 	aq->aura.fc_ena = 1;
@@ -835,8 +833,8 @@ static int otx2_pool_init(struct otx2_nic *pfvf, u16 pool_id,
 
 int otx2_sq_aura_pool_init(struct otx2_nic *pfvf)
 {
+	int sq, pool_id, stack_pages, num_sqbs;
 	struct otx2_qset *qset = &pfvf->qset;
-	int pool_id, stack_pages, num_sqbs;
 	struct otx2_hw *hw = &pfvf->hw;
 	struct otx2_pool *pool;
 	int err, ptr;
@@ -854,7 +852,8 @@ int otx2_sq_aura_pool_init(struct otx2_nic *pfvf)
 	stack_pages =
 		(num_sqbs + hw->stack_pg_ptrs - 1) / hw->stack_pg_ptrs;
 
-	for (pool_id = hw->rx_queues; pool_id < hw->pool_cnt; pool_id++) {
+	for (sq = 0; sq < hw->tx_queues; sq++) {
+		pool_id = otx2_get_pool_idx(pfvf, AURA_NIX_SQ, sq);
 		/* Initialize aura context */
 		err = otx2_aura_init(pfvf, pool_id, pool_id, num_sqbs);
 		if (err)
@@ -873,7 +872,8 @@ int otx2_sq_aura_pool_init(struct otx2_nic *pfvf)
 		goto fail;
 
 	/* Allocate pointers and free them to aura/pool */
-	for (pool_id = hw->rx_queues; pool_id < hw->pool_cnt; pool_id++) {
+	for (sq = 0; sq < hw->tx_queues; sq++) {
+		pool_id = otx2_get_pool_idx(pfvf, AURA_NIX_SQ, sq);
 		pool = &pfvf->qset.pool[pool_id];
 		for (ptr = 0; ptr < num_sqbs; ptr++) {
 			bufptr = otx2_alloc_rbuf(pfvf, pool);
@@ -892,26 +892,28 @@ fail:
 
 int otx2_rq_aura_pool_init(struct otx2_nic *pfvf)
 {
-	int stack_pages, pool_id, aura_id;
 	struct otx2_hw *hw = &pfvf->hw;
+	int stack_pages, pool_id, rq;
 	struct otx2_pool *pool;
-	int err, ptr;
+	int err, ptr, num_ptrs;
 	s64 bufptr;
 
-	stack_pages =
-		(RQ_QLEN + hw->stack_pg_ptrs - 1) / hw->stack_pg_ptrs;
+	num_ptrs = RQ_QLEN;
 
-	for (aura_id = 0; aura_id < hw->rx_queues; aura_id++) {
-		pool_id = (hw->rqpool_cnt == hw->rx_queues) ? aura_id : 0;
+	stack_pages =
+		(num_ptrs + hw->stack_pg_ptrs - 1) / hw->stack_pg_ptrs;
+
+	for (rq = 0; rq < hw->rx_queues; rq++) {
+		pool_id = otx2_get_pool_idx(pfvf, AURA_NIX_RQ, rq);
 		/* Initialize aura context */
-		err = otx2_aura_init(pfvf, aura_id, pool_id, RQ_QLEN);
+		err = otx2_aura_init(pfvf, pool_id, pool_id, num_ptrs);
 		if (err)
 			goto fail;
 	}
 
 	for (pool_id = 0; pool_id < hw->rqpool_cnt; pool_id++) {
 		err = otx2_pool_init(pfvf, pool_id, stack_pages,
-				     RQ_QLEN, RCV_FRAG_LEN);
+				     num_ptrs, RCV_FRAG_LEN);
 		if (err)
 			goto fail;
 	}
@@ -924,7 +926,7 @@ int otx2_rq_aura_pool_init(struct otx2_nic *pfvf)
 	/* Allocate pointers and free them to aura/pool */
 	for (pool_id = 0; pool_id < hw->rqpool_cnt; pool_id++) {
 		pool = &pfvf->qset.pool[pool_id];
-		for (ptr = 0; ptr < RQ_QLEN; ptr++) {
+		for (ptr = 0; ptr < num_ptrs; ptr++) {
 			bufptr = otx2_alloc_rbuf(pfvf, pool);
 			if (bufptr <= 0)
 				return bufptr;
@@ -950,8 +952,8 @@ int otx2_config_npa(struct otx2_nic *pfvf)
 	 * Aura - Alloc/frees pointers from/to pool for NIX DMA.
 	 */
 
-	/* Rx and Tx queues will have their own aura & pool in a 1:1 config */
-	hw->pool_cnt = hw->rx_queues + hw->tx_queues;
+	if (!hw->pool_cnt)
+		return -EINVAL;
 
 	qset->pool = devm_kzalloc(pfvf->dev, sizeof(struct otx2_pool) *
 				  hw->pool_cnt, GFP_KERNEL);
