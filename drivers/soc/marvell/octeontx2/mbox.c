@@ -262,6 +262,40 @@ error:
 }
 EXPORT_SYMBOL(otx2_mbox_get_rsp);
 
+int otx2_mbox_check_rsp_msgs(struct otx2_mbox *mbox, int devid)
+{
+	unsigned long ireq = mbox->tx_start + msgs_offset;
+	unsigned long irsp = mbox->rx_start + msgs_offset;
+	struct otx2_mbox_dev *mdev = &mbox->dev[devid];
+	int rc = -ENODEV;
+	u16 msgs;
+
+	spin_lock(&mdev->mbox_lock);
+
+	if (mdev->num_msgs != mdev->msgs_acked)
+		goto exit;
+
+	for (msgs = 0; msgs < mdev->msgs_acked; msgs++) {
+		struct mbox_msghdr *preq = mdev->mbase + ireq;
+		struct mbox_msghdr *prsp = mdev->mbase + irsp;
+
+		if (preq->id != prsp->id)
+			goto exit;
+		if (prsp->rc) {
+			rc = prsp->rc;
+			goto exit;
+		}
+
+		ireq = mbox->tx_start + preq->next_msgoff;
+		irsp = mbox->rx_start + prsp->next_msgoff;
+	}
+	rc = 0;
+exit:
+	spin_unlock(&mdev->mbox_lock);
+	return rc;
+}
+EXPORT_SYMBOL(otx2_mbox_check_rsp_msgs);
+
 int
 otx2_reply_invalid_msg(struct otx2_mbox *mbox, int devid, u16 pcifunc, u16 id)
 {
