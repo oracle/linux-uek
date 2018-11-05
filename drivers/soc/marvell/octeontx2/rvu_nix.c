@@ -1581,28 +1581,15 @@ int rvu_mbox_handler_NIX_TXSCHQ_CFG(struct rvu *rvu,
 static int nix_rx_vtag_cfg(struct rvu *rvu, int nixlf, int blkaddr,
 			   struct nix_vtag_config *req)
 {
-	u64 regval = 0;
+	u64 regval = req->vtag_size;
 
-#define NIX_VTAGTYPE_MAX 0x8ull
-#define NIX_VTAGSIZE_MASK 0x7ull
-#define NIX_VTAGSTRIP_CAP_MASK 0x30ull
-
-	if ((req->rx.vtag_type >= NIX_VTAGTYPE_MAX) ||
-	    (req->vtag_size > VTAGSIZE_T8))
+	if ((req->rx.vtag_type > 7) || (req->vtag_size > VTAGSIZE_T8))
 		return -EINVAL;
 
-	regval = rvu_read64(rvu, blkaddr,
-			    NIX_AF_LFX_RX_VTAG_TYPEX(nixlf, req->rx.vtag_type));
-
-	if (req->rx.strip_vtag && req->rx.capture_vtag)
-		regval |= BIT_ULL(4) | BIT_ULL(5);
-	else if (req->rx.strip_vtag)
+	if (req->rx.capture_vtag)
+		regval |= BIT_ULL(5);
+	if (req->rx.strip_vtag)
 		regval |= BIT_ULL(4);
-	else
-		regval &= ~(BIT_ULL(4) | BIT_ULL(5));
-
-	regval &= ~NIX_VTAGSIZE_MASK;
-	regval |= req->vtag_size & NIX_VTAGSIZE_MASK;
 
 	rvu_write64(rvu, blkaddr,
 		    NIX_AF_LFX_RX_VTAG_TYPEX(nixlf, req->rx.vtag_type), regval);
