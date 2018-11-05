@@ -231,13 +231,15 @@ EXPORT_SYMBOL(otx2_mbox_alloc_msg_rsp);
 struct mbox_msghdr *otx2_mbox_get_rsp(struct otx2_mbox *mbox, int devid,
 				      struct mbox_msghdr *msg)
 {
-	struct otx2_mbox_dev *mdev = &mbox->dev[devid];
 	unsigned long imsg = mbox->tx_start + msgs_offset;
 	unsigned long irsp = mbox->rx_start + msgs_offset;
+	struct otx2_mbox_dev *mdev = &mbox->dev[devid];
 	u16 msgs;
 
+	spin_lock(&mdev->mbox_lock);
+
 	if (mdev->num_msgs != mdev->msgs_acked)
-		return ERR_PTR(-ENODEV);
+		goto error;
 
 	for (msgs = 0; msgs < mdev->msgs_acked; msgs++) {
 		struct mbox_msghdr *pmsg = mdev->mbase + imsg;
@@ -245,14 +247,17 @@ struct mbox_msghdr *otx2_mbox_get_rsp(struct otx2_mbox *mbox, int devid,
 
 		if (msg == pmsg) {
 			if (pmsg->id != prsp->id)
-				return ERR_PTR(-ENODEV);
+				goto error;
+			spin_unlock(&mdev->mbox_lock);
 			return prsp;
 		}
 
-		imsg = pmsg->next_msgoff;
-		irsp = prsp->next_msgoff;
+		imsg = mbox->tx_start + pmsg->next_msgoff;
+		irsp = mbox->rx_start + prsp->next_msgoff;
 	}
 
+error:
+	spin_unlock(&mdev->mbox_lock);
 	return ERR_PTR(-ENODEV);
 }
 EXPORT_SYMBOL(otx2_mbox_get_rsp);
