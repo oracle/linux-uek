@@ -181,6 +181,11 @@ struct rvu_pfvf {
 	/* For resource limits */
 	struct pci_dev	*pdev;
 	struct kobject	*limits_kobj;
+
+	/* VLAN offload */
+	struct mcam_entry entry;
+	int rxvlan_index;
+	bool rxvlan;
 };
 
 struct nix_txsch {
@@ -491,6 +496,8 @@ int rvu_mbox_handler_NIX_STATS_RST(struct rvu *rvu, struct msg_req *req,
 int rvu_mbox_handler_NIX_VTAG_CFG(struct rvu *rvu,
 				  struct nix_vtag_config *req,
 				  struct msg_rsp *rsp);
+int rvu_mbox_handler_NIX_RXVLAN_ALLOC(struct rvu *rvu, struct msg_req *req,
+				      struct msg_rsp *rsp);
 int rvu_mbox_handler_NIX_RSS_FLOWKEY_CFG(struct rvu *rvu,
 					 struct nix_rss_flowkey_cfg *req,
 					 struct nix_rss_flowkey_cfg_rsp *rsp);
@@ -527,6 +534,7 @@ void rvu_npc_disable_promisc_entry(struct rvu *rvu, u16 pcifunc, int nixlf);
 void rvu_npc_enable_promisc_entry(struct rvu *rvu, u16 pcifunc, int nixlf);
 void rvu_npc_install_bcast_match_entry(struct rvu *rvu, u16 pcifunc,
 				       int nixlf, u64 chan);
+int rvu_npc_update_rxvlan(struct rvu *rvu, u16 pcifunc, int nixlf);
 void rvu_npc_disable_mcam_entries(struct rvu *rvu, u16 pcifunc, int nixlf);
 void rvu_npc_disable_default_entries(struct rvu *rvu, u16 pcifunc, int nixlf);
 void rvu_npc_enable_default_entries(struct rvu *rvu, u16 pcifunc, int nixlf);

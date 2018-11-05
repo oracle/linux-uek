@@ -200,7 +200,8 @@ M(NIX_LF_START_RX,	0x800d, msg_req, msg_rsp)			\
 M(NIX_LF_STOP_RX,	0x800e, msg_req, msg_rsp)			\
 M(NIX_MARK_FORMAT_CFG,	0x800f, nix_mark_format_cfg, nix_mark_format_cfg_rsp)\
 M(NIX_SET_RX_CFG,  0x8010, nix_rx_cfg, msg_rsp)				\
-M(NIX_LSO_FORMAT_CFG,   0x8011, nix_lso_format_cfg, nix_lso_format_cfg_rsp)
+M(NIX_LSO_FORMAT_CFG,   0x8011, nix_lso_format_cfg, nix_lso_format_cfg_rsp) \
+M(NIX_RXVLAN_ALLOC,	0x8012, msg_req, msg_rsp)
 
 /* Messages initiated by AF (range 0xC00 - 0xDFF) */
 #define MBOX_UP_CGX_MESSAGES						\
