@@ -544,6 +544,7 @@ struct nix_txschq_config {
 
 struct nix_vtag_config {
 	struct mbox_msghdr hdr;
+	/* '0' for 4 octet VTAG, '1' for 8 octet VTAG */
 	u8 vtag_size;
 	/* cfg_type is '0' for tx vlan cfg
 	 * cfg_type is '1' for rx vlan cfg
@@ -564,7 +565,7 @@ struct nix_vtag_config {
 
 		/* valid when cfg_type is '1' */
 		struct {
-			/* rx vtag type index */
+			/* rx vtag type index, valid values are in 0..7 range */
 			u8 vtag_type;
 			/* rx vtag strip */
 			u8 strip_vtag :1;
