@@ -501,14 +501,14 @@ void change_spectre_v2_mitigation(enum spectre_v2_mitigation_action action)
 	/*
 	 * Define the current state.
 	 *
-	 * IBRS firmware is enabled if either IBRS or retpoline is enabled.
-	 * If both IBRS and retpoline are disabled, then IBRS firmware is
-	 * disabled too.
+	 * IBRS firmware is enabled if either basic IBRS or retpoline is
+	 * enabled. If both IBRS and retpoline are disabled, then IBRS firmware
+	 * is disabled too.
 	 */
 
 	ibrs_used = !ibrs_disabled;
 	retpoline_used = !!retpoline_enabled();
-	ibrs_fw_used = (ibrs_used || retpoline_used);
+	ibrs_fw_used = ((ibrs_used && !eibrs_supported) || retpoline_used);
 
 	/*
 	 * Define the requested state.
@@ -527,7 +527,7 @@ void change_spectre_v2_mitigation(enum spectre_v2_mitigation_action action)
 
 	case SPECTRE_V2_ENABLE_IBRS:
 		ibrs_requested = true;
-		ibrs_fw_requested = true;
+		ibrs_fw_requested = !eibrs_supported;
 		retpoline_requested = false;
 		break;
 
@@ -545,7 +545,7 @@ void change_spectre_v2_mitigation(enum spectre_v2_mitigation_action action)
 
 	case SPECTRE_V2_DISABLE_RETPOLINE:
 		ibrs_requested = ibrs_used;
-		ibrs_fw_requested = ibrs_used;
+		ibrs_fw_requested = ibrs_used && !eibrs_supported;
 		retpoline_requested = false;
 		break;
 	}
@@ -555,6 +555,10 @@ void change_spectre_v2_mitigation(enum spectre_v2_mitigation_action action)
 	if (ibrs_requested != ibrs_used) {
 		if (ibrs_requested) {
 			clear_ibrs_disabled();
+			/* If enhanced IBRS is available, turn it on now */
+			if (eibrs_supported)
+				spec_ctrl_flush_all_cpus(MSR_IA32_SPEC_CTRL,
+					x86_spec_ctrl_priv);
 		} else {
 			set_ibrs_disabled();
 			if (use_ibrs & SPEC_CTRL_IBRS_SUPPORTED) {
@@ -753,8 +757,10 @@ static void __init spectre_v2_select_mitigation(void)
 
 	if (cmd == SPECTRE_V2_CMD_IBRS || !IS_ENABLED(CONFIG_RETPOLINE)) {
 		ibrs_select(&mode);
-		if (mode != SPECTRE_V2_NONE)
+		if (mode != SPECTRE_V2_NONE) {
+			/* One of the IBRS modes was successfully selected */
 			goto display;
+		}
 		if (!IS_ENABLED(CONFIG_RETPOLINE)) {
 			pr_err("Spectre mitigation: kernel not compiled with retpoline; no mitigation available!");
 			goto out;
@@ -810,11 +816,16 @@ out:
 	setup_force_cpu_cap(X86_FEATURE_RSB_CTXSW);
 	pr_info("Filling RSB on context switch\n");
 
-	/* IBRS is unnecessary with retpoline mitigation. */
-	if (mode == SPECTRE_V2_RETPOLINE_GENERIC ||
-	    mode == SPECTRE_V2_RETPOLINE_AMD) {
+	if (mode == SPECTRE_V2_IBRS_ENHANCED) {
+		/* If enhanced IBRS is available, enable it on all cpus now */
+		spec_ctrl_flush_all_cpus(MSR_IA32_SPEC_CTRL,
+			x86_spec_ctrl_base | SPEC_CTRL_FEATURE_ENABLE_IBRS);
+
+	} else if (mode == SPECTRE_V2_RETPOLINE_GENERIC ||
+		mode == SPECTRE_V2_RETPOLINE_AMD) {
 		disable_ibrs_and_friends(false /* set not-in-use */);
 	}
+
 	/* Future CPUs with IBRS_ALL might be able to avoid this. */
 	setup_force_cpu_cap(X86_FEATURE_VMEXIT_RSB_FULL);
 

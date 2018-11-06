@@ -149,7 +149,7 @@ void init_scattered_cpuid_features(struct cpuinfo_x86 *c,
 		u64 cap;
 		rdmsrl(MSR_IA32_ARCH_CAPABILITIES, cap);
 		if (cap & 2) /* IBRS all the time */
-			set_cpu_cap(c, X86_FEATURE_IBRS_ALL);
+			set_cpu_cap(c, X86_FEATURE_IBRS_ENHANCED);
 	}
 
 	if (cpu_has(c, X86_FEATURE_IBRS))
@@ -194,11 +194,17 @@ void init_scattered_cpuid_features(struct cpuinfo_x86 *c,
 		mutex_lock(&spec_ctrl_mutex);
 		if (cpu_has(c, X86_FEATURE_IBRS)) {
 			set_ibrs_supported();
-			/*
-			 * Don't do this after disable_ibrs_and_friends as we
-			 * would re-enable it (say if spectre_v2=off is used).
-			 */
-			set_ibrs_firmware();
+			/* Enable enhanced IBRS usage if available */
+			if (cpu_has(c, X86_FEATURE_IBRS_ENHANCED)) {
+				set_ibrs_enhanced();
+			} else {
+				/*
+				 * Don't do this after disable_ibrs_and_friends
+				 * as we would re-enable it (say if
+				 * spectre_v2=off is used).
+				 */
+				set_ibrs_firmware();
+			}
 		}
 		if (cpu_has(c, X86_FEATURE_IBPB))
 			set_ibpb_supported();
