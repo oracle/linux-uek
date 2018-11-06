@@ -74,6 +74,8 @@ DEFINE_STATIC_KEY_FALSE(retpoline_enabled_key);
 EXPORT_SYMBOL(retpoline_enabled_key);
 
 static bool __init is_skylake_era(void);
+static void __init disable_ibrs_and_friends(bool);
+static void __init activate_spectre_v2_mitigation(enum spectre_v2_mitigation);
 
 int __init spectre_v2_heuristics_setup(char *p)
 {
@@ -463,6 +465,15 @@ static void retpoline_init(void)
 	}
 }
 
+static void __init retpoline_activate(enum spectre_v2_mitigation mode)
+{
+	retpoline_enable();
+	/* IBRS is unnecessary with retpoline mitigation. */
+	if (mode == SPECTRE_V2_RETPOLINE_GENERIC ||
+	    mode == SPECTRE_V2_RETPOLINE_AMD)
+		disable_ibrs_and_friends(false /* Do use IPBP if possible */);
+}
+
 void refresh_set_spectre_v2_enabled(void)
 {
 	if (retpoline_enabled())
@@ -605,6 +616,25 @@ static void __init ibrs_select(enum spectre_v2_mitigation *mode)
 		pr_warn("Enhanced IBRS might not provide full mitigation against Spectre v2 if SMEP is not available.\n");
 }
 
+static void __init select_ibrs_variant(enum spectre_v2_mitigation *mode)
+{
+	/* Attempt to start IBRS */
+	ibrs_select(mode);
+
+	if (*mode != SPECTRE_V2_NONE)
+		/* Mode has been set to one of the IBRS variants */
+		return;
+
+	/* Could not enable IBRS, use retpoline mitigation if possible */
+	if (IS_ENABLED(CONFIG_RETPOLINE)) {
+		*mode = retpoline_mode;
+		return;
+	}
+
+	pr_err("Spectre mitigation: IBRS could not be enabled; "
+			"no mitigation available!");
+}
+
 static void __init disable_ibrs_and_friends(bool disable_ibpb)
 {
 	set_ibrs_disabled();
@@ -623,12 +653,13 @@ static void __init disable_ibrs_and_friends(bool disable_ibpb)
 		set_ibrs_firmware();
 }
 
-static bool __init retpoline_selected(enum spectre_v2_mitigation_cmd cmd)
+static bool __init retpoline_mode_selected(enum spectre_v2_mitigation mode)
 {
-	switch (cmd) {
-	case SPECTRE_V2_CMD_RETPOLINE_AMD:
-	case SPECTRE_V2_CMD_RETPOLINE_GENERIC:
-	case SPECTRE_V2_CMD_RETPOLINE:
+	switch (mode) {
+	case SPECTRE_V2_RETPOLINE_MINIMAL:
+	case SPECTRE_V2_RETPOLINE_MINIMAL_AMD:
+	case SPECTRE_V2_RETPOLINE_GENERIC:
+	case SPECTRE_V2_RETPOLINE_AMD:
 		return true;
 	default:
 		return false;
@@ -636,87 +667,106 @@ static bool __init retpoline_selected(enum spectre_v2_mitigation_cmd cmd)
 	return false;
 }
 
-static void __init spectre_v2_select_mitigation(void)
+/*
+ * Based on the cmd parsed from the kernel arguments and the capabilities of
+ * the system, determine which spectre v2 mitigation will be employed and
+ * return it.
+ */
+static enum spectre_v2_mitigation
+select_auto_mitigation_mode(enum spectre_v2_mitigation_cmd cmd)
 {
-	enum spectre_v2_mitigation_cmd cmd = spectre_v2_parse_cmdline();
-	enum spectre_v2_mitigation mode = SPECTRE_V2_NONE;
+	enum spectre_v2_mitigation auto_mode = SPECTRE_V2_NONE;
 
-	if (IS_ENABLED(CONFIG_RETPOLINE))
-		retpoline_init();
+	if (!boot_cpu_has_bug(X86_BUG_SPECTRE_V2) &&
+		cmd == SPECTRE_V2_CMD_AUTO) {
+		/* CPU is not affected, nothing to do */
+		disable_ibrs_and_friends(true);
+		return auto_mode;
+	}
+
+	pr_info("Options: %s%s%s\n",
+		ibrs_supported ? (eibrs_supported ? "IBRS(enhanced) " : "IBRS(basic) ") : "",
+		check_ibpb_inuse() ? "IBPB " : "",
+		retp_compiler() ? "retpoline" : "");
 
 	/*
-	 * If the command line mode is NONE, or if the CPU is not affected
-	 * and the command line mode is AUTO, then nothing to do.
+	 * On AMD, if we have retpoline then favor it over IBRS.
+	 * AMD plans to have a CPUID Function(8000_0008, EBX[18]=1)
+	 * that indicates the processor prefers using IBRS over software
+	 * mitigations such as retpoline. When that is available, this check
+	 * should be adjusted accordingly.
 	 */
-	if (cmd == SPECTRE_V2_CMD_NONE ||
-	    (!boot_cpu_has_bug(X86_BUG_SPECTRE_V2) &&
-	     cmd == SPECTRE_V2_CMD_AUTO)) {
-		disable_ibrs_and_friends(true);
-		return;
+	if ((IS_ENABLED(CONFIG_RETPOLINE)) &&
+		(retpoline_mode == SPECTRE_V2_RETPOLINE_AMD ||
+		retpoline_mode == SPECTRE_V2_RETPOLINE_MINIMAL_AMD)) {
+		return retpoline_mode;
 	}
 
-	if (cmd == SPECTRE_V2_CMD_IBRS || !IS_ENABLED(CONFIG_RETPOLINE)) {
-		ibrs_select(&mode);
-		if (mode != SPECTRE_V2_NONE) {
-			/* One of the IBRS modes was successfully selected */
-			goto display;
-		}
-		if (!IS_ENABLED(CONFIG_RETPOLINE)) {
-			pr_err("Spectre mitigation: kernel not compiled with retpoline; no mitigation available!");
-			return;
-		}
-	}
+	/*
+	 * The default mitigation preference is:
+	 * IBRS(enhanced) --> retpoline --> IBRS(basic)
+	 * Except for Skylake cpus where we prefer basic IBRS over retpoline.
+	 */
+	if (eibrs_supported && !ibrs_disabled) {
+		/*
+		 * Enhanced IBRS supports an 'always on' model in which IBRS is
+		 * enabled once and never disabled. Calling ibrs_select() now to
+		 * set the correct mode and update the ibrs state variables.
+		 */
+		ibrs_select(&auto_mode);
+		BUG_ON(auto_mode != SPECTRE_V2_IBRS_ENHANCED);
+		return auto_mode;
 
-	mode = retpoline_mode;
-
-	/* On AMD we don't need IBRS, so lets use the ASM mitigation. */
-	if (mode != SPECTRE_V2_RETPOLINE_AMD ||
-	    mode != SPECTRE_V2_RETPOLINE_MINIMAL_AMD) {
-
-		pr_info("Options: %s%s%s\n",
-			ibrs_supported ? (eibrs_supported ? "IBRS(enhanced) " : "IBRS(basic) ") : "",
-			check_ibpb_inuse() ? "IBPB " : "",
-			retp_compiler() ? "retpoline" : "");
-
-		/* IBRS available. Check if we are compiled with retpoline. */
-		if (ibrs_supported) {
-			/*
-			 * If we are on Skylake, use IBRS (if available).
-			 * But if we are forced to use retpoline on Skylake
-			 * then use that.
-			 */
+	} else if (IS_ENABLED(CONFIG_RETPOLINE)) {
+		/* On Skylake, basic IBRS is preferred over retpoline */
+		if (ibrs_supported && !ibrs_disabled) {
 			if (!retp_compiler() /* prefer IBRS over minimal ASM */ ||
-			    (!retpoline_selected(cmd) &&
-			     is_skylake_era() && use_ibrs_on_skylake)) {
-
+				(is_skylake_era() && use_ibrs_on_skylake)) {
 				/* Start the engine! */
-				ibrs_select(&mode);
-				if (mode == SPECTRE_V2_IBRS ||
-					mode == SPECTRE_V2_IBRS_ENHANCED)
-					goto display;
-				/* But if we can't, then just use retpoline */
+				ibrs_select(&auto_mode);
+				BUG_ON(auto_mode != SPECTRE_V2_IBRS);
+				return auto_mode;
 			}
 		}
+		/* retpoline mode has been initialized by retpoline_init() */
+		return retpoline_mode;
+
+	} else {
+		/* If retpoline is not available, basic IBRS will do */
+		ibrs_select(&auto_mode);
+		if (auto_mode == SPECTRE_V2_IBRS)
+			return auto_mode;
+
+		pr_err("Spectre mitigation: IBRS could not be enabled; no mitigation available!");
+		return SPECTRE_V2_NONE;
 	}
+}
 
-	retpoline_enable();
-
-display:
+/*
+ * Activate the selected spectre v2 mitigation
+ */
+static void __init activate_spectre_v2_mitigation(enum spectre_v2_mitigation mode)
+{
 	spectre_v2_enabled = mode;
-	pr_info("%s\n", spectre_v2_strings[mode]);
+	pr_info("%s\n", spectre_v2_strings[spectre_v2_enabled]);
 
-	if (mode == SPECTRE_V2_IBRS_ENHANCED) {
-		/* If enhanced IBRS is available, enable it on all cpus now */
+	if (spectre_v2_enabled == SPECTRE_V2_NONE)
+		return;
+
+	/* Activate the selected mitigation if necessary. */
+	if (retpoline_mode_selected(spectre_v2_enabled)) {
+		retpoline_activate(spectre_v2_enabled);
+
+	} else if (spectre_v2_enabled == SPECTRE_V2_IBRS_ENHANCED) {
+		/* If enhanced IBRS mode is selected, enable it in all cpus */
 		spec_ctrl_flush_all_cpus(MSR_IA32_SPEC_CTRL,
 			x86_spec_ctrl_base | SPEC_CTRL_FEATURE_ENABLE_IBRS);
-
-	} else if (mode == SPECTRE_V2_RETPOLINE_GENERIC ||
-		mode == SPECTRE_V2_RETPOLINE_AMD) {
-		/* IBRS is unnecessary with retpoline mitigation. */
-		disable_ibrs_and_friends(false /* Do use IPBP if possible */);
 	}
 
-	/* Future CPUs with IBRS_ALL might be able to avoid this. */
+	/*
+	 * Processor should ensure that guest behavior cannot control the RSB
+	 * after a VM exit (even when using enhanced IBRS).
+	 */
 	setup_force_cpu_cap(X86_FEATURE_VMEXIT_RSB_FULL);
 
 	/*
@@ -738,12 +788,57 @@ display:
 
 	/*
 	 * Retpoline means the kernel is safe because it has no indirect
-	 * branches. But firmware isn't, so use IBRS to protect that.
+	 * branches. Enhanced IBRS protects firmware too, so, enable restricted
+	 * speculation around firmware calls only when Enhanced IBRS isn't
+	 * supported.
 	 */
-	if (ibrs_firmware) {
+	if ((ibrs_firmware) &&
+		(spectre_v2_enabled != SPECTRE_V2_IBRS_ENHANCED)) {
 		setup_force_cpu_cap(X86_FEATURE_USE_IBRS_FW);
 		pr_info("Enabling Restricted Speculation for firmware calls\n");
 	}
+}
+
+static void __init spectre_v2_select_mitigation(void)
+{
+	enum spectre_v2_mitigation_cmd cmd = spectre_v2_parse_cmdline();
+	enum spectre_v2_mitigation mode = SPECTRE_V2_NONE;
+
+	if (IS_ENABLED(CONFIG_RETPOLINE))
+		retpoline_init();
+
+	switch (cmd) {
+	case SPECTRE_V2_CMD_NONE:
+		disable_ibrs_and_friends(true);
+		return;
+
+	case SPECTRE_V2_CMD_FORCE:
+	case SPECTRE_V2_CMD_AUTO:
+		mode = select_auto_mitigation_mode(cmd);
+		break;
+
+	case SPECTRE_V2_CMD_RETPOLINE:
+	case SPECTRE_V2_CMD_RETPOLINE_AMD:
+	case SPECTRE_V2_CMD_RETPOLINE_GENERIC:
+		/*
+		 * These options are sanitized by spectre_v2_parse_cmdline().
+		 * If they were received here, it means CONFIG_RETPOLINE is
+		 * enabled, so there is no need to check again.
+		 */
+		mode = retpoline_mode;
+		break;
+
+	case SPECTRE_V2_CMD_IBRS:
+		/*
+		 * Determine which IBRS variant can be enabled. If IBRS is not
+		 * available, select_ibrs_variant() will select retpoline as
+		 * fallback.
+		 */
+		select_ibrs_variant(&mode);
+		break;
+	}
+
+	activate_spectre_v2_mitigation(mode);
 }
 
 #undef pr_fmt
