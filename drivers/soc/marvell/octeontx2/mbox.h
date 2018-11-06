@@ -707,7 +707,7 @@ struct ssow_lf_free_req {
 struct sso_hw_setconfig {
 	struct mbox_msghdr hdr;
 	u32	npa_aura_id;
-	u32	npa_pf_func;
+	u16	npa_pf_func;
 	u16	hwgrps;
 };
 
