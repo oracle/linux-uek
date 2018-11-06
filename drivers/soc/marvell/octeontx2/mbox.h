@@ -435,6 +435,8 @@ enum nix_af_status {
 	NIX_AF_ERR_RSS_NOSPC_ALGO   = -416,
 	NIX_AF_ERR_MARK_CFG_FAIL    = -417,
 	NIX_AF_ERR_LSO_CFG_FAIL     = -418,
+	NIX_AF_INVAL_NPA_PF_FUNC    = -419,
+	NIX_AF_INVAL_SSO_PF_FUNC    = -420,
 };
 
 /* For NIX LF context alloc and init */
@@ -661,6 +663,7 @@ enum sso_af_status {
 	SSO_AF_ERR_LF_INVALID	= -502,
 	SSO_AF_ERR_AF_LF_ALLOC	= -503,
 	SSO_AF_ERR_GRP_EBUSY	= -504,
+	SSO_AF_INVAL_NPA_PF_FUNC = -505,
 };
 
 struct sso_lf_alloc_req {
@@ -878,8 +881,8 @@ struct npc_get_kex_cfg_rsp {
  */
 enum tim_af_status {
 	TIM_AF_NO_RINGS_LEFT			= -801,
-	TIM_AF_INVALID_NPA_PF_FUNC		= -802,
-	TIM_AF_INVALID_SSO_PF_FUNC		= -803,
+	TIM_AF_INVAL_NPA_PF_FUNC		= -802,
+	TIM_AF_INVAL_SSO_PF_FUNC		= -803,
 	TIM_AF_RING_STILL_RUNNING		= -804,
 	TIM_AF_LF_INVALID			= -805,
 	TIM_AF_CSIZE_NOT_ALIGNED		= -806,

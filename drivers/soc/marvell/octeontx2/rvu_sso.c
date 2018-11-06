@@ -170,18 +170,25 @@ int rvu_mbox_handler_SSO_HW_SETCONFIG(struct rvu *rvu,
 				      struct msg_rsp *rsp)
 {
 	struct rvu_hwinfo *hw = rvu->hw;
-	u32 npa_aura_id, npa_pf_func;
+	u16 pcifunc = req->hdr.pcifunc;
 	int hwgrp, lf, err, blkaddr;
-	u16 pcifunc;
+	u32 npa_aura_id;
 	u64 reg;
-
-	npa_aura_id = req->npa_aura_id;
-	npa_pf_func = req->npa_pf_func;
-	pcifunc = req->hdr.pcifunc;
 
 	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_SSO, pcifunc);
 	if (blkaddr < 0)
 		return SSO_AF_ERR_LF_INVALID;
+
+	npa_aura_id = req->npa_aura_id;
+
+	/* Check if requested 'SSOLF <=> NPALF' mapping is valid */
+	if (req->npa_pf_func) {
+		/* If default, use 'this' SSOLF's PFFUNC */
+		if (req->npa_pf_func == RVU_DEFAULT_PF_FUNC)
+			req->npa_pf_func = pcifunc;
+		if (!is_pffunc_map_valid(rvu, req->npa_pf_func, BLKTYPE_NPA))
+			return SSO_AF_INVAL_NPA_PF_FUNC;
+	}
 
 	/* Initialize XAQ ring */
 	for (hwgrp = 0; hwgrp < req->hwgrps; hwgrp++) {
@@ -204,7 +211,7 @@ int rvu_mbox_handler_SSO_HW_SETCONFIG(struct rvu *rvu,
 		rvu_write64(rvu, blkaddr, SSO_AF_HWGRPX_XAQ_AURA(lf),
 			    npa_aura_id);
 		rvu_write64(rvu, blkaddr, SSO_AF_XAQX_GMCTL(lf),
-			    npa_pf_func);
+			    req->npa_pf_func);
 
 		/* enable XAQ */
 		rvu_write64(rvu, blkaddr, SSO_AF_HWGRPX_AW_CFG(lf), 0xF);
