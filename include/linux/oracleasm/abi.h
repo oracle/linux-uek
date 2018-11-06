@@ -165,6 +165,7 @@ enum oracleasm_integrity_handling_flags {
 	ASM_IFLAG_IP_CHECKSUM		= 2,	/* IP checksum instead of CRC */
 	ASM_IFLAG_CTRL_NOCHECK          = 4,    /* Disable HBA PI checks */
 	ASM_IFLAG_DISK_NOCHECK          = 8,    /* Disable disk PI checks */
+	ASM_IFLAG_FORMAT_NOCHECK	= 16,	/* Disable IT format check */
 };
 
 struct oracleasm_query_disk_v2

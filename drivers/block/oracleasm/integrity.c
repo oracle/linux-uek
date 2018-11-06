@@ -85,20 +85,8 @@ int asm_integrity_check(struct oracleasm_integrity_v2 *it, struct block_device *
 {
 	unsigned int dev_format;
 
-	/* Strip feature flags */
-	dev_format = asm_integrity_format(bdev) & ASM_INTEGRITY_HANDLE_MASK;
-
-	if (!dev_format)
-		return 0;
-
 	if (unlikely(it->it_magic != ASM_INTEGRITY_MAGIC)) {
 		pr_err("%s: Bad integrity magic %x!\n", __func__, it->it_magic);
-		return -EINVAL;
-	}
-
-	if (unlikely(it->it_format != dev_format)) {
-		pr_err("%s: incorrect format for %s (%u != %u)\n", __func__,
-		       bdev->bd_disk->disk_name, it->it_format, dev_format);
 		return -EINVAL;
 	}
 
@@ -109,6 +97,20 @@ int asm_integrity_check(struct oracleasm_integrity_v2 *it, struct block_device *
 
 	if (unlikely(it->it_buf == 0)) {
 		pr_err("%s: NULL integrity buffer\n", __func__);
+		return -EINVAL;
+	}
+
+	if (it->it_flags & ASM_IFLAG_FORMAT_NOCHECK)
+		return 0;
+
+	dev_format = asm_integrity_format(bdev) & ASM_INTEGRITY_HANDLE_MASK;
+
+	if (!dev_format)
+		return -EINVAL;
+
+	if (unlikely(it->it_format != dev_format)) {
+		pr_err("%s: incorrect format for %s (%u != %u)\n", __func__,
+		       bdev->bd_disk->disk_name, it->it_format, dev_format);
 		return -EINVAL;
 	}
 
