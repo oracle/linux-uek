@@ -31,14 +31,14 @@ static void change_mitigation(enum mitigation_action action)
 	/*
 	 * Define the current state.
 	 *
-	 * IBRS firmware is enabled if either IBRS or retpoline is enabled.
-	 * If both IBRS and retpoline are disabled, then IBRS firmware is
-	 * disabled too.
+	 * IBRS firmware is enabled if either basic IBRS or retpoline is
+	 * enabled. If both basic IBRS and retpoline are disabled, then IBRS
+	 * firmware is disabled too.
 	 */
 
 	ibrs_used = !ibrs_disabled;
 	retpoline_used = !!retpoline_enabled();
-	ibrs_fw_used = (ibrs_used || retpoline_used);
+	ibrs_fw_used = ((ibrs_used && !eibrs_supported) || retpoline_used);
 
 	/*
 	 * Define the requested state.
@@ -52,7 +52,7 @@ static void change_mitigation(enum mitigation_action action)
 
 	case MITIGATION_ENABLE_IBRS:
 		ibrs_requested = true;
-		ibrs_fw_requested = true;
+		ibrs_fw_requested = !eibrs_supported;
 		retpoline_requested = false;
 		break;
 
@@ -70,7 +70,7 @@ static void change_mitigation(enum mitigation_action action)
 
 	case MITIGATION_DISABLE_RETPOLINE:
 		ibrs_requested = ibrs_used;
-		ibrs_fw_requested = ibrs_used;
+		ibrs_fw_requested = ibrs_used && !eibrs_supported;
 		retpoline_requested = false;
 		break;
 	}
@@ -80,6 +80,11 @@ static void change_mitigation(enum mitigation_action action)
 	if (ibrs_requested != ibrs_used) {
 		if (ibrs_requested) {
 			clear_ibrs_disabled();
+			/* If enhanced IBRS is available, turn it on now */
+			if (eibrs_supported) {
+				spec_ctrl_flush_all_cpus(MSR_IA32_SPEC_CTRL,
+					x86_spec_ctrl_priv);
+			}
 		} else {
 			set_ibrs_disabled();
 			if (use_ibrs & SPEC_CTRL_IBRS_SUPPORTED) {
