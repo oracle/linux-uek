@@ -737,7 +737,7 @@ void init_speculation_control(struct cpuinfo_x86 *c,
 
 		rdmsrl(MSR_IA32_ARCH_CAPABILITIES, cap);
 		if (cap & ARCH_CAP_IBRS_ALL) /* IBRS all the time */
-			set_cpu_cap(c, X86_FEATURE_IBRS_ALL);
+			set_cpu_cap(c, X86_FEATURE_IBRS_ENHANCED);
 	}
 
 	/*
@@ -793,12 +793,16 @@ void init_speculation_control(struct cpuinfo_x86 *c,
 			if (!ignore) {
 				mutex_lock(&spec_ctrl_mutex);
 				set_ibrs_supported();
+				/* Enable enhanced IBRS usage if available */
+				if (cpu_has(c, X86_FEATURE_IBRS_ENHANCED))
+					set_ibrs_enhanced();
+				else
+					set_ibrs_firmware();
 				/*
 				 * Don't do this after disable_ibrs_and_friends
 				 * as we would re-enable it (say if
 				 * spectre_v2=off is used).
 				 */
-				set_ibrs_firmware();
 				set_ibpb_supported();
 				mutex_unlock(&spec_ctrl_mutex);
 			}
