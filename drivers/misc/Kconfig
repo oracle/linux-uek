@@ -514,6 +514,14 @@ config MARVELL_OTX_BPHY_CTR
 	  The purpose of this is to handle some BPHY Interrupts in
 	  user space directly without kernel's intervention.
 
+config PVPANIC
+	tristate "pvpanic device support"
+	depends on ACPI
+	help
+	  This driver provides support for the pvpanic device.  pvpanic is
+	  a paravirtualized device provided by QEMU; it lets a virtual machine
+	  (guest) communicate panic events to the host.
+
 source "drivers/misc/c2port/Kconfig"
 source "drivers/misc/eeprom/Kconfig"
 source "drivers/misc/cb710/Kconfig"
