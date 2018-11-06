@@ -1126,10 +1126,18 @@ int mlx5e_ethtool_get_coalesce(struct mlx5e_priv *priv,
 			       struct ethtool_coalesce *coal);
 int mlx5e_ethtool_set_coalesce(struct mlx5e_priv *priv,
 			       struct ethtool_coalesce *coal);
+int mlx5e_ethtool_get_link_ksettings(struct mlx5e_priv *priv,
+				     struct ethtool_link_ksettings *link_ksettings);
+int mlx5e_ethtool_set_link_ksettings(struct mlx5e_priv *priv,
+				     const struct ethtool_link_ksettings *link_ksettings);
 int mlx5e_ethtool_get_ts_info(struct mlx5e_priv *priv,
 			      struct ethtool_ts_info *info);
 int mlx5e_ethtool_flash_device(struct mlx5e_priv *priv,
 			       struct ethtool_flash *flash);
+void mlx5e_ethtool_get_pauseparam(struct mlx5e_priv *priv,
+				  struct ethtool_pauseparam *pauseparam);
+int mlx5e_ethtool_set_pauseparam(struct mlx5e_priv *priv,
+				 struct ethtool_pauseparam *pauseparam);
 
 /* mlx5e generic netdev management API */
 struct net_device*
