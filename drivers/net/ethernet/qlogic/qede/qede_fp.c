@@ -1713,3 +1713,17 @@ netdev_features_t qede_features_check(struct sk_buff *skb,
 
 	return features;
 }
+
+#ifdef CONFIG_NET_POLL_CONTROLLER
+/* This is used by netconsole to send skbs without having to re-enable
+ *  * interrupts.  It's not called while the normal interrupt routine is executing.
+ *   */
+void qede_poll_controller(struct net_device *dev)
+{
+	struct qede_dev *edev = netdev_priv(dev);
+	int i;
+
+	for_each_queue(i)
+		napi_schedule(&edev->fp_array[i].napi);
+}
+#endif

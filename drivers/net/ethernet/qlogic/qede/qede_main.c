@@ -536,6 +536,9 @@ static const struct net_device_ops qede_netdev_ops = {
 	.ndo_set_rx_mode = qede_set_rx_mode,
 	.ndo_set_mac_address = qede_set_mac_addr,
 	.ndo_validate_addr = eth_validate_addr,
+#ifdef CONFIG_NET_POLL_CONTROLLER
+	.ndo_poll_controller = qede_poll_controller,
+#endif
 	.ndo_change_mtu = qede_change_mtu,
 	.ndo_do_ioctl = qede_ioctl,
 #ifdef CONFIG_QED_SRIOV
