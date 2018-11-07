@@ -372,7 +372,7 @@ void rvu_npc_install_promisc_entry(struct rvu *rvu, u16 pcifunc,
 {
 	struct npc_mcam *mcam = &rvu->hw->mcam;
 	struct mcam_entry entry = { {0} };
-	struct nix_rx_action action;
+	struct nix_rx_action action = { };
 	int blkaddr, ucast_idx, index, kwi;
 
 	/* Only PF or AF VF can add a promiscuous entry */
