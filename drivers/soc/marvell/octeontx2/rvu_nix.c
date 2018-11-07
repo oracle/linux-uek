@@ -2514,11 +2514,16 @@ int rvu_mbox_handler_NIX_RXVLAN_ALLOC(struct rvu *rvu, struct msg_req *req,
 {
 	struct npc_mcam_alloc_entry_req alloc_req = { };
 	struct npc_mcam_alloc_entry_rsp alloc_rsp = { };
-	struct npc_mcam_ena_dis_entry_req ena_req = { };
 	struct npc_mcam_free_entry_req free_req = { };
 	u16 pcifunc = req->hdr.pcifunc;
 	int blkaddr, nixlf, err;
 	struct rvu_pfvf *pfvf;
+
+	/* LBK VFs do not have separate MCAM UCAST entry hence
+	 * skip allocating rxvlan for them
+	 */
+	if (is_afvf(pcifunc))
+		return 0;
 
 	pfvf = rvu_get_pfvf(rvu, pcifunc);
 	if (pfvf->rxvlan)
@@ -2532,14 +2537,6 @@ int rvu_mbox_handler_NIX_RXVLAN_ALLOC(struct rvu *rvu, struct msg_req *req,
 						    &alloc_rsp);
 	if (err)
 		return err;
-
-	/* enable new entry */
-	ena_req.hdr.pcifunc = pcifunc;
-	ena_req.entry = alloc_rsp.entry_list[0];
-
-	err = rvu_mbox_handler_NPC_MCAM_ENA_ENTRY(rvu, &ena_req, rsp);
-	if (err)
-		goto free_entry;
 
 	/* update entry to enable rxvlan offload */
 	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NIX, pcifunc);
