@@ -1236,7 +1236,6 @@ static int unlink_old_inode_refs(struct btrfs_trans_handle *trans,
 				 struct btrfs_key *key)
 {
 	int ret;
-	int slot;
 	unsigned long ref_ptr;
 	unsigned long ref_end;
 	struct extent_buffer *eb;
@@ -1254,18 +1253,17 @@ again:
 	eb = path->nodes[0];
 	ref_ptr = btrfs_item_ptr_offset(eb, path->slots[0]);
 	ref_end = ref_ptr + btrfs_item_size_nr(eb, path->slots[0]);
-	slot = 0;
 	while (ref_ptr < ref_end) {
 		char *name = NULL;
 		int namelen;
 		u64 parent_id;
 
 		if (key->type == BTRFS_INODE_EXTREF_KEY) {
-			ret = extref_get_fields(eb, slot, ref_ptr, &namelen, &name,
+			ret = extref_get_fields(eb, ref_ptr, &namelen, &name,
 						NULL, &parent_id);
 		} else {
 			parent_id = key->offset;
-			ret = ref_get_fields(eb, slot, ref_ptr, &namelen, &name,
+			ret = ref_get_fields(eb, ref_ptr, &namelen, &name,
 					     NULL);
 		}
 		if (ret)
@@ -1304,7 +1302,6 @@ again:
 			ref_ptr += sizeof(struct btrfs_inode_extref);
 		else
 			ref_ptr += sizeof(struct btrfs_inode_ref);
-		slot++;
 	}
 	ret = 0;
  out:
