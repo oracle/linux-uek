@@ -4097,26 +4097,35 @@ vm_fault_t hugetlb_fault(struct mm_struct *mm, struct vm_area_struct *vma,
 		} else if (unlikely(is_hugetlb_entry_hwpoisoned(entry)))
 			return VM_FAULT_HWPOISON_LARGE |
 				VM_FAULT_SET_HINDEX(hstate_index(h));
-	} else {
-		ptep = huge_pte_alloc(mm, haddr, huge_page_size(h));
-		if (!ptep)
-			return VM_FAULT_OOM;
 	}
-
-	mapping = vma->vm_file->f_mapping;
-	idx = vma_hugecache_offset(h, vma, haddr);
 
 	/*
 	 * Use truncate mutex to serialize truncation and page faults.  This
 	 * prevents ANY faults from happening on the file during truncation.
+	 *
+	 * Acquire truncate mutex BEFORE calling huge_pte_alloc.  This
+	 * protects us from calls to huge_pmd_unshare that may invalidate
+	 * ptep.  Something besides trunc_rwsem really should be used for this
+	 * synchronization.  This is a less than ideal solution, but protects
+	 * us in UEK kernels.
+	 */
+	mapping = vma->vm_file->f_mapping;
+	hinode_info = HUGETLBFS_I(mapping->host);
+	down_read(&hinode_info->trunc_rwsem);
+	ptep = huge_pte_alloc(mm, haddr, huge_page_size(h));
+	if (!ptep) {
+		up_read(&hinode_info->trunc_rwsem);
+		return VM_FAULT_OOM;
+	}
+
+	/*
 	 * The fault mutex serializes hugepage allocation and instantiation
 	 * on the same page.  This prevents spurious allocation failures if
 	 * two CPUs race to instantiate the same page in the page cache.
 	 *
-	 * Acquire truncate mutex BEFORE fault mutex.
+	 * Acquire fault mutex AFTER truncate mutex.
 	 */
-	hinode_info = HUGETLBFS_I(mapping->host);
-	down_read(&hinode_info->trunc_rwsem);
+	idx = vma_hugecache_offset(h, vma, haddr);
 	hash = hugetlb_fault_mutex_hash(h, mapping, idx, haddr);
 	mutex_lock(&hugetlb_fault_mutex_table[hash]);
 
