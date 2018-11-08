@@ -878,8 +878,9 @@ int otx2_open(struct net_device *netdev)
 	/* Enable link notifications */
 	otx2_cgx_config_linkevents(pf, true);
 
-	/* Alloc rxvlan entry in MCAM */
-	otx2_alloc_rxvlan(pf);
+	/* Alloc rxvlan entry in MCAM for PFs only */
+	if (!(pf->pcifunc & RVU_PFVF_FUNC_MASK))
+		otx2_alloc_rxvlan(pf);
 
 	return 0;
 
