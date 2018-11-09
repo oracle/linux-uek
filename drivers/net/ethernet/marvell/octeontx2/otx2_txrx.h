@@ -19,8 +19,6 @@
 #define SDP_CHAN_BASE	0x700
 #define CGX_CHAN_BASE	0x800
 
-#define RQ_QLEN		1024
-#define SQ_QLEN		1024
 #define DMA_BUFFER_LEN	1536 /* In multiples of 128bytes */
 #define RCV_FRAG_LEN	(SKB_DATA_ALIGN(DMA_BUFFER_LEN + NET_SKB_PAD) + \
 			 SKB_DATA_ALIGN(sizeof(struct skb_shared_info)))
@@ -59,6 +57,7 @@ struct otx2_snd_queue {
 	u8			aura_id;
 	u16			head;
 	u16			sqe_size;
+	u32			sqe_cnt;
 	u16			num_sqbs;
 	u8			sqe_per_sqb;
 	u64			 io_addr;
@@ -92,8 +91,8 @@ struct otx2_pool {
 struct otx2_cq_queue {
 	u8			cq_idx;
 	u8			cint_idx; /* CQ interrupt id */
-	u16			cqe_cnt;
 	u16			cqe_size;
+	u32			cqe_cnt;
 	void			*cqe_base;
 	struct qmem		*cqe;
 	struct otx2_pool	*rbpool;
@@ -102,9 +101,9 @@ struct otx2_cq_queue {
 struct otx2_qset {
 #define OTX2_MAX_CQ_CNT		64
 	u16			cq_cnt;
-	u16			cqe_cnt;
-	u16			sqe_cnt;
 	u16			xqe_size;
+	u32			rqe_cnt;
+	u32			sqe_cnt;
 	struct otx2_pool	*pool;
 	struct otx2_cq_poll	*napi;
 	struct otx2_cq_queue	*cq;
