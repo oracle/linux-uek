@@ -759,8 +759,10 @@ int otx2_open(struct net_device *netdev)
 	if (!qset->napi)
 		return -ENOMEM;
 
-	qset->cqe_cnt = qset->cqe_cnt ? qset->cqe_cnt : Q_COUNT(Q_SIZE_4K);
-	qset->sqe_cnt = qset->sqe_cnt ? qset->sqe_cnt : Q_COUNT(Q_SIZE_1K);
+	/* CQ size of RQ */
+	qset->rqe_cnt = qset->rqe_cnt ? qset->rqe_cnt : Q_COUNT(Q_SIZE_1K);
+	/* CQ size of SQ */
+	qset->sqe_cnt = qset->sqe_cnt ? qset->sqe_cnt : Q_COUNT(Q_SIZE_4K);
 
 	err = -ENOMEM;
 	qset->cq = kcalloc(pf->qset.cq_cnt,

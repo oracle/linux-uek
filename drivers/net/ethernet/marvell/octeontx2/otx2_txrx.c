@@ -407,7 +407,7 @@ static inline void otx2_sqe_flush(struct otx2_snd_queue *sq, int size)
 	} while (status == 0);
 
 	sq->head++;
-	sq->head &= (SQ_QLEN - 1);
+	sq->head &= (sq->sqe_cnt - 1);
 }
 
 #define MAX_SEGS_PER_SG	3

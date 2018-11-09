@@ -499,6 +499,7 @@ static int otx2_sq_init(struct otx2_nic *pfvf, u16 qidx, u16 sqb_aura)
 	pool = &pfvf->qset.pool[sqb_aura];
 	sq = &qset->sq[qidx];
 	sq->sqe_size = NIX_SQESZ_W16 ? 64 : 128;
+	sq->sqe_cnt = qset->sqe_cnt;
 
 	err = qmem_alloc(pfvf->dev, &sq->sqe, 1, sq->sqe_size);
 	if (err)
@@ -562,8 +563,9 @@ static int otx2_cq_init(struct otx2_nic *pfvf, u16 qidx)
 	int err, pool_id;
 
 	cq = &qset->cq[qidx];
-	cq->cqe_cnt = qset->cqe_cnt;
 	cq->cqe_size = pfvf->qset.xqe_size;
+	cq->cqe_cnt = (qidx < pfvf->hw.rx_queues) ? qset->rqe_cnt
+				: qset->sqe_cnt;
 
 	/* Allocate memory for CQEs */
 	err = qmem_alloc(pfvf->dev, &cq->cqe, cq->cqe_cnt, cq->cqe_size);
@@ -898,7 +900,7 @@ int otx2_rq_aura_pool_init(struct otx2_nic *pfvf)
 	int err, ptr, num_ptrs;
 	s64 bufptr;
 
-	num_ptrs = RQ_QLEN;
+	num_ptrs = pfvf->qset.rqe_cnt;
 
 	stack_pages =
 		(num_ptrs + hw->stack_pg_ptrs - 1) / hw->stack_pg_ptrs;
