@@ -461,9 +461,32 @@ int otx2_txschq_stop(struct otx2_nic *pfvf)
 	return 0;
 }
 
+/* RED and drop levels of CQ on packet reception.
+ * For CQ level is measure of emptiness ( 0x0 = full, 255 = empty).
+ */
+#define RQ_PASS_LVL_CQ(skid, qsize)	(((skid + 48) * 256) / qsize)
+#define RQ_DROP_LVL_CQ(skid, qsize)	((skid * 256) / qsize)
+
+/* RED and drop levels of AURA for packet reception.
+ * For AURA level is measure of fullness (0x0 = empty, 255 = full).
+ * Eg: For RQ length 1K, for pass/drop level 204/230.
+ * RED accepts pkts if free pointers > 102 & <= 205.
+ * Drops pkts if free pointers < 102.
+ */
+#define RQ_PASS_LVL_AURA	((90 * 256) / 100) /* RED when 90% is full */
+#define RQ_DROP_LVL_AURA	((98 * 256) / 100) /* Drop when 98% is full */
+
+/* Send skid of 2000 packets required for CQ size of 4K CQEs. */
+#define SEND_CQ_SKID	2000
+
+/* Receive skid of 600 packets required for CQ size of 1K CQEs. */
+#define RX_CQ_SKID	600
+
 static int otx2_rq_init(struct otx2_nic *pfvf, u16 qidx, u16 lpb_aura)
 {
+	struct otx2_qset *qset = &pfvf->qset;
 	struct nix_aq_enq_req *aq;
+	int skid = 0;
 
 	/* Get memory to put this msg */
 	aq = otx2_mbox_alloc_msg_NIX_AQ_ENQ(&pfvf->mbox);
@@ -479,6 +502,20 @@ static int otx2_rq_init(struct otx2_nic *pfvf, u16 qidx, u16 lpb_aura)
 	aq->rq.flow_tagw = 32; /* Copy full 32bit flow_tag to CQE header */
 	aq->rq.rq_int_ena = NIX_RQINT_BITS;
 	aq->rq.qint_idx = 0;
+	aq->rq.lpb_drop_ena = 1; /* Enable RED dropping for AURA */
+	aq->rq.xqe_drop_ena = 1; /* Enable RED dropping for CQ/SSO */
+	/* Due to HW errata #34873 minimum 600 unused CQE need to maintaine to
+	 * avoid CQ overflow. Eg: For CQ size 1K, for pass/drop levels 162/150.
+	 * HW accepts accepts the pkts if unused CQE >= 648.
+	 * RED accepts pkts if unused CQE > 600 & <= 648.
+	 * Drops pkts if unused CQE <= 600.
+	 */
+	if (is_9xxx_pass1_silicon(pfvf->pdev))
+		skid = RX_CQ_SKID;
+	aq->rq.xqe_pass = RQ_PASS_LVL_CQ(skid, qset->rqe_cnt);
+	aq->rq.xqe_drop = RQ_DROP_LVL_CQ(skid, qset->rqe_cnt);
+	aq->rq.lpb_aura_pass = RQ_PASS_LVL_AURA;
+	aq->rq.lpb_aura_drop = RQ_DROP_LVL_AURA;
 
 	/* Fill AQ info */
 	aq->qidx = qidx;
@@ -546,6 +583,10 @@ static int otx2_sq_init(struct otx2_nic *pfvf, u16 qidx, u16 sqb_aura)
 	aq->sq.sqb_aura = sqb_aura;
 	aq->sq.sq_int_ena = NIX_SQINT_BITS;
 	aq->sq.qint_idx = 0;
+	/* Due pipelining impact minimum 2000 unused SQ CQE's
+	 * need to maintain to avoid CQ overflow.
+	 */
+	aq->sq.cq_limit = ((SEND_CQ_SKID * 256) / (sq->sqe_cnt));
 
 	/* Fill AQ info */
 	aq->qidx = qidx;
