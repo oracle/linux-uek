@@ -883,6 +883,12 @@ int rds_ib_inc_copy_to_user(struct rds_incoming *inc, struct iov_iter *to)
 			frag_off = 0;
 			sg = frag->f_sg;
 		}
+		if ((sg == NULL) && (copied < len)) {
+			frag = list_entry(frag->f_item.next,
+					  struct rds_page_frag, f_item);
+			frag_off = 0;
+			sg = frag->f_sg;
+		}
 
 	}
 
