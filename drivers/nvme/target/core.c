@@ -904,12 +904,16 @@ u16 nvmet_check_ctrl_status(struct nvmet_req *req, struct nvme_command *cmd)
 	return 0;
 }
 
-static bool __nvmet_host_allowed(struct nvmet_subsys *subsys,
-		const char *hostnqn)
+bool nvmet_host_allowed(struct nvmet_subsys *subsys, const char *hostnqn)
 {
 	struct nvmet_host_link *p;
 
+	lockdep_assert_held(&nvmet_config_sem);
+
 	if (subsys->allow_any_host)
+		return true;
+
+	if (subsys->type == NVME_NQN_DISC) /* allow all access to disc subsys */
 		return true;
 
 	list_for_each_entry(p, &subsys->hosts, entry) {
@@ -920,29 +924,38 @@ static bool __nvmet_host_allowed(struct nvmet_subsys *subsys,
 	return false;
 }
 
-static bool nvmet_host_discovery_allowed(struct nvmet_req *req,
-		const char *hostnqn)
+#if 0
+/*
+ * Note: ctrl->subsys->lock should be held when calling this function
+ */
+static void nvmet_setup_p2p_ns_map(struct nvmet_ctrl *ctrl,
+		struct nvmet_req *req)
 {
-	struct nvmet_subsys_link *s;
+	struct nvmet_ns *ns;
 
-	list_for_each_entry(s, &req->port->subsystems, entry) {
-		if (__nvmet_host_allowed(s->subsys, hostnqn))
-			return true;
-	}
+	if (!req->p2p_client)
+		return;
 
-	return false;
+	ctrl->p2p_client = get_device(req->p2p_client);
+
+	list_for_each_entry_rcu(ns, &ctrl->subsys->namespaces, dev_link)
+		nvmet_p2pmem_ns_add_p2p(ctrl, ns);
 }
 
-bool nvmet_host_allowed(struct nvmet_req *req, struct nvmet_subsys *subsys,
-		const char *hostnqn)
+/*
+ * Note: ctrl->subsys->lock should be held when calling this function
+ */
+static void nvmet_release_p2p_ns_map(struct nvmet_ctrl *ctrl)
 {
-	lockdep_assert_held(&nvmet_config_sem);
+	struct radix_tree_iter iter;
+	void __rcu **slot;
 
-	if (subsys->type == NVME_NQN_DISC)
-		return nvmet_host_discovery_allowed(req, hostnqn);
-	else
-		return __nvmet_host_allowed(subsys, hostnqn);
+	radix_tree_for_each_slot(slot, &ctrl->p2p_ns_map, &iter, 0)
+		pci_dev_put(radix_tree_deref_slot(slot));
+
+	put_device(ctrl->p2p_client);
 }
+#endif
 
 u16 nvmet_alloc_ctrl(const char *subsysnqn, const char *hostnqn,
 		struct nvmet_req *req, u32 kato, struct nvmet_ctrl **ctrlp)
@@ -963,7 +976,7 @@ u16 nvmet_alloc_ctrl(const char *subsysnqn, const char *hostnqn,
 
 	status = NVME_SC_CONNECT_INVALID_PARAM | NVME_SC_DNR;
 	down_read(&nvmet_config_sem);
-	if (!nvmet_host_allowed(req, subsys, hostnqn)) {
+	if (!nvmet_host_allowed(subsys, hostnqn)) {
 		pr_info("connect by host %s for subsystem %s not allowed\n",
 			hostnqn, subsysnqn);
 		req->rsp->result.u32 = IPO_IATTR_CONNECT_DATA(hostnqn);
