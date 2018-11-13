@@ -361,6 +361,11 @@ u32 rdmaip_sysctl_debug_flag	= RDMAIP_DEBUG_L1 |
 		 rdmaip_printk(format, ## arg);			\
 	} while (0)
 
+#define RDMAIP_DBG2_PTR(format, arg...)                         \
+	do { if (rdmaip_sysctl_debug_flag & RDMAIP_DEBUG_L2)    \
+		__trace_printk(_THIS_IP_, "%d: " format, __LINE__, ## arg); \
+	} while (0)
+
 #define RDMAIP_DBG3(format, arg...)				\
 	do { if (rdmaip_sysctl_debug_flag & RDMAIP_DEBUG_L3)	\
 		 rdmaip_printk(format, ## arg);			\
