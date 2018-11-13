@@ -215,8 +215,8 @@ static void rdmaip_send_gratuitous_arp(struct net_device *out_dev,
 	int i;
 
 	if (out_dev)
-		RDMAIP_DBG2_PTR("Sending GARP message on %s IP addr %pI4\n",
-				out_dev->name, (void *)&ip_addr);
+		RDMAIP_DBG2_PTR("Sending GARP message for adding IP addr %pI4 on %s\n",
+			       (void *)&ip_addr, out_dev->name);
 
 	/* Send multiple ARPs to improve reliability */
 	for (i = 0; i < rdmaip_active_bonding_arps; i++) {
@@ -462,6 +462,11 @@ static int rdmaip_move_ip4(char *from_dev, char *to_dev, u8 from_port,
 	u8			active_port;
 	struct in_device	*in_dev;
 
+	RDMAIP_DBG3("from_dev %s :  to_dev %s : from_port %d : to_port %d"
+		    " IP addr %pI4 : failover %s\n",
+		    from_dev, to_dev, from_port, to_port, (void *)&addr,
+		    (failover ? "True" : "False"));
+
 	page = alloc_page(GFP_HIGHUSER);
 	if (!page) {
 		pr_err("rdmaip: alloc_page failed .. NO MEM\n");
@@ -474,7 +479,7 @@ static int rdmaip_move_ip4(char *from_dev, char *to_dev, u8 from_port,
 	sin->sin_family = AF_INET;
 
 	/* Set the primary IP if it hasn't been set */
-	if (ip_config[to_port].ip_addr) {
+	if (ip_config[to_port].ip_addr && failover) {
 		strcpy(ir->ifr_ifrn.ifrn_name, ip_config[to_port].dev->name);
 		ret = inet_ioctl(rdmaip_inet_socket, SIOCGIFADDR,
 					(unsigned long) ir);
