@@ -701,7 +701,17 @@ static int rds_ib_set_ip4(struct net_device	*out_dev,
 	struct ifreq		*ir;
 	struct sockaddr_in	*sin;
 	struct page		*page;
+	union ib_gid		gid;
 	int			ret = 0;
+
+	if (dev_addr)
+		memcpy(&gid, dev_addr + 4, sizeof(gid));
+	else
+		memset(&gid, 0, sizeof(gid));
+
+	rds_rtd_ptr(RDS_RTD_ACT_BND,
+		    "out_dev: %s, dev_addr: " RDS_IB_GID_FMT ", if_name: %s, addr: %pI4\n",
+		    out_dev->name, RDS_IB_GID_ARG(gid), if_name, &addr);
 
 	page = alloc_page(GFP_HIGHUSER);
 	if (!page) {
@@ -894,6 +904,10 @@ static int rds_ib_move_ip4(char			*from_dev,
 	u8			active_port;
 	struct in_device	*in_dev;
 	struct rds_ib_device *rds_ibdev;
+
+	rds_rtd_ptr(RDS_RTD_ACT_BND,
+		    "fr_dev: %s, to:dev: %s, fr_prt: %d, to_prt: %d, arp_prt: %d, addr: %pI4, event: %d, alias: %d, failover: %d\n",
+		    from_dev, to_dev, from_port, to_port, arp_port, &addr, event_type, alias, failover);
 
 	page = alloc_page(GFP_HIGHUSER);
 	if (!page) {
