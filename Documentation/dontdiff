@@ -179,6 +179,7 @@ mkutf8data
 modpost
 modules.builtin
 modules.builtin.modinfo
+modules_thick.builtin
 modules.order
 modules_thick.builtin
 modversions.h*

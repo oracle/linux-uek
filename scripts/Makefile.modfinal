@@ -1,11 +1,21 @@
 # SPDX-License-Identifier: GPL-2.0-only
 # ===========================================================================
-# Module final link
+# Module final link and CTF generation
 # ===========================================================================
+# 1) compile all <module>.mod.c files
+# 2) for external modules, generate CTF for the module (there is an extra,
+#    externally-invoked target that does this for the entire kernel but does
+#    not invoke the rst of the module-building process)
+# 3) final link of the module to a <module.ko> file
+
+# We need secondary expansion for 'module-ctfs-modular-prereq', below.
+
+.SECONDEXPANSION:
 
 PHONY := __modfinal
 __modfinal:
 
+include include/config/auto.conf
 include $(srctree)/scripts/Kbuild.include
 
 # for c_flags
@@ -27,6 +37,128 @@ quiet_cmd_cc_o_c = CC [M]  $@
 %.mod.o: %.mod.c FORCE
 	$(call if_changed_dep,cc_o_c)
 
+# Generate CTF for the entire kernel, or for the module alone if this is a
+# build of an external module.
+
+# These are overridden below for standalone modules only.
+module-ctfs-modular-prereq =
+module-ctfs-modular =
+module-ctf-flags =
+cmd_touch_ctf =
+ctf-dir = ///.nonexistent
+cmd-touch-ctf = @:
+
+ifdef CONFIG_CTF
+
+# This is quite tricky.  If called for non-external-modules, dwarf2ctf needs to
+# be told about all the built-in objects as well as all the external modules --
+# but Makefile.modpost only knows about the latter.  So the toplevel makefile
+# emits the names of the built-in objects into a temporary file, which is
+# then catted and its contents used as prerequisites by this rule.
+#
+# We write the names of the object files to be scanned for CTF content into a
+# file, then use that, to avoid hitting command-line length limits.
+
+ifeq ($(KBUILD_EXTMOD),)
+ctf-dir-mk :=
+quiet_cmd_ctf = CTFA
+      cmd_ctf = scripts/dwarf2ctf/dwarf2ctf vmlinux.ctfa $(srctree) objects.builtin modules_thick.builtin $(srctree)/scripts/dwarf2ctf/member.blacklist $(ctf-filelist)
+ctf-builtins := objects.builtin
+ctf-builtins-prereq := $(ctf-builtins)
+ ctf-modules := $(shell find . -name '*.ko' -print)
+ctf-filelist := .ctf.filelist
+ctf-filelist-raw := .ctf.filelist.raw
+ctf-stamp :=
+
+else
+ctf-dir := $(KBUILD_EXTMOD)/.ctf
+ctf-dir-mk := $(ctf-dir)
+quiet_cmd_ctf = CTF
+      cmd_ctf = scripts/dwarf2ctf/dwarf2ctf $(ctf-dir) -e $(ctf-filelist)
+ctf-builtins := ////.no-builtins
+ctf-builtins-prereq :=
+ctf-modules := $(modules:.ko=.o)
+ctf-filelist := $(ctf-dir)/$(notdir $(M)-extmod).ctf.filelist
+ctf-filelist-raw := $(ctf-dir)/$(notdir $(M)-extmod).ctf.filelist.raw
+ctf-stamp = $(ctf-dir)/$(notdir $(M)-extmod).stamp
+
+# All the modules' CTF depends on the stamp file.
+
+all-module-ctfs = $(addprefix $(ctf-dir)/,$(notdir $(modules:.ko=.mod.ctf)))
+$(all-module-ctfs): $(ctf-stamp)
+
+endif
+
+# Split a list up like shell xargs does.
+define xargs =
+$(1) $(wordlist 1,1024,$(2))
+$(if $(word 1025,$(2)),$(call xargs,$(1),$(wordlist 1025,$(words $(2)),$(2))))
+endef
+
+$(ctf-filelist-raw): $(ctf-builtins-prereq) $(ctf-modules)
+	@rm -f $(ctf-filelist-raw);
+	@if [[ -n "$(ctf-dir-mk)" ]]; then \
+		mkdir -p "$(ctf-dir-mk)"; \
+	fi
+	$(call xargs,@printf "%s\n" >> $(ctf-filelist-raw),$^)
+	@touch $(ctf-filelist-raw)
+
+$(ctf-filelist): $(ctf-filelist-raw)
+	@rm -f $(ctf-filelist);
+	@cat $(ctf-filelist-raw) | while read -r obj; do \
+		case $$obj in \
+		$(ctf-builtins)) cat $$obj >> $(ctf-filelist);; \
+		*.a) ar t $$obj > $(ctf-filelist);; \
+		*.builtin) cat $$obj >> $(ctf-filelist);; \
+		*) echo "$$obj" >> $(ctf-filelist);; \
+		esac; \
+	done
+	@touch $(ctf-filelist)
+
+ifeq ($(KBUILD_EXTMOD),)
+# The CTF depends on the output CTF file list, and that depends
+# on the .ko files for the modules.
+vmlinux.ctfa: $(ctf-filelist)
+	$(call if_changed,ctf)
+else
+
+# The CTF depends on the output CTF file list, and that depends
+# on the .o files for the modules
+$(ctf-stamp): $(ctf-filelist)
+	$(call if_changed,ctf)
+	@shopt -s nullglob; \
+	for name in $(ctf-dir)/*.ctf.new; do \
+		$(srctree)/scripts/move-if-change $$name $${name%.new}; \
+	done; \
+	touch $(ctf-stamp)
+
+# Expands to the names of the CTF files to be incorporated into this module.
+# The former is used in prerequisite lists, thanks to secondary expansion.
+
+module-ctfs-modular-prereq = $$(addprefix $(ctf-dir)/,$$(notdir $$*.mod.ctf))
+module-ctfs-modular = $(addprefix $(ctf-dir)/,$(notdir $*.mod.ctf))
+
+# Expands to the name of a CTF file, given a target of a module name given to
+# one of the link rules below.
+
+ctf-module-name = $(addprefix $(ctf-dir)/,$(notdir $(basename $@)).mod.ctf)
+
+# An objcopy --add-section argument to add the CTF section to a standalone
+# module.
+
+module-ctf-flags = --add-section .ctf=$(ctf-module-name)
+
+# We have to put content in our dummy no-CTF files because --add-section
+# in binutils 2.20 silently fails if asked to add an empty file as a section.
+
+cmd_touch_ctf = @for name in $(filter $(ctf-dir)/%,$(module-ctfs-modular)); do \
+		    test -f $$name || dd if=/dev/zero of=$$name bs=1 count=1 2>/dev/null; \
+		done
+
+endif		# KBUILD_EXTMOD
+
+endif		# !CONFIG_CTF
+
 ARCH_POSTLINK := $(wildcard $(srctree)/arch/$(SRCARCH)/Makefile.postlink)
 
 quiet_cmd_ld_ko_o = LD [M]  $@
@@ -34,10 +166,13 @@ quiet_cmd_ld_ko_o = LD [M]  $@
 	$(LD) -r $(KBUILD_LDFLAGS)					\
 		$(KBUILD_LDFLAGS_MODULE) $(LDFLAGS_MODULE)		\
 		$(addprefix -T , $(KBUILD_LDS_MODULE))			\
-		-o $@ $(filter %.o, $^);				\
+                 $(LDFLAGS_$(modname)) -o $@.tmp            		\
+		-o $@.tmp $(patsubst $(ctf-dir)/%,,$(filter %.o, $^)) && \
+        $(OBJCOPY) $(module-ctf-flags) $@.tmp $@ && rm -f $@.tmp ;	\
 	$(if $(ARCH_POSTLINK), $(MAKE) -f $(ARCH_POSTLINK) $@, true)
 
-$(modules): %.ko: %.o %.mod.o $(KBUILD_LDS_MODULE) FORCE
+$(modules): %.ko: %.o %.mod.o $(KBUILD_LDS_MODULE) $(module-ctfs-modular-prereq) FORCE
+	$(call cmd_touch_ctf)
 	+$(call if_changed,ld_ko_o)
 
 targets += $(modules) $(modules:.ko=.mod.o)

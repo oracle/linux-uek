@@ -27,6 +27,13 @@ if grep -q CONFIG_DRM=y .config; then
 	PROVIDES=kernel-drm
 fi
 
+# set CTF when configured
+if grep -q CONFIG_CTF=y .config; then
+	C=
+else
+	C=DEL
+fi
+
 PROVIDES="$PROVIDES kernel-$KERNELRELEASE"
 __KERNELRELEASE=$(echo $KERNELRELEASE | sed -e "s/-/_/g")
 EXCLUDES="$RCS_TAR_IGNORE --exclude=*vmlinux* --exclude=*.mod \
@@ -38,6 +45,7 @@ EXCLUDES="$RCS_TAR_IGNORE --exclude=*vmlinux* --exclude=*.mod \
 # Labels:
 #  $S: this line is enabled only when building source package
 #  $M: this line is enabled only when CONFIG_MODULES is enabled
+#  $C: this line is enabled only when CONFIG_CTF is enabled
 sed -e '/^DEL/d' -e 's/^\t*//' <<EOF
 	Name: kernel
 	Summary: The Linux Kernel
@@ -48,6 +56,8 @@ sed -e '/^DEL/d' -e 's/^\t*//' <<EOF
 	Vendor: The Linux Community
 	URL: http://www.kernel.org
 $S	Source: kernel-$__KERNELRELEASE.tar.gz
+$C	BuildRequires: libdtrace-ctf >= 0.5.0
+$C	BuildRequires: libdtrace-ctf-devel >= 0.5.0
 	Provides: $PROVIDES
 	%define __spec_install_post /usr/lib/rpm/brp-compress || :
 	%define debug_package %{nil}
@@ -74,12 +84,14 @@ $S$M	AutoReqProv: no
 $S$M	%description -n kernel-devel
 $S$M	This package provides kernel headers and makefiles sufficient to build modules
 $S$M	against the $__KERNELRELEASE kernel package.
+$C	Requires: libdtrace-ctf >= 0.5.0
 $S$M
 $S	%prep
 $S	%setup -q
 $S
 $S	%build
 $S	$MAKE %{?_smp_mflags} KBUILD_BUILD_VERSION=%{release}
+$S$C	$MAKE %{?_smp_mflags} ctf
 $S
 	%install
 	mkdir -p %{buildroot}/boot

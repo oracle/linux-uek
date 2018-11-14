@@ -48,6 +48,7 @@ Module.symvers
 modules.builtin
 modules.order
 modules_thick.builtin
+objects.builtin
 
 #
 # Top-level generic files
@@ -57,6 +58,7 @@ modules_thick.builtin
 /linux
 /vmlinux
 /vmlinux.32
+/vmlinux.ctfa
 /vmlinux-gdb.py
 /vmlinuz
 /System.map
