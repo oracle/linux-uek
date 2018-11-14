@@ -1376,6 +1376,9 @@ long compat_ksys_semtimedop(int semid, struct sembuf __user *tsems,
 long __do_semtimedop(int semid, struct sembuf *tsems, unsigned int nsops,
 		     const struct timespec64 *timeout,
 		     struct ipc_namespace *ns);
+#ifdef CONFIG_DTRACE
+asmlinkage long sys_waitfd(int which, pid_t upid, int options, int flags);
+#endif
 
 int __sys_getsockopt(int fd, int level, int optname, char __user *optval,
 		int __user *optlen);

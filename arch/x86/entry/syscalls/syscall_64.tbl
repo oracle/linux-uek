@@ -370,6 +370,9 @@
 446	common	landlock_restrict_self	sys_landlock_restrict_self
 447	common	memfd_secret		sys_memfd_secret
 448	common	process_mrelease	sys_process_mrelease
+# This one is a temporary number, designed for no clashes.
+# Nothing but DTrace should use it.
+473	common	waitfd			sys_waitfd
 
 #
 # Due to a historical design error, certain syscalls are numbered differently

@@ -116,7 +116,7 @@ struct poll_table_page {
  * poll table.
  */
 static void __pollwait(struct file *filp, wait_queue_head_t *wait_address,
-		       poll_table *p);
+		       poll_table *p, unsigned long fixed_event);
 
 void poll_initwait(struct poll_wqueues *pwq)
 {
@@ -212,6 +212,14 @@ static int pollwake(wait_queue_entry_t *wait, unsigned mode, int sync, void *key
 	struct poll_table_entry *entry;
 
 	entry = container_of(wait, struct poll_table_entry, wait);
+
+	/*
+	 * If this fd type has a hardwired key which should override the key
+	 * (e.g. if it is waiting on a non-file waitqueue), jam it in here.
+	 */
+	if (entry->fixed_key)
+		key = (void *)entry->fixed_key;
+
 	if (key && !(key_to_poll(key) & entry->key))
 		return 0;
 	return __pollwake(wait, mode, sync, key);
@@ -219,15 +227,22 @@ static int pollwake(wait_queue_entry_t *wait, unsigned mode, int sync, void *key
 
 /* Add a new entry */
 static void __pollwait(struct file *filp, wait_queue_head_t *wait_address,
-				poll_table *p)
+				poll_table *p, unsigned long fixed_event)
 {
 	struct poll_wqueues *pwq = container_of(p, struct poll_wqueues, pt);
-	struct poll_table_entry *entry = poll_get_entry(pwq);
+	struct poll_table_entry *entry;
+
+	if (fixed_event && !(p->_key & fixed_event))
+		return;
+
+	entry = poll_get_entry(pwq);
 	if (!entry)
 		return;
+
 	entry->filp = get_file(filp);
 	entry->wait_address = wait_address;
 	entry->key = p->_key;
+	entry->fixed_key = fixed_event;
 	init_waitqueue_func_entry(&entry->wait, pollwake);
 	entry->wait.private = pwq;
 	add_wait_queue(wait_address, &entry->wait);
