@@ -83,6 +83,11 @@ unsigned int mlx5_core_debug_mask;
 module_param_named(debug_mask, mlx5_core_debug_mask, uint, 0644);
 MODULE_PARM_DESC(debug_mask, "debug mask: 1 = dump cmd data, 2 = dump cmd exec time, 3 = both. Default=0");
 
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+/*UEK Only - Enabling 2^20 QP's, instead 2^18 by default*/
+#define MLX5_UEK_QP_LIMITATION  20
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
+
 static unsigned int prof_sel = MLX5_DEFAULT_PROF;
 module_param_named(prof_sel, prof_sel, uint, 0444);
 MODULE_PARM_DESC(prof_sel, "profile selector. Valid range 0 - 2");
@@ -604,9 +609,16 @@ static int handle_hca_cap(struct mlx5_core_dev *dev, void *set_ctx)
 			       MLX5_CAP_GEN_MAX(dev, log_max_qp));
 		prof->log_max_qp = MLX5_CAP_GEN_MAX(dev, log_max_qp);
 	}
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	/* Remove driver limitation for QP's - UEK Only */
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 	if (prof->mask & MLX5_PROF_MASK_QP_SIZE)
 		MLX5_SET(cmd_hca_cap, set_hca_cap, log_max_qp,
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+			 MLX5_UEK_QP_LIMITATION);
+#else /* WITHOUT_ORACLE_EXTENSIONS */
 			 prof->log_max_qp);
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 	/* disable cmdif checksum */
 	MLX5_SET(cmd_hca_cap, set_hca_cap, cmdif_checksum, 0);
