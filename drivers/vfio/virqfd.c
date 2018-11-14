@@ -76,7 +76,8 @@ static int virqfd_wakeup(wait_queue_entry_t *wait, unsigned mode, int sync, void
 }
 
 static void virqfd_ptable_queue_proc(struct file *file,
-				     wait_queue_head_t *wqh, poll_table *pt)
+				     wait_queue_head_t *wqh, poll_table *pt,
+				     unsigned long unused)
 {
 	struct virqfd *virqfd = container_of(pt, struct virqfd, pt);
 	add_wait_queue(wqh, &virqfd->wait);

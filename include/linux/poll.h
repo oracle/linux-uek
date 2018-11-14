@@ -34,7 +34,8 @@ struct poll_table_struct;
 /* 
  * structures and helpers for f_op->poll implementations
  */
-typedef void (*poll_queue_proc)(struct file *, wait_queue_head_t *, struct poll_table_struct *);
+typedef void (*poll_queue_proc)(struct file *, wait_queue_head_t *,
+	struct poll_table_struct *, unsigned long fixed_event);
 
 /*
  * Do not touch the structure directly, use the access functions
@@ -48,7 +49,15 @@ typedef struct poll_table_struct {
 static inline void poll_wait(struct file * filp, wait_queue_head_t * wait_address, poll_table *p)
 {
 	if (p && p->_qproc && wait_address)
-		p->_qproc(filp, wait_address, p);
+		p->_qproc(filp, wait_address, p, 0);
+}
+
+static inline void poll_wait_fixed(struct file *filp,
+	wait_queue_head_t *wait_address, poll_table *p,
+	unsigned long fixed_event)
+{
+	if (p && p->_qproc && wait_address)
+		p->_qproc(filp, wait_address, p, fixed_event);
 }
 
 /*
@@ -93,6 +102,7 @@ static inline __poll_t vfs_poll(struct file *file, struct poll_table_struct *pt)
 struct poll_table_entry {
 	struct file *filp;
 	__poll_t key;
+	unsigned long fixed_key;
 	wait_queue_entry_t wait;
 	wait_queue_head_t *wait_address;
 };

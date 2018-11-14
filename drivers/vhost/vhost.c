@@ -156,7 +156,7 @@ static void vhost_flush_work(struct vhost_work *work)
 }
 
 static void vhost_poll_func(struct file *file, wait_queue_head_t *wqh,
-			    poll_table *pt)
+			    poll_table *pt, unsigned long unused)
 {
 	struct vhost_poll *poll;
 

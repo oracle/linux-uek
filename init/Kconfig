@@ -1517,6 +1517,22 @@ config EPOLL
 	  Disabling this option will cause the kernel to be built without
 	  support for epoll family of system calls.
 
+config WAITFD
+	bool "Enable waitfd() system call" if EXPERT
+	select ANON_INODES
+	default n
+	help
+	  Enable the waitfd() system call that allows receiving child state
+	  changes from a file descriptor.  This permits use of poll() to
+	  monitor waitpid() output simultaneously with other fd state changes,
+	  even if the waitpid() output is coming from thread-targetted sources
+	  such as ptrace().
+
+	  Note: this system call is not upstream: its syscall number is not
+	  finalized, so the call itself should only be used with caution.
+
+	  If unsure, say N.
+
 config SIGNALFD
 	bool "Enable signalfd() system call" if EXPERT
 	default y

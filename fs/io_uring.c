@@ -1815,7 +1815,7 @@ struct io_poll_table {
 };
 
 static void io_poll_queue_proc(struct file *file, struct wait_queue_head *head,
-			       struct poll_table_struct *p)
+			       struct poll_table_struct *p, unsigned long fixed_event)
 {
 	struct io_poll_table *pt = container_of(p, struct io_poll_table, pt);
 

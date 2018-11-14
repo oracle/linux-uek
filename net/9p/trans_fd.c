@@ -541,7 +541,8 @@ static int p9_pollwake(wait_queue_entry_t *wait, unsigned int mode, int sync, vo
  */
 
 static void
-p9_pollwait(struct file *filp, wait_queue_head_t *wait_address, poll_table *p)
+p9_pollwait(struct file *filp, wait_queue_head_t *wait_address, poll_table *p,
+	    unsigned long unused)
 {
 	struct p9_conn *m = container_of(p, struct p9_conn, pt);
 	struct p9_poll_wait *pwait = NULL;

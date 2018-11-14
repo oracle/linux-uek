@@ -392,6 +392,7 @@ COND_SYSCALL(subpage_prot);
  * include/uapi/asm-generic/unistd.h and wanted by >= 1 arch
  */
 
+COND_SYSCALL(waitfd);
 /* __ARCH_WANT_SYSCALL_NO_FLAGS */
 COND_SYSCALL(epoll_create);
 COND_SYSCALL(inotify_init);
