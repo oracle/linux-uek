@@ -69,6 +69,9 @@ unsigned int mlx5_core_debug_mask;
 module_param_named(debug_mask, mlx5_core_debug_mask, uint, 0644);
 MODULE_PARM_DESC(debug_mask, "debug mask: 1 = dump cmd data, 2 = dump cmd exec time, 3 = both. Default=0");
 
+/*UEK Only - Enabling 2^20 QP's, instead 2^18 by default*/
+#define MLX5_UEK_QP_LIMITATION  20
+
 #define MLX5_DEFAULT_PROF	2
 static unsigned int prof_sel = MLX5_DEFAULT_PROF;
 module_param_named(prof_sel, prof_sel, uint, 0444);
@@ -531,9 +534,10 @@ static int handle_hca_cap(struct mlx5_core_dev *dev)
 			       MLX5_CAP_GEN_MAX(dev, log_max_qp));
 		profile[prof_sel].log_max_qp = MLX5_CAP_GEN_MAX(dev, log_max_qp);
 	}
+	/* Remove driver limitation for QP's - UEK Only */
 	if (prof->mask & MLX5_PROF_MASK_QP_SIZE)
 		MLX5_SET(cmd_hca_cap, set_hca_cap, log_max_qp,
-			 prof->log_max_qp);
+			 MLX5_UEK_QP_LIMITATION);
 
 	/* disable cmdif checksum */
 	MLX5_SET(cmd_hca_cap, set_hca_cap, cmdif_checksum, 0);
