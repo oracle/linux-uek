@@ -106,6 +106,8 @@ static int xenvif_start_xmit(struct sk_buff *skb, struct net_device *dev)
 	if (!xenvif_rx_schedulable(vif))
 		goto drop;
 
+	netbk_update_max_slots_needed(skb);
+
 	/* Reserve ring slots for the worst-case number of fragments. */
 	vif->rx_req_cons_peek += xen_netbk_count_skb_slots(vif, skb);
 	xenvif_get(vif);

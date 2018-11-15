@@ -377,7 +377,10 @@ static bool start_new_rx_buffer(int offset, unsigned long size, int head,
 }
 
 struct skb_cb_overlay {
-	int meta_slots_used;
+	union {
+		int meta_slots_used;
+		int max_slots_needed;
+	};
 	bool full_coalesce;
 };
 
@@ -746,6 +749,54 @@ static void netbk_add_frag_responses(struct xenvif *vif, int status,
 	}
 }
 
+/*
+ * We need a cheap worse case estimate for the number of
+ * slots we'll use.
+ */
+void netbk_update_max_slots_needed(struct sk_buff *skb)
+{
+	int max_slots_needed;
+	int i;
+
+	max_slots_needed = DIV_ROUND_UP(offset_in_page(skb->data) +
+					skb_headlen(skb),
+					PAGE_SIZE);
+	for (i = 0; i < skb_shinfo(skb)->nr_frags; i++) {
+		unsigned int size;
+		unsigned int offset;
+
+		size = skb_frag_size(&skb_shinfo(skb)->frags[i]);
+		offset = skb_shinfo(skb)->frags[i].page_offset;
+
+		/* For a worse-case estimate we need to factor in
+		 * the fragment page offset as this will affect the
+		 * number of times xenvif_gop_frag_copy() will
+		 * call start_new_rx_buffer().
+		 */
+		max_slots_needed += DIV_ROUND_UP(offset + size,
+						 PAGE_SIZE);
+	}
+
+	/* To avoid the estimate becoming too pessimal for some
+	 * frontends that limit posted rx requests, cap the estimate
+	 * at MAX_SKB_FRAGS. In this case netback will fully coalesce
+	 * the skb into the provided slots.
+	 */
+	if (max_slots_needed > MAX_SKB_FRAGS) {
+		max_slots_needed = MAX_SKB_FRAGS;
+		XENVIF_RX_CB(skb)->full_coalesce = true;
+	} else {
+		XENVIF_RX_CB(skb)->full_coalesce = false;
+	}
+
+	/* We may need one more slot for GSO metadata */
+	if (skb_shinfo(skb)->gso_type & SKB_GSO_TCPV4 ||
+	    skb_shinfo(skb)->gso_type & SKB_GSO_TCPV6)
+		max_slots_needed++;
+
+	XENVIF_RX_CB(skb)->max_slots_needed = max_slots_needed;
+}
+
 static void xen_netbk_rx_action(struct xen_netbk *netbk)
 {
 	struct xenvif *vif = NULL, *tmp;
@@ -768,52 +819,11 @@ static void xen_netbk_rx_action(struct xen_netbk *netbk)
 
 	while ((skb = skb_dequeue(&netbk->rx_queue)) != NULL) {
 		vif = netdev_priv(skb->dev);
-		int max_slots_needed;
-		int i;
-
-		/* We need a cheap worse case estimate for the number of
-		 * slots we'll use.
-		 */
-
-		max_slots_needed = DIV_ROUND_UP(offset_in_page(skb->data) +
-						skb_headlen(skb),
-						PAGE_SIZE);
-		for (i = 0; i < skb_shinfo(skb)->nr_frags; i++) {
-			unsigned int size;
-			unsigned int offset;
-
-			size = skb_frag_size(&skb_shinfo(skb)->frags[i]);
-			offset = skb_shinfo(skb)->frags[i].page_offset;
-
-			/* For a worse-case estimate we need to factor in
-			 * the fragment page offset as this will affect the
-			 * number of times xenvif_gop_frag_copy() will
-			 * call start_new_rx_buffer().
-			 */
-			max_slots_needed += DIV_ROUND_UP(offset + size,
-							 PAGE_SIZE);
-		}
-
-		/* To avoid the estimate becoming too pessimal for some
-		 * frontends that limit posted rx requests, cap the estimate
-		 * at MAX_SKB_FRAGS. In this case netback will fully coalesce
-		 * the skb into the provided slots.
-		 */
-		if (max_slots_needed > MAX_SKB_FRAGS) {
-			max_slots_needed = MAX_SKB_FRAGS;
-			XENVIF_RX_CB(skb)->full_coalesce = true;
-		} else {
-			XENVIF_RX_CB(skb)->full_coalesce = false;
-		}
-
-		/* We may need one more slot for GSO metadata */
-		if (skb_shinfo(skb)->gso_type & SKB_GSO_TCPV4 ||
-		    skb_shinfo(skb)->gso_type & SKB_GSO_TCPV6)
-			max_slots_needed++;
+		sco = (struct skb_cb_overlay *)skb->cb;
 
 		/* If the skb may not fit then bail out now */
-		if ((npo.meta_prod + max_slots_needed) > ARRAY_SIZE(netbk->meta)
-		    || !xenvif_rx_ring_slots_available(vif, max_slots_needed)) {
+		if ((npo.meta_prod + sco->max_slots_needed) > ARRAY_SIZE(netbk->meta)
+		    || !xenvif_rx_ring_slots_available(vif, sco->max_slots_needed)) {
 
 			if (unlikely(!vif->netbk)) {
 				pr_warn("skb is dropped for vif%u.%u because its netbk is NULL\n",
@@ -827,7 +837,6 @@ static void xen_netbk_rx_action(struct xen_netbk *netbk)
 			break;
 		}
 
-		sco = (struct skb_cb_overlay *)skb->cb;
 		sco->meta_slots_used = netbk_gop_skb(skb, &npo);
 
 		__skb_queue_tail(&rxq, skb);
