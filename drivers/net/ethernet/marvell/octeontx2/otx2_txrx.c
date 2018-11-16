@@ -770,9 +770,9 @@ int otx2_rxtx_enable(struct otx2_nic *pfvf, bool enable)
 	struct msg_req *msg;
 
 	if (enable)
-		msg = otx2_mbox_alloc_msg_NIX_LF_START_RX(&pfvf->mbox);
+		msg = otx2_mbox_alloc_msg_nix_lf_start_rx(&pfvf->mbox);
 	else
-		msg = otx2_mbox_alloc_msg_NIX_LF_STOP_RX(&pfvf->mbox);
+		msg = otx2_mbox_alloc_msg_nix_lf_stop_rx(&pfvf->mbox);
 
 	if (!msg)
 		return -ENOMEM;
