@@ -1577,7 +1577,7 @@ alloc:
 	return 0;
 }
 
-int rvu_mbox_handler_NPC_MCAM_ALLOC_ENTRY(struct rvu *rvu,
+int rvu_mbox_handler_npc_mcam_alloc_entry(struct rvu *rvu,
 					  struct npc_mcam_alloc_entry_req *req,
 					  struct npc_mcam_alloc_entry_rsp *rsp)
 {
@@ -1617,7 +1617,7 @@ int rvu_mbox_handler_NPC_MCAM_ALLOC_ENTRY(struct rvu *rvu,
 	return npc_mcam_alloc_entries(mcam, pcifunc, req, rsp);
 }
 
-int rvu_mbox_handler_NPC_MCAM_FREE_ENTRY(struct rvu *rvu,
+int rvu_mbox_handler_npc_mcam_free_entry(struct rvu *rvu,
 					 struct npc_mcam_free_entry_req *req,
 					 struct msg_rsp *rsp)
 {
@@ -1663,7 +1663,7 @@ exit:
 	return rc;
 }
 
-int rvu_mbox_handler_NPC_MCAM_WRITE_ENTRY(struct rvu *rvu,
+int rvu_mbox_handler_npc_mcam_write_entry(struct rvu *rvu,
 					  struct npc_mcam_write_entry_req *req,
 					  struct msg_rsp *rsp)
 {
@@ -1704,7 +1704,7 @@ exit:
 	return rc;
 }
 
-int rvu_mbox_handler_NPC_MCAM_ENA_ENTRY(struct rvu *rvu,
+int rvu_mbox_handler_npc_mcam_ena_entry(struct rvu *rvu,
 					struct npc_mcam_ena_dis_entry_req *req,
 					struct msg_rsp *rsp)
 {
@@ -1727,7 +1727,7 @@ int rvu_mbox_handler_NPC_MCAM_ENA_ENTRY(struct rvu *rvu,
 	return 0;
 }
 
-int rvu_mbox_handler_NPC_MCAM_DIS_ENTRY(struct rvu *rvu,
+int rvu_mbox_handler_npc_mcam_dis_entry(struct rvu *rvu,
 					struct npc_mcam_ena_dis_entry_req *req,
 					struct msg_rsp *rsp)
 {
@@ -1750,7 +1750,7 @@ int rvu_mbox_handler_NPC_MCAM_DIS_ENTRY(struct rvu *rvu,
 	return 0;
 }
 
-int rvu_mbox_handler_NPC_MCAM_SHIFT_ENTRY(struct rvu *rvu,
+int rvu_mbox_handler_npc_mcam_shift_entry(struct rvu *rvu,
 			struct npc_mcam_shift_entry_req *req,
 			struct npc_mcam_shift_entry_rsp *rsp)
 {
@@ -1819,7 +1819,7 @@ int rvu_mbox_handler_NPC_MCAM_SHIFT_ENTRY(struct rvu *rvu,
 	return rc;
 }
 
-int rvu_mbox_handler_NPC_MCAM_ALLOC_COUNTER(struct rvu *rvu,
+int rvu_mbox_handler_npc_mcam_alloc_counter(struct rvu *rvu,
 			struct npc_mcam_alloc_counter_req *req,
 			struct npc_mcam_alloc_counter_rsp *rsp)
 {
@@ -1883,7 +1883,7 @@ int rvu_mbox_handler_NPC_MCAM_ALLOC_COUNTER(struct rvu *rvu,
 	return 0;
 }
 
-int rvu_mbox_handler_NPC_MCAM_FREE_COUNTER(struct rvu *rvu,
+int rvu_mbox_handler_npc_mcam_free_counter(struct rvu *rvu,
 		struct npc_mcam_oper_counter_req *req, struct msg_rsp *rsp)
 {
 	struct npc_mcam *mcam = &rvu->hw->mcam;
@@ -1925,7 +1925,7 @@ int rvu_mbox_handler_NPC_MCAM_FREE_COUNTER(struct rvu *rvu,
 	return 0;
 }
 
-int rvu_mbox_handler_NPC_MCAM_UNMAP_COUNTER(struct rvu *rvu,
+int rvu_mbox_handler_npc_mcam_unmap_counter(struct rvu *rvu,
 		struct npc_mcam_unmap_counter_req *req, struct msg_rsp *rsp)
 {
 	struct npc_mcam *mcam = &rvu->hw->mcam;
@@ -1971,7 +1971,7 @@ exit:
 	return rc;
 }
 
-int rvu_mbox_handler_NPC_MCAM_CLEAR_COUNTER(struct rvu *rvu,
+int rvu_mbox_handler_npc_mcam_clear_counter(struct rvu *rvu,
 		struct npc_mcam_oper_counter_req *req, struct msg_rsp *rsp)
 {
 	struct npc_mcam *mcam = &rvu->hw->mcam;
@@ -1992,7 +1992,7 @@ int rvu_mbox_handler_NPC_MCAM_CLEAR_COUNTER(struct rvu *rvu,
 	return 0;
 }
 
-int rvu_mbox_handler_NPC_MCAM_COUNTER_STATS(struct rvu *rvu,
+int rvu_mbox_handler_npc_mcam_counter_stats(struct rvu *rvu,
 			struct npc_mcam_oper_counter_req *req,
 			struct npc_mcam_oper_counter_rsp *rsp)
 {
@@ -2015,7 +2015,7 @@ int rvu_mbox_handler_NPC_MCAM_COUNTER_STATS(struct rvu *rvu,
 	return 0;
 }
 
-int rvu_mbox_handler_NPC_MCAM_ALLOC_AND_WRITE_ENTRY(struct rvu *rvu,
+int rvu_mbox_handler_npc_mcam_alloc_and_write_entry(struct rvu *rvu,
 			  struct npc_mcam_alloc_and_write_entry_req *req,
 			  struct npc_mcam_alloc_and_write_entry_rsp *rsp)
 {
@@ -2042,7 +2042,7 @@ int rvu_mbox_handler_NPC_MCAM_ALLOC_AND_WRITE_ENTRY(struct rvu *rvu,
 	entry_req.ref_entry = req->ref_entry;
 	entry_req.count = 1;
 
-	rc = rvu_mbox_handler_NPC_MCAM_ALLOC_ENTRY(rvu,
+	rc = rvu_mbox_handler_npc_mcam_alloc_entry(rvu,
 						   &entry_req, &entry_rsp);
 	if (rc)
 		return rc;
@@ -2060,7 +2060,7 @@ int rvu_mbox_handler_NPC_MCAM_ALLOC_AND_WRITE_ENTRY(struct rvu *rvu,
 	cntr_req.contig = true;
 	cntr_req.count = 1;
 
-	rc = rvu_mbox_handler_NPC_MCAM_ALLOC_COUNTER(rvu, &cntr_req, &cntr_rsp);
+	rc = rvu_mbox_handler_npc_mcam_alloc_counter(rvu, &cntr_req, &cntr_rsp);
 	if (rc) {
 		/* Free allocated MCAM entry */
 		mutex_lock(&mcam->lock);
@@ -2101,7 +2101,7 @@ write_entry:
 	rvu_read64(rvu, BLKADDR_NPC,	\
 		NPC_AF_INTFX_LDATAX_FLAGSX_CFG(intf, ld, fl))
 
-int rvu_mbox_handler_NPC_GET_KEX_CFG(struct rvu *rvu, struct msg_req *req,
+int rvu_mbox_handler_npc_get_kex_cfg(struct rvu *rvu, struct msg_req *req,
 				     struct npc_get_kex_cfg_rsp *rsp)
 {
 	int lid, lt, ld, fl;

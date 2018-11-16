@@ -716,21 +716,21 @@ static int nix_lf_hwctx_disable(struct rvu *rvu, struct hwctx_disable_req *req)
 	return err;
 }
 
-int rvu_mbox_handler_NIX_AQ_ENQ(struct rvu *rvu,
+int rvu_mbox_handler_nix_aq_enq(struct rvu *rvu,
 				struct nix_aq_enq_req *req,
 				struct nix_aq_enq_rsp *rsp)
 {
 	return rvu_nix_aq_enq_inst(rvu, req, rsp);
 }
 
-int rvu_mbox_handler_NIX_HWCTX_DISABLE(struct rvu *rvu,
+int rvu_mbox_handler_nix_hwctx_disable(struct rvu *rvu,
 				       struct hwctx_disable_req *req,
 				       struct msg_rsp *rsp)
 {
 	return nix_lf_hwctx_disable(rvu, req);
 }
 
-int rvu_mbox_handler_NIX_LF_ALLOC(struct rvu *rvu,
+int rvu_mbox_handler_nix_lf_alloc(struct rvu *rvu,
 				  struct nix_lf_alloc_req *req,
 				  struct nix_lf_alloc_rsp *rsp)
 {
@@ -934,7 +934,7 @@ exit:
 	return rc;
 }
 
-int rvu_mbox_handler_NIX_LF_FREE(struct rvu *rvu, struct msg_req *req,
+int rvu_mbox_handler_nix_lf_free(struct rvu *rvu, struct msg_req *req,
 				 struct msg_rsp *rsp)
 {
 	struct rvu_hwinfo *hw = rvu->hw;
@@ -968,7 +968,7 @@ int rvu_mbox_handler_NIX_LF_FREE(struct rvu *rvu, struct msg_req *req,
 	return 0;
 }
 
-int rvu_mbox_handler_NIX_MARK_FORMAT_CFG(struct rvu *rvu,
+int rvu_mbox_handler_nix_mark_format_cfg(struct rvu *rvu,
 					 struct nix_mark_format_cfg  *req,
 					 struct nix_mark_format_cfg_rsp *rsp)
 {
@@ -1133,7 +1133,7 @@ rvu_get_tl1_schqs(struct rvu *rvu,
 }
 
 
-int rvu_mbox_handler_NIX_TXSCH_ALLOC(struct rvu *rvu,
+int rvu_mbox_handler_nix_txsch_alloc(struct rvu *rvu,
 				     struct nix_txsch_alloc_req *req,
 				     struct nix_txsch_alloc_rsp *rsp)
 {
@@ -1397,7 +1397,7 @@ err:
 	return NIX_AF_ERR_TLX_INVALID;
 }
 
-int rvu_mbox_handler_NIX_TXSCH_FREE(struct rvu *rvu,
+int rvu_mbox_handler_nix_txsch_free(struct rvu *rvu,
 				    struct nix_txsch_free_req *req,
 				    struct msg_rsp *rsp)
 {
@@ -1502,7 +1502,7 @@ unlock:
 }
 
 
-int rvu_mbox_handler_NIX_TXSCHQ_CFG(struct rvu *rvu,
+int rvu_mbox_handler_nix_txschq_cfg(struct rvu *rvu,
 			struct nix_txschq_config *req, struct msg_rsp *rsp)
 {
 	struct rvu_hwinfo *hw = rvu->hw;
@@ -1607,7 +1607,7 @@ static int nix_rx_vtag_cfg(struct rvu *rvu, int nixlf, int blkaddr,
 	return 0;
 }
 
-int rvu_mbox_handler_NIX_VTAG_CFG(struct rvu *rvu,
+int rvu_mbox_handler_nix_vtag_cfg(struct rvu *rvu,
 				  struct nix_vtag_config *req,
 				  struct msg_rsp *rsp)
 {
@@ -1961,7 +1961,7 @@ static int nix_af_mark_format_setup(struct rvu *rvu, struct nix_hw *nix_hw,
 }
 
 
-int rvu_mbox_handler_NIX_STATS_RST(struct rvu *rvu, struct msg_req *req,
+int rvu_mbox_handler_nix_stats_rst(struct rvu *rvu, struct msg_req *req,
 				   struct msg_rsp *rsp)
 {
 	struct rvu_hwinfo *hw = rvu->hw;
@@ -2168,7 +2168,7 @@ static int reserve_flowkey_alg_idx(struct rvu *rvu, int blkaddr, u32 flow_cfg)
 	return rc;
 }
 
-int rvu_mbox_handler_NIX_RSS_FLOWKEY_CFG(struct rvu *rvu,
+int rvu_mbox_handler_nix_rss_flowkey_cfg(struct rvu *rvu,
 					 struct nix_rss_flowkey_cfg *req,
 					 struct nix_rss_flowkey_cfg_rsp *rsp)
 {
@@ -2268,7 +2268,7 @@ static int nix_rx_flowkey_alg_cfg(struct rvu *rvu, int blkaddr)
 	return 0;
 }
 
-int rvu_mbox_handler_NIX_SET_MAC_ADDR(struct rvu *rvu,
+int rvu_mbox_handler_nix_set_mac_addr(struct rvu *rvu,
 				      struct nix_set_mac_addr *req,
 				      struct msg_rsp *rsp)
 {
@@ -2296,7 +2296,7 @@ int rvu_mbox_handler_NIX_SET_MAC_ADDR(struct rvu *rvu,
 	return 0;
 }
 
-int rvu_mbox_handler_NIX_SET_RX_MODE(struct rvu *rvu, struct nix_rx_mode *req,
+int rvu_mbox_handler_nix_set_rx_mode(struct rvu *rvu, struct nix_rx_mode *req,
 				     struct msg_rsp *rsp)
 {
 	bool allmulti = false, disable_promisc = false;
@@ -2377,7 +2377,7 @@ static void nix_find_link_frs(struct rvu *rvu,
 		req->minlen = minlen;
 }
 
-int rvu_mbox_handler_NIX_SET_HW_FRS(struct rvu *rvu, struct nix_frs_cfg *req,
+int rvu_mbox_handler_nix_set_hw_frs(struct rvu *rvu, struct nix_frs_cfg *req,
 				    struct msg_rsp *rsp)
 {
 	struct rvu_hwinfo *hw = rvu->hw;
@@ -2467,7 +2467,7 @@ linkcfg:
 	return 0;
 }
 
-int rvu_mbox_handler_NIX_SET_RX_CFG(struct rvu *rvu, struct nix_rx_cfg *req,
+int rvu_mbox_handler_nix_set_rx_cfg(struct rvu *rvu, struct nix_rx_cfg *req,
 				    struct msg_rsp *rsp)
 {
 	int nixlf, blkaddr;
@@ -2509,7 +2509,7 @@ int rvu_mbox_handler_NIX_SET_RX_CFG(struct rvu *rvu, struct nix_rx_cfg *req,
 	return 0;
 }
 
-int rvu_mbox_handler_NIX_RXVLAN_ALLOC(struct rvu *rvu, struct msg_req *req,
+int rvu_mbox_handler_nix_rxvlan_alloc(struct rvu *rvu, struct msg_req *req,
 				      struct msg_rsp *rsp)
 {
 	struct npc_mcam_alloc_entry_req alloc_req = { };
@@ -2533,7 +2533,7 @@ int rvu_mbox_handler_NIX_RXVLAN_ALLOC(struct rvu *rvu, struct msg_req *req,
 	alloc_req.hdr.pcifunc = pcifunc;
 	alloc_req.count = 1;
 
-	err = rvu_mbox_handler_NPC_MCAM_ALLOC_ENTRY(rvu, &alloc_req,
+	err = rvu_mbox_handler_npc_mcam_alloc_entry(rvu, &alloc_req,
 						    &alloc_rsp);
 	if (err)
 		return err;
@@ -2563,7 +2563,7 @@ int rvu_mbox_handler_NIX_RXVLAN_ALLOC(struct rvu *rvu, struct msg_req *req,
 free_entry:
 	free_req.hdr.pcifunc = pcifunc;
 	free_req.entry = alloc_rsp.entry_list[0];
-	rvu_mbox_handler_NPC_MCAM_FREE_ENTRY(rvu, &free_req, rsp);
+	rvu_mbox_handler_npc_mcam_free_entry(rvu, &free_req, rsp);
 	pfvf->rxvlan = false;
 	return err;
 }
@@ -2886,7 +2886,7 @@ static int nix_get_nixlf(struct rvu *rvu, u16 pcifunc, int *nixlf)
 	return 0;
 }
 
-int rvu_mbox_handler_NIX_LF_START_RX(struct rvu *rvu, struct msg_req *req,
+int rvu_mbox_handler_nix_lf_start_rx(struct rvu *rvu, struct msg_req *req,
 				      struct msg_rsp *rsp)
 {
 	u16 pcifunc = req->hdr.pcifunc;
@@ -2900,7 +2900,7 @@ int rvu_mbox_handler_NIX_LF_START_RX(struct rvu *rvu, struct msg_req *req,
 	return 0;
 }
 
-int rvu_mbox_handler_NIX_LF_STOP_RX(struct rvu *rvu, struct msg_req *req,
+int rvu_mbox_handler_nix_lf_stop_rx(struct rvu *rvu, struct msg_req *req,
 				     struct msg_rsp *rsp)
 {
 	u16 pcifunc = req->hdr.pcifunc;
@@ -2914,7 +2914,7 @@ int rvu_mbox_handler_NIX_LF_STOP_RX(struct rvu *rvu, struct msg_req *req,
 	return 0;
 }
 
-int rvu_mbox_handler_NIX_LSO_FORMAT_CFG(struct rvu *rvu,
+int rvu_mbox_handler_nix_lso_format_cfg(struct rvu *rvu,
 					struct nix_lso_format_cfg *req,
 					struct nix_lso_format_cfg_rsp *rsp)
 {

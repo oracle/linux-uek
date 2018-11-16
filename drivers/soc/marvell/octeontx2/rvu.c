@@ -940,7 +940,7 @@ int rvu_aq_alloc(struct rvu *rvu, struct admin_queue **ad_queue,
 	return 0;
 }
 
-static int rvu_mbox_handler_READY(struct rvu *rvu, struct msg_req *req,
+static int rvu_mbox_handler_ready(struct rvu *rvu, struct msg_req *req,
 				  struct ready_msg_rsp *rsp)
 {
 	return 0;
@@ -1089,7 +1089,7 @@ static int rvu_detach_rsrcs(struct rvu *rvu, struct rsrc_detach *detach,
 	return 0;
 }
 
-static int rvu_mbox_handler_DETACH_RESOURCES(struct rvu *rvu,
+static int rvu_mbox_handler_detach_resources(struct rvu *rvu,
 					     struct rsrc_detach *detach,
 					     struct msg_rsp *rsp)
 {
@@ -1243,7 +1243,7 @@ fail:
 	return -ENOSPC;
 }
 
-static int rvu_mbox_handler_ATTACH_RESOURCES(struct rvu *rvu,
+static int rvu_mbox_handler_attach_resources(struct rvu *rvu,
 					     struct rsrc_attach *attach,
 					     struct msg_rsp *rsp)
 {
@@ -1366,7 +1366,7 @@ static void rvu_clear_msix_offset(struct rvu *rvu, struct rvu_pfvf *pfvf,
 	rvu_free_rsrc_contig(&pfvf->msix, nvecs, offset);
 }
 
-static int rvu_mbox_handler_MSIX_OFFSET(struct rvu *rvu, struct msg_req *req,
+static int rvu_mbox_handler_msix_offset(struct rvu *rvu, struct msg_req *req,
 					struct msix_offset_rsp *rsp)
 {
 	struct rvu_hwinfo *hw = rvu->hw;
@@ -1415,7 +1415,7 @@ static int rvu_mbox_handler_MSIX_OFFSET(struct rvu *rvu, struct msg_req *req,
 	return 0;
 }
 
-static int rvu_mbox_handler_VF_FLR(struct rvu *rvu, struct msg_req *req,
+static int rvu_mbox_handler_vf_flr(struct rvu *rvu, struct msg_req *req,
 				   struct msg_rsp *rsp)
 {
 	u16 pcifunc = req->hdr.pcifunc;
@@ -1445,7 +1445,7 @@ static int rvu_process_mbox_msg(struct otx2_mbox *mbox, int devid,
 		goto bad_message;
 
 	switch (req->id) {
-#define M(_name, _id, _req_type, _rsp_type)				\
+#define M(_name, _id, _fn_name, _req_type, _rsp_type)			\
 	case _id: {							\
 		struct _rsp_type *rsp;					\
 		int err;						\
@@ -1467,7 +1467,7 @@ static int rvu_process_mbox_msg(struct otx2_mbox *mbox, int devid,
 			rsp->hdr.rc = 0;				\
 		}							\
 									\
-		err = rvu_mbox_handler_ ## _name(rvu,			\
+		err = rvu_mbox_handler_ ## _fn_name(rvu,		\
 						 (struct _req_type *)req, \
 						 rsp);			\
 		if (rsp && err)						\

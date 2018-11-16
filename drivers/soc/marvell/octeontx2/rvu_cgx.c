@@ -20,9 +20,9 @@ struct cgx_evq_entry {
 	struct cgx_link_event link_event;
 };
 
-#define M(_name, _id, _req_type, _rsp_type)				\
+#define M(_name, _id, _fn_name, _req_type, _rsp_type)			\
 static struct _req_type __maybe_unused					\
-*otx2_mbox_alloc_msg_ ## _name(struct rvu *rvu, int devid)		\
+*otx2_mbox_alloc_msg_ ## _fn_name(struct rvu *rvu, int devid)		\
 {									\
 	struct _req_type *req;						\
 									\
@@ -176,7 +176,7 @@ static void cgx_notify_pfs(struct cgx_link_event *event, struct rvu *rvu)
 		}
 
 		/* Send mbox message to PF */
-		msg = otx2_mbox_alloc_msg_CGX_LINK_EVENT(rvu, pfid);
+		msg = otx2_mbox_alloc_msg_cgx_link_event(rvu, pfid);
 		if (!msg)
 			continue;
 		msg->link_info = *linfo;
@@ -372,21 +372,21 @@ int rvu_cgx_config_rxtx(struct rvu *rvu, u16 pcifunc, bool start)
 	return 0;
 }
 
-int rvu_mbox_handler_CGX_START_RXTX(struct rvu *rvu, struct msg_req *req,
+int rvu_mbox_handler_cgx_start_rxtx(struct rvu *rvu, struct msg_req *req,
 				    struct msg_rsp *rsp)
 {
 	rvu_cgx_config_rxtx(rvu, req->hdr.pcifunc, true);
 	return 0;
 }
 
-int rvu_mbox_handler_CGX_STOP_RXTX(struct rvu *rvu, struct msg_req *req,
+int rvu_mbox_handler_cgx_stop_rxtx(struct rvu *rvu, struct msg_req *req,
 				   struct msg_rsp *rsp)
 {
 	rvu_cgx_config_rxtx(rvu, req->hdr.pcifunc, false);
 	return 0;
 }
 
-int rvu_mbox_handler_CGX_STATS(struct rvu *rvu, struct msg_req *req,
+int rvu_mbox_handler_cgx_stats(struct rvu *rvu, struct msg_req *req,
 			       struct cgx_stats_rsp *rsp)
 {
 	int pf = rvu_get_pf(req->hdr.pcifunc);
@@ -423,7 +423,7 @@ int rvu_mbox_handler_CGX_STATS(struct rvu *rvu, struct msg_req *req,
 	return 0;
 }
 
-int rvu_mbox_handler_CGX_MAC_ADDR_SET(struct rvu *rvu,
+int rvu_mbox_handler_cgx_mac_addr_set(struct rvu *rvu,
 				      struct cgx_mac_addr_set_or_get *req,
 				      struct cgx_mac_addr_set_or_get *rsp)
 {
@@ -437,7 +437,7 @@ int rvu_mbox_handler_CGX_MAC_ADDR_SET(struct rvu *rvu,
 	return 0;
 }
 
-int rvu_mbox_handler_CGX_MAC_ADDR_GET(struct rvu *rvu,
+int rvu_mbox_handler_cgx_mac_addr_get(struct rvu *rvu,
 				      struct cgx_mac_addr_set_or_get *req,
 				      struct cgx_mac_addr_set_or_get *rsp)
 {
@@ -456,7 +456,7 @@ int rvu_mbox_handler_CGX_MAC_ADDR_GET(struct rvu *rvu,
 	return 0;
 }
 
-int rvu_mbox_handler_CGX_PROMISC_ENABLE(struct rvu *rvu, struct msg_req *req,
+int rvu_mbox_handler_cgx_promisc_enable(struct rvu *rvu, struct msg_req *req,
 					struct msg_rsp *rsp)
 {
 	u16 pcifunc = req->hdr.pcifunc;
@@ -476,7 +476,7 @@ int rvu_mbox_handler_CGX_PROMISC_ENABLE(struct rvu *rvu, struct msg_req *req,
 	return 0;
 }
 
-int rvu_mbox_handler_CGX_PROMISC_DISABLE(struct rvu *rvu, struct msg_req *req,
+int rvu_mbox_handler_cgx_promisc_disable(struct rvu *rvu, struct msg_req *req,
 					 struct msg_rsp *rsp)
 {
 	u16 pcifunc = req->hdr.pcifunc;
@@ -520,21 +520,21 @@ static int rvu_cgx_config_linkevents(struct rvu *rvu, u16 pcifunc, bool en)
 	return 0;
 }
 
-int rvu_mbox_handler_CGX_START_LINKEVENTS(struct rvu *rvu, struct msg_req *req,
+int rvu_mbox_handler_cgx_start_linkevents(struct rvu *rvu, struct msg_req *req,
 					  struct msg_rsp *rsp)
 {
 	rvu_cgx_config_linkevents(rvu, req->hdr.pcifunc, true);
 	return 0;
 }
 
-int rvu_mbox_handler_CGX_STOP_LINKEVENTS(struct rvu *rvu, struct msg_req *req,
+int rvu_mbox_handler_cgx_stop_linkevents(struct rvu *rvu, struct msg_req *req,
 					 struct msg_rsp *rsp)
 {
 	rvu_cgx_config_linkevents(rvu, req->hdr.pcifunc, false);
 	return 0;
 }
 
-int rvu_mbox_handler_CGX_GET_LINKINFO(struct rvu *rvu, struct msg_req *req,
+int rvu_mbox_handler_cgx_get_linkinfo(struct rvu *rvu, struct msg_req *req,
 				      struct cgx_link_info_msg *rsp)
 {
 	u8 cgx_id, lmac_id;
@@ -569,14 +569,14 @@ static int rvu_cgx_config_intlbk(struct rvu *rvu, u16 pcifunc, bool en)
 					  lmac_id, en);
 }
 
-int rvu_mbox_handler_CGX_INTLBK_ENABLE(struct rvu *rvu, struct msg_req *req,
+int rvu_mbox_handler_cgx_intlbk_enable(struct rvu *rvu, struct msg_req *req,
 				       struct msg_rsp *rsp)
 {
 	rvu_cgx_config_intlbk(rvu, req->hdr.pcifunc, true);
 	return 0;
 }
 
-int rvu_mbox_handler_CGX_INTLBK_DISABLE(struct rvu *rvu, struct msg_req *req,
+int rvu_mbox_handler_cgx_intlbk_disable(struct rvu *rvu, struct msg_req *req,
 					struct msg_rsp *rsp)
 {
 	rvu_cgx_config_intlbk(rvu, req->hdr.pcifunc, false);

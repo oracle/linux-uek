@@ -73,7 +73,7 @@ int rvu_lf_lookup_tim_errata(struct rvu *rvu, struct rvu_block *block,
 	return -1;
 }
 
-int rvu_mbox_handler_TIM_LF_ALLOC(struct rvu *rvu,
+int rvu_mbox_handler_tim_lf_alloc(struct rvu *rvu,
 				  struct tim_lf_alloc_req *req,
 				  struct tim_lf_alloc_rsp *rsp)
 {
@@ -116,7 +116,7 @@ int rvu_mbox_handler_TIM_LF_ALLOC(struct rvu *rvu,
 	return 0;
 }
 
-int rvu_mbox_handler_TIM_LF_FREE(struct rvu *rvu,
+int rvu_mbox_handler_tim_lf_free(struct rvu *rvu,
 				 struct tim_ring_req *req,
 				 struct msg_rsp *rsp)
 {
@@ -130,7 +130,7 @@ int rvu_mbox_handler_TIM_LF_FREE(struct rvu *rvu,
 	return 0;
 }
 
-int rvu_mbox_handler_TIM_CONFIG_RING(struct rvu *rvu,
+int rvu_mbox_handler_tim_config_ring(struct rvu *rvu,
 				     struct tim_config_req *req,
 				     struct msg_rsp *rsp)
 {
@@ -228,7 +228,7 @@ int rvu_mbox_handler_TIM_CONFIG_RING(struct rvu *rvu,
 	return 0;
 }
 
-int rvu_mbox_handler_TIM_ENABLE_RING(struct rvu *rvu,
+int rvu_mbox_handler_tim_enable_ring(struct rvu *rvu,
 				     struct tim_ring_req *req,
 				     struct tim_enable_rsp *rsp)
 {
@@ -260,7 +260,7 @@ int rvu_mbox_handler_TIM_ENABLE_RING(struct rvu *rvu,
 	return 0;
 }
 
-int rvu_mbox_handler_TIM_DISABLE_RING(struct rvu *rvu,
+int rvu_mbox_handler_tim_disable_ring(struct rvu *rvu,
 				      struct tim_ring_req *req,
 				      struct msg_rsp *rsp)
 {
