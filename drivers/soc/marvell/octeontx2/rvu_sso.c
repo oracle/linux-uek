@@ -165,7 +165,7 @@ int rvu_ssow_lf_teardown(struct rvu *rvu, int lf)
 	return 0;
 }
 
-int rvu_mbox_handler_SSO_HW_SETCONFIG(struct rvu *rvu,
+int rvu_mbox_handler_sso_hw_setconfig(struct rvu *rvu,
 				      struct sso_hw_setconfig *req,
 				      struct msg_rsp *rsp)
 {
@@ -233,7 +233,7 @@ int rvu_mbox_handler_SSO_HW_SETCONFIG(struct rvu *rvu,
 	return 0;
 }
 
-int rvu_mbox_handler_SSO_GRP_SET_PRIORITY(struct rvu *rvu,
+int rvu_mbox_handler_sso_grp_set_priority(struct rvu *rvu,
 					  struct sso_grp_priority *req,
 					  struct msg_rsp *rsp)
 {
@@ -259,7 +259,7 @@ int rvu_mbox_handler_SSO_GRP_SET_PRIORITY(struct rvu *rvu,
 	return 0;
 }
 
-int rvu_mbox_handler_SSO_GRP_GET_PRIORITY(struct rvu *rvu,
+int rvu_mbox_handler_sso_grp_get_priority(struct rvu *rvu,
 					  struct sso_grp_priority *req,
 					  struct sso_grp_priority *rsp)
 {
@@ -285,7 +285,7 @@ int rvu_mbox_handler_SSO_GRP_GET_PRIORITY(struct rvu *rvu,
 	return 0;
 }
 
-int rvu_mbox_handler_SSO_GRP_QOS_CONFIG(struct rvu *rvu,
+int rvu_mbox_handler_sso_grp_qos_config(struct rvu *rvu,
 					struct sso_grp_qos_cfg *req,
 					struct msg_rsp *rsp)
 {
@@ -333,7 +333,7 @@ int rvu_mbox_handler_SSO_GRP_QOS_CONFIG(struct rvu *rvu,
 	return 0;
 }
 
-int rvu_mbox_handler_SSO_LF_ALLOC(struct rvu *rvu, struct sso_lf_alloc_req *req,
+int rvu_mbox_handler_sso_lf_alloc(struct rvu *rvu, struct sso_lf_alloc_req *req,
 				  struct sso_lf_alloc_rsp *rsp)
 {
 	struct rvu_hwinfo *hw = rvu->hw;
@@ -386,7 +386,7 @@ exit:
 	return rc;
 }
 
-int rvu_mbox_handler_SSO_LF_FREE(struct rvu *rvu, struct sso_lf_free_req *req,
+int rvu_mbox_handler_sso_lf_free(struct rvu *rvu, struct sso_lf_free_req *req,
 				 struct msg_rsp *rsp)
 {
 	struct rvu_hwinfo *hw = rvu->hw;
@@ -423,7 +423,7 @@ int rvu_mbox_handler_SSO_LF_FREE(struct rvu *rvu, struct sso_lf_free_req *req,
 	return 0;
 }
 
-int rvu_mbox_handler_SSO_WS_CACHE_INV(struct rvu *rvu, struct msg_req *req,
+int rvu_mbox_handler_sso_ws_cache_inv(struct rvu *rvu, struct msg_req *req,
 				      struct msg_rsp *rsp)
 {
 	int num_lfs, ssowlf, hws, blkaddr;
@@ -459,7 +459,7 @@ int rvu_mbox_handler_SSO_WS_CACHE_INV(struct rvu *rvu, struct msg_req *req,
 	return 0;
 }
 
-int rvu_mbox_handler_SSOW_LF_ALLOC(struct rvu *rvu,
+int rvu_mbox_handler_ssow_lf_alloc(struct rvu *rvu,
 				   struct ssow_lf_alloc_req *req,
 				   struct msg_rsp *rsp)
 {
@@ -473,7 +473,7 @@ int rvu_mbox_handler_SSOW_LF_ALLOC(struct rvu *rvu,
 	return 0;
 }
 
-int rvu_mbox_handler_SSOW_LF_FREE(struct rvu *rvu,
+int rvu_mbox_handler_ssow_lf_free(struct rvu *rvu,
 				  struct ssow_lf_free_req *req,
 				  struct msg_rsp *rsp)
 {

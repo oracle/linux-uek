@@ -67,6 +67,6 @@ int rvu_check_rsrc_policy(struct rvu *rvu,
 int rvu_check_txsch_policy(struct rvu *rvu, struct nix_txsch_alloc_req *req,
 			   u16 pcifunc);
 
-int rvu_mbox_handler_FREE_RSRC_CNT(struct rvu *rvu, struct msg_req *req,
+int rvu_mbox_handler_free_rsrc_cnt(struct rvu *rvu, struct msg_req *req,
 				   struct free_rsrcs_rsp *rsp);
 #endif /* RVU_VALIDATION_H */

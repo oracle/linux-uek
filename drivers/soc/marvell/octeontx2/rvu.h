@@ -391,31 +391,31 @@ int rvu_cgx_exit(struct rvu *rvu);
 int rvu_check_cgx_driver(struct rvu *rvu);
 void *rvu_cgx_pdata(u8 cgx_id, struct rvu *rvu);
 int rvu_cgx_config_rxtx(struct rvu *rvu, u16 pcifunc, bool start);
-int rvu_mbox_handler_CGX_START_RXTX(struct rvu *rvu, struct msg_req *req,
+int rvu_mbox_handler_cgx_start_rxtx(struct rvu *rvu, struct msg_req *req,
 				    struct msg_rsp *rsp);
-int rvu_mbox_handler_CGX_STOP_RXTX(struct rvu *rvu, struct msg_req *req,
+int rvu_mbox_handler_cgx_stop_rxtx(struct rvu *rvu, struct msg_req *req,
 				   struct msg_rsp *rsp);
-int rvu_mbox_handler_CGX_STATS(struct rvu *rvu, struct msg_req *req,
+int rvu_mbox_handler_cgx_stats(struct rvu *rvu, struct msg_req *req,
 			       struct cgx_stats_rsp *rsp);
-int rvu_mbox_handler_CGX_MAC_ADDR_SET(struct rvu *rvu,
+int rvu_mbox_handler_cgx_mac_addr_set(struct rvu *rvu,
 				      struct cgx_mac_addr_set_or_get *req,
 				      struct cgx_mac_addr_set_or_get *rsp);
-int rvu_mbox_handler_CGX_MAC_ADDR_GET(struct rvu *rvu,
+int rvu_mbox_handler_cgx_mac_addr_get(struct rvu *rvu,
 				      struct cgx_mac_addr_set_or_get *req,
 				      struct cgx_mac_addr_set_or_get *rsp);
-int rvu_mbox_handler_CGX_PROMISC_ENABLE(struct rvu *rvu, struct msg_req *req,
+int rvu_mbox_handler_cgx_promisc_enable(struct rvu *rvu, struct msg_req *req,
 					struct msg_rsp *rsp);
-int rvu_mbox_handler_CGX_PROMISC_DISABLE(struct rvu *rvu, struct msg_req *req,
+int rvu_mbox_handler_cgx_promisc_disable(struct rvu *rvu, struct msg_req *req,
 					 struct msg_rsp *rsp);
-int rvu_mbox_handler_CGX_START_LINKEVENTS(struct rvu *rvu, struct msg_req *req,
+int rvu_mbox_handler_cgx_start_linkevents(struct rvu *rvu, struct msg_req *req,
 					  struct msg_rsp *rsp);
-int rvu_mbox_handler_CGX_STOP_LINKEVENTS(struct rvu *rvu, struct msg_req *req,
+int rvu_mbox_handler_cgx_stop_linkevents(struct rvu *rvu, struct msg_req *req,
 					 struct msg_rsp *rsp);
-int rvu_mbox_handler_CGX_GET_LINKINFO(struct rvu *rvu, struct msg_req *req,
+int rvu_mbox_handler_cgx_get_linkinfo(struct rvu *rvu, struct msg_req *req,
 				      struct cgx_link_info_msg *rsp);
-int rvu_mbox_handler_CGX_INTLBK_ENABLE(struct rvu *rvu, struct msg_req *req,
+int rvu_mbox_handler_cgx_intlbk_enable(struct rvu *rvu, struct msg_req *req,
 				       struct msg_rsp *rsp);
-int rvu_mbox_handler_CGX_INTLBK_DISABLE(struct rvu *rvu, struct msg_req *req,
+int rvu_mbox_handler_cgx_intlbk_disable(struct rvu *rvu, struct msg_req *req,
 					struct msg_rsp *rsp);
 
 /* SSO APIs */
@@ -423,28 +423,28 @@ int rvu_sso_init(struct rvu *rvu);
 void rvu_sso_freemem(struct rvu *rvu);
 int rvu_sso_lf_teardown(struct rvu *rvu, int lf);
 int rvu_ssow_lf_teardown(struct rvu *rvu, int lf);
-int rvu_mbox_handler_SSO_LF_ALLOC(struct rvu *rvu, struct sso_lf_alloc_req *req,
+int rvu_mbox_handler_sso_lf_alloc(struct rvu *rvu, struct sso_lf_alloc_req *req,
 				  struct sso_lf_alloc_rsp *rsp);
-int rvu_mbox_handler_SSO_LF_FREE(struct rvu *rvu, struct sso_lf_free_req *req,
+int rvu_mbox_handler_sso_lf_free(struct rvu *rvu, struct sso_lf_free_req *req,
 				 struct msg_rsp *rsp);
-int rvu_mbox_handler_SSOW_LF_ALLOC(struct rvu *rvu,
+int rvu_mbox_handler_ssow_lf_alloc(struct rvu *rvu,
 				   struct ssow_lf_alloc_req *req,
 				   struct msg_rsp *rsp);
-int rvu_mbox_handler_SSOW_LF_FREE(struct rvu *rvu,
+int rvu_mbox_handler_ssow_lf_free(struct rvu *rvu,
 				  struct ssow_lf_free_req *req,
 				  struct msg_rsp *rsp);
-int rvu_mbox_handler_SSO_GRP_GET_PRIORITY(struct rvu *rvu,
+int rvu_mbox_handler_sso_grp_get_priority(struct rvu *rvu,
 					  struct sso_grp_priority *req,
 					  struct sso_grp_priority *rsp);
-int rvu_mbox_handler_SSO_GRP_SET_PRIORITY(struct rvu *rvu,
+int rvu_mbox_handler_sso_grp_set_priority(struct rvu *rvu,
 					  struct sso_grp_priority *req,
 					  struct msg_rsp *rsp);
-int rvu_mbox_handler_SSO_HW_SETCONFIG(struct rvu *rvu,
+int rvu_mbox_handler_sso_hw_setconfig(struct rvu *rvu,
 				      struct sso_hw_setconfig *req,
 				      struct msg_rsp *rsp);
-int rvu_mbox_handler_SSO_WS_CACHE_INV(struct rvu *rvu, struct msg_req *req,
+int rvu_mbox_handler_sso_ws_cache_inv(struct rvu *rvu, struct msg_req *req,
 				      struct msg_rsp *rsp);
-int rvu_mbox_handler_SSO_GRP_QOS_CONFIG(struct rvu *rvu,
+int rvu_mbox_handler_sso_grp_qos_config(struct rvu *rvu,
 					struct sso_grp_qos_cfg *req,
 					struct msg_rsp *rsp);
 
@@ -453,16 +453,16 @@ int rvu_npa_init(struct rvu *rvu);
 void rvu_npa_lf_teardown(struct rvu *rvu, u16 pcifunc, int npalf);
 int rvu_npa_aq_enq_inst(struct rvu *rvu, struct npa_aq_enq_req *req,
 			struct npa_aq_enq_rsp *rsp);
-int rvu_mbox_handler_NPA_AQ_ENQ(struct rvu *rvu,
+int rvu_mbox_handler_npa_aq_enq(struct rvu *rvu,
 				struct npa_aq_enq_req *req,
 				struct npa_aq_enq_rsp *rsp);
-int rvu_mbox_handler_NPA_HWCTX_DISABLE(struct rvu *rvu,
+int rvu_mbox_handler_npa_hwctx_disable(struct rvu *rvu,
 				       struct hwctx_disable_req *req,
 				       struct msg_rsp *rsp);
-int rvu_mbox_handler_NPA_LF_ALLOC(struct rvu *rvu,
+int rvu_mbox_handler_npa_lf_alloc(struct rvu *rvu,
 				  struct npa_lf_alloc_req *req,
 				  struct npa_lf_alloc_rsp *rsp);
-int rvu_mbox_handler_NPA_LF_FREE(struct rvu *rvu, struct msg_req *req,
+int rvu_mbox_handler_npa_lf_free(struct rvu *rvu, struct msg_req *req,
 				 struct msg_rsp *rsp);
 
 /* NIX APIs */
@@ -473,52 +473,52 @@ int rvu_nix_reserve_mark_format(struct rvu *rvu, struct nix_hw *nix_hw,
 void rvu_nix_freemem(struct rvu *rvu);
 int rvu_get_nixlf_count(struct rvu *rvu);
 void rvu_nix_lf_teardown(struct rvu *rvu, u16 pcifunc, int blkaddr, int npalf);
-int rvu_mbox_handler_NIX_LF_ALLOC(struct rvu *rvu,
+int rvu_mbox_handler_nix_lf_alloc(struct rvu *rvu,
 				  struct nix_lf_alloc_req *req,
 				  struct nix_lf_alloc_rsp *rsp);
-int rvu_mbox_handler_NIX_LF_FREE(struct rvu *rvu, struct msg_req *req,
+int rvu_mbox_handler_nix_lf_free(struct rvu *rvu, struct msg_req *req,
 				 struct msg_rsp *rsp);
-int rvu_mbox_handler_NIX_AQ_ENQ(struct rvu *rvu,
+int rvu_mbox_handler_nix_aq_enq(struct rvu *rvu,
 				struct nix_aq_enq_req *req,
 				struct nix_aq_enq_rsp *rsp);
-int rvu_mbox_handler_NIX_HWCTX_DISABLE(struct rvu *rvu,
+int rvu_mbox_handler_nix_hwctx_disable(struct rvu *rvu,
 				       struct hwctx_disable_req *req,
 				       struct msg_rsp *rsp);
-int rvu_mbox_handler_NIX_TXSCH_ALLOC(struct rvu *rvu,
+int rvu_mbox_handler_nix_txsch_alloc(struct rvu *rvu,
 				     struct nix_txsch_alloc_req *req,
 				     struct nix_txsch_alloc_rsp *rsp);
-int rvu_mbox_handler_NIX_TXSCH_FREE(struct rvu *rvu,
+int rvu_mbox_handler_nix_txsch_free(struct rvu *rvu,
 				    struct nix_txsch_free_req *req,
 				    struct msg_rsp *rsp);
-int rvu_mbox_handler_NIX_TXSCHQ_CFG(struct rvu *rvu,
+int rvu_mbox_handler_nix_txschq_cfg(struct rvu *rvu,
 			struct nix_txschq_config *req, struct msg_rsp *rsp);
-int rvu_mbox_handler_NIX_STATS_RST(struct rvu *rvu, struct msg_req *req,
+int rvu_mbox_handler_nix_stats_rst(struct rvu *rvu, struct msg_req *req,
 				   struct msg_rsp *rsp);
-int rvu_mbox_handler_NIX_VTAG_CFG(struct rvu *rvu,
+int rvu_mbox_handler_nix_vtag_cfg(struct rvu *rvu,
 				  struct nix_vtag_config *req,
 				  struct msg_rsp *rsp);
-int rvu_mbox_handler_NIX_RXVLAN_ALLOC(struct rvu *rvu, struct msg_req *req,
+int rvu_mbox_handler_nix_rxvlan_alloc(struct rvu *rvu, struct msg_req *req,
 				      struct msg_rsp *rsp);
-int rvu_mbox_handler_NIX_RSS_FLOWKEY_CFG(struct rvu *rvu,
+int rvu_mbox_handler_nix_rss_flowkey_cfg(struct rvu *rvu,
 					 struct nix_rss_flowkey_cfg *req,
 					 struct nix_rss_flowkey_cfg_rsp *rsp);
-int rvu_mbox_handler_NIX_SET_MAC_ADDR(struct rvu *rvu,
+int rvu_mbox_handler_nix_set_mac_addr(struct rvu *rvu,
 				      struct nix_set_mac_addr *req,
 				      struct msg_rsp *rsp);
-int rvu_mbox_handler_NIX_SET_RX_MODE(struct rvu *rvu, struct nix_rx_mode *req,
+int rvu_mbox_handler_nix_set_rx_mode(struct rvu *rvu, struct nix_rx_mode *req,
 				     struct msg_rsp *rsp);
-int rvu_mbox_handler_NIX_SET_HW_FRS(struct rvu *rvu, struct nix_frs_cfg *req,
+int rvu_mbox_handler_nix_set_hw_frs(struct rvu *rvu, struct nix_frs_cfg *req,
 				    struct msg_rsp *rsp);
-int rvu_mbox_handler_NIX_LF_START_RX(struct rvu *rvu, struct msg_req *req,
+int rvu_mbox_handler_nix_lf_start_rx(struct rvu *rvu, struct msg_req *req,
 				      struct msg_rsp *rsp);
-int rvu_mbox_handler_NIX_LF_STOP_RX(struct rvu *rvu, struct msg_req *req,
+int rvu_mbox_handler_nix_lf_stop_rx(struct rvu *rvu, struct msg_req *req,
 				     struct msg_rsp *rsp);
-int rvu_mbox_handler_NIX_MARK_FORMAT_CFG(struct rvu *rvu,
+int rvu_mbox_handler_nix_mark_format_cfg(struct rvu *rvu,
 					 struct nix_mark_format_cfg  *req,
 					 struct nix_mark_format_cfg_rsp *rsp);
-int rvu_mbox_handler_NIX_SET_RX_CFG(struct rvu *rvu, struct nix_rx_cfg *req,
+int rvu_mbox_handler_nix_set_rx_cfg(struct rvu *rvu, struct nix_rx_cfg *req,
 				struct msg_rsp *rsp);
-int rvu_mbox_handler_NIX_LSO_FORMAT_CFG(struct rvu *rvu,
+int rvu_mbox_handler_nix_lso_format_cfg(struct rvu *rvu,
 					struct nix_lso_format_cfg *req,
 					struct nix_lso_format_cfg_rsp *rsp);
 
@@ -545,40 +545,40 @@ void rvu_npc_get_mcam_entry_alloc_info(struct rvu *rvu, u16 pcifunc,
 				int blkaddr, int *alloc_cnt, int *enable_cnt);
 void rvu_npc_get_mcam_counter_alloc_info(struct rvu *rvu, u16 pcifunc,
 				int blkaddr, int *alloc_cnt, int *enable_cnt);
-int rvu_mbox_handler_NPC_MCAM_ALLOC_ENTRY(struct rvu *rvu,
+int rvu_mbox_handler_npc_mcam_alloc_entry(struct rvu *rvu,
 					  struct npc_mcam_alloc_entry_req *req,
 					  struct npc_mcam_alloc_entry_rsp *rsp);
-int rvu_mbox_handler_NPC_MCAM_FREE_ENTRY(struct rvu *rvu,
+int rvu_mbox_handler_npc_mcam_free_entry(struct rvu *rvu,
 					 struct npc_mcam_free_entry_req *req,
 					 struct msg_rsp *rsp);
-int rvu_mbox_handler_NPC_MCAM_WRITE_ENTRY(struct rvu *rvu,
+int rvu_mbox_handler_npc_mcam_write_entry(struct rvu *rvu,
 					  struct npc_mcam_write_entry_req *req,
 					  struct msg_rsp *rsp);
-int rvu_mbox_handler_NPC_MCAM_ENA_ENTRY(struct rvu *rvu,
+int rvu_mbox_handler_npc_mcam_ena_entry(struct rvu *rvu,
 					struct npc_mcam_ena_dis_entry_req *req,
 					struct msg_rsp *rsp);
-int rvu_mbox_handler_NPC_MCAM_DIS_ENTRY(struct rvu *rvu,
+int rvu_mbox_handler_npc_mcam_dis_entry(struct rvu *rvu,
 					struct npc_mcam_ena_dis_entry_req *req,
 					struct msg_rsp *rsp);
-int rvu_mbox_handler_NPC_MCAM_SHIFT_ENTRY(struct rvu *rvu,
+int rvu_mbox_handler_npc_mcam_shift_entry(struct rvu *rvu,
 			struct npc_mcam_shift_entry_req *req,
 			struct npc_mcam_shift_entry_rsp *rsp);
-int rvu_mbox_handler_NPC_MCAM_ALLOC_COUNTER(struct rvu *rvu,
+int rvu_mbox_handler_npc_mcam_alloc_counter(struct rvu *rvu,
 				struct npc_mcam_alloc_counter_req *req,
 				struct npc_mcam_alloc_counter_rsp *rsp);
-int rvu_mbox_handler_NPC_MCAM_FREE_COUNTER(struct rvu *rvu,
+int rvu_mbox_handler_npc_mcam_free_counter(struct rvu *rvu,
 		struct npc_mcam_oper_counter_req *req, struct msg_rsp *rsp);
-int rvu_mbox_handler_NPC_MCAM_UNMAP_COUNTER(struct rvu *rvu,
+int rvu_mbox_handler_npc_mcam_unmap_counter(struct rvu *rvu,
 		struct npc_mcam_unmap_counter_req *req, struct msg_rsp *rsp);
-int rvu_mbox_handler_NPC_MCAM_CLEAR_COUNTER(struct rvu *rvu,
+int rvu_mbox_handler_npc_mcam_clear_counter(struct rvu *rvu,
 		struct npc_mcam_oper_counter_req *req, struct msg_rsp *rsp);
-int rvu_mbox_handler_NPC_MCAM_COUNTER_STATS(struct rvu *rvu,
+int rvu_mbox_handler_npc_mcam_counter_stats(struct rvu *rvu,
 			struct npc_mcam_oper_counter_req *req,
 			struct npc_mcam_oper_counter_rsp *rsp);
-int rvu_mbox_handler_NPC_MCAM_ALLOC_AND_WRITE_ENTRY(struct rvu *rvu,
+int rvu_mbox_handler_npc_mcam_alloc_and_write_entry(struct rvu *rvu,
 			  struct npc_mcam_alloc_and_write_entry_req *req,
 			  struct npc_mcam_alloc_and_write_entry_rsp *rsp);
-int rvu_mbox_handler_NPC_GET_KEX_CFG(struct rvu *rvu, struct msg_req *req,
+int rvu_mbox_handler_npc_get_kex_cfg(struct rvu *rvu, struct msg_req *req,
 				     struct npc_get_kex_cfg_rsp *rsp);
 
 /* NDC APIs */
@@ -590,19 +590,19 @@ int rvu_ndc_sync_errata_workaround(struct rvu *rvu, int lfblkaddr, int lfidx,
 
 /* TIM APIs */
 int rvu_tim_init(struct rvu *rvu);
-int rvu_mbox_handler_TIM_LF_ALLOC(struct rvu *rvu,
+int rvu_mbox_handler_tim_lf_alloc(struct rvu *rvu,
 				  struct tim_lf_alloc_req *req,
 				  struct tim_lf_alloc_rsp *rsp);
-int rvu_mbox_handler_TIM_LF_FREE(struct rvu *rvu,
+int rvu_mbox_handler_tim_lf_free(struct rvu *rvu,
 				 struct tim_ring_req *req,
 				 struct msg_rsp *rsp);
-int rvu_mbox_handler_TIM_CONFIG_RING(struct rvu *rvu,
+int rvu_mbox_handler_tim_config_ring(struct rvu *rvu,
 				     struct tim_config_req *req,
 				     struct msg_rsp *rsp);
-int rvu_mbox_handler_TIM_ENABLE_RING(struct rvu *rvu,
+int rvu_mbox_handler_tim_enable_ring(struct rvu *rvu,
 				     struct tim_ring_req *req,
 				     struct tim_enable_rsp *rsp);
-int rvu_mbox_handler_TIM_DISABLE_RING(struct rvu *rvu,
+int rvu_mbox_handler_tim_disable_ring(struct rvu *rvu,
 				      struct tim_ring_req *req,
 				      struct msg_rsp *rsp);
 

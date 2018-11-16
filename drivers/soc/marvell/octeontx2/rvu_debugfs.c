@@ -941,7 +941,7 @@ static void read_nix_ctx(struct rvu *rvu, bool all, int nixlf,
 		aq_req.qidx = qidx;
 		pr_info("=====%s_ctx for nixlf:%d and qidx:%d is=====\n",
 			ctype_string, nixlf, aq_req.qidx);
-		rc = rvu_mbox_handler_NIX_AQ_ENQ(rvu, &aq_req, &rsp);
+		rc = rvu_mbox_handler_nix_aq_enq(rvu, &aq_req, &rsp);
 		if (rc) {
 			pr_info("Failed to read the context\n");
 			return;
