@@ -222,7 +222,7 @@ static int rvu_txsch_count_rsrc(struct rvu *rvu, int lvl, u16 pcifunc,
 	return count;
 }
 
-int rvu_mbox_handler_FREE_RSRC_CNT(struct rvu *rvu, struct msg_req *req,
+int rvu_mbox_handler_free_rsrc_cnt(struct rvu *rvu, struct msg_req *req,
 				   struct free_rsrcs_rsp *rsp)
 {
 	struct rvu_hwinfo *hw = rvu->hw;
