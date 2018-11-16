@@ -294,9 +294,9 @@ static inline int otx2_sync_mbox_msg_busy_poll(struct mbox *mbox)
 	return otx2_mbox_check_rsp_msgs(&mbox->mbox, 0);
 }
 
-#define M(_name, _id, _req_type, _rsp_type)				\
+#define M(_name, _id, _fn_name, _req_type, _rsp_type)			\
 static struct _req_type __maybe_unused					\
-*otx2_mbox_alloc_msg_ ## _name(struct mbox *mbox)			\
+*otx2_mbox_alloc_msg_ ## _fn_name(struct mbox *mbox)			\
 {									\
 	struct _req_type *req;						\
 									\
@@ -362,15 +362,15 @@ void otx2_set_rss_key(struct otx2_nic *pfvf);
 int otx2_set_rss_table(struct otx2_nic *pfvf);
 
 /* Mbox handlers */
-void mbox_handler_MSIX_OFFSET(struct otx2_nic *pfvf,
+void mbox_handler_msix_offset(struct otx2_nic *pfvf,
 			      struct msix_offset_rsp *rsp);
-void mbox_handler_NPA_LF_ALLOC(struct otx2_nic *pfvf,
+void mbox_handler_npa_lf_alloc(struct otx2_nic *pfvf,
 			       struct npa_lf_alloc_rsp *rsp);
-void mbox_handler_NIX_LF_ALLOC(struct otx2_nic *pfvf,
+void mbox_handler_nix_lf_alloc(struct otx2_nic *pfvf,
 			       struct nix_lf_alloc_rsp *rsp);
-void mbox_handler_NIX_TXSCH_ALLOC(struct otx2_nic *pf,
+void mbox_handler_nix_txsch_alloc(struct otx2_nic *pf,
 				  struct nix_txsch_alloc_rsp *rsp);
-void mbox_handler_CGX_STATS(struct otx2_nic *pfvf,
+void mbox_handler_cgx_stats(struct otx2_nic *pfvf,
 			    struct cgx_stats_rsp *rsp);
 
 /* Device stats APIs */

@@ -58,16 +58,16 @@ static void otx2vf_process_vfaf_mbox_msg(struct otx2_nic *vf,
 		vf->pcifunc = msg->pcifunc;
 		break;
 	case MBOX_MSG_MSIX_OFFSET:
-		mbox_handler_MSIX_OFFSET(vf, (struct msix_offset_rsp *)msg);
+		mbox_handler_msix_offset(vf, (struct msix_offset_rsp *)msg);
 		break;
 	case MBOX_MSG_NPA_LF_ALLOC:
-		mbox_handler_NPA_LF_ALLOC(vf, (struct npa_lf_alloc_rsp *)msg);
+		mbox_handler_npa_lf_alloc(vf, (struct npa_lf_alloc_rsp *)msg);
 		break;
 	case MBOX_MSG_NIX_LF_ALLOC:
-		mbox_handler_NIX_LF_ALLOC(vf, (struct nix_lf_alloc_rsp *)msg);
+		mbox_handler_nix_lf_alloc(vf, (struct nix_lf_alloc_rsp *)msg);
 		break;
 	case MBOX_MSG_NIX_TXSCH_ALLOC:
-		mbox_handler_NIX_TXSCH_ALLOC(vf,
+		mbox_handler_nix_txsch_alloc(vf,
 					     (struct nix_txsch_alloc_rsp *)msg);
 		break;
 	default:
@@ -168,7 +168,7 @@ static int otx2vf_register_mbox_intr(struct otx2_nic *vf)
 	otx2_write64(vf, RVU_VF_INT_ENA_W1S, BIT_ULL(0));
 
 	/* Check mailbox communication with PF */
-	req = otx2_mbox_alloc_msg_READY(&vf->mbox);
+	req = otx2_mbox_alloc_msg_ready(&vf->mbox);
 	if (!req)
 		return -ENOMEM;
 
