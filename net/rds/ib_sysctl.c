@@ -49,6 +49,16 @@ unsigned long rds_ib_sysctl_max_unsig_wrs = 16;
 static unsigned long rds_ib_sysctl_max_unsig_wr_min = 1;
 static unsigned long rds_ib_sysctl_max_unsig_wr_max = 64;
 
+unsigned long rds_ib_sysctl_max_unsolicited_wrs = 16;
+
+/* Zero means inserting SEND_SOLICITED in the middle of an RDS message
+ * is disabled
+ */
+static unsigned long rds_ib_sysctl_max_unsolicited_wr_min;
+/* Nmbr frags of 1MB + 256B RDBMS hdr */
+static unsigned long rds_ib_sysctl_max_unsolicited_wr_max =
+	(1 * 1024 * 1024 + RDS_FRAG_SIZE) / RDS_FRAG_SIZE;
+
 /*
  * This sysctl does nothing.
  *
@@ -90,6 +100,15 @@ static struct ctl_table rds_ib_sysctl_table[] = {
 		.proc_handler   = proc_doulongvec_minmax,
 		.extra1		= &rds_ib_sysctl_max_unsig_wr_min,
 		.extra2		= &rds_ib_sysctl_max_unsig_wr_max,
+	},
+	{
+		.procname       = "max_unsolicited_wr",
+		.data		= &rds_ib_sysctl_max_unsolicited_wrs,
+		.maxlen         = sizeof(unsigned long),
+		.mode           = 0644,
+		.proc_handler   = &proc_doulongvec_minmax,
+		.extra1		= &rds_ib_sysctl_max_unsolicited_wr_min,
+		.extra2		= &rds_ib_sysctl_max_unsolicited_wr_max,
 	},
 	{
 		.procname       = "max_recv_allocation",
