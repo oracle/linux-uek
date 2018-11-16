@@ -59,20 +59,20 @@ static void otx2_process_pfaf_mbox_msg(struct otx2_nic *pf,
 		pf->pcifunc = msg->pcifunc;
 		break;
 	case MBOX_MSG_MSIX_OFFSET:
-		mbox_handler_MSIX_OFFSET(pf, (struct msix_offset_rsp *)msg);
+		mbox_handler_msix_offset(pf, (struct msix_offset_rsp *)msg);
 		break;
 	case MBOX_MSG_NPA_LF_ALLOC:
-		mbox_handler_NPA_LF_ALLOC(pf, (struct npa_lf_alloc_rsp *)msg);
+		mbox_handler_npa_lf_alloc(pf, (struct npa_lf_alloc_rsp *)msg);
 		break;
 	case MBOX_MSG_NIX_LF_ALLOC:
-		mbox_handler_NIX_LF_ALLOC(pf, (struct nix_lf_alloc_rsp *)msg);
+		mbox_handler_nix_lf_alloc(pf, (struct nix_lf_alloc_rsp *)msg);
 		break;
 	case MBOX_MSG_NIX_TXSCH_ALLOC:
-		mbox_handler_NIX_TXSCH_ALLOC(pf,
+		mbox_handler_nix_txsch_alloc(pf,
 					     (struct nix_txsch_alloc_rsp *)msg);
 		break;
 	case MBOX_MSG_CGX_STATS:
-		mbox_handler_CGX_STATS(pf, (struct cgx_stats_rsp *)msg);
+		mbox_handler_cgx_stats(pf, (struct cgx_stats_rsp *)msg);
 		break;
 	default:
 		if (msg->rc)
@@ -114,7 +114,7 @@ static void otx2_pfaf_mbox_handler(struct work_struct *work)
 	otx2_write64(af_mbox->pfvf, RVU_PF_INT, BIT_ULL(0));
 }
 
-static int otx2_mbox_up_handler_CGX_LINK_EVENT(struct otx2_nic *pf,
+static int otx2_mbox_up_handler_cgx_link_event(struct otx2_nic *pf,
 					       struct cgx_link_info_msg *msg,
 					       struct msg_rsp *rsp)
 {
@@ -143,7 +143,7 @@ static int otx2_process_mbox_msg_up(struct otx2_nic *pf,
 	}
 
 	switch (req->id) {
-#define M(_name, _id, _req_type, _rsp_type)				\
+#define M(_name, _id, _fn_name, _req_type, _rsp_type)			\
 	case _id: {							\
 		struct _rsp_type *rsp;					\
 		int err;						\
@@ -159,7 +159,7 @@ static int otx2_process_mbox_msg_up(struct otx2_nic *pf,
 		rsp->hdr.pcifunc = 0;					\
 		rsp->hdr.rc = 0;					\
 									\
-		err = otx2_mbox_up_handler_ ## _name(			\
+		err = otx2_mbox_up_handler_ ## _fn_name(		\
 			pf, (struct _req_type *)req, rsp);		\
 		return err;						\
 	}
@@ -259,7 +259,7 @@ static int otx2_register_mbox_intr(struct otx2_nic *pf)
 	otx2_write64(pf, RVU_PF_INT_ENA_W1S, BIT_ULL(0));
 
 	/* Check mailbox communication with AF */
-	req = otx2_mbox_alloc_msg_READY(&pf->mbox);
+	req = otx2_mbox_alloc_msg_ready(&pf->mbox);
 	if (!req)
 		return -ENOMEM;
 
@@ -347,9 +347,9 @@ static int otx2_cgx_config_linkevents(struct otx2_nic *pf, bool enable)
 	struct msg_req *msg;
 
 	if (enable)
-		msg = otx2_mbox_alloc_msg_CGX_START_LINKEVENTS(&pf->mbox);
+		msg = otx2_mbox_alloc_msg_cgx_start_linkevents(&pf->mbox);
 	else
-		msg = otx2_mbox_alloc_msg_CGX_STOP_LINKEVENTS(&pf->mbox);
+		msg = otx2_mbox_alloc_msg_cgx_stop_linkevents(&pf->mbox);
 
 	if (!msg)
 		return -ENOMEM;
@@ -362,9 +362,9 @@ static int otx2_cgx_config_loopback(struct otx2_nic *pf, bool enable)
 	struct msg_req *msg;
 
 	if (enable)
-		msg = otx2_mbox_alloc_msg_CGX_INTLBK_ENABLE(&pf->mbox);
+		msg = otx2_mbox_alloc_msg_cgx_intlbk_enable(&pf->mbox);
 	else
-		msg = otx2_mbox_alloc_msg_CGX_INTLBK_DISABLE(&pf->mbox);
+		msg = otx2_mbox_alloc_msg_cgx_intlbk_disable(&pf->mbox);
 
 	if (!msg)
 		return -ENOMEM;
@@ -378,7 +378,7 @@ static int otx2_enable_rxvlan(struct otx2_nic *pf, bool enable)
 	struct mbox_msghdr *rsp_hdr;
 	int err;
 
-	req = otx2_mbox_alloc_msg_NIX_VTAG_CFG(&pf->mbox);
+	req = otx2_mbox_alloc_msg_nix_vtag_cfg(&pf->mbox);
 	if (!req)
 		return -ENOMEM;
 
@@ -428,7 +428,7 @@ static void otx2_alloc_rxvlan(struct otx2_nic *pf)
 	struct msg_req *req;
 	int err;
 
-	req = otx2_mbox_alloc_msg_NIX_RXVLAN_ALLOC(&pf->mbox);
+	req = otx2_mbox_alloc_msg_nix_rxvlan_alloc(&pf->mbox);
 	if (!req)
 		return;
 
@@ -685,7 +685,7 @@ static void otx2_free_hw_resources(struct otx2_nic *pf)
 	}
 
 	/* Reset NIX LF */
-	req = otx2_mbox_alloc_msg_NIX_LF_FREE(mbox);
+	req = otx2_mbox_alloc_msg_nix_lf_free(mbox);
 	if (req)
 		WARN_ON(otx2_sync_mbox_msg(mbox));
 
@@ -695,7 +695,7 @@ static void otx2_free_hw_resources(struct otx2_nic *pf)
 	otx2_aura_pool_free(pf);
 
 	/* Reset NPA LF */
-	req = otx2_mbox_alloc_msg_NPA_LF_FREE(mbox);
+	req = otx2_mbox_alloc_msg_npa_lf_free(mbox);
 	if (req)
 		WARN_ON(otx2_sync_mbox_msg(mbox));
 }
@@ -978,7 +978,7 @@ static void otx2_set_rx_mode(struct net_device *netdev)
 	if (!(netdev->flags & IFF_UP))
 		return;
 
-	req = otx2_mbox_alloc_msg_NIX_SET_RX_MODE(&pf->mbox);
+	req = otx2_mbox_alloc_msg_nix_set_rx_mode(&pf->mbox);
 	if (!req)
 		return;
 

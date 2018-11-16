@@ -28,7 +28,7 @@ int otx2_hw_set_mac_addr(struct otx2_nic *pfvf, struct net_device *netdev)
 {
 	struct nix_set_mac_addr *req;
 
-	req = otx2_mbox_alloc_msg_NIX_SET_MAC_ADDR(&pfvf->mbox);
+	req = otx2_mbox_alloc_msg_nix_set_mac_addr(&pfvf->mbox);
 	if (!req)
 		return -ENOMEM;
 
@@ -57,7 +57,7 @@ int otx2_hw_set_mtu(struct otx2_nic *pfvf, int mtu)
 {
 	struct nix_frs_cfg *req;
 
-	req = otx2_mbox_alloc_msg_NIX_SET_HW_FRS(&pfvf->mbox);
+	req = otx2_mbox_alloc_msg_nix_set_hw_frs(&pfvf->mbox);
 	if (!req)
 		return -ENOMEM;
 
@@ -88,7 +88,7 @@ int otx2_set_flowkey_cfg(struct otx2_nic *pfvf)
 	struct otx2_rss_info *rss = &pfvf->hw.rss_info;
 	struct nix_rss_flowkey_cfg *req;
 
-	req = otx2_mbox_alloc_msg_NIX_RSS_FLOWKEY_CFG(&pfvf->mbox);
+	req = otx2_mbox_alloc_msg_nix_rss_flowkey_cfg(&pfvf->mbox);
 	if (!req)
 		return -ENOMEM;
 	req->mcam_index = -1; /* Default or reserved index */
@@ -107,7 +107,7 @@ int otx2_set_rss_table(struct otx2_nic *pfvf)
 
 	/* Get memory to put this msg */
 	for (idx = 0; idx < rss->rss_size; idx++) {
-		aq = otx2_mbox_alloc_msg_NIX_AQ_ENQ(mbox);
+		aq = otx2_mbox_alloc_msg_nix_aq_enq(mbox);
 		if (!aq) {
 			/* The shared memory buffer can be full.
 			 * Flush it and retry
@@ -115,7 +115,7 @@ int otx2_set_rss_table(struct otx2_nic *pfvf)
 			err = otx2_sync_mbox_msg(mbox);
 			if (err)
 				return err;
-			aq = otx2_mbox_alloc_msg_NIX_AQ_ENQ(mbox);
+			aq = otx2_mbox_alloc_msg_nix_aq_enq(mbox);
 			if (!aq)
 				return -ENOMEM;
 		}
@@ -189,7 +189,7 @@ void otx2_update_lmac_stats(struct otx2_nic *pfvf)
 
 	if (!netif_running(pfvf->netdev))
 		return;
-	req = otx2_mbox_alloc_msg_CGX_STATS(&pfvf->mbox);
+	req = otx2_mbox_alloc_msg_cgx_stats(&pfvf->mbox);
 	if (!req)
 		return;
 
@@ -353,7 +353,7 @@ int otx2_txschq_config(struct otx2_nic *pfvf, int lvl)
 	struct otx2_hw *hw = &pfvf->hw;
 	u64 schq, parent;
 
-	req = otx2_mbox_alloc_msg_NIX_TXSCHQ_CFG(&pfvf->mbox);
+	req = otx2_mbox_alloc_msg_nix_txschq_cfg(&pfvf->mbox);
 	if (!req)
 		return -ENOMEM;
 
@@ -426,7 +426,7 @@ int otx2_txsch_alloc(struct otx2_nic *pfvf)
 	int lvl, err;
 
 	/* Get memory to put this msg */
-	req = otx2_mbox_alloc_msg_NIX_TXSCH_ALLOC(&pfvf->mbox);
+	req = otx2_mbox_alloc_msg_nix_txsch_alloc(&pfvf->mbox);
 	if (!req)
 		return -ENOMEM;
 
@@ -446,7 +446,7 @@ int otx2_txschq_stop(struct otx2_nic *pfvf)
 	int lvl, schq;
 
 	/* Free the transmit schedulers */
-	free_req = otx2_mbox_alloc_msg_NIX_TXSCH_FREE(&pfvf->mbox);
+	free_req = otx2_mbox_alloc_msg_nix_txsch_free(&pfvf->mbox);
 	if (!free_req)
 		return -ENOMEM;
 
@@ -489,7 +489,7 @@ static int otx2_rq_init(struct otx2_nic *pfvf, u16 qidx, u16 lpb_aura)
 	int skid = 0;
 
 	/* Get memory to put this msg */
-	aq = otx2_mbox_alloc_msg_NIX_AQ_ENQ(&pfvf->mbox);
+	aq = otx2_mbox_alloc_msg_nix_aq_enq(&pfvf->mbox);
 	if (!aq)
 		return -ENOMEM;
 
@@ -567,7 +567,7 @@ static int otx2_sq_init(struct otx2_nic *pfvf, u16 qidx, u16 sqb_aura)
 	sq->stats.pkts = 0;
 
 	/* Get memory to put this msg */
-	aq = otx2_mbox_alloc_msg_NIX_AQ_ENQ(&pfvf->mbox);
+	aq = otx2_mbox_alloc_msg_nix_aq_enq(&pfvf->mbox);
 	if (!aq)
 		return -ENOMEM;
 
@@ -625,7 +625,7 @@ static int otx2_cq_init(struct otx2_nic *pfvf, u16 qidx)
 	cq->cq_idx = qidx;
 
 	/* Get memory to put this msg */
-	aq = otx2_mbox_alloc_msg_NIX_AQ_ENQ(&pfvf->mbox);
+	aq = otx2_mbox_alloc_msg_nix_aq_enq(&pfvf->mbox);
 	if (!aq)
 		return -ENOMEM;
 
@@ -689,7 +689,7 @@ int otx2_config_nix(struct otx2_nic *pfvf)
 	pfvf->qset.xqe_size = NIX_XQESZ_W16 ? 128 : 512;
 
 	/* Get memory to put this msg */
-	nixlf = otx2_mbox_alloc_msg_NIX_LF_ALLOC(&pfvf->mbox);
+	nixlf = otx2_mbox_alloc_msg_nix_lf_alloc(&pfvf->mbox);
 	if (!nixlf)
 		return -ENOMEM;
 
@@ -795,13 +795,13 @@ static int otx2_aura_init(struct otx2_nic *pfvf, int aura_id,
 	}
 
 	/* Initialize this aura's context via AF */
-	aq = otx2_mbox_alloc_msg_NPA_AQ_ENQ(&pfvf->mbox);
+	aq = otx2_mbox_alloc_msg_npa_aq_enq(&pfvf->mbox);
 	if (!aq) {
 		/* Shared mbox memory buffer is full, flush it and retry */
 		err = otx2_sync_mbox_msg(&pfvf->mbox);
 		if (err)
 			return err;
-		aq = otx2_mbox_alloc_msg_NPA_AQ_ENQ(&pfvf->mbox);
+		aq = otx2_mbox_alloc_msg_npa_aq_enq(&pfvf->mbox);
 		if (!aq)
 			return -ENOMEM;
 	}
@@ -842,7 +842,7 @@ static int otx2_pool_init(struct otx2_nic *pfvf, u16 pool_id,
 	pool->rbsize = buf_size;
 
 	/* Initialize this pool's context via AF */
-	aq = otx2_mbox_alloc_msg_NPA_AQ_ENQ(&pfvf->mbox);
+	aq = otx2_mbox_alloc_msg_npa_aq_enq(&pfvf->mbox);
 	if (!aq) {
 		/* Shared mbox memory buffer is full, flush it and retry */
 		err = otx2_sync_mbox_msg(&pfvf->mbox);
@@ -850,7 +850,7 @@ static int otx2_pool_init(struct otx2_nic *pfvf, u16 pool_id,
 			qmem_free(pfvf->dev, pool->stack);
 			return err;
 		}
-		aq = otx2_mbox_alloc_msg_NPA_AQ_ENQ(&pfvf->mbox);
+		aq = otx2_mbox_alloc_msg_npa_aq_enq(&pfvf->mbox);
 		if (!aq) {
 			qmem_free(pfvf->dev, pool->stack);
 			return -ENOMEM;
@@ -1004,7 +1004,7 @@ int otx2_config_npa(struct otx2_nic *pfvf)
 		return -ENOMEM;
 
 	/* Get memory to put this msg */
-	npalf = otx2_mbox_alloc_msg_NPA_LF_ALLOC(&pfvf->mbox);
+	npalf = otx2_mbox_alloc_msg_npa_lf_alloc(&pfvf->mbox);
 	if (!npalf)
 		return -ENOMEM;
 
@@ -1023,7 +1023,7 @@ int otx2_detach_resources(struct mbox *mbox)
 {
 	struct rsrc_detach *detach;
 
-	detach = otx2_mbox_alloc_msg_DETACH_RESOURCES(mbox);
+	detach = otx2_mbox_alloc_msg_detach_resources(mbox);
 	if (!detach)
 		return -ENOMEM;
 
@@ -1043,7 +1043,7 @@ int otx2_attach_npa_nix(struct otx2_nic *pfvf)
 	int err;
 
 	/* Get memory to put this msg */
-	attach = otx2_mbox_alloc_msg_ATTACH_RESOURCES(&pfvf->mbox);
+	attach = otx2_mbox_alloc_msg_attach_resources(&pfvf->mbox);
 	if (!attach)
 		return -ENOMEM;
 
@@ -1056,7 +1056,7 @@ int otx2_attach_npa_nix(struct otx2_nic *pfvf)
 		return err;
 
 	/* Get NPA and NIX MSIX vector offsets */
-	msix = otx2_mbox_alloc_msg_MSIX_OFFSET(&pfvf->mbox);
+	msix = otx2_mbox_alloc_msg_msix_offset(&pfvf->mbox);
 	if (!msix)
 		return -ENOMEM;
 
@@ -1080,9 +1080,9 @@ void otx2_ctx_disable(struct mbox *mbox, int type, bool npa)
 
 	/* Request AQ to disable this context */
 	if (npa)
-		req = otx2_mbox_alloc_msg_NPA_HWCTX_DISABLE(mbox);
+		req = otx2_mbox_alloc_msg_npa_hwctx_disable(mbox);
 	else
-		req = otx2_mbox_alloc_msg_NIX_HWCTX_DISABLE(mbox);
+		req = otx2_mbox_alloc_msg_nix_hwctx_disable(mbox);
 
 	if (!req)
 		return;
@@ -1119,7 +1119,7 @@ static inline void otx2_nix_sq_op_stats(struct queue_stats *stats,
 }
 
 /* Mbox message handlers */
-void mbox_handler_CGX_STATS(struct otx2_nic *pfvf,
+void mbox_handler_cgx_stats(struct otx2_nic *pfvf,
 			    struct cgx_stats_rsp *rsp)
 {
 	int id;
@@ -1130,7 +1130,7 @@ void mbox_handler_CGX_STATS(struct otx2_nic *pfvf,
 		pfvf->hw.cgx_tx_stats[id] = rsp->tx_stats[id];
 }
 
-void mbox_handler_NIX_TXSCH_ALLOC(struct otx2_nic *pf,
+void mbox_handler_nix_txsch_alloc(struct otx2_nic *pf,
 				  struct nix_txsch_alloc_rsp *rsp)
 {
 	int lvl, schq;
@@ -1141,17 +1141,17 @@ void mbox_handler_NIX_TXSCH_ALLOC(struct otx2_nic *pf,
 			pf->hw.txschq_list[lvl][schq] =
 				rsp->schq_list[lvl][schq];
 }
-EXPORT_SYMBOL(mbox_handler_NIX_TXSCH_ALLOC);
+EXPORT_SYMBOL(mbox_handler_nix_txsch_alloc);
 
-void mbox_handler_NPA_LF_ALLOC(struct otx2_nic *pfvf,
+void mbox_handler_npa_lf_alloc(struct otx2_nic *pfvf,
 			       struct npa_lf_alloc_rsp *rsp)
 {
 	pfvf->hw.stack_pg_ptrs = rsp->stack_pg_ptrs;
 	pfvf->hw.stack_pg_bytes = rsp->stack_pg_bytes;
 }
-EXPORT_SYMBOL(mbox_handler_NPA_LF_ALLOC);
+EXPORT_SYMBOL(mbox_handler_npa_lf_alloc);
 
-void mbox_handler_NIX_LF_ALLOC(struct otx2_nic *pfvf,
+void mbox_handler_nix_lf_alloc(struct otx2_nic *pfvf,
 			       struct nix_lf_alloc_rsp *rsp)
 {
 	pfvf->hw.sqb_size = rsp->sqb_size;
@@ -1161,15 +1161,15 @@ void mbox_handler_NIX_LF_ALLOC(struct otx2_nic *pfvf,
 	pfvf->hw.lso_tsov4_idx = rsp->lso_tsov4_idx;
 	pfvf->hw.lso_tsov6_idx = rsp->lso_tsov6_idx;
 }
-EXPORT_SYMBOL(mbox_handler_NIX_LF_ALLOC);
+EXPORT_SYMBOL(mbox_handler_nix_lf_alloc);
 
-void mbox_handler_MSIX_OFFSET(struct otx2_nic *pfvf,
+void mbox_handler_msix_offset(struct otx2_nic *pfvf,
 			      struct msix_offset_rsp *rsp)
 {
 	pfvf->hw.npa_msixoff = rsp->npa_msixoff;
 	pfvf->hw.nix_msixoff = rsp->nix_msixoff;
 }
-EXPORT_SYMBOL(mbox_handler_MSIX_OFFSET);
+EXPORT_SYMBOL(mbox_handler_msix_offset);
 
 void otx2_free_cints(struct otx2_nic *pfvf, int n)
 {
