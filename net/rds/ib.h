@@ -259,6 +259,9 @@ struct rds_ib_connection {
 
 	/* Batched completions */
 	unsigned int		i_unsignaled_wrs;
+
+	/* Wake up receiver once in a while */
+	unsigned int		i_unsolicited_wrs;
 	u8                      i_sl;
 
 	atomic_t                i_cache_allocs;
@@ -600,6 +603,7 @@ void rds_ib_sysctl_exit(void);
 extern unsigned long rds_ib_sysctl_max_send_wr;
 extern unsigned long rds_ib_sysctl_max_recv_wr;
 extern unsigned long rds_ib_sysctl_max_unsig_wrs;
+extern unsigned long rds_ib_sysctl_max_unsolicited_wrs;
 extern unsigned long rds_ib_sysctl_max_unsig_bytes;
 extern unsigned long rds_ib_sysctl_max_recv_allocation;
 extern unsigned int rds_ib_sysctl_flow_control;
