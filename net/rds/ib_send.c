@@ -538,9 +538,15 @@ static inline int rds_ib_set_wr_signal_state(struct rds_ib_connection *ic,
 	if (ic->i_unsignaled_wrs-- == 0 || notify) {
 		ic->i_unsignaled_wrs = rds_ib_sysctl_max_unsig_wrs;
 		send->s_wr.send_flags |= IB_SEND_SIGNALED;
-		return 1;
 	}
-	return 0;
+
+	/* To keep the rx pipeline going, add SEND_SOLIICITED once in a while */
+	if (rds_ib_sysctl_max_unsolicited_wrs && --ic->i_unsolicited_wrs == 0) {
+		ic->i_unsolicited_wrs = rds_ib_sysctl_max_unsolicited_wrs;
+		send->s_wr.send_flags |= IB_SEND_SOLICITED;
+	}
+
+	return !!(send->s_wr.send_flags & IB_SEND_SIGNALED);
 }
 
 /*
@@ -645,6 +651,7 @@ int rds_ib_xmit(struct rds_connection *conn, struct rds_message *rm,
 			rm->data.op_count = 0;
 		}
 
+		ic->i_unsolicited_wrs = rds_ib_sysctl_max_unsolicited_wrs;
 		rds_message_addref(rm);
 		rm->data.op_dmasg = 0;
 		rm->data.op_dmaoff = 0;
