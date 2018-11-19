@@ -27,6 +27,9 @@ enum NPC_LID_E {
 enum npc_kpu_la_ltype {
 	NPC_LT_LA_8023 = 1,
 	NPC_LT_LA_ETHER,
+	NPC_LT_LA_IH_8_ETHER,
+	NPC_LT_LA_IH_4_ETHER,
+	NPC_LT_LA_IH_2_ETHER,
 };
 
 enum npc_kpu_lb_ltype {
@@ -40,7 +43,9 @@ enum npc_kpu_lb_ltype {
 
 enum npc_kpu_lc_ltype {
 	NPC_LT_LC_IP = 1,
+	NPC_LT_LC_IP_OPT,
 	NPC_LT_LC_IP6,
+	NPC_LT_LC_IP6_EXT,
 	NPC_LT_LC_ARP,
 	NPC_LT_LC_RARP,
 	NPC_LT_LC_MPLS,
@@ -59,12 +64,14 @@ enum npc_kpu_ld_ltype {
 	NPC_LT_LD_SCTP,
 	NPC_LT_LD_IGMP,
 	NPC_LT_LD_ICMP6,
+	NPC_LT_LD_TU_MPLS,
 	NPC_LT_LD_ESP,
 	NPC_LT_LD_AH,
 	NPC_LT_LD_GRE,
-	NPC_LT_LD_GRE_MPLS,
-	NPC_LT_LD_GRE_NSH,
-	NPC_LT_LD_TU_MPLS,
+	NPC_LT_LD_NVGRE,
+	NPC_LT_LD_UDP_VXLAN,
+	NPC_LT_LD_UDP_GENEVE,
+	NPC_LT_LD_UDP_GTPU,
 };
 
 enum npc_kpu_le_ltype {
@@ -100,6 +107,7 @@ enum npc_kpu_lh_ltype {
 	NPC_LT_LH_HTTPS_DATA,
 	NPC_LT_LH_PPTP_DATA,
 	NPC_LT_LH_UDP_DATA,
+	NPC_LT_LH_UDP_PTP,
 };
 
 struct npc_kpu_profile_cam {
