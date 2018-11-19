@@ -1117,7 +1117,7 @@ xfs_adjust_extent_unmap_boundaries(
 	return 0;
 }
 
-static int
+int
 xfs_flush_unmap_range(
 	struct xfs_inode	*ip,
 	xfs_off_t		offset,
