@@ -196,18 +196,6 @@ int rvu_mbox_handler_sso_hw_setconfig(struct rvu *rvu,
 		if (lf < 0)
 			return SSO_AF_ERR_LF_INVALID;
 
-		/* Disable and drain previous config */
-		rvu_write64(rvu, blkaddr, SSO_AF_HWGRPX_AW_CFG(lf), 0x0);
-
-		err = rvu_poll_reg(rvu, blkaddr,
-				   SSO_AF_HWGRPX_AW_STATUS(lf),
-				   SSO_HWGRP_AW_STS_XAQ_BUFSC_MASK, true);
-		if (err) {
-			dev_warn(rvu->dev, "SSO_HWGRP(%d)_AW_STATUS[XAQ_BUF_CACHED] not cleared",
-				 lf);
-			return err;
-		}
-
 		rvu_write64(rvu, blkaddr, SSO_AF_HWGRPX_XAQ_AURA(lf),
 			    npa_aura_id);
 		rvu_write64(rvu, blkaddr, SSO_AF_XAQX_GMCTL(lf),
