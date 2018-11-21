@@ -164,6 +164,8 @@ static void dump_dev_cap_flags2(struct mlx4_dev *dev, u64 flags)
 		[36] = "QinQ VST mode support",
 		[37] = "sl to vl mapping table change event support",
 		[38] = "user MAC support",
+		[39] = "Report driver version to FW support",
+		[40] = "SW CQ initialization support",
 	};
 	int i;
 
@@ -1091,6 +1093,8 @@ int mlx4_QUERY_DEV_CAP(struct mlx4_dev *dev, struct mlx4_dev_cap *dev_cap)
 		dev_cap->flags2 |= MLX4_DEV_CAP_FLAG2_FSM;
 	if (field32 & (1 << 21))
 		dev_cap->flags2 |= MLX4_DEV_CAP_FLAG2_80_VFS;
+	if (field32 & (1 << 23))
+		dev_cap->flags2 |= MLX4_DEV_CAP_FLAG2_SW_CQ_INIT;
 
 	for (i = 1; i <= dev_cap->num_ports; i++) {
 		err = mlx4_QUERY_PORT(dev, i, dev_cap->port_cap + i);
