@@ -16,7 +16,6 @@
 .extern use_ibrs
 .extern use_ibpb
 .extern x86_spec_ctrl_priv
-.extern x86_spec_ctrl_base
 
 #define __ASM_ENABLE_IBRS			\
 	pushq %rax;				\
@@ -56,11 +55,6 @@
 	popq %rdx;				\
 	popq %rcx;				\
 	popq %rax
-#define __ASM_DISABLE_IBRS_CLOBBER		\
-	movl $MSR_IA32_SPEC_CTRL, %ecx;		\
-	movl $0, %edx;				\
-	movl x86_spec_ctrl_base, %eax;		\
-	wrmsr;
 
 #define __ASM_STUFF_RSB				\
 	call	1f;				\
@@ -194,10 +188,6 @@
 
 .macro SET_IBPB
 ALTERNATIVE "", __stringify(__ASM_SET_IBPB), X86_FEATURE_IBRS
-.endm
-
-.macro DISABLE_IBRS_CLOBBER
-ALTERNATIVE "", __stringify(__ASM_DISABLE_IBRS_CLOBBER), X86_FEATURE_IBRS
 .endm
 
 .macro STUFF_RSB
