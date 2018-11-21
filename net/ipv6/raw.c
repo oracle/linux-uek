@@ -631,21 +631,29 @@ static int rawv6_send_hdrinc(struct sock *sk, struct msghdr *msg, int length,
 	struct rt6_info *rt = (struct rt6_info *)*dstp;
 	int hlen = LL_RESERVED_SPACE(rt->dst.dev);
 	int tlen = rt->dst.dev->needed_tailroom;
+	const char *dropreason;
 
 	if (length > rt->dst.dev->mtu) {
 		ipv6_local_error(sk, EMSGSIZE, fl6, rt->dst.dev->mtu);
-		return -EMSGSIZE;
+		dropreason = "packet too big";
+		err = -EMSGSIZE;
+		goto trace_drop;
 	}
-	if (length < sizeof(struct ipv6hdr))
-		return -EINVAL;
+	if (length < sizeof(struct ipv6hdr)) {
+		dropreason = "packet too short";
+		err = -EINVAL;
+		goto trace_drop;
+	}
 	if (flags&MSG_PROBE)
 		goto out;
 
 	skb = sock_alloc_send_skb(sk,
 				  length + hlen + tlen + 15,
 				  flags & MSG_DONTWAIT, &err);
-	if (!skb)
+	if (!skb) {
+		dropreason = "out of memory";
 		goto error;
+	}
 	skb_reserve(skb, hlen);
 
 	skb->protocol = htons(ETH_P_IPV6);
@@ -665,8 +673,10 @@ static int rawv6_send_hdrinc(struct sock *sk, struct msghdr *msg, int length,
 
 	skb->transport_header = skb->network_header;
 	err = memcpy_from_msg(iph, msg, length);
-	if (err)
+	if (err) {
+		dropreason = "could not copy msg";
 		goto error_fault;
+	}
 
 	/* if egress device is enslaved to an L3 master device pass the
 	 * skb to its handler for processing
@@ -687,8 +697,10 @@ static int rawv6_send_hdrinc(struct sock *sk, struct msghdr *msg, int length,
 		      NULL, rt->dst.dev, dst_output);
 	if (err > 0)
 		err = net_xmit_errno(err);
-	if (err)
+	if (err) {
+		dropreason = "raw send error";
 		goto error;
+	}
 out:
 	return 0;
 
@@ -697,14 +709,16 @@ error_fault:
 	kfree_skb(skb);
 	skb = NULL;
 error:
-	DTRACE_IP(send,
+	IP6_INC_STATS(net, rt->rt6i_idev, IPSTATS_MIB_OUTDISCARDS);
+trace_drop:
+	DTRACE_IP(drop__out,
 		  struct sk_buff * : pktinfo_t *, skb,
 		  struct sock * : csinfo_t *, skb ? skb->sk : NULL,
 		  void_ip_t * : ipinfo_t *, skb ? ipv6_hdr(skb) : NULL,
 		  struct net_device * : ifinfo_t *, skb ? skb->dev : NULL,
 		  struct iphdr * : ipv4info_t *, NULL,
-		  struct ipv6hdr * : ipv6info_t *, skb ? ipv6_hdr(skb) : NULL);
-	IP6_INC_STATS(net, rt->rt6i_idev, IPSTATS_MIB_OUTDISCARDS);
+		  struct ipv6hdr * : ipv6info_t *, skb ? ipv6_hdr(skb) : NULL,
+		  const char * : string, dropreason);
 	if (err == -ENOBUFS && !np->recverr)
 		err = 0;
 	return err;

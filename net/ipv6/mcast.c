@@ -1624,6 +1624,7 @@ static void mld_sendpack(struct sk_buff *skb)
 	int payload_len, mldlen;
 	struct inet6_dev *idev;
 	struct net *net = dev_net(skb->dev);
+	const char *dropreason;
 	int err;
 	struct flowi6 fl6;
 	struct dst_entry *dst;
@@ -1656,6 +1657,7 @@ static void mld_sendpack(struct sk_buff *skb)
 	if (err) {
 		kfree_skb(skb);
 		skb = NULL;
+		dropreason = "out of memory";
 		goto out;
 	}
 
@@ -1672,6 +1674,7 @@ static void mld_sendpack(struct sk_buff *skb)
 	err = NF_HOOK(NFPROTO_IPV6, NF_INET_LOCAL_OUT,
 		      net, net->ipv6.igmp_sk, skb, NULL, skb->dev,
 		      dst_output);
+	dropreason = "multicast send error";
 out:
 	if (!err) {
 		ICMP6MSGOUT_INC_STATS(net, idev, ICMPV6_MLD2_REPORT);
@@ -1685,7 +1688,7 @@ out:
 			  struct net_device * : ifinfo_t *, idev->dev,
 			  struct iphdr * : ipv4info_t *, NULL,
 			  struct ipv6hdr * : ipv6info_t *, NULL,
-			  char * : string, "multicast send error");
+			  const char * : string, dropreason);
 
 		IP6_INC_STATS(net, idev, IPSTATS_MIB_OUTDISCARDS);
 	}
@@ -1989,6 +1992,7 @@ static void igmp6_send(struct in6_addr *addr, struct net_device *dev, int type)
 	u8 ra[8] = { IPPROTO_ICMPV6, 0,
 		     IPV6_TLV_ROUTERALERT, 2, 0, 0,
 		     IPV6_TLV_PADN, 0 };
+	const char *dropreason;
 	struct flowi6 fl6;
 	struct dst_entry *dst;
 
@@ -2010,19 +2014,8 @@ static void igmp6_send(struct in6_addr *addr, struct net_device *dev, int type)
 
 	if (!skb) {
 		rcu_read_lock();
-		DTRACE_IP(drop__out,
-			  struct sk_buff * : pktinfo_t *, NULL,
-			  struct sock * : csinfo_t *, sk,
-			  void_ip_t * : ipinfo_t *, NULL,
-			  struct net_device * : ifinfo_t *, NULL,
-			  struct iphdr * : ipv4info_t *, NULL,
-			  struct ipv6hdr * : ipv6info_t *, NULL,
-			  char * : string, "out of memory");
-
-		IP6_INC_STATS(net, __in6_dev_get(dev),
-			      IPSTATS_MIB_OUTDISCARDS);
-		rcu_read_unlock();
-		return;
+		dropreason = "out of memory";
+		goto out;
 	}
 	skb->priority = TC_PRIO_CONTROL;
 	skb_reserve(skb, hlen);
@@ -2059,6 +2052,7 @@ static void igmp6_send(struct in6_addr *addr, struct net_device *dev, int type)
 		err = PTR_ERR(dst);
 		kfree_skb(skb);
 		skb = NULL;
+		dropreason = "out of memory";
 		goto out;
 	}
 
@@ -2073,6 +2067,7 @@ static void igmp6_send(struct in6_addr *addr, struct net_device *dev, int type)
 	err = NF_HOOK(NFPROTO_IPV6, NF_INET_LOCAL_OUT,
 		      net, sk, skb, NULL, skb->dev,
 		      dst_output);
+	dropreason = "multicast send error";
 out:
 	if (!err) {
 		ICMP6MSGOUT_INC_STATS(net, idev, type);
@@ -2086,7 +2081,7 @@ out:
 			  struct net_device * : ifinfo_t *, idev->dev,
 			  struct iphdr * : ipv4info_t *, NULL,
 			  struct ipv6hdr * : ipv6info_t *, NULL,
-			  char * : string, "multicast send error");
+			  const char * : string, dropreason);
 		IP6_INC_STATS(net, idev, IPSTATS_MIB_OUTDISCARDS);
 	}
 

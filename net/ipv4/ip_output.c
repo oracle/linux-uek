@@ -1128,7 +1128,7 @@ error2:
 		  struct net_device * : ifinfo_t *, skb ? skb->dev : NULL,
 		  struct iphdr * : ipv4info_t *, skb ? ip_hdr(skb) : NULL,
 		  struct ipv6hdr * : ipv6info_t *, NULL,
-		  char * : string, dropreason);
+		  const char * : string, dropreason);
 
 	return err;
 }
@@ -1349,7 +1349,7 @@ error:
 		  struct net_device * : ifinfo_t *, skb ? skb->dev : NULL,
 		  struct iphdr * : ipv4info_t *, iph,
 		  struct ipv6hdr * : ipv6info_t *, NULL,
-		  char * : string, dropreason);
+		  const char * : string, dropreason);
 
 	return err;
 }

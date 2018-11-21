@@ -359,14 +359,20 @@ static int raw_send_hdrinc(struct sock *sk, struct flowi4 *fl4,
 	int err;
 	struct rtable *rt = *rtp;
 	int hlen, tlen;
+	const char *dropreason;
 
 	if (length > rt->dst.dev->mtu) {
 		ip_local_error(sk, EMSGSIZE, fl4->daddr, inet->inet_dport,
 			       rt->dst.dev->mtu);
-		return -EMSGSIZE;
+		dropreason = "packet too big";
+		err = -EMSGSIZE;
+		goto trace_drop;
 	}
-	if (length < sizeof(struct iphdr))
-		return -EINVAL;
+	if (length < sizeof(struct iphdr)) {
+		dropreason = "packet too short";
+		err = -EINVAL;
+		goto trace_drop;
+	}
 
 	if (flags&MSG_PROBE)
 		goto out;
@@ -376,8 +382,10 @@ static int raw_send_hdrinc(struct sock *sk, struct flowi4 *fl4,
 	skb = sock_alloc_send_skb(sk,
 				  length + hlen + tlen + 15,
 				  flags & MSG_DONTWAIT, &err);
-	if (!skb)
+	if (!skb) {
+		dropreason = "out of memory";
 		goto error;
+	}
 	skb_reserve(skb, hlen);
 
 	skb->priority = sk->sk_priority;
@@ -398,8 +406,10 @@ static int raw_send_hdrinc(struct sock *sk, struct flowi4 *fl4,
 
 	skb->transport_header = skb->network_header;
 	err = -EFAULT;
-	if (memcpy_from_msg(iph, msg, length))
+	if (memcpy_from_msg(iph, msg, length)) {
+		dropreason = "could not copy msg";
 		goto error_free;
+	}
 
 	iphlen = iph->ihl * 4;
 
@@ -411,8 +421,10 @@ static int raw_send_hdrinc(struct sock *sk, struct flowi4 *fl4,
 	 * in, reject the frame as invalid
 	 */
 	err = -EINVAL;
-	if (iphlen > length)
+	if (iphlen > length) {
+		dropreason = "IP header too big";
 		goto error_free;
+	}
 
 	if (iphlen >= sizeof(*iph)) {
 		if (!iph->saddr)
@@ -450,8 +462,18 @@ out:
 
 error_free:
 	kfree_skb(skb);
+	skb = NULL;
 error:
 	IP_INC_STATS(net, IPSTATS_MIB_OUTDISCARDS);
+trace_drop:
+	DTRACE_IP(drop__out,
+		  struct sk_buff * : pktinfo_t *, skb,
+		  struct sock * : csinfo_t *, skb ? skb->sk : NULL,
+		  void_ip_t * : ipinfo_t *, skb ? ip_hdr(skb) : NULL,
+		  struct net_device * : ifinfo_t *, skb ? skb->dev : NULL,
+		  struct iphdr * : ipv4info_t *, skb ? ip_hdr(skb) : NULL,
+		  struct ipv6hdr * : ipv6info_t *, NULL,
+		  const char * : string, dropreason);
 	if (err == -ENOBUFS && !inet->recverr)
 		err = 0;
 	return err;
