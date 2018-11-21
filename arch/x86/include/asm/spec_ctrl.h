@@ -40,7 +40,7 @@
 	pushq %rdx;				\
 	movl $MSR_IA32_SPEC_CTRL, %ecx;		\
 	movl $0, %edx;				\
-	movl x86_spec_ctrl_base, %eax;		\
+	movl PER_CPU_VAR(x86_spec_ctrl_restore), %eax;		\
 	wrmsr;					\
 	popq %rdx;				\
 	popq %rcx;				\
@@ -172,8 +172,8 @@
 	testl	$SPEC_CTRL_IBRS_INUSE, PER_CPU_VAR(cpu_ibrs)
 	jz	13f
 
-	testl	$SPEC_CTRL_FEATURE_ENABLE_IBRS, \save_reg
-	jnz	13f
+	cmp	\save_reg, PER_CPU_VAR(x86_spec_ctrl_priv_cpu)
+	je      13f
 
 	movl	$MSR_IA32_SPEC_CTRL, %ecx
 	movl	$0, %edx
@@ -209,6 +209,7 @@ ALTERNATIVE __stringify(__ASM_STUFF_RSB), "", X86_FEATURE_STUFF_RSB
 /* Defined in bugs_64.c */
 extern u64 x86_spec_ctrl_priv;
 DECLARE_PER_CPU(u64, x86_spec_ctrl_priv_cpu);
+DECLARE_PER_CPU(u64, x86_spec_ctrl_restore);
 extern u64 x86_spec_ctrl_base;
 
 /*
@@ -241,6 +242,7 @@ DECLARE_STATIC_KEY_FALSE(retpoline_enabled_key);
 static inline void update_cpu_spec_ctrl(int cpu)
 {
 	per_cpu(x86_spec_ctrl_priv_cpu, cpu) = x86_spec_ctrl_priv;
+	per_cpu(x86_spec_ctrl_restore, cpu) = x86_spec_ctrl_base;
 }
 
 static inline void update_cpu_spec_ctrl_all(void)

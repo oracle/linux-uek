@@ -153,6 +153,8 @@ u64 x86_spec_ctrl_priv;
 EXPORT_SYMBOL_GPL(x86_spec_ctrl_priv);
 DEFINE_PER_CPU(u64, x86_spec_ctrl_priv_cpu) = 0;
 EXPORT_PER_CPU_SYMBOL(x86_spec_ctrl_priv_cpu);
+DEFINE_PER_CPU(u64, x86_spec_ctrl_restore) = 0;
+EXPORT_PER_CPU_SYMBOL(x86_spec_ctrl_restore);
 
 /*
  * AMD specific MSR info for Speculative Store Bypass control.
