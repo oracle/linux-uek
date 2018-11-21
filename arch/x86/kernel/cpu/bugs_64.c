@@ -771,8 +771,8 @@ static void __init spectre_v2_select_mitigation(void)
 			 * are forced to use retpoline on Skylake then use that.
 			 */
 			if (!retp_compiler() /* prefer IBRS over minimal ASM */ ||
-			    (retp_compiler() && !retpoline_selected(cmd) &&
-			     ((is_skylake_era() && use_ibrs_on_skylake)))) {
+			    (!retpoline_selected(cmd) &&
+			     is_skylake_era() && use_ibrs_on_skylake)) {
 
 				/* Start the engine! */
 				ibrs_select(&mode);
