@@ -149,8 +149,7 @@ static ssize_t (*uverbs_cmd_table[])(struct uverbs_attr_bundle *attrs,
 };
 
 static int (*uverbs_ex_cmd_table[])(struct uverbs_attr_bundle *attrs,
-				    struct ib_udata *ucore,
-				    struct ib_udata *uhw) = {
+				    struct ib_udata *ucore) = {
 	[IB_USER_VERBS_EX_CMD_CREATE_FLOW]	= ib_uverbs_ex_create_flow,
 	[IB_USER_VERBS_EX_CMD_DESTROY_FLOW]	= ib_uverbs_ex_destroy_flow,
 	[IB_USER_VERBS_EX_CMD_QUERY_DEVICE]	= ib_uverbs_ex_query_device,
@@ -805,7 +804,6 @@ static ssize_t ib_uverbs_write(struct file *filp, const char __user *buf,
 						hdr.out_words * 4);
 	} else {
 		struct ib_udata ucore;
-		struct ib_udata uhw;
 
 		buf += sizeof(ex_hdr);
 
@@ -813,13 +811,13 @@ static ssize_t ib_uverbs_write(struct file *filp, const char __user *buf,
 					u64_to_user_ptr(ex_hdr.response),
 					hdr.in_words * 8, hdr.out_words * 8);
 
-		ib_uverbs_init_udata_buf_or_null(&uhw,
+		ib_uverbs_init_udata_buf_or_null(&bundle.driver_udata,
 					buf + ucore.inlen,
 					u64_to_user_ptr(ex_hdr.response) + ucore.outlen,
 					ex_hdr.provider_in_words * 8,
 					ex_hdr.provider_out_words * 8);
 
-		ret = uverbs_ex_cmd_table[command](&bundle, &ucore, &uhw);
+		ret = uverbs_ex_cmd_table[command](&bundle, &ucore);
 		ret = (ret) ? : count;
 	}
 

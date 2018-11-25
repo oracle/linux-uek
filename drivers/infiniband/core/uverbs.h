@@ -376,8 +376,8 @@ extern int ufmr_pool2_nelems;
 
 #define IB_UVERBS_DECLARE_EX_CMD(name)				\
 	int ib_uverbs_ex_##name(struct uverbs_attr_bundle *attrs, \
-				struct ib_udata *ucore,		\
-				struct ib_udata *uhw)
+				struct ib_udata *ucore)
+				
 
 IB_UVERBS_DECLARE_EX_CMD(create_flow);
 IB_UVERBS_DECLARE_EX_CMD(destroy_flow);
