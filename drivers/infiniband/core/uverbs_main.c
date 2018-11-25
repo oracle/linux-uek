@@ -95,7 +95,7 @@ DEFINE_MUTEX(ib_uverbs_shpd_idr_lock);
 static DEFINE_SPINLOCK(map_lock);
 static DECLARE_BITMAP(dev_map, IB_UVERBS_MAX_DEVICES);
 
-static ssize_t (*uverbs_cmd_table[])(struct ib_uverbs_file *file,
+static ssize_t (*uverbs_cmd_table[])(struct uverbs_attr_bundle *attrs,
 				     const char __user *buf, int in_len,
 				     int out_len) = {
 	[IB_USER_VERBS_CMD_GET_CONTEXT]		= ib_uverbs_get_context,
@@ -148,7 +148,7 @@ static ssize_t (*uverbs_cmd_table[])(struct ib_uverbs_file *file,
 #endif /* !WITHOUT_ORACLE_EXTENSIONS */
 };
 
-static int (*uverbs_ex_cmd_table[])(struct ib_uverbs_file *file,
+static int (*uverbs_ex_cmd_table[])(struct uverbs_attr_bundle *attrs,
 				    struct ib_udata *ucore,
 				    struct ib_udata *uhw) = {
 	[IB_USER_VERBS_EX_CMD_CREATE_FLOW]	= ib_uverbs_ex_create_flow,
@@ -172,7 +172,7 @@ static void ib_uverbs_remove_one(struct ib_device *device, void *client_data);
  * Must be called with the ufile->device->disassociate_srcu held, and the lock
  * must be held until use of the ucontext is finished.
  */
-struct ib_ucontext *ib_uverbs_get_ucontext(struct ib_uverbs_file *ufile)
+struct ib_ucontext *ib_uverbs_get_ucontext_file(struct ib_uverbs_file *ufile)
 {
 	/*
 	 * We do not hold the hw_destroy_rwsem lock for this flow, instead
@@ -190,7 +190,7 @@ struct ib_ucontext *ib_uverbs_get_ucontext(struct ib_uverbs_file *ufile)
 
 	return ucontext;
 }
-EXPORT_SYMBOL(ib_uverbs_get_ucontext);
+EXPORT_SYMBOL(ib_uverbs_get_ucontext_file);
 
 int uverbs_dealloc_mw(struct ib_mw *mw)
 {
@@ -756,6 +756,7 @@ static ssize_t ib_uverbs_write(struct file *filp, const char __user *buf,
 	struct ib_uverbs_file *file = filp->private_data;
 	struct ib_uverbs_ex_cmd_hdr ex_hdr;
 	struct ib_uverbs_cmd_hdr hdr;
+	struct uverbs_attr_bundle bundle;
 	bool extended;
 	int srcu_key;
 	u32 command;
@@ -797,8 +798,9 @@ static ssize_t ib_uverbs_write(struct file *filp, const char __user *buf,
 
 	buf += sizeof(hdr);
 
+	bundle.ufile = file;
 	if (!extended) {
-		ret = uverbs_cmd_table[command](file, buf,
+		ret = uverbs_cmd_table[command](&bundle, buf,
 						hdr.in_words * 4,
 						hdr.out_words * 4);
 	} else {
@@ -817,7 +819,7 @@ static ssize_t ib_uverbs_write(struct file *filp, const char __user *buf,
 					ex_hdr.provider_in_words * 8,
 					ex_hdr.provider_out_words * 8);
 
-		ret = uverbs_ex_cmd_table[command](file, &ucore, &uhw);
+		ret = uverbs_ex_cmd_table[command](&bundle, &ucore, &uhw);
 		ret = (ret) ? : count;
 	}
 
@@ -834,7 +836,7 @@ static int ib_uverbs_mmap(struct file *filp, struct vm_area_struct *vma)
 	int srcu_key;
 
 	srcu_key = srcu_read_lock(&file->device->disassociate_srcu);
-	ucontext = ib_uverbs_get_ucontext(file);
+	ucontext = ib_uverbs_get_ucontext_file(file);
 	if (IS_ERR(ucontext)) {
 		ret = PTR_ERR(ucontext);
 		goto out;

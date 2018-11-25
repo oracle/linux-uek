@@ -318,7 +318,7 @@ extern const struct uverbs_object_def UVERBS_OBJECT(UVERBS_OBJECT_DM);
 extern const struct uverbs_object_def UVERBS_OBJECT(UVERBS_OBJECT_COUNTERS);
 
 #define IB_UVERBS_DECLARE_CMD(name)					\
-	ssize_t ib_uverbs_##name(struct ib_uverbs_file *file,		\
+	ssize_t ib_uverbs_##name(struct uverbs_attr_bundle *attrs,	\
 				 const char __user *buf, int in_len,	\
 				 int out_len)
 
@@ -375,7 +375,7 @@ extern int ufmr_pool2_nelems;
 #endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 #define IB_UVERBS_DECLARE_EX_CMD(name)				\
-	int ib_uverbs_ex_##name(struct ib_uverbs_file *file,	\
+	int ib_uverbs_ex_##name(struct uverbs_attr_bundle *attrs, \
 				struct ib_udata *ucore,		\
 				struct ib_udata *uhw)
 
