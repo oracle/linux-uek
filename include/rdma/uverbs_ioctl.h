@@ -610,6 +610,12 @@ static inline int _uverbs_copy_from_or_zero(void *to,
 #define uverbs_copy_from_or_zero(to, attrs_bundle, idx)			      \
 	_uverbs_copy_from_or_zero(to, attrs_bundle, idx, sizeof(*to))
 
+static inline struct ib_ucontext *
+ib_uverbs_get_ucontext(const struct uverbs_attr_bundle *attrs)
+{
+	return ib_uverbs_get_ucontext_file(attrs->ufile);
+}
+
 #if IS_ENABLED(CONFIG_INFINIBAND_USER_ACCESS)
 int uverbs_get_flags64(u64 *to, const struct uverbs_attr_bundle *attrs_bundle,
 		       size_t idx, u64 allowed_bits);
