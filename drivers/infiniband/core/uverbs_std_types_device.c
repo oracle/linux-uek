@@ -44,7 +44,7 @@ gather_objects_handle(struct ib_uverbs_file *ufile,
 }
 
 static int UVERBS_HANDLER(UVERBS_METHOD_INFO_HANDLES)(
-	struct ib_uverbs_file *ufile, struct uverbs_attr_bundle *attrs)
+	struct uverbs_attr_bundle *attrs)
 {
 	const struct uverbs_api_object *uapi_object;
 	ssize_t out_len;
@@ -61,11 +61,11 @@ static int UVERBS_HANDLER(UVERBS_METHOD_INFO_HANDLES)(
 	if (ret)
 		return ret;
 
-	uapi_object = uapi_get_object(ufile->device->uapi, object_id);
+	uapi_object = uapi_get_object(attrs->ufile->device->uapi, object_id);
 	if (!uapi_object)
 		return -EINVAL;
 
-	handles = gather_objects_handle(ufile, uapi_object, out_len, &total);
+	handles = gather_objects_handle(attrs->ufile, uapi_object, out_len, &total);
 	if (IS_ERR(handles))
 		return PTR_ERR(handles);
 
