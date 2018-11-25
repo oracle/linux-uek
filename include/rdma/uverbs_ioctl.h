@@ -78,6 +78,8 @@ struct uverbs_attr_spec {
 	 */
 	u8 alloc_and_copy:1;
 	u8 mandatory:1;
+	/* True if this is from UVERBS_ATTR_UHW */
+	u8 is_udata:1;
 
 	union {
 		struct {
@@ -392,10 +394,12 @@ struct uverbs_object_tree_def {
 #define UVERBS_ATTR_UHW()                                                      \
 	UVERBS_ATTR_PTR_IN(UVERBS_ATTR_UHW_IN,                                 \
 			   UVERBS_ATTR_MIN_SIZE(0),			       \
-			   UA_OPTIONAL),				       \
+			   UA_OPTIONAL,                                        \
+			   .is_udata = 1),				       \
 	UVERBS_ATTR_PTR_OUT(UVERBS_ATTR_UHW_OUT,                               \
 			    UVERBS_ATTR_MIN_SIZE(0),			       \
-			    UA_OPTIONAL)
+			    UA_OPTIONAL,                                       \
+			    .is_udata = 1)
 
 /*
  * =======================================
