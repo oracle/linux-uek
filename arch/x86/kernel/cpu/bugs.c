@@ -166,6 +166,10 @@ u64 __ro_after_init x86_amd_ls_cfg_ssbd_mask;
 
 /* Control conditional STIPB in switch_to() */
 DEFINE_STATIC_KEY_FALSE(switch_to_cond_stibp);
+/* Control conditional IBPB in switch_mm() */
+DEFINE_STATIC_KEY_FALSE(switch_mm_cond_ibpb);
+/* Control unconditional IBPB in switch_mm() */
+DEFINE_STATIC_KEY_FALSE(switch_mm_always_ibpb);
 
 void __init check_bugs(void)
 {
@@ -566,11 +570,21 @@ spectre_v2_user_select_mitigation(enum spectre_v2_mitigation_cmd v2_cmd)
 		break;
 	}
 
-        /* Initialize Indirect Branch Prediction Barrier if supported */
-        if (boot_cpu_has(X86_FEATURE_IBPB) && use_ibpb) {
-                ibpb_enable();
-                pr_info("Spectre v2 mitigation: Enabling Indirect Branch Prediction Barrier\n");
-        }
+	/* Initialize Indirect Branch Prediction Barrier if supported */
+	if (boot_cpu_has(X86_FEATURE_IBPB) && use_ibpb) {
+		ibpb_enable();
+
+		switch (mode) {
+		case SPECTRE_V2_USER_STRICT:
+			static_branch_enable(&switch_mm_always_ibpb);
+			break;
+		default:
+			break;
+		}
+
+		pr_info("mitigation: Enabling %s Indirect Branch Prediction Barrier\n",
+			mode == SPECTRE_V2_USER_STRICT ? "always-on" : "conditional");
+	}
 
 	/* If enhanced IBRS is enabled no STIPB required */
 	if (spectre_v2_enabled == SPECTRE_V2_IBRS_ENHANCED)
@@ -1371,10 +1385,15 @@ static char *stibp_state(void)
 
 static char *ibpb_state(void)
 {
-	if (ibpb_enabled())
-		return ", IBPB";
-	else
-		return "";
+	if (ibpb_enabled()) {
+		switch (spectre_v2_user) {
+		case SPECTRE_V2_USER_NONE:
+			return ", IBPB: disabled";
+		case SPECTRE_V2_USER_STRICT:
+			return ", IBPB: always-on";
+		}
+	}
+	return "";
 }
 
 static ssize_t cpu_show_common(struct device *dev, struct device_attribute *attr,
