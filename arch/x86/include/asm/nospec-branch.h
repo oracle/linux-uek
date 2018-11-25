@@ -5,6 +5,8 @@
 
 #include <linux/jump_label.h>
 
+#include <linux/static_key.h>
+
 #include <asm/alternative.h>
 #include <asm/alternative-asm.h>
 #include <asm/cpufeatures.h>
@@ -213,6 +215,12 @@ enum spec_ctrl_set_context {
 
 extern void x86_spec_ctrl_set(enum spec_ctrl_set_context);
 
+/* The indirect branch speculation control variants */
+enum spectre_v2_user_mitigation {
+	SPECTRE_V2_USER_NONE,
+	SPECTRE_V2_USER_STRICT,
+};
+
 /* The Speculative Store Bypass disable variants */
 enum ssb_mitigation {
 	SPEC_STORE_BYPASS_NONE,
@@ -279,6 +287,8 @@ do {									\
 		wrmsrl(MSR_IA32_SPEC_CTRL, x86_spec_ctrl_base);		\
 	preempt_enable();						\
 } while (0)
+
+DECLARE_STATIC_KEY_FALSE(switch_to_cond_stibp);
 
 #endif /* __ASSEMBLY__ */
 
