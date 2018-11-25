@@ -129,6 +129,7 @@ struct uverbs_api_ioctl_method {
 	u16 bundle_size;
 	u8 use_stack:1;
 	u8 driver_method:1;
+	u8 has_udata:1;
 	u8 key_bitmap_len;
 	u8 destroy_bkey;
 };
