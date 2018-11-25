@@ -86,7 +86,6 @@ EXPORT_SYMBOL(retpoline_enabled_key);
 
 static bool __init is_skylake_era(void);
 static void __init disable_ibrs_and_friends(void);
-static void __init activate_spectre_v2_mitigation(enum spectre_v2_mitigation);
 
 int __init spectre_v2_heuristics_setup(char *p)
 {
@@ -164,6 +163,9 @@ static u64 __ro_after_init x86_spec_ctrl_mask = SPEC_CTRL_IBRS;
  */
 u64 __ro_after_init x86_amd_ls_cfg_base;
 u64 __ro_after_init x86_amd_ls_cfg_ssbd_mask;
+
+/* Control conditional STIPB in switch_to() */
+DEFINE_STATIC_KEY_FALSE(switch_to_cond_stibp);
 
 void __init check_bugs(void)
 {
@@ -383,6 +385,9 @@ static void x86_amd_ssb_disable(void)
 
 static enum spectre_v2_mitigation spectre_v2_enabled = SPECTRE_V2_NONE;
 
+static enum spectre_v2_user_mitigation spectre_v2_user __ro_after_init =
+       SPECTRE_V2_USER_NONE;
+
 #ifdef CONFIG_RETPOLINE
 static bool spectre_v2_bad_module;
 
@@ -475,6 +480,104 @@ enum spectre_v2_mitigation_cmd {
 	SPECTRE_V2_CMD_RETPOLINE_AMD,
 	SPECTRE_V2_CMD_IBRS,
 };
+
+enum spectre_v2_user_cmd {
+	SPECTRE_V2_USER_CMD_NONE,
+	SPECTRE_V2_USER_CMD_AUTO,
+	SPECTRE_V2_USER_CMD_FORCE,
+};
+
+static const char * const spectre_v2_user_strings[] = {
+	[SPECTRE_V2_USER_NONE]		= "User space: Vulnerable",
+	[SPECTRE_V2_USER_STRICT]	= "User space: Mitigation: STIBP protection",
+};
+
+static const struct {
+	const char			*option;
+	enum spectre_v2_user_cmd	cmd;
+	bool				secure;
+} v2_user_options[] __initdata = {
+	{ "auto",	SPECTRE_V2_USER_CMD_AUTO,	false },
+	{ "off",	SPECTRE_V2_USER_CMD_NONE,	false },
+	{ "on",		SPECTRE_V2_USER_CMD_FORCE,	true  },
+};
+
+static void __init spec_v2_user_print_cond(const char *reason, bool secure)
+{
+	if (boot_cpu_has_bug(X86_BUG_SPECTRE_V2) != secure)
+		pr_info("spectre_v2_user=%s forced on command line.\n", reason);
+}
+
+static enum spectre_v2_user_cmd __init
+spectre_v2_parse_user_cmdline(enum spectre_v2_mitigation_cmd v2_cmd)
+{
+	char arg[20];
+	int ret, i;
+
+	switch (v2_cmd) {
+	case SPECTRE_V2_CMD_NONE:
+		return SPECTRE_V2_USER_CMD_NONE;
+	case SPECTRE_V2_CMD_FORCE:
+		return SPECTRE_V2_USER_CMD_FORCE;
+	default:
+		break;
+	}
+
+	ret = cmdline_find_option(boot_command_line, "spectre_v2_user",
+				  arg, sizeof(arg));
+	if (ret < 0)
+		return SPECTRE_V2_USER_CMD_AUTO;
+
+	for (i = 0; i < ARRAY_SIZE(v2_user_options); i++) {
+		if (match_option(arg, ret, v2_user_options[i].option)) {
+			spec_v2_user_print_cond(v2_user_options[i].option,
+						v2_user_options[i].secure);
+			return v2_user_options[i].cmd;
+		}
+	}
+
+	pr_err("Unknown user space protection option (%s). Switching to AUTO select\n", arg);
+	return SPECTRE_V2_USER_CMD_AUTO;
+}
+
+static void __init
+spectre_v2_user_select_mitigation(enum spectre_v2_mitigation_cmd v2_cmd)
+{
+	enum spectre_v2_user_mitigation mode = SPECTRE_V2_USER_NONE;
+	bool smt_possible = IS_ENABLED(CONFIG_SMP);
+
+	if (!boot_cpu_has(X86_FEATURE_IBPB) && !boot_cpu_has(X86_FEATURE_STIBP))
+		return;
+
+	if (cpu_smt_control == CPU_SMT_FORCE_DISABLED ||
+	    cpu_smt_control == CPU_SMT_NOT_SUPPORTED)
+		smt_possible = false;
+
+	switch (spectre_v2_parse_user_cmdline(v2_cmd)) {
+	case SPECTRE_V2_USER_CMD_AUTO:
+	case SPECTRE_V2_USER_CMD_NONE:
+		goto set_mode;
+	case SPECTRE_V2_USER_CMD_FORCE:
+		mode = SPECTRE_V2_USER_STRICT;
+		break;
+	}
+
+        /* Initialize Indirect Branch Prediction Barrier if supported */
+        if (boot_cpu_has(X86_FEATURE_IBPB) && use_ibpb) {
+                ibpb_enable();
+                pr_info("Spectre v2 mitigation: Enabling Indirect Branch Prediction Barrier\n");
+        }
+
+	/* If enhanced IBRS is enabled no STIPB required */
+	if (spectre_v2_enabled == SPECTRE_V2_IBRS_ENHANCED)
+		return;
+
+set_mode:
+	spectre_v2_user = mode;
+	/* Only print the STIBP mode when SMT possible */
+	if (smt_possible)
+		pr_info("%s\n", spectre_v2_user_strings[mode]);
+}
 
 static const char * const spectre_v2_strings[] = {
 	[SPECTRE_V2_NONE]			= "Vulnerable",
@@ -714,7 +817,7 @@ select_auto_mitigation_mode(enum spectre_v2_mitigation_cmd cmd)
 /*
  * Activate the selected spectre v2 mitigation
  */
-static void __init activate_spectre_v2_mitigation(enum spectre_v2_mitigation mode)
+static void __init activate_spectre_v2_mitigation(enum spectre_v2_mitigation mode, enum spectre_v2_mitigation_cmd cmd)
 {
 	spectre_v2_enabled = mode;
 	pr_info("%s\n", spectre_v2_strings[spectre_v2_enabled]);
@@ -749,12 +852,6 @@ static void __init activate_spectre_v2_mitigation(enum spectre_v2_mitigation mod
 	setup_force_cpu_cap(X86_FEATURE_RSB_CTXSW);
 	pr_info("Spectre v2 mitigation: Filling RSB on context switch\n");
 
-	/* Initialize Indirect Branch Prediction Barrier if supported */
-	if (boot_cpu_has(X86_FEATURE_IBPB) && use_ibpb) {
-		ibpb_enable();
-		pr_info("Spectre v2 mitigation: Enabling Indirect Branch Prediction Barrier\n");
-	}
-
 	/*
 	 * Retpoline means the kernel is safe because it has no indirect
 	 * branches. Enhanced IBRS protects firmware too, so, enable restricted
@@ -766,6 +863,9 @@ static void __init activate_spectre_v2_mitigation(enum spectre_v2_mitigation mod
 		ibrs_firmware_enable();
 		pr_info("Enabling Restricted Speculation for firmware calls\n");
 	}
+
+	/* Set up IBPB and STIBP depending on the general spectre V2 command */
+	spectre_v2_user_select_mitigation(cmd);
 
 	/* Enable STIBP if appropriate */
 	arch_smt_update();
@@ -810,22 +910,17 @@ static void __init spectre_v2_select_mitigation(void)
 		break;
 	}
 
-	activate_spectre_v2_mitigation(mode);
+	activate_spectre_v2_mitigation(mode, cmd);
 }
 
 static bool stibp_needed(void)
 {
-	if (spectre_v2_enabled == SPECTRE_V2_NONE)
-		return false;
-
 	/* Enhanced IBRS makes using STIBP unnecessary. */
 	if (spectre_v2_enabled == SPECTRE_V2_IBRS_ENHANCED)
 		return false;
 
-	if (!boot_cpu_has(X86_FEATURE_STIBP))
-		return false;
-
-	return true;
+	/* Check for strict user mitigation mode */
+	return spectre_v2_user == SPECTRE_V2_USER_STRICT;
 }
 
 static void update_stibp_msr(void *info)
@@ -1261,10 +1356,13 @@ static char *stibp_state(void)
 	if (spectre_v2_enabled == SPECTRE_V2_IBRS_ENHANCED)
 		return "";
 
-	if (x86_spec_ctrl_base & SPEC_CTRL_STIBP)
-		return ", STIBP";
-	else
-		return "";
+	switch (spectre_v2_user) {
+	case SPECTRE_V2_USER_NONE:
+		return ", STIBP: disabled";
+	case SPECTRE_V2_USER_STRICT:
+		return ", STIBP: forced";
+	}
+	return "";
 }
 
 static char *ibpb_state(void)
