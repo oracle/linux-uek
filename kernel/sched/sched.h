@@ -12,6 +12,7 @@
 #include <linux/sched/numa_balancing.h>
 #include <linux/sched/mm.h>
 #include <linux/sched/cpufreq.h>
+#include <linux/sched/smt.h>
 #include <linux/sched/stat.h>
 #include <linux/sched/nohz.h>
 #include <linux/sched/debug.h>
@@ -829,9 +830,6 @@ static inline int cpu_of(struct rq *rq)
 
 
 #ifdef CONFIG_SCHED_SMT
-
-extern struct static_key_false sched_smt_present;
-
 extern void __update_idle_core(struct rq *rq);
 
 static inline void update_idle_core(struct rq *rq)
