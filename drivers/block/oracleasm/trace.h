@@ -109,20 +109,20 @@ TRACE_EVENT(bio,
 		__field(void *		, bio		)
 		__field(dev_t		, dev		)
 		__field(void *		, req		)
-		__field(int		, error		)
+		__field(int		, status	)
 	),
 
 	TP_fast_assign(
 		__assign_str(action, action);
 		__entry->bio		= bio;
-		__entry->dev		= bio->bi_bdev ? bio->bi_bdev->bd_dev : 0;
+		__entry->dev		= bio_dev(bio) ?: 0;
 		__entry->req		= bio->bi_private;
-		__entry->error	        = bio->bi_error;
+		__entry->status	        = bio->bi_status;
 	),
 
-	TP_printk("%-10s bio=%p dev=%u:%u req=%p error=%d",
+	TP_printk("%-10s bio=%p dev=%u:%u req=%p status=%d",
 		  __get_str(action), __entry->bio, MAJOR(__entry->dev),
-		  MINOR(__entry->dev), __entry->req, __entry->error)
+		  MINOR(__entry->dev), __entry->req, __entry->status)
 );
 
 TRACE_EVENT(ioc,

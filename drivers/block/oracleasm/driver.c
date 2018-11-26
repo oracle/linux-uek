@@ -862,9 +862,9 @@ struct timeout {
 	wait_queue_head_t	wait;
 };
 
-static void timeout_func(unsigned long data)
+static void timeout_func(struct timer_list *tl)
 {
-	struct timeout *to = (struct timeout *)data;
+	struct timeout *to = from_timer(to, tl, timer);
 
 	to->timed_out = 1;
 	wake_up(&to->wait);
@@ -872,9 +872,7 @@ static void timeout_func(unsigned long data)
 
 static inline void init_timeout(struct timeout *to)
 {
-	init_timer(&to->timer);
-	to->timer.data = (unsigned long)to;
-	to->timer.function = timeout_func;
+	timer_setup(&to->timer, timeout_func, 0);
 	to->timed_out = 0;
 	init_waitqueue_head(&to->wait);
 }
@@ -1122,7 +1120,7 @@ static void asm_end_bio_io(struct bio *bio)
 	if (atomic_dec_and_test(&r->r_bio_count)) {
 		asm_end_ioc(r, r->r_count - (r->r_bio ?
 					     r->r_bio->bi_iter.bi_size : 0),
-			    bio->bi_error);
+			    bio->bi_status);
 	}
 }  /* asm_end_bio_io() */
 
@@ -1260,7 +1258,7 @@ static int asm_submit_io(struct file *file,
 
 	r->r_bio->bi_private = r;
 	r->r_bio->bi_opf = rw;
-	r->r_bio->bi_bdev = bdev;
+	bio_set_dev(r->r_bio, bdev);
 
 	if (r->r_bio->bi_iter.bi_size != r->r_count) {
 		pr_err("%s: Only mapped partial ioc buffer\n", __func__);
