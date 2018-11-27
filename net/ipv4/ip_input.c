@@ -329,7 +329,7 @@ drop:
 		  struct net_device * : ifinfo_t *, skb->dev,
 		  struct iphdr * : ipv4info_t *, iph,
 		  struct ipv6hdr * : ipv6info_t *, NULL,
-		  char * : string, dropreason);
+		  const char * : string, dropreason);
 
 	return true;
 }
@@ -445,9 +445,10 @@ int ip_rcv(struct sk_buff *skb, struct net_device *dev, struct packet_type *pt, 
 	/* When the interface is in promisc. mode, drop all the crap
 	 * that it receives, do not try to analyse it.
 	 */
-	if (skb->pkt_type == PACKET_OTHERHOST)
+	if (skb->pkt_type == PACKET_OTHERHOST) {
+		dropreason = "for other host";
 		goto drop;
-
+	}
 
 	net = dev_net(dev);
 	__IP_UPD_PO_STATS(net, IPSTATS_MIB_IN, skb->len);
@@ -485,8 +486,10 @@ int ip_rcv(struct sk_buff *skb, struct net_device *dev, struct packet_type *pt, 
 		       IPSTATS_MIB_NOECTPKTS + (iph->tos & INET_ECN_MASK),
 		       max_t(unsigned short, 1, skb_shinfo(skb)->gso_segs));
 
-	if (!pskb_may_pull(skb, iph->ihl*4))
+	if (!pskb_may_pull(skb, iph->ihl*4)) {
+		dropreason = "could not pull skb";
 		goto inhdr_error;
+	}
 
 	iph = ip_hdr(skb);
 
@@ -537,7 +540,7 @@ drop:
 		  struct net_device * : ifinfo_t *, dev,
 		  struct iphdr * : ipv4info_t *, iph,
 		  void * : ipv6info_t *, NULL,
-		  char * : string, dropreason);
+		  const char * : string, dropreason);
 	kfree_skb(skb);
 	return NET_RX_DROP;
 }

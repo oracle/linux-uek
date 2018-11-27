@@ -78,11 +78,11 @@ int ipv6_rcv(struct sk_buff *skb, struct net_device *dev, struct packet_type *pt
 	u32 pkt_len;
 	struct inet6_dev *idev;
 	struct net *net = dev_net(skb->dev);
-	const char *dropreason = "header invalid";
+	const char *dropreason;
 
 	if (skb->pkt_type == PACKET_OTHERHOST) {
-		kfree_skb(skb);
-		return NET_RX_DROP;
+		dropreason = "for other host";
+		goto trace_drop;
 	}
 
 	rcu_read_lock();
@@ -115,13 +115,16 @@ int ipv6_rcv(struct sk_buff *skb, struct net_device *dev, struct packet_type *pt
 
 	if (unlikely(!pskb_may_pull(skb, sizeof(*hdr)))) {
 		hdr = ipv6_hdr(skb);
+		dropreason = "could not pull skb";
 		goto err;
 	}
 
 	hdr = ipv6_hdr(skb);
 
-	if (hdr->version != 6)
+	if (hdr->version != 6) {
+		dropreason = "header invalid";
 		goto err;
+	}
 
 	__IP6_ADD_STATS(net, idev,
 			IPSTATS_MIB_NOECTPKTS +
@@ -162,8 +165,10 @@ int ipv6_rcv(struct sk_buff *skb, struct net_device *dev, struct packet_type *pt
 	if (!ipv6_addr_is_multicast(&hdr->daddr) &&
 	    (skb->pkt_type == PACKET_BROADCAST ||
 	     skb->pkt_type == PACKET_MULTICAST) &&
-	    idev->cnf.drop_unicast_in_l2_multicast)
+	    idev->cnf.drop_unicast_in_l2_multicast) {
+		dropreason = "unicast packet encapsulated in multi/broadcast";
 		goto err;
+	}
 
 	/* RFC4291 2.7
 	 * Nodes must not originate a packet to a multicast address whose scope
@@ -197,7 +202,7 @@ int ipv6_rcv(struct sk_buff *skb, struct net_device *dev, struct packet_type *pt
 		if (pkt_len + sizeof(struct ipv6hdr) > skb->len) {
 			__IP6_INC_STATS(net,
 					idev, IPSTATS_MIB_INTRUNCATEDPKTS);
-			dropreason = "packet too short";
+			dropreason = "truncated packet";
 			goto drop;
 		}
 		if (pskb_trim_rcsum(skb, pkt_len + sizeof(struct ipv6hdr))) {
@@ -210,9 +215,10 @@ int ipv6_rcv(struct sk_buff *skb, struct net_device *dev, struct packet_type *pt
 
 	if (hdr->nexthdr == NEXTHDR_HOP) {
 		if (ipv6_parse_hopopts(skb) < 0) {
-			__IP6_INC_STATS(net, idev, IPSTATS_MIB_INHDRERRORS);
-			rcu_read_unlock();
-			return NET_RX_DROP;
+			dropreason = "could not parse hop opts";
+			/* do not free skb */
+			skb = NULL;
+			goto err;
 		}
 	}
 
@@ -227,6 +233,8 @@ int ipv6_rcv(struct sk_buff *skb, struct net_device *dev, struct packet_type *pt
 err:
 	__IP6_INC_STATS(net, idev, IPSTATS_MIB_INHDRERRORS);
 drop:
+	rcu_read_unlock();
+trace_drop:
 	DTRACE_IP(drop__in,
 		  struct sk_buff * : pktinfo_t *, skb,
 		  struct sock * : csinfo_t *, skb ? skb->sk : NULL,
@@ -234,9 +242,7 @@ drop:
 		  struct net_device * : ifinfo_t *, skb ? skb->dev : NULL,
 		  struct iphdr * : ipv4info_t *, NULL,
 		  struct ipv6hdr * : ipv6info_t *, hdr,
-		  char * : string, dropreason);
-
-	rcu_read_unlock();
+		  const char * : string, dropreason);
 	kfree_skb(skb);
 	return NET_RX_DROP;
 }
@@ -255,7 +261,7 @@ static int ip6_input_finish(struct net *net, struct sock *sk, struct sk_buff *sk
 	bool raw;
 	bool have_final = false;
 	struct ipv6hdr *hdr;
-	const char *dropreason = "header invalid";
+	const char *dropreason;
 
 	/*
 	 *	Parse extension headers
@@ -264,8 +270,10 @@ static int ip6_input_finish(struct net *net, struct sock *sk, struct sk_buff *sk
 	rcu_read_lock();
 resubmit:
 	idev = ip6_dst_idev(skb_dst(skb));
-	if (!pskb_pull(skb, skb_transport_offset(skb)))
+	if (!pskb_pull(skb, skb_transport_offset(skb))) {
+		dropreason = "could not pull skb";
 		goto discard;
+	}
 	nhoff = IP6CB(skb)->nhoff;
 	nexthdr = skb_network_header(skb)[nhoff];
 
@@ -282,6 +290,7 @@ resubmit_final:
 				 * ones. This allows foo in UDP encapsulation
 				 * to work.
 				 */
+				dropreason = "non-final protocol";
 				goto discard;
 			}
 		} else if (ipprot->flags & INET6_PROTO_FINAL) {
@@ -336,6 +345,8 @@ resubmit_final:
 						IPSTATS_MIB_INUNKNOWNPROTOS);
 				icmpv6_send(skb, ICMPV6_PARAMPROB,
 					    ICMPV6_UNK_NEXTHDR, nhoff);
+				dropreason = "policy failure";
+				goto trace_drop;
 			}
 			kfree_skb(skb);
 		} else {
@@ -348,6 +359,7 @@ resubmit_final:
 
 discard:
 	__IP6_INC_STATS(net, idev, IPSTATS_MIB_INDISCARDS);
+trace_drop:
 	hdr = ipv6_hdr(skb);
 	DTRACE_IP(drop__in,
 		  struct sk_buff * : pktinfo_t *, skb,
@@ -356,7 +368,7 @@ discard:
 		  struct net_device * : ifinfo_t *, skb->dev,
 		  struct iphdr * : ipv4info_t *, NULL,
 		  struct ipv6hdr * : ipv6info_t *, hdr,
-		  char * : string, dropreason);
+		  const char * : string, dropreason);
 	rcu_read_unlock();
 	kfree_skb(skb);
 	return 0;
