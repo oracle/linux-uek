@@ -144,6 +144,8 @@ struct otx2_hw {
 	u64			cgx_tx_stats[CGX_TX_STATS_COUNT];
 };
 
+struct otx2_ptp;
+
 struct otx2_nic {
 	void __iomem		*reg_base;
 	struct pci_dev		*pdev;
@@ -163,6 +165,9 @@ struct otx2_nic {
 	u32			cq_ecount_wait;
 	struct work_struct	reset_task;
 	u64			reset_count;
+	u8			hw_rx_tstamp;
+	u8			hw_tx_tstamp;
+	struct otx2_ptp		*ptp;
 };
 
 static inline bool is_9xxx_pass1_silicon(struct pci_dev *pdev)
