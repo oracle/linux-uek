@@ -797,12 +797,6 @@ void init_speculation_control(struct cpuinfo_x86 *c,
 					set_ibrs_enhanced();
 				else
 					set_ibrs_firmware();
-				/*
-				 * Don't do this after disable_ibrs_and_friends
-				 * as we would re-enable it (say if
-				 * spectre_v2=off is used).
-				 */
-				set_ibpb_supported();
 				mutex_unlock(&spec_ctrl_mutex);
 			}
 		} else {
@@ -811,11 +805,6 @@ void init_speculation_control(struct cpuinfo_x86 *c,
 		if (cpu_has(c, X86_FEATURE_IBPB)) {
 			pr_info_once("FEATURE IBPB Present%s\n",
 				     ignore ? " but ignored (Xen)" : "");
-			if (!ignore) {
-				mutex_lock(&spec_ctrl_mutex);
-				set_ibpb_supported();
-				mutex_unlock(&spec_ctrl_mutex);
-			}
 		} else {
 			pr_info("FEATURE IBPB Not Present\n");
 		}
@@ -826,6 +815,8 @@ void init_speculation_control(struct cpuinfo_x86 *c,
 		update_cpu_ibrs(c);
 		update_cpu_spec_ctrl(c->cpu_index);
 		mutex_unlock(&spec_ctrl_mutex);
+	} else {
+		clear_cpu_cap(c, X86_FEATURE_IBPB);
 	}
 }
 
