@@ -409,6 +409,10 @@ int rvu_mbox_handler_cgx_promisc_disable(struct rvu *rvu, struct msg_req *req,
 					 struct msg_rsp *rsp);
 int rvu_mbox_handler_cgx_start_linkevents(struct rvu *rvu, struct msg_req *req,
 					  struct msg_rsp *rsp);
+int rvu_mbox_handler_cgx_ptp_rx_enable(struct rvu *rvu, struct msg_req *req,
+				       struct msg_rsp *rsp);
+int rvu_mbox_handler_cgx_ptp_rx_disable(struct rvu *rvu, struct msg_req *req,
+					struct msg_rsp *rsp);
 int rvu_mbox_handler_cgx_stop_linkevents(struct rvu *rvu, struct msg_req *req,
 					 struct msg_rsp *rsp);
 int rvu_mbox_handler_cgx_get_linkinfo(struct rvu *rvu, struct msg_req *req,
@@ -521,12 +525,19 @@ int rvu_mbox_handler_nix_set_rx_cfg(struct rvu *rvu, struct nix_rx_cfg *req,
 int rvu_mbox_handler_nix_lso_format_cfg(struct rvu *rvu,
 					struct nix_lso_format_cfg *req,
 					struct nix_lso_format_cfg_rsp *rsp);
+int rvu_mbox_handler_nix_lf_ptp_tx_enable(struct rvu *rvu,
+					  struct msg_req *req,
+					  struct msg_rsp *rsp);
+int rvu_mbox_handler_nix_lf_ptp_tx_disable(struct rvu *rvu,
+					   struct msg_req *req,
+					   struct msg_rsp *rsp);
 
 /* NPC APIs */
 int rvu_npc_init(struct rvu *rvu);
 void rvu_npc_freemem(struct rvu *rvu);
 int rvu_npc_get_pkind(struct rvu *rvu, u16 pf);
 void rvu_npc_set_pkind(struct rvu *rvu, int pkind, struct rvu_pfvf *pfvf);
+int npc_config_ts_kpuaction(struct rvu *rvu, int pf, u16 pcifunc, bool en);
 void rvu_npc_install_ucast_entry(struct rvu *rvu, u16 pcifunc,
 				 int nixlf, u64 chan, u8 *mac_addr);
 void rvu_npc_install_promisc_entry(struct rvu *rvu, u16 pcifunc,

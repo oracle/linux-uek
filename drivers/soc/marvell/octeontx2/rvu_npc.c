@@ -26,6 +26,8 @@
 
 #define NPC_PARSE_RESULT_DMAC_OFFSET	8
 
+#define NPC_HW_TSTAMP_OFFSET	8
+
 static void npc_mcam_free_all_entries(struct rvu *rvu, struct npc_mcam *mcam,
 				      int blkaddr, u16 pcifunc);
 static void npc_mcam_free_all_counters(struct rvu *rvu, struct npc_mcam *mcam,
@@ -57,6 +59,32 @@ int rvu_npc_get_pkind(struct rvu *rvu, u16 pf)
 			return i;
 	}
 	return -1;
+}
+
+int npc_config_ts_kpuaction(struct rvu *rvu, int pf, u16 pcifunc, bool en)
+{
+	int pkind, blkaddr;
+	u64 val;
+
+	pkind = rvu_npc_get_pkind(rvu, pf);
+	if (pkind < 0) {
+		dev_err(rvu->dev, "%s: pkind not mapped\n", __func__);
+		return -EINVAL;
+	}
+
+	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NPC, pcifunc);
+	if (blkaddr < 0) {
+		dev_err(rvu->dev, "%s: NPC block not implemented\n", __func__);
+		return -EINVAL;
+	}
+	val = rvu_read64(rvu, blkaddr, NPC_AF_PKINDX_ACTION0(pkind));
+	val &= ~0xff00000ULL; /* Zero ptr advance field */
+	if (en)
+		/* Set to timestamp offset */
+		val |= (NPC_HW_TSTAMP_OFFSET << 20);
+	rvu_write64(rvu, blkaddr, NPC_AF_PKINDX_ACTION0(pkind), val);
+
+	return 0;
 }
 
 static int npc_get_nixlf_mcam_index(struct npc_mcam *mcam,
