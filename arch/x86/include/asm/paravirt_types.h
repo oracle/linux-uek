@@ -43,7 +43,7 @@
 #include <asm/desc_defs.h>
 #include <asm/kmap_types.h>
 #include <asm/pgtable_types.h>
-#include <asm/nospec-branch.h>
+#include <asm/nospec-annotate.h>
 
 struct page;
 struct thread_struct;
