@@ -795,8 +795,6 @@ void init_speculation_control(struct cpuinfo_x86 *c,
 				/* Enable enhanced IBRS usage if available */
 				if (cpu_has(c, X86_FEATURE_IBRS_ENHANCED))
 					set_ibrs_enhanced();
-				else
-					set_ibrs_firmware();
 				mutex_unlock(&spec_ctrl_mutex);
 			}
 		} else {

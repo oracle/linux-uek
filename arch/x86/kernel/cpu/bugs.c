@@ -49,6 +49,15 @@ DEFINE_PER_CPU(unsigned int, cpu_ibrs) = 0;
 EXPORT_PER_CPU_SYMBOL(cpu_ibrs);
 
 /*
+ * IBRS Firmware Variables
+ *
+ * ibrs_firmware_enabled_key controls if IBRS is effectively enabled
+ * for firmware calls.
+ */
+DEFINE_STATIC_KEY_FALSE(ibrs_firmware_enabled_key);
+EXPORT_SYMBOL(ibrs_firmware_enabled_key);
+
+/*
  * IBPB Variables
  *
  * IBPB suports is indicated by the X86_FEATURE_IBPB cpu capability.
@@ -76,7 +85,7 @@ DEFINE_STATIC_KEY_FALSE(retpoline_enabled_key);
 EXPORT_SYMBOL(retpoline_enabled_key);
 
 static bool __init is_skylake_era(void);
-static void __init disable_ibrs_and_friends(bool);
+static void __init disable_ibrs_and_friends(void);
 static void __init activate_spectre_v2_mitigation(enum spectre_v2_mitigation);
 
 int __init spectre_v2_heuristics_setup(char *p)
@@ -458,7 +467,7 @@ static void __init retpoline_activate(enum spectre_v2_mitigation mode)
 {
 	retpoline_enable();
 	/* IBRS is unnecessary with retpoline mitigation. */
-	disable_ibrs_and_friends(false /* Do use IBRS FW if possible */);
+	disable_ibrs_and_friends();
 }
 
 void refresh_set_spectre_v2_enabled(void)
@@ -622,21 +631,13 @@ static void __init select_ibrs_variant(enum spectre_v2_mitigation *mode)
 			"no mitigation available!");
 }
 
-static void __init disable_ibrs_and_friends(bool disable_ibrs_firmware)
+static void __init disable_ibrs_and_friends(void)
 {
 	set_ibrs_disabled();
 	if (use_ibrs & SPEC_CTRL_IBRS_SUPPORTED)
 		/* Disable IBRS an all cpus */
 		spec_ctrl_flush_all_cpus(MSR_IA32_SPEC_CTRL,
 			x86_spec_ctrl_base & ~SPEC_CTRL_FEATURE_ENABLE_IBRS);
-	/*
-	 * We need to use IBRS for firmware paths with retpoline
-	 * if it is available.
-	 */
-	if (disable_ibrs_firmware)
-		disable_ibrs_firmware();
-	else
-		set_ibrs_firmware();
 }
 
 static bool __init retpoline_mode_selected(enum spectre_v2_mitigation mode)
@@ -664,7 +665,7 @@ select_auto_mitigation_mode(enum spectre_v2_mitigation_cmd cmd)
 	if (!boot_cpu_has_bug(X86_BUG_SPECTRE_V2) &&
 		cmd == SPECTRE_V2_CMD_AUTO) {
 		/* CPU is not affected, nothing to do */
-		disable_ibrs_and_friends(true);
+		disable_ibrs_and_friends();
 		return auto_mode;
 	}
 
@@ -777,9 +778,9 @@ static void __init activate_spectre_v2_mitigation(enum spectre_v2_mitigation mod
 	 * speculation around firmware calls only when Enhanced IBRS isn't
 	 * supported.
 	 */
-	if ((ibrs_firmware) &&
-		(spectre_v2_enabled != SPECTRE_V2_IBRS_ENHANCED)) {
-		setup_force_cpu_cap(X86_FEATURE_USE_IBRS_FW);
+	if (ibrs_supported &&
+	    (spectre_v2_enabled != SPECTRE_V2_IBRS_ENHANCED)) {
+		set_ibrs_firmware();
 		pr_info("Enabling Restricted Speculation for firmware calls\n");
 	}
 }
@@ -794,7 +795,7 @@ static void __init spectre_v2_select_mitigation(void)
 
 	switch (cmd) {
 	case SPECTRE_V2_CMD_NONE:
-		disable_ibrs_and_friends(true);
+		disable_ibrs_and_friends();
 		return;
 
 	case SPECTRE_V2_CMD_FORCE:
