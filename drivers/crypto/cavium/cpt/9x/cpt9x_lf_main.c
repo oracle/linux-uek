@@ -418,15 +418,20 @@ static irqreturn_t cptlf_misc_intr_handler(int irq, void *cptlf)
 static irqreturn_t cptlf_done_intr_handler(int irq, void *cptlf)
 {
 	struct cptlf_info *lf = (struct cptlf_info *) cptlf;
+	union cptx_vqx_done_wait done_wait;
 	int irq_cnt;
 
 	/* Read the number of completed requests */
 	irq_cnt = cptlf_read_done_cnt(lf);
 	if (irq_cnt) {
-
+		done_wait.u = cpt_read64(lf->lfs->reg_base, BLKADDR_CPT0,
+					 lf->slot, CPT_LF_DONE_WAIT);
 		/* Acknowledge the number of completed requests */
 		cpt_write64(lf->lfs->reg_base, BLKADDR_CPT0, lf->slot,
 			    CPT_LF_DONE_ACK, irq_cnt);
+
+		cpt_write64(lf->lfs->reg_base, BLKADDR_CPT0, lf->slot,
+			    CPT_LF_DONE_WAIT, done_wait.u);
 		if (unlikely(!lf->wqe)) {
 			dev_err(&lf->lfs->pdev->dev, "No work for LF %d\n",
 				lf->slot);
