@@ -250,6 +250,23 @@ static void set_wdog(struct cvm_mmc_slot *slot, unsigned int ns)
 	writeq(timeout, slot->host->base + MIO_EMM_WDOG(slot->host));
 }
 
+static void emmc_io_drive_setup(struct cvm_mmc_slot *slot)
+{
+	u64 ioctl_cfg;
+	struct cvm_mmc_host *host = slot->host;
+
+	if (!is_mmc_8xxx(slot->host)) {
+		if ((slot->drive < 0) || (slot->slew < 0))
+			return;
+		/* Setup the emmc interface current drive
+		 * strength & clk slew rate.
+		 */
+		ioctl_cfg = FIELD_PREP(MIO_EMM_IO_CTL_DRIVE, slot->drive) |
+			FIELD_PREP(MIO_EMM_IO_CTL_SLEW, slot->slew);
+		writeq(ioctl_cfg, host->base + MIO_EMM_IO_CTL(host));
+	}
+}
+
 static void cvm_mmc_reset_bus(struct cvm_mmc_slot *slot)
 {
 	struct cvm_mmc_host *host = slot->host;
@@ -301,6 +318,8 @@ static void cvm_mmc_switch_to(struct cvm_mmc_slot *slot)
 	emm_sample = FIELD_PREP(MIO_EMM_SAMPLE_CMD_CNT, slot->cmd_cnt) |
 		     FIELD_PREP(MIO_EMM_SAMPLE_DAT_CNT, slot->dat_cnt);
 	writeq(emm_sample, host->base + MIO_EMM_SAMPLE(host));
+
+	emmc_io_drive_setup(slot);
 
 	host->last_slot = slot->bus_id;
 }
@@ -1016,7 +1035,7 @@ static int cvm_mmc_of_parse(struct device *dev, struct cvm_mmc_slot *slot)
 	u32 id, cmd_skew = 0, dat_skew = 0, bus_width = 0;
 	struct device_node *node = dev->of_node;
 	struct mmc_host *mmc = slot->mmc;
-	u32 max_frequency;
+	u32 max_frequency, current_drive, clk_slew;
 	int ret;
 
 	ret = of_property_read_u32(node, "reg", &id);
@@ -1074,6 +1093,19 @@ static int cvm_mmc_of_parse(struct device *dev, struct cvm_mmc_slot *slot)
 	of_property_read_u32(node, "cavium,dat-clk-skew", &dat_skew);
 	slot->cmd_cnt = cmd_skew;
 	slot->dat_cnt = dat_skew;
+
+	/* Get current drive and clk skew */
+	ret = of_property_read_u32(node, "cavium,drv-strength", &current_drive);
+	if (ret)
+		slot->drive = -1;
+	else
+		slot->drive = current_drive;
+
+	ret = of_property_read_u32(node, "cavium,clk-slew", &clk_slew);
+	if (ret)
+		slot->slew = -1;
+	else
+		slot->slew = clk_slew;
 
 	return id;
 }
