@@ -7,7 +7,7 @@
 #ifdef CONFIG_PARAVIRT
 #include <asm/pgtable_types.h>
 #include <asm/asm.h>
-#include <asm/nospec-branch.h>
+#include <asm/nospec-annotate.h>
 
 #include <asm/paravirt_types.h>
 
