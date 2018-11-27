@@ -207,6 +207,7 @@ extern u64 x86_spec_ctrl_base;
  */
 extern unsigned int use_ibrs;
 DECLARE_PER_CPU(unsigned int, cpu_ibrs);
+DECLARE_STATIC_KEY_FALSE(ibrs_firmware_enabled_key);
 extern u32 sysctl_ibrs_enabled;
 extern struct mutex spec_ctrl_mutex;
 
@@ -344,12 +345,15 @@ static inline void set_ibrs_enhanced(void)
 
 static inline void set_ibrs_firmware(void)
 {
-	if (ibrs_supported)
+	if (ibrs_supported) {
+		static_branch_enable(&ibrs_firmware_enabled_key);
 		use_ibrs |= SPEC_CTRL_IBRS_FIRMWARE;
+	}
 }
 
 static inline void disable_ibrs_firmware(void)
 {
+	static_branch_disable(&ibrs_firmware_enabled_key);
 	use_ibrs &= ~SPEC_CTRL_IBRS_FIRMWARE;
 }
 
