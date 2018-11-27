@@ -364,6 +364,7 @@ static inline void clear_ibrs_disabled(void)
 /* indicate usage of IBPB to control execution speculation */
 extern unsigned int use_ibpb;
 extern u32 sysctl_ibpb_enabled;
+DECLARE_STATIC_KEY_FALSE(ibpb_enabled_key);
 
 #define SPEC_CTRL_IBPB_INUSE		(1<<0)	/* OS enables IBPB usage */
 #define SPEC_CTRL_IBPB_SUPPORTED	(1<<1)	/* System supports IBPB */
@@ -378,6 +379,7 @@ static inline void set_ibpb_inuse(void)
 {
 	if (ibpb_supported && !ibpb_disabled) {
 		use_ibpb |= SPEC_CTRL_IBPB_INUSE;
+		static_branch_enable(&ibpb_enabled_key);
 		sysctl_ibpb_enabled = true;
 	}
 }
@@ -385,6 +387,7 @@ static inline void set_ibpb_inuse(void)
 static inline void clear_ibpb_inuse(void)
 {
 	use_ibpb &= ~SPEC_CTRL_IBPB_INUSE;
+	static_branch_disable(&ibpb_enabled_key);
 	sysctl_ibpb_enabled = false;
 }
 
