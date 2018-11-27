@@ -24,6 +24,9 @@
 #define CAVIUM_MAX_MMC		4
 
 /* Subsystem Device ID */
+#define PCI_SUBSYS_DEVID_88XX   0xA100
+#define PCI_SUBSYS_DEVID_81XX   0xA200
+#define PCI_SUBSYS_DEVID_83XX   0xA300
 #define PCI_SUBSYS_DEVID_96XX	0xB200
 #define PCI_SUBSYS_DEVID_95XX   0xB300
 
@@ -223,6 +226,15 @@ irqreturn_t cvm_mmc_interrupt(int irq, void *dev_id);
 int cvm_mmc_of_slot_probe(struct device *dev, struct cvm_mmc_host *host);
 int cvm_mmc_of_slot_remove(struct cvm_mmc_slot *slot);
 extern const char *cvm_mmc_irq_names[];
+
+static inline bool is_mmc_8xxx(struct cvm_mmc_host *host)
+{
+	struct pci_dev *pdev = host->pdev;
+
+	return (pdev->subsystem_device == PCI_SUBSYS_DEVID_81XX) ||
+		(pdev->subsystem_device == PCI_SUBSYS_DEVID_83XX) ||
+		(pdev->subsystem_device == PCI_SUBSYS_DEVID_88XX);
+}
 
 static inline bool is_mmc_otx2(struct cvm_mmc_host *host)
 {
