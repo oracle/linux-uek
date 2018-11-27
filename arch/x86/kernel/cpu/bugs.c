@@ -56,6 +56,8 @@ EXPORT_PER_CPU_SYMBOL(cpu_ibrs);
  */
 unsigned int use_ibpb;
 EXPORT_SYMBOL(use_ibpb);
+DEFINE_STATIC_KEY_FALSE(ibpb_enabled_key);
+EXPORT_SYMBOL(ibpb_enabled_key);
 
 /* mutex to serialize IBRS & IBPB control changes */
 DEFINE_MUTEX(spec_ctrl_mutex);
@@ -766,7 +768,7 @@ static void __init activate_spectre_v2_mitigation(enum spectre_v2_mitigation mod
 
 	/* Initialize Indirect Branch Prediction Barrier if supported */
 	if (boot_cpu_has(X86_FEATURE_IBPB)) {
-		setup_force_cpu_cap(X86_FEATURE_USE_IBPB);
+		static_branch_enable(&ibpb_enabled_key);
 		pr_info("Spectre v2 mitigation: Enabling Indirect Branch Prediction Barrier\n");
 	}
 

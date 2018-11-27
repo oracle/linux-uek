@@ -9,6 +9,7 @@
 #include <asm/alternative-asm.h>
 #include <asm/cpufeatures.h>
 #include <asm/msr-index.h>
+#include <asm/msr.h>
 #include <asm/nospec-annotate.h>
 
 /*
@@ -256,11 +257,12 @@ void alternative_msr_write(unsigned int msr, u64 val, unsigned int feature)
 		: "memory");
 }
 
+DECLARE_STATIC_KEY_FALSE(ibpb_enabled_key);
+
 static inline void indirect_branch_prediction_barrier(void)
 {
-	u64 val = PRED_CMD_IBPB;
-
-	alternative_msr_write(MSR_IA32_PRED_CMD, val, X86_FEATURE_USE_IBPB);
+	if (static_branch_likely(&ibpb_enabled_key))
+		wrmsrl(MSR_IA32_PRED_CMD, PRED_CMD_IBPB);
 }
 
 /* The Intel SPEC CTRL MSR base value cache */
