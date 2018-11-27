@@ -15,6 +15,7 @@
 #include <linux/of.h>
 #include <linux/of_platform.h>
 #include <linux/pci.h>
+#include <linux/delay.h>
 #include "cavium.h"
 
 static void thunder_mmc_acquire_bus(struct cvm_mmc_host *host)
@@ -51,6 +52,59 @@ static int thunder_mmc_register_interrupts(struct cvm_mmc_host *host,
 			return ret;
 	}
 	return 0;
+}
+
+/* calibration evaluates the per tap delay */
+static void thunder_calibrate_mmc(struct cvm_mmc_host *host)
+{
+	u64 emm_cfg, tap;
+	u32 retries = 10, tap_delay;
+
+	if (!is_mmc_otx2(host))
+		return;
+
+	if (is_mmc_otx2(host)) {
+		/* set _DEBUG[CLK_ON]=1 as workaround for clock issue */
+		writeq(1, host->base + MIO_EMM_DEBUG(host));
+
+		/*
+		 * Operation of up to 100 MHz may be achieved by skipping the
+		 * steps that establish the tap delays and instead assuming
+		 * that MIO_EMM_TAP[DELAY] returns 0x4 indicating 78 pS/tap.
+		 */
+		tap_delay = 4;
+	} else {
+		/* MIO_EMM_CFG[BUS_ENA] must be zero for calibration */
+		emm_cfg = readq(host->base + MIO_EMM_CFG(host));
+		if (emm_cfg & MIO_EMM_CFG_BUS_ENA) {
+			pr_err("failure: bus is not disabled\n");
+			return;
+		}
+
+		/* Start calibration */
+		writeq(START_CALIBRATION, host->base + MIO_EMM_CALB(host));
+
+		do {
+			/* wait for approximately 300 coprocessor clock */
+			udelay(5);
+			tap = readq(host->base + MIO_EMM_TAP(host));
+		} while (!tap && retries--);
+
+		if (!retries)
+			pr_debug("retries exhausted, calibration failed\n");
+
+		/* calculate the per-tap delay */
+		tap_delay = tap & MIO_EMM_TAP_DELAY;
+	}
+
+	/*
+	 * The delay value should be multiplied by 10 ns(or 10000 ps)
+	 * and then divided by no of taps to determine the estimated
+	 * delay in pico second. The nominal value is 125 ps per tap.
+	 */
+	host->per_tap_delay =  (tap_delay * PS_10000) / TOTAL_NO_OF_TAPS;
+	pr_debug("tap_delay %d per_tap_delay %d\n",
+		tap_delay, host->per_tap_delay);
 }
 
 static int thunder_mmc_probe(struct pci_dev *pdev,
@@ -128,6 +182,12 @@ static int thunder_mmc_probe(struct pci_dev *pdev,
 	ret = thunder_mmc_register_interrupts(host, pdev);
 	if (ret)
 		goto error;
+
+	/* Run the calibration to calculate per tap delay that would be
+	 * used to evaluate values. These values would be programmed in
+	 * MIO_EMM_TIMING.
+	 */
+	thunder_calibrate_mmc(host);
 
 	for_each_child_of_node(node, child_node) {
 		/*
