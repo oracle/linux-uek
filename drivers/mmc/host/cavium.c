@@ -497,6 +497,10 @@ irqreturn_t cvm_mmc_interrupt(int irq, void *dev_id)
 		    emm_int & MIO_EMM_INT_CMD_ERR  ||
 		    emm_int & MIO_EMM_INT_DMA_ERR;
 
+	/* Add NCB_FLT interrupt for octtx2 */
+	if (!is_mmc_8xxx(host))
+		host_done = host_done || emm_int & MIO_EMM_INT_NCB_FLT;
+
 	if (!(host_done && req->done))
 		goto no_req_done;
 
@@ -670,7 +674,7 @@ static void cvm_mmc_dma_request(struct mmc_host *mmc,
 	struct cvm_mmc_slot *slot = mmc_priv(mmc);
 	struct cvm_mmc_host *host = slot->host;
 	struct mmc_data *data;
-	u64 emm_dma, addr;
+	u64 emm_dma, addr, int_enable_mask = 0;
 	int seg;
 
 	if (!mrq->data || !mrq->data->sg || !mrq->data->sg_len ||
@@ -714,8 +718,14 @@ static void cvm_mmc_dma_request(struct mmc_host *mmc,
 	}
 
 	host->dma_active = true;
-	host->int_enable(host, MIO_EMM_INT_CMD_ERR | MIO_EMM_INT_DMA_DONE |
-			 MIO_EMM_INT_DMA_ERR);
+	int_enable_mask = MIO_EMM_INT_CMD_ERR | MIO_EMM_INT_DMA_DONE |
+			MIO_EMM_INT_DMA_ERR;
+
+	/* Add NCB_FLT interrupt for octtx2 */
+	if (!is_mmc_8xxx(host))
+		int_enable_mask |= MIO_EMM_INT_NCB_FLT;
+
+	host->int_enable(host, int_enable_mask);
 
 	if (host->dmar_fixup)
 		host->dmar_fixup(host, mrq->cmd, data, addr);
@@ -858,7 +868,7 @@ static u32 max_supported_frequency(struct cvm_mmc_host *host)
 	/* Default maximum freqeuncey is 52000000 for chip prior to 9X */
 	u32 max_frequency = MHZ_52;
 
-	if (is_mmc_otx2(host)) {
+	if (!is_mmc_8xxx(host)) {
 		/* Default max frequency is 200MHz for 9X chips */
 		max_frequency = MHZ_200;
 
