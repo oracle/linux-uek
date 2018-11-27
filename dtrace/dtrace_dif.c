@@ -1162,12 +1162,6 @@ void dtrace_difo_release(dtrace_difo_t *dp, dtrace_vstate_t *vstate)
 		return !(*flags & CPU_DTRACE_FAULT) ? rval : 0;		\
 	}
 
-#ifdef CONFIG_64BIT
-# define dtrace_loadptr	dtrace_load64
-#else
-# define dtrace_loadptr	dtrace_load32
-#endif
-
 /*
  * Use the DTRACE_LOADFUNC macro to define functions for each of loading a
  * uint8_t, a uint16_t, a uint32_t and a uint64_t.
@@ -1299,8 +1293,8 @@ static int dtrace_canstore(uint64_t addr, size_t sz, dtrace_mstate_t *mstate,
  * DTrace subroutines (DIF_SUBR_*) should use this helper to implement
  * appropriate memory access protection.
  */
-static int
-dtrace_canload(uint64_t addr, size_t sz, dtrace_mstate_t *mstate,
+int
+dtrace_canload(uintptr_t addr, size_t sz, dtrace_mstate_t *mstate,
 	       dtrace_vstate_t *vstate)
 {
 	volatile uintptr_t	*illval = &this_cpu_core->cpuc_dtrace_illval;

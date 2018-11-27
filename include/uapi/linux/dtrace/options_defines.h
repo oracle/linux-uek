@@ -56,7 +56,8 @@
 #define	DTRACEOPT_AGGSORTKEYPOS	26	/* agg. key position to sort on */
 #define	DTRACEOPT_QUIETRESIZE	27      /* quieten buffer-resize messages */
 #define	DTRACEOPT_NORESOLVE	28      /* prevent resolution of symbols */
-#define	DTRACEOPT_MAX		29      /* number of options */
+#define	DTRACEOPT_PCAPSIZE	29	/* number of bytes to be captured */
+#define	DTRACEOPT_MAX		30      /* number of options */
 
 #define	DTRACEOPT_UNSET		(dtrace_optval_t)-2	/* unset option */
 

@@ -18,8 +18,10 @@
 #include <linux/dtrace_cpu.h>
 #include <linux/dtrace_task_impl.h>
 #include <linux/hardirq.h>
+#include <linux/highmem.h>
 #include <linux/idr.h>
 #include <linux/module.h>
+#include <linux/skbuff.h>
 #include <linux/slab.h>
 #include <linux/vmalloc.h>
 #include <asm/pgtable.h>
@@ -550,6 +552,139 @@ out:
 	mstate->dtms_scratch_ptr = old;
 }
 
+/*
+ * This macro is used by dtrace_probe_pcap() below.  See linux/skbuff.h for the
+ * original.  Only change is we pass in an already dereferenced page.p as
+ * the fragment f.
+ */
+#define dtrace_skb_frag_foreach_page(f, f_off, f_len, p, p_off, p_len, copied) \
+	for (p = f + ((f_off) >> PAGE_SHIFT),				\
+	     p_off = (f_off) & (PAGE_SIZE - 1),				\
+	     p_len = skb_frag_must_loop(p) ?				\
+	     min_t(u32, f_len, PAGE_SIZE - p_off) : f_len,		\
+	     copied = 0;						\
+	     copied < f_len;						\
+	     copied += p_len, p++, p_off = 0,				\
+	     p_len = min_t(u32, f_len - copied, PAGE_SIZE))		\
+
+
+/*
+ * Capture skb data in linear and non-linear portions.  Returns 0 on success,
+ * -1 if an error is encountered.
+ */
+static __always_inline int dtrace_probe_pcap(uint64_t val, size_t *valoffs,
+					     size_t size, caddr_t tomax,
+					     ktime_t now,
+					     dtrace_mstate_t *mstate,
+					     dtrace_vstate_t *vstate,
+					     volatile uint16_t *flags)
+
+{
+	uintptr_t start = *valoffs, end = *valoffs + size;
+	uintptr_t skb_head, skb_data, skb_tail, shinfo;
+	uint32_t skb_end, tail, skb_len = 0;
+	uintptr_t baddr = val;
+	uint8_t nr_frags, f;
+	uint32_t data_len;
+
+	DTRACE_STORE(uint64_t, tomax, start, ktime_to_ns(now));
+
+	*valoffs += (2 * sizeof(uint64_t));
+
+	/*
+	 * Skip capture of NULL skbs.
+	 */
+	if ((void *)baddr == NULL)
+		goto pcap_done;
+
+	if (!dtrace_canload(baddr, sizeof(struct sk_buff), mstate, vstate))
+		return -1;
+
+	skb_data = dtrace_loadptr(baddr + offsetof(struct sk_buff, data));
+	skb_head = dtrace_loadptr(baddr + offsetof(struct sk_buff, head));
+	skb_len = dtrace_load32(baddr + offsetof(struct sk_buff, len));
+	tail = dtrace_load32(baddr + offsetof(struct sk_buff, tail));
+	skb_tail = skb_head + tail;
+
+	if (skb_tail < skb_data) {
+		*flags |= CPU_DTRACE_BADADDR;
+		return -1;
+	}
+	while (*valoffs < end && skb_data < skb_tail) {
+		DTRACE_STORE(uint8_t, tomax, (*valoffs)++,
+			     dtrace_load8(skb_data++));
+	}
+
+	data_len = dtrace_load32(baddr + offsetof(struct sk_buff, data_len));
+
+	/*
+	 * If skb is linear, no need to explore fragments.
+	 */
+	if (data_len == 0)
+		goto pcap_done;
+
+	skb_end = dtrace_load32(baddr + offsetof(struct sk_buff, end));
+	shinfo = skb_head + skb_end;
+
+	if (!dtrace_canload(shinfo, sizeof(struct skb_shared_info),
+			    mstate, vstate))
+		return -1;
+
+	nr_frags = dtrace_load8(shinfo + offsetof(struct skb_shared_info,
+				nr_frags));
+
+	/*
+	 * See skb_frag_foreach_page() macro usage elsewhere to understand the
+	 * manipulations here; the reason we need this complexity is to support
+	 * compound pages.
+	 */
+	for (f = 0; f < nr_frags; f++) {
+		uint32_t poff, plen, copied, flen;
+		struct page *p, *frag;
+		uintptr_t foff, v;
+		void *vaddr;
+
+		flen = dtrace_load32(shinfo + offsetof(struct skb_shared_info,
+				     frags[f].size));
+		foff = dtrace_load32(shinfo + offsetof(struct skb_shared_info,
+				     frags[f].page_offset));
+		frag = (struct page *)dtrace_loadptr(shinfo + offsetof(
+						     struct skb_shared_info,
+						     frags[f].page.p));
+
+		dtrace_skb_frag_foreach_page(frag, foff, flen,
+					     p, poff, plen, copied) {
+			if (data_len == 0)
+				break;
+
+			vaddr = kmap_atomic(p);
+			v = (uintptr_t)vaddr + poff;
+			if (!dtrace_canload(v, plen, mstate, vstate)) {
+				kunmap_atomic(vaddr);
+				return -1;
+			}
+			while (*valoffs < end && data_len-- > 0) {
+				DTRACE_STORE(uint8_t, tomax, (*valoffs)++,
+					     dtrace_load8(v++));
+			}
+			kunmap_atomic(vaddr);
+		}
+	}
+
+pcap_done:
+	/*
+	 * Note that we store the skb len here rather than the portion of it we
+	 * capture; we can determine the latter when collecting data by using
+	 * the "pcapsize" option.  Packet capture headers specify a packet size
+	 * and a capture size, so we want to be able to provide both.  Since
+	 * the capture size can be determined from the packet length when
+	 * consuming records, we don't need to store it.
+	 */
+	DTRACE_STORE(uint64_t, tomax, start + sizeof(uint64_t),
+		     (uint64_t)skb_len);
+
+	return 0;
+}
 void dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 		  uintptr_t arg2, uintptr_t arg3, uintptr_t arg4,
 		  uintptr_t arg5, uintptr_t arg6)
@@ -1035,6 +1170,7 @@ void dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 			case DTRACEACT_SYSTEM:
 			case DTRACEACT_FREOPEN:
 			case DTRACEACT_TRACEMEM:
+			case DTRACEACT_PCAP:
 				break;
 
 			case DTRACEACT_SYM:
@@ -1128,6 +1264,15 @@ void dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 						      &dp->dtdo_rtype, &mstate,
 						      vstate))
 					continue;
+
+				if (act->dta_kind == DTRACEACT_PCAP) {
+					if (dtrace_probe_pcap(val, &valoffs,
+							      size, tomax, now,
+							      &mstate, vstate,
+							      flags) == -1)
+						break;
+					continue;
+				}
 
 				/*
 				 * If this is a string, we're going to only

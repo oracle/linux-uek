@@ -527,11 +527,19 @@ extern uint8_t dtrace_load8(uintptr_t);
 extern uint16_t dtrace_load16(uintptr_t);
 extern uint32_t dtrace_load32(uintptr_t);
 extern uint64_t dtrace_load64(uintptr_t);
+#ifdef CONFIG_64BIT
+#define dtrace_loadptr dtrace_load64
+#else
+#define dtrace_loadptr dtrace_load32
+#endif
+
 
 extern void dtrace_bzero(void *, size_t);
 
 extern int dtrace_vcanload(void *, dtrace_diftype_t *, dtrace_mstate_t *,
 			   dtrace_vstate_t *);
+extern int dtrace_canload(uintptr_t, size_t, dtrace_mstate_t *,
+			  dtrace_vstate_t *);
 
 extern int dtrace_difo_validate(dtrace_difo_t *, dtrace_vstate_t *, uint_t,
 				const cred_t *);
