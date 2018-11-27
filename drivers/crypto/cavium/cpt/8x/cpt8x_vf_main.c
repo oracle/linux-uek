@@ -1,35 +1,27 @@
-/*
- * Copyright (C) 2016 Cavium, Inc.
+// SPDX-License-Identifier: GPL-2.0
+/* Marvell OcteonTx2 RVU Admin Function driver
+ *
+ * Copyright (C) 2018 Marvell International Ltd.
  *
  * This program is free software; you can redistribute it and/or modify
- * it under the terms of version 2 of the GNU General Public License
- * as published by the Free Software Foundation.
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
  */
 
 #include <linux/interrupt.h>
 #include <linux/module.h>
+#include "cpt8x_vf.h"
 
-#include "cptvf.h"
-
-#define DRV_NAME	"thunder-cptvf"
+#define DRV_NAME	"octeontx-cptvf"
 #define DRV_VERSION	"1.0"
 
-struct cptvf_wqe {
-	struct tasklet_struct twork;
-	void *cptvf;
-	u32 qno;
-};
-
-struct cptvf_wqe_info {
-	struct cptvf_wqe vq_wqe[CPT_NUM_QS_PER_VF];
-};
+DEFINE_CPT_DEBUG_PARM(debug);
 
 static void vq_work_handler(unsigned long data)
 {
-	struct cptvf_wqe_info *cwqe_info = (struct cptvf_wqe_info *)data;
-	struct cptvf_wqe *cwqe = &cwqe_info->vq_wqe[0];
+	struct cptvf_wqe_info *cwqe_info = (struct cptvf_wqe_info *) data;
 
-	vq_post_process(cwqe->cptvf, cwqe->qno);
+	cptvf_post_process(&cwqe_info->vq_wqe[0]);
 }
 
 static int init_worker_threads(struct cpt_vf *cptvf)
@@ -43,14 +35,13 @@ static int init_worker_threads(struct cpt_vf *cptvf)
 		return -ENOMEM;
 
 	if (cptvf->nr_queues) {
-		dev_info(&pdev->dev, "Creating VQ worker threads (%d)\n",
-			 cptvf->nr_queues);
+		dev_dbg(&pdev->dev, "Creating VQ worker threads (%d)\n",
+			cptvf->nr_queues);
 	}
 
 	for (i = 0; i < cptvf->nr_queues; i++) {
 		tasklet_init(&cwqe_info->vq_wqe[i].twork, vq_work_handler,
 			     (u64)cwqe_info);
-		cwqe_info->vq_wqe[i].qno = i;
 		cwqe_info->vq_wqe[i].cptvf = cptvf;
 	}
 
@@ -70,8 +61,8 @@ static void cleanup_worker_threads(struct cpt_vf *cptvf)
 		return;
 
 	if (cptvf->nr_queues) {
-		dev_info(&pdev->dev, "Cleaning VQ worker threads (%u)\n",
-			 cptvf->nr_queues);
+		dev_dbg(&pdev->dev, "Cleaning VQ worker threads (%u)\n",
+			cptvf->nr_queues);
 	}
 
 	for (i = 0; i < cptvf->nr_queues; i++)
@@ -92,14 +83,12 @@ static void free_pending_queues(struct pending_qinfo *pqinfo)
 
 		/* free single queue */
 		kzfree((queue->head));
-
 		queue->front = 0;
 		queue->rear = 0;
-
+		queue->qlen = 0;
 		return;
 	}
 
-	pqinfo->qlen = 0;
 	pqinfo->nr_queues = 0;
 }
 
@@ -112,8 +101,6 @@ static int alloc_pending_queues(struct pending_qinfo *pqinfo, u32 qlen,
 	struct pending_queue *queue = NULL;
 
 	pqinfo->nr_queues = nr_queues;
-	pqinfo->qlen = qlen;
-
 	size = (qlen * sizeof(struct pending_entry));
 
 	for_each_pending_queue(pqinfo, queue, i) {
@@ -123,9 +110,10 @@ static int alloc_pending_queues(struct pending_qinfo *pqinfo, u32 qlen,
 			goto pending_qfail;
 		}
 
+		queue->pending_count = 0;
 		queue->front = 0;
 		queue->rear = 0;
-		atomic64_set((&queue->pending_count), (0));
+		queue->qlen = qlen;
 
 		/* init queue spin lock */
 		spin_lock_init(&queue->lock);
@@ -164,8 +152,8 @@ static void cleanup_pending_queues(struct cpt_vf *cptvf)
 	if (!cptvf->nr_queues)
 		return;
 
-	dev_info(&pdev->dev, "Cleaning VQ pending queue (%u)\n",
-		 cptvf->nr_queues);
+	dev_dbg(&pdev->dev, "Cleaning VQ pending queue (%u)\n",
+		cptvf->nr_queues);
 	free_pending_queues(&cptvf->pqinfo);
 }
 
@@ -176,29 +164,29 @@ static void free_command_queues(struct cpt_vf *cptvf,
 	struct command_queue *queue = NULL;
 	struct command_chunk *chunk = NULL;
 	struct pci_dev *pdev = cptvf->pdev;
-	struct hlist_node *node;
 
 	/* clean up for each queue */
 	for (i = 0; i < cptvf->nr_queues; i++) {
 		queue = &cqinfo->queue[i];
-		if (hlist_empty(&cqinfo->queue[i].chead))
-			continue;
 
-		hlist_for_each_entry_safe(chunk, node, &cqinfo->queue[i].chead,
-					  nextchunk) {
+		while (!list_empty(&cqinfo->queue[i].chead)) {
+			chunk = list_first_entry(&cqinfo->queue[i].chead,
+					struct command_chunk, nextchunk);
+
 			dma_free_coherent(&pdev->dev, chunk->size,
-					  chunk->head,
-					  chunk->dma_addr);
+					  chunk->real_vaddr,
+					  chunk->real_dma_addr);
+			chunk->real_vaddr = NULL;
+			chunk->real_dma_addr = 0;
 			chunk->head = NULL;
 			chunk->dma_addr = 0;
-			hlist_del(&chunk->nextchunk);
+			list_del(&chunk->nextchunk);
 			kzfree(chunk);
 		}
-
 		queue->nchunks = 0;
 		queue->idx = 0;
-	}
 
+	}
 	/* common cleanup */
 	cqinfo->cmd_size = 0;
 }
@@ -211,6 +199,7 @@ static int alloc_command_queues(struct cpt_vf *cptvf,
 	size_t q_size;
 	struct command_queue *queue = NULL;
 	struct pci_dev *pdev = cptvf->pdev;
+	int align =  CPT_INST_Q_ALIGNMENT;
 
 	/* common init */
 	cqinfo->cmd_size = cmd_size;
@@ -228,7 +217,7 @@ static int alloc_command_queues(struct cpt_vf *cptvf,
 		u32 qcsize_bytes = cqinfo->qchunksize * cqinfo->cmd_size;
 
 		queue = &cqinfo->queue[i];
-		INIT_HLIST_HEAD(&cqinfo->queue[i].chead);
+		INIT_LIST_HEAD(&cqinfo->queue[i].chead);
 		do {
 			curr = kzalloc(sizeof(*curr), GFP_KERNEL);
 			if (!curr)
@@ -236,30 +225,33 @@ static int alloc_command_queues(struct cpt_vf *cptvf,
 
 			c_size = (rem_q_size > qcsize_bytes) ? qcsize_bytes :
 					rem_q_size;
-			curr->head = (u8 *)dma_zalloc_coherent(&pdev->dev,
-					  c_size + CPT_NEXT_CHUNK_PTR_SIZE,
-					  &curr->dma_addr, GFP_KERNEL);
-			if (!curr->head) {
+			curr->real_vaddr = (u8 *)dma_zalloc_coherent(&pdev->dev,
+				c_size + align + CPT_NEXT_CHUNK_PTR_SIZE,
+				&curr->real_dma_addr, GFP_KERNEL);
+			if (!curr->real_vaddr) {
 				dev_err(&pdev->dev, "Command Q (%d) chunk (%d) allocation failed\n",
 					i, queue->nchunks);
 				kfree(curr);
 				goto cmd_qfail;
 			}
-
+			curr->head = (uint8_t *) PTR_ALIGN(curr->real_vaddr,
+							   align);
+			curr->dma_addr =
+			    (dma_addr_t) PTR_ALIGN(curr->real_dma_addr, align);
 			curr->size = c_size;
+
 			if (queue->nchunks == 0) {
-				hlist_add_head(&curr->nextchunk,
-					       &cqinfo->queue[i].chead);
 				first = curr;
-			} else {
-				hlist_add_behind(&curr->nextchunk,
-						 &last->nextchunk);
+				queue->base  = first;
 			}
+			list_add_tail(&curr->nextchunk,
+				      &cqinfo->queue[i].chead);
 
 			queue->nchunks++;
 			rem_q_size -= c_size;
 			if (last)
-				*((u64 *)(&last->head[last->size])) = (u64)curr->dma_addr;
+				*((u64 *)(&last->head[last->size])) =
+					(u64)curr->dma_addr;
 
 			last = curr;
 		} while (rem_q_size);
@@ -283,11 +275,11 @@ static int init_command_queues(struct cpt_vf *cptvf, u32 qlen)
 	struct pci_dev *pdev = cptvf->pdev;
 	int ret;
 
-	/* setup AE command queues */
+	/* setup command queues */
 	ret = alloc_command_queues(cptvf, &cptvf->cqinfo, CPT_INST_SIZE,
 				   qlen);
 	if (ret) {
-		dev_err(&pdev->dev, "failed to allocate AE command queues (%u)\n",
+		dev_err(&pdev->dev, "Failed to allocate command queues (%u)\n",
 			cptvf->nr_queues);
 		return ret;
 	}
@@ -302,8 +294,8 @@ static void cleanup_command_queues(struct cpt_vf *cptvf)
 	if (!cptvf->nr_queues)
 		return;
 
-	dev_info(&pdev->dev, "Cleaning VQ command queue (%u)\n",
-		 cptvf->nr_queues);
+	dev_dbg(&pdev->dev, "Cleaning VQ command queue (%u)\n",
+		cptvf->nr_queues);
 	free_command_queues(cptvf, &cptvf->cqinfo);
 }
 
@@ -368,152 +360,147 @@ static void cptvf_write_vq_ctl(struct cpt_vf *cptvf, bool val)
 {
 	union cptx_vqx_ctl vqx_ctl;
 
-	vqx_ctl.u = cpt_read_csr64(cptvf->reg_base, CPTX_VQX_CTL(0, 0));
+	vqx_ctl.u = readq(cptvf->reg_base + CPT_VQX_CTL(0));
 	vqx_ctl.s.ena = val;
-	cpt_write_csr64(cptvf->reg_base, CPTX_VQX_CTL(0, 0), vqx_ctl.u);
+	writeq(vqx_ctl.u, cptvf->reg_base + CPT_VQX_CTL(0));
 }
 
 void cptvf_write_vq_doorbell(struct cpt_vf *cptvf, u32 val)
 {
 	union cptx_vqx_doorbell vqx_dbell;
 
-	vqx_dbell.u = cpt_read_csr64(cptvf->reg_base,
-				     CPTX_VQX_DOORBELL(0, 0));
+	vqx_dbell.u = readq(cptvf->reg_base + CPT_VQX_DOORBELL(0));
 	vqx_dbell.s.dbell_cnt = val * 8; /* Num of Instructions * 8 words */
-	cpt_write_csr64(cptvf->reg_base, CPTX_VQX_DOORBELL(0, 0),
-			vqx_dbell.u);
+	writeq(vqx_dbell.u, cptvf->reg_base + CPT_VQX_DOORBELL(0));
 }
 
 static void cptvf_write_vq_inprog(struct cpt_vf *cptvf, u8 val)
 {
 	union cptx_vqx_inprog vqx_inprg;
 
-	vqx_inprg.u = cpt_read_csr64(cptvf->reg_base, CPTX_VQX_INPROG(0, 0));
+	vqx_inprg.u = readq(cptvf->reg_base + CPT_VQX_INPROG(0));
 	vqx_inprg.s.inflight = val;
-	cpt_write_csr64(cptvf->reg_base, CPTX_VQX_INPROG(0, 0), vqx_inprg.u);
+	writeq(vqx_inprg.u, cptvf->reg_base + CPT_VQX_INPROG(0));
 }
 
 static void cptvf_write_vq_done_numwait(struct cpt_vf *cptvf, u32 val)
 {
 	union cptx_vqx_done_wait vqx_dwait;
 
-	vqx_dwait.u = cpt_read_csr64(cptvf->reg_base,
-				     CPTX_VQX_DONE_WAIT(0, 0));
+	vqx_dwait.u = readq(cptvf->reg_base + CPT_VQX_DONE_WAIT(0));
 	vqx_dwait.s.num_wait = val;
-	cpt_write_csr64(cptvf->reg_base, CPTX_VQX_DONE_WAIT(0, 0),
-			vqx_dwait.u);
+	writeq(vqx_dwait.u, cptvf->reg_base + CPT_VQX_DONE_WAIT(0));
+}
+
+static u32 cptvf_read_vq_done_numwait(struct cpt_vf *cptvf)
+{
+	union cptx_vqx_done_wait vqx_dwait;
+
+	vqx_dwait.u = readq(cptvf->reg_base + CPT_VQX_DONE_WAIT(0));
+	return vqx_dwait.s.num_wait;
 }
 
 static void cptvf_write_vq_done_timewait(struct cpt_vf *cptvf, u16 time)
 {
 	union cptx_vqx_done_wait vqx_dwait;
 
-	vqx_dwait.u = cpt_read_csr64(cptvf->reg_base,
-				     CPTX_VQX_DONE_WAIT(0, 0));
+	vqx_dwait.u = readq(cptvf->reg_base + CPT_VQX_DONE_WAIT(0));
 	vqx_dwait.s.time_wait = time;
-	cpt_write_csr64(cptvf->reg_base, CPTX_VQX_DONE_WAIT(0, 0),
-			vqx_dwait.u);
+	writeq(vqx_dwait.u, cptvf->reg_base + CPT_VQX_DONE_WAIT(0));
+}
+
+
+static u16 cptvf_read_vq_done_timewait(struct cpt_vf *cptvf)
+{
+	union cptx_vqx_done_wait vqx_dwait;
+
+	vqx_dwait.u = readq(cptvf->reg_base + CPT_VQX_DONE_WAIT(0));
+	return vqx_dwait.s.time_wait;
 }
 
 static void cptvf_enable_swerr_interrupts(struct cpt_vf *cptvf)
 {
 	union cptx_vqx_misc_ena_w1s vqx_misc_ena;
 
-	vqx_misc_ena.u = cpt_read_csr64(cptvf->reg_base,
-					CPTX_VQX_MISC_ENA_W1S(0, 0));
+	vqx_misc_ena.u = readq(cptvf->reg_base + CPT_VQX_MISC_ENA_W1S(0));
 	/* Set mbox(0) interupts for the requested vf */
 	vqx_misc_ena.s.swerr = 1;
-	cpt_write_csr64(cptvf->reg_base, CPTX_VQX_MISC_ENA_W1S(0, 0),
-			vqx_misc_ena.u);
+	writeq(vqx_misc_ena.u, cptvf->reg_base + CPT_VQX_MISC_ENA_W1S(0));
 }
 
 static void cptvf_enable_mbox_interrupts(struct cpt_vf *cptvf)
 {
 	union cptx_vqx_misc_ena_w1s vqx_misc_ena;
 
-	vqx_misc_ena.u = cpt_read_csr64(cptvf->reg_base,
-					CPTX_VQX_MISC_ENA_W1S(0, 0));
+	vqx_misc_ena.u = readq(cptvf->reg_base + CPT_VQX_MISC_ENA_W1S(0));
 	/* Set mbox(0) interupts for the requested vf */
 	vqx_misc_ena.s.mbox = 1;
-	cpt_write_csr64(cptvf->reg_base, CPTX_VQX_MISC_ENA_W1S(0, 0),
-			vqx_misc_ena.u);
+	writeq(vqx_misc_ena.u, cptvf->reg_base + CPT_VQX_MISC_ENA_W1S(0));
 }
 
 static void cptvf_enable_done_interrupts(struct cpt_vf *cptvf)
 {
 	union cptx_vqx_done_ena_w1s vqx_done_ena;
 
-	vqx_done_ena.u = cpt_read_csr64(cptvf->reg_base,
-					CPTX_VQX_DONE_ENA_W1S(0, 0));
+	vqx_done_ena.u = readq(cptvf->reg_base + CPT_VQX_DONE_ENA_W1S(0));
 	/* Set DONE interrupt for the requested vf */
 	vqx_done_ena.s.done = 1;
-	cpt_write_csr64(cptvf->reg_base, CPTX_VQX_DONE_ENA_W1S(0, 0),
-			vqx_done_ena.u);
+	writeq(vqx_done_ena.u, cptvf->reg_base + CPT_VQX_DONE_ENA_W1S(0));
 }
 
 static void cptvf_clear_dovf_intr(struct cpt_vf *cptvf)
 {
 	union cptx_vqx_misc_int vqx_misc_int;
 
-	vqx_misc_int.u = cpt_read_csr64(cptvf->reg_base,
-					CPTX_VQX_MISC_INT(0, 0));
+	vqx_misc_int.u = readq(cptvf->reg_base + CPT_VQX_MISC_INT(0));
 	/* W1C for the VF */
 	vqx_misc_int.s.dovf = 1;
-	cpt_write_csr64(cptvf->reg_base, CPTX_VQX_MISC_INT(0, 0),
-			vqx_misc_int.u);
+	writeq(vqx_misc_int.u, cptvf->reg_base + CPT_VQX_MISC_INT(0));
 }
 
 static void cptvf_clear_irde_intr(struct cpt_vf *cptvf)
 {
 	union cptx_vqx_misc_int vqx_misc_int;
 
-	vqx_misc_int.u = cpt_read_csr64(cptvf->reg_base,
-					CPTX_VQX_MISC_INT(0, 0));
+	vqx_misc_int.u = readq(cptvf->reg_base + CPT_VQX_MISC_INT(0));
 	/* W1C for the VF */
 	vqx_misc_int.s.irde = 1;
-	cpt_write_csr64(cptvf->reg_base, CPTX_VQX_MISC_INT(0, 0),
-			vqx_misc_int.u);
+	writeq(vqx_misc_int.u, cptvf->reg_base + CPT_VQX_MISC_INT(0));
 }
 
 static void cptvf_clear_nwrp_intr(struct cpt_vf *cptvf)
 {
 	union cptx_vqx_misc_int vqx_misc_int;
 
-	vqx_misc_int.u = cpt_read_csr64(cptvf->reg_base,
-					CPTX_VQX_MISC_INT(0, 0));
+	vqx_misc_int.u = readq(cptvf->reg_base + CPT_VQX_MISC_INT(0));
 	/* W1C for the VF */
 	vqx_misc_int.s.nwrp = 1;
-	cpt_write_csr64(cptvf->reg_base,
-			CPTX_VQX_MISC_INT(0, 0), vqx_misc_int.u);
+	writeq(vqx_misc_int.u, cptvf->reg_base + CPT_VQX_MISC_INT(0));
 }
 
 static void cptvf_clear_mbox_intr(struct cpt_vf *cptvf)
 {
 	union cptx_vqx_misc_int vqx_misc_int;
 
-	vqx_misc_int.u = cpt_read_csr64(cptvf->reg_base,
-					CPTX_VQX_MISC_INT(0, 0));
+	vqx_misc_int.u = readq(cptvf->reg_base + CPT_VQX_MISC_INT(0));
 	/* W1C for the VF */
 	vqx_misc_int.s.mbox = 1;
-	cpt_write_csr64(cptvf->reg_base, CPTX_VQX_MISC_INT(0, 0),
-			vqx_misc_int.u);
+	writeq(vqx_misc_int.u, cptvf->reg_base + CPT_VQX_MISC_INT(0));
 }
 
 static void cptvf_clear_swerr_intr(struct cpt_vf *cptvf)
 {
 	union cptx_vqx_misc_int vqx_misc_int;
 
-	vqx_misc_int.u = cpt_read_csr64(cptvf->reg_base,
-					CPTX_VQX_MISC_INT(0, 0));
+	vqx_misc_int.u = readq(cptvf->reg_base + CPT_VQX_MISC_INT(0));
 	/* W1C for the VF */
 	vqx_misc_int.s.swerr = 1;
-	cpt_write_csr64(cptvf->reg_base, CPTX_VQX_MISC_INT(0, 0),
-			vqx_misc_int.u);
+	writeq(vqx_misc_int.u, cptvf->reg_base + CPT_VQX_MISC_INT(0));
 }
 
 static u64 cptvf_read_vf_misc_intr_status(struct cpt_vf *cptvf)
 {
-	return cpt_read_csr64(cptvf->reg_base, CPTX_VQX_MISC_INT(0, 0));
+	return readq(cptvf->reg_base + CPT_VQX_MISC_INT(0));
 }
 
 static irqreturn_t cptvf_misc_intr_handler(int irq, void *cptvf_irq)
@@ -524,26 +511,26 @@ static irqreturn_t cptvf_misc_intr_handler(int irq, void *cptvf_irq)
 
 	intr = cptvf_read_vf_misc_intr_status(cptvf);
 	/*Check for MISC interrupt types*/
-	if (likely(intr & CPT_VF_INTR_MBOX_MASK)) {
+	if (likely(intr & CPT_8X_VF_INTR_MBOX_MASK)) {
 		dev_dbg(&pdev->dev, "Mailbox interrupt 0x%llx on CPT VF %d\n",
 			intr, cptvf->vfid);
 		cptvf_handle_mbox_intr(cptvf);
 		cptvf_clear_mbox_intr(cptvf);
-	} else if (unlikely(intr & CPT_VF_INTR_DOVF_MASK)) {
+	} else if (unlikely(intr & CPT_8X_VF_INTR_DOVF_MASK)) {
 		cptvf_clear_dovf_intr(cptvf);
 		/*Clear doorbell count*/
 		cptvf_write_vq_doorbell(cptvf, 0);
 		dev_err(&pdev->dev, "Doorbell overflow error interrupt 0x%llx on CPT VF %d\n",
 			intr, cptvf->vfid);
-	} else if (unlikely(intr & CPT_VF_INTR_IRDE_MASK)) {
+	} else if (unlikely(intr & CPT_8X_VF_INTR_IRDE_MASK)) {
 		cptvf_clear_irde_intr(cptvf);
 		dev_err(&pdev->dev, "Instruction NCB read error interrupt 0x%llx on CPT VF %d\n",
 			intr, cptvf->vfid);
-	} else if (unlikely(intr & CPT_VF_INTR_NWRP_MASK)) {
+	} else if (unlikely(intr & CPT_8X_VF_INTR_NWRP_MASK)) {
 		cptvf_clear_nwrp_intr(cptvf);
 		dev_err(&pdev->dev, "NCB response write error interrupt 0x%llx on CPT VF %d\n",
 			intr, cptvf->vfid);
-	} else if (unlikely(intr & CPT_VF_INTR_SERR_MASK)) {
+	} else if (unlikely(intr & CPT_8X_VF_INTR_SERR_MASK)) {
 		cptvf_clear_swerr_intr(cptvf);
 		dev_err(&pdev->dev, "Software error interrupt 0x%llx on CPT VF %d\n",
 			intr, cptvf->vfid);
@@ -571,7 +558,7 @@ static inline u32 cptvf_read_vq_done_count(struct cpt_vf *cptvf)
 {
 	union cptx_vqx_done vqx_done;
 
-	vqx_done.u = cpt_read_csr64(cptvf->reg_base, CPTX_VQX_DONE(0, 0));
+	vqx_done.u = readq(cptvf->reg_base + CPT_VQX_DONE(0));
 	return vqx_done.s.done;
 }
 
@@ -580,11 +567,9 @@ static inline void cptvf_write_vq_done_ack(struct cpt_vf *cptvf,
 {
 	union cptx_vqx_done_ack vqx_dack_cnt;
 
-	vqx_dack_cnt.u = cpt_read_csr64(cptvf->reg_base,
-					CPTX_VQX_DONE_ACK(0, 0));
+	vqx_dack_cnt.u = readq(cptvf->reg_base + CPT_VQX_DONE_ACK(0));
 	vqx_dack_cnt.s.done_ack = ackcnt;
-	cpt_write_csr64(cptvf->reg_base, CPTX_VQX_DONE_ACK(0, 0),
-			vqx_dack_cnt.u);
+	writeq(vqx_dack_cnt.u, cptvf->reg_base + CPT_VQX_DONE_ACK(0));
 }
 
 static irqreturn_t cptvf_done_intr_handler(int irq, void *cptvf_irq)
@@ -637,7 +622,7 @@ static void cptvf_write_vq_saddr(struct cpt_vf *cptvf, u64 val)
 	union cptx_vqx_saddr vqx_saddr;
 
 	vqx_saddr.u = val;
-	cpt_write_csr64(cptvf->reg_base, CPTX_VQX_SADDR(0, 0), vqx_saddr.u);
+	writeq(vqx_saddr.u, cptvf->reg_base + CPT_VQX_SADDR(0));
 }
 
 void cptvf_device_init(struct cpt_vf *cptvf)
@@ -655,19 +640,158 @@ void cptvf_device_init(struct cpt_vf *cptvf)
 	base_addr = (u64)(cptvf->cqinfo.queue[0].qhead->dma_addr);
 	cptvf_write_vq_saddr(cptvf, base_addr);
 	/* Configure timerhold / coalescence */
-	cptvf_write_vq_done_timewait(cptvf, CPT_TIMER_THOLD);
-	cptvf_write_vq_done_numwait(cptvf, 1);
+	cptvf_write_vq_done_timewait(cptvf, CPT_TIMER_HOLD);
+	cptvf_write_vq_done_numwait(cptvf, CPT_COUNT_HOLD);
 	/* Enable the VQ */
 	cptvf_write_vq_ctl(cptvf, 1);
 	/* Flag the VF ready */
 	cptvf->flags |= CPT_FLAG_DEVICE_READY;
 }
 
+static ssize_t cptvf_type_show(struct device *dev,
+			       struct device_attribute *attr,
+			       char *buf)
+{
+	struct cpt_vf *cptvf = dev_get_drvdata(dev);
+	char *msg;
+
+	switch (cptvf->vftype) {
+	case AE_TYPES:
+		msg = "AE";
+	break;
+
+	case SE_TYPES:
+		msg = "SE";
+	break;
+
+	default:
+		msg = "Invalid";
+	}
+
+	return scnprintf(buf, PAGE_SIZE, "%s\n", msg);
+}
+
+static ssize_t cptvf_engine_group_show(struct device *dev,
+				       struct device_attribute *attr,
+				       char *buf)
+{
+	struct cpt_vf *cptvf = dev_get_drvdata(dev);
+
+	return scnprintf(buf, PAGE_SIZE, "%d\n", cptvf->vfgrp);
+}
+
+static ssize_t cptvf_engine_group_store(struct device *dev,
+					struct device_attribute *attr,
+					const char *buf, size_t count)
+{
+	struct cpt_vf *cptvf = dev_get_drvdata(dev);
+	int val, ret;
+
+	ret = kstrtoint(buf, 10, &val);
+	if (ret)
+		return ret;
+
+	if (val < 0)
+		return -EINVAL;
+
+	if (val >= CPT_MAX_ENGINE_GROUPS) {
+		dev_err(dev, "Engine group >= than max available groups %d",
+			CPT_MAX_ENGINE_GROUPS);
+		return -EINVAL;
+	}
+
+	ret = cptvf_send_vf_to_grp_msg(cptvf, val);
+	if (ret)
+		return ret;
+
+	return count;
+}
+
+static ssize_t cptvf_coalesc_time_wait_show(struct device *dev,
+					    struct device_attribute *attr,
+					    char *buf)
+{
+	struct cpt_vf *cptvf = dev_get_drvdata(dev);
+
+	return scnprintf(buf, PAGE_SIZE, "%d\n",
+			 cptvf_read_vq_done_timewait(cptvf));
+}
+
+static ssize_t cptvf_coalesc_num_wait_show(struct device *dev,
+					   struct device_attribute *attr,
+					   char *buf)
+{
+	struct cpt_vf *cptvf = dev_get_drvdata(dev);
+
+	return scnprintf(buf, PAGE_SIZE, "%d\n",
+			 cptvf_read_vq_done_numwait(cptvf));
+}
+
+static ssize_t cptvf_coalesc_time_wait_store(struct device *dev,
+					     struct device_attribute *attr,
+					     const char *buf, size_t count)
+{
+	struct cpt_vf *cptvf = dev_get_drvdata(dev);
+	long int val;
+	int ret;
+
+	ret = kstrtol(buf, 10, &val);
+	if (ret != 0)
+		return ret;
+
+	if (val < CPT_COALESC_MIN_TIME_WAIT ||
+	    val > CPT_COALESC_MAX_TIME_WAIT)
+		return -EINVAL;
+
+	cptvf_write_vq_done_timewait(cptvf, val);
+	return count;
+}
+
+static ssize_t cptvf_coalesc_num_wait_store(struct device *dev,
+					    struct device_attribute *attr,
+					    const char *buf, size_t count)
+{
+	struct cpt_vf *cptvf = dev_get_drvdata(dev);
+	long int val;
+	int ret;
+
+	ret = kstrtol(buf, 10, &val);
+	if (ret != 0)
+		return ret;
+
+	if (val < CPT_COALESC_MIN_NUM_WAIT ||
+	    val > CPT_COALESC_MAX_NUM_WAIT)
+		return -EINVAL;
+
+	cptvf_write_vq_done_numwait(cptvf, val);
+	return count;
+}
+
+static DEVICE_ATTR(vf_type, 0444, cptvf_type_show, NULL);
+static DEVICE_ATTR(vf_engine_group, 0664, cptvf_engine_group_show,
+				   cptvf_engine_group_store);
+static DEVICE_ATTR(vf_coalesc_time_wait, 0664,
+		   cptvf_coalesc_time_wait_show, cptvf_coalesc_time_wait_store);
+static DEVICE_ATTR(vf_coalesc_num_wait, 0664,
+		   cptvf_coalesc_num_wait_show, cptvf_coalesc_num_wait_store);
+
+static struct attribute *vf_attrs[] = {
+	&dev_attr_vf_type.attr,
+	&dev_attr_vf_engine_group.attr,
+	&dev_attr_vf_coalesc_time_wait.attr,
+	&dev_attr_vf_coalesc_num_wait.attr,
+	NULL
+};
+
+static const struct attribute_group vf_sysfs_group = {
+	.attrs = vf_attrs,
+};
+
 static int cptvf_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 {
 	struct device *dev = &pdev->dev;
 	struct cpt_vf *cptvf;
-	int    err;
+	int err;
 
 	cptvf = devm_kzalloc(dev, sizeof(*cptvf), GFP_KERNEL);
 	if (!cptvf)
@@ -675,6 +799,8 @@ static int cptvf_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 
 	pci_set_drvdata(pdev, cptvf);
 	cptvf->pdev = pdev;
+	cpt_set_dbg_level(debug);
+
 	err = pci_enable_device(pdev);
 	if (err) {
 		dev_err(dev, "Failed to enable PCI device\n");
@@ -687,6 +813,7 @@ static int cptvf_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 		dev_err(dev, "PCI request regions failed 0x%x\n", err);
 		goto cptvf_err_disable_device;
 	}
+
 	/* Mark as VF driver */
 	cptvf->flags |= CPT_FLAG_VF_DRIVER;
 	err = pci_set_dma_mask(pdev, DMA_BIT_MASK(48));
@@ -702,7 +829,7 @@ static int cptvf_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 	}
 
 	/* MAP PF's configuration registers */
-	cptvf->reg_base = pcim_iomap(pdev, 0, 0);
+	cptvf->reg_base = pcim_iomap(pdev, PCI_CPT_VF_8X_CFG_BAR, 0);
 	if (!cptvf->reg_base) {
 		dev_err(dev, "Cannot map config register space, aborting\n");
 		err = -ENOMEM;
@@ -710,15 +837,15 @@ static int cptvf_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 	}
 
 	cptvf->node = dev_to_node(&pdev->dev);
-	err = pci_alloc_irq_vectors(pdev, CPT_VF_MSIX_VECTORS,
-			CPT_VF_MSIX_VECTORS, PCI_IRQ_MSIX);
+	err = pci_alloc_irq_vectors(pdev, CPT_8X_VF_MSIX_VECTORS,
+			CPT_8X_VF_MSIX_VECTORS, PCI_IRQ_MSIX);
 	if (err < 0) {
 		dev_err(dev, "Request for #%d msix vectors failed\n",
-			CPT_VF_MSIX_VECTORS);
+			CPT_8X_VF_MSIX_VECTORS);
 		goto cptvf_err_release_regions;
 	}
 
-	err = request_irq(pci_irq_vector(pdev, CPT_VF_INT_VEC_E_MISC),
+	err = request_irq(pci_irq_vector(pdev, CPT_8X_VF_INT_VEC_E_MISC),
 			  cptvf_misc_intr_handler, 0, "CPT VF misc intr",
 			  cptvf);
 	if (err) {
@@ -755,8 +882,7 @@ static int cptvf_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 	/* CPT VF device initialization */
 	cptvf_device_init(cptvf);
 	/* Send msg to PF to assign currnet Q to required group */
-	cptvf->vfgrp = 1;
-	err = cptvf_send_vf_to_grp_msg(cptvf);
+	err = cptvf_send_vf_to_grp_msg(cptvf, cptvf->vfgrp);
 	if (err) {
 		dev_err(dev, "PF not responding to VF_GRP msg");
 		goto cptvf_free_misc_irq;
@@ -769,38 +895,49 @@ static int cptvf_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 		goto cptvf_free_misc_irq;
 	}
 
-	err = request_irq(pci_irq_vector(pdev, CPT_VF_INT_VEC_E_DONE),
+	err = request_irq(pci_irq_vector(pdev, CPT_8X_VF_INT_VEC_E_DONE),
 			  cptvf_done_intr_handler, 0, "CPT VF done intr",
 			  cptvf);
 	if (err) {
 		dev_err(dev, "Request done irq failed\n");
-		goto cptvf_free_misc_irq;
+		goto cptvf_free_done_irq;
 	}
 
-	/* Enable mailbox interrupt */
+	/* Enable done interrupt */
 	cptvf_enable_done_interrupts(cptvf);
 
 	/* Set irq affinity masks */
-	cptvf_set_irq_affinity(cptvf, CPT_VF_INT_VEC_E_MISC);
-	cptvf_set_irq_affinity(cptvf, CPT_VF_INT_VEC_E_DONE);
+	cptvf_set_irq_affinity(cptvf, CPT_8X_VF_INT_VEC_E_MISC);
+	cptvf_set_irq_affinity(cptvf, CPT_8X_VF_INT_VEC_E_DONE);
 
 	err = cptvf_send_vf_up(cptvf);
 	if (err) {
 		dev_err(dev, "PF not responding to UP msg");
 		goto cptvf_free_irq_affinity;
 	}
-	err = cvm_crypto_init(cptvf);
+
+	err = cvm_crypto_init(pdev, cptvf->vftype == SE_TYPES ? CPT_SE_83XX :
+			      CPT_AE_83XX, cptvf->vftype, 1, cptvf->num_vfs);
 	if (err) {
 		dev_err(dev, "Algorithm register failed\n");
 		goto cptvf_free_irq_affinity;
 	}
+
+	err = sysfs_create_group(&dev->kobj, &vf_sysfs_group);
+	if (err) {
+		dev_err(dev, "Creating sysfs entries failed\n");
+		goto cptvf_free_irq_affinity;
+	}
+
 	return 0;
 
 cptvf_free_irq_affinity:
-	cptvf_free_irq_affinity(cptvf, CPT_VF_INT_VEC_E_DONE);
-	cptvf_free_irq_affinity(cptvf, CPT_VF_INT_VEC_E_MISC);
+	cptvf_free_irq_affinity(cptvf, CPT_8X_VF_INT_VEC_E_DONE);
+	cptvf_free_irq_affinity(cptvf, CPT_8X_VF_INT_VEC_E_MISC);
+cptvf_free_done_irq:
+	free_irq(pci_irq_vector(pdev, CPT_8X_VF_INT_VEC_E_DONE), cptvf);
 cptvf_free_misc_irq:
-	free_irq(pci_irq_vector(pdev, CPT_VF_INT_VEC_E_MISC), cptvf);
+	free_irq(pci_irq_vector(pdev, CPT_8X_VF_INT_VEC_E_MISC), cptvf);
 cptvf_free_vectors:
 	pci_free_irq_vectors(cptvf->pdev);
 cptvf_err_release_regions:
@@ -825,27 +962,23 @@ static void cptvf_remove(struct pci_dev *pdev)
 	if (cptvf_send_vf_down(cptvf)) {
 		dev_err(&pdev->dev, "PF not responding to DOWN msg");
 	} else {
-		cptvf_free_irq_affinity(cptvf, CPT_VF_INT_VEC_E_DONE);
-		cptvf_free_irq_affinity(cptvf, CPT_VF_INT_VEC_E_MISC);
-		free_irq(pci_irq_vector(pdev, CPT_VF_INT_VEC_E_DONE), cptvf);
-		free_irq(pci_irq_vector(pdev, CPT_VF_INT_VEC_E_MISC), cptvf);
+		cvm_crypto_exit(pdev);
+		cptvf_free_irq_affinity(cptvf, CPT_8X_VF_INT_VEC_E_DONE);
+		cptvf_free_irq_affinity(cptvf, CPT_8X_VF_INT_VEC_E_MISC);
+		free_irq(pci_irq_vector(pdev, CPT_8X_VF_INT_VEC_E_DONE), cptvf);
+		free_irq(pci_irq_vector(pdev, CPT_8X_VF_INT_VEC_E_MISC), cptvf);
 		pci_free_irq_vectors(cptvf->pdev);
 		cptvf_sw_cleanup(cptvf);
+		sysfs_remove_group(&pdev->dev.kobj, &vf_sysfs_group);
 		pci_set_drvdata(pdev, NULL);
 		pci_release_regions(pdev);
 		pci_disable_device(pdev);
-		cvm_crypto_exit();
 	}
-}
-
-static void cptvf_shutdown(struct pci_dev *pdev)
-{
-	cptvf_remove(pdev);
 }
 
 /* Supported devices */
 static const struct pci_device_id cptvf_id_table[] = {
-	{PCI_VDEVICE(CAVIUM, CPT_81XX_PCI_VF_DEVICE_ID), 0},
+	{PCI_VDEVICE(CAVIUM, CPT_PCI_VF_8X_DEVICE_ID), 0},
 	{ 0, }  /* end of table */
 };
 
@@ -854,13 +987,12 @@ static struct pci_driver cptvf_pci_driver = {
 	.id_table = cptvf_id_table,
 	.probe = cptvf_probe,
 	.remove = cptvf_remove,
-	.shutdown = cptvf_shutdown,
 };
 
 module_pci_driver(cptvf_pci_driver);
 
-MODULE_AUTHOR("George Cherian <george.cherian@cavium.com>");
-MODULE_DESCRIPTION("Cavium Thunder CPT Virtual Function Driver");
+MODULE_AUTHOR("Marvell International Ltd.");
+MODULE_DESCRIPTION("Marvell OcteonTX CPT Virtual Function Driver");
 MODULE_LICENSE("GPL v2");
 MODULE_VERSION(DRV_VERSION);
 MODULE_DEVICE_TABLE(pci, cptvf_id_table);
