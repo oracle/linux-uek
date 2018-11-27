@@ -67,6 +67,7 @@ struct otx2_snd_queue {
 	struct qmem		*sqe;
 	struct qmem		*tso_hdrs;
 	struct sg_list		*sg;
+	struct qmem		*timestamps;
 	struct queue_stats	stats;
 };
 

@@ -66,6 +66,20 @@ enum nix_subdc {
 	NIX_SUBDC_SOD  = 0xf,
 };
 
+/* Algorithm for nix_sqe_mem_s header (value of the `alg` field) */
+enum nix_sendmemalg {
+	NIX_SENDMEMALG_E_SET       = 0x0,
+	NIX_SENDMEMALG_E_SETTSTMP  = 0x1,
+	NIX_SENDMEMALG_E_SETRSLT   = 0x2,
+	NIX_SENDMEMALG_E_ADD       = 0x8,
+	NIX_SENDMEMALG_E_SUB       = 0x9,
+	NIX_SENDMEMALG_E_ADDLEN    = 0xa,
+	NIX_SENDMEMALG_E_SUBLEN    = 0xb,
+	NIX_SENDMEMALG_E_ADDMBUF   = 0xc,
+	NIX_SENDMEMALG_E_SUBMBUF   = 0xd,
+	NIX_SENDMEMALG_E_ENUM_LAST = 0xe,
+};
+
 /* NIX CQE header structure */
 struct nix_cqe_hdr_s {
 #if defined(__BIG_ENDIAN_BITFIELD)
@@ -358,6 +372,26 @@ struct nix_sqe_sg_s {
 	u64 ld_type	: 2;
 	u64 subdc	: 4;
 #endif
+};
+
+/* NIX send memory subdescriptor structure */
+struct nix_sqe_mem_s {
+#if defined(__BIG_ENDIAN_BITFIELD)  /* W0 */
+	u64 subdc         : 4;
+	u64 alg           : 4;
+	u64 dsz           : 2;
+	u64 wmem          : 1;
+	u64 rsvd_52_16    : 37;
+	u64 offset        : 16;
+#else
+	u64 offset        : 16;
+	u64 rsvd_52_16    : 37;
+	u64 wmem          : 1;
+	u64 dsz           : 2;
+	u64 alg           : 4;
+	u64 subdc         : 4;
+#endif
+	u64 addr;
 };
 
 enum nix_cqerrint_e {

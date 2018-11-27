@@ -16,6 +16,7 @@
 #include "otx2_common.h"
 #include "otx2_struct.h"
 #include "otx2_txrx.h"
+#include "otx2_ptp.h"
 
 /* Flush SQE written to LMT to SQB */
 static inline u64 otx2_lmt_flush(uint64_t addr)
@@ -93,6 +94,7 @@ static void otx2_snd_pkt_handler(struct otx2_nic *pfvf,
 	struct sk_buff *skb = NULL;
 	struct otx2_snd_queue *sq;
 	struct sg_list *sg;
+	int sqe_id;
 
 	snd_comp = (struct nix_send_comp_s *)(cqe + sizeof(*cqe_hdr));
 	if (snd_comp->status) {
@@ -104,16 +106,36 @@ static void otx2_snd_pkt_handler(struct otx2_nic *pfvf,
 	/* Barrier, so that update to sq by other cpus is visible */
 	smp_mb();
 	sq = &pfvf->qset.sq[cq->cint_idx];
-	sg = &sq->sg[snd_comp->sqe_id];
+	sqe_id = snd_comp->sqe_id;
+	sg = &sq->sg[sqe_id];
 
 	skb = (struct sk_buff *)sg->skb;
-	if (skb) {
-		*tx_bytes += skb->len;
-		(*tx_pkts)++;
-		otx2_dma_unmap_skb_frags(pfvf, sg);
-		napi_consume_skb(skb, budget);
-		sg->skb = (u64)NULL;
+	if (!skb)
+		return;
+
+	if (skb_shinfo(skb)->tx_flags & SKBTX_IN_PROGRESS) {
+		u64 timestamp = ((u64 *)sq->timestamps->base)[sqe_id];
+
+		if (timestamp != 1) {
+			u64 tsns;
+			int err;
+
+			err = otx2_ptp_tstamp2time(pfvf, timestamp, &tsns);
+			if (!err) {
+				struct skb_shared_hwtstamps ts;
+
+				memset(&ts, 0, sizeof(ts));
+				ts.hwtstamp = ns_to_ktime(tsns);
+				skb_tstamp_tx(skb, &ts);
+			}
+		}
 	}
+
+	*tx_bytes += skb->len;
+	(*tx_pkts)++;
+	otx2_dma_unmap_skb_frags(pfvf, sg);
+	napi_consume_skb(skb, budget);
+	sg->skb = (u64)NULL;
 }
 
 static inline void otx2_set_rxhash(struct otx2_nic *pfvf,
@@ -178,6 +200,25 @@ otx2_get_rcv_skb(struct otx2_nic *pfvf, u64 iova, int len, int apad)
 	return skb;
 }
 
+static inline void otx2_set_rxtstamp(struct otx2_nic *pfvf, struct sk_buff *skb)
+{
+	u64 tsns;
+	int err;
+
+	if (!pfvf->hw_rx_tstamp)
+		return;
+
+	/* The first 8 bytes is the timestamp */
+	err = otx2_ptp_tstamp2time(pfvf, *(u64 *)skb->data, &tsns);
+	if (err)
+		goto done;
+
+	skb_hwtstamps(skb)->hwtstamp = ns_to_ktime(tsns);
+
+done:
+	__skb_pull(skb, 8);
+}
+
 static void otx2_rcv_pkt_handler(struct otx2_nic *pfvf,
 				 struct otx2_cq_queue *cq, void *cqe,
 				 int *pool_ptrs)
@@ -229,11 +270,19 @@ static void otx2_rcv_pkt_handler(struct otx2_nic *pfvf,
 			/* Starting IOVA's 2:0 bits give alignment
 			 * bytes after which packet data starts.
 			 */
-			if (!skb)
+			if (!skb) {
 				skb = otx2_get_rcv_skb(pfvf, *iova,
 						       len, *iova & 0x07);
-			else
+				/* check if data starts at some nonzero offset
+				 * from the start of the buffer.  For now the
+				 * only possible offset is 8 bytes in the case
+				 * the packet data are prepended by a timestamp.
+				 */
+				if (parse->laptr)
+					otx2_set_rxtstamp(pfvf, skb);
+			} else {
 				otx2_skb_add_frag(pfvf, skb, *iova, len);
+			}
 			iova++;
 			(*pool_ptrs)++;
 		}
@@ -462,9 +511,6 @@ static void otx2_sqe_add_ext(struct otx2_nic *pfvf, struct otx2_snd_queue *sq,
 {
 	struct nix_sqe_ext_s *ext;
 
-	if (!skb_shinfo(skb)->gso_size)
-		return;
-
 	ext = (struct nix_sqe_ext_s *)(sq->sqe_base + *offset);
 	ext->subdc = NIX_SUBDC_EXT;
 	if (skb_shinfo(skb)->gso_size) {
@@ -476,9 +522,25 @@ static void otx2_sqe_add_ext(struct otx2_nic *pfvf, struct otx2_snd_queue *sq,
 			ext->lso_format = pfvf->hw.lso_tsov6_idx;
 		ext->lso_sb = skb_transport_offset(skb) + tcp_hdrlen(skb);
 		ext->lso_mps = skb_shinfo(skb)->gso_size;
+	} else if (skb_shinfo(skb)->tx_flags & SKBTX_HW_TSTAMP) {
+		ext->tstmp = 1;
 	}
 
 	*offset += sizeof(*ext);
+}
+
+static void otx2_sqe_add_mem(struct otx2_snd_queue *sq, int *offset,
+			     int alg, u64 iova)
+{
+	struct nix_sqe_mem_s *mem;
+
+	mem = (struct nix_sqe_mem_s *)(sq->sqe_base + *offset);
+	mem->subdc = NIX_SUBDC_MEM;
+	mem->alg = alg;
+	mem->wmem = 1; /* wait for the memory operation */
+	mem->addr = iova;
+
+	*offset += sizeof(*mem);
 }
 
 /* Add SQE header subdescriptor structure */
@@ -701,6 +763,21 @@ static int otx2_get_sqe_count(struct otx2_nic *pfvf, struct sk_buff *skb)
 	return skb_shinfo(skb)->gso_segs;
 }
 
+static inline void otx2_set_txtstamp(struct otx2_nic *pfvf, struct sk_buff *skb,
+				     struct otx2_snd_queue *sq, int *offset)
+{
+	u64 iova;
+
+	if (!skb_shinfo(skb)->gso_size &&
+	    skb_shinfo(skb)->tx_flags & SKBTX_HW_TSTAMP) {
+		skb_shinfo(skb)->tx_flags |= SKBTX_IN_PROGRESS;
+		iova = sq->timestamps->iova + (sq->head * sizeof(u64));
+		otx2_sqe_add_mem(sq, offset, NIX_SENDMEMALG_E_SETTSTMP, iova);
+	} else {
+		skb_tx_timestamp(skb);
+	}
+}
+
 bool otx2_sq_append_skb(struct net_device *netdev, struct otx2_snd_queue *sq,
 			struct sk_buff *skb, u16 qidx)
 {
@@ -749,6 +826,8 @@ bool otx2_sq_append_skb(struct net_device *netdev, struct otx2_snd_queue *sq,
 		otx2_dma_unmap_skb_frags(pfvf, &sq->sg[sq->head]);
 		return false;
 	}
+
+	otx2_set_txtstamp(pfvf, skb, sq, &offset);
 
 	sqe_hdr->sizem1 = (offset / 16) - 1;
 
