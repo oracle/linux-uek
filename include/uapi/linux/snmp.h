@@ -282,6 +282,7 @@ enum
 	LINUX_MIB_TCPMTUPSUCCESS,		/* TCPMTUPSuccess */
 #ifndef	__GENKSYMS__
 	LINUX_MIB_TCPWQUEUETOOBIG,		/* TCPWqueueTooBig */
+	LINUX_MIB_TCPBACKLOGCOALESCE,		/* TCPBacklogCoalesce */
 #endif
 	__LINUX_MIB_MAX
 };
