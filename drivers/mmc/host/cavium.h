@@ -43,6 +43,11 @@
 #define	LOW_SLEW_RATE	(0x0)
 #define	HIGH_SLEW_RATE	(0x1)
 
+/* octtx2: emmc interface calibration */
+#define START_CALIBRATION	(0x1)
+#define TOTAL_NO_OF_TAPS	(512)
+#define PS_10000		(10 * 1000)
+
 /* DMA register addresses */
 #define MIO_EMM_DMA_FIFO_CFG(x)	(0x00 + x->reg_off_dma)
 #define MIO_EMM_DMA_FIFO_ADR(x)	(0x10 + x->reg_off_dma)
@@ -53,6 +58,12 @@
 #define MIO_EMM_DMA_INT_W1S(x)	(0x38 + x->reg_off_dma)
 #define MIO_EMM_DMA_INT_ENA_W1S(x) (0x40 + x->reg_off_dma)
 #define MIO_EMM_DMA_INT_ENA_W1C(x) (0x48 + x->reg_off_dma)
+
+/* octtx2 specific registers */
+#define MIO_EMM_CALB(x)		(0xC0 + x->reg_off)
+#define MIO_EMM_TAP(x)		(0xC8 + x->reg_off)
+#define MIO_EMM_TIMING(x)	(0xD0 + x->reg_off)
+#define MIO_EMM_DEBUG(x)	(0xF8 + x->reg_off)
 
 /* register addresses */
 #define MIO_EMM_CFG(x)		(0x00 + x->reg_off)
@@ -105,6 +116,8 @@ struct cvm_mmc_host {
 
 	struct cvm_mmc_slot *slot[CAVIUM_MAX_MMC];
 	struct platform_device *slot_pdev[CAVIUM_MAX_MMC];
+	/* octtx2 specific */
+	unsigned int per_tap_delay; /* per tap delay in pico second */
 
 	void (*set_shared_power)(struct cvm_mmc_host *, int);
 	void (*acquire_bus)(struct cvm_mmc_host *);
@@ -189,8 +202,13 @@ struct cvm_mmc_cr_mods {
 #define MIO_EMM_DMA_CFG_SIZE		GENMASK_ULL(55, 36)
 #define MIO_EMM_DMA_CFG_ADR		GENMASK_ULL(35, 0)
 
+#define MIO_EMM_CFG_BUS_ENA		GENMASK_ULL(3, 0)
+
 #define MIO_EMM_IO_CTL_DRIVE		GENMASK_ULL(3, 2)
 #define MIO_EMM_IO_CTL_SLEW		BIT_ULL(0)
+
+#define MIO_EMM_CALB_START		BIT_ULL(0)
+#define MIO_EMM_TAP_DELAY		GENMASK_ULL(7, 0)
 
 #define MIO_EMM_INT_NCB_FLT		BIT_ULL(7)
 #define MIO_EMM_INT_SWITCH_ERR		BIT_ULL(6)
@@ -242,6 +260,8 @@ struct cvm_mmc_cr_mods {
 irqreturn_t cvm_mmc_interrupt(int irq, void *dev_id);
 int cvm_mmc_of_slot_probe(struct device *dev, struct cvm_mmc_host *host);
 int cvm_mmc_of_slot_remove(struct cvm_mmc_slot *slot);
+void calibrate_mmc(struct cvm_mmc_host *host);
+
 extern const char *cvm_mmc_irq_names[];
 
 static inline bool is_mmc_8xxx(struct cvm_mmc_host *host)
