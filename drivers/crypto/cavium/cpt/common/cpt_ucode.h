@@ -46,6 +46,21 @@
 
 #define ROUNDUP16(val) ((((int) val) + 15) & 0xFFFFFFF0)
 
+/* Microcode types */
+enum cpt_ucode_type {
+	AE_UC_TYPE =	1,  /* AE-MAIN */
+	SE_UC_TYPE1 =	20, /* SE-MAIN - combination of 21 and 22 */
+	SE_UC_TYPE2 =	21, /* Fast Path IPSec + AirCrypto */
+	SE_UC_TYPE3 =	22, /* Hash + HMAC + FlexiCrypto + RNG + Full Feature
+			     *  IPSec + AirCrypto + Kasumi
+			     */
+	IE_UC_TYPE1 =	30, /* IE-MAIN - combination of 31 and 32 */
+	IE_UC_TYPE2 =	31, /* Fast Path IPSec */
+	IE_UC_TYPE3 =	32, /* Hash + HMAC + FlexiCrypto + RNG + Full Future
+			     * IPSec
+			     */
+};
+
 /* Tar archive defines */
 #define TAR_MAGIC		"ustar"
 #define TAR_MAGIC_LEN		6
@@ -95,16 +110,26 @@ struct engines {
 	int count;
 };
 
+/* Microcode version number */
+struct microcode_ver_num {
+	u8 nn;
+	u8 xx;
+	u8 yy;
+	u8 zz;
+};
+
 /* Microcode header size should be 48 bytes according to CNT8x-MC-IPSEC-0002 */
 struct microcode_hdr {
-	u8 version[CPT_UCODE_VERSION_SZ];
+	struct microcode_ver_num ver_num;
+	u8 ver_str[CPT_UCODE_VER_STR_SZ];
 	u32 code_length;
 	u32 padding[3];
 };
 
 struct microcode {
-	char filename[NAME_LENGTH];	/* ucode filename */
-	u8 version[CPT_UCODE_VERSION_SZ];/* ucode version in readable format */
+	u8 ver_str[CPT_UCODE_VER_STR_SZ];/* ucode version in readable format */
+	struct microcode_ver_num ver_num;/* ucode version number */
+	char filename[NAME_LENGTH];	 /* ucode filename */
 	dma_addr_t dma;		/* phys address of ucode image */
 	dma_addr_t align_dma;	/* aligned phys address of ucode image */
 	void *va;		/* virt address of ucode image */
