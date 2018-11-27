@@ -35,6 +35,16 @@
 #define MHZ_100 (100000000)
 #define MHZ_200 (200000000)
 
+/* octtx2: emmc interface io current drive strength */
+#define	MILLI_AMP_2	(0x0)
+#define	MILLI_AMP_4	(0x1)
+#define	MILLI_AMP_8	(0x2)
+#define	MILLI_AMP_16	(0x3)
+
+/* octtx2: emmc interface io clk skew */
+#define	LOW_SLEW_RATE	(0x0)
+#define	HIGH_SLEW_RATE	(0x1)
+
 /* DMA register addresses */
 #define MIO_EMM_DMA_FIFO_CFG(x)	(0x00 + x->reg_off_dma)
 #define MIO_EMM_DMA_FIFO_ADR(x)	(0x10 + x->reg_off_dma)
@@ -48,6 +58,8 @@
 
 /* register addresses */
 #define MIO_EMM_CFG(x)		(0x00 + x->reg_off)
+/* octtx2 specific register */
+#define MIO_EMM_IO_CTL(x)	(0x40 + x->reg_off)
 #define MIO_EMM_SWITCH(x)	(0x48 + x->reg_off)
 #define MIO_EMM_DMA(x)		(0x50 + x->reg_off)
 #define MIO_EMM_CMD(x)		(0x58 + x->reg_off)
@@ -118,6 +130,9 @@ struct cvm_mmc_slot {
 	unsigned int cmd_cnt;		/* sample delay */
 	unsigned int dat_cnt;		/* sample delay */
 
+	unsigned int drive;		/* Current drive */
+	unsigned int slew;		/* clock skew */
+
 	int bus_id;
 };
 
@@ -175,6 +190,9 @@ struct cvm_mmc_cr_mods {
 #define MIO_EMM_DMA_CFG_ENDIAN		BIT_ULL(56)
 #define MIO_EMM_DMA_CFG_SIZE		GENMASK_ULL(55, 36)
 #define MIO_EMM_DMA_CFG_ADR		GENMASK_ULL(35, 0)
+
+#define MIO_EMM_IO_CTL_DRIVE		GENMASK_ULL(3, 2)
+#define MIO_EMM_IO_CTL_SLEW		BIT_ULL(0)
 
 #define MIO_EMM_INT_NCB_FLT		BIT_ULL(7)
 #define MIO_EMM_INT_SWITCH_ERR		BIT_ULL(6)
