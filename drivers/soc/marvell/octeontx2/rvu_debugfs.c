@@ -113,17 +113,17 @@ static ssize_t rvu_dbg_rsrc_attach_status(struct file *filp,
 	buf = kzalloc(buf_size, GFP_KERNEL);
 	if (!buf)
 		return -ENOSPC;
-	off +=	scnprintf(&buf[off], PAGE_SIZE - off, "\npcifunc\t\t");
+	off +=	scnprintf(&buf[off], buf_size - 1 - off, "\npcifunc\t\t");
 	for (index = 0; index < BLK_COUNT; index++)
 		if (strlen(rvu->hw->block[index].name))
-			off +=	scnprintf(&buf[off], PAGE_SIZE - off, "%*s\t",
-					  (index - 1) * 2,
+			off +=	scnprintf(&buf[off], buf_size - 1 - off,
+					  "%*s\t", (index - 1) * 2,
 					  rvu->hw->block[index].name);
-	off += scnprintf(&buf[off], PAGE_SIZE - off, "\n");
+	off += scnprintf(&buf[off], buf_size - 1 - off, "\n");
 	for (pf = 0; pf < rvu->hw->total_pfs; pf++) {
 		for (vf = 0; vf <= rvu->hw->total_vfs; vf++) {
 			pcifunc = pf << 10 | vf;
-			go_back = scnprintf(&buf[off], PAGE_SIZE - off,
+			go_back = scnprintf(&buf[off], buf_size - 1 - off,
 					    "0x%3x\t\t", pcifunc);
 
 			off += go_back;
@@ -136,14 +136,14 @@ static ssize_t rvu_dbg_rsrc_attach_status(struct file *filp,
 					if (block.fn_map[lf] != pcifunc)
 						continue;
 					flag = 1;
-					off += scnprintf(&buf[off], PAGE_SIZE -
-							off, "%3d,", lf);
+					off += scnprintf(&buf[off], buf_size - 1
+							- off, "%3d,", lf);
 				}
 				if (flag && off_prev != off)
 					off--;
 				else
 					go_back++;
-				off += scnprintf(&buf[off], PAGE_SIZE - off,
+				off += scnprintf(&buf[off], buf_size - 1 - off,
 						"\t");
 			}
 			if (!flag)
@@ -151,7 +151,7 @@ static ssize_t rvu_dbg_rsrc_attach_status(struct file *filp,
 			else
 				flag = 0;
 			off--;
-			off +=	scnprintf(&buf[off], PAGE_SIZE - off, "\n");
+			off +=	scnprintf(&buf[off], buf_size - 1 - off, "\n");
 		}
 	}
 
