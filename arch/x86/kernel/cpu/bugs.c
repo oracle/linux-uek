@@ -49,13 +49,13 @@ DEFINE_PER_CPU(unsigned int, cpu_ibrs) = 0;
 EXPORT_PER_CPU_SYMBOL(cpu_ibrs);
 
 /*
- * use_ibpb flags:
- * SPEC_CTRL_IBPB_INUSE			indicate if ibpb is currently in use
- * SPEC_CTRL_IBPB_SUPPORTED		indicate if system supports ibpb
- * SPEC_CTRL_IBPB_ADMIN_DISABLED	indicate if admin disables ibpb
+ * IBPB Variables
+ *
+ * IBPB suports is indicated by the X86_FEATURE_IBPB cpu capability.
+ * use_ibpb indicates if IBPB should be selected at boot time.
+ * ibpb_enabled_key controls if IBPB is effectively enabled or not.
  */
-unsigned int use_ibpb;
-EXPORT_SYMBOL(use_ibpb);
+static bool use_ibpb = true;
 DEFINE_STATIC_KEY_FALSE(ibpb_enabled_key);
 EXPORT_SYMBOL(ibpb_enabled_key);
 
@@ -470,7 +470,7 @@ static void __init retpoline_activate(enum spectre_v2_mitigation mode)
 	/* IBRS is unnecessary with retpoline mitigation. */
 	if (mode == SPECTRE_V2_RETPOLINE_GENERIC ||
 	    mode == SPECTRE_V2_RETPOLINE_AMD)
-		disable_ibrs_and_friends(false /* Do use IPBP if possible */);
+		disable_ibrs_and_friends(false /* Do use IBRS FW if possible */);
 }
 
 void refresh_set_spectre_v2_enabled(void)
@@ -527,7 +527,7 @@ static enum spectre_v2_mitigation_cmd __init spectre_v2_parse_cmdline(void)
 		set_ibrs_disabled();
 
 	if (cmdline_find_option_bool(boot_command_line, "noibpb"))
-		set_ibpb_disabled();
+		use_ibpb = false;
 
 	if (cmdline_find_option_bool(boot_command_line, "nospectre_v2"))
 		goto disable;
@@ -634,7 +634,7 @@ static void __init select_ibrs_variant(enum spectre_v2_mitigation *mode)
 			"no mitigation available!");
 }
 
-static void __init disable_ibrs_and_friends(bool disable_ibpb)
+static void __init disable_ibrs_and_friends(bool disable_ibrs_firmware)
 {
 	set_ibrs_disabled();
 	if (use_ibrs & SPEC_CTRL_IBRS_SUPPORTED)
@@ -642,13 +642,12 @@ static void __init disable_ibrs_and_friends(bool disable_ibpb)
 		spec_ctrl_flush_all_cpus(MSR_IA32_SPEC_CTRL,
 			x86_spec_ctrl_base & ~SPEC_CTRL_FEATURE_ENABLE_IBRS);
 	/*
-	 * We need to use IBPB with retpoline if it is available.
-	 * And also IBRS for firmware paths.
+	 * We need to use IBRS for firmware paths with retpoline
+	 * if it is available.
 	 */
-	if (disable_ibpb) {
-		set_ibpb_disabled();
+	if (disable_ibrs_firmware)
 		disable_ibrs_firmware();
-	} else
+	else
 		set_ibrs_firmware();
 }
 
@@ -685,7 +684,7 @@ select_auto_mitigation_mode(enum spectre_v2_mitigation_cmd cmd)
 
 	pr_info("Options: %s%s%s\n",
 		ibrs_supported ? (eibrs_supported ? "IBRS(enhanced) " : "IBRS(basic) ") : "",
-		check_ibpb_inuse() ? "IBPB " : "",
+		boot_cpu_has(X86_FEATURE_IBPB) ? "IBPB " : "",
 		retp_compiler() ? "retpoline" : "");
 
 	/*
@@ -780,8 +779,8 @@ static void __init activate_spectre_v2_mitigation(enum spectre_v2_mitigation mod
 	pr_info("Spectre v2 mitigation: Filling RSB on context switch\n");
 
 	/* Initialize Indirect Branch Prediction Barrier if supported */
-	if (boot_cpu_has(X86_FEATURE_IBPB)) {
-		static_branch_enable(&ibpb_enabled_key);
+	if (boot_cpu_has(X86_FEATURE_IBPB) && use_ibpb) {
+		ibpb_enable();
 		pr_info("Spectre v2 mitigation: Enabling Indirect Branch Prediction Barrier\n");
 	}
 
@@ -1261,7 +1260,7 @@ static ssize_t cpu_show_common(struct device *dev, struct device_attribute *attr
 
 	case X86_BUG_SPECTRE_V2:
 		return sprintf(buf, "%s%s%s%s\n", spectre_v2_strings[spectre_v2_enabled],
-			       ibpb_inuse ? ", IBPB" : "",
+			       ibpb_enabled() ? ", IBPB" : "",
 			       ibrs_firmware ? ", IBRS_FW" : "",
 			       spectre_v2_module_string());
 
