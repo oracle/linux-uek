@@ -118,6 +118,101 @@ static struct cvm_mmc_cr_type cvm_mmc_cr_types[] = {
 	{0, 0}		/* CMD63 */
 };
 
+/* Given a delay in ps, return the tap delay count */
+static u32 cvm_mmc_calc_delay(struct cvm_mmc_slot *slot, int delay)
+{
+	u32 no_of_taps;
+
+	if (!slot->host->per_tap_delay) {
+		pr_err("Error: tap timing not calibrated\n");
+		return -EINVAL;
+	}
+
+	no_of_taps = delay / slot->host->per_tap_delay;
+	if (no_of_taps > MAX_NO_OF_TAPS)
+		no_of_taps = MAX_NO_OF_TAPS;
+
+	return no_of_taps;
+}
+
+bool cvm_is_mmc_timing_ddr(struct cvm_mmc_slot *slot)
+{
+	if ((slot->mmc->ios.timing == MMC_TIMING_UHS_DDR50) ||
+	   (slot->mmc->ios.timing == MMC_TIMING_MMC_DDR52) ||
+	   (slot->mmc->ios.timing == MMC_TIMING_MMC_HS400))
+		return true;
+	else
+		return false;
+}
+
+static int cvm_mmc_configure_delay(struct cvm_mmc_slot *slot)
+{
+	u32 delay;
+	u64 timing = 0, emm_sample;
+	struct cvm_mmc_host *host = slot->host;
+
+	if (is_mmc_otx2(host)) {
+		/* SDR, data out delay is zero */
+		slot->data_out_tap = 0;
+
+		/*
+		 * EMM_CMD hold time from rising edge of EMMC_CLK.
+		 * Typically 5.0 ns at frequencies < 26 MHz.
+		 * Typically 2.5 ns at frequencies <= 52 MHz.
+		 * Typically 0.4 ns at frequencies > 52 MHz.
+		 */
+		if (slot->mmc->ios.clock < MHZ_26)
+			delay = cvm_mmc_calc_delay(slot, PS_5000);
+		else if (slot->mmc->ios.clock <= MHZ_52)
+			delay = cvm_mmc_calc_delay(slot, PS_2500);
+		else
+			delay  = cvm_mmc_calc_delay(slot, PS_400);
+		if (slot->cmd_out_tap < 0) {
+			pr_err("Error: could not calculate command out clock skew\n");
+			return -EINVAL;
+		}
+		slot->cmd_out_tap = delay;
+
+		/*
+		 * EMM_DAT hold time from either edge of EMMC_CLK.
+		 * Typically set to 0 for single data rate since data is
+		 * output on falling edge of EMMC_CLK. For DDR:
+		 * Typically 5.0 ns at frequencies < 26 MHz.
+		 * Typically 2.5 ns at frequencies <= 52 MHz.
+		 * Typically 0.4 ns at frequencies > 52 MHz.
+		 */
+		if (cvm_is_mmc_timing_ddr(slot))
+			slot->data_out_tap = delay;
+
+		/*
+		 * Pack all the four respective delays for data/cmd - in/out
+		 * to be written to MIO_EMM_TIMING register.
+		 */
+		timing = FIELD_PREP(MIO_EMM_MIO_TIMING_DATA_IN,
+							slot->data_cnt) |
+			FIELD_PREP(MIO_EMM_MIO_TIMING_DATA_OUT,
+							slot->data_out_tap) |
+			FIELD_PREP(MIO_EMM_MIO_TIMING_CMD_IN,
+							slot->cmd_cnt) |
+			FIELD_PREP(MIO_EMM_MIO_TIMING_CMD_OUT,
+						slot->cmd_out_tap);
+
+		pr_debug("data in: %u, data out: %u, cmd in: %u, cmd out: %u\n",
+				slot->data_cnt, slot->data_out_tap,
+				slot->cmd_cnt, slot->cmd_out_tap);
+
+		/* Commit the delay values ot register */
+		writeq(timing, host->base + MIO_EMM_TIMING(host));
+	} else {
+		/* MIO_EMM_SAMPLE is till T83XX */
+		emm_sample = FIELD_PREP(MIO_EMM_SAMPLE_CMD_CNT, slot->cmd_cnt) |
+			     FIELD_PREP(MIO_EMM_SAMPLE_DAT_CNT, slot->data_cnt);
+		writeq(emm_sample, host->base + MIO_EMM_SAMPLE(host));
+	}
+
+	return 0;
+}
+
 static struct cvm_mmc_cr_mods cvm_mmc_get_cr_mods(struct mmc_command *cmd)
 {
 	struct cvm_mmc_cr_type *cr;
@@ -316,11 +411,11 @@ static void cvm_mmc_switch_to(struct cvm_mmc_slot *slot)
 	host->powered = true;
 
 	emm_sample = FIELD_PREP(MIO_EMM_SAMPLE_CMD_CNT, slot->cmd_cnt) |
-		     FIELD_PREP(MIO_EMM_SAMPLE_DAT_CNT, slot->dat_cnt);
+		     FIELD_PREP(MIO_EMM_SAMPLE_DAT_CNT, slot->data_cnt);
 	writeq(emm_sample, host->base + MIO_EMM_SAMPLE(host));
 
 	emmc_io_drive_setup(slot);
-
+	cvm_mmc_configure_delay(slot);
 	host->last_slot = slot->bus_id;
 }
 
@@ -1092,7 +1187,7 @@ static int cvm_mmc_of_parse(struct device *dev, struct cvm_mmc_slot *slot)
 	of_property_read_u32(node, "cavium,cmd-clk-skew", &cmd_skew);
 	of_property_read_u32(node, "cavium,dat-clk-skew", &dat_skew);
 	slot->cmd_cnt = cmd_skew;
-	slot->dat_cnt = dat_skew;
+	slot->data_cnt = dat_skew;
 
 	/* Get current drive and clk skew */
 	ret = of_property_read_u32(node, "cavium,drv-strength", &current_drive);
