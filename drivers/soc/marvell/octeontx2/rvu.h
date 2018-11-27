@@ -257,6 +257,8 @@ struct mbox_wq_info {
 	struct workqueue_struct *mbox_wq;
 };
 
+struct ptp;
+
 struct rvu {
 	void __iomem		*afreg_base;
 	void __iomem		*pfreg_base;
@@ -299,6 +301,8 @@ struct rvu {
 	struct			workqueue_struct *cgx_evh_wq;
 	spinlock_t		cgx_evq_lock; /* cgx event queue lock */
 	struct list_head	cgx_evq_head; /* cgx event queue head */
+
+	struct ptp		*ptp;
 
 	/* DebugFS */
 #ifdef CONFIG_DEBUG_FS
@@ -619,6 +623,10 @@ int rvu_mbox_handler_tim_disable_ring(struct rvu *rvu,
 
 int rvu_lf_lookup_tim_errata(struct rvu *rvu, struct rvu_block *block,
 		u16 pcifunc, int slot);
+
+/* PTP APIs */
+int rvu_mbox_handler_ptp_op(struct rvu *rvu, struct ptp_req *req,
+			    struct ptp_rsp *rsp);
 
 #ifdef CONFIG_DEBUG_FS
 void rvu_dbg_init(struct rvu *rvu);
