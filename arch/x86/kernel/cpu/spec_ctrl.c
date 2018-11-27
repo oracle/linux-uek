@@ -10,8 +10,6 @@
 
 u32 sysctl_ibrs_enabled;
 EXPORT_SYMBOL(sysctl_ibrs_enabled);
-u32 sysctl_ibpb_enabled;
-EXPORT_SYMBOL(sysctl_ibpb_enabled);
 
 enum mitigation_action {
 	MITIGATION_DISABLE_IBRS,
@@ -174,6 +172,8 @@ static const struct file_operations fops_ibrs_enabled = {
 static ssize_t ibpb_enabled_read(struct file *file, char __user *user_buf,
 				 size_t count, loff_t *ppos)
 {
+	u32 sysctl_ibpb_enabled = ibpb_enabled() ? 1 : 0;
+
 	return __enabled_read(file, user_buf, count, ppos,
 			      &sysctl_ibpb_enabled);
 }
@@ -186,7 +186,7 @@ static ssize_t ibpb_enabled_write(struct file *file,
 	ssize_t len;
 	unsigned int enable;
 
-	if (!ibpb_supported)
+	if (!boot_cpu_has(X86_FEATURE_IBPB))
 		return -ENODEV;
 
 	len = min(count, sizeof(buf) - 1);
@@ -201,15 +201,15 @@ static ssize_t ibpb_enabled_write(struct file *file,
 	if (enable > 1)
 		return -EINVAL;
 
-	if (!!enable != !!ibpb_disabled)
+	if (!enable != ibpb_enabled())
 		return count;
 
 	mutex_lock(&spec_ctrl_mutex);
 
-	if (!enable)
-		set_ibpb_disabled();
+	if (enable)
+		ibpb_enable();
 	else
-		clear_ibpb_disabled();
+		ibpb_disable();
 
 	refresh_set_spectre_v2_enabled();
 
