@@ -127,6 +127,7 @@ M(DETACH_RESOURCES,	0x003, detach_resources, rsrc_detach, msg_rsp)	\
 M(FREE_RSRC_CNT,	0x004, free_rsrc_cnt, msg_req, free_rsrcs_rsp)	\
 M(MSIX_OFFSET,		0x005, msix_offset, msg_req, msix_offset_rsp)	\
 M(VF_FLR,		0x006, vf_flr, msg_req, msg_rsp)		\
+M(PTP_OP,		0x007, ptp_op, ptp_req, ptp_rsp)		\
 /* CGX mbox IDs (range 0x200 - 0x3FF) */				\
 M(CGX_START_RXTX,	0x200, cgx_start_rxtx, msg_req, msg_rsp)	\
 M(CGX_STOP_RXTX,	0x201, cgx_stop_rxtx, msg_req, msg_rsp)		\
@@ -978,6 +979,22 @@ struct tim_enable_rsp {
 	struct mbox_msghdr hdr;
 	u64	timestarted;
 	u32	currentbucket;
+};
+
+enum ptp_op {
+	PTP_OP_ADJFINE = 0, /* adjfine(req.scaled_ppm); */
+	PTP_OP_GET_CLOCK = 1, /* rsp.clk = get_clock() */
+};
+
+struct ptp_req {
+	struct mbox_msghdr hdr;
+	u8 op;
+	s64 scaled_ppm;
+};
+
+struct ptp_rsp {
+	struct mbox_msghdr hdr;
+	u64 clk;
 };
 
 #endif /* MBOX_H */
