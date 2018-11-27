@@ -543,15 +543,14 @@ static int otx2_sq_init(struct otx2_nic *pfvf, u16 qidx, u16 sqb_aura)
 		return err;
 
 	if (!pfvf->hw.hw_tso) {
-		err = qmem_alloc(pfvf->dev, &sq->tso_hdrs,
-				 qset->sqe_cnt + 1, TSO_HEADER_SIZE);
+		err = qmem_alloc(pfvf->dev, &sq->tso_hdrs, qset->sqe_cnt,
+				 TSO_HEADER_SIZE);
 		if (err)
 			return err;
 	}
 
 	sq->sqe_base = sq->sqe->base;
-	sq->sg = kcalloc((qset->sqe_cnt + 1),
-			 sizeof(struct sg_list), GFP_KERNEL);
+	sq->sg = kcalloc(qset->sqe_cnt, sizeof(struct sg_list), GFP_KERNEL);
 	if (!sq->sg)
 		return -ENOMEM;
 
