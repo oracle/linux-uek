@@ -151,7 +151,7 @@ static int cvm_mmc_configure_delay(struct cvm_mmc_slot *slot)
 	u64 timing = 0, emm_sample;
 	struct cvm_mmc_host *host = slot->host;
 
-	if (is_mmc_otx2(host)) {
+	if (!is_mmc_8xxx(host)) {
 		/* SDR, data out delay is zero */
 		slot->data_out_tap = 0;
 
@@ -1228,15 +1228,20 @@ int cvm_mmc_of_slot_probe(struct device *dev, struct cvm_mmc_host *host)
 	mmc->ops = &cvm_mmc_ops;
 
 	/*
-	 * We only have a 3.3v supply, we cannot support any
-	 * of the UHS modes. We do support the high speed DDR
-	 * modes up to 52MHz.
+	 * We only have a 3.3v supply for slots, we cannot
+	 * support any of the UHS modes. We do support the
+	 * high speed DDR modes up to 52MHz.
 	 *
 	 * Disable bounce buffers for max_segs = 1
 	 */
+
 	mmc->caps |= MMC_CAP_MMC_HIGHSPEED | MMC_CAP_SD_HIGHSPEED |
-		     MMC_CAP_ERASE | MMC_CAP_CMD23 | MMC_CAP_POWER_OFF_CARD |
-		     MMC_CAP_3_3V_DDR;
+		MMC_CAP_ERASE | MMC_CAP_CMD23 | MMC_CAP_POWER_OFF_CARD;
+
+	if (is_mmc_8xxx(host))
+		mmc->caps |= MMC_CAP_3_3V_DDR;
+
+	mmc->caps |= MMC_CAP_ERASE | MMC_CAP_CMD23 | MMC_CAP_POWER_OFF_CARD;
 
 	if (host->use_sg)
 		mmc->max_segs = 16;
