@@ -99,20 +99,25 @@ static void swap_ucodes(struct microcode *ucodel, struct microcode *ucoder)
 	*ucoder = ucode;
 }
 
-static int get_ucode_type(char *ucode_ver_str, int *ucode_type)
+static int get_ucode_type(struct microcode_hdr *ucode_hdr, int *ucode_type)
 {
-	char tmp_ver_str[CPT_UCODE_VERSION_SZ];
+	char tmp_ver_str[CPT_UCODE_VER_STR_SZ];
 	int i, val = 0;
+	u8 nn;
 
-	strlcpy(tmp_ver_str, ucode_ver_str, CPT_UCODE_VERSION_SZ);
+	strlcpy(tmp_ver_str, ucode_hdr->ver_str, CPT_UCODE_VER_STR_SZ);
 	for (i = 0; i < strlen(tmp_ver_str); i++)
 		tmp_ver_str[i] = tolower(tmp_ver_str[i]);
 
-	if (strnstr(tmp_ver_str, "se-", CPT_UCODE_VERSION_SZ))
+	nn = ucode_hdr->ver_num.nn;
+	if (strnstr(tmp_ver_str, "se-", CPT_UCODE_VER_STR_SZ) &&
+	    (nn == SE_UC_TYPE1 || nn == SE_UC_TYPE2 || nn == SE_UC_TYPE3))
 		val |= 1 << SE_TYPES;
-	if (strnstr(tmp_ver_str, "ipsec", CPT_UCODE_VERSION_SZ))
+	if (strnstr(tmp_ver_str, "ipsec", CPT_UCODE_VER_STR_SZ) &&
+	    (nn == IE_UC_TYPE1 || nn == IE_UC_TYPE2 || nn == IE_UC_TYPE3))
 		val |= 1 << IE_TYPES;
-	if (strnstr(tmp_ver_str, "ae", CPT_UCODE_VERSION_SZ))
+	if (strnstr(tmp_ver_str, "ae", CPT_UCODE_VER_STR_SZ) &&
+	    nn == AE_UC_TYPE)
 		val |= 1 << AE_TYPES;
 
 	*ucode_type = val;
@@ -154,7 +159,7 @@ static int process_tar_file(struct device *dev,
 	/* If microcode version can't be found don't report an error
 	 * because it might not be microcode file, just process next file
 	 */
-	if (get_ucode_type(ucode_hdr->version, &ucode_type))
+	if (get_ucode_type(ucode_hdr, &ucode_type))
 		return 0;
 
 	ucode_size = ntohl(ucode_hdr->code_length) * 2;
@@ -170,8 +175,9 @@ static int process_tar_file(struct device *dev,
 
 	tar_ucode_info->ucode_ptr = data;
 	set_ucode_filename(&tar_ucode_info->ucode, filename);
-	memcpy(tar_ucode_info->ucode.version, (u8 *) ucode_hdr->version,
-	       CPT_UCODE_VERSION_SZ);
+	memcpy(tar_ucode_info->ucode.ver_str, ucode_hdr->ver_str,
+	       CPT_UCODE_VER_STR_SZ);
+	tar_ucode_info->ucode.ver_num = ucode_hdr->ver_num;
 	tar_ucode_info->ucode.type = ucode_type;
 	tar_ucode_info->ucode.size = ucode_size;
 	list_add_tail(&tar_ucode_info->list, &tar_arch->ucodes);
@@ -200,16 +206,42 @@ static struct tar_ucode_info_t *get_uc_from_tar_archive(
 					struct tar_arch_info_t *tar_arch,
 					int ucode_type)
 {
-	struct tar_ucode_info_t *curr;
+	struct tar_ucode_info_t *curr, *uc_found = NULL;
 
-	list_for_each_entry(curr, &tar_arch->ucodes, list)
-		if (ucode_type == IE_TYPES) {
-			if (is_eng_type(curr->ucode.type, IE_TYPES) &&
-				!is_eng_type(curr->ucode.type, SE_TYPES))
-				return curr;
-		} else if (is_eng_type(curr->ucode.type, ucode_type))
-			return curr;
-	return NULL;
+	list_for_each_entry(curr, &tar_arch->ucodes, list) {
+		if (!is_eng_type(curr->ucode.type, ucode_type))
+			continue;
+
+		if (ucode_type == IE_TYPES &&
+		    is_eng_type(curr->ucode.type, SE_TYPES))
+			continue;
+
+		if (!uc_found) {
+			uc_found = curr;
+			continue;
+		}
+
+		switch (ucode_type) {
+		case AE_TYPES:
+			break;
+
+		case SE_TYPES:
+			if (uc_found->ucode.ver_num.nn == SE_UC_TYPE2 ||
+			    (uc_found->ucode.ver_num.nn == SE_UC_TYPE3 &&
+			    curr->ucode.ver_num.nn == SE_UC_TYPE1))
+				uc_found = curr;
+			break;
+
+		case IE_TYPES:
+			if (uc_found->ucode.ver_num.nn == IE_UC_TYPE2 ||
+			    (uc_found->ucode.ver_num.nn == IE_UC_TYPE3 &&
+			    curr->ucode.ver_num.nn == IE_UC_TYPE1))
+				uc_found = curr;
+			break;
+		}
+	}
+
+	return uc_found;
 }
 
 static void print_tar_dbg_info(struct device *dev,
@@ -223,7 +255,10 @@ static void print_tar_dbg_info(struct device *dev,
 		 tar_arch->fw->size);
 	list_for_each_entry(curr, &tar_arch->ucodes, list) {
 		dev_info(dev, "Ucode filename %s", curr->ucode.filename);
-		dev_info(dev, "Ucode version %s", &curr->ucode.version[1]);
+		dev_info(dev, "Ucode version string %s", curr->ucode.ver_str);
+		dev_info(dev, "Ucode version %d.%d.%d.%d",
+			 curr->ucode.ver_num.nn, curr->ucode.ver_num.xx,
+			 curr->ucode.ver_num.yy, curr->ucode.ver_num.zz);
 		dev_info(dev, "Ucode type (%d) %s", curr->ucode.type,
 			 get_ucode_type_str(curr->ucode.type));
 		dev_info(dev, "Ucode size %d", curr->ucode.size);
@@ -350,22 +385,20 @@ int cpt_eng_grp_has_eng_type(struct engine_group_info *eng_grp, int eng_type)
 static void print_ucode_info(struct engine_group_info *eng_grp,
 			     char *buf, int size)
 {
-	int len, ucode_type;
+	int len;
 
 	if (eng_grp->mirror.is_ena) {
-		ucode_type =
-			eng_grp->g->grp[eng_grp->mirror.idx].ucode[0].type;
 		scnprintf(buf, size, "%s (shared with engine_group%d)",
-			  get_ucode_type_str(ucode_type), eng_grp->mirror.idx);
+			eng_grp->g->grp[eng_grp->mirror.idx].ucode[0].ver_str,
+			eng_grp->mirror.idx);
 	} else {
-		scnprintf(buf, size, "%s",
-			  get_ucode_type_str(eng_grp->ucode[0].type));
+		scnprintf(buf, size, "%s", eng_grp->ucode[0].ver_str);
 	}
 
 	if (is_2nd_ucode_used(eng_grp)) {
 		len = strlen(buf);
 		scnprintf(buf + len, size - len, ", %s (used by IE engines)",
-			  get_ucode_type_str(eng_grp->ucode[1].type));
+			  eng_grp->ucode[1].ver_str);
 	}
 }
 
@@ -414,7 +447,9 @@ static void print_ucode_dbg_info(struct device *dev, struct microcode *ucode)
 {
 	dev_info(dev, "\n");
 	dev_info(dev, "Ucode info");
-	dev_info(dev, "Ucode version %s", &ucode->version[1]);
+	dev_info(dev, "Ucode version string %s", ucode->ver_str);
+	dev_info(dev, "Ucode version %d.%d.%d.%d", ucode->ver_num.nn,
+		 ucode->ver_num.xx, ucode->ver_num.yy, ucode->ver_num.zz);
 	dev_info(dev, "Ucode type %s", get_ucode_type_str(ucode->type));
 	dev_info(dev, "Ucode size %d", ucode->size);
 	dev_info(dev, "Ucode virt address %16.16llx", (u64)ucode->align_va);
@@ -454,13 +489,13 @@ static void print_dbg_info(struct device *dev,
 				 mirrored_grp->ucode[0].filename :
 				 grp->ucode[0].filename,
 				 grp->mirror.is_ena ?
-				 &mirrored_grp->ucode[0].version[1] :
-				 &grp->ucode[0].version[1]);
+				 mirrored_grp->ucode[0].ver_str :
+				 grp->ucode[0].ver_str);
 			if (is_2nd_ucode_used(grp))
 				dev_info(dev,
 					 "Ucode1 filename %s, version %s",
 					 grp->ucode[1].filename,
-					 &grp->ucode[1].version[1]);
+					 grp->ucode[1].ver_str);
 			else
 				dev_info(dev, "Ucode1 not used");
 		}
@@ -662,7 +697,7 @@ static ssize_t eng_grp_info_show(struct device *dev,
 {
 	struct engine_group_info *eng_grp;
 	char engs_info[2*NAME_LENGTH];
-	char ucode_info[NAME_LENGTH];
+	char ucode_info[2*NAME_LENGTH];
 	char engs_mask[NAME_LENGTH];
 	int ret = 0;
 
@@ -670,10 +705,10 @@ static ssize_t eng_grp_info_show(struct device *dev,
 	mutex_lock(&eng_grp->g->lock);
 
 	print_engs_info(eng_grp, engs_info, 2*NAME_LENGTH, -1);
-	print_ucode_info(eng_grp, ucode_info, NAME_LENGTH);
+	print_ucode_info(eng_grp, ucode_info, 2*NAME_LENGTH);
 	cpt_print_engines_mask(eng_grp, eng_grp->g, engs_mask, NAME_LENGTH);
 	ret = scnprintf(buf, PAGE_SIZE,
-			"Microcode type: %s\nEngines: %s\nEngines mask: %s\n",
+			"Microcode : %s\nEngines: %s\nEngines mask: %s\n",
 			ucode_info, engs_info, engs_mask);
 
 	mutex_unlock(&eng_grp->g->lock);
@@ -711,8 +746,8 @@ static void ucode_unload(struct device *dev, struct microcode *ucode)
 		ucode->size = 0;
 	}
 
-	ucode->version[0] = '\0';
-	ucode->version[1] = '\0';
+	memset(&ucode->ver_str, 0, CPT_UCODE_VER_STR_SZ);
+	memset(&ucode->ver_num, 0, sizeof(struct microcode_ver_num));
 	set_ucode_filename(ucode, "");
 	ucode->type = 0;
 }
@@ -759,14 +794,15 @@ static int ucode_load(struct device *dev, struct microcode *ucode,
 		return ret;
 
 	ucode_hdr = (struct microcode_hdr *) fw->data;
-	memcpy(ucode->version, ucode_hdr->version, CPT_UCODE_VERSION_SZ);
+	memcpy(ucode->ver_str, ucode_hdr->ver_str, CPT_UCODE_VER_STR_SZ);
+	ucode->ver_num = ucode_hdr->ver_num;
 	ucode->size = ntohl(ucode_hdr->code_length) * 2;
 	if (!ucode->size) {
 		ret = -EINVAL;
 		goto err;
 	}
 
-	ret = get_ucode_type(ucode_hdr->version, &ucode->type);
+	ret = get_ucode_type(ucode_hdr, &ucode->type);
 	if (ret) {
 		dev_err(dev, "Microcode %s unknown type 0x%x", ucode->filename,
 			ucode->type);
@@ -903,8 +939,8 @@ struct engine_group_info *find_mirrored_eng_grp(struct engine_group_info *grp)
 			continue;
 		if (grp->idx == i)
 			continue;
-		if (!strncasecmp(eng_grps->grp[i].ucode[0].version,
-				 grp->ucode[0].version, CPT_UCODE_VERSION_SZ))
+		if (!strncasecmp(eng_grps->grp[i].ucode[0].ver_str,
+				 grp->ucode[0].ver_str, CPT_UCODE_VER_STR_SZ))
 			return &eng_grps->grp[i];
 	}
 
@@ -1238,14 +1274,14 @@ static int create_engine_group(struct device *dev,
 	if (eng_grp->mirror.is_ena)
 		dev_info(dev,
 			 "Engine_group%d: reuse microcode %s from group %d",
-			 eng_grp->idx, &mirrored_eng_grp->ucode[0].version[1],
+			 eng_grp->idx, mirrored_eng_grp->ucode[0].ver_str,
 			 mirrored_eng_grp->idx);
 	else
 		dev_info(dev, "Engine_group%d: microcode loaded %s",
-			 eng_grp->idx, &eng_grp->ucode[0].version[1]);
+			 eng_grp->idx, eng_grp->ucode[0].ver_str);
 	if (is_2nd_ucode_used(eng_grp))
 		dev_info(dev, "Engine_group%d: microcode loaded %s",
-			 eng_grp->idx, &eng_grp->ucode[1].version[1]);
+			 eng_grp->idx, eng_grp->ucode[1].ver_str);
 
 	if (eng_grps->plat_hndlr)
 		eng_grps->plat_hndlr(eng_grps->obj);
