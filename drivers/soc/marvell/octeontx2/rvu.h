@@ -308,6 +308,8 @@ struct rvu {
 #ifdef CONFIG_DEBUG_FS
 	struct rvu_debugfs	rvu_dbg;
 #endif /* CONFIG_DEBUG_FS */
+
+	char mkex_pfl_name[MKEX_NAME_LEN]; /* Configured MKEX profile name */
 };
 
 static inline void rvu_write64(struct rvu *rvu, u64 block, u64 offset, u64 val)
