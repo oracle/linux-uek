@@ -302,6 +302,7 @@ kernel/drivers/net/tun.ko
 kernel/drivers/net/vxlan.ko
 kernel/drivers/net/macvlan.ko
 kernel/drivers/net/mii.ko
+kernel/drivers/net/net_failover.ko
 kernel/drivers/net/hyperv/hv_netvsc.ko
 kernel/drivers/net/netconsole.ko
 kernel/drivers/net/xen-netfront.ko
@@ -924,6 +925,7 @@ kernel/net/sunrpc/xprtrdma/rpcrdma.ko
 kernel/net/sunrpc/sunrpc.ko
 kernel/net/sunrpc/auth_gss/auth_rpcgss.ko
 kernel/net/sunrpc/auth_gss/rpcsec_gss_krb5.ko
+kernel/net/core/failover.ko
 kernel/net/core/pktgen.ko
 kernel/net/mac80211/mac80211.ko
 kernel/net/sctp/sctp_probe.ko
