@@ -103,9 +103,9 @@ static void change_mitigation(enum mitigation_action action)
 
 	if (ibrs_fw_requested != ibrs_fw_used) {
 		if (ibrs_fw_requested)
-			set_ibrs_firmware();
+			ibrs_firmware_enable();
 		else
-			disable_ibrs_firmware();
+			ibrs_firmware_disable();
 		changes++;
 	}
 

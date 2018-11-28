@@ -19,7 +19,6 @@
 #define SPEC_CTRL_BASIC_IBRS_INUSE     (1<<0)  /* OS enables basic IBRS usage */
 #define SPEC_CTRL_IBRS_SUPPORTED       (1<<1)  /* System supports IBRS (basic or enhanced) */
 #define SPEC_CTRL_IBRS_ADMIN_DISABLED  (1<<2)  /* Admin disables IBRS (basic and enhanced) */
-#define SPEC_CTRL_IBRS_FIRMWARE        (1<<3)  /* IBRS to be used on firmware paths */
 #define SPEC_CTRL_ENHCD_IBRS_SUPPORTED (1<<4)  /* System supports enhanced IBRS */
 #define SPEC_CTRL_ENHCD_IBRS_INUSE     (1<<5)  /* OS enables enhanced IBRS usage */
 
@@ -214,7 +213,6 @@ extern struct mutex spec_ctrl_mutex;
 
 DECLARE_STATIC_KEY_FALSE(retpoline_enabled_key);
 
-#define ibrs_firmware		(use_ibrs & SPEC_CTRL_IBRS_FIRMWARE)
 #define ibrs_supported		(use_ibrs & SPEC_CTRL_IBRS_SUPPORTED)
 #define ibrs_disabled		(use_ibrs & SPEC_CTRL_IBRS_ADMIN_DISABLED)
 #define eibrs_supported		(use_ibrs & SPEC_CTRL_ENHCD_IBRS_SUPPORTED)
@@ -345,18 +343,20 @@ static inline void set_ibrs_enhanced(void)
 	use_ibrs |= SPEC_CTRL_ENHCD_IBRS_SUPPORTED;
 }
 
-static inline void set_ibrs_firmware(void)
+static inline bool ibrs_firmware_enabled(void)
 {
-	if (ibrs_supported) {
-		static_branch_enable(&ibrs_firmware_enabled_key);
-		use_ibrs |= SPEC_CTRL_IBRS_FIRMWARE;
-	}
+	return static_key_enabled(&ibrs_firmware_enabled_key);
 }
 
-static inline void disable_ibrs_firmware(void)
+static inline void ibrs_firmware_enable(void)
+{
+	if (ibrs_supported)
+		static_branch_enable(&ibrs_firmware_enabled_key);
+}
+
+static inline void ibrs_firmware_disable(void)
 {
 	static_branch_disable(&ibrs_firmware_enabled_key);
-	use_ibrs &= ~SPEC_CTRL_IBRS_FIRMWARE;
 }
 
 static inline void clear_ibrs_disabled(void)
