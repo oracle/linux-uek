@@ -38,7 +38,6 @@
  * SPEC_CTRL_BASIC_IBRS_INUSE		basic ibrs is currently in use
  * SPEC_CTRL_IBRS_SUPPORTED		system supports basic ibrs
  * SPEC_CTRL_IBRS_ADMIN_DISABLED	admin disables ibrs (basic and enhanced)
- * SPEC_CTRL_IBRS_FIRMWARE		ibrs to be used on firmware paths
  * SPEC_CTRL_ENHCD_IBRS_SUPPORTED	system supports enhanced ibrs
  * SPEC_CTRL_ENHCD_IBRS_INUSE		nhanced ibrs is currently in use
  */
@@ -780,7 +779,7 @@ static void __init activate_spectre_v2_mitigation(enum spectre_v2_mitigation mod
 	 */
 	if (ibrs_supported &&
 	    (spectre_v2_enabled != SPECTRE_V2_IBRS_ENHANCED)) {
-		set_ibrs_firmware();
+		ibrs_firmware_enable();
 		pr_info("Enabling Restricted Speculation for firmware calls\n");
 	}
 }
@@ -1250,7 +1249,7 @@ static ssize_t cpu_show_common(struct device *dev, struct device_attribute *attr
 	case X86_BUG_SPECTRE_V2:
 		return sprintf(buf, "%s%s%s%s\n", spectre_v2_strings[spectre_v2_enabled],
 			       ibpb_enabled() ? ", IBPB" : "",
-			       ibrs_firmware ? ", IBRS_FW" : "",
+			       ibrs_firmware_enabled() ? ", IBRS_FW" : "",
 			       spectre_v2_module_string());
 
 	case X86_BUG_SPEC_STORE_BYPASS:
