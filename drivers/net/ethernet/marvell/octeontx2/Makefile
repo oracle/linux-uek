@@ -4,3 +4,4 @@
 #
 
 obj-$(CONFIG_OCTEONTX2_AF) += af/
+obj-y			   += nic/
