@@ -24,11 +24,8 @@
 #define CAVIUM_MAX_MMC		4
 
 /* Subsystem Device ID */
-#define PCI_SUBSYS_DEVID_88XX   0xA100
-#define PCI_SUBSYS_DEVID_81XX   0xA200
-#define PCI_SUBSYS_DEVID_83XX   0xA300
-#define PCI_SUBSYS_DEVID_96XX	0xB200
-#define PCI_SUBSYS_DEVID_95XX   0xB300
+#define PCI_SUBSYS_DEVID_8XXX	0xA
+#define PCI_SUBSYS_DEVID_9XXX	0xB
 
 #define KHZ_400 (400000)
 #define MHZ_26  (26000000)
@@ -282,25 +279,25 @@ extern const char *cvm_mmc_irq_names[];
 static inline bool is_mmc_8xxx(struct cvm_mmc_host *host)
 {
 	struct pci_dev *pdev = host->pdev;
+	u32 chip_id = (pdev->subsystem_device >> 12) & 0xF;
 
-	return (pdev->subsystem_device == PCI_SUBSYS_DEVID_81XX) ||
-		(pdev->subsystem_device == PCI_SUBSYS_DEVID_83XX) ||
-		(pdev->subsystem_device == PCI_SUBSYS_DEVID_88XX);
+	return (chip_id == PCI_SUBSYS_DEVID_8XXX);
 }
 
 static inline bool is_mmc_otx2(struct cvm_mmc_host *host)
 {
 	struct pci_dev *pdev = host->pdev;
+	u32 chip_id = (pdev->subsystem_device >> 12) & 0xF;
 
-	return (pdev->subsystem_device == PCI_SUBSYS_DEVID_96XX) ||
-		(pdev->subsystem_device == PCI_SUBSYS_DEVID_95XX);
+	return (chip_id == PCI_SUBSYS_DEVID_9XXX);
 }
 
 static inline bool is_mmc_otx2_A0(struct cvm_mmc_host *host)
 {
 	struct pci_dev *pdev = host->pdev;
+	u32 chip_id = (pdev->subsystem_device >> 12) & 0xF;
 
 	return (pdev->revision == 0x00) &&
-		(pdev->subsystem_device == PCI_SUBSYS_DEVID_96XX);
+		(chip_id == PCI_SUBSYS_DEVID_9XXX);
 }
 #endif
