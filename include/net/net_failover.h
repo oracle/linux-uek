@@ -25,6 +25,12 @@ struct net_failover_info {
 
 	/* spinlock while updating stats */
 	spinlock_t stats_lock;
+
+	/* back reference to associated net_device */
+	struct net_device *failover_dev;
+
+	/* delayed work to take over primary netdev */
+	struct delayed_work takeover;
 };
 
 struct failover *net_failover_create(struct net_device *standby_dev);
