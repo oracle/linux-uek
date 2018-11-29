@@ -2549,6 +2549,39 @@ void rdmaip_destroy_ip_workq(void)
 	destroy_workqueue(rdmaip_wq);
 }
 
+static void rdmaip_restore_ip_addresses(void)
+{
+	mm_segment_t	old_fs = get_fs();
+	u8		port;
+
+	for (port = 1; port <= ip_port_cnt; port++) {
+		if (!ip_config[port].failover_group) {
+			RDMAIP_DBG2("%s: failover group is zero\n", __func__);
+			continue;
+		}
+		RDMAIP_DBG2("%s: Resetting IPs on %d\n", __func__, port);
+
+		/*
+		 * rdmaip_do_failback() calls inet(6)_ioctl call which calls
+		 * copy_from_user() to copy the data from user address space
+		 * into kernel address space. copy_from_user() checks whether
+		 * the address is within the range for the process user address
+		 * space. This function can be called as result of a user
+		 * process trying to unload the module. Under these conditions
+		 * addr_limit is set to max user address space. The address
+		 * passed to inet(6)_ioct is kernel address which is out of user
+		 * address speace. As a result, copy_from_user() fails as kernel
+		 * address * does not fall into the user address space limit.
+		 * To avoid the failure, set the address limit temporarily to
+		 * accept kernel addresses and reset set after the call.
+		 */
+		set_fs(KERNEL_DS);
+		rdmaip_do_failback(port);
+		set_fs(old_fs);
+	}
+}
+
+
 /*
  * rdmaip_cleanup
  *     This functions tear downs all the resources allocated in
@@ -2560,6 +2593,8 @@ void rdmaip_cleanup(void)
 		    rdmaip_init_flag);
 
 	rdmaip_init_flag |= RDMAIP_TEARDOWN_IN_PROGRESS;
+
+	rdmaip_restore_ip_addresses();
 
 	if (rdmaip_init_flag & RDMAIP_REG_NETDEV_NOTIFIER) {
 		unregister_netdevice_notifier(&rdmaip_nb);
