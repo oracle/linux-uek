@@ -462,7 +462,7 @@ static int rdmaip_move_ip4(char *from_dev, char *to_dev, u8 from_port,
 	u8			active_port;
 	struct in_device	*in_dev;
 
-	RDMAIP_DBG3("from_dev %s :  to_dev %s : from_port %d : to_port %d"
+	RDMAIP_DBG2_PTR("from_dev %s :  to_dev %s : from_port %d : to_port %d"
 		    " IP addr %pI4 : failover %s\n",
 		    from_dev, to_dev, from_port, to_port, (void *)&addr,
 		    (failover ? "True" : "False"));
@@ -484,7 +484,7 @@ static int rdmaip_move_ip4(char *from_dev, char *to_dev, u8 from_port,
 		ret = inet_ioctl(rdmaip_inet_socket, SIOCGIFADDR,
 					(unsigned long) ir);
 		if (ret == -EADDRNOTAVAIL) {
-			RDMAIP_DBG3("Setting primary IP on %s %pI4\n",
+			RDMAIP_DBG2_PTR("Setting primary IP on %s %pI4\n",
 				    ip_config[to_port].dev->name,
 				    &ip_config[to_port].ip_addr);
 
@@ -636,7 +636,6 @@ static void rdmaip_init_ip4_addrs(struct net_device *net_dev,
 				ip_bcast = 0;
 				ip_mask = 0;
 			}
-
 			strcpy(ip_config[port].if_name, if_name);
 			ip_config[port].ip_addr = ip_addr;
 			ip_config[port].ip_bcast = ip_bcast;
@@ -1064,11 +1063,12 @@ static void rdmaip_failover(struct work_struct *_work)
 			ip_config[i].port_state == RDMAIP_PORT_DOWN &&
 			ip_config[i].ip_active_port == work->port) {
 
-			RDMAIP_DBG3("Zeroing IP address on %s\n", if_name);
 			strcpy(if_name, ip_config[work->port].if_name);
 			strcat(if_name, ":");
 			strcat(if_name, ip_config[i].port_label);
 			if_name[IFNAMSIZ - 1] = 0;
+
+			RDMAIP_DBG3("Zeroing IP address on %s\n", if_name);
 			ret = rdmaip_set_ip4(NULL, NULL, if_name, 0, 0, 0);
 
 			rdmaip_do_failover(i, 0);
