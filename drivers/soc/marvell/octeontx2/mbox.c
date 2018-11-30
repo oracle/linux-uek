@@ -20,10 +20,8 @@ static const u16 msgs_offset = ALIGN(sizeof(struct mbox_hdr), MBOX_MSG_ALIGN);
 void otx2_mbox_reset(struct otx2_mbox *mbox, int devid)
 {
 	struct otx2_mbox_dev *mdev = &mbox->dev[devid];
-	struct mbox_hdr *tx_hdr =
-		(struct mbox_hdr *)(mdev->mbase  + mbox->tx_start);
-	struct mbox_hdr *rx_hdr =
-		(struct mbox_hdr *)(mdev->mbase  + mbox->rx_start);
+	struct mbox_hdr *tx_hdr = mdev->mbase  + mbox->tx_start;
+	struct mbox_hdr *rx_hdr = mdev->mbase  + mbox->rx_start;
 
 	spin_lock(&mdev->mbox_lock);
 	mdev->msg_size = 0;
@@ -163,10 +161,8 @@ EXPORT_SYMBOL(otx2_mbox_busy_poll_for_rsp);
 void otx2_mbox_msg_send(struct otx2_mbox *mbox, int devid)
 {
 	struct otx2_mbox_dev *mdev = &mbox->dev[devid];
-	struct mbox_hdr *tx_hdr =
-		(struct mbox_hdr *)(mdev->mbase  + mbox->tx_start);
-	struct mbox_hdr *rx_hdr =
-		(struct mbox_hdr *)(mdev->mbase  + mbox->rx_start);
+	struct mbox_hdr *tx_hdr = mdev->mbase  + mbox->tx_start;
+	struct mbox_hdr *rx_hdr = mdev->mbase  + mbox->rx_start;
 
 	spin_lock(&mdev->mbox_lock);
 	/* Reset header for next messages */
