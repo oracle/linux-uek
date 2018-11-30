@@ -603,10 +603,10 @@ int psi_cgroup_alloc(struct cgroup *cgroup)
 	if (psi_disabled)
 		return 0;
 
-	cgroup->psi.pcpu = alloc_percpu(struct psi_group_cpu);
-	if (!cgroup->psi.pcpu)
+	cgroup->psi->pcpu = alloc_percpu(struct psi_group_cpu);
+	if (!cgroup->psi->pcpu)
 		return -ENOMEM;
-	group_init(&cgroup->psi);
+	group_init(cgroup->psi);
 	return 0;
 }
 
@@ -615,8 +615,9 @@ void psi_cgroup_free(struct cgroup *cgroup)
 	if (psi_disabled)
 		return;
 
-	cancel_delayed_work_sync(&cgroup->psi.clock_work);
-	free_percpu(cgroup->psi.pcpu);
+	cancel_delayed_work_sync(&cgroup->psi->clock_work);
+	free_percpu(cgroup->psi->pcpu);
+	kfree(cgroup->psi);
 }
 
 /**

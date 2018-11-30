@@ -3389,15 +3389,15 @@ static int cpu_stat_show(struct seq_file *seq, void *v)
 #ifdef CONFIG_PSI
 static int cgroup_io_pressure_show(struct seq_file *seq, void *v)
 {
-	return psi_show(seq, &seq_css(seq)->cgroup->psi, PSI_IO);
+	return psi_show(seq, seq_css(seq)->cgroup->psi, PSI_IO);
 }
 static int cgroup_memory_pressure_show(struct seq_file *seq, void *v)
 {
-	return psi_show(seq, &seq_css(seq)->cgroup->psi, PSI_MEM);
+	return psi_show(seq, seq_css(seq)->cgroup->psi, PSI_MEM);
 }
 static int cgroup_cpu_pressure_show(struct seq_file *seq, void *v)
 {
-	return psi_show(seq, &seq_css(seq)->cgroup->psi, PSI_CPU);
+	return psi_show(seq, seq_css(seq)->cgroup->psi, PSI_CPU);
 }
 #endif
 
@@ -4817,9 +4817,15 @@ static struct cgroup *cgroup_create(struct cgroup *parent)
 	if (!cgrp)
 		return ERR_PTR(-ENOMEM);
 
+	cgrp->psi = kzalloc(sizeof(struct psi_group), GFP_KERNEL);
+	if (!cgrp->psi) {
+		ret = -ENOMEM;
+		goto out_free_cgrp;
+	}
+
 	ret = percpu_ref_init(&cgrp->self.refcnt, css_release, 0, GFP_KERNEL);
 	if (ret)
-		goto out_free_cgrp;
+		goto out_free_psi;
 
 	if (cgroup_on_dfl(parent)) {
 		ret = cgroup_stat_init(cgrp);
@@ -4894,6 +4900,8 @@ out_stat_exit:
 		cgroup_stat_exit(cgrp);
 out_cancel_ref:
 	percpu_ref_exit(&cgrp->self.refcnt);
+out_free_psi:
+	kfree(cgrp->psi);
 out_free_cgrp:
 	kfree(cgrp);
 	return ERR_PTR(ret);

@@ -321,7 +321,8 @@ void workingset_refault(struct page *page, void *shadow)
 	/* Page was active prior to eviction */
 	if (workingset) {
 		SetPageWorkingset(page);
-		inc_lruvec_state(lruvec, WORKINGSET_RESTORE);
+		inc_lruvec_state_hi(lruvec,
+				    WORKINGSET_RESTORE_AND_NODERECLAIM);
 	}
 out:
 	rcu_read_unlock();
@@ -500,7 +501,8 @@ static enum lru_status shadow_lru_isolate(struct list_head *item,
 	}
 	if (WARN_ON_ONCE(node->exceptional))
 		goto out_invalid;
-	inc_lruvec_page_state(virt_to_page(node), WORKINGSET_NODERECLAIM);
+	inc_lruvec_page_state_lo(virt_to_page(node),
+				 WORKINGSET_RESTORE_AND_NODERECLAIM);
 	__radix_tree_delete_node(&mapping->page_tree, node,
 				 workingset_lookup_update(mapping));
 

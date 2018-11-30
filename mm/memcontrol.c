@@ -5291,6 +5291,9 @@ static int memory_events_show(struct seq_file *m, void *v)
 	return 0;
 }
 
+#define LO(_val)       ((_val) & 0xFFFF)
+#define HI(_val)       (((_val) >> 16) & 0xFFFF)
+
 static int memory_stat_show(struct seq_file *m, void *v)
 {
 	struct mem_cgroup *memcg = mem_cgroup_from_css(seq_css(m));
@@ -5368,7 +5371,7 @@ static int memory_stat_show(struct seq_file *m, void *v)
 	seq_printf(m, "workingset_activate %lu\n",
 		   stat[WORKINGSET_ACTIVATE]);
 	seq_printf(m, "workingset_nodereclaim %lu\n",
-		   stat[WORKINGSET_NODERECLAIM]);
+		   LO(stat[WORKINGSET_RESTORE_AND_NODERECLAIM]));
 
 	return 0;
 }

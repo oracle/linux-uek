@@ -1024,6 +1024,18 @@ static inline void inc_lruvec_state(struct lruvec *lruvec,
 	mod_lruvec_state(lruvec, idx, 1);
 }
 
+static inline void inc_lruvec_state_hi(struct lruvec *lruvec,
+				       enum node_stat_item idx)
+{
+	mod_lruvec_state(lruvec, idx, 1 << 16);
+}
+
+static inline void inc_lruvec_state_lo(struct lruvec *lruvec,
+				       enum node_stat_item idx)
+{
+	mod_lruvec_state(lruvec, idx, 1);
+}
+
 static inline void dec_lruvec_state(struct lruvec *lruvec,
 				    enum node_stat_item idx)
 {
@@ -1032,6 +1044,18 @@ static inline void dec_lruvec_state(struct lruvec *lruvec,
 
 static inline void inc_lruvec_page_state(struct page *page,
 					 enum node_stat_item idx)
+{
+	mod_lruvec_page_state(page, idx, 1);
+}
+
+static inline void inc_lruvec_page_state_hi(struct page *page,
+					    enum node_stat_item idx)
+{
+	mod_lruvec_page_state(page, idx, 1 << 16);
+}
+
+static inline void inc_lruvec_page_state_lo(struct page *page,
+					    enum node_stat_item idx)
 {
 	mod_lruvec_page_state(page, idx, 1);
 }

@@ -680,7 +680,7 @@ struct task_struct {
 	unsigned			sched_migrated:1;
 	unsigned			sched_remote_wakeup:1;
 #ifdef CONFIG_PSI
-	unsigned			sched_psi_wake_requeue:1;
+	UEK_KABI_FILL_HOLE(unsigned sched_psi_wake_requeue:1)
 #endif
 
 	/* Force alignment to the next boundary: */
@@ -941,10 +941,6 @@ struct task_struct {
 	siginfo_t			*last_siginfo;
 
 	struct task_io_accounting	ioac;
-#ifdef CONFIG_PSI
-	/* Pressure stall state */
-	unsigned int			psi_flags;
-#endif
 #ifdef CONFIG_TASK_XACCT
 	/* Accumulated RSS usage: */
 	u64				acct_rss_mem1;
@@ -1167,8 +1163,14 @@ struct task_struct {
 	 */
 	UEK_KABI_USE(1, int recent_used_cpu);
 
-	/* Space for future expansion without breaking kABI. */
+#ifdef CONFIG_PSI
+	/* Pressure stall state */
+	UEK_KABI_USE(2, u32 psi_flags);
+#else /* CONFIG_PSI */
 	UEK_KABI_RESERVED(2);
+#endif
+
+	/* Space for future expansion without breaking kABI. */
 	UEK_KABI_RESERVED(3);
 	UEK_KABI_RESERVED(4);
 	UEK_KABI_RESERVED(5);

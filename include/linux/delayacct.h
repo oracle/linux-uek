@@ -17,6 +17,7 @@
 #ifndef _LINUX_DELAYACCT_H
 #define _LINUX_DELAYACCT_H
 
+#include <linux/uek_kabi.h>
 #include <uapi/linux/taskstats.h>
 
 /*
@@ -58,11 +59,11 @@ struct task_delay_info {
 	u64 freepages_start;
 	u64 freepages_delay;	/* wait for memory reclaim */
 
-	u64 thrashing_start;
-	u64 thrashing_delay;	/* wait for thrashing page */
-
 	u32 freepages_count;	/* total count of memory reclaim */
-	u32 thrashing_count;	/* total count of thrash waits */
+
+	UEK_KABI_EXTEND(u32 thrashing_count) /* total count of thrash waits */
+	UEK_KABI_EXTEND(u64 thrashing_start)
+	UEK_KABI_EXTEND(u64 thrashing_delay) /* wait for thrashing page */
 };
 #endif
 
