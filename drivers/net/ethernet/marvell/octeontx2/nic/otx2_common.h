@@ -40,6 +40,8 @@ struct otx2_hw {
 	u16			max_queues;
 
 	/* MSI-X*/
+	u16			npa_msixoff; /* Offset of NPA vectors */
+	u16			nix_msixoff; /* Offset of NIX vectors */
 	char			*irq_name;
 	cpumask_var_t           *affinity_mask;
 };
@@ -160,5 +162,12 @@ static struct _req_type __maybe_unused					\
 
 MBOX_MESSAGES
 #undef M
+
+/* RVU block related APIs */
+int otx2_attach_npa_nix(struct otx2_nic *pfvf);
+int otx2_detach_resources(struct mbox *mbox);
+
+/* Mbox handlers */
+void mbox_handler_msix_offset(struct otx2_nic *pf, struct msix_offset_rsp *rsp);
 
 #endif /* OTX2_COMMON_H */

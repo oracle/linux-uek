@@ -55,6 +55,9 @@ static void otx2_process_pfaf_mbox_msg(struct otx2_nic *pf,
 	case MBOX_MSG_READY:
 		pf->pcifunc = msg->pcifunc;
 		break;
+	case MBOX_MSG_MSIX_OFFSET:
+		mbox_handler_msix_offset(pf, (struct msix_offset_rsp *)msg);
+		break;
 	default:
 		if (msg->rc)
 			dev_err(pf->dev,
@@ -360,19 +363,28 @@ static int otx2_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	if (err)
 		goto err_mbox_destroy;
 
-	err = otx2_set_real_num_queues(netdev, hw->tx_queues, hw->rx_queues);
+	/* Request AF to attach NPA and NIX LFs to this PF.
+	 * NIX and NPA LFs are needed for this PF to function as a NIC.
+	 */
+	err = otx2_attach_npa_nix(pf);
 	if (err)
 		goto err_disable_mbox_intr;
+
+	err = otx2_set_real_num_queues(netdev, hw->tx_queues, hw->rx_queues);
+	if (err)
+		goto err_detach_rsrc;
 
 	netdev->netdev_ops = &otx2_netdev_ops;
 	err = register_netdev(netdev);
 	if (err) {
 		dev_err(dev, "Failed to register netdevice\n");
-		goto err_disable_mbox_intr;
+		goto err_detach_rsrc;
 	}
 
 	return 0;
 
+err_detach_rsrc:
+	otx2_detach_resources(&pf->mbox);
 err_disable_mbox_intr:
 	otx2_disable_mbox_intr(pf);
 err_mbox_destroy:
@@ -399,6 +411,8 @@ static void otx2_remove(struct pci_dev *pdev)
 	unregister_netdev(netdev);
 
 	otx2_disable_mbox_intr(pf);
+
+	otx2_detach_resources(&pf->mbox);
 	otx2_pfaf_mbox_destroy(pf);
 
 	pci_free_irq_vectors(pf->pdev);
