@@ -552,6 +552,11 @@ void blk_cleanup_queue(struct request_queue *q)
 
 	bdi_destroy(&q->backing_dev_info);
 
+	if (q->owner) {
+		put_device(q->owner);
+		q->owner = NULL;
+	}
+
 	/* @q is and will stay empty, shutdown and put */
 	blk_put_queue(q);
 }

@@ -613,6 +613,13 @@ void add_disk(struct gendisk *disk)
 	/* Register BDI before referencing it from bdev */
 	bdi = &disk->queue->backing_dev_info;
 	bdi_register_dev(bdi, disk_devt(disk));
+	/*
+	 * Get ref on gendisk and put it on blk_cleanup_queue() to avoid
+	 * reuse of the same devt as name of bdi since the gendisk can be
+	 * destroyed before bdi.
+	 */
+	disk->queue->owner = disk_to_dev(disk);
+	get_device(disk->queue->owner);
 
 	blk_register_region(disk_devt(disk), disk->minors, NULL,
 			    exact_match, exact_lock, disk);
