@@ -1016,8 +1016,7 @@ memalloc_error:
 	kfree(adapter->kioc_list);
 	kfree(adapter->mbox_list);
 
-	if (adapter->pthru_dma_pool)
-		dma_pool_destroy(adapter->pthru_dma_pool);
+	dma_pool_destroy(adapter->pthru_dma_pool);
 
 	kfree(adapter);
 
