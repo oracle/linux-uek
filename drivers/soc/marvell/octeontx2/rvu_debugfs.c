@@ -270,9 +270,9 @@ static void print_npa_aura_ctx(struct npa_aq_enq_rsp *rsp)
 	pr_info("W1: pool drop ena\t%d\nW1: aura drop ena\t%d\n",
 		aura->pool_drop_ena, aura->aura_drop_ena);
 	pr_info("W1: bp_ena\t\t%d\nW1: aura drop\t\t%d\n",
-		aura->aura_drop, aura->shift);
+		aura->bp_ena, aura->aura_drop);
 	pr_info("W1: aura shift\t\t%d\nW1: avg_level\t\t%d\n",
-		aura->bp_ena, aura->avg_level);
+		aura->shift, aura->avg_level);
 
 	pr_info("W2: count\t\t%llu\nW2: nix0_bpid\t\t%d\nW2: nix1_bpid\t\t%d\n",
 		(u64)aura->count, aura->nix0_bpid, aura->nix1_bpid);
@@ -292,8 +292,8 @@ static void print_npa_aura_ctx(struct npa_aq_enq_rsp *rsp)
 	pr_info("W5: thresh_int\t\t%d\nW5: thresh_int_ena \t%d\n",
 		aura->thresh_int, aura->thresh_int_ena);
 	pr_info("W5: thresh_up\t\t%d\nW5: thresh_qint_idx\t%d\n",
-		aura->thresh_qint_idx, aura->err_qint_idx);
-	pr_info("W5: err_qint_idx \t\t%d\n", aura->thresh_up);
+		aura->thresh_up, aura->thresh_qint_idx);
+	pr_info("W5: err_qint_idx \t%d\n", aura->err_qint_idx);
 
 	pr_info("W6: thresh\t\t%llu\n", (u64)aura->thresh);
 }
