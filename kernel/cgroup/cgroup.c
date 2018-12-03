@@ -81,6 +81,8 @@ EXPORT_SYMBOL_GPL(cgroup_mutex);
 EXPORT_SYMBOL_GPL(css_set_lock);
 #endif
 
+bool cgroup_debug __read_mostly;
+
 /*
  * Protects cgroup_idr and css_idr so that IDs can be released without
  * grabbing cgroup_mutex.
@@ -3598,7 +3600,8 @@ restart:
 			continue;
 		if ((cft->flags & CFTYPE_ONLY_ON_ROOT) && cgroup_parent(cgrp))
 			continue;
-
+		if ((cft->flags & CFTYPE_DEBUG) && !cgroup_debug)
+			continue;
 		if (is_add) {
 			ret = cgroup_add_file(css, cgrp, cft);
 			if (ret) {
@@ -5696,6 +5699,16 @@ static int __init cgroup_disable(char *str)
 	return 1;
 }
 __setup("cgroup_disable=", cgroup_disable);
+
+void __init __weak enable_debug_cgroup(void) { }
+
+static int __init enable_cgroup_debug(char *str)
+{
+	cgroup_debug = true;
+	enable_debug_cgroup();
+	return 1;
+}
+__setup("cgroup_debug", enable_cgroup_debug);
 
 /**
  * css_tryget_online_from_dir - get corresponding css from a cgroup dentry

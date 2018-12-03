@@ -8,6 +8,9 @@
 #include <linux/list.h>
 #include <linux/refcount.h>
 
+extern bool cgroup_debug;
+extern void __init enable_debug_cgroup(void);
+
 /*
  * A cgroup can be associated with multiple css_sets as different tasks may
  * belong to different cgroups on different hierarchies.  In the other
