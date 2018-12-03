@@ -642,6 +642,17 @@ static void rdmaip_init_ip4_addrs(struct net_device *net_dev,
 			ip_config[port].ip_mask = ip_mask;
 			ip_config[port].ip_active_port = port;
 		} else if (!excl_addr) {
+			for (i = 0; i < ip_config[port].alias_cnt; i++) {
+				if (ip_config[port].aliases[i].ip_addr ==
+					ip_addr) {
+					RDMAIP_DBG2("IPv4 Alias is already present\n");
+					break;
+				}
+			}
+
+			if (i != ip_config[port].alias_cnt)
+				continue;
+
 			idx = ip_config[port].alias_cnt++;
 			if (idx >= RDMAIP_MAX_ALIASES) {
 				pr_warn("rdmaip: max number of address alias reached for %s\n",
@@ -667,12 +678,23 @@ static void rdmaip_init_ip6_addrs(struct net_device *net_dev,
 				  struct inet6_dev *in6_dev, u8 port)
 {
 	struct inet6_ifaddr *ifa;
-	u32 idx;
+	u32 idx, i;
 
 	read_lock_bh(&in6_dev->lock);
 	list_for_each_entry(ifa, &in6_dev->addr_list, if_list) {
 		/* Exclude link local address. */
 		if (ipv6_addr_type(&ifa->addr) & IPV6_ADDR_LINKLOCAL)
+			continue;
+
+		for (i = 0; i < ip_config[port].ip6_addrs_cnt; i++) {
+			if (!ipv6_addr_cmp(&ifa->addr,
+				&ip_config[port].ip6_addrs[i].addr)) {
+				RDMAIP_DBG2("IPv6 address already present");
+				break;
+			}
+		}
+
+		if (i != ip_config[port].ip6_addrs_cnt)
 			continue;
 
 		idx = ip_config[port].ip6_addrs_cnt++;
@@ -682,6 +704,7 @@ static void rdmaip_init_ip6_addrs(struct net_device *net_dev,
 			ip_config[port].ip6_addrs_cnt--;
 			break;
 		}
+
 		ip_config[port].ip6_addrs[idx].addr = ifa->addr;
 		ip_config[port].ip6_addrs[idx].prefix_len = ifa->prefix_len;
 	}
@@ -1363,20 +1386,23 @@ static void rdmaip_update_ip_addrs(int port)
 	if (!ndev)
 		return;
 
-	if (!(RDMAIP_IPV4_ADDR_SET(port))) {
-		in_dev = in_dev_get(ndev);
-		if (in_dev) {
-			rdmaip_init_ip4_addrs(ndev, in_dev, port);
-			in_dev_put(in_dev);
-		}
+	/*
+	 * All IP addresses may be configured when
+	 * rdmaip_port was initialized during boot.
+	 * Re_read the IP addresses again to capture
+	 * all the IP addresses before doing the
+	 * initial failovers.
+	 */
+	in_dev = in_dev_get(ndev);
+	if (in_dev) {
+		rdmaip_init_ip4_addrs(ndev, in_dev, port);
+		in_dev_put(in_dev);
 	}
 
-	if (!(RDMAIP_IPV6_ADDR_SET(port))) {
-		in6_dev = in6_dev_get(ndev);
-		if (in6_dev) {
-			rdmaip_init_ip6_addrs(ndev, in6_dev, port);
-			in6_dev_put(in6_dev);
-		}
+	in6_dev = in6_dev_get(ndev);
+	if (in6_dev) {
+		rdmaip_init_ip6_addrs(ndev, in6_dev, port);
+		in6_dev_put(in6_dev);
 	}
 }
 
