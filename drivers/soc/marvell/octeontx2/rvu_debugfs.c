@@ -658,25 +658,20 @@ static ssize_t rvu_dbg_cgx_stat_display(struct file *filp,
 {
 	void *data = filp->private_data;
 	struct dentry *current_dir;
-	int err = 0, lmac_id = 0;
+	int err, lmac_id;
 	char *buf;
 
 	current_dir = filp->f_path.dentry->d_parent;
-	buf = kzalloc(strlen(current_dir->d_name.name), GFP_KERNEL);
+	buf = strrchr(current_dir->d_name.name, 'c');
 	if (!buf)
 		return count;
 
-	memcpy(buf, current_dir->d_name.name,
-	       strlen(current_dir->d_name.name));
-
-	if (kstrtoint(buf, 10, &lmac_id) >= 0) {
+	err = kstrtoint(buf + 1, 10, &lmac_id);
+	if (err >= 0) {
 		err = cgx_print_stats(data, lmac_id);
 		if (err)
-			goto stat_display_done;
+			return err;
 	}
-
-stat_display_done:
-	kfree(buf);
 	return err;
 }
 RVU_DEBUG_FOPS(cgx_stat, cgx_stat_display, NULL);
