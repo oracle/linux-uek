@@ -584,8 +584,7 @@ static int rdmaip_move_ip4(char *from_dev, char *to_dev, u8 from_port,
 				  &addr, to_dev2);
 		} else
 			pr_notice("rdmaip: IPv4 %pI4 migrated from %s (port %d) to %s (port %d)\n",
-				  &addr, ip_config[from_port].if_name,
-				  from_port, ip_config[to_port].if_name,
+				  &addr, from_dev2, from_port, to_dev2,
 				  to_port);
 
 		if (!ip_config[from_port].rdmaip_dev) {
