@@ -318,6 +318,15 @@ static struct _req_type __maybe_unused					\
 MBOX_MESSAGES
 #undef M
 
+#define M(_name, _id, _fn_name, _req_type, _rsp_type)			\
+int									\
+otx2_mbox_up_handler_ ## _fn_name(struct otx2_nic *pfvf,		\
+				struct _req_type *req,			\
+				struct _rsp_type *rsp);			\
+
+MBOX_UP_CGX_MESSAGES
+#undef M
+
 #define	RVU_PFVF_PF_SHIFT	10
 #define	RVU_PFVF_PF_MASK	0x3F
 #define	RVU_PFVF_FUNC_SHIFT	0

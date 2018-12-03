@@ -115,9 +115,9 @@ static void otx2_pfaf_mbox_handler(struct work_struct *work)
 	otx2_write64(af_mbox->pfvf, RVU_PF_INT, BIT_ULL(0));
 }
 
-static int otx2_mbox_up_handler_cgx_link_event(struct otx2_nic *pf,
-					       struct cgx_link_info_msg *msg,
-					       struct msg_rsp *rsp)
+int otx2_mbox_up_handler_cgx_link_event(struct otx2_nic *pf,
+					struct cgx_link_info_msg *msg,
+					struct msg_rsp *rsp)
 {
 	struct cgx_link_user_info *linfo = &msg->link_info;
 	struct net_device *netdev = pf->netdev;
