@@ -202,6 +202,7 @@ static ssize_t rvu_dbg_npa_qsize_display(struct file *filp,
 		*cmd_buf_tmp = '\0';
 		count = cmd_buf_tmp - cmd_buf + 1;
 	}
+	cmd_buf_tmp = cmd_buf;
 	subtoken = strsep(&cmd_buf, " ");
 	ret = subtoken ? kstrtoint(subtoken, 10, &npalf) : -EINVAL;
 	if (cmd_buf)
@@ -251,7 +252,7 @@ static ssize_t rvu_dbg_npa_qsize_display(struct file *filp,
 	}
 	kfree(buf);
 npa_qsize_display_done:
-	kfree(cmd_buf);
+	kfree(cmd_buf_tmp);
 	return count;
 }
 
