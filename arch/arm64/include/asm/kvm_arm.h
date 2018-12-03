@@ -224,10 +224,6 @@
 /* Hyp Prefetch Fault Address Register (HPFAR/HDFAR) */
 #define HPFAR_MASK	(~UL(0xf))
 
-#define kvm_arm_exception_type	\
-	{0, "IRQ" }, 		\
-	{1, "TRAP" }
-
 #define ECN(x) { ESR_ELx_EC_##x, #x }
 
 #define kvm_arm_exception_class \
