@@ -17,8 +17,6 @@ int rvu_mbox_handler_ptp_op(struct rvu *rvu, struct ptp_req *req,
 {
 	int err = 0;
 
-	memset(rsp, 0, sizeof(*rsp));
-
 	if (!rvu->ptp)
 		return -ENODEV;
 
