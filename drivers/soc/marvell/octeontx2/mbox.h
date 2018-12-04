@@ -161,7 +161,7 @@ M(SSO_HW_SETCONFIG,	0x604, sso_hw_setconfig, sso_hw_setconfig, msg_rsp)\
 M(SSO_GRP_SET_PRIORITY,	0x605, sso_grp_set_priority,			\
 				sso_grp_priority, msg_rsp)		\
 M(SSO_GRP_GET_PRIORITY,	0x606, sso_grp_get_priority,			\
-				sso_grp_priority, sso_grp_priority)	\
+				sso_info_req, sso_grp_priority)		\
 M(SSO_WS_CACHE_INV,	0x607, sso_ws_cache_inv, msg_req, msg_rsp)	\
 M(SSO_GRP_QOS_CONFIG,	0x608, sso_grp_qos_config, sso_grp_qos_cfg, msg_rsp)\
 /* TIM mbox IDs (range 0x800 - 0x9FF) */				\
@@ -751,6 +751,14 @@ struct sso_hw_setconfig {
 	u32	npa_aura_id;
 	u16	npa_pf_func;
 	u16	hwgrps;
+};
+
+struct sso_info_req {
+	struct mbox_msghdr hdr;
+	union {
+		u16 grp;
+		u16 hws;
+	};
 };
 
 struct sso_grp_priority {

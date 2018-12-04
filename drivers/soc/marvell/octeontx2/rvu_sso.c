@@ -248,7 +248,7 @@ int rvu_mbox_handler_sso_grp_set_priority(struct rvu *rvu,
 }
 
 int rvu_mbox_handler_sso_grp_get_priority(struct rvu *rvu,
-					  struct sso_grp_priority *req,
+					  struct sso_info_req *req,
 					  struct sso_grp_priority *rsp)
 {
 	struct rvu_hwinfo *hw = rvu->hw;

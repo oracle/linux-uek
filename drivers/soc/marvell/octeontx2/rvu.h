@@ -445,7 +445,7 @@ int rvu_mbox_handler_ssow_lf_free(struct rvu *rvu,
 				  struct ssow_lf_free_req *req,
 				  struct msg_rsp *rsp);
 int rvu_mbox_handler_sso_grp_get_priority(struct rvu *rvu,
-					  struct sso_grp_priority *req,
+					  struct sso_info_req *req,
 					  struct sso_grp_priority *rsp);
 int rvu_mbox_handler_sso_grp_set_priority(struct rvu *rvu,
 					  struct sso_grp_priority *req,
