@@ -1359,6 +1359,52 @@ static void sso_hwgrp_display_taq_list(struct rvu *rvu, int ssolf, u8 wae_head,
 	} while (ent_head && wae_used);
 }
 
+static int read_sso_pc(struct rvu *rvu)
+{
+	int blkaddr;
+	u64 reg;
+
+	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_SSO, 0);
+	if (blkaddr < 0)
+		return -ENODEV;
+
+	reg = rvu_read64(rvu, blkaddr, SSO_AF_ACTIVE_CYCLES0);
+	pr_info("SSO Add-Work active cycles		%lld\n", reg);
+	reg = rvu_read64(rvu, blkaddr, SSO_AF_ACTIVE_CYCLES1);
+	pr_info("SSO Get-Work active cycles		%lld\n", reg);
+	reg = rvu_read64(rvu, blkaddr, SSO_AF_ACTIVE_CYCLES2);
+	pr_info("SSO Work-Slot active cycles		%lld\n", reg);
+	pr_info("\n");
+
+	reg = rvu_read64(rvu, blkaddr, SSO_AF_NOS_CNT) & 0x1FFF;
+	pr_info("SSO work-queue entries on the no-schedule list	%lld\n", reg);
+	pr_info("\n");
+
+	reg = rvu_read64(rvu, blkaddr, SSO_AF_AW_READ_ARB);
+	pr_info("SSO XAQ reads outstanding		%lld\n",
+		(reg & 0x3F) >> 24);
+
+	reg = rvu_read64(rvu, blkaddr, SSO_AF_XAQ_REQ_PC);
+	pr_info("SSO XAQ reads requests			%lld\n", reg);
+	reg = rvu_read64(rvu, blkaddr, SSO_AF_XAQ_LATENCY_PC);
+	pr_info("SSO XAQ read latency cycles		%lld\n", reg);
+	pr_info("\n");
+
+	reg = rvu_read64(rvu, blkaddr, SSO_AF_AW_WE);
+	pr_info("SSO IAQ reserved			%lld\n",
+		(reg & 0x3FFF) >> 16);
+	pr_info("SSO IAQ total				%lld\n", reg & 0x3FFF);
+	pr_info("\n");
+
+	reg = rvu_read64(rvu, blkaddr, SSO_AF_TAQ_CNT);
+	pr_info("SSO TAQ reserved			%lld\n",
+		(reg & 0x7FF) >> 16);
+	pr_info("SSO TAQ total				%lld\n", reg & 0x7FF);
+	pr_info("\n");
+
+	return 0;
+}
+
 /* Reads SSO hwgrp perfomance counters */
 static void read_sso_hwgrp_pc(struct rvu *rvu, int ssolf, bool all)
 {
@@ -1761,6 +1807,13 @@ static ssize_t rvu_dbg_sso_cmd_parser(struct file *filp,
 }
 
 /* SSO debugfs APIs */
+static ssize_t rvu_dbg_sso_pc_display(struct file *filp,
+				      char __user *buffer,
+				      size_t count, loff_t *ppos)
+{
+	return read_sso_pc(filp->private_data);
+}
+
 static ssize_t rvu_dbg_sso_hwgrp_pc_display(struct file *filp,
 					    const char __user *buffer,
 					    size_t count, loff_t *ppos)
@@ -1815,6 +1868,7 @@ static ssize_t rvu_dbg_sso_hws_info_display(struct file *filp,
 			"sso_hws_info", read_sso_hws_info);
 }
 
+RVU_DEBUG_FOPS(sso_pc, sso_pc_display, NULL);
 RVU_DEBUG_FOPS(sso_hwgrp_pc, NULL, sso_hwgrp_pc_display);
 RVU_DEBUG_FOPS(sso_hwgrp_thresh, NULL, sso_hwgrp_thresh_display);
 RVU_DEBUG_FOPS(sso_hwgrp_taq_wlk, NULL, sso_hwgrp_taq_wlk_display);
@@ -1839,6 +1893,12 @@ static void rvu_dbg_sso_init(struct rvu *rvu)
 	rvu->rvu_dbg.sso_hws = debugfs_create_dir("hws", rvu->rvu_dbg.sso);
 	if (!rvu->rvu_dbg.sso_hws)
 		return;
+
+	pfile = debugfs_create_file("sso_pc", 0600,
+				    rvu->rvu_dbg.sso, rvu,
+			&rvu_dbg_sso_pc_fops);
+	if (!pfile)
+		goto create_failed;
 
 	pfile = debugfs_create_file("sso_hwgrp_pc", 0600,
 				    rvu->rvu_dbg.sso_hwgrp, rvu,
