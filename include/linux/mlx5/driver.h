@@ -586,6 +586,7 @@ struct mlx5_fc_stats {
 struct mlx5_mpfs;
 struct mlx5_eswitch;
 struct mlx5_lag;
+struct mlx5_devcom;
 struct mlx5_pagefault;
 
 struct mlx5_rl_entry {
@@ -687,6 +688,7 @@ struct mlx5_priv {
 	struct mlx5_eswitch     *eswitch;
 	struct mlx5_core_sriov	sriov;
 	struct mlx5_lag		*lag;
+	struct mlx5_devcom	*devcom;
 	unsigned long		pci_dev_data;
 	struct mlx5_fc_stats		fc_stats;
 	struct mlx5_rl_table            rl_table;
