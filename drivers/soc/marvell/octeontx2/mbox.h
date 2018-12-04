@@ -75,6 +75,7 @@ struct otx2_mbox {
 
 /* Header which preceeds all mbox messages */
 struct mbox_hdr {
+	u64  msg_size;	/* Total msgs size embedded */
 	u16  num_msgs;   /* No of msgs embedded */
 };
 
