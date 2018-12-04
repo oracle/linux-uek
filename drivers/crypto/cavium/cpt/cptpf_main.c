@@ -272,7 +272,7 @@ static int cpt_ucode_load_fw(struct cpt_device *cpt, const u8 *fw, bool is_ae)
 
 	mcode->is_ae = is_ae;
 	mcode->core_mask = 0ULL;
-	mcode->num_cores = is_ae ? 6 : 10;
+	mcode->num_cores = is_ae ? cpt->max_ae_cores : cpt->max_se_cores;
 
 	/*  Allocate DMAable space */
 	mcode->code = dma_alloc_coherent(&cpt->pdev->dev, mcode->code_size,
