@@ -190,7 +190,7 @@ int rvu_mbox_handler_tim_config_ring(struct rvu *rvu,
 
 	switch (req->clocksource) {
 	case TIM_CLK_SRCS_TENNS:
-		intervalmin = 100;
+		intervalmin = 256;
 		break;
 	case TIM_CLK_SRCS_GPIO:
 		intervalmin = 256;
