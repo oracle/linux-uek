@@ -597,18 +597,18 @@ void math_state_restore(void)
 	if (!tsk_used_math(tsk))
 		init_fpu(tsk);
 
+	/* Avoid __kernel_fpu_begin() right after __thread_fpu_begin() */
+	kernel_fpu_disable();
 	__thread_fpu_begin(tsk);
 
-	/*
-	 * Paranoid restore. send a SIGSEGV if we fail to restore the state.
-	 */
 	if (unlikely(restore_fpu_checking(tsk))) {
 		drop_init_fpu(tsk);
 		force_sig(SIGSEGV, tsk);
-		return;
+	} else {
+		tsk->fpu_counter++;
 	}
 
-	tsk->fpu_counter++;
+	kernel_fpu_enable();
 }
 EXPORT_SYMBOL_GPL(math_state_restore);
 
