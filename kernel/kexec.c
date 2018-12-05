@@ -6,6 +6,8 @@
  * Version 2.  See the file COPYING for more details.
  */
 
+/* Test Github pull request */
+
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 
 #include <linux/capability.h>
