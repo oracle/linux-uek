@@ -178,7 +178,7 @@ static u64 x86_spec_ctrl_mask = SPEC_CTRL_IBRS;
 u64 x86_amd_ls_cfg_base;
 u64 x86_amd_ls_cfg_ssbd_mask;
 
-/* Control conditional STIPB in switch_to() */
+/* Control conditional STIBP in switch_to() */
 DEFINE_STATIC_KEY_FALSE(switch_to_cond_stibp);
 /* Control conditional IBPB in switch_mm() */
 DEFINE_STATIC_KEY_FALSE(switch_mm_cond_ibpb);
