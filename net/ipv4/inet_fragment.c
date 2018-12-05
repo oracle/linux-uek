@@ -92,7 +92,7 @@ void inet_frags_exit_net(struct netns_frags *nf)
 {
 	nf->low_thresh = 0; /* prevent creation of new frags */
 
-	rhashtable_free_and_destroy(&nf->rhashtable, inet_frags_free_cb, NULL);
+	rhashtable_free_and_destroy(&nf->f->rhashtable, inet_frags_free_cb, NULL);
 }
 EXPORT_SYMBOL(inet_frags_exit_net);
 
@@ -105,7 +105,7 @@ void inet_frag_kill(struct inet_frag_queue *fq)
 		struct netns_frags *nf = fq->net;
 
 		fq->flags |= INET_FRAG_COMPLETE;
-		rhashtable_remove_fast(&nf->rhashtable, &fq->node, nf->f->rhash_params);
+		rhashtable_remove_fast(&nf->f->rhashtable, &fq->node, nf->f->rhash_params);
 		refcount_dec(&fq->refcnt);
 	}
 }
@@ -192,7 +192,7 @@ static struct inet_frag_queue *inet_frag_create(struct netns_frags *nf,
 
 	mod_timer(&q->timer, jiffies + nf->timeout);
 
-	err = rhashtable_insert_fast(&nf->rhashtable, &q->node,
+	err = rhashtable_insert_fast(&f->rhashtable, &q->node,
 				     f->rhash_params);
 	if (err < 0) {
 		q->flags |= INET_FRAG_COMPLETE;
@@ -210,7 +210,7 @@ struct inet_frag_queue *inet_frag_find(struct netns_frags *nf, void *key)
 
 	rcu_read_lock();
 
-	fq = rhashtable_lookup(&nf->rhashtable, key, nf->f->rhash_params);
+	fq = rhashtable_lookup(&nf->f->rhashtable, key, nf->f->rhash_params);
 	if (fq) {
 		if (!refcount_inc_not_zero(&fq->refcnt))
 			fq = NULL;

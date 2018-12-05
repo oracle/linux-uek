@@ -47,8 +47,8 @@ static int sockstat6_seq_show(struct seq_file *seq, void *v)
 			sock_prot_inuse_get(net, &udplitev6_prot));
 	seq_printf(seq, "RAW6: inuse %d\n",
 		       sock_prot_inuse_get(net, &rawv6_prot));
-	seq_printf(seq, "FRAG6: inuse %u memory %lu\n",
-		   atomic_read(&net->ipv6.frags.rhashtable.nelems),
+	seq_printf(seq, "FRAG6: inuse %u memory %u\n",
+		   atomic_read(&net->ipv6.frags.f->rhashtable.nelems),
 		   frag_mem_limit(&net->ipv6.frags));
 	return 0;
 }
