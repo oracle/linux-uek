@@ -1626,6 +1626,7 @@ void part_round_stats(struct request_queue *q, int cpu, struct hd_struct *part)
 		part_round_stats_single(q, cpu, part2, now, inflight[1]);
 	if (stats & 1)
 		part_round_stats_single(q, cpu, part, now, inflight[0]);
+	printk_once(KERN_WARNING "%s already obsoleted, please use update_io_ticks() instead!\n", __func__);
 }
 EXPORT_SYMBOL_GPL(part_round_stats);
 
@@ -2603,9 +2604,10 @@ void blk_account_io_done(struct request *req)
 		cpu = part_stat_lock();
 		part = req->part;
 
+		update_io_ticks(part, jiffies);
 		part_stat_inc(cpu, part, ios[rw]);
 		part_stat_add(cpu, part, ticks[rw], duration);
-		part_round_stats(req->q, cpu, part);
+		part_stat_add(cpu, part, time_in_queue, duration);
 		part_dec_in_flight(req->q, part, rw);
 
 		hd_struct_put(part);
@@ -2663,10 +2665,11 @@ void blk_account_io_start(struct request *rq, bool new_io)
 			part = &rq->rq_disk->part0;
 			hd_struct_get(part);
 		}
-		part_round_stats(rq->q, cpu, part);
 		part_inc_in_flight(rq->q, part, rw);
 		rq->part = part;
 	}
+	
+	update_io_ticks(part, jiffies);
 
 	part_stat_unlock();
 }
