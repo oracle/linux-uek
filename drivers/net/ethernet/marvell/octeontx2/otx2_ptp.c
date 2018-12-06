@@ -158,11 +158,13 @@ int otx2_ptp_init(struct otx2_nic *pfvf)
 		return 0;
 	}
 
-	ptp_ptr = kmalloc(sizeof(*ptp_ptr), GFP_KERNEL);
+	ptp_ptr = kzalloc(sizeof(*ptp_ptr), GFP_KERNEL);
 	if (!ptp_ptr) {
 		err = -ENOMEM;
 		goto error;
 	}
+
+	ptp_ptr->nic = pfvf;
 
 	spin_lock_init(&ptp_ptr->spin_lock);
 
@@ -197,8 +199,6 @@ int otx2_ptp_init(struct otx2_nic *pfvf)
 		kfree(ptp_ptr);
 		goto error;
 	}
-
-	ptp_ptr->nic = pfvf;
 
 	pfvf->ptp = ptp_ptr;
 
