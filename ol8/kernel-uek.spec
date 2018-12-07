@@ -952,8 +952,8 @@ mechanism.
 This package includes 4k page size for aarch64 kernel.
 
 %define variant_summary The Aarch64 Linux kernel compiled with extra debugging enabled
-%kernel_variant_package 4k-debug
-%description 4k-debug
+%kernel_variant_package 4kdebug
+%description 4kdebug
 This package include debug kernel for 4k page size.
 
 %prep
@@ -1219,7 +1219,7 @@ BuildKernel() {
 	sed -i '/^CONFIG_ARM64_[0-9]\+K_PAGES=/d' configs/config
 	echo 'CONFIG_ARM64_4K_PAGES=y' >> configs/config
 	cp configs/config .config
-    elif [ "$Flavour" == "4k-debug" ]; then
+    elif [ "$Flavour" == "4kdebug" ]; then
 	sed -i '/^CONFIG_ARM64_[0-9]\+K_PAGES=/d' configs/config-debug
 	echo 'CONFIG_ARM64_4K_PAGES=y' >> configs/config-debug
 	cp configs/config-debug .config
@@ -1555,7 +1555,7 @@ BuildKernel %make_target %kernel_image 4k
 %endif
 
 %if %{with_4k_ps_debug}
-BuildKernel %make_target %kernel_image 4k-debug
+BuildKernel %make_target %kernel_image 4kdebug
 %endif
 
 %global perf_make \
@@ -2123,6 +2123,6 @@ fi
 %kernel_variant_files -k vmlinux %{with_kdump} kdump
 
 %kernel_variant_files %{with_4k_ps} 4k
-%kernel_variant_files %{with_4k_ps_debug} 4k-debug
+%kernel_variant_files %{with_4k_ps_debug} 4kdebug
 
 %changelog
