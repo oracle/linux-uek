@@ -107,6 +107,7 @@ struct  mbox {
 	struct otx2_mbox	mbox_up;
 	struct work_struct	mbox_up_wrk;
 	struct otx2_nic		*pfvf;
+	void *bbuf_base; /* Bounce buffer for mbox memory */
 };
 
 struct otx2_hw {
@@ -326,6 +327,52 @@ otx2_mbox_up_handler_ ## _fn_name(struct otx2_nic *pfvf,		\
 
 MBOX_UP_CGX_MESSAGES
 #undef M
+
+/* Mbox bounce buffer APIs */
+static inline int otx2_mbox_bbuf_init(struct mbox *mbox, struct pci_dev *pdev)
+{
+	struct otx2_mbox_dev *mdev;
+	struct otx2_mbox *otx2_mbox;
+
+	mbox->bbuf_base = devm_kmalloc(&pdev->dev, MBOX_SIZE, GFP_KERNEL);
+	if (!mbox->bbuf_base)
+		return -ENOMEM;
+
+	/* Overwrite mbox mbase to point to bounce buffer, so that PF/VF
+	 * prepare all mbox messages in bounce buffer instead of directly
+	 * in hw mbox memory.
+	 */
+	otx2_mbox = &mbox->mbox;
+	mdev = &otx2_mbox->dev[0];
+	mdev->mbase = mbox->bbuf_base;
+
+	otx2_mbox = &mbox->mbox_up;
+	mdev = &otx2_mbox->dev[0];
+	mdev->mbase = mbox->bbuf_base;
+	return 0;
+}
+
+static inline void otx2_sync_mbox_bbuf(struct otx2_mbox *mbox, int devid)
+{
+	u16 msgs_offset = ALIGN(sizeof(struct mbox_hdr), MBOX_MSG_ALIGN);
+	void *hw_mbase = mbox->hwbase + (devid * MBOX_SIZE);
+	struct otx2_mbox_dev *mdev = &mbox->dev[devid];
+	struct mbox_hdr *hdr;
+	u64 msg_size;
+
+	if (mdev->mbase == hw_mbase)
+		return;
+
+	hdr = hw_mbase + mbox->rx_start;
+	msg_size = hdr->msg_size;
+
+	if (msg_size > mbox->rx_size - msgs_offset)
+		msg_size = mbox->rx_size - msgs_offset;
+
+	/* Copy mbox messages from mbox memory to bounce buffer */
+	memcpy(mdev->mbase + mbox->rx_start,
+	       hw_mbase + mbox->rx_start, msg_size + msgs_offset);
+}
 
 #define	RVU_PFVF_PF_SHIFT	10
 #define	RVU_PFVF_PF_MASK	0x3F
