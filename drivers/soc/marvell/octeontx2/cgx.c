@@ -315,6 +315,7 @@ void cgx_lmac_ptp_config(void *cgxd, int lmac_id, bool enable)
 		cgx_write(cgx, lmac_id, CGXX_SMUX_RX_FRM_CTL, cfg);
 	}
 }
+EXPORT_SYMBOL(cgx_lmac_ptp_config);
 
 int cgx_get_rx_stats(void *cgxd, int lmac_id, int idx, u64 *rx_stat)
 {
