@@ -101,7 +101,7 @@ static ssize_t rvu_dbg_rsrc_attach_status(struct file *filp,
 	int lf, pf, vf, pcifunc;
 	struct rvu_block block;
 	int bytes_not_copied;
-	int buf_size = 1024;
+	int buf_size = 2048;
 	char *buf;
 
 	/* don't allow partial reads */
@@ -123,8 +123,19 @@ static ssize_t rvu_dbg_rsrc_attach_status(struct file *filp,
 	for (pf = 0; pf < rvu->hw->total_pfs; pf++) {
 		for (vf = 0; vf <= rvu->hw->total_vfs; vf++) {
 			pcifunc = pf << 10 | vf;
-			go_back = scnprintf(&buf[off], buf_size - 1 - off,
-					    "0x%3x\t\t", pcifunc);
+			if (!pcifunc)
+				continue;
+
+			if (vf) {
+				go_back = scnprintf(&buf[off],
+						    buf_size - 1 - off,
+						    "PF%d:VF%d\t\t", pf,
+						    vf - 1);
+			} else {
+				go_back = scnprintf(&buf[off],
+						    buf_size - 1 - off,
+						    "PF%d\t\t", pf);
+			}
 
 			off += go_back;
 			for (index = 0; index < BLKTYPE_MAX; index++) {
