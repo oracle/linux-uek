@@ -126,6 +126,8 @@ static irqreturn_t otx2vf_vfaf_mbox_intr_handler(int irq, void *vf_irq)
 	/* Check for PF => VF response messages */
 	mbox = &vf->mbox.mbox;
 	mdev = &mbox->dev[0];
+	otx2_sync_mbox_bbuf(mbox, 0);
+
 	hdr = (struct mbox_hdr *)(mdev->mbase + mbox->rx_start);
 	if (hdr->num_msgs)
 		queue_work(vf->mbox_wq, &vf->mbox.mbox_wrk);
@@ -133,6 +135,8 @@ static irqreturn_t otx2vf_vfaf_mbox_intr_handler(int irq, void *vf_irq)
 	/* Check for PF => VF notification messages */
 	mbox = &vf->mbox.mbox_up;
 	mdev = &mbox->dev[0];
+	otx2_sync_mbox_bbuf(mbox, 0);
+
 	hdr = (struct mbox_hdr *)(mdev->mbase + mbox->rx_start);
 	if (hdr->num_msgs)
 		queue_work(vf->mbox_wq, &vf->mbox.mbox_up_wrk);
@@ -239,6 +243,10 @@ static int otx2vf_vfaf_mbox_init(struct otx2_nic *vf)
 
 	err = otx2_mbox_init(&mbox->mbox_up, hwbase, vf->pdev, vf->reg_base,
 			     MBOX_DIR_VFPF_UP, 1);
+	if (err)
+		goto exit;
+
+	err = otx2_mbox_bbuf_init(mbox, vf->pdev);
 	if (err)
 		goto exit;
 
