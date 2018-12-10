@@ -63,7 +63,7 @@
 #include <uapi/linux/module.h>
 #include "module-internal.h"
 
-#ifdef RETPOLINE
+#ifdef CONFIG_RETPOLINE
 #include <asm/spec_ctrl.h>
 #endif
 
@@ -2724,7 +2724,7 @@ static int check_modinfo(struct module *mod, struct load_info *info, int flags)
 	if (!get_modinfo(info, "intree"))
 		add_taint_module(mod, TAINT_OOT_MODULE, LOCKDEP_STILL_OK);
 
-#ifdef RETPOLINE
+#ifdef CONFIG_RETPOLINE
 	if (!get_modinfo(info, "retpoline")) {
 		if (retpoline_modules_only)
 			return -ENOEXEC;

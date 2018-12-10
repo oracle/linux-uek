@@ -237,7 +237,7 @@ static int __init debugfs_spec_ctrl(void)
 }
 late_initcall(debugfs_spec_ctrl);
 
-#ifdef RETPOLINE
+#ifdef CONFIG_RETPOLINE
 /*
  * RETPOLINE does not protect against indirect speculation
  * in firmware code.  Enable IBRS to protect firmware execution.
