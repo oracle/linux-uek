@@ -108,6 +108,8 @@ static irqreturn_t otx2_pfaf_mbox_intr_handler(int irq, void *pf_irq)
 	/* Check for AF => PF response messages */
 	mbox = &pf->mbox.mbox;
 	mdev = &mbox->dev[0];
+	otx2_sync_mbox_bbuf(mbox, 0);
+
 	hdr = (struct mbox_hdr *)(mdev->mbase + mbox->rx_start);
 	if (hdr->num_msgs)
 		queue_work(pf->mbox_wq, &pf->mbox.mbox_wrk);
@@ -211,6 +213,10 @@ static int otx2_pfaf_mbox_init(struct otx2_nic *pf)
 
 	err = otx2_mbox_init(&mbox->mbox, hwbase, pf->pdev, pf->reg_base,
 			     MBOX_DIR_PFAF, 1);
+	if (err)
+		goto exit;
+
+	err = otx2_mbox_bbuf_init(mbox, pf->pdev);
 	if (err)
 		goto exit;
 
