@@ -107,6 +107,7 @@ void *ktask_iter_range(void *position, size_t size);
  *                     allows the client to communicate the minimum amount of
  *                     work that's appropriate for one worker thread to do at
  *                     once.
+ * @kc_flags:     Control the job, such as whether to busywait or sleep.
  * @kc_iter_func: An iterator function to advance the iterator by some number
  *                   of task-specific units.
  * @kc_max_threads: max threads to use for the task, actual number may be less
@@ -118,18 +119,20 @@ struct ktask_ctl {
 	ktask_undo_func		kc_undo_func;
 	void			*kc_func_arg;
 	size_t			kc_min_chunk_size;
+	int			kc_flags;
 
 	/* Optional, can set with ktask_ctl_set_*.  Defaults on the right. */
 	ktask_iter_func		kc_iter_func;    /* ktask_iter_range */
 	size_t			kc_max_threads;  /* 0 (uses internal limit) */
 };
 
-#define KTASK_CTL_INITIALIZER(thread_func, func_arg, min_chunk_size)	     \
+#define KTASK_CTL_INITIALIZER(thread_func, func_arg, min_chunk_size, flags)  \
 	{								     \
 		.kc_thread_func = (ktask_thread_func)(thread_func),	     \
 		.kc_undo_func = NULL,					     \
 		.kc_func_arg = (func_arg),				     \
 		.kc_min_chunk_size = (min_chunk_size),			     \
+		.kc_flags = (flags),					     \
 		.kc_iter_func = (ktask_iter_range),			     \
 		.kc_max_threads = 0,					     \
 	}
@@ -140,9 +143,9 @@ struct ktask_ctl {
  * cast the three void * arguments.  Clients can just use the actual argument
  * types instead.
  */
-#define DEFINE_KTASK_CTL(ctl_name, thread_func, func_arg, min_chunk_size)    \
-	struct ktask_ctl ctl_name =					     \
-		KTASK_CTL_INITIALIZER(thread_func, func_arg, min_chunk_size) \
+#define DEFINE_KTASK_CTL(ctl_name, thread_func, func_arg, min_chunk, flags)    \
+	struct ktask_ctl ctl_name =					       \
+		KTASK_CTL_INITIALIZER(thread_func, func_arg, min_chunk, flags) \
 
 /**
  * ktask_ctl_set_iter_func - Set a task-specific iterator
@@ -182,6 +185,10 @@ static inline void ktask_ctl_set_max_threads(struct ktask_ctl *ctl,
 {
 	ctl->kc_max_threads = max_threads;
 }
+
+enum {
+	KTASK_ATOMIC = 1,
+};
 
 /*
  * The minimum chunk sizes for tasks that operate on ranges of memory.  For

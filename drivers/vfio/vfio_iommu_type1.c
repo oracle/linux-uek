@@ -1124,7 +1124,8 @@ static int vfio_pin_map_dma(struct vfio_iommu *iommu, struct vfio_dma *dma,
 	int ret = 0;
 	struct vfio_pin_args args = { iommu, dma, limit, current->mm };
 	/* Stay on PMD boundary in case THP is being used. */
-	DEFINE_KTASK_CTL(ctl, vfio_pin_map_dma_chunk, &args, KTASK_MEM_CHUNK);
+	DEFINE_KTASK_CTL(ctl, vfio_pin_map_dma_chunk, &args, KTASK_MEM_CHUNK,
+			 0);
 
 	ktask_ctl_set_undo_func(&ctl, vfio_pin_map_dma_undo);
 	ret = ktask_run((void *)dma->vaddr, map_size, &ctl);

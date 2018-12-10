@@ -73,7 +73,10 @@ struct ktask_task {
 	size_t			kt_nworks;
 	size_t			kt_nworks_fini;
 	int			kt_error; /* first error from thread_func */
-	struct completion	kt_ktask_done;
+	union {
+		struct completion	kt_ktask_done;
+		int			kt_complete;
+	};
 #ifdef CONFIG_LOCKDEP
 	struct lockdep_map	kt_lockdep_map;
 #endif
@@ -198,6 +201,32 @@ static size_t ktask_aligned_size(struct ktask_task *kt, void *position)
 	return kt->kt_chunk_size;
 }
 
+static void ktask_init_completion(struct ktask_task *kt)
+{
+	if (kt->kt_ctl.kc_flags & KTASK_ATOMIC)
+		kt->kt_complete = 0;
+	else
+		init_completion(&kt->kt_ktask_done);
+}
+
+static void ktask_wait_for_completion(struct ktask_task *kt)
+{
+	if (kt->kt_ctl.kc_flags & KTASK_ATOMIC) {
+		while (!READ_ONCE(kt->kt_complete))
+			cpu_relax();
+	} else {
+		wait_for_completion(&kt->kt_ktask_done);
+	}
+}
+
+static void ktask_complete(struct ktask_task *kt)
+{
+	if (kt->kt_ctl.kc_flags & KTASK_ATOMIC)
+		WRITE_ONCE(kt->kt_complete, 1);
+	else
+		complete(&kt->kt_ktask_done);
+}
+
 static void ktask_thread(struct work_struct *work)
 {
 	struct ktask_work  *kw = container_of(work, struct ktask_work, kw_work);
@@ -304,7 +333,7 @@ static void ktask_thread(struct work_struct *work)
 	spin_unlock(&kt->kt_lock);
 
 	if (done)
-		complete(&kt->kt_ktask_done);
+		ktask_complete(kt);
 }
 
 /*
@@ -522,7 +551,7 @@ int __ktask_run_numa(struct ktask_node *nodes, size_t nr_nodes,
 		return KTASK_RETURN_SUCCESS;
 
 	spin_lock_init(&kt.kt_lock);
-	init_completion(&kt.kt_ktask_done);
+	ktask_init_completion(&kt);
 	lockdep_init_map(&kt.kt_lockdep_map, map_name, key, 0);
 
 	lock_map_acquire(&kt.kt_lockdep_map);
@@ -542,7 +571,7 @@ int __ktask_run_numa(struct ktask_node *nodes, size_t nr_nodes,
 	ktask_thread(&kw.kw_work);
 
 	/* Wait for all the jobs to finish. */
-	wait_for_completion(&kt.kt_ktask_done);
+	ktask_wait_for_completion(&kt);
 
 	if (kt.kt_error != KTASK_RETURN_SUCCESS && ctl->kc_undo_func)
 		ktask_undo(nodes, nr_nodes, ctl, &works_list, &kw);
