@@ -800,6 +800,12 @@ config ARCH_CPUIDLE_HALTPOLL
 	help
 	  If virtualized under KVM, disable host haltpoll.
 
+config PVH
+	bool "Support for running PVH guests"
+	---help---
+	  This option enables the PVH entry point for guest virtual machines
+	  as specified in the x86/HVM direct boot ABI.
+
 config KVM_DEBUG_FS
 	bool "Enable debug information for KVM Guests in debugfs"
 	depends on KVM_GUEST && DEBUG_FS
