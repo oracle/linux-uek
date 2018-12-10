@@ -41,6 +41,7 @@
 static DEFINE_PER_CPU(__u32, taskstats_seqnum);
 static int family_registered;
 struct kmem_cache *taskstats_cache;
+struct kmem_cache *taskstats_counts_cache;
 
 static struct genl_family family;
 
@@ -569,22 +570,29 @@ static struct taskstats *taskstats_tgid_alloc(struct task_struct *tsk)
 {
 	struct signal_struct *sig = tsk->signal;
 	struct taskstats *stats;
+	struct taskstats_counts *counts;
 
 	if (sig->stats || thread_group_empty(tsk))
 		goto ret;
 
 	/* No problem if kmem_cache_zalloc() fails */
 	stats = kmem_cache_zalloc(taskstats_cache, GFP_KERNEL);
+	counts = kmem_cache_zalloc(taskstats_counts_cache, GFP_KERNEL);
 
 	spin_lock_irq(&tsk->sighand->siglock);
 	if (!sig->stats) {
 		sig->stats = stats;
+		if (stats)
+			sig->stats->counts = counts;
 		stats = NULL;
+		counts = NULL;
 	}
 	spin_unlock_irq(&tsk->sighand->siglock);
 
 	if (stats)
 		kmem_cache_free(taskstats_cache, stats);
+	if (counts)
+		kmem_cache_free(taskstats_counts_cache, counts);
 ret:
 	return sig->stats;
 }
@@ -679,6 +687,7 @@ void __init taskstats_init_early(void)
 	unsigned int i;
 
 	taskstats_cache = KMEM_CACHE(taskstats, SLAB_PANIC);
+	taskstats_counts_cache = KMEM_CACHE(taskstats_counts, SLAB_PANIC);
 	for_each_possible_cpu(i) {
 		INIT_LIST_HEAD(&(per_cpu(listener_array, i).list));
 		init_rwsem(&(per_cpu(listener_array, i).sem));

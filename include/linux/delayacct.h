@@ -17,6 +17,7 @@
 #ifndef _LINUX_DELAYACCT_H
 #define _LINUX_DELAYACCT_H
 
+#include <linux/uek_kabi.h>
 #include <uapi/linux/taskstats.h>
 
 /*
@@ -57,7 +58,12 @@ struct task_delay_info {
 
 	u64 freepages_start;
 	u64 freepages_delay;	/* wait for memory reclaim */
+
 	u32 freepages_count;	/* total count of memory reclaim */
+
+	UEK_KABI_EXTEND(u32 thrashing_count) /* total count of thrash waits */
+	UEK_KABI_EXTEND(u64 thrashing_start)
+	UEK_KABI_EXTEND(u64 thrashing_delay) /* wait for thrashing page */
 };
 #endif
 
@@ -76,6 +82,8 @@ extern int __delayacct_add_tsk(struct taskstats *, struct task_struct *);
 extern __u64 __delayacct_blkio_ticks(struct task_struct *);
 extern void __delayacct_freepages_start(void);
 extern void __delayacct_freepages_end(void);
+extern void __delayacct_thrashing_start(void);
+extern void __delayacct_thrashing_end(void);
 
 static inline int delayacct_is_task_waiting_on_io(struct task_struct *p)
 {
@@ -156,6 +164,18 @@ static inline void delayacct_freepages_end(void)
 		__delayacct_freepages_end();
 }
 
+static inline void delayacct_thrashing_start(void)
+{
+	if (current->delays)
+		__delayacct_thrashing_start();
+}
+
+static inline void delayacct_thrashing_end(void)
+{
+	if (current->delays)
+		__delayacct_thrashing_end();
+}
+
 #else
 static inline void delayacct_set_flag(int flag)
 {}
@@ -181,6 +201,10 @@ static inline int delayacct_is_task_waiting_on_io(struct task_struct *p)
 static inline void delayacct_freepages_start(void)
 {}
 static inline void delayacct_freepages_end(void)
+{}
+static inline void delayacct_thrashing_start(void)
+{}
+static inline void delayacct_thrashing_end(void)
 {}
 
 #endif /* CONFIG_TASK_DELAY_ACCT */

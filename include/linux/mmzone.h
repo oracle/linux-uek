@@ -165,7 +165,13 @@ enum node_stat_item {
 	NR_ISOLATED_FILE,	/* Temporary isolated pages from file lru */
 	WORKINGSET_REFAULT,
 	WORKINGSET_ACTIVATE,
-	WORKINGSET_NODERECLAIM,
+	/* To avoid breaking the KABI, RESTORE and NODERECLAIM have been
+	 * combined into one field.  RESTORE has been placed in the
+	 * upper 16 bits, while NODERECLAIM occupies the lower 16 bits
+	 */
+	/* WORKINGSET_RESTORE, */
+	/* WORKINGSET_NODERECLAIM, */
+	WORKINGSET_RESTORE_AND_NODERECLAIM,
 	NR_ANON_MAPPED,	/* Mapped anonymous pages */
 	NR_FILE_MAPPED,	/* pagecache pages mapped into pagetables.
 			   only modified from process context */

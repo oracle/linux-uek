@@ -21,6 +21,7 @@
 #include <linux/workqueue.h>
 #include <linux/bpf-cgroup.h>
 #include <linux/uek_kabi.h>
+#include <linux/psi_types.h>
 
 #ifdef CONFIG_CGROUPS
 
@@ -420,6 +421,7 @@ struct cgroup {
 	/* used to schedule release agent */
 	struct work_struct release_agent_work;
 
+
 	/* used to store eBPF programs */
 	struct cgroup_bpf bpf;
 
@@ -444,7 +446,10 @@ struct cgroup {
 	UEK_KABI_RESERVED(12);
 	UEK_KABI_RESERVED(13);
 #endif
-	UEK_KABI_RESERVED(14);
+
+	/* used to track pressure stalls */
+	UEK_KABI_USE(14, struct psi_group *psi);
+
 	UEK_KABI_RESERVED(15);
 
 	/* ids of the ancestors at each level including self */
