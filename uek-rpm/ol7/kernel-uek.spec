@@ -604,8 +604,7 @@ Source26: Module.kabi_x86_64
 Source200: kabi_whitelist_x86_64debug
 Source201: kabi_whitelist_x86_64
 
-Source300: debuginfo-g1.diff
-Source301: find-debuginfo.sh.ol7.diff
+Source300: find-debuginfo.sh.ol7.diff
 
 # Sources for kernel-tools
 Source2000: cpupower.service
@@ -1120,12 +1119,11 @@ ApplyPatch %{stable_patch_00}
 ApplyPatch %{stable_patch_01}
 %endif
 
-# Copy the RPM find-debuginfo.sh into the buildroot and patch it
-# to support -g1.  (This is a patch of *RPM*, not of the kernel,
-# so it is not governed by nopatches.)
-cp %{_rpmconfigdir}/find-debuginfo.sh %{_builddir}
-patch %{_builddir}/find-debuginfo.sh %{SOURCE300} && \
-patch %{_builddir}/find-debuginfo.sh %{SOURCE301}
+# Copy the RPM find-debuginfo.sh into the buildroot and patch it.
+# (This is a patch of *RPM*, not of the kernel, so it is not governed
+# by nopatches.)
+cp %{_rpmconfigdir}/find-debuginfo.sh %{_builddir} && \
+    patch %{_builddir}/find-debuginfo.sh %{SOURCE300}
 chmod +x %{_builddir}/find-debuginfo.sh
 
 # only deal with configs if we are going to build for the arch
@@ -1639,7 +1637,7 @@ make -j1 htmldocs || %{doc_build_fail}
 %if %{with_debuginfo}
 
 %define __debug_install_post \
-  %{_builddir}/find-debuginfo.sh %{debuginfo_args} -g1 %{_builddir}/%{?buildsubdir}\
+  %{_builddir}/find-debuginfo.sh %{debuginfo_args} %{_builddir}/%{?buildsubdir}\
 %{nil}
 
 %ifnarch noarch
