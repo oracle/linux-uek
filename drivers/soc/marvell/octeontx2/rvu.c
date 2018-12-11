@@ -1856,7 +1856,7 @@ static void rvu_blklf_teardown(struct rvu *rvu, u16 pcifunc, u8 blkaddr)
 		else if (block->addr == BLKADDR_NPA)
 			rvu_npa_lf_teardown(rvu, pcifunc, lf);
 		else if (block->addr == BLKADDR_SSO)
-			rvu_sso_lf_teardown(rvu, lf);
+			rvu_sso_lf_teardown(rvu, pcifunc, lf, slot);
 		else if (block->addr == BLKADDR_SSOW)
 			rvu_ssow_lf_teardown(rvu, pcifunc, lf, slot);
 
