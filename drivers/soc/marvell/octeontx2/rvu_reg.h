@@ -420,12 +420,21 @@
 #define SSO_AF_ERR0_W1S			(0x1228)
 #define SSO_AF_ERR0_ENA_W1C		(0x1230)
 #define SSO_AF_ERR0_ENA_W1S		(0x1238)
+#define SSO_AF_ERR2			(0x1260)
+#define SSO_AF_ERR2_W1S			(0x1268)
+#define SSO_AF_ERR2_ENA_W1C		(0x1270)
+#define SSO_AF_ERR2_ENA_W1S		(0x1278)
+#define SSO_AF_UNMAP_INFO		(0x12f0)
+#define SSO_AF_UNMAP_INFO2		(0x1300)
+#define SSO_AF_UNMAP_INFO3		(0x1310)
 #define SSO_AF_AW_ADD			(0x2080)
 #define SSO_AF_AW_READ_ARB		(0x2090)
 #define SSO_AF_XAQ_REQ_PC		(0x20B0)
 #define SSO_AF_XAQ_LATENCY_PC		(0x20B8)
 #define SSO_AF_TAQ_CNT			(0x20c0)
 #define SSO_AF_TAQ_ADD			(0x20e0)
+#define SSO_AF_POISONX(a)		(0x2100 | (a) << 3)
+#define SSO_AF_POISONX_W1S(a)		(0x2200 | (a) << 3)
 #define SSO_AF_RVU_LF_CFG_DEBUG		(0x3800)
 #define SSO_PRIV_LFX_HWGRP_CFG		(0x10000)
 #define SSO_PRIV_LFX_HWGRP_INT_CFG	(0x20000)
@@ -483,6 +492,12 @@
 #define SSO_HWGRP_IAQ_RSVD_THR_MASK	0x3FFFull
 #define SSO_HWGRP_IAQ_MAX_THR_SHIFT	32
 #define SSO_HWGRP_IAQ_RSVD_THR		0x2
+#define SSO_HWGRP_IAQ_GRP_CNT_SHIFT	48
+#define SSO_HWGRP_IAQ_GRP_CNT_MASK	0x3FFFull
+#define SSO_AF_HWGRPX_IUEX_NOSCHED(a, b)\
+		((((b >> 48) & 0x3FF) == a) && (b & BIT_ULL(60)))
+#define SSO_AF_HWGRP_PAGE_CNT_MASK	(BIT_ULL(32) - 1)
+#define SSO_AF_HWGRP_PAGE_CNT_MASK	(BIT_ULL(32) - 1)
 
 #define SSO_AF_TAQ_FREE_CNT_MASK	0x7FFull
 #define SSO_AF_TAQ_RSVD_FREE_MASK	0x7FFull
@@ -494,6 +509,8 @@
 #define SSO_HWGRP_TAQ_RSVD_THR_MASK	0x7FFull
 #define SSO_HWGRP_TAQ_MAX_THR_SHIFT	32
 #define SSO_HWGRP_TAQ_RSVD_THR		0x3
+#define SSO_AF_ERR0_MASK		0xFFEull
+#define SSO_AF_ERR2_MASK		0xF001F000ull
 
 #define SSO_HWGRP_PRI_AFF_MASK		0xFull
 #define SSO_HWGRP_PRI_AFF_SHIFT		8
@@ -513,6 +530,23 @@
 #define SSO_HWGRP_AW_STS_XAQ_BUFSC_MASK	0x7ull
 #define SSO_HWGRP_AW_STS_INIT_STS	0x18ull
 
+#define SSO_LF_GGRP_OP_ADD_WORK1	(0x8ull)
+#define SSO_LF_GGRP_QCTL		(0x20ull)
+#define SSO_LF_GGRP_INT			(0x100ull)
+#define SSO_LF_GGRP_INT_ENA_W1S		(0x110ull)
+#define SSO_LF_GGRP_INT_ENA_W1C		(0x118ull)
+#define SSO_LF_GGRP_INT_THR		(0x140ull)
+#define SSO_LF_GGRP_INT_CNT		(0x180ull)
+#define SSO_LF_GGRP_XAQ_CNT		(0x1b0ull)
+#define SSO_LF_GGRP_AQ_CNT		(0x1c0ull)
+#define SSO_LF_GGRP_AQ_THR		(0x1e0ull)
+#define SSO_LF_GGRP_MISC_CNT		(0x200ull)
+
+#define SSO_LF_GGRP_INT_MASK		(0X7)
+#define SSO_LF_GGRP_AQ_THR_MASK		(BIT_ULL(33) - 1)
+#define SSO_LF_GGRP_XAQ_CNT_MASK	(BIT_ULL(33) - 1)
+#define SSO_LF_GGRP_INT_CNT_MASK	(0x3FFF3FFF0000ull)
+
 /* SSOW */
 #define SSOW_AF_RVU_LF_HWS_CFG_DEBUG	(0x0010)
 #define SSOW_AF_LF_HWS_RST		(0x0030)
@@ -524,12 +558,15 @@
 #define SSOW_LF_GWS_INT			(0x100ull)
 #define SSOW_LF_GWS_INT_ENA_W1C		(0x118ull)
 #define SSOW_LF_GWS_TAG			(0x200ull)
+#define SSOW_LF_GWS_OP_GET_WORK		(0x600ull)
 #define SSOW_LF_GWS_OP_SWTAG_FLUSH	(0x800ull)
 #define SSOW_LF_GWS_OP_DESCHED		(0x880ull)
+#define SSOW_LF_GWS_OP_CLR_NSCHED0	(0xA00ull)
 #define SSOW_LF_GWS_OP_GWC_INVAL	(0xe00ull)
 
 #define SSO_TT_EMPTY			(0x3)
 #define SSOW_LF_GWS_INT_MASK		(0x7FF)
+#define SSOW_LF_GWS_MAX_NW_TIM		(BIT_ULL(10) - 1)
 
 /* TIM */
 #define TIM_AF_CONST			(0x90)
@@ -693,8 +730,10 @@
 
 #define AF_BAR2_ALIASX_SIZE		(0x100000ull)
 #define SSOW_AF_BAR2_SEL		(0x9000000ull)
+#define SSO_AF_BAR2_SEL			(0x9000000ull)
 
 #define AF_BAR2_ALIASX(a, b)		(0x9100000ull | (a) << 12 | b)
 #define SSOW_AF_BAR2_ALIASX(a, b)	AF_BAR2_ALIASX(a, b)
+#define SSO_AF_BAR2_ALIASX(a, b)	AF_BAR2_ALIASX(a, b)
 
 #endif /* RVU_REG_H */
