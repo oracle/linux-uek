@@ -71,6 +71,175 @@ static void rvu_sso_hwgrp_config_thresh(struct rvu *rvu, int blkaddr, int lf)
 			    SSO_AF_TAQ_ADD_RSVD_FREE_SHIFT);
 }
 
+static void rvu_sso_enable_aw_src(struct rvu *rvu, int lf_cnt, int sub_blkaddr,
+				  u64 addr, int *lf_arr, u16 pcifunc, u8 shift,
+				  u8 addr_off)
+{
+	u64 reg;
+	int lf;
+
+	for (lf = 0; lf < lf_cnt; lf++) {
+		reg = rvu_read64(rvu, sub_blkaddr, addr |
+				 lf_arr[lf] << addr_off);
+
+		reg |= ((u64)pcifunc << shift);
+		rvu_write64(rvu, sub_blkaddr, addr |
+				lf_arr[lf] << addr_off, reg);
+	}
+}
+
+static int rvu_sso_disable_aw_src(struct rvu *rvu, int **lf_arr,
+				  int sub_blkaddr, u8 shift, u8 addr_off,
+				  u16 pcifunc, u64 addr)
+{
+	struct rvu_hwinfo *hw = rvu->hw;
+	struct rvu_block *block;
+	int lf_cnt = 0, lf;
+	u64 reg;
+
+	if (sub_blkaddr >= 0) {
+		block = &hw->block[sub_blkaddr];
+		*lf_arr = kmalloc(block->lf.max * sizeof(int), GFP_KERNEL);
+		if (!*lf_arr)
+			return 0;
+
+		for (lf = 0; lf < block->lf.max; lf++) {
+			reg = rvu_read64(rvu, sub_blkaddr,
+					 addr | lf << addr_off);
+			if (((reg >> shift) & 0xFFFFul) != pcifunc)
+				continue;
+
+			reg &= ~(0xFFFFul << shift);
+			rvu_write64(rvu, sub_blkaddr, addr | lf << addr_off,
+				    reg);
+			(*lf_arr)[lf_cnt] = lf;
+			lf_cnt++;
+		}
+	}
+
+	return lf_cnt;
+}
+
+static void rvu_sso_ggrp_taq_flush(struct rvu *rvu, u16 pcifunc, int lf,
+				   int slot, int ssow_lf, u64 blkaddr,
+				   u64 ssow_blkaddr)
+{
+	int nix_lf_cnt, cpt_lf_cnt, tim_lf_cnt;
+	int *nix_lf, *cpt_lf, *tim_lf;
+	u64 reg, val;
+
+	/* Disable add work. */
+	rvu_write64(rvu, blkaddr, SSO_AF_BAR2_ALIASX(slot, SSO_LF_GGRP_QCTL),
+		    0);
+
+	/* Disable all sources of work. */
+	nix_lf = NULL;
+	nix_lf_cnt = rvu_sso_disable_aw_src(rvu, &nix_lf,
+					    rvu_get_blkaddr(rvu, BLKTYPE_NIX,
+							    0),
+					    NIX_AF_LF_SSO_PF_FUNC_SHIFT,
+					    NIX_AF_LF_CFG_SHIFT, pcifunc,
+					    NIX_AF_LFX_CFG(0));
+
+	cpt_lf = NULL;
+	cpt_lf_cnt = rvu_sso_disable_aw_src(rvu, &cpt_lf,
+					    rvu_get_blkaddr(rvu, BLKTYPE_CPT,
+							    0),
+					    CPT_AF_LF_SSO_PF_FUNC_SHIFT,
+					    CPT_AF_LF_CTL2_SHIFT, pcifunc,
+					    CPT_AF_LFX_CTL2(0));
+
+	tim_lf = NULL;
+	tim_lf_cnt = rvu_sso_disable_aw_src(rvu, &tim_lf,
+					    rvu_get_blkaddr(rvu, BLKTYPE_TIM,
+							    0),
+					    TIM_AF_RING_SSO_PF_FUNC_SHIFT,
+					    TIM_AF_RING_GMCTL_SHIFT, pcifunc,
+					    TIM_AF_RINGX_GMCTL(0));
+
+	/* ZIP and DPI blocks not yet implemented. */
+
+	/* Enable add work. */
+	rvu_write64(rvu, blkaddr, SSO_AF_BAR2_ALIASX(slot, SSO_LF_GGRP_QCTL),
+		    0x1);
+
+	/* Prepare WS for GW operations. */
+	do {
+		reg = rvu_read64(rvu, ssow_blkaddr,
+				 SSOW_AF_BAR2_ALIASX(0, SSOW_LF_GWS_TAG));
+	} while (reg & BIT_ULL(63));
+
+	if (reg & BIT_ULL(62))
+		rvu_write64(rvu, ssow_blkaddr,
+			    SSOW_AF_BAR2_ALIASX(0, SSOW_LF_GWS_OP_DESCHED),
+			    0x0);
+	else if (((reg >> 32) & SSO_TT_EMPTY) != SSO_TT_EMPTY)
+		rvu_write64(rvu, ssow_blkaddr,
+			    SSOW_AF_BAR2_ALIASX(0, SSOW_LF_GWS_OP_SWTAG_FLUSH),
+			    0x0);
+
+	rvu_write64(rvu, ssow_blkaddr,
+		    SSOW_AF_BAR2_ALIASX(0, SSOW_LF_GWS_OP_GWC_INVAL), 0x0);
+	/* Drain TAQ. */
+	val = slot;
+	val |= BIT_ULL(18);
+	val |= BIT_ULL(16);
+
+	reg = rvu_read64(rvu, blkaddr, SSO_AF_HWGRPX_TAQ_THR(lf));
+	while ((reg >> 48) & 0x7FF) {
+		rvu_write64(rvu, blkaddr,
+			    SSO_AF_BAR2_ALIASX(lf, SSO_LF_GGRP_OP_ADD_WORK1),
+			    0x1 << 3);
+get_work:
+		rvu_write64(rvu, ssow_blkaddr,
+			    SSOW_AF_BAR2_ALIASX(0, SSOW_LF_GWS_OP_GET_WORK),
+			    val);
+		do {
+			reg = rvu_read64(rvu, ssow_blkaddr,
+					 SSOW_AF_BAR2_ALIASX(0,
+							     SSOW_LF_GWS_TAG));
+		} while (reg & BIT_ULL(63));
+
+		if (!rvu_read64(rvu, ssow_blkaddr,
+				SSOW_AF_BAR2_ALIASX(0, SSOW_LF_GWS_WQP)))
+			goto get_work;
+
+		reg = rvu_read64(rvu, blkaddr, SSO_AF_HWGRPX_TAQ_THR(lf));
+	}
+
+	reg = rvu_read64(rvu, ssow_blkaddr,
+			 SSOW_AF_BAR2_ALIASX(0, SSOW_LF_GWS_TAG));
+	if (((reg >> 32) & SSO_TT_EMPTY) != SSO_TT_EMPTY)
+		rvu_write64(rvu, ssow_blkaddr,
+			    SSOW_AF_BAR2_ALIASX(0, SSOW_LF_GWS_OP_SWTAG_FLUSH),
+			    0x0);
+
+	/* Disable add work. */
+	rvu_write64(rvu, blkaddr, SSO_AF_BAR2_ALIASX(slot, SSO_LF_GGRP_QCTL),
+		    0x0);
+
+	/* restore all sources of work. */
+	rvu_sso_enable_aw_src(rvu, nix_lf_cnt, rvu_get_blkaddr(rvu, BLKTYPE_NIX,
+							       0),
+			      NIX_AF_LFX_CFG(0), nix_lf, pcifunc,
+			      NIX_AF_LF_SSO_PF_FUNC_SHIFT,
+			      NIX_AF_LF_CFG_SHIFT);
+	rvu_sso_enable_aw_src(rvu, cpt_lf_cnt, rvu_get_blkaddr(rvu, BLKTYPE_CPT,
+							       0),
+			      CPT_AF_LFX_CTL2(0), cpt_lf, pcifunc,
+			      CPT_AF_LF_SSO_PF_FUNC_SHIFT,
+			      CPT_AF_LF_CTL2_SHIFT);
+	rvu_sso_enable_aw_src(rvu, tim_lf_cnt, rvu_get_blkaddr(rvu, BLKTYPE_TIM,
+							       0),
+			      TIM_AF_RINGX_GMCTL(0), tim_lf, pcifunc,
+			      TIM_AF_RING_SSO_PF_FUNC_SHIFT,
+			      TIM_AF_RING_GMCTL_SHIFT);
+
+	kfree(nix_lf);
+	kfree(cpt_lf);
+	kfree(tim_lf);
+}
+
 int rvu_sso_lf_teardown(struct rvu *rvu, u16 pcifunc, int lf, int slot)
 {
 	int ssow_lf, iue, blkaddr, ssow_blkaddr, err;
@@ -196,6 +365,14 @@ int rvu_sso_lf_teardown(struct rvu *rvu, u16 pcifunc, int lf, int slot)
 		/* Extract cq and ds count */
 		cq_ds_cnt &= SSO_LF_GGRP_INT_CNT_MASK;
 	}
+
+	/* Due to the Errata 35432, SSO doesn't release the partially consumed
+	 * TAQ buffer used by HWGRP when HWGRP is reset. Use SW routine to
+	 * drain it manually.
+	 */
+	if (is_rvu_9xxx_A0(rvu))
+		rvu_sso_ggrp_taq_flush(rvu, pcifunc, lf, slot, ssow_lf, blkaddr,
+				       ssow_blkaddr);
 
 	rvu_write64(rvu, ssow_blkaddr,
 		    SSOW_AF_BAR2_ALIASX(0, SSOW_LF_GWS_NW_TIM), 0x0);
