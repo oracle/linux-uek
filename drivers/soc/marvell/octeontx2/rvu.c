@@ -1948,6 +1948,17 @@ static void rvu_blklf_teardown(struct rvu *rvu, u16 pcifunc, u8 blkaddr)
 	}
 }
 
+static void rvu_sso_pfvf_rst(struct rvu *rvu, u16 pcifunc)
+{
+	struct rvu_pfvf *pfvf = rvu_get_pfvf(rvu, pcifunc);
+	struct rvu_hwinfo *hw = rvu->hw;
+
+	if (pfvf->sso_uniq_ident) {
+		rvu_free_rsrc(&hw->sso.pfvf_ident, pfvf->sso_uniq_ident);
+		pfvf->sso_uniq_ident = 0;
+	}
+}
+
 static void __rvu_flr_handler(struct rvu *rvu, u16 pcifunc)
 {
 	mutex_lock(&rvu->flr_lock);
@@ -1963,6 +1974,7 @@ static void __rvu_flr_handler(struct rvu *rvu, u16 pcifunc)
 	rvu_blklf_teardown(rvu, pcifunc, BLKADDR_SSO);
 	rvu_blklf_teardown(rvu, pcifunc, BLKADDR_NPA);
 	rvu_detach_rsrcs(rvu, NULL, pcifunc);
+	rvu_sso_pfvf_rst(rvu, pcifunc);
 	mutex_unlock(&rvu->flr_lock);
 }
 

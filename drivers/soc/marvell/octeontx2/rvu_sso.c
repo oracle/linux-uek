@@ -862,8 +862,10 @@ int rvu_mbox_handler_sso_lf_free(struct rvu *rvu, struct sso_lf_free_req *req,
 		rvu_sso_hwgrp_config_thresh(rvu, blkaddr, lf);
 	}
 
-	if (pfvf->sso_uniq_ident)
+	if (pfvf->sso_uniq_ident) {
 		rvu_free_rsrc(&hw->sso.pfvf_ident, pfvf->sso_uniq_ident);
+		pfvf->sso_uniq_ident = 0;
+	}
 
 	return 0;
 }
