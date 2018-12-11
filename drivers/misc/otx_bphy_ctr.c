@@ -20,7 +20,7 @@
 
 #define DEVICE_NAME	"otx-bphy-ctr"
 #define OTX_IOC_MAGIC	0xF3
-#define MAX_IRQ		23
+#define MAX_IRQ		27
 
 static struct device *otx_device;
 static struct class *otx_class;
