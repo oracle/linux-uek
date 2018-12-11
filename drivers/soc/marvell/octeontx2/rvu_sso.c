@@ -634,9 +634,11 @@ int rvu_mbox_handler_sso_grp_set_priority(struct rvu *rvu,
 	if (blkaddr < 0)
 		return SSO_AF_ERR_LF_INVALID;
 
-	regval = (((u64)(req->weight & 0x3f) << 16) |
-			((u64)(req->affinity & 0xf) << 8) |
-			(req->priority & 0x7));
+	regval = (((u64)(req->weight & SSO_HWGRP_PRI_WGT_MASK)
+				<< SSO_HWGRP_PRI_WGT_SHIFT) |
+			((u64)(req->affinity & SSO_HWGRP_PRI_AFF_MASK)
+				<< SSO_HWGRP_PRI_AFF_SHIFT) |
+			(req->priority & SSO_HWGRP_PRI_MASK));
 
 	lf = rvu_get_lf(rvu, &hw->block[blkaddr], pcifunc, req->grp);
 	if (lf < 0)
@@ -666,9 +668,11 @@ int rvu_mbox_handler_sso_grp_get_priority(struct rvu *rvu,
 
 	regval = rvu_read64(rvu, blkaddr, SSO_AF_HWGRPX_PRI(lf));
 
-	rsp->weight = (regval >> 16) & 0x3f;
-	rsp->affinity = (regval >> 8) & 0xf;
-	rsp->priority = regval & 0x7;
+	rsp->weight = (regval >> SSO_HWGRP_PRI_WGT_SHIFT)
+			& SSO_HWGRP_PRI_WGT_MASK;
+	rsp->affinity = (regval >> SSO_HWGRP_PRI_AFF_SHIFT)
+			& SSO_HWGRP_PRI_AFF_MASK;
+	rsp->priority = regval & SSO_HWGRP_PRI_MASK;
 
 	return 0;
 }
@@ -801,7 +805,7 @@ int rvu_mbox_handler_sso_lf_alloc(struct rvu *rvu, struct sso_lf_alloc_req *req,
 
 	/* Set threshold for the In-Unit Accounting Index*/
 	rvu_write64(rvu, blkaddr, SSO_AF_IU_ACCNTX_CFG(uniq_ident),
-		    0xFFF << 16);
+		    SSO_AF_HWGRP_IU_ACCNT_MAX_THR << 16);
 
 	for (hwgrp = 0; hwgrp < req->hwgrps; hwgrp++) {
 		ssolf = rvu_get_lf(rvu, &hw->block[blkaddr], pcifunc, hwgrp);
@@ -979,9 +983,10 @@ int rvu_sso_init(struct rvu *rvu)
 	iaq_rsvd = iaq_free_cnt / sso->sso_hwgrps / 2;
 
 	/* Enforce minimum per hardware requirements */
-	if (iaq_rsvd < 2)
-		iaq_rsvd = 2;
-	iaq_max = iaq_rsvd << 7;
+	if (iaq_rsvd < SSO_HWGRP_IAQ_RSVD_THR)
+		iaq_rsvd = SSO_HWGRP_IAQ_RSVD_THR;
+	/* To ensure full streaming performance should be at least 208. */
+	iaq_max = iaq_rsvd + SSO_HWGRP_IAQ_MAX_THR_STRM_PERF;
 	if (iaq_max >= (SSO_AF_IAQ_FREE_CNT_MAX + 1))
 		iaq_max = SSO_AF_IAQ_FREE_CNT_MAX;
 
@@ -993,10 +998,11 @@ int rvu_sso_init(struct rvu *rvu)
 	taq_rsvd = taq_free_cnt / sso->sso_hwgrps / 2;
 
 	/* Enforce minimum per hardware requirements */
-	if (taq_rsvd < 3)
-		taq_rsvd = 3;
+	if (taq_rsvd < SSO_HWGRP_TAQ_RSVD_THR)
+		taq_rsvd = SSO_HWGRP_TAQ_RSVD_THR;
 
-	taq_max = taq_rsvd << 3;
+	/* To ensure full streaming performance should be at least 16. */
+	taq_max = taq_rsvd + SSO_HWGRP_TAQ_MAX_THR_STRM_PERF;
 	if (taq_max >= (SSO_AF_TAQ_FREE_CNT_MAX + 1))
 		taq_max = SSO_AF_TAQ_FREE_CNT_MAX;
 
