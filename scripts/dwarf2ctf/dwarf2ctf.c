@@ -142,6 +142,13 @@ typedef struct ctf_memb_count {
 } ctf_memb_count_t;
 
 /*
+ * A mapping from the absolute pathname of a TU to a hashtable mapping
+ * DIE offsets of child DIEs to DIE offsets of parents.  Populated on first
+ * iteration.
+ */
+static GHashTable *fn_to_die_to_parent;
+
+/*
  * Get a ctf_file out of the per_module hash for a given module.
  */
 static ctf_file_t *lookup_ctf_file(const char *module_name);
@@ -227,6 +234,17 @@ static ctf_id_t ctf_void_type;
 static ctf_id_t ctf_funcptr_type;
 
 /*
+ * Initialize the child->parent DIE mapping for a single file.
+ */
+static void init_parent_die(const char *file_name, Dwfl *dwfl);
+
+/*
+ * Initialize one layer of a child->parent mapping.
+ */
+static void init_parent_die_internal(const char *file_name,
+				     GHashTable *offs, Dwarf_Die *parent);
+
+/*
  * Override the presence and value of FORM_u/sdata attributes on DWARF DIEs,
  * either adding to it, or replacing it.
  *
@@ -297,11 +315,12 @@ static void process_file(const char *file_name,
 			 void *data);
 
 /*
- * process_file() helper, walking over subroutines recursively and picking up
- * types therein.
+ * process_file() helper, walking over the top level and picking up types
+ * therein.
  */
 static void process_tu_func(const char *module_name,
 			    const char *file_name,
+			    Dwarf *dwarf,
 			    Dwarf_Die *parent_die,
 			    Dwarf_Die *die,
 			    void (*dwarf_process)(const char *module_name,
@@ -627,7 +646,9 @@ ASSEMBLY_FUN(variable);
  * processing function: it can be used to rapidly determine that this DIE is not
  * worth processing.  (It should return 0 in this case, and nonzero otherwise.)
  */
-typedef int (*ctf_assembly_filter_fun)(Dwarf_Die *die,
+typedef int (*ctf_assembly_filter_fun)(const char *file_name,
+				       Dwarf *dwarf,
+				       Dwarf_Die *die,
 				       Dwarf_Die *parent_die);
 
 /*
@@ -638,7 +659,9 @@ typedef int (*ctf_assembly_filter_fun)(Dwarf_Die *die,
  * functions, because GCC may emit references to the opaque variants of those
  * types from file scope.)
  */
-static int filter_ctf_file_scope(Dwarf_Die *die,
+static int filter_ctf_file_scope(const char *file_name,
+				 Dwarf *dwarf,
+				 Dwarf_Die *die,
 				 Dwarf_Die *parent_die);
 
 /*
@@ -647,7 +670,9 @@ static int filter_ctf_file_scope(Dwarf_Die *die,
  * interesting.  (DTrace userspace contains a similar list, but the two lists
  * need not be in sync.)
  */
-static int filter_ctf_uninteresting(Dwarf_Die *die,
+static int filter_ctf_uninteresting(const char *file_name,
+				    Dwarf *dwarf,
+				    Dwarf_Die *die,
 				    Dwarf_Die *parent_die);
 
 /*
@@ -679,13 +704,13 @@ static struct assembly_tab_t
  { DW_TAG_subrange_type, NULL, assemble_ctf_array_dimension },
  { DW_TAG_const_type, filter_ctf_file_scope, assemble_ctf_cvr_qual },
  { DW_TAG_restrict_type, filter_ctf_file_scope, assemble_ctf_cvr_qual },
- { DW_TAG_enumeration_type, NULL, assemble_ctf_enumeration },
- { DW_TAG_enumerator, NULL, assemble_ctf_enumerator },
+ { DW_TAG_enumeration_type, filter_ctf_file_scope, assemble_ctf_enumeration },
+ { DW_TAG_enumerator, filter_ctf_file_scope, assemble_ctf_enumerator },
  { DW_TAG_pointer_type, filter_ctf_file_scope, assemble_ctf_pointer },
- { DW_TAG_structure_type, NULL, assemble_ctf_struct_union },
- { DW_TAG_union_type, NULL, assemble_ctf_struct_union },
- { DW_TAG_member, NULL, assemble_ctf_su_member },
- { DW_TAG_typedef, NULL, assemble_ctf_typedef },
+ { DW_TAG_structure_type, filter_ctf_file_scope, assemble_ctf_struct_union },
+ { DW_TAG_union_type, filter_ctf_file_scope, assemble_ctf_struct_union },
+ { DW_TAG_member, filter_ctf_file_scope, assemble_ctf_su_member },
+ { DW_TAG_typedef, filter_ctf_file_scope, assemble_ctf_typedef },
  { DW_TAG_variable, filter_ctf_uninteresting, assemble_ctf_variable },
  { DW_TAG_volatile_type, filter_ctf_file_scope, assemble_ctf_cvr_qual },
  { 0, NULL }};
@@ -816,6 +841,11 @@ static void private_per_module_free(void *per_module);
  */
 static void free_duplicates_id_file(void *id_file);
 
+/*
+ * Free a fn_to_die_to_parent subhash.
+ */
+static void private_fn_die_parent_free(void *ptr);
+
 /* Initialization.  */
 
 int main(int argc, char *argv[])
@@ -926,6 +956,8 @@ static void run(char *output, int standalone)
 					   private_per_module_free);
 	variable_blacklist = g_hash_table_new_full(g_str_hash, g_str_equal,
 						   free, free);
+	fn_to_die_to_parent = g_hash_table_new_full(g_str_hash, g_str_equal, free,
+						    private_fn_die_parent_free);
 
 	dw_ctf_trace("Initializing...\n");
 
@@ -951,6 +983,8 @@ static void run(char *output, int standalone)
 	g_hash_table_destroy(id_to_type);
 	g_hash_table_destroy(id_to_module);
 	g_hash_table_destroy(per_module);
+	g_hash_table_destroy(variable_blacklist);
+	g_hash_table_destroy(fn_to_die_to_parent);
 }
 
 
@@ -1315,6 +1349,70 @@ static void init_ctf_table(const char *module_name)
 }
 
 /* DWARF walkers.  */
+
+/*
+ * Initialize the child->parent DIE mapping for a single file.
+ */
+static void init_parent_die(const char *file_name, Dwfl *dwfl)
+{
+	GHashTable *offs;
+	Dwarf_Die *tu_die = NULL;
+	Dwarf_Addr junk;
+
+	offs = g_hash_table_new(g_direct_hash, g_direct_equal);
+	if (offs == NULL) {
+		fprintf(stderr, "Out of memory creating DIE offset hash\n");
+		exit(1);
+	}
+
+	while ((tu_die = dwfl_nextcu(dwfl, tu_die, &junk)) != NULL) {
+		init_parent_die_internal(file_name, offs, tu_die);
+	}
+
+	g_hash_table_insert(fn_to_die_to_parent,
+			    strdup(abs_file_name(file_name)), offs);
+}
+
+/*
+ * Initialize one layer of a child->parent mapping.
+ */
+static void init_parent_die_internal(const char *file_name,
+				     GHashTable *offs, Dwarf_Die *parent)
+{
+	Dwarf_Die child;
+	int sib_ret;
+	Dwarf_Off parent_offset;
+	const char *err;
+
+	switch (dwarf_child(parent, &child)) {
+	case -1:
+		err = "child DIEs";
+		goto err;
+	case 1: /* This DIE has no children */
+		return;
+	}
+
+	parent_offset = dwarf_dieoffset(parent);
+
+	do {
+		g_hash_table_insert(offs,
+				    GUINT_TO_POINTER(dwarf_dieoffset(&child)),
+				    GUINT_TO_POINTER(parent_offset));
+		init_parent_die_internal(file_name, offs, &child);
+	} while ((sib_ret = dwarf_siblingof (&child, &child)) == 0);
+
+	if (sib_ret == -1) {
+		err = "sibling DIEs";
+		goto err;
+	}
+	return;
+err:
+	fprintf(stderr, "Cannot fetch %s of DIE at offset %lu in %s: %s\n",
+		err, (unsigned long) dwarf_dieoffset(parent), file_name,
+		dwarf_errmsg(dwarf_errno()));
+	exit(1);
+
+}
 
 /*
  * Type ID computation.
@@ -1707,7 +1805,9 @@ static void process_file(const char *file_name,
 	char *fn_module_name = fn_to_module(file_name);
 	const char *module_name = fn_module_name;
 
-	Dwfl *dwfl = simple_dwfl_new(file_name, NULL);
+	Dwfl_Module *mod;
+	Dwfl *dwfl;
+	Dwarf *dwarf;
 	GHashTable *seen_before = g_hash_table_new_full(g_str_hash, g_str_equal,
 							free, free);
 	Dwarf_Die *tu_die = NULL;
@@ -1717,6 +1817,18 @@ static void process_file(const char *file_name,
 		fprintf(stderr, "Out of memory creating seen_before hash\n");
 		exit(1);
 	}
+
+	dwfl = simple_dwfl_new(file_name, &mod);
+	dwarf = dwfl_module_getdwarf(mod, &junk);
+
+	/*
+	 * On first traversal, make sure the DIE parent mapping is populated,
+	 * so that filters and processing functions can use it.
+	 */
+	if (!g_hash_table_lookup_extended(fn_to_die_to_parent,
+					  abs_file_name(file_name),
+					  NULL, NULL))
+		init_parent_die(file_name, dwfl);
 
 	while ((tu_die = dwfl_nextcu(dwfl, tu_die, &junk)) != NULL) {
 		const char *tu_name;
@@ -1772,7 +1884,7 @@ static void process_file(const char *file_name,
 		if (tu_init != NULL)
 			tu_init(module_name, file_name, tu_die, data);
 
-		process_tu_func(module_name, file_name, tu_die, &die,
+		process_tu_func(module_name, file_name, dwarf, tu_die, &die,
 				dwarf_process, data);
 
 		if (tu_done != NULL)
@@ -1792,11 +1904,12 @@ static void process_file(const char *file_name,
 }
 
 /*
- * process_file() helper, walking over subroutines and their contained blocks
- * recursively and picking up types therein.
+ * process_file() helper, walking over the top level and picking up types
+ * therein.
  */
 static void process_tu_func(const char *module_name,
 			    const char *file_name,
+			    Dwarf *dwarf,
 			    Dwarf_Die *parent_die,
 			    Dwarf_Die *die,
 			    void (*dwarf_process)(const char *module_name,
@@ -1811,35 +1924,16 @@ static void process_tu_func(const char *module_name,
 
 	/*
 	 * We are only interested in definitions for which we can (eventually)
-	 * emit CTF: call the processing function for all such.  Recurse into
-	 * subprograms to catch type declarations there as well, since there may
-	 * be definitions of aggregates referred to outside this function only
-	 * opaquely.
+	 * emit CTF: call the processing function for all such.
 	 */
 	do {
 		if ((dwarf_tag(die) <= assembly_len) &&
 		    (assembly_filter_tab[dwarf_tag(die)] == NULL ||
-		     assembly_filter_tab[dwarf_tag(die)](die, parent_die)) &&
+		     assembly_filter_tab[dwarf_tag(die)](file_name, dwarf, die,
+							 parent_die)) &&
 		    (assembly_tab[dwarf_tag(die)] != NULL))
 			dwarf_process(module_name, file_name, die,
 				      parent_die, data);
-
-		if ((dwarf_tag(die) == DW_TAG_subprogram) ||
-		    (dwarf_tag(die) == DW_TAG_lexical_block)) {
-			Dwarf_Die subroutine_die;
-
-			switch (dwarf_child(die, &subroutine_die)) {
-			case -1:
-				err = "fetch first child of subroutine";
-				goto fail;
-			case 1: /* No DIEs at all in this subroutine */
-				continue;
-			default: /* Child DIEs exist.  */
-				break;
-			}
-			process_tu_func(module_name, file_name, die,
-					&subroutine_die, dwarf_process, data);
-		}
 	} while ((sib_ret = dwarf_siblingof(die, die)) == 0);
 
 	if (sib_ret == -1) {
@@ -3107,40 +3201,46 @@ static ctf_id_t lookup_ctf_type(const char *module_name, const char *file_name,
 
 /*
  * A CTF assembly filter function which excludes all types not at the global
- * scope (i.e. whose immediate parent is not a CU DIE) and which does not have a
- * structure or union as its ultimate dependent type.  (All structures and
- * unions and everything dependent on them must be recorded, even inside
- * functions, because GCC may emit references to the opaque variants of those
- * types from file scope.)
+ * scope (i.e. whose immediate parent is not a CU DIE), and all types which
+ * reference a type which is not at the global scope (thus ruling out local type
+ * definitions for which the compiler is not consistently emitting all
+ * intermediate types at the local scope).
  */
-static int filter_ctf_file_scope(Dwarf_Die *die, Dwarf_Die *parent_die)
+static int filter_ctf_file_scope(const char *file_name, Dwarf *dwarf,
+				 Dwarf_Die *die, Dwarf_Die *parent_die)
 {
+	Dwarf_Die type_die;
+	GHashTable *parents;
+
 	/*
-	 * Find the ultimate parent of this DIE.
+	 * A type not dependent on another is acceptable iff it is at the global
+	 * scope.
 	 */
-
-	Dwarf_Die dependent_die;
-	Dwarf_Die *dependent_diep = private_dwarf_type(die, &dependent_die);
-
-	if (dependent_diep != NULL) {
-		Dwarf_Die *possible_depp = dependent_diep;
-		do {
-			Dwarf_Die possible_dep;
-			possible_depp = private_dwarf_type(possible_depp,
-							   &possible_dep);
-
-			if (possible_depp != NULL)
-				dependent_die = possible_dep;
-		} while (possible_depp != NULL);
-	}
-
-	if (dependent_diep)
-		return (dwarf_tag(dependent_diep) == DW_TAG_structure_type ||
-			dwarf_tag(dependent_diep) == DW_TAG_union_type ||
-			dwarf_tag(dependent_diep) == DW_TAG_enumeration_type ||
-			dwarf_tag(parent_die) == DW_TAG_compile_unit);
-	else
+	if (private_dwarf_type(die, &type_die) == NULL)
 		return (dwarf_tag(parent_die) == DW_TAG_compile_unit);
+
+	/*
+	 * No type we reference may have a subprogram DIE as any of its parents.
+	 */
+	parents = g_hash_table_lookup(fn_to_die_to_parent,
+				      abs_file_name(file_name));
+
+	do {
+		Dwarf_Die parent = type_die;
+		Dwarf_Off parent_off = 0;
+
+		do {
+			if (parent_off != 0 &&
+			    !dwarf_offdie(dwarf, parent_off, &parent))
+				break;
+			if (dwarf_tag(&parent) == DW_TAG_subprogram)
+				return 0;
+		} while ((parent_off = GPOINTER_TO_UINT(g_hash_table_lookup(parents,
+					  GUINT_TO_POINTER(dwarf_dieoffset(&parent)))))
+			!= 0);
+	} while (private_dwarf_type(&type_die, &type_die) != NULL);
+
+	return 1;
 }
 
 /*
@@ -3148,8 +3248,9 @@ static int filter_ctf_file_scope(Dwarf_Die *die, Dwarf_Die *parent_die)
  * scope, and all names whose names are unlikely to be interesting.  (DTrace
  * userspace contains a similar list, but the two lists need not be in sync.)
  */
-static int filter_ctf_uninteresting(Dwarf_Die *die,
-				    Dwarf_Die *parent_die)
+static int filter_ctf_uninteresting(const char *file_name __unused__,
+				    Dwarf *dwarf __unused__,
+				    Dwarf_Die *die, Dwarf_Die *parent_die)
 {
 	const char *sym_name = dwarf_diename(die);
 
@@ -4664,6 +4765,14 @@ static void private_per_module_free(void *per_module)
 	ctf_close(per_mod->ctf_file);
 	g_hash_table_destroy(per_mod->member_counts);
 	free(per_module);
+}
+
+/*
+ * Free a fn_to_die_to_parent subhash.
+ */
+static void private_fn_die_parent_free(void *ptr)
+{
+	g_hash_table_destroy((GHashTable *) ptr);
 }
 
 /*
