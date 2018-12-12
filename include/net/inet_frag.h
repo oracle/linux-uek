@@ -3,6 +3,7 @@
 #define __NET_FRAG_H__
 
 #include <linux/rhashtable.h>
+#include <linux/slab.h>
 #include <linux/uek_kabi.h>
 
 struct netns_frags {
@@ -15,6 +16,7 @@ struct netns_frags {
 	int			max_dist;
 #ifndef __GENKSYMS__
 	struct inet_frags	*f;
+	struct rhashtable	*rhashtable;
 #endif
 };
 
@@ -100,7 +102,6 @@ struct inet_frags {
 	struct kmem_cache	*frags_cachep;
 	const char		*frags_cache_name;
 	struct rhashtable_params rhash_params;
-	struct rhashtable       rhashtable;
 };
 
 int inet_frags_init(struct inet_frags *);
@@ -109,7 +110,10 @@ void inet_frags_fini(struct inet_frags *);
 static inline int inet_frags_init_net(struct netns_frags *nf)
 {
 	atomic_set(&nf->mem, 0);
-	return rhashtable_init(&nf->f->rhashtable, &nf->f->rhash_params);
+	nf->rhashtable = kmalloc(sizeof(struct rhashtable), GFP_KERNEL);
+	if (!nf->rhashtable)
+		return -ENOMEM;
+	return rhashtable_init(nf->rhashtable, &nf->f->rhash_params);
 }
 void inet_frags_exit_net(struct netns_frags *nf);
 

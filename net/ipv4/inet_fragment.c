@@ -92,7 +92,8 @@ void inet_frags_exit_net(struct netns_frags *nf)
 {
 	nf->low_thresh = 0; /* prevent creation of new frags */
 
-	rhashtable_free_and_destroy(&nf->f->rhashtable, inet_frags_free_cb, NULL);
+	rhashtable_free_and_destroy(nf->rhashtable, inet_frags_free_cb, NULL);
+	kfree(nf->rhashtable);
 }
 EXPORT_SYMBOL(inet_frags_exit_net);
 
@@ -105,7 +106,7 @@ void inet_frag_kill(struct inet_frag_queue *fq)
 		struct netns_frags *nf = fq->net;
 
 		fq->flags |= INET_FRAG_COMPLETE;
-		rhashtable_remove_fast(&nf->f->rhashtable, &fq->node, nf->f->rhash_params);
+		rhashtable_remove_fast(nf->rhashtable, &fq->node, nf->f->rhash_params);
 		refcount_dec(&fq->refcnt);
 	}
 }
@@ -150,6 +151,7 @@ void inet_frag_destroy(struct inet_frag_queue *q)
 	sum = sum_truesize + f->qsize;
 
 	call_rcu(&q->rcu, inet_frag_destroy_rcu);
+	kfree(nf->rhashtable);
 
 	sub_frag_mem_limit(nf, sum);
 }
@@ -164,9 +166,14 @@ static struct inet_frag_queue *inet_frag_alloc(struct netns_frags *nf,
 	if (!nf->high_thresh || frag_mem_limit(nf) > nf->high_thresh)
 		return NULL;
 
-	q = kmem_cache_zalloc(f->frags_cachep, GFP_ATOMIC);
-	if (!q)
+	nf->rhashtable = kmalloc(sizeof(struct rhashtable), GFP_ATOMIC);
+	if (!nf->rhashtable)
 		return NULL;
+	q = kmem_cache_zalloc(f->frags_cachep, GFP_ATOMIC);
+	if (!q) {
+		kfree(nf->rhashtable);
+		return NULL;
+	}
 
 	q->net = nf;
 	f->constructor(q, arg);
@@ -192,7 +199,7 @@ static struct inet_frag_queue *inet_frag_create(struct netns_frags *nf,
 
 	mod_timer(&q->timer, jiffies + nf->timeout);
 
-	err = rhashtable_insert_fast(&f->rhashtable, &q->node,
+	err = rhashtable_insert_fast(nf->rhashtable, &q->node,
 				     f->rhash_params);
 	if (err < 0) {
 		q->flags |= INET_FRAG_COMPLETE;
@@ -210,7 +217,7 @@ struct inet_frag_queue *inet_frag_find(struct netns_frags *nf, void *key)
 
 	rcu_read_lock();
 
-	fq = rhashtable_lookup(&nf->f->rhashtable, key, nf->f->rhash_params);
+	fq = rhashtable_lookup(nf->rhashtable, key, nf->f->rhash_params);
 	if (fq) {
 		if (!refcount_inc_not_zero(&fq->refcnt))
 			fq = NULL;
