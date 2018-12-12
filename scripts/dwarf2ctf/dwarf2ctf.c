@@ -774,6 +774,12 @@ static inline Dwarf_Word private_dwarf_udata(Dwarf_Die *die, int attribute,
 					     die_override_t *overrides);
 
 /*
+ * Given a DIE, return its byte size, if known and interpretable, or -1
+ * otherwise.
+ */
+static inline long long private_dwarf_size(Dwarf_Die *die);
+
+/*
  * Find an override in an override list.
  */
 static die_override_t *private_find_override(Dwarf_Die *die,
@@ -1631,11 +1637,11 @@ static char *type_id(Dwarf_Die *die,
 	case DW_TAG_structure_type:
 	case DW_TAG_union_type: {
 		/*
-		 * Incorporate the sizeof() the structure, if statically known
-		 * (the offset of the last member in the DWARF) so that most
-		 * structures which are redefined on the fly by preprocessor
-		 * defines are disambiguated despite being defined in the same
-		 * place.
+		 * Incorporate the unaligned sizeof() the structure, if
+		 * statically known (the offset of the last member in the DWARF)
+		 * so that most structures which are redefined on the fly by
+		 * preprocessor defines are disambiguated despite being defined
+		 * in the same place.
 		 *
 		 * Only do this if this is a non-opaque structure/union
 		 * definition: opaque definitions cannot have a size, but if
@@ -1646,35 +1652,12 @@ static char *type_id(Dwarf_Die *die,
 		 */
 		const char *sou;
 
-		if (strncmp(id, "////", 4) != 0 &&
-		    private_dwarf_hasattr(die, DW_AT_byte_size)) {
-			Dwarf_Attribute size_attr;
+		if (strncmp(id, "////", 4) != 0) {
 			long long size;
 			char byte_size[24];
 
-			private_dwarf_attr(die, DW_AT_byte_size, &size_attr);
-
-			switch (dwarf_whatform(&size_attr)) {
-			case DW_FORM_data1:
-			case DW_FORM_data2:
-			case DW_FORM_data4:
-			case DW_FORM_data8:
-			case DW_FORM_udata:
-			case DW_FORM_sdata:
-
-				if (dwarf_whatform(&size_attr) ==
-				    DW_FORM_sdata) {
-					Dwarf_Sword dw_size;
-
-					dwarf_formsdata(&size_attr, &dw_size);
-					size = dw_size;
-				} else {
-					Dwarf_Word dw_size;
-
-					dwarf_formudata(&size_attr, &dw_size);
-					size = dw_size;
-				}
-
+			size = private_dwarf_size(die);
+			if (size > -1) {
 				sprintf(byte_size, "%lli", size);
 				id = str_appendn(id, byte_size, "//", NULL);
 			}
@@ -3669,18 +3652,32 @@ static ctf_id_t assemble_ctf_struct_union(const char *module_name,
 					  enum skip_type *skip,
 					  int *replace)
 {
-	ctf_id_t (*ctf_add_sou)(ctf_file_t *, uint_t, const char *);
+	ctf_id_t (*ctf_add_sou)(ctf_file_t *, uint_t, const char *, size_t);
 
 	const char *name = dwarf_diename(die);
 	int is_union = (dwarf_tag(die) == DW_TAG_union_type);
 	ctf_memb_count_t *member_count = NULL;
 	ctf_id_t id;
+	long long size;
 
 	/*
 	 * FIXME: these both need handling for DWARF4 support.
 	 */
 	CTF_DW_ENFORCE_NOT(specification);
 	CTF_DW_ENFORCE_NOT(signature);
+
+	/*
+	 * Figure out the size of the type (if possible) and force it into the
+	 * CTF to ensure that struct/union padding is added appropriately.
+	 *
+	 * If we don't know it, force a size of zero, which is interpreted as
+	 * being equivalent to a call to the unsized struct/union addition
+	 * function, letting libdtrace-ctf figure out a likely size as best it
+	 * can.
+	 */
+	size = private_dwarf_size(die);
+	if (size < 0)
+		size = 0;
 
 	/*
 	 * Possibly we should ignore this entire structure, if we already know
@@ -3736,13 +3733,14 @@ static ctf_id_t assemble_ctf_struct_union(const char *module_name,
 	}
 
 	dw_ctf_trace("%s: adding structure %s\n", locerrstr, name);
+
 	if (is_union)
-		ctf_add_sou = ctf_add_union;
+		ctf_add_sou = ctf_add_union_sized;
 	else
-		ctf_add_sou = ctf_add_struct;
+		ctf_add_sou = ctf_add_struct_sized;
 
 	id = ctf_add_sou(ctf, top_level_type ? CTF_ADD_ROOT : CTF_ADD_NONROOT,
-			 name);
+			 name, size);
 
 	if (member_count != NULL)
 		member_count->ctf_id = id;
@@ -4411,6 +4409,43 @@ static inline Dwarf_Word private_dwarf_udata(Dwarf_Die *die, int attribute,
 		value += override->value;
 
 	return value;
+}
+
+/*
+ * Given a DIE, return its byte size, if known and interpretable, or -1
+ * otherwise.
+ */
+static inline long long private_dwarf_size(Dwarf_Die *die)
+{
+	Dwarf_Attribute size_attr;
+
+	if (private_dwarf_hasattr(die, DW_AT_byte_size)) {
+		private_dwarf_attr(die, DW_AT_byte_size, &size_attr);
+
+		switch (dwarf_whatform(&size_attr)) {
+		case DW_FORM_data1:
+		case DW_FORM_data2:
+		case DW_FORM_data4:
+		case DW_FORM_data8:
+		case DW_FORM_udata: {
+			Dwarf_Word dw_size;
+
+			dwarf_formudata(&size_attr, &dw_size);
+			return dw_size;
+		}
+		case DW_FORM_sdata: {
+			Dwarf_Sword dw_size;
+
+			dwarf_formsdata(&size_attr, &dw_size);
+			return dw_size;
+		}
+		}
+	}
+
+	/*
+	 * exprloc or other type we don't know how to interpret yet.
+	 */
+	return -1;
 }
 
 /*
