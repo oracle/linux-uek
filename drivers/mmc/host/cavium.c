@@ -147,29 +147,40 @@ bool cvm_is_mmc_timing_ddr(struct cvm_mmc_slot *slot)
 
 static int cvm_mmc_configure_delay(struct cvm_mmc_slot *slot)
 {
-	u32 delay;
-	u64 timing = 0, emm_sample;
 	struct cvm_mmc_host *host = slot->host;
 
 	if (!is_mmc_8xxx(host)) {
+		u64 timing = 0;
+
 		slot->cmd_cnt = 4;
 		slot->data_cnt = 4;
 		slot->cmd_out_tap = 39;
 		slot->data_out_tap = 39;
 
-		timing = FIELD_PREP(MIO_EMM_MIO_TIMING_DATA_IN,
-							slot->data_cnt) |
+		/* SDR, data out delay is zero */
+		if (!cvm_is_mmc_timing_ddr(slot))
+			slot->data_out_tap = 0;
+
+		timing =
+			FIELD_PREP(MIO_EMM_MIO_TIMING_DATA_IN,
+				slot->data_cnt) |
 			FIELD_PREP(MIO_EMM_MIO_TIMING_DATA_OUT,
-							slot->data_out_tap) |
+				slot->data_out_tap) |
 			FIELD_PREP(MIO_EMM_MIO_TIMING_CMD_IN,
-							slot->cmd_cnt) |
+				slot->cmd_cnt) |
 			FIELD_PREP(MIO_EMM_MIO_TIMING_CMD_OUT,
-						slot->cmd_out_tap);
+				slot->cmd_out_tap);
+
+		pr_debug("data in: %u, data out: %u, cmd in: %u, cmd out: %u\n",
+				slot->data_cnt, slot->data_out_tap,
+				slot->cmd_cnt, slot->cmd_out_tap);
+
 		writeq(timing, host->base + MIO_EMM_TIMING(host));
 	} else {
 		/* MIO_EMM_SAMPLE is till T83XX */
-		emm_sample = FIELD_PREP(MIO_EMM_SAMPLE_CMD_CNT, slot->cmd_cnt) |
-			     FIELD_PREP(MIO_EMM_SAMPLE_DAT_CNT, slot->data_cnt);
+		u64 emm_sample =
+			FIELD_PREP(MIO_EMM_SAMPLE_CMD_CNT, slot->cmd_cnt) |
+			FIELD_PREP(MIO_EMM_SAMPLE_DAT_CNT, slot->data_cnt);
 		writeq(emm_sample, host->base + MIO_EMM_SAMPLE(host));
 	}
 
@@ -351,7 +362,7 @@ static void cvm_mmc_switch_to(struct cvm_mmc_slot *slot)
 {
 	struct cvm_mmc_host *host = slot->host;
 	struct cvm_mmc_slot *old_slot;
-	u64 emm_sample, emm_switch;
+	u64 emm_switch;
 
 	if (slot->bus_id == host->last_slot)
 		return;
@@ -373,12 +384,9 @@ static void cvm_mmc_switch_to(struct cvm_mmc_slot *slot)
 	do_switch(host, emm_switch);
 	host->powered = true;
 
-	emm_sample = FIELD_PREP(MIO_EMM_SAMPLE_CMD_CNT, slot->cmd_cnt) |
-		     FIELD_PREP(MIO_EMM_SAMPLE_DAT_CNT, slot->data_cnt);
-	writeq(emm_sample, host->base + MIO_EMM_SAMPLE(host));
-
 	emmc_io_drive_setup(slot);
 	cvm_mmc_configure_delay(slot);
+
 	host->last_slot = slot->bus_id;
 }
 
