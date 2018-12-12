@@ -2448,7 +2448,8 @@ static bool valid_ept_address(struct kvm_vcpu *vcpu, u64 address)
 	return true;
 }
 
-static int check_vmentry_prereqs(struct kvm_vcpu *vcpu, struct vmcs12 *vmcs12)
+static int nested_vmx_check_vmentry_prereqs(struct kvm_vcpu *vcpu,
+					struct vmcs12 *vmcs12)
 {
 	struct vcpu_vmx *vmx = to_vmx(vcpu);
 	bool ia32e;
@@ -2640,8 +2641,8 @@ static int nested_vmx_check_vmcs_link_ptr(struct kvm_vcpu *vcpu,
 	return r;
 }
 
-static int check_vmentry_postreqs(struct kvm_vcpu *vcpu, struct vmcs12 *vmcs12,
-				  u32 *exit_qual)
+static int nested_vmx_check_vmentry_postreqs(struct kvm_vcpu *vcpu,
+					 struct vmcs12 *vmcs12, u32 *exit_qual)
 {
 	bool ia32e;
 
@@ -2957,7 +2958,7 @@ int nested_vmx_enter_non_root_mode(struct kvm_vcpu *vcpu, bool from_vmentry)
 			return -1;
 		}
 
-		if (check_vmentry_postreqs(vcpu, vmcs12, &exit_qual))
+		if (nested_vmx_check_vmentry_postreqs(vcpu, vmcs12, &exit_qual))
 			goto vmentry_fail_vmexit;
 	}
 
@@ -3093,7 +3094,7 @@ static int nested_vmx_run(struct kvm_vcpu *vcpu, bool launch)
 			launch ? VMXERR_VMLAUNCH_NONCLEAR_VMCS
 			       : VMXERR_VMRESUME_NONLAUNCHED_VMCS);
 
-	ret = check_vmentry_prereqs(vcpu, vmcs12);
+	ret = nested_vmx_check_vmentry_prereqs(vcpu, vmcs12);
 	if (ret)
 		return nested_vmx_failValid(vcpu, ret);
 
@@ -5377,8 +5378,8 @@ static int vmx_set_nested_state(struct kvm_vcpu *vcpu,
 			return -EINVAL;
 	}
 
-	if (check_vmentry_prereqs(vcpu, vmcs12) ||
-	    check_vmentry_postreqs(vcpu, vmcs12, &exit_qual))
+	if (nested_vmx_check_vmentry_prereqs(vcpu, vmcs12) ||
+	    nested_vmx_check_vmentry_postreqs(vcpu, vmcs12, &exit_qual))
 		return -EINVAL;
 
 	vmx->nested.dirty_vmcs12 = true;
