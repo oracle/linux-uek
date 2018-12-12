@@ -2,7 +2,7 @@
  * FILE:	dt_test_dev.c
  * DESCRIPTION:	DTrace - test provider device driver
  *
- * Copyright (c) 2011, 2017, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2011, 2018, Oracle and/or its affiliates. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -17,6 +17,7 @@
 
 #include <linux/fs.h>
 #include <linux/miscdevice.h>
+#include <linux/types.h>
 #include <trace/syscall.h>
 #include <asm/unistd.h>
 
@@ -26,6 +27,44 @@
 
 static dtrace_id_t	pid = DTRACE_IDNONE;
 static int		enabled = 0;
+
+/*
+ * Some arrays of structures of different sizes populated with
+ * unchanging randomly-chosen numbers, for padding tests.
+ */
+
+static struct dt_test_int_char
+{
+	int foo;
+	char bar;
+} intish[2] __attribute__((used)) = { { 47204473, 48 },
+				       { 18472, 62 } };
+
+static struct dt_test_long_int
+{
+	long foo;
+	int bar;
+} longish[2] __attribute__((used)) = { { 43737975, 240724 },
+					{ 24924709, 526 } };
+
+static struct dt_test_longlong_long
+{
+	long long foo;
+	long bar;
+} longlongish[2] __attribute__((used)) = { { 4294479287, 4395957 },
+					    { 5239637, 249750 } };
+
+static struct dt_test_like_a_scatterlist
+{
+	unsigned long	a;
+	unsigned int	b;
+	unsigned int	c;
+	u64	d;
+	unsigned int	e;
+} scatter_failure[2] __attribute__((used)) = { { .a = 1, .b = 2,
+						 .c = 3, .d = 4, .e = 5 },
+					       { .a = 6, .b = 7,
+						 .c = 8, .d = 9, .e = 10 } };
 
 void dt_test_provide(void *arg, const dtrace_probedesc_t *desc)
 {
