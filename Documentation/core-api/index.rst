@@ -18,6 +18,7 @@ Core utilities
    refcount-vs-atomic
    cpu_hotplug
    idr
+   ktask
    local_ops
    workqueue
    genericirq
