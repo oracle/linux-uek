@@ -68,6 +68,7 @@
 #include <linux/lockdep.h>
 #include <linux/nmi.h>
 #include <linux/psi.h>
+#include <linux/ktask.h>
 
 #include <asm/sections.h>
 #include <asm/tlbflush.h>
@@ -1278,8 +1279,6 @@ static void __init __free_pages_boot_core(struct page *page, unsigned int order)
 	}
 	__ClearPageReserved(p);
 	set_page_count(p, 0);
-
-	page_zone(page)->managed_pages += nr_pages;
 	set_page_refcounted(page);
 	__free_pages(page, order);
 }
@@ -1343,7 +1342,8 @@ void __init __free_pages_bootmem(struct page *page, unsigned long pfn,
 {
 	if (early_page_uninitialised(pfn))
 		return;
-	return __free_pages_boot_core(page, order);
+	__free_pages_boot_core(page, order);
+	page_zone(page)->managed_pages += (1ul << order);
 }
 
 /*
@@ -1451,15 +1451,102 @@ static inline void __init pgdat_init_report_one_done(void)
 		complete(&pgdat_init_all_done_comp);
 }
 
+struct deferred_init_args {
+	int nid;
+	int zid;
+	struct zone *zone;
+	atomic_long_t nr_pages;
+};
+
+int __init deferred_init_memmap_chunk(unsigned long start_pfn,
+				      unsigned long end_pfn,
+				      struct deferred_init_args *args)
+{
+	unsigned long pfn;
+	int nid = args->nid;
+	int zid = args->zid;
+	struct zone *zone = args->zone;
+	struct page *page = NULL;
+	struct page *free_base_page = NULL;
+	unsigned long free_base_pfn = 0;
+	unsigned long nr_pages = 0;
+	int nr_to_free = 0;
+	struct mminit_pfnnid_cache nid_init_state = { };
+
+	for (pfn = start_pfn; pfn < end_pfn; pfn++) {
+		if (!pfn_valid_within(pfn))
+			goto free_range;
+
+		/*
+		 * Ensure pfn_valid is checked every
+		 * pageblock_nr_pages for memory holes
+		 */
+		if ((pfn & (pageblock_nr_pages - 1)) == 0) {
+			if (!pfn_valid(pfn)) {
+				page = NULL;
+				goto free_range;
+			}
+		}
+
+		if (!meminit_pfn_in_nid(pfn, nid, &nid_init_state)) {
+			page = NULL;
+			goto free_range;
+		}
+
+		/* Minimise pfn page lookups and scheduler checks */
+		if (page && (pfn & (pageblock_nr_pages - 1)) != 0) {
+			page++;
+		} else {
+			nr_pages += nr_to_free;
+			deferred_free_range(free_base_page,
+					free_base_pfn, nr_to_free);
+			free_base_page = NULL;
+			free_base_pfn = nr_to_free = 0;
+
+			page = pfn_to_page(pfn);
+			cond_resched();
+		}
+
+		if (page->flags) {
+			VM_BUG_ON(page_zone(page) != zone);
+			goto free_range;
+		}
+
+		__init_single_page(page, pfn, zid, nid);
+		if (!free_base_page) {
+			free_base_page = page;
+			free_base_pfn = pfn;
+			nr_to_free = 0;
+		}
+		nr_to_free++;
+
+		/* Where possible, batch up pages for a single free */
+		continue;
+free_range:
+		/* Free the current block of pages to allocator */
+		nr_pages += nr_to_free;
+		deferred_free_range(free_base_page, free_base_pfn,
+							nr_to_free);
+		free_base_page = NULL;
+		free_base_pfn = nr_to_free = 0;
+	}
+	/* Free the last block of pages to allocator */
+	nr_pages += nr_to_free;
+	deferred_free_range(free_base_page, free_base_pfn, nr_to_free);
+
+	atomic_long_add(nr_pages, &args->nr_pages);
+
+	return KTASK_RETURN_SUCCESS;
+}
+
 /* Initialise remaining memory on a node */
 static int __init deferred_init_memmap(void *data)
 {
 	pg_data_t *pgdat = data;
 	int nid = pgdat->node_id;
-	struct mminit_pfnnid_cache nid_init_state = { };
 	unsigned long start = jiffies;
 	unsigned long nr_pages = 0;
-	unsigned long walk_start, walk_end;
+	unsigned long walk_start, walk_end, nr_node_cpus;
 	int i, zid;
 	struct zone *zone;
 	unsigned long first_init_pfn = pgdat->first_deferred_pfn;
@@ -1473,6 +1560,14 @@ static int __init deferred_init_memmap(void *data)
 	/* Bind memory initialisation thread to a local node if possible */
 	if (!cpumask_empty(cpumask))
 		set_cpus_allowed_ptr(current, cpumask);
+
+	/*
+	 * In the absence of any information about memory bandwidth, half
+	 * of the CPUs on the node proves to be a reasonable value for a
+	 * variety of systems.  If no CPUs on the node, ktask will fall back to
+	 * its internal maximum.
+	 */
+	nr_node_cpus = DIV_ROUND_UP(cpumask_weight(cpumask), 2);
 
 	/* Sanity check boundaries */
 	BUG_ON(pgdat->first_deferred_pfn < pgdat->node_start_pfn);
@@ -1488,10 +1583,13 @@ static int __init deferred_init_memmap(void *data)
 
 	for_each_mem_pfn_range(i, nid, &walk_start, &walk_end, NULL) {
 		unsigned long pfn, end_pfn;
-		struct page *page = NULL;
-		struct page *free_base_page = NULL;
-		unsigned long free_base_pfn = 0;
-		int nr_to_free = 0;
+		struct ktask_node kn;
+		struct deferred_init_args args = { nid, zid, zone,
+						   ATOMIC_LONG_INIT(0) };
+		DEFINE_KTASK_CTL(ctl, deferred_init_memmap_chunk, &args,
+				 KTASK_PTE_MINCHUNK);
+
+		ktask_ctl_set_max_threads(&ctl, nr_node_cpus);
 
 		end_pfn = min(walk_end, zone_end_pfn(zone));
 		pfn = first_init_pfn;
@@ -1500,72 +1598,22 @@ static int __init deferred_init_memmap(void *data)
 		if (pfn < zone->zone_start_pfn)
 			pfn = zone->zone_start_pfn;
 
-		for (; pfn < end_pfn; pfn++) {
-			if (!pfn_valid_within(pfn))
-				goto free_range;
-
-			/*
-			 * Ensure pfn_valid is checked every
-			 * pageblock_nr_pages for memory holes
-			 */
-			if ((pfn & (pageblock_nr_pages - 1)) == 0) {
-				if (!pfn_valid(pfn)) {
-					page = NULL;
-					goto free_range;
-				}
-			}
-
-			if (!meminit_pfn_in_nid(pfn, nid, &nid_init_state)) {
-				page = NULL;
-				goto free_range;
-			}
-
-			/* Minimise pfn page lookups and scheduler checks */
-			if (page && (pfn & (pageblock_nr_pages - 1)) != 0) {
-				page++;
-			} else {
-				nr_pages += nr_to_free;
-				deferred_free_range(free_base_page,
-						free_base_pfn, nr_to_free);
-				free_base_page = NULL;
-				free_base_pfn = nr_to_free = 0;
-
-				page = pfn_to_page(pfn);
-				cond_resched();
-			}
-
-			if (page->flags) {
-				VM_BUG_ON(page_zone(page) != zone);
-				goto free_range;
-			}
-
-			__init_single_page(page, pfn, zid, nid);
-			if (!free_base_page) {
-				free_base_page = page;
-				free_base_pfn = pfn;
-				nr_to_free = 0;
-			}
-			nr_to_free++;
-
-			/* Where possible, batch up pages for a single free */
+		if (pfn >= end_pfn)
 			continue;
-free_range:
-			/* Free the current block of pages to allocator */
-			nr_pages += nr_to_free;
-			deferred_free_range(free_base_page, free_base_pfn,
-								nr_to_free);
-			free_base_page = NULL;
-			free_base_pfn = nr_to_free = 0;
-		}
-		/* Free the last block of pages to allocator */
-		nr_pages += nr_to_free;
-		deferred_free_range(free_base_page, free_base_pfn, nr_to_free);
+
+		kn.kn_start	= (void *)pfn;
+		kn.kn_task_size	= end_pfn - pfn;
+		kn.kn_nid	= nid;
+		ktask_run_numa(&kn, 1, &ctl);
 
 		first_init_pfn = max(end_pfn, first_init_pfn);
+		nr_pages += atomic_long_read(&args.nr_pages);
 	}
 
 	/* Sanity check that the next zone really is unpopulated */
 	WARN_ON(++zid < MAX_NR_ZONES && populated_zone(++zone));
+
+	zone->managed_pages += nr_pages;
 
 	pr_info("node %d initialised, %lu pages in %ums\n", nid, nr_pages,
 					jiffies_to_msecs(jiffies - start));
