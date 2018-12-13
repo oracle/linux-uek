@@ -68,6 +68,7 @@
 #include <linux/lockdep.h>
 #include <linux/nmi.h>
 #include <linux/psi.h>
+#include <linux/ktask.h>
 
 #include <asm/sections.h>
 #include <asm/tlbflush.h>
@@ -1770,13 +1771,36 @@ deferred_init_maxorder(u64 *i, struct zone *zone, unsigned long *start_pfn,
 	return nr_pages;
 }
 
+struct def_init_args {
+	struct zone *zone;
+	atomic_long_t nr_pages;
+};
+
+static int __init deferred_init_memmap_chunk(unsigned long spfn,
+					     unsigned long epfn,
+					     struct def_init_args *args)
+{
+	unsigned long nr_pages, mo_pfn, t;
+
+	for (nr_pages = 0; spfn < epfn; spfn = t) {
+		mo_pfn = ALIGN(spfn + 1, MAX_ORDER_NR_PAGES);
+		t = min(mo_pfn, epfn);
+
+		nr_pages += deferred_init_pages(args->zone, spfn, t);
+		deferred_free_pages(spfn, t);
+	}
+
+	atomic_long_add(nr_pages, &args->nr_pages);
+	return KTASK_RETURN_SUCCESS;
+}
+
 /* Initialise remaining memory on a node */
 static int __init deferred_init_memmap(void *data)
 {
 	pg_data_t *pgdat = data;
 	const struct cpumask *cpumask = cpumask_of_node(pgdat->node_id);
 	unsigned long spfn = 0, epfn = 0, nr_pages = 0;
-	unsigned long first_init_pfn, flags;
+	unsigned long first_init_pfn, flags, nr_node_cpus;
 	unsigned long start = jiffies;
 	struct zone *zone;
 	int zid;
@@ -1811,13 +1835,50 @@ static int __init deferred_init_memmap(void *data)
 						 first_init_pfn))
 		goto zone_empty;
 
+
+	/*
+	 * In the absence of any information about memory bandwidth, half
+	 * of the CPUs on the node proves to be a reasonable value for a
+	 * variety of systems.  If no CPUs on the node, ktask will fall back to
+	 * its internal maximum.
+	 */
+	nr_node_cpus = DIV_ROUND_UP(cpumask_weight(cpumask), 2);
+
 	/*
 	 * Initialize and free pages in MAX_ORDER sized increments so
 	 * that we can avoid introducing any issues with the buddy
 	 * allocator.
 	 */
-	while (spfn < epfn)
+	while (spfn < epfn) {
+		unsigned long mo_pfn = ALIGN(spfn + 1, MAX_ORDER_NR_PAGES);
+
+		if (mo_pfn < epfn) {
+			unsigned long t;
+			struct def_init_args args = { zone,
+						      ATOMIC_LONG_INIT(0) };
+			DEFINE_KTASK_CTL(ctl, deferred_init_memmap_chunk, &args,
+					 KTASK_PTE_MINCHUNK, KTASK_ATOMIC);
+
+			/*
+			 * Helper threads should operate on MAX_ORDER_NR_PAGES
+			 * aligned boundaries, or else a helper may free part
+			 * of a MAX_ORDER_NR_PAGES block of pages when the rest
+			 * hasn't been initialized, which could cause an
+			 * uninitialized buddy page to be accessed.  This is
+			 * the same constraint deferred_init_maxorder imposes,
+			 * but for ktask.
+			 */
+			BUILD_BUG_ON(KTASK_PTE_MINCHUNK % MAX_ORDER_NR_PAGES);
+
+			t = ALIGN_DOWN(epfn, MAX_ORDER_NR_PAGES);
+			ktask_ctl_set_max_threads(&ctl, nr_node_cpus);
+			ktask_run((void *)spfn, t - spfn, &ctl);
+			nr_pages += atomic_long_read(&args.nr_pages);
+			spfn = t;
+		}
+
 		nr_pages += deferred_init_maxorder(&i, zone, &spfn, &epfn);
+	}
 zone_empty:
 	pgdat_resize_unlock(pgdat, &flags);
 
