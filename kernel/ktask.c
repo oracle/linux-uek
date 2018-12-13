@@ -21,6 +21,7 @@
 #include <linux/init.h>
 #include <linux/kernel.h>
 #include <linux/list.h>
+#include <linux/list_sort.h>
 #include <linux/mutex.h>
 #include <linux/printk.h>
 #include <linux/random.h>
@@ -47,7 +48,12 @@ struct ktask_work {
 	struct ktask_task	*kw_task;
 	int			kw_ktask_node_i;
 	int			kw_queue_nid;
-	struct list_head	kw_list;	/* ktask_free_works linkage */
+	/* task units from kn_start to kw_error_start */
+	size_t			kw_error_offset;
+	void			*kw_error_start;
+	void			*kw_error_end;
+	/* ktask_free_works, kn_failed_works linkage */
+	struct list_head	kw_list;
 	bool			kw_master_thr;
 };
 
@@ -185,11 +191,11 @@ static void ktask_thread(struct work_struct *work)
 	spin_lock(&kt->kt_lock);
 
 	while (kt->kt_total_size > 0 && kt->kt_error == KTASK_RETURN_SUCCESS) {
-		void *start, *end;
-		size_t size;
+		void *position, *end;
+		size_t size, position_offset;
 		int ret;
 
-		if (kn->kn_task_size == 0) {
+		if (kn->kn_remaining_size == 0) {
 			/*
 			 * The current node is out of work; pick a new one.
 			 *
@@ -204,7 +210,7 @@ static void ktask_thread(struct work_struct *work)
 			WARN_ON(kt->kt_nr_nodes_left == 0);
 			WARN_ON(new_idx >= kt->kt_nr_nodes_left);
 			for (i = 0; i < kt->kt_nr_nodes; ++i) {
-				if (kt->kt_nodes[i].kn_task_size == 0)
+				if (kt->kt_nodes[i].kn_remaining_size == 0)
 					continue;
 
 				if (remaining_nodes_seen >= new_idx) {
@@ -231,14 +237,15 @@ static void ktask_thread(struct work_struct *work)
 			}
 		}
 
-		start = kn->kn_start;
-		size = min(kt->kt_chunk_size, kn->kn_task_size);
-		end = kc->kc_iter_func(start, size);
-		kn->kn_start = end;
-		kn->kn_task_size -= size;
+		position = kn->kn_position;
+		position_offset = kn->kn_task_size - kn->kn_remaining_size;
+		size = min(kt->kt_chunk_size, kn->kn_remaining_size);
+		end = kc->kc_iter_func(position, size);
+		kn->kn_position = end;
+		kn->kn_remaining_size -= size;
 		WARN_ON(kt->kt_total_size < size);
 		kt->kt_total_size -= size;
-		if (kn->kn_task_size == 0) {
+		if (kn->kn_remaining_size == 0) {
 			WARN_ON(kt->kt_nr_nodes_left == 0);
 			kt->kt_nr_nodes_left--;
 		}
@@ -246,14 +253,26 @@ static void ktask_thread(struct work_struct *work)
 		spin_unlock(&kt->kt_lock);
 		lock_map_acquire(&kt->kt_lockdep_map);
 
-		ret = kc->kc_thread_func(start, end, kc->kc_func_arg);
+		ret = kc->kc_thread_func(position, end, kc->kc_func_arg);
 
 		lock_map_release(&kt->kt_lockdep_map);
 		spin_lock(&kt->kt_lock);
 
-		/* Save first error code only. */
-		if (kt->kt_error == KTASK_RETURN_SUCCESS && ret != kt->kt_error)
-			kt->kt_error = ret;
+		if (ret != KTASK_RETURN_SUCCESS) {
+			/* Save first error code only. */
+			if (kt->kt_error == KTASK_RETURN_SUCCESS)
+				kt->kt_error = ret;
+			/*
+			 * If this task has an undo function, save information
+			 * about where this thread failed for ktask_undo.
+			 */
+			if (kc->kc_undo_func) {
+				list_move(&kw->kw_list, &kn->kn_failed_works);
+				kw->kw_error_start = position;
+				kw->kw_error_offset = position_offset;
+				kw->kw_error_end = end;
+			}
+		}
 	}
 
 	WARN_ON(kt->kt_nr_nodes_left > 0 &&
@@ -389,6 +408,67 @@ static void ktask_fini_works(struct ktask_task *kt,
 	spin_unlock(&ktask_rlim_lock);
 }
 
+static int ktask_error_cmp(void *unused, struct list_head *a,
+			   struct list_head *b)
+{
+	struct ktask_work *work_a = list_entry(a, struct ktask_work, kw_list);
+	struct ktask_work *work_b = list_entry(b, struct ktask_work, kw_list);
+
+	if (work_a->kw_error_offset < work_b->kw_error_offset)
+		return -1;
+	else if (work_a->kw_error_offset > work_b->kw_error_offset)
+		return 1;
+	return 0;
+}
+
+static void ktask_undo(struct ktask_node *nodes, size_t nr_nodes,
+		       struct ktask_ctl *ctl, struct list_head *works_list,
+		       struct ktask_work *stack_work)
+{
+	size_t i;
+
+	for (i = 0; i < nr_nodes; ++i) {
+		struct ktask_node *kn = &nodes[i];
+		struct list_head *failed_works = &kn->kn_failed_works;
+		struct ktask_work *failed_work;
+		void *undo_pos = kn->kn_start;
+		void *undo_end;
+
+		/* Sort so the failed ranges can be checked as we go. */
+		list_sort(NULL, failed_works, ktask_error_cmp);
+
+		/* Undo completed work on this node, skipping failed ranges. */
+		while (undo_pos != kn->kn_position) {
+			failed_work = list_first_entry_or_null(failed_works,
+							      struct ktask_work,
+							      kw_list);
+			if (failed_work)
+				undo_end = failed_work->kw_error_start;
+			else
+				undo_end = kn->kn_position;
+
+			if (undo_pos != undo_end) {
+				ctl->kc_undo_func(undo_pos, undo_end,
+						  ctl->kc_func_arg);
+			}
+
+			if (failed_work) {
+				undo_pos = failed_work->kw_error_end;
+				/* master's stack_work stays off works_list */
+				if (failed_work == stack_work) {
+					list_del(&failed_work->kw_list);
+				} else {
+					list_move(&failed_work->kw_list,
+						  works_list);
+				}
+			} else {
+				undo_pos = undo_end;
+			}
+		}
+		WARN_ON(!list_empty(failed_works));
+	}
+}
+
 int __ktask_run_numa(struct ktask_node *nodes, size_t nr_nodes,
 		     struct ktask_ctl *ctl, struct lock_class_key *key,
 		     const char *map_name)
@@ -409,6 +489,9 @@ int __ktask_run_numa(struct ktask_node *nodes, size_t nr_nodes,
 
 	for (i = 0; i < nr_nodes; ++i) {
 		kt.kt_total_size += nodes[i].kn_task_size;
+		nodes[i].kn_position = nodes[i].kn_start;
+		nodes[i].kn_remaining_size = nodes[i].kn_task_size;
+		INIT_LIST_HEAD(&nodes[i].kn_failed_works);
 		if (nodes[i].kn_task_size == 0)
 			kt.kt_nr_nodes_left--;
 
@@ -435,10 +518,14 @@ int __ktask_run_numa(struct ktask_node *nodes, size_t nr_nodes,
 
 	/* Use the current thread, which saves starting a workqueue worker. */
 	ktask_init_work(&kw, &kt, 0, nodes[0].kn_nid, true);
+	INIT_LIST_HEAD(&kw.kw_list);
 	ktask_thread(&kw.kw_work);
 
 	/* Wait for all the jobs to finish. */
 	wait_for_completion(&kt.kt_ktask_done);
+
+	if (kt.kt_error != KTASK_RETURN_SUCCESS && ctl->kc_undo_func)
+		ktask_undo(nodes, nr_nodes, ctl, &works_list, &kw);
 
 	ktask_fini_works(&kt, &works_list);
 
