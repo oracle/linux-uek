@@ -67,6 +67,9 @@ struct ktask_task {
 	size_t			kt_nworks_fini;
 	int			kt_error; /* first error from thread_func */
 	struct completion	kt_ktask_done;
+#ifdef CONFIG_LOCKDEP
+	struct lockdep_map	kt_lockdep_map;
+#endif
 };
 
 /*
@@ -233,9 +236,11 @@ static void ktask_thread(struct work_struct *work)
 		}
 
 		spin_unlock(&kt->kt_lock);
+		lock_map_acquire(&kt->kt_lockdep_map);
 
 		ret = kc->kc_thread_func(start, end, kc->kc_func_arg);
 
+		lock_map_release(&kt->kt_lockdep_map);
 		spin_lock(&kt->kt_lock);
 
 		/* Save first error code only. */
@@ -377,7 +382,8 @@ static void ktask_fini_works(struct ktask_task *kt,
 }
 
 int __ktask_run_numa(struct ktask_node *nodes, size_t nr_nodes,
-		     struct ktask_ctl *ctl)
+		     struct ktask_ctl *ctl, struct lock_class_key *key,
+		     const char *map_name)
 {
 	size_t i;
 	struct ktask_work kw;
@@ -406,6 +412,10 @@ int __ktask_run_numa(struct ktask_node *nodes, size_t nr_nodes,
 
 	spin_lock_init(&kt.kt_lock);
 	init_completion(&kt.kt_ktask_done);
+	lockdep_init_map(&kt.kt_lockdep_map, map_name, key, 0);
+
+	lock_map_acquire(&kt.kt_lockdep_map);
+	lock_map_release(&kt.kt_lockdep_map);
 
 	kt.kt_nworks = ktask_init_works(nodes, nr_nodes, &kt, &works_list);
 	kt.kt_chunk_size = ktask_chunk_size(kt.kt_total_size,
