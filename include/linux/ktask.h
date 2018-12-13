@@ -12,6 +12,7 @@
 #ifndef _LINUX_KTASK_H
 #define _LINUX_KTASK_H
 
+#include <linux/lockdep.h>
 #include <linux/mm.h>
 #include <linux/topology.h>
 #include <linux/types.h>
@@ -213,12 +214,23 @@ static inline void ktask_ctl_set_max_threads(struct ktask_ctl *ctl,
  * RETURNS:
  * KTASK_RETURN_SUCCESS or a client-specific nonzero error code.
  */
+#ifdef CONFIG_LOCKDEP
 #define ktask_run_numa(nodes, nr_nodes, ctl)				       \
-	__ktask_run_numa((nodes), (nr_nodes), (ctl))
+({									       \
+	static struct lock_class_key __key;				       \
+	const char *__map_name = "ktask master waiting";		       \
+									       \
+	__ktask_run_numa((nodes), (nr_nodes), (ctl), &__key, __map_name);      \
+})
+#else
+#define ktask_run_numa(nodes, nr_nodes, ctl)				       \
+	__ktask_run_numa((nodes), (nr_nodes), (ctl), NULL, NULL);
+#endif
 
 void ktask_init(void);
 int __ktask_run_numa(struct ktask_node *nodes, size_t nr_nodes,
-		     struct ktask_ctl *ctl);
+		     struct ktask_ctl *ctl, struct lock_class_key *key,
+		     const char *map_name);
 
 #else  /* CONFIG_KTASK */
 
