@@ -451,7 +451,7 @@ struct cgroup {
 	/* used to track pressure stalls */
 	UEK_KABI_USE(14, struct psi_group *psi);
 
-	UEK_KABI_RESERVED(15);
+	UEK_KABI_USE(15, struct cgroup *old_dom_cgrp);
 
 	/* ids of the ancestors at each level including self */
 	int ancestor_ids[];
