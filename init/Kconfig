@@ -395,6 +395,16 @@ config AUDITSYSCALL
 	depends on AUDIT && HAVE_ARCH_AUDITSYSCALL
 	select FSNOTIFY
 
+config KTASK
+	bool "Multithread CPU-intensive kernel work"
+	depends on SMP
+	default y
+	help
+	  Parallelize CPU-intensive kernel work.  This feature is designed for
+	  big machines that can take advantage of their extra CPUs to speed up
+	  large kernel tasks.  When enabled, kworker threads may occupy more
+	  CPU time during these kernel tasks.
+
 source "kernel/irq/Kconfig"
 source "kernel/time/Kconfig"
 source "kernel/Kconfig.preempt"
