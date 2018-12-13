@@ -74,6 +74,7 @@ static char *cgx_lmactype_string[LMAC_MODE_MAX];
 
 /* CGX PHY management internal APIs */
 static int cgx_fwi_link_change(struct cgx *cgx, int lmac_id, bool en);
+static int cgx_fwi_get_macaddr(struct cgx *cgx, int lmac_id, u8 *dst);
 
 /* Supported devices */
 static const struct pci_device_id cgx_id_table[] = {
@@ -202,6 +203,18 @@ u64 cgx_lmac_addr_get(u8 cgx_id, u8 lmac_id)
 	return cfg & CGX_RX_DMAC_ADR_MASK;
 }
 EXPORT_SYMBOL(cgx_lmac_addr_get);
+
+/* Gets mac address from firmware for each cgx mapped PF */
+int cgx_get_pfmacaddr(void *cgxd, u8 lmac_id, u8 *macdst)
+{
+	struct cgx *cgx = cgxd;
+
+	if (!cgx || lmac_id >= cgx->lmac_count)
+		return -ENODEV;
+
+	return cgx_fwi_get_macaddr(cgx, lmac_id, macdst);
+}
+EXPORT_SYMBOL(cgx_get_pfmacaddr);
 
 int cgx_set_pkind(void *cgxd, u8 lmac_id, int pkind)
 {
@@ -672,6 +685,22 @@ int cgx_lmac_evh_unregister(void *cgxd, int lmac_id)
 	return 0;
 }
 EXPORT_SYMBOL(cgx_lmac_evh_unregister);
+
+static int cgx_fwi_get_macaddr(struct cgx *cgx, int lmac_id, u8 *dst)
+{
+	u64 req = 0, resp, mac;
+	int err;
+
+	req = FIELD_SET(CMDREG_ID, CGX_CMD_GET_MAC_ADDR, req);
+
+	err = cgx_fwi_cmd_generic(req, &resp, cgx, lmac_id);
+	if (!err) {
+		mac = FIELD_GET(RESP_MAC_ADDR, resp);
+		memcpy(dst, (u8 *)&mac, 6);
+	}
+
+	return err;
+}
 
 static int cgx_fwi_link_change(struct cgx *cgx, int lmac_id, bool enable)
 {
