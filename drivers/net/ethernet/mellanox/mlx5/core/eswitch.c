@@ -1732,7 +1732,7 @@ int mlx5_eswitch_init(struct mlx5_core_dev *dev)
 	for (vport_num = 0; vport_num < total_vports; vport_num++) {
 		struct mlx5_vport *vport = &esw->vports[vport_num];
 
-		vport->vport = vport_num;
+		vport->vport = mlx5_eswitch_index_to_vport_num(esw, vport_num);
 		vport->info.link_state = MLX5_VPORT_ADMIN_STATE_AUTO;
 		vport->dev = dev;
 		INIT_WORK(&vport->vport_change_handler,

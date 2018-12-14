@@ -905,7 +905,7 @@ void esw_offloads_cleanup_reps(struct mlx5_eswitch *esw)
 
 int esw_offloads_init_reps(struct mlx5_eswitch *esw)
 {
-	int total_vfs = MLX5_TOTAL_VPORTS(esw->dev);
+	int total_vfs = MLX5_TOTAL_VPORTS(esw->dev) - 1;
 	struct mlx5_core_dev *dev = esw->dev;
 	struct mlx5_esw_offload *offloads;
 	struct mlx5_eswitch_rep *rep;
@@ -924,7 +924,7 @@ int esw_offloads_init_reps(struct mlx5_eswitch *esw)
 	for (vport = 0; vport < total_vfs; vport++) {
 		rep = &offloads->vport_reps[vport];
 
-		rep->vport = vport;
+		rep->vport = mlx5_eswitch_index_to_vport_num(esw, vport);
 		ether_addr_copy(rep->hw_id, hw_id);
 	}
 
@@ -953,7 +953,7 @@ static int esw_offloads_load_reps(struct mlx5_eswitch *esw, int nvports)
 	int vport;
 	int err;
 
-	for (vport = 0; vport < nvports; vport++) {
+	for (vport = 0; vport < nvports - 1; vport++) {
 		rep = &esw->offloads.vport_reps[vport];
 		if (!rep->valid)
 			continue;
