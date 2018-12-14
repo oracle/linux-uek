@@ -1115,7 +1115,7 @@ static void mlx5e_rep_register_vf_vports(struct mlx5e_priv *priv)
 {
 	struct mlx5_core_dev *mdev = priv->mdev;
 	struct mlx5_eswitch *esw   = mdev->priv.eswitch;
-	int total_vfs = MLX5_TOTAL_VPORTS(mdev);
+	int total_vfs = MLX5_TOTAL_VPORTS(mdev) - 1;
 	int vport;
 
 	for (vport = 1; vport < total_vfs; vport++) {
@@ -1131,7 +1131,7 @@ static void mlx5e_rep_unregister_vf_vports(struct mlx5e_priv *priv)
 {
 	struct mlx5_core_dev *mdev = priv->mdev;
 	struct mlx5_eswitch *esw = mdev->priv.eswitch;
-	int total_vfs = MLX5_TOTAL_VPORTS(mdev);
+	int total_vfs = MLX5_TOTAL_VPORTS(mdev) - 1;
 	int vport;
 
 	for (vport = 1; vport < total_vfs; vport++)
