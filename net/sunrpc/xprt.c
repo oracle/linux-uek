@@ -66,7 +66,6 @@
  */
 static void	 xprt_init(struct rpc_xprt *xprt, struct net *net);
 static void	xprt_request_init(struct rpc_task *, struct rpc_xprt *);
-static void	xprt_connect_status(struct rpc_task *task);
 static int      __xprt_get_cong(struct rpc_xprt *, struct rpc_task *);
 static void	 xprt_destroy(struct rpc_xprt *xprt);
 
@@ -750,7 +749,7 @@ void xprt_connect(struct rpc_task *task)
 	if (!xprt_connected(xprt)) {
 		task->tk_rqstp->rq_bytes_sent = 0;
 		task->tk_timeout = task->tk_rqstp->rq_timeout;
-		rpc_sleep_on(&xprt->pending, task, xprt_connect_status);
+		rpc_sleep_on(&xprt->pending, task, NULL);
 
 		if (test_bit(XPRT_CLOSING, &xprt->state))
 			return;
@@ -760,40 +759,6 @@ void xprt_connect(struct rpc_task *task)
 		xprt->ops->connect(xprt, task);
 	}
 	xprt_release_write(xprt, task);
-}
-
-static void xprt_connect_status(struct rpc_task *task)
-{
-	struct rpc_xprt	*xprt = task->tk_rqstp->rq_xprt;
-
-	if (task->tk_status == 0) {
-		xprt->stat.connect_count++;
-		xprt->stat.connect_time += (long)jiffies - xprt->stat.connect_start;
-		dprintk("RPC: %5u xprt_connect_status: connection established\n",
-				task->tk_pid);
-		return;
-	}
-
-	switch (task->tk_status) {
-	case -ECONNREFUSED:
-	case -ECONNRESET:
-	case -ECONNABORTED:
-	case -ENETUNREACH:
-	case -EHOSTUNREACH:
-	case -EPIPE:
-	case -EAGAIN:
-		dprintk("RPC: %5u xprt_connect_status: retrying\n", task->tk_pid);
-		break;
-	case -ETIMEDOUT:
-		dprintk("RPC: %5u xprt_connect_status: connect attempt timed "
-				"out\n", task->tk_pid);
-		break;
-	default:
-		dprintk("RPC: %5u xprt_connect_status: error %d connecting to "
-				"server %s\n", task->tk_pid, -task->tk_status,
-				xprt->servername);
-		task->tk_status = -EIO;
-	}
 }
 
 /**
