@@ -274,6 +274,19 @@ int otx2_napi_handler(struct otx2_cq_queue *cq,
 	s64 bufptr;
 
 	cq_status = otx2_nix_cq_op_status(pfvf, cq->cq_idx);
+	if (cq_status & BIT_ULL(63)) {
+		dev_err(pfvf->dev, "CQ operation error");
+		pfvf->intf_down = true;
+		schedule_work(&pfvf->reset_task);
+		return 0;
+	}
+	if (cq_status & BIT_ULL(46)) {
+		dev_err(pfvf->dev, "CQ stopped due to error");
+		pfvf->intf_down = true;
+		schedule_work(&pfvf->reset_task);
+		return 0;
+	}
+
 	cq_head = (cq_status >> 20) & 0xFFFFF;
 	cq_tail = cq_status & 0xFFFFF;
 
