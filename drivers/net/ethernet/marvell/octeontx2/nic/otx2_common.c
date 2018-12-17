@@ -916,6 +916,8 @@ void mbox_handler_nix_lf_alloc(struct otx2_nic *pfvf,
 	pfvf->rx_chan_base = rsp->rx_chan_base;
 	pfvf->tx_chan_base = rsp->tx_chan_base;
 	ether_addr_copy(pfvf->netdev->dev_addr, rsp->mac_addr);
+	pfvf->hw.lso_tsov4_idx = rsp->lso_tsov4_idx;
+	pfvf->hw.lso_tsov6_idx = rsp->lso_tsov6_idx;
 }
 
 void mbox_handler_msix_offset(struct otx2_nic *pfvf,
