@@ -450,6 +450,7 @@ bool dax_lock_mapping_entry(struct page *page)
 			spin_unlock_irq(&mapping->tree_lock);
 			break;
 		} else if (IS_ERR(entry)) {
+			spin_unlock_irq(&mapping->tree_lock);
 			WARN_ON_ONCE(PTR_ERR(entry) != -EAGAIN);
 			continue;
 		}
@@ -668,6 +669,8 @@ struct page *dax_layout_busy_page(struct address_space *mapping)
 	while (index < end && pagevec_lookup_entries(&pvec, mapping, index,
 				min(end - index, (pgoff_t)PAGEVEC_SIZE),
 				indices)) {
+		pgoff_t nr_pages = 1;
+
 		for (i = 0; i < pagevec_count(&pvec); i++) {
 			struct page *pvec_ent = pvec.pages[i];
 			void *entry;
@@ -681,8 +684,15 @@ struct page *dax_layout_busy_page(struct address_space *mapping)
 
 			spin_lock_irq(&mapping->tree_lock);
 			entry = get_unlocked_mapping_entry(mapping, index, NULL);
-			if (entry)
+			if (entry) {
 				page = dax_busy_page(entry);
+				/*
+				 * Account for multi-order entries at
+				 * the end of the pagevec.
+				 */
+				if (i + 1 >= pagevec_count(&pvec))
+					nr_pages = 1UL << dax_radix_order(entry);
+			}
 			put_unlocked_mapping_entry(mapping, index, entry);
 			spin_unlock_irq(&mapping->tree_lock);
 			if (page)
@@ -690,7 +700,7 @@ struct page *dax_layout_busy_page(struct address_space *mapping)
 		}
 		pagevec_remove_exceptionals(&pvec);
 		pagevec_release(&pvec);
-		index++;
+		index += nr_pages;
 
 		if (page)
 			break;
@@ -757,7 +767,6 @@ static int copy_user_dax(struct block_device *bdev, struct dax_device *dax_dev,
 {
 	void *vto, *kaddr;
 	pgoff_t pgoff;
-	pfn_t pfn;
 	long rc;
 	int id;
 
@@ -766,7 +775,7 @@ static int copy_user_dax(struct block_device *bdev, struct dax_device *dax_dev,
 		return rc;
 
 	id = dax_read_lock();
-	rc = dax_direct_access(dax_dev, pgoff, PHYS_PFN(size), &kaddr, &pfn);
+	rc = dax_direct_access(dax_dev, pgoff, PHYS_PFN(size), &kaddr, NULL);
 	if (rc < 0) {
 		dax_read_unlock(id);
 		return rc;
@@ -1074,7 +1083,6 @@ static int dax_iomap_pfn(struct iomap *iomap, loff_t pos, size_t size,
 {
 	const sector_t sector = dax_iomap_sector(iomap, pos);
 	pgoff_t pgoff;
-	void *kaddr;
 	int id, rc;
 	long length;
 
@@ -1083,7 +1091,7 @@ static int dax_iomap_pfn(struct iomap *iomap, loff_t pos, size_t size,
 		return rc;
 	id = dax_read_lock();
 	length = dax_direct_access(iomap->dax_dev, pgoff, PHYS_PFN(size),
-				   &kaddr, pfnp);
+				   NULL, pfnp);
 	if (length < 0) {
 		rc = length;
 		goto out;
@@ -1115,20 +1123,11 @@ static int dax_load_hole(struct address_space *mapping, void *entry,
 	struct inode *inode = mapping->host;
 	unsigned long vaddr = vmf->address;
 	int vmf_ret = VM_FAULT_NOPAGE;
-	struct page *zero_page;
-	pfn_t pfn;
+	pfn_t pfn = pfn_to_pfn_t(my_zero_pfn(vaddr));
 
-	zero_page = ZERO_PAGE(0);
-	if (unlikely(!zero_page)) {
-		vmf_ret = VM_FAULT_OOM;
-		goto out;
-	}
-
-	pfn = page_to_pfn_t(zero_page);
 	dax_insert_mapping_entry(mapping, vmf, entry, pfn, RADIX_DAX_ZERO_PAGE,
 			false);
 	vmf_ret = vmf_insert_mixed(vmf->vma, vaddr, pfn);
-out:
 	trace_dax_load_hole(inode, vmf, vmf_ret);
 	return vmf_ret;
 }
@@ -1159,15 +1158,13 @@ int __dax_zero_page_range(struct block_device *bdev,
 		pgoff_t pgoff;
 		long rc, id;
 		void *kaddr;
-		pfn_t pfn;
 
 		rc = bdev_dax_pgoff(bdev, sector, PAGE_SIZE, &pgoff);
 		if (rc)
 			return rc;
 
 		id = dax_read_lock();
-		rc = dax_direct_access(dax_dev, pgoff, 1, &kaddr,
-				&pfn);
+		rc = dax_direct_access(dax_dev, pgoff, 1, &kaddr, NULL);
 		if (rc < 0) {
 			dax_read_unlock(id);
 			return rc;
@@ -1223,7 +1220,6 @@ dax_iomap_actor(struct inode *inode, loff_t pos, loff_t length, void *data,
 		ssize_t map_len;
 		pgoff_t pgoff;
 		void *kaddr;
-		pfn_t pfn;
 
 		if (fatal_signal_pending(current)) {
 			ret = -EINTR;
@@ -1235,7 +1231,7 @@ dax_iomap_actor(struct inode *inode, loff_t pos, loff_t length, void *data,
 			break;
 
 		map_len = dax_direct_access(dax_dev, pgoff, PHYS_PFN(size),
-				&kaddr, &pfn);
+				&kaddr, NULL);
 		if (map_len < 0) {
 			ret = map_len;
 			break;
