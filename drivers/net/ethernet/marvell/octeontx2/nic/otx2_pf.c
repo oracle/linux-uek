@@ -243,6 +243,21 @@ exit:
 	return err;
 }
 
+static int otx2_cgx_config_loopback(struct otx2_nic *pf, bool enable)
+{
+	struct msg_req *msg;
+
+	if (enable)
+		msg = otx2_mbox_alloc_msg_cgx_intlbk_enable(&pf->mbox);
+	else
+		msg = otx2_mbox_alloc_msg_cgx_intlbk_disable(&pf->mbox);
+
+	if (!msg)
+		return -ENOMEM;
+
+	return otx2_sync_mbox_msg(&pf->mbox);
+}
+
 static int otx2_set_real_num_queues(struct net_device *netdev,
 				    int tx_queues, int rx_queues)
 {
@@ -652,6 +667,18 @@ static void otx2_reset_task(struct work_struct *work)
 	netif_trans_update(pf->netdev);
 }
 
+static int otx2_set_features(struct net_device *netdev,
+			     netdev_features_t features)
+{
+	struct otx2_nic *pf = netdev_priv(netdev);
+	netdev_features_t changed = features ^ netdev->features;
+
+	if ((changed & NETIF_F_LOOPBACK) && netif_running(netdev))
+		return otx2_cgx_config_loopback(pf,
+						features & NETIF_F_LOOPBACK);
+	return 0;
+}
+
 static const struct net_device_ops otx2_netdev_ops = {
 	.ndo_open		= otx2_open,
 	.ndo_stop		= otx2_stop,
@@ -659,6 +686,7 @@ static const struct net_device_ops otx2_netdev_ops = {
 	.ndo_set_mac_address    = otx2_set_mac_address,
 	.ndo_change_mtu		= otx2_change_mtu,
 	.ndo_set_rx_mode	= otx2_set_rx_mode,
+	.ndo_set_features	= otx2_set_features,
 	.ndo_tx_timeout		= otx2_tx_timeout,
 };
 
@@ -782,6 +810,7 @@ static int otx2_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 			       NETIF_F_IPV6_CSUM | NETIF_F_RXHASH |
 			       NETIF_F_TSO | NETIF_F_TSO6);
 	netdev->features |= netdev->hw_features;
+	netdev->hw_features |= NETIF_F_LOOPBACK;
 
 	netdev->gso_max_segs = OTX2_MAX_GSO_SEGS;
 
