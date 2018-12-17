@@ -827,6 +827,8 @@ static void xs_reset_transport(struct sock_xprt *transport)
 
 	trace_rpc_socket_close(xprt, sock);
 	sock_release(sock);
+
+	xprt_disconnect_done(xprt);
 }
 
 /**
@@ -847,8 +849,6 @@ static void xs_close(struct rpc_xprt *xprt)
 
 	xs_reset_transport(transport);
 	xprt->reestablish_timeout = 0;
-
-	xprt_disconnect_done(xprt);
 }
 
 static void xs_inject_disconnect(struct rpc_xprt *xprt)
