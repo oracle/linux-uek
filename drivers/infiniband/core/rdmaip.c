@@ -280,26 +280,16 @@ static int rdmaip_clear_ip6(u8 port)
 static int rdmaip_set_ip4(struct net_device *out_dev, unsigned char *dev_addr,
 			  char *if_name, __be32 addr, __be32 bcast, __be32 mask)
 {
-	struct ifreq		*ir;
+	struct ifreq		ir = { };
 	struct sockaddr_in	*sin;
-	struct page		*page;
 	int			ret = 0;
 
-	page = alloc_page(GFP_HIGHUSER);
-	if (!page) {
-		RDMAIP_DBG2("alloc_page failed .. NO MEM\n");
-		return 1;
-	}
-
-	ir = (struct ifreq *)kmap(page);
-	memset(ir, 0, sizeof(struct ifreq));
-	sin = (struct sockaddr_in *)&ir->ifr_addr;
+	sin = (struct sockaddr_in *)&ir.ifr_addr;
 	sin->sin_family = AF_INET;
-
-	strcpy(ir->ifr_ifrn.ifrn_name, if_name);
+	strcpy(ir.ifr_ifrn.ifrn_name, if_name);
 
 	sin->sin_addr.s_addr = addr;
-	ret = inet_ioctl(rdmaip_inet_socket, SIOCSIFADDR, (unsigned long) ir);
+	ret = inet_ioctl(rdmaip_inet_socket, SIOCSIFADDR, (unsigned long) &ir);
 	if (ret && addr) {
 		pr_err("rdmaip: inet_ioctl(SIOCSIFADDR) on %s failed (%d)\n",
 		       if_name, ret);
@@ -311,7 +301,7 @@ static int rdmaip_set_ip4(struct net_device *out_dev, unsigned char *dev_addr,
 
 	sin->sin_addr.s_addr = bcast;
 	ret = inet_ioctl(rdmaip_inet_socket, SIOCSIFBRDADDR,
-			(unsigned long) ir);
+			(unsigned long) &ir);
 	if (ret) {
 		pr_err("rdmaip: inet_ioctl(SIOCSIFBRDADDR) on %s failed (%d)\n",
 		       if_name, ret);
@@ -320,7 +310,7 @@ static int rdmaip_set_ip4(struct net_device *out_dev, unsigned char *dev_addr,
 
 	sin->sin_addr.s_addr = mask;
 	ret = inet_ioctl(rdmaip_inet_socket, SIOCSIFNETMASK,
-			(unsigned long) ir);
+			(unsigned long) &ir);
 	if (ret) {
 		pr_err("rdmaip: inet_ioctl(SIOCSIFNETMASK) on %s failed (%d)\n",
 		       if_name, ret);
@@ -330,9 +320,6 @@ static int rdmaip_set_ip4(struct net_device *out_dev, unsigned char *dev_addr,
 	rdmaip_send_gratuitous_arp(out_dev, dev_addr, addr);
 
 out:
-	kunmap(page);
-	__free_page(page);
-
 	return ret;
 }
 
@@ -452,9 +439,8 @@ static int rdmaip_move_ip4(char *from_dev, char *to_dev, u8 from_port,
 			   u8 to_port, __be32 addr, __be32 bcast,
 			   __be32 mask, int alias, bool failover)
 {
-	struct ifreq		*ir;
+	struct ifreq		ir = { };
 	struct sockaddr_in	*sin;
-	struct page		*page;
 	char			from_dev2[2*IFNAMSIZ + 1];
 	char			to_dev2[2*IFNAMSIZ + 1];
 	char                    *tmp_str;
@@ -467,22 +453,14 @@ static int rdmaip_move_ip4(char *from_dev, char *to_dev, u8 from_port,
 		    from_dev, to_dev, from_port, to_port, (void *)&addr,
 		    (failover ? "True" : "False"));
 
-	page = alloc_page(GFP_HIGHUSER);
-	if (!page) {
-		pr_err("rdmaip: alloc_page failed .. NO MEM\n");
-		return 1;
-	}
-
-	ir = (struct ifreq *)kmap(page);
-	memset(ir, 0, sizeof(struct ifreq));
-	sin = (struct sockaddr_in *)&ir->ifr_addr;
+	sin = (struct sockaddr_in *)&ir.ifr_addr;
 	sin->sin_family = AF_INET;
 
 	/* Set the primary IP if it hasn't been set */
 	if (ip_config[to_port].ip_addr && failover) {
-		strcpy(ir->ifr_ifrn.ifrn_name, ip_config[to_port].dev->name);
+		strcpy(ir.ifr_ifrn.ifrn_name, ip_config[to_port].dev->name);
 		ret = inet_ioctl(rdmaip_inet_socket, SIOCGIFADDR,
-					(unsigned long) ir);
+					(unsigned long) &ir);
 		if (ret == -EADDRNOTAVAIL) {
 			RDMAIP_DBG2_PTR("Setting primary IP on %s %pI4\n",
 				    ip_config[to_port].dev->name,
@@ -595,9 +573,6 @@ static int rdmaip_move_ip4(char *from_dev, char *to_dev, u8 from_port,
 	}
 
 out:
-	kunmap(page);
-	__free_page(page);
-
 	return ret;
 }
 
@@ -802,9 +777,8 @@ static u8 rdmaip_init_port(struct rdmaip_device	*rdmaip_dev,
 
 static int rdmaip_testset_ip4(u8 port)
 {
-	struct ifreq		*ir;
+	struct ifreq		ir = { };
 	struct sockaddr_in	*sin;
-	struct page		*page;
 	int			ret = 0;
 	int                     ii;
 
@@ -814,24 +788,15 @@ static int rdmaip_testset_ip4(u8 port)
 		return 0;
 	}
 
-	page = alloc_page(GFP_HIGHUSER);
-	if (!page) {
-		pr_err("rdmaip:alloc_page failed .. NO MEM\n");
-		return 1;
-	}
-
-	ir = (struct ifreq *)kmap(page);
-	memset(ir, 0, sizeof(struct ifreq));
-	sin = (struct sockaddr_in *)&ir->ifr_addr;
+	sin = (struct sockaddr_in *)&ir.ifr_addr;
 	sin->sin_family = AF_INET;
 
 	/*
 	 * If the primary IP is not set revive it
 	 * and also the IP addrs on aliases
 	 */
-
-	strcpy(ir->ifr_ifrn.ifrn_name, ip_config[port].dev->name);
-	ret = inet_ioctl(rdmaip_inet_socket, SIOCGIFADDR, (unsigned long) ir);
+	strcpy(ir.ifr_ifrn.ifrn_name, ip_config[port].dev->name);
+	ret = inet_ioctl(rdmaip_inet_socket, SIOCGIFADDR, (unsigned long) &ir);
 	if (ret == -EADDRNOTAVAIL) {
 		/* Set the IP on this port */
 		ret = rdmaip_set_ip4(ip_config[port].dev,
@@ -873,9 +838,6 @@ static int rdmaip_testset_ip4(u8 port)
 		RDMAIP_DBG2("Primary addr already set on port index %u devname %s\n",
 			    port, ip_config[port].dev->name);
 out:
-	kunmap(page);
-	__free_page(page);
-
 	return ret;
 }
 
