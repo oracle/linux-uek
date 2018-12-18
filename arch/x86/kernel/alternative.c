@@ -746,8 +746,19 @@ int poke_int3_handler(struct pt_regs *regs)
 	if (likely(!bp_patching_in_progress))
 		return 0;
 
-	if (user_mode(regs) || regs->ip != (unsigned long)bp_int3_addr)
+	if (user_mode(regs))
 		return 0;
+
+	/*
+	 * If virtual addresses are different, check if physical addresses
+	 * are the same in case we have the same code mapped to different
+	 * virtual addresses. Note that we could just compare physical
+	 * addresses, however we first compare virtual addresses because
+	 * this is much faster and very likely to succeed.
+	 */
+	if (regs->ip != (unsigned long)bp_int3_addr &&
+	    slow_virt_to_phys((void *)regs->ip) != slow_virt_to_phys(bp_int3_addr))
+	    return 0;
 
 	/* set up the specified breakpoint handler */
 	regs->ip = (unsigned long) bp_int3_handler;
