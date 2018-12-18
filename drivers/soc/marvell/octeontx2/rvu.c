@@ -2548,9 +2548,11 @@ static int rvu_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	if (err)
 		goto err_flr;
 
-	err = rvu_cpt_register_interrupts(rvu);
-	if (err)
-		goto err_irq;
+	if (is_block_implemented(rvu->hw, BLKADDR_CPT0)) {
+		err = rvu_cpt_register_interrupts(rvu);
+		if (err)
+			goto err_irq;
+	}
 
 	err = rvu_policy_init(rvu);
 	if (err)
