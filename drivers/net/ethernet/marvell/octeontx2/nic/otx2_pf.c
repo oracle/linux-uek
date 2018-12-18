@@ -294,23 +294,6 @@ static void otx2_disable_napi(struct otx2_nic *pf)
 	}
 }
 
-static void otx2_free_cints(struct otx2_nic *pfvf, int n)
-{
-	struct otx2_qset *qset = &pfvf->qset;
-	struct otx2_hw *hw = &pfvf->hw;
-	int irq, qidx;
-
-	for (qidx = 0, irq = hw->nix_msixoff + NIX_LF_CINT_VEC_START;
-	     qidx < n;
-	     qidx++, irq++) {
-		int vector = pci_irq_vector(pfvf->pdev, irq);
-
-		irq_set_affinity_hint(vector, NULL);
-		free_cpumask_var(hw->affinity_mask[irq]);
-		free_irq(vector, &qset->napi[qidx]);
-	}
-}
-
 static int otx2_init_hw_resources(struct otx2_nic *pf)
 {
 	struct otx2_hw *hw = &pf->hw;
@@ -465,6 +448,7 @@ static int otx2_open(struct net_device *netdev)
 	struct otx2_cq_poll *cq_poll = NULL;
 	struct otx2_qset *qset = &pf->qset;
 	int err = 0, qidx, vec;
+	char *irq_name;
 
 	netif_carrier_off(netdev);
 
@@ -521,12 +505,13 @@ static int otx2_open(struct net_device *netdev)
 	/* Register CQ IRQ handlers */
 	vec = pf->hw.nix_msixoff + NIX_LF_CINT_VEC_START;
 	for (qidx = 0; qidx < pf->hw.cint_cnt; qidx++) {
-		sprintf(&pf->hw.irq_name[vec * NAME_SIZE], "%s-rxtx-%d",
-			pf->netdev->name, qidx);
+		irq_name = &pf->hw.irq_name[vec * NAME_SIZE];
+
+		snprintf(irq_name, NAME_SIZE, "%s-rxtx-%d", pf->netdev->name,
+			 qidx);
 
 		err = request_irq(pci_irq_vector(pf->pdev, vec),
-				  otx2_cq_intr_handler, 0,
-				  &pf->hw.irq_name[vec * NAME_SIZE],
+				  otx2_cq_intr_handler, 0, irq_name,
 				  &qset->napi[qidx]);
 		if (err) {
 			dev_err(pf->dev,
@@ -547,6 +532,8 @@ static int otx2_open(struct net_device *netdev)
 		otx2_write64(pf, NIX_LF_CINTX_INT(qidx), BIT_ULL(0));
 		otx2_write64(pf, NIX_LF_CINTX_ENA_W1S(qidx), BIT_ULL(0));
 	}
+
+	otx2_set_cints_affinity(pf);
 
 	err = otx2_rxtx_enable(pf, true);
 	if (err)

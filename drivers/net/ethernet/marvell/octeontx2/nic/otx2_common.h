@@ -283,6 +283,10 @@ static inline int rvu_get_pf(u16 pcifunc)
 	return (pcifunc >> RVU_PFVF_PF_SHIFT) & RVU_PFVF_PF_MASK;
 }
 
+/* MSI-X APIs */
+void otx2_free_cints(struct otx2_nic *pfvf, int n);
+void otx2_set_cints_affinity(struct otx2_nic *pfvf);
+
 /* RVU block related APIs */
 int otx2_attach_npa_nix(struct otx2_nic *pfvf);
 int otx2_detach_resources(struct mbox *mbox);
