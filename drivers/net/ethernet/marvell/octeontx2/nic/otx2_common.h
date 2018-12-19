@@ -134,6 +134,9 @@ static inline int otx2_mbox_bbuf_init(struct mbox *mbox, struct pci_dev *pdev)
 	mdev = &otx2_mbox->dev[0];
 	mdev->mbase = mbox->bbuf_base;
 
+	otx2_mbox = &mbox->mbox_up;
+	mdev = &otx2_mbox->dev[0];
+	mdev->mbase = mbox->bbuf_base;
 	return 0;
 }
 
@@ -288,6 +291,15 @@ static struct _req_type __maybe_unused					\
 }
 
 MBOX_MESSAGES
+#undef M
+
+#define M(_name, _id, _fn_name, _req_type, _rsp_type)			\
+int									\
+otx2_mbox_up_handler_ ## _fn_name(struct otx2_nic *pfvf,		\
+				struct _req_type *req,			\
+				struct _rsp_type *rsp);			\
+
+MBOX_UP_CGX_MESSAGES
 #undef M
 
 #define	RVU_PFVF_PF_SHIFT	10

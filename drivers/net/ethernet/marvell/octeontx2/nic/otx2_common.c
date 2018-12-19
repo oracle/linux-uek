@@ -974,3 +974,16 @@ void otx2_set_cints_affinity(struct otx2_nic *pfvf)
 			cpu = 0;
 	}
 }
+
+#define M(_name, _id, _fn_name, _req_type, _rsp_type)			\
+int __weak								\
+otx2_mbox_up_handler_ ## _fn_name(struct otx2_nic *pfvf,		\
+				struct _req_type *req,			\
+				struct _rsp_type *rsp)			\
+{									\
+	/* Nothing to do here */					\
+	return 0;							\
+}
+
+MBOX_UP_CGX_MESSAGES
+#undef M
