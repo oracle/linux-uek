@@ -1332,6 +1332,8 @@ static void rdmaip_event_handler(struct ib_event_handler *handler,
 	struct rdmaip_device	*rdmaip_dev =
 		container_of(handler, typeof(*rdmaip_dev), event_handler);
 	u8	port;
+	int port_tstate = RDMAIP_PORT_TRANSITION_NOOP;
+	bool	found = false;
 
 	if (!ip_port_cnt || (rdmaip_init_flag & RDMAIP_TEARDOWN_IN_PROGRESS))
 		return;
@@ -1346,63 +1348,67 @@ static void rdmaip_event_handler(struct ib_event_handler *handler,
 		    ib_event_msg(event->event));
 
 	for (port = 1; port <= ip_port_cnt; port++) {
-		int port_tstate = RDMAIP_PORT_TRANSITION_NOOP;
-
 		if (ip_config[port].port_num != event->element.port_num ||
 			ip_config[port].rdmaip_dev != rdmaip_dev)
 			continue;
+		found = true;
+		break;
+	}
 
-		/*
-		 * Network service disables active bonding temporarily
-		 * when user stops network service and re-enables
-		 * when user restarts the network service. There is
-		 * need to failover or failback during that period.
-		 * The port state is set to RDMAIP_PORT_INIT to indicate
-		 * it needs do failover/failback as needed when the
-		 * network serivice restarts.
-		 */
-		if (!rdmaip_sysctl_active_bonding) {
-			RDMAIP_DBG2("Skip failover and failback %s\n",
-				    ip_config[port].if_name);
-			ip_config[port].port_state = RDMAIP_PORT_INIT;
-			ip_config[port].ip_active_port = port;
-			return;
-		}
+	if (!found) {
+		RDMAIP_DBG2("ERROR: No rdmaip_port found\n");
+		return;
+	}
 
-		RDMAIP_DBG2("PORT %s/port_%d/%s received PORT-EVENT %s%s\n",
-			    rdmaip_dev->dev->name, event->element.port_num,
-			    ip_config[port].if_name, ib_event_msg(event->event),
-			    (ip_config_init_phase_flag ?
-			    " during initialization phase!" : ""));
+	/*
+	 * Network service disables active bonding temporarily
+	 * when user stops network service and re-enables
+	 * when user restarts the network service. There is
+	 * need to failover or failback during that period.
+	 * The port state is set to RDMAIP_PORT_INIT to indicate
+	 * it needs do failover/failback as needed when the
+	 * network serivice restarts.
+	 */
+	if (!rdmaip_sysctl_active_bonding) {
+		RDMAIP_DBG2("Skip failover and failback %s\n",
+			    ip_config[port].if_name);
+		ip_config[port].port_state = RDMAIP_PORT_INIT;
+		ip_config[port].ip_active_port = port;
+		return;
+	}
 
-		rdmaip_update_port_status_all_layers(port, RDMAIP_EVENT_IB,
-						     event->event);
+	RDMAIP_DBG2("PORT %s/port_%d/%s received PORT-EVENT %s%s\n",
+		    rdmaip_dev->dev->name, event->element.port_num,
+		    ip_config[port].if_name, ib_event_msg(event->event),
+		    (ip_config_init_phase_flag ?
+		    " during initialization phase!" : ""));
 
-		if (event->event == IB_EVENT_PORT_ACTIVE)
-			ip_config[port].port_active_ts = get_jiffies_64();
+	rdmaip_update_port_status_all_layers(port, RDMAIP_EVENT_IB,
+					     event->event);
 
-		port_tstate  = rdmaip_find_port_tstate(port);
+	if (event->event == IB_EVENT_PORT_ACTIVE)
+		ip_config[port].port_active_ts = get_jiffies_64();
 
-		pr_notice("rdmaip: PORT-EVENT: %s%s, PORT: %s/port_%d/%s : %s%s (portlayers 0x%x)\n",
-			  ib_event_msg(event->event),
-			  (ip_config_init_phase_flag ? "(init phase)" : ""),
-			  rdmaip_dev->dev->name, event->element.port_num,
-			  ip_config[port].if_name,
-			  (port_tstate == RDMAIP_PORT_TRANSITION_UP ?
-			  "port state transition to " :
-			  (port_tstate == RDMAIP_PORT_TRANSITION_DOWN ?
-			  "port state transition to " :
-			  "port state transition NONE - port retained in state ")),
-			  rdmaip_portstate2name(ip_config[port].port_state),
-			  ip_config[port].port_layerflags);
+	port_tstate  = rdmaip_find_port_tstate(port);
 
-		if ((port_tstate == RDMAIP_PORT_TRANSITION_NOOP) ||
-			!ip_config[port].failover_group)
-			continue;
+	pr_notice("rdmaip: PORT-EVENT: %s%s, PORT: %s/port_%d/%s : %s%s (portlayers 0x%x)\n",
+		  ib_event_msg(event->event),
+		  (ip_config_init_phase_flag ? "(init phase)" : ""),
+		  rdmaip_dev->dev->name, event->element.port_num,
+		  ip_config[port].if_name,
+		  (port_tstate == RDMAIP_PORT_TRANSITION_UP ?
+		  "port state transition to " :
+		  (port_tstate == RDMAIP_PORT_TRANSITION_DOWN ?
+		  "port state transition to " :
+		  "port state transition NONE - port retained in state ")),
+		  rdmaip_portstate2name(ip_config[port].port_state),
+		  ip_config[port].port_layerflags);
 
-		if (port_tstate == RDMAIP_PORT_TRANSITION_UP)
-			ip_config[port].port_active_ts = 0;
+	if (port_tstate == RDMAIP_PORT_TRANSITION_UP)
+		ip_config[port].port_active_ts = 0;
 
+	if ((port_tstate != RDMAIP_PORT_TRANSITION_NOOP) &&
+		ip_config[port].failover_group) {
 		rdmaip_sched_failover_failback(ip_config[port].dev,
 					       port, port_tstate);
 	}
