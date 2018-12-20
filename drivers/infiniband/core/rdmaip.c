@@ -1135,6 +1135,94 @@ out:
 }
 
 /*
+ * This funciton returns port transition state
+ *
+ * Returns RDMAIP_PORT_TRANSITION_NOOP if previous
+ * state and current state are same.
+ *
+ * Returns RDMAIP_PORT_TRANSITION_UP if previous
+ * state was not UP and current state is UP.
+ *
+ * Returns RDMAIP_PORT_TRANSITION_DOWN if previous
+ * state was not DOWN and current state is DOWN.
+ */
+static int rdmaip_find_port_tstate(u8 port)
+{
+	int	tstate = RDMAIP_PORT_TRANSITION_NOOP;
+	struct	rdmaip_device	*rdmaip_dev;
+
+	rdmaip_dev = ip_config[port].rdmaip_dev;
+
+	switch (ip_config[port].port_state) {
+	case RDMAIP_PORT_INIT:
+		if (ip_config_init_phase_flag) {
+			/*
+			 * For INIT port_state during module
+			 * initialization, deferred state transition
+			 * processing* happens after all NETDEV and
+			 * IB ports come up and event handlers have
+			 * run and task doing initial failovers
+			 * after module loading has run - which
+			 * ends the "init_phase and clears the flag.
+			 */
+			tstate = RDMAIP_PORT_TRANSITION_NOOP;
+			break;
+		}
+
+		/*
+		 * We are in INIT state but not during module
+		 * initialization. This can happens when
+		 *
+		 * 1) A new port is detected and initialized
+		 *    in rdmaip_addintf_after_initscripts().
+		 *
+		 * 2) It can happen via init script 'stop'
+		 *    invocation -whichdisables active bonding
+		 *    temporarily by unsetting sysctl variable
+		 *    rdmaip_sysctl_active_bonding
+		 */
+		if (rdmaip_sysctl_active_bonding) {
+			if (rdmaip_port_all_layers_up(&ip_config[port])) {
+				ip_config[port].port_state = RDMAIP_PORT_UP;
+				tstate = RDMAIP_PORT_TRANSITION_UP;
+				RDMAIP_DBG3("Port transition INIT to UP\n");
+			} else {
+				ip_config[port].port_state = RDMAIP_PORT_DOWN;
+				tstate = RDMAIP_PORT_TRANSITION_DOWN;
+				RDMAIP_DBG3("Port transition INIT to DOWN\n");
+			}
+		} else {
+			tstate = RDMAIP_PORT_TRANSITION_NOOP;
+			pr_warn("rdmaip: %s active bonding is disabled using sysctl\n",
+				rdmaip_dev->dev->name);
+		}
+		break;
+
+	case RDMAIP_PORT_DOWN:
+		if (rdmaip_port_all_layers_up(&ip_config[port])) {
+			ip_config[port].port_state = RDMAIP_PORT_UP;
+			tstate = RDMAIP_PORT_TRANSITION_UP;
+			RDMAIP_DBG3("Port transition DOWN to UP\n");
+		}
+		break;
+
+	case RDMAIP_PORT_UP:
+		if (!rdmaip_port_all_layers_up(&ip_config[port])) {
+			ip_config[port].port_state = RDMAIP_PORT_DOWN;
+			tstate = RDMAIP_PORT_TRANSITION_DOWN;
+			RDMAIP_DBG3("Port transition UP to DOWN\n");
+		}
+		break;
+
+	default:
+		pr_err("rdmaip: INVALID port_state %d port index %u devname %s\n",
+		       ip_config[port].port_state, port,
+		       ip_config[port].dev->name);
+	}
+	return tstate;
+}
+
+/*
  * rdmaip_event_handler is called by the IB core subsystem
  * to inform certain RDMA events. See ib_event_type definitions
  * in include/rdma/ibverbs.h for more details.
@@ -1176,7 +1264,7 @@ static void rdmaip_event_handler(struct ib_event_handler *handler,
 		    ib_event_msg(event->event));
 
 	for (port = 1; port <= ip_port_cnt; port++) {
-		int this_port_transition = RDMAIP_PORT_TRANSITION_NOOP;
+		int port_tstate = RDMAIP_PORT_TRANSITION_NOOP;
 
 		if (ip_config[port].port_num != event->element.port_num ||
 			ip_config[port].rdmaip_dev != rdmaip_dev)
@@ -1214,102 +1302,22 @@ static void rdmaip_event_handler(struct ib_event_handler *handler,
 			ip_config[port].port_layerflags &=
 				~RDMAIP_PORT_STATUS_NETDEVUP;
 
-		switch (ip_config[port].port_state) {
-		case RDMAIP_PORT_INIT:
-			if (ip_config_init_phase_flag) {
-				/*
-				 * For INIT port_state during module
-				 * initialization, deferred state transition
-				 * processing* happens after all NETDEV and
-				 * IB ports come up and event handlers have
-				 * run and task doing initial failovers
-				 * after module loading has run - which
-				 * ends the "init_phase and clears the flag.
-				 */
-				this_port_transition =
-					RDMAIP_PORT_TRANSITION_NOOP;
-				break;
-			}
-
-			/*
-			 * We are in INIT state but not during module
-			 * initialization. This can happens when
-			 * a new port is detected and initialized
-			 * in rdmaip_addintf_after_initscripts().
-			 *
-			 * It can also happen via init script
-			 * 'stop' invocation -which (temporarily?)
-			 * disables active bonding by unsetting
-			 * rdmaip_sysctl_active_bonding)
-			 * and returns ports to INIT state.
-			 *
-			 * And then we received this PORT ACTIVE/ERROR
-			 * event.
-			 *
-			 * If rdmaip_sysctl_active_bonding is set,
-			 * we transition port_state to UP/DOWN, else
-			 * we do not do any transitions here.
-			 */
-			if (rdmaip_sysctl_active_bonding) {
-				if (rdmaip_port_all_layers_up(&ip_config[port])) {
-					ip_config[port].port_state =
-						RDMAIP_PORT_UP;
-					this_port_transition =
-						RDMAIP_PORT_TRANSITION_UP;
-				} else {
-					ip_config[port].port_state =
-						RDMAIP_PORT_DOWN;
-					this_port_transition =
-						RDMAIP_PORT_TRANSITION_DOWN;
-				}
-			} else {
-				this_port_transition =
-					RDMAIP_PORT_TRANSITION_NOOP;
-				pr_warn("rdmaip: PORT %s/port_%d/%s received PORT-EVENT %s ignored: active bonding transitions disabled using sysctl\n",
-					rdmaip_dev->dev->name,
-					event->element.port_num,
-					ip_config[port].if_name,
-					ib_event_msg(event->event));
-			}
-			break;
-
-		case RDMAIP_PORT_DOWN:
-			if (rdmaip_port_all_layers_up(&ip_config[port])) {
-				ip_config[port].port_state = RDMAIP_PORT_UP;
-				this_port_transition =
-					RDMAIP_PORT_TRANSITION_UP;
-			}
-			break;
-
-		case RDMAIP_PORT_UP:
-			if (!rdmaip_port_all_layers_up(&ip_config[port])) {
-				ip_config[port].port_state = RDMAIP_PORT_DOWN;
-				this_port_transition =
-					RDMAIP_PORT_TRANSITION_DOWN;
-			}
-			break;
-
-		default:
-			pr_err("rdmaip: INVALID port_state %d port index %u devname %s\n",
-			       ip_config[port].port_state, port,
-			       ip_config[port].dev->name);
-			return;
-		}
+		port_tstate  = rdmaip_find_port_tstate(port);
 
 		pr_notice("rdmaip: PORT-EVENT: %s%s, PORT: %s/port_%d/%s : %s%s (portlayers 0x%x)\n",
 			  ib_event_msg(event->event),
 			  (ip_config_init_phase_flag ? "(init phase)" : ""),
 			  rdmaip_dev->dev->name, event->element.port_num,
 			  ip_config[port].if_name,
-			  (this_port_transition == RDMAIP_PORT_TRANSITION_UP ?
+			  (port_tstate == RDMAIP_PORT_TRANSITION_UP ?
 			  "port state transition to " :
-			  (this_port_transition == RDMAIP_PORT_TRANSITION_DOWN ?
+			  (port_tstate == RDMAIP_PORT_TRANSITION_DOWN ?
 			  "port state transition to " :
 			  "port state transition NONE - port retained in state ")),
 			  rdmaip_portstate2name(ip_config[port].port_state),
 			  ip_config[port].port_layerflags);
 
-		if ((this_port_transition == RDMAIP_PORT_TRANSITION_NOOP) ||
+		if ((port_tstate == RDMAIP_PORT_TRANSITION_NOOP) ||
 			!ip_config[port].failover_group)
 			continue;
 
@@ -1321,7 +1329,7 @@ static void rdmaip_event_handler(struct ib_event_handler *handler,
 
 		work->port = port;
 
-		if (this_port_transition == RDMAIP_PORT_TRANSITION_UP) {
+		if (port_tstate == RDMAIP_PORT_TRANSITION_UP) {
 			if (rdmaip_active_bonding_failback) {
 				RDMAIP_DBG3("Schedule failback\n");
 				INIT_DELAYED_WORK(&work->work, rdmaip_failback);
@@ -2267,7 +2275,7 @@ static int rdmaip_netdev_callback(struct notifier_block *self,
 {
 	struct net_device *ndev = netdev_notifier_info_to_dev(ctx);
 	struct rdmaip_port_ud_work *work = NULL;
-	int port_transition = RDMAIP_PORT_TRANSITION_NOOP;
+	int port_tstate = RDMAIP_PORT_TRANSITION_NOOP;
 	u8 port = 0;
 
 	if (rdmaip_init_flag & RDMAIP_TEARDOWN_IN_PROGRESS) {
@@ -2390,85 +2398,7 @@ static int rdmaip_netdev_callback(struct notifier_block *self,
 		break;
 	}
 
-	/*
-	 * Do state transitions now
-	 */
-	switch (ip_config[port].port_state) {
-	case RDMAIP_PORT_INIT:
-
-		if (ip_config_init_phase_flag) {
-			/*
-			 * For INIT port_state during module initialization,
-			 * deferred state transition processing* happens after
-			 * all NETDEV and IB ports come up and event
-			 * handlers have run and task doing initial failovers
-			 * after module loading has run - which ends the
-			 * "init_phase and clears the flag.
-			 */
-			port_transition = RDMAIP_PORT_TRANSITION_NOOP;
-			break;
-		}
-
-		/*
-		 * We are in INIT state but not during module
-		 * initialization. This can happens when
-		 * a new port is detected and initialized
-		 * in rdmaip_addintf_after_initscripts().
-		 *
-		 * It can also happen via init script
-		 * 'stop' invocation -which (temporarily?)
-		 * disables active bonding by unsetting
-		 * rdmaip_sysctl_active_bonding)
-		 * and returns ports to INIT state.
-		 *
-		 * And then we received this NETDEV
-		 * UP/DOWN/CHANGE event.
-		 *
-		 * If rdmaip_sysctl_active_bonding is set,
-		 * we transition port_state to UP/DOWN, else
-		 * we do not do any transitions here.
-		 */
-		if (rdmaip_sysctl_active_bonding) {
-			if (rdmaip_port_all_layers_up(&ip_config[port])) {
-				ip_config[port].port_state = RDMAIP_PORT_UP;
-				port_transition = RDMAIP_PORT_TRANSITION_UP;
-				RDMAIP_DBG2("PORT_STATE changed to UP\n");
-			} else {
-				ip_config[port].port_state = RDMAIP_PORT_DOWN;
-				port_transition = RDMAIP_PORT_TRANSITION_DOWN;
-				RDMAIP_DBG2("PORT_STATE changed to DOWN\n");
-			}
-		} else {
-			port_transition = RDMAIP_PORT_TRANSITION_NOOP;
-			pr_warn("rdmaip: PORT %s/port_%d/%s received PORT-EVENT %s ignored: "
-				"active bonding transitions disabled using sysctl\n",
-				ip_config[port].rdmaip_dev->dev->name,
-				ip_config[port].port_num, ndev->name,
-				(event == NETDEV_UP ? "NETDEV_UP" :
-				(event == NETDEV_DOWN ? "NETDEV_DOWN" :
-				 "NETDEV_CHANGE")));
-		}
-
-		break;
-	case RDMAIP_PORT_DOWN:
-		if (rdmaip_port_all_layers_up(&ip_config[port])) {
-			ip_config[port].port_state = RDMAIP_PORT_UP;
-			port_transition = RDMAIP_PORT_TRANSITION_UP;
-		}
-		break;
-	case RDMAIP_PORT_UP:
-		if (!rdmaip_port_all_layers_up(&ip_config[port])) {
-			ip_config[port].port_state = RDMAIP_PORT_DOWN;
-			port_transition = RDMAIP_PORT_TRANSITION_DOWN;
-		}
-		break;
-	default:
-		pr_err("rdmaip: INVALID port_state %d port index %u devname %s\n",
-		       ip_config[port].port_state,
-		       port, ip_config[port].dev->name);
-		return NOTIFY_DONE;
-	}
-
+	port_tstate = rdmaip_find_port_tstate(port);
 
 	/*
 	 * Log the event details and its disposition
@@ -2478,15 +2408,15 @@ static int rdmaip_netdev_callback(struct notifier_block *self,
 		  (ip_config_init_phase_flag ? "(init phase)" : ""),
 		  ip_config[port].rdmaip_dev->dev->name,
 		  ip_config[port].port_num, ndev->name,
-		  (port_transition == RDMAIP_PORT_TRANSITION_UP ?
+		  (port_tstate == RDMAIP_PORT_TRANSITION_UP ?
 		  "port state transition to " :
-		  (port_transition == RDMAIP_PORT_TRANSITION_DOWN ?
+		  (port_tstate == RDMAIP_PORT_TRANSITION_DOWN ?
 		  "port state transition to " :
 		  "port state transition NONE - port retained in state ")),
 		  rdmaip_portstate2name(ip_config[port].port_state),
 		  ip_config[port].port_layerflags);
 
-	if ((port_transition == RDMAIP_PORT_TRANSITION_NOOP) ||
+	if ((port_tstate == RDMAIP_PORT_TRANSITION_NOOP) ||
 		!ip_config[port].failover_group)
 		return NOTIFY_DONE;
 
@@ -2499,7 +2429,7 @@ static int rdmaip_netdev_callback(struct notifier_block *self,
 	work->dev = ndev;
 	work->port = port;
 
-	switch (port_transition) {
+	switch (port_tstate) {
 	case RDMAIP_PORT_TRANSITION_UP:
 		if (rdmaip_active_bonding_failback) {
 			INIT_DELAYED_WORK(&work->work, rdmaip_failback);
