@@ -54,12 +54,12 @@ fi
 #	<section> <address> B <name>
 #	    Named identifier at a specific address (global variable).
 #
-# We also process any function symbols, and build a lookup map with varying
-# levels of detail to assist in symbol lookup later on (each map entry stores
-# the symbol offset relative to its section):
-#	section, name, and offset
+# We also process any function symbols, and build a lookup map for section-name
+# pairs and just name.  Due to the possibility of having symbols with identical
+# names (in the same section, e.g. global and/or one or more local), we append
+# -<n> to every 2nd and later copy of the same symbol name in the current
+# section.
 #	section and name
-#	name and offset
 #	name
 # (If multiple symbols map to any of the above combinations, that specific
 #  combination is omitted from the mapping.)
@@ -68,7 +68,7 @@ fi
 # is not located in a section that starts with .exit.text, .init.text, or
 # .meminit.text) we determine its in-section offset and output a record:
 #
-#	<section> <offset> F <name> <address>
+#	<section> <offset> F <name> <address> <section-base-address>
 #	    Named function at a specific address.
 #
 # Finally, each relocation record from a non-init or exit section that relates
@@ -103,7 +103,7 @@ fi
 		     if (v0h >= v1h) {
 			 d = sprintf("%08x%08x", v0h - v1h, v0l - v1l);
 		     } else {
-			 printf "ERROR: Invalid addresses: %s vs %s\n", v0, v1;
+			 printf "ERROR: [1.a] Invalid: %s - %s\n", v0, v1;
 			 d = 0;
 			 errc++;
 		     }
@@ -113,7 +113,7 @@ fi
 			 v0l += 4294967296;
 			 d = sprintf("%08x%08x", v0h - v1h, v0l - v1l);
 		     } else {
-			 printf "ERROR: Invalid addresses: %s vs %s\n", v0, v1;
+			 printf "ERROR: [1.b] Invalid: %s - %s\n", v0, v1;
 			 d = 0;
 			 errc++;
 		     }
@@ -134,6 +134,7 @@ fi
 
 	 /^SYMBOL / {
 	     phase++;
+	     delete scnt;
 	     next;
 	 }
 
@@ -157,28 +158,22 @@ fi
 		 next;
 
 	     off = subl($1, secs[$4]);
-	     id = $4 " " $6 " " off;
+
+	     sym = $NF;
+	     scnt[sym]++;
+	     if (scnt[sym] > 1)
+		 sym = sym"-"(scnt[sym] - 1);
+
+	     # section and name
+	     id = $4 " " sym;
 	     if (id in smap) {
 		 if (smap[id] != $1)
 		     smap[id] = 0;
 	     } else
 		 smap[id] = $1;
 
-	     id = $4 " " $6;
-	     if (id in smap) {
-		 if (smap[id] != $1)
-		     smap[id] = 0;
-	     } else
-		 smap[id] = $1;
-
-	     id = $6 " " off;
-	     if (id in smap) {
-		 if (smap[id] != $1)
-		     smap[id] = 0;
-	     } else
-		 smap[id] = $1;
-
-	     id = $6;
+	     # name
+	     id = sym;
 	     if (id in smap) {
 		 if (smap[id] != $1)
 		     smap[id] = 0;
@@ -192,19 +187,22 @@ fi
 	     if ($4 ~ /^\.(exit|init|meminit)\.text/)
 		 next;
 
-	     id = $4 " " $6 " " $1;
+	     sym = $NF;
+	     scnt[sym]++;
+	     if (scnt[sym] > 1)
+		 sym = sym"-"(scnt[sym] - 1);
+
+	     # section and name
+	     id = $4 " " sym;
 	     if (!(id in smap))
-		 id = $4 " " $6;
-	     if (!(id in smap))
-		 id = $6 " " $1;
-	     if (!(id in smap))
-		 id = $6;
+		 id = sym;
+	     # name
 	     if (id in smap) {
 		 addr = smap[id];
 		 if (!addr)
-		     print "ERROR: Non-unique symbol: " $4 " " $6 " " $1;
+		     print "ERROR: Not unique: " $4 " " $6 " " $1 " ["sym"]";
 	     } else {
-		 print "ERROR: Could not find " $4 " " $6 " " $1;
+		 print "ERROR: Not found " $4 " " $6 " " $1 " ["sym"]";
 		 addr = 0;
 	     }
 
@@ -256,7 +254,7 @@ fi
 		 if (length(d) <= 8) {
 		     d = sprintf("%08x%08x", v0h, v0l);
 		 } else {
-		     printf "#error Invalid addresses: %s + %s\n", v0, v1 \
+		     printf "#error [2.a] Invalid: %s + %s\n", v0, v1 \
 			    >"/dev/stderr";
 		     errc++;
 		 }
@@ -284,7 +282,7 @@ fi
 		     if (v0h >= v1h) {
 			 d = sprintf("%08x%08x", v0h - v1h, v0l - v1l);
 		     } else {
-			 printf "#error Invalid addresses: %s - %s\n", v0, v1 \
+			 printf "#error [2.b] Invalid: %s - %s\n", v0, v1 \
 				>"/dev/stderr";
 			 errc++;
 		     }
@@ -294,7 +292,7 @@ fi
 			 v0l += 4294967296;
 			 d = sprintf("%08x%08x", v0h - v1h, v0l - v1l);
 		     } else {
-			 printf "#error Invalid addresses: %s - %s\n", v0, v1 \
+			 printf "#error [2.c] Invalid: %s - %s\n", v0, v1 \
 				>"/dev/stderr";
 			 errc++;
 		     }
