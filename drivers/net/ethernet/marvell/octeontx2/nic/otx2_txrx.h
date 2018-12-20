@@ -47,13 +47,16 @@ struct otx2_snd_queue {
 	u16			sqe_size;
 	u32			sqe_cnt;
 	u16			num_sqbs;
+	u16			sqe_thresh;
+	u8			sqe_per_sqb;
 	u64			 io_addr;
 	u64			*aura_fc_addr;
 	u64			*lmt_addr;
 	void			*sqe_base;
 	struct qmem		*sqe;
+	struct qmem		*tso_hdrs;
 	struct sg_list		*sg;
-};
+} ____cacheline_aligned_in_smp;
 
 struct otx2_cq_poll {
 	void			*dev;

@@ -20,6 +20,8 @@
 /* PCI device IDs */
 #define PCI_DEVID_OCTEONTX2_RVU_PF              0xA063
 
+#define PCI_SUBSYS_DEVID_96XX_RVU_PFVF		0xB200
+
 /* PCI BAR nos */
 #define PCI_CFG_REG_BAR_NUM                     2
 #define PCI_MBOX_BAR_NUM                        4
@@ -84,6 +86,7 @@ struct otx2_hw {
 	/* For TSO segmentation */
 	u8			lso_tsov4_idx;
 	u8			lso_tsov6_idx;
+	u8			hw_tso;
 };
 
 struct otx2_nic {
@@ -104,6 +107,12 @@ struct otx2_nic {
 	u16			tx_chan_base;
 	struct work_struct	reset_task;
 };
+
+static inline bool is_9xxx_pass1_silicon(struct pci_dev *pdev)
+{
+	return (pdev->revision == 0x00) &&
+		(pdev->subsystem_device == PCI_SUBSYS_DEVID_96XX_RVU_PFVF);
+}
 
 /* Register read/write APIs */
 static inline void otx2_write64(struct otx2_nic *nic, u64 offset, u64 val)

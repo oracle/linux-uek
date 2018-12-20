@@ -500,6 +500,8 @@ static void otx2_free_hw_resources(struct otx2_nic *pf)
 	for (qidx = 0; qidx < pf->hw.tx_queues; qidx++) {
 		sq = &qset->sq[qidx];
 		qmem_free(pf->dev, sq->sqe);
+		if (!pf->hw.hw_tso)
+			qmem_free(pf->dev, sq->tso_hdrs);
 		kfree(sq->sg);
 	}
 
@@ -915,6 +917,9 @@ static int otx2_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	if (err)
 		goto err_detach_rsrc;
 
+	if (!is_9xxx_pass1_silicon(pdev))
+		hw->hw_tso = true;
+
 	/* NPA's pool is a stack to which SW frees buffer pointers via Aura.
 	 * HW allocates buffer pointer from stack and uses it for DMA'ing
 	 * ingress packet. In some scenarios HW can free back allocated buffer
@@ -933,7 +938,8 @@ static int otx2_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 
 	netdev->hw_features = (NETIF_F_RXCSUM | NETIF_F_IP_CSUM |
 			       NETIF_F_IPV6_CSUM | NETIF_F_RXHASH |
-			       NETIF_F_TSO | NETIF_F_TSO6);
+			       NETIF_F_SG | NETIF_F_TSO | NETIF_F_TSO6);
+
 	netdev->features |= netdev->hw_features;
 	netdev->hw_features |= NETIF_F_LOOPBACK;
 
