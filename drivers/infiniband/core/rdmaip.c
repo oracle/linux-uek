@@ -1325,6 +1325,23 @@ static void rdmaip_event_handler(struct ib_event_handler *handler,
 			ip_config[port].rdmaip_dev != rdmaip_dev)
 			continue;
 
+		/*
+		 * Network service disables active bonding temporarily
+		 * when user stops network service and re-enables
+		 * when user restarts the network service. There is
+		 * need to failover or failback during that period.
+		 * The port state is set to RDMAIP_PORT_INIT to indicate
+		 * it needs do failover/failback as needed when the
+		 * network serivice restarts.
+		 */
+		if (!rdmaip_sysctl_active_bonding) {
+			RDMAIP_DBG2("Skip failover and failback %s\n",
+				    ip_config[port].if_name);
+			ip_config[port].port_state = RDMAIP_PORT_INIT;
+			ip_config[port].ip_active_port = port;
+			return;
+		}
+
 		RDMAIP_DBG2("PORT %s/port_%d/%s received PORT-EVENT %s%s\n",
 			    rdmaip_dev->dev->name, event->element.port_num,
 			    ip_config[port].if_name, ib_event_msg(event->event),
@@ -2378,6 +2395,23 @@ static int rdmaip_netdev_callback(struct notifier_block *self,
 		return NOTIFY_DONE;
 
 	/*
+	 * Network service disables active bonding temporarily
+	 * when user stops network service and re-enables
+	 * when user restarts the network service. There is
+	 * need to failover or failback during that period.
+	 * The port state is set to RDMAIP_PORT_INIT to indicate
+	 * it needs do failover/failback as needed when the
+	 * network serivice restarts.
+	 */
+	if (!rdmaip_sysctl_active_bonding) {
+		RDMAIP_DBG2("Skip failover and failback %s\n",
+			    ip_config[port].if_name);
+		ip_config[port].port_state = RDMAIP_PORT_INIT;
+		ip_config[port].ip_active_port = port;
+		return NOTIFY_DONE;
+	}
+
+	/*
 	 * Bail out here if we are racing with device teardown we are done!
 	 * TBD: Should this be protected with a lock ?
 	 */
@@ -2442,19 +2476,6 @@ static int rdmaip_netdev_callback(struct notifier_block *self,
 			RDMAIP_DBG2("Scheduing failover\n");
 			INIT_DELAYED_WORK(&work->work, rdmaip_failover);
 			queue_delayed_work(rdmaip_wq, &work->work, 0);
-		} else {
-			/*
-			 * Note: Active bonding disabled by override
-			 * setting rdmaip_sysctl_active_bonding
-			 * to zero (normally done in
-			 * init script 'stop' invocation).
-			 * We do not want to bother with failover
-			 * when we are bring devices down one-by-one
-			 * during 'stop' of init script.
-			 */
-			ip_config[port].port_state = RDMAIP_PORT_INIT;
-			ip_config[port].ip_active_port = port;
-			kfree(work);
 		}
 		break;
 	}
