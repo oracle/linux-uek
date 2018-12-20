@@ -1277,6 +1277,34 @@ static void rdmaip_update_port_status_all_layers(u8 port, int event_type,
 		    rdmaip_portstate2name(ip_config[port].port_state));
 }
 
+static void rdmaip_sched_failover_failback(struct net_device *netdev, u8 port,
+					   int port_transition_to)
+{
+	struct rdmaip_port_ud_work	*work;
+
+	work = kzalloc(sizeof(*work), GFP_ATOMIC);
+	if (!work) {
+		RDMAIP_DBG1("rdmaip: failed to allocate port work\n");
+		return;
+	}
+	work->port = port;
+	work->dev = netdev;
+
+	if (port_transition_to == RDMAIP_PORT_TRANSITION_UP) {
+		if (rdmaip_active_bonding_failback) {
+			RDMAIP_DBG2("Schedule failback\n");
+			INIT_DELAYED_WORK(&work->work, rdmaip_failback);
+			queue_delayed_work(rdmaip_wq, &work->work,
+				rdmaip_get_failback_sync_jiffies(&ip_config[port]));
+		} else
+			kfree(work);
+	} else {
+		RDMAIP_DBG2("Schedule failover\n");
+		INIT_DELAYED_WORK(&work->work, rdmaip_failover);
+		queue_delayed_work(rdmaip_wq, &work->work, 0);
+	}
+}
+
 /*
  * rdmaip_event_handler is called by the IB core subsystem
  * to inform certain RDMA events. See ib_event_type definitions
@@ -1304,7 +1332,6 @@ static void rdmaip_event_handler(struct ib_event_handler *handler,
 	struct rdmaip_device	*rdmaip_dev =
 		container_of(handler, typeof(*rdmaip_dev), event_handler);
 	u8	port;
-	struct rdmaip_port_ud_work	*work;
 
 	if (!ip_port_cnt || (rdmaip_init_flag & RDMAIP_TEARDOWN_IN_PROGRESS))
 		return;
@@ -1373,27 +1400,11 @@ static void rdmaip_event_handler(struct ib_event_handler *handler,
 			!ip_config[port].failover_group)
 			continue;
 
-		work = kzalloc(sizeof(*work), GFP_ATOMIC);
-		if (!work) {
-			RDMAIP_DBG1("rdmaip: failed to allocate port work\n");
-			return;
-		}
+		if (port_tstate == RDMAIP_PORT_TRANSITION_UP)
+			ip_config[port].port_active_ts = 0;
 
-		work->port = port;
-
-		if (port_tstate == RDMAIP_PORT_TRANSITION_UP) {
-			if (rdmaip_active_bonding_failback) {
-				RDMAIP_DBG3("Schedule failback\n");
-				INIT_DELAYED_WORK(&work->work, rdmaip_failback);
-				queue_delayed_work(rdmaip_wq, &work->work,
-					rdmaip_get_failback_sync_jiffies(&ip_config[port]));
-			} else
-				kfree(work);
-		} else {
-			RDMAIP_DBG3("Schedule failover\n");
-			INIT_DELAYED_WORK(&work->work, rdmaip_failover);
-			queue_delayed_work(rdmaip_wq, &work->work, 0);
-		}
+		rdmaip_sched_failover_failback(ip_config[port].dev,
+					       port, port_tstate);
 	}
 }
 
@@ -2348,7 +2359,6 @@ static int rdmaip_netdev_callback(struct notifier_block *self,
 				  unsigned long event, void *ctx)
 {
 	struct net_device *ndev = netdev_notifier_info_to_dev(ctx);
-	struct rdmaip_port_ud_work *work = NULL;
 	int port_tstate = RDMAIP_PORT_TRANSITION_NOOP;
 	u8 port = 0;
 
@@ -2449,36 +2459,8 @@ static int rdmaip_netdev_callback(struct notifier_block *self,
 		!ip_config[port].failover_group)
 		return NOTIFY_DONE;
 
-	work = kzalloc(sizeof(*work), GFP_ATOMIC);
-	if (!work) {
-		RDMAIP_DBG1("rdmaip: failed to allocate port work\n");
-		return NOTIFY_DONE;
-	}
+	rdmaip_sched_failover_failback(ndev, port, port_tstate);
 
-	work->dev = ndev;
-	work->port = port;
-
-	switch (port_tstate) {
-	case RDMAIP_PORT_TRANSITION_UP:
-		if (rdmaip_active_bonding_failback) {
-			INIT_DELAYED_WORK(&work->work, rdmaip_failback);
-			RDMAIP_DBG2("Scheduing failback\n");
-			queue_delayed_work(rdmaip_wq, &work->work,
-					   rdmaip_get_failback_sync_jiffies(
-					   &ip_config[port]));
-			ip_config[port].port_active_ts = 0;
-		} else
-			kfree(work);
-		break;
-
-	case RDMAIP_PORT_TRANSITION_DOWN:
-		if (rdmaip_sysctl_active_bonding) {
-			RDMAIP_DBG2("Scheduing failover\n");
-			INIT_DELAYED_WORK(&work->work, rdmaip_failover);
-			queue_delayed_work(rdmaip_wq, &work->work, 0);
-		}
-		break;
-	}
 	return NOTIFY_DONE;
 }
 
