@@ -1,0 +1,15 @@
+#
+# MARVELL SoC drivers
+#
+
+menu "Marvell SoC drivers"
+
+config OCTEONTX2_RM
+	tristate "OcteonTX2 RVU Resource Manager driver"
+	depends on OCTEONTX2_AF
+	help
+	  This driver offers resource management interfaces for Marvell's
+	  OcteonTX2 Resource Virtualization Unit SSO/TIM PFs which are used
+	  for interfacing with non-NIC hardware offload units.
+
+endmenu
