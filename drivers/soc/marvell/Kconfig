@@ -12,4 +12,59 @@ config OCTEONTX2_RM
 	  OcteonTX2 Resource Virtualization Unit SSO/TIM PFs which are used
 	  for interfacing with non-NIC hardware offload units.
 
+config OCTEONTX2_RM_DOM_SYSFS
+	bool "OcteonTX2 RVU Resource Manager domain sysfs"
+	depends on OCTEONTX2_RM
+	help
+	  Enable Application Domain sysfs which simplifies management of
+	  SSO/TIM VFs and OcteonTX2 RVU based NIC devices by the system
+	  administrator. This interface consists of the following files:
+
+	  I. /sys/bus/pci/drivers/octeontx2-rm/0*/create_domain
+
+	  Writing to this file will:
+	  1. Create a domain directory in /sys/bus/pci/drivers/octeontx2-rm/0*
+	     with the domain name
+	  2. Reserve one of SSO/TIM VFs for this domain and set its limits
+	     according to the specification passed in write string
+	  3. Create symlinks to all devices that will be part of the domain
+	     in the directory created in point 1
+	  4. Create domain_id file returning the ID assigned to this domain
+	     (effectively the domain name)
+	  5. Create domain_in_use file which reports state of domain's
+	     SSO/TIM device's in_use file to indicate when domain is used
+	     by an application.
+
+	  The syntax for writing into this file is:
+
+	      name;param:val(;param:val)*
+
+	  * name - domain name
+	  * param - parameter name, based on the parameter, its value 'val'
+	    has to have a different format:
+	    * sso, ssow, npa, tim, cpt - 'val' is an integer value of the
+	      number of LFs to assign to the domain
+	    * port - 'val' is in 'DDDD:BB:DD.F' format and specifies device
+	      representing a port.
+
+	  There are the following rules when creating a domain:
+
+	  1. Domain names must be unique
+	  2. Each domain must have at least 1 NPA and 1 SSOW LF
+	  3. One port may be only assigned to a single domain
+
+	  II. /sys/bus/pci/drivers/octeontx2-rm/0*/destroy_domain
+
+	  Writing domain name to this file will cause given domain to be
+	  removed from the sysfs. This includes:
+	  1. Setting all limits of domain's SSO/TIM device to 0
+	  2. Removing all sysfs structures for this domain
+	  3. Removing all ports in this application domain from the list of
+	     ports in use.
+
+	  Removal of the domain is disabled while domain is in use, that
+	  is while the 'in_use' flag of the domain's SSO/TIM device is set.
+	  User/admin may query the status of this flag using the
+	  'domain_in_use'  file in the domain's sysfs directory.
+
 endmenu
