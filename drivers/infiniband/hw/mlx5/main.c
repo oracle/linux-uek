@@ -4659,12 +4659,14 @@ static void *mlx5_ib_add(struct mlx5_core_dev *mdev)
 	dev->advise_mr_wq = alloc_ordered_workqueue("mlx5_ib_advise_mr_wq", 0);
 	if (!dev->advise_mr_wq) {
 		err = -ENOMEM;
-		goto err_free_port;
+		goto err_rsrc;
 	}
 
 	err = mlx5_ib_odp_init_one(dev);
-	if (err)
+	if (err) {
+		destroy_workqueue(dev->advise_mr_wq);
 		goto err_rsrc;
+	}
 #endif
 
 	if (MLX5_CAP_GEN(dev->mdev, max_qp_cnt)) {
@@ -4738,7 +4740,10 @@ err_cnt:
 		mlx5_ib_dealloc_counters(dev);
 
 err_odp:
+#ifdef CONFIG_INFINIBAND_ON_DEMAND_PAGING
 	mlx5_ib_odp_remove_one(dev);
+	destroy_workqueue(dev->advise_mr_wq);
+#endif
 
 err_rsrc:
 	destroy_dev_resources(&dev->devr);
