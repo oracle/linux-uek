@@ -19,6 +19,9 @@
 #include "rvu_struct.h"
 #include "otx2_rm.h"
 
+#ifdef CONFIG_OCTEONTX2_RM_DOM_SYSFS
+#include "domain_sysfs.h"
+#endif
 
 #define DRV_NAME	"octeontx2-rm"
 #define DRV_VERSION	"1.0"
@@ -1341,6 +1344,9 @@ int __sriov_disable(struct pci_dev *pdev)
 	disable_vf_flr_int(pdev);
 	disable_vf_mbox_int(pdev);
 
+#ifdef CONFIG_OCTEONTX2_RM_DOM_SYSFS
+	domain_sysfs_destroy(rm);
+#endif
 	vf_sysfs_destroy(pdev);
 
 	if (rm->pfvf_mbox_wq) {
@@ -1469,10 +1475,23 @@ int __sriov_enable(struct pci_dev *pdev, int num_vfs)
 		goto err_vf_sysfs_create;
 	}
 
+#ifdef CONFIG_OCTEONTX2_RM_DOM_SYSFS
+	err = domain_sysfs_create(rm);
+	if (err) {
+		dev_err(&pdev->dev, "Failed to create RM domain sysfs\n");
+		err = -EFAULT;
+		goto err_domain_sysfs_create;
+	}
+#endif
+
 	enable_vf_mbox_int(pdev);
 	enable_vf_flr_int(pdev);
 	return num_vfs;
 
+#ifdef CONFIG_OCTEONTX2_RM_DOM_SYSFS
+err_domain_sysfs_create:
+	vf_sysfs_destroy(pdev);
+#endif
 err_vf_sysfs_create:
 err_workqueue_alloc:
 	destroy_workqueue(rm->pfvf_mbox_wq);
