@@ -1769,7 +1769,7 @@ static int rdmaip_ip_config_init(void)
 	struct in_device	*in_dev;
 	struct inet6_dev	*in6_dev;
 	struct rdmaip_device	*rdmaip_dev;
-	u8                      port_num;
+	u8                      port_num, ret;
 
 	ip_config = kzalloc(sizeof(struct rdmaip_port) * (ip_port_max + 1),
 			    GFP_KERNEL);
@@ -1814,16 +1814,22 @@ static int rdmaip_ip_config_init(void)
 			 */
 			rdmaip_dev = rdmaip_get_rdmaip_dev(dev, &pkey_vid,
 							   &port_num);
-			if (rdmaip_dev)
-				(void) rdmaip_init_port(rdmaip_dev, dev,
-							port_num, pkey_vid,
-							in_dev, in6_dev);
+			if (rdmaip_dev) {
+				ret = rdmaip_init_port(rdmaip_dev, dev,
+						       port_num, pkey_vid,
+						       in_dev, in6_dev);
+			}
 		}
 		if (in_dev)
 			in_dev_put(in_dev);
 
 		if (in6_dev)
 			in6_dev_put(in6_dev);
+
+		if (ret == 0) {
+			RDMAIP_DBG2("Max number of port exceeded\n");
+			break;
+		}
 	}
 	read_unlock(&dev_base_lock);
 	rdmaip_sched_initial_failovers();
