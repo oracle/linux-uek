@@ -294,7 +294,8 @@ static void vnic_mcast_detach_ll(struct vnic_mcast *mcaste, struct mcast_root *m
 	}
 
 	if (!mcaste->sender_only)
-		rc = ib_detach_mcast(mcaste->qp, &mcaste->gid, port->attr.lid);
+		rc = ib_detach_mcast(mcaste->qp, &mcaste->gid,
+				     be16_to_cpu(mcaste->port_mcaste->rec.mlid));
 	else
 		rc = 0;
 
