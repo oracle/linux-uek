@@ -727,27 +727,21 @@ static void __init select_ibrs_variant(enum spectre_v2_mitigation *mode)
 			"no mitigation available!");
 }
 
-static void __init disable_ibrs_and_friends(bool disable)
+static void __init disable_ibrs_and_friends(bool disable_ibpb)
 {
+	set_ibrs_disabled();
 	if (use_ibrs & SPEC_CTRL_IBRS_SUPPORTED)
 		/* Disable IBRS an all cpus */
 		spec_ctrl_flush_all_cpus(MSR_IA32_SPEC_CTRL,
 			x86_spec_ctrl_base & ~SPEC_CTRL_FEATURE_ENABLE_IBRS);
-
-	if (disable) {
-		set_ibrs_disabled();
+	/*
+	 * We need to use IBPB with retpoline if it is available.
+	 * Also IBRS for firmware paths.
+	 */
+	if (disable_ibpb) {
 		set_ibpb_disabled();
 		disable_ibrs_firmware();
 	} else {
-		/*
-		 * Clear in-use instead of disabling so that IBRS can be
-		 * set back in use later by disable_retpoline().
-		 */
-		clear_ibrs_inuse();
-		/*
-		 * We need to use IBPB with retpoline if it is available.
-		 * Also IBRS for firmware paths.
-		 */
 		set_ibrs_firmware();
 	}
 }
