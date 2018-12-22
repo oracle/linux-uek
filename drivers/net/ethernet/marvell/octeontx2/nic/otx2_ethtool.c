@@ -505,6 +505,76 @@ static int otx2_set_rss_hash_opts(struct otx2_nic *pfvf,
 	return 0;
 }
 
+struct otx2_flow {
+	struct ethtool_rx_flow_spec flow_spec;
+	struct list_head list;
+	u32 location;
+	u16 entry;
+	bool is_vf;
+};
+
+static struct otx2_flow *otx2_find_flow(struct otx2_nic *pfvf, u32 location)
+{
+	struct otx2_flow *iter;
+
+	list_for_each_entry(iter, &pfvf->flows, list) {
+		if (iter->location == location)
+			return iter;
+	}
+
+	return NULL;
+}
+
+static void otx2_add_flow_to_list(struct otx2_nic *pfvf, struct otx2_flow *flow)
+{
+	struct list_head *head = &pfvf->flows;
+	struct otx2_flow *iter;
+
+	list_for_each_entry(iter, &pfvf->flows, list) {
+		if (iter->location > flow->location)
+			break;
+		head = &iter->list;
+	}
+
+	list_add(&flow->list, head);
+}
+
+static int otx2_get_flow(struct otx2_nic *pfvf,
+			 struct ethtool_rxnfc *nfc, u32 location)
+{
+	struct otx2_flow *iter;
+
+	if (location >= pfvf->max_flows)
+		return -EINVAL;
+
+	list_for_each_entry(iter, &pfvf->flows, list) {
+		if (iter->location == location) {
+			nfc->fs = iter->flow_spec;
+			return 0;
+		}
+	}
+
+	return -ENOENT;
+}
+
+static int otx2_get_all_flows(struct otx2_nic *pfvf,
+			      struct ethtool_rxnfc *nfc, u32 *rule_locs)
+{
+	u32 location = 0;
+	int idx = 0;
+	int err = 0;
+
+	nfc->data = pfvf->max_flows;
+	while ((!err || err == -ENOENT) && idx < nfc->rule_cnt) {
+		err = otx2_get_flow(pfvf, nfc, location);
+		if (!err)
+			rule_locs[idx++] = location;
+		location++;
+	}
+
+	return err;
+}
+
 static int otx2_get_rxnfc(struct net_device *dev,
 			  struct ethtool_rxnfc *nfc, u32 *rules)
 {
@@ -516,6 +586,16 @@ static int otx2_get_rxnfc(struct net_device *dev,
 		nfc->data = pfvf->hw.rx_queues;
 		ret = 0;
 		break;
+	case ETHTOOL_GRXCLSRLCNT:
+		nfc->rule_cnt = pfvf->nr_flows;
+		ret = 0;
+		break;
+	case ETHTOOL_GRXCLSRULE:
+		ret = otx2_get_flow(pfvf, nfc,  nfc->fs.location);
+		break;
+	case ETHTOOL_GRXCLSRLALL:
+		ret = otx2_get_all_flows(pfvf, nfc, rules);
+		break;
 	case ETHTOOL_GRXFH:
 		return otx2_get_rss_hash_opts(pfvf, nfc);
 	default:
@@ -524,14 +604,277 @@ static int otx2_get_rxnfc(struct net_device *dev,
 	return ret;
 }
 
+static int otx2_prepare_flow_request(struct ethtool_rx_flow_spec *fsp,
+				     struct npc_install_flow_req *req)
+{
+	struct ethtool_tcpip4_spec *l4_mask = &fsp->m_u.tcp_ip4_spec;
+	struct ethtool_tcpip4_spec *l4_hdr = &fsp->h_u.tcp_ip4_spec;
+	struct ethhdr *eth_mask = &fsp->m_u.ether_spec;
+	struct ethhdr *eth_hdr = &fsp->h_u.ether_spec;
+	struct flow_msg *pmask = &req->mask;
+	struct flow_msg *pkt = &req->packet;
+	u32 flow_type;
+
+	flow_type = fsp->flow_type & ~(FLOW_EXT | FLOW_MAC_EXT);
+	switch (flow_type) {
+	/* bits not set in mask are don't care */
+	case ETHER_FLOW:
+		if (!is_zero_ether_addr(eth_mask->h_source)) {
+			ether_addr_copy(pkt->smac, eth_hdr->h_source);
+			ether_addr_copy(pmask->smac, eth_mask->h_source);
+			req->features |= BIT_ULL(NPC_SMAC);
+		}
+		if (!is_zero_ether_addr(eth_mask->h_dest)) {
+			ether_addr_copy(pkt->dmac, eth_hdr->h_dest);
+			ether_addr_copy(pmask->dmac, eth_mask->h_dest);
+			req->features |= BIT_ULL(NPC_DMAC);
+		}
+		if (eth_mask->h_proto) {
+			memcpy(&pkt->etype, &eth_hdr->h_proto,
+			       sizeof(pkt->etype));
+			memcpy(&pmask->etype, &eth_mask->h_proto,
+			       sizeof(pmask->etype));
+			req->features |= BIT_ULL(NPC_ETYPE);
+		}
+		break;
+	case TCP_V4_FLOW:
+	case UDP_V4_FLOW:
+		if (l4_mask->ip4src) {
+			memcpy(&pkt->ip4src, &l4_hdr->ip4src,
+			       sizeof(pkt->ip4src));
+			memcpy(&pmask->ip4src, &l4_mask->ip4src,
+			       sizeof(pmask->ip4src));
+			req->features |= BIT_ULL(NPC_SIP_IPV4);
+		}
+		if (l4_mask->ip4dst) {
+			memcpy(&pkt->ip4dst, &l4_hdr->ip4dst,
+			       sizeof(pkt->ip4dst));
+			memcpy(&pmask->ip4dst, &l4_mask->ip4dst,
+			       sizeof(pmask->ip4dst));
+			req->features |= BIT_ULL(NPC_DIP_IPV4);
+		}
+		if (l4_mask->psrc) {
+			memcpy(&pkt->sport, &l4_hdr->psrc, sizeof(pkt->sport));
+			memcpy(&pmask->sport, &l4_mask->psrc,
+			       sizeof(pmask->sport));
+			if (flow_type == UDP_V4_FLOW)
+				req->features |= BIT_ULL(NPC_SPORT_UDP);
+			else
+				req->features |= BIT_ULL(NPC_SPORT_TCP);
+		}
+		if (l4_mask->pdst) {
+			memcpy(&pkt->dport, &l4_hdr->pdst, sizeof(pkt->dport));
+			memcpy(&pmask->dport, &l4_mask->pdst,
+			       sizeof(pmask->dport));
+			if (flow_type == UDP_V4_FLOW)
+				req->features |= BIT_ULL(NPC_DPORT_UDP);
+			else
+				req->features |= BIT_ULL(NPC_DPORT_TCP);
+		}
+		break;
+	default:
+		return -ENOTSUPP;
+	}
+	if (fsp->flow_type & FLOW_EXT) {
+		if (fsp->m_ext.vlan_etype)
+			return -EINVAL;
+		if (fsp->m_ext.vlan_tci) {
+			if (fsp->m_ext.vlan_tci != cpu_to_be16(VLAN_VID_MASK))
+				return -EINVAL;
+			if (be16_to_cpu(fsp->h_ext.vlan_tci) >= VLAN_N_VID)
+				return -EINVAL;
+			memcpy(&pkt->vlan_tci, &fsp->h_ext.vlan_tci,
+			       sizeof(pkt->vlan_tci));
+			memcpy(&pmask->vlan_tci, &fsp->m_ext.vlan_tci,
+			       sizeof(pmask->vlan_tci));
+			req->features |= BIT_ULL(NPC_OUTER_VID);
+		}
+	}
+	if (fsp->flow_type & FLOW_MAC_EXT &&
+	    !is_zero_ether_addr(fsp->m_ext.h_dest)) {
+		ether_addr_copy(pkt->dmac, fsp->h_ext.h_dest);
+		ether_addr_copy(pmask->dmac, fsp->m_ext.h_dest);
+		req->features |= BIT_ULL(NPC_DMAC);
+	}
+
+	if (!req->features)
+		return -ENOTSUPP;
+
+	return 0;
+}
+
+static int otx2_add_flow_msg(struct otx2_nic *pfvf, struct otx2_flow *flow)
+{
+	u64 ring_cookie = flow->flow_spec.ring_cookie;
+	struct npc_install_flow_req *req;
+	int err, vf = 0;
+
+	req = otx2_mbox_alloc_msg_npc_install_flow(&pfvf->mbox);
+	if (!req)
+		return -ENOMEM;
+
+	err = otx2_prepare_flow_request(&flow->flow_spec, req);
+	if (err)
+		return err;
+
+	req->entry = flow->entry;
+	req->intf = NIX_INTF_RX;
+	req->set_cntr = 1;
+	req->channel = pfvf->rx_chan_base;
+	if (ring_cookie == RX_CLS_FLOW_DISC) {
+		req->op = NIX_RX_ACTIONOP_DROP;
+	} else {
+		req->op = NIX_RX_ACTIONOP_UCAST;
+		req->index = ethtool_get_flow_spec_ring(ring_cookie);
+		vf = ethtool_get_flow_spec_ring_vf(ring_cookie);
+		if (vf > pci_num_vf(pfvf->pdev))
+			return -EINVAL;
+	}
+
+	/* ethtool ring_cookie has (VF + 1) for VF */
+	if (vf) {
+		req->vf = vf;
+		flow->is_vf = true;
+	}
+
+	/* Send message to AF */
+	return otx2_sync_mbox_msg(&pfvf->mbox);
+}
+
+static int otx2_alloc_mcam_entries(struct otx2_nic *pfvf)
+{
+	struct npc_mcam_alloc_entry_req *req;
+	struct npc_mcam_alloc_entry_rsp *rsp;
+	int i;
+
+	req = otx2_mbox_alloc_msg_npc_mcam_alloc_entry(&pfvf->mbox);
+	if (!req)
+		return -ENOMEM;
+
+	req->contig = false;
+	req->count = pfvf->max_flows;
+
+	/* Send message to AF */
+	if (otx2_sync_mbox_msg(&pfvf->mbox))
+		return -EINVAL;
+
+	rsp = (struct npc_mcam_alloc_entry_rsp *)otx2_mbox_get_rsp
+	       (&pfvf->mbox.mbox, 0, &req->hdr);
+	if (rsp->count != pfvf->max_flows)
+		netdev_info(pfvf->netdev, "number of rules truncated to %d\n",
+			    rsp->count);
+	pfvf->max_flows = rsp->count;
+	for (i = 0; i < rsp->count; i++)
+		pfvf->entry_list[i] = rsp->entry_list[i];
+
+	pfvf->entries_alloc = true;
+
+	return 0;
+}
+
+static int otx2_add_flow(struct otx2_nic *pfvf,
+			 struct ethtool_rx_flow_spec *fsp)
+{
+	u32 ring = ethtool_get_flow_spec_ring(fsp->ring_cookie);
+	struct otx2_flow *flow;
+	bool new = false;
+	int err;
+
+	if (ring >= pfvf->hw.rx_queues && fsp->ring_cookie != RX_CLS_FLOW_DISC)
+		return -EINVAL;
+
+	if (!pfvf->entries_alloc) {
+		err = otx2_alloc_mcam_entries(pfvf);
+		if (err)
+			return err;
+	}
+
+	if (fsp->location >= pfvf->max_flows)
+		return -EINVAL;
+
+	flow = otx2_find_flow(pfvf, fsp->location);
+	if (!flow) {
+		flow = kzalloc(sizeof(*flow), GFP_ATOMIC);
+		if (!flow)
+			return -ENOMEM;
+		flow->location = fsp->location;
+		flow->entry = pfvf->entry_list[flow->location];
+		new = true;
+	}
+	/* struct copy */
+	flow->flow_spec = *fsp;
+
+	err = otx2_add_flow_msg(pfvf, flow);
+	if (err) {
+		if (new)
+			kfree(flow);
+		return err;
+	}
+
+	/* add the new flow installed to list */
+	if (new) {
+		otx2_add_flow_to_list(pfvf, flow);
+		pfvf->nr_flows++;
+	}
+
+	return 0;
+}
+
+static int otx2_remove_flow_msg(struct otx2_nic *pfvf, u16 entry, bool all)
+{
+	struct npc_delete_flow_req *req;
+
+	req = otx2_mbox_alloc_msg_npc_delete_flow(&pfvf->mbox);
+	if (!req)
+		return -ENOMEM;
+
+	req->entry = entry;
+	if (all)
+		req->all = 1;
+
+	/* Send message to AF */
+	return otx2_sync_mbox_msg(&pfvf->mbox);
+}
+
+static int otx2_remove_flow(struct otx2_nic *pfvf, u32 location)
+{
+	struct otx2_flow *flow;
+	int err;
+
+	if (location >= pfvf->max_flows)
+		return -EINVAL;
+
+	flow = otx2_find_flow(pfvf, location);
+	if (!flow)
+		return -ENOENT;
+
+	err = otx2_remove_flow_msg(pfvf, flow->entry, false);
+	if (err)
+		return err;
+
+	list_del(&flow->list);
+	kfree(flow);
+	pfvf->nr_flows--;
+
+	return 0;
+}
+
 static int otx2_set_rxnfc(struct net_device *dev, struct ethtool_rxnfc *nfc)
 {
+	bool ntuple = !!(dev->features & NETIF_F_NTUPLE);
 	struct otx2_nic *pfvf = netdev_priv(dev);
 	int ret = -EOPNOTSUPP;
 
 	switch (nfc->cmd) {
 	case ETHTOOL_SRXFH:
 		ret = otx2_set_rss_hash_opts(pfvf, nfc);
+		break;
+	case ETHTOOL_SRXCLSRLINS:
+		if (netif_running(dev) && ntuple)
+			ret = otx2_add_flow(pfvf, &nfc->fs);
+		break;
+	case ETHTOOL_SRXCLSRLDEL:
+		ret = otx2_remove_flow(pfvf, nfc->fs.location);
 		break;
 	default:
 		break;
@@ -792,3 +1135,66 @@ void otx2vf_set_ethtool_ops(struct net_device *netdev)
 	netdev->ethtool_ops = &otx2vf_ethtool_ops;
 }
 EXPORT_SYMBOL(otx2vf_set_ethtool_ops);
+
+int otx2_destroy_ethtool_flows(struct otx2_nic *pfvf)
+{
+	struct npc_mcam_free_entry_req *req;
+	struct otx2_flow *iter, *tmp;
+	int err;
+
+	if (!pfvf->entries_alloc)
+		return 0;
+
+	/* remove all flows */
+	err = otx2_remove_flow_msg(pfvf, 0, true);
+	if (err)
+		return err;
+
+	list_for_each_entry_safe(iter, tmp, &pfvf->flows, list) {
+		list_del(&iter->list);
+		kfree(iter);
+		pfvf->nr_flows--;
+	}
+
+	req = otx2_mbox_alloc_msg_npc_mcam_free_entry(&pfvf->mbox);
+	if (!req)
+		return -ENOMEM;
+
+	req->all = 1;
+	/* Send message to AF to free MCAM entries */
+	err = otx2_sync_mbox_msg(&pfvf->mbox);
+	if (err)
+		return err;
+
+	pfvf->entries_alloc = false;
+
+	return 0;
+}
+
+int otx2_delete_vf_ethtool_flows(struct otx2_nic *pfvf)
+{
+	struct npc_delete_flow_req *req;
+	struct otx2_flow *iter, *tmp;
+	int err;
+
+	req = otx2_mbox_alloc_msg_npc_delete_flow(&pfvf->mbox);
+	if (!req)
+		return -ENOMEM;
+
+	req->all_vfs = 1;
+	/* Send message to AF */
+	err = otx2_sync_mbox_msg(&pfvf->mbox);
+	if (err)
+		return err;
+
+	/* AF deleted VF entries now remove from ethtool list */
+	list_for_each_entry_safe(iter, tmp, &pfvf->flows, list) {
+		if (iter->is_vf) {
+			list_del(&iter->list);
+			kfree(iter);
+			pfvf->nr_flows--;
+		}
+	}
+
+	return 0;
+}
