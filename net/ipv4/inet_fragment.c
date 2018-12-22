@@ -151,7 +151,6 @@ void inet_frag_destroy(struct inet_frag_queue *q)
 	sum = sum_truesize + f->qsize;
 
 	call_rcu(&q->rcu, inet_frag_destroy_rcu);
-	kfree(nf->rhashtable);
 
 	sub_frag_mem_limit(nf, sum);
 }
@@ -166,14 +165,9 @@ static struct inet_frag_queue *inet_frag_alloc(struct netns_frags *nf,
 	if (!nf->high_thresh || frag_mem_limit(nf) > nf->high_thresh)
 		return NULL;
 
-	nf->rhashtable = kmalloc(sizeof(struct rhashtable), GFP_ATOMIC);
-	if (!nf->rhashtable)
-		return NULL;
 	q = kmem_cache_zalloc(f->frags_cachep, GFP_ATOMIC);
-	if (!q) {
-		kfree(nf->rhashtable);
+	if (!q)
 		return NULL;
-	}
 
 	q->net = nf;
 	f->constructor(q, arg);
