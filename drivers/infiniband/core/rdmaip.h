@@ -56,6 +56,11 @@ static int rdmaip_init_flag;
 struct list_head rdmaip_devlist_head;
 DECLARE_RWSEM(rdmaip_devlist_lock);
 
+#define RDMAIP_FLAG_BUSY		0x1
+#define RDMAIP_FLAG_EVENT_PENDING	0x2
+unsigned long rdmaip_global_flag;
+DEFINE_MUTEX(rdmaip_global_flag_lock);
+
 DEFINE_MUTEX(rdmaip_ip_config_lock);
 
 struct port_info {
@@ -194,7 +199,6 @@ struct rdmaip_exclude_ips {
 static struct	rdmaip_exclude_ips exclude_ips_tbl[RDMAIP_MAX_EXCLUDE_IPS];
 static u8	exclude_ips_cnt;
 
-static int ip_config_init_phase_flag; /* = 0 */
 static int initial_failovers_iterations; /* = 0 */
 
 static void rdmaip_initial_failovers(struct work_struct *workarg);
