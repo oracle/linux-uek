@@ -52,6 +52,8 @@
 static struct workqueue_struct *rdmaip_wq;
 static void rdmaip_device_add(struct ib_device *device);
 static void rdmaip_device_remove(struct ib_device *device, void *client_data);
+static void rdmaip_ip_config_init(void);
+static void rdmaip_ip_failover_groups_init(void);
 static void rdmaip_update_port_status_all_layers(u8 port, int event_type,
 						 int event);
 
@@ -68,6 +70,36 @@ struct ib_client rdmaip_client = {
 	.add    = rdmaip_device_add,
 	.remove = rdmaip_device_remove
 };
+
+bool rdmaip_is_event_pending(void)
+{
+	return test_bit(RDMAIP_FLAG_EVENT_PENDING, &rdmaip_global_flag);
+}
+
+void rdmaip_set_event_pending(void)
+{
+	__set_bit(RDMAIP_FLAG_EVENT_PENDING, &rdmaip_global_flag);
+}
+
+void rdmaip_clear_event_pending(void)
+{
+	__clear_bit(RDMAIP_FLAG_EVENT_PENDING, &rdmaip_global_flag);
+}
+
+bool rdmaip_is_busy_flag_set(void)
+{
+	return test_bit(RDMAIP_FLAG_BUSY, &rdmaip_global_flag);
+}
+
+void rdmaip_set_busy_flag(void)
+{
+	__set_bit(RDMAIP_FLAG_BUSY, &rdmaip_global_flag);
+}
+
+void rdmaip_clear_busy_flag(void)
+{
+	__clear_bit(RDMAIP_FLAG_BUSY, &rdmaip_global_flag);
+}
 
 /*
  * This structure is registed with network stack to monitor
@@ -745,9 +777,6 @@ static u8 rdmaip_init_port(struct rdmaip_device	*rdmaip_dev,
 	if (in6_dev)
 		rdmaip_init_ip6_addrs(net_dev, in6_dev, ip_port_cnt);
 
-	if (!ip_config_init_phase_flag)
-		rdmaip_dump_ip_config_entry(next_port_idx);
-
 	mutex_unlock(&rdmaip_ip_config_lock);
 
 	return ip_port_cnt;
@@ -1133,20 +1162,6 @@ static int rdmaip_find_port_tstate(u8 port)
 
 	switch (ip_config[port].port_state) {
 	case RDMAIP_PORT_INIT:
-		if (ip_config_init_phase_flag) {
-			/*
-			 * For INIT port_state during module
-			 * initialization, deferred state transition
-			 * processing* happens after all NETDEV and
-			 * IB ports come up and event handlers have
-			 * run and task doing initial failovers
-			 * after module loading has run - which
-			 * ends the "init_phase and clears the flag.
-			 */
-			tstate = RDMAIP_PORT_TRANSITION_NOOP;
-			break;
-		}
-
 		/*
 		 * We are in INIT state but not during module
 		 * initialization. This can happens when
@@ -1360,6 +1375,15 @@ static void rdmaip_event_handler(struct ib_event_handler *handler,
 		return;
 	}
 
+	mutex_lock(&rdmaip_global_flag_lock);
+	if (rdmaip_is_busy_flag_set()) {
+		rdmaip_set_event_pending();
+		RDMAIP_DBG2("Busy flag is set: skip ibevent processing\n");
+		mutex_unlock(&rdmaip_global_flag_lock);
+		return;
+	}
+	mutex_unlock(&rdmaip_global_flag_lock);
+
 	/*
 	 * Network service disables active bonding temporarily
 	 * when user stops network service and re-enables
@@ -1377,11 +1401,9 @@ static void rdmaip_event_handler(struct ib_event_handler *handler,
 		return;
 	}
 
-	RDMAIP_DBG2("PORT %s/port_%d/%s received PORT-EVENT %s%s\n",
+	RDMAIP_DBG2("PORT %s/port_%d/%s received PORT-EVENT %s\n",
 		    rdmaip_dev->dev->name, event->element.port_num,
-		    ip_config[port].if_name, ib_event_msg(event->event),
-		    (ip_config_init_phase_flag ?
-		    " during initialization phase!" : ""));
+		    ip_config[port].if_name, ib_event_msg(event->event));
 
 	rdmaip_update_port_status_all_layers(port, RDMAIP_EVENT_IB,
 					     event->event);
@@ -1391,9 +1413,8 @@ static void rdmaip_event_handler(struct ib_event_handler *handler,
 
 	port_tstate  = rdmaip_find_port_tstate(port);
 
-	pr_notice("rdmaip: PORT-EVENT: %s%s, PORT: %s/port_%d/%s : %s%s (portlayers 0x%x)\n",
+	pr_notice("rdmaip: PORT-EVENT: %s, PORT: %s/port_%d/%s : %s%s (portlayers 0x%x)\n",
 		  ib_event_msg(event->event),
-		  (ip_config_init_phase_flag ? "(init phase)" : ""),
 		  rdmaip_dev->dev->name, event->element.port_num,
 		  ip_config[port].if_name,
 		  (port_tstate == RDMAIP_PORT_TRANSITION_UP ?
@@ -1482,8 +1503,6 @@ static void rdmaip_do_initial_failovers(void)
 		}
 	}
 
-	rdmaip_dump_ip_config();
-
 	/*
 	 * Now do failover for ports that are down!
 	 */
@@ -1518,11 +1537,11 @@ static void rdmaip_do_initial_failovers(void)
 		}
 	}
 
-	ip_config_init_phase_flag = 0; /* done with initial phase! */
 }
 
 static void rdmaip_initial_failovers(struct work_struct *workarg)
 {
+	bool do_failover;
 
 	if (rdmaip_init_flag & RDMAIP_TEARDOWN_IN_PROGRESS) {
 		RDMAIP_DBG2("Teardown in progress\n");
@@ -1560,7 +1579,32 @@ static void rdmaip_initial_failovers(struct work_struct *workarg)
 		pr_info("rdmaip: Triggering initial failovers(itercount %d)\n",
 			initial_failovers_iterations);
 	}
-	rdmaip_do_initial_failovers();
+
+	rdmaip_ip_config_init();
+	rdmaip_init_flag |= RDMAIP_IP_CONFIG_INIT_DONE;
+	rdmaip_ip_failover_groups_init();
+
+	do_failover = true;
+
+	mutex_lock(&rdmaip_global_flag_lock);
+	rdmaip_clear_event_pending();
+	mutex_unlock(&rdmaip_global_flag_lock);
+
+	while (do_failover) {
+		rdmaip_do_initial_failovers();
+
+		mutex_lock(&rdmaip_global_flag_lock);
+		if (rdmaip_is_event_pending()) {
+			rdmaip_clear_event_pending();
+			RDMAIP_DBG2("Event pending, do failovers again\n");
+		} else {
+			do_failover = false;
+			rdmaip_clear_busy_flag();
+			RDMAIP_DBG2("No pending event, Clear busy flag\n");
+		}
+		mutex_unlock(&rdmaip_global_flag_lock);
+	}
+	rdmaip_dump_ip_config();
 }
 
 
@@ -1751,40 +1795,18 @@ static struct rdmaip_device *rdmaip_get_rdmaip_dev(struct net_device *ndev,
 }
 
 /*
- * rdmaip_ip_config_init() function tries to initialize the active bonding
- * groups in ip_config global structure. It loops through all the available
- * netdevices in the systems and initializes the ip_config if the netdevice
- * is UP.
- *
- * TBD: Initialization code mostly runs before IP addresses are configured.
- * So, this code runs, checks for NETDEV_UP and bails out. Most of the times,
- * initialization gets done in rdmaip_addintf_after_initscripts() function.
- * This code can be re-designed to start the initialization of the ip_config
- * only after the network scripts are run i.e after
- * rdmaip_sysctl_trigger_active_bonding is set by the network initscripts.
+ * rdmaip_ip_config_init() function initializes the active bonding groups
+ * in ip_config global structure. It loops through all the available net
+ * devices in the systems and initializes the ip_config with RDMA capable
+ * net devices.
  */
-static int rdmaip_ip_config_init(void)
+static void rdmaip_ip_config_init(void)
 {
 	struct net_device	*dev;
 	struct in_device	*in_dev;
 	struct inet6_dev	*in6_dev;
 	struct rdmaip_device	*rdmaip_dev;
-	u8                      port_num, ret;
-
-	ip_config = kzalloc(sizeof(struct rdmaip_port) * (ip_port_max + 1),
-			    GFP_KERNEL);
-	if (!ip_config) {
-		RDMAIP_DBG1("rdmaip: failed to allocate IP config\n");
-		return 1;
-	}
-
-	/*
-	 * This flag is set here to mark start of active bonding
-	 * IP failover/failback ip_config initialization. It ends
-	 * when we are done doing the initial failovers after the
-	 * init.
-	 */
-	ip_config_init_phase_flag = 1;
+	u8                      ret = 1, port_num;
 
 	read_lock(&dev_base_lock);
 	for_each_netdev(&init_net, dev) {
@@ -1798,10 +1820,8 @@ static int rdmaip_ip_config_init(void)
 		 * Enumerate all Infiniband and RoCE devices that
 		 * are UP and not part of a bond(master or slave)
 		 */
-
 		if (((dev->type == ARPHRD_INFINIBAND) ||
 		   (dev->type == ARPHRD_ETHER)) &&
-		   (dev->flags & IFF_UP) &&
 		   !(dev->flags & IFF_SLAVE) &&
 		   !(dev->flags & IFF_MASTER) &&
 		   in_dev) {
@@ -1820,6 +1840,7 @@ static int rdmaip_ip_config_init(void)
 						       in_dev, in6_dev);
 			}
 		}
+
 		if (in_dev)
 			in_dev_put(in_dev);
 
@@ -1832,8 +1853,6 @@ static int rdmaip_ip_config_init(void)
 		}
 	}
 	read_unlock(&dev_base_lock);
-	rdmaip_sched_initial_failovers();
-	return 0;
 }
 
 static int rdmaip_init_exclude_ip_tbl(char *str)
@@ -2392,6 +2411,15 @@ static int rdmaip_netdev_callback(struct notifier_block *self,
 		return NOTIFY_DONE;
 	}
 
+	mutex_lock(&rdmaip_global_flag_lock);
+	if (rdmaip_is_busy_flag_set()) {
+		rdmaip_set_event_pending();
+		RDMAIP_DBG2("Busy flag is set: skip netevent processing\n");
+		mutex_unlock(&rdmaip_global_flag_lock);
+		return NOTIFY_DONE;
+	}
+	mutex_unlock(&rdmaip_global_flag_lock);
+
 	/*
 	 * Find the port by netdev->name and update ip_config if name exists
 	 * but ndev has changed
@@ -2441,12 +2469,10 @@ static int rdmaip_netdev_callback(struct notifier_block *self,
 		RDMAIP_DBG2("rdmaip_dev is NULL, device tearing down in progress\n");
 		return NOTIFY_DONE;
 	}
-	RDMAIP_DBG2("PORT %s/port_%d/%s received NET-EVENT %s%s\n",
+	RDMAIP_DBG2("PORT %s/port_%d/%s received NET-EVENT %s\n",
 		    ip_config[port].rdmaip_dev->dev->name,
 		    ip_config[port].port_num, ndev->name,
-		    rdmaip_netdevevent2name(event),
-		    (ip_config_init_phase_flag ?
-		    " during initialization phase!" : ""));
+		    rdmaip_netdevevent2name(event));
 
 	rdmaip_update_port_status_all_layers(port, RDMAIP_EVENT_NET, event);
 	port_tstate = rdmaip_find_port_tstate(port);
@@ -2454,9 +2480,8 @@ static int rdmaip_netdev_callback(struct notifier_block *self,
 	/*
 	 * Log the event details and its disposition
 	 */
-	pr_notice("rdmaip: NET-EVENT: %s%s, PORT %s/port_%d/%s : %s%s (portlayers 0x%x)\n",
+	pr_notice("rdmaip: NET-EVENT: %s, PORT %s/port_%d/%s : %s%s (portlayers 0x%x)\n",
 		  rdmaip_netdevevent2name(event),
-		  (ip_config_init_phase_flag ? "(init phase)" : ""),
 		  ip_config[port].rdmaip_dev->dev->name,
 		  ip_config[port].port_num, ndev->name,
 		  (port_tstate == RDMAIP_PORT_TRANSITION_UP ?
@@ -2638,6 +2663,16 @@ int rdmaip_init(void)
 	}
 	rdmaip_init_flag |= RDMAIP_REG_NET_SYSCTL;
 
+	/*
+	 * Set the busy flag before registing with IB core
+	 * and network stack. Events can come any time after
+	 * registering with IB core and network stack. IB and
+	 * netdev callback function will skip event processing
+	 * during the initialization process by checking the
+	 * busy flag.
+	 */
+	rdmaip_set_busy_flag();
+
 	ret = ib_register_client(&rdmaip_client);
 	if (ret) {
 		RDMAIP_DBG2("%s: ib_register_client failed  (%d)\n",
@@ -2656,23 +2691,17 @@ int rdmaip_init(void)
 	}
 	rdmaip_init_flag |= RDMAIP_IP_WQ_CREATED;
 
-	rdmaip_read_exclude_ip_list();
-
-	ret = rdmaip_ip_config_init();
-	if (ret) {
-		RDMAIP_DBG2("%s failed to initialize ip_config\n",
-				  __func__);
-		rdmaip_cleanup();
-		return ret;
+	ip_config = kzalloc(sizeof(struct rdmaip_port) * (ip_port_max + 1),
+			    GFP_KERNEL);
+	if (!ip_config) {
+		RDMAIP_DBG1("rdmaip: failed to allocate IP config\n");
+		return -ENOMEM;
 	}
-
-	rdmaip_init_flag |= RDMAIP_IP_CONFIG_INIT_DONE;
-
-	rdmaip_ip_failover_groups_init();
-
+	rdmaip_read_exclude_ip_list();
 	register_netdevice_notifier(&rdmaip_nb);
-
 	rdmaip_init_flag |= RDMAIP_REG_NETDEV_NOTIFIER;
+
+	rdmaip_sched_initial_failovers();
 	return ret;
 }
 
