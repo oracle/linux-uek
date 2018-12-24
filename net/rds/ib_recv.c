@@ -57,7 +57,6 @@ MODULE_PARM_DESC(rds_ib_srq_lwm_refill, "SRQ LWM refill");
 static struct kmem_cache *rds_ib_incoming_slab;
 static struct kmem_cache *rds_ib_frag_slab;
 static atomic_t	rds_ib_allocation = ATOMIC_INIT(0);
-static unsigned long rds_ib_allocation_warn = 1;
 
 void rds_ib_recv_init_ring(struct rds_ib_connection *ic)
 {
@@ -357,7 +356,6 @@ static struct rds_page_frag *rds_ib_refill_one_frag(struct rds_ib_connection *ic
 	struct list_head *cache_item;
 	struct scatterlist *sg;
 	struct scatterlist *s;
-	int avail_allocs;
 	int ret;
 	int i;
 	int j;
@@ -368,21 +366,19 @@ static struct rds_page_frag *rds_ib_refill_one_frag(struct rds_ib_connection *ic
 		atomic_sub(ic->i_frag_sz/1024, &ic->i_cache_allocs);
 		rds_ib_stats_add(s_ib_recv_removed_from_cache, ic->i_frag_sz);
 	} else {
-		frag = kmem_cache_alloc(rds_ib_frag_slab, slab_mask);
-		if (!frag)
-			return NULL;
-
-		avail_allocs = atomic_add_unless(&rds_ib_allocation,
-						 ic->i_frag_pages,
-						 rds_ib_sysctl_max_recv_allocation);
-		if (!avail_allocs) {
-			if (test_and_clear_bit(0, &rds_ib_allocation_warn)) {
-				printk(KERN_NOTICE "RDS/IB: WARNING - "
-				"recv memory exceeded max_recv_allocation %d\n",
-				atomic_read(&rds_ib_allocation));
-			}
+		if (unlikely(atomic_add_return(ic->i_frag_pages,
+					       &rds_ib_allocation) >=
+		    rds_ib_sysctl_max_recv_allocation)) {
+			printk_once(KERN_NOTICE "RDS/IB: WARNING - recv memory exceeded max_recv_allocation %d\n",
+				    atomic_read(&rds_ib_allocation));
+			atomic_sub(ic->i_frag_pages, &rds_ib_allocation);
 			rds_ib_stats_inc(s_ib_rx_alloc_limit);
-			kmem_cache_free(rds_ib_frag_slab, frag);
+			return NULL;
+		}
+
+		frag = kmem_cache_alloc(rds_ib_frag_slab, slab_mask);
+		if (!frag) {
+			atomic_sub(ic->i_frag_pages, &rds_ib_allocation);
 			return NULL;
 		}
 
