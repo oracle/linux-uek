@@ -71,7 +71,7 @@ struct port_info {
 
 struct rdmaip_device {
 	struct list_head	list;
-	struct ib_device	*dev;
+	struct ib_device	*ibdev;
 	struct ib_event_handler	event_handler;
 	struct port_info	pinfo[RDMAIP_MAX_PHYS_PORTS];
 };
@@ -303,7 +303,7 @@ struct rdmaip_ip6_port_addr {
 struct rdmaip_port {
 	struct rdmaip_device	*rdmaip_dev;
 	unsigned int		failover_group;
-	struct net_device	*dev;
+	struct net_device	*netdev;
 	unsigned int            port_state;
 	u32                     port_layerflags;
 	u8			port_num;
@@ -331,7 +331,7 @@ enum {
 
 struct rdmaip_port_ud_work {
 	struct delayed_work	work;
-	struct net_device	*dev;
+	struct net_device	*netdev;
 	unsigned int		port;
 	int			timeout;
 };
