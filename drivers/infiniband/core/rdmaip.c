@@ -1320,6 +1320,54 @@ static void rdmaip_sched_failover_failback(struct net_device *netdev, u8 port,
 	}
 }
 
+static void rdmaip_process_async_event(u8 port, int event_type, int event)
+{
+	int port_tstate = RDMAIP_PORT_TRANSITION_NOOP;
+	struct net_device *netdev;
+
+	netdev = ip_config[port].dev;
+
+	/*
+	 * Network service disables active bonding temporarily
+	 * when user stops network service and re-enables
+	 * when user restarts the network service. There is
+	 * need to failover or failback during that period.
+	 * The port state is set to RDMAIP_PORT_INIT to indicate
+	 * it needs do failover/failback as needed when the
+	 * network serivice restarts.
+	 */
+	if (!rdmaip_sysctl_active_bonding) {
+		RDMAIP_DBG2("Skip failover and failback %s\n",
+			    ip_config[port].if_name);
+		ip_config[port].port_state = RDMAIP_PORT_INIT;
+		ip_config[port].ip_active_port = port;
+		return;
+	}
+
+	rdmaip_update_port_status_all_layers(port, event_type, event);
+	port_tstate = rdmaip_find_port_tstate(port);
+
+	/*
+	 * Log the event details and its disposition
+	 */
+	pr_notice("rdmaip: NET-EVENT: %s, PORT %s/port_%d/%s : %s%s (portlayers 0x%x)\n",
+		  ((event_type == RDMAIP_EVENT_IB) ?
+		  ib_event_msg(event) : rdmaip_netdevevent2name(event)),
+		  ip_config[port].rdmaip_dev->dev->name,
+		  ip_config[port].port_num, netdev->name,
+		  (port_tstate == RDMAIP_PORT_TRANSITION_NOOP ?
+		  "port state transition NONE - port retained in state " :
+		  "port state transition to "),
+		  rdmaip_portstate2name(ip_config[port].port_state),
+		  ip_config[port].port_layerflags);
+
+	if ((port_tstate == RDMAIP_PORT_TRANSITION_NOOP) ||
+		!ip_config[port].failover_group)
+		return;
+
+	rdmaip_sched_failover_failback(netdev, port, port_tstate);
+}
+
 /*
  * rdmaip_event_handler is called by the IB core subsystem
  * to inform certain RDMA events. See ib_event_type definitions
@@ -1337,9 +1385,6 @@ static void rdmaip_sched_failover_failback(struct net_device *netdev, u8 port,
  * ip_config  structure, ignore the event.
  * Otherwise, update the port state in the ip_config and schedule
  * failover or failback as needed.
- *
- * TBD: Re-orgnaize rdmaip_netdev_callback and this call back code
- *      to avoid duplicate code
  */
 static void rdmaip_event_handler(struct ib_event_handler *handler,
 				 struct ib_event *event)
@@ -1347,7 +1392,6 @@ static void rdmaip_event_handler(struct ib_event_handler *handler,
 	struct rdmaip_device	*rdmaip_dev =
 		container_of(handler, typeof(*rdmaip_dev), event_handler);
 	u8	port;
-	int port_tstate = RDMAIP_PORT_TRANSITION_NOOP;
 	bool	found = false;
 
 	if (!ip_port_cnt || (rdmaip_init_flag & RDMAIP_TEARDOWN_IN_PROGRESS))
@@ -1384,55 +1428,15 @@ static void rdmaip_event_handler(struct ib_event_handler *handler,
 	}
 	mutex_unlock(&rdmaip_global_flag_lock);
 
-	/*
-	 * Network service disables active bonding temporarily
-	 * when user stops network service and re-enables
-	 * when user restarts the network service. There is
-	 * need to failover or failback during that period.
-	 * The port state is set to RDMAIP_PORT_INIT to indicate
-	 * it needs do failover/failback as needed when the
-	 * network serivice restarts.
-	 */
-	if (!rdmaip_sysctl_active_bonding) {
-		RDMAIP_DBG2("Skip failover and failback %s\n",
-			    ip_config[port].if_name);
-		ip_config[port].port_state = RDMAIP_PORT_INIT;
-		ip_config[port].ip_active_port = port;
-		return;
-	}
-
 	RDMAIP_DBG2("PORT %s/port_%d/%s received PORT-EVENT %s\n",
 		    rdmaip_dev->dev->name, event->element.port_num,
 		    ip_config[port].if_name, ib_event_msg(event->event));
 
-	rdmaip_update_port_status_all_layers(port, RDMAIP_EVENT_IB,
-					     event->event);
-
 	if (event->event == IB_EVENT_PORT_ACTIVE)
 		ip_config[port].port_active_ts = get_jiffies_64();
 
-	port_tstate  = rdmaip_find_port_tstate(port);
+	rdmaip_process_async_event(port, RDMAIP_EVENT_IB, event->event);
 
-	pr_notice("rdmaip: PORT-EVENT: %s, PORT: %s/port_%d/%s : %s%s (portlayers 0x%x)\n",
-		  ib_event_msg(event->event),
-		  rdmaip_dev->dev->name, event->element.port_num,
-		  ip_config[port].if_name,
-		  (port_tstate == RDMAIP_PORT_TRANSITION_UP ?
-		  "port state transition to " :
-		  (port_tstate == RDMAIP_PORT_TRANSITION_DOWN ?
-		  "port state transition to " :
-		  "port state transition NONE - port retained in state ")),
-		  rdmaip_portstate2name(ip_config[port].port_state),
-		  ip_config[port].port_layerflags);
-
-	if (port_tstate == RDMAIP_PORT_TRANSITION_UP)
-		ip_config[port].port_active_ts = 0;
-
-	if ((port_tstate != RDMAIP_PORT_TRANSITION_NOOP) &&
-		ip_config[port].failover_group) {
-		rdmaip_sched_failover_failback(ip_config[port].dev,
-					       port, port_tstate);
-	}
 }
 
 static void rdmaip_update_ip_addrs(int port)
@@ -2390,7 +2394,6 @@ static int rdmaip_netdev_callback(struct notifier_block *self,
 				  unsigned long event, void *ctx)
 {
 	struct net_device *ndev = netdev_notifier_info_to_dev(ctx);
-	int port_tstate = RDMAIP_PORT_TRANSITION_NOOP;
 	u8 port = 0;
 
 	if (rdmaip_init_flag & RDMAIP_TEARDOWN_IN_PROGRESS) {
@@ -2445,23 +2448,6 @@ static int rdmaip_netdev_callback(struct notifier_block *self,
 		return NOTIFY_DONE;
 
 	/*
-	 * Network service disables active bonding temporarily
-	 * when user stops network service and re-enables
-	 * when user restarts the network service. There is
-	 * need to failover or failback during that period.
-	 * The port state is set to RDMAIP_PORT_INIT to indicate
-	 * it needs do failover/failback as needed when the
-	 * network serivice restarts.
-	 */
-	if (!rdmaip_sysctl_active_bonding) {
-		RDMAIP_DBG2("Skip failover and failback %s\n",
-			    ip_config[port].if_name);
-		ip_config[port].port_state = RDMAIP_PORT_INIT;
-		ip_config[port].ip_active_port = port;
-		return NOTIFY_DONE;
-	}
-
-	/*
 	 * Bail out here if we are racing with device teardown we are done!
 	 * TBD: Should this be protected with a lock ?
 	 */
@@ -2469,35 +2455,13 @@ static int rdmaip_netdev_callback(struct notifier_block *self,
 		RDMAIP_DBG2("rdmaip_dev is NULL, device tearing down in progress\n");
 		return NOTIFY_DONE;
 	}
+
 	RDMAIP_DBG2("PORT %s/port_%d/%s received NET-EVENT %s\n",
 		    ip_config[port].rdmaip_dev->dev->name,
 		    ip_config[port].port_num, ndev->name,
 		    rdmaip_netdevevent2name(event));
 
-	rdmaip_update_port_status_all_layers(port, RDMAIP_EVENT_NET, event);
-	port_tstate = rdmaip_find_port_tstate(port);
-
-	/*
-	 * Log the event details and its disposition
-	 */
-	pr_notice("rdmaip: NET-EVENT: %s, PORT %s/port_%d/%s : %s%s (portlayers 0x%x)\n",
-		  rdmaip_netdevevent2name(event),
-		  ip_config[port].rdmaip_dev->dev->name,
-		  ip_config[port].port_num, ndev->name,
-		  (port_tstate == RDMAIP_PORT_TRANSITION_UP ?
-		  "port state transition to " :
-		  (port_tstate == RDMAIP_PORT_TRANSITION_DOWN ?
-		  "port state transition to " :
-		  "port state transition NONE - port retained in state ")),
-		  rdmaip_portstate2name(ip_config[port].port_state),
-		  ip_config[port].port_layerflags);
-
-	if ((port_tstate == RDMAIP_PORT_TRANSITION_NOOP) ||
-		!ip_config[port].failover_group)
-		return NOTIFY_DONE;
-
-	rdmaip_sched_failover_failback(ndev, port, port_tstate);
-
+	rdmaip_process_async_event(port, RDMAIP_EVENT_NET, event);
 	return NOTIFY_DONE;
 }
 
