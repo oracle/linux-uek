@@ -49,7 +49,7 @@ static struct cpt_device_table ae_devices = {
 
 static inline int get_se_device(struct pci_dev **pdev, int *cpu_num)
 {
-	int count, ret = 0;
+	int count;
 
 	count = atomic_read(&se_devices.count);
 	if (count < 1)
@@ -60,39 +60,35 @@ static inline int get_se_device(struct pci_dev **pdev, int *cpu_num)
 	switch (se_devices.desc[0].pf_type) {
 	case CPT_81XX:
 	case CPT_SE_83XX:
-		/* On 8X platform there is one CPT instruction queues
-		 * bound to one VF therefore we need to check if number
-		 * of CPT VF devices is greater than the cpu number from
-		 * which we received a request
+		/* On 8X platform there is one CPT instruction queue bound
+		 * to each VF. We get maximum performance if one CPT queue
+		 * is available for each cpu otherwise CPT queues need to be
+		 * shared between cpus.
 		 */
-		if (*cpu_num >= count) {
-			ret = -ENODEV;
-			goto err;
-		}
+		if (*cpu_num >= count)
+			*cpu_num %= count;
 		*pdev = se_devices.desc[*cpu_num].dev;
 	break;
 
 	case CPT_96XX:
-		/* On 9X platform CPT instruction queue is bound to local
-		 * function LF, in turn LFs can be attached to PF or VF
-		 * therefore we always use first device but we need to check
-		 * if number of LFs attached to that device is greater than
-		 * cpu number from which we received a request
+		/* On 9X platform CPT instruction queue is bound to each
+		 * local function LF, in turn LFs can be attached to PF
+		 * or VF therefore we always use first device. We get maximum
+		 * performance if one CPT queue is available for each cpu
+		 * otherwise CPT queues need to be shared between cpus.
 		 */
-		if (*cpu_num >= se_devices.desc[0].num_queues) {
-			ret = -ENODEV;
-			goto err;
-		}
+		if (*cpu_num >= se_devices.desc[0].num_queues)
+			*cpu_num %= se_devices.desc[0].num_queues;
 		*pdev = se_devices.desc[0].dev;
 	break;
 
 	default:
 		pr_err("Unknown PF type %d\n", se_devices.desc[0].pf_type);
-		ret =  -EINVAL;
+		return -EINVAL;
 	}
-err:
+
 	put_cpu();
-	return ret;
+	return 0;
 }
 
 static inline int validate_hmac_cipher_null(struct cpt_request_info *cpt_req)
@@ -101,8 +97,7 @@ static inline int validate_hmac_cipher_null(struct cpt_request_info *cpt_req)
 	struct cvm_req_ctx *rctx;
 	struct crypto_aead *tfm;
 
-	req = container_of(cpt_req->callback_arg,
-			   struct aead_request, base);
+	req = container_of(cpt_req->areq, struct aead_request, base);
 	tfm = crypto_aead_reqtfm(req);
 	rctx = aead_request_ctx(req);
 	if (memcmp(rctx->fctx.hmac.s.hmac_calc,
@@ -273,7 +268,7 @@ static inline int cvm_enc_dec(struct ablkcipher_request *req, u32 enc)
 		return status;
 
 	req_info->callback = (void *)cvm_callback;
-	req_info->callback_arg = (void *)&req->base;
+	req_info->areq = &req->base;
 	req_info->req_type = ENC_DEC_REQ;
 	req_info->ctrl.s.grp = cpt_get_kcrypto_eng_grp_num(pdev);
 
@@ -1132,7 +1127,7 @@ u32 cvm_aead_enc_dec(struct aead_request *req, u8 reg_type, u8 enc)
 		return status;
 
 	req_info->callback = cvm_callback;
-	req_info->callback_arg = &req->base;
+	req_info->areq = &req->base;
 	req_info->req_type = reg_type;
 	req_info->is_enc = enc;
 	req_info->ctrl.s.grp = cpt_get_kcrypto_eng_grp_num(pdev);
