@@ -289,6 +289,10 @@ static int otx2_init_hw_resources(struct otx2_nic *pf)
 	if (err)
 		return err;
 
+	err = otx2_config_nix_queues(pf);
+	if (err)
+		return err;
+
 	return 0;
 }
 

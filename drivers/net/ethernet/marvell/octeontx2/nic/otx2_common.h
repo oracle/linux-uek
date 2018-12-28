@@ -282,9 +282,10 @@ MBOX_MESSAGES
 int otx2_attach_npa_nix(struct otx2_nic *pfvf);
 int otx2_detach_resources(struct mbox *mbox);
 int otx2_config_npa(struct otx2_nic *pfvf);
-int otx2_config_nix(struct otx2_nic *pfvf);
 int otx2_sq_aura_pool_init(struct otx2_nic *pfvf);
 int otx2_rq_aura_pool_init(struct otx2_nic *pfvf);
+int otx2_config_nix(struct otx2_nic *pfvf);
+int otx2_config_nix_queues(struct otx2_nic *pfvf);
 
 /* Mbox handlers */
 void mbox_handler_msix_offset(struct otx2_nic *pfvf,
