@@ -24,14 +24,37 @@
 
 #define NAME_SIZE                               32
 
+enum arua_mapped_qtypes {
+	AURA_NIX_RQ,
+	AURA_NIX_SQ,
+};
+
+#define RQ_QLEN		1024
+#define SQ_QLEN		1024
+
+#define DMA_BUFFER_LEN	1536 /* In multiples of 128bytes */
+#define OTX2_DATA_ALIGN(X)	ALIGN(X, OTX2_ALIGN)
+#define RCV_FRAG_LEN		\
+	((OTX2_DATA_ALIGN(DMA_BUFFER_LEN + NET_SKB_PAD)) + \
+	(OTX2_DATA_ALIGN(sizeof(struct skb_shared_info))))
+
+#define OTX2_HEAD_ROOM		OTX2_ALIGN
+
 struct otx2_pool {
 	struct qmem		*stack;
+	struct qmem		*fc_addr;
+	u16			rbsize;
+	u32			page_offset;
+	u16			pageref;
+	struct page		*page;
 };
 
 struct otx2_qset {
 #define OTX2_MAX_CQ_CNT		64
 	u16			cq_cnt;
 	u16			xqe_size; /* Size of CQE i.e 128 or 512 bytes*/
+	u32			rqe_cnt;
+	u32			sqe_cnt;
 	struct otx2_pool	*pool;
 };
 
@@ -50,6 +73,8 @@ struct otx2_hw {
 	u16                     tx_queues;
 	u16			max_queues;
 	u16			pool_cnt;
+	u16			rqpool_cnt;
+	u16			sqpool_cnt;
 
 	/* NPA */
 	u32			stack_pg_ptrs;  /* No of ptrs per stack page */
@@ -132,6 +157,76 @@ static inline void otx2_sync_mbox_bbuf(struct otx2_mbox *mbox, int devid)
 	       hw_mbase + mbox->rx_start, msg_size + msgs_offset);
 }
 
+/* With the absence of API for 128-bit IO memory access for arm64,
+ * implement required operations at place.
+ */
+#ifdef __BIG_ENDIAN
+#define otx2_high(high, low)   (low)
+#define otx2_low(high, low)    (high)
+#else
+#define otx2_high(high, low)   (high)
+#define otx2_low(high, low)    (low)
+#endif
+
+static inline void otx2_write128(__uint128_t val, void __iomem *addr)
+{
+	__uint128_t *__addr = (__force __uint128_t *)addr;
+	u64 h, l;
+
+	otx2_low(h, l) = (__force u64)cpu_to_le64(val);
+	otx2_high(h, l) = (__force u64)cpu_to_le64(val >> 64);
+
+	asm volatile("stp %x[x0], %x[x1], %x[p1]"
+		: [p1]"=Ump"(*__addr)
+		: [x0]"r"(l), [x1]"r"(h));
+}
+
+static inline __uint128_t otx2_read128(const void __iomem *addr)
+{
+	__uint128_t *__addr = (__force __uint128_t *)addr;
+	u64 h, l;
+
+	asm volatile("ldp %x[x0], %x[x1], %x[p1]"
+		: [x0]"=r"(l), [x1]"=r"(h)
+		: [p1]"Ump"(*__addr));
+
+	return (__uint128_t)le64_to_cpu(otx2_low(h, l)) |
+		(((__uint128_t)le64_to_cpu(otx2_high(h, l))) << 64);
+}
+
+/* Free pointer to a pool/aura */
+static inline void otx2_aura_freeptr(struct otx2_nic *pfvf,
+				     int aura, s64 buf)
+{
+	__uint128_t val;
+
+	val = (__uint128_t)buf;
+	val |= ((__uint128_t)aura | BIT_ULL(63)) << 64;
+
+	otx2_write128(val, pfvf->reg_base + NPA_LF_AURA_OP_FREE0);
+}
+
+/* Update page ref count */
+static inline void otx2_get_page(struct otx2_pool *pool)
+{
+	if (!pool->page)
+		return;
+
+	if (pool->pageref)
+		page_ref_add(pool->page, pool->pageref);
+	pool->pageref = 0;
+	pool->page = NULL;
+}
+
+static inline int otx2_get_pool_idx(struct otx2_nic *pfvf, int type, int idx)
+{
+	if (type == AURA_NIX_SQ)
+		return pfvf->hw.rqpool_cnt + idx;
+
+	 /* AURA_NIX_RQ */
+	return idx;
+}
+
 /* Mbox APIs */
 static inline int otx2_sync_mbox_msg(struct mbox *mbox)
 {
@@ -188,6 +283,8 @@ int otx2_attach_npa_nix(struct otx2_nic *pfvf);
 int otx2_detach_resources(struct mbox *mbox);
 int otx2_config_npa(struct otx2_nic *pfvf);
 int otx2_config_nix(struct otx2_nic *pfvf);
+int otx2_sq_aura_pool_init(struct otx2_nic *pfvf);
+int otx2_rq_aura_pool_init(struct otx2_nic *pfvf);
 
 /* Mbox handlers */
 void mbox_handler_msix_offset(struct otx2_nic *pfvf,

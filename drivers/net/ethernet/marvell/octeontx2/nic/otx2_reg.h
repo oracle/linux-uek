@@ -11,6 +11,8 @@
 #ifndef OTX2_REG_H
 #define OTX2_REG_H
 
+#include <rvu_struct.h>
+
 /* RVU PF registers */
 #define	RVU_PF_VFX_PFVF_MBOX0		    (0x00000)
 #define	RVU_PF_VFX_PFVF_MBOX1		    (0x00008)
@@ -55,5 +57,36 @@
 #define RVU_VF_MSIX_VECX_ADDR(a)            (0x000 | (a) << 4)
 #define RVU_VF_MSIX_VECX_CTL(a)             (0x008 | (a) << 4)
 #define RVU_VF_MSIX_PBAX(a)                 (0xF0000 | (a) << 3)
+
+/* NPA LF registers */
+#define NPA_LFBASE			(BLKADDR_NPA << 20)
+#define NPA_LF_AURA_OP_ALLOCX(a)	(NPA_LFBASE | 0x10 | (a) << 3)
+#define NPA_LF_AURA_OP_FREE0            (NPA_LFBASE | 0x20)
+#define NPA_LF_AURA_OP_FREE1            (NPA_LFBASE | 0x28)
+#define NPA_LF_AURA_OP_CNT              (NPA_LFBASE | 0x30)
+#define NPA_LF_AURA_OP_LIMIT            (NPA_LFBASE | 0x50)
+#define NPA_LF_AURA_OP_INT              (NPA_LFBASE | 0x60)
+#define NPA_LF_AURA_OP_THRESH           (NPA_LFBASE | 0x70)
+#define NPA_LF_POOL_OP_PC               (NPA_LFBASE | 0x100)
+#define NPA_LF_POOL_OP_AVAILABLE        (NPA_LFBASE | 0x110)
+#define NPA_LF_POOL_OP_PTR_START0       (NPA_LFBASE | 0x120)
+#define NPA_LF_POOL_OP_PTR_START1       (NPA_LFBASE | 0x128)
+#define NPA_LF_POOL_OP_PTR_END0         (NPA_LFBASE | 0x130)
+#define NPA_LF_POOL_OP_PTR_END1         (NPA_LFBASE | 0x138)
+#define NPA_LF_POOL_OP_INT              (NPA_LFBASE | 0x160)
+#define NPA_LF_POOL_OP_THRESH           (NPA_LFBASE | 0x170)
+#define NPA_LF_ERR_INT                  (NPA_LFBASE | 0x200)
+#define NPA_LF_ERR_INT_W1S              (NPA_LFBASE | 0x208)
+#define NPA_LF_ERR_INT_ENA_W1C          (NPA_LFBASE | 0x210)
+#define NPA_LF_ERR_INT_ENA_W1S          (NPA_LFBASE | 0x218)
+#define NPA_LF_RAS                      (NPA_LFBASE | 0x220)
+#define NPA_LF_RAS_W1S                  (NPA_LFBASE | 0x228)
+#define NPA_LF_RAS_ENA_W1C              (NPA_LFBASE | 0x230)
+#define NPA_LF_RAS_ENA_W1S              (NPA_LFBASE | 0x238)
+#define NPA_LF_QINTX_CNT(a)             (NPA_LFBASE | 0x300 | (a) << 12)
+#define NPA_LF_QINTX_INT(a)             (NPA_LFBASE | 0x310 | (a) << 12)
+#define NPA_LF_QINTX_INT_W1S(a)         (NPA_LFBASE | 0x318 | (a) << 12)
+#define NPA_LF_QINTX_ENA_W1S(a)         (NPA_LFBASE | 0x320 | (a) << 12)
+#define NPA_LF_QINTX_ENA_W1C(a)         (NPA_LFBASE | 0x330 | (a) << 12)
 
 #endif /* OTX2_REG_H */

@@ -256,22 +256,18 @@ static int otx2_set_real_num_queues(struct net_device *netdev,
 	return err;
 }
 
-static int otx2_open(struct net_device *netdev)
+static int otx2_init_hw_resources(struct otx2_nic *pf)
 {
-	struct otx2_nic *pf = netdev_priv(netdev);
-	int err = 0;
+	struct otx2_hw *hw = &pf->hw;
+	int err;
 
-	netif_carrier_off(netdev);
-
-	err = otx2_register_mbox_intr(pf);
-	if (err)
-		return err;
-
-	pf->qset.cq_cnt = pf->hw.rx_queues + pf->hw.tx_queues;
-
-	/* Check if MAC address from AF is valid or else set a random MAC */
-	if (is_zero_ether_addr(netdev->dev_addr))
-		eth_hw_addr_random(netdev);
+	/* Set required NPA LF's pool counts
+	 * Auras and Pools are used in a 1:1 mapping,
+	 * so, aura count = pool count.
+	 */
+	hw->rqpool_cnt = hw->rx_queues;
+	hw->sqpool_cnt = hw->tx_queues;
+	hw->pool_cnt = hw->rqpool_cnt + hw->sqpool_cnt;
 
 	/* NPA init */
 	err = otx2_config_npa(pf);
@@ -282,6 +278,47 @@ static int otx2_open(struct net_device *netdev)
 	err = otx2_config_nix(pf);
 	if (err)
 		return err;
+
+	/* Init Auras and pools used by NIX RQ, for free buffer ptrs */
+	err = otx2_rq_aura_pool_init(pf);
+	if (err)
+		return err;
+
+	/* Init Auras and pools used by NIX SQ, for queueing SQEs */
+	err = otx2_sq_aura_pool_init(pf);
+	if (err)
+		return err;
+
+	return 0;
+}
+
+static int otx2_open(struct net_device *netdev)
+{
+	struct otx2_nic *pf = netdev_priv(netdev);
+	struct otx2_qset *qset = &pf->qset;
+	int err = 0;
+
+	netif_carrier_off(netdev);
+
+	err = otx2_register_mbox_intr(pf);
+	if (err)
+		return err;
+
+	pf->qset.cq_cnt = pf->hw.rx_queues + pf->hw.tx_queues;
+
+	/* CQ size of RQ */
+	qset->rqe_cnt = qset->rqe_cnt ? qset->rqe_cnt : Q_COUNT(Q_SIZE_1K);
+	/* CQ size of SQ */
+	qset->sqe_cnt = qset->sqe_cnt ? qset->sqe_cnt : Q_COUNT(Q_SIZE_4K);
+
+	err = otx2_init_hw_resources(pf);
+	if (err)
+		return err;
+
+	/* Check if MAC address from AF is valid or else set a random MAC */
+	if (is_zero_ether_addr(netdev->dev_addr))
+		eth_hw_addr_random(netdev);
+
 	return 0;
 }
 
