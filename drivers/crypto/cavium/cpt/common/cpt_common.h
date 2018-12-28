@@ -175,7 +175,7 @@ struct pending_entry {
 	void *post_arg;
 	/* Kernel async request callback */
 	void (*callback)(int, void *, void *);
-	void *callback_arg;	/* Kernel async request callback arg */
+	struct crypto_async_request *areq; /* Async request callback arg */
 	u8 resume_sender;	/* Notify sender to resume sending requests */
 	u8 busy;		/* Entry status (free/busy) */
 };
@@ -192,7 +192,7 @@ struct pending_queue {
 struct cpt_request_info {
 	/* Kernel async request callback */
 	void (*callback)(int, void *, void *);
-	void *callback_arg; /* Kernel async request callback arg */
+	struct crypto_async_request *areq; /* Async request callback arg */
 	struct cptvf_request req; /* Request information (core specific) */
 	union ctrl_info ctrl; /* User control information */
 	struct buf_ptr in[MAX_BUF_CNT];
