@@ -1023,7 +1023,10 @@ static inline u32 create_aead_null_output_list(struct aead_request *req,
 		 * If source and destination are different
 		 * then copy payload to destination
 		 */
-		ptr = kmalloc(inputlen, GFP_KERNEL);
+
+		ptr = kmalloc(inputlen, (req_info->areq->flags &
+					 CRYPTO_TFM_REQ_MAY_SLEEP) ?
+					 GFP_KERNEL : GFP_ATOMIC);
 		if (!ptr) {
 			status = -ENOMEM;
 			goto error;
@@ -1095,6 +1098,10 @@ u32 cvm_aead_enc_dec(struct aead_request *req, u8 reg_type, u8 enc)
 	u32 status, cpu_num;
 
 	memset(rctx, 0, sizeof(struct cvm_req_ctx));
+	req_info->callback = cvm_callback;
+	req_info->areq = &req->base;
+	req_info->req_type = reg_type;
+	req_info->is_enc = enc;
 
 	switch (reg_type) {
 	case AEAD_ENC_DEC_REQ:
@@ -1126,10 +1133,6 @@ u32 cvm_aead_enc_dec(struct aead_request *req, u8 reg_type, u8 enc)
 	if (status)
 		return status;
 
-	req_info->callback = cvm_callback;
-	req_info->areq = &req->base;
-	req_info->req_type = reg_type;
-	req_info->is_enc = enc;
 	req_info->ctrl.s.grp = cpt_get_kcrypto_eng_grp_num(pdev);
 
 	status = cpt_do_request(pdev, req_info, cpu_num);
