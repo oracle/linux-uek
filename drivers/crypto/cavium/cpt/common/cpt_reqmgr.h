@@ -143,7 +143,7 @@ sg_cleanup:
 
 static inline int setup_sgio_list(struct pci_dev *pdev,
 				  struct cpt_info_buffer *info,
-				  struct cpt_request_info *req)
+				  struct cpt_request_info *req, gfp_t gfp)
 {
 	u16 g_sz_bytes = 0, s_sz_bytes = 0;
 	int ret = 0;
@@ -157,7 +157,7 @@ static inline int setup_sgio_list(struct pci_dev *pdev,
 
 	/* Setup gather (input) components */
 	g_sz_bytes = ((req->incnt + 3) / 4) * sizeof(struct sglist_component);
-	info->gather_components = kzalloc(g_sz_bytes, GFP_KERNEL);
+	info->gather_components = kzalloc(g_sz_bytes, gfp);
 	if (unlikely(!info->gather_components)) {
 		dev_err(&pdev->dev, "Memory allocation failed\n");
 		ret = -ENOMEM;
@@ -174,7 +174,7 @@ static inline int setup_sgio_list(struct pci_dev *pdev,
 
 	/* Setup scatter (output) components */
 	s_sz_bytes = ((req->outcnt + 3) / 4) * sizeof(struct sglist_component);
-	info->scatter_components = kzalloc(s_sz_bytes, GFP_KERNEL);
+	info->scatter_components = kzalloc(s_sz_bytes, gfp);
 	if (unlikely(!info->scatter_components)) {
 		dev_err(&pdev->dev, "Memory allocation failed\n");
 		ret = -ENOMEM;
@@ -191,7 +191,7 @@ static inline int setup_sgio_list(struct pci_dev *pdev,
 
 	/* Create and initialize DPTR */
 	info->dlen = g_sz_bytes + s_sz_bytes + SG_LIST_HDR_SIZE;
-	info->in_buffer = kzalloc(info->dlen, GFP_KERNEL);
+	info->in_buffer = kzalloc(info->dlen, gfp);
 	if (unlikely(!info->in_buffer)) {
 		dev_err(&pdev->dev, "Memory allocation failed\n");
 		ret = -ENOMEM;
@@ -218,7 +218,7 @@ static inline int setup_sgio_list(struct pci_dev *pdev,
 	}
 
 	/* Create and initialize RPTR */
-	info->out_buffer = kzalloc(COMPLETION_CODE_SIZE, GFP_KERNEL);
+	info->out_buffer = kzalloc(COMPLETION_CODE_SIZE, gfp);
 	if (unlikely(!info->out_buffer)) {
 		dev_err(&pdev->dev, "Memory allocation failed\n");
 		ret = -ENOMEM;
@@ -418,14 +418,17 @@ static inline int process_request(struct pci_dev *pdev,
 	union cpt_inst_s cptinst;
 	int retry, ret = 0;
 	u8 resume_sender;
+	gfp_t gfp;
 
-	info = kzalloc(sizeof(*info), GFP_KERNEL);
+	gfp = (req->areq->flags & CRYPTO_TFM_REQ_MAY_SLEEP) ? GFP_KERNEL :
+							      GFP_ATOMIC;
+	info = kzalloc(sizeof(*info), gfp);
 	if (unlikely(!info)) {
 		dev_err(&pdev->dev, "Memory allocation failed\n");
 		return -ENOMEM;
 	}
 
-	ret = setup_sgio_list(pdev, info, req);
+	ret = setup_sgio_list(pdev, info, req, gfp);
 	if (unlikely(ret)) {
 		dev_err(&pdev->dev, "Setting up SG list failed");
 		goto request_cleanup;
@@ -436,7 +439,7 @@ static inline int process_request(struct pci_dev *pdev,
 	 * Get buffer for union cpt_res_s response
 	 * structure and its physical address
 	 */
-	info->completion_addr = kzalloc(sizeof(union cpt_res_s), GFP_KERNEL);
+	info->completion_addr = kzalloc(sizeof(union cpt_res_s), gfp);
 	if (unlikely(!info->completion_addr)) {
 		dev_err(&pdev->dev, "memory allocation failed\n");
 		goto request_cleanup;
@@ -472,9 +475,10 @@ static inline int process_request(struct pci_dev *pdev,
 
 	/*
 	 * Check if we are close to filling in entire pending queue,
-	 * if so then tell the sender to stop by returning -EBUSY
+	 * if so then tell the sender to stop/sleep by returning -EBUSY
+	 * We do it only for context which can sleep (GFP_KERNEL)
 	 */
-	if ((req->areq->flags & CRYPTO_TFM_REQ_MAY_SLEEP) &&
+	if (gfp == GFP_KERNEL &&
 	    pqueue->pending_count > (pqueue->qlen - CPT_IQ_STOP_MARGIN)) {
 		pentry->resume_sender = true;
 	}
