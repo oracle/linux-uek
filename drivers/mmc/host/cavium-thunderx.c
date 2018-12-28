@@ -64,6 +64,9 @@ void thunder_calibrate_mmc(struct cvm_mmc_host *host)
 		return;
 
 	if (is_mmc_otx2_A0(host)) {
+		/* set _DEBUG[CLK_ON]=1 as workaround for clock issue */
+		writeq(1, host->base + MIO_EMM_DEBUG(host));
+
 		/*
 		 * Operation of up to 100 MHz may be achieved by skipping the
 		 * steps that establish the tap delays and instead assuming
@@ -100,6 +103,8 @@ void thunder_calibrate_mmc(struct cvm_mmc_host *host)
 	 * delay in pico second. The nominal value is 125 ps per tap.
 	 */
 	host->per_tap_delay =  (tap_delay * PS_10000) / TOTAL_NO_OF_TAPS;
+	pr_debug("tap_delay %d per_tap_delay %d\n",
+		tap_delay, host->per_tap_delay);
 }
 
 static int thunder_mmc_probe(struct pci_dev *pdev,
@@ -158,7 +163,6 @@ static int thunder_mmc_probe(struct pci_dev *pdev,
 	host->need_irq_handler_lock = true;
 	host->last_slot = -1;
 
-	ret = dma_set_mask(dev, DMA_BIT_MASK(48));
 	if (ret)
 		goto error;
 
@@ -166,8 +170,8 @@ static int thunder_mmc_probe(struct pci_dev *pdev,
 	 * Clear out any pending interrupts that may be left over from
 	 * bootloader. Writing 1 to the bits clears them.
 	 */
-	writeq(127, host->base + MIO_EMM_INT(host));
-	writeq(3, host->base + MIO_EMM_DMA_INT_ENA_W1C(host));
+	writeq(0x1ff, host->base + MIO_EMM_INT(host));
+	writeq(0x1ff, host->base + MIO_EMM_DMA_INT_ENA_W1C(host));
 	/* Clear DMA FIFO */
 	writeq(BIT_ULL(16), host->base + MIO_EMM_DMA_FIFO_CFG(host));
 
@@ -194,12 +198,15 @@ static int thunder_mmc_probe(struct pci_dev *pdev,
 			if (!host->slot_pdev[i])
 				continue;
 
+			dev_info(dev, "Probing slot %d\n", i);
+
 			ret = cvm_mmc_of_slot_probe(&host->slot_pdev[i]->dev, host);
 			if (ret)
 				goto error;
 		}
 		i++;
 	}
+
 	dev_info(dev, "probed\n");
 	return 0;
 
@@ -222,6 +229,8 @@ static void thunder_mmc_remove(struct pci_dev *pdev)
 	struct cvm_mmc_host *host = pci_get_drvdata(pdev);
 	u64 dma_cfg;
 	int i;
+
+	cancel_delayed_work(&host->periodic_work);
 
 	for (i = 0; i < CAVIUM_MAX_MMC; i++)
 		if (host->slot[i])
