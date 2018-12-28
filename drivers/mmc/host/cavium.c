@@ -38,6 +38,8 @@ const char *cvm_mmc_irq_names[] = {
 	"MMC Switch Error",
 	"MMC DMA int Fifo",
 	"MMC DMA int",
+	"MMC NCB Fault",
+	"MMC RAS",
 };
 
 /*
@@ -118,23 +120,6 @@ static struct cvm_mmc_cr_type cvm_mmc_cr_types[] = {
 	{0, 0}		/* CMD63 */
 };
 
-/* Given a delay in ps, return the tap delay count */
-static u32 cvm_mmc_calc_delay(struct cvm_mmc_slot *slot, int delay)
-{
-	u32 no_of_taps;
-
-	if (!slot->host->per_tap_delay) {
-		pr_err("Error: tap timing not calibrated\n");
-		return -EINVAL;
-	}
-
-	no_of_taps = delay / slot->host->per_tap_delay;
-	if (no_of_taps > MAX_NO_OF_TAPS)
-		no_of_taps = MAX_NO_OF_TAPS;
-
-	return no_of_taps;
-}
-
 bool cvm_is_mmc_timing_ddr(struct cvm_mmc_slot *slot)
 {
 	if ((slot->mmc->ios.timing == MMC_TIMING_UHS_DDR50) ||
@@ -145,11 +130,33 @@ bool cvm_is_mmc_timing_ddr(struct cvm_mmc_slot *slot)
 		return false;
 }
 
+bool cvm_is_mmc(struct cvm_mmc_slot *slot)
+{
+	switch (slot->mmc->ios.timing) {
+	case MMC_TIMING_LEGACY:
+		/* before CSD read, can we know SD-vs-eMMC? */
+		return true;
+	case MMC_TIMING_MMC_HS:
+	case MMC_TIMING_MMC_DDR52:
+	case MMC_TIMING_MMC_HS200:
+	case MMC_TIMING_MMC_HS400:
+		return true;
+	default: /* SD-card modes */
+		return false;
+	}
+}
+
 static int cvm_mmc_configure_delay(struct cvm_mmc_slot *slot)
 {
 	struct cvm_mmc_host *host = slot->host;
 
-	if (!is_mmc_8xxx(host)) {
+	if (is_mmc_8xxx(host)) {
+		/* MIO_EMM_SAMPLE is till T83XX */
+		u64 emm_sample =
+			FIELD_PREP(MIO_EMM_SAMPLE_CMD_CNT, slot->cmd_cnt) |
+			FIELD_PREP(MIO_EMM_SAMPLE_DAT_CNT, slot->data_cnt);
+		writeq(emm_sample, host->base + MIO_EMM_SAMPLE(host));
+	} else {
 		u64 timing = 0;
 
 		slot->cmd_cnt = 4;
@@ -176,12 +183,6 @@ static int cvm_mmc_configure_delay(struct cvm_mmc_slot *slot)
 				slot->cmd_cnt, slot->cmd_out_tap);
 
 		writeq(timing, host->base + MIO_EMM_TIMING(host));
-	} else {
-		/* MIO_EMM_SAMPLE is till T83XX */
-		u64 emm_sample =
-			FIELD_PREP(MIO_EMM_SAMPLE_CMD_CNT, slot->cmd_cnt) |
-			FIELD_PREP(MIO_EMM_SAMPLE_DAT_CNT, slot->data_cnt);
-		writeq(emm_sample, host->base + MIO_EMM_SAMPLE(host));
 	}
 
 	return 0;
@@ -298,7 +299,9 @@ static void do_switch(struct cvm_mmc_host *host, u64 emm_switch)
 static bool switch_val_changed(struct cvm_mmc_slot *slot, u64 new_val)
 {
 	/* Match BUS_ID, HS_TIMING, BUS_WIDTH, POWER_CLASS, CLK_HI, CLK_LO */
-	u64 match = 0x3001070fffffffffull;
+	/* For 9xxx add HS200_TIMING and HS400_TIMING */
+	u64 match = (is_mmc_8xxx(slot->host)) ?
+		0x3001070fffffffffull : 0x3007070fffffffffull;
 
 	if (!slot->host->powered)
 		return true;
@@ -513,7 +516,8 @@ static int check_status(u64 rsp_sts)
 	if (rsp_sts & MIO_EMM_RSP_STS_RSP_TIMEOUT ||
 	    rsp_sts & MIO_EMM_RSP_STS_BLK_TIMEOUT)
 		return -ETIMEDOUT;
-	if (rsp_sts & MIO_EMM_RSP_STS_DBUF_ERR)
+	if (rsp_sts & MIO_EMM_RSP_STS_DBUF_ERR ||
+	    rsp_sts & MIO_EMM_RSP_STS_BLK_CRC_ERR)
 		return -EIO;
 	return 0;
 }
@@ -563,6 +567,16 @@ irqreturn_t cvm_mmc_interrupt(int irq, void *dev_id)
 		goto out;
 
 	rsp_sts = readq(host->base + MIO_EMM_RSP_STS(host));
+
+	/*
+	 * dma_pend means DMA has stalled with CRC errs.
+	 * start teardown, get irq on completion, mmc stack retries.
+	 */
+	if ((rsp_sts & MIO_EMM_RSP_STS_DMA_PEND) && host->dma_active) {
+		cleanup_dma(host, rsp_sts);
+		goto out;
+	}
+
 	/*
 	 * dma_val set means DMA is still in progress. Don't touch
 	 * the request and wait for the interrupt indicating that
@@ -719,9 +733,9 @@ static u64 prepare_dma_sg(struct cvm_mmc_host *host, struct mmc_data *data)
 
 error:
 	WARN_ON_ONCE(1);
-	dma_unmap_sg(host->dev, data->sg, data->sg_len, get_dma_dir(data));
 	/* Disable FIFO */
 	writeq(BIT_ULL(16), host->dma_base + MIO_EMM_DMA_FIFO_CFG(host));
+	dma_unmap_sg(host->dev, data->sg, data->sg_len, get_dma_dir(data));
 	return 0;
 }
 
@@ -950,6 +964,9 @@ retry:
 	if (!retries)
 		dev_err(host->dev, "Bad status: %llx before command write\n", rsp_sts);
 	writeq(emm_cmd, host->base + MIO_EMM_CMD(host));
+	if (cmd->opcode == MMC_SWITCH)
+		udelay(1300);
+
 }
 
 static u32 max_supported_frequency(struct cvm_mmc_host *host)
@@ -973,7 +990,7 @@ static void cvm_mmc_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 	struct cvm_mmc_slot *slot = mmc_priv(mmc);
 	struct cvm_mmc_host *host = slot->host;
 	int clk_period = 0, power_class = 10, bus_width = 0;
-	u64 clock, emm_switch;
+	u64 clock, emm_switch, mode;
 	u32 max_f;
 
 	if (ios->power_mode == MMC_POWER_OFF) {
@@ -1013,8 +1030,17 @@ static void cvm_mmc_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 	}
 
 	/* DDR is available for 4/8 bit bus width */
-	if (ios->bus_width && ios->timing == MMC_TIMING_MMC_DDR52)
-		bus_width |= 4;
+	switch (ios->timing) {
+	case MMC_TIMING_UHS_DDR50:
+	case MMC_TIMING_MMC_DDR52:
+		if (ios->bus_width)
+			bus_width |= 4;
+		break;
+	case MMC_TIMING_MMC_HS400:
+		if (ios->bus_width & 2)
+			bus_width |= 4;
+		break;
+	}
 
 	/* Change the clock frequency. */
 	clock = ios->clock;
@@ -1027,21 +1053,55 @@ static void cvm_mmc_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 	if (clock)
 		clk_period = (host->sys_freq + clock - 1) / (2 * clock);
 
-	emm_switch = FIELD_PREP(MIO_EMM_SWITCH_HS_TIMING,
-				(ios->timing == MMC_TIMING_MMC_HS)) |
+	emm_switch =
 		     FIELD_PREP(MIO_EMM_SWITCH_BUS_WIDTH, bus_width) |
 		     FIELD_PREP(MIO_EMM_SWITCH_POWER_CLASS, power_class) |
 		     FIELD_PREP(MIO_EMM_SWITCH_CLK_HI, clk_period) |
 		     FIELD_PREP(MIO_EMM_SWITCH_CLK_LO, clk_period);
+	switch (ios->timing) {
+	case MMC_TIMING_LEGACY:
+		break;
+	case MMC_TIMING_MMC_HS:
+	case MMC_TIMING_SD_HS:
+		emm_switch |= FIELD_PREP(MIO_EMM_SWITCH_HS_TIMING, 1);
+		break;
+	case MMC_TIMING_UHS_SDR12:
+	case MMC_TIMING_UHS_SDR25:
+	case MMC_TIMING_UHS_SDR50:
+	case MMC_TIMING_UHS_SDR104:
+	case MMC_TIMING_MMC_HS200:
+		emm_switch |= FIELD_PREP(MIO_EMM_SWITCH_HS200_TIMING, 1);
+		break;
+	case MMC_TIMING_UHS_DDR50:
+	case MMC_TIMING_MMC_DDR52:
+	case MMC_TIMING_MMC_HS400:
+		emm_switch |= FIELD_PREP(MIO_EMM_SWITCH_HS400_TIMING, 1);
+		break;
+	}
 	set_bus_id(&emm_switch, slot->bus_id);
+
+	pr_debug("mmc-slot%d trying switch %llx w%lld hs%lld hs200:%lld hs400:%lld\n",
+		slot->bus_id, emm_switch,
+		FIELD_GET(MIO_EMM_SWITCH_BUS_WIDTH, emm_switch),
+		FIELD_GET(MIO_EMM_SWITCH_HS_TIMING, emm_switch),
+		FIELD_GET(MIO_EMM_SWITCH_HS200_TIMING, emm_switch),
+		FIELD_GET(MIO_EMM_SWITCH_HS400_TIMING, emm_switch));
 
 	if (!switch_val_changed(slot, emm_switch))
 		goto out;
 
 	set_wdog(slot, 0);
 	do_switch(host, emm_switch);
+
+	mode = readq(host->base + MIO_EMM_MODE(host, slot->bus_id));
+	pr_debug("mmc-slot%d mode %llx w%lld hs%lld hs200:%lld hs400:%lld\n",
+		slot->bus_id, mode,
+		(mode >> 40) & 7, (mode >> 48) & 1,
+		(mode >> 49) & 1, (mode >> 50) & 1);
+
 	slot->cached_switch = emm_switch;
 	host->powered = true;
+	cvm_mmc_configure_delay(slot);
 out:
 	host->release_bus(host);
 }
@@ -1139,7 +1199,7 @@ static int cvm_mmc_of_parse(struct device *dev, struct cvm_mmc_slot *slot)
 	if (ret)
 		return ret;
 
-	/* Set bus width */
+	/* Set bus width from obsolete properties, if unset */
 	if (!(mmc->caps & (MMC_CAP_8_BIT_DATA | MMC_CAP_4_BIT_DATA))) {
 		of_property_read_u32(node, "cavium,bus-max-width", &bus_width);
 		if (bus_width == 8)
@@ -1201,21 +1261,18 @@ int cvm_mmc_of_slot_probe(struct device *dev, struct cvm_mmc_host *host)
 	/* Set up host parameters */
 	mmc->ops = &cvm_mmc_ops;
 
+	mmc->caps |= MMC_CAP_ERASE | MMC_CAP_BUS_WIDTH_TEST;
+	mmc->caps |= MMC_CAP_CMD23 | MMC_CAP_POWER_OFF_CARD;
+
 	/*
+	 * For old firmware which does not describe properties:
 	 * We only have a 3.3v supply for slots, we cannot
 	 * support any of the UHS modes. We do support the
 	 * high speed DDR modes up to 52MHz.
-	 *
-	 * Disable bounce buffers for max_segs = 1
 	 */
-
-	mmc->caps |= MMC_CAP_MMC_HIGHSPEED | MMC_CAP_SD_HIGHSPEED |
-		MMC_CAP_ERASE | MMC_CAP_CMD23 | MMC_CAP_POWER_OFF_CARD;
 
 	if (is_mmc_8xxx(host))
 		mmc->caps |= MMC_CAP_3_3V_DDR;
-
-	mmc->caps |= MMC_CAP_ERASE | MMC_CAP_CMD23 | MMC_CAP_POWER_OFF_CARD;
 
 	if (host->use_sg)
 		mmc->max_segs = 16;
