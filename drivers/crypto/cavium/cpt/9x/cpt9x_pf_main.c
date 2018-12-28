@@ -535,6 +535,8 @@ static int cptpf_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 		goto cpt_err_set_drvdata;
 	}
 
+	pci_set_master(pdev);
+
 	err = pci_request_regions(pdev, DRV_NAME);
 	if (err) {
 		dev_err(dev, "PCI request regions failed 0x%x\n", err);
