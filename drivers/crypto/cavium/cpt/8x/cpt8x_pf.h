@@ -13,11 +13,19 @@
 
 #include "cpt8x_common.h"
 #include "cpt_ucode.h"
+#include "octeontx.h"
+
+#define CPT_MAX_VF_NUM	64
+
+struct cptpf_vf {
+	struct octeontx_pf_vf domain;
+};
 
 /**
  * cpt device structure
  */
 struct cpt_device {
+	struct cptpf_vf vf[CPT_MAX_VF_NUM]; /* Per VF info */
 	void __iomem *reg_base; /* Register start address */
 	struct pci_dev *pdev; /* Pci device handle */
 	struct engine_groups eng_grps;	/* Engine groups information */
