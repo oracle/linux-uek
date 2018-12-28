@@ -59,7 +59,7 @@ static int cvm_passthrough(struct pci_dev *pdev, struct ablkcipher_request *req)
 	req_info->req.param2 = 0x0;
 
 	req_info->callback = (void *) cvm_callback;
-	req_info->callback_arg = &req->base;
+	req_info->areq = &req->base;
 	req_info->req_type = PASSTHROUGH_REQ;
 
 	req_info->in[0].vptr = sg_virt(req->src);

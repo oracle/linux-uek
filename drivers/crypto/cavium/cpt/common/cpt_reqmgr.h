@@ -12,6 +12,7 @@
 #define __CPT_REQUEST_MANAGER_H
 
 #include <linux/delay.h>
+#include <linux/crypto.h>
 #include "cpt_hw_types.h"
 
 void send_cpt_cmd(union cpt_inst_s *cptinst, u32 val, void *obj);
@@ -60,7 +61,7 @@ static inline void free_pentry(struct pending_entry *pentry)
 	pentry->completion_addr = NULL;
 	pentry->post_arg = NULL;
 	pentry->callback = NULL;
-	pentry->callback_arg = NULL;
+	pentry->areq = NULL;
 	pentry->resume_sender = false;
 	pentry->busy = false;
 }
@@ -306,7 +307,7 @@ static inline void process_pending_queue(struct pci_dev *pdev,
 	struct pending_entry *pentry = NULL;
 	struct cpt_request_info *req = NULL;
 	union cpt_res_s *cpt_status = NULL;
-	void *callback_arg;
+	struct crypto_async_request *areq;
 	u32 res_code, resume_index;
 
 	while (1) {
@@ -325,7 +326,7 @@ static inline void process_pending_queue(struct pci_dev *pdev,
 		}
 
 		if (unlikely(!pentry->callback) ||
-			unlikely(!pentry->callback_arg)) {
+		    unlikely(!pentry->areq)) {
 			dev_err(&pdev->dev, "Callback or callback arg NULL\n");
 			goto process_pentry;
 		}
@@ -368,21 +369,22 @@ process_pentry:
 		    resume_pentry->resume_sender) {
 			resume_pentry->resume_sender = false;
 			callback = resume_pentry->callback;
-			callback_arg = resume_pentry->callback_arg;
+			areq = resume_pentry->areq;
 
-			if (callback && callback_arg) {
+			if (callback && areq) {
 				spin_unlock_bh(&pqueue->lock);
+
 				/*
 				 * EINPROGRESS is an indication for sending
 				 * side that it can resume sending requests
 				 */
-				callback(-EINPROGRESS, callback_arg, req);
+				callback(-EINPROGRESS, areq, req);
 				spin_lock_bh(&pqueue->lock);
 			}
 		}
 
 		callback = pentry->callback;
-		callback_arg = pentry->callback_arg;
+		areq = pentry->areq;
 		free_pentry(pentry);
 
 		pqueue->pending_count--;
@@ -394,8 +396,8 @@ process_pentry:
 		 * processed we don't do it if the callback pointer or
 		 * argument pointer is invalid
 		 */
-		if (callback && callback_arg)
-			callback(res_code, callback_arg, req);
+		if (callback && areq)
+			callback(res_code, areq, req);
 
 		if (cpt_info)
 			do_request_cleanup(pdev, cpt_info);
@@ -458,7 +460,6 @@ static inline int process_request(struct pci_dev *pdev,
 	while (unlikely(!pentry) && retry--) {
 		spin_unlock_bh(&pqueue->lock);
 		udelay(CPT_PENTRY_STEP);
-
 		spin_lock_bh(&pqueue->lock);
 		pentry = get_free_pending_entry(pqueue, pqueue->qlen);
 	}
@@ -473,8 +474,10 @@ static inline int process_request(struct pci_dev *pdev,
 	 * Check if we are close to filling in entire pending queue,
 	 * if so then tell the sender to stop by returning -EBUSY
 	 */
-	if (pqueue->pending_count > (pqueue->qlen - CPT_IQ_STOP_MARGIN))
+	if ((req->areq->flags & CRYPTO_TFM_REQ_MAY_SLEEP) &&
+	    pqueue->pending_count > (pqueue->qlen - CPT_IQ_STOP_MARGIN)) {
 		pentry->resume_sender = true;
+	}
 	else
 		pentry->resume_sender = false;
 	resume_sender = pentry->resume_sender;
@@ -483,11 +486,12 @@ static inline int process_request(struct pci_dev *pdev,
 	pentry->completion_addr = info->completion_addr;
 	pentry->post_arg = (void *) info;
 	pentry->callback = req->callback;
-	pentry->callback_arg = req->callback_arg;
+	pentry->areq = req->areq;
 	pentry->busy = true;
 	info->pentry = pentry;
 	info->time_in = jiffies;
 	info->req = req;
+	spin_unlock_bh(&pqueue->lock);
 
 	/* Fill in the command */
 	iq_cmd.cmd.u64 = 0;
@@ -521,7 +525,6 @@ static inline int process_request(struct pci_dev *pdev,
 
 	/* Send CPT command */
 	send_cpt_cmd(&cptinst, 1, obj);
-	spin_unlock_bh(&pqueue->lock);
 
 	ret = resume_sender ? -EBUSY : -EINPROGRESS;
 	return ret;
