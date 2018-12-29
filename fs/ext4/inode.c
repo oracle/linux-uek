@@ -3148,6 +3148,7 @@ static ssize_t ext4_ext_direct_IO(struct kiocb *iocb, struct iov_iter *iter,
 {
 	struct file *file = iocb->ki_filp;
 	struct inode *inode = file->f_mapping->host;
+	struct ext4_inode_info *ei = EXT4_I(inode);
 	ssize_t ret;
 	size_t count = iov_iter_count(iter);
 	int overwrite = 0;
@@ -3157,7 +3158,8 @@ static ssize_t ext4_ext_direct_IO(struct kiocb *iocb, struct iov_iter *iter,
 	ext4_io_end_t *io_end = NULL;
 
 	/* Use the old path for reads and writes beyond i_size. */
-	if (iov_iter_rw(iter) != WRITE || final_size > inode->i_size)
+	if (iov_iter_rw(iter) != WRITE || final_size > inode->i_size ||
+	    final_size > ei->i_disksize)
 		return ext4_ind_direct_IO(iocb, iter, offset);
 
 	BUG_ON(iocb->private == NULL);
