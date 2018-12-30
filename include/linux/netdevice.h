@@ -161,31 +161,38 @@ static inline bool dev_xmit_complete(int rc)
  *	(unsigned long) so they can be read and written atomically.
  */
 
+#define NET_DEV_STAT(FIELD)			\
+	union {					\
+		unsigned long FIELD;		\
+		atomic_long_t __##FIELD;	\
+	}
+
 struct net_device_stats {
-	unsigned long	rx_packets;
-	unsigned long	tx_packets;
-	unsigned long	rx_bytes;
-	unsigned long	tx_bytes;
-	unsigned long	rx_errors;
-	unsigned long	tx_errors;
-	unsigned long	rx_dropped;
-	unsigned long	tx_dropped;
-	unsigned long	multicast;
-	unsigned long	collisions;
-	unsigned long	rx_length_errors;
-	unsigned long	rx_over_errors;
-	unsigned long	rx_crc_errors;
-	unsigned long	rx_frame_errors;
-	unsigned long	rx_fifo_errors;
-	unsigned long	rx_missed_errors;
-	unsigned long	tx_aborted_errors;
-	unsigned long	tx_carrier_errors;
-	unsigned long	tx_fifo_errors;
-	unsigned long	tx_heartbeat_errors;
-	unsigned long	tx_window_errors;
-	unsigned long	rx_compressed;
-	unsigned long	tx_compressed;
+	UEK_KABI_RENAME(unsigned long rx_packets, NET_DEV_STAT(rx_packets));
+	UEK_KABI_RENAME(unsigned long tx_packets, NET_DEV_STAT(tx_packets));
+	UEK_KABI_RENAME(unsigned long rx_bytes, NET_DEV_STAT(rx_bytes));
+	UEK_KABI_RENAME(unsigned long tx_bytes, NET_DEV_STAT(tx_bytes));
+	UEK_KABI_RENAME(unsigned long rx_errors, NET_DEV_STAT(rx_errors));
+	UEK_KABI_RENAME(unsigned long tx_errors, NET_DEV_STAT(tx_errors));
+	UEK_KABI_RENAME(unsigned long rx_dropped, NET_DEV_STAT(rx_dropped));
+	UEK_KABI_RENAME(unsigned long tx_dropped, NET_DEV_STAT(tx_dropped));
+	UEK_KABI_RENAME(unsigned long multicast, NET_DEV_STAT(multicast));
+	UEK_KABI_RENAME(unsigned long collisions, NET_DEV_STAT(collisions));
+	UEK_KABI_RENAME(unsigned long rx_length_errors, NET_DEV_STAT(rx_length_errors));
+	UEK_KABI_RENAME(unsigned long rx_over_errors, NET_DEV_STAT(rx_over_errors));
+	UEK_KABI_RENAME(unsigned long rx_crc_errors, NET_DEV_STAT(rx_crc_errors));
+	UEK_KABI_RENAME(unsigned long rx_frame_errors, NET_DEV_STAT(rx_frame_errors));
+	UEK_KABI_RENAME(unsigned long rx_fifo_errors, NET_DEV_STAT(rx_fifo_errors));
+	UEK_KABI_RENAME(unsigned long rx_missed_errors, NET_DEV_STAT(rx_missed_errors));
+	UEK_KABI_RENAME(unsigned long tx_aborted_errors, NET_DEV_STAT(tx_aborted_errors));
+	UEK_KABI_RENAME(unsigned long tx_carrier_errors, NET_DEV_STAT(tx_carrier_errors));
+	UEK_KABI_RENAME(unsigned long tx_fifo_errors, NET_DEV_STAT(tx_fifo_errors));
+	UEK_KABI_RENAME(unsigned long tx_heartbeat_errors, NET_DEV_STAT(tx_heartbeat_errors));
+	UEK_KABI_RENAME(unsigned long tx_window_errors, NET_DEV_STAT(tx_window_errors));
+	UEK_KABI_RENAME(unsigned long rx_compressed, NET_DEV_STAT(rx_compressed));
+	UEK_KABI_RENAME(unsigned long tx_compressed, NET_DEV_STAT(tx_compressed));
 };
+#undef NET_DEV_STAT
 
 
 #include <linux/cache.h>
@@ -4550,5 +4557,10 @@ do {								\
  */
 #define PTYPE_HASH_SIZE	(16)
 #define PTYPE_HASH_MASK	(PTYPE_HASH_SIZE - 1)
+
+/* Note: Avoid these macros in fast path, prefer per-cpu or per-queue counters. */
+#define DEV_STATS_INC(DEV, FIELD) atomic_long_inc(&(DEV)->stats.__##FIELD)
+#define DEV_STATS_ADD(DEV, FIELD, VAL) 	\
+		atomic_long_add((VAL), &(DEV)->stats.__##FIELD)
 
 #endif	/* _LINUX_NETDEVICE_H */
