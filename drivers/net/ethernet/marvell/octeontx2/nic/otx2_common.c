@@ -211,7 +211,31 @@ static int otx2_sq_init(struct otx2_nic *pfvf, u16 qidx, u16 sqb_aura)
 
 static int otx2_cq_init(struct otx2_nic *pfvf, u16 qidx)
 {
+	struct otx2_qset *qset = &pfvf->qset;
 	struct nix_aq_enq_req *aq;
+	struct otx2_cq_queue *cq;
+	int err, pool_id;
+
+	cq = &qset->cq[qidx];
+	cq->cqe_cnt = (qidx < pfvf->hw.rx_queues) ? qset->rqe_cnt
+			: qset->sqe_cnt;
+	cq->cqe_size = pfvf->qset.xqe_size;
+
+	/* Allocate memory for CQEs */
+	err = qmem_alloc(pfvf->dev, &cq->cqe, cq->cqe_cnt, cq->cqe_size);
+	if (err)
+		return err;
+
+	/* Save CQE CPU base for faster reference */
+	cq->cqe_base = cq->cqe->base;
+	/* In case where all RQs auras point to single pool,
+	 * all CQs receive buffer pool also point to same pool.
+	 */
+	pool_id = ((qidx < pfvf->hw.rx_queues) &&
+		   (pfvf->hw.rqpool_cnt != pfvf->hw.rx_queues)) ? 0 : qidx;
+	cq->rbpool = &qset->pool[pool_id];
+
+	cq->cq_idx = qidx;
 
 	/* Get memory to put this msg */
 	aq = otx2_mbox_alloc_msg_nix_aq_enq(&pfvf->mbox);
@@ -219,9 +243,12 @@ static int otx2_cq_init(struct otx2_nic *pfvf, u16 qidx)
 		return -ENOMEM;
 
 	aq->cq.ena = 1;
-	aq->cq.qsize = Q_SIZE_4K;
+	aq->cq.qsize = Q_SIZE(cq->cqe_cnt, 4);
 	aq->cq.caching = 1;
-	aq->cq.base = 1;
+	aq->cq.base = cq->cqe->iova;
+	aq->cq.cint_idx = (qidx < pfvf->hw.rx_queues) ? qidx
+				: (qidx - pfvf->hw.rx_queues);
+	cq->cint_idx = aq->cq.cint_idx;
 
 	/* Fill AQ info */
 	aq->qidx = qidx;
