@@ -32,6 +32,10 @@ enum arua_mapped_qtypes {
 #define RQ_QLEN		1024
 #define SQ_QLEN		1024
 
+#define LBK_CHAN_BASE  0x000
+#define SDP_CHAN_BASE  0x700
+#define CGX_CHAN_BASE  0x800
+
 #define DMA_BUFFER_LEN	1536 /* In multiples of 128bytes */
 #define OTX2_DATA_ALIGN(X)	ALIGN(X, OTX2_ALIGN)
 #define RCV_FRAG_LEN		\
@@ -86,6 +90,8 @@ struct otx2_hw {
 	u16			nix_msixoff; /* Offset of NIX vectors */
 	char			*irq_name;
 	cpumask_var_t           *affinity_mask;
+
+	u16		txschq_list[NIX_TXSCH_LVL_CNT][MAX_TXSCHQ_PER_FUNC];
 };
 
 struct otx2_nic {
@@ -286,6 +292,8 @@ int otx2_sq_aura_pool_init(struct otx2_nic *pfvf);
 int otx2_rq_aura_pool_init(struct otx2_nic *pfvf);
 int otx2_config_nix(struct otx2_nic *pfvf);
 int otx2_config_nix_queues(struct otx2_nic *pfvf);
+int otx2_txschq_config(struct otx2_nic *pfvf, int lvl);
+int otx2_txsch_alloc(struct otx2_nic *pfvf);
 
 /* Mbox handlers */
 void mbox_handler_msix_offset(struct otx2_nic *pfvf,
@@ -294,5 +302,7 @@ void mbox_handler_npa_lf_alloc(struct otx2_nic *pfvf,
 			       struct npa_lf_alloc_rsp *rsp);
 void mbox_handler_nix_lf_alloc(struct otx2_nic *pfvf,
 			       struct nix_lf_alloc_rsp *rsp);
+void mbox_handler_nix_txsch_alloc(struct otx2_nic *pf,
+				  struct nix_txsch_alloc_rsp *rsp);
 
 #endif /* OTX2_COMMON_H */
