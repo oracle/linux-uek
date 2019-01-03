@@ -207,7 +207,13 @@ static int cptvf_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 	err = cpt_send_ready_msg(cptvf->pdev);
 	if (err)
 		goto cpt_err_unregister_interrupts;
-	if (cptvf->lfs.kcrypto_eng_grp_num == INVALID_KCRYPTO_ENG_GRP) {
+
+	/* Get engine group number for symmetric crypto */
+	cptvf->lfs.kcrypto_eng_grp_num = INVALID_CRYPTO_ENG_GRP;
+	err = cptvf_send_eng_grp_num_msg(cptvf, SE_TYPES);
+	if (err)
+		goto cpt_err_unregister_interrupts;
+	if (cptvf->lfs.kcrypto_eng_grp_num == INVALID_CRYPTO_ENG_GRP) {
 		dev_err(dev, "Engine group for kernel crypto not available");
 		err = -ENOENT;
 		goto cpt_err_unregister_interrupts;

@@ -34,7 +34,7 @@ void cptvf_pfvf_mbox_handler(struct work_struct *work)
 {
 	struct cpt_rd_wr_reg_msg *rsp_reg;
 	struct msix_offset_rsp *rsp_msix;
-	struct ready_msg_rsp_ex *rsp;
+	struct eng_grp_num_rsp *rsp_grp;
 	struct otx2_mbox *pfvf_mbox;
 	struct mbox_hdr *rsp_hdr;
 	struct mbox_msghdr *msg;
@@ -76,11 +76,8 @@ void cptvf_pfvf_mbox_handler(struct work_struct *work)
 		offset = msg->next_msgoff;
 		switch (msg->id) {
 		case MBOX_MSG_READY:
-			rsp = (struct ready_msg_rsp_ex *) msg;
-			cptvf->vf_id =
-				((rsp->msg.hdr.pcifunc >> RVU_PFVF_FUNC_SHIFT)
-				 & RVU_PFVF_FUNC_MASK) - 1;
-			cptvf->lfs.kcrypto_eng_grp_num = rsp->eng_grp_num;
+			cptvf->vf_id = ((msg->pcifunc >> RVU_PFVF_FUNC_SHIFT)
+					& RVU_PFVF_FUNC_MASK) - 1;
 			break;
 
 		case MBOX_MSG_ATTACH_RESOURCES:
@@ -121,6 +118,10 @@ void cptvf_pfvf_mbox_handler(struct work_struct *work)
 			       sizeof(struct free_rsrcs_rsp));
 			break;
 
+		case MBOX_MSG_GET_ENG_GRP_NUM:
+			rsp_grp = (struct eng_grp_num_rsp *) msg;
+			cptvf->lfs.kcrypto_eng_grp_num = rsp_grp->eng_grp_num;
+			break;
 		default:
 			dev_err(&cptvf->pdev->dev,
 				"Unsupported msg %d received.\n",
@@ -131,4 +132,31 @@ error:
 		pfvf_mbox->dev->msgs_acked++;
 	}
 	otx2_mbox_reset(pfvf_mbox, 0);
+}
+
+int cptvf_send_eng_grp_num_msg(struct cptvf_dev *cptvf, int eng_type)
+{
+	struct pci_dev *pdev = cptvf->pdev;
+	struct eng_grp_num_msg *req;
+	int ret = 0;
+
+	req = (struct eng_grp_num_msg *)
+			otx2_mbox_alloc_msg_rsp(&cptvf->pfvf_mbox, 0,
+				sizeof(*req), sizeof(struct eng_grp_num_rsp));
+	if (req == NULL) {
+		dev_err(&pdev->dev, "RVU MBOX failed to get message.\n");
+		ret = -EFAULT;
+		goto error;
+	}
+
+	req->hdr.id = MBOX_MSG_GET_ENG_GRP_NUM;
+	req->hdr.sig = OTX2_MBOX_REQ_SIG;
+	req->hdr.pcifunc = RVU_PFFUNC(cptvf->vf_id, 0);
+	req->eng_type = eng_type;
+
+	ret = cpt_send_mbox_msg(pdev);
+	if (ret)
+		goto error;
+error:
+	return ret;
 }
