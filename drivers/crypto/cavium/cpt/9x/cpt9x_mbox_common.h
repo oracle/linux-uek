@@ -14,14 +14,24 @@
 #include "cpt9x_pf.h"
 #include "cpt9x_vf.h"
 
-#define INVALID_KCRYPTO_ENG_GRP	0xFF
+#define INVALID_CRYPTO_ENG_GRP		0xFF
+/* Take mbox id from end of CPT mbox range in AF (range 0xA00 - 0xBFF) */
+#define MBOX_MSG_GET_ENG_GRP_NUM	0xBFF
 
-/* Extended ready message response with engine group
- * number for kernel crypto functionality
+/*
+ * Message request and response to get engine group number
+ * which has attached a given type of engines (SE, AE, IE)
+ * This messages are only used between CPT PF <-> CPT VF
  */
-struct ready_msg_rsp_ex {
-	struct ready_msg_rsp msg;
-	int eng_grp_num;
+struct eng_grp_num_msg {
+	struct mbox_msghdr hdr;
+	u8 eng_type;
+};
+
+struct eng_grp_num_rsp {
+	struct mbox_msghdr hdr;
+	u8 eng_type;
+	u8 eng_grp_num;
 };
 
 static inline struct cptlfs_info *get_lfs_info(struct pci_dev *pdev)

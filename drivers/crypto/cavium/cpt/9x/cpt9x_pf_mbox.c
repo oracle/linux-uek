@@ -87,40 +87,82 @@ static int reply_free_rsrc_cnt(struct cptpf_dev *cptpf, struct cptvf_info *vf,
 	return 0;
 }
 
-static int reply_ready_msg_ex(struct cptpf_dev *cptpf, struct cptvf_info *vf,
-			      struct mbox_msghdr *req)
+static int reply_ready_msg(struct cptpf_dev *cptpf, struct cptvf_info *vf,
+			   struct mbox_msghdr *req)
 {
+	struct mbox_msghdr *rsp;
+
+	rsp = otx2_mbox_alloc_msg(&cptpf->vfpf_mbox, vf->vf_id, sizeof(*rsp));
+	if (!rsp)
+		return -ENOMEM;
+
+	rsp->id = MBOX_MSG_READY;
+	rsp->sig = OTX2_MBOX_RSP_SIG;
+	rsp->pcifunc = req->pcifunc;
+
+	return 0;
+}
+
+static int reply_eng_grp_num_msg(struct cptpf_dev *cptpf,
+				 struct cptvf_info *vf,
+				 struct mbox_msghdr *req)
+{
+	struct eng_grp_num_msg *grp_req = (struct eng_grp_num_msg *)req;
 	struct engine_group_info *grp;
-	struct ready_msg_rsp_ex *rsp;
+	struct eng_grp_num_rsp *rsp;
 	int i;
 
-	rsp = (struct ready_msg_rsp_ex *)
+	rsp = (struct eng_grp_num_rsp *)
 			      otx2_mbox_alloc_msg(&cptpf->vfpf_mbox, vf->vf_id,
 						  sizeof(*rsp));
 	if (!rsp)
 		return -ENOMEM;
 
-	rsp->msg.hdr.id = MBOX_MSG_READY;
-	rsp->msg.hdr.sig = OTX2_MBOX_RSP_SIG;
-	rsp->msg.hdr.pcifunc = req->pcifunc;
-	rsp->eng_grp_num = INVALID_KCRYPTO_ENG_GRP;
+	rsp->hdr.id = MBOX_MSG_GET_ENG_GRP_NUM;
+	rsp->hdr.sig = OTX2_MBOX_RSP_SIG;
+	rsp->hdr.pcifunc = req->pcifunc;
+	rsp->eng_type = grp_req->eng_type;
+	rsp->eng_grp_num = INVALID_CRYPTO_ENG_GRP;
 
 	mutex_lock(&cptpf->eng_grps.lock);
 
-	/* Find engine group for kernel crypto functionality, select first
-	 * engine group which is configured and has only SE engines attached
-	 */
-	for (i = 0; i < CPT_MAX_ENGINE_GROUPS; i++) {
-		grp = &cptpf->eng_grps.grp[i];
-		if (!grp->is_enabled)
-			continue;
+	switch (grp_req->eng_type) {
+	case SE_TYPES:
+		/* Find engine group for kernel crypto functionality, select
+		 * first engine group which is configured and has only
+		 * SE engines attached
+		 */
+		for (i = 0; i < CPT_MAX_ENGINE_GROUPS; i++) {
+			grp = &cptpf->eng_grps.grp[i];
+			if (!grp->is_enabled)
+				continue;
 
-		if (cpt_eng_grp_has_eng_type(grp, SE_TYPES) &&
-		    !cpt_eng_grp_has_eng_type(grp, IE_TYPES) &&
-		    !cpt_eng_grp_has_eng_type(grp, AE_TYPES)) {
-			rsp->eng_grp_num = i;
-			break;
+			if (cpt_eng_grp_has_eng_type(grp, SE_TYPES) &&
+			    !cpt_eng_grp_has_eng_type(grp, IE_TYPES) &&
+			    !cpt_eng_grp_has_eng_type(grp, AE_TYPES)) {
+				rsp->eng_grp_num = i;
+				break;
+			}
 		}
+	break;
+
+	case AE_TYPES:
+	case IE_TYPES:
+		for (i = 0; i < CPT_MAX_ENGINE_GROUPS; i++) {
+			grp = &cptpf->eng_grps.grp[i];
+			if (!grp->is_enabled)
+				continue;
+
+			if (cpt_eng_grp_has_eng_type(grp, grp_req->eng_type)) {
+				rsp->eng_grp_num = i;
+				break;
+			}
+		}
+	break;
+
+	default:
+		dev_err(&cptpf->pdev->dev, "Invalid engine type %d",
+			grp_req->eng_type);
 	}
 
 	mutex_unlock(&cptpf->eng_grps.lock);
@@ -138,7 +180,7 @@ static int cptpf_handle_vf_req(struct cptpf_dev *cptpf, struct cptvf_info *vf,
 					      req->pcifunc, req->id);
 	switch (req->id) {
 	case MBOX_MSG_READY:
-		err = reply_ready_msg_ex(cptpf, vf, req);
+		err = reply_ready_msg(cptpf, vf, req);
 		break;
 
 	case MBOX_MSG_FREE_RSRC_CNT:
@@ -147,6 +189,10 @@ static int cptpf_handle_vf_req(struct cptpf_dev *cptpf, struct cptvf_info *vf,
 
 	case MBOX_MSG_ATTACH_RESOURCES:
 		err = check_attach_rsrcs_req(cptpf, vf, req, size);
+		break;
+
+	case MBOX_MSG_GET_ENG_GRP_NUM:
+		err = reply_eng_grp_num_msg(cptpf, vf, req);
 		break;
 
 	default:
