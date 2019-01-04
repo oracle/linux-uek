@@ -259,6 +259,10 @@ static inline int cvm_enc_dec(struct ablkcipher_request *req, u32 enc)
 	struct pci_dev *pdev = NULL;
 	int status, cpu_num;
 
+	/* Validate that request doesn't exceed maximum CPT supported size */
+	if (req->nbytes > CPT_MAX_REQ_SIZE)
+		return -E2BIG;
+
 	memset(rctx, 0, sizeof(struct cvm_req_ctx));
 	create_input_list(req, enc, enc_iv_len);
 	create_output_list(req, enc_iv_len);
@@ -956,9 +960,11 @@ static inline u32 create_aead_input_list(struct aead_request *req, u32 enc)
 	struct cvm_req_ctx *rctx = aead_request_ctx(req);
 	struct cpt_request_info *req_info = &rctx->cpt_req;
 	u32 inputlen =  req->cryptlen + req->assoclen;
-	u32 argcnt = 0;
+	u32 status, argcnt = 0;
 
-	create_aead_ctx_hdr(req, enc, &argcnt);
+	status = create_aead_ctx_hdr(req, enc, &argcnt);
+	if (status)
+		return status;
 	update_input_data(req_info, req->src, inputlen, &argcnt);
 	req_info->incnt = argcnt;
 
@@ -988,8 +994,7 @@ static inline u32 create_aead_null_input_list(struct aead_request *req,
 {
 	struct cvm_req_ctx *rctx = aead_request_ctx(req);
 	struct cpt_request_info *req_info = &rctx->cpt_req;
-	u32 inputlen =  req->cryptlen + req->assoclen;
-	u32 argcnt = 0;
+	u32 inputlen, argcnt = 0;
 
 	if (enc)
 		inputlen =  req->cryptlen + req->assoclen;
@@ -1128,6 +1133,11 @@ u32 cvm_aead_enc_dec(struct aead_request *req, u8 reg_type, u8 enc)
 	default:
 		return -EINVAL;
 	}
+
+	/* Validate that request doesn't exceed maximum CPT supported size */
+	if (req_info->req.param1 > CPT_MAX_REQ_SIZE ||
+	    req_info->req.param2 > CPT_MAX_REQ_SIZE)
+		return -E2BIG;
 
 	status = get_se_device(&pdev, &cpu_num);
 	if (status)

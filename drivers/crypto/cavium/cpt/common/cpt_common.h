@@ -16,6 +16,9 @@
 #include <linux/module.h>
 #include "cpt_debug.h"
 
+/* Maximum request size in bytes */
+#define CPT_MAX_REQ_SIZE	65535
+
 /* Delay in us when waiting for a state change */
 #define CSR_DELAY		30
 
@@ -91,10 +94,10 @@ union opcode_info {
 };
 
 struct cptvf_request {
-	union opcode_info opcode;
-	u16 param1;
-	u16 param2;
+	u32 param1;
+	u32 param2;
 	u16 dlen;
+	union opcode_info opcode;
 };
 
 struct buf_ptr {
