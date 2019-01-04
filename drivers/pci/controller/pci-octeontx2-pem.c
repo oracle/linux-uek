@@ -23,8 +23,17 @@
 /* Bridge config space reads/writes done using
  * these registers.
  */
-#define PEM_CFG_WR	0x18
-#define PEM_CFG_RD	0x20
+#define PEM_CFG_WR			0x18
+#define PEM_CFG_RD			0x20
+
+#define PCIERC_RAS_EINJ_EN		0x348
+#define PCIERC_RAS_EINJ_CTL6CMPP0	0x364
+#define PCIERC_RAS_EINJ_CTL6CMPV0	0x374
+#define PCIERC_RAS_EINJ_CTL6CHGP1	0x388
+#define PCIERC_RAS_EINJ_CTL6CHGV1	0x398
+#define PCIERC_RAS_EINJ_CTL6PE		0x3A4
+#define PCIERC_RASDP_EP_CTL		0x420
+#define PCIERC_RASDP_DE_ME		0x440
 
 struct octeontx2_pem_pci {
 	u32		ea_entry[3];
@@ -261,6 +270,107 @@ static int octeontx2_pem_bridge_write(struct pci_bus *bus, unsigned int devfn,
 	return PCIBIOS_SUCCESSFUL;
 }
 
+static void octeontx2_be_workaround_init(struct pci_bus *bus)
+{
+	u32 val;
+
+	/* Ensure that PCIERC_RASDP_DE_ME.ERR_MODE is set to 0 */
+	octeontx2_pem_bridge_read(bus, 0x00,
+				  PCIERC_RASDP_DE_ME, 4, &val);
+	octeontx2_pem_bridge_write(bus, 0x00,
+				   PCIERC_RASDP_DE_ME, 4, val & ~BIT(0));
+
+	/* Disable parity error correction */
+	octeontx2_pem_bridge_read(bus, 0x00,
+				  PCIERC_RASDP_EP_CTL, 4, &val);
+	octeontx2_pem_bridge_write(bus, 0x00,
+				   PCIERC_RASDP_EP_CTL, 4, val | BIT(0));
+
+	/* Enable RAS to change header
+	 * PCIERC_RAS_EINJ_EN.EINJ0_EN.set(0);
+	 * PCIERC_RAS_EINJ_EN.EINJ1_EN.set(0);
+	 * PCIERC_RAS_EINJ_EN.EINJ2_EN.set(0);
+	 * PCIERC_RAS_EINJ_EN.EINJ3_EN.set(0);
+	 * PCIERC_RAS_EINJ_EN.EINJ4_EN.set(0);
+	 * PCIERC_RAS_EINJ_EN.EINJ5_EN.set(0);
+	 * PCIERC_RAS_EINJ_EN.EINJ6_EN.set(1);
+	 */
+	octeontx2_pem_bridge_write(bus, 0x00,
+				   PCIERC_RAS_EINJ_EN, 4, BIT(6));
+
+	/* Set up error injection count to 1 and
+	 * set type to TLP and INV_CNTRL must be 0.
+	 */
+	octeontx2_pem_bridge_write(bus, 0x00,
+				   PCIERC_RAS_EINJ_CTL6PE, 4, 1);
+
+	/* Set up compare point to compare Fmt/Type field in TLP Header word 0
+	 * Where bits[31:0] = tlp_dw[7:0], tlp_dw[15:18],
+	 * tlp_dw[23:16], tlp_dw[31:24].
+	 *
+	 * PCIERC_RAS_EINJ_CTL6CMPP0.EINJ6_COM_PT_H0.set(32'hfe00_0000);
+	 */
+	octeontx2_pem_bridge_write(bus, 0x00,
+				   PCIERC_RAS_EINJ_CTL6CMPP0, 4, 0xFE000000);
+
+	/* Set up the value to compare against,
+	 * look for Fmt/Type to indicate CfgRd/CfWr - both type 0 or 1.
+	 * Where bits[31:0] = tlp_dw[7:0], tlp_dw[15:18],
+	 * tlp_dw[23:16], tlp_dw[31:24]
+	 */
+	octeontx2_pem_bridge_write(bus, 0x00,
+				   PCIERC_RAS_EINJ_CTL6CMPV0, 4, 0x44000000);
+
+	/* Set up the bit position in TLP Header word 1 to replace
+	 * (LBE is bits 7:4, FBE is bits 3:0).
+	 *
+	 * Where bits[31:0] = tlp_dw[7:0], tlp_dw[15:18],
+	 * tlp_dw[23:16], tlp_dw[31:24].
+	 */
+	octeontx2_pem_bridge_write(bus, 0x00,
+				   PCIERC_RAS_EINJ_CTL6CHGP1, 4, 0xFF);
+}
+
+static void octeontx2_be_workaround(struct pci_bus *bus, int where,
+				    int size, u32 val)
+{
+	struct pci_dev *rc;
+	u32 reg, be = 0;
+
+	rc = pci_get_domain_bus_and_slot(pci_domain_nr(bus), 0, 0);
+
+	/* Setup RAS to inject one error */
+	octeontx2_be_workaround_init(rc->bus);
+
+	/* Get byte-enable to inject into TLP */
+	where &= 0x03;
+	switch (size) {
+	case 1:
+		be = 1 << where;
+		break;
+	case 2:
+		be = 3 << where;
+		break;
+	case 4:
+		be = 0xF;
+	}
+
+	/* Set up the value you'd like to use for FBE (Cfg ops must have LBE==0)
+	 * Where bits[31:0] = tlp_dw[7:0], tlp_dw[15:18],
+	 * tlp_dw[23:16], tlp_dw[31:24].
+	 */
+	octeontx2_pem_bridge_write(rc->bus, 0x00,
+				   PCIERC_RAS_EINJ_CTL6CHGV1, 4, be);
+
+	/* To be absolutely sure that the ECAM access does not get to
+	 * the MAC prior to the PCIERC register updates that are setting
+	 * up for that ECAM access, SW should read back one of the
+	 * registers it wrote before launching the ECAM access.
+	 */
+	octeontx2_pem_bridge_read(rc->bus, 0x00,
+				  PCIERC_RAS_EINJ_CTL6CHGV1, 4, &reg);
+}
+
 static int octeontx2_pem_config_write(struct pci_bus *bus, unsigned int devfn,
 				    int where, int size, u32 val)
 {
@@ -275,6 +385,8 @@ static int octeontx2_pem_config_write(struct pci_bus *bus, unsigned int devfn,
 	 */
 	if (bus->number == cfg->busr.start)
 		return octeontx2_pem_bridge_write(bus, devfn, where, size, val);
+
+	octeontx2_be_workaround(bus, where, size, val);
 
 	return pci_generic_config_write(bus, devfn, where, size, val);
 }
