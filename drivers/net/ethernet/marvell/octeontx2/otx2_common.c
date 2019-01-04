@@ -473,8 +473,8 @@ int otx2_txschq_stop(struct otx2_nic *pfvf)
  * RED accepts pkts if free pointers > 102 & <= 205.
  * Drops pkts if free pointers < 102.
  */
-#define RQ_PASS_LVL_AURA	((90 * 256) / 100) /* RED when 90% is full */
-#define RQ_DROP_LVL_AURA	((98 * 256) / 100) /* Drop when 98% is full */
+#define RQ_PASS_LVL_AURA (255 - ((95 * 256) / 100)) /* RED when 95% is full */
+#define RQ_DROP_LVL_AURA (255 - ((99 * 256) / 100)) /* Drop when 99% is full */
 
 /* Send skid of 2000 packets required for CQ size of 4K CQEs. */
 #define SEND_CQ_SKID	2000
@@ -605,9 +605,9 @@ static int otx2_sq_init(struct otx2_nic *pfvf, u16 qidx, u16 sqb_aura)
 static int otx2_cq_init(struct otx2_nic *pfvf, u16 qidx)
 {
 	struct otx2_qset *qset = &pfvf->qset;
+	int err, pool_id, skid = 0;
 	struct nix_aq_enq_req *aq;
 	struct otx2_cq_queue *cq;
-	int err, pool_id;
 
 	cq = &qset->cq[qidx];
 	cq->cqe_size = pfvf->qset.xqe_size;
@@ -645,6 +645,12 @@ static int otx2_cq_init(struct otx2_nic *pfvf, u16 qidx)
 
 	aq->cq.cq_err_int_ena = NIX_CQERRINT_BITS;
 	aq->cq.qint_idx = 0;
+	aq->cq.avg_level = 255;
+
+	if (is_9xxx_pass1_silicon(pfvf->pdev))
+		skid = RX_CQ_SKID;
+	aq->cq.drop = RQ_DROP_LVL_CQ(skid, cq->cqe_cnt);
+	aq->cq.drop_ena = 1;
 
 	/* Fill AQ info */
 	aq->qidx = qidx;
@@ -819,6 +825,7 @@ static int otx2_aura_init(struct otx2_nic *pfvf, int aura_id,
 	aq->aura.shift = ilog2(numptrs) - 8;
 	aq->aura.count = numptrs;
 	aq->aura.limit = numptrs;
+	aq->aura.avg_level = 255;
 	aq->aura.ena = 1;
 	aq->aura.fc_ena = 1;
 	aq->aura.fc_addr = pool->fc_addr->iova;
@@ -867,6 +874,7 @@ static int otx2_pool_init(struct otx2_nic *pfvf, u16 pool_id,
 	aq->pool.stack_base = pool->stack->iova;
 	aq->pool.stack_caching = 1;
 	aq->pool.ena = 1;
+	aq->aura.avg_level = 255;
 	aq->pool.buf_size = buf_size / 128;
 	aq->pool.stack_max_pages = stack_pages;
 	aq->pool.shift = ilog2(numptrs) - 8;
