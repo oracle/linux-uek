@@ -1587,7 +1587,7 @@ static void check_ept_pointer_match(struct kvm *kvm)
 static int vmx_hv_remote_flush_tlb(struct kvm *kvm)
 {
 	struct kvm_vcpu *vcpu;
-	int ret = -ENOTSUPP, i;
+	int ret = 0, i;
 
 	spin_lock(&to_kvm_vmx(kvm)->ept_pointer_lock);
 
