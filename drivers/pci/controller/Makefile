@@ -42,5 +42,6 @@ obj-y				+= dwc/
 ifdef CONFIG_PCI
 obj-$(CONFIG_ARM64) += pci-thunder-ecam.o
 obj-$(CONFIG_ARM64) += pci-thunder-pem.o
+obj-$(CONFIG_ARM64) += pci-octeontx2-pem.o
 obj-$(CONFIG_ARM64) += pci-xgene.o
 endif
