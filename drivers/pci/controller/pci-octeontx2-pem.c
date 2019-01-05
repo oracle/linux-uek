@@ -23,8 +23,9 @@
 /* Bridge config space reads/writes done using
  * these registers.
  */
-#define PEM_CFG_WR			0x18
-#define PEM_CFG_RD			0x20
+#define PEM_CFG_WR			0x018
+#define PEM_CFG_RD			0x020
+#define PEM_IB_MERGE_TIMER_CTL		0x1C0
 
 #define PCIERC_RAS_EINJ_EN		0x348
 #define PCIERC_RAS_EINJ_CTL6CMPP0	0x364
@@ -396,6 +397,7 @@ static int octeontx2_pem_init(struct device *dev, struct pci_config_window *cfg,
 {
 	struct octeontx2_pem_pci *pem_pci;
 	resource_size_t bar4_start;
+	u64 val;
 
 	pem_pci = devm_kzalloc(dev, sizeof(*pem_pci), GFP_KERNEL);
 	if (!pem_pci)
@@ -404,6 +406,15 @@ static int octeontx2_pem_init(struct device *dev, struct pci_config_window *cfg,
 	pem_pci->pem_reg_base = devm_ioremap(dev, res_pem->start, 0x10000);
 	if (!pem_pci->pem_reg_base)
 		return -ENOMEM;
+
+	/* As per HW Errata 34726, an issue exists whereby inbound write
+	 * merging may cause undefined operation. Hence disabling it.
+	 *
+	 * Need to revisit this for future silicon passes and versions.
+	 */
+	val = readq(pem_pci->pem_reg_base + PEM_IB_MERGE_TIMER_CTL);
+	val |= BIT_ULL(10);
+	writeq(val, pem_pci->pem_reg_base + PEM_IB_MERGE_TIMER_CTL);
 
 	/*
 	 * The MSI-X BAR for the PEM and AER interrupts is located at
