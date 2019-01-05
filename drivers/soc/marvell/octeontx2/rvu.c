@@ -61,7 +61,7 @@ MODULE_PARM_DESC(mkex_profile, "MKEX profile name string");
  */
 int rvu_poll_reg(struct rvu *rvu, u64 block, u64 offset, u64 mask, bool zero)
 {
-	unsigned long timeout = jiffies + usecs_to_jiffies(100);
+	unsigned long timeout = jiffies + usecs_to_jiffies(10000);
 	void __iomem *reg;
 	u64 reg_val;
 
