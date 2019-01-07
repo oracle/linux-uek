@@ -2648,7 +2648,8 @@ static inline int ext4_has_metadata_csum(struct super_block *sb)
 	WARN_ON_ONCE(ext4_has_feature_metadata_csum(sb) &&
 		     !EXT4_SB(sb)->s_chksum_driver);
 
-	return (EXT4_SB(sb)->s_chksum_driver != NULL);
+	return  ext4_has_feature_metadata_csum(sb) &&
+			(EXT4_SB(sb)->s_chksum_driver != NULL);
 }
 static inline ext4_fsblk_t ext4_blocks_count(struct ext4_super_block *es)
 {
