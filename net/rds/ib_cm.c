@@ -325,6 +325,7 @@ void rds_ib_cm_connect_complete(struct rds_connection *conn, struct rdma_cm_even
 
 	ic->i_sl = ic->i_cm_id->route.path_rec->sl;
 	atomic_set(&ic->i_cq_quiesce, 0);
+	ic->i_flags &= ~RDS_IB_CQ_ERR;
 
 	/*
 	 * Init rings and fill recv. this needs to wait until protocol negotiation
@@ -444,8 +445,15 @@ static void rds_ib_cm_fill_conn_param(struct rds_connection *conn,
 
 static void rds_ib_cq_event_handler(struct ib_event *event, void *data)
 {
-	rdsdebug("event %u (%s) data %p\n",
+	struct rds_connection *conn = data;
+	struct rds_ib_connection *ic = conn->c_transport_data;
+
+	pr_info("RDS/IB: event %u (%s) data %p\n",
 		 event->event, rds_ib_event_str(event->event), data);
+
+	ic->i_flags |= RDS_IB_CQ_ERR;
+	if (waitqueue_active(&rds_ib_ring_empty_wait))
+		wake_up(&rds_ib_ring_empty_wait);
 }
 
 static void rds_ib_cq_comp_handler_fastreg(struct ib_cq *cq, void *context)
@@ -1452,11 +1460,15 @@ void rds_ib_conn_path_shutdown(struct rds_conn_path *cp)
 
 		/* quiesce tx and rx completion before tearing down */
 		while (!wait_event_timeout(rds_ib_ring_empty_wait,
-				rds_ib_ring_empty(&ic->i_recv_ring) &&
-				(atomic_read(&ic->i_signaled_sends) == 0) &&
-				(atomic_read(&ic->i_fastreg_wrs) ==
-				 RDS_IB_DEFAULT_FREG_WR),
-				msecs_to_jiffies(5000))) {
+				(rds_ib_ring_empty(&ic->i_recv_ring) &&
+				 (atomic_read(&ic->i_signaled_sends) == 0) &&
+				 (atomic_read(&ic->i_fastreg_wrs) ==
+				  RDS_IB_DEFAULT_FREG_WR)) ||
+				(ic->i_flags & RDS_IB_CQ_ERR),
+				 msecs_to_jiffies(5000))) {
+
+			if (ic->i_flags & RDS_IB_CQ_ERR)
+				break;
 
 			/* Try to reap pending RX completions every 5 secs */
 			if (!rds_ib_ring_empty(&ic->i_recv_ring)) {
@@ -1470,6 +1482,7 @@ void rds_ib_conn_path_shutdown(struct rds_conn_path *cp)
 		tasklet_kill(&ic->i_rtasklet);
 
 		atomic_set(&ic->i_cq_quiesce, 1);
+		ic->i_flags &= ~RDS_IB_CQ_ERR;
 
 		/* first destroy the ib state that generates callbacks */
 		if (ic->i_cm_id->qp)
