@@ -147,6 +147,15 @@ static irqreturn_t otx2vf_vfaf_mbox_intr_handler(int irq, void *vf_irq)
 	return IRQ_HANDLED;
 }
 
+static void otx2vf_disable_mbox_intr(struct otx2_nic *vf)
+{
+	int vector = pci_irq_vector(vf->pdev, RVU_VF_INT_VEC_MBOX);
+
+	/* Disable VF => PF mailbox IRQ */
+	otx2_write64(vf, RVU_VF_INT_ENA_W1C, BIT_ULL(0));
+	free_irq(vector, vf);
+}
+
 static int otx2vf_register_mbox_intr(struct otx2_nic *vf)
 {
 	struct otx2_hw *hw = &vf->hw;
@@ -173,25 +182,19 @@ static int otx2vf_register_mbox_intr(struct otx2_nic *vf)
 
 	/* Check mailbox communication with PF */
 	req = otx2_mbox_alloc_msg_ready(&vf->mbox);
-	if (!req)
+	if (!req) {
+		otx2vf_disable_mbox_intr(vf);
 		return -ENOMEM;
+	}
 
 	err = otx2_sync_mbox_msg(&vf->mbox);
 	if (err) {
 		dev_warn(vf->dev,
 			 "AF not responding to mailbox, deferring probe\n");
+		otx2vf_disable_mbox_intr(vf);
 		return -EPROBE_DEFER;
 	}
 	return 0;
-}
-
-static void otx2vf_disable_mbox_intr(struct otx2_nic *vf)
-{
-	int vector = pci_irq_vector(vf->pdev, RVU_VF_INT_VEC_MBOX);
-
-	/* Disable VF => PF mailbox IRQ */
-	otx2_write64(vf, RVU_VF_INT_ENA_W1C, BIT_ULL(0));
-	free_irq(vector, vf);
 }
 
 static void otx2vf_vfaf_mbox_destroy(struct otx2_nic *vf)
