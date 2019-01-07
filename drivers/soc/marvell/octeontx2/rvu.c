@@ -1552,7 +1552,7 @@ static void __rvu_mbox_handler(struct rvu_work *mwork, int type)
 		if (msg->pcifunc & RVU_PFVF_FUNC_MASK)
 			dev_warn(rvu->dev, "Error %d when processing message %s (0x%x) from PF%d:VF%d\n",
 				 err, otx2_mbox_id2name(msg->id),
-				 msg->id, devid,
+				 msg->id, rvu_get_pf(msg->pcifunc),
 				 (msg->pcifunc & RVU_PFVF_FUNC_MASK) - 1);
 		else
 			dev_warn(rvu->dev, "Error %d when processing message %s (0x%x) from PF%d\n",
