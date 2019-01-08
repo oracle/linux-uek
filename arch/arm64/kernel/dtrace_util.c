@@ -87,19 +87,34 @@ static int dtrace_unwind_frame(struct user_stackframe *frame)
 		return -EINVAL;
 	}
 
-	/* Verify strictly increasing consecutive values.  Since the stack
+	/*
+	 * If the frame pointer in the current frame is NULL, we have reached
+	 * the end of the call chain.
+	 */
+	if (frame->fp == NULL)
+		return 0;
+
+	/*
+	 * In older glibc versions, the call chain did not end with an initial
+	 * frame with NULL frame pointer.  Instead, the initial frame stored
+	 * the beginning of the stack as frame pointer.  We look for that here
+	 * as a special case, and return a frame where the frame pointer is
+	 * set to NULL (as it ought to be).
+	 *
+	 * If we do not know the beginning of the stack, we are out of luck.
+	 */
+	if (current->dt_task && current->dt_task->dt_ustack == frame->fp) {
+		frame->fp = NULL;
+		return 0;
+	}
+
+	/*
+	 * Verify strictly increasing consecutive values.  Since the stack
 	 * grows downward, walking the call chain in reverse must yield ever
 	 * increasing frame pointers.
 	 */
-	if (ofp >= frame->fp) {
-		if (((uintptr_t)frame->fp & 0xf) &&
-		    current->dt_task && current->dt_task->dt_ustack == ofp) {
-			frame->fp = NULL;
-			return 0;
-		}
-
+	if (ofp >= frame->fp)
 		return -EINVAL;
-	}
 
 	return 0;
 }
@@ -171,12 +186,15 @@ void dtrace_user_stacktrace(stacktrace_state_t *st)
 		if (uprobe_return_addr_is_hijacked(frame.lr))
 			fixups++;
 
+		if (frame.fp == NULL)
+			break;
+
 		if (dtrace_unwind_frame(&frame) < 0) {
 			this_cpu_core->cpuc_dtrace_illval = (uintptr_t)frame.fp;
 			DTRACE_CPUFLAG_SET(CPU_DTRACE_BADSTACK);
 			break;
 		}
-	} while (frame.fp);
+	} while (frame.lr);
 
 	patches = 0;
 	for (ri = rilist; ri != NULL; ri = ri->next)
@@ -214,16 +232,20 @@ void dtrace_user_stacktrace(stacktrace_state_t *st)
 
 		if (pcs)
 			*pcs++ = frame.lr;
+
 		limit--;
 		st->depth++;
 
 skip_frame:
+		if (frame.fp == NULL)
+			break;
+
 		if (dtrace_unwind_frame(&frame) < 0) {
 			this_cpu_core->cpuc_dtrace_illval = (uintptr_t)frame.fp;
 			DTRACE_CPUFLAG_SET(CPU_DTRACE_BADSTACK);
 			break;
 		}
-	} while (limit && frame.fp);
+	} while (limit);
 
 out:
 	if (pcs) {
