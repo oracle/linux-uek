@@ -23,10 +23,50 @@ Optional properties:
  - cavium,dat-clk-skew : number of coprocessor clocks before sampling data
 
 Deprecated properties:
-- spi-max-frequency : use max-frequency instead
-- cavium,bus-max-width : use bus-width instead
-- power-gpios : use vmmc-supply instead
-- cavium,octeon-6130-mmc-slot : use mmc-slot instead
+ - spi-max-frequency : use max-frequency instead
+ - cavium,bus-max-width : use bus-width instead
+ - power-gpios : use vmmc-supply instead
+ - cavium,octeon-6130-mmc-slot : use mmc-slot instead
+
+GPIO control via vmmc-supply & vqmmc-supply:
+  Two types of regulator object can be specified as mmc properties,
+  typically regulator-fixed controlled by GPIO pins.
+
+  Octeon/OcteonTX chips commonly use GPIO8 as an MMC-reset pin.
+  In systems which may boot from MMC, it starts as input, and is gently
+  pulled up/down by board logic to indicate the active sense of the
+  signal. Chip reset then drives the signal in the opposite direction
+  to effect a reset of target devices.
+  Device tree should model this with a vmmc-supply regulator, gated by
+  GPIO8, so GPIO8 is driven in the non-reset direction when MMC devices
+  are probed, and held there until rmmod/shutdown/suspend.
+  This allows a warm reboot to reset the MMC devices.
+
+  Octeon/OcteonTX MMC supports up to 3 mmc slots, but any
+  level-shifting to accommodate different signal voltages is
+  done by external hardware, under control of an optional
+  vqmmc regulator object, typically controlled by GPIO.
+
+  If any mmc-slots have a vqmmc-supply property, it is taken as a warning
+  that we must switch carefully between slots (unless they have the same
+  vqmmc object), tri-stating MMC signals to avoid any transient states
+  as level-shifters are enabled/disabled.
+
+  Even when so-called bi-directional level shifters are used,
+  this technique should be employed when using different bus-widths
+  on different slots, disabling level shifters to avoid presenting
+  non-uniform impedance across DATA0-7 & CMD when non-selected
+  4-wide slots are left enabled, while accessing 8-wide targets.
+
+  Note that it's not possible to specify multiple regulators
+  controlled by same GPIO pin, but with different active state.
+  If one GPIO line is require to switch voltage/routing between
+  different mmc-slots, specify a vqmmc-supply on one slot, but
+  not the other. The regulator_disable call on leaving that slot
+  will implicitly switch the state to support the unmarked slot.
+
+  There's no need to list vqmmc-supply if all the mmc-slots on
+  a board run at same voltage, and have same width.
 
 Examples:
 	mmc_1_4: mmc@1,4 {

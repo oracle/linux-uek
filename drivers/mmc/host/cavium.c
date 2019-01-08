@@ -306,15 +306,37 @@ static bool pre_switch(struct cvm_mmc_host *host, u64 emm_switch)
 	int bus_id = get_bus_id(emm_switch);
 	struct cvm_mmc_slot *slot = host->slot[bus_id];
 	struct cvm_mmc_slot *old_slot;
+	bool same_vqmmc = false;
 
 	if (host->last_slot == bus_id)
 		return false;
+
+	/* when VQMMC is switched, tri-state CMDn over any slot change
+	 * to avoid transient states on D0-7 or CLK from level-shifters
+	 */
+	if (host->use_vqmmc) {
+		writeq(1ull << 3, host->base + MIO_EMM_CFG(host));
+		udelay(10);
+	}
 
 	if (host->last_slot >= 0 && host->slot[host->last_slot]) {
 		old_slot = host->slot[host->last_slot];
 		old_slot->cached_switch =
 		    readq(host->base + MIO_EMM_SWITCH(host));
 		old_slot->cached_rca = readq(host->base + MIO_EMM_RCA(host));
+
+		same_vqmmc = (slot->mmc->supply.vqmmc ==
+				old_slot->mmc->supply.vqmmc);
+		if (!same_vqmmc && !IS_ERR_OR_NULL(old_slot->mmc->supply.vqmmc))
+			regulator_disable(old_slot->mmc->supply.vqmmc);
+	}
+
+	if (!same_vqmmc && !IS_ERR_OR_NULL(slot->mmc->supply.vqmmc)) {
+		int e = regulator_enable(slot->mmc->supply.vqmmc);
+
+		if (e)
+			dev_err(host->dev, "mmc-slot@%d.vqmmc err %d\n",
+						bus_id, e);
 	}
 
 	host->last_slot = slot->bus_id;
@@ -326,6 +348,12 @@ static void post_switch(struct cvm_mmc_host *host, u64 emm_switch)
 {
 	int bus_id = get_bus_id(emm_switch);
 	struct cvm_mmc_slot *slot = host->slot[bus_id];
+
+	if (host->use_vqmmc) {
+		/* enable new CMDn */
+		writeq(1ull << bus_id, host->base + MIO_EMM_CFG(host));
+		udelay(10);
+	}
 
 	writeq(slot->cached_rca, host->base + MIO_EMM_RCA(host));
 }
@@ -1587,7 +1615,7 @@ static int cvm_mmc_init_lowlevel(struct cvm_mmc_slot *slot)
 	struct cvm_mmc_host *host = slot->host;
 	u64 emm_switch;
 
-	/* Enable this bus slot */
+	/* Enable this bus slot. Overridden when vqmmc-switching engaged */
 	host->emm_cfg |= (1ull << slot->bus_id);
 	writeq(host->emm_cfg, slot->host->base + MIO_EMM_CFG(host));
 	udelay(10);
@@ -1769,6 +1797,7 @@ int cvm_mmc_of_slot_probe(struct device *dev, struct cvm_mmc_host *host)
 
 	host->acquire_bus(host);
 	host->slot[id] = slot;
+	host->use_vqmmc |= !IS_ERR_OR_NULL(slot->mmc->supply.vqmmc);
 	cvm_mmc_init_lowlevel(slot);
 	cvm_mmc_switch_to(slot);
 	host->release_bus(host);
