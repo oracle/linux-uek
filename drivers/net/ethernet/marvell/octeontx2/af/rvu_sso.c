@@ -32,7 +32,7 @@
 	} while (0)
 #endif
 
-static void rvu_sso_hwgrp_config_thresh(struct rvu *rvu, int blkaddr, int lf)
+void rvu_sso_hwgrp_config_thresh(struct rvu *rvu, int blkaddr, int lf)
 {
 	struct rvu_hwinfo *hw = rvu->hw;
 	u64 add, grp_thr, grp_rsvd;
