@@ -21,6 +21,10 @@ TEST_GEN_FILES = test_pkt_access.o test_xdp.o test_l4lb.o test_tcp_estats.o test
 
 TEST_PROGS := test_kmod.sh test_xdp_redirect.sh
 
+TEST_PROGS_EXTENDED :=  \
+	tcp_client.py \
+	tcp_server.py
+
 include ../lib.mk
 
 BPFOBJ := $(OUTPUT)/libbpf.a
