@@ -140,22 +140,6 @@ bool cvm_is_mmc_timing_ddr(struct cvm_mmc_slot *slot)
 		return false;
 }
 
-bool cvm_is_mmc(struct cvm_mmc_slot *slot)
-{
-	switch (slot->mmc->ios.timing) {
-	case MMC_TIMING_LEGACY:
-		/* before CSD read, can we know SD-vs-eMMC? */
-		return true;
-	case MMC_TIMING_MMC_HS:
-	case MMC_TIMING_MMC_DDR52:
-	case MMC_TIMING_MMC_HS200:
-	case MMC_TIMING_MMC_HS400:
-		return true;
-	default: /* SD-card modes */
-		return false;
-	}
-}
-
 static void cvm_mmc_set_timing(struct cvm_mmc_slot *slot)
 {
 	if (is_mmc_8xxx(slot->host))
@@ -298,14 +282,14 @@ static void check_switch_errors(struct cvm_mmc_host *host)
 		dev_err(host->dev, "Switch bus width error\n");
 }
 
-static void clear_bus_id(u64 *reg)
+static inline void clear_bus_id(u64 *reg)
 {
 	u64 bus_id_mask = GENMASK_ULL(61, 60);
 
 	*reg &= ~bus_id_mask;
 }
 
-static void set_bus_id(u64 *reg, int bus_id)
+static inline void set_bus_id(u64 *reg, int bus_id)
 {
 	clear_bus_id(reg);
 	*reg |= FIELD_PREP(GENMASK(61, 60), bus_id);
@@ -316,26 +300,41 @@ static int get_bus_id(u64 reg)
 	return FIELD_GET(GENMASK_ULL(61, 60), reg);
 }
 
-/*
- * We never set the switch_exe bit since that would interfere
- * with the commands send by the MMC core.
- */
-static void do_switch(struct cvm_mmc_host *host, u64 emm_switch)
+/* save old slot details, switch power */
+static bool pre_switch(struct cvm_mmc_host *host, u64 emm_switch)
 {
-	int retries = 100;
-	u64 rsp_sts;
+	int bus_id = get_bus_id(emm_switch);
+	struct cvm_mmc_slot *slot = host->slot[bus_id];
+	struct cvm_mmc_slot *old_slot;
+
+	if (host->last_slot == bus_id)
+		return false;
+
+	if (host->last_slot >= 0 && host->slot[host->last_slot]) {
+		old_slot = host->slot[host->last_slot];
+		old_slot->cached_switch =
+		    readq(host->base + MIO_EMM_SWITCH(host));
+		old_slot->cached_rca = readq(host->base + MIO_EMM_RCA(host));
+	}
+
+	host->last_slot = slot->bus_id;
+
+	return true;
+}
+
+static void post_switch(struct cvm_mmc_host *host, u64 emm_switch)
+{
 	int bus_id = get_bus_id(emm_switch);
 	struct cvm_mmc_slot *slot = host->slot[bus_id];
 
-	/*
-	 * Modes setting only taken from slot 0. Work around that hardware
-	 * issue by first switching to slot 0.
-	 */
-	if (bus_id) {
-		clear_bus_id(&emm_switch);
-		writeq(emm_switch, host->base + MIO_EMM_SWITCH(host));
-		set_bus_id(&emm_switch, bus_id);
-	}
+	writeq(slot->cached_rca, host->base + MIO_EMM_RCA(host));
+}
+
+static inline void mode_switch(struct cvm_mmc_host *host, u64 emm_switch)
+{
+	u64 rsp_sts;
+	int retries = 100;
+
 	writeq(emm_switch, host->base + MIO_EMM_SWITCH(host));
 
 	/* wait for the switch to finish */
@@ -345,14 +344,38 @@ static void do_switch(struct cvm_mmc_host *host, u64 emm_switch)
 			break;
 		udelay(10);
 	} while (--retries);
+}
+
+/*
+ * We never set the switch_exe bit since that would interfere
+ * with the commands send by the MMC core.
+ */
+static void do_switch(struct cvm_mmc_host *host, u64 emm_switch)
+{
+	int bus_id = get_bus_id(emm_switch);
+	struct cvm_mmc_slot *slot = host->slot[bus_id];
+	bool slot_changed = pre_switch(host, emm_switch);
+
+	/*
+	 * Modes setting only taken from slot 0. Work around that hardware
+	 * issue by first switching to slot 0.
+	 */
+	if (bus_id) {
+		u64 switch0 = emm_switch;
+
+		clear_bus_id(&switch0);
+		mode_switch(host, switch0);
+	}
+
+	mode_switch(host, emm_switch);
 
 	check_switch_errors(host);
 
-	if (slot) {
-		if (emm_switch & MIO_EMM_SWITCH_CLK)
-			slot->cmd6_pending = false;
-		slot->cached_switch = emm_switch;
-	}
+	if (slot_changed)
+		post_switch(host, emm_switch);
+	slot->cached_switch = emm_switch;
+	if (emm_switch & MIO_EMM_SWITCH_CLK)
+		slot->cmd6_pending = false;
 }
 
 /* need to change hardware state to match software requirements? */
@@ -421,29 +444,15 @@ static void cvm_mmc_reset_bus(struct cvm_mmc_slot *slot)
 static void cvm_mmc_switch_to(struct cvm_mmc_slot *slot)
 {
 	struct cvm_mmc_host *host = slot->host;
-	struct cvm_mmc_slot *old_slot;
-	u64 emm_switch;
 
 	if (slot->bus_id == host->last_slot)
 		return;
 
-	if (host->last_slot >= 0 && host->slot[host->last_slot]) {
-		old_slot = host->slot[host->last_slot];
-		old_slot->cached_switch = readq(host->base + MIO_EMM_SWITCH(host));
-		old_slot->cached_rca = readq(host->base + MIO_EMM_RCA(host));
-	}
-
-	writeq(slot->cached_rca, host->base + MIO_EMM_RCA(host));
-	emm_switch = slot->cached_switch;
-
-
-	do_switch(host, emm_switch);
+	do_switch(host, slot->cached_switch);
 	host->powered = true;
 
 	emmc_io_drive_setup(slot);
 	cvm_mmc_configure_delay(slot);
-
-	host->last_slot = slot->bus_id;
 }
 
 static void do_read(struct cvm_mmc_slot *slot, struct mmc_request *req,
@@ -1336,7 +1345,7 @@ static void cvm_mmc_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 			cvm_mmc_reset_bus(slot);
 			if (host->global_pwr_gpiod)
 				host->set_shared_power(host, 0);
-			else if (!IS_ERR(mmc->supply.vmmc))
+			else if (!IS_ERR_OR_NULL(mmc->supply.vmmc))
 				mmc_regulator_set_ocr(mmc, mmc->supply.vmmc, 0);
 			host->powered = false;
 		}
@@ -1350,7 +1359,7 @@ static void cvm_mmc_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 	if (ios->power_mode == MMC_POWER_UP) {
 		if (host->global_pwr_gpiod)
 			host->set_shared_power(host, 1);
-		else if (!IS_ERR(mmc->supply.vmmc))
+		else if (!IS_ERR_OR_NULL(mmc->supply.vmmc))
 			mmc_regulator_set_ocr(mmc, mmc->supply.vmmc, ios->vdd);
 	}
 
@@ -1578,7 +1587,7 @@ static int cvm_mmc_init_lowlevel(struct cvm_mmc_slot *slot)
 	struct cvm_mmc_host *host = slot->host;
 	u64 emm_switch;
 
-	/* Enable this bus slot. */
+	/* Enable this bus slot */
 	host->emm_cfg |= (1ull << slot->bus_id);
 	writeq(host->emm_cfg, slot->host->base + MIO_EMM_CFG(host));
 	udelay(10);
@@ -1641,7 +1650,7 @@ static int cvm_mmc_of_parse(struct device *dev, struct cvm_mmc_slot *slot)
 	 * Legacy Octeon firmware has no regulator entry, fall-back to
 	 * a hard-coded voltage to get a sane OCR.
 	 */
-	if (IS_ERR(mmc->supply.vmmc))
+	if (IS_ERR_OR_NULL(mmc->supply.vmmc))
 		mmc->ocr_avail = MMC_VDD_32_33 | MMC_VDD_33_34;
 
 	/* Common MMC bindings */

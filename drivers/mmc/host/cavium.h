@@ -108,8 +108,8 @@ struct cvm_mmc_host {
 	int sys_freq;
 
 	bool use_sg;
-
 	bool has_ciu3;
+	bool powered;
 	bool big_dma_addr;
 	bool need_irq_handler_lock;
 	spinlock_t irq_handler_lock;
@@ -117,7 +117,6 @@ struct cvm_mmc_host {
 
 	struct gpio_desc *global_pwr_gpiod;
 	atomic_t shared_power_users;
-	bool powered;
 
 	struct cvm_mmc_slot *slot[CAVIUM_MAX_MMC];
 	struct platform_device *slot_pdev[CAVIUM_MAX_MMC];
