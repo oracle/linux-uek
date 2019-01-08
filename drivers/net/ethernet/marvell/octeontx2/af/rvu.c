@@ -1317,7 +1317,7 @@ bool is_pffunc_map_valid(struct rvu *rvu, u16 pcifunc, int blktype)
 	pfvf = rvu_get_pfvf(rvu, pcifunc);
 
 	/* Check if this PFFUNC has a LF of type blktype attached */
-	if (!is_blktype_attached(pfvf, blktype))
+	if (blktype != BLKTYPE_SSO && !is_blktype_attached(pfvf, blktype))
 		return false;
 
 	return true;
