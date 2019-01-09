@@ -868,8 +868,7 @@ static int bnxt_re_init_user_qp(struct bnxt_re_dev *rdev, struct bnxt_re_pd *pd,
 	if (qplib_qp->type == CMDQ_CREATE_QP_TYPE_RC)
 		bytes += (qplib_qp->sq.max_wqe * sizeof(struct sq_psn_search));
 	bytes = PAGE_ALIGN(bytes);
-	umem = ib_umem_get(context, ureq.qpsva, bytes,
-			   IB_ACCESS_LOCAL_WRITE, 1);
+	umem = ib_umem_get(udata, ureq.qpsva, bytes, IB_ACCESS_LOCAL_WRITE, 1);
 	if (IS_ERR(umem))
 		return PTR_ERR(umem);
 
@@ -881,7 +880,7 @@ static int bnxt_re_init_user_qp(struct bnxt_re_dev *rdev, struct bnxt_re_pd *pd,
 	if (!qp->qplib_qp.srq) {
 		bytes = (qplib_qp->rq.max_wqe * BNXT_QPLIB_MAX_RQE_ENTRY_SIZE);
 		bytes = PAGE_ALIGN(bytes);
-		umem = ib_umem_get(context, ureq.qprva, bytes,
+		umem = ib_umem_get(udata, ureq.qprva, bytes,
 				   IB_ACCESS_LOCAL_WRITE, 1);
 		if (IS_ERR(umem))
 			goto rqfail;
@@ -2374,7 +2373,7 @@ struct ib_cq *bnxt_re_create_cq(struct ib_device *ibdev,
 			goto fail;
 		}
 
-		cq->umem = ib_umem_get(context, req.cq_va,
+		cq->umem = ib_umem_get(udata, req.cq_va,
 				       entries * sizeof(struct cq_base),
 				       IB_ACCESS_LOCAL_WRITE, 1);
 		if (IS_ERR(cq->umem)) {
@@ -3303,8 +3302,7 @@ struct ib_mr *bnxt_re_reg_user_mr(struct ib_pd *ib_pd, u64 start, u64 length,
 	/* The fixed portion of the rkey is the same as the lkey */
 	mr->ib_mr.rkey = mr->qplib_mr.rkey;
 
-	umem = ib_umem_get(ib_pd->uobject->context, start, length,
-			   mr_access_flags, 0);
+	umem = ib_umem_get(udata, start, length, mr_access_flags, 0);
 	if (IS_ERR(umem)) {
 		dev_err(rdev_to_dev(rdev), "Failed to get umem");
 		rc = -EFAULT;
