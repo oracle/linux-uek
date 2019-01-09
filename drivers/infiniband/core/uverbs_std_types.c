@@ -445,7 +445,7 @@ DECLARE_UVERBS_OBJECT(uverbs_object_mr, UVERBS_OBJECT_MR,
 
 #ifndef WITHOUT_ORACLE_EXTENSIONS
 
-DECLARE_UVERBS_OBJECT(uverbs_object_fmr, ORACLE_PRIVATE_UVERBS_OBJECT_FMR,
+DECLARE_UVERBS_OBJECT(uverbs_object_fmr, UVERBS_OBJECT_FMR,
 		      /* 1 is used in order to free the MR after all the MWs */
 		      &UVERBS_TYPE_ALLOC_IDR(1, uverbs_free_fmr));
 
