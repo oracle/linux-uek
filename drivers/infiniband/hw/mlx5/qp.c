@@ -747,16 +747,14 @@ static int bfregn_to_uar_index(struct mlx5_ib_dev *dev,
 	return bfregi->sys_pages[index_of_sys_page] + offset;
 }
 
-static int mlx5_ib_umem_get(struct mlx5_ib_dev *dev,
-			    struct ib_pd *pd,
+static int mlx5_ib_umem_get(struct mlx5_ib_dev *dev, struct ib_udata *udata,
 			    unsigned long addr, size_t size,
-			    struct ib_umem **umem,
-			    int *npages, int *page_shift, int *ncont,
-			    u32 *offset)
+			    struct ib_umem **umem, int *npages, int *page_shift,
+			    int *ncont, u32 *offset)
 {
 	int err;
 
-	*umem = ib_umem_get(pd->uobject->context, addr, size, 0, 0);
+	*umem = ib_umem_get(udata, addr, size, 0, 0);
 	if (IS_ERR(*umem)) {
 		mlx5_ib_dbg(dev, "umem_get failed\n");
 		return PTR_ERR(*umem);
@@ -797,10 +795,9 @@ static void destroy_user_rq(struct mlx5_ib_dev *dev, struct ib_pd *pd,
 }
 
 static int create_user_rq(struct mlx5_ib_dev *dev, struct ib_pd *pd,
-			  struct mlx5_ib_rwq *rwq,
+			  struct ib_udata *udata, struct mlx5_ib_rwq *rwq,
 			  struct mlx5_ib_create_wq *ucmd)
 {
-	struct mlx5_ib_ucontext *context;
 	int page_shift = 0;
 	int npages;
 	u32 offset = 0;
@@ -810,9 +807,7 @@ static int create_user_rq(struct mlx5_ib_dev *dev, struct ib_pd *pd,
 	if (!ucmd->buf_addr)
 		return -EINVAL;
 
-	context = to_mucontext(pd->uobject->context);
-	rwq->umem = ib_umem_get(pd->uobject->context, ucmd->buf_addr,
-			       rwq->buf_size, 0, 0);
+	rwq->umem = ib_umem_get(udata, ucmd->buf_addr, rwq->buf_size, 0, 0);
 	if (IS_ERR(rwq->umem)) {
 		mlx5_ib_dbg(dev, "umem_get failed\n");
 		err = PTR_ERR(rwq->umem);
@@ -837,7 +832,8 @@ static int create_user_rq(struct mlx5_ib_dev *dev, struct ib_pd *pd,
 		    (unsigned long long)ucmd->buf_addr, rwq->buf_size,
 		    npages, page_shift, ncont, offset);
 
-	err = mlx5_ib_db_map_user(context, ucmd->db_addr, &rwq->db);
+	err = mlx5_ib_db_map_user(to_mucontext(pd->uobject->context), udata,
+				  ucmd->db_addr, &rwq->db);
 	if (err) {
 		mlx5_ib_dbg(dev, "map failed\n");
 		goto err_umem;
@@ -922,10 +918,9 @@ static int create_user_qp(struct mlx5_ib_dev *dev, struct ib_pd *pd,
 
 	if (ucmd.buf_addr && ubuffer->buf_size) {
 		ubuffer->buf_addr = ucmd.buf_addr;
-		err = mlx5_ib_umem_get(dev, pd, ubuffer->buf_addr,
-				       ubuffer->buf_size,
-				       &ubuffer->umem, &npages, &page_shift,
-				       &ncont, &offset);
+		err = mlx5_ib_umem_get(dev, udata, ubuffer->buf_addr,
+				       ubuffer->buf_size, &ubuffer->umem,
+				       &npages, &page_shift, &ncont, &offset);
 		if (err)
 			goto err_bfreg;
 	} else {
@@ -953,7 +948,7 @@ static int create_user_qp(struct mlx5_ib_dev *dev, struct ib_pd *pd,
 	resp->bfreg_index = adjust_bfregn(dev, &context->bfregi, bfregn);
 	qp->bfregn = bfregn;
 
-	err = mlx5_ib_db_map_user(context, ucmd.db_addr, &qp->db);
+	err = mlx5_ib_db_map_user(context, udata, ucmd.db_addr, &qp->db);
 	if (err) {
 		mlx5_ib_dbg(dev, "map failed\n");
 		goto err_free;
@@ -1157,6 +1152,7 @@ static void destroy_raw_packet_qp_tis(struct mlx5_ib_dev *dev,
 }
 
 static int create_raw_packet_qp_sq(struct mlx5_ib_dev *dev,
+				   struct ib_udata *udata,
 				   struct mlx5_ib_sq *sq, void *qpin,
 				   struct ib_pd *pd)
 {
@@ -1173,9 +1169,9 @@ static int create_raw_packet_qp_sq(struct mlx5_ib_dev *dev,
 	int ncont = 0;
 	u32 offset = 0;
 
-	err = mlx5_ib_umem_get(dev, pd, ubuffer->buf_addr, ubuffer->buf_size,
-			       &sq->ubuffer.umem, &npages, &page_shift,
-			       &ncont, &offset);
+	err = mlx5_ib_umem_get(dev, udata, ubuffer->buf_addr, ubuffer->buf_size,
+			       &sq->ubuffer.umem, &npages, &page_shift, &ncont,
+			       &offset);
 	if (err)
 		return err;
 
@@ -1346,7 +1342,9 @@ static void destroy_raw_packet_qp_tir(struct mlx5_ib_dev *dev,
 
 static int create_raw_packet_qp(struct mlx5_ib_dev *dev, struct mlx5_ib_qp *qp,
 				u32 *in, size_t inlen,
-				struct ib_pd *pd)
+				struct ib_pd *pd,
+				struct ib_udata *udata,
+				struct mlx5_ib_create_qp_resp *resp)
 {
 	struct mlx5_ib_raw_packet_qp *raw_packet_qp = &qp->raw_packet_qp;
 	struct mlx5_ib_sq *sq = &raw_packet_qp->sq;
@@ -1362,7 +1360,7 @@ static int create_raw_packet_qp(struct mlx5_ib_dev *dev, struct mlx5_ib_qp *qp,
 		if (err)
 			return err;
 
-		err = create_raw_packet_qp_sq(dev, sq, in, pd);
+		err = create_raw_packet_qp_sq(dev, udata, sq, in, pd);
 		if (err)
 			goto err_destroy_tis;
 
@@ -1389,7 +1387,6 @@ static int create_raw_packet_qp(struct mlx5_ib_dev *dev, struct mlx5_ib_qp *qp,
 						     rq->base.mqp.qpn;
 
 	return 0;
-
 err_destroy_rq:
 	destroy_raw_packet_qp_rq(dev, rq);
 err_destroy_sq:
@@ -1903,7 +1900,8 @@ static int create_qp_common(struct mlx5_ib_dev *dev, struct ib_pd *pd,
 	    qp->flags & MLX5_IB_QP_UNDERLAY) {
 		qp->raw_packet_qp.sq.ubuffer.buf_addr = ucmd.sq_buf_addr;
 		raw_packet_qp_copy_info(qp, &qp->raw_packet_qp);
-		err = create_raw_packet_qp(dev, qp, in, inlen, pd);
+		err = create_raw_packet_qp(dev, qp, in, inlen, pd, udata,
+                                           &resp);
 	} else {
 		err = mlx5_core_create_qp(dev->mdev, &base->mqp, in, inlen);
 	}
@@ -5081,7 +5079,7 @@ static int prepare_user_rq(struct ib_pd *pd,
 		return err;
 	}
 
-	err = create_user_rq(dev, pd, rwq, &ucmd);
+	err = create_user_rq(dev, pd, udata, rwq, &ucmd);
 	if (err) {
 		mlx5_ib_dbg(dev, "err %d\n", err);
 		if (err)
