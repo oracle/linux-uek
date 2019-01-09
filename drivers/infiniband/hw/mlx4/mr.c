@@ -393,7 +393,7 @@ struct ib_mr *mlx4_ib_reg_user_mr(struct ib_pd *pd, u64 start, u64 length,
 			umem_flags |= IB_ACCESS_LOCAL_WRITE;
 		up_read(&current->mm->mmap_sem);
 	}
-	mr->umem = ib_umem_get(pd->uobject->context, start, length,
+	mr->umem = ib_umem_get(udata, start, length,
 				umem_flags, 0);
 	if (IS_ERR(mr->umem)) {
 		err = PTR_ERR(mr->umem);
@@ -483,7 +483,7 @@ int mlx4_ib_rereg_user_mr(struct ib_mr *mr, int flags,
 
 		mlx4_mr_rereg_mem_cleanup(dev->dev, &mmr->mmr);
 		ib_umem_release(mmr->umem);
-		mmr->umem = ib_umem_get(mr->uobject->context, start, length,
+		mmr->umem = ib_umem_get(udata, start, length,
 					mr_access_flags |
 					IB_ACCESS_LOCAL_WRITE,
 					0);

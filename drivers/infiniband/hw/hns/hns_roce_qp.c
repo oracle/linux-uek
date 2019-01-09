@@ -430,8 +430,7 @@ static int hns_roce_create_qp_common(struct hns_roce_dev *hr_dev,
 			goto err_out;
 		}
 
-		hr_qp->umem = ib_umem_get(ib_pd->uobject->context,
-					  ucmd.buf_addr, hr_qp->buff_size, 0,
+		hr_qp->umem = ib_umem_get(udata, ucmd.buf_addr, hr_qp->buff_size, 0,
 					  0);
 		if (IS_ERR(hr_qp->umem)) {
 			dev_err(dev, "ib_umem_get error for create qp\n");
