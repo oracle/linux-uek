@@ -47,25 +47,15 @@ enum uverbs_default_objects {
 	UVERBS_OBJECT_SRQ,
 	UVERBS_OBJECT_AH,
 	UVERBS_OBJECT_MR,
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	UVERBS_OBJECT_FMR,
+#endif
 	UVERBS_OBJECT_MW,
 	UVERBS_OBJECT_FLOW,
 	UVERBS_OBJECT_XRCD,
 	UVERBS_OBJECT_RWQ_IND_TBL,
 	UVERBS_OBJECT_WQ,
 	UVERBS_OBJECT_LAST,
-#ifndef WITHOUT_ORACLE_EXTENSIONS
-	/*
-	 * Keep Oracle's proprietary objects far away
-	 * from even UVERBS_OBJECT_LAST.
-	 * This obviously carries the risk that
-	 * one day in the future UVERBS_OBJECT_LAST
-	 * will be used or checked against
-	 * (as of this writing, it isn't).
-	 * At that time, the Oracle proprietary objects
-	 * may stop functioning.
-	 */
-	ORACLE_PRIVATE_UVERBS_OBJECT_FMR = 255,
-#endif
 };
 
 enum {
