@@ -49,7 +49,7 @@ static struct cpt_device_table ae_devices = {
 
 static inline int get_se_device(struct pci_dev **pdev, int *cpu_num)
 {
-	int count;
+	int count, err = 0;
 
 	count = atomic_read(&se_devices.count);
 	if (count < 1)
@@ -84,11 +84,11 @@ static inline int get_se_device(struct pci_dev **pdev, int *cpu_num)
 
 	default:
 		pr_err("Unknown PF type %d\n", se_devices.desc[0].pf_type);
-		return -EINVAL;
+		err = -EINVAL;
 	}
 
 	put_cpu();
-	return 0;
+	return err;
 }
 
 static inline int validate_hmac_cipher_null(struct cpt_request_info *cpt_req)
