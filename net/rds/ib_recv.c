@@ -81,7 +81,7 @@ void rds_ib_recv_init_ring(struct rds_ib_connection *ic)
 		sge->length = sizeof(struct rds_header);
 		sge->lkey = ic->i_mr->lkey;
 
-		for (j = 1; j <= num_send_sge; j++) {
+		for (j = 1; j < num_send_sge; j++) {
 			sge = recv->r_sge + j;
 			sge->addr = 0;
 			sge->length = PAGE_SIZE;
