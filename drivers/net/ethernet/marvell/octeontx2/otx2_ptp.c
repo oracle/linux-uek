@@ -11,6 +11,7 @@
 #include <linux/ptp_clock_kernel.h>
 
 #include "otx2_common.h"
+#include "otx2_ptp.h"
 
 struct otx2_ptp {
 	struct kref refcount;
@@ -44,7 +45,7 @@ static int otx2_ptp_adjfine(struct ptp_clock_info *ptp_info, long scaled_ppm)
 	req->op = PTP_OP_ADJFINE;
 	req->scaled_ppm = scaled_ppm;
 
-	err = otx2_sync_mbox_msg(&ptp->nic->mbox);
+	err = otx2_sync_mbox_msg_busy_poll(&ptp->nic->mbox);
 	if (err)
 		return err;
 
@@ -67,7 +68,7 @@ static u64 ptp_cc_read(const struct cyclecounter *cc)
 
 	req->op = PTP_OP_GET_CLOCK;
 
-	err = otx2_sync_mbox_msg(&ptp->nic->mbox);
+	err = otx2_sync_mbox_msg_busy_poll(&ptp->nic->mbox);
 	if (err)
 		return 0;
 
@@ -83,11 +84,10 @@ static int otx2_ptp_adjtime(struct ptp_clock_info *ptp_info, s64 delta)
 {
 	struct otx2_ptp *ptp = container_of(ptp_info, struct otx2_ptp,
 					    ptp_info);
-	unsigned long flags;
 
-	spin_lock_irqsave(&ptp->spin_lock, flags);
+	spin_lock(&ptp->spin_lock);
 	timecounter_adjtime(&ptp->time_counter, delta);
-	spin_unlock_irqrestore(&ptp->spin_lock, flags);
+	spin_unlock(&ptp->spin_lock);
 
 	return 0;
 }
@@ -97,12 +97,11 @@ static int otx2_ptp_gettime(struct ptp_clock_info *ptp_info,
 {
 	struct otx2_ptp *ptp = container_of(ptp_info, struct otx2_ptp,
 					    ptp_info);
-	unsigned long flags;
 	u64 nsec;
 
-	spin_lock_irqsave(&ptp->spin_lock, flags);
+	spin_lock(&ptp->spin_lock);
 	nsec = timecounter_read(&ptp->time_counter);
-	spin_unlock_irqrestore(&ptp->spin_lock, flags);
+	spin_unlock(&ptp->spin_lock);
 
 	*ts = ns_to_timespec64(nsec);
 
@@ -114,14 +113,13 @@ static int otx2_ptp_settime(struct ptp_clock_info *ptp_info,
 {
 	struct otx2_ptp *ptp = container_of(ptp_info, struct otx2_ptp,
 					    ptp_info);
-	unsigned long flags;
 	u64 nsec;
 
 	nsec = timespec64_to_ns(ts);
 
-	spin_lock_irqsave(&ptp->spin_lock, flags);
+	spin_lock(&ptp->spin_lock);
 	timecounter_init(&ptp->time_counter, &ptp->cycle_counter, nsec);
-	spin_unlock_irqrestore(&ptp->spin_lock, flags);
+	spin_unlock(&ptp->spin_lock);
 
 	return 0;
 }
