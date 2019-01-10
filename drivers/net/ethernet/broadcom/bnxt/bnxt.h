@@ -1200,7 +1200,6 @@ struct bnxt {
 	u8			nge_port_cnt;
 	__le16			nge_fw_dst_port_id;
 	u8			port_partition_type;
-	u8			port_count;
 	u16			br_mode;
 
 	struct bnxt_coal	rx_coal;
