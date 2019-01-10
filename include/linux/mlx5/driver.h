@@ -87,8 +87,19 @@ enum {
 	MLX5_EQ_VEC_CMD		 = 1,
 	MLX5_EQ_VEC_ASYNC	 = 2,
 	MLX5_EQ_VEC_PFAULT	 = 3,
-	MLX5_EQ_VEC_COMP_BASE,
+	MLX5_EQ_MAX_ASYNC_EQS,
+	MLX5_EQ_VEC_COMP_BASE = MLX5_EQ_MAX_ASYNC_EQS,
 };
+
+enum {
+	MLX5_EQ_VEC_SHARED_CTRL = 0,
+	MLX5_EQ_VEC_SHARED_PF = 1,
+	MLX5_EQ_VEC_COMP_BASE_SHARED
+};
+
+#define MLX5_EQ_VEC_COMP_BASE(dev) \
+		(mlx5_core_is_pf(dev) ? MLX5_EQ_VEC_COMP_BASE :\
+					MLX5_EQ_VEC_COMP_BASE_SHARED)
 
 enum {
 	MLX5_MAX_IRQ_NAME	= 32
@@ -398,6 +409,8 @@ struct mlx5_eq {
 #endif
 	};
 	u32			cq_count;
+	unsigned int            eq_idx;
+	unsigned int            vecidx;
 };
 
 struct mlx5_core_psv {
@@ -465,12 +478,7 @@ struct mlx5_eq_table {
 	void __iomem	       *update_ci;
 	void __iomem	       *update_arm_ci;
 	struct list_head	comp_eqs_list;
-	struct mlx5_eq		pages_eq;
-	struct mlx5_eq		async_eq;
-	struct mlx5_eq		cmd_eq;
-#ifdef CONFIG_INFINIBAND_ON_DEMAND_PAGING
-	struct mlx5_eq		pfault_eq;
-#endif
+	struct mlx5_eq		ctrl_eqs[MLX5_EQ_MAX_ASYNC_EQS];
 	int			num_comp_vectors;
 	/* protect EQs list
 	 */
@@ -569,6 +577,8 @@ struct mlx5_core_sriov {
 struct mlx5_irq_info {
 	cpumask_var_t mask;
 	char name[MLX5_MAX_IRQ_NAME];
+	DECLARE_BITMAP(active_eqs, MLX5_EQ_MAX_ASYNC_EQS);
+	bool is_shared;
 };
 
 struct mlx5_fc_stats {
@@ -1090,9 +1100,10 @@ void mlx5_srq_event(struct mlx5_core_dev *dev, u32 srqn, int event_type);
 struct mlx5_core_srq *mlx5_core_get_srq(struct mlx5_core_dev *dev, u32 srqn);
 void mlx5_cmd_comp_handler(struct mlx5_core_dev *dev, u64 vec, bool forced);
 void mlx5_cq_event(struct mlx5_core_dev *dev, u32 cqn, int event_type);
-int mlx5_create_map_eq(struct mlx5_core_dev *dev, struct mlx5_eq *eq, u8 vecidx,
+int mlx5_create_map_eq(struct mlx5_core_dev *dev, struct mlx5_eq *eq, u8 idx,
 		       int nent, u64 mask, const char *name,
-		       enum mlx5_eq_type type);
+		       enum mlx5_eq_type type,
+		       bool is_shared);
 int mlx5_destroy_unmap_eq(struct mlx5_core_dev *dev, struct mlx5_eq *eq);
 int mlx5_start_eqs(struct mlx5_core_dev *dev);
 void mlx5_stop_eqs(struct mlx5_core_dev *dev);
