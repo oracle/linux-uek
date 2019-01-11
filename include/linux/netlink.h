@@ -50,6 +50,8 @@ struct nlmsghdr {
 #define NLM_F_ACK		4	/* Reply with ack, with zero or error code */
 #define NLM_F_ECHO		8	/* Echo this request 		*/
 
+#define NLM_F_SKIP_STATS	0x20
+
 /* Modifiers to GET request */
 #define NLM_F_ROOT	0x100	/* specify tree	root	*/
 #define NLM_F_MATCH	0x200	/* return all matching	*/

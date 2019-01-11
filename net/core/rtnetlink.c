@@ -52,6 +52,7 @@
 #include <net/fib_rules.h>
 #include <net/rtnetlink.h>
 #include <net/net_namespace.h>
+#include <linux/netlink.h>
 
 struct rtnl_link {
 	rtnl_doit_func		doit;
@@ -855,6 +856,7 @@ static int rtnl_fill_ifinfo(struct sk_buff *skb, struct net_device *dev,
 	const struct rtnl_link_stats64 *stats;
 	struct nlattr *attr, *af_spec;
 	struct rtnl_af_ops *af_ops;
+	bool skip_af_stats = (flags & NLM_F_SKIP_STATS);
 
 	ASSERT_RTNL();
 	nlh = nlmsg_put(skb, pid, seq, type, sizeof(*ifm), flags);
@@ -977,7 +979,7 @@ static int rtnl_fill_ifinfo(struct sk_buff *skb, struct net_device *dev,
 			if (!(af = nla_nest_start(skb, af_ops->family)))
 				goto nla_put_failure;
 
-			err = af_ops->fill_link_af(skb, dev);
+			err = af_ops->fill_link_af(skb, dev, skip_af_stats);
 
 			/*
 			 * Caller may return ENODATA to indicate that there
@@ -1017,6 +1019,7 @@ static int rtnl_dump_ifinfo(struct sk_buff *skb, struct netlink_callback *cb)
 
 	rcu_read_lock();
 	for (h = s_h; h < NETDEV_HASHENTRIES; h++, s_idx = 0) {
+		unsigned int flags = (cb->nlh->nlmsg_flags & NLM_F_SKIP_STATS);
 		idx = 0;
 		head = &net->dev_index_head[h];
 		hlist_for_each_entry_rcu(dev, node, head, index_hlist) {
@@ -1025,7 +1028,7 @@ static int rtnl_dump_ifinfo(struct sk_buff *skb, struct netlink_callback *cb)
 			if (rtnl_fill_ifinfo(skb, dev, RTM_NEWLINK,
 					     NETLINK_CB(cb->skb).pid,
 					     cb->nlh->nlmsg_seq, 0,
-					     NLM_F_MULTI) <= 0)
+					     NLM_F_MULTI | flags) <= 0)
 				goto out;
 cont:
 			idx++;
