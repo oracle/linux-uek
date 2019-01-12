@@ -2292,6 +2292,28 @@ out:
 	read_unlock(&dev_base_lock);
 }
 
+static void rdmaip_add_new_rdmaip_port(struct net_device *netdev, u8 port)
+{
+	struct rdmaip_port_ud_work *work;
+
+	RDMAIP_DBG2("Adding to new netdev %s port%d to ip_config\n",
+		    netdev->name, port);
+
+	if ((netdev->flags & IFF_UP) && !(netdev->flags & IFF_SLAVE) &&
+	   !(netdev->flags & IFF_MASTER)) {
+
+		work = kzalloc(sizeof(*work), GFP_ATOMIC);
+		if (work) {
+			work->dev = netdev;
+			work->timeout = msecs_to_jiffies(10000);
+			INIT_DELAYED_WORK(&work->work,
+				  rdmaip_addintf_after_initscripts);
+			queue_delayed_work(rdmaip_wq, &work->work,
+					msecs_to_jiffies(100));
+		} else
+			RDMAIP_DBG2("Failed to allocated memory for work\n");
+	}
+}
 
 /*
  * Network stack calls this callback routine when ever there
@@ -2342,22 +2364,10 @@ static int rdmaip_netdev_callback(struct notifier_block *self,
 
 	if (!port && event == NETDEV_UP) {
 		/*
-		 * New port. Schediule new port initialization
+		 * New port. Schedule new port initialization
 		 * and bail out from here.
 		 */
-		if ((ndev->flags & IFF_UP) && !(ndev->flags & IFF_SLAVE) &&
-		   !(ndev->flags & IFF_MASTER)) {
-
-			work = kzalloc(sizeof(*work), GFP_ATOMIC);
-			if (work) {
-				work->dev = ndev;
-				work->timeout = msecs_to_jiffies(10000);
-				INIT_DELAYED_WORK(&work->work,
-					  rdmaip_addintf_after_initscripts);
-				queue_delayed_work(rdmaip_wq, &work->work,
-						msecs_to_jiffies(100));
-			}
-		}
+		rdmaip_add_new_rdmaip_port(ndev, port);
 		return NOTIFY_DONE;
 	}
 
