@@ -152,42 +152,11 @@ static int cvm_mmc_configure_delay(struct cvm_mmc_slot *slot)
 	struct cvm_mmc_host *host = slot->host;
 
 	if (!is_mmc_8xxx(host)) {
-		/* SDR, data out delay is zero */
-		slot->data_out_tap = 0;
+		slot->cmd_cnt = 4;
+		slot->data_cnt = 4;
+		slot->cmd_out_tap = 39;
+		slot->data_out_tap = 39;
 
-		/*
-		 * EMM_CMD hold time from rising edge of EMMC_CLK.
-		 * Typically 5.0 ns at frequencies < 26 MHz.
-		 * Typically 2.5 ns at frequencies <= 52 MHz.
-		 * Typically 0.4 ns at frequencies > 52 MHz.
-		 */
-		if (slot->mmc->ios.clock < MHZ_26)
-			delay = cvm_mmc_calc_delay(slot, PS_5000);
-		else if (slot->mmc->ios.clock <= MHZ_52)
-			delay = cvm_mmc_calc_delay(slot, PS_2500);
-		else
-			delay  = cvm_mmc_calc_delay(slot, PS_400);
-		if (slot->cmd_out_tap < 0) {
-			pr_err("Error: could not calculate command out clock skew\n");
-			return -EINVAL;
-		}
-		slot->cmd_out_tap = delay;
-
-		/*
-		 * EMM_DAT hold time from either edge of EMMC_CLK.
-		 * Typically set to 0 for single data rate since data is
-		 * output on falling edge of EMMC_CLK. For DDR:
-		 * Typically 5.0 ns at frequencies < 26 MHz.
-		 * Typically 2.5 ns at frequencies <= 52 MHz.
-		 * Typically 0.4 ns at frequencies > 52 MHz.
-		 */
-		if (cvm_is_mmc_timing_ddr(slot))
-			slot->data_out_tap = delay;
-
-		/*
-		 * Pack all the four respective delays for data/cmd - in/out
-		 * to be written to MIO_EMM_TIMING register.
-		 */
 		timing = FIELD_PREP(MIO_EMM_MIO_TIMING_DATA_IN,
 							slot->data_cnt) |
 			FIELD_PREP(MIO_EMM_MIO_TIMING_DATA_OUT,
@@ -196,12 +165,6 @@ static int cvm_mmc_configure_delay(struct cvm_mmc_slot *slot)
 							slot->cmd_cnt) |
 			FIELD_PREP(MIO_EMM_MIO_TIMING_CMD_OUT,
 						slot->cmd_out_tap);
-
-		pr_debug("data in: %u, data out: %u, cmd in: %u, cmd out: %u\n",
-				slot->data_cnt, slot->data_out_tap,
-				slot->cmd_cnt, slot->cmd_out_tap);
-
-		/* Commit the delay values ot register */
 		writeq(timing, host->base + MIO_EMM_TIMING(host));
 	} else {
 		/* MIO_EMM_SAMPLE is till T83XX */
