@@ -105,6 +105,9 @@ if [ "$tok" = "kmod" ]; then
     ${OBJDUMP} -tr ${ofn} | \
     awk '/^RELOC/ {
 	     sect = substr($4, 2, length($4) - 3);
+	     if (sect ~ /^\.(exit|init|meminit)\.text/)
+		 sect = 0;
+
 	     next;
 	 }
 
@@ -127,6 +130,9 @@ if [ "$tok" = "kmod" ]; then
 	 }
 
 	 / F / {
+	     if ($4 ~ /^\.(exit|init|meminit)\.text/)
+		 next;
+
 	     if ($6 == ".hidden")
 		 print $4 " " $1 " G " $7;
 	     else
@@ -144,18 +150,24 @@ if [ "$tok" = "kmod" ]; then
                  v1h = strtonum("0x"substr(v1, 1, d - 8));
                  v1l = strtonum("0x"substr(v1, d - 8 + 1));
 
-                 if (v0l > v1l) {
+                 if (v0l >= v1l) {
                      if (v0h >= v1h) {
                          d = sprintf("%08x%08x", v0h - v1h, v0l - v1l);
                      } else {
-                         printf "#error Invalid addresses: %x vs %x", v0, v1 \
-                                                                >"/dev/stderr";
+                         printf "#error Invalid addresses: %s - %s\n", v0, v1 \
+				>"/dev/stderr";
                          errc++;
                      }
                  } else {
-                     printf "#error Invalid addresses: %x vs %x", v0, v1 \
-                                                                >"/dev/stderr";
-                     errc++;
+		     if (v0h > v1h) {
+			 v0h--;
+			 v0l += 4294967296;
+			 d = sprintf("%08x%08x", v0h - v1h, v0l - v1l);
+		     } else {
+			 printf "#error Invalid addresses: %s - %s\n", v0, v1 \
+				>"/dev/stderr";
+			 errc++;
+		     }
                  }
              } else {
                  v0 = strtonum("0x"v0);
@@ -238,42 +250,78 @@ if [ "$tok" = "kmod" ]; then
 	     exit(errc == 0 ? 0 : 1);
 	 }' > $tfn
 else
-    # For a linked kernel (with relocation data), the scope of DTrace SDT
-    # probe discovery can be limited to just the .text section.
+    # For a linked kernel (with relocation data), the scope of the DTrace SDT
+    # probe discovery can be limited to CODE sections that are not included in
+    # the init or exit code sections.
     #
-    # First the section record is retrieved in order to determine the base
-    # address for symbols in the .text section.
+    # First the sections records are parsed to order to determine the base
+    # address for each relevant section.
     #
-    # Subsequently, all function symbols that are located in the .text sectio
-    # are read from the symbol table of the linked kernel object.  Each symbol
-    # is reported in the output stream with its address, a token identifying it
-    # as a function (or alias), and its name.
+    # Subsequently, all function symbols that are located in the sections we
+    # care about are read from the symbol table of the linked kernel object.
+    # Each symbol is reported in the output stream with its section name,
+    # address, a token identifying it as a function (or alias), and its name.
     #
-    # Finally, each relocation record from the .text section that relates to
-    # SDT probes are written to the output stream with its address, a token
-    # identifying it as a relocation, and its name.  Probes are identified in
-    # the relocation records as symbols with either a __dtrace_probe_ or
-    # __dtrace_isenabled_ prefix.
+    # Finally, each relocation record from relevant sections that relates to
+    # SDT probes are written to the output stream with its section name,
+    # address, a token # identifying it as a relocation, and its name.  Probes
+    # are identified in the relocation records as symbols with either a
+    # __dtrace_probe_ or __dtrace_isenabled_ prefix.
     #
-    # We sort the output based on the address, which guarantees that the output
-    # will be a list of functions, and each function record will be followed 
-    # immediately by any DTrace SDT probe records that are used in that
-    # function.
+    # We sort the output based on the section name and address, ensuring that
+    # the output will be a list of functions, and each function record will be
+    # followed immediately by any DTrace SDT probe records that are used in
+    # that function.
     #
-    # Three different record types can show up in the output (3 tokens each):
-    #    <address> F <name>
+    # Three different record types can show up in the output (4 tokens each):
+    #    <section> <address> F <name>
     #        Named function at a specific address.
-    #    <address> G <name>
+    #    <section> <address> G <name>
     #        Global alias for a local function at a specific offset.  A
     #        function can only have one alias, and there cannot be an alias
     #        without its respective function.
-    #    <address> R <value>
+    #    <section> <address> R <value>
     #        Relocation within a section at a specific address
     #
-    ${OBJDUMP} -htrj .text ${ofn} | \
+    ${OBJDUMP} -htr ${ofn} | \
     awk 'function addl(v0, v1, v0h, v0l, v1h, v1l, d, tmp) {
+	     tmp = $0;
+	     if (length(v0) > 8 || length(v1) > 8) {
+		 d = length(v0);
+		 v0h = strtonum("0x"substr(v0, 1, d - 8));
+		 v0l = strtonum("0x"substr(v0, d - 8 + 1));
+		 d = length(v1);
+		 v1h = strtonum("0x"substr(v1, 1, d - 8));
+		 v1l = strtonum("0x"substr(v1, d - 8 + 1));
+
+		 v0l += v1l;
+		 v0h += v1h;
+		 d = sprintf("%x", v0l);
+		 if (length(d) > 8) {
+		     v0h++;
+		     v0l -= 4294967296;
+		 }
+		 d = sprintf("%x", v0h);
+		 if (length(d) <= 8) {
+		     d = sprintf("%08x%08x", v0h, v0l);
+		 } else {
+		     printf "#error Invalid addresses: %s + %s\n", v0, v1 \
+			    >"/dev/stderr";
+		     errc++;
+		 }
+	     } else {
+		 v0 = strtonum("0x"v0);
+		 v1 = strtonum("0x"v1);
+		 d = sprintf("%016x", v0 + v1);
+	     }
+	     $0 = tmp;
+
+	     return d;
+	 }
+
+	 function subl(v0, v1, v0h, v0l, v1h, v1l, d, tmp) {
              tmp = $0;
-             if (length(v0) > 8 || length(v1) > 8) {
+             if (length(v0) > 8) {
                  d = length(v0);
                  v0h = strtonum("0x"substr(v0, 1, d - 8));
                  v0l = strtonum("0x"substr(v0, d - 8 + 1));
@@ -281,55 +329,84 @@ else
                  v1h = strtonum("0x"substr(v1, 1, d - 8));
                  v1l = strtonum("0x"substr(v1, d - 8 + 1));
 
-                 v0h += v1h;
-                 v0l += v1l;
-
-                 d = sprintf("%x", v0l);
-                 if (length(d) > 8)
-                     v0h++;
-
-                 d = sprintf("%08x%08x", v0h, v0l);
+                 if (v0l >= v1l) {
+                     if (v0h >= v1h) {
+                         d = sprintf("%08x%08x", v0h - v1h, v0l - v1l);
+                     } else {
+                         printf "#error Invalid addresses: %s - %s\n", v0, v1 \
+				>"/dev/stderr";
+                         errc++;
+                     }
+                 } else {
+		     if (v0h > v1h) {
+			 v0h--;
+			 v0l += 4294967296;
+			 d = sprintf("%08x%08x", v0h - v1h, v0l - v1l);
+		     } else {
+			 printf "#error Invalid addresses: %s - %s\n", v0, v1 \
+				>"/dev/stderr";
+			 errc++;
+		     }
+                 }
              } else {
                  v0 = strtonum("0x"v0);
                  v1 = strtonum("0x"v1);
-                 d = sprintf("%016x", v0 + v1);
+                 d = sprintf("%016x", v0 - v1);
              }
              $0 = tmp;
 
              return d;
          }
 
-	 NF == 7 && $2 == ".text" {
-	     base = $4;
+	 NF == 7 && $2 !~ /^\.(exit|init|meminit)\.text/ {
+	     snam = $2;
+	     addr = $4;
+
+	     getline;
+	     if (/CODE/)
+		 base[snam] = addr;
+
+	     next;
+	 }
+
+	 NF == 5 && $2 == "g" && $NF == "_stext" {
+	     print ". " $1 " B _stext";
 	     next;
 	 }
 
 	 /^RELOC/ {
-	     in_reloc = $4 == "[.text]:";
+	     snam = substr($4, 2, length($4) - 3);
+	     if (snam in base)
+		 in_reloc = 1;
+	     else
+		 in_reloc = 0;
 	     next;
 	 }
 
 	 in_reloc && /__dtrace_probe_/ {
 	     $3 = substr($3, 16);
 	     sub(/[\-+].*$/, "", $3);
-	     print addl(base, $1) " R " $3;
+	     print snam " " addl(base[snam], $1) " R " $3;
 	     next;
 	 }
 
 	 in_reloc && /__dtrace_isenabled_/ {
 	     $3 = substr($3, 20);
 	     sub(/[\-+].*$/, "", $3);
-	     print addl(base, $1) " R ?" $3;
+	     print snam " " addl(base[snam], $1) " R ?" $3;
 	     next;
 	 }
 
 	 / F / {
+	     if (!($4 in base))
+		 next;
+
 	     if ($6 == ".hidden")
-		 print $1 " G " $7;
+		 print $4 " " $1 " G " $7;
 	     else
-		 print $1 " F " $6;
+		 print $4 " " $1 " F " $6;
 	 }' | \
-    sort -k1,2 | \
+    sort -k2 | \
     awk -v arch=${ARCH} \
 	'function subl(v0, v1, v0h, v0l, v1h, v1l, d, tmp) {
              tmp = $0;
@@ -341,7 +418,7 @@ else
                  v1h = strtonum("0x"substr(v1, 1, d - 8));
                  v1l = strtonum("0x"substr(v1, d - 8 + 1));
 
-                 if (v0l > v1l) {
+                 if (v0l >= v1l) {
                      if (v0h >= v1h) {
                          d = sprintf("%08x%08x", v0h - v1h, v0l - v1l);
                      } else {
@@ -364,6 +441,19 @@ else
              return d;
          }
 
+	 function map_string(str, off) {
+	     if (str in strmap)
+		 off = strmap[str];
+	     else {
+		 off = strsz;
+		 strmap[str] = strsz;
+		 strv[strc++] = str;
+		 strsz += length(str) + 1;
+	     }
+
+	     return off;
+	 }
+
 	 BEGIN {
 	     print "#include <asm/types.h>";
 	     print "#if BITS_PER_LONG == 64";
@@ -382,27 +472,48 @@ else
 	     print "dtrace_sdt_probes:";
 
 	     probec = 0;
+	     stroff = 0;
+	     strc = 0;
+	 }
+
+
+	 #
+	 # Record the _stext address so probe locations can be expressed
+	 # relative to that address.
+	 #
+	 NF == 4 && $1 == "." && $4 == "_stext" {
+	     stext = $2;
+	     next;
 	 }
 
 	 #
 	 # Process a symbol table definition for a function in the .text
-	 # section of the kernel image.  As we pass through the symbol table,
-	 # we record the function name and address.
+	 # section of the kernel image.  We record the function name and
+	 # the address, and pre-populate the alias name with the function
+	 # name.
 	 #
-	 NF == 3 && $2 == "F" {
-	     fname = $3;
+	 # We also compare the address of the current symbol to the last
+	 # recorded address, and if they are the same, we do not increment
+	 # the function count.
+	 #
+	 NF == 4 && $3 == "F" {
+	     faddr = $2;
+	     fname = $4;
 	     sub(/\..*$/, "", fname);
-	     alias = $3;
+	     alias = $4;
 
-	     if ($1 != prev)
+	     if ($2 != prev)
 		 funcc++;
-	     prev = $1;
+	     prev = $2;
 
 	     next;
 	 }
 
-	 NF == 3 && $2 == "G" {
-	     alias = $3;
+	 #
+	 # When we encounter an alias symbol, we record the name.
+	 #
+	 NF == 4 && $3 == "G" {
+	     alias = $4;
 
 	     next;
 	 }
@@ -410,23 +521,31 @@ else
 	 #
 	 # Process a relocation record associated with the preceding function.
 	 #
-	 # Since all addresses are already resolved earlier, we can simply
-	 # generate the SDT probe information record.
+	 # The address was resolved earlier, so we can simply generate the
+	 # numeric information for the SDT probe information record.  The
+	 # text information (probe name and function name) are stored.  This
+	 # allows us to weed out duplicates, and it is necessary because the
+	 # data blob with all the strings will be written to output later.
 	 #
-	 NF == 3 && $2 == "R" {
-	     sub(/^0+/, "", $1);
+	 NF == 4 && $3 == "R" {
+	     sub(/^0+/, "", $2);
 
-	     addr = $1;
+	     addr = subl($2, stext);
 
+	     #
+	     # On x86, relocations point to the 2nd byte of a call instruction
+	     # so we need to adjust the address.
+	     #
 	     if (arch == "x86" || arch == "x86_64")
 		 addr = subl(addr, 1);
 
-	     printf "\tPTR\t0x%s\n", addr;
-	     printf "\tPTR\t%d\n", length($3);
-	     printf "\tPTR\t%d\n", length(fname);
-	     printf "\t.asciz\t\042%s\042\n", $3;
-	     printf "\t.asciz\t\042%s\042\n", fname;
-	     print "\tALGN";
+	     print "/*";
+	     print " * " $1 " " faddr " F " fname;
+	     print " * " $0;
+	     print " */";
+	     printf "\tPTR\t_stext + 0x%s\n", addr;
+	     printf "\tPTR\t%d\n", map_string($4);
+	     printf "\tPTR\t%d\n", map_string(fname);
 
 	     probec++;
 
@@ -434,6 +553,15 @@ else
 	 }
 
 	 END {
+	     print "";
+	     print ".globl dtrace_sdt_strings";
+	     print "\tALGN";
+	     print "dtrace_sdt_strings:";
+
+
+	     for (i = 0; i < strc; i++)
+		 printf "\t.asciz\t\042%s\042\n", strv[i];
+
 	     print "";
 	     print ".globl dtrace_sdt_nprobes";
 	     print ".globl dtrace_fbt_nfuncs";

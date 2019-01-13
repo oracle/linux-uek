@@ -6,20 +6,6 @@
 #include <linux/module.h>
 #include <asm/dtrace_arch.h>
 
-/*
- * SDT probe called relocation information for the core kernel, provided by
- * .tmp_sdtinfo.S.
- */
-typedef struct dtrace_sdt_probeinfo {
-	unsigned long		addr;
-	unsigned long		name_len;
-	unsigned long		func_len;
-	char			name[0];
-} __aligned(sizeof(unsigned long)) dtrace_sdt_probeinfo_t;
-
-extern unsigned long dtrace_sdt_nprobes __attribute__((weak));
-extern void *dtrace_sdt_probes __attribute__((weak));
-
 extern void dtrace_sdt_init(void);
 extern void dtrace_sdt_register(struct module *);
 extern void dtrace_sdt_register_module(struct module *,
