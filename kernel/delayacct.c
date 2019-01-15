@@ -132,16 +132,25 @@ int __delayacct_add_tsk(struct taskstats *d, struct task_struct *tsk)
 	d->blkio_delay_total = (tmp < d->blkio_delay_total) ? 0 : tmp;
 	tmp = d->swapin_delay_total + tsk->delays->swapin_delay;
 	d->swapin_delay_total = (tmp < d->swapin_delay_total) ? 0 : tmp;
-	tmp = d->counts->freepages_delay_total + tsk->delays->freepages_delay;
-	d->counts->freepages_delay_total = 
-		(tmp < d->counts->freepages_delay_total) ? 0 : tmp;
-	tmp = d->counts->thrashing_delay_total + tsk->delays->thrashing_delay;
-	d->counts->thrashing_delay_total =
-		(tmp < d->counts->thrashing_delay_total) ? 0 : tmp;
 	d->blkio_count += tsk->delays->blkio_count;
 	d->swapin_count += tsk->delays->swapin_count;
-	d->counts->freepages_count += tsk->delays->freepages_count;
-	d->counts->thrashing_count += tsk->delays->thrashing_count;
+	/* d->counts may be null if the taskstats structure was allocated on
+	 * the skb via taskstats.c::mk_reply().  The stats in d->counts
+	 * aren't used in the networking path, so we can safely ignore them
+	 * in those cases.
+	 */
+	if (d->counts) {
+		tmp = d->counts->freepages_delay_total +
+		      tsk->delays->freepages_delay;
+		d->counts->freepages_delay_total = 
+			(tmp < d->counts->freepages_delay_total) ? 0 : tmp;
+		tmp = d->counts->thrashing_delay_total +
+		      tsk->delays->thrashing_delay;
+		d->counts->thrashing_delay_total =
+			(tmp < d->counts->thrashing_delay_total) ? 0 : tmp;
+		d->counts->freepages_count += tsk->delays->freepages_count;
+		d->counts->thrashing_count += tsk->delays->thrashing_count;
+	}
 	spin_unlock_irqrestore(&tsk->delays->lock, flags);
 
 	return 0;
