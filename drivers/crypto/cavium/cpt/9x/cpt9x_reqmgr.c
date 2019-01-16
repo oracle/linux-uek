@@ -11,9 +11,9 @@
 #include "cpt_reqmgr.h"
 #include "cpt9x_mbox_common.h"
 
-inline void fill_cpt_inst(union cpt_inst_s *cptinst,
-			  struct cpt_info_buffer *info,
-			  struct cpt_iq_command *iq_cmd)
+static void cpt9x_fill_inst(union cpt_inst_s *cptinst,
+			    struct cpt_info_buffer *info,
+			    struct cpt_iq_command *iq_cmd)
 {
 	cptinst->u[0] = 0x0;
 	cptinst->s9x.doneint = true;
@@ -26,9 +26,10 @@ inline void fill_cpt_inst(union cpt_inst_s *cptinst,
 	cptinst->s9x.ei3 = iq_cmd->cptr.u64;
 }
 
-inline int process_ccode(struct pci_dev *pdev, union cpt_res_s *cpt_status,
-			 struct cpt_info_buffer *cpt_info,
-			 struct cpt_request_info *req, u32 *res_code)
+static int cpt9x_process_ccode(struct pci_dev *pdev,
+			       union cpt_res_s *cpt_status,
+			       struct cpt_info_buffer *cpt_info,
+			       struct cpt_request_info *req, u32 *res_code)
 {
 	u8 ccode = cpt_status->s9x.compcode;
 
@@ -97,7 +98,7 @@ inline int process_ccode(struct pci_dev *pdev, union cpt_res_s *cpt_status,
  * 1 - 1 CPT instruction will be enqueued during LMTST operation
  * 2 - 2 CPT instructions will be enqueued during LMTST operation
  */
-inline void send_cpt_cmd(union cpt_inst_s *cptinst, u32 insts_num, void *obj)
+void cpt9x_send_cmd(union cpt_inst_s *cptinst, u32 insts_num, void *obj)
 {
 	struct cptlf_info *lf = (struct cptlf_info *) obj;
 	void *lmtline = lf->lmtline;
@@ -138,24 +139,19 @@ inline void send_cpt_cmd(union cpt_inst_s *cptinst, u32 insts_num, void *obj)
 	} while (!ret);
 }
 
-inline int cpt_get_kcrypto_eng_grp_num(struct pci_dev *pdev)
+void cpt9x_post_process(struct cptlf_wqe *wqe)
 {
-	struct cptlfs_info *lfs = get_lfs_info(pdev);
-
-	return lfs->kcrypto_eng_grp_num;
-}
-
-inline void cpt_post_process(struct cptlf_wqe *wqe)
-{
-	process_pending_queue(wqe->lfs->pdev,
+	process_pending_queue(wqe->lfs->pdev, &wqe->lfs->ops,
 			      &wqe->lfs->lf[wqe->lf_num].pqueue);
 }
 
-inline int cpt_do_request(struct pci_dev *pdev, struct cpt_request_info *req,
-			  int cpu_num)
+struct reqmgr_ops cpt9x_get_reqmgr_ops(void)
 {
-	struct cptlfs_info *lfs = get_lfs_info(pdev);
+	struct reqmgr_ops ops;
 
-	return process_request(pdev, req, &lfs->lf[cpu_num].pqueue,
-			       &lfs->lf[cpu_num]);
+	ops.fill_inst = cpt9x_fill_inst;
+	ops.process_ccode = cpt9x_process_ccode;
+	ops.send_cmd = cpt9x_send_cmd;
+
+	return ops;
 }

@@ -11,6 +11,8 @@
 #include <linux/interrupt.h>
 #include <linux/module.h>
 #include "cpt8x_vf.h"
+#include "cpt_algs.h"
+#include "cpt8x_reqmgr.h"
 
 #define DRV_NAME	"octeontx-cptvf"
 #define DRV_VERSION	"1.0"
@@ -21,7 +23,7 @@ static void vq_work_handler(unsigned long data)
 {
 	struct cptvf_wqe_info *cwqe_info = (struct cptvf_wqe_info *) data;
 
-	cptvf_post_process(&cwqe_info->vq_wqe[0]);
+	cpt8x_post_process(&cwqe_info->vq_wqe[0]);
 }
 
 static int init_worker_threads(struct cpt_vf *cptvf)
@@ -916,7 +918,12 @@ static int cptvf_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 		goto cptvf_free_irq_affinity;
 	}
 
-	err = cvm_crypto_init(pdev, cptvf->vftype == SE_TYPES ? CPT_SE_83XX :
+	/* Set request manager ops */
+	cptvf->ops = cpt8x_get_reqmgr_ops();
+
+	/* Initialize algorithms and set ops */
+	err = cvm_crypto_init(pdev, THIS_MODULE, cpt8x_get_algs_ops(),
+			      cptvf->vftype == SE_TYPES ? CPT_SE_83XX :
 			      CPT_AE_83XX, cptvf->vftype, 1, cptvf->num_vfs);
 	if (err) {
 		dev_err(dev, "Algorithm register failed\n");
@@ -926,11 +933,13 @@ static int cptvf_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 	err = sysfs_create_group(&dev->kobj, &vf_sysfs_group);
 	if (err) {
 		dev_err(dev, "Creating sysfs entries failed\n");
-		goto cptvf_free_irq_affinity;
+		goto cptvf_crypto_exit;
 	}
 
 	return 0;
 
+cptvf_crypto_exit:
+	cvm_crypto_exit(pdev, THIS_MODULE);
 cptvf_free_irq_affinity:
 	cptvf_free_irq_affinity(cptvf, CPT_8X_VF_INT_VEC_E_DONE);
 	cptvf_free_irq_affinity(cptvf, CPT_8X_VF_INT_VEC_E_MISC);
@@ -962,7 +971,7 @@ static void cptvf_remove(struct pci_dev *pdev)
 	if (cptvf_send_vf_down(cptvf)) {
 		dev_err(&pdev->dev, "PF not responding to DOWN msg");
 	} else {
-		cvm_crypto_exit(pdev);
+		cvm_crypto_exit(pdev, THIS_MODULE);
 		cptvf_free_irq_affinity(cptvf, CPT_8X_VF_INT_VEC_E_DONE);
 		cptvf_free_irq_affinity(cptvf, CPT_8X_VF_INT_VEC_E_MISC);
 		free_irq(pci_irq_vector(pdev, CPT_8X_VF_INT_VEC_E_DONE), cptvf);

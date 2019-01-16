@@ -45,5 +45,4 @@ obj-$(CONFIG_CRYPTO_DEV_VMX) += vmx/
 obj-$(CONFIG_CRYPTO_DEV_BCM_SPU) += bcm/
 obj-$(CONFIG_CRYPTO_DEV_SAFEXCEL) += inside-secure/
 obj-$(CONFIG_CRYPTO_DEV_ARTPEC6) += axis/
-obj-$(CONFIG_CRYPTO_DEV_OCTEONTX_CPT) += cavium/cpt/8x/
-obj-$(CONFIG_CRYPTO_DEV_OCTEONTX2_CPT) += cavium/cpt/9x/
+obj-$(CONFIG_CRYPTO_DEV_CPT) += cavium/cpt/

@@ -103,9 +103,8 @@ unlock:
 	return res;
 }
 
-struct quotas *quotas_alloc(u32 cnt, u32 max, u64 max_sum,
-			    int init_val, struct mutex *lock,
-			    struct quota_ops *ops)
+struct quotas *cpt_quotas_alloc(u32 cnt, u32 max, u64 max_sum, int init_val,
+				struct mutex *lock, struct quota_ops *ops)
 {
 	struct quotas *quotas;
 	u64 i;
@@ -135,7 +134,7 @@ struct quotas *quotas_alloc(u32 cnt, u32 max, u64 max_sum,
 	return quotas;
 }
 
-void quotas_free(struct quotas *quotas)
+void cpt_quotas_free(struct quotas *quotas)
 {
 	u64 i;
 
@@ -144,14 +143,14 @@ void quotas_free(struct quotas *quotas)
 	WARN_ON(quotas->cnt == 0);
 
 	for (i = 0; i < quotas->cnt; i++)
-		quota_sysfs_destroy(&quotas->a[i]);
+		cpt_quota_sysfs_destroy(&quotas->a[i]);
 
 	kfree(quotas);
 }
 
-int quota_sysfs_create(const char *name, struct kobject *parent,
-		       struct device *log_dev, struct quota *quota,
-		       void *ops_arg)
+int cpt_quota_sysfs_create(const char *name, struct kobject *parent,
+			   struct device *log_dev, struct quota *quota,
+			   void *ops_arg)
 {
 	int err;
 
@@ -178,7 +177,7 @@ int quota_sysfs_create(const char *name, struct kobject *parent,
 	return 0;
 }
 
-int quota_sysfs_destroy(struct quota *quota)
+int cpt_quota_sysfs_destroy(struct quota *quota)
 {
 	if (quota == NULL)
 		return -EINVAL;

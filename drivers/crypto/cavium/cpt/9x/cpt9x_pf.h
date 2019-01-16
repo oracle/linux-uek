@@ -61,7 +61,9 @@ irqreturn_t cptpf_afpf_mbox_intr(int irq, void *arg);
 irqreturn_t cptpf_vfpf_mbox_intr(int irq, void *arg);
 void cptpf_afpf_mbox_handler(struct work_struct *work);
 void cptpf_vfpf_mbox_handler(struct work_struct *work);
-int cpt_disable_all_cores(struct cptpf_dev *cptpf);
 int cptpf_send_crypto_eng_grp_msg(struct cptpf_dev *cptpf,
 				  int crypto_eng_grp);
+int cpt9x_disable_all_cores(struct cptpf_dev *cptpf);
+struct ucode_ops cpt9x_get_ucode_ops(void);
+
 #endif /* __CPT9X_PF_H */

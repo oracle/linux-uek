@@ -38,6 +38,7 @@ struct cpt_device {
 };
 
 void cpt_mbox_intr_handler(struct cpt_device *cpt, int mbx);
-void cpt_disable_all_cores(struct cpt_device *cpt);
+void cpt8x_disable_all_cores(struct cpt_device *cpt);
+struct ucode_ops cpt8x_get_ucode_ops(void);
 
 #endif /* __CPT8X_PF_H */

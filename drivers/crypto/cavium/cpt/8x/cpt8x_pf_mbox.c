@@ -126,11 +126,10 @@ static void cpt_handle_mbox_intr(struct cpt_device *cpt, int vf)
 	mbx.data = readq(cpt->reg_base + CPT_PF_VFX_MBOXX(vf, 1));
 
 	if (cpt_is_dbg_level_en(CPT_DBG_MBOX_MSGS))
-		dump_mbox_msg(&cpt->pdev->dev, &mbx, vf);
+		cpt8x_dump_mbox_msg(&cpt->pdev->dev, &mbx, vf);
 
 	switch (mbx.msg) {
 	case CPT_MSG_VF_UP:
-		try_module_get(THIS_MODULE);
 		mbx.msg  = CPT_MSG_VF_UP;
 		mbx.data = cpt->vfs_enabled;
 		cpt_send_msg_to_vf(cpt, vf, &mbx);
@@ -142,7 +141,6 @@ static void cpt_handle_mbox_intr(struct cpt_device *cpt, int vf)
 		break;
 	case CPT_MSG_VF_DOWN:
 		/* First msg in VF teardown sequence */
-		module_put(THIS_MODULE);
 		cpt_mbox_send_ack(cpt, vf, &mbx);
 		break;
 	case CPT_MSG_QLEN:

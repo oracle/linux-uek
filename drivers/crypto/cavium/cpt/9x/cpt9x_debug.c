@@ -51,7 +51,7 @@ static char *get_opcode_str(int msg_opcode)
 	return str;
 }
 
-void dump_mbox_msg(struct device *dev, struct mbox_msghdr *msg, int size)
+void cpt9x_dump_mbox_msg(struct device *dev, struct mbox_msghdr *msg, int size)
 {
 	char *opcode_str;
 	u16 pf_id, vf_id;

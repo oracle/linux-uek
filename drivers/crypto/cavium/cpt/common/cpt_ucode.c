@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0
-/* Marvell OcteonTx2 RVU Admin Function driver
- *
+/*
  * Copyright (C) 2018 Marvell International Ltd.
  *
  * This program is free software; you can redistribute it and/or modify
@@ -11,6 +10,9 @@
 #include <linux/ctype.h>
 #include <linux/firmware.h>
 #include "cpt_ucode.h"
+
+#define DRV_NAME	"cpt-common"
+#define DRV_VERSION	"1.0"
 
 static int is_eng_type(int val, int eng_type)
 {
@@ -372,6 +374,7 @@ int cpt_uc_supports_eng_type(struct microcode *ucode, int eng_type)
 {
 	return is_eng_type(ucode->type, eng_type);
 }
+EXPORT_SYMBOL_GPL(cpt_uc_supports_eng_type);
 
 int cpt_eng_grp_has_eng_type(struct engine_group_info *eng_grp, int eng_type)
 {
@@ -381,6 +384,7 @@ int cpt_eng_grp_has_eng_type(struct engine_group_info *eng_grp, int eng_type)
 
 	return (engs != NULL ? 1 : 0);
 }
+EXPORT_SYMBOL_GPL(cpt_eng_grp_has_eng_type);
 
 static void print_ucode_info(struct engine_group_info *eng_grp,
 			     char *buf, int size)
@@ -513,9 +517,9 @@ static void print_dbg_info(struct device *dev,
 			} else
 				dev_info(dev, "Slot%d not used", j);
 		}
-		if (grp->is_enabled) {
-			cpt_print_engines_mask(grp, eng_grps->obj, engs_mask,
-					       NAME_LENGTH);
+		if (grp->is_enabled && eng_grps->ops.print_engines_mask) {
+			eng_grps->ops.print_engines_mask(grp, eng_grps->obj,
+						engs_mask, NAME_LENGTH);
 			dev_info(dev, "Cmask: %s", engs_mask);
 		}
 		dev_info(dev, "\n");
@@ -706,15 +710,15 @@ static ssize_t eng_grp_info_show(struct device *dev,
 
 	print_engs_info(eng_grp, engs_info, 2*NAME_LENGTH, -1);
 	print_ucode_info(eng_grp, ucode_info, 2*NAME_LENGTH);
-	cpt_print_engines_mask(eng_grp, eng_grp->g, engs_mask, NAME_LENGTH);
+	if (eng_grp->g->ops.print_engines_mask)
+		eng_grp->g->ops.print_engines_mask(eng_grp, eng_grp->g,
+						   engs_mask, NAME_LENGTH);
 	ret = scnprintf(buf, PAGE_SIZE,
 			"Microcode : %s\nEngines: %s\nEngines mask: %s\n",
 			ucode_info, engs_info, engs_mask);
 
 	mutex_unlock(&eng_grp->g->lock);
 	return ret;
-
-	return 0;
 }
 
 static int create_sysfs_eng_grps_info(struct device *dev,
@@ -826,12 +830,16 @@ static int enable_eng_grp(struct engine_group_info *eng_grp,
 	int ret = 0;
 
 	/* Point microcode to each core of the group */
-	ret = cpt_set_ucode_base(eng_grp, obj);
+	if (!eng_grp->g->ops.set_ucode_base)
+		return -EPERM;
+	ret = eng_grp->g->ops.set_ucode_base(eng_grp, obj);
 	if (ret)
 		goto err;
 
 	/* Attach the cores to the group and enable them */
-	ret = cpt_attach_and_enable_cores(eng_grp, obj);
+	if (!eng_grp->g->ops.attach_and_enable_cores)
+		return -EPERM;
+	ret = eng_grp->g->ops.attach_and_enable_cores(eng_grp, obj);
 	if (ret)
 		goto err;
 err:
@@ -845,7 +853,9 @@ static int disable_eng_grp(struct device *dev,
 	int i, ret = 0;
 
 	/* Disable all engines used by this group */
-	ret = cpt_detach_and_disable_cores(eng_grp, obj);
+	if (!eng_grp->g->ops.detach_and_disable_cores)
+		return -EPERM;
+	ret = eng_grp->g->ops.detach_and_disable_cores(eng_grp, obj);
 	if (ret)
 		goto err;
 
@@ -861,7 +871,9 @@ static int disable_eng_grp(struct device *dev,
 	}
 
 	/* Clear UCODE_BASE register for each engine used by this group */
-	ret = cpt_set_ucode_base(eng_grp, obj);
+	if (!eng_grp->g->ops.set_ucode_base)
+		return -EPERM;
+	ret = eng_grp->g->ops.set_ucode_base(eng_grp, obj);
 	if (ret)
 		goto err;
 err:
@@ -1074,8 +1086,8 @@ static int delete_engine_group(struct device *dev,
 
 	device_remove_file(dev, &eng_grp->info_attr);
 	eng_grp->is_enabled = false;
-	if (eng_grp->g->plat_hndlr)
-		eng_grp->g->plat_hndlr(eng_grp->g->obj);
+	if (eng_grp->g->ops.notify_group_change)
+		eng_grp->g->ops.notify_group_change(eng_grp->g->obj);
 err:
 	return ret;
 }
@@ -1283,8 +1295,8 @@ static int create_engine_group(struct device *dev,
 		dev_info(dev, "Engine_group%d: microcode loaded %s",
 			 eng_grp->idx, eng_grp->ucode[1].ver_str);
 
-	if (eng_grps->plat_hndlr)
-		eng_grps->plat_hndlr(eng_grps->obj);
+	if (eng_grps->ops.notify_group_change)
+		eng_grps->ops.notify_group_change(eng_grps->obj);
 	return 0;
 
 err_release_engs:
@@ -1464,6 +1476,32 @@ err:
 	return ret;
 }
 
+static int cpt_set_ucode_ops(struct engine_groups *eng_grps,
+			     struct ucode_ops *uc_ops)
+{
+	if (!uc_ops)
+		return -EINVAL;
+
+	/* notify_group_change is not mandatory */
+	if (!uc_ops->detach_and_disable_cores ||
+	    !uc_ops->attach_and_enable_cores ||
+	    !uc_ops->set_ucode_base ||
+	    !uc_ops->print_engines_mask)
+		return -EPERM;
+
+	eng_grps->ops = *uc_ops;
+	return 0;
+}
+
+static void cpt_clear_ucode_ops(struct engine_groups *eng_grps)
+{
+	eng_grps->ops.detach_and_disable_cores = NULL;
+	eng_grps->ops.attach_and_enable_cores = NULL;
+	eng_grps->ops.set_ucode_base = NULL;
+	eng_grps->ops.print_engines_mask = NULL;
+	eng_grps->ops.notify_group_change = NULL;
+}
+
 int cpt_try_create_default_eng_grps(struct pci_dev *pdev,
 				    struct engine_groups *eng_grps,
 				    int pf_type)
@@ -1569,16 +1607,7 @@ err:
 	mutex_unlock(&eng_grps->lock);
 	return ret;
 }
-
-void cpt_set_eng_grps_plat_hndlr(struct engine_groups *eng_grps,
-				 void (*plat_hndlr)(void *obj))
-{
-	mutex_lock(&eng_grps->lock);
-
-	eng_grps->plat_hndlr = plat_hndlr;
-
-	mutex_unlock(&eng_grps->lock);
-}
+EXPORT_SYMBOL_GPL(cpt_try_create_default_eng_grps);
 
 void cpt_set_eng_grps_is_rdonly(struct engine_groups *eng_grps, bool is_rdonly)
 {
@@ -1588,6 +1617,7 @@ void cpt_set_eng_grps_is_rdonly(struct engine_groups *eng_grps, bool is_rdonly)
 
 	mutex_unlock(&eng_grps->lock);
 }
+EXPORT_SYMBOL_GPL(cpt_set_eng_grps_is_rdonly);
 
 void cpt_cleanup_eng_grps(struct pci_dev *pdev,
 			  struct engine_groups *eng_grps)
@@ -1620,11 +1650,13 @@ void cpt_cleanup_eng_grps(struct pci_dev *pdev,
 		}
 	}
 
+	cpt_clear_ucode_ops(eng_grps);
 	mutex_unlock(&eng_grps->lock);
 }
+EXPORT_SYMBOL_GPL(cpt_cleanup_eng_grps);
 
 int cpt_init_eng_grps(struct pci_dev *pdev, struct engine_groups *eng_grps,
-		      int pf_type)
+		      struct ucode_ops ops, int pf_type)
 {
 	struct engine_group_info *grp;
 	int i, j, ret = 0;
@@ -1692,6 +1724,10 @@ int cpt_init_eng_grps(struct pci_dev *pdev, struct engine_groups *eng_grps,
 		goto err;
 	}
 
+	ret = cpt_set_ucode_ops(eng_grps, &ops);
+	if (ret)
+		goto err;
+
 	eng_grps->ucode_load_attr.show = NULL;
 	eng_grps->ucode_load_attr.store = ucode_load_store;
 	eng_grps->ucode_load_attr.attr.name = "ucode_load";
@@ -1710,3 +1746,9 @@ err:
 	cpt_cleanup_eng_grps(pdev, eng_grps);
 	return ret;
 }
+EXPORT_SYMBOL_GPL(cpt_init_eng_grps);
+
+MODULE_AUTHOR("Marvell International Ltd.");
+MODULE_DESCRIPTION("Marvell CPT common layer");
+MODULE_LICENSE("GPL v2");
+MODULE_VERSION(DRV_VERSION);

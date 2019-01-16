@@ -9,6 +9,7 @@
  */
 
 #include "cpt_reqmgr.h"
+#include "cpt_algs.h"
 #include "cpt9x_mbox_common.h"
 #include "cpt9x_common.h"
 #include "cpt9x_reqmgr.h"
@@ -545,7 +546,7 @@ static void cptlf_free_irqs_affinity(struct cptlfs_info *lfs)
 
 static void cptlf_work_handler(unsigned long data)
 {
-	cpt_post_process((struct cptlf_wqe *) data);
+	cpt9x_post_process((struct cptlf_wqe *) data);
 }
 
 static int init_tasklet_work(struct cptlfs_info *lfs)
@@ -708,19 +709,18 @@ static void cptlf_sw_cleanup(struct cptlfs_info *lfs)
 	free_instruction_queues(lfs);
 }
 
-inline void send_cpt_cmds_in_batch(union cpt_inst_s *cptinst, u32 num,
-				   void *obj)
+void cpt9x_send_cmds_in_batch(union cpt_inst_s *cptinst, u32 num, void *obj)
 {
 	int i;
 
 	for (i = 0; i < (num & 0xFFFFFFFE); i += 2)
-		send_cpt_cmd(&cptinst[i], 2, obj);
+		cpt9x_send_cmd(&cptinst[i], 2, obj);
 	if (num & 0x1)
-		send_cpt_cmd(&cptinst[num-1], 1, obj);
+		cpt9x_send_cmd(&cptinst[num-1], 1, obj);
 }
 
-inline void send_cpt_cmds_for_speed_test(union cpt_inst_s *cptinst, u32 num,
-					 void *obj)
+void cpt9x_send_cmds_for_speed_test(union cpt_inst_s *cptinst, u32 num,
+				    void *obj)
 {
 	struct cptlf_info *lf = (struct cptlf_info *) obj;
 
@@ -731,7 +731,7 @@ inline void send_cpt_cmds_for_speed_test(union cpt_inst_s *cptinst, u32 num,
 	cptlf_do_set_iqueue_size(lf);
 	cptlf_enable_iqueue_enq(lf);
 
-	send_cpt_cmds_in_batch(cptinst, num, obj);
+	cpt9x_send_cmds_in_batch(cptinst, num, obj);
 
 	cptlf_enable_iqueue_exec(lf);
 }
@@ -1033,6 +1033,7 @@ int cptlf_init(struct pci_dev *pdev, void *reg_base,
 	lfs->reg_base = reg_base;
 	lfs->lfs_num = lfs_num;
 	lfs->pdev = pdev;
+	lfs->ops = cpt9x_get_reqmgr_ops();
 	for (slot = 0; slot < lfs->lfs_num; slot++) {
 		lfs->lf[slot].lfs = lfs;
 		lfs->lf[slot].slot = slot;
@@ -1088,7 +1089,8 @@ int cptlf_init(struct pci_dev *pdev, void *reg_base,
 	cptlf_enable_done_intr(lfs);
 
 	/* Register crypto algorithms */
-	ret = cvm_crypto_init(pdev, CPT_96XX, SE_TYPES, lfs_num, 1);
+	ret = cvm_crypto_init(pdev, THIS_MODULE, cpt9x_get_algs_ops(),
+			      CPT_96XX, SE_TYPES, lfs_num, 1);
 	if (ret) {
 		dev_err(&pdev->dev, "algorithms registration failed\n");
 		goto cpt_err_disable_irqs;
@@ -1116,7 +1118,7 @@ int cptlf_shutdown(struct pci_dev *pdev, struct cptlfs_info *lfs)
 	int ret = 0;
 
 	/* Unregister crypto algorithms */
-	cvm_crypto_exit(pdev);
+	cvm_crypto_exit(pdev, THIS_MODULE);
 
 	/* Disable interrupts */
 	cptlf_disable_done_intr(lfs);

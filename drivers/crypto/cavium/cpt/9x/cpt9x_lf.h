@@ -13,6 +13,7 @@
 
 #include "cpt_hw_types.h"
 #include "cpt9x_common.h"
+#include "cpt_reqmgr.h"
 
 /*
  * CPT instruction and pending queues user requested length in CPT_INST_S msgs
@@ -99,6 +100,7 @@ struct cptlfs_info {
 	void __iomem *reg_base;
 	struct pci_dev *pdev;   /* Device LFs are attached to */
 	struct cptlf_info lf[CPT_9X_MAX_LFS_NUM];
+	struct reqmgr_ops ops;	/* Request manager operations */
 	u8 kcrypto_eng_grp_num;	/* Kernel crypto engine group number */
 	u8 are_lfs_attached;	/* Whether CPT LFs are attached */
 	u8 lfs_num;		/* Number of CPT LFs */
