@@ -61,6 +61,7 @@ int cpt_read_af_reg(struct pci_dev *pdev, u64 reg, u64 *val);
 int cpt_write_af_reg(struct pci_dev *pdev, u64 reg, u64 val);
 
 int cpt_send_mbox_msg(struct pci_dev *pdev);
-void dump_mbox_msg(struct device *dev, struct mbox_msghdr *msg, int size);
+void cpt9x_dump_mbox_msg(struct device *dev, struct mbox_msghdr *msg,
+			 int size);
 
 #endif /* __CPT9X_MBOX_COMMON_H */

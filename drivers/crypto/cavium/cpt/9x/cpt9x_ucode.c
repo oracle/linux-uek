@@ -40,7 +40,8 @@ static struct bitmap get_cores_bmap(struct device *dev,
 	return bmap;
 }
 
-int cpt_detach_and_disable_cores(struct engine_group_info *eng_grp, void *obj)
+static int cpt9x_detach_and_disable_cores(struct engine_group_info *eng_grp,
+					  void *obj)
 {
 	struct cptpf_dev *cptpf = (struct cptpf_dev *) obj;
 	struct bitmap bmap;
@@ -101,7 +102,7 @@ error:
 	return ret;
 }
 
-int cpt_set_ucode_base(struct engine_group_info *eng_grp, void *obj)
+static int cpt9x_set_ucode_base(struct engine_group_info *eng_grp, void *obj)
 {
 	struct cptpf_dev *cptpf = (struct cptpf_dev *) obj;
 	struct engines_reserved *engs;
@@ -137,7 +138,8 @@ error:
 	return ret;
 }
 
-int cpt_attach_and_enable_cores(struct engine_group_info *eng_grp, void *obj)
+static int cpt9x_attach_and_enable_cores(struct engine_group_info *eng_grp,
+					 void *obj)
 {
 	struct cptpf_dev *cptpf = (struct cptpf_dev *) obj;
 	struct bitmap bmap;
@@ -179,8 +181,8 @@ error:
 	return ret;
 }
 
-void cpt_print_engines_mask(struct engine_group_info *eng_grp, void *obj,
-			    char *buf, int size)
+void cpt9x_print_engines_mask(struct engine_group_info *eng_grp, void *obj,
+			      char *buf, int size)
 {
 	struct cptpf_dev *cptpf = (struct cptpf_dev *) obj;
 	struct bitmap bmap;
@@ -197,7 +199,32 @@ void cpt_print_engines_mask(struct engine_group_info *eng_grp, void *obj,
 		  mask[1], mask[0]);
 }
 
-int cpt_disable_all_cores(struct cptpf_dev *cptpf)
+static void cpt9x_notify_group_change(void *obj)
+{
+	struct cptpf_dev *cptpf = (struct cptpf_dev *) obj;
+	struct engine_group_info *grp;
+	int crypto_eng_grp = INVALID_CRYPTO_ENG_GRP;
+	int i;
+
+	for (i = 0; i < CPT_MAX_ENGINE_GROUPS; i++) {
+		grp = &cptpf->eng_grps.grp[i];
+		if (!grp->is_enabled)
+			continue;
+
+		if (cpt_eng_grp_has_eng_type(grp, SE_TYPES) &&
+		    !cpt_eng_grp_has_eng_type(grp, IE_TYPES) &&
+		    !cpt_eng_grp_has_eng_type(grp, AE_TYPES)) {
+			crypto_eng_grp = i;
+			break;
+		}
+	}
+
+	if (cptpf->crypto_eng_grp == crypto_eng_grp)
+		return;
+	cptpf_send_crypto_eng_grp_msg(cptpf, crypto_eng_grp);
+}
+
+int cpt9x_disable_all_cores(struct cptpf_dev *cptpf)
 {
 	int timeout = 10, ret = 0;
 	int i, busy, total_cores;
@@ -252,4 +279,17 @@ int cpt_disable_all_cores(struct cptpf_dev *cptpf)
 		goto error;
 error:
 	return ret;
+}
+
+struct ucode_ops cpt9x_get_ucode_ops(void)
+{
+	struct ucode_ops ops;
+
+	ops.detach_and_disable_cores = cpt9x_detach_and_disable_cores;
+	ops.attach_and_enable_cores = cpt9x_attach_and_enable_cores;
+	ops.set_ucode_base = cpt9x_set_ucode_base;
+	ops.print_engines_mask = cpt9x_print_engines_mask;
+	ops.notify_group_change = cpt9x_notify_group_change;
+
+	return ops;
 }

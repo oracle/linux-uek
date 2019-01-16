@@ -39,7 +39,8 @@ static struct bitmap get_cores_bmap(struct device *dev,
 	return bmap;
 }
 
-int cpt_detach_and_disable_cores(struct engine_group_info *eng_grp, void *obj)
+static int cpt8x_detach_and_disable_cores(struct engine_group_info *eng_grp,
+					  void *obj)
 {
 	struct cpt_device *cpt = (struct cpt_device *) obj;
 	struct bitmap bmap = { 0 };
@@ -86,7 +87,7 @@ int cpt_detach_and_disable_cores(struct engine_group_info *eng_grp, void *obj)
 	return 0;
 }
 
-int cpt_set_ucode_base(struct engine_group_info *eng_grp, void *obj)
+static int cpt8x_set_ucode_base(struct engine_group_info *eng_grp, void *obj)
 {
 	struct cpt_device *cpt = (struct cpt_device *) obj;
 	dma_addr_t dma_addr;
@@ -113,7 +114,8 @@ int cpt_set_ucode_base(struct engine_group_info *eng_grp, void *obj)
 	return 0;
 }
 
-int cpt_attach_and_enable_cores(struct engine_group_info *eng_grp, void *obj)
+static int cpt8x_attach_and_enable_cores(struct engine_group_info *eng_grp,
+					 void *obj)
 {
 	struct cpt_device *cpt = (struct cpt_device *) obj;
 	struct bitmap bmap;
@@ -143,8 +145,8 @@ int cpt_attach_and_enable_cores(struct engine_group_info *eng_grp, void *obj)
 	return 0;
 }
 
-void cpt_print_engines_mask(struct engine_group_info *eng_grp, void *obj,
-			    char *buf, int size)
+static void cpt8x_print_engines_mask(struct engine_group_info *eng_grp,
+				     void *obj, char *buf, int size)
 {
 	struct cpt_device *cpt = (struct cpt_device *) obj;
 	struct bitmap bmap;
@@ -160,7 +162,7 @@ void cpt_print_engines_mask(struct engine_group_info *eng_grp, void *obj,
 	scnprintf(buf, size, "%8.8x %8.8x", mask[1], mask[0]);
 }
 
-void cpt_disable_all_cores(struct cpt_device *cpt)
+void cpt8x_disable_all_cores(struct cpt_device *cpt)
 {
 	u64 reg;
 	int grp, timeout = 100;
@@ -183,4 +185,17 @@ void cpt_disable_all_cores(struct cpt_device *cpt)
 
 	/* Disable the cores */
 	writeq(0, cpt->reg_base + CPT_PF_EXE_CTL);
+}
+
+struct ucode_ops cpt8x_get_ucode_ops(void)
+{
+	struct ucode_ops ops;
+
+	ops.detach_and_disable_cores = cpt8x_detach_and_disable_cores;
+	ops.attach_and_enable_cores = cpt8x_attach_and_enable_cores;
+	ops.set_ucode_base = cpt8x_set_ucode_base;
+	ops.print_engines_mask = cpt8x_print_engines_mask;
+	ops.notify_group_change = NULL;
+
+	return ops;
 }

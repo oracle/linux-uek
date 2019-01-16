@@ -58,13 +58,13 @@ struct quotas {
  * @p init_val initial value set to all quotas
  * @p ops callbacks for sysfs manipulation notifications
  */
-struct quotas *quotas_alloc(u32 cnt, u32 max, u64 max_sum,
-			    int init_val, struct mutex *lock,
-			    struct quota_ops *ops);
+struct quotas *cpt_quotas_alloc(u32 cnt, u32 max, u64 max_sum,
+				int init_val, struct mutex *lock,
+				struct quota_ops *ops);
 /**
  * Frees quota array and any sysfs entries associated with it.
  */
-void quotas_free(struct quotas *quotas);
+void cpt_quotas_free(struct quotas *quotas);
 
 /**
  * Create a sysfs entry controling given quota entry.
@@ -75,12 +75,12 @@ void quotas_free(struct quotas *quotas);
  *
  * @return 0 if succeeded, negative error code otherwise.
  */
-int quota_sysfs_create(const char *name, struct kobject *parent,
-		       struct device *log_dev, struct quota *quota,
-		       void *ops_arg);
+int cpt_quota_sysfs_create(const char *name, struct kobject *parent,
+			   struct device *log_dev, struct quota *quota,
+			   void *ops_arg);
 /**
  * Remove sysfs entry for a given quota if it was created.
  */
-int quota_sysfs_destroy(struct quota *quota);
+int cpt_quota_sysfs_destroy(struct quota *quota);
 
 #endif /* _CPT9X_QUOTA_H_ */

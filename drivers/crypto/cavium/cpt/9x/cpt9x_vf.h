@@ -31,5 +31,6 @@ struct cptvf_dev {
 irqreturn_t cptvf_pfvf_mbox_intr(int irq, void *arg);
 void cptvf_pfvf_mbox_handler(struct work_struct *work);
 int cptvf_send_eng_grp_num_msg(struct cptvf_dev *cptvf, int eng_type);
+struct algs_ops cpt9x_get_algs_ops(void);
 
 #endif /* __CPT9X_VF_H */

@@ -113,7 +113,7 @@ static int cpt_device_init(struct cpt_device *cpt)
 
 	/*TODO: Get CLK frequency*/
 	/*Disable all cores*/
-	cpt_disable_all_cores(cpt);
+	cpt8x_disable_all_cores(cpt);
 	/* PF is ready */
 	cpt->flags |= CPT_FLAG_DEVICE_READY;
 
@@ -279,7 +279,8 @@ static int cpt_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 		goto cpt_err_release_regions;
 
 	/* Initialize engine groups */
-	err = cpt_init_eng_grps(pdev, &cpt->eng_grps, cpt->pf_type);
+	err = cpt_init_eng_grps(pdev, &cpt->eng_grps, cpt8x_get_ucode_ops(),
+				cpt->pf_type);
 	if (err)
 		goto cpt_err_unregister_interrupts;
 
@@ -324,7 +325,7 @@ static void cpt_remove(struct pci_dev *pdev)
 	/* Disable CPT PF interrupts */
 	cpt_unregister_interrupts(cpt);
 	/* Disengage SE and AE cores from all groups*/
-	cpt_disable_all_cores(cpt);
+	cpt8x_disable_all_cores(cpt);
 	pci_release_regions(pdev);
 	pci_disable_device(pdev);
 	pci_set_drvdata(pdev, NULL);

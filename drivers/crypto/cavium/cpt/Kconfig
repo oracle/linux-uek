@@ -2,31 +2,31 @@
 # Cavium crypto device configuration
 #
 
-choice
-	prompt "Cavium Cryptographic Accelerator (CPT) driver"
+config CRYPTO_DEV_CPT
+	tristate
+
+config CRYPTO_DEV_OCTEONTX_CPT
+	tristate "Support for OcteonTX CPT driver"
 	depends on ARCH_THUNDER || COMPILE_TEST
 	depends on PCI_MSI && 64BIT
 	depends on OCTEONTX2_AF
-	optional
+	select CRYPTO_DEV_CPT
 	help
-		Support for Cavium Cryptographic Accelerator (CPT) block
-		found in OcteonTX and OcteonTX2 series of processors.
+		Support for Cavium Cryptographic Accelerator Unit (CPT)
+		block found in OcteonTX series of processors.
 
-	config CRYPTO_DEV_OCTEONTX_CPT
-         tristate "OcteonTX CPT driver"
-         help
-			Support for Cavium Cryptographic Accelerator (CPT)
-			block found in OcteonTX series of processors.
+		To compile this driver as modules, choose M here:
+		the modules will be called cptpf8x and cptvf8x.
 
-			To compile this driver as modules, choose M here:
-			the modules will be called cptpf8x and cptvf8x.
+config CRYPTO_DEV_OCTEONTX2_CPT
+	tristate "Support for OcteonTX2 CPT driver"
+	depends on ARCH_THUNDER || COMPILE_TEST
+	depends on PCI_MSI && 64BIT
+	depends on OCTEONTX2_AF
+	select CRYPTO_DEV_CPT
+	help
+		Support for Cryptographic Accelerator Unit (CPT)
+		block found in OcteonTX2 series of processors.
 
-    config CRYPTO_DEV_OCTEONTX2_CPT
-         tristate "OcteonTX2 CPT driver"
-		 help
-			Support for Cavium Cryptographic Accelerator (CPT)
-			block found in OcteonTX2 series of processors.
-
-			To compile this driver as modules, choose M here:
-			the modules will be called cptpf9x and cptvf9x.
-endchoice
+		To compile this driver as modules, choose M here:
+		the modules will be called cptpf9x and cptvf9x.

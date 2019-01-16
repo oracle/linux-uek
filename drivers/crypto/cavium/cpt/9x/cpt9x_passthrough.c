@@ -11,9 +11,12 @@
 #include <linux/crypto.h>
 #include <crypto/algapi.h>
 #include <crypto/hash.h>
-#include "cpt_common.h"
+#include "cpt9x_mbox_common.h"
+
 #include "cpt_algs.h"
+#include "cpt_algs_internal.h"
 #include "cpt9x_passthrough.h"
+#include "cpt9x_reqmgr.h"
 
 static void passthrough_callback(struct crypto_async_request *req, int err)
 {
@@ -73,7 +76,7 @@ static int cvm_passthrough(struct pci_dev *pdev, struct ablkcipher_request *req)
 	cpu = get_cpu();
 	put_cpu();
 
-	return cpt_do_request(pdev, req_info, cpu);
+	return cpt9x_do_request(pdev, req_info, cpu);
 }
 
 int run_passthrough_test(struct pci_dev *pdev, const char *buf, int size)

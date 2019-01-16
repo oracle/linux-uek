@@ -19,6 +19,8 @@
 #include <linux/sort.h>
 #include "cpt_common.h"
 #include "cpt_algs.h"
+#include "cpt_algs_internal.h"
+
 
 static DEFINE_MUTEX(mutex);
 static int is_crypto_registered;
@@ -30,6 +32,7 @@ static int is_crypto_registered;
 
 struct cpt_device_desc {
 	enum cpt_pf_type pf_type;
+	struct algs_ops ops;
 	struct pci_dev *dev;
 	int num_queues;
 };
@@ -47,7 +50,8 @@ static struct cpt_device_table ae_devices = {
 	.count = ATOMIC_INIT(0)
 };
 
-static inline int get_se_device(struct pci_dev **pdev, int *cpu_num)
+static inline int get_se_device(struct pci_dev **pdev, struct algs_ops **ops,
+				int *cpu_num)
 {
 	int count, err = 0;
 
@@ -68,6 +72,7 @@ static inline int get_se_device(struct pci_dev **pdev, int *cpu_num)
 		if (*cpu_num >= count)
 			*cpu_num %= count;
 		*pdev = se_devices.desc[*cpu_num].dev;
+		*ops = &se_devices.desc[*cpu_num].ops;
 	break;
 
 	case CPT_96XX:
@@ -80,6 +85,7 @@ static inline int get_se_device(struct pci_dev **pdev, int *cpu_num)
 		if (*cpu_num >= se_devices.desc[0].num_queues)
 			*cpu_num %= se_devices.desc[0].num_queues;
 		*pdev = se_devices.desc[0].dev;
+		*ops = &se_devices.desc[0].ops;
 	break;
 
 	default:
@@ -125,6 +131,7 @@ void cvm_callback(int status, void *arg, void *req)
 
 	areq->complete(areq, status);
 }
+EXPORT_SYMBOL_GPL(cvm_callback);
 
 static inline void update_input_data(struct cpt_request_info *req_info,
 				     struct scatterlist *inp_sg,
@@ -254,9 +261,10 @@ static inline int cvm_enc_dec(struct ablkcipher_request *req, u32 enc)
 {
 	struct crypto_ablkcipher *tfm = crypto_ablkcipher_reqtfm(req);
 	struct cvm_req_ctx *rctx = ablkcipher_request_ctx(req);
-	u32 enc_iv_len = crypto_ablkcipher_ivsize(tfm);
 	struct cpt_request_info *req_info = &rctx->cpt_req;
-	struct pci_dev *pdev = NULL;
+	u32 enc_iv_len = crypto_ablkcipher_ivsize(tfm);
+	struct pci_dev *pdev;
+	struct algs_ops *ops;
 	int status, cpu_num;
 
 	/* Validate that request doesn't exceed maximum CPT supported size */
@@ -267,16 +275,20 @@ static inline int cvm_enc_dec(struct ablkcipher_request *req, u32 enc)
 	create_input_list(req, enc, enc_iv_len);
 	create_output_list(req, enc_iv_len);
 
-	status = get_se_device(&pdev, &cpu_num);
+	status = get_se_device(&pdev, &ops, &cpu_num);
 	if (status)
 		return status;
 
 	req_info->callback = (void *)cvm_callback;
 	req_info->areq = &req->base;
 	req_info->req_type = ENC_DEC_REQ;
-	req_info->ctrl.s.grp = cpt_get_kcrypto_eng_grp_num(pdev);
+	if (!ops->cpt_get_kcrypto_eng_grp_num)
+		return -EFAULT;
+	req_info->ctrl.s.grp = ops->cpt_get_kcrypto_eng_grp_num(pdev);
 
-	status = cpt_do_request(pdev, req_info, cpu_num);
+	if (!ops->cpt_do_request)
+		return -EFAULT;
+	status = ops->cpt_do_request(pdev, req_info, cpu_num);
 	/* We perform an asynchronous send and once
 	 * the request is completed the driver would
 	 * intimate through registered call back functions
@@ -1099,7 +1111,8 @@ u32 cvm_aead_enc_dec(struct aead_request *req, u8 reg_type, u8 enc)
 	struct crypto_aead *tfm = crypto_aead_reqtfm(req);
 	struct cvm_req_ctx *rctx = aead_request_ctx(req);
 	struct cpt_request_info *req_info = &rctx->cpt_req;
-	struct pci_dev *pdev = NULL;
+	struct pci_dev *pdev;
+	struct algs_ops *ops;
 	u32 status, cpu_num;
 
 	memset(rctx, 0, sizeof(struct cvm_req_ctx));
@@ -1139,13 +1152,17 @@ u32 cvm_aead_enc_dec(struct aead_request *req, u8 reg_type, u8 enc)
 	    req_info->req.param2 > CPT_MAX_REQ_SIZE)
 		return -E2BIG;
 
-	status = get_se_device(&pdev, &cpu_num);
+	status = get_se_device(&pdev, &ops, &cpu_num);
 	if (status)
 		return status;
 
-	req_info->ctrl.s.grp = cpt_get_kcrypto_eng_grp_num(pdev);
+	if (!ops->cpt_get_kcrypto_eng_grp_num)
+		return -EFAULT;
+	req_info->ctrl.s.grp = ops->cpt_get_kcrypto_eng_grp_num(pdev);
 
-	status = cpt_do_request(pdev, req_info, cpu_num);
+	if (!ops->cpt_do_request)
+		return -EFAULT;
+	status = ops->cpt_do_request(pdev, req_info, cpu_num);
 	/* We perform an asynchronous send and once
 	 * the request is completed the driver would
 	 * intimate through registered call back functions
@@ -1528,7 +1545,8 @@ static void swap_func(void *lptr, void *rptr, int size)
 	*rdesc = desc;
 }
 
-int cvm_crypto_init(struct pci_dev *pdev, enum cpt_pf_type pf_type,
+int cvm_crypto_init(struct pci_dev *pdev, struct module *mod,
+		    struct algs_ops ops, enum cpt_pf_type pf_type,
 		    enum cpt_vf_type engine_type, int num_queues,
 		    int num_devices)
 {
@@ -1546,6 +1564,7 @@ int cvm_crypto_init(struct pci_dev *pdev, enum cpt_pf_type pf_type,
 		}
 		se_devices.desc[count].pf_type = pf_type;
 		se_devices.desc[count].num_queues = num_queues;
+		se_devices.desc[count].ops = ops;
 		se_devices.desc[count++].dev = pdev;
 		atomic_inc(&se_devices.count);
 
@@ -1557,7 +1576,7 @@ int cvm_crypto_init(struct pci_dev *pdev, enum cpt_pf_type pf_type,
 				ret =  -EINVAL;
 				goto err;
 			}
-			try_module_get(THIS_MODULE);
+			try_module_get(mod);
 			is_crypto_registered = true;
 		}
 		sort(se_devices.desc, count, sizeof(struct cpt_device_desc),
@@ -1573,6 +1592,7 @@ int cvm_crypto_init(struct pci_dev *pdev, enum cpt_pf_type pf_type,
 		}
 		ae_devices.desc[count].pf_type = pf_type;
 		ae_devices.desc[count].num_queues = num_queues;
+		ae_devices.desc[count].ops = ops;
 		ae_devices.desc[count++].dev = pdev;
 		atomic_inc(&ae_devices.count);
 		sort(ae_devices.desc, count, sizeof(struct cpt_device_desc),
@@ -1586,8 +1606,9 @@ err:
 	mutex_unlock(&mutex);
 	return ret;
 }
+EXPORT_SYMBOL_GPL(cvm_crypto_init);
 
-void cvm_crypto_exit(struct pci_dev *pdev)
+void cvm_crypto_exit(struct pci_dev *pdev, struct module *mod)
 {
 	bool dev_found = false;
 	int i, j, count;
@@ -1609,8 +1630,10 @@ void cvm_crypto_exit(struct pci_dev *pdev)
 	if (atomic_dec_and_test(&se_devices.count) &&
 	    !is_any_alg_used()) {
 		cav_unregister_algs();
-		module_put(THIS_MODULE);
+		module_put(mod);
 		is_crypto_registered = false;
 	}
 	mutex_unlock(&mutex);
 }
+EXPORT_SYMBOL_GPL(cvm_crypto_exit);
+

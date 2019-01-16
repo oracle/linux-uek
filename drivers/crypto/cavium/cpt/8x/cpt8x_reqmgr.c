@@ -8,13 +8,12 @@
  * published by the Free Software Foundation.
  */
 
-#include "cpt_reqmgr.h"
 #include "cpt8x_vf.h"
-#include "cpt8x_reqmgr.h"
+#include "cpt_algs.h"
 
-inline void fill_cpt_inst(union cpt_inst_s *cptinst,
-			  struct cpt_info_buffer *info,
-			  struct cpt_iq_command *iq_cmd)
+static void cpt8x_fill_inst(union cpt_inst_s *cptinst,
+			    struct cpt_info_buffer *info,
+			    struct cpt_iq_command *iq_cmd)
 {
 	cptinst->u[0] = 0x0;
 	cptinst->s8x.doneint = true;
@@ -27,9 +26,10 @@ inline void fill_cpt_inst(union cpt_inst_s *cptinst,
 	cptinst->s8x.ei3 = iq_cmd->cptr.u64;
 }
 
-inline int process_ccode(struct pci_dev *pdev, union cpt_res_s *cpt_status,
-			 struct cpt_info_buffer *cpt_info,
-			 struct cpt_request_info *req, u32 *res_code)
+static int cpt8x_process_ccode(struct pci_dev *pdev,
+			       union cpt_res_s *cpt_status,
+			       struct cpt_info_buffer *cpt_info,
+			       struct cpt_request_info *req, u32 *res_code)
 {
 	u8 ccode = cpt_status->s8x.compcode;
 	union error_code ecode;
@@ -98,7 +98,7 @@ inline int process_ccode(struct pci_dev *pdev, union cpt_res_s *cpt_status,
  * 0 - 1 CPT instruction will be enqueued however CPT will not be informed
  * 1 - 1 CPT instruction will be enqueued and CPT will be informed
  */
-inline void send_cpt_cmd(union cpt_inst_s *cptinst, u32 db_count, void *obj)
+static void cpt8x_send_cmd(union cpt_inst_s *cptinst, u32 db_count, void *obj)
 {
 	struct cpt_vf *cptvf = (struct cpt_vf *) obj;
 	struct command_qinfo *qinfo = &cptvf->cqinfo;
@@ -126,53 +126,36 @@ inline void send_cpt_cmd(union cpt_inst_s *cptinst, u32 db_count, void *obj)
 	spin_unlock(&queue->lock);
 }
 
-inline void send_cpt_cmds_in_batch(union cpt_inst_s *cptinst, u32 num,
-				   void *obj)
+void cpt8x_send_cmds_in_batch(union cpt_inst_s *cptinst, u32 num, void *obj)
 {
 	struct cpt_vf *cptvf = (struct cpt_vf *) obj;
 	int i;
 
 	for (i = 0; i < num; i++)
-		send_cpt_cmd(&cptinst[i], 0, obj);
+		cpt8x_send_cmd(&cptinst[i], 0, obj);
 
 	cptvf_write_vq_doorbell(cptvf, num);
 }
 
-inline void send_cpt_cmds_for_speed_test(union cpt_inst_s *cptinst, u32 num,
-					 void *obj)
+void cpt8x_send_cmds_for_speed_test(union cpt_inst_s *cptinst, u32 num,
+				    void *obj)
 {
-	send_cpt_cmds_in_batch(cptinst, num, obj);
+	cpt8x_send_cmds_in_batch(cptinst, num, obj);
 }
 
-inline int cpt_get_kcrypto_eng_grp_num(struct pci_dev *pdev)
+void cpt8x_post_process(struct cptvf_wqe *wqe)
 {
-	return 0;
+	process_pending_queue(wqe->cptvf->pdev, &wqe->cptvf->ops,
+			      &wqe->cptvf->pqinfo.queue[0]);
 }
 
-inline void cptvf_post_process(struct cptvf_wqe *wqe)
+struct reqmgr_ops cpt8x_get_reqmgr_ops(void)
 {
-	process_pending_queue(wqe->cptvf->pdev, &wqe->cptvf->pqinfo.queue[0]);
-}
+	struct reqmgr_ops ops;
 
-inline int cpt_do_request(struct pci_dev *pdev, struct cpt_request_info *req,
-		   int cpu_num)
-{
-	struct cpt_vf *cptvf = pci_get_drvdata(pdev);
+	ops.fill_inst = cpt8x_fill_inst;
+	ops.process_ccode = cpt8x_process_ccode;
+	ops.send_cmd = cpt8x_send_cmd;
 
-	if (!cpt_device_ready(cptvf)) {
-		dev_err(&pdev->dev, "CPT Device is not ready");
-		return -ENODEV;
-	}
-
-	if ((cptvf->vftype == SE_TYPES) && (!req->ctrl.s.se_req)) {
-		dev_err(&pdev->dev, "CPTVF-%d of SE TYPE got AE request",
-			cptvf->vfid);
-		return -EINVAL;
-	} else if ((cptvf->vftype == AE_TYPES) && (req->ctrl.s.se_req)) {
-		dev_err(&pdev->dev, "CPTVF-%d of AE TYPE got SE request",
-			cptvf->vfid);
-		return -EINVAL;
-	}
-
-	return process_request(pdev, req, &cptvf->pqinfo.queue[0], cptvf);
+	return ops;
 }

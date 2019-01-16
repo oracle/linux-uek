@@ -48,6 +48,7 @@ struct cpt_mbox {
 	u64 data;/* Data         MBOX[1] */
 };
 
-void dump_mbox_msg(struct device *dev, struct cpt_mbox *mbox_msg, int vf_id);
+void cpt8x_dump_mbox_msg(struct device *dev, struct cpt_mbox *mbox_msg,
+			 int vf_id);
 
 #endif /* __CPT8X_COMMON_H */

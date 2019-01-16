@@ -20,8 +20,10 @@ void cpt_set_dbg_level(int level)
 	else
 		debug_level = level;
 }
+EXPORT_SYMBOL_GPL(cpt_set_dbg_level);
 
 int cpt_is_dbg_level_en(int level)
 {
 	return (debug_level & level);
 }
+EXPORT_SYMBOL_GPL(cpt_is_dbg_level_en);

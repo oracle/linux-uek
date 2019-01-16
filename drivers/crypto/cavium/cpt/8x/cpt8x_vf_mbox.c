@@ -48,7 +48,7 @@ void cptvf_handle_mbox_intr(struct cpt_vf *cptvf)
 	mbx.data = readq(cptvf->reg_base + CPT_VFX_PF_MBOXX(0, 1));
 
 	if (cpt_is_dbg_level_en(CPT_DBG_MBOX_MSGS))
-		dump_mbox_msg(&cptvf->pdev->dev, &mbx, -1);
+		cpt8x_dump_mbox_msg(&cptvf->pdev->dev, &mbx, -1);
 
 	switch (mbx.msg) {
 	case CPT_MSG_VF_UP:
