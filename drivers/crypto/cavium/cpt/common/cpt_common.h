@@ -223,9 +223,4 @@ struct cpt_info_buffer {
 	u8 extra_time;
 };
 
-int cvm_crypto_init(struct pci_dev *pdev, enum cpt_pf_type pf_type,
-		    enum cpt_vf_type engine_type, int num_queues,
-		    int num_devices);
-void cvm_crypto_exit(struct pci_dev *pdev);
-
 #endif /* __CPT_COMMON_H */

@@ -358,8 +358,8 @@ void cptpf_afpf_mbox_handler(struct work_struct *work)
 			fwd->rc = msg->rc;
 		} else {
 			if (cpt_is_dbg_level_en(CPT_DBG_MBOX_MSGS))
-				dump_mbox_msg(&cptpf->pdev->dev, msg, size);
-
+				cpt9x_dump_mbox_msg(&cptpf->pdev->dev, msg,
+						    size);
 			switch (msg->id) {
 			case MBOX_MSG_READY:
 				cptpf->pf_id =

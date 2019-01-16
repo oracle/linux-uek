@@ -14,6 +14,7 @@
 #include <linux/list.h>
 #include <linux/interrupt.h>
 #include "cpt_common.h"
+#include "cpt_reqmgr.h"
 #include "cpt_hw_types.h"
 #include "cpt8x_common.h"
 
@@ -76,7 +77,8 @@ struct cpt_vf {
 	u8 priority; /* VF priority ring: 1-High proirity round
 		      * robin ring;0-Low priority round robin ring;
 		      */
-	struct pci_dev *pdev; /* pci device handle */
+	struct pci_dev *pdev; /* Pci device handle */
+	struct reqmgr_ops ops; /* Request manager operations */
 	void __iomem *reg_base; /* Register start address */
 	void *wqe_info;	/* BH worker info */
 	/* MSI-X */
@@ -98,7 +100,7 @@ int cptvf_send_vf_priority_msg(struct cpt_vf *cptvf);
 int cptvf_send_vq_size_msg(struct cpt_vf *cptvf);
 int cptvf_check_pf_ready(struct cpt_vf *cptvf);
 void cptvf_handle_mbox_intr(struct cpt_vf *cptvf);
-void cptvf_post_process(struct cptvf_wqe *wqe);
 void cptvf_write_vq_doorbell(struct cpt_vf *cptvf, u32 val);
+struct algs_ops cpt8x_get_algs_ops(void);
 
 #endif /* __CPT8X_VF_H */

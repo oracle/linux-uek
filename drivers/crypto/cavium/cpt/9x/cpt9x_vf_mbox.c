@@ -71,7 +71,7 @@ void cptvf_pfvf_mbox_handler(struct work_struct *work)
 		}
 
 		if (cpt_is_dbg_level_en(CPT_DBG_MBOX_MSGS))
-			dump_mbox_msg(&cptvf->pdev->dev, msg, size);
+			cpt9x_dump_mbox_msg(&cptvf->pdev->dev, msg, size);
 
 		offset = msg->next_msgoff;
 		switch (msg->id) {

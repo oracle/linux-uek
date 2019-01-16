@@ -58,7 +58,8 @@ static char *get_opcode_str(int msg_opcode)
 	return str;
 }
 
-void dump_mbox_msg(struct device *dev, struct cpt_mbox *mbox_msg, int vf_id)
+void cpt8x_dump_mbox_msg(struct device *dev, struct cpt_mbox *mbox_msg,
+			 int vf_id)
 {
 	char raw_data_str[MAX_RAW_DATA_STR_SIZE];
 	char *opcode_str;

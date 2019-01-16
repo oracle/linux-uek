@@ -190,12 +190,23 @@ struct engine_group_info {
 			  */
 };
 
+struct ucode_ops {
+	int (*detach_and_disable_cores)(struct engine_group_info *eng_grp,
+					void *obj);
+	int (*attach_and_enable_cores)(struct engine_group_info *eng_grp,
+				       void *obj);
+	int (*set_ucode_base)(struct engine_group_info *eng_grp, void *obj);
+	void (*print_engines_mask)(struct engine_group_info *eng_grp,
+				   void *obj, char *buf, int size);
+	void (*notify_group_change)(void *obj);
+};
+
 struct engine_groups {
 	struct engine_group_info grp[CPT_MAX_ENGINE_GROUPS];
 	struct device_attribute ucode_load_attr;	/* ucode load attr */
 	struct engines_available avail;
 	struct mutex lock;
-	void (*plat_hndlr)(void *obj);	/* 8x/9x hndlr for create/delete grp */
+	struct ucode_ops ops;		/* 8x/9x microcode operations */
 	void *obj;			/* 8x/9x platform specific data */
 	int engs_num;			/* total number of engines supported */
 	int eng_types_supported;	/* engine types supported SE, IE, AE */
@@ -206,20 +217,14 @@ struct engine_groups {
 };
 
 int cpt_init_eng_grps(struct pci_dev *pdev, struct engine_groups *eng_grps,
-		      int pf_type);
+		      struct ucode_ops ops, int pf_type);
 void cpt_cleanup_eng_grps(struct pci_dev *pdev,
 			  struct engine_groups *eng_grps);
 int cpt_try_create_default_eng_grps(struct pci_dev *pdev,
 				    struct engine_groups *eng_grps,
 				    int pf_type);
-int cpt_detach_and_disable_cores(struct engine_group_info *eng_grp, void *obj);
-int cpt_set_ucode_base(struct engine_group_info *eng_grp, void *obj);
-int cpt_attach_and_enable_cores(struct engine_group_info *eng_grp, void *obj);
-void cpt_print_engines_mask(struct engine_group_info *eng_grp, void *obj,
-			    char *buf, int size);
 void cpt_set_eng_grps_is_rdonly(struct engine_groups *eng_grps, bool is_rdonly);
 int cpt_uc_supports_eng_type(struct microcode *ucode, int eng_type);
 int cpt_eng_grp_has_eng_type(struct engine_group_info *eng_grp, int eng_type);
-void cpt_set_eng_grps_plat_hndlr(struct engine_groups *eng_grps,
-				 void (*plat_hdnlr)(void *obj));
+
 #endif /* __CPT_UCODE_H */

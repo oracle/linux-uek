@@ -326,7 +326,7 @@ static int cptpf_device_init(struct cptpf_dev *cptpf)
 	cptpf->eng_grps.avail.max_ae_cnt = af_cnsts1.s.ae;
 
 	/* Disable all cores */
-	ret = cpt_disable_all_cores(cptpf);
+	ret = cpt9x_disable_all_cores(cptpf);
 	if (ret)
 		goto error;
 error:
@@ -338,7 +338,7 @@ static void cpt_destroy_sysfs_vf_limits(struct cptpf_dev *cptpf)
 	struct cptvf_info *vf_info;
 	int i;
 
-	quotas_free(cptpf->vf_limits.cpt);
+	cpt_quotas_free(cptpf->vf_limits.cpt);
 	cptpf->vf_limits.cpt = NULL;
 
 	for (i = 0; i < cptpf->enabled_vfs; i++) {
@@ -361,10 +361,10 @@ static int cpt_alloc_vf_limits(struct cptpf_dev *cptpf)
 	mutex_init(&cptpf->vf_limits.lock);
 
 	/* Create limit structures for CPT resource types */
-	cptpf->vf_limits.cpt = quotas_alloc(cptpf->enabled_vfs,
-					    cptpf->limits.cpt,
-					    cptpf->limits.cpt, 0,
-					    &cptpf->vf_limits.lock, NULL);
+	cptpf->vf_limits.cpt = cpt_quotas_alloc(cptpf->enabled_vfs,
+						cptpf->limits.cpt,
+						cptpf->limits.cpt, 0,
+						&cptpf->vf_limits.lock, NULL);
 	if (cptpf->vf_limits.cpt == NULL) {
 		dev_err(&cptpf->pdev->dev,
 			"Failed to allocate cpt limits structures");
@@ -398,7 +398,7 @@ static int cpt_alloc_vf_limits(struct cptpf_dev *cptpf)
 		cptpf->vf_limits.cpt->a[i].val = lfs_per_vf;
 	return 0;
 error:
-	quotas_free(cptpf->vf_limits.cpt);
+	cpt_quotas_free(cptpf->vf_limits.cpt);
 	return ret;
 }
 
@@ -423,9 +423,9 @@ static int cpt_create_sysfs_vf_limits(struct cptpf_dev *cptpf)
 			goto error;
 		}
 
-		if (quota_sysfs_create("cpt", vf_info->limits_kobj, &pdev->dev,
-				       &cptpf->vf_limits.cpt->a[i],
-				       NULL) != 0) {
+		if (cpt_quota_sysfs_create("cpt", vf_info->limits_kobj,
+				&pdev->dev, &cptpf->vf_limits.cpt->a[i],
+				NULL) != 0) {
 			dev_err(&cptpf->pdev->dev,
 				"Failed to create cpt limits sysfs for %s.",
 				pci_name(pdev));
@@ -485,31 +485,6 @@ static int cptpf_sriov_configure(struct pci_dev *pdev, int numvfs)
 error:
 	cptpf->enabled_vfs = 0;
 	return ret;
-}
-
-static void cptpf_eng_grp_hndlr(void *obj)
-{
-	struct cptpf_dev *cptpf = (struct cptpf_dev *) obj;
-	struct engine_group_info *grp;
-	int crypto_eng_grp = INVALID_CRYPTO_ENG_GRP;
-	int i;
-
-	for (i = 0; i < CPT_MAX_ENGINE_GROUPS; i++) {
-		grp = &cptpf->eng_grps.grp[i];
-		if (!grp->is_enabled)
-			continue;
-
-		if (cpt_eng_grp_has_eng_type(grp, SE_TYPES) &&
-		    !cpt_eng_grp_has_eng_type(grp, IE_TYPES) &&
-		    !cpt_eng_grp_has_eng_type(grp, AE_TYPES)) {
-			crypto_eng_grp = i;
-			break;
-		}
-	}
-
-	if (cptpf->crypto_eng_grp == crypto_eng_grp)
-		return;
-	cptpf_send_crypto_eng_grp_msg(cptpf, crypto_eng_grp);
 }
 
 static int cptpf_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
@@ -631,14 +606,11 @@ static int cptpf_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 		goto cpt_err_unregister_interrupts;
 
 	/* Initialize engine groups */
-	err = cpt_init_eng_grps(pdev, &cptpf->eng_grps, CPT_96XX);
+	err = cpt_init_eng_grps(pdev, &cptpf->eng_grps, cpt9x_get_ucode_ops(),
+				CPT_96XX);
 	if (err)
 		goto cpt_err_unregister_interrupts;
 
-
-	/* Set engine group create/delete handler */
-	cpt_set_eng_grps_plat_hndlr(&cptpf->eng_grps,
-				    cptpf_eng_grp_hndlr);
 	return 0;
 
 cpt_err_unregister_interrupts:
