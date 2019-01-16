@@ -332,6 +332,12 @@ struct rdmaip_port_ud_work {
 	int			timeout;
 };
 
+enum {
+	RDMAIP_EVENT_NONE,
+	RDMAIP_EVENT_IB,
+	RDMAIP_EVENT_NET
+};
+
 #define pcidev_to_node(pcidev)	pcibus_to_node(pcidev->bus)
 #define ibdev_to_rdmaipdev(ibdev) pcidev_to_node(to_pci_dev(ibdev->dma_device))
 
