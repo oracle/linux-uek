@@ -52,6 +52,8 @@
 static struct workqueue_struct *rdmaip_wq;
 static void rdmaip_device_add(struct ib_device *device);
 static void rdmaip_device_remove(struct ib_device *device, void *client_data);
+static void rdmaip_update_port_status_all_layers(u8 port, int event_type,
+						 int event);
 
 static DECLARE_DELAYED_WORK(riif_dlywork, rdmaip_initial_failovers);
 /*
@@ -727,32 +729,8 @@ static u8 rdmaip_init_port(struct rdmaip_device	*rdmaip_dev,
 	ip_config[next_port_idx].port_state = RDMAIP_PORT_INIT;
 	ip_config[next_port_idx].port_layerflags = 0x0; /* all clear to begin */
 
-	/*
-	 * We check for the link UP state and use it to set
-	 * both LINK and HW status to UP.
-	 * (Note: Reverse is not true: Link DOWN does NOT necessarily
-	 *        imply HW port is down!)
-	 *
-	 * On a VM reboot or module load (after unload), there
-	 * will be no separate HW UP/DOWN event, so its UP
-	 * status is derived from the link layer status!
-	 *
-	 */
-	if (rdmaip_is_link_layer_up(net_dev)) {
-		ip_config[next_port_idx].port_layerflags =
-			(RDMAIP_PORT_STATUS_LINKUP |
-			RDMAIP_PORT_STATUS_HWPORTUP);
-	}
-
-	/*
-	 * Note: Only HW and LINK status determined in this routine.
-	 * (a) When called during module initialization path, the s
-	 *  status of netdev layer will be determined by subsequent
-	 * NETDEV_UP (or lack of NETDEV_UP) events - which are
-	 * generated  after resilient_rdmaip module by initscripts.
-	 * (b) For interfaces added after initscripts are run,
-	 * NETDEV_UP precedes this initialization call.
-	 */
+	rdmaip_update_port_status_all_layers(next_port_idx,
+					     RDMAIP_EVENT_NONE, 0);
 
 	/*
 	 * bump global ip_port_cnt last - no racing thread should
@@ -1222,6 +1200,83 @@ static int rdmaip_find_port_tstate(u8 port)
 	return tstate;
 }
 
+static int
+rdmaip_get_rdmaport_status(struct rdmaip_device *rdmaip_dev, int port)
+{
+	struct ib_port_attr	port_attr;
+	int			ret;
+	int			pstatus = 0;
+
+	ret = ib_query_port(rdmaip_dev->dev, port, &port_attr);
+	if (!ret) {
+		if (port_attr.state == IB_PORT_ACTIVE)
+			pstatus = RDMAIP_PORT_STATUS_HWPORTUP;
+	}
+
+	return pstatus;
+
+}
+
+static void rdmaip_update_port_status_all_layers(u8 port, int event_type,
+						 int event)
+{
+	switch (event_type) {
+	case RDMAIP_EVENT_NONE:
+		if (rdmaip_get_rdmaport_status(ip_config[port].rdmaip_dev,
+					       ip_config[port].port_num) ==
+					       RDMAIP_PORT_STATUS_HWPORTUP) {
+
+			ip_config[port].port_layerflags |=
+				RDMAIP_PORT_STATUS_HWPORTUP;
+		} else {
+			ip_config[port].port_layerflags &=
+				~RDMAIP_PORT_STATUS_HWPORTUP;
+		}
+		break;
+
+	case RDMAIP_EVENT_IB:
+		if (event == IB_EVENT_PORT_ACTIVE) {
+			ip_config[port].port_layerflags |=
+				RDMAIP_PORT_STATUS_HWPORTUP;
+		} else {
+			ip_config[port].port_layerflags &=
+				~RDMAIP_PORT_STATUS_HWPORTUP;
+		}
+		break;
+	case RDMAIP_EVENT_NET:
+		/*
+		 * On VM, in some cases, Port up event was not delivered.
+		 * So,  Update hw port status if netdev Lower link status
+		 * is UP.
+		 */
+		if (rdmaip_is_link_layer_up(ip_config[port].dev)) {
+			ip_config[port].port_layerflags |=
+				RDMAIP_PORT_STATUS_HWPORTUP;
+		} else {
+			ip_config[port].port_layerflags &=
+			~RDMAIP_PORT_STATUS_HWPORTUP;
+		}
+		break;
+	}
+
+	if (ip_config[port].dev->flags & IFF_UP)
+		ip_config[port].port_layerflags |= RDMAIP_PORT_STATUS_NETDEVUP;
+	else
+		ip_config[port].port_layerflags &= ~RDMAIP_PORT_STATUS_NETDEVUP;
+
+	if (rdmaip_is_link_layer_up(ip_config[port].dev))
+		ip_config[port].port_layerflags |= RDMAIP_PORT_STATUS_LINKUP;
+	else
+		ip_config[port].port_layerflags &= ~RDMAIP_PORT_STATUS_LINKUP;
+
+	RDMAIP_DBG2("Overall netdev %s Port %d Status 0x%x\n",
+		    ip_config[port].if_name, port,
+		    ip_config[port].port_layerflags);
+
+	RDMAIP_DBG2("rdmaip_port state %s\n",
+		    rdmaip_portstate2name(ip_config[port].port_state));
+}
+
 /*
  * rdmaip_event_handler is called by the IB core subsystem
  * to inform certain RDMA events. See ib_event_type definitions
@@ -1276,31 +1331,11 @@ static void rdmaip_event_handler(struct ib_event_handler *handler,
 			    (ip_config_init_phase_flag ?
 			    " during initialization phase!" : ""));
 
-		/* First: HW layer state update! */
-		if (event->event == IB_EVENT_PORT_ACTIVE) {
-			ip_config[port].port_layerflags |=
-			  RDMAIP_PORT_STATUS_HWPORTUP;
+		rdmaip_update_port_status_all_layers(port, RDMAIP_EVENT_IB,
+						     event->event);
+
+		if (event->event == IB_EVENT_PORT_ACTIVE)
 			ip_config[port].port_active_ts = get_jiffies_64();
-		} else {
-			ip_config[port].port_layerflags &=
-			  ~RDMAIP_PORT_STATUS_HWPORTUP;
-		}
-
-		/* Second: check and update link layer status */
-		if (rdmaip_is_link_layer_up(ip_config[port].dev))
-			ip_config[port].port_layerflags |=
-				RDMAIP_PORT_STATUS_LINKUP;
-		else
-			ip_config[port].port_layerflags &=
-				~RDMAIP_PORT_STATUS_LINKUP;
-
-		/* Third: check the netdev layer */
-		if (ip_config[port].dev->flags & IFF_UP)
-			ip_config[port].port_layerflags |=
-				RDMAIP_PORT_STATUS_NETDEVUP;
-		else
-			ip_config[port].port_layerflags &=
-				~RDMAIP_PORT_STATUS_NETDEVUP;
 
 		port_tstate  = rdmaip_find_port_tstate(port);
 
@@ -2347,57 +2382,7 @@ static int rdmaip_netdev_callback(struct notifier_block *self,
 		    (ip_config_init_phase_flag ?
 		    " during initialization phase!" : ""));
 
-	/*
-	 * Update the port status. If its UP, we also
-	 * mark HW layer UP! (Since on VM reboots etc
-	 * we may not get a separate event for HW ports!)
-	 */
-	if (rdmaip_is_link_layer_up(ip_config[port].dev)) {
-		ip_config[port].port_layerflags |= RDMAIP_PORT_STATUS_LINKUP;
-		ip_config[port].port_layerflags |= RDMAIP_PORT_STATUS_HWPORTUP;
-	} else {
-		ip_config[port].port_layerflags &= ~RDMAIP_PORT_STATUS_LINKUP;
-	}
-
-	/*
-	 * Mark NETDEV layer state based on event (verify IFF_UP flag and
-	 * warn!)
-	 */
-
-	switch (event) {
-	case NETDEV_UP:
-		ip_config[port].port_layerflags |= RDMAIP_PORT_STATUS_NETDEVUP;
-		if (!(ip_config[port].dev->flags & IFF_UP)) {
-			pr_warn("rdmaip: Device %s is not UP in NETDEV_UP processing\n",
-				ip_config[port].dev->name);
-		}
-		break;
-	case NETDEV_DOWN:
-		ip_config[port].port_layerflags &= ~RDMAIP_PORT_STATUS_NETDEVUP;
-		if (ip_config[port].dev->flags & IFF_UP) {
-			pr_warn("rdmaip: Device %s is UP in NETDEV_DOWN processing\n",
-				ip_config[port].dev->name);
-		}
-		break;
-	case NETDEV_CHANGE:
-		/*
-		 * Link layer changes - that trigger NETDEV_CHANGE
-		 * already handled above - just log the messages for
-		 * debugging purposes.
-		 */
-		RDMAIP_DBG2("NETDEV_CHANGE devname: %s, HW_PORT: %s, LINK: %s,NETDEV: %s\n",
-			    ip_config[port].dev->name,
-			    ((ip_config[port].port_layerflags &
-			    RDMAIP_PORT_STATUS_HWPORTUP) ? "UP" : "DOWN"),
-			    ((ip_config[port].port_layerflags &
-			    RDMAIP_PORT_STATUS_LINKUP) ? "UP" : "DOWN"),
-			    ((ip_config[port].port_layerflags &
-			    RDMAIP_PORT_STATUS_NETDEVUP) ? "UP" : "DOWN"));
-		break;
-	default:
-		break;
-	}
-
+	rdmaip_update_port_status_all_layers(port, RDMAIP_EVENT_NET, event);
 	port_tstate = rdmaip_find_port_tstate(port);
 
 	/*
