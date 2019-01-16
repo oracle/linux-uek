@@ -686,8 +686,10 @@ void rds_ib_recv_refill(struct rds_connection *conn, int prefill, gfp_t gfp)
 
 		recv = &ic->i_recvs[pos];
 		ret = rds_ib_recv_refill_one(conn, recv, gfp);
-		if (ret)
+		if (ret) {
+			must_wake = 1;
 			break;
+		}
 
 		if (recv->r_frag)
 			for_each_sg(recv->r_frag->f_sg, sg, ic->i_frag_pages, i)
