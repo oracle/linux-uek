@@ -28,6 +28,10 @@
 #include <uapi/linux/if_arp.h>
 #include <net/net_failover.h>
 
+#define TAKEOVER_DELAY_DEFAULT 100
+static unsigned long takeover_delay = TAKEOVER_DELAY_DEFAULT;
+module_param(takeover_delay, ulong, 0);
+
 static bool net_failover_xmit_ready(struct net_device *dev)
 {
 	return netif_running(dev) && netif_carrier_ok(dev);
@@ -502,6 +506,7 @@ static int net_failover_slave_register(struct net_device *slave_dev,
 {
 	struct net_device *standby_dev, *primary_dev;
 	struct net_failover_info *nfo_info;
+	bool work_scheduled = false;
 	bool slave_is_standby;
 	u32 orig_mtu;
 	int err;
@@ -517,12 +522,21 @@ static int net_failover_slave_register(struct net_device *slave_dev,
 
 	dev_hold(slave_dev);
 
+	slave_is_standby = slave_dev->dev.parent == failover_dev->dev.parent;
+	nfo_info = netdev_priv(failover_dev);
+
 	if (netif_running(failover_dev)) {
-		err = dev_open(slave_dev);
-		if (err && (err != -EBUSY)) {
-			netdev_err(failover_dev, "Opening slave %s failed err:%d\n",
-				   slave_dev->name, err);
-			goto err_dev_open;
+		if (takeover_delay && !slave_is_standby) {
+			schedule_delayed_work(&nfo_info->takeover,
+					      takeover_delay * HZ / 1000);
+			work_scheduled = true;
+		} else {
+			err = dev_open(slave_dev);
+			if (err && (err != -EBUSY)) {
+				netdev_err(failover_dev, "Opening slave %s failed err:%d\n",
+					   slave_dev->name, err);
+				goto err_dev_open;
+			}
 		}
 	}
 
@@ -535,13 +549,13 @@ static int net_failover_slave_register(struct net_device *slave_dev,
 	if (err) {
 		netdev_err(failover_dev, "Failed to add vlan ids to device %s err:%d\n",
 			   slave_dev->name, err);
+		if (work_scheduled)
+			cancel_delayed_work(&nfo_info->takeover);
 		goto err_vlan_add;
 	}
 
-	nfo_info = netdev_priv(failover_dev);
 	standby_dev = rtnl_dereference(nfo_info->standby_dev);
 	primary_dev = rtnl_dereference(nfo_info->primary_dev);
-	slave_is_standby = slave_dev->dev.parent == failover_dev->dev.parent;
 
 	if (slave_is_standby) {
 		rcu_assign_pointer(nfo_info->standby_dev, slave_dev);
@@ -672,9 +686,47 @@ static int net_failover_slave_name_change(struct net_device *slave_dev,
 	/* We need to bring up the slave after the rename by udev in case
 	 * open failed with EBUSY when it was registered.
 	 */
-	dev_open(slave_dev);
+	if (netif_running(failover_dev)) {
+		dev_open(slave_dev);
+
+		net_failover_lower_state_changed(slave_dev,
+						 primary_dev, standby_dev);
+	}
 
 	return 0;
+}
+
+static void net_failover_takeover_primary(struct work_struct *w)
+{
+	struct net_failover_info *nfo_info
+		= container_of(w, struct net_failover_info, takeover.work);
+	struct net_device *primary_dev, *standby_dev;
+	struct net_device *failover_dev;
+	int err;
+
+	if (!rtnl_trylock()) {
+		schedule_delayed_work(&nfo_info->takeover, 0);
+		return;
+	}
+
+	failover_dev = nfo_info->failover_dev;
+	primary_dev = rtnl_dereference(nfo_info->primary_dev);
+	standby_dev = rtnl_dereference(nfo_info->standby_dev);
+
+	if (primary_dev && netif_running(failover_dev)) {
+		err = dev_open(primary_dev);
+		if (err) {
+			netdev_err(failover_dev,
+				   "Opening primary %s failed err:%d\n",
+				   primary_dev->name, err);
+		} else {
+			net_failover_lower_state_changed(primary_dev,
+							 primary_dev,
+							 standby_dev);
+		}
+	}
+
+	rtnl_unlock();
 }
 
 static struct failover_ops net_failover_ops = {
@@ -703,6 +755,7 @@ static struct failover_ops net_failover_ops = {
 struct failover *net_failover_create(struct net_device *standby_dev)
 {
 	struct device *dev = standby_dev->dev.parent;
+	struct net_failover_info *nfo_info;
 	struct net_device *failover_dev;
 	struct failover *failover;
 	int err;
@@ -751,6 +804,9 @@ struct failover *net_failover_create(struct net_device *standby_dev)
 	}
 
 	netif_carrier_off(failover_dev);
+	nfo_info = netdev_priv(failover_dev);
+	nfo_info->failover_dev = failover_dev;
+	INIT_DELAYED_WORK(&nfo_info->takeover, net_failover_takeover_primary);
 
 	failover = failover_register(failover_dev, &net_failover_ops);
 	if (IS_ERR(failover))
@@ -789,6 +845,8 @@ void net_failover_destroy(struct failover *failover)
 
 	failover_dev = rcu_dereference(failover->failover_dev);
 	nfo_info = netdev_priv(failover_dev);
+
+	cancel_delayed_work_sync(&nfo_info->takeover);
 
 	netif_device_detach(failover_dev);
 
