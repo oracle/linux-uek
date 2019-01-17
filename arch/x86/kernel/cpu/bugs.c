@@ -447,26 +447,23 @@ static void retpoline_init(void)
 	setup_force_cpu_cap(X86_FEATURE_RETPOLINE);
 
 	if (boot_cpu_data.x86_vendor == X86_VENDOR_AMD) {
-		if (!boot_cpu_has(X86_FEATURE_LFENCE_RDTSC))
-			pr_err("Spectre mitigation: LFENCE not serializing, setting up generic retpoline\n");
-		else
+		if (boot_cpu_has(X86_FEATURE_LFENCE_RDTSC)) {
 			setup_force_cpu_cap(X86_FEATURE_RETPOLINE_AMD);
+			retpoline_mode = SPECTRE_V2_RETPOLINE_AMD;
+			return;
+		}
+		pr_err("Spectre mitigation: LFENCE not serializing, setting up generic retpoline\n");
+
 	}
 
-	if (boot_cpu_data.x86_vendor == X86_VENDOR_AMD &&
-	    boot_cpu_has(X86_FEATURE_LFENCE_RDTSC))
-		retpoline_mode = SPECTRE_V2_RETPOLINE_AMD;
-	else
-		retpoline_mode = SPECTRE_V2_RETPOLINE_GENERIC;
+	retpoline_mode = SPECTRE_V2_RETPOLINE_GENERIC;
 }
 
 static void __init retpoline_activate(enum spectre_v2_mitigation mode)
 {
 	retpoline_enable();
 	/* IBRS is unnecessary with retpoline mitigation. */
-	if (mode == SPECTRE_V2_RETPOLINE_GENERIC ||
-	    mode == SPECTRE_V2_RETPOLINE_AMD)
-		disable_ibrs_and_friends();
+	disable_ibrs_and_friends();
 }
 
 void refresh_set_spectre_v2_enabled(void)
