@@ -718,6 +718,7 @@ static void __init kvm_apic_init(void)
 
 static void __init kvm_init_platform(void)
 {
+	kvmclock_init();
 	x86_platform.apic_post_init = kvm_apic_init;
 }
 
@@ -725,7 +726,6 @@ const __initconst struct hypervisor_x86 x86_hyper_kvm = {
 	.name			= "KVM",
 	.detect			= kvm_detect,
 	.type			= X86_HYPER_KVM,
-	.init.init_platform	= kvmclock_init,
 	.init.guest_late_init	= kvm_guest_init,
 	.init.x2apic_available	= kvm_para_available,
 	.init.init_platform	= kvm_init_platform,
