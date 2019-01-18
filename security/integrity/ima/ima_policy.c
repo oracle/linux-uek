@@ -157,8 +157,6 @@ static struct ima_rule_entry default_appraise_rules[] __ro_after_init = {
 };
 
 static struct ima_rule_entry lock_down_rules[] __ro_after_init = {
-	{.action = APPRAISE, .func = MODULE_CHECK,
-	 .flags = IMA_FUNC | IMA_DIGSIG_REQUIRED},
 	{.action = APPRAISE, .func = POLICY_CHECK,
 	 .flags = IMA_FUNC | IMA_DIGSIG_REQUIRED},
 };
