@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0
-/* Marvell OcteonTx2 RVU Admin Function driver
+/* Marvell CPT common code
  *
  * Copyright (C) 2018 Marvell International Ltd.
  *
