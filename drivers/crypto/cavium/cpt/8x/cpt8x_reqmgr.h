@@ -1,5 +1,6 @@
-// SPDX-License-Identifier: GPL-2.0
-/*
+/* SPDX-License-Identifier: GPL-2.0
+ * Marvell OcteonTX CPT driver
+ *
  * Copyright (C) 2018 Marvell International Ltd.
  *
  * This program is free software; you can redistribute it and/or modify
