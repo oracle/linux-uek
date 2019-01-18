@@ -1,9 +1,11 @@
-/*
- * Copyright (C) 2017 Cavium, Inc.
+// SPDX-License-Identifier: GPL-2.0
+/* Marvell OcteonTX CPT driver
+ *
+ * Copyright (C) 2018 Marvell International Ltd.
  *
  * This program is free software; you can redistribute it and/or modify
- * it under the terms of version 2 of the GNU General Public License
- * as published by the Free Software Foundation.
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
  */
 
 #include "cpt8x_pf.h"
