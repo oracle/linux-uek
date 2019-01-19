@@ -682,7 +682,8 @@ rds_recv_local(struct rds_conn_path *cp, struct in6_addr *saddr,
 			/* if this is a handshake ping,
 			 * start multipath if necessary
 			 */
-			if (RDS_HS_PROBE(be16_to_cpu(inc->i_hdr.h_sport),
+			if (conn->c_trans->t_mp_capable &&
+			    RDS_HS_PROBE(be16_to_cpu(inc->i_hdr.h_sport),
 					 be16_to_cpu(inc->i_hdr.h_dport))) {
 				rds_recv_hs_exthdrs(&inc->i_hdr, cp->cp_conn);
 				rds_start_mprds(cp->cp_conn);
@@ -690,7 +691,8 @@ rds_recv_local(struct rds_conn_path *cp, struct in6_addr *saddr,
 		}
 		goto out;
 	}
-	if (be16_to_cpu(inc->i_hdr.h_dport) ==  RDS_FLAG_PROBE_PORT &&
+	if (conn->c_trans->t_mp_capable &&
+	    be16_to_cpu(inc->i_hdr.h_dport) ==  RDS_FLAG_PROBE_PORT &&
 	    inc->i_hdr.h_sport == 0) {
 		rds_recv_hs_exthdrs(&inc->i_hdr, cp->cp_conn);
 		/* if this is a handshake pong, start multipath if necessary */
