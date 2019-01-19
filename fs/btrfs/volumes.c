@@ -159,20 +159,6 @@ static struct btrfs_device *__alloc_device(void)
 	return dev;
 }
 
-static noinline struct btrfs_device *__find_device(struct list_head *head,
-						   u64 devid, u8 *uuid)
-{
-	struct btrfs_device *dev;
-
-	list_for_each_entry(dev, head, dev_list) {
-		if (dev->devid == devid &&
-		    (!uuid || !memcmp(dev->uuid, uuid, BTRFS_UUID_SIZE))) {
-			return dev;
-		}
-	}
-	return NULL;
-}
-
 static noinline struct btrfs_fs_devices *find_fsid(u8 *fsid)
 {
 	struct btrfs_fs_devices *fs_devices;
@@ -470,8 +456,8 @@ static noinline int device_list_add(const char *path,
 
 		device = NULL;
 	} else {
-		device = __find_device(&fs_devices->devices, devid,
-				       disk_super->dev_item.uuid);
+		device = btrfs_find_device(fs_devices, devid,
+				disk_super->dev_item.uuid, NULL, false);
 	}
 
 	if (!device) {
@@ -1896,8 +1882,8 @@ static int btrfs_find_device_by_path(struct btrfs_root *root, char *device_path,
 	disk_super = (struct btrfs_super_block *)bh->b_data;
 	devid = btrfs_stack_device_id(&disk_super->dev_item);
 	dev_uuid = disk_super->dev_item.uuid;
-	*device = btrfs_find_device(root->fs_info, devid, dev_uuid,
-				    disk_super->fsid);
+	*device = btrfs_find_device(root->fs_info->fs_devices, devid, dev_uuid,
+				    disk_super->fsid, true);
 	brelse(bh);
 	if (!*device)
 		ret = -ENOENT;
@@ -1945,8 +1931,8 @@ int btrfs_find_device_by_user_input(struct btrfs_root *root, u64 srcdevid,
 
 	if (srcdevid) {
 		ret = 0;
-		*device = btrfs_find_device(root->fs_info, srcdevid, NULL,
-					    NULL);
+		*device = btrfs_find_device(root->fs_info->fs_devices, srcdevid, NULL,
+					    NULL, true);
 		if (!*device)
 			ret = -ENOENT;
 	} else {
@@ -2078,8 +2064,8 @@ next_slot:
 				   BTRFS_UUID_SIZE);
 		read_extent_buffer(leaf, fs_uuid, btrfs_device_fsid(dev_item),
 				   BTRFS_UUID_SIZE);
-		device = btrfs_find_device(root->fs_info, devid, dev_uuid,
-					   fs_uuid);
+		device = btrfs_find_device(root->fs_info->fs_devices, devid, dev_uuid,
+					   fs_uuid, true);
 		BUG_ON(!device); /* Logic error */
 
 		if (device->fs_devices->seeding) {
@@ -5910,22 +5896,36 @@ int btrfs_map_bio(struct btrfs_root *root, int rw, struct bio *bio,
 	return 0;
 }
 
-struct btrfs_device *btrfs_find_device(struct btrfs_fs_info *fs_info, u64 devid,
-				       u8 *uuid, u8 *fsid)
+/*
+ * Find a device specified by @devid or @uuid in the list of @fs_devices, or
+ * return NULL.
+ *
+ * If devid and uuid are both specified, the match must be exact, otherwise
+ * only devid is used.
+ *
+ * If @seed is true, traverse through the seed devices.
+ */
+struct btrfs_device *btrfs_find_device(struct btrfs_fs_devices *fs_devices,
+					u64 devid, u8 *uuid, u8 *fsid,
+					bool seed)
 {
 	struct btrfs_device *device;
-	struct btrfs_fs_devices *cur_devices;
 
-	cur_devices = fs_info->fs_devices;
-	while (cur_devices) {
+	while (fs_devices) {
 		if (!fsid ||
-		    !memcmp(cur_devices->fsid, fsid, BTRFS_UUID_SIZE)) {
-			device = __find_device(&cur_devices->devices,
-					       devid, uuid);
-			if (device)
-				return device;
+		    !memcmp(fs_devices->fsid, fsid, BTRFS_FSID_SIZE)) {
+			list_for_each_entry(device, &fs_devices->devices,
+					    dev_list) {
+				if (device->devid == devid &&
+				    (!uuid || memcmp(device->uuid, uuid,
+						     BTRFS_UUID_SIZE) == 0))
+					return device;
+			}
 		}
-		cur_devices = cur_devices->seed;
+		if (seed)
+			fs_devices = fs_devices->seed;
+		else
+			return NULL;
 	}
 	return NULL;
 }
@@ -6063,8 +6063,8 @@ static int read_one_chunk(struct btrfs_root *root, struct btrfs_key *key,
 		read_extent_buffer(leaf, uuid, (unsigned long)
 				   btrfs_stripe_dev_uuid_nr(chunk, i),
 				   BTRFS_UUID_SIZE);
-		map->stripes[i].dev = btrfs_find_device(root->fs_info, devid,
-							uuid, NULL);
+		map->stripes[i].dev = btrfs_find_device(root->fs_info->fs_devices, devid,
+							uuid, NULL, true);
 		if (!map->stripes[i].dev && !btrfs_test_opt(root, DEGRADED)) {
 			free_extent_map(em);
 			return -EIO;
@@ -6191,7 +6191,7 @@ static int read_one_dev(struct btrfs_root *root,
 			return PTR_ERR(fs_devices);
 	}
 
-	device = btrfs_find_device(root->fs_info, devid, dev_uuid, fs_uuid);
+	device = btrfs_find_device(root->fs_info->fs_devices, devid, dev_uuid, fs_uuid, true);
 	if (!device) {
 		if (!btrfs_test_opt(root, DEGRADED))
 			return -EIO;
@@ -6643,7 +6643,7 @@ int btrfs_get_dev_stats(struct btrfs_root *root,
 	int i;
 
 	mutex_lock(&fs_devices->device_list_mutex);
-	dev = btrfs_find_device(root->fs_info, stats->devid, NULL, NULL);
+	dev = btrfs_find_device(root->fs_info->fs_devices, stats->devid, NULL, NULL, true);
 	mutex_unlock(&fs_devices->device_list_mutex);
 
 	if (!dev) {
