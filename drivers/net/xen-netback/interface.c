@@ -67,9 +67,12 @@ void xenvif_skb_zerocopy_complete(struct xenvif_queue *queue,
 	/* Wake the dealloc thread _after_ decrementing inflight_packets so
 	 * that if kthread_stop() has already been called, the dealloc thread
 	 * does not wait forever with nothing to wake it. But only wake up when
-	 * there are grants to unmap.
+	 * there are grants to unmap, or when we disconnect/teardown the
+	 * interface.
 	 */
-	if (prod != queue->dealloc_prod)
+	if (prod != queue->dealloc_prod ||
+	    (unlikely(!test_bit(VIF_STATUS_CONNECTED, &queue->vif->status) &&
+		      !atomic_read(&queue->inflight_packets))))
 		wake_up(&queue->dealloc_wq);
 }
 
