@@ -424,7 +424,7 @@ int otx2_txschq_config(struct otx2_nic *pfvf, int lvl)
 int otx2_txsch_alloc(struct otx2_nic *pfvf)
 {
 	struct nix_txsch_alloc_req *req;
-	int lvl, err;
+	int lvl;
 
 	/* Get memory to put this msg */
 	req = otx2_mbox_alloc_msg_nix_txsch_alloc(&pfvf->mbox);
@@ -435,10 +435,7 @@ int otx2_txsch_alloc(struct otx2_nic *pfvf)
 	for (lvl = 0; lvl < NIX_TXSCH_LVL_CNT; lvl++)
 		req->schq[lvl] = 1;
 
-	err = otx2_sync_mbox_msg(&pfvf->mbox);
-	if (err)
-		return err;
-	return 0;
+	return otx2_sync_mbox_msg(&pfvf->mbox);
 }
 
 int otx2_txschq_stop(struct otx2_nic *pfvf)
@@ -697,14 +694,15 @@ int otx2_config_nix(struct otx2_nic *pfvf)
 {
 	struct nix_lf_alloc_req *nixlf;
 	struct nix_lf_alloc_rsp *rsp;
-	int err;
+	int err = -ENOMEM;
 
 	pfvf->qset.xqe_size = NIX_XQESZ_W16 ? 128 : 512;
 
 	/* Get memory to put this msg */
+	spin_lock(&pfvf->mbox.lock);
 	nixlf = otx2_mbox_alloc_msg_nix_lf_alloc(&pfvf->mbox);
 	if (!nixlf)
-		return -ENOMEM;
+		goto exit;
 
 	/* Set RQ/SQ/CQ counts */
 	nixlf->rq_cnt = pfvf->hw.rx_queues;
@@ -723,19 +721,27 @@ int otx2_config_nix(struct otx2_nic *pfvf)
 	 */
 	nixlf->rx_cfg = BIT_ULL(33) | BIT_ULL(35) | BIT_ULL(37);
 
-	err = otx2_sync_mbox_msg(&pfvf->mbox);
+	err = __otx2_sync_mbox_msg(&pfvf->mbox);
 	if (err)
-		return err;
+		goto exit;
 
 	rsp = (struct nix_lf_alloc_rsp *)otx2_mbox_get_rsp(&pfvf->mbox.mbox, 0,
 							   &nixlf->hdr);
-	if (IS_ERR(rsp))
-		return PTR_ERR(rsp);
+	if (IS_ERR(rsp)) {
+		err = PTR_ERR(rsp);
+		goto exit;
+	}
 
-	if (rsp->qints < 1)
-		return -ENXIO;
+	if (rsp->qints < 1) {
+		err = -ENXIO;
+		goto exit;
+	}
 
-	return rsp->hdr.rc;
+	err = rsp->hdr.rc;
+exit:
+	otx2_mdev_reset_num_msgs(&pfvf->mbox);
+	spin_unlock(&pfvf->mbox.lock);
+	return err;
 }
 
 void otx2_free_aura_ptr(struct otx2_nic *pfvf, int type)
@@ -1004,7 +1010,7 @@ int otx2_config_npa(struct otx2_nic *pfvf)
 	struct otx2_qset *qset = &pfvf->qset;
 	struct npa_lf_alloc_req  *npalf;
 	struct otx2_hw *hw = &pfvf->hw;
-	int aura_cnt, err;
+	int aura_cnt;
 
 	/* Pool - Stack of free buffer pointers
 	 * Aura - Alloc/frees pointers from/to pool for NIX DMA.
@@ -1028,10 +1034,7 @@ int otx2_config_npa(struct otx2_nic *pfvf)
 	aura_cnt = ilog2(roundup_pow_of_two(hw->pool_cnt));
 	npalf->aura_sz = (aura_cnt >= ilog2(128)) ? (aura_cnt - 6) : 1;
 
-	err = otx2_sync_mbox_msg(&pfvf->mbox);
-	if (err)
-		return err;
-	return 0;
+	return otx2_sync_mbox_msg(&pfvf->mbox);
 }
 
 int otx2_detach_resources(struct mbox *mbox)
