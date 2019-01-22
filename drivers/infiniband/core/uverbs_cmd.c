@@ -4700,6 +4700,7 @@ int ib_uverbs_ex_query_device(struct ib_uverbs_file *file,
 		attr.odp_caps.per_transport_caps.uc_odp_caps;
 	resp.odp_caps.per_transport_caps.ud_odp_caps =
 		attr.odp_caps.per_transport_caps.ud_odp_caps;
+	resp.xrc_odp_caps = attr.odp_caps.per_transport_caps.xrc_odp_caps;
 #endif
 	resp.response_length += sizeof(resp.odp_caps);
 
