@@ -347,6 +347,7 @@ static int otx2_pfaf_mbox_init(struct otx2_nic *pf)
 
 	INIT_WORK(&mbox->mbox_wrk, otx2_pfaf_mbox_handler);
 	INIT_WORK(&mbox->mbox_up_wrk, otx2_pfaf_mbox_up_handler);
+	spin_lock_init(&mbox->lock);
 
 	return 0;
 exit:
@@ -388,11 +389,12 @@ static int otx2_enable_rxvlan(struct otx2_nic *pf, bool enable)
 {
 	struct nix_vtag_config *req;
 	struct mbox_msghdr *rsp_hdr;
-	int err;
+	int err = -ENOMEM;
 
+	spin_lock(&pf->mbox.lock);
 	req = otx2_mbox_alloc_msg_nix_vtag_cfg(&pf->mbox);
 	if (!req)
-		return -ENOMEM;
+		goto exit;
 
 	req->vtag_size = 0;
 	req->cfg_type = 1;
@@ -401,15 +403,21 @@ static int otx2_enable_rxvlan(struct otx2_nic *pf, bool enable)
 	req->rx.strip_vtag = enable;
 	req->rx.capture_vtag = enable;
 
-	err = otx2_sync_mbox_msg(&pf->mbox);
+	err = __otx2_sync_mbox_msg(&pf->mbox);
 	if (err)
-		return err;
+		goto exit;
 
 	rsp_hdr = otx2_mbox_get_rsp(&pf->mbox.mbox, 0, &req->hdr);
-	if (IS_ERR(rsp_hdr))
-		return PTR_ERR(rsp_hdr);
+	if (IS_ERR(rsp_hdr)) {
+		err =  PTR_ERR(rsp_hdr);
+		goto exit;
+	}
 
-	return rsp_hdr->rc;
+	err = rsp_hdr->rc;
+exit:
+	otx2_mdev_reset_num_msgs(&pf->mbox);
+	spin_unlock(&pf->mbox.lock);
+	return err;
 }
 
 int otx2_set_real_num_queues(struct net_device *netdev,
@@ -440,17 +448,21 @@ static void otx2_alloc_rxvlan(struct otx2_nic *pf)
 	struct msg_req *req;
 	int err;
 
+	spin_lock(&pf->mbox.lock);
 	req = otx2_mbox_alloc_msg_nix_rxvlan_alloc(&pf->mbox);
 	if (!req)
-		return;
+		goto exit;
 
-	err = otx2_sync_mbox_msg(&pf->mbox);
+	err = __otx2_sync_mbox_msg(&pf->mbox);
 	if (err)
-		return;
+		goto exit;
 
 	rsp_hdr = otx2_mbox_get_rsp(&pf->mbox.mbox, 0, &req->hdr);
 	if (IS_ERR(rsp_hdr))
-		return;
+		goto exit;
+
+	otx2_mdev_reset_num_msgs(&pf->mbox);
+	spin_unlock(&pf->mbox.lock);
 
 	old = pf->netdev->hw_features;
 	if (rsp_hdr->rc) {
@@ -478,6 +490,11 @@ static void otx2_alloc_rxvlan(struct otx2_nic *pf)
 
 	if (old != pf->netdev->hw_features)
 		netdev_features_change(pf->netdev);
+
+	return;
+exit:
+	otx2_mdev_reset_num_msgs(&pf->mbox);
+	spin_unlock(&pf->mbox.lock);
 }
 
 static irqreturn_t otx2_q_intr_handler(int irq, void *data)
@@ -1003,7 +1020,7 @@ static void otx2_set_rx_mode(struct net_device *netdev)
 	else if (netdev->flags & IFF_ALLMULTI)
 		req->mode |= NIX_RX_MODE_ALLMULTI;
 
-	otx2_sync_mbox_msg_busy_poll(&pf->mbox);
+	otx2_sync_mbox_msg(&pf->mbox);
 }
 
 static void otx2_reset_task(struct work_struct *work)

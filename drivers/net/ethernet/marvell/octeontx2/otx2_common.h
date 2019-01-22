@@ -108,6 +108,7 @@ struct  mbox {
 	struct work_struct	mbox_up_wrk;
 	struct otx2_nic		*pfvf;
 	void *bbuf_base; /* Bounce buffer for mbox memory */
+	spinlock_t lock; /* Used to serialize mbox access */
 };
 
 struct otx2_hw {
@@ -269,24 +270,7 @@ static inline int otx2_get_pool_idx(struct otx2_nic *pfvf, int type, int idx)
 }
 
 /* Mbox APIs */
-static inline int otx2_sync_mbox_msg(struct mbox *mbox)
-{
-	int err;
-
-	if (!otx2_mbox_nonempty(&mbox->mbox, 0))
-		return 0;
-	otx2_mbox_msg_send(&mbox->mbox, 0);
-	err = otx2_mbox_wait_for_rsp(&mbox->mbox, 0);
-	if (err)
-		return err;
-
-	return otx2_mbox_check_rsp_msgs(&mbox->mbox, 0);
-}
-
-/* Use this API to send mbox msgs in atomic context
- * where sleeping is not allowed
- */
-static inline int otx2_sync_mbox_msg_busy_poll(struct mbox *mbox)
+static inline int __otx2_sync_mbox_msg(struct mbox *mbox)
 {
 	int err;
 
@@ -298,6 +282,31 @@ static inline int otx2_sync_mbox_msg_busy_poll(struct mbox *mbox)
 		return err;
 
 	return otx2_mbox_check_rsp_msgs(&mbox->mbox, 0);
+}
+
+static inline void otx2_mdev_reset_num_msgs(struct mbox *mbox)
+{
+	struct otx2_mbox_dev *mdev = &mbox->mbox.dev[0];
+
+	spin_lock(&mdev->mbox_lock);
+	mdev->num_msgs = 0;
+	spin_unlock(&mdev->mbox_lock);
+}
+
+/* Use this API to send mbox msgs if you do not care about message response */
+static inline int otx2_sync_mbox_msg(struct mbox *mbox)
+{
+	int err;
+
+	spin_lock(&mbox->lock);
+	err = __otx2_sync_mbox_msg(mbox);
+	/* mark mbox as empty to avoid situation where the same set of messages
+	 * can be send more than once
+	 */
+	otx2_mdev_reset_num_msgs(mbox);
+	spin_unlock(&mbox->lock);
+
+	return err;
 }
 
 #define M(_name, _id, _fn_name, _req_type, _rsp_type)			\
