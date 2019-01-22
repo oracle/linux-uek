@@ -64,6 +64,7 @@ struct driver_private {
  *	binding of drivers which were unable to get all the resources needed by
  *	the device; typically because it depends on another driver getting
  *	probed first.
+ * @async_driver - pointer to device driver awaiting probe via async_probe
  * @device - pointer back to the struct device that this structure is
  * associated with.
  * @dead - This device is currently either in the process of or has been
@@ -79,6 +80,7 @@ struct device_private {
 	struct klist_node knode_bus;
 	struct list_head deferred_probe;
 	struct device *device;
+	UEK_KABI_EXTEND(struct device_driver *async_driver)
 	UEK_KABI_EXTEND(u8 dead:1)
 };
 #define to_device_private_parent(obj)	\
