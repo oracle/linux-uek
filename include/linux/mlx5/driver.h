@@ -455,9 +455,6 @@ struct mlx5_core_srq {
 	size_t		max_avail_gather;
 	int		wqe_shift;
 	void (*event)	(struct mlx5_core_srq *, enum mlx5_event);
-
-	atomic_t		refcount;
-	struct completion	free;
 };
 
 struct mlx5_eq_table {
