@@ -4211,8 +4211,6 @@ static void mlx5_ib_unbind_slave_port(struct mlx5_ib_dev *ibdev,
 	int err;
 	int i;
 
-	mlx5_ib_cleanup_cong_debugfs(ibdev, port_num);
-
 	spin_lock(&port->mp.mpi_lock);
 	if (!mpi->ibdev) {
 		spin_unlock(&port->mp.mpi_lock);
@@ -4289,10 +4287,6 @@ static bool mlx5_ib_bind_slave_port(struct mlx5_ib_dev *ibdev,
 			    port_num + 1);
 		goto unbind;
 	}
-
-	err = mlx5_ib_init_cong_debugfs(ibdev, port_num);
-	if (err)
-		goto unbind;
 
 	return true;
 
@@ -4699,7 +4693,7 @@ static void *mlx5_ib_add(struct mlx5_core_dev *mdev)
 			goto err_odp;
 	}
 
-	err = mlx5_ib_init_cong_debugfs(dev, port_num);
+	err = mlx5_ib_init_cong_debugfs(dev);
 	if (err)
 		goto err_cnt;
 
@@ -4758,7 +4752,7 @@ err_uar_page:
 	mlx5_put_uars_page(dev->mdev, dev->mdev->priv.uar);
 
 err_cong:
-	mlx5_ib_cleanup_cong_debugfs(dev, port_num);
+	mlx5_ib_cleanup_cong_debugfs(dev);
 err_cnt:
 	if (MLX5_CAP_GEN(dev->mdev, max_qp_cnt))
 		mlx5_ib_dealloc_counters(dev);
@@ -4814,7 +4808,7 @@ static void mlx5_ib_remove(struct mlx5_core_dev *mdev, void *context)
 	mlx5_free_bfreg(dev->mdev, &dev->fp_bfreg);
 	mlx5_free_bfreg(dev->mdev, &dev->bfreg);
 	mlx5_put_uars_page(dev->mdev, mdev->priv.uar);
-	mlx5_ib_cleanup_cong_debugfs(dev, port_num);
+	mlx5_ib_cleanup_cong_debugfs(dev);
 	if (MLX5_CAP_GEN(dev->mdev, max_qp_cnt))
 		mlx5_ib_dealloc_counters(dev);
 	mlx5_ib_cleanup_multiport_master(dev);
