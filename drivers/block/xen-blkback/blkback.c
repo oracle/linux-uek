@@ -1131,32 +1131,42 @@ static bool validate_io_op(const struct blkif_request *req, unsigned int nseg)
 	unsigned short req_operation = req->operation == BLKIF_OP_INDIRECT ?
 			req->u.indirect.indirect_op : req->operation;
 
-	if (unlikely(req_operation == BLKIF_OP_RESERVED_1))
+	switch (req_operation) {
+	case BLKIF_OP_RESERVED_1:
 		goto fail;
 
-	/* For discard, nseg is not meaninful */
-	if (unlikely(req_operation == BLKIF_OP_DISCARD))
+	case BLKIF_OP_DISCARD:
+		/* For discard, nseg is not meaninful */
 		return true;
 
-	if ((req_operation > BLKIF_OP_INDIRECT) ||	/* valid operation? */
-	    ((req->operation == BLKIF_OP_INDIRECT) &&	/* valid indirect-op */
-	     (req_operation != BLKIF_OP_READ) &&
-	     (req_operation != BLKIF_OP_WRITE))) {
+	case BLKIF_OP_READ:
+	case BLKIF_OP_WRITE:
+		/* if nseg == 0, is op in the correct set? */
+		if (unlikely(nseg == 0))
+			goto fail;
+		break;
+
+	case BLKIF_OP_WRITE_BARRIER:
+	case BLKIF_OP_FLUSH_DISKCACHE:
+		/* not valid indirect-op */
+		if (req->operation == BLKIF_OP_INDIRECT)
+			goto fail;
+		break;
+
+	default:
+		/* req_operation should never >= BLKIF_OP_INDIRECT */
 		goto fail;
 	}
 
-	if (unlikely(nseg == 0)) { /* if nseg == 0, is op in the correct set? */
-		if (req_operation != BLKIF_OP_FLUSH_DISKCACHE &&
-		    req_operation != BLKIF_OP_WRITE_BARRIER)
-			goto fail;
-	} else { /* if nseg > 0, check if nseg makes sense. */
-		if (((req->operation != BLKIF_OP_INDIRECT) &&
-			(nseg > BLKIF_MAX_SEGMENTS_PER_REQUEST)) ||
-		    ((req->operation == BLKIF_OP_INDIRECT) &&
-			(nseg > MAX_INDIRECT_SEGMENTS))) {
-			goto fail;
-		}
-	}
+	/* if nseg > 0, check if nseg makes sense. */
+	if (req->operation != BLKIF_OP_INDIRECT &&
+	    nseg > BLKIF_MAX_SEGMENTS_PER_REQUEST)
+		goto fail;
+
+	/* if nseg > 0, check if nseg makes sense. */
+	if (req->operation == BLKIF_OP_INDIRECT &&
+	    nseg > MAX_INDIRECT_SEGMENTS)
+		goto fail;
 
 	return true;
 fail:
