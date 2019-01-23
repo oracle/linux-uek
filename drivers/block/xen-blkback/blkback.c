@@ -1231,26 +1231,28 @@ __do_block_io_op(struct xen_blkif_ring *ring)
 
 		barrier();
 
-		if (likely(valid_req)) {
-			switch (req.operation) {
-			case BLKIF_OP_READ:
-			case BLKIF_OP_WRITE:
-			case BLKIF_OP_WRITE_BARRIER:
-			case BLKIF_OP_FLUSH_DISKCACHE:
-			case BLKIF_OP_INDIRECT:
-				if (dispatch_rw_block_io(ring, &req, pending_req))
-					goto done;
-				break;
-			case BLKIF_OP_DISCARD:
-				if (dispatch_discard_io(ring, &req))
-					goto done;
-				break;
-			default:
-				BUG();
-			}
-		} else {
+		if (unlikely(!valid_req)) {
 			if (dispatch_other_io(ring, &req))
 				goto done;
+		}
+
+		switch (req.operation) {
+		case BLKIF_OP_READ:
+		case BLKIF_OP_WRITE:
+		case BLKIF_OP_WRITE_BARRIER:
+		case BLKIF_OP_FLUSH_DISKCACHE:
+		case BLKIF_OP_INDIRECT:
+			if (dispatch_rw_block_io(ring, &req, pending_req))
+				goto done;
+			break;
+		case BLKIF_OP_DISCARD:
+			if (dispatch_discard_io(ring, &req))
+				goto done;
+			break;
+		default:
+			if (dispatch_other_io(ring, &req))
+				goto done;
+			break;
 		}
 
 		/* Yield point for this unbounded loop. */
