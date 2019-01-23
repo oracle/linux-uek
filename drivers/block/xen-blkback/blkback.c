@@ -1148,6 +1148,9 @@ static bool validate_io_op(const struct blkif_request *req, unsigned int nseg)
 	unsigned short req_operation = req->operation == BLKIF_OP_INDIRECT ?
 			req->u.indirect.indirect_op : req->operation;
 
+	if (unlikely(req_operation == BLKIF_OP_RESERVED_1))
+		goto fail;
+
 	/* For discard, nseg is not meaninful */
 	if (unlikely(req_operation == BLKIF_OP_DISCARD))
 		return true;

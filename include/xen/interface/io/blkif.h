@@ -135,6 +135,12 @@ typedef uint64_t blkif_sector_t;
 #define BLKIF_OP_FLUSH_DISKCACHE   3
 
 /*
+ * BLKIF_OP_RESERVED_1 (or BLKIF_OP_PACKET) is neither supported by oracle
+ * linux nor upstream linux. It is primarily used by SLES.
+ */
+#define BLKIF_OP_RESERVED_1        4
+
+/*
  * Recognised only if "feature-discard" is present in backend xenbus info.
  * The "feature-discard" node contains a boolean indicating whether trim
  * (ATA) or unmap (SCSI) - conviently called discard requests are likely
