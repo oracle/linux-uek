@@ -189,7 +189,7 @@ static int thunder_mmc_probe(struct pci_dev *pdev,
 	 */
 	thunder_calibrate_mmc(host);
 
-	for_each_child_of_node(node, child_node) {
+	for_each_available_child_of_node(node, child_node) {
 		/*
 		 * mmc_of_parse and devm* require one device per slot.
 		 * Create a dummy device per slot and set the node pointer to
