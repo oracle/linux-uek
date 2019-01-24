@@ -271,7 +271,8 @@ static void do_switch(struct cvm_mmc_host *host, u64 emm_switch)
 {
 	int retries = 100;
 	u64 rsp_sts;
-	int bus_id;
+	int bus_id = get_bus_id(emm_switch);
+	struct cvm_mmc_slot *slot = host->slot[bus_id];
 
 	/*
 	 * Modes setting only taken from slot 0. Work around that hardware
@@ -293,6 +294,11 @@ static void do_switch(struct cvm_mmc_host *host, u64 emm_switch)
 	} while (--retries);
 
 	check_switch_errors(host);
+
+	if (slot) {
+		slot->cmd6_pending = false;
+		slot->cached_switch = emm_switch;
+	}
 }
 
 /* need to change hardware state to match software requirements? */
@@ -345,14 +351,11 @@ static void cvm_mmc_reset_bus(struct cvm_mmc_slot *slot)
 	u64 emm_switch, wdog;
 
 	emm_switch = readq(host->base + MIO_EMM_SWITCH(host));
-	emm_switch &= ~(MIO_EMM_SWITCH_EXE | MIO_EMM_SWITCH_ERR0 |
-			MIO_EMM_SWITCH_ERR1 | MIO_EMM_SWITCH_ERR2);
+	emm_switch &= ~(MIO_EMM_SWITCH_EXE | MIO_EMM_SWITCH_ERRS);
 	set_bus_id(&emm_switch, slot->bus_id);
 
 	wdog = readq(host->base + MIO_EMM_WDOG(host));
 	do_switch(host, emm_switch);
-
-	slot->cached_switch = emm_switch;
 	host->powered = true;
 
 	msleep(20);
@@ -538,6 +541,8 @@ irqreturn_t cvm_mmc_interrupt(int irq, void *dev_id)
 {
 	struct cvm_mmc_host *host = dev_id;
 	struct mmc_request *req;
+	struct mmc_host *mmc;
+	struct cvm_mmc_slot *slot;
 	unsigned long flags = 0;
 	u64 emm_int, rsp_sts;
 	bool host_done;
@@ -565,6 +570,9 @@ irqreturn_t cvm_mmc_interrupt(int irq, void *dev_id)
 	req = host->current_req;
 	if (!req)
 		goto out;
+
+	mmc = req->host;
+	slot = !mmc ? NULL : mmc_priv(mmc);
 
 	rsp_sts = readq(host->base + MIO_EMM_RSP_STS(host));
 
@@ -617,6 +625,14 @@ irqreturn_t cvm_mmc_interrupt(int irq, void *dev_id)
 	if ((emm_int & MIO_EMM_INT_DMA_ERR) &&
 	    (rsp_sts & MIO_EMM_RSP_STS_DMA_PEND))
 		cleanup_dma(host, rsp_sts);
+
+	/* follow CMD6 timing/width with IMMEDIATE switch */
+	if (slot && slot->cmd6_pending) {
+		if (host_done && !req->cmd->error)
+			do_switch(host, slot->want_switch);
+		else if (slot)
+			slot->cmd6_pending = false;
+	}
 
 	host->current_req = NULL;
 	req->done(req);
@@ -894,6 +910,51 @@ static void do_write_request(struct cvm_mmc_host *host, struct mmc_request *mrq)
 	sg_miter_stop(smi);
 }
 
+static void cvm_mmc_track_switch(struct cvm_mmc_slot *slot, u32 cmd_arg)
+{
+	u8 how = (cmd_arg >> 24) & 3;
+	u8 where = (u8)(cmd_arg >> 16);
+	u8 val = (u8)(cmd_arg >> 8);
+
+	slot->want_switch = slot->cached_switch;
+
+	/*
+	 * track ext_csd assignments (how==3) for critical entries
+	 * to make sure we follow up with MIO_EMM_SWITCH adjustment
+	 * before ANY mmc/core interaction at old settings.
+	 * Current mmc/core logic (linux 4.14) does not set/clear
+	 * bits (how = 1 or 2), which would require more complex
+	 * logic to track the intent of a change
+	 */
+
+	if (how != 3)
+		return;
+
+	switch (where) {
+	case EXT_CSD_BUS_WIDTH:
+		slot->want_switch &= ~MIO_EMM_SWITCH_BUS_WIDTH;
+		slot->want_switch |=
+			FIELD_PREP(MIO_EMM_SWITCH_BUS_WIDTH, val);
+		break;
+	case EXT_CSD_POWER_CLASS:
+		slot->want_switch &= ~MIO_EMM_SWITCH_POWER_CLASS;
+		slot->want_switch |=
+			FIELD_PREP(MIO_EMM_SWITCH_POWER_CLASS, val);
+		break;
+	case EXT_CSD_HS_TIMING:
+		slot->want_switch &= ~MIO_EMM_SWITCH_TIMING;
+		if (val)
+			slot->want_switch |=
+				FIELD_PREP(MIO_EMM_SWITCH_TIMING,
+					(1 << (val - 1)));
+		break;
+	default:
+		return;
+	}
+
+	slot->cmd6_pending = true;
+}
+
 static void cvm_mmc_request(struct mmc_host *mmc, struct mmc_request *mrq)
 {
 	struct cvm_mmc_slot *slot = mmc_priv(mmc);
@@ -924,6 +985,7 @@ static void cvm_mmc_request(struct mmc_host *mmc, struct mmc_request *mrq)
 
 	WARN_ON(host->current_req);
 	host->current_req = mrq;
+	mrq->host = mmc;
 
 	if (cmd->data) {
 		if (cmd->data->flags & MMC_DATA_READ)
@@ -938,6 +1000,9 @@ static void cvm_mmc_request(struct mmc_host *mmc, struct mmc_request *mrq)
 
 	host->dma_active = false;
 	host->int_enable(host, MIO_EMM_INT_CMD_DONE | MIO_EMM_INT_CMD_ERR);
+
+	if (cmd->opcode == MMC_SWITCH)
+		cvm_mmc_track_switch(slot, cmd->arg);
 
 	emm_cmd = FIELD_PREP(MIO_EMM_CMD_VAL, 1) |
 		  FIELD_PREP(MIO_EMM_CMD_CTYPE_XOR, mods.ctype_xor) |
@@ -1143,8 +1208,6 @@ static int cvm_mmc_init_lowlevel(struct cvm_mmc_slot *slot)
 	/* Make the changes take effect on this bus slot. */
 	set_bus_id(&emm_switch, slot->bus_id);
 	do_switch(host, emm_switch);
-
-	slot->cached_switch = emm_switch;
 	host->powered = true;
 
 	/*
