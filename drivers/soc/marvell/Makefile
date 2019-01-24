@@ -5,6 +5,7 @@ obj-y		+= octeontx2-dpi/
 obj-y		+= octeontx2-sdp/
 obj-y		+= octeontx2-npa/
 obj-y		+= octeontx2-llc/
+obj-y		+= octeontx2-ccu/
 obj-y 		+= hw-access/
 obj-y 		+= octeontx2-serdes/
 obj-y           += cn10ka-swup/
