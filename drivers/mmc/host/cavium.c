@@ -71,9 +71,9 @@ static struct cvm_mmc_cr_type cvm_mmc_cr_types[] = {
 	{0, 1},		/* CMD16 */
 	{1, 1},		/* CMD17 */
 	{1, 1},		/* CMD18 */
-	{3, 1},		/* CMD19 */
+	{2, 1},		/* CMD19 */
 	{2, 1},		/* CMD20 */
-	{0, 0},		/* CMD21 */
+	{1, 1},		/* CMD21 */
 	{0, 0},		/* CMD22 */
 	{0, 1},		/* CMD23 */
 	{2, 1},		/* CMD24 */
