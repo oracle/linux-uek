@@ -254,4 +254,16 @@ config OCTEONTX2_GHES_BERT
 	  reset the system.  Enabling support here will allow such errors
 	  to be reported when Linux is started again.
 
+config OCTEONTX2_CCU
+	tristate "OcteonTX2 Cache Controller Unit (CCU) driver"
+	depends on ARM64
+	default n
+	help
+	  This driver supports configuring and monitoring the OcteonTX2 Cache
+	  Controller Unit. The driver provides debugfs files to mask LLC ways
+	  for a single or multiple cpus. A README file is included which
+	  provides details on how to configure the LLC ways.
+
+	  To compile as a module choose M here.
+
 endmenu

@@ -1,0 +1,97 @@
+
+OCTEONTX2 Cache Controller Unit (CCU)
+-------------------------------------
+
+The Cache Controller Unit allows partitioning the LLC ways into
+different partitions (mparid) and associate them with a cpu or a
+set of CPUs.
+
+This driver creates a debugfs directory (ccu) in /sys/kernel/debug
+with the following files
+    $ ls /sys/kernel/debug/ccu
+    config  counter  cpumask  mparid  waymask
+
+mparid  - Create a new parition ID. Valid values are 0 - 255.
+waymask - Set the LLC ways that will be masked for the associated mparid.
+          CCU has 14 LTG ways and 20 DTG ways. The mask value is as follows
+          [13:0]  - LTG Ways
+          [33:14] - DTG Ways
+cpumask - Set the CPU mask to which the LLC way partitioning will be applied.
+config  - Write 1 to enable the CCU partitioning with values set in the files
+          mparid, waymask and cpumask.
+          Read prints the cache configuration.
+counter - Prints the Allocate and Hit counter values for the MPARIDs that
+          are configured.
+
+Usage Steps
+-----------
+    1. Create a new parition
+        $ echo <mparid> > /sys/kernel/debug/ccu/mparid
+
+    2. Set the LLC ways that need to be masked.
+        $ echo <waymask> > /sys/kernel/debug/ccu/waymask
+
+    3. Set cpumask to which waymasking will be applied to.
+        $ echo <cpu-mask> > /sys/kernel/debug/ccu/cpumask
+
+    4. Enable this configuration
+        $ echo 1 > /sys/kernel/debug/ccu/config
+
+The above 4 steps can be repeated the with different mparid, waymask and
+cpumask values. Finally the hardware configuration can be read by
+        $ cat /sys/kernel/debug/ccu/config
+
+To check the Allocate and Hit counter for the configured MPARIDs
+        $ cat /sys/kernel/debug/ccu/counter
+
+Example
+-------
+Lets create mparid 10, with all LTG ways masked and associate it with cpus 12-23
+        $ echo 10 > /sys/kernel/debug/ccu/mparid
+        $ echo 0x3fff > /sys/kernel/debug/ccu/waymask
+        $ echo 0xfff000 > /sys/kernel/debug/ccu/cpumask
+        $ echo 1 > /sys/kernel/debug/ccu/config
+
+        $ cat /sys/kernel/debug/ccu/config
+        core:0 mparid:0 waymask:0x0
+        core:1 mparid:0 waymask:0x0
+        core:2 mparid:0 waymask:0x0
+        core:3 mparid:0 waymask:0x0
+        core:4 mparid:0 waymask:0x0
+        core:5 mparid:0 waymask:0x0
+        core:6 mparid:0 waymask:0x0
+        core:7 mparid:0 waymask:0x0
+        core:8 mparid:0 waymask:0x0
+        core:9 mparid:0 waymask:0x0
+        core:10 mparid:0 waymask:0x0
+        core:11 mparid:0 waymask:0x0
+        core:12 mparid:10 waymask:0x3fff
+        core:13 mparid:10 waymask:0x3fff
+        core:14 mparid:10 waymask:0x3fff
+        core:15 mparid:10 waymask:0x3fff
+        core:16 mparid:10 waymask:0x3fff
+        core:17 mparid:10 waymask:0x3fff
+        core:18 mparid:10 waymask:0x3fff
+        core:19 mparid:10 waymask:0x3fff
+        core:20 mparid:10 waymask:0x3fff
+        core:21 mparid:10 waymask:0x3fff
+        core:22 mparid:10 waymask:0x3fff
+        core:23 mparid:10 waymask:0x3fff
+
+        $ cat /sys/kernel/debug/ccu/counter
+        CCU:0 TAD:0 MPARID:0 ALLOC:0x20a469e HIT:0x1ca8fa09
+        CCU:0 TAD:1 MPARID:0 ALLOC:0x20a48ea HIT:0x32dc7712
+        CCU:1 TAD:0 MPARID:0 ALLOC:0x20a45ee HIT:0x326f8834
+        CCU:1 TAD:1 MPARID:0 ALLOC:0x20a470e HIT:0x19aa9ce8
+        CCU:2 TAD:0 MPARID:0 ALLOC:0x20a4719 HIT:0x3204242a
+        CCU:2 TAD:1 MPARID:0 ALLOC:0x20a474f HIT:0x32234456
+        CCU:3 TAD:0 MPARID:0 ALLOC:0x20a45a2 HIT:0x19e723c9
+        CCU:3 TAD:1 MPARID:0 ALLOC:0x20a46c2 HIT:0x1aae638a
+        CCU:0 TAD:0 MPARID:10 ALLOC:0x8 HIT:0x2a1
+        CCU:0 TAD:1 MPARID:10 ALLOC:0xb HIT:0x273
+        CCU:1 TAD:0 MPARID:10 ALLOC:0x13 HIT:0x22d
+        CCU:1 TAD:1 MPARID:10 ALLOC:0xb HIT:0x26d
+        CCU:2 TAD:0 MPARID:10 ALLOC:0x11 HIT:0x206
+        CCU:2 TAD:1 MPARID:10 ALLOC:0x10 HIT:0x1f2
+        CCU:3 TAD:0 MPARID:10 ALLOC:0x10 HIT:0x2b2
+        CCU:3 TAD:1 MPARID:10 ALLOC:0x14 HIT:0x26f
