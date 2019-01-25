@@ -493,7 +493,7 @@ static void rvu_set_default_limits(struct rvu *rvu)
 				nix_rvus;
 			break;
 		case PCI_DEVID_OCTEONTX2_SSO_RVU_PF:
-			rvu->pf_limits.npa->a[i].val = totalvfs;
+			rvu->pf_limits.npa->a[i].val = 1 + totalvfs;
 			rvu->pf_limits.sso->a[i].val =
 				rvu->hw->block[BLKADDR_SSO].lf.max / sso_rvus;
 			rvu->pf_limits.ssow->a[i].val =
@@ -507,7 +507,7 @@ static void rvu_set_default_limits(struct rvu *rvu)
 				num_online_cpus() / sso_rvus;
 			break;
 		case PCI_DEVID_OCTEONTX2_NPA_RVU_PF:
-			rvu->pf_limits.npa->a[i].val = totalvfs;
+			rvu->pf_limits.npa->a[i].val = 1 + totalvfs;
 			break;
 		case PCI_DEVID_OCTEONTX2_CPT_RVU_PF:
 			rvu->pf_limits.cpt->a[i].val = num_online_cpus();
