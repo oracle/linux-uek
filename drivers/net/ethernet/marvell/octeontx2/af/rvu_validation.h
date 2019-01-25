@@ -54,12 +54,18 @@ struct rvu_limits {
 	struct rvu_quotas	*cpt;
 	struct rvu_quotas	*npa;
 	struct rvu_quotas	*nix;
+	struct rvu_quotas	*smq;
+	struct rvu_quotas	*tl4;
+	struct rvu_quotas	*tl3;
+	struct rvu_quotas	*tl2;
 };
 
 int rvu_policy_init(struct rvu *rvu);
 void rvu_policy_destroy(struct rvu *rvu);
 int rvu_check_rsrc_policy(struct rvu *rvu,
 			  struct rsrc_attach *req, u16 pcifunc);
+int rvu_check_txsch_policy(struct rvu *rvu, struct nix_txsch_alloc_req *req,
+			   u16 pcifunc);
 
 int rvu_mbox_handler_free_rsrc_cnt(struct rvu *rvu, struct msg_req *req,
 				   struct free_rsrcs_rsp *rsp);
