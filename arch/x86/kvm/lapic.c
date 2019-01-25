@@ -1042,6 +1042,7 @@ static int __apic_accept_irq(struct kvm_lapic *apic, int delivery_mode,
 	switch (delivery_mode) {
 	case APIC_DM_LOWEST:
 		vcpu->arch.apic_arb_prio++;
+		/* fall through */
 	case APIC_DM_FIXED:
 		if (unlikely(trig_mode && !level))
 			break;
@@ -1883,6 +1884,7 @@ int kvm_lapic_reg_write(struct kvm_lapic *apic, u32 reg, u32 val)
 
 	case APIC_LVT0:
 		apic_manage_nmi_watchdog(apic, val);
+		/* fall through */
 	case APIC_LVTTHMR:
 	case APIC_LVTPC:
 	case APIC_LVT1:
