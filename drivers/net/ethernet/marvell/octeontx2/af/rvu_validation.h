@@ -61,4 +61,6 @@ void rvu_policy_destroy(struct rvu *rvu);
 int rvu_check_rsrc_policy(struct rvu *rvu,
 			  struct rsrc_attach *req, u16 pcifunc);
 
+int rvu_mbox_handler_free_rsrc_cnt(struct rvu *rvu, struct msg_req *req,
+				   struct free_rsrcs_rsp *rsp);
 #endif /* RVU_VALIDATION_H */

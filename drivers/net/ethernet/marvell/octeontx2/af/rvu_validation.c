@@ -205,6 +205,49 @@ static int rvu_blk_count_rsrc(struct rvu_block *block, u16 pcifunc, u8 rshift)
 	return count;
 }
 
+int rvu_mbox_handler_free_rsrc_cnt(struct rvu *rvu, struct msg_req *req,
+				   struct free_rsrcs_rsp *rsp)
+{
+	struct nix_hw *nix_hw = rvu->hw->nix0;
+	struct rvu_hwinfo *hw = rvu->hw;
+	u16 pcifunc = req->hdr.pcifunc;
+	struct rvu_block *block;
+	int lvl, pf, curlfs;
+
+	mutex_lock(&rvu->rsrc_lock);
+	pf = rvu_get_pf(pcifunc);
+
+	block = &hw->block[BLKADDR_NPA];
+	curlfs = rvu_blk_count_rsrc(block, pcifunc, RVU_PFVF_PF_SHIFT);
+	rsp->npa = rvu->pf_limits.npa->a[pf].val - curlfs;
+
+	block = &hw->block[BLKADDR_NIX0];
+	curlfs = rvu_blk_count_rsrc(block, pcifunc, RVU_PFVF_PF_SHIFT);
+	rsp->nix = rvu->pf_limits.nix->a[pf].val - curlfs;
+
+	block = &hw->block[BLKADDR_SSO];
+	curlfs = rvu_blk_count_rsrc(block, pcifunc, RVU_PFVF_PF_SHIFT);
+	rsp->sso = rvu->pf_limits.sso->a[pf].val - curlfs;
+
+	block = &hw->block[BLKADDR_SSOW];
+	curlfs = rvu_blk_count_rsrc(block, pcifunc, RVU_PFVF_PF_SHIFT);
+	rsp->ssow = rvu->pf_limits.ssow->a[pf].val - curlfs;
+
+	block = &hw->block[BLKADDR_TIM];
+	curlfs = rvu_blk_count_rsrc(block, pcifunc, RVU_PFVF_PF_SHIFT);
+	rsp->tim = rvu->pf_limits.tim->a[pf].val - curlfs;
+
+	block = &hw->block[BLKADDR_CPT0];
+	curlfs = rvu_blk_count_rsrc(block, pcifunc, RVU_PFVF_PF_SHIFT);
+	rsp->cpt = rvu->pf_limits.cpt->a[pf].val - curlfs;
+
+	for (lvl = 0; lvl < NIX_TXSCH_LVL_CNT; lvl++)
+		rsp->schq[lvl] = rvu_rsrc_free_count(&nix_hw->txsch[lvl].schq);
+	mutex_unlock(&rvu->rsrc_lock);
+
+	return 0;
+}
+
 int rvu_check_rsrc_policy(struct rvu *rvu, struct rsrc_attach *req,
 			  u16 pcifunc)
 {
