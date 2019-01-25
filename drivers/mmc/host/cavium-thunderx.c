@@ -32,6 +32,8 @@ static void thunder_mmc_int_enable(struct cvm_mmc_host *host, u64 val)
 {
 	writeq(val, host->base + MIO_EMM_INT(host));
 	writeq(val, host->base + MIO_EMM_INT_EN_SET(host));
+	writeq(MIO_EMM_DMA_INT_DMA,
+		host->dma_base + MIO_EMM_DMA_INT(host));
 }
 
 static int thunder_mmc_register_interrupts(struct cvm_mmc_host *host,
@@ -169,11 +171,14 @@ static int thunder_mmc_probe(struct pci_dev *pdev,
 	/*
 	 * Clear out any pending interrupts that may be left over from
 	 * bootloader. Writing 1 to the bits clears them.
+	 * Clear DMA FIFO after IRQ disable, then stub any dangling events
 	 */
-	writeq(0x1ff, host->base + MIO_EMM_INT(host));
-	writeq(0x1ff, host->base + MIO_EMM_DMA_INT_ENA_W1C(host));
-	/* Clear DMA FIFO */
-	writeq(BIT_ULL(16), host->base + MIO_EMM_DMA_FIFO_CFG(host));
+	writeq(~0, host->base + MIO_EMM_INT(host));
+	writeq(~0, host->dma_base + MIO_EMM_DMA_INT_ENA_W1C(host));
+	writeq(~0, host->base + MIO_EMM_INT_EN_CLR(host));
+	writeq(MIO_EMM_DMA_FIFO_CFG_CLR,
+		host->dma_base + MIO_EMM_DMA_FIFO_CFG(host));
+	writeq(~0, host->dma_base + MIO_EMM_DMA_INT(host));
 
 	ret = thunder_mmc_register_interrupts(host, pdev);
 	if (ret)
@@ -230,15 +235,16 @@ static void thunder_mmc_remove(struct pci_dev *pdev)
 	u64 dma_cfg;
 	int i;
 
-	cancel_delayed_work(&host->periodic_work);
-
 	for (i = 0; i < CAVIUM_MAX_MMC; i++)
 		if (host->slot[i])
 			cvm_mmc_of_slot_remove(host->slot[i]);
 
 	dma_cfg = readq(host->dma_base + MIO_EMM_DMA_CFG(host));
-	dma_cfg &= ~MIO_EMM_DMA_CFG_EN;
+	dma_cfg |= MIO_EMM_DMA_CFG_CLR;
 	writeq(dma_cfg, host->dma_base + MIO_EMM_DMA_CFG(host));
+	do {
+		dma_cfg = readq(host->dma_base + MIO_EMM_DMA_CFG(host));
+	} while (dma_cfg & MIO_EMM_DMA_CFG_EN);
 
 	clk_disable_unprepare(host->clk);
 }
