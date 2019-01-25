@@ -8,6 +8,7 @@
  * (C) 2007 SGI, Christoph Lameter
  */
 #include <linux/kobject.h>
+#include <linux/uek_kabi.h>
 
 enum stat_item {
 	ALLOC_FASTPATH,		/* Allocation from cpu slab */
@@ -88,7 +89,8 @@ struct kmem_cache {
 	int object_size;	/* The size of an object without meta data */
 	int offset;		/* Free pointer offset. */
 #ifdef CONFIG_SLUB_CPU_PARTIAL
-	int cpu_partial;	/* Number of per cpu partial objects to keep around */
+	/* Number of per cpu partial objects to keep around */
+	UEK_KABI_REPLACE(int cpu_partial, unsigned int cpu_partial)
 #endif
 	struct kmem_cache_order_objects oo;
 
