@@ -89,6 +89,24 @@ int rvu_mbox_handler_tim_lf_alloc(struct rvu *rvu,
 	if (lf < 0)
 		return TIM_AF_LF_INVALID;
 
+	/* Check if requested 'TIMLF <=> NPALF' mapping is valid */
+	if (req->npa_pf_func) {
+		/* If default, use 'this' TIMLF's PFFUNC */
+		if (req->npa_pf_func == RVU_DEFAULT_PF_FUNC)
+			req->npa_pf_func = pcifunc;
+		if (!is_pffunc_map_valid(rvu, req->npa_pf_func, BLKTYPE_NPA))
+			return TIM_AF_INVAL_NPA_PF_FUNC;
+	}
+
+	/* Check if requested 'TIMLF <=> SSOLF' mapping is valid */
+	if (req->sso_pf_func) {
+		/* If default, use 'this' SSOLF's PFFUNC */
+		if (req->sso_pf_func == RVU_DEFAULT_PF_FUNC)
+			req->sso_pf_func = pcifunc;
+		if (!is_pffunc_map_valid(rvu, req->sso_pf_func, BLKTYPE_SSO))
+			return TIM_AF_INVAL_SSO_PF_FUNC;
+	}
+
 	regval = (((u64)req->npa_pf_func) << 16) |
 		 ((u64)req->sso_pf_func);
 	rvu_write64(rvu, blkaddr, TIM_AF_RINGX_GMCTL(lf), regval);
