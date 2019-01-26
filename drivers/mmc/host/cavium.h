@@ -145,11 +145,10 @@ struct cvm_mmc_slot {
 	u64 cached_switch;
 	u64 cached_rca;
 
-	unsigned int cmd_cnt;		/* sample cmd in delay */
-	unsigned int data_cnt;		/* sample data in delay */
-
-	unsigned int cmd_out_tap;	/* sample cmd out delay */
-	unsigned int data_out_tap;	/* sample data out delay */
+	bool tuned;
+	u64 taps;			/* otx2: MIO_EMM_TIMING */
+	unsigned int cmd_cnt;		/* otx: sample cmd in delay */
+	unsigned int data_cnt;		/* otx: sample data in delay */
 
 	unsigned int drive;		/* Current drive */
 	unsigned int slew;		/* clock skew */
@@ -222,10 +221,10 @@ struct cvm_mmc_cr_mods {
 #define MIO_EMM_CALB_START		BIT_ULL(0)
 #define MIO_EMM_TAP_DELAY		GENMASK_ULL(7, 0)
 
-#define MIO_EMM_MIO_TIMING_CMD_IN      GENMASK_ULL(53, 48)
-#define MIO_EMM_MIO_TIMING_CMD_OUT     GENMASK_ULL(37, 32)
-#define MIO_EMM_MIO_TIMING_DATA_IN     GENMASK_ULL(21, 16)
-#define MIO_EMM_MIO_TIMING_DATA_OUT    GENMASK_ULL(5, 0)
+#define MIO_EMM_TIMING_CMD_IN		GENMASK_ULL(53, 48)
+#define MIO_EMM_TIMING_CMD_OUT		GENMASK_ULL(37, 32)
+#define MIO_EMM_TIMING_DATA_IN		GENMASK_ULL(21, 16)
+#define MIO_EMM_TIMING_DATA_OUT		GENMASK_ULL(5, 0)
 
 #define MIO_EMM_INT_NCB_RAS		BIT_ULL(8)
 #define MIO_EMM_INT_NCB_FLT		BIT_ULL(7)
