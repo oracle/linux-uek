@@ -367,6 +367,7 @@ int otx2_txschq_config(struct otx2_nic *pfvf, int lvl)
 		req->reg[0] = NIX_AF_SMQX_CFG(schq);
 		req->regval[0] = ((pfvf->netdev->mtu  + OTX2_ETH_HLEN) << 8) |
 				   OTX2_MIN_MTU;
+		req->regval[0] |= (0x20ULL << 51) | (0x80ULL << 39);
 		req->num_regs++;
 		/* MDQ config */
 		parent =  hw->txschq_list[NIX_TXSCH_LVL_TL4][0];
@@ -583,7 +584,7 @@ static int otx2_sq_init(struct otx2_nic *pfvf, u16 qidx, u16 sqb_aura)
 	aq->sq.ena = 1;
 	/* Only one SMQ is allocated, map all SQ's to that SMQ  */
 	aq->sq.smq = pfvf->hw.txschq_list[NIX_TXSCH_LVL_SMQ][0];
-	aq->sq.smq_rr_quantum = DMA_BUFFER_LEN / 4;
+	aq->sq.smq_rr_quantum = OTX2_MAX_MTU;
 	aq->sq.default_chan = pfvf->tx_chan_base;
 	aq->sq.sqe_stype = NIX_STYPE_STF; /* Cache SQB */
 	aq->sq.sqb_aura = sqb_aura;
