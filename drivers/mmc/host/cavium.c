@@ -146,6 +146,25 @@ bool cvm_is_mmc(struct cvm_mmc_slot *slot)
 	}
 }
 
+static void cvm_mmc_set_timing(struct cvm_mmc_slot *slot)
+{
+	u64 timing;
+
+	if (is_mmc_8xxx(slot->host))
+		return;
+
+	/*
+	 * slot->taps contains the DDR-style settings,
+	 * when in SDR mode the DATA_OUT tap must be squashed
+	 */
+	timing = slot->taps;
+
+	if (!cvm_is_mmc_timing_ddr(slot))
+		timing &= ~MIO_EMM_TIMING_DATA_OUT;
+
+	writeq(timing, slot->host->base + MIO_EMM_TIMING(slot->host));
+}
+
 static int cvm_mmc_configure_delay(struct cvm_mmc_slot *slot)
 {
 	struct cvm_mmc_host *host = slot->host;
@@ -157,32 +176,18 @@ static int cvm_mmc_configure_delay(struct cvm_mmc_slot *slot)
 			FIELD_PREP(MIO_EMM_SAMPLE_DAT_CNT, slot->data_cnt);
 		writeq(emm_sample, host->base + MIO_EMM_SAMPLE(host));
 	} else {
-		u64 timing = 0;
+		if (!slot->tuned) {
+			int half = MAX_NO_OF_TAPS / 2;
 
-		slot->cmd_cnt = 4;
-		slot->data_cnt = 4;
-		slot->cmd_out_tap = 39;
-		slot->data_out_tap = 39;
+			slot->taps =
+				FIELD_PREP(MIO_EMM_TIMING_CMD_IN, half) |
+				FIELD_PREP(MIO_EMM_TIMING_CMD_OUT, half) |
+				FIELD_PREP(MIO_EMM_TIMING_DATA_IN, half) |
+				FIELD_PREP(MIO_EMM_TIMING_DATA_OUT, half);
+		}
 
-		/* SDR, data out delay is zero */
-		if (!cvm_is_mmc_timing_ddr(slot))
-			slot->data_out_tap = 0;
-
-		timing =
-			FIELD_PREP(MIO_EMM_MIO_TIMING_DATA_IN,
-				slot->data_cnt) |
-			FIELD_PREP(MIO_EMM_MIO_TIMING_DATA_OUT,
-				slot->data_out_tap) |
-			FIELD_PREP(MIO_EMM_MIO_TIMING_CMD_IN,
-				slot->cmd_cnt) |
-			FIELD_PREP(MIO_EMM_MIO_TIMING_CMD_OUT,
-				slot->cmd_out_tap);
-
-		pr_debug("data in: %u, data out: %u, cmd in: %u, cmd out: %u\n",
-				slot->data_cnt, slot->data_out_tap,
-				slot->cmd_cnt, slot->cmd_out_tap);
-
-		writeq(timing, host->base + MIO_EMM_TIMING(host));
+		pr_debug("taps %llx\n", slot->taps);
+		cvm_mmc_set_timing(slot);
 	}
 
 	return 0;
