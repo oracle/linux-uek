@@ -300,7 +300,7 @@ static void do_switch(struct cvm_mmc_host *host, u64 emm_switch)
 
 	check_switch_errors(host);
 
-	if (slot) {
+	if (slot && (emm_switch & MIO_EMM_SWITCH_CLK)) {
 		slot->cmd6_pending = false;
 		slot->cached_switch = emm_switch;
 	}
@@ -390,7 +390,7 @@ static void cvm_mmc_switch_to(struct cvm_mmc_slot *slot)
 	 * bus_id is non-zero.
 	 */
 	set_bus_id(&emm_switch, 0);
-	do_switch(host, emm_switch & GENMASK_ULL(0, 31));
+	do_switch(host, emm_switch & MIO_EMM_SWITCH_CLK);
 	set_bus_id(&emm_switch, slot->bus_id);
 	do_switch(host, emm_switch);
 	host->powered = true;
@@ -1302,6 +1302,8 @@ static void cvm_mmc_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 	clock = ios->clock;
 	max_f = max_supported_frequency(host);
 
+	if (clock < mmc->f_min)
+		clock = mmc->f_min;
 	if (clock > max_f)
 		clock = max_f;
 	slot->clock = clock;
@@ -1455,6 +1457,7 @@ static int cvm_mmc_init_lowlevel(struct cvm_mmc_slot *slot)
 	/* Make the changes take effect on this bus slot. */
 	set_bus_id(&emm_switch, slot->bus_id);
 	do_switch(host, emm_switch);
+	slot->cached_switch = emm_switch;
 	host->powered = true;
 
 	/*
@@ -1604,8 +1607,8 @@ int cvm_mmc_of_slot_probe(struct device *dev, struct cvm_mmc_host *host)
 
 	host->acquire_bus(host);
 	host->slot[id] = slot;
-	cvm_mmc_switch_to(slot);
 	cvm_mmc_init_lowlevel(slot);
+	cvm_mmc_switch_to(slot);
 	host->release_bus(host);
 
 	ret = mmc_add_host(mmc);
