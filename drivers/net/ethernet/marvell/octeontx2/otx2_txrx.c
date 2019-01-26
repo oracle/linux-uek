@@ -422,7 +422,7 @@ int otx2_poll(struct napi_struct *napi, int budget)
 		if (cq_idx == CINT_INVALID_CQ)
 			continue;
 		cq = &qset->cq[cq_idx];
-		workdone = otx2_napi_handler(cq, pfvf, budget);
+		workdone += otx2_napi_handler(cq, pfvf, budget);
 	}
 
 	/* Clear the IRQ */
