@@ -17,6 +17,7 @@
 #define DRV_NAME	"Marvell PTP Driver"
 
 #define PCI_DEVID_OCTEONTX2_PTP		0xA00C
+#define PCI_SUBSYS_DEVID_OCTEONTX2_PTP	0xB200
 #define PCI_DEVID_OCTEONTX2_RST		0xA00E
 
 #define PCI_PTP_BAR_NO	0
@@ -196,7 +197,9 @@ static void ptp_remove(struct pci_dev *pdev)
 }
 
 static const struct pci_device_id ptp_id_table[] = {
-	{ PCI_DEVICE(PCI_VENDOR_ID_CAVIUM, PCI_DEVID_OCTEONTX2_PTP) },
+	{ PCI_DEVICE_SUB(PCI_VENDOR_ID_CAVIUM, PCI_DEVID_OCTEONTX2_PTP,
+			 PCI_VENDOR_ID_CAVIUM,
+			 PCI_SUBSYS_DEVID_OCTEONTX2_PTP) },
 	{ 0, }
 };
 
