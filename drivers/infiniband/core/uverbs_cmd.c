@@ -1248,7 +1248,7 @@ ssize_t ib_uverbs_reg_mr_relaxed(struct ib_uverbs_file *file,
 	if (cmd.length >= (1*1024*1024 + PAGE_SIZE - 1))
 		return -EINVAL;
 
-	uobj  = uobj_alloc(UVERBS_OBJECT_FMR, file, &ib_dev);
+	uobj  = uobj_alloc(ORACLE_PRIVATE_UVERBS_OBJECT_FMR, file, &ib_dev);
 	if (IS_ERR(uobj))
 		return PTR_ERR(uobj);
 
@@ -1500,8 +1500,8 @@ ssize_t ib_uverbs_dereg_mr_relaxed(struct ib_uverbs_file *file,
 	if (copy_from_user(&cmd, buf, sizeof(cmd)))
 		return -EFAULT;
 
-	return uobj_perform_destroy(UVERBS_OBJECT_FMR, cmd.mr_handle, file,
-				    in_len);
+	return uobj_perform_destroy(ORACLE_PRIVATE_UVERBS_OBJECT_FMR,
+				    cmd.mr_handle, file, in_len);
 }
 
 ssize_t ib_uverbs_flush_relaxed_mr(struct ib_uverbs_file *file,

@@ -48,9 +48,6 @@ enum uverbs_default_objects {
 	UVERBS_OBJECT_SRQ,
 	UVERBS_OBJECT_AH,
 	UVERBS_OBJECT_MR,
-#ifndef WITHOUT_ORACLE_EXTENSIONS
-	UVERBS_OBJECT_FMR,
-#endif
 	UVERBS_OBJECT_MW,
 	UVERBS_OBJECT_FLOW,
 	UVERBS_OBJECT_XRCD,
@@ -59,6 +56,23 @@ enum uverbs_default_objects {
 	UVERBS_OBJECT_FLOW_ACTION,
 	UVERBS_OBJECT_DM,
 	UVERBS_OBJECT_COUNTERS,
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+       /*
+        * Keep Oracle's proprietary objects as far away as possible
+        * from the rest of the uverbs objects.
+        * As the values here are checked against
+        * UVERBS_API_OBJ_KEY_NUM_CORE, the highest possible value
+        * that can be uses is UVERBS_API_OBJ_KEY_NUM_CORE - 1, which
+        * is 23 at the time of writing. 
+        * This obviously carries the risk that
+        * one day in the future values above 22
+        * will be used or checked against
+        * (as of this writing, it isn't).
+        * At that time, the Oracle proprietary objects
+        * may stop functioning.
+        */
+       ORACLE_PRIVATE_UVERBS_OBJECT_FMR = 23,
+#endif
 };
 
 enum {

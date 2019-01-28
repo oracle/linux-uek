@@ -298,7 +298,7 @@ extern const struct uverbs_object_def UVERBS_OBJECT(UVERBS_OBJECT_MR);
 extern const struct uverbs_object_def UVERBS_OBJECT(UVERBS_OBJECT_COMP_CHANNEL);
 extern const struct uverbs_object_def UVERBS_OBJECT(UVERBS_OBJECT_CQ);
 #ifndef WITHOUT_ORACLE_EXTENSIONS
-extern const struct uverbs_object_def UVERBS_OBJECT(UVERBS_OBJECT_FMR);
+extern const struct uverbs_object_def UVERBS_OBJECT(ORACLE_PRIVATE_UVERBS_OBJECT_FMR);
 #endif
 extern const struct uverbs_object_def UVERBS_OBJECT(UVERBS_OBJECT_QP);
 extern const struct uverbs_object_def UVERBS_OBJECT(UVERBS_OBJECT_AH);
