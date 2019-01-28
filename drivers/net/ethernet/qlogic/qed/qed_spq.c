@@ -792,6 +792,36 @@ static int qed_spq_pend_post(struct qed_hwfn *p_hwfn)
 				 SPQ_HIGH_PRI_RESERVE_DEFAULT);
 }
 
+static void qed_spq_recov_set_ret_code(struct qed_spq_entry *p_ent,
+				       u8 *fw_return_code)
+{
+	if (!fw_return_code)
+		return;
+
+	if (p_ent->elem.hdr.protocol_id == PROTOCOLID_ROCE ||
+	    p_ent->elem.hdr.protocol_id == PROTOCOLID_IWARP)
+		*fw_return_code = RDMA_RETURN_OK;
+}
+
+/* Avoid overriding of SPQ entries when getting out-of-order completions, by
+ * marking the completions in a bitmap and increasing the chain consumer only
+ * for the first successive completed entries.
+ */
+static void qed_spq_comp_bmap_update(struct qed_hwfn *p_hwfn, __le16 echo)
+{
+	u16 pos = le16_to_cpu(echo) % SPQ_RING_SIZE;
+	struct qed_spq *p_spq = p_hwfn->p_spq;
+
+	__set_bit(pos, p_spq->p_comp_bitmap);
+	while (test_bit(p_spq->comp_bitmap_idx,
+			p_spq->p_comp_bitmap)) {
+		__clear_bit(p_spq->comp_bitmap_idx,
+			    p_spq->p_comp_bitmap);
+		p_spq->comp_bitmap_idx++;
+		qed_chain_return_produced(&p_spq->chain);
+	}
+}
+
 int qed_spq_post(struct qed_hwfn *p_hwfn,
 		 struct qed_spq_entry *p_ent, u8 *fw_return_code)
 {
@@ -806,6 +836,17 @@ int qed_spq_post(struct qed_hwfn *p_hwfn,
 	if (!p_ent) {
 		DP_NOTICE(p_hwfn, "Got a NULL pointer\n");
 		return -EINVAL;
+	}
+
+	if (p_hwfn->cdev->recov_in_prog) {
+		DP_VERBOSE(p_hwfn,
+			   QED_MSG_SPQ,
+			   "Recovery is in progress. Skip spq post [cmd %02x protocol %02x]\n",
+			   p_ent->elem.hdr.cmd_id, p_ent->elem.hdr.protocol_id);
+
+		/* Let the flow complete w/o any error handling */
+		qed_spq_recov_set_ret_code(p_ent, fw_return_code);
+		return 0;
 	}
 
 	/* Complete the entry */
