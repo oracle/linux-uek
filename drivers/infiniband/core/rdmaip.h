@@ -56,6 +56,11 @@ static int rdmaip_init_flag;
 struct list_head rdmaip_devlist_head;
 DECLARE_RWSEM(rdmaip_devlist_lock);
 
+#define RDMAIP_FLAG_BUSY		0x1
+#define RDMAIP_FLAG_EVENT_PENDING	0x2
+unsigned long rdmaip_global_flag;
+DEFINE_MUTEX(rdmaip_global_flag_lock);
+
 DEFINE_MUTEX(rdmaip_ip_config_lock);
 
 struct port_info {
@@ -66,7 +71,7 @@ struct port_info {
 
 struct rdmaip_device {
 	struct list_head	list;
-	struct ib_device	*dev;
+	struct ib_device	*ibdev;
 	struct ib_event_handler	event_handler;
 	struct port_info	pinfo[RDMAIP_MAX_PHYS_PORTS];
 };
@@ -194,7 +199,6 @@ struct rdmaip_exclude_ips {
 static struct	rdmaip_exclude_ips exclude_ips_tbl[RDMAIP_MAX_EXCLUDE_IPS];
 static u8	exclude_ips_cnt;
 
-static int ip_config_init_phase_flag; /* = 0 */
 static int initial_failovers_iterations; /* = 0 */
 
 static void rdmaip_initial_failovers(struct work_struct *workarg);
@@ -299,7 +303,7 @@ struct rdmaip_ip6_port_addr {
 struct rdmaip_port {
 	struct rdmaip_device	*rdmaip_dev;
 	unsigned int		failover_group;
-	struct net_device	*dev;
+	struct net_device	*netdev;
 	unsigned int            port_state;
 	u32                     port_layerflags;
 	u8			port_num;
@@ -327,9 +331,15 @@ enum {
 
 struct rdmaip_port_ud_work {
 	struct delayed_work	work;
-	struct net_device	*dev;
+	struct net_device	*netdev;
 	unsigned int		port;
 	int			timeout;
+};
+
+enum {
+	RDMAIP_EVENT_NONE,
+	RDMAIP_EVENT_IB,
+	RDMAIP_EVENT_NET
 };
 
 #define pcidev_to_node(pcidev)	pcibus_to_node(pcidev->bus)

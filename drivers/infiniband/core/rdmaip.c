@@ -52,6 +52,10 @@
 static struct workqueue_struct *rdmaip_wq;
 static void rdmaip_device_add(struct ib_device *device);
 static void rdmaip_device_remove(struct ib_device *device, void *client_data);
+static void rdmaip_ip_config_init(void);
+static void rdmaip_ip_failover_groups_init(void);
+static void rdmaip_update_port_status_all_layers(u8 port, int event_type,
+						 int event);
 
 static DECLARE_DELAYED_WORK(riif_dlywork, rdmaip_initial_failovers);
 /*
@@ -66,6 +70,36 @@ struct ib_client rdmaip_client = {
 	.add    = rdmaip_device_add,
 	.remove = rdmaip_device_remove
 };
+
+bool rdmaip_is_event_pending(void)
+{
+	return test_bit(RDMAIP_FLAG_EVENT_PENDING, &rdmaip_global_flag);
+}
+
+void rdmaip_set_event_pending(void)
+{
+	__set_bit(RDMAIP_FLAG_EVENT_PENDING, &rdmaip_global_flag);
+}
+
+void rdmaip_clear_event_pending(void)
+{
+	__clear_bit(RDMAIP_FLAG_EVENT_PENDING, &rdmaip_global_flag);
+}
+
+bool rdmaip_is_busy_flag_set(void)
+{
+	return test_bit(RDMAIP_FLAG_BUSY, &rdmaip_global_flag);
+}
+
+void rdmaip_set_busy_flag(void)
+{
+	__set_bit(RDMAIP_FLAG_BUSY, &rdmaip_global_flag);
+}
+
+void rdmaip_clear_busy_flag(void)
+{
+	__clear_bit(RDMAIP_FLAG_BUSY, &rdmaip_global_flag);
+}
 
 /*
  * This structure is registed with network stack to monitor
@@ -115,8 +149,8 @@ static void rdmaip_dump_ip_config_entry(u8 port)
 
 	cfg = &ip_config[port];
 
-	if ((cfg->rdmaip_dev) && (cfg->rdmaip_dev->dev))
-		strncpy(devname, cfg->rdmaip_dev->dev->name,
+	if ((cfg->rdmaip_dev) && (cfg->rdmaip_dev->ibdev))
+		strncpy(devname, cfg->rdmaip_dev->ibdev->name,
 			RDMAIP_MAX_NAME_LEN);
 	else
 		strncpy(devname, "No RDMAIP device", RDMAIP_MAX_NAME_LEN);
@@ -269,7 +303,7 @@ static int rdmaip_clear_ip6(u8 port)
 				pr_warn("RDMAIP failed to remove %pI6c%%%d from %s\n",
 					&ip_config[port].ip6_addrs[i].addr,
 					ip_config[port].ifindex,
-					ip_config[port].dev->name);
+					ip_config[port].netdev->name);
 				return ret;
 			}
 		}
@@ -280,26 +314,16 @@ static int rdmaip_clear_ip6(u8 port)
 static int rdmaip_set_ip4(struct net_device *out_dev, unsigned char *dev_addr,
 			  char *if_name, __be32 addr, __be32 bcast, __be32 mask)
 {
-	struct ifreq		*ir;
+	struct ifreq		ir = { };
 	struct sockaddr_in	*sin;
-	struct page		*page;
 	int			ret = 0;
 
-	page = alloc_page(GFP_HIGHUSER);
-	if (!page) {
-		RDMAIP_DBG2("alloc_page failed .. NO MEM\n");
-		return 1;
-	}
-
-	ir = (struct ifreq *)kmap(page);
-	memset(ir, 0, sizeof(struct ifreq));
-	sin = (struct sockaddr_in *)&ir->ifr_addr;
+	sin = (struct sockaddr_in *)&ir.ifr_addr;
 	sin->sin_family = AF_INET;
-
-	strcpy(ir->ifr_ifrn.ifrn_name, if_name);
+	strcpy(ir.ifr_ifrn.ifrn_name, if_name);
 
 	sin->sin_addr.s_addr = addr;
-	ret = inet_ioctl(rdmaip_inet_socket, SIOCSIFADDR, (unsigned long) ir);
+	ret = inet_ioctl(rdmaip_inet_socket, SIOCSIFADDR, (unsigned long) &ir);
 	if (ret && addr) {
 		pr_err("rdmaip: inet_ioctl(SIOCSIFADDR) on %s failed (%d)\n",
 		       if_name, ret);
@@ -311,7 +335,7 @@ static int rdmaip_set_ip4(struct net_device *out_dev, unsigned char *dev_addr,
 
 	sin->sin_addr.s_addr = bcast;
 	ret = inet_ioctl(rdmaip_inet_socket, SIOCSIFBRDADDR,
-			(unsigned long) ir);
+			(unsigned long) &ir);
 	if (ret) {
 		pr_err("rdmaip: inet_ioctl(SIOCSIFBRDADDR) on %s failed (%d)\n",
 		       if_name, ret);
@@ -320,7 +344,7 @@ static int rdmaip_set_ip4(struct net_device *out_dev, unsigned char *dev_addr,
 
 	sin->sin_addr.s_addr = mask;
 	ret = inet_ioctl(rdmaip_inet_socket, SIOCSIFNETMASK,
-			(unsigned long) ir);
+			(unsigned long) &ir);
 	if (ret) {
 		pr_err("rdmaip: inet_ioctl(SIOCSIFNETMASK) on %s failed (%d)\n",
 		       if_name, ret);
@@ -330,9 +354,6 @@ static int rdmaip_set_ip4(struct net_device *out_dev, unsigned char *dev_addr,
 	rdmaip_send_gratuitous_arp(out_dev, dev_addr, addr);
 
 out:
-	kunmap(page);
-	__free_page(page);
-
 	return ret;
 }
 
@@ -428,7 +449,7 @@ static void rdmaip_move_ip6(u8 from_port, u8 to_port, bool failover)
 					from_port, ret);
 			}
 		}
-		if (rdmaip_addr_exist(ip_config[to_port].dev, addr, NULL,
+		if (rdmaip_addr_exist(ip_config[to_port].netdev, addr, NULL,
 				      true)) {
 			RDMAIP_DBG2("IPv6 Address already set on the port\n");
 			continue;
@@ -452,9 +473,8 @@ static int rdmaip_move_ip4(char *from_dev, char *to_dev, u8 from_port,
 			   u8 to_port, __be32 addr, __be32 bcast,
 			   __be32 mask, int alias, bool failover)
 {
-	struct ifreq		*ir;
+	struct ifreq		ir = { };
 	struct sockaddr_in	*sin;
-	struct page		*page;
 	char			from_dev2[2*IFNAMSIZ + 1];
 	char			to_dev2[2*IFNAMSIZ + 1];
 	char                    *tmp_str;
@@ -467,31 +487,23 @@ static int rdmaip_move_ip4(char *from_dev, char *to_dev, u8 from_port,
 		    from_dev, to_dev, from_port, to_port, (void *)&addr,
 		    (failover ? "True" : "False"));
 
-	page = alloc_page(GFP_HIGHUSER);
-	if (!page) {
-		pr_err("rdmaip: alloc_page failed .. NO MEM\n");
-		return 1;
-	}
-
-	ir = (struct ifreq *)kmap(page);
-	memset(ir, 0, sizeof(struct ifreq));
-	sin = (struct sockaddr_in *)&ir->ifr_addr;
+	sin = (struct sockaddr_in *)&ir.ifr_addr;
 	sin->sin_family = AF_INET;
 
 	/* Set the primary IP if it hasn't been set */
 	if (ip_config[to_port].ip_addr && failover) {
-		strcpy(ir->ifr_ifrn.ifrn_name, ip_config[to_port].dev->name);
+		strcpy(ir.ifr_ifrn.ifrn_name, ip_config[to_port].netdev->name);
 		ret = inet_ioctl(rdmaip_inet_socket, SIOCGIFADDR,
-					(unsigned long) ir);
+					(unsigned long) &ir);
 		if (ret == -EADDRNOTAVAIL) {
 			RDMAIP_DBG2_PTR("Setting primary IP on %s %pI4\n",
-				    ip_config[to_port].dev->name,
+				    ip_config[to_port].netdev->name,
 				    &ip_config[to_port].ip_addr);
 
 			/* Set the IP on new port */
-			ret = rdmaip_set_ip4(ip_config[to_port].dev,
-				ip_config[to_port].dev->dev_addr,
-				ip_config[to_port].dev->name,
+			ret = rdmaip_set_ip4(ip_config[to_port].netdev,
+				ip_config[to_port].netdev->dev_addr,
+				ip_config[to_port].netdev->name,
 				ip_config[to_port].ip_addr,
 				ip_config[to_port].ip_bcast,
 				ip_config[to_port].ip_mask);
@@ -499,18 +511,18 @@ static int rdmaip_move_ip4(char *from_dev, char *to_dev, u8 from_port,
 			if (ret) {
 				pr_err("rdmaip: failed to set IP %pI4 on %s failed (%d)\n",
 				       &ip_config[to_port].ip_addr,
-				       ip_config[to_port].dev->name, ret);
+				       ip_config[to_port].netdev->name, ret);
 				goto out;
 			}
 		} else if (ret) {
 			pr_err("rdmaip: Failed to get primary IP for %s on port:%d ret:%d\n",
-			       ip_config[to_port].dev->name, to_port, ret);
+			       ip_config[to_port].netdev->name, to_port, ret);
 			goto out;
 		}
 	}
 
 	if (failover) {
-		in_dev = in_dev_get(ip_config[to_port].dev);
+		in_dev = in_dev_get(ip_config[to_port].netdev);
 		if (in_dev && !in_dev->ifa_list) {
 			strcpy(to_dev2, to_dev);
 		} else {
@@ -527,7 +539,7 @@ static int rdmaip_move_ip4(char *from_dev, char *to_dev, u8 from_port,
 			in_dev_put(in_dev);
 
 		/* Bailout if IP already exists on target port */
-		if (rdmaip_addr_exist(ip_config[to_port].dev, &addr, NULL,
+		if (rdmaip_addr_exist(ip_config[to_port].netdev, &addr, NULL,
 				      false)) {
 			pr_err("rdmaip_mov_ip: Address already exist\n");
 			ret = -EADDRINUSE;
@@ -539,10 +551,10 @@ static int rdmaip_move_ip4(char *from_dev, char *to_dev, u8 from_port,
 			strcpy(from_dev2, from_dev);
 		} else if (ip_config[active_port].port_state ==
 				RDMAIP_PORT_UP) {
-			if (!rdmaip_addr_exist(ip_config[active_port].dev,
+			if (!rdmaip_addr_exist(ip_config[active_port].netdev,
 					       &addr, from_dev2, false)) {
 				strcpy(from_dev2,
-					ip_config[active_port].dev->name);
+					ip_config[active_port].netdev->name);
 				strcat(from_dev2, ":");
 				strcat(from_dev2,
 					ip_config[from_port].port_label);
@@ -555,7 +567,7 @@ static int rdmaip_move_ip4(char *from_dev, char *to_dev, u8 from_port,
 		RDMAIP_DBG3("failover: %s -> %s\n", from_dev2, to_dev2);
 
 	} else {
-		if (!rdmaip_addr_exist(ip_config[from_port].dev,
+		if (!rdmaip_addr_exist(ip_config[from_port].netdev,
 				       &addr, from_dev2, false)) {
 			strcpy(from_dev2, from_dev);
 			strcat(from_dev2, ":");
@@ -570,8 +582,8 @@ static int rdmaip_move_ip4(char *from_dev, char *to_dev, u8 from_port,
 	ret = rdmaip_set_ip4(NULL, NULL, from_dev2, 0, 0, 0);
 
 	/* Set the IP on new port */
-	ret = rdmaip_set_ip4(ip_config[to_port].dev,
-			     ip_config[to_port].dev->dev_addr, to_dev2, addr,
+	ret = rdmaip_set_ip4(ip_config[to_port].netdev,
+			     ip_config[to_port].netdev->dev_addr, to_dev2, addr,
 			     bcast, mask);
 
 	if (ret) {
@@ -595,9 +607,6 @@ static int rdmaip_move_ip4(char *from_dev, char *to_dev, u8 from_port,
 	}
 
 out:
-	kunmap(page);
-	__free_page(page);
-
 	return ret;
 }
 
@@ -688,7 +697,7 @@ static void rdmaip_init_ip6_addrs(struct net_device *net_dev,
 		for (i = 0; i < ip_config[port].ip6_addrs_cnt; i++) {
 			if (!ipv6_addr_cmp(&ifa->addr,
 				&ip_config[port].ip6_addrs[i].addr)) {
-				RDMAIP_DBG2("IPv6 address already present");
+				RDMAIP_DBG2("IPv6 address already present\n");
 				break;
 			}
 		}
@@ -734,7 +743,7 @@ static u8 rdmaip_init_port(struct rdmaip_device	*rdmaip_dev,
 
 	if (next_port_idx >= ip_port_max) {
 		pr_err("rdmaip: Exceeded max ports (%d) for device %s\n",
-				ip_port_max, rdmaip_dev->dev->name);
+				ip_port_max, rdmaip_dev->ibdev->name);
 		return 0;
 	}
 	mutex_lock(&rdmaip_ip_config_lock);
@@ -744,7 +753,7 @@ static u8 rdmaip_init_port(struct rdmaip_device	*rdmaip_dev,
 	ip_config[next_port_idx].port_label[1] = digits[next_port_idx / 10];
 	ip_config[next_port_idx].port_label[2] = digits[next_port_idx % 10];
 	ip_config[next_port_idx].port_label[3] = 0;
-	ip_config[next_port_idx].dev = net_dev;
+	ip_config[next_port_idx].netdev = net_dev;
 	ip_config[next_port_idx].rdmaip_dev = rdmaip_dev;
 	ip_config[next_port_idx].ip_active_port = 0;
 	strcpy(ip_config[next_port_idx].if_name, net_dev->name);
@@ -752,32 +761,8 @@ static u8 rdmaip_init_port(struct rdmaip_device	*rdmaip_dev,
 	ip_config[next_port_idx].port_state = RDMAIP_PORT_INIT;
 	ip_config[next_port_idx].port_layerflags = 0x0; /* all clear to begin */
 
-	/*
-	 * We check for the link UP state and use it to set
-	 * both LINK and HW status to UP.
-	 * (Note: Reverse is not true: Link DOWN does NOT necessarily
-	 *        imply HW port is down!)
-	 *
-	 * On a VM reboot or module load (after unload), there
-	 * will be no separate HW UP/DOWN event, so its UP
-	 * status is derived from the link layer status!
-	 *
-	 */
-	if (rdmaip_is_link_layer_up(net_dev)) {
-		ip_config[next_port_idx].port_layerflags =
-			(RDMAIP_PORT_STATUS_LINKUP |
-			RDMAIP_PORT_STATUS_HWPORTUP);
-	}
-
-	/*
-	 * Note: Only HW and LINK status determined in this routine.
-	 * (a) When called during module initialization path, the s
-	 *  status of netdev layer will be determined by subsequent
-	 * NETDEV_UP (or lack of NETDEV_UP) events - which are
-	 * generated  after resilient_rdmaip module by initscripts.
-	 * (b) For interfaces added after initscripts are run,
-	 * NETDEV_UP precedes this initialization call.
-	 */
+	rdmaip_update_port_status_all_layers(next_port_idx,
+					     RDMAIP_EVENT_NONE, 0);
 
 	/*
 	 * bump global ip_port_cnt last - no racing thread should
@@ -792,9 +777,6 @@ static u8 rdmaip_init_port(struct rdmaip_device	*rdmaip_dev,
 	if (in6_dev)
 		rdmaip_init_ip6_addrs(net_dev, in6_dev, ip_port_cnt);
 
-	if (!ip_config_init_phase_flag)
-		rdmaip_dump_ip_config_entry(next_port_idx);
-
 	mutex_unlock(&rdmaip_ip_config_lock);
 
 	return ip_port_cnt;
@@ -802,9 +784,8 @@ static u8 rdmaip_init_port(struct rdmaip_device	*rdmaip_dev,
 
 static int rdmaip_testset_ip4(u8 port)
 {
-	struct ifreq		*ir;
+	struct ifreq		ir = { };
 	struct sockaddr_in	*sin;
-	struct page		*page;
 	int			ret = 0;
 	int                     ii;
 
@@ -814,47 +795,38 @@ static int rdmaip_testset_ip4(u8 port)
 		return 0;
 	}
 
-	page = alloc_page(GFP_HIGHUSER);
-	if (!page) {
-		pr_err("rdmaip:alloc_page failed .. NO MEM\n");
-		return 1;
-	}
-
-	ir = (struct ifreq *)kmap(page);
-	memset(ir, 0, sizeof(struct ifreq));
-	sin = (struct sockaddr_in *)&ir->ifr_addr;
+	sin = (struct sockaddr_in *)&ir.ifr_addr;
 	sin->sin_family = AF_INET;
 
 	/*
 	 * If the primary IP is not set revive it
 	 * and also the IP addrs on aliases
 	 */
-
-	strcpy(ir->ifr_ifrn.ifrn_name, ip_config[port].dev->name);
-	ret = inet_ioctl(rdmaip_inet_socket, SIOCGIFADDR, (unsigned long) ir);
+	strcpy(ir.ifr_ifrn.ifrn_name, ip_config[port].netdev->name);
+	ret = inet_ioctl(rdmaip_inet_socket, SIOCGIFADDR, (unsigned long) &ir);
 	if (ret == -EADDRNOTAVAIL) {
 		/* Set the IP on this port */
-		ret = rdmaip_set_ip4(ip_config[port].dev,
-				     ip_config[port].dev->dev_addr,
-				     ip_config[port].dev->name,
+		ret = rdmaip_set_ip4(ip_config[port].netdev,
+				     ip_config[port].netdev->dev_addr,
+				     ip_config[port].netdev->name,
 				     ip_config[port].ip_addr,
 				     ip_config[port].ip_bcast,
 				     ip_config[port].ip_mask);
 		if (ret) {
 			pr_err("rdmaip: failed to resurrect IP %pI4 on %s failed (%d)\n",
 			       &ip_config[port].ip_addr,
-			       ip_config[port].dev->name, ret);
+			       ip_config[port].netdev->name, ret);
 			goto out;
 		}
 		pr_notice("rdmaip: IP %pI4 resurrected on interface %s\n",
 			  &ip_config[port].ip_addr,
-			  ip_config[port].dev->name);
+			  ip_config[port].netdev->name);
 		for (ii = 0; ii < ip_config[port].alias_cnt; ii++) {
 			struct rdmaip_alias *alias;
 
 			alias = &ip_config[port].aliases[ii];
-			ret = rdmaip_set_ip4(ip_config[port].dev,
-					     ip_config[port].dev->dev_addr,
+			ret = rdmaip_set_ip4(ip_config[port].netdev,
+					     ip_config[port].netdev->dev_addr,
 					     alias->if_name, alias->ip_addr,
 					     alias->ip_bcast, alias->ip_mask);
 			if (ret) {
@@ -865,17 +837,14 @@ static int rdmaip_testset_ip4(u8 port)
 			pr_notice("rdmaip: IP %pI4 resurrected on alias %s on interface %s\n",
 				  &ip_config[port].ip_addr,
 				  ip_config[port].aliases[ii].if_name,
-				  ip_config[port].dev->name);
+				  ip_config[port].netdev->name);
 		}
 	} else if (ret)
 		pr_err("rdmaip: inet_ioctl(SIOCGIFADDR) failed (%d)\n", ret);
 	else
 		RDMAIP_DBG2("Primary addr already set on port index %u devname %s\n",
-			    port, ip_config[port].dev->name);
+			    port, ip_config[port].netdev->name);
 out:
-	kunmap(page);
-	__free_page(page);
-
 	return ret;
 }
 
@@ -895,7 +864,7 @@ static int rdmaip_testset_ip6(u8 port)
 	for (i = 0, addrs_cnt = ip_config[port].ip6_addrs_cnt;
 	     i < addrs_cnt; i++) {
 		addr = &ip_config[port].ip6_addrs[i].addr;
-		dev = ip_config[port].dev;
+		dev = ip_config[port].netdev;
 
 		if (rdmaip_addr_exist(dev, addr, NULL, true))
 			continue;
@@ -1041,7 +1010,7 @@ static void rdmaip_do_failback(u8 port)
 		}
 	} else {
 		RDMAIP_DBG3("Active port is same as failover port, resurrect the IPs %s:port%d\n",
-			   ip_config[port].dev->name, port);
+			   ip_config[port].netdev->name, port);
 		/*
 		 * Our 'active_port' is parked at its home base so 'failback'
 		 * is just an interface coming UP.
@@ -1061,7 +1030,7 @@ static void rdmaip_do_failback(u8 port)
 		ret = rdmaip_testset_ip(port);
 		if (ret) {
 			pr_err("rdmaip: failed to resurrect port idx %u dev %s or one of its aliases\n",
-				port, ip_config[port].dev->name);
+				port, ip_config[port].netdev->name);
 		}
 	}
 }
@@ -1076,7 +1045,7 @@ static void rdmaip_failover(struct work_struct *_work)
 
 	if (ip_config[work->port].port_state == RDMAIP_PORT_INIT) {
 		pr_err("rdmaip: devname %s failover request with port_state in INIT state!",
-		       ip_config[work->port].dev->name);
+		       ip_config[work->port].netdev->name);
 		goto out;
 	}
 
@@ -1118,7 +1087,7 @@ static void rdmaip_failback(struct work_struct *_work)
 	if ((ip_config[port].port_state == RDMAIP_PORT_INIT) ||
 	    (ip_config[port].port_state == RDMAIP_PORT_DOWN)) {
 		pr_err("rdmaip: devname %s failback request with port_state in %s state!",
-		       ip_config[port].dev->name,
+		       ip_config[port].netdev->name,
 		       ip_config[port].port_state == RDMAIP_PORT_INIT ?
 		       "INIT":"DOWN");
 		goto out;
@@ -1173,6 +1142,232 @@ out:
 }
 
 /*
+ * This funciton returns port transition state
+ *
+ * Returns RDMAIP_PORT_TRANSITION_NOOP if previous
+ * state and current state are same.
+ *
+ * Returns RDMAIP_PORT_TRANSITION_UP if previous
+ * state was not UP and current state is UP.
+ *
+ * Returns RDMAIP_PORT_TRANSITION_DOWN if previous
+ * state was not DOWN and current state is DOWN.
+ */
+static int rdmaip_find_port_tstate(u8 port)
+{
+	int	tstate = RDMAIP_PORT_TRANSITION_NOOP;
+	struct	rdmaip_device	*rdmaip_dev;
+
+	rdmaip_dev = ip_config[port].rdmaip_dev;
+
+	switch (ip_config[port].port_state) {
+	case RDMAIP_PORT_INIT:
+		/*
+		 * We are in INIT state but not during module
+		 * initialization. This can happens when
+		 *
+		 * 1) A new port is detected and initialized
+		 *    in rdmaip_addintf_after_initscripts().
+		 *
+		 * 2) It can happen via init script 'stop'
+		 *    invocation -whichdisables active bonding
+		 *    temporarily by unsetting sysctl variable
+		 *    rdmaip_sysctl_active_bonding
+		 */
+		if (rdmaip_sysctl_active_bonding) {
+			if (rdmaip_port_all_layers_up(&ip_config[port])) {
+				ip_config[port].port_state = RDMAIP_PORT_UP;
+				tstate = RDMAIP_PORT_TRANSITION_UP;
+				RDMAIP_DBG3("Port transition INIT to UP\n");
+			} else {
+				ip_config[port].port_state = RDMAIP_PORT_DOWN;
+				tstate = RDMAIP_PORT_TRANSITION_DOWN;
+				RDMAIP_DBG3("Port transition INIT to DOWN\n");
+			}
+		} else {
+			tstate = RDMAIP_PORT_TRANSITION_NOOP;
+			pr_warn("rdmaip: %s active bonding is disabled using sysctl\n",
+				rdmaip_dev->ibdev->name);
+		}
+		break;
+
+	case RDMAIP_PORT_DOWN:
+		if (rdmaip_port_all_layers_up(&ip_config[port])) {
+			ip_config[port].port_state = RDMAIP_PORT_UP;
+			tstate = RDMAIP_PORT_TRANSITION_UP;
+			RDMAIP_DBG3("Port transition DOWN to UP\n");
+		}
+		break;
+
+	case RDMAIP_PORT_UP:
+		if (!rdmaip_port_all_layers_up(&ip_config[port])) {
+			ip_config[port].port_state = RDMAIP_PORT_DOWN;
+			tstate = RDMAIP_PORT_TRANSITION_DOWN;
+			RDMAIP_DBG3("Port transition UP to DOWN\n");
+		}
+		break;
+
+	default:
+		pr_err("rdmaip: INVALID port_state %d port index %u devname %s\n",
+		       ip_config[port].port_state, port,
+		       ip_config[port].netdev->name);
+	}
+	return tstate;
+}
+
+static int
+rdmaip_get_rdmaport_status(struct rdmaip_device *rdmaip_dev, int port)
+{
+	struct ib_port_attr	port_attr;
+	int			ret;
+	int			pstatus = 0;
+
+	ret = ib_query_port(rdmaip_dev->ibdev, port, &port_attr);
+	if (!ret) {
+		if (port_attr.state == IB_PORT_ACTIVE)
+			pstatus = RDMAIP_PORT_STATUS_HWPORTUP;
+	}
+
+	return pstatus;
+
+}
+
+static void rdmaip_update_port_status_all_layers(u8 port, int event_type,
+						 int event)
+{
+	switch (event_type) {
+	case RDMAIP_EVENT_NONE:
+		if (rdmaip_get_rdmaport_status(ip_config[port].rdmaip_dev,
+					       ip_config[port].port_num) ==
+					       RDMAIP_PORT_STATUS_HWPORTUP) {
+			ip_config[port].port_layerflags |=
+				RDMAIP_PORT_STATUS_HWPORTUP;
+		} else {
+			ip_config[port].port_layerflags &=
+				~RDMAIP_PORT_STATUS_HWPORTUP;
+		}
+		break;
+
+	case RDMAIP_EVENT_IB:
+		if (event == IB_EVENT_PORT_ACTIVE) {
+			ip_config[port].port_layerflags |=
+				RDMAIP_PORT_STATUS_HWPORTUP;
+		} else {
+			ip_config[port].port_layerflags &=
+				~RDMAIP_PORT_STATUS_HWPORTUP;
+		}
+		break;
+	case RDMAIP_EVENT_NET:
+		/*
+		 * On VM, in some cases, Port up event was not delivered.
+		 * So,  Update hw port status if netdev Lower link status
+		 * is UP.
+		 */
+		if (rdmaip_is_link_layer_up(ip_config[port].netdev)) {
+			ip_config[port].port_layerflags |=
+				RDMAIP_PORT_STATUS_HWPORTUP;
+		} else {
+			ip_config[port].port_layerflags &=
+			~RDMAIP_PORT_STATUS_HWPORTUP;
+		}
+		break;
+	}
+
+	if (ip_config[port].netdev->flags & IFF_UP)
+		ip_config[port].port_layerflags |= RDMAIP_PORT_STATUS_NETDEVUP;
+	else
+		ip_config[port].port_layerflags &= ~RDMAIP_PORT_STATUS_NETDEVUP;
+
+	if (rdmaip_is_link_layer_up(ip_config[port].netdev))
+		ip_config[port].port_layerflags |= RDMAIP_PORT_STATUS_LINKUP;
+	else
+		ip_config[port].port_layerflags &= ~RDMAIP_PORT_STATUS_LINKUP;
+
+	RDMAIP_DBG2("Overall netdev %s Port %d Status 0x%x\n",
+		    ip_config[port].if_name, port,
+		    ip_config[port].port_layerflags);
+
+	RDMAIP_DBG2("rdmaip_port state %s\n",
+		    rdmaip_portstate2name(ip_config[port].port_state));
+}
+
+static void rdmaip_sched_failover_failback(struct net_device *netdev, u8 port,
+					   int port_transition_to)
+{
+	struct rdmaip_port_ud_work	*work;
+
+	work = kzalloc(sizeof(*work), GFP_ATOMIC);
+	if (!work) {
+		RDMAIP_DBG1("rdmaip: failed to allocate port work\n");
+		return;
+	}
+	work->port = port;
+	work->netdev = netdev;
+
+	if (port_transition_to == RDMAIP_PORT_TRANSITION_UP) {
+		if (rdmaip_active_bonding_failback) {
+			RDMAIP_DBG2("Schedule failback\n");
+			INIT_DELAYED_WORK(&work->work, rdmaip_failback);
+			queue_delayed_work(rdmaip_wq, &work->work,
+				rdmaip_get_failback_sync_jiffies(&ip_config[port]));
+		} else
+			kfree(work);
+	} else {
+		RDMAIP_DBG2("Schedule failover\n");
+		INIT_DELAYED_WORK(&work->work, rdmaip_failover);
+		queue_delayed_work(rdmaip_wq, &work->work, 0);
+	}
+}
+
+static void rdmaip_process_async_event(u8 port, int event_type, int event)
+{
+	int port_tstate = RDMAIP_PORT_TRANSITION_NOOP;
+	struct net_device *netdev;
+
+	netdev = ip_config[port].netdev;
+
+	/*
+	 * Network service disables active bonding temporarily
+	 * when user stops network service and re-enables
+	 * when user restarts the network service. There is
+	 * need to failover or failback during that period.
+	 * The port state is set to RDMAIP_PORT_INIT to indicate
+	 * it needs do failover/failback as needed when the
+	 * network serivice restarts.
+	 */
+	if (!rdmaip_sysctl_active_bonding) {
+		RDMAIP_DBG2("Skip failover and failback %s\n",
+			    ip_config[port].if_name);
+		ip_config[port].port_state = RDMAIP_PORT_INIT;
+		ip_config[port].ip_active_port = port;
+		return;
+	}
+
+	rdmaip_update_port_status_all_layers(port, event_type, event);
+	port_tstate = rdmaip_find_port_tstate(port);
+
+	/*
+	 * Log the event details and its disposition
+	 */
+	pr_notice("rdmaip: NET-EVENT: %s, PORT %s/port_%d/%s : %s%s (portlayers 0x%x)\n",
+		  ((event_type == RDMAIP_EVENT_IB) ?
+		  ib_event_msg(event) : rdmaip_netdevevent2name(event)),
+		  ip_config[port].rdmaip_dev->ibdev->name,
+		  ip_config[port].port_num, netdev->name,
+		  (port_tstate == RDMAIP_PORT_TRANSITION_NOOP ?
+		  "port state transition NONE - port retained in state " :
+		  "port state transition to "),
+		  rdmaip_portstate2name(ip_config[port].port_state),
+		  ip_config[port].port_layerflags);
+
+	if ((port_tstate == RDMAIP_PORT_TRANSITION_NOOP) ||
+		!ip_config[port].failover_group)
+		return;
+
+	rdmaip_sched_failover_failback(netdev, port, port_tstate);
+}
+
+/*
  * rdmaip_event_handler is called by the IB core subsystem
  * to inform certain RDMA events. See ib_event_type definitions
  * in include/rdma/ibverbs.h for more details.
@@ -1189,9 +1384,6 @@ out:
  * ip_config  structure, ignore the event.
  * Otherwise, update the port state in the ip_config and schedule
  * failover or failback as needed.
- *
- * TBD: Re-orgnaize rdmaip_netdev_callback and this call back code
- *      to avoid duplicate code
  */
 static void rdmaip_event_handler(struct ib_event_handler *handler,
 				 struct ib_event *event)
@@ -1199,7 +1391,7 @@ static void rdmaip_event_handler(struct ib_event_handler *handler,
 	struct rdmaip_device	*rdmaip_dev =
 		container_of(handler, typeof(*rdmaip_dev), event_handler);
 	u8	port;
-	struct rdmaip_port_ud_work	*work;
+	bool	found = false;
 
 	if (!ip_port_cnt || (rdmaip_init_flag & RDMAIP_TEARDOWN_IN_PROGRESS))
 		return;
@@ -1210,169 +1402,40 @@ static void rdmaip_event_handler(struct ib_event_handler *handler,
 	}
 
 	RDMAIP_DBG2("rdmaip: RDMA device %s ip_port_cnt %d, event: %s\n",
-		    rdmaip_dev->dev->name, ip_port_cnt,
+		    rdmaip_dev->ibdev->name, ip_port_cnt,
 		    ib_event_msg(event->event));
 
 	for (port = 1; port <= ip_port_cnt; port++) {
-		int this_port_transition = RDMAIP_PORT_TRANSITION_NOOP;
-
 		if (ip_config[port].port_num != event->element.port_num ||
 			ip_config[port].rdmaip_dev != rdmaip_dev)
 			continue;
-
-		RDMAIP_DBG2("PORT %s/port_%d/%s received PORT-EVENT %s%s\n",
-			    rdmaip_dev->dev->name, event->element.port_num,
-			    ip_config[port].if_name, ib_event_msg(event->event),
-			    (ip_config_init_phase_flag ?
-			    " during initialization phase!" : ""));
-
-		/* First: HW layer state update! */
-		if (event->event == IB_EVENT_PORT_ACTIVE) {
-			ip_config[port].port_layerflags |=
-			  RDMAIP_PORT_STATUS_HWPORTUP;
-			ip_config[port].port_active_ts = get_jiffies_64();
-		} else {
-			ip_config[port].port_layerflags &=
-			  ~RDMAIP_PORT_STATUS_HWPORTUP;
-		}
-
-		/* Second: check and update link layer status */
-		if (rdmaip_is_link_layer_up(ip_config[port].dev))
-			ip_config[port].port_layerflags |=
-				RDMAIP_PORT_STATUS_LINKUP;
-		else
-			ip_config[port].port_layerflags &=
-				~RDMAIP_PORT_STATUS_LINKUP;
-
-		/* Third: check the netdev layer */
-		if (ip_config[port].dev->flags & IFF_UP)
-			ip_config[port].port_layerflags |=
-				RDMAIP_PORT_STATUS_NETDEVUP;
-		else
-			ip_config[port].port_layerflags &=
-				~RDMAIP_PORT_STATUS_NETDEVUP;
-
-		switch (ip_config[port].port_state) {
-		case RDMAIP_PORT_INIT:
-			if (ip_config_init_phase_flag) {
-				/*
-				 * For INIT port_state during module
-				 * initialization, deferred state transition
-				 * processing* happens after all NETDEV and
-				 * IB ports come up and event handlers have
-				 * run and task doing initial failovers
-				 * after module loading has run - which
-				 * ends the "init_phase and clears the flag.
-				 */
-				this_port_transition =
-					RDMAIP_PORT_TRANSITION_NOOP;
-				break;
-			}
-
-			/*
-			 * We are in INIT state but not during module
-			 * initialization. This can happens when
-			 * a new port is detected and initialized
-			 * in rdmaip_addintf_after_initscripts().
-			 *
-			 * It can also happen via init script
-			 * 'stop' invocation -which (temporarily?)
-			 * disables active bonding by unsetting
-			 * rdmaip_sysctl_active_bonding)
-			 * and returns ports to INIT state.
-			 *
-			 * And then we received this PORT ACTIVE/ERROR
-			 * event.
-			 *
-			 * If rdmaip_sysctl_active_bonding is set,
-			 * we transition port_state to UP/DOWN, else
-			 * we do not do any transitions here.
-			 */
-			if (rdmaip_sysctl_active_bonding) {
-				if (rdmaip_port_all_layers_up(&ip_config[port])) {
-					ip_config[port].port_state =
-						RDMAIP_PORT_UP;
-					this_port_transition =
-						RDMAIP_PORT_TRANSITION_UP;
-				} else {
-					ip_config[port].port_state =
-						RDMAIP_PORT_DOWN;
-					this_port_transition =
-						RDMAIP_PORT_TRANSITION_DOWN;
-				}
-			} else {
-				this_port_transition =
-					RDMAIP_PORT_TRANSITION_NOOP;
-				pr_warn("rdmaip: PORT %s/port_%d/%s received PORT-EVENT %s ignored: active bonding transitions disabled using sysctl\n",
-					rdmaip_dev->dev->name,
-					event->element.port_num,
-					ip_config[port].if_name,
-					ib_event_msg(event->event));
-			}
-			break;
-
-		case RDMAIP_PORT_DOWN:
-			if (rdmaip_port_all_layers_up(&ip_config[port])) {
-				ip_config[port].port_state = RDMAIP_PORT_UP;
-				this_port_transition =
-					RDMAIP_PORT_TRANSITION_UP;
-			}
-			break;
-
-		case RDMAIP_PORT_UP:
-			if (!rdmaip_port_all_layers_up(&ip_config[port])) {
-				ip_config[port].port_state = RDMAIP_PORT_DOWN;
-				this_port_transition =
-					RDMAIP_PORT_TRANSITION_DOWN;
-			}
-			break;
-
-		default:
-			pr_err("rdmaip: INVALID port_state %d port index %u devname %s\n",
-			       ip_config[port].port_state, port,
-			       ip_config[port].dev->name);
-			return;
-		}
-
-		pr_notice("rdmaip: PORT-EVENT: %s%s, PORT: %s/port_%d/%s : %s%s (portlayers 0x%x)\n",
-			  ib_event_msg(event->event),
-			  (ip_config_init_phase_flag ? "(init phase)" : ""),
-			  rdmaip_dev->dev->name, event->element.port_num,
-			  ip_config[port].if_name,
-			  (this_port_transition == RDMAIP_PORT_TRANSITION_UP ?
-			  "port state transition to " :
-			  (this_port_transition == RDMAIP_PORT_TRANSITION_DOWN ?
-			  "port state transition to " :
-			  "port state transition NONE - port retained in state ")),
-			  rdmaip_portstate2name(ip_config[port].port_state),
-			  ip_config[port].port_layerflags);
-
-		if ((this_port_transition == RDMAIP_PORT_TRANSITION_NOOP) ||
-			!ip_config[port].failover_group)
-			continue;
-
-		work = kzalloc(sizeof(*work), GFP_ATOMIC);
-		if (!work) {
-			RDMAIP_DBG1("rdmaip: failed to allocate port work\n");
-			return;
-		}
-
-		work->port = port;
-
-		if (this_port_transition == RDMAIP_PORT_TRANSITION_UP) {
-			if (rdmaip_active_bonding_failback) {
-				RDMAIP_DBG3("Schedule failback\n");
-				INIT_DELAYED_WORK(&work->work, rdmaip_failback);
-				queue_delayed_work(rdmaip_wq, &work->work,
-					rdmaip_get_failback_sync_jiffies(&ip_config[port]));
-			} else
-				kfree(work);
-		} else {
-			RDMAIP_DBG3("Schedule failover\n");
-			INIT_DELAYED_WORK(&work->work, rdmaip_failover);
-			queue_delayed_work(rdmaip_wq, &work->work, 0);
-		}
+		found = true;
+		break;
 	}
+
+	if (!found) {
+		RDMAIP_DBG2("ERROR: No rdmaip_port found\n");
+		return;
+	}
+
+	mutex_lock(&rdmaip_global_flag_lock);
+	if (rdmaip_is_busy_flag_set()) {
+		rdmaip_set_event_pending();
+		RDMAIP_DBG2("Busy flag is set: skip ibevent processing\n");
+		mutex_unlock(&rdmaip_global_flag_lock);
+		return;
+	}
+	mutex_unlock(&rdmaip_global_flag_lock);
+
+	RDMAIP_DBG2("PORT %s/port_%d/%s received PORT-EVENT %s\n",
+		    rdmaip_dev->ibdev->name, event->element.port_num,
+		    ip_config[port].if_name, ib_event_msg(event->event));
+
+	if (event->event == IB_EVENT_PORT_ACTIVE)
+		ip_config[port].port_active_ts = get_jiffies_64();
+
+	rdmaip_process_async_event(port, RDMAIP_EVENT_IB, event->event);
+
 }
 
 static void rdmaip_update_ip_addrs(int port)
@@ -1381,7 +1444,7 @@ static void rdmaip_update_ip_addrs(int port)
 	struct net_device *ndev;
 	struct in_device *in_dev;
 
-	ndev = ip_config[port].dev;
+	ndev = ip_config[port].netdev;
 	if (!ndev)
 		return;
 
@@ -1419,12 +1482,12 @@ static void rdmaip_do_initial_failovers(void)
 		if (rdmaip_port_all_layers_up(&ip_config[ii])) {
 			ip_config[ii].port_state = RDMAIP_PORT_UP;
 			pr_notice("rdmaip_do_initial_failover:  port index %u interface %s transitioned from INIT to UP state (portlayers 0x%x)\n",
-				  ii, ip_config[ii].dev->name,
+				  ii, ip_config[ii].netdev->name,
 				  ip_config[ii].port_layerflags);
 		} else {
 			ip_config[ii].port_state = RDMAIP_PORT_DOWN;
 			pr_notice("rdmaip_do_initial_failover: port index %u interface %s transitioned from INIT to DOWN state (portlayers 0x%x)\n",
-				  ii, ip_config[ii].dev->name,
+				  ii, ip_config[ii].netdev->name,
 				  ip_config[ii].port_layerflags);
 		}
 		ip_config[ii].ip_active_port = ii; /* starting at home base! */
@@ -1436,14 +1499,12 @@ static void rdmaip_do_initial_failovers(void)
 		 * reinitialize IP addresses again before doing initial
 		 * failovers.
 		 */
-		if (ip_config[ii].dev) {
+		if (ip_config[ii].netdev) {
 			RDMAIP_DBG2("Update IP addresses for %s -  do_initial_failover\n",
-				    ip_config[ii].dev->name);
+				    ip_config[ii].netdev->name);
 			rdmaip_update_ip_addrs(ii);
 		}
 	}
-
-	rdmaip_dump_ip_config();
 
 	/*
 	 * Now do failover for ports that are down!
@@ -1467,7 +1528,7 @@ static void rdmaip_do_initial_failovers(void)
 			if (ip_config[ii].ip_active_port == ii) {
 				pr_notice("rdmaip: IP %pI4 deactivated on interface %s (no suitable failover target available)\n",
 					  &ip_config[ii].ip_addr,
-					  ip_config[ii].dev->name);
+					  ip_config[ii].netdev->name);
 
 				ret = rdmaip_set_ip4(NULL, NULL,
 						    ip_config[ii].if_name,
@@ -1479,11 +1540,11 @@ static void rdmaip_do_initial_failovers(void)
 		}
 	}
 
-	ip_config_init_phase_flag = 0; /* done with initial phase! */
 }
 
 static void rdmaip_initial_failovers(struct work_struct *workarg)
 {
+	bool do_failover;
 
 	if (rdmaip_init_flag & RDMAIP_TEARDOWN_IN_PROGRESS) {
 		RDMAIP_DBG2("Teardown in progress\n");
@@ -1521,7 +1582,32 @@ static void rdmaip_initial_failovers(struct work_struct *workarg)
 		pr_info("rdmaip: Triggering initial failovers(itercount %d)\n",
 			initial_failovers_iterations);
 	}
-	rdmaip_do_initial_failovers();
+
+	rdmaip_ip_config_init();
+	rdmaip_init_flag |= RDMAIP_IP_CONFIG_INIT_DONE;
+	rdmaip_ip_failover_groups_init();
+
+	do_failover = true;
+
+	mutex_lock(&rdmaip_global_flag_lock);
+	rdmaip_clear_event_pending();
+	mutex_unlock(&rdmaip_global_flag_lock);
+
+	while (do_failover) {
+		rdmaip_do_initial_failovers();
+
+		mutex_lock(&rdmaip_global_flag_lock);
+		if (rdmaip_is_event_pending()) {
+			rdmaip_clear_event_pending();
+			RDMAIP_DBG2("Event pending, do failovers again\n");
+		} else {
+			do_failover = false;
+			rdmaip_clear_busy_flag();
+			RDMAIP_DBG2("No pending event, Clear busy flag\n");
+		}
+		mutex_unlock(&rdmaip_global_flag_lock);
+	}
+	rdmaip_dump_ip_config();
 }
 
 
@@ -1602,7 +1688,7 @@ static int rdmaip_is_roce_netdev(u8 port, struct rdmaip_device *rdmaip_dev,
 
 	gid_tbl_len = rdmaip_dev->pinfo[port - 1].gid_tbl_len;
 	for (index = 0; index < gid_tbl_len; index++) {
-		if (!ib_query_gid(rdmaip_dev->dev, port, index, &gid,
+		if (!ib_query_gid(rdmaip_dev->ibdev, port, index, &gid,
 				  &gid_attr)) {
 			/*
 			 * For netdevs, ib_query_gid gets
@@ -1635,7 +1721,7 @@ static struct rdmaip_device *rdmaip_is_roce_device(struct net_device *dev,
 	int port, nports, found = 0;
 
 	list_for_each_entry_rcu(rdmaip_dev, &rdmaip_devlist_head, list) {
-		nports = rdmaip_dev->dev->phys_port_cnt;
+		nports = rdmaip_dev->ibdev->phys_port_cnt;
 		for (port = 1; (port <= nports) && (!found); port++) {
 			found = rdmaip_is_roce_netdev(port, rdmaip_dev,
 						      real_dev);
@@ -1692,7 +1778,7 @@ static struct rdmaip_device *rdmaip_get_rdmaip_dev(struct net_device *ndev,
 		memcpy(&gid, ndev->dev_addr + 4, sizeof(gid));
 		list_for_each_entry_rcu(rdmaip_dev, &rdmaip_devlist_head,
 			list) {
-			if (!ib_find_cached_gid(rdmaip_dev->dev, &gid,
+			if (!ib_find_cached_gid(rdmaip_dev->ibdev, &gid,
 			    IB_GID_TYPE_IB, NULL, port_num, NULL))
 				return rdmaip_dev;
 		}
@@ -1705,40 +1791,18 @@ static struct rdmaip_device *rdmaip_get_rdmaip_dev(struct net_device *ndev,
 }
 
 /*
- * rdmaip_ip_config_init() function tries to initialize the active bonding
- * groups in ip_config global structure. It loops through all the available
- * netdevices in the systems and initializes the ip_config if the netdevice
- * is UP.
- *
- * TBD: Initialization code mostly runs before IP addresses are configured.
- * So, this code runs, checks for NETDEV_UP and bails out. Most of the times,
- * initialization gets done in rdmaip_addintf_after_initscripts() function.
- * This code can be re-designed to start the initialization of the ip_config
- * only after the network scripts are run i.e after
- * rdmaip_sysctl_trigger_active_bonding is set by the network initscripts.
+ * rdmaip_ip_config_init() function initializes the active bonding groups
+ * in ip_config global structure. It loops through all the available net
+ * devices in the systems and initializes the ip_config with RDMA capable
+ * net devices.
  */
-static int rdmaip_ip_config_init(void)
+static void rdmaip_ip_config_init(void)
 {
 	struct net_device	*dev;
 	struct in_device	*in_dev;
 	struct inet6_dev	*in6_dev;
 	struct rdmaip_device	*rdmaip_dev;
-	u8                      port_num;
-
-	ip_config = kzalloc(sizeof(struct rdmaip_port) * (ip_port_max + 1),
-			    GFP_KERNEL);
-	if (!ip_config) {
-		RDMAIP_DBG1("rdmaip: failed to allocate IP config\n");
-		return 1;
-	}
-
-	/*
-	 * This flag is set here to mark start of active bonding
-	 * IP failover/failback ip_config initialization. It ends
-	 * when we are done doing the initial failovers after the
-	 * init.
-	 */
-	ip_config_init_phase_flag = 1;
+	u8                      ret = 1, port_num;
 
 	read_lock(&dev_base_lock);
 	for_each_netdev(&init_net, dev) {
@@ -1752,10 +1816,8 @@ static int rdmaip_ip_config_init(void)
 		 * Enumerate all Infiniband and RoCE devices that
 		 * are UP and not part of a bond(master or slave)
 		 */
-
 		if (((dev->type == ARPHRD_INFINIBAND) ||
 		   (dev->type == ARPHRD_ETHER)) &&
-		   (dev->flags & IFF_UP) &&
 		   !(dev->flags & IFF_SLAVE) &&
 		   !(dev->flags & IFF_MASTER) &&
 		   in_dev) {
@@ -1768,20 +1830,25 @@ static int rdmaip_ip_config_init(void)
 			 */
 			rdmaip_dev = rdmaip_get_rdmaip_dev(dev, &pkey_vid,
 							   &port_num);
-			if (rdmaip_dev)
-				(void) rdmaip_init_port(rdmaip_dev, dev,
-							port_num, pkey_vid,
-							in_dev, in6_dev);
+			if (rdmaip_dev) {
+				ret = rdmaip_init_port(rdmaip_dev, dev,
+						       port_num, pkey_vid,
+						       in_dev, in6_dev);
+			}
 		}
+
 		if (in_dev)
 			in_dev_put(in_dev);
 
 		if (in6_dev)
 			in6_dev_put(in6_dev);
+
+		if (ret == 0) {
+			RDMAIP_DBG2("Max number of port exceeded\n");
+			break;
+		}
 	}
 	read_unlock(&dev_base_lock);
-	rdmaip_sched_initial_failovers();
-	return 0;
 }
 
 static int rdmaip_init_exclude_ip_tbl(char *str)
@@ -1966,10 +2033,10 @@ static void rdmaip_device_add(struct ib_device *device)
 		RDMAIP_DBG2("Failed to allocate memory for rdmaip_dev\n");
 		return;
 	}
-	rdmaip_dev->dev = device;
+	rdmaip_dev->ibdev = device;
 
 	INIT_IB_EVENT_HANDLER(&rdmaip_dev->event_handler,
-			      rdmaip_dev->dev, rdmaip_event_handler);
+			      rdmaip_dev->ibdev, rdmaip_event_handler);
 	ib_register_event_handler(&rdmaip_dev->event_handler);
 
 	for (i = 1; i <= device->phys_port_cnt; i++) {
@@ -2044,10 +2111,10 @@ static void rdmaip_update_ip_config(void)
 		if (in_dev || in6_dev) {
 			for (i = 1; i <= ip_port_cnt; i++) {
 				if (!strcmp(dev->name, ip_config[i].if_name)) {
-					if (ip_config[i].dev != dev) {
-						ip_config[i].dev = dev;
+					if (ip_config[i].netdev != dev) {
+						ip_config[i].netdev = dev;
 						RDMAIP_DBG2("RDMA device %s/port_%d/%s updated",
-							    ip_config[i].rdmaip_dev->dev->name,
+							    ip_config[i].rdmaip_dev->ibdev->name,
 							    ip_config[i].port_num,
 							    dev->name);
 					}
@@ -2094,13 +2161,13 @@ static void rdmaip_portstate_delayed_initswitch(struct work_struct *_work)
 	 */
 
 	/* Paranoia assertion and NETDEV layer */
-	if (!(ip_config[port].dev->flags & IFF_UP) ||
+	if (!(ip_config[port].netdev->flags & IFF_UP) ||
 	    !((ip_config[port].port_layerflags & RDMAIP_PORT_STATUS_NETDEVUP)
 	      == RDMAIP_PORT_STATUS_NETDEVUP)) {
 		pr_warn("rdmaip: Device %s flag NOT marked UP in delayed INIT transition processing!\n",
-			ip_config[port].dev->name);
+			ip_config[port].netdev->name);
 		/* init port layer flag after warning! */
-		if (ip_config[port].dev->flags & IFF_UP)
+		if (ip_config[port].netdev->flags & IFF_UP)
 			ip_config[port].port_layerflags |=
 				RDMAIP_PORT_STATUS_NETDEVUP;
 		else
@@ -2108,7 +2175,7 @@ static void rdmaip_portstate_delayed_initswitch(struct work_struct *_work)
 				~RDMAIP_PORT_STATUS_NETDEVUP;
 	}
 	/* Check on link (and hw) layers */
-	if (rdmaip_is_link_layer_up(ip_config[port].dev)) {
+	if (rdmaip_is_link_layer_up(ip_config[port].netdev)) {
 		ip_config[port].port_layerflags |= RDMAIP_PORT_STATUS_LINKUP;
 		ip_config[port].port_layerflags |= RDMAIP_PORT_STATUS_HWPORTUP;
 	} else {
@@ -2121,12 +2188,12 @@ static void rdmaip_portstate_delayed_initswitch(struct work_struct *_work)
 	if (rdmaip_port_all_layers_up(&ip_config[port])) {
 		ip_config[port].port_state = RDMAIP_PORT_UP;
 		pr_notice("rdmaip: delayed INIT transition: port index %u interface %s transitioned from INIT to UP state(portlayers 0x%x)\n",
-			  port, ip_config[port].dev->name,
+			  port, ip_config[port].netdev->name,
 			  ip_config[port].port_layerflags);
 	} else {
 		ip_config[port].port_state = RDMAIP_PORT_DOWN;
 		pr_notice("rdmaip: delayed INIT transition: port index %u interface %s transitioned from INIT to DOWN state(portlayers 0x%x)\n",
-			  port, ip_config[port].dev->name,
+			  port, ip_config[port].netdev->name,
 			  ip_config[port].port_layerflags);
 	}
 	kfree(work);
@@ -2152,7 +2219,7 @@ static void rdmaip_addintf_after_initscripts(struct work_struct *_work)
 {
 	struct rdmaip_port_ud_work      *work =
 		container_of(_work, struct rdmaip_port_ud_work, work.work);
-	struct net_device *ndev = work->dev;
+	struct net_device *ndev = work->netdev;
 	struct in_device	*in_dev;
 	struct inet6_dev	*in6_dev;
 	struct rdmaip_device    *rdmaip_dev;
@@ -2212,10 +2279,10 @@ static void rdmaip_addintf_after_initscripts(struct work_struct *_work)
 				 */
 				ip_config[port].port_layerflags |=
 					RDMAIP_PORT_STATUS_NETDEVUP;
-				if (!(ip_config[port].dev->flags & IFF_UP)) {
+				if (!(ip_config[port].netdev->flags & IFF_UP)) {
 					pr_warn("rdmaip: Device %s flag NOT marked UP in "
 						"NETDEV_UP(addintf after initscripts) processing!\n",
-						ip_config[port].dev->name);
+						ip_config[port].netdev->name);
 				}
 				/*
 				 * (2) Note:
@@ -2230,7 +2297,7 @@ static void rdmaip_addintf_after_initscripts(struct work_struct *_work)
 				 *   link layer is up)
 				 */
 				if (rdmaip_is_link_layer_up(
-							ip_config[port].dev)) {
+						ip_config[port].netdev)) {
 					ip_config[port].port_layerflags |=
 						RDMAIP_PORT_STATUS_LINKUP;
 					ip_config[port].port_layerflags |=
@@ -2280,6 +2347,28 @@ out:
 	read_unlock(&dev_base_lock);
 }
 
+static void rdmaip_add_new_rdmaip_port(struct net_device *netdev, u8 port)
+{
+	struct rdmaip_port_ud_work *work;
+
+	RDMAIP_DBG2("Adding to new netdev %s port%d to ip_config\n",
+		    netdev->name, port);
+
+	if ((netdev->flags & IFF_UP) && !(netdev->flags & IFF_SLAVE) &&
+	   !(netdev->flags & IFF_MASTER)) {
+
+		work = kzalloc(sizeof(*work), GFP_ATOMIC);
+		if (work) {
+			work->netdev = netdev;
+			work->timeout = msecs_to_jiffies(10000);
+			INIT_DELAYED_WORK(&work->work,
+				  rdmaip_addintf_after_initscripts);
+			queue_delayed_work(rdmaip_wq, &work->work,
+					msecs_to_jiffies(100));
+		} else
+			RDMAIP_DBG2("Failed to allocated memory for work\n");
+	}
+}
 
 /*
  * Network stack calls this callback routine when ever there
@@ -2297,8 +2386,6 @@ static int rdmaip_netdev_callback(struct notifier_block *self,
 				  unsigned long event, void *ctx)
 {
 	struct net_device *ndev = netdev_notifier_info_to_dev(ctx);
-	struct rdmaip_port_ud_work *work = NULL;
-	int port_transition = RDMAIP_PORT_TRANSITION_NOOP;
 	u8 port = 0;
 
 	if (rdmaip_init_flag & RDMAIP_TEARDOWN_IN_PROGRESS) {
@@ -2319,33 +2406,30 @@ static int rdmaip_netdev_callback(struct notifier_block *self,
 		return NOTIFY_DONE;
 	}
 
+	mutex_lock(&rdmaip_global_flag_lock);
+	if (rdmaip_is_busy_flag_set()) {
+		rdmaip_set_event_pending();
+		RDMAIP_DBG2("Busy flag is set: skip netevent processing\n");
+		mutex_unlock(&rdmaip_global_flag_lock);
+		return NOTIFY_DONE;
+	}
+	mutex_unlock(&rdmaip_global_flag_lock);
+
 	/*
 	 * Find the port by netdev->name and update ip_config if name exists
 	 * but ndev has changed
 	 */
 	port = rdmaip_get_port_index(ndev);
 
-	if (port && event == NETDEV_UP && ip_config[port].dev != ndev)
+	if (port && event == NETDEV_UP && ip_config[port].netdev != ndev)
 		rdmaip_update_ip_config();
 
 	if (!port && event == NETDEV_UP) {
 		/*
-		 * New port. Schediule new port initialization
+		 * New port. Schedule new port initialization
 		 * and bail out from here.
 		 */
-		if ((ndev->flags & IFF_UP) && !(ndev->flags & IFF_SLAVE) &&
-		   !(ndev->flags & IFF_MASTER)) {
-
-			work = kzalloc(sizeof(*work), GFP_ATOMIC);
-			if (work) {
-				work->dev = ndev;
-				work->timeout = msecs_to_jiffies(10000);
-				INIT_DELAYED_WORK(&work->work,
-					  rdmaip_addintf_after_initscripts);
-				queue_delayed_work(rdmaip_wq, &work->work,
-						msecs_to_jiffies(100));
-			}
-		}
+		rdmaip_add_new_rdmaip_port(ndev, port);
 		return NOTIFY_DONE;
 	}
 
@@ -2363,207 +2447,13 @@ static int rdmaip_netdev_callback(struct notifier_block *self,
 		RDMAIP_DBG2("rdmaip_dev is NULL, device tearing down in progress\n");
 		return NOTIFY_DONE;
 	}
-	RDMAIP_DBG2("PORT %s/port_%d/%s received NET-EVENT %s%s\n",
-		    ip_config[port].rdmaip_dev->dev->name,
+
+	RDMAIP_DBG2("PORT %s/port_%d/%s received NET-EVENT %s\n",
+		    ip_config[port].rdmaip_dev->ibdev->name,
 		    ip_config[port].port_num, ndev->name,
-		    rdmaip_netdevevent2name(event),
-		    (ip_config_init_phase_flag ?
-		    " during initialization phase!" : ""));
+		    rdmaip_netdevevent2name(event));
 
-	/*
-	 * Update the port status. If its UP, we also
-	 * mark HW layer UP! (Since on VM reboots etc
-	 * we may not get a separate event for HW ports!)
-	 */
-	if (rdmaip_is_link_layer_up(ip_config[port].dev)) {
-		ip_config[port].port_layerflags |= RDMAIP_PORT_STATUS_LINKUP;
-		ip_config[port].port_layerflags |= RDMAIP_PORT_STATUS_HWPORTUP;
-	} else {
-		ip_config[port].port_layerflags &= ~RDMAIP_PORT_STATUS_LINKUP;
-	}
-
-	/*
-	 * Mark NETDEV layer state based on event (verify IFF_UP flag and
-	 * warn!)
-	 */
-
-	switch (event) {
-	case NETDEV_UP:
-		ip_config[port].port_layerflags |= RDMAIP_PORT_STATUS_NETDEVUP;
-		if (!(ip_config[port].dev->flags & IFF_UP)) {
-			pr_warn("rdmaip: Device %s is not UP in NETDEV_UP processing\n",
-				ip_config[port].dev->name);
-		}
-		break;
-	case NETDEV_DOWN:
-		ip_config[port].port_layerflags &= ~RDMAIP_PORT_STATUS_NETDEVUP;
-		if (ip_config[port].dev->flags & IFF_UP) {
-			pr_warn("rdmaip: Device %s is UP in NETDEV_DOWN processing\n",
-				ip_config[port].dev->name);
-		}
-		break;
-	case NETDEV_CHANGE:
-		/*
-		 * Link layer changes - that trigger NETDEV_CHANGE
-		 * already handled above - just log the messages for
-		 * debugging purposes.
-		 */
-		RDMAIP_DBG2("NETDEV_CHANGE devname: %s, HW_PORT: %s, LINK: %s,NETDEV: %s\n",
-			    ip_config[port].dev->name,
-			    ((ip_config[port].port_layerflags &
-			    RDMAIP_PORT_STATUS_HWPORTUP) ? "UP" : "DOWN"),
-			    ((ip_config[port].port_layerflags &
-			    RDMAIP_PORT_STATUS_LINKUP) ? "UP" : "DOWN"),
-			    ((ip_config[port].port_layerflags &
-			    RDMAIP_PORT_STATUS_NETDEVUP) ? "UP" : "DOWN"));
-		break;
-	default:
-		break;
-	}
-
-	/*
-	 * Do state transitions now
-	 */
-	switch (ip_config[port].port_state) {
-	case RDMAIP_PORT_INIT:
-
-		if (ip_config_init_phase_flag) {
-			/*
-			 * For INIT port_state during module initialization,
-			 * deferred state transition processing* happens after
-			 * all NETDEV and IB ports come up and event
-			 * handlers have run and task doing initial failovers
-			 * after module loading has run - which ends the
-			 * "init_phase and clears the flag.
-			 */
-			port_transition = RDMAIP_PORT_TRANSITION_NOOP;
-			break;
-		}
-
-		/*
-		 * We are in INIT state but not during module
-		 * initialization. This can happens when
-		 * a new port is detected and initialized
-		 * in rdmaip_addintf_after_initscripts().
-		 *
-		 * It can also happen via init script
-		 * 'stop' invocation -which (temporarily?)
-		 * disables active bonding by unsetting
-		 * rdmaip_sysctl_active_bonding)
-		 * and returns ports to INIT state.
-		 *
-		 * And then we received this NETDEV
-		 * UP/DOWN/CHANGE event.
-		 *
-		 * If rdmaip_sysctl_active_bonding is set,
-		 * we transition port_state to UP/DOWN, else
-		 * we do not do any transitions here.
-		 */
-		if (rdmaip_sysctl_active_bonding) {
-			if (rdmaip_port_all_layers_up(&ip_config[port])) {
-				ip_config[port].port_state = RDMAIP_PORT_UP;
-				port_transition = RDMAIP_PORT_TRANSITION_UP;
-				RDMAIP_DBG2("PORT_STATE changed to UP\n");
-			} else {
-				ip_config[port].port_state = RDMAIP_PORT_DOWN;
-				port_transition = RDMAIP_PORT_TRANSITION_DOWN;
-				RDMAIP_DBG2("PORT_STATE changed to DOWN\n");
-			}
-		} else {
-			port_transition = RDMAIP_PORT_TRANSITION_NOOP;
-			pr_warn("rdmaip: PORT %s/port_%d/%s received PORT-EVENT %s ignored: "
-				"active bonding transitions disabled using sysctl\n",
-				ip_config[port].rdmaip_dev->dev->name,
-				ip_config[port].port_num, ndev->name,
-				(event == NETDEV_UP ? "NETDEV_UP" :
-				(event == NETDEV_DOWN ? "NETDEV_DOWN" :
-				 "NETDEV_CHANGE")));
-		}
-
-		break;
-	case RDMAIP_PORT_DOWN:
-		if (rdmaip_port_all_layers_up(&ip_config[port])) {
-			ip_config[port].port_state = RDMAIP_PORT_UP;
-			port_transition = RDMAIP_PORT_TRANSITION_UP;
-		}
-		break;
-	case RDMAIP_PORT_UP:
-		if (!rdmaip_port_all_layers_up(&ip_config[port])) {
-			ip_config[port].port_state = RDMAIP_PORT_DOWN;
-			port_transition = RDMAIP_PORT_TRANSITION_DOWN;
-		}
-		break;
-	default:
-		pr_err("rdmaip: INVALID port_state %d port index %u devname %s\n",
-		       ip_config[port].port_state,
-		       port, ip_config[port].dev->name);
-		return NOTIFY_DONE;
-	}
-
-
-	/*
-	 * Log the event details and its disposition
-	 */
-	pr_notice("rdmaip: NET-EVENT: %s%s, PORT %s/port_%d/%s : %s%s (portlayers 0x%x)\n",
-		  rdmaip_netdevevent2name(event),
-		  (ip_config_init_phase_flag ? "(init phase)" : ""),
-		  ip_config[port].rdmaip_dev->dev->name,
-		  ip_config[port].port_num, ndev->name,
-		  (port_transition == RDMAIP_PORT_TRANSITION_UP ?
-		  "port state transition to " :
-		  (port_transition == RDMAIP_PORT_TRANSITION_DOWN ?
-		  "port state transition to " :
-		  "port state transition NONE - port retained in state ")),
-		  rdmaip_portstate2name(ip_config[port].port_state),
-		  ip_config[port].port_layerflags);
-
-	if ((port_transition == RDMAIP_PORT_TRANSITION_NOOP) ||
-		!ip_config[port].failover_group)
-		return NOTIFY_DONE;
-
-	work = kzalloc(sizeof(*work), GFP_ATOMIC);
-	if (!work) {
-		RDMAIP_DBG1("rdmaip: failed to allocate port work\n");
-		return NOTIFY_DONE;
-	}
-
-	work->dev = ndev;
-	work->port = port;
-
-	switch (port_transition) {
-	case RDMAIP_PORT_TRANSITION_UP:
-		if (rdmaip_active_bonding_failback) {
-			INIT_DELAYED_WORK(&work->work, rdmaip_failback);
-			RDMAIP_DBG2("Scheduing failback\n");
-			queue_delayed_work(rdmaip_wq, &work->work,
-					   rdmaip_get_failback_sync_jiffies(
-					   &ip_config[port]));
-			ip_config[port].port_active_ts = 0;
-		} else
-			kfree(work);
-		break;
-
-	case RDMAIP_PORT_TRANSITION_DOWN:
-		if (rdmaip_sysctl_active_bonding) {
-			RDMAIP_DBG2("Scheduing failover\n");
-			INIT_DELAYED_WORK(&work->work, rdmaip_failover);
-			queue_delayed_work(rdmaip_wq, &work->work, 0);
-		} else {
-			/*
-			 * Note: Active bonding disabled by override
-			 * setting rdmaip_sysctl_active_bonding
-			 * to zero (normally done in
-			 * init script 'stop' invocation).
-			 * We do not want to bother with failover
-			 * when we are bring devices down one-by-one
-			 * during 'stop' of init script.
-			 */
-			ip_config[port].port_state = RDMAIP_PORT_INIT;
-			ip_config[port].ip_active_port = port;
-			kfree(work);
-		}
-		break;
-	}
+	rdmaip_process_async_event(port, RDMAIP_EVENT_NET, event);
 	return NOTIFY_DONE;
 }
 
@@ -2729,6 +2619,16 @@ int rdmaip_init(void)
 	}
 	rdmaip_init_flag |= RDMAIP_REG_NET_SYSCTL;
 
+	/*
+	 * Set the busy flag before registing with IB core
+	 * and network stack. Events can come any time after
+	 * registering with IB core and network stack. IB and
+	 * netdev callback function will skip event processing
+	 * during the initialization process by checking the
+	 * busy flag.
+	 */
+	rdmaip_set_busy_flag();
+
 	ret = ib_register_client(&rdmaip_client);
 	if (ret) {
 		RDMAIP_DBG2("%s: ib_register_client failed  (%d)\n",
@@ -2747,23 +2647,17 @@ int rdmaip_init(void)
 	}
 	rdmaip_init_flag |= RDMAIP_IP_WQ_CREATED;
 
-	rdmaip_read_exclude_ip_list();
-
-	ret = rdmaip_ip_config_init();
-	if (ret) {
-		RDMAIP_DBG2("%s failed to initialize ip_config\n",
-				  __func__);
-		rdmaip_cleanup();
-		return ret;
+	ip_config = kzalloc(sizeof(struct rdmaip_port) * (ip_port_max + 1),
+			    GFP_KERNEL);
+	if (!ip_config) {
+		RDMAIP_DBG1("rdmaip: failed to allocate IP config\n");
+		return -ENOMEM;
 	}
-
-	rdmaip_init_flag |= RDMAIP_IP_CONFIG_INIT_DONE;
-
-	rdmaip_ip_failover_groups_init();
-
+	rdmaip_read_exclude_ip_list();
 	register_netdevice_notifier(&rdmaip_nb);
-
 	rdmaip_init_flag |= RDMAIP_REG_NETDEV_NOTIFIER;
+
+	rdmaip_sched_initial_failovers();
 	return ret;
 }
 
