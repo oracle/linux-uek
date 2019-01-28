@@ -1257,7 +1257,9 @@ static int nix_txschq_free(struct rvu *rvu, u16 pcifunc)
 	struct nix_txsch *txsch;
 	struct nix_hw *nix_hw;
 	u64 cfg;
+	int pf;
 
+	pf = rvu_get_pf(pcifunc);
 	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NIX, pcifunc);
 	if (blkaddr < 0)
 		return NIX_AF_ERR_AF_LF_INVALID;
@@ -1298,9 +1300,30 @@ static int nix_txschq_free(struct rvu *rvu, u16 pcifunc)
 		err = rvu_poll_reg(rvu, blkaddr,
 				   NIX_AF_SMQX_CFG(schq), BIT_ULL(49), true);
 		if (err) {
+			/* Clear CTL_BCK and try again */
+			if (is_pf_cgxmapped(rvu, pf)) {
+				u8 cgx_id, lmac_id;
+
+				rvu_get_cgx_lmac_id(rvu->pf2cgxlmac_map[pf],
+						&cgx_id, &lmac_id);
+				rvu_cgx_config_bp(rvu, cgx_id, lmac_id, false);
+			}
+		}
+
+		err = rvu_poll_reg(rvu, blkaddr,
+				   NIX_AF_SMQX_CFG(schq), BIT_ULL(49), true);
+		if (err) {
 			dev_err(rvu->dev,
 				"NIXLF%d: SMQ%d flush failed\n", nixlf, schq);
 		}
+		if (is_pf_cgxmapped(rvu, pf)) {
+			u8 cgx_id, lmac_id;
+
+		    rvu_get_cgx_lmac_id(rvu->pf2cgxlmac_map[pf],
+					&cgx_id, &lmac_id);
+			rvu_cgx_config_bp(rvu, cgx_id, lmac_id, true);
+		}
+
 	}
 
 	/* Now free scheduler queues to free pool */
