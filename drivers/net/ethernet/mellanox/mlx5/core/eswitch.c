@@ -1719,6 +1719,8 @@ int mlx5_eswitch_init(struct mlx5_core_dev *dev)
 		goto abort;
 	}
 
+	esw->total_vports = total_vports;
+
 	err = esw_offloads_init_reps(esw);
 	if (err)
 		goto abort;
@@ -1737,7 +1739,6 @@ int mlx5_eswitch_init(struct mlx5_core_dev *dev)
 			  esw_vport_change_handler);
 	}
 
-	esw->total_vports = total_vports;
 	esw->enabled_vports = 0;
 	esw->mode = SRIOV_NONE;
 	esw->offloads.inline_mode = MLX5_INLINE_MODE_NONE;
