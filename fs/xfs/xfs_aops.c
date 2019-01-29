@@ -40,18 +40,6 @@
 #define XFS_DIO_FLAG_UNWRITTEN	(1 << 0)
 #define XFS_DIO_FLAG_APPEND	(1 << 1)
 
-/*
- * structure owned by writepages passed to individual writepage calls
- */
-struct xfs_writepage_ctx {
-	struct xfs_bmbt_irec    imap;
-	bool			imap_valid;
-	unsigned int		io_type;
-	struct xfs_ioend	*iohead;
-	struct xfs_ioend	*ioend;
-	sector_t		last_block;
-};
-
 void
 xfs_count_page_state(
 	struct page		*page,
@@ -351,7 +339,7 @@ xfs_map_blocks(
 	return 0;
 }
 
-STATIC bool
+STATIC int
 xfs_imap_valid(
 	struct inode		*inode,
 	struct xfs_bmbt_irec	*imap,
@@ -550,27 +538,29 @@ xfs_add_to_ioend(
 	struct inode		*inode,
 	struct buffer_head	*bh,
 	xfs_off_t		offset,
-	struct xfs_writepage_ctx *wpc)
+	unsigned int		type,
+	xfs_ioend_t		**result,
+	int			need_ioend)
 {
-	if (!wpc->ioend || wpc->io_type != wpc->ioend->io_type ||
-	    bh->b_blocknr != wpc->last_block + 1) {
-		struct xfs_ioend	*new;
+	xfs_ioend_t		*ioend = *result;
 
-		new = xfs_alloc_ioend(inode, wpc->io_type);
-		new->io_offset = offset;
-		new->io_buffer_head = bh;
-		new->io_buffer_tail = bh;
-		if (wpc->ioend)
-			wpc->ioend->io_list = new;
-		wpc->ioend = new;
+	if (!ioend || need_ioend || type != ioend->io_type) {
+		xfs_ioend_t	*previous = *result;
+
+		ioend = xfs_alloc_ioend(inode, type);
+		ioend->io_offset = offset;
+		ioend->io_buffer_head = bh;
+		ioend->io_buffer_tail = bh;
+		if (previous)
+			previous->io_list = ioend;
+		*result = ioend;
 	} else {
-		wpc->ioend->io_buffer_tail->b_private = bh;
-		wpc->ioend->io_buffer_tail = bh;
+		ioend->io_buffer_tail->b_private = bh;
+		ioend->io_buffer_tail = bh;
 	}
 
 	bh->b_private = NULL;
-	wpc->ioend->io_size += bh->b_size;
-	wpc->last_block = bh->b_blocknr;
+	ioend->io_size += bh->b_size;
 }
 
 STATIC void
@@ -667,15 +657,17 @@ xfs_convert_page(
 	struct inode		*inode,
 	struct page		*page,
 	loff_t			tindex,
-	struct xfs_writepage_ctx *wpc,
+	struct xfs_bmbt_irec	*imap,
+	xfs_ioend_t		**ioendp,
 	struct writeback_control *wbc)
 {
 	struct buffer_head	*bh, *head;
 	xfs_off_t		end_offset;
 	unsigned long		p_offset;
+	unsigned int		type;
 	int			len, page_dirty;
 	int			count = 0, done = 0, uptodate = 1;
-	xfs_off_t		offset = page_offset(page);
+ 	xfs_off_t		offset = page_offset(page);
 
 	if (page->index != tindex)
 		goto fail;
@@ -685,7 +677,7 @@ xfs_convert_page(
 		goto fail_unlock_page;
 	if (page->mapping != inode->i_mapping)
 		goto fail_unlock_page;
-	if (!xfs_check_page_type(page, wpc->ioend->io_type, false))
+	if (!xfs_check_page_type(page, (*ioendp)->io_type, false))
 		goto fail_unlock_page;
 
 	/*
@@ -721,7 +713,7 @@ xfs_convert_page(
 	 * writeback.  Hence for more optimal IO patterns, we should always
 	 * avoid partial page writeback due to multiple mappings on a page here.
 	 */
-	if (!xfs_imap_valid(inode, &wpc->imap, end_offset))
+	if (!xfs_imap_valid(inode, imap, end_offset))
 		goto fail_unlock_page;
 
 	len = 1 << inode->i_blkbits;
@@ -753,22 +745,23 @@ xfs_convert_page(
 		if (buffer_unwritten(bh) || buffer_delay(bh) ||
 		    buffer_mapped(bh)) {
 			if (buffer_unwritten(bh))
-				wpc->io_type = XFS_IO_UNWRITTEN;
+				type = XFS_IO_UNWRITTEN;
 			else if (buffer_delay(bh))
-				wpc->io_type = XFS_IO_DELALLOC;
+				type = XFS_IO_DELALLOC;
 			else
-				wpc->io_type = XFS_IO_OVERWRITE;
+				type = XFS_IO_OVERWRITE;
 
 			/*
 			 * imap should always be valid because of the above
 			 * partial page end_offset check on the imap.
 			 */
-			ASSERT(xfs_imap_valid(inode, &wpc->imap, offset));
+			ASSERT(xfs_imap_valid(inode, imap, offset));
 
 			lock_buffer(bh);
-			if (wpc->io_type != XFS_IO_OVERWRITE)
-				xfs_map_at_offset(inode, bh, &wpc->imap, offset);
-			xfs_add_to_ioend(inode, bh, offset, wpc);
+			if (type != XFS_IO_OVERWRITE)
+				xfs_map_at_offset(inode, bh, imap, offset);
+			xfs_add_to_ioend(inode, bh, offset, type,
+					 ioendp, done);
 
 			page_dirty--;
 			count++;
@@ -803,7 +796,8 @@ STATIC void
 xfs_cluster_write(
 	struct inode		*inode,
 	pgoff_t			tindex,
-	struct xfs_writepage_ctx *wpc,
+	struct xfs_bmbt_irec	*imap,
+	xfs_ioend_t		**ioendp,
 	struct writeback_control *wbc,
 	pgoff_t			tlast)
 {
@@ -819,7 +813,7 @@ xfs_cluster_write(
 
 		for (i = 0; i < pagevec_count(&pvec); i++) {
 			done = xfs_convert_page(inode, pvec.pages[i], tindex++,
-						wpc, wbc);
+					imap, ioendp, wbc);
 			if (done)
 				break;
 		}
@@ -907,20 +901,21 @@ out_invalidate:
 
 static int
 xfs_writepage_submit(
-	struct xfs_writepage_ctx *wpc,
+	struct xfs_ioend	*ioend,
+	struct xfs_ioend	*iohead,
 	struct writeback_control *wbc,
 	int			status)
 {
 	struct blk_plug		plug;
 
 	/* Reserve log space if we might write beyond the on-disk inode size. */
-	if (!status && wpc->ioend && wpc->ioend->io_type != XFS_IO_UNWRITTEN &&
-	    xfs_ioend_is_append(wpc->ioend))
-		status = xfs_setfilesize_trans_alloc(wpc->ioend);
+	if (!status && ioend && ioend->io_type != XFS_IO_UNWRITTEN &&
+	    xfs_ioend_is_append(ioend))
+		status = xfs_setfilesize_trans_alloc(ioend);
 
-	if (wpc->iohead) {
+	if (iohead) {
 		blk_start_plug(&plug);
-		xfs_submit_ioend(wbc, wpc->iohead, status);
+		xfs_submit_ioend(wbc, iohead, status);
 		blk_finish_plug(&plug);
 	}
 	return status;
@@ -935,19 +930,20 @@ xfs_writepage_submit(
  * For any other dirty buffer heads on the page we should flush them.
  */
 STATIC int
-xfs_do_writepage(
+xfs_vm_writepage(
 	struct page		*page,
-	struct writeback_control *wbc,
-	void			*data)
+	struct writeback_control *wbc)
 {
-	struct xfs_writepage_ctx *wpc = data;
 	struct inode		*inode = page->mapping->host;
 	struct buffer_head	*bh, *head;
+	struct xfs_bmbt_irec	imap;
+	xfs_ioend_t		*ioend = NULL, *iohead = NULL;
 	loff_t			offset;
+	unsigned int		type;
 	__uint64_t              end_offset;
 	pgoff_t                 end_index, last_index;
 	ssize_t			len;
-	int			err, uptodate = 1;
+	int			err, imap_valid = 0, uptodate = 1;
 	int			count = 0;
 
 	trace_xfs_writepage(inode, page, 0, 0);
@@ -1046,8 +1042,11 @@ xfs_do_writepage(
 
 	bh = head = page_buffers(page);
 	offset = page_offset(page);
+	type = XFS_IO_OVERWRITE;
 
 	do {
+		int new_ioend = 0;
+
 		if (offset >= end_offset)
 			break;
 		if (!buffer_uptodate(bh))
@@ -1060,24 +1059,24 @@ xfs_do_writepage(
 		 * buffers covering holes here.
 		 */
 		if (!buffer_mapped(bh) && buffer_uptodate(bh)) {
-			wpc->imap_valid = false;
+			imap_valid = 0;
 			continue;
 		}
 
 		if (buffer_unwritten(bh)) {
-			if (wpc->io_type != XFS_IO_UNWRITTEN) {
-				wpc->io_type = XFS_IO_UNWRITTEN;
-				wpc->imap_valid = false;
+			if (type != XFS_IO_UNWRITTEN) {
+				type = XFS_IO_UNWRITTEN;
+				imap_valid = 0;
 			}
 		} else if (buffer_delay(bh)) {
-			if (wpc->io_type != XFS_IO_DELALLOC) {
-				wpc->io_type = XFS_IO_DELALLOC;
-				wpc->imap_valid = false;
+			if (type != XFS_IO_DELALLOC) {
+				type = XFS_IO_DELALLOC;
+				imap_valid = 0;
 			}
 		} else if (buffer_uptodate(bh)) {
-			if (wpc->io_type != XFS_IO_OVERWRITE) {
-				wpc->io_type = XFS_IO_OVERWRITE;
-				wpc->imap_valid = false;
+			if (type != XFS_IO_OVERWRITE) {
+				type = XFS_IO_OVERWRITE;
+				imap_valid = 0;
 			}
 		} else {
 			if (PageUptodate(page))
@@ -1088,29 +1087,38 @@ xfs_do_writepage(
 			 * subsequent writeable buffers into a new
 			 * ioend.
 			 */
-			wpc->imap_valid = 0;
+			imap_valid = 0;
 			continue;
 		}
 
-		if (wpc->imap_valid)
-			wpc->imap_valid = xfs_imap_valid(inode, &wpc->imap, offset);
-		if (!wpc->imap_valid) {
-			err = xfs_map_blocks(inode, offset, &wpc->imap,
-					     wpc->io_type);
+		if (imap_valid)
+			imap_valid = xfs_imap_valid(inode, &imap, offset);
+		if (!imap_valid) {
+			/*
+			 * If we didn't have a valid mapping then we need to
+			 * put the new mapping into a separate ioend structure.
+			 * This ensures non-contiguous extents always have
+			 * separate ioends, which is particularly important
+			 * for unwritten extent conversion at I/O completion
+			 * time.
+			 */
+			new_ioend = 1;
+			err = xfs_map_blocks(inode, offset, &imap, type);
 			if (err)
 				goto error;
-			wpc->imap_valid = xfs_imap_valid(inode, &wpc->imap, offset);
+			imap_valid = xfs_imap_valid(inode, &imap, offset);
 		}
-		if (wpc->imap_valid) {
+		if (imap_valid) {
 			lock_buffer(bh);
-			if (wpc->io_type != XFS_IO_OVERWRITE)
-				xfs_map_at_offset(inode, bh, &wpc->imap, offset);
-			xfs_add_to_ioend(inode, bh, offset, wpc);
+			if (type != XFS_IO_OVERWRITE)
+				xfs_map_at_offset(inode, bh, &imap, offset);
+			xfs_add_to_ioend(inode, bh, offset, type, &ioend,
+					 new_ioend);
 			count++;
 		}
 
-		if (!wpc->iohead)
-			wpc->iohead = wpc->ioend;
+		if (!iohead)
+			iohead = ioend;
 
 	} while (offset += len, ((bh = bh->b_this_page) != head));
 
@@ -1120,10 +1128,10 @@ xfs_do_writepage(
 	xfs_start_page_writeback(page, 1, count);
 
 	/* if there is no IO to be submitted for this page, we are done */
-	if (!count)
+	if (!ioend)
 		return 0;
 
-	ASSERT(wpc->iohead);
+	ASSERT(iohead);
 	ASSERT(err == 0);
 
 	/*
@@ -1131,10 +1139,10 @@ xfs_do_writepage(
 	 * completion path as we have marked the initial page as under writeback
 	 * and unlocked it.
 	 */
-	if (wpc->imap_valid) {
+	if (imap_valid) {
 		xfs_off_t		end_index;
 
-		end_index = wpc->imap.br_startoff + wpc->imap.br_blockcount;
+		end_index = imap.br_startoff + imap.br_blockcount;
 
 		/* to bytes */
 		end_index <<= inode->i_blkbits;
@@ -1146,30 +1154,32 @@ xfs_do_writepage(
 		if (end_index > last_index)
 			end_index = last_index;
 
-		xfs_cluster_write(inode, page->index + 1, wpc, wbc, end_index);
+		xfs_cluster_write(inode, page->index + 1, &imap, &ioend,
+				  wbc, end_index);
 	}
-	return 0;
+
+	return xfs_writepage_submit(ioend, iohead, wbc, 0);
 
 error:
 	/*
 	 * On error, we have to fail the iohead here because we buffers locked
 	 * in the ioend chain. If we don't do this, we'll deadlock invalidating
 	 * the page as that tries to lock the buffers on the page. Also, because
-	 * we may have set pages under writeback, we have to make sure we run
-	 * IO completion to mark the error state of the IO appropriately, so we
-	 * can't cancel the ioend directly here. That means we have to mark this
-	 * page as under writeback if we included any buffers from it in the
-	 * ioend chain so that completion treats it correctly.
-	 *
-	 * If we didn't include the page in the ioend, then we can simply
-	 * discard and unlock it as there are no other users of the page or it's
-	 * buffers right now. The caller will still need to trigger submission
-	 * of outstanding ioends on the writepage context so they are treated
-	 * correctly on error.
+	 * we may have set pages under writeback, we have to run IO completion to
+	 * mark the error state of the IO appropriately, so we can't cancel the
+	 * ioend directly here. That means we have to mark this page as under
+	 * writeback if we included any buffers from it in the ioend chain.
 	 */
 	if (count)
 		xfs_start_page_writeback(page, 0, count);
-	else {
+	xfs_writepage_submit(ioend, iohead, wbc, err);
+
+	/*
+	 * We can only discard the page we had the IO error on if we haven't
+	 * included it in the ioend above. If it has already been errored out,
+	 * the it is unlocked and we can't touch it here.
+	 */
+	if (!count) {
 		xfs_aops_discard_page(page);
 		ClearPageUptodate(page);
 		unlock_page(page);
@@ -1184,32 +1194,12 @@ redirty:
 }
 
 STATIC int
-xfs_vm_writepage(
-	struct page		*page,
-	struct writeback_control *wbc)
-{
-	struct xfs_writepage_ctx wpc = {
-		.io_type = XFS_IO_INVALID,
-	};
-	int			ret;
-
-	ret = xfs_do_writepage(page, wbc, &wpc);
-	return xfs_writepage_submit(&wpc, wbc, ret);
-}
-
-STATIC int
 xfs_vm_writepages(
 	struct address_space	*mapping,
 	struct writeback_control *wbc)
 {
-	struct xfs_writepage_ctx wpc = {
-		.io_type = XFS_IO_INVALID,
-	};
-	int			ret;
-
 	xfs_iflags_clear(XFS_I(mapping->host), XFS_ITRUNCATED);
-	ret = write_cache_pages(mapping, wbc, xfs_do_writepage, &wpc);
-	return xfs_writepage_submit(&wpc, wbc, ret);
+	return generic_writepages(mapping, wbc);
 }
 
 /*
