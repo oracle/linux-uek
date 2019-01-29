@@ -421,6 +421,9 @@ int rvu_mbox_handler_sso_hw_setconfig(struct rvu *rvu,
 				      struct msg_rsp *rsp);
 int rvu_mbox_handler_sso_ws_cache_inv(struct rvu *rvu, struct msg_req *req,
 				      struct msg_rsp *rsp);
+int rvu_mbox_handler_sso_grp_qos_config(struct rvu *rvu,
+					struct sso_grp_qos_cfg *req,
+					struct msg_rsp *rsp);
 
 /* NPA APIs */
 int rvu_npa_init(struct rvu *rvu);
