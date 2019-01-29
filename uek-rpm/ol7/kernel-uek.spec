@@ -654,7 +654,7 @@ BuildRoot: %{_tmppath}/kernel-%{KVERREL}-root
 # Pass path of the RPM temp dir containing kabideps to find-provides script.
 %global _use_internal_dependency_generator 0
 %define __find_provides %_sourcedir/find-provides %{_tmppath}
-%define __find_requires /usr/lib/rpm/redhat/find-requires kernel
+%define __find_requires /usr/lib/rpm/rpmdeps --requires
 %endif
 
 %description
@@ -668,6 +668,7 @@ Summary: Various documentation bits found in the kernel source
 Group: Documentation
 Obsoletes: kernel-doc
 Provides: kernel-doc
+AutoReq: no
 %description doc
 This package contains documentation files from the kernel
 source. Various bits of information about the Linux kernel and the
@@ -685,6 +686,7 @@ Conflicts: glibc-kernheaders
 Conflicts: kernel-headers
 Provides: kernel-headers
 Provides: glibc-kernheaders = 3.0-46
+AutoReq: no
 %description headers
 Kernel-headers includes the C header files that specify the interface
 between the Linux kernel and userspace libraries and programs.  The
@@ -705,6 +707,7 @@ files combining both kernel and initial ramdisk.
 Summary: Kernel source files used by %{name}-debuginfo packages
 Group: Development/Debug
 Provides: %{name}-debuginfo-common-%{_target_cpu} = %{version}-%{release}
+Autoreq: no
 %description debuginfo-common
 This package is required by %{name}-debuginfo subpackages.
 It provides the kernel source files common to all builds.
