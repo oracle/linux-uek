@@ -1,3 +1,5 @@
+%define _source_payload w2T0.xzdio
+%define _binary_payload w2T0.xzdio
 %define kernel_git_commit 74c661676446c010ea6f46dab7231d98761d66a5
 %global __spec_install_pre %{___build_pre}
 
@@ -1627,7 +1629,7 @@ make -j1 htmldocs || %{doc_build_fail}
 %define __modcompress_install_post \
   if [ "%{with_compression}" == "1" ]; then \
      find $RPM_BUILD_ROOT/lib/modules/ -type f -name '*.ko' -print0 | \
-	xargs -0r -P 0 -n 1 /usr/bin/xz -f \
+	xargs -0r -P 0 -n 1 /usr/bin/xz -T 0 -f \
   fi \
 %{nil}
 
