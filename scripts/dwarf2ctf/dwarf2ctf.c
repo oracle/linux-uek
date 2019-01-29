@@ -144,7 +144,8 @@ typedef struct ctf_memb_count {
 /*
  * A mapping from the absolute pathname of a TU to a hashtable mapping
  * DIE offsets of child DIEs to DIE offsets of parents.  Populated on first
- * iteration.
+ * iteration.  Contains only those DIEs that we know are necessary for other
+ * functions' use of this structure, to keep memory usage down.
  */
 static GHashTable *fn_to_die_to_parent;
 
@@ -241,8 +242,9 @@ static void init_parent_die(const char *file_name, Dwfl *dwfl);
 /*
  * Initialize one layer of a child->parent mapping.
  */
-static void init_parent_die_internal(const char *file_name,
-				     GHashTable *offs, Dwarf_Die *parent);
+static int init_parent_die_internal(const char *file_name,
+				    GHashTable *offs, Dwarf_Die *parent,
+				    int depth, int found_subprogram);
 
 /*
  * Override the presence and value of FORM_u/sdata attributes on DWARF DIEs,
@@ -1372,7 +1374,7 @@ static void init_parent_die(const char *file_name, Dwfl *dwfl)
 	}
 
 	while ((tu_die = dwfl_nextcu(dwfl, tu_die, &junk)) != NULL) {
-		init_parent_die_internal(file_name, offs, tu_die);
+		init_parent_die_internal(file_name, offs, tu_die, 0, 0);
 	}
 
 	g_hash_table_insert(fn_to_die_to_parent,
@@ -1381,43 +1383,78 @@ static void init_parent_die(const char *file_name, Dwfl *dwfl)
 
 /*
  * Initialize one layer of a child->parent mapping.
+ *
+ * We traverse children of top-level subprograms hunting for anything we know
+ * how to emit, and record parent->child mappings for all intermediate DIEs.
  */
-static void init_parent_die_internal(const char *file_name,
-				     GHashTable *offs, Dwarf_Die *parent)
+static int init_parent_die_internal(const char *file_name,
+				    GHashTable *offs, Dwarf_Die *parent,
+				    int depth, int found_subprogram)
 {
 	Dwarf_Die child;
 	int sib_ret;
 	Dwarf_Off parent_offset;
 	const char *err;
+	int add_parent = 0;
+
+	if (dwarf_tag(parent) == DW_TAG_subprogram)
+		found_subprogram = 1;
 
 	switch (dwarf_child(parent, &child)) {
 	case -1:
 		err = "child DIEs";
 		goto err;
 	case 1: /* This DIE has no children */
-		return;
+		goto out;
 	}
 
 	parent_offset = dwarf_dieoffset(parent);
 
 	do {
-		g_hash_table_insert(offs,
-				    GUINT_TO_POINTER(dwarf_dieoffset(&child)),
-				    GUINT_TO_POINTER(parent_offset));
-		init_parent_die_internal(file_name, offs, &child);
+		int add_child = 0;
+
+		/*
+		 * Add links from the parent to all children for which a
+		 * recursive call says they should be added, and note that we
+		 * should add links to the parent too.  Always look down to
+		 * depth 2, since the topmost level is always
+		 * DW_TAG_compile_unit, and we are interested in
+		 * DW_TAG_subprograms one level below that.
+		 */
+		if (found_subprogram || depth < 2)
+			add_child = init_parent_die_internal(file_name, offs,
+							     &child, depth+1,
+							     found_subprogram);
+
+		if (add_child) {
+			g_hash_table_insert(offs,
+					    GUINT_TO_POINTER(dwarf_dieoffset(&child)),
+					    GUINT_TO_POINTER(parent_offset));
+			add_parent = 1;
+		}
 	} while ((sib_ret = dwarf_siblingof (&child, &child)) == 0);
 
 	if (sib_ret == -1) {
 		err = "sibling DIEs";
 		goto err;
 	}
-	return;
+
+out:
+	/*
+	 * Emit a link for the next level up if we're under a subprogram and
+	 * either we emitted a child link or the parent is itself something we
+	 * know how to emit (and thus might possibly appear in a type DIE we
+	 * care about).
+	 */
+	return (found_subprogram &&
+		(add_parent ||
+		 (dwarf_tag(parent) <= assembly_len &&
+		  assembly_tab[dwarf_tag(parent)] != NULL)));
 err:
 	fprintf(stderr, "Cannot fetch %s of DIE at offset %lu in %s: %s\n",
 		err, (unsigned long) dwarf_dieoffset(parent), file_name,
 		dwarf_errmsg(dwarf_errno()));
 	exit(1);
-
 }
 
 /*
@@ -1806,7 +1843,7 @@ static void process_file(const char *file_name,
 
 	/*
 	 * On first traversal, make sure the DIE parent mapping is populated,
-	 * so that filters and processing functions can use it.
+	 * so that filter_ctf_file_scope can use it.
 	 */
 	if (!g_hash_table_lookup_extended(fn_to_die_to_parent,
 					  abs_file_name(file_name),
