@@ -366,21 +366,32 @@ static inline void clear_ibrs_disabled(void)
 }
 
 /* indicate usage of IBPB to control execution speculation */
-DECLARE_STATIC_KEY_FALSE(ibpb_enabled_key);
+DECLARE_STATIC_KEY_FALSE(switch_mm_always_ibpb);
+DECLARE_STATIC_KEY_FALSE(switch_mm_cond_ibpb);
 
-static inline bool ibpb_enabled(void)
+static inline u32 ibpb_enabled(void)
 {
-	return static_key_enabled(&ibpb_enabled_key);
+	if (static_key_enabled(&switch_mm_always_ibpb))
+		return 1;
+	if (static_key_enabled(&switch_mm_cond_ibpb))
+		return 2;
+	return 0;
 }
 
-static inline void ibpb_enable(void)
+static inline void ibpb_always_enable(void)
 {
-	static_branch_enable(&ibpb_enabled_key);
+	static_branch_enable(&switch_mm_always_ibpb);
+}
+
+static inline void ibpb_cond_enable(void)
+{
+	static_branch_enable(&switch_mm_cond_ibpb);
 }
 
 static inline void ibpb_disable(void)
 {
-	static_branch_disable(&ibpb_enabled_key);
+	static_branch_disable(&switch_mm_always_ibpb);
+	static_branch_disable(&switch_mm_cond_ibpb);
 }
 
 #endif /* __ASSEMBLY__ */

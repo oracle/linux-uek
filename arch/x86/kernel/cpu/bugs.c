@@ -62,11 +62,8 @@ EXPORT_SYMBOL(ibrs_firmware_enabled_key);
  *
  * IBPB suports is indicated by the X86_FEATURE_IBPB cpu capability.
  * use_ibpb indicates if IBPB should be selected at boot time.
- * ibpb_enabled_key controls if IBPB is effectively enabled or not.
  */
 static bool use_ibpb = true;
-DEFINE_STATIC_KEY_FALSE(ibpb_enabled_key);
-EXPORT_SYMBOL(ibpb_enabled_key);
 
 /* mutex to serialize IBRS & IBPB control changes */
 DEFINE_MUTEX(spec_ctrl_mutex);
@@ -168,8 +165,10 @@ u64 __ro_after_init x86_amd_ls_cfg_ssbd_mask;
 DEFINE_STATIC_KEY_FALSE(switch_to_cond_stibp);
 /* Control conditional IBPB in switch_mm() */
 DEFINE_STATIC_KEY_FALSE(switch_mm_cond_ibpb);
+EXPORT_SYMBOL(switch_mm_cond_ibpb);
 /* Control unconditional IBPB in switch_mm() */
 DEFINE_STATIC_KEY_FALSE(switch_mm_always_ibpb);
+EXPORT_SYMBOL(switch_mm_always_ibpb);
 
 void __init check_bugs(void)
 {
@@ -572,7 +571,6 @@ spectre_v2_user_select_mitigation(enum spectre_v2_mitigation_cmd v2_cmd)
 
 	/* Initialize Indirect Branch Prediction Barrier if supported */
 	if (boot_cpu_has(X86_FEATURE_IBPB) && use_ibpb) {
-		ibpb_enable();
 
 		switch (mode) {
 		case SPECTRE_V2_USER_STRICT:
@@ -1385,7 +1383,7 @@ static char *stibp_state(void)
 
 static char *ibpb_state(void)
 {
-	if (ibpb_enabled()) {
+	if (boot_cpu_has(X86_FEATURE_IBPB)) {
 		switch (spectre_v2_user) {
 		case SPECTRE_V2_USER_NONE:
 			return ", IBPB: disabled";

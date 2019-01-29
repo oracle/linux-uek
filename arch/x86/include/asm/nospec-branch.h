@@ -254,11 +254,12 @@ static inline void vmexit_fill_RSB(void)
 #endif
 }
 
-DECLARE_STATIC_KEY_FALSE(ibpb_enabled_key);
+DECLARE_STATIC_KEY_FALSE(switch_mm_always_ibpb);
+DECLARE_STATIC_KEY_FALSE(switch_mm_cond_ibpb);
 
 static inline void indirect_branch_prediction_barrier(void)
 {
-	if (static_branch_likely(&ibpb_enabled_key))
+	if (static_branch_likely(&switch_mm_always_ibpb) || static_branch_likely(&switch_mm_cond_ibpb))
 		wrmsrl(MSR_IA32_PRED_CMD, PRED_CMD_IBPB);
 }
 
