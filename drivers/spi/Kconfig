@@ -445,6 +445,15 @@ config SPI_OCTEON
 	  SPI host driver for the hardware found on some Cavium OCTEON
 	  SOCs.
 
+config SPI_OCTEONTX2
+	tristate "Marvell OcteonTX2 SPI controller"
+	depends on PCI && 64BIT && (ARM64 || COMPILE_TEST)
+	help
+	  This driver supports the OcteonTX2 SPI controller in master
+	  mode. It supports single, dual and quad mode transfers.
+	  This controller hardware is found on some of Marvell
+	  OcteonTX2 SoCs.
+
 config SPI_OMAP_UWIRE
 	tristate "OMAP1 MicroWire"
 	depends on ARCH_OMAP1
