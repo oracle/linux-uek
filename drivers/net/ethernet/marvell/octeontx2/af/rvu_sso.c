@@ -281,6 +281,54 @@ int rvu_mbox_handler_sso_grp_get_priority(struct rvu *rvu,
 	return 0;
 }
 
+int rvu_mbox_handler_sso_grp_qos_config(struct rvu *rvu,
+					struct sso_grp_qos_cfg *req,
+					struct msg_rsp *rsp)
+{
+	struct rvu_hwinfo *hw = rvu->hw;
+	u16 pcifunc = req->hdr.pcifunc;
+	u64 regval, grp_rsvd;
+	int lf, blkaddr;
+
+	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_SSO, pcifunc);
+	if (blkaddr < 0)
+		return SSO_AF_ERR_LF_INVALID;
+
+	lf = rvu_get_lf(rvu, &hw->block[blkaddr], pcifunc, req->grp);
+	if (lf < 0)
+		return SSO_AF_ERR_LF_INVALID;
+
+	/* Check if GGRP has been active. */
+	regval = rvu_read64(rvu, blkaddr, SSO_AF_HWGRPX_WA_PC(lf));
+	if (regval)
+		return SSO_AF_ERR_GRP_EBUSY;
+
+	/* Configure XAQ threhold */
+	rvu_write64(rvu, blkaddr, SSO_AF_HWGRPX_XAQ_LIMIT(lf), req->xaq_limit);
+
+	/* Configure TAQ threhold */
+	regval = rvu_read64(rvu, blkaddr, SSO_AF_HWGRPX_TAQ_THR(lf));
+	grp_rsvd = regval & SSO_HWGRP_TAQ_RSVD_THR_MASK;
+	if (req->taq_thr < grp_rsvd)
+		req->taq_thr = grp_rsvd;
+
+	regval = req->taq_thr & SSO_HWGRP_TAQ_MAX_THR_MASK;
+	regval = (regval << SSO_HWGRP_TAQ_MAX_THR_SHIFT) | grp_rsvd;
+	rvu_write64(rvu, blkaddr, SSO_AF_HWGRPX_TAQ_THR(lf), regval);
+
+	/* Configure IAQ threhold */
+	regval = rvu_read64(rvu, blkaddr, SSO_AF_HWGRPX_IAQ_THR(lf));
+	grp_rsvd = regval & SSO_HWGRP_IAQ_RSVD_THR_MASK;
+	if (req->iaq_thr < grp_rsvd + 4)
+		req->iaq_thr = grp_rsvd + 4;
+
+	regval = req->iaq_thr & SSO_HWGRP_IAQ_MAX_THR_MASK;
+	regval = (regval << SSO_HWGRP_IAQ_MAX_THR_SHIFT) | grp_rsvd;
+	rvu_write64(rvu, blkaddr, SSO_AF_HWGRPX_IAQ_THR(lf), regval);
+
+	return 0;
+}
+
 int rvu_mbox_handler_sso_lf_alloc(struct rvu *rvu, struct sso_lf_alloc_req *req,
 				  struct sso_lf_alloc_rsp *rsp)
 {
