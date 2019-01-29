@@ -172,7 +172,7 @@ static const struct file_operations fops_ibrs_enabled = {
 static ssize_t ibpb_enabled_read(struct file *file, char __user *user_buf,
 				 size_t count, loff_t *ppos)
 {
-	u32 sysctl_ibpb_enabled = ibpb_enabled() ? 1 : 0;
+	u32 sysctl_ibpb_enabled = ibpb_enabled();
 
 	return __enabled_read(file, user_buf, count, ppos,
 			      &sysctl_ibpb_enabled);
@@ -197,17 +197,19 @@ static ssize_t ibpb_enabled_write(struct file *file,
 	if (kstrtouint(buf, 0, &enable))
 	return -EINVAL;
 
-	/* Only 0 and 1 are allowed */
-	if (enable > 1)
+	/* Only 0, 1 and 2 are allowed */
+	if (enable > 2)
 		return -EINVAL;
 
-	if (!enable != ibpb_enabled())
+	if (enable == ibpb_enabled())
 		return count;
 
 	mutex_lock(&spec_ctrl_mutex);
 
-	if (enable)
-		ibpb_enable();
+	if (enable == 1)
+		ibpb_always_enable();
+	else if (enable == 2)
+		ibpb_cond_enable();
 	else
 		ibpb_disable();
 
