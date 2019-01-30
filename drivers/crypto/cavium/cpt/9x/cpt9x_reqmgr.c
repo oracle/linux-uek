@@ -105,6 +105,12 @@ void cpt9x_send_cmd(union cpt_inst_s *cptinst, u32 insts_num, void *obj)
 	void *ioreg = lf->ioreg;
 	long ret;
 
+	/*
+	 * Make sure memory areas pointed in CPT_INST_S
+	 * are flushed before the instruction is sent to CPT
+	 */
+	smp_wmb();
+
 	do {
 		/* Copy CPT command to LMTLINE */
 		memcpy(lmtline, cptinst, insts_num * CPT_INST_SIZE);
