@@ -457,6 +457,20 @@ int rvu_npa_init(struct rvu *rvu)
 	return 0;
 }
 
+void rvu_npa_freemem(struct rvu *rvu)
+{
+	struct rvu_hwinfo *hw = rvu->hw;
+	struct rvu_block *block;
+	int blkaddr;
+
+	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NPA, 0);
+	if (blkaddr < 0)
+		return;
+
+	block = &hw->block[blkaddr];
+	rvu_aq_free(rvu, block->aq);
+}
+
 void rvu_npa_lf_teardown(struct rvu *rvu, u16 pcifunc, int npalf)
 {
 	struct rvu_pfvf *pfvf = rvu_get_pfvf(rvu, pcifunc);
