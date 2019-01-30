@@ -8620,7 +8620,7 @@ static struct npc_kpu_profile_action kpu5_action_entries[] = {
 	},
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
-		0, 0, 0, 0, 0,
+		0, 0, 0, 2, 0,
 		NPC_S_KPU8_ESP, 20, 1,
 		NPC_LID_LC, NPC_LT_LC_IP,
 		0,
@@ -8628,7 +8628,7 @@ static struct npc_kpu_profile_action kpu5_action_entries[] = {
 	},
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
-		0, 0, 0, 0, 0,
+		0, 0, 0, 2, 0,
 		NPC_S_KPU8_AH, 20, 1,
 		NPC_LID_LC, NPC_LT_LC_IP,
 		0,
@@ -8724,7 +8724,7 @@ static struct npc_kpu_profile_action kpu5_action_entries[] = {
 	},
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
-		0, 0, 0, 0, 0,
+		0, 0, 0, 2, 0,
 		NPC_S_KPU8_ESP, 0, 1,
 		NPC_LID_LC, NPC_LT_LC_IP_OPT,
 		0,
@@ -8732,7 +8732,7 @@ static struct npc_kpu_profile_action kpu5_action_entries[] = {
 	},
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
-		0, 0, 0, 0, 0,
+		0, 0, 0, 2, 0,
 		NPC_S_KPU8_AH, 0, 1,
 		NPC_LID_LC, NPC_LT_LC_IP_OPT,
 		0,
