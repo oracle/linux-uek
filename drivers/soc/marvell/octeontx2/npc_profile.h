@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: GPL-2.0
-/* Marvell OcteonTx2 RVU Admin Function driver
+/* SPDX-License-Identifier: GPL-2.0
+ * Marvell OcteonTx2 RVU Admin Function driver
  *
  * Copyright (C) 2018 Marvell International Ltd.
  *
@@ -29,7 +29,7 @@
 #define NPC_ETYPE_PTP		0x88f7
 #define NPC_ETYPE_FCOE		0x8906
 #define NPC_ETYPE_QINQ		0x9100
-#define NPC_ETYPE_TRANS_ETH_BR 0x6558
+#define NPC_ETYPE_TRANS_ETH_BR	0x6558
 #define NPC_ETYPE_PPP		0x880b
 #define NPC_ETYPE_NSH		0x894f
 
@@ -68,7 +68,7 @@
 #define NPC_VXLANGPE_NP_NSH	0x4
 #define NPC_VXLANGPE_NP_MPLS	0x5
 #define NPC_VXLANGPE_NP_GBP	0x6
-#define NPC_VXLANGPE_NP_vBNG	0x7
+#define NPC_VXLANGPE_NP_VBNG	0x7
 
 #define NPC_NSH_NP_IP		0x1
 #define NPC_NSH_NP_IP6		0x2

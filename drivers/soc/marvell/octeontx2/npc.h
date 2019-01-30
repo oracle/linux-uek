@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: GPL-2.0
-/* Marvell OcteonTx2 RVU Admin Function driver
+/* SPDX-License-Identifier: GPL-2.0
+ * Marvell OcteonTx2 RVU Admin Function driver
  *
  * Copyright (C) 2018 Marvell International Ltd.
  *
@@ -255,7 +255,7 @@ struct nix_rx_action {
 	u64	flow_key_alg	:5;
 	u64	match_id	:16;
 	u64	index		:20;
-	u64	pf_func		:16
+	u64	pf_func		:16;
 	u64	op		:4;
 #else
 	u64	op		:4;
@@ -267,35 +267,11 @@ struct nix_rx_action {
 #endif
 };
 
-struct nix_rx_vtag_action {
-#if defined(__BIG_ENDIAN_BITFIELD)
-	u64     rsvd_63_48      :16;
-	u64     vtag1_valid     :1;
-	u64     vtag1_type      :3;
-	u64     rsvd_43         :1;
-	u64     vtag1_lid       :3;
-	u64     vtag1_relptr    :8;
-	u64     rsvd_31_16      :16;
-	u64     vtag0_valid     :1;
-	u64     vtag0_type      :3;
-	u64     rsvd_11         :1;
-	u64     vtag0_lid       :3;
-	u64     vtag0_relptr    :8;
-#else
-	u64     vtag0_relptr    :8;
-	u64     vtag0_lid       :3;
-	u64     rsvd_11         :1;
-	u64     vtag0_type      :3;
-	u64     vtag0_valid     :1;
-	u64     rsvd_31_16      :16;
-	u64     vtag1_relptr    :8;
-	u64     vtag1_lid       :3;
-	u64     rsvd_43         :1;
-	u64     vtag1_type      :3;
-	u64     vtag1_valid     :1;
-	u64     rsvd_63_48      :16;
-#endif
-};
+/* NIX Receive Vtag Action Structure */
+#define VTAG0_VALID_BIT		BIT_ULL(15)
+#define VTAG0_TYPE_MASK		GENMASK_ULL(14, 12)
+#define VTAG0_LID_MASK		GENMASK_ULL(10, 8)
+#define VTAG0_RELPTR_MASK	GENMASK_ULL(7, 0)
 
 struct npc_mcam_kex {
 	/* MKEX Profle Header */
