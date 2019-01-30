@@ -176,9 +176,9 @@ int otx2_rss_init(struct otx2_nic *pfvf)
 		return ret;
 
 	/* Default flowkey or hash config to be used for generating flow tag */
-	rss->flowkey_cfg = FLOW_KEY_TYPE_IPV4 | FLOW_KEY_TYPE_IPV6 |
-			   FLOW_KEY_TYPE_TCP | FLOW_KEY_TYPE_UDP |
-			   FLOW_KEY_TYPE_SCTP;
+	rss->flowkey_cfg = NIX_FLOW_KEY_TYPE_IPV4 | NIX_FLOW_KEY_TYPE_IPV6 |
+			   NIX_FLOW_KEY_TYPE_TCP | NIX_FLOW_KEY_TYPE_UDP |
+			   NIX_FLOW_KEY_TYPE_SCTP;
 
 	return otx2_set_flowkey_cfg(pfvf);
 }

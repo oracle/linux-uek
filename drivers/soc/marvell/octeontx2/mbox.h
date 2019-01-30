@@ -625,12 +625,12 @@ struct nix_rss_flowkey_cfg {
 	struct mbox_msghdr hdr;
 	int	mcam_index;  /* MCAM entry index to modify */
 	u32	flowkey_cfg; /* Flowkey types selected */
-#define FLOW_KEY_TYPE_PORT	BIT(0)
-#define FLOW_KEY_TYPE_IPV4	BIT(1)
-#define FLOW_KEY_TYPE_IPV6	BIT(2)
-#define FLOW_KEY_TYPE_TCP	BIT(3)
-#define FLOW_KEY_TYPE_UDP	BIT(4)
-#define FLOW_KEY_TYPE_SCTP	BIT(5)
+#define NIX_FLOW_KEY_TYPE_PORT	BIT(0)
+#define NIX_FLOW_KEY_TYPE_IPV4	BIT(1)
+#define NIX_FLOW_KEY_TYPE_IPV6	BIT(2)
+#define NIX_FLOW_KEY_TYPE_TCP	BIT(3)
+#define NIX_FLOW_KEY_TYPE_UDP	BIT(4)
+#define NIX_FLOW_KEY_TYPE_SCTP	BIT(5)
 	u8	group;       /* RSS context or group */
 };
 
