@@ -170,6 +170,7 @@ config SKY2_DEBUG
 
 config OCTEONTX2_PF
 	tristate "Marvell OcteonTX2 NIC physical function driver"
+	select OCTEONTX2_MBOX
 	depends on PCI && ARM64 && ARM64_LSE_ATOMICS
 	---help---
 	  This driver supports Marvell's OcteonTX2 NIC physical function.
