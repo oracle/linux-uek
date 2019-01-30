@@ -866,50 +866,6 @@ msix_err:
 }
 
 /* NPA and NIX admin queue APIs */
-int qmem_alloc(struct device *dev, struct qmem **q,
-	       int qsize, int entry_sz)
-{
-	struct qmem *qmem;
-	int aligned_addr;
-
-	if (!qsize)
-		return -EINVAL;
-
-	*q = devm_kzalloc(dev, sizeof(*qmem), GFP_KERNEL);
-	if (!*q)
-		return -ENOMEM;
-	qmem = *q;
-
-	qmem->entry_sz = entry_sz;
-	qmem->alloc_sz = (qsize * entry_sz) + OTX2_ALIGN;
-	qmem->base = dma_zalloc_coherent(dev, qmem->alloc_sz,
-					 &qmem->iova, GFP_KERNEL);
-	if (!qmem->base)
-		return -ENOMEM;
-
-	qmem->qsize = qsize;
-
-	aligned_addr = ALIGN((u64)qmem->iova, OTX2_ALIGN);
-	qmem->align = (aligned_addr - qmem->iova);
-	qmem->base += qmem->align;
-	qmem->iova += qmem->align;
-	return 0;
-}
-EXPORT_SYMBOL(qmem_alloc);
-
-void qmem_free(struct device *dev, struct qmem *qmem)
-{
-	if (!qmem)
-		return;
-
-	if (qmem->base)
-		dma_free_coherent(dev, qmem->alloc_sz,
-				  qmem->base - qmem->align,
-				  qmem->iova - qmem->align);
-	devm_kfree(dev, qmem);
-}
-EXPORT_SYMBOL(qmem_free);
-
 void rvu_aq_free(struct rvu *rvu, struct admin_queue *aq)
 {
 	if (!aq)
