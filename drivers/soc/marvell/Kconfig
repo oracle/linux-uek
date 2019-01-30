@@ -4,8 +4,12 @@
 
 menu "Marvell SoC drivers"
 
+config OCTEONTX2_MBOX
+	tristate
+
 config OCTEONTX2_AF
 	tristate "OcteonTX2 RVU Admin Function driver"
+	select OCTEONTX2_MBOX
 	depends on ARM64 && PCI
 	---help---
 	  This driver supports Marvell's OcteonTX2 Resource Virtualization

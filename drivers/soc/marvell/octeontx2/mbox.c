@@ -348,3 +348,6 @@ const char *otx2_mbox_id2name(u16 id)
 	}
 }
 EXPORT_SYMBOL(otx2_mbox_id2name);
+
+MODULE_AUTHOR("Marvell International Ltd.");
+MODULE_LICENSE("GPL v2");
