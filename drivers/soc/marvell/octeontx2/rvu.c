@@ -616,6 +616,7 @@ static void rvu_free_hw_resources(struct rvu *rvu)
 	int id, max_msix;
 	u64 cfg;
 
+	rvu_npa_freemem(rvu);
 	rvu_npc_freemem(rvu);
 	rvu_nix_freemem(rvu);
 	rvu_sso_freemem(rvu);
