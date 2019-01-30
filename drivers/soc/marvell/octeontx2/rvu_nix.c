@@ -2074,14 +2074,14 @@ static int set_flowkey_fields(struct nix_rx_flowkey_alg *alg, u32 flow_cfg)
 			memset(&tmp, 0, sizeof(tmp));
 
 		switch (key_type) {
-		case FLOW_KEY_TYPE_PORT:
+		case NIX_FLOW_KEY_TYPE_PORT:
 			field->sel_chan = true;
 			/* This should be set to 1, when SEL_CHAN is set */
 			field->bytesm1 = 1;
 			field_marker = true;
 			keyoff_marker = true;
 			break;
-		case FLOW_KEY_TYPE_IPV4:
+		case NIX_FLOW_KEY_TYPE_IPV4:
 			field->lid = NPC_LID_LC;
 			field->ltype_match = NPC_LT_LC_IP;
 			field->hdr_offset = 12; /* SIP offset */
@@ -2090,7 +2090,7 @@ static int set_flowkey_fields(struct nix_rx_flowkey_alg *alg, u32 flow_cfg)
 			field_marker = true;
 			keyoff_marker = false;
 			break;
-		case FLOW_KEY_TYPE_IPV6:
+		case NIX_FLOW_KEY_TYPE_IPV6:
 			field->lid = NPC_LID_LC;
 			field->ltype_match = NPC_LT_LC_IP6;
 			field->hdr_offset = 8; /* SIP offset */
@@ -2099,24 +2099,24 @@ static int set_flowkey_fields(struct nix_rx_flowkey_alg *alg, u32 flow_cfg)
 			field_marker = true;
 			keyoff_marker = true;
 			break;
-		case FLOW_KEY_TYPE_TCP:
-		case FLOW_KEY_TYPE_UDP:
-		case FLOW_KEY_TYPE_SCTP:
+		case NIX_FLOW_KEY_TYPE_TCP:
+		case NIX_FLOW_KEY_TYPE_UDP:
+		case NIX_FLOW_KEY_TYPE_SCTP:
 			field->lid = NPC_LID_LD;
 			field->bytesm1 = 3; /* Sport + Dport, 4 bytes */
-			if (key_type == FLOW_KEY_TYPE_TCP && valid_key) {
+			if (key_type == NIX_FLOW_KEY_TYPE_TCP && valid_key) {
 				field->ltype_match |= NPC_LT_LD_TCP;
 				group_member = true;
-			} else if (key_type == FLOW_KEY_TYPE_UDP && valid_key) {
+			} else if (key_type == NIX_FLOW_KEY_TYPE_UDP && valid_key) {
 				field->ltype_match |= NPC_LT_LD_UDP;
 				group_member = true;
-			} else if (key_type == FLOW_KEY_TYPE_SCTP
+			} else if (key_type == NIX_FLOW_KEY_TYPE_SCTP
 								&& valid_key) {
 				field->ltype_match |= NPC_LT_LD_SCTP;
 				group_member = true;
 			}
 			field->ltype_mask = ~field->ltype_match;
-			if (key_type == FLOW_KEY_TYPE_SCTP) {
+			if (key_type == NIX_FLOW_KEY_TYPE_SCTP) {
 				/* Handle the case where any of the group item
 				 * is enabled in the group but not the final one
 				 */
@@ -2161,15 +2161,15 @@ static int set_flowkey_fields(struct nix_rx_flowkey_alg *alg, u32 flow_cfg)
 static int reserve_flowkey_alg_idx(struct rvu *rvu, int blkaddr, u32 flow_cfg)
 {
 	u64 field[FIELDS_PER_ALG];
-	struct nix_hw *nix_hw;
+	struct nix_hw *hw;
 	int fid, rc;
 
-	nix_hw = get_nix_hw(rvu->hw, blkaddr);
-	if (!nix_hw)
+	hw = get_nix_hw(rvu->hw, blkaddr);
+	if (!hw)
 		return -EINVAL;
 
 	/* No room to add new flow hash algoritham */
-	if (nix_hw->flowkey.in_use >= FLOW_KEY_ALG_MAX)
+	if (hw->flowkey.in_use >= NIX_FLOW_KEY_ALG_MAX)
 		return NIX_AF_ERR_RSS_NOSPC_ALGO;
 
 	/* Generate algo fields for the given flow_cfg */
@@ -2180,13 +2180,13 @@ static int reserve_flowkey_alg_idx(struct rvu *rvu, int blkaddr, u32 flow_cfg)
 	/* Update ALGX_FIELDX register with generated fields */
 	for (fid = 0; fid < FIELDS_PER_ALG; fid++)
 		rvu_write64(rvu, blkaddr,
-			NIX_AF_RX_FLOW_KEY_ALGX_FIELDX(nix_hw->flowkey.in_use,
+			    NIX_AF_RX_FLOW_KEY_ALGX_FIELDX(hw->flowkey.in_use,
 			fid), field[fid]);
 
 	/* Store the flow_cfg for futher lookup */
-	rc = nix_hw->flowkey.in_use;
-	nix_hw->flowkey.flowkey[rc] = flow_cfg;
-	nix_hw->flowkey.in_use++;
+	rc = hw->flowkey.in_use;
+	hw->flowkey.flowkey[rc] = flow_cfg;
+	hw->flowkey.in_use++;
 
 	return rc;
 }
@@ -2232,58 +2232,61 @@ static int nix_rx_flowkey_alg_cfg(struct rvu *rvu, int blkaddr)
 	int alg, fid, rc;
 
 	/* Disable all flow key algx fieldx */
-	for (alg = 0; alg < FLOW_KEY_ALG_MAX; alg++) {
+	for (alg = 0; alg < NIX_FLOW_KEY_ALG_MAX; alg++) {
 		for (fid = 0; fid < FIELDS_PER_ALG; fid++)
 			rvu_write64(rvu, blkaddr,
 			NIX_AF_RX_FLOW_KEY_ALGX_FIELDX(alg, fid), 0);
 	}
 
 	/* IPv4/IPv6 SIP/DIPs */
-	flowkey_cfg = FLOW_KEY_TYPE_IPV4 | FLOW_KEY_TYPE_IPV6;
+	flowkey_cfg = NIX_FLOW_KEY_TYPE_IPV4 | NIX_FLOW_KEY_TYPE_IPV6;
 	rc = reserve_flowkey_alg_idx(rvu, blkaddr, flowkey_cfg);
 	if (rc < 0)
 		return rc;
 
 	/* TCPv4/v6 4-tuple, SIP, DIP, Sport, Dport */
 	minkey_cfg = flowkey_cfg;
-	flowkey_cfg = minkey_cfg | FLOW_KEY_TYPE_TCP;
+	flowkey_cfg = minkey_cfg | NIX_FLOW_KEY_TYPE_TCP;
 	rc = reserve_flowkey_alg_idx(rvu, blkaddr, flowkey_cfg);
 	if (rc < 0)
 		return rc;
 
 	/* UDPv4/v6 4-tuple, SIP, DIP, Sport, Dport */
-	flowkey_cfg = minkey_cfg | FLOW_KEY_TYPE_UDP;
+	flowkey_cfg = minkey_cfg | NIX_FLOW_KEY_TYPE_UDP;
 	rc = reserve_flowkey_alg_idx(rvu, blkaddr, flowkey_cfg);
 	if (rc < 0)
 		return rc;
 
 	/* SCTPv4/v6 4-tuple, SIP, DIP, Sport, Dport */
-	flowkey_cfg = minkey_cfg | FLOW_KEY_TYPE_SCTP;
+	flowkey_cfg = minkey_cfg | NIX_FLOW_KEY_TYPE_SCTP;
 	rc = reserve_flowkey_alg_idx(rvu, blkaddr, flowkey_cfg);
 	if (rc < 0)
 		return rc;
 
 	/* TCP/UDP v4/v6 4-tuple, rest IP pkts 2-tuple */
-	flowkey_cfg = minkey_cfg | FLOW_KEY_TYPE_TCP | FLOW_KEY_TYPE_UDP;
+	flowkey_cfg = minkey_cfg | NIX_FLOW_KEY_TYPE_TCP |
+			NIX_FLOW_KEY_TYPE_UDP;
 	rc = reserve_flowkey_alg_idx(rvu, blkaddr, flowkey_cfg);
 	if (rc < 0)
 		return rc;
 
 	/* TCP/SCTP v4/v6 4-tuple, rest IP pkts 2-tuple */
-	flowkey_cfg = minkey_cfg | FLOW_KEY_TYPE_TCP | FLOW_KEY_TYPE_SCTP;
+	flowkey_cfg = minkey_cfg | NIX_FLOW_KEY_TYPE_TCP |
+			NIX_FLOW_KEY_TYPE_SCTP;
 	rc = reserve_flowkey_alg_idx(rvu, blkaddr, flowkey_cfg);
 	if (rc < 0)
 		return rc;
 
 	/* UDP/SCTP v4/v6 4-tuple, rest IP pkts 2-tuple */
-	flowkey_cfg = minkey_cfg | FLOW_KEY_TYPE_UDP | FLOW_KEY_TYPE_SCTP;
+	flowkey_cfg = minkey_cfg | NIX_FLOW_KEY_TYPE_UDP |
+			NIX_FLOW_KEY_TYPE_SCTP;
 	rc = reserve_flowkey_alg_idx(rvu, blkaddr, flowkey_cfg);
 	if (rc < 0)
 		return rc;
 
 	/* TCP/UDP/SCTP v4/v6 4-tuple, rest IP pkts 2-tuple */
-	flowkey_cfg = minkey_cfg | FLOW_KEY_TYPE_TCP |
-		      FLOW_KEY_TYPE_UDP | FLOW_KEY_TYPE_SCTP;
+	flowkey_cfg = minkey_cfg | NIX_FLOW_KEY_TYPE_TCP |
+		      NIX_FLOW_KEY_TYPE_UDP | NIX_FLOW_KEY_TYPE_SCTP;
 	rc = reserve_flowkey_alg_idx(rvu, blkaddr, flowkey_cfg);
 	if (rc < 0)
 		return rc;

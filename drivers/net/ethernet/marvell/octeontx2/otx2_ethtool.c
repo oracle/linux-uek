@@ -397,7 +397,8 @@ static int otx2_get_rss_hash_opts(struct otx2_nic *pfvf,
 {
 	struct otx2_rss_info *rss = &pfvf->hw.rss_info;
 
-	if (!(rss->flowkey_cfg & (FLOW_KEY_TYPE_IPV4 | FLOW_KEY_TYPE_IPV6)))
+	if (!(rss->flowkey_cfg & (NIX_FLOW_KEY_TYPE_IPV4 |
+				  NIX_FLOW_KEY_TYPE_IPV6)))
 		return 0;
 
 	/* Mimimum is IPv4 and IPv6, SIP/DIP */
@@ -406,17 +407,17 @@ static int otx2_get_rss_hash_opts(struct otx2_nic *pfvf,
 	switch (nfc->flow_type) {
 	case TCP_V4_FLOW:
 	case TCP_V6_FLOW:
-		if (rss->flowkey_cfg & FLOW_KEY_TYPE_TCP)
+		if (rss->flowkey_cfg & NIX_FLOW_KEY_TYPE_TCP)
 			nfc->data |= RXH_L4_B_0_1 | RXH_L4_B_2_3;
 		break;
 	case UDP_V4_FLOW:
 	case UDP_V6_FLOW:
-		if (rss->flowkey_cfg & FLOW_KEY_TYPE_UDP)
+		if (rss->flowkey_cfg & NIX_FLOW_KEY_TYPE_UDP)
 			nfc->data |= RXH_L4_B_0_1 | RXH_L4_B_2_3;
 		break;
 	case SCTP_V4_FLOW:
 	case SCTP_V6_FLOW:
-		if (rss->flowkey_cfg & FLOW_KEY_TYPE_SCTP)
+		if (rss->flowkey_cfg & NIX_FLOW_KEY_TYPE_SCTP)
 			nfc->data |= RXH_L4_B_0_1 | RXH_L4_B_2_3;
 		break;
 	case AH_ESP_V4_FLOW:
@@ -455,23 +456,23 @@ static int otx2_set_rss_hash_opts(struct otx2_nic *pfvf,
 		 * Both of them have to be either 4-tuple or 2-tuple.
 		 */
 		if ((nfc->data & rxh_l4) == rxh_l4)
-			rss_cfg |= FLOW_KEY_TYPE_TCP;
+			rss_cfg |= NIX_FLOW_KEY_TYPE_TCP;
 		else
-			rss_cfg &= ~FLOW_KEY_TYPE_TCP;
+			rss_cfg &= ~NIX_FLOW_KEY_TYPE_TCP;
 		break;
 	case UDP_V4_FLOW:
 	case UDP_V6_FLOW:
 		if ((nfc->data & rxh_l4) == rxh_l4)
-			rss_cfg |= FLOW_KEY_TYPE_UDP;
+			rss_cfg |= NIX_FLOW_KEY_TYPE_UDP;
 		else
-			rss_cfg &= ~FLOW_KEY_TYPE_UDP;
+			rss_cfg &= ~NIX_FLOW_KEY_TYPE_UDP;
 		break;
 	case SCTP_V4_FLOW:
 	case SCTP_V6_FLOW:
 		if ((nfc->data & rxh_l4) == rxh_l4)
-			rss_cfg |= FLOW_KEY_TYPE_SCTP;
+			rss_cfg |= NIX_FLOW_KEY_TYPE_SCTP;
 		else
-			rss_cfg &= ~FLOW_KEY_TYPE_SCTP;
+			rss_cfg &= ~NIX_FLOW_KEY_TYPE_SCTP;
 		break;
 	case AH_ESP_V4_FLOW:
 	case AH_V4_FLOW:
@@ -481,7 +482,7 @@ static int otx2_set_rss_hash_opts(struct otx2_nic *pfvf,
 	case AH_V6_FLOW:
 	case ESP_V6_FLOW:
 	case IPV6_FLOW:
-		rss_cfg = FLOW_KEY_TYPE_IPV4 | FLOW_KEY_TYPE_IPV6;
+		rss_cfg = NIX_FLOW_KEY_TYPE_IPV4 | NIX_FLOW_KEY_TYPE_IPV6;
 		break;
 	default:
 		return -EINVAL;

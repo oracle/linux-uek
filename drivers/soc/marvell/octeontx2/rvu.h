@@ -210,8 +210,8 @@ struct npc_pkind {
 };
 
 struct nix_flowkey {
-#define FLOW_KEY_ALG_MAX 32
-	u32 flowkey[FLOW_KEY_ALG_MAX];
+#define NIX_FLOW_KEY_ALG_MAX 32
+	u32 flowkey[NIX_FLOW_KEY_ALG_MAX];
 	int in_use;
 };
 

@@ -152,7 +152,7 @@ static inline void otx2_set_rxhash(struct otx2_nic *pfvf,
 	rss = &pfvf->hw.rss_info;
 	if (rss->flowkey_cfg) {
 		if (rss->flowkey_cfg &
-		    ~(FLOW_KEY_TYPE_IPV4 | FLOW_KEY_TYPE_IPV6))
+		    ~(NIX_FLOW_KEY_TYPE_IPV4 | NIX_FLOW_KEY_TYPE_IPV6))
 			hash_type = PKT_HASH_TYPE_L4;
 		else
 			hash_type = PKT_HASH_TYPE_L3;
