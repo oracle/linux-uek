@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/python3
 #
 # find-provides: munge the provides dependencies from the kabideps file
 #
@@ -28,7 +28,7 @@ while true:
 	foo = sys.stdin.readline()
 	if foo == "":
 		break
-	string.split(foo)
+	foo.split()
 	m = p.match(foo)
 	if m:
 		kabideps=sys.argv[1] + "/kernel-" + m.group(2) + "-kabideps"
