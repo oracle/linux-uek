@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/python3
 #
 # kabitool - Red Hat kABI extraction tool (version 2)
 #
@@ -24,7 +24,7 @@ __license__ = "GPL"
 import getopt
 import os
 import re
-import sha
+import hashlib
 import string
 import sys
 
@@ -44,7 +44,7 @@ def load_symbols(filename):
 			break;
 		if line == "\n":
 			continue
-		checksum,symbol,path,license = string.split(line)
+		checksum,symbol,path,license = line.split()
 
 		symbols[symbol] = dict(checksum=checksum,
 				       path=path,
@@ -61,7 +61,7 @@ def output_deps(depsfile,symbols):
 				symbols[symbol]['checksum'] + "\n")
 
 def usage():
-	print """
+	print ("""
 kabitool: process Module.symvers into useful exported kABI dependencies
 
 	kabitool [-k kernel] [-s symbols ]
@@ -70,7 +70,7 @@ kabitool: process Module.symvers into useful exported kABI dependencies
 
 	-s		The Module.symvers file to import from
 
-"""
+""")
 
 if __name__ == "__main__":
 
@@ -95,7 +95,7 @@ if __name__ == "__main__":
 		symvers_file = "Module.symvers"
 
 	if not (os.path.isfile(symvers_file)):
-		print "cannot read Module.symvers file"
+		print ("cannot read Module.symvers file")
 		usage()
 		exit(1)
 

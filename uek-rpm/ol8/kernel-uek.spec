@@ -1,6 +1,8 @@
 %define kernel_git_commit 74c661676446c010ea6f46dab7231d98761d66a5
 %global __spec_install_pre %{___build_pre}
 
+%undefine __brp_mangle_shebangs
+
 # Errors in specfile are causing builds to fail. Adding workarounds.
 %define _unpackaged_files_terminate_build       0
 %define _missing_doc_files_terminate_build      0
@@ -25,7 +27,16 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 5
 # % define _kernel_cc CC=gcc7
 
 %define distro_build 0
-%define signmodules 1
+
+# Sign modules on x86.  Make sure the config files match this setting if more
+# architectures are added.
+%ifarch x86_64
+%global signkernel 1
+%global signmodules 1
+%else
+%global signkernel 0
+%global signmodules 1
+%endif
 
 # base_sublevel is the kernel version we're starting with and patching
 # on top of -- for example, 2.6.22-rc7-git1 starts with a 2.6.21 base,
@@ -468,8 +479,8 @@ BuildRequires: oracle-armtoolset-1 >= 1.0-0
 # Packages that need to be installed before the kernel is, because the %post
 # scripts use them.
 #
-%define kernel_prereq  fileutils, module-init-tools, initscripts >= 8.11.1-1, %{_sbindir}/new-kernel-pkg
-%define initrd_prereq  dracut-kernel >= 033-360.0.3
+%define kernel_prereq  coreutils, systemd >= 203-2, /usr/bin/kernel-install
+%define initrd_prereq  dracut >= 027
 
 #
 # This macro does requires, provides, conflicts, obsoletes for a kernel package.
@@ -499,8 +510,8 @@ Requires(pre): %{kernel_prereq}\
 Requires(pre): %{initrd_prereq}\
 Requires(pre): linux-firmware >= 20180507-63.git0df406af.0.1\
 Requires(pre): system-release\
-Requires(post): %{_sbindir}/new-kernel-pkg\
-Requires(preun): %{_sbindir}/new-kernel-pkg\
+Requires(post): /usr/bin/kernel-install\
+Requires(preun): /usr/bin/kernel-install\
 Conflicts: %{kernel_dot_org_conflicts}\
 Conflicts: %{package_conflicts}\
 %{expand:%%{?kernel%{?1:_%{1}}_conflicts:Conflicts: %%{kernel%{?1:_%{1}}_conflicts}}}\
@@ -534,12 +545,12 @@ Obsoletes: kernel-smp
 #
 # List the packages used during the kernel build
 #
-BuildRequires: module-init-tools, patch >= 2.5.4, bash >= 2.03, sh-utils, tar
-BuildRequires: bzip2, findutils, gzip, m4, perl, make >= 3.78, diffutils, gawk
-BuildRequires: gcc >= 3.4.2, binutils >= 2.12
-BuildRequires: net-tools
+BuildRequires: kmod, patch >= 2.5.4, bash >= 2.03, sh-utils, tar, git
+BuildRequires: bzip2, xz, findutils, gzip, m4, perl-interpreter, perl-Carp, perl-devel, perl-generators, make >= 3.78, diffutils, gawk
+BuildRequires: gcc >= 3.4.2, binutils >= 2.12, redhat-rpm-config, hmaccalc, python3-devel
+BuildRequires: net-tools, hostname, elfutils-devel
 BuildRequires: elfutils-libelf-devel
-BuildRequires: python, python-devel
+BuildRequires: python3, python3-devel
 BuildRequires: flex >= 2.5.19, bison >= 2.3
 BuildRequires: pkgconfig
 BuildRequires: glib2-devel
@@ -550,10 +561,15 @@ BuildRequires: openssl, openssl-devel
 %if %{with_sparse}
 BuildRequires: sparse >= 0.4.1
 %endif
-%if %{signmodules}
-BuildRequires: gnupg
+
+%if %{signkernel}%{signmodules}
+BuildRequires: openssl openssl-devel
+%if %{signkernel}
+BuildRequires: nss-tools
 BuildRequires: pesign >= 0.10-4
 %endif
+%endif
+
 %if %{with_fips}
 BuildRequires: hmaccalc
 %endif
@@ -561,10 +577,10 @@ BuildRequires: hmaccalc
 BuildRequires: libdtrace-ctf-devel >= 1.1.0
 %endif
 %if %{with_perf_tui}
-BuildRequires: slang-devel, slang-static
+BuildRequires: slang-devel, slang
 %endif
 %if %{with_perf}
-BuildRequires: zlib-devel binutils-devel newt-devel python-devel bison flex xz-devel
+BuildRequires: zlib-devel binutils-devel newt-devel python3-devel bison flex xz-devel
 BuildRequires: audit-libs-devel
 %ifnarch s390x %{arm}
 BuildRequires: numactl-devel
@@ -577,7 +593,7 @@ BuildConflicts: rhbuildsys(DiskFree) < 500Mb
 
 Source0: linux-%{kversion}.tar.bz2
 
-%if %{signmodules}
+%if %{signkernel}%{signmodules}
 Source10: x509.genkey
 %endif
 
@@ -604,7 +620,7 @@ Source26: Module.kabi_x86_64
 Source200: kabi_whitelist_x86_64debug
 Source201: kabi_whitelist_x86_64
 
-Source300: find-debuginfo.sh.ol7.diff
+Source300: find-debuginfo.sh.ol8.diff
 
 # Sources for kernel-tools
 Source2000: cpupower.service
@@ -731,27 +747,26 @@ This package provides debug information for the perf package.
 # of matching the pattern against the symlinks file.
 %{expand:%%global debuginfo_args %{?debuginfo_args} -p '.*%%{_bindir}/perf(\.debug)?|.*%%{_libexecdir}/perf-core/.*|.*%%{_libdir}/traceevent/plugins/.*|XXX' -o perf-debuginfo.list}
 
-%package -n python-perf
+%package -n python3-perf
 Summary: Python bindings for apps which will manipulate perf events
 Group: Development/Libraries
-%description -n python-perf
-The python-perf package contains a module that permits applications
+%description -n python3-perf
+The python3-perf package contains a module that permits applications
 written in the Python programming language to use the interface
 to manipulate perf events.
 
-%{!?python_sitearch: %global python_sitearch %(%{__python} -c "from distutils.sysconfig import get_python_lib; print get_python_lib(1)")}
+%{!?python3_sitearch: %global python3_sitearch %(%{__python3} -c "from distutils.sysconfig import get_python_lib; print get_python_lib(1)")}
 
-%package -n python-perf-debuginfo
-Summary: Debug information for package perf python bindings
+%package -n python3-perf-debuginfo
+Summary: Debug information for package perf python3 bindings
 Group: Development/Debug
 Requires: %{name}-debuginfo-common-%{_target_cpu} = %{version}-%{release}
 AutoReqProv: no
-%description -n python-perf-debuginfo
-This package provides debug information for the perf python bindings.
+%description -n python3-perf-debuginfo
+This package provides debug information for the perf python3 bindings.
 
-# the python_sitearch macro should already be defined from above
-%{expand:%%global debuginfo_args %{?debuginfo_args} -p '.*%%{python_sitearch}/perf.so(\.debug)?|XXX' -o python-perf-debuginfo.list}
-
+# the python3_sitearch macro should already be defined from above
+%{expand:%%global debuginfo_args %{?debuginfo_args} -p '.*%%{python3_sitearch}/perf.so(\.debug)?|XXX' -o python3-perf-debuginfo.list}
 
 %endif # with_perf
 
@@ -776,6 +791,7 @@ Obsoletes: cpuspeed < 1:1.5-16
 Requires: kernel-uek-tools-libs = %{version}-%{release}
 %endif # cpupowerarchs
 %define __requires_exclude ^%{_bindir}/python
+%define __requires_exclude ^%{_bindir}/python3
 %description -n kernel-uek-tools
 This package contains the tools/ directory from the kernel source
 and the supporting documentation.
@@ -1209,7 +1225,7 @@ BuildKernel() {
 
     make -s mrproper
 
-    %if %{signmodules}
+    %if %{signkernel}%{signmodules}
 	cp %{SOURCE10} certs/.
     %endif
 
@@ -1256,12 +1272,10 @@ BuildKernel() {
     if [ -f arch/$Arch/boot/zImage.stub ]; then
       cp arch/$Arch/boot/zImage.stub $RPM_BUILD_ROOT/%{image_install_path}/zImage.stub-$KernelVer || :
     fi
-    %if %{signmodules}
-    %ifarch x86_64 aarch64
+    %if %{signkernel}
 	# Sign the image if we're using EFI
         %pesign -s -i $KernelImage -o $KernelImage.signed -a %{SOURCE21} -c %{SOURCE22} -n oraclesecureboot
         mv $KernelImage.signed $KernelImage
-    %endif
     %endif
     $CopyKernel $KernelImage \
 		$RPM_BUILD_ROOT/%{image_install_path}/$InstallName-$KernelVer
@@ -1301,7 +1315,7 @@ hwcap 0 nosegneg"
 # build tools/perf:
     if [ -d tools/perf ]; then
 	cd tools/perf
-	make NO_LIBPERL=1 all
+	make NO_LIBPERL=1 EXTRA_CFLAGS="-Wno-format-truncation -Wno-format-overflow" all
 # and install it:
 #	mkdir -p $RPM_BUILD_ROOT/usr/bin/$KernelVer/
 	mkdir -p $RPM_BUILD_ROOT/usr/libexec/
@@ -1314,7 +1328,7 @@ hwcap 0 nosegneg"
 # build tools/power/x86/x86_energy_perf_policy:
     if [ -d tools/power/x86/x86_energy_perf_policy ]; then
        cd tools/power/x86/x86_energy_perf_policy
-       make
+       make EXTRA_CFLAGS="-Wno-format-truncation -Wno-format-overflow"
 # and install it:
        mkdir -p $RPM_BUILD_ROOT/usr/libexec/
        install -m 755 x86_energy_perf_policy $RPM_BUILD_ROOT/usr/libexec/x86_energy_perf_policy.$KernelVer
@@ -1323,7 +1337,7 @@ hwcap 0 nosegneg"
 # build tools/power/x86/turbostat:
     if [ -d tools/power/x86/turbostat ]; then
        cd tools/power/x86/turbostat
-       make
+       make EXTRA_CFLAGS="-Wno-format-truncation -Wno-format-overflow"
 # and install it:
        mkdir -p $RPM_BUILD_ROOT/usr/libexec/
        install -m 755 turbostat $RPM_BUILD_ROOT/usr/libexec/turbostat.$KernelVer
@@ -1559,7 +1573,7 @@ BuildKernel %make_target %kernel_image 4kdebug
 %endif
 
 %global perf_make \
-  make -s EXTRA_CFLAGS="${RPM_OPT_FLAGS}" LDFLAGS="%{__global_ldflags}" %{?cross_opts} -C tools/perf V=1 NO_PERF_READ_VDSO32=1 NO_PERF_READ_VDSOX32=1 WERROR=0 NO_LIBUNWIND=1 HAVE_CPLUS_DEMANGLE=1 NO_GTK2=1 NO_STRLCPY=1 NO_BIONIC=1 NO_JVMTI=1 prefix=%{_prefix}
+  make -s EXTRA_CFLAGS="${RPM_OPT_FLAGS} -Wno-format-truncation" LDFLAGS="%{__global_ldflags}" %{?cross_opts} -C tools/perf V=1 NO_PERF_READ_VDSO32=1 NO_PERF_READ_VDSOX32=1 WERROR=0 NO_LIBUNWIND=1 HAVE_CPLUS_DEMANGLE=1 NO_GTK2=1 NO_STRLCPY=1 NO_BIONIC=1 NO_JVMTI=1 prefix=%{_prefix} PYTHON=%{__python3}
 %if %{with_perf}
 # perf
 # make sure check-headers.sh is executable
@@ -1734,7 +1748,7 @@ rm -f %{buildroot}%{_bindir}/trace
 # remove the perf-tips
 rm -rf %{buildroot}%{_docdir}/perf-tip
 
-# python-perf extension
+# python3-perf extension
 %{perf_make} DESTDIR=$RPM_BUILD_ROOT install-python_ext
 
 # perf man pages (note: implicit rpm magic compresses them later)
@@ -1815,12 +1829,11 @@ fi\
 #
 %define kernel_variant_posttrans() \
 %{expand:%%posttrans %{?1}}\
-%{_sbindir}/new-kernel-pkg --package kernel%{?1:-%{1}} --mkinitrd --dracut --depmod --update %{KVERREL}%{?1:.%{1}} || exit $?\
-%{_sbindir}/new-kernel-pkg --package kernel%{?1:-%{1}} --rpmposttrans %{KVERREL}%{?1:.%{1}} || exit $?\
 if [ -x /sbin/weak-modules ]\
 then\
     /sbin/weak-modules --add-kernel %{KVERREL}%{?1:.%{1}} || exit $?\
 fi\
+/bin/kernel-install add %{KVERREL}%{?1:+%{1}} /lib/modules/%{KVERREL}%{?1:+%{1}}/vmlinuz || exit $?\
 %{nil}
 
 #
@@ -1840,13 +1853,6 @@ fi}\
 if grep --silent '^hwcap 0 nosegneg$' /etc/ld.so.conf.d/kernel-*.conf 2> /dev/null; then\
   sed -i '/^hwcap 0 nosegneg$/ s/0/1/' /etc/ld.so.conf.d/kernel-*.conf\
 fi\
-[ -f /etc/default/grub ] && . /etc/default/grub\
-DIST_DTFILE="/boot/dtb-%{KVERREL}%{!-u:%{?-v:.%{-v*}}}/$GRUB_DEFAULT_DTB"\
-if [ -f "$DIST_DTFILE" ]; then\
-    %{_sbindir}/new-kernel-pkg --package kernel%{!-u:-uek}%{?-v:-%{-v*}} --install %{KVERREL}%{!-u:%{?-v:.%{-v*}}} "--devtree=$DIST_DTFILE" || exit $?\
-else\
-    %{_sbindir}/new-kernel-pkg --package kernel%{!-u:-uek}%{?-v:-%{-v*}} --install %{KVERREL}%{!-u:%{?-v:.%{-v*}}} || exit $?\
-fi\
 %{nil}
 
 #
@@ -1855,7 +1861,7 @@ fi\
 #
 %define kernel_variant_preun() \
 %{expand:%%preun %{?1}}\
-%{_sbindir}/new-kernel-pkg --rminitrd --rmmoddep --remove %{KVERREL}%{?1:.%{1}} || exit $?\
+/bin/kernel-install remove %{KVERREL}%{?1:+%{1}} /lib/modules/%{KVERREL}%{?1:+%{1}}/vmlinuz || exit $?\
 if [ -x /sbin/weak-modules ]\
 then\
     /sbin/weak-modules --remove-kernel %{KVERREL}%{?1:.%{1}} || exit $?\
@@ -1977,15 +1983,15 @@ fi
 %{_sysconfdir}/bash_completion.d/perf
 %doc linux-%{KVERREL}/tools/perf/Documentation/examples.txt
 
-%files -n python-perf
+%files -n python3-perf
 %defattr(-,root,root)
-%{python_sitearch}
+%{python3_sitearch}
 
 %if %{with_debuginfo}
 %files -f perf-debuginfo.list -n perf-debuginfo
 %defattr(-,root,root)
 
-%files -f python-perf-debuginfo.list -n python-perf-debuginfo
+%files -f python3-perf-debuginfo.list -n python3-perf-debuginfo
 %defattr(-,root,root)
 %endif
 %endif # with_perf
