@@ -930,6 +930,9 @@ void rvu_sso_deinit_xaq_aura(struct rvu *rvu, int blkaddr, int npa_blkaddr,
 			     int aura, int lf);
 void rvu_sso_xaq_aura_write(struct rvu *rvu, int lf, u64 val);
 
+/* TIM APIs */
+int rvu_tim_init(struct rvu *rvu);
+
 /* NPA APIs */
 int rvu_npa_init(struct rvu *rvu);
 void rvu_npa_freemem(struct rvu *rvu);
