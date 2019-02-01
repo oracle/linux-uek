@@ -338,6 +338,7 @@ int rvu_get_lf(struct rvu *rvu, struct rvu_block *block, u16 pcifunc, u16 slot);
 int rvu_lf_reset(struct rvu *rvu, struct rvu_block *block, int lf);
 int rvu_get_blkaddr(struct rvu *rvu, int blktype, u16 pcifunc);
 int rvu_poll_reg(struct rvu *rvu, u64 block, u64 offset, u64 mask, bool zero);
+u16 rvu_get_rsrc_mapcount(struct rvu_pfvf *pfvf, int blkid);
 
 /* RVU HW reg validation */
 enum regmap_block {
@@ -559,6 +560,20 @@ int rvu_mbox_handler_npc_mcam_alloc_and_write_entry(struct rvu *rvu,
 			  struct npc_mcam_alloc_and_write_entry_rsp *rsp);
 int rvu_mbox_handler_npc_get_kex_cfg(struct rvu *rvu, struct msg_req *req,
 				     struct npc_get_kex_cfg_rsp *rsp);
+/* CPT APIs */
+int rvu_cpt_init(struct rvu *rvu);
+int rvu_cpt_register_interrupts(struct rvu *rvu);
+int rvu_mbox_handler_cpt_set_crypto_grp(struct rvu *rvu,
+				struct cpt_set_crypto_grp_req_msg *req,
+				struct cpt_set_crypto_grp_req_msg *rsp);
+int rvu_mbox_handler_cpt_rd_wr_register(struct rvu *rvu,
+					struct cpt_rd_wr_reg_msg *req,
+					struct cpt_rd_wr_reg_msg *rsp);
+int rvu_mbox_handler_cpt_lf_alloc(struct rvu *rvu,
+				  struct cpt_lf_alloc_req_msg *req,
+				  struct cpt_lf_alloc_rsp_msg *rsp);
+int rvu_mbox_handler_cpt_lf_free(struct rvu *rvu, struct msg_req *req,
+				 struct msg_rsp *rsp);
 
 /* TIM APIs */
 int rvu_tim_init(struct rvu *rvu);
