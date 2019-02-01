@@ -886,7 +886,7 @@ static int rvu_mbox_handler_ready(struct rvu *rvu, struct msg_req *req,
 /* Get current count of a RVU block's LF/slots
  * provisioned to a given RVU func.
  */
-static u16 rvu_get_rsrc_mapcount(struct rvu_pfvf *pfvf, int blktype)
+u16 rvu_get_rsrc_mapcount(struct rvu_pfvf *pfvf, int blktype)
 {
 	switch (blktype) {
 	case BLKTYPE_NPA:
@@ -1075,6 +1075,12 @@ static int rvu_check_rsrc_availability(struct rvu *rvu,
 	struct rvu_hwinfo *hw = rvu->hw;
 	struct rvu_block *block;
 	int free_lfs, mappedlfs;
+
+	if (rvu_check_rsrc_policy(rvu, req, pcifunc)) {
+		dev_err(rvu->dev, "Func 0x%x: Resource policy check failed\n",
+			pcifunc);
+		return -EINVAL;
+	}
 
 	/* Only one NPA LF can be attached */
 	if (req->npalf && !rvu_get_rsrc_mapcount(pfvf, BLKTYPE_NPA)) {
@@ -2458,7 +2464,14 @@ static int rvu_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	if (err)
 		goto err_irq;
 
+	err = rvu_policy_init(rvu);
+	if (err)
+		goto err_sriov;
+
 	return 0;
+
+err_sriov:
+	rvu_disable_sriov(rvu);
 err_irq:
 	rvu_unregister_interrupts(rvu);
 err_flr:
@@ -2484,6 +2497,7 @@ static void rvu_remove(struct pci_dev *pdev)
 {
 	struct rvu *rvu = pci_get_drvdata(pdev);
 
+	rvu_policy_destroy(rvu);
 	rvu_unregister_interrupts(rvu);
 	rvu_flr_wq_destroy(rvu);
 	rvu_cgx_exit(rvu);
