@@ -515,6 +515,18 @@
 #define SSOW_PRIV_LFX_HWS_CFG		(0x1000)
 #define SSOW_PRIV_LFX_HWS_INT_CFG	(0x2000)
 
+#define SSOW_LF_GWS_PENDSTATE		(0x50ull)
+#define SSOW_LF_GWS_NW_TIM		(0x70ull)
+#define SSOW_LF_GWS_INT			(0x100ull)
+#define SSOW_LF_GWS_INT_ENA_W1C		(0x118ull)
+#define SSOW_LF_GWS_TAG			(0x200ull)
+#define SSOW_LF_GWS_OP_SWTAG_FLUSH	(0x800ull)
+#define SSOW_LF_GWS_OP_DESCHED		(0x880ull)
+#define SSOW_LF_GWS_OP_GWC_INVAL	(0xe00ull)
+
+#define SSO_TT_EMPTY			(0x3)
+#define SSOW_LF_GWS_INT_MASK		(0x7FF)
+
 /* TIM */
 #define TIM_AF_CONST			(0x90)
 #define TIM_PRIV_LFX_CFG		(0x20000)
@@ -603,5 +615,11 @@
 #define NPC_AF_MCAM_DBG			(0x3001000)
 #define NPC_AF_DBG_DATAX(a)		(0x3001400 | (a) << 4)
 #define NPC_AF_DBG_RESULTX(a)		(0x3001800 | (a) << 4)
+
+#define AF_BAR2_ALIASX_SIZE		(0x100000ull)
+#define SSOW_AF_BAR2_SEL		(0x9000000ull)
+
+#define AF_BAR2_ALIASX(a, b)		(0x9100000ull | (a) << 12 | b)
+#define SSOW_AF_BAR2_ALIASX(a, b)	AF_BAR2_ALIASX(a, b)
 
 #endif /* RVU_REG_H */

@@ -153,19 +153,71 @@ int rvu_sso_lf_teardown(struct rvu *rvu, int lf)
 	return 0;
 }
 
-int rvu_ssow_lf_teardown(struct rvu *rvu, int lf)
+int rvu_ssow_lf_teardown(struct rvu *rvu, u16 pcifunc, int lf, int slot)
 {
-	int blkaddr;
+	int blkaddr, ssow_blkaddr;
+	u64 reg;
 
 	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_SSO, 0);
 	if (blkaddr < 0)
 		return SSOW_AF_ERR_LF_INVALID;
 
+	ssow_blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_SSOW, 0);
+	if (ssow_blkaddr < 0)
+		return SSOW_AF_ERR_LF_INVALID;
+
+	/* Enable BAR2 alias access. */
+	reg = BIT_ULL(16) | pcifunc;
+	rvu_write64(rvu, ssow_blkaddr, SSOW_AF_BAR2_SEL, reg);
+
+	/* Ignore all interrupts */
+	rvu_write64(rvu, ssow_blkaddr,
+		    SSOW_AF_BAR2_ALIASX(0, SSOW_LF_GWS_INT_ENA_W1C),
+		    SSOW_LF_GWS_INT_MASK);
+	rvu_write64(rvu, ssow_blkaddr,
+		    SSOW_AF_BAR2_ALIASX(0, SSOW_LF_GWS_INT),
+		    SSOW_LF_GWS_INT_MASK);
+
+	/* HRM 14.13.4 (3) */
+	/* Wait till waitw/desched completes. */
+	do {
+		reg = rvu_read64(rvu, ssow_blkaddr,
+				 SSOW_AF_BAR2_ALIASX(slot,
+						     SSOW_LF_GWS_PENDSTATE));
+	} while (reg & (BIT_ULL(63) | BIT_ULL(58)));
+
+	reg = rvu_read64(rvu, ssow_blkaddr,
+			 SSOW_AF_BAR2_ALIASX(slot, SSOW_LF_GWS_TAG));
+	/* Switch Tag Pending */
+	if (reg & BIT_ULL(62))
+		rvu_write64(rvu, ssow_blkaddr,
+			    SSOW_AF_BAR2_ALIASX(slot, SSOW_LF_GWS_OP_DESCHED),
+			    0x0);
+	/* Tag Type != EMPTY use swtag_flush to release tag-chain. */
+	else if (((reg >> 32) & SSO_TT_EMPTY) != SSO_TT_EMPTY)
+		rvu_write64(rvu, ssow_blkaddr,
+			    SSOW_AF_BAR2_ALIASX(slot,
+						SSOW_LF_GWS_OP_SWTAG_FLUSH),
+			    0x0);
+
+	/* Wait for desched to complete. */
+	do {
+		reg = rvu_read64(rvu, ssow_blkaddr,
+				 SSOW_AF_BAR2_ALIASX(slot,
+						     SSOW_LF_GWS_PENDSTATE));
+	} while (reg & BIT_ULL(58));
+
+	rvu_write64(rvu, ssow_blkaddr,
+		    SSOW_AF_BAR2_ALIASX(0, SSOW_LF_GWS_NW_TIM), 0x0);
+	rvu_write64(rvu, ssow_blkaddr,
+		    SSOW_AF_BAR2_ALIASX(0, SSOW_LF_GWS_OP_GWC_INVAL), 0x0);
+
 	/* set SAI_INVAL bit */
 	rvu_write64(rvu, blkaddr, SSO_AF_HWSX_INV(lf), 0x1);
-
 	rvu_write64(rvu, blkaddr, SSO_AF_HWSX_ARB(lf), 0x0);
 	rvu_write64(rvu, blkaddr, SSO_AF_HWSX_GMCTL(lf), 0x0);
+
+	rvu_write64(rvu, ssow_blkaddr, SSOW_AF_BAR2_SEL, 0x0);
 
 	return 0;
 }
@@ -541,7 +593,7 @@ int rvu_mbox_handler_ssow_lf_free(struct rvu *rvu,
 		if (ssowlf < 0)
 			return SSOW_AF_ERR_LF_INVALID;
 
-		err = rvu_ssow_lf_teardown(rvu, ssowlf);
+		err = rvu_ssow_lf_teardown(rvu, pcifunc, ssowlf, hws);
 		if (err)
 			return err;
 
