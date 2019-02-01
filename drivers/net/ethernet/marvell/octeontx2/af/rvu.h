@@ -932,6 +932,8 @@ void rvu_sso_xaq_aura_write(struct rvu *rvu, int lf, u64 val);
 
 /* TIM APIs */
 int rvu_tim_init(struct rvu *rvu);
+int rvu_lf_lookup_tim_errata(struct rvu *rvu, struct rvu_block *block,
+		u16 pcifunc, int slot);
 
 /* NPA APIs */
 int rvu_npa_init(struct rvu *rvu);
