@@ -600,6 +600,35 @@ int rvu_mbox_handler_sso_hw_setconfig(struct rvu *rvu,
 		if (lf < 0)
 			return SSO_AF_ERR_LF_INVALID;
 
+		reg = rvu_read64(rvu, blkaddr, SSO_AF_HWGRPX_AW_STATUS(lf));
+		if (reg & SSO_HWGRP_AW_STS_XAQ_BUFSC_MASK || reg & BIT_ULL(3)) {
+			reg = rvu_read64(rvu, blkaddr,
+					 SSO_AF_HWGRPX_AW_CFG(lf));
+			reg = (reg & ~SSO_HWGRP_AW_CFG_RWEN) |
+			       SSO_HWGRP_AW_CFG_XAQ_BYP_DIS;
+			rvu_write64(rvu, blkaddr, SSO_AF_HWGRPX_AW_CFG(lf),
+				    reg);
+
+			reg = rvu_read64(rvu, blkaddr,
+					 SSO_AF_HWGRPX_AW_STATUS(lf));
+			if (reg & SSO_HWGRP_AW_STS_TPTR_VLD) {
+				rvu_poll_reg(rvu, blkaddr,
+					     SSO_AF_HWGRPX_AW_STATUS(lf),
+					     SSO_HWGRP_AW_STS_NPA_FETCH, true);
+
+				rvu_write64(rvu, blkaddr,
+					    SSO_AF_HWGRPX_AW_STATUS(lf),
+					    SSO_HWGRP_AW_STS_TPTR_VLD);
+			}
+
+			if (rvu_poll_reg(rvu, blkaddr,
+					 SSO_AF_HWGRPX_AW_STATUS(lf),
+					 SSO_HWGRP_AW_STS_XAQ_BUFSC_MASK, true))
+				dev_warn(rvu->dev,
+					 "SSO_HWGRP(%d)_AW_STATUS[XAQ_BUF_CACHED] not cleared",
+					 lf);
+		}
+
 		rvu_write64(rvu, blkaddr, SSO_AF_HWGRPX_XAQ_AURA(lf),
 			    npa_aura_id);
 		rvu_write64(rvu, blkaddr, SSO_AF_XAQX_GMCTL(lf),
