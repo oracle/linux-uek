@@ -46,7 +46,6 @@
 #define	RDMAIP_IP_WQ_CREATED		0x10
 #define	RDMAIP_IP_CONFIG_INIT_DONE	0x20
 #define	RDMAIP_REG_NETDEV_NOTIFIER	0x40
-#define	RDMAIP_TEARDOWN_IN_PROGRESS	0x1000
 
 #define RDMAIP_DEFAULT_GIDTBL_LEN	64
 #define	RDMAIP_MAX_NAME_LEN		32
@@ -56,8 +55,10 @@ static int rdmaip_init_flag;
 struct list_head rdmaip_devlist_head;
 DECLARE_RWSEM(rdmaip_devlist_lock);
 
-#define RDMAIP_FLAG_BUSY		0x1
-#define RDMAIP_FLAG_EVENT_PENDING	0x2
+#define RDMAIP_FLAG_BUSY		1
+#define RDMAIP_FLAG_EVENT_PENDING	2
+#define RDMAIP_FLAG_TEARDOWN		3
+
 unsigned long rdmaip_global_flag;
 DEFINE_MUTEX(rdmaip_global_flag_lock);
 
