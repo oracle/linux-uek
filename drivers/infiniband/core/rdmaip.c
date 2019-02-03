@@ -101,6 +101,21 @@ void rdmaip_clear_busy_flag(void)
 	__clear_bit(RDMAIP_FLAG_BUSY, &rdmaip_global_flag);
 }
 
+bool rdmaip_is_teardown_flag_set(void)
+{
+	return test_bit(RDMAIP_FLAG_TEARDOWN, &rdmaip_global_flag);
+}
+
+void rdmaip_set_teardown_flag(void)
+{
+	__set_bit(RDMAIP_FLAG_TEARDOWN, &rdmaip_global_flag);
+}
+
+void rdmaip_clear_teardown_flag(void)
+{
+	__clear_bit(RDMAIP_FLAG_TEARDOWN, &rdmaip_global_flag);
+}
+
 /*
  * This structure is registed with network stack to monitor
  * netdev links states.
@@ -1343,6 +1358,17 @@ static void rdmaip_impl_ib_event_handler(struct work_struct *_work)
 
 	rdmaip_dev = work->rdmaip_dev;
 
+	mutex_lock(&rdmaip_global_flag_lock);
+	if (rdmaip_is_busy_flag_set() || rdmaip_is_teardown_flag_set()) {
+		rdmaip_set_event_pending();
+		RDMAIP_DBG2("Busy/Teardown flag is set: skip ibevent processing %s\n",
+			    rdmaip_dev->ibdev->name);
+		mutex_unlock(&rdmaip_global_flag_lock);
+		kfree(work);
+		return;
+	}
+	mutex_unlock(&rdmaip_global_flag_lock);
+
 	RDMAIP_DBG2("rdmaip: RDMA device %s ip_port_cnt %d, event: %s\n",
 		    rdmaip_dev->ibdev->name, ip_port_cnt,
 		    ib_event_msg(work->ib_event));
@@ -1357,17 +1383,9 @@ static void rdmaip_impl_ib_event_handler(struct work_struct *_work)
 
 	if (!found) {
 		RDMAIP_DBG2("ERROR: No rdmaip_port found\n");
+		kfree(work);
 		return;
 	}
-
-	mutex_lock(&rdmaip_global_flag_lock);
-	if (rdmaip_is_busy_flag_set()) {
-		rdmaip_set_event_pending();
-		RDMAIP_DBG2("Busy flag is set: skip ibevent processing\n");
-		mutex_unlock(&rdmaip_global_flag_lock);
-		return;
-	}
-	mutex_unlock(&rdmaip_global_flag_lock);
 
 	RDMAIP_DBG2("PORT %s/port_%d/%s received PORT-EVENT %s\n",
 		    rdmaip_dev->ibdev->name, work->ib_port,
@@ -1405,8 +1423,10 @@ static void rdmaip_event_handler(struct ib_event_handler *handler,
 {
 	struct rdmaip_port_ud_work	*work;
 
-	if (!ip_port_cnt || (rdmaip_init_flag & RDMAIP_TEARDOWN_IN_PROGRESS))
+	if (!ip_port_cnt) {
+		RDMAIP_DBG2("No ip_config ports\n");
 		return;
+	}
 
 	if (event->event != IB_EVENT_PORT_ACTIVE &&
 		event->event != IB_EVENT_PORT_ERR) {
@@ -1541,10 +1561,13 @@ static void rdmaip_initial_failovers(struct work_struct *workarg)
 {
 	bool do_failover;
 
-	if (rdmaip_init_flag & RDMAIP_TEARDOWN_IN_PROGRESS) {
-		RDMAIP_DBG2("Teardown in progress\n");
+	mutex_lock(&rdmaip_global_flag_lock);
+	if (rdmaip_is_teardown_flag_set()) {
+		RDMAIP_DBG2("Teardown in progress, aborting initial failovers\n");
+		mutex_unlock(&rdmaip_global_flag_lock);
 		return;
 	}
+	mutex_unlock(&rdmaip_global_flag_lock);
 
 	if (!rdmaip_sysctl_trigger_active_bonding) {
 		/*
@@ -2382,10 +2405,12 @@ static void rdmaip_impl_netdev_callback(struct work_struct *_work)
 	struct net_device *ndev = work->netdev;
 
 	mutex_lock(&rdmaip_global_flag_lock);
-	if (rdmaip_is_busy_flag_set()) {
+	if (rdmaip_is_busy_flag_set() || rdmaip_is_teardown_flag_set()) {
 		rdmaip_set_event_pending();
-		RDMAIP_DBG2("Busy flag is set: skip netevent processing\n");
+		RDMAIP_DBG2("Busy/Teardown flag is set: skip netevent processing %s\n",
+			    ndev->name);
 		mutex_unlock(&rdmaip_global_flag_lock);
+		kfree(work);
 		return;
 	}
 	mutex_unlock(&rdmaip_global_flag_lock);
@@ -2405,21 +2430,15 @@ static void rdmaip_impl_netdev_callback(struct work_struct *_work)
 		 * and bail out from here.
 		 */
 		rdmaip_add_new_rdmaip_port(ndev, port);
+		kfree(work);
 		return;
 	}
 
 	/*
 	 * No matching port found in the ip_config.
 	 */
-	if (!port)
-		return;
-
-	/*
-	 * Bail out here if we are racing with device teardown we are done!
-	 * TBD: Should this be protected with a lock ?
-	 */
-	if (!ip_config[port].rdmaip_dev) {
-		RDMAIP_DBG2("rdmaip_dev is NULL, device tearing down in progress\n");
+	if (!port) {
+		kfree(work);
 		return;
 	}
 
@@ -2429,7 +2448,6 @@ static void rdmaip_impl_netdev_callback(struct work_struct *_work)
 		    rdmaip_netdevevent2name(event));
 
 	rdmaip_process_async_event(port, RDMAIP_EVENT_NET, event);
-
 	kfree(work);
 }
 
@@ -2450,12 +2468,6 @@ static int rdmaip_netdev_callback(struct notifier_block *self,
 {
 	struct net_device *ndev = netdev_notifier_info_to_dev(ctx);
 	struct rdmaip_port_ud_work	*work;
-
-	if (rdmaip_init_flag & RDMAIP_TEARDOWN_IN_PROGRESS) {
-		RDMAIP_DBG2("netdev %s event %lx teardown in progress\n",
-			    ndev->name, event);
-		return NOTIFY_DONE;
-	}
 
 	/* Ignore the event if the event is not related to RDMA device */
 	if (ndev->type != ARPHRD_INFINIBAND) {
@@ -2537,23 +2549,17 @@ void rdmaip_cleanup(void)
 	RDMAIP_DBG2("%s Enter rdmaip_init_flag = 0x%x\n", __func__,
 		    rdmaip_init_flag);
 
-	rdmaip_init_flag |= RDMAIP_TEARDOWN_IN_PROGRESS;
+	mutex_lock(&rdmaip_global_flag_lock);
+	rdmaip_set_teardown_flag();
+	mutex_unlock(&rdmaip_global_flag_lock);
 
-	rdmaip_restore_ip_addresses();
-
+	/*
+	 * First cancel all asynchronous callbacks before tearing
+	 * down any resources.
+	 */
 	if (rdmaip_init_flag & RDMAIP_REG_NETDEV_NOTIFIER) {
 		unregister_netdevice_notifier(&rdmaip_nb);
 		rdmaip_init_flag &= ~RDMAIP_REG_NETDEV_NOTIFIER;
-	}
-
-	if (rdmaip_init_flag & RDMAIP_IB_REG) {
-		ib_unregister_client(&rdmaip_client);
-		rdmaip_init_flag &= ~RDMAIP_IB_REG;
-	}
-
-	if (rdmaip_init_flag & RDMAIP_REG_NET_SYSCTL) {
-		unregister_net_sysctl_table(rdmaip_sysctl_hdr);
-		rdmaip_init_flag &= ~RDMAIP_REG_NET_SYSCTL;
 	}
 
 	if (rdmaip_init_flag & RDMAIP_IP_WQ_CREATED) {
@@ -2561,7 +2567,21 @@ void rdmaip_cleanup(void)
 		rdmaip_init_flag &= ~RDMAIP_IP_WQ_CREATED;
 	}
 
-	kfree(ip_config);
+	if (rdmaip_init_flag & RDMAIP_IB_REG) {
+		ib_unregister_client(&rdmaip_client);
+		rdmaip_init_flag &= ~RDMAIP_IB_REG;
+	}
+
+	/*
+	 * After this point, no rdmaip callbacks will be called
+	 * by other frameworks. Clean up all the resources.
+	 */
+	rdmaip_restore_ip_addresses();
+
+	if (rdmaip_init_flag & RDMAIP_REG_NET_SYSCTL) {
+		unregister_net_sysctl_table(rdmaip_sysctl_hdr);
+		rdmaip_init_flag &= ~RDMAIP_REG_NET_SYSCTL;
+	}
 
 	if (rdmaip_init_flag & RDMAIP_IPv4_SOCK_CREATED) {
 		sock_release(rdmaip_inet_socket);
@@ -2573,7 +2593,10 @@ void rdmaip_cleanup(void)
 		rdmaip_init_flag &= ~RDMAIP_IPv6_SOCK_CREATED;
 	}
 	rdmaip_init_flag &= ~RDMAIP_IP_CONFIG_INIT_DONE;
-	rdmaip_init_flag &= ~RDMAIP_TEARDOWN_IN_PROGRESS;
+
+	kfree(ip_config);
+
+	rdmaip_clear_busy_flag();
 
 	RDMAIP_DBG2("%s done rdmaip_init_flag = 0x%x\n", __func__,
 		    rdmaip_init_flag);
