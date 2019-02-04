@@ -73,7 +73,6 @@ int rvu_poll_reg(struct rvu *rvu, u64 block, u64 offset, u64 mask, bool zero)
 		if (!zero && (reg_val & mask))
 			return 0;
 		usleep_range(1, 5);
-		timeout--;
 	}
 	return -EBUSY;
 }
