@@ -3920,6 +3920,7 @@ SYSCALL_DEFINE3(init_module, void __user *, umod,
 SYSCALL_DEFINE3(finit_module, int, fd, const char __user *, uargs, int, flags)
 {
 	struct load_info info = { };
+	bool can_do_ima_check;
 	loff_t size;
 	void *hdr;
 	int err;
@@ -3941,7 +3942,10 @@ SYSCALL_DEFINE3(finit_module, int, fd, const char __user *, uargs, int, flags)
 	info.hdr = hdr;
 	info.len = size;
 
-	return load_module(&info, uargs, flags, true);
+	err = security_kernel_read_file(NULL, READING_MODULE);
+	can_do_ima_check = (err == -EACCES) ? true : false;
+
+	return load_module(&info, uargs, flags, can_do_ima_check);
 }
 
 static inline int within(unsigned long addr, void *start, unsigned long size)
