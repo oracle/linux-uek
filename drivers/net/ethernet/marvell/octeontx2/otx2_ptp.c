@@ -33,6 +33,7 @@ static int otx2_ptp_adjfine(struct ptp_clock_info *ptp_info, long scaled_ppm)
 	struct otx2_ptp *ptp = container_of(ptp_info, struct otx2_ptp,
 					    ptp_info);
 	struct ptp_req *req;
+	int err;
 
 	if (!ptp->nic)
 		return -ENODEV;
@@ -44,7 +45,11 @@ static int otx2_ptp_adjfine(struct ptp_clock_info *ptp_info, long scaled_ppm)
 	req->op = PTP_OP_ADJFINE;
 	req->scaled_ppm = scaled_ppm;
 
-	return otx2_sync_mbox_msg(&ptp->nic->mbox);
+	err = otx2_sync_mbox_msg_busy_poll(&ptp->nic->mbox);
+	if (err)
+		return err;
+
+	return 0;
 }
 
 static u64 ptp_cc_read(const struct cyclecounter *cc)
@@ -52,34 +57,27 @@ static u64 ptp_cc_read(const struct cyclecounter *cc)
 	struct otx2_ptp *ptp = container_of(cc, struct otx2_ptp, cycle_counter);
 	struct ptp_req *req;
 	struct ptp_rsp *rsp;
-	int err = 0;
+	int err;
 
 	if (!ptp->nic)
 		return 0;
 
-	spin_lock(&ptp->nic->mbox.lock);
 	req = otx2_mbox_alloc_msg_ptp_op(&ptp->nic->mbox);
 	if (!req)
-		goto exit;
+		return 0;
 
 	req->op = PTP_OP_GET_CLOCK;
 
-	err = __otx2_sync_mbox_msg(&ptp->nic->mbox);
-	if (err) {
-		err = 0;
-		goto exit;
-	}
+	err = otx2_sync_mbox_msg_busy_poll(&ptp->nic->mbox);
+	if (err)
+		return 0;
 
 	rsp = (struct ptp_rsp *)otx2_mbox_get_rsp(&ptp->nic->mbox.mbox, 0,
 						  &req->hdr);
 	if (IS_ERR(rsp))
-		goto exit;
+		return 0;
 
-	err = rsp->clk;
-exit:
-	otx2_mdev_reset_num_msgs(&ptp->nic->mbox);
-	spin_unlock(&ptp->nic->mbox.lock);
-	return err;
+	return rsp->clk;
 }
 
 static int otx2_ptp_adjtime(struct ptp_clock_info *ptp_info, s64 delta)
