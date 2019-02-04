@@ -1,3 +1,2 @@
 # SPDX-License-Identifier: GPL-2.0
-obj-y		+= octeontx2/
 obj-y		+= octeontx2-rm/

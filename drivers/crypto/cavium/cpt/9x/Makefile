@@ -10,5 +10,5 @@ ifeq ($(CONFIG_CRYPTO_DEV_OCTEONTX2_CPT), m)
 endif
 
 ccflags-y := -I$(src)/../common/
-ccflags-y += -I$(src)/../../../../soc/marvell/octeontx2/
-ccflags-y += -I$(src)/../../../../net/ethernet/marvell/octeontx2/
+ccflags-y += -I$(src)/../../../../net/ethernet/marvell/octeontx2/af/
+ccflags-y += -I$(src)/../../../../net/ethernet/marvell/octeontx2/nic/
