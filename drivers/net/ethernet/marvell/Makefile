@@ -11,4 +11,4 @@ obj-$(CONFIG_MVPP2) += mvpp2.o
 obj-$(CONFIG_PXA168_ETH) += pxa168_eth.o
 obj-$(CONFIG_SKGE) += skge.o
 obj-$(CONFIG_SKY2) += sky2.o
-obj-$(CONFIG_NET_VENDOR_MARVELL) += octeontx2/
+obj-y		+= octeontx2/
