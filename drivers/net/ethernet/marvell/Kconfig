@@ -168,17 +168,7 @@ config SKY2_DEBUG
 
 	  If unsure, say N.
 
-config OCTEONTX2_PF
-	tristate "Marvell OcteonTX2 NIC physical function driver"
-	select OCTEONTX2_MBOX
-	depends on PCI && ARM64 && ARM64_LSE_ATOMICS
-	---help---
-	  This driver supports Marvell's OcteonTX2 NIC physical function.
 
-config OCTEONTX2_VF
-	tristate "Marvell OcteonTX2 NIC virtual function driver"
-	depends on OCTEONTX2_PF
-	---help---
-	  This driver supports Marvell's OcteonTX2 NIC virtual function.
+source "drivers/net/ethernet/marvell/octeontx2/Kconfig"
 
 endif # NET_VENDOR_MARVELL
