@@ -39,6 +39,7 @@
 #include <linux/rds.h>
 
 #include "rds.h"
+#include "loop.h"
 
 /* forward prototypes */
 static void
@@ -136,13 +137,25 @@ void rds_inc_put(struct rds_incoming *inc)
 EXPORT_SYMBOL_GPL(rds_inc_put);
 
 static void rds_recv_rcvbuf_delta(struct rds_sock *rs, struct sock *sk,
-				  struct rds_cong_map *map,
+				  struct rds_connection *conn,
 				  int delta, __be16 port)
 {
 	int now_congested;
+	struct rds_cong_map *map;
 
 	if (delta == 0)
 		return;
+
+	/* Note: For loopback transport, the 'conn' passed is the
+	 * sending endpoint, not the receiving endpoint.
+	 * We want the congestion that corresponds to the
+	 * destination(receiving)endpoint which is "local" for the
+	 * receiving endpoint but "foreign" for the sending endpoint.
+	 */
+	if (conn->c_loopback && conn->c_trans == &rds_loop_transport)
+		map = conn->c_fcong;
+	else
+		map = conn->c_lcong;
 
 	rs->rs_rcv_bytes += delta;
 	if (delta > 0)
@@ -731,9 +744,9 @@ rds_recv_local(struct rds_conn_path *cp, struct in6_addr *saddr,
 			rdsdebug("adding inc %p to rs %p's recv queue\n",
 				inc, rs);
 			rds_stats_inc(s_recv_queued);
-			rds_recv_rcvbuf_delta(rs, sk, inc->i_conn->c_lcong,
-				      be32_to_cpu(inc->i_hdr.h_len),
-				      inc->i_hdr.h_dport);
+			rds_recv_rcvbuf_delta(rs, sk, inc->i_conn,
+					      be32_to_cpu(inc->i_hdr.h_len),
+					      inc->i_hdr.h_dport);
 			if (sock_flag(sk, SOCK_RCVTSTAMP))
 				do_gettimeofday(&inc->i_rx_tstamp);
 			rds_inc_addref(inc);
@@ -785,7 +798,7 @@ static int rds_still_queued(struct rds_sock *rs, struct rds_incoming *inc,
 		ret = 1;
 		if (drop) {
 			/* XXX make sure this i_conn is reliable */
-			rds_recv_rcvbuf_delta(rs, sk, inc->i_conn->c_lcong,
+			rds_recv_rcvbuf_delta(rs, sk, inc->i_conn,
 					      -be32_to_cpu(inc->i_hdr.h_len),
 					      inc->i_hdr.h_dport);
 			list_del_init(&inc->i_item);
@@ -1083,7 +1096,7 @@ void rds_clear_recv_queue(struct rds_sock *rs)
 
 	write_lock_irqsave(&rs->rs_recv_lock, flags);
 	list_for_each_entry_safe(inc, tmp, &rs->rs_recv_queue, i_item) {
-		rds_recv_rcvbuf_delta(rs, sk, inc->i_conn->c_lcong,
+		rds_recv_rcvbuf_delta(rs, sk, inc->i_conn,
 				      -be32_to_cpu(inc->i_hdr.h_len),
 				      inc->i_hdr.h_dport);
 		list_del_init(&inc->i_item);
