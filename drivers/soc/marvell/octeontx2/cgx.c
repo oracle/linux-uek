@@ -570,7 +570,7 @@ static inline bool cgx_event_is_linkevent(u64 event)
 }
 
 static inline int cgx_fwi_get_mkex_prfl_sz(u64 *prfl_sz,
-					struct cgx *cgx)
+					   struct cgx *cgx)
 {
 	u64 req = 0;
 	u64 resp;
@@ -585,7 +585,7 @@ static inline int cgx_fwi_get_mkex_prfl_sz(u64 *prfl_sz,
 }
 
 static inline int cgx_fwi_get_mkex_prfl_addr(u64 *prfl_addr,
-					struct cgx *cgx)
+					     struct cgx *cgx)
 {
 	u64 req = 0;
 	u64 resp;
