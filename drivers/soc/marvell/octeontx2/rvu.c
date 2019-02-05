@@ -15,6 +15,7 @@
 #include <linux/pci.h>
 #include <linux/sysfs.h>
 
+#include "cgx.h"
 #include "rvu.h"
 #include "rvu_reg.h"
 #include "ptp.h"
@@ -2594,10 +2595,6 @@ static int rvu_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 		goto err_release_regions;
 	}
 
-	err = rvu_check_cgx_driver(rvu);
-	if (err)
-		goto err_release_regions;
-
 	rvu->ptp = ptp_get();
 	if (IS_ERR(rvu->ptp)) {
 		err = PTR_ERR(rvu->ptp);
@@ -2721,13 +2718,22 @@ static int __init rvu_init_module(void)
 
 	pr_info("%s: %s\n", DRV_NAME, DRV_STRING);
 
-	err = pci_register_driver(&ptp_driver);
-	if (err)
+	err = pci_register_driver(&cgx_driver);
+	if (err < 0)
 		return err;
 
-	err = pci_register_driver(&rvu_driver);
-	if (err)
-		pci_unregister_driver(&ptp_driver);
+	err = pci_register_driver(&ptp_driver);
+	if (err < 0)
+		goto ptp_err;
+
+	err =  pci_register_driver(&rvu_driver);
+	if (err < 0)
+		goto rvu_err;
+
+rvu_err:
+	pci_unregister_driver(&ptp_driver);
+ptp_err:
+	pci_unregister_driver(&cgx_driver);
 
 	return err;
 }
@@ -2736,6 +2742,7 @@ static void __exit rvu_cleanup_module(void)
 {
 	pci_unregister_driver(&rvu_driver);
 	pci_unregister_driver(&ptp_driver);
+	pci_unregister_driver(&cgx_driver);
 }
 
 module_init(rvu_init_module);
