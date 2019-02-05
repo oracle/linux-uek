@@ -412,6 +412,7 @@ int otx2_poll(struct napi_struct *napi, int budget)
 	struct otx2_cq_queue *cq;
 	struct otx2_qset *qset;
 	struct otx2_nic *pfvf;
+	u64 qcount;
 
 	cq_poll = container_of(napi, struct otx2_cq_poll, napi);
 	pfvf = (struct otx2_nic *)cq_poll->dev;
@@ -422,7 +423,11 @@ int otx2_poll(struct napi_struct *napi, int budget)
 		if (cq_idx == CINT_INVALID_CQ)
 			continue;
 		cq = &qset->cq[cq_idx];
+		qcount = otx2_read64(pfvf, NIX_LF_CINTX_CNT(cq_poll->cint_idx));
+		qcount = (qcount >> 32) & 0xFFFF;
 		workdone += otx2_napi_handler(cq, pfvf, budget);
+		if (workdone && qcount == 1)
+			break;
 	}
 
 	/* Clear the IRQ */
