@@ -99,6 +99,8 @@ struct cgx_event_cb {
 	void *data;
 };
 
+extern struct pci_driver cgx_driver;
+
 int cgx_get_cgxcnt_max(void);
 int cgx_get_lmac_cnt(void *cgxd);
 void *cgx_get_pdata(int cgx_id);

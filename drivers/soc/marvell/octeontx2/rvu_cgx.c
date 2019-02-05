@@ -339,28 +339,6 @@ int rvu_cgx_exit(struct rvu *rvu)
 	return 0;
 }
 
-int rvu_check_cgx_driver(struct rvu *rvu)
-{
-	struct pci_dev *pdev;
-	void *cgx;
-
-	pdev = pci_get_device(PCI_VENDOR_ID_CAVIUM, PCI_DEVID_OCTEONTX2_CGX,
-			      NULL);
-	if (!pdev)
-		return 0;
-
-	cgx = pci_get_drvdata(pdev);
-	if (!cgx) {
-		dev_warn(rvu->dev,
-			 "CGX driver is not init'ed, deferring RVU AF probe\n");
-		pci_dev_put(pdev);
-		return -EPROBE_DEFER;
-	}
-
-	pci_dev_put(pdev);
-	return 0;
-}
-
 int rvu_cgx_config_rxtx(struct rvu *rvu, u16 pcifunc, bool start)
 {
 	int pf = rvu_get_pf(pcifunc);

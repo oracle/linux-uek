@@ -11,14 +11,6 @@ config OCTEONTX2_AF
 	  This driver supports Marvell's OcteonTX2 Resource Virtualization
 	  Unit's admin function manager which manages all RVU HW resources.
 
-config OCTEONTX2_CGX
-	tristate "OcteonTX2 MAC interface (CGX) driver"
-	depends on ARM64 && PCI
-	select PHYLIB
-	---help---
-	  This driver supports programming and controlling of MAC
-	  interfaces from RVU Admin Function driver.
-
 config OCTEONTX2_RM
 	tristate "OcteonTX2 RVU Resource Manager driver"
 	depends on OCTEONTX2_AF
