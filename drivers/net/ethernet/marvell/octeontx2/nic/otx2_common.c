@@ -289,7 +289,8 @@ void otx2_set_cints_affinity(struct otx2_nic *pfvf)
 	}
 }
 
-dma_addr_t otx2_alloc_rbuf(struct otx2_nic *pfvf, struct otx2_pool *pool)
+dma_addr_t otx2_alloc_rbuf(struct otx2_nic *pfvf, struct otx2_pool *pool,
+			   gfp_t gfp)
 {
 	dma_addr_t iova;
 
@@ -303,7 +304,7 @@ dma_addr_t otx2_alloc_rbuf(struct otx2_nic *pfvf, struct otx2_pool *pool)
 	otx2_get_page(pool);
 
 	/* Allocate a new page */
-	pool->page = alloc_pages(GFP_KERNEL | __GFP_COMP | __GFP_NOWARN, 0);
+	pool->page = alloc_pages(gfp | __GFP_COMP | __GFP_NOWARN, 0);
 	if (!pool->page)
 		return -ENOMEM;
 
@@ -936,7 +937,7 @@ int otx2_sq_aura_pool_init(struct otx2_nic *pfvf)
 		pool_id = otx2_get_pool_idx(pfvf, AURA_NIX_SQ, sq);
 		pool = &pfvf->qset.pool[pool_id];
 		for (ptr = 0; ptr < num_sqbs; ptr++) {
-			bufptr = otx2_alloc_rbuf(pfvf, pool);
+			bufptr = otx2_alloc_rbuf(pfvf, pool, GFP_KERNEL);
 			if (bufptr <= 0)
 				return bufptr;
 			otx2_aura_freeptr(pfvf, pool_id, bufptr);
@@ -987,7 +988,7 @@ int otx2_rq_aura_pool_init(struct otx2_nic *pfvf)
 	for (pool_id = 0; pool_id < hw->rqpool_cnt; pool_id++) {
 		pool = &pfvf->qset.pool[pool_id];
 		for (ptr = 0; ptr < num_ptrs; ptr++) {
-			bufptr = otx2_alloc_rbuf(pfvf, pool);
+			bufptr = otx2_alloc_rbuf(pfvf, pool, GFP_KERNEL);
 			if (bufptr <= 0)
 				return bufptr;
 			otx2_aura_freeptr(pfvf, pool_id, bufptr + NET_SKB_PAD);

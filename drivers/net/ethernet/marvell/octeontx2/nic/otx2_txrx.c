@@ -394,7 +394,7 @@ int otx2_napi_handler(struct otx2_cq_queue *cq,
 
 	/* Refill pool with new buffers */
 	while (pool_ptrs) {
-		bufptr = otx2_alloc_rbuf(pfvf, rbpool);
+		bufptr = otx2_alloc_rbuf(pfvf, rbpool, GFP_ATOMIC);
 		if (bufptr <= 0)
 			break;
 		otx2_aura_freeptr(pfvf, cq->cq_idx, bufptr + NET_SKB_PAD);
