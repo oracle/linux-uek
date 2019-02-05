@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: GPL-2.0
-/* Marvell OcteonTx2 CGX driver
+/* SPDX-License-Identifier: GPL-2.0
+ * Marvell OcteonTx2 CGX driver
  *
  * Copyright (C) 2018 Marvell International Ltd.
  *
@@ -95,7 +95,7 @@ struct cgx_link_event {
  * @data:	data passed to callback function
  */
 struct cgx_event_cb {
-	int (*notify_link_chg)(struct cgx_link_event *, void *);
+	int (*notify_link_chg)(struct cgx_link_event *event, void *data);
 	void *data;
 };
 
@@ -117,8 +117,8 @@ void cgx_lmac_promisc_config(int cgx_id, int lmac_id, bool enable);
 void cgx_lmac_ptp_config(void *cgxd, int lmac_id, bool enable);
 void cgx_lmac_bp_config(void *cgxd, int lmac_id, bool enable);
 int cgx_lmac_internal_loopback(void *cgxd, int lmac_id, bool enable);
-int cgx_get_link_info(void *cgxd, int lmac_id, struct cgx_link_user_info
-			*linfo);
+int cgx_get_link_info(void *cgxd, int lmac_id,
+		      struct cgx_link_user_info *linfo);
 int cgx_lmac_linkup_start(void *cgxd);
 int cgx_get_mkex_prfl_info(u64 *addr, u64 *size);
 #endif /* CGX_H */

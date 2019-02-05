@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: GPL-2.0
-/* Marvell OcteonTx2 RVU Admin Function driver
+/* SPDX-License-Identifier: GPL-2.0
+ * Marvell OcteonTx2 RVU Admin Function driver
  *
  * Copyright (C) 2018 Marvell International Ltd.
  *
@@ -152,7 +152,6 @@
 #define NPA_PRIV_LFX_CFG		(0x10010)
 #define NPA_PRIV_LFX_INT_CFG		(0x10020)
 #define NPA_AF_RVU_LF_CFG_DEBUG         (0x10030)
-
 
 /* NIX block's admin function registers */
 #define NIX_AF_CFG			(0x0000)

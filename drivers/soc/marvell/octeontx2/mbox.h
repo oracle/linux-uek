@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: GPL-2.0
-/* Marvell OcteonTx2 RVU Admin Function driver
+/* SPDX-License-Identifier: GPL-2.0
+ * Marvell OcteonTx2 RVU Admin Function driver
  *
  * Copyright (C) 2018 Marvell International Ltd.
  *
@@ -75,7 +75,7 @@ struct otx2_mbox {
 
 /* Header which preceeds all mbox messages */
 struct mbox_hdr {
-	u64  msg_size;	/* Total msgs size embedded */
+	u64 msg_size;	/* Total msgs size embedded */
 	u16  num_msgs;   /* No of msgs embedded */
 };
 
@@ -116,7 +116,7 @@ static inline struct mbox_msghdr *otx2_mbox_alloc_msg(struct otx2_mbox *mbox,
 }
 
 /* Mailbox message types */
-#define MBOX_MSG_MASK	 			0xFFFF
+#define MBOX_MSG_MASK				0xFFFF
 #define MBOX_MSG_INVALID			0xFFFE
 #define MBOX_MSG_MAX				0xFFFF
 
@@ -133,15 +133,15 @@ M(PTP_OP,		0x007, ptp_op, ptp_req, ptp_rsp)		\
 M(CGX_START_RXTX,	0x200, cgx_start_rxtx, msg_req, msg_rsp)	\
 M(CGX_STOP_RXTX,	0x201, cgx_stop_rxtx, msg_req, msg_rsp)		\
 M(CGX_STATS,		0x202, cgx_stats, msg_req, cgx_stats_rsp)	\
-M(CGX_MAC_ADDR_SET,	0x203, cgx_mac_addr_set, cgx_mac_addr_set_or_get,\
+M(CGX_MAC_ADDR_SET,	0x203, cgx_mac_addr_set, cgx_mac_addr_set_or_get,    \
 				cgx_mac_addr_set_or_get)		\
-M(CGX_MAC_ADDR_GET,	0x204, cgx_mac_addr_get, cgx_mac_addr_set_or_get,\
+M(CGX_MAC_ADDR_GET,	0x204, cgx_mac_addr_get, cgx_mac_addr_set_or_get,    \
 				cgx_mac_addr_set_or_get)		\
 M(CGX_PROMISC_ENABLE,	0x205, cgx_promisc_enable, msg_req, msg_rsp)	\
 M(CGX_PROMISC_DISABLE,	0x206, cgx_promisc_disable, msg_req, msg_rsp)	\
 M(CGX_START_LINKEVENTS, 0x207, cgx_start_linkevents, msg_req, msg_rsp)	\
 M(CGX_STOP_LINKEVENTS,	0x208, cgx_stop_linkevents, msg_req, msg_rsp)	\
-M(CGX_GET_LINKINFO,	0x209, cgx_get_linkinfo, msg_req, cgx_link_info_msg)\
+M(CGX_GET_LINKINFO,	0x209, cgx_get_linkinfo, msg_req, cgx_link_info_msg) \
 M(CGX_INTLBK_ENABLE,	0x20A, cgx_intlbk_enable, msg_req, msg_rsp)	\
 M(CGX_INTLBK_DISABLE,	0x20B, cgx_intlbk_disable, msg_req, msg_rsp)	\
 M(CGX_PTP_RX_ENABLE,	0x20C, cgx_ptp_rx_enable, msg_req, msg_rsp)	\
@@ -150,7 +150,7 @@ M(CGX_PTP_RX_DISABLE,	0x20D, cgx_ptp_rx_disable, msg_req, msg_rsp)	\
 M(NPA_LF_ALLOC,		0x400, npa_lf_alloc,				\
 				npa_lf_alloc_req, npa_lf_alloc_rsp)	\
 M(NPA_LF_FREE,		0x401, npa_lf_free, msg_req, msg_rsp)		\
-M(NPA_AQ_ENQ,		0x402, npa_aq_enq, npa_aq_enq_req, npa_aq_enq_rsp)\
+M(NPA_AQ_ENQ,		0x402, npa_aq_enq, npa_aq_enq_req, npa_aq_enq_rsp)   \
 M(NPA_HWCTX_DISABLE,	0x403, npa_hwctx_disable, hwctx_disable_req, msg_rsp)\
 /* SSO/SSOW mbox IDs (range 0x600 - 0x7FF) */				\
 M(SSO_LF_ALLOC,		0x600, sso_lf_alloc,				\
@@ -187,21 +187,20 @@ M(CPT_SET_CRYPTO_GRP,	0xA03, cpt_set_crypto_grp,			\
 M(NPC_MCAM_ALLOC_ENTRY,	0x6000, npc_mcam_alloc_entry, npc_mcam_alloc_entry_req,\
 				npc_mcam_alloc_entry_rsp)		\
 M(NPC_MCAM_FREE_ENTRY,	0x6001, npc_mcam_free_entry,			\
-				npc_mcam_free_entry_req, msg_rsp)	\
+				 npc_mcam_free_entry_req, msg_rsp)	\
 M(NPC_MCAM_WRITE_ENTRY,	0x6002, npc_mcam_write_entry,			\
-				npc_mcam_write_entry_req, msg_rsp)	\
+				 npc_mcam_write_entry_req, msg_rsp)	\
 M(NPC_MCAM_ENA_ENTRY,   0x6003, npc_mcam_ena_entry,			\
 				 npc_mcam_ena_dis_entry_req, msg_rsp)	\
 M(NPC_MCAM_DIS_ENTRY,   0x6004, npc_mcam_dis_entry,			\
 				 npc_mcam_ena_dis_entry_req, msg_rsp)	\
-M(NPC_MCAM_SHIFT_ENTRY, 0x6005, npc_mcam_shift_entry,			\
-				 npc_mcam_shift_entry_req,		\
-				 npc_mcam_shift_entry_rsp)		\
+M(NPC_MCAM_SHIFT_ENTRY, 0x6005, npc_mcam_shift_entry, npc_mcam_shift_entry_req,\
+				npc_mcam_shift_entry_rsp)		\
 M(NPC_MCAM_ALLOC_COUNTER, 0x6006, npc_mcam_alloc_counter,		\
-				   npc_mcam_alloc_counter_req,		\
-				   npc_mcam_alloc_counter_rsp)		\
+					npc_mcam_alloc_counter_req,	\
+					npc_mcam_alloc_counter_rsp)	\
 M(NPC_MCAM_FREE_COUNTER,  0x6007, npc_mcam_free_counter,		\
-				   npc_mcam_oper_counter_req, msg_rsp)	\
+				    npc_mcam_oper_counter_req, msg_rsp)	\
 M(NPC_MCAM_UNMAP_COUNTER, 0x6008, npc_mcam_unmap_counter,		\
 				   npc_mcam_unmap_counter_req, msg_rsp)	\
 M(NPC_MCAM_CLEAR_COUNTER, 0x6009, npc_mcam_clear_counter,		\
@@ -209,49 +208,49 @@ M(NPC_MCAM_CLEAR_COUNTER, 0x6009, npc_mcam_clear_counter,		\
 M(NPC_MCAM_COUNTER_STATS, 0x600a, npc_mcam_counter_stats,		\
 				   npc_mcam_oper_counter_req,		\
 				   npc_mcam_oper_counter_rsp)		\
-M(NPC_MCAM_ALLOC_AND_WRITE_ENTRY, 0x600b, npc_mcam_alloc_and_write_entry,    \
-					  npc_mcam_alloc_and_write_entry_req,\
-					  npc_mcam_alloc_and_write_entry_rsp)\
+M(NPC_MCAM_ALLOC_AND_WRITE_ENTRY, 0x600b, npc_mcam_alloc_and_write_entry,      \
+					  npc_mcam_alloc_and_write_entry_req,  \
+					  npc_mcam_alloc_and_write_entry_rsp)  \
 M(NPC_GET_KEX_CFG,	  0x600c, npc_get_kex_cfg,			\
 				   msg_req, npc_get_kex_cfg_rsp)	\
 /* NIX mbox IDs (range 0x8000 - 0xFFFF) */				\
 M(NIX_LF_ALLOC,		0x8000, nix_lf_alloc,				\
 				 nix_lf_alloc_req, nix_lf_alloc_rsp)	\
 M(NIX_LF_FREE,		0x8001, nix_lf_free, msg_req, msg_rsp)		\
-M(NIX_AQ_ENQ,		0x8002, nix_aq_enq,				\
-				 nix_aq_enq_req, nix_aq_enq_rsp)	\
+M(NIX_AQ_ENQ,		0x8002, nix_aq_enq, nix_aq_enq_req, nix_aq_enq_rsp)  \
 M(NIX_HWCTX_DISABLE,	0x8003, nix_hwctx_disable,			\
 				 hwctx_disable_req, msg_rsp)		\
 M(NIX_TXSCH_ALLOC,	0x8004, nix_txsch_alloc,			\
-				 nix_txsch_alloc_req, nix_txsch_alloc_rsp)  \
-M(NIX_TXSCH_FREE,	0x8005, nix_txsch_free, nix_txsch_free_req, msg_rsp)\
-M(NIX_TXSCHQ_CFG,	0x8006, nix_txschq_cfg, nix_txschq_config, msg_rsp) \
+				 nix_txsch_alloc_req, nix_txsch_alloc_rsp)   \
+M(NIX_TXSCH_FREE,	0x8005, nix_txsch_free, nix_txsch_free_req, msg_rsp) \
+M(NIX_TXSCHQ_CFG,	0x8006, nix_txschq_cfg, nix_txschq_config, msg_rsp)  \
 M(NIX_STATS_RST,	0x8007, nix_stats_rst, msg_req, msg_rsp)	\
 M(NIX_VTAG_CFG,		0x8008, nix_vtag_cfg, nix_vtag_config, msg_rsp)	\
 M(NIX_RSS_FLOWKEY_CFG,  0x8009, nix_rss_flowkey_cfg,			\
-				 nix_rss_flowkey_cfg, nix_rss_flowkey_cfg_rsp)\
-M(NIX_SET_MAC_ADDR,	0x800a, nix_set_mac_addr,			\
-				 nix_set_mac_addr, msg_rsp)		\
+				 nix_rss_flowkey_cfg,			\
+				 nix_rss_flowkey_cfg_rsp)		\
+M(NIX_SET_MAC_ADDR,	0x800a, nix_set_mac_addr, nix_set_mac_addr, msg_rsp) \
 M(NIX_SET_RX_MODE,	0x800b, nix_set_rx_mode, nix_rx_mode, msg_rsp)	\
 M(NIX_SET_HW_FRS,	0x800c, nix_set_hw_frs, nix_frs_cfg, msg_rsp)	\
 M(NIX_LF_START_RX,	0x800d, nix_lf_start_rx, msg_req, msg_rsp)	\
 M(NIX_LF_STOP_RX,	0x800e, nix_lf_stop_rx, msg_req, msg_rsp)	\
 M(NIX_MARK_FORMAT_CFG,	0x800f, nix_mark_format_cfg,			\
-				 nix_mark_format_cfg, nix_mark_format_cfg_rsp)\
+				 nix_mark_format_cfg,			\
+				 nix_mark_format_cfg_rsp)		\
 M(NIX_SET_RX_CFG,	0x8010, nix_set_rx_cfg, nix_rx_cfg, msg_rsp)	\
-M(NIX_LSO_FORMAT_CFG,   0x8011, nix_lso_format_cfg,			\
-				 nix_lso_format_cfg, nix_lso_format_cfg_rsp)\
+M(NIX_LSO_FORMAT_CFG,	0x8011, nix_lso_format_cfg,			\
+				 nix_lso_format_cfg,			\
+				 nix_lso_format_cfg_rsp)		\
 M(NIX_RXVLAN_ALLOC,	0x8012, nix_rxvlan_alloc, msg_req, msg_rsp)	\
 M(NIX_LF_PTP_TX_ENABLE, 0x8013, nix_lf_ptp_tx_enable, msg_req, msg_rsp)	\
 M(NIX_LF_PTP_TX_DISABLE, 0x8014, nix_lf_ptp_tx_disable, msg_req, msg_rsp)
 
 /* Messages initiated by AF (range 0xC00 - 0xDFF) */
 #define MBOX_UP_CGX_MESSAGES						\
-M(CGX_LINK_EVENT,	0xC00, cgx_link_event,				\
-				cgx_link_info_msg, msg_rsp)
+M(CGX_LINK_EVENT,	0xC00, cgx_link_event, cgx_link_info_msg, msg_rsp)
 
 enum {
-#define M(_name, _id, _fn_name, _1, _2) MBOX_MSG_ ## _name = _id,
+#define M(_name, _id, _1, _2, _3) MBOX_MSG_ ## _name = _id,
 MBOX_MESSAGES
 MBOX_UP_CGX_MESSAGES
 #undef M
@@ -355,11 +354,11 @@ struct msix_offset_rsp {
 /* CGX mbox message formats */
 
 struct cgx_stats_rsp {
-	 struct mbox_msghdr hdr;
+	struct mbox_msghdr hdr;
 #define CGX_RX_STATS_COUNT	13
 #define CGX_TX_STATS_COUNT	18
-	 u64 rx_stats[CGX_RX_STATS_COUNT];
-	 u64 tx_stats[CGX_TX_STATS_COUNT];
+	u64 rx_stats[CGX_RX_STATS_COUNT];
+	u64 tx_stats[CGX_TX_STATS_COUNT];
 };
 
 /* Structure for requesting the operation for
@@ -624,13 +623,13 @@ struct nix_vtag_config {
 struct nix_rss_flowkey_cfg {
 	struct mbox_msghdr hdr;
 	int	mcam_index;  /* MCAM entry index to modify */
-	u32	flowkey_cfg; /* Flowkey types selected */
 #define NIX_FLOW_KEY_TYPE_PORT	BIT(0)
 #define NIX_FLOW_KEY_TYPE_IPV4	BIT(1)
 #define NIX_FLOW_KEY_TYPE_IPV6	BIT(2)
 #define NIX_FLOW_KEY_TYPE_TCP	BIT(3)
 #define NIX_FLOW_KEY_TYPE_UDP	BIT(4)
 #define NIX_FLOW_KEY_TYPE_SCTP	BIT(5)
+	u32	flowkey_cfg; /* Flowkey types selected */
 	u8	group;       /* RSS context or group */
 };
 
@@ -670,8 +669,8 @@ struct nix_rx_cfg {
 	struct mbox_msghdr hdr;
 #define NIX_RX_OL3_VERIFY   BIT(0)
 #define NIX_RX_OL4_VERIFY   BIT(1)
+	u8 len_verify; /* Outer L3/L4 len check */
 #define NIX_RX_CSUM_OL4_VERIFY  BIT(0)
-	u8 len_verify; /* outer L3/L4 len check */
 	u8 csum_verify; /* Outer L4 checksum verification */
 };
 

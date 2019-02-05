@@ -48,8 +48,8 @@ EXPORT_SYMBOL(otx2_mbox_destroy);
 int otx2_mbox_init(struct otx2_mbox *mbox, void *hwbase, struct pci_dev *pdev,
 		   void *reg_base, int direction, int ndevs)
 {
-	int devid;
 	struct otx2_mbox_dev *mdev;
+	int devid;
 
 	switch (direction) {
 	case MBOX_DIR_AFPF:
@@ -165,8 +165,10 @@ void otx2_mbox_msg_send(struct otx2_mbox *mbox, int devid)
 {
 	void *hw_mbase = mbox->hwbase + (devid * MBOX_SIZE);
 	struct otx2_mbox_dev *mdev = &mbox->dev[devid];
-	struct mbox_hdr *tx_hdr = hw_mbase  + mbox->tx_start;
-	struct mbox_hdr *rx_hdr = hw_mbase  + mbox->rx_start;
+	struct mbox_hdr *tx_hdr, *rx_hdr;
+
+	tx_hdr = hw_mbase + mbox->tx_start;
+	rx_hdr = hw_mbase + mbox->rx_start;
 
 	/* If bounce buffer is implemented copy mbox messages from
 	 * bounce buffer to hw mbox memory.
@@ -223,8 +225,8 @@ struct mbox_msghdr *otx2_mbox_alloc_msg_rsp(struct otx2_mbox *mbox, int devid,
 		mdev->num_msgs = 0;
 	mdev->num_msgs++;
 
-	msghdr = (struct mbox_msghdr *)(mdev->mbase + mbox->tx_start +
-					msgs_offset + mdev->msg_size);
+	msghdr = mdev->mbase + mbox->tx_start + msgs_offset + mdev->msg_size;
+
 	/* Clear the whole msg region */
 	memset(msghdr, 0, size);
 	/* Init message header with reset values */

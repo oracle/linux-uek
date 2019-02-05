@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: GPL-2.0
-/* Marvell OcteonTx2 RVU Admin Function driver
+/* SPDX-License-Identifier: GPL-2.0
+ * Marvell OcteonTx2 RVU Admin Function driver
  *
  * Copyright (C) 2018 Marvell International Ltd.
  *
@@ -17,11 +17,11 @@
 #include "mbox.h"
 #include "rvu_validation.h"
 
-/* Subsystem Device ID */
-#define PCI_SUBSYS_DEVID_96XX			0xB200
-
 /* PCI device IDs */
 #define	PCI_DEVID_OCTEONTX2_RVU_AF		0xA065
+
+/* Subsystem Device ID */
+#define PCI_SUBSYS_DEVID_96XX                  0xB200
 
 /* PCI BAR nos */
 #define	PCI_AF_REG_BAR_NUM			0
@@ -191,11 +191,11 @@ struct rvu_pfvf {
 struct nix_txsch {
 	struct rsrc_bmap schq;
 	u8   lvl;
+#define NIX_TXSCHQ_TL1_CFG_DONE       BIT_ULL(0)
+#define TXSCH_MAP_FUNC(__pfvf_map)    ((__pfvf_map) & 0xFFFF)
+#define TXSCH_MAP_FLAGS(__pfvf_map)   ((__pfvf_map) >> 16)
+#define TXSCH_MAP(__func, __flags)    (((__func) & 0xFFFF) | ((__flags) << 16))
 	u32  *pfvf_map;
-#define NIX_TXSCHQ_TL1_CFG_DONE		BIT_ULL(0)
-#define TXSCH_MAP_FUNC(__pfvf_map)	(__pfvf_map & 0xFFFF)
-#define TXSCH_MAP_FLAGS(__pfvf_map)	(__pfvf_map >> 16)
-#define TXSCH_MAP(__func, __flags)	((__func & 0xFFFF) | (__flags << 16))
 };
 
 struct nix_mark_format {
@@ -510,7 +510,8 @@ int rvu_mbox_handler_nix_txsch_free(struct rvu *rvu,
 				    struct nix_txsch_free_req *req,
 				    struct msg_rsp *rsp);
 int rvu_mbox_handler_nix_txschq_cfg(struct rvu *rvu,
-			struct nix_txschq_config *req, struct msg_rsp *rsp);
+				    struct nix_txschq_config *req,
+				    struct msg_rsp *rsp);
 int rvu_mbox_handler_nix_stats_rst(struct rvu *rvu, struct msg_req *req,
 				   struct msg_rsp *rsp);
 int rvu_mbox_handler_nix_vtag_cfg(struct rvu *rvu,
@@ -529,14 +530,14 @@ int rvu_mbox_handler_nix_set_rx_mode(struct rvu *rvu, struct nix_rx_mode *req,
 int rvu_mbox_handler_nix_set_hw_frs(struct rvu *rvu, struct nix_frs_cfg *req,
 				    struct msg_rsp *rsp);
 int rvu_mbox_handler_nix_lf_start_rx(struct rvu *rvu, struct msg_req *req,
-				      struct msg_rsp *rsp);
-int rvu_mbox_handler_nix_lf_stop_rx(struct rvu *rvu, struct msg_req *req,
 				     struct msg_rsp *rsp);
+int rvu_mbox_handler_nix_lf_stop_rx(struct rvu *rvu, struct msg_req *req,
+				    struct msg_rsp *rsp);
 int rvu_mbox_handler_nix_mark_format_cfg(struct rvu *rvu,
 					 struct nix_mark_format_cfg  *req,
 					 struct nix_mark_format_cfg_rsp *rsp);
 int rvu_mbox_handler_nix_set_rx_cfg(struct rvu *rvu, struct nix_rx_cfg *req,
-				struct msg_rsp *rsp);
+				    struct msg_rsp *rsp);
 int rvu_mbox_handler_nix_lso_format_cfg(struct rvu *rvu,
 					struct nix_lso_format_cfg *req,
 					struct nix_lso_format_cfg_rsp *rsp);
@@ -568,9 +569,11 @@ void rvu_npc_enable_default_entries(struct rvu *rvu, u16 pcifunc, int nixlf);
 void rvu_npc_update_flowkey_alg_idx(struct rvu *rvu, u16 pcifunc, int nixlf,
 				    int group, int alg_idx, int mcam_index);
 void rvu_npc_get_mcam_entry_alloc_info(struct rvu *rvu, u16 pcifunc,
-				int blkaddr, int *alloc_cnt, int *enable_cnt);
+				       int blkaddr, int *alloc_cnt,
+				       int *enable_cnt);
 void rvu_npc_get_mcam_counter_alloc_info(struct rvu *rvu, u16 pcifunc,
-				int blkaddr, int *alloc_cnt, int *enable_cnt);
+					 int blkaddr, int *alloc_cnt,
+					 int *enable_cnt);
 int rvu_mbox_handler_npc_mcam_alloc_entry(struct rvu *rvu,
 					  struct npc_mcam_alloc_entry_req *req,
 					  struct npc_mcam_alloc_entry_rsp *rsp);
@@ -587,8 +590,8 @@ int rvu_mbox_handler_npc_mcam_dis_entry(struct rvu *rvu,
 					struct npc_mcam_ena_dis_entry_req *req,
 					struct msg_rsp *rsp);
 int rvu_mbox_handler_npc_mcam_shift_entry(struct rvu *rvu,
-			struct npc_mcam_shift_entry_req *req,
-			struct npc_mcam_shift_entry_rsp *rsp);
+					  struct npc_mcam_shift_entry_req *req,
+					  struct npc_mcam_shift_entry_rsp *rsp);
 int rvu_mbox_handler_npc_mcam_alloc_counter(struct rvu *rvu,
 				struct npc_mcam_alloc_counter_req *req,
 				struct npc_mcam_alloc_counter_rsp *rsp);
