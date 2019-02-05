@@ -164,8 +164,8 @@ int rvu_alloc_bitmap(struct rsrc_bmap *rsrc)
 /* Get block LF's HW index from a PF_FUNC's block slot number */
 int rvu_get_lf(struct rvu *rvu, struct rvu_block *block, u16 pcifunc, u16 slot)
 {
-	int lf;
 	u16 match = 0;
+	int lf;
 
 	mutex_lock(&rvu->rsrc_lock);
 	for (lf = 0; lf < block->lf.max; lf++) {
@@ -377,7 +377,7 @@ bool is_block_implemented(struct rvu_hwinfo *hw, int blkaddr)
 {
 	struct rvu_block *block;
 
-	if ((blkaddr < BLKADDR_RVUM) || (blkaddr >= BLK_COUNT))
+	if (blkaddr < BLKADDR_RVUM || blkaddr >= BLK_COUNT)
 		return false;
 
 	block = &hw->block[blkaddr];
@@ -440,6 +440,7 @@ static void rvu_reset_all_blocks(struct rvu *rvu)
 	rvu_block_reset(rvu, BLKADDR_NDC_NIX0_RX, NDC_AF_BLK_RST);
 	rvu_block_reset(rvu, BLKADDR_NDC_NIX0_TX, NDC_AF_BLK_RST);
 	rvu_block_reset(rvu, BLKADDR_NDC_NPA0, NDC_AF_BLK_RST);
+
 }
 
 static void rvu_scan_block(struct rvu *rvu, struct rvu_block *block)
@@ -592,6 +593,7 @@ setup_vfmsix:
 	iova = dma_map_resource(rvu->dev, phy_addr,
 				max_msix * PCI_MSIX_ENTRY_SIZE,
 				DMA_BIDIRECTIONAL, 0);
+
 	if (dma_mapping_error(rvu->dev, iova))
 		return -ENOMEM;
 
@@ -1017,8 +1019,8 @@ static int rvu_detach_rsrcs(struct rvu *rvu, struct rsrc_detach *detach,
 			    u16 pcifunc)
 {
 	struct rvu_hwinfo *hw = rvu->hw;
-	struct rvu_block *block;
 	bool detach_all = true;
+	struct rvu_block *block;
 	int blkid;
 
 	mutex_lock(&rvu->rsrc_lock);
@@ -1035,7 +1037,7 @@ static int rvu_detach_rsrcs(struct rvu *rvu, struct rsrc_detach *detach,
 		if (!block->lf.bmap)
 			continue;
 		if (!detach_all && detach) {
-			if ((blkid == BLKADDR_NPA) && !detach->npalf)
+			if (blkid == BLKADDR_NPA && !detach->npalf)
 				continue;
 			else if ((blkid == BLKADDR_NIX0) && !detach->nixlf)
 				continue;
@@ -1152,7 +1154,7 @@ static int rvu_check_rsrc_availability(struct rvu *rvu,
 		mappedlfs = rvu_get_rsrc_mapcount(pfvf, block->type);
 		free_lfs = rvu_rsrc_free_count(&block->lf);
 		/* Check if additional resources are available */
-		if ((req->sso > mappedlfs) &&
+		if (req->sso > mappedlfs &&
 		    ((req->sso - mappedlfs) > free_lfs))
 			goto fail;
 	}
@@ -1167,7 +1169,7 @@ static int rvu_check_rsrc_availability(struct rvu *rvu,
 		}
 		mappedlfs = rvu_get_rsrc_mapcount(pfvf, block->type);
 		free_lfs = rvu_rsrc_free_count(&block->lf);
-		if ((req->ssow > mappedlfs) &&
+		if (req->ssow > mappedlfs &&
 		    ((req->ssow - mappedlfs) > free_lfs))
 			goto fail;
 	}
@@ -1182,7 +1184,7 @@ static int rvu_check_rsrc_availability(struct rvu *rvu,
 		}
 		mappedlfs = rvu_get_rsrc_mapcount(pfvf, block->type);
 		free_lfs = rvu_rsrc_free_count(&block->lf);
-		if ((req->timlfs > mappedlfs) &&
+		if (req->timlfs > mappedlfs &&
 		    ((req->timlfs - mappedlfs) > free_lfs))
 			goto fail;
 	}
@@ -1197,7 +1199,7 @@ static int rvu_check_rsrc_availability(struct rvu *rvu,
 		}
 		mappedlfs = rvu_get_rsrc_mapcount(pfvf, block->type);
 		free_lfs = rvu_rsrc_free_count(&block->lf);
-		if ((req->cptlfs > mappedlfs) &&
+		if (req->cptlfs > mappedlfs &&
 		    ((req->cptlfs - mappedlfs) > free_lfs))
 			goto fail;
 	}
@@ -1393,7 +1395,7 @@ static int rvu_mbox_handler_vf_flr(struct rvu *rvu, struct msg_req *req,
 			 RVU_PRIV_PFX_CFG(rvu_get_pf(pcifunc)));
 	numvfs = (cfg >> 12) & 0xFF;
 
-	if (vf && (vf <= numvfs))
+	if (vf && vf <= numvfs)
 		__rvu_flr_handler(rvu, pcifunc);
 	else
 		return RVU_INVALID_VF_ID;
@@ -1434,8 +1436,8 @@ static int rvu_process_mbox_msg(struct otx2_mbox *mbox, int devid,
 		}							\
 									\
 		err = rvu_mbox_handler_ ## _fn_name(rvu,		\
-						 (struct _req_type *)req, \
-						 rsp);			\
+						    (struct _req_type *)req, \
+						    rsp);		\
 		if (rsp && err)						\
 			rsp->hdr.rc = err;				\
 									\
@@ -1477,14 +1479,14 @@ static void __rvu_mbox_handler(struct rvu_work *mwork, int type)
 	mdev = &mbox->dev[devid];
 
 	/* Process received mbox messages */
-	req_hdr = (struct mbox_hdr *)(mdev->mbase + mbox->rx_start);
+	req_hdr = mdev->mbase + mbox->rx_start;
 	if (req_hdr->num_msgs == 0)
 		return;
 
 	offset = mbox->rx_start + ALIGN(sizeof(*req_hdr), MBOX_MSG_ALIGN);
 
 	for (id = 0; id < req_hdr->num_msgs; id++) {
-		msg = (struct mbox_msghdr *)(mdev->mbase + offset);
+		msg = mdev->mbase + offset;
 
 		/* Set which PF/VF sent this message based on mbox IRQ */
 		switch (type) {
@@ -1560,7 +1562,7 @@ static void __rvu_mbox_up_handler(struct rvu_work *mwork, int type)
 	mbox = &mw->mbox_up;
 	mdev = &mbox->dev[devid];
 
-	rsp_hdr = (struct mbox_hdr *)(mdev->mbase + mbox->rx_start);
+	rsp_hdr = mdev->mbase + mbox->rx_start;
 	if (rsp_hdr->num_msgs == 0) {
 		dev_warn(rvu->dev, "mbox up handler: num_msgs = 0\n");
 		return;
@@ -1569,7 +1571,7 @@ static void __rvu_mbox_up_handler(struct rvu_work *mwork, int type)
 	offset = mbox->rx_start + ALIGN(sizeof(*rsp_hdr), MBOX_MSG_ALIGN);
 
 	for (id = 0; id < rsp_hdr->num_msgs; id++) {
-		msg = (struct mbox_msghdr *)(mdev->mbase + offset);
+		msg = mdev->mbase + offset;
 
 		if (msg->id >= MBOX_MSG_MAX) {
 			dev_err(rvu->dev,
@@ -1734,13 +1736,13 @@ static void rvu_queue_work(struct mbox_wq_info *mw, int first,
 
 		mbox = &mw->mbox;
 		mdev = &mbox->dev[i];
-		hdr = (struct mbox_hdr *)(mdev->mbase + mbox->rx_start);
+		hdr = mdev->mbase + mbox->rx_start;
 		if (hdr->num_msgs)
 			queue_work(mw->mbox_wq, &mw->mbox_wrk[i].work);
 
 		mbox = &mw->mbox_up;
 		mdev = &mbox->dev[i];
-		hdr = (struct mbox_hdr *)(mdev->mbase + mbox->rx_start);
+		hdr = mdev->mbase + mbox->rx_start;
 		if (hdr->num_msgs)
 			queue_work(mw->mbox_wq, &mw->mbox_wrk_up[i].work);
 	}
@@ -2338,7 +2340,7 @@ static int rvu_flr_init(struct rvu *rvu)
 	}
 
 	rvu->flr_wq = alloc_workqueue("rvu_afpf_flr",
-				       WQ_UNBOUND | WQ_HIGHPRI | WQ_MEM_RECLAIM,
+				      WQ_UNBOUND | WQ_HIGHPRI | WQ_MEM_RECLAIM,
 				       1);
 	if (!rvu->flr_wq)
 		return -ENOMEM;

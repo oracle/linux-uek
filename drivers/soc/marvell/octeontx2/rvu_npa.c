@@ -66,11 +66,11 @@ int rvu_npa_aq_enq_inst(struct rvu *rvu, struct npa_aq_enq_req *req,
 	bool ena;
 
 	pfvf = rvu_get_pfvf(rvu, pcifunc);
-	if (!pfvf->aura_ctx || (req->aura_id >= pfvf->aura_ctx->qsize))
+	if (!pfvf->aura_ctx || req->aura_id >= pfvf->aura_ctx->qsize)
 		return NPA_AF_ERR_AQ_ENQUEUE;
 
 	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NPA, pcifunc);
-	if (!pfvf->npalf || (blkaddr < 0))
+	if (!pfvf->npalf || blkaddr < 0)
 		return NPA_AF_ERR_AF_LF_INVALID;
 
 	block = &hw->block[blkaddr];
@@ -285,13 +285,13 @@ int rvu_mbox_handler_npa_lf_alloc(struct rvu *rvu,
 	u64 cfg, ctx_cfg;
 	int blkaddr;
 
-	if ((req->aura_sz > NPA_AURA_SZ_MAX) ||
-	    (req->aura_sz == NPA_AURA_SZ_0) || !req->nr_pools)
+	if (req->aura_sz > NPA_AURA_SZ_MAX ||
+	    req->aura_sz == NPA_AURA_SZ_0 || !req->nr_pools)
 		return NPA_AF_ERR_PARAM;
 
 	pfvf = rvu_get_pfvf(rvu, pcifunc);
 	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NPA, pcifunc);
-	if (!pfvf->npalf || (blkaddr < 0))
+	if (!pfvf->npalf || blkaddr < 0)
 		return NPA_AF_ERR_AF_LF_INVALID;
 
 	block = &hw->block[blkaddr];
@@ -316,7 +316,7 @@ int rvu_mbox_handler_npa_lf_alloc(struct rvu *rvu,
 		goto free_mem;
 
 	pfvf->aura_bmap = kcalloc(NPA_AURA_COUNT(req->aura_sz), sizeof(long),
-				 GFP_KERNEL);
+				  GFP_KERNEL);
 	if (!pfvf->aura_bmap)
 		goto free_mem;
 
@@ -327,7 +327,7 @@ int rvu_mbox_handler_npa_lf_alloc(struct rvu *rvu,
 		goto free_mem;
 
 	pfvf->pool_bmap = kcalloc(NPA_AURA_COUNT(req->aura_sz), sizeof(long),
-				 GFP_KERNEL);
+				  GFP_KERNEL);
 	if (!pfvf->pool_bmap)
 		goto free_mem;
 
@@ -384,7 +384,7 @@ int rvu_mbox_handler_npa_lf_free(struct rvu *rvu, struct msg_req *req,
 
 	pfvf = rvu_get_pfvf(rvu, pcifunc);
 	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NPA, pcifunc);
-	if (!pfvf->npalf || (blkaddr < 0))
+	if (!pfvf->npalf || blkaddr < 0)
 		return NPA_AF_ERR_AF_LF_INVALID;
 
 	block = &hw->block[blkaddr];

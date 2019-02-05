@@ -63,8 +63,8 @@ bool rvu_check_valid_reg(int regmap, int regblk, u64 reg)
 	reg &= map->mask;
 
 	for (idx = 0; idx < map->num_ranges; idx++) {
-		if ((reg >= map->range[idx].start) &&
-		    (reg < map->range[idx].end))
+		if (reg >= map->range[idx].start &&
+		    reg < map->range[idx].end)
 			return true;
 	}
 	return false;

@@ -219,7 +219,7 @@ static ssize_t rvu_dbg_npa_qsize_display(struct file *filp,
 	if (cmd_buf)
 		ret = -EINVAL;
 
-	if (!strncmp(subtoken, "help", 4) || (ret < 0)) {
+	if (!strncmp(subtoken, "help", 4) || ret < 0) {
 		pr_info("Use echo <npalf > qsize\n");
 		goto npa_qsize_display_done;
 	}
@@ -457,7 +457,7 @@ static int parse_cmd_buffer_ctx(char *cmd_buf, size_t *count,
 	subtoken = strsep(&cmd_buf, " ");
 	if (subtoken && strcmp(subtoken, "all") == 0) {
 		*all = true;
-	} else{
+	} else {
 		ret = subtoken ? kstrtoint(subtoken, 10, id) : -EINVAL;
 		if (ret < 0)
 			return ret;
@@ -495,6 +495,7 @@ static ssize_t rvu_dbg_npa_ctx_display(struct file *filp,
 	kfree(cmd_buf);
 	return count;
 }
+
 RVU_DEBUG_FOPS(npa_qsize, NULL, npa_qsize_display);
 
 static ssize_t rvu_dbg_npa_aura_ctx_display(struct file *filp,
@@ -504,6 +505,7 @@ static ssize_t rvu_dbg_npa_aura_ctx_display(struct file *filp,
 	return  rvu_dbg_npa_ctx_display(filp, buffer, count, ppos,
 					NPA_AQ_CTYPE_AURA);
 }
+
 RVU_DEBUG_FOPS(npa_aura_ctx,  NULL, npa_aura_ctx_display);
 
 static ssize_t rvu_dbg_npa_pool_ctx_display(struct file *filp,
@@ -513,6 +515,7 @@ static ssize_t rvu_dbg_npa_pool_ctx_display(struct file *filp,
 	return  rvu_dbg_npa_ctx_display(filp, buffer, count, ppos,
 					NPA_AQ_CTYPE_POOL);
 }
+
 RVU_DEBUG_FOPS(npa_pool_ctx, NULL, npa_pool_ctx_display);
 
 static void ndc_cache_stats(struct rvu *rvu, int blk_addr,
@@ -527,11 +530,11 @@ static void ndc_cache_stats(struct rvu *rvu, int blk_addr,
 		lat = rvu_read64(rvu, blk_addr, NDC_AF_PORTX_RTX_RWX_LAT_PC
 						(port, ctype, transaction));
 		out_req = rvu_read64(rvu, blk_addr,
-				     NDC_AF_PORTX_RTX_RWX_OSTDN_PC(port, ctype,
-								  transaction));
+				     NDC_AF_PORTX_RTX_RWX_OSTDN_PC
+				     (port, ctype, transaction));
 		cant_alloc = rvu_read64(rvu, blk_addr,
-					NDC_AF_PORTX_RTX_CANT_ALLOC_PC(port,
-							       transaction));
+					NDC_AF_PORTX_RTX_CANT_ALLOC_PC
+					(port, transaction));
 		pr_info("\nPort:%d\n", port);
 		pr_info("\tTotal Requests:\t\t%lld\n", req);
 		pr_info("\tTotal Time Taken:\t%lld cycles\n", lat);
@@ -561,6 +564,7 @@ static ssize_t rvu_dbg_npa_ndc_cache_display(struct file *filp,
 	return ndc_blk_cache_stats(filp->private_data, NPA0_U,
 				   BLKADDR_NDC_NPA0);
 }
+
 RVU_DEBUG_FOPS(npa_ndc_cache, npa_ndc_cache_display, NULL);
 
 static int ndc_blk_hits_miss_stats(struct rvu *rvu, int idx, int blk_addr)
@@ -570,10 +574,12 @@ static int ndc_blk_hits_miss_stats(struct rvu *rvu, int idx, int blk_addr)
 	max_bank = NDC_MAX_BANK(rvu, blk_addr);
 	for (bank = 0; bank < max_bank; bank++) {
 		pr_info("BANK:%d\n", bank);
-		pr_info("\tHits:\t%lld\n", (u64)rvu_read64(rvu, blk_addr,
-						NDC_AF_BANKX_HIT_PC(bank)));
-		pr_info("\tMiss:\t%lld\n", (u64)rvu_read64(rvu, blk_addr,
-						NDC_AF_BANKX_MISS_PC(bank)));
+		pr_info("\tHits:\t%lld\n",
+			(u64)rvu_read64(rvu, blk_addr,
+					NDC_AF_BANKX_HIT_PC(bank)));
+		pr_info("\tMiss:\t%lld\n",
+			(u64)rvu_read64(rvu, blk_addr,
+					NDC_AF_BANKX_MISS_PC(bank)));
 	}
 	return 0;
 }
@@ -585,6 +591,7 @@ static ssize_t rvu_dbg_npa_ndc_hits_miss_display(struct file *filp,
 	return ndc_blk_hits_miss_stats(filp->private_data,
 				      NPA0_U, BLKADDR_NDC_NPA0);
 }
+
 RVU_DEBUG_FOPS(npa_ndc_hits_miss, npa_ndc_hits_miss_display, NULL);
 
 static void rvu_dbg_npa_init(struct rvu *rvu)
@@ -679,13 +686,14 @@ static ssize_t rvu_dbg_cgx_stat_display(struct file *filp,
 		return count;
 
 	err = kstrtoint(buf + 1, 10, &lmac_id);
-	if (err >= 0) {
+	if (!err) {
 		err = cgx_print_stats(data, lmac_id);
 		if (err)
 			return err;
 	}
 	return err;
 }
+
 RVU_DEBUG_FOPS(cgx_stat, cgx_stat_display, NULL);
 
 static void rvu_dbg_cgx_init(struct rvu *rvu)
@@ -705,7 +713,7 @@ static void rvu_dbg_cgx_init(struct rvu *rvu)
 		/* cgx debugfs dir */
 		sprintf(dname, "cgx%d", i);
 		rvu->rvu_dbg.cgx = debugfs_create_dir(dname,
-					rvu->rvu_dbg.cgx_root);
+						      rvu->rvu_dbg.cgx_root);
 		for (lmac_id = 0; lmac_id < cgx_get_lmac_cnt(cgx); lmac_id++) {
 			/* lmac debugfs dir */
 			sprintf(dname, "lmac%d", lmac_id);
@@ -908,13 +916,13 @@ static void read_nix_ctx(struct rvu *rvu, bool all, int nixlf,
 	}
 
 	pfvf = rvu_get_pfvf(rvu, pcifunc);
-	if ((ctype == NIX_AQ_CTYPE_SQ) && (!pfvf->sq_ctx)) {
+	if (ctype == NIX_AQ_CTYPE_SQ && !pfvf->sq_ctx) {
 		pr_info("SQ context is not initialized\n");
 		return;
-	} else if ((ctype == NIX_AQ_CTYPE_RQ) && (!pfvf->rq_ctx)) {
+	} else if (ctype == NIX_AQ_CTYPE_RQ && !pfvf->rq_ctx) {
 		pr_info("RQ context is not initialized\n");
 		return;
-	} else if ((ctype == NIX_AQ_CTYPE_CQ) && (!pfvf->cq_ctx)) {
+	} else if (ctype == NIX_AQ_CTYPE_CQ && !pfvf->cq_ctx) {
 		pr_info("CQ context is not initialized\n");
 		return;
 	}
@@ -1004,6 +1012,7 @@ static ssize_t rvu_dbg_nix_sq_ctx_display(struct file *filp,
 	return  rvu_dbg_nix_ctx_display(filp, buffer,
 					count, ppos, NIX_AQ_CTYPE_SQ);
 }
+
 RVU_DEBUG_FOPS(nix_sq_ctx, NULL, nix_sq_ctx_display);
 
 static ssize_t rvu_dbg_nix_rq_ctx_display(struct file *filp,
@@ -1013,15 +1022,17 @@ static ssize_t rvu_dbg_nix_rq_ctx_display(struct file *filp,
 	return  rvu_dbg_nix_ctx_display(filp, buffer,
 					count, ppos, NIX_AQ_CTYPE_RQ);
 }
+
 RVU_DEBUG_FOPS(nix_rq_ctx, NULL, nix_rq_ctx_display);
 
 static ssize_t rvu_dbg_nix_cq_ctx_display(struct file *filp,
-					   const char __user *buffer,
-					    size_t count, loff_t *ppos)
+					  const char __user *buffer,
+					  size_t count, loff_t *ppos)
 {
 	return  rvu_dbg_nix_ctx_display(filp, buffer,
 					count, ppos, NIX_AQ_CTYPE_CQ);
 }
+
 RVU_DEBUG_FOPS(nix_cq_ctx, NULL, nix_cq_ctx_display);
 
 static ssize_t rvu_dbg_nix_ndc_rx_cache_display(struct file *filp,
@@ -1031,6 +1042,7 @@ static ssize_t rvu_dbg_nix_ndc_rx_cache_display(struct file *filp,
 	return ndc_blk_cache_stats(filp->private_data, NIX0_RX,
 				   BLKADDR_NDC_NIX0_RX);
 }
+
 RVU_DEBUG_FOPS(nix_ndc_rx_cache, nix_ndc_rx_cache_display, NULL);
 
 static ssize_t rvu_dbg_nix_ndc_tx_cache_display(struct file *filp,
@@ -1040,6 +1052,7 @@ static ssize_t rvu_dbg_nix_ndc_tx_cache_display(struct file *filp,
 	return ndc_blk_cache_stats(filp->private_data, NIX0_TX,
 				   BLKADDR_NDC_NIX0_TX);
 }
+
 RVU_DEBUG_FOPS(nix_ndc_tx_cache, nix_ndc_tx_cache_display, NULL);
 
 static ssize_t rvu_dbg_nix_ndc_rx_hits_miss_display(struct file *filp,
@@ -1049,6 +1062,7 @@ static ssize_t rvu_dbg_nix_ndc_rx_hits_miss_display(struct file *filp,
 	return ndc_blk_hits_miss_stats(filp->private_data,
 				      NPA0_U, BLKADDR_NDC_NIX0_RX);
 }
+
 RVU_DEBUG_FOPS(nix_ndc_rx_hits_miss, nix_ndc_rx_hits_miss_display, NULL);
 
 static ssize_t rvu_dbg_nix_ndc_tx_hits_miss_display(struct file *filp,
@@ -1058,6 +1072,7 @@ static ssize_t rvu_dbg_nix_ndc_tx_hits_miss_display(struct file *filp,
 	return ndc_blk_hits_miss_stats(filp->private_data,
 				      NPA0_U, BLKADDR_NDC_NIX0_TX);
 }
+
 RVU_DEBUG_FOPS(nix_ndc_tx_hits_miss, nix_ndc_tx_hits_miss_display, NULL);
 
 static void rvu_dbg_nix_init(struct rvu *rvu)
@@ -1146,7 +1161,8 @@ static inline void rvu_print_npc_mcam_info(struct rvu *rvu,
 }
 
 static ssize_t rvu_dbg_npc_mcam_info_display(struct file *filp,
-				char __user *buffer, size_t count, loff_t *ppos)
+					     char __user *buffer,
+					     size_t count, loff_t *ppos)
 {
 	struct rvu *rvu = filp->private_data;
 	int pf, vf, numvfs, blkaddr;
@@ -1206,6 +1222,7 @@ static ssize_t rvu_dbg_npc_mcam_info_display(struct file *filp,
 	mutex_unlock(&mcam->lock);
 	return 0;
 }
+
 RVU_DEBUG_FOPS(npc_mcam_info, npc_mcam_info_display, NULL);
 
 static ssize_t rvu_dbg_npc_rx_miss_stats_display(struct file *filp,
@@ -1229,6 +1246,7 @@ static ssize_t rvu_dbg_npc_rx_miss_stats_display(struct file *filp,
 
 	return 0;
 }
+
 RVU_DEBUG_FOPS(npc_rx_miss_act, npc_rx_miss_stats_display, NULL);
 
 static void rvu_dbg_npc_init(struct rvu *rvu)
