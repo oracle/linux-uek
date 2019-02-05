@@ -70,8 +70,16 @@ static int rds_loop_xmit(struct rds_connection *conn, struct rds_message *rm,
 
 	BUG_ON(hdr_off || sg || off);
 
+	/* Note: This call to rds_inc_init() initializes the
+	 * rm->m_inc but the embedded rm->m_inc->i_conn is
+	 * the sending conn. (All other call instances embed
+	 * the receiving conn as rm->m_inc->i_conn). Any code
+	 * that uses local/remote struct fields of i_conn to
+	 * imply sending/receiving side needs care!
+	 */
 	rds_inc_init(&rm->m_inc, conn, &conn->c_laddr);
 	/* For the embedded inc. Matching put is in loop_inc_free() */
+
 	rds_message_addref(rm);
 
 	rds_recv_incoming(conn, &conn->c_laddr, &conn->c_faddr, &rm->m_inc,
