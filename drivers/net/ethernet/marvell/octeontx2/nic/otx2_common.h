@@ -374,6 +374,13 @@ static inline void otx2_sync_mbox_bbuf(struct otx2_mbox *mbox, int devid)
 	       hw_mbase + mbox->rx_start, msg_size + msgs_offset);
 }
 
+/* Time to wait before watchdog kicks off.
+ * Due to PSE deadlock errata, XOFF on TL2 transmission
+ * queues takes more time than default watchdog timeout.
+ * Hence setting this value higher.
+ */
+#define OTX2_TX_TIMEOUT		(100000 * HZ)
+
 #define	RVU_PFVF_PF_SHIFT	10
 #define	RVU_PFVF_PF_MASK	0x3F
 #define	RVU_PFVF_FUNC_SHIFT	0
