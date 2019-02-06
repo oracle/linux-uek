@@ -77,7 +77,7 @@ static char *cgx_tx_stats_fields[] = {
 	[CGX_STAT14]	= "Packets sent to a broadcast DMAC",
 	[CGX_STAT15]	= "Packets sent to the multicast DMAC",
 	[CGX_STAT16]	= "Transmit underflow and were truncated",
-	[CGX_STAT17]    = "Control/PAUSE packets sent",
+	[CGX_STAT17]	= "Control/PAUSE packets sent",
 };
 
 #define NDC_MAX_BANK(rvu, blk_addr) (rvu_read64(rvu, \
@@ -742,66 +742,65 @@ create_failed:
 	debugfs_remove_recursive(rvu->rvu_dbg.npa);
 }
 
-static int cgx_print_stats(void *cgxd, int lmac_id)
+static int cgx_print_stats(struct seq_file *s, int lmac_id)
 {
 	struct cgx_link_user_info linfo;
+	void *cgxd = s->private;
 	int stat = 0, err = 0;
 	u64 tx_stat, rx_stat;
 
 	/* Link status */
-	pr_info("\n=======Link Status======\n\n");
+	seq_puts(s, "\n=======Link Status======\n\n");
 	err = cgx_get_link_info(cgxd, lmac_id, &linfo);
 	if (err)
-		pr_info("Failed to read link status\n");
-	pr_info("\nLink is %s %d Mbps\n\n",
-		linfo.link_up ? "UP" : "DOWN", linfo.speed);
+		seq_puts(s, "Failed to read link status\n");
+	seq_printf(s, "\nLink is %s %d Mbps\n\n",
+		   linfo.link_up ? "UP" : "DOWN", linfo.speed);
 
 	/* Rx stats */
-	pr_info("\n=======RX_STATS======\n\n");
+	seq_puts(s, "\n=======RX_STATS======\n\n");
 	while (stat < CGX_RX_STATS_COUNT) {
 		err = cgx_get_rx_stats(cgxd, lmac_id, stat, &rx_stat);
 		if (err)
 			return err;
-		pr_info("%s: %llu\n", cgx_rx_stats_fields[stat], rx_stat);
+		seq_printf(s, "%s: %llu\n", cgx_rx_stats_fields[stat], rx_stat);
 		stat++;
 	}
 
 	/* Tx stats */
 	stat = 0;
-	pr_info("\n=======TX_STATS======\n\n");
+	seq_puts(s, "\n=======TX_STATS======\n\n");
 	while (stat < CGX_TX_STATS_COUNT) {
 		err = cgx_get_tx_stats(cgxd, lmac_id, stat, &tx_stat);
 		if (err)
 			return err;
-		pr_info("%s: %llu\n", cgx_tx_stats_fields[stat], tx_stat);
+		seq_printf(s, "%s: %llu\n", cgx_tx_stats_fields[stat], tx_stat);
 		stat++;
 	}
 	return err;
 }
 
-static ssize_t rvu_dbg_cgx_stat_display(struct file *filp,
-					char __user *buffer,
-					size_t count, loff_t *ppos)
+static int rvu_dbg_cgx_stat_display(struct seq_file *filp, void *unused)
 {
-	void *data = filp->private_data;
 	struct dentry *current_dir;
 	int err, lmac_id;
 	char *buf;
 
-	current_dir = filp->f_path.dentry->d_parent;
+	current_dir = filp->file->f_path.dentry->d_parent;
 	buf = strrchr(current_dir->d_name.name, 'c');
 	if (!buf)
-		return count;
+		return -EINVAL;
 
 	err = kstrtoint(buf + 1, 10, &lmac_id);
 	if (!err) {
-		err = cgx_print_stats(data, lmac_id);
+		err = cgx_print_stats(filp, lmac_id);
 		if (err)
 			return err;
 	}
 	return err;
 }
-RVU_DEBUG_FOPS(cgx_stat, cgx_stat_display, NULL);
+
+RVU_DEBUG_SEQ_FOPS(cgx_stat, cgx_stat_display, NULL);
 
 static void rvu_dbg_cgx_init(struct rvu *rvu)
 {
