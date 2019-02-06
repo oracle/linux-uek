@@ -1,4 +1,4 @@
 # SPDX-License-Identifier: GPL-2.0
 obj-$(CONFIG_CRYPTO_DEV_CPT) += common/
 obj-$(CONFIG_CRYPTO_DEV_OCTEONTX_CPT) += 8x/
-obj-$(CONFIG_CRYPTO_DEV_OCTEONTX_CPT) += 9x/
+obj-$(CONFIG_CRYPTO_DEV_OCTEONTX2_CPT) += 9x/
