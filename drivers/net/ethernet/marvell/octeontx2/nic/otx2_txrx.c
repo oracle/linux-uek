@@ -783,15 +783,17 @@ bool otx2_sq_append_skb(struct net_device *netdev, struct otx2_snd_queue *sq,
 {
 	struct netdev_queue *txq = netdev_get_tx_queue(netdev, qidx);
 	struct otx2_nic *pfvf = netdev_priv(netdev);
+	int offset, num_segs, free_sqe;
 	struct nix_sqe_hdr_s *sqe_hdr;
-	int offset, num_segs;
 
 	/* Check if there is room for new SQE.
 	 * 'Num of SQBs freed to SQ's pool - SQ's Aura count'
 	 * will give free SQE count.
 	 */
-	if (((sq->num_sqbs - *sq->aura_fc_addr) * sq->sqe_per_sqb) <
-	    otx2_get_sqe_count(pfvf, skb))
+	free_sqe = (sq->num_sqbs - *sq->aura_fc_addr) * sq->sqe_per_sqb;
+
+	if (free_sqe < sq->sqe_thresh ||
+	    free_sqe < otx2_get_sqe_count(pfvf, skb))
 		goto fail;
 
 	num_segs = skb_shinfo(skb)->nr_frags + 1;
