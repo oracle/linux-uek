@@ -244,6 +244,8 @@ struct ib_cq *mlx4_ib_create_cq(struct ib_device *ibdev,
 	if (dev->eq_table) {
 		vector = dev->eq_table[mlx4_choose_vector(dev->dev, vector,
 							  ibdev->num_comp_vectors)];
+	} else {
+		vector = mlx4_choose_vector(dev->dev, vector, ibdev->num_comp_vectors);
 	}
 
 	cq->vector = vector;
