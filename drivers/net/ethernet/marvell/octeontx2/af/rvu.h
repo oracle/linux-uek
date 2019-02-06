@@ -37,6 +37,12 @@
 #define RVU_PFVF_FUNC_MASK	0x3FF
 
 #ifdef CONFIG_DEBUG_FS
+struct dump_ctx {
+	int	lf;
+	int	id;
+	bool	all;
+};
+
 struct rvu_debugfs {
 	struct dentry *root;
 	struct dentry *cgx_root;
@@ -48,6 +54,9 @@ struct rvu_debugfs {
 	struct dentry *sso;
 	struct dentry *sso_hwgrp;
 	struct dentry *sso_hws;
+	struct dump_ctx npa_aura_ctx;
+	struct dump_ctx npa_pool_ctx;
+	int npa_qsize_id;
 };
 #endif
 

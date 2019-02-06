@@ -14,6 +14,7 @@
 #include <linux/debugfs.h>
 #include <linux/module.h>
 #include <linux/pci.h>
+#include <linux/string.h>
 
 #include "rvu_struct.h"
 #include "rvu_reg.h"
@@ -83,6 +84,22 @@ static char *cgx_tx_stats_fields[] = {
 		blk_addr, NDC_AF_CONST) & 0xFF)
 
 #define rvu_dbg_NULL NULL
+#define rvu_dbg_open_NULL NULL
+
+#define RVU_DEBUG_SEQ_FOPS(name, read_op, write_op)	\
+static int rvu_dbg_open_##name(struct inode *inode, struct file *file) \
+{ \
+	return single_open(file, rvu_dbg_##read_op, inode->i_private); \
+} \
+static const struct file_operations rvu_dbg_##name##_fops = { \
+	.owner		= THIS_MODULE, \
+	.open		= rvu_dbg_open_##name, \
+	.read		= seq_read, \
+	.write		= rvu_dbg_##write_op, \
+	.llseek		= seq_lseek, \
+	.release	= single_release, \
+}
+
 #define RVU_DEBUG_FOPS(name, read_op, write_op) \
 static const struct file_operations rvu_dbg_##name##_fops = { \
 	.owner = THIS_MODULE, \
@@ -175,37 +192,97 @@ static ssize_t rvu_dbg_rsrc_attach_status(struct file *filp,
 	*ppos = off;
 	return off;
 }
+
 RVU_DEBUG_FOPS(rsrc_status, rsrc_attach_status, NULL);
+
+static bool rvu_dbg_is_valid_lf(struct rvu *rvu, int blktype, int lf,
+				u16 *pcifunc)
+{
+	struct rvu_block *block;
+	struct rvu_hwinfo *hw;
+	int blkaddr;
+
+	blkaddr = rvu_get_blkaddr(rvu, blktype, 0);
+	if (blkaddr < 0) {
+		dev_warn(rvu->dev, "Invalid blktype\n");
+		return false;
+	}
+
+	hw = rvu->hw;
+	block = &hw->block[blktype];
+
+	if (lf < 0 || lf >= block->lf.max) {
+		dev_warn(rvu->dev, "Invalid LF: valid range: 0-%d\n",
+			 block->lf.max - 1);
+		return false;
+	}
+
+	*pcifunc = block->fn_map[lf];
+	if (!*pcifunc) {
+		dev_warn(rvu->dev,
+			 "This LF is not attached to any RVU PFFUNC\n");
+		return false;
+	}
+	return true;
+}
 
 /* The 'qsize' entry dumps current Aura/Pool context Qsize
  * and each context's current enable/disable status in a bitmap.
  */
-static ssize_t rvu_dbg_npa_qsize_display(struct file *filp,
-					 const char __user *buffer,
-					 size_t count, loff_t *ppos)
+static int rvu_dbg_npa_qsize_display(struct seq_file *m, void *unsused)
 {
-	char *cmd_buf, *cmd_buf_tmp, *buf, *subtoken;
-	struct rvu *rvu = filp->private_data;
-	struct rvu_hwinfo *hw = rvu->hw;
-	struct rvu_block *block;
 	struct rvu_pfvf *pfvf;
-	int bytes_not_copied;
-	u64 pcifunc;
+	struct rvu *rvu;
+	u16 pcifunc;
+	char *buf;
+
+	rvu = m->private;
+
+	if (!rvu_dbg_is_valid_lf(rvu, BLKTYPE_NPA, rvu->rvu_dbg.npa_qsize_id,
+				 &pcifunc))
+		return -EINVAL;
+
+	pfvf = rvu_get_pfvf(rvu, pcifunc);
+	buf = kmalloc(PAGE_SIZE, GFP_KERNEL);
+	if (!buf)
+		return -ENOMEM;
+
+	if (!pfvf->aura_ctx) {
+		seq_puts(m, "Aura context is not initialized\n");
+	} else {
+		bitmap_print_to_pagebuf(false, buf, pfvf->aura_bmap,
+					pfvf->aura_ctx->qsize);
+		seq_printf(m, "Aura count : %d\n", pfvf->aura_ctx->qsize);
+		seq_printf(m, "Aura context ena/dis bitmap : %s\n", buf);
+	}
+
+	if (!pfvf->pool_ctx) {
+		seq_puts(m, "Pool context is not initialized\n");
+	} else {
+		bitmap_print_to_pagebuf(false, buf, pfvf->pool_bmap,
+					pfvf->pool_ctx->qsize);
+		seq_printf(m, "Pool count : %d\n", pfvf->pool_ctx->qsize);
+		seq_printf(m, "Pool context ena/dis bitmap : %s\n", buf);
+	}
+	kfree(buf);
+	return 0;
+}
+
+static ssize_t rvu_dbg_npa_qsize_write(struct file *filp,
+				       const char __user *buffer,
+				       size_t count, loff_t *ppos)
+{
+	struct seq_file *seqfile = filp->private_data;
+	char *cmd_buf, *cmd_buf_tmp, *subtoken;
+	struct rvu *rvu = seqfile->private;
+	u16 pcifunc;
 	int npalf;
 	int ret;
 
-	/* don't allow partial writes */
-	if (*ppos != 0)
-		return 0;
+	cmd_buf = memdup_user(buffer, count);
+	if (IS_ERR(cmd_buf))
+		return -ENOMEM;
 
-	cmd_buf = kzalloc(count + 1, GFP_KERNEL);
-	if (!cmd_buf)
-		return count;
-	bytes_not_copied = copy_from_user(cmd_buf, buffer, count);
-	if (bytes_not_copied) {
-		kfree(cmd_buf);
-		return -EFAULT;
-	}
 	cmd_buf[count] = '\0';
 
 	cmd_buf_tmp = strchr(cmd_buf, '\n');
@@ -213,6 +290,7 @@ static ssize_t rvu_dbg_npa_qsize_display(struct file *filp,
 		*cmd_buf_tmp = '\0';
 		count = cmd_buf_tmp - cmd_buf + 1;
 	}
+
 	cmd_buf_tmp = cmd_buf;
 	subtoken = strsep(&cmd_buf, " ");
 	ret = subtoken ? kstrtoint(subtoken, 10, &npalf) : -EINVAL;
@@ -220,175 +298,145 @@ static ssize_t rvu_dbg_npa_qsize_display(struct file *filp,
 		ret = -EINVAL;
 
 	if (!strncmp(subtoken, "help", 4) || ret < 0) {
-		pr_info("Use echo <npalf > qsize\n");
-		goto npa_qsize_display_done;
+		dev_info(rvu->dev, "Use echo <npalf > qsize\n");
+		goto npa_qsize_write_done;
 	}
 
-	block = &hw->block[BLKTYPE_NPA];
-	if (npalf < 0 || npalf >= block->lf.max) {
-		pr_info("Invalid NPALF, valid range is 0-%d\n",
-			block->lf.max - 1);
-		goto npa_qsize_display_done;
-	}
+	if (!rvu_dbg_is_valid_lf(rvu, BLKTYPE_NPA, npalf, &pcifunc))
+		goto npa_qsize_write_done;
 
-	pcifunc = block->fn_map[npalf];
-	if (!pcifunc) {
-		pr_info("This NPALF is not attached to any RVU PFFUNC\n");
-		goto npa_qsize_display_done;
-	}
+	rvu->rvu_dbg.npa_qsize_id = npalf;
 
-	pfvf = rvu_get_pfvf(rvu, pcifunc);
-	buf = kmalloc(PAGE_SIZE, GFP_KERNEL);
-	if (!buf) {
-		pr_info("failed to allocate memory\n");
-		goto npa_qsize_display_done;
-	}
-
-	if (!pfvf->aura_ctx) {
-		pr_info("Aura context is not initialized\n");
-	} else {
-		bitmap_print_to_pagebuf(false, buf, pfvf->aura_bmap,
-					pfvf->aura_ctx->qsize);
-		pr_info("Aura count  : %d\n", pfvf->aura_ctx->qsize);
-		pr_info("Aura context ena/dis bitmap : %s\n", buf);
-	}
-
-	if (!pfvf->pool_ctx) {
-		pr_info("Pool context is not initialized\n");
-	} else {
-		bitmap_print_to_pagebuf(false, buf, pfvf->pool_bmap,
-					pfvf->pool_ctx->qsize);
-		pr_info("Pool count  : %d\n", pfvf->pool_ctx->qsize);
-		pr_info("Pool context ena/dis bitmap : %s\n", buf);
-	}
-	kfree(buf);
-npa_qsize_display_done:
+npa_qsize_write_done:
 	kfree(cmd_buf_tmp);
-	return count;
+	return ret ? ret : count;
 }
 
 /* Dumps given NPA Aura's context */
-static void print_npa_aura_ctx(struct npa_aq_enq_rsp *rsp)
+static void print_npa_aura_ctx(struct seq_file *m, struct npa_aq_enq_rsp *rsp)
 {
 	struct npa_aura_s *aura = &rsp->aura;
 
-	pr_info("W0: Pool addr\t\t%llx\n", aura->pool_addr);
+	seq_printf(m, "W0: Pool addr\t\t%llx\n", aura->pool_addr);
 
-	pr_info("W1: ena\t\t\t%d\nW1: pool caching\t\t%d\n",
-		aura->ena, aura->pool_caching);
-	pr_info("W1: pool way mask\t%d\nW1: avg con\t\t%d\n",
-		aura->pool_way_mask, aura->avg_con);
-	pr_info("W1: pool drop ena\t%d\nW1: aura drop ena\t%d\n",
-		aura->pool_drop_ena, aura->aura_drop_ena);
-	pr_info("W1: bp_ena\t\t%d\nW1: aura drop\t\t%d\n",
-		aura->bp_ena, aura->aura_drop);
-	pr_info("W1: aura shift\t\t%d\nW1: avg_level\t\t%d\n",
-		aura->shift, aura->avg_level);
+	seq_printf(m, "W1: ena\t\t\t%d\nW1: pool caching\t%d\n",
+		   aura->ena, aura->pool_caching);
+	seq_printf(m, "W1: pool way mask\t%d\nW1: avg con\t\t%d\n",
+		   aura->pool_way_mask, aura->avg_con);
+	seq_printf(m, "W1: pool drop ena\t%d\nW1: aura drop ena\t%d\n",
+		   aura->pool_drop_ena, aura->aura_drop_ena);
+	seq_printf(m, "W1: bp_ena\t\t%d\nW1: aura drop\t\t%d\n",
+		   aura->bp_ena, aura->aura_drop);
+	seq_printf(m, "W1: aura shift\t\t%d\nW1: avg_level\t\t%d\n",
+		   aura->shift, aura->avg_level);
 
-	pr_info("W2: count\t\t%llu\nW2: nix0_bpid\t\t%d\nW2: nix1_bpid\t\t%d\n",
-		(u64)aura->count, aura->nix0_bpid, aura->nix1_bpid);
+	seq_printf(m, "W2: count\t\t%llu\nW2: nix0_bpid\t\t%d\nW2: nix1_bpid\t\t%d\n",
+		   (u64)aura->count, aura->nix0_bpid, aura->nix1_bpid);
 
-	pr_info("W3: limit\t\t%llu\nW3: bp\t\t\t%d\nW3: fc_ena\t\t%d\n",
-		(u64)aura->limit, aura->bp, aura->fc_ena);
-	pr_info("W3: fc_up_crossing\t%d\nW3: fc_stype\t\t%d\n",
-		aura->fc_up_crossing, aura->fc_stype);
-	pr_info("W3: fc_hyst_bits\t\t%d\n", aura->fc_hyst_bits);
+	seq_printf(m, "W3: limit\t\t%llu\nW3: bp\t\t\t%d\nW3: fc_ena\t\t%d\n",
+		   (u64)aura->limit, aura->bp, aura->fc_ena);
+	seq_printf(m, "W3: fc_up_crossing\t%d\nW3: fc_stype\t\t%d\n",
+		   aura->fc_up_crossing, aura->fc_stype);
+	seq_printf(m, "W3: fc_hyst_bits\t%d\n", aura->fc_hyst_bits);
 
-	pr_info("W4: fc_addr\t\t%llx\n", aura->fc_addr);
+	seq_printf(m, "W4: fc_addr\t\t%llx\n", aura->fc_addr);
 
-	pr_info("W5: pool_drop\t\t%d\nW5: update_time\t\t%d\n",
-		aura->pool_drop, aura->update_time);
-	pr_info("W5: err_int \t\t%d\nW5: err_int_ena\t\t%d\n",
-		aura->err_int, aura->err_int_ena);
-	pr_info("W5: thresh_int\t\t%d\nW5: thresh_int_ena \t%d\n",
-		aura->thresh_int, aura->thresh_int_ena);
-	pr_info("W5: thresh_up\t\t%d\nW5: thresh_qint_idx\t%d\n",
-		aura->thresh_up, aura->thresh_qint_idx);
-	pr_info("W5: err_qint_idx \t%d\n", aura->err_qint_idx);
+	seq_printf(m, "W5: pool_drop\t\t%d\nW5: update_time\t\t%d\n",
+		   aura->pool_drop, aura->update_time);
+	seq_printf(m, "W5: err_int \t\t%d\nW5: err_int_ena\t\t%d\n",
+		   aura->err_int, aura->err_int_ena);
+	seq_printf(m, "W5: thresh_int\t\t%d\nW5: thresh_int_ena \t%d\n",
+		   aura->thresh_int, aura->thresh_int_ena);
+	seq_printf(m, "W5: thresh_up\t\t%d\nW5: thresh_qint_idx\t%d\n",
+		   aura->thresh_up, aura->thresh_qint_idx);
+	seq_printf(m, "W5: err_qint_idx \t%d\n", aura->err_qint_idx);
 
-	pr_info("W6: thresh\t\t%llu\n", (u64)aura->thresh);
+	seq_printf(m, "W6: thresh\t\t%llu\n", (u64)aura->thresh);
 }
 
 /* Dumps given NPA Pool's context */
-static void print_npa_pool_ctx(struct npa_aq_enq_rsp *rsp)
+static void print_npa_pool_ctx(struct seq_file *m, struct npa_aq_enq_rsp *rsp)
 {
 	struct npa_pool_s *pool = &rsp->pool;
 
-	pr_info("W0: Stack base\t\t%llx\n", pool->stack_base);
+	seq_printf(m, "W0: Stack base\t\t%llx\n", pool->stack_base);
 
-	pr_info("W1: ena \t\t\t%d\nW1: nat_align \t\t%d\n",
-		pool->ena, pool->nat_align);
-	pr_info("W1: stack_caching\t%d\nW1: stack_way_mask\t%d\n",
-		pool->stack_caching, pool->stack_way_mask);
-	pr_info("W1: buf_offset\t\t%d\nW1: buf_size\t\t%d\n",
-		pool->buf_offset, pool->buf_size);
+	seq_printf(m, "W1: ena \t\t%d\nW1: nat_align \t\t%d\n",
+		   pool->ena, pool->nat_align);
+	seq_printf(m, "W1: stack_caching\t%d\nW1: stack_way_mask\t%d\n",
+		   pool->stack_caching, pool->stack_way_mask);
+	seq_printf(m, "W1: buf_offset\t\t%d\nW1: buf_size\t\t%d\n",
+		   pool->buf_offset, pool->buf_size);
 
-	pr_info("W2: stack_max_pages \t%d\nW2: stack_pages\t\t%d\n",
-		pool->stack_max_pages, pool->stack_pages);
+	seq_printf(m, "W2: stack_max_pages \t%d\nW2: stack_pages\t\t%d\n",
+		   pool->stack_max_pages, pool->stack_pages);
 
-	pr_info("W3: op_pc \t\t%llu\n", (u64)pool->op_pc);
+	seq_printf(m, "W3: op_pc \t\t%llu\n", (u64)pool->op_pc);
 
-	pr_info("W4: stack_offset\t\t%d\nW4: shift\t\t%d\nW4: avg_level\t\t%d\n",
-		pool->stack_offset, pool->shift, pool->avg_level);
-	pr_info("W4: avg_con \t\t%d\nW4: fc_ena\t\t%d\nW4: fc_stype\t\t%d\n",
-		pool->avg_con, pool->fc_ena, pool->fc_stype);
-	pr_info("W4: fc_hyst_bits\t\t%d\nW4: fc_up_crossing\t%d\n",
-		pool->fc_hyst_bits, pool->fc_up_crossing);
-	pr_info("W4: update_time\t\t%d\n", pool->update_time);
+	seq_printf(m, "W4: stack_offset\t%d\nW4: shift\t\t%d\nW4: avg_level\t\t%d\n",
+		   pool->stack_offset, pool->shift, pool->avg_level);
+	seq_printf(m, "W4: avg_con \t\t%d\nW4: fc_ena\t\t%d\nW4: fc_stype\t\t%d\n",
+		   pool->avg_con, pool->fc_ena, pool->fc_stype);
+	seq_printf(m, "W4: fc_hyst_bits\t%d\nW4: fc_up_crossing\t%d\n",
+		   pool->fc_hyst_bits, pool->fc_up_crossing);
+	seq_printf(m, "W4: update_time\t\t%d\n", pool->update_time);
 
-	pr_info("W5: fc_addr\t\t%llx\n", pool->fc_addr);
+	seq_printf(m, "W5: fc_addr\t\t%llx\n", pool->fc_addr);
 
-	pr_info("W6: ptr_start\t\t%llx\n", pool->ptr_start);
+	seq_printf(m, "W6: ptr_start\t\t%llx\n", pool->ptr_start);
 
-	pr_info("W7: ptr_end\t\t%llx\n", pool->ptr_end);
+	seq_printf(m, "W7: ptr_end\t\t%llx\n", pool->ptr_end);
 
-	pr_info("W8: err_int\t\t%d\nW8: err_int_ena\t\t%d\n",
-		pool->err_int, pool->err_int_ena);
-	pr_info("W8: thresh_int\t\t%d\n", pool->thresh_int);
-	pr_info("W8: thresh_int_ena\t%d\nW8: thresh_up\t\t%d\n",
-		pool->thresh_int_ena, pool->thresh_up);
-	pr_info("W8: thresh_qint_idx\t%d\nW8: err_qint_idx\t\t%d\n",
-		pool->thresh_qint_idx, pool->err_qint_idx);
+	seq_printf(m, "W8: err_int\t\t%d\nW8: err_int_ena\t\t%d\n",
+		   pool->err_int, pool->err_int_ena);
+	seq_printf(m, "W8: thresh_int\t\t%d\n", pool->thresh_int);
+	seq_printf(m, "W8: thresh_int_ena\t%d\nW8: thresh_up\t\t%d\n",
+		   pool->thresh_int_ena, pool->thresh_up);
+	seq_printf(m, "W8: thresh_qint_idx\t%d\nW8: err_qint_idx\t\t%d\n",
+		   pool->thresh_qint_idx, pool->err_qint_idx);
 }
 
 /* Reads aura/pool's ctx from admin queue */
-static void read_npa_ctx(struct rvu *rvu, bool all,
-			 int npalf, int id, int ctype)
+static int rvu_dbg_npa_ctx_display(struct seq_file *m, void *unused, int ctype)
 {
-	void (*print_npa_ctx)(struct npa_aq_enq_rsp *rsp);
-	struct rvu_hwinfo *hw = rvu->hw;
+	void (*print_npa_ctx)(struct seq_file *m, struct npa_aq_enq_rsp *rsp);
 	struct npa_aq_enq_req aq_req;
 	struct npa_aq_enq_rsp rsp;
-	struct rvu_block *block;
 	struct rvu_pfvf *pfvf;
 	int aura, rc, max_id;
-	u64 pcifunc;
-	int blkaddr;
+	int npalf, id, all;
+	struct rvu *rvu;
+	u16 pcifunc;
 
-	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NPA, 0);
-	if (blkaddr < 0)
-		return;
+	rvu = m->private;
 
-	block = &hw->block[blkaddr];
-	if (npalf < 0 || npalf >= block->lf.max) {
-		pr_info("Invalid NPALF, valid range is 0-%d\n",
-			block->lf.max - 1);
-		return;
+	switch (ctype) {
+	case NPA_AQ_CTYPE_AURA:
+		npalf = rvu->rvu_dbg.npa_aura_ctx.lf;
+		id = rvu->rvu_dbg.npa_aura_ctx.id;
+		all = rvu->rvu_dbg.npa_aura_ctx.all;
+		break;
+
+	case NPA_AQ_CTYPE_POOL:
+		npalf = rvu->rvu_dbg.npa_pool_ctx.lf;
+		id = rvu->rvu_dbg.npa_pool_ctx.id;
+		all = rvu->rvu_dbg.npa_pool_ctx.all;
+		break;
+
+	default:
+		return -EINVAL;
 	}
 
-	pcifunc = block->fn_map[npalf];
-	if (!pcifunc) {
-		pr_info("This NPALF is not attached to any RVU PFFUNC\n");
-		return;
-	}
+	if (!rvu_dbg_is_valid_lf(rvu, BLKTYPE_NPA, npalf, &pcifunc))
+		return -EINVAL;
 
 	pfvf = rvu_get_pfvf(rvu, pcifunc);
 	if (ctype == NPA_AQ_CTYPE_AURA && !pfvf->aura_ctx) {
-		pr_info("Aura context is not initialized\n");
-		return;
+		seq_puts(m, "Aura context is not initialized\n");
+		return -EINVAL;
 	} else if (ctype == NPA_AQ_CTYPE_POOL && !pfvf->pool_ctx) {
-		pr_info("Pool context is not initialized\n");
-		return;
+		seq_puts(m, "Pool context is not initialized\n");
+		return -EINVAL;
 	}
 
 	memset(&aq_req, 0, sizeof(struct npa_aq_enq_req));
@@ -396,18 +444,18 @@ static void read_npa_ctx(struct rvu *rvu, bool all,
 	aq_req.ctype = ctype;
 	aq_req.op = NPA_AQ_INSTOP_READ;
 	if (ctype == NPA_AQ_CTYPE_AURA) {
-		max_id =  pfvf->aura_ctx->qsize;
+		max_id = pfvf->aura_ctx->qsize;
 		print_npa_ctx = print_npa_aura_ctx;
 	} else {
-		max_id =  pfvf->pool_ctx->qsize;
+		max_id = pfvf->pool_ctx->qsize;
 		print_npa_ctx = print_npa_pool_ctx;
 	}
 
 	if (id < 0 || id >= max_id) {
-		pr_info("Invalid %s, valid range is 0-%d\n",
-			(ctype == NPA_AQ_CTYPE_AURA) ? "aura" : "pool",
+		seq_printf(m, "Invalid %s, valid range is 0-%d\n",
+			   (ctype == NPA_AQ_CTYPE_AURA) ? "aura" : "pool",
 			max_id - 1);
-		return;
+		return -EINVAL;
 	}
 
 	if (all)
@@ -417,15 +465,67 @@ static void read_npa_ctx(struct rvu *rvu, bool all,
 
 	for (aura = id; aura < max_id; aura++) {
 		aq_req.aura_id = aura;
-		pr_info("======%s : %d=======\n",
-			(ctype == NPA_AQ_CTYPE_AURA) ? "AURA" : "POOL",
+		seq_printf(m, "======%s : %d=======\n",
+			   (ctype == NPA_AQ_CTYPE_AURA) ? "AURA" : "POOL",
 			aq_req.aura_id);
 		rc = rvu_npa_aq_enq_inst(rvu, &aq_req, &rsp);
 		if (rc) {
-			pr_info("Failed to read context\n");
+			seq_puts(m, "Failed to read context\n");
+			return -EINVAL;
+		}
+		print_npa_ctx(m, &rsp);
+	}
+	return 0;
+}
+
+static void write_npa_ctx(struct rvu *rvu, bool all,
+			  int npalf, int id, int ctype)
+{
+	struct rvu_pfvf *pfvf;
+	int max_id;
+	u16 pcifunc;
+
+	if (!rvu_dbg_is_valid_lf(rvu, BLKTYPE_NPA, npalf, &pcifunc))
+		return;
+
+	pfvf = rvu_get_pfvf(rvu, pcifunc);
+
+	if (ctype == NPA_AQ_CTYPE_AURA) {
+		if (!pfvf->aura_ctx) {
+			dev_warn(rvu->dev, "Aura context is not initialized\n");
 			return;
 		}
-		print_npa_ctx(&rsp);
+		max_id = pfvf->aura_ctx->qsize;
+	} else if (ctype == NPA_AQ_CTYPE_POOL) {
+		if (!pfvf->pool_ctx) {
+			dev_warn(rvu->dev, "Pool context is not initialized\n");
+			return;
+		}
+		max_id = pfvf->pool_ctx->qsize;
+	}
+
+	if (id < 0 || id >= max_id) {
+		dev_warn(rvu->dev, "Invalid %s, valid range is 0-%d\n",
+			 (ctype == NPA_AQ_CTYPE_AURA) ? "aura" : "pool",
+			max_id - 1);
+		return;
+	}
+
+	switch (ctype) {
+	case NPA_AQ_CTYPE_AURA:
+		rvu->rvu_dbg.npa_aura_ctx.lf = npalf;
+		rvu->rvu_dbg.npa_aura_ctx.id = id;
+		rvu->rvu_dbg.npa_aura_ctx.all = all;
+		break;
+
+	case NPA_AQ_CTYPE_POOL:
+		rvu->rvu_dbg.npa_pool_ctx.lf = npalf;
+		rvu->rvu_dbg.npa_pool_ctx.id = id;
+		rvu->rvu_dbg.npa_pool_ctx.all = all;
+		break;
+
+	default:
+		return;
 	}
 }
 
@@ -467,13 +567,14 @@ static int parse_cmd_buffer_ctx(char *cmd_buf, size_t *count,
 	return ret;
 }
 
-static ssize_t rvu_dbg_npa_ctx_display(struct file *filp,
-				       const char __user *buffer,
-				       size_t count, loff_t *ppos, int ctype)
+static ssize_t rvu_dbg_npa_ctx_write(struct file *filp,
+				     const char __user *buffer,
+				     size_t count, loff_t *ppos, int ctype)
 {
-	char *cmd_buf, *ctype_string = (ctype ==  NPA_AQ_CTYPE_AURA) ?
+	char *cmd_buf, *ctype_string = (ctype == NPA_AQ_CTYPE_AURA) ?
 					"aura" : "pool";
-	struct rvu *rvu = filp->private_data;
+	struct seq_file *seqfp = filp->private_data;
+	struct rvu *rvu = seqfp->private;
 	int npalf, id = 0;
 	bool all = false;
 
@@ -481,47 +582,58 @@ static ssize_t rvu_dbg_npa_ctx_display(struct file *filp,
 		return 0;
 
 	cmd_buf = kzalloc(count + 1, GFP_KERNEL);
-
 	if (!cmd_buf)
 		return count;
+
 	if (parse_cmd_buffer_ctx(cmd_buf, &count, buffer,
 				 &npalf, &id, &all) < 0) {
-		pr_info("Usage: echo <npalf> [%s number/all] > %s_ctx\n",
-			ctype_string, ctype_string);
+		dev_info(rvu->dev, "Usage: echo <npalf> [%s number/all] > %s_ctx\n",
+			 ctype_string, ctype_string);
 	} else {
-		read_npa_ctx(rvu, all, npalf, id, ctype);
+		write_npa_ctx(rvu, all, npalf, id, ctype);
 	}
 
 	kfree(cmd_buf);
 	return count;
 }
 
-RVU_DEBUG_FOPS(npa_qsize, NULL, npa_qsize_display);
+RVU_DEBUG_SEQ_FOPS(npa_qsize, npa_qsize_display, npa_qsize_write);
 
-static ssize_t rvu_dbg_npa_aura_ctx_display(struct file *filp,
-					    const char __user *buffer,
-					    size_t count, loff_t *ppos)
+static ssize_t rvu_dbg_npa_aura_ctx_write(struct file *filp,
+					  const char __user *buffer,
+					  size_t count, loff_t *ppos)
 {
-	return  rvu_dbg_npa_ctx_display(filp, buffer, count, ppos,
-					NPA_AQ_CTYPE_AURA);
+	return rvu_dbg_npa_ctx_write(filp, buffer, count, ppos,
+				     NPA_AQ_CTYPE_AURA);
 }
 
-RVU_DEBUG_FOPS(npa_aura_ctx,  NULL, npa_aura_ctx_display);
-
-static ssize_t rvu_dbg_npa_pool_ctx_display(struct file *filp,
-					    const char __user *buffer,
-					    size_t count, loff_t *ppos)
+static int rvu_dbg_npa_aura_ctx_display(struct seq_file *filp, void *unused)
 {
-	return  rvu_dbg_npa_ctx_display(filp, buffer, count, ppos,
-					NPA_AQ_CTYPE_POOL);
+	return rvu_dbg_npa_ctx_display(filp, unused, NPA_AQ_CTYPE_AURA);
 }
 
-RVU_DEBUG_FOPS(npa_pool_ctx, NULL, npa_pool_ctx_display);
+RVU_DEBUG_SEQ_FOPS(npa_aura_ctx, npa_aura_ctx_display, npa_aura_ctx_write);
 
-static void ndc_cache_stats(struct rvu *rvu, int blk_addr,
+static ssize_t rvu_dbg_npa_pool_ctx_write(struct file *filp,
+					  const char __user *buffer,
+					  size_t count, loff_t *ppos)
+{
+	return rvu_dbg_npa_ctx_write(filp, buffer, count, ppos,
+				     NPA_AQ_CTYPE_POOL);
+}
+
+static int rvu_dbg_npa_pool_ctx_display(struct seq_file *filp, void *unused)
+{
+	return rvu_dbg_npa_ctx_display(filp, unused, NPA_AQ_CTYPE_POOL);
+}
+
+RVU_DEBUG_SEQ_FOPS(npa_pool_ctx, npa_pool_ctx_display, npa_pool_ctx_write);
+
+static void ndc_cache_stats(struct seq_file *s, int blk_addr,
 			    int ctype, int transaction)
 {
 	u64 req, out_req, lat, cant_alloc;
+	struct rvu *rvu = s->private;
 	int port;
 
 	for (port = 0; port < NDC_MAX_PORT; port++) {
@@ -535,64 +647,60 @@ static void ndc_cache_stats(struct rvu *rvu, int blk_addr,
 		cant_alloc = rvu_read64(rvu, blk_addr,
 					NDC_AF_PORTX_RTX_CANT_ALLOC_PC
 					(port, transaction));
-		pr_info("\nPort:%d\n", port);
-		pr_info("\tTotal Requests:\t\t%lld\n", req);
-		pr_info("\tTotal Time Taken:\t%lld cycles\n", lat);
-		pr_info("\tAvg Latency:\t\t%lld cycles\n", lat / req);
-		pr_info("\tOutstanding Requests:\t%lld\n", out_req);
-		pr_info("\tCant Alloc Requests:\t%lld\n", cant_alloc);
+		seq_printf(s, "\nPort:%d\n", port);
+		seq_printf(s, "\tTotal Requests:\t\t%lld\n", req);
+		seq_printf(s, "\tTotal Time Taken:\t%lld cycles\n", lat);
+		seq_printf(s, "\tAvg Latency:\t\t%lld cycles\n", lat / req);
+		seq_printf(s, "\tOutstanding Requests:\t%lld\n", out_req);
+		seq_printf(s, "\tCant Alloc Requests:\t%lld\n", cant_alloc);
 	}
 }
 
-static int ndc_blk_cache_stats(struct rvu *rvu, int idx, int blk_addr)
+static int ndc_blk_cache_stats(struct seq_file *s, int idx, int blk_addr)
 {
-	pr_info("\n***** CACHE mode read stats *****\n\n");
-	ndc_cache_stats(rvu, blk_addr, CACHING, NDC_READ_TRANS);
-	pr_info("\n***** CACHE mode write stats *****\n\n");
-	ndc_cache_stats(rvu, blk_addr, CACHING, NDC_WRITE_TRANS);
-	pr_info("\n***** BY-PASS mode read stats *****\n\n");
-	ndc_cache_stats(rvu, blk_addr, BYPASS, NDC_READ_TRANS);
-	pr_info("\n***** BY-PASS mode write stats *****\n\n");
-	ndc_cache_stats(rvu, blk_addr, BYPASS, NDC_WRITE_TRANS);
+	seq_puts(s, "\n***** CACHE mode read stats *****\n");
+	ndc_cache_stats(s, blk_addr, CACHING, NDC_READ_TRANS);
+	seq_puts(s, "\n***** CACHE mode write stats *****\n");
+	ndc_cache_stats(s, blk_addr, CACHING, NDC_WRITE_TRANS);
+	seq_puts(s, "\n***** BY-PASS mode read stats *****\n");
+	ndc_cache_stats(s, blk_addr, BYPASS, NDC_READ_TRANS);
+	seq_puts(s, "\n***** BY-PASS mode write stats *****\n");
+	ndc_cache_stats(s, blk_addr, BYPASS, NDC_WRITE_TRANS);
 	return 0;
 }
 
-static ssize_t rvu_dbg_npa_ndc_cache_display(struct file *filp,
-					     char __user *buffer,
-					     size_t count, loff_t *ppos)
+static int rvu_dbg_npa_ndc_cache_display(struct seq_file *filp, void *unused)
 {
-	return ndc_blk_cache_stats(filp->private_data, NPA0_U,
-				   BLKADDR_NDC_NPA0);
+	return ndc_blk_cache_stats(filp, NPA0_U, BLKADDR_NDC_NPA0);
 }
 
-RVU_DEBUG_FOPS(npa_ndc_cache, npa_ndc_cache_display, NULL);
+RVU_DEBUG_SEQ_FOPS(npa_ndc_cache, npa_ndc_cache_display, NULL);
 
-static int ndc_blk_hits_miss_stats(struct rvu *rvu, int idx, int blk_addr)
+static int ndc_blk_hits_miss_stats(struct seq_file *s, int idx, int blk_addr)
 {
+	struct rvu *rvu = s->private;
 	int bank, max_bank;
 
 	max_bank = NDC_MAX_BANK(rvu, blk_addr);
 	for (bank = 0; bank < max_bank; bank++) {
-		pr_info("BANK:%d\n", bank);
-		pr_info("\tHits:\t%lld\n",
-			(u64)rvu_read64(rvu, blk_addr,
-					NDC_AF_BANKX_HIT_PC(bank)));
-		pr_info("\tMiss:\t%lld\n",
-			(u64)rvu_read64(rvu, blk_addr,
-					NDC_AF_BANKX_MISS_PC(bank)));
+		seq_printf(s, "BANK:%d\n", bank);
+		seq_printf(s, "\tHits:\t%lld\n",
+			   (u64)rvu_read64(rvu, blk_addr,
+			   NDC_AF_BANKX_HIT_PC(bank)));
+		seq_printf(s, "\tMiss:\t%lld\n",
+			   (u64)rvu_read64(rvu, blk_addr,
+			    NDC_AF_BANKX_MISS_PC(bank)));
 	}
 	return 0;
 }
 
-static ssize_t rvu_dbg_npa_ndc_hits_miss_display(struct file *filp,
-						 char __user *buffer,
-						 size_t count, loff_t *ppos)
+static int rvu_dbg_npa_ndc_hits_miss_display(struct seq_file *filp,
+					     void *unused)
 {
-	return ndc_blk_hits_miss_stats(filp->private_data,
-				      NPA0_U, BLKADDR_NDC_NPA0);
+	return ndc_blk_hits_miss_stats(filp, NPA0_U, BLKADDR_NDC_NPA0);
 }
 
-RVU_DEBUG_FOPS(npa_ndc_hits_miss, npa_ndc_hits_miss_display, NULL);
+RVU_DEBUG_SEQ_FOPS(npa_ndc_hits_miss, npa_ndc_hits_miss_display, NULL);
 
 static void rvu_dbg_npa_init(struct rvu *rvu)
 {
@@ -693,7 +801,6 @@ static ssize_t rvu_dbg_cgx_stat_display(struct file *filp,
 	}
 	return err;
 }
-
 RVU_DEBUG_FOPS(cgx_stat, cgx_stat_display, NULL);
 
 static void rvu_dbg_cgx_init(struct rvu *rvu)
