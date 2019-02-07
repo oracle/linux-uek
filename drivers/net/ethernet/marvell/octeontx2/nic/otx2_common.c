@@ -15,6 +15,35 @@
 #include "otx2_common.h"
 #include "otx2_struct.h"
 
+/* Sync MAC address with RVU */
+int otx2_hw_set_mac_addr(struct otx2_nic *pfvf, struct net_device *netdev)
+{
+	struct nix_set_mac_addr *req;
+
+	req = otx2_mbox_alloc_msg_nix_set_mac_addr(&pfvf->mbox);
+	if (!req)
+		return -ENOMEM;
+
+	ether_addr_copy(req->mac_addr, netdev->dev_addr);
+
+	return otx2_sync_mbox_msg(&pfvf->mbox);
+}
+
+int otx2_set_mac_address(struct net_device *netdev, void *p)
+{
+	struct otx2_nic *pfvf = netdev_priv(netdev);
+	struct sockaddr *addr = p;
+
+	if (!is_valid_ether_addr(addr->sa_data))
+		return -EADDRNOTAVAIL;
+
+	memcpy(netdev->dev_addr, addr->sa_data, netdev->addr_len);
+
+	otx2_hw_set_mac_addr(pfvf, netdev);
+
+	return 0;
+}
+
 dma_addr_t otx2_alloc_rbuf(struct otx2_nic *pfvf, struct otx2_pool *pool,
 			   gfp_t gfp)
 {

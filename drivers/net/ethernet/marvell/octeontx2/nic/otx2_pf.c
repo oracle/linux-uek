@@ -499,8 +499,12 @@ static int otx2_open(struct net_device *netdev)
 	}
 
 	/* Check if MAC address from AF is valid or else set a random MAC */
-	if (is_zero_ether_addr(netdev->dev_addr))
+	if (is_zero_ether_addr(netdev->dev_addr)) {
 		eth_hw_addr_random(netdev);
+		err = otx2_hw_set_mac_addr(pf, netdev);
+		if (err)
+			goto err_disable_napi;
+	}
 
 	/* Register CQ IRQ handlers */
 	vec = pf->hw.nix_msixoff + NIX_LF_CINT_VEC_START;
@@ -547,6 +551,7 @@ static int otx2_open(struct net_device *netdev)
 
 err_free_cints:
 	otx2_free_cints(pf, qidx);
+err_disable_napi:
 	otx2_disable_napi(pf);
 	otx2_free_hw_resources(pf);
 err_free_mem:
@@ -602,6 +607,7 @@ static const struct net_device_ops otx2_netdev_ops = {
 	.ndo_open		= otx2_open,
 	.ndo_stop		= otx2_stop,
 	.ndo_start_xmit		= otx2_xmit,
+	.ndo_set_mac_address    = otx2_set_mac_address,
 };
 
 static int otx2_probe(struct pci_dev *pdev, const struct pci_device_id *id)

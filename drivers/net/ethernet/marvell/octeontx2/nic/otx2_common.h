@@ -83,6 +83,7 @@ struct otx2_nic {
 	struct mbox		mbox;
 	struct workqueue_struct *mbox_wq;
 	u8			intf_down;
+
 	u16			pcifunc;
 	u16			rx_chan_base;
 	u16			tx_chan_base;
@@ -286,6 +287,9 @@ static inline int rvu_get_pf(u16 pcifunc)
 /* MSI-X APIs */
 void otx2_free_cints(struct otx2_nic *pfvf, int n);
 void otx2_set_cints_affinity(struct otx2_nic *pfvf);
+
+int otx2_hw_set_mac_addr(struct otx2_nic *pfvf, struct net_device *netdev);
+int otx2_set_mac_address(struct net_device *netdev, void *p);
 
 /* RVU block related APIs */
 int otx2_attach_npa_nix(struct otx2_nic *pfvf);
