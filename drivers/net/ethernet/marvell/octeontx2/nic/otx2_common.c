@@ -157,6 +157,27 @@ int otx2_txsch_alloc(struct otx2_nic *pfvf)
 	return otx2_sync_mbox_msg(&pfvf->mbox);
 }
 
+int otx2_txschq_stop(struct otx2_nic *pfvf)
+{
+	struct nix_txsch_free_req *free_req;
+	int lvl, schq;
+
+	/* Free the transmit schedulers */
+	free_req = otx2_mbox_alloc_msg_nix_txsch_free(&pfvf->mbox);
+	if (!free_req)
+		return -ENOMEM;
+
+	free_req->flags = TXSCHQ_FREE_ALL;
+	WARN_ON(otx2_sync_mbox_msg(&pfvf->mbox));
+
+	/* Clear the txschq list */
+	for (lvl = 0; lvl < NIX_TXSCH_LVL_CNT; lvl++) {
+		for (schq = 0; schq < MAX_TXSCHQ_PER_FUNC; schq++)
+			pfvf->hw.txschq_list[lvl][schq] = 0;
+	}
+	return 0;
+}
+
 static int otx2_rq_init(struct otx2_nic *pfvf, u16 qidx, u16 lpb_aura)
 {
 	struct nix_aq_enq_req *aq;
@@ -345,7 +366,40 @@ int otx2_config_nix(struct otx2_nic *pfvf)
 	return otx2_sync_mbox_msg(&pfvf->mbox);
 }
 
-static void otx2_aura_pool_free(struct otx2_nic *pfvf)
+void otx2_free_aura_ptr(struct otx2_nic *pfvf, int type)
+{
+	int pool_id, pool_start = 0, pool_end = 0, size = 0;
+	u64 iova, pa;
+
+	if (type == AURA_NIX_SQ) {
+		pool_start = otx2_get_pool_idx(pfvf, type, 0);
+		pool_end =  pool_start + pfvf->hw.sqpool_cnt;
+		size = pfvf->hw.sqb_size;
+	}
+	if (type == AURA_NIX_RQ) {
+		pool_start = otx2_get_pool_idx(pfvf, type, 0);
+		pool_end = pfvf->hw.rqpool_cnt;
+		size = RCV_FRAG_LEN;
+	}
+
+	/* Free SQB and RQB pointers from the aura pool */
+	for (pool_id = pool_start; pool_id < pool_end; pool_id++) {
+		iova = otx2_aura_allocptr(pfvf, pool_id);
+		while (iova) {
+			if (type == AURA_NIX_RQ)
+				iova -= OTX2_HEAD_ROOM;
+
+			pa = otx2_iova_to_phys(pfvf->iommu_domain, iova);
+			dma_unmap_page_attrs(pfvf->dev, iova, size,
+					     DMA_FROM_DEVICE,
+					     DMA_ATTR_SKIP_CPU_SYNC);
+			put_page(virt_to_page(phys_to_virt(pa)));
+			iova = otx2_aura_allocptr(pfvf, pool_id);
+		}
+	}
+}
+
+void otx2_aura_pool_free(struct otx2_nic *pfvf)
 {
 	struct otx2_pool *pool;
 	int pool_id;
@@ -652,6 +706,24 @@ int otx2_attach_npa_nix(struct otx2_nic *pfvf)
 		return -EINVAL;
 	}
 	return 0;
+}
+
+void otx2_ctx_disable(struct mbox *mbox, int type, bool npa)
+{
+	struct hwctx_disable_req *req;
+
+	/* Request AQ to disable this context */
+	if (npa)
+		req = otx2_mbox_alloc_msg_npa_hwctx_disable(mbox);
+	else
+		req = otx2_mbox_alloc_msg_nix_hwctx_disable(mbox);
+
+	if (!req)
+		return;
+
+	req->ctype = type;
+
+	WARN_ON(otx2_sync_mbox_msg(mbox));
 }
 
 /* Mbox message handlers */
