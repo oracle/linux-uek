@@ -67,4 +67,13 @@ config OCTEONTX2_RM_DOM_SYSFS
 	  User/admin may query the status of this flag using the
 	  'domain_in_use'  file in the domain's sysfs directory.
 
+config OCTEONTX2_DPI_PF
+	tristate "OcteonTX2 DPI-DMA PF driver"
+	depends on ARM64 && PCI
+	default y
+	---help---
+	  Select this option to enable DPI PF driver support.
+	  DPI (DMA packet interface) provides DMA support for MAC.
+	  This driver intializes dpi PF device and enables VF's for supporting
+	  different types of DMA transfers.
 endmenu
