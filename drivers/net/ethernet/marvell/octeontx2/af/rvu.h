@@ -47,6 +47,9 @@ struct dump_ctx {
 struct rvu_debugfs {
 	struct dentry *root;
 	struct dentry *npa;
+	struct dentry *cgx_root;
+	struct dentry *cgx;
+	struct dentry *lmac;
 	struct dump_ctx npa_aura_ctx;
 	struct dump_ctx npa_pool_ctx;
 	int npa_qsize_id;
