@@ -374,6 +374,16 @@ int cgx_get_tx_stats(void *cgxd, int lmac_id, int idx, u64 *tx_stat)
 }
 EXPORT_SYMBOL(cgx_get_tx_stats);
 
+u64 cgx_get_lmac_tx_fifo_status(void *cgxd, int lmac_id)
+{
+	struct cgx *cgx = cgxd;
+
+	if (!cgx || lmac_id >= cgx->lmac_count)
+		return 0;
+	return cgx_read(cgx, lmac_id, CGXX_CMRX_TX_FIFO_LEN);
+}
+EXPORT_SYMBOL(cgx_get_lmac_tx_fifo_status);
+
 int cgx_lmac_rx_tx_enable(void *cgxd, int lmac_id, bool enable)
 {
 	struct cgx *cgx = cgxd;

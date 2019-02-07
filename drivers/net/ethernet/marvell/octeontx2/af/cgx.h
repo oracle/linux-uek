@@ -47,6 +47,9 @@
 #define CGX_DMAC_CAM_ADDR_ENABLE	BIT_ULL(48)
 #define CGXX_CMRX_RX_DMAC_CAM1		0x400
 #define CGX_RX_DMAC_ADR_MASK		GENMASK_ULL(47, 0)
+#define CGXX_CMRX_TX_FIFO_LEN		0x618
+#define CGXX_CMRX_TX_LMAC_IDLE		BIT_ULL(14)
+#define CGXX_CMRX_TX_LMAC_E_IDLE	BIT_ULL(29)
 #define CGXX_CMRX_TX_STAT0		0x700
 #define CGXX_SCRATCH0_REG		0x1050
 #define CGXX_SCRATCH1_REG		0x1058
@@ -109,6 +112,7 @@ int cgx_lmac_evh_register(struct cgx_event_cb *cb, void *cgxd, int lmac_id);
 int cgx_lmac_evh_unregister(void *cgxd, int lmac_id);
 int cgx_get_tx_stats(void *cgxd, int lmac_id, int idx, u64 *tx_stat);
 int cgx_get_rx_stats(void *cgxd, int lmac_id, int idx, u64 *rx_stat);
+u64 cgx_get_lmac_tx_fifo_status(void *cgxd, int lmac_id);
 int cgx_lmac_rx_tx_enable(void *cgxd, int lmac_id, bool enable);
 int cgx_lmac_addr_set(u8 cgx_id, u8 lmac_id, u8 *mac_addr);
 u64 cgx_lmac_addr_get(u8 cgx_id, u8 lmac_id);

@@ -1557,14 +1557,17 @@ int rvu_mbox_handler_nix_txschq_cfg(struct rvu *rvu,
 		return nix_tl1_default_cfg(rvu, pcifunc);
 	}
 
+	rvu_nix_txsch_lock(nix_hw);
 	for (idx = 0; idx < req->num_regs; idx++) {
 		reg = req->reg[idx];
 		regval = req->regval[idx];
 		schq_regbase = reg & 0xFFFF;
 
 		if (!is_txschq_config_valid(rvu, pcifunc, blkaddr,
-					    txsch->lvl, reg, regval))
+					    txsch->lvl, reg, regval)) {
+			rvu_nix_txsch_unlock(nix_hw);
 			return NIX_AF_INVAL_TXSCHQ_CFG;
+		}
 
 		/* Replace PF/VF visible NIXLF slot with HW NIXLF id */
 		if (schq_regbase == NIX_AF_SMQX_CFG(0)) {
@@ -1596,10 +1599,14 @@ int rvu_mbox_handler_nix_txschq_cfg(struct rvu *rvu,
 		    (regval & BIT_ULL(49))) {
 			err = rvu_poll_reg(rvu, blkaddr,
 					   reg, BIT_ULL(49), true);
-			if (err)
+			if (err) {
+				rvu_nix_txsch_unlock(nix_hw);
 				return NIX_AF_SMQ_FLUSH_FAILED;
+			}
 		}
 	}
+	rvu_nix_txsch_config_changed(nix_hw);
+	rvu_nix_txsch_unlock(nix_hw);
 	return 0;
 }
 
@@ -2480,6 +2487,7 @@ linkcfg:
 	cfg |=  ((lmac_fifo_len - req->maxlen) / 16) << 12;
 	rvu_write64(rvu, blkaddr, NIX_AF_TX_LINKX_NORM_CREDIT(link), cfg);
 	rvu_write64(rvu, blkaddr, NIX_AF_TX_LINKX_EXPR_CREDIT(link), cfg);
+	rvu_nix_update_link_credits(rvu, blkaddr, link, cfg);
 
 	return 0;
 }
@@ -2821,6 +2829,10 @@ int rvu_nix_init(struct rvu *rvu)
 
 		/* Initialize CGX/LBK/SDP link credits, min/max pkt lengths */
 		nix_link_config(rvu, blkaddr);
+
+		err = rvu_nix_tx_stall_workaround_init(rvu, hw->nix0, blkaddr);
+		if (err)
+			return err;
 	}
 	return 0;
 }
@@ -2855,6 +2867,7 @@ void rvu_nix_freemem(struct rvu *rvu)
 		qmem_free(rvu->dev, mcast->mce_ctx);
 		qmem_free(rvu->dev, mcast->mcast_buf);
 		mutex_destroy(&mcast->mce_lock);
+		rvu_nix_tx_stall_workaround_exit(rvu, nix_hw);
 	}
 }
 
