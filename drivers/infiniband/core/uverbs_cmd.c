@@ -3474,7 +3474,7 @@ static void flow_resources_add(struct ib_uflow_resources *uflow_res,
 	uflow_res->num++;
 }
 
-static int kern_spec_to_ib_spec_action(const struct uverbs_attr_bundle *attrs,
+static int kern_spec_to_ib_spec_action(struct uverbs_attr_bundle *attrs,
 				       struct ib_uverbs_flow_spec *kern_spec,
 				       union ib_flow_spec *ib_spec,
 				       struct ib_uflow_resources *uflow_res)

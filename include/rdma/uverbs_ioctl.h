@@ -451,6 +451,7 @@ struct uverbs_attr {
 struct uverbs_attr_bundle {
 	struct ib_udata driver_udata;
 	struct ib_uverbs_file *ufile;
+	struct ib_ucontext *context;
 	DECLARE_BITMAP(attr_present, UVERBS_API_ATTR_BKEY_LEN);
 	struct uverbs_attr attrs[];
 };
