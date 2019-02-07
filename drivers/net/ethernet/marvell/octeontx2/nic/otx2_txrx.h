@@ -11,6 +11,7 @@
 #ifndef OTX2_TXRX_H
 #define OTX2_TXRX_H
 
+#include <linux/etherdevice.h>
 #include <linux/iommu.h>
 
 #define LBK_CHAN_BASE	0x000
@@ -24,6 +25,29 @@
 	(OTX2_DATA_ALIGN(sizeof(struct skb_shared_info))))
 
 #define OTX2_HEAD_ROOM		OTX2_ALIGN
+
+#define OTX2_MAX_FRAGS_IN_SQE	9
+
+struct sg_list {
+	u16	num_segs;
+	u64	skb;
+	u64	size[OTX2_MAX_FRAGS_IN_SQE];
+	u64	dma_addr[OTX2_MAX_FRAGS_IN_SQE];
+};
+
+struct otx2_snd_queue {
+	u8			aura_id;
+	u16			head;
+	u16			sqe_size;
+	u32			sqe_cnt;
+	u16			num_sqbs;
+	u64			 io_addr;
+	u64			*aura_fc_addr;
+	u64			*lmt_addr;
+	void			*sqe_base;
+	struct qmem		*sqe;
+	struct sg_list		*sg;
+};
 
 struct otx2_cq_poll {
 	void			*dev;
@@ -62,6 +86,7 @@ struct otx2_qset {
 	struct otx2_pool	*pool;
 	struct otx2_cq_poll	*napi;
 	struct otx2_cq_queue	*cq;
+	struct otx2_snd_queue	*sq;
 };
 
 /* Translate IOVA to physical address */
@@ -74,4 +99,6 @@ static inline u64 otx2_iova_to_phys(void *iommu_domain, dma_addr_t dma_addr)
 }
 
 int otx2_poll(struct napi_struct *napi, int budget);
+bool otx2_sq_append_skb(struct net_device *netdev, struct otx2_snd_queue *sq,
+			struct sk_buff *skb, u16 qidx);
 #endif /* OTX2_TXRX_H */

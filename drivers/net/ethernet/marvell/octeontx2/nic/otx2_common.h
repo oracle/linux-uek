@@ -82,6 +82,7 @@ struct otx2_nic {
 	struct otx2_hw		hw;
 	struct mbox		mbox;
 	struct workqueue_struct *mbox_wq;
+	u8			intf_down;
 	u16			pcifunc;
 	u16			rx_chan_base;
 	u16			tx_chan_base;
@@ -284,6 +285,7 @@ int otx2_txschq_config(struct otx2_nic *pfvf, int lvl);
 int otx2_txsch_alloc(struct otx2_nic *pfvf);
 dma_addr_t otx2_alloc_rbuf(struct otx2_nic *pfvf, struct otx2_pool *pool,
 			   gfp_t gfp);
+int otx2_rxtx_enable(struct otx2_nic *pfvf, bool enable);
 
 /* Mbox handlers */
 void mbox_handler_msix_offset(struct otx2_nic *pfvf,

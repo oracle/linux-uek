@@ -361,6 +361,41 @@ static int otx2_init_hw_resources(struct otx2_nic *pf)
 	return 0;
 }
 
+static netdev_tx_t otx2_xmit(struct sk_buff *skb, struct net_device *netdev)
+
+{
+	struct otx2_nic *pf = netdev_priv(netdev);
+	struct otx2_snd_queue *sq;
+	int qidx = skb_get_queue_mapping(skb);
+	struct netdev_queue *txq = netdev_get_tx_queue(netdev, qidx);
+
+	/* Check for minimum packet length */
+	if (skb->len <= ETH_HLEN) {
+		dev_kfree_skb(skb);
+		return NETDEV_TX_OK;
+	}
+
+	sq = &pf->qset.sq[qidx];
+
+	if (!netif_tx_queue_stopped(txq) &&
+	    !otx2_sq_append_skb(netdev, sq, skb, qidx)) {
+		netif_tx_stop_queue(txq);
+
+		/* Barrier, for stop_queue to be visible on other cpus */
+		smp_mb();
+		if ((sq->num_sqbs - *sq->aura_fc_addr) > 1)
+			netif_tx_start_queue(txq);
+		else
+			netdev_warn(netdev,
+				    "%s: No free SQE/SQB, stopping SQ%d\n",
+				     netdev->name, qidx);
+
+		return NETDEV_TX_BUSY;
+	}
+
+	return NETDEV_TX_OK;
+}
+
 static int otx2_open(struct net_device *netdev)
 {
 	struct otx2_nic *pf = netdev_priv(netdev);
@@ -387,6 +422,11 @@ static int otx2_open(struct net_device *netdev)
 	qset->cq = kcalloc(pf->qset.cq_cnt,
 			   sizeof(struct otx2_cq_queue), GFP_KERNEL);
 	if (!qset->cq)
+		goto err_free_mem;
+
+	qset->sq = kcalloc(pf->hw.tx_queues,
+			   sizeof(struct otx2_snd_queue), GFP_KERNEL);
+	if (!qset->sq)
 		goto err_free_mem;
 
 	err = otx2_init_hw_resources(pf);
@@ -445,12 +485,21 @@ static int otx2_open(struct net_device *netdev)
 		otx2_write64(pf, NIX_LF_CINTX_ENA_W1S(qidx), BIT_ULL(0));
 	}
 
+	err = otx2_rxtx_enable(pf, true);
+	if (err)
+		goto err_free_cints;
+
+	pf->intf_down = false;
+	netif_carrier_on(netdev);
+	netif_tx_start_all_queues(netdev);
+
 	return 0;
 
 err_free_cints:
 	otx2_free_cints(pf, qidx);
 	otx2_disable_napi(pf);
 err_free_mem:
+	kfree(qset->sq);
 	kfree(qset->cq);
 	kfree(qset->napi);
 	return err;
@@ -462,6 +511,13 @@ static int otx2_stop(struct net_device *netdev)
 	struct otx2_cq_poll *cq_poll = NULL;
 	struct otx2_qset *qset = &pf->qset;
 	int qidx, vec;
+
+	/* First stop packet Rx/Tx */
+	otx2_rxtx_enable(pf, false);
+
+	pf->intf_down = true;
+	/* 'intf_down' may be checked on any cpu */
+	smp_wmb();
 
 	netif_carrier_off(netdev);
 	netif_tx_stop_all_queues(netdev);
@@ -483,6 +539,7 @@ static int otx2_stop(struct net_device *netdev)
 
 	otx2_free_cints(pf, pf->hw.cint_cnt);
 	otx2_disable_napi(pf);
+	kfree(qset->sq);
 	kfree(qset->cq);
 	kfree(qset->napi);
 	memset(qset, 0, sizeof(*qset));
@@ -492,6 +549,7 @@ static int otx2_stop(struct net_device *netdev)
 static const struct net_device_ops otx2_netdev_ops = {
 	.ndo_open		= otx2_open,
 	.ndo_stop		= otx2_stop,
+	.ndo_start_xmit		= otx2_xmit,
 };
 
 static int otx2_probe(struct pci_dev *pdev, const struct pci_device_id *id)
