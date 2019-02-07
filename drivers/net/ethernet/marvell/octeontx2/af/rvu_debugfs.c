@@ -1337,11 +1337,12 @@ create_failed:
 }
 
 /* NPC debugfs APIs */
-static inline void rvu_print_npc_mcam_info(struct rvu *rvu,
+static inline void rvu_print_npc_mcam_info(struct seq_file *s,
 					   u16 pcifunc, int blkaddr)
 {
-	int cntr_acnt, cntr_ecnt;
+	struct rvu *rvu = s->private;
 	int entry_acnt, entry_ecnt;
+	int cntr_acnt, cntr_ecnt;
 
 	/* Skip PF0 */
 	if (!pcifunc)
@@ -1354,26 +1355,26 @@ static inline void rvu_print_npc_mcam_info(struct rvu *rvu,
 		return;
 
 	if (!(pcifunc & RVU_PFVF_FUNC_MASK))
-		pr_info("\n\t\t Device \t\t: PF%d\n", rvu_get_pf(pcifunc));
+		seq_printf(s, "\n\t\t Device \t\t: PF%d\n",
+			   rvu_get_pf(pcifunc));
 	else
-		pr_info("\n\t\t Device \t\t: PF%d VF%d\n", rvu_get_pf(pcifunc),
-			(pcifunc & RVU_PFVF_FUNC_MASK) - 1);
+		seq_printf(s, "\n\t\t Device \t\t: PF%d VF%d\n",
+			   rvu_get_pf(pcifunc),
+			   (pcifunc & RVU_PFVF_FUNC_MASK) - 1);
 
 	if (entry_acnt) {
-		pr_info("\t\t Entries allocated \t: %d\n", entry_acnt);
-		pr_info("\t\t Entries enabled \t: %d\n", entry_ecnt);
+		seq_printf(s, "\t\t Entries allocated \t: %d\n", entry_acnt);
+		seq_printf(s, "\t\t Entries enabled \t: %d\n", entry_ecnt);
 	}
 	if (cntr_acnt) {
-		pr_info("\t\t Counters allocated \t: %d\n", cntr_acnt);
-		pr_info("\t\t Counters enabled \t: %d\n", cntr_ecnt);
+		seq_printf(s, "\t\t Counters allocated \t: %d\n", cntr_acnt);
+		seq_printf(s, "\t\t Counters enabled \t: %d\n", cntr_ecnt);
 	}
 }
 
-static ssize_t rvu_dbg_npc_mcam_info_display(struct file *filp,
-					     char __user *buffer,
-					     size_t count, loff_t *ppos)
+static int rvu_dbg_npc_mcam_info_display(struct seq_file *filp, void *unsued)
 {
-	struct rvu *rvu = filp->private_data;
+	struct rvu *rvu = filp->private;
 	int pf, vf, numvfs, blkaddr;
 	struct npc_mcam *mcam;
 	u16 pcifunc;
@@ -1381,50 +1382,52 @@ static ssize_t rvu_dbg_npc_mcam_info_display(struct file *filp,
 
 	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NPC, 0);
 	if (blkaddr < 0)
-		return 0;
+		return -ENODEV;
 
 	mcam = &rvu->hw->mcam;
 
-	pr_info("\nNPC MCAM info:\n");
+	seq_puts(filp, "\nNPC MCAM info:\n");
 	/* MCAM keywidth on receive and transmit sides */
 	cfg = rvu_read64(rvu, blkaddr, NPC_AF_INTFX_KEX_CFG(NIX_INTF_RX));
 	cfg = (cfg >> 32) & 0x07;
-	pr_info("\t\t RX keywidth \t: %s\n", (cfg == NPC_MCAM_KEY_X1) ?
-		"112bits" : ((cfg == NPC_MCAM_KEY_X2) ? "224bits" : "448bits"));
+	seq_printf(filp, "\t\t RX keywidth \t: %s\n", (cfg == NPC_MCAM_KEY_X1) ?
+		   "112bits" : ((cfg == NPC_MCAM_KEY_X2) ?
+		   "224bits" : "448bits"));
 	cfg = rvu_read64(rvu, blkaddr, NPC_AF_INTFX_KEX_CFG(NIX_INTF_TX));
 	cfg = (cfg >> 32) & 0x07;
-	pr_info("\t\t TX keywidth \t: %s\n", (cfg == NPC_MCAM_KEY_X1) ?
-		"112bits" : ((cfg == NPC_MCAM_KEY_X2) ? "224bits" : "448bits"));
+	seq_printf(filp, "\t\t TX keywidth \t: %s\n", (cfg == NPC_MCAM_KEY_X1) ?
+		   "112bits" : ((cfg == NPC_MCAM_KEY_X2) ?
+		   "224bits" : "448bits"));
 
 	mutex_lock(&mcam->lock);
 	/* MCAM entries */
-	pr_info("\n\t\t MCAM entries \t: %d\n", mcam->total_entries);
-	pr_info("\t\t Reserved \t: %d\n",
-		mcam->total_entries - mcam->bmap_entries);
-	pr_info("\t\t Available \t: %d\n", mcam->bmap_fcnt);
+	seq_printf(filp, "\n\t\t MCAM entries \t: %d\n", mcam->total_entries);
+	seq_printf(filp, "\t\t Reserved \t: %d\n",
+		   mcam->total_entries - mcam->bmap_entries);
+	seq_printf(filp, "\t\t Available \t: %d\n", mcam->bmap_fcnt);
 
 	/* MCAM counters */
 	cfg = rvu_read64(rvu, blkaddr, NPC_AF_CONST);
 	cfg = (cfg >> 48) & 0xFFFF;
-	pr_info("\n\t\t MCAM counters \t: %lld\n", cfg);
-	pr_info("\t\t Reserved \t: %lld\n", cfg - mcam->counters.max);
-	pr_info("\t\t Available \t: %d\n",
-		rvu_rsrc_free_count(&mcam->counters));
+	seq_printf(filp, "\n\t\t MCAM counters \t: %lld\n", cfg);
+	seq_printf(filp, "\t\t Reserved \t: %lld\n", cfg - mcam->counters.max);
+	seq_printf(filp, "\t\t Available \t: %d\n",
+		   rvu_rsrc_free_count(&mcam->counters));
 
 	if (mcam->bmap_entries == mcam->bmap_fcnt)
 		return 0;
 
-	pr_info("\n\t\t Current allocation\n");
-	pr_info("\t\t====================\n");
+	seq_puts(filp, "\n\t\t Current allocation\n");
+	seq_puts(filp, "\t\t====================\n");
 	for (pf = 0; pf < rvu->hw->total_pfs; pf++) {
 		pcifunc = (pf << RVU_PFVF_PF_SHIFT);
-		rvu_print_npc_mcam_info(rvu, pcifunc, blkaddr);
+		rvu_print_npc_mcam_info(filp, pcifunc, blkaddr);
 
 		cfg = rvu_read64(rvu, BLKADDR_RVUM, RVU_PRIV_PFX_CFG(pf));
 		numvfs = (cfg >> 12) & 0xFF;
 		for (vf = 0; vf < numvfs; vf++) {
 			pcifunc = (pf << RVU_PFVF_PF_SHIFT) | (vf + 1);
-			rvu_print_npc_mcam_info(rvu, pcifunc, blkaddr);
+			rvu_print_npc_mcam_info(filp, pcifunc, blkaddr);
 		}
 	}
 
@@ -1432,31 +1435,30 @@ static ssize_t rvu_dbg_npc_mcam_info_display(struct file *filp,
 	return 0;
 }
 
-RVU_DEBUG_FOPS(npc_mcam_info, npc_mcam_info_display, NULL);
+RVU_DEBUG_SEQ_FOPS(npc_mcam_info, npc_mcam_info_display, NULL);
 
-static ssize_t rvu_dbg_npc_rx_miss_stats_display(struct file *filp,
-						 char __user *buffer,
-						 size_t count, loff_t *ppos)
+static int rvu_dbg_npc_rx_miss_stats_display(struct seq_file *filp,
+					     void *unused)
 {
-	struct rvu *rvu = filp->private_data;
+	struct rvu *rvu = filp->private;
 	struct npc_mcam *mcam;
 	int blkaddr;
 
 	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NPC, 0);
 	if (blkaddr < 0)
-		return 0;
+		return -ENODEV;
 
 	mcam = &rvu->hw->mcam;
 
-	pr_info("\nNPC MCAM RX miss action stats\n");
-	pr_info("\t\tStat %d: \t%lld\n", mcam->rx_miss_act_cntr,
-		rvu_read64(rvu, blkaddr,
-			   NPC_AF_MATCH_STATX(mcam->rx_miss_act_cntr)));
+	seq_puts(filp, "\nNPC MCAM RX miss action stats\n");
+	seq_printf(filp, "\t\tStat %d: \t%lld\n", mcam->rx_miss_act_cntr,
+		   rvu_read64(rvu, blkaddr,
+			      NPC_AF_MATCH_STATX(mcam->rx_miss_act_cntr)));
 
 	return 0;
 }
 
-RVU_DEBUG_FOPS(npc_rx_miss_act, npc_rx_miss_stats_display, NULL);
+RVU_DEBUG_SEQ_FOPS(npc_rx_miss_act, npc_rx_miss_stats_display, NULL);
 
 static void rvu_dbg_npc_init(struct rvu *rvu)
 {
@@ -2194,7 +2196,7 @@ void rvu_dbg_init(struct rvu *rvu)
 
 	rvu->rvu_dbg.root = debugfs_create_dir("octeontx2", NULL);
 	if (!rvu->rvu_dbg.root) {
-		pr_info("%s failed\n", __func__);
+		dev_err(rvu->dev, "%s failed\n", __func__);
 		return;
 	}
 	pfile = debugfs_create_file("rsrc_alloc", 0444, rvu->rvu_dbg.root, rvu,
