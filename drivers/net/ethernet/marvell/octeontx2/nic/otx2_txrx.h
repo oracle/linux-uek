@@ -34,6 +34,15 @@
 #define OTX2_MAX_GSO_SEGS	255
 #define OTX2_MAX_FRAGS_IN_SQE	9
 
+struct queue_stats {
+	u64	bytes;
+	u64	pkts;
+};
+
+struct otx2_rcv_queue {
+	struct queue_stats	stats;
+};
+
 struct sg_list {
 	u16	num_segs;
 	u64	skb;
@@ -56,6 +65,7 @@ struct otx2_snd_queue {
 	struct qmem		*sqe;
 	struct qmem		*tso_hdrs;
 	struct sg_list		*sg;
+	struct queue_stats	stats;
 } ____cacheline_aligned_in_smp;
 
 struct otx2_cq_poll {
@@ -96,6 +106,7 @@ struct otx2_qset {
 	struct otx2_cq_poll	*napi;
 	struct otx2_cq_queue	*cq;
 	struct otx2_snd_queue	*sq;
+	struct otx2_rcv_queue	*rq;
 };
 
 /* Translate IOVA to physical address */
