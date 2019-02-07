@@ -226,6 +226,7 @@ struct nix_hw {
 	struct nix_flowkey flowkey;
 	struct nix_mark_format mark_format;
 	struct nix_lso lso;
+	void   *tx_stall;
 };
 
 struct rvu_hwinfo {
@@ -664,4 +665,16 @@ void rvu_dbg_exit(struct rvu *rvu);
 static inline void rvu_dbg_init(struct rvu *rvu) {}
 static inline void rvu_dbg_exit(struct rvu *rvu) {}
 #endif /* CONFIG_DEBUG_FS*/
+
+/* HW workarounds/fixes */
+void rvu_nix_txsch_lock(struct nix_hw *nix_hw);
+void rvu_nix_txsch_unlock(struct nix_hw *nix_hw);
+void rvu_nix_update_link_credits(struct rvu *rvu, int blkaddr,
+				 int link, u64 ncredits);
+void rvu_nix_txsch_config_changed(struct nix_hw *nix_hw);
+int rvu_nix_tx_stall_workaround_init(struct rvu *rvu,
+				     struct nix_hw *nix_hw, int blkaddr);
+void rvu_nix_tx_stall_workaround_exit(struct rvu *rvu, struct nix_hw *nix_hw);
+ssize_t rvu_nix_get_tx_stall_counters(struct rvu *rvu,
+				      char __user *buffer, loff_t *ppos);
 #endif /* RVU_H */
