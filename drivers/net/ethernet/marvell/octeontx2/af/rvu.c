@@ -2689,6 +2689,7 @@ static int __init rvu_init_module(void)
 	if (err < 0)
 		goto rvu_err;
 
+	return 0;
 rvu_err:
 	pci_unregister_driver(&ptp_driver);
 ptp_err:
