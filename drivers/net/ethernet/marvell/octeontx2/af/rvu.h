@@ -50,8 +50,12 @@ struct rvu_debugfs {
 	struct dentry *cgx_root;
 	struct dentry *cgx;
 	struct dentry *lmac;
+	struct dentry *nix;
 	struct dump_ctx npa_aura_ctx;
 	struct dump_ctx npa_pool_ctx;
+	struct dump_ctx nix_cq_ctx;
+	struct dump_ctx nix_rq_ctx;
+	struct dump_ctx nix_sq_ctx;
 	int npa_qsize_id;
 };
 #endif /* CONFIG_DEBUG_FS */
