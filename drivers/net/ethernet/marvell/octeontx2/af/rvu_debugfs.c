@@ -1075,6 +1075,15 @@ static ssize_t rvu_dbg_nix_ndc_tx_hits_miss_display(struct file *filp,
 
 RVU_DEBUG_FOPS(nix_ndc_tx_hits_miss, nix_ndc_tx_hits_miss_display, NULL);
 
+static ssize_t rvu_dbg_nix_tx_stall_hwissue_display(struct file *filp,
+						    char __user *buffer,
+						    size_t count, loff_t *ppos)
+{
+	return rvu_nix_get_tx_stall_counters(filp->private_data, buffer, ppos);
+}
+
+RVU_DEBUG_FOPS(nix_tx_stall_hwissue, nix_tx_stall_hwissue_display, NULL);
+
 static void rvu_dbg_nix_init(struct rvu *rvu)
 {
 	const struct device *dev = &rvu->pdev->dev;
@@ -1118,6 +1127,11 @@ static void rvu_dbg_nix_init(struct rvu *rvu)
 
 	pfile = debugfs_create_file("ndc_rx_hits_miss", 0600, rvu->rvu_dbg.nix,
 				    rvu, &rvu_dbg_nix_ndc_rx_hits_miss_fops);
+	if (!pfile)
+		goto create_failed;
+
+	pfile = debugfs_create_file("tx_stall_hwissue", 0600, rvu->rvu_dbg.nix,
+				    rvu, &rvu_dbg_nix_tx_stall_hwissue_fops);
 	if (!pfile)
 		goto create_failed;
 
