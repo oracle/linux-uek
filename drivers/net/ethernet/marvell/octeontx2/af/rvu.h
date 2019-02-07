@@ -51,6 +51,7 @@ struct rvu_debugfs {
 	struct dentry *cgx;
 	struct dentry *lmac;
 	struct dentry *nix;
+	struct dentry *npc;
 	struct dump_ctx npa_aura_ctx;
 	struct dump_ctx npa_pool_ctx;
 	struct dump_ctx nix_cq_ctx;
@@ -124,6 +125,7 @@ struct npc_mcam {
 	u16	lprio_start;
 	u16	hprio_count;
 	u16	hprio_end;
+	u16	rx_miss_act_cntr;
 };
 
 struct sso_rsrc {
@@ -563,6 +565,12 @@ void rvu_npc_disable_default_entries(struct rvu *rvu, u16 pcifunc, int nixlf);
 void rvu_npc_enable_default_entries(struct rvu *rvu, u16 pcifunc, int nixlf);
 void rvu_npc_update_flowkey_alg_idx(struct rvu *rvu, u16 pcifunc, int nixlf,
 				    int group, int alg_idx, int mcam_index);
+void rvu_npc_get_mcam_entry_alloc_info(struct rvu *rvu, u16 pcifunc,
+				       int blkaddr, int *alloc_cnt,
+				       int *enable_cnt);
+void rvu_npc_get_mcam_counter_alloc_info(struct rvu *rvu, u16 pcifunc,
+					 int blkaddr, int *alloc_cnt,
+					 int *enable_cnt);
 int rvu_mbox_handler_npc_mcam_alloc_entry(struct rvu *rvu,
 					  struct npc_mcam_alloc_entry_req *req,
 					  struct npc_mcam_alloc_entry_rsp *rsp);
