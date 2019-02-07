@@ -1063,7 +1063,7 @@ static void esw_offloads_devcom_cleanup(struct mlx5_eswitch *esw)
 	mlx5_devcom_unregister_component(devcom, MLX5_DEVCOM_ESW_OFFLOADS);
 }
 
-int esw_offloads_init(struct mlx5_eswitch *esw, int nvports)
+static int esw_offloads_steering_init(struct mlx5_eswitch *esw, int nvports)
 {
 	int err;
 
@@ -1079,6 +1079,32 @@ int esw_offloads_init(struct mlx5_eswitch *esw, int nvports)
 	if (err)
 		goto create_fg_err;
 
+	return 0;
+
+create_fg_err:
+	esw_destroy_offloads_table(esw);
+
+create_ft_err:
+	esw_destroy_offloads_fdb_tables(esw);
+
+	return err;
+}
+
+static void esw_offloads_steering_cleanup(struct mlx5_eswitch *esw)
+{
+	esw_destroy_vport_rx_group(esw);
+	esw_destroy_offloads_table(esw);
+	esw_destroy_offloads_fdb_tables(esw);
+}
+
+int esw_offloads_init(struct mlx5_eswitch *esw, int nvports)
+{
+	int err;
+
+	err = esw_offloads_steering_init(esw, nvports);
+	if (err)
+		return err;
+
 	err = esw_offloads_load_reps(esw, nvports);
 	if (err)
 		goto err_reps;
@@ -1087,14 +1113,7 @@ int esw_offloads_init(struct mlx5_eswitch *esw, int nvports)
 	return 0;
 
 err_reps:
-	esw_destroy_vport_rx_group(esw);
-
-create_fg_err:
-	esw_destroy_offloads_table(esw);
-
-create_ft_err:
-	esw_destroy_offloads_fdb_tables(esw);
-
+	esw_offloads_steering_cleanup(esw);
 	return err;
 }
 
@@ -1121,9 +1140,7 @@ void esw_offloads_cleanup(struct mlx5_eswitch *esw, int nvports)
 {
 	esw_offloads_devcom_cleanup(esw);
 	esw_offloads_unload_reps(esw, nvports);
-	esw_destroy_vport_rx_group(esw);
-	esw_destroy_offloads_table(esw);
-	esw_destroy_offloads_fdb_tables(esw);
+	esw_offloads_steering_cleanup(esw);
 }
 
 static int esw_mode_from_devlink(u16 mode, u16 *mlx5_mode)
