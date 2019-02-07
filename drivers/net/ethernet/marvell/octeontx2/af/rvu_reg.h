@@ -643,9 +643,6 @@
 #define CPT_AF_RAS_INT_ENA_W1S          (0x47030ull)
 #define CPT_AF_RAS_INT_ENA_W1C          (0x47038ull)
 
-#define NDC_AF_BLK_RST                  (0x002F0)
-#define NPC_AF_BLK_RST                  (0x00040)
-
 #define CPT_AF_LF_CTL2_SHIFT		3
 #define CPT_AF_LF_SSO_PF_FUNC_SHIFT	32
 
@@ -709,6 +706,33 @@
 #define NPC_AF_MCAM_DBG			(0x3001000)
 #define NPC_AF_DBG_DATAX(a)		(0x3001400 | (a) << 4)
 #define NPC_AF_DBG_RESULTX(a)		(0x3001800 | (a) << 4)
+
+/* NDC */
+#define NDC_AF_CONST			(0x00000)
+#define NDC_AF_CLK_EN			(0x00020)
+#define NDC_AF_CTL			(0x00030)
+#define NDC_AF_BANK_CTL			(0x00040)
+#define NDC_AF_BANK_CTL_DONE		(0x00048)
+#define NDC_AF_INTR			(0x00058)
+#define NDC_AF_INTR_W1S			(0x00060)
+#define NDC_AF_INTR_ENA_W1S		(0x00068)
+#define NDC_AF_INTR_ENA_W1C		(0x00070)
+#define NDC_AF_ACTIVE_PC		(0x00078)
+#define NDC_AF_BP_TEST_ENABLE		(0x001F8)
+#define NDC_AF_BP_TEST(a)		(0x00200 | (a) << 3)
+#define NDC_AF_BLK_RST			(0x002F0)
+#define NDC_PRIV_AF_INT_CFG		(0x002F8)
+#define NDC_AF_HASHX(a)			(0x00300 | (a) << 3)
+#define NDC_AF_PORTX_RTX_RWX_REQ_PC(a, b, c) \
+		(0x00C00 | (a) << 5 | (b) << 4 | (c) << 3)
+#define NDC_AF_PORTX_RTX_RWX_OSTDN_PC(a, b, c) \
+		(0x00D00 | (a) << 5 | (b) << 4 | (c) << 3)
+#define NDC_AF_PORTX_RTX_RWX_LAT_PC(a, b, c) \
+		(0x00E00 | (a) << 5 | (b) << 4 | (c) << 3)
+#define NDC_AF_PORTX_RTX_CANT_ALLOC_PC(a, b) \
+		(0x00F00 | (a) << 5 | (b) << 4)
+#define NDC_AF_BANKX_HIT_PC(a)		(0x01000 | (a) << 3)
+#define NDC_AF_BANKX_MISS_PC(a)		(0x01100 | (a) << 3)
 
 #define AF_BAR2_ALIASX_SIZE		(0x100000ull)
 #define SSOW_AF_BAR2_SEL		(0x9000000ull)
