@@ -561,6 +561,7 @@ Source20: x86_energy_perf_policy
 Source21: turbostat
 Source22: securebootca.cer
 Source23: secureboot.cer
+Source24: find-debuginfo.sh
 
 Source1000: config-x86_64
 Source1001: config-x86_64-debug
@@ -577,6 +578,7 @@ Source202: ksplice_signing_key.x509
 
 Source300: debuginfo-g1.diff
 Source301: find-debuginfo.sh.ol6.diff
+Source302: find-debuginfo.sh.parallel.diff
 
 # Here should be only the patches up to the upstream canonical Linus tree.
 
@@ -987,12 +989,13 @@ ApplyPatch %{stable_patch_00}
 ApplyPatch %{stable_patch_01}
 %endif
 
-# Copy the RPM find-debuginfo.sh into the buildroot and patch it
+# Copy bundled find-debuginfo.sh into the buildroot and patch it
 # to support -g1.  (This is a patch of *RPM*, not of the kernel,
 # so it is not governed by nopatches.)
-cp %{_rpmconfigdir}/find-debuginfo.sh %{_builddir}
+cp %_sourcedir/find-debuginfo.sh %{_builddir}
 patch %{_builddir}/find-debuginfo.sh %{SOURCE300} && \
-patch %{_builddir}/find-debuginfo.sh %{SOURCE301}
+patch %{_builddir}/find-debuginfo.sh %{SOURCE301} && \
+patch %{_builddir}/find-debuginfo.sh %{SOURCE302}
 chmod +x %{_builddir}/find-debuginfo.sh
 
 # only deal with configs if we are going to build for the arch
@@ -1459,7 +1462,7 @@ find Documentation -type d | xargs chmod u+w
 %if %{with_debuginfo}
 
 %define __debug_install_post \
-  %{_builddir}/find-debuginfo.sh %{debuginfo_args} -g1 %{_builddir}/%{?buildsubdir}\
+  %{_builddir}/find-debuginfo.sh %{?_smp_mflags} %{debuginfo_args} -g1 %{_builddir}/%{?buildsubdir}\
 %{nil}
 
 %ifnarch noarch
