@@ -290,6 +290,8 @@ void otx2_set_cints_affinity(struct otx2_nic *pfvf);
 
 int otx2_hw_set_mac_addr(struct otx2_nic *pfvf, struct net_device *netdev);
 int otx2_set_mac_address(struct net_device *netdev, void *p);
+int otx2_change_mtu(struct net_device *netdev, int new_mtu);
+int otx2_hw_set_mtu(struct otx2_nic *pfvf, int mtu);
 
 /* RVU block related APIs */
 int otx2_attach_npa_nix(struct otx2_nic *pfvf);

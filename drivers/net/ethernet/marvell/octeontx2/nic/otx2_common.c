@@ -44,6 +44,35 @@ int otx2_set_mac_address(struct net_device *netdev, void *p)
 	return 0;
 }
 
+int otx2_hw_set_mtu(struct otx2_nic *pfvf, int mtu)
+{
+	struct nix_frs_cfg *req;
+
+	req = otx2_mbox_alloc_msg_nix_set_hw_frs(&pfvf->mbox);
+	if (!req)
+		return -ENOMEM;
+
+	req->update_smq = true;
+	req->maxlen = mtu + OTX2_ETH_HLEN;
+	return otx2_sync_mbox_msg(&pfvf->mbox);
+}
+
+int otx2_change_mtu(struct net_device *netdev, int new_mtu)
+{
+	struct otx2_nic *pfvf = netdev_priv(netdev);
+	int err;
+
+	if (netif_running(netdev)) {
+		err = otx2_hw_set_mtu(pfvf, new_mtu);
+		if (err)
+			return err;
+	}
+	netdev_info(netdev, "Changing MTU from %d to %d\n",
+		    netdev->mtu, new_mtu);
+	netdev->mtu = new_mtu;
+	return 0;
+}
+
 dma_addr_t otx2_alloc_rbuf(struct otx2_nic *pfvf, struct otx2_pool *pool,
 			   gfp_t gfp)
 {
@@ -113,7 +142,8 @@ int otx2_txschq_config(struct otx2_nic *pfvf, int lvl)
 	if (lvl == NIX_TXSCH_LVL_SMQ) {
 		/* Set min and max Tx packet lengths */
 		req->reg[0] = NIX_AF_SMQX_CFG(schq);
-		req->regval[0] = (pfvf->netdev->mtu << 8) | NIC_HW_MIN_FRS;
+		req->regval[0] = ((pfvf->netdev->mtu  + OTX2_ETH_HLEN) << 8) |
+				   OTX2_MIN_MTU;
 
 		req->regval[0] |= (0x20ULL << 51) | (0x80ULL << 39);
 		req->num_regs++;
@@ -272,7 +302,7 @@ static int otx2_sq_init(struct otx2_nic *pfvf, u16 qidx, u16 sqb_aura)
 	aq->sq.ena = 1;
 	/* Only one SMQ is allocated, map all SQ's to that SMQ  */
 	aq->sq.smq = pfvf->hw.txschq_list[NIX_TXSCH_LVL_SMQ][0];
-	aq->sq.smq_rr_quantum = DMA_BUFFER_LEN / 4;
+	aq->sq.smq_rr_quantum = OTX2_MAX_MTU;
 	aq->sq.default_chan = pfvf->tx_chan_base;
 	aq->sq.sqe_stype = NIX_STYPE_STF; /* Cache SQB */
 	aq->sq.sqb_aura = sqb_aura;

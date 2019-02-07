@@ -506,6 +506,11 @@ static int otx2_open(struct net_device *netdev)
 			goto err_disable_napi;
 	}
 
+	/* Set default MTU in HW */
+	err = otx2_hw_set_mtu(pf, netdev->mtu);
+	if (err)
+		goto err_disable_napi;
+
 	/* Register CQ IRQ handlers */
 	vec = pf->hw.nix_msixoff + NIX_LF_CINT_VEC_START;
 	for (qidx = 0; qidx < pf->hw.cint_cnt; qidx++) {
@@ -608,6 +613,7 @@ static const struct net_device_ops otx2_netdev_ops = {
 	.ndo_stop		= otx2_stop,
 	.ndo_start_xmit		= otx2_xmit,
 	.ndo_set_mac_address    = otx2_set_mac_address,
+	.ndo_change_mtu		= otx2_change_mtu,
 };
 
 static int otx2_probe(struct pci_dev *pdev, const struct pci_device_id *id)
@@ -727,6 +733,11 @@ static int otx2_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	pf->iommu_domain = iommu_get_domain_for_dev(dev);
 
 	netdev->netdev_ops = &otx2_netdev_ops;
+
+	/* MTU range: 68 - 9190 */
+	netdev->min_mtu = OTX2_MIN_MTU;
+	netdev->max_mtu = OTX2_MAX_MTU;
+
 	err = register_netdev(netdev);
 	if (err) {
 		dev_err(dev, "Failed to register netdevice\n");
