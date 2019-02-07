@@ -11,9 +11,11 @@
 #ifndef OTX2_TXRX_H
 #define OTX2_TXRX_H
 
-#define LBK_CHAN_BASE  0x000
-#define SDP_CHAN_BASE  0x700
-#define CGX_CHAN_BASE  0x800
+#include <linux/iommu.h>
+
+#define LBK_CHAN_BASE	0x000
+#define SDP_CHAN_BASE	0x700
+#define CGX_CHAN_BASE	0x800
 
 #define DMA_BUFFER_LEN	1536 /* In multiples of 128bytes */
 #define OTX2_DATA_ALIGN(X)	ALIGN(X, OTX2_ALIGN)
@@ -61,6 +63,15 @@ struct otx2_qset {
 	struct otx2_cq_poll	*napi;
 	struct otx2_cq_queue	*cq;
 };
+
+/* Translate IOVA to physical address */
+static inline u64 otx2_iova_to_phys(void *iommu_domain, dma_addr_t dma_addr)
+{
+	/* Translation is installed only when IOMMU is present */
+	if (iommu_domain)
+		return iommu_iova_to_phys(iommu_domain, dma_addr);
+	return dma_addr;
+}
 
 int otx2_poll(struct napi_struct *napi, int budget);
 #endif /* OTX2_TXRX_H */
