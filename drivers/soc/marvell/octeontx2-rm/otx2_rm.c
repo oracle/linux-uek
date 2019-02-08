@@ -1085,6 +1085,25 @@ error:
 	return err;
 }
 
+static int rm_check_pf_usable(struct rm_dev *rm)
+{
+	u64 rev;
+
+	rev = rm_read64(rm, BLKADDR_RVUM, 0,
+			RVU_PF_BLOCK_ADDRX_DISC(BLKADDR_RVUM));
+	rev = (rev >> 12) & 0xFF;
+	/* Check if AF has setup revision for RVUM block,
+	 * otherwise this driver probe should be deferred
+	 * until AF driver comes up.
+	 */
+	if (!rev) {
+		dev_warn(&rm->pdev->dev,
+			 "AF is not initialized, deferring probe\n");
+		return -EPROBE_DEFER;
+	}
+	return 0;
+}
+
 static int rm_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 {
 	struct device *dev = &pdev->dev;
@@ -1137,6 +1156,10 @@ static int rm_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 		err = -ENODEV;
 		goto set_mask_failed;
 	}
+
+	err = rm_check_pf_usable(rm);
+	if (err)
+		goto set_mask_failed;
 
 	/* Map PF-AF mailbox memory */
 	rm->af_mbx_base = ioremap_wc(pci_resource_start(pdev, PCI_MBOX_BAR_NUM),
