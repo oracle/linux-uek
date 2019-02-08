@@ -1154,6 +1154,8 @@ static int rm_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 		goto set_mask_failed;
 	}
 
+	pci_set_master(pdev);
+
 	/* CSR Space mapping */
 	rm->bar2 = pcim_iomap(pdev, PCI_CFG_REG_BAR_NUM,
 			       pci_resource_len(pdev, PCI_CFG_REG_BAR_NUM));
@@ -1165,7 +1167,7 @@ static int rm_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 
 	err = rm_check_pf_usable(rm);
 	if (err)
-		goto set_mask_failed;
+		goto pf_unusable;
 
 	/* Map PF-AF mailbox memory */
 	rm->af_mbx_base = ioremap_wc(pci_resource_start(pdev, PCI_MBOX_BAR_NUM),
@@ -1173,7 +1175,7 @@ static int rm_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	if (!rm->af_mbx_base) {
 		dev_err(&pdev->dev, "Unable to map BAR4\n");
 		err = -ENODEV;
-		goto afmbox_mapfailed;
+		goto pf_unusable;
 	}
 
 	/* Request IRQ for PF-VF mailbox here - TBD: check if this can be moved
@@ -1225,7 +1227,7 @@ reg_mbox_irq_failed:
 	rm_free_irqs(pdev);
 alloc_irqs_failed:
 	iounmap(rm->af_mbx_base);
-afmbox_mapfailed:
+pf_unusable:
 	pcim_iounmap(pdev, rm->bar2);
 set_mask_failed:
 	pci_release_regions(pdev);
