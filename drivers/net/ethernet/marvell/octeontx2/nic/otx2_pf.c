@@ -1163,6 +1163,24 @@ static const struct net_device_ops otx2_netdev_ops = {
 	.ndo_do_ioctl		= otx2_ioctl,
 };
 
+static int otx2_check_pf_usable(struct otx2_nic *nic)
+{
+	u64 rev;
+
+	rev = otx2_read64(nic, RVU_PF_BLOCK_ADDRX_DISC(BLKADDR_RVUM));
+	rev = (rev >> 12) & 0xFF;
+	/* Check if AF has setup revision for RVUM block,
+	 * otherwise this driver probe should be deferred
+	 * until AF driver comes up.
+	 */
+	if (!rev) {
+		dev_warn(nic->dev,
+			 "AF is not initialized, deferring probe\n");
+		return -EPROBE_DEFER;
+	}
+	return 0;
+}
+
 static int otx2_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 {
 	struct device *dev = &pdev->dev;
@@ -1246,6 +1264,10 @@ static int otx2_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 		err = -ENOMEM;
 		goto err_free_pcpu_stats;
 	}
+
+	err = otx2_check_pf_usable(pf);
+	if (err)
+		goto err_free_pcpu_stats;
 
 	/* Init PF <=> AF mailbox stuff */
 	err = otx2_pfaf_mbox_init(pf);
