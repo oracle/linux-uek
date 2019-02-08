@@ -10,6 +10,7 @@
 #include <linux/sysfs.h>
 #include "domain_sysfs.h"
 #include "otx2_rm.h"
+#include "dpi.h"
 
 #define DOMAIN_NAME_LEN	32
 #define PCI_SCAN_FMT	"%04x:%02x:%02x.%02x"
@@ -20,7 +21,8 @@ DP(ssow, int, "%d")	\
 DP(sso, int, "%d")	\
 DP(npa, int, "%d")	\
 DP(cpt, int, "%d")	\
-DP(tim, int, "%d")
+DP(tim, int, "%d")	\
+DP(dpi, int, "%d")
 
 struct domain_params {
 	const char *name;
@@ -51,6 +53,23 @@ struct rvu_port {
 	struct domain		*domain;
 };
 
+struct dpi_vf {
+	struct pci_dev		*pdev;
+	/* pointer to the kobject which owns this vf */
+	struct kobject		*domain_kobj;
+	int			vf_id;
+	bool			in_use;
+};
+
+struct dpi_info {
+	/* Total number of vfs available */
+	uint8_t num_vfs;
+	/* Free vfs */
+	uint8_t vfs_free;
+	/* Pointer to the vfs available */
+	struct dpi_vf *dpi_vf;
+};
+
 struct domain_sysfs {
 	struct list_head	list;
 	struct kobj_attribute	create_domain;
@@ -63,6 +82,7 @@ struct domain_sysfs {
 	struct kobject		*parent;
 	struct domain		*domains;
 	size_t			domains_len;
+	struct dpi_info		dpi_info;
 };
 
 static DEFINE_MUTEX(domain_sysfs_lock);
@@ -102,6 +122,22 @@ static int do_destroy_domain(struct domain_sysfs *lsfs, struct domain *domain)
 		sysfs_remove_link(domain->kobj,
 				  pci_name(domain->ports[i].pdev));
 	}
+
+	for (i = 0; i < lsfs->dpi_info.num_vfs; i++) {
+		struct dpi_vf *dpivf_ptr = NULL;
+
+		dpivf_ptr = &lsfs->dpi_info.dpi_vf[i];
+		/* Identify the devices belongs to this domain */
+		if (dpivf_ptr->in_use &&
+		    dpivf_ptr->domain_kobj == domain->kobj) {
+			sysfs_remove_link(domain->kobj,
+					  pci_name(dpivf_ptr->pdev));
+			dpivf_ptr->in_use = false;
+			dpivf_ptr->domain_kobj = NULL;
+			lsfs->dpi_info.vfs_free++;
+		}
+	}
+
 	sysfs_remove_link(domain->kobj, pci_name(domain->rvf->pdev));
 	kobject_del(domain->kobj);
 	mutex_lock(&lsfs->rdev->lock);
@@ -259,12 +295,23 @@ skip_ports:
 		     domain->rvf->vf_id);
 	CHECK_LIMITS(lsfs->rdev->vf_limits.tim, dparams->tim, "TIM",
 		     domain->rvf->vf_id);
+	if (dparams->dpi > lsfs->dpi_info.vfs_free) {
+		dev_err(dev,
+			"Not enough DPI VFS, currently used:%d/%d\n",
+			lsfs->dpi_info.num_vfs -
+			lsfs->dpi_info.vfs_free,
+			lsfs->dpi_info.num_vfs);
+		res = -ENODEV;
+		goto err_limits;
+	}
+
 	/* Now that checks are done, update the limits */
 	lsfs->rdev->vf_limits.sso->a[domain->rvf->vf_id].val = dparams->sso;
 	lsfs->rdev->vf_limits.ssow->a[domain->rvf->vf_id].val = dparams->ssow;
 	lsfs->rdev->vf_limits.npa->a[domain->rvf->vf_id].val = dparams->npa;
 	lsfs->rdev->vf_limits.cpt->a[domain->rvf->vf_id].val = dparams->cpt;
 	lsfs->rdev->vf_limits.tim->a[domain->rvf->vf_id].val = dparams->tim;
+	lsfs->dpi_info.vfs_free -= dparams->dpi;
 	mutex_unlock(&lsfs->rdev->lock);
 
 	/* Set it up according to user spec */
@@ -293,6 +340,34 @@ skip_ports:
 			goto err_dom_port_symlink;
 		}
 	}
+	/* Create symlinks for dpi vfs in domain */
+	for (i = 0; i < dparams->dpi; i++) {
+		struct dpi_vf *dpivf_ptr = NULL;
+		int vf_idx;
+
+		for (vf_idx = 0; vf_idx < lsfs->dpi_info.num_vfs;
+		     vf_idx++) {
+			/* Find available dpi vfs and create symlinks */
+			dpivf_ptr = &lsfs->dpi_info.dpi_vf[vf_idx];
+			if (dpivf_ptr->in_use)
+				continue;
+			else
+				break;
+		}
+		res = sysfs_create_link(domain->kobj,
+					&dpivf_ptr->pdev->dev.kobj,
+					pci_name(dpivf_ptr->pdev));
+		if (res < 0) {
+			dev_err(dev,
+				"Failed to create DPI dev links for domain %s\n",
+				domain->name);
+			res = -ENOMEM;
+			goto err_dpi_symlink;
+		}
+		dpivf_ptr->domain_kobj = domain->kobj;
+		dpivf_ptr->in_use = true;
+	}
+
 	domain->domain_in_use.attr.mode = 0444;
 	domain->domain_in_use.attr.name = "domain_in_use";
 	domain->domain_in_use.show = domain_in_use_show;
@@ -323,6 +398,20 @@ err_dom_id:
 	sysfs_remove_file(domain->kobj, &domain->domain_in_use.attr);
 err_dom_in_use:
 	domain->domain_in_use.attr.mode = 0;
+err_dpi_symlink:
+	for (i = 0; i < lsfs->dpi_info.num_vfs; i++) {
+		struct dpi_vf *dpivf_ptr = NULL;
+
+		dpivf_ptr = &lsfs->dpi_info.dpi_vf[i];
+		/* Identify the devices belongs to this domain */
+		if (dpivf_ptr->in_use &&
+		    dpivf_ptr->domain_kobj == domain->kobj) {
+			sysfs_remove_link(domain->kobj,
+					  pci_name(dpivf_ptr->pdev));
+			dpivf_ptr->in_use = false;
+			dpivf_ptr->domain_kobj = NULL;
+		}
+	}
 err_dom_port_symlink:
 	for (i = 0; i < dparams->port_cnt; i++)
 		sysfs_remove_link(domain->kobj, pci_name(ports[i].pdev));
@@ -338,6 +427,7 @@ err_limits:
 	lsfs->rdev->vf_limits.npa->a[domain->rvf->vf_id].val = old_npa;
 	lsfs->rdev->vf_limits.cpt->a[domain->rvf->vf_id].val = old_cpt;
 	lsfs->rdev->vf_limits.tim->a[domain->rvf->vf_id].val = old_tim;
+	lsfs->dpi_info.vfs_free += dparams->dpi;
 	mutex_unlock(&lsfs->rdev->lock);
 	mutex_lock(&domain_sysfs_lock);
 err_ports:
@@ -492,6 +582,60 @@ error:
 	return res;
 }
 
+int dpivf_sysfs_create(struct domain_sysfs *lsfs)
+{
+	struct dpi_info *dpi_info = &lsfs->dpi_info;
+	struct dpi_vf *dpivf_ptr = NULL;
+	struct pci_dev *pdev = lsfs->rdev->pdev;
+	struct pci_dev *vdev = NULL;
+	uint8_t vf_idx = 0;
+
+	dpi_info->dpi_vf = kcalloc(DPI_MAX_VFS,
+				   sizeof(struct dpi_vf), GFP_KERNEL);
+	if (dpi_info->dpi_vf == NULL)
+		return -ENOMEM;
+
+	/* Get available DPI vfs */
+	while ((vdev = pci_get_device(pdev->vendor,
+				      PCI_DEVID_OCTEONTX2_DPI_VF, vdev))) {
+		if (!vdev->is_virtfn)
+			continue;
+		else {
+			dpivf_ptr = &dpi_info->dpi_vf[vf_idx];
+			dpivf_ptr->pdev = vdev;
+			dpivf_ptr->vf_id = vf_idx;
+			dpivf_ptr->in_use = false;
+			vf_idx++;
+		}
+	}
+	dpi_info->num_vfs = vf_idx;
+	dpi_info->vfs_free = vf_idx;
+	return 0;
+}
+
+void dpivf_sysfs_destroy(struct domain_sysfs *lsfs)
+{
+	struct dpi_info *dpi_info = &lsfs->dpi_info;
+	struct dpi_vf *dpivf_ptr = NULL;
+	uint8_t vf_idx = 0;
+
+	if (dpi_info->num_vfs == 0)
+		goto free_mem;
+	else {
+		for (vf_idx = 0; vf_idx < dpi_info->num_vfs; vf_idx++) {
+			dpivf_ptr = &dpi_info->dpi_vf[vf_idx];
+			pci_dev_put(dpivf_ptr->pdev);
+			dpivf_ptr->pdev = NULL;
+			vf_idx++;
+		}
+	}
+	dpi_info->num_vfs = 0;
+
+free_mem:
+	kfree(dpi_info->dpi_vf);
+	dpi_info->dpi_vf = NULL;
+}
+
 int domain_sysfs_create(struct rm_dev *rm)
 {
 	struct domain_sysfs *lsfs;
@@ -533,12 +677,18 @@ int domain_sysfs_create(struct rm_dev *rm)
 
 	lsfs->parent = &rm->pdev->dev.kobj;
 
+	res = dpivf_sysfs_create(lsfs);
+	if (res)
+		goto err_dpivf_sysfs_create;
+
 	mutex_lock(&domain_sysfs_lock);
 	list_add_tail(&lsfs->list, &domain_sysfs_list);
 	mutex_unlock(&domain_sysfs_lock);
 
 	return 0;
 
+err_dpivf_sysfs_create:
+	sysfs_remove_file(&rm->pdev->dev.kobj, &lsfs->destroy_domain.attr);
 err_destroy_domain:
 	sysfs_remove_file(&rm->pdev->dev.kobj, &lsfs->create_domain.attr);
 err_create_domain:
@@ -571,7 +721,7 @@ void domain_sysfs_destroy(struct rm_dev *rm)
 	if (lsfs == NULL)
 		return;
 
-
+	dpivf_sysfs_destroy(lsfs);
 
 	if (lsfs->destroy_domain.attr.mode != 0)
 		sysfs_remove_file(lsfs->parent, &lsfs->destroy_domain.attr);

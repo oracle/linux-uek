@@ -429,12 +429,18 @@ static void rm_send_flr_msg(struct rm_dev *rm, struct rvu_vf *vf)
 	}
 }
 
+static void rm_send_flr_to_dpi(struct rm_dev *rm)
+{
+	/* TODO: DPI VF's needs to be handled */
+}
+
 static void rm_pfvf_flr_handler(struct work_struct *work)
 {
 	struct rvu_vf *vf = container_of(work, struct rvu_vf, pfvf_flr_work);
 	struct rm_dev *rm = vf->rm;
 	struct otx2_mbox *mbox = &rm->pfvf_mbox;
 
+	rm_send_flr_to_dpi(rm);
 	rm_send_flr_msg(rm, vf);
 
 	/* Disable interrupts from AF and wait for any pending
