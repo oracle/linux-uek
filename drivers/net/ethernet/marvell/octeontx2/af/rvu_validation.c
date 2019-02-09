@@ -525,6 +525,8 @@ static int rvu_create_limits_sysfs(struct rvu *rvu)
 
 	for (i = 0; i < rvu->hw->total_pfs; i++) {
 		pf = &rvu->pf[i];
+		if (!pf->pdev)
+			continue;
 		pdev = pf->pdev;
 
 		pf->limits_kobj = kobject_create_and_add("limits",
