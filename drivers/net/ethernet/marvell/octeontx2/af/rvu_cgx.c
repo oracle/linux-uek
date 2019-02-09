@@ -481,19 +481,6 @@ int rvu_mbox_handler_cgx_promisc_disable(struct rvu *rvu, struct msg_req *req,
 	return 0;
 }
 
-void rvu_cgx_config_bp(struct rvu *rvu, u8 cgx_id, u8 lmac_id, bool enable)
-{
-	void *cgxd;
-
-	if (enable) {
-		cgxd = rvu_cgx_pdata(cgx_id, rvu);
-		cgx_lmac_bp_config(cgxd, lmac_id, true);
-	} else {
-		cgxd = rvu_cgx_pdata(cgx_id, rvu);
-		cgx_lmac_bp_config(cgxd, lmac_id, false);
-	}
-}
-
 int rvu_mbox_handler_cgx_ptp_rx_enable(struct rvu *rvu, struct msg_req *req,
 				       struct msg_rsp *rsp)
 {

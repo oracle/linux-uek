@@ -294,34 +294,6 @@ void cgx_lmac_promisc_config(int cgx_id, int lmac_id, bool enable)
 }
 EXPORT_SYMBOL(cgx_lmac_promisc_config);
 
-void cgx_lmac_bp_config(void *cgxd, int lmac_id, bool enable)
-{
-	struct cgx *cgx = cgxd;
-	u64 cfg;
-
-	if (!cgx)
-		return;
-
-	if (enable) {
-		cfg = cgx_read(cgx, lmac_id, CGXX_GMP_GMI_RXX_FRM_CTL);
-		cfg |= CGX_GMP_GMI_RXX_FRM_CTL_CTL_BCK;
-		cgx_write(cgx, lmac_id, CGXX_GMP_GMI_RXX_FRM_CTL, cfg);
-
-		cfg = cgx_read(cgx, lmac_id, CGXX_SMUX_RX_FRM_CTL);
-		cfg |= CGX_SMUX_RX_FRM_CTL_CTL_BCK;
-		cgx_write(cgx, lmac_id,	CGXX_SMUX_RX_FRM_CTL, cfg);
-	} else {
-		cfg = cgx_read(cgx, lmac_id, CGXX_GMP_GMI_RXX_FRM_CTL);
-		cfg &= ~CGX_GMP_GMI_RXX_FRM_CTL_CTL_BCK;
-		cgx_write(cgx, lmac_id, CGXX_GMP_GMI_RXX_FRM_CTL, cfg);
-
-		cfg = cgx_read(cgx, lmac_id, CGXX_SMUX_RX_FRM_CTL);
-		cfg &= ~CGX_SMUX_RX_FRM_CTL_CTL_BCK;
-		cgx_write(cgx, lmac_id,	CGXX_SMUX_RX_FRM_CTL, cfg);
-	}
-}
-EXPORT_SYMBOL(cgx_lmac_bp_config);
-
 void cgx_lmac_ptp_config(void *cgxd, int lmac_id, bool enable)
 {
 	struct cgx *cgx = cgxd;
