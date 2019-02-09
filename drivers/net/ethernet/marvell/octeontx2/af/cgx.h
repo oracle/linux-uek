@@ -58,10 +58,12 @@
 #define CGXX_SPUX_CONTROL1_LBK		BIT_ULL(14)
 #define CGXX_SMUX_RX_FRM_CTL		0x20020
 #define CGX_SMUX_RX_FRM_CTL_PTP_MODE	BIT_ULL(12)
+#define CGX_SMUX_RX_FRM_CTL_CTL_BCK	BIT_ULL(3)
 #define CGXX_GMP_PCS_MRX_CTL		0x30000
 #define CGXX_GMP_PCS_MRX_CTL_LBK	BIT_ULL(14)
 #define CGXX_GMP_GMI_RXX_FRM_CTL		0x38028
 #define CGX_GMP_GMI_RXX_FRM_CTL_PTP_MODE	BIT_ULL(12)
+#define CGX_GMP_GMI_RXX_FRM_CTL_CTL_BCK	BIT_ULL(3)
 
 #define CGX_COMMAND_REG			CGXX_SCRATCH1_REG
 #define CGX_EVENT_REG			CGXX_SCRATCH0_REG
@@ -117,6 +119,7 @@ u64 cgx_lmac_addr_get(u8 cgx_id, u8 lmac_id);
 int cgx_get_pfmacaddr(void *cgxd, u8 lmac_id, u8 *macdst);
 void cgx_lmac_promisc_config(int cgx_id, int lmac_id, bool enable);
 void cgx_lmac_ptp_config(void *cgxd, int lmac_id, bool enable);
+void cgx_lmac_enadis_rx_pause_fwding(void *cgxd, int lmac_id, bool enable);
 int cgx_lmac_internal_loopback(void *cgxd, int lmac_id, bool enable);
 int cgx_get_link_info(void *cgxd, int lmac_id,
 		      struct cgx_link_user_info *linfo);

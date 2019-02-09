@@ -1244,13 +1244,39 @@ exit:
 	return rc;
 }
 
+static void nix_smq_flush(struct rvu *rvu, int blkaddr,
+			  int smq, u16 pcifunc, int nixlf)
+{
+	int pf = rvu_get_pf(pcifunc);
+	int err;
+	u64 cfg;
+
+	cfg = rvu_read64(rvu, blkaddr, NIX_AF_SMQX_CFG(smq));
+	/* Do SMQ flush and set enqueue xoff */
+	cfg |= BIT_ULL(50) | BIT_ULL(49);
+	rvu_write64(rvu, blkaddr, NIX_AF_SMQX_CFG(smq), cfg);
+
+	/* Disable backpressure from physical link,
+	 * otherwise SMQ flush may stall.
+	 */
+	rvu_cgx_enadis_rx_bp(rvu, pf, false);
+
+	/* Wait for flush to complete */
+	err = rvu_poll_reg(rvu, blkaddr,
+			   NIX_AF_SMQX_CFG(smq), BIT_ULL(49), true);
+	if (err)
+		dev_err(rvu->dev,
+			"NIXLF%d: SMQ%d flush failed\n", nixlf, smq);
+
+	rvu_cgx_enadis_rx_bp(rvu, pf, true);
+}
+
 static int nix_txschq_free(struct rvu *rvu, u16 pcifunc)
 {
 	int blkaddr, nixlf, lvl, schq, err;
 	struct rvu_hwinfo *hw = rvu->hw;
 	struct nix_txsch *txsch;
 	struct nix_hw *nix_hw;
-	u64 cfg;
 
 	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NIX, pcifunc);
 	if (blkaddr < 0)
@@ -1283,18 +1309,7 @@ static int nix_txschq_free(struct rvu *rvu, u16 pcifunc)
 	for (schq = 0; schq < txsch->schq.max; schq++) {
 		if (TXSCH_MAP_FUNC(txsch->pfvf_map[schq]) != pcifunc)
 			continue;
-		cfg = rvu_read64(rvu, blkaddr, NIX_AF_SMQX_CFG(schq));
-		/* Do SMQ flush and set enqueue xoff */
-		cfg |= BIT_ULL(50) | BIT_ULL(49);
-		rvu_write64(rvu, blkaddr, NIX_AF_SMQX_CFG(schq), cfg);
-
-		/* Wait for flush to complete */
-		err = rvu_poll_reg(rvu, blkaddr,
-				   NIX_AF_SMQX_CFG(schq), BIT_ULL(49), true);
-		if (err) {
-			dev_err(rvu->dev,
-				"NIXLF%d: SMQ%d flush failed\n", nixlf, schq);
-		}
+		nix_smq_flush(rvu, blkaddr, schq, pcifunc, nixlf);
 	}
 
 	/* Now free scheduler queues to free pool */
@@ -1326,13 +1341,12 @@ static int nix_txschq_free(struct rvu *rvu, u16 pcifunc)
 static int nix_txschq_free_one(struct rvu *rvu,
 			       struct nix_txsch_free_req *req)
 {
-	int lvl, schq, nixlf, blkaddr, rc;
 	struct rvu_hwinfo *hw = rvu->hw;
 	u16 pcifunc = req->hdr.pcifunc;
+	int lvl, schq, nixlf, blkaddr;
 	struct nix_txsch *txsch;
 	struct nix_hw *nix_hw;
 	u32 *pfvf_map;
-	u64 cfg;
 
 	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NIX, pcifunc);
 	if (blkaddr < 0)
@@ -1366,20 +1380,8 @@ static int nix_txschq_free_one(struct rvu *rvu,
 	/* Flush if it is a SMQ. Onus of disabling
 	 * TL2/3 queue links before SMQ flush is on user
 	 */
-	if (lvl == NIX_TXSCH_LVL_SMQ) {
-		cfg = rvu_read64(rvu, blkaddr, NIX_AF_SMQX_CFG(schq));
-		/* Do SMQ flush and set enqueue xoff */
-		cfg |= BIT_ULL(50) | BIT_ULL(49);
-		rvu_write64(rvu, blkaddr, NIX_AF_SMQX_CFG(schq), cfg);
-
-		/* Wait for flush to complete */
-		rc = rvu_poll_reg(rvu, blkaddr,
-				  NIX_AF_SMQX_CFG(schq), BIT_ULL(49), true);
-		if (rc) {
-			dev_err(rvu->dev,
-				"NIXLF%d: SMQ%d flush failed\n", nixlf, schq);
-		}
-	}
+	if (lvl == NIX_TXSCH_LVL_SMQ)
+		nix_smq_flush(rvu, blkaddr, schq, pcifunc, nixlf);
 
 	/* Free the resource */
 	rvu_free_rsrc(&txsch->schq, schq);
