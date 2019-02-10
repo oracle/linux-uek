@@ -637,12 +637,12 @@ static int rawv6_send_hdrinc(struct sock *sk, struct msghdr *msg, int length,
 		ipv6_local_error(sk, EMSGSIZE, fl6, rt->dst.dev->mtu);
 		dropreason = "packet too big";
 		err = -EMSGSIZE;
-		goto trace_drop;
+		goto error_check;
 	}
 	if (length < sizeof(struct ipv6hdr)) {
 		dropreason = "packet too short";
 		err = -EINVAL;
-		goto trace_drop;
+		goto error_check;
 	}
 	if (flags&MSG_PROBE)
 		goto out;
@@ -659,8 +659,6 @@ static int rawv6_send_hdrinc(struct sock *sk, struct msghdr *msg, int length,
 	skb->protocol = htons(ETH_P_IPV6);
 	skb->priority = sk->sk_priority;
 	skb->mark = sk->sk_mark;
-	skb_dst_set(skb, &rt->dst);
-	*dstp = NULL;
 
 	skb_put(skb, length);
 	skb_reset_network_header(skb);
@@ -675,8 +673,13 @@ static int rawv6_send_hdrinc(struct sock *sk, struct msghdr *msg, int length,
 	err = memcpy_from_msg(iph, msg, length);
 	if (err) {
 		dropreason = "could not copy msg";
-		goto error_fault;
+		err = -EFAULT;
+		kfree_skb(skb);
+		goto error;
 	}
+
+	skb_dst_set(skb, &rt->dst);
+	*dstp = NULL;
 
 	/* if egress device is enslaved to an L3 master device pass the
 	 * skb to its handler for processing
@@ -685,6 +688,11 @@ static int rawv6_send_hdrinc(struct sock *sk, struct msghdr *msg, int length,
 	if (unlikely(!skb))
 		return 0;
 
+	/* Acquire rcu_read_lock() in case we need to use rt->rt6i_idev
+	 * in the error path. Since skb has been freed, the dst could
+	 * have been queued for deletion.
+	 */
+	rcu_read_lock();
 	IP6_UPD_PO_STATS(net, rt->rt6i_idev, IPSTATS_MIB_OUT, skb->len);
 	DTRACE_IP(send,
 		  struct sk_buff * : pktinfo_t *, skb,
@@ -698,19 +706,18 @@ static int rawv6_send_hdrinc(struct sock *sk, struct msghdr *msg, int length,
 	if (err > 0)
 		err = net_xmit_errno(err);
 	if (err) {
+		IP6_INC_STATS(net, rt->rt6i_idev, IPSTATS_MIB_OUTDISCARDS);
 		dropreason = "raw send error";
-		goto error;
+		rcu_read_unlock();
+		goto error_check;
 	}
+	rcu_read_unlock();
 out:
 	return 0;
 
-error_fault:
-	err = -EFAULT;
-	kfree_skb(skb);
-	skb = NULL;
 error:
 	IP6_INC_STATS(net, rt->rt6i_idev, IPSTATS_MIB_OUTDISCARDS);
-trace_drop:
+error_check:
 	DTRACE_IP(drop__out,
 		  struct sk_buff * : pktinfo_t *, skb,
 		  struct sock * : csinfo_t *, skb ? skb->sk : NULL,
