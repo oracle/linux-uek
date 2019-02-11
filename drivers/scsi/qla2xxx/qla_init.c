@@ -5053,19 +5053,11 @@ qla2x00_update_fcport(scsi_qla_host_t *vha, fc_port_t *fcport)
 	if (IS_SW_RESV_ADDR(fcport->d_id))
 		return;
 
-	ql_dbg(ql_dbg_disc, vha, 0x20ef, "%s %8phC\n",
-	    __func__, fcport->port_name);
-
-	if (IS_QLAFX00(vha->hw)) {
-		qla2x00_set_fcport_state(fcport, FCS_ONLINE);
-	} else {
-		fcport->flags &= ~(FCF_LOGIN_NEEDED | FCF_ASYNC_SENT);
-		fcport->disc_state = DSC_LOGIN_COMPLETE;
-		fcport->deleted = 0;
-		fcport->logout_on_delete = 1;
-		fcport->login_retry = vha->hw->login_retry_count;
-		qla2x00_set_fcport_state(fcport, FCS_ONLINE);
-	}
+	fcport->flags &= ~(FCF_LOGIN_NEEDED | FCF_ASYNC_SENT);
+	fcport->disc_state = DSC_LOGIN_COMPLETE;
+	fcport->deleted = 0;
+	fcport->logout_on_delete = 1;
+	fcport->login_retry = vha->hw->login_retry_count;
 
 	qla2x00_set_fcport_state(fcport, FCS_ONLINE);
 	qla2x00_iidma_fcport(vha, fcport);
@@ -5112,6 +5104,7 @@ qla2x00_update_fcport(scsi_qla_host_t *vha, fc_port_t *fcport)
 			qla24xx_post_gpsc_work(vha, fcport);
 		}
 	}
+	qla2x00_set_fcport_state(fcport, FCS_ONLINE);
 }
 
 /*
