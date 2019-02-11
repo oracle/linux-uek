@@ -88,8 +88,6 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 5
 %define with_headers   1
 # dtrace
 %define with_dtrace    0
-# perf
-%define with_perf      0
 # tools
 %define with_tools     0
 # kernel-debuginfo
@@ -98,8 +96,6 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 5
 %define with_bootwrapper %{?_without_bootwrapper: 0} %{?!_without_bootwrapper: 1}
 # Want to build a the vsdo directories installed
 %define with_vdso_install %{?_without_vdso_install: 0} %{?!_without_vdso_install: 1}
-# TUI for perf
-%define with_perf_tui  1
 # module compression
 %define with_compression 1
 #build kernel with 4k & 64k page size for aarch64
@@ -272,7 +268,6 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 %define with_compression 0
 %define with_headers 0
 %define with_tools 0
-%define with_perf 0
 %define with_paravirt 0
 %define with_paravirt_debug 0
 %define all_arch_configs kernel-%{version}-*.config
@@ -383,7 +378,6 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 %define kernel_image arch/arm64/boot/Image
 BuildRequires: oracle-armtoolset-1 >= 1.0-0
 %define with_headers   1
-%define with_perf 1
 %define with_tools 1
 %endif
 
@@ -411,7 +405,6 @@ BuildRequires: oracle-armtoolset-1 >= 1.0-0
 %define with_pae 0
 %define with_kdump 0
 %define with_debuginfo 0
-%define with_perf 0
 %define with_tools 0
 %define _enable_debug_packages 0
 %define with_paravirt 0
@@ -562,16 +555,6 @@ BuildRequires: hmaccalc
 %if %{with_dtrace}
 BuildRequires: libdtrace-ctf-devel >= 1.1.0
 %endif
-%if %{with_perf_tui}
-BuildRequires: slang-devel, slang-static
-%endif
-%if %{with_perf}
-BuildRequires: zlib-devel binutils-devel newt-devel python-devel bison flex xz-devel
-BuildRequires: audit-libs-devel
-%ifnarch s390x %{arm}
-BuildRequires: numactl-devel
-%endif
-%endif
 %if %{with_tools}
 BuildRequires: asciidoc pciutils-devel gettext ncurses-devel
 %endif # with_tools
@@ -713,54 +696,6 @@ Autoreq: no
 %description debuginfo-common
 This package is required by %{name}-debuginfo subpackages.
 It provides the kernel source files common to all builds.
-
-%if %{with_perf}
-%package -n perf
-Summary: Performance monitoring for the Linux kernel
-Group: Development/System
-License: GPLv2
-BuildRequires: asciidoc xmlto gnu-free-mono-fonts
-%description -n perf
-This package contains the perf tool, which enables performance monitoring
-of the Linux kernel.
-
-%package -n perf-debuginfo
-Summary: Debug information for package perf
-Group: Development/Debug
-Requires: %{name}-debuginfo-common-%{_target_cpu} = %{version}-%{release}
-AutoReqProv: no
-%description -n perf-debuginfo
-This package provides debug information for the perf package.
-
-# Note that this pattern only works right to match the .build-id
-# symlinks because of the trailing nonmatching alternation and
-# the leading .*, because of find-debuginfo.sh's buggy handling
-# of matching the pattern against the symlinks file.
-%{expand:%%global debuginfo_args %{?debuginfo_args} -p '.*%%{_bindir}/perf(\.debug)?|.*%%{_libexecdir}/perf-core/.*|.*%%{_libdir}/traceevent/plugins/.*|XXX' -o perf-debuginfo.list}
-
-%package -n python-perf
-Summary: Python bindings for apps which will manipulate perf events
-Group: Development/Libraries
-%description -n python-perf
-The python-perf package contains a module that permits applications
-written in the Python programming language to use the interface
-to manipulate perf events.
-
-%{!?python_sitearch: %global python_sitearch %(%{__python} -c "from distutils.sysconfig import get_python_lib; print get_python_lib(1)")}
-
-%package -n python-perf-debuginfo
-Summary: Debug information for package perf python bindings
-Group: Development/Debug
-Requires: %{name}-debuginfo-common-%{_target_cpu} = %{version}-%{release}
-AutoReqProv: no
-%description -n python-perf-debuginfo
-This package provides debug information for the perf python bindings.
-
-# the python_sitearch macro should already be defined from above
-%{expand:%%global debuginfo_args %{?debuginfo_args} -p '.*%%{python_sitearch}/perf.so(\.debug)?|XXX' -o python-perf-debuginfo.list}
-
-
-%endif # with_perf
 
 %if %{with_tools}
 %package -n kernel-uek-tools
@@ -1566,16 +1501,6 @@ BuildKernel %make_target %kernel_image 4k
 BuildKernel %make_target %kernel_image 4kdebug
 %endif
 
-%global perf_make \
-  make -s EXTRA_CFLAGS="${RPM_OPT_FLAGS}" LDFLAGS="%{__global_ldflags}" %{?cross_opts} -C tools/perf V=1 NO_PERF_READ_VDSO32=1 NO_PERF_READ_VDSOX32=1 WERROR=0 NO_LIBUNWIND=1 HAVE_CPLUS_DEMANGLE=1 NO_GTK2=1 NO_STRLCPY=1 NO_BIONIC=1 NO_JVMTI=1 prefix=%{_prefix}
-%if %{with_perf}
-# perf
-# make sure check-headers.sh is executable
-chmod +x tools/perf/check-headers.sh
-%{perf_make} DESTDIR=$RPM_BUILD_ROOT all
-%{perf_make} man || %{doc_build_fail}
-%endif # with_perf
-
 %if %{with_tools}
 %ifarch %{cpupowerarchs}
 # cpupower
@@ -1733,21 +1658,6 @@ rm -f $RPM_BUILD_ROOT/usr/include/asm*/irq.h
 # these are provided by drm-devel
 rm -rf $RPM_BUILD_ROOT/usr/include/drm
 %endif
-
-%if %{with_perf}
-# perf tool binary and supporting scripts/binaries
-%{perf_make} DESTDIR=$RPM_BUILD_ROOT lib=%{_lib} install-bin install-traceevent-plugins
-# remove the 'trace' symlink.
-rm -f %{buildroot}%{_bindir}/trace
-# remove the perf-tips
-rm -rf %{buildroot}%{_docdir}/perf-tip
-
-# python-perf extension
-%{perf_make} DESTDIR=$RPM_BUILD_ROOT install-python_ext
-
-# perf man pages (note: implicit rpm magic compresses them later)
-%{perf_make} DESTDIR=$RPM_BUILD_ROOT try-install-man || %{doc_build_fail}
-%endif # with_perf
 
 %if %{with_tools}
 %ifarch %{cpupowerarchs}
@@ -1971,32 +1881,6 @@ fi
 /usr/sbin/*
 %{_libdir}/kernel-wrapper
 %endif
-
-%if %{with_perf}
-%files -n perf
-%defattr(-,root,root)
-%{_bindir}/perf
-%dir %{_libdir}/traceevent/plugins
-%{_libdir}/traceevent/plugins/*
-%dir %{_libexecdir}/perf-core
-%{_libexecdir}/perf-core/*
-%{_datadir}/perf-core/*
-%{_mandir}/man[1-8]/perf*
-%{_sysconfdir}/bash_completion.d/perf
-%doc linux-%{KVERREL}/tools/perf/Documentation/examples.txt
-
-%files -n python-perf
-%defattr(-,root,root)
-%{python_sitearch}
-
-%if %{with_debuginfo}
-%files -f perf-debuginfo.list -n perf-debuginfo
-%defattr(-,root,root)
-
-%files -f python-perf-debuginfo.list -n python-perf-debuginfo
-%defattr(-,root,root)
-%endif
-%endif # with_perf
 
 %if %{with_tools}
 %ifarch %{cpupowerarchs}
