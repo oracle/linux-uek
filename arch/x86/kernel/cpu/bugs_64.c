@@ -350,8 +350,8 @@ x86_virt_spec_ctrl(u64 guest_spec_ctrl, u64 guest_virt_spec_ctrl, bool setguest)
 		}
 
 		/* SSBD controlled in MSR_SPEC_CTRL */
-		if (static_cpu_has(X86_FEATURE_SSBD) ||
-		    static_cpu_has(X86_FEATURE_AMD_SSBD))
+		if (boot_cpu_has(X86_FEATURE_SSBD) ||
+		    boot_cpu_has(X86_FEATURE_AMD_SSBD))
 			hostval |= ssbd_tif_to_spec_ctrl(ti->flags);
 
 		if (hostval != guestval) {
@@ -1312,6 +1312,50 @@ static ssize_t l1tf_show_state(char *buf)
 	return sprintf(buf, "%s\n", L1TF_DEFAULT_MSG);
 }
 #endif
+
+/*
+ * This function replicates at runtime what check_bugs would do at init time.
+ * As we will be using default mitigations everywhere, essentially we have
+ * dropped the logic of parsing boot_command_line which either was not
+ * possible.
+ */
+void microcode_late_select_mitigation(void)
+{
+	enum spectre_v2_mitigation mode;
+	bool microcode_added_ssbd  = false;
+	/*
+	 * In late loading we will use default mitigation which is
+	 * secomp or prctl. We will do this ONLY if these bits were
+	 * not present at init time and were added by microcode late
+	 * loading.
+	 */
+	if (cpu_has(&cpu_data(smp_processor_id()), X86_FEATURE_SSBD) &&
+	    !static_cpu_has(X86_FEATURE_SSBD)) {
+		setup_force_cpu_cap(X86_FEATURE_SSBD);
+		microcode_added_ssbd = true;
+	}
+	if (cpu_has(&cpu_data(smp_processor_id()), X86_FEATURE_AMD_SSBD) &&
+	    !static_cpu_has(X86_FEATURE_AMD_SSBD)) {
+		setup_force_cpu_cap(X86_FEATURE_AMD_SSBD);
+		microcode_added_ssbd = true;
+	}
+
+	if (boot_cpu_has_bug(X86_BUG_SPEC_STORE_BYPASS)) {
+		if (microcode_added_ssbd) {
+			if (IS_ENABLED(CONFIG_SECCOMP))
+				ssb_mode = SPEC_STORE_BYPASS_SECCOMP;
+			else
+				ssb_mode = SPEC_STORE_BYPASS_PRCTL;
+		}
+#undef pr_fmt
+#define pr_fmt(fmt)	"Speculative Store Bypass late loading: " fmt
+		pr_info("%s\n", ssb_strings[ssb_mode]);
+
+	} else {
+		ssb_mode = SPEC_STORE_BYPASS_NONE;
+	}
+}
+
 
 static ssize_t cpu_show_common(struct device *dev, struct device_attribute *attr,
 			      char *buf, unsigned int bug)

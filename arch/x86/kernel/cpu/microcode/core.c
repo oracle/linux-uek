@@ -119,6 +119,8 @@ static DEFINE_MUTEX(microcode_mutex);
 struct ucode_cpu_info		ucode_cpu_info[NR_CPUS];
 EXPORT_SYMBOL_GPL(ucode_cpu_info);
 
+extern void microcode_late_select_mitigation(void);
+
 /*
  * Operations that are run on a target cpu:
  */
@@ -271,6 +273,7 @@ static ssize_t microcode_write(struct file *file, const char __user *buf,
 	if (ret > 0) {
 		perf_check_microcode();
 		microcode_late_eval_cpuid_all();
+		microcode_late_select_mitigation();
 	}
 
 	mutex_unlock(&microcode_mutex);
@@ -391,6 +394,7 @@ static ssize_t reload_store(struct device *dev,
 	if (!ret) {
 		perf_check_microcode();
 		microcode_late_eval_cpuid_all();
+		microcode_late_select_mitigation();
 	}
 
 	mutex_unlock(&microcode_mutex);
