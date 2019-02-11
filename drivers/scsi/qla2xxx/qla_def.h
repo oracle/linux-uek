@@ -3609,6 +3609,7 @@ struct qla_hw_data {
 		uint32_t	detected_lr_sfp:1;
 		uint32_t	using_lr_setting:1;
 		uint32_t	rida_fmt2:1;
+		uint32_t	purge_mbox:1;
 	} flags;
 
 	uint16_t max_exchg;
@@ -3854,6 +3855,9 @@ struct qla_hw_data {
 	int		port_down_retry_count;
 	uint8_t		mbx_count;
 	uint8_t		aen_mbx_count;
+	atomic_t	num_pend_mbx_stage1;
+	atomic_t	num_pend_mbx_stage2;
+	atomic_t	num_pend_mbx_stage3;
 
 	uint32_t	login_retry_count;
 	/* SNS command interfaces. */
@@ -4167,6 +4171,7 @@ struct qla_hw_data {
 	struct work_struct board_disable;
 
 	struct mr_data_fx00 mr;
+	uint32_t chip_reset;
 
 	struct qlt_hw_data tgt;
 	int	allow_cna_fw_dump;
