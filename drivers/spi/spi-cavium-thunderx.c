@@ -16,6 +16,11 @@
 
 #define SYS_FREQ_DEFAULT 700000000 /* 700 Mhz */
 
+#define PCI_DEVICE_ID_THUNDER_SPI 0xA00B
+#define PCI_SUBSYS_DEVID_88XX_SPI 0xA10B
+#define PCI_SUBSYS_DEVID_81XX_SPI 0xA20B
+#define PCI_SUBSYS_DEVID_83XX_SPI 0xA30B
+
 static int thunderx_spi_probe(struct pci_dev *pdev,
 			      const struct pci_device_id *ent)
 {
@@ -103,7 +108,18 @@ static void thunderx_spi_remove(struct pci_dev *pdev)
 }
 
 static const struct pci_device_id thunderx_spi_pci_id_table[] = {
-	{ PCI_DEVICE(PCI_VENDOR_ID_CAVIUM, 0xa00b) },
+	{ PCI_DEVICE_SUB(PCI_VENDOR_ID_CAVIUM,
+			 PCI_DEVICE_ID_THUNDER_SPI,
+			 PCI_VENDOR_ID_CAVIUM,
+			 PCI_SUBSYS_DEVID_88XX_SPI) },
+	{ PCI_DEVICE_SUB(PCI_VENDOR_ID_CAVIUM,
+			 PCI_DEVICE_ID_THUNDER_SPI,
+			 PCI_VENDOR_ID_CAVIUM,
+			 PCI_SUBSYS_DEVID_81XX_SPI) },
+	{ PCI_DEVICE_SUB(PCI_VENDOR_ID_CAVIUM,
+			 PCI_DEVICE_ID_THUNDER_SPI,
+			 PCI_VENDOR_ID_CAVIUM,
+			 PCI_SUBSYS_DEVID_83XX_SPI) },
 	{ 0, }
 };
 
