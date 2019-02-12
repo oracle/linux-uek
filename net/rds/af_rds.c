@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2006, 2018 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2006, 2019 Oracle and/or its affiliates. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -80,6 +80,17 @@ static unsigned long rds_sock_count;
 static LIST_HEAD(rds_sock_list);
 DECLARE_WAIT_QUEUE_HEAD(rds_poll_waitq);
 
+/* kmem cache slab for struct rds_buf_info */
+static struct kmem_cache *rds_rs_buf_info_slab;
+
+/* Helper function to be passed to rhashtable_free_and_destroy() to free a
+ * struct rs_buf_info.
+ */
+static void rds_buf_info_free(void *rsbi, void *arg __attribute__((unused)))
+{
+	kmem_cache_free(rds_rs_buf_info_slab, rsbi);
+}
+
 /*
  * This is called as the final descriptor referencing this socket is closed.
  * We have to unbind the socket so that another socket can be bound to the
@@ -111,6 +122,9 @@ static int rds_release(struct socket *sock)
 	rds_send_drop_to(rs, NULL);
 	rds_rdma_drop_keys(rs);
 	rds_notify_queue_get(rs, NULL);
+
+	rhashtable_free_and_destroy(&rs->rs_buf_info_tbl, rds_buf_info_free,
+				    NULL);
 
 	spin_lock_bh(&rds_sock_lock);
 	list_del_init(&rs->rs_item);
@@ -272,9 +286,17 @@ static unsigned int rds_poll(struct file *file, struct socket *sock,
 	if (!list_empty(&rs->rs_recv_queue)
 	 || !list_empty(&rs->rs_notify_queue))
 		mask |= (POLLIN | POLLRDNORM);
-	if (rs->rs_snd_bytes < rds_sk_sndbuf(rs))
-		mask |= (POLLOUT | POLLWRNORM);
 	read_unlock_irqrestore(&rs->rs_recv_lock, flags);
+
+	/* Use the number of destination this socket has to estimate the
+	 * send buffer size.  When there is no peer yet, return the default
+	 * send buffer size.
+	 */
+	spin_lock_irqsave(&rs->rs_snd_lock, flags);
+	if (rs->rs_snd_bytes < max_t(u32, rs->rs_buf_info_dest_cnt, 1) *
+	    rds_sk_sndbuf(rs))
+		mask |= (POLLOUT | POLLWRNORM);
+	spin_unlock_irqrestore(&rs->rs_snd_lock, flags);
 
 	/* clear state any time we wake a seen-congested socket */
 	if (mask)
@@ -712,6 +734,77 @@ out:
 
 }
 
+/* Check if there is a rs_buf_info associated with the given address.  If not,
+ * add one to the rds_sock.  The found or added rs_buf_info is returned.  If
+ * there is no rs_buf_info found and a new rs_buf_info cannot be allocated,
+ * NULL is returned and ret is set to the error.  Once an address' rs_buf_info
+ * is added, it will not be removed until the rs_sock is closed.
+ */
+struct rs_buf_info *rds_add_buf_info(struct rds_sock *rs, struct in6_addr *addr,
+				     int *ret, gfp_t gfp)
+{
+	struct rs_buf_info *info, *tmp_info;
+	unsigned long flags;
+
+	/* Normal path, peer is expected to be found most of the time. */
+	info = rhashtable_lookup_fast(&rs->rs_buf_info_tbl, addr,
+				      rs_buf_info_params);
+	if (info) {
+		*ret = 0;
+		return info;
+	}
+
+	/* Allocate the buffer outside of lock first. */
+	tmp_info = kmem_cache_alloc(rds_rs_buf_info_slab, gfp);
+	if (!tmp_info) {
+		*ret = -ENOMEM;
+		return NULL;
+	}
+
+	spin_lock_irqsave(&rs->rs_snd_lock, flags);
+
+	/* Cannot add more peer. */
+	if (rs->rs_buf_info_dest_cnt + 1 > rds_sock_max_peers) {
+		spin_unlock_irqrestore(&rs->rs_snd_lock, flags);
+		kmem_cache_free(rds_rs_buf_info_slab, tmp_info);
+		*ret = -ENFILE;
+		return NULL;
+	}
+
+	tmp_info->rsbi_key = *addr;
+	tmp_info->rsbi_snd_bytes = 0;
+	*ret = rhashtable_insert_fast(&rs->rs_buf_info_tbl,
+				      &tmp_info->rsbi_link, rs_buf_info_params);
+	if (!*ret) {
+		rs->rs_buf_info_dest_cnt++;
+		spin_unlock_irqrestore(&rs->rs_snd_lock, flags);
+		return tmp_info;
+	} else if (*ret != -EEXIST) {
+		spin_unlock_irqrestore(&rs->rs_snd_lock, flags);
+		kmem_cache_free(rds_rs_buf_info_slab, tmp_info);
+		/* Very unlikely to happen... */
+		pr_err("%s: cannot add rs_buf_info for %pI6c: %d\n", __func__,
+		       addr, *ret);
+		return NULL;
+	}
+
+	/* Another thread beats us in adding the rs_buf_info.... */
+	info = rhashtable_lookup_fast(&rs->rs_buf_info_tbl, addr,
+				      rs_buf_info_params);
+	spin_unlock_irqrestore(&rs->rs_snd_lock, flags);
+	kmem_cache_free(rds_rs_buf_info_slab, tmp_info);
+
+	if (info) {
+		*ret = 0;
+		return info;
+	}
+
+	/* Should not happen... */
+	pr_err("%s: cannot find rs_buf_info for %pI6c\n", __func__, addr);
+	*ret = -EINVAL;
+	return NULL;
+}
+
 static int rds_connect(struct socket *sock, struct sockaddr *uaddr,
 		       int addr_len, int flags)
 {
@@ -800,6 +893,12 @@ static int rds_connect(struct socket *sock, struct sockaddr *uaddr,
 		break;
 	}
 
+	if (!ret &&
+	    !rds_add_buf_info(rs, &rs->rs_conn_addr, &ret, GFP_KERNEL)) {
+		/* Need to clear the connected info in case of error. */
+		rs->rs_conn_addr = in6addr_any;
+		rs->rs_conn_port = 0;
+	}
 	release_sock(sk);
 	return ret;
 }
@@ -842,6 +941,7 @@ static void rds_sock_destruct(struct sock *sk)
 static int __rds_create(struct socket *sock, struct sock *sk, int protocol)
 {
 	struct rds_sock *rs;
+	int ret;
 
 	sock_init_data(sock, sk);
 	sock->ops		= &rds_proto_ops;
@@ -863,6 +963,11 @@ static int __rds_create(struct socket *sock, struct sock *sk, int protocol)
 	rs->rs_netfilter_enabled = 0;
 	rs->rs_rx_traces = 0;
 
+	spin_lock_init(&rs->rs_snd_lock);
+	ret = rhashtable_init(&rs->rs_buf_info_tbl, &rs_buf_info_params);
+	if (ret)
+		return ret;
+
 	if (!ipv6_addr_any(&rs->rs_bound_addr)) {
 		printk(KERN_CRIT "bound addr %pI6c at create\n",
 		       &rs->rs_bound_addr);
@@ -879,6 +984,7 @@ static int __rds_create(struct socket *sock, struct sock *sk, int protocol)
 static int rds_create(struct net *net, struct socket *sock, int protocol, int kern)
 {
 	struct sock *sk;
+	int ret;
 
 	if (sock->type != SOCK_SEQPACKET ||
 	    (protocol && IPPROTO_OKA != protocol))
@@ -888,7 +994,10 @@ static int rds_create(struct net *net, struct socket *sock, int protocol, int ke
 	if (!sk)
 		return -ENOMEM;
 
-	return __rds_create(sock, sk, protocol);
+	ret = __rds_create(sock, sk, protocol);
+	if (ret)
+		sk_free(sk);
+	return ret;
 }
 
 void debug_sock_hold(struct sock *sk)
@@ -1194,6 +1303,7 @@ static void __exit rds_exit(void)
 	rds_info_deregister_func(RDS6_INFO_SOCKETS, rds6_sock_info);
 	rds_info_deregister_func(RDS6_INFO_RECV_MESSAGES, rds6_sock_inc_info);
 #endif
+	kmem_cache_destroy(rds_rs_buf_info_slab);
 }
 
 module_exit(rds_exit);
@@ -1203,6 +1313,14 @@ u32 rds_gen_num;
 static int __init rds_init(void)
 {
 	int ret;
+
+	rds_rs_buf_info_slab = kmem_cache_create("rds_rs_buf_info",
+						 sizeof(struct rs_buf_info),
+						 0, SLAB_HWCACHE_ALIGN, NULL);
+	if (!rds_rs_buf_info_slab) {
+		ret = -ENOMEM;
+		goto out;
+	}
 
 	net_get_random_once(&rds_gen_num, sizeof(rds_gen_num));
 

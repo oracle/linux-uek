@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2006, 2018 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2006, 2019 Oracle and/or its affiliates. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -908,9 +908,9 @@ static int rds_notify_cong(struct rds_sock *rs, struct msghdr *msghdr)
 	if (err)
 		return err;
 
-	spin_lock_irqsave(&rs->rs_lock, flags);
+	spin_lock_irqsave(&rs->rs_snd_lock, flags);
 	rs->rs_cong_notify &= ~notify;
-	spin_unlock_irqrestore(&rs->rs_lock, flags);
+	spin_unlock_irqrestore(&rs->rs_snd_lock, flags);
 
 	return 0;
 }
