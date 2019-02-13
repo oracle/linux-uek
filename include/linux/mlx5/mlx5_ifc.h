@@ -7509,21 +7509,23 @@ struct mlx5_ifc_ptys_reg_bits {
 	u8         proto_mask[0x3];
 
 	u8         an_status[0x4];
-	u8         reserved_at_24[0x3c];
+	u8         reserved_at_24[0x1c];
+
+	u8         ext_eth_proto_capability[0x20];
 
 	u8         eth_proto_capability[0x20];
 
 	u8         ib_link_width_capability[0x10];
 	u8         ib_proto_capability[0x10];
 
-	u8         reserved_at_a0[0x20];
+	u8         ext_eth_proto_admin[0x20];
 
 	u8         eth_proto_admin[0x20];
 
 	u8         ib_link_width_admin[0x10];
 	u8         ib_proto_admin[0x10];
 
-	u8         reserved_at_100[0x20];
+	u8         ext_eth_proto_oper[0x20];
 
 	u8         eth_proto_oper[0x20];
 
@@ -7934,7 +7936,9 @@ struct mlx5_ifc_peir_reg_bits {
 };
 
 struct mlx5_ifc_pcam_enhanced_features_bits {
-	u8         reserved_at_0[0x7b];
+	u8         reserved_at_0[0x72];
+	u8         ptys_extended_ethernet[0x1];
+	u8	   reserved_at_73[0x8];
 
 	u8         rx_buffer_fullness_counters[0x1];
 	u8         ptys_connector_type[0x1];
