@@ -32,6 +32,7 @@
 
 #include <linux/mutex.h>
 #include <linux/mlx5/driver.h>
+#include <linux/mlx5/vport.h>
 
 #include "mlx5_core.h"
 #include "fs_core.h"
