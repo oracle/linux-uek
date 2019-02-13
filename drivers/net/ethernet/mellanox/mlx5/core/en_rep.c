@@ -763,7 +763,7 @@ bool mlx5e_is_uplink_rep(struct mlx5e_priv *priv)
 
 	rep = rpriv->rep;
 	if (esw->mode == SRIOV_OFFLOADS &&
-	    rep && rep->vport == FDB_UPLINK_VPORT)
+	    rep && rep->vport == MLX5_VPORT_UPLINK)
 		return true;
 
 	return false;
@@ -778,7 +778,7 @@ static bool mlx5e_is_vf_vport_rep(struct mlx5e_priv *priv)
 		return false;
 
 	rep = rpriv->rep;
-	if (rep && rep->vport != FDB_UPLINK_VPORT)
+	if (rep && rep->vport != MLX5_VPORT_UPLINK)
 		return true;
 
 	return false;

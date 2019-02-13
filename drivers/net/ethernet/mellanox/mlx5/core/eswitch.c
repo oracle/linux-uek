@@ -38,8 +38,6 @@
 #include "mlx5_core.h"
 #include "eswitch.h"
 
-#define UPLINK_VPORT 0xFFFF
-
 enum {
 	MLX5_ACTION_NONE = 0,
 	MLX5_ACTION_ADD  = 1,
@@ -187,7 +185,7 @@ __esw_fdb_set_vport_rule(struct mlx5_eswitch *esw, u16 vport, bool rx_rule,
 					misc_parameters);
 		mc_misc  = MLX5_ADDR_OF(fte_match_param, spec->match_criteria,
 					misc_parameters);
-		MLX5_SET(fte_match_set_misc, mv_misc, source_port, UPLINK_VPORT);
+		MLX5_SET(fte_match_set_misc, mv_misc, source_port, MLX5_VPORT_UPLINK);
 		MLX5_SET_TO_ONES(fte_match_set_misc, mc_misc, source_port);
 	}
 
@@ -555,7 +553,7 @@ static int esw_add_mc_addr(struct mlx5_eswitch *esw, struct vport_addr *vaddr)
 		return -ENOMEM;
 
 	esw_mc->uplink_rule = /* Forward MC MAC to Uplink */
-		esw_fdb_set_vport_rule(esw, mac, UPLINK_VPORT);
+		esw_fdb_set_vport_rule(esw, mac, MLX5_VPORT_UPLINK);
 
 	/* Add this multicast mac to all the mc promiscuous vports */
 	update_allmulti_vports(esw, vaddr, esw_mc);
@@ -792,7 +790,7 @@ static void esw_apply_vport_rx_mode(struct mlx5_eswitch *esw, u16 vport_num,
 		if (!allmulti_addr->uplink_rule)
 			allmulti_addr->uplink_rule =
 				esw_fdb_set_vport_allmulti_rule(esw,
-								UPLINK_VPORT);
+								MLX5_VPORT_UPLINK);
 		allmulti_addr->refcnt++;
 	} else if (vport->allmulti_rule) {
 		mlx5_del_flow_rules(vport->allmulti_rule);
@@ -1996,7 +1994,7 @@ static int _mlx5_eswitch_set_vepa_locked(struct mlx5_eswitch *esw,
 
 	/* Uplink rule forward uplink traffic to FDB */
 	misc = MLX5_ADDR_OF(fte_match_param, spec->match_value, misc_parameters);
-	MLX5_SET(fte_match_set_misc, misc, source_port, FDB_UPLINK_VPORT);
+	MLX5_SET(fte_match_set_misc, misc, source_port, MLX5_VPORT_UPLINK);
 
 	misc = MLX5_ADDR_OF(fte_match_param, spec->match_criteria, misc_parameters);
 	MLX5_SET_TO_ONES(fte_match_set_misc, misc, source_port);
@@ -2018,7 +2016,7 @@ static int _mlx5_eswitch_set_vepa_locked(struct mlx5_eswitch *esw,
 	memset(spec, 0, sizeof(*spec));
 	memset(&dest, 0, sizeof(dest));
 	dest.type = MLX5_FLOW_DESTINATION_TYPE_VPORT;
-	dest.vport.num = FDB_UPLINK_VPORT;
+	dest.vport.num = MLX5_VPORT_UPLINK;
 	flow_act.action = MLX5_FLOW_CONTEXT_ACTION_FWD_DEST;
 	flow_rule = mlx5_add_flow_rules(esw->fdb_table.legacy.vepa_fdb, spec,
 					&flow_act, &dest, 1);
