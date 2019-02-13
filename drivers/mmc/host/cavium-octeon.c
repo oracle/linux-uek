@@ -247,8 +247,8 @@ static int octeon_mmc_probe(struct platform_device *pdev)
 		/* Only CMD_DONE, DMA_DONE, CMD_ERR, DMA_ERR */
 		for (i = 1; i <= 4; i++) {
 			ret = devm_request_irq(&pdev->dev, mmc_irq[i],
-					       cvm_mmc_interrupt,
-					       0, cvm_mmc_irq_names[i], host);
+				cvm_mmc_interrupt, IRQF_NO_THREAD,
+				cvm_mmc_irq_names[i], host);
 			if (ret < 0) {
 				dev_err(&pdev->dev, "Error: devm_request_irq %d\n",
 					mmc_irq[i]);
@@ -257,8 +257,8 @@ static int octeon_mmc_probe(struct platform_device *pdev)
 		}
 	} else {
 		ret = devm_request_irq(&pdev->dev, mmc_irq[0],
-				       cvm_mmc_interrupt, 0, KBUILD_MODNAME,
-				       host);
+				cvm_mmc_interrupt, IRQF_NO_THREAD,
+				KBUILD_MODNAME, host);
 		if (ret < 0) {
 			dev_err(&pdev->dev, "Error: devm_request_irq %d\n",
 				mmc_irq[0]);
