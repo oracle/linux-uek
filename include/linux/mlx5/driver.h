@@ -1252,6 +1252,21 @@ static inline int mlx5_core_is_pf(struct mlx5_core_dev *dev)
 	return !(dev->priv.pci_dev_data & MLX5_PCI_DEV_IS_VF);
 }
 
+/*
+ * This feature is not supported in UEK5, so both mlx5_core_is_ecpf() and
+ * mlx5_core_is_ecpf_esw_manager() always return false. We kept them to
+ * avoid new conflicts from cherry-picks.
+ */
+static inline bool mlx5_core_is_ecpf(struct mlx5_core_dev *dev)
+{
+	return false;
+}
+
+static inline bool mlx5_core_is_ecpf_esw_manager(struct mlx5_core_dev *dev)
+{
+	return false;
+}
+
 #define MLX5_TOTAL_VPORTS(mdev) (1 + pci_sriov_get_totalvfs((mdev)->pdev))
 #define MLX5_VPORT_MANAGER(mdev) \
 	(MLX5_CAP_GEN(mdev, vport_group_manager) && \
