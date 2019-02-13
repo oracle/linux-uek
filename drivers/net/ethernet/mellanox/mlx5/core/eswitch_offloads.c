@@ -185,15 +185,15 @@ static int esw_add_vlan_action_check(struct mlx5_esw_flow_attr *attr,
 	in_rep  = attr->in_rep;
 	out_rep = attr->out_rep;
 
-	if (push && in_rep->vport == FDB_UPLINK_VPORT)
+	if (push && in_rep->vport == MLX5_VPORT_UPLINK)
 		goto out_notsupp;
 
-	if (pop && out_rep->vport == FDB_UPLINK_VPORT)
+	if (pop && out_rep->vport == MLX5_VPORT_UPLINK)
 		goto out_notsupp;
 
 	/* vport has vlan push configured, can't offload VF --> wire rules w.o it */
 	if (!push && !pop && fwd)
-		if (in_rep->vlan && out_rep->vport == FDB_UPLINK_VPORT)
+		if (in_rep->vlan && out_rep->vport == MLX5_VPORT_UPLINK)
 			goto out_notsupp;
 
 	/* protects against (1) setting rules with different vlans to push and
@@ -234,7 +234,7 @@ int mlx5_eswitch_add_vlan_action(struct mlx5_eswitch *esw,
 
 	if (!push && !pop && fwd) {
 		/* tracks VF --> wire rules without vlan push action */
-		if (attr->out_rep->vport == FDB_UPLINK_VPORT) {
+		if (attr->out_rep->vport == MLX5_VPORT_UPLINK) {
 			vport->vlan_refcount++;
 			attr->vlan_handled = true;
 		}
@@ -294,7 +294,7 @@ int mlx5_eswitch_del_vlan_action(struct mlx5_eswitch *esw,
 
 	if (!push && !pop && fwd) {
 		/* tracks VF --> wire rules without vlan push action */
-		if (attr->out_rep->vport == FDB_UPLINK_VPORT)
+		if (attr->out_rep->vport == MLX5_VPORT_UPLINK)
 			vport->vlan_refcount--;
 
 		return 0;
@@ -922,7 +922,7 @@ int esw_offloads_init_reps(struct mlx5_eswitch *esw)
 		ether_addr_copy(rep->hw_id, hw_id);
 	}
 
-	offloads->vport_reps[0].vport = FDB_UPLINK_VPORT;
+	offloads->vport_reps[0].vport = MLX5_VPORT_UPLINK;
 
 	return 0;
 }
