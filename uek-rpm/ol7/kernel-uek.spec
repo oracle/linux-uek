@@ -1,4 +1,3 @@
-%define kernel_git_commit 74c661676446c010ea6f46dab7231d98761d66a5
 %global __spec_install_pre %{___build_pre}
 
 # Errors in specfile are causing builds to fail. Adding workarounds.
