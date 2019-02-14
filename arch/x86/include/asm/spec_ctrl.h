@@ -180,7 +180,7 @@
 .Ldone_\@:
 .endm
 
-.macro STUFF_RSB_NON_SMEP
+.macro STUFF_RSB
 	ALTERNATIVE __stringify(__ASM_STUFF_RSB), "", X86_FEATURE_STUFF_RSB
 .endm
 

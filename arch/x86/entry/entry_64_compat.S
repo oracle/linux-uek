@@ -56,7 +56,7 @@ ENTRY(entry_SYSENTER_compat)
 
 	movq	PER_CPU_VAR(cpu_current_top_of_stack), %rsp
 
-	STUFF_RSB_NON_SMEP
+	STUFF_RSB
 	ENABLE_IBRS
 
 	/*
@@ -249,7 +249,7 @@ GLOBAL(entry_SYSCALL_compat_after_hwframe)
 	pushq   $0			/* pt_regs->r15 = 0 */
 	xorl	%r15d, %r15d		/* nospec   r15 */
 
-	STUFF_RSB_NON_SMEP
+	STUFF_RSB
 	ENABLE_IBRS
 
 	/*
@@ -347,7 +347,7 @@ ENTRY(entry_INT80_compat)
 	ASM_CLAC			/* Do this early to minimize exposure */
 	SWAPGS
 
-	STUFF_RSB_NON_SMEP
+	STUFF_RSB
 
 	/*
 	 * User tracing code (ptrace or signal handlers) might assume that
