@@ -228,7 +228,7 @@ GLOBAL(entry_SYSCALL_64_after_hwframe)
 
 	PUSH_AND_CLEAR_REGS rax=$-ENOSYS
 
-	STUFF_RSB_NON_SMEP
+	STUFF_RSB
 	ENABLE_IBRS
 
 	TRACE_IRQS_OFF
@@ -537,7 +537,7 @@ END(irq_entries_start)
 	 * Could add some unnecessary RSB clearing if coming
 	 * from kernel for non-SMEP platform.
 	 */
-	STUFF_RSB_NON_SMEP
+	STUFF_RSB
 
 	testb	$3, CS-ORIG_RAX(%rsp)
 	jz	1f
@@ -876,7 +876,7 @@ ENTRY(\sym)
 	.endif
 
 	ASM_CLAC
-	STUFF_RSB_NON_SMEP
+	STUFF_RSB
 
 	.if \has_error_code == 0
 	pushq	$-1				/* ORIG_RAX: no syscall to restart */
@@ -1511,7 +1511,7 @@ ENTRY(nmi)
 	SWITCH_TO_KERNEL_CR3 scratch_reg=%rdx
 	movq	%rsp, %rdx
 	movq	PER_CPU_VAR(cpu_current_top_of_stack), %rsp
-	STUFF_RSB_NON_SMEP
+	STUFF_RSB
 	ENABLE_IBRS
 	UNWIND_HINT_IRET_REGS base=%rdx offset=8
 	pushq	5*8(%rdx)	/* pt_regs->ss */
