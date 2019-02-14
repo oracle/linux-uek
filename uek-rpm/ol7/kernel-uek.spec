@@ -450,7 +450,7 @@ Provides: kernel%{?variant}%{?-r:nano}-modeset = 1\
 Provides: kernel%{?variant}%{?-r:nano}-uname-r = %{KVERREL}%{?1:.%{1}}\
 Provides: oracleasm = 2.0.5\
 %if "x%{?-r}" != "x"\
-Provides: kernel-uek\
+Provides: kernel-uek = %{KVERREL}%{?1:.%{1}}\
 %endif\
 %ifnarch sparc64\
 Provides: x86_energy_perf_policy = %{KVERREL}%{?1:.%{1}}\
