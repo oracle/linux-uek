@@ -1673,27 +1673,32 @@ rdmaip_sched_initial_failovers(void)
 			   msecs_to_jiffies(rdmaip_trigger_delay_min_msecs));
 }
 
-static int rdmaip_is_roce_netdev(u8 port, struct rdmaip_device *rdmaip_dev,
-				 struct net_device *real_dev)
+static int rdmaip_get_all_roce_netdevs(void)
 {
 	union ib_gid		gid;
 	struct ib_gid_attr	gid_attr;
-	int index, found = 0;
+	int index, found = 0, i, nports;
 	int gid_tbl_len;
+	struct rdmaip_device	*rdmaip_dev;
 
-	gid_tbl_len = rdmaip_dev->pinfo[port - 1].gid_tbl_len;
-	for (index = 0; index < gid_tbl_len; index++) {
-		if (!ib_query_gid(rdmaip_dev->ibdev, port, index, &gid,
-				  &gid_attr)) {
-			/*
-			 * For netdevs, ib_query_gid gets
-			 * the lock. Release it here
-			 */
-			if (gid_attr.ndev)
-				dev_put(gid_attr.ndev);
-			if (gid_attr.ndev == real_dev) {
-				found = 1;
-				break;
+	list_for_each_entry_rcu(rdmaip_dev, &rdmaip_devlist_head, list) {
+		nports = rdmaip_dev->ibdev->phys_port_cnt;
+		for (i = 0; i < nports; i++) {
+			gid_tbl_len = rdmaip_dev->pinfo[i].gid_tbl_len;
+			for (index = 0; index < gid_tbl_len; index++) {
+				if (!ib_query_gid(rdmaip_dev->ibdev, i+1,
+						  index, &gid, &gid_attr)) {
+					/*
+					 * For netdevs, ib_query_gid gets
+					 * the lock. Release it here
+					 */
+					if (gid_attr.ndev) {
+						dev_put(gid_attr.ndev);
+						rdmaip_dev->pinfo[i].real_netdev =
+							gid_attr.ndev;
+						break;
+					}
+				}
 			}
 		}
 	}
@@ -1717,11 +1722,15 @@ static struct rdmaip_device *rdmaip_is_roce_device(struct net_device *dev,
 
 	list_for_each_entry_rcu(rdmaip_dev, &rdmaip_devlist_head, list) {
 		nports = rdmaip_dev->ibdev->phys_port_cnt;
-		for (port = 1; (port <= nports) && (!found); port++) {
-			found = rdmaip_is_roce_netdev(port, rdmaip_dev,
-						      real_dev);
+		for (port = 0; (port < nports) && !found; port++) {
+			if (rdmaip_dev->pinfo[port].real_netdev == real_dev) {
+				RDMAIP_DBG2("FOUND NETDEV %s ibdev %s:%d\n",
+					    real_dev->name,
+					    rdmaip_dev->ibdev->name, port);
+				found = 1;
+			}
 			if (found && port_num)
-				*port_num = port;
+				*port_num = port + 1;
 		}
 		if (found)
 			break;
@@ -1798,6 +1807,8 @@ static void rdmaip_ip_config_init(void)
 	struct inet6_dev	*in6_dev;
 	struct rdmaip_device	*rdmaip_dev;
 	u8                      ret = 1, port_num;
+
+	rdmaip_get_all_roce_netdevs();
 
 	read_lock(&dev_base_lock);
 	for_each_netdev(&init_net, dev) {
