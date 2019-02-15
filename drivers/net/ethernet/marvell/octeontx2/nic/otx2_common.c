@@ -16,12 +16,93 @@
 #include "otx2_reg.h"
 #include "otx2_common.h"
 #include "otx2_struct.h"
-#include "otx2_struct.h"
 
 static inline void otx2_nix_rq_op_stats(struct queue_stats *stats,
 					struct otx2_nic *pfvf, int qidx);
 static inline void otx2_nix_sq_op_stats(struct queue_stats *stats,
 					struct otx2_nic *pfvf, int qidx);
+
+void otx2_update_lmac_stats(struct otx2_nic *pfvf)
+{
+	struct msg_req *req;
+
+	if (!netif_running(pfvf->netdev))
+		return;
+	req = otx2_mbox_alloc_msg_cgx_stats(&pfvf->mbox);
+	if (!req)
+		return;
+
+	otx2_sync_mbox_msg(&pfvf->mbox);
+}
+
+int otx2_update_rq_stats(struct otx2_nic *pfvf, int qidx)
+{
+	struct otx2_rcv_queue *rq = &pfvf->qset.rq[qidx];
+
+	if (!pfvf->qset.rq)
+		return 0;
+
+	otx2_nix_rq_op_stats(&rq->stats, pfvf, qidx);
+	return 1;
+}
+
+int otx2_update_sq_stats(struct otx2_nic *pfvf, int qidx)
+{
+	struct otx2_snd_queue *sq = &pfvf->qset.sq[qidx];
+
+	if (!pfvf->qset.sq)
+		return 0;
+
+	otx2_nix_sq_op_stats(&sq->stats, pfvf, qidx);
+	return 1;
+}
+
+void otx2_get_dev_stats(struct otx2_nic *pfvf)
+{
+	struct otx2_dev_stats *dev_stats = &pfvf->hw.dev_stats;
+
+#define OTX2_GET_RX_STATS(reg) \
+	 otx2_read64(pfvf, NIX_LF_RX_STATX(reg))
+#define OTX2_GET_TX_STATS(reg) \
+	 otx2_read64(pfvf, NIX_LF_TX_STATX(reg))
+
+	dev_stats->rx_bytes = OTX2_GET_RX_STATS(RX_OCTS);
+	dev_stats->rx_drops = OTX2_GET_RX_STATS(RX_DROP);
+	dev_stats->rx_bcast_frames = OTX2_GET_RX_STATS(RX_BCAST);
+	dev_stats->rx_mcast_frames = OTX2_GET_RX_STATS(RX_MCAST);
+	dev_stats->rx_ucast_frames = OTX2_GET_RX_STATS(RX_UCAST);
+	dev_stats->rx_frames = dev_stats->rx_bcast_frames +
+			       dev_stats->rx_mcast_frames +
+			       dev_stats->rx_ucast_frames;
+
+	dev_stats->tx_bytes = OTX2_GET_TX_STATS(TX_OCTS);
+	dev_stats->tx_drops = OTX2_GET_TX_STATS(TX_DROP);
+	dev_stats->tx_bcast_frames = OTX2_GET_TX_STATS(TX_BCAST);
+	dev_stats->tx_mcast_frames = OTX2_GET_TX_STATS(TX_MCAST);
+	dev_stats->tx_ucast_frames = OTX2_GET_TX_STATS(TX_UCAST);
+	dev_stats->tx_frames = dev_stats->tx_bcast_frames +
+			       dev_stats->tx_mcast_frames +
+			       dev_stats->tx_ucast_frames;
+}
+
+void otx2_get_stats64(struct net_device *netdev,
+		      struct rtnl_link_stats64 *stats)
+{
+	struct otx2_nic *pfvf = netdev_priv(netdev);
+	struct otx2_dev_stats *dev_stats = &pfvf->hw.dev_stats;
+
+	otx2_get_dev_stats(pfvf);
+
+	stats->rx_bytes = dev_stats->rx_bytes;
+	stats->rx_packets = dev_stats->rx_frames;
+	stats->rx_dropped = dev_stats->rx_drops;
+	stats->multicast = dev_stats->rx_mcast_frames;
+
+	stats->tx_bytes = dev_stats->tx_bytes;
+	stats->tx_packets = dev_stats->tx_frames;
+	stats->tx_dropped = dev_stats->tx_drops;
+}
+EXPORT_SYMBOL(otx2_get_stats64);
 
 /* Sync MAC address with RVU */
 int otx2_hw_set_mac_addr(struct otx2_nic *pfvf, struct net_device *netdev)
@@ -181,112 +262,6 @@ int otx2_rss_init(struct otx2_nic *pfvf)
 			   NIX_FLOW_KEY_TYPE_SCTP;
 
 	return otx2_set_flowkey_cfg(pfvf);
-}
-
-void otx2_update_lmac_stats(struct otx2_nic *pfvf)
-{
-	struct msg_req *req;
-
-	if (!netif_running(pfvf->netdev))
-		return;
-	req = otx2_mbox_alloc_msg_cgx_stats(&pfvf->mbox);
-	if (!req)
-		return;
-
-	otx2_sync_mbox_msg(&pfvf->mbox);
-}
-
-int otx2_update_rq_stats(struct otx2_nic *pfvf, int qidx)
-{
-	struct otx2_rcv_queue *rq = &pfvf->qset.rq[qidx];
-
-	if (!pfvf->qset.rq)
-		return 0;
-
-	otx2_nix_rq_op_stats(&rq->stats, pfvf, qidx);
-	return 1;
-}
-
-int otx2_update_sq_stats(struct otx2_nic *pfvf, int qidx)
-{
-	struct otx2_snd_queue *sq = &pfvf->qset.sq[qidx];
-
-	if (!pfvf->qset.sq)
-		return 0;
-
-	otx2_nix_sq_op_stats(&sq->stats, pfvf, qidx);
-	return 1;
-}
-
-void otx2_get_dev_stats(struct otx2_nic *pfvf)
-{
-	struct otx2_dev_stats *dev_stats = &pfvf->hw.dev_stats;
-
-#define OTX2_GET_RX_STATS(reg) \
-	 otx2_read64(pfvf, NIX_LF_RX_STATX(reg))
-#define OTX2_GET_TX_STATS(reg) \
-	 otx2_read64(pfvf, NIX_LF_TX_STATX(reg))
-
-	dev_stats->rx_bytes = OTX2_GET_RX_STATS(RX_OCTS);
-	dev_stats->rx_drops = OTX2_GET_RX_STATS(RX_DROP);
-	dev_stats->rx_bcast_frames = OTX2_GET_RX_STATS(RX_BCAST);
-	dev_stats->rx_mcast_frames = OTX2_GET_RX_STATS(RX_MCAST);
-	dev_stats->rx_ucast_frames = OTX2_GET_RX_STATS(RX_UCAST);
-	dev_stats->rx_frames = dev_stats->rx_bcast_frames +
-			       dev_stats->rx_mcast_frames +
-			       dev_stats->rx_ucast_frames;
-
-	dev_stats->tx_bytes = OTX2_GET_TX_STATS(TX_OCTS);
-	dev_stats->tx_drops = OTX2_GET_TX_STATS(TX_DROP);
-	dev_stats->tx_bcast_frames = OTX2_GET_TX_STATS(TX_BCAST);
-	dev_stats->tx_mcast_frames = OTX2_GET_TX_STATS(TX_MCAST);
-	dev_stats->tx_ucast_frames = OTX2_GET_TX_STATS(TX_UCAST);
-	dev_stats->tx_frames = dev_stats->tx_bcast_frames +
-			       dev_stats->tx_mcast_frames +
-			       dev_stats->tx_ucast_frames;
-}
-
-void otx2_get_stats64(struct net_device *netdev,
-		      struct rtnl_link_stats64 *stats)
-{
-	struct otx2_nic *pfvf = netdev_priv(netdev);
-	struct otx2_dev_stats *dev_stats = &pfvf->hw.dev_stats;
-
-	otx2_get_dev_stats(pfvf);
-
-	stats->rx_bytes = dev_stats->rx_bytes;
-	stats->rx_packets = dev_stats->rx_frames;
-	stats->rx_dropped = dev_stats->rx_drops;
-	stats->multicast = dev_stats->rx_mcast_frames;
-
-	stats->tx_bytes = dev_stats->tx_bytes;
-	stats->tx_packets = dev_stats->tx_frames;
-	stats->tx_dropped = dev_stats->tx_drops;
-}
-EXPORT_SYMBOL(otx2_get_stats64);
-
-void otx2_set_cints_affinity(struct otx2_nic *pfvf)
-{
-	struct otx2_hw *hw = &pfvf->hw;
-	int vec, cpu, irq, cint;
-
-	vec = hw->nix_msixoff + NIX_LF_CINT_VEC_START;
-	cpu = cpumask_first(cpu_online_mask);
-
-	/* CQ interrupts */
-	for (cint = 0; cint < pfvf->hw.cint_cnt; cint++, vec++) {
-		if (!alloc_cpumask_var(&hw->affinity_mask[vec], GFP_KERNEL))
-			return;
-
-		cpumask_set_cpu(cpu, hw->affinity_mask[vec]);
-
-		irq = pci_irq_vector(pfvf->pdev, vec);
-		irq_set_affinity_hint(irq, hw->affinity_mask[vec]);
-
-		cpu = cpumask_next(cpu, cpu_online_mask);
-		if (unlikely(cpu >= nr_cpu_ids))
-			cpu = 0;
-	}
 }
 
 dma_addr_t otx2_alloc_rbuf(struct otx2_nic *pfvf, struct otx2_pool *pool,
@@ -614,9 +589,9 @@ static int otx2_cq_init(struct otx2_nic *pfvf, u16 qidx)
 	struct otx2_cq_queue *cq;
 
 	cq = &qset->cq[qidx];
-	cq->cqe_size = pfvf->qset.xqe_size;
 	cq->cqe_cnt = (qidx < pfvf->hw.rx_queues) ? qset->rqe_cnt
-				: qset->sqe_cnt;
+			: qset->sqe_cnt;
+	cq->cqe_size = pfvf->qset.xqe_size;
 
 	/* Allocate memory for CQEs */
 	err = qmem_alloc(pfvf->dev, &cq->cqe, cq->cqe_cnt, cq->cqe_size);
@@ -625,13 +600,13 @@ static int otx2_cq_init(struct otx2_nic *pfvf, u16 qidx)
 
 	/* Save CQE CPU base for faster reference */
 	cq->cqe_base = cq->cqe->base;
-
 	/* In case where all RQs auras point to single pool,
 	 * all CQs receive buffer pool also point to same pool.
 	 */
 	pool_id = ((qidx < pfvf->hw.rx_queues) &&
 		   (pfvf->hw.rqpool_cnt != pfvf->hw.rx_queues)) ? 0 : qidx;
 	cq->rbpool = &qset->pool[pool_id];
+
 	cq->cq_idx = qidx;
 
 	/* Get memory to put this msg */
@@ -698,7 +673,7 @@ int otx2_config_nix_queues(struct otx2_nic *pfvf)
 
 int otx2_config_nix(struct otx2_nic *pfvf)
 {
-	struct nix_lf_alloc_req *nixlf;
+	struct nix_lf_alloc_req  *nixlf;
 	struct nix_lf_alloc_rsp *rsp;
 	int err;
 
@@ -744,12 +719,11 @@ int otx2_config_nix(struct otx2_nic *pfvf)
 void otx2_free_aura_ptr(struct otx2_nic *pfvf, int type)
 {
 	int pool_id, pool_start = 0, pool_end = 0, size = 0;
-	struct otx2_pool *pool;
 	u64 iova, pa;
 
 	if (type == AURA_NIX_SQ) {
 		pool_start = otx2_get_pool_idx(pfvf, type, 0);
-		pool_end = pool_start + pfvf->hw.sqpool_cnt;
+		pool_end =  pool_start + pfvf->hw.sqpool_cnt;
 		size = pfvf->hw.sqb_size;
 	}
 	if (type == AURA_NIX_RQ) {
@@ -760,7 +734,6 @@ void otx2_free_aura_ptr(struct otx2_nic *pfvf, int type)
 
 	/* Free SQB and RQB pointers from the aura pool */
 	for (pool_id = pool_start; pool_id < pool_end; pool_id++) {
-		pool = &pfvf->qset.pool[pool_id];
 		iova = otx2_aura_allocptr(pfvf, pool_id);
 		while (iova) {
 			if (type == AURA_NIX_RQ)
@@ -878,7 +851,6 @@ static int otx2_pool_init(struct otx2_nic *pfvf, u16 pool_id,
 	aq->pool.stack_base = pool->stack->iova;
 	aq->pool.stack_caching = 1;
 	aq->pool.ena = 1;
-	aq->aura.avg_level = 255;
 	aq->pool.buf_size = buf_size / 128;
 	aq->pool.stack_max_pages = stack_pages;
 	aq->pool.shift = ilog2(numptrs) - 8;
@@ -971,7 +943,6 @@ int otx2_rq_aura_pool_init(struct otx2_nic *pfvf)
 		if (err)
 			goto fail;
 	}
-
 	for (pool_id = 0; pool_id < hw->rqpool_cnt; pool_id++) {
 		err = otx2_pool_init(pfvf, pool_id, stack_pages,
 				     num_ptrs, RCV_FRAG_LEN);
@@ -1203,6 +1174,30 @@ void otx2_free_cints(struct otx2_nic *pfvf, int n)
 		irq_set_affinity_hint(vector, NULL);
 		free_cpumask_var(hw->affinity_mask[irq]);
 		free_irq(vector, &qset->napi[qidx]);
+	}
+}
+
+void otx2_set_cints_affinity(struct otx2_nic *pfvf)
+{
+	struct otx2_hw *hw = &pfvf->hw;
+	int vec, cpu, irq, cint;
+
+	vec = hw->nix_msixoff + NIX_LF_CINT_VEC_START;
+	cpu = cpumask_first(cpu_online_mask);
+
+	/* CQ interrupts */
+	for (cint = 0; cint < pfvf->hw.cint_cnt; cint++, vec++) {
+		if (!alloc_cpumask_var(&hw->affinity_mask[vec], GFP_KERNEL))
+			return;
+
+		cpumask_set_cpu(cpu, hw->affinity_mask[vec]);
+
+		irq = pci_irq_vector(pfvf->pdev, vec);
+		irq_set_affinity_hint(irq, hw->affinity_mask[vec]);
+
+		cpu = cpumask_next(cpu, cpu_online_mask);
+		if (unlikely(cpu >= nr_cpu_ids))
+			cpu = 0;
 	}
 }
 
