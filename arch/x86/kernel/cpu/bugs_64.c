@@ -76,6 +76,12 @@ static enum spectre_v2_mitigation retpoline_mode = SPECTRE_V2_NONE;
 DEFINE_STATIC_KEY_FALSE(retpoline_enabled_key);
 EXPORT_SYMBOL(retpoline_enabled_key);
 
+/*
+ * RSB stuffing dynamic key to activate the STUFF_RSB overwrite macro.
+ */
+DEFINE_STATIC_KEY_FALSE(rsb_overwrite_key);
+EXPORT_SYMBOL(rsb_overwrite_key);
+
 static bool is_skylake_era(void);
 static void disable_ibrs_and_friends(bool);
 static void activate_spectre_v2_mitigation(enum spectre_v2_mitigation);
@@ -700,7 +706,8 @@ static void ibrs_select(enum spectre_v2_mitigation *mode)
 	if (boot_cpu_has(X86_FEATURE_SMEP))
 		return;
 
-	setup_force_cpu_cap(X86_FEATURE_STUFF_RSB);
+	/* IBRS without SMEP needs RSB overwrite */
+	rsb_overwrite_enable();
 
 	if (*mode == SPECTRE_V2_IBRS_ENHANCED)
 		pr_warn("Enhanced IBRS might not provide full mitigation against Spectre v2 if SMEP is not available.\n");

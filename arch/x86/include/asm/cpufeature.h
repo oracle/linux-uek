@@ -216,7 +216,6 @@
 #define X86_FEATURE_SSBD		( 7*32+25) /* Speculative Store Bypass Disable */
 #define X86_FEATURE_SPEC_STORE_BYPASS_DISABLE ( 7*32+26) /* "" Disable Speculative Store Bypass. */
 #define X86_FEATURE_VMEXIT_RSB_FULL	(7*32+27) /* "" Whether to stuff the RSB on VMEXIT. */
-#define X86_FEATURE_STUFF_RSB	(7*32+28) /* "" Whether to stuff the RSB (usually dependent on !SMEP) */
 #define X86_FEATURE_RETPOLINE	( 7*32+29) /* "" Generic Retpoline mitigation for Spectre variant 2 */
 #define X86_FEATURE_RETPOLINE_AMD ( 7*32+30) /* "" AMD Retpoline mitigation for Spectre variant 2 */
 /* Because the ALTERNATIVE scheme is for members of the X86_FEATURE club... */
