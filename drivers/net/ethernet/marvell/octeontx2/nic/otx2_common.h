@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: GPL-2.0
-/* Marvell OcteonTx2 RVU Ethernet driver
+/* SPDX-License-Identifier: GPL-2.0
+ * Marvell OcteonTx2 RVU Ethernet driver
  *
  * Copyright (C) 2018 Marvell International Ltd.
  *
@@ -35,11 +35,28 @@ enum arua_mapped_qtypes {
 };
 
 /* NIX LF interrupts range*/
-#define NIX_LF_QINT_VEC_START	0x00
-#define NIX_LF_CINT_VEC_START	0x40
-#define NIX_LF_GINT_VEC		0x80
-#define NIX_LF_ERR_VEC		0x81
-#define NIX_LF_POISON_VEC	0x82
+#define NIX_LF_QINT_VEC_START			0x00
+#define NIX_LF_CINT_VEC_START			0x40
+#define NIX_LF_GINT_VEC				0x80
+#define NIX_LF_ERR_VEC				0x81
+#define NIX_LF_POISON_VEC			0x82
+
+struct  otx2_pcpu_stats {
+	u64 rq_drops;
+	u64 rq_red_drops;
+
+	struct u64_stats_sync syncp;
+};
+
+/* RSS configuration */
+struct otx2_rss_info {
+	u8 enable;
+	u32 flowkey_cfg;
+	u16 rss_size;
+	u8  ind_tbl[MAX_RSS_INDIR_TBL_SIZE];
+#define RSS_HASH_KEY_SIZE	44   /* 352 bit key */
+	u8  key[RSS_HASH_KEY_SIZE];
+};
 
 /* NIX TX stats */
 enum nix_stat_lf_tx {
@@ -84,23 +101,6 @@ struct  otx2_dev_stats {
 	u64 tx_drops;
 };
 
-struct  otx2_pcpu_stats {
-	u64 rq_drops;
-	u64 rq_red_drops;
-
-	struct u64_stats_sync syncp;
-};
-
-/* RSS configuration */
-struct otx2_rss_info {
-	bool enable;
-	u32 flowkey_cfg;
-	u16 rss_size;
-	u8  ind_tbl[MAX_RSS_INDIR_TBL_SIZE];
-#define RSS_HASH_KEY_SIZE	44   /* 352 bit key */
-	u8  key[RSS_HASH_KEY_SIZE];
-};
-
 struct  mbox {
 	struct otx2_mbox	mbox;
 	struct work_struct	mbox_wrk;
@@ -112,9 +112,9 @@ struct  mbox {
 
 struct otx2_hw {
 	struct pci_dev		*pdev;
+	struct otx2_rss_info	rss_info;
 	struct otx2_dev_stats	dev_stats;
 	struct otx2_pcpu_stats  __percpu *pcpu_stats;
-	struct otx2_rss_info	rss_info;
 	u16                     rx_queues;
 	u16                     tx_queues;
 	u16			max_queues;
@@ -158,7 +158,8 @@ struct otx2_nic {
 	struct otx2_hw		hw;
 	struct mbox		mbox;
 	struct workqueue_struct *mbox_wq;
-	bool			intf_down;
+	u8			intf_down;
+
 	u16			pcifunc;
 	u16			rx_chan_base;
 	u16			tx_chan_base;
@@ -265,7 +266,7 @@ static inline int otx2_get_pool_idx(struct otx2_nic *pfvf, int type, int idx)
 	if (type == AURA_NIX_SQ)
 		return pfvf->hw.rqpool_cnt + idx;
 
-	/* AURA_NIX_RQ */
+	 /* AURA_NIX_RQ */
 	return idx;
 }
 
@@ -301,9 +302,9 @@ static inline int otx2_sync_mbox_msg_busy_poll(struct mbox *mbox)
 	return otx2_mbox_check_rsp_msgs(&mbox->mbox, 0);
 }
 
-#define M(_name, _id, _fn_name, _req_type, _rsp_type)			\
+#define M(_name, _id, _fn_name, _req_type, _rsp_type)                   \
 static struct _req_type __maybe_unused					\
-*otx2_mbox_alloc_msg_ ## _fn_name(struct mbox *mbox)			\
+*otx2_mbox_alloc_msg_ ## _fn_name(struct mbox *mbox)                    \
 {									\
 	struct _req_type *req;						\
 									\
@@ -396,6 +397,12 @@ static inline int rvu_get_pf(u16 pcifunc)
 void otx2_free_cints(struct otx2_nic *pfvf, int n);
 void otx2_set_cints_affinity(struct otx2_nic *pfvf);
 
+int otx2_hw_set_mac_addr(struct otx2_nic *pfvf, struct net_device *netdev);
+int otx2_set_mac_address(struct net_device *netdev, void *p);
+int otx2_change_mtu(struct net_device *netdev, int new_mtu);
+int otx2_hw_set_mtu(struct otx2_nic *pfvf, int mtu);
+void otx2_tx_timeout(struct net_device *netdev);
+
 /* RVU block related APIs */
 int otx2_attach_npa_nix(struct otx2_nic *pfvf);
 int otx2_detach_resources(struct mbox *mbox);
@@ -416,14 +423,6 @@ void otx2_ctx_disable(struct mbox *mbox, int type, bool npa);
 
 int otx2_napi_handler(struct otx2_cq_queue *cq,
 		      struct otx2_nic *pfvf, int budget);
-void otx2_get_dev_stats(struct otx2_nic *pfvf);
-void otx2_get_stats64(struct net_device *netdev,
-		      struct rtnl_link_stats64 *stats);
-int otx2_hw_set_mac_addr(struct otx2_nic *pfvf, struct net_device *netdev);
-int otx2_set_mac_address(struct net_device *netdev, void *p);
-int otx2_change_mtu(struct net_device *netdev, int new_mtu);
-int otx2_hw_set_mtu(struct otx2_nic *pfvf, int mtu);
-void otx2_tx_timeout(struct net_device *netdev);
 
 /* RSS configuration APIs*/
 int otx2_rss_init(struct otx2_nic *pfvf);
@@ -444,6 +443,9 @@ void mbox_handler_cgx_stats(struct otx2_nic *pfvf,
 			    struct cgx_stats_rsp *rsp);
 
 /* Device stats APIs */
+void otx2_get_dev_stats(struct otx2_nic *pfvf);
+void otx2_get_stats64(struct net_device *netdev,
+		      struct rtnl_link_stats64 *stats);
 void otx2_update_lmac_stats(struct otx2_nic *pfvf);
 int otx2_update_rq_stats(struct otx2_nic *pfvf, int qidx);
 int otx2_update_sq_stats(struct otx2_nic *pfvf, int qidx);

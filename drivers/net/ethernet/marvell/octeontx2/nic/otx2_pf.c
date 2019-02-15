@@ -280,7 +280,6 @@ static int otx2_register_mbox_intr(struct otx2_nic *pf)
 		otx2_disable_mbox_intr(pf);
 		return -ENOMEM;
 	}
-
 	err = otx2_sync_mbox_msg(&pf->mbox);
 	if (err) {
 		dev_warn(pf->dev,
@@ -288,6 +287,7 @@ static int otx2_register_mbox_intr(struct otx2_nic *pf)
 		otx2_disable_mbox_intr(pf);
 		return -EPROBE_DEFER;
 	}
+
 	return 0;
 }
 
@@ -958,9 +958,9 @@ int otx2_stop(struct net_device *netdev)
 	}
 
 	netif_tx_disable(netdev);
+
 	otx2_free_hw_resources(pf);
 	otx2_free_cints(pf, pf->hw.cint_cnt);
-
 	otx2_disable_napi(pf);
 
 	for (qidx = 0; qidx < netdev->num_tx_queues; qidx++)
@@ -1157,11 +1157,11 @@ static const struct net_device_ops otx2_netdev_ops = {
 	.ndo_start_xmit		= otx2_xmit,
 	.ndo_fix_features	= otx2_fix_features,
 	.ndo_set_mac_address    = otx2_set_mac_address,
-	.ndo_change_mtu         = otx2_change_mtu,
-	.ndo_set_rx_mode        = otx2_set_rx_mode,
-	.ndo_get_stats64	= otx2_get_stats64,
+	.ndo_change_mtu		= otx2_change_mtu,
+	.ndo_set_rx_mode	= otx2_set_rx_mode,
 	.ndo_set_features	= otx2_set_features,
-	.ndo_tx_timeout         = otx2_tx_timeout,
+	.ndo_tx_timeout		= otx2_tx_timeout,
+	.ndo_get_stats64	= otx2_get_stats64,
 	.ndo_do_ioctl		= otx2_ioctl,
 };
 
@@ -1189,8 +1189,8 @@ static int otx2_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	struct net_device *netdev;
 	struct otx2_nic *pf;
 	struct otx2_hw *hw;
-	int    err, qcount;
-	int    num_vec = pci_msix_vec_count(pdev);
+	int err, qcount;
+	int num_vec;
 
 	err = pcim_enable_device(pdev);
 	if (err) {
@@ -1239,6 +1239,7 @@ static int otx2_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	hw->tx_queues = qcount;
 	hw->max_queues = qcount;
 
+	num_vec = pci_msix_vec_count(pdev);
 	hw->irq_name = devm_kmalloc_array(&hw->pdev->dev, num_vec, NAME_SIZE,
 					  GFP_KERNEL);
 	if (!hw->irq_name)

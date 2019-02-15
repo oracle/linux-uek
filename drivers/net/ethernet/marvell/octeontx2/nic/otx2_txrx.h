@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: GPL-2.0
-/* Marvell OcteonTx2 RVU Ethernet driver
+/* SPDX-License-Identifier: GPL-2.0
+ * Marvell OcteonTx2 RVU Ethernet driver
  *
  * Copyright (C) 2018 Marvell International Ltd.
  *
@@ -93,8 +93,8 @@ struct otx2_pool {
 struct otx2_cq_queue {
 	u8			cq_idx;
 	u8			cint_idx; /* CQ interrupt id */
-	u16			cqe_size;
 	u32			cqe_cnt;
+	u16			cqe_size;
 	void			*cqe_base;
 	struct qmem		*cqe;
 	struct otx2_pool	*rbpool;
