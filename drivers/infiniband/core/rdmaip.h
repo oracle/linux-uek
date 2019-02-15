@@ -63,6 +63,7 @@ DEFINE_MUTEX(rdmaip_global_flag_lock);
 
 struct port_info {
 	int	gid_tbl_len;
+	struct net_device *real_netdev;
 };
 
 #define RDMAIP_MAX_PHYS_PORTS 4
