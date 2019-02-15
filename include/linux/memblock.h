@@ -17,9 +17,6 @@
 #include <linux/init.h>
 #include <linux/mm.h>
 
-#define INIT_MEMBLOCK_REGIONS	128
-#define INIT_PHYSMEM_REGIONS	4
-
 /* Definition of memblock flags. */
 enum {
 	MEMBLOCK_NONE		= 0x0,	/* No special request */
