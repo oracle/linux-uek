@@ -128,7 +128,6 @@ static void otx2_get_strings(struct net_device *netdev, u32 sset, u8 *data)
 		sprintf(data, "cgx_txstat%d: ", stats);
 		data += ETH_GSTRING_LEN;
 	}
-
 	strcpy(data, "reset_count");
 }
 
