@@ -216,7 +216,6 @@
 #define X86_FEATURE_SPEC_STORE_BYPASS_DISABLE	( 7*32+25) /* "" Disable Speculative Store Bypass. */
 #define X86_FEATURE_ZEN			( 7*32+26) /* "" CPU is AMD family */
 #define X86_FEATURE_VMEXIT_RSB_FULL	( 7*32+27) /* "" Whether to stuff the RSB on VMEXIT. */
-#define X86_FEATURE_STUFF_RSB		( 7*32+28) /* "" Whether to stuff the RSB (usually dependent on !SMEP) */
 #define X86_FEATURE_IBRS		( 7*32+29) /* Indirect Branch Restricted Speculation */
 #define X86_FEATURE_IBPB		( 7*32+30) /* Indirect Branch Prediction Barrier */
 #define X86_FEATURE_STIBP		( 7*32+31) /* Single Thread Indirect Branch Predictors */
