@@ -180,8 +180,15 @@
 .Ldone_\@:
 .endm
 
+/*
+ * Overwrite RSB stuffing macro.
+ */
 .macro STUFF_RSB
-	ALTERNATIVE __stringify(__ASM_STUFF_RSB), "", X86_FEATURE_STUFF_RSB
+	STATIC_JUMP_IF_TRUE .Lstuff_rsb_\@, rsb_overwrite_key, def=0
+	jmp	.Ldone_call_\@
+.Lstuff_rsb_\@:
+	__ASM_STUFF_RSB
+.Ldone_call_\@:
 .endm
 
 #else /* __ASSEMBLY__ */
@@ -212,6 +219,17 @@ extern u32 sysctl_ibrs_enabled;
 extern struct mutex spec_ctrl_mutex;
 
 DECLARE_STATIC_KEY_FALSE(retpoline_enabled_key);
+DECLARE_STATIC_KEY_FALSE(rsb_overwrite_key);
+
+static inline void rsb_overwrite_enable(void)
+{
+	static_branch_enable(&rsb_overwrite_key);
+}
+
+static inline void rsb_overwrite_disable(void)
+{
+	static_branch_disable(&rsb_overwrite_key);
+}
 
 #define ibrs_supported		(use_ibrs & SPEC_CTRL_IBRS_SUPPORTED)
 #define ibrs_disabled		(use_ibrs & SPEC_CTRL_IBRS_ADMIN_DISABLED)
