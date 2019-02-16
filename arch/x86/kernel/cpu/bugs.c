@@ -82,12 +82,15 @@ DEFINE_STATIC_KEY_FALSE(retpoline_enabled_key);
 EXPORT_SYMBOL(retpoline_enabled_key);
 
 /*
- * RSB stuffing dynamic key to activate the STUFF_RSB overwrite macro.
+ * RSB stuffing dynamic keys to activate the STUFF_RSB macro,
+ * and indicate if this macro should overwrite the RSB.
  */
+DEFINE_STATIC_KEY_FALSE(rsb_stuff_key);
+EXPORT_SYMBOL(rsb_stuff_key);
 DEFINE_STATIC_KEY_FALSE(rsb_overwrite_key);
 EXPORT_SYMBOL(rsb_overwrite_key);
 
-static bool __init is_skylake_era(void);
+static bool is_skylake_era(void);
 static void __init disable_ibrs_and_friends(void);
 
 int __init spectre_v2_heuristics_setup(char *p)
@@ -440,10 +443,19 @@ bool retpoline_enabled(void)
 void retpoline_enable(void)
 {
 	static_branch_enable(&retpoline_enabled_key);
+	if (is_skylake_era()) {
+		/*
+		 * With retpoline, Skylake era CPUs should also fill RSB on any
+		 * condition that might empty the RSB.
+		 */
+		rsb_stuff_enable();
+	}
 }
 
 void retpoline_disable(void)
 {
+	if (is_skylake_era() && !static_key_enabled(&rsb_overwrite_key))
+		rsb_stuff_disable();
 	static_branch_disable(&retpoline_enabled_key);
 }
 
@@ -745,7 +757,7 @@ disable:
 }
 
 /* Check for Skylake-like CPUs (for RSB handling) */
-static bool __init is_skylake_era(void)
+static bool is_skylake_era(void)
 {
 	if (boot_cpu_data.x86_vendor == X86_VENDOR_INTEL &&
 	    boot_cpu_data.x86 == 6) {
@@ -911,7 +923,13 @@ static void __init activate_spectre_v2_mitigation(enum spectre_v2_mitigation mod
 	/* Activate the selected mitigation if necessary. */
 	if (retpoline_mode_selected(spectre_v2_enabled)) {
 		retpoline_activate(spectre_v2_enabled);
-
+		if (is_skylake_era()) {
+			/*
+			 * Indicate that Skylake+ CPUs also enable RSB stuffing
+			 * from the above call to retpoline_activate().
+			 */
+			pr_info("Spectre v2 mitigation: Filling RSB on underflow conditions\n");
+		}
 	} else if (spectre_v2_eibrs_enabled()) {
 		/* If enhanced IBRS mode is selected, enable it in all cpus */
 		spec_ctrl_flush_all_cpus(MSR_IA32_SPEC_CTRL,
@@ -919,10 +937,11 @@ static void __init activate_spectre_v2_mitigation(enum spectre_v2_mitigation mod
 	}
 
 	/*
-	 * Processor should ensure that guest behavior cannot control the RSB
-	 * after a VM exit (even when using enhanced IBRS).
+	 * Overwrite the RSB after a VM exit to ensure that guest behavior
+	 * cannot control it. Only enhanced IBRS with SMEP can avoid this.
 	 */
-	setup_force_cpu_cap(X86_FEATURE_VMEXIT_RSB_FULL);
+	if (!spectre_v2_eibrs_enabled() || !boot_cpu_has(X86_FEATURE_SMEP))
+		setup_force_cpu_cap(X86_FEATURE_VMEXIT_RSB_FULL);
 
 	/*
 	 * If spectre v2 protection has been enabled, unconditionally fill

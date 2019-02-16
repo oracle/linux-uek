@@ -113,10 +113,19 @@
 .endm
 
 /*
- * Overwrite RSB stuffing macro.
+ * Define stuff and overwrite RSB stuffing macro.
+ * Similar to __FILL_RETURN_BUFFER without the need of an extra register.
+ *
+ * This macro will either:
+ * - do nothing, if rsb_stuff_key is disabled
+ * - do stuffing of 16 RSB entries, if rsb_stuff_key is enabled,
+ *   similar to using RSB_FILL_LOOPS with __FILL_RETURN_BUFFER.
+ * - do RSB overwrite, clearing 32 RSB entries, if both
+ *   rsb_stuff_key and rsb_overwrite_key are enabled,
+ *   similar to using RSB_CLEAR_LOOPS with __FILL_RETURN_BUFFER.
  */
 .macro STUFF_RSB
-	STATIC_JUMP_IF_TRUE .Lstuff_rsb_\@, rsb_overwrite_key, def=0
+	STATIC_JUMP_IF_TRUE .Lstuff_rsb_\@, rsb_stuff_key, def=0
 	jmp	.Ldone_call_\@
 .Lstuff_rsb_\@:
 	call	1f;	pause
@@ -135,7 +144,10 @@
 13:	call	14f;	pause
 14:	call	15f;	pause
 15:	call	16f;	pause
-16:	call	17f;	pause
+16:	STATIC_JUMP_IF_TRUE .Loverwrite_rsb_\@, rsb_overwrite_key, def=0
+	jmp	.Lset_stack_half_\@
+.Loverwrite_rsb_\@:
+	call	17f;	pause
 17:	call	18f;	pause
 18:	call	19f;	pause
 19:	call	20f;	pause
@@ -151,7 +163,9 @@
 29:	call	30f;	pause
 30:	call	31f;	pause
 31:	call	32f;	pause
-32:	add $(32*8), %rsp
+32:	add $(16*8), %rsp
+.Lset_stack_half_\@:
+	add $(16*8), %rsp
 .Ldone_call_\@:
 .endm
 
@@ -183,16 +197,31 @@ extern u32 sysctl_ibrs_enabled;
 extern struct mutex spec_ctrl_mutex;
 
 DECLARE_STATIC_KEY_FALSE(retpoline_enabled_key);
+DECLARE_STATIC_KEY_FALSE(rsb_stuff_key);
 DECLARE_STATIC_KEY_FALSE(rsb_overwrite_key);
 
 static inline void rsb_overwrite_enable(void)
 {
+	static_branch_enable(&rsb_stuff_key);
 	static_branch_enable(&rsb_overwrite_key);
 }
 
 static inline void rsb_overwrite_disable(void)
 {
-	static_branch_disable(&rsb_overwrite_key);
+	if (static_key_enabled(&rsb_overwrite_key)) {
+		static_branch_disable(&rsb_stuff_key);
+		static_branch_disable(&rsb_overwrite_key);
+	}
+}
+
+static inline void rsb_stuff_enable(void)
+{
+	static_branch_enable(&rsb_stuff_key);
+}
+
+static inline void rsb_stuff_disable(void)
+{
+	static_branch_disable(&rsb_stuff_key);
 }
 
 #define ibrs_supported		(use_ibrs & SPEC_CTRL_IBRS_SUPPORTED)
