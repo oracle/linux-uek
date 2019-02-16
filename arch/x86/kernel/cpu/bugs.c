@@ -805,10 +805,12 @@ static void __init select_ibrs_variant(enum spectre_v2_mitigation *mode)
 static void __init disable_ibrs_and_friends(void)
 {
 	set_ibrs_disabled();
-	if (use_ibrs & SPEC_CTRL_IBRS_SUPPORTED)
-		/* Disable IBRS an all cpus */
+	if (use_ibrs & SPEC_CTRL_IBRS_SUPPORTED) {
+		rsb_overwrite_disable();
+		/* Disable IBRS on all cpus */
 		spec_ctrl_flush_all_cpus(MSR_IA32_SPEC_CTRL,
 			x86_spec_ctrl_base & ~SPEC_CTRL_FEATURE_ENABLE_IBRS);
+	}
 }
 
 static bool __init retpoline_mode_selected(enum spectre_v2_mitigation mode)
