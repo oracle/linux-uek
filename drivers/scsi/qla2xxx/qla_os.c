@@ -7179,7 +7179,7 @@ static int qla2xxx_map_queues(struct Scsi_Host *shost)
 	int rc;
 	scsi_qla_host_t *vha = (scsi_qla_host_t *)shost->hostdata;
 
-	if (USER_CTRL_IRQ(vha->hw))
+	if (USER_CTRL_IRQ(vha->hw) || !vha->hw->mqiobase)
 		rc = blk_mq_map_queues(&shost->tag_set);
 	else
 		rc = blk_mq_pci_map_queues(&shost->tag_set, vha->hw->pdev, 0);
