@@ -573,9 +573,14 @@ void change_spectre_v2_mitigation(enum spectre_v2_mitigation_action action)
 			if (eibrs_supported)
 				spec_ctrl_flush_all_cpus(MSR_IA32_SPEC_CTRL,
 					x86_spec_ctrl_priv);
+			if (!boot_cpu_has(X86_FEATURE_SMEP)) {
+				/* IBRS without SMEP needs RSB overwrite */
+				rsb_overwrite_enable();
+			}
 		} else {
 			set_ibrs_disabled();
 			if (use_ibrs & SPEC_CTRL_IBRS_SUPPORTED) {
+				rsb_overwrite_disable();
 				spec_ctrl_flush_all_cpus(MSR_IA32_SPEC_CTRL,
 							 x86_spec_ctrl_base);
 			}
@@ -735,10 +740,13 @@ static void __init select_ibrs_variant(enum spectre_v2_mitigation *mode)
 static void disable_ibrs_and_friends(bool disable_ibpb)
 {
 	set_ibrs_disabled();
-	if (use_ibrs & SPEC_CTRL_IBRS_SUPPORTED)
-		/* Disable IBRS an all cpus */
+	if (use_ibrs & SPEC_CTRL_IBRS_SUPPORTED) {
+		rsb_overwrite_disable();
+		/* Disable IBRS on all cpus */
 		spec_ctrl_flush_all_cpus(MSR_IA32_SPEC_CTRL,
 			x86_spec_ctrl_base & ~SPEC_CTRL_FEATURE_ENABLE_IBRS);
+	}
+
 	/*
 	 * We need to use IBPB with retpoline if it is available.
 	 * Also IBRS for firmware paths.
