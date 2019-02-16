@@ -80,6 +80,14 @@ enum nix_af_int_vec_e {
 	NIX_AF_INT_VEC_CNT	= 0x5,
 };
 
+/* SSO Admin function Interrupt Vector Enumeration */
+enum sso_af_int_vec_e {
+	SSO_AF_INT_VEC_ERR0 = 0x0,
+	SSO_AF_INT_VEC_ERR2 = 0x1,
+	SSO_AF_INT_VEC_RAS  = 0x2,
+	SSO_AF_INT_VEC_CNT  = 0x3,
+};
+
 /* CPT Admin function Interrupt Vector Enumeration */
 enum cpt_af_int_vec_e {
 	CPT_AF_INT_VEC_FLT0	= 0x0,

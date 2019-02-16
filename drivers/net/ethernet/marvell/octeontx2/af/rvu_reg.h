@@ -432,6 +432,11 @@
 #define SSO_AF_UNMAP_INFO		(0x12f0)
 #define SSO_AF_UNMAP_INFO2		(0x1300)
 #define SSO_AF_UNMAP_INFO3		(0x1310)
+#define SSO_AF_RAS			(0x1420)
+#define SSO_AF_RAS_W1S			(0x1430)
+#define SSO_AF_RAS_ENA_W1C		(0x1460)
+#define SSO_AF_RAS_ENA_W1S		(0x1470)
+#define SSO_PRIV_AF_INT_CFG		(0x3000)
 #define SSO_AF_AW_ADD			(0x2080)
 #define SSO_AF_AW_READ_ARB		(0x2090)
 #define SSO_AF_XAQ_REQ_PC		(0x20B0)
@@ -486,6 +491,14 @@
 #define SSO_AF_IENTX_LINKS(a)		(0xa60000 | (a) << 3)
 #define SSO_AF_IENTX_QLINKS(a)		(0xa80000 | (a) << 3)
 #define SSO_AF_IENTX_WQP(a)		(0xaa0000 | (a) << 3)
+#define SSO_AF_XAQDIS_DIGESTX(a)	(0x901000 | (a) << 3)
+#define SSO_AF_FLR_AQ_DIGESTX(a)	(0x901200 | (a) << 3)
+#define SSO_AF_QCTLDIS_DIGESTX(a)	(0x900E00 | (a) << 3)
+#define SSO_AF_WQP0_DIGESTX(a)		(0x900A00 | (a) << 3)
+#define SSO_AF_NPA_DIGESTX(a)		(0x900000 | (a) << 3)
+#define SSO_AF_BFP_DIGESTX(a)		(0x900200 | (a) << 3)
+#define SSO_AF_BFPN_DIGESTX(a)		(0x900400 | (a) << 3)
+#define SSO_AF_GRPDIS_DIGESTX(a)	(0x900600 | (a) << 3)
 
 #define SSO_AF_IAQ_FREE_CNT_MASK	0x3FFFull
 #define SSO_AF_IAQ_RSVD_FREE_MASK	0x3FFFull
