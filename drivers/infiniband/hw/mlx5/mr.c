@@ -1297,8 +1297,11 @@ struct ib_mr *mlx5_ib_reg_user_mr(struct ib_pd *pd, u64 start, u64 length,
 			return ERR_PTR(err);
 		}
 	}
-
+#ifdef CONFIG_INFINIBAND_ON_DEMAND_PAGING
 	mr->live = 1;
+	atomic_set(&mr->num_pending_prefetch, 0);
+#endif
+
 	return &mr->ibmr;
 error:
 	ib_umem_release(umem);
@@ -1543,8 +1546,16 @@ static int dereg_mr(struct mlx5_ib_dev *dev, struct mlx5_ib_mr *mr)
 	if (is_odp_mr(mr)) {
 		struct ib_umem_odp *umem_odp = to_ib_umem_odp(umem);
 
-		/* Prevent new page faults from succeeding */
+		/* Prevent new page faults and
+		 * prefetch requests from succeeding
+		 */
 		mr->live = 0;
+
+		/* dequeue pending prefetch requests for the mr */
+		if (atomic_read(&mr->num_pending_prefetch))
+			flush_workqueue(system_unbound_wq);
+		WARN_ON(atomic_read(&mr->num_pending_prefetch));
+
 		/* Wait for all running page-fault handlers to finish. */
 		synchronize_srcu(&dev->mr_srcu);
 		/* Destroy all page mappings */
