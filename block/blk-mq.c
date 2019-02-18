@@ -1257,6 +1257,12 @@ static void blk_mq_make_request(struct request_queue *q, struct bio *bio)
 
 		blk_mq_bio_to_request(rq, bio);
 
+		if (unlikely(test_bit(BLK_MQ_S_STOPPED,
+				      &data.hctx->state))) {
+			blk_mq_insert_request(rq, false, false, true);
+			goto done;
+		}
+
 		/*
 		 * For OK queue, we are done. For error, kill it. Any other
 		 * error (busy), just add it to our list as we previously
