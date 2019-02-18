@@ -11594,11 +11594,9 @@ static struct kvm_vcpu *vmx_create_vcpu(struct kvm *kvm, unsigned int id)
 			goto free_vmcs;
 	}
 
-	if (nested) {
+	if (nested)
 		nested_vmx_setup_ctls_msrs(&vmx->nested.msrs,
 					   kvm_vcpu_apicv_active(&vmx->vcpu));
-		vmx->nested.vpid02 = allocate_vpid();
-	}
 
 	vmx->nested.posted_intr_nv = -1;
 	vmx->nested.current_vmptr = -1ull;
