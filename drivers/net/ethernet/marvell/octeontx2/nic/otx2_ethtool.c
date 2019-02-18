@@ -620,6 +620,23 @@ static int otx2_get_ts_info(struct net_device *netdev,
 	return 0;
 }
 
+static int otx2_get_link_ksettings(struct net_device *netdev,
+				   struct ethtool_link_ksettings *cmd)
+{
+	struct otx2_nic *pfvf = netdev_priv(netdev);
+	bool if_up = netif_running(netdev);
+
+	if (!if_up) {
+		cmd->base.duplex = DUPLEX_UNKNOWN;
+		cmd->base.speed = SPEED_UNKNOWN;
+		return 0;
+	}
+	cmd->base.duplex = pfvf->linfo.full_duplex;
+	cmd->base.speed = pfvf->linfo.speed;
+
+	return 0;
+}
+
 static const struct ethtool_ops otx2_ethtool_ops = {
 	.get_drvinfo		= otx2_get_drvinfo,
 	.get_strings		= otx2_get_strings,
@@ -638,6 +655,7 @@ static const struct ethtool_ops otx2_ethtool_ops = {
 	.get_rxfh		= otx2_get_rxfh,
 	.set_rxfh		= otx2_set_rxfh,
 	.get_ts_info		= otx2_get_ts_info,
+	.get_link_ksettings     = otx2_get_link_ksettings,
 };
 
 void otx2_set_ethtool_ops(struct net_device *netdev)

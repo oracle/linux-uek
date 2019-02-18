@@ -168,6 +168,7 @@ struct otx2_nic {
 	u64			reset_count;
 	u8			hw_rx_tstamp;
 	u8			hw_tx_tstamp;
+	struct cgx_link_user_info linfo;
 	struct otx2_ptp		*ptp;
 };
 
