@@ -433,11 +433,12 @@ enum rdma_nldev_attr {
 	 * Indexes to get/set secific entry,
 	 * for QP use RDMA_NLDEV_ATTR_RES_LQPN
 	 */
-	RDMA_NLDEV_ATTR_RES_PDN,               /* u32 */
-	RDMA_NLDEV_ATTR_RES_CQN,               /* u32 */
-	RDMA_NLDEV_ATTR_RES_MRN,               /* u32 */
-	RDMA_NLDEV_ATTR_RES_CM_IDN,            /* u32 */
 
+	RDMA_NLDEV_ATTR_RES_PDN,		/* u32 */
+	RDMA_NLDEV_ATTR_RES_CQN,		/* u32 */
+	RDMA_NLDEV_ATTR_RES_MRN,		/* u32 */
+	RDMA_NLDEV_ATTR_RES_CM_IDN,		/* u32 */
+	RDMA_NLDEV_ATTR_RES_CTXN,		/* u32 */
 	/*
 	 * Identifies the rdma driver. eg: "rxe" or "siw"
 	 */
