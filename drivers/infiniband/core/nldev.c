@@ -104,6 +104,10 @@ static const struct nla_policy nldev_policy[RDMA_NLDEV_ATTR_MAX] = {
 	[RDMA_NLDEV_ATTR_DRIVER_U32]		= { .type = NLA_U32 },
 	[RDMA_NLDEV_ATTR_DRIVER_S64]		= { .type = NLA_S64 },
 	[RDMA_NLDEV_ATTR_DRIVER_U64]		= { .type = NLA_U64 },
+	[RDMA_NLDEV_ATTR_RES_PDN]		= { .type = NLA_U32 },
+	[RDMA_NLDEV_ATTR_RES_CQN]               = { .type = NLA_U32 },
+	[RDMA_NLDEV_ATTR_RES_MRN]               = { .type = NLA_U32 },
+	[RDMA_NLDEV_ATTR_RES_CM_IDN]            = { .type = NLA_U32 },
 };
 
 static int fill_nldev_handle(struct sk_buff *msg, struct ib_device *device)
@@ -457,6 +461,9 @@ static int fill_res_mr_entry(struct sk_buff *msg, struct netlink_callback *cb,
 			      RDMA_NLDEV_ATTR_PAD))
 		goto err;
 
+	if (nla_put_u32(msg, RDMA_NLDEV_ATTR_RES_MRN, mr->mrn))
+		goto err;
+
 	if (fill_res_name_pid(msg, res))
 		goto err;
 
@@ -792,6 +799,7 @@ struct nldev_fill_res_entry {
 			     struct rdma_restrack_entry *res, u32 port);
 	enum rdma_nldev_attr nldev_attr;
 	enum rdma_nldev_command nldev_cmd;
+	u32 id;
 };
 
 static const struct nldev_fill_res_entry fill_entries[RDMA_RESTRACK_MAX] = {
@@ -804,21 +812,25 @@ static const struct nldev_fill_res_entry fill_entries[RDMA_RESTRACK_MAX] = {
 		.fill_res_func = fill_res_cm_id_entry,
 		.nldev_cmd = RDMA_NLDEV_CMD_RES_CM_ID_GET,
 		.nldev_attr = RDMA_NLDEV_ATTR_RES_CM_ID,
+		.id = RDMA_NLDEV_ATTR_RES_CM_IDN,
 	},
 	[RDMA_RESTRACK_CQ] = {
 		.fill_res_func = fill_res_cq_entry,
 		.nldev_cmd = RDMA_NLDEV_CMD_RES_CQ_GET,
 		.nldev_attr = RDMA_NLDEV_ATTR_RES_CQ,
+		.id = RDMA_NLDEV_ATTR_RES_CQN,
 	},
 	[RDMA_RESTRACK_MR] = {
 		.fill_res_func = fill_res_mr_entry,
 		.nldev_cmd = RDMA_NLDEV_CMD_RES_MR_GET,
 		.nldev_attr = RDMA_NLDEV_ATTR_RES_MR,
+		.id = RDMA_NLDEV_ATTR_RES_MRN,
 	},
 	[RDMA_RESTRACK_PD] = {
 		.fill_res_func = fill_res_pd_entry,
 		.nldev_cmd = RDMA_NLDEV_CMD_RES_PD_GET,
 		.nldev_attr = RDMA_NLDEV_ATTR_RES_PD,
+		.id = RDMA_NLDEV_ATTR_RES_PDN,
 	},
 };
 
