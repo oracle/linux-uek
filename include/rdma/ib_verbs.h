@@ -1795,6 +1795,7 @@ struct ib_mr {
 	u64		   length;
 	unsigned int	   page_size;
 	bool		   need_inval;
+	int		   mrn;
 	union {
 		struct ib_uobject	*uobject;	/* user */
 		struct list_head	qp_entry;	/* FR */

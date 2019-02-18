@@ -51,6 +51,8 @@
 #include "uverbs.h"
 #include "core_priv.h"
 
+int mrn;
+
 #ifndef WITHOUT_ORACLE_EXTENSIONS
 
 /* UFMR parameters */
@@ -1031,6 +1033,7 @@ ssize_t ib_uverbs_reg_mr(struct uverbs_attr_bundle *attrs,
 	mr->pd      = pd;
 	mr->dm	    = NULL;
 	mr->uobject = uobj;
+	mr->mrn	    = ++mrn;
 	atomic_inc(&pd->usecnt);
 	mr->res.type = RDMA_RESTRACK_MR;
 	rdma_restrack_add(&mr->res);
