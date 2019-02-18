@@ -317,27 +317,42 @@ xfs_reflink_reserve_cow(
 	return 0;
 }
 
-/* Convert part of an unwritten CoW extent to a real one. */
-STATIC int
-xfs_reflink_convert_cow_extent(
-	struct xfs_inode		*ip,
-	struct xfs_bmbt_irec		*imap,
-	xfs_fileoff_t			offset_fsb,
-	xfs_filblks_t			count_fsb)
+static int
+xfs_reflink_convert_cow_locked(
+	struct xfs_inode	*ip,
+	xfs_fileoff_t		offset_fsb,
+	xfs_filblks_t		count_fsb)
 {
-	xfs_fsblock_t			first_block = NULLFSBLOCK;
-	int				nimaps = 1;
+	struct xfs_iext_cursor	icur;
+	struct xfs_bmbt_irec	got;
+	struct xfs_btree_cur	*dummy_cur = NULL;
+	int			dummy_logflags;
+	int			error = 0;
 
-	if (imap->br_state == XFS_EXT_NORM)
+	if (!xfs_iext_lookup_extent(ip, ip->i_cowfp, offset_fsb, &icur, &got))
 		return 0;
 
-	xfs_trim_extent(imap, offset_fsb, count_fsb);
-	trace_xfs_reflink_convert_cow(ip, imap);
-	if (imap->br_blockcount == 0)
-		return 0;
-	return xfs_bmapi_write(NULL, ip, imap->br_startoff, imap->br_blockcount,
-			XFS_BMAPI_COWFORK | XFS_BMAPI_CONVERT, &first_block,
-			0, imap, &nimaps, NULL);
+	do {
+		if (got.br_startoff >= offset_fsb + count_fsb)
+			break;
+		if (got.br_state == XFS_EXT_NORM)
+			continue;
+		if (WARN_ON_ONCE(isnullstartblock(got.br_startblock)))
+			return -EIO;
+
+		xfs_trim_extent(&got, offset_fsb, count_fsb);
+		if (!got.br_blockcount)
+			continue;
+
+		got.br_state = XFS_EXT_NORM;
+		error = xfs_bmap_add_extent_unwritten_real(NULL, ip,
+				XFS_COW_FORK, &icur, &dummy_cur, &got,
+				NULL, NULL, &dummy_logflags);
+		if (error)
+			return error;
+	} while (xfs_iext_next_extent(ip->i_cowfp, &icur, &got));
+
+	return error;
 }
 
 /* Convert all of the unwritten CoW extents in a file's range to real ones. */
@@ -351,26 +366,12 @@ xfs_reflink_convert_cow(
 	xfs_fileoff_t		offset_fsb = XFS_B_TO_FSBT(mp, offset);
 	xfs_fileoff_t		end_fsb = XFS_B_TO_FSB(mp, offset + count);
 	xfs_filblks_t		count_fsb = end_fsb - offset_fsb;
-	struct xfs_bmbt_irec	imap;
-	xfs_fsblock_t		first_block = NULLFSBLOCK;
-	int			nimaps, error = 0;
+	int			error;
 
 	ASSERT(count != 0);
 
 	xfs_ilock(ip, XFS_ILOCK_EXCL);
-	do {
-		nimaps = 1;
-		error = xfs_bmapi_write(NULL, ip, offset_fsb, count_fsb,
-				XFS_BMAPI_COWFORK | XFS_BMAPI_CONVERT |
-				XFS_BMAPI_CONVERT_ONLY, &first_block, 0, &imap, &nimaps,
-				NULL);
-		if (error)
-			goto err_out;
-
-		offset_fsb = imap.br_startoff + imap.br_blockcount;
-		count_fsb = end_fsb - offset_fsb;
-	} while (count_fsb > 0);
-err_out:
+	error = xfs_reflink_convert_cow_locked(ip, offset_fsb, count_fsb);
 	xfs_iunlock(ip, XFS_ILOCK_EXCL);
 	return error;
 }
@@ -508,14 +509,17 @@ xfs_reflink_allocate_cow(
 	if (nimaps == 0)
 		return -ENOSPC;
 convert:
+	xfs_trim_extent(imap, offset_fsb, count_fsb);
 	/*
 	 * COW fork extents are supposed to remain unwritten until we're ready
 	 * to initiate a disk write.  For direct I/O we are going to write the
 	 * data and need the conversion, but for buffered writes we're done.
 	 */
-	if (!(iomap_flags & IOMAP_DIRECT))
+	if (!(iomap_flags & IOMAP_DIRECT) || imap->br_state == XFS_EXT_NORM)
 		return 0;
-	return xfs_reflink_convert_cow_extent(ip, imap, offset_fsb, count_fsb);
+	trace_xfs_reflink_convert_cow(ip, imap);
+	return xfs_reflink_convert_cow_locked(ip, offset_fsb, count_fsb);
+
 out_unreserve:
 	xfs_defer_cancel(&dfops);
 	xfs_trans_unreserve_quota_nblks(tp, ip, (long)resblks, 0,
