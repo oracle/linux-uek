@@ -692,4 +692,5 @@ int rvu_nix_tx_stall_workaround_init(struct rvu *rvu,
 void rvu_nix_tx_stall_workaround_exit(struct rvu *rvu, struct nix_hw *nix_hw);
 ssize_t rvu_nix_get_tx_stall_counters(struct rvu *rvu,
 				      char __user *buffer, loff_t *ppos);
+void rvu_nix_enable_internal_bp(struct rvu *rvu, int blkaddr);
 #endif /* RVU_H */
