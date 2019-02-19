@@ -209,7 +209,7 @@ static bool rvu_dbg_is_valid_lf(struct rvu *rvu, int blktype, int lf,
 	}
 
 	hw = rvu->hw;
-	block = &hw->block[blktype];
+	block = &hw->block[blkaddr];
 
 	if (lf < 0 || lf >= block->lf.max) {
 		dev_warn(rvu->dev, "Invalid LF: valid range: 0-%d\n",
