@@ -19,8 +19,6 @@ struct otx2_ptp {
 	struct ptp_clock *ptp_clock;
 	struct otx2_nic *nic;
 
-	/* Serialize access to cycle_counter, time_counter and reg_base */
-	spinlock_t spin_lock;
 	struct cyclecounter cycle_counter;
 	struct timecounter time_counter;
 };
@@ -85,9 +83,7 @@ static int otx2_ptp_adjtime(struct ptp_clock_info *ptp_info, s64 delta)
 	struct otx2_ptp *ptp = container_of(ptp_info, struct otx2_ptp,
 					    ptp_info);
 
-	spin_lock(&ptp->spin_lock);
 	timecounter_adjtime(&ptp->time_counter, delta);
-	spin_unlock(&ptp->spin_lock);
 
 	return 0;
 }
@@ -99,9 +95,7 @@ static int otx2_ptp_gettime(struct ptp_clock_info *ptp_info,
 					    ptp_info);
 	u64 nsec;
 
-	spin_lock(&ptp->spin_lock);
 	nsec = timecounter_read(&ptp->time_counter);
-	spin_unlock(&ptp->spin_lock);
 
 	*ts = ns_to_timespec64(nsec);
 
@@ -117,9 +111,7 @@ static int otx2_ptp_settime(struct ptp_clock_info *ptp_info,
 
 	nsec = timespec64_to_ns(ts);
 
-	spin_lock(&ptp->spin_lock);
 	timecounter_init(&ptp->time_counter, &ptp->cycle_counter, nsec);
-	spin_unlock(&ptp->spin_lock);
 
 	return 0;
 }
@@ -163,8 +155,6 @@ int otx2_ptp_init(struct otx2_nic *pfvf)
 	}
 
 	ptp_ptr->nic = pfvf;
-
-	spin_lock_init(&ptp_ptr->spin_lock);
 
 	cc = &ptp_ptr->cycle_counter;
 	cc->read = ptp_cc_read;
