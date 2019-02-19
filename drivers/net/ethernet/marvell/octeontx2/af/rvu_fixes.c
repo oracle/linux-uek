@@ -754,3 +754,20 @@ ssize_t rvu_nix_get_tx_stall_counters(struct rvu *rvu,
 	*ppos += len;
 	return len;
 }
+
+void rvu_nix_enable_internal_bp(struct rvu *rvu, int blkaddr)
+{
+	/* An issue exists in A0 silicon whereby, NIX CQ may reach in CQ full
+	 * state followed by CQ hang on CQM query response from stale
+	 * CQ context. To avoid such condition, enable internal backpressure
+	 * with BP_TEST registers.
+	 */
+	if (is_rvu_9xxx_A0(rvu)) {
+		/* Enable internal backpressure on pipe_stg0 */
+		rvu_write64(rvu, blkaddr, NIX_AF_RQM_BP_TEST,
+			    BIT_ULL(51) | BIT_ULL(23) | BIT_ULL(22) | 0x100ULL);
+		/* Enable internal backpressure on cqm query request */
+		rvu_write64(rvu, blkaddr, NIX_AF_CQM_BP_TEST,
+			    BIT_ULL(43) | BIT_ULL(23) | BIT_ULL(22) | 0x100ULL);
+	}
+}
