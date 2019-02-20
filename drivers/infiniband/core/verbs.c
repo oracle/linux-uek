@@ -233,6 +233,9 @@ struct ib_pd *__ib_alloc_pd(struct ib_device *device, unsigned int flags,
 
 	pd->device = device;
 	pd->uobject = NULL;
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	pd->shpd = NULL;
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 	pd->__internal_mr = NULL;
 	atomic_set(&pd->usecnt, 0);
 	pd->flags = flags;
