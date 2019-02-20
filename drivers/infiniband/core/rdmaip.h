@@ -61,8 +61,6 @@ DECLARE_RWSEM(rdmaip_devlist_lock);
 unsigned long rdmaip_global_flag;
 DEFINE_MUTEX(rdmaip_global_flag_lock);
 
-DEFINE_MUTEX(rdmaip_ip_config_lock);
-
 struct port_info {
 	int	gid_tbl_len;
 };
@@ -329,11 +327,29 @@ enum {
 	RDMAIP_PORT_TRANSITION_DOWN
 };
 
+/*
+ * Work queues private data
+ *
+ * if event_type == RDMAIP_EVENT_IB, following fields are valid
+ *     rdmaip_dev
+ *     ib_port
+ *     ib_event
+ *
+ * if event_type == RDMAIP_EVENT_NET, following fields are valid
+ *     netdev
+ *     net_event
+ */
+
 struct rdmaip_port_ud_work {
 	struct delayed_work	work;
 	struct net_device	*netdev;
 	unsigned int		port;
 	int			timeout;
+	struct rdmaip_device	*rdmaip_dev;
+	unsigned int		ib_port;
+	int			event_type;
+	int			ib_event;
+	int			net_event;
 };
 
 enum {
