@@ -722,16 +722,16 @@ void dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 	 * process an ERROR probe.
 	 */
 	flags = (volatile uint16_t *)&this_cpu_core->cpuc_dtrace_flags;
+	cpuid = smp_processor_id();
 	if (re_entry && id != dtrace_probeid_error) {
 		dt_dbg_probe("Attempt to fire probe from within a probe " \
-			     "(ID %d, CPoID %d, U %d)\n", id,
+			     "(ID %d, oID %d, CPU %d)\n", id,
 			     (int)this_cpu_core->cpuc_current_probe, cpuid);
 		DTRACE_SYNC_EXIT_CRITICAL(cookie, re_entry);
 		return;
 	}
 
 	probe = dtrace_probe_lookup_id(id);
-	cpuid = smp_processor_id();
 	onintr = in_interrupt();
 
 	if (!onintr && probe->dtpr_predcache != DTRACE_CACHEIDNONE &&
