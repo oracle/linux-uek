@@ -171,8 +171,10 @@ struct ib_pd *ib_alloc_pd(struct ib_device *device)
 	pd = device->alloc_pd(device, NULL, NULL);
 
 	if (!IS_ERR(pd)) {
+		/* init all fields of allocated object */
 		pd->device  = device;
 		pd->uobject = NULL;
+		pd->shpd = NULL;
 		atomic_set(&pd->usecnt, 0);
 	}
 
