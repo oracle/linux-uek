@@ -530,6 +530,8 @@ static int rvu_nix_aq_enq_inst(struct rvu *rvu, struct nix_aq_enq_req *req,
 		if (!is_valid_txschq(rvu, blkaddr, NIX_TXSCH_LVL_SMQ,
 				     pcifunc, req->sq.smq))
 			return NIX_AF_ERR_AQ_ENQUEUE;
+		rvu_nix_update_sq_smq_mapping(rvu, blkaddr, nixlf, req->qidx,
+					      req->sq.smq);
 	}
 
 	memset(&inst, 0, sizeof(struct nix_aq_inst_s));

@@ -20,6 +20,8 @@
 #include "rvu.h"
 #include "cgx.h"
 
+#define OTX2_MAX_CQ_CNT 64
+
 struct nix_tx_stall {
 	struct rvu *rvu;
 	int blkaddr;
@@ -27,10 +29,12 @@ struct nix_tx_stall {
 	int tl4_count;
 	int tl3_count;
 	int tl2_count;
+	int sq_count;
 	u16 *smq_tl2_map;
 	u16 *tl4_tl2_map;
 	u16 *tl3_tl2_map;
 	u16 *tl2_tl1_map;
+	u16 *sq_smq_map;
 #define LINK_TYPE_SHIFT	7
 #define EXPR_LINK(map)	(map & (1 << LINK_TYPE_SHIFT))
 #define LINK_CHAN_SHIFT	8
@@ -126,6 +130,28 @@ void rvu_nix_update_link_credits(struct rvu *rvu, int blkaddr,
 	rvu_nix_txsch_unlock(nix_hw);
 }
 
+void rvu_nix_update_sq_smq_mapping(struct rvu *rvu, int blkaddr, int nixlf,
+				   u16 sq, u16 smq)
+{
+	struct nix_tx_stall *tx_stall;
+	struct nix_hw *nix_hw;
+	int sq_count;
+
+	nix_hw = get_nix_hw(rvu->hw, blkaddr);
+	if (!nix_hw)
+		return;
+
+	tx_stall = nix_hw->tx_stall;
+	if (!tx_stall)
+		return;
+
+	sq_count = tx_stall->sq_count;
+
+	rvu_nix_txsch_lock(nix_hw);
+	tx_stall->sq_smq_map[nixlf * sq_count + sq] = smq;
+	rvu_nix_txsch_unlock(nix_hw);
+}
+
 static void rvu_nix_scan_link_credits(struct rvu *rvu, int blkaddr,
 				      struct nix_tx_stall *tx_stall)
 {
@@ -169,6 +195,24 @@ static void rvu_nix_scan_tl2_link_mapping(struct rvu *rvu,
 		 */
 		continue;
 	}
+}
+
+static bool is_sq_alloacted(struct rvu *rvu, struct rvu_pfvf *pfvf,
+			    int blkaddr, int sq)
+{
+	struct rvu_hwinfo *hw = rvu->hw;
+	struct rvu_block *block;
+	struct admin_queue *aq;
+
+	block = &hw->block[blkaddr];
+	aq = block->aq;
+	spin_lock(&aq->lock);
+	if (test_bit(sq, pfvf->sq_bmap)) {
+		spin_unlock(&aq->lock);
+		return true;
+	}
+	spin_unlock(&aq->lock);
+	return false;
 }
 
 static bool is_schq_allocated(struct rvu *rvu, struct nix_hw *nix_hw,
@@ -299,15 +343,22 @@ static void rvu_nix_scan_txsch_hierarchy(struct rvu *rvu,
 }
 
 #define TX_OCTS 4
+#define RVU_AF_BAR2_SEL			(0x9000000ull)
+#define RVU_AF_BAR2_ALIASX(a, b)	(0x9100000ull | a << 12 | b)
+#define	NIX_LF_SQ_OP_OCTS		(0xa10)
+
 static bool is_sq_stalled(struct rvu *rvu, struct nix_hw *nix_hw, int smq)
 {
 	struct nix_tx_stall *tx_stall = nix_hw->tx_stall;
+	u64 btx_octs, atx_octs, cfg, incr;
+	int sq_count = tx_stall->sq_count;
 	struct rvu_hwinfo *hw = rvu->hw;
 	int blkaddr = tx_stall->blkaddr;
 	struct nix_txsch *smq_txsch;
-	u64 btx_octs, atx_octs;
+	struct rvu_pfvf *pfvf;
+	atomic64_t *ptr;
+	int nixlf, sq;
 	u16 pcifunc;
-	int nixlf;
 
 	smq_txsch = &nix_hw->txsch[NIX_TXSCH_LVL_SMQ];
 	pcifunc = TXSCH_MAP_FUNC(smq_txsch->pfvf_map[smq]);
@@ -318,6 +369,7 @@ static bool is_sq_stalled(struct rvu *rvu, struct nix_hw *nix_hw, int smq)
 	/* If a NIXLF is transmitting pkts via only one TL2, then checking
 	 * global NIXLF TX stats is sufficient.
 	 */
+
 	if (tx_stall->nixlf_tl2_count[nixlf] != 1)
 		goto poll_sq_stats;
 
@@ -334,8 +386,39 @@ poll_sq_stats:
 	if (!tx_stall->nixlf_tl2_count[nixlf])
 		return false;
 
-	/* TODO: SQ stats checking */
-	return false;
+	pfvf = rvu_get_pfvf(rvu, pcifunc);
+
+	/* Enable BAR2 register access from AF BAR2 alias registers*/
+	cfg = BIT_ULL(16) | pcifunc;
+	rvu_wr64(rvu, blkaddr, RVU_AF_BAR2_SEL, cfg);
+
+	for (sq = 0; sq < pfvf->sq_ctx->qsize; sq++) {
+		if (!is_sq_alloacted(rvu, pfvf, blkaddr, sq))
+			continue;
+
+		rvu_nix_txsch_lock(nix_hw);
+		if (tx_stall->sq_smq_map[nixlf * sq_count + sq] != smq) {
+			rvu_nix_txsch_unlock(nix_hw);
+			continue;
+		}
+		rvu_nix_txsch_unlock(nix_hw);
+
+		incr = (u64)sq << 32;
+		ptr = (__force atomic64_t *)(rvu->afreg_base + ((blkaddr << 28)
+			| RVU_AF_BAR2_ALIASX(nixlf, NIX_LF_SQ_OP_OCTS)));
+
+		btx_octs = atomic64_fetch_add_relaxed(incr, ptr);
+		usleep_range(50, 60);
+		atx_octs = atomic64_fetch_add_relaxed(incr, ptr);
+		/* If atleast one SQ is transmitting pkts then SMQ is
+		 * not stalled.
+		 */
+		if (btx_octs != atx_octs)
+			return false;
+	}
+	tx_stall->nixlf_stall_count[nixlf]++;
+
+	return true;
 }
 
 static bool rvu_nix_check_smq_stall(struct rvu *rvu, struct nix_hw *nix_hw,
@@ -639,6 +722,18 @@ int rvu_nix_tx_stall_workaround_init(struct rvu *rvu,
 	if (err)
 		return err;
 
+	block = &hw->block[blkaddr];
+	tx_stall->sq_count = min_t(int, num_online_cpus(), OTX2_MAX_CQ_CNT);
+
+	/* SMQs to nixlf SQ mapping info */
+	tx_stall->sq_smq_map = devm_kcalloc(rvu->dev,
+					    block->lf.max * tx_stall->sq_count,
+					    sizeof(u16), GFP_KERNEL);
+	if (!tx_stall->sq_smq_map)
+		return -ENOMEM;
+	memset(tx_stall->sq_smq_map, U16_MAX,
+	       block->lf.max * tx_stall->sq_count * sizeof(u16));
+
 	/* TL2 to transmit link mapping info */
 	tx_stall->tl2_link_map = devm_kcalloc(rvu->dev, tx_stall->tl2_count,
 					      sizeof(u16), GFP_KERNEL);
@@ -648,7 +743,6 @@ int rvu_nix_tx_stall_workaround_init(struct rvu *rvu,
 	       tx_stall->tl2_count * sizeof(u16));
 
 	/* Number of Tl2s attached to NIXLF */
-	block = &hw->block[blkaddr];
 	tx_stall->nixlf_tl2_count = devm_kcalloc(rvu->dev, block->lf.max,
 						 sizeof(u8), GFP_KERNEL);
 	if (!tx_stall->nixlf_tl2_count)
