@@ -746,8 +746,6 @@ static u8 rdmaip_init_port(struct rdmaip_device	*rdmaip_dev,
 				ip_port_max, rdmaip_dev->ibdev->name);
 		return 0;
 	}
-	mutex_lock(&rdmaip_ip_config_lock);
-
 	ip_config[next_port_idx].port_num = port_num;
 	ip_config[next_port_idx].port_label[0] = 'P';
 	ip_config[next_port_idx].port_label[1] = digits[next_port_idx / 10];
@@ -776,8 +774,6 @@ static u8 rdmaip_init_port(struct rdmaip_device	*rdmaip_dev,
 
 	if (in6_dev)
 		rdmaip_init_ip6_addrs(net_dev, in6_dev, ip_port_cnt);
-
-	mutex_unlock(&rdmaip_ip_config_lock);
 
 	return ip_port_cnt;
 }
@@ -1035,26 +1031,24 @@ static void rdmaip_do_failback(u8 port)
 	}
 }
 
-static void rdmaip_failover(struct work_struct *_work)
+static void rdmaip_failover(int port)
 {
-	struct rdmaip_port_ud_work	*work =
-		container_of(_work, struct rdmaip_port_ud_work, work.work);
-	int				ret;
-	u8				i;
-	char				if_name[IFNAMSIZ];
+	int		ret;
+	u8		i;
+	char		if_name[IFNAMSIZ];
 
-	if (ip_config[work->port].port_state == RDMAIP_PORT_INIT) {
+	if (ip_config[port].port_state == RDMAIP_PORT_INIT) {
 		pr_err("rdmaip: devname %s failover request with port_state in INIT state!",
-		       ip_config[work->port].netdev->name);
-		goto out;
+		       ip_config[port].netdev->name);
+		return;
 	}
 
 	for (i = 1; i <= ip_port_cnt; i++) {
-		if (i != work->port &&
+		if (i != port &&
 			ip_config[i].port_state == RDMAIP_PORT_DOWN &&
-			ip_config[i].ip_active_port == work->port) {
+			ip_config[i].ip_active_port == port) {
 
-			strcpy(if_name, ip_config[work->port].if_name);
+			strcpy(if_name, ip_config[port].if_name);
 			strcat(if_name, ":");
 			strcat(if_name, ip_config[i].port_label);
 			if_name[IFNAMSIZ - 1] = 0;
@@ -1066,16 +1060,13 @@ static void rdmaip_failover(struct work_struct *_work)
 		}
 	}
 
-	if (RDMAIP_PORT_ADDR_SET(work->port))
-		rdmaip_do_failover(work->port, 0);
+	if (RDMAIP_PORT_ADDR_SET(port))
+		rdmaip_do_failover(port, 0);
 
-	if (ip_config[work->port].ip_active_port == work->port) {
+	if (ip_config[port].ip_active_port == port) {
 		ret = rdmaip_set_ip4(NULL, NULL,
-				ip_config[work->port].if_name, 0, 0, 0);
+				ip_config[port].if_name, 0, 0, 0);
 	}
-
- out:
-	kfree(work);
 }
 
 static void rdmaip_failback(struct work_struct *_work)
@@ -1296,15 +1287,18 @@ static void rdmaip_sched_failover_failback(struct net_device *netdev, u8 port,
 {
 	struct rdmaip_port_ud_work	*work;
 
-	work = kzalloc(sizeof(*work), GFP_ATOMIC);
-	if (!work) {
-		RDMAIP_DBG1("rdmaip: failed to allocate port work\n");
-		return;
-	}
-	work->port = port;
-	work->netdev = netdev;
-
 	if (port_transition_to == RDMAIP_PORT_TRANSITION_UP) {
+		/*
+		 * TBD:  Investigate whether rdmaip_failback() can be
+		 * called directly from here instead of a defered task.
+		 */
+		work = kzalloc(sizeof(*work), GFP_ATOMIC);
+		if (!work) {
+			RDMAIP_DBG1("rdmaip: failed to allocate port work\n");
+			return;
+		}
+		work->port = port;
+		work->netdev = netdev;
 		if (rdmaip_active_bonding_failback) {
 			RDMAIP_DBG2("Schedule failback\n");
 			INIT_DELAYED_WORK(&work->work, rdmaip_failback);
@@ -1314,8 +1308,7 @@ static void rdmaip_sched_failover_failback(struct net_device *netdev, u8 port,
 			kfree(work);
 	} else {
 		RDMAIP_DBG2("Schedule failover\n");
-		INIT_DELAYED_WORK(&work->work, rdmaip_failover);
-		queue_delayed_work(rdmaip_wq, &work->work, 0);
+		rdmaip_failover(port);
 	}
 }
 
@@ -1367,46 +1360,23 @@ static void rdmaip_process_async_event(u8 port, int event_type, int event)
 	rdmaip_sched_failover_failback(netdev, port, port_tstate);
 }
 
-/*
- * rdmaip_event_handler is called by the IB core subsystem
- * to inform certain RDMA events. See ib_event_type definitions
- * in include/rdma/ibverbs.h for more details.
- *
- * RDMAIP module is only interested about the below two events
- * and all other events are ignore for now.
- *     1. IB_EVENT_PORT_ACTIVE - IB core sends this event when
- *                               physical RDMA port is active and
- *                               ready for use
- *     2. IB_EVENT_PORT_ERR    - IB core sends this event when
- *                               physical port is down
- *
- * If the event handler is called before initialzaing the
- * ip_config  structure, ignore the event.
- * Otherwise, update the port state in the ip_config and schedule
- * failover or failback as needed.
- */
-static void rdmaip_event_handler(struct ib_event_handler *handler,
-				 struct ib_event *event)
+static void rdmaip_impl_ib_event_handler(struct work_struct *_work)
 {
-	struct rdmaip_device	*rdmaip_dev =
-		container_of(handler, typeof(*rdmaip_dev), event_handler);
-	u8	port;
-	bool	found = false;
 
-	if (!ip_port_cnt || (rdmaip_init_flag & RDMAIP_TEARDOWN_IN_PROGRESS))
-		return;
+	struct rdmaip_device		*rdmaip_dev;
+	u8				port;
+	bool				found = false;
+	struct rdmaip_port_ud_work	*work =
+		container_of(_work, struct rdmaip_port_ud_work, work.work);
 
-	if (event->event != IB_EVENT_PORT_ACTIVE &&
-		event->event != IB_EVENT_PORT_ERR) {
-		return;
-	}
+	rdmaip_dev = work->rdmaip_dev;
 
 	RDMAIP_DBG2("rdmaip: RDMA device %s ip_port_cnt %d, event: %s\n",
 		    rdmaip_dev->ibdev->name, ip_port_cnt,
-		    ib_event_msg(event->event));
+		    ib_event_msg(work->ib_event));
 
 	for (port = 1; port <= ip_port_cnt; port++) {
-		if (ip_config[port].port_num != event->element.port_num ||
+		if (ip_config[port].port_num != work->ib_port ||
 			ip_config[port].rdmaip_dev != rdmaip_dev)
 			continue;
 		found = true;
@@ -1428,14 +1398,67 @@ static void rdmaip_event_handler(struct ib_event_handler *handler,
 	mutex_unlock(&rdmaip_global_flag_lock);
 
 	RDMAIP_DBG2("PORT %s/port_%d/%s received PORT-EVENT %s\n",
-		    rdmaip_dev->ibdev->name, event->element.port_num,
-		    ip_config[port].if_name, ib_event_msg(event->event));
+		    rdmaip_dev->ibdev->name, work->ib_port,
+		    ip_config[port].if_name, ib_event_msg(work->ib_event));
 
-	if (event->event == IB_EVENT_PORT_ACTIVE)
+	if (work->ib_event == IB_EVENT_PORT_ACTIVE)
 		ip_config[port].port_active_ts = get_jiffies_64();
 
-	rdmaip_process_async_event(port, RDMAIP_EVENT_IB, event->event);
+	rdmaip_process_async_event(port, RDMAIP_EVENT_IB, work->ib_event);
 
+	kfree(work);
+}
+
+/*
+ * rdmaip_event_handler is called by the IB core subsystem
+ * to inform certain RDMA events. See ib_event_type definitions
+ * in include/rdma/ibverbs.h for more details.
+ *
+ * RDMAIP module is only interested about the below two events
+ * and all other events are ignore for now.
+ *     1. IB_EVENT_PORT_ACTIVE - IB core sends this event when
+ *                               physical RDMA port is active and
+ *                               ready for use
+ *     2. IB_EVENT_PORT_ERR    - IB core sends this event when
+ *                               physical port is down
+ *
+ * If the event handler is called before initialzaing the
+ * ip_config  structure, ignore the event.
+ * Otherwise, update the port state in the ip_config and schedule
+ * failover or failback as needed.
+ * Process the events in a separate kernel thread.
+ */
+static void rdmaip_event_handler(struct ib_event_handler *handler,
+				 struct ib_event *event)
+{
+	struct rdmaip_port_ud_work	*work;
+
+	if (!ip_port_cnt || (rdmaip_init_flag & RDMAIP_TEARDOWN_IN_PROGRESS))
+		return;
+
+	if (event->event != IB_EVENT_PORT_ACTIVE &&
+		event->event != IB_EVENT_PORT_ERR) {
+		return;
+	}
+
+	work = kzalloc(sizeof(*work), GFP_ATOMIC);
+	if (!work) {
+		RDMAIP_DBG1("rdmaip: failed to allocate port work\n");
+		return;
+	}
+
+	work->rdmaip_dev	= container_of(handler,
+					typeof(struct rdmaip_device),
+					       event_handler);
+	work->event_type	= RDMAIP_EVENT_IB;
+	work->ib_event		= event->event;
+	work->ib_port		= event->element.port_num;
+
+	INIT_DELAYED_WORK(&work->work, rdmaip_impl_ib_event_handler);
+	queue_delayed_work(rdmaip_wq, &work->work, 0);
+
+	RDMAIP_DBG2("Queued IB event handler to process events : %s\n",
+		    ib_event_msg(work->ib_event));
 }
 
 static void rdmaip_update_ip_addrs(int port)
@@ -2203,15 +2226,12 @@ static int rdmaip_get_port_index(struct net_device *ndev)
 {
 	int i;
 
-	mutex_lock(&rdmaip_ip_config_lock);
 	for (i = 1; i <= ip_port_cnt; i++) {
 		if (!strcmp(ndev->name, ip_config[i].if_name) &&
 			ip_config[i].rdmaip_dev) {
-			mutex_unlock(&rdmaip_ip_config_lock);
 			return i;
 		}
 	}
-	mutex_unlock(&rdmaip_ip_config_lock);
 	return 0;
 }
 
@@ -2370,48 +2390,20 @@ static void rdmaip_add_new_rdmaip_port(struct net_device *netdev, u8 port)
 	}
 }
 
-/*
- * Network stack calls this callback routine when ever there
- * is a status change for any netdevs. We are interested only
- * about InfiniBand and RoCE (RDMA devices) related netdevs
- * and also NETDEV_UP, NETDEV_CHANGE and NETDEV_ERROR.
- *
- * This call back updates the interface status, and scheules
- * fail over or failback to move the IP's from one port to
- * another port as needed. If netdev is not known, then
- * it initiales a async request to initialize the ip_config
- * global structure with this new netdev information.
- */
-static int rdmaip_netdev_callback(struct notifier_block *self,
-				  unsigned long event, void *ctx)
+static void rdmaip_impl_netdev_callback(struct work_struct *_work)
 {
-	struct net_device *ndev = netdev_notifier_info_to_dev(ctx);
 	u8 port = 0;
-
-	if (rdmaip_init_flag & RDMAIP_TEARDOWN_IN_PROGRESS) {
-		RDMAIP_DBG2("netdev %s event %lx teardown in progress\n",
-			    ndev->name, event);
-		return NOTIFY_DONE;
-	}
-	/* Ignore the event if the event is not related to RDMA device */
-	if (ndev->type != ARPHRD_INFINIBAND) {
-		if (!rdmaip_is_roce_device(ndev, NULL))
-			return NOTIFY_DONE;
-	}
-
-	if (event != NETDEV_UP && event != NETDEV_DOWN &&
-	    event != NETDEV_CHANGE) {
-		RDMAIP_DBG2("Event %lx netdev %s - Ignored\n",
-			    event, ndev->name);
-		return NOTIFY_DONE;
-	}
+	struct rdmaip_port_ud_work	*work =
+		container_of(_work, struct rdmaip_port_ud_work, work.work);
+	long int event = work->net_event;
+	struct net_device *ndev = work->netdev;
 
 	mutex_lock(&rdmaip_global_flag_lock);
 	if (rdmaip_is_busy_flag_set()) {
 		rdmaip_set_event_pending();
 		RDMAIP_DBG2("Busy flag is set: skip netevent processing\n");
 		mutex_unlock(&rdmaip_global_flag_lock);
-		return NOTIFY_DONE;
+		return;
 	}
 	mutex_unlock(&rdmaip_global_flag_lock);
 
@@ -2430,14 +2422,14 @@ static int rdmaip_netdev_callback(struct notifier_block *self,
 		 * and bail out from here.
 		 */
 		rdmaip_add_new_rdmaip_port(ndev, port);
-		return NOTIFY_DONE;
+		return;
 	}
 
 	/*
 	 * No matching port found in the ip_config.
 	 */
 	if (!port)
-		return NOTIFY_DONE;
+		return;
 
 	/*
 	 * Bail out here if we are racing with device teardown we are done!
@@ -2445,7 +2437,7 @@ static int rdmaip_netdev_callback(struct notifier_block *self,
 	 */
 	if (!ip_config[port].rdmaip_dev) {
 		RDMAIP_DBG2("rdmaip_dev is NULL, device tearing down in progress\n");
-		return NOTIFY_DONE;
+		return;
 	}
 
 	RDMAIP_DBG2("PORT %s/port_%d/%s received NET-EVENT %s\n",
@@ -2454,6 +2446,61 @@ static int rdmaip_netdev_callback(struct notifier_block *self,
 		    rdmaip_netdevevent2name(event));
 
 	rdmaip_process_async_event(port, RDMAIP_EVENT_NET, event);
+
+	kfree(work);
+}
+
+/*
+ * Network stack calls this callback routine when ever there
+ * is a status change for any netdev. We are interested only
+ * about InfiniBand and RoCE (RDMA devices) related netdevs
+ * and also NETDEV_UP, NETDEV_CHANGE and NETDEV_ERROR.
+ *
+ * This call back updates the interface status, and scheules
+ * fail over or failback to move the IP's from one port to
+ * another port as needed. If netdev is not known, then
+ * it initiales a async request to initialize the ip_config
+ * global structure with this new netdev information.
+ */
+static int rdmaip_netdev_callback(struct notifier_block *self,
+				  unsigned long event, void *ctx)
+{
+	struct net_device *ndev = netdev_notifier_info_to_dev(ctx);
+	struct rdmaip_port_ud_work	*work;
+
+	if (rdmaip_init_flag & RDMAIP_TEARDOWN_IN_PROGRESS) {
+		RDMAIP_DBG2("netdev %s event %lx teardown in progress\n",
+			    ndev->name, event);
+		return NOTIFY_DONE;
+	}
+
+	/* Ignore the event if the event is not related to RDMA device */
+	if (ndev->type != ARPHRD_INFINIBAND) {
+		if (!rdmaip_is_roce_device(ndev, NULL))
+			return NOTIFY_DONE;
+	}
+
+	if (event != NETDEV_UP && event != NETDEV_DOWN &&
+	    event != NETDEV_CHANGE) {
+		RDMAIP_DBG2("Event %lx netdev %s - Ignored\n",
+			    event, ndev->name);
+		return NOTIFY_DONE;
+	}
+	work = kzalloc(sizeof(*work), GFP_ATOMIC);
+	if (!work) {
+		RDMAIP_DBG1("rdmaip: failed to allocate port work\n");
+		return NOTIFY_DONE;
+	}
+	work->event_type	= RDMAIP_EVENT_NET;
+	work->net_event		= event;
+	work->netdev		= ndev;
+
+	INIT_DELAYED_WORK(&work->work, rdmaip_impl_netdev_callback);
+	queue_delayed_work(rdmaip_wq, &work->work, 0);
+
+	RDMAIP_DBG2("Scheduled event processing thread for %s : %s\n",
+		    ndev->name, rdmaip_netdevevent2name(event));
+
 	return NOTIFY_DONE;
 }
 
