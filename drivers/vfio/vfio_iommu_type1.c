@@ -971,6 +971,7 @@ static void vfio_pin_map_dma_undo(unsigned long start_vaddr,
  * Relieve mmap_sem contention when multithreading page pinning by caching
  * locked_vm locally.  Bound the locked_vm that a thread will cache but not use
  * with this constant, which is the smallest value that worked well in testing.
+ * NOTE - LOCK_CACHE_MAX is in pages.
  */
 #define LOCK_CACHE_MAX	16384
 
@@ -988,7 +989,8 @@ static int vfio_pin_map_dma_chunk(unsigned long start_vaddr,
 
 	while (unmapped_size) {
 		if (lock_cache == 0) {
-			cache_size = min_t(long, unmapped_size, LOCK_CACHE_MAX);
+			cache_size = min_t(long, unmapped_size >> PAGE_SHIFT,
+					   LOCK_CACHE_MAX);
 			ret = vfio_lock_acct(dma, cache_size, false);
 			if (ret)
 				break;
