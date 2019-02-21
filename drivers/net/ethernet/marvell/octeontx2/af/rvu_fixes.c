@@ -86,21 +86,24 @@ void rvu_nix_txsch_lock(struct nix_hw *nix_hw)
 {
 	struct nix_tx_stall *tx_stall = nix_hw->tx_stall;
 
-	mutex_lock(&tx_stall->txsch_lock);
+	if (tx_stall)
+		mutex_lock(&tx_stall->txsch_lock);
 }
 
 void rvu_nix_txsch_unlock(struct nix_hw *nix_hw)
 {
 	struct nix_tx_stall *tx_stall = nix_hw->tx_stall;
 
-	mutex_unlock(&tx_stall->txsch_lock);
+	if (tx_stall)
+		mutex_unlock(&tx_stall->txsch_lock);
 }
 
 void rvu_nix_txsch_config_changed(struct nix_hw *nix_hw)
 {
 	struct nix_tx_stall *tx_stall = nix_hw->tx_stall;
 
-	tx_stall->txsch_config_changed = true;
+	if (tx_stall)
+		tx_stall->txsch_config_changed = true;
 }
 
 static inline struct nix_hw *get_nix_hw(struct rvu_hwinfo *hw, int blkaddr)
