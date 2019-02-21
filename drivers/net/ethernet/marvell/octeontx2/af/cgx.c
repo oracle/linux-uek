@@ -403,6 +403,27 @@ int cgx_lmac_rx_tx_enable(void *cgxd, int lmac_id, bool enable)
 }
 EXPORT_SYMBOL(cgx_lmac_rx_tx_enable);
 
+int cgx_lmac_tx_enable(void *cgxd, int lmac_id, bool enable)
+{
+	struct cgx *cgx = cgxd;
+	u64 cfg, last;
+
+	if (!cgx || lmac_id >= cgx->lmac_count)
+		return -ENODEV;
+
+	cfg = cgx_read(cgx, lmac_id, CGXX_CMRX_CFG);
+	last = cfg;
+	if (enable)
+		cfg |= DATA_PKT_TX_EN;
+	else
+		cfg &= ~DATA_PKT_TX_EN;
+
+	if (cfg != last)
+		cgx_write(cgx, lmac_id, CGXX_CMRX_CFG, cfg);
+	return !!(last & DATA_PKT_TX_EN);
+}
+EXPORT_SYMBOL(cgx_lmac_tx_enable);
+
 /* CGX Firmware interface low level support */
 static int cgx_fwi_cmd_send(u64 req, u64 *resp, struct lmac *lmac)
 {
