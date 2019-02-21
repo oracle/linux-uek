@@ -1250,8 +1250,16 @@ static void nix_smq_flush(struct rvu *rvu, int blkaddr,
 			  int smq, u16 pcifunc, int nixlf)
 {
 	int pf = rvu_get_pf(pcifunc);
-	int err;
+	u8 cgx_id = 0, lmac_id = 0;
+	int err, restore_tx_en = 0;
 	u64 cfg;
+
+	/* enable cgx tx if disabled */
+	if (is_pf_cgxmapped(rvu, pf)) {
+		rvu_get_cgx_lmac_id(rvu->pf2cgxlmac_map[pf], &cgx_id, &lmac_id);
+		restore_tx_en = !cgx_lmac_tx_enable(rvu_cgx_pdata(cgx_id, rvu),
+						    lmac_id, true);
+	}
 
 	cfg = rvu_read64(rvu, blkaddr, NIX_AF_SMQX_CFG(smq));
 	/* Do SMQ flush and set enqueue xoff */
@@ -1271,6 +1279,9 @@ static void nix_smq_flush(struct rvu *rvu, int blkaddr,
 			"NIXLF%d: SMQ%d flush failed\n", nixlf, smq);
 
 	rvu_cgx_enadis_rx_bp(rvu, pf, true);
+	/* restore cgx tx state */
+	if (restore_tx_en)
+		cgx_lmac_tx_enable(rvu_cgx_pdata(cgx_id, rvu), lmac_id, false);
 }
 
 static int nix_txschq_free(struct rvu *rvu, u16 pcifunc)
