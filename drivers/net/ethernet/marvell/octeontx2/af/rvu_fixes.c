@@ -493,9 +493,6 @@ static void rvu_nix_restore_tx(struct rvu *rvu, struct nix_hw *nix_hw,
 	int tl, link;
 
 	link = tx_stall->tl2_link_map[tl2];
-	/* Skip LBK links for now */
-	if (link >= rvu->hw->cgx_links)
-		return;
 
 	tx_stall->stalled_cntr++;
 
@@ -513,8 +510,10 @@ static void rvu_nix_restore_tx(struct rvu *rvu, struct nix_hw *nix_hw,
 	usleep_range(20, 25);
 
 	/* Wait for LMAC TX_IDLE */
-	if (!rvu_cgx_tx_idle(rvu, nix_hw, tl2_txsch, tl2))
-		goto clear_sw_xoff;
+	if (link < rvu->hw->cgx_links) {
+		if (!rvu_cgx_tx_idle(rvu, nix_hw, tl2_txsch, tl2))
+			goto clear_sw_xoff;
+	}
 
 	/* Restore link credits */
 	rvu_wr64(rvu, blkaddr, NIX_AF_TX_LINKX_NORM_CREDIT(link),
