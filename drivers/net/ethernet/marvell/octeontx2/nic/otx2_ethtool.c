@@ -228,6 +228,44 @@ static int otx2_set_channels(struct net_device *dev,
 	return err;
 }
 
+static void otx2_get_pauseparam(struct net_device *netdev,
+				struct ethtool_pauseparam *pause)
+{
+	struct otx2_nic *pfvf = netdev_priv(netdev);
+	struct cgx_pause_frm_cfg *req, *rsp;
+
+	req = otx2_mbox_alloc_msg_cgx_cfg_pause_frm(&pfvf->mbox);
+	if (!req)
+		return;
+
+	if (!otx2_sync_mbox_msg(&pfvf->mbox)) {
+		rsp = (struct cgx_pause_frm_cfg *)
+		       otx2_mbox_get_rsp(&pfvf->mbox.mbox, 0, &req->hdr);
+		pause->rx_pause = rsp->rx_pause;
+		pause->tx_pause = rsp->tx_pause;
+	}
+}
+
+static int otx2_set_pauseparam(struct net_device *netdev,
+			       struct ethtool_pauseparam *pause)
+{
+	struct otx2_nic *pfvf = netdev_priv(netdev);
+	struct cgx_pause_frm_cfg *req;
+
+	if (pause->autoneg)
+		return -EOPNOTSUPP;
+
+	req = otx2_mbox_alloc_msg_cgx_cfg_pause_frm(&pfvf->mbox);
+	if (!req)
+		return -EAGAIN;
+
+	req->set = 1;
+	req->rx_pause = pause->rx_pause;
+	req->tx_pause = pause->tx_pause;
+
+	return otx2_sync_mbox_msg(&pfvf->mbox);
+}
+
 static void otx2_get_ringparam(struct net_device *netdev,
 			       struct ethtool_ringparam *ring)
 {
@@ -630,6 +668,8 @@ static const struct ethtool_ops otx2_ethtool_ops = {
 	.set_rxfh		= otx2_set_rxfh,
 	.get_ts_info		= otx2_get_ts_info,
 	.get_link_ksettings     = otx2_get_link_ksettings,
+	.get_pauseparam		= otx2_get_pauseparam,
+	.set_pauseparam		= otx2_set_pauseparam,
 };
 
 void otx2_set_ethtool_ops(struct net_device *netdev)
@@ -708,6 +748,8 @@ static const struct ethtool_ops otx2vf_ethtool_ops = {
 	.set_ringparam		= otx2_set_ringparam,
 	.get_coalesce		= otx2_get_coalesce,
 	.set_coalesce		= otx2_set_coalesce,
+	.get_pauseparam		= otx2_get_pauseparam,
+	.set_pauseparam		= otx2_set_pauseparam,
 };
 
 void otx2vf_set_ethtool_ops(struct net_device *netdev)
