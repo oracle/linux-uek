@@ -1206,39 +1206,10 @@ static int rdmaip_find_port_tstate(u8 port)
 	return tstate;
 }
 
-static int
-rdmaip_get_rdmaport_status(struct rdmaip_device *rdmaip_dev, int port)
-{
-	struct ib_port_attr	port_attr;
-	int			ret;
-	int			pstatus = 0;
-
-	ret = ib_query_port(rdmaip_dev->ibdev, port, &port_attr);
-	if (!ret) {
-		if (port_attr.state == IB_PORT_ACTIVE)
-			pstatus = RDMAIP_PORT_STATUS_HWPORTUP;
-	}
-
-	return pstatus;
-
-}
-
 static void rdmaip_update_port_status_all_layers(u8 port, int event_type,
 						 int event)
 {
 	switch (event_type) {
-	case RDMAIP_EVENT_NONE:
-		if (rdmaip_get_rdmaport_status(ip_config[port].rdmaip_dev,
-					       ip_config[port].port_num) ==
-					       RDMAIP_PORT_STATUS_HWPORTUP) {
-			ip_config[port].port_layerflags |=
-				RDMAIP_PORT_STATUS_HWPORTUP;
-		} else {
-			ip_config[port].port_layerflags &=
-				~RDMAIP_PORT_STATUS_HWPORTUP;
-		}
-		break;
-
 	case RDMAIP_EVENT_IB:
 		if (event == IB_EVENT_PORT_ACTIVE) {
 			ip_config[port].port_layerflags |=
@@ -1249,6 +1220,7 @@ static void rdmaip_update_port_status_all_layers(u8 port, int event_type,
 		}
 		break;
 	case RDMAIP_EVENT_NET:
+	case RDMAIP_EVENT_NONE:
 		/*
 		 * On VM, in some cases, Port up event was not delivered.
 		 * So,  Update hw port status if netdev Lower link status
