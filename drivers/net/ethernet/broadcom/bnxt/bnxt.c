@@ -3487,7 +3487,7 @@ static int bnxt_hwrm_do_send_msg(struct bnxt *bp, void *msg, u32 msg_len,
 		for (j = 0; j < HWRM_VALID_BIT_DELAY_USEC; j++) {
 			if (le32_to_cpu(*valid) & HWRM_RESP_VALID_MASK)
 				break;
-			udelay(1);
+			usleep_range(1, 5);
 		}
 
 		if (j >= HWRM_VALID_BIT_DELAY_USEC) {
