@@ -2251,6 +2251,7 @@ void iavf_free_all_rx_resources(struct iavf_adapter *adapter)
 			iavf_free_rx_resources(&adapter->rx_rings[i]);
 }
 
+#ifdef HAVE_SETUP_TC
 /**
  * iavf_validate_tx_bandwidth - validate the max Tx bandwidth
  * @adapter: board private structure
@@ -2956,6 +2957,7 @@ static int iavf_setup_tc(struct net_device *netdev, enum tc_setup_type type,
 		return -EOPNOTSUPP;
 	}
 }
+#endif /* HAVE_SETUP_TC */
 
 /**
  * iavf_open - Called when a network interface is made active
@@ -3230,7 +3232,9 @@ static const struct net_device_ops iavf_netdev_ops = {
 #ifdef CONFIG_NET_POLL_CONTROLLER
 	.ndo_poll_controller	= iavf_netpoll,
 #endif
+#ifdef TC_MQPRIO_MODE_MAX
 	.ndo_setup_tc		= iavf_setup_tc,
+#endif
 };
 
 /**

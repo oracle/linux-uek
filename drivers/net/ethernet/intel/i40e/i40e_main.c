@@ -4971,6 +4971,7 @@ static u8 i40e_dcb_get_enabled_tc(struct i40e_dcbx_config *dcbcfg)
 	return enabled_tc;
 }
 
+#ifdef TC_MQPRIO_MODE_MAX
 /**
  * i40e_mqprio_get_enabled_tc - Get enabled traffic classes
  * @pf: PF being queried
@@ -4988,6 +4989,7 @@ static u8 i40e_mqprio_get_enabled_tc(struct i40e_pf *pf)
 		enabled_tc |= BIT(i);
 	return enabled_tc;
 }
+#endif
 
 /**
  * i40e_pf_get_num_tc - Get enabled traffic classes for PF
@@ -5002,8 +5004,10 @@ static u8 i40e_pf_get_num_tc(struct i40e_pf *pf)
 	u8 num_tc = 0;
 	struct i40e_dcbx_config *dcbcfg = &hw->local_dcbx_config;
 
+#ifdef TC_MQPRIO_MODE_MAX
 	if (pf->flags & I40E_FLAG_TC_MQPRIO)
 		return pf->vsi[pf->lan_vsi]->mqprio_qopt.qopt.num_tc;
+#endif
 
 	/* If neither MQPRIO nor DCB is enabled, then always use single TC */
 	if (!(pf->flags & I40E_FLAG_DCB_ENABLED))
@@ -5034,8 +5038,10 @@ static u8 i40e_pf_get_num_tc(struct i40e_pf *pf)
  **/
 static u8 i40e_pf_get_tc_map(struct i40e_pf *pf)
 {
+#ifdef TC_MQPRIO_MODE_MAX
 	if (pf->flags & I40E_FLAG_TC_MQPRIO)
 		return i40e_mqprio_get_enabled_tc(pf);
+#endif
 
 	/* If neither MQPRIO nor DCB is enabled for this PF then just return
 	 * default TC
@@ -6759,6 +6765,7 @@ static void i40e_vsi_set_default_tc_config(struct i40e_vsi *vsi)
 	}
 }
 
+#ifdef HAVE_SETUP_TC
 /**
  * i40e_setup_tc - configure multiple traffic classes
  * @netdev: net device to configure
@@ -6894,6 +6901,7 @@ exit:
 	i40e_unquiesce_vsi(vsi);
 	return ret;
 }
+#endif
 
 /**
  * i40e_set_cld_element - sets cloud filter element data
@@ -7112,6 +7120,7 @@ int i40e_add_del_cloud_filter_big_buf(struct i40e_vsi *vsi,
 	return ret;
 }
 
+#ifdef TC_MQPRIO_MODE_MAX
 /**
  * i40e_parse_cls_flower - Parse tc flower filters provided by kernel
  * @vsi: Pointer to VSI
@@ -7607,6 +7616,7 @@ static int __i40e_setup_tc(struct net_device *netdev, enum tc_setup_type type,
 		return -EOPNOTSUPP;
 	}
 }
+#endif /* TC_MQPRIO_MODE_MAX */
 
 /**
  * i40e_open - Called when a network interface is made active
@@ -12145,7 +12155,9 @@ static const struct net_device_ops i40e_netdev_ops = {
 #ifdef CONFIG_NET_POLL_CONTROLLER
 	.ndo_poll_controller	= i40e_netpoll,
 #endif
+#ifdef TC_MQPRIO_MODE_MAX
 	.ndo_setup_tc		= __i40e_setup_tc,
+#endif
 	.ndo_set_features	= i40e_set_features,
 	.ndo_set_vf_mac		= i40e_ndo_set_vf_mac,
 	.ndo_set_vf_vlan	= i40e_ndo_set_vf_port_vlan,
@@ -12161,9 +12173,11 @@ static const struct net_device_ops i40e_netdev_ops = {
 	.ndo_features_check	= i40e_features_check,
 	.ndo_bridge_getlink	= i40e_ndo_bridge_getlink,
 	.ndo_bridge_setlink	= i40e_ndo_bridge_setlink,
+#ifdef HAVE_XDP_SUPPORT
 	.ndo_xdp		= i40e_xdp,
 	.ndo_xdp_xmit		= i40e_xdp_xmit,
 	.ndo_xdp_flush		= i40e_xdp_flush,
+#endif /* HAVE_XDP_SUPPORT */
 };
 
 /**

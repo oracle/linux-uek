@@ -613,9 +613,11 @@ static void i40e_unmap_and_free_tx_resource(struct i40e_ring *ring,
 	if (tx_buffer->skb) {
 		if (tx_buffer->tx_flags & I40E_TX_FLAGS_FD_SB)
 			kfree(tx_buffer->raw_buf);
+#ifdef HAVE_XDP_SUPPORT
 		else if (ring_is_xdp(ring))
 			xdp_return_frame(tx_buffer->xdpf->data,
 					 &tx_buffer->xdpf->mem);
+#endif
 		else
 			dev_kfree_skb_any(tx_buffer->skb);
 		if (dma_unmap_len(tx_buffer, len))
@@ -817,9 +819,11 @@ static bool i40e_clean_tx_irq(struct i40e_vsi *vsi,
 		total_packets += tx_buf->gso_segs;
 
 		/* free the skb/XDP data */
+#ifdef HAVE_XDP_SUPPORT
 		if (ring_is_xdp(tx_ring))
 			xdp_return_frame(tx_buf->xdpf->data, &tx_buf->xdpf->mem);
 		else
+#endif
 			napi_consume_skb(tx_buf->skb, napi_budget);
 
 		/* unmap skb header data */
@@ -2188,8 +2192,10 @@ static bool i40e_is_non_eop(struct i40e_ring *rx_ring,
 #define I40E_XDP_TX		BIT(1)
 #define I40E_XDP_REDIR		BIT(2)
 
+#ifdef HAVE_XDP_SUPPORT
 static int i40e_xmit_xdp_ring(struct xdp_buff *xdp,
 			      struct i40e_ring *xdp_ring);
+#endif
 
 /**
  * i40e_run_xdp - run an XDP program
@@ -2200,6 +2206,7 @@ static struct sk_buff *i40e_run_xdp(struct i40e_ring *rx_ring,
 				    struct xdp_buff *xdp)
 {
 	int err, result = I40E_XDP_PASS;
+#ifdef HAVE_XDP_SUPPORT
 	struct i40e_ring *xdp_ring;
 	struct bpf_prog *xdp_prog;
 	u32 act;
@@ -2236,6 +2243,7 @@ static struct sk_buff *i40e_run_xdp(struct i40e_ring *rx_ring,
 	}
 xdp_out:
 	rcu_read_unlock();
+#endif /* HAVE_XDP_SUPPORT */
 	return ERR_PTR(-result);
 }
 
@@ -3503,6 +3511,7 @@ dma_error:
 	return -1;
 }
 
+#ifdef HAVE_XDP_SUPPORT
 /**
  * i40e_xmit_xdp_ring - transmits an XDP buffer to an XDP Tx ring
  * @xdp: data to transmit
@@ -3562,6 +3571,7 @@ static int i40e_xmit_xdp_ring(struct xdp_buff *xdp,
 
 	return I40E_XDP_TX;
 }
+#endif
 
 /**
  * i40e_xmit_frame_ring - Sends buffer on Tx ring
@@ -3705,6 +3715,7 @@ netdev_tx_t i40e_lan_xmit_frame(struct sk_buff *skb, struct net_device *netdev)
 	return i40e_xmit_frame_ring(skb, tx_ring);
 }
 
+#ifdef HAVE_XDP_SUPPORT
 /**
  * i40e_xdp_xmit - Implements ndo_xdp_xmit
  * @dev: netdev
@@ -3750,3 +3761,4 @@ void i40e_xdp_flush(struct net_device *dev)
 
 	i40e_xdp_ring_update_tail(vsi->xdp_rings[queue_index]);
 }
+#endif
