@@ -8,6 +8,17 @@
 
 #ifdef __ASSEMBLY__
 
+/*
+ * On certain processors the bl/ret sequence is a synchronization
+ * point for any pending speculation, and the value of all registers is
+ * known after this sequence. So the next flow of instructions, in particular
+ * any indirect branch, will be executed without any speculation.
+ *
+ * This property allows to create the retpoline-like code sequence below.
+ * Note, that this sequence does not jump to a provided target using the ret
+ * instruction, instead the ret instruction just goes on and
+ * the execution sequence continues on the same flow.
+ */
 .macro retpoline
 alternative_if ARM64_RETPOLINE
 	str	x30, [sp, #-16]!
