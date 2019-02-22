@@ -40,17 +40,21 @@ struct alt_region {
 };
 
 /*
- * Check if the target PC is within an alternative block.
+ * Check if the given address needs a relocation fixup
+ * in case the given alt-seq is moved.
+ * This is required if the address is e.g. in kernel-text,
+ * but not if it is within the given alt-seq itself.
+ * We call BUG() in cases where we cannot safely decide.
  */
-static bool branch_insn_requires_update(struct alt_instr *alt, unsigned long pc)
+static bool address_needs_relocation_fixup(struct alt_instr *alt, unsigned long addr)
 {
 	unsigned long replptr;
 
-	if (kernel_text_address(pc))
+	if (kernel_text_address(addr) || core_kernel_data(addr))
 		return 1;
 
 	replptr = (unsigned long)ALT_REPL_PTR(alt);
-	if (pc >= replptr && pc <= (replptr + alt->alt_len))
+	if (addr >= replptr && addr <= (replptr + alt->alt_len))
 		return 0;
 
 	/*
@@ -79,7 +83,7 @@ static u32 get_alt_insn(struct alt_instr *alt, __le32 *insnptr, __le32 *altinsnp
 		 * do not rewrite the instruction, as it is already
 		 * correct. Otherwise, generate the new instruction.
 		 */
-		if (branch_insn_requires_update(alt, target)) {
+		if (address_needs_relocation_fixup(alt, target)) {
 			offset = target - (unsigned long)insnptr;
 			insn = aarch64_set_branch_offset(insn, offset);
 		}
@@ -90,7 +94,7 @@ static u32 get_alt_insn(struct alt_instr *alt, __le32 *insnptr, __le32 *altinsnp
 		orig_offset  = aarch64_insn_adrp_get_offset(insn);
 		target = align_down(altinsnptr, SZ_4K) + orig_offset;
 
-		if (branch_insn_requires_update(alt, target)) {
+		if (address_needs_relocation_fixup(alt, target)) {
 			/*
 			 * If we're replacing an adrp instruction, which uses
 			 * PC-relative immediate addressing, adjust the offset
@@ -106,7 +110,7 @@ static u32 get_alt_insn(struct alt_instr *alt, __le32 *insnptr, __le32 *altinsnp
 
 		target = (unsigned long)altinsnptr + offset;
 
-		if (branch_insn_requires_update(alt, target)) {
+		if (address_needs_relocation_fixup(alt, target)) {
 			/*
 			 * Disallow adr instructions for targets outside
 			 * of our alt block.
