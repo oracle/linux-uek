@@ -123,7 +123,7 @@ static ssize_t rvu_dbg_rsrc_attach_status(struct file *filp,
 
 	/* don't allow partial reads */
 	if (*ppos != 0)
-		return 0;
+		return -EINVAL;
 	if (count < buf_size)
 		return -ENOSPC;
 
@@ -302,8 +302,10 @@ static ssize_t rvu_dbg_npa_qsize_write(struct file *filp,
 		goto npa_qsize_write_done;
 	}
 
-	if (!rvu_dbg_is_valid_lf(rvu, BLKTYPE_NPA, npalf, &pcifunc))
+	if (!rvu_dbg_is_valid_lf(rvu, BLKTYPE_NPA, npalf, &pcifunc)) {
+		ret = -EINVAL;
 		goto npa_qsize_write_done;
+	}
 
 	rvu->rvu_dbg.npa_qsize_id = npalf;
 
@@ -478,28 +480,28 @@ static int rvu_dbg_npa_ctx_display(struct seq_file *m, void *unused, int ctype)
 	return 0;
 }
 
-static void write_npa_ctx(struct rvu *rvu, bool all,
-			  int npalf, int id, int ctype)
+static int write_npa_ctx(struct rvu *rvu, bool all,
+			 int npalf, int id, int ctype)
 {
 	struct rvu_pfvf *pfvf;
 	int max_id;
 	u16 pcifunc;
 
 	if (!rvu_dbg_is_valid_lf(rvu, BLKTYPE_NPA, npalf, &pcifunc))
-		return;
+		return -EINVAL;
 
 	pfvf = rvu_get_pfvf(rvu, pcifunc);
 
 	if (ctype == NPA_AQ_CTYPE_AURA) {
 		if (!pfvf->aura_ctx) {
 			dev_warn(rvu->dev, "Aura context is not initialized\n");
-			return;
+			return -EINVAL;
 		}
 		max_id = pfvf->aura_ctx->qsize;
 	} else if (ctype == NPA_AQ_CTYPE_POOL) {
 		if (!pfvf->pool_ctx) {
 			dev_warn(rvu->dev, "Pool context is not initialized\n");
-			return;
+			return -EINVAL;
 		}
 		max_id = pfvf->pool_ctx->qsize;
 	}
@@ -508,7 +510,7 @@ static void write_npa_ctx(struct rvu *rvu, bool all,
 		dev_warn(rvu->dev, "Invalid %s, valid range is 0-%d\n",
 			 (ctype == NPA_AQ_CTYPE_AURA) ? "aura" : "pool",
 			max_id - 1);
-		return;
+		return -EINVAL;
 	}
 
 	switch (ctype) {
@@ -525,8 +527,9 @@ static void write_npa_ctx(struct rvu *rvu, bool all,
 		break;
 
 	default:
-		return;
+		return -EINVAL;
 	}
+	return 0;
 }
 
 static int parse_cmd_buffer_ctx(char *cmd_buf, size_t *count,
@@ -575,26 +578,29 @@ static ssize_t rvu_dbg_npa_ctx_write(struct file *filp,
 					"aura" : "pool";
 	struct seq_file *seqfp = filp->private_data;
 	struct rvu *rvu = seqfp->private;
-	int npalf, id = 0;
+	int npalf, id = 0, ret;
 	bool all = false;
 
 	if ((*ppos != 0) || !count)
-		return 0;
+		return -EINVAL;
 
 	cmd_buf = kzalloc(count + 1, GFP_KERNEL);
 	if (!cmd_buf)
 		return count;
 
-	if (parse_cmd_buffer_ctx(cmd_buf, &count, buffer,
-				 &npalf, &id, &all) < 0) {
-		dev_info(rvu->dev, "Usage: echo <npalf> [%s number/all] > %s_ctx\n",
+	ret = parse_cmd_buffer_ctx(cmd_buf, &count, buffer,
+				   &npalf, &id, &all);
+	if (ret < 0) {
+		dev_info(rvu->dev,
+			 "Usage: echo <npalf> [%s number/all] > %s_ctx\n",
 			 ctype_string, ctype_string);
+		goto done;
 	} else {
-		write_npa_ctx(rvu, all, npalf, id, ctype);
+		ret = write_npa_ctx(rvu, all, npalf, id, ctype);
 	}
-
+done:
 	kfree(cmd_buf);
-	return count;
+	return ret ? ret : count;
 }
 
 RVU_DEBUG_SEQ_FOPS(npa_qsize, npa_qsize_display, npa_qsize_write);
@@ -1085,34 +1091,34 @@ static int rvu_dbg_nix_queue_ctx_display(struct seq_file *filp,
 	return 0;
 }
 
-static void write_nix_queue_ctx(struct rvu *rvu, bool all, int nixlf,
-				int id, int ctype, char *ctype_string)
+static int write_nix_queue_ctx(struct rvu *rvu, bool all, int nixlf,
+			       int id, int ctype, char *ctype_string)
 {
 	struct rvu_pfvf *pfvf;
 	int max_id = 0;
 	u16 pcifunc;
 
 	if (!rvu_dbg_is_valid_lf(rvu, BLKTYPE_NIX, nixlf, &pcifunc))
-		return;
+		return -EINVAL;
 
 	pfvf = rvu_get_pfvf(rvu, pcifunc);
 
 	if (ctype == NIX_AQ_CTYPE_SQ) {
 		if (!pfvf->sq_ctx) {
 			dev_warn(rvu->dev, "SQ context is not initialized\n");
-			return;
+			return -EINVAL;
 		}
 		max_id = pfvf->sq_ctx->qsize;
 	} else if (ctype == NIX_AQ_CTYPE_RQ) {
 		if (!pfvf->rq_ctx) {
 			dev_warn(rvu->dev, "RQ context is not initialized\n");
-			return;
+			return -EINVAL;
 		}
 		max_id = pfvf->rq_ctx->qsize;
 	} else if (ctype == NIX_AQ_CTYPE_CQ) {
 		if (!pfvf->cq_ctx) {
 			dev_warn(rvu->dev, "CQ context is not initialized\n");
-			return;
+			return -EINVAL;
 		}
 		max_id = pfvf->cq_ctx->qsize;
 	}
@@ -1120,7 +1126,7 @@ static void write_nix_queue_ctx(struct rvu *rvu, bool all, int nixlf,
 	if (id < 0 || id >= max_id) {
 		dev_warn(rvu->dev, "Invalid %s_ctx valid range 0-%d\n",
 			 ctype_string, max_id - 1);
-		return;
+		return -EINVAL;
 	}
 	switch (ctype) {
 	case NIX_AQ_CTYPE_CQ:
@@ -1142,9 +1148,9 @@ static void write_nix_queue_ctx(struct rvu *rvu, bool all, int nixlf,
 		break;
 
 	default:
-		return;
+		return -EINVAL;
 	}
-	return;
+	return 0;
 }
 
 static ssize_t rvu_dbg_nix_queue_ctx_write(struct file *filp,
@@ -1155,11 +1161,11 @@ static ssize_t rvu_dbg_nix_queue_ctx_write(struct file *filp,
 	struct seq_file *m = filp->private_data;
 	struct rvu *rvu = m->private;
 	char *cmd_buf, *ctype_string;
-	int nixlf, id = 0;
+	int nixlf, id = 0, ret;
 	bool all = false;
 
 	if ((*ppos != 0) || !count)
-		return 0;
+		return -EINVAL;
 
 	switch (ctype) {
 	case NIX_AQ_CTYPE_SQ:
@@ -1169,9 +1175,10 @@ static ssize_t rvu_dbg_nix_queue_ctx_write(struct file *filp,
 		ctype_string = "rq";
 		break;
 	case NIX_AQ_CTYPE_CQ:
-	default:
 		ctype_string = "cq";
 		break;
+	default:
+		return -EINVAL;
 	}
 
 	cmd_buf = kzalloc(count + 1, GFP_KERNEL);
@@ -1179,16 +1186,19 @@ static ssize_t rvu_dbg_nix_queue_ctx_write(struct file *filp,
 	if (!cmd_buf)
 		return count;
 
-	if (parse_cmd_buffer_ctx(cmd_buf, &count, buffer,
-				 &nixlf, &id, &all) < 0) {
+	ret = parse_cmd_buffer_ctx(cmd_buf, &count, buffer,
+				   &nixlf, &id, &all);
+	if (ret < 0) {
 		dev_info(rvu->dev, "Usage: echo <nixlf> [%s number/all] > %s_ctx\n",
 			 ctype_string, ctype_string);
+		goto done;
 	} else {
-		write_nix_queue_ctx(rvu, all, nixlf, id, ctype, ctype_string);
+		ret = write_nix_queue_ctx(rvu, all, nixlf, id, ctype,
+					  ctype_string);
 	}
-
+done:
 	kfree(cmd_buf);
-	return count;
+	return ret ? ret : count;
 }
 
 static ssize_t rvu_dbg_nix_sq_ctx_write(struct file *filp,
