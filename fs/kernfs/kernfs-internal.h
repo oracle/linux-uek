@@ -21,8 +21,6 @@
 
 struct kernfs_iattrs {
 	struct iattr		ia_iattr;
-	void			*ia_secdata;
-	u32			ia_secdata_len;
 
 	struct simple_xattrs	xattrs;
 };
