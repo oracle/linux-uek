@@ -102,6 +102,7 @@ struct  mbox {
 	struct work_struct	mbox_up_wrk;
 	struct otx2_nic		*pfvf;
 	void *bbuf_base; /* Bounce buffer for mbox memory */
+	atomic_t		lock; /* serialize mailbox access */
 };
 
 struct otx2_hw {
@@ -402,6 +403,22 @@ static inline void otx2_sync_mbox_bbuf(struct otx2_mbox *mbox, int devid)
 	/* Copy mbox messages from mbox memory to bounce buffer */
 	memcpy(mdev->mbase + mbox->rx_start,
 	       hw_mbase + mbox->rx_start, msg_size + msgs_offset);
+}
+
+static inline void otx2_mbox_lock_init(struct mbox *mbox)
+{
+	atomic_set(&mbox->lock, 0);
+}
+
+static inline void otx2_mbox_lock(struct mbox *mbox)
+{
+	while (!(atomic_add_return(1, &mbox->lock) == 1))
+		cpu_relax();
+}
+
+static inline void otx2_mbox_unlock(struct mbox *mbox)
+{
+	atomic_set(&mbox->lock, 0);
 }
 
 /* Time to wait before watchdog kicks off.
