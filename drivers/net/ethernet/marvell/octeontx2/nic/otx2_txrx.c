@@ -855,14 +855,20 @@ EXPORT_SYMBOL(otx2_sq_append_skb);
 int otx2_rxtx_enable(struct otx2_nic *pfvf, bool enable)
 {
 	struct msg_req *msg;
+	int err;
 
+	otx2_mbox_lock(&pfvf->mbox);
 	if (enable)
 		msg = otx2_mbox_alloc_msg_nix_lf_start_rx(&pfvf->mbox);
 	else
 		msg = otx2_mbox_alloc_msg_nix_lf_stop_rx(&pfvf->mbox);
 
-	if (!msg)
+	if (!msg) {
+		otx2_mbox_unlock(&pfvf->mbox);
 		return -ENOMEM;
+	}
 
-	return otx2_sync_mbox_msg(&pfvf->mbox);
+	err = otx2_sync_mbox_msg(&pfvf->mbox);
+	otx2_mbox_unlock(&pfvf->mbox);
+	return err;
 }
