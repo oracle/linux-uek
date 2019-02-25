@@ -504,6 +504,7 @@ static int handle_hca_cap_odp(struct mlx5_core_dev *dev)
 	void *set_ctx;
 	void *set_hca_cap;
 	int set_sz = MLX5_ST_SZ_BYTES(set_hca_cap_in);
+	bool do_set = false;
 	int err;
 
 	if (!MLX5_CAP_GEN(dev, pg))
@@ -513,15 +514,6 @@ static int handle_hca_cap_odp(struct mlx5_core_dev *dev)
 	if (err)
 		return err;
 
-	/**
-	 * If all bits are cleared we shouldn't try to set it
-	 * or we might fail while trying to access a reserved bit.
-	 */
-	if (!(MLX5_CAP_ODP_MAX(dev, ud_odp_caps.srq_receive) ||
-	      MLX5_CAP_ODP_MAX(dev, rc_odp_caps.srq_receive) ||
-	      MLX5_CAP_ODP_MAX(dev, xrc_odp_caps.srq_receive)))
-		return 0;
-
 	set_ctx = kzalloc(set_sz, GFP_KERNEL);
 	if (!set_ctx)
 		return -ENOMEM;
@@ -530,19 +522,30 @@ static int handle_hca_cap_odp(struct mlx5_core_dev *dev)
 	memcpy(set_hca_cap, dev->caps.hca_cur[MLX5_CAP_ODP],
 	       MLX5_ST_SZ_BYTES(odp_cap));
 
-	/* set ODP SRQ support for RC/UD and XRC transports */
-	MLX5_SET(odp_cap, set_hca_cap, ud_odp_caps.srq_receive,
-		 (MLX5_CAP_ODP_MAX(dev, ud_odp_caps.srq_receive)));
+#define ODP_CAP_SET_MAX(dev, field)					\
+	do {								\
+		u32 _res = MLX5_CAP_ODP_MAX(dev, field);		\
+		if (_res) {						\
+			do_set = true;					\
+			MLX5_SET(odp_cap, set_hca_cap, field, _res);	\
+		}							\
+	} while (0)
 
-	MLX5_SET(odp_cap, set_hca_cap, rc_odp_caps.srq_receive,
-		 (MLX5_CAP_ODP_MAX(dev, rc_odp_caps.srq_receive)));
+	ODP_CAP_SET_MAX(dev, ud_odp_caps.srq_receive);
+	ODP_CAP_SET_MAX(dev, rc_odp_caps.srq_receive);
+	ODP_CAP_SET_MAX(dev, xrc_odp_caps.srq_receive);
+	ODP_CAP_SET_MAX(dev, xrc_odp_caps.send);
+	ODP_CAP_SET_MAX(dev, xrc_odp_caps.receive);
+	ODP_CAP_SET_MAX(dev, xrc_odp_caps.write);
+	ODP_CAP_SET_MAX(dev, xrc_odp_caps.read);
+	ODP_CAP_SET_MAX(dev, xrc_odp_caps.atomic);
 
-	MLX5_SET(odp_cap, set_hca_cap, xrc_odp_caps.srq_receive,
-		 (MLX5_CAP_ODP_MAX(dev, xrc_odp_caps.srq_receive)));
-
-	err = set_caps(dev, set_ctx, set_sz, MLX5_SET_HCA_CAP_OP_MOD_ODP);
+	if (do_set)
+		err = set_caps(dev, set_ctx, set_sz,
+			       MLX5_SET_HCA_CAP_OP_MOD_ODP);
 
 	kfree(set_ctx);
+
 	return err;
 }
 
