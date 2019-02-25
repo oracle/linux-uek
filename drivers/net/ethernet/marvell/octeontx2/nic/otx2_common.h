@@ -19,6 +19,7 @@
 
 /* PCI device IDs */
 #define PCI_DEVID_OCTEONTX2_RVU_PF              0xA063
+#define PCI_DEVID_OCTEONTX2_RVU_VF		0xA064
 #define PCI_DEVID_OCTEONTX2_RVU_AFVF		0xA0F8
 
 #define PCI_SUBSYS_DEVID_96XX_RVU_PFVF		0xB200
@@ -156,10 +157,14 @@ struct otx2_nic {
 
 	struct otx2_qset	qset;
 	struct otx2_hw		hw;
-	struct mbox		mbox;
-	struct workqueue_struct *mbox_wq;
-	u8			intf_down;
 
+	/* Mbox */
+	struct mbox		mbox;
+	struct mbox		*mbox_pfvf;
+	struct workqueue_struct *mbox_wq;
+	struct workqueue_struct *mbox_pfvf_wq;
+
+	u8			intf_down;
 	u16			pcifunc;
 	u16			rx_chan_base;
 	u16			tx_chan_base;
@@ -169,6 +174,7 @@ struct otx2_nic {
 	u64			reset_count;
 	u8			hw_rx_tstamp;
 	u8			hw_tx_tstamp;
+	u8			total_vfs;
 	struct cgx_link_user_info linfo;
 	struct otx2_ptp		*ptp;
 };

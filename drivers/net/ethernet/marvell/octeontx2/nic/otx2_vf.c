@@ -21,6 +21,7 @@
 
 static const struct pci_device_id otx2_vf_id_table[] = {
 	{ PCI_DEVICE(PCI_VENDOR_ID_CAVIUM, PCI_DEVID_OCTEONTX2_RVU_AFVF) },
+	{ PCI_DEVICE(PCI_VENDOR_ID_CAVIUM, PCI_DEVID_OCTEONTX2_RVU_VF) },
 	{ }
 };
 
@@ -50,6 +51,13 @@ static void otx2vf_process_vfaf_mbox_msg(struct otx2_nic *vf,
 		dev_err(vf->dev,
 			"Mbox msg with wrong signature %x, ID %d\n",
 			msg->sig, msg->id);
+		return;
+	}
+
+	if (msg->rc == MBOX_MSG_INVALID) {
+		dev_err(vf->dev,
+			"PF/AF says the sent msg(s) %d were invalid\n",
+			msg->id);
 		return;
 	}
 
