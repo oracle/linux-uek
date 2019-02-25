@@ -39,6 +39,283 @@ MODULE_LICENSE("GPL v2");
 MODULE_VERSION(DRV_VERSION);
 MODULE_DEVICE_TABLE(pci, otx2_pf_id_table);
 
+static int otx2_forward_vf_mbox_msgs(struct otx2_nic *pf,
+				     struct otx2_mbox *src_mbox,
+				     int dir, int vf)
+{
+	struct otx2_mbox_dev *src_mdev, *dst_mdev;
+	struct mbox_hdr *mbox_hdr;
+	struct mbox *dst_mbox;
+	int dst_size, err;
+
+	if (dir == MBOX_DIR_PFAF) {
+		/* Set VF's mailbox memory as PF's bounce buffer memory, so
+		 * that explicit copying of VF's msgs to PF=>AF mbox region
+		 * and AF=>PF responses to VF's mbox region can be avoided.
+		 */
+		src_mdev = &src_mbox->dev[vf];
+		mbox_hdr = src_mbox->hwbase +
+				src_mbox->rx_start + (vf * MBOX_SIZE);
+		dst_mbox = &pf->mbox;
+		dst_size = dst_mbox->mbox.tx_size -
+				ALIGN(sizeof(*mbox_hdr), MBOX_MSG_ALIGN);
+		/* Check if msgs fit into destination area */
+		if (mbox_hdr->msg_size > dst_size)
+			return -EINVAL;
+
+		dst_mdev = &dst_mbox->mbox.dev[0];
+		dst_mdev->mbase = src_mdev->mbase;
+		dst_mdev->msg_size = mbox_hdr->msg_size;
+		dst_mdev->num_msgs = mbox_hdr->num_msgs;
+		err = otx2_sync_mbox_msg(dst_mbox);
+		if (err) {
+			dev_warn(pf->dev,
+				 "AF not responding to VF%d messages\n", vf);
+			return err;
+		}
+	} else if (dir == MBOX_DIR_PFVF) {
+		src_mdev = &src_mbox->dev[0];
+		dst_mbox = &pf->mbox_pfvf[0];
+
+		/* Msgs are already copied, trigger VF's mbox irq */
+		smp_wmb();
+		writeq(1, (void __iomem *)dst_mbox->mbox.reg_base +
+		       (dst_mbox->mbox.trigger |
+			(vf << dst_mbox->mbox.tr_shift)));
+
+		/* Restore PF's mbox bounce buffer region address */
+		src_mdev->mbase = pf->mbox.bbuf_base;
+	}
+
+	return 0;
+}
+
+static void otx2_pfvf_mbox_handler(struct work_struct *work)
+{
+	int offset, vf_idx, id, err;
+	struct otx2_mbox_dev *mdev;
+	struct mbox_hdr *req_hdr;
+	struct mbox_msghdr *msg;
+	struct otx2_mbox *mbox;
+	struct mbox *vf_mbox;
+	struct otx2_nic *pf;
+
+	vf_mbox = container_of(work, struct mbox, mbox_wrk);
+	pf = vf_mbox->pfvf;
+	vf_idx = vf_mbox - pf->mbox_pfvf;
+
+	vf_mbox = &pf->mbox_pfvf[0];
+	mbox = &vf_mbox->mbox;
+	mdev = &mbox->dev[vf_idx];
+	req_hdr = (struct mbox_hdr *)(mdev->mbase + mbox->rx_start);
+	if (req_hdr->num_msgs == 0 || req_hdr->msg_size == 0)
+		return;
+
+	offset = ALIGN(sizeof(*req_hdr), MBOX_MSG_ALIGN);
+
+	for (id = 0; id < req_hdr->num_msgs; id++) {
+		msg = (struct mbox_msghdr *)(mdev->mbase + mbox->rx_start +
+					     offset);
+
+		if (msg->sig != OTX2_MBOX_REQ_SIG)
+			goto inval_msg;
+
+		/* Set VF's number in each of the msg */
+		msg->pcifunc &= RVU_PFVF_FUNC_MASK;
+		msg->pcifunc |= (vf_idx + 1) & RVU_PFVF_FUNC_MASK;
+		offset = msg->next_msgoff;
+	}
+
+	err = otx2_forward_vf_mbox_msgs(pf, mbox, MBOX_DIR_PFAF, vf_idx);
+	if (err)
+		goto inval_msg;
+	return;
+
+inval_msg:
+	otx2_reply_invalid_msg(mbox, vf_idx, 0, msg->id);
+	otx2_mbox_msg_send(mbox, vf_idx);
+}
+
+static irqreturn_t otx2_pfvf_mbox_intr_handler(int irq, void *pf_irq)
+{
+	struct otx2_nic *pf = (struct otx2_nic *)(pf_irq);
+	struct mbox *mbox;
+	int reg, vf_idx;
+	u64 intr;
+
+	/* Check wich VF raised an interrupt */
+	for (reg = 0; reg < 2; reg++) {
+		intr = otx2_read64(pf, RVU_PF_VFPF_MBOX_INTX(reg));
+
+		for (vf_idx = reg * 64; vf_idx < pf->total_vfs; vf_idx++) {
+			if (intr & BIT_ULL(vf_idx - (reg * 64))) {
+				mbox = &pf->mbox_pfvf[vf_idx];
+				queue_work(pf->mbox_pfvf_wq, &mbox->mbox_wrk);
+				otx2_write64(pf, RVU_PF_VFPF_MBOX_INTX(reg),
+					     BIT_ULL(vf_idx - (reg * 64)));
+			}
+		}
+	}
+
+	return IRQ_HANDLED;
+}
+
+static int otx2_pfvf_mbox_init(struct otx2_nic *pf, int numvfs)
+{
+	void __iomem *hwbase;
+	struct mbox *mbox;
+	int err, vf;
+	u64 base;
+
+	if (!numvfs)
+		return -EINVAL;
+
+	pf->mbox_pfvf = devm_kcalloc(&pf->pdev->dev, numvfs,
+				     sizeof(struct mbox), GFP_KERNEL);
+	if (!pf->mbox_pfvf)
+		return -ENOMEM;
+
+	pf->mbox_pfvf_wq = alloc_workqueue("otx2_pfvf_mailbox",
+					   WQ_UNBOUND | WQ_HIGHPRI |
+					   WQ_MEM_RECLAIM, 1);
+	if (!pf->mbox_pfvf_wq)
+		return -ENOMEM;
+
+	base = readq((void __iomem *)((u64)pf->reg_base + RVU_PF_VF_BAR4_ADDR));
+	hwbase = ioremap_wc(base, MBOX_SIZE * pf->total_vfs);
+
+	if (!hwbase) {
+		err = -ENOMEM;
+		goto free_wq;
+	}
+
+	mbox = &pf->mbox_pfvf[0];
+	err = otx2_mbox_init(&mbox->mbox, hwbase, pf->pdev, pf->reg_base,
+			     MBOX_DIR_PFVF, numvfs);
+	if (err)
+		goto free_iomem;
+
+	err = otx2_mbox_init(&mbox->mbox_up, hwbase, pf->pdev, pf->reg_base,
+			     MBOX_DIR_PFVF, numvfs);
+	if (err)
+		goto free_iomem;
+
+	for (vf = 0; vf < numvfs; vf++) {
+		mbox->pfvf = pf;
+		INIT_WORK(&mbox->mbox_wrk, otx2_pfvf_mbox_handler);
+		mbox++;
+	}
+
+	return 0;
+
+free_iomem:
+	if (hwbase)
+		iounmap(hwbase);
+free_wq:
+	destroy_workqueue(pf->mbox_pfvf_wq);
+	return err;
+}
+
+static void otx2_pfvf_mbox_destroy(struct otx2_nic *pf)
+{
+	struct mbox *mbox = &pf->mbox_pfvf[0];
+
+	if (pf->mbox_pfvf_wq) {
+		flush_workqueue(pf->mbox_pfvf_wq);
+		destroy_workqueue(pf->mbox_pfvf_wq);
+		pf->mbox_pfvf_wq = NULL;
+	}
+
+	if (mbox->mbox.hwbase)
+		iounmap(mbox->mbox.hwbase);
+
+	otx2_mbox_destroy(&mbox->mbox);
+}
+
+static void otx2_enable_pfvf_mbox_intr(struct otx2_nic *pf)
+{
+	int bits;
+
+	/* Clear PF <=> VF mailbox IRQ */
+	otx2_write64(pf, RVU_PF_VFPF_MBOX_INTX(0), ~0ull);
+	otx2_write64(pf, RVU_PF_VFPF_MBOX_INTX(1), ~0ull);
+
+	/* Enable PF <=> VF mailbox IRQ */
+	bits = ((pf->total_vfs - 1) % 64);
+	otx2_write64(pf, RVU_PF_VFPF_MBOX_INT_ENA_W1SX(0),
+		     GENMASK_ULL(bits, 0));
+
+	if (pf->total_vfs > 64) {
+		bits = pf->total_vfs - 64 - 1;
+		otx2_write64(pf, RVU_PF_VFPF_MBOX_INT_ENA_W1SX(1),
+			     GENMASK_ULL(bits, 0));
+	}
+}
+
+static void otx2_disable_pfvf_mbox_intr(struct otx2_nic *pf)
+{
+	int vector;
+
+	/* Disable PF <=> VF mailbox IRQ */
+	otx2_write64(pf, RVU_PF_VFPF_MBOX_INT_ENA_W1CX(0), ~0ull);
+	otx2_write64(pf, RVU_PF_VFPF_MBOX_INT_ENA_W1CX(1), ~0ull);
+
+	otx2_write64(pf, RVU_PF_VFPF_MBOX_INTX(0), ~0ull);
+	vector = pci_irq_vector(pf->pdev, RVU_PF_INT_VEC_VFPF_MBOX0);
+	free_irq(vector, pf);
+
+	if (pf->total_vfs > 64) {
+		otx2_write64(pf, RVU_PF_VFPF_MBOX_INTX(1), ~0ull);
+		vector = pci_irq_vector(pf->pdev, RVU_PF_INT_VEC_VFPF_MBOX1);
+		free_irq(vector, pf);
+	}
+}
+
+static int otx2_register_pfvf_mbox_intr(struct otx2_nic *pf)
+{
+	struct otx2_hw *hw = &pf->hw;
+	char *irq_name;
+	int err;
+
+	/* Register MBOX0 interrupt handler */
+	irq_name = &hw->irq_name[RVU_PF_INT_VEC_VFPF_MBOX0 * NAME_SIZE];
+	if (pf->pcifunc)
+		snprintf(irq_name, NAME_SIZE,
+			 "RVUPF%d_VF Mbox0", rvu_get_pf(pf->pcifunc));
+	else
+		snprintf(irq_name, NAME_SIZE, "RVUPF_VF Mbox0");
+	err = request_irq(pci_irq_vector(pf->pdev, RVU_PF_INT_VEC_VFPF_MBOX0),
+			  otx2_pfvf_mbox_intr_handler, 0, irq_name, pf);
+	if (err) {
+		dev_err(pf->dev,
+			"RVUPF: IRQ registration failed for PFAF mbox0 irq\n");
+		return err;
+	}
+
+	if (pf->total_vfs > 64) {
+		/* Register MBOX1 interrupt handler */
+		irq_name = &hw->irq_name[RVU_PF_INT_VEC_VFPF_MBOX1 * NAME_SIZE];
+		if (pf->pcifunc)
+			snprintf(irq_name, NAME_SIZE,
+				 "RVUPF%d_VF Mbox1", rvu_get_pf(pf->pcifunc));
+		else
+			snprintf(irq_name, NAME_SIZE, "RVUPF_VF Mbox1");
+		err = request_irq(pci_irq_vector(pf->pdev,
+						 RVU_PF_INT_VEC_VFPF_MBOX1),
+						 otx2_pfvf_mbox_intr_handler,
+						 0, irq_name, pf);
+		if (err) {
+			dev_err(pf->dev,
+				"RVUPF: IRQ registration failed for PFAF mbox1 irq\n");
+			return err;
+		}
+	}
+
+	otx2_enable_pfvf_mbox_intr(pf);
+
+	return 0;
+}
+
 static void otx2_process_pfaf_mbox_msg(struct otx2_nic *pf,
 				       struct mbox_msghdr *msg)
 {
@@ -91,7 +368,9 @@ static void otx2_pfaf_mbox_handler(struct work_struct *work)
 	struct mbox_msghdr *msg;
 	struct otx2_mbox *mbox;
 	struct mbox *af_mbox;
+	struct otx2_nic *pf;
 	int offset, id;
+	int devid = 0;
 
 	af_mbox = container_of(work, struct mbox, mbox_wrk);
 	mbox = &af_mbox->mbox;
@@ -100,19 +379,26 @@ static void otx2_pfaf_mbox_handler(struct work_struct *work)
 	if (rsp_hdr->num_msgs == 0)
 		return;
 	offset = mbox->rx_start + ALIGN(sizeof(*rsp_hdr), MBOX_MSG_ALIGN);
+	pf = af_mbox->pfvf;
 
 	for (id = 0; id < rsp_hdr->num_msgs; id++) {
 		msg = (struct mbox_msghdr *)(mdev->mbase + offset);
-		otx2_process_pfaf_mbox_msg(af_mbox->pfvf, msg);
+		devid = msg->pcifunc & RVU_PFVF_FUNC_MASK;
+		/* Skip processing VF's messages */
+		if (!devid)
+			otx2_process_pfaf_mbox_msg(pf, msg);
 		offset = mbox->rx_start + msg->next_msgoff;
 		mdev->msgs_acked++;
 	}
 
 	otx2_mbox_reset(mbox, 0);
 
+	if (devid)
+		otx2_forward_vf_mbox_msgs(pf, &pf->mbox.mbox,
+					  MBOX_DIR_PFVF, devid - 1);
 	/* Clear the IRQ */
 	smp_wmb();
-	otx2_write64(af_mbox->pfvf, RVU_PF_INT, BIT_ULL(0));
+	otx2_write64(pf, RVU_PF_INT, BIT_ULL(0));
 }
 
 int otx2_mbox_up_handler_cgx_link_event(struct otx2_nic *pf,
@@ -1233,6 +1519,8 @@ static int otx2_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	pf->netdev = netdev;
 	pf->pdev = pdev;
 	pf->dev = dev;
+	pf->total_vfs = pci_sriov_get_totalvfs(pdev);
+
 	hw = &pf->hw;
 	hw->pdev = pdev;
 	hw->rx_queues = qcount;
@@ -1354,6 +1642,7 @@ err_disable_mbox_intr:
 	otx2_disable_mbox_intr(pf);
 err_mbox_destroy:
 	otx2_pfaf_mbox_destroy(pf);
+	otx2_pfvf_mbox_destroy(pf);
 err_free_pcpu_stats:
 	free_percpu(hw->pcpu_stats);
 err_free_irq_vectors:
@@ -1392,11 +1681,64 @@ static void otx2_remove(struct pci_dev *pdev)
 	pci_release_regions(pdev);
 }
 
+static int otx2_sriov_enable(struct pci_dev *pdev, int numvfs)
+{
+	struct net_device *netdev = pci_get_drvdata(pdev);
+	struct otx2_nic *pf = netdev_priv(netdev);
+	int ret;
+
+	if (numvfs > pf->total_vfs)
+		numvfs = pf->total_vfs;
+
+	/* Init PF <=> VF mailbox stuff */
+	ret = otx2_pfvf_mbox_init(pf, numvfs);
+	if (ret)
+		return 0;
+
+	ret = otx2_register_pfvf_mbox_intr(pf);
+	if (ret)
+		goto free_mbox;
+
+	ret = pci_enable_sriov(pdev, numvfs);
+	if (ret)
+		goto free_intr;
+
+	return numvfs;
+
+free_intr:
+	otx2_disable_pfvf_mbox_intr(pf);
+free_mbox:
+	otx2_pfvf_mbox_destroy(pf);
+	return ret;
+}
+
+static int otx2_sriov_disable(struct pci_dev *pdev)
+{
+	struct net_device *netdev = pci_get_drvdata(pdev);
+	struct otx2_nic *pf = netdev_priv(netdev);
+
+	pci_disable_sriov(pdev);
+
+	otx2_disable_pfvf_mbox_intr(pf);
+	otx2_pfvf_mbox_destroy(pf);
+
+	return 0;
+}
+
+static int otx2_sriov_configure(struct pci_dev *pdev, int numvfs)
+{
+	if (numvfs == 0)
+		return otx2_sriov_disable(pdev);
+	else
+		return otx2_sriov_enable(pdev, numvfs);
+}
+
 static struct pci_driver otx2_pf_driver = {
 	.name = DRV_NAME,
 	.id_table = otx2_pf_id_table,
 	.probe = otx2_probe,
 	.remove = otx2_remove,
+	.sriov_configure = otx2_sriov_configure
 };
 
 static int __init otx2_rvupf_init_module(void)
