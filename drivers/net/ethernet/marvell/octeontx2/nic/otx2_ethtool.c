@@ -709,13 +709,20 @@ static int otx2_add_flow_msg(struct otx2_nic *pfvf, struct otx2_flow *flow)
 	struct npc_install_flow_req *req;
 	int err, vf = 0;
 
+	otx2_mbox_lock(&pfvf->mbox);
 	req = otx2_mbox_alloc_msg_npc_install_flow(&pfvf->mbox);
-	if (!req)
+	if (!req) {
+		otx2_mbox_unlock(&pfvf->mbox);
 		return -ENOMEM;
+	}
 
 	err = otx2_prepare_flow_request(&flow->flow_spec, req);
-	if (err)
+	if (err) {
+		/* free the allocated msg above */
+		otx2_mbox_reset(&pfvf->mbox.mbox, 0);
+		otx2_mbox_unlock(&pfvf->mbox);
 		return err;
+	}
 
 	req->entry = flow->entry;
 	req->intf = NIX_INTF_RX;
@@ -727,8 +734,10 @@ static int otx2_add_flow_msg(struct otx2_nic *pfvf, struct otx2_flow *flow)
 		req->op = NIX_RX_ACTIONOP_UCAST;
 		req->index = ethtool_get_flow_spec_ring(ring_cookie);
 		vf = ethtool_get_flow_spec_ring_vf(ring_cookie);
-		if (vf > pci_num_vf(pfvf->pdev))
+		if (vf > pci_num_vf(pfvf->pdev)) {
+			otx2_mbox_unlock(&pfvf->mbox);
 			return -EINVAL;
+		}
 	}
 
 	/* ethtool ring_cookie has (VF + 1) for VF */
@@ -738,7 +747,9 @@ static int otx2_add_flow_msg(struct otx2_nic *pfvf, struct otx2_flow *flow)
 	}
 
 	/* Send message to AF */
-	return otx2_sync_mbox_msg(&pfvf->mbox);
+	err = otx2_sync_mbox_msg(&pfvf->mbox);
+	otx2_mbox_unlock(&pfvf->mbox);
+	return err;
 }
 
 static int otx2_alloc_mcam_entries(struct otx2_nic *pfvf)
@@ -747,19 +758,27 @@ static int otx2_alloc_mcam_entries(struct otx2_nic *pfvf)
 	struct npc_mcam_alloc_entry_rsp *rsp;
 	int i;
 
+	otx2_mbox_lock(&pfvf->mbox);
 	req = otx2_mbox_alloc_msg_npc_mcam_alloc_entry(&pfvf->mbox);
-	if (!req)
+	if (!req) {
+		otx2_mbox_unlock(&pfvf->mbox);
 		return -ENOMEM;
+	}
 
 	req->contig = false;
 	req->count = pfvf->max_flows;
 
 	/* Send message to AF */
-	if (otx2_sync_mbox_msg(&pfvf->mbox))
+	if (otx2_sync_mbox_msg(&pfvf->mbox)) {
+		otx2_mbox_unlock(&pfvf->mbox);
 		return -EINVAL;
+	}
 
 	rsp = (struct npc_mcam_alloc_entry_rsp *)otx2_mbox_get_rsp
 	       (&pfvf->mbox.mbox, 0, &req->hdr);
+
+	otx2_mbox_unlock(&pfvf->mbox);
+
 	if (rsp->count != pfvf->max_flows)
 		netdev_info(pfvf->netdev, "number of rules truncated to %d\n",
 			    rsp->count);
@@ -823,17 +842,23 @@ static int otx2_add_flow(struct otx2_nic *pfvf,
 static int otx2_remove_flow_msg(struct otx2_nic *pfvf, u16 entry, bool all)
 {
 	struct npc_delete_flow_req *req;
+	int err;
 
+	otx2_mbox_lock(&pfvf->mbox);
 	req = otx2_mbox_alloc_msg_npc_delete_flow(&pfvf->mbox);
-	if (!req)
+	if (!req) {
+		otx2_mbox_unlock(&pfvf->mbox);
 		return -ENOMEM;
+	}
 
 	req->entry = entry;
 	if (all)
 		req->all = 1;
 
 	/* Send message to AF */
-	return otx2_sync_mbox_msg(&pfvf->mbox);
+	err = otx2_sync_mbox_msg(&pfvf->mbox);
+	otx2_mbox_unlock(&pfvf->mbox);
+	return err;
 }
 
 static int otx2_remove_flow(struct otx2_nic *pfvf, u32 location)
@@ -1156,17 +1181,23 @@ int otx2_destroy_ethtool_flows(struct otx2_nic *pfvf)
 		pfvf->nr_flows--;
 	}
 
+	otx2_mbox_lock(&pfvf->mbox);
 	req = otx2_mbox_alloc_msg_npc_mcam_free_entry(&pfvf->mbox);
-	if (!req)
+	if (!req) {
+		otx2_mbox_unlock(&pfvf->mbox);
 		return -ENOMEM;
+	}
 
 	req->all = 1;
 	/* Send message to AF to free MCAM entries */
 	err = otx2_sync_mbox_msg(&pfvf->mbox);
-	if (err)
+	if (err) {
+		otx2_mbox_unlock(&pfvf->mbox);
 		return err;
+	}
 
 	pfvf->entries_alloc = false;
+	otx2_mbox_unlock(&pfvf->mbox);
 
 	return 0;
 }
@@ -1177,16 +1208,22 @@ int otx2_delete_vf_ethtool_flows(struct otx2_nic *pfvf)
 	struct otx2_flow *iter, *tmp;
 	int err;
 
+	otx2_mbox_lock(&pfvf->mbox);
 	req = otx2_mbox_alloc_msg_npc_delete_flow(&pfvf->mbox);
-	if (!req)
+	if (!req) {
+		otx2_mbox_unlock(&pfvf->mbox);
 		return -ENOMEM;
+	}
 
 	req->all_vfs = 1;
 	/* Send message to AF */
 	err = otx2_sync_mbox_msg(&pfvf->mbox);
-	if (err)
+	if (err) {
+		otx2_mbox_unlock(&pfvf->mbox);
 		return err;
+	}
 
+	otx2_mbox_unlock(&pfvf->mbox);
 	/* AF deleted VF entries now remove from ethtool list */
 	list_for_each_entry_safe(iter, tmp, &pfvf->flows, list) {
 		if (iter->is_vf) {
