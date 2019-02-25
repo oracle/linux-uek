@@ -7051,8 +7051,6 @@ qla2xxx_pci_resume(struct pci_dev *pdev)
 		    "The device failed to resume I/O from slot/link_reset.\n");
 	}
 
-	pci_cleanup_aer_uncorrect_error_status(pdev);
-
 	ha->flags.eeh_busy = 0;
 }
 
