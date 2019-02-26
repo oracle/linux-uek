@@ -987,6 +987,23 @@ struct npc_get_kex_cfg_rsp {
 	u8 mkex_pfl_name[MKEX_NAME_LEN];
 };
 
+enum header_fields {
+	NPC_DMAC,
+	NPC_SMAC,
+	NPC_ETYPE,
+	NPC_OUTER_VID,
+	NPC_TOS,
+	NPC_SIP_IPV4,
+	NPC_DIP_IPV4,
+	NPC_SIP_IPV6,
+	NPC_DIP_IPV6,
+	NPC_SPORT_TCP,
+	NPC_DPORT_TCP,
+	NPC_SPORT_UDP,
+	NPC_DPORT_UDP,
+	NPC_HEADER_FIELDS_MAX,
+};
+
 /* TIM mailbox error codes
  * Range 801 - 900.
  */
