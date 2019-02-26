@@ -3006,7 +3006,7 @@ void rvu_nix_freemem(struct rvu *rvu)
 	}
 }
 
-static int nix_get_nixlf(struct rvu *rvu, u16 pcifunc, int *nixlf)
+int nix_get_nixlf(struct rvu *rvu, u16 pcifunc, int *nixlf)
 {
 	struct rvu_pfvf *pfvf = rvu_get_pfvf(rvu, pcifunc);
 	struct rvu_hwinfo *hw = rvu->hw;
