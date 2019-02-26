@@ -198,6 +198,7 @@ struct npc_mcam {
 	/* fields present in the generated key */
 	struct npc_key_field	key_fields[NPC_KEY_FIELDS_MAX];
 	u64	features;
+	struct list_head mcam_rules;
 };
 
 struct sso_rsrc {
@@ -268,6 +269,8 @@ struct rvu_pfvf {
 	struct mcam_entry entry;
 	int rxvlan_index;
 	bool rxvlan;
+
+	struct rvu_npc_mcam_rule *def_rule;
 };
 
 struct nix_txsch {
@@ -510,6 +513,7 @@ int rvu_nix_reserve_mark_format(struct rvu *rvu, struct nix_hw *nix_hw,
 void rvu_nix_freemem(struct rvu *rvu);
 int rvu_get_nixlf_count(struct rvu *rvu);
 void rvu_nix_lf_teardown(struct rvu *rvu, u16 pcifunc, int blkaddr, int npalf);
+int nix_get_nixlf(struct rvu *rvu, u16 pcifunc, int *nixlf);
 
 /* NPC APIs */
 int rvu_npc_init(struct rvu *rvu);
@@ -539,6 +543,9 @@ void rvu_npc_get_mcam_counter_alloc_info(struct rvu *rvu, u16 pcifunc,
 					 int *enable_cnt);
 int npc_flow_steering_init(struct rvu *rvu, int blkaddr);
 const char *npc_get_field_name(u8 hdr);
+int rvu_npc_write_default_rule(struct rvu *rvu, int blkaddr, int nixlf,
+			       u16 pcifunc, u8 intf, struct mcam_entry *entry);
+int npc_mcam_verify_channel(struct rvu *rvu, u16 pcifunc, u8 intf, u16 channel);
 
 /* CPT APIs */
 int rvu_cpt_init(struct rvu *rvu);
