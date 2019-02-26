@@ -111,6 +111,67 @@ struct nix_mce_list {
 	int			max;
 };
 
+/* list of known and supported fields in packet header and
+ * fields present in key structure.
+ */
+enum key_fields {
+	NPC_CHAN = NPC_HEADER_FIELDS_MAX,
+	NPC_ERRLEV,
+	NPC_ERRCODE,
+	NPC_LXMB,
+	NPC_LA,
+	NPC_LB,
+	NPC_LC,
+	NPC_LD,
+	NPC_LE,
+	NPC_LF,
+	NPC_LG,
+	NPC_LH,
+	/* ether type for untagged frame */
+	NPC_ETYPE_ETHER,
+	/* ether type for single tagged frame */
+	NPC_ETYPE_TAG1,
+	/* ether type for double tagged frame */
+	NPC_ETYPE_TAG2,
+	/* outer vlan tci for single tagged frame */
+	NPC_VLAN_TAG1,
+	/* outer vlan tci for double tagged frame */
+	NPC_VLAN_TAG2,
+	/* other header fields programmed to extract but not of our interest */
+	NPC_UNKNOWN,
+	NPC_KEY_FIELDS_MAX,
+};
+
+/* layer meta data to uniquely identify a packet header field */
+struct npc_layer_mdata {
+	u8 lid;
+	u8 ltype;
+	u8 hdr;
+	u8 key;
+	u8 len;
+};
+
+/* Structure to represent a field present in the
+ * generated key. A key field may present anywhere and can
+ * be of any size in the generated key. Once this structure
+ * is populated for fields of interest then field's presence
+ * and location (if present) can be known.
+ */
+struct npc_key_field {
+	/* Masks where all set bits indicate position
+	 * of a field in the key
+	 */
+	u64 kw_mask[NPC_MAX_KWS_IN_KEY];
+	/* Number of words in the key a field spans. If a field is
+	 * of 16 bytes and key offset is 4 then the field will use
+	 * 4 bytes in KW0, 8 bytes in KW1 and 4 bytes in KW2 and
+	 * nr_kws will be 3(KW0, KW1 and KW2).
+	 */
+	int nr_kws;
+	/* used by packet header fields */
+	struct npc_layer_mdata layer_mdata;
+};
+
 struct npc_mcam {
 	struct rsrc_bmap counters;
 	struct mutex	lock;	/* MCAM entries and counters update lock */
@@ -134,6 +195,9 @@ struct npc_mcam {
 	u16	hprio_count;
 	u16	hprio_end;
 	u16	rx_miss_act_cntr; /* Counter for RX MISS action */
+	/* fields present in the generated key */
+	struct npc_key_field	key_fields[NPC_KEY_FIELDS_MAX];
+	u64	features;
 };
 
 struct sso_rsrc {
@@ -473,6 +537,8 @@ void rvu_npc_get_mcam_entry_alloc_info(struct rvu *rvu, u16 pcifunc,
 void rvu_npc_get_mcam_counter_alloc_info(struct rvu *rvu, u16 pcifunc,
 					 int blkaddr, int *alloc_cnt,
 					 int *enable_cnt);
+int npc_flow_steering_init(struct rvu *rvu, int blkaddr);
+const char *npc_get_field_name(u8 hdr);
 
 /* CPT APIs */
 int rvu_cpt_init(struct rvu *rvu);
