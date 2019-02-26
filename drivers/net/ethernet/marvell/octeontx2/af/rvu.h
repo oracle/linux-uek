@@ -43,6 +43,10 @@ struct dump_ctx {
 	bool	all;
 };
 
+struct cpt_dump_ctx {
+	char    e_type[NAME_SIZE];
+};
+
 struct rvu_debugfs {
 	struct dentry *root;
 	struct dentry *cgx_root;
@@ -54,11 +58,13 @@ struct rvu_debugfs {
 	struct dentry *sso;
 	struct dentry *sso_hwgrp;
 	struct dentry *sso_hws;
+	struct dentry *cpt;
 	struct dump_ctx npa_aura_ctx;
 	struct dump_ctx npa_pool_ctx;
 	struct dump_ctx nix_cq_ctx;
 	struct dump_ctx nix_rq_ctx;
 	struct dump_ctx nix_sq_ctx;
+	struct cpt_dump_ctx cpt_ctx;
 	int npa_qsize_id;
 };
 #endif
