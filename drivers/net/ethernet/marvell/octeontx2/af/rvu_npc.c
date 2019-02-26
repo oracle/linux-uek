@@ -36,8 +36,7 @@ static void npc_mcam_free_all_entries(struct rvu *rvu, struct npc_mcam *mcam,
 static void npc_mcam_free_all_counters(struct rvu *rvu, struct npc_mcam *mcam,
 				       u16 pcifunc);
 
-static int npc_mcam_verify_channel(struct rvu *rvu, u16 pcifunc, u8 intf,
-				   u16 channel)
+int npc_mcam_verify_channel(struct rvu *rvu, u16 pcifunc, u8 intf, u16 channel)
 {
 	int pf = rvu_get_pf(pcifunc);
 	u8 cgx_id, lmac_id;
@@ -2372,4 +2371,17 @@ int rvu_npc_update_rxvlan(struct rvu *rvu, u16 pcifunc, int nixlf)
 			      NIX_INTF_RX, &pfvf->entry, enable);
 
 	return 0;
+}
+
+int rvu_npc_write_default_rule(struct rvu *rvu, int blkaddr, int nixlf,
+			       u16 pcifunc, u8 intf, struct mcam_entry *entry)
+{
+	struct npc_mcam *mcam = &rvu->hw->mcam;
+	int index;
+
+	index = npc_get_nixlf_mcam_index(mcam, pcifunc,
+					 nixlf, NIXLF_UCAST_ENTRY);
+	npc_config_mcam_entry(rvu, mcam, blkaddr, index, intf, entry, true);
+
+	return index;
 }

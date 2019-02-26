@@ -272,6 +272,10 @@ struct nix_rx_action {
 #define VTAG0_TYPE_MASK		GENMASK_ULL(14, 12)
 #define VTAG0_LID_MASK		GENMASK_ULL(10, 8)
 #define VTAG0_RELPTR_MASK	GENMASK_ULL(7, 0)
+#define VTAG1_VALID_BIT		BIT_ULL(47)
+#define VTAG1_TYPE_MASK		GENMASK_ULL(46, 44)
+#define VTAG1_LID_MASK		GENMASK_ULL(42, 40)
+#define VTAG1_RELPTR_MASK	GENMASK_ULL(39, 32)
 
 struct npc_mcam_kex {
 	/* MKEX Profle Header */
@@ -290,5 +294,19 @@ struct npc_mcam_kex {
 	/* NPC_AF_INTF(0..1)_LDATA(0..1)_FLAGS(0..15)_CFG */
 	u64 intf_ld_flags[NPC_MAX_INTF][NPC_MAX_LD][NPC_MAX_LFL];
 } __packed;
+
+struct rvu_npc_mcam_rule {
+	struct flow_msg packet;
+	struct flow_msg mask;
+	struct nix_rx_action action;
+	struct list_head list;
+	u64 features;
+	u16 pcifunc;
+	u16 entry;
+	u16 cntr;
+	bool has_cntr;
+	u8 default_rule;
+	bool is_vf;
+};
 
 #endif /* NPC_H */
