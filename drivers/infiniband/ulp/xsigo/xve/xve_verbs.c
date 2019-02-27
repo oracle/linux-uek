@@ -208,6 +208,8 @@ int xve_transport_dev_init(struct net_device *dev, struct ib_device *ca)
 
 	if (ib_req_notify_cq(priv->recv_cq, IB_CQ_NEXT_COMP))
 		goto out_free_send_cq;
+	if (ib_req_notify_cq(priv->send_cq, IB_CQ_NEXT_COMP))
+		goto out_free_send_cq;
 
 	coal = kzalloc(sizeof(*coal), GFP_KERNEL);
 	if (coal) {
