@@ -138,6 +138,12 @@ struct otx2_hw {
 	u64			cgx_tx_stats[CGX_TX_STATS_COUNT];
 };
 
+struct otx2_vf_config {
+	struct otx2_nic *pf;
+	struct delayed_work link_event_work;
+	bool intf_down; /* interface was either configured or not */
+};
+
 struct otx2_ptp;
 
 struct otx2_nic {
@@ -168,6 +174,7 @@ struct otx2_nic {
 	u8			hw_tx_tstamp;
 	u8			total_vfs;
 	u16			bpid[NIX_MAX_BPID_CHAN];
+	struct otx2_vf_config	*vf_configs;
 	struct cgx_link_user_info linfo;
 	struct otx2_ptp		*ptp;
 };
@@ -282,6 +289,20 @@ static inline int otx2_sync_mbox_msg(struct mbox *mbox)
 		return err;
 
 	return otx2_mbox_check_rsp_msgs(&mbox->mbox, 0);
+}
+
+static inline int otx2_sync_mbox_up_msg(struct mbox *mbox, int devid)
+{
+	int err;
+
+	if (!otx2_mbox_nonempty(&mbox->mbox_up, devid))
+		return 0;
+	otx2_mbox_msg_send(&mbox->mbox_up, devid);
+	err = otx2_mbox_wait_for_rsp(&mbox->mbox_up, devid);
+	if (err)
+		return err;
+
+	return otx2_mbox_check_rsp_msgs(&mbox->mbox_up, devid);
 }
 
 /* Use this API to send mbox msgs in atomic context

@@ -39,6 +39,23 @@ MODULE_LICENSE("GPL v2");
 MODULE_VERSION(DRV_VERSION);
 MODULE_DEVICE_TABLE(pci, otx2_pf_id_table);
 
+static void otx2_forward_msg_pfvf(struct otx2_mbox_dev *mdev,
+				  struct otx2_mbox *pfvf_mbox, void *bbuf_base,
+				  int devid)
+{
+	struct otx2_mbox_dev *src_mdev = mdev;
+	int offset;
+
+	/* Msgs are already copied, trigger VF's mbox irq */
+	smp_wmb();
+
+	offset = pfvf_mbox->trigger | (devid << pfvf_mbox->tr_shift);
+	writeq(1, (void __iomem *)pfvf_mbox->reg_base + offset);
+
+	/* Restore VF's mbox bounce buffer region address */
+	src_mdev->mbase = bbuf_base;
+}
+
 static int otx2_forward_vf_mbox_msgs(struct otx2_nic *pf,
 				     struct otx2_mbox *src_mbox,
 				     int dir, int vf)
@@ -74,17 +91,36 @@ static int otx2_forward_vf_mbox_msgs(struct otx2_nic *pf,
 			return err;
 		}
 	} else if (dir == MBOX_DIR_PFVF) {
+		otx2_forward_msg_pfvf(&src_mbox->dev[0],
+				      &pf->mbox_pfvf[0].mbox,
+				      pf->mbox.bbuf_base,
+				      vf);
+	} else if (dir == MBOX_DIR_PFVF_UP) {
 		src_mdev = &src_mbox->dev[0];
+		mbox_hdr = src_mbox->hwbase + src_mbox->rx_start;
+
 		dst_mbox = &pf->mbox_pfvf[0];
+		dst_size = dst_mbox->mbox_up.tx_size -
+				ALIGN(sizeof(*mbox_hdr), MBOX_MSG_ALIGN);
+		/* Check if msgs fit into destination area */
+		if (mbox_hdr->msg_size > dst_size)
+			return -EINVAL;
 
-		/* Msgs are already copied, trigger VF's mbox irq */
-		smp_wmb();
-		writeq(1, (void __iomem *)dst_mbox->mbox.reg_base +
-		       (dst_mbox->mbox.trigger |
-			(vf << dst_mbox->mbox.tr_shift)));
-
-		/* Restore PF's mbox bounce buffer region address */
-		src_mdev->mbase = pf->mbox.bbuf_base;
+		dst_mdev = &dst_mbox->mbox_up.dev[vf];
+		dst_mdev->mbase = src_mdev->mbase;
+		dst_mdev->msg_size = mbox_hdr->msg_size;
+		dst_mdev->num_msgs = mbox_hdr->num_msgs;
+		err = otx2_sync_mbox_up_msg(dst_mbox, vf);
+		if (err) {
+			dev_warn(pf->dev,
+				 "VF%d is not responding to mailbox\n", vf);
+			return err;
+		}
+	} else if (dir == MBOX_DIR_VFPF_UP) {
+		otx2_forward_msg_pfvf(&pf->mbox_pfvf->mbox_up.dev[vf],
+				      &pf->mbox.mbox_up,
+				      pf->mbox_pfvf[vf].bbuf_base,
+				      0);
 	}
 
 	return 0;
@@ -136,6 +172,65 @@ inval_msg:
 	otx2_mbox_msg_send(mbox, vf_idx);
 }
 
+static void otx2_pfvf_mbox_up_handler(struct work_struct *work)
+{
+	struct otx2_mbox_dev *mdev;
+	struct mbox_hdr *rsp_hdr;
+	struct mbox_msghdr *msg;
+	struct otx2_mbox *mbox;
+	int offset, id, vf_idx;
+	struct mbox *vf_mbox;
+	struct otx2_nic *pf;
+
+	vf_mbox = container_of(work, struct mbox, mbox_up_wrk);
+	pf = vf_mbox->pfvf;
+	vf_idx = vf_mbox - pf->mbox_pfvf;
+
+	vf_mbox = &pf->mbox_pfvf[0];
+	mbox = &vf_mbox->mbox_up;
+	mdev = &mbox->dev[vf_idx];
+
+	rsp_hdr = (struct mbox_hdr *)(mdev->mbase + mbox->rx_start);
+	if (rsp_hdr->num_msgs == 0)
+		return;
+
+	offset = mbox->rx_start + ALIGN(sizeof(*rsp_hdr), MBOX_MSG_ALIGN);
+
+	for (id = 0; id < rsp_hdr->num_msgs; id++) {
+		msg = mdev->mbase + offset;
+
+		if (msg->id >= MBOX_MSG_MAX) {
+			dev_err(pf->dev,
+				"Mbox msg with unknown ID 0x%x\n", msg->id);
+			goto end;
+		}
+
+		if (msg->sig != OTX2_MBOX_RSP_SIG) {
+			dev_err(pf->dev,
+				"Mbox msg with wrong signature %x, ID 0x%x\n",
+				msg->sig, msg->id);
+			goto end;
+		}
+
+		switch (msg->id) {
+		case MBOX_MSG_CGX_LINK_EVENT:
+			break;
+		default:
+			if (msg->rc)
+				dev_err(pf->dev,
+					"Mbox msg response has err %d, ID 0x%x\n",
+					msg->rc, msg->id);
+			break;
+		}
+
+end:
+		offset = mbox->rx_start + msg->next_msgoff;
+		mdev->msgs_acked++;
+	}
+
+	otx2_mbox_reset(mbox, vf_idx);
+}
+
 static irqreturn_t otx2_pfvf_mbox_intr_handler(int irq, void *pf_irq)
 {
 	struct otx2_nic *pf = (struct otx2_nic *)(pf_irq);
@@ -151,6 +246,8 @@ static irqreturn_t otx2_pfvf_mbox_intr_handler(int irq, void *pf_irq)
 			if (intr & BIT_ULL(vf_idx - (reg * 64))) {
 				mbox = &pf->mbox_pfvf[vf_idx];
 				queue_work(pf->mbox_pfvf_wq, &mbox->mbox_wrk);
+				queue_work(pf->mbox_pfvf_wq,
+					   &mbox->mbox_up_wrk);
 				otx2_write64(pf, RVU_PF_VFPF_MBOX_INTX(reg),
 					     BIT_ULL(vf_idx - (reg * 64)));
 			}
@@ -196,13 +293,14 @@ static int otx2_pfvf_mbox_init(struct otx2_nic *pf, int numvfs)
 		goto free_iomem;
 
 	err = otx2_mbox_init(&mbox->mbox_up, hwbase, pf->pdev, pf->reg_base,
-			     MBOX_DIR_PFVF, numvfs);
+			     MBOX_DIR_PFVF_UP, numvfs);
 	if (err)
 		goto free_iomem;
 
 	for (vf = 0; vf < numvfs; vf++) {
 		mbox->pfvf = pf;
 		INIT_WORK(&mbox->mbox_wrk, otx2_pfvf_mbox_handler);
+		INIT_WORK(&mbox->mbox_up_wrk, otx2_pfvf_mbox_up_handler);
 		mbox++;
 	}
 
@@ -319,6 +417,8 @@ static int otx2_register_pfvf_mbox_intr(struct otx2_nic *pf)
 static void otx2_process_pfaf_mbox_msg(struct otx2_nic *pf,
 				       struct mbox_msghdr *msg)
 {
+	int devid;
+
 	if (msg->id >= MBOX_MSG_MAX) {
 		dev_err(pf->dev,
 			"Mbox msg with unknown ID 0x%x\n", msg->id);
@@ -329,6 +429,25 @@ static void otx2_process_pfaf_mbox_msg(struct otx2_nic *pf,
 		dev_err(pf->dev,
 			"Mbox msg with wrong signature %x, ID 0x%x\n",
 			 msg->sig, msg->id);
+		return;
+	}
+
+	/* message response heading VF */
+	devid = msg->pcifunc & RVU_PFVF_FUNC_MASK;
+	if (devid) {
+		struct otx2_vf_config *config = &pf->vf_configs[devid - 1];
+		struct delayed_work *dwork = &config->link_event_work;
+
+		switch (msg->id) {
+		case MBOX_MSG_NIX_LF_START_RX:
+			config->intf_down = false;
+			schedule_delayed_work(dwork, msecs_to_jiffies(100));
+			break;
+		case MBOX_MSG_NIX_LF_STOP_RX:
+			config->intf_down = true;
+			break;
+		}
+
 		return;
 	}
 
@@ -387,9 +506,7 @@ static void otx2_pfaf_mbox_handler(struct work_struct *work)
 	for (id = 0; id < rsp_hdr->num_msgs; id++) {
 		msg = (struct mbox_msghdr *)(mdev->mbase + offset);
 		devid = msg->pcifunc & RVU_PFVF_FUNC_MASK;
-		/* Skip processing VF's messages */
-		if (!devid)
-			otx2_process_pfaf_mbox_msg(pf, msg);
+		otx2_process_pfaf_mbox_msg(pf, msg);
 		offset = mbox->rx_start + msg->next_msgoff;
 		mdev->msgs_acked++;
 	}
@@ -404,14 +521,11 @@ static void otx2_pfaf_mbox_handler(struct work_struct *work)
 	otx2_write64(pf, RVU_PF_INT, BIT_ULL(0));
 }
 
-int otx2_mbox_up_handler_cgx_link_event(struct otx2_nic *pf,
-					struct cgx_link_info_msg *msg,
-					struct msg_rsp *rsp)
+static void otx2_handle_link_event(struct otx2_nic *pf)
 {
-	struct cgx_link_user_info *linfo = &msg->link_info;
+	struct cgx_link_user_info *linfo = &pf->linfo;
 	struct net_device *netdev = pf->netdev;
 
-	pf->linfo = msg->link_info;
 	pr_info("%s NIC Link is %s %d Mbps %s duplex\n", netdev->name,
 		linfo->link_up ? "UP" : "DOWN", linfo->speed,
 		linfo->full_duplex ? "Full" : "Half");
@@ -422,6 +536,32 @@ int otx2_mbox_up_handler_cgx_link_event(struct otx2_nic *pf,
 		netif_tx_stop_all_queues(netdev);
 		netif_carrier_off(netdev);
 	}
+}
+
+int otx2_mbox_up_handler_cgx_link_event(struct otx2_nic *pf,
+					struct cgx_link_info_msg *msg,
+					struct msg_rsp *rsp)
+{
+	int i;
+
+	pf->linfo = msg->link_info;
+
+	/* notify VFs about link event */
+	for (i = 0; i < pci_num_vf(pf->pdev); i++) {
+		struct otx2_vf_config *config = &pf->vf_configs[i];
+		struct delayed_work *dwork = &config->link_event_work;
+
+		if (config->intf_down)
+			continue;
+
+		schedule_delayed_work(dwork, msecs_to_jiffies(100));
+	}
+
+	/* interface has not been fully configured yet */
+	if (pf->intf_down)
+		return 0;
+
+	otx2_handle_link_event(pf);
 	return 0;
 }
 
@@ -473,8 +613,7 @@ static void otx2_pfaf_mbox_up_handler(struct work_struct *work)
 	struct otx2_mbox_dev *mdev = &mbox->dev[0];
 	struct mbox_hdr *rsp_hdr;
 	struct mbox_msghdr *msg;
-	int offset, id;
-	int err;
+	int offset, id, devid;
 
 	rsp_hdr = (struct mbox_hdr *)(mdev->mbase + mbox->rx_start);
 	if (rsp_hdr->num_msgs == 0)
@@ -485,12 +624,17 @@ static void otx2_pfaf_mbox_up_handler(struct work_struct *work)
 	for (id = 0; id < rsp_hdr->num_msgs; id++) {
 		msg = (struct mbox_msghdr *)(mdev->mbase + offset);
 
-		err = otx2_process_mbox_msg_up(pf, msg);
-		if (err) {
-			dev_warn(pf->dev, "Error %d when processing message %s from AF\n",
-				 err, otx2_mbox_id2name(msg->id));
-		}
+		devid = msg->pcifunc & RVU_PFVF_FUNC_MASK;
+		/* Skip processing VF's messages */
+		if (!devid)
+			otx2_process_mbox_msg_up(pf, msg);
 		offset = mbox->rx_start + msg->next_msgoff;
+	}
+
+	if (devid) {
+		otx2_forward_vf_mbox_msgs(pf, &pf->mbox.mbox_up,
+					  MBOX_DIR_PFVF_UP, devid - 1);
+		return;
 	}
 
 	otx2_mbox_msg_send(mbox, 0);
@@ -1161,8 +1305,9 @@ int otx2_open(struct net_device *netdev)
 
 	pf->intf_down = false;
 
-	/* Enable link notifications */
-	otx2_cgx_config_linkevents(pf, true);
+	/* we have already received link status notification */
+	if (pf->linfo.link_up)
+		otx2_handle_link_event(pf);
 
 	/* Alloc rxvlan entry in MCAM for PFs only */
 	if (!(pf->pcifunc & RVU_PFVF_FUNC_MASK))
@@ -1611,6 +1756,10 @@ static int otx2_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	}
 
 	otx2_set_ethtool_ops(netdev);
+
+	/* Enable link notifications */
+	otx2_cgx_config_linkevents(pf, true);
+
 	return 0;
 
 err_ptp_destroy:
@@ -1655,11 +1804,42 @@ static void otx2_remove(struct pci_dev *pdev)
 	pci_release_regions(pdev);
 }
 
+static void otx2_vf_link_event_task(struct work_struct *work)
+{
+	struct otx2_vf_config *config;
+	struct cgx_link_info_msg *req;
+	struct mbox_msghdr *msghdr;
+	struct otx2_nic *pf;
+	int err, vf_idx;
+
+	config = container_of(work, struct otx2_vf_config,
+			      link_event_work.work);
+	vf_idx = config->pf->vf_configs - config;
+	pf = config->pf;
+
+	msghdr = otx2_mbox_alloc_msg_rsp(&pf->mbox_pfvf[0].mbox_up, vf_idx,
+					 sizeof(*req), sizeof(struct msg_rsp));
+	if (!msghdr) {
+		dev_err(pf->dev, "Failed to create VF%d link event\n", vf_idx);
+		return;
+	}
+
+	req = (struct cgx_link_info_msg *)msghdr;
+	req->hdr.id = MBOX_MSG_CGX_LINK_EVENT;
+	req->hdr.sig = OTX2_MBOX_REQ_SIG;
+	memcpy(&req->link_info, &pf->linfo, sizeof(req->link_info));
+
+	err = otx2_sync_mbox_up_msg(&pf->mbox_pfvf[0], vf_idx);
+	if (err)
+		dev_warn(pf->dev, "VF%d failed to acknowledge link event\n",
+			 vf_idx);
+}
+
 static int otx2_sriov_enable(struct pci_dev *pdev, int numvfs)
 {
 	struct net_device *netdev = pci_get_drvdata(pdev);
 	struct otx2_nic *pf = netdev_priv(netdev);
-	int ret;
+	int ret, i;
 
 	if (numvfs > pf->total_vfs)
 		numvfs = pf->total_vfs;
@@ -1672,6 +1852,20 @@ static int otx2_sriov_enable(struct pci_dev *pdev, int numvfs)
 	ret = otx2_register_pfvf_mbox_intr(pf);
 	if (ret)
 		goto free_mbox;
+
+	pf->vf_configs = kcalloc(numvfs, sizeof(struct otx2_vf_config),
+				 GFP_KERNEL);
+	if (!pf->vf_configs) {
+		ret = -ENOMEM;
+		goto free_intr;
+	}
+
+	for (i = 0; i < numvfs; i++) {
+		pf->vf_configs[i].pf = pf;
+		pf->vf_configs[i].intf_down = true;
+		INIT_DELAYED_WORK(&pf->vf_configs[i].link_event_work,
+				  otx2_vf_link_event_task);
+	}
 
 	ret = pci_enable_sriov(pdev, numvfs);
 	if (ret)
@@ -1690,8 +1884,13 @@ static int otx2_sriov_disable(struct pci_dev *pdev)
 {
 	struct net_device *netdev = pci_get_drvdata(pdev);
 	struct otx2_nic *pf = netdev_priv(netdev);
+	int i;
 
 	pci_disable_sriov(pdev);
+
+	for (i = 0; i < pci_num_vf(pdev); i++)
+		cancel_delayed_work_sync(&pf->vf_configs[i].link_event_work);
+	kfree(pf->vf_configs);
 
 	otx2_disable_pfvf_mbox_intr(pf);
 	otx2_pfvf_mbox_destroy(pf);
