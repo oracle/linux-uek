@@ -120,8 +120,74 @@ static void otx2vf_vfaf_mbox_handler(struct work_struct *work)
 	otx2_write64(af_mbox->pfvf, RVU_VF_INT, BIT_ULL(0));
 }
 
+static int otx2vf_process_mbox_msg_up(struct otx2_nic *vf,
+				      struct mbox_msghdr *req)
+{
+	/* Check if valid, if not reply with a invalid msg */
+	if (req->sig != OTX2_MBOX_REQ_SIG) {
+		otx2_reply_invalid_msg(&vf->mbox.mbox_up, 0, 0, req->id);
+		return -ENODEV;
+	}
+
+	switch (req->id) {
+#define M(_name, _id, _fn_name, _req_type, _rsp_type)			\
+	case _id: {							\
+		struct _rsp_type *rsp;					\
+		int err;						\
+									\
+		rsp = (struct _rsp_type *)otx2_mbox_alloc_msg(		\
+			&vf->mbox.mbox_up, 0,				\
+			sizeof(struct _rsp_type));			\
+		if (!rsp)						\
+			return -ENOMEM;					\
+									\
+		rsp->hdr.id = _id;					\
+		rsp->hdr.sig = OTX2_MBOX_RSP_SIG;			\
+		rsp->hdr.pcifunc = 0;					\
+		rsp->hdr.rc = 0;					\
+									\
+		err = otx2_mbox_up_handler_ ## _fn_name(		\
+			vf, (struct _req_type *)req, rsp);		\
+		return err;						\
+	}
+MBOX_UP_CGX_MESSAGES
+#undef M
+		break;
+	default:
+		otx2_reply_invalid_msg(&vf->mbox.mbox_up, 0, 0, req->id);
+		return -ENODEV;
+	}
+	return 0;
+}
+
 static void otx2vf_vfaf_mbox_up_handler(struct work_struct *work)
 {
+	struct otx2_mbox_dev *mdev;
+	struct mbox_hdr *rsp_hdr;
+	struct mbox_msghdr *msg;
+	struct otx2_mbox *mbox;
+	struct mbox *vf_mbox;
+	struct otx2_nic *vf;
+	int offset, id;
+
+	vf_mbox = container_of(work, struct mbox, mbox_up_wrk);
+	vf =  vf_mbox->pfvf;
+	mbox = &vf_mbox->mbox_up;
+	mdev = &mbox->dev[0];
+
+	rsp_hdr = (struct mbox_hdr *)(mdev->mbase + mbox->rx_start);
+	if (rsp_hdr->num_msgs == 0)
+		return;
+
+	offset = mbox->rx_start + ALIGN(sizeof(*rsp_hdr), MBOX_MSG_ALIGN);
+
+	for (id = 0; id < rsp_hdr->num_msgs; id++) {
+		msg = (struct mbox_msghdr *)(mdev->mbase + offset);
+		otx2vf_process_mbox_msg_up(vf, msg);
+		offset = mbox->rx_start + msg->next_msgoff;
+	}
+
+	otx2_mbox_msg_send(mbox, 0);
 }
 
 static irqreturn_t otx2vf_vfaf_mbox_intr_handler(int irq, void *vf_irq)
@@ -295,13 +361,16 @@ static int otx2vf_open(struct net_device *netdev)
 
 static int otx2vf_stop(struct net_device *netdev)
 {
+	struct otx2_nic *vf;
 	int err;
 
 	err = otx2_stop(netdev);
 	if (err)
 		return err;
 
-	pr_info("%s NIC Link is DOWN\n", netdev->name);
+	vf = netdev_priv(netdev);
+	if (vf->tx_chan_base < SDP_CHAN_BASE)
+		pr_info("%s NIC Link is DOWN\n", netdev->name);
 
 	return 0;
 }
