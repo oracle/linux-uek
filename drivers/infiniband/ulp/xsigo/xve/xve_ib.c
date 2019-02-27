@@ -558,6 +558,10 @@ int poll_tx(struct xve_dev_priv *priv)
 				__func__, n);
 	}
 
+	/* Since, we are not going to be polled again, arm cq */
+	if (n != MAX_SEND_CQE)
+		ib_req_notify_cq(priv->send_cq, IB_CQ_NEXT_COMP);
+
 	return n == MAX_SEND_CQE;
 }
 
