@@ -962,6 +962,41 @@ static void pci_enable_crs(struct pci_dev *pdev)
 }
 
 /*
+ * pci_ea_fixed_busnrs() - Read fixed Secondary and Subordinate bus
+ *				numbers from EA capability
+ * @dev: Bridge with EA
+ * @secondary: updated with secondary bus number in EA
+ * @subordinate: updated with subordinate bus number in EA
+ *
+ * If it is a bridge with EA capability then fixed bus numbers are
+ * read from EA capability list and secondary and subordinate reference
+ * variables will be updated. Otherwise secondary and subordinate reference
+ * variables will be zeroed.
+ */
+static void pci_ea_fixed_busnrs(struct pci_dev *dev, u8 *secondary,
+				u8 *subordinate)
+{
+	int ea;
+	int offset;
+	u32 dw;
+
+	*secondary = *subordinate = 0;
+
+	if (dev->hdr_type != PCI_HEADER_TYPE_BRIDGE)
+		return;
+
+	/* find PCI EA capability in list */
+	ea = pci_find_capability(dev, PCI_CAP_ID_EA);
+	if (!ea)
+		return;
+
+	offset = ea + PCI_EA_FIRST_ENT;
+	pci_read_config_dword(dev, offset, &dw);
+	*secondary = dw & PCI_EA_SEC_BUS_MASK;
+	*subordinate = (dw & PCI_EA_SUB_BUS_MASK) >> PCI_EA_SUB_BUS_SHIFT;
+}
+
+/*
  * If it's a bridge, configure it and scan the bus behind it.
  * For CardBus bridges, we don't scan behind as the devices will
  * be handled by the bridge driver itself.
@@ -979,6 +1014,8 @@ int pci_scan_bridge(struct pci_bus *bus, struct pci_dev *dev, int max, int pass)
 	u16 bctl;
 	u8 primary, secondary, subordinate;
 	int broken = 0;
+	u8 fixed_sec, fixed_sub;
+	int next_busnr;
 
 	/*
 	 * Make sure the bridge is powered on to be able to access config
@@ -1070,15 +1107,23 @@ int pci_scan_bridge(struct pci_bus *bus, struct pci_dev *dev, int max, int pass)
 		/* Clear errors */
 		pci_write_config_word(dev, PCI_STATUS, 0xffff);
 
+		/* read bus numbers from EA */
+		pci_ea_fixed_busnrs(dev, &fixed_sec, &fixed_sub);
+
+		next_busnr = max + 1;
+		/* Use secondary bus number in EA */
+		if (fixed_sec)
+			next_busnr = fixed_sec;
+
 		/* Prevent assigning a bus number that already exists.
 		 * This can happen when a bridge is hot-plugged, so in
 		 * this case we only re-scan this bus. */
-		child = pci_find_bus(pci_domain_nr(bus), max+1);
+		child = pci_find_bus(pci_domain_nr(bus), next_busnr);
 		if (!child) {
-			child = pci_add_new_bus(bus, dev, max+1);
+			child = pci_add_new_bus(bus, dev, next_busnr);
 			if (!child)
 				goto out;
-			pci_bus_insert_busn_res(child, max+1,
+			pci_bus_insert_busn_res(child, next_busnr,
 						bus->busn_res.end);
 		}
 		max++;
@@ -1137,7 +1182,11 @@ int pci_scan_bridge(struct pci_bus *bus, struct pci_dev *dev, int max, int pass)
 		}
 		/*
 		 * Set the subordinate bus number to its real value.
+		 * If fixed subordinate bus number exists from EA
+		 * capability then use it.
 		 */
+		if (fixed_sub)
+			max = fixed_sub;
 		pci_bus_update_busn_res_end(child, max);
 		pci_write_config_byte(dev, PCI_SUBORDINATE_BUS, max);
 	}
