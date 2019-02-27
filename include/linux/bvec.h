@@ -156,4 +156,9 @@ static inline void bvec_iter_skip_zero_bvec(struct bvec_iter *iter)
 	     (bvl).bv_len ? (void)bvec_iter_advance((bio_vec), &(iter),	\
 		     (bvl).bv_len) : bvec_iter_skip_zero_bvec(&(iter)))
 
+#define mp_bvec_for_each_page(pg, bv, i)				\
+	for (i = (bv)->bv_offset / PAGE_SIZE;				\
+		(i <= (((bv)->bv_offset + (bv)->bv_len - 1) / PAGE_SIZE)) && \
+		(pg = nth_page((bv)->bv_page, i)); i += 1)
+
 #endif /* __LINUX_BVEC_ITER_H */
