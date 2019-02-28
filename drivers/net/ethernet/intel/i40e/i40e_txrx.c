@@ -637,8 +637,11 @@ static void i40e_unmap_and_free_tx_resource(struct i40e_ring *ring,
 	if (tx_buffer->skb) {
 		if (tx_buffer->tx_flags & I40E_TX_FLAGS_FD_SB)
 			kfree(tx_buffer->raw_buf);
+#ifdef HAVE_XDP_SUPPORT
 		else if (ring_is_xdp(ring))
-			page_frag_free(tx_buffer->raw_buf);
+			xdp_return_frame(tx_buffer->xdpf->data,
+					 &tx_buffer->xdpf->mem);
+#endif
 		else
 			dev_kfree_skb_any(tx_buffer->skb);
 		if (dma_unmap_len(tx_buffer, len))
@@ -840,9 +843,11 @@ static bool i40e_clean_tx_irq(struct i40e_vsi *vsi,
 		total_packets += tx_buf->gso_segs;
 
 		/* free the skb/XDP data */
+#ifdef HAVE_XDP_SUPPORT
 		if (ring_is_xdp(tx_ring))
-			page_frag_free(tx_buf->raw_buf);
+			xdp_return_frame(tx_buf->xdpf->data, &tx_buf->xdpf->mem);
 		else
+#endif
 			napi_consume_skb(tx_buf->skb, napi_budget);
 
 		/* unmap skb header data */
@@ -2203,8 +2208,10 @@ static bool i40e_is_non_eop(struct i40e_ring *rx_ring,
 #define I40E_XDP_CONSUMED 1
 #define I40E_XDP_TX 2
 
+#ifdef HAVE_XDP_SUPPORT
 static int i40e_xmit_xdp_ring(struct xdp_buff *xdp,
 			      struct i40e_ring *xdp_ring);
+#endif
 
 /**
  * i40e_run_xdp - run an XDP program
@@ -2215,6 +2222,7 @@ static struct sk_buff *i40e_run_xdp(struct i40e_ring *rx_ring,
 				    struct xdp_buff *xdp)
 {
 	int err, result = I40E_XDP_PASS;
+#ifdef HAVE_XDP_SUPPORT
 	struct i40e_ring *xdp_ring;
 	struct bpf_prog *xdp_prog;
 	u32 act;
@@ -2224,6 +2232,8 @@ static struct sk_buff *i40e_run_xdp(struct i40e_ring *rx_ring,
 
 	if (!xdp_prog)
 		goto xdp_out;
+
+	prefetchw(xdp->data_hard_start); /* xdp_frame write */
 
 	act = bpf_prog_run_xdp(xdp_prog, xdp);
 	switch (act) {
@@ -2248,6 +2258,7 @@ static struct sk_buff *i40e_run_xdp(struct i40e_ring *rx_ring,
 	}
 xdp_out:
 	rcu_read_unlock();
+#endif /* HAVE_XDP_SUPPORT */
 	return ERR_PTR(-result);
 }
 
@@ -3472,6 +3483,7 @@ dma_error:
 	return -1;
 }
 
+#ifdef HAVE_XDP_SUPPORT
 /**
  * i40e_xmit_xdp_ring - transmits an XDP buffer to an XDP Tx ring
  * @xdp: data to transmit
@@ -3480,25 +3492,32 @@ dma_error:
 static int i40e_xmit_xdp_ring(struct xdp_buff *xdp,
 			      struct i40e_ring *xdp_ring)
 {
-	u32 size = xdp->data_end - xdp->data;
 	u16 i = xdp_ring->next_to_use;
 	struct i40e_tx_buffer *tx_bi;
 	struct i40e_tx_desc *tx_desc;
+	struct xdp_frame *xdpf;
 	dma_addr_t dma;
+	u32 size;
+
+	xdpf = convert_to_xdp_frame(xdp);
+	if (unlikely(!xdpf))
+		return I40E_XDP_CONSUMED;
+
+	size = xdpf->len;
 
 	if (!unlikely(I40E_DESC_UNUSED(xdp_ring))) {
 		xdp_ring->tx_stats.tx_busy++;
 		return I40E_XDP_CONSUMED;
 	}
 
-	dma = dma_map_single(xdp_ring->dev, xdp->data, size, DMA_TO_DEVICE);
+	dma = dma_map_single(xdp_ring->dev, xdpf->data, size, DMA_TO_DEVICE);
 	if (dma_mapping_error(xdp_ring->dev, dma))
 		return I40E_XDP_CONSUMED;
 
 	tx_bi = &xdp_ring->tx_bi[i];
 	tx_bi->bytecount = size;
 	tx_bi->gso_segs = 1;
-	tx_bi->raw_buf = xdp->data;
+	tx_bi->xdpf = xdpf;
 
 	/* record length, and DMA address */
 	dma_unmap_len_set(tx_bi, len, size);
@@ -3524,6 +3543,7 @@ static int i40e_xmit_xdp_ring(struct xdp_buff *xdp,
 
 	return I40E_XDP_TX;
 }
+#endif
 
 /**
  * i40e_xmit_frame_ring - Sends buffer on Tx ring
@@ -3667,6 +3687,7 @@ netdev_tx_t i40e_lan_xmit_frame(struct sk_buff *skb, struct net_device *netdev)
 	return i40e_xmit_frame_ring(skb, tx_ring);
 }
 
+#ifdef HAVE_XDP_SUPPORT
 /**
  * i40e_xdp_xmit - Implements ndo_xdp_xmit
  * @dev: netdev
@@ -3712,3 +3733,4 @@ void i40e_xdp_flush(struct net_device *dev)
 
 	i40e_xdp_ring_update_tail(vsi->xdp_rings[queue_index]);
 }
+#endif

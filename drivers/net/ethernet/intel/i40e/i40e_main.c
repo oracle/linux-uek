@@ -11821,9 +11821,11 @@ static const struct net_device_ops i40e_netdev_ops = {
 	.ndo_features_check	= i40e_features_check,
 	.ndo_bridge_getlink	= i40e_ndo_bridge_getlink,
 	.ndo_bridge_setlink	= i40e_ndo_bridge_setlink,
+#ifdef HAVE_XDP_SUPPORT
 	.ndo_xdp		= i40e_xdp,
 	.ndo_xdp_xmit		= i40e_xdp_xmit,
 	.ndo_xdp_flush		= i40e_xdp_flush,
+#endif /* HAVE_XDP_SUPPORT */
 };
 
 /**
