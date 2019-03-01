@@ -98,7 +98,14 @@ static void ktask_init_work(struct ktask_work *kw, struct ktask_task *kt,
 			    size_t ktask_node_i, size_t queue_nid,
 			    bool master_thr)
 {
-	INIT_WORK(&kw->kw_work, ktask_thread);
+	/* Annotate debugobjects properly. The master thread allocates work
+	 * items on stack while the helper threads allocate it on heap.
+	 */
+	if (master_thr)
+		INIT_WORK_ONSTACK(&kw->kw_work, ktask_thread);
+	else
+		INIT_WORK(&kw->kw_work, ktask_thread);
+
 	kw->kw_task = kt;
 	kw->kw_ktask_node_i = ktask_node_i;
 	kw->kw_queue_nid = queue_nid;
