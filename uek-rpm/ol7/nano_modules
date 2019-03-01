@@ -368,7 +368,7 @@ kernel/drivers/net/ethernet/intel/e1000/e1000.ko
 kernel/drivers/net/ethernet/intel/e1000e/e1000e.ko
 kernel/drivers/net/ethernet/intel/fm10k/fm10k.ko
 kernel/drivers/net/ethernet/intel/i40e/i40e.ko
-kernel/drivers/net/ethernet/intel/i40evf/i40evf.ko
+kernel/drivers/net/ethernet/intel/iavf/iavf.ko
 kernel/drivers/net/ethernet/intel/igb/igb.ko
 kernel/drivers/net/ethernet/intel/igbvf/igbvf.ko
 kernel/drivers/net/ethernet/intel/ixgbe/ixgbe.ko
