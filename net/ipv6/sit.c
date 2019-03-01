@@ -1546,6 +1546,7 @@ err_reg_dev:
 	dev_put(sitn->fb_tunnel_dev);
 err_dev_free:
 	ipip6_dev_free(sitn->fb_tunnel_dev);
+	free_netdev(sitn->fb_tunnel_dev);
 err_alloc_dev:
 	return err;
 }
