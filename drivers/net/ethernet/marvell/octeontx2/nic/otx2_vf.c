@@ -428,23 +428,17 @@ static int otx2vf_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	if (err < 0)
 		goto err_free_netdev;
 
-	hw->pcpu_stats = netdev_alloc_pcpu_stats(struct otx2_pcpu_stats);
-	if (!hw->pcpu_stats) {
-		err = -ENOMEM;
-		goto err_free_irq_vectors;
-	}
-
 	vf->reg_base = pcim_iomap(pdev, PCI_CFG_REG_BAR_NUM, 0);
 	if (!vf->reg_base) {
 		dev_err(dev, "Unable to map physical function CSRs, aborting\n");
 		err = -ENOMEM;
-		goto err_free_pcpu_stats;
+		goto err_free_irq_vectors;
 	}
 
 	/* Init VF <=> PF mailbox stuff */
 	err = otx2vf_vfaf_mbox_init(vf);
 	if (err)
-		goto err_free_pcpu_stats;
+		goto err_free_irq_vectors;
 
 	/* Register mailbox interrupt */
 	err = otx2vf_register_mbox_intr(vf);
@@ -496,8 +490,6 @@ err_disable_mbox_intr:
 	otx2vf_disable_mbox_intr(vf);
 err_mbox_destroy:
 	otx2vf_vfaf_mbox_destroy(vf);
-err_free_pcpu_stats:
-	free_percpu(hw->pcpu_stats);
 err_free_irq_vectors:
 	pci_free_irq_vectors(hw->pdev);
 err_free_netdev:
@@ -512,20 +504,17 @@ static void otx2vf_remove(struct pci_dev *pdev)
 {
 	struct net_device *netdev = pci_get_drvdata(pdev);
 	struct otx2_nic *vf;
-	struct otx2_hw *hw;
 
 	if (!netdev)
 		return;
 
 	vf = netdev_priv(netdev);
-	hw = &vf->hw;
 	unregister_netdev(netdev);
 
 	otx2vf_disable_mbox_intr(vf);
 
 	otx2_detach_resources(&vf->mbox);
 	otx2vf_vfaf_mbox_destroy(vf);
-	free_percpu(hw->pcpu_stats);
 	pci_free_irq_vectors(vf->pdev);
 	pci_set_drvdata(pdev, NULL);
 	free_netdev(netdev);
