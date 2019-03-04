@@ -42,13 +42,6 @@ enum arua_mapped_qtypes {
 #define NIX_LF_ERR_VEC				0x81
 #define NIX_LF_POISON_VEC			0x82
 
-struct  otx2_pcpu_stats {
-	u64 rq_drops;
-	u64 rq_red_drops;
-
-	struct u64_stats_sync syncp;
-};
-
 /* RSS configuration */
 struct otx2_rss_info {
 	u8 enable;
@@ -115,7 +108,6 @@ struct otx2_hw {
 	struct pci_dev		*pdev;
 	struct otx2_rss_info	rss_info;
 	struct otx2_dev_stats	dev_stats;
-	struct otx2_pcpu_stats  __percpu *pcpu_stats;
 	u16                     rx_queues;
 	u16                     tx_queues;
 	u16			max_queues;
