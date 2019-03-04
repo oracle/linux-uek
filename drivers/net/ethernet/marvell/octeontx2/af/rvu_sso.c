@@ -188,7 +188,7 @@ static void rvu_sso_ggrp_taq_flush(struct rvu *rvu, u16 pcifunc, int lf,
 	reg = rvu_read64(rvu, blkaddr, SSO_AF_HWGRPX_TAQ_THR(lf));
 	while ((reg >> 48) & 0x7FF) {
 		rvu_write64(rvu, blkaddr,
-			    SSO_AF_BAR2_ALIASX(lf, SSO_LF_GGRP_OP_ADD_WORK1),
+			    SSO_AF_BAR2_ALIASX(slot, SSO_LF_GGRP_OP_ADD_WORK1),
 			    0x1 << 3);
 get_work:
 		rvu_write64(rvu, ssow_blkaddr,
