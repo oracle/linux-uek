@@ -177,6 +177,8 @@ struct otx2_nic {
 	struct otx2_vf_config	*vf_configs;
 	struct cgx_link_user_info linfo;
 	struct otx2_ptp		*ptp;
+	u16			rxvlan_entry;
+	bool			rxvlan_alloc;
 };
 
 static inline bool is_9xxx_pass1_silicon(struct pci_dev *pdev)
@@ -474,6 +476,8 @@ int otx2_update_rq_stats(struct otx2_nic *pfvf, int qidx);
 int otx2_update_sq_stats(struct otx2_nic *pfvf, int qidx);
 void otx2_set_ethtool_ops(struct net_device *netdev);
 void otx2vf_set_ethtool_ops(struct net_device *netdev);
+int otx2_install_rxvlan_offload_flow(struct otx2_nic *pfvf);
+int otx2_delete_rxvlan_offload_flow(struct otx2_nic *pfvf);
 
 int otx2_open(struct net_device *netdev);
 int otx2_stop(struct net_device *netdev);
