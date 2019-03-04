@@ -389,11 +389,12 @@ static u64 npc_get_mcam_action(struct rvu *rvu, struct npc_mcam *mcam,
 void rvu_npc_install_ucast_entry(struct rvu *rvu, u16 pcifunc,
 				 int nixlf, u64 chan, u8 *mac_addr)
 {
+	u8 mac_mask[] = { [0 ... ETH_ALEN] = 0xFF };
+	struct npc_install_flow_req req = { 0 };
+	struct npc_install_flow_rsp rsp = { 0 };
 	struct npc_mcam *mcam = &rvu->hw->mcam;
-	struct mcam_entry entry = { {0} };
 	struct nix_rx_action action;
-	int blkaddr, index, kwi;
-	u64 mac = 0;
+	int blkaddr, index;
 
 	/* AF's VFs work in promiscuous mode */
 	if (is_afvf(pcifunc))
@@ -403,19 +404,8 @@ void rvu_npc_install_ucast_entry(struct rvu *rvu, u16 pcifunc,
 	if (blkaddr < 0)
 		return;
 
-	for (index = ETH_ALEN - 1; index >= 0; index--)
-		mac |= ((u64)*mac_addr++) << (8 * index);
-
 	index = npc_get_nixlf_mcam_index(mcam, pcifunc,
 					 nixlf, NIXLF_UCAST_ENTRY);
-
-	/* Match ingress channel and DMAC */
-	entry.kw[0] = chan;
-	entry.kw_mask[0] = 0xFFFULL;
-
-	kwi = NPC_PARSE_RESULT_DMAC_OFFSET / sizeof(u64);
-	entry.kw[kwi] = mac;
-	entry.kw_mask[kwi] = BIT_ULL(48) - 1;
 
 	/* Don't change the action if entry is already enabled
 	 * Otherwise RSS action may get overwritten.
@@ -429,9 +419,21 @@ void rvu_npc_install_ucast_entry(struct rvu *rvu, u16 pcifunc,
 		action.pf_func = pcifunc;
 	}
 
-	entry.action = *(u64 *)&action;
-	npc_config_mcam_entry(rvu, mcam, blkaddr, index,
-			      NIX_INTF_RX, &entry, true);
+	req.default_rule = 1;
+	ether_addr_copy(req.packet.dmac, mac_addr);
+	ether_addr_copy(req.mask.dmac, mac_mask);
+	req.features = BIT_ULL(NPC_DMAC);
+	req.channel = chan;
+	req.intf = NIX_INTF_RX;
+	req.op = action.op;
+	req.hdr.pcifunc = 0; /* AF is requester */
+	req.vf = action.pf_func;
+	req.index = action.index;
+	req.match_id = action.match_id;
+	req.flow_key_alg = action.flow_key_alg;
+
+	if (rvu_mbox_handler_npc_install_flow(rvu, &req, &rsp))
+		dev_err(rvu->dev, "could not install default rule\n");
 }
 
 void rvu_npc_install_promisc_entry(struct rvu *rvu, u16 pcifunc,
