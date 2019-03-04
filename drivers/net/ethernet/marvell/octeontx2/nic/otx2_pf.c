@@ -825,6 +825,16 @@ static int otx2_enable_rxvlan(struct otx2_nic *pf, bool enable)
 	struct mbox_msghdr *rsp_hdr;
 	int err;
 
+	if (enable) {
+		err = otx2_install_rxvlan_offload_flow(pf);
+		if (err)
+			return err;
+	} else {
+		err = otx2_delete_rxvlan_offload_flow(pf);
+		if (err)
+			return err;
+	}
+
 	req = otx2_mbox_alloc_msg_nix_vtag_cfg(&pf->mbox);
 	if (!req)
 		return -ENOMEM;
@@ -871,24 +881,29 @@ static void otx2_alloc_rxvlan(struct otx2_nic *pf)
 {
 	netdev_features_t old, wanted = NETIF_F_HW_VLAN_STAG_RX |
 					NETIF_F_HW_VLAN_CTAG_RX;
-	struct mbox_msghdr *rsp_hdr;
-	struct msg_req *req;
+	struct npc_mcam_alloc_entry_req *req;
+	struct npc_mcam_alloc_entry_rsp *rsp;
 	int err;
 
-	req = otx2_mbox_alloc_msg_nix_rxvlan_alloc(&pf->mbox);
+	req = otx2_mbox_alloc_msg_npc_mcam_alloc_entry(&pf->mbox);
 	if (!req)
 		return;
 
-	err = otx2_sync_mbox_msg(&pf->mbox);
-	if (err)
+	req->contig = false;
+	req->count = 1;
+	/* Send message to AF */
+	if (otx2_sync_mbox_msg(&pf->mbox))
+		return;
+	rsp = (struct npc_mcam_alloc_entry_rsp *)otx2_mbox_get_rsp
+						 (&pf->mbox.mbox, 0, &req->hdr);
+	if (IS_ERR(rsp))
 		return;
 
-	rsp_hdr = otx2_mbox_get_rsp(&pf->mbox.mbox, 0, &req->hdr);
-	if (IS_ERR(rsp_hdr))
-		return;
+	pf->rxvlan_entry = rsp->entry_list[0];
+	pf->rxvlan_alloc = true;
 
 	old = pf->netdev->hw_features;
-	if (rsp_hdr->rc) {
+	if (rsp->hdr.rc) {
 		/* in case of failure during rxvlan allocation
 		 * features must be updated accordingly
 		 */
