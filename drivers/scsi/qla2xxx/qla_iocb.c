@@ -1132,7 +1132,7 @@ qla24xx_walk_and_build_prot_sglist(struct qla_hw_data *ha, srb_t *sp,
 	/* if initiator doing write or target doing read */
 	if (direction_to_device) {
 		for_each_sg(sgl, sg, tot_dsds, i) {
-			dma_addr_t sle_phys = sg_phys(sg);
+			u64 sle_phys = sg_phys(sg);
 
 			/* If SGE address + length flips bits in upper 32-bits */
 			if (MSD(sle_phys + sg->length) ^ MSD(sle_phys)) {
@@ -1172,10 +1172,9 @@ qla24xx_walk_and_build_prot_sglist(struct qla_hw_data *ha, srb_t *sp,
 		for_each_sg(sgl, sg, tot_dsds, i) {
 			u32 sglen = sg_dma_len(sg);
 
-			ql_dbg(ql_dbg_tgt+ql_dbg_verbose, vha, 0xe023,
-			    "%s: sg[%x] (phys=%llx sglen=%x) ldma_sg_len: %x " \
-			    "dif_bundl_len: %x ldma_needed: %x\n",
-			    __func__, i, sg_phys(sg), sglen, ldma_sg_len,
+			ql_dbg(ql_dbg_tgt + ql_dbg_verbose, vha, 0xe023,
+			    "%s: sg[%x] (phys=%llx sglen=%x) ldma_sg_len: %x dif_bundl_len: %x ldma_needed: %x\n",
+			    __func__, i, (u64)sg_phys(sg), sglen, ldma_sg_len,
 			    difctx->dif_bundl_len, ldma_needed);
 
 			while (sglen) {
