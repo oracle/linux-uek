@@ -235,13 +235,6 @@ static void otx2_rcv_pkt_handler(struct otx2_nic *pfvf,
 
 	/* CQE_HDR_S for a Rx pkt is always followed by RX_PARSE_S */
 	parse = (struct nix_rx_parse_s *)(cqe + sizeof(*cqe_hdr));
-	/* Check for errors */
-	if (parse->errlev || parse->errcode) {
-		dev_info(pfvf->dev,
-			 "RQ%d: Error pkt received errlev %x errcode %x\n",
-			 cq->cint_idx, parse->errlev, parse->errcode);
-		return;
-	}
 
 	start = cqe + sizeof(*cqe_hdr) + sizeof(*parse);
 	end = start + ((parse->desc_sizem1 + 1) * 16);
@@ -266,6 +259,14 @@ static void otx2_rcv_pkt_handler(struct otx2_nic *pfvf,
 		iova = (void *)sg + sizeof(*sg);
 
 		for (seg = 0; seg < sg->segs; seg++) {
+			/* Check for errors */
+			if (parse->errlev || parse->errcode) {
+				otx2_aura_freeptr(pfvf, cq->cq_idx,
+						  *iova & ~0x07ULL);
+				iova++;
+				continue;
+			}
+
 			len = sg_lens[frag_num(seg)];
 			/* Starting IOVA's 2:0 bits give alignment
 			 * bytes after which packet data starts.
