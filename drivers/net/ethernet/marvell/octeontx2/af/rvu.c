@@ -2182,6 +2182,8 @@ static void rvu_unregister_interrupts(struct rvu *rvu)
 {
 	int irq;
 
+	rvu_cpt_unregister_interrupts(rvu);
+
 	/* Disable the Mbox interrupt */
 	rvu_write64(rvu, BLKADDR_RVUM, RVU_AF_PFAF_MBOX_INT_ENA_W1C,
 		    INTR_MASK(rvu->hw->total_pfs) & ~1ULL);
@@ -2386,8 +2388,12 @@ static int rvu_register_interrupts(struct rvu *rvu)
 		goto fail;
 	}
 	rvu->irq_allocated[offset] = true;
-	return 0;
 
+	ret = rvu_cpt_register_interrupts(rvu);
+	if (ret)
+		goto fail;
+
+	return 0;
 fail:
 	rvu_unregister_interrupts(rvu);
 	return ret;
@@ -2673,12 +2679,6 @@ static int rvu_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	err = rvu_register_interrupts(rvu);
 	if (err)
 		goto err_flr;
-
-	if (is_block_implemented(rvu->hw, BLKADDR_CPT0)) {
-		err = rvu_cpt_register_interrupts(rvu);
-		if (err)
-			goto err_irq;
-	}
 
 	rvu_setup_rvum_blk_revid(rvu);
 
