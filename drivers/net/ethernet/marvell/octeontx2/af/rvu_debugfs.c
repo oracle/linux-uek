@@ -20,6 +20,7 @@
 #include "rvu_reg.h"
 #include "rvu.h"
 #include "cgx.h"
+#include "npc.h"
 
 enum {
 	CGX_STAT0,
@@ -1470,6 +1471,109 @@ static int rvu_dbg_npc_rx_miss_stats_display(struct seq_file *filp,
 
 RVU_DEBUG_SEQ_FOPS(npc_rx_miss_act, npc_rx_miss_stats_display, NULL);
 
+static void rvu_dbg_npc_mcam_show_flows(struct seq_file *s,
+					struct rvu_npc_mcam_rule *rule)
+{
+	u8 bit;
+
+	for_each_set_bit(bit, (unsigned long *)&rule->features, 64) {
+		seq_printf(s, "\t%s  ", npc_get_field_name(bit));
+		switch (bit) {
+		case NPC_DMAC:
+			seq_printf(s, "%pM ", rule->packet.dmac);
+			seq_printf(s, "%pM\n", rule->mask.dmac);
+			break;
+		case NPC_SMAC:
+			seq_printf(s, "%pM ", rule->packet.smac);
+			seq_printf(s, "%pM\n", rule->mask.smac);
+			break;
+		case NPC_ETYPE:
+			seq_printf(s, "0x%x ", ntohs(rule->packet.etype));
+			seq_printf(s, "0x%x\n", ntohs(rule->mask.etype));
+			break;
+		case NPC_OUTER_VID:
+			seq_printf(s, "%d ", ntohs(rule->packet.vlan_tci));
+			seq_printf(s, "%d\n", ntohs(rule->mask.vlan_tci));
+			break;
+		case NPC_TOS:
+			seq_printf(s, "%d ", rule->packet.tos);
+			seq_printf(s, "%d\n", rule->mask.tos);
+			break;
+		case NPC_SIP_IPV4:
+			seq_printf(s, "%pI4 ", &rule->packet.ip4src);
+			seq_printf(s, "%pI4\n", &rule->mask.ip4src);
+			break;
+		case NPC_DIP_IPV4:
+			seq_printf(s, "%pI4 ", &rule->packet.ip4dst);
+			seq_printf(s, "%pI4\n", &rule->mask.ip4dst);
+			break;
+		case NPC_SIP_IPV6:
+			seq_printf(s, "%pI6 ", rule->packet.ip6src);
+			seq_printf(s, "%pI6\n", rule->mask.ip6src);
+			break;
+		case NPC_DIP_IPV6:
+			seq_printf(s, "%pI6 ", rule->packet.ip6dst);
+			seq_printf(s, "%pI6\n", rule->mask.ip6dst);
+			break;
+		case NPC_SPORT_TCP:
+		case NPC_SPORT_UDP:
+			seq_printf(s, "%d ", ntohs(rule->packet.sport));
+			seq_printf(s, "%d\n", ntohs(rule->mask.sport));
+			break;
+		case NPC_DPORT_TCP:
+		case NPC_DPORT_UDP:
+			seq_printf(s, "%d ", ntohs(rule->packet.dport));
+			seq_printf(s, "%d\n", ntohs(rule->mask.dport));
+			break;
+		default:
+			break;
+		}
+	}
+}
+
+static int rvu_dbg_npc_mcam_show_rules(struct seq_file *s, void *unused)
+{
+	struct rvu_npc_mcam_rule *iter;
+	struct rvu *rvu = s->private;
+	struct npc_mcam *mcam;
+	int pf, vf = -1;
+	int blkaddr;
+	u16 pf_func;
+	u64 hits;
+
+	mcam = &rvu->hw->mcam;
+
+	list_for_each_entry(iter, &mcam->mcam_rules, list) {
+		pf_func = iter->action.pf_func;
+
+		pf = (pf_func >> RVU_PFVF_PF_SHIFT) & RVU_PFVF_PF_MASK;
+		seq_printf(s, "\n\tPF%d ", pf);
+
+		if (pf_func & RVU_PFVF_FUNC_MASK) {
+			vf = (pf_func & RVU_PFVF_FUNC_MASK) - 1;
+			seq_printf(s, "VF%d", vf);
+		}
+		seq_puts(s, "\n");
+
+		seq_printf(s, "\tmcam entry: %d\n", iter->entry);
+		rvu_dbg_npc_mcam_show_flows(s, iter);
+
+		if (!iter->has_cntr)
+			continue;
+		seq_printf(s, "\tcounter: %d\n", iter->cntr);
+
+		blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NPC, 0);
+		if (blkaddr < 0)
+			return 0;
+		hits = rvu_read64(rvu, blkaddr, NPC_AF_MATCH_STATX(iter->cntr));
+		seq_printf(s, "\thits: %lld\n", hits);
+	}
+
+	return 0;
+}
+
+RVU_DEBUG_SEQ_FOPS(npc_mcam_rules, npc_mcam_show_rules, NULL);
+
 static void rvu_dbg_npc_init(struct rvu *rvu)
 {
 	const struct device *dev = &rvu->pdev->dev;
@@ -1481,6 +1585,11 @@ static void rvu_dbg_npc_init(struct rvu *rvu)
 
 	pfile = debugfs_create_file("mcam_info", 0444, rvu->rvu_dbg.npc,
 				    rvu, &rvu_dbg_npc_mcam_info_fops);
+	if (!pfile)
+		goto create_failed;
+
+	pfile = debugfs_create_file("mcam_rules", 0444, rvu->rvu_dbg.npc,
+				    rvu, &rvu_dbg_npc_mcam_rules_fops);
 	if (!pfile)
 		goto create_failed;
 
