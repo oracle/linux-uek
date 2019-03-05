@@ -1595,7 +1595,7 @@ xfs_fs_fill_super(
 		bool rtdev_is_dax = false, datadev_is_dax;
 
 		xfs_warn(mp,
-		"DAX enabled. Warning: EXPERIMENTAL, use at your own risk");
+		"DAX enabled; feature is supported only in specialized products.");
 
 		datadev_is_dax = xfs_buftarg_is_dax(sb, mp->m_ddev_targp);
 		if (mp->m_rtdev_targp)
