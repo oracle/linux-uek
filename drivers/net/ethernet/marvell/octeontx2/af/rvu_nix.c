@@ -240,7 +240,6 @@ static void nix_interface_deinit(struct rvu *rvu, u16 pcifunc, u8 nixlf)
 
 	pfvf->maxlen = 0;
 	pfvf->minlen = 0;
-	pfvf->rxvlan = false;
 
 	/* Remove this PF_FUNC from bcast pkt replication list */
 	err = nix_update_bcast_mce_list(rvu, pcifunc, false);
@@ -2445,8 +2444,6 @@ int rvu_mbox_handler_nix_set_mac_addr(struct rvu *rvu,
 	rvu_npc_install_ucast_entry(rvu, pcifunc, nixlf,
 				    pfvf->rx_chan_base, req->mac_addr);
 
-	rvu_npc_update_rxvlan(rvu, pcifunc, nixlf);
-
 	return 0;
 }
 
@@ -2480,9 +2477,6 @@ int rvu_mbox_handler_nix_set_rx_mode(struct rvu *rvu, struct nix_rx_mode *req,
 	else
 		rvu_npc_install_promisc_entry(rvu, pcifunc, nixlf,
 					      pfvf->rx_chan_base, allmulti);
-
-	rvu_npc_update_rxvlan(rvu, pcifunc, nixlf);
-
 	return 0;
 }
 
@@ -2620,65 +2614,6 @@ linkcfg:
 	rvu_nix_update_link_credits(rvu, blkaddr, link, cfg);
 
 	return 0;
-}
-
-int rvu_mbox_handler_nix_rxvlan_alloc(struct rvu *rvu, struct msg_req *req,
-				      struct msg_rsp *rsp)
-{
-	struct npc_mcam_alloc_entry_req alloc_req = { };
-	struct npc_mcam_alloc_entry_rsp alloc_rsp = { };
-	struct npc_mcam_free_entry_req free_req = { };
-	u16 pcifunc = req->hdr.pcifunc;
-	int blkaddr, nixlf, err;
-	struct rvu_pfvf *pfvf;
-
-	/* LBK VFs do not have separate MCAM UCAST entry hence
-	 * skip allocating rxvlan for them
-	 */
-	if (is_afvf(pcifunc))
-		return 0;
-
-	pfvf = rvu_get_pfvf(rvu, pcifunc);
-	if (pfvf->rxvlan)
-		return 0;
-
-	/* alloc new mcam entry */
-	alloc_req.hdr.pcifunc = pcifunc;
-	alloc_req.count = 1;
-
-	err = rvu_mbox_handler_npc_mcam_alloc_entry(rvu, &alloc_req,
-						    &alloc_rsp);
-	if (err)
-		return err;
-
-	/* update entry to enable rxvlan offload */
-	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NIX, pcifunc);
-	if (blkaddr < 0) {
-		err = NIX_AF_ERR_AF_LF_INVALID;
-		goto free_entry;
-	}
-
-	nixlf = rvu_get_lf(rvu, &rvu->hw->block[blkaddr], pcifunc, 0);
-	if (nixlf < 0) {
-		err = NIX_AF_ERR_AF_LF_INVALID;
-		goto free_entry;
-	}
-
-	pfvf->rxvlan_index = alloc_rsp.entry_list[0];
-	/* all it means is that rxvlan_index is valid */
-	pfvf->rxvlan = true;
-
-	err = rvu_npc_update_rxvlan(rvu, pcifunc, nixlf);
-	if (err)
-		goto free_entry;
-
-	return 0;
-free_entry:
-	free_req.hdr.pcifunc = pcifunc;
-	free_req.entry = alloc_rsp.entry_list[0];
-	rvu_mbox_handler_npc_mcam_free_entry(rvu, &free_req, rsp);
-	pfvf->rxvlan = false;
-	return err;
 }
 
 int rvu_mbox_handler_nix_set_rx_cfg(struct rvu *rvu, struct nix_rx_cfg *req,
