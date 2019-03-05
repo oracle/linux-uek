@@ -361,6 +361,8 @@ enum npc_kpu_err_code {
 	NPC_EC_GRE,
 	NPC_EC_GRE_VER1,
 	NPC_EC_L4,
+	NPC_EC_OIP4_CSUM,
+	NPC_EC_IIP4_CSUM,
 	NPC_EC_LAST /* has to be the last item */
 };
 
