@@ -105,17 +105,20 @@ err:
 	return ret;
 }
 
-static void rvu_cpt_unregister_interrupts(struct rvu *rvu)
+void rvu_cpt_unregister_interrupts(struct rvu *rvu)
 {
 	int blkaddr, i, offs;
-	u64 reg;
 
 	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_CPT, 0);
 	if (blkaddr < 0)
 		return;
 
-	reg = rvu_read64(rvu, blkaddr, CPT_PRIV_AF_INT_CFG);
-	offs = reg & 0x7FF;
+	offs = rvu_read64(rvu, blkaddr, CPT_PRIV_AF_INT_CFG) & 0x7FF;
+	if (!offs) {
+		dev_warn(rvu->dev,
+			 "Failed to get CPT_AF_INT vector offsets\n");
+		return;
+	}
 
 	/* Disable all CPT AF interrupts */
 	for (i = 0; i < 2; i++)
@@ -177,18 +180,23 @@ int rvu_cpt_register_interrupts(struct rvu *rvu)
 {
 
 	int i, offs, blkaddr, ret = 0;
-	u64 reg;
+
+	if (!is_block_implemented(rvu->hw, BLKADDR_CPT0))
+		return 0;
 
 	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_CPT, 0);
 	if (blkaddr < 0)
 		return blkaddr;
 
-	reg = rvu_read64(rvu, blkaddr, CPT_PRIV_AF_INT_CFG);
-	offs = reg & 0x7FF;
+	offs = rvu_read64(rvu, blkaddr, CPT_PRIV_AF_INT_CFG) & 0x7FF;
+	if (!offs) {
+		dev_warn(rvu->dev,
+			 "Failed to get CPT_AF_INT vector offsets\n");
+		return 0;
+	}
 
-	for (i = 0; i < 2; i++) {
-		ret = rvu_cpt_do_register_interrupt(rvu, offs +
-						    CPT_AF_INT_VEC_FLT0 + i,
+	for (i = CPT_AF_INT_VEC_FLT0; i < CPT_AF_INT_VEC_RVU; i++) {
+		ret = rvu_cpt_do_register_interrupt(rvu, offs + i,
 						    rvu_cpt_af_flr_intr_handler,
 						    cpt_flt_irq_name[i]);
 		if (ret)
