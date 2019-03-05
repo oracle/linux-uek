@@ -78,6 +78,9 @@ static void otx2vf_process_vfaf_mbox_msg(struct otx2_nic *vf,
 		mbox_handler_nix_txsch_alloc(vf,
 					     (struct nix_txsch_alloc_rsp *)msg);
 		break;
+	case MBOX_MSG_NIX_BP_ENABLE:
+		mbox_handler_nix_bp_enable(vf, (struct nix_bp_cfg_rsp *)msg);
+		break;
 	default:
 		if (msg->rc)
 			dev_err(vf->dev,
