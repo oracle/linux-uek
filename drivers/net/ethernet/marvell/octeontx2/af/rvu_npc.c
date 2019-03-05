@@ -389,7 +389,6 @@ static u64 npc_get_mcam_action(struct rvu *rvu, struct npc_mcam *mcam,
 void rvu_npc_install_ucast_entry(struct rvu *rvu, u16 pcifunc,
 				 int nixlf, u64 chan, u8 *mac_addr)
 {
-	struct rvu_pfvf *pfvf = rvu_get_pfvf(rvu, pcifunc);
 	struct npc_mcam *mcam = &rvu->hw->mcam;
 	struct mcam_entry entry = { {0} };
 	struct nix_rx_action action;
@@ -433,17 +432,6 @@ void rvu_npc_install_ucast_entry(struct rvu *rvu, u16 pcifunc,
 	entry.action = *(u64 *)&action;
 	npc_config_mcam_entry(rvu, mcam, blkaddr, index,
 			      NIX_INTF_RX, &entry, true);
-
-	/* add VLAN matching, setup action and save entry back for later */
-	entry.kw[0] |= (NPC_LT_LB_STAG | NPC_LT_LB_CTAG) << 20;
-	entry.kw_mask[0] |= (NPC_LT_LB_STAG & NPC_LT_LB_CTAG) << 20;
-
-	entry.vtag_action = VTAG0_VALID_BIT |
-			    FIELD_PREP(VTAG0_TYPE_MASK, 0) |
-			    FIELD_PREP(VTAG0_LID_MASK, NPC_LID_LA) |
-			    FIELD_PREP(VTAG0_RELPTR_MASK, 12);
-
-	memcpy(&pfvf->entry, &entry, sizeof(entry));
 }
 
 void rvu_npc_install_promisc_entry(struct rvu *rvu, u16 pcifunc,
@@ -647,8 +635,6 @@ void rvu_npc_update_flowkey_alg_idx(struct rvu *rvu, u16 pcifunc, int nixlf,
 			    NPC_AF_MCAMEX_BANKX_ACTION(index, bank),
 			    *(u64 *)&action);
 	}
-
-	rvu_npc_update_rxvlan(rvu, pcifunc, nixlf);
 }
 
 static void npc_enadis_default_entries(struct rvu *rvu, u16 pcifunc,
@@ -688,8 +674,6 @@ static void npc_enadis_default_entries(struct rvu *rvu, u16 pcifunc,
 		rvu_npc_enable_promisc_entry(rvu, pcifunc, nixlf);
 	else
 		rvu_npc_disable_promisc_entry(rvu, pcifunc, nixlf);
-
-	rvu_npc_update_rxvlan(rvu, pcifunc, nixlf);
 }
 
 void rvu_npc_disable_default_entries(struct rvu *rvu, u16 pcifunc, int nixlf)
@@ -2346,30 +2330,6 @@ int rvu_mbox_handler_npc_get_kex_cfg(struct rvu *rvu, struct msg_req *req,
 		}
 	}
 	memcpy(rsp->mkex_pfl_name, rvu->mkex_pfl_name, MKEX_NAME_LEN);
-	return 0;
-}
-
-int rvu_npc_update_rxvlan(struct rvu *rvu, u16 pcifunc, int nixlf)
-{
-	struct rvu_pfvf *pfvf = rvu_get_pfvf(rvu, pcifunc);
-	struct npc_mcam *mcam = &rvu->hw->mcam;
-	int blkaddr, index;
-	bool enable;
-
-	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NPC, 0);
-	if (blkaddr < 0)
-		return NIX_AF_ERR_AF_LF_INVALID;
-
-	if (!pfvf->rxvlan)
-		return 0;
-
-	index = npc_get_nixlf_mcam_index(mcam, pcifunc, nixlf,
-					 NIXLF_UCAST_ENTRY);
-	pfvf->entry.action = npc_get_mcam_action(rvu, mcam, blkaddr, index);
-	enable = is_mcam_entry_enabled(rvu, mcam, blkaddr, index);
-	npc_config_mcam_entry(rvu, mcam, blkaddr, pfvf->rxvlan_index,
-			      NIX_INTF_RX, &pfvf->entry, enable);
-
 	return 0;
 }
 

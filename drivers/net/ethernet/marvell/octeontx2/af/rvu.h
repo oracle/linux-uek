@@ -265,11 +265,6 @@ struct rvu_pfvf {
 	struct pci_dev	*pdev;
 	struct kobject	*limits_kobj;
 
-	/* VLAN offload */
-	struct mcam_entry entry;
-	int rxvlan_index;
-	bool rxvlan;
-
 	struct rvu_npc_mcam_rule *def_rule;
 };
 
@@ -529,7 +524,6 @@ void rvu_npc_disable_promisc_entry(struct rvu *rvu, u16 pcifunc, int nixlf);
 void rvu_npc_enable_promisc_entry(struct rvu *rvu, u16 pcifunc, int nixlf);
 void rvu_npc_install_bcast_match_entry(struct rvu *rvu, u16 pcifunc,
 				       int nixlf, u64 chan);
-int rvu_npc_update_rxvlan(struct rvu *rvu, u16 pcifunc, int nixlf);
 void rvu_npc_disable_mcam_entries(struct rvu *rvu, u16 pcifunc, int nixlf);
 void rvu_npc_disable_default_entries(struct rvu *rvu, u16 pcifunc, int nixlf);
 void rvu_npc_enable_default_entries(struct rvu *rvu, u16 pcifunc, int nixlf);
