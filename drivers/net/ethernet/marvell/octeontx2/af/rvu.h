@@ -566,6 +566,7 @@ int npc_mcam_verify_channel(struct rvu *rvu, u16 pcifunc, u8 intf, u16 channel);
 /* CPT APIs */
 int rvu_cpt_init(struct rvu *rvu);
 int rvu_cpt_register_interrupts(struct rvu *rvu);
+void rvu_cpt_unregister_interrupts(struct rvu *rvu);
 
 /* NDC APIs */
 int rvu_ndc_sync(struct rvu *rvu, int lfblkid, int lfidx, u64 lfoffset,
