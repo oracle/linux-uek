@@ -23,23 +23,19 @@
 /*
  * Were we in an interrupt that interrupted kernel mode?
  *
- * For now, with eagerfpu we will return interrupted kernel FPU
- * state as not-idle. TBD: Ideally we can change the return value
- * to something like __thread_has_fpu(current). But we need to
- * be careful of doing __thread_clear_has_fpu() before saving
- * the FPU etc for supporting nested uses etc. For now, take
- * the simple route!
- *
  * On others, we can do a kernel_fpu_begin/end() pair *ONLY* if that
  * pair does nothing at all: the thread must not have fpu (so
  * that we don't try to save the FPU state), and TS must
  * be set (so that the clts/stts pair does nothing that is
  * visible in the interrupted kernel thread).
+ *
+ * Except for the eagerfpu case when we return 1 unless we've already
+ * been eager and saved the state in kernel_fpu_begin().
  */
 static inline bool interrupted_kernel_fpu_idle(void)
 {
 	if (use_eager_fpu())
-		return 0;
+		return __thread_has_fpu(current);
 
 	return !__thread_has_fpu(current) &&
 		(read_cr0() & X86_CR0_TS);
@@ -81,8 +77,8 @@ void kernel_fpu_begin(void)
 	WARN_ON_ONCE(!irq_fpu_usable());
 	preempt_disable();
 	if (__thread_has_fpu(me)) {
-		__save_init_fpu(me);
 		__thread_clear_has_fpu(me);
+		__save_init_fpu(me);
 		/* We do 'stts()' in kernel_fpu_end() */
 	} else if (!use_eager_fpu())
 		clts();
