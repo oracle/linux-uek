@@ -1310,8 +1310,17 @@ static void cvm_mmc_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 		clock = max_f;
 	slot->clock = clock;
 
-	if (clock)
-		clk_period = (host->sys_freq + clock - 1) / (2 * clock);
+	if (clock) {
+		clk_period = host->sys_freq / (2 * clock);
+		/* check to not exceed requested speed */
+		while (1) {
+			int hz = host->sys_freq / (2 * clk_period);
+
+			if (hz <= clock)
+				break;
+			clk_period++;
+		}
+	}
 
 	emm_switch =
 		     FIELD_PREP(MIO_EMM_SWITCH_BUS_WIDTH, bus_width) |
