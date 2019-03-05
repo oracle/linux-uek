@@ -2877,6 +2877,7 @@ int rvu_mbox_handler_nix_lf_start_rx(struct rvu *rvu, struct msg_req *req,
 		return err;
 
 	rvu_npc_enable_default_entries(rvu, pcifunc, nixlf);
+
 	return 0;
 }
 
@@ -2891,6 +2892,7 @@ int rvu_mbox_handler_nix_lf_stop_rx(struct rvu *rvu, struct msg_req *req,
 		return err;
 
 	rvu_npc_disable_default_entries(rvu, pcifunc, nixlf);
+
 	return 0;
 }
 
