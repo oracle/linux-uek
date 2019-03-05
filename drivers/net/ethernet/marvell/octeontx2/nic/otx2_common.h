@@ -167,6 +167,7 @@ struct otx2_nic {
 	u8			hw_rx_tstamp;
 	u8			hw_tx_tstamp;
 	u8			total_vfs;
+	u16			bpid[NIX_MAX_BPID_CHAN];
 	struct cgx_link_user_info linfo;
 	struct otx2_ptp		*ptp;
 };
@@ -418,6 +419,7 @@ dma_addr_t otx2_alloc_rbuf(struct otx2_nic *pfvf, struct otx2_pool *pool,
 			   gfp_t gfp);
 int otx2_rxtx_enable(struct otx2_nic *pfvf, bool enable);
 void otx2_ctx_disable(struct mbox *mbox, int type, bool npa);
+int otx2_nix_config_bp(struct otx2_nic *pfvf, bool enable);
 
 int otx2_napi_handler(struct otx2_cq_queue *cq,
 		      struct otx2_nic *pfvf, int budget);
@@ -439,6 +441,8 @@ void mbox_handler_nix_txsch_alloc(struct otx2_nic *pf,
 				  struct nix_txsch_alloc_rsp *rsp);
 void mbox_handler_cgx_stats(struct otx2_nic *pfvf,
 			    struct cgx_stats_rsp *rsp);
+void mbox_handler_nix_bp_enable(struct otx2_nic *pfvf,
+				struct nix_bp_cfg_rsp *rsp);
 
 /* Device stats APIs */
 void otx2_get_dev_stats(struct otx2_nic *pfvf);

@@ -1000,7 +1000,7 @@ static void print_nix_cq_ctx(struct seq_file *m, struct nix_aq_enq_rsp *rsp)
 		   cq_ctx->substream, cq_ctx->ena);
 	seq_printf(m, "W3: drop_ena \t\t\t%d\nW3: drop \t\t\t%d\n",
 		   cq_ctx->drop_ena, cq_ctx->drop);
-	seq_printf(m, "W3: dp \t\t\t\t%d\n\n", cq_ctx->dp);
+	seq_printf(m, "W3: bp \t\t\t\t%d\n\n", cq_ctx->bp);
 }
 
 static int rvu_dbg_nix_queue_ctx_display(struct seq_file *filp,

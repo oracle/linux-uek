@@ -626,10 +626,19 @@ static int otx2_cq_init(struct otx2_nic *pfvf, u16 qidx)
 	aq->cq.qint_idx = 0;
 	aq->cq.avg_level = 255;
 
-	if (is_9xxx_pass1_silicon(pfvf->pdev))
-		skid = RX_CQ_SKID;
-	aq->cq.drop = RQ_DROP_LVL_CQ(skid, cq->cqe_cnt);
-	aq->cq.drop_ena = 1;
+	if (qidx < pfvf->hw.rx_queues) {
+		if (is_9xxx_pass1_silicon(pfvf->pdev))
+			skid = RX_CQ_SKID;
+		aq->cq.drop = RQ_DROP_LVL_CQ(skid, cq->cqe_cnt);
+		aq->cq.drop_ena = 1;
+
+		/* Enable receive CQ backpressure */
+		aq->cq.bp_ena = 1;
+		aq->cq.bpid = pfvf->bpid[0];
+
+		/* Set backpressure level is same as cq pass level */
+		aq->cq.bp = RQ_PASS_LVL_CQ(skid, qset->rqe_cnt);
+	}
 
 	/* Fill AQ info */
 	aq->qidx = qidx;
@@ -807,6 +816,14 @@ static int otx2_aura_init(struct otx2_nic *pfvf, int aura_id,
 	aq->aura.fc_ena = 1;
 	aq->aura.fc_addr = pool->fc_addr->iova;
 	aq->aura.fc_hyst_bits = 0; /* Store count on all updates */
+
+	/* Enable backpressure for RQ aura */
+	if (aura_id < pfvf->hw.rqpool_cnt) {
+		aq->aura.bp_ena = 0;
+		aq->aura.nix0_bpid = pfvf->bpid[0];
+		/* Set backpressure level is same as RQ aura pass level */
+		aq->aura.bp = RQ_PASS_LVL_AURA;
+	}
 
 	/* Fill AQ info */
 	aq->ctype = NPA_AQ_CTYPE_AURA;
@@ -1082,6 +1099,25 @@ void otx2_ctx_disable(struct mbox *mbox, int type, bool npa)
 	WARN_ON(otx2_sync_mbox_msg(mbox));
 }
 
+int otx2_nix_config_bp(struct otx2_nic *pfvf, bool enable)
+{
+	struct nix_bp_cfg_req *req;
+
+	if (enable)
+		req = otx2_mbox_alloc_msg_nix_bp_enable(&pfvf->mbox);
+	else
+		req = otx2_mbox_alloc_msg_nix_bp_disable(&pfvf->mbox);
+
+	if (!req)
+		return -ENOMEM;
+
+	req->chan_base = 0;
+	req->chan_cnt = 1;
+	req->bpid_per_chan = 0;
+
+	return otx2_sync_mbox_msg(&pfvf->mbox);
+}
+
 static inline void otx2_nix_rq_op_stats(struct queue_stats *stats,
 					struct otx2_nic *pfvf, int qidx)
 {
@@ -1160,6 +1196,17 @@ void mbox_handler_msix_offset(struct otx2_nic *pfvf,
 	pfvf->hw.nix_msixoff = rsp->nix_msixoff;
 }
 EXPORT_SYMBOL(mbox_handler_msix_offset);
+
+void mbox_handler_nix_bp_enable(struct otx2_nic *pfvf,
+				struct nix_bp_cfg_rsp *rsp)
+{
+	int chan, chan_id;
+
+	for (chan = 0; chan < rsp->chan_cnt; chan++) {
+		chan_id = ((rsp->chan_bpid[chan] >> 10) & 0x7F);
+		pfvf->bpid[chan_id] = rsp->chan_bpid[chan] & 0x3FF;
+	}
+}
 
 void otx2_free_cints(struct otx2_nic *pfvf, int n)
 {
