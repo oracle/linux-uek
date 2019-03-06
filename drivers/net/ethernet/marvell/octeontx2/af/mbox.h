@@ -246,7 +246,10 @@ M(NIX_LSO_FORMAT_CFG,	0x8011, nix_lso_format_cfg,			\
 M(NIX_RXVLAN_ALLOC,	0x8012, nix_rxvlan_alloc, msg_req, msg_rsp)	\
 M(NIX_LF_PTP_TX_ENABLE, 0x8013, nix_lf_ptp_tx_enable, msg_req, msg_rsp)	\
 M(NIX_LF_PTP_TX_DISABLE, 0x8014, nix_lf_ptp_tx_disable, msg_req, msg_rsp) \
-M(NIX_SET_VLAN_TPID,	0x8015, nix_set_vlan_tpid, nix_set_vlan_tpid, msg_rsp)
+M(NIX_SET_VLAN_TPID,	0x8015, nix_set_vlan_tpid, nix_set_vlan_tpid, msg_rsp) \
+M(NIX_BP_ENABLE,	0x8016, nix_bp_enable, nix_bp_cfg_req,	\
+				nix_bp_cfg_rsp)	\
+M(NIX_BP_DISABLE,	0x8017, nix_bp_disable, nix_bp_cfg_req, msg_rsp)
 
 /* Messages initiated by AF (range 0xC00 - 0xDFF) */
 #define MBOX_UP_CGX_MESSAGES						\
@@ -713,6 +716,25 @@ struct nix_set_vlan_tpid {
 #define NIX_VLAN_TYPE_OUTER 1
 	u8  vlan_type;
 	u16 tpid;
+};
+
+struct nix_bp_cfg_req {
+	struct mbox_msghdr hdr;
+	u16	chan_base; /* Starting channel number */
+	u8	chan_cnt; /* Number of channels */
+	u8	bpid_per_chan;
+	/* bpid_per_chan = 0  assigns single bp id for range of channels */
+	/* bpid_per_chan = 1 assigns separate bp id for each channel */
+};
+
+/* PF can be mapped to either CGX or LBK interface,
+ * so maximum 64 channels are possible.
+ */
+#define NIX_MAX_BPID_CHAN	64
+struct nix_bp_cfg_rsp {
+	struct mbox_msghdr hdr;
+	u16	chan_bpid[NIX_MAX_BPID_CHAN]; /* Channel and bpid mapping */
+	u8	chan_cnt; /* Number of channel for which bpids are assigned */
 };
 
 /* SSO mailbox error codes
