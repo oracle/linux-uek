@@ -7356,19 +7356,26 @@ lpfc_post_init_setup(struct lpfc_hba *phba)
 static int
 lpfc_sli_pci_mem_setup(struct lpfc_hba *phba)
 {
-	struct pci_dev *pdev = phba->pcidev;
+	struct pci_dev *pdev;
 	unsigned long bar0map_len, bar2map_len;
 	int i, hbq_count;
 	void *ptr;
 	int error = -ENODEV;
 
-	if (!pdev)
+	/* Obtain PCI device reference */
+	if (!phba->pcidev)
 		return error;
+	else
+		pdev = phba->pcidev;
 
 	/* Set the device DMA mask size */
-	if (dma_set_mask_and_coherent(&pdev->dev, DMA_BIT_MASK(64)) ||
-	    dma_set_mask_and_coherent(&pdev->dev, DMA_BIT_MASK(32)))
-		return error;
+	if (pci_set_dma_mask(pdev, DMA_BIT_MASK(64)) != 0
+	 || pci_set_consistent_dma_mask(pdev,DMA_BIT_MASK(64)) != 0) {
+		if (pci_set_dma_mask(pdev, DMA_BIT_MASK(32)) != 0
+		 || pci_set_consistent_dma_mask(pdev,DMA_BIT_MASK(32)) != 0) {
+			return error;
+		}
+	}
 
 	/* Get the bus address of Bar0 and Bar2 and the number of bytes
 	 * required by each mapping.
@@ -9735,18 +9742,25 @@ out:
 static int
 lpfc_sli4_pci_mem_setup(struct lpfc_hba *phba)
 {
-	struct pci_dev *pdev = phba->pcidev;
+	struct pci_dev *pdev;
 	unsigned long bar0map_len, bar1map_len, bar2map_len;
 	int error = -ENODEV;
 	uint32_t if_type;
 
-	if (!pdev)
+	/* Obtain PCI device reference */
+	if (!phba->pcidev)
 		return error;
+	else
+		pdev = phba->pcidev;
 
 	/* Set the device DMA mask size */
-	if (dma_set_mask_and_coherent(&pdev->dev, DMA_BIT_MASK(64)) ||
-	    dma_set_mask_and_coherent(&pdev->dev, DMA_BIT_MASK(32)))
-		return error;
+	if (pci_set_dma_mask(pdev, DMA_BIT_MASK(64)) != 0
+	 || pci_set_consistent_dma_mask(pdev,DMA_BIT_MASK(64)) != 0) {
+		if (pci_set_dma_mask(pdev, DMA_BIT_MASK(32)) != 0
+		 || pci_set_consistent_dma_mask(pdev,DMA_BIT_MASK(32)) != 0) {
+			return error;
+		}
+	}
 
 	/*
 	 * The BARs and register set definitions and offset locations are
