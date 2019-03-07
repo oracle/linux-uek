@@ -1143,6 +1143,7 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 				conn, &conn->c_laddr, &conn->c_faddr, conn->c_tos);
 			rds_conn_drop(conn, DR_IB_REQ_WHILE_CONN_UP);
 			rds_ib_stats_inc(s_ib_listen_closed_stale);
+			conn->c_reconnect_racing++;
 		} else if (rds_conn_state(conn) == RDS_CONN_CONNECTING) {
 			unsigned long now = get_seconds();
 			conn->c_reconnect_racing++;
