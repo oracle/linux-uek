@@ -99,6 +99,7 @@ void rds_connect_path_complete(struct rds_conn_path *cp, int curr)
 	queue_delayed_work(cp->cp_wq, &cp->cp_send_w, 0);
 	queue_delayed_work(cp->cp_wq, &cp->cp_recv_w, 0);
 	queue_delayed_work(cp->cp_wq, &cp->cp_hb_w, 0);
+	cancel_delayed_work(&cp->cp_reconn_w);
 	cp->cp_hb_start = 0;
 
 	cp->cp_connection_start = get_seconds();
@@ -114,6 +115,15 @@ void rds_connect_complete(struct rds_connection *conn)
 	rds_connect_path_complete(&conn->c_path[0], RDS_CONN_CONNECTING);
 }
 EXPORT_SYMBOL_GPL(rds_connect_complete);
+
+static bool rds_conn_is_active_peer(struct rds_connection *conn)
+{
+	bool greater_ip = rds_addr_cmp(&conn->c_laddr, &conn->c_faddr) > 0;
+	bool self_loopback = rds_conn_self_loopback_passive(conn);
+	bool passive = greater_ip || self_loopback;
+
+	return !passive;
+}
 
 /*
  * This random exponential backoff is relied on to eventually resolve racing
@@ -137,36 +147,41 @@ void rds_queue_reconnect(struct rds_conn_path *cp)
 {
 	struct rds_connection *conn = cp->cp_conn;
 	bool is_tcp = conn->c_trans->t_type == RDS_TRANS_TCP;
+	bool active = rds_conn_is_active_peer(conn);
+	uint64_t delay = 0;
 
 	rds_rtd_ptr(RDS_RTD_CM_EXT,
 		    "conn %p:%d <%pI6c,%pI6c,%d> reconnect jiffies %lu\n",
-		    conn, !!conn->c_passive, &conn->c_laddr, &conn->c_faddr, conn->c_tos,
+		    conn, active, &conn->c_laddr, &conn->c_faddr, conn->c_tos,
 		    cp->cp_reconnect_jiffies);
 
 	/* let peer with smaller addr initiate reconnect, to avoid duels */
 	if (is_tcp && rds_addr_cmp(&conn->c_laddr, &conn->c_faddr) >= 0)
 		return;
 
-	set_bit(RDS_RECONNECT_PENDING, &cp->cp_flags);
-	if (cp->cp_reconnect_jiffies == 0) {
-		cp->cp_reconnect_jiffies = rds_sysctl_reconnect_min_jiffies;
-		queue_delayed_work(cp->cp_wq, &cp->cp_conn_w, 0);
+	/* If we're the passive initiator and we're racing, let the
+	 * active peer drive the reconnect
+	 */
+	if (!active && cp->cp_reconnect_racing)
 		return;
-	}
+
+	if (cp->cp_reconnect_jiffies == 0)
+		cp->cp_reconnect_jiffies = rds_sysctl_reconnect_min_jiffies;
+	else
+		delay = cp->cp_reconnect_jiffies;
+
+	if (!active)
+		delay = rds_sysctl_reconnect_max_jiffies;
 
 	rds_rtd_ptr(RDS_RTD_CM_EXT,
-		    "delay %lu conn %p <%pI6c,%pI6c,%d>\n",
-		    cp->cp_reconnect_jiffies, conn, &conn->c_laddr,
-		    &conn->c_faddr, conn->c_tos);
+		    "conn %p:%d <%pI6c,%pI6c,%d> delay %llu reconnect jiffies %lu\n",
+		    conn, active, &conn->c_laddr, &conn->c_faddr, conn->c_tos,
+		    delay, cp->cp_reconnect_jiffies);
 
-	if (rds_addr_cmp(&conn->c_laddr, &conn->c_faddr) > 0)
-		queue_delayed_work(cp->cp_wq, &cp->cp_conn_w, 0);
-	else
-		queue_delayed_work(cp->cp_wq, &cp->cp_conn_w,
-				   cp->cp_reconnect_jiffies);
-
+	set_bit(RDS_RECONNECT_PENDING, &cp->cp_flags);
+	queue_delayed_work(cp->cp_wq, &cp->cp_conn_w, delay);
 	cp->cp_reconnect_jiffies = min(cp->cp_reconnect_jiffies * 2,
-					rds_sysctl_reconnect_max_jiffies);
+				       rds_sysctl_reconnect_max_jiffies);
 }
 
 void rds_connect_worker(struct work_struct *work)
@@ -325,6 +340,7 @@ void rds_shutdown_worker(struct work_struct *work)
 	unsigned long now = get_seconds();
 	bool is_tcp = cp->cp_conn->c_trans->t_type == RDS_TRANS_TCP;
 	struct rds_connection *conn = cp->cp_conn;
+	bool restart = true;
 
 	if ((now - cp->cp_reconnect_start >
 		rds_sysctl_shutdown_trace_start_time) &&
@@ -340,21 +356,17 @@ void rds_shutdown_worker(struct work_struct *work)
 	/* If racing is detected, the bigger IP backs off and lets the
 	 * smaller IP drive the reconnect (one-sided reconnect).
 	 */
-	if ((rds_addr_cmp(&conn->c_laddr, &conn->c_faddr) < 0 ||
-	     rds_conn_self_loopback_passive(conn)) &&
-	    cp->cp_reconnect_racing) {
-		rds_rtd_ptr(RDS_RTD_CM,
-			    "calling rds_conn_shutdown, conn %p:0 <%pI6c,%pI6c,%d>\n",
-			    conn, &conn->c_laddr, &conn->c_faddr, conn->c_tos);
-		rds_conn_shutdown(cp, 0);
+	if (cp->cp_reconnect_racing)
+		restart = rds_conn_is_active_peer(conn);
+
+	rds_rtd_ptr(RDS_RTD_CM,
+		    "calling rds_conn_shutdown, conn %p restart: %d racing: %d <%pI6c,%pI6c,%d>\n",
+		    conn, restart, cp->cp_reconnect_racing,
+		    &conn->c_laddr, &conn->c_faddr, conn->c_tos);
+	rds_conn_shutdown(cp, restart);
+	if (!restart)
 		queue_delayed_work(cp->cp_wq, &cp->cp_reconn_w,
 				   msecs_to_jiffies(RDS_RECONNECT_RETRY_MS));
-	} else {
-		rds_rtd_ptr(RDS_RTD_CM,
-			    "calling rds_conn_shutdown, conn %p:1 <%pI6c,%pI6c,%d>\n",
-			    conn, &conn->c_laddr, &conn->c_faddr, conn->c_tos);
-		rds_conn_shutdown(cp, 1);
-	}
 }
 
 void rds_threads_exit(void)
