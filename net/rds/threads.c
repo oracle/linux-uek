@@ -82,15 +82,16 @@ void rds_connect_path_complete(struct rds_conn_path *cp, int curr)
 	struct rds_connection *conn = cp->cp_conn;
 
 	if (!rds_conn_path_transition(cp, curr, RDS_CONN_UP)) {
-		pr_warn("RDS: Cannot transition conn <%pI6c,%pI6c,%d> to state UP, current state is %d\n",
-			&conn->c_laddr, &conn->c_faddr, conn->c_tos,
-		atomic_read(&cp->cp_state));
+		rds_rtd_ptr(RDS_RTD_CM,
+			    "conn %p <%pI6c,%pI6c,%d> cannot transition to state UP, current state is %s\n",
+			    conn, &conn->c_laddr, &conn->c_faddr, conn->c_tos,
+			    conn_state_mnem(atomic_read(&cp->cp_state)));
 		rds_conn_path_drop(cp, DR_IB_NOT_CONNECTING_STATE);
 		return;
 	}
 
 	rds_rtd_ptr(RDS_RTD_CM_EXT,
-		    "conn %p for %pI6c to %pI6c tos %d complete\n",
+		    "conn %p <%pI6c,%pI6c,%d> complete\n",
 		    conn, &conn->c_laddr, &conn->c_faddr, conn->c_tos);
 
 	cp->cp_reconnect_jiffies = 0;
@@ -138,8 +139,8 @@ void rds_queue_reconnect(struct rds_conn_path *cp)
 	bool is_tcp = conn->c_trans->t_type == RDS_TRANS_TCP;
 
 	rds_rtd_ptr(RDS_RTD_CM_EXT,
-		    "conn %p for %pI6c to %pI6c tos %d reconnect jiffies %lu\n",
-		    conn, &conn->c_laddr, &conn->c_faddr, conn->c_tos,
+		    "conn %p:%d <%pI6c,%pI6c,%d> reconnect jiffies %lu\n",
+		    conn, !!conn->c_passive, &conn->c_laddr, &conn->c_faddr, conn->c_tos,
 		    cp->cp_reconnect_jiffies);
 
 	/* let peer with smaller addr initiate reconnect, to avoid duels */
@@ -154,7 +155,7 @@ void rds_queue_reconnect(struct rds_conn_path *cp)
 	}
 
 	rds_rtd_ptr(RDS_RTD_CM_EXT,
-		    "delay %lu conn %p for %pI6c -> %pI6c tos %d\n",
+		    "delay %lu conn %p <%pI6c,%pI6c,%d>\n",
 		    cp->cp_reconnect_jiffies, conn, &conn->c_laddr,
 		    &conn->c_faddr, conn->c_tos);
 
@@ -192,7 +193,7 @@ void rds_connect_worker(struct work_struct *work)
 
 		ret = conn->c_trans->conn_path_connect(cp);
 		rds_rtd_ptr(RDS_RTD_CM_EXT,
-			    "conn %p for %pI6c to %pI6c tos %d dispatched, ret %d\n",
+			    "conn %p for <%pI6c,%pI6c,%d> dispatched, ret %d\n",
 			    conn, &conn->c_laddr, &conn->c_faddr, conn->c_tos,
 			    ret);
 
@@ -209,8 +210,8 @@ void rds_connect_worker(struct work_struct *work)
 		}
 	} else {
 		rds_rtd(RDS_RTD_CM,
-			"conn %p cannot trans from DOWN to CONNECTING state.\n",
-			conn);
+			"conn %p cannot transition from allegedly DOWN(act %s) to CONNECTING state\n",
+			conn, conn_state_mnem(atomic_read(&cp->cp_state)));
 	}
 }
 
@@ -308,8 +309,8 @@ void rds_reconnect_timeout(struct work_struct *work)
 
 	if (!rds_conn_path_up(cp)) {
 		rds_rtd_ptr(RDS_RTD_CM,
-			    "conn <%pI6c,%pI6c,%d> not up, retry(%d)\n",
-			    &conn->c_laddr, &conn->c_faddr, conn->c_tos,
+			    "conn %p <%pI6c,%pI6c,%d> not up, retry(%d)\n",
+			    conn, &conn->c_laddr, &conn->c_faddr, conn->c_tos,
 			    cp->cp_reconnect_retry_count);
 		cp->cp_reconnect_racing = 0;
 		rds_conn_path_drop(cp, DR_RECONNECT_TIMEOUT);
