@@ -312,15 +312,9 @@ static ssize_t target_stat_scsi_lu_show_attr_vend(
 {
 	struct se_device *dev =
 		container_of(sgrps, struct se_device, dev_stat_grps);
-	int i;
-	char str[sizeof(dev->t10_wwn.vendor)+1];
 
-	/* scsiLuVendorId */
-	for (i = 0; i < sizeof(dev->t10_wwn.vendor); i++)
-		str[i] = ISPRINT(dev->t10_wwn.vendor[i]) ?
-			dev->t10_wwn.vendor[i] : ' ';
-	str[i] = '\0';
-	return snprintf(page, PAGE_SIZE, "%s\n", str);
+	return snprintf(page, PAGE_SIZE, "%-" __stringify(INQUIRY_VENDOR_LEN)
+			"s\n", dev->t10_wwn.vendor);
 }
 DEV_STAT_SCSI_LU_ATTR_RO(vend);
 
@@ -329,15 +323,9 @@ static ssize_t target_stat_scsi_lu_show_attr_prod(
 {
 	struct se_device *dev =
 		container_of(sgrps, struct se_device, dev_stat_grps);
-	int i;
-	char str[sizeof(dev->t10_wwn.model)+1];
 
-	/* scsiLuProductId */
-	for (i = 0; i < sizeof(dev->t10_wwn.vendor); i++)
-		str[i] = ISPRINT(dev->t10_wwn.model[i]) ?
-			dev->t10_wwn.model[i] : ' ';
-	str[i] = '\0';
-	return snprintf(page, PAGE_SIZE, "%s\n", str);
+	return snprintf(page, PAGE_SIZE, "%-" __stringify(INQUIRY_MODEL_LEN)
+			"s\n", dev->t10_wwn.model);
 }
 DEV_STAT_SCSI_LU_ATTR_RO(prod);
 
@@ -346,15 +334,9 @@ static ssize_t target_stat_scsi_lu_show_attr_rev(
 {
 	struct se_device *dev =
 		container_of(sgrps, struct se_device, dev_stat_grps);
-	int i;
-	char str[sizeof(dev->t10_wwn.revision)+1];
 
-	/* scsiLuRevisionId */
-	for (i = 0; i < sizeof(dev->t10_wwn.revision); i++)
-		str[i] = ISPRINT(dev->t10_wwn.revision[i]) ?
-			dev->t10_wwn.revision[i] : ' ';
-	str[i] = '\0';
-	return snprintf(page, PAGE_SIZE, "%s\n", str);
+	return snprintf(page, PAGE_SIZE, "%-" __stringify(INQUIRY_REVISION_LEN)
+			"s\n", dev->t10_wwn.revision);
 }
 DEV_STAT_SCSI_LU_ATTR_RO(rev);
 
