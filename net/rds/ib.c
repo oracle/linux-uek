@@ -62,6 +62,7 @@ unsigned int rds_ib_active_bonding_trigger_delay_min_msecs; /* = 0; */
 unsigned int rds_ib_rnr_retry_count = RDS_IB_DEFAULT_RNR_RETRY_COUNT;
 static char *rds_ib_active_bonding_failover_groups = NULL;
 unsigned int rds_ib_active_bonding_arps = RDS_IB_DEFAULT_NUM_ARPS;
+unsigned int rds_ib_active_bonding_arps_gap_ms = RDS_IB_DEFAULT_NUM_ARPS_GAP_MS;
 /* Exclude IPv4 link local address. */
 static char *rds_ib_active_bonding_excl_ips = "169.254/16";
 
@@ -89,8 +90,10 @@ module_param(rds_ib_active_bonding_trigger_delay_min_msecs, int, 0444);
 MODULE_PARM_DESC(rds_ib_active_bonding_trigger_delay_min_msecs,
 		 " Active Bonding Min delay before active "
 		 "bonding is triggered(msecs)");
-module_param(rds_ib_active_bonding_arps, int, 0444);
-MODULE_PARM_DESC(rds_ib_active_bonding_arps, " Num ARPs to be sent when IP moved");
+module_param(rds_ib_active_bonding_arps, int, 0644);
+MODULE_PARM_DESC(rds_ib_active_bonding_arps, " Num gARPs to be sent when IP moved");
+module_param(rds_ib_active_bonding_arps_gap_ms, int, 0644);
+MODULE_PARM_DESC(rds_ib_active_bonding_arps_gap_ms, " Num msec between gARPs sent");
 module_param(rds_ib_active_bonding_excl_ips, charp, 0444);
 MODULE_PARM_DESC(rds_ib_active_bonding_excl_ips,
 	"[<IP>/<prefix>][,<IP>/<prefix>]*");
@@ -130,6 +133,15 @@ static void rds_ib_initial_failovers(struct work_struct *workarg);
 DECLARE_DELAYED_WORK(riif_dlywork, rds_ib_initial_failovers);
 static int timeout_until_initial_failovers;
 static struct workqueue_struct *rds_ip_wq;
+static struct workqueue_struct *send_garps_wq;
+struct rds_send_garps {
+	struct delayed_work work;
+	struct net_device *out_dev;
+	unsigned char *dev_addr;
+	unsigned long delay;
+	__be32 ip_addr;
+	int garps_left;
+};
 
 /* Return a string representation of an IB port state. */
 static const char *rds_ib_port_state2name(int state)
@@ -624,19 +636,52 @@ static u8 rds_ib_get_failover_port(u8 port)
 	return 0;
 }
 
+static void garp_work_handler(struct work_struct *_work)
+{
+	struct rds_send_garps *garps;
+
+	garps = container_of(_work, struct rds_send_garps,  work.work);
+
+	arp_send(ARPOP_REQUEST, ETH_P_ARP,
+		 garps->ip_addr, garps->out_dev,
+		 garps->ip_addr, NULL,
+		 garps->dev_addr, NULL);
+
+	if (--garps->garps_left >= 0)
+		queue_delayed_work(send_garps_wq, &garps->work, garps->delay);
+	else
+		kfree(garps);
+}
+
 static void rds_ib_send_gratuitous_arp(struct net_device	*out_dev,
 					unsigned char		*dev_addr,
 					__be32			ip_addr)
 {
-	int i;
+	struct rds_send_garps *garps = kmalloc(sizeof(*garps), GFP_ATOMIC);
 
-	/* Send multiple ARPs to improve reliability */
-	for (i = 0; i < rds_ib_active_bonding_arps; i++) {
-		arp_send(ARPOP_REQUEST, ETH_P_ARP,
-			ip_addr, out_dev,
-			ip_addr, NULL,
-			dev_addr, NULL);
+	if (!garps) {
+		rds_rtd_ptr(RDS_RTD_ACT_BND,
+			    "kmalloc failed. Cannot send garps for %s %pi4\n",
+			    out_dev->name, &ip_addr);
+		return;
 	}
+
+	if (rds_ib_active_bonding_arps_gap_ms == 0 ||
+	    rds_ib_active_bonding_arps_gap_ms > 100) {
+		pr_warn("arp gap (%d) out of range, using default (%d)\n",
+			rds_ib_active_bonding_arps_gap_ms,
+			RDS_IB_DEFAULT_NUM_ARPS_GAP_MS);
+		rds_ib_active_bonding_arps_gap_ms = RDS_IB_DEFAULT_NUM_ARPS_GAP_MS;
+	}
+
+	garps->out_dev = out_dev;
+	garps->dev_addr = dev_addr;
+	garps->delay = msecs_to_jiffies(rds_ib_active_bonding_arps_gap_ms);
+	garps->ip_addr = ip_addr;
+	garps->garps_left = rds_ib_active_bonding_arps;
+
+	INIT_DELAYED_WORK(&garps->work, garp_work_handler);
+	queue_delayed_work(send_garps_wq, &garps->work, 0);
 }
 
 /* Add or remove an IPv6 address to/from an interface. */
@@ -3063,6 +3108,9 @@ void rds_ip_thread_exit(void)
 {
 	flush_workqueue(rds_ip_wq);
 	destroy_workqueue(rds_ip_wq);
+
+	flush_workqueue(send_garps_wq);
+	destroy_workqueue(send_garps_wq);
 }
 
 int rds_ip_threads_init(void)
@@ -3070,6 +3118,12 @@ int rds_ip_threads_init(void)
 	rds_ip_wq = create_singlethread_workqueue("krdsd_ip");
 	if (!rds_ip_wq)
 		return -ENOMEM;
+	send_garps_wq = create_workqueue("krdsd_garps");
+	if (!send_garps_wq) {
+		destroy_workqueue(rds_ip_wq);
+		return -ENOMEM;
+	}
+
 	return 0;
 }
 
