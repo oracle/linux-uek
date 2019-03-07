@@ -299,10 +299,11 @@ static struct rds_connection *__rds_conn_create(struct net *net,
 		goto out;
 	}
 
-	rdsdebug("allocated conn %p for %pI6c -> %pI6c over %s %s\n",
-		 conn, laddr, faddr,
-		 trans->t_name ? trans->t_name : "[unknown]",
-		 is_outgoing ? "(outgoing)" : "");
+	rds_rtd_ptr(RDS_RTD_CM_EXT,
+		    "allocated conn %p for <%pI6c,%pI6c,%d> over %s %s\n",
+		    conn, laddr, faddr, tos,
+		    trans->t_name ? trans->t_name : "[unknown]",
+		    is_outgoing ? "(outgoing)" : "");
 
 	/*
 	 * Since we ran without holding the conn lock, someone could
@@ -403,11 +404,11 @@ void rds_conn_shutdown(struct rds_conn_path *cp, int restart)
 	/* shut it down unless it's down already */
 	if (!rds_conn_path_transition(cp, RDS_CONN_DOWN, RDS_CONN_DOWN)) {
 		rds_rtd_ptr(RDS_RTD_CM_EXT,
-			    "RDS/%s: shutdown init <%pI6c,%pI6c,%d>, cn %p, cn->c_p %p\n",
-			    conn->c_trans->t_type == RDS_TRANS_TCP ? "TCP" :
-			    "IB",
+			    "RDS/%s: shutdown init conn %p conn->c_passive %p <%pI6c,%pI6c,%d>\n",
+			    conn->c_trans->t_type == RDS_TRANS_TCP ? "TCP" : "IB",
+			    conn, conn->c_passive,
 			    &conn->c_laddr, &conn->c_faddr,
-			    conn->c_tos, conn, conn->c_passive);
+			    conn->c_tos);
 		/*
 		 * Quiesce the connection mgmt handlers before we start tearing
 		 * things down. We don't hold the mutex for the entire
@@ -470,9 +471,15 @@ void rds_conn_shutdown(struct rds_conn_path *cp, int restart)
 	rcu_read_lock();
 	if (!hlist_unhashed(&conn->c_hash_node) && restart) {
 		rcu_read_unlock();
+		rds_rtd(RDS_RTD_CM,
+			"calling rds_queue_reconnect conn %p restart: %d\n",
+			cp->cp_conn, restart);
 		rds_queue_reconnect(cp);
 	} else {
 		rcu_read_unlock();
+		rds_rtd(RDS_RTD_CM,
+			"NOT calling rds_queue_reconnect conn %p restart: %d\n",
+			cp->cp_conn, restart);
 	}
 }
 
@@ -1018,15 +1025,20 @@ void rds_conn_path_drop(struct rds_conn_path *cp, int reason)
 
 	atomic_set(&cp->cp_state, RDS_CONN_ERROR);
 
+	if (reason != DR_CONN_DESTROY && test_bit(RDS_DESTROY_PENDING, &cp->cp_flags)) {
+		rds_rtd_ptr(RDS_RTD_CM_EXT,
+			    "RDS/%s: NOT queueing shutdown work, conn %p <%pI6c,%pI6c,%d>\n",
+			    conn->c_trans->t_type == RDS_TRANS_TCP ? "TCP" : "IB",
+			    conn, &conn->c_laddr, &conn->c_faddr,
+			    conn->c_tos);
+		return;
+	}
+
 	rds_rtd_ptr(RDS_RTD_CM_EXT,
-		    "RDS/%s: queueing shutdown work, conn %p, <%pI6c,%pI6c,%d>\n",
+		    "RDS/%s: queueing shutdown work, conn %p <%pI6c,%pI6c,%d>\n",
 		    conn->c_trans->t_type == RDS_TRANS_TCP ? "TCP" : "IB",
 		    conn, &conn->c_laddr, &conn->c_faddr,
 		    conn->c_tos);
-
-	if (reason != DR_CONN_DESTROY && test_bit(RDS_DESTROY_PENDING,
-						  &cp->cp_flags))
-		return;
 
 	queue_work(cp->cp_wq, &cp->cp_down_w);
 }
