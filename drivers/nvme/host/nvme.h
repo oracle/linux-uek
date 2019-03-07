@@ -219,7 +219,6 @@ static inline int nvme_error_status(u16 status)
 static inline bool nvme_req_needs_retry(struct request *req, u16 status)
 {
 	return !(status & NVME_SC_DNR || blk_noretry_request(req)) &&
-		(jiffies - req->start_time) < req->timeout &&
 		req->retries < nvme_max_retries;
 }
 
