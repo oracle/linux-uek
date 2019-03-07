@@ -126,6 +126,12 @@ static int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 			rds_rtd(RDS_RTD_CM, "Bailing, conn %p being shut down, ret: %d\n",
 				conn, ret);
 			conn->c_reconnect_racing = 1;
+			if (event->event == RDMA_CM_EVENT_ADDR_CHANGE ||
+			    event->event == RDMA_CM_EVENT_DISCONNECTED)
+				/* These events might indicate the IP being moved,
+				 * hence flush the address
+				 */
+				rds_ib_flush_arp_entry(&conn->c_faddr);
 			goto out;
 		}
 	}
@@ -225,6 +231,8 @@ static int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 
 	case RDMA_CM_EVENT_ADDR_ERROR:
 		if (conn) {
+			/* IP might have been moved so flush the ARP entry and retry */
+			rds_ib_flush_arp_entry(&conn->c_faddr);
 			rds_rtd_ptr(RDS_RTD_ERR,
 				    "ADDR_ERROR: conn %p, calling rds_conn_drop <%pI6c,%pI6c,%d>\n",
 				    conn, &conn->c_laddr,
@@ -238,6 +246,8 @@ static int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 	case RDMA_CM_EVENT_UNREACHABLE:
 	case RDMA_CM_EVENT_DEVICE_REMOVAL:
 		if (conn) {
+			/* IP might have been moved so flush the ARP entry and retry */
+			rds_ib_flush_arp_entry(&conn->c_faddr);
 			rds_rtd_ptr(RDS_RTD_ERR,
 				    "CONN/UNREACHABLE/RMVAL ERR: conn %p, calling rds_conn_drop <%pI6c,%pI6c,%d>\n",
 				    conn, &conn->c_laddr,
@@ -294,6 +304,8 @@ static int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 		break;
 
 	case RDMA_CM_EVENT_ADDR_CHANGE:
+		/* IP might have been moved so flush the ARP entry and retry */
+		rds_ib_flush_arp_entry(&conn->c_faddr);
 		rds_rtd_ptr(RDS_RTD_CM_EXT,
 			    "ADDR_CHANGE event <%pI6c,%pI6c>\n",
 			    &conn->c_laddr,
@@ -311,6 +323,8 @@ static int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 		break;
 
 	case RDMA_CM_EVENT_DISCONNECTED:
+		/* IP might have been moved so flush the ARP entry and retry */
+		rds_ib_flush_arp_entry(&conn->c_faddr);
 		rds_rtd_ptr(RDS_RTD_CM,
 			    "DISCONNECT event - dropping conn %p <%pI6c,%pI6c,%d>\n",
 			    conn, &conn->c_laddr, &conn->c_faddr, conn->c_tos);
