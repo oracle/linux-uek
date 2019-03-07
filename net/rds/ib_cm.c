@@ -674,9 +674,9 @@ static void rds_ib_qp_event_handler(struct ib_event *event, void *data)
 		break;
 	default:
 		rds_rtd_ptr(RDS_RTD_ERR,
-			    "Fatal QP Event %u (%s) - connection %pI6c->%pI6c tos %d, reconnecting\n",
+			    "Fatal QP Event %u (%s) - conn %p <%pI6c,%pI6c,%d>, reconnecting\n",
 			    event->event, rds_ib_event_str(event->event),
-			    &conn->c_laddr, &conn->c_faddr, conn->c_tos);
+			    conn, &conn->c_laddr, &conn->c_faddr, conn->c_tos);
 		rds_conn_drop(conn, DR_IB_QP_EVENT);
 		break;
 	}
@@ -1055,13 +1055,12 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 	}
 
 	rds_rtd_ptr(RDS_RTD_CM,
-		    "saddr %pI6c daddr %pI6c RDSv%u.%u lguid 0x%llx fguid 0x%llx tos %d\n",
-		    saddr6, daddr6,
+		    "<%pI6c,%pI6c,%d> RDSv%u.%u lguid 0x%llx fguid 0x%llx\n",
+		    saddr6, daddr6, dp_cmn->ricpc_tos,
 		    RDS_PROTOCOL_MAJOR(version),
 		    RDS_PROTOCOL_MINOR(version),
 		    (unsigned long long)be64_to_cpu(lguid),
-		    (unsigned long long)be64_to_cpu(fguid),
-		    dp_cmn->ricpc_tos);
+		    (unsigned long long)be64_to_cpu(fguid));
 
 #ifdef CONFIG_RDS_ACL
 
@@ -1107,13 +1106,13 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 
 	if (conn->c_route && !rds_conn_self_loopback_passive(conn)) {
 		rds_rtd_ptr(RDS_RTD_CM,
-			    "no route resolution saddr %pI4 daddr %pI4 RDSv%u.%u lguid 0x%llx fguid 0x%llx tos %d\n",
-			    saddr6, daddr6,
+			    "no route resolution cm_id %p conn %p <%pI6c,%pI6c,%d> RDSv%u.%u lguid 0x%llx fguid 0x%llx\n",
+			    cm_id, conn,
+			    saddr6, daddr6, dp_cmn->ricpc_tos,
 			    RDS_PROTOCOL_MAJOR(version),
 			    RDS_PROTOCOL_MINOR(version),
 			    (unsigned long long)be64_to_cpu(lguid),
-			    (unsigned long long)be64_to_cpu(fguid),
-			    dp_cmn->ricpc_tos);
+			    (unsigned long long)be64_to_cpu(fguid));
 		goto out;
 	}
 
@@ -1140,7 +1139,8 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 			destroy = 0;
 		if (rds_conn_state(conn) == RDS_CONN_UP) {
 			rds_rtd(RDS_RTD_CM_EXT_P,
-				"incoming connect while connecting\n");
+				"conn %p <%pI6c,%pI6c,%d> incoming connect in UP state\n",
+				conn, &conn->c_laddr, &conn->c_faddr, conn->c_tos);
 			rds_conn_drop(conn, DR_IB_REQ_WHILE_CONN_UP);
 			rds_ib_stats_inc(s_ib_listen_closed_stale);
 		} else if (rds_conn_state(conn) == RDS_CONN_CONNECTING) {
@@ -1155,9 +1155,8 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 			 */
 			if (conn->c_reconnect_racing > 5) {
 				rds_rtd_ptr(RDS_RTD_CM,
-					    "RDS/IB: conn <%pI6c,%pI6c,%d> back-to-back REQ, reset\n",
-					    &conn->c_laddr, &conn->c_faddr,
-					    conn->c_tos);
+					    "conn %p <%pI6c,%pI6c,%d> back-to-back REQ, reset\n",
+					    conn, &conn->c_laddr, &conn->c_faddr, conn->c_tos);
 				conn->c_reconnect_racing = 0;
 				rds_conn_drop(conn, DR_IB_REQ_WHILE_CONNECTING);
 			/* After 15 seconds, give up on existing connection
@@ -1168,14 +1167,15 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 			} else if (now > conn->c_connection_start &&
 			    now - conn->c_connection_start > 15) {
 				rds_rtd_ptr(RDS_RTD_CM,
-					    "RDS/IB: connection <%pI6c,%pI6c,%d> racing for 15s, forcing reset",
-					    &conn->c_laddr,
-					    &conn->c_faddr,
-					    conn->c_tos);
+					    "conn %p <%pI6c,%pI6c,%d> racing for 15s, forcing reset\n",
+					    conn, &conn->c_laddr, &conn->c_faddr, conn->c_tos);
 				rds_conn_drop(conn, DR_IB_REQ_WHILE_CONNECTING);
 				rds_ib_stats_inc(s_ib_listen_closed_stale);
 			} else {
 				/* Wait and see - our connect may still be succeeding */
+				rds_rtd_ptr(RDS_RTD_CM,
+					    "conn %p <%pI6c,%pI6c,%d> racing, wait and see\n",
+					    conn, &conn->c_laddr, &conn->c_faddr, conn->c_tos);
 				rds_ib_stats_inc(s_ib_connect_raced);
 			}
 		}
@@ -1286,9 +1286,11 @@ int rds_ib_cm_initiate_connect(struct rdma_cm_id *cm_id, bool isv6)
 
 	ret = rds_ib_match_acl(ic->i_cm_id, &conn->c_faddr);
 	if (ret < 0) {
-		pr_err("RDS: IB: active conn=%p, <%pI6c,%pI6c,%d> destroyed due ACL violation\n",
-		       conn, &conn->c_laddr, &conn->c_faddr,
-		       conn->c_tos);
+		pr_err("RDS: IB: active conn %p <%pI6c,%pI6c,%d> destroyed due ACL violation\n",
+		       conn, &conn->c_laddr, &conn->c_faddr, conn->c_tos);
+		rds_rtd_ptr(RDS_RTD_CM,
+			    "active conn %p <%pI6c,%pI6c,%d> destroyed due ACL violation\n",
+			    conn, &conn->c_laddr, &conn->c_faddr, conn->c_tos);
 		rds_ib_conn_destroy_init(conn);
 		return 0;
 	}
@@ -1311,13 +1313,14 @@ int rds_ib_cm_initiate_connect(struct rdma_cm_id *cm_id, bool isv6)
 	 */
 	atomic_set(&ic->i_credits, IB_SET_POST_CREDITS(ic->i_flowctl));
 
-	pr_debug("RDS/IB: Initiate conn <%pI6c, %pI6c,%d> with Frags <init,ic>: {%d,%d}\n",
-		 &conn->c_laddr, &conn->c_faddr, conn->c_tos,
-		 ib_init_frag_size / SZ_1K, ic->i_frag_sz / SZ_1K);
+	rds_rtd_ptr(RDS_RTD_CM,
+		    "RDS/IB: Initiate conn %p <%pI6c,%pI6c,%d> with Frags <init,ic>: {%d,%d}\n",
+		    conn, &conn->c_laddr, &conn->c_faddr, conn->c_tos,
+		    ib_init_frag_size / SZ_1K, ic->i_frag_sz / SZ_1K);
 
 	ret = rds_ib_setup_qp(conn);
 	if (ret) {
-		pr_warn("RDS/IB: rds_ib_setup_qp failed (%d)\n", ret);
+		rds_rtd(RDS_RTD_CM, "RDS/IB: rds_ib_setup_qp failed (%d)\n", ret);
 		rds_conn_drop(conn, DR_IB_ACT_SETUP_QP_FAIL);
 		goto out;
 	}
@@ -1329,7 +1332,7 @@ int rds_ib_cm_initiate_connect(struct rdma_cm_id *cm_id, bool isv6)
 				  frag, isv6, seq);
 	ret = rdma_connect(cm_id, &conn_param);
 	if (ret) {
-		pr_warn("RDS/IB: rdma_connect failed (%d)\n", ret);
+		rds_rtd(RDS_RTD_CM, "RDS/IB: rdma_connect failed (%d)\n", ret);
 		rds_conn_drop(conn, DR_IB_RDMA_CONNECT_FAIL);
 	}
 
@@ -1434,13 +1437,13 @@ void rds_ib_conn_path_shutdown(struct rds_conn_path *cp)
 	struct rds_ib_connection *ic = conn->c_transport_data;
 	int err = 0;
 
-	rdsdebug("cm %p pd %p cq %p qp %p\n", ic->i_cm_id,
-		 ic->i_pd, ic->i_rcq, ic->i_cm_id ? ic->i_cm_id->qp : NULL);
+	rds_rtd_ptr(RDS_RTD_CM_EXT, "conn %p cm_id %p pd %p cq %p qp %p\n",
+		    conn, ic->i_cm_id, ic->i_pd, ic->i_rcq, ic->i_cm_id ? ic->i_cm_id->qp : NULL);
 
 	if (ic->i_cm_id) {
 		struct ib_device *dev = ic->i_cm_id->device;
 
-		rdsdebug("disconnecting cm %p\n", ic->i_cm_id);
+		rds_rtd_ptr(RDS_RTD_CM_EXT, "disconnecting conn %p cm_id %p\n", conn, ic->i_cm_id);
 		err = rdma_disconnect(ic->i_cm_id);
 		if (err) {
 			/* Actually this may happen quite frequently, when
