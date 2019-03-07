@@ -142,6 +142,22 @@ enum {
 	RDS_CONN_ERROR,
 };
 
+static inline const char *conn_state_mnem(int state)
+{
+#define CASE_RET(s) case (s): return #s
+	switch (state) {
+		CASE_RET(RDS_CONN_DOWN);
+		CASE_RET(RDS_CONN_CONNECTING);
+		CASE_RET(RDS_CONN_DISCONNECTING);
+		CASE_RET(RDS_CONN_UP);
+		CASE_RET(RDS_CONN_RESETTING);
+		CASE_RET(RDS_CONN_ERROR);
+	default:
+		return "RDS_CONN_UNKNOWN";
+	}
+#undef CASE_RET
+}
+
 /* Bits for c_flags */
 #define RDS_LL_SEND_FULL	0
 #define RDS_RECONNECT_PENDING	1
