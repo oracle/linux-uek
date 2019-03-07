@@ -117,13 +117,15 @@ static int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 		/* If the connection is being shut down, bail out
 		 * right away. We return 0 so cm_id doesn't get
 		 * destroyed prematurely */
-		if (rds_conn_state(conn) == RDS_CONN_DISCONNECTING) {
+		if (rds_conn_state(conn) == RDS_CONN_DISCONNECTING ||
+		    rds_conn_state(conn) == RDS_CONN_ERROR) {
 			/* Reject incoming connections while we're tearing
 			 * down an existing one. */
 			if (event->event == RDMA_CM_EVENT_CONNECT_REQUEST)
 				ret = 1;
 			rds_rtd(RDS_RTD_CM, "Bailing, conn %p being shut down, ret: %d\n",
 				conn, ret);
+			conn->c_reconnect_racing = 1;
 			goto out;
 		}
 	}
@@ -202,10 +204,10 @@ static int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 		break;
 
 	case RDMA_CM_EVENT_ROUTE_ERROR:
-		/* IP might have been moved so flush the ARP entry and retry */
-		rds_ib_flush_arp_entry(&conn->c_faddr);
-
 		if (conn) {
+			/* IP might have been moved so flush the ARP entry and retry */
+			rds_ib_flush_arp_entry(&conn->c_faddr);
+
 			rds_rtd_ptr(RDS_RTD_ERR,
 				    "ROUTE_ERROR: conn %p, calling rds_conn_drop <%pI6c,%pI6c,%d>\n",
 				    conn, &conn->c_laddr,
@@ -313,7 +315,8 @@ static int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 		conn->c_reconnect_racing = 0;
 		/* reset route resolution flag */
 		conn->c_route = 1;
-		rds_conn_drop(conn, DR_IB_DISCONNECTED_EVENT);
+		if (!rds_conn_self_loopback_passive(conn))
+			rds_conn_drop(conn, DR_IB_DISCONNECTED_EVENT);
 		break;
 
 	case RDMA_CM_EVENT_TIMEWAIT_EXIT:
