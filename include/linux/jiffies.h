@@ -283,12 +283,12 @@ extern unsigned long preset_lpj;
 extern unsigned int jiffies_to_msecs(const unsigned long j);
 extern unsigned int jiffies_to_usecs(const unsigned long j);
 
+extern u64 jiffies64_to_nsecs(u64 j);
+
 static inline u64 jiffies_to_nsecs(const unsigned long j)
 {
-	return (u64)jiffies_to_usecs(j) * NSEC_PER_USEC;
+	return jiffies64_to_nsecs(j);
 }
-
-extern u64 jiffies64_to_nsecs(u64 j);
 
 extern unsigned long msecs_to_jiffies(const unsigned int m);
 extern unsigned long usecs_to_jiffies(const unsigned int u);
