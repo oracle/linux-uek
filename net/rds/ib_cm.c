@@ -1104,18 +1104,6 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 	mutex_lock(&conn->c_cm_lock);
 	ic = conn->c_transport_data;
 
-	if (conn->c_route && !rds_conn_self_loopback_passive(conn)) {
-		rds_rtd_ptr(RDS_RTD_CM,
-			    "no route resolution cm_id %p conn %p <%pI6c,%pI6c,%d> RDSv%u.%u lguid 0x%llx fguid 0x%llx\n",
-			    cm_id, conn,
-			    saddr6, daddr6, dp_cmn->ricpc_tos,
-			    RDS_PROTOCOL_MAJOR(version),
-			    RDS_PROTOCOL_MINOR(version),
-			    (unsigned long long)be64_to_cpu(lguid),
-			    (unsigned long long)be64_to_cpu(fguid));
-		goto out;
-	}
-
 	if (ic && cm_seq_check_enable) {
 		if (cm_req_seq != ic->i_prev_seq) {
 			rds_rtd(RDS_RTD_CM_EXT_P,
