@@ -288,6 +288,8 @@ static inline u64 jiffies_to_nsecs(const unsigned long j)
 	return (u64)jiffies_to_usecs(j) * NSEC_PER_USEC;
 }
 
+extern u64 jiffies64_to_nsecs(u64 j);
+
 extern unsigned long msecs_to_jiffies(const unsigned int m);
 extern unsigned long usecs_to_jiffies(const unsigned int u);
 extern unsigned long timespec_to_jiffies(const struct timespec *value);
