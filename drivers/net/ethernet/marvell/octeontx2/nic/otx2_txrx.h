@@ -97,12 +97,15 @@ struct otx2_pool {
 struct otx2_cq_queue {
 	u8			cq_idx;
 	u8			cint_idx; /* CQ interrupt id */
-	u32			cqe_cnt;
 	u16			cqe_size;
+	u32			cqe_cnt;
+	u32			cq_head;
+	u32			cq_tail;
+	u32			pend_cqe;
 	void			*cqe_base;
 	struct qmem		*cqe;
 	struct otx2_pool	*rbpool;
-};
+} ____cacheline_aligned_in_smp;
 
 struct otx2_qset {
 #define OTX2_MAX_CQ_CNT		64
