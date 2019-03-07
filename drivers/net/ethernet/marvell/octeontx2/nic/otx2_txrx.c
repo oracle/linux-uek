@@ -326,14 +326,17 @@ static void otx2_rcv_pkt_handler(struct otx2_nic *pfvf,
 int otx2_napi_handler(struct otx2_cq_queue *cq,
 		      struct otx2_nic *pfvf, int budget)
 {
+	int tx_pkts = 0, tx_bytes = 0, pool_ptrs = 0;
 	struct otx2_pool *rbpool = cq->rbpool;
 	int processed_cqe = 0, workdone = 0;
-	int cq_head, cq_tail, pool_ptrs = 0;
 	struct nix_cqe_hdr_s *cqe_hdr;
-	int tx_pkts = 0, tx_bytes = 0;
 	struct netdev_queue *txq;
 	u64 cq_status;
 	s64 bufptr;
+
+	/* If the pending CQE > 64 skip CQ status read */
+	if (cq->pend_cqe >= budget)
+		goto process_cqe;
 
 	cq_status = otx2_nix_cq_op_status(pfvf, cq->cq_idx);
 	if (cq_status & BIT_ULL(63)) {
@@ -349,23 +352,30 @@ int otx2_napi_handler(struct otx2_cq_queue *cq,
 		return 0;
 	}
 
-	cq_head = (cq_status >> 20) & 0xFFFFF;
-	cq_tail = cq_status & 0xFFFFF;
+	cq->cq_head = (cq_status >> 20) & 0xFFFFF;
+	cq->cq_tail = cq_status & 0xFFFFF;
 
 	/* Since multiple CQs may be mapped to same CINT,
 	 * check if there are valid CQEs in this CQ.
 	 */
-	if (cq_head == cq_tail)
+	if (cq->cq_head == cq->cq_tail)
 		return 0;
-
-	while (cq_head != cq_tail) {
-		if (workdone >= budget)
+process_cqe:
+	cq->pend_cqe = 0;
+	while (cq->cq_head != cq->cq_tail) {
+		if (workdone >= budget) {
+			/* Calculate number of pending CQEs */
+			if (cq->cq_tail < cq->cq_head)
+				cq->pend_cqe = (cq->cqe_cnt - cq->cq_head)
+						+ cq->cq_tail;
+			else
+				cq->pend_cqe = cq->cq_tail - cq->cq_head;
 			break;
+		}
 
-		cqe_hdr = (struct nix_cqe_hdr_s *)CQE_ADDR(cq, cq_head);
-		cq_head++;
-		cq_head &= (cq->cqe_cnt - 1);
-		prefetch(CQE_ADDR(cq, cq_head));
+		cqe_hdr = (struct nix_cqe_hdr_s *)CQE_ADDR(cq, cq->cq_head);
+		cq->cq_head++;
+		cq->cq_head &= (cq->cqe_cnt - 1);
 
 		switch (cqe_hdr->cqe_type) {
 		case NIX_XQE_TYPE_RX:
