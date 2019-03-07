@@ -95,8 +95,20 @@ static int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 	int ret = 0;
 	int *err;
 
-	rdsdebug("conn %p id %p handling event %u (%s)\n", conn, cm_id,
-		 event->event, rds_cm_event_str(event->event));
+	if (conn)
+		rds_rtd_ptr(RDS_RTD_CM,
+			    "conn %p state %s cm_id %p <%pI6c,%pI6c,%d> handling event %u (%s) priv_dta_len %d\n",
+			    conn, conn_state_mnem(rds_conn_state(conn)), cm_id,
+			    &conn->c_laddr, &conn->c_faddr, conn->c_tos,
+			    event->event, rds_cm_event_str(event->event),
+			    event->param.conn.private_data_len);
+	else
+		rds_rtd(RDS_RTD_CM,
+			"conn %p cm_id %p handling event %u (%s) priv_dta_len %d\n",
+			conn, cm_id,
+			event->event, rds_cm_event_str(event->event),
+			event->param.conn.private_data_len);
+
 
 	/* Prevent shutdown from tearing down the connection
 	 * while we're executing. */
@@ -110,6 +122,8 @@ static int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 			 * down an existing one. */
 			if (event->event == RDMA_CM_EVENT_CONNECT_REQUEST)
 				ret = 1;
+			rds_rtd(RDS_RTD_CM, "Bailing, conn %p being shut down, ret: %d\n",
+				conn, ret);
 			goto out;
 		}
 	}
@@ -120,6 +134,11 @@ static int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 		break;
 
 	case RDMA_CM_EVENT_ADDR_RESOLVED:
+		rds_rtd_ptr(RDS_RTD_CM,
+			    "conn %p <%pI6c,%pI6c,%d> daddr resolved. dmac %pI6c\n",
+			    conn, &conn->c_laddr, &conn->c_faddr, conn->c_tos,
+			    cm_id->route.addr.dev_addr.dst_dev_addr +
+			    rdma_addr_gid_offset(&cm_id->route.addr.dev_addr));
 		rdma_set_service_type(cm_id, conn->c_tos);
 
 		/* XXX do we need to clean up if this fails? */
@@ -133,8 +152,9 @@ static int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 			if (conn) {
 				struct rds_ib_connection *ibic;
 
-				printk(KERN_CRIT "rds dropping connection after rdma_resolve_route failure connection %pI6c->%pI6c\n",
-				       &conn->c_laddr, &conn->c_faddr);
+				rds_rtd_ptr(RDS_RTD_CM,
+					    "conn %p <%pI6c,%pI6c,%d> dropping connection after rdma_resolve_route failure %d\n",
+					    conn, &conn->c_laddr, &conn->c_faddr, conn->c_tos, ret);
 				ibic = conn->c_transport_data;
 				if (ibic && ibic->i_cm_id == cm_id)
 					ibic->i_cm_id = NULL;
@@ -161,9 +181,15 @@ static int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 				 * needs to update the sl manually. As for now, RDS is assuming
 				 * that it is a 1:1 in tos to sl mapping.
 				 */
+				rds_rtd(RDS_RTD_CM, "ibic: %p cm_id: %p\n", ibic->i_cm_id->context, cm_id->context);
 				conn->c_route = 0;
 				cm_id->route.path_rec[0].sl = TOS_TO_SL(conn->c_tos);
 				cm_id->route.path_rec[0].qos_class = conn->c_tos;
+				rds_rtd_ptr(RDS_RTD_CM,
+					    "conn %p <%pI6c,%pI6c,%d> initiate connect, smac %pI6c dmac %pI6c\n",
+					    conn, &conn->c_laddr, &conn->c_faddr, conn->c_tos,
+					    cm_id->route.path_rec[0].sgid.raw,
+					    cm_id->route.path_rec[0].dgid.raw);
 				ret = trans->cm_initiate_connect(cm_id, isv6);
 			} else {
 				rds_rtd_ptr(RDS_RTD_CM,
@@ -244,10 +270,12 @@ static int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 			} else if (event->status == RDS_REJ_CONSUMER_DEFINED &&
 				   (*err) == RDS_ACL_FAILURE) {
 				/* Rejection due to ACL violation */
-				pr_err("RDS: IB: conn=%p, <%pI6c,%pI6c,%d> destroyed due to ACL violation\n",
-				       conn, &conn->c_laddr,
-				       &conn->c_faddr,
-				       conn->c_tos);
+				pr_err("RDS: IB: conn %p <%pI6c,%pI6c,%d> destroyed due to ACL violation\n",
+				       conn, &conn->c_laddr, &conn->c_faddr, conn->c_tos);
+
+				rds_rtd_ptr(RDS_RTD_CM,
+					    "Rejected: active conn %p <%pI6c,%pI6c,%d> destroyed due to ACL violation\n",
+					    conn, &conn->c_laddr, &conn->c_faddr, conn->c_tos);
 				rds_ib_conn_destroy_init(conn);
 			} else {
 				rds_rtd_ptr(RDS_RTD_ERR,
@@ -268,9 +296,8 @@ static int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 			    &conn->c_faddr);
 		if (conn) {
 			rds_rtd_ptr(RDS_RTD_CM,
-				    "ADDR_CHANGE: calling rds_conn_drop <%pI6c,%pI6c,%d>\n",
-				    &conn->c_laddr, &conn->c_faddr,
-				    conn->c_tos);
+				    "ADDR_CHANGE: calling rds_conn_drop conn %p <%pI6c,%pI6c,%d>\n",
+				    conn, &conn->c_laddr, &conn->c_faddr, conn->c_tos);
 			conn->c_reconnect_racing = 0;
 			/* reset route resolution flag */
 			conn->c_route = 1;
@@ -281,8 +308,8 @@ static int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 
 	case RDMA_CM_EVENT_DISCONNECTED:
 		rds_rtd_ptr(RDS_RTD_CM,
-			    "DISCONNECT event - dropping connection %pI6c->%pI6c tos %d\n",
-			    &conn->c_laddr, &conn->c_faddr, conn->c_tos);
+			    "DISCONNECT event - dropping conn %p <%pI6c,%pI6c,%d>\n",
+			    conn, &conn->c_laddr, &conn->c_faddr, conn->c_tos);
 		conn->c_reconnect_racing = 0;
 		/* reset route resolution flag */
 		conn->c_route = 1;
@@ -291,8 +318,9 @@ static int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 
 	case RDMA_CM_EVENT_TIMEWAIT_EXIT:
 		if (conn) {
-			printk(KERN_INFO "TIMEWAIT_EXIT event - dropping connection %pI6c->%pI6c\n",
-			       &conn->c_laddr, &conn->c_faddr);
+			rds_rtd_ptr(RDS_RTD_CM,
+				    "TIMEWAIT_EXIT event - dropping conn %p <%pI6c,%pI6c,%d>\n",
+				    conn, &conn->c_laddr, &conn->c_faddr, conn->c_tos);
 			rds_conn_drop(conn, DR_IB_TIMEWAIT_EXIT);
 		} else
 			printk(KERN_INFO "TIMEWAIT_EXIT event - conn=NULL\n");
