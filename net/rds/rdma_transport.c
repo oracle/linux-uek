@@ -191,8 +191,6 @@ static int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 				 * needs to update the sl manually. As for now, RDS is assuming
 				 * that it is a 1:1 in tos to sl mapping.
 				 */
-				rds_rtd(RDS_RTD_CM, "ibic: %p cm_id: %p\n", ibic->i_cm_id->context, cm_id->context);
-				conn->c_route = 0;
 				cm_id->route.path_rec[0].sl = TOS_TO_SL(conn->c_tos);
 				cm_id->route.path_rec[0].qos_class = conn->c_tos;
 				rds_rtd_ptr(RDS_RTD_CM,
@@ -315,8 +313,6 @@ static int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 				    "ADDR_CHANGE: calling rds_conn_drop conn %p <%pI6c,%pI6c,%d>\n",
 				    conn, &conn->c_laddr, &conn->c_faddr, conn->c_tos);
 			conn->c_reconnect_racing = 0;
-			/* reset route resolution flag */
-			conn->c_route = 1;
 			if (!rds_conn_self_loopback_passive(conn))
 				rds_conn_drop(conn, DR_IB_ADDR_CHANGE);
 		}
@@ -329,8 +325,6 @@ static int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 			    "DISCONNECT event - dropping conn %p <%pI6c,%pI6c,%d>\n",
 			    conn, &conn->c_laddr, &conn->c_faddr, conn->c_tos);
 		conn->c_reconnect_racing = 0;
-		/* reset route resolution flag */
-		conn->c_route = 1;
 		if (!rds_conn_self_loopback_passive(conn))
 			rds_conn_drop(conn, DR_IB_DISCONNECTED_EVENT);
 		break;
