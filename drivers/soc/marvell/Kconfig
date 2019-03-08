@@ -70,7 +70,6 @@ config OCTEONTX2_RM_DOM_SYSFS
 config OCTEONTX2_DPI_PF
 	tristate "OcteonTX2 DPI-DMA PF driver"
 	depends on ARM64 && PCI
-	default y
 	---help---
 	  Select this option to enable DPI PF driver support.
 	  DPI (DMA packet interface) provides DMA support for MAC.
