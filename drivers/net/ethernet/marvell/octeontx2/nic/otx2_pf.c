@@ -1810,7 +1810,7 @@ static void otx2_vf_link_event_task(struct work_struct *work)
 	struct cgx_link_info_msg *req;
 	struct mbox_msghdr *msghdr;
 	struct otx2_nic *pf;
-	int err, vf_idx;
+	int vf_idx;
 
 	config = container_of(work, struct otx2_vf_config,
 			      link_event_work.work);
@@ -1829,10 +1829,7 @@ static void otx2_vf_link_event_task(struct work_struct *work)
 	req->hdr.sig = OTX2_MBOX_REQ_SIG;
 	memcpy(&req->link_info, &pf->linfo, sizeof(req->link_info));
 
-	err = otx2_sync_mbox_up_msg(&pf->mbox_pfvf[0], vf_idx);
-	if (err)
-		dev_warn(pf->dev, "VF%d failed to acknowledge link event\n",
-			 vf_idx);
+	otx2_sync_mbox_up_msg(&pf->mbox_pfvf[0], vf_idx);
 }
 
 static int otx2_sriov_enable(struct pci_dev *pdev, int numvfs)
