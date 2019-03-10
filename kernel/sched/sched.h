@@ -34,6 +34,7 @@
 #include <linux/slab.h>
 #include <linux/cgroup.h>
 #include <linux/dtrace_cpu.h>
+#include <linux/uek_kabi.h>
 
 #ifdef CONFIG_PARAVIRT
 #include <asm/paravirt.h>
@@ -292,6 +293,9 @@ struct cfs_bandwidth {
 	/* statistics */
 	int nr_periods, nr_throttled;
 	u64 throttled_time;
+#ifndef __GENKSYMS__
+	bool distribute_running;
+#endif
 #endif
 };
 
