@@ -1157,6 +1157,20 @@ lpfc_do_offline(struct lpfc_hba *phba, uint32_t type)
 
 	psli = &phba->sli;
 
+	/*
+	 * If freeing the queues have already started, don't access them.
+	 * Otherwise set FREE_WAIT to indicate that queues are being used
+	 * to hold the freeing process until we finish.
+	 */
+	spin_lock_irq(&phba->hbalock);
+	if (!(psli->sli_flag & LPFC_QUEUE_FREE_INIT)) {
+		psli->sli_flag |= LPFC_QUEUE_FREE_WAIT;
+	} else {
+		spin_unlock_irq(&phba->hbalock);
+		goto skip_wait;
+	}
+	spin_unlock_irq(&phba->hbalock);
+
 	/* Wait a little for things to settle down, but not
 	 * long enough for dev loss timeout to expire.
 	 */
@@ -1178,6 +1192,11 @@ lpfc_do_offline(struct lpfc_hba *phba, uint32_t type)
 		}
 	}
 out:
+	spin_lock_irq(&phba->hbalock);
+	psli->sli_flag &= ~LPFC_QUEUE_FREE_WAIT;
+	spin_unlock_irq(&phba->hbalock);
+
+skip_wait:
 	init_completion(&online_compl);
 	rc = lpfc_workq_post_event(phba, &status, &online_compl, type);
 	if (rc == 0)
