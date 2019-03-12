@@ -4499,7 +4499,9 @@ lpfc_sli_brdreset(struct lpfc_hba *phba)
 	}
 
 	/* Turn off parity checking and serr during the physical reset */
-	pci_read_config_word(phba->pcidev, PCI_COMMAND, &cfg_value);
+	if (pci_read_config_word(phba->pcidev, PCI_COMMAND, &cfg_value))
+		return -EIO;
+
 	pci_write_config_word(phba->pcidev, PCI_COMMAND,
 			      (cfg_value &
 			       ~(PCI_COMMAND_PARITY | PCI_COMMAND_SERR)));
@@ -4576,7 +4578,12 @@ lpfc_sli4_brdreset(struct lpfc_hba *phba)
 			"0389 Performing PCI function reset!\n");
 
 	/* Turn off parity checking and serr during the physical reset */
-	pci_read_config_word(phba->pcidev, PCI_COMMAND, &cfg_value);
+	if (pci_read_config_word(phba->pcidev, PCI_COMMAND, &cfg_value)) {
+		lpfc_printf_log(phba, KERN_INFO, LOG_INIT,
+				"3205 PCI read Config failed\n");
+		return -EIO;
+	}
+
 	pci_write_config_word(phba->pcidev, PCI_COMMAND, (cfg_value &
 			      ~(PCI_COMMAND_PARITY | PCI_COMMAND_SERR)));
 
