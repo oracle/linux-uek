@@ -2257,6 +2257,52 @@ static int set_flowkey_fields(struct nix_rx_flowkey_alg *alg, u32 flow_cfg)
 				keyoff_marker = false;
 			}
 			break;
+		case NIX_FLOW_KEY_TYPE_NVGRE:
+		case NIX_FLOW_KEY_TYPE_VXLAN:
+		case NIX_FLOW_KEY_TYPE_GENEVE:
+			field->lid = NPC_LID_LD;
+			field->bytesm1 = 2;
+			field->ltype_mask = 0xF;
+			field_marker = true;
+			keyoff_marker = false;
+			if (key_type == NIX_FLOW_KEY_TYPE_NVGRE && valid_key) {
+				field->hdr_offset = 4; /* VSID offset */
+				field->ltype_match = NPC_LT_LD_GRE;
+			}
+
+			if (key_type == NIX_FLOW_KEY_TYPE_VXLAN && valid_key) {
+				/* VNI at UDP header + 4B */
+				field->hdr_offset = 12;
+				field->ltype_match = NPC_LT_LD_UDP_VXLAN;
+			}
+
+			if (key_type == NIX_FLOW_KEY_TYPE_GENEVE && valid_key) {
+				/* VNI at UDP header + 4B */
+				field->hdr_offset = 12;
+				field->ltype_match = NPC_LT_LD_UDP_GENEVE;
+			}
+
+			if (key_type == NIX_FLOW_KEY_TYPE_GENEVE)
+				keyoff_marker = true;
+			break;
+		case NIX_FLOW_KEY_TYPE_ETH_DMAC:
+			field->lid = NPC_LID_LA;
+			field->hdr_offset = 0;
+			field->bytesm1 = 5; /* DMAC 6 Byte */
+			field->ltype_match = NPC_LT_LA_ETHER;
+			field->ltype_mask = 0xF;
+			field_marker = true;
+			keyoff_marker = true;
+			break;
+		case NIX_FLOW_KEY_TYPE_IPV6_EXT:
+			field->lid = NPC_LID_LC;
+			field->hdr_offset = 40; /* IPV6 hdr */
+			field->bytesm1 = 0; /* 1 Byte ext hdr*/
+			field->ltype_match = NPC_LT_LC_IP6_EXT;
+			field->ltype_mask = 0xF;
+			field_marker = true;
+			keyoff_marker = true;
+			break;
 		}
 		field->ena = 1;
 
