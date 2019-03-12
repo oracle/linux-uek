@@ -318,9 +318,10 @@ static void nvme_mpath_set_live(struct nvme_ns *ns)
 	if (!head->disk)
 		return;
 
-	if (!(head->disk->flags & GENHD_FL_UP))
-		device_add_disk(&head->subsys->dev, head->disk,
-				nvme_ns_id_attr_groups);
+	if (!(head->disk->flags & GENHD_FL_UP)) {
+		head->disk->attr_groups = nvme_ns_id_attr_groups;
+		device_add_disk(&head->subsys->dev, head->disk);
+	}
 
 	if (nvme_path_is_optimized(ns)) {
 		int node, srcu_idx;

@@ -781,7 +781,8 @@ static int ps3vram_probe(struct ps3_system_bus_device *dev)
 	dev_info(&dev->core, "%s: Using %lu MiB of GPU memory\n",
 		 gendisk->disk_name, get_capacity(gendisk) >> 11);
 
-	device_add_disk(&dev->core, gendisk, NULL);
+	gendisk->attr_groups = NULL;
+	device_add_disk(&dev->core, gendisk);
 	return 0;
 
 fail_cleanup_queue:

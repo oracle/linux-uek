@@ -3283,7 +3283,8 @@ static void sd_probe_async(void *data, async_cookie_t cookie)
 	}
 
 	blk_pm_runtime_init(sdp->request_queue, dev);
-	device_add_disk(dev, gd, NULL);
+	gd->attr_groups = NULL;
+	device_add_disk(dev, gd);
 	if (sdkp->capacity)
 		sd_dif_config_host(sdkp);
 
