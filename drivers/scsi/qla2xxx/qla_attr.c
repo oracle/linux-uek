@@ -427,7 +427,7 @@ qla2x00_sysfs_write_optrom_ctl(struct file *filp, struct kobject *kobj,
 			valid = 1;
 		else if (IS_QLA24XX_TYPE(ha) || IS_QLA25XX(ha)
 			|| IS_CNA_CAPABLE(ha) || IS_QLA2031(ha)
-			|| IS_QLA27XX(ha))
+			|| IS_QLA27XX(ha) || IS_QLA28XX(ha))
 			valid = 1;
 		if (!valid) {
 			ql_log(ql_log_warn, vha, 0x7065,
@@ -514,7 +514,7 @@ qla2x00_sysfs_read_vpd(struct file *filp, struct kobject *kobj,
 	if (IS_NOCACHE_VPD_TYPE(ha)) {
 		faddr = ha->flt_region_vpd << 2;
 
-		if (IS_QLA27XX(ha) &&
+		if ((IS_QLA27XX(ha) || IS_QLA28XX(ha)) &&
 		    qla27xx_find_valid_image(vha) == QLA27XX_SECONDARY_IMAGE)
 			faddr = ha->flt_region_vpd_sec << 2;
 
@@ -679,7 +679,7 @@ qla2x00_sysfs_write_reset(struct file *filp, struct kobject *kobj,
 		ql_log(ql_log_info, vha, 0x706f,
 		    "Issuing MPI reset.\n");
 
-		if (IS_QLA83XX(ha) || IS_QLA27XX(ha)) {
+		if (IS_QLA83XX(ha) || IS_QLA27XX(ha) || IS_QLA28XX(ha)) {
 			uint32_t idc_control;
 
 			qla83xx_idc_lock(vha, 0);
@@ -989,7 +989,8 @@ qla2x00_free_sysfs_attr(scsi_qla_host_t *vha, bool stop_beacon)
 			continue;
 		if (iter->is4GBp_only == 3 && !(IS_CNA_CAPABLE(vha->hw)))
 			continue;
-		if (iter->is4GBp_only == 0x27 && !IS_QLA27XX(vha->hw))
+		if (iter->is4GBp_only == 0x27 &&
+		    (!IS_QLA27XX(vha->hw) || !IS_QLA28XX(ha)))
 			continue;
 
 		sysfs_remove_bin_file(&host->shost_gendev.kobj,
@@ -1334,7 +1335,8 @@ qla2x00_optrom_gold_fw_version_show(struct device *dev,
 	scsi_qla_host_t *vha = shost_priv(class_to_shost(dev));
 	struct qla_hw_data *ha = vha->hw;
 
-	if (!IS_QLA81XX(ha) && !IS_QLA83XX(ha) && !IS_QLA27XX(ha))
+	if (!IS_QLA81XX(ha) && !IS_QLA83XX(ha) &&
+	    !IS_QLA27XX(ha) && !IS_QLA28XX(ha))
 		return scnprintf(buf, PAGE_SIZE, "\n");
 
 	return scnprintf(buf, PAGE_SIZE, "%d.%02d.%02d (%d)\n",
@@ -1381,7 +1383,7 @@ qla2x00_mpi_version_show(struct device *dev, struct device_attribute *attr,
 	struct qla_hw_data *ha = vha->hw;
 
 	if (!IS_QLA81XX(ha) && !IS_QLA8031(ha) && !IS_QLA8044(ha) &&
-	    !IS_QLA27XX(ha))
+	    !IS_QLA27XX(ha) && !IS_QLA28XX(ha))
 		return scnprintf(buf, PAGE_SIZE, "\n");
 
 	return scnprintf(buf, PAGE_SIZE, "%d.%02d.%02d (%x)\n",
@@ -1594,7 +1596,7 @@ qla2x00_pep_version_show(struct device *dev, struct device_attribute *attr,
 	scsi_qla_host_t *vha = shost_priv(class_to_shost(dev));
 	struct qla_hw_data *ha = vha->hw;
 
-	if (!IS_QLA27XX(ha))
+	if (!IS_QLA27XX(ha) && !IS_QLA28XX(ha))
 		return scnprintf(buf, PAGE_SIZE, "\n");
 
 	return scnprintf(buf, PAGE_SIZE, "%d.%02d.%02d\n",
@@ -1608,7 +1610,7 @@ qla2x00_min_link_speed_show(struct device *dev, struct device_attribute *attr,
 	scsi_qla_host_t *vha = shost_priv(class_to_shost(dev));
 	struct qla_hw_data *ha = vha->hw;
 
-	if (!IS_QLA27XX(ha))
+	if (!IS_QLA27XX(ha) && !IS_QLA28XX(ha))
 		return scnprintf(buf, PAGE_SIZE, "\n");
 
 	return scnprintf(buf, PAGE_SIZE, "%s\n",
@@ -1626,7 +1628,7 @@ qla2x00_max_speed_sup_show(struct device *dev, struct device_attribute *attr,
 	scsi_qla_host_t *vha = shost_priv(class_to_shost(dev));
 	struct qla_hw_data *ha = vha->hw;
 
-	if (!IS_QLA27XX(ha))
+	if (!IS_QLA27XX(ha) && !IS_QLA28XX(ha))
 		return scnprintf(buf, PAGE_SIZE, "\n");
 
 	return scnprintf(buf, PAGE_SIZE, "%s\n",
@@ -1660,7 +1662,7 @@ qla2x00_port_speed_store(struct device *dev, struct device_attribute *attr,
 	int mode = QLA_SET_DATA_RATE_LR;
 	struct qla_hw_data *ha = vha->hw;
 
-	if (!IS_QLA27XX(vha->hw)) {
+	if (!IS_QLA27XX(ha) && !IS_QLA28XX(ha)) {
 		ql_log(ql_log_warn, vha, 0x70d8,
 		    "Speed setting not supported \n");
 		return -EINVAL;
@@ -2172,7 +2174,7 @@ qla2x00_fw_attr_show(struct device *dev,
 	scsi_qla_host_t *vha = shost_priv(class_to_shost(dev));
 	struct qla_hw_data *ha = vha->hw;
 
-	if (!IS_QLA27XX(ha))
+	if (!IS_QLA27XX(ha) && !IS_QLA28XX(ha))
 		return scnprintf(buf, PAGE_SIZE, "\n");
 
 	return scnprintf(buf, PAGE_SIZE, "%llx\n",
@@ -2357,6 +2359,9 @@ qla2x00_get_host_speed(struct Scsi_Host *shost)
 		break;
 	case PORT_SPEED_32GB:
 		speed = FC_PORTSPEED_32GBIT;
+		break;
+	case PORT_SPEED_64GB:
+		speed = FC_PORTSPEED_64GBIT;
 		break;
 	}
 	fc_host_speed(shost) = speed;
@@ -3037,6 +3042,9 @@ qla2x00_init_host_attr(scsi_qla_host_t *vha)
 	else if (IS_QLA27XX(ha))
 		speed = FC_PORTSPEED_32GBIT | FC_PORTSPEED_16GBIT |
 		    FC_PORTSPEED_8GBIT;
+	else if (IS_QLA28XX(ha))
+		speed = FC_PORTSPEED_64GBIT | FC_PORTSPEED_32GBIT |
+		    FC_PORTSPEED_16GBIT | FC_PORTSPEED_8GBIT;
 	else
 		speed = FC_PORTSPEED_1GBIT;
 	fc_host_supported_speeds(vha->host) = speed;
