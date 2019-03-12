@@ -7383,7 +7383,7 @@ qla24xx_load_risc_flash(scsi_qla_host_t *vha, uint32_t *srisc_addr,
 	ql_dbg(ql_dbg_init, vha, 0x0162,
 	    "-> array size %x dwords\n", risc_size);
 	if (risc_size == 0 || risc_size == ~0)
-		goto default_template;
+		goto failed;
 
 	dlen = (risc_size - 8) * sizeof(*dcode);
 	ql_dbg(ql_dbg_init, vha, 0x0163,
@@ -7392,7 +7392,7 @@ qla24xx_load_risc_flash(scsi_qla_host_t *vha, uint32_t *srisc_addr,
 	if (!ha->fw_dump_template) {
 		ql_log(ql_log_warn, vha, 0x0164,
 		    "Failed fwdump template allocate %x bytes.\n", risc_size);
-		goto default_template;
+		goto failed;
 	}
 
 	faddr += 7;
@@ -7405,7 +7405,7 @@ qla24xx_load_risc_flash(scsi_qla_host_t *vha, uint32_t *srisc_addr,
 	if (!qla27xx_fwdt_template_valid(dcode)) {
 		ql_log(ql_log_warn, vha, 0x0165,
 		    "Failed fwdump template validate\n");
-		goto default_template;
+		goto failed;
 	}
 
 	dlen = qla27xx_fwdt_template_size(dcode);
@@ -7415,48 +7415,13 @@ qla24xx_load_risc_flash(scsi_qla_host_t *vha, uint32_t *srisc_addr,
 		ql_log(ql_log_warn, vha, 0x0167,
 		    "Failed fwdump template exceeds array by %zx bytes\n",
 		    (size_t)(dlen - risc_size * sizeof(*dcode)));
-		goto default_template;
+		goto failed;
 	}
 	ha->fw_dump_template_len = dlen;
 	return rval;
 
-default_template:
-	ql_log(ql_log_warn, vha, 0x0168, "Using default fwdump template\n");
-	if (ha->fw_dump_template)
-		vfree(ha->fw_dump_template);
-	ha->fw_dump_template = NULL;
-	ha->fw_dump_template_len = 0;
-
-	dlen = qla27xx_fwdt_template_default_size();
-	ql_dbg(ql_dbg_init, vha, 0x0169,
-	    "-> template allocating %x bytes...\n", dlen);
-	ha->fw_dump_template = vmalloc(dlen);
-	if (!ha->fw_dump_template) {
-		ql_log(ql_log_warn, vha, 0x016a,
-		    "Failed fwdump template allocate %x bytes.\n", risc_size);
-		goto failed_template;
-	}
-
-	dcode = ha->fw_dump_template;
-	risc_size = dlen / sizeof(*dcode);
-	memcpy(dcode, qla27xx_fwdt_template_default(), dlen);
-	for (i = 0; i < risc_size; i++)
-		dcode[i] = be32_to_cpu(dcode[i]);
-
-	if (!qla27xx_fwdt_template_valid(ha->fw_dump_template)) {
-		ql_log(ql_log_warn, vha, 0x016b,
-		    "Failed fwdump template validate\n");
-		goto failed_template;
-	}
-
-	dlen = qla27xx_fwdt_template_size(ha->fw_dump_template);
-	ql_dbg(ql_dbg_init, vha, 0x016c,
-	    "-> template size %x bytes\n", dlen);
-	ha->fw_dump_template_len = dlen;
-	return rval;
-
-failed_template:
-	ql_log(ql_log_warn, vha, 0x016d, "Failed default fwdump template\n");
+failed:
+	ql_log(ql_log_warn, vha, 0x016d, "Failed fwdump template\n");
 	if (ha->fw_dump_template)
 		vfree(ha->fw_dump_template);
 	ha->fw_dump_template = NULL;
@@ -7686,7 +7651,7 @@ qla24xx_load_risc_blob(scsi_qla_host_t *vha, uint32_t *srisc_addr)
 	ql_dbg(ql_dbg_init, vha, 0x172,
 	    "-> array size %x dwords\n", risc_size);
 	if (risc_size == 0 || risc_size == ~0)
-		goto default_template;
+		goto failed;
 
 	dlen = (risc_size - 8) * sizeof(*fwcode);
 	ql_dbg(ql_dbg_init, vha, 0x0173,
@@ -7695,7 +7660,7 @@ qla24xx_load_risc_blob(scsi_qla_host_t *vha, uint32_t *srisc_addr)
 	if (!ha->fw_dump_template) {
 		ql_log(ql_log_warn, vha, 0x0174,
 		    "Failed fwdump template allocate %x bytes.\n", risc_size);
-		goto default_template;
+		goto failed;
 	}
 
 	fwcode += 7;
@@ -7707,7 +7672,7 @@ qla24xx_load_risc_blob(scsi_qla_host_t *vha, uint32_t *srisc_addr)
 	if (!qla27xx_fwdt_template_valid(dcode)) {
 		ql_log(ql_log_warn, vha, 0x0175,
 		    "Failed fwdump template validate\n");
-		goto default_template;
+		goto failed;
 	}
 
 	dlen = qla27xx_fwdt_template_size(dcode);
@@ -7717,48 +7682,13 @@ qla24xx_load_risc_blob(scsi_qla_host_t *vha, uint32_t *srisc_addr)
 		ql_log(ql_log_warn, vha, 0x0177,
 		    "Failed fwdump template exceeds array by %zx bytes\n",
 		    (size_t)(dlen - risc_size * sizeof(*fwcode)));
-		goto default_template;
+		goto failed;
 	}
 	ha->fw_dump_template_len = dlen;
 	return rval;
 
-default_template:
-	ql_log(ql_log_warn, vha, 0x0178, "Using default fwdump template\n");
-	if (ha->fw_dump_template)
-		vfree(ha->fw_dump_template);
-	ha->fw_dump_template = NULL;
-	ha->fw_dump_template_len = 0;
-
-	dlen = qla27xx_fwdt_template_default_size();
-	ql_dbg(ql_dbg_init, vha, 0x0179,
-	    "-> template allocating %x bytes...\n", dlen);
-	ha->fw_dump_template = vmalloc(dlen);
-	if (!ha->fw_dump_template) {
-		ql_log(ql_log_warn, vha, 0x017a,
-		    "Failed fwdump template allocate %x bytes.\n", risc_size);
-		goto failed_template;
-	}
-
-	dcode = ha->fw_dump_template;
-	risc_size = dlen / sizeof(*fwcode);
-	fwcode = qla27xx_fwdt_template_default();
-	for (i = 0; i < risc_size; i++)
-		dcode[i] = be32_to_cpu(fwcode[i]);
-
-	if (!qla27xx_fwdt_template_valid(ha->fw_dump_template)) {
-		ql_log(ql_log_warn, vha, 0x017b,
-		    "Failed fwdump template validate\n");
-		goto failed_template;
-	}
-
-	dlen = qla27xx_fwdt_template_size(ha->fw_dump_template);
-	ql_dbg(ql_dbg_init, vha, 0x017c,
-	    "-> template size %x bytes\n", dlen);
-	ha->fw_dump_template_len = dlen;
-	return rval;
-
-failed_template:
-	ql_log(ql_log_warn, vha, 0x017d, "Failed default fwdump template\n");
+failed:
+	ql_log(ql_log_warn, vha, 0x017d, "Failed fwdump template\n");
 	if (ha->fw_dump_template)
 		vfree(ha->fw_dump_template);
 	ha->fw_dump_template = NULL;
