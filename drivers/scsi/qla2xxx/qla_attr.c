@@ -2165,6 +2165,32 @@ ql2xiniexchg_store(struct device *dev, struct device_attribute *attr,
 	return strlen(buf);
 }
 
+static ssize_t
+qla2x00_fw_attr_show(struct device *dev,
+    struct device_attribute *attr, char *buf)
+{
+	scsi_qla_host_t *vha = shost_priv(class_to_shost(dev));
+	struct qla_hw_data *ha = vha->hw;
+
+	if (!IS_QLA27XX(ha))
+		return scnprintf(buf, PAGE_SIZE, "\n");
+
+	return scnprintf(buf, PAGE_SIZE, "%llx\n",
+	    (uint64_t)ha->fw_attributes_ext[1] << 48 |
+	    (uint64_t)ha->fw_attributes_ext[0] << 32 |
+	    (uint64_t)ha->fw_attributes_h << 16 |
+	    (uint64_t)ha->fw_attributes);
+}
+
+static ssize_t
+qla2x00_port_no_show(struct device *dev, struct device_attribute *attr,
+    char *buf)
+{
+	scsi_qla_host_t *vha = shost_priv(class_to_shost(dev));
+
+	return scnprintf(buf, PAGE_SIZE, "%u\n", vha->hw->port_no);
+}
+
 static DEVICE_ATTR(driver_version, S_IRUGO, qla2x00_drvr_version_show, NULL);
 static DEVICE_ATTR(fw_version, S_IRUGO, qla2x00_fw_version_show, NULL);
 static DEVICE_ATTR(serial_num, S_IRUGO, qla2x00_serial_num_show, NULL);
@@ -2222,6 +2248,8 @@ static DEVICE_ATTR_RW(ql2xexchoffld);
 static DEVICE_ATTR_RW(ql2xiniexchg);
 static DEVICE_ATTR(port_speed, 0644, qla2x00_port_speed_show,
     qla2x00_port_speed_store);
+static DEVICE_ATTR(port_no, 0444, qla2x00_port_no_show, NULL);
+static DEVICE_ATTR(fw_attr, 0444, qla2x00_fw_attr_show, NULL);
 
 
 struct device_attribute *qla2x00_host_attrs[] = {
@@ -2262,6 +2290,8 @@ struct device_attribute *qla2x00_host_attrs[] = {
 	&dev_attr_dif_bundle_statistics,		
 	&dev_attr_zio_threshold,
 	&dev_attr_port_speed,
+	&dev_attr_port_no,
+	&dev_attr_fw_attr,
 	NULL, /* reserve for qlini_mode */
 	NULL, /* reserve for ql2xiniexchg */
 	NULL, /* reserve for ql2xexchoffld */
