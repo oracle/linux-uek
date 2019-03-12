@@ -2612,6 +2612,29 @@ qla24xx_prep_ct_fm_req(struct ct_sns_pkt *p, uint16_t cmd,
 	return &p->p.req;
 }
 
+static uint16_t
+qla2x00_port_speed_capability(uint16_t speed)
+{
+	switch (speed) {
+	case BIT_15:
+		return PORT_SPEED_1GB;
+	case BIT_14:
+		return PORT_SPEED_2GB;
+	case BIT_13:
+		return PORT_SPEED_4GB;
+	case BIT_12:
+		return PORT_SPEED_10GB;
+	case BIT_11:
+		return PORT_SPEED_8GB;
+	case BIT_10:
+		return PORT_SPEED_16GB;
+	case BIT_8:
+		return PORT_SPEED_32GB;
+	default:
+		return PORT_SPEED_UNKNOWN;
+	}
+}
+
 /**
  * qla2x00_gpsc() - FCS Get Port Speed Capabilities (GPSC) query.
  * @ha: HA context
@@ -2684,31 +2707,8 @@ qla2x00_gpsc(scsi_qla_host_t *vha, sw_info_t *list)
 			}
 			rval = QLA_FUNCTION_FAILED;
 		} else {
-			/* Save port-speed */
-			switch (be16_to_cpu(ct_rsp->rsp.gpsc.speed)) {
-			case BIT_15:
-				list[i].fp_speed = PORT_SPEED_1GB;
-				break;
-			case BIT_14:
-				list[i].fp_speed = PORT_SPEED_2GB;
-				break;
-			case BIT_13:
-				list[i].fp_speed = PORT_SPEED_4GB;
-				break;
-			case BIT_12:
-				list[i].fp_speed = PORT_SPEED_10GB;
-				break;
-			case BIT_11:
-				list[i].fp_speed = PORT_SPEED_8GB;
-				break;
-			case BIT_10:
-				list[i].fp_speed = PORT_SPEED_16GB;
-				break;
-			case BIT_8:
-				list[i].fp_speed = PORT_SPEED_32GB;
-				break;
-			}
-
+			list->fp_speed = qla2x00_port_speed_capability(
+			    be16_to_cpu(ct_rsp->rsp.gpsc.speed));
 			ql_dbg(ql_dbg_disc, vha, 0x205b,
 			    "GPSC ext entry - fpn "
 			    "%8phN speeds=%04x speed=%04x.\n",
@@ -3050,29 +3050,8 @@ static void qla24xx_async_gpsc_sp_done(void *s, int res)
 			res = QLA_SUCCESS;
 		}
 	} else {
-		switch (be16_to_cpu(ct_rsp->rsp.gpsc.speed)) {
-		case BIT_15:
-			fcport->fp_speed = PORT_SPEED_1GB;
-			break;
-		case BIT_14:
-			fcport->fp_speed = PORT_SPEED_2GB;
-			break;
-		case BIT_13:
-			fcport->fp_speed = PORT_SPEED_4GB;
-			break;
-		case BIT_12:
-			fcport->fp_speed = PORT_SPEED_10GB;
-			break;
-		case BIT_11:
-			fcport->fp_speed = PORT_SPEED_8GB;
-			break;
-		case BIT_10:
-			fcport->fp_speed = PORT_SPEED_16GB;
-			break;
-		case BIT_8:
-			fcport->fp_speed = PORT_SPEED_32GB;
-			break;
-		}
+		fcport->fp_speed = qla2x00_port_speed_capability(
+		    be16_to_cpu(ct_rsp->rsp.gpsc.speed));
 
 		ql_dbg(ql_dbg_disc, vha, 0x2054,
 		    "Async-%s OUT WWPN %8phC speeds=%04x speed=%04x.\n",

@@ -492,14 +492,15 @@ qla2x00_load_ram(scsi_qla_host_t *vha, dma_addr_t req_dma, uint32_t risc_addr,
 		mcp->out_mb |= MBX_4;
 	}
 
-	mcp->in_mb = MBX_0;
+	mcp->in_mb = MBX_1|MBX_0;
 	mcp->tov = MBX_TOV_SECONDS;
 	mcp->flags = 0;
 	rval = qla2x00_mailbox_command(vha, mcp);
 
 	if (rval != QLA_SUCCESS) {
 		ql_dbg(ql_dbg_mbx, vha, 0x1023,
-		    "Failed=%x mb[0]=%x.\n", rval, mcp->mb[0]);
+		    "Failed=%x mb[0]=%x mb[1]=%x.\n",
+		    rval, mcp->mb[0], mcp->mb[1]);
 	} else {
 		ql_dbg(ql_dbg_mbx + ql_dbg_verbose, vha, 0x1024,
 		    "Done %s.\n", __func__);
@@ -617,7 +618,7 @@ qla2x00_get_fw_version(scsi_qla_host_t *vha)
 	if (IS_QLA27XX(ha))
 		mcp->in_mb |=
 		    MBX_25|MBX_24|MBX_23|MBX_22|MBX_21|MBX_20|MBX_19|MBX_18|
-		    MBX_14|MBX_13|MBX_11|MBX_10|MBX_9|MBX_8;
+		    MBX_14|MBX_13|MBX_11|MBX_10|MBX_9|MBX_8|MBX_7;
 
 	mcp->flags = 0;
 	mcp->tov = MBX_TOV_SECONDS;
@@ -658,6 +659,9 @@ qla2x00_get_fw_version(scsi_qla_host_t *vha)
 	}
 
 	if (IS_QLA27XX(ha)) {
+		ha->serdes_version[0] = mcp->mb[7] & 0xff;
+		ha->serdes_version[1] = mcp->mb[8] >> 8;
+		ha->serdes_version[2] = mcp->mb[8] & 0xff;
 		ha->mpi_version[0] = mcp->mb[10] & 0xff;
 		ha->mpi_version[1] = mcp->mb[11] >> 8;
 		ha->mpi_version[2] = mcp->mb[11] & 0xff;
@@ -3275,7 +3279,7 @@ qla2x00_get_idma_speed(scsi_qla_host_t *vha, uint16_t loop_id,
 	rval = qla2x00_mailbox_command(vha, mcp);
 
 	/* Return mailbox statuses. */
-	if (mb != NULL) {
+	if (mb) {
 		mb[0] = mcp->mb[0];
 		mb[1] = mcp->mb[1];
 		mb[3] = mcp->mb[3];
@@ -3310,10 +3314,7 @@ qla2x00_set_idma_speed(scsi_qla_host_t *vha, uint16_t loop_id,
 	mcp->mb[0] = MBC_PORT_PARAMS;
 	mcp->mb[1] = loop_id;
 	mcp->mb[2] = BIT_0;
-	if (IS_CNA_CAPABLE(vha->hw))
-		mcp->mb[3] = port_speed & (BIT_5|BIT_4|BIT_3|BIT_2|BIT_1|BIT_0);
-	else
-		mcp->mb[3] = port_speed & (BIT_2|BIT_1|BIT_0);
+	mcp->mb[3] = port_speed & 0x3F;
 	mcp->mb[9] = vha->vp_idx;
 	mcp->out_mb = MBX_9|MBX_3|MBX_2|MBX_1|MBX_0;
 	mcp->in_mb = MBX_3|MBX_1|MBX_0;
@@ -3322,7 +3323,7 @@ qla2x00_set_idma_speed(scsi_qla_host_t *vha, uint16_t loop_id,
 	rval = qla2x00_mailbox_command(vha, mcp);
 
 	/* Return mailbox statuses. */
-	if (mb != NULL) {
+	if (mb) {
 		mb[0] = mcp->mb[0];
 		mb[1] = mcp->mb[1];
 		mb[3] = mcp->mb[3];
@@ -4641,13 +4642,14 @@ qla2x00_write_ram_word(scsi_qla_host_t *vha, uint32_t risc_addr, uint32_t data)
 	mcp->mb[3] = MSW(data);
 	mcp->mb[8] = MSW(risc_addr);
 	mcp->out_mb = MBX_8|MBX_3|MBX_2|MBX_1|MBX_0;
-	mcp->in_mb = MBX_0;
+	mcp->in_mb = MBX_1|MBX_0;
 	mcp->tov = 30;
 	mcp->flags = 0;
 	rval = qla2x00_mailbox_command(vha, mcp);
 	if (rval != QLA_SUCCESS) {
 		ql_dbg(ql_dbg_mbx, vha, 0x1101,
-		    "Failed=%x mb[0]=%x.\n", rval, mcp->mb[0]);
+		    "Failed=%x mb[0]=%x mb[1]=%x.\n",
+		    rval, mcp->mb[0], mcp->mb[1]);
 	} else {
 		ql_dbg(ql_dbg_mbx + ql_dbg_verbose, vha, 0x1102,
 		    "Done %s.\n", __func__);
