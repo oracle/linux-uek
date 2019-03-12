@@ -162,6 +162,27 @@ static int collect_cpu_info(int cpu)
 	return ret;
 }
 
+static void microcode_late_eval_cpuid(void *arg)
+{
+	init_scattered_cpuid_features(&cpu_data(smp_processor_id()),
+	    GET_CPU_CAP_FULL);
+}
+
+static void microcode_late_eval_cpuid_all(void)
+{
+	int cpu;
+	/*
+	 * Evaluate CPU features after microcode loading.
+	 * This needs to be done on each CPU.
+	 */
+	for_each_online_cpu(cpu) {
+		if (cpu == 0)
+			continue;
+		smp_call_function_single(cpu, microcode_late_eval_cpuid, NULL, 1);
+	}
+	smp_call_function_single(0, microcode_late_eval_cpuid, NULL, 1);
+}
+
 struct apply_microcode_ctx {
 	int err;
 };
@@ -232,9 +253,7 @@ static ssize_t microcode_write(struct file *file, const char __user *buf,
 
 	if (ret > 0) {
 		perf_check_microcode();
-
-		/* check spec_ctrl capabilities */
-		init_scattered_cpuid_features(&cpu_data(0), GET_CPU_CAP_FULL);
+		microcode_late_eval_cpuid_all();
 	}
 
 	mutex_unlock(&microcode_mutex);
@@ -354,8 +373,7 @@ static ssize_t reload_store(struct device *dev,
 	}
 	if (!ret) {
 		perf_check_microcode();
-
-		init_scattered_cpuid_features(&cpu_data(0), GET_CPU_CAP_FULL);
+		microcode_late_eval_cpuid_all();
 	}
 
 	mutex_unlock(&microcode_mutex);
@@ -612,8 +630,7 @@ static int __init microcode_init(void)
 	error = subsys_interface_register(&mc_cpu_interface);
 	if (!error) {
 		perf_check_microcode();
-
-		init_scattered_cpuid_features(&cpu_data(0), GET_CPU_CAP_FULL);
+		microcode_late_eval_cpuid_all();
 	}
 
 	mutex_unlock(&microcode_mutex);
