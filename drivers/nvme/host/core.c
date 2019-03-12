@@ -3099,7 +3099,8 @@ static void nvme_alloc_ns(struct nvme_ctrl *ctrl, unsigned nsid)
 
 	nvme_get_ctrl(ctrl);
 
-	device_add_disk(ctrl->device, ns->disk, nvme_ns_id_attr_groups);
+	ns->disk->attr_groups = nvme_ns_id_attr_groups;
+	device_add_disk(ctrl->device, ns->disk);
 
 	nvme_mpath_add_disk(ns, id);
 	nvme_fault_inject_init(ns);

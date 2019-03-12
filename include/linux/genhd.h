@@ -208,6 +208,9 @@ struct gendisk {
 #endif	/* CONFIG_BLK_DEV_INTEGRITY */
 	int node_id;
 	struct badblocks *bb;
+#ifndef __GENKSYMS__
+	const struct attribute_group **attr_groups;
+#endif
 };
 
 static inline struct gendisk *part_to_disk(struct hd_struct *part)
@@ -391,11 +394,12 @@ static inline void free_part_info(struct hd_struct *part)
 extern void part_round_stats(struct request_queue *q, int cpu, struct hd_struct *part);
 
 /* block/genhd.c */
-extern void device_add_disk(struct device *parent, struct gendisk *disk,
-			    const struct attribute_group **groups);
+extern void device_add_disk(struct device *parent, struct gendisk *disk);
+
 static inline void add_disk(struct gendisk *disk)
 {
-	device_add_disk(NULL, disk, NULL);
+	disk->attr_groups = NULL;
+	device_add_disk(NULL, disk);
 }
 
 extern void del_gendisk(struct gendisk *gp);

@@ -713,10 +713,11 @@ static void __device_add_disk(struct device *parent, struct gendisk *disk,
 	blk_integrity_add(disk);
 }
 
-void device_add_disk(struct device *parent, struct gendisk *disk,
-		     const struct attribute_group **groups)
+void device_add_disk(struct device *parent, struct gendisk *disk)
 
 {
+	const struct attribute_group **groups = disk->attr_groups;
+
 	__device_add_disk(parent, disk, groups, true);
 }
 EXPORT_SYMBOL(device_add_disk);
