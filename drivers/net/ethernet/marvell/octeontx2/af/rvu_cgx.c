@@ -100,12 +100,6 @@ static int rvu_map_cgx_lmac_pf(struct rvu *rvu)
 		for (lmac = 0; lmac < lmac_cnt; lmac++, pf++) {
 			rvu->pf2cgxlmac_map[pf] = cgxlmac_id_to_bmap(cgx, lmac);
 			rvu->cgxlmac2pf_map[CGX_OFFSET(cgx) + lmac] = 1 << pf;
-			/* Get mac address for the CGX mapped PF */
-			if (cgx_get_pfmacaddr(rvu_cgx_pdata(cgx, rvu), lmac,
-					  rvu->pf[pf].mac_addr))
-				dev_dbg(rvu->dev,
-					"pf %d: Failed to get MAC from firmware\n",
-					pf);
 			free_pkind = rvu_alloc_rsrc(&pkind->rsrc);
 			pkind->pfchan_map[free_pkind] = ((pf) & 0x3F) << 16;
 			rvu->cgx_mapped_pfs++;

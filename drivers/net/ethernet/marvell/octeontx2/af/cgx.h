@@ -127,7 +127,6 @@ int cgx_lmac_rx_tx_enable(void *cgxd, int lmac_id, bool enable);
 int cgx_lmac_tx_enable(void *cgxd, int lmac_id, bool enable);
 int cgx_lmac_addr_set(u8 cgx_id, u8 lmac_id, u8 *mac_addr);
 u64 cgx_lmac_addr_get(u8 cgx_id, u8 lmac_id);
-int cgx_get_pfmacaddr(void *cgxd, u8 lmac_id, u8 *macdst);
 void cgx_lmac_promisc_config(int cgx_id, int lmac_id, bool enable);
 void cgx_lmac_ptp_config(void *cgxd, int lmac_id, bool enable);
 void cgx_lmac_enadis_rx_pause_fwding(void *cgxd, int lmac_id, bool enable);
