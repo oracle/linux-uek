@@ -297,8 +297,7 @@ int rvu_mbox_handler_cpt_set_crypto_grp(struct rvu *rvu,
 	rsp->crypto_eng_grp = req->crypto_eng_grp;
 
 	if (req->crypto_eng_grp != INVALID_ENGINE_GRP &&
-	    (req->crypto_eng_grp < 0 ||
-	    req->crypto_eng_grp >= CPT_MAX_ENGINE_GROUPS))
+	    req->crypto_eng_grp >= CPT_MAX_ENGINE_GROUPS)
 		return CPT_AF_ERR_GRP_INVALID;
 
 	crypto_eng_grp = req->crypto_eng_grp;
