@@ -338,6 +338,19 @@ struct mbox_wq_info {
 	struct workqueue_struct *mbox_wq;
 };
 
+struct rvu_fwdata {
+#define RVU_FWDATA_HEADER_MAGIC	0xCFDA	/*Custom Firmware Data*/
+#define RVU_FWDATA_VERSION	0x0000
+	u32 header_magic;
+	u32 version;		/* version id */
+
+	/* MAC address */
+#define PF_MACNUM_MAX	32
+#define VF_MACNUM_MAX	256
+	u64 pf_macs[PF_MACNUM_MAX];
+	u64 vf_macs[VF_MACNUM_MAX];
+};
+
 struct ptp;
 
 struct rvu {
@@ -385,6 +398,9 @@ struct rvu {
 
 	struct ptp		*ptp;
 
+	/* Firmware data */
+	struct rvu_fwdata	*fwdata;
+
 	/* DebugFS */
 #ifdef CONFIG_DEBUG_FS
 	struct rvu_debugfs	rvu_dbg;
@@ -427,6 +443,12 @@ static inline bool is_rvu_9xxx_A0(struct rvu *rvu)
 static inline int is_afvf(u16 pcifunc)
 {
 	return !(pcifunc & ~RVU_PFVF_FUNC_MASK);
+}
+
+static inline bool is_rvu_fwdata_valid(struct rvu *rvu)
+{
+	return (rvu->fwdata->header_magic == RVU_FWDATA_HEADER_MAGIC) &&
+		(rvu->fwdata->version == RVU_FWDATA_VERSION);
 }
 
 int rvu_alloc_bitmap(struct rsrc_bmap *rsrc);

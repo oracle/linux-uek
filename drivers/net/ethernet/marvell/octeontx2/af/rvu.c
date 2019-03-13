@@ -666,6 +666,62 @@ static void rvu_free_hw_resources(struct rvu *rvu)
 	mutex_destroy(&rvu->rsrc_lock);
 }
 
+static void rvu_setup_pfvf_macaddress(struct rvu *rvu)
+{
+	struct rvu_hwinfo *hw = rvu->hw;
+	int pf, vf, numvfs, hwvf;
+	struct rvu_pfvf *pfvf;
+	u64 *mac;
+
+	for (pf = 0; pf < hw->total_pfs; pf++) {
+		if (!is_pf_cgxmapped(rvu, pf))
+			continue;
+		/* Assign MAC address to PF */
+		pfvf = &rvu->pf[pf];
+		mac = &rvu->fwdata->pf_macs[pf];
+		if (rvu->fwdata && pf < PF_MACNUM_MAX && *mac)
+			u64_to_ether_addr(*mac, pfvf->mac_addr);
+		else
+			eth_random_addr(pfvf->mac_addr);
+
+		/* Assign MAC address to VFs*/
+		rvu_get_pf_numvfs(rvu, pf, &numvfs, &hwvf);
+		for (vf = 0; vf < numvfs; vf++, hwvf++) {
+			pfvf =  &rvu->hwvf[hwvf];
+			mac = &rvu->fwdata->vf_macs[hwvf];
+			if (rvu->fwdata && hwvf < VF_MACNUM_MAX && *mac)
+				u64_to_ether_addr(*mac, pfvf->mac_addr);
+			else
+				eth_random_addr(pfvf->mac_addr);
+		}
+	}
+}
+
+static void rvu_fwdata_init(struct rvu *rvu)
+{
+	u64 fwdbase;
+	int err;
+
+	/* Get firmware data base address */
+	err = cgx_get_fwdata_base(&fwdbase);
+	if (err)
+		return;
+	rvu->fwdata = ioremap_wc(fwdbase, sizeof(struct rvu_fwdata));
+	if (!rvu->fwdata)
+		return;
+	if (!is_rvu_fwdata_valid(rvu)) {
+		iounmap(rvu->fwdata);
+		rvu->fwdata = NULL;
+		return;
+	}
+}
+
+static void rvu_fwdata_exit(struct rvu *rvu)
+{
+	if (rvu->fwdata)
+		iounmap(rvu->fwdata);
+}
+
 static int rvu_setup_hw_resources(struct rvu *rvu)
 {
 	struct rvu_hwinfo *hw = rvu->hw;
@@ -844,13 +900,18 @@ init:
 		rvu_scan_block(rvu, block);
 	}
 
+	rvu_fwdata_init(rvu);
+
 	err = rvu_npc_init(rvu);
 	if (err)
-		goto msix_err;
+		goto fwdata_err;
 
 	err = rvu_cgx_init(rvu);
 	if (err)
-		goto msix_err;
+		goto fwdata_err;
+
+	/* Assign MACs for CGX mapped functions */
+	rvu_setup_pfvf_macaddress(rvu);
 
 	err = rvu_npa_init(rvu);
 	if (err)
@@ -876,6 +937,8 @@ init:
 
 cgx_err:
 	rvu_cgx_exit(rvu);
+fwdata_err:
+	rvu_fwdata_exit(rvu);
 msix_err:
 	rvu_reset_msix(rvu);
 	return err;
@@ -2642,6 +2705,7 @@ err_mbox:
 	rvu_mbox_destroy(&rvu->afpf_wq_info);
 err_hwsetup:
 	rvu_cgx_exit(rvu);
+	rvu_fwdata_exit(rvu);
 	rvu_reset_all_blocks(rvu);
 	rvu_free_hw_resources(rvu);
 	rvu_clear_rvum_blk_revid(rvu);
@@ -2667,6 +2731,7 @@ static void rvu_remove(struct pci_dev *pdev)
 	rvu_unregister_interrupts(rvu);
 	rvu_flr_wq_destroy(rvu);
 	rvu_cgx_exit(rvu);
+	rvu_fwdata_exit(rvu);
 	rvu_mbox_destroy(&rvu->afpf_wq_info);
 	rvu_disable_sriov(rvu);
 	rvu_reset_all_blocks(rvu);
