@@ -465,6 +465,7 @@ struct npa_lf_alloc_req {
 	int node;
 	int aura_sz;  /* No of auras */
 	u32 nr_pools; /* No of pools */
+	u64 way_mask;
 };
 
 struct npa_lf_alloc_rsp {
@@ -555,6 +556,7 @@ struct nix_lf_alloc_req {
 	u16 npa_func;
 	u16 sso_func;
 	u64 rx_cfg;   /* See NIX_AF_LF(0..127)_RX_CFG */
+	u64 way_mask;
 };
 
 struct nix_lf_alloc_rsp {
