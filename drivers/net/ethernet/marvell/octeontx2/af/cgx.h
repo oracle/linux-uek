@@ -134,6 +134,7 @@ int cgx_lmac_internal_loopback(void *cgxd, int lmac_id, bool enable);
 int cgx_get_link_info(void *cgxd, int lmac_id,
 		      struct cgx_link_user_info *linfo);
 int cgx_lmac_linkup_start(void *cgxd);
+int cgx_get_fwdata_base(u64 *base);
 int cgx_get_mkex_prfl_info(u64 *addr, u64 *size);
 int cgx_lmac_get_pause_frm(void *cgxd, int lmac_id,
 			   u8 *tx_pause, u8 *rx_pause);
