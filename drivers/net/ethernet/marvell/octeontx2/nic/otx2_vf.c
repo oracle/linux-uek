@@ -530,6 +530,7 @@ static int otx2vf_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 			      NETIF_F_IPV6_CSUM | NETIF_F_RXHASH |
 			      NETIF_F_SG | NETIF_F_TSO | NETIF_F_TSO6;
 	netdev->features = netdev->hw_features;
+	netdev->watchdog_timeo = OTX2_TX_TIMEOUT;
 
 	netdev->netdev_ops = &otx2vf_netdev_ops;
 
