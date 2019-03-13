@@ -384,6 +384,7 @@ static bool is_sq_stalled(struct rvu *rvu, struct nix_hw *nix_hw, int smq)
 		tx_stall->nixlf_stall_count[nixlf]++;
 		return true;
 	}
+	return false;
 
 poll_sq_stats:
 	if (!tx_stall->nixlf_tl2_count[nixlf])
