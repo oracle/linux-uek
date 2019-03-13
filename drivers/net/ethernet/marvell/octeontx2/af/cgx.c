@@ -460,7 +460,7 @@ int cgx_lmac_set_pause_frm(void *cgxd, int lmac_id,
 }
 EXPORT_SYMBOL(cgx_lmac_set_pause_frm);
 
-void cgx_lmac_pause_frm_config(struct cgx *cgx, int lmac_id, bool enable)
+static void cgx_lmac_pause_frm_config(struct cgx *cgx, int lmac_id, bool enable)
 {
 	u64 cfg;
 
@@ -514,7 +514,6 @@ void cgx_lmac_pause_frm_config(struct cgx *cgx, int lmac_id, bool enable)
 		cgx_write(cgx, lmac_id, CGXX_SMUX_TX_CTL, cfg);
 	}
 }
-EXPORT_SYMBOL(cgx_lmac_pause_frm_config);
 
 /* CGX Firmware interface low level support */
 static int cgx_fwi_cmd_send(u64 req, u64 *resp, struct lmac *lmac)
