@@ -167,6 +167,13 @@ EXPORT_SYMBOL(switch_mm_cond_ibpb);
 DEFINE_STATIC_KEY_FALSE(switch_mm_always_ibpb);
 EXPORT_SYMBOL(switch_mm_always_ibpb);
 
+static enum spectre_v2_mitigation spectre_v2_enabled = SPECTRE_V2_NONE;
+
+static inline bool spectre_v2_eibrs_enabled(void)
+{
+	return spectre_v2_enabled == SPECTRE_V2_IBRS_ENHANCED;
+}
+
 void __init check_bugs(void)
 {
 	identify_boot_cpu();
@@ -391,8 +398,6 @@ static void x86_amd_ssb_disable(void)
 
 #undef pr_fmt
 #define pr_fmt(fmt)     "Spectre V2 : " fmt
-
-static enum spectre_v2_mitigation spectre_v2_enabled = SPECTRE_V2_NONE;
 
 static enum spectre_v2_user_mitigation spectre_v2_user __ro_after_init =
        SPECTRE_V2_USER_NONE;
@@ -630,7 +635,7 @@ spectre_v2_user_select_mitigation(enum spectre_v2_mitigation_cmd v2_cmd)
 	}
 
 	/* If enhanced IBRS is enabled no STIPB required */
-	if (spectre_v2_enabled == SPECTRE_V2_IBRS_ENHANCED)
+	if (spectre_v2_eibrs_enabled())
 		return;
 
 	/*
@@ -896,7 +901,7 @@ static void __init activate_spectre_v2_mitigation(enum spectre_v2_mitigation mod
 	if (retpoline_mode_selected(spectre_v2_enabled)) {
 		retpoline_activate(spectre_v2_enabled);
 
-	} else if (spectre_v2_enabled == SPECTRE_V2_IBRS_ENHANCED) {
+	} else if (spectre_v2_eibrs_enabled()) {
 		/* If enhanced IBRS mode is selected, enable it in all cpus */
 		spec_ctrl_flush_all_cpus(MSR_IA32_SPEC_CTRL,
 			x86_spec_ctrl_base | SPEC_CTRL_FEATURE_ENABLE_IBRS);
@@ -925,8 +930,7 @@ static void __init activate_spectre_v2_mitigation(enum spectre_v2_mitigation mod
 	 * speculation around firmware calls only when Enhanced IBRS isn't
 	 * supported.
 	 */
-	if (ibrs_supported &&
-	    (spectre_v2_enabled != SPECTRE_V2_IBRS_ENHANCED)) {
+	if (ibrs_supported && !spectre_v2_eibrs_enabled()) {
 		ibrs_firmware_enable();
 		pr_info("Enabling Restricted Speculation for firmware calls\n");
 	}
@@ -1014,7 +1018,7 @@ static void update_indir_branch_cond(void)
 void arch_smt_update(void)
 {
 	/* Enhanced IBRS implies STIBP. No update required. */
-	if (spectre_v2_enabled == SPECTRE_V2_IBRS_ENHANCED)
+	if (spectre_v2_eibrs_enabled())
 		return;
 
 	mutex_lock(&spec_ctrl_mutex);
@@ -1522,7 +1526,7 @@ static ssize_t l1tf_show_state(char *buf)
 
 static char *stibp_state(void)
 {
-	if (spectre_v2_enabled == SPECTRE_V2_IBRS_ENHANCED)
+	if (spectre_v2_eibrs_enabled())
 		return "";
 
 	switch (spectre_v2_user) {
