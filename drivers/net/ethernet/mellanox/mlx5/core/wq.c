@@ -137,7 +137,7 @@ int mlx5_wq_qp_create(struct mlx5_core_dev *mdev, struct mlx5_wq_param *param,
 		      void *qpc, struct mlx5_wq_qp *wq,
 		      struct mlx5_wq_ctrl *wq_ctrl)
 {
-	u32 sq_strides_offset;
+	u16 sq_strides_offset;
 	int err;
 
 	mlx5_fill_fbc(MLX5_GET(qpc, qpc, log_rq_stride) + 4,
