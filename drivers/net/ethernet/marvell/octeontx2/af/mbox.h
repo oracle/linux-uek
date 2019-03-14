@@ -1012,27 +1012,26 @@ enum header_fields {
 	NPC_HEADER_FIELDS_MAX,
 };
 
-/* all multi byte fields should be in network byte order */
 struct flow_msg {
 	unsigned char dmac[6];
 	unsigned char smac[6];
-	u16 etype;
-	u16 vlan_etype;
-	u16 vlan_tci;
+	__be16 etype;
+	__be16 vlan_etype;
+	__be16 vlan_tci;
 	union {
-		u32 ip4src;
-		u32 ip6src[4];
+		__be32 ip4src;
+		__be32 ip6src[4];
 	};
 	union {
-		u32 ip4dst;
-		u32 ip6dst[4];
+		__be32 ip4dst;
+		__be32 ip6dst[4];
 	};
 	u8 tos;
 	u8 ip_ver;
 	u8 ip_proto;
 	u8 tc;
-	u16 sport;
-	u16 dport;
+	__be16 sport;
+	__be16 dport;
 };
 
 struct npc_install_flow_req {
