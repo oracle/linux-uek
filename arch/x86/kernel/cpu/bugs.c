@@ -271,10 +271,15 @@ void x86_spec_ctrl_set(enum spec_ctrl_set_context context)
 		/*
 		 * Initial write of the MSR on this CPU.  Done to turn on SSBD
 		 * if it is always enabled in privileged mode
-		 * (spec_store_bypass_disable=on).  Use the base bits to avoid
-		 * IBRS needlessly being enabled before userspace is running.
+		 * (spec_store_bypass_disable=on). If enhanced IBRS is in use,
+		 * its bit has been set by an earlier write to the MSR on all
+		 * the cpus, and it must be preserved by this MSR write.
+		 * Otherwise use only the base bits (x86_spec_ctrl_base) to
+		 * avoid basic IBRS needlessly being enabled before userspace
+		 * is running.
 		 */
-		host = x86_spec_ctrl_base;
+		host = x86_spec_ctrl_base | (spectre_v2_eibrs_enabled() ?
+			SPEC_CTRL_FEATURE_ENABLE_IBRS : 0);
 		break;
 	case SPEC_CTRL_IDLE_ENTER:
 		/*
