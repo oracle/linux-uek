@@ -379,10 +379,9 @@ static void mlx5e_post_rx_mpwqe(struct mlx5e_rq *rq)
 
 static inline void mlx5e_fill_icosq_frag_edge(struct mlx5e_icosq *sq,
 					      struct mlx5_wq_cyc *wq,
-					      u16 pi, u16 frag_pi)
+					      u16 pi, u16 nnops)
 {
 	struct mlx5e_sq_wqe_info *edge_wi, *wi = &sq->db.ico_wqe[pi];
-	u8 nnops = mlx5_wq_cyc_get_frag_size(wq) - frag_pi;
 
 	edge_wi = wi + nnops;
 
@@ -402,17 +401,16 @@ static int mlx5e_alloc_rx_mpwqe(struct mlx5e_rq *rq, u16 ix)
 	struct mlx5_wq_cyc *wq = &sq->wq;
 	struct mlx5e_umr_wqe *umr_wqe;
 	int cpy = offsetof(struct mlx5e_umr_wqe, inline_mtts);
-	u16 pi, frag_pi;
+	u16 pi, contig_wqebbs_room;
 	int err;
 	int i;
 
 	pi = mlx5_wq_cyc_ctr2ix(wq, sq->pc);
-	frag_pi = mlx5_wq_cyc_ctr2fragix(wq, sq->pc);
-
-	if (unlikely(frag_pi + MLX5E_UMR_WQEBBS > mlx5_wq_cyc_get_frag_size(wq))) {
-		mlx5e_fill_icosq_frag_edge(sq, wq, pi, frag_pi);
+	contig_wqebbs_room = mlx5_wq_cyc_get_contig_wqebbs(wq, pi);
+	if (unlikely(contig_wqebbs_room < MLX5E_UMR_WQEBBS)) {
+		mlx5e_fill_icosq_frag_edge(sq, wq, pi, contig_wqebbs_room);
 		pi = mlx5_wq_cyc_ctr2ix(wq, sq->pc);
-	}
+ 	}
 
 	umr_wqe = mlx5_wq_cyc_get_wqe(wq, pi);
 	memcpy(umr_wqe, &wi->umr.wqe, cpy);
