@@ -1898,7 +1898,7 @@ static void otx2_vf_link_event_task(struct work_struct *work)
 
 	config = container_of(work, struct otx2_vf_config,
 			      link_event_work.work);
-	vf_idx = config->pf->vf_configs - config;
+	vf_idx = config - config->pf->vf_configs;
 	pf = config->pf;
 
 	msghdr = otx2_mbox_alloc_msg_rsp(&pf->mbox_pfvf[0].mbox_up, vf_idx,
