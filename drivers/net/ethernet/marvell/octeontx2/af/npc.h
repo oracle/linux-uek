@@ -299,6 +299,7 @@ struct rvu_npc_mcam_rule {
 	struct flow_msg packet;
 	struct flow_msg mask;
 	struct nix_rx_action action;
+	u64 vtag_action;
 	struct list_head list;
 	u64 features;
 	u16 pcifunc;
