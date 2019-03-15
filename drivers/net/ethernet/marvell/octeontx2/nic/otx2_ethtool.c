@@ -23,6 +23,8 @@
 #define DRV_VF_NAME	"octeontx2-nicvf"
 #define DRV_VF_VERSION	"1.0"
 
+#define OTX2_DEFAULT_ACTION	0x1
+
 struct otx2_stat {
 	char name[ETH_GSTRING_LEN];
 	unsigned int index;
@@ -689,6 +691,10 @@ static int otx2_prepare_flow_request(struct ethtool_rx_flow_spec *fsp,
 			       sizeof(pmask->vlan_tci));
 			req->features |= BIT_ULL(NPC_OUTER_VID);
 		}
+		/* Not Drop/Direct to queue but use action in default entry */
+		if (fsp->m_ext.data[1] &&
+		    fsp->h_ext.data[1] == cpu_to_be32(OTX2_DEFAULT_ACTION))
+			req->op = NIX_RX_ACTION_DEFAULT;
 	}
 	if (fsp->flow_type & FLOW_MAC_EXT &&
 	    !is_zero_ether_addr(fsp->m_ext.h_dest)) {
@@ -731,7 +737,11 @@ static int otx2_add_flow_msg(struct otx2_nic *pfvf, struct otx2_flow *flow)
 	if (ring_cookie == RX_CLS_FLOW_DISC) {
 		req->op = NIX_RX_ACTIONOP_DROP;
 	} else {
-		req->op = NIX_RX_ACTIONOP_UCAST;
+		/* change to unicast only if action of default entry is not
+		 * requested by user
+		 */
+		if (req->op != NIX_RX_ACTION_DEFAULT)
+			req->op = NIX_RX_ACTIONOP_UCAST;
 		req->index = ethtool_get_flow_spec_ring(ring_cookie);
 		vf = ethtool_get_flow_spec_ring_vf(ring_cookie);
 		if (vf > pci_num_vf(pfvf->pdev)) {
