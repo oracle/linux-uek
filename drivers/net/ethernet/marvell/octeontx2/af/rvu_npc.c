@@ -587,6 +587,7 @@ void rvu_npc_update_flowkey_alg_idx(struct rvu *rvu, u16 pcifunc, int nixlf,
 	struct npc_mcam *mcam = &rvu->hw->mcam;
 	struct nix_rx_action action;
 	int blkaddr, index, bank;
+	struct rvu_pfvf *pfvf;
 
 	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NPC, 0);
 	if (blkaddr < 0)
@@ -622,6 +623,11 @@ void rvu_npc_update_flowkey_alg_idx(struct rvu *rvu, u16 pcifunc, int nixlf,
 
 	rvu_write64(rvu, blkaddr,
 		    NPC_AF_MCAMEX_BANKX_ACTION(index, bank), *(u64 *)&action);
+
+	/* update the action change in default rule */
+	pfvf = rvu_get_pfvf(rvu, pcifunc);
+	if (pfvf->def_rule)
+		pfvf->def_rule->action = action;
 
 	index = npc_get_nixlf_mcam_index(mcam, pcifunc,
 					 nixlf, NIXLF_PROMISC_ENTRY);
