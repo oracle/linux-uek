@@ -66,6 +66,7 @@ struct rvu_debugfs {
 	struct dump_ctx nix_sq_ctx;
 	struct cpt_dump_ctx cpt_ctx;
 	int npa_qsize_id;
+	int nix_qsize_id;
 };
 #endif
 
