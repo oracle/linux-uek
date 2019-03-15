@@ -109,6 +109,8 @@ static const struct file_operations rvu_dbg_##name##_fops = { \
 	.write = rvu_dbg_##write_op \
 }
 
+static void print_nix_qsize(struct seq_file *filp, struct rvu_pfvf *pfvf);
+
 /* Dumps current provisioning status of all RVU block LFs */
 static ssize_t rvu_dbg_rsrc_attach_status(struct file *filp,
 					  char __user *buffer,
@@ -227,26 +229,13 @@ static bool rvu_dbg_is_valid_lf(struct rvu *rvu, int blktype, int lf,
 	return true;
 }
 
-/* The 'qsize' entry dumps current Aura/Pool context Qsize
- * and each context's current enable/disable status in a bitmap.
- */
-static int rvu_dbg_npa_qsize_display(struct seq_file *m, void *unsused)
+static void print_npa_qsize(struct seq_file *m, struct rvu_pfvf *pfvf)
 {
-	struct rvu_pfvf *pfvf;
-	struct rvu *rvu;
-	u16 pcifunc;
 	char *buf;
 
-	rvu = m->private;
-
-	if (!rvu_dbg_is_valid_lf(rvu, BLKTYPE_NPA, rvu->rvu_dbg.npa_qsize_id,
-				 &pcifunc))
-		return -EINVAL;
-
-	pfvf = rvu_get_pfvf(rvu, pcifunc);
 	buf = kmalloc(PAGE_SIZE, GFP_KERNEL);
 	if (!buf)
-		return -ENOMEM;
+		return;
 
 	if (!pfvf->aura_ctx) {
 		seq_puts(m, "Aura context is not initialized\n");
@@ -266,19 +255,56 @@ static int rvu_dbg_npa_qsize_display(struct seq_file *m, void *unsused)
 		seq_printf(m, "Pool context ena/dis bitmap : %s\n", buf);
 	}
 	kfree(buf);
+}
+
+/* The 'qsize' entry dumps current Aura/Pool context Qsize
+ * and each context's current enable/disable status in a bitmap.
+ */
+static int rvu_dbg_qsize_display(struct seq_file *filp, void *unsused,
+				 int blktype)
+{
+	void (*print_qsize)(struct seq_file *filp,
+			    struct rvu_pfvf *pfvf) = NULL;
+	struct rvu_pfvf *pfvf;
+	struct rvu *rvu;
+	int qsize_id;
+	u16 pcifunc;
+
+	rvu = filp->private;
+	switch (blktype) {
+	case BLKTYPE_NPA:
+		qsize_id = rvu->rvu_dbg.npa_qsize_id;
+		print_qsize = print_npa_qsize;
+		break;
+
+	case BLKTYPE_NIX:
+		qsize_id = rvu->rvu_dbg.nix_qsize_id;
+		print_qsize = print_nix_qsize;
+		break;
+
+	default:
+		return -EINVAL;
+	}
+
+	if (!rvu_dbg_is_valid_lf(rvu, blktype, qsize_id, &pcifunc))
+		return -EINVAL;
+
+	pfvf = rvu_get_pfvf(rvu, pcifunc);
+	print_qsize(filp, pfvf);
+
 	return 0;
 }
 
-static ssize_t rvu_dbg_npa_qsize_write(struct file *filp,
-				       const char __user *buffer,
-				       size_t count, loff_t *ppos)
+static ssize_t rvu_dbg_qsize_write(struct file *filp,
+				   const char __user *buffer, size_t count,
+				   loff_t *ppos, int blktype)
 {
+	char *blk_string = (blktype == BLKTYPE_NPA) ? "npa" : "nix";
 	struct seq_file *seqfile = filp->private_data;
 	char *cmd_buf, *cmd_buf_tmp, *subtoken;
 	struct rvu *rvu = seqfile->private;
 	u16 pcifunc;
-	int npalf;
-	int ret;
+	int ret, lf;
 
 	cmd_buf = memdup_user(buffer, count);
 	if (IS_ERR(cmd_buf))
@@ -294,26 +320,43 @@ static ssize_t rvu_dbg_npa_qsize_write(struct file *filp,
 
 	cmd_buf_tmp = cmd_buf;
 	subtoken = strsep(&cmd_buf, " ");
-	ret = subtoken ? kstrtoint(subtoken, 10, &npalf) : -EINVAL;
+	ret = subtoken ? kstrtoint(subtoken, 10, &lf) : -EINVAL;
 	if (cmd_buf)
 		ret = -EINVAL;
 
 	if (!strncmp(subtoken, "help", 4) || ret < 0) {
-		dev_info(rvu->dev, "Use echo <npalf > qsize\n");
-		goto npa_qsize_write_done;
+		dev_info(rvu->dev, "Use echo <%s-lf > qsize\n", blk_string);
+		goto qsize_write_done;
 	}
 
-	if (!rvu_dbg_is_valid_lf(rvu, BLKTYPE_NPA, npalf, &pcifunc)) {
+	if (!rvu_dbg_is_valid_lf(rvu, blktype, lf, &pcifunc)) {
 		ret = -EINVAL;
-		goto npa_qsize_write_done;
+		goto qsize_write_done;
 	}
+	if (blktype  == BLKTYPE_NPA)
+		rvu->rvu_dbg.npa_qsize_id = lf;
+	else
+		rvu->rvu_dbg.nix_qsize_id = lf;
 
-	rvu->rvu_dbg.npa_qsize_id = npalf;
-
-npa_qsize_write_done:
+qsize_write_done:
 	kfree(cmd_buf_tmp);
 	return ret ? ret : count;
 }
+
+static ssize_t rvu_dbg_npa_qsize_write(struct file *filp,
+				       const char __user *buffer,
+				       size_t count, loff_t *ppos)
+{
+	return rvu_dbg_qsize_write(filp, buffer, count, ppos,
+					    BLKTYPE_NPA);
+}
+
+static int rvu_dbg_npa_qsize_display(struct seq_file *filp, void *unused)
+{
+	return rvu_dbg_qsize_display(filp, unused, BLKTYPE_NPA);
+}
+
+RVU_DEBUG_SEQ_FOPS(npa_qsize, npa_qsize_display, npa_qsize_write);
 
 /* Dumps given NPA Aura's context */
 static void print_npa_aura_ctx(struct seq_file *m, struct npa_aq_enq_rsp *rsp)
@@ -603,8 +646,6 @@ done:
 	kfree(cmd_buf);
 	return ret ? ret : count;
 }
-
-RVU_DEBUG_SEQ_FOPS(npa_qsize, npa_qsize_display, npa_qsize_write);
 
 static ssize_t rvu_dbg_npa_aura_ctx_write(struct file *filp,
 					  const char __user *buffer,
@@ -1290,6 +1331,58 @@ static ssize_t rvu_dbg_nix_tx_stall_hwissue_display(struct file *filp,
 
 RVU_DEBUG_FOPS(nix_tx_stall_hwissue, nix_tx_stall_hwissue_display, NULL);
 
+static void print_nix_qctx_qsize(struct seq_file *filp, int qsize,
+				 unsigned long *bmap, char *qtype)
+{
+	char *buf;
+
+	buf = kmalloc(PAGE_SIZE, GFP_KERNEL);
+	if (!buf)
+		return;
+
+	bitmap_print_to_pagebuf(false, buf, bmap, qsize);
+	seq_printf(filp, "%s context count : %d\n", qtype, qsize);
+	seq_printf(filp, "%s context ena/dis bitmap : %s\n",
+		   qtype, buf);
+	kfree(buf);
+}
+
+static void print_nix_qsize(struct seq_file *filp, struct rvu_pfvf *pfvf)
+{
+	if (!pfvf->cq_ctx)
+		seq_puts(filp, "cq context is not initialized\n");
+	else
+		print_nix_qctx_qsize(filp, pfvf->cq_ctx->qsize, pfvf->cq_bmap,
+				     "cq");
+
+	if (!pfvf->rq_ctx)
+		seq_puts(filp, "rq context is not initialized\n");
+	else
+		print_nix_qctx_qsize(filp, pfvf->rq_ctx->qsize, pfvf->rq_bmap,
+				     "rq");
+
+	if (!pfvf->sq_ctx)
+		seq_puts(filp, "sq context is not initialized\n");
+	else
+		print_nix_qctx_qsize(filp, pfvf->sq_ctx->qsize, pfvf->sq_bmap,
+				     "sq");
+}
+
+static ssize_t rvu_dbg_nix_qsize_write(struct file *filp,
+				       const char __user *buffer,
+				       size_t count, loff_t *ppos)
+{
+	return rvu_dbg_qsize_write(filp, buffer, count, ppos,
+				   BLKTYPE_NIX);
+}
+
+static int rvu_dbg_nix_qsize_display(struct seq_file *filp, void *unused)
+{
+	return rvu_dbg_qsize_display(filp, unused, BLKTYPE_NIX);
+}
+
+RVU_DEBUG_SEQ_FOPS(nix_qsize, nix_qsize_display, nix_qsize_write);
+
 static void rvu_dbg_nix_init(struct rvu *rvu)
 {
 	const struct device *dev = &rvu->pdev->dev;
@@ -1338,6 +1431,11 @@ static void rvu_dbg_nix_init(struct rvu *rvu)
 
 	pfile = debugfs_create_file("tx_stall_hwissue", 0600, rvu->rvu_dbg.nix,
 				    rvu, &rvu_dbg_nix_tx_stall_hwissue_fops);
+	if (!pfile)
+		goto create_failed;
+
+	pfile = debugfs_create_file("qsize", 0600, rvu->rvu_dbg.nix, rvu,
+				    &rvu_dbg_nix_qsize_fops);
 	if (!pfile)
 		goto create_failed;
 
