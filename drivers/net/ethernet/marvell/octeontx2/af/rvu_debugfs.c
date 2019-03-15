@@ -1493,11 +1493,12 @@ static void rvu_dbg_npc_mcam_show_flows(struct seq_file *s,
 			break;
 		case NPC_OUTER_VID:
 			seq_printf(s, "%d ", ntohs(rule->packet.vlan_tci));
-			seq_printf(s, "%d\n", ntohs(rule->mask.vlan_tci));
+			seq_printf(s, "mask 0x%x\n",
+				   ntohs(rule->mask.vlan_tci));
 			break;
 		case NPC_TOS:
 			seq_printf(s, "%d ", rule->packet.tos);
-			seq_printf(s, "%d\n", rule->mask.tos);
+			seq_printf(s, "mask 0x%x\n", rule->mask.tos);
 			break;
 		case NPC_SIP_IPV4:
 			seq_printf(s, "%pI4 ", &rule->packet.ip4src);
@@ -1518,17 +1519,42 @@ static void rvu_dbg_npc_mcam_show_flows(struct seq_file *s,
 		case NPC_SPORT_TCP:
 		case NPC_SPORT_UDP:
 			seq_printf(s, "%d ", ntohs(rule->packet.sport));
-			seq_printf(s, "%d\n", ntohs(rule->mask.sport));
+			seq_printf(s, "mask 0x%x\n", ntohs(rule->mask.sport));
 			break;
 		case NPC_DPORT_TCP:
 		case NPC_DPORT_UDP:
 			seq_printf(s, "%d ", ntohs(rule->packet.dport));
-			seq_printf(s, "%d\n", ntohs(rule->mask.dport));
+			seq_printf(s, "mask 0x%x\n", ntohs(rule->mask.dport));
 			break;
 		default:
 			break;
 		}
 	}
+}
+
+static void rvu_dbg_npc_mcam_show_action(struct seq_file *s,
+					 struct rvu_npc_mcam_rule *rule)
+{
+	switch (rule->action.op) {
+	case NIX_RX_ACTIONOP_DROP:
+		seq_puts(s, "\taction: Drop\n");
+		break;
+	case NIX_RX_ACTIONOP_UCAST:
+		seq_printf(s, "\taction: Direct to queue %d\n",
+			   rule->action.index);
+		break;
+	case NIX_RX_ACTIONOP_RSS:
+		seq_puts(s, "\taction: RSS\n");
+		break;
+	case NIX_RX_ACTIONOP_UCAST_IPSEC:
+		seq_puts(s, "\taction: Unicast ipsec\n");
+		break;
+	case NIX_RX_ACTIONOP_MCAST:
+		seq_puts(s, "\taction: Multicast\n");
+		break;
+	default:
+		break;
+	};
 }
 
 static int rvu_dbg_npc_mcam_show_rules(struct seq_file *s, void *unused)
@@ -1557,6 +1583,7 @@ static int rvu_dbg_npc_mcam_show_rules(struct seq_file *s, void *unused)
 
 		seq_printf(s, "\tmcam entry: %d\n", iter->entry);
 		rvu_dbg_npc_mcam_show_flows(s, iter);
+		rvu_dbg_npc_mcam_show_action(s, iter);
 
 		if (!iter->has_cntr)
 			continue;

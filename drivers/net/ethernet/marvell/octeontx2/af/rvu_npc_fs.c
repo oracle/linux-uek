@@ -785,6 +785,9 @@ static int npc_install_flow(struct rvu *rvu, int blkaddr, u16 target,
 	action.match_id = req->match_id;
 	action.flow_key_alg = req->flow_key_alg;
 
+	if (req->op == NIX_RX_ACTION_DEFAULT && pfvf->def_rule)
+		action = pfvf->def_rule->action;
+
 	entry->action = *(u64 *)&action;
 	/* VTAG0 starts at 12th byte of LID_A.
 	 * VTAG1 starts at 2nd byte of LID_B.
@@ -874,6 +877,7 @@ update_rule:
 	memcpy(&rule->mask, &dummy.mask, sizeof(rule->mask));
 	rule->entry = entry_index;
 	rule->action = action;
+	rule->vtag_action = entry->vtag_action;
 	rule->features = installed_features;
 	rule->default_rule = req->default_rule;
 	rule->pcifunc = requester;
