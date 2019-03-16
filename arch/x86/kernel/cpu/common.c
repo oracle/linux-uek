@@ -716,29 +716,70 @@ static void __cpuinit identify_cpu_without_cpuid(struct cpuinfo_x86 *c)
 #endif
 }
 
-static const __cpuinitconst struct x86_cpu_id cpu_no_speculation[] = {
-	{ X86_VENDOR_INTEL,	6, INTEL_FAM6_ATOM_CEDARVIEW,	X86_FEATURE_ANY },
-	{ X86_VENDOR_INTEL,	6, INTEL_FAM6_ATOM_CLOVERVIEW,	X86_FEATURE_ANY },
-	{ X86_VENDOR_INTEL,	6, INTEL_FAM6_ATOM_LINCROFT,	X86_FEATURE_ANY },
-	{ X86_VENDOR_INTEL,	6, INTEL_FAM6_ATOM_PENWELL,	X86_FEATURE_ANY },
-	{ X86_VENDOR_INTEL,	6, INTEL_FAM6_ATOM_PINEVIEW,	X86_FEATURE_ANY },
-	{ X86_VENDOR_CENTAUR,	5 },
-	{ X86_VENDOR_INTEL,	5 },
-	{ X86_VENDOR_NSC,	5 },
-	{ X86_VENDOR_ANY,	4 },
+#define NO_SPECULATION	BIT(0)
+#define NO_MELTDOWN	BIT(1)
+#define NO_SSB		BIT(2)
+#define NO_L1TF		BIT(3)
+
+#define VULNWL(_vendor, _family, _model, _whitelist)	\
+	{ X86_VENDOR_##_vendor, _family, _model, X86_FEATURE_ANY, _whitelist }
+
+#define VULNWL_INTEL(model, whitelist)			\
+	VULNWL(INTEL, 6, INTEL_FAM6_##model, whitelist)
+
+#define VULNWL_AMD(family, whitelist)			\
+	VULNWL(AMD, family, X86_MODEL_ANY, whitelist)
+
+static const __initconst struct x86_cpu_id cpu_vuln_whitelist[] = {
+	VULNWL(ANY,	4, X86_MODEL_ANY,	NO_SPECULATION),
+	VULNWL(CENTAUR,	5, X86_MODEL_ANY,	NO_SPECULATION),
+	VULNWL(INTEL,	5, X86_MODEL_ANY,	NO_SPECULATION),
+	VULNWL(NSC,	5, X86_MODEL_ANY,	NO_SPECULATION),
+
+	/* Intel Family 6 */
+	VULNWL_INTEL(ATOM_CEDARVIEW,		NO_SPECULATION),
+	VULNWL_INTEL(ATOM_CLOVERVIEW,		NO_SPECULATION),
+	VULNWL_INTEL(ATOM_PENWELL,		NO_SPECULATION),
+	VULNWL_INTEL(ATOM_PINEVIEW,		NO_SPECULATION),
+	VULNWL_INTEL(ATOM_LINCROFT,		NO_SPECULATION),
+
+	VULNWL_INTEL(ATOM_SILVERMONT1,		NO_SSB | NO_L1TF),
+	VULNWL_INTEL(ATOM_SILVERMONT2,		NO_SSB | NO_L1TF),
+	VULNWL_INTEL(ATOM_MERRIFIELD1,		NO_SSB | NO_L1TF),
+	VULNWL_INTEL(ATOM_AIRMONT,		NO_SSB | NO_L1TF),
+	VULNWL_INTEL(XEON_PHI_KNL,		NO_SSB | NO_L1TF),
+
+	VULNWL_INTEL(CORE_YONAH,		NO_SSB),
+
+	VULNWL_INTEL(ATOM_MERRIFIELD2,		NO_L1TF),
+
+	VULNWL_INTEL(ATOM_GOLDMONT,		NO_L1TF),
+	VULNWL_INTEL(ATOM_DENVERTON,		NO_L1TF),
+	VULNWL_INTEL(ATOM_GEMINI_LAKE,		NO_L1TF),
+
+	/* AMD Family 0xf - 0x12 */
+	VULNWL_AMD(0x0f,		NO_MELTDOWN | NO_SSB | NO_L1TF),
+	VULNWL_AMD(0x10,		NO_MELTDOWN | NO_SSB | NO_L1TF),
+	VULNWL_AMD(0x11,		NO_MELTDOWN | NO_SSB | NO_L1TF),
+	VULNWL_AMD(0x12,		NO_MELTDOWN | NO_SSB | NO_L1TF),
+
+	/* FAMILY_ANY must be last, otherwise 0x0f - 0x12 matches won't work */
+	VULNWL_AMD(X86_FAMILY_ANY,	NO_MELTDOWN | NO_L1TF),
 	{}
 };
 
-static const __cpuinitconst struct x86_cpu_id cpu_no_meltdown[] = {
-	{ X86_VENDOR_AMD },
-	{}
-};
+static bool __init cpu_matches(unsigned long which)
+{
+	const struct x86_cpu_id *m = x86_match_cpu(cpu_vuln_whitelist);
+
+	return m && !!(m->driver_data & which);
+}
 
 static bool __cpuinit cpu_vulnerable_to_meltdown(struct cpuinfo_x86 *c)
 {
 	u64 ia32_cap = 0;
 
-	if (x86_match_cpu(cpu_no_meltdown))
+	if (cpu_matches(NO_MELTDOWN))
 		return false;
 
 	if (cpu_has(c, X86_FEATURE_IA32_ARCH_CAPS))
@@ -751,29 +792,15 @@ static bool __cpuinit cpu_vulnerable_to_meltdown(struct cpuinfo_x86 *c)
 	return true;
 }
 
-static const struct x86_cpu_id cpu_no_l1tf[] = {
-	/* in addition to cpu_no_speculation */
-	{ X86_VENDOR_INTEL,     6,      INTEL_FAM6_ATOM_SILVERMONT1     },
-	{ X86_VENDOR_INTEL,     6,      INTEL_FAM6_ATOM_SILVERMONT2     },
-	{ X86_VENDOR_INTEL,     6,      INTEL_FAM6_ATOM_AIRMONT         },
-	{ X86_VENDOR_INTEL,     6,      INTEL_FAM6_ATOM_MERRIFIELD1     },
-	{ X86_VENDOR_INTEL,     6,      INTEL_FAM6_ATOM_MERRIFIELD2     },
-	{ X86_VENDOR_INTEL,     6,      INTEL_FAM6_ATOM_GOLDMONT        },
-	{ X86_VENDOR_INTEL,     6,      INTEL_FAM6_ATOM_DENVERTON       },
-	{ X86_VENDOR_INTEL,     6,      INTEL_FAM6_ATOM_GEMINI_LAKE     },
-	{ X86_VENDOR_INTEL,     6,      INTEL_FAM6_XEON_PHI_KNL         },
-	{}
-};
-
 static void __cpuinit cpu_set_bug_bits(struct cpuinfo_x86 *c)
 {
-	if (x86_match_cpu(cpu_no_speculation))
+	if (cpu_matches(NO_SPECULATION))
 		return;
 
 	setup_force_cpu_bug(X86_BUG_SPECTRE_V1);
 	setup_force_cpu_bug(X86_BUG_SPECTRE_V2);
 
-	if (!cpu_vulnerable_to_meltdown(c))
+	if (cpu_matches(NO_MELTDOWN))
 		return;
 
 	setup_force_cpu_bug(X86_BUG_CPU_MELTDOWN);
@@ -781,7 +808,7 @@ static void __cpuinit cpu_set_bug_bits(struct cpuinfo_x86 *c)
 	if (!cpu_has_eager_fpu)
 		pr_warn_once("eager_fpu is disabled. You are now susceptible to CVE-2018-3665.\n");
 
-	if (x86_match_cpu(cpu_no_l1tf))
+	if (cpu_matches(NO_L1TF))
 		return;
 
 	setup_force_cpu_bug(X86_BUG_L1TF);
@@ -836,7 +863,7 @@ static void __init early_identify_cpu(struct cpuinfo_x86 *c)
 	setup_smep(c);
 
 #ifdef CONFIG_PAGE_TABLE_ISOLATION
-	if (!x86_match_cpu(cpu_no_speculation)) {
+	if (!cpu_matches(NO_SPECULATION)) {
 		if (!cpu_vulnerable_to_meltdown(c))
 			kaiser_enabled = 0;
 	}
