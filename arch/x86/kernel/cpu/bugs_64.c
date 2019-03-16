@@ -165,6 +165,27 @@ static void mds_select_mitigation(void)
 #undef pr_fmt
 
 #ifdef CONFIG_SYSFS
+static ssize_t mds_show_state(char *buf)
+{
+	/* Select mitigation again in case new microcode has been loaded. */
+	mds_select_mitigation();
+
+	if (cpu_has_hypervisor) {
+		return sprintf(buf, "%s; SMT Host state unknown\n",
+			       mds_strings[mds_mitigation]);
+	}
+
+	if (cpu0_matches(MSBDS_ONLY)) {
+		return sprintf(buf, "%s; SMT %s\n", mds_strings[mds_mitigation],
+			       (cpumask_weight(cpu_sibling_mask(0)) > 1) ?
+			       "mitigated" : "disabled");
+	}
+
+	return sprintf(buf, "%s; SMT %s\n", mds_strings[mds_mitigation],
+		       (cpumask_weight(cpu_sibling_mask(0)) > 1) ?
+		       "vulnerable" : "disabled");
+}
+
 ssize_t cpu_show_common(struct device *dev, struct device_attribute *attr,
 			char *buf, unsigned int bug)
 {
@@ -219,5 +240,10 @@ ssize_t cpu_show_spectre_v2(struct device *dev,
 ssize_t cpu_show_l1tf(struct device *dev, struct device_attribute *attr, char *buf)
 {
 	return cpu_show_common(dev, attr, buf, X86_BUG_L1TF);
+}
+
+ssize_t cpu_show_mds(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	return mds_show_state(buf);
 }
 #endif
