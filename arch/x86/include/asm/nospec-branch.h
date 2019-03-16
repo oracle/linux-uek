@@ -39,7 +39,7 @@
  */
 static inline void mds_clear_cpu_buffers(void)
 {
-	static const u16 ds = __KERNEL_DS;
+	static const unsigned short ds = __KERNEL_DS;
 
 	/*
 	 * Has to be the memory-operand variant because only that
@@ -59,6 +59,16 @@ static inline void mds_clear_cpu_buffers(void)
  * Clear CPU buffers if the corresponding static key is enabled
  */
 static inline void mds_user_clear_cpu_buffers(void)
+{
+	mds_clear_cpu_buffers();
+}
+
+/**
+ * mds_idle_clear_cpu_buffers - Mitigation for MDS vulnerability
+ *
+ * Clear CPU buffers if the corresponding static key is enabled
+ */
+static inline void mds_idle_clear_cpu_buffers(void)
 {
 	mds_clear_cpu_buffers();
 }
