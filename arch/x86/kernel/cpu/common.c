@@ -764,6 +764,7 @@ static void __cpuinit identify_cpu_without_cpuid(struct cpuinfo_x86 *c)
 #define NO_SSB		BIT(2)
 #define NO_L1TF		BIT(3)
 #define NO_MDS		BIT(4)
+#define MSBDS_ONLY	BIT(5)
 
 #define VULNWL(_vendor, _family, _model, _whitelist)	\
 	{ X86_VENDOR_##_vendor, _family, _model, X86_FEATURE_ANY, _whitelist }
@@ -791,8 +792,8 @@ static const __initconst struct x86_cpu_id cpu_vuln_whitelist[] = {
 	VULNWL_INTEL(ATOM_SILVERMONT2,		NO_SSB | NO_L1TF),
 	VULNWL_INTEL(ATOM_MERRIFIELD1,		NO_SSB | NO_L1TF),
 	VULNWL_INTEL(ATOM_AIRMONT,		NO_SSB | NO_L1TF),
-	VULNWL_INTEL(XEON_PHI_KNL,		NO_SSB | NO_L1TF),
-	VULNWL_INTEL(XEON_PHI_KNM,		NO_SSB | NO_L1TF),
+	VULNWL_INTEL(XEON_PHI_KNL,		NO_SSB | NO_L1TF | MSBDS_ONLY),
+	VULNWL_INTEL(XEON_PHI_KNM,		NO_SSB | NO_L1TF | MSBDS_ONLY),
 
 	VULNWL_INTEL(CORE_YONAH,		NO_SSB),
 
