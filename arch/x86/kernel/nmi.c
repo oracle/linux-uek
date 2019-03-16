@@ -25,6 +25,7 @@
 #include <asm/traps.h>
 #include <asm/mach_traps.h>
 #include <asm/nmi.h>
+#include <asm/nospec-branch.h>
 
 struct nmi_desc {
 	spinlock_t lock;
@@ -290,6 +291,9 @@ do_nmi(struct pt_regs *regs, long error_code)
 		default_do_nmi(regs);
 
 	nmi_exit();
+
+	if (user_mode(regs))
+		mds_user_clear_cpu_buffers();
 }
 
 void stop_nmi(void)

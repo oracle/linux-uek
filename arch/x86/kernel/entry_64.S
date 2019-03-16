@@ -57,6 +57,7 @@
 #include <asm/cpufeature.h>
 #include <asm/kaiser.h>
 #include <asm/msr-index.h>
+#include <asm/nospec-branch.h>
 
 /* Avoid __ASSEMBLER__'ifying <linux/audit.h> just for this.  */
 #include <linux/elf-em.h>
@@ -550,6 +551,7 @@ sysret_check:
 	 * switch CR3 in NMIs.  Normal interrupts are OK because
 	 * they are off here.
 	 */
+	MDS_CLEAR_CPU_BUFFERS
 	SWITCH_USER_CR3
 	movq	PER_CPU_VAR(old_rsp), %rsp
 	USERGS_SYSRET64
