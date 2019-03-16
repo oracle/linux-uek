@@ -720,6 +720,7 @@ static void __cpuinit identify_cpu_without_cpuid(struct cpuinfo_x86 *c)
 #define NO_MELTDOWN	BIT(1)
 #define NO_SSB		BIT(2)
 #define NO_L1TF		BIT(3)
+#define NO_MDS		BIT(4)
 
 #define VULNWL(_vendor, _family, _model, _whitelist)	\
 	{ X86_VENDOR_##_vendor, _family, _model, X86_FEATURE_ANY, _whitelist }
@@ -753,18 +754,18 @@ static const __initconst struct x86_cpu_id cpu_vuln_whitelist[] = {
 
 	VULNWL_INTEL(ATOM_MERRIFIELD2,		NO_L1TF),
 
-	VULNWL_INTEL(ATOM_GOLDMONT,		NO_L1TF),
-	VULNWL_INTEL(ATOM_DENVERTON,		NO_L1TF),
-	VULNWL_INTEL(ATOM_GEMINI_LAKE,		NO_L1TF),
+	VULNWL_INTEL(ATOM_GOLDMONT,		NO_MDS | NO_L1TF),
+	VULNWL_INTEL(ATOM_DENVERTON,		NO_MDS | NO_L1TF),
+	VULNWL_INTEL(ATOM_GEMINI_LAKE,		NO_MDS | NO_L1TF),
 
 	/* AMD Family 0xf - 0x12 */
-	VULNWL_AMD(0x0f,		NO_MELTDOWN | NO_SSB | NO_L1TF),
-	VULNWL_AMD(0x10,		NO_MELTDOWN | NO_SSB | NO_L1TF),
-	VULNWL_AMD(0x11,		NO_MELTDOWN | NO_SSB | NO_L1TF),
-	VULNWL_AMD(0x12,		NO_MELTDOWN | NO_SSB | NO_L1TF),
+	VULNWL_AMD(0x0f,		NO_MELTDOWN | NO_SSB | NO_L1TF | NO_MDS),
+	VULNWL_AMD(0x10,		NO_MELTDOWN | NO_SSB | NO_L1TF | NO_MDS),
+	VULNWL_AMD(0x11,		NO_MELTDOWN | NO_SSB | NO_L1TF | NO_MDS),
+	VULNWL_AMD(0x12,		NO_MELTDOWN | NO_SSB | NO_L1TF | NO_MDS),
 
 	/* FAMILY_ANY must be last, otherwise 0x0f - 0x12 matches won't work */
-	VULNWL_AMD(X86_FAMILY_ANY,	NO_MELTDOWN | NO_L1TF),
+	VULNWL_AMD(X86_FAMILY_ANY,	NO_MELTDOWN | NO_L1TF | NO_MDS),
 	{}
 };
 
