@@ -999,4 +999,9 @@ bool set_pm_idle_to_default(void);
 
 void stop_this_cpu(void *dummy);
 
+enum mds_mitigations {
+	MDS_MITIGATION_OFF,
+	MDS_MITIGATION_FULL,
+};
+
 #endif /* _ASM_X86_PROCESSOR_H */

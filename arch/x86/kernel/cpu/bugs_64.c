@@ -17,6 +17,7 @@
 
 static void __init spectre_v2_parse_cmdline(void);
 static void __init l1tf_select_mitigation(void);
+static void mds_select_mitigation(void);
 
 void __init check_bugs(void)
 {
@@ -41,6 +42,8 @@ void __init check_bugs(void)
 	spectre_v2_parse_cmdline();
 
 	l1tf_select_mitigation();
+
+	mds_select_mitigation();
 }
 
 static inline bool match_option(const char *arg, int arglen, const char *opt)
@@ -123,6 +126,42 @@ static void __init l1tf_select_mitigation(void)
 
 	setup_force_cpu_cap(X86_FEATURE_L1TF_PTEINV);
 }
+#undef pr_fmt
+#define pr_fmt(fmt)	"MDS: " fmt
+
+/* Default mitigation for L1TF-affected CPUs */
+static enum mds_mitigations mds_mitigation __read_mostly = MDS_MITIGATION_FULL;
+
+static const char * const mds_strings[] = {
+	[MDS_MITIGATION_OFF]	= "Vulnerable",
+	[MDS_MITIGATION_FULL]	= "Mitigation: Clear CPU buffers"
+};
+
+static void mds_select_mitigation(void)
+{
+	u64 ia32_cap = 0;
+
+	/*
+	 * Reset MDS mitigation to default value as new microcode may have
+	 * been loaded and we need to re-determine the current status.
+	 */
+	mds_mitigation = MDS_MITIGATION_FULL;
+
+	if (cpu_has(&cpu_data(0), X86_FEATURE_ARCH_CAPABILITIES))
+		rdmsrl(MSR_IA32_ARCH_CAPABILITIES, ia32_cap);
+
+	if (cpu0_matches(NO_MDS) || (ia32_cap & ARCH_CAP_MDS_NO)) {
+		mds_mitigation = MDS_MITIGATION_OFF;
+		return;
+	}
+
+	if (mds_mitigation == MDS_MITIGATION_FULL) {
+		if (!cpu_has(&cpu_data(0), X86_FEATURE_MD_CLEAR))
+			mds_mitigation = MDS_MITIGATION_OFF;
+	}
+	pr_info("%s\n", mds_strings[mds_mitigation]);
+}
+
 #undef pr_fmt
 
 #ifdef CONFIG_SYSFS
