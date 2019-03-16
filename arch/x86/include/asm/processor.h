@@ -21,6 +21,7 @@ struct mm_struct;
 #include <asm/desc_defs.h>
 #include <asm/nops.h>
 #include <asm/special_insns.h>
+#include <asm/nospec-branch.h>
 
 #include <linux/personality.h>
 #include <linux/cpumask.h>
@@ -686,6 +687,8 @@ static inline void __monitor(const void *eax, unsigned long ecx,
 
 static inline void __mwait(unsigned long eax, unsigned long ecx)
 {
+	mds_idle_clear_cpu_buffers();
+
 	/* "mwait %eax, %ecx;" */
 	asm volatile(".byte 0x0f, 0x01, 0xc9;"
 		     :: "a" (eax), "c" (ecx));
@@ -693,6 +696,8 @@ static inline void __mwait(unsigned long eax, unsigned long ecx)
 
 static inline void __sti_mwait(unsigned long eax, unsigned long ecx)
 {
+	mds_idle_clear_cpu_buffers();
+
 	trace_hardirqs_on();
 	/* "mwait %eax, %ecx;" */
 	asm volatile("sti; .byte 0x0f, 0x01, 0xc9;"
