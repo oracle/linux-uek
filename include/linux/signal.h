@@ -39,7 +39,7 @@ enum siginfo_layout {
 #endif
 };
 
-enum siginfo_layout siginfo_layout(int sig, int si_code);
+enum siginfo_layout siginfo_layout(unsigned sig, int si_code);
 
 /*
  * Define some primitives to manipulate sigset_t.
@@ -419,7 +419,6 @@ int unhandled_signal(struct task_struct *tsk, int sig);
 
 void signals_init(void);
 
-int do_sigaltstack(const stack_t __user *, stack_t __user *, unsigned long);
 int restore_altstack(const stack_t __user *);
 int __save_altstack(stack_t __user *, unsigned long);
 
