@@ -861,7 +861,7 @@ static const struct x86_cpu_id cpu_no_l1tf[] = {
 	{}
 };
 
-static void cpu_set_bug_bits(struct cpuinfo_x86 *c)
+void cpu_set_bug_bits(struct cpuinfo_x86 *c)
 {
 	u64 ia32_cap = 0;
 

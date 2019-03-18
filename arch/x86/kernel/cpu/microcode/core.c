@@ -164,6 +164,23 @@ static int collect_cpu_info(int cpu)
 
 static void microcode_late_eval_cpuid(void *arg)
 {
+	/*
+	 * First we clear the bugs that are not fully connected with
+	 * CPU model and can be modified after a microcode loading
+	 * and than re-evealuate CPU bugs. We are using CPU 0 as all
+	 * of these are stored in boot_cpu_data.
+	 */
+	if(smp_processor_id() == 0) {
+		setup_clear_cpu_cap(X86_BUG_SPEC_STORE_BYPASS);
+		setup_clear_cpu_cap(X86_BUG_CPU_MELTDOWN);
+		setup_clear_cpu_cap(X86_BUG_L1TF);
+		cpu_set_bug_bits(&cpu_data(smp_processor_id()));
+
+		/* If CPU is not susceptible to L1TF, clean-up the L1TF_PTEINV cap. */
+		if (!boot_cpu_has(X86_BUG_L1TF))
+			setup_clear_cpu_cap(X86_FEATURE_L1TF_PTEINV);
+	}
+
 	init_scattered_cpuid_features(&cpu_data(smp_processor_id()),
 	    GET_CPU_CAP_FULL);
 }
