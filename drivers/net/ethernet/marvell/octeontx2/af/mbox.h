@@ -252,7 +252,8 @@ M(NIX_LF_PTP_TX_DISABLE, 0x8014, nix_lf_ptp_tx_disable, msg_req, msg_rsp) \
 M(NIX_SET_VLAN_TPID,	0x8015, nix_set_vlan_tpid, nix_set_vlan_tpid, msg_rsp) \
 M(NIX_BP_ENABLE,	0x8016, nix_bp_enable, nix_bp_cfg_req,	\
 				nix_bp_cfg_rsp)	\
-M(NIX_BP_DISABLE,	0x8017, nix_bp_disable, nix_bp_cfg_req, msg_rsp)
+M(NIX_BP_DISABLE,	0x8017, nix_bp_disable, nix_bp_cfg_req, msg_rsp) \
+M(NIX_GET_MAC_ADDR,     0x8018, nix_get_mac_addr, msg_req, nix_get_mac_addr_rsp)
 
 /* Messages initiated by AF (range 0xC00 - 0xDFF) */
 #define MBOX_UP_CGX_MESSAGES						\
@@ -664,6 +665,11 @@ struct nix_rss_flowkey_cfg_rsp {
 struct nix_set_mac_addr {
 	struct mbox_msghdr hdr;
 	u8 mac_addr[ETH_ALEN]; /* MAC address to be set for this pcifunc */
+};
+
+struct nix_get_mac_addr_rsp {
+	struct mbox_msghdr hdr;
+	u8 mac_addr[ETH_ALEN];
 };
 
 struct nix_mark_format_cfg {
