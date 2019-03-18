@@ -193,6 +193,13 @@ void init_scattered_cpuid_features(struct cpuinfo_x86 *c,
 	if (c->cpu_index == 0) {
 		mutex_lock(&spec_ctrl_mutex);
 		if (cpu_has(c, X86_FEATURE_IBRS)) {
+
+			/*
+			 * Set boot_cpu_data capability. This is only
+			 * needed by late cpu microcode loading.
+			 */
+			setup_force_cpu_cap(X86_FEATURE_IBRS);
+
 			set_ibrs_supported();
 			/* Enable enhanced IBRS usage if available */
 			if (cpu_has(c, X86_FEATURE_IBRS_ENHANCED)) {

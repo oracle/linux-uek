@@ -58,6 +58,8 @@ EXPORT_SYMBOL(use_ibrs_on_skylake);
 
 bool use_ibrs_with_ssbd = true;
 
+bool microcode_had_ibrs = false;
+
 /*
  * retpoline_fallback flags:
  * SPEC_CTRL_USE_RETPOLINE_FALLBACK	pick retpoline fallback mitigation
@@ -73,9 +75,9 @@ static enum spectre_v2_mitigation retpoline_mode = SPECTRE_V2_NONE;
 DEFINE_STATIC_KEY_FALSE(retpoline_enabled_key);
 EXPORT_SYMBOL(retpoline_enabled_key);
 
-static bool __init is_skylake_era(void);
-static void __init disable_ibrs_and_friends(bool);
-static void __init activate_spectre_v2_mitigation(enum spectre_v2_mitigation);
+static bool is_skylake_era(void);
+static void disable_ibrs_and_friends(bool);
+static void activate_spectre_v2_mitigation(enum spectre_v2_mitigation);
 
 int __init spectre_v2_heuristics_setup(char *p)
 {
@@ -195,6 +197,7 @@ void __init check_bugs(void)
 		}
 		x86_spec_ctrl_priv = x86_spec_ctrl_base;
 		update_cpu_spec_ctrl_all();
+		microcode_had_ibrs = true;
 	}
 
 	/* Allow STIBP in MSR_SPEC_CTRL if supported */
@@ -230,7 +233,7 @@ void __init check_bugs(void)
 }
 
 /* Check for Skylake-like CPUs (for RSB handling) */
-static bool __init is_skylake_era(void)
+static bool is_skylake_era(void)
 {
 	if (boot_cpu_data.x86_vendor == X86_VENDOR_INTEL &&
 	    boot_cpu_data.x86 == 6) {
@@ -672,7 +675,7 @@ disable:
 	return SPECTRE_V2_CMD_NONE;
 }
 
-static void __init ibrs_select(enum spectre_v2_mitigation *mode)
+static void ibrs_select(enum spectre_v2_mitigation *mode)
 {
 	/* Turn it on (if possible) */
 	set_ibrs_inuse();
@@ -712,7 +715,7 @@ static void __init select_ibrs_variant(enum spectre_v2_mitigation *mode)
 			"no mitigation available!");
 }
 
-static void __init disable_ibrs_and_friends(bool disable_ibpb)
+static void disable_ibrs_and_friends(bool disable_ibpb)
 {
 	set_ibrs_disabled();
 	if (use_ibrs & SPEC_CTRL_IBRS_SUPPORTED)
@@ -818,7 +821,7 @@ select_auto_mitigation_mode(enum spectre_v2_mitigation_cmd cmd)
 /*
  * Activate the selected spectre v2 mitigation
  */
-static void __init activate_spectre_v2_mitigation(enum spectre_v2_mitigation mode)
+static void activate_spectre_v2_mitigation(enum spectre_v2_mitigation mode)
 {
 	spectre_v2_enabled = mode;
 	pr_info("%s\n", spectre_v2_strings[spectre_v2_enabled]);
@@ -1354,8 +1357,26 @@ void microcode_late_select_mitigation(void)
 	} else {
 		ssb_mode = SPEC_STORE_BYPASS_NONE;
 	}
-}
 
+	/*
+	 * Select SpectreV2 mitigation and enable it. First we clear the
+	 * ibrs_disabled flag in order to be able to pick it up for Skylake.
+	 * Also we re-check SpectreV2 if we did not support IBRS at boot time.
+	 * If so we do not do anything to not break command line user preference.
+	 */
+	if (!microcode_had_ibrs) {
+		clear_ibrs_disabled();
+		mode = select_auto_mitigation_mode(SPECTRE_V2_CMD_AUTO);
+		activate_spectre_v2_mitigation(mode);
+
+		/*
+		 * Mark microcode_had_ibrs so at the second
+		 * update we won't trigger this check again.
+		 */
+		if (boot_cpu_has(X86_FEATURE_IBRS))
+			microcode_had_ibrs = true;
+	}
+}
 
 static ssize_t cpu_show_common(struct device *dev, struct device_attribute *attr,
 			      char *buf, unsigned int bug)
