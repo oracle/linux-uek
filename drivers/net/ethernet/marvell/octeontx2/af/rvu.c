@@ -1500,6 +1500,18 @@ int rvu_mbox_handler_vf_flr(struct rvu *rvu, struct msg_req *req,
 	return 0;
 }
 
+int rvu_mbox_handler_get_hw_cap(struct rvu *rvu, struct msg_req *req,
+				struct get_hw_cap_rsp *rsp)
+{
+	struct rvu_hwinfo *hw = rvu->hw;
+
+	rsp->nix_fixed_txschq_mapping = hw->cap.nix_fixed_txschq_mapping;
+	rsp->nix_express_traffic = hw->cap.nix_express_traffic;
+	rsp->nix_shaping = hw->cap.nix_shaping;
+
+	return 0;
+}
+
 static int rvu_process_mbox_msg(struct otx2_mbox *mbox, int devid,
 				struct mbox_msghdr *req)
 {
