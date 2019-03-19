@@ -46,6 +46,7 @@ struct nix_tx_stall {
 	u64 *nlink_credits;		 /* Normal link credits */
 	u64 poll_cntr;
 	u64 stalled_cntr;
+	int pse_link_bp_level;
 	bool txsch_config_changed;
 	struct mutex txsch_lock; /* To sync Tx SCHQ config update and poll */
 	struct task_struct *poll_thread; /* Tx stall condition polling thread */
@@ -506,7 +507,18 @@ static void rvu_nix_restore_tx(struct rvu *rvu, struct nix_hw *nix_hw,
 	for (tl = 0; tl < tx_stall->tl2_count; tl++) {
 		if (tx_stall->tl2_link_map[tl] != link)
 			continue;
-		rvu_wr64(rvu, blkaddr, NIX_AF_TL2X_SW_XOFF(tl), BIT_ULL(0));
+		/* Full workaround is implemented assuming fixed 1:1
+		 * TL3:TL2 mapping, ie TL3 and TL2 index can be used
+		 * interchangeably. Hence except in this API, no other
+		 * place we check for PSE backpressure level configured
+		 * in NIX_AF_PSE_CHANNEL_LEVEL reg.
+		 */
+		if (tx_stall->pse_link_bp_level == NIX_TXSCH_LVL_TL2)
+			rvu_wr64(rvu, blkaddr,
+				 NIX_AF_TL2X_SW_XOFF(tl), BIT_ULL(0));
+		else
+			rvu_wr64(rvu, blkaddr,
+				 NIX_AF_TL3X_SW_XOFF(tl), BIT_ULL(0));
 	}
 	usleep_range(20, 25);
 
@@ -542,8 +554,16 @@ static void rvu_nix_restore_tx(struct rvu *rvu, struct nix_hw *nix_hw,
 	for (tl = 0; tl < tx_stall->tl3_count; tl++) {
 		if (tx_stall->tl3_tl2_map[tl] != tl2)
 			continue;
-		rvu_wr64(rvu, blkaddr, NIX_AF_TL3X_SW_XOFF(tl), BIT_ULL(0));
-		rvu_wr64(rvu, blkaddr, NIX_AF_TL3X_SW_XOFF(tl), 0x00);
+		if (tx_stall->pse_link_bp_level == NIX_TXSCH_LVL_TL3) {
+			rvu_wr64(rvu, blkaddr,
+				 NIX_AF_TL3X_SW_XOFF(tl), BIT_ULL(0));
+			rvu_wr64(rvu, blkaddr, NIX_AF_TL3X_SW_XOFF(tl), 0x00);
+		} else {
+			/* TL3 and TL2 indices used by this NIXLF are same */
+			rvu_wr64(rvu, blkaddr,
+				 NIX_AF_TL2X_SW_XOFF(tl), BIT_ULL(0));
+			rvu_wr64(rvu, blkaddr, NIX_AF_TL2X_SW_XOFF(tl), 0x00);
+		}
 	}
 
 	tl = tx_stall->tl2_tl1_map[tl2];
@@ -555,7 +575,10 @@ clear_sw_xoff:
 	for (tl = 0; tl < tx_stall->tl2_count; tl++) {
 		if (tx_stall->tl2_link_map[tl] != link)
 			continue;
-		rvu_wr64(rvu, blkaddr, NIX_AF_TL2X_SW_XOFF(tl), 0x00);
+		if (tx_stall->pse_link_bp_level == NIX_TXSCH_LVL_TL2)
+			rvu_wr64(rvu, blkaddr, NIX_AF_TL2X_SW_XOFF(tl), 0x00);
+		else
+			rvu_wr64(rvu, blkaddr, NIX_AF_TL3X_SW_XOFF(tl), 0x00);
 	}
 	rvu_nix_txsch_unlock(nix_hw);
 }
@@ -697,6 +720,9 @@ static int rvu_nix_tx_stall_workaround_init(struct rvu *rvu,
 	struct rvu_block *block;
 	int links, err;
 
+	if (!hw->cap.nix_fixed_txschq_mapping)
+		return 0;
+
 	tx_stall = devm_kzalloc(rvu->dev,
 				sizeof(struct nix_tx_stall), GFP_KERNEL);
 	if (!tx_stall)
@@ -705,6 +731,12 @@ static int rvu_nix_tx_stall_workaround_init(struct rvu *rvu,
 	tx_stall->blkaddr = blkaddr;
 	tx_stall->rvu = rvu;
 	nix_hw->tx_stall = tx_stall;
+
+	/* Get the level at which link/chan will assert backpressure */
+	if (rvu_read64(rvu, blkaddr, NIX_AF_PSE_CHANNEL_LEVEL))
+		tx_stall->pse_link_bp_level = NIX_TXSCH_LVL_TL3;
+	else
+		tx_stall->pse_link_bp_level = NIX_TXSCH_LVL_TL2;
 
 	mutex_init(&tx_stall->txsch_lock);
 
@@ -877,6 +909,9 @@ int rvu_nix_fixes_init(struct rvu *rvu, struct nix_hw *nix_hw, int blkaddr)
 	 */
 	rvu_write64(rvu, blkaddr, NIX_AF_CFG,
 		    rvu_read64(rvu, blkaddr, NIX_AF_CFG) | 0x5EULL);
+
+	/* Set chan/link to backpressure TL3 instead of TL2 */
+	rvu_write64(rvu, blkaddr, NIX_AF_PSE_CHANNEL_LEVEL, 0x01);
 
 	err = rvu_nix_tx_stall_workaround_init(rvu, nix_hw, blkaddr);
 	if (err)
