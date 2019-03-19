@@ -491,10 +491,11 @@ static void rvu_nix_restore_tx(struct rvu *rvu, struct nix_hw *nix_hw,
 			       int blkaddr, int tl2)
 {
 	struct nix_tx_stall *tx_stall = nix_hw->tx_stall;
+	struct rvu_hwinfo *hw = rvu->hw;
 	struct nix_txsch *tl2_txsch;
 	int tl, link;
 
-	link = tx_stall->tl2_link_map[tl2];
+	link = tx_stall->tl2_link_map[tl2] & 0x7F;
 
 	tx_stall->stalled_cntr++;
 
@@ -505,7 +506,7 @@ static void rvu_nix_restore_tx(struct rvu *rvu, struct nix_hw *nix_hw,
 	 * the associated link.
 	 */
 	for (tl = 0; tl < tx_stall->tl2_count; tl++) {
-		if (tx_stall->tl2_link_map[tl] != link)
+		if ((tx_stall->tl2_link_map[tl] & 0x7F) != link)
 			continue;
 		/* Full workaround is implemented assuming fixed 1:1
 		 * TL3:TL2 mapping, ie TL3 and TL2 index can be used
@@ -531,8 +532,9 @@ static void rvu_nix_restore_tx(struct rvu *rvu, struct nix_hw *nix_hw,
 	/* Restore link credits */
 	rvu_wr64(rvu, blkaddr, NIX_AF_TX_LINKX_NORM_CREDIT(link),
 		 tx_stall->nlink_credits[link]);
-	rvu_wr64(rvu, blkaddr, NIX_AF_TX_LINKX_EXPR_CREDIT(link),
-		 tx_stall->nlink_credits[link]);
+	if (hw->cap.nix_express_traffic)
+		rvu_wr64(rvu, blkaddr, NIX_AF_TX_LINKX_EXPR_CREDIT(link),
+			 tx_stall->nlink_credits[link]);
 
 	/* Toggle SW_XOFF of every scheduler queue at every level
 	 * which points to this TL2.
@@ -566,14 +568,10 @@ static void rvu_nix_restore_tx(struct rvu *rvu, struct nix_hw *nix_hw,
 		}
 	}
 
-	tl = tx_stall->tl2_tl1_map[tl2];
-	rvu_wr64(rvu, blkaddr, NIX_AF_TL1X_SW_XOFF(tl), BIT_ULL(0));
-	rvu_wr64(rvu, blkaddr, NIX_AF_TL1X_SW_XOFF(tl), 0x00);
-
 clear_sw_xoff:
 	/* Clear SW_XOFF of all TL2 queues, which are set above */
 	for (tl = 0; tl < tx_stall->tl2_count; tl++) {
-		if (tx_stall->tl2_link_map[tl] != link)
+		if ((tx_stall->tl2_link_map[tl] & 0x7F) != link)
 			continue;
 		if (tx_stall->pse_link_bp_level == NIX_TXSCH_LVL_TL2)
 			rvu_wr64(rvu, blkaddr, NIX_AF_TL2X_SW_XOFF(tl), 0x00);
