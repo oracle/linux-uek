@@ -3000,16 +3000,6 @@ int rvu_nix_init(struct rvu *rvu)
 		return 0;
 	block = &hw->block[blkaddr];
 
-	/* As per a HW errata in 9xxx A0 silicon, NIX may corrupt
-	 * internal state when conditional clocks are turned off.
-	 * Hence enable them.
-	 */
-	if (is_rvu_9xxx_A0(rvu))
-		rvu_write64(rvu, blkaddr, NIX_AF_CFG,
-			    rvu_read64(rvu, blkaddr, NIX_AF_CFG) | 0x5EULL);
-
-	rvu_nix_enable_internal_bp(rvu, blkaddr);
-
 	/* Calibrate X2P bus to check if CGX/LBK links are fine */
 	err = nix_calibrate_x2p(rvu, blkaddr);
 	if (err)
@@ -3090,7 +3080,7 @@ int rvu_nix_init(struct rvu *rvu)
 		/* Enable Channel backpressure */
 		rvu_write64(rvu, blkaddr, NIX_AF_RX_CFG, BIT_ULL(0));
 
-		err = rvu_nix_tx_stall_workaround_init(rvu, hw->nix0, blkaddr);
+		err = rvu_nix_fixes_init(rvu, hw->nix0, blkaddr);
 		if (err)
 			return err;
 	}
@@ -3127,7 +3117,7 @@ void rvu_nix_freemem(struct rvu *rvu)
 		qmem_free(rvu->dev, mcast->mce_ctx);
 		qmem_free(rvu->dev, mcast->mcast_buf);
 		mutex_destroy(&mcast->mce_lock);
-		rvu_nix_tx_stall_workaround_exit(rvu, nix_hw);
+		rvu_nix_fixes_exit(rvu, nix_hw);
 	}
 }
 

@@ -689,16 +689,13 @@ static int rvu_nix_init_tl_map(struct rvu *rvu, struct nix_hw *nix_hw, int lvl)
 	return 0;
 }
 
-int rvu_nix_tx_stall_workaround_init(struct rvu *rvu,
-				     struct nix_hw *nix_hw, int blkaddr)
+static int rvu_nix_tx_stall_workaround_init(struct rvu *rvu,
+					    struct nix_hw *nix_hw, int blkaddr)
 {
 	struct rvu_hwinfo *hw = rvu->hw;
 	struct nix_tx_stall *tx_stall;
 	struct rvu_block *block;
 	int links, err;
-
-	if (!is_rvu_9xxx_A0(rvu))
-		return 0;
 
 	tx_stall = devm_kzalloc(rvu->dev,
 				sizeof(struct nix_tx_stall), GFP_KERNEL);
@@ -784,12 +781,10 @@ int rvu_nix_tx_stall_workaround_init(struct rvu *rvu,
 	return 0;
 }
 
-void rvu_nix_tx_stall_workaround_exit(struct rvu *rvu, struct nix_hw *nix_hw)
+static void rvu_nix_tx_stall_workaround_exit(struct rvu *rvu,
+					     struct nix_hw *nix_hw)
 {
 	struct nix_tx_stall *tx_stall = nix_hw->tx_stall;
-
-	if (!is_rvu_9xxx_A0(rvu))
-		return;
 
 	if (!tx_stall)
 		return;
@@ -852,7 +847,7 @@ ssize_t rvu_nix_get_tx_stall_counters(struct rvu *rvu,
 	return len;
 }
 
-void rvu_nix_enable_internal_bp(struct rvu *rvu, int blkaddr)
+static void rvu_nix_enable_internal_bp(struct rvu *rvu, int blkaddr)
 {
 	/* An issue exists in A0 silicon whereby, NIX CQ may reach in CQ full
 	 * state followed by CQ hang on CQM query response from stale
@@ -867,4 +862,34 @@ void rvu_nix_enable_internal_bp(struct rvu *rvu, int blkaddr)
 		rvu_write64(rvu, blkaddr, NIX_AF_CQM_BP_TEST,
 			    BIT_ULL(43) | BIT_ULL(23) | BIT_ULL(22) | 0x100ULL);
 	}
+}
+
+int rvu_nix_fixes_init(struct rvu *rvu, struct nix_hw *nix_hw, int blkaddr)
+{
+	int err;
+
+	if (!is_rvu_9xxx_A0(rvu))
+		return 0;
+
+	/* As per a HW errata in 9xxx A0 silicon, NIX may corrupt
+	 * internal state when conditional clocks are turned off.
+	 * Hence enable them.
+	 */
+	rvu_write64(rvu, blkaddr, NIX_AF_CFG,
+		    rvu_read64(rvu, blkaddr, NIX_AF_CFG) | 0x5EULL);
+
+	err = rvu_nix_tx_stall_workaround_init(rvu, nix_hw, blkaddr);
+	if (err)
+		return err;
+
+	rvu_nix_enable_internal_bp(rvu, blkaddr);
+	return 0;
+}
+
+void rvu_nix_fixes_exit(struct rvu *rvu, struct nix_hw *nix_hw)
+{
+	if (!is_rvu_9xxx_A0(rvu))
+		return;
+
+	rvu_nix_tx_stall_workaround_exit(rvu, nix_hw);
 }
