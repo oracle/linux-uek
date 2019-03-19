@@ -962,9 +962,6 @@ int otx2_stop(struct net_device *netdev)
 	otx2_rxtx_enable(pf, false);
 	otx2_destroy_ethtool_flows(pf);
 
-	/* Disable link notifications */
-	otx2_cgx_config_linkevents(pf, false);
-
 	pf->intf_down = true;
 	/* 'intf_down' may be checked on any cpu */
 	smp_wmb();
@@ -1291,6 +1288,10 @@ static void otx2_remove(struct pci_dev *pdev)
 		return;
 
 	pf = netdev_priv(netdev);
+
+	/* Disable link notifications */
+	otx2_cgx_config_linkevents(pf, false);
+
 	unregister_netdev(netdev);
 	otx2_destroy_ethtool_flows(pf);
 
