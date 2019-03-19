@@ -897,6 +897,7 @@ static void rvu_nix_enable_internal_bp(struct rvu *rvu, int blkaddr)
 int rvu_nix_fixes_init(struct rvu *rvu, struct nix_hw *nix_hw, int blkaddr)
 {
 	int err;
+	u64 cfg;
 
 	if (!is_rvu_9xxx_A0(rvu))
 		return 0;
@@ -910,6 +911,14 @@ int rvu_nix_fixes_init(struct rvu *rvu, struct nix_hw *nix_hw, int blkaddr)
 
 	/* Set chan/link to backpressure TL3 instead of TL2 */
 	rvu_write64(rvu, blkaddr, NIX_AF_PSE_CHANNEL_LEVEL, 0x01);
+
+	/* Disable SQ manager's sticky mode operation (set TM6 = 0)
+	 * This sticky mode is known to cause SQ stalls when multiple
+	 * SQs are mapped to same SMQ and transmitting pkts simultaneously
+	 */
+	cfg = rvu_read64(rvu, blkaddr, NIX_AF_SQM_DBG_CTL_STATUS);
+	cfg &= ~BIT_ULL(15);
+	rvu_write64(rvu, blkaddr, NIX_AF_SQM_DBG_CTL_STATUS, cfg);
 
 	err = rvu_nix_tx_stall_workaround_init(rvu, nix_hw, blkaddr);
 	if (err)
