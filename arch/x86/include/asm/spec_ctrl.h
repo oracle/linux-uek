@@ -309,6 +309,16 @@ static inline int check_basic_ibrs_inuse(void)
 	return 0;
 }
 
+static inline int check_enhanced_ibrs_inuse(void)
+{
+	if (use_ibrs & SPEC_CTRL_ENHCD_IBRS_INUSE)
+		return 1;
+
+	/* rmb to prevent wrong speculation for security */
+	rmb();
+	return 0;
+}
+
 static inline int check_ibrs_inuse(void)
 {
 	if (use_ibrs & (SPEC_CTRL_BASIC_IBRS_INUSE |
