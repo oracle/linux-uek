@@ -167,18 +167,17 @@ static void otx2_skb_add_frag(struct otx2_nic *pfvf,
 	struct page *page;
 	void *va;
 
-	iova -= OTX2_HEAD_ROOM;
 	va = phys_to_virt(otx2_iova_to_phys(pfvf->iommu_domain, iova));
 	page = virt_to_page(va);
 	skb_add_rx_frag(skb, skb_shinfo(skb)->nr_frags, page,
 			va - page_address(page), len, RCV_FRAG_LEN);
 
-	dma_unmap_page_attrs(pfvf->dev, iova, RCV_FRAG_LEN,
+	dma_unmap_page_attrs(pfvf->dev, iova - OTX2_HEAD_ROOM, RCV_FRAG_LEN,
 			     DMA_FROM_DEVICE, DMA_ATTR_SKIP_CPU_SYNC);
 }
 
 static inline struct sk_buff *
-otx2_get_rcv_skb(struct otx2_nic *pfvf, u64 iova, int len, int apad)
+otx2_get_rcv_skb(struct otx2_nic *pfvf, u64 iova, int len)
 {
 	struct sk_buff *skb;
 	void *va;
@@ -191,10 +190,10 @@ otx2_get_rcv_skb(struct otx2_nic *pfvf, u64 iova, int len, int apad)
 		return NULL;
 	}
 
-	skb_reserve(skb, apad + OTX2_HEAD_ROOM);
+	skb_reserve(skb, OTX2_HEAD_ROOM);
 	skb_put(skb, len);
 
-	dma_unmap_page_attrs(pfvf->dev, iova - apad, RCV_FRAG_LEN,
+	dma_unmap_page_attrs(pfvf->dev, iova, RCV_FRAG_LEN,
 			     DMA_FROM_DEVICE, DMA_ATTR_SKIP_CPU_SYNC);
 	prefetch(skb->data);
 	return skb;
@@ -272,8 +271,7 @@ static void otx2_rcv_pkt_handler(struct otx2_nic *pfvf,
 			 * bytes after which packet data starts.
 			 */
 			if (!skb) {
-				skb = otx2_get_rcv_skb(pfvf, *iova,
-						       len, *iova & 0x07);
+				skb = otx2_get_rcv_skb(pfvf, *iova, len);
 				/* check if data starts at some nonzero offset
 				 * from the start of the buffer.  For now the
 				 * only possible offset is 8 bytes in the case
