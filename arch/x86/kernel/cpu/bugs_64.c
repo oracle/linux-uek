@@ -1040,6 +1040,17 @@ static void __init ssb_init(void)
 	 *  - X86_FEATURE_SSBD - CPU is able to turn off speculative store bypass
 	 *  - X86_FEATURE_SPEC_STORE_BYPASS_DISABLE - engage the mitigation
 	 */
+
+	/*
+	 * If SSBD is controlled by the SPEC_CTRL MSR, then set the proper
+	 * bit in the mask to allow guests to use the mitigation even in the
+	 * case where the host does not.
+	 */
+	if (boot_cpu_has(X86_FEATURE_SSBD) ||
+	    boot_cpu_has(X86_FEATURE_AMD_SSBD)) {
+		x86_spec_ctrl_mask |= SPEC_CTRL_SSBD;
+	}
+
 	if (ssb_mode == SPEC_STORE_BYPASS_DISABLE)
 		setup_force_cpu_cap(X86_FEATURE_SPEC_STORE_BYPASS_DISABLE);
 
@@ -1051,7 +1062,6 @@ static void __init ssb_init(void)
 		switch (boot_cpu_data.x86_vendor) {
 		case X86_VENDOR_INTEL:
 			x86_spec_ctrl_base |= SPEC_CTRL_SSBD;
-			x86_spec_ctrl_mask |= SPEC_CTRL_SSBD;
 			x86_spec_ctrl_priv |= SPEC_CTRL_SSBD;
 
 			x86_spec_ctrl_set(SPEC_CTRL_INITIAL);
