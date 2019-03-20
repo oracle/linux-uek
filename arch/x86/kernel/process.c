@@ -350,7 +350,9 @@ static __always_inline void amd_set_ssb_virt_state(unsigned long tifn)
 
 static __always_inline void intel_set_ssb_state(unsigned long tifn)
 {
-	u64 msr = x86_spec_ctrl_base | ssbd_tif_to_spec_ctrl(tifn);
+	u64 msr = x86_spec_ctrl_base | (check_enhanced_ibrs_inuse() ?
+					SPEC_CTRL_FEATURE_ENABLE_IBRS : 0);
+	msr |= ssbd_tif_to_spec_ctrl(tifn);
 
 	this_cpu_write(x86_spec_ctrl_restore,  msr);
 	wrmsrl(MSR_IA32_SPEC_CTRL, msr);
