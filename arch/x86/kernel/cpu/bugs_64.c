@@ -179,6 +179,13 @@ EXPORT_SYMBOL_GPL(mds_user_clear);
 DEFINE_STATIC_KEY_FALSE(mds_idle_clear);
 EXPORT_SYMBOL_GPL(mds_idle_clear);
 
+static enum spectre_v2_mitigation spectre_v2_enabled = SPECTRE_V2_NONE;
+
+static inline bool spectre_v2_eibrs_enabled(void)
+{
+	return spectre_v2_enabled == SPECTRE_V2_IBRS_ENHANCED;
+}
+
 void __init check_bugs(void)
 {
 	identify_boot_cpu();
@@ -282,8 +289,6 @@ static const char *spectre_v2_strings[] = {
 
 #undef pr_fmt
 #define pr_fmt(fmt)     "Spectre V2 : " fmt
-
-static enum spectre_v2_mitigation spectre_v2_enabled = SPECTRE_V2_NONE;
 
 void x86_spec_ctrl_set(enum spec_ctrl_set_context context)
 {
@@ -833,7 +838,7 @@ static void activate_spectre_v2_mitigation(enum spectre_v2_mitigation mode)
 	if (retpoline_mode_selected(spectre_v2_enabled)) {
 		retpoline_activate(spectre_v2_enabled);
 
-	} else if (spectre_v2_enabled == SPECTRE_V2_IBRS_ENHANCED) {
+	} else if (spectre_v2_eibrs_enabled()) {
 		/* If enhanced IBRS mode is selected, enable it in all cpus */
 		spec_ctrl_flush_all_cpus(MSR_IA32_SPEC_CTRL,
 			x86_spec_ctrl_base | SPEC_CTRL_FEATURE_ENABLE_IBRS);
@@ -866,7 +871,7 @@ static void activate_spectre_v2_mitigation(enum spectre_v2_mitigation mode)
 	 * speculation around firmware calls only when Enhanced IBRS isn't
 	 * supported.
 	 */
-	if ((ibrs_firmware) && (spectre_v2_enabled != SPECTRE_V2_IBRS_ENHANCED))
+	if ((ibrs_firmware) && !spectre_v2_eibrs_enabled())
 		pr_info("Enabling Restricted Speculation for firmware calls\n");
 }
 
