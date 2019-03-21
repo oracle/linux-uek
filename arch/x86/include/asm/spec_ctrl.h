@@ -56,17 +56,6 @@
 	popq %rdx;				\
 	popq %rcx;				\
 	popq %rax
-#define __ASM_SET_IBPB				\
-	pushq %rax;				\
-	pushq %rcx;				\
-	pushq %rdx;				\
-	movl $MSR_IA32_PRED_CMD, %ecx;		\
-	movl $0, %edx;				\
-	movl $FEATURE_SET_IBPB, %eax;		\
-	wrmsr;					\
-	popq %rdx;				\
-	popq %rcx;				\
-	popq %rax
 
 #define __ASM_STUFF_RSB				\
 	call	1f;				\
@@ -196,10 +185,6 @@
 	jz	9f
 	__ASM_DISABLE_IBRS
 9:
-.endm
-
-.macro SET_IBPB
-ALTERNATIVE "", __stringify(__ASM_SET_IBPB), X86_FEATURE_IBRS
 .endm
 
 .macro STUFF_RSB
