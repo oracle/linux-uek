@@ -1312,6 +1312,7 @@ void mbox_handler_nix_bp_enable(struct otx2_nic *pfvf,
 		pfvf->bpid[chan_id] = rsp->chan_bpid[chan] & 0x3FF;
 	}
 }
+EXPORT_SYMBOL(mbox_handler_nix_bp_enable);
 
 void otx2_free_cints(struct otx2_nic *pfvf, int n)
 {
