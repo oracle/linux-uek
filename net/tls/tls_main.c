@@ -262,7 +262,7 @@ static void tls_sk_proto_close(struct sock *sk, long timeout)
 	sk_proto_close = ctx->sk_proto_close;
 
 	if (ctx->tx_conf == TLS_BASE_TX) {
-		kfree(ctx);
+		tls_ctx_free(ctx);
 		goto skip_tx_cleanup;
 	}
 
@@ -287,8 +287,6 @@ static void tls_sk_proto_close(struct sock *sk, long timeout)
 
 	if (ctx->tx_conf == TLS_SW_TX)
 		tls_sw_free_tx_resources(sk);
-	else
-		tls_ctx_free(ctx);
 
 skip_tx_cleanup:
 	release_sock(sk);
@@ -405,8 +403,10 @@ static int do_tls_setsockopt_tx(struct sock *sk, char __user *optval,
 
 	crypto_info = &ctx->crypto_send.info;
 	/* Currently we don't support set crypto info more than one time */
-	if (TLS_CRYPTO_INFO_READY(crypto_info))
+	if (TLS_CRYPTO_INFO_READY(crypto_info)) {
+		rc = -EBUSY;
 		goto out;
+	}
 
 	rc = copy_from_user(crypto_info, optval, sizeof(*crypto_info));
 	if (rc) {
