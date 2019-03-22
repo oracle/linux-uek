@@ -2028,6 +2028,7 @@ static int _mlx5_eswitch_set_vepa_locked(struct mlx5_eswitch *esw,
 
 	/* Star rule to forward all traffic to uplink vport */
 	memset(spec, 0, sizeof(*spec));
+	memset(&dest, 0, sizeof(dest));
 	dest.type = MLX5_FLOW_DESTINATION_TYPE_VPORT;
 	dest.vport.num = FDB_UPLINK_VPORT;
 	flow_act.action = MLX5_FLOW_CONTEXT_ACTION_FWD_DEST;
