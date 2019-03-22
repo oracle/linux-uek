@@ -1976,11 +1976,11 @@ static int otx2_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 
 	netdev->hw_features = (NETIF_F_RXCSUM | NETIF_F_IP_CSUM |
 			       NETIF_F_IPV6_CSUM | NETIF_F_RXHASH |
-			       NETIF_F_SG | NETIF_F_TSO | NETIF_F_TSO6 |
-			       NETIF_F_HW_VLAN_STAG_RX |
-			       NETIF_F_HW_VLAN_CTAG_RX);
+			       NETIF_F_SG | NETIF_F_TSO | NETIF_F_TSO6);
 	netdev->features |= netdev->hw_features;
-	netdev->hw_features |= NETIF_F_LOOPBACK | NETIF_F_NTUPLE;
+	netdev->hw_features |= NETIF_F_LOOPBACK | NETIF_F_NTUPLE |
+			       NETIF_F_HW_VLAN_STAG_RX |
+			       NETIF_F_HW_VLAN_CTAG_RX;
 
 	netdev->gso_max_segs = OTX2_MAX_GSO_SEGS;
 	netdev->watchdog_timeo = OTX2_TX_TIMEOUT;
