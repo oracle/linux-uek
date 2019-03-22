@@ -250,6 +250,8 @@ const struct midr_range cavium_erratum_27456_cpus[] = {
 	MIDR_RANGE(MIDR_THUNDERX, 0, 0, 1, 1),
 	/* Cavium ThunderX, T81 pass 1.0 */
 	MIDR_REV(MIDR_THUNDERX_81XX, 0, 0),
+	/* Cavium ThunderX, T83 pass 1.0 */
+	MIDR_RANGE(MIDR_THUNDERX_83XX, 0, 0, 0, 0),
 	{},
 };
 #endif
