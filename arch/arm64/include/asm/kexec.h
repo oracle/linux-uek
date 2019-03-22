@@ -25,6 +25,17 @@
 
 #define KEXEC_ARCH KEXEC_ARCH_AARCH64
 
+#ifdef CONFIG_KEXEC_AUTO_RESERVE
+
+#ifndef KEXEC_AUTO_RESERVED_SIZE
+#define KEXEC_AUTO_RESERVED_SIZE (1ULL << 28)  /* 256M */
+#endif
+#ifndef KEXEC_AUTO_THRESHOLD
+#define KEXEC_AUTO_THRESHOLD (1ULL << 31)      /* 2G */
+#endif
+
+#endif /* CONFIG_KEXEC_AUTO_RESERVE */
+
 #ifndef __ASSEMBLY__
 
 /**
