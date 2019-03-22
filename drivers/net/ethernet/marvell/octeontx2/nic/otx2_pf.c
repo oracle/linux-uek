@@ -495,11 +495,14 @@ static void otx2_process_pfaf_mbox_msg(struct otx2_nic *pf,
 	devid = msg->pcifunc & RVU_PFVF_FUNC_MASK;
 	if (devid) {
 		struct otx2_vf_config *config = &pf->vf_configs[devid - 1];
-		struct delayed_work *dwork = &config->link_event_work;
+		struct delayed_work *dwork;
 
 		switch (msg->id) {
 		case MBOX_MSG_NIX_LF_START_RX:
 			config->intf_down = false;
+			dwork = &config->link_event_work;
+			schedule_delayed_work(dwork, msecs_to_jiffies(100));
+			dwork = &config->mac_vlan_work;
 			schedule_delayed_work(dwork, msecs_to_jiffies(100));
 			break;
 		case MBOX_MSG_NIX_LF_STOP_RX:
@@ -1686,6 +1689,125 @@ static int otx2_ioctl(struct net_device *netdev, struct ifreq *req, int cmd)
 	}
 }
 
+static int otx2_do_set_vf_mac(struct otx2_nic *pf, int vf, const u8 *mac)
+{
+	struct npc_install_flow_req *req;
+	int err;
+
+	otx2_mbox_lock(&pf->mbox);
+	req = otx2_mbox_alloc_msg_npc_install_flow(&pf->mbox);
+	if (!req) {
+		otx2_mbox_unlock(&pf->mbox);
+		return -ENOMEM;
+	}
+
+	ether_addr_copy(req->packet.dmac, mac);
+	u64_to_ether_addr(0xffffffffffffull, req->mask.dmac);
+	req->features = BIT_ULL(NPC_DMAC);
+	req->channel = pf->rx_chan_base;
+	req->intf = NIX_INTF_RX;
+	req->default_rule = 1;
+	req->append = 1;
+	req->vf = vf + 1;
+	req->op = NIX_RX_ACTION_DEFAULT;
+
+	err = otx2_sync_mbox_msg(&pf->mbox);
+	otx2_mbox_unlock(&pf->mbox);
+
+	return err;
+}
+
+static int otx2_set_vf_mac(struct net_device *netdev, int vf, u8 *mac)
+{
+	struct otx2_nic *pf = netdev_priv(netdev);
+	struct pci_dev *pdev = pf->pdev;
+	struct otx2_vf_config *config;
+
+	if (vf >= pci_num_vf(pdev))
+		return -EINVAL;
+
+	if (!is_valid_ether_addr(mac))
+		return -EINVAL;
+
+	config = &pf->vf_configs[vf];
+	ether_addr_copy(config->mac, mac);
+	if (config->intf_down)
+		return 0;
+
+	return otx2_do_set_vf_mac(pf, vf, mac);
+}
+
+static int otx2_do_set_vf_vlan(struct otx2_nic *pf, int vf, u16 vlan, u8 qos)
+{
+	struct npc_install_flow_req *req;
+	int err;
+
+	otx2_mbox_lock(&pf->mbox);
+	req = otx2_mbox_alloc_msg_npc_install_flow(&pf->mbox);
+	if (!req) {
+		otx2_mbox_unlock(&pf->mbox);
+		return -ENOMEM;
+	}
+
+	req->packet.vlan_tci = htons(vlan);
+	req->mask.vlan_tci = htons(VLAN_VID_MASK);
+	req->features = BIT_ULL(NPC_OUTER_VID);
+	req->channel = pf->rx_chan_base;
+	req->intf = NIX_INTF_RX;
+	req->default_rule = 1;
+	req->append = 1;
+	req->vf = vf + 1;
+	req->op = NIX_RX_ACTION_DEFAULT;
+
+	err = otx2_sync_mbox_msg(&pf->mbox);
+	otx2_mbox_unlock(&pf->mbox);
+
+	return err;
+}
+
+static int otx2_set_vf_vlan(struct net_device *netdev, int vf, u16 vlan, u8 qos,
+			    __be16 proto)
+{
+	struct otx2_nic *pf = netdev_priv(netdev);
+	struct pci_dev *pdev = pf->pdev;
+	struct otx2_vf_config *config;
+
+	if (vf >= pci_num_vf(pdev))
+		return -EINVAL;
+
+	/* qos is currently unsupported */
+	if (vlan >= VLAN_N_VID || qos)
+		return -EINVAL;
+
+	if (proto != htons(ETH_P_8021Q))
+		return -EPROTONOSUPPORT;
+
+	config = &pf->vf_configs[vf];
+	config->vlan = vlan;
+	if (config->intf_down)
+		return 0;
+
+	return otx2_do_set_vf_vlan(pf, vf, vlan, qos);
+}
+
+static int otx2_get_vf_config(struct net_device *netdev, int vf,
+			      struct ifla_vf_info *ivi)
+{
+	struct otx2_nic *pf = netdev_priv(netdev);
+	struct pci_dev *pdev = pf->pdev;
+	struct otx2_vf_config *config;
+
+	if (vf >= pci_num_vf(pdev))
+		return -EINVAL;
+
+	config = &pf->vf_configs[vf];
+	ivi->vf = vf;
+	ether_addr_copy(ivi->mac, config->mac);
+	ivi->vlan = config->vlan;
+
+	return 0;
+}
+
 static const struct net_device_ops otx2_netdev_ops = {
 	.ndo_open		= otx2_open,
 	.ndo_stop		= otx2_stop,
@@ -1698,6 +1820,9 @@ static const struct net_device_ops otx2_netdev_ops = {
 	.ndo_tx_timeout		= otx2_tx_timeout,
 	.ndo_get_stats64	= otx2_get_stats64,
 	.ndo_do_ioctl		= otx2_ioctl,
+	.ndo_set_vf_mac		= otx2_set_vf_mac,
+	.ndo_set_vf_vlan	= otx2_set_vf_vlan,
+	.ndo_get_vf_config	= otx2_get_vf_config,
 };
 
 static int otx2_check_pf_usable(struct otx2_nic *nic)
@@ -1958,6 +2083,23 @@ static void otx2_vf_link_event_task(struct work_struct *work)
 	otx2_sync_mbox_up_msg(&pf->mbox_pfvf[0], vf_idx);
 }
 
+static void otx2_vf_mac_vlan_task(struct work_struct *work)
+{
+	struct otx2_vf_config *config;
+	struct otx2_nic *pf;
+	int vf_idx;
+
+	config = container_of(work, struct otx2_vf_config, mac_vlan_work.work);
+	vf_idx = config - config->pf->vf_configs;
+	pf = config->pf;
+
+	if (!is_zero_ether_addr(config->mac))
+		otx2_do_set_vf_mac(pf, vf_idx, config->mac);
+
+	if (config->vlan)
+		otx2_do_set_vf_vlan(pf, vf_idx, config->vlan, 0);
+}
+
 static int otx2_sriov_enable(struct pci_dev *pdev, int numvfs)
 {
 	struct net_device *netdev = pci_get_drvdata(pdev);
@@ -1988,6 +2130,8 @@ static int otx2_sriov_enable(struct pci_dev *pdev, int numvfs)
 		pf->vf_configs[i].intf_down = true;
 		INIT_DELAYED_WORK(&pf->vf_configs[i].link_event_work,
 				  otx2_vf_link_event_task);
+		INIT_DELAYED_WORK(&pf->vf_configs[i].mac_vlan_work,
+				  otx2_vf_mac_vlan_task);
 	}
 
 	ret = pci_enable_sriov(pdev, numvfs);
