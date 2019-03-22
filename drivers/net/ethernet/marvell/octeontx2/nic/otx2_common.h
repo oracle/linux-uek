@@ -145,7 +145,10 @@ struct otx2_hw {
 struct otx2_vf_config {
 	struct otx2_nic *pf;
 	struct delayed_work link_event_work;
+	struct delayed_work mac_vlan_work;
 	bool intf_down; /* interface was either configured or not */
+	u8 mac[ETH_ALEN];
+	u16 vlan;
 };
 
 struct otx2_ptp;
