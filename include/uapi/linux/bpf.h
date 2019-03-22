@@ -691,6 +691,7 @@ enum bpf_func_id {
 /* Mode for BPF_FUNC_skb_adjust_room helper. */
 enum bpf_adj_room_mode {
 	BPF_ADJ_ROOM_NET,
+	BPF_ADJ_ROOM_MAC,
 };
 
 /* user accessible mirror of in-kernel sk_buff.
