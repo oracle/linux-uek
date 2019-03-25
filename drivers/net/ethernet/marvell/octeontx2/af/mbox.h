@@ -242,7 +242,8 @@ M(NIX_SET_RX_CFG,	0x8010, nix_set_rx_cfg, nix_rx_cfg, msg_rsp)	\
 M(NIX_LSO_FORMAT_CFG,	0x8011, nix_lso_format_cfg,			\
 				 nix_lso_format_cfg,			\
 				 nix_lso_format_cfg_rsp)		\
-M(NIX_RXVLAN_ALLOC,	0x8012, nix_rxvlan_alloc, msg_req, msg_rsp)
+M(NIX_RXVLAN_ALLOC,	0x8012, nix_rxvlan_alloc, msg_req, msg_rsp)	\
+M(NIX_SET_VLAN_TPID,	0x8015, nix_set_vlan_tpid, nix_set_vlan_tpid, msg_rsp)
 
 /* Messages initiated by AF (range 0xC00 - 0xDFF) */
 #define MBOX_UP_CGX_MESSAGES						\
@@ -692,6 +693,14 @@ struct nix_lso_format_cfg {
 struct nix_lso_format_cfg_rsp {
 	struct mbox_msghdr hdr;
 	u8 lso_format_idx;
+};
+
+struct nix_set_vlan_tpid {
+	struct mbox_msghdr hdr;
+#define NIX_VLAN_TYPE_INNER 0
+#define NIX_VLAN_TYPE_OUTER 1
+	u8  vlan_type;
+	u16 tpid;
 };
 
 /* SSO mailbox error codes
