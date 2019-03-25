@@ -33,9 +33,11 @@
 /* SG list header size in bytes */
 #define SG_LIST_HDR_SIZE	8
 
-/* Maximum number of SG input and output buffers */
-#define MAX_SG_IN_CNT		12
-#define MAX_SG_OUT_CNT		13
+/* Maximum total number of SG buffers is 100, we divide it equally
+ * between input and output
+ */
+#define MAX_SG_IN_CNT		50
+#define MAX_SG_OUT_CNT		50
 
 /* DMA mode direct or SG */
 #define DMA_DIRECT_DIRECT	0
@@ -44,9 +46,6 @@
 /* Context source CPTR or DPTR */
 #define FROM_CPTR		0
 #define FROM_DPTR		1
-
-/* Maximum number of pending entry input and output buffers */
-#define MAX_BUF_CNT		16
 
 /* CPT instruction queue alignment */
 #define CPT_INST_Q_ALIGNMENT	128
@@ -198,8 +197,8 @@ struct cpt_request_info {
 	struct crypto_async_request *areq; /* Async request callback arg */
 	struct cptvf_request req; /* Request information (core specific) */
 	union ctrl_info ctrl; /* User control information */
-	struct buf_ptr in[MAX_BUF_CNT];
-	struct buf_ptr out[MAX_BUF_CNT];
+	struct buf_ptr in[MAX_SG_IN_CNT];
+	struct buf_ptr out[MAX_SG_OUT_CNT];
 	u16 rlen; /* Output length */
 	u8 incnt; /* Number of input buffers */
 	u8 outcnt; /* Number of output buffers */
