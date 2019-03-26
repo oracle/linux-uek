@@ -2808,75 +2808,82 @@ static int vmx_get_msr_feature(struct kvm_msr_entry *msr)
  * Returns 0 on success, non-0 otherwise.
  * Assumes vcpu_load() was already called.
  */
-static int vmx_get_msr(struct kvm_vcpu *vcpu, struct msr_data *msr_info)
+static int vmx_get_msr(struct kvm_vcpu *vcpu, u32 msr_index, u64 *pdata)
 {
+	u64 data;
 	struct shared_msr_entry *msr;
 
-	switch (msr_info->index) {
+	if (!pdata) {
+		printk(KERN_ERR "BUG: get_msr called with NULL pdata\n");
+		return -EINVAL;
+	}
+
+	switch (msr_index) {
 #ifdef CONFIG_X86_64
 	case MSR_FS_BASE:
-		msr_info->data = vmcs_readl(GUEST_FS_BASE);
+		data = vmcs_readl(GUEST_FS_BASE);
 		break;
 	case MSR_GS_BASE:
-		msr_info->data = vmcs_readl(GUEST_GS_BASE);
+		data = vmcs_readl(GUEST_GS_BASE);
 		break;
 	case MSR_KERNEL_GS_BASE:
 		vmx_load_host_state(to_vmx(vcpu));
-		msr_info->data = to_vmx(vcpu)->msr_guest_kernel_gs_base;
+		data = to_vmx(vcpu)->msr_guest_kernel_gs_base;
 		break;
 #endif
 	case MSR_EFER:
-		return kvm_get_msr_common(vcpu, msr_info);
+		return kvm_get_msr_common(vcpu, msr_index, pdata);
 	case MSR_IA32_TSC:
-		msr_info->data = guest_read_tsc();
+		data = guest_read_tsc();
 		break;
 	case MSR_IA32_SPEC_CTRL:
-		msr_info->data = to_vmx(vcpu)->spec_ctrl;
+		data = to_vmx(vcpu)->spec_ctrl;
 		break;
 	case MSR_IA32_ARCH_CAPABILITIES:
-		msr_info->data = to_vmx(vcpu)->arch_capabilities;
+		data = to_vmx(vcpu)->arch_capabilities;
 		break;
 	case MSR_IA32_SYSENTER_CS:
-		msr_info->data = vmcs_read32(GUEST_SYSENTER_CS);
+		data = vmcs_read32(GUEST_SYSENTER_CS);
 		break;
 	case MSR_IA32_SYSENTER_EIP:
-		msr_info->data = vmcs_readl(GUEST_SYSENTER_EIP);
+		data = vmcs_readl(GUEST_SYSENTER_EIP);
 		break;
 	case MSR_IA32_SYSENTER_ESP:
-		msr_info->data = vmcs_readl(GUEST_SYSENTER_ESP);
+		data = vmcs_readl(GUEST_SYSENTER_ESP);
 		break;
 	case MSR_IA32_BNDCFGS:
 		if (!vmx_mpx_supported())
 			return 1;
-		msr_info->data = vmcs_read64(GUEST_BNDCFGS);
+		data = vmcs_read64(GUEST_BNDCFGS);
 		break;
 	case MSR_IA32_FEATURE_CONTROL:
 		if (!nested_vmx_allowed(vcpu))
 			return 1;
-		msr_info->data = to_vmx(vcpu)->nested.msr_ia32_feature_control;
+		data = to_vmx(vcpu)->nested.msr_ia32_feature_control;
 		break;
 	case MSR_IA32_VMX_BASIC ... MSR_IA32_VMX_VMFUNC:
 		if (!nested_vmx_allowed(vcpu))
 			return 1;
-		return vmx_get_vmx_msr(vcpu, msr_info->index, &msr_info->data);
+		return vmx_get_vmx_msr(vcpu, msr_index, pdata);
 	case MSR_IA32_XSS:
 		if (!vmx_xsaves_supported())
 			return 1;
-		msr_info->data = vcpu->arch.ia32_xss;
+		data = vcpu->arch.ia32_xss;
 		break;
 	case MSR_TSC_AUX:
 		if (!to_vmx(vcpu)->rdtscp_enabled)
 			return 1;
 		/* Otherwise falls through */
 	default:
-		msr = find_msr_entry(to_vmx(vcpu), msr_info->index);
+		msr = find_msr_entry(to_vmx(vcpu), msr_index);
 		if (msr) {
-			msr_info->data = msr->data;
+			data = msr->data;
 			break;
 		}
-		return kvm_get_msr_common(vcpu, msr_info);
+		return kvm_get_msr_common(vcpu, msr_index, pdata);
 	}
 
+	*pdata = data;
 	return 0;
 }
 
@@ -5780,21 +5787,19 @@ static int handle_cpuid(struct kvm_vcpu *vcpu)
 static int handle_rdmsr(struct kvm_vcpu *vcpu)
 {
 	u32 ecx = vcpu->arch.regs[VCPU_REGS_RCX];
-	struct msr_data msr_info;
+	u64 data;
 
-	msr_info.index = ecx;
-	msr_info.host_initiated = false;
-	if (vmx_get_msr(vcpu, &msr_info)) {
+	if (vmx_get_msr(vcpu, ecx, &data)) {
 		trace_kvm_msr_read_ex(ecx);
 		kvm_inject_gp(vcpu, 0);
 		return 1;
 	}
 
-	trace_kvm_msr_read(ecx, msr_info.data);
+	trace_kvm_msr_read(ecx, data);
 
 	/* FIXME: handling of bits 32:63 of rax, rdx */
-	vcpu->arch.regs[VCPU_REGS_RAX] = msr_info.data & -1u;
-	vcpu->arch.regs[VCPU_REGS_RDX] = (msr_info.data >> 32) & -1u;
+	vcpu->arch.regs[VCPU_REGS_RAX] = data & -1u;
+	vcpu->arch.regs[VCPU_REGS_RDX] = (data >> 32) & -1u;
 	skip_emulated_instruction(vcpu);
 	return 1;
 }
@@ -9284,7 +9289,6 @@ static int nested_vmx_store_msr(struct kvm_vcpu *vcpu, u64 gpa, u32 count)
 	struct vmx_msr_entry e;
 
 	for (i = 0; i < count; i++) {
-		struct msr_data msr_info;
 		if (kvm_read_guest(vcpu->kvm,
 				   gpa + i * sizeof(e),
 				   &e, 2 * sizeof(u32))) {
@@ -9299,9 +9303,7 @@ static int nested_vmx_store_msr(struct kvm_vcpu *vcpu, u64 gpa, u32 count)
 				__func__, i, e.index, e.reserved);
 			return -EINVAL;
 		}
-		msr_info.host_initiated = false;
-		msr_info.index = e.index;
-		if (kvm_get_msr(vcpu, &msr_info)) {
+		if (kvm_get_msr(vcpu, e.index, &e.value)) {
 			pr_warn_ratelimited(
 				"%s cannot read MSR (%u, 0x%x)\n",
 				__func__, i, e.index);
@@ -9310,10 +9312,10 @@ static int nested_vmx_store_msr(struct kvm_vcpu *vcpu, u64 gpa, u32 count)
 		if (kvm_write_guest(vcpu->kvm,
 				    gpa + i * sizeof(e) +
 					offsetof(struct vmx_msr_entry, value),
-				    &msr_info.data, sizeof(msr_info.data))) {
+				    &e.value, sizeof(e.value))) {
 			pr_warn_ratelimited(
 				"%s cannot write MSR (%u, 0x%x, 0x%llx)\n",
-				__func__, i, e.index, msr_info.data);
+				__func__, i, e.index, e.value);
 			return -EINVAL;
 		}
 	}

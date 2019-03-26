@@ -3112,42 +3112,42 @@ static int svm_get_msr_feature(struct kvm_msr_entry *msr)
 	return 1;
 }
 
-static int svm_get_msr(struct kvm_vcpu *vcpu, struct msr_data *msr_info)
+static int svm_get_msr(struct kvm_vcpu *vcpu, unsigned ecx, u64 *data)
 {
 	struct vcpu_svm *svm = to_svm(vcpu);
 
-	switch (msr_info->index) {
+	switch (ecx) {
 	case MSR_IA32_TSC: {
-		msr_info->data = svm->vmcb->control.tsc_offset +
+		*data = svm->vmcb->control.tsc_offset +
 			svm_scale_tsc(vcpu, native_read_tsc());
 
 		break;
 	}
 	case MSR_STAR:
-		msr_info->data = svm->vmcb->save.star;
+		*data = svm->vmcb->save.star;
 		break;
 #ifdef CONFIG_X86_64
 	case MSR_LSTAR:
-		msr_info->data = svm->vmcb->save.lstar;
+		*data = svm->vmcb->save.lstar;
 		break;
 	case MSR_CSTAR:
-		msr_info->data = svm->vmcb->save.cstar;
+		*data = svm->vmcb->save.cstar;
 		break;
 	case MSR_KERNEL_GS_BASE:
-		msr_info->data = svm->vmcb->save.kernel_gs_base;
+		*data = svm->vmcb->save.kernel_gs_base;
 		break;
 	case MSR_SYSCALL_MASK:
-		msr_info->data = svm->vmcb->save.sfmask;
+		*data = svm->vmcb->save.sfmask;
 		break;
 #endif
 	case MSR_IA32_SYSENTER_CS:
-		msr_info->data = svm->vmcb->save.sysenter_cs;
+		*data = svm->vmcb->save.sysenter_cs;
 		break;
 	case MSR_IA32_SYSENTER_EIP:
-		msr_info->data = svm->sysenter_eip;
+		*data = svm->sysenter_eip;
 		break;
 	case MSR_IA32_SYSENTER_ESP:
-		msr_info->data = svm->sysenter_esp;
+		*data = svm->sysenter_esp;
 		break;
 	/*
 	 * Nobody will change the following 5 values in the VMCB so we can
@@ -3155,37 +3155,37 @@ static int svm_get_msr(struct kvm_vcpu *vcpu, struct msr_data *msr_info)
 	 * implemented.
 	 */
 	case MSR_IA32_DEBUGCTLMSR:
-		msr_info->data = svm->vmcb->save.dbgctl;
+		*data = svm->vmcb->save.dbgctl;
 		break;
 	case MSR_IA32_LASTBRANCHFROMIP:
-		msr_info->data = svm->vmcb->save.br_from;
+		*data = svm->vmcb->save.br_from;
 		break;
 	case MSR_IA32_LASTBRANCHTOIP:
-		msr_info->data = svm->vmcb->save.br_to;
+		*data = svm->vmcb->save.br_to;
 		break;
 	case MSR_IA32_LASTINTFROMIP:
-		msr_info->data = svm->vmcb->save.last_excp_from;
+		*data = svm->vmcb->save.last_excp_from;
 		break;
 	case MSR_IA32_LASTINTTOIP:
-		msr_info->data = svm->vmcb->save.last_excp_to;
+		*data = svm->vmcb->save.last_excp_to;
 		break;
 	case MSR_VM_HSAVE_PA:
-		msr_info->data = svm->nested.hsave_msr;
+		*data = svm->nested.hsave_msr;
 		break;
 	case MSR_VM_CR:
-		msr_info->data = svm->nested.vm_cr_msr;
+		*data = svm->nested.vm_cr_msr;
 		break;
 	case MSR_IA32_SPEC_CTRL:
-		msr_info->data = svm->spec_ctrl;
+		*data = svm->spec_ctrl;
 		break;
 	case MSR_AMD64_VIRT_SPEC_CTRL:
-		msr_info->data = svm->virt_spec_ctrl;
+		*data = svm->virt_spec_ctrl;
 		break;
 	case MSR_IA32_UCODE_REV:
-		msr_info->data = 0x01000065;
+		*data = 0x01000065;
 		break;
 	default:
-		return kvm_get_msr_common(vcpu, msr_info);
+		return kvm_get_msr_common(vcpu, ecx, data);
 	}
 	return 0;
 }
@@ -3193,20 +3193,16 @@ static int svm_get_msr(struct kvm_vcpu *vcpu, struct msr_data *msr_info)
 static int rdmsr_interception(struct vcpu_svm *svm)
 {
 	u32 ecx = kvm_register_read(&svm->vcpu, VCPU_REGS_RCX);
-	struct msr_data msr_info;
+	u64 data;
 
-	msr_info.index = ecx;
-	msr_info.host_initiated = false;
-	if (svm_get_msr(&svm->vcpu, &msr_info)) {
+	if (svm_get_msr(&svm->vcpu, ecx, &data)) {
 		trace_kvm_msr_read_ex(ecx);
 		kvm_inject_gp(&svm->vcpu, 0);
 	} else {
-		trace_kvm_msr_read(ecx, msr_info.data);
+		trace_kvm_msr_read(ecx, data);
 
-		kvm_register_write(&svm->vcpu, VCPU_REGS_RAX,
-				   msr_info.data & 0xffffffff);
-		kvm_register_write(&svm->vcpu, VCPU_REGS_RDX,
-				   msr_info.data >> 32);
+		kvm_register_write(&svm->vcpu, VCPU_REGS_RAX, data & 0xffffffff);
+		kvm_register_write(&svm->vcpu, VCPU_REGS_RDX, data >> 32);
 		svm->next_rip = kvm_rip_read(&svm->vcpu) + 2;
 		skip_emulated_instruction(&svm->vcpu);
 	}
