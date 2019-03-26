@@ -1033,18 +1033,11 @@ static void __init ssb_init(void)
 
 	if (ssb_mode == SPEC_STORE_BYPASS_DISABLE) {
 		/*
-		 * Intel uses the SPEC CTRL MSR Bit(2) for this, while AMD may
-		 * use a completely different MSR and bit dependent on family.
+		 * Intel uses the SPEC CTRL MSR Bit(2) for this, while AMD uses
+		 * a completely different MSR and bit dependent on family.
 		 */
 		switch (boot_cpu_data.x86_vendor) {
 		case X86_VENDOR_INTEL:
-		case X86_VENDOR_AMD:
-			if (ssb_mode == SPEC_STORE_BYPASS_DISABLE &&
-			    !static_cpu_has(X86_FEATURE_IBRS)) {
-				x86_amd_ssbd_enable();
-				break;
-			}
-
 			x86_spec_ctrl_base |= SPEC_CTRL_SSBD;
 			x86_spec_ctrl_mask |= SPEC_CTRL_SSBD;
 			x86_spec_ctrl_priv |= SPEC_CTRL_SSBD;
@@ -1052,6 +1045,10 @@ static void __init ssb_init(void)
 			x86_spec_ctrl_set(SPEC_CTRL_INITIAL);
 
 			update_cpu_spec_ctrl_all();
+			break;
+		case X86_VENDOR_AMD:
+			if (ssb_mode == SPEC_STORE_BYPASS_DISABLE)
+				x86_amd_ssbd_enable();
 			break;
 		}
 	}

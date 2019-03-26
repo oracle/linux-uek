@@ -131,7 +131,6 @@ static inline bool guest_cpuid_has_mpx(struct kvm_vcpu *vcpu)
 
 /* These are scattered features in cpufeatures.h. */
 #define KVM_CPUID_BIT_IBPB		12
-#define KVM_CPUID_BIT_AMD_SSBD		24
 #define KVM_CPUID_BIT_VIRT_SSBD		25
 #define KVM_CPUID_BIT_IBRS		26
 #define KVM_CPUID_BIT_STIBP		27
@@ -160,13 +159,5 @@ static inline bool guest_cpuid_has_ssbd(struct kvm_vcpu *vcpu)
 
        best = kvm_find_cpuid_entry(vcpu, 7, 0);
        return best && (best->edx & KF(SSBD));
-}
-
-static inline bool guest_cpuid_has_amd_ssbd(struct kvm_vcpu *vcpu)
-{
-       struct kvm_cpuid_entry2 *best;
-
-       best = kvm_find_cpuid_entry(vcpu, 7, 0);
-       return best && (best->edx & KF(AMD_SSBD));
 }
 #endif

@@ -3191,7 +3191,7 @@ static int svm_get_msr(struct kvm_vcpu *vcpu, struct msr_data *msr_info)
 	case MSR_IA32_SPEC_CTRL:
 		if (!msr_info->host_initiated &&
 		    !guest_cpuid_has_ibrs(vcpu) &&
-		    !guest_cpuid_has_amd_ssbd(vcpu))
+		    !guest_cpuid_has_ssbd(vcpu))
 			return 1;
 
 		msr_info->data = svm->spec_ctrl;
@@ -3324,11 +3324,11 @@ static int svm_set_msr(struct kvm_vcpu *vcpu, struct msr_data *msr)
 	case MSR_IA32_SPEC_CTRL:
 		if (!msr->host_initiated &&
 		    !guest_cpuid_has_ibrs(vcpu) &&
-		    !guest_cpuid_has_amd_ssbd(vcpu))
+		    !guest_cpuid_has_ssbd(vcpu))
 			return 1;
 
 		/* The STIBP bit doesn't fault even if it's not advertised */
-		if (data & ~(SPEC_CTRL_IBRS | SPEC_CTRL_STIBP | SPEC_CTRL_SSBD))
+		if (data & ~(SPEC_CTRL_IBRS | SPEC_CTRL_STIBP))
 			return 1;
 
 		svm->spec_ctrl = data;

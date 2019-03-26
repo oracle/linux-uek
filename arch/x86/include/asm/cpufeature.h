@@ -73,7 +73,6 @@
  */
 #define X86_FEATURE_L1TF_PTEINV		( 2*32+0) /* "" L1TF workaround PTE inversion */
 #define X86_FEATURE_FLUSH_L1D		( 2*32+1) /* Flush L1D cache */
-#define X86_FEATURE_AMD_SSBD		( 2*32+2) /* "" Speculative Store Bypass Disable */
 
 /* Other features, Linux-defined mapping, word 3 */
 /* This range is used for feature bits which conflict or are synthesized */

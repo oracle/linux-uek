@@ -56,6 +56,7 @@ u64 kvm_supported_xcr0(void)
 	return xcr0;
 }
 
+
 int kvm_update_cpuid(struct kvm_vcpu *vcpu)
 {
 	struct kvm_cpuid_entry2 *best;
@@ -357,7 +358,7 @@ static inline int __do_cpuid_ent(struct kvm_cpuid_entry2 *entry, u32 function,
 
 	/* cpuid 0x80000008.ebx */
 	const u32 kvm_cpuid_80000008_ebx_x86_features =
-		KF(IBPB) | KF(IBRS) |  KF(AMD_SSBD) | KF(VIRT_SSBD);
+		KF(IBPB) | KF(IBRS) | KF(VIRT_SSBD);
 
 	/* all calls to cpuid_count() should be made on the same cpu */
 	get_cpu();
@@ -596,12 +597,7 @@ static inline int __do_cpuid_ent(struct kvm_cpuid_entry2 *entry, u32 function,
 		if ( !boot_cpu_has(X86_FEATURE_IBPB) )
 			entry->ebx &= ~(1u << KVM_CPUID_BIT_IBPB);
 
-		/*
-		 * The preference is to use SPEC CTRL MSR instead of the
-		 * VIRT_SPEC MSR.
-		 */
-		if (boot_cpu_has(X86_FEATURE_LS_CFG_SSBD) &&
-		    !boot_cpu_has(X86_FEATURE_AMD_SSBD))
+		if (boot_cpu_has(X86_FEATURE_LS_CFG_SSBD))
 			entry->ebx |= KF(VIRT_SSBD);
 		break;
 	}

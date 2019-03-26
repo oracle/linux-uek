@@ -760,8 +760,6 @@ void get_cpu_cap(struct cpuinfo_x86 *c, enum get_cpu_cap_behavior behavior)
 			set_cpu_cap(c, X86_FEATURE_IBRS);
 		if (ebx & BIT(15))
 			set_cpu_cap(c, X86_FEATURE_STIBP);
-		if (ebx & BIT(24))
-			set_cpu_cap(c, X86_FEATURE_AMD_SSBD);
 		if (ebx & BIT(25))
 			set_cpu_cap(c, X86_FEATURE_VIRT_SSBD);
 	}
