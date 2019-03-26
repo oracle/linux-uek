@@ -354,6 +354,8 @@ struct mbox_wq_info {
 	struct rvu_work *mbox_wrk_up;
 
 	struct workqueue_struct *mbox_wq;
+	int num_msgs;
+	int up_num_msgs;
 };
 
 struct rvu_fwdata {
