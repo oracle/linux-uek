@@ -504,7 +504,6 @@ create_domain_store(struct kobject *kobj, struct kobj_attribute *attr,
 	char *end;
 	char *ptr = NULL;
 	const char *name;
-	char *temp;
 	char *errmsg = "Invalid domain specification format.";
 
 	if (strlen(buf) == 0) {
@@ -546,7 +545,7 @@ create_domain_store(struct kobject *kobj, struct kobj_attribute *attr,
 			continue;
 
 		if (!strncmp(strim(start), "port", sizeof("port") - 1)) {
-			temp = strsep(&start, ":");
+			strsep(&start, ":");
 			if (dparams->port_cnt >= RM_MAX_PORTS)
 				goto error;
 			dparams->ports[dparams->port_cnt++] = strim(start);
@@ -554,7 +553,7 @@ create_domain_store(struct kobject *kobj, struct kobj_attribute *attr,
 		#define DP(_name, _1, _fmt)				\
 		else if (!strncmp(strim(start), #_name,			\
 				  sizeof(#_name) - 1)) {		\
-			temp = strsep(&start, ":");			\
+			strsep(&start, ":");				\
 			start = strim(start);				\
 			res = sscanf(start, _fmt, &dparams->_name);	\
 			if (res != 1)					\
@@ -582,7 +581,7 @@ error:
 	return res;
 }
 
-int dpivf_sysfs_create(struct domain_sysfs *lsfs)
+static int dpivf_sysfs_create(struct domain_sysfs *lsfs)
 {
 	struct dpi_info *dpi_info = &lsfs->dpi_info;
 	struct dpi_vf *dpivf_ptr = NULL;
@@ -613,7 +612,7 @@ int dpivf_sysfs_create(struct domain_sysfs *lsfs)
 	return 0;
 }
 
-void dpivf_sysfs_destroy(struct domain_sysfs *lsfs)
+static void dpivf_sysfs_destroy(struct domain_sysfs *lsfs)
 {
 	struct dpi_info *dpi_info = &lsfs->dpi_info;
 	struct dpi_vf *dpivf_ptr = NULL;

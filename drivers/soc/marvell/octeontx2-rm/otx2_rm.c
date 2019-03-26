@@ -887,7 +887,7 @@ static int rm_get_available_rsrcs(struct rm_dev *rm)
 	return res;
 }
 
-void rm_afpf_mbox_term(struct pci_dev *pdev)
+static void rm_afpf_mbox_term(struct pci_dev *pdev)
 {
 	struct rm_dev *rm = pci_get_drvdata(pdev);
 
@@ -940,7 +940,7 @@ static void vf_sysfs_destroy(struct pci_dev *pdev)
 	}
 }
 
-int check_vf_in_use(void *arg, struct quota *quota, int new_val)
+static int check_vf_in_use(void *arg, struct quota *quota, int new_val)
 {
 	struct rvu_vf *vf = arg;
 
@@ -1239,7 +1239,7 @@ enable_failed:
 	return err;
 }
 
-void enable_vf_flr_int(struct pci_dev *pdev)
+static void enable_vf_flr_int(struct pci_dev *pdev)
 {
 	struct rm_dev *rm;
 	int ena_bits;
@@ -1267,7 +1267,7 @@ void enable_vf_flr_int(struct pci_dev *pdev)
 	}
 }
 
-void disable_vf_flr_int(struct pci_dev *pdev)
+static void disable_vf_flr_int(struct pci_dev *pdev)
 {
 	struct rm_dev *rm;
 	int ena_bits;
@@ -1302,7 +1302,7 @@ void disable_vf_flr_int(struct pci_dev *pdev)
 	}
 }
 
-void enable_vf_mbox_int(struct pci_dev *pdev)
+static void enable_vf_mbox_int(struct pci_dev *pdev)
 {
 	struct rm_dev *rm;
 	int ena_bits;
@@ -1330,7 +1330,7 @@ void enable_vf_mbox_int(struct pci_dev *pdev)
 	}
 }
 
-void disable_vf_mbox_int(struct pci_dev *pdev)
+static void disable_vf_mbox_int(struct pci_dev *pdev)
 {
 	struct rm_dev *rm;
 	int ena_bits;
@@ -1361,7 +1361,7 @@ void disable_vf_mbox_int(struct pci_dev *pdev)
 	}
 }
 
-int __sriov_disable(struct pci_dev *pdev)
+static int __sriov_disable(struct pci_dev *pdev)
 {
 	struct rm_dev *rm;
 
@@ -1401,7 +1401,7 @@ int __sriov_disable(struct pci_dev *pdev)
 	return 0;
 }
 
-int __sriov_enable(struct pci_dev *pdev, int num_vfs)
+static int __sriov_enable(struct pci_dev *pdev, int num_vfs)
 {
 	int curr_vfs, vf = 0;
 	int err;
@@ -1541,7 +1541,7 @@ err_enable_sriov:
 	return err;
 }
 
-int rm_sriov_configure(struct pci_dev *pdev, int num_vfs)
+static int rm_sriov_configure(struct pci_dev *pdev, int num_vfs)
 {
 	if (num_vfs == 0)
 		return __sriov_disable(pdev);
