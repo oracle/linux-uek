@@ -152,12 +152,4 @@ static inline bool guest_cpuid_has_ibrs(struct kvm_vcpu *vcpu)
        best = kvm_find_cpuid_entry(vcpu, 7, 0);
        return best && (best->edx & KF(IBRS));
 }
-
-static inline bool guest_cpuid_has_ssbd(struct kvm_vcpu *vcpu)
-{
-       struct kvm_cpuid_entry2 *best;
-
-       best = kvm_find_cpuid_entry(vcpu, 7, 0);
-       return best && (best->edx & KF(SSBD));
-}
 #endif
