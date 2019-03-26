@@ -583,6 +583,9 @@ struct nix_txsch_alloc_rsp {
 	/* Scheduler queue list allocated at each level */
 	u16 schq_contig_list[NIX_TXSCH_LVL_CNT][MAX_TXSCHQ_PER_FUNC];
 	u16 schq_list[NIX_TXSCH_LVL_CNT][MAX_TXSCHQ_PER_FUNC];
+	u8  aggr_level; /* Traffic aggregation scheduler level */
+	u8  aggr_lvl_rr_prio; /* Aggregation lvl's RR_PRIO config */
+	u8  link_cfg_lvl; /* LINKX_CFG CSRs mapped to TL3 or TL2's index ? */
 };
 
 struct nix_txsch_free_req {
