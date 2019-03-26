@@ -1478,6 +1478,12 @@ int rvu_mbox_handler_nix_txsch_alloc(struct rvu *rvu,
 			nix_reset_tx_shaping(rvu, blkaddr, lvl, schq);
 		}
 	}
+
+	rsp->aggr_level = hw->cap.nix_tx_aggr_lvl;
+	rsp->aggr_lvl_rr_prio = TXSCH_TL1_DFLT_RR_PRIO;
+	rsp->link_cfg_lvl = rvu_read64(rvu, blkaddr,
+				       NIX_AF_PSE_CHANNEL_LEVEL) & 0x01 ?
+				       NIX_TXSCH_LVL_TL3 : NIX_TXSCH_LVL_TL2;
 	goto exit;
 err:
 	rc = NIX_AF_ERR_TLX_ALLOC_FAIL;
