@@ -137,8 +137,6 @@ struct vcpu_svm {
 	uint64_t sysenter_esp;
 	uint64_t sysenter_eip;
 
-	u64 msr_decfg;
-
 	u64 next_rip;
 
 	u64 host_user_msrs[NR_HOST_SAVE_USER_MSRS];
@@ -3111,18 +3109,7 @@ static u64 svm_read_l1_tsc(struct kvm_vcpu *vcpu, u64 host_tsc)
 
 static int svm_get_msr_feature(struct kvm_msr_entry *msr)
 {
-	msr->data = 0;
-
-	switch (msr->index) {
-	case MSR_F10H_DECFG:
-		if (boot_cpu_has(X86_FEATURE_LFENCE_RDTSC))
-			msr->data |= BIT_ULL(MSR_F10H_DECFG_LFENCE_SERIALIZE_BIT);
-		break;
-	default:
-		return 1;
-	}
-
-	return 0;
+	return 1;
 }
 
 static int svm_get_msr(struct kvm_vcpu *vcpu, struct msr_data *msr_info)
@@ -3201,9 +3188,6 @@ static int svm_get_msr(struct kvm_vcpu *vcpu, struct msr_data *msr_info)
 		break;
 	case MSR_IA32_UCODE_REV:
 		msr_info->data = 0x01000065;
-		break;
-	case MSR_F10H_DECFG:
-		msr_info->data = svm->msr_decfg;
 		break;
 	default:
 		return kvm_get_msr_common(vcpu, msr_info);
@@ -3373,24 +3357,6 @@ static int svm_set_msr(struct kvm_vcpu *vcpu, struct msr_data *msr)
 
 		svm->virt_spec_ctrl = data;
 		break;
-	case MSR_F10H_DECFG: {
-		struct kvm_msr_entry msr_entry;
-
-		msr_entry.index = msr->index;
-		if (svm_get_msr_feature(&msr_entry))
-			return 1;
-
-		/* Check the supported bits */
-		if (data & ~msr_entry.data)
-			return 1;
-
-		/* Don't allow the guest to change a bit, #GP */
-		if (!msr->host_initiated && (data ^ msr_entry.data))
-			return 1;
-
-		svm->msr_decfg = data;
-		break;
-	}
 	default:
 		return kvm_set_msr_common(vcpu, msr);
 	}
