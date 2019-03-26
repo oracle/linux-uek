@@ -194,7 +194,7 @@ static const struct svm_direct_access_msrs {
 	{ .index = MSR_IA32_LASTINTFROMIP,		.always = false },
 	{ .index = MSR_IA32_LASTINTTOIP,		.always = false },
 	{ .index = MSR_IA32_SPEC_CTRL,			.always = true },
-	{ .index = MSR_IA32_PRED_CMD,			.always = false },
+	{ .index = MSR_IA32_PRED_CMD,			.always = true },
 	{ .index = MSR_INVALID,				.always = false },
 };
 
@@ -3304,10 +3304,6 @@ static int svm_set_msr(struct kvm_vcpu *vcpu, struct msr_data *msr)
 		svm->spec_ctrl = data;
 		break;
 	case MSR_IA32_PRED_CMD:
-		if (!msr->host_initiated &&
-		    !guest_cpuid_has_ibpb(vcpu))
-			return 1;
-
 		if (data & ~FEATURE_SET_IBPB)
 			return 1;
 
@@ -3316,10 +3312,6 @@ static int svm_set_msr(struct kvm_vcpu *vcpu, struct msr_data *msr)
 
 		if (ibpb_inuse)
 			wrmsrl(MSR_IA32_PRED_CMD, FEATURE_SET_IBPB);
-
-		if (is_guest_mode(vcpu))
-			break;
-		set_msr_interception(svm->msrpm, MSR_IA32_PRED_CMD, 0, 1);
 		break;
 	case MSR_AMD64_VIRT_SPEC_CTRL:
 		if (data & ~SPEC_CTRL_SSBD)

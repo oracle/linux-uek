@@ -56,6 +56,20 @@ u64 kvm_supported_xcr0(void)
 	return xcr0;
 }
 
+#define F(x) bit(X86_FEATURE_##x)
+
+/* These are scattered features in cpufeatures.h. */
+#define KVM_CPUID_BIT_IBRS		26
+#define KVM_CPUID_BIT_STIBP		27
+#define KVM_CPUID_BIT_IA32_ARCH_CAPS	29
+#define KVM_CPUID_BIT_SSBD		31
+
+
+/* CPUID[eax=0x80000008].ebx */
+#define KVM_CPUID_BIT_IBPB_SUPPORT	12
+#define KVM_CPUID_BIT_VIRT_SSBD		25
+
+#define KF(x) bit(KVM_CPUID_BIT_##x)
 
 int kvm_update_cpuid(struct kvm_vcpu *vcpu)
 {
@@ -358,7 +372,7 @@ static inline int __do_cpuid_ent(struct kvm_cpuid_entry2 *entry, u32 function,
 
 	/* cpuid 0x80000008.ebx */
 	const u32 kvm_cpuid_80000008_ebx_x86_features =
-		KF(IBPB) | KF(VIRT_SSBD);
+		KF(IBPB_SUPPORT) | KF(VIRT_SSBD);
 
 	/* all calls to cpuid_count() should be made on the same cpu */
 	get_cpu();
@@ -595,7 +609,7 @@ static inline int __do_cpuid_ent(struct kvm_cpuid_entry2 *entry, u32 function,
 		entry->ebx &= kvm_cpuid_80000008_ebx_x86_features;
 
 		if ( !boot_cpu_has(X86_FEATURE_IBPB) )
-			entry->ebx &= ~(1u << KVM_CPUID_BIT_IBPB);
+			entry->ebx &= ~(1u << KVM_CPUID_BIT_IBPB_SUPPORT);
 
 		if (boot_cpu_has(X86_FEATURE_AMD_SSBD))
 			entry->ebx |= KF(VIRT_SSBD);
