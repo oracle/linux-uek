@@ -859,6 +859,8 @@ void rvu_cgx_disable_dmac_entries(struct rvu *rvu, u16 pcifunc);
 /* SSO APIs */
 int rvu_sso_init(struct rvu *rvu);
 void rvu_sso_freemem(struct rvu *rvu);
+int rvu_sso_register_interrupts(struct rvu *rvu);
+void rvu_sso_unregister_interrupts(struct rvu *rvu);
 int rvu_sso_lf_teardown(struct rvu *rvu, u16 pcifunc, int lf, int slot_id);
 int rvu_ssow_lf_teardown(struct rvu *rvu, u16 pcifunc, int lf, int slot_id);
 void rvu_sso_hwgrp_config_thresh(struct rvu *rvu, int blkaddr, int lf);

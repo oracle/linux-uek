@@ -32,6 +32,13 @@
 	} while (0)
 #endif
 
+#define SSO_AF_INT_DIGEST_PRNT(reg)					\
+	for (i = 0; i < block->lf.max / 64; i++) {			\
+		reg0 = rvu_read64(rvu, blkaddr, reg##X(i));		\
+		dev_err(rvu->dev, #reg "(%d) : 0x%llx", i, reg0);	\
+		rvu_write64(rvu, blkaddr, reg##X(i), reg0);		\
+	}
+
 void rvu_sso_hwgrp_config_thresh(struct rvu *rvu, int blkaddr, int lf)
 {
 	struct rvu_hwinfo *hw = rvu->hw;
@@ -421,7 +428,7 @@ af_cleanup:
 			 "SSO_HWGRP(%d)_AW_STATUS[NPA_FETCH] not cleared", lf);
 
 	/* Remove all pointers from XAQ, HRM 14.13.6 */
-	rvu_write64(rvu, blkaddr, SSO_AF_ERR0_ENA_W1C, BIT_ULL(1));
+	rvu_write64(rvu, blkaddr, SSO_AF_ERR0_ENA_W1C, ~0ULL);
 	reg = rvu_read64(rvu, blkaddr, SSO_AF_HWGRPX_AW_CFG(lf));
 	reg = (reg & ~SSO_HWGRP_AW_CFG_RWEN) | SSO_HWGRP_AW_CFG_XAQ_BYP_DIS;
 	rvu_write64(rvu, blkaddr, SSO_AF_HWGRPX_AW_CFG(lf), reg);
@@ -442,8 +449,9 @@ af_cleanup:
 		return err;
 	}
 
+	rvu_write64(rvu, blkaddr, SSO_AF_ERR0, ~0ULL);
 	/* Re-enable error reporting once we're finished */
-	rvu_write64(rvu, blkaddr, SSO_AF_ERR0_ENA_W1S, BIT_ULL(1));
+	rvu_write64(rvu, blkaddr, SSO_AF_ERR0_ENA_W1S, ~0ULL);
 
 	/* HRM 14.13.4 (13) */
 	rvu_write64(rvu, blkaddr, SSO_AF_HWGRPX_AW_STATUS(lf), 0x0);
@@ -981,6 +989,207 @@ int rvu_mbox_handler_ssow_lf_free(struct rvu *rvu,
 	}
 
 	return 0;
+}
+
+static int rvu_sso_do_register_interrupt(struct rvu *rvu, int irq_offs,
+					 irq_handler_t handler,
+					 const char *name)
+{
+	int ret = 0;
+
+	ret = request_irq(pci_irq_vector(rvu->pdev, irq_offs), handler, 0,
+			  name, rvu);
+	if (ret) {
+		dev_err(rvu->dev, "SSOAF: %s irq registration failed", name);
+		goto err;
+	}
+
+	WARN_ON(rvu->irq_allocated[irq_offs]);
+	rvu->irq_allocated[irq_offs] = true;
+err:
+	return ret;
+}
+
+static irqreturn_t rvu_sso_af_err0_intr_handler(int irq, void *ptr)
+{
+	struct rvu *rvu = (struct rvu *)ptr;
+	struct rvu_block *block;
+	int i, blkaddr;
+	u64 reg, reg0;
+
+	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_SSO, 0);
+	if (blkaddr < 0)
+		return IRQ_NONE;
+
+	block = &rvu->hw->block[blkaddr];
+	reg = rvu_read64(rvu, blkaddr, SSO_AF_ERR0);
+	dev_err(rvu->dev, "Received SSO_AF_ERR0 irq : 0x%llx", reg);
+
+	if (reg & BIT_ULL(15)) {
+		dev_err(rvu->dev, "Received Bad-fill-packet NCB error");
+		SSO_AF_INT_DIGEST_PRNT(SSO_AF_POISON)
+	}
+
+	if (reg & BIT_ULL(14)) {
+		dev_err(rvu->dev, "An FLR was initiated, but SSO_LF_GGRP_AQ_CNT[AQ_CNT] != 0");
+		SSO_AF_INT_DIGEST_PRNT(SSO_AF_FLR_AQ_DIGEST)
+	}
+
+	if (reg & BIT_ULL(13)) {
+		dev_err(rvu->dev, "Add work dropped due to XAQ pointers not yet initialized.");
+		SSO_AF_INT_DIGEST_PRNT(SSO_AF_XAQDIS_DIGEST)
+	}
+
+	if (reg & (0xF << 9)) {
+		dev_err(rvu->dev, "PF_FUNC mapping error.");
+		dev_err(rvu->dev, "SSO_AF_UNMAP_INFO : 0x%llx",
+			rvu_read64(rvu, blkaddr, SSO_AF_UNMAP_INFO));
+	}
+
+	if (reg & BIT_ULL(8)) {
+		dev_err(rvu->dev, "Add work dropped due to QTL being disabled, 0x0");
+		SSO_AF_INT_DIGEST_PRNT(SSO_AF_QCTLDIS_DIGEST)
+	}
+
+	if (reg & BIT_ULL(7)) {
+		dev_err(rvu->dev, "Add work dropped due to WQP being 0x0");
+		SSO_AF_INT_DIGEST_PRNT(SSO_AF_WQP0_DIGEST)
+	}
+
+	if (reg & BIT_ULL(6))
+		dev_err(rvu->dev, "Add work dropped due to 64 bit write");
+
+	if (reg & BIT_ULL(5))
+		dev_err(rvu->dev, "Set when received add work with tag type is specified as EMPTY");
+
+	if (reg & BIT_ULL(4)) {
+		dev_err(rvu->dev, "Add work to disabled hardware group. An ADDWQ was received and dropped to a hardware group with SSO_AF_HWGRP(0..255)_IAQ_THR[RSVD_THR] = 0.");
+		SSO_AF_INT_DIGEST_PRNT(SSO_AF_GRPDIS_DIGEST)
+	}
+
+	if (reg & BIT_ULL(3)) {
+		dev_err(rvu->dev, "Bad-fill-packet NCB error");
+		SSO_AF_INT_DIGEST_PRNT(SSO_AF_BFPN_DIGEST)
+	}
+
+	if (reg & BIT_ULL(2)) {
+		dev_err(rvu->dev, "Bad-fill-packet error.");
+		SSO_AF_INT_DIGEST_PRNT(SSO_AF_BFP_DIGEST)
+	}
+
+	if (reg & BIT_ULL(1)) {
+		dev_err(rvu->dev, "The NPA returned an error indication");
+		SSO_AF_INT_DIGEST_PRNT(SSO_AF_NPA_DIGEST)
+	}
+
+	rvu_write64(rvu, blkaddr, SSO_AF_ERR0, reg);
+	return IRQ_HANDLED;
+}
+
+static irqreturn_t rvu_sso_af_err2_intr_handler(int irq, void *ptr)
+{
+	struct rvu *rvu = (struct rvu *)ptr;
+	int blkaddr;
+	u64 reg;
+
+	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_SSO, 0);
+	if (blkaddr < 0)
+		return IRQ_NONE;
+
+	reg = rvu_read64(rvu, blkaddr, SSO_AF_ERR2);
+	dev_err(rvu->dev, "received SSO_AF_ERR2 irq : 0x%llx", reg);
+	rvu_write64(rvu, blkaddr, SSO_AF_ERR2, reg);
+
+	return IRQ_HANDLED;
+}
+
+static irqreturn_t rvu_sso_af_ras_intr_handler(int irq, void *ptr)
+{
+	struct rvu *rvu = (struct rvu *)ptr;
+	struct rvu_block *block;
+	int i, blkaddr;
+	u64 reg, reg0;
+
+	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_SSO, 0);
+	if (blkaddr < 0)
+		return IRQ_NONE;
+
+	block = &rvu->hw->block[blkaddr];
+
+	reg = rvu_read64(rvu, blkaddr, SSO_AF_RAS);
+	dev_err(rvu->dev, "received SSO_AF_RAS irq : 0x%llx", reg);
+	rvu_write64(rvu, blkaddr, SSO_AF_RAS, reg);
+	SSO_AF_INT_DIGEST_PRNT(SSO_AF_POISON)
+
+	return IRQ_HANDLED;
+}
+
+void rvu_sso_unregister_interrupts(struct rvu *rvu)
+{
+	int i, blkaddr, offs;
+
+	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_SSO, 0);
+	if (blkaddr < 0)
+		return;
+
+	offs = rvu_read64(rvu, blkaddr, SSO_PRIV_AF_INT_CFG) & 0x7FF;
+	if (!offs)
+		return;
+
+	rvu_write64(rvu, blkaddr, SSO_AF_RAS_ENA_W1C, ~0ULL);
+	rvu_write64(rvu, blkaddr, SSO_AF_ERR2_ENA_W1C, ~0ULL);
+	rvu_write64(rvu, blkaddr, SSO_AF_ERR0_ENA_W1C, ~0ULL);
+
+	for (i = 0; i < SSO_AF_INT_VEC_CNT; i++)
+		if (rvu->irq_allocated[offs + i]) {
+			free_irq(pci_irq_vector(rvu->pdev, offs + i), rvu);
+			rvu->irq_allocated[offs + i] = false;
+		}
+}
+
+int rvu_sso_register_interrupts(struct rvu *rvu)
+{
+	int blkaddr, offs, ret = 0;
+
+	if (!is_block_implemented(rvu->hw, BLKADDR_SSO))
+		return 0;
+
+	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_SSO, 0);
+	if (blkaddr < 0)
+		return blkaddr;
+
+	offs = rvu_read64(rvu, blkaddr, SSO_PRIV_AF_INT_CFG) & 0x7FF;
+	if (!offs) {
+		dev_warn(rvu->dev,
+			 "Failed to get SSO_AF_INT vector offsets\n");
+		return 0;
+	}
+
+	ret = rvu_sso_do_register_interrupt(rvu, offs + SSO_AF_INT_VEC_ERR0,
+					    rvu_sso_af_err0_intr_handler,
+					    "SSO_AF_ERR0");
+	if (ret)
+		goto err;
+	rvu_write64(rvu, blkaddr, SSO_AF_ERR0_ENA_W1S, ~0ULL);
+
+	ret = rvu_sso_do_register_interrupt(rvu, offs + SSO_AF_INT_VEC_ERR2,
+					    rvu_sso_af_err2_intr_handler,
+					    "SSO_AF_ERR2");
+	if (ret)
+		goto err;
+	rvu_write64(rvu, blkaddr, SSO_AF_ERR2_ENA_W1S, ~0ULL);
+
+	ret = rvu_sso_do_register_interrupt(rvu, offs + SSO_AF_INT_VEC_RAS,
+					    rvu_sso_af_ras_intr_handler,
+					    "SSO_AF_RAS");
+	if (ret)
+		goto err;
+	rvu_write64(rvu, blkaddr, SSO_AF_RAS_ENA_W1S, ~0ULL);
+
+	return 0;
+err:
+	rvu_sso_unregister_interrupts(rvu);
+	return ret;
 }
 
 int rvu_sso_init(struct rvu *rvu)
