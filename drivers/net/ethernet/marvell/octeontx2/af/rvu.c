@@ -57,6 +57,27 @@ static char *mkex_profile; /* MKEX profile name */
 module_param(mkex_profile, charp, 0000);
 MODULE_PARM_DESC(mkex_profile, "MKEX profile name string");
 
+static void rvu_setup_hw_capabilities(struct rvu *rvu)
+{
+	struct rvu_hwinfo *hw = rvu->hw;
+
+	hw->cap.nix_tx_aggr_lvl = NIX_TXSCH_LVL_TL1;
+	hw->cap.nix_fixed_txschq_mapping = false;
+	hw->cap.nix_express_traffic = true;
+	hw->cap.nix_shaping = true;
+	hw->cap.nix_tx_link_bp = true;
+
+	if ((is_rvu_9xxx_A0(rvu))) {
+		hw->cap.nix_fixed_txschq_mapping = true;
+		hw->cap.nix_txsch_per_cgx_lmac = 4;
+		hw->cap.nix_txsch_per_lbk_lmac = 132;
+		hw->cap.nix_txsch_per_sdp_lmac = 76;
+		hw->cap.nix_express_traffic = false;
+		hw->cap.nix_shaping = false;
+		hw->cap.nix_tx_link_bp = false;
+	}
+}
+
 /* Poll a RVU block's register 'offset', for a 'zero'
  * or 'nonzero' at bits specified by 'mask'
  */
@@ -2675,6 +2696,8 @@ static int rvu_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	rvu_check_block_implemented(rvu);
 
 	rvu_reset_all_blocks(rvu);
+
+	rvu_setup_hw_capabilities(rvu);
 
 	err = rvu_setup_hw_resources(rvu);
 	if (err)

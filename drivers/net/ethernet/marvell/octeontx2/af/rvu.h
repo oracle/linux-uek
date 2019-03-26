@@ -271,10 +271,11 @@ struct rvu_pfvf {
 struct nix_txsch {
 	struct rsrc_bmap schq;
 	u8   lvl;
-#define NIX_TXSCHQ_TL1_CFG_DONE       BIT_ULL(0)
+#define NIX_TXSCHQ_CFG_DONE	      BIT_ULL(0)
 #define TXSCH_MAP_FUNC(__pfvf_map)    ((__pfvf_map) & 0xFFFF)
 #define TXSCH_MAP_FLAGS(__pfvf_map)   ((__pfvf_map) >> 16)
 #define TXSCH_MAP(__func, __flags)    (((__func) & 0xFFFF) | ((__flags) << 16))
+#define TXSCH_SET_FLAG(__pfvf_map, flag)    (__pfvf_map | (flag << 16))
 	u32  *pfvf_map;
 };
 
@@ -309,6 +310,21 @@ struct nix_hw {
 	void   *tx_stall;
 };
 
+/* RVU block's capabilities or functionality,
+ * which vary by silicon version/skew.
+ */
+struct hw_cap {
+	/* Transmit side supported functionality */
+	u8	nix_tx_aggr_lvl; /* Tx link's traffic aggregation level */
+	u16	nix_txsch_per_cgx_lmac; /* Max Q's transmitting to CGX LMAC */
+	u16	nix_txsch_per_lbk_lmac; /* Max Q's transmitting to LBK LMAC */
+	u16	nix_txsch_per_sdp_lmac; /* Max Q's transmitting to SDP LMAC */
+	bool	nix_fixed_txschq_mapping; /* Schq mapping fixed or flexible */
+	bool	nix_express_traffic;	 /* Are express links supported */
+	bool	nix_shaping;		 /* Is shaping and coloring supported */
+	bool	nix_tx_link_bp;		 /* Can link backpressure TL queues ? */
+};
+
 struct rvu_hwinfo {
 	u8	total_pfs;   /* MAX RVU PFs HW supports */
 	u16	total_vfs;   /* Max RVU VFs HW supports */
@@ -320,7 +336,7 @@ struct rvu_hwinfo {
 	u8	sdp_links;
 	u8	npc_kpus;          /* No of parser units */
 
-
+	struct hw_cap    cap;
 	struct rvu_block block[BLK_COUNT]; /* Block info */
 	struct nix_hw    *nix0;
 	struct npc_pkind pkind;
