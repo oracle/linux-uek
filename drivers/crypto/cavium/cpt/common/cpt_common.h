@@ -23,7 +23,7 @@
 #define CSR_DELAY		30
 
 /* Microcode version string length */
-#define CPT_UCODE_VER_STR_SZ	28
+#define CPT_UCODE_VER_STR_SZ	44
 #define TIME_IN_RESET_COUNT	5
 
 /* Completion code size and initial value */
