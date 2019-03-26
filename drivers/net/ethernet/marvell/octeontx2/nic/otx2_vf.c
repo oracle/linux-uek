@@ -102,11 +102,11 @@ static void otx2vf_vfaf_mbox_handler(struct work_struct *work)
 	mbox = &af_mbox->mbox;
 	mdev = &mbox->dev[0];
 	rsp_hdr = (struct mbox_hdr *)(mdev->mbase + mbox->rx_start);
-	if (rsp_hdr->num_msgs == 0)
+	if (af_mbox->num_msgs == 0)
 		return;
 	offset = mbox->rx_start + ALIGN(sizeof(*rsp_hdr), MBOX_MSG_ALIGN);
 
-	for (id = 0; id < rsp_hdr->num_msgs; id++) {
+	for (id = 0; id < af_mbox->num_msgs; id++) {
 		msg = (struct mbox_msghdr *)(mdev->mbase + offset);
 		otx2vf_process_vfaf_mbox_msg(af_mbox->pfvf, msg);
 		offset = mbox->rx_start + msg->next_msgoff;
@@ -176,12 +176,12 @@ static void otx2vf_vfaf_mbox_up_handler(struct work_struct *work)
 	mdev = &mbox->dev[0];
 
 	rsp_hdr = (struct mbox_hdr *)(mdev->mbase + mbox->rx_start);
-	if (rsp_hdr->num_msgs == 0)
+	if (vf_mbox->up_num_msgs == 0)
 		return;
 
 	offset = mbox->rx_start + ALIGN(sizeof(*rsp_hdr), MBOX_MSG_ALIGN);
 
-	for (id = 0; id < rsp_hdr->num_msgs; id++) {
+	for (id = 0; id < vf_mbox->up_num_msgs; id++) {
 		msg = (struct mbox_msghdr *)(mdev->mbase + offset);
 		otx2vf_process_mbox_msg_up(vf, msg);
 		offset = mbox->rx_start + msg->next_msgoff;
@@ -206,18 +206,26 @@ static irqreturn_t otx2vf_vfaf_mbox_intr_handler(int irq, void *vf_irq)
 	otx2_sync_mbox_bbuf(mbox, 0);
 
 	hdr = (struct mbox_hdr *)(mdev->mbase + mbox->rx_start);
-	if (hdr->num_msgs)
+	if (hdr->num_msgs) {
+		vf->mbox.num_msgs = hdr->num_msgs;
+		hdr->num_msgs = 0;
+		memset(mbox->hwbase + mbox->rx_start, 0,
+		       ALIGN(sizeof(struct mbox_hdr), sizeof(u64)));
 		queue_work(vf->mbox_wq, &vf->mbox.mbox_wrk);
-
+	}
 	/* Check for PF => VF notification messages */
 	mbox = &vf->mbox.mbox_up;
 	mdev = &mbox->dev[0];
 	otx2_sync_mbox_bbuf(mbox, 0);
 
 	hdr = (struct mbox_hdr *)(mdev->mbase + mbox->rx_start);
-	if (hdr->num_msgs)
+	if (hdr->num_msgs) {
+		vf->mbox.up_num_msgs = hdr->num_msgs;
+		hdr->num_msgs = 0;
+		memset(mbox->hwbase + mbox->rx_start, 0,
+		       ALIGN(sizeof(struct mbox_hdr), sizeof(u64)));
 		queue_work(vf->mbox_wq, &vf->mbox.mbox_up_wrk);
-
+	}
 	/* Clear the IRQ */
 	otx2_write64(vf, RVU_VF_INT, BIT_ULL(0));
 
