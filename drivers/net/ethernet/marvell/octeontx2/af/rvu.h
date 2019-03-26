@@ -52,6 +52,9 @@ struct rvu_debugfs {
 	struct dentry *lmac;
 	struct dentry *nix;
 	struct dentry *npc;
+	struct dentry *sso;
+	struct dentry *sso_hwgrp;
+	struct dentry *sso_hws;
 	struct dump_ctx npa_aura_ctx;
 	struct dump_ctx npa_pool_ctx;
 	struct dump_ctx nix_cq_ctx;
