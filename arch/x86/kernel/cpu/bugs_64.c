@@ -366,7 +366,7 @@ x86_virt_spec_ctrl(u64 guest_spec_ctrl, u64 guest_virt_spec_ctrl, bool setguest)
 	 * If SSBD is not handled in MSR_SPEC_CTRL on AMD, update
 	 * MSR_AMD64_L2_CFG or MSR_VIRT_SPEC_CTRL if supported.
 	 */
-	if (!static_cpu_has(X86_FEATURE_LS_CFG_SSBD) &&
+	if (!static_cpu_has(X86_FEATURE_AMD_SSBD) &&
 	    !static_cpu_has(X86_FEATURE_VIRT_SSBD))
 		return;
 
@@ -400,7 +400,7 @@ static void x86_amd_ssbd_enable(void)
 
 	if (boot_cpu_has(X86_FEATURE_VIRT_SSBD))
 		wrmsrl(MSR_AMD64_VIRT_SPEC_CTRL, SPEC_CTRL_SSBD);
-	else if (boot_cpu_has(X86_FEATURE_LS_CFG_SSBD))
+	else if (boot_cpu_has(X86_FEATURE_AMD_SSBD))
 		wrmsrl(MSR_AMD64_LS_CFG, msrval);
 }
 

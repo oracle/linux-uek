@@ -597,7 +597,7 @@ static inline int __do_cpuid_ent(struct kvm_cpuid_entry2 *entry, u32 function,
 		if ( !boot_cpu_has(X86_FEATURE_IBPB) )
 			entry->ebx &= ~(1u << KVM_CPUID_BIT_IBPB);
 
-		if (boot_cpu_has(X86_FEATURE_LS_CFG_SSBD))
+		if (boot_cpu_has(X86_FEATURE_AMD_SSBD))
 			entry->ebx |= KF(VIRT_SSBD);
 		break;
 	}

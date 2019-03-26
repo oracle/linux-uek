@@ -201,7 +201,7 @@
 #define X86_FEATURE_INTEL_PT	( 7*32+15) /* Intel Processor Trace */
 #define X86_FEATURE_VIRT_SSBD	( 7*32+16) /* Virtualized Speculative Store Bypass Disable */
 #define X86_FEATURE_ZEN		( 7*32+17) /* "" CPU is AMD family 0x17 (Zen) */
-#define X86_FEATURE_LS_CFG_SSBD	( 7*32+18) /* "" AMD SSBD implementation via LS_CFG MSR */
+#define X86_FEATURE_AMD_SSBD	( 7*32+18) /* "" AMD RDS implementation */
 #define X86_FEATURE_RSB_CTXSW	( 7*32+19) /* "" Fill RSB on context switches */
 #define X86_FEATURE_IBRS	( 7*32+20) /* Control Speculation Control */
 #define X86_FEATURE_STIBP	( 7*32+21) /* Single Thread Indirect Branch Predictors */
