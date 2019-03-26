@@ -353,8 +353,7 @@ x86_virt_spec_ctrl(u64 guest_spec_ctrl, u64 guest_virt_spec_ctrl, bool setguest)
 		}
 
 		/* SSBD controlled in MSR_SPEC_CTRL */
-		if (boot_cpu_has(X86_FEATURE_SSBD) ||
-		    boot_cpu_has(X86_FEATURE_AMD_SSBD))
+		if (static_cpu_has(X86_FEATURE_SSBD))
 			hostval |= ssbd_tif_to_spec_ctrl(ti->flags);
 
 		if (hostval != guestval) {
@@ -1041,8 +1040,7 @@ static void __init ssb_init(void)
 		case X86_VENDOR_INTEL:
 		case X86_VENDOR_AMD:
 			if (ssb_mode == SPEC_STORE_BYPASS_DISABLE &&
-			    !static_cpu_has(X86_FEATURE_SSBD) &&
-			    !static_cpu_has(X86_FEATURE_AMD_SSBD)) {
+			    !static_cpu_has(X86_FEATURE_IBRS)) {
 				x86_amd_ssbd_enable();
 				break;
 			}
