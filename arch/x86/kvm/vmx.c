@@ -308,6 +308,7 @@ static const struct kernel_param_ops vmentry_l1d_flush_ops = {
 module_param_cb(vmentry_l1d_flush, &vmentry_l1d_flush_ops, NULL, 0644);
 
 #define NR_AUTOLOAD_MSRS 8
+#define VMCS02_POOL_SIZE 1
 
 struct vmcs {
 	u32 revision_id;
@@ -345,7 +346,7 @@ struct shared_msr_entry {
  * stored in guest memory specified by VMPTRLD, but is opaque to the guest,
  * which must access it using VMREAD/VMWRITE/VMCLEAR instructions.
  * More than one of these structures may exist, if L1 runs multiple L2 guests.
- * nested_vmx_run() will use the data here to build a vmcs02: the VMCS for the
+ * nested_vmx_run() will use the data here to build a vmcs02: a VMCS for the
  * underlying hardware which will be used to run L2.
  * This structure is packed to ensure that its layout is identical across
  * machines (necessary for live migration).
@@ -524,6 +525,13 @@ struct __packed vmcs12 {
  */
 #define VMCS12_SIZE 0x1000
 
+/* Used to remember the last vmcs02 used for some recently used vmcs12s */
+struct vmcs02_list {
+	struct list_head list;
+	gpa_t vmptr;
+	struct loaded_vmcs vmcs02;
+};
+
 /*
  * The nested_vmx structure is part of vcpu_vmx, and holds information we need
  * for correct emulation of VMX (i.e., nested VMX) on this vcpu.
@@ -545,12 +553,12 @@ struct nested_vmx {
 	 */
 	bool sync_shadow_vmcs;
 
+	/* vmcs02_list cache of VMCSs recently used to run L2 guests */
+	struct list_head vmcs02_pool;
+	int vmcs02_num;
 	u64 vmcs01_tsc_offset;
 	/* L2 must run next, and mustn't decide to exit to L1. */
 	bool nested_run_pending;
-
-	struct loaded_vmcs vmcs02;
-
 	/*
 	 * Guest pages referred to in vmcs02 with host-physical pointers, so
 	 * we must keep them pinned while L2 runs.
@@ -6514,6 +6522,93 @@ static int handle_monitor(struct kvm_vcpu *vcpu)
 }
 
 /*
+ * To run an L2 guest, we need a vmcs02 based on the L1-specified vmcs12.
+ * We could reuse a single VMCS for all the L2 guests, but we also want the
+ * option to allocate a separate vmcs02 for each separate loaded vmcs12 - this
+ * allows keeping them loaded on the processor, and in the future will allow
+ * optimizations where prepare_vmcs02 doesn't need to set all the fields on
+ * every entry if they never change.
+ * So we keep, in vmx->nested.vmcs02_pool, a cache of size VMCS02_POOL_SIZE
+ * (>=0) with a vmcs02 for each recently loaded vmcs12s, most recent first.
+ *
+ * The following functions allocate and free a vmcs02 in this pool.
+ */
+
+/* Get a VMCS from the pool to use as vmcs02 for the current vmcs12. */
+static struct loaded_vmcs *nested_get_current_vmcs02(struct vcpu_vmx *vmx)
+{
+	struct vmcs02_list *item;
+	list_for_each_entry(item, &vmx->nested.vmcs02_pool, list)
+		if (item->vmptr == vmx->nested.current_vmptr) {
+			list_move(&item->list, &vmx->nested.vmcs02_pool);
+			return &item->vmcs02;
+		}
+
+	if (vmx->nested.vmcs02_num >= max(VMCS02_POOL_SIZE, 1)) {
+		/* Recycle the least recently used VMCS. */
+		item = list_entry(vmx->nested.vmcs02_pool.prev,
+			struct vmcs02_list, list);
+		item->vmptr = vmx->nested.current_vmptr;
+		list_move(&item->list, &vmx->nested.vmcs02_pool);
+		return &item->vmcs02;
+	}
+
+	/* Create a new VMCS */
+	item = kzalloc(sizeof(struct vmcs02_list), GFP_KERNEL);
+	if (!item)
+		return NULL;
+	item->vmcs02.vmcs = alloc_vmcs();
+	if (!item->vmcs02.vmcs) {
+		kfree(item);
+		return NULL;
+	}
+	loaded_vmcs_init(&item->vmcs02);
+	item->vmptr = vmx->nested.current_vmptr;
+	list_add(&(item->list), &(vmx->nested.vmcs02_pool));
+	vmx->nested.vmcs02_num++;
+	return &item->vmcs02;
+}
+
+/* Free and remove from pool a vmcs02 saved for a vmcs12 (if there is one) */
+static void nested_free_vmcs02(struct vcpu_vmx *vmx, gpa_t vmptr)
+{
+	struct vmcs02_list *item;
+	list_for_each_entry(item, &vmx->nested.vmcs02_pool, list)
+		if (item->vmptr == vmptr) {
+			free_loaded_vmcs(&item->vmcs02);
+			list_del(&item->list);
+			kfree(item);
+			vmx->nested.vmcs02_num--;
+			return;
+		}
+}
+
+/*
+ * Free all VMCSs saved for this vcpu, except the one pointed by
+ * vmx->loaded_vmcs. We must be running L1, so vmx->loaded_vmcs
+ * must be &vmx->vmcs01.
+ */
+static void nested_free_all_saved_vmcss(struct vcpu_vmx *vmx)
+{
+	struct vmcs02_list *item, *n;
+
+	WARN_ON(vmx->loaded_vmcs != &vmx->vmcs01);
+	list_for_each_entry_safe(item, n, &vmx->nested.vmcs02_pool, list) {
+		/*
+		 * Something will leak if the above WARN triggers.  Better than
+		 * a use-after-free.
+		 */
+		if (vmx->loaded_vmcs == &item->vmcs02)
+			continue;
+
+		free_loaded_vmcs(&item->vmcs02);
+		list_del(&item->list);
+		kfree(item);
+		vmx->nested.vmcs02_num--;
+	}
+}
+
+/*
  * The following 3 functions, nested_vmx_succeed()/failValid()/failInvalid(),
  * set the success or error code of an emulated VMX instruction, as specified
  * by Vol 2B, VMX Instruction Reference, "Conventions".
@@ -6782,11 +6877,6 @@ static int handle_vmon(struct kvm_vcpu *vcpu)
 		return 1;
 	}
 
-	vmx->nested.vmcs02.vmcs = alloc_vmcs();
-	if (!vmx->nested.vmcs02.vmcs)
-		goto out_vmcs02;
-	loaded_vmcs_init(&vmx->nested.vmcs02);
-
 	if (cpu_has_vmx_msr_bitmap()) {
 		vmx->nested.msr_bitmap =
 				(unsigned long *)__get_free_page(GFP_KERNEL);
@@ -6805,6 +6895,9 @@ static int handle_vmon(struct kvm_vcpu *vcpu)
 		vmx->nested.current_shadow_vmcs = shadow_vmcs;
 	}
 
+	INIT_LIST_HEAD(&(vmx->nested.vmcs02_pool));
+	vmx->nested.vmcs02_num = 0;
+
 	hrtimer_init(&vmx->nested.preemption_timer, CLOCK_MONOTONIC,
 		     HRTIMER_MODE_REL);
 	vmx->nested.preemption_timer.function = vmx_preemption_timer_fn;
@@ -6819,9 +6912,6 @@ out_shadow_vmcs:
 	free_page((unsigned long)vmx->nested.msr_bitmap);
 
 out_msr_bitmap:
-	free_loaded_vmcs(&vmx->nested.vmcs02);
-
-out_vmcs02:
 	return -ENOMEM;
 }
 
@@ -6899,7 +6989,7 @@ static void free_nested(struct vcpu_vmx *vmx)
 	}
 	if (enable_shadow_vmcs)
 		free_vmcs(vmx->nested.current_shadow_vmcs);
-	/* Unpin physical memory we referred to in the vmcs02 */
+	/* Unpin physical memory we referred to in current vmcs02 */
 	if (vmx->nested.apic_access_page) {
 		nested_release_page(vmx->nested.apic_access_page);
 		vmx->nested.apic_access_page = NULL;
@@ -6915,7 +7005,7 @@ static void free_nested(struct vcpu_vmx *vmx)
 		vmx->nested.pi_desc = NULL;
 	}
 
-	free_loaded_vmcs(&vmx->nested.vmcs02);
+	nested_free_all_saved_vmcss(vmx);
 }
 
 /* Emulate the VMXOFF instruction */
@@ -6962,6 +7052,8 @@ static int handle_vmclear(struct kvm_vcpu *vcpu)
 	vmcs12->launch_state = 0;
 	kunmap(page);
 	nested_release_page(page);
+
+	nested_free_vmcs02(vmx, vmptr);
 
 	skip_emulated_instruction(vcpu);
 	nested_vmx_succeed(vcpu);
@@ -9728,6 +9820,7 @@ static int nested_vmx_run(struct kvm_vcpu *vcpu, bool launch)
 	struct vmcs12 *vmcs12;
 	struct vcpu_vmx *vmx = to_vmx(vcpu);
 	int cpu;
+	struct loaded_vmcs *vmcs02;
 	bool ia32e;
 	u32 msr_entry_idx;
 	unsigned long exit_qualification;
@@ -9868,6 +9961,10 @@ static int nested_vmx_run(struct kvm_vcpu *vcpu, bool launch)
 	 * the nested entry.
 	 */
 
+	vmcs02 = nested_get_current_vmcs02(vmx);
+	if (!vmcs02)
+		return -ENOMEM;
+
 	enter_guest_mode(vcpu);
 
 	vmx->nested.vmcs01_tsc_offset = vmcs_read64(TSC_OFFSET);
@@ -9876,7 +9973,7 @@ static int nested_vmx_run(struct kvm_vcpu *vcpu, bool launch)
 		vmx->nested.vmcs01_debugctl = vmcs_read64(GUEST_IA32_DEBUGCTL);
 
 	cpu = get_cpu();
-	vmx->loaded_vmcs = &vmx->nested.vmcs02;
+	vmx->loaded_vmcs = vmcs02;
 	vmx_vcpu_put(vcpu);
 	vmx_vcpu_load(vcpu, cpu);
 	vcpu->cpu = cpu;
@@ -10395,6 +10492,10 @@ static void nested_vmx_vmexit(struct kvm_vcpu *vcpu, u32 exit_reason,
 	vm_entry_controls_init(vmx, vmcs_read32(VM_ENTRY_CONTROLS));
 	vm_exit_controls_init(vmx, vmcs_read32(VM_EXIT_CONTROLS));
 	vmx_segment_cache_clear(vmx);
+
+	/* if no vmcs02 cache requested, remove the one we used */
+	if (VMCS02_POOL_SIZE == 0)
+		nested_free_vmcs02(vmx, vmx->nested.current_vmptr);
 
 	load_vmcs12_host_state(vcpu, vmcs12);
 
