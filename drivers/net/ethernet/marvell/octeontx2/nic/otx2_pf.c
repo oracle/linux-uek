@@ -41,6 +41,35 @@ MODULE_LICENSE("GPL v2");
 MODULE_VERSION(DRV_VERSION);
 MODULE_DEVICE_TABLE(pci, otx2_pf_id_table);
 
+static void otx2_queue_work(struct mbox *mw, struct workqueue_struct *mbox_wq,
+			    int first, int mdevs, u64 intr)
+{
+	struct otx2_mbox_dev *mdev;
+	struct otx2_mbox *mbox;
+	struct mbox_hdr *hdr;
+	int i;
+
+	for (i = first; i < mdevs; i++) {
+		/* start from 0 */
+		if (!(intr & BIT_ULL(i - first)))
+			continue;
+
+		mbox = &mw->mbox;
+		mdev = &mbox->dev[i];
+		otx2_sync_mbox_bbuf(mbox, i);
+		hdr = mdev->mbase + mbox->rx_start;
+		if (hdr->num_msgs)
+			queue_work(mbox_wq, &mw[i].mbox_wrk);
+
+		mbox = &mw->mbox_up;
+		mdev = &mbox->dev[i];
+		otx2_sync_mbox_bbuf(mbox, i);
+		hdr = mdev->mbase + mbox->rx_start;
+		if (hdr->num_msgs)
+			queue_work(mbox_wq, &mw[i].mbox_up_wrk);
+	}
+}
+
 static void otx2_forward_msg_pfvf(struct otx2_mbox_dev *mdev,
 				  struct otx2_mbox *pfvf_mbox, void *bbuf_base,
 				  int devid)
@@ -242,25 +271,23 @@ end:
 static irqreturn_t otx2_pfvf_mbox_intr_handler(int irq, void *pf_irq)
 {
 	struct otx2_nic *pf = (struct otx2_nic *)(pf_irq);
+	int vfs = pf->total_vfs;
 	struct mbox *mbox;
-	int reg, vf_idx;
 	u64 intr;
 
-	/* Check wich VF raised an interrupt */
-	for (reg = 0; reg < 2; reg++) {
-		intr = otx2_read64(pf, RVU_PF_VFPF_MBOX_INTX(reg));
-
-		for (vf_idx = reg * 64; vf_idx < pf->total_vfs; vf_idx++) {
-			if (intr & BIT_ULL(vf_idx - (reg * 64))) {
-				mbox = &pf->mbox_pfvf[vf_idx];
-				queue_work(pf->mbox_pfvf_wq, &mbox->mbox_wrk);
-				queue_work(pf->mbox_pfvf_wq,
-					   &mbox->mbox_up_wrk);
-				otx2_write64(pf, RVU_PF_VFPF_MBOX_INTX(reg),
-					     BIT_ULL(vf_idx - (reg * 64)));
-			}
-		}
+	mbox = pf->mbox_pfvf;
+	/* Handle VF interrupts */
+	if (vfs > 64) {
+		intr = otx2_read64(pf, RVU_PF_VFPF_MBOX_INTX(1));
+		otx2_write64(pf, RVU_PF_VFPF_MBOX_INTX(1), intr);
+		otx2_queue_work(mbox, pf->mbox_pfvf_wq, 64, vfs, intr);
+		vfs -= 64;
 	}
+
+	intr = otx2_read64(pf, RVU_PF_VFPF_MBOX_INTX(0));
+	otx2_write64(pf, RVU_PF_VFPF_MBOX_INTX(0), intr);
+
+	otx2_queue_work(mbox, pf->mbox_pfvf_wq, 0, vfs, intr);
 
 	return IRQ_HANDLED;
 }
@@ -652,30 +679,10 @@ static void otx2_pfaf_mbox_up_handler(struct work_struct *work)
 static irqreturn_t otx2_pfaf_mbox_intr_handler(int irq, void *pf_irq)
 {
 	struct otx2_nic *pf = (struct otx2_nic *)pf_irq;
-	struct otx2_mbox_dev *mdev;
-	struct otx2_mbox *mbox;
-	struct mbox_hdr *hdr;
+	struct mbox *mbox;
 
-	/* Read latest mbox data */
-	smp_rmb();
-
-	/* Check for AF => PF response messages */
-	mbox = &pf->mbox.mbox;
-	mdev = &mbox->dev[0];
-	otx2_sync_mbox_bbuf(mbox, 0);
-
-	hdr = (struct mbox_hdr *)(mdev->mbase + mbox->rx_start);
-	if (hdr->num_msgs)
-		queue_work(pf->mbox_wq, &pf->mbox.mbox_wrk);
-
-	/* Check for AF => PF notification messages */
-	mbox = &pf->mbox.mbox_up;
-	mdev = &mbox->dev[0];
-	otx2_sync_mbox_bbuf(mbox, 0);
-
-	hdr = (struct mbox_hdr *)(mdev->mbase + mbox->rx_start);
-	if (hdr->num_msgs)
-		queue_work(pf->mbox_wq, &pf->mbox.mbox_up_wrk);
+	mbox = &pf->mbox;
+	otx2_queue_work(mbox, pf->mbox_wq, 0, 1, 1);
 
 	/* Clear the IRQ */
 	otx2_write64(pf, RVU_PF_INT, BIT_ULL(0));
