@@ -58,15 +58,34 @@ static void otx2_queue_work(struct mbox *mw, struct workqueue_struct *mbox_wq,
 		mdev = &mbox->dev[i];
 		otx2_sync_mbox_bbuf(mbox, i);
 		hdr = mdev->mbase + mbox->rx_start;
-		if (hdr->num_msgs)
-			queue_work(mbox_wq, &mw[i].mbox_wrk);
+		/*The hdr->num_msgs is set to zero immediately in the interrupt
+		 * handler to  ensure that it holds a correct value next time
+		 * when the interrupt handler is called.
+		 * pf->mbox.num_msgs holds the data for use in pfaf_mbox_handler
+		 * pf>mbox.up_num_msgs holds the data for use in
+		 * pfaf_mbox_up_handler.
+		 */
+		if (hdr->num_msgs) {
+			mw->num_msgs = hdr->num_msgs;
+			hdr->num_msgs = 0;
+			memset(mbox->hwbase + mbox->rx_start, 0,
+			       ALIGN(sizeof(struct mbox_hdr), sizeof(u64)));
 
+			queue_work(mbox_wq, &mw[i].mbox_wrk);
+		}
 		mbox = &mw->mbox_up;
 		mdev = &mbox->dev[i];
 		otx2_sync_mbox_bbuf(mbox, i);
 		hdr = mdev->mbase + mbox->rx_start;
-		if (hdr->num_msgs)
+		if (hdr->num_msgs) {
+			mw->up_num_msgs = hdr->num_msgs;
+			hdr->num_msgs = 0;
+			memset(mbox->hwbase + mbox->rx_start, 0,
+			       ALIGN(sizeof(struct mbox_hdr), sizeof(u64)));
+
 			queue_work(mbox_wq, &mw[i].mbox_up_wrk);
+		}
+
 	}
 }
 
@@ -165,10 +184,10 @@ static int otx2_forward_vf_mbox_msgs(struct otx2_nic *pf,
 
 static void otx2_pfvf_mbox_handler(struct work_struct *work)
 {
+	struct mbox_msghdr *msg = NULL;
 	int offset, vf_idx, id, err;
 	struct otx2_mbox_dev *mdev;
 	struct mbox_hdr *req_hdr;
-	struct mbox_msghdr *msg;
 	struct otx2_mbox *mbox;
 	struct mbox *vf_mbox;
 	struct otx2_nic *pf;
@@ -176,17 +195,16 @@ static void otx2_pfvf_mbox_handler(struct work_struct *work)
 	vf_mbox = container_of(work, struct mbox, mbox_wrk);
 	pf = vf_mbox->pfvf;
 	vf_idx = vf_mbox - pf->mbox_pfvf;
-
 	vf_mbox = &pf->mbox_pfvf[0];
 	mbox = &vf_mbox->mbox;
 	mdev = &mbox->dev[vf_idx];
 	req_hdr = (struct mbox_hdr *)(mdev->mbase + mbox->rx_start);
-	if (req_hdr->num_msgs == 0 || req_hdr->msg_size == 0)
+	if (vf_mbox->num_msgs == 0)
 		return;
 
 	offset = ALIGN(sizeof(*req_hdr), MBOX_MSG_ALIGN);
 
-	for (id = 0; id < req_hdr->num_msgs; id++) {
+	for (id = 0; id < vf_mbox->num_msgs; id++) {
 		msg = (struct mbox_msghdr *)(mdev->mbase + mbox->rx_start +
 					     offset);
 
@@ -198,7 +216,11 @@ static void otx2_pfvf_mbox_handler(struct work_struct *work)
 		msg->pcifunc |= (vf_idx + 1) & RVU_PFVF_FUNC_MASK;
 		offset = msg->next_msgoff;
 	}
-
+	/* mbox messages in the same direction to be handled by same
+	 * mailbox occurs serially. So write to vf_mbox->num_msgs
+	 * happens only after the previous context is done with it.
+	 */
+	vf_mbox->num_msgs = 0;
 	err = otx2_forward_vf_mbox_msgs(pf, mbox, MBOX_DIR_PFAF, vf_idx);
 	if (err)
 		goto inval_msg;
@@ -211,29 +233,26 @@ inval_msg:
 
 static void otx2_pfvf_mbox_up_handler(struct work_struct *work)
 {
+	struct mbox *vf_mbox = container_of(work, struct mbox, mbox_up_wrk);
+	struct otx2_nic *pf = vf_mbox->pfvf;
 	struct otx2_mbox_dev *mdev;
+	int offset, id, vf_idx = 0;
 	struct mbox_hdr *rsp_hdr;
 	struct mbox_msghdr *msg;
 	struct otx2_mbox *mbox;
-	int offset, id, vf_idx;
-	struct mbox *vf_mbox;
-	struct otx2_nic *pf;
 
-	vf_mbox = container_of(work, struct mbox, mbox_up_wrk);
-	pf = vf_mbox->pfvf;
 	vf_idx = vf_mbox - pf->mbox_pfvf;
-
 	vf_mbox = &pf->mbox_pfvf[0];
 	mbox = &vf_mbox->mbox_up;
 	mdev = &mbox->dev[vf_idx];
 
-	rsp_hdr = (struct mbox_hdr *)(mdev->mbase + mbox->rx_start);
-	if (rsp_hdr->num_msgs == 0)
+	if (vf_mbox->up_num_msgs == 0)
 		return;
 
+	rsp_hdr = (struct mbox_hdr *)(mdev->mbase + mbox->rx_start);
 	offset = mbox->rx_start + ALIGN(sizeof(*rsp_hdr), MBOX_MSG_ALIGN);
 
-	for (id = 0; id < rsp_hdr->num_msgs; id++) {
+	for (id = 0; id < vf_mbox->up_num_msgs; id++) {
 		msg = mdev->mbase + offset;
 
 		if (msg->id >= MBOX_MSG_MAX) {
@@ -264,6 +283,11 @@ end:
 		offset = mbox->rx_start + msg->next_msgoff;
 		mdev->msgs_acked++;
 	}
+	/* mbox messages in the same direction to be handled by same
+	 * mailbox occurs serially. So write to vf_mbox->up_num_msgs
+	 * happens only after the previous context is done with it.
+	 */
+	vf_mbox->up_num_msgs = 0;
 
 	otx2_mbox_reset(mbox, vf_idx);
 }
@@ -533,19 +557,23 @@ static void otx2_pfaf_mbox_handler(struct work_struct *work)
 	mbox = &af_mbox->mbox;
 	mdev = &mbox->dev[0];
 	rsp_hdr = (struct mbox_hdr *)(mdev->mbase + mbox->rx_start);
-	if (rsp_hdr->num_msgs == 0)
+	if (af_mbox->num_msgs == 0)
 		return;
 	offset = mbox->rx_start + ALIGN(sizeof(*rsp_hdr), MBOX_MSG_ALIGN);
 	pf = af_mbox->pfvf;
 
-	for (id = 0; id < rsp_hdr->num_msgs; id++) {
+	for (id = 0; id < af_mbox->num_msgs; id++) {
 		msg = (struct mbox_msghdr *)(mdev->mbase + offset);
 		devid = msg->pcifunc & RVU_PFVF_FUNC_MASK;
 		otx2_process_pfaf_mbox_msg(pf, msg);
 		offset = mbox->rx_start + msg->next_msgoff;
 		mdev->msgs_acked++;
 	}
-
+	/* mbox messages in the same direction to be handled by same
+	 * mailbox occurs serially. So write to af_mbox->num_msgs
+	 * happens only after the previous context is done with it.
+	 */
+	af_mbox->num_msgs = 0;
 	otx2_mbox_reset(mbox, 0);
 
 	if (devid)
@@ -645,19 +673,19 @@ static void otx2_pfaf_mbox_up_handler(struct work_struct *work)
 {
 	struct mbox *af_mbox = container_of(work, struct mbox, mbox_up_wrk);
 	struct otx2_mbox *mbox = &af_mbox->mbox_up;
-	struct otx2_nic *pf = af_mbox->pfvf;
 	struct otx2_mbox_dev *mdev = &mbox->dev[0];
+	struct otx2_nic *pf = af_mbox->pfvf;
+	int offset, id, devid = 0;
 	struct mbox_hdr *rsp_hdr;
 	struct mbox_msghdr *msg;
-	int offset, id, devid;
 
 	rsp_hdr = (struct mbox_hdr *)(mdev->mbase + mbox->rx_start);
-	if (rsp_hdr->num_msgs == 0)
+	if (af_mbox->up_num_msgs == 0)
 		return;
 
 	offset = mbox->rx_start + ALIGN(sizeof(*rsp_hdr), MBOX_MSG_ALIGN);
 
-	for (id = 0; id < rsp_hdr->num_msgs; id++) {
+	for (id = 0; id < af_mbox->up_num_msgs; id++) {
 		msg = (struct mbox_msghdr *)(mdev->mbase + offset);
 
 		devid = msg->pcifunc & RVU_PFVF_FUNC_MASK;
@@ -666,7 +694,11 @@ static void otx2_pfaf_mbox_up_handler(struct work_struct *work)
 			otx2_process_mbox_msg_up(pf, msg);
 		offset = mbox->rx_start + msg->next_msgoff;
 	}
-
+	/* mbox messages in the same direction to be handled by same
+	 * mailbox occurs serially. So write to af_mbox->up_num_msgs
+	 * happens only after the previous context is done with it.
+	 */
+	af_mbox->up_num_msgs = 0;
 	if (devid) {
 		otx2_forward_vf_mbox_msgs(pf, &pf->mbox.mbox_up,
 					  MBOX_DIR_PFVF_UP, devid - 1);
