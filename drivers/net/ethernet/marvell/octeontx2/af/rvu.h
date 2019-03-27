@@ -38,8 +38,18 @@
 
 /* CONFIG_DEBUG_FS */
 #ifdef CONFIG_DEBUG_FS
+struct dump_ctx {
+	int	lf;
+	int	id;
+	bool	all;
+};
+
 struct rvu_debugfs {
 	struct dentry *root;
+	struct dentry *npa;
+	struct dump_ctx npa_aura_ctx;
+	struct dump_ctx npa_pool_ctx;
+	int npa_qsize_id;
 };
 #endif /* CONFIG_DEBUG_FS */
 
@@ -472,6 +482,8 @@ int rvu_nix_reserve_mark_format(struct rvu *rvu, struct nix_hw *nix_hw,
 void rvu_nix_freemem(struct rvu *rvu);
 int rvu_get_nixlf_count(struct rvu *rvu);
 void rvu_nix_lf_teardown(struct rvu *rvu, u16 pcifunc, int blkaddr, int npalf);
+int rvu_npa_aq_enq_inst(struct rvu *rvu, struct npa_aq_enq_req *req,
+			struct npa_aq_enq_rsp *rsp);
 int rvu_mbox_handler_nix_lf_alloc(struct rvu *rvu,
 				  struct nix_lf_alloc_req *req,
 				  struct nix_lf_alloc_rsp *rsp);
