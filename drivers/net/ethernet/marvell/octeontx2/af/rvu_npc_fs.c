@@ -519,5 +519,483 @@ static int npc_scan_verify_kex(struct rvu *rvu, int blkaddr)
 
 int npc_flow_steering_init(struct rvu *rvu, int blkaddr)
 {
+	struct npc_mcam *mcam = &rvu->hw->mcam;
+
+	INIT_LIST_HEAD(&mcam->mcam_rules);
+
 	return npc_scan_verify_kex(rvu, blkaddr);
+}
+
+static int npc_check_unsupported_flows(struct rvu *rvu, u64 features)
+{
+	struct npc_mcam *mcam = &rvu->hw->mcam;
+	u64 unsupported;
+	u8 bit;
+
+	unsupported = (mcam->features ^ features) & ~mcam->features;
+	if (unsupported) {
+		dev_info(rvu->dev, "Unsupported flow(s):\n");
+		for_each_set_bit(bit, (unsigned long *)&unsupported, 64)
+			dev_info(rvu->dev, "%s ", npc_get_field_name(bit));
+		return -ENOTSUPP;
+	}
+
+	return 0;
+}
+
+/* npc_update_entry - Based on the masks generated during
+ * the key scanning, updates the given entry with value and
+ * masks for the field of interest. Maximum 16 bytes of a packet
+ * header can be extracted by HW hence lo and hi are sufficient.
+ * When field bytes are less than or equal to 8 then hi should be
+ * 0 for value and mask.
+ *
+ * If exact match of value is required then mask should be all 1's.
+ * If any bits in mask are 0 then corresponding bits in value are
+ * dont care.
+ */
+static void npc_update_entry(struct rvu *rvu, enum key_fields type,
+			     struct mcam_entry *entry, u64 val_lo,
+			     u64 val_hi, u64 mask_lo, u64 mask_hi)
+{
+	struct npc_mcam *mcam = &rvu->hw->mcam;
+	struct npc_key_field *field = &mcam->key_fields[type];
+	struct mcam_entry dummy = { {0} };
+	u64 kw1, kw2, kw3;
+	u8 shift;
+	int i;
+
+	if (!field->nr_kws)
+		return;
+
+	for (i = 0; i < NPC_MAX_KWS_IN_KEY; i++) {
+		if (!field->kw_mask[i])
+			continue;
+		/* place key value in kw[x] */
+		shift = __ffs64(field->kw_mask[i]);
+		/* update entry value */
+		kw1 = (val_lo << shift) & field->kw_mask[i];
+		dummy.kw[i] = kw1;
+		/* update entry mask */
+		kw1 = (mask_lo << shift) & field->kw_mask[i];
+		dummy.kw_mask[i] = kw1;
+
+		if (field->nr_kws == 1)
+			break;
+		/* place remaining bits of key value in kw[x + 1] */
+		if (field->nr_kws == 2) {
+			/* update entry value */
+			kw2 = (val_lo >> (64 - shift)) | (val_hi << shift);
+			kw2 &= field->kw_mask[i + 1];
+			dummy.kw[i + 1] = kw2;
+			/* update entry mask */
+			kw2 = (mask_lo >> (64 - shift)) | (mask_hi << shift);
+			kw2 &= field->kw_mask[i + 1];
+			dummy.kw_mask[i + 1] = kw2;
+			break;
+		}
+		/* place remaining bits of key value in kw[x + 1], kw[x + 2] */
+		if (field->nr_kws == 3) {
+			/* update entry value */
+			kw2 = (val_lo >> (64 - shift)) | (val_hi << shift);
+			kw2 &= field->kw_mask[i + 1];
+			kw3 = (val_hi >> (64 - shift));
+			kw3 &= field->kw_mask[i + 2];
+			dummy.kw[i + 1] = kw2;
+			dummy.kw[i + 2] = kw3;
+			/* update entry mask */
+			kw2 = (mask_lo >> (64 - shift)) | (mask_hi << shift);
+			kw2 &= field->kw_mask[i + 1];
+			kw3 = (mask_hi >> (64 - shift));
+			kw3 &= field->kw_mask[i + 2];
+			dummy.kw_mask[i + 1] = kw2;
+			dummy.kw_mask[i + 2] = kw3;
+			break;
+		}
+	}
+	/* dummy is ready with values and masks for given key
+	 * field now update input entry with those
+	 */
+	for (i = 0; i < NPC_MAX_KWS_IN_KEY; i++) {
+		entry->kw[i] |= dummy.kw[i];
+		entry->kw_mask[i] |= dummy.kw_mask[i];
+	}
+}
+
+static void npc_update_flow(struct rvu *rvu, struct mcam_entry *entry,
+			    u64 features, struct flow_msg *pkt,
+			    struct flow_msg *mask,
+			    struct rvu_npc_mcam_rule *output)
+{
+	u64 dmac_mask = ether_addr_to_u64(mask->dmac);
+	u64 smac_mask = ether_addr_to_u64(mask->smac);
+	u64 dmac_val = ether_addr_to_u64(pkt->dmac);
+	u64 smac_val = ether_addr_to_u64(pkt->smac);
+	struct flow_msg *opkt = &output->packet;
+	struct flow_msg *omask = &output->mask;
+
+	if (!features)
+		return;
+
+#define NPC_WRITE_FLOW(field, member, val_lo, val_hi, mask_lo, mask_hi)	      \
+do {									      \
+	if (features & BIT_ULL(field)) {				      \
+		npc_update_entry(rvu, field, entry, val_lo, val_hi,	      \
+				 mask_lo, mask_hi);			      \
+		memcpy(&opkt->member, &pkt->member, sizeof(pkt->member));     \
+		memcpy(&omask->member, &mask->member, sizeof(mask->member));  \
+	}								      \
+} while (0)
+
+	 /* For tcp/udp LTYPE should be present in entry */
+	if (features & (BIT_ULL(NPC_SPORT_TCP) | BIT_ULL(NPC_DPORT_TCP)))
+		npc_update_entry(rvu, NPC_LD, entry, NPC_LT_LD_TCP,
+				 0, ~0ULL, 0);
+	if (features & (BIT_ULL(NPC_SPORT_UDP) | BIT_ULL(NPC_DPORT_UDP)))
+		npc_update_entry(rvu, NPC_LD, entry, NPC_LT_LD_UDP,
+				 0, ~0ULL, 0);
+	if (features & BIT_ULL(NPC_OUTER_VID))
+		npc_update_entry(rvu, NPC_LB, entry,
+				 NPC_LT_LB_STAG | NPC_LT_LB_CTAG, 0,
+				 NPC_LT_LB_STAG & NPC_LT_LB_CTAG, 0);
+
+	NPC_WRITE_FLOW(NPC_DMAC, dmac, dmac_val, 0, dmac_mask, 0);
+	NPC_WRITE_FLOW(NPC_SMAC, smac, smac_val, 0, smac_mask, 0);
+	NPC_WRITE_FLOW(NPC_ETYPE, etype, ntohs(pkt->etype), 0,
+		       ntohs(mask->etype), 0);
+	NPC_WRITE_FLOW(NPC_SIP_IPV4, ip4src, ntohl(pkt->ip4src), 0,
+		       ntohl(mask->ip4src), 0);
+	NPC_WRITE_FLOW(NPC_DIP_IPV4, ip4dst, ntohl(pkt->ip4dst), 0,
+		       ntohl(mask->ip4dst), 0);
+	NPC_WRITE_FLOW(NPC_SPORT_TCP, sport, ntohs(pkt->sport), 0,
+		       ntohs(mask->sport), 0);
+	NPC_WRITE_FLOW(NPC_SPORT_UDP, sport, ntohs(pkt->sport), 0,
+		       ntohs(mask->sport), 0);
+	NPC_WRITE_FLOW(NPC_DPORT_TCP, dport, ntohs(pkt->dport), 0,
+		       ntohs(mask->dport), 0);
+	NPC_WRITE_FLOW(NPC_DPORT_UDP, dport, ntohs(pkt->dport), 0,
+		       ntohs(mask->dport), 0);
+	NPC_WRITE_FLOW(NPC_OUTER_VID, vlan_tci, ntohs(pkt->vlan_tci), 0,
+		       ntohs(mask->vlan_tci), 0);
+}
+
+static struct rvu_npc_mcam_rule *rvu_mcam_find_rule(struct npc_mcam *mcam,
+						    u16 entry)
+{
+	struct rvu_npc_mcam_rule *iter;
+
+	list_for_each_entry(iter, &mcam->mcam_rules, list) {
+		if (iter->entry == entry)
+			return iter;
+	}
+
+	return NULL;
+}
+
+static void rvu_mcam_add_rule(struct npc_mcam *mcam,
+			      struct rvu_npc_mcam_rule *rule)
+{
+	struct list_head *head = &mcam->mcam_rules;
+	struct rvu_npc_mcam_rule *iter;
+
+	list_for_each_entry(iter, &mcam->mcam_rules, list) {
+		if (iter->entry > rule->entry)
+			break;
+		head = &iter->list;
+	}
+
+	list_add(&rule->list, head);
+}
+
+static void rvu_mcam_remove_counter_from_rule(struct rvu *rvu, u16 pcifunc,
+					      struct rvu_npc_mcam_rule *rule)
+{
+	struct npc_mcam_oper_counter_req free_req = { 0 };
+	struct msg_rsp free_rsp;
+
+	if (!rule->has_cntr)
+		return;
+
+	free_req.hdr.pcifunc = pcifunc;
+	free_req.cntr = rule->cntr;
+
+	rvu_mbox_handler_npc_mcam_free_counter(rvu, &free_req, &free_rsp);
+	rule->has_cntr = false;
+}
+
+static void rvu_mcam_add_counter_to_rule(struct rvu *rvu, u16 pcifunc,
+					 struct rvu_npc_mcam_rule *rule,
+					 struct npc_install_flow_rsp *rsp)
+{
+	struct npc_mcam_alloc_counter_req cntr_req = { 0 };
+	struct npc_mcam_alloc_counter_rsp cntr_rsp = { 0 };
+	int err;
+
+	cntr_req.hdr.pcifunc = pcifunc;
+	cntr_req.contig = true;
+	cntr_req.count = 1;
+
+	/* we try to allocate a counter to track the stats of this
+	 * rule. If counter could not be allocated then proceed
+	 * without counter because counters are limited than entries.
+	 */
+	err = rvu_mbox_handler_npc_mcam_alloc_counter(rvu, &cntr_req,
+						      &cntr_rsp);
+	if (!err && cntr_rsp.count) {
+		rule->cntr = cntr_rsp.cntr;
+		rule->has_cntr = true;
+		rsp->counter = rule->cntr;
+	} else {
+		rsp->counter = err;
+	}
+}
+
+static int npc_install_flow(struct rvu *rvu, int blkaddr, u16 target,
+			    int nixlf, struct rvu_pfvf *pfvf,
+			    struct npc_install_flow_req *req,
+			    struct npc_install_flow_rsp *rsp)
+{
+	u64 features, installed_features, missing_features = 0;
+	struct rvu_npc_mcam_rule *def_rule = pfvf->def_rule;
+	struct npc_mcam_write_entry_req write_req = { 0 };
+	bool new = false, rule_for_vf, msg_from_vf;
+	struct npc_mcam *mcam = &rvu->hw->mcam;
+	struct rvu_npc_mcam_rule dummy = { 0 };
+	u16 requester = req->hdr.pcifunc;
+	struct rvu_npc_mcam_rule *rule;
+	struct nix_rx_action action;
+	struct mcam_entry *entry;
+	struct msg_rsp write_rsp;
+	int entry_index, err;
+
+	msg_from_vf = !!(requester & RVU_PFVF_FUNC_MASK);
+	rule_for_vf = !!(target & RVU_PFVF_FUNC_MASK);
+
+	installed_features = req->features;
+	features = req->features;
+	entry = &write_req.entry_data;
+
+	npc_update_flow(rvu, entry, features, &req->packet, &req->mask, &dummy);
+	npc_update_entry(rvu, NPC_CHAN, entry, req->channel, 0, ~0ULL, 0);
+
+	*(u64 *)&action = 0x00;
+	action.pf_func = target;
+	action.op = req->op;
+	action.index = req->index;
+	action.match_id = req->match_id;
+	action.flow_key_alg = req->flow_key_alg;
+
+	entry->action = *(u64 *)&action;
+	/* VTAG0 starts at 12th byte of LID_A.
+	 * VTAG1 starts at 2nd byte of LID_B.
+	 */
+	entry->vtag_action = FIELD_PREP(VTAG0_VALID_BIT, req->vtag0_valid) |
+			     FIELD_PREP(VTAG0_TYPE_MASK, req->vtag0_type) |
+			     FIELD_PREP(VTAG0_LID_MASK, NPC_LID_LA) |
+			     FIELD_PREP(VTAG0_RELPTR_MASK, 12) |
+			     FIELD_PREP(VTAG1_VALID_BIT, req->vtag1_valid) |
+			     FIELD_PREP(VTAG1_TYPE_MASK, req->vtag1_type) |
+			     FIELD_PREP(VTAG1_LID_MASK, NPC_LID_LB) |
+			     FIELD_PREP(VTAG1_RELPTR_MASK, 2);
+	if (def_rule)
+		missing_features = (def_rule->features ^ features) &
+					def_rule->features;
+
+	if (req->default_rule && req->append) {
+		/* add to default rule */
+		if (missing_features)
+			npc_update_flow(rvu, entry, missing_features,
+					&def_rule->packet, &def_rule->mask,
+					&dummy);
+		entry_index = rvu_npc_write_default_rule(rvu, blkaddr,
+							 nixlf, target,
+							 NIX_INTF_RX, entry);
+		installed_features = req->features | missing_features;
+	} else if (req->default_rule && !req->append) {
+		/* overwrite default rule */
+		entry_index = rvu_npc_write_default_rule(rvu, blkaddr,
+							 nixlf, target,
+							 NIX_INTF_RX, entry);
+	} else {
+		/* normal rule - include default rule also to it for VF */
+		if (msg_from_vf) {
+			npc_update_flow(rvu, entry, missing_features,
+					&def_rule->packet, &def_rule->mask,
+					&dummy);
+			installed_features = req->features | missing_features;
+		}
+		entry_index = req->entry;
+	}
+
+	rule = rvu_mcam_find_rule(mcam, entry_index);
+	if (!rule) {
+		rule = kzalloc(sizeof(*rule), GFP_KERNEL);
+		if (!rule)
+			return -ENOMEM;
+		new = true;
+	}
+	/* no counter for default rule */
+	if (req->default_rule)
+		goto update_rule;
+
+	/* PF allocates mcam entries for its VFs hence use PF pcifunc */
+
+	/* allocate new counter if rule has no counter */
+	if (req->set_cntr && !rule->has_cntr)
+		rvu_mcam_add_counter_to_rule(rvu, requester, rule, rsp);
+
+	/* if user wants to delete an existing counter for a rule then
+	 * free the counter
+	 */
+	if (!req->set_cntr && rule->has_cntr)
+		rvu_mcam_remove_counter_from_rule(rvu, requester, rule);
+
+	write_req.hdr.pcifunc = requester;
+	write_req.entry = req->entry;
+	write_req.intf = req->intf;
+	write_req.enable_entry = 1;
+	/* if counter is available then clear and use it */
+	if (req->set_cntr && rule->has_cntr) {
+		rvu_write64(rvu, blkaddr, NPC_AF_MATCH_STATX(rule->cntr), 0x00);
+		write_req.set_cntr = 1;
+		write_req.cntr = rule->cntr;
+	}
+
+	err = rvu_mbox_handler_npc_mcam_write_entry(rvu, &write_req,
+						    &write_rsp);
+	if (err) {
+		rvu_mcam_remove_counter_from_rule(rvu, requester, rule);
+		if (new)
+			kfree(rule);
+		return err;
+	}
+update_rule:
+	memcpy(&rule->packet, &dummy.packet, sizeof(rule->packet));
+	memcpy(&rule->mask, &dummy.mask, sizeof(rule->mask));
+	rule->entry = entry_index;
+	rule->action = action;
+	rule->features = installed_features;
+	rule->default_rule = req->default_rule;
+	rule->pcifunc = requester;
+	rule->is_vf = rule_for_vf;
+
+	if (new)
+		rvu_mcam_add_rule(mcam, rule);
+	if (req->default_rule)
+		pfvf->def_rule = rule;
+
+	return 0;
+}
+
+int rvu_mbox_handler_npc_install_flow(struct rvu *rvu,
+				      struct npc_install_flow_req *req,
+				      struct npc_install_flow_rsp *rsp)
+{
+	bool from_vf = !!(req->hdr.pcifunc & RVU_PFVF_FUNC_MASK);
+	int blkaddr, nixlf, err;
+	struct rvu_pfvf *pfvf;
+	u16 target;
+
+	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NPC, 0);
+	if (blkaddr < 0) {
+		dev_err(rvu->dev, "%s: NPC block not implemented\n", __func__);
+		return -ENODEV;
+	}
+
+	if (from_vf && req->default_rule)
+		return NPC_MCAM_PERM_DENIED;
+
+	/* Each PF/VF info is maintained in struct rvu_pfvf.
+	 * rvu_pfvf for the target PF/VF needs to be retrieved
+	 * hence modify pcifunc accordingly.
+	 */
+
+	/* AF installing for a PF/VF */
+	if (!req->hdr.pcifunc)
+		target = req->vf;
+	/* PF installing for its VF */
+	else if (!from_vf && req->vf)
+		target = (req->hdr.pcifunc & ~RVU_PFVF_FUNC_MASK) | req->vf;
+	/* msg received from PF/VF */
+	else
+		target = req->hdr.pcifunc;
+
+	err = nix_get_nixlf(rvu, target, &nixlf);
+	if (err)
+		return err;
+
+	pfvf = rvu_get_pfvf(rvu, target);
+
+	if (!req->default_rule && !pfvf->def_rule) {
+		dev_err(rvu->dev, "default rule should be installed first\n");
+		return -EINVAL;
+	}
+
+	if (npc_check_unsupported_flows(rvu, req->features))
+		return -ENOTSUPP;
+
+	if (npc_mcam_verify_channel(rvu, target, req->intf, req->channel))
+		return -EINVAL;
+
+	/* If message is from VF then its flow should not overlap with
+	 * reserved unicast flow.
+	 */
+	if (from_vf && pfvf->def_rule->features & req->features)
+		return -EINVAL;
+
+	return npc_install_flow(rvu, blkaddr, target, nixlf, pfvf, req, rsp);
+}
+
+static int npc_delete_flow(struct rvu *rvu, u16 entry, u16 pcifunc)
+{
+	struct npc_mcam_ena_dis_entry_req dis_req = { 0 };
+	struct npc_mcam *mcam = &rvu->hw->mcam;
+	struct rvu_npc_mcam_rule *rule;
+	struct msg_rsp dis_rsp;
+	int err;
+
+	rule = rvu_mcam_find_rule(mcam, entry);
+	if (!rule)
+		return -ENOENT;
+
+	if (rule->default_rule)
+		return 0;
+
+	if (rule->has_cntr)
+		rvu_mcam_remove_counter_from_rule(rvu, pcifunc, rule);
+
+	dis_req.hdr.pcifunc = pcifunc;
+	dis_req.entry = entry;
+	err = rvu_mbox_handler_npc_mcam_dis_entry(rvu, &dis_req, &dis_rsp);
+	if (err)
+		return err;
+
+	list_del(&rule->list);
+	kfree(rule);
+
+	return 0;
+}
+
+int rvu_mbox_handler_npc_delete_flow(struct rvu *rvu,
+				     struct npc_delete_flow_req *req,
+				     struct msg_rsp *rsp)
+{
+	struct npc_mcam *mcam = &rvu->hw->mcam;
+	struct rvu_npc_mcam_rule *iter, *tmp;
+	u16 pcifunc = req->hdr.pcifunc;
+	int err;
+
+	if (!req->all && !req->all_vfs)
+		return npc_delete_flow(rvu, req->entry, pcifunc);
+
+	list_for_each_entry_safe(iter, tmp, &mcam->mcam_rules, list) {
+		if (req->all ? iter->pcifunc == pcifunc :
+		    (iter->pcifunc == pcifunc && iter->is_vf)) {
+			err = npc_delete_flow(rvu, iter->entry, pcifunc);
+			if (err)
+				return err;
+		}
+	}
+
+	return 0;
 }

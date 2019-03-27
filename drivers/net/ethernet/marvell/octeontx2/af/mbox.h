@@ -216,6 +216,10 @@ M(NPC_MCAM_ALLOC_AND_WRITE_ENTRY, 0x600b, npc_mcam_alloc_and_write_entry,      \
 					  npc_mcam_alloc_and_write_entry_rsp)  \
 M(NPC_GET_KEX_CFG,	  0x600c, npc_get_kex_cfg,			\
 				   msg_req, npc_get_kex_cfg_rsp)	\
+M(NPC_INSTALL_FLOW,	  0x600d, npc_install_flow,			       \
+				  npc_install_flow_req, npc_install_flow_rsp)  \
+M(NPC_DELETE_FLOW,	  0x600e, npc_delete_flow,			\
+				  npc_delete_flow_req, msg_rsp)		\
 /* NIX mbox IDs (range 0x8000 - 0xFFFF) */				\
 M(NIX_LF_ALLOC,		0x8000, nix_lf_alloc,				\
 				 nix_lf_alloc_req, nix_lf_alloc_rsp)	\
@@ -1001,6 +1005,64 @@ enum header_fields {
 	NPC_SPORT_UDP,
 	NPC_DPORT_UDP,
 	NPC_HEADER_FIELDS_MAX,
+};
+
+struct flow_msg {
+	unsigned char dmac[6];
+	unsigned char smac[6];
+	__be16 etype;
+	__be16 vlan_etype;
+	__be16 vlan_tci;
+	union {
+		__be32 ip4src;
+		__be32 ip6src[4];
+	};
+	union {
+		__be32 ip4dst;
+		__be32 ip6dst[4];
+	};
+	u8 tos;
+	u8 ip_ver;
+	u8 ip_proto;
+	u8 tc;
+	__be16 sport;
+	__be16 dport;
+};
+
+struct npc_install_flow_req {
+	struct mbox_msghdr hdr;
+	struct flow_msg packet;
+	struct flow_msg mask;
+	u64 features;
+	u16 entry;
+	u16 channel;
+	u8 intf;
+	u8 set_cntr; /* If counter is available set counter for this entry ? */
+	u8 default_rule;
+	u8 append; /* overwrite(0) or append(1) flow to default rule? */
+	u16 vf;
+	/* action */
+	u32 index;
+	u16 match_id;
+	u8 flow_key_alg;
+	u8 op;
+	/* vtag action */
+	u8 vtag0_type;
+	u8 vtag0_valid;
+	u8 vtag1_type;
+	u8 vtag1_valid;
+};
+
+struct npc_install_flow_rsp {
+	struct mbox_msghdr hdr;
+	int counter; /* negative if no counter else counter number */
+};
+
+struct npc_delete_flow_req {
+	struct mbox_msghdr hdr;
+	u16 entry;
+	u8 all; /* PF + VFs */
+	u8 all_vfs; /* VFs */
 };
 
 /* TIM mailbox error codes
