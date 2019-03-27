@@ -2175,7 +2175,6 @@ static int nix_setup_txschq(struct rvu *rvu, struct nix_hw *nix_hw, int blkaddr)
 					       sizeof(u32), GFP_KERNEL);
 		if (!txsch->pfvf_map)
 			return -ENOMEM;
-		memset(txsch->pfvf_map, U8_MAX, txsch->schq.max * sizeof(u32));
 	}
 	return 0;
 }
