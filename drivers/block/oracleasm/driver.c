@@ -1756,8 +1756,7 @@ static int asm_fill_timeout(struct timespec *ts, unsigned long timeout,
 
 	/* We open-code get_compat_timespec() because it's not exported */
 	if (bpl == ASM_BPL_32)
-		return (!access_ok(VERIFY_READ, cut,
-				   sizeof(*cut)) ||
+		return (!access_ok(cut, sizeof(*cut)) ||
 			__get_user(ts->tv_sec, &cut->tv_sec) ||
 			__get_user(ts->tv_nsec, &cut->tv_nsec)) ? -EFAULT : 0;
 
