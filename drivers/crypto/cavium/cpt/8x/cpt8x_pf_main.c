@@ -178,15 +178,6 @@ static int cpt_sriov_configure(struct pci_dev *pdev, int numvfs)
 	if (cpt->vfs_in_use)
 		goto exit;
 
-	/*
-	 * Currently we do not register any asymmetric algorithms
-	 * therefore we don't allow to enable VFs for 83xx AE
-	 */
-	if (cpt->pf_type == CPT_AE_83XX) {
-		ret = -EINVAL;
-		goto exit;
-	}
-
 	ret = 0;
 	if (cpt->flags & CPT_FLAG_SRIOV_ENABLED)
 		disable = 1;

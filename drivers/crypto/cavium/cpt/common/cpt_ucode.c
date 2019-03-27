@@ -1529,6 +1529,7 @@ int cpt_try_create_default_eng_grps(struct pci_dev *pdev,
 
 	switch (pf_type) {
 	case CPT_81XX:
+	case CPT_AE_83XX:
 	case CPT_SE_83XX:
 		tar_filename = CPT_8X_TAR_FILE_NAME;
 	break;
