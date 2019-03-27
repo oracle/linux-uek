@@ -1118,7 +1118,7 @@ int cptlf_shutdown(struct pci_dev *pdev, struct cptlfs_info *lfs)
 	int ret = 0;
 
 	/* Unregister crypto algorithms */
-	cvm_crypto_exit(pdev, THIS_MODULE);
+	cvm_crypto_exit(pdev, THIS_MODULE, SE_TYPES);
 
 	/* Disable interrupts */
 	cptlf_disable_done_intr(lfs);

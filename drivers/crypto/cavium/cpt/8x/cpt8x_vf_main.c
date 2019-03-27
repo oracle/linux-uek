@@ -939,7 +939,7 @@ static int cptvf_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 	return 0;
 
 cptvf_crypto_exit:
-	cvm_crypto_exit(pdev, THIS_MODULE);
+	cvm_crypto_exit(pdev, THIS_MODULE, cptvf->vftype);
 cptvf_free_irq_affinity:
 	cptvf_free_irq_affinity(cptvf, CPT_8X_VF_INT_VEC_E_DONE);
 	cptvf_free_irq_affinity(cptvf, CPT_8X_VF_INT_VEC_E_MISC);
@@ -971,7 +971,7 @@ static void cptvf_remove(struct pci_dev *pdev)
 	if (cptvf_send_vf_down(cptvf)) {
 		dev_err(&pdev->dev, "PF not responding to DOWN msg");
 	} else {
-		cvm_crypto_exit(pdev, THIS_MODULE);
+		cvm_crypto_exit(pdev, THIS_MODULE, cptvf->vftype);
 		cptvf_free_irq_affinity(cptvf, CPT_8X_VF_INT_VEC_E_DONE);
 		cptvf_free_irq_affinity(cptvf, CPT_8X_VF_INT_VEC_E_MISC);
 		free_irq(pci_irq_vector(pdev, CPT_8X_VF_INT_VEC_E_DONE), cptvf);

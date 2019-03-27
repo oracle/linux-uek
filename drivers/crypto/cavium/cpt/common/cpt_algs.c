@@ -1614,31 +1614,40 @@ err:
 }
 EXPORT_SYMBOL_GPL(cvm_crypto_init);
 
-void cvm_crypto_exit(struct pci_dev *pdev, struct module *mod)
+void cvm_crypto_exit(struct pci_dev *pdev, struct module *mod,
+		     enum cpt_vf_type engine_type)
 {
+	struct cpt_device_table *dev_tbl;
 	bool dev_found = false;
 	int i, j, count;
 
 	mutex_lock(&mutex);
 
-	count = atomic_read(&se_devices.count);
+	dev_tbl = (engine_type == AE_TYPES) ? &ae_devices : &se_devices;
+	count = atomic_read(&dev_tbl->count);
 	for (i = 0; i < count; i++)
-		if (pdev == se_devices.desc[i].dev) {
+		if (pdev == dev_tbl->desc[i].dev) {
 			for (j = i; j < count-1; j++)
-				se_devices.desc[j] = se_devices.desc[j+1];
+				dev_tbl->desc[j] = dev_tbl->desc[j+1];
 			dev_found = true;
 			break;
 		}
 
-	if (!dev_found)
+	if (!dev_found) {
 		dev_err(&pdev->dev, "%s device not found", __func__);
-
-	if (atomic_dec_and_test(&se_devices.count) &&
-	    !is_any_alg_used()) {
-		cav_unregister_algs();
-		module_put(mod);
-		is_crypto_registered = false;
+		goto exit;
 	}
+
+	if (!(engine_type == AE_TYPES)) {
+		if (atomic_dec_and_test(&se_devices.count) &&
+		    !is_any_alg_used()) {
+			cav_unregister_algs();
+			module_put(mod);
+			is_crypto_registered = false;
+		}
+	} else
+		atomic_dec(&ae_devices.count);
+exit:
 	mutex_unlock(&mutex);
 }
 EXPORT_SYMBOL_GPL(cvm_crypto_exit);
