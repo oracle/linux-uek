@@ -432,8 +432,7 @@ void rvu_npc_install_ucast_entry(struct rvu *rvu, u16 pcifunc,
 	req.match_id = action.match_id;
 	req.flow_key_alg = action.flow_key_alg;
 
-	if (rvu_mbox_handler_npc_install_flow(rvu, &req, &rsp))
-		dev_err(rvu->dev, "could not install default rule\n");
+	rvu_mbox_handler_npc_install_flow(rvu, &req, &rsp);
 }
 
 void rvu_npc_install_promisc_entry(struct rvu *rvu, u16 pcifunc,
