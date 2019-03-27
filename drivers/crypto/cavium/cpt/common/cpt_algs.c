@@ -271,7 +271,10 @@ static inline int cvm_enc_dec(struct ablkcipher_request *req, u32 enc)
 	if (req->nbytes > CPT_MAX_REQ_SIZE)
 		return -E2BIG;
 
-	memset(rctx, 0, sizeof(struct cvm_req_ctx));
+	/* Clear control words */
+	rctx->ctrl_word.flags = 0;
+	rctx->fctx.enc.enc_ctrl.flags = 0;
+
 	create_input_list(req, enc, enc_iv_len);
 	create_output_list(req, enc_iv_len);
 
@@ -1115,7 +1118,10 @@ u32 cvm_aead_enc_dec(struct aead_request *req, u8 reg_type, u8 enc)
 	struct algs_ops *ops;
 	u32 status, cpu_num;
 
-	memset(rctx, 0, sizeof(struct cvm_req_ctx));
+	/* Clear control words */
+	rctx->ctrl_word.flags = 0;
+	rctx->fctx.enc.enc_ctrl.flags = 0;
+
 	req_info->callback = cvm_callback;
 	req_info->areq = &req->base;
 	req_info->req_type = reg_type;
