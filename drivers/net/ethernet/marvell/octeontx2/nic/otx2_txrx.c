@@ -208,7 +208,7 @@ static inline void otx2_set_rxtstamp(struct otx2_nic *pfvf, struct sk_buff *skb)
 		return;
 
 	/* The first 8 bytes is the timestamp */
-	err = otx2_ptp_tstamp2time(pfvf, *(u64 *)skb->data, &tsns);
+	err = otx2_ptp_tstamp2time(pfvf, be64_to_cpu(*(u64 *)skb->data), &tsns);
 	if (err)
 		goto done;
 
