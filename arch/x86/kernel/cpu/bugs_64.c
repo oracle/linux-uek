@@ -134,7 +134,8 @@ static enum mds_mitigations mds_mitigation __read_mostly = MDS_MITIGATION_FULL;
 
 static const char * const mds_strings[] = {
 	[MDS_MITIGATION_OFF]	= "Vulnerable",
-	[MDS_MITIGATION_FULL]	= "Mitigation: Clear CPU buffers"
+	[MDS_MITIGATION_FULL]	= "Mitigation: Clear CPU buffers",
+	[MDS_MITIGATION_VMWERV] = "Vulnerable: Clear CPU buffers attempted, no microcode",
 };
 
 static void mds_select_mitigation(void)
@@ -157,7 +158,7 @@ static void mds_select_mitigation(void)
 
 	if (mds_mitigation == MDS_MITIGATION_FULL) {
 		if (!cpu_has(&cpu_data(0), X86_FEATURE_MD_CLEAR))
-			mds_mitigation = MDS_MITIGATION_OFF;
+			mds_mitigation = MDS_MITIGATION_VMWERV;
 	}
 	pr_info("%s\n", mds_strings[mds_mitigation]);
 }
