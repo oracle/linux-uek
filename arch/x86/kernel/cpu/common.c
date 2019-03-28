@@ -801,60 +801,68 @@ static void identify_cpu_without_cpuid(struct cpuinfo_x86 *c)
 #endif
 }
 
-static const struct x86_cpu_id cpu_no_speculation[] = {
-	{ X86_VENDOR_INTEL,	6, INTEL_FAM6_ATOM_CEDARVIEW,	X86_FEATURE_ANY },
-	{ X86_VENDOR_INTEL,	6, INTEL_FAM6_ATOM_CLOVERVIEW,	X86_FEATURE_ANY },
-	{ X86_VENDOR_INTEL,	6, INTEL_FAM6_ATOM_LINCROFT,	X86_FEATURE_ANY },
-	{ X86_VENDOR_INTEL,	6, INTEL_FAM6_ATOM_PENWELL,	X86_FEATURE_ANY },
-	{ X86_VENDOR_INTEL,	6, INTEL_FAM6_ATOM_PINEVIEW,	X86_FEATURE_ANY },
-	{ X86_VENDOR_CENTAUR,	5 },
-	{ X86_VENDOR_INTEL,	5 },
-	{ X86_VENDOR_NSC,	5 },
-	{ X86_VENDOR_ANY,	4 },
+#define NO_SPECULATION	BIT(0)
+#define NO_MELTDOWN	BIT(1)
+#define NO_SSB		BIT(2)
+#define NO_L1TF		BIT(3)
+
+#define VULNWL(_vendor, _family, _model, _whitelist)	\
+	{ X86_VENDOR_##_vendor, _family, _model, X86_FEATURE_ANY, _whitelist }
+
+#define VULNWL_INTEL(model, whitelist)		\
+	VULNWL(INTEL, 6, INTEL_FAM6_##model, whitelist)
+
+#define VULNWL_AMD(family, whitelist)		\
+	VULNWL(AMD, family, X86_MODEL_ANY, whitelist)
+
+static const struct x86_cpu_id cpu_vuln_whitelist[] = {
+	VULNWL(ANY,	4, X86_MODEL_ANY,	NO_SPECULATION),
+	VULNWL(CENTAUR,	5, X86_MODEL_ANY,	NO_SPECULATION),
+	VULNWL(INTEL,	5, X86_MODEL_ANY,	NO_SPECULATION),
+	VULNWL(NSC,	5, X86_MODEL_ANY,	NO_SPECULATION),
+
+	VULNWL_INTEL(ATOM_CEDARVIEW,		NO_SPECULATION),
+	VULNWL_INTEL(ATOM_CLOVERVIEW,		NO_SPECULATION),
+	VULNWL_INTEL(ATOM_PENWELL,		NO_SPECULATION),
+	VULNWL_INTEL(ATOM_PINEVIEW,		NO_SPECULATION),
+	VULNWL_INTEL(ATOM_LINCROFT,		NO_SPECULATION),
+
+	VULNWL_INTEL(ATOM_SILVERMONT1,		NO_SSB | NO_L1TF),
+	VULNWL_INTEL(ATOM_SILVERMONT2,		NO_SSB | NO_L1TF),
+	VULNWL_INTEL(ATOM_MERRIFIELD,	NO_SSB | NO_L1TF),
+	VULNWL_INTEL(ATOM_AIRMONT,		NO_SSB | NO_L1TF),
+	VULNWL_INTEL(XEON_PHI_KNL,		NO_SSB | NO_L1TF),
+	VULNWL_INTEL(XEON_PHI_KNM,		NO_SSB | NO_L1TF),
+
+	VULNWL_INTEL(CORE_YONAH,		NO_SSB),
+
+	VULNWL_INTEL(ATOM_MOOREFIELD,		NO_L1TF),
+	VULNWL_INTEL(ATOM_GOLDMONT,		NO_L1TF),
+	VULNWL_INTEL(ATOM_DENVERTON,		NO_L1TF),
+	VULNWL_INTEL(ATOM_GEMINI_LAKE,		NO_L1TF),
+
+	VULNWL_AMD(0x0f,		NO_MELTDOWN | NO_SSB | NO_L1TF),
+	VULNWL_AMD(0x10,		NO_MELTDOWN | NO_SSB | NO_L1TF),
+	VULNWL_AMD(0x11,		NO_MELTDOWN | NO_SSB | NO_L1TF),
+	VULNWL_AMD(0x12,		NO_MELTDOWN | NO_SSB | NO_L1TF),
+
+	/* FAMILY_ANY must be last, otherwise 0x0f - 0x12 matches won't work */
+	VULNWL_AMD(X86_FAMILY_ANY,	NO_MELTDOWN | NO_L1TF),
 	{}
 };
 
-static const struct x86_cpu_id cpu_no_meltdown[] = {
-	{ X86_VENDOR_AMD },
-	{}
-};
+static bool cpu_matches(unsigned long which)
+{
+	const struct x86_cpu_id *m = x86_match_cpu(cpu_vuln_whitelist);
 
-/* Only list CPUs which speculate but are non susceptible to SSB */
-static const struct x86_cpu_id cpu_no_spec_store_bypass[] = {
-	{ X86_VENDOR_INTEL,	6,	INTEL_FAM6_ATOM_SILVERMONT1	},
-	{ X86_VENDOR_INTEL,	6,	INTEL_FAM6_ATOM_AIRMONT		},
-	{ X86_VENDOR_INTEL,	6,	INTEL_FAM6_ATOM_SILVERMONT2	},
-	{ X86_VENDOR_INTEL,	6,	INTEL_FAM6_ATOM_MERRIFIELD	},
-	{ X86_VENDOR_INTEL,	6,	INTEL_FAM6_CORE_YONAH		},
-	{ X86_VENDOR_INTEL,	6,	INTEL_FAM6_XEON_PHI_KNL		},
-	{ X86_VENDOR_INTEL,	6,	INTEL_FAM6_XEON_PHI_KNM		},
-	{ X86_VENDOR_AMD,	0x12,					},
-	{ X86_VENDOR_AMD,	0x11,					},
-	{ X86_VENDOR_AMD,	0x10,					},
-	{ X86_VENDOR_AMD,	0xf,					},
-	{}
-};
-
-static const struct x86_cpu_id cpu_no_l1tf[] = {
-	/* in addition to cpu_no_speculation */
-	{ X86_VENDOR_INTEL,	6,	INTEL_FAM6_ATOM_SILVERMONT1	},
-	{ X86_VENDOR_INTEL,	6,	INTEL_FAM6_ATOM_SILVERMONT2	},
-	{ X86_VENDOR_INTEL,	6,	INTEL_FAM6_ATOM_AIRMONT		},
-	{ X86_VENDOR_INTEL,	6,	INTEL_FAM6_ATOM_MERRIFIELD	},
-	{ X86_VENDOR_INTEL,	6,	INTEL_FAM6_ATOM_MOOREFIELD	},
-	{ X86_VENDOR_INTEL,	6,	INTEL_FAM6_ATOM_GOLDMONT	},
-	{ X86_VENDOR_INTEL,	6,	INTEL_FAM6_ATOM_DENVERTON	},
-	{ X86_VENDOR_INTEL,	6,	INTEL_FAM6_ATOM_GEMINI_LAKE	},
-	{ X86_VENDOR_INTEL,	6,	INTEL_FAM6_XEON_PHI_KNL		},
-	{ X86_VENDOR_INTEL,	6,	INTEL_FAM6_XEON_PHI_KNM		},
-	{}
-};
+	return m && !!(m->driver_data & which);
+}
 
 void cpu_set_bug_bits(struct cpuinfo_x86 *c)
 {
 	u64 ia32_cap = 0;
 
-	if (x86_match_cpu(cpu_no_speculation))
+	if (cpu_matches(NO_SPECULATION))
 		return;
 
 	setup_force_cpu_bug(X86_BUG_SPECTRE_V1);
@@ -863,11 +871,10 @@ void cpu_set_bug_bits(struct cpuinfo_x86 *c)
 	if (cpu_has(c, X86_FEATURE_IA32_ARCH_CAPS))
 		rdmsrl(MSR_IA32_ARCH_CAPABILITIES, ia32_cap);
 
-	if (!x86_match_cpu(cpu_no_spec_store_bypass) &&
-	   !(ia32_cap & ARCH_CAP_SSB_NO))
+	if (!cpu_matches(NO_SSB) && !(ia32_cap & ARCH_CAP_SSB_NO))
 		setup_force_cpu_bug(X86_BUG_SPEC_STORE_BYPASS);
 
-	if (x86_match_cpu(cpu_no_meltdown))
+	if (cpu_matches(NO_MELTDOWN))
 		return;
 
 	if (!cpu_has_eager_fpu)
@@ -879,7 +886,7 @@ void cpu_set_bug_bits(struct cpuinfo_x86 *c)
 
 	setup_force_cpu_bug(X86_BUG_CPU_MELTDOWN);
 
-	if (x86_match_cpu(cpu_no_l1tf))
+	if (cpu_matches(NO_L1TF))
 		return;
 
 	setup_force_cpu_bug(X86_BUG_L1TF);
