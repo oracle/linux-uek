@@ -509,17 +509,7 @@ int arch_setup_hwirq(unsigned int irq, int node)
 		return -ENOMEM;
 
 	raw_spin_lock_irqsave(&vector_lock, flags);
-	if (node != NUMA_NO_NODE) {
-		const struct cpumask *node_mask = cpumask_of_node(node);
-		struct cpumask apic_mask;
-
-		cpumask_copy(&apic_mask, apic->target_cpus());
-		if (cpumask_intersects(&apic_mask, node_mask))
-			cpumask_and(&apic_mask, &apic_mask, node_mask);
-		ret = __assign_irq_vector(irq, cfg, &apic_mask);
-	} else {
-		ret = __assign_irq_vector(irq, cfg, apic->target_cpus());
-	}
+	ret = __assign_irq_vector(irq, cfg, apic->target_cpus());
 	raw_spin_unlock_irqrestore(&vector_lock, flags);
 
 	if (!ret)
