@@ -19,7 +19,7 @@
 #define PCI_DEVID_OCTEONTX2_PTP		0xA00C
 #define PCI_SUBSYS_DEVID_OCTX2_96XX_PTP	0xB200
 #define PCI_SUBSYS_DEVID_OCTX2_95XX_PTP	0xB300
-#define PCI_DEVID_OCTEONTX2_RST		0xA00E
+#define PCI_DEVID_OCTEONTX2_RST		0xA085
 
 #define PCI_PTP_BAR_NO	0
 #define PCI_RST_BAR_NO	0
@@ -91,6 +91,7 @@ int ptp_adjfine(struct ptp *ptp, long scaled_ppm)
 	bool neg_adj = false;
 	u64 comp;
 	u64 adj;
+	s64 ppb;
 
 	if (scaled_ppm < 0) {
 		neg_adj = true;
@@ -113,9 +114,12 @@ int ptp_adjfine(struct ptp *ptp, long scaled_ppm)
 	 * independent structure definition to write data to PTP register.
 	 */
 	comp = ((u64)1000000000ull << 32) / ptp->clock_rate;
-	adj = comp * scaled_ppm;
-	adj >>= 16;
-	adj = div_u64(adj, 1000000ull);
+	/* convert scaled_ppm to ppb */
+	ppb = 1 + scaled_ppm;
+	ppb *= 125;
+	ppb >>= 13;
+	adj = comp * ppb;
+	adj = div_u64(adj, 1000000000ull);
 	comp = neg_adj ? comp - adj : comp + adj;
 
 	writeq(comp, ptp->reg_base + PTP_CLOCK_COMP);
