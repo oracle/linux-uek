@@ -135,6 +135,7 @@ static void __init spectre_v2_select_mitigation(void);
 static enum ssb_mitigation __init ssb_select_mitigation(void);
 static void __init ssb_init(void);
 static void __init l1tf_select_mitigation(void);
+static void __init mds_select_mitigation(void);
 
 static enum ssb_mitigation ssb_mode = SPEC_STORE_BYPASS_NONE;
 
@@ -225,6 +226,8 @@ void __init check_bugs(void)
 	ssb_init();
 
 	l1tf_select_mitigation();
+
+	mds_select_mitigation();
 
 	alternative_instructions();
 
@@ -1279,6 +1282,64 @@ static void __init l1tf_select_mitigation(void)
 	}
 
 	setup_force_cpu_cap(X86_FEATURE_L1TF_PTEINV);
+}
+
+#undef pr_fmt
+#define pr_fmt(fmt)	"MDS: " fmt
+
+/* Default mitigation for L1TF-affected CPUs */
+static enum mds_mitigations mds_mitigation __read_mostly = MDS_MITIGATION_FULL;
+
+static const char * const mds_strings[] = {
+	[MDS_MITIGATION_OFF]    = "Vulnerable",
+	[MDS_MITIGATION_FULL]   = "Mitigation: Clear CPU buffers"
+};
+
+static void update_mds_branch_idle(void)
+{
+	/*
+	 * Enable the idle clearing on CPUs which are affected only by
+	 * MDBDS and not any other MDS variant. The other variants cannot
+	 * be mitigated when SMT is enabled, so clearing the buffers on
+	 * idle would be a window dressing exercise.
+	 */
+	if (!boot_cpu_has(X86_BUG_MSBDS_ONLY))
+		return;
+
+	if (cpu_smt_control == CPU_SMT_ENABLED)
+		static_branch_enable(&mds_idle_clear);
+	else
+		static_branch_disable(&mds_idle_clear);
+}
+
+static void mds_select_mitigation(void)
+{
+	char arg[12];
+	int ret;
+
+	if (!boot_cpu_has_bug(X86_BUG_MDS)) {
+		mds_mitigation = MDS_MITIGATION_OFF;
+		return;
+	}
+
+        ret = cmdline_find_option(boot_command_line, "mds", arg,
+                                  sizeof(arg));
+        if (ret > 0) {
+	        if (match_option(arg, ret, "off"))
+			mds_mitigation = MDS_MITIGATION_OFF;
+	        else if (!match_option(arg, ret, "full"))
+			pr_warn("mds: unknown option %s\n", arg);
+	}
+
+	if (mds_mitigation == MDS_MITIGATION_FULL) {
+		if (boot_cpu_has(X86_FEATURE_MD_CLEAR)) {
+			static_branch_enable(&mds_user_clear);
+			update_mds_branch_idle();
+		} else {
+			mds_mitigation = MDS_MITIGATION_OFF;
+		}
+	}
+	pr_info("%s\n", mds_strings[mds_mitigation]);
 }
 
 #undef pr_fmt
