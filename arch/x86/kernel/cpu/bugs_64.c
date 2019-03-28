@@ -169,6 +169,9 @@ EXPORT_PER_CPU_SYMBOL(x86_spec_ctrl_restore);
 u64 x86_amd_ls_cfg_base;
 u64 x86_amd_ls_cfg_ssbd_mask;
 
+/* Control MDS CPU buffer clear before returning to user space */
+DEFINE_STATIC_KEY_FALSE(mds_user_clear);
+
 void __init check_bugs(void)
 {
 	identify_boot_cpu();

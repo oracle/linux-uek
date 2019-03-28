@@ -61,6 +61,7 @@
 #include <asm/mach_traps.h>
 #include <asm/alternative.h>
 #include <asm/mpx.h>
+#include <asm/nospec-branch.h>
 
 #ifdef CONFIG_X86_64
 #include <asm/x86_init.h>
@@ -349,6 +350,13 @@ dotraplinkage int do_double_fault(struct pt_regs *regs, long error_code)
 		regs->ip = (unsigned long)general_protection;
 		regs->sp = (unsigned long)&normal_regs->orig_ax;
 
+		/*
+		 * This situation can be triggered by userspace via
+		 * modify_ldt(2) and the return does not take the regular
+		 * user space exit, so a CPU buffer clear is required when
+		 * MDS mitigation is enabled.
+		 */
+		mds_user_clear_cpu_buffers();
 		return 0;
 	}
 #endif

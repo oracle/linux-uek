@@ -535,6 +535,7 @@ opportunistic_sysret_failed:
 	 * switch CR3 in NMIs.  Normal interrupts are OK because
 	 * they are off here.
 	 */
+	MDS_CLEAR_CPU_BUFFERS
 	SWITCH_USER_CR3
 	SWAPGS
 	jmp	restore_c_regs_and_iret

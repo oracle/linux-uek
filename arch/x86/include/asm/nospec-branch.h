@@ -137,11 +137,17 @@
  * combination with microcode which triggers a CPU buffer flush when the
  * instruction is executed.
  */
+.extern mds_user_clear
+
 .macro MDS_CLEAR_CPU_BUFFERS
+	STATIC_JUMP_IF_TRUE	.Lmdsverwcall_\@, mds_user_clear, def=0
+	jmp	.Lmdsverwdone_\@
+.Lmdsverwcall_\@:
 	pushw	%cx
 	movw	$__KERNEL_DS, %cx
 	verw	%cx
 	popw	%cx
+.Lmdsverwdone_\@:
 .endm
 #else /* __ASSEMBLY__ */
 
@@ -256,7 +262,9 @@ static inline void vmexit_fill_RSB(void)
 		      : "=r" (loops), ASM_CALL_CONSTRAINT
 		      : : "memory" );
 #endif
-}
+} 
+
+DECLARE_STATIC_KEY_FALSE(mds_user_clear);
 
 #include <asm/segment.h>
 
@@ -281,6 +289,17 @@ static inline void mds_clear_cpu_buffers(void)
 	 * "cc" clobber is required because VERW modifies ZF.
 	 */
 	asm volatile("verw %[ds]" : : [ds] "m" (ds) : "cc");
+}
+
+/**
+ * mds_user_clear_cpu_buffers - Mitigation for MDS vulnerability
+ *
+ * Clear CPU buffers if the corresponding static key is enabled
+ */
+static inline void mds_user_clear_cpu_buffers(void)
+{
+	if (static_branch_likely(&mds_user_clear))
+		mds_clear_cpu_buffers();
 }
 
 #endif /* __ASSEMBLY__ */
