@@ -1287,6 +1287,36 @@ static void __init l1tf_select_mitigation(void)
 #undef pr_fmt
 #define pr_fmt(fmt)	"MDS: " fmt
 
+bool mds_user_clear_enabled(void)
+{
+        return static_key_enabled(&mds_user_clear);
+}
+
+void mds_user_clear_enable(void)
+{
+	static_branch_enable(&mds_user_clear);
+}
+
+void mds_user_clear_disable(void)
+{
+	static_branch_disable(&mds_user_clear);
+}
+
+bool mds_idle_clear_enabled(void)
+{
+        return static_key_enabled(&mds_idle_clear);
+}
+
+void mds_idle_clear_enable(void)
+{
+	static_branch_enable(&mds_idle_clear);
+}
+
+void mds_idle_clear_disable(void)
+{
+	static_branch_disable(&mds_idle_clear);
+}
+
 /* Default mitigation for L1TF-affected CPUs */
 static enum mds_mitigations mds_mitigation __read_mostly = MDS_MITIGATION_FULL;
 
