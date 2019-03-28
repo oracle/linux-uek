@@ -148,12 +148,6 @@ static inline int alternatives_text_reserved(void *start, void *end)
 	".popsection\n"
 
 /*
- * This must be included *after* the definition of ALTERNATIVE due to
- * <asm/arch_hweight.h>
- */
-#include <asm/cpufeature.h>
-
-/*
  * Alternative instructions for different CPU types or capabilities.
  *
  * This allows to use optimized instructions even on generic binary
@@ -170,6 +164,13 @@ static inline int alternatives_text_reserved(void *start, void *end)
 
 #define alternative_2(oldinstr, newinstr1, feature1, newinstr2, feature2) \
 	asm volatile(ALTERNATIVE_2(oldinstr, newinstr1, feature1, newinstr2, feature2) ::: "memory")
+
+/*
+ * This must be included *after* the definition of ALTERNATIVE due to
+ * <asm/arch_hweight.h> and after definition of alternative() due to its
+ * use in cpufeature.h->bitops.h->barrier.h
+ */
+#include <asm/cpufeature.h>
 
 /*
  * Alternative inline assembly with input.
