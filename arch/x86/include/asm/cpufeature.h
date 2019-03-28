@@ -73,6 +73,7 @@
  */
 #define X86_FEATURE_L1TF_PTEINV		( 2*32+0) /* "" L1TF workaround PTE inversion */
 #define X86_FEATURE_FLUSH_L1D		( 2*32+1) /* Flush L1D cache */
+#define X86_FEATURE_MD_CLEAR		( 2*32+2) /* VERW clears CPU buffers */
 
 /* Other features, Linux-defined mapping, word 3 */
 /* This range is used for feature bits which conflict or are synthesized */
@@ -297,6 +298,7 @@
 #define X86_BUG_SPECTRE_V2	X86_BUG(16) /* indirect branches */
 #define X86_BUG_SPEC_STORE_BYPASS	X86_BUG(17) /* CPU is affected by speculative store bypass attack */
 #define X86_BUG_L1TF			X86_BUG(18) /* CPU is affected by L1 Terminal Fault */
+#define X86_BUG_MDS			X86_BUG(19) /* CPU is affected by Microarchitectural data sampling */
 
 #if defined(__KERNEL__) && !defined(__ASSEMBLY__)
 

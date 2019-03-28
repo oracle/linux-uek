@@ -805,6 +805,7 @@ static void identify_cpu_without_cpuid(struct cpuinfo_x86 *c)
 #define NO_MELTDOWN	BIT(1)
 #define NO_SSB		BIT(2)
 #define NO_L1TF		BIT(3)
+#define NO_MDS		BIT(4)
 
 #define VULNWL(_vendor, _family, _model, _whitelist)	\
 	{ X86_VENDOR_##_vendor, _family, _model, X86_FEATURE_ANY, _whitelist }
@@ -821,6 +822,7 @@ static const struct x86_cpu_id cpu_vuln_whitelist[] = {
 	VULNWL(INTEL,	5, X86_MODEL_ANY,	NO_SPECULATION),
 	VULNWL(NSC,	5, X86_MODEL_ANY,	NO_SPECULATION),
 
+	/* Intel Family 6 */
 	VULNWL_INTEL(ATOM_CEDARVIEW,		NO_SPECULATION),
 	VULNWL_INTEL(ATOM_CLOVERVIEW,		NO_SPECULATION),
 	VULNWL_INTEL(ATOM_PENWELL,		NO_SPECULATION),
@@ -829,7 +831,7 @@ static const struct x86_cpu_id cpu_vuln_whitelist[] = {
 
 	VULNWL_INTEL(ATOM_SILVERMONT1,		NO_SSB | NO_L1TF),
 	VULNWL_INTEL(ATOM_SILVERMONT2,		NO_SSB | NO_L1TF),
-	VULNWL_INTEL(ATOM_MERRIFIELD,	NO_SSB | NO_L1TF),
+	VULNWL_INTEL(ATOM_MERRIFIELD,		NO_SSB | NO_L1TF),
 	VULNWL_INTEL(ATOM_AIRMONT,		NO_SSB | NO_L1TF),
 	VULNWL_INTEL(XEON_PHI_KNL,		NO_SSB | NO_L1TF),
 	VULNWL_INTEL(XEON_PHI_KNM,		NO_SSB | NO_L1TF),
@@ -837,17 +839,18 @@ static const struct x86_cpu_id cpu_vuln_whitelist[] = {
 	VULNWL_INTEL(CORE_YONAH,		NO_SSB),
 
 	VULNWL_INTEL(ATOM_MOOREFIELD,		NO_L1TF),
-	VULNWL_INTEL(ATOM_GOLDMONT,		NO_L1TF),
-	VULNWL_INTEL(ATOM_DENVERTON,		NO_L1TF),
-	VULNWL_INTEL(ATOM_GEMINI_LAKE,		NO_L1TF),
 
-	VULNWL_AMD(0x0f,		NO_MELTDOWN | NO_SSB | NO_L1TF),
-	VULNWL_AMD(0x10,		NO_MELTDOWN | NO_SSB | NO_L1TF),
-	VULNWL_AMD(0x11,		NO_MELTDOWN | NO_SSB | NO_L1TF),
-	VULNWL_AMD(0x12,		NO_MELTDOWN | NO_SSB | NO_L1TF),
+	VULNWL_INTEL(ATOM_GOLDMONT,		NO_MDS | NO_L1TF),
+	VULNWL_INTEL(ATOM_DENVERTON,		NO_MDS | NO_L1TF),
+	VULNWL_INTEL(ATOM_GEMINI_LAKE,		NO_MDS | NO_L1TF),
+
+	VULNWL_AMD(0x0f,		NO_MELTDOWN | NO_SSB | NO_L1TF | NO_MDS),
+	VULNWL_AMD(0x10,		NO_MELTDOWN | NO_SSB | NO_L1TF | NO_MDS),
+	VULNWL_AMD(0x11,		NO_MELTDOWN | NO_SSB | NO_L1TF | NO_MDS),
+	VULNWL_AMD(0x12,		NO_MELTDOWN | NO_SSB | NO_L1TF | NO_MDS),
 
 	/* FAMILY_ANY must be last, otherwise 0x0f - 0x12 matches won't work */
-	VULNWL_AMD(X86_FAMILY_ANY,	NO_MELTDOWN | NO_L1TF),
+	VULNWL_AMD(X86_FAMILY_ANY,	NO_MELTDOWN | NO_L1TF | NO_MDS),
 	{}
 };
 
@@ -873,6 +876,9 @@ void cpu_set_bug_bits(struct cpuinfo_x86 *c)
 
 	if (!cpu_matches(NO_SSB) && !(ia32_cap & ARCH_CAP_SSB_NO))
 		setup_force_cpu_bug(X86_BUG_SPEC_STORE_BYPASS);
+
+	if (!cpu_matches(NO_MDS) && !(ia32_cap & ARCH_CAP_MDS_NO))
+		setup_force_cpu_bug(X86_BUG_MDS);
 
 	if (cpu_matches(NO_MELTDOWN))
 		return;
