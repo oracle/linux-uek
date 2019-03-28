@@ -41,6 +41,9 @@ MODULE_LICENSE("GPL v2");
 MODULE_VERSION(DRV_VERSION);
 MODULE_DEVICE_TABLE(pci, otx2_pf_id_table);
 
+static int otx2_config_hw_tx_tstamp(struct otx2_nic *pfvf, bool enable);
+static int otx2_config_hw_rx_tstamp(struct otx2_nic *pfvf, bool enable);
+
 static void otx2_queue_work(struct mbox *mw, struct workqueue_struct *mbox_wq,
 			    int first, int mdevs, u64 intr)
 {
@@ -1417,6 +1420,16 @@ int otx2_open(struct net_device *netdev)
 	if (!(pf->pcifunc & RVU_PFVF_FUNC_MASK))
 		otx2_alloc_rxvlan(pf);
 
+	/* When reinitializing enable time stamping if it is enabled before */
+	if (pf->hw_tx_tstamp) {
+		pf->hw_tx_tstamp = 0;
+		otx2_config_hw_tx_tstamp(pf, true);
+	}
+	if (pf->hw_rx_tstamp) {
+		pf->hw_rx_tstamp = 0;
+		otx2_config_hw_rx_tstamp(pf, true);
+	}
+
 	return 0;
 
 err_free_cints:
@@ -2036,6 +2049,11 @@ static void otx2_remove(struct pci_dev *pdev)
 		return;
 
 	pf = netdev_priv(netdev);
+
+	if (pf->hw_tx_tstamp)
+		otx2_config_hw_tx_tstamp(pf, false);
+	if (pf->hw_rx_tstamp)
+		otx2_config_hw_rx_tstamp(pf, false);
 
 	/* Disable link notifications */
 	otx2_cgx_config_linkevents(pf, false);
