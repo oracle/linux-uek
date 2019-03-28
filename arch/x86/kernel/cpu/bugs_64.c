@@ -1373,6 +1373,22 @@ static ssize_t l1tf_show_state(char *buf)
 		       l1tf_vmx_states[l1tf_vmx_mitigation],
 		       cpu_smt_control == CPU_SMT_ENABLED ? "vulnerable" : "disabled");
 }
+
+static ssize_t mds_show_state(char *buf)
+{
+	if (cpu_has_hypervisor) {
+		return sprintf(buf, "%s; SMT Host state unknown\n",
+			       mds_strings[mds_mitigation]);
+	}
+
+	if (boot_cpu_has(X86_BUG_MSBDS_ONLY)) {
+		return sprintf(buf, "%s; SMT %s\n", mds_strings[mds_mitigation],
+			(cpu_smt_control == CPU_SMT_ENABLED) ? "mitigated" : "disabled");
+	}
+
+	return sprintf(buf, "%s; SMT %s\n", mds_strings[mds_mitigation],
+		(cpu_smt_control == CPU_SMT_ENABLED) ? "vulnerable" : "disabled");
+}
 #else
 static ssize_t l1tf_show_state(char *buf)
 {
@@ -1475,6 +1491,10 @@ static ssize_t cpu_show_common(struct device *dev, struct device_attribute *attr
 			return l1tf_show_state(buf);
 		break;
 
+	case X86_BUG_MDS:
+		return mds_show_state(buf);
+		break;
+
 	default:
 		break;
 	}
@@ -1509,5 +1529,10 @@ ssize_t cpu_show_spec_store_bypass(struct device *dev, struct device_attribute *
 ssize_t cpu_show_l1tf(struct device *dev, struct device_attribute *attr, char *buf)
 {
 	return cpu_show_common(dev, attr, buf, X86_BUG_L1TF);
+}
+
+ssize_t cpu_show_mds(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	return cpu_show_common(dev, attr, buf, X86_BUG_MDS);
 }
 #endif
