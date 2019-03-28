@@ -806,6 +806,7 @@ static void identify_cpu_without_cpuid(struct cpuinfo_x86 *c)
 #define NO_SSB		BIT(2)
 #define NO_L1TF		BIT(3)
 #define NO_MDS		BIT(4)
+#define MSBDS_ONLY	BIT(5)
 
 #define VULNWL(_vendor, _family, _model, _whitelist)	\
 	{ X86_VENDOR_##_vendor, _family, _model, X86_FEATURE_ANY, _whitelist }
@@ -833,8 +834,8 @@ static const struct x86_cpu_id cpu_vuln_whitelist[] = {
 	VULNWL_INTEL(ATOM_SILVERMONT2,		NO_SSB | NO_L1TF),
 	VULNWL_INTEL(ATOM_MERRIFIELD,		NO_SSB | NO_L1TF),
 	VULNWL_INTEL(ATOM_AIRMONT,		NO_SSB | NO_L1TF),
-	VULNWL_INTEL(XEON_PHI_KNL,		NO_SSB | NO_L1TF),
-	VULNWL_INTEL(XEON_PHI_KNM,		NO_SSB | NO_L1TF),
+	VULNWL_INTEL(XEON_PHI_KNL,		NO_SSB | NO_L1TF | MSBDS_ONLY),
+	VULNWL_INTEL(XEON_PHI_KNM,		NO_SSB | NO_L1TF | MSBDS_ONLY),
 
 	VULNWL_INTEL(CORE_YONAH,		NO_SSB),
 
@@ -877,8 +878,11 @@ void cpu_set_bug_bits(struct cpuinfo_x86 *c)
 	if (!cpu_matches(NO_SSB) && !(ia32_cap & ARCH_CAP_SSB_NO))
 		setup_force_cpu_bug(X86_BUG_SPEC_STORE_BYPASS);
 
-	if (!cpu_matches(NO_MDS) && !(ia32_cap & ARCH_CAP_MDS_NO))
+	if (!cpu_matches(NO_MDS) && !(ia32_cap & ARCH_CAP_MDS_NO)) {
 		setup_force_cpu_bug(X86_BUG_MDS);
+		if (cpu_matches(MSBDS_ONLY))
+			setup_force_cpu_bug(X86_BUG_MSBDS_ONLY);
+	}
 
 	if (cpu_matches(NO_MELTDOWN))
 		return;
