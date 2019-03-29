@@ -828,6 +828,207 @@ static ssize_t target_core_dev_wwn_store_attr_vpd_protocol_identifier(
 
 SE_DEV_WWN_ATTR(vpd_protocol_identifier, S_IRUGO | S_IWUSR);
 
+static ssize_t target_check_inquiry_data(char *buf)
+{
+	size_t len;
+	int i;
+
+	len = strlen(buf);
+
+	/*
+	 * SPC 4.3.1:
+	 * ASCII data fields shall contain only ASCII printable characters
+	 * (i.e., code values 20h to 7Eh) and may be terminated with one or
+	 * more ASCII null (00h) characters.
+	 */
+	for (i = 0; i < len; i++)
+		if ((buf[i] < 0x20) || (buf[i] > 0x7E)) {
+			pr_err("Emulated T10 Inquiry Data contains non-ASCII-printable characters\n");
+			return -EINVAL;
+		}
+
+	return len;
+}
+
+static ssize_t target_core_dev_wwn_show_attr_vendor_id(
+	struct t10_wwn *t10_wwn,
+	char *page)
+{
+	return sprintf(page, "%s\n", &t10_wwn->vendor[0]);
+}
+
+static ssize_t target_core_dev_wwn_store_attr_vendor_id(
+	struct t10_wwn *t10_wwn,
+	const char *page,
+	size_t count)
+{
+	struct se_device *dev = t10_wwn->t10_dev;
+	/* +2 to allow for a trailing (stripped) '\n' and null-terminator */
+	unsigned char buf[INQUIRY_VENDOR_LEN + 2];
+	char *stripped = NULL;
+	size_t len, ret;
+
+	len = strlcpy(buf, page, sizeof(buf));
+	if (len < sizeof(buf)) {
+		/* Strip any newline added from userspace. */
+		stripped = strstrip(buf);
+		len = strlen(stripped);
+	}
+	if (len > INQUIRY_VENDOR_LEN) {
+		pr_err("Emulated T10 Revision exceeds INQUIRY_VENDOR_LEN: "
+			 __stringify(INQUIRY_VENDOR_LEN)
+			"\n");
+		return -EOVERFLOW;
+	}
+
+	ret = target_check_inquiry_data(stripped);
+
+	if (ret < 0)
+		return ret;
+
+	/*
+	 * Check to see if any active exports exist.  If they do exist, fail
+	 * here as changing this information on the fly (underneath the
+	 * initiator side OS dependent multipath code) could cause negative
+	 * effects.
+	 */
+	if (dev->export_count) {
+		pr_err("Unable to set T10 Vendor ID while active %d exports exist\n",
+			dev->export_count);
+		return -EINVAL;
+	}
+
+	BUILD_BUG_ON(sizeof(dev->t10_wwn.vendor) != INQUIRY_VENDOR_LEN + 1);
+	strlcpy(dev->t10_wwn.vendor, stripped, sizeof(dev->t10_wwn.vendor));
+
+	pr_debug("Target_Core_ConfigFS: Set emulated T10 Vendor ID: %s\n",
+	dev->t10_wwn.vendor);
+
+	return count;
+}
+
+SE_DEV_WWN_ATTR(vendor_id, S_IRUGO | S_IWUSR);
+
+static ssize_t target_core_dev_wwn_show_attr_product_id(
+	struct t10_wwn *t10_wwn,
+	char *page)
+{
+	return sprintf(page, "%s\n", &t10_wwn->model[0]);
+}
+
+static ssize_t target_core_dev_wwn_store_attr_product_id(
+	struct t10_wwn *t10_wwn,
+	const char *page,
+	size_t count)
+{
+	struct se_device *dev = t10_wwn->t10_dev;
+	/* +2 to allow for a trailing (stripped) '\n' and null-terminator */
+	unsigned char buf[INQUIRY_MODEL_LEN + 2];
+	char *stripped = NULL;
+	size_t len, ret;
+
+	len = strlcpy(buf, page, sizeof(buf));
+	if (len < sizeof(buf)) {
+		/* Strip any newline added from userspace. */
+		stripped = strstrip(buf);
+		len = strlen(stripped);
+	}
+	if (len > INQUIRY_MODEL_LEN) {
+		pr_err("Emulated T10 Revision exceeds INQUIRY_MODEL_LEN: "
+			 __stringify(INQUIRY_MODEL_LEN)
+			"\n");
+		return -EOVERFLOW;
+	}
+
+	ret = target_check_inquiry_data(stripped);
+
+	if (ret < 0)
+		return ret;
+
+	/*
+	 * Check to see if any active exports exist.  If they do exist, fail
+	 * here as changing this information on the fly (underneath the
+	 * initiator side OS dependent multipath code) could cause negative
+	 * effects.
+	 */
+	if (dev->export_count) {
+		pr_err("Unable to set T10 Model while active %d exports exist\n",
+			dev->export_count);
+		return -EINVAL;
+	}
+
+	BUILD_BUG_ON(sizeof(dev->t10_wwn.model) != INQUIRY_MODEL_LEN + 1);
+	strlcpy(dev->t10_wwn.model, stripped, sizeof(dev->t10_wwn.model));
+
+	pr_debug("Target_Core_ConfigFS: Set emulated T10 Model: %s\n",
+	dev->t10_wwn.model);
+
+	return count;
+}
+
+SE_DEV_WWN_ATTR(product_id, S_IRUGO | S_IWUSR);
+
+static ssize_t target_core_dev_wwn_show_attr_revision(
+	struct t10_wwn *t10_wwn,
+	char *page)
+{
+	return sprintf(page, "%s\n", &t10_wwn->revision[0]);
+}
+
+static ssize_t target_core_dev_wwn_store_attr_revision(
+	struct t10_wwn *t10_wwn,
+	const char *page,
+	size_t count)
+{
+	struct se_device *dev = t10_wwn->t10_dev;
+	/* +2 to allow for a trailing (stripped) '\n' and null-terminator */
+	unsigned char buf[INQUIRY_REVISION_LEN + 2];
+	char *stripped = NULL;
+	size_t len, ret;
+
+	len = strlcpy(buf, page, sizeof(buf));
+	if (len < sizeof(buf)) {
+		/* Strip any newline added from userspace. */
+		stripped = strstrip(buf);
+		len = strlen(stripped);
+	}
+	if (len > INQUIRY_REVISION_LEN) {
+		pr_err("Emulated T10 Revision exceeds INQUIRY_REVISION_LEN: "
+			 __stringify(INQUIRY_REVISION_LEN)
+			"\n");
+		return -EOVERFLOW;
+	}
+
+	ret = target_check_inquiry_data(stripped);
+
+	if (ret < 0)
+		return ret;
+
+	/*
+	 * Check to see if any active exports exist.  If they do exist, fail
+	 * here as changing this information on the fly (underneath the
+	 * initiator side OS dependent multipath code) could cause negative
+	 * effects.
+	 */
+	if (dev->export_count) {
+		pr_err("Unable to set T10 Revision while active %d exports exist\n",
+			dev->export_count);
+		return -EINVAL;
+	}
+
+	BUILD_BUG_ON(sizeof(dev->t10_wwn.revision) != INQUIRY_REVISION_LEN + 1);
+	strlcpy(dev->t10_wwn.revision, stripped, sizeof(dev->t10_wwn.revision));
+
+	pr_debug("Target_Core_ConfigFS: Set emulated T10 Revision: %s\n",
+	dev->t10_wwn.revision);
+
+	return count;
+}
+
+SE_DEV_WWN_ATTR(revision, S_IRUGO | S_IWUSR);
+
+
+
 /*
  * Generic wrapper for dumping VPD identifiers by association.
  */
@@ -918,6 +1119,9 @@ CONFIGFS_EATTR_OPS(target_core_dev_wwn, t10_wwn, t10_wwn_group);
 static struct configfs_attribute *target_core_dev_wwn_attrs[] = {
 	&target_core_dev_wwn_vpd_unit_serial.attr,
 	&target_core_dev_wwn_vpd_protocol_identifier.attr,
+	&target_core_dev_wwn_vendor_id.attr,
+	&target_core_dev_wwn_product_id.attr,
+	&target_core_dev_wwn_revision.attr,
 	&target_core_dev_wwn_vpd_assoc_logical_unit.attr,
 	&target_core_dev_wwn_vpd_assoc_target_port.attr,
 	&target_core_dev_wwn_vpd_assoc_scsi_target_device.attr,
