@@ -657,6 +657,10 @@ struct nix_rss_flowkey_cfg {
 #define NIX_FLOW_KEY_TYPE_GENEVE   BIT(8)
 #define NIX_FLOW_KEY_TYPE_ETH_DMAC BIT(9)
 #define NIX_FLOW_KEY_TYPE_IPV6_EXT BIT(10)
+#define NIX_FLOW_KEY_TYPE_GTPU       BIT(11)
+#define NIX_FLOW_KEY_TYPE_UDP_VXLAN  BIT(12)
+#define NIX_FLOW_KEY_TYPE_UDP_GENEVE BIT(13)
+#define NIX_FLOW_KEY_TYPE_UDP_GTPU   BIT(14)
 	u32	flowkey_cfg; /* Flowkey types selected */
 	u8	group;       /* RSS context or group */
 };
