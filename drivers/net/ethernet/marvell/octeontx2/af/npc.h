@@ -57,6 +57,9 @@ enum npc_kpu_lc_ltype {
 /* Don't modify Ltypes upto SCTP, otherwise it will
  * effect flow tag calculation and thus RSS.
  */
+/* Dont change values of UDP_VXLAN(12) and UDP_GENEVE(13), otherwise it
+ * will effect flow tag calculation and thus RSS
+ */
 enum npc_kpu_ld_ltype {
 	NPC_LT_LD_TCP = 1,
 	NPC_LT_LD_UDP,
