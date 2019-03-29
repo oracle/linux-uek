@@ -221,8 +221,10 @@ static int scomp_acomp_comp_decomp(struct acomp_req *req, int dir)
 	if (!ret) {
 		if (!req->dst) {
 			req->dst = crypto_scomp_sg_alloc(req->dlen, GFP_ATOMIC);
-			if (!req->dst)
+			if (!req->dst) {
+				ret = -ENOMEM;
 				goto out;
+			}
 		}
 		scatterwalk_map_and_copy(scratch_dst, req->dst, 0, req->dlen,
 					 1);
