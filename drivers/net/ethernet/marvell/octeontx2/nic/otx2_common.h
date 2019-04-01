@@ -153,6 +153,11 @@ struct otx2_vf_config {
 
 struct otx2_ptp;
 
+struct flr_work {
+	struct work_struct work;
+	struct otx2_nic *pf;
+};
+
 struct otx2_nic {
 	void __iomem		*reg_base;
 	struct pci_dev		*pdev;
@@ -192,6 +197,8 @@ struct otx2_nic {
 	u32			nr_flows;
 	u16			entry_list[NPC_MAX_NONCONTIG_ENTRIES];
 	struct list_head	flows;
+	struct workqueue_struct	*flr_wq;
+	struct flr_work		*flr_wrk;
 };
 
 static inline bool is_9xxx_pass1_silicon(struct pci_dev *pdev)
