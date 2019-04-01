@@ -731,7 +731,7 @@ int cgx_get_mkex_prfl_info(u64 *addr, u64 *size)
 	if (!addr || !size)
 		return -EINVAL;
 
-	cgx_dev = list_first_entry(&cgx_list, struct cgx, cgx_list);
+	cgx_dev = list_first_entry_or_null(&cgx_list, struct cgx, cgx_list);
 	if (!cgx_dev)
 		return -ENXIO;
 
@@ -838,7 +838,7 @@ int cgx_get_fwdata_base(u64 *base)
 	struct cgx *cgx;
 	int err;
 
-	cgx = list_first_entry(&cgx_list, struct cgx, cgx_list);
+	cgx = list_first_entry_or_null(&cgx_list, struct cgx, cgx_list);
 	if (!cgx)
 		return -ENXIO;
 
