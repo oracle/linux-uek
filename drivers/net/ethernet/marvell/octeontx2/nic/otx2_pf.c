@@ -41,6 +41,11 @@ MODULE_LICENSE("GPL v2");
 MODULE_VERSION(DRV_VERSION);
 MODULE_DEVICE_TABLE(pci, otx2_pf_id_table);
 
+enum {
+	TYPE_PFAF,
+	TYPE_PFVF,
+};
+
 static int otx2_config_hw_tx_tstamp(struct otx2_nic *pfvf, bool enable);
 static int otx2_config_hw_rx_tstamp(struct otx2_nic *pfvf, bool enable);
 
@@ -267,7 +272,7 @@ static int otx2_pf_flr_init(struct otx2_nic *pf, int num_vfs)
 }
 
 static void otx2_queue_work(struct mbox *mw, struct workqueue_struct *mbox_wq,
-			    int first, int mdevs, u64 intr)
+			    int first, int mdevs, u64 intr, int type)
 {
 	struct otx2_mbox_dev *mdev;
 	struct otx2_mbox *mbox;
@@ -278,10 +283,10 @@ static void otx2_queue_work(struct mbox *mw, struct workqueue_struct *mbox_wq,
 		/* start from 0 */
 		if (!(intr & BIT_ULL(i - first)))
 			continue;
-
 		mbox = &mw->mbox;
 		mdev = &mbox->dev[i];
-		otx2_sync_mbox_bbuf(mbox, i);
+		if (type == TYPE_PFAF)
+			otx2_sync_mbox_bbuf(mbox, i);
 		hdr = mdev->mbase + mbox->rx_start;
 		/*The hdr->num_msgs is set to zero immediately in the interrupt
 		 * handler to  ensure that it holds a correct value next time
@@ -293,20 +298,25 @@ static void otx2_queue_work(struct mbox *mw, struct workqueue_struct *mbox_wq,
 		if (hdr->num_msgs) {
 			mw->num_msgs = hdr->num_msgs;
 			hdr->num_msgs = 0;
-			memset(mbox->hwbase + mbox->rx_start, 0,
-			       ALIGN(sizeof(struct mbox_hdr), sizeof(u64)));
+			if (type == TYPE_PFAF)
+				memset(mbox->hwbase + mbox->rx_start, 0,
+				       ALIGN(sizeof(struct mbox_hdr),
+					     sizeof(u64)));
 
 			queue_work(mbox_wq, &mw[i].mbox_wrk);
 		}
 		mbox = &mw->mbox_up;
 		mdev = &mbox->dev[i];
-		otx2_sync_mbox_bbuf(mbox, i);
+		if (type == TYPE_PFAF)
+			otx2_sync_mbox_bbuf(mbox, i);
 		hdr = mdev->mbase + mbox->rx_start;
 		if (hdr->num_msgs) {
 			mw->up_num_msgs = hdr->num_msgs;
 			hdr->num_msgs = 0;
-			memset(mbox->hwbase + mbox->rx_start, 0,
-			       ALIGN(sizeof(struct mbox_hdr), sizeof(u64)));
+			if (type == TYPE_PFAF)
+				memset(mbox->hwbase + mbox->rx_start, 0,
+				       ALIGN(sizeof(struct mbox_hdr),
+					     sizeof(u64)));
 
 			queue_work(mbox_wq, &mw[i].mbox_up_wrk);
 		}
@@ -333,10 +343,11 @@ static void otx2_forward_msg_pfvf(struct otx2_mbox_dev *mdev,
 
 static int otx2_forward_vf_mbox_msgs(struct otx2_nic *pf,
 				     struct otx2_mbox *src_mbox,
-				     int dir, int vf)
+				     int dir, int vf, int num_msgs)
 {
 	struct otx2_mbox_dev *src_mdev, *dst_mdev;
 	struct mbox_hdr *mbox_hdr;
+	struct mbox_hdr *req_hdr;
 	struct mbox *dst_mbox;
 	int dst_size, err;
 
@@ -348,6 +359,9 @@ static int otx2_forward_vf_mbox_msgs(struct otx2_nic *pf,
 		src_mdev = &src_mbox->dev[vf];
 		mbox_hdr = src_mbox->hwbase +
 				src_mbox->rx_start + (vf * MBOX_SIZE);
+		req_hdr = (struct mbox_hdr *)(src_mdev->mbase +
+					      src_mbox->rx_start);
+		req_hdr->num_msgs = num_msgs;
 		dst_mbox = &pf->mbox;
 		dst_size = dst_mbox->mbox.tx_size -
 				ALIGN(sizeof(*mbox_hdr), MBOX_MSG_ALIGN);
@@ -371,6 +385,10 @@ static int otx2_forward_vf_mbox_msgs(struct otx2_nic *pf,
 		otx2_mbox_unlock(&pf->mbox);
 	} else if (dir == MBOX_DIR_PFVF) {
 		otx2_mbox_lock(&pf->mbox);
+		req_hdr = (struct mbox_hdr *)(src_mbox->dev[0].mbase +
+					      src_mbox->rx_start);
+		req_hdr->num_msgs = num_msgs;
+
 		otx2_forward_msg_pfvf(&src_mbox->dev[0],
 				      &pf->mbox_pfvf[0].mbox,
 				      pf->mbox.bbuf_base,
@@ -379,6 +397,9 @@ static int otx2_forward_vf_mbox_msgs(struct otx2_nic *pf,
 	} else if (dir == MBOX_DIR_PFVF_UP) {
 		src_mdev = &src_mbox->dev[0];
 		mbox_hdr = src_mbox->hwbase + src_mbox->rx_start;
+		req_hdr = (struct mbox_hdr *)(src_mdev->mbase +
+					      src_mbox->rx_start);
+		req_hdr->num_msgs = num_msgs;
 
 		dst_mbox = &pf->mbox_pfvf[0];
 		dst_size = dst_mbox->mbox_up.tx_size -
@@ -398,6 +419,9 @@ static int otx2_forward_vf_mbox_msgs(struct otx2_nic *pf,
 			return err;
 		}
 	} else if (dir == MBOX_DIR_VFPF_UP) {
+		req_hdr = (struct mbox_hdr *)(src_mbox->dev[0].mbase +
+					      src_mbox->rx_start);
+		req_hdr->num_msgs = num_msgs;
 		otx2_forward_msg_pfvf(&pf->mbox_pfvf->mbox_up.dev[vf],
 				      &pf->mbox.mbox_up,
 				      pf->mbox_pfvf[vf].bbuf_base,
@@ -441,12 +465,13 @@ static void otx2_pfvf_mbox_handler(struct work_struct *work)
 		msg->pcifunc |= (vf_idx + 1) & RVU_PFVF_FUNC_MASK;
 		offset = msg->next_msgoff;
 	}
+	err = otx2_forward_vf_mbox_msgs(pf, mbox, MBOX_DIR_PFAF, vf_idx,
+					vf_mbox->num_msgs);
 	/* mbox messages in the same direction to be handled by same
 	 * mailbox occurs serially. So write to vf_mbox->num_msgs
 	 * happens only after the previous context is done with it.
 	 */
 	vf_mbox->num_msgs = 0;
-	err = otx2_forward_vf_mbox_msgs(pf, mbox, MBOX_DIR_PFAF, vf_idx);
 	if (err)
 		goto inval_msg;
 	return;
@@ -529,14 +554,15 @@ static irqreturn_t otx2_pfvf_mbox_intr_handler(int irq, void *pf_irq)
 	if (vfs > 64) {
 		intr = otx2_read64(pf, RVU_PF_VFPF_MBOX_INTX(1));
 		otx2_write64(pf, RVU_PF_VFPF_MBOX_INTX(1), intr);
-		otx2_queue_work(mbox, pf->mbox_pfvf_wq, 64, vfs, intr);
+		otx2_queue_work(mbox, pf->mbox_pfvf_wq, 64, vfs, intr,
+				TYPE_PFVF);
 		vfs -= 64;
 	}
 
 	intr = otx2_read64(pf, RVU_PF_VFPF_MBOX_INTX(0));
 	otx2_write64(pf, RVU_PF_VFPF_MBOX_INTX(0), intr);
 
-	otx2_queue_work(mbox, pf->mbox_pfvf_wq, 0, vfs, intr);
+	otx2_queue_work(mbox, pf->mbox_pfvf_wq, 0, vfs, intr, TYPE_PFVF);
 
 	return IRQ_HANDLED;
 }
@@ -800,16 +826,18 @@ static void otx2_pfaf_mbox_handler(struct work_struct *work)
 		offset = mbox->rx_start + msg->next_msgoff;
 		mdev->msgs_acked++;
 	}
+
+	otx2_mbox_reset(mbox, 0);
+
+	if (devid)
+		otx2_forward_vf_mbox_msgs(pf, &pf->mbox.mbox,
+					  MBOX_DIR_PFVF, devid - 1,
+					  af_mbox->num_msgs);
 	/* mbox messages in the same direction to be handled by same
 	 * mailbox occurs serially. So write to af_mbox->num_msgs
 	 * happens only after the previous context is done with it.
 	 */
 	af_mbox->num_msgs = 0;
-	otx2_mbox_reset(mbox, 0);
-
-	if (devid)
-		otx2_forward_vf_mbox_msgs(pf, &pf->mbox.mbox,
-					  MBOX_DIR_PFVF, devid - 1);
 	/* Clear the IRQ */
 	smp_wmb();
 	otx2_write64(pf, RVU_PF_INT, BIT_ULL(0));
@@ -925,16 +953,17 @@ static void otx2_pfaf_mbox_up_handler(struct work_struct *work)
 			otx2_process_mbox_msg_up(pf, msg);
 		offset = mbox->rx_start + msg->next_msgoff;
 	}
+	if (devid) {
+		otx2_forward_vf_mbox_msgs(pf, &pf->mbox.mbox_up,
+					  MBOX_DIR_PFVF_UP, devid - 1,
+					  af_mbox->up_num_msgs);
+		return;
+	}
 	/* mbox messages in the same direction to be handled by same
 	 * mailbox occurs serially. So write to af_mbox->up_num_msgs
 	 * happens only after the previous context is done with it.
 	 */
 	af_mbox->up_num_msgs = 0;
-	if (devid) {
-		otx2_forward_vf_mbox_msgs(pf, &pf->mbox.mbox_up,
-					  MBOX_DIR_PFVF_UP, devid - 1);
-		return;
-	}
 
 	otx2_mbox_msg_send(mbox, 0);
 }
@@ -945,7 +974,7 @@ static irqreturn_t otx2_pfaf_mbox_intr_handler(int irq, void *pf_irq)
 	struct mbox *mbox;
 
 	mbox = &pf->mbox;
-	otx2_queue_work(mbox, pf->mbox_wq, 0, 1, 1);
+	otx2_queue_work(mbox, pf->mbox_wq, 0, 1, 1, TYPE_PFAF);
 
 	/* Clear the IRQ */
 	otx2_write64(pf, RVU_PF_INT, BIT_ULL(0));
