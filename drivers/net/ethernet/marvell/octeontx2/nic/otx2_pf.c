@@ -1685,6 +1685,7 @@ int otx2_stop(struct net_device *netdev)
 	/* First stop packet Rx/Tx */
 	otx2_rxtx_enable(pf, false);
 
+	otx2_destroy_ethtool_flows(pf);
 
 	pf->intf_down = true;
 	/* 'intf_down' may be checked on any cpu */
