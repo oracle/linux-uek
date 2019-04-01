@@ -29,6 +29,9 @@
 #include <linux/ctype.h>
 #include <linux/highmem.h>
 #include <linux/gfp.h>
+#ifdef CONFIG_DEBUG_FS
+#include <linux/debugfs.h>
+#endif
 
 #include <asm/io.h>
 #include <asm/dma.h>
@@ -67,6 +70,11 @@ static phys_addr_t io_tlb_start, io_tlb_end;
  * io_tlb_end.  This is command line adjustable via setup_io_tlb_npages.
  */
 static unsigned long io_tlb_nslabs;
+
+/*
+ * The number of used IO TLB block
+ */
+static unsigned long io_tlb_used;
 
 /*
  * When the IOMMU overflows we return a fallback buffer. This sets the size.
@@ -517,6 +525,7 @@ not_found:
 		dev_warn(hwdev, "swiotlb buffer is full (sz: %zd bytes)\n", size);
 	return SWIOTLB_MAP_ERROR;
 found:
+	io_tlb_used += nslots;
 	spin_unlock_irqrestore(&io_tlb_lock, flags);
 
 	/*
@@ -588,6 +597,8 @@ void swiotlb_tbl_unmap_single(struct device *hwdev, phys_addr_t tlb_addr,
 		 */
 		for (i = index - 1; (OFFSET(i, IO_TLB_SEGSIZE) != IO_TLB_SEGSIZE -1) && io_tlb_list[i]; i--)
 			io_tlb_list[i] = ++count;
+
+		io_tlb_used -= nslots;
 	}
 	spin_unlock_irqrestore(&io_tlb_lock, flags);
 }
@@ -993,3 +1004,72 @@ swiotlb_dma_supported(struct device *hwdev, u64 mask)
 	return phys_to_dma(hwdev, io_tlb_end - 1) <= mask;
 }
 EXPORT_SYMBOL(swiotlb_dma_supported);
+
+#ifdef CONFIG_DEBUG_FS
+
+static int swiotlb_io_tlb_nslabs_show(struct seq_file *m, void *v)
+{
+	seq_printf(m, "%lu\n", io_tlb_nslabs);
+	return 0;
+}
+
+static int swiotlb_io_tlb_nslabs_open(struct inode *inode, struct file *filp)
+{
+	return single_open(filp, swiotlb_io_tlb_nslabs_show, NULL);
+}
+
+static const struct file_operations swiotlb_io_tlb_nslabs_fops = {
+	.open           = swiotlb_io_tlb_nslabs_open,
+	.read           = seq_read,
+	.llseek         = seq_lseek,
+	.release        = single_release,
+};
+
+static int swiotlb_io_tlb_used_show(struct seq_file *m, void *v)
+{
+	seq_printf(m, "%lu\n", io_tlb_used);
+	return 0;
+}
+
+static int swiotlb_io_tlb_used_open(struct inode *inode, struct file *filp)
+{
+	return single_open(filp, swiotlb_io_tlb_used_show, NULL);
+}
+
+static const struct file_operations swiotlb_io_tlb_used_fops = {
+	.open           = swiotlb_io_tlb_used_open,
+	.read           = seq_read,
+	.llseek         = seq_lseek,
+	.release        = single_release,
+};
+
+static int __init swiotlb_create_debugfs(void)
+{
+	static struct dentry *d_swiotlb_usage;
+	struct dentry *ent;
+
+	d_swiotlb_usage = debugfs_create_dir("swiotlb", NULL);
+
+	if (!d_swiotlb_usage)
+		return -ENOMEM;
+
+	ent = debugfs_create_file("io_tlb_nslabs", 0400, d_swiotlb_usage,
+				  NULL, &swiotlb_io_tlb_nslabs_fops);
+	if (!ent)
+		goto fail;
+
+	ent = debugfs_create_file("io_tlb_used", 0400, d_swiotlb_usage,
+				  NULL, &swiotlb_io_tlb_used_fops);
+	if (!ent)
+		goto fail;
+
+	return 0;
+
+fail:
+	debugfs_remove_recursive(d_swiotlb_usage);
+	return -ENOMEM;
+}
+
+late_initcall(swiotlb_create_debugfs);
+
+#endif
