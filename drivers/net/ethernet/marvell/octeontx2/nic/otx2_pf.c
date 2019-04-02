@@ -2405,6 +2405,9 @@ static int otx2_sriov_disable(struct pci_dev *pdev)
 	struct otx2_nic *pf = netdev_priv(netdev);
 	int i;
 
+	if (!pci_num_vf(pdev))
+		return 0;
+
 	pci_disable_sriov(pdev);
 
 	for (i = 0; i < pci_num_vf(pdev); i++)
