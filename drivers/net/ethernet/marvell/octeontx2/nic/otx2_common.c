@@ -432,9 +432,32 @@ int otx2_txschq_stop(struct otx2_nic *pfvf)
 	return 0;
 }
 
+/* RED and drop levels of CQ on packet reception.
+ * For CQ level is measure of emptiness ( 0x0 = full, 255 = empty).
+ */
+#define RQ_PASS_LVL_CQ(skid, qsize)	((((skid) + 48) * 256) / (qsize))
+#define RQ_DROP_LVL_CQ(skid, qsize)	(((skid) * 256) / (qsize))
+
+/* RED and drop levels of AURA for packet reception.
+ * For AURA level is measure of fullness (0x0 = empty, 255 = full).
+ * Eg: For RQ length 1K, for pass/drop level 204/230.
+ * RED accepts pkts if free pointers > 102 & <= 205.
+ * Drops pkts if free pointers < 102.
+ */
+#define RQ_PASS_LVL_AURA (255 - ((95 * 256) / 100)) /* RED when 95% is full */
+#define RQ_DROP_LVL_AURA (255 - ((99 * 256) / 100)) /* Drop when 99% is full */
+
+/* Send skid of 2000 packets required for CQ size of 4K CQEs. */
+#define SEND_CQ_SKID	2000
+
+/* Receive skid of 600 packets required for CQ size of 1K CQEs. */
+#define RX_CQ_SKID	600
+
 static int otx2_rq_init(struct otx2_nic *pfvf, u16 qidx, u16 lpb_aura)
 {
+	struct otx2_qset *qset = &pfvf->qset;
 	struct nix_aq_enq_req *aq;
+	int skid = 0;
 
 	/* Get memory to put this msg */
 	aq = otx2_mbox_alloc_msg_nix_aq_enq(&pfvf->mbox);
@@ -448,6 +471,20 @@ static int otx2_rq_init(struct otx2_nic *pfvf, u16 qidx, u16 lpb_aura)
 	aq->rq.lpb_sizem1 = (DMA_BUFFER_LEN / 8) - 1;
 	aq->rq.xqe_imm_size = 0; /* Copying of packet to CQE not needed */
 	aq->rq.flow_tagw = 32; /* Copy full 32bit flow_tag to CQE header */
+	aq->rq.lpb_drop_ena = 1; /* Enable RED dropping for AURA */
+	aq->rq.xqe_drop_ena = 1; /* Enable RED dropping for CQ/SSO */
+	/* Due to HW errata #34873 minimum 600 unused CQE need to maintaine to
+	 * avoid CQ overflow. Eg: For CQ size 1K, for pass/drop levels 162/150.
+	 * HW accepts accepts the pkts if unused CQE >= 648.
+	 * RED accepts pkts if unused CQE > 600 & <= 648.
+	 * Drops pkts if unused CQE <= 600.
+	 */
+	if (is_9xxx_pass1_silicon(pfvf->pdev))
+		skid = RX_CQ_SKID;
+	aq->rq.xqe_pass = RQ_PASS_LVL_CQ(skid, qset->rqe_cnt);
+	aq->rq.xqe_drop = RQ_DROP_LVL_CQ(skid, qset->rqe_cnt);
+	aq->rq.lpb_aura_pass = RQ_PASS_LVL_AURA;
+	aq->rq.lpb_aura_drop = RQ_DROP_LVL_AURA;
 
 	/* Fill AQ info */
 	aq->qidx = qidx;
@@ -514,6 +551,10 @@ static int otx2_sq_init(struct otx2_nic *pfvf, u16 qidx, u16 sqb_aura)
 	aq->sq.default_chan = pfvf->tx_chan_base;
 	aq->sq.sqe_stype = NIX_STYPE_STF; /* Cache SQB */
 	aq->sq.sqb_aura = sqb_aura;
+	/* Due pipelining impact minimum 2000 unused SQ CQE's
+	 * need to maintain to avoid CQ overflow.
+	 */
+	aq->sq.cq_limit = ((SEND_CQ_SKID * 256) / (sq->sqe_cnt));
 
 	/* Fill AQ info */
 	aq->qidx = qidx;
@@ -526,9 +567,9 @@ static int otx2_sq_init(struct otx2_nic *pfvf, u16 qidx, u16 sqb_aura)
 static int otx2_cq_init(struct otx2_nic *pfvf, u16 qidx)
 {
 	struct otx2_qset *qset = &pfvf->qset;
+	int err, pool_id, skid = 0;
 	struct nix_aq_enq_req *aq;
 	struct otx2_cq_queue *cq;
-	int err, pool_id;
 
 	cq = &qset->cq[qidx];
 	cq->cqe_cnt = (qidx < pfvf->hw.rx_queues) ? qset->rqe_cnt
@@ -563,6 +604,12 @@ static int otx2_cq_init(struct otx2_nic *pfvf, u16 qidx)
 	aq->cq.cint_idx = (qidx < pfvf->hw.rx_queues) ? qidx
 				: (qidx - pfvf->hw.rx_queues);
 	cq->cint_idx = aq->cq.cint_idx;
+	aq->cq.avg_level = 255;
+
+	if (is_9xxx_pass1_silicon(pfvf->pdev))
+		skid = RX_CQ_SKID;
+	aq->cq.drop = RQ_DROP_LVL_CQ(skid, cq->cqe_cnt);
+	aq->cq.drop_ena = 1;
 
 	/* Fill AQ info */
 	aq->qidx = qidx;
@@ -721,6 +768,7 @@ static int otx2_aura_init(struct otx2_nic *pfvf, int aura_id,
 	aq->aura.shift = ilog2(numptrs) - 8;
 	aq->aura.count = numptrs;
 	aq->aura.limit = numptrs;
+	aq->aura.avg_level = 255;
 	aq->aura.ena = 1;
 	aq->aura.fc_ena = 1;
 	aq->aura.fc_addr = pool->fc_addr->iova;
