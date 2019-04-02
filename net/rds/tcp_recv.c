@@ -324,7 +324,7 @@ void rds_tcp_data_ready(struct sock *sk)
 	rds_tcp_stats_inc(s_tcp_data_ready_calls);
 
 	if (rds_tcp_read_sock(cp, GFP_ATOMIC) == -ENOMEM)
-		queue_delayed_work(rds_wq, &cp->cp_recv_w, 0);
+		queue_delayed_work(cp->cp_wq, &cp->cp_recv_w, 0);
 out:
 	read_unlock(&sk->sk_callback_lock);
 	ready(sk);
