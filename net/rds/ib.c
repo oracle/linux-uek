@@ -636,8 +636,13 @@ free_attr:
 
 static void rds_ib_unregister_client(void)
 {
+	int i;
+
 	ib_unregister_client(&rds_ib_client);
 	flush_workqueue(rds_wq);
+
+	for (i = 0; i < RDS_NMBR_CP_WQS; ++i)
+		flush_workqueue(rds_cp_wqs[i]);
 }
 
 int rds_ib_init(void)
