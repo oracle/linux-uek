@@ -1822,7 +1822,7 @@ static int rds_send_probe(struct rds_conn_path *cp, __be16 sport,
 	rds_stats_inc(s_send_pong);
 
 	if (!test_bit(RDS_LL_SEND_FULL, &cp->cp_flags))
-		queue_delayed_work(rds_wq, &cp->cp_send_w, 0);
+		queue_delayed_work(cp->cp_wq, &cp->cp_send_w, 0);
 
 	rds_message_put(rm);
 	return 0;
