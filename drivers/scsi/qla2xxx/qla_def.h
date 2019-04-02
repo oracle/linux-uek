@@ -513,6 +513,7 @@ typedef struct srb {
 	struct list_head elem;
 	u32 gen1;	/* scratch */
 	u32 gen2;	/* scratch */
+	wait_queue_head_t *cwaitq;
 	union {
 		struct srb_iocb iocb_cmd;
 		struct fc_bsg_job *bsg_job;

@@ -645,6 +645,9 @@ qla2x00_sp_free_dma(void *ptr)
 		sp->flags &= ~SRB_CRC_PROT_DMA_VALID;
 	}
 
+	if (!ctx)
+		return;
+
 	if (sp->flags & SRB_CRC_CTX_DSD_VALID) {
 		/* List assured to be having elements */
 		qla2x00_clean_dsd_pool(ha, sp, NULL);
@@ -703,9 +706,6 @@ qla2x00_sp_free_dma(void *ptr)
 			    __func__, difctx->no_dif_bundl);
 		}
 	}
-
-	CMD_SP(cmd) = NULL;
-	qla2x00_rel_sp(sp);
 }
 
 void
@@ -713,6 +713,7 @@ qla2x00_sp_compl(void *ptr, int res)
 {
 	srb_t *sp = ptr;
 	struct scsi_cmnd *cmd = GET_CMD_SP(sp);
+	wait_queue_head_t *cwaitq = sp->cwaitq;
 
 	cmd->result = res;
 
@@ -727,8 +728,13 @@ qla2x00_sp_compl(void *ptr, int res)
 	if (!atomic_dec_and_test(&sp->ref_count))
 		return;
 
-	qla2x00_sp_free_dma(sp);
+	sp->free(sp);
+	cmd->result = res;
+	CMD_SP(cmd) = NULL;
 	cmd->scsi_done(cmd);
+	if (cwaitq)
+		wake_up(cwaitq);
+	qla2x00_rel_sp(sp);
 }
 
 void
@@ -749,6 +755,9 @@ qla2xxx_qpair_sp_free_dma(void *ptr)
 		    scsi_prot_sg_count(cmd), cmd->sc_data_direction);
 		sp->flags &= ~SRB_CRC_PROT_DMA_VALID;
 	}
+
+	if (!ctx)
+		return;
 
 	if (sp->flags & SRB_CRC_CTX_DSD_VALID) {
 		/* List assured to be having elements */
@@ -772,9 +781,6 @@ qla2xxx_qpair_sp_free_dma(void *ptr)
 		ha->gbl_dsd_avail += ctx1->dsd_use_cnt;
 		mempool_free(ctx1, ha->ctx_mempool);
 	}
-
-	CMD_SP(cmd) = NULL;
-	qla2xxx_rel_qpair_sp(sp->qpair, sp);
 }
 
 void
@@ -782,8 +788,7 @@ qla2xxx_qpair_sp_compl(void *ptr, int res)
 {
 	srb_t *sp = ptr;
 	struct scsi_cmnd *cmd = GET_CMD_SP(sp);
-
-	cmd->result = res;
+	wait_queue_head_t *cwaitq = sp->cwaitq;
 
 	if (atomic_read(&sp->ref_count) == 0) {
 		ql_dbg(ql_dbg_io, sp->fcport->vha, 0x3079,
@@ -796,8 +801,13 @@ qla2xxx_qpair_sp_compl(void *ptr, int res)
 	if (!atomic_dec_and_test(&sp->ref_count))
 		return;
 
-	qla2xxx_qpair_sp_free_dma(sp);
+	sp->free(sp);
+	cmd->result = res;
+	CMD_SP(cmd) = NULL;
 	cmd->scsi_done(cmd);
+	if (cwaitq)
+		wake_up(cwaitq);
+	qla2xxx_rel_qpair_sp(sp->qpair, sp);
 }
 
 /* If we are SP1 here, we need to still take and release the host_lock as SP1
@@ -1281,7 +1291,6 @@ qla2xxx_eh_abort(struct scsi_cmnd *cmd)
 	    vha->host_no, id, lun, sp, cmd, sp->handle);
 
 	/* Get a reference to the sp and drop the lock.*/
-
 	rval = ha->isp_ops->abort_command(sp);
 	if (rval) {
 		if (rval == QLA_FUNCTION_PARAMETER_ERROR)
@@ -1298,37 +1307,46 @@ qla2xxx_eh_abort(struct scsi_cmnd *cmd)
 	}
 
 	spin_lock_irqsave(qpair->qp_lock_ptr, flags);
-	/*
-	 * Clear the slot in the oustanding_cmds array if we can't find the
-	 * command to reclaim the resources.
-	 */
-	if (rval == QLA_FUNCTION_PARAMETER_ERROR)
-		vha->req->outstanding_cmds[sp->handle] = NULL;
 
 	/*
-	 * sp->done will do ref_count--
-	 * sp_get() took an extra count above
+	 * Releasing of the SRB and associated command resources
+	 * is managed through ref_count.
+	 * Whether we need to wait for the abort completion or complete
+	 * the abort handler should be based on the ref_count.
 	 */
-	sp->done(sp, DID_RESET << 16);
+	if (atomic_read(&sp->ref_count) > 1) {
+		/*
+		 * The command is not yet completed. We need to wait for either
+		 * command completion or abort completion.
+		 */
+		DECLARE_WAIT_QUEUE_HEAD_ONSTACK(eh_waitq);
+		uint32_t ratov = ha->r_a_tov/10;
 
-	/* Did the command return during mailbox execution? */
-	if (ret == FAILED && !CMD_SP(cmd))
-		ret = SUCCESS;
+		/* Go ahead and release the extra ref_count obtained earlier */
+		sp->done(sp, DID_RESET << 16);
+		sp->cwaitq = &eh_waitq;
 
-	if (!CMD_SP(cmd))
-		wait = 0;
-
-	spin_unlock_irqrestore(qpair->qp_lock_ptr, flags);
-
-	/* Wait for the command to be returned. */
-	if (wait) {
-		if (qla2x00_eh_wait_on_command(cmd) != QLA_SUCCESS) {
-			ql_log(ql_log_warn, vha, 0x8006,
-			    "Abort handler timed out cmd=%p.\n", cmd);
+		if (!wait_event_interruptible_lock_irq_timeout(eh_waitq,
+		    CMD_SP(cmd) == NULL, *qpair->qp_lock_ptr,
+		    msecs_to_jiffies(4 * ratov * 1000))) {
+			/*
+			 * The abort got dropped, LOGO will be sent and the
+			 * original command will be completed with CS_TIMEOUT
+			 * completion
+			 */
+			ql_dbg(ql_dbg_taskm, vha, 0xffff,
+			    "%s: Abort wait timer (4 * R_A_TOV[%d]) expired\n",
+			    __func__, ha->r_a_tov);
+			sp->cwaitq = NULL;
 			ret = FAILED;
+			goto end;
 		}
+	} else {
+		/* Command completed while processing the abort */
+		sp->done(sp, DID_RESET << 16);
 	}
-
+end:
+	spin_unlock_irqrestore(qpair->qp_lock_ptr, flags);
 	ql_log(ql_log_info, vha, 0x801c,
 	    "Abort command issued nexus=%ld:%d:%llu --  %d %x.\n",
 	    vha->host_no, id, lun, wait, ret);
