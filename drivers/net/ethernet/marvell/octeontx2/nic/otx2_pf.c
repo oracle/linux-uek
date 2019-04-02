@@ -350,6 +350,7 @@ static int otx2_pfaf_mbox_init(struct otx2_nic *pf)
 
 	INIT_WORK(&mbox->mbox_wrk, otx2_pfaf_mbox_handler);
 	INIT_WORK(&mbox->mbox_up_wrk, otx2_pfaf_mbox_up_handler);
+	otx2_mbox_lock_init(&pf->mbox);
 
 	return 0;
 exit:
@@ -360,31 +361,43 @@ exit:
 static int otx2_cgx_config_linkevents(struct otx2_nic *pf, bool enable)
 {
 	struct msg_req *msg;
+	int err;
 
+	otx2_mbox_lock(&pf->mbox);
 	if (enable)
 		msg = otx2_mbox_alloc_msg_cgx_start_linkevents(&pf->mbox);
 	else
 		msg = otx2_mbox_alloc_msg_cgx_stop_linkevents(&pf->mbox);
 
-	if (!msg)
+	if (!msg) {
+		otx2_mbox_unlock(&pf->mbox);
 		return -ENOMEM;
+	}
 
-	return otx2_sync_mbox_msg(&pf->mbox);
+	err = otx2_sync_mbox_msg(&pf->mbox);
+	otx2_mbox_unlock(&pf->mbox);
+	return err;
 }
 
 static int otx2_cgx_config_loopback(struct otx2_nic *pf, bool enable)
 {
 	struct msg_req *msg;
+	int err;
 
+	otx2_mbox_lock(&pf->mbox);
 	if (enable)
 		msg = otx2_mbox_alloc_msg_cgx_intlbk_enable(&pf->mbox);
 	else
 		msg = otx2_mbox_alloc_msg_cgx_intlbk_disable(&pf->mbox);
 
-	if (!msg)
+	if (!msg) {
+		otx2_mbox_unlock(&pf->mbox);
 		return -ENOMEM;
+	}
 
-	return otx2_sync_mbox_msg(&pf->mbox);
+	err = otx2_sync_mbox_msg(&pf->mbox);
+	otx2_mbox_unlock(&pf->mbox);
+	return err;
 }
 
 int otx2_set_real_num_queues(struct net_device *netdev,
@@ -506,7 +519,7 @@ static void otx2_disable_napi(struct otx2_nic *pf)
 static int otx2_init_hw_resources(struct otx2_nic *pf)
 {
 	struct otx2_hw *hw = &pf->hw;
-	int err, lvl;
+	int err = 0, lvl;
 
 	/* Set required NPA LF's pool counts
 	 * Auras and Pools are used in a 1:1 mapping,
@@ -516,15 +529,16 @@ static int otx2_init_hw_resources(struct otx2_nic *pf)
 	hw->sqpool_cnt = hw->tx_queues;
 	hw->pool_cnt = hw->rqpool_cnt + hw->sqpool_cnt;
 
+	otx2_mbox_lock(&pf->mbox);
 	/* NPA init */
 	err = otx2_config_npa(pf);
 	if (err)
-		return err;
+		goto exit;
 
 	/* NIX init */
 	err = otx2_config_nix(pf);
 	if (err)
-		return err;
+		goto exit;
 
 	/* Enable backpressure */
 	otx2_nix_config_bp(pf, true);
@@ -532,28 +546,29 @@ static int otx2_init_hw_resources(struct otx2_nic *pf)
 	/* Init Auras and pools used by NIX RQ, for free buffer ptrs */
 	err = otx2_rq_aura_pool_init(pf);
 	if (err)
-		return err;
+		goto exit;
 
 	/* Init Auras and pools used by NIX SQ, for queueing SQEs */
 	err = otx2_sq_aura_pool_init(pf);
 	if (err)
-		return err;
+		goto exit;
 
 	err = otx2_txsch_alloc(pf);
 	if (err)
-		return err;
+		goto exit;
 
 	err = otx2_config_nix_queues(pf);
 	if (err)
-		return err;
+		goto exit;
 
 	for (lvl = 0; lvl < NIX_TXSCH_LVL_CNT; lvl++) {
 		err = otx2_txschq_config(pf, lvl);
 		if (err)
-			return err;
+			goto exit;
 	}
-
-	return 0;
+exit:
+	otx2_mbox_unlock(&pf->mbox);
+	return err;
 }
 
 static void otx2_free_hw_resources(struct otx2_nic *pf)
@@ -570,9 +585,11 @@ static void otx2_free_hw_resources(struct otx2_nic *pf)
 	if (err)
 		dev_err(pf->dev, "RVUPF: Failed to stop/free TX schedulers\n");
 
+	otx2_mbox_lock(mbox);
 	/* Disable backpressure */
 	if (!(pf->pcifunc & RVU_PFVF_FUNC_MASK))
 		otx2_nix_config_bp(pf, false);
+	otx2_mbox_unlock(mbox);
 
 	/* Disable SQs */
 	otx2_ctx_disable(mbox, NIX_AQ_CTYPE_SQ, false);
@@ -609,20 +626,24 @@ static void otx2_free_hw_resources(struct otx2_nic *pf)
 		qmem_free(pf->dev, cq->cqe);
 	}
 
+	otx2_mbox_lock(mbox);
 	/* Reset NIX LF */
 	req = otx2_mbox_alloc_msg_nix_lf_free(mbox);
 	if (req)
 		WARN_ON(otx2_sync_mbox_msg(mbox));
+	otx2_mbox_unlock(mbox);
 
 	/* Disable NPA Pool and Aura hw context */
 	otx2_ctx_disable(mbox, NPA_AQ_CTYPE_POOL, true);
 	otx2_ctx_disable(mbox, NPA_AQ_CTYPE_AURA, true);
 	otx2_aura_pool_free(pf);
 
+	otx2_mbox_lock(mbox);
 	/* Reset NPA LF */
 	req = otx2_mbox_alloc_msg_npa_lf_free(mbox);
 	if (req)
 		WARN_ON(otx2_sync_mbox_msg(mbox));
+	otx2_mbox_unlock(mbox);
 }
 
 static netdev_tx_t otx2_xmit(struct sk_buff *skb, struct net_device *netdev)
@@ -880,9 +901,12 @@ static void otx2_set_rx_mode(struct net_device *netdev)
 	if (!(netdev->flags & IFF_UP))
 		return;
 
+	otx2_mbox_lock(&pf->mbox);
 	req = otx2_mbox_alloc_msg_nix_set_rx_mode(&pf->mbox);
-	if (!req)
+	if (!req) {
+		otx2_mbox_unlock(&pf->mbox);
 		return;
+	}
 
 	req->mode = NIX_RX_MODE_UCAST;
 
@@ -893,6 +917,7 @@ static void otx2_set_rx_mode(struct net_device *netdev)
 		req->mode |= NIX_RX_MODE_ALLMULTI;
 
 	otx2_sync_mbox_msg_busy_poll(&pf->mbox);
+	otx2_mbox_unlock(&pf->mbox);
 }
 
 static void otx2_reset_task(struct work_struct *work)
