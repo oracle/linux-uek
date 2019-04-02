@@ -650,7 +650,7 @@ static void garp_work_handler(struct work_struct *_work)
 	if (--garps->garps_left >= 0)
 		queue_delayed_work(send_garps_wq, &garps->work, garps->delay);
 	else
-		kfree(garps);
+		kfree(_work);
 }
 
 static void rds_ib_send_gratuitous_arp(struct net_device	*out_dev,
@@ -2549,10 +2549,14 @@ free_attr:
 
 static void rds_ib_unregister_client(void)
 {
+	int i;
+
 	ib_unregister_client(&rds_ib_client);
 	/* wait for rds_ib_dev_free() to complete */
 	flush_workqueue(rds_ip_wq);
-	flush_workqueue(rds_local_wq);
+
+	for (i = 0; i < RDS_NMBR_CP_WQS; ++i)
+		flush_workqueue(rds_cp_wqs[i]);
 }
 
 static void rds_ib_update_ip_config(void)
