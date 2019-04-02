@@ -195,6 +195,10 @@ static struct rds_connection *__rds_conn_create(struct net *net,
 	unsigned long flags;
 	int ret, i;
 	int npaths;
+	int cp_wqs_inx = jhash_3words(laddr->s6_addr32[3],
+				      faddr->s6_addr32[3],
+				      tos,
+				      0) % RDS_NMBR_CP_WQS;
 
 	rcu_read_lock();
 	conn = rds_conn_lookup(net, head, laddr, faddr, trans, tos, dev_if);
@@ -286,10 +290,8 @@ static struct rds_connection *__rds_conn_create(struct net *net,
 
 		__rds_conn_path_init(conn, cp, is_outgoing);
 		cp->cp_index = i;
-		if (conn->c_loopback)
-			cp->cp_wq = rds_local_wq;
-		else
-			cp->cp_wq = rds_wq;
+		rds_rtd(RDS_RTD_CM_EXT, "using rds_cp_wqs index %d\n", cp_wqs_inx);
+		cp->cp_wq = rds_cp_wqs[cp_wqs_inx];
 	}
 	ret = trans->conn_alloc(conn, gfp);
 	if (ret) {
