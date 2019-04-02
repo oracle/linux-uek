@@ -1319,6 +1319,7 @@ void mds_idle_clear_disable(void)
 
 /* Default mitigation for L1TF-affected CPUs */
 static enum mds_mitigations mds_mitigation __read_mostly = MDS_MITIGATION_FULL;
+static bool mds_nosmt = false;
 
 static const char * const mds_strings[] = {
 	[MDS_MITIGATION_OFF]    = "Vulnerable",
@@ -1358,6 +1359,8 @@ static void mds_select_mitigation(void)
         if (ret > 0) {
 	        if (match_option(arg, ret, "off"))
 			mds_mitigation = MDS_MITIGATION_OFF;
+		else if (match_option(arg, ret, "full,nosmt"))
+			mds_nosmt = true;
 	        else if (!match_option(arg, ret, "full"))
 			pr_warn("mds: unknown option %s\n", arg);
 	}
@@ -1365,7 +1368,12 @@ static void mds_select_mitigation(void)
 	if (mds_mitigation == MDS_MITIGATION_FULL) {
 		if (!boot_cpu_has(X86_FEATURE_MD_CLEAR))
 			mds_mitigation = MDS_MITIGATION_VMWERV;
+
 		static_branch_enable(&mds_user_clear);
+		
+		if (mds_nosmt && !boot_cpu_has(X86_BUG_MSBDS_ONLY))
+			cpu_smt_disable(false);
+
 		update_mds_branch_idle();
 	}
 	pr_info("%s\n", mds_strings[mds_mitigation]);
