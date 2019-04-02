@@ -1327,6 +1327,9 @@ static const char * const mds_strings[] = {
 	[MDS_MITIGATION_VMWERV] = "Vulnerable: Clear CPU buffers attempted, no microcode",
 };
 
+#undef pr_fmt
+#define pr_fmt(fmt) "MDS: " fmt
+
 static void update_mds_branch_idle(void)
 {
 	/*
@@ -1343,6 +1346,8 @@ static void update_mds_branch_idle(void)
 	else
 		static_branch_disable(&mds_idle_clear);
 }
+
+#define MDS_MSG_SMT "MDS CPU bug present and SMT on, data leak possible. See https://www.kernel.org/doc/html/latest/admin-guide/hw-vuln/mds.html for more details.\n"
 
 static void mds_select_mitigation(void)
 {
@@ -1374,12 +1379,17 @@ static void mds_select_mitigation(void)
 		if (mds_nosmt && !boot_cpu_has(X86_BUG_MSBDS_ONLY))
 			cpu_smt_disable(false);
 
+		if (cpu_smt_control == CPU_SMT_ENABLED &&
+		    !boot_cpu_has(X86_BUG_MSBDS_ONLY))
+			pr_warn_once(MDS_MSG_SMT);
+
 		update_mds_branch_idle();
 	}
 	pr_info("%s\n", mds_strings[mds_mitigation]);
 }
 
 #undef pr_fmt
+#define pr_fmt(fmt) fmt
 
 #ifdef CONFIG_SYSFS
 
