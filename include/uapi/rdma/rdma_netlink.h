@@ -441,6 +441,11 @@ enum rdma_nldev_attr {
 	RDMA_NLDEV_ATTR_RES_CM_IDN,		/* u32 */
 	RDMA_NLDEV_ATTR_RES_CTXN,		/* u32 */
 
+	/*
+	 * Identifies the rdma driver. eg: "rxe" or "siw"
+	 */
+	RDMA_NLDEV_ATTR_LINK_TYPE,		/* string */
+
  	/*
 	 * net namespace mode for rdma subsystem:
 	 * either shared or exclusive among multiple net namespaces.
@@ -448,9 +453,9 @@ enum rdma_nldev_attr {
 	RDMA_NLDEV_SYS_ATTR_NETNS_MODE,		/* u8 */
 
 	/*
-	 * Identifies the rdma driver. eg: "rxe" or "siw"
+	 * Device protocol, e.g. ib, iw, usnic, roce and opa
 	 */
-	RDMA_NLDEV_ATTR_LINK_TYPE,		/* string */
+	RDMA_NLDEV_ATTR_DEV_PROTOCOL,		/* string */
 
 	/*
  	 * Always the end
