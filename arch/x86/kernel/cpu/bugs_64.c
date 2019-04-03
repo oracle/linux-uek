@@ -1324,6 +1324,7 @@ static bool mds_nosmt = false;
 static const char * const mds_strings[] = {
 	[MDS_MITIGATION_OFF]    = "Vulnerable",
 	[MDS_MITIGATION_FULL]   = "Mitigation: Clear CPU buffers",
+	[MDS_MITIGATION_IDLE]   = "Mitigation: Clear CPU buffers during idle only",
 	[MDS_MITIGATION_VMWERV] = "Vulnerable: Clear CPU buffers attempted, no microcode",
 };
 
@@ -1335,10 +1336,11 @@ static void update_mds_branch_idle(void)
 	/*
 	 * Enable the idle clearing on CPUs which are affected only by
 	 * MDBDS and not any other MDS variant. The other variants cannot
-	 * be mitigated when SMT is enabled, so clearing the buffers on
-	 * idle would be a window dressing exercise.
+	 * be mitigated when SMT is enabled, so unless explicitly requested
+	 * clearing the buffers on idle would be a window dressing exercise.
 	 */
-	if (!boot_cpu_has(X86_BUG_MSBDS_ONLY))
+	if (!boot_cpu_has(X86_BUG_MSBDS_ONLY) &&
+	     mds_mitigation != MDS_MITIGATION_IDLE)
 		return;
 
 	if (cpu_smt_control == CPU_SMT_ENABLED)
@@ -1364,6 +1366,8 @@ static void mds_select_mitigation(void)
         if (ret > 0) {
 	        if (match_option(arg, ret, "off"))
 			mds_mitigation = MDS_MITIGATION_OFF;
+		else if (match_option(arg, ret, "idle"))
+			mds_mitigation = MDS_MITIGATION_IDLE;
 		else if (match_option(arg, ret, "full,nosmt"))
 			mds_nosmt = true;
 	        else if (!match_option(arg, ret, "full"))
@@ -1384,7 +1388,8 @@ static void mds_select_mitigation(void)
 			pr_warn_once(MDS_MSG_SMT);
 
 		update_mds_branch_idle();
-	}
+	} else if (mds_mitigation == MDS_MITIGATION_IDLE)
+		update_mds_branch_idle();
 	pr_info("%s\n", mds_strings[mds_mitigation]);
 }
 
