@@ -1551,6 +1551,7 @@ void microcode_late_select_mitigation(void)
 			else
 				ssb_mode = SPEC_STORE_BYPASS_PRCTL;
 		}
+		x86_spec_ctrl_mask |= SPEC_CTRL_SSBD;
 #undef pr_fmt
 #define pr_fmt(fmt)	"Speculative Store Bypass late loading: " fmt
 		pr_info("%s\n", ssb_strings[ssb_mode]);
