@@ -185,7 +185,7 @@ static struct mlx5_profile profile[] = {
 
 #define FW_INIT_TIMEOUT_MILI		2000
 #define FW_INIT_WAIT_MS			2
-#define FW_PRE_INIT_TIMEOUT_MILI	10000
+#define FW_PRE_INIT_TIMEOUT_MILI	120000
 
 static int wait_fw_init(struct mlx5_core_dev *dev, u32 max_wait_mili)
 {
