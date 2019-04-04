@@ -312,7 +312,7 @@ system_call_fastpath:
 	CFI_REGISTER	rip,rcx
 	movq	EFLAGS(%rsp),%r11
 	/*CFI_REGISTER	rflags,r11*/
-	DISABLE_IBRS
+	SPEC_RETURN_TO_USER
 	RESTORE_C_REGS_EXCEPT_RCX_R11
 	/*
 	 * This opens a window where we have a user CR3, but are
@@ -510,7 +510,7 @@ syscall_return:
 	 * perf profiles.  Nothing jumps here.
 	 */
 syscall_return_via_sysret:
-	DISABLE_IBRS
+	SPEC_RETURN_TO_USER
 	CFI_REMEMBER_STATE
 	/* r11 is already restored (see code above) */
 	RESTORE_C_REGS_EXCEPT_R11
@@ -527,7 +527,7 @@ syscall_return_via_sysret:
 	CFI_RESTORE_STATE
 
 opportunistic_sysret_failed:
-	DISABLE_IBRS
+	SPEC_RETURN_TO_USER
 	/*
 	 * This opens a window where we have a user CR3, but are
 	 * running in the kernel.  This makes using the CS
@@ -535,7 +535,6 @@ opportunistic_sysret_failed:
 	 * switch CR3 in NMIs.  Normal interrupts are OK because
 	 * they are off here.
 	 */
-	MDS_CLEAR_CPU_BUFFERS
 	SWITCH_USER_CR3
 	SWAPGS
 	jmp	restore_c_regs_and_iret
@@ -819,7 +818,7 @@ retint_swapgs:		/* return to user-space */
 	DISABLE_INTERRUPTS(CLBR_ANY)
 	TRACE_IRQS_IRETQ
 
-	DISABLE_IBRS
+	SPEC_RETURN_TO_USER
 	SWITCH_USER_CR3
 	SWAPGS
 	jmp	restore_c_regs_and_iret
@@ -1764,7 +1763,7 @@ ENTRY(nmi)
 	STUFF_RSB
 	ENABLE_IBRS
 	call	do_nmi
-	DISABLE_IBRS
+	SPEC_RETURN_TO_USER
 #ifdef CONFIG_PAGE_TABLE_ISOLATION
 	/*
 	 * Unconditionally restore CR3.  I know we return to

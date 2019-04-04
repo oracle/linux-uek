@@ -149,6 +149,12 @@
 	popw	%cx
 .Lmdsverwdone_\@:
 .endm
+
+.macro SPEC_RETURN_TO_USER
+	DISABLE_IBRS
+	MDS_CLEAR_CPU_BUFFERS
+.endm
+
 #else /* __ASSEMBLY__ */
 
 #ifdef CONFIG_RETPOLINE

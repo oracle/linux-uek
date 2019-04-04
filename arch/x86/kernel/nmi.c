@@ -542,9 +542,6 @@ nmi_restart:
 	if (this_cpu_dec_return(nmi_state))
 		goto nmi_restart;
 
-	if (user_mode(regs))
-		mds_user_clear_cpu_buffers();
-
 	return 0;
 }
 NOKPROBE_SYMBOL(do_nmi);

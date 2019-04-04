@@ -18,6 +18,7 @@
 #include <asm/spec_ctrl.h>
 #include <asm/pgtable_types.h>
 #include <asm/kaiser.h>
+#include <asm/nospec-branch.h>
 #include <linux/linkage.h>
 #include <linux/err.h>
 
@@ -220,7 +221,7 @@ sysexit_from_sys_call:
 	/*CFI_RESTORE rflags*/
 	TRACE_IRQS_ON
 
-	DISABLE_IBRS
+	SPEC_RETURN_TO_USER
 
 	SWITCH_USER_CR3
 
@@ -446,7 +447,7 @@ sysretl_from_sys_call:
 	xorq	%r9,%r9
 	xorq	%r8,%r8
 	TRACE_IRQS_ON
-	DISABLE_IBRS
+	SPEC_RETURN_TO_USER
 	SWITCH_USER_CR3
 	movl RSP(%rsp),%esp
 	CFI_RESTORE rsp
