@@ -20,6 +20,7 @@
 #define DRV_VERSION	"1.0"
 
 static const struct pci_device_id otx2_vf_id_table[] = {
+	{ PCI_DEVICE(PCI_VENDOR_ID_CAVIUM, PCI_DEVID_OCTEONTX2_RVU_AFVF) },
 	{ PCI_DEVICE(PCI_VENDOR_ID_CAVIUM, PCI_DEVID_OCTEONTX2_RVU_VF) },
 	{ }
 };
@@ -346,22 +347,36 @@ exit:
 
 static int otx2vf_open(struct net_device *netdev)
 {
+	struct otx2_nic *vf;
 	int err;
 
 	err = otx2_open(netdev);
 	if (err)
 		return err;
 
+	/* LBKs do not receive link events so tell everyone we are up here */
+	vf = netdev_priv(netdev);
+	if (vf->tx_chan_base < SDP_CHAN_BASE) {
+		pr_info("%s NIC Link is UP\n", netdev->name);
+		netif_carrier_on(netdev);
+		netif_tx_start_all_queues(netdev);
+	}
+
 	return 0;
 }
 
 static int otx2vf_stop(struct net_device *netdev)
 {
+	struct otx2_nic *vf;
 	int err;
 
 	err = otx2_stop(netdev);
 	if (err)
 		return err;
+
+	vf = netdev_priv(netdev);
+	if (vf->tx_chan_base < SDP_CHAN_BASE)
+		pr_info("%s NIC Link is DOWN\n", netdev->name);
 
 	return 0;
 }
@@ -531,6 +546,15 @@ static int otx2vf_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	netdev->max_mtu = OTX2_MAX_MTU;
 
 	INIT_WORK(&vf->reset_task, otx2vf_reset_task);
+
+	if (id->device == PCI_DEVID_OCTEONTX2_RVU_AFVF) {
+		int n;
+
+		n = (vf->pcifunc >> RVU_PFVF_FUNC_SHIFT) & RVU_PFVF_FUNC_MASK;
+		/* Need to subtract 1 to get proper VF number */
+		n -= 1;
+		snprintf(netdev->name, sizeof(netdev->name), "lbk%d", n);
+	}
 
 	err = register_netdev(netdev);
 	if (err) {
