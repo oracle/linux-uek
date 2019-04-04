@@ -321,7 +321,83 @@ exit:
 	return err;
 }
 
+static int otx2vf_open(struct net_device *netdev)
+{
+	int err;
+
+	err = otx2_open(netdev);
+	if (err)
+		return err;
+
+	return 0;
+}
+
+static int otx2vf_stop(struct net_device *netdev)
+{
+	int err;
+
+	err = otx2_stop(netdev);
+	if (err)
+		return err;
+
+	return 0;
+}
+
+static netdev_tx_t otx2vf_xmit(struct sk_buff *skb, struct net_device *netdev)
+{
+	struct otx2_nic *vf = netdev_priv(netdev);
+	int qidx = skb_get_queue_mapping(skb);
+	struct otx2_snd_queue *sq;
+	struct netdev_queue *txq;
+
+	/* Check for minimum packet length */
+	if (skb->len <= ETH_HLEN) {
+		dev_kfree_skb(skb);
+		return NETDEV_TX_OK;
+	}
+
+	sq = &vf->qset.sq[qidx];
+
+	txq = netdev_get_tx_queue(netdev, qidx);
+	if (!netif_tx_queue_stopped(txq) &&
+	    !otx2_sq_append_skb(netdev, sq, skb, qidx)) {
+		netif_tx_stop_queue(txq);
+
+		/* Barrier, for stop_queue visible to be on other cpus */
+		smp_mb();
+		if ((sq->num_sqbs - *sq->aura_fc_addr) > 1)
+			netif_tx_start_queue(txq);
+		else
+			netdev_warn(netdev,
+				    "%s: No free SQE/SQB, stopping SQ%d\n",
+				     netdev->name, qidx);
+
+		return NETDEV_TX_BUSY;
+	}
+
+	return NETDEV_TX_OK;
+}
+
+static void otx2vf_reset_task(struct work_struct *work)
+{
+	struct otx2_nic *vf = container_of(work, struct otx2_nic, reset_task);
+
+	if (!netif_running(vf->netdev))
+		return;
+
+	otx2vf_stop(vf->netdev);
+	otx2vf_open(vf->netdev);
+	netif_trans_update(vf->netdev);
+}
+
 static const struct net_device_ops otx2vf_netdev_ops = {
+	.ndo_open = otx2vf_open,
+	.ndo_stop = otx2vf_stop,
+	.ndo_start_xmit = otx2vf_xmit,
+	.ndo_set_mac_address = otx2_set_mac_address,
+	.ndo_change_mtu = otx2_change_mtu,
+	.ndo_get_stats64 = otx2_get_stats64,
+	.ndo_tx_timeout = otx2_tx_timeout,
 };
 
 static int otx2vf_probe(struct pci_dev *pdev, const struct pci_device_id *id)
@@ -423,12 +499,15 @@ static int otx2vf_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 			      NETIF_F_IPV6_CSUM | NETIF_F_RXHASH |
 			      NETIF_F_SG | NETIF_F_TSO | NETIF_F_TSO6;
 	netdev->features = netdev->hw_features;
+	netdev->watchdog_timeo = OTX2_TX_TIMEOUT;
 
 	netdev->netdev_ops = &otx2vf_netdev_ops;
 
 	/* MTU range: 68 - 9190 */
 	netdev->min_mtu = OTX2_MIN_MTU;
 	netdev->max_mtu = OTX2_MAX_MTU;
+
+	INIT_WORK(&vf->reset_task, otx2vf_reset_task);
 
 	err = register_netdev(netdev);
 	if (err) {
