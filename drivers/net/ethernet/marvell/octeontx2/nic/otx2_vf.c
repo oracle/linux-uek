@@ -559,7 +559,7 @@ static int otx2vf_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	err = register_netdev(netdev);
 	if (err) {
 		dev_err(dev, "Failed to register netdevice\n");
-		goto err_free_netdev;
+		goto err_detach_rsrc;
 	}
 
 	otx2vf_set_ethtool_ops(netdev);
