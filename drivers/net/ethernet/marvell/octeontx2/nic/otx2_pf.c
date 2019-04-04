@@ -2352,7 +2352,7 @@ static int otx2_sriov_enable(struct pci_dev *pdev, int numvfs)
 	/* Init PF <=> VF mailbox stuff */
 	ret = otx2_pfvf_mbox_init(pf, numvfs);
 	if (ret)
-		return 0;
+		return ret;
 
 	ret = otx2_register_pfvf_mbox_intr(pf);
 	if (ret)
@@ -2376,7 +2376,7 @@ static int otx2_sriov_enable(struct pci_dev *pdev, int numvfs)
 
 	ret = otx2_pf_flr_init(pf, numvfs);
 	if (ret)
-		goto free_intr;
+		goto free_configs;
 
 	ret = otx2_register_flr_me_intr(pf);
 	if (ret)
@@ -2392,6 +2392,8 @@ free_flr_intr:
 	otx2_disable_flr_me_intr(pf);
 free_flr:
 	otx2_flr_wq_destroy(pf);
+free_configs:
+	kfree(pf->vf_configs);
 free_intr:
 	otx2_disable_pfvf_mbox_intr(pf);
 free_mbox:
