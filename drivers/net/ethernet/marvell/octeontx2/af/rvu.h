@@ -610,6 +610,8 @@ void rvu_nix_txsch_unlock(struct nix_hw *nix_hw);
 void rvu_nix_update_link_credits(struct rvu *rvu, int blkaddr,
 				 int link, u64 ncredits);
 
+void rvu_nix_update_sq_smq_mapping(struct rvu *rvu, int blkaddr, int nixlf,
+				   u16 sq, u16 smq);
 void rvu_nix_txsch_config_changed(struct nix_hw *nix_hw);
 ssize_t rvu_nix_get_tx_stall_counters(struct rvu *rvu,
 				      char __user *buffer, loff_t *ppos);
