@@ -181,6 +181,15 @@ extern unsigned short num_cache_leaves;
 extern void detect_extended_topology(struct cpuinfo_x86 *c);
 extern void detect_ht(struct cpuinfo_x86 *c);
 
+#define NO_SPECULATION	BIT(0)
+#define NO_MELTDOWN	BIT(1)
+#define NO_SSB		BIT(2)
+#define NO_L1TF		BIT(3)
+#define NO_MDS		BIT(4)
+#define MSBDS_ONLY	BIT(5)
+
+extern bool cpu0_matches(unsigned long which);
+
 static inline void native_cpuid(unsigned int *eax, unsigned int *ebx,
 				unsigned int *ecx, unsigned int *edx)
 {
