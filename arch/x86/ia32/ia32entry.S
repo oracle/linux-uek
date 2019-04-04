@@ -17,6 +17,7 @@
 #include <asm/smap.h>
 #include <asm/pgtable_types.h>
 #include <asm/kaiser.h>
+#include <asm/nospec-branch.h>
 #include <linux/linkage.h>
 #include <linux/err.h>
 
@@ -170,7 +171,7 @@ sysenter_dispatch:
 	testl	$_TIF_ALLWORK_MASK,TI_flags+THREAD_INFO(%rsp,RIP)
 	jnz	sysexit_audit
 sysexit_from_sys_call:
-	DISABLE_IBRS
+	SPEC_RETURN_TO_USER
 
 	andl    $~TS_COMPAT,TI_status+THREAD_INFO(%rsp,RIP)
 	/* clear IF, that popfq doesn't enable interrupts early */
@@ -342,7 +343,7 @@ cstar_dispatch:
 	testl $_TIF_ALLWORK_MASK,TI_flags+THREAD_INFO(%rsp,RIP)
 	jnz sysretl_audit
 sysretl_from_sys_call:
-	DISABLE_IBRS
+	SPEC_RETURN_TO_USER
 
 	andl $~TS_COMPAT,TI_status+THREAD_INFO(%rsp,RIP)
 

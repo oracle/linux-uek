@@ -715,7 +715,7 @@ sysret_check:
 	jnz  sysret_careful
 	CFI_REMEMBER_STATE
 
-	DISABLE_IBRS
+	SPEC_RETURN_TO_USER
 
 	/*
 	 * sysretq will re-enable interrupts:
@@ -733,7 +733,6 @@ sysret_check:
 	 * switch CR3 in NMIs.  Normal interrupts are OK because
 	 * they are off here.
 	 */
-	MDS_CLEAR_CPU_BUFFERS
 	SWITCH_USER_CR3
 	movq	PER_CPU_VAR(old_rsp), %rsp
 	USERGS_SYSRET64
@@ -1090,7 +1089,7 @@ retint_swapgs:		/* return to user-space */
 	 */
 	DISABLE_INTERRUPTS(CLBR_ANY)
 	TRACE_IRQS_IRETQ
-	DISABLE_IBRS
+	SPEC_RETURN_TO_USER
 
 	/*
 	 * This opens a window where we have a user CR3, but are
@@ -1855,6 +1854,7 @@ ENTRY(nmi)
 	call	do_nmi
 
 	DISABLE_IBRS_CLOBBER
+	MDS_CLEAR_CPU_BUFFERS
 
 #ifdef CONFIG_PAGE_TABLE_ISOLATION
 	/*

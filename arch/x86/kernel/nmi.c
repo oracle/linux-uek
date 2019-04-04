@@ -493,9 +493,6 @@ do_nmi(struct pt_regs *regs, long error_code)
 
 	/* On i386, may loop back to preprocess */
 	nmi_nesting_postprocess();
-
-	if (user_mode(regs))
-		mds_user_clear_cpu_buffers();
 }
 
 void stop_nmi(void)
