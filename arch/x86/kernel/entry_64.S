@@ -532,13 +532,14 @@ sysret_check:
 	andl %edi,%edx
 	jnz  sysret_careful
 	CFI_REMEMBER_STATE
+
+	SPEC_RETURN_TO_USER
+
 	/*
 	 * sysretq will re-enable interrupts:
 	 */
 	TRACE_IRQS_ON
 	movq RIP(%rsp),%rcx
-
-	DISABLE_IBRS
 
 	CFI_REGISTER	rip,rcx
 	RESTORE_REST
@@ -551,7 +552,6 @@ sysret_check:
 	 * switch CR3 in NMIs.  Normal interrupts are OK because
 	 * they are off here.
 	 */
-	MDS_CLEAR_CPU_BUFFERS
 	SWITCH_USER_CR3
 	movq	PER_CPU_VAR(old_rsp), %rsp
 	USERGS_SYSRET64
@@ -876,6 +876,8 @@ retint_swapgs:		/* return to user-space */
 	 */
 	DISABLE_INTERRUPTS(CLBR_ANY)
 	TRACE_IRQS_IRETQ
+	SPEC_RETURN_TO_USER
+
 	/*
 	 * This opens a window where we have a user CR3, but are
 	 * running in the kernel.  This makes using the CS
@@ -883,8 +885,6 @@ retint_swapgs:		/* return to user-space */
 	 * switch CR3 in NMIs.  Normal interrupts are OK because
 	 * they are off here.
 	 */
-	DISABLE_IBRS
-
 	SWITCH_USER_CR3
 	SWAPGS
 	jmp restore_args
@@ -1436,6 +1436,7 @@ paranoid_kernel:
 	jz	paranoid_exit_no_switch
 
 	RESTORE_IBRS_CLOBBER save_reg=%r13d
+	MDS_CLEAR_CPU_BUFFERS
 
 	SWITCH_USER_CR3
 paranoid_exit_no_switch:

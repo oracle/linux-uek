@@ -17,6 +17,7 @@
 #include <asm/cpufeature.h>
 #include <asm/kaiser.h>
 #include <asm/irqflags.h>
+#include <asm/nospec-branch.h>
 #include <linux/linkage.h>
 
 /* Avoid __ASSEMBLER__'ifying <linux/audit.h> just for this.  */
@@ -176,7 +177,7 @@ sysenter_dispatch:
 	testl	$_TIF_ALLWORK_MASK,TI_flags(%r10)
 	jnz	sysexit_audit
 sysexit_from_sys_call:
-	DISABLE_IBRS
+	SPEC_RETURN_TO_USER
 
 	andl    $~TS_COMPAT,TI_status(%r10)
 	/* clear IF, that popfq doesn't enable interrupts early */
@@ -343,6 +344,8 @@ cstar_dispatch:
 	testl $_TIF_ALLWORK_MASK,TI_flags(%r10)
 	jnz sysretl_audit
 sysretl_from_sys_call:
+	SPEC_RETURN_TO_USER
+
 	andl $~TS_COMPAT,TI_status(%r10)
 	RESTORE_ARGS 1,-ARG_SKIP,1,1,1
 	movl RIP-ARGOFFSET(%rsp),%ecx
@@ -353,7 +356,6 @@ sysretl_from_sys_call:
 	xorq	%r9,%r9
 	xorq	%r8,%r8
 	TRACE_IRQS_ON
-	DISABLE_IBRS
 	SWITCH_USER_CR3
 	movl RSP-ARGOFFSET(%rsp),%esp
 	CFI_RESTORE rsp

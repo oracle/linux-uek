@@ -21,6 +21,11 @@
 	popw    %cx
 .endm
 
+.macro SPEC_RETURN_TO_USER
+	DISABLE_IBRS
+	MDS_CLEAR_CPU_BUFFERS
+.endm
+
 #else /* __ASSEMBLY__ */
 
 #include <asm/segment.h>
