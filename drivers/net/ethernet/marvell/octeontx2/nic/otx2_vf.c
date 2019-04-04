@@ -61,6 +61,22 @@ static void otx2vf_process_vfaf_mbox_msg(struct otx2_nic *vf,
 	}
 
 	switch (msg->id) {
+	case MBOX_MSG_READY:
+		vf->pcifunc = msg->pcifunc;
+		break;
+	case MBOX_MSG_MSIX_OFFSET:
+		mbox_handler_msix_offset(vf, (struct msix_offset_rsp *)msg);
+		break;
+	case MBOX_MSG_NPA_LF_ALLOC:
+		mbox_handler_npa_lf_alloc(vf, (struct npa_lf_alloc_rsp *)msg);
+		break;
+	case MBOX_MSG_NIX_LF_ALLOC:
+		mbox_handler_nix_lf_alloc(vf, (struct nix_lf_alloc_rsp *)msg);
+		break;
+	case MBOX_MSG_NIX_TXSCH_ALLOC:
+		mbox_handler_nix_txsch_alloc(vf,
+					     (struct nix_txsch_alloc_rsp *)msg);
+		break;
 	default:
 		if (msg->rc)
 			dev_err(vf->dev,
@@ -394,9 +410,14 @@ static int otx2vf_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	if (err)
 		goto err_mbox_destroy;
 
-	err = otx2_set_real_num_queues(netdev, qcount, qcount);
+	/* Request AF to attach NPA and LIX LFs to this AF */
+	err = otx2_attach_npa_nix(vf);
 	if (err)
 		goto err_disable_mbox_intr;
+
+	err = otx2_set_real_num_queues(netdev, qcount, qcount);
+	if (err)
+		goto err_detach_rsrc;
 
 	netdev->hw_features = NETIF_F_RXCSUM | NETIF_F_IP_CSUM |
 			      NETIF_F_IPV6_CSUM | NETIF_F_RXHASH |
@@ -412,11 +433,13 @@ static int otx2vf_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	err = register_netdev(netdev);
 	if (err) {
 		dev_err(dev, "Failed to register netdevice\n");
-		goto err_disable_mbox_intr;
+		goto err_detach_rsrc;
 	}
 
 	return 0;
 
+err_detach_rsrc:
+	otx2_detach_resources(&vf->mbox);
 err_disable_mbox_intr:
 	otx2vf_disable_mbox_intr(vf);
 err_mbox_destroy:
@@ -444,6 +467,7 @@ static void otx2vf_remove(struct pci_dev *pdev)
 
 	otx2vf_disable_mbox_intr(vf);
 
+	otx2_detach_resources(&vf->mbox);
 	otx2vf_vfaf_mbox_destroy(vf);
 	pci_free_irq_vectors(vf->pdev);
 	pci_set_drvdata(pdev, NULL);
