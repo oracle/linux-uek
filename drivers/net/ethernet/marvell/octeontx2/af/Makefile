@@ -10,4 +10,4 @@ octeontx2_mbox-y := mbox.o
 octeontx2_af-y := cgx.o rvu.o rvu_cgx.o rvu_npa.o rvu_nix.o \
 		  rvu_reg.o rvu_npc.o rvu_validation.o rvu_sso.o \
 		  rvu_tim.o rvu_cpt.o rvu_debugfs.o rvu_npc_fs.o \
-		  ptp.o rvu_ptp.o
+		  ptp.o rvu_ptp.o rvu_fixes.o
