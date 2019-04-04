@@ -759,13 +759,6 @@ static void __cpuinit identify_cpu_without_cpuid(struct cpuinfo_x86 *c)
 #endif
 }
 
-#define NO_SPECULATION	BIT(0)
-#define NO_MELTDOWN	BIT(1)
-#define NO_SSB		BIT(2)
-#define NO_L1TF		BIT(3)
-#define NO_MDS		BIT(4)
-#define MSBDS_ONLY	BIT(5)
-
 #define VULNWL(_vendor, _family, _model, _whitelist)	\
 	{ X86_VENDOR_##_vendor, _family, _model, X86_FEATURE_ANY, _whitelist }
 
@@ -817,6 +810,13 @@ static const __initconst struct x86_cpu_id cpu_vuln_whitelist[] = {
 static bool __init cpu_matches(unsigned long which)
 {
 	const struct x86_cpu_id *m = x86_match_cpu(cpu_vuln_whitelist);
+
+	return m && !!(m->driver_data & which);
+}
+
+bool cpu0_matches(unsigned long which)
+{
+	const struct x86_cpu_id *m = x86_match_cpu0(cpu_vuln_whitelist);
 
 	return m && !!(m->driver_data & which);
 }
