@@ -433,6 +433,71 @@ struct rds_ib_statistics {
 
 extern struct workqueue_struct *rds_ib_wq;
 
+static inline struct rds_connection *rds_ib_map_conn(struct rds_connection *conn)
+{
+	int id;
+
+	mutex_lock(&cm_id_map_lock);
+	id = idr_alloc_cyclic(&cm_id_map, conn, 0, 0, GFP_KERNEL);
+	mutex_unlock(&cm_id_map_lock);
+
+	if (id < 0)
+		return ERR_PTR(id);
+
+	return (struct rds_connection *)(unsigned long)id;
+}
+
+static inline struct rdma_cm_id *rds_ib_rdma_create_id(struct net *net,
+						       rdma_cm_event_handler event_handler,
+						       void *context, enum rdma_port_space ps,
+						       enum ib_qp_type qp_type)
+{
+	return rdma_create_id(net, event_handler,
+			      rds_ib_map_conn(context), ps, qp_type);
+}
+
+static inline void rds_ib_rdma_destroy_id(struct rdma_cm_id *cm_id)
+{
+	mutex_lock(&cm_id_map_lock);
+	(void)idr_remove(&cm_id_map, (int)(u64)cm_id->context);
+	mutex_unlock(&cm_id_map_lock);
+	rdma_destroy_id(cm_id);
+}
+
+static inline struct rds_connection *rds_ib_get_conn(struct rdma_cm_id *cm_id)
+{
+	struct rds_connection *conn;
+
+	mutex_lock(&cm_id_map_lock);
+	conn = idr_find(&cm_id_map, (unsigned long)cm_id->context);
+	mutex_unlock(&cm_id_map_lock);
+
+	return conn;
+}
+
+static inline bool rds_ib_same_cm_id(struct rds_ib_connection *ic, struct rdma_cm_id *cm_id)
+{
+	if (ic) {
+		if (ic->i_cm_id != cm_id) {
+			rds_rtd_ptr(RDS_RTD_CM_EXT,
+				    "conn %p ic->cm_id %p NE cm_id %p\n",
+				    ic->conn, ic->i_cm_id, cm_id);
+			return false;
+		}
+		if (ic->i_cm_id->context != cm_id->context) {
+			rds_rtd_ptr(RDS_RTD_CM_EXT,
+				    "conn %p ic->cm_id %p cm_id %p ctx1 %p NE ctx2 %p\n",
+				    ic->conn, ic->i_cm_id, cm_id,
+				    ic->i_cm_id->context, cm_id->context);
+			return false;
+		}
+
+		return true;
+	}
+
+	return false;
+}
+
 /*
  * Fake ib_dma_sync_sg_for_{cpu,device} as long as ib_verbs.h
  * doesn't define it.
