@@ -1643,3 +1643,9 @@ struct net_device *mlx5_eswitch_get_uplink_netdev(struct mlx5_eswitch *esw)
 	rep = &offloads->vport_reps[UPLINK_REP_INDEX];
 	return rep->netdev;
 }
+
+bool mlx5_eswitch_is_vf_vport(const struct mlx5_eswitch *esw, u16 vport_num)
+{
+	return vport_num >= 1 &&
+	       vport_num <= esw->dev->priv.sriov.num_vfs;
+}
