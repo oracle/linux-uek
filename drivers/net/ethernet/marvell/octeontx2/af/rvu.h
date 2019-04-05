@@ -368,6 +368,9 @@ struct rvu_fwdata {
 #define VF_MACNUM_MAX	256
 	u64 pf_macs[PF_MACNUM_MAX];
 	u64 vf_macs[VF_MACNUM_MAX];
+#define CGX_MAX         3
+#define CGX_LMACS_MAX   4
+	struct cgx_lmac_fwdata_s cgx_fw_data[CGX_MAX][CGX_LMACS_MAX];
 };
 
 struct ptp;

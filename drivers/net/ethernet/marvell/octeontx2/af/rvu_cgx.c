@@ -657,3 +657,31 @@ int rvu_mbox_handler_cgx_cfg_pause_frm(struct rvu *rvu,
 				       &rsp->tx_pause, &rsp->rx_pause);
 	return 0;
 }
+
+int rvu_mbox_handler_cgx_get_aux_link_info(struct rvu *rvu, struct msg_req *req,
+					   struct cgx_fw_data *rsp)
+{
+	int pf = rvu_get_pf(req->hdr.pcifunc);
+	u8 cgx_id, lmac_id;
+
+	if (!rvu->fwdata)
+		return -ENXIO;
+
+	rvu_get_cgx_lmac_id(rvu->pf2cgxlmac_map[pf], &cgx_id, &lmac_id);
+
+	memcpy(&rsp->fwdata, &rvu->fwdata->cgx_fw_data[cgx_id][lmac_id],
+	       sizeof(struct cgx_lmac_fwdata_s));
+	return 0;
+}
+
+int rvu_mbox_handler_cgx_set_fec_param(struct rvu *rvu,
+				       struct fec_mode *req,
+				       struct fec_mode *rsp)
+{
+	int pf = rvu_get_pf(req->hdr.pcifunc);
+	u8 cgx_id, lmac_id;
+
+	rvu_get_cgx_lmac_id(rvu->pf2cgxlmac_map[pf], &cgx_id, &lmac_id);
+	rsp->fec = cgx_set_fec(req->fec, cgx_id, lmac_id);
+	return 0;
+}
