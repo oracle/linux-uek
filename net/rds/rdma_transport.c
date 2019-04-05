@@ -44,6 +44,8 @@
 
 #define RDS_REJ_CONSUMER_DEFINED 28
 
+struct mutex cm_id_map_lock;
+DEFINE_IDR(cm_id_map);
 /* Global IPv4 and IPv6 RDS RDMA listener cm_id */
 static struct rdma_cm_id *rds_rdma_listen_id;
 #if IS_ENABLED(CONFIG_IPV6)
@@ -90,11 +92,12 @@ static int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 					 bool isv6)
 {
 	/* this can be null in the listening path */
-	struct rds_connection *conn = cm_id->context;
+	struct rds_connection *conn;
 	struct rds_transport *trans = &rds_ib_transport;
 	int ret = 0;
 	int *err;
 
+	conn = rds_ib_get_conn(cm_id);
 	if (conn)
 		rds_rtd_ptr(RDS_RTD_CM,
 			    "conn %p state %s cm_id %p <%pI6c,%pI6c,%d> handling event %u (%s) priv_dta_len %d\n",
@@ -166,7 +169,7 @@ static int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 					    "conn %p <%pI6c,%pI6c,%d> dropping connection after rdma_resolve_route failure %d\n",
 					    conn, &conn->c_laddr, &conn->c_faddr, conn->c_tos, ret);
 				ibic = conn->c_transport_data;
-				if (ibic && ibic->i_cm_id == cm_id)
+				if (rds_ib_same_cm_id(ibic, cm_id))
 					ibic->i_cm_id = NULL;
 				rds_conn_drop(conn, DR_IB_RESOLVE_ROUTE_FAIL);
 			}
@@ -184,7 +187,7 @@ static int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 			struct rds_ib_connection *ibic;
 
 			ibic = conn->c_transport_data;
-			if (ibic && ibic->i_cm_id == cm_id) {
+			if (rds_ib_same_cm_id(ibic, cm_id)) {
 				/* ibacm caches the path record without considering the tos/sl.
 				 * It is considered a match if the <src,dest> matches the
 				 * cache. In order to create qp with the correct sl/vl, RDS
@@ -377,10 +380,10 @@ static int rds_rdma_listen_init_common(rdma_cm_event_handler handler,
 	struct rdma_cm_id *cm_id;
 	int ret;
 
-	cm_id = rdma_create_id(&init_net, handler, NULL, RDMA_PS_TCP, IB_QPT_RC);
+	cm_id = rds_ib_rdma_create_id(&init_net, handler, NULL, RDMA_PS_TCP, IB_QPT_RC);
 	if (IS_ERR(cm_id)) {
 		ret = PTR_ERR(cm_id);
-		printk(KERN_ERR "RDS/RDMA: failed to setup listener, rdma_create_id() returned %d\n",
+		printk(KERN_ERR "RDS/RDMA: failed to setup listener, rds_ib_rdma_create_id() returned %d\n",
 		       ret);
 		return ret;
 	}
@@ -411,7 +414,7 @@ static int rds_rdma_listen_init_common(rdma_cm_event_handler handler,
 	cm_id = NULL;
 out:
 	if (cm_id)
-		rdma_destroy_id(cm_id);
+		rds_ib_rdma_destroy_id(cm_id);
 	return ret;
 }
 
@@ -458,13 +461,13 @@ static void rds_rdma_listen_stop(void)
 {
 	if (rds_rdma_listen_id) {
 		rdsdebug("cm %p\n", rds_rdma_listen_id);
-		rdma_destroy_id(rds_rdma_listen_id);
+		rds_ib_rdma_destroy_id(rds_rdma_listen_id);
 		rds_rdma_listen_id = NULL;
 	}
 #if IS_ENABLED(CONFIG_IPV6)
 	if (rds6_rdma_listen_id) {
 		rdsdebug("cm %p\n", rds6_rdma_listen_id);
-		rdma_destroy_id(rds6_rdma_listen_id);
+		rds_ib_rdma_destroy_id(rds6_rdma_listen_id);
 		rds6_rdma_listen_id = NULL;
 	}
 #endif
@@ -475,6 +478,8 @@ static void rds_rdma_listen_stop(void)
 int __init rds_rdma_init(void)
 {
 	int ret;
+
+	mutex_init(&cm_id_map_lock);
 
 	ret = rds_ib_init();
 	if (ret)

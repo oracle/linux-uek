@@ -1123,7 +1123,7 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 		 * in both of the cases below, the conn is half setup.
 		 * we need to make sure the lower layers don't destroy it
 		 */
-		if (ic && ic->i_cm_id == cm_id)
+		if (rds_ib_same_cm_id(ic, cm_id))
 			destroy = 0;
 		if (rds_conn_state(conn) == RDS_CONN_UP) {
 			rds_rtd(RDS_RTD_CM_EXT_P,
@@ -1195,11 +1195,11 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 		rds_send_drop_acked(conn, be64_to_cpu(dp_cmn->ricpc_ack_seq),
 				    NULL);
 
-	BUG_ON(cm_id->context);
+	BUG_ON(rds_ib_get_conn(cm_id));
 	BUG_ON(ic->i_cm_id);
 
 	ic->i_cm_id = cm_id;
-	cm_id->context = conn;
+	cm_id->context = rds_ib_map_conn(conn);
 
 	/* We got halfway through setting up the ib_connection, if we
 	 * fail now, we have to take the long route out of this mess. */
@@ -1263,7 +1263,7 @@ void rds_ib_conn_destroy_init(struct rds_connection *conn)
 
 int rds_ib_cm_initiate_connect(struct rdma_cm_id *cm_id, bool isv6)
 {
-	struct rds_connection *conn = cm_id->context;
+	struct rds_connection *conn = rds_ib_get_conn(cm_id);
 	struct rds_ib_connection *ic = conn->c_transport_data;
 	struct rdma_conn_param conn_param;
 	union rds_ib_conn_priv dp;
@@ -1330,7 +1330,7 @@ out:
 	 * the cm_id. We should certainly not do it as long as we still
 	 * "own" the cm_id. */
 	if (ret) {
-		if (ic->i_cm_id == cm_id)
+		if (rds_ib_same_cm_id(ic, cm_id))
 			ret = 0;
 	}
 
@@ -1359,14 +1359,13 @@ int rds_ib_conn_path_connect(struct rds_conn_path *cp)
 	else
 #endif
 		handler = rds_rdma_cm_event_handler;
-	ic->i_cm_id = rdma_create_id(rds_conn_net(conn),
-				     handler, conn,
-				     RDMA_PS_TCP, IB_QPT_RC);
+	ic->i_cm_id = rds_ib_rdma_create_id(rds_conn_net(conn),
+					    handler, conn, RDMA_PS_TCP, IB_QPT_RC);
 
 	if (IS_ERR(ic->i_cm_id)) {
 		ret = PTR_ERR(ic->i_cm_id);
 		ic->i_cm_id = NULL;
-		rds_rtd(RDS_RTD_ERR, "rdma_create_id() failed: %d\n", ret);
+		rds_rtd(RDS_RTD_ERR, "rds_ib_rdma_create_id() failed: %d\n", ret);
 		goto out;
 	}
 
@@ -1409,7 +1408,7 @@ int rds_ib_conn_path_connect(struct rds_conn_path *cp)
 	if (ret) {
 		rds_rtd(RDS_RTD_ERR, "addr resolve failed for cm id %p: %d\n",
 			ic->i_cm_id, ret);
-		rdma_destroy_id(ic->i_cm_id);
+		rds_ib_rdma_destroy_id(ic->i_cm_id);
 
 		ic->i_cm_id = NULL;
 	}
@@ -1519,7 +1518,7 @@ void rds_ib_conn_path_shutdown(struct rds_conn_path *cp)
 		if (ic->i_recvs)
 			rds_ib_recv_clear_ring(ic);
 
-		rdma_destroy_id(ic->i_cm_id);
+		rds_ib_rdma_destroy_id(ic->i_cm_id);
 
 		/*
 		 * Move connection back to the nodev list.
