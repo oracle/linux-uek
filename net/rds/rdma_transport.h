@@ -7,6 +7,9 @@
 
 #define RDS_RDMA_RESOLVE_TIMEOUT_MS     RDS_RECONNECT_RETRY_MS
 
+extern struct mutex		cm_id_map_lock;
+extern struct idr		cm_id_map;
+
 /* Per IB specification 7.7.3, service level is a 4-bit field. */
 #define TOS_TO_SL(tos)	((tos) & 0xF)
 
