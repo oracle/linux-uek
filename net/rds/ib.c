@@ -541,8 +541,8 @@ static int rds_ib_laddr_check(struct net *net, const struct in6_addr *addr,
 	/* Create a CMA ID and try to bind it. This catches both
 	 * IB and iWARP capable NICs.
 	 */
-	cm_id = rdma_create_id(rds_rdma_cm_event_handler,
-			       NULL, RDMA_PS_TCP, IB_QPT_RC);
+	cm_id = rds_ib_rdma_create_id(rds_rdma_cm_event_handler,
+				      NULL, RDMA_PS_TCP, IB_QPT_RC);
 	if (IS_ERR(cm_id))
 		return -EADDRNOTAVAIL;
 
@@ -594,7 +594,7 @@ static int rds_ib_laddr_check(struct net *net, const struct in6_addr *addr,
 		 addr, scope_id, ret,
 		 cm_id->device ? cm_id->device->node_type : -1);
 
-	rdma_destroy_id(cm_id);
+	rds_ib_rdma_destroy_id(cm_id);
 
 	return ret;
 }
