@@ -2102,11 +2102,18 @@ static int bond_miimon_inspect(struct bonding *bond)
 			slave->delay = bond->params.updelay;
 
 			if (slave->delay) {
-				netdev_info(bond->dev, "link status up for interface %s, enabling it in %d ms\n",
-					    slave->dev->name,
-					    ignore_updelay ? 0 :
-					    bond->params.updelay *
-					    bond->params.miimon);
+				static DEFINE_RATELIMIT_STATE(
+					rs,
+					DEFAULT_RATELIMIT_INTERVAL,
+					DEFAULT_RATELIMIT_BURST);
+				if (__ratelimit(&rs))
+					netdev_info(
+						bond->dev,
+						"link status up for interface %s, enabling it in %d ms\n",
+						slave->dev->name,
+						ignore_updelay ? 0 :
+						bond->params.updelay *
+						bond->params.miimon);
 			}
 			/*FALLTHRU*/
 		case BOND_LINK_BACK:
