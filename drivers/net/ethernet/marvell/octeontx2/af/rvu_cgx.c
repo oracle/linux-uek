@@ -171,12 +171,8 @@ static void cgx_notify_pfs(struct cgx_link_event *event, struct rvu *rvu)
 		clear_bit(pfid, &pfmap);
 
 		/* check if notification is enabled */
-		if (!test_bit(pfid, &rvu->pf_notify_bmap)) {
-			dev_info(rvu->dev, "cgx %d: lmac %d Link status %s\n",
-				 event->cgx_id, event->lmac_id,
-				 linfo->link_up ? "UP" : "DOWN");
+		if (!test_bit(pfid, &rvu->pf_notify_bmap))
 			continue;
-		}
 
 		/* Send mbox message to PF */
 		msg = otx2_mbox_alloc_msg_cgx_link_event(rvu, pfid);
