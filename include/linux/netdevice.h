@@ -1251,6 +1251,7 @@ struct net_device_ops {
  * @IFF_FAILOVER: device is a failover master device
  * @IFF_FAILOVER_SLAVE: device is lower dev of a failover master device
  * @IFF_TEAM: device is a team device
+ * @IFF_LIVE_RENAME_OK: rename is allowed while device is up and running
  */
 enum netdev_priv_flags {
 	IFF_802_1Q_VLAN			= 1<<0,
@@ -1283,6 +1284,7 @@ enum netdev_priv_flags {
 	IFF_FAILOVER			= 1<<28,
 	IFF_FAILOVER_SLAVE		= 1<<29,
 	IFF_TEAM			= 1<<24,
+	IFF_LIVE_RENAME_OK		= 1<<30,
 };
 
 #define IFF_802_1Q_VLAN			IFF_802_1Q_VLAN
@@ -1315,6 +1317,7 @@ enum netdev_priv_flags {
 #define IFF_FAILOVER			IFF_FAILOVER
 #define IFF_FAILOVER_SLAVE		IFF_FAILOVER_SLAVE
 #define IFF_TEAM			IFF_TEAM
+#define IFF_LIVE_RENAME_OK		IFF_LIVE_RENAME_OK
 
 /**
  *	struct net_device - The DEVICE structure.
