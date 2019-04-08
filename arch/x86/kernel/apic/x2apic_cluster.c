@@ -209,19 +209,7 @@ static const struct cpumask *x2apic_cluster_target_cpus(void)
 static void cluster_vector_allocation_domain(int cpu, struct cpumask *retmask,
 					     const struct cpumask *mask)
 {
-	/*
-	 * To minimize vector pressure, default case of boot, device bringup
-	 * etc will use a single cpu for the interrupt destination.
-	 *
-	 * On explicit migration requests coming from irqbalance etc,
-	 * interrupts will be routed to the x2apic cluster (cluster-id
-	 * derived from the first cpu in the mask) members specified
-	 * in the mask.
-	 */
-	if (mask == x2apic_cluster_target_cpus())
-		cpumask_copy(retmask, cpumask_of(cpu));
-	else
-		cpumask_and(retmask, mask, per_cpu(cpus_in_cluster, cpu));
+	cpumask_copy(retmask, cpumask_of(cpu));
 }
 
 static struct apic apic_x2apic_cluster __ro_after_init = {
