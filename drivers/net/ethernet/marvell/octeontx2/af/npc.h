@@ -93,11 +93,14 @@ enum npc_kpu_lf_ltype {
 	NPC_LT_LF_TU_MPLS_ETHER,
 };
 
+/* Don't modify Ltypes upto SCTP, otherwise it will
+ * effect flow tag calculation and thus RSS.
+ */
 enum npc_kpu_lg_ltype {
 	NPC_LT_LG_TU_TCP = 1,
 	NPC_LT_LG_TU_UDP,
-	NPC_LT_LG_TU_SCTP,
 	NPC_LT_LG_TU_ICMP,
+	NPC_LT_LG_TU_SCTP,
 	NPC_LT_LG_TU_IGMP,
 	NPC_LT_LG_TU_ICMP6,
 	NPC_LT_LG_TU_ESP,
