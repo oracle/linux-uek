@@ -1508,6 +1508,60 @@ void microcode_late_select_mitigation(void)
 		if (boot_cpu_has(X86_FEATURE_IBRS))
 			microcode_had_ibrs = true;
 	}
+
+#undef pr_fmt
+#define pr_fmt(fmt)	"MDS late loading: " fmt
+	/*
+	 * If the CPU does not have the X86_BUG_MDS bug means that the microcode
+	 * solved this issue and we just turn off mds_mitigation.
+	 * If the CPU has X86_BUG_MDS bug, we check to see if the microcode has
+	 * added X86_FEATURE_MD_CLEAR.
+	 */
+	if (boot_cpu_has_bug(X86_BUG_MDS)) {
+		/*
+		 * If mds_mitigation is off, it means that the user selected
+		 * this using cmdline option and we do not do anything.
+		 */
+		if (mds_mitigation == MDS_MITIGATION_OFF)
+			goto out_bug_mds;
+
+		/*
+		 * If mds_mitigation is idle, it means that the user selected
+		 * this using cmdline option and we just update_mds_branch_idle.
+		 */
+		if (mds_mitigation == MDS_MITIGATION_IDLE) {
+			update_mds_branch_idle();
+			goto out_bug_mds;
+		}
+
+		/*
+		 * If we have MDS_MITIGATION_VMWERV, jump back to
+		 * MDS_MITIGATION_FULL and re-assess.
+		 */
+		if (mds_mitigation == MDS_MITIGATION_VMWERV)
+			mds_mitigation = MDS_MITIGATION_FULL;
+
+		if (cpu_has(&cpu_data(smp_processor_id()), X86_FEATURE_MD_CLEAR) &&
+		    !static_cpu_has(X86_FEATURE_MD_CLEAR)) {
+			setup_force_cpu_cap(X86_FEATURE_MD_CLEAR);
+		}
+
+		if (!boot_cpu_has(X86_FEATURE_MD_CLEAR))
+			mds_mitigation = MDS_MITIGATION_VMWERV;
+
+		static_branch_enable(&mds_user_clear);
+
+		update_mds_branch_idle();
+
+out_bug_mds:
+		pr_info("%s\n", mds_strings[mds_mitigation]);
+	} else if (mds_mitigation != MDS_MITIGATION_OFF) {
+		mds_mitigation = MDS_MITIGATION_OFF;
+		static_branch_disable(&mds_user_clear);
+		static_branch_disable(&mds_idle_clear);
+
+		pr_info("Not affected\n");
+	}
 }
 
 static ssize_t cpu_show_common(struct device *dev, struct device_attribute *attr,

@@ -176,6 +176,8 @@ static void microcode_late_eval_cpuid(void *arg)
 		setup_clear_cpu_cap(X86_BUG_SPEC_STORE_BYPASS);
 		setup_clear_cpu_cap(X86_BUG_CPU_MELTDOWN);
 		setup_clear_cpu_cap(X86_BUG_L1TF);
+		setup_clear_cpu_cap(X86_BUG_MDS);
+		setup_clear_cpu_cap(X86_BUG_MSBDS_ONLY);
 		cpu_set_bug_bits(&cpu_data(smp_processor_id()));
 
 		/* If CPU is not susceptible to L1TF, clean-up the L1TF_PTEINV cap. */
