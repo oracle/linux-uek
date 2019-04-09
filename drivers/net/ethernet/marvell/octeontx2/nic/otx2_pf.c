@@ -1349,6 +1349,7 @@ static int otx2_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	pf->netdev = netdev;
 	pf->pdev = pdev;
 	pf->dev = dev;
+	pf->total_vfs = pci_sriov_get_totalvfs(pdev);
 	hw = &pf->hw;
 	hw->pdev = pdev;
 	hw->rx_queues = qcount;
@@ -1476,6 +1477,40 @@ err_release_regions:
 	return err;
 }
 
+static int otx2_sriov_enable(struct pci_dev *pdev, int numvfs)
+{
+	struct net_device *netdev = pci_get_drvdata(pdev);
+	struct otx2_nic *pf = netdev_priv(netdev);
+	int ret;
+
+	if (numvfs > pf->total_vfs)
+		numvfs = pf->total_vfs;
+
+	ret = pci_enable_sriov(pdev, numvfs);
+	if (ret)
+		return ret;
+
+	return numvfs;
+}
+
+static int otx2_sriov_disable(struct pci_dev *pdev)
+{
+	if (!pci_num_vf(pdev))
+		return 0;
+
+	pci_disable_sriov(pdev);
+
+	return 0;
+}
+
+static int otx2_sriov_configure(struct pci_dev *pdev, int numvfs)
+{
+	if (numvfs == 0)
+		return otx2_sriov_disable(pdev);
+	else
+		return otx2_sriov_enable(pdev, numvfs);
+}
+
 static void otx2_remove(struct pci_dev *pdev)
 {
 	struct net_device *netdev = pci_get_drvdata(pdev);
@@ -1502,6 +1537,7 @@ static void otx2_remove(struct pci_dev *pdev)
 
 	otx2_detach_resources(&pf->mbox);
 	otx2_pfaf_mbox_destroy(pf);
+	otx2_sriov_disable(pf->pdev);
 
 	pci_free_irq_vectors(pf->pdev);
 	pci_set_drvdata(pdev, NULL);
@@ -1515,6 +1551,7 @@ static struct pci_driver otx2_pf_driver = {
 	.id_table = otx2_pf_id_table,
 	.probe = otx2_probe,
 	.remove = otx2_remove,
+	.sriov_configure = otx2_sriov_configure
 };
 
 static int __init otx2_rvupf_init_module(void)
