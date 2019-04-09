@@ -220,6 +220,9 @@ M(NPC_INSTALL_FLOW,	  0x600d, npc_install_flow,			       \
 				  npc_install_flow_req, npc_install_flow_rsp)  \
 M(NPC_DELETE_FLOW,	  0x600e, npc_delete_flow,			\
 				  npc_delete_flow_req, msg_rsp)		\
+M(NPC_MCAM_READ_ENTRY,	  0x600f, npc_mcam_read_entry,			\
+				  npc_mcam_read_entry_req,		\
+				  npc_mcam_read_entry_rsp)		\
 /* NIX mbox IDs (range 0x8000 - 0xFFFF) */				\
 M(NIX_LF_ALLOC,		0x8000, nix_lf_alloc,				\
 				 nix_lf_alloc_req, nix_lf_alloc_rsp)	\
@@ -1082,6 +1085,18 @@ struct npc_delete_flow_req {
 	u16 entry;
 	u8 all; /* PF + VFs */
 	u8 all_vfs; /* VFs */
+};
+
+struct npc_mcam_read_entry_req {
+	struct mbox_msghdr hdr;
+	u16 entry;	 /* MCAM entry to read */
+};
+
+struct npc_mcam_read_entry_rsp {
+	struct mbox_msghdr hdr;
+	struct mcam_entry entry_data;
+	u8 intf;
+	u8 enable;
 };
 
 /* TIM mailbox error codes
