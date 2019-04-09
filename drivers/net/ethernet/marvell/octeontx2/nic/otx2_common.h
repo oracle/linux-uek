@@ -151,7 +151,9 @@ struct otx2_nic {
 	struct otx2_qset	qset;
 	struct otx2_hw		hw;
 	struct mbox		mbox;
+	struct mbox		*mbox_pfvf;
 	struct workqueue_struct *mbox_wq;
+	struct workqueue_struct *mbox_pfvf_wq;
 	u8			intf_down;
 
 	u16			bpid[NIX_MAX_BPID_CHAN];
@@ -350,6 +352,20 @@ static inline int otx2_sync_mbox_msg(struct mbox *mbox)
 		return err;
 
 	return otx2_mbox_check_rsp_msgs(&mbox->mbox, 0);
+}
+
+static inline int otx2_sync_mbox_up_msg(struct mbox *mbox, int devid)
+{
+	int err;
+
+	if (!otx2_mbox_nonempty(&mbox->mbox_up, devid))
+		return 0;
+	otx2_mbox_msg_send(&mbox->mbox_up, devid);
+	err = otx2_mbox_wait_for_rsp(&mbox->mbox_up, devid);
+	if (err)
+		return err;
+
+	return otx2_mbox_check_rsp_msgs(&mbox->mbox_up, devid);
 }
 
 /* Use this API to send mbox msgs in atomic context
