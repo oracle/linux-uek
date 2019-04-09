@@ -1046,21 +1046,201 @@ static int otx2_get_ts_info(struct net_device *netdev,
 	return 0;
 }
 
+static void otx2_get_fec_info(u64 index, int mode, struct ethtool_link_ksettings
+			      *link_ksettings)
+{
+	switch (index) {
+	case OTX2_FEC_NONE:
+		if (mode)
+			ethtool_link_ksettings_add_link_mode(link_ksettings,
+							     advertising,
+							     FEC_NONE);
+		else
+			ethtool_link_ksettings_add_link_mode(link_ksettings,
+							     supported,
+							     FEC_NONE);
+		break;
+	case OTX2_FEC_BASER:
+		if (mode)
+			ethtool_link_ksettings_add_link_mode(link_ksettings,
+							     advertising,
+							     FEC_BASER);
+		else
+			ethtool_link_ksettings_add_link_mode(link_ksettings,
+							     supported,
+							     FEC_BASER);
+		break;
+	case OTX2_FEC_RS:
+		if (mode)
+			ethtool_link_ksettings_add_link_mode(link_ksettings,
+							     advertising,
+							     FEC_RS);
+		else
+			ethtool_link_ksettings_add_link_mode(link_ksettings,
+							     supported,
+							     FEC_RS);
+		break;
+	case OTX2_FEC_BASER | OTX2_FEC_RS:
+		if (mode) {
+			ethtool_link_ksettings_add_link_mode(link_ksettings,
+							     advertising,
+							     FEC_BASER);
+			ethtool_link_ksettings_add_link_mode(link_ksettings,
+							     advertising,
+							     FEC_RS);
+		} else {
+			ethtool_link_ksettings_add_link_mode(link_ksettings,
+							     supported,
+							     FEC_BASER);
+			ethtool_link_ksettings_add_link_mode(link_ksettings,
+							     supported,
+							     FEC_RS);
+		}
+
+		break;
+	}
+}
+
+static u32 otx2_get_link_mode_info(u64 index)
+{
+	int link_modes = 0;
+
+	/************  TO DO *********/
+	return link_modes;
+}
+
+static struct cgx_fw_data *otx2_get_fwdata(struct otx2_nic *pfvf)
+{
+	struct cgx_fw_data *rsp = NULL;
+	struct msg_req *req;
+
+	otx2_mbox_lock(&pfvf->mbox);
+	req = otx2_mbox_alloc_msg_cgx_get_aux_link_info(&pfvf->mbox);
+	if (!req) {
+		otx2_mbox_unlock(&pfvf->mbox);
+		return rsp;
+	}
+	if (!otx2_sync_mbox_msg(&pfvf->mbox)) {
+		rsp = (struct cgx_fw_data *)
+			otx2_mbox_get_rsp(&pfvf->mbox.mbox, 0, &req->hdr);
+	}
+	otx2_mbox_unlock(&pfvf->mbox);
+	return rsp;
+}
+
 static int otx2_get_link_ksettings(struct net_device *netdev,
 				   struct ethtool_link_ksettings *cmd)
 {
 	struct otx2_nic *pfvf = netdev_priv(netdev);
 	bool if_up = netif_running(netdev);
+	u32 supported = 0, advertising = 0;
+	struct cgx_fw_data *rsp = NULL;
+
+	cmd->base.duplex = pfvf->linfo.full_duplex;
+	cmd->base.speed = pfvf->linfo.speed;
+	cmd->base.autoneg = pfvf->linfo.an;
+	cmd->base.port = pfvf->linfo.port;
 
 	if (!if_up) {
 		cmd->base.duplex = DUPLEX_UNKNOWN;
 		cmd->base.speed = SPEED_UNKNOWN;
+	}
+
+	rsp = otx2_get_fwdata(pfvf);
+	if (!rsp) {
+		netdev_info(pfvf->netdev,
+			    "failed to get supported/advertised link info\n");
 		return 0;
 	}
-	cmd->base.duplex = pfvf->linfo.full_duplex;
-	cmd->base.speed = pfvf->linfo.speed;
+	if (rsp->fwdata.supported_an)
+		supported |= SUPPORTED_Autoneg;
+	advertising |= otx2_get_link_mode_info
+			(rsp->fwdata.advertised_link_modes);
+	ethtool_convert_legacy_u32_to_link_mode(cmd->link_modes.advertising,
+						advertising);
+	otx2_get_fec_info(rsp->fwdata.advertised_fec, 1, cmd);
+
+	supported |= otx2_get_link_mode_info(rsp->fwdata.supported_link_modes);
+	ethtool_convert_legacy_u32_to_link_mode(cmd->link_modes.supported,
+						supported);
+	otx2_get_fec_info(rsp->fwdata.supported_fec, 0, cmd);
 
 	return 0;
+}
+
+static int otx2_get_fecparam(struct net_device *netdev,
+			     struct ethtool_fecparam *fecparam)
+{
+	struct otx2_nic *pfvf = netdev_priv(netdev);
+	struct cgx_fw_data *rsp;
+	int fec[] = {
+		ETHTOOL_FEC_OFF,
+		ETHTOOL_FEC_BASER,
+		ETHTOOL_FEC_RS,
+		ETHTOOL_FEC_BASER | ETHTOOL_FEC_RS};
+#define FEC_MAX_INDEX 3
+	if (pfvf->linfo.fec < FEC_MAX_INDEX)
+		fecparam->active_fec = fec[pfvf->linfo.fec];
+
+	rsp = otx2_get_fwdata(pfvf);
+	if (!rsp) {
+		netdev_info(pfvf->netdev, "failed to get supported FEC info\n");
+		return 0;
+	}
+	if (rsp->fwdata.supported_fec <= FEC_MAX_INDEX) {
+		if (!rsp->fwdata.supported_fec)
+			fecparam->fec = ETHTOOL_FEC_NONE;
+		else
+			fecparam->fec = fec[rsp->fwdata.supported_fec];
+	}
+	return 0;
+}
+
+static int otx2_set_fecparam(struct net_device *netdev,
+			     struct ethtool_fecparam *fecparam)
+{
+	struct otx2_nic *pfvf = netdev_priv(netdev);
+	struct fec_mode *req, *rsp;
+	int err = 0, fec = 0;
+
+	switch (fecparam->fec) {
+	case ETHTOOL_FEC_OFF:
+		fec = OTX2_FEC_NONE;
+		break;
+	case ETHTOOL_FEC_RS:
+		fec = OTX2_FEC_RS;
+		break;
+	case ETHTOOL_FEC_BASER:
+		fec = OTX2_FEC_BASER;
+		break;
+	default:
+		fec = OTX2_FEC_NONE;
+		break;
+	}
+
+	if (fec == pfvf->linfo.fec)
+		return 0;
+
+	otx2_mbox_lock(&pfvf->mbox);
+	req = otx2_mbox_alloc_msg_cgx_set_fec_param(&pfvf->mbox);
+	if (!req) {
+		err = -EAGAIN;
+		goto end;
+	}
+	req->fec = fec;
+	err = otx2_sync_mbox_msg(&pfvf->mbox);
+	if (err)
+		goto end;
+
+	rsp = (struct fec_mode *)otx2_mbox_get_rsp(&pfvf->mbox.mbox,
+						   0, &req->hdr);
+	if (rsp->fec >= 0)
+		pfvf->linfo.fec = rsp->fec;
+	else
+		err = rsp->fec;
+
+end:	otx2_mbox_unlock(&pfvf->mbox);
+	return err;
 }
 
 static const struct ethtool_ops otx2_ethtool_ops = {
@@ -1084,6 +1264,8 @@ static const struct ethtool_ops otx2_ethtool_ops = {
 	.get_link_ksettings     = otx2_get_link_ksettings,
 	.get_pauseparam		= otx2_get_pauseparam,
 	.set_pauseparam		= otx2_set_pauseparam,
+	.get_fecparam		= otx2_get_fecparam,
+	.set_fecparam		= otx2_set_fecparam,
 };
 
 void otx2_set_ethtool_ops(struct net_device *netdev)
