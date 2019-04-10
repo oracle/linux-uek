@@ -448,14 +448,14 @@ int cgx_lmac_set_pause_frm(void *cgxd, int lmac_id,
 	cfg |= tx_pause ? CGX_SMUX_TX_CTL_L2P_BP_CONV : 0x0;
 	cgx_write(cgx, lmac_id, CGXX_SMUX_TX_CTL, cfg);
 
-	cfg = cgx_read(cgx, lmac_id, CGXX_CMR_RX_OVR_BP);
+	cfg = cgx_read(cgx, 0, CGXX_CMR_RX_OVR_BP);
 	if (tx_pause) {
 		cfg &= ~CGX_CMR_RX_OVR_BP_EN(lmac_id);
 	} else {
 		cfg |= CGX_CMR_RX_OVR_BP_EN(lmac_id);
 		cfg &= ~CGX_CMR_RX_OVR_BP_BP(lmac_id);
 	}
-	cgx_write(cgx, lmac_id, CGXX_CMR_RX_OVR_BP, cfg);
+	cgx_write(cgx, 0, CGXX_CMR_RX_OVR_BP, cfg);
 	return 0;
 }
 EXPORT_SYMBOL(cgx_lmac_set_pause_frm);
