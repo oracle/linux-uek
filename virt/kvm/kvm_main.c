@@ -3010,7 +3010,7 @@ static int kvm_ioctl_create_device(struct kvm *kvm,
 	dev->kvm = kvm;
 
 	mutex_lock(&kvm->lock);
-	ret = ops->create(dev, cd->type);
+	ret = ops->create(dev, dev_type);
 	if (ret < 0) {
 		mutex_unlock(&kvm->lock);
 		kfree(dev);
