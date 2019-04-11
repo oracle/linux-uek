@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018, Oracle and/or its affilicates.  All rights reserved.
+ * Copyright (c) 2019, Oracle and/or its affilicates.  All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -66,6 +66,12 @@ static void rdmaip_ip_config_init(void);
 static void rdmaip_ip_failover_groups_init(void);
 static void rdmaip_update_port_status_all_layers(u8 port, int event_type,
 						 int event);
+static void rdmaip_update_ip_addrs(int);
+static int rdmaip_inetaddr_event(struct notifier_block *,
+				 unsigned long, void *);
+static int rdmaip_inet6addr_event(struct notifier_block *,
+				  unsigned long, void *);
+static void rdmaip_impl_inetaddr_event(struct work_struct *);
 
 static DECLARE_DELAYED_WORK(riif_dlywork, rdmaip_initial_failovers);
 /*
@@ -79,6 +85,14 @@ struct ib_client rdmaip_client = {
 	.name   = "rdmaip",
 	.add    = rdmaip_device_add,
 	.remove = rdmaip_device_remove
+};
+
+static struct notifier_block rdmaip_inetaddr_nb = {
+	.notifier_call = rdmaip_inetaddr_event
+};
+
+static struct notifier_block rdmaip_inet6addr_nb = {
+	.notifier_call = rdmaip_inet6addr_event
 };
 
 bool rdmaip_is_event_pending(void)
@@ -712,7 +726,6 @@ static void rdmaip_init_ip4_addrs(struct net_device *net_dev,
 			ip_config[port].ip_addr = ip_addr;
 			ip_config[port].ip_bcast = ip_bcast;
 			ip_config[port].ip_mask = ip_mask;
-			ip_config[port].ip_active_port = port;
 		} else if (!excl_addr) {
 			for (i = 0; i < ip_config[port].alias_cnt; i++) {
 				if (ip_config[port].aliases[i].ip_addr ==
@@ -783,7 +796,6 @@ static void rdmaip_init_ip6_addrs(struct net_device *net_dev,
 	read_unlock_bh(&in6_dev->lock);
 
 	ip_config[port].ifindex = net_dev->ifindex;
-	ip_config[port].ip_active_port = port;
 
 	RDMAIP_DBG2("%s: IPv6 addresses are%sconfigured\n", net_dev->name,
 		    ip_config[port].ip6_addrs_cnt ? " " : " not ");
@@ -817,7 +829,7 @@ static u8 rdmaip_init_port(struct rdmaip_device	*rdmaip_dev,
 	ip_config[next_port_idx].port_label[3] = 0;
 	ip_config[next_port_idx].netdev = net_dev;
 	ip_config[next_port_idx].rdmaip_dev = rdmaip_dev;
-	ip_config[next_port_idx].ip_active_port = 0;
+	ip_config[next_port_idx].ip_active_port = next_port_idx;
 	strcpy(ip_config[next_port_idx].if_name, net_dev->name);
 	ip_config[next_port_idx].pkey_vlan = pkey_vid;
 	ip_config[next_port_idx].port_state = RDMAIP_PORT_INIT;
@@ -1128,11 +1140,6 @@ static void rdmaip_failover(int port)
 
 	if (RDMAIP_PORT_ADDR_SET(port))
 		rdmaip_do_failover(port, 0);
-
-	if (ip_config[port].ip_active_port == port) {
-		ret = rdmaip_set_ip4(NULL, NULL,
-				ip_config[port].if_name, 0, 0, 0);
-	}
 }
 
 static void rdmaip_failback(struct work_struct *_work)
@@ -1259,6 +1266,9 @@ static int rdmaip_find_port_tstate(u8 port)
 			ip_config[port].port_state = RDMAIP_PORT_UP;
 			tstate = RDMAIP_PORT_TRANSITION_UP;
 			RDMAIP_DBG3("Port transition DOWN to UP\n");
+		} else if (ip_config[port].ip_active_port == port) {
+			tstate = RDMAIP_PORT_TRANSITION_DOWN;
+			RDMAIP_DBG3("Port transition DOWN to DOWN\n");
 		}
 		break;
 
@@ -1314,6 +1324,11 @@ static void rdmaip_update_port_status_all_layers(u8 port, int event_type,
 		ip_config[port].port_layerflags |= RDMAIP_PORT_STATUS_NETDEVUP;
 	else
 		ip_config[port].port_layerflags &= ~RDMAIP_PORT_STATUS_NETDEVUP;
+
+	if (RDMAIP_PORT_ADDR_SET(port))
+		ip_config[port].port_layerflags |= RDMAIP_PORT_STATUS_IP_CONFIGURED;
+	else
+		ip_config[port].port_layerflags &= ~RDMAIP_PORT_STATUS_IP_CONFIGURED;
 
 	if (rdmaip_is_link_layer_up(ip_config[port].netdev))
 		ip_config[port].port_layerflags |= RDMAIP_PORT_STATUS_LINKUP;
@@ -1383,6 +1398,12 @@ static void rdmaip_process_async_event(u8 port, int event_type, int event)
 	}
 
 	rdmaip_update_port_status_all_layers(port, event_type, event);
+
+	if (!RDMAIP_PORT_ADDR_SET(port)) {
+		RDMAIP_DBG2("IP addresses are not set\n");
+		return;
+	}
+
 	port_tstate = rdmaip_find_port_tstate(port);
 
 	/*
@@ -1557,19 +1578,6 @@ static void rdmaip_do_initial_failovers(void)
 	 * detections of port_layerflags!
 	 */
 	for (ii = 1; ii <= ip_port_cnt; ii++) {
-		if (rdmaip_port_all_layers_up(&ip_config[ii])) {
-			ip_config[ii].port_state = RDMAIP_PORT_UP;
-			pr_notice("rdmaip_do_initial_failover:  port index %u interface %s transitioned from INIT to UP state (portlayers 0x%x)\n",
-				  ii, ip_config[ii].netdev->name,
-				  ip_config[ii].port_layerflags);
-		} else {
-			ip_config[ii].port_state = RDMAIP_PORT_DOWN;
-			pr_notice("rdmaip_do_initial_failover: port index %u interface %s transitioned from INIT to DOWN state (portlayers 0x%x)\n",
-				  ii, ip_config[ii].netdev->name,
-				  ip_config[ii].port_layerflags);
-		}
-		ip_config[ii].ip_active_port = ii; /* starting at home base! */
-
 		/*
 		 * As a part of the NETDEV_UP event handling, rdmaip_init_port()
 		 * is called which updates the IP address each port. But at
@@ -1582,6 +1590,21 @@ static void rdmaip_do_initial_failovers(void)
 				    ip_config[ii].netdev->name);
 			rdmaip_update_ip_addrs(ii);
 		}
+
+		rdmaip_update_port_status_all_layers(ii, RDMAIP_EVENT_NONE, 0);
+
+		if (rdmaip_port_all_layers_up(&ip_config[ii])) {
+			ip_config[ii].port_state = RDMAIP_PORT_UP;
+			pr_notice("rdmaip_do_initial_failover:  port index %u interface %s transitioned from INIT to UP state (portlayers 0x%x)\n",
+				  ii, ip_config[ii].netdev->name,
+				  ip_config[ii].port_layerflags);
+		} else {
+			ip_config[ii].port_state = RDMAIP_PORT_DOWN;
+			pr_notice("rdmaip_do_initial_failover: port index %u interface %s transitioned from INIT to DOWN state (portlayers 0x%x)\n",
+				  ii, ip_config[ii].netdev->name,
+				  ip_config[ii].port_layerflags);
+		}
+		ip_config[ii].ip_active_port = ii; /* starting at home base! */
 	}
 
 	/*
@@ -1620,6 +1643,33 @@ static void rdmaip_do_initial_failovers(void)
 
 }
 
+static void rdmaip_register_inetaddr_handlers(void)
+{
+	bool inet4, inet6;
+	int port;
+
+	inet4 = false;
+	inet6 = false;
+	for (port = 1; port <= ip_port_cnt; port++) {
+		if (!RDMAIP_IPV4_ADDR_SET(port))
+			inet4 = true;
+
+		if (!RDMAIP_IPV6_ADDR_SET(port))
+			inet6 = true;
+	}
+
+	if (inet4) {
+		RDMAIP_DBG2("Registering ipv4 inetaddr notifier\n");
+		register_inetaddr_notifier(&rdmaip_inetaddr_nb);
+		rdmaip_init_flag |= RDMAIP_REG_INETADDR_NOTIFIER;
+	}
+
+	if (inet6) {
+		RDMAIP_DBG2("Registering ipv6 inetaddr notifier\n");
+		register_inet6addr_notifier(&rdmaip_inet6addr_nb);
+		rdmaip_init_flag |= RDMAIP_REG_INET6ADDR_NOTIFIER;
+	}
+}
 static void rdmaip_initial_failovers(struct work_struct *workarg)
 {
 	bool do_failover;
@@ -1682,6 +1732,7 @@ static void rdmaip_initial_failovers(struct work_struct *workarg)
 			rdmaip_clear_event_pending();
 			RDMAIP_DBG2("Event pending, do failovers again\n");
 		} else {
+			rdmaip_register_inetaddr_handlers();
 			do_failover = false;
 			rdmaip_clear_busy_flag();
 			RDMAIP_DBG2("No pending event, Clear busy flag\n");
@@ -2614,6 +2665,142 @@ static void rdmaip_restore_ip_addresses(void)
 	}
 }
 
+/*
+ * Unregisters the inet address event handlers. This is called
+ * in the thread context.
+ */
+static void rdmaip_inetaddr_unregister(bool inet4, bool inet6)
+{
+	if (inet6 && (rdmaip_init_flag & RDMAIP_REG_INET6ADDR_NOTIFIER)) {
+		RDMAIP_DBG2("unregistering ipv6 inetaddr notifier\n");
+		unregister_inet6addr_notifier(&rdmaip_inet6addr_nb);
+		rdmaip_init_flag &= ~RDMAIP_REG_INET6ADDR_NOTIFIER;
+	}
+
+	if (inet4 && (rdmaip_init_flag & RDMAIP_REG_INETADDR_NOTIFIER)) {
+		RDMAIP_DBG2("unregistering ipv4 inetaddr notifier\n");
+		unregister_inetaddr_notifier(&rdmaip_inetaddr_nb);
+		rdmaip_init_flag &= ~RDMAIP_REG_INETADDR_NOTIFIER;
+	}
+}
+
+static void rdmaip_comm_inetaddr_handler(struct net_device *netdev,
+					 unsigned long event)
+{
+	struct rdmaip_port_ud_work	*work;
+
+	/*
+	 * Only interested on address addition at this time to
+	 * handle a case when IP address is added after boot.
+	 *
+	 * Future: This code can be enhanced to handle dynamic
+	 * IP address assignments.
+	 */
+	if (event != NETDEV_UP)
+		return;
+
+	work = kzalloc(sizeof(*work), GFP_ATOMIC);
+	if (!work) {
+		RDMAIP_DBG2("rdmaip: failed to allocate port work\n");
+		return;
+	}
+	work->event_type	= RDMAIP_EVENT_INETADDR;
+	work->net_event		= event;
+	work->netdev		= netdev;
+
+	INIT_DELAYED_WORK(&work->work, rdmaip_impl_inetaddr_event);
+	queue_delayed_work(rdmaip_wq, &work->work, RDMAIP_100MSECS);
+}
+
+/*
+ * This function gets called whenever an IPv6 address is assigned or
+ * deleted for a netdev.
+ *
+ * event = NETDEV_UP
+ *	IPv6 address added to the netdev
+ *
+ * event = NETDEV_DOWN
+ *      IPv6 address deleted from the netdev
+ */
+static int rdmaip_inet6addr_event(struct notifier_block *this,
+				  unsigned long event, void *ptr)
+{
+	struct inet6_ifaddr     *ifa = ptr;
+	struct net_device       *netdev = ifa->idev->dev;
+
+	if (ipv6_addr_type(&ifa->addr) & IPV6_ADDR_LINKLOCAL) {
+		RDMAIP_DBG2_PTR("LinkLocal : %s event %lx IPv6 %pI6\n",
+				netdev->name, event, &ifa->addr);
+		return NOTIFY_DONE;
+	}
+	RDMAIP_DBG2_PTR("%s event %lx IPv6 %pI6\n",
+			netdev->name, event, &ifa->addr);
+
+	rdmaip_comm_inetaddr_handler(netdev, event);
+
+	return NOTIFY_DONE;
+}
+
+/*
+ * This function is handles IPv4 and IPv6 address assigned after
+ * initial failovers are done. If a new IPv4 or IPv6 address(es)
+ * is/are added, this function tries to do failover or failback
+ * as needed.
+ */
+static void rdmaip_impl_inetaddr_event(struct work_struct *_work)
+{
+	int				port;
+	bool				remove_inet4_nb;
+	bool				remove_inet6_nb;
+	struct rdmaip_port_ud_work	*work =
+		container_of(_work, struct rdmaip_port_ud_work, work.work);
+
+	port = rdmaip_get_port_index(work->netdev);
+	if (!port) {
+		RDMAIP_DBG2("inetadd_event: rdmaip port not found\n");
+		kfree(work);
+		return;
+	}
+	if (!(RDMAIP_IPV4_ADDR_SET(port)) || !(RDMAIP_IPV6_ADDR_SET(port))) {
+		RDMAIP_DBG2("IPs were not set during init port#%d\n",
+			    port);
+		rdmaip_update_ip_addrs(port);
+		rdmaip_process_async_event(port, RDMAIP_EVENT_NET, NETDEV_UP);
+	}
+	remove_inet4_nb = true;
+	remove_inet6_nb = true;
+	for (port = 1; port <= ip_port_cnt; port++) {
+		if (!RDMAIP_IPV4_ADDR_SET(port))
+			remove_inet4_nb = false;
+		if (!RDMAIP_IPV6_ADDR_SET(port))
+			remove_inet6_nb = false;
+	}
+	rdmaip_inetaddr_unregister(remove_inet4_nb, remove_inet6_nb);
+	kfree(work);
+}
+
+/*
+ * This function gets called whereever an IPv4 address is assigned or
+ * deleted for a netdev.
+ *
+ * event = NETDEV_UP
+ *	IPv4 address added to the netdev
+ *
+ * event = NETDEV_DOWN
+ *      IPv4 address deleted from the netdev
+ */
+static int rdmaip_inetaddr_event(struct notifier_block *this,
+				 unsigned long event, void *ptr)
+{
+	struct in_ifaddr        *ifa = ptr;
+	struct net_device       *netdev = ifa->ifa_dev->dev;
+
+	RDMAIP_DBG2_PTR("netdev %s IPv4 %pI4 event %lx\n",
+			netdev->name, &ifa->ifa_address, event);
+
+	rdmaip_comm_inetaddr_handler(netdev, event);
+	return NOTIFY_DONE;
+}
 
 /*
  * rdmaip_cleanup
@@ -2633,6 +2820,16 @@ void rdmaip_cleanup(void)
 	 * First cancel all asynchronous callbacks before tearing
 	 * down any resources.
 	 */
+	if (rdmaip_init_flag & RDMAIP_REG_INET6ADDR_NOTIFIER) {
+		unregister_inet6addr_notifier(&rdmaip_inet6addr_nb);
+		rdmaip_init_flag &= ~RDMAIP_REG_INET6ADDR_NOTIFIER;
+	}
+
+	if (rdmaip_init_flag & RDMAIP_REG_INETADDR_NOTIFIER) {
+		unregister_inetaddr_notifier(&rdmaip_inetaddr_nb);
+		rdmaip_init_flag &= ~RDMAIP_REG_INETADDR_NOTIFIER;
+	}
+
 	if (rdmaip_init_flag & RDMAIP_REG_NETDEV_NOTIFIER) {
 		unregister_netdevice_notifier(&rdmaip_nb);
 		rdmaip_init_flag &= ~RDMAIP_REG_NETDEV_NOTIFIER;
@@ -2674,7 +2871,6 @@ void rdmaip_cleanup(void)
 	RDMAIP_DBG2("%s done rdmaip_init_flag = 0x%x\n", __func__,
 		    rdmaip_init_flag);
 }
-
 
 /*
  * module initialization function
