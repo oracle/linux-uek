@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018, Oracle and/or its affilicates.  All rights reserved.
+ * Copyright (c) 2019, Oracle and/or its affilicates.  All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -47,9 +47,13 @@
 #define	RDMAIP_IP_CONFIG_INIT_DONE	0x20
 #define	RDMAIP_REG_NETDEV_NOTIFIER	0x40
 #define RDMAIP_GARPS_WQ_CREATED		0x80
+#define	RDMAIP_REG_INETADDR_NOTIFIER	0x100
+#define	RDMAIP_REG_INET6ADDR_NOTIFIER	0x200
 
 #define RDMAIP_DEFAULT_GIDTBL_LEN	64
 #define	RDMAIP_MAX_NAME_LEN		32
+
+#define RDMAIP_100MSECS			100
 
 static int rdmaip_init_flag;
 
@@ -246,9 +250,11 @@ enum {
 #define RDMAIP_PORT_STATUS_HWPORTUP	0x0001U /* HCA port UP */
 #define RDMAIP_PORT_STATUS_LINKUP	0x0002U /* Link layer UP */
 #define RDMAIP_PORT_STATUS_NETDEVUP	0x0004U /* NETDEV layer UP */
+#define RDMAIP_PORT_STATUS_IP_CONFIGURED 0x0008U /* IP's Configured */
 #define RDMAIP_PORT_STATUS_ALLUP	(RDMAIP_PORT_STATUS_HWPORTUP \
 					| RDMAIP_PORT_STATUS_LINKUP \
-					| RDMAIP_PORT_STATUS_NETDEVUP)
+					| RDMAIP_PORT_STATUS_NETDEVUP\
+					| RDMAIP_PORT_STATUS_IP_CONFIGURED)
 
 /*
  * Design notes for failover/failback processing:
@@ -364,7 +370,8 @@ struct rdmaip_port_ud_work {
 enum {
 	RDMAIP_EVENT_NONE,
 	RDMAIP_EVENT_IB,
-	RDMAIP_EVENT_NET
+	RDMAIP_EVENT_NET,
+	RDMAIP_EVENT_INETADDR
 };
 
 #define pcidev_to_node(pcidev)	pcibus_to_node(pcidev->bus)
