@@ -46,6 +46,7 @@
 #define	RDMAIP_IP_WQ_CREATED		0x10
 #define	RDMAIP_IP_CONFIG_INIT_DONE	0x20
 #define	RDMAIP_REG_NETDEV_NOTIFIER	0x40
+#define RDMAIP_GARPS_WQ_CREATED		0x80
 
 #define RDMAIP_DEFAULT_GIDTBL_LEN	64
 #define	RDMAIP_MAX_NAME_LEN		32
@@ -76,7 +77,9 @@ struct rdmaip_device {
 	struct port_info	pinfo[RDMAIP_MAX_PHYS_PORTS];
 };
 
-#define RDMAIP_DEFAULT_NUM_ARPS		100
+#define RDMAIP_DEFAULT_NUM_ARPS		3
+#define RDMAIP_DEFAULT_NUM_ARPS_GAP_MS	5
+
 #define RDMAIP_MAX_ALIASES		50
 #define RDMAIP_MAX_PORTS		50
 #define RDMAIP_MAX_EXCL_IPS		20
@@ -174,9 +177,13 @@ MODULE_PARM_DESC(rdmaip_active_bonding_failover_groups,
  * another port in the active bonding group
  */
 unsigned int rdmaip_active_bonding_arps = RDMAIP_DEFAULT_NUM_ARPS;
-module_param(rdmaip_active_bonding_arps, int, 0444);
+unsigned int rdmaip_active_bonding_arps_gap_ms = RDMAIP_DEFAULT_NUM_ARPS_GAP_MS;
+module_param(rdmaip_active_bonding_arps, int, 0644);
 MODULE_PARM_DESC(rdmaip_active_bonding_arps,
-		 " Number of ARP requests to send when IP moved");
+		 " Number of gratuitous ARP requests to send when IP moved");
+module_param(rdmaip_active_bonding_arps_gap_ms, int, 0644);
+MODULE_PARM_DESC(rdmaip_active_bonding_arps_gap_ms,
+		 " Number of msecs between gARPs sent");
 
 struct socket	*rdmaip_inet_socket;
 struct socket	*rdmaip_inet6_socket;
@@ -377,6 +384,11 @@ u32 rdmaip_sysctl_debug_flag	= RDMAIP_DEBUG_L1 |
 
 #define rdmaip_printk(format, arg...)		\
 	trace_printk("%d: " format, __LINE__, ## arg)
+
+#define RDMAIP_DBG1_PTR(format, arg...)				\
+	do { if (rdmaip_sysctl_debug_flag & RDMAIP_DEBUG_L1)	\
+		__trace_printk(_THIS_IP_, "%d: " format, __LINE__, ## arg); \
+	} while (0)
 
 #define RDMAIP_DBG1(format, arg...)				\
 	do { if (rdmaip_sysctl_debug_flag & RDMAIP_DEBUG_L1)	\

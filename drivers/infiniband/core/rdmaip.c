@@ -50,6 +50,16 @@
 #include "rdmaip.h"
 
 static struct workqueue_struct *rdmaip_wq;
+static struct workqueue_struct *rdmaip_garps_wq;
+struct rdmaip_send_garps {
+	struct delayed_work work;
+	struct net_device *out_dev;
+	unsigned char *dev_addr;
+	unsigned long delay;
+	__be32 ip_addr;
+	int garps_left;
+};
+
 static void rdmaip_device_add(struct ib_device *device);
 static void rdmaip_device_remove(struct ib_device *device, void *client_data);
 static void rdmaip_ip_config_init(void);
@@ -258,20 +268,54 @@ static u8 rdmaip_get_failover_port(u8 port)
 	return 0;
 }
 
+static void rdmaip_garp_work_handler(struct work_struct *_work)
+{
+	struct rdmaip_send_garps *garps;
+
+	garps = container_of(_work, struct rdmaip_send_garps,  work.work);
+
+	arp_send(ARPOP_REQUEST, ETH_P_ARP,
+		 garps->ip_addr, garps->out_dev,
+		 garps->ip_addr, NULL,
+		 garps->dev_addr, NULL);
+
+	if (--garps->garps_left >= 0)
+		queue_delayed_work(rdmaip_garps_wq, &garps->work, garps->delay);
+	else
+		kfree(garps);
+}
+
 static void rdmaip_send_gratuitous_arp(struct net_device *out_dev,
 				       unsigned char *dev_addr, __be32 ip_addr)
 {
-	int i;
+	struct rdmaip_send_garps *garps = kmalloc(sizeof(*garps), GFP_ATOMIC);
+
+	if (!garps) {
+		RDMAIP_DBG1_PTR("kmalloc failed. Cannot send garps for %s %pI4\n",
+				out_dev->name, &ip_addr);
+		return;
+	}
 
 	if (out_dev)
 		RDMAIP_DBG2_PTR("Sending GARP message for adding IP addr %pI4 on %s\n",
 			       (void *)&ip_addr, out_dev->name);
 
-	/* Send multiple ARPs to improve reliability */
-	for (i = 0; i < rdmaip_active_bonding_arps; i++) {
-		arp_send(ARPOP_REQUEST, ETH_P_ARP, ip_addr, out_dev, ip_addr,
-			 NULL, dev_addr, NULL);
+	if (rdmaip_active_bonding_arps_gap_ms == 0 ||
+	    rdmaip_active_bonding_arps_gap_ms > 100) {
+		pr_warn("arp gap (%d) out of range, using default (%d)\n",
+			rdmaip_active_bonding_arps_gap_ms,
+			RDMAIP_DEFAULT_NUM_ARPS_GAP_MS);
+		rdmaip_active_bonding_arps_gap_ms = RDMAIP_DEFAULT_NUM_ARPS_GAP_MS;
 	}
+
+	garps->out_dev = out_dev;
+	garps->dev_addr = dev_addr;
+	garps->delay = msecs_to_jiffies(rdmaip_active_bonding_arps_gap_ms);
+	garps->ip_addr = ip_addr;
+	garps->garps_left = rdmaip_active_bonding_arps;
+
+	INIT_DELAYED_WORK(&garps->work, rdmaip_garp_work_handler);
+	queue_delayed_work(rdmaip_garps_wq, &garps->work, 0);
 }
 
 /* Add or remove an IPv6 address to/from an interface. */
@@ -2499,11 +2543,21 @@ static int rdmaip_netdev_callback(struct notifier_block *self,
 	return NOTIFY_DONE;
 }
 
-void rdmaip_destroy_ip_workq(void)
+void rdmaip_destroy_workqs(void)
 {
-	cancel_delayed_work_sync(&riif_dlywork);
-	flush_workqueue(rdmaip_wq);
-	destroy_workqueue(rdmaip_wq);
+
+	if (rdmaip_init_flag & RDMAIP_IP_WQ_CREATED) {
+		cancel_delayed_work_sync(&riif_dlywork);
+		flush_workqueue(rdmaip_wq);
+		destroy_workqueue(rdmaip_wq);
+		rdmaip_init_flag &= ~RDMAIP_IP_WQ_CREATED;
+	}
+
+	if (rdmaip_init_flag & RDMAIP_GARPS_WQ_CREATED) {
+		flush_workqueue(rdmaip_garps_wq);
+		destroy_workqueue(rdmaip_garps_wq);
+		rdmaip_init_flag &= ~RDMAIP_GARPS_WQ_CREATED;
+	}
 }
 
 static void rdmaip_restore_ip_addresses(void)
@@ -2562,10 +2616,7 @@ void rdmaip_cleanup(void)
 		rdmaip_init_flag &= ~RDMAIP_REG_NETDEV_NOTIFIER;
 	}
 
-	if (rdmaip_init_flag & RDMAIP_IP_WQ_CREATED) {
-		rdmaip_destroy_ip_workq();
-		rdmaip_init_flag &= ~RDMAIP_IP_WQ_CREATED;
-	}
+	rdmaip_destroy_workqs();
 
 	if (rdmaip_init_flag & RDMAIP_IB_REG) {
 		ib_unregister_client(&rdmaip_client);
@@ -2699,6 +2750,14 @@ int rdmaip_init(void)
 		return -ENOMEM;
 	}
 	rdmaip_init_flag |= RDMAIP_IP_WQ_CREATED;
+
+	rdmaip_garps_wq = create_workqueue("rdmaip_garps");
+	if (!rdmaip_garps_wq) {
+		rdmaip_cleanup();
+		destroy_workqueue(rdmaip_wq);
+		return -ENOMEM;
+	}
+	rdmaip_init_flag |= RDMAIP_GARPS_WQ_CREATED;
 
 	ip_config = kzalloc(sizeof(struct rdmaip_port) * (ip_port_max + 1),
 			    GFP_KERNEL);
