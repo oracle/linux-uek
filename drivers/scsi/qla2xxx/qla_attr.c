@@ -671,6 +671,7 @@ qla2x00_sysfs_write_reset(struct file *filp, struct kobject *kobj,
 	int type;
 	uint32_t idc_control;
 	uint8_t *tmp_data = NULL;
+
 	if (off != 0)
 		return -EINVAL;
 
@@ -1077,6 +1078,7 @@ qla2x00_isp_name_show(struct device *dev, struct device_attribute *attr,
 		      char *buf)
 {
 	scsi_qla_host_t *vha = shost_priv(class_to_shost(dev));
+
 	return scnprintf(buf, PAGE_SIZE, "ISP%04X\n", vha->hw->pdev->device);
 }
 
@@ -1110,6 +1112,7 @@ qla2x00_model_desc_show(struct device *dev, struct device_attribute *attr,
 			char *buf)
 {
 	scsi_qla_host_t *vha = shost_priv(class_to_shost(dev));
+
 	return scnprintf(buf, PAGE_SIZE, "%s\n", vha->hw->model_desc);
 }
 
@@ -1322,6 +1325,7 @@ qla2x00_optrom_bios_version_show(struct device *dev,
 {
 	scsi_qla_host_t *vha = shost_priv(class_to_shost(dev));
 	struct qla_hw_data *ha = vha->hw;
+
 	return scnprintf(buf, PAGE_SIZE, "%d.%02d\n", ha->bios_revision[1],
 	    ha->bios_revision[0]);
 }
@@ -1332,6 +1336,7 @@ qla2x00_optrom_efi_version_show(struct device *dev,
 {
 	scsi_qla_host_t *vha = shost_priv(class_to_shost(dev));
 	struct qla_hw_data *ha = vha->hw;
+
 	return scnprintf(buf, PAGE_SIZE, "%d.%02d\n", ha->efi_revision[1],
 	    ha->efi_revision[0]);
 }
@@ -1342,6 +1347,7 @@ qla2x00_optrom_fcode_version_show(struct device *dev,
 {
 	scsi_qla_host_t *vha = shost_priv(class_to_shost(dev));
 	struct qla_hw_data *ha = vha->hw;
+
 	return scnprintf(buf, PAGE_SIZE, "%d.%02d\n", ha->fcode_revision[1],
 	    ha->fcode_revision[0]);
 }
@@ -1352,6 +1358,7 @@ qla2x00_optrom_fw_version_show(struct device *dev,
 {
 	scsi_qla_host_t *vha = shost_priv(class_to_shost(dev));
 	struct qla_hw_data *ha = vha->hw;
+
 	return scnprintf(buf, PAGE_SIZE, "%d.%02d.%02d %d\n",
 	    ha->fw_revision[0], ha->fw_revision[1], ha->fw_revision[2],
 	    ha->fw_revision[3]);
@@ -1378,6 +1385,7 @@ qla2x00_total_isp_aborts_show(struct device *dev,
 			      struct device_attribute *attr, char *buf)
 {
 	scsi_qla_host_t *vha = shost_priv(class_to_shost(dev));
+
 	return scnprintf(buf, PAGE_SIZE, "%d\n",
 	    vha->qla_stats.total_isp_aborts);
 }
@@ -2819,6 +2827,7 @@ qla24xx_vport_create(struct fc_vport *fc_vport, bool disable)
 	if (IS_T10_PI_CAPABLE(ha) && ql2xenabledif) {
 		if (ha->fw_attributes & BIT_4) {
 			int prot = 0, guard;
+
 			vha->flags.difdix_supported = 1;
 			ql_dbg(ql_dbg_user, vha, 0x7082,
 			    "Registered for DIF/DIX type 1 and 3 protection.\n");
