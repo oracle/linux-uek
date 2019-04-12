@@ -142,6 +142,12 @@ struct otx2_hw {
 
 struct otx2_ptp;
 
+struct otx2_vf_config {
+	struct otx2_nic *pf;
+	struct delayed_work link_event_work;
+	bool intf_down; /* interface was either configured or not */
+};
+
 struct flr_work {
 	struct work_struct work;
 	struct otx2_nic *pf;
@@ -171,6 +177,7 @@ struct otx2_nic {
 	struct work_struct	reset_task;
 	u64			reset_count;
 	u8			total_vfs;
+	struct otx2_vf_config	*vf_configs;
 	struct cgx_link_user_info linfo;
 	u16			rxvlan_entry;
 	bool			rxvlan_alloc;
