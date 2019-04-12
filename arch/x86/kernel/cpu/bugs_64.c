@@ -1283,7 +1283,7 @@ static void __init l1tf_select_mitigation(void)
 
 	setup_force_cpu_cap(X86_FEATURE_L1TF_PTEINV);
 }
-/* Default mitigation for L1TF-affected CPUs */
+/* Default mitigation for MDS-affected CPUs */
 static enum mds_mitigations mds_mitigation __read_mostly = MDS_MITIGATION_FULL;
 static bool mds_nosmt = false;
 
