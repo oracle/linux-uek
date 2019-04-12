@@ -21,6 +21,7 @@
 #include "otx2_common.h"
 #include "otx2_txrx.h"
 #include "otx2_struct.h"
+#include "otx2_ptp.h"
 
 #define DRV_NAME	"octeontx2-nicpf"
 #define DRV_STRING	"Marvell OcteonTX2 NIC Physical Function Driver"
@@ -39,6 +40,9 @@ MODULE_DESCRIPTION(DRV_STRING);
 MODULE_LICENSE("GPL v2");
 MODULE_VERSION(DRV_VERSION);
 MODULE_DEVICE_TABLE(pci, otx2_pf_id_table);
+
+static int otx2_config_hw_tx_tstamp(struct otx2_nic *pfvf, bool enable);
+static int otx2_config_hw_rx_tstamp(struct otx2_nic *pfvf, bool enable);
 
 static void otx2_process_pfaf_mbox_msg(struct otx2_nic *pf,
 				       struct mbox_msghdr *msg)
@@ -710,6 +714,7 @@ static void otx2_free_hw_resources(struct otx2_nic *pf)
 		if (!pf->hw.hw_tso)
 			qmem_free(pf->dev, sq->tso_hdrs);
 		kfree(sq->sg);
+		qmem_free(pf->dev, sq->timestamps);
 	}
 
 	/* Free SQB pointers */
@@ -927,6 +932,16 @@ int otx2_open(struct net_device *netdev)
 
 	pf->intf_down = false;
 
+	/* When reinitializing enable time stamping if it is enabled before */
+	if (pf->hw_tx_tstamp) {
+		pf->hw_tx_tstamp = 0;
+		otx2_config_hw_tx_tstamp(pf, true);
+	}
+	if (pf->hw_rx_tstamp) {
+		pf->hw_rx_tstamp = 0;
+		otx2_config_hw_rx_tstamp(pf, true);
+	}
+
 	/* Enable link notifications */
 	otx2_cgx_config_linkevents(pf, true);
 
@@ -1079,6 +1094,131 @@ static int otx2_set_features(struct net_device *netdev,
 	return 0;
 }
 
+static int otx2_config_hw_rx_tstamp(struct otx2_nic *pfvf, bool enable)
+{
+	struct msg_req *req;
+	int err;
+
+	if (!!pfvf->hw_rx_tstamp == enable)
+		return 0;
+
+	otx2_mbox_lock(&pfvf->mbox);
+	if (enable)
+		req = otx2_mbox_alloc_msg_cgx_ptp_rx_enable(&pfvf->mbox);
+	else
+		req = otx2_mbox_alloc_msg_cgx_ptp_rx_disable(&pfvf->mbox);
+	if (!req) {
+		otx2_mbox_unlock(&pfvf->mbox);
+		return -ENOMEM;
+	}
+
+	err = otx2_sync_mbox_msg(&pfvf->mbox);
+	if (err) {
+		otx2_mbox_unlock(&pfvf->mbox);
+		return err;
+	}
+
+	otx2_mbox_unlock(&pfvf->mbox);
+	pfvf->hw_rx_tstamp = enable;
+	return 0;
+}
+
+static int otx2_config_hw_tx_tstamp(struct otx2_nic *pfvf, bool enable)
+{
+	struct msg_req *req;
+	int err;
+
+	if (!!pfvf->hw_tx_tstamp == enable)
+		return 0;
+
+	otx2_mbox_lock(&pfvf->mbox);
+	if (enable)
+		req = otx2_mbox_alloc_msg_nix_lf_ptp_tx_enable(&pfvf->mbox);
+	else
+		req = otx2_mbox_alloc_msg_nix_lf_ptp_tx_disable(&pfvf->mbox);
+	if (!req) {
+		otx2_mbox_unlock(&pfvf->mbox);
+		return -ENOMEM;
+	}
+
+	err = otx2_sync_mbox_msg(&pfvf->mbox);
+	if (err) {
+		otx2_mbox_unlock(&pfvf->mbox);
+		return err;
+	}
+
+	otx2_mbox_unlock(&pfvf->mbox);
+	pfvf->hw_tx_tstamp = enable;
+	return 0;
+}
+
+static int otx2_config_hwtstamp(struct net_device *netdev, struct ifreq *ifr)
+{
+	struct otx2_nic *pfvf = netdev_priv(netdev);
+	struct hwtstamp_config config;
+
+	if (!pfvf->ptp)
+		return -ENODEV;
+
+	if (copy_from_user(&config, ifr->ifr_data, sizeof(config)))
+		return -EFAULT;
+
+	/* reserved for future extensions */
+	if (config.flags)
+		return -EINVAL;
+
+	switch (config.tx_type) {
+	case HWTSTAMP_TX_OFF:
+		otx2_config_hw_tx_tstamp(pfvf, false);
+		break;
+	case HWTSTAMP_TX_ON:
+		otx2_config_hw_tx_tstamp(pfvf, true);
+		break;
+	default:
+		return -ERANGE;
+	}
+
+	switch (config.rx_filter) {
+	case HWTSTAMP_FILTER_NONE:
+		otx2_config_hw_rx_tstamp(pfvf, false);
+		break;
+	case HWTSTAMP_FILTER_ALL:
+	case HWTSTAMP_FILTER_SOME:
+	case HWTSTAMP_FILTER_PTP_V1_L4_EVENT:
+	case HWTSTAMP_FILTER_PTP_V1_L4_SYNC:
+	case HWTSTAMP_FILTER_PTP_V1_L4_DELAY_REQ:
+	case HWTSTAMP_FILTER_PTP_V2_L4_EVENT:
+	case HWTSTAMP_FILTER_PTP_V2_L4_SYNC:
+	case HWTSTAMP_FILTER_PTP_V2_L4_DELAY_REQ:
+	case HWTSTAMP_FILTER_PTP_V2_L2_EVENT:
+	case HWTSTAMP_FILTER_PTP_V2_L2_SYNC:
+	case HWTSTAMP_FILTER_PTP_V2_L2_DELAY_REQ:
+	case HWTSTAMP_FILTER_PTP_V2_EVENT:
+	case HWTSTAMP_FILTER_PTP_V2_SYNC:
+	case HWTSTAMP_FILTER_PTP_V2_DELAY_REQ:
+		otx2_config_hw_rx_tstamp(pfvf, true);
+		config.rx_filter = HWTSTAMP_FILTER_ALL;
+		break;
+	default:
+		return -ERANGE;
+	}
+
+	if (copy_to_user(ifr->ifr_data, &config, sizeof(config)))
+		return -EFAULT;
+
+	return 0;
+}
+
+static int otx2_ioctl(struct net_device *netdev, struct ifreq *req, int cmd)
+{
+	switch (cmd) {
+	case SIOCSHWTSTAMP:
+		return otx2_config_hwtstamp(netdev, req);
+	default:
+		return -EOPNOTSUPP;
+	}
+}
+
 static const struct net_device_ops otx2_netdev_ops = {
 	.ndo_open		= otx2_open,
 	.ndo_stop		= otx2_stop,
@@ -1090,6 +1230,7 @@ static const struct net_device_ops otx2_netdev_ops = {
 	.ndo_set_features	= otx2_set_features,
 	.ndo_tx_timeout		= otx2_tx_timeout,
 	.ndo_get_stats64	= otx2_get_stats64,
+	.ndo_do_ioctl		= otx2_ioctl,
 };
 
 static int otx2_check_pf_usable(struct otx2_nic *nic)
@@ -1220,6 +1361,9 @@ static int otx2_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	pf->cq_time_wait = CQ_TIMER_THRESH_DEFAULT;
 	pf->cq_ecount_wait = CQ_CQE_THRESH_DEFAULT;
 
+	/* Don't check for error.  Proceed without ptp */
+	otx2_ptp_init(pf);
+
 	/* NPA's pool is a stack to which SW frees buffer pointers via Aura.
 	 * HW allocates buffer pointer from stack and uses it for DMA'ing
 	 * ingress packet. In some scenarios HW can free back allocated buffer
@@ -1258,7 +1402,7 @@ static int otx2_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	err = register_netdev(netdev);
 	if (err) {
 		dev_err(dev, "Failed to register netdevice\n");
-		goto err_detach_rsrc;
+		goto err_ptp_destroy;
 	}
 
 	INIT_LIST_HEAD(&pf->flows);
@@ -1266,6 +1410,8 @@ static int otx2_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	otx2_set_ethtool_ops(netdev);
 	return 0;
 
+err_ptp_destroy:
+	otx2_ptp_destroy(pf);
 err_detach_rsrc:
 	otx2_detach_resources(&pf->mbox);
 err_disable_mbox_intr:
@@ -1292,11 +1438,17 @@ static void otx2_remove(struct pci_dev *pdev)
 
 	pf = netdev_priv(netdev);
 
+	if (pf->hw_tx_tstamp)
+		otx2_config_hw_tx_tstamp(pf, false);
+	if (pf->hw_rx_tstamp)
+		otx2_config_hw_rx_tstamp(pf, false);
+
 	/* Disable link notifications */
 	otx2_cgx_config_linkevents(pf, false);
 
 	unregister_netdev(netdev);
 	otx2_destroy_ethtool_flows(pf);
+	otx2_ptp_destroy(pf);
 
 	otx2_disable_mbox_intr(pf);
 
