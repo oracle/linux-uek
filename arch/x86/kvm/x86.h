@@ -366,4 +366,7 @@ static inline bool kvm_dr7_valid(unsigned long data)
 	return !(data >> 32);
 }
 
+void kvm_load_guest_xcr0(struct kvm_vcpu *vcpu);
+void kvm_put_guest_xcr0(struct kvm_vcpu *vcpu);
+
 #endif
