@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2006, 2018 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2006, 2019 Oracle and/or its affiliates. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -449,16 +449,6 @@ struct rds_transport rds_tcp_transport = {
 
 static int rds_tcp_netid;
 
-/* per-network namespace private data for this module */
-struct rds_tcp_net {
-	struct socket *rds_tcp_listen_sock;
-	struct work_struct rds_tcp_accept_w;
-	struct ctl_table_header *rds_tcp_sysctl;
-	struct ctl_table *ctl_table;
-	int sndbuf_size;
-	int rcvbuf_size;
-};
-
 /* All module specific customizations to the RDS-TCP socket should be done in
  * rds_tcp_tune() and applied after socket creation.
  */
@@ -496,7 +486,7 @@ void rds_tcp_accept_work(struct sock *sk)
 	struct net *net = sock_net(sk);
 	struct rds_tcp_net *rtn = net_generic(net, rds_tcp_netid);
 
-	queue_work(rds_wq, &rtn->rds_tcp_accept_w);
+	queue_work(rtn->rds_tcp_accept_wq, &rtn->rds_tcp_accept_w);
 }
 
 static __net_init int rds_tcp_init_net(struct net *net)
@@ -506,6 +496,11 @@ static __net_init int rds_tcp_init_net(struct net *net)
 	int err = 0;
 
 	memset(rtn, 0, sizeof(*rtn));
+
+	rtn->rds_tcp_accept_wq =
+		create_singlethread_workqueue("rds_tcp_accept");
+	if (!rtn->rds_tcp_accept_wq)
+		return -ENOMEM;
 
 	/* {snd, rcv}buf_size default to 0, which implies we let the
 	 * stack pick the value, and permit auto-tuning of buffer size.
@@ -579,11 +574,10 @@ static void rds_tcp_conn_paths_destroy(struct rds_connection *conn)
 	}
 }
 
-static void rds_tcp_kill_sock(struct net *net)
+static void rds_tcp_kill_sock(struct net *net, struct rds_tcp_net *rtn)
 {
 	struct rds_tcp_connection *tc, *_tc;
 	LIST_HEAD(tmp_list);
-	struct rds_tcp_net *rtn = net_generic(net, rds_tcp_netid);
 	struct socket *lsock = rtn->rds_tcp_listen_sock;
 
 	rtn->rds_tcp_listen_sock = NULL;
@@ -608,13 +602,14 @@ static void __net_exit rds_tcp_exit_net(struct net *net)
 {
 	struct rds_tcp_net *rtn = net_generic(net, rds_tcp_netid);
 
-	rds_tcp_kill_sock(net);
+	rds_tcp_kill_sock(net, rtn);
 
 	if (rtn->rds_tcp_sysctl)
 		unregister_net_sysctl_table(rtn->rds_tcp_sysctl);
 
 	if (net != &init_net && rtn->ctl_table)
 		kfree(rtn->ctl_table);
+	destroy_workqueue(rtn->rds_tcp_accept_wq);
 }
 
 static struct pernet_operations rds_tcp_net_ops = {
@@ -730,4 +725,3 @@ module_init(rds_tcp_init);
 MODULE_AUTHOR("Oracle Corporation <rds-devel@oss.oracle.com>");
 MODULE_DESCRIPTION("RDS: TCP transport");
 MODULE_LICENSE("Dual BSD/GPL");
-
