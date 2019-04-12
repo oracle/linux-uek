@@ -538,6 +538,8 @@ static int otx2vf_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 		goto err_detach_rsrc;
 	}
 
+	otx2vf_set_ethtool_ops(netdev);
+
 	return 0;
 
 err_detach_rsrc:

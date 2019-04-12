@@ -20,6 +20,8 @@
 
 #define DRV_NAME	"octeontx2-nicpf"
 #define DRV_VERSION	"1.0"
+#define DRV_VF_NAME	"octeontx2-nicvf"
+#define DRV_VF_VERSION	"1.0"
 
 #define OTX2_DEFAULT_ACTION	0x1
 
@@ -917,6 +919,41 @@ static int otx2_set_rxnfc(struct net_device *dev, struct ethtool_rxnfc *nfc)
 	return ret;
 }
 
+static int otx2vf_get_rxnfc(struct net_device *dev,
+			    struct ethtool_rxnfc *nfc, u32 *rules)
+{
+	struct otx2_nic *pfvf = netdev_priv(dev);
+	int ret = -EOPNOTSUPP;
+
+	switch (nfc->cmd) {
+	case ETHTOOL_GRXRINGS:
+		nfc->data = pfvf->hw.rx_queues;
+		ret = 0;
+		break;
+	case ETHTOOL_GRXFH:
+		return otx2_get_rss_hash_opts(pfvf, nfc);
+	default:
+		break;
+	}
+	return ret;
+}
+
+static int otx2vf_set_rxnfc(struct net_device *dev, struct ethtool_rxnfc *nfc)
+{
+	struct otx2_nic *pfvf = netdev_priv(dev);
+	int ret = -EOPNOTSUPP;
+
+	switch (nfc->cmd) {
+	case ETHTOOL_SRXFH:
+		ret = otx2_set_rss_hash_opts(pfvf, nfc);
+		break;
+	default:
+		break;
+	}
+
+	return ret;
+}
+
 static u32 otx2_get_rxfh_key_size(struct net_device *netdev)
 {
 	struct otx2_nic *pfvf = netdev_priv(netdev);
@@ -1054,6 +1091,87 @@ void otx2_set_ethtool_ops(struct net_device *netdev)
 	netdev->ethtool_ops = &otx2_ethtool_ops;
 }
 
+/* VF's ethtool APIs */
+static void otx2vf_get_drvinfo(struct net_device *netdev,
+			       struct ethtool_drvinfo *info)
+{
+	struct otx2_nic *vf = netdev_priv(netdev);
+
+	strlcpy(info->driver, DRV_VF_NAME, sizeof(info->driver));
+	strlcpy(info->version, DRV_VF_VERSION, sizeof(info->version));
+	strlcpy(info->bus_info, pci_name(vf->pdev), sizeof(info->bus_info));
+}
+
+static void otx2vf_get_strings(struct net_device *netdev, u32 sset, u8 *data)
+{
+	struct otx2_nic *vf = netdev_priv(netdev);
+	int stats;
+
+	if (sset != ETH_SS_STATS)
+		return;
+
+	for (stats = 0; stats < otx2_n_dev_stats; stats++) {
+		memcpy(data, otx2_dev_stats[stats].name, ETH_GSTRING_LEN);
+		data += ETH_GSTRING_LEN;
+	}
+
+	otx2_get_qset_strings(vf, &data, 0);
+}
+
+static void otx2vf_get_ethtool_stats(struct net_device *netdev,
+				     struct ethtool_stats *stats, u64 *data)
+{
+	struct otx2_nic *vf = netdev_priv(netdev);
+	int stat;
+
+	otx2_get_dev_stats(vf);
+
+	for (stat = 0; stat < otx2_n_dev_stats; stat++) {
+		*data = ((u64 *)&vf->hw.dev_stats)[otx2_dev_stats[stat].index];
+		data++;
+	}
+
+	otx2_get_qset_stats(vf, stats, &data);
+}
+
+static int otx2vf_get_sset_count(struct net_device *netdev, int sset)
+{
+	struct otx2_nic *vf = netdev_priv(netdev);
+
+	if (sset != ETH_SS_STATS)
+		return -EINVAL;
+
+	return otx2_n_dev_stats +
+	       otx2_n_queue_stats * (vf->hw.rx_queues + vf->hw.tx_queues);
+}
+
+static const struct ethtool_ops otx2vf_ethtool_ops = {
+	.get_drvinfo		= otx2vf_get_drvinfo,
+	.get_strings		= otx2vf_get_strings,
+	.get_ethtool_stats	= otx2vf_get_ethtool_stats,
+	.get_sset_count		= otx2vf_get_sset_count,
+	.set_channels		= otx2_set_channels,
+	.get_channels		= otx2_get_channels,
+	.get_rxnfc		= otx2vf_get_rxnfc,
+	.set_rxnfc              = otx2vf_set_rxnfc,
+	.get_rxfh_key_size	= otx2_get_rxfh_key_size,
+	.get_rxfh_indir_size	= otx2_get_rxfh_indir_size,
+	.get_rxfh		= otx2_get_rxfh,
+	.set_rxfh		= otx2_set_rxfh,
+	.get_ringparam		= otx2_get_ringparam,
+	.set_ringparam		= otx2_set_ringparam,
+	.get_coalesce		= otx2_get_coalesce,
+	.set_coalesce		= otx2_set_coalesce,
+	.get_pauseparam		= otx2_get_pauseparam,
+	.set_pauseparam		= otx2_set_pauseparam,
+};
+
+void otx2vf_set_ethtool_ops(struct net_device *netdev)
+{
+	netdev->ethtool_ops = &otx2vf_ethtool_ops;
+}
+EXPORT_SYMBOL(otx2vf_set_ethtool_ops);
+
 int otx2_destroy_ethtool_flows(struct otx2_nic *pfvf)
 {
 	struct npc_mcam_free_entry_req *req;
@@ -1091,6 +1209,40 @@ int otx2_destroy_ethtool_flows(struct otx2_nic *pfvf)
 
 	pfvf->entries_alloc = false;
 	otx2_mbox_unlock(&pfvf->mbox);
+
+	return 0;
+}
+
+int otx2_delete_vf_ethtool_flows(struct otx2_nic *pfvf)
+{
+	struct npc_delete_flow_req *req;
+	struct otx2_flow *iter, *tmp;
+	int err;
+
+	otx2_mbox_lock(&pfvf->mbox);
+	req = otx2_mbox_alloc_msg_npc_delete_flow(&pfvf->mbox);
+	if (!req) {
+		otx2_mbox_unlock(&pfvf->mbox);
+		return -ENOMEM;
+	}
+
+	req->all_vfs = 1;
+	/* Send message to AF */
+	err = otx2_sync_mbox_msg(&pfvf->mbox);
+	if (err) {
+		otx2_mbox_unlock(&pfvf->mbox);
+		return err;
+	}
+
+	otx2_mbox_unlock(&pfvf->mbox);
+	/* AF deleted VF entries now remove from ethtool list */
+	list_for_each_entry_safe(iter, tmp, &pfvf->flows, list) {
+		if (iter->is_vf) {
+			list_del(&iter->list);
+			kfree(iter);
+			pfvf->nr_flows--;
+		}
+	}
 
 	return 0;
 }

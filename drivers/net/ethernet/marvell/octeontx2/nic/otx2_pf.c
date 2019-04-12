@@ -2272,6 +2272,7 @@ static int otx2_sriov_disable(struct pci_dev *pdev)
 
 	otx2_disable_flr_me_intr(pf);
 	otx2_flr_wq_destroy(pf);
+	otx2_delete_vf_ethtool_flows(pf);
 	otx2_disable_pfvf_mbox_intr(pf);
 	otx2_pfvf_mbox_destroy(pf);
 
