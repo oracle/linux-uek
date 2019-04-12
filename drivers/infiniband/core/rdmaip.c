@@ -494,6 +494,9 @@ static void rdmaip_move_ip6(u8 from_port, u8 to_port, bool failover)
 	int from_ifindex, to_ifindex;
 	u32 prefix_len;
 
+	RDMAIP_DBG2("from_port %d to_port %d  %s\n", from_port,
+		    to_port, (failover ? "failover" : "failback"));
+
 	if (!rdmaip_inet6_socket)
 		return;
 
@@ -555,10 +558,9 @@ static int rdmaip_move_ip4(char *from_dev, char *to_dev, u8 from_port,
 	u8			active_port;
 	struct in_device	*in_dev;
 
-	RDMAIP_DBG2_PTR("from_dev %s :  to_dev %s : from_port %d : to_port %d"
-		    " IP addr %pI4 : failover %s\n",
-		    from_dev, to_dev, from_port, to_port, (void *)&addr,
-		    (failover ? "True" : "False"));
+	RDMAIP_DBG2_PTR("from_dev %s : to_dev %s : from_port %d : to_port %d IP addr %pI4 : %s\n",
+			from_dev, to_dev, from_port, to_port,
+			(void *)&addr, failover ? "True" : "False");
 
 	sin = (struct sockaddr_in *)&ir.ifr_addr;
 	sin->sin_family = AF_INET;
@@ -653,6 +655,9 @@ static int rdmaip_move_ip4(char *from_dev, char *to_dev, u8 from_port,
 
 	/* Clear the IP on old port */
 	ret = rdmaip_set_ip4(NULL, NULL, from_dev2, 0, 0, 0);
+
+	RDMAIP_DBG3("Clearing the IP on the old dev: %s ret %d\n",
+		    from_dev2, ret);
 
 	/* Set the IP on new port */
 	ret = rdmaip_set_ip4(ip_config[to_port].netdev,
@@ -1114,6 +1119,8 @@ static void rdmaip_failover(int port)
 		return;
 	}
 
+	RDMAIP_DBG3("rdmaip_port %d\n", port);
+
 	for (i = 1; i <= ip_port_cnt; i++) {
 		if (i != port &&
 			ip_config[i].port_state == RDMAIP_PORT_DOWN &&
@@ -1151,6 +1158,8 @@ static void rdmaip_failback(struct work_struct *_work)
 	}
 
 	ip_active_port = ip_config[port].ip_active_port;
+
+	RDMAIP_DBG3("rdmaip_port %d\n", port);
 
 	rdmaip_do_failback(port);
 
@@ -1219,6 +1228,8 @@ static int rdmaip_find_port_tstate(u8 port)
 
 	switch (ip_config[port].port_state) {
 	case RDMAIP_PORT_INIT:
+		RDMAIP_DBG3("RDMAIP_PORT_INIT %s\n",
+			    ip_config[port].netdev->name);
 		/*
 		 * We are in INIT state but not during module
 		 * initialization. This can happens when
@@ -1249,6 +1260,8 @@ static int rdmaip_find_port_tstate(u8 port)
 		break;
 
 	case RDMAIP_PORT_DOWN:
+		RDMAIP_DBG3("RDMAIP_PORT_DOWN %s\n",
+			    ip_config[port].netdev->name);
 		if (rdmaip_port_all_layers_up(&ip_config[port])) {
 			ip_config[port].port_state = RDMAIP_PORT_UP;
 			tstate = RDMAIP_PORT_TRANSITION_UP;
@@ -1260,6 +1273,8 @@ static int rdmaip_find_port_tstate(u8 port)
 		break;
 
 	case RDMAIP_PORT_UP:
+		RDMAIP_DBG3("RDMAIP_PORT_UP %s\n",
+			    ip_config[port].netdev->name);
 		if (!rdmaip_port_all_layers_up(&ip_config[port])) {
 			ip_config[port].port_state = RDMAIP_PORT_DOWN;
 			tstate = RDMAIP_PORT_TRANSITION_DOWN;
@@ -1324,7 +1339,7 @@ static void rdmaip_update_port_status_all_layers(u8 port, int event_type,
 		    ip_config[port].if_name, port,
 		    ip_config[port].port_layerflags);
 
-	RDMAIP_DBG2("rdmaip_port state %s\n",
+	RDMAIP_DBG2("rdmaip_port state %s : %s\n", ip_config[port].if_name,
 		    rdmaip_portstate2name(ip_config[port].port_state));
 }
 
@@ -1353,7 +1368,7 @@ static void rdmaip_sched_failover_failback(struct net_device *netdev, u8 port,
 		} else
 			kfree(work);
 	} else {
-		RDMAIP_DBG2("Schedule failover\n");
+		RDMAIP_DBG2("Calling rdmaip_failover port %d\n", port);
 		rdmaip_failover(port);
 	}
 }
@@ -1495,6 +1510,8 @@ static void rdmaip_event_handler(struct ib_event_handler *handler,
 
 	if (event->event != IB_EVENT_PORT_ACTIVE &&
 		event->event != IB_EVENT_PORT_ERR) {
+		RDMAIP_DBG3("Event %s - Ignored\n",
+			    ib_event_msg(event->event));
 		return;
 	}
 
@@ -1525,8 +1542,10 @@ static void rdmaip_update_ip_addrs(int port)
 	struct in_device *in_dev;
 
 	ndev = ip_config[port].netdev;
-	if (!ndev)
+	if (!ndev) {
+		RDMAIP_DBG2("netdev is NULL\n");
 		return;
+	}
 
 	/*
 	 * All IP addresses may be configured when
@@ -2566,8 +2585,11 @@ static int rdmaip_netdev_callback(struct notifier_block *self,
 
 	/* Ignore the event if the event is not related to RDMA device */
 	if (ndev->type != ARPHRD_INFINIBAND) {
-		if (!rdmaip_is_roce_device(ndev, NULL))
+		if (!rdmaip_is_roce_device(ndev, NULL)) {
+			RDMAIP_DBG2(" %s : Event %lx - Not an RDMA device\n",
+				    ndev->name, event);
 			return NOTIFY_DONE;
+		}
 	}
 
 	if (event != NETDEV_UP && event != NETDEV_DOWN &&
