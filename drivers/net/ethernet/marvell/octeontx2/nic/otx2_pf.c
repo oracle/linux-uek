@@ -26,6 +26,8 @@
 #define DRV_STRING	"Marvell OcteonTX2 NIC Physical Function Driver"
 #define DRV_VERSION	"1.0"
 
+#define MAX_ETHTOOL_FLOWS	36
+
 /* Supported devices */
 static const struct pci_device_id otx2_pf_id_table[] = {
 	{ PCI_DEVICE(PCI_VENDOR_ID_CAVIUM, PCI_DEVID_OCTEONTX2_RVU_PF) },
@@ -346,7 +348,6 @@ static int otx2_pfaf_mbox_init(struct otx2_nic *pf)
 	err = otx2_mbox_bbuf_init(mbox, pf->pdev);
 	if (err)
 		goto exit;
-
 
 	INIT_WORK(&mbox->mbox_wrk, otx2_pfaf_mbox_handler);
 	INIT_WORK(&mbox->mbox_up_wrk, otx2_pfaf_mbox_up_handler);
@@ -959,6 +960,7 @@ int otx2_stop(struct net_device *netdev)
 
 	/* First stop packet Rx/Tx */
 	otx2_rxtx_enable(pf, false);
+	otx2_destroy_ethtool_flows(pf);
 
 	/* Disable link notifications */
 	otx2_cgx_config_linkevents(pf, false);
@@ -1061,6 +1063,7 @@ static int otx2_set_features(struct net_device *netdev,
 {
 	struct otx2_nic *pf = netdev_priv(netdev);
 	netdev_features_t changed = features ^ netdev->features;
+	bool ntuple = !!(features & NETIF_F_NTUPLE);
 
 	if ((changed & NETIF_F_LOOPBACK) && netif_running(netdev))
 		return otx2_cgx_config_loopback(pf,
@@ -1069,6 +1072,9 @@ static int otx2_set_features(struct net_device *netdev,
 	if ((changed & NETIF_F_HW_VLAN_CTAG_RX) && netif_running(netdev))
 		return otx2_enable_rxvlan(pf,
 					  features & NETIF_F_HW_VLAN_CTAG_RX);
+
+	if ((changed & NETIF_F_NTUPLE) && !ntuple)
+		otx2_destroy_ethtool_flows(pf);
 
 	return 0;
 }
@@ -1212,7 +1218,7 @@ static int otx2_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 			       NETIF_F_IPV6_CSUM | NETIF_F_RXHASH |
 			       NETIF_F_SG | NETIF_F_TSO | NETIF_F_TSO6);
 	netdev->features |= netdev->hw_features;
-	netdev->hw_features |= NETIF_F_LOOPBACK |
+	netdev->hw_features |= NETIF_F_LOOPBACK | NETIF_F_NTUPLE |
 			       NETIF_F_HW_VLAN_STAG_RX |
 			       NETIF_F_HW_VLAN_CTAG_RX;
 
@@ -1232,6 +1238,8 @@ static int otx2_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 		goto err_detach_rsrc;
 	}
 
+	INIT_LIST_HEAD(&pf->flows);
+	pf->max_flows = MAX_ETHTOOL_FLOWS;
 	otx2_set_ethtool_ops(netdev);
 	return 0;
 
@@ -1261,6 +1269,7 @@ static void otx2_remove(struct pci_dev *pdev)
 
 	pf = netdev_priv(netdev);
 	unregister_netdev(netdev);
+	otx2_destroy_ethtool_flows(pf);
 
 	otx2_disable_mbox_intr(pf);
 
