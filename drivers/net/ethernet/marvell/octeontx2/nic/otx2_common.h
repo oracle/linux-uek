@@ -99,7 +99,7 @@ struct  mbox {
 	struct otx2_mbox	mbox_up;
 	struct work_struct	mbox_up_wrk;
 	struct otx2_nic		*pfvf;
-	void *bbuf_base; /* Bounce buffer for mbox memory */
+	void			*bbuf_base; /* Bounce buffer for mbox memory */
 	atomic_t		lock; /* serialize mailbox access */
 };
 
@@ -157,6 +157,8 @@ struct otx2_nic {
 	u8			cq_time_wait;
 	u32			cq_ecount_wait;
 	struct work_struct	reset_task;
+	u16			rxvlan_entry;
+	bool			rxvlan_alloc;
 };
 
 static inline bool is_9xxx_pass1_silicon(struct pci_dev *pdev)
@@ -448,6 +450,8 @@ void otx2_update_lmac_stats(struct otx2_nic *pfvf);
 int otx2_update_rq_stats(struct otx2_nic *pfvf, int qidx);
 int otx2_update_sq_stats(struct otx2_nic *pfvf, int qidx);
 void otx2_set_ethtool_ops(struct net_device *netdev);
+int otx2_install_rxvlan_offload_flow(struct otx2_nic *pfvf);
+int otx2_delete_rxvlan_offload_flow(struct otx2_nic *pfvf);
 
 int otx2_open(struct net_device *netdev);
 int otx2_stop(struct net_device *netdev);
