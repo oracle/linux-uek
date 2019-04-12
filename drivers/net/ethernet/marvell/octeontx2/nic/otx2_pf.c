@@ -41,6 +41,64 @@ MODULE_LICENSE("GPL v2");
 MODULE_VERSION(DRV_VERSION);
 MODULE_DEVICE_TABLE(pci, otx2_pf_id_table);
 
+enum {
+	TYPE_PFAF,
+};
+
+static void otx2_queue_work(struct mbox *mw, struct workqueue_struct *mbox_wq,
+			    int first, int mdevs, u64 intr, int type)
+{
+	struct otx2_mbox_dev *mdev;
+	struct otx2_mbox *mbox;
+	struct mbox_hdr *hdr;
+	int i;
+
+	for (i = first; i < mdevs; i++) {
+		/* start from 0 */
+		if (!(intr & BIT_ULL(i - first)))
+			continue;
+
+		mbox = &mw->mbox;
+		mdev = &mbox->dev[i];
+		if (type == TYPE_PFAF)
+			otx2_sync_mbox_bbuf(mbox, i);
+		hdr = mdev->mbase + mbox->rx_start;
+		/* The hdr->num_msgs is set to zero immediately in the interrupt
+		 * handler to  ensure that it holds a correct value next time
+		 * when the interrupt handler is called.
+		 * pf->mbox.num_msgs holds the data for use in pfaf_mbox_handler
+		 * pf>mbox.up_num_msgs holds the data for use in
+		 * pfaf_mbox_up_handler.
+		 */
+		if (hdr->num_msgs) {
+			mw->num_msgs = hdr->num_msgs;
+			hdr->num_msgs = 0;
+			if (type == TYPE_PFAF)
+				memset(mbox->hwbase + mbox->rx_start, 0,
+				       ALIGN(sizeof(struct mbox_hdr),
+					     sizeof(u64)));
+
+			queue_work(mbox_wq, &mw[i].mbox_wrk);
+		}
+
+		mbox = &mw->mbox_up;
+		mdev = &mbox->dev[i];
+		if (type == TYPE_PFAF)
+			otx2_sync_mbox_bbuf(mbox, i);
+		hdr = mdev->mbase + mbox->rx_start;
+		if (hdr->num_msgs) {
+			mw->up_num_msgs = hdr->num_msgs;
+			hdr->num_msgs = 0;
+			if (type == TYPE_PFAF)
+				memset(mbox->hwbase + mbox->rx_start, 0,
+				       ALIGN(sizeof(struct mbox_hdr),
+					     sizeof(u64)));
+
+			queue_work(mbox_wq, &mw[i].mbox_up_wrk);
+		}
+	}
+}
+
 static int otx2_config_hw_tx_tstamp(struct otx2_nic *pfvf, bool enable);
 static int otx2_config_hw_rx_tstamp(struct otx2_nic *pfvf, bool enable);
 
@@ -105,11 +163,11 @@ static void otx2_pfaf_mbox_handler(struct work_struct *work)
 	mbox = &af_mbox->mbox;
 	mdev = &mbox->dev[0];
 	rsp_hdr = (struct mbox_hdr *)(mdev->mbase + mbox->rx_start);
-	if (rsp_hdr->num_msgs == 0)
+	if (af_mbox->num_msgs == 0)
 		return;
 	offset = mbox->rx_start + ALIGN(sizeof(*rsp_hdr), MBOX_MSG_ALIGN);
 
-	for (id = 0; id < rsp_hdr->num_msgs; id++) {
+	for (id = 0; id < af_mbox->num_msgs; id++) {
 		msg = (struct mbox_msghdr *)(mdev->mbase + offset);
 		otx2_process_pfaf_mbox_msg(af_mbox->pfvf, msg);
 		offset = mbox->rx_start + msg->next_msgoff;
@@ -118,6 +176,11 @@ static void otx2_pfaf_mbox_handler(struct work_struct *work)
 
 	otx2_mbox_reset(mbox, 0);
 
+	/* mbox messages in the same direction to be handled by same
+	 * mailbox occurs serially. So write to af_mbox->num_msgs
+	 * happens only after the previous context is done with it.
+	 */
+	af_mbox->num_msgs = 0;
 	/* Clear the IRQ */
 	smp_wmb();
 	otx2_write64(af_mbox->pfvf, RVU_PF_INT, BIT_ULL(0));
@@ -188,20 +251,20 @@ static void otx2_pfaf_mbox_up_handler(struct work_struct *work)
 {
 	struct mbox *af_mbox = container_of(work, struct mbox, mbox_up_wrk);
 	struct otx2_mbox *mbox = &af_mbox->mbox_up;
-	struct otx2_nic *pf = af_mbox->pfvf;
 	struct otx2_mbox_dev *mdev = &mbox->dev[0];
+	struct otx2_nic *pf = af_mbox->pfvf;
 	struct mbox_hdr *rsp_hdr;
 	struct mbox_msghdr *msg;
 	int offset, id;
 	int err;
 
 	rsp_hdr = (struct mbox_hdr *)(mdev->mbase + mbox->rx_start);
-	if (rsp_hdr->num_msgs == 0)
+	if (af_mbox->up_num_msgs == 0)
 		return;
 
 	offset = mbox->rx_start + ALIGN(sizeof(*rsp_hdr), MBOX_MSG_ALIGN);
 
-	for (id = 0; id < rsp_hdr->num_msgs; id++) {
+	for (id = 0; id < af_mbox->up_num_msgs; id++) {
 		msg = (struct mbox_msghdr *)(mdev->mbase + offset);
 
 		err = otx2_process_mbox_msg_up(pf, msg);
@@ -211,6 +274,11 @@ static void otx2_pfaf_mbox_up_handler(struct work_struct *work)
 		}
 		offset = mbox->rx_start + msg->next_msgoff;
 	}
+	/* mbox messages in the same direction to be handled by same
+	 * mailbox occurs serially. So write to af_mbox->up_num_msgs
+	 * happens only after the previous context is done with it.
+	 */
+	af_mbox->up_num_msgs = 0;
 
 	otx2_mbox_msg_send(mbox, 0);
 }
@@ -218,30 +286,10 @@ static void otx2_pfaf_mbox_up_handler(struct work_struct *work)
 static irqreturn_t otx2_pfaf_mbox_intr_handler(int irq, void *pf_irq)
 {
 	struct otx2_nic *pf = (struct otx2_nic *)pf_irq;
-	struct otx2_mbox_dev *mdev;
-	struct otx2_mbox *mbox;
-	struct mbox_hdr *hdr;
+	struct mbox *mbox;
 
-	/* Read latest mbox data */
-	smp_rmb();
-
-	/* Check for AF => PF response messages */
-	mbox = &pf->mbox.mbox;
-	mdev = &mbox->dev[0];
-	otx2_sync_mbox_bbuf(mbox, 0);
-
-	hdr = (struct mbox_hdr *)(mdev->mbase + mbox->rx_start);
-	if (hdr->num_msgs)
-		queue_work(pf->mbox_wq, &pf->mbox.mbox_wrk);
-
-	/* Check for AF => PF notification messages */
-	mbox = &pf->mbox.mbox_up;
-	mdev = &mbox->dev[0];
-	otx2_sync_mbox_bbuf(mbox, 0);
-
-	hdr = (struct mbox_hdr *)(mdev->mbase + mbox->rx_start);
-	if (hdr->num_msgs)
-		queue_work(pf->mbox_wq, &pf->mbox.mbox_up_wrk);
+	mbox = &pf->mbox;
+	otx2_queue_work(mbox, pf->mbox_wq, 0, 1, 1, TYPE_PFAF);
 
 	/* Clear the IRQ */
 	otx2_write64(pf, RVU_PF_INT, BIT_ULL(0));

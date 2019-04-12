@@ -100,7 +100,9 @@ struct  mbox {
 	struct work_struct	mbox_up_wrk;
 	struct otx2_nic		*pfvf;
 	void			*bbuf_base; /* Bounce buffer for mbox memory */
-	atomic_t		lock; /* serialize mailbox access */
+	atomic_t		lock;	/* serialize mailbox access */
+	int			num_msgs; /*mbox number of messages*/
+	int			up_num_msgs;/* mbox_up number of messages*/
 };
 
 struct otx2_hw {
