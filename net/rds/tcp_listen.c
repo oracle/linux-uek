@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2006, 2018 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2006, 2019 Oracle and/or its affiliates. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -355,7 +355,6 @@ void rds_tcp_listen_stop(struct socket *sock, struct work_struct *acceptor)
 	release_sock(sk);
 
 	/* wait for accepts to stop and close the socket */
-	flush_workqueue(rds_wq);
 	flush_work(acceptor);
 	sock_release(sock);
 }
