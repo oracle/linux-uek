@@ -1,6 +1,20 @@
 #ifndef _RDS_TCP_H
 #define _RDS_TCP_H
 
+/* Per-network namespace private data for rds_tcp module */
+struct rds_tcp_net {
+	struct socket		*rds_tcp_listen_sock;
+
+	struct workqueue_struct	*rds_tcp_accept_wq;
+	struct work_struct	rds_tcp_accept_w;
+
+	struct ctl_table_header	*rds_tcp_sysctl;
+	struct ctl_table	*ctl_table;
+
+	int			sndbuf_size;
+	int			rcvbuf_size;
+};
+
 struct rds_tcp_incoming {
 	struct rds_incoming	ti_inc;
 	struct sk_buff_head	ti_skb_list;
