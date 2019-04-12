@@ -388,6 +388,13 @@ otx2_mbox_up_handler_ ## _fn_name(struct otx2_nic *pfvf,		\
 MBOX_UP_CGX_MESSAGES
 #undef M
 
+/* Time to wait before watchdog kicks off.
+ * Due to PSE deadlock errata, XOFF on TL2 transmission
+ * queues takes more time than default watchdog timeout.
+ * Hence setting this value higher.
+ */
+#define OTX2_TX_TIMEOUT		(100000 * HZ)
+
 #define	RVU_PFVF_PF_SHIFT	10
 #define	RVU_PFVF_PF_MASK	0x3F
 #define	RVU_PFVF_FUNC_SHIFT	0

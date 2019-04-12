@@ -1245,6 +1245,7 @@ static int otx2_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 			       NETIF_F_HW_VLAN_CTAG_RX;
 
 	netdev->gso_max_segs = OTX2_MAX_GSO_SEGS;
+	netdev->watchdog_timeo = OTX2_TX_TIMEOUT;
 
 	netdev->netdev_ops = &otx2_netdev_ops;
 
