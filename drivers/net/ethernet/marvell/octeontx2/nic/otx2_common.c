@@ -471,6 +471,8 @@ static int otx2_rq_init(struct otx2_nic *pfvf, u16 qidx, u16 lpb_aura)
 	aq->rq.lpb_sizem1 = (DMA_BUFFER_LEN / 8) - 1;
 	aq->rq.xqe_imm_size = 0; /* Copying of packet to CQE not needed */
 	aq->rq.flow_tagw = 32; /* Copy full 32bit flow_tag to CQE header */
+	aq->rq.rq_int_ena = NIX_RQINT_BITS;
+	aq->rq.qint_idx = 0;
 	aq->rq.lpb_drop_ena = 1; /* Enable RED dropping for AURA */
 	aq->rq.xqe_drop_ena = 1; /* Enable RED dropping for CQ/SSO */
 	/* Due to HW errata #34873 minimum 600 unused CQE need to maintaine to
@@ -551,6 +553,8 @@ static int otx2_sq_init(struct otx2_nic *pfvf, u16 qidx, u16 sqb_aura)
 	aq->sq.default_chan = pfvf->tx_chan_base;
 	aq->sq.sqe_stype = NIX_STYPE_STF; /* Cache SQB */
 	aq->sq.sqb_aura = sqb_aura;
+	aq->sq.sq_int_ena = NIX_SQINT_BITS;
+	aq->sq.qint_idx = 0;
 	/* Due pipelining impact minimum 2000 unused SQ CQE's
 	 * need to maintain to avoid CQ overflow.
 	 */
@@ -604,6 +608,8 @@ static int otx2_cq_init(struct otx2_nic *pfvf, u16 qidx)
 	aq->cq.cint_idx = (qidx < pfvf->hw.rx_queues) ? qidx
 				: (qidx - pfvf->hw.rx_queues);
 	cq->cint_idx = aq->cq.cint_idx;
+	aq->cq.cq_err_int_ena = NIX_CQERRINT_BITS;
+	aq->cq.qint_idx = 0;
 	aq->cq.avg_level = 255;
 
 	if (qidx < pfvf->hw.rx_queues) {
@@ -663,6 +669,8 @@ int otx2_config_nix_queues(struct otx2_nic *pfvf)
 int otx2_config_nix(struct otx2_nic *pfvf)
 {
 	struct nix_lf_alloc_req  *nixlf;
+	struct nix_lf_alloc_rsp *rsp;
+	int err;
 
 	pfvf->qset.xqe_size = NIX_XQESZ_W16 ? 128 : 512;
 
@@ -688,7 +696,19 @@ int otx2_config_nix(struct otx2_nic *pfvf)
 	 */
 	nixlf->rx_cfg = BIT_ULL(33) | BIT_ULL(35) | BIT_ULL(37);
 
-	return otx2_sync_mbox_msg(&pfvf->mbox);
+	err = otx2_sync_mbox_msg(&pfvf->mbox);
+	if (err)
+		return err;
+
+	rsp = (struct nix_lf_alloc_rsp *)otx2_mbox_get_rsp(&pfvf->mbox.mbox, 0,
+							   &nixlf->hdr);
+	if (IS_ERR(rsp))
+		return PTR_ERR(rsp);
+
+	if (rsp->qints < 1)
+		return -ENXIO;
+
+	return rsp->hdr.rc;
 }
 
 void otx2_free_aura_ptr(struct otx2_nic *pfvf, int type)
