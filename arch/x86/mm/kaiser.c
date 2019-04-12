@@ -1,4 +1,5 @@
 #include <linux/bug.h>
+#include <linux/cpu.h>
 #include <linux/kernel.h>
 #include <linux/errno.h>
 #include <linux/string.h>
@@ -285,7 +286,8 @@ void __init kaiser_check_boottime_disable(void)
 			goto skip;
 	}
 
-	if (cmdline_find_option_bool(boot_command_line, "nopti"))
+	if (cmdline_find_option_bool(boot_command_line, "nopti") ||
+	    cpu_mitigations_off())
 		goto disable;
 
 skip:
