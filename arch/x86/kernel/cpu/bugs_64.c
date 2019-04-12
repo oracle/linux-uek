@@ -129,7 +129,7 @@ static void __init l1tf_select_mitigation(void)
 #undef pr_fmt
 #define pr_fmt(fmt)	"MDS: " fmt
 
-/* Default mitigation for L1TF-affected CPUs */
+/* Default mitigation for MDS-affected CPUs */
 static enum mds_mitigations mds_mitigation __read_mostly = MDS_MITIGATION_FULL;
 
 static const char * const mds_strings[] = {
