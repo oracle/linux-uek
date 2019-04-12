@@ -39,7 +39,7 @@ static int otx2_ptp_adjfine(struct ptp_clock_info *ptp_info, long scaled_ppm)
 	req->op = PTP_OP_ADJFINE;
 	req->scaled_ppm = scaled_ppm;
 
-	err = otx2_sync_mbox_msg_busy_poll(&ptp->nic->mbox);
+	err = otx2_sync_mbox_msg(&ptp->nic->mbox);
 	if (err)
 		return err;
 
@@ -62,7 +62,7 @@ static u64 ptp_cc_read(const struct cyclecounter *cc)
 
 	req->op = PTP_OP_GET_CLOCK;
 
-	err = otx2_sync_mbox_msg_busy_poll(&ptp->nic->mbox);
+	err = otx2_sync_mbox_msg(&ptp->nic->mbox);
 	if (err)
 		return 0;
 
