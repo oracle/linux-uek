@@ -99,8 +99,11 @@ static void otx2_snd_pkt_handler(struct otx2_nic *pfvf,
 	snd_comp = (struct nix_send_comp_s *)(cqe + sizeof(*cqe_hdr));
 	if (snd_comp->status) {
 		/* tx packet error handling*/
-		dev_info(pfvf->dev, "TX%d: Error in send CQ entry\n",
-			 cq->cint_idx);
+		if (netif_msg_tx_err(pfvf)) {
+			netdev_info(pfvf->netdev,
+				    "TX%d: Error in send CQ status:%x\n",
+				    cq->cint_idx, snd_comp->status);
+		}
 	}
 
 	/* Barrier, so that update to sq by other cpus is visible */
@@ -243,14 +246,18 @@ static void otx2_rcv_pkt_handler(struct otx2_nic *pfvf,
 		sg = (struct nix_rx_sg_s *)start;
 		/* For a 128byte size CQE, NIX_RX_IMM_S is never expected */
 		if (sg->subdc != NIX_SUBDC_SG) {
-			dev_err(pfvf->dev, "RQ%d: Unexpected SUBDC %d\n",
-				cq->cq_idx, sg->subdc);
+			if (netif_msg_rx_err(pfvf))
+				netdev_err(pfvf->netdev,
+					   "RQ%d: Unexpected SUBDC %d\n",
+					   cq->cq_idx, sg->subdc);
 			break;
 		}
 
 		if (!sg->segs) {
-			dev_err(pfvf->dev, "RQ%d: Zero segments in NIX_RX_SG_S\n",
-				cq->cq_idx);
+			if (netif_msg_rx_err(pfvf))
+				netdev_err(pfvf->netdev,
+					   "RQ%d: Zero segment in NIX_RX_SG_S\n",
+					   cq->cq_idx);
 			break;
 		}
 
@@ -260,6 +267,11 @@ static void otx2_rcv_pkt_handler(struct otx2_nic *pfvf,
 		for (seg = 0; seg < sg->segs; seg++) {
 			/* Check for errors */
 			if (parse->errlev || parse->errcode) {
+				if (netif_msg_rx_err(pfvf))
+					netdev_err(pfvf->netdev,
+						   "RQ%d: Error pkt received errlev:%x errcode:%x\n",
+						   cq->cq_idx, parse->errlev,
+						   parse->errcode);
 				otx2_aura_freeptr(pfvf, cq->cq_idx,
 						  *iova & ~0x07ULL);
 				iova++;
@@ -298,6 +310,12 @@ static void otx2_rcv_pkt_handler(struct otx2_nic *pfvf,
 
 	if (!skb)
 		return;
+
+	if (netif_msg_pktdata(pfvf) && !skb_is_nonlinear(skb)) {
+		netdev_info(pfvf->netdev, "skb 0x%p, len=%d\n", skb, skb->len);
+		print_hex_dump(KERN_DEBUG, "RX:", DUMP_PREFIX_OFFSET, 16, 1,
+			       skb->data, skb->len, true);
+	}
 
 	otx2_set_rxhash(pfvf, cqe_hdr, skb);
 

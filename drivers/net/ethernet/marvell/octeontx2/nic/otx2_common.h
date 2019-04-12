@@ -180,6 +180,7 @@ struct otx2_nic {
 	u16			tx_chan_base;
 	u8			cq_time_wait;
 	u32			cq_ecount_wait;
+	u32			msg_enable;
 	struct work_struct	reset_task;
 	u64			reset_count;
 	u8			hw_rx_tstamp;
