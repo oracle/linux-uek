@@ -14,7 +14,6 @@
 #include "otx2_ptp.h"
 
 struct otx2_ptp {
-	struct kref refcount;
 	struct ptp_clock_info ptp_info;
 	struct ptp_clock *ptp_clock;
 	struct otx2_nic *nic;
@@ -22,9 +21,6 @@ struct otx2_ptp {
 	struct cyclecounter cycle_counter;
 	struct timecounter time_counter;
 };
-
-static struct otx2_ptp *ptp_ptr;
-static DEFINE_MUTEX(ptp_mutex);
 
 static int otx2_ptp_adjfine(struct ptp_clock_info *ptp_info, long scaled_ppm)
 {
@@ -130,6 +126,7 @@ static int otx2_ptp_enable(struct ptp_clock_info *ptp_info,
 
 int otx2_ptp_init(struct otx2_nic *pfvf)
 {
+	struct otx2_ptp *ptp_ptr;
 	struct cyclecounter *cc;
 	struct ptp_req *req;
 	int err;
@@ -151,15 +148,6 @@ int otx2_ptp_init(struct otx2_nic *pfvf)
 	}
 	otx2_mbox_unlock(&pfvf->mbox);
 
-	mutex_lock(&ptp_mutex);
-
-	if (ptp_ptr) {
-		kref_get(&ptp_ptr->refcount);
-		pfvf->ptp = ptp_ptr;
-		mutex_unlock(&ptp_mutex);
-		return 0;
-	}
-
 	ptp_ptr = kzalloc(sizeof(*ptp_ptr), GFP_KERNEL);
 	if (!ptp_ptr) {
 		err = -ENOMEM;
@@ -176,8 +164,6 @@ int otx2_ptp_init(struct otx2_nic *pfvf)
 
 	timecounter_init(&ptp_ptr->time_counter, &ptp_ptr->cycle_counter,
 			 ktime_to_ns(ktime_get_real()));
-
-	kref_init(&ptp_ptr->refcount);
 
 	ptp_ptr->ptp_info = (struct ptp_clock_info) {
 		.owner          = THIS_MODULE,
@@ -203,34 +189,19 @@ int otx2_ptp_init(struct otx2_nic *pfvf)
 	pfvf->ptp = ptp_ptr;
 
 error:
-	mutex_unlock(&ptp_mutex);
 	return err;
-}
-
-static void otx2_ptp_release(struct kref *kref)
-{
-	struct otx2_ptp *ptp = container_of(kref, struct otx2_ptp,
-					    refcount);
-	ptp_clock_unregister(ptp->ptp_clock);
-	kfree(ptp);
 }
 
 void otx2_ptp_destroy(struct otx2_nic *pfvf)
 {
-	if (!pfvf->ptp)
+	struct otx2_ptp *ptp = pfvf->ptp;
+
+	if (!ptp)
 		return;
 
-	mutex_lock(&ptp_mutex);
-
-	if (kref_put(&pfvf->ptp->refcount, otx2_ptp_release)) {
-		ptp_ptr = NULL;
-	} else if (ptp_ptr->nic == pfvf) {
-		dev_err(pfvf->dev, "orphaned ptp instance; incorrect order of nic destruction");
-		ptp_ptr->nic = NULL;
-	}
+	ptp_clock_unregister(ptp->ptp_clock);
+	kfree(ptp);
 	pfvf->ptp = NULL;
-
-	mutex_unlock(&ptp_mutex);
 }
 
 int otx2_ptp_clock_index(struct otx2_nic *pfvf)
