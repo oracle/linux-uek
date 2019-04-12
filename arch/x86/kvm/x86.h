@@ -174,4 +174,7 @@ extern unsigned int min_timer_period_us;
 extern unsigned int lapic_timer_advance_ns;
 
 extern struct static_key kvm_no_apic_vcpu;
+
+void kvm_load_guest_xcr0(struct kvm_vcpu *vcpu);
+void kvm_put_guest_xcr0(struct kvm_vcpu *vcpu);
 #endif
