@@ -5842,6 +5842,14 @@ static void emulator_halt(struct x86_emulate_ctxt *ctxt)
 	emul_to_vcpu(ctxt)->arch.halt_request = 1;
 }
 
+static void emulator_get_fpu(struct x86_emulate_ctxt *ctxt)
+{
+}
+
+static void emulator_put_fpu(struct x86_emulate_ctxt *ctxt)
+{
+}
+
 static int emulator_intercept(struct x86_emulate_ctxt *ctxt,
 			      struct x86_instruction_info *info,
 			      enum x86_intercept_stage stage)
@@ -8077,12 +8085,14 @@ int kvm_arch_vcpu_ioctl_run(struct kvm_vcpu *vcpu, struct kvm_run *kvm_run)
 		}
 	}
 
+	kvm_load_guest_fpu(vcpu);
+
 	if (unlikely(vcpu->arch.complete_userspace_io)) {
 		int (*cui)(struct kvm_vcpu *) = vcpu->arch.complete_userspace_io;
 		vcpu->arch.complete_userspace_io = NULL;
 		r = cui(vcpu);
 		if (r <= 0)
-			goto out;
+			goto out_fpu;
 	} else
 		WARN_ON(vcpu->arch.pio.count || vcpu->mmio_needed);
 
@@ -8091,6 +8101,8 @@ int kvm_arch_vcpu_ioctl_run(struct kvm_vcpu *vcpu, struct kvm_run *kvm_run)
 	else
 		r = vcpu_run(vcpu);
 
+out_fpu:
+	kvm_put_guest_fpu(vcpu);
 out:
 	kvm_put_guest_fpu(vcpu);
 	if (vcpu->run->kvm_valid_regs)
