@@ -330,18 +330,6 @@ x86_virt_spec_ctrl(u64 guest_spec_ctrl, u64 guest_virt_spec_ctrl, bool setguest)
 		guestval = hostval & ~x86_spec_ctrl_mask;
 		guestval |= guest_spec_ctrl & x86_spec_ctrl_mask;
 
-		if (cpu_ibrs_inuse_any()) {
-			/* You may wonder why we don't just jump to the
-			 * 'if (hostval ! guestval)' conditional to save an MSR.
-			 * (by say the guest MSR value is IBRS and hostval being
-			 * that too) - the reason is that on some platforms the
-			 * SPEC_CTRL MSR is like a reset button, not latched.
-			 */
-			msrval = setguest ? guestval : hostval;
-			wrmsrl(MSR_IA32_SPEC_CTRL, msrval);
-			return;
-		}
-
 		/* SSBD controlled in MSR_SPEC_CTRL */
 		if (static_cpu_has(X86_FEATURE_SPEC_CTRL_SSBD) ||
 		    static_cpu_has(X86_FEATURE_AMD_SSBD))
@@ -351,7 +339,7 @@ x86_virt_spec_ctrl(u64 guest_spec_ctrl, u64 guest_virt_spec_ctrl, bool setguest)
 		if (static_branch_unlikely(&switch_to_cond_stibp))
 			hostval |= stibp_tif_to_spec_ctrl(ti->flags);
 
-		if (hostval != guestval) {
+		if (hostval != guestval || check_basic_ibrs_inuse()) {
 			msrval = setguest ? guestval : hostval;
 			wrmsrl(MSR_IA32_SPEC_CTRL, msrval);
 		}
