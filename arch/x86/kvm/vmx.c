@@ -1038,6 +1038,8 @@ struct vcpu_vmx {
 
 	unsigned long host_debugctlmsr;
 
+	u64 msr_ia32_power_ctl;
+
 	/*
 	 * Only bits masked by msr_ia32_feature_control_valid_bits can be set in
 	 * msr_ia32_feature_control. FEATURE_CONTROL_LOCKED is always included
@@ -4117,6 +4119,9 @@ static int vmx_get_msr(struct kvm_vcpu *vcpu, struct msr_data *msr_info)
 	case MSR_IA32_SYSENTER_ESP:
 		msr_info->data = vmcs_readl(GUEST_SYSENTER_ESP);
 		break;
+	case MSR_IA32_POWER_CTL:
+		msr_info->data = vmx->msr_ia32_power_ctl;
+		break;
 	case MSR_IA32_BNDCFGS:
 		if (!kvm_mpx_supported() ||
 		    (!msr_info->host_initiated &&
@@ -4201,6 +4206,9 @@ static int vmx_set_msr(struct kvm_vcpu *vcpu, struct msr_data *msr_info)
 		break;
 	case MSR_IA32_SYSENTER_ESP:
 		vmcs_writel(GUEST_SYSENTER_ESP, data);
+		break;
+	case MSR_IA32_POWER_CTL:
+		vmx->msr_ia32_power_ctl = data;
 		break;
 	case MSR_IA32_BNDCFGS:
 		if (!kvm_mpx_supported() ||
