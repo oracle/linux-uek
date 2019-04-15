@@ -457,6 +457,11 @@ enum rdma_nldev_attr {
 	 */
 	RDMA_NLDEV_ATTR_DEV_PROTOCOL,		/* string */
 
+ 	/*
+	 * File descriptor handle of the net namespace object
+	 */
+	RDMA_NLDEV_NET_NS_FD,			/* u32 */
+
 	/*
  	 * Always the end
  	 */
