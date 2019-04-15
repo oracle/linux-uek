@@ -491,6 +491,7 @@ int rvu_get_blkaddr(struct rvu *rvu, int blktype, u16 pcifunc);
 int rvu_poll_reg(struct rvu *rvu, u64 block, u64 offset, u64 mask, bool zero);
 u16 rvu_get_rsrc_mapcount(struct rvu_pfvf *pfvf, int blkid);
 int rvu_get_num_lbk_chans(void);
+int rvu_ndc_sync(struct rvu *rvu, int lfblkid, int lfidx, u64 lfoffset);
 
 /* RVU HW reg validation */
 enum regmap_block {
