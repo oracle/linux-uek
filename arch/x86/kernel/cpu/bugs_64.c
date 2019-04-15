@@ -346,7 +346,7 @@ x86_virt_spec_ctrl(u64 guest_spec_ctrl, u64 guest_virt_spec_ctrl, bool setguest)
 			 * Except on IBRS we don't want to use host base value
 			 * but rather the privilege value which has IBRS set.
 			 */
-			hostval = this_cpu_read(x86_spec_ctrl_priv);
+			hostval = this_cpu_read(x86_spec_ctrl_priv_cpu);
 
 		guestval = hostval & ~x86_spec_ctrl_mask;
 		guestval |= guest_spec_ctrl & x86_spec_ctrl_mask;
