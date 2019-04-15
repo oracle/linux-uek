@@ -900,8 +900,11 @@ cifs_demultiplex_thread(void *p)
 		else
 			length = mid_entry->receive(server, mid_entry);
 
-		if (length < 0)
+		if (length < 0) {
+			if (mid_entry)
+				cifs_mid_q_entry_release(mid_entry);
 			continue;
+		}
 
 		if (server->large_buf)
 			buf = server->bigbuf;
@@ -910,6 +913,8 @@ cifs_demultiplex_thread(void *p)
 		if (mid_entry != NULL) {
 			if (!mid_entry->multiRsp || mid_entry->multiEnd)
 				mid_entry->callback(mid_entry);
+
+			cifs_mid_q_entry_release(mid_entry);
 		} else if (!server->ops->is_oplock_break ||
 			   !server->ops->is_oplock_break(buf, server)) {
 			cifs_dbg(VFS, "No task to wake, unknown frame received! NumMids %d\n",
