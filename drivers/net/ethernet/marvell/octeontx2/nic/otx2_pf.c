@@ -2440,6 +2440,15 @@ static void otx2_remove(struct pci_dev *pdev)
 		return;
 
 	pf = netdev_priv(netdev);
+
+	if (pf->hw_tx_tstamp)
+		otx2_config_hw_tx_tstamp(pf, false);
+	if (pf->hw_rx_tstamp)
+		otx2_config_hw_rx_tstamp(pf, false);
+
+	/* Disable link notifications */
+	otx2_cgx_config_linkevents(pf, false);
+
 	unregister_netdev(netdev);
 	otx2_ptp_destroy(pf);
 	otx2_destroy_ethtool_flows(pf);
