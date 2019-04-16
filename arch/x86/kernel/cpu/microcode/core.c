@@ -589,6 +589,9 @@ static int __reload_late(void *info)
 		ret = 1;
 	}
 
+	if (ret > 0)
+		get_cpu_cap(&cpu_data(cpu));
+
 	/*
 	 * Increase the wait timeout to a safe value here since we're
 	 * serializing the microcode update and that could take a while on a
@@ -613,10 +616,9 @@ static int microcode_reload_late(void)
 	atomic_set(&late_cpus_out, 0);
 
 	ret = stop_machine_cpuslocked(__reload_late, NULL, cpu_online_mask);
-	if (ret > 0) {
-		if (microcode_check())
-			get_cpu_cap(&cpu_data(0));
-	}
+
+	if (ret > 0)
+		microcode_check();
 
 	return ret;
 }

@@ -999,7 +999,7 @@ bool xen_set_default_idle(void);
 
 void stop_this_cpu(void *dummy);
 void df_debug(struct pt_regs *regs, long error_code);
-bool microcode_check(void);
+void microcode_check(void);
 
 void retpoline_enable(void);
 void retpoline_disable(void);
