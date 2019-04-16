@@ -379,20 +379,21 @@ static int otx2_forward_vf_mbox_msgs(struct otx2_nic *pf,
 		if (err) {
 			dev_warn(pf->dev,
 				 "AF not responding to VF%d messages\n", vf);
+			/* restore PF mbase and exit */
+			dst_mdev->mbase = pf->mbox.bbuf_base;
 			otx2_mbox_unlock(&pf->mbox);
 			return err;
 		}
-		otx2_mbox_unlock(&pf->mbox);
-	} else if (dir == MBOX_DIR_PFVF) {
-		otx2_mbox_lock(&pf->mbox);
-		req_hdr = (struct mbox_hdr *)(src_mbox->dev[0].mbase +
-					      src_mbox->rx_start);
+		/* At this point, all the VF messages sent to AF are acked
+		 * with proper responses and responses are copied to VF
+		 * mailbox hence raise interrupt to VF.
+		 */
+		req_hdr = (struct mbox_hdr *)(dst_mdev->mbase +
+					      dst_mbox->mbox.rx_start);
 		req_hdr->num_msgs = num_msgs;
 
-		otx2_forward_msg_pfvf(&src_mbox->dev[0],
-				      &pf->mbox_pfvf[0].mbox,
-				      pf->mbox.bbuf_base,
-				      vf);
+		otx2_forward_msg_pfvf(dst_mdev, &pf->mbox_pfvf[0].mbox,
+				      pf->mbox.bbuf_base, vf);
 		otx2_mbox_unlock(&pf->mbox);
 	} else if (dir == MBOX_DIR_PFVF_UP) {
 		src_mdev = &src_mbox->dev[0];
@@ -808,7 +809,6 @@ static void otx2_pfaf_mbox_handler(struct work_struct *work)
 	struct mbox *af_mbox;
 	struct otx2_nic *pf;
 	int offset, id;
-	int devid = 0;
 
 	af_mbox = container_of(work, struct mbox, mbox_wrk);
 	mbox = &af_mbox->mbox;
@@ -821,7 +821,6 @@ static void otx2_pfaf_mbox_handler(struct work_struct *work)
 
 	for (id = 0; id < af_mbox->num_msgs; id++) {
 		msg = (struct mbox_msghdr *)(mdev->mbase + offset);
-		devid = msg->pcifunc & RVU_PFVF_FUNC_MASK;
 		otx2_process_pfaf_mbox_msg(pf, msg);
 		offset = mbox->rx_start + msg->next_msgoff;
 		mdev->msgs_acked++;
@@ -829,10 +828,6 @@ static void otx2_pfaf_mbox_handler(struct work_struct *work)
 
 	otx2_mbox_reset(mbox, 0);
 
-	if (devid)
-		otx2_forward_vf_mbox_msgs(pf, &pf->mbox.mbox,
-					  MBOX_DIR_PFVF, devid - 1,
-					  af_mbox->num_msgs);
 	/* mbox messages in the same direction to be handled by same
 	 * mailbox occurs serially. So write to af_mbox->num_msgs
 	 * happens only after the previous context is done with it.
