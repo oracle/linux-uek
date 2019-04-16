@@ -1850,7 +1850,7 @@ core_initcall(init_cpu_syscore);
  * only when microcode has been updated. Caller holds microcode_mutex and CPU
  * hotplug lock.
  */
-bool microcode_check(void)
+void microcode_check(void)
 {
 	struct cpuinfo_x86 info;
 
@@ -1869,10 +1869,8 @@ bool microcode_check(void)
 	get_cpu_cap(&info);
 
 	if (!memcmp(&info.x86_capability, &boot_cpu_data.x86_capability, sizeof(info.x86_capability)))
-		return false;
+		return;
 
 	pr_warn("x86/CPU: CPU features have changed after loading microcode, but might not take effect.\n");
 	pr_warn("x86/CPU: Please consider either early loading through initrd/built-in or a potential BIOS update.\n");
-
-	return true;
 }
