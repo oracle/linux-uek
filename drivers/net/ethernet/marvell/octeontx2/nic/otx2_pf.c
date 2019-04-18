@@ -1593,13 +1593,10 @@ int otx2_open(struct net_device *netdev)
 		napi_enable(&cq_poll->napi);
 	}
 
-	/* Check if MAC address from AF is valid or else set a random MAC */
-	if (is_zero_ether_addr(netdev->dev_addr)) {
-		eth_hw_addr_random(netdev);
-		err = otx2_hw_set_mac_addr(pf, netdev);
-		if (err)
-			goto err_disable_napi;
-	}
+	/* Set default mac address */
+	err = otx2_hw_set_mac_addr(pf, netdev);
+	if (err)
+		goto err_disable_napi;
 
 	/* Set default MTU in HW */
 	err = otx2_hw_set_mtu(pf, netdev->mtu);
@@ -2225,6 +2222,9 @@ static int otx2_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 
 	/* Don't check for error.  Proceed without ptp */
 	otx2_ptp_init(pf);
+
+	/* Assign default mac address */
+	otx2_get_mac_from_af(netdev);
 
 	/* NPA's pool is a stack to which SW frees buffer pointers via Aura.
 	 * HW allocates buffer pointer from stack and uses it for DMA'ing

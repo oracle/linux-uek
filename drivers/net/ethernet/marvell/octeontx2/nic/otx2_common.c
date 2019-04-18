@@ -182,6 +182,39 @@ int otx2_hw_set_mac_addr(struct otx2_nic *pfvf, struct net_device *netdev)
 	return err;
 }
 
+static int otx2_hw_get_mac_addr(struct otx2_nic *pfvf,
+				struct net_device *netdev)
+{
+	struct nix_get_mac_addr_rsp *rsp;
+	struct mbox_msghdr *msghdr;
+	struct msg_req *req;
+	int err;
+
+	otx2_mbox_lock(&pfvf->mbox);
+	req = otx2_mbox_alloc_msg_nix_get_mac_addr(&pfvf->mbox);
+	if (!req) {
+		otx2_mbox_unlock(&pfvf->mbox);
+		return -ENOMEM;
+	}
+
+	err = otx2_sync_mbox_msg(&pfvf->mbox);
+	if (err) {
+		otx2_mbox_unlock(&pfvf->mbox);
+		return err;
+	}
+
+	msghdr = otx2_mbox_get_rsp(&pfvf->mbox.mbox, 0, &req->hdr);
+	if (!msghdr) {
+		otx2_mbox_unlock(&pfvf->mbox);
+		return -ENOMEM;
+	}
+	rsp = (struct nix_get_mac_addr_rsp *)msghdr;
+	ether_addr_copy(netdev->dev_addr, rsp->mac_addr);
+	otx2_mbox_unlock(&pfvf->mbox);
+
+	return 0;
+}
+
 int otx2_set_mac_address(struct net_device *netdev, void *p)
 {
 	struct otx2_nic *pfvf = netdev_priv(netdev);
@@ -388,6 +421,24 @@ void otx2_tx_timeout(struct net_device *netdev)
 	schedule_work(&pfvf->reset_task);
 }
 EXPORT_SYMBOL(otx2_tx_timeout);
+
+void otx2_get_mac_from_af(struct net_device *netdev)
+{
+	struct otx2_nic *pfvf = netdev_priv(netdev);
+	int err;
+
+	err = otx2_hw_get_mac_addr(pfvf, netdev);
+	if (err)
+		dev_warn(pfvf->dev, "Failed to read mac from hardware\n");
+
+	/* Normally AF should provide mac addresses for both PFs and CGX mapped
+	 * VFs which means random mac gets generated either in case of error
+	 * or LBK netdev.
+	 */
+	if (!is_valid_ether_addr(netdev->dev_addr))
+		eth_hw_addr_random(netdev);
+}
+EXPORT_SYMBOL(otx2_get_mac_from_af);
 
 static int otx2_get_link(struct otx2_nic *pfvf)
 {
@@ -1288,7 +1339,6 @@ void mbox_handler_nix_lf_alloc(struct otx2_nic *pfvf,
 	pfvf->hw.sqb_size = rsp->sqb_size;
 	pfvf->rx_chan_base = rsp->rx_chan_base;
 	pfvf->tx_chan_base = rsp->tx_chan_base;
-	ether_addr_copy(pfvf->netdev->dev_addr, rsp->mac_addr);
 	pfvf->hw.lso_tsov4_idx = rsp->lso_tsov4_idx;
 	pfvf->hw.lso_tsov6_idx = rsp->lso_tsov6_idx;
 }
