@@ -32,6 +32,7 @@
  */
 #include <rdma/rdma_cm.h>
 #include <rdma/rdma_cm_ib.h>
+#include <rdma/rdmaip_if.h>
 
 #include "rdma_transport.h"
 #include "ib.h"
@@ -447,6 +448,11 @@ int __init rds_rdma_init(void)
 		printk(KERN_NOTICE "Module %s locked in memory until next boot\n",
 		       MODULE_NAME);
 		__module_get(THIS_MODULE);
+
+		/* Prevent Resilient RDMAIP module from unloading
+		 * when RDS RDMA module is loaded.
+		 */
+		rdmaip_hold_resilient_rdmaip();
 	}
 
 	goto out;

@@ -2714,6 +2714,12 @@ int rdmaip_init(void)
 	return ret;
 }
 
+void rdmaip_hold_resilient_rdmaip(void)
+{
+	RDMAIP_DBG2("RDS RDMA holding the reference\n");
+}
+EXPORT_SYMBOL(rdmaip_hold_resilient_rdmaip);
+
 module_init(rdmaip_init);
 module_exit(rdmaip_cleanup);
 

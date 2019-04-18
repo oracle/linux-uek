@@ -7,7 +7,7 @@ config RDS
 
 config RDS_RDMA
 	tristate "RDS over Infiniband and iWARP"
-	depends on RDS && INFINIBAND && INFINIBAND_ADDR_TRANS
+	depends on RDS && INFINIBAND && INFINIBAND_ADDR_TRANS && INFINIBAND_RESILIENT_RDMAIP
 	---help---
 	  Allow RDS to use Infiniband as a transport.
 	  This transport supports RDMA operations.
