@@ -212,7 +212,7 @@ do_create_domain(struct domain_sysfs *lsfs, struct domain_params *dparams)
 		res = -ENODEV;
 		goto err_dom;
 	}
-	strncpy(domain->name, dparams->name, DOMAIN_NAME_LEN);
+	strncpy(domain->name, dparams->name, DOMAIN_NAME_LEN - 1);
 	domain->in_use = true;
 	/* Verify ports are valid and supported. */
 	if (dparams->port_cnt == 0)
@@ -460,7 +460,7 @@ destroy_domain_store(struct kobject *kobj, struct kobj_attribute *attr,
 	char name[DOMAIN_NAME_LEN], *name_ptr;
 	int i, res;
 
-	strncpy(name, buf, DOMAIN_NAME_LEN);
+	strncpy(name, buf, DOMAIN_NAME_LEN - 1);
 	name_ptr = strim(name);
 	if (strlen(name_ptr) == 0) {
 		dev_err(dev, "Empty domain name.\n");
