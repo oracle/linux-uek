@@ -107,22 +107,22 @@ process_obj(const char *obj)
 
 #ifdef CONFIG_64BIT
 	eclass = ELFCLASS64;
-# if defined(__sparc)
+# if CONFIG_SPARC || CONFIG_SPARC64
 	emachine1 = emachine2 = EM_SPARCV9;
-# elif defined(__i386) || defined(__amd64)
+# elif CONFIG_X86 || CONFIG_X86_64
 	emachine1 = emachine2 = EM_X86_64;
-# elif defined(__aarch64__)
+# elif CONFIG_ARM64
 	emachine1 = emachine2 = EM_AARCH64;
 # endif
 	symsize = sizeof(Elf64_Sym);
 #else
 	eclass = ELFCLASS32;
-# if defined(__sparc)
+# if CONFIG_SPARC || CONFIG_SPARC32
 	emachine1 = EM_SPARC;
 	emachine2 = EM_SPARC32PLUS;
-# elif defined(__i386) || defined(__amd64)
+# elif CONFIG_X86 || CONFIG_X86_64
 	emachine1 = emachine2 = EM_386;
-# elif defined(__arm__)
+# elif CONFIG_ARM
 	emachine1 = emachine2 = EM_ARM;
 # endif
 	symsize = sizeof(Elf32_Sym);
