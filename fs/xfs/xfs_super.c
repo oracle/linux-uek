@@ -83,7 +83,8 @@ enum {
 	Opt_quota, Opt_noquota, Opt_usrquota, Opt_grpquota, Opt_prjquota,
 	Opt_uquota, Opt_gquota, Opt_pquota,
 	Opt_uqnoenforce, Opt_gqnoenforce, Opt_pqnoenforce, Opt_qnoenforce,
-	Opt_discard, Opt_nodiscard, Opt_dax, Opt_err,
+	Opt_discard, Opt_nodiscard, Opt_dax, Opt_err, Opt_lazytime,
+	Opt_nolazytime,
 };
 
 static const match_table_t tokens = {
@@ -137,6 +138,9 @@ static const match_table_t tokens = {
 	{Opt_barrier,	"barrier"},	/* use writer barriers for log write and
 					 * unwritten extent conversion */
 	{Opt_nobarrier,	"nobarrier"},	/* .. disable */
+
+	{Opt_lazytime,	"lazytime"},	/* lazy time updates */
+	{Opt_nolazytime, "nolazytime"},
 
 	{Opt_err,	NULL},
 };
@@ -379,6 +383,12 @@ xfs_parseargs(
 		case Opt_nobarrier:
 			xfs_warn(mp, "%s option is deprecated, ignoring.", p);
 			mp->m_flags &= ~XFS_MOUNT_BARRIER;
+			break;
+		case Opt_lazytime:
+			mp->m_super->s_flags |= SB_LAZYTIME;
+			break;
+		case Opt_nolazytime:
+			mp->m_super->s_flags &= ~SB_LAZYTIME;
 			break;
 		default:
 			xfs_warn(mp, "unknown mount option [%s].", p);
@@ -1276,6 +1286,12 @@ xfs_fs_remount(
 
 		token = match_token(p, tokens, args);
 		switch (token) {
+		case Opt_lazytime:
+			sb->s_flags |= SB_LAZYTIME;
+			break;
+		case Opt_nolazytime:
+			sb->s_flags &= ~SB_LAZYTIME;
+			break;
 		case Opt_barrier:
 			xfs_warn(mp, "%s option is deprecated, ignoring.", p);
 			mp->m_flags |= XFS_MOUNT_BARRIER;
