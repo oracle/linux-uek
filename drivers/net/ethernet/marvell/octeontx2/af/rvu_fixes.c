@@ -556,7 +556,7 @@ static void rvu_nix_restore_tx(struct rvu *rvu, struct nix_hw *nix_hw,
 	for (tl = 0; tl < tx_stall->tl3_count; tl++) {
 		if (tx_stall->tl3_tl2_map[tl] != tl2)
 			continue;
-		if (tx_stall->pse_link_bp_level == NIX_TXSCH_LVL_TL3) {
+		if (tx_stall->pse_link_bp_level == NIX_TXSCH_LVL_TL2) {
 			rvu_wr64(rvu, blkaddr,
 				 NIX_AF_TL3X_SW_XOFF(tl), BIT_ULL(0));
 			rvu_wr64(rvu, blkaddr, NIX_AF_TL3X_SW_XOFF(tl), 0x00);
