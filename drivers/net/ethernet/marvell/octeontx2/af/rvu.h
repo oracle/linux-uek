@@ -487,8 +487,6 @@ bool is_block_implemented(struct rvu_hwinfo *hw, int blkaddr);
 bool is_pffunc_map_valid(struct rvu *rvu, u16 pcifunc, int blktype);
 int rvu_get_lf(struct rvu *rvu, struct rvu_block *block, u16 pcifunc, u16 slot);
 int rvu_lf_reset(struct rvu *rvu, struct rvu_block *block, int lf);
-int rvu_lf_reset_ndc_errata_workaround(struct rvu *rvu, struct rvu_block *block,
-				   int lf);
 int rvu_get_blkaddr(struct rvu *rvu, int blktype, u16 pcifunc);
 int rvu_poll_reg(struct rvu *rvu, u64 block, u64 offset, u64 mask, bool zero);
 u16 rvu_get_rsrc_mapcount(struct rvu_pfvf *pfvf, int blkid);
@@ -595,13 +593,6 @@ int npc_mcam_verify_channel(struct rvu *rvu, u16 pcifunc, u8 intf, u16 channel);
 int rvu_cpt_init(struct rvu *rvu);
 int rvu_cpt_register_interrupts(struct rvu *rvu);
 void rvu_cpt_unregister_interrupts(struct rvu *rvu);
-
-/* NDC APIs */
-int rvu_ndc_sync(struct rvu *rvu, int lfblkid, int lfidx, u64 lfoffset,
-		 int ndcblkid);
-
-int rvu_ndc_sync_errata_workaround(struct rvu *rvu, int lfblkaddr, int lfidx,
-				   u64 lfoffset, int ndcblkaddr);
 
 /* TIM APIs */
 int rvu_tim_init(struct rvu *rvu);
