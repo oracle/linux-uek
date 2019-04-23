@@ -402,7 +402,7 @@ static void x86_amd_ssb_disable(void)
 
 static void update_mds_branch_idle(void);
 
-/* Default mitigation for L1TF-affected CPUs */
+/* Default mitigation for MDS-affected CPUs */
 static enum mds_mitigations mds_mitigation __ro_after_init = MDS_MITIGATION_FULL;
 static bool mds_nosmt __ro_after_init = false;
 
