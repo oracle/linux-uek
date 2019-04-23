@@ -174,6 +174,9 @@ static inline bool spectre_v2_eibrs_enabled(void)
 	return spectre_v2_enabled == SPECTRE_V2_IBRS_ENHANCED;
 }
 
+/* Control MDS CPU buffer clear before returning to user space */
+DEFINE_STATIC_KEY_FALSE(mds_user_clear);
+
 void __init check_bugs(void)
 {
 	identify_boot_cpu();
