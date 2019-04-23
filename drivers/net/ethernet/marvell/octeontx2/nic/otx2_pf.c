@@ -1788,7 +1788,7 @@ static void otx2_set_rx_mode(struct net_device *netdev)
 	/* We don't support MAC address filtering yet */
 	if (netdev->flags & IFF_PROMISC)
 		req->mode |= NIX_RX_MODE_PROMISC;
-	else if (netdev->flags & IFF_ALLMULTI)
+	else if (netdev->flags & (IFF_ALLMULTI | IFF_MULTICAST))
 		req->mode |= NIX_RX_MODE_ALLMULTI;
 
 	otx2_sync_mbox_msg_busy_poll(&pf->mbox);
