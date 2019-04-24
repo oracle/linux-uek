@@ -166,8 +166,8 @@ static int process_tar_file(struct device *dev,
 		return 0;
 
 	ucode_size = ntohl(ucode_hdr->code_length) * 2;
-	if (size < ROUNDUP16(ucode_size) + sizeof(struct microcode_hdr)
-	    + CPT_UCODE_SIGN_LEN) {
+	if (!ucode_size || (size < ROUNDUP16(ucode_size) +
+	    sizeof(struct microcode_hdr) + CPT_UCODE_SIGN_LEN)) {
 		dev_err(dev, "Ucode %s invalid size", filename);
 		return -EINVAL;
 	}
@@ -802,7 +802,9 @@ static int ucode_load(struct device *dev, struct microcode *ucode,
 	memcpy(ucode->ver_str, ucode_hdr->ver_str, CPT_UCODE_VER_STR_SZ);
 	ucode->ver_num = ucode_hdr->ver_num;
 	ucode->size = ntohl(ucode_hdr->code_length) * 2;
-	if (!ucode->size) {
+	if (!ucode->size || (fw->size < ROUNDUP16(ucode->size)
+	    + sizeof(struct microcode_hdr) + CPT_UCODE_SIGN_LEN)) {
+		dev_err(dev, "Ucode %s invalid size", ucode_filename);
 		ret = -EINVAL;
 		goto err;
 	}
