@@ -658,7 +658,7 @@ static int calculateipadopad(struct crypto_aead *cipher)
 	int err = 0, icount = 0;
 
 	ctx->sdesc = alloc_sdesc(ctx->hashalg);
-	if (IS_ERR(ctx->sdesc))
+	if (!ctx->sdesc)
 		return -ENOMEM;
 
 	ctx->ipad = kzalloc(bs, GFP_KERNEL);
