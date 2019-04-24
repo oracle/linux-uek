@@ -441,6 +441,25 @@ error:
 	return ret;
 }
 
+static int cpt_is_pf_usable(struct cptpf_dev *cptpf)
+{
+	u64 rev;
+
+	rev = cpt_read64(cptpf->reg_base, BLKADDR_RVUM, 0,
+			 RVU_PF_BLOCK_ADDRX_DISC(BLKADDR_RVUM));
+	rev = (rev >> 12) & 0xFF;
+	/* Check if AF has setup revision for RVUM block, otherwise
+	 * driver probe should be deferred until AF driver comes up
+	 */
+	if (!rev) {
+		dev_warn(&cptpf->pdev->dev,
+			 "AF is not initialized, deferring probe");
+		return -EPROBE_DEFER;
+	}
+
+	return 0;
+}
+
 static int cptpf_sriov_configure(struct pci_dev *pdev, int numvfs)
 {
 	struct cptpf_dev *cptpf = pci_get_drvdata(pdev);
@@ -537,6 +556,11 @@ static int cptpf_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 		err = -ENODEV;
 		goto cpt_err_release_regions;
 	}
+
+	/* Check if AF driver is up, otherwise defer probe */
+	err = cpt_is_pf_usable(cptpf);
+	if (err)
+		goto cpt_err_release_regions;
 
 	/* Map AF-PF mailbox memory */
 	cptpf->afpf_mbox_base = ioremap_wc(pci_resource_start(cptpf->pdev,
