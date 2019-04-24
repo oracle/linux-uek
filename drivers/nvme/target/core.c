@@ -7,6 +7,7 @@
 #include <linux/module.h>
 #include <linux/random.h>
 #include <linux/rculist.h>
+#include <linux/scatterlist.h>
 
 #define CREATE_TRACE_POINTS
 #include "trace.h"
