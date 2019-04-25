@@ -204,6 +204,7 @@ struct cpt_request_info {
 	u8 outcnt; /* Number of output buffers */
 	u8 req_type; /* Type of request */
 	u8 is_enc; /* Is a request an encryption request */
+	u8 is_trunc_hmac; /* Is truncated hmac used */
 };
 
 struct cpt_info_buffer {
