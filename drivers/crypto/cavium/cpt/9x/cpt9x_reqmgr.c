@@ -72,6 +72,19 @@ static int cpt9x_process_ccode(struct pci_dev *pdev,
 		 * when completion code is CPT_COMP_E::GOOD
 		 */
 		if (cpt_status->s9x.uc_compcode) {
+			/* If requested hmac is truncated and ucode returns
+			 * s/g write length error then we report success
+			 * because ucode writes as many bytes of calculated
+			 * hmac as available in gather buffer and reports
+			 * s/g write length error if number of bytes in gather
+			 * buffer is less than full hmac size.
+			 */
+			if (req->is_trunc_hmac && cpt_status->s9x.uc_compcode
+			    == ERR_SCATTER_GATHER_WRITE_LENGTH) {
+				*res_code = 0;
+				break;
+			}
+
 			dev_err(&pdev->dev,
 				"Request failed with software error code 0x%x\n",
 				cpt_status->s9x.uc_compcode);

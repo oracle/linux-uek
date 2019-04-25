@@ -194,6 +194,7 @@ struct cvm_aead_ctx {
 	u8 cipher_type;
 	u8 mac_type;
 	u8 key_type;
+	u8 is_trunc_hmac;
 };
 
 #endif /*__CPT_ALGS_INTERNAL_H_*/

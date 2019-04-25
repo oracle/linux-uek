@@ -170,6 +170,22 @@
 #define CPT_LF_NQX(a)                   (0x400ull | (u64)(a) << 3)
 
 /**
+ * Enumeration cpt_ucode_error_code_e
+ *
+ * Enumerates ucode errors
+ */
+enum cpt_ucode_error_code_e {
+	NO_ERROR = 0x00,
+	ERR_OPCODE_UNSUPPORTED = 0x01,
+
+	/* Scatter gather */
+	ERR_SCATTER_GATHER_WRITE_LENGTH = 0x02,
+	ERR_SCATTER_GATHER_LIST = 0x03,
+	ERR_SCATTER_GATHER_NOT_SUPPORTED = 0x04,
+
+};
+
+/**
  * Enumeration cpt_8x_comp_e
  *
  * CPT 8X Completion Enumeration

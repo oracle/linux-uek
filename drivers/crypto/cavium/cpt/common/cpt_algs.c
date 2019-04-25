@@ -285,6 +285,7 @@ static inline int cvm_enc_dec(struct ablkcipher_request *req, u32 enc)
 	req_info->callback = (void *)cvm_callback;
 	req_info->areq = &req->base;
 	req_info->req_type = ENC_DEC_REQ;
+	req_info->is_trunc_hmac = false;
 	if (!ops->cpt_get_kcrypto_eng_grp_num)
 		return -EFAULT;
 	req_info->ctrl.s.grp = ops->cpt_get_kcrypto_eng_grp_num(pdev);
@@ -544,24 +545,36 @@ static int cvm_aead_set_authsize(struct crypto_aead *tfm,
 		if (authsize != SHA1_DIGEST_SIZE &&
 		    authsize != SHA1_TRUNC_DIGEST_SIZE)
 			return -EINVAL;
+
+		if (authsize == SHA1_TRUNC_DIGEST_SIZE)
+			ctx->is_trunc_hmac = true;
 		break;
 
 	case SHA256:
 		if (authsize != SHA256_DIGEST_SIZE &&
 		    authsize != SHA256_TRUNC_DIGEST_SIZE)
 			return -EINVAL;
+
+		if (authsize == SHA256_TRUNC_DIGEST_SIZE)
+			ctx->is_trunc_hmac = true;
 		break;
 
 	case SHA384:
 		if (authsize != SHA384_DIGEST_SIZE &&
 		    authsize != SHA384_TRUNC_DIGEST_SIZE)
 			return -EINVAL;
+
+		if (authsize == SHA384_TRUNC_DIGEST_SIZE)
+			ctx->is_trunc_hmac = true;
 		break;
 
 	case SHA512:
 		if (authsize != SHA512_DIGEST_SIZE &&
 		    authsize != SHA512_TRUNC_DIGEST_SIZE)
 			return -EINVAL;
+
+		if (authsize == SHA512_TRUNC_DIGEST_SIZE)
+			ctx->is_trunc_hmac = true;
 		break;
 
 	case MAC_NULL:
@@ -957,6 +970,8 @@ static inline u32 create_hmac_ctx_hdr(struct aead_request *req, u32 *argcnt,
 	req_info->ctrl.s.se_req = SE_CORE_REQ;
 	req_info->req.opcode.s.major = MAJOR_OP_HMAC |
 				 DMA_MODE_FLAG(DMA_GATHER_SCATTER);
+	req_info->is_trunc_hmac = ctx->is_trunc_hmac;
+
 	req_info->req.opcode.s.minor = 0;
 	req_info->req.param1 = ctx->auth_key_len;
 	req_info->req.param2 = ctx->mac_type << 8;
@@ -1126,6 +1141,7 @@ u32 cvm_aead_enc_dec(struct aead_request *req, u8 reg_type, u8 enc)
 	req_info->areq = &req->base;
 	req_info->req_type = reg_type;
 	req_info->is_enc = enc;
+	req_info->is_trunc_hmac = false;
 
 	switch (reg_type) {
 	case AEAD_ENC_DEC_REQ:

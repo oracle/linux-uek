@@ -73,6 +73,19 @@ static int cpt8x_process_ccode(struct pci_dev *pdev,
 	case CPT_8X_COMP_E_GOOD:
 		/* Check microcode completion code */
 		if (ecode.s.ccode) {
+			/* If requested hmac is truncated and ucode returns
+			 * s/g write length error then we report success
+			 * because ucode writes as many bytes of calculated
+			 * hmac as available in gather buffer and reports
+			 * s/g write length error if number of bytes in gather
+			 * buffer is less than full hmac size.
+			 */
+			if (req->is_trunc_hmac &&
+			    ecode.s.ccode == ERR_SCATTER_GATHER_WRITE_LENGTH) {
+				*res_code = 0;
+				break;
+			}
+
 			dev_err(&pdev->dev,
 				"Request failed with software error code 0x%x\n",
 				ecode.s.ccode);
