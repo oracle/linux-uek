@@ -1358,7 +1358,7 @@ static ssize_t ucode_load_store(struct device *dev,
 				goto err_print;
 			if (strlen(val) != 4)
 				goto err_print;
-		} else if (!strncasecmp(val, "se", 2)) {
+		} else if (!strncasecmp(val, "se", 2) && strchr(val, ':')) {
 			if (has_se || ucode_idx)
 				goto err_print;
 			tmp = strim(strsep(&val, ":"));
@@ -1370,7 +1370,7 @@ static ssize_t ucode_load_store(struct device *dev,
 				goto err_print;
 			engs[grp_idx++].type = SE_TYPES;
 			has_se = true;
-		} else if (!strncasecmp(strim(val), "ae", 2)) {
+		} else if (!strncasecmp(val, "ae", 2) && strchr(val, ':')) {
 			if (has_ae || ucode_idx)
 				goto err_print;
 			tmp = strim(strsep(&val, ":"));
@@ -1382,7 +1382,7 @@ static ssize_t ucode_load_store(struct device *dev,
 				goto err_print;
 			engs[grp_idx++].type = AE_TYPES;
 			has_ae = true;
-		} else if (!strncasecmp(val, "ie", 2)) {
+		} else if (!strncasecmp(val, "ie", 2) && strchr(val, ':')) {
 			if (has_ie || ucode_idx)
 				goto err_print;
 			tmp = strim(strsep(&val, ":"));
