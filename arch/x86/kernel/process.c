@@ -422,12 +422,12 @@ static __always_inline void __speculation_ctrl_update(unsigned long tifp,
 	 * TIF_SSBD.
 	 */
 	if (tif_diff & _TIF_SSBD) {
-		if (static_cpu_has(X86_FEATURE_VIRT_SSBD)) {
+		if (boot_cpu_has(X86_FEATURE_VIRT_SSBD)) {
 			amd_set_ssb_virt_state(tifn);
-		} else if (static_cpu_has(X86_FEATURE_LS_CFG_SSBD)) {
+		} else if (boot_cpu_has(X86_FEATURE_LS_CFG_SSBD)) {
 			amd_set_core_ssb_state(tifn);
-		} else if (static_cpu_has(X86_FEATURE_SPEC_CTRL_SSBD) ||
-			   static_cpu_has(X86_FEATURE_AMD_SSBD)) {
+		} else if (boot_cpu_has(X86_FEATURE_SPEC_CTRL_SSBD) ||
+			   boot_cpu_has(X86_FEATURE_AMD_SSBD)) {
 			msr |= ssbd_tif_to_spec_ctrl(tifn);
 			updmsr  = true;
 		}
