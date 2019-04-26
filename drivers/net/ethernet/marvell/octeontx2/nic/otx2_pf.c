@@ -1665,7 +1665,7 @@ int otx2_open(struct net_device *netdev)
 	pf->intf_down = false;
 
 	/* we have already received link status notification */
-	if (pf->linfo.link_up)
+	if (pf->linfo.link_up && !(pf->pcifunc & RVU_PFVF_FUNC_MASK))
 		otx2_handle_link_event(pf);
 
 	/* Alloc rxvlan entry in MCAM for PFs only */
@@ -2160,6 +2160,7 @@ static int otx2_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	pf->pdev = pdev;
 	pf->dev = dev;
 	pf->total_vfs = pci_sriov_get_totalvfs(pdev);
+	pf->intf_down = true;
 
 	hw = &pf->hw;
 	hw->pdev = pdev;
