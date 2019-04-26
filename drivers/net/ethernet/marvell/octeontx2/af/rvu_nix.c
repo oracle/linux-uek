@@ -3360,6 +3360,17 @@ int rvu_nix_init(struct rvu *rvu)
 		err = rvu_nix_fixes_init(rvu, hw->nix0, blkaddr);
 		if (err)
 			return err;
+
+		if (is_block_implemented(rvu->hw, BLKADDR_CPT0)) {
+			/* Config IPSec headers identification */
+			rvu_write64(rvu, blkaddr, NIX_AF_RX_DEF_IPSECX(0),
+				    (NPC_LID_LD << 8) |
+				    (NPC_LT_LD_ESP << 4) | 0x0F);
+
+			rvu_write64(rvu, blkaddr, NIX_AF_RX_DEF_IPSECX(1),
+				    (8 << 12) | (NPC_LID_LG << 8) |
+				    (NPC_LT_LG_TU_ESP << 4) | 0x0F);
+		}
 	}
 	return 0;
 }
@@ -3487,6 +3498,16 @@ void rvu_nix_lf_teardown(struct rvu *rvu, u16 pcifunc, int blkaddr, int nixlf)
 	}
 
 	nix_ctx_free(rvu, pfvf);
+
+	if (is_block_implemented(rvu->hw, BLKADDR_CPT0)) {
+	/* reset the configuration related to inline ipsec */
+		rvu_write64(rvu, blkaddr, NIX_AF_LFX_RX_IPSEC_CFG0(nixlf),
+			    0x0);
+		rvu_write64(rvu, blkaddr, NIX_AF_LFX_RX_IPSEC_CFG1(nixlf),
+			    0x0);
+		rvu_write64(rvu, blkaddr, NIX_AF_LFX_RX_IPSEC_SA_BASE(nixlf),
+			    0x0);
+	}
 }
 
 int rvu_mbox_handler_nix_lf_ptp_tx_enable(struct rvu *rvu, struct msg_req *req,
@@ -3821,3 +3842,88 @@ void rvu_nix_unregister_interrupts(struct rvu *rvu)
 			rvu->irq_allocated[offs + i] = false;
 		}
 }
+
+int rvu_mbox_handler_nix_inline_ipsec_cfg(struct rvu *rvu,
+					  struct nix_inline_ipsec_cfg *req,
+					  struct msg_rsp *rsp)
+{
+	int blkaddr;
+	u64 val;
+
+	if (!is_block_implemented(rvu->hw, BLKADDR_CPT0))
+		return 0;
+
+	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NIX, req->hdr.pcifunc);
+	if (blkaddr < 0)
+		return NIX_AF_ERR_AF_LF_INVALID;
+
+	if (req->enable) {
+		/* Set OPCODE and EGRP */
+		val = (u64)req->gen_cfg.egrp << 48 |
+		      (u64)req->gen_cfg.opcode << 32;
+		rvu_write64(rvu, blkaddr, NIX_AF_RX_IPSEC_GEN_CFG, val);
+
+		/* Set CPT queue for inline IPSec */
+		val = (u64)req->inst_qsel.cpt_pf_func << 8 |
+		      req->inst_qsel.cpt_slot;
+		rvu_write64(rvu, blkaddr, NIX_AF_RX_CPTX_INST_QSEL(0), val);
+
+		/* Set CPT credit */
+		rvu_write64(rvu, blkaddr, NIX_AF_RX_CPTX_CREDIT(0),
+			    req->cpt_credit);
+	} else {
+		rvu_write64(rvu, blkaddr, NIX_AF_RX_IPSEC_GEN_CFG, 0x0);
+		rvu_write64(rvu, blkaddr, NIX_AF_RX_CPTX_INST_QSEL(0), 0x0);
+		rvu_write64(rvu, blkaddr, NIX_AF_RX_CPTX_CREDIT(0), 0x3FFFFF);
+	}
+
+	return 0;
+}
+
+int rvu_mbox_handler_nix_inline_ipsec_lf_cfg(
+struct rvu *rvu, struct nix_inline_ipsec_lf_cfg *req, struct msg_rsp *rsp)
+{
+	struct rvu_hwinfo *hw = rvu->hw;
+	u16 pcifunc = req->hdr.pcifunc;
+	struct rvu_block *block;
+	int lf, blkaddr;
+	u64 val;
+
+	if (!is_block_implemented(rvu->hw, BLKADDR_CPT0))
+		return 0;
+
+	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NIX, pcifunc);
+	if (blkaddr < 0)
+		return NIX_AF_ERR_AF_LF_INVALID;
+
+	block = &hw->block[blkaddr];
+	lf = rvu_get_lf(rvu, block, pcifunc, 0);
+	if (lf < 0)
+		return NIX_AF_ERR_AF_LF_INVALID;
+
+	if (req->enable) {
+		/* Set TT, TAG_CONST, SA_POW2_SIZE and LENM1_MAX */
+		val = (u64)req->ipsec_cfg0.tt << 44 |
+		      (u64)req->ipsec_cfg0.tag_const << 20 |
+		      (u64)req->ipsec_cfg0.sa_pow2_size << 16 |
+		      req->ipsec_cfg0.lenm1_max;
+		rvu_write64(rvu, blkaddr, NIX_AF_LFX_RX_IPSEC_CFG0(lf), val);
+
+		/* Set SA_IDX_W and SA_IDX_MAX */
+		val = (u64)req->ipsec_cfg1.sa_idx_w << 32 |
+		      req->ipsec_cfg1.sa_idx_max;
+		rvu_write64(rvu, blkaddr, NIX_AF_LFX_RX_IPSEC_CFG1(lf), val);
+
+		/* Set SA base address */
+		rvu_write64(rvu, blkaddr, NIX_AF_LFX_RX_IPSEC_SA_BASE(lf),
+			    req->sa_base_addr);
+	} else {
+		rvu_write64(rvu, blkaddr, NIX_AF_LFX_RX_IPSEC_CFG0(lf), 0x0);
+		rvu_write64(rvu, blkaddr, NIX_AF_LFX_RX_IPSEC_CFG1(lf), 0x0);
+		rvu_write64(rvu, blkaddr, NIX_AF_LFX_RX_IPSEC_SA_BASE(lf),
+			    0x0);
+	}
+
+	return 0;
+}
+
