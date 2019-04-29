@@ -1060,8 +1060,9 @@ static void asm_finish_io(struct asm_request *r)
 
 
 static void asm_end_ioc(struct asm_request *r, unsigned int bytes_done,
-			int error)
+			int status)
 {
+	int error = blk_status_to_errno(status);
 	BUG_ON(!r);
 	BUG_ON(!(r->r_status & ASM_SUBMITTED));
 
