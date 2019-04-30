@@ -116,11 +116,12 @@ static void cpt8x_send_cmd(union cpt_inst_s *cptinst, u32 db_count, void *obj)
 	struct cpt_vf *cptvf = (struct cpt_vf *) obj;
 	struct command_qinfo *qinfo = &cptvf->cqinfo;
 	struct command_queue *queue = &qinfo->queue[0];
-	unsigned long flags;
 	u8 *ent;
 
-	/* lock commad queue */
-	spin_lock_irqsave(&queue->lock, flags);
+	/*
+	 * cpt8x_send_cmd is currently called only from critical section
+	 * therefore no locking is required for accessing instruction queue
+	 */
 	ent = &queue->qhead->head[queue->idx * qinfo->cmd_size];
 	memcpy(ent, (void *) cptinst, qinfo->cmd_size);
 
@@ -136,8 +137,6 @@ static void cpt8x_send_cmd(union cpt_inst_s *cptinst, u32 db_count, void *obj)
 	/* make sure all memory stores are done before ringing doorbell */
 	smp_wmb();
 	cptvf_write_vq_doorbell(cptvf, db_count);
-	/* unlock command queue */
-	spin_unlock_irqrestore(&queue->lock, flags);
 }
 
 void cpt8x_send_cmds_in_batch(union cpt_inst_s *cptinst, u32 num, void *obj)
