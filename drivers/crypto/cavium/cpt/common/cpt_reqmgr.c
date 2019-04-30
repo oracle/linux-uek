@@ -215,7 +215,6 @@ inline int process_request(struct pci_dev *pdev, struct reqmgr_ops *ops,
 	info->pentry = pentry;
 	info->time_in = jiffies;
 	info->req = req;
-	spin_unlock_bh(&pqueue->lock);
 
 	/* Fill in the command */
 	iq_cmd.cmd.u64 = 0;
@@ -249,6 +248,14 @@ inline int process_request(struct pci_dev *pdev, struct reqmgr_ops *ops,
 
 	/* Send CPT command */
 	ops->send_cmd(&cptinst, 1, obj);
+
+	/*
+	 * We allocate and prepare pending queue entry in critical section
+	 * together with submitting CPT instruction to CPT instruction queue
+	 * to make sure that order of CPT requests is the same in both
+	 * pending and instruction queues
+	 */
+	spin_unlock_bh(&pqueue->lock);
 
 	ret = resume_sender ? -EBUSY : -EINPROGRESS;
 	return ret;

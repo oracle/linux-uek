@@ -263,7 +263,6 @@ static int alloc_command_queues(struct cpt_vf *cptvf,
 		curr = first;
 		*((u64 *)(&last->head[last->size])) = (u64)curr->dma_addr;
 		queue->qhead = curr;
-		spin_lock_init(&queue->lock);
 	}
 	return 0;
 

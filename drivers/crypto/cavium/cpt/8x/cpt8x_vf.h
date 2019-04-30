@@ -33,7 +33,6 @@ struct command_chunk {
 };
 
 struct command_queue {
-	spinlock_t lock; /* command queue lock */
 	u32 idx; /* Command queue host write idx */
 	u32 nchunks; /* Number of command chunks */
 	struct command_chunk *qhead;	/* Command queue head, instructions
