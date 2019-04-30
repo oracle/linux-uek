@@ -57,17 +57,14 @@ static int cpt8x_process_ccode(struct pci_dev *pdev,
 
 	case COMPLETION_CODE_INIT:
 		/* check for timeout */
-		if (time_after_eq(jiffies,
-				  (cpt_info->time_in +
-				  (CPT_COMMAND_TIMEOUT * HZ)))) {
-			dev_err(&pdev->dev, "Request timed out\n");
-		} else if ((ccode == (COMPLETION_CODE_INIT)) &&
-			   (cpt_info->extra_time <
-			    TIME_IN_RESET_COUNT)) {
+		if (time_after_eq(jiffies, cpt_info->time_in +
+				  CPT_COMMAND_TIMEOUT * HZ))
+			dev_warn(&pdev->dev, "Request timed out 0x%p", req);
+		else if (cpt_info->extra_time < TIME_IN_RESET_COUNT) {
 			cpt_info->time_in = jiffies;
 			cpt_info->extra_time++;
-			return 1;
 		}
+		return 1;
 	break;
 
 	case CPT_8X_COMP_E_GOOD:
