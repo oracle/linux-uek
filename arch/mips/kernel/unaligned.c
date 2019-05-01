@@ -954,6 +954,44 @@ static void emulate_load_store_insn(struct pt_regs *regs,
 				compute_return_epc(regs);
 				regs->regs[insn.dsp_format.rd] = value;
 				break;
+#ifdef CONFIG_64BIT
+			case ldx_op:
+				if (!access_ok(VERIFY_READ, addr, 8))
+					goto sigbus;
+
+				LoadDW(addr, value, res);
+				if (res)
+					goto fault;
+				compute_return_epc(regs);
+				regs->regs[insn.dsp_format.rd] = value;
+				break;
+
+			case lwux_op:
+				if (!access_ok(VERIFY_READ, addr, 4))
+					goto sigbus;
+
+				LoadWU(addr, value, res);
+				if (res)
+					goto fault;
+				compute_return_epc(regs);
+				regs->regs[insn.dsp_format.rd] = value;
+				break;
+#endif /* CONFIG_64BIT */
+
+			case lhux_op:
+				if (!access_ok(VERIFY_READ, addr, 2))
+					goto sigbus;
+
+				LoadHWU(addr, value, res);
+				if (res)
+					goto fault;
+				compute_return_epc(regs);
+				regs->regs[insn.dsp_format.rd] = value;
+				break;
+
+			case lbux_op:
+			case lbx_op:
+				goto sigbus;
 			default:
 				goto sigill;
 			}
