@@ -328,7 +328,7 @@ static void do_switch(struct cvm_mmc_host *host, u64 emm_switch)
 	 * Modes setting only taken from slot 0. Work around that hardware
 	 * issue by first switching to slot 0.
 	 */
-	if (bus_id && errata_29956(host)) {
+	if (bus_id) {
 		clear_bus_id(&emm_switch);
 		writeq(emm_switch, host->base + MIO_EMM_SWITCH(host));
 		set_bus_id(&emm_switch, bus_id);
@@ -432,12 +432,8 @@ static void cvm_mmc_switch_to(struct cvm_mmc_slot *slot)
 
 	writeq(slot->cached_rca, host->base + MIO_EMM_RCA(host));
 	emm_switch = slot->cached_switch;
-	/* Due to errata 29956 the clock is not set properly when the
-	 * bus_id is non-zero.
-	 */
-	set_bus_id(&emm_switch, 0);
-	do_switch(host, emm_switch & MIO_EMM_SWITCH_CLK);
-	set_bus_id(&emm_switch, slot->bus_id);
+
+
 	do_switch(host, emm_switch);
 	host->powered = true;
 

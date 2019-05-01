@@ -314,12 +314,4 @@ static inline bool is_mmc_otx2_A0(struct cvm_mmc_host *host)
 	return (pdev->revision == 0x00) &&
 		(chip_id == PCI_SUBSYS_DEVID_9XXX);
 }
-
-static inline bool errata_29956(struct cvm_mmc_host *host)
-{
-	/* Clock is not set properly when the
-	 * bus_id is non-zero.
-	 */
-	return is_mmc_otx2_A0(host);
-}
 #endif
