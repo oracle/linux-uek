@@ -9,3 +9,10 @@ config RAPIDIO_TSI721
 	default "n"
 	---help---
 	  Include support for IDT Tsi721 PCI Express Serial RapidIO controller.
+
+config RAPIDIO_CN6XXX
+	tristate "Cavium CN6XXX SRIO support"
+	depends on RAPIDIO
+	help
+	  Includes support for Cavium Networks CN6XXX family of serial RapidIO
+	  devices.
