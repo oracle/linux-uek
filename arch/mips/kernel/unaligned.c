@@ -2292,8 +2292,53 @@ asmlinkage void do_ade(struct pt_regs *regs)
 	enum ctx_state prev_state;
 	unsigned int __user *pc;
 	mm_segment_t seg;
+#if defined(CONFIG_CPU_CAVIUM_OCTEON) && (CONFIG_CAVIUM_OCTEON_CVMSEG_SIZE > 0)
+	const unsigned long CVMSEG_BASE	= 0xffffffffffff8000ul;
+	const unsigned long CVMSEG_IO	= 0xffffffffffffa200ul;
+	u64 cvmmemctl			= __read_64bit_c0_register($11, 7);
+	unsigned long cvmseg_size	= (cvmmemctl & 0x3f) * 128;
+#endif
 
 	prev_state = exception_enter();
+
+#if defined(CONFIG_CPU_CAVIUM_OCTEON) && (CONFIG_CAVIUM_OCTEON_CVMSEG_SIZE > 0)
+	/*
+	 * Allows tasks to access CVMSEG addresses. These are special
+	 * addresses into the Octeon L1 Cache that can be used as fast
+	 * scratch memory. By default access to this memory is
+	 * disabled so we don't have to save it on context
+	 * switch. When a userspace task references one of these
+	 * addresses, we enable the region and size it to match the
+	 * app.
+	 */
+	if ((regs->cp0_badvaddr == CVMSEG_IO) ||
+	    ((regs->cp0_badvaddr >= CVMSEG_BASE) &&
+	     (regs->cp0_badvaddr < CVMSEG_BASE + cvmseg_size))) {
+		preempt_disable();
+		cvmmemctl = __read_64bit_c0_register($11, 7);
+		/* Make sure all async operations are done */
+		asm volatile ("synciobdma" ::: "memory");
+		/* Enable userspace access to CVMSEG */
+		cvmmemctl |= 1 << 6;
+		__write_64bit_c0_register($11, 7, cvmmemctl);
+# ifdef CONFIG_FAST_ACCESS_TO_THREAD_POINTER
+		/*
+		 * Restore the processes CVMSEG data. Leave off the
+		 * last 8 bytes since the kernel stores the thread
+		 * pointer there.
+		 */
+		memcpy((void *)CVMSEG_BASE, current->thread.cvmseg.cvmseg,
+		       cvmseg_size - 8);
+# else
+		/* Restore the processes CVMSEG data */
+		memcpy((void *)CVMSEG_BASE, current->thread.cvmseg.cvmseg,
+		       cvmseg_size);
+# endif
+		preempt_enable();
+		return;
+	}
+#endif
+
 	perf_sw_event(PERF_COUNT_SW_ALIGNMENT_FAULTS,
 			1, regs, regs->cp0_badvaddr);
 	/*
