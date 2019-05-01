@@ -12,6 +12,7 @@
 #include <linux/time.h>
 #include <linux/delay.h>
 #include <linux/moduleparam.h>
+#include <linux/syscore_ops.h>
 
 #include <asm/octeon/octeon.h>
 #include <asm/octeon/cvmx-npei-defs.h>
@@ -693,7 +694,7 @@ static void octeon_pcie_interface_init(struct octeon_pcie_interface *iface, unsi
 	iface->pem = pem;
 }
 
-static void __init octeon_pcie_setup_port(unsigned int node, unsigned int port)
+static void octeon_pcie_setup_port(unsigned int node, unsigned int port)
 {
 	int result;
 	int host_mode = 0;
@@ -840,6 +841,36 @@ static void __init octeon_pcie_setup_port(unsigned int node, unsigned int port)
 
 }
 
+static void octeon_pcie_setup_ports(void)
+{
+	int node, port;
+
+	for_each_online_node (node)
+		for (port = 0; port < CVMX_PCIE_PORTS; port++)
+			octeon_pcie_setup_port(node, port);
+}
+
+static int octeon_pcie_suspend(void)
+{
+	int node, port;
+
+	for_each_online_node (node)
+		for (port = 0; port < CVMX_PCIE_PORTS; port++)
+			cvmx_pcie_rc_shutdown((node << 2) | (port & 3));
+	return 0;
+}
+
+static void octeon_pcie_teardown(void)
+{
+	octeon_pcie_suspend();
+}
+
+static struct syscore_ops updown = {
+	.suspend = octeon_pcie_suspend,
+	.resume = octeon_pcie_setup_ports,
+	.shutdown = octeon_pcie_teardown,
+};
+
 /**
  * Initialize the Octeon PCIe controllers
  *
@@ -847,9 +878,6 @@ static void __init octeon_pcie_setup_port(unsigned int node, unsigned int port)
  */
 static int __init octeon_pcie_setup(void)
 {
-	int node;
-	int port;
-
 	/* These chips don't have PCIe */
 	if (!octeon_has_feature(OCTEON_FEATURE_PCIE))
 		return 0;
@@ -876,12 +904,9 @@ static int __init octeon_pcie_setup(void)
 	ioport_resource.start = 0;
 	ioport_resource.end = (1ull << 37) - 1;
 
-	for_each_online_node (node)
-		for (port = 0; port < CVMX_PCIE_PORTS; port++)
-			octeon_pcie_setup_port(node, port);
-
-
+	octeon_pcie_setup_ports();
 	octeon_pci_dma_init();
+	register_syscore_ops(&updown);
 
 	return 0;
 }
