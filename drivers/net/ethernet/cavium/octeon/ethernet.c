@@ -935,6 +935,7 @@ static int cvm_oct_probe(struct platform_device *pdev)
 			priv = netdev_priv(dev);
 			INIT_LIST_HEAD(&priv->srio_bcast);
 			priv->of_node = cvm_oct_node_for_port(pip, interface, interface_port);
+			dev->priv_flags |= IFF_LIVE_ADDR_CHANGE;
 			priv->netdev = dev;
 			priv->interface = interface;
 			priv->interface_port = interface_port;

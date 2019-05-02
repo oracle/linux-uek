@@ -1568,7 +1568,7 @@ static void octeon_mgmt_probe_common(struct net_device *netdev,
 	tasklet_init(&p->tx_clean_tasklet,
 		     octeon_mgmt_clean_tx_tasklet, (unsigned long)p);
 
-	netdev->priv_flags |= IFF_UNICAST_FLT;
+	netdev->priv_flags |= IFF_UNICAST_FLT | IFF_LIVE_ADDR_CHANGE;
 
 	pdev->dev.coherent_dma_mask = DMA_BIT_MASK(64);
 	pdev->dev.dma_mask = &pdev->dev.coherent_dma_mask;
