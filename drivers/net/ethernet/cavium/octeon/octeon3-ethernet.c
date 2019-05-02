@@ -2485,6 +2485,8 @@ static int octeon3_eth_probe(struct platform_device *pdev)
 
 	if (pd->mac_type == BGX_MAC)
 		bgx_port_set_netdev(pdev->dev.parent, netdev);
+	netdev->priv_flags |= IFF_LIVE_ADDR_CHANGE;
+
 	priv = netdev_priv(netdev);
 	priv->netdev = netdev;
 	priv->mac_type = pd->mac_type;
