@@ -113,8 +113,13 @@ pg_addiu(u32 **buf, unsigned int reg1, unsigned int reg2, unsigned int off)
 		uasm_i_daddu(buf, reg1, reg2, T9);
 	} else {
 		if (off > 0x7fff) {
-			uasm_i_lui(buf, T9, uasm_rel_hi(off));
-			uasm_i_addiu(buf, T9, T9, uasm_rel_lo(off));
+			if (off == 0x8000) {
+				uasm_i_ori(buf, T9, ZERO, 0x8000);
+			} else {
+				uasm_i_lui(buf, T9, uasm_rel_hi(off));
+				if (uasm_rel_lo(off) != 0)
+					uasm_i_addiu(buf, T9, T9, uasm_rel_lo(off));
+			}
 			UASM_i_ADDU(buf, reg1, reg2, T9);
 		} else
 			UASM_i_ADDIU(buf, reg1, reg2, off);
@@ -287,66 +292,99 @@ void build_clear_page(void)
 	memset(labels, 0, sizeof(labels));
 	memset(relocs, 0, sizeof(relocs));
 
-	set_prefetch_parameters();
+	if (current_cpu_data.cputype == CPU_CAVIUM_OCTEON2) {
+		const unsigned int wb_nudge = 26;
 
-	/*
-	 * This algorithm makes the following assumptions:
-	 *   - The prefetch bias is a multiple of 2 words.
-	 *   - The prefetch bias is less than one page.
-	 */
-	BUG_ON(pref_bias_clear_store % (2 * clear_word_size));
-	BUG_ON(PAGE_SIZE < pref_bias_clear_store);
+		pg_addiu(&buf, T0, A0, PAGE_SIZE);
 
-	off = PAGE_SIZE - pref_bias_clear_store;
-	if (off > 0xffff || !pref_bias_clear_store)
-		pg_addiu(&buf, A2, A0, off);
-	else
-		uasm_i_ori(&buf, A2, A0, off);
+		UASM_i_ADDIU(&buf, A1, A0, 128);
+		uasm_l_clear_pref(&l, buf);
+		uasm_i_zcbt(&buf, A0);
+		uasm_i_pref(&buf, wb_nudge, 0, A0);
+		UASM_i_ADDIU(&buf, A0, A0, 256);
+		uasm_i_zcbt(&buf, A1);
+		uasm_i_pref(&buf, wb_nudge, 0, A1);
+		UASM_i_ADDIU(&buf, A1, A1, 256);
+		uasm_i_zcbt(&buf, A0);
+		uasm_i_pref(&buf, wb_nudge, 0, A0);
+		UASM_i_ADDIU(&buf, A0, A0, 256);
+		uasm_i_zcbt(&buf, A1);
+		uasm_i_pref(&buf, wb_nudge, 0, A1);
+		UASM_i_ADDIU(&buf, A1, A1, 256);
+		uasm_i_zcbt(&buf, A0);
+		uasm_i_pref(&buf, wb_nudge, 0, A0);
+		UASM_i_ADDIU(&buf, A0, A0, 256);
+		uasm_i_zcbt(&buf, A1);
+		uasm_i_pref(&buf, wb_nudge, 0, A1);
+		UASM_i_ADDIU(&buf, A1, A1, 256);
+		uasm_i_zcbt(&buf, A0);
+		uasm_i_pref(&buf, wb_nudge, 0, A0);
+		UASM_i_ADDIU(&buf, A0, A0, 256);
+		uasm_i_zcbt(&buf, A1);
+		uasm_i_pref(&buf, wb_nudge, 0, A1);
+		uasm_il_bne(&buf, &r, A0, T0, label_clear_pref);
+		UASM_i_ADDIU(&buf, A1, A1, 256);
+	} else {
+		set_prefetch_parameters();
 
-	if (R4600_V2_HIT_CACHEOP_WAR && cpu_is_r4600_v2_x())
-		uasm_i_lui(&buf, AT, uasm_rel_hi(0xa0000000));
+		/*
+		 * This algorithm makes the following assumptions:
+		 *   - The prefetch bias is a multiple of 2 words.
+		 *   - The prefetch bias is less than one page.
+		 */
+		BUG_ON(pref_bias_clear_store % (2 * clear_word_size));
+		BUG_ON(PAGE_SIZE < pref_bias_clear_store);
 
-	off = cache_line_size ? min(8, pref_bias_clear_store / cache_line_size)
-				* cache_line_size : 0;
-	while (off) {
-		build_clear_pref(&buf, -off);
-		off -= cache_line_size;
-	}
-	uasm_l_clear_pref(&l, buf);
-	do {
-		build_clear_pref(&buf, off);
-		build_clear_store(&buf, off);
-		off += clear_word_size;
-	} while (off < half_clear_loop_size);
-	pg_addiu(&buf, A0, A0, 2 * off);
-	off = -off;
-	do {
-		build_clear_pref(&buf, off);
-		if (off == -clear_word_size)
-			uasm_il_bne(&buf, &r, A0, A2, label_clear_pref);
-		build_clear_store(&buf, off);
-		off += clear_word_size;
-	} while (off < 0);
+		off = PAGE_SIZE - pref_bias_clear_store;
+		if (off > 0xffff || !pref_bias_clear_store)
+			pg_addiu(&buf, A2, A0, off);
+		else
+			uasm_i_ori(&buf, A2, A0, off);
 
-	if (pref_bias_clear_store) {
-		pg_addiu(&buf, A2, A0, pref_bias_clear_store);
-		uasm_l_clear_nopref(&l, buf);
-		off = 0;
+		if (R4600_V2_HIT_CACHEOP_WAR && cpu_is_r4600_v2_x())
+			uasm_i_lui(&buf, AT, 0xa000);
+
+		off = cache_line_size ? min(8, pref_bias_clear_store / cache_line_size)
+	                        * cache_line_size : 0;
+		while (off) {
+			build_clear_pref(&buf, -off);
+			off -= cache_line_size;
+		}
+		uasm_l_clear_pref(&l, buf);
 		do {
+			build_clear_pref(&buf, off);
 			build_clear_store(&buf, off);
 			off += clear_word_size;
 		} while (off < half_clear_loop_size);
 		pg_addiu(&buf, A0, A0, 2 * off);
 		off = -off;
 		do {
+			build_clear_pref(&buf, off);
 			if (off == -clear_word_size)
-				uasm_il_bne(&buf, &r, A0, A2,
-					    label_clear_nopref);
+				uasm_il_bne(&buf, &r, A0, A2, label_clear_pref);
 			build_clear_store(&buf, off);
 			off += clear_word_size;
 		} while (off < 0);
-	}
 
+		if (pref_bias_clear_store) {
+			pg_addiu(&buf, A2, A0, pref_bias_clear_store);
+			uasm_l_clear_nopref(&l, buf);
+			off = 0;
+			do {
+				build_clear_store(&buf, off);
+				off += clear_word_size;
+			} while (off < half_clear_loop_size);
+			pg_addiu(&buf, A0, A0, 2 * off);
+			off = -off;
+			do {
+				if (off == -clear_word_size)
+					uasm_il_bne(&buf, &r, A0, A2,
+						label_clear_nopref);
+				build_clear_store(&buf, off);
+				off += clear_word_size;
+			} while (off < 0);
+		}
+	}
 	uasm_i_jr(&buf, RA);
 	uasm_i_nop(&buf);
 
