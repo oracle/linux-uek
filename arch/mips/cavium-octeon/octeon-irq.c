@@ -1582,6 +1582,12 @@ static int __init octeon_irq_init_ciu(
 	if (r)
 		goto err;
 
+	if (octeon_has_feature(OCTEON_FEATURE_TDM)) {
+		r = octeon_irq_force_ciu_mapping(ciu_domain, OCTEON_IRQ_TDM, 0, 57);
+		if (r)
+			goto err;
+	}
+
 	/* CIU_1 */
 	r = irq_alloc_descs_from(OCTEON_IRQ_WDOG0, 16, 0);
 	WARN_ON(r < 0);
