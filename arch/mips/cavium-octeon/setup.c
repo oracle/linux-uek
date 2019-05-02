@@ -450,8 +450,54 @@ const char *octeon_board_type_string(void)
 const char *get_system_type(void)
 	__attribute__ ((alias("octeon_board_type_string")));
 
+/* Try for a DIDTO of about 250 mS */
+static unsigned int calc_didto(void)
+{
+	unsigned int bit = 0;
+	u64 clk = octeon_get_clock_rate();
+
+	clk >>= 2; /* cycles in 250mS */
+	do {
+		clk >>= 1;
+		if (clk)
+			bit++;
+	} while (clk);
+
+	if (bit > 31)
+		return 0;
+
+	if (OCTEON_IS_OCTEON1PLUS()) {
+		switch (bit) {
+		case 31:
+			return 0;
+		case 30:
+			return 1;
+		default:
+			return 2;
+		}
+	} else {
+		switch (bit) {
+		case 31:
+			return 0;
+		case 30:
+			return 1;
+		case 29:
+			return 2;
+		case 28:
+			return 4;
+		case 27:
+			return 5;
+		case 26:
+			return 6;
+		default:
+			return 7;
+		}
+	}
+}
+
 void octeon_user_io_init(void)
 {
+	unsigned int v;
 	union octeon_cvmemctl cvmmemctl;
 
 	/* Get the current settings for CP0_CVMMEMCTL_REG */
@@ -514,8 +560,9 @@ void octeon_user_io_init(void)
 	 * = 231, 1 = 230, 2 = 229, 3 = 214. Actual time-out is
 	 * between 1x and 2x this interval. For example, with
 	 * DIDTTO=3, expiration interval is between 16K and 32K. */
-	cvmmemctl.s.didtto = 0;
-	cvmmemctl.s.didtto2 = 0;
+	v = calc_didto();
+	cvmmemctl.s.didtto = v & 3;
+	cvmmemctl.s.didtto2 = (v >> 2) & 1;
 	/* R/W If set, the (mem) CSR clock never turns off. */
 	cvmmemctl.s.csrckalwys = 0;
 	/* R/W If set, mclk never turns off. */
