@@ -1555,6 +1555,21 @@ static int __init octeon_irq_init_ciu(
 			goto err;
 	}
 
+	if (octeon_has_feature(OCTEON_FEATURE_SRIO)) {
+		r = octeon_irq_set_ciu_mapping(OCTEON_IRQ_SRIO0, 1, 50, 0, chip, handle_level_irq);
+		if (r)
+			goto err;
+		r = octeon_irq_set_ciu_mapping(OCTEON_IRQ_SRIO1, 1, 51, 0, chip, handle_level_irq);
+		if (r)
+			goto err;
+		r = octeon_irq_set_ciu_mapping(OCTEON_IRQ_SRIO2, 1, 60, 0, chip, handle_level_irq);
+		if (r)
+			goto err;
+		r = octeon_irq_set_ciu_mapping(OCTEON_IRQ_SRIO3, 1, 61, 0, chip, handle_level_irq);
+		if (r)
+			goto err;
+	}
+
 	/* Enable the CIU lines */
 	set_c0_status(STATUSF_IP3 | STATUSF_IP2);
 	if (octeon_irq_use_ip4)
