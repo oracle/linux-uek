@@ -1201,6 +1201,14 @@ static int octeon3_eth_rx_one(struct octeon3_rx *rx, bool is_async,
 
 	if (likely(priv->netdev->flags & IFF_UP)) {
 		skb_checksum_none_assert(skb);
+
+#if IS_ENABLED(CONFIG_OCTEON3_ETHERNET_SRIO)
+		if (priv->mac_type == SRIO_MAC) {
+			__skb_pull(skb,
+				   sizeof(struct cvmx_srio_rx_message_header));
+		}
+#endif
+
 		skb->protocol = eth_type_trans(skb, priv->netdev);
 		skb->dev = priv->netdev;
 		if (priv->netdev->features & NETIF_F_RXCSUM) {
@@ -1212,13 +1220,6 @@ static int octeon3_eth_rx_one(struct octeon3_rx *rx, bool is_async,
 				if (work->word2.err_code == 0)
 					skb->ip_summed = CHECKSUM_UNNECESSARY;
 		}
-
-#if IS_ENABLED(CONFIG_OCTEON3_ETHERNET_SRIO)
-		if (priv->mac_type == SRIO_MAC) {
-			__skb_pull(skb,
-				   sizeof(struct cvmx_srio_rx_message_header));
-		}
-#endif
 
 		if (unlikely(priv->intercept_cb)) {
 			enum cvm_oct_callback_result cb_result;
@@ -2325,8 +2326,10 @@ static int octeon3_eth_srio_ndo_open(struct net_device *netdev)
 	}
 
 	rc = octeon3_eth_common_ndo_open(netdev);
-	if (rc == 0)
+	if (rc == 0) {
+		rc = __cvmx_helper_srio_enable(priv->xiface);
 		netif_carrier_on(netdev);
+	}
 
 	netdev->netdev_ops->ndo_change_mtu(netdev, netdev->mtu);
 
