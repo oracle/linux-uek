@@ -588,13 +588,6 @@ static int __init octeon_pci_setup(void)
 	/* Point pcibios_map_irq() to the PCI version of it */
 	octeon_pcibios_map_irq = octeon_pci_pcibios_map_irq;
 
-	/* Only use the big bars on chips that support it */
-	if (OCTEON_IS_MODEL(OCTEON_CN31XX) ||
-	    OCTEON_IS_MODEL(OCTEON_CN38XX_PASS2))
-		octeon_dma_bar_type = OCTEON_DMA_BAR_TYPE_SMALL;
-	else
-		octeon_dma_bar_type = OCTEON_DMA_BAR_TYPE_BIG;
-
 	/* PCI I/O and PCI MEM values */
 	set_io_port_base(OCTEON_PCI_IOSPACE_BASE);
 	ioport_resource.start = 0;
