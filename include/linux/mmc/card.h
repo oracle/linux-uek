@@ -319,6 +319,8 @@ static inline bool mmc_large_sector(struct mmc_card *card)
 
 bool mmc_card_is_blockaddr(struct mmc_card *card);
 
+bool mmc_card_is_blockaddr(struct mmc_card *card);
+
 #define mmc_card_mmc(c)		((c)->type == MMC_TYPE_MMC)
 #define mmc_card_sd(c)		((c)->type == MMC_TYPE_SD)
 #define mmc_card_sdio(c)	((c)->type == MMC_TYPE_SDIO)
