@@ -890,7 +890,6 @@ static int octeon_is_srio_port_valid(int srio_port)
 static void octeon_srio_ports_init(int srio_port)
 {
 	struct octeon_srio_port *sport;
-	int			host;
 
 	sport = &srio_ports[srio_port];
 
@@ -905,28 +904,8 @@ static void octeon_srio_ports_init(int srio_port)
 		sport->qlm = srio_port;
 	}
 
-	/* Get the mode (host or endpoint) the srio port is configured as */
-	if (OCTEON_IS_MODEL(OCTEON_CNF75XX)) {
-		cvmx_rst_ctlx_t		rst_ctl;
-
-		rst_ctl.u64 = cvmx_read_csr(CVMX_RST_CTLX(sport->qlm));
-		host = rst_ctl.s.host_mode;
-	} else {
-		union cvmx_mio_rst_ctlx	mio_rst_ctl;
-
-		mio_rst_ctl.u64 = cvmx_read_csr(CVMX_MIO_RST_CNTLX(sport->qlm));
-		host = mio_rst_ctl.s.prtmode;
-	}
-
-	/* Only host mode ports enumerate. Endpoint does discovery */
-	if (host)
-		sport->mport.host_deviceid = srio_port;
-	else
-		sport->mport.host_deviceid = -1;
-
 	sport->mport.ops = &octeon_rio_ops;
-	sport->mport.id = srio_port;
-	sport->mport.index = 0;
+	sport->mport.index = srio_port;
 	sport->mport.sys_size = 0;
 	sport->mport.iores.start =
 		CVMX_SRIOX_STATUS_REG(srio_port) & ((1ull << 49) - 1);
@@ -1153,6 +1132,7 @@ static int __init octeon_rio_init(void)
 		if (cvmx_srio_initialize(srio_port, 0))
 			continue;
 
+		rio_mport_initialize(&sport->mport);
 		rio_register_mport(&sport->mport);
 
 		/* Initialize the interrupts */
