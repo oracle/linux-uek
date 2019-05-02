@@ -4,4 +4,8 @@
 platform-$(CONFIG_CAVIUM_OCTEON_SOC)	+= cavium-octeon/
 cflags-$(CONFIG_CAVIUM_OCTEON_SOC)	+=				\
 		-I$(srctree)/arch/mips/include/asm/mach-cavium-octeon
+ifdef CONFIG_MAPPED_KERNEL
+load-$(CONFIG_CAVIUM_OCTEON_SOC)	+= 0xffffffffc0000000
+else
 load-$(CONFIG_CAVIUM_OCTEON_SOC)	+= 0xffffffff80100000
+endif
