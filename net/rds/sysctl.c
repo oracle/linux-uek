@@ -56,6 +56,10 @@ unsigned int rds_sock_max_peers_min = 128;
 unsigned int rds_sock_max_peers_max = 65536;
 unsigned int rds_sock_max_peers = 8192;
 
+unsigned int rds_sysctl_passive_connect_delay_min_percent = 1;
+unsigned int rds_sysctl_passive_connect_delay_max_percent = 1000;
+unsigned int rds_sysctl_passive_connect_delay_percent = 100;
+
 /*
  * We have official values, but must maintain the sysctl interface for existing
  * software that expects to find these values here.
@@ -139,6 +143,15 @@ static struct ctl_table rds_sysctl_rds_table[] = {
 		.proc_handler   = &proc_dointvec_minmax,
 		.extra1		= &rds_sock_max_peers_min,
 		.extra2		= &rds_sock_max_peers_max
+	},
+	{
+		.procname       = "passive_connect_delay_percent",
+		.data           = &rds_sysctl_passive_connect_delay_percent,
+		.maxlen         = sizeof(rds_sysctl_passive_connect_delay_percent),
+		.mode           = 0644,
+		.proc_handler   = proc_dointvec_minmax,
+		.extra1		= &rds_sysctl_passive_connect_delay_min_percent,
+		.extra2		= &rds_sysctl_passive_connect_delay_max_percent,
 	},
 	{ }
 };
