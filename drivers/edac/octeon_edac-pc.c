@@ -17,13 +17,8 @@
 
 #include "edac_module.h"
 
-#include <asm/octeon/cvmx.h>
+#include <asm/octeon/octeon.h>
 #include <asm/mipsregs.h>
-
-extern int register_co_cache_error_notifier(struct notifier_block *nb);
-extern int unregister_co_cache_error_notifier(struct notifier_block *nb);
-
-extern unsigned long long cache_err_dcache[NR_CPUS];
 
 struct co_cache_error {
 	struct notifier_block notifier;
@@ -46,11 +41,23 @@ static int  co_cache_error_event(struct notifier_block *this,
 	u64 icache_err = read_octeon_c0_icacheerr();
 	u64 dcache_err;
 
-	if (event) {
+	switch (event) {
+	case CO_CACHE_ERROR_UNRECOVERABLE:
 		dcache_err = cache_err_dcache[core];
 		cache_err_dcache[core] = 0;
-	} else {
+		break;
+	case CO_CACHE_ERROR_RECOVERABLE:
 		dcache_err = read_octeon_c0_dcacheerr();
+		break;
+	case CO_CACHE_ERROR_WB_PARITY:
+		edac_device_printk(p->ed, KERN_ERR,
+				   "CacheErr (WB Parity): core %d/cpu %d\n",
+				   core, cpu);
+		edac_device_handle_ue(p->ed, cpu, 2, "write-buffer");
+		return NOTIFY_STOP;
+	default:
+		WARN(1, "Unknown event: %lu\n", event);
+		return NOTIFY_BAD;
 	}
 
 	if (icache_err & 1) {
@@ -92,7 +99,7 @@ static int co_cache_error_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, p);
 
 	p->ed = edac_device_alloc_ctl_info(0, "cpu", num_possible_cpus(),
-					   "cache", 2, 0, NULL, 0,
+					   "cache", 3, 0, NULL, 0,
 					   edac_device_alloc_index());
 	if (!p->ed)
 		goto err;
