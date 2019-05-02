@@ -271,6 +271,7 @@ struct rds_conn_path {
 
 	/* when was this connection started */
 	unsigned long		cp_connection_start;
+	uint64_t		cp_conn_start_jf;
 
 	/* Re-connect stall diagnostics */
 	unsigned long		cp_reconn_flags;
@@ -740,6 +741,7 @@ struct rds_transport {
 	void (*flush_mrs)(void);
 	void (*check_migration)(struct rds_connection *conn,
 				struct rdma_cm_event *event);
+	atomic64_t rds_avg_conn_jf;
 };
 
 /* Used to store per peer socket buffer info. */
@@ -1205,6 +1207,7 @@ extern unsigned long rds_sysctl_trace_flags;
 extern unsigned int  rds_sysctl_trace_level;
 extern unsigned int  rds_sysctl_shutdown_trace_start_time;
 extern unsigned int  rds_sysctl_shutdown_trace_end_time;
+extern unsigned int  rds_sysctl_passive_connect_delay_percent;
 
 /* threads.c */
 int rds_threads_init(void);
