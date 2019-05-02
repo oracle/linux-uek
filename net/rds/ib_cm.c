@@ -1360,6 +1360,9 @@ int rds_ib_conn_path_connect(struct rds_conn_path *cp)
 
 	ic = conn->c_transport_data;
 
+	rds_rtd(RDS_RTD_CM, "conn: %p now start:%lu\n", conn, jiffies);
+	conn->c_path->cp_conn_start_jf = jiffies;
+
 	/* XXX I wonder what affect the port space has */
 	/* delegate cm event handler to rdma_transport */
 #if IS_ENABLED(CONFIG_IPV6)
