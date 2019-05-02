@@ -1022,6 +1022,7 @@ void rds_conn_path_drop(struct rds_conn_path *cp, int reason)
 		cp->cp_reconnect_warn = 0;
 	}
 	cp->cp_reconnect_drops++;
+	cp->cp_conn_start_jf = 0;
 
 	atomic_set(&cp->cp_state, RDS_CONN_ERROR);
 
