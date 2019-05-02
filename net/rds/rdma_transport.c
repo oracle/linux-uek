@@ -132,6 +132,8 @@ static int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 
 	switch (event->event) {
 	case RDMA_CM_EVENT_CONNECT_REQUEST:
+		if (conn && conn->c_path)
+			conn->c_path->cp_conn_start_jf = 0;
 		ret = trans->cm_handle_connect(cm_id, event, isv6);
 		break;
 
