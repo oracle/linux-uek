@@ -77,6 +77,32 @@ EXPORT_SYMBOL_GPL(rds_wq);
 struct workqueue_struct *rds_local_wq;
 EXPORT_SYMBOL_GPL(rds_local_wq);
 
+static inline void rds_update_avg_connect_time(struct rds_conn_path *cp)
+{
+	/* Implement:
+	 *    new_avg = (1 - tau) * old_avg + tau * new_conn_time
+	 * with tau = 0.5
+	 */
+	unsigned long new_conn_jf;
+	unsigned long old_avg_jf;
+	unsigned long new_avg_jf;
+
+	if (!cp->cp_conn_start_jf)
+		return;
+
+	new_conn_jf = get_jiffies_64() - cp->cp_conn_start_jf;
+	old_avg_jf = atomic64_read(&cp->cp_conn->c_trans->rds_avg_conn_jf);
+	new_avg_jf = (old_avg_jf >> 1) + (new_conn_jf >> 1);
+
+	rds_rtd(RDS_RTD_CM_EXT,
+		"trans %p old_avg %u (ms) new_avg %u (ms)\n",
+		cp->cp_conn->c_trans,
+		jiffies_to_msecs(old_avg_jf),
+		jiffies_to_msecs(new_avg_jf));
+
+	atomic64_set(&cp->cp_conn->c_trans->rds_avg_conn_jf, new_avg_jf);
+}
+
 void rds_connect_path_complete(struct rds_conn_path *cp, int curr)
 {
 	struct rds_connection *conn = cp->cp_conn;
@@ -102,6 +128,7 @@ void rds_connect_path_complete(struct rds_conn_path *cp, int curr)
 	cancel_delayed_work(&cp->cp_reconn_w);
 	cp->cp_hb_start = 0;
 
+	rds_update_avg_connect_time(cp);
 	cp->cp_connection_start = get_seconds();
 	cp->cp_reconnect = 1;
 	/* reset route resolution flag */
@@ -170,8 +197,14 @@ void rds_queue_reconnect(struct rds_conn_path *cp)
 	else
 		delay = cp->cp_reconnect_jiffies;
 
-	if (!active)
-		delay = rds_sysctl_reconnect_max_jiffies;
+	if (!active) {
+		delay = max_t(uint64_t,
+			      rds_sysctl_passive_connect_delay_percent *
+			      atomic64_read(&conn->c_trans->rds_avg_conn_jf) / 100,
+			      msecs_to_jiffies(1000));
+		/* The heuristics may be very long, e.g., node reboots */
+		delay = min_t(uint64_t, delay, msecs_to_jiffies(15000));
+	}
 
 	rds_rtd_ptr(RDS_RTD_CM_EXT,
 		    "conn %p:%d <%pI6c,%pI6c,%d> delay %llu reconnect jiffies %lu\n",
