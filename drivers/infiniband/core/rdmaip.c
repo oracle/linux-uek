@@ -246,18 +246,9 @@ rdmaip_port_all_layers_up(struct rdmaip_port *rdmaip_port)
 }
 
 static unsigned long
-rdmaip_get_failback_sync_jiffies(struct rdmaip_port *rdmaip_port)
+rdmaip_get_failback_sync_jiffies(void)
 {
-	u64 time_after_portup =
-		get_jiffies_64() - rdmaip_port->port_active_ts;
-	u64 sync_delay;
-
-	sync_delay = msecs_to_jiffies(rdmaip_sysctl_active_bonding_failback_ms);
-
-	if (time_after_portup > sync_delay)
-		return 0;
-
-	return sync_delay - time_after_portup;
+	return msecs_to_jiffies(rdmaip_sysctl_active_bonding_failback_ms);
 }
 
 /*
@@ -1364,7 +1355,7 @@ static void rdmaip_sched_failover_failback(struct net_device *netdev, u8 port,
 			RDMAIP_DBG2("Schedule failback\n");
 			INIT_DELAYED_WORK(&work->work, rdmaip_failback);
 			queue_delayed_work(rdmaip_wq, &work->work,
-				rdmaip_get_failback_sync_jiffies(&ip_config[port]));
+					   rdmaip_get_failback_sync_jiffies());
 		} else
 			kfree(work);
 	} else {
@@ -1470,9 +1461,6 @@ static void rdmaip_impl_ib_event_handler(struct work_struct *_work)
 	RDMAIP_DBG2("PORT %s/port_%d/%s received PORT-EVENT %s\n",
 		    rdmaip_dev->ibdev->name, work->ib_port,
 		    ip_config[port].if_name, ib_event_msg(work->ib_event));
-
-	if (work->ib_event == IB_EVENT_PORT_ACTIVE)
-		ip_config[port].port_active_ts = get_jiffies_64();
 
 	rdmaip_process_async_event(port, RDMAIP_EVENT_IB, work->ib_event);
 
