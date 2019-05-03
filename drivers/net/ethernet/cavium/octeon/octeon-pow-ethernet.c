@@ -126,6 +126,8 @@ struct octeon_pow {
 	bool is_ptp;
 	int rx_irq;
 	int numa_node;
+	struct net_device *netdev;
+	struct napi_struct napi;
 };
 
 static int fpa_wqe_pool = 1;	/* HW FPA pool to use for work queue entries */
@@ -544,6 +546,42 @@ static int octeon_pow_pip_ipd_rx(cvmx_wqe_t *work, struct sk_buff *skb)
 	return 0;
 }
 
+static void octeon_pow_arm_interrupt(struct octeon_pow *priv, bool en)
+{
+	if (octeon_has_feature(OCTEON_FEATURE_PKI)) {
+		union cvmx_sso_grpx_int_thr thr;
+		union cvmx_sso_grpx_int grp_int;
+
+		thr.u64 = 0;
+		thr.cn78xx.iaq_thr = en ? 1 : 0;
+		cvmx_write_csr_node(priv->numa_node,
+				    CVMX_SSO_GRPX_INT_THR(priv->rx_group),
+				    thr.u64);
+
+		grp_int.u64 = 0;
+		grp_int.s.exe_int = 1;
+		cvmx_write_csr_node(priv->numa_node,
+				    CVMX_SSO_GRPX_INT(priv->rx_group),
+				    grp_int.u64);
+	} else if (OCTEON_IS_MODEL(OCTEON_CN68XX)) {
+		union cvmx_sso_wq_int_thrx thr;
+
+		thr.u64 = 0;
+		thr.s.iq_thr = en ? 1 : 0;
+		thr.s.ds_thr = en ? 1 : 0;
+		cvmx_write_csr(CVMX_SSO_WQ_INT_THRX(priv->rx_group), thr.u64);
+		cvmx_write_csr(CVMX_SSO_WQ_INT, 1ull << priv->rx_group);
+	} else {
+		union cvmx_pow_wq_int_thrx thr;
+
+		thr.u64 = 0;
+		thr.s.iq_thr = en ? 1 : 0;
+		thr.s.ds_thr = en ? 1 : 0;
+		cvmx_write_csr(CVMX_POW_WQ_INT_THRX(priv->rx_group), thr.u64);
+		cvmx_write_csr(CVMX_POW_WQ_INT, 1ull << priv->rx_group);
+	}
+}
+
 /**
  * Interrupt handler. The interrupt occurs whenever the POW
  * transitions from 0->1 packets in our group.
@@ -555,26 +593,33 @@ static int octeon_pow_pip_ipd_rx(cvmx_wqe_t *work, struct sk_buff *skb)
  */
 static irqreturn_t octeon_pow_interrupt(int cpl, void *dev_id)
 {
-	const uint64_t coreid = cvmx_get_core_num();
 	struct net_device *dev = (struct net_device *) dev_id;
+	struct octeon_pow *priv;
+
+	priv = netdev_priv(dev);
+
+	/* Disable the rx interrupt and start napi*/
+	octeon_pow_arm_interrupt(priv, false);
+	napi_schedule(&priv->napi);
+
+	return IRQ_HANDLED;
+}
+
+static int octeon_pow_napi_poll(struct napi_struct *napi, int budget)
+{
+	const uint64_t coreid = cvmx_get_core_num();
+	struct net_device *dev;
 	struct octeon_pow *priv;
 	uint64_t old_group_mask = 0;
 	cvmx_wqe_t *work;
 	struct sk_buff *skb;
 	unsigned long flags = 0;
+	int rx_count = 0;
 
-	priv = netdev_priv(dev);
+	priv = container_of(napi, struct octeon_pow, napi);
+	dev = priv->netdev;
 
-	/* Clear the interrupt */
-	if (octeon_has_feature(OCTEON_FEATURE_PKI)) {
-		cvmx_write_csr_node(priv->numa_node,
-				    CVMX_SSO_GRPX_INT(priv->rx_group), 2);
-	} else if (OCTEON_IS_MODEL(OCTEON_CN68XX))
-		cvmx_write_csr(CVMX_SSO_WQ_INT, 1ull << priv->rx_group);
-	else
-		cvmx_write_csr(CVMX_POW_WQ_INT, 1ull << priv->rx_group);
-
-	while (1) {
+	while (rx_count < budget) {
 		/* Non sso3 architectures need to save/restore the sso core
 		 * group mask atomically. If not, it is possible the wrong sso
 		 * core group mask is restored preventing the core from
@@ -681,10 +726,17 @@ static irqreturn_t octeon_pow_interrupt(int cpl, void *dev_id)
 		skb->ip_summed = CHECKSUM_NONE;
 		dev->stats.rx_bytes += skb->len;
 		dev->stats.rx_packets++;
-		netif_rx(skb);
+		netif_receive_skb(skb);
+		rx_count++;
 	}
 
-	return IRQ_HANDLED;
+	/* Stop napi and enable the interrupt when no work is pending */
+	if (rx_count < budget) {
+		napi_complete(napi);
+		octeon_pow_arm_interrupt(priv, true);
+	}
+
+	return rx_count;
 }
 
 #ifdef CONFIG_NET_POLL_CONTROLLER
@@ -723,30 +775,7 @@ static int octeon_pow_open(struct net_device *dev)
 		return r;
 
 	/* Enable POW interrupt when our port has at least one packet */
-	if (octeon_has_feature(OCTEON_FEATURE_PKI)) {
-		union cvmx_sso_grpx_int_thr thr;
-		union cvmx_sso_grpx_int grp_int;
-		thr.u64 = 0;
-		thr.cn78xx.ds_thr = 1;
-		thr.cn78xx.iaq_thr = 1;
-		cvmx_write_csr_node(priv->numa_node, CVMX_SSO_GRPX_INT_THR(priv->rx_group),
-				    thr.u64);
-		grp_int.u64 = 0;
-		grp_int.s.exe_int = 1;
-		cvmx_write_csr_node(priv->numa_node, CVMX_SSO_GRPX_INT(priv->rx_group), grp_int.u64);
-	} else if (OCTEON_IS_MODEL(OCTEON_CN68XX)) {
-		union cvmx_sso_wq_int_thrx thr;
-		thr.u64 = 0;
-		thr.s.iq_thr = 1;
-		thr.s.ds_thr = 1;
-		cvmx_write_csr(CVMX_SSO_WQ_INT_THRX(priv->rx_group), thr.u64);
-	} else {
-		union cvmx_pow_wq_int_thrx thr;
-		thr.u64 = 0;
-		thr.s.iq_thr = 1;
-		thr.s.ds_thr = 1;
-		cvmx_write_csr(CVMX_POW_WQ_INT_THRX(priv->rx_group), thr.u64);
-	}
+	octeon_pow_arm_interrupt(priv, true);
 
 	return 0;
 }
@@ -756,12 +785,7 @@ static int octeon_pow_stop(struct net_device *dev)
 	struct octeon_pow *priv = netdev_priv(dev);
 
 	/* Disable POW interrupt */
-	if (octeon_has_feature(OCTEON_FEATURE_PKI))
-		cvmx_write_csr_node(priv->numa_node, CVMX_SSO_GRPX_INT_THR(priv->rx_group), 0);
-	else if (OCTEON_IS_MODEL(OCTEON_CN68XX))
-		cvmx_write_csr(CVMX_SSO_WQ_INT_THRX(priv->rx_group), 0);
-	else
-		cvmx_write_csr(CVMX_POW_WQ_INT_THRX(priv->rx_group), 0);
+	octeon_pow_arm_interrupt(priv, false);
 
 	/* Free the interrupt handler */
 	free_irq(priv->rx_irq, dev);
@@ -787,6 +811,11 @@ static int octeon_pow_init(struct net_device *dev)
 	dev->dev_addr[4] = priv->is_ptp ? 3 : 1;
 	dev->dev_addr[5] = priv->rx_group;
 	priv->numa_node = cvmx_get_node_num();
+
+	/* Initialize and enable napi */
+	netif_napi_add(dev, &priv->napi, octeon_pow_napi_poll, 32);
+	napi_enable(&priv->napi);
+
 	return 0;
 }
 
@@ -894,6 +923,7 @@ static int __init octeon_pow_mod_init(void)
 
 	/* Initialize the device private structure. */
 	priv = netdev_priv(octeon_pow_oct_dev);
+	priv->netdev = octeon_pow_oct_dev;
 	priv->rx_group = receive_group;
 	priv->tx_mask = broadcast_groups;
 	priv->numa_node = cvmx_get_node_num();
@@ -951,6 +981,7 @@ static int __init octeon_pow_mod_init(void)
 
 	/* Initialize the device private structure. */
 	priv = netdev_priv(octeon_pow_ptp_dev);
+	priv->netdev = octeon_pow_ptp_dev;
 	priv->rx_group = ptp_rx_group;
 	priv->tx_mask = 1ull << ptp_tx_group;
 	priv->is_ptp = true;
