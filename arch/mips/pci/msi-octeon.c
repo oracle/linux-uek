@@ -16,7 +16,6 @@
 #include <asm/octeon/cvmx-npi-defs.h>
 #include <asm/octeon/cvmx-pci-defs.h>
 #include <asm/octeon/cvmx-npei-defs.h>
-#include <asm/octeon/cvmx-sli-defs.h>
 #include <asm/octeon/cvmx-pexp-defs.h>
 #include <asm/octeon/cvmx-sli-defs.h>
 #include <asm/octeon/cvmx-ciu2-defs.h>
@@ -749,35 +748,35 @@ int __init octeon_msi_initialize(void)
 
 	if (octeon_has_feature(OCTEON_FEATURE_PCIE)) {
 		if (request_irq(OCTEON_IRQ_PCI_MSI0, octeon_msi_interrupt0,
-				0, "MSI[0:63]", octeon_msi_interrupt0))
+				IRQF_NO_THREAD, "MSI[0:63]", octeon_msi_interrupt0))
 			panic("request_irq(OCTEON_IRQ_PCI_MSI0) failed");
 
 		if (request_irq(OCTEON_IRQ_PCI_MSI1, octeon_msi_interrupt1,
-				0, "MSI[64:127]", octeon_msi_interrupt1))
+				IRQF_NO_THREAD, "MSI[64:127]", octeon_msi_interrupt1))
 			panic("request_irq(OCTEON_IRQ_PCI_MSI1) failed");
 
 		if (request_irq(OCTEON_IRQ_PCI_MSI2, octeon_msi_interrupt2,
-				0, "MSI[127:191]", octeon_msi_interrupt2))
+				IRQF_NO_THREAD, "MSI[127:191]", octeon_msi_interrupt2))
 			panic("request_irq(OCTEON_IRQ_PCI_MSI2) failed");
 
 		if (request_irq(OCTEON_IRQ_PCI_MSI3, octeon_msi_interrupt3,
-				0, "MSI[192:255]", octeon_msi_interrupt3))
+				IRQF_NO_THREAD, "MSI[192:255]", octeon_msi_interrupt3))
 			panic("request_irq(OCTEON_IRQ_PCI_MSI3) failed");
 	} else if (octeon_is_pci_host()) {
 		if (request_irq(OCTEON_IRQ_PCI_MSI0, octeon_msi_interrupt0,
-				0, "MSI[0:15]", octeon_msi_interrupt0))
+				IRQF_NO_THREAD, "MSI[0:15]", octeon_msi_interrupt0))
 			panic("request_irq(OCTEON_IRQ_PCI_MSI0) failed");
 
 		if (request_irq(OCTEON_IRQ_PCI_MSI1, octeon_msi_interrupt0,
-				0, "MSI[16:31]", octeon_msi_interrupt0))
+				IRQF_NO_THREAD, "MSI[16:31]", octeon_msi_interrupt0))
 			panic("request_irq(OCTEON_IRQ_PCI_MSI1) failed");
 
 		if (request_irq(OCTEON_IRQ_PCI_MSI2, octeon_msi_interrupt0,
-				0, "MSI[32:47]", octeon_msi_interrupt0))
+				IRQF_NO_THREAD, "MSI[32:47]", octeon_msi_interrupt0))
 			panic("request_irq(OCTEON_IRQ_PCI_MSI2) failed");
 
 		if (request_irq(OCTEON_IRQ_PCI_MSI3, octeon_msi_interrupt0,
-				0, "MSI[48:63]", octeon_msi_interrupt0))
+				IRQF_NO_THREAD, "MSI[48:63]", octeon_msi_interrupt0))
 			panic("request_irq(OCTEON_IRQ_PCI_MSI3) failed");
 	}
 	return 0;
