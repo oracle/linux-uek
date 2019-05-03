@@ -47,7 +47,10 @@ static int  co_cache_error_event(struct notifier_block *this,
 		cache_err_dcache[core] = 0;
 		break;
 	case CO_CACHE_ERROR_RECOVERABLE:
-		dcache_err = read_octeon_c0_dcacheerr();
+		if (current_cpu_type() == CPU_CAVIUM_OCTEON3)
+			dcache_err = read_octeon_c0_errctl();
+		else
+			dcache_err = read_octeon_c0_dcacheerr();
 		break;
 	case CO_CACHE_ERROR_WB_PARITY:
 		edac_device_printk(p->ed, KERN_ERR,
@@ -85,7 +88,9 @@ static int  co_cache_error_event(struct notifier_block *this,
 			edac_device_handle_ce(p->ed, cpu, 0, "dcache");
 
 		/* Clear the error indication */
-		if (current_cpu_type() == CPU_CAVIUM_OCTEON2)
+		if (current_cpu_type() == CPU_CAVIUM_OCTEON3)
+			write_octeon_c0_errctl(1);
+		else if (current_cpu_type() == CPU_CAVIUM_OCTEON2)
 			write_octeon_c0_dcacheerr(1);
 		else
 			write_octeon_c0_dcacheerr(0);
