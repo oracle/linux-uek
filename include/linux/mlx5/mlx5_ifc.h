@@ -677,7 +677,8 @@ struct mlx5_ifc_per_protocol_networking_offload_caps_bits {
 	u8         swp[0x1];
 	u8         swp_csum[0x1];
 	u8         swp_lso[0x1];
-	u8         reserved_at_23[0x1d];
+	u8         cqe_checksum_full[0x1];
+	u8         reserved_at_25[0x1c];
 
 	u8         reserved_at_40[0x10];
 	u8         lro_min_mss_size[0x10];
