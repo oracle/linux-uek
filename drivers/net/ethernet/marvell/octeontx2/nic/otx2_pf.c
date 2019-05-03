@@ -2178,22 +2178,22 @@ static int otx2_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	if (!hw->affinity_mask)
 		goto err_free_netdev;
 
-	err = pci_alloc_irq_vectors(hw->pdev, num_vec, num_vec, PCI_IRQ_MSIX);
-	if (err < 0)
-		goto err_free_netdev;
 
 	/* Map CSRs */
 	pf->reg_base = pcim_iomap(pdev, PCI_CFG_REG_BAR_NUM, 0);
 	if (!pf->reg_base) {
 		dev_err(dev, "Unable to map physical function CSRs, aborting\n");
 		err = -ENOMEM;
-		goto err_free_irq_vectors;
+		goto err_free_netdev;
 	}
 
 	err = otx2_check_pf_usable(pf);
 	if (err)
-		goto err_free_irq_vectors;
+		goto err_free_netdev;
 
+	err = pci_alloc_irq_vectors(hw->pdev, num_vec, num_vec, PCI_IRQ_MSIX);
+	if (err < 0)
+		goto err_free_netdev;
 	/* Init PF <=> AF mailbox stuff */
 	err = otx2_pfaf_mbox_init(pf);
 	if (err)
