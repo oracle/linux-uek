@@ -90,6 +90,7 @@
 #define CP0_DEPC $24
 #define CP0_PERFORMANCE $25
 #define CP0_ECC $26
+#define CP0_ERRCTL $26
 #define CP0_CACHEERR $27
 #define CP0_TAGLO $28
 #define CP0_TAGHI $29
