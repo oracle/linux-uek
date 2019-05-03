@@ -479,10 +479,18 @@ NESTED(nmi_handler, PT_SIZE, sp)
 	.macro	__build_clear_mce
 #ifdef CONFIG_CPU_CAVIUM_OCTEON
 	/* Disable TLB Parity checks. */
+	mfc0	t2, $15,0
+	and	t2, 0xff00
+	dli	t0, 0x9500
+	/* In Octeon3 setting bit 44 disables TLB parity */
+	slt	t2, t2, t0
 	dmfc0	t0, $11, 7
 	dli	t1, (1 << 44)
 	or	t0, t0, t1
+	beqz	t2, 11f
+	nop
 	xor	t0, t0, t1
+11:
 	dmtc0	t0, $11, 7
 #endif
 	__build_clear_cli
