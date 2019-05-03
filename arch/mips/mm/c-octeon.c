@@ -34,17 +34,17 @@ EXPORT_SYMBOL_GPL(cache_err_dcache);
 static RAW_NOTIFIER_HEAD(co_cache_error_chain);
 
 /**
- * Octeon automatically flushes the dcache on tlb changes, so
- * from Linux's viewpoint it acts much like a physically
- * tagged cache. No flushing is needed
+ * Octeon automatically flushes the dcache on tlb changes, but we need
+ * a full barrier to make sure subsequent icache fills see any queued
+ * stores.
  *
  */
 static void octeon_flush_data_cache_page(unsigned long addr)
 {
-    /* Nothing to do */
+	mb(); /* SYNC */
 }
 
-static inline void octeon_local_flush_icache(void)
+static void octeon_local_flush_icache(void)
 {
 	asm volatile ("synci 0($0)");
 }
@@ -52,9 +52,10 @@ static inline void octeon_local_flush_icache(void)
 /*
  * Flush local I-cache for the specified range.
  */
-static void local_octeon_flush_icache_range(unsigned long start,
+static void octeon_local_flush_icache_range(unsigned long start,
 					    unsigned long end)
 {
+	mb();
 	octeon_local_flush_icache();
 }
 
@@ -314,6 +315,7 @@ static void probe_octeon(void)
 {
 	unsigned long icache_size;
 	unsigned long dcache_size;
+	unsigned long scache_size;
 	unsigned int config1;
 	struct cpuinfo_mips *c = &current_cpu_data;
 	int cputype = current_cpu_type();
@@ -387,6 +389,17 @@ static void probe_octeon(void)
 	c->icache.sets = icache_size / (c->icache.linesz * c->icache.ways);
 	c->dcache.sets = dcache_size / (c->dcache.linesz * c->dcache.ways);
 
+	scache_size = cvmx_l2c_get_cache_size_bytes();
+
+	c->scache.sets = cvmx_l2c_get_num_sets();
+	c->scache.ways = cvmx_l2c_get_num_assoc();
+	c->scache.waybit = ffs(scache_size / c->scache.ways) - 1;
+	c->scache.waysize = scache_size / c->scache.ways;
+	c->scache.linesz = 128;
+	c->scache.flags |= MIPS_CPU_PREFETCH;
+
+	c->tcache.flags |= MIPS_CACHE_NOT_PRESENT;
+
 	if (smp_processor_id() == 0) {
 		pr_notice("Primary instruction cache %ldkB, %s, %d way, "
 			  "%d sets, linesize %d bytes.\n",
@@ -399,6 +412,9 @@ static void probe_octeon(void)
 			  "linesize %d bytes.\n",
 			  dcache_size >> 10, c->dcache.ways,
 			  c->dcache.sets, c->dcache.linesz);
+		pr_notice("Secondary unified cache %ldkB, %d-way, %d sets, linesize %d bytes.\n",
+			  scache_size >> 10, c->scache.ways,
+			  c->scache.sets, c->scache.linesz);
 	}
 	if (octeon_scache_init)
 		octeon_scache_init();
@@ -433,9 +449,9 @@ void octeon_cache_init(void)
 	flush_icache_all		= octeon_flush_icache_all;
 	flush_data_cache_page		= octeon_flush_data_cache_page;
 	flush_icache_range		= octeon_flush_icache_range;
-	local_flush_icache_range	= local_octeon_flush_icache_range;
+	local_flush_icache_range	= octeon_local_flush_icache_range;
 	__flush_icache_user_range	= octeon_flush_icache_range;
-	__local_flush_icache_user_range	= local_octeon_flush_icache_range;
+	__local_flush_icache_user_range	= octeon_local_flush_icache_range;
 
 	__flush_kernel_vmap_range	= octeon_flush_kernel_vmap_range;
 
