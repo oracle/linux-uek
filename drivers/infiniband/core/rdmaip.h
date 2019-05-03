@@ -330,7 +330,6 @@ struct rdmaip_port {
 	uint16_t		pkey_vlan;
 	unsigned int            alias_cnt;
 	struct rdmaip_alias	aliases[RDMAIP_MAX_ALIASES];
-	unsigned long		port_active_ts;
 	int			ifindex;
 	u32			ip6_addrs_cnt; /* No. of IPv6 addresses */
 	struct rdmaip_ip6_port_addr ip6_addrs[RDMAIP_MAX_ADDRS];
