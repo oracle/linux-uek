@@ -70,7 +70,8 @@
 
 	dmfc0	k0, CP0_ERRCTL
 	sd	k0, (k1)
-	andi	k0, 1		/* Write 1 to clear Dcache parity error */
+	ori	k0, k0, 1
+	xori	k0, k0, 1		/* clear Dcache parity error */
 	dmtc0	k0, CP0_ERRCTL
 
 	/* check whether this is a nested exception */

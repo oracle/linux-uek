@@ -256,7 +256,7 @@ static int octeon3_be_handler(struct pt_regs *regs, int is_fixup)
 			pr_err("CacheErr (Dcache) == %llx\n", dcache_err);
 		}
 
-		write_octeon_c0_errctl(wbfperr_mask);
+		write_octeon_c0_errctl(dcache_err | wbfperr_mask);
 		return MIPS_BE_FATAL;
 	}
 	if (is_fixup)
@@ -279,7 +279,7 @@ static int octeon3_mcheck_handler(struct pt_regs *regs)
 		union octeon_cvmemctl cvmmemctl;
 
 		/* Clear the indicator */
-		write_octeon_c0_errctl(tlbperr_mask);
+		write_octeon_c0_errctl(dcache_err | tlbperr_mask);
 		/*
 		 * Blow everything away to (hopefully) write good
 		 * parity to all TLB entries
