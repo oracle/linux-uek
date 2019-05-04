@@ -14,6 +14,12 @@
 
 #include "rio.h"
 
+#ifdef CONFIG_CAVIUM_OCTEON_RAPIDIO
+#include <asm/io.h>
+int octeon_rio_dma_mem(struct rio_dev *rdev, uint64_t local_addr,
+		       uint64_t remote_addr, int size, int is_outbound);
+#endif
+
 /* Sysfs support */
 #define rio_config_attr(field, format_string)					\
 static ssize_t								\
@@ -251,6 +257,69 @@ static struct bin_attribute rio_config_attr = {
 	.write = rio_write_config,
 };
 
+static ssize_t
+rio_read_memory(struct file *_, struct kobject *kobj,
+		struct bin_attribute *bin_attr,
+		char *buf, loff_t off, size_t count)
+{
+	struct rio_dev *dev =
+		to_rio_dev(container_of(kobj, struct device, kobj));
+	void *map;
+
+	if (off >= bin_attr->size)
+		return 0;
+	if (off + count > bin_attr->size)
+		count = bin_attr->size - off;
+
+#ifdef CONFIG_CAVIUM_OCTEON_RAPIDIO
+	if (count > 8) {
+		if (octeon_rio_dma_mem(dev, virt_to_phys(buf), off, count, 0))
+			return 0;
+		else
+			return count;
+	}
+#endif
+	map = rio_map_memory(dev, off, count);
+	if (!map) {
+		dev_err(&dev->dev, "Unable to map RapidIO device resource\n");
+		return 0;
+	}
+	memcpy(buf, map, count);
+	rio_unmap_memory(dev, off, count, map);
+	return count;
+}
+
+static ssize_t
+rio_write_memory(struct file *_, struct kobject *kobj,
+		 struct bin_attribute *bin_attr,
+		 char *buf, loff_t off, size_t count)
+{
+	struct rio_dev *dev =
+		to_rio_dev(container_of(kobj, struct device, kobj));
+	void *map;
+
+	if (off >= bin_attr->size)
+		return 0;
+	if (off + count > bin_attr->size)
+		count = bin_attr->size - off;
+
+#ifdef CONFIG_CAVIUM_OCTEON_RAPIDIO
+	if (count > 8) {
+		if (octeon_rio_dma_mem(dev, virt_to_phys(buf), off, count, 1))
+			return 0;
+		else
+			return count;
+	}
+#endif
+	map = rio_map_memory(dev, off, count);
+	if (!map) {
+		dev_err(&dev->dev, "Unable to map RapidIO device resource\n");
+		return 0;
+	}
+	memcpy(map, buf, count);
+	rio_unmap_memory(dev, off, count, map);
+	return count;
+}
 static struct bin_attribute *rio_dev_bin_attrs[] = {
 	&rio_config_attr,
 	NULL,
@@ -271,6 +340,24 @@ static umode_t rio_dev_is_attr_visible(struct kobject *kobj,
 		 */
 		mode = 0;
 	}
+
+	rdev->memory.attr.name = "memory";
+	rdev->memory.attr.mode = S_IRUGO | S_IWUSR;
+	rdev->memory.read = rio_read_memory;
+	rdev->memory.write = rio_write_memory;
+	rdev->memory.private = NULL;
+
+	/* Prefer 50 bit addressing as it fits in kernel variables on a 64 bit
+		machine. Support for addressing 66 bits will need to be
+		revisited if anyone actually uses it */
+	if (rdev->pef & RIO_PEF_ADDR_50)
+		rdev->memory.size = (sizeof(rdev->memory.size) == 4) ? 1<<31 : 1ul << 50;
+	else if (rdev->pef & RIO_PEF_ADDR_66)
+		rdev->memory.size = (sizeof(rdev->memory.size) == 4) ? 1<<31 : 1ul << 63;
+	else if (rdev->pef & RIO_PEF_ADDR_34)
+		rdev->memory.size = (sizeof(rdev->memory.size) == 4) ? 1<<31 : 1ul << 34;
+	else
+		rdev->memory.size = 0;
 
 	return mode;
 }

@@ -361,6 +361,9 @@ void rio_release_regions(struct rio_dev *);
 int rio_request_region(struct rio_dev *, int, char *);
 void rio_release_region(struct rio_dev *, int);
 
+void *rio_map_memory(struct rio_dev *rdev, u64 offset, u64 length);
+void rio_unmap_memory(struct rio_dev *rdev, u64 offset, u64 length, void *map);
+
 /* Memory mapping functions */
 extern int rio_map_inb_region(struct rio_mport *mport, dma_addr_t local,
 			u64 rbase, u32 size, u32 rflags);
