@@ -28,7 +28,11 @@
 
 #include <asm/octeon/octeon.h>
 
-unsigned long long cache_err_dcache[NR_CPUS];
+/*
+ * 32 is the maximum number of cores on OCTEON II CPUS, which are the
+ * only ones that used this array.
+ */
+unsigned long long cache_err_dcache[32];
 EXPORT_SYMBOL_GPL(cache_err_dcache);
 
 static RAW_NOTIFIER_HEAD(co_cache_error_chain);
@@ -484,14 +488,16 @@ static void co_cache_error_call_notifiers(unsigned long val)
 		unsigned long coreid = cvmx_get_core_num();
 		u64 icache_err = read_octeon_c0_icacheerr();
 
-		if (val) {
+		if (val && current_cpu_type() != CPU_CAVIUM_OCTEON3) {
 			dcache_err = cache_err_dcache[coreid];
 			cache_err_dcache[coreid] = 0;
 		} else {
-			if (current_cpu_type() == CPU_CAVIUM_OCTEON3)
+			if (current_cpu_type() == CPU_CAVIUM_OCTEON3) {
 				dcache_err = read_octeon_c0_errctl();
-			else
+				write_octeon_c0_errctl(dcache_err | 1);
+			} else {
 				dcache_err = read_octeon_c0_dcacheerr();
+			}
 		}
 
 		pr_err("Core%lu: Cache error exception:\n", coreid);

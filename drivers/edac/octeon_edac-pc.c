@@ -43,8 +43,12 @@ static int  co_cache_error_event(struct notifier_block *this,
 
 	switch (event) {
 	case CO_CACHE_ERROR_UNRECOVERABLE:
-		dcache_err = cache_err_dcache[core];
-		cache_err_dcache[core] = 0;
+		if (current_cpu_type() == CPU_CAVIUM_OCTEON3) {
+			dcache_err = read_octeon_c0_errctl();
+		} else {
+			dcache_err = cache_err_dcache[core];
+			cache_err_dcache[core] = 0;
+		}
 		break;
 	case CO_CACHE_ERROR_RECOVERABLE:
 		if (current_cpu_type() == CPU_CAVIUM_OCTEON3)

@@ -460,7 +460,7 @@ int unregister_co_cache_error_notifier(struct notifier_block *nb);
 #define CO_CACHE_ERROR_WB_PARITY 2
 #define CO_CACHE_ERROR_TLB_PARITY 3
 
-extern unsigned long long cache_err_dcache[NR_CPUS];
+extern unsigned long long cache_err_dcache[];
 
 /* Octeon multiplier save/restore routines from octeon_switch.S */
 void octeon_mult_save(void);
