@@ -88,9 +88,11 @@ static int  co_cache_error_event(struct notifier_block *this,
 			edac_device_handle_ce(p->ed, cpu, 0, "dcache");
 
 		/* Clear the error indication */
-		if (current_cpu_type() == CPU_CAVIUM_OCTEON3)
-			write_octeon_c0_errctl(1);
-		else if (current_cpu_type() == CPU_CAVIUM_OCTEON2)
+		if (current_cpu_type() == CPU_CAVIUM_OCTEON3) {
+			u64 errctl = read_octeon_c0_errctl();
+			errctl |= 1;
+			write_octeon_c0_errctl(errctl);
+		} else if (current_cpu_type() == CPU_CAVIUM_OCTEON2)
 			write_octeon_c0_dcacheerr(1);
 		else
 			write_octeon_c0_dcacheerr(0);
