@@ -42,6 +42,7 @@
 #include <asm/octeon/octeon.h>
 #include <asm/octeon/pci-octeon.h>
 #include <asm/octeon/cvmx-rst-defs.h>
+#include <asm/octeon/cvmx-qlm.h>
 
 /*
  * TRUE for devices having registers with little-endian byte
@@ -1170,7 +1171,10 @@ mem_alloc_done:
 
 	if (total == 0)
 		panic("Unable to allocate memory from "
-		      "cvmx_bootmem_phy_alloc");
+		      "cvmx_bootmem_phy_alloc\n");
+
+	/* Initialize QLM and also apply any erratas */
+	cvmx_qlm_init();
 }
 
 /*
