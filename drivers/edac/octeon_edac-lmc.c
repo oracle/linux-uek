@@ -116,6 +116,14 @@ static void octeon_lmc_edac_poll_o2(struct mem_ctl_info *mci)
 		do_clear = true;
 	}
 
+	if (int_reg.s.nxm_wr_err) {
+		snprintf(msg, sizeof(msg), "NXM_WR_ERR: Write to non-existent memory");
+		edac_mc_handle_error(HW_EVENT_ERR_CORRECTED, mci, 1, 0, 0, 0,
+				     -1, -1, -1, msg, "");
+		int_reg.s.nxm_wr_err = -1;	/* Done, re-arm */
+		do_clear = true;
+	}
+
 	if (do_clear) {
 		if (likely(!pvt->inject))
 			cvmx_write_csr(CVMX_LMCX_INT(mci->mc_idx), int_reg.u64);
@@ -233,6 +241,8 @@ static int octeon_lmc_edac_probe(struct platform_device *pdev)
 	layers[0].type = EDAC_MC_LAYER_CHANNEL;
 	layers[0].size = 1;
 	layers[0].is_virt_csrow = false;
+
+	edac_op_state = EDAC_OPSTATE_POLL;
 
 	if (OCTEON_IS_OCTEON1PLUS()) {
 		union cvmx_lmcx_mem_cfg0 cfg0;
