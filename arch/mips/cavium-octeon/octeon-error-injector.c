@@ -25,17 +25,21 @@ MODULE_PARM_DESC(test_param, "Parameter used in the test case.");
 
 static void octeon_error_injector_l1_dcache_parity(void)
 {
-	if (OCTEON_IS_OCTEON3())
-		write_octeon_c0_errctl(1ull<<11);
-	else if (OCTEON_IS_OCTEON2())
+	if (OCTEON_IS_OCTEON3()) {
+		u64 errctl = read_octeon_c0_errctl();
+		errctl |= (1ull << 11);
+		write_octeon_c0_errctl(errctl);
+	} else if (OCTEON_IS_OCTEON2())
 		write_octeon_c0_dcacheerr(1ull<<3);
 }
 
 static void octeon_error_injector_tlb_parity(void)
 {
-	if (OCTEON_IS_OCTEON3())
-		write_octeon_c0_errctl(1ull<<15);
-	else if (OCTEON_IS_OCTEON2())
+	if (OCTEON_IS_OCTEON3()) {
+		u64 errctl = read_octeon_c0_errctl();
+		errctl |= (1ull << 15);
+		write_octeon_c0_errctl(errctl);
+	} else if (OCTEON_IS_OCTEON2())
 		write_octeon_c0_dcacheerr(1ull<<6);
 }
 
