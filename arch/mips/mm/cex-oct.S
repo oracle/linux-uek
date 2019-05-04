@@ -41,11 +41,13 @@
 	andi	k1, k1, ST0_EXL
 	beqz	k1, 1f
 	 nop
-	j	cache_parity_error_octeon_non_recoverable
+	dla	k0, cache_parity_error_octeon_non_recoverable
+	jr	k0
 	 nop
 
 	/* exception is recoverable */
-1:	j	handle_cache_err
+1:	dla	k0, handle_cache_err
+	jr	k0
 	 nop
 
 	.set	pop
@@ -59,31 +61,21 @@
 	.set	noreorder
 	.set	noat
 
-
-	/* due to an errata we need to read the COP0 CacheErr (Dcache)
-	 * before any cache/DRAM access	 */
-
-	rdhwr	k0, $0	      /* get core_id */
-	PTR_LA	k1, cache_err_dcache
-	sll	k0, k0, 3
-	PTR_ADDU k1, k0, k1    /* k1 = &cache_err_dcache[core_id] */
-
-	dmfc0	k0, CP0_ERRCTL
-	sd	k0, (k1)
-	ori	k0, k0, 1
-	xori	k0, k0, 1		/* clear Dcache parity error */
-	dmtc0	k0, CP0_ERRCTL
+	/* Invalidate the DCache */
+	cache	1, 0($0)
 
 	/* check whether this is a nested exception */
 	mfc0	k1, CP0_STATUS
 	andi	k1, k1, ST0_EXL
 	beqz	k1, 2f
 	 nop
-	j	cache_parity_error_octeon_non_recoverable
+	dla	k0, cache_parity_error_octeon_non_recoverable
+	jr	k0
 	 nop
 
 	/* exception is recoverable */
-2:	j	handle_cache_err
+2:	dla	k0, handle_cache_err
+	jr	k0
 	 nop
 
 	.set	pop
@@ -100,9 +92,9 @@
 	SAVE_ALL
 	KMODE
 	jal	cache_parity_error_octeon_recoverable
-	nop
+	 nop
 	j	ret_from_exception
-	nop
+	 nop
 
 	.set pop
 	END(handle_cache_err)
