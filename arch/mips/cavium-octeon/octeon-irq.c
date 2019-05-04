@@ -1241,6 +1241,10 @@ static int octeon_irq_ciu_xlat(struct irq_domain *d,
 	ciu = intspec[0];
 	bit = intspec[1];
 
+	/* Don't map GPIO pins through this interface. */
+	if (ciu == 0 && (bit >= 16 && bit < 32))
+		return -EINVAL;
+
 	if (ciu >= dd->num_sum || bit > 63)
 		return -EINVAL;
 
@@ -1961,6 +1965,10 @@ static int octeon_irq_ciu2_xlat(struct irq_domain *d,
 	ciu = intspec[0];
 	bit = intspec[1];
 
+	/* Don't map GPIO pins through this interface. */
+	if (ciu == 7)
+		return -EINVAL;
+
 	*out_hwirq = (ciu << 6) | bit;
 	*out_type = 0;
 
@@ -2423,6 +2431,7 @@ int octeon_irq_ciu3_xlat(struct irq_domain *d,
 
 	intsn_major = hwirq >> 12;
 	switch (intsn_major) {
+	case 0x03: /* GPIO handled separately. */
 	case 0x04: /* Software handled separately. */
 		return -EINVAL;
 	default:
