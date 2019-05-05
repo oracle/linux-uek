@@ -412,6 +412,8 @@ static void x86_amd_ssb_disable(void)
 #undef pr_fmt
 #define pr_fmt(fmt)	"MDS: " fmt
 
+static void update_mds_branch_idle(void);
+
 /* Default mitigation for L1TF-affected CPUs */
 static enum mds_mitigations mds_mitigation __ro_after_init = MDS_MITIGATION_FULL;
 static bool mds_nosmt __ro_after_init = false;
@@ -419,6 +421,7 @@ static bool mds_nosmt __ro_after_init = false;
 static const char * const mds_strings[] = {
 	[MDS_MITIGATION_OFF]	= "Vulnerable",
 	[MDS_MITIGATION_FULL]	= "Mitigation: Clear CPU buffers",
+	[MDS_MITIGATION_IDLE]   = "Mitigation: Clear CPU buffers during idle only",
 	[MDS_MITIGATION_VMWERV]	= "Vulnerable: Clear CPU buffers attempted, no microcode",
 };
 
@@ -437,7 +440,8 @@ static void __init mds_select_mitigation(void)
 
 		if (mds_nosmt && !boot_cpu_has(X86_BUG_MSBDS_ONLY))
 			cpu_smt_disable(false);
-	}
+	} else if (mds_mitigation == MDS_MITIGATION_IDLE)
+		update_mds_branch_idle();
 
 	pr_info("%s\n", mds_strings[mds_mitigation]);
 }
@@ -452,6 +456,8 @@ static int __init mds_cmdline(char *str)
 
 	if (!strcmp(str, "off"))
 		mds_mitigation = MDS_MITIGATION_OFF;
+	else if (!strcmp(str, "idle"))
+		mds_mitigation = MDS_MITIGATION_IDLE;
 	else if (!strcmp(str, "full"))
 		mds_mitigation = MDS_MITIGATION_FULL;
 	else if (!strcmp(str, "full,nosmt")) {
@@ -1107,11 +1113,12 @@ static void update_mds_branch_idle(void)
 	 * Enable the idle clearing if SMT is active on CPUs which are
 	 * affected only by MSBDS and not any other MDS variant.
 	 *
-	 * The other variants cannot be mitigated when SMT is enabled, so
-	 * clearing the buffers on idle just to prevent the Store Buffer
-	 * repartitioning leak would be a window dressing exercise.
+	 * The other variants cannot be mitigated when SMT is enabled,
+	 * so unless explicitly requested clearing the buffers on idle
+	 * would be a window dressing exercise.
 	 */
-	if (!boot_cpu_has_bug(X86_BUG_MSBDS_ONLY))
+	if (!boot_cpu_has(X86_BUG_MSBDS_ONLY) &&
+	     mds_mitigation != MDS_MITIGATION_IDLE)
 		return;
 
 	if (sched_smt_active())
@@ -1145,6 +1152,7 @@ void arch_smt_update(void)
 
 	switch (mds_mitigation) {
 	case MDS_MITIGATION_FULL:
+	case MDS_MITIGATION_IDLE:
 	case MDS_MITIGATION_VMWERV:
 		if (sched_smt_active() && !boot_cpu_has(X86_BUG_MSBDS_ONLY))
 			pr_warn_once(MDS_MSG_SMT);
