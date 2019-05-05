@@ -319,13 +319,13 @@ int arch_setup_msi_irq(struct pci_dev *dev, struct msi_desc *desc)
 		if (msi_to_irq[msi])
 			irq = msi_to_irq[msi];
 		else {
-			cd = kzalloc(sizeof(*cd), GFP_KERNEL);
+			cd = kzalloc_node(sizeof(*cd), GFP_KERNEL, node);
+			if (!cd)
+				return -ENOMEM;
 			cd->msi = msi;
 			cd->hwmsi = hwmsi;
-
-			if ((irq = irq_alloc_descs(-1, 1, 1, node)) < 0) {
-				WARN(1, "arch_setup_msi_irq: Unable to find a "
-				     "free irq\n");
+			irq = irq_alloc_descs(-1, 1, 1, node);
+			if (WARN(irq < 0, "arch_setup_msi_irq: Unable to find a free irq\n")) {
 				clear_bit(msi, msi_free_irq_bitmap[node]);
 				kfree(cd);
 				return -ENOSPC;
@@ -449,10 +449,22 @@ static void octeon_irq_msi_ciu3_mask_ack(struct irq_data *data)
 	cvmx_write_csr(csr_addr, 1 << (msi & 0x3f));
 }
 
+static void octeon_irq_msi_ciu3_enable(struct irq_data *data)
+{
+	octeon_irq_ciu3_enable(data);
+	unmask_msi_irq(data);
+}
+
+static void octeon_irq_msi_ciu3_disable(struct irq_data *data)
+{
+	octeon_irq_ciu3_disable(data);
+	mask_msi_irq(data);
+}
+
 static struct irq_chip octeon_irq_msi_chip_ciu3 = {
-	.name = "CIU3",
-	.irq_enable = octeon_irq_ciu3_enable,
-	.irq_disable = octeon_irq_ciu3_disable,
+	.name = "MSI-X",
+	.irq_enable = octeon_irq_msi_ciu3_enable,
+	.irq_disable = octeon_irq_msi_ciu3_disable,
 	.irq_ack = octeon_irq_msi_ciu3_ack,
 	.irq_mask = octeon_irq_ciu3_mask,
 	.irq_mask_ack = octeon_irq_msi_ciu3_mask_ack,
