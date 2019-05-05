@@ -1696,10 +1696,8 @@ config TXX9_WDT
 config OCTEON_WDT
 	tristate "Cavium OCTEON SOC family Watchdog Timer"
 	depends on CAVIUM_OCTEON_SOC
-	depends on CPU_BIG_ENDIAN || !HOTPLUG_CPU
 	default y
 	select WATCHDOG_CORE
-	select EXPORT_UASM if OCTEON_WDT = m
 	help
 	  Hardware driver for OCTEON's on chip watchdog timer.
 	  Enables the watchdog for all cores running Linux. It

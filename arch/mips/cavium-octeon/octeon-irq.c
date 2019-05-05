@@ -3120,6 +3120,7 @@ void *octeon_irq_get_ciu3_info(int node)
 {
 	return octeon_ciu3_info_per_node[node & CVMX_NODE_MASK];
 }
+EXPORT_SYMBOL(octeon_irq_get_ciu3_info);
 
 void octeon_irq_add_block_domain(int node, uint8_t block,
 				 struct irq_domain *domain)
@@ -3129,6 +3130,7 @@ void octeon_irq_add_block_domain(int node, uint8_t block,
 	ciu3_info = octeon_ciu3_info_per_node[node & CVMX_NODE_MASK];
 	ciu3_info->domain[block] = domain;
 }
+EXPORT_SYMBOL(octeon_irq_add_block_domain);
 
 struct irq_domain *octeon_irq_get_block_domain(int node, uint8_t block)
 {
