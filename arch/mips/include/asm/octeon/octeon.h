@@ -408,4 +408,7 @@ extern struct semaphore octeon_bootbus_sem;
 int octeon_coreid_for_cpu(int cpu);
 int octeon_cpu_for_coreid(int coreid);
 
+void octeon_pci_console_init(const char *);
+void octeon_write_lcd(const char *s);
+
 #endif /* __ASM_OCTEON_OCTEON_H */
