@@ -65,10 +65,6 @@ const bool octeon_should_swizzle_table[256] = {
 };
 EXPORT_SYMBOL(octeon_should_swizzle_table);
 
-#ifdef CONFIG_PCI
-extern void pci_console_init(const char *arg);
-#endif
-
 static unsigned long long max_memory = ULLONG_MAX;
 static unsigned long long reserve_low_mem;
 
@@ -1057,6 +1053,9 @@ append_arg:
 			}
 		}
 	}
+
+	if (strstr(arcs_cmdline, "console=pci"))
+		octeon_pci_console_init(strstr(arcs_cmdline, "console=pci") + 8);
 
 	if (strstr(arcs_cmdline, "console=") == NULL) {
 		if (octeon_uart == 1)
