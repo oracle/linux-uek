@@ -157,11 +157,15 @@ int cvm_oct_sgmii_open(struct net_device *dev)
 
 		sr[i].bit = INT_BIT_LOC_FAULT;
 		en_mask |= 1ull << sr[i].bit;
-		octeon_hw_status_add_source(sr);
+		rv = octeon_hw_status_add_source(sr);
+		if (rv)
+			goto err;
 
 		sr[i].bit = INT_BIT_REM_FAULT;
 		en_mask |= 1ull << sr[i].bit;
-		octeon_hw_status_add_source(sr);
+		rv = octeon_hw_status_add_source(sr);
+		if (rv)
+			goto err1;
 
 		octeon_hw_status_enable(sr[i].reg, en_mask);
 		break;
@@ -169,6 +173,22 @@ int cvm_oct_sgmii_open(struct net_device *dev)
 		break;
 	}
 	return 0;
+
+ err1:
+	memset(&sr[0], 0, sizeof(sr[0]));
+	sr[0].reg = CVMX_GMXX_RXX_INT_REG(priv->interface_port,
+					  priv->interface);
+	sr[0].mask_reg = CVMX_GMXX_RXX_INT_EN(priv->interface_port,
+					      priv->interface);
+	sr[0].ack_w1c = 1;
+	sr[0].bit = INT_BIT_LOC_FAULT;
+	octeon_hw_status_remove_source(&sr[0]);
+ err:
+	octeon_hw_status_notifier_unregister(&priv->hw_status_notifier);
+	priv->hw_status_notifier.notifier_call = NULL;
+	cvm_oct_sgmii_stop(dev);
+
+	return rv;
 }
 
 int cvm_oct_sgmii_stop(struct net_device *dev)
