@@ -462,11 +462,21 @@ int octeon_hw_status_add_source(struct octeon_hw_status_reg *chain0)
 			rv = request_threaded_irq(root->irq, NULL,
 					octeon_hw_status_irq, IRQF_ONESHOT,
 					"octeon-hw-status", root);
-			WARN(rv, pr_fmt("request_threaded_irq failed:"
-				" irq %d, err %d\n"),
-				root->irq, rv);
 			if (!rv)
 				root->own_irq = 1;
+			else {
+				write_lock(&octeon_hw_status_lock);
+				octeon_hw_status_roots = root->next;
+				write_unlock(&octeon_hw_status_lock);
+				w = root->child;
+				while(w) {
+					new_root = w->next;
+					kfree(w);
+					w = new_root;
+				}
+				kfree(root);
+				return rv;
+			}
 		}
 
 		if (count_debug)
