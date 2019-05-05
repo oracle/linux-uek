@@ -53,7 +53,7 @@ static void (*octeon_message_functions[8])(void) = {
 	octeon_icache_flush,
 };
 
-static  int octeon_message_free_mask = 0xf8;
+static  int octeon_message_free_mask = IS_ENABLED(CONFIG_KEXEC) ? 0xf0 : 0xf8;
 static DEFINE_SPINLOCK(octeon_message_functions_lock);
 
 int octeon_request_ipi_handler(octeon_message_fn_t fn)
@@ -291,6 +291,14 @@ static void octeon_init_secondary(void)
 	octeon_irq_setup_secondary();
 }
 
+static irqreturn_t octeon_78xx_smp_dump_interrupt(int irq, void *dev_id)
+{
+#ifdef CONFIG_KEXEC
+	octeon_crash_dump();
+#endif
+	return IRQ_HANDLED;
+}
+
 /**
  * Callout to firmware before smp_init
  *
@@ -382,7 +390,7 @@ static int octeon_up_prepare(unsigned int cpu)
 	int coreid = cpu_logical_map(cpu);
 	int node;
 
-	per_cpu(cpu_state, smp_processor_id()) = CPU_UP_PREPARE;
+	per_cpu(cpu_state, cpu) = CPU_UP_PREPARE;
 	octeon_bootvector[coreid].target_ptr = (uint64_t)octeon_hotplug_entry_raw;
 	mb();
 	/* Convert coreid to node,core spair and send NMI to target core */
@@ -391,7 +399,7 @@ static int octeon_up_prepare(unsigned int cpu)
 	if (octeon_has_feature(OCTEON_FEATURE_CIU3))
 		cvmx_write_csr_node(node, CVMX_CIU3_NMI, (1ull << coreid));
 	else
-		cvmx_write_csr(CVMX_CIU_NMI, (1 << coreid));
+		cvmx_write_csr(CVMX_CIU_NMI, (1ull << coreid));
 	return 0;
 }
 
@@ -494,6 +502,11 @@ static void octeon_78xx_prepare_cpus(unsigned int max_cpus)
 			IRQF_PERCPU | IRQF_NO_THREAD, "ICache-Flush",
 			octeon_78xx_icache_flush_interrupt)) {
 		panic("Cannot request_irq for ICache-Flush");
+	}
+	if (request_irq(OCTEON_IRQ_MBOX0 + 3, octeon_78xx_smp_dump_interrupt,
+			IRQF_PERCPU | IRQF_NO_THREAD, "SMP-Dump",
+			octeon_78xx_smp_dump_interrupt)) {
+		panic("Cannot request_irq for SMP-Dump");
 	}
 }
 
