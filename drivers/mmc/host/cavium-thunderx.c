@@ -83,6 +83,7 @@ static int thunder_mmc_probe(struct pci_dev *pdev,
 
 	/* On ThunderX these are identical */
 	host->dma_base = host->base;
+	host->pdev = pdev;
 
 	host->reg_off = 0x2000;
 	host->reg_off_dma = 0x160;
