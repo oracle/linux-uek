@@ -19,8 +19,14 @@
 #include <linux/of.h>
 #include <linux/scatterlist.h>
 #include <linux/semaphore.h>
+#include <linux/pci.h>
 
 #define CAVIUM_MAX_MMC		4
+#define MRVL_OCTEONTX2_96XX_PARTNUM 0xB2
+
+/* Subsystem Device ID */
+#define PCI_SUBSYS_DEVID_8XXX	0xA
+#define PCI_SUBSYS_DEVID_9XXX	0xB
 
 /* DMA register addresses */
 #define MIO_EMM_DMA_FIFO_CFG(x)	(0x00 + x->reg_off_dma)
@@ -56,6 +62,7 @@ struct cvm_mmc_host {
 	struct device *dev;
 	void __iomem *base;
 	void __iomem *dma_base;
+	struct pci_dev *pdev;
 	int reg_off;
 	int reg_off_dma;
 	u64 emm_cfg;
@@ -212,4 +219,40 @@ int cvm_mmc_of_slot_probe(struct device *dev, struct cvm_mmc_host *host);
 int cvm_mmc_of_slot_remove(struct cvm_mmc_slot *slot);
 extern const char *cvm_mmc_irq_names[];
 
+static inline bool is_mmc_8xxx(struct cvm_mmc_host *host)
+{
+#ifdef CONFIG_ARM64
+	struct pci_dev *pdev = host->pdev;
+	u32 chip_id = (pdev->subsystem_device >> 12) & 0xF;
+
+	return (chip_id == PCI_SUBSYS_DEVID_8XXX);
+#else
+	return false;
+#endif
+}
+
+static inline bool is_mmc_otx2(struct cvm_mmc_host *host)
+{
+#ifdef CONFIG_ARM64
+	struct pci_dev *pdev = host->pdev;
+	u32 chip_id = (pdev->subsystem_device >> 12) & 0xF;
+
+	return (chip_id == PCI_SUBSYS_DEVID_9XXX);
+#else
+	return false;
+#endif
+}
+
+static inline bool is_mmc_otx2_A0(struct cvm_mmc_host *host)
+{
+#ifdef CONFIG_ARM64
+	struct pci_dev *pdev = host->pdev;
+	u32 chip_id = (pdev->subsystem_device >> 8) & 0xFF;
+
+	return (pdev->revision == 0x00) &&
+		(chip_id == MRVL_OCTEONTX2_96XX_PARTNUM);
+#else
+	return false;
+#endif
+}
 #endif
