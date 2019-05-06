@@ -953,7 +953,6 @@ static int cvm_mmc_of_parse(struct device *dev, struct cvm_mmc_slot *slot)
 	u32 id, cmd_skew = 0, dat_skew = 0, bus_width = 0;
 	struct device_node *node = dev->of_node;
 	struct mmc_host *mmc = slot->mmc;
-	u64 clock_period;
 	int ret;
 
 	ret = of_property_read_u32(node, "reg", &id);
@@ -999,11 +998,17 @@ static int cvm_mmc_of_parse(struct device *dev, struct cvm_mmc_slot *slot)
 	mmc->f_min = 400000;
 
 	/* Sampling register settings, period in picoseconds */
-	clock_period = 1000000000000ull / slot->host->sys_freq;
 	of_property_read_u32(node, "cavium,cmd-clk-skew", &cmd_skew);
 	of_property_read_u32(node, "cavium,dat-clk-skew", &dat_skew);
-	slot->cmd_cnt = (cmd_skew + clock_period / 2) / clock_period;
-	slot->dat_cnt = (dat_skew + clock_period / 2) / clock_period;
+	if (is_mmc_8xxx(slot->host) || is_mmc_otx2(slot->host)) {
+		slot->cmd_cnt = cmd_skew;
+		slot->dat_cnt = dat_skew;
+	} else {
+		u64 clock_period = 1000000000000ull / slot->host->sys_freq;
+
+		slot->cmd_cnt = (cmd_skew + clock_period / 2) / clock_period;
+		slot->dat_cnt = (dat_skew + clock_period / 2) / clock_period;
+	}
 
 	return id;
 }
