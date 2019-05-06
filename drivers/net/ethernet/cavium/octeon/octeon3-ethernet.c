@@ -2475,6 +2475,9 @@ static int octeon3_eth_probe(struct platform_device *pdev)
 		return -ENOMEM;
 	}
 
+	/* Using transmit queues degrades performance significantly */
+	netdev->priv_flags |= IFF_NO_QUEUE;
+
 	SET_NETDEV_DEV(netdev, &pdev->dev);
 	dev_set_drvdata(&pdev->dev, netdev);
 
