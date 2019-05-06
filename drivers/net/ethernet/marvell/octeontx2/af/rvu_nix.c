@@ -3525,6 +3525,9 @@ void rvu_nix_lf_teardown(struct rvu *rvu, u16 pcifunc, int blkaddr, int nixlf)
 {
 	struct rvu_pfvf *pfvf = rvu_get_pfvf(rvu, pcifunc);
 	struct hwctx_disable_req ctx_req;
+	int pf = rvu_get_pf(pcifunc);
+	u8 cgx_id, lmac_id;
+	void *cgxd;
 	int err;
 
 	ctx_req.hdr.pcifunc = pcifunc;
@@ -3553,6 +3556,14 @@ void rvu_nix_lf_teardown(struct rvu *rvu, u16 pcifunc, int blkaddr, int nixlf)
 		err = nix_lf_hwctx_disable(rvu, &ctx_req);
 		if (err)
 			dev_err(rvu->dev, "CQ ctx disable failed\n");
+	}
+
+	/* Disabling CGX config done for PTP */
+	if (pfvf->hw_rx_tstamp_en) {
+		rvu_get_cgx_lmac_id(rvu->pf2cgxlmac_map[pf], &cgx_id, &lmac_id);
+		cgxd = rvu_cgx_pdata(cgx_id, rvu);
+		cgx_lmac_ptp_config(cgxd, lmac_id, false);
+		pfvf->hw_rx_tstamp_en = false;
 	}
 
 	nix_ctx_free(rvu, pfvf);
