@@ -348,6 +348,9 @@ config CS4318_PHY
 
 config DAVICOM_PHY
 	tristate "Davicom PHYs"
+
+config ICPLUS_PHY
+	tristate "Drivers for ICPlus PHYs"
 	---help---
 	  Currently supports dm9161e and dm9131
 
@@ -424,6 +427,11 @@ config MESON_GXL_PHY
 	depends on ARCH_MESON || COMPILE_TEST
 	---help---
 	  Currently has a driver for the Amlogic Meson GXL Internal PHY
+
+config MARVELL_88X3120_PHY
+	tristate "Marvell 88X3120/88X3140 10GBase-T PHYs"
+	help
+	  Currently supports the 88X3120 PHY.
 
 config MICREL_PHY
 	tristate "Micrel PHYs"
