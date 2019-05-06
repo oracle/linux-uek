@@ -1337,11 +1337,6 @@ static void octeon_irq_ip4_ciu(void)
 
 static bool octeon_irq_use_ip4;
 
-static void octeon_irq_local_enable_ip4(void *arg)
-{
-	set_c0_status(STATUSF_IP4);
-}
-
 static void octeon_irq_ip4_mask(void)
 {
 	clear_c0_status(STATUSF_IP4);
@@ -1353,13 +1348,6 @@ static void (*octeon_irq_ip3)(void);
 static void (*octeon_irq_ip4)(void);
 
 void (*octeon_irq_setup_secondary)(void);
-
-void octeon_irq_set_ip4_handler(octeon_irq_ip4_handler_t h)
-{
-	octeon_irq_ip4 = h;
-	octeon_irq_use_ip4 = true;
-	on_each_cpu(octeon_irq_local_enable_ip4, NULL, 1);
-}
 
 static void octeon_irq_percpu_enable(void)
 {
@@ -2576,6 +2564,12 @@ static struct irq_domain_ops octeon_dflt_domain_ciu3_ops = {
 	.xlate = octeon_irq_ciu3_xlat,
 };
 
+static int octeon_irq_get_local_core_num(void)
+{
+	/* Mask out the node bits */
+	return 0x7f & cvmx_get_core_num();
+}
+
 static void octeon_irq_ciu3_ip2(void)
 {
 	union cvmx_ciu3_destx_pp_int dest_pp_int;
@@ -2585,7 +2579,7 @@ static void octeon_irq_ciu3_ip2(void)
 	ciu3_info = __this_cpu_read(octeon_ciu3_info);
 	ciu3_addr = ciu3_info->ciu3_addr;
 
-	dest_pp_int.u64 = cvmx_read_csr(ciu3_addr + CIU3_DEST_PP_INT(3 * cvmx_get_local_core_num()));
+	dest_pp_int.u64 = cvmx_read_csr(ciu3_addr + CIU3_DEST_PP_INT(3 * octeon_irq_get_local_core_num()));
 
 	if (likely(dest_pp_int.s.intr)) {
 		irq_hw_number_t intsn = dest_pp_int.s.intsn;
@@ -2644,7 +2638,7 @@ static void octeon_irq_ciu3_mbox(void)
 	union cvmx_ciu3_destx_pp_int dest_pp_int;
 	struct octeon_ciu3_info *ciu3_info;
 	u64 ciu3_addr;
-	int core = cvmx_get_local_core_num();
+	int core = octeon_irq_get_local_core_num();
 
 	ciu3_info = __this_cpu_read(octeon_ciu3_info);
 	ciu3_addr = ciu3_info->ciu3_addr;
@@ -2752,7 +2746,7 @@ static void octeon_irq_ciu3_mbox_ack(struct irq_data *data)
 	union cvmx_ciu3_iscx_w1c isc_w1c;
 	unsigned int mbox = data->irq - OCTEON_IRQ_MBOX0;
 
-	intsn = octeon_irq_ciu3_mbox_intsn_for_core(cvmx_get_local_core_num(), mbox);
+	intsn = octeon_irq_ciu3_mbox_intsn_for_core(octeon_irq_get_local_core_num(), mbox);
 
 	isc_w1c.u64 = 0;
 	isc_w1c.s.raw = 1;
@@ -2773,12 +2767,42 @@ static void octeon_irq_ciu3_mbox_cpu_offline(struct irq_data *data)
 	octeon_irq_ciu3_mbox_set_enable(data, smp_processor_id(), false);
 }
 
+static void octeon_irq_ciu3_ip4(void)
+{
+	union cvmx_ciu3_destx_pp_int dest_pp_int;
+	struct octeon_ciu3_info *ciu3_info;
+	u64 ciu3_addr;
+	int node = cvmx_get_node_num();
+	struct octeon_ciu3_errbits_cfg *cfg = octeon_ciu3_errbits_per_node + node;
+
+	ciu3_info = __this_cpu_read(octeon_ciu3_info);
+	ciu3_addr = ciu3_info->ciu3_addr;
+
+	dest_pp_int.u64 = cvmx_read_csr(ciu3_addr + CIU3_DEST_PP_INT(3 * octeon_irq_get_local_core_num() + 2));
+
+	if (likely(dest_pp_int.s.intr)) {
+		if (likely(cfg->irq)) {
+			do_IRQ(cfg->irq);
+		} else {
+			union cvmx_ciu3_iscx_w1c isc_w1c;
+			u64 isc_w1c_addr = ciu3_addr + CIU3_ISC_W1C(dest_pp_int.s.intsn);
+			isc_w1c.u64 = 0;
+			isc_w1c.s.en = 1;
+			cvmx_write_csr(isc_w1c_addr, isc_w1c.u64);
+			cvmx_read_csr(isc_w1c_addr);
+			spurious_interrupt();
+		}
+	} else {
+		spurious_interrupt();
+	}
+}
+
 static int octeon_irq_ciu3_alloc_resources(struct octeon_ciu3_info *ciu3_info)
 {
 	u64 b = ciu3_info->ciu3_addr;
 	int idt_ip2, idt_ip3, idt_ip4;
 	int unused_idt2;
-	int core = cvmx_get_local_core_num();
+	int core = octeon_irq_get_local_core_num();
 	int i;
 
 	__this_cpu_write(octeon_ciu3_info, ciu3_info);
@@ -3023,7 +3047,7 @@ static int __init octeon_irq_init_ciu3(struct device_node *ciu_node,
 
 	octeon_irq_ip2 = octeon_irq_ciu3_ip2;
 	octeon_irq_ip3 = octeon_irq_ciu3_mbox;
-	octeon_irq_ip4 = octeon_irq_ip4_mask;
+	octeon_irq_ip4 = octeon_irq_ciu3_ip4;
 
 	if (node == cvmx_get_node_num()) {
 		/* Mips internal */
@@ -3055,10 +3079,9 @@ static int __init octeon_irq_init_ciu3(struct device_node *ciu_node,
 		if (node == 0)
 			irq_set_default_host(domain);
 
-		octeon_irq_use_ip4 = false;
+		octeon_irq_use_ip4 = true;
 		/* Enable the CIU lines */
-		set_c0_status(STATUSF_IP2 | STATUSF_IP3);
-		clear_c0_status(STATUSF_IP4);
+		set_c0_status(STATUSF_IP2 | STATUSF_IP3 |STATUSF_IP4);
 	}
 
 	return 0;
@@ -3076,9 +3099,11 @@ static struct of_device_id ciu_types[] __initdata = {
 void __init arch_init_irq(void)
 {
 #ifdef CONFIG_SMP
-	/* Set the default affinity to the boot cpu. */
-	cpumask_clear(irq_default_affinity);
-	cpumask_set_cpu(smp_processor_id(), irq_default_affinity);
+	if (!OCTEON_IS_MODEL(OCTEON_CN78XX)) {
+		/* Set the default affinity to the boot cpu. */
+		cpumask_clear(irq_default_affinity);
+		cpumask_set_cpu(smp_processor_id(), irq_default_affinity);
+	}
 #endif
 	of_irq_init(ciu_types);
 }
