@@ -142,17 +142,18 @@
 
 /*
  * TLB refill handlers also map the vmalloc area into xuseg.  Avoid
- * the first couple of pages so NULL pointer dereferences will still
- * reliably trap.
+ * the first half of the MAP_BASE area so NULL pointer dereferences
+ * will still reliably trap, and to avoid OCTEON III errata.
  */
-#define VMALLOC_START		(MAP_BASE + (2 * PAGE_SIZE))
 #define VMALLOC_END	\
 	(MAP_BASE + \
 	 min(PTRS_PER_PGD * PTRS_PER_PUD * PTRS_PER_PMD * PTRS_PER_PTE * PAGE_SIZE, \
 	     (1UL << cpu_vmbits)) - (1UL << 32))
 
-#if defined(CONFIG_MODULES) && defined(KBUILD_64BIT_SYM32) && \
-	VMALLOC_START != CKSSEG
+#define VMALLOC_START		((MAP_BASE / 2 + VMALLOC_END / 2) & PAGE_MASK)
+
+#if defined(CONFIG_MODULES) && defined(KBUILD_64BIT_SYM32)
+
 /* Load modules into 32bit-compatible segment. */
 #ifdef CONFIG_MAPPED_KERNEL
 extern unsigned long kernel_image_end;
