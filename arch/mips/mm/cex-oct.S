@@ -90,11 +90,14 @@
 	.set	noat
 
 	SAVE_ALL
-	KMODE
+	CLI
 	jal	cache_parity_error_octeon_recoverable
 	 nop
-	j	ret_from_exception
-	 nop
-
+	/* As RESTORE_ALL_AND_RET was removed we have to do it on our own */
+	RESTORE_TEMP
+	RESTORE_STATIC
+	RESTORE_AT
+	RESTORE_SOME
+	RESTORE_SP_AND_RET
 	.set pop
 	END(handle_cache_err)
