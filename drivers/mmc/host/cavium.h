@@ -28,6 +28,11 @@
 #define PCI_SUBSYS_DEVID_8XXX	0xA
 #define PCI_SUBSYS_DEVID_9XXX	0xB
 
+#define KHZ_400 (400000)
+#define MHZ_52  (52000000)
+#define MHZ_100 (100000000)
+#define MHZ_200 (200000000)
+
 /* DMA register addresses */
 #define MIO_EMM_DMA_FIFO_CFG(x)	(0x00 + x->reg_off_dma)
 #define MIO_EMM_DMA_FIFO_ADR(x)	(0x10 + x->reg_off_dma)
