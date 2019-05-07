@@ -2354,6 +2354,13 @@ asmlinkage void do_ade(struct pt_regs *regs)
 	 */
 	if ((regs->cp0_badvaddr >= CVMSEG_IO && regs->cp0_badvaddr < CVMSEG_IO_END) ||
 	    (regs->cp0_badvaddr >= CVMSEG_BASE && regs->cp0_badvaddr < CVMSEG_BASE + cvmseg_size)) {
+#if defined(CONFIG_CAVIUM_OCTEON_USER_IO_PER_PROCESS)
+		struct task_struct *group_leader = current->group_leader;
+		if (!test_tsk_thread_flag(group_leader, TIF_XKPHYS_IO_EN)) {
+			prev_state = exception_enter();
+			goto sigbus;
+		}
+#endif
 		preempt_disable();
 		cvmmemctl = __read_64bit_c0_register($11, 7);
 		/* Make sure all async operations are done */
