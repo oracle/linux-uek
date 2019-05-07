@@ -2332,7 +2332,8 @@ asmlinkage void do_ade(struct pt_regs *regs)
 	mm_segment_t seg;
 #if defined(CONFIG_CPU_CAVIUM_OCTEON) && (CONFIG_CAVIUM_OCTEON_CVMSEG_SIZE > 0)
 	const unsigned long CVMSEG_BASE	= 0xffffffffffff8000ul;
-	const unsigned long CVMSEG_IO	= 0xffffffffffffa200ul;
+	const unsigned long CVMSEG_IO		= 0xffffffffffffa000ul;
+	const unsigned long CVMSEG_IO_END	= 0xffffffffffffc000ul;
 	u64 cvmmemctl			= __read_64bit_c0_register($11, 7);
 	unsigned long cvmseg_size	= (cvmmemctl & 0x3f) * 128;
 #endif
@@ -2349,9 +2350,8 @@ asmlinkage void do_ade(struct pt_regs *regs)
 	 * addresses, we enable the region and size it to match the
 	 * app.
 	 */
-	if ((regs->cp0_badvaddr == CVMSEG_IO) ||
-	    ((regs->cp0_badvaddr >= CVMSEG_BASE) &&
-	     (regs->cp0_badvaddr < CVMSEG_BASE + cvmseg_size))) {
+	if ((regs->cp0_badvaddr >= CVMSEG_IO && regs->cp0_badvaddr < CVMSEG_IO_END) ||
+	    (regs->cp0_badvaddr >= CVMSEG_BASE && regs->cp0_badvaddr < CVMSEG_BASE + cvmseg_size)) {
 		preempt_disable();
 		cvmmemctl = __read_64bit_c0_register($11, 7);
 		/* Make sure all async operations are done */
