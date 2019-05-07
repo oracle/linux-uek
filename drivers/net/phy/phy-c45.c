@@ -47,6 +47,16 @@ int genphy_c45_pma_setup_forced(struct phy_device *phydev)
 		/* Assume 1000base-T */
 		ctrl2 |= MDIO_PMA_CTRL2_1000BT;
 		break;
+	case SPEED_2500:
+		ctrl1 |= MDIO_CTRL1_SPEED2_5G;
+		/* Assume 2.5Gbase-T */
+		ctrl2 |= MDIO_PMA_CTRL2_2_5GBT;
+		break;
+	case SPEED_5000:
+		ctrl1 |= MDIO_CTRL1_SPEED5G;
+		/* Assume 5Gbase-T */
+		ctrl2 |= MDIO_PMA_CTRL2_5GBT;
+		break;
 	case SPEED_10000:
 		ctrl1 |= MDIO_CTRL1_SPEED10G;
 		/* Assume 10Gbase-T */
@@ -218,6 +228,12 @@ int genphy_c45_read_pma(struct phy_device *phydev)
 		break;
 	case MDIO_PMA_CTRL1_SPEED1000:
 		phydev->speed = SPEED_1000;
+		break;
+	case MDIO_CTRL1_SPEED2_5G:
+		phydev->speed = SPEED_2500;
+		break;
+	case MDIO_CTRL1_SPEED5G:
+		phydev->speed = SPEED_5000;
 		break;
 	case MDIO_CTRL1_SPEED10G:
 		phydev->speed = SPEED_10000;
