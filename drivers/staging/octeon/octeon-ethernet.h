@@ -16,6 +16,7 @@
 
 #include <linux/of.h>
 
+#include <asm/octeon/cvmx-helper.h>
 #include <asm/octeon/cvmx-helper-board.h>
 
 /**

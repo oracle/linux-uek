@@ -9,7 +9,11 @@
 #ifndef __CVMX_BOOT_VECTOR_H__
 #define __CVMX_BOOT_VECTOR_H__
 
+#ifdef CVMX_BUILD_FOR_LINUX_KERNEL
 #include <asm/octeon/octeon.h>
+#else
+#include "cvmx.h"
+#endif
 
 /*
  * The boot vector table is made up of an array of 1024 elements of

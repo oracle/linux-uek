@@ -508,7 +508,7 @@ void cvmx_pko_disable(void)
 	pko_reg_flags.s.ena_pko = 0;
 	cvmx_write_csr(CVMX_PKO_REG_FLAGS, pko_reg_flags.u64);
 }
-
+EXPORT_SYMBOL(cvmx_pko_disable);
 /**
  * @INTERNAL
  * Reset the packet output.
@@ -562,6 +562,7 @@ void cvmx_pko_shutdown(void)
 	__cvmx_pko_reset();
 	cvmx_pko_queue_free_all();
 }
+EXPORT_SYMBOL(cvmx_pko_shutdown);
 
 /**
  * Configure a output port and the associated queues for use.
