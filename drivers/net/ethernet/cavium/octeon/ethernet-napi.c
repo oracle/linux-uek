@@ -111,12 +111,13 @@ static int CVM_OCT_NAPI_POLL(struct napi_struct *napi, int budget)
 			 * around a little to see if another packet
 			 * comes in.
 			 */
-			if (no_work_count >= 2)
+			if (no_work_count >= 20)
 				break;
 			no_work_count++;
-			ndelay(500);
 			continue;
 		}
+		no_work_count = 0;
+
 		packet_ptr = work->packet_ptr;
 		pskb = cvm_oct_packet_to_skb(cvm_oct_get_buffer_ptr(packet_ptr));
 		prefetch(pskb);
@@ -126,11 +127,10 @@ static int CVM_OCT_NAPI_POLL(struct napi_struct *napi, int budget)
 			did_work_request = true;
 		}
 
-		if (unlikely(rx_count == 0)) {
-			/* First time through, see if there is enough
-			 * work waiting to merit waking another
-			 * CPU.
-			 */
+		/* Check every 8th packet if there is enough work waiting to
+		 * merit waking another CPU.
+		 */
+		if (unlikely((rx_count % 8) == 0)) {
 			int backlog;
 			int cores_in_use = core_state.active_cores;
 			if (CVM_OCT_NAPI_HAS_CN68XX_SSO) {
