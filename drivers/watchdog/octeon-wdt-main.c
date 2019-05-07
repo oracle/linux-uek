@@ -529,7 +529,7 @@ static int __init octeon_wdt_init(void)
 
 	if (OCTEON_IS_MODEL(OCTEON_CN68XX))
 		divisor = 0x200;
-	else if (OCTEON_IS_MODEL(OCTEON_CN78XX))
+	else if (octeon_has_feature(OCTEON_FEATURE_CIU3))
 		divisor = 0x400;
 	else
 		divisor = 0x100;
