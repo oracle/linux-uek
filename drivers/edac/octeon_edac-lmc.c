@@ -272,7 +272,9 @@ static int octeon_lmc_edac_probe(struct platform_device *pdev)
 
 		/* Check if LMC controller is enabled. */
 		ctl2.u64 = cvmx_read_csr(CVMX_LMCX_DLL_CTL2(mc));
-		if (ctl2.s.quad_dll_ena == 0) {
+		if ((current_cpu_type() == CPU_CAVIUM_OCTEON3 && ctl2.cn70xx.quad_dll_ena == 0)
+		    || (current_cpu_type() == CPU_CAVIUM_OCTEON2
+			&& ctl2.cn63xx.quad_dll_ena == 0)) { 
 			dev_info(&pdev->dev, "Disabled (LMC not present)\n");
 			return 0;
 		}
