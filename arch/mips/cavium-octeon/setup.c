@@ -862,33 +862,6 @@ void __init prom_init(void)
 		octeon_reserve32_memory = addr;
 #endif
 
-#ifdef CONFIG_CAVIUM_OCTEON_LOCK_L2
-	if (cvmx_read_csr(CVMX_L2D_FUS3) & (3ull << 34)) {
-		pr_info("Skipping L2 locking due to reduced L2 cache size\n");
-	} else {
-		uint32_t __maybe_unused ebase = read_c0_ebase() & 0x3ffff000;
-#ifdef CONFIG_CAVIUM_OCTEON_LOCK_L2_TLB
-		/* TLB refill */
-		cvmx_l2c_lock_mem_region(ebase, 0x100);
-#endif
-#ifdef CONFIG_CAVIUM_OCTEON_LOCK_L2_EXCEPTION
-		/* General exception */
-		cvmx_l2c_lock_mem_region(ebase + 0x180, 0x80);
-#endif
-#ifdef CONFIG_CAVIUM_OCTEON_LOCK_L2_LOW_LEVEL_INTERRUPT
-		/* Interrupt handler */
-		cvmx_l2c_lock_mem_region(ebase + 0x200, 0x80);
-#endif
-#ifdef CONFIG_CAVIUM_OCTEON_LOCK_L2_INTERRUPT
-		cvmx_l2c_lock_mem_region(__pa_symbol(handle_int), 0x100);
-		cvmx_l2c_lock_mem_region(__pa_symbol(plat_irq_dispatch), 0x80);
-#endif
-#ifdef CONFIG_CAVIUM_OCTEON_LOCK_L2_MEMCPY
-		cvmx_l2c_lock_mem_region(__pa_symbol(memcpy), 0x480);
-#endif
-	}
-#endif
-
 	octeon_check_cpu_bist();
 
 	octeon_uart = octeon_get_boot_uart();
@@ -1012,6 +985,54 @@ append_arg:
 	octeon_user_io_init();
 	octeon_setup_smp();
 }
+
+#ifdef CONFIG_CAVIUM_OCTEON_LOCK_L2
+static int __init octeon_l2_cache_lock(void)
+{
+	int is_octeon2 = (current_cpu_type() == CPU_CAVIUM_OCTEON2);
+
+	if ((is_octeon2 && (cvmx_read_csr(CVMX_MIO_FUS_DAT3) & (3ull << 32)))
+	    || (!is_octeon2 && (cvmx_read_csr(CVMX_L2D_FUS3) & (3ull << 34)))) {
+		pr_info("Skipping L2 locking due to reduced L2 cache size\n");
+	} else {
+		u32 __maybe_unused my_ebase = read_c0_ebase() & 0x3ffff000;
+		unsigned int __maybe_unused len = 0;
+		unsigned int __maybe_unused len2 = 0;
+#ifdef CONFIG_CAVIUM_OCTEON_LOCK_L2_TLB
+		/* TLB refill */
+		len = 0x100;
+		pr_info("L2 lock: TLB refill %d bytes\n", len);
+		cvmx_l2c_lock_mem_region(my_ebase, len);
+#endif
+#ifdef CONFIG_CAVIUM_OCTEON_LOCK_L2_EXCEPTION
+		/* General exception */
+		len = 0x80;
+		pr_info("L2 lock: General exception %d bytes\n", len);
+		cvmx_l2c_lock_mem_region(my_ebase + 0x180, len);
+#endif
+#ifdef CONFIG_CAVIUM_OCTEON_LOCK_L2_LOW_LEVEL_INTERRUPT
+		/* Interrupt handler */
+		len = 0x80;
+		pr_info("L2 lock: low-level interrupt %d bytes\n", len);
+		cvmx_l2c_lock_mem_region(my_ebase + 0x200, len);
+#endif
+#ifdef CONFIG_CAVIUM_OCTEON_LOCK_L2_INTERRUPT
+		len = 0x100;
+		len2 = 0x180;
+		pr_info("L2 lock: interrupt %d bytes\n", len + len2);
+		cvmx_l2c_lock_mem_region(__pa_symbol(handle_int), len);
+		cvmx_l2c_lock_mem_region(__pa_symbol(plat_irq_dispatch), len2);
+#endif
+#ifdef CONFIG_CAVIUM_OCTEON_LOCK_L2_MEMCPY
+		len = 0x480;
+		pr_info("L2 lock: memcpy %d bytes\n", len);
+		cvmx_l2c_lock_mem_region(__pa_symbol(memcpy), len);
+#endif
+	}
+	return 0;
+}
+late_initcall(octeon_l2_cache_lock);
+#endif
 
 /* Exclude a single page from the regions obtained in plat_mem_setup. */
 static __init void memory_exclude_page(u64 addr, u64 *mem, u64 *size)
