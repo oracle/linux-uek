@@ -4,7 +4,6 @@
 
 config NET_VENDOR_CAVIUM
 	bool "Cavium ethernet drivers"
-	depends on PCI
 	default y
 	---help---
 	  Select this option if you want enable Cavium network support.
@@ -15,6 +14,7 @@ if NET_VENDOR_CAVIUM
 
 config THUNDER_NIC_PF
 	tristate "Thunder Physical function driver"
+	depends on PCI
 	depends on 64BIT
 	select THUNDER_NIC_BGX
 	---help---
@@ -27,6 +27,7 @@ config THUNDER_NIC_PF
 
 config THUNDER_NIC_VF
 	tristate "Thunder Virtual function driver"
+	depends on PCI
 	depends on 64BIT
 	---help---
 	  This driver supports Thunder's NIC virtual function
@@ -34,6 +35,7 @@ config THUNDER_NIC_VF
 config	THUNDER_NIC_BGX
 	tristate "Thunder MAC interface driver (BGX)"
 	depends on 64BIT
+	depends on PCI
 	select PHYLIB
 	select MDIO_THUNDER
 	select THUNDER_NIC_RGX
@@ -44,6 +46,7 @@ config	THUNDER_NIC_BGX
 config	THUNDER_NIC_RGX
 	tristate "Thunder MAC interface driver (RGX)"
 	depends on 64BIT
+	depends on PCI
 	select PHYLIB
 	select MDIO_THUNDER
 	---help---
@@ -68,6 +71,7 @@ config OCTEON_MGMT_ETHERNET
 	depends on CAVIUM_OCTEON_SOC
 	select PHYLIB
 	select MDIO_OCTEON
+	select OCTEON_ETHERNET_COMMON
 	default y
 	help
 	  Enable the ethernet driver for the management
@@ -85,5 +89,40 @@ config LIQUIDIO_VF
 	  To compile this driver as a module, choose M here: The module
 	  will be called liquidio_vf. MSI-X interrupt support is required
 	  for this driver to work correctly
+
+config OCTEON_ETHERNET
+	tristate "OCTEON Ethernet support"
+	depends on CAVIUM_OCTEON_SOC
+	select PHYLIB
+	select MDIO_OCTEON
+	select OCTEON_ETHERNET_MEM
+	select OCTEON_ETHERNET_COMMON
+	---help---
+	  This driver supports the builtin ethernet ports on Cavium
+	  Inc.' products in the Octeon family. This driver supports the
+	  CN3XXX, CN5XXX, CN6XXX and CNF7XXX OCTEON processors.
+
+	  To compile this driver as a module, choose M here.  The module
+	  will be called octeon-ethernet.
+
+config OCTEON_ETHERNET_MEM
+	tristate
+	depends on CAVIUM_OCTEON_SOC
+
+config OCTEON_POW_ONLY_ETHERNET
+	tristate "POW based internal only ethernet driver"
+	depends on CAVIUM_OCTEON_SOC
+	depends on OCTEON_ETHERNET
+	---help---
+	  This option enables a very simple ethernet driver for internal core
+	  to core traffic. It relies on another driver, octeon-ethernet,
+	  to perform all hardware setup. This driver's purpose is to supply
+	  basic networking between different Linux images running on the same
+	  chip. A single core loads the octeon-ethernet module, all other cores
+	  load this driver. On load, the driver waits for some other core to
+	  perform hardware setup.
+
+config OCTEON_ETHERNET_COMMON
+	tristate
 
 endif # NET_VENDOR_CAVIUM
