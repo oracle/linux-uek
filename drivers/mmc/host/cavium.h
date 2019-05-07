@@ -139,6 +139,7 @@ struct cvm_mmc_host {
 struct cvm_mmc_slot {
 	struct mmc_host *mmc;		/* slot-level mmc_core object */
 	struct cvm_mmc_host *host;	/* common hw for all slots */
+	struct mmc_request *current_req;
 
 	u64 clock;
 
@@ -153,6 +154,8 @@ struct cvm_mmc_slot {
 	int slew;			/* clock skew */
 
 	int bus_id;
+	bool cmd6_pending;
+	u64 want_switch;
 };
 
 struct cvm_mmc_cr_type {
@@ -264,9 +267,11 @@ struct cvm_mmc_cr_mods {
 #define MIO_EMM_SWITCH_ERR0		BIT_ULL(58)
 #define MIO_EMM_SWITCH_ERR1		BIT_ULL(57)
 #define MIO_EMM_SWITCH_ERR2		BIT_ULL(56)
-#define MIO_EMM_SWITCH_HS_TIMING	BIT_ULL(48)
-#define MIO_EMM_SWITCH_HS200_TIMING	BIT_ULL(49)
+#define MIO_EMM_SWITCH_ERRS		GENMASK_ULL(58, 56)
 #define MIO_EMM_SWITCH_HS400_TIMING	BIT_ULL(50)
+#define MIO_EMM_SWITCH_HS200_TIMING	BIT_ULL(49)
+#define MIO_EMM_SWITCH_HS_TIMING	BIT_ULL(48)
+#define MIO_EMM_SWITCH_TIMING		GENMASK_ULL(50, 48)
 #define MIO_EMM_SWITCH_BUS_WIDTH	GENMASK_ULL(42, 40)
 #define MIO_EMM_SWITCH_POWER_CLASS	GENMASK_ULL(35, 32)
 #define MIO_EMM_SWITCH_CLK_HI		GENMASK_ULL(31, 16)
