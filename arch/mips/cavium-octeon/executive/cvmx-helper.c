@@ -1774,6 +1774,7 @@ int cvmx_helper_ipd_and_packet_input_enable(void)
 {
 	return cvmx_helper_ipd_and_packet_input_enable_node(cvmx_get_node_num());
 }
+EXPORT_SYMBOL(cvmx_helper_ipd_and_packet_input_enable);
 
 /**
  * Called after all internal packet IO paths are setup. This

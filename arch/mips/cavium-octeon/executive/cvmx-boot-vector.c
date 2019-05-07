@@ -107,9 +107,13 @@ wait_loop:
 
  */
 
+#ifdef CVMX_BUILD_FOR_LINUX_KERNEL
 #include <asm/octeon/cvmx-boot-vector.h>
+#else
+#include "cvmx-boot-vector.h"
+#endif
 
-static unsigned long long _cvmx_bootvector_data[16] = {
+static CVMX_SHARED unsigned long long _cvmx_bootvector_data[16] = {
 	0x40baf80040bbf803ull,  /* patch low order 8-bits if no KScratch*/
 	0x401a6000401b7801ull,
 	0x375a0084337b03ffull,
