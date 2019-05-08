@@ -1213,14 +1213,7 @@ union cvmx_dpi_dma_control {
 	uint64_t ffp_dis                      : 1;  /**< Force forward progress disable. The DMA engines will compete for shared resources. If the
                                                          hardware detects that particular engines are not able to make requests to an interface,
                                                          the hardware will periodically trade-off throughput for fairness. */
-	uint64_t commit_mode                  : 1;  /**< DMA engine commit mode.
-                                                         When COMMIT_MODE=1, DPI considers an instruction complete when the hardware internally
-                                                         generates the final write for the current instruction.
-                                                         When COMMIT_MODE=0, DPI additionally waits for the final write to reach the interface
-                                                         coherency point to declare the instructions complete.
-                                                         When COMMIT_MODE=1, DPI may not follow the HRM ordering rules. DPI
-                                                         hardware performance may be better with COMMIT_MODE=1 than with COMMIT_MODE=0 due to
-                                                         the relaxed ordering rules. If the HRM ordering rules are required, set COMMIT_MODE=0. */
+	uint64_t commit_mode                  : 1;  /**< DMA engine commit mode. For diagnostic use only. */
 	uint64_t pkt_hp                       : 1;  /**< High-Priority Mode for Packet Interface.
                                                          This mode has been deprecated. */
 	uint64_t pkt_en                       : 1;  /**< Enables the packet interface. When the packet interface is enabled, engines 4 and 5 are
@@ -1596,14 +1589,7 @@ union cvmx_dpi_dma_control {
 	uint64_t ffp_dis                      : 1;  /**< Force forward progress disable. The DMA engines will compete for shared resources. If the
                                                          hardware detects that particular engines are not able to make requests to an interface,
                                                          the hardware will periodically trade-off throughput for fairness. */
-	uint64_t commit_mode                  : 1;  /**< DMA engine commit mode.
-                                                         When COMMIT_MODE=1, DPI considers an instruction complete when the hardware internally
-                                                         generates the final write for the current instruction.
-                                                         When COMMIT_MODE=0, DPI additionally waits for the final write to reach the interface
-                                                         coherency point to declare the instructions complete.
-                                                         When COMMIT_MODE=1, DPI may not follow the HRM ordering rules. DPI
-                                                         hardware performance may be better with COMMIT_MODE=1 than with COMMIT_MODE=0 due to
-                                                         the relaxed ordering rules. If the HRM ordering rules are required, set COMMIT_MODE=0. */
+	uint64_t commit_mode                  : 1;  /**< DMA engine commit mode. For diagnostic use only. */
 	uint64_t reserved_57_57               : 1;
 	uint64_t pkt_en                       : 1;  /**< Enables the packet interface. When the packet interface is enabled, engines 4 and 5 are
                                                          used for packets and are not available for DMA. When PKT_EN=1, then DMA_ENB<5>=0 and
@@ -2861,8 +2847,8 @@ union cvmx_dpi_sli_prtx_cfg {
                                                          1 = 256B.
                                                          The MPS size must not exceed the size selected by PCIE*_CFG030[MPS] when DPI is
                                                          operating in PCIe mode (QLM_CFG=PCIe).
-                                                         The MPS size must not exceed 256B when DPI is operating in SRIO mode
-                                                         (QLM_CFG=SRIO). */
+                                                         For CNF75XX, when DPI is operating in SRIO mode (QLM_CFG=SRIO), the MPS size
+                                                         must not exceed 256B. */
 	uint64_t mrrs_lim                     : 1;  /**< MAC memory space read requests cannot cross the (naturally-aligned) MRRS boundary.
                                                          When clear, DPI is allowed to issue a MAC memory-space read that crosses the naturally-
                                                          aligned boundary of size defined by MRRS. (DPI will still only cross the boundary when it
@@ -2878,8 +2864,8 @@ union cvmx_dpi_sli_prtx_cfg {
                                                          0x3 = 1024B.
                                                          The MRRS size must not exceed the size selected by PCIE*_CFG030[MRRS] when DPI
                                                          is operating in PCIe mode (QLM_CFG=PCIe).
-                                                         The MRRS size must not exceed 256B when DPI is operating in SRIO mode
-                                                         (QLM_CFG=SRIO). */
+                                                         For CNF75XX, when DPI is operating in SRIO mode (QLM_CFG=SRIO), the MRRS size
+                                                         must not exceed 256B. */
 #else
 	uint64_t mrrs                         : 2;
 	uint64_t reserved_2_2                 : 1;

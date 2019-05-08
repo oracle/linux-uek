@@ -1059,6 +1059,34 @@ static inline uint64_t CVMX_GSERX_LANEX_RX_CTLE_CTRL(unsigned long offset, unsig
 #define CVMX_GSERX_LANEX_RX_CTLE_CTRL(offset, block_id) (CVMX_ADD_IO_SEG(0x0001180090440058ull) + (((offset) & 3) + ((block_id) & 15) * 0x10ull) * 1048576)
 #endif
 #if CVMX_ENABLE_CSR_ADDRESS_CHECKING
+static inline uint64_t CVMX_GSERX_LANEX_RX_DELTA_PM_0(unsigned long offset, unsigned long block_id)
+{
+	if (!(
+	      (OCTEON_IS_MODEL(OCTEON_CN73XX) && (((offset <= 3)) && ((block_id <= 6)))) ||
+	      (OCTEON_IS_MODEL(OCTEON_CN78XX) && (((offset <= 3)) && ((block_id <= 13)))) ||
+	      (OCTEON_IS_MODEL(OCTEON_CN78XX_PASS1_X) && (((offset <= 3)) && ((block_id <= 13)))) ||
+	      (OCTEON_IS_MODEL(OCTEON_CNF75XX) && (((offset <= 3)) && ((block_id <= 8))))))
+		cvmx_warn("CVMX_GSERX_LANEX_RX_DELTA_PM_0(%lu,%lu) is invalid on this chip\n", offset, block_id);
+	return CVMX_ADD_IO_SEG(0x0001180090440080ull) + (((offset) & 3) + ((block_id) & 15) * 0x10ull) * 1048576;
+}
+#else
+#define CVMX_GSERX_LANEX_RX_DELTA_PM_0(offset, block_id) (CVMX_ADD_IO_SEG(0x0001180090440080ull) + (((offset) & 3) + ((block_id) & 15) * 0x10ull) * 1048576)
+#endif
+#if CVMX_ENABLE_CSR_ADDRESS_CHECKING
+static inline uint64_t CVMX_GSERX_LANEX_RX_DELTA_PM_1(unsigned long offset, unsigned long block_id)
+{
+	if (!(
+	      (OCTEON_IS_MODEL(OCTEON_CN73XX) && (((offset <= 3)) && ((block_id <= 6)))) ||
+	      (OCTEON_IS_MODEL(OCTEON_CN78XX) && (((offset <= 3)) && ((block_id <= 13)))) ||
+	      (OCTEON_IS_MODEL(OCTEON_CN78XX_PASS1_X) && (((offset <= 3)) && ((block_id <= 13)))) ||
+	      (OCTEON_IS_MODEL(OCTEON_CNF75XX) && (((offset <= 3)) && ((block_id <= 8))))))
+		cvmx_warn("CVMX_GSERX_LANEX_RX_DELTA_PM_1(%lu,%lu) is invalid on this chip\n", offset, block_id);
+	return CVMX_ADD_IO_SEG(0x0001180090440088ull) + (((offset) & 3) + ((block_id) & 15) * 0x10ull) * 1048576;
+}
+#else
+#define CVMX_GSERX_LANEX_RX_DELTA_PM_1(offset, block_id) (CVMX_ADD_IO_SEG(0x0001180090440088ull) + (((offset) & 3) + ((block_id) & 15) * 0x10ull) * 1048576)
+#endif
+#if CVMX_ENABLE_CSR_ADDRESS_CHECKING
 static inline uint64_t CVMX_GSERX_LANEX_RX_LOOP_CTRL(unsigned long offset, unsigned long block_id)
 {
 	if (!(
@@ -2476,100 +2504,127 @@ static inline uint64_t CVMX_GSERX_SCRATCH(unsigned long offset)
 static inline uint64_t CVMX_GSERX_SLICEX_CEI_6G_SR_MODE(unsigned long offset, unsigned long block_id)
 {
 	if (!(
-	      (OCTEON_IS_MODEL(OCTEON_CN73XX) && (((offset <= 1)) && ((block_id <= 6))))))
+	      (OCTEON_IS_MODEL(OCTEON_CN73XX) && (((offset <= 1)) && ((block_id <= 6)))) ||
+	      (OCTEON_IS_MODEL(OCTEON_CN78XX) && (((offset <= 1)) && ((block_id <= 13)))) ||
+	      (OCTEON_IS_MODEL(OCTEON_CN78XX_PASS1_X) && (((offset <= 1)) && ((block_id <= 13)))) ||
+	      (OCTEON_IS_MODEL(OCTEON_CNF75XX) && (((offset <= 1)) && ((block_id <= 8))))))
 		cvmx_warn("CVMX_GSERX_SLICEX_CEI_6G_SR_MODE(%lu,%lu) is invalid on this chip\n", offset, block_id);
-	return CVMX_ADD_IO_SEG(0x0001180090460268ull) + (((offset) & 1) + ((block_id) & 7) * 0x8ull) * 2097152;
+	return CVMX_ADD_IO_SEG(0x0001180090460268ull) + (((offset) & 1) + ((block_id) & 15) * 0x8ull) * 2097152;
 }
 #else
-#define CVMX_GSERX_SLICEX_CEI_6G_SR_MODE(offset, block_id) (CVMX_ADD_IO_SEG(0x0001180090460268ull) + (((offset) & 1) + ((block_id) & 7) * 0x8ull) * 2097152)
+#define CVMX_GSERX_SLICEX_CEI_6G_SR_MODE(offset, block_id) (CVMX_ADD_IO_SEG(0x0001180090460268ull) + (((offset) & 1) + ((block_id) & 15) * 0x8ull) * 2097152)
 #endif
 #if CVMX_ENABLE_CSR_ADDRESS_CHECKING
 static inline uint64_t CVMX_GSERX_SLICEX_KR_MODE(unsigned long offset, unsigned long block_id)
 {
 	if (!(
-	      (OCTEON_IS_MODEL(OCTEON_CN73XX) && (((offset <= 1)) && ((block_id <= 6))))))
+	      (OCTEON_IS_MODEL(OCTEON_CN73XX) && (((offset <= 1)) && ((block_id <= 6)))) ||
+	      (OCTEON_IS_MODEL(OCTEON_CN78XX) && (((offset <= 1)) && ((block_id <= 13)))) ||
+	      (OCTEON_IS_MODEL(OCTEON_CN78XX_PASS1_X) && (((offset <= 1)) && ((block_id <= 13)))) ||
+	      (OCTEON_IS_MODEL(OCTEON_CNF75XX) && (((offset <= 1)) && ((block_id <= 8))))))
 		cvmx_warn("CVMX_GSERX_SLICEX_KR_MODE(%lu,%lu) is invalid on this chip\n", offset, block_id);
-	return CVMX_ADD_IO_SEG(0x0001180090460250ull) + (((offset) & 1) + ((block_id) & 7) * 0x8ull) * 2097152;
+	return CVMX_ADD_IO_SEG(0x0001180090460250ull) + (((offset) & 1) + ((block_id) & 15) * 0x8ull) * 2097152;
 }
 #else
-#define CVMX_GSERX_SLICEX_KR_MODE(offset, block_id) (CVMX_ADD_IO_SEG(0x0001180090460250ull) + (((offset) & 1) + ((block_id) & 7) * 0x8ull) * 2097152)
+#define CVMX_GSERX_SLICEX_KR_MODE(offset, block_id) (CVMX_ADD_IO_SEG(0x0001180090460250ull) + (((offset) & 1) + ((block_id) & 15) * 0x8ull) * 2097152)
 #endif
 #if CVMX_ENABLE_CSR_ADDRESS_CHECKING
 static inline uint64_t CVMX_GSERX_SLICEX_KX4_MODE(unsigned long offset, unsigned long block_id)
 {
 	if (!(
-	      (OCTEON_IS_MODEL(OCTEON_CN73XX) && (((offset <= 1)) && ((block_id <= 6))))))
+	      (OCTEON_IS_MODEL(OCTEON_CN73XX) && (((offset <= 1)) && ((block_id <= 6)))) ||
+	      (OCTEON_IS_MODEL(OCTEON_CN78XX) && (((offset <= 1)) && ((block_id <= 13)))) ||
+	      (OCTEON_IS_MODEL(OCTEON_CN78XX_PASS1_X) && (((offset <= 1)) && ((block_id <= 13)))) ||
+	      (OCTEON_IS_MODEL(OCTEON_CNF75XX) && (((offset <= 1)) && ((block_id <= 8))))))
 		cvmx_warn("CVMX_GSERX_SLICEX_KX4_MODE(%lu,%lu) is invalid on this chip\n", offset, block_id);
-	return CVMX_ADD_IO_SEG(0x0001180090460248ull) + (((offset) & 1) + ((block_id) & 7) * 0x8ull) * 2097152;
+	return CVMX_ADD_IO_SEG(0x0001180090460248ull) + (((offset) & 1) + ((block_id) & 15) * 0x8ull) * 2097152;
 }
 #else
-#define CVMX_GSERX_SLICEX_KX4_MODE(offset, block_id) (CVMX_ADD_IO_SEG(0x0001180090460248ull) + (((offset) & 1) + ((block_id) & 7) * 0x8ull) * 2097152)
+#define CVMX_GSERX_SLICEX_KX4_MODE(offset, block_id) (CVMX_ADD_IO_SEG(0x0001180090460248ull) + (((offset) & 1) + ((block_id) & 15) * 0x8ull) * 2097152)
 #endif
 #if CVMX_ENABLE_CSR_ADDRESS_CHECKING
 static inline uint64_t CVMX_GSERX_SLICEX_KX_MODE(unsigned long offset, unsigned long block_id)
 {
 	if (!(
-	      (OCTEON_IS_MODEL(OCTEON_CN73XX) && (((offset <= 1)) && ((block_id <= 6))))))
+	      (OCTEON_IS_MODEL(OCTEON_CN73XX) && (((offset <= 1)) && ((block_id <= 6)))) ||
+	      (OCTEON_IS_MODEL(OCTEON_CN78XX) && (((offset <= 1)) && ((block_id <= 13)))) ||
+	      (OCTEON_IS_MODEL(OCTEON_CN78XX_PASS1_X) && (((offset <= 1)) && ((block_id <= 13)))) ||
+	      (OCTEON_IS_MODEL(OCTEON_CNF75XX) && (((offset <= 1)) && ((block_id <= 8))))))
 		cvmx_warn("CVMX_GSERX_SLICEX_KX_MODE(%lu,%lu) is invalid on this chip\n", offset, block_id);
-	return CVMX_ADD_IO_SEG(0x0001180090460240ull) + (((offset) & 1) + ((block_id) & 7) * 0x8ull) * 2097152;
+	return CVMX_ADD_IO_SEG(0x0001180090460240ull) + (((offset) & 1) + ((block_id) & 15) * 0x8ull) * 2097152;
 }
 #else
-#define CVMX_GSERX_SLICEX_KX_MODE(offset, block_id) (CVMX_ADD_IO_SEG(0x0001180090460240ull) + (((offset) & 1) + ((block_id) & 7) * 0x8ull) * 2097152)
+#define CVMX_GSERX_SLICEX_KX_MODE(offset, block_id) (CVMX_ADD_IO_SEG(0x0001180090460240ull) + (((offset) & 1) + ((block_id) & 15) * 0x8ull) * 2097152)
 #endif
 #if CVMX_ENABLE_CSR_ADDRESS_CHECKING
 static inline uint64_t CVMX_GSERX_SLICEX_PCIE1_MODE(unsigned long offset, unsigned long block_id)
 {
 	if (!(
-	      (OCTEON_IS_MODEL(OCTEON_CN73XX) && (((offset <= 1)) && ((block_id <= 6))))))
+	      (OCTEON_IS_MODEL(OCTEON_CN73XX) && (((offset <= 1)) && ((block_id <= 6)))) ||
+	      (OCTEON_IS_MODEL(OCTEON_CN78XX) && (((offset <= 1)) && ((block_id <= 13)))) ||
+	      (OCTEON_IS_MODEL(OCTEON_CN78XX_PASS1_X) && (((offset <= 1)) && ((block_id <= 13)))) ||
+	      (OCTEON_IS_MODEL(OCTEON_CNF75XX) && (((offset <= 1)) && ((block_id <= 8))))))
 		cvmx_warn("CVMX_GSERX_SLICEX_PCIE1_MODE(%lu,%lu) is invalid on this chip\n", offset, block_id);
-	return CVMX_ADD_IO_SEG(0x0001180090460228ull) + (((offset) & 1) + ((block_id) & 7) * 0x8ull) * 2097152;
+	return CVMX_ADD_IO_SEG(0x0001180090460228ull) + (((offset) & 1) + ((block_id) & 15) * 0x8ull) * 2097152;
 }
 #else
-#define CVMX_GSERX_SLICEX_PCIE1_MODE(offset, block_id) (CVMX_ADD_IO_SEG(0x0001180090460228ull) + (((offset) & 1) + ((block_id) & 7) * 0x8ull) * 2097152)
+#define CVMX_GSERX_SLICEX_PCIE1_MODE(offset, block_id) (CVMX_ADD_IO_SEG(0x0001180090460228ull) + (((offset) & 1) + ((block_id) & 15) * 0x8ull) * 2097152)
 #endif
 #if CVMX_ENABLE_CSR_ADDRESS_CHECKING
 static inline uint64_t CVMX_GSERX_SLICEX_PCIE2_MODE(unsigned long offset, unsigned long block_id)
 {
 	if (!(
-	      (OCTEON_IS_MODEL(OCTEON_CN73XX) && (((offset <= 1)) && ((block_id <= 6))))))
+	      (OCTEON_IS_MODEL(OCTEON_CN73XX) && (((offset <= 1)) && ((block_id <= 6)))) ||
+	      (OCTEON_IS_MODEL(OCTEON_CN78XX) && (((offset <= 1)) && ((block_id <= 13)))) ||
+	      (OCTEON_IS_MODEL(OCTEON_CN78XX_PASS1_X) && (((offset <= 1)) && ((block_id <= 13)))) ||
+	      (OCTEON_IS_MODEL(OCTEON_CNF75XX) && (((offset <= 1)) && ((block_id <= 8))))))
 		cvmx_warn("CVMX_GSERX_SLICEX_PCIE2_MODE(%lu,%lu) is invalid on this chip\n", offset, block_id);
-	return CVMX_ADD_IO_SEG(0x0001180090460230ull) + (((offset) & 1) + ((block_id) & 7) * 0x8ull) * 2097152;
+	return CVMX_ADD_IO_SEG(0x0001180090460230ull) + (((offset) & 1) + ((block_id) & 15) * 0x8ull) * 2097152;
 }
 #else
-#define CVMX_GSERX_SLICEX_PCIE2_MODE(offset, block_id) (CVMX_ADD_IO_SEG(0x0001180090460230ull) + (((offset) & 1) + ((block_id) & 7) * 0x8ull) * 2097152)
+#define CVMX_GSERX_SLICEX_PCIE2_MODE(offset, block_id) (CVMX_ADD_IO_SEG(0x0001180090460230ull) + (((offset) & 1) + ((block_id) & 15) * 0x8ull) * 2097152)
 #endif
 #if CVMX_ENABLE_CSR_ADDRESS_CHECKING
 static inline uint64_t CVMX_GSERX_SLICEX_PCIE3_MODE(unsigned long offset, unsigned long block_id)
 {
 	if (!(
-	      (OCTEON_IS_MODEL(OCTEON_CN73XX) && (((offset <= 1)) && ((block_id <= 6))))))
+	      (OCTEON_IS_MODEL(OCTEON_CN73XX) && (((offset <= 1)) && ((block_id <= 6)))) ||
+	      (OCTEON_IS_MODEL(OCTEON_CN78XX) && (((offset <= 1)) && ((block_id <= 13)))) ||
+	      (OCTEON_IS_MODEL(OCTEON_CN78XX_PASS1_X) && (((offset <= 1)) && ((block_id <= 13)))) ||
+	      (OCTEON_IS_MODEL(OCTEON_CNF75XX) && (((offset <= 1)) && ((block_id <= 8))))))
 		cvmx_warn("CVMX_GSERX_SLICEX_PCIE3_MODE(%lu,%lu) is invalid on this chip\n", offset, block_id);
-	return CVMX_ADD_IO_SEG(0x0001180090460238ull) + (((offset) & 1) + ((block_id) & 7) * 0x8ull) * 2097152;
+	return CVMX_ADD_IO_SEG(0x0001180090460238ull) + (((offset) & 1) + ((block_id) & 15) * 0x8ull) * 2097152;
 }
 #else
-#define CVMX_GSERX_SLICEX_PCIE3_MODE(offset, block_id) (CVMX_ADD_IO_SEG(0x0001180090460238ull) + (((offset) & 1) + ((block_id) & 7) * 0x8ull) * 2097152)
+#define CVMX_GSERX_SLICEX_PCIE3_MODE(offset, block_id) (CVMX_ADD_IO_SEG(0x0001180090460238ull) + (((offset) & 1) + ((block_id) & 15) * 0x8ull) * 2097152)
 #endif
 #if CVMX_ENABLE_CSR_ADDRESS_CHECKING
 static inline uint64_t CVMX_GSERX_SLICEX_QSGMII_MODE(unsigned long offset, unsigned long block_id)
 {
 	if (!(
-	      (OCTEON_IS_MODEL(OCTEON_CN73XX) && (((offset <= 1)) && ((block_id <= 6))))))
+	      (OCTEON_IS_MODEL(OCTEON_CN73XX) && (((offset <= 1)) && ((block_id <= 6)))) ||
+	      (OCTEON_IS_MODEL(OCTEON_CN78XX) && (((offset <= 1)) && ((block_id <= 13)))) ||
+	      (OCTEON_IS_MODEL(OCTEON_CN78XX_PASS1_X) && (((offset <= 1)) && ((block_id <= 13)))) ||
+	      (OCTEON_IS_MODEL(OCTEON_CNF75XX) && (((offset <= 1)) && ((block_id <= 8))))))
 		cvmx_warn("CVMX_GSERX_SLICEX_QSGMII_MODE(%lu,%lu) is invalid on this chip\n", offset, block_id);
-	return CVMX_ADD_IO_SEG(0x0001180090460260ull) + (((offset) & 1) + ((block_id) & 7) * 0x8ull) * 2097152;
+	return CVMX_ADD_IO_SEG(0x0001180090460260ull) + (((offset) & 1) + ((block_id) & 15) * 0x8ull) * 2097152;
 }
 #else
-#define CVMX_GSERX_SLICEX_QSGMII_MODE(offset, block_id) (CVMX_ADD_IO_SEG(0x0001180090460260ull) + (((offset) & 1) + ((block_id) & 7) * 0x8ull) * 2097152)
+#define CVMX_GSERX_SLICEX_QSGMII_MODE(offset, block_id) (CVMX_ADD_IO_SEG(0x0001180090460260ull) + (((offset) & 1) + ((block_id) & 15) * 0x8ull) * 2097152)
 #endif
 #if CVMX_ENABLE_CSR_ADDRESS_CHECKING
 static inline uint64_t CVMX_GSERX_SLICEX_RX_LDLL_CTRL(unsigned long offset, unsigned long block_id)
 {
 	if (!(
-	      (OCTEON_IS_MODEL(OCTEON_CN73XX) && (((offset <= 1)) && ((block_id <= 6))))))
+	      (OCTEON_IS_MODEL(OCTEON_CN73XX) && (((offset <= 1)) && ((block_id <= 6)))) ||
+	      (OCTEON_IS_MODEL(OCTEON_CN78XX) && (((offset <= 1)) && ((block_id <= 13)))) ||
+	      (OCTEON_IS_MODEL(OCTEON_CN78XX_PASS1_X) && (((offset <= 1)) && ((block_id <= 13)))) ||
+	      (OCTEON_IS_MODEL(OCTEON_CNF75XX) && (((offset <= 1)) && ((block_id <= 8))))))
 		cvmx_warn("CVMX_GSERX_SLICEX_RX_LDLL_CTRL(%lu,%lu) is invalid on this chip\n", offset, block_id);
-	return CVMX_ADD_IO_SEG(0x0001180090460218ull) + (((offset) & 1) + ((block_id) & 7) * 0x8ull) * 2097152;
+	return CVMX_ADD_IO_SEG(0x0001180090460218ull) + (((offset) & 1) + ((block_id) & 15) * 0x8ull) * 2097152;
 }
 #else
-#define CVMX_GSERX_SLICEX_RX_LDLL_CTRL(offset, block_id) (CVMX_ADD_IO_SEG(0x0001180090460218ull) + (((offset) & 1) + ((block_id) & 7) * 0x8ull) * 2097152)
+#define CVMX_GSERX_SLICEX_RX_LDLL_CTRL(offset, block_id) (CVMX_ADD_IO_SEG(0x0001180090460218ull) + (((offset) & 1) + ((block_id) & 15) * 0x8ull) * 2097152)
 #endif
 #if CVMX_ENABLE_CSR_ADDRESS_CHECKING
 static inline uint64_t CVMX_GSERX_SLICEX_RX_SDLL_CTRL(unsigned long offset, unsigned long block_id)
@@ -2589,12 +2644,15 @@ static inline uint64_t CVMX_GSERX_SLICEX_RX_SDLL_CTRL(unsigned long offset, unsi
 static inline uint64_t CVMX_GSERX_SLICEX_SGMII_MODE(unsigned long offset, unsigned long block_id)
 {
 	if (!(
-	      (OCTEON_IS_MODEL(OCTEON_CN73XX) && (((offset <= 1)) && ((block_id <= 6))))))
+	      (OCTEON_IS_MODEL(OCTEON_CN73XX) && (((offset <= 1)) && ((block_id <= 6)))) ||
+	      (OCTEON_IS_MODEL(OCTEON_CN78XX) && (((offset <= 1)) && ((block_id <= 13)))) ||
+	      (OCTEON_IS_MODEL(OCTEON_CN78XX_PASS1_X) && (((offset <= 1)) && ((block_id <= 13)))) ||
+	      (OCTEON_IS_MODEL(OCTEON_CNF75XX) && (((offset <= 1)) && ((block_id <= 8))))))
 		cvmx_warn("CVMX_GSERX_SLICEX_SGMII_MODE(%lu,%lu) is invalid on this chip\n", offset, block_id);
-	return CVMX_ADD_IO_SEG(0x0001180090460258ull) + (((offset) & 1) + ((block_id) & 7) * 0x8ull) * 2097152;
+	return CVMX_ADD_IO_SEG(0x0001180090460258ull) + (((offset) & 1) + ((block_id) & 15) * 0x8ull) * 2097152;
 }
 #else
-#define CVMX_GSERX_SLICEX_SGMII_MODE(offset, block_id) (CVMX_ADD_IO_SEG(0x0001180090460258ull) + (((offset) & 1) + ((block_id) & 7) * 0x8ull) * 2097152)
+#define CVMX_GSERX_SLICEX_SGMII_MODE(offset, block_id) (CVMX_ADD_IO_SEG(0x0001180090460258ull) + (((offset) & 1) + ((block_id) & 15) * 0x8ull) * 2097152)
 #endif
 #if CVMX_ENABLE_CSR_ADDRESS_CHECKING
 static inline uint64_t CVMX_GSERX_SLICE_CFG(unsigned long offset)
@@ -3025,7 +3083,9 @@ union cvmx_gserx_cfg {
 	uint64_t rmac                         : 1;  /**< When set, indicates the GSER is configured for RMAC mode. [RMAC] must not be set
                                                          when any of [BGX,PCIE,SRIO] are set. [RMAC] must only be set for DLM6, DLM7, and
                                                          DLM8 (i.e. GSER6, GSER7, and GSER8). */
-	uint64_t srio                         : 1;  /**< When set, indicates the GSER is configured for SRIO mode. [SRIO] must not be set
+	uint64_t srio                         : 1;  /**< For CNF73XX, this field is reserved.
+                                                         For CNF75XX, when set, indicates the GSER is configured for SRIO mode. [SRIO] must not be
+                                                         set
                                                          when any of [BGX,PCIE,RMAC] are set. [SRIO] must only be set for QLM2 and QLM3
                                                          (i.e. GSER2 and GSER3). */
 	uint64_t sata                         : 1;  /**< Unused. */
@@ -4535,7 +4595,7 @@ union cvmx_gserx_lanex_lbert_ecnt {
 	uint64_t lbert_err_ovbit14            : 1;  /**< If this bit is set, multiply [LBERT_ERR_CNT] by 128.
                                                          If this bit is set and [LBERT_ERR_CNT] = 2^15-1, signals
                                                          overflow of the counter. */
-	uint64_t lbert_err_cnt                : 15; /**< Current error count.
+	uint64_t lbert_err_cnt                : 15; /**< Current bit error count.
                                                          If [LBERT_ERR_OVBIT14] is active, then multiply
                                                          count by 128. */
 #else
@@ -4987,8 +5047,8 @@ union cvmx_gserx_lanex_pcs_macifc_mon_2 {
 	uint64_t tx_coeff_req                 : 1;  /**< Current state of the MAC to PCS TX coefficient request input. */
 	uint64_t tx_vboost_en                 : 1;  /**< Current state of the MAC to PCS TX Vboost enable input. */
 	uint64_t tx_swing                     : 5;  /**< Current state of the MAC to PCS TX equalizer swing<4:0> input. */
-	uint64_t tx_pre                       : 4;  /**< Current state of the MAC to PCS TX equalizer pre emphasis<3:0> input. */
-	uint64_t tx_post                      : 5;  /**< Current state of the MAC to PCS TX equalizer post emphasis<4:0> input. */
+	uint64_t tx_pre                       : 4;  /**< Current state of the MAC to PCS TX equalizer preemphasis<3:0> input. */
+	uint64_t tx_post                      : 5;  /**< Current state of the MAC to PCS TX equalizer postemphasis<4:0> input. */
 #else
 	uint64_t tx_post                      : 5;
 	uint64_t tx_pre                       : 4;
@@ -5809,6 +5869,65 @@ union cvmx_gserx_lanex_rx_ctle_ctrl {
 	struct cvmx_gserx_lanex_rx_ctle_ctrl_s cnf75xx;
 };
 typedef union cvmx_gserx_lanex_rx_ctle_ctrl cvmx_gserx_lanex_rx_ctle_ctrl_t;
+
+/**
+ * cvmx_gser#_lane#_rx_delta_pm_0
+ *
+ * These are the RAW PCS per-lane RX VMA performance metric 0 register. These registers are for
+ * diagnostic use only.
+ * These registers are reset by hardware only during chip cold reset. The values of the CSR
+ * fields in these registers do not change during chip warm or soft resets.
+ */
+union cvmx_gserx_lanex_rx_delta_pm_0 {
+	uint64_t u64;
+	struct cvmx_gserx_lanex_rx_delta_pm_0_s {
+#ifdef __BIG_ENDIAN_BITFIELD
+	uint64_t reserved_6_63                : 58;
+	uint64_t sds_pcs_rx_vma_delta_pm_max  : 6;  /**< RX VMA Delta performance metric.
+                                                         <5:3> = Inverted delta.
+                                                         <2:0> = VMA window count upper bits <18:16>.
+                                                                 Lower bits in GSER()_LANE()_RX_DELTA_PM_1
+                                                                 [SDS_PCS_RX_VMA_DELTA_PM_MAX]. */
+#else
+	uint64_t sds_pcs_rx_vma_delta_pm_max  : 6;
+	uint64_t reserved_6_63                : 58;
+#endif
+	} s;
+	struct cvmx_gserx_lanex_rx_delta_pm_0_s cn73xx;
+	struct cvmx_gserx_lanex_rx_delta_pm_0_s cn78xx;
+	struct cvmx_gserx_lanex_rx_delta_pm_0_s cn78xxp1;
+	struct cvmx_gserx_lanex_rx_delta_pm_0_s cnf75xx;
+};
+typedef union cvmx_gserx_lanex_rx_delta_pm_0 cvmx_gserx_lanex_rx_delta_pm_0_t;
+
+/**
+ * cvmx_gser#_lane#_rx_delta_pm_1
+ *
+ * These are the RAW PCS per-lane RX VMA performance metric 0 register. These registers are for
+ * diagnostic use only.
+ * These registers are reset by hardware only during chip cold reset. The values of the CSR
+ * fields in these registers do not change during chip warm or soft resets.
+ */
+union cvmx_gserx_lanex_rx_delta_pm_1 {
+	uint64_t u64;
+	struct cvmx_gserx_lanex_rx_delta_pm_1_s {
+#ifdef __BIG_ENDIAN_BITFIELD
+	uint64_t reserved_16_63               : 48;
+	uint64_t sds_pcs_rx_vma_delta_pm_max  : 16; /**< RX VMA Delta performance metric.
+                                                         VMA window count lower bits <15:0>.
+                                                         Upper bits in GSER()_LANE()_RX_DELTA_PM_0
+                                                         [SDS_PCS_RX_VMA_DELTA_PM_MAX]. */
+#else
+	uint64_t sds_pcs_rx_vma_delta_pm_max  : 16;
+	uint64_t reserved_16_63               : 48;
+#endif
+	} s;
+	struct cvmx_gserx_lanex_rx_delta_pm_1_s cn73xx;
+	struct cvmx_gserx_lanex_rx_delta_pm_1_s cn78xx;
+	struct cvmx_gserx_lanex_rx_delta_pm_1_s cn78xxp1;
+	struct cvmx_gserx_lanex_rx_delta_pm_1_s cnf75xx;
+};
+typedef union cvmx_gserx_lanex_rx_delta_pm_1 cvmx_gserx_lanex_rx_delta_pm_1_t;
 
 /**
  * cvmx_gser#_lane#_rx_loop_ctrl
@@ -6760,8 +6879,8 @@ union cvmx_gserx_lanex_sds_pin_mon_2 {
 	uint64_t pcs_sds_tx_turbos_en         : 1;  /**< TX turbo mode enable signal, increases swing of TX
                                                          through current mode. */
 	uint64_t pcs_sds_premptap             : 9;  /**< Preemphasis control.
-                                                         <8:4> = Post-cursor.
-                                                         <3:0> = Pre-cursor. */
+                                                         <8:4> = Postcursor.
+                                                         <3:0> = Precursor. */
 #else
 	uint64_t pcs_sds_premptap             : 9;
 	uint64_t pcs_sds_tx_turbos_en         : 1;
@@ -6778,8 +6897,8 @@ typedef union cvmx_gserx_lanex_sds_pin_mon_2 cvmx_gserx_lanex_sds_pin_mon_2_t;
 /**
  * cvmx_gser#_lane#_tx_cfg_0
  *
- * These registers are for diagnostic use only. These registers are reset by hardware only during
- * chip cold reset. The values of the CSR fields in these registers do not change during chip
+ * These registers are reset by hardware only during chip cold reset. The
+ * values of the CSR fields in these registers do not change during chip
  * warm or soft resets.
  */
 union cvmx_gserx_lanex_tx_cfg_0 {
@@ -6798,23 +6917,16 @@ union cvmx_gserx_lanex_tx_cfg_0 {
 	uint64_t cfg_tx_swing                 : 5;  /**< TX output swing control.
                                                          Default swing encoding when GSER()_LANE()_TX_CFG_1[TX_SWING_OVRRD_EN] is
                                                          asserted.
-                                                         Recommended settings:
-                                                         When auto-negotiated link training is not present, including XFI and all
-                                                         protocols <= 6.25Gbaud except PCIe, the transmit swing should be manually
-                                                         over-ridden. GSER()_LANE()_TX_CFG_1[TX_SWING_OVRRD_EN] should be set
-                                                         and [CFG_TX_SWING] configures the swing. A transmit swing change should be
-                                                         followed by a control interface configuration over-ride to force the
-                                                         new setting - see GSER()_LANE()_PCS_CTLIFC_2[CTLIFC_OVRRD_REQ].
-                                                         [CFG_TX_SWING] should be derived from signal integrity simulations
-                                                         with the IBIS-AMI model supplied by Cavium when auto-negotiated link
-                                                         training is not present and link speed <= 6.25 Gbaud.
-                                                         <pre>
-                                                             Frequency          Possibly useful [CFG_TX_SWING] value
-                                                             --------------------------------------------------------
-                                                              6.25 Gbaud             0xa
-                                                              10.3125 Gbaud          0xd
-                                                              other                  0x7
-                                                         </pre> */
+                                                         It is recommended to not use the GSER()_LANE()_TX_CFG_0[CFG_TX_SWING],
+                                                         GSER()_LANE()_TX_CFG_1[TX_SWING_OVRRD_EN,TX_PREMPTAP_OVRRD_VAL], or
+                                                         GSER()_LANE()_TX_PRE_EMPHASIS[CFG_TX_PREMPTAP] override registers for 10BASE-KR,
+                                                         SRIO or PCIe links in which the transmitter is adapted by the respective
+                                                         hardware-controlled link training protocols.
+                                                         The [CFG_TX_SWING] value for transmitter swing should be derived from
+                                                         signal integrity simulations with IBIS-AMI models supplied by Cavium.
+                                                         A transmit swing change should be followed by a control interface configuration
+                                                         over-ride to force the new setting - see
+                                                         GSER()_LANE()_PCS_CTLIFC_2[CTLIFC_OVRRD_REQ]. */
 	uint64_t fast_rdet_mode               : 1;  /**< Assert to enable fast RX detection. For simulation purposes only. */
 	uint64_t fast_tristate_mode           : 1;  /**< Assert to enable fast tristate power up. For simulation purposes only. */
 	uint64_t reserved_0_0                 : 1;
@@ -6880,8 +6992,8 @@ typedef union cvmx_gserx_lanex_tx_cfg_0 cvmx_gserx_lanex_tx_cfg_0_t;
 /**
  * cvmx_gser#_lane#_tx_cfg_1
  *
- * These registers are for diagnostic use only. These registers are reset by hardware only during
- * chip cold reset. The values of the CSR fields in these registers do not change during chip
+ * These registers are reset by hardware only during chip cold reset. The
+ * values of the CSR fields in these registers do not change during chip
  * warm or soft resets.
  */
 union cvmx_gserx_lanex_tx_cfg_1 {
@@ -6897,21 +7009,26 @@ union cvmx_gserx_lanex_tx_cfg_1 {
                                                          0x3 = 20-bit. */
 	uint64_t tx_vboost_en_ovrrd_en        : 1;  /**< Override enable for pcs_sds_txX_vboost_en, TX  vboost mode enable. */
 	uint64_t tx_turbo_en_ovrrd_en         : 1;  /**< Override enable for pcs_sds_txX_turbo_en, Turbo mode enable. */
-	uint64_t tx_swing_ovrrd_en            : 1;  /**< Override enable for pcs_sds_txX_swing, TX swing.
-                                                         Recommended settings:
-                                                         When auto-negotiated link training is not present, including XFI and all
-                                                         protocols <= 6.25Gbaud except PCIe, the transmit swing should be manually
-                                                         over-ridden. [TX_SWING_OVRRD_EN] should be set and
-                                                         GSER()_LANE()_TX_CFG_0[CFG_TX_SWING] configures the swing. A transmit swing
-                                                         change should be followed by a control interface configuration over-ride to
-                                                         force the new setting - see GSER()_LANE()_PCS_CTLIFC_2[CTLIFC_OVRRD_REQ]. */
-	uint64_t tx_premptap_ovrrd_val        : 1;  /**< Override enable for pcs_sds_txX_preemptap, preemphasis control.
-                                                         Recommended settings:
-                                                         When auto-negotiated link training is not present, including XFI and all
-                                                         protocols <= 6.25Gbaud except PCIe, the transmit preemphasis pre and post
-                                                         cursor values should be manually over-ridden.  [TX_PREMPTAP_OVRRD_VAL] should
-                                                         be set and GSER()_LANE()_TX_PRE_EMPHASIS[CFG_TX_PREMPTAP] has the pre and post
-                                                         cursor values. A preemphasis control change should be followed by a control
+	uint64_t tx_swing_ovrrd_en            : 1;  /**< Override enable for pcs_sds_txX_swing, TX swing. See
+                                                         GSER()_LANE()_TX_CFG_0[CFG_TX_SWING].
+                                                         It is recommended to not use the GSER()_LANE()_TX_CFG_0[CFG_TX_SWING],
+                                                         GSER()_LANE()_TX_CFG_1[TX_SWING_OVRRD_EN,TX_PREMPTAP_OVRRD_VAL], or
+                                                         GSER()_LANE()_TX_PRE_EMPHASIS[CFG_TX_PREMPTAP] override registers for 10BASE-KR,
+                                                         SRIO or PCIe links in which the transmitter is adapted by the respective
+                                                         hardware-controlled link training protocols.
+                                                         A transmit swing change should be followed by a control interface
+                                                         configuration over-ride to force the new setting - see
+                                                         GSER()_LANE()_PCS_CTLIFC_2[CTLIFC_OVRRD_REQ]. */
+	uint64_t tx_premptap_ovrrd_val        : 1;  /**< Override enable for pcs_sds_txX_preemptap, preemphasis control. When
+                                                         over-riding,  [TX_PREMPTAP_OVRRD_VAL] should be set and
+                                                         GSER()_LANE()_TX_PRE_EMPHASIS[CFG_TX_PREMPTAP] has the precursor and
+                                                         postcursor values.
+                                                         It is recommended to not use the GSER()_LANE()_TX_CFG_0[CFG_TX_SWING],
+                                                         GSER()_LANE()_TX_CFG_1[TX_SWING_OVRRD_EN,TX_PREMPTAP_OVRRD_VAL], or
+                                                         GSER()_LANE()_TX_PRE_EMPHASIS[CFG_TX_PREMPTAP] override registers for 10BASE-KR,
+                                                         SRIO or PCIe links in which the transmitter is adapted by the respective
+                                                         hardware-controlled link training protocols.
+                                                         A preemphasis control change should be followed by a control
                                                          interface configuration override to force the new setting - see
                                                          GSER()_LANE()_PCS_CTLIFC_2[CTLIFC_OVRRD_REQ]. */
 	uint64_t tx_elec_idle_ovrrd_en        : 1;  /**< Override enable for pcs_sds_txX_elec_idle, TX electrical idle. */
@@ -7061,8 +7178,8 @@ typedef union cvmx_gserx_lanex_tx_cfg_3 cvmx_gserx_lanex_tx_cfg_3_t;
 /**
  * cvmx_gser#_lane#_tx_pre_emphasis
  *
- * These registers are for diagnostic use only. These registers are reset by hardware only during
- * chip cold reset. The values of the CSR fields in these registers do not change during chip
+ * These registers are reset by hardware only during chip cold reset. The
+ * values of the CSR fields in these registers do not change during chip
  * warm or soft resets.
  */
 union cvmx_gserx_lanex_tx_pre_emphasis {
@@ -7071,28 +7188,20 @@ union cvmx_gserx_lanex_tx_pre_emphasis {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_9_63                : 55;
 	uint64_t cfg_tx_premptap              : 9;  /**< Override preemphasis control. Applies when
-                                                         GSER()_LANE()_TX_CFG_3[TX_PREMPTAP_OVRRD_EN] is asserted.
-                                                         <8:4> = Post-cursor.
-                                                         <3:0> = Pre-cursor.
-                                                         Recommended settings:
-                                                         When auto-negotiated link training is not present, including XFI and all
-                                                         protocols <= 6.25Gbaud except PCIe, the transmit preemphasis pre and post
-                                                         cursor values should be manually over-ridden.
-                                                         GSER()_LANE()_TX_CFG_1[TX_PREMPTAP_OVRRD_VAL] should be set
-                                                         and [CFG_TX_PREMPTAP] has the pre and post cursor values. A preemphasis
-                                                         control change should be followed by a control interface configuration
-                                                         over-ride to force the new setting - see
-                                                         GSER()_LANE()_PCS_CTLIFC_2[CTLIFC_OVRRD_REQ].
-                                                         [CFG_TX_PREMPTAP] should be derived from signal integrity simulations
-                                                         with the IBIS-AMI model supplied by Cavium when auto-negotiated link
-                                                         training is not present and link speed <= 6.25 Gbaud.
-                                                         <pre>
-                                                            Frequency        Possibly useful [CFG_TX_PREMPTAP] value
-                                                            --------------------------------------------------------
-                                                             6,25 Gbaud            0xa0
-                                                             10.3125 Gbaud         0xd0
-                                                             other                 0xf0
-                                                         </pre> */
+                                                         GSER()_LANE()_TX_CFG_1[TX_PREMPTAP_OVRRD_VAL] is asserted.
+                                                         <8:4> = Postcursor.
+                                                         <3:0> = Precursor.
+                                                         It is recommended to not use the GSER()_LANE()_TX_CFG_0[CFG_TX_SWING],
+                                                         GSER()_LANE()_TX_CFG_1[TX_SWING_OVRRD_EN,TX_PREMPTAP_OVRRD_VAL], or
+                                                         GSER()_LANE()_TX_PRE_EMPHASIS[CFG_TX_PREMPTAP] override registers for 10BASE-KR,
+                                                         SRIO or PCIe links in which the transmitter is adapted by the respective
+                                                         hardware-controlled link training protocols.
+                                                         The [CFG_TX_PREEMPTAP] value for transmitter preemphasis and
+                                                         postemphasis should be derived from signal integrity simulations
+                                                         with IBIS-AMI models supplied by Cavium.
+                                                         A preemphasis control change should be followed by a control interface
+                                                         configuration over-ride to force the new setting - see
+                                                         GSER()_LANE()_PCS_CTLIFC_2[CTLIFC_OVRRD_REQ]. */
 #else
 	uint64_t cfg_tx_premptap              : 9;
 	uint64_t reserved_9_63                : 55;
@@ -9134,10 +9243,7 @@ union cvmx_gserx_refclk_sel {
 	struct cvmx_gserx_refclk_sel_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_3_63                : 61;
-	uint64_t pcie_refclk125               : 1;  /**< For bootable PCIe links, this is loaded with
-                                                         PCIE0/2_REFCLK_125 at cold reset and indicates a 125 MHz reference clock when set. For
-                                                         non-bootable PCIe links, this bit is set to zero at cold reset and indicates a 100 MHz
-                                                         reference clock. It is not used for non-PCIe links. */
+	uint64_t pcie_refclk125               : 1;  /**< Reserved. */
 	uint64_t com_clk_sel                  : 1;  /**< When set, the reference clock is sourced from the external clock mux. */
 	uint64_t use_com1                     : 1;  /**< This bit controls the external mux select. When set, QLMC_REF_CLK1_N/P
                                                          are selected as the reference clock. When clear, QLMC_REF_CLK0_N/P are selected as the
@@ -9629,7 +9735,7 @@ union cvmx_gserx_sata_lanex_tx_preemphx {
 	struct cvmx_gserx_sata_lanex_tx_preemphx_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_7_63                : 57;
-	uint64_t tx_preemph                   : 7;  /**< This static value sets the TX driver de-emphasis value in the
+	uint64_t tx_preemph                   : 7;  /**< This static value sets the TX driver deemphasis value in the
                                                          case where the PHY is running at the Gen1, Gen2, and Gen3
                                                          rates. Used for tuning at the board level for RX eye compliance.
                                                          This register is used for SATA lanes only for GSER(4). */
@@ -9706,7 +9812,7 @@ union cvmx_gserx_sata_p0_tx_preemph_genx {
 	struct cvmx_gserx_sata_p0_tx_preemph_genx_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_6_63                : 58;
-	uint64_t tx_preemph                   : 6;  /**< This static value sets the TX driver de-emphasis value in the
+	uint64_t tx_preemph                   : 6;  /**< This static value sets the TX driver deemphasis value in the
                                                          case where the PHY is running at the Gen1, Gen2, and Gen3
                                                          rates. Used for tuning at the board level for RX eye compliance. */
 #else
@@ -10010,7 +10116,7 @@ typedef union cvmx_gserx_scratch cvmx_gserx_scratch_t;
  * These registers are reset by hardware only during chip cold reset.
  * The values of the CSR fields in these registers do not change during chip warm or soft resets.
  *
- * Slice 1 does not exist on GSER4, GSER5, or GSER6.
+ * Slice 1 does not exist on GSER0, GSER1, GSER4, GSER5, GSER6, GSER7, and GSER8.
  */
 union cvmx_gserx_slicex_cei_6g_sr_mode {
 	uint64_t u64;
@@ -10065,6 +10171,9 @@ union cvmx_gserx_slicex_cei_6g_sr_mode {
 #endif
 	} s;
 	struct cvmx_gserx_slicex_cei_6g_sr_mode_s cn73xx;
+	struct cvmx_gserx_slicex_cei_6g_sr_mode_s cn78xx;
+	struct cvmx_gserx_slicex_cei_6g_sr_mode_s cn78xxp1;
+	struct cvmx_gserx_slicex_cei_6g_sr_mode_s cnf75xx;
 };
 typedef union cvmx_gserx_slicex_cei_6g_sr_mode cvmx_gserx_slicex_cei_6g_sr_mode_t;
 
@@ -10075,7 +10184,7 @@ typedef union cvmx_gserx_slicex_cei_6g_sr_mode cvmx_gserx_slicex_cei_6g_sr_mode_
  * These registers are reset by hardware only during chip cold reset.
  * The values of the CSR fields in these registers do not change during chip warm or soft resets.
  *
- * Slice 1 does not exist on GSER4, GSER5, or GSER6.
+ * Slice 1 does not exist on GSER0, GSER1, GSER4, GSER5, GSER6, GSER7, and GSER8.
  */
 union cvmx_gserx_slicex_kr_mode {
 	uint64_t u64;
@@ -10130,6 +10239,9 @@ union cvmx_gserx_slicex_kr_mode {
 #endif
 	} s;
 	struct cvmx_gserx_slicex_kr_mode_s    cn73xx;
+	struct cvmx_gserx_slicex_kr_mode_s    cn78xx;
+	struct cvmx_gserx_slicex_kr_mode_s    cn78xxp1;
+	struct cvmx_gserx_slicex_kr_mode_s    cnf75xx;
 };
 typedef union cvmx_gserx_slicex_kr_mode cvmx_gserx_slicex_kr_mode_t;
 
@@ -10140,7 +10252,7 @@ typedef union cvmx_gserx_slicex_kr_mode cvmx_gserx_slicex_kr_mode_t;
  * These registers are reset by hardware only during chip cold reset.
  * The values of the CSR fields in these registers do not change during chip warm or soft resets.
  *
- * Slice 1 does not exist on GSER4, GSER5, or GSER6.
+ * Slice 1 does not exist on GSER0, GSER1, GSER4, GSER5, GSER6, GSER7, and GSER8.
  */
 union cvmx_gserx_slicex_kx4_mode {
 	uint64_t u64;
@@ -10169,7 +10281,7 @@ union cvmx_gserx_slicex_kx4_mode {
 	uint64_t rx_ldll_bwsel                : 3;  /**< Controls capacitors in delay line for different data rates; should be set
                                                          based on the PLL clock frequency as follows:
                                                          0x0 = 2.5 GHz.
-                                                         0x1 = 3.125 GHz.
+                                                         0x1 = 3.125 GHz, or SATA mode.
                                                          0x3 = 4 GHz.
                                                          0x5 = 5.15625 GHz.
                                                          0x6 = 5.65 GHz.
@@ -10178,7 +10290,7 @@ union cvmx_gserx_slicex_kx4_mode {
 	uint64_t rx_sdll_bwsel                : 3;  /**< Controls capacitors in delay line for different data rates; should be set
                                                          based on the PLL clock frequency as follows:
                                                          0x0 = 2.5 GHz.
-                                                         0x1 = 3.125 GHz.
+                                                         0x1 = 3.125 GHz, or SATA mode.
                                                          0x3 = 4 GHz.
                                                          0x5 = 5.15625 GHz.
                                                          0x6 = 5.65 GHz.
@@ -10195,6 +10307,9 @@ union cvmx_gserx_slicex_kx4_mode {
 #endif
 	} s;
 	struct cvmx_gserx_slicex_kx4_mode_s   cn73xx;
+	struct cvmx_gserx_slicex_kx4_mode_s   cn78xx;
+	struct cvmx_gserx_slicex_kx4_mode_s   cn78xxp1;
+	struct cvmx_gserx_slicex_kx4_mode_s   cnf75xx;
 };
 typedef union cvmx_gserx_slicex_kx4_mode cvmx_gserx_slicex_kx4_mode_t;
 
@@ -10205,7 +10320,7 @@ typedef union cvmx_gserx_slicex_kx4_mode cvmx_gserx_slicex_kx4_mode_t;
  * These registers are reset by hardware only during chip cold reset.
  * The values of the CSR fields in these registers do not change during chip warm or soft resets.
  *
- * Slice 1 does not exist on GSER4, GSER5, or GSER6.
+ * Slice 1 does not exist on GSER0, GSER1, GSER4, GSER5, GSER6, GSER7, and GSER8.
  */
 union cvmx_gserx_slicex_kx_mode {
 	uint64_t u64;
@@ -10234,7 +10349,7 @@ union cvmx_gserx_slicex_kx_mode {
 	uint64_t rx_ldll_bwsel                : 3;  /**< Controls capacitors in delay line for different data rates; should be set
                                                          based on the PLL clock frequency as follows:
                                                          0x0 = 2.5 GHz.
-                                                         0x1 = 3.125 GHz.
+                                                         0x1 = 3.125 GHz, or SATA mode.
                                                          0x3 = 4 GHz.
                                                          0x5 = 5.15625 GHz.
                                                          0x6 = 5.65 GHz.
@@ -10243,7 +10358,7 @@ union cvmx_gserx_slicex_kx_mode {
 	uint64_t rx_sdll_bwsel                : 3;  /**< Controls capacitors in delay line for different data rates; should be set
                                                          based on the PLL clock frequency as follows:
                                                          0x0 = 2.5 GHz.
-                                                         0x1 = 3.125 GHz.
+                                                         0x1 = 3.125 GHz, or SATA mode.
                                                          0x3 = 4 GHz.
                                                          0x5 = 5.15625 GHz.
                                                          0x6 = 5.65 GHz.
@@ -10260,6 +10375,9 @@ union cvmx_gserx_slicex_kx_mode {
 #endif
 	} s;
 	struct cvmx_gserx_slicex_kx_mode_s    cn73xx;
+	struct cvmx_gserx_slicex_kx_mode_s    cn78xx;
+	struct cvmx_gserx_slicex_kx_mode_s    cn78xxp1;
+	struct cvmx_gserx_slicex_kx_mode_s    cnf75xx;
 };
 typedef union cvmx_gserx_slicex_kx_mode cvmx_gserx_slicex_kx_mode_t;
 
@@ -10270,7 +10388,7 @@ typedef union cvmx_gserx_slicex_kx_mode cvmx_gserx_slicex_kx_mode_t;
  * These registers are reset by hardware only during chip cold reset.
  * The values of the CSR fields in these registers do not change during chip warm or soft resets.
  *
- * Slice 1 does not exist on GSER4, GSER5, or GSER6.
+ * Slice 1 does not exist on GSER0, GSER1, GSER4, GSER5, GSER6, GSER7, and GSER8.
  */
 union cvmx_gserx_slicex_pcie1_mode {
 	uint64_t u64;
@@ -10295,8 +10413,7 @@ union cvmx_gserx_slicex_pcie1_mode {
                                                          0x1 = 3.125 GHz.
                                                          0x6 = 4 GHz.
                                                          0x7 = 5.15625 GHz.
-                                                         All other values in this field are reserved.
-                                                         In SATA Mode program RX_PI_BWSEL = 0x1. */
+                                                         All other values in this field are reserved. */
 	uint64_t rx_ldll_bwsel                : 3;  /**< Controls capacitors in delay line for different data rates; should be set
                                                          based on the PLL clock frequency as follows:
                                                          0x0 = 2.5 GHz.
@@ -10305,8 +10422,7 @@ union cvmx_gserx_slicex_pcie1_mode {
                                                          0x5 = 5.15625 GHz.
                                                          0x6 = 5.65 GHz.
                                                          0x7 = 6.25 GHz.
-                                                         All other values in this field are reserved.
-                                                         In SATA Mode program RX_LDLL_BWSEL = 0x1. */
+                                                         All other values in this field are reserved. */
 	uint64_t rx_sdll_bwsel                : 3;  /**< Controls capacitors in delay line for different data rates; should be set
                                                          based on the PLL clock frequency as follows:
                                                          0x0 = 2.5 GHz.
@@ -10315,8 +10431,7 @@ union cvmx_gserx_slicex_pcie1_mode {
                                                          0x5 = 5.15625 GHz.
                                                          0x6 = 5.65 GHz.
                                                          0x7 = 6.25 GHz.
-                                                         All other values in this field are reserved.
-                                                         In SATA Mode program RX_SDLL_BWSEL = 0x1. */
+                                                         All other values in this field are reserved. */
 #else
 	uint64_t rx_sdll_bwsel                : 3;
 	uint64_t rx_ldll_bwsel                : 3;
@@ -10328,6 +10443,9 @@ union cvmx_gserx_slicex_pcie1_mode {
 #endif
 	} s;
 	struct cvmx_gserx_slicex_pcie1_mode_s cn73xx;
+	struct cvmx_gserx_slicex_pcie1_mode_s cn78xx;
+	struct cvmx_gserx_slicex_pcie1_mode_s cn78xxp1;
+	struct cvmx_gserx_slicex_pcie1_mode_s cnf75xx;
 };
 typedef union cvmx_gserx_slicex_pcie1_mode cvmx_gserx_slicex_pcie1_mode_t;
 
@@ -10338,7 +10456,7 @@ typedef union cvmx_gserx_slicex_pcie1_mode cvmx_gserx_slicex_pcie1_mode_t;
  * These registers are reset by hardware only during chip cold reset.
  * The values of the CSR fields in these registers do not change during chip warm or soft resets.
  *
- * Slice 1 does not exist on GSER4, GSER5, or GSER6.
+ * Slice 1 does not exist on GSER0, GSER1, GSER4, GSER5, GSER6, GSER7, and GSER8.
  */
 union cvmx_gserx_slicex_pcie2_mode {
 	uint64_t u64;
@@ -10363,8 +10481,7 @@ union cvmx_gserx_slicex_pcie2_mode {
                                                          0x1 = 3.125 GHz.
                                                          0x6 = 4 GHz.
                                                          0x7 = 5.15625 GHz.
-                                                         All other values in this field are reserved.
-                                                         In SATA Mode program RX_PI_BWSEL = 0x1. */
+                                                         All other values in this field are reserved. */
 	uint64_t rx_ldll_bwsel                : 3;  /**< Controls capacitors in delay line for different data rates; should be set
                                                          based on the PLL clock frequency as follows:
                                                          0x0 = 2.5 GHz.
@@ -10373,8 +10490,7 @@ union cvmx_gserx_slicex_pcie2_mode {
                                                          0x5 = 5.15625 GHz.
                                                          0x6 = 5.65 GHz.
                                                          0x7 = 6.25 GHz.
-                                                         All other values in this field are reserved.
-                                                         In SATA Mode program RX_LDLL_BWSEL = 0x1. */
+                                                         All other values in this field are reserved. */
 	uint64_t rx_sdll_bwsel                : 3;  /**< Controls capacitors in delay line for different data rates; should be set
                                                          based on the PLL clock frequency as follows:
                                                          0x0 = 2.5 GHz.
@@ -10383,8 +10499,7 @@ union cvmx_gserx_slicex_pcie2_mode {
                                                          0x5 = 5.15625 GHz.
                                                          0x6 = 5.65 GHz.
                                                          0x7 = 6.25 GHz.
-                                                         All other values in this field are reserved.
-                                                         In SATA Mode program RX_SDLL_BWSEL = 0x1. */
+                                                         All other values in this field are reserved. */
 #else
 	uint64_t rx_sdll_bwsel                : 3;
 	uint64_t rx_ldll_bwsel                : 3;
@@ -10396,6 +10511,9 @@ union cvmx_gserx_slicex_pcie2_mode {
 #endif
 	} s;
 	struct cvmx_gserx_slicex_pcie2_mode_s cn73xx;
+	struct cvmx_gserx_slicex_pcie2_mode_s cn78xx;
+	struct cvmx_gserx_slicex_pcie2_mode_s cn78xxp1;
+	struct cvmx_gserx_slicex_pcie2_mode_s cnf75xx;
 };
 typedef union cvmx_gserx_slicex_pcie2_mode cvmx_gserx_slicex_pcie2_mode_t;
 
@@ -10406,7 +10524,7 @@ typedef union cvmx_gserx_slicex_pcie2_mode cvmx_gserx_slicex_pcie2_mode_t;
  * These registers are reset by hardware only during chip cold reset.
  * The values of the CSR fields in these registers do not change during chip warm or soft resets.
  *
- * Slice 1 does not exist on GSER4, GSER5, or GSER6.
+ * Slice 1 does not exist on GSER0, GSER1, GSER4, GSER5, GSER6, GSER7, and GSER8.
  */
 union cvmx_gserx_slicex_pcie3_mode {
 	uint64_t u64;
@@ -10431,28 +10549,25 @@ union cvmx_gserx_slicex_pcie3_mode {
                                                          0x1 = 3.125 GHz.
                                                          0x6 = 4 GHz.
                                                          0x7 = 5.15625 GHz.
-                                                         All other values in this field are reserved.
-                                                         In SATA Mode program RX_PI_BWSEL = 0x1. */
+                                                         All other values in this field are reserved. */
 	uint64_t rx_ldll_bwsel                : 3;  /**< Controls capacitors in delay line for different data rates; should be set
                                                          based on the PLL clock frequency as follows:
                                                          0x0 = 2.5 GHz.
-                                                         0x1 = 3.125 GHz.
+                                                         0x1 = 3.125 GHz, or SATA mode.
                                                          0x3 = 4 GHz.
                                                          0x5 = 5.15625 GHz.
                                                          0x6 = 5.65 GHz.
                                                          0x7 = 6.25 GHz.
-                                                         All other values in this field are reserved.
-                                                         In SATA Mode program RX_LDLL_BWSEL = 0x1. */
+                                                         All other values in this field are reserved. */
 	uint64_t rx_sdll_bwsel                : 3;  /**< Controls capacitors in delay line for different data rates; should be set
                                                          based on the PLL clock frequency as follows:
                                                          0x0 = 2.5 GHz.
-                                                         0x1 = 3.125 GHz.
+                                                         0x1 = 3.125 GHz, or SATA mode.
                                                          0x3 = 4 GHz.
                                                          0x5 = 5.15625 GHz.
                                                          0x6 = 5.65 GHz.
                                                          0x7 = 6.25 GHz.
-                                                         All other values in this field are reserved.
-                                                         In SATA Mode program RX_SDLL_BWSEL = 0x1. */
+                                                         All other values in this field are reserved. */
 #else
 	uint64_t rx_sdll_bwsel                : 3;
 	uint64_t rx_ldll_bwsel                : 3;
@@ -10464,6 +10579,9 @@ union cvmx_gserx_slicex_pcie3_mode {
 #endif
 	} s;
 	struct cvmx_gserx_slicex_pcie3_mode_s cn73xx;
+	struct cvmx_gserx_slicex_pcie3_mode_s cn78xx;
+	struct cvmx_gserx_slicex_pcie3_mode_s cn78xxp1;
+	struct cvmx_gserx_slicex_pcie3_mode_s cnf75xx;
 };
 typedef union cvmx_gserx_slicex_pcie3_mode cvmx_gserx_slicex_pcie3_mode_t;
 
@@ -10474,7 +10592,7 @@ typedef union cvmx_gserx_slicex_pcie3_mode cvmx_gserx_slicex_pcie3_mode_t;
  * These registers are reset by hardware only during chip cold reset.
  * The values of the CSR fields in these registers do not change during chip warm or soft resets.
  *
- * Slice 1 does not exist on GSER4, GSER5, or GSER6.
+ * Slice 1 does not exist on GSER0, GSER1, GSER4, GSER5, GSER6, GSER7, and GSER8.
  */
 union cvmx_gserx_slicex_qsgmii_mode {
 	uint64_t u64;
@@ -10529,6 +10647,9 @@ union cvmx_gserx_slicex_qsgmii_mode {
 #endif
 	} s;
 	struct cvmx_gserx_slicex_qsgmii_mode_s cn73xx;
+	struct cvmx_gserx_slicex_qsgmii_mode_s cn78xx;
+	struct cvmx_gserx_slicex_qsgmii_mode_s cn78xxp1;
+	struct cvmx_gserx_slicex_qsgmii_mode_s cnf75xx;
 };
 typedef union cvmx_gserx_slicex_qsgmii_mode cvmx_gserx_slicex_qsgmii_mode_t;
 
@@ -10539,7 +10660,7 @@ typedef union cvmx_gserx_slicex_qsgmii_mode cvmx_gserx_slicex_qsgmii_mode_t;
  * These registers are reset by hardware only during chip cold reset.
  * The values of the CSR fields in these registers do not change during chip warm or soft resets.
  *
- * Slice 1 does not exist on GSER4, GSER5, or GSER6.
+ * Slice 1 does not exist on GSER0, GSER1, GSER4, GSER5, GSER6, GSER7, and GSER8.
  */
 union cvmx_gserx_slicex_rx_ldll_ctrl {
 	uint64_t u64;
@@ -10574,6 +10695,9 @@ union cvmx_gserx_slicex_rx_ldll_ctrl {
 #endif
 	} s;
 	struct cvmx_gserx_slicex_rx_ldll_ctrl_s cn73xx;
+	struct cvmx_gserx_slicex_rx_ldll_ctrl_s cn78xx;
+	struct cvmx_gserx_slicex_rx_ldll_ctrl_s cn78xxp1;
+	struct cvmx_gserx_slicex_rx_ldll_ctrl_s cnf75xx;
 };
 typedef union cvmx_gserx_slicex_rx_ldll_ctrl cvmx_gserx_slicex_rx_ldll_ctrl_t;
 
@@ -10659,7 +10783,7 @@ typedef union cvmx_gserx_slicex_rx_sdll_ctrl cvmx_gserx_slicex_rx_sdll_ctrl_t;
  * These registers are reset by hardware only during chip cold reset.
  * The values of the CSR fields in these registers do not change during chip warm or soft resets.
  *
- * Slice 1 does not exist on GSER4, GSER5, or GSER6.
+ * Slice 1 does not exist on GSER0, GSER1, GSER4, GSER5, GSER6, GSER7, and GSER8.
  */
 union cvmx_gserx_slicex_sgmii_mode {
 	uint64_t u64;
@@ -10714,6 +10838,9 @@ union cvmx_gserx_slicex_sgmii_mode {
 #endif
 	} s;
 	struct cvmx_gserx_slicex_sgmii_mode_s cn73xx;
+	struct cvmx_gserx_slicex_sgmii_mode_s cn78xx;
+	struct cvmx_gserx_slicex_sgmii_mode_s cn78xxp1;
+	struct cvmx_gserx_slicex_sgmii_mode_s cnf75xx;
 };
 typedef union cvmx_gserx_slicex_sgmii_mode cvmx_gserx_slicex_sgmii_mode_t;
 

@@ -3333,7 +3333,7 @@ union cvmx_pemx_eco {
 	struct cvmx_pemx_eco_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_8_63                : 56;
-	uint64_t eco_rw                       : 8;  /**< N/A */
+	uint64_t eco_rw                       : 8;  /**< Reserved for ECO usage. */
 #else
 	uint64_t eco_rw                       : 8;
 	uint64_t reserved_8_63                : 56;
@@ -3426,12 +3426,13 @@ typedef union cvmx_pemx_flr_pf0_vf_stopreq cvmx_pemx_flr_pf0_vf_stopreq_t;
  * STOPREQ mimics the behavior of PCIEEP()_CFG001[ME] for outbound requests that will
  * master the PCIe bus (P and NP).
  *
- * Note that STOPREQ will have no effect on completions returned by CNXXXX over the S2M,
+ * STOPREQ will have no effect on completions returned by CNXXXX over the S2M,
  * nor on M2S traffic.
  *
- * Note that when a PF()_STOPREQ is set, none of the associated
- * PEM()_FLR_PF()_VF_STOPREQ[VF_STOPREQ]
- * will be set.
+ * When a PF()_STOPREQ is set, none of the associated
+ * PEM()_FLR_PF()_VF_STOPREQ[VF_STOPREQ] will be set.
+ *
+ * STOPREQ is reset when the MAC is reset, and is not reset after a chip soft reset.
  */
 union cvmx_pemx_flr_pf_stopreq {
 	uint64_t u64;
@@ -4420,7 +4421,7 @@ union cvmx_pemx_tlp_credits {
                                                             1 2-ln PEM    n     2             0xFF
                                                          </pre> */
 	uint64_t sli_np                       : 8;  /**< TLP 8B credits for nonposted TLPs in the SLI. Legal values are 0x4 to
-                                                         0x20. Pairs of PEMs share a single SLI interface.  When both PEM0 and PEM1
+                                                         0x20. Pairs of PEMs share a single SLI interface.  When both PEM(0) and PEM(1)
                                                          are configured, the sum of both PEMs' SLI_NP fields must not exceed 0x20. The
                                                          reset value for this register assumes the minimum (e.g. 2-lane)
                                                          configuration. This ensures that the total allocated credits does not
@@ -4438,7 +4439,7 @@ union cvmx_pemx_tlp_credits {
                                                             1 2-ln PEM     n    2             0x20
                                                          </pre> */
 	uint64_t sli_p                        : 8;  /**< TLP 8B credits for Posted TLPs in the SLI. Legal values are 0x24 to 0xFF. Pairs
-                                                         of PEMs share a single SLI interface. Wnen both PEM(0) and PEM(1)
+                                                         of PEMs share a single SLI interface. When both PEM(0) and PEM(1)
                                                          are configured, the sum of both PEMs' SLI_P fields must not exceed 0x100. The reset
                                                          value for this register assumes the minimum (e.g. 2-lane) configuration.
                                                          This ensures the total allocated credits does not oversubscribe the SLI.

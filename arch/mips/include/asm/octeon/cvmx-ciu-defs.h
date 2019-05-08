@@ -13100,7 +13100,9 @@ union cvmx_ciu_pp_rst {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_48_63               : 16;
 	uint64_t rst                          : 47; /**< Core reset for cores 1 and above. Writing a 1 holds the corresponding core in reset,
-                                                         writing a 0 releases from reset. */
+                                                         writing a 0 releases from reset.
+                                                         The upper bits of this field remain accessible but will have no effect if the cores
+                                                         are disabled. The number of bits cleared in CIU_FUSE[FUSE] indicate the number of cores. */
 	uint64_t rst0                         : 1;  /**< Core reset for core 0, depends on standalone mode. */
 #else
 	uint64_t rst0                         : 1;
@@ -13235,7 +13237,9 @@ union cvmx_ciu_pp_rst_pending {
 	uint64_t pend                         : 48; /**< Set if corresponding core is waiting to change its reset state. Normally a reset change
                                                          occurs immediately but if RST_PP_POWER[GATE] bit is set and the core is released from
                                                          reset a delay of 64K core clocks between each core reset will apply to satisfy power
-                                                         management. */
+                                                         management.
+                                                         The upper bits of this field remain accessible but will have no effect if the cores
+                                                         are disabled. The number of bits cleared in CIU_FUSE[FUSE] indicate the number of cores. */
 #else
 	uint64_t pend                         : 48;
 	uint64_t reserved_48_63               : 16;
@@ -16843,10 +16847,10 @@ union cvmx_ciu_wdogx {
 	uint64_t reserved_46_63               : 18;
 	uint64_t gstopen                      : 1;  /**< Global-stop enable. */
 	uint64_t dstop                        : 1;  /**< Debug-stop enable. */
-	uint64_t cnt                          : 24; /**< Number of 1024-cycle intervals until next watchdog expiration. Cleared on write to
-                                                         associated CIU_PP_POKE() register. */
+	uint64_t cnt                          : 24; /**< Number of 256-cycle coprocessor clock intervals until next watchdog expiration.
+                                                         Cleared on write to associated CIU_PP_POKE() register. */
 	uint64_t len                          : 16; /**< Watchdog time-expiration length. The most-significant 16 bits of a 24-bit decrementer that
-                                                         decrements every 1024 cycles. Must be set > 0. */
+                                                         decrements every 256-cycle coprocessor clock interval. Must be set > 0. */
 	uint64_t state                        : 2;  /**< Watchdog state. The number of watchdog time expirations since last core poke. Cleared on
                                                          write to associated CIU_PP_POKE() register. */
 	uint64_t mode                         : 2;  /**< Watchdog mode:

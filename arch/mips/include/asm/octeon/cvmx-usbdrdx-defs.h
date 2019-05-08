@@ -1,5 +1,5 @@
 /***********************license start***************
- * Copyright (c) 2003-2015  Cavium Inc. (support@cavium.com). All rights
+ * Copyright (c) 2003-2017  Cavium Inc. (support@cavium.com). All rights
  * reserved.
  *
  *
@@ -1964,9 +1964,9 @@ union cvmx_usbdrdx_uahc_depcmdx {
                                                              commands:
                                                              _  - [22:16]: Transfer resource index (XferRscIdx). The hardware-assigned
                                                                transfer resource index for the transfer, which was returned
-                                                               in response to the Start Transfer command. The application
-                                                               software-assigned transfer resource index for a Start New
-                                                               Configuration command.
+                                                               in response to the start transfer command. The application
+                                                               software-assigned transfer resource index for a start new
+                                                               configuration command.
                                                          When this register is read:
                                                              For XferNotReady, XferComplete, and stream events on bulk endpoints:
                                                              _  - [31:16]: StreamID. Applies only to bulk endpoints that support streams. This
@@ -2168,7 +2168,7 @@ typedef union cvmx_usbdrdx_uahc_depcmdpar2_x cvmx_usbdrdx_uahc_depcmdpar2_x_t;
 /**
  * cvmx_usbdrd#_uahc_devten
  *
- * This register controls the generation of Device-Specific events.
+ * This register controls the generation of device-specific events.
  * If an enable bit is set to 0, the event will not be generated.
  *
  * This register can be reset by IOI reset or USBDRD()_UCTL_CTL[UAHC_RST].
@@ -2386,9 +2386,9 @@ union cvmx_usbdrdx_uahc_dsts {
                                                             0x4 = Disconnected state (Default state).
                                                             0x5 = Early Suspend state.
                                                             others: Reserved.
-                                                         The link state resume/reset indicates that the core received a resume or
-                                                         USB reset request from the host while the link was in hibernation. Software
-                                                         must write '8' (recovery) to the USBDRD()_UAHC_DCTL[ULSTCHNGREQ] field to acknowledge
+                                                         The link state resume/reset indicates that the core received a resume or USB
+                                                         reset request from the host while the link was in hibernation. Software must
+                                                         write 0x8 (recovery) to the USBDRD()_UAHC_DCTL[ULSTCHNGREQ] field to acknowledge
                                                          the resume/reset request. */
 	uint32_t rxfifoempty                  : 1;  /**< RxFIFO Empty Indication. */
 	uint32_t soffn                        : 14; /**< Frame/MicroFrame number of the received SOF.
@@ -2396,7 +2396,7 @@ union cvmx_usbdrdx_uahc_dsts {
                                                            <16:6> = Frame number.
                                                            <5:3> = Microframe number.
                                                          When the core is operating at full-speed:
-                                                           <16:14> = Not used, software can ignore these 3 bits.
+                                                           <16:14> = Not used, software can ignore these three bits.
                                                            <13:3> = Frame number. */
 	uint32_t connectspd                   : 3;  /**< Connected speed.
                                                          Indicates the speed at which the controller core has come up after speed
@@ -2526,8 +2526,8 @@ typedef union cvmx_usbdrdx_uahc_erstszx cvmx_usbdrdx_uahc_erstszx_t;
  * associated with all active transactions. It is this address that is reported in
  * USBDRD()_UAHC_GBUSERRADDR when a bus error occurs. For example, if the host controller
  * initiates a DMA
- * transfer to write 1 k of packet data starting at buffer address 0xABCD0000, and this DMA is
- * broken up into multiple 256 B bursts on the AXI, then if a bus error occurs on any of these
+ * transfer to write 1k of packet data starting at buffer address 0xABCD0000, and this DMA is
+ * broken up into multiple 256B bursts on the AXI, then if a bus error occurs on any of these
  * associated AXI transfers, USBDRD()_UAHC_GBUSERRADDR reflects the DMA start address of
  * 0xABCD0000
  * regardless of which AXI transaction received the error.
@@ -2584,7 +2584,7 @@ union cvmx_usbdrdx_uahc_gctl {
                                                          needs to programmed is: power down scale = 10500/16 = 657 (rounded up; and fastest
                                                          frequency used). */
 	uint32_t masterfiltbypass             : 1;  /**< Master filter bypass. Not relevant for Cavium's configuration. */
-	uint32_t bypssetaddr                  : 1;  /**< Bypass SetAddress in Device Mode.
+	uint32_t bypssetaddr                  : 1;  /**< Bypass SetAddress in device mode.
                                                          Always set to 0. */
 	uint32_t u2rstecn                     : 1;  /**< If the SuperSpeed connection fails during POLL or LMP exchange, the device connects
                                                          at non-SuperSpeed mode. If this bit is set, then device attempts three more times to
@@ -2630,7 +2630,7 @@ union cvmx_usbdrdx_uahc_gctl {
                                                          If you plan to enable hardware-based LPM (PORTPMSC[HLE] = 1), this feature cannot be used.
                                                          Turn off this feature by setting this bit to zero and use the
                                                          USBDRD()_UAHC_GFLADJ[GFLADJ_REFCLK_LPM_SEL] feature.
-                                                         If you set this bit to 1, the USBDRD()_UAHC_GUSB2PHYCFG() [U2_FREECLK_EXISTS] bit
+                                                         If you set this bit to 1, the USBDRD()_UAHC_GUSB2PHYCFG()[U2_FREECLK_EXISTS] bit
                                                          must be set to 0. */
 	uint32_t u1u2timerscale               : 1;  /**< Disable U1/U2 timer scaledown. If set to 1, along with SCALEDOWN = 0x1, disables the scale
                                                          down of U1/U2 inactive timer values.
@@ -3720,8 +3720,8 @@ typedef union cvmx_usbdrdx_uahc_grlsid cvmx_usbdrdx_uahc_grlsid_t;
  *
  * For scatter-gather packets, the arbiter grants successive DMA requests to the same FIFO until
  * the entire packet is completed. The register size corresponds to the number of configured USB
- * bus instances; for example, in the default configuration, there are 3 USB bus instances (1
- * SuperSpeed, 1 high-speed, and 1 full-speed/low-speed).
+ * bus instances; for example, in the default configuration, there are three USB bus instances (one
+ * SuperSpeed, one high-speed, and one full-speed/low-speed).
  *
  * This register can be reset by IOI reset or with USBDRD()_UCTL_CTL[UAHC_RST].
  */
@@ -4838,7 +4838,7 @@ union cvmx_usbdrdx_uahc_gusb3pipectlx {
 	uint32_t lfpsfilt                     : 1;  /**< LFPS filter. When set to 1, filter LFPS reception with pipe3_RxValid in PHY power state
                                                          P0, ignore LFPS reception from the PHY unless both pipe3_Rxelecidle and pipe3_RxValid are
                                                          deasserted. */
-	uint32_t rxdet2polllfpsctrl           : 1;  /**< RX_DETECT to Polling.
+	uint32_t rxdet2polllfpsctrl           : 1;  /**< RX_DETECT to polling.
                                                          0 = Enables a 400 us delay to start polling LFPS after RX_DETECT. This allows VCM offset
                                                          to settle to a proper level.
                                                          1 = Disables the 400 us delay to start polling LFPS after RX_DETECT. */

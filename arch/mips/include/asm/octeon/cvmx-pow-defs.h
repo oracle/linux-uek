@@ -1,5 +1,5 @@
 /***********************license start***************
- * Copyright (c) 2003-2015  Cavium Inc. (support@cavium.com). All rights
+ * Copyright (c) 2003-2017  Cavium Inc. (support@cavium.com). All rights
  * reserved.
  *
  *

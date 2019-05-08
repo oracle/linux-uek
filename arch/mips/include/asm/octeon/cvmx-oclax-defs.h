@@ -553,14 +553,17 @@ union cvmx_oclax_cdhx_ctl {
 	uint64_t reserved_6_63                : 58;
 	uint64_t dup                          : 1;  /**< Retain duplicates in the data stream. */
 	uint64_t dis_stamp                    : 1;  /**< Remove time stamps from data stream. */
-	uint64_t cap_ctl                      : 4;  /**< Minterms that will cause data to be captured. These minterms are the four inputs to a 4-1
-                                                         mux selected by PLA1 and 0. The output is thus calculated from the equation:
+	uint64_t cap_ctl                      : 4;  /**< Minterms that will cause data to be captured. These minterms are the four inputs
+                                                         to a four-to-one mux selected by PLA1 and zero. The output is thus calculated
+                                                         from the equation:
+                                                         <pre>
                                                            fsmcap0 = OCLA(0..2)_FSM(0)_STATE[state0][CAP].
                                                            fsmcap1 = OCLA(0..2)_FSM(1)_STATE[state1][CAP].
                                                            out = (   (<3> & fsmcap1 & fsmcap0)
-                                                         _        || (<2> & fsmcap1 & !fsmcap0)
-                                                         _        || (<1> & !fsmcap1 & fsmcap0)
-                                                         _        || (<0> & !fsmcap1 & !fsmcap0)).
+                                                                  || (<2> & fsmcap1 & !fsmcap0)
+                                                                  || (<1> & !fsmcap1 & fsmcap0)
+                                                                  || (<0> & !fsmcap1 & !fsmcap0)).
+                                                         </pre>
                                                          Common examples:
                                                          0x0 = No capture.
                                                          0xA = Capture when fsmcap0 requests capture.
@@ -677,7 +680,7 @@ union cvmx_oclax_eco {
 	struct cvmx_oclax_eco_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_32_63               : 32;
-	uint64_t eco_rw                       : 32; /**< N/A */
+	uint64_t eco_rw                       : 32; /**< Reserved for ECO usage. */
 #else
 	uint64_t eco_rw                       : 32;
 	uint64_t reserved_32_63               : 32;
@@ -891,7 +894,7 @@ typedef union cvmx_oclax_fsmx_orx cvmx_oclax_fsmx_orx_t;
 /**
  * cvmx_ocla#_fsm#_state#
  *
- * See State Outputs for more details on each of these actions.
+ * See the OCLA chapter text for more details on each of these actions.
  *
  */
 union cvmx_oclax_fsmx_statex {
@@ -910,8 +913,7 @@ union cvmx_oclax_fsmx_statex {
 	uint64_t reserved_12_15               : 4;
 	uint64_t clr_cnt                      : 4;  /**< In this state clear match counter. */
 	uint64_t reserved_4_7                 : 4;
-	uint64_t inc_cnt                      : 4;  /**< In this state increment match counter. See State Outputs for more information on this or
-                                                         any of the bits above. */
+	uint64_t inc_cnt                      : 4;  /**< In this state increment match counter. */
 #else
 	uint64_t inc_cnt                      : 4;
 	uint64_t reserved_4_7                 : 4;

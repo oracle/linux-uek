@@ -409,7 +409,7 @@ union cvmx_gpio_bit_cfgx {
 	uint64_t clk_gen                      : 1;  /**< When TX_OE is set, GPIO pin becomes a clock */
 	uint64_t clk_sel                      : 2;  /**< Selects which of the 4 GPIO clock generators */
 	uint64_t fil_sel                      : 4;  /**< Filter select. Global counter bit-select (controls sample rate). */
-	uint64_t fil_cnt                      : 4;  /**< Filter count. Specifies the number of consecutive samples (FIL_CNT+1) to change state.
+	uint64_t fil_cnt                      : 4;  /**< Filter count. Specifies the number of consecutive samples ([FIL_CNT]+1) to change state.
                                                          Zero to disable the filter. */
 	uint64_t int_type                     : 1;  /**< Type of interrupt when pin is an input and [INT_EN] set. When set, rising edge interrupt,
                                                          else level interrupt. Only valid for GPIO 0..15, no function for GPIO 16..31. */

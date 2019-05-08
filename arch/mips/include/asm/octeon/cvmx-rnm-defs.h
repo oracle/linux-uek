@@ -137,8 +137,9 @@ typedef union cvmx_rnm_bist_status cvmx_rnm_bist_status_t;
 /**
  * cvmx_rnm_ctl_status
  *
- * This register is the RNM interrupt-enable register.
+ * RNM_CTL_STATUS = RNM's Control/Status Register
  *
+ * The RNM's interrupt enable register.
  */
 union cvmx_rnm_ctl_status {
 	uint64_t u64;

@@ -6949,7 +6949,7 @@ union cvmx_pcieepx_cfg000 {
 	uint32_t u32;
 	struct cvmx_pcieepx_cfg000_s {
 #ifdef __BIG_ENDIAN_BITFIELD
-	uint32_t devid                        : 16; /**< Device ID for CNF75XX, writable through PEM()_CFG_WR.
+	uint32_t devid                        : 16; /**< Device ID for CNXXXX, writable through PEM()_CFG_WR.
                                                          For EEPROM loads, also see VENDID of this register. */
 	uint32_t vendid                       : 16; /**< Cavium's vendor ID, writable through PEM()_CFG_WR.
                                                          During an EPROM Load, if a value of 0xFFFF is loaded to this field and
@@ -13746,16 +13746,51 @@ union cvmx_pcieepx_cfg515 {
                                                          indicates full swing. When set to 0, indicates low swing. */
 	uint32_t dsc                          : 1;  /**< Directed speed change. A write of 1 initiates a speed change.
                                                          When the speed change occurs, the controller will clear the contents of this field. */
-	uint32_t le                           : 9;  /**< Lane enable. Indicates the number of lanes to check for exit from electrical idle in
-                                                         Polling.Active and Polling.Compliance. 0x1 = x1, 0x2 = x2, etc. Used to limit the maximum
-                                                         link width to ignore broken lanes that detect a receiver, but will not exit electrical
-                                                         idle and would otherwise prevent a valid link from being configured. */
+	uint32_t reserved_8_16                : 9;
 	uint32_t n_fts                        : 8;  /**< N_FTS. Sets the number of fast training sequences (N_FTS) that the core advertises as its
                                                          N_FTS during GEN2 Link training. This value is used to inform the link partner about the
                                                          PHY's ability to recover synchronization after a low power state.
-                                                         Do not set [N_FTS] to zero; doing so can cause the LTSSM to go into the recovery state
-                                                         when
-                                                         exiting from L0s. */
+                                                         Do not set [N_FTS] to zero; doing so can cause the LTSSM to go into the recovery
+                                                         state when exiting from L0s. */
+#else
+	uint32_t n_fts                        : 8;
+	uint32_t reserved_8_16                : 9;
+	uint32_t dsc                          : 1;
+	uint32_t cpyts                        : 1;
+	uint32_t ctcrb                        : 1;
+	uint32_t s_d_e                        : 1;
+	uint32_t reserved_21_31               : 11;
+#endif
+	} s;
+	struct cvmx_pcieepx_cfg515_cn61xx {
+#ifdef __BIG_ENDIAN_BITFIELD
+	uint32_t reserved_21_31               : 11;
+	uint32_t s_d_e                        : 1;  /**< SEL_DE_EMPHASIS
+                                                         Used to set the de-emphasis level for upstream ports. */
+	uint32_t ctcrb                        : 1;  /**< Config Tx Compliance Receive Bit
+                                                         When set to 1, signals LTSSM to transmit TS ordered sets
+                                                         with the compliance receive bit assert (equal to 1). */
+	uint32_t cpyts                        : 1;  /**< Config PHY Tx Swing
+                                                         Indicates the voltage level the PHY should drive. When set to
+                                                         1, indicates Full Swing. When set to 0, indicates Low Swing */
+	uint32_t dsc                          : 1;  /**< Directed Speed Change
+                                                         o a write of '1' will initiate a speed change
+                                                         o always reads a zero */
+	uint32_t le                           : 9;  /**< Lane Enable
+                                                         Indicates the number of lanes to check for exit from electrical
+                                                         idle in Polling.Active and Polling.Compliance. 1 = x1, 2 = x2,
+                                                         etc. Used to limit the maximum link width to ignore broken
+                                                         lanes that detect a receiver, but will not exit electrical
+                                                         idle and
+                                                         would otherwise prevent a valid link from being configured. */
+	uint32_t n_fts                        : 8;  /**< N_FTS
+                                                         Sets the Number of Fast Training Sequences (N_FTS) that
+                                                         the core advertises as its N_FTS during GEN2 Link training.
+                                                         This value is used to inform the Link partner about the PHYs
+                                                         ability to recover synchronization after a low power state.
+                                                         Note: Do not set N_FTS to zero; doing so can cause the
+                                                               LTSSM to go into the recovery state when exiting from
+                                                               L0s. */
 #else
 	uint32_t n_fts                        : 8;
 	uint32_t le                           : 9;
@@ -13765,20 +13800,68 @@ union cvmx_pcieepx_cfg515 {
 	uint32_t s_d_e                        : 1;
 	uint32_t reserved_21_31               : 11;
 #endif
-	} s;
-	struct cvmx_pcieepx_cfg515_s          cn61xx;
-	struct cvmx_pcieepx_cfg515_s          cn63xx;
-	struct cvmx_pcieepx_cfg515_s          cn63xxp1;
-	struct cvmx_pcieepx_cfg515_s          cn66xx;
-	struct cvmx_pcieepx_cfg515_s          cn68xx;
-	struct cvmx_pcieepx_cfg515_s          cn68xxp1;
-	struct cvmx_pcieepx_cfg515_s          cn70xx;
-	struct cvmx_pcieepx_cfg515_s          cn70xxp1;
-	struct cvmx_pcieepx_cfg515_s          cn73xx;
-	struct cvmx_pcieepx_cfg515_s          cn78xx;
-	struct cvmx_pcieepx_cfg515_s          cn78xxp1;
-	struct cvmx_pcieepx_cfg515_s          cnf71xx;
-	struct cvmx_pcieepx_cfg515_s          cnf75xx;
+	} cn61xx;
+	struct cvmx_pcieepx_cfg515_cn61xx     cn63xx;
+	struct cvmx_pcieepx_cfg515_cn61xx     cn63xxp1;
+	struct cvmx_pcieepx_cfg515_cn61xx     cn66xx;
+	struct cvmx_pcieepx_cfg515_cn61xx     cn68xx;
+	struct cvmx_pcieepx_cfg515_cn61xx     cn68xxp1;
+	struct cvmx_pcieepx_cfg515_cn61xx     cn70xx;
+	struct cvmx_pcieepx_cfg515_cn61xx     cn70xxp1;
+	struct cvmx_pcieepx_cfg515_cn61xx     cn73xx;
+	struct cvmx_pcieepx_cfg515_cn78xx {
+#ifdef __BIG_ENDIAN_BITFIELD
+	uint32_t reserved_21_31               : 11;
+	uint32_t s_d_e                        : 1;  /**< SEL_DE_EMPHASIS. Used to set the deemphasis level for upstream ports. */
+	uint32_t ctcrb                        : 1;  /**< Config TX compliance receive bit. When set to 1, signals LTSSM to transmit TS ordered sets
+                                                         with the compliance receive bit assert (equal to 1). */
+	uint32_t cpyts                        : 1;  /**< Config PHY TX swing. Indicates the voltage level that the PHY should drive. When set to 1,
+                                                         indicates full swing. When set to 0, indicates low swing. */
+	uint32_t dsc                          : 1;  /**< Directed speed change. A write of 1 initiates a speed change.
+                                                         When the speed change occurs, the controller will clear the contents of this field. */
+	uint32_t alaneflip                    : 1;  /**< Enable auto flipping of the lanes. */
+	uint32_t pdetlane                     : 3;  /**< Predetermined lane for auto flip. This field defines which
+                                                         physical lane is connected to logical Lane0 by the flip
+                                                         operation performed in detect.
+                                                           0x0 = Auto flipping not supported.
+                                                           0x1 = Connect logical Lane0 to physical lane 1.
+                                                           0x2 = Connect logical Lane0 to physical lane 3.
+                                                           0x3 = Connect logical Lane0 to physical lane 7.
+                                                           0x4 = Connect logical Lane0 to physical lane 15.
+                                                           0x5 - 0x7 = Reserved. */
+	uint32_t nlanes                       : 5;  /**< Predetermined number of lanes.  Defines the number of
+                                                         lanes which are connected and not bad. Used to limit the
+                                                         effective link width to ignore "broken" or "unused" lanes that
+                                                         detect a receiver. Indicates the number of lanes to check for
+                                                         exit from electrical idle in Polling.Active and L2.Idle.
+                                                         0x1 = 1 lane.
+                                                         0x2 = 2 lanes.
+                                                         0x3 = 3 lanes.
+                                                         - ...
+                                                         0x8 = 8 lanes.
+                                                         0x9-0x1F = Reserved.
+                                                         When there are unused lanes in the system, then this value must reflect the
+                                                         number of lanes. PCIEEP()_CFG452[LME] must also be changed likewise. */
+	uint32_t n_fts                        : 8;  /**< N_FTS. Sets the number of fast training sequences (N_FTS) that the core advertises as its
+                                                         N_FTS during GEN2 Link training. This value is used to inform the link partner about the
+                                                         PHY's ability to recover synchronization after a low power state.
+                                                         Do not set [N_FTS] to zero; doing so can cause the LTSSM to go into the recovery
+                                                         state when exiting from L0s. */
+#else
+	uint32_t n_fts                        : 8;
+	uint32_t nlanes                       : 5;
+	uint32_t pdetlane                     : 3;
+	uint32_t alaneflip                    : 1;
+	uint32_t dsc                          : 1;
+	uint32_t cpyts                        : 1;
+	uint32_t ctcrb                        : 1;
+	uint32_t s_d_e                        : 1;
+	uint32_t reserved_21_31               : 11;
+#endif
+	} cn78xx;
+	struct cvmx_pcieepx_cfg515_cn61xx     cn78xxp1;
+	struct cvmx_pcieepx_cfg515_cn61xx     cnf71xx;
+	struct cvmx_pcieepx_cfg515_cn78xx     cnf75xx;
 };
 typedef union cvmx_pcieepx_cfg515 cvmx_pcieepx_cfg515_t;
 

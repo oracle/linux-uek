@@ -428,7 +428,7 @@ static inline uint64_t CVMX_SMIX_WR_DAT(unsigned long offset)
  *
  * This register determines the SMI timing characteristics.
  * If software wants to change SMI CLK timing parameters ([SAMPLE]/[SAMPLE_HI]), software
- * must delay the SMI_()_CLK CSR write by at least 512 coprocessor-clocks after the
+ * must delay the SMI_()_CLK CSR write by at least 512 coprocessor-clock cycles after the
  * previous SMI operation is finished.
  */
 union cvmx_smix_clk {
@@ -623,8 +623,8 @@ union cvmx_smix_en {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_1_63                : 63;
 	uint64_t en                           : 1;  /**< SMI/MDIO interface enable:
-                                                         1 = Enable interface.
-                                                         0 = Disable interface: no transactions, no SMIn_MDC transitions. */
+                                                         0 = Disable interface: no transactions, no SMIn_MDC transitions.
+                                                         1 = Enable interface. */
 #else
 	uint64_t en                           : 1;
 	uint64_t reserved_1_63                : 63;

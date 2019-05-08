@@ -42,7 +42,7 @@
  *
  * Interface to PCIe as a host(RC) or target(EP)
  *
- * <hr>$Revision: 167433 $<hr>
+ * <hr>$Revision: 170015 $<hr>
  */
 #ifdef CVMX_BUILD_FOR_LINUX_KERNEL
 #include <asm/octeon/cvmx.h>
@@ -1908,19 +1908,20 @@ static int __cvmx_pcie_rc_initialize_gen2(int pcie_port)
 	}
 
 	if (OCTEON_IS_MODEL(OCTEON_CN78XX)
-	    && OCTEON_IS_MODEL(OCTEON_CN73XX)
-	    && OCTEON_IS_MODEL(OCTEON_CNF75XX)) {
+	    || OCTEON_IS_MODEL(OCTEON_CN73XX)
+	    || OCTEON_IS_MODEL(OCTEON_CNF75XX)) {
 		cvmx_pciercx_cfg038_t pciercx_cfg038;
-		cvmx_sli_window_ctl_t sli_window_ctl;
+		cvmx_pciercx_cfg548_t cfg548;
 
 		pciercx_cfg032.u32 = CVMX_PCIE_CFGX_READ(pcie_port,
 					CVMX_PCIERCX_CFG032(pcie_port));
 		/* Errata PEM-28816: Link retrain initiated at GEN1 can cause PCIE
 		   link to hang. For Gen1 links we must disable equalization */
 		if (pciercx_cfg032.s.ls == 1) {
-			cvmx_pciercx_cfg548_t cfg548;
+#if 0
 			cvmx_dprintf("%d:%d:PCIe: Disabling equalization for GEN1 Link\n",
 					node, pcie_port);
+#endif
 			cfg548.u32 = CVMX_PCIE_CFGX_READ(pcie_port,
 					CVMX_PCIERCX_CFG548(pcie_port));
 			cfg548.s.ed = 1;
@@ -1936,12 +1937,10 @@ static int __cvmx_pcie_rc_initialize_gen2(int pcie_port)
 		CVMX_PCIE_CFGX_WRITE(pcie_port, CVMX_PCIERCX_CFG038(pcie_port),
 					pciercx_cfg038.u32);
 
-		/* Errata PEM-31375 PEM RSL accesses to PCLK registers can
-		   timeout during speed change. Change SLI_WINDOW_CTL[time]
-		   to 525us */
-		sli_window_ctl.u64 = CVMX_READ_CSR(CVMX_PEXP_SLI_WINDOW_CTL);
-		sli_window_ctl.s.time = cvmx_clock_get_rate(CVMX_CLOCK_SCLK) * 525 / 1000000;
-		CVMX_WRITE_CSR(CVMX_PEXP_SLI_WINDOW_CTL, sli_window_ctl.u64);
+		/* Errata PCIE-29566 PEM Link Hangs after going into L1 */
+		cfg548.u32 = CVMX_PCIE_CFGX_READ(pcie_port, CVMX_PCIERCX_CFG548(pcie_port));
+		cfg548.s.grizdnc = 0;
+		CVMX_PCIE_CFGX_WRITE(pcie_port, CVMX_PCIERCX_CFG548(pcie_port), cfg548.u32);
 	}
 
 	/* Store merge control (SLI_MEM_ACCESS_CTL[TIMER,MAX_WORD]) */
