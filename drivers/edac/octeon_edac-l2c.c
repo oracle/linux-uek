@@ -183,6 +183,7 @@ static void _octeon_l2c_poll_oct3(struct edac_device_ctl_info *l2c, int tad)
 {
 	union cvmx_l2c_tqdx_err tqdx_err;
 	union cvmx_l2c_ttgx_err ttgx_err;
+	union cvmx_l2c_tadx_err l2c_err;
 	union cvmx_l2c_tadx_int l2c_reset;
 	int way, l2idx;
 
@@ -237,10 +238,16 @@ static void _octeon_l2c_poll_oct3(struct edac_device_ctl_info *l2c, int tad)
 	}
 
 	ttgx_err.u64 = cvmx_read_csr(CVMX_L2C_TTGX_ERR(tad));
-	way = OCTEON_IS_MODEL(OCTEON_CN70XX) ? ttgx_err.cn70xx.way
-				: ttgx_err.cn78xx.way;
-	l2idx = OCTEON_IS_MODEL(OCTEON_CN70XX) ? ttgx_err.cn70xx.l2idx
-				: ttgx_err.cn78xx.l2idx;
+	if (OCTEON_IS_MODEL(OCTEON_CN70XX)) {
+		way = ttgx_err.cn70xx.way;
+		l2idx = ttgx_err.cn70xx.l2idx;
+	} else if (OCTEON_IS_MODEL(OCTEON_CN78XX)) {
+		way = ttgx_err.cn78xx.way;
+		l2idx = ttgx_err.cn78xx.l2idx;
+	} else {
+		way = ttgx_err.cn73xx.way;
+		l2idx = ttgx_err.cn73xx.l2idx;
+	}
 
 	if (ttgx_err.s.tagdbe || ttgx_err.s.tagsbe)
 		snprintf(buf1, sizeof(buf1),
@@ -259,6 +266,19 @@ static void _octeon_l2c_poll_oct3(struct edac_device_ctl_info *l2c, int tad)
 		l2c_reset.cn70xx.tagsbe = 1;
 		edac_device_handle_ce(l2c, tad, 0, buf2);
 	}
+
+	l2c_err.u64 = cvmx_read_csr(CVMX_L2C_TADX_ERR(tad));
+	if (l2c_err.s.bigrd) {
+		snprintf(buf1, sizeof(buf1),
+			"Read reference past L2C_BIG_CTL[MAXDRAM] occurred:");
+		l2c_reset.cn70xx.bigrd = true;
+	}
+	if (l2c_err.s.bigwr) {
+		snprintf(buf1, sizeof(buf1),
+			"Write reference past L2C_BIG_CTL[MAXDRAM] occurred:");
+		l2c_reset.cn70xx.bigwr = true;
+	}
+
 	if (l2c_reset.u64)
 		cvmx_write_csr(CVMX_L2C_TADX_INT(tad), l2c_reset.u64);
 }
