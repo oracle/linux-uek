@@ -622,10 +622,6 @@ static int octeon_nand_bch_calculate_ecc_internal(struct octeon_nand *priv,
 	int i;
 	static uint8_t *ecc_buffer;
 
-	/* Can only use logical or xkphys pointers */
-	WARN_ON(is_vmalloc_or_module_addr(buf));
-	WARN_ON(is_vmalloc_or_module_addr(code));
-
 	if (!ecc_buffer)
 		ecc_buffer = kmalloc(1024, GFP_KERNEL);
 	if ((ulong)buf % 8)
@@ -755,9 +751,6 @@ static int octeon_nand_bch_correct(struct mtd_info *mtd, u_char *dat,
 	static uint8_t *data_buffer;
 	static int buffer_size;
 	int max_time = 100;
-
-	/* Can only use logical or xkphys pointers */
-	WARN_ON(is_vmalloc_or_module_addr(dat));
 
 	if (i > buffer_size) {
 		kfree(data_buffer);
