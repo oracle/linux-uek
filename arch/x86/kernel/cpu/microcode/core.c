@@ -78,6 +78,7 @@
 #include <linux/miscdevice.h>
 #include <linux/capability.h>
 #include <linux/kernel.h>
+#include <linux/debugfs.h>
 #include <linux/delay.h>
 #include <linux/module.h>
 #include <linux/mutex.h>
@@ -582,6 +583,26 @@ static enum ucode_state microcode_update_cpu(int cpu)
 	return microcode_init_cpu(cpu, false);
 }
 
+/* 
+ * Indicates that late loading is "safe", i.e. it uses stop_machine()
+ * as opposed to simply IPI-ing cores, one-by-one without pinning them
+ * with interrupts disabled. That could case all sorts of errors.
+ * Current version is "1".
+ */
+static ssize_t loader_ver_read(struct file *file,
+			       char __user *user_buf,
+			       size_t count, loff_t *ppos)
+{
+	char buf[2] = {'1', '\n'};
+
+	return simple_read_from_buffer(user_buf, count, ppos, buf, 2);
+}
+
+static const struct file_operations fops_loader_ver = {
+	.read = loader_ver_read,
+	.llseek = default_llseek,
+};
+
 static int mc_device_add(struct device *dev, struct subsys_interface *sif)
 {
 	int err, cpu = dev->id;
@@ -597,6 +618,10 @@ static int mc_device_add(struct device *dev, struct subsys_interface *sif)
 
 	if (microcode_init_cpu(cpu, true) == UCODE_ERROR)
 		return -EINVAL;
+
+	debugfs_create_file("microcode_loader_version",
+			    0400, arch_debugfs_dir, NULL,
+			    &fops_loader_ver);
 
 	return err;
 }
