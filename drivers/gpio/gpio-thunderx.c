@@ -26,7 +26,6 @@
 #include <linux/fs.h>
 #endif
 
-
 #define GPIO_RX_DAT	0x0
 #define GPIO_TX_SET	0x8
 #define GPIO_TX_CLR	0x10
@@ -48,6 +47,8 @@
 #define  GPIO_INTR_ENA_W1C		BIT(2)
 #define  GPIO_INTR_ENA_W1S		BIT(3)
 #define GPIO_2ND_BANK	0x1400
+#define MRVL_OCTEONTX2_96XX_PARTNUM	0xB2
+
 
 #define GLITCH_FILTER_400NS ((4u << GPIO_BIT_CFG_FIL_SEL_SHIFT) | \
 			     (9u << GPIO_BIT_CFG_FIL_CNT_SHIFT))
@@ -701,7 +702,14 @@ static int thunderx_gpio_probe(struct pci_dev *pdev,
 		u64 c = readq(txgpio->register_base + GPIO_CONST);
 
 		ngpio = c & GPIO_CONST_GPIOS_MASK;
-		txgpio->base_msi = (c >> 8) & 0xff;
+
+		/* Workaround for all passes of T96xx */
+		if (((pdev->subsystem_device >> 8) & 0xFF) ==
+		    MRVL_OCTEONTX2_96XX_PARTNUM) {
+			txgpio->base_msi = 0x36;
+		} else {
+			txgpio->base_msi = (c >> 8) & 0xff;
+		}
 	}
 
 	txgpio->msix_entries = devm_kcalloc(dev,
