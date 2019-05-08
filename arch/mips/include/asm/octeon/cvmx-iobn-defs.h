@@ -872,9 +872,11 @@ union cvmx_iobn_pp_bist_status {
 	struct cvmx_iobn_pp_bist_status_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_48_63               : 16;
-	uint64_t pp_bstat                     : 48; /**< BIST Status of the cores. Bit vector position is the number of the core (i.e. core 0 ==
-                                                         PP_BSTAT<0>). Only even number bits are valid; all odd number bits are read as 0. For odd
-                                                         number cores, see IOBP_PP_BIST_STATUS. */
+	uint64_t pp_bstat                     : 48; /**< BIST Status of the cores. Bit vector position is the physical number of the core
+                                                         (i.e. core 0 == PP_BSTAT<0>). Only even number bits are valid; all odd number bits
+                                                         are read as 0. For odd number cores, see IOBP_PP_BIST_STATUS.
+                                                         Software must bit-wise logical AND IOBN_PP_BIST_STATUS with CIU_FUSE before using
+                                                         it. */
 #else
 	uint64_t pp_bstat                     : 48;
 	uint64_t reserved_48_63               : 16;

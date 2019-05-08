@@ -3743,7 +3743,7 @@ union cvmx_pko_dqx_fifo {
 	struct cvmx_pko_dqx_fifo_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_15_63               : 49;
-	uint64_t p_con                        : 1;  /**< parent connect. Asserted when DQ is connected to its parent. */
+	uint64_t p_con                        : 1;  /**< Parent connect. Asserted when DQ is connected to its parent. */
 	uint64_t head                         : 7;  /**< DQ FIFO head pointer. */
 	uint64_t tail                         : 7;  /**< DQ FIFO tail pointer. */
 #else
@@ -5123,20 +5123,20 @@ union cvmx_pko_l1_sqx_topology {
 	uint64_t link                         : 5;  /**< Link index. Selects the MAC or NULL FIFO used by the L1 SQ.
                                                          Legal [LINK] values:
                                                          <pre>
-                                                                          Relevant
-                                                           [LINK]    PKO_MAC()_CFG CSR    Description
-                                                          -------------------------------------------------
-                                                             0         PKO_MAC0_CFG      LBK loopback
-                                                             1         PKO_MAC1_CFG      DPI packet output
-                                                             2         PKO_MAC2_CFG      BGX0  logical MAC 0
-                                                             3         PKO_MAC3_CFG      BGX0  logical MAC 1
-                                                             4         PKO_MAC4_CFG      BGX0  logical MAC 2
-                                                             5         PKO_MAC5_CFG      BGX0  logical MAC 3
-                                                             6         PKO_MAC6_CFG      SRIO0 logical MAC 0
-                                                             7         PKO_MAC7_CFG      SRIO0 logical MAC 1
-                                                             8         PKO_MAC8_CFG      SRIO1 logical MAC 0
-                                                             9         PKO_MAC9_CFG      SRIO1 logical MAC 1
-                                                            10            None           NULL FIFO
+                                                                        Relevant
+                                                          [LINK]   PKO_MAC()_CFG CSR   Description
+                                                          ------   -----------------   ------------------
+                                                            0         PKO_MAC0_CFG     LBK loopback
+                                                            1         PKO_MAC1_CFG     DPI packet output
+                                                            2         PKO_MAC2_CFG     BGX0  logical MAC 0
+                                                            3         PKO_MAC3_CFG     BGX0  logical MAC 1
+                                                            4         PKO_MAC4_CFG     BGX0  logical MAC 2
+                                                            5         PKO_MAC5_CFG     BGX0  logical MAC 3
+                                                            6         PKO_MAC6_CFG     SRIO0 logical MAC 0
+                                                            7         PKO_MAC7_CFG     SRIO0 logical MAC 1
+                                                            8         PKO_MAC8_CFG     SRIO1 logical MAC 0
+                                                            9         PKO_MAC9_CFG     SRIO1 logical MAC 1
+                                                           10            None          NULL FIFO
                                                          </pre>
                                                          When a MAC is used by the L1 SQ, [LINK] must be unique relative to
                                                          other [LINK]s. [LINK] should be 14 when the L1 SQ is not used. */
@@ -8063,8 +8063,8 @@ typedef union cvmx_pko_lut_ecc_sbe_sts_cmb0 cvmx_pko_lut_ecc_sbe_sts_cmb0_t;
  * to 31) prior to reconfiguration of any of the other bits.
  *
  * <pre>
- *   CSR Name        Associated MAC
- *   ---------------------------------
+ *   CSR Name       Associated MAC
+ *   ------------   -------------------
  *   PKO_MAC0_CFG   LBK loopback
  *   PKO_MAC1_CFG   DPI packet output
  *   PKO_MAC2_CFG   BGX0  logical MAC 0
@@ -8163,7 +8163,7 @@ union cvmx_pko_mci1_cred_cntx {
 	struct cvmx_pko_mci1_cred_cntx_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_13_63               : 51;
-	uint64_t cred_cnt                     : 13; /**< Credit count. */
+	uint64_t cred_cnt                     : 13; /**< Credit count.  Will be reset with a write to the corrsponding PKO_MCI1_MAX_CRED. */
 #else
 	uint64_t cred_cnt                     : 13;
 	uint64_t reserved_13_63               : 51;
@@ -8185,7 +8185,8 @@ union cvmx_pko_mci1_max_credx {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_12_63               : 52;
 	uint64_t max_cred_lim                 : 12; /**< Max credit limit.  Should be set to (MAC_CREDIT) / 16, where MAC_CREDIT is
-                                                         the size of the MAC FIFO. */
+                                                         the size of the MAC FIFO.  A write to this register will reset the
+                                                         corresponding PKO_MCI1_CRED_CNT. */
 #else
 	uint64_t max_cred_lim                 : 12;
 	uint64_t reserved_12_63               : 52;
@@ -16232,7 +16233,9 @@ union cvmx_pko_ptf_iobp_cfg {
 	uint64_t iobp1_ds_opt                 : 1;  /**< Optimize IOBP1 requests when data is to be dropped (NULL, RED, SEND_HDR_S[DS]=1). */
 	uint64_t iobp0_l2_allocate            : 1;  /**< Determine L2 allocation (1 = no allocation = LDT, 0 = allocation = LDD) when reading
                                                          post-PKO_SEND_JUMP_S descriptors via IOBP0 requests. */
-	uint64_t iobp1_magic_addr             : 35; /**< IOBP1 read address to be used for any dummy reads */
+	uint64_t iobp1_magic_addr             : 35; /**< IOBP1 read address to be used for any dummy reads. This must be a valid IOVA of
+                                                         a scratch cache line. PKO will read this address to insure ordering for any PKO
+                                                         send command which does not otherwise have a data fetch associated with it. */
 	uint64_t max_read_size                : 7;  /**< Maximum number of IOBP1 read requests outstanding to be allowed by any given PEB TX FIFO. */
 #else
 	uint64_t max_read_size                : 7;
@@ -16302,7 +16305,7 @@ union cvmx_pko_ptgfx_cfg {
                                                              4    10.0 KB    N/A      N/A      N/A
                                                          </pre>
                                                          Note: 5-7 are illegal [SIZE] values and should not be used.
-                                                         A FIFO labelled N/A in the above table must not be used, and no
+                                                         A FIFO labeled N/A in the above table must not be used, and no
                                                          PKO_MAC()_CFG[FIFO_NUM] should select it. For example,
                                                          if PKO_PTGF(2)_CFG[SIZE]=4, FIFO_NUM 8 is available (with
                                                          10KB), but FIFO_NUMs 9, 10, and 11 are not valid and should

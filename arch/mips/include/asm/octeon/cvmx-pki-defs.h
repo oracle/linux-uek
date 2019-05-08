@@ -1908,7 +1908,7 @@ union cvmx_pki_clx_pcamx_termx {
                                                          _ [TERM1]<n>=1, [TERM0]<n>=0: Match when data<n> == 1.
                                                          _ [TERM1]<n>=1, [TERM0]<n>=1: Reserved. */
 	uint64_t style0                       : 8;  /**< Previous interim style. The style that must have been calculated by the port
-                                                         PKI_CL()_PKIND()_STYLE[STYLE] or as modified by previous CAM hits's
+                                                         PKI_CL()_PKIND()_STYLE[STYLE] or as modified by previous CAM hits'
                                                          PKI_CL()_PCAM()_ACTION()[STYLE_ADD]. This is used to form AND style matches.
                                                          The field value is ternary, where each bit matches as follows:
                                                          _ [STYLE1]<n>=0, [STYLE0]<n>=0: Always match; data<n> don't care.
@@ -1963,7 +1963,7 @@ union cvmx_pki_clx_pkindx_cfg {
                                                          1 = MPLS label stacks are parsed and skipped over. */
 	uint64_t inst_hdr                     : 1;  /**< INST header. When set, a PKI_INST_HDR_S is present PKI_CL()_PKIND()_SKIP[INST_SKIP]
                                                          bytes into the packet received by PKI. */
-	uint64_t lg_custom                    : 1;  /**< Reserved. */
+	uint64_t lg_custom                    : 1;  /**< Enable parsing LG_CUSTOM layers. */
 	uint64_t fulc_en                      : 1;  /**< Enable Fulcrum tag parsing.
                                                          0 = Any Fulcrum header is ignored.
                                                          1 = Fulcrum header is parsed.
@@ -2059,9 +2059,10 @@ union cvmx_pki_clx_pkindx_l2_custom {
                                                          0 = Disable custom L2 header extraction.
                                                          1 = Enable custom L2 header extraction. */
 	uint64_t reserved_8_14                : 7;
-	uint64_t offset                       : 8;  /**< Scan offset. Pointer to first byte of 32-bit custom extraction header, as absolute number
-                                                         of bytes from beginning of packet. If PTP_MODE, the 8-byte timestamp is prepended to the
-                                                         packet, and must be included in counting offset bytes. */
+	uint64_t offset                       : 8;  /**< Scan offset. Pointer to first byte of 32-bit custom extraction header, as
+                                                         absolute number of bytes from beginning of packet. Must be even. If PTP_MODE,
+                                                         the 8-byte timestamp is prepended to the packet, and must be included in
+                                                         counting offset bytes. */
 #else
 	uint64_t offset                       : 8;
 	uint64_t reserved_8_14                : 7;
@@ -2092,7 +2093,7 @@ union cvmx_pki_clx_pkindx_lg_custom {
 	uint64_t offset                       : 8;  /**< Scan offset. Pointer to first byte of 32-bit custom extraction header, as
                                                          relative number of bytes from PKI_WQE_S[LCPTR], PKI_WQE_S[LDPTR],
                                                          PKI_WQE_S[LEPTR], PKI_WQE_S[LFPTR], as selected by
-                                                         PKI_CL()_PKIND()_CFG[LG_CUSTOM_LAYER]. */
+                                                         PKI_CL()_PKIND()_CFG[LG_CUSTOM_LAYER]. Must be even. */
 #else
 	uint64_t offset                       : 8;
 	uint64_t reserved_8_63                : 56;
@@ -3208,7 +3209,7 @@ union cvmx_pki_gen_int {
                                                          bit can be set when the previous reported bit is cleared. Also see PKI_PKT_ERR. Throws
                                                          PKI_INTSN_E::PKI_GEN_SOP. */
 	uint64_t bckprs                       : 1;  /**< PKI asserted backpressure. Set when PKI was unable to accept the next valid data from
-                                                         BGX/SRIO/DPI/LBK etc. over X2P due to all internal resources being used up, and PKI will
+                                                         BGX, SRIO, DPI, LBK, etc. over X2P due to all internal resources being used up, and PKI will
                                                          backpressure X2P. Throws PKI_INTSN_E::PKI_GEN_BCKPRS. */
 	uint64_t crcerr                       : 1;  /**< PKI calculated bad CRC in the L2 frame. Throws PKI_INTSN_E::PKI_GEN_CRCERR. */
 	uint64_t pktdrp                       : 1;  /**< Packet dropped due to QOS. If the QOS algorithm decides to drop a packet, PKI asserts this
@@ -4747,12 +4748,12 @@ union cvmx_pki_tag_secret {
 	struct cvmx_pki_tag_secret_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t dst6                         : 16; /**< Secret for the destination tuple IPv6 tag CRC calculation. Typically identical to SRC6 to
-                                                         insure tagging is symmetric between source/destination flows. Typically different from DST
+                                                         ensure tagging is symmetric between source/destination flows. Typically different from DST
                                                          for maximum security. */
 	uint64_t src6                         : 16; /**< Secret for the source tuple IPv6 tag CRC calculation. Typically different from SRC for
                                                          maximum security. */
-	uint64_t dst                          : 16; /**< Secret for the destination tuple tag CRC calculation. Typically identical to DST6 to
-                                                         insure tagging is symmetric between source/destination flows. */
+	uint64_t dst                          : 16; /**< Secret for the destination tuple tag CRC calculation. Typically identical to SRC to
+                                                         ensure tagging is symmetric between source/destination flows. */
 	uint64_t src                          : 16; /**< Secret for the source tuple tag CRC calculation. */
 #else
 	uint64_t src                          : 16;

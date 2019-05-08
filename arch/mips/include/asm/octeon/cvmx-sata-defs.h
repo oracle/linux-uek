@@ -1,5 +1,5 @@
 /***********************license start***************
- * Copyright (c) 2003-2015  Cavium Inc. (support@cavium.com). All rights
+ * Copyright (c) 2003-2017  Cavium Inc. (support@cavium.com). All rights
  * reserved.
  *
  *
@@ -773,7 +773,7 @@ union cvmx_sata_uahc_gbl_cap {
 	uint32_t ssntf                        : 1;  /**< Supports SNotification register. */
 	uint32_t smps                         : 1;  /**< Supports mechanical presence switch. */
 	uint32_t sss                          : 1;  /**< Supports staggered spin-up. */
-	uint32_t salp                         : 1;  /**< Supports agressive link power management. */
+	uint32_t salp                         : 1;  /**< Supports aggressive link power management. */
 	uint32_t sal                          : 1;  /**< Supports activity LED. */
 	uint32_t sclo                         : 1;  /**< Supports command list override. */
 	uint32_t iss                          : 4;  /**< Interface speed support. */
@@ -1804,7 +1804,12 @@ union cvmx_sata_uahc_px_tfd {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint32_t reserved_16_31               : 16;
 	uint32_t tferr                        : 8;  /**< Copy of task-file error register. */
-	uint32_t sts                          : 8;  /**< Copy of task-file status register. */
+	uint32_t sts                          : 8;  /**< Copy of task-file status register.
+                                                         <7> = BSY: Indicates the interface is busy.
+                                                         <6:4> = Command specific.
+                                                         <3> = DRQ: Indicates a data transfer is requested.
+                                                         <2:1> = Command specific.
+                                                         <0> = ERR: Indicates an error during the transfer. */
 #else
 	uint32_t sts                          : 8;
 	uint32_t tferr                        : 8;
@@ -1903,7 +1908,7 @@ union cvmx_sata_uctl_ctl {
                                                          SATA()_UCTL_BIST_STATUS. The FULL BIST run takes almost 80,000 host-controller
                                                          clock cycles for the largest RAM. */
 	uint64_t reserved_31_61               : 31;
-	uint64_t a_clk_en                     : 1;  /**< Host-controller clock enable. When set to 1, the host-controller clock is generated. This
+	uint64_t a_clk_en                     : 1;  /**< Host-controller clock enable. When set to one, the host-controller clock is generated. This
                                                          also enables access to UCTL registers 0x30-0xF8. */
 	uint64_t a_clk_byp_sel                : 1;  /**< Select the bypass input to the host-controller clock divider.
                                                          0 = Use the divided coprocessor clock from the A_CLKDIV divider.

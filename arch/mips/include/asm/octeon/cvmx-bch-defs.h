@@ -1,5 +1,5 @@
 /***********************license start***************
- * Copyright (c) 2003-2015  Cavium Inc. (support@cavium.com). All rights
+ * Copyright (c) 2003-2017  Cavium Inc. (support@cavium.com). All rights
  * reserved.
  *
  *
@@ -336,7 +336,7 @@ union cvmx_bch_eco {
 	struct cvmx_bch_eco_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_32_63               : 32;
-	uint64_t eco_rw                       : 32; /**< N/A */
+	uint64_t eco_rw                       : 32; /**< Reserved for ECO usage. */
 #else
 	uint64_t eco_rw                       : 32;
 	uint64_t reserved_32_63               : 32;
