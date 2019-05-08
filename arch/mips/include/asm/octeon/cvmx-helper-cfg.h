@@ -193,7 +193,7 @@ typedef union cvmx_user_static_pko_queue_config
 	{
 		struct pko_queues_cfg {
 			unsigned
-				queues_per_port:5,
+				queues_per_port:11,
 				qos_enable:1,
 				pfc_enable:1;
 		} pko_cfg_iface[6];

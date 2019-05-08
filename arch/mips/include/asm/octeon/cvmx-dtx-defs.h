@@ -5097,9 +5097,9 @@ union cvmx_dtx_agl_ctl {
 	uint64_t reserved_5_63                : 59;
 	uint64_t active                       : 1;  /**< Force block's gated clocks on, so that the state of idle signals may be captured. */
 	uint64_t reserved_2_3                 : 2;
-	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block debug data.
-                                                         Not applicable when software directly reads the DAT(0..1) registers.  For diagnostic use
-                                                         only. */
+	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block
+                                                         debug data. Not applicable when software directly reads the DAT(0..1) registers.
+                                                         For diagnostic use only. */
 	uint64_t swap                         : 1;  /**< Swap the high and low 36-bit debug bus outputs. */
 #else
 	uint64_t swap                         : 1;
@@ -5122,8 +5122,8 @@ union cvmx_dtx_agl_datx {
 	struct cvmx_dtx_agl_datx_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the ability to
-                                                         peek into blocks during an OCLA capture without OCLA reconfiguration. */
+	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the
+                                                         ability to peek into blocks during an OCLA capture without OCLA reconfiguration. */
 #else
 	uint64_t raw                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -5142,8 +5142,8 @@ union cvmx_dtx_agl_enax {
 	struct cvmx_dtx_agl_enax_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug buses. Normally
-                                                         only one block will drive each bit. */
+	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug
+                                                         buses. Normally only one block will drive each bit. */
 #else
 	uint64_t ena                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -5202,9 +5202,9 @@ union cvmx_dtx_ase_ctl {
 	uint64_t reserved_5_63                : 59;
 	uint64_t active                       : 1;  /**< Force block's gated clocks on, so that the state of idle signals may be captured. */
 	uint64_t reserved_2_3                 : 2;
-	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block debug data.
-                                                         Not applicable when software directly reads the DAT(0..1) registers.  For diagnostic use
-                                                         only. */
+	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block
+                                                         debug data. Not applicable when software directly reads the DAT(0..1) registers.
+                                                         For diagnostic use only. */
 	uint64_t swap                         : 1;  /**< Swap the high and low 36-bit debug bus outputs. */
 #else
 	uint64_t swap                         : 1;
@@ -5227,8 +5227,8 @@ union cvmx_dtx_ase_datx {
 	struct cvmx_dtx_ase_datx_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the ability to
-                                                         peek into blocks during an OCLA capture without OCLA reconfiguration. */
+	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the
+                                                         ability to peek into blocks during an OCLA capture without OCLA reconfiguration. */
 #else
 	uint64_t raw                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -5247,8 +5247,8 @@ union cvmx_dtx_ase_enax {
 	struct cvmx_dtx_ase_enax_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug buses. Normally
-                                                         only one block will drive each bit. */
+	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug
+                                                         buses. Normally only one block will drive each bit. */
 #else
 	uint64_t ena                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -5306,9 +5306,9 @@ union cvmx_dtx_bbx1i_ctl {
 	uint64_t reserved_5_63                : 59;
 	uint64_t active                       : 1;  /**< Force block's gated clocks on, so that the state of idle signals may be captured. */
 	uint64_t reserved_2_3                 : 2;
-	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block debug data.
-                                                         Not applicable when software directly reads the DAT(0..1) registers.  For diagnostic use
-                                                         only. */
+	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block
+                                                         debug data. Not applicable when software directly reads the DAT(0..1) registers.
+                                                         For diagnostic use only. */
 	uint64_t swap                         : 1;  /**< Swap the high and low 36-bit debug bus outputs. */
 #else
 	uint64_t swap                         : 1;
@@ -5330,8 +5330,8 @@ union cvmx_dtx_bbx1i_datx {
 	struct cvmx_dtx_bbx1i_datx_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the ability to
-                                                         peek into blocks during an OCLA capture without OCLA reconfiguration. */
+	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the
+                                                         ability to peek into blocks during an OCLA capture without OCLA reconfiguration. */
 #else
 	uint64_t raw                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -5349,8 +5349,8 @@ union cvmx_dtx_bbx1i_enax {
 	struct cvmx_dtx_bbx1i_enax_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug buses. Normally
-                                                         only one block will drive each bit. */
+	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug
+                                                         buses. Normally only one block will drive each bit. */
 #else
 	uint64_t ena                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -5406,9 +5406,9 @@ union cvmx_dtx_bbx2i_ctl {
 	uint64_t reserved_5_63                : 59;
 	uint64_t active                       : 1;  /**< Force block's gated clocks on, so that the state of idle signals may be captured. */
 	uint64_t reserved_2_3                 : 2;
-	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block debug data.
-                                                         Not applicable when software directly reads the DAT(0..1) registers.  For diagnostic use
-                                                         only. */
+	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block
+                                                         debug data. Not applicable when software directly reads the DAT(0..1) registers.
+                                                         For diagnostic use only. */
 	uint64_t swap                         : 1;  /**< Swap the high and low 36-bit debug bus outputs. */
 #else
 	uint64_t swap                         : 1;
@@ -5430,8 +5430,8 @@ union cvmx_dtx_bbx2i_datx {
 	struct cvmx_dtx_bbx2i_datx_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the ability to
-                                                         peek into blocks during an OCLA capture without OCLA reconfiguration. */
+	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the
+                                                         ability to peek into blocks during an OCLA capture without OCLA reconfiguration. */
 #else
 	uint64_t raw                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -5449,8 +5449,8 @@ union cvmx_dtx_bbx2i_enax {
 	struct cvmx_dtx_bbx2i_enax_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug buses. Normally
-                                                         only one block will drive each bit. */
+	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug
+                                                         buses. Normally only one block will drive each bit. */
 #else
 	uint64_t ena                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -5506,9 +5506,9 @@ union cvmx_dtx_bbx3i_ctl {
 	uint64_t reserved_5_63                : 59;
 	uint64_t active                       : 1;  /**< Force block's gated clocks on, so that the state of idle signals may be captured. */
 	uint64_t reserved_2_3                 : 2;
-	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block debug data.
-                                                         Not applicable when software directly reads the DAT(0..1) registers.  For diagnostic use
-                                                         only. */
+	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block
+                                                         debug data. Not applicable when software directly reads the DAT(0..1) registers.
+                                                         For diagnostic use only. */
 	uint64_t swap                         : 1;  /**< Swap the high and low 36-bit debug bus outputs. */
 #else
 	uint64_t swap                         : 1;
@@ -5530,8 +5530,8 @@ union cvmx_dtx_bbx3i_datx {
 	struct cvmx_dtx_bbx3i_datx_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the ability to
-                                                         peek into blocks during an OCLA capture without OCLA reconfiguration. */
+	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the
+                                                         ability to peek into blocks during an OCLA capture without OCLA reconfiguration. */
 #else
 	uint64_t raw                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -5549,8 +5549,8 @@ union cvmx_dtx_bbx3i_enax {
 	struct cvmx_dtx_bbx3i_enax_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug buses. Normally
-                                                         only one block will drive each bit. */
+	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug
+                                                         buses. Normally only one block will drive each bit. */
 #else
 	uint64_t ena                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -5607,9 +5607,9 @@ union cvmx_dtx_bch_ctl {
 	uint64_t reserved_5_63                : 59;
 	uint64_t active                       : 1;  /**< Force block's gated clocks on, so that the state of idle signals may be captured. */
 	uint64_t reserved_2_3                 : 2;
-	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block debug data.
-                                                         Not applicable when software directly reads the DAT(0..1) registers.  For diagnostic use
-                                                         only. */
+	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block
+                                                         debug data. Not applicable when software directly reads the DAT(0..1) registers.
+                                                         For diagnostic use only. */
 	uint64_t swap                         : 1;  /**< Swap the high and low 36-bit debug bus outputs. */
 #else
 	uint64_t swap                         : 1;
@@ -5632,8 +5632,8 @@ union cvmx_dtx_bch_datx {
 	struct cvmx_dtx_bch_datx_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the ability to
-                                                         peek into blocks during an OCLA capture without OCLA reconfiguration. */
+	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the
+                                                         ability to peek into blocks during an OCLA capture without OCLA reconfiguration. */
 #else
 	uint64_t raw                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -5652,8 +5652,8 @@ union cvmx_dtx_bch_enax {
 	struct cvmx_dtx_bch_enax_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug buses. Normally
-                                                         only one block will drive each bit. */
+	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug
+                                                         buses. Normally only one block will drive each bit. */
 #else
 	uint64_t ena                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -5714,9 +5714,9 @@ union cvmx_dtx_bgxx_ctl {
 	uint64_t reserved_5_63                : 59;
 	uint64_t active                       : 1;  /**< Force block's gated clocks on, so that the state of idle signals may be captured. */
 	uint64_t reserved_2_3                 : 2;
-	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block debug data.
-                                                         Not applicable when software directly reads the DAT(0..1) registers.  For diagnostic use
-                                                         only. */
+	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block
+                                                         debug data. Not applicable when software directly reads the DAT(0..1) registers.
+                                                         For diagnostic use only. */
 	uint64_t swap                         : 1;  /**< Swap the high and low 36-bit debug bus outputs. */
 #else
 	uint64_t swap                         : 1;
@@ -5741,8 +5741,8 @@ union cvmx_dtx_bgxx_datx {
 	struct cvmx_dtx_bgxx_datx_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the ability to
-                                                         peek into blocks during an OCLA capture without OCLA reconfiguration. */
+	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the
+                                                         ability to peek into blocks during an OCLA capture without OCLA reconfiguration. */
 #else
 	uint64_t raw                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -5763,8 +5763,8 @@ union cvmx_dtx_bgxx_enax {
 	struct cvmx_dtx_bgxx_enax_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug buses. Normally
-                                                         only one block will drive each bit. */
+	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug
+                                                         buses. Normally only one block will drive each bit. */
 #else
 	uint64_t ena                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -5808,9 +5808,9 @@ union cvmx_dtx_broadcast_ctl {
 	uint64_t reserved_5_63                : 59;
 	uint64_t active                       : 1;  /**< Force block's gated clocks on, so that the state of idle signals may be captured. */
 	uint64_t reserved_2_3                 : 2;
-	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block debug data.
-                                                         Not applicable when software directly reads the DAT(0..1) registers.  For diagnostic use
-                                                         only. */
+	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block
+                                                         debug data. Not applicable when software directly reads the DAT(0..1) registers.
+                                                         For diagnostic use only. */
 	uint64_t swap                         : 1;  /**< Swap the high and low 36-bit debug bus outputs. */
 #else
 	uint64_t swap                         : 1;
@@ -5837,8 +5837,8 @@ union cvmx_dtx_broadcast_enax {
 	struct cvmx_dtx_broadcast_enax_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug buses. Normally
-                                                         only one block will drive each bit. */
+	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug
+                                                         buses. Normally only one block will drive each bit. */
 #else
 	uint64_t ena                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -5904,9 +5904,9 @@ union cvmx_dtx_bts_ctl {
 	uint64_t reserved_5_63                : 59;
 	uint64_t active                       : 1;  /**< Force block's gated clocks on, so that the state of idle signals may be captured. */
 	uint64_t reserved_2_3                 : 2;
-	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block debug data.
-                                                         Not applicable when software directly reads the DAT(0..1) registers.  For diagnostic use
-                                                         only. */
+	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block
+                                                         debug data. Not applicable when software directly reads the DAT(0..1) registers.
+                                                         For diagnostic use only. */
 	uint64_t swap                         : 1;  /**< Swap the high and low 36-bit debug bus outputs. */
 #else
 	uint64_t swap                         : 1;
@@ -5928,8 +5928,8 @@ union cvmx_dtx_bts_datx {
 	struct cvmx_dtx_bts_datx_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the ability to
-                                                         peek into blocks during an OCLA capture without OCLA reconfiguration. */
+	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the
+                                                         ability to peek into blocks during an OCLA capture without OCLA reconfiguration. */
 #else
 	uint64_t raw                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -5947,8 +5947,8 @@ union cvmx_dtx_bts_enax {
 	struct cvmx_dtx_bts_enax_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug buses. Normally
-                                                         only one block will drive each bit. */
+	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug
+                                                         buses. Normally only one block will drive each bit. */
 #else
 	uint64_t ena                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -6007,9 +6007,9 @@ union cvmx_dtx_ciu_ctl {
 	uint64_t reserved_5_63                : 59;
 	uint64_t active                       : 1;  /**< Force block's gated clocks on, so that the state of idle signals may be captured. */
 	uint64_t reserved_2_3                 : 2;
-	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block debug data.
-                                                         Not applicable when software directly reads the DAT(0..1) registers.  For diagnostic use
-                                                         only. */
+	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block
+                                                         debug data. Not applicable when software directly reads the DAT(0..1) registers.
+                                                         For diagnostic use only. */
 	uint64_t swap                         : 1;  /**< Swap the high and low 36-bit debug bus outputs. */
 #else
 	uint64_t swap                         : 1;
@@ -6034,8 +6034,8 @@ union cvmx_dtx_ciu_datx {
 	struct cvmx_dtx_ciu_datx_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the ability to
-                                                         peek into blocks during an OCLA capture without OCLA reconfiguration. */
+	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the
+                                                         ability to peek into blocks during an OCLA capture without OCLA reconfiguration. */
 #else
 	uint64_t raw                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -6056,8 +6056,8 @@ union cvmx_dtx_ciu_enax {
 	struct cvmx_dtx_ciu_enax_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug buses. Normally
-                                                         only one block will drive each bit. */
+	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug
+                                                         buses. Normally only one block will drive each bit. */
 #else
 	uint64_t ena                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -6119,9 +6119,9 @@ union cvmx_dtx_denc_ctl {
 	uint64_t reserved_5_63                : 59;
 	uint64_t active                       : 1;  /**< Force block's gated clocks on, so that the state of idle signals may be captured. */
 	uint64_t reserved_2_3                 : 2;
-	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block debug data.
-                                                         Not applicable when software directly reads the DAT(0..1) registers.  For diagnostic use
-                                                         only. */
+	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block
+                                                         debug data. Not applicable when software directly reads the DAT(0..1) registers.
+                                                         For diagnostic use only. */
 	uint64_t swap                         : 1;  /**< Swap the high and low 36-bit debug bus outputs. */
 #else
 	uint64_t swap                         : 1;
@@ -6143,8 +6143,8 @@ union cvmx_dtx_denc_datx {
 	struct cvmx_dtx_denc_datx_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the ability to
-                                                         peek into blocks during an OCLA capture without OCLA reconfiguration. */
+	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the
+                                                         ability to peek into blocks during an OCLA capture without OCLA reconfiguration. */
 #else
 	uint64_t raw                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -6162,8 +6162,8 @@ union cvmx_dtx_denc_enax {
 	struct cvmx_dtx_denc_enax_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug buses. Normally
-                                                         only one block will drive each bit. */
+	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug
+                                                         buses. Normally only one block will drive each bit. */
 #else
 	uint64_t ena                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -6223,9 +6223,9 @@ union cvmx_dtx_dfa_ctl {
 	uint64_t reserved_5_63                : 59;
 	uint64_t active                       : 1;  /**< Force block's gated clocks on, so that the state of idle signals may be captured. */
 	uint64_t reserved_2_3                 : 2;
-	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block debug data.
-                                                         Not applicable when software directly reads the DAT(0..1) registers.  For diagnostic use
-                                                         only. */
+	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block
+                                                         debug data. Not applicable when software directly reads the DAT(0..1) registers.
+                                                         For diagnostic use only. */
 	uint64_t swap                         : 1;  /**< Swap the high and low 36-bit debug bus outputs. */
 #else
 	uint64_t swap                         : 1;
@@ -6251,8 +6251,8 @@ union cvmx_dtx_dfa_datx {
 	struct cvmx_dtx_dfa_datx_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the ability to
-                                                         peek into blocks during an OCLA capture without OCLA reconfiguration. */
+	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the
+                                                         ability to peek into blocks during an OCLA capture without OCLA reconfiguration. */
 #else
 	uint64_t raw                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -6274,8 +6274,8 @@ union cvmx_dtx_dfa_enax {
 	struct cvmx_dtx_dfa_enax_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug buses. Normally
-                                                         only one block will drive each bit. */
+	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug
+                                                         buses. Normally only one block will drive each bit. */
 #else
 	uint64_t ena                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -6339,9 +6339,9 @@ union cvmx_dtx_dlfe_ctl {
 	uint64_t reserved_5_63                : 59;
 	uint64_t active                       : 1;  /**< Force block's gated clocks on, so that the state of idle signals may be captured. */
 	uint64_t reserved_2_3                 : 2;
-	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block debug data.
-                                                         Not applicable when software directly reads the DAT(0..1) registers.  For diagnostic use
-                                                         only. */
+	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block
+                                                         debug data. Not applicable when software directly reads the DAT(0..1) registers.
+                                                         For diagnostic use only. */
 	uint64_t swap                         : 1;  /**< Swap the high and low 36-bit debug bus outputs. */
 #else
 	uint64_t swap                         : 1;
@@ -6363,8 +6363,8 @@ union cvmx_dtx_dlfe_datx {
 	struct cvmx_dtx_dlfe_datx_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the ability to
-                                                         peek into blocks during an OCLA capture without OCLA reconfiguration. */
+	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the
+                                                         ability to peek into blocks during an OCLA capture without OCLA reconfiguration. */
 #else
 	uint64_t raw                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -6382,8 +6382,8 @@ union cvmx_dtx_dlfe_enax {
 	struct cvmx_dtx_dlfe_enax_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug buses. Normally
-                                                         only one block will drive each bit. */
+	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug
+                                                         buses. Normally only one block will drive each bit. */
 #else
 	uint64_t ena                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -6444,9 +6444,9 @@ union cvmx_dtx_dpi_ctl {
 	uint64_t reserved_5_63                : 59;
 	uint64_t active                       : 1;  /**< Force block's gated clocks on, so that the state of idle signals may be captured. */
 	uint64_t reserved_2_3                 : 2;
-	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block debug data.
-                                                         Not applicable when software directly reads the DAT(0..1) registers.  For diagnostic use
-                                                         only. */
+	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block
+                                                         debug data. Not applicable when software directly reads the DAT(0..1) registers.
+                                                         For diagnostic use only. */
 	uint64_t swap                         : 1;  /**< Swap the high and low 36-bit debug bus outputs. */
 #else
 	uint64_t swap                         : 1;
@@ -6473,8 +6473,8 @@ union cvmx_dtx_dpi_datx {
 	struct cvmx_dtx_dpi_datx_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the ability to
-                                                         peek into blocks during an OCLA capture without OCLA reconfiguration. */
+	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the
+                                                         ability to peek into blocks during an OCLA capture without OCLA reconfiguration. */
 #else
 	uint64_t raw                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -6497,8 +6497,8 @@ union cvmx_dtx_dpi_enax {
 	struct cvmx_dtx_dpi_enax_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug buses. Normally
-                                                         only one block will drive each bit. */
+	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug
+                                                         buses. Normally only one block will drive each bit. */
 #else
 	uint64_t ena                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -6564,9 +6564,9 @@ union cvmx_dtx_fdeqx_ctl {
 	uint64_t reserved_5_63                : 59;
 	uint64_t active                       : 1;  /**< Force block's gated clocks on, so that the state of idle signals may be captured. */
 	uint64_t reserved_2_3                 : 2;
-	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block debug data.
-                                                         Not applicable when software directly reads the DAT(0..1) registers.  For diagnostic use
-                                                         only. */
+	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block
+                                                         debug data. Not applicable when software directly reads the DAT(0..1) registers.
+                                                         For diagnostic use only. */
 	uint64_t swap                         : 1;  /**< Swap the high and low 36-bit debug bus outputs. */
 #else
 	uint64_t swap                         : 1;
@@ -6588,8 +6588,8 @@ union cvmx_dtx_fdeqx_datx {
 	struct cvmx_dtx_fdeqx_datx_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the ability to
-                                                         peek into blocks during an OCLA capture without OCLA reconfiguration. */
+	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the
+                                                         ability to peek into blocks during an OCLA capture without OCLA reconfiguration. */
 #else
 	uint64_t raw                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -6607,8 +6607,8 @@ union cvmx_dtx_fdeqx_enax {
 	struct cvmx_dtx_fdeqx_enax_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug buses. Normally
-                                                         only one block will drive each bit. */
+	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug
+                                                         buses. Normally only one block will drive each bit. */
 #else
 	uint64_t ena                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -6669,9 +6669,9 @@ union cvmx_dtx_fpa_ctl {
 	uint64_t reserved_5_63                : 59;
 	uint64_t active                       : 1;  /**< Force block's gated clocks on, so that the state of idle signals may be captured. */
 	uint64_t reserved_2_3                 : 2;
-	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block debug data.
-                                                         Not applicable when software directly reads the DAT(0..1) registers.  For diagnostic use
-                                                         only. */
+	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block
+                                                         debug data. Not applicable when software directly reads the DAT(0..1) registers.
+                                                         For diagnostic use only. */
 	uint64_t swap                         : 1;  /**< Swap the high and low 36-bit debug bus outputs. */
 #else
 	uint64_t swap                         : 1;
@@ -6698,8 +6698,8 @@ union cvmx_dtx_fpa_datx {
 	struct cvmx_dtx_fpa_datx_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the ability to
-                                                         peek into blocks during an OCLA capture without OCLA reconfiguration. */
+	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the
+                                                         ability to peek into blocks during an OCLA capture without OCLA reconfiguration. */
 #else
 	uint64_t raw                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -6722,8 +6722,8 @@ union cvmx_dtx_fpa_enax {
 	struct cvmx_dtx_fpa_enax_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug buses. Normally
-                                                         only one block will drive each bit. */
+	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug
+                                                         buses. Normally only one block will drive each bit. */
 #else
 	uint64_t ena                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -6790,9 +6790,9 @@ union cvmx_dtx_gmxx_ctl {
 	uint64_t reserved_5_63                : 59;
 	uint64_t active                       : 1;  /**< Force block's gated clocks on, so that the state of idle signals may be captured. */
 	uint64_t reserved_2_3                 : 2;
-	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block debug data.
-                                                         Not applicable when software directly reads the DAT(0..1) registers.  For diagnostic use
-                                                         only. */
+	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block
+                                                         debug data. Not applicable when software directly reads the DAT(0..1) registers.
+                                                         For diagnostic use only. */
 	uint64_t swap                         : 1;  /**< Swap the high and low 36-bit debug bus outputs. */
 #else
 	uint64_t swap                         : 1;
@@ -6815,8 +6815,8 @@ union cvmx_dtx_gmxx_datx {
 	struct cvmx_dtx_gmxx_datx_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the ability to
-                                                         peek into blocks during an OCLA capture without OCLA reconfiguration. */
+	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the
+                                                         ability to peek into blocks during an OCLA capture without OCLA reconfiguration. */
 #else
 	uint64_t raw                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -6835,8 +6835,8 @@ union cvmx_dtx_gmxx_enax {
 	struct cvmx_dtx_gmxx_enax_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug buses. Normally
-                                                         only one block will drive each bit. */
+	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug
+                                                         buses. Normally only one block will drive each bit. */
 #else
 	uint64_t ena                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -6897,9 +6897,9 @@ union cvmx_dtx_gserx_ctl {
 	uint64_t reserved_5_63                : 59;
 	uint64_t active                       : 1;  /**< Force block's gated clocks on, so that the state of idle signals may be captured. */
 	uint64_t reserved_2_3                 : 2;
-	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block debug data.
-                                                         Not applicable when software directly reads the DAT(0..1) registers.  For diagnostic use
-                                                         only. */
+	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block
+                                                         debug data. Not applicable when software directly reads the DAT(0..1) registers.
+                                                         For diagnostic use only. */
 	uint64_t swap                         : 1;  /**< Swap the high and low 36-bit debug bus outputs. */
 #else
 	uint64_t swap                         : 1;
@@ -6924,8 +6924,8 @@ union cvmx_dtx_gserx_datx {
 	struct cvmx_dtx_gserx_datx_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the ability to
-                                                         peek into blocks during an OCLA capture without OCLA reconfiguration. */
+	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the
+                                                         ability to peek into blocks during an OCLA capture without OCLA reconfiguration. */
 #else
 	uint64_t raw                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -6946,8 +6946,8 @@ union cvmx_dtx_gserx_enax {
 	struct cvmx_dtx_gserx_enax_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug buses. Normally
-                                                         only one block will drive each bit. */
+	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug
+                                                         buses. Normally only one block will drive each bit. */
 #else
 	uint64_t ena                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -7011,9 +7011,9 @@ union cvmx_dtx_hna_ctl {
 	uint64_t reserved_5_63                : 59;
 	uint64_t active                       : 1;  /**< Force block's gated clocks on, so that the state of idle signals may be captured. */
 	uint64_t reserved_2_3                 : 2;
-	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block debug data.
-                                                         Not applicable when software directly reads the DAT(0..1) registers.  For diagnostic use
-                                                         only. */
+	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block
+                                                         debug data. Not applicable when software directly reads the DAT(0..1) registers.
+                                                         For diagnostic use only. */
 	uint64_t swap                         : 1;  /**< Swap the high and low 36-bit debug bus outputs. */
 #else
 	uint64_t swap                         : 1;
@@ -7037,8 +7037,8 @@ union cvmx_dtx_hna_datx {
 	struct cvmx_dtx_hna_datx_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the ability to
-                                                         peek into blocks during an OCLA capture without OCLA reconfiguration. */
+	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the
+                                                         ability to peek into blocks during an OCLA capture without OCLA reconfiguration. */
 #else
 	uint64_t raw                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -7058,8 +7058,8 @@ union cvmx_dtx_hna_enax {
 	struct cvmx_dtx_hna_enax_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug buses. Normally
-                                                         only one block will drive each bit. */
+	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug
+                                                         buses. Normally only one block will drive each bit. */
 #else
 	uint64_t ena                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -7120,9 +7120,9 @@ union cvmx_dtx_ila_ctl {
 	uint64_t reserved_5_63                : 59;
 	uint64_t active                       : 1;  /**< Force block's gated clocks on, so that the state of idle signals may be captured. */
 	uint64_t reserved_2_3                 : 2;
-	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block debug data.
-                                                         Not applicable when software directly reads the DAT(0..1) registers.  For diagnostic use
-                                                         only. */
+	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block
+                                                         debug data. Not applicable when software directly reads the DAT(0..1) registers.
+                                                         For diagnostic use only. */
 	uint64_t swap                         : 1;  /**< Swap the high and low 36-bit debug bus outputs. */
 #else
 	uint64_t swap                         : 1;
@@ -7145,8 +7145,8 @@ union cvmx_dtx_ila_datx {
 	struct cvmx_dtx_ila_datx_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the ability to
-                                                         peek into blocks during an OCLA capture without OCLA reconfiguration. */
+	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the
+                                                         ability to peek into blocks during an OCLA capture without OCLA reconfiguration. */
 #else
 	uint64_t raw                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -7165,8 +7165,8 @@ union cvmx_dtx_ila_enax {
 	struct cvmx_dtx_ila_enax_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug buses. Normally
-                                                         only one block will drive each bit. */
+	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug
+                                                         buses. Normally only one block will drive each bit. */
 #else
 	uint64_t ena                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -7225,9 +7225,9 @@ union cvmx_dtx_ilk_ctl {
 	uint64_t reserved_5_63                : 59;
 	uint64_t active                       : 1;  /**< Force block's gated clocks on, so that the state of idle signals may be captured. */
 	uint64_t reserved_2_3                 : 2;
-	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block debug data.
-                                                         Not applicable when software directly reads the DAT(0..1) registers.  For diagnostic use
-                                                         only. */
+	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block
+                                                         debug data. Not applicable when software directly reads the DAT(0..1) registers.
+                                                         For diagnostic use only. */
 	uint64_t swap                         : 1;  /**< Swap the high and low 36-bit debug bus outputs. */
 #else
 	uint64_t swap                         : 1;
@@ -7250,8 +7250,8 @@ union cvmx_dtx_ilk_datx {
 	struct cvmx_dtx_ilk_datx_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the ability to
-                                                         peek into blocks during an OCLA capture without OCLA reconfiguration. */
+	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the
+                                                         ability to peek into blocks during an OCLA capture without OCLA reconfiguration. */
 #else
 	uint64_t raw                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -7270,8 +7270,8 @@ union cvmx_dtx_ilk_enax {
 	struct cvmx_dtx_ilk_enax_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug buses. Normally
-                                                         only one block will drive each bit. */
+	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug
+                                                         buses. Normally only one block will drive each bit. */
 #else
 	uint64_t ena                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -7330,9 +7330,9 @@ union cvmx_dtx_iob_ctl {
 	uint64_t reserved_5_63                : 59;
 	uint64_t active                       : 1;  /**< Force block's gated clocks on, so that the state of idle signals may be captured. */
 	uint64_t reserved_2_3                 : 2;
-	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block debug data.
-                                                         Not applicable when software directly reads the DAT(0..1) registers.  For diagnostic use
-                                                         only. */
+	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block
+                                                         debug data. Not applicable when software directly reads the DAT(0..1) registers.
+                                                         For diagnostic use only. */
 	uint64_t swap                         : 1;  /**< Swap the high and low 36-bit debug bus outputs. */
 #else
 	uint64_t swap                         : 1;
@@ -7355,8 +7355,8 @@ union cvmx_dtx_iob_datx {
 	struct cvmx_dtx_iob_datx_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the ability to
-                                                         peek into blocks during an OCLA capture without OCLA reconfiguration. */
+	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the
+                                                         ability to peek into blocks during an OCLA capture without OCLA reconfiguration. */
 #else
 	uint64_t raw                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -7375,8 +7375,8 @@ union cvmx_dtx_iob_enax {
 	struct cvmx_dtx_iob_enax_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug buses. Normally
-                                                         only one block will drive each bit. */
+	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug
+                                                         buses. Normally only one block will drive each bit. */
 #else
 	uint64_t ena                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -7437,9 +7437,9 @@ union cvmx_dtx_iobn_ctl {
 	uint64_t reserved_5_63                : 59;
 	uint64_t active                       : 1;  /**< Force block's gated clocks on, so that the state of idle signals may be captured. */
 	uint64_t reserved_2_3                 : 2;
-	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block debug data.
-                                                         Not applicable when software directly reads the DAT(0..1) registers.  For diagnostic use
-                                                         only. */
+	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block
+                                                         debug data. Not applicable when software directly reads the DAT(0..1) registers.
+                                                         For diagnostic use only. */
 	uint64_t swap                         : 1;  /**< Swap the high and low 36-bit debug bus outputs. */
 #else
 	uint64_t swap                         : 1;
@@ -7464,8 +7464,8 @@ union cvmx_dtx_iobn_datx {
 	struct cvmx_dtx_iobn_datx_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the ability to
-                                                         peek into blocks during an OCLA capture without OCLA reconfiguration. */
+	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the
+                                                         ability to peek into blocks during an OCLA capture without OCLA reconfiguration. */
 #else
 	uint64_t raw                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -7486,8 +7486,8 @@ union cvmx_dtx_iobn_enax {
 	struct cvmx_dtx_iobn_enax_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug buses. Normally
-                                                         only one block will drive each bit. */
+	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug
+                                                         buses. Normally only one block will drive each bit. */
 #else
 	uint64_t ena                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -7552,9 +7552,9 @@ union cvmx_dtx_iobp_ctl {
 	uint64_t reserved_5_63                : 59;
 	uint64_t active                       : 1;  /**< Force block's gated clocks on, so that the state of idle signals may be captured. */
 	uint64_t reserved_2_3                 : 2;
-	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block debug data.
-                                                         Not applicable when software directly reads the DAT(0..1) registers.  For diagnostic use
-                                                         only. */
+	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block
+                                                         debug data. Not applicable when software directly reads the DAT(0..1) registers.
+                                                         For diagnostic use only. */
 	uint64_t swap                         : 1;  /**< Swap the high and low 36-bit debug bus outputs. */
 #else
 	uint64_t swap                         : 1;
@@ -7579,8 +7579,8 @@ union cvmx_dtx_iobp_datx {
 	struct cvmx_dtx_iobp_datx_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the ability to
-                                                         peek into blocks during an OCLA capture without OCLA reconfiguration. */
+	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the
+                                                         ability to peek into blocks during an OCLA capture without OCLA reconfiguration. */
 #else
 	uint64_t raw                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -7601,8 +7601,8 @@ union cvmx_dtx_iobp_enax {
 	struct cvmx_dtx_iobp_enax_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug buses. Normally
-                                                         only one block will drive each bit. */
+	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug
+                                                         buses. Normally only one block will drive each bit. */
 #else
 	uint64_t ena                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -7665,9 +7665,9 @@ union cvmx_dtx_ipd_ctl {
 	uint64_t reserved_5_63                : 59;
 	uint64_t active                       : 1;  /**< Force block's gated clocks on, so that the state of idle signals may be captured. */
 	uint64_t reserved_2_3                 : 2;
-	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block debug data.
-                                                         Not applicable when software directly reads the DAT(0..1) registers.  For diagnostic use
-                                                         only. */
+	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block
+                                                         debug data. Not applicable when software directly reads the DAT(0..1) registers.
+                                                         For diagnostic use only. */
 	uint64_t swap                         : 1;  /**< Swap the high and low 36-bit debug bus outputs. */
 #else
 	uint64_t swap                         : 1;
@@ -7690,8 +7690,8 @@ union cvmx_dtx_ipd_datx {
 	struct cvmx_dtx_ipd_datx_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the ability to
-                                                         peek into blocks during an OCLA capture without OCLA reconfiguration. */
+	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the
+                                                         ability to peek into blocks during an OCLA capture without OCLA reconfiguration. */
 #else
 	uint64_t raw                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -7710,8 +7710,8 @@ union cvmx_dtx_ipd_enax {
 	struct cvmx_dtx_ipd_enax_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug buses. Normally
-                                                         only one block will drive each bit. */
+	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug
+                                                         buses. Normally only one block will drive each bit. */
 #else
 	uint64_t ena                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -7774,9 +7774,9 @@ union cvmx_dtx_key_ctl {
 	uint64_t reserved_5_63                : 59;
 	uint64_t active                       : 1;  /**< Force block's gated clocks on, so that the state of idle signals may be captured. */
 	uint64_t reserved_2_3                 : 2;
-	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block debug data.
-                                                         Not applicable when software directly reads the DAT(0..1) registers.  For diagnostic use
-                                                         only. */
+	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block
+                                                         debug data. Not applicable when software directly reads the DAT(0..1) registers.
+                                                         For diagnostic use only. */
 	uint64_t swap                         : 1;  /**< Swap the high and low 36-bit debug bus outputs. */
 #else
 	uint64_t swap                         : 1;
@@ -7803,8 +7803,8 @@ union cvmx_dtx_key_datx {
 	struct cvmx_dtx_key_datx_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the ability to
-                                                         peek into blocks during an OCLA capture without OCLA reconfiguration. */
+	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the
+                                                         ability to peek into blocks during an OCLA capture without OCLA reconfiguration. */
 #else
 	uint64_t raw                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -7827,8 +7827,8 @@ union cvmx_dtx_key_enax {
 	struct cvmx_dtx_key_enax_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug buses. Normally
-                                                         only one block will drive each bit. */
+	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug
+                                                         buses. Normally only one block will drive each bit. */
 #else
 	uint64_t ena                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -7899,9 +7899,9 @@ union cvmx_dtx_l2c_cbcx_ctl {
 	uint64_t reserved_5_63                : 59;
 	uint64_t active                       : 1;  /**< Force block's gated clocks on, so that the state of idle signals may be captured. */
 	uint64_t reserved_2_3                 : 2;
-	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block debug data.
-                                                         Not applicable when software directly reads the DAT(0..1) registers.  For diagnostic use
-                                                         only. */
+	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block
+                                                         debug data. Not applicable when software directly reads the DAT(0..1) registers.
+                                                         For diagnostic use only. */
 	uint64_t swap                         : 1;  /**< Swap the high and low 36-bit debug bus outputs. */
 #else
 	uint64_t swap                         : 1;
@@ -7928,8 +7928,8 @@ union cvmx_dtx_l2c_cbcx_datx {
 	struct cvmx_dtx_l2c_cbcx_datx_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the ability to
-                                                         peek into blocks during an OCLA capture without OCLA reconfiguration. */
+	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the
+                                                         ability to peek into blocks during an OCLA capture without OCLA reconfiguration. */
 #else
 	uint64_t raw                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -7952,8 +7952,8 @@ union cvmx_dtx_l2c_cbcx_enax {
 	struct cvmx_dtx_l2c_cbcx_enax_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug buses. Normally
-                                                         only one block will drive each bit. */
+	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug
+                                                         buses. Normally only one block will drive each bit. */
 #else
 	uint64_t ena                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -8024,9 +8024,9 @@ union cvmx_dtx_l2c_mcix_ctl {
 	uint64_t reserved_5_63                : 59;
 	uint64_t active                       : 1;  /**< Force block's gated clocks on, so that the state of idle signals may be captured. */
 	uint64_t reserved_2_3                 : 2;
-	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block debug data.
-                                                         Not applicable when software directly reads the DAT(0..1) registers.  For diagnostic use
-                                                         only. */
+	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block
+                                                         debug data. Not applicable when software directly reads the DAT(0..1) registers.
+                                                         For diagnostic use only. */
 	uint64_t swap                         : 1;  /**< Swap the high and low 36-bit debug bus outputs. */
 #else
 	uint64_t swap                         : 1;
@@ -8053,8 +8053,8 @@ union cvmx_dtx_l2c_mcix_datx {
 	struct cvmx_dtx_l2c_mcix_datx_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the ability to
-                                                         peek into blocks during an OCLA capture without OCLA reconfiguration. */
+	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the
+                                                         ability to peek into blocks during an OCLA capture without OCLA reconfiguration. */
 #else
 	uint64_t raw                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -8077,8 +8077,8 @@ union cvmx_dtx_l2c_mcix_enax {
 	struct cvmx_dtx_l2c_mcix_enax_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug buses. Normally
-                                                         only one block will drive each bit. */
+	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug
+                                                         buses. Normally only one block will drive each bit. */
 #else
 	uint64_t ena                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -8149,9 +8149,9 @@ union cvmx_dtx_l2c_tadx_ctl {
 	uint64_t reserved_5_63                : 59;
 	uint64_t active                       : 1;  /**< Force block's gated clocks on, so that the state of idle signals may be captured. */
 	uint64_t reserved_2_3                 : 2;
-	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block debug data.
-                                                         Not applicable when software directly reads the DAT(0..1) registers.  For diagnostic use
-                                                         only. */
+	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block
+                                                         debug data. Not applicable when software directly reads the DAT(0..1) registers.
+                                                         For diagnostic use only. */
 	uint64_t swap                         : 1;  /**< Swap the high and low 36-bit debug bus outputs. */
 #else
 	uint64_t swap                         : 1;
@@ -8178,8 +8178,8 @@ union cvmx_dtx_l2c_tadx_datx {
 	struct cvmx_dtx_l2c_tadx_datx_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the ability to
-                                                         peek into blocks during an OCLA capture without OCLA reconfiguration. */
+	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the
+                                                         ability to peek into blocks during an OCLA capture without OCLA reconfiguration. */
 #else
 	uint64_t raw                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -8202,8 +8202,8 @@ union cvmx_dtx_l2c_tadx_enax {
 	struct cvmx_dtx_l2c_tadx_enax_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug buses. Normally
-                                                         only one block will drive each bit. */
+	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug
+                                                         buses. Normally only one block will drive each bit. */
 #else
 	uint64_t ena                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -8270,9 +8270,9 @@ union cvmx_dtx_lapx_ctl {
 	uint64_t reserved_5_63                : 59;
 	uint64_t active                       : 1;  /**< Force block's gated clocks on, so that the state of idle signals may be captured. */
 	uint64_t reserved_2_3                 : 2;
-	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block debug data.
-                                                         Not applicable when software directly reads the DAT(0..1) registers.  For diagnostic use
-                                                         only. */
+	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block
+                                                         debug data. Not applicable when software directly reads the DAT(0..1) registers.
+                                                         For diagnostic use only. */
 	uint64_t swap                         : 1;  /**< Swap the high and low 36-bit debug bus outputs. */
 #else
 	uint64_t swap                         : 1;
@@ -8295,8 +8295,8 @@ union cvmx_dtx_lapx_datx {
 	struct cvmx_dtx_lapx_datx_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the ability to
-                                                         peek into blocks during an OCLA capture without OCLA reconfiguration. */
+	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the
+                                                         ability to peek into blocks during an OCLA capture without OCLA reconfiguration. */
 #else
 	uint64_t raw                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -8315,8 +8315,8 @@ union cvmx_dtx_lapx_enax {
 	struct cvmx_dtx_lapx_enax_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug buses. Normally
-                                                         only one block will drive each bit. */
+	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug
+                                                         buses. Normally only one block will drive each bit. */
 #else
 	uint64_t ena                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -8377,9 +8377,9 @@ union cvmx_dtx_lbk_ctl {
 	uint64_t reserved_5_63                : 59;
 	uint64_t active                       : 1;  /**< Force block's gated clocks on, so that the state of idle signals may be captured. */
 	uint64_t reserved_2_3                 : 2;
-	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block debug data.
-                                                         Not applicable when software directly reads the DAT(0..1) registers.  For diagnostic use
-                                                         only. */
+	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block
+                                                         debug data. Not applicable when software directly reads the DAT(0..1) registers.
+                                                         For diagnostic use only. */
 	uint64_t swap                         : 1;  /**< Swap the high and low 36-bit debug bus outputs. */
 #else
 	uint64_t swap                         : 1;
@@ -8404,8 +8404,8 @@ union cvmx_dtx_lbk_datx {
 	struct cvmx_dtx_lbk_datx_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the ability to
-                                                         peek into blocks during an OCLA capture without OCLA reconfiguration. */
+	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the
+                                                         ability to peek into blocks during an OCLA capture without OCLA reconfiguration. */
 #else
 	uint64_t raw                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -8426,8 +8426,8 @@ union cvmx_dtx_lbk_enax {
 	struct cvmx_dtx_lbk_enax_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug buses. Normally
-                                                         only one block will drive each bit. */
+	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug
+                                                         buses. Normally only one block will drive each bit. */
 #else
 	uint64_t ena                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -8494,9 +8494,9 @@ union cvmx_dtx_lmcx_ctl {
 	uint64_t reserved_5_63                : 59;
 	uint64_t active                       : 1;  /**< Force block's gated clocks on, so that the state of idle signals may be captured. */
 	uint64_t reserved_2_3                 : 2;
-	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block debug data.
-                                                         Not applicable when software directly reads the DAT(0..1) registers.  For diagnostic use
-                                                         only. */
+	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block
+                                                         debug data. Not applicable when software directly reads the DAT(0..1) registers.
+                                                         For diagnostic use only. */
 	uint64_t swap                         : 1;  /**< Swap the high and low 36-bit debug bus outputs. */
 #else
 	uint64_t swap                         : 1;
@@ -8523,8 +8523,8 @@ union cvmx_dtx_lmcx_datx {
 	struct cvmx_dtx_lmcx_datx_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the ability to
-                                                         peek into blocks during an OCLA capture without OCLA reconfiguration. */
+	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the
+                                                         ability to peek into blocks during an OCLA capture without OCLA reconfiguration. */
 #else
 	uint64_t raw                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -8547,8 +8547,8 @@ union cvmx_dtx_lmcx_enax {
 	struct cvmx_dtx_lmcx_enax_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug buses. Normally
-                                                         only one block will drive each bit. */
+	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug
+                                                         buses. Normally only one block will drive each bit. */
 #else
 	uint64_t ena                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -8614,9 +8614,9 @@ union cvmx_dtx_mdbx_ctl {
 	uint64_t reserved_5_63                : 59;
 	uint64_t active                       : 1;  /**< Force block's gated clocks on, so that the state of idle signals may be captured. */
 	uint64_t reserved_2_3                 : 2;
-	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block debug data.
-                                                         Not applicable when software directly reads the DAT(0..1) registers.  For diagnostic use
-                                                         only. */
+	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block
+                                                         debug data. Not applicable when software directly reads the DAT(0..1) registers.
+                                                         For diagnostic use only. */
 	uint64_t swap                         : 1;  /**< Swap the high and low 36-bit debug bus outputs. */
 #else
 	uint64_t swap                         : 1;
@@ -8638,8 +8638,8 @@ union cvmx_dtx_mdbx_datx {
 	struct cvmx_dtx_mdbx_datx_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the ability to
-                                                         peek into blocks during an OCLA capture without OCLA reconfiguration. */
+	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the
+                                                         ability to peek into blocks during an OCLA capture without OCLA reconfiguration. */
 #else
 	uint64_t raw                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -8657,8 +8657,8 @@ union cvmx_dtx_mdbx_enax {
 	struct cvmx_dtx_mdbx_enax_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug buses. Normally
-                                                         only one block will drive each bit. */
+	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug
+                                                         buses. Normally only one block will drive each bit. */
 #else
 	uint64_t ena                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -8714,9 +8714,9 @@ union cvmx_dtx_mhbw_ctl {
 	uint64_t reserved_5_63                : 59;
 	uint64_t active                       : 1;  /**< Force block's gated clocks on, so that the state of idle signals may be captured. */
 	uint64_t reserved_2_3                 : 2;
-	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block debug data.
-                                                         Not applicable when software directly reads the DAT(0..1) registers.  For diagnostic use
-                                                         only. */
+	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block
+                                                         debug data. Not applicable when software directly reads the DAT(0..1) registers.
+                                                         For diagnostic use only. */
 	uint64_t swap                         : 1;  /**< Swap the high and low 36-bit debug bus outputs. */
 #else
 	uint64_t swap                         : 1;
@@ -8738,8 +8738,8 @@ union cvmx_dtx_mhbw_datx {
 	struct cvmx_dtx_mhbw_datx_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the ability to
-                                                         peek into blocks during an OCLA capture without OCLA reconfiguration. */
+	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the
+                                                         ability to peek into blocks during an OCLA capture without OCLA reconfiguration. */
 #else
 	uint64_t raw                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -8757,8 +8757,8 @@ union cvmx_dtx_mhbw_enax {
 	struct cvmx_dtx_mhbw_enax_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug buses. Normally
-                                                         only one block will drive each bit. */
+	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug
+                                                         buses. Normally only one block will drive each bit. */
 #else
 	uint64_t ena                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -8819,9 +8819,9 @@ union cvmx_dtx_mio_ctl {
 	uint64_t reserved_5_63                : 59;
 	uint64_t active                       : 1;  /**< Force block's gated clocks on, so that the state of idle signals may be captured. */
 	uint64_t reserved_2_3                 : 2;
-	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block debug data.
-                                                         Not applicable when software directly reads the DAT(0..1) registers.  For diagnostic use
-                                                         only. */
+	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block
+                                                         debug data. Not applicable when software directly reads the DAT(0..1) registers.
+                                                         For diagnostic use only. */
 	uint64_t swap                         : 1;  /**< Swap the high and low 36-bit debug bus outputs. */
 #else
 	uint64_t swap                         : 1;
@@ -8848,8 +8848,8 @@ union cvmx_dtx_mio_datx {
 	struct cvmx_dtx_mio_datx_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the ability to
-                                                         peek into blocks during an OCLA capture without OCLA reconfiguration. */
+	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the
+                                                         ability to peek into blocks during an OCLA capture without OCLA reconfiguration. */
 #else
 	uint64_t raw                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -8872,8 +8872,8 @@ union cvmx_dtx_mio_enax {
 	struct cvmx_dtx_mio_enax_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug buses. Normally
-                                                         only one block will drive each bit. */
+	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug
+                                                         buses. Normally only one block will drive each bit. */
 #else
 	uint64_t ena                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -8940,9 +8940,9 @@ union cvmx_dtx_ocx_bot_ctl {
 	uint64_t reserved_5_63                : 59;
 	uint64_t active                       : 1;  /**< Force block's gated clocks on, so that the state of idle signals may be captured. */
 	uint64_t reserved_2_3                 : 2;
-	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block debug data.
-                                                         Not applicable when software directly reads the DAT(0..1) registers.  For diagnostic use
-                                                         only. */
+	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block
+                                                         debug data. Not applicable when software directly reads the DAT(0..1) registers.
+                                                         For diagnostic use only. */
 	uint64_t swap                         : 1;  /**< Swap the high and low 36-bit debug bus outputs. */
 #else
 	uint64_t swap                         : 1;
@@ -8965,8 +8965,8 @@ union cvmx_dtx_ocx_bot_datx {
 	struct cvmx_dtx_ocx_bot_datx_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the ability to
-                                                         peek into blocks during an OCLA capture without OCLA reconfiguration. */
+	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the
+                                                         ability to peek into blocks during an OCLA capture without OCLA reconfiguration. */
 #else
 	uint64_t raw                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -8985,8 +8985,8 @@ union cvmx_dtx_ocx_bot_enax {
 	struct cvmx_dtx_ocx_bot_enax_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug buses. Normally
-                                                         only one block will drive each bit. */
+	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug
+                                                         buses. Normally only one block will drive each bit. */
 #else
 	uint64_t ena                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -9045,9 +9045,9 @@ union cvmx_dtx_ocx_lnkx_ctl {
 	uint64_t reserved_5_63                : 59;
 	uint64_t active                       : 1;  /**< Force block's gated clocks on, so that the state of idle signals may be captured. */
 	uint64_t reserved_2_3                 : 2;
-	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block debug data.
-                                                         Not applicable when software directly reads the DAT(0..1) registers.  For diagnostic use
-                                                         only. */
+	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block
+                                                         debug data. Not applicable when software directly reads the DAT(0..1) registers.
+                                                         For diagnostic use only. */
 	uint64_t swap                         : 1;  /**< Swap the high and low 36-bit debug bus outputs. */
 #else
 	uint64_t swap                         : 1;
@@ -9070,8 +9070,8 @@ union cvmx_dtx_ocx_lnkx_datx {
 	struct cvmx_dtx_ocx_lnkx_datx_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the ability to
-                                                         peek into blocks during an OCLA capture without OCLA reconfiguration. */
+	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the
+                                                         ability to peek into blocks during an OCLA capture without OCLA reconfiguration. */
 #else
 	uint64_t raw                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -9090,8 +9090,8 @@ union cvmx_dtx_ocx_lnkx_enax {
 	struct cvmx_dtx_ocx_lnkx_enax_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug buses. Normally
-                                                         only one block will drive each bit. */
+	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug
+                                                         buses. Normally only one block will drive each bit. */
 #else
 	uint64_t ena                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -9150,9 +9150,9 @@ union cvmx_dtx_ocx_olex_ctl {
 	uint64_t reserved_5_63                : 59;
 	uint64_t active                       : 1;  /**< Force block's gated clocks on, so that the state of idle signals may be captured. */
 	uint64_t reserved_2_3                 : 2;
-	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block debug data.
-                                                         Not applicable when software directly reads the DAT(0..1) registers.  For diagnostic use
-                                                         only. */
+	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block
+                                                         debug data. Not applicable when software directly reads the DAT(0..1) registers.
+                                                         For diagnostic use only. */
 	uint64_t swap                         : 1;  /**< Swap the high and low 36-bit debug bus outputs. */
 #else
 	uint64_t swap                         : 1;
@@ -9175,8 +9175,8 @@ union cvmx_dtx_ocx_olex_datx {
 	struct cvmx_dtx_ocx_olex_datx_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the ability to
-                                                         peek into blocks during an OCLA capture without OCLA reconfiguration. */
+	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the
+                                                         ability to peek into blocks during an OCLA capture without OCLA reconfiguration. */
 #else
 	uint64_t raw                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -9195,8 +9195,8 @@ union cvmx_dtx_ocx_olex_enax {
 	struct cvmx_dtx_ocx_olex_enax_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug buses. Normally
-                                                         only one block will drive each bit. */
+	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug
+                                                         buses. Normally only one block will drive each bit. */
 #else
 	uint64_t ena                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -9255,9 +9255,9 @@ union cvmx_dtx_ocx_top_ctl {
 	uint64_t reserved_5_63                : 59;
 	uint64_t active                       : 1;  /**< Force block's gated clocks on, so that the state of idle signals may be captured. */
 	uint64_t reserved_2_3                 : 2;
-	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block debug data.
-                                                         Not applicable when software directly reads the DAT(0..1) registers.  For diagnostic use
-                                                         only. */
+	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block
+                                                         debug data. Not applicable when software directly reads the DAT(0..1) registers.
+                                                         For diagnostic use only. */
 	uint64_t swap                         : 1;  /**< Swap the high and low 36-bit debug bus outputs. */
 #else
 	uint64_t swap                         : 1;
@@ -9280,8 +9280,8 @@ union cvmx_dtx_ocx_top_datx {
 	struct cvmx_dtx_ocx_top_datx_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the ability to
-                                                         peek into blocks during an OCLA capture without OCLA reconfiguration. */
+	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the
+                                                         ability to peek into blocks during an OCLA capture without OCLA reconfiguration. */
 #else
 	uint64_t raw                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -9300,8 +9300,8 @@ union cvmx_dtx_ocx_top_enax {
 	struct cvmx_dtx_ocx_top_enax_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug buses. Normally
-                                                         only one block will drive each bit. */
+	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug
+                                                         buses. Normally only one block will drive each bit. */
 #else
 	uint64_t ena                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -9361,9 +9361,9 @@ union cvmx_dtx_osm_ctl {
 	uint64_t reserved_5_63                : 59;
 	uint64_t active                       : 1;  /**< Force block's gated clocks on, so that the state of idle signals may be captured. */
 	uint64_t reserved_2_3                 : 2;
-	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block debug data.
-                                                         Not applicable when software directly reads the DAT(0..1) registers.  For diagnostic use
-                                                         only. */
+	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block
+                                                         debug data. Not applicable when software directly reads the DAT(0..1) registers.
+                                                         For diagnostic use only. */
 	uint64_t swap                         : 1;  /**< Swap the high and low 36-bit debug bus outputs. */
 #else
 	uint64_t swap                         : 1;
@@ -9387,8 +9387,8 @@ union cvmx_dtx_osm_datx {
 	struct cvmx_dtx_osm_datx_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the ability to
-                                                         peek into blocks during an OCLA capture without OCLA reconfiguration. */
+	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the
+                                                         ability to peek into blocks during an OCLA capture without OCLA reconfiguration. */
 #else
 	uint64_t raw                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -9408,8 +9408,8 @@ union cvmx_dtx_osm_enax {
 	struct cvmx_dtx_osm_enax_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug buses. Normally
-                                                         only one block will drive each bit. */
+	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug
+                                                         buses. Normally only one block will drive each bit. */
 #else
 	uint64_t ena                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -9470,9 +9470,9 @@ union cvmx_dtx_pcsx_ctl {
 	uint64_t reserved_5_63                : 59;
 	uint64_t active                       : 1;  /**< Force block's gated clocks on, so that the state of idle signals may be captured. */
 	uint64_t reserved_2_3                 : 2;
-	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block debug data.
-                                                         Not applicable when software directly reads the DAT(0..1) registers.  For diagnostic use
-                                                         only. */
+	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block
+                                                         debug data. Not applicable when software directly reads the DAT(0..1) registers.
+                                                         For diagnostic use only. */
 	uint64_t swap                         : 1;  /**< Swap the high and low 36-bit debug bus outputs. */
 #else
 	uint64_t swap                         : 1;
@@ -9495,8 +9495,8 @@ union cvmx_dtx_pcsx_datx {
 	struct cvmx_dtx_pcsx_datx_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the ability to
-                                                         peek into blocks during an OCLA capture without OCLA reconfiguration. */
+	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the
+                                                         ability to peek into blocks during an OCLA capture without OCLA reconfiguration. */
 #else
 	uint64_t raw                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -9515,8 +9515,8 @@ union cvmx_dtx_pcsx_enax {
 	struct cvmx_dtx_pcsx_enax_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug buses. Normally
-                                                         only one block will drive each bit. */
+	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug
+                                                         buses. Normally only one block will drive each bit. */
 #else
 	uint64_t ena                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -9579,9 +9579,9 @@ union cvmx_dtx_pemx_ctl {
 	uint64_t reserved_5_63                : 59;
 	uint64_t active                       : 1;  /**< Force block's gated clocks on, so that the state of idle signals may be captured. */
 	uint64_t reserved_2_3                 : 2;
-	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block debug data.
-                                                         Not applicable when software directly reads the DAT(0..1) registers.  For diagnostic use
-                                                         only. */
+	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block
+                                                         debug data. Not applicable when software directly reads the DAT(0..1) registers.
+                                                         For diagnostic use only. */
 	uint64_t swap                         : 1;  /**< Swap the high and low 36-bit debug bus outputs. */
 #else
 	uint64_t swap                         : 1;
@@ -9608,8 +9608,8 @@ union cvmx_dtx_pemx_datx {
 	struct cvmx_dtx_pemx_datx_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the ability to
-                                                         peek into blocks during an OCLA capture without OCLA reconfiguration. */
+	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the
+                                                         ability to peek into blocks during an OCLA capture without OCLA reconfiguration. */
 #else
 	uint64_t raw                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -9632,8 +9632,8 @@ union cvmx_dtx_pemx_enax {
 	struct cvmx_dtx_pemx_enax_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug buses. Normally
-                                                         only one block will drive each bit. */
+	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug
+                                                         buses. Normally only one block will drive each bit. */
 #else
 	uint64_t ena                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -9700,9 +9700,9 @@ union cvmx_dtx_pip_ctl {
 	uint64_t reserved_5_63                : 59;
 	uint64_t active                       : 1;  /**< Force block's gated clocks on, so that the state of idle signals may be captured. */
 	uint64_t reserved_2_3                 : 2;
-	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block debug data.
-                                                         Not applicable when software directly reads the DAT(0..1) registers.  For diagnostic use
-                                                         only. */
+	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block
+                                                         debug data. Not applicable when software directly reads the DAT(0..1) registers.
+                                                         For diagnostic use only. */
 	uint64_t swap                         : 1;  /**< Swap the high and low 36-bit debug bus outputs. */
 #else
 	uint64_t swap                         : 1;
@@ -9725,8 +9725,8 @@ union cvmx_dtx_pip_datx {
 	struct cvmx_dtx_pip_datx_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the ability to
-                                                         peek into blocks during an OCLA capture without OCLA reconfiguration. */
+	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the
+                                                         ability to peek into blocks during an OCLA capture without OCLA reconfiguration. */
 #else
 	uint64_t raw                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -9745,8 +9745,8 @@ union cvmx_dtx_pip_enax {
 	struct cvmx_dtx_pip_enax_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug buses. Normally
-                                                         only one block will drive each bit. */
+	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug
+                                                         buses. Normally only one block will drive each bit. */
 #else
 	uint64_t ena                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -9807,9 +9807,9 @@ union cvmx_dtx_pki_pbe_ctl {
 	uint64_t reserved_5_63                : 59;
 	uint64_t active                       : 1;  /**< Force block's gated clocks on, so that the state of idle signals may be captured. */
 	uint64_t reserved_2_3                 : 2;
-	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block debug data.
-                                                         Not applicable when software directly reads the DAT(0..1) registers.  For diagnostic use
-                                                         only. */
+	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block
+                                                         debug data. Not applicable when software directly reads the DAT(0..1) registers.
+                                                         For diagnostic use only. */
 	uint64_t swap                         : 1;  /**< Swap the high and low 36-bit debug bus outputs. */
 #else
 	uint64_t swap                         : 1;
@@ -9834,8 +9834,8 @@ union cvmx_dtx_pki_pbe_datx {
 	struct cvmx_dtx_pki_pbe_datx_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the ability to
-                                                         peek into blocks during an OCLA capture without OCLA reconfiguration. */
+	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the
+                                                         ability to peek into blocks during an OCLA capture without OCLA reconfiguration. */
 #else
 	uint64_t raw                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -9856,8 +9856,8 @@ union cvmx_dtx_pki_pbe_enax {
 	struct cvmx_dtx_pki_pbe_enax_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug buses. Normally
-                                                         only one block will drive each bit. */
+	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug
+                                                         buses. Normally only one block will drive each bit. */
 #else
 	uint64_t ena                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -9922,9 +9922,9 @@ union cvmx_dtx_pki_pfe_ctl {
 	uint64_t reserved_5_63                : 59;
 	uint64_t active                       : 1;  /**< Force block's gated clocks on, so that the state of idle signals may be captured. */
 	uint64_t reserved_2_3                 : 2;
-	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block debug data.
-                                                         Not applicable when software directly reads the DAT(0..1) registers.  For diagnostic use
-                                                         only. */
+	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block
+                                                         debug data. Not applicable when software directly reads the DAT(0..1) registers.
+                                                         For diagnostic use only. */
 	uint64_t swap                         : 1;  /**< Swap the high and low 36-bit debug bus outputs. */
 #else
 	uint64_t swap                         : 1;
@@ -9949,8 +9949,8 @@ union cvmx_dtx_pki_pfe_datx {
 	struct cvmx_dtx_pki_pfe_datx_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the ability to
-                                                         peek into blocks during an OCLA capture without OCLA reconfiguration. */
+	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the
+                                                         ability to peek into blocks during an OCLA capture without OCLA reconfiguration. */
 #else
 	uint64_t raw                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -9971,8 +9971,8 @@ union cvmx_dtx_pki_pfe_enax {
 	struct cvmx_dtx_pki_pfe_enax_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug buses. Normally
-                                                         only one block will drive each bit. */
+	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug
+                                                         buses. Normally only one block will drive each bit. */
 #else
 	uint64_t ena                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -10037,9 +10037,9 @@ union cvmx_dtx_pki_pix_ctl {
 	uint64_t reserved_5_63                : 59;
 	uint64_t active                       : 1;  /**< Force block's gated clocks on, so that the state of idle signals may be captured. */
 	uint64_t reserved_2_3                 : 2;
-	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block debug data.
-                                                         Not applicable when software directly reads the DAT(0..1) registers.  For diagnostic use
-                                                         only. */
+	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block
+                                                         debug data. Not applicable when software directly reads the DAT(0..1) registers.
+                                                         For diagnostic use only. */
 	uint64_t swap                         : 1;  /**< Swap the high and low 36-bit debug bus outputs. */
 #else
 	uint64_t swap                         : 1;
@@ -10064,8 +10064,8 @@ union cvmx_dtx_pki_pix_datx {
 	struct cvmx_dtx_pki_pix_datx_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the ability to
-                                                         peek into blocks during an OCLA capture without OCLA reconfiguration. */
+	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the
+                                                         ability to peek into blocks during an OCLA capture without OCLA reconfiguration. */
 #else
 	uint64_t raw                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -10086,8 +10086,8 @@ union cvmx_dtx_pki_pix_enax {
 	struct cvmx_dtx_pki_pix_enax_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug buses. Normally
-                                                         only one block will drive each bit. */
+	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug
+                                                         buses. Normally only one block will drive each bit. */
 #else
 	uint64_t ena                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -10154,9 +10154,9 @@ union cvmx_dtx_pko_ctl {
 	uint64_t reserved_5_63                : 59;
 	uint64_t active                       : 1;  /**< Force block's gated clocks on, so that the state of idle signals may be captured. */
 	uint64_t reserved_2_3                 : 2;
-	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block debug data.
-                                                         Not applicable when software directly reads the DAT(0..1) registers.  For diagnostic use
-                                                         only. */
+	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block
+                                                         debug data. Not applicable when software directly reads the DAT(0..1) registers.
+                                                         For diagnostic use only. */
 	uint64_t swap                         : 1;  /**< Swap the high and low 36-bit debug bus outputs. */
 #else
 	uint64_t swap                         : 1;
@@ -10183,8 +10183,8 @@ union cvmx_dtx_pko_datx {
 	struct cvmx_dtx_pko_datx_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the ability to
-                                                         peek into blocks during an OCLA capture without OCLA reconfiguration. */
+	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the
+                                                         ability to peek into blocks during an OCLA capture without OCLA reconfiguration. */
 #else
 	uint64_t raw                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -10207,8 +10207,8 @@ union cvmx_dtx_pko_enax {
 	struct cvmx_dtx_pko_enax_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug buses. Normally
-                                                         only one block will drive each bit. */
+	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug
+                                                         buses. Normally only one block will drive each bit. */
 #else
 	uint64_t ena                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -10274,9 +10274,9 @@ union cvmx_dtx_pnbx_ctl {
 	uint64_t reserved_5_63                : 59;
 	uint64_t active                       : 1;  /**< Force block's gated clocks on, so that the state of idle signals may be captured. */
 	uint64_t reserved_2_3                 : 2;
-	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block debug data.
-                                                         Not applicable when software directly reads the DAT(0..1) registers.  For diagnostic use
-                                                         only. */
+	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block
+                                                         debug data. Not applicable when software directly reads the DAT(0..1) registers.
+                                                         For diagnostic use only. */
 	uint64_t swap                         : 1;  /**< Swap the high and low 36-bit debug bus outputs. */
 #else
 	uint64_t swap                         : 1;
@@ -10298,8 +10298,8 @@ union cvmx_dtx_pnbx_datx {
 	struct cvmx_dtx_pnbx_datx_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the ability to
-                                                         peek into blocks during an OCLA capture without OCLA reconfiguration. */
+	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the
+                                                         ability to peek into blocks during an OCLA capture without OCLA reconfiguration. */
 #else
 	uint64_t raw                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -10317,8 +10317,8 @@ union cvmx_dtx_pnbx_enax {
 	struct cvmx_dtx_pnbx_enax_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug buses. Normally
-                                                         only one block will drive each bit. */
+	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug
+                                                         buses. Normally only one block will drive each bit. */
 #else
 	uint64_t ena                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -10374,9 +10374,9 @@ union cvmx_dtx_pnbdx_ctl {
 	uint64_t reserved_5_63                : 59;
 	uint64_t active                       : 1;  /**< Force block's gated clocks on, so that the state of idle signals may be captured. */
 	uint64_t reserved_2_3                 : 2;
-	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block debug data.
-                                                         Not applicable when software directly reads the DAT(0..1) registers.  For diagnostic use
-                                                         only. */
+	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block
+                                                         debug data. Not applicable when software directly reads the DAT(0..1) registers.
+                                                         For diagnostic use only. */
 	uint64_t swap                         : 1;  /**< Swap the high and low 36-bit debug bus outputs. */
 #else
 	uint64_t swap                         : 1;
@@ -10398,8 +10398,8 @@ union cvmx_dtx_pnbdx_datx {
 	struct cvmx_dtx_pnbdx_datx_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the ability to
-                                                         peek into blocks during an OCLA capture without OCLA reconfiguration. */
+	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the
+                                                         ability to peek into blocks during an OCLA capture without OCLA reconfiguration. */
 #else
 	uint64_t raw                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -10417,8 +10417,8 @@ union cvmx_dtx_pnbdx_enax {
 	struct cvmx_dtx_pnbdx_enax_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug buses. Normally
-                                                         only one block will drive each bit. */
+	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug
+                                                         buses. Normally only one block will drive each bit. */
 #else
 	uint64_t ena                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -10475,9 +10475,9 @@ union cvmx_dtx_pow_ctl {
 	uint64_t reserved_5_63                : 59;
 	uint64_t active                       : 1;  /**< Force block's gated clocks on, so that the state of idle signals may be captured. */
 	uint64_t reserved_2_3                 : 2;
-	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block debug data.
-                                                         Not applicable when software directly reads the DAT(0..1) registers.  For diagnostic use
-                                                         only. */
+	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block
+                                                         debug data. Not applicable when software directly reads the DAT(0..1) registers.
+                                                         For diagnostic use only. */
 	uint64_t swap                         : 1;  /**< Swap the high and low 36-bit debug bus outputs. */
 #else
 	uint64_t swap                         : 1;
@@ -10500,8 +10500,8 @@ union cvmx_dtx_pow_datx {
 	struct cvmx_dtx_pow_datx_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the ability to
-                                                         peek into blocks during an OCLA capture without OCLA reconfiguration. */
+	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the
+                                                         ability to peek into blocks during an OCLA capture without OCLA reconfiguration. */
 #else
 	uint64_t raw                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -10520,8 +10520,8 @@ union cvmx_dtx_pow_enax {
 	struct cvmx_dtx_pow_enax_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug buses. Normally
-                                                         only one block will drive each bit. */
+	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug
+                                                         buses. Normally only one block will drive each bit. */
 #else
 	uint64_t ena                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -10579,9 +10579,9 @@ union cvmx_dtx_prch_ctl {
 	uint64_t reserved_5_63                : 59;
 	uint64_t active                       : 1;  /**< Force block's gated clocks on, so that the state of idle signals may be captured. */
 	uint64_t reserved_2_3                 : 2;
-	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block debug data.
-                                                         Not applicable when software directly reads the DAT(0..1) registers.  For diagnostic use
-                                                         only. */
+	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block
+                                                         debug data. Not applicable when software directly reads the DAT(0..1) registers.
+                                                         For diagnostic use only. */
 	uint64_t swap                         : 1;  /**< Swap the high and low 36-bit debug bus outputs. */
 #else
 	uint64_t swap                         : 1;
@@ -10603,8 +10603,8 @@ union cvmx_dtx_prch_datx {
 	struct cvmx_dtx_prch_datx_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the ability to
-                                                         peek into blocks during an OCLA capture without OCLA reconfiguration. */
+	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the
+                                                         ability to peek into blocks during an OCLA capture without OCLA reconfiguration. */
 #else
 	uint64_t raw                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -10622,8 +10622,8 @@ union cvmx_dtx_prch_enax {
 	struct cvmx_dtx_prch_enax_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug buses. Normally
-                                                         only one block will drive each bit. */
+	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug
+                                                         buses. Normally only one block will drive each bit. */
 #else
 	uint64_t ena                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -10679,9 +10679,9 @@ union cvmx_dtx_psm_ctl {
 	uint64_t reserved_5_63                : 59;
 	uint64_t active                       : 1;  /**< Force block's gated clocks on, so that the state of idle signals may be captured. */
 	uint64_t reserved_2_3                 : 2;
-	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block debug data.
-                                                         Not applicable when software directly reads the DAT(0..1) registers.  For diagnostic use
-                                                         only. */
+	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block
+                                                         debug data. Not applicable when software directly reads the DAT(0..1) registers.
+                                                         For diagnostic use only. */
 	uint64_t swap                         : 1;  /**< Swap the high and low 36-bit debug bus outputs. */
 #else
 	uint64_t swap                         : 1;
@@ -10703,8 +10703,8 @@ union cvmx_dtx_psm_datx {
 	struct cvmx_dtx_psm_datx_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the ability to
-                                                         peek into blocks during an OCLA capture without OCLA reconfiguration. */
+	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the
+                                                         ability to peek into blocks during an OCLA capture without OCLA reconfiguration. */
 #else
 	uint64_t raw                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -10722,8 +10722,8 @@ union cvmx_dtx_psm_enax {
 	struct cvmx_dtx_psm_enax_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug buses. Normally
-                                                         only one block will drive each bit. */
+	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug
+                                                         buses. Normally only one block will drive each bit. */
 #else
 	uint64_t ena                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -10781,9 +10781,9 @@ union cvmx_dtx_rad_ctl {
 	uint64_t reserved_5_63                : 59;
 	uint64_t active                       : 1;  /**< Force block's gated clocks on, so that the state of idle signals may be captured. */
 	uint64_t reserved_2_3                 : 2;
-	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block debug data.
-                                                         Not applicable when software directly reads the DAT(0..1) registers.  For diagnostic use
-                                                         only. */
+	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block
+                                                         debug data. Not applicable when software directly reads the DAT(0..1) registers.
+                                                         For diagnostic use only. */
 	uint64_t swap                         : 1;  /**< Swap the high and low 36-bit debug bus outputs. */
 #else
 	uint64_t swap                         : 1;
@@ -10807,8 +10807,8 @@ union cvmx_dtx_rad_datx {
 	struct cvmx_dtx_rad_datx_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the ability to
-                                                         peek into blocks during an OCLA capture without OCLA reconfiguration. */
+	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the
+                                                         ability to peek into blocks during an OCLA capture without OCLA reconfiguration. */
 #else
 	uint64_t raw                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -10828,8 +10828,8 @@ union cvmx_dtx_rad_enax {
 	struct cvmx_dtx_rad_enax_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug buses. Normally
-                                                         only one block will drive each bit. */
+	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug
+                                                         buses. Normally only one block will drive each bit. */
 #else
 	uint64_t ena                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -10889,9 +10889,9 @@ union cvmx_dtx_rdec_ctl {
 	uint64_t reserved_5_63                : 59;
 	uint64_t active                       : 1;  /**< Force block's gated clocks on, so that the state of idle signals may be captured. */
 	uint64_t reserved_2_3                 : 2;
-	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block debug data.
-                                                         Not applicable when software directly reads the DAT(0..1) registers.  For diagnostic use
-                                                         only. */
+	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block
+                                                         debug data. Not applicable when software directly reads the DAT(0..1) registers.
+                                                         For diagnostic use only. */
 	uint64_t swap                         : 1;  /**< Swap the high and low 36-bit debug bus outputs. */
 #else
 	uint64_t swap                         : 1;
@@ -10913,8 +10913,8 @@ union cvmx_dtx_rdec_datx {
 	struct cvmx_dtx_rdec_datx_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the ability to
-                                                         peek into blocks during an OCLA capture without OCLA reconfiguration. */
+	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the
+                                                         ability to peek into blocks during an OCLA capture without OCLA reconfiguration. */
 #else
 	uint64_t raw                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -10932,8 +10932,8 @@ union cvmx_dtx_rdec_enax {
 	struct cvmx_dtx_rdec_enax_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug buses. Normally
-                                                         only one block will drive each bit. */
+	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug
+                                                         buses. Normally only one block will drive each bit. */
 #else
 	uint64_t ena                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -10989,9 +10989,9 @@ union cvmx_dtx_rfif_ctl {
 	uint64_t reserved_5_63                : 59;
 	uint64_t active                       : 1;  /**< Force block's gated clocks on, so that the state of idle signals may be captured. */
 	uint64_t reserved_2_3                 : 2;
-	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block debug data.
-                                                         Not applicable when software directly reads the DAT(0..1) registers.  For diagnostic use
-                                                         only. */
+	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block
+                                                         debug data. Not applicable when software directly reads the DAT(0..1) registers.
+                                                         For diagnostic use only. */
 	uint64_t swap                         : 1;  /**< Swap the high and low 36-bit debug bus outputs. */
 #else
 	uint64_t swap                         : 1;
@@ -11013,8 +11013,8 @@ union cvmx_dtx_rfif_datx {
 	struct cvmx_dtx_rfif_datx_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the ability to
-                                                         peek into blocks during an OCLA capture without OCLA reconfiguration. */
+	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the
+                                                         ability to peek into blocks during an OCLA capture without OCLA reconfiguration. */
 #else
 	uint64_t raw                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -11032,8 +11032,8 @@ union cvmx_dtx_rfif_enax {
 	struct cvmx_dtx_rfif_enax_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug buses. Normally
-                                                         only one block will drive each bit. */
+	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug
+                                                         buses. Normally only one block will drive each bit. */
 #else
 	uint64_t ena                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -11089,9 +11089,9 @@ union cvmx_dtx_rmap_ctl {
 	uint64_t reserved_5_63                : 59;
 	uint64_t active                       : 1;  /**< Force block's gated clocks on, so that the state of idle signals may be captured. */
 	uint64_t reserved_2_3                 : 2;
-	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block debug data.
-                                                         Not applicable when software directly reads the DAT(0..1) registers.  For diagnostic use
-                                                         only. */
+	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block
+                                                         debug data. Not applicable when software directly reads the DAT(0..1) registers.
+                                                         For diagnostic use only. */
 	uint64_t swap                         : 1;  /**< Swap the high and low 36-bit debug bus outputs. */
 #else
 	uint64_t swap                         : 1;
@@ -11113,8 +11113,8 @@ union cvmx_dtx_rmap_datx {
 	struct cvmx_dtx_rmap_datx_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the ability to
-                                                         peek into blocks during an OCLA capture without OCLA reconfiguration. */
+	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the
+                                                         ability to peek into blocks during an OCLA capture without OCLA reconfiguration. */
 #else
 	uint64_t raw                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -11132,8 +11132,8 @@ union cvmx_dtx_rmap_enax {
 	struct cvmx_dtx_rmap_enax_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug buses. Normally
-                                                         only one block will drive each bit. */
+	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug
+                                                         buses. Normally only one block will drive each bit. */
 #else
 	uint64_t ena                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -11192,9 +11192,9 @@ union cvmx_dtx_rnm_ctl {
 	uint64_t reserved_5_63                : 59;
 	uint64_t active                       : 1;  /**< Force block's gated clocks on, so that the state of idle signals may be captured. */
 	uint64_t reserved_2_3                 : 2;
-	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block debug data.
-                                                         Not applicable when software directly reads the DAT(0..1) registers.  For diagnostic use
-                                                         only. */
+	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block
+                                                         debug data. Not applicable when software directly reads the DAT(0..1) registers.
+                                                         For diagnostic use only. */
 	uint64_t swap                         : 1;  /**< Swap the high and low 36-bit debug bus outputs. */
 #else
 	uint64_t swap                         : 1;
@@ -11219,8 +11219,8 @@ union cvmx_dtx_rnm_datx {
 	struct cvmx_dtx_rnm_datx_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the ability to
-                                                         peek into blocks during an OCLA capture without OCLA reconfiguration. */
+	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the
+                                                         ability to peek into blocks during an OCLA capture without OCLA reconfiguration. */
 #else
 	uint64_t raw                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -11241,8 +11241,8 @@ union cvmx_dtx_rnm_enax {
 	struct cvmx_dtx_rnm_enax_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug buses. Normally
-                                                         only one block will drive each bit. */
+	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug
+                                                         buses. Normally only one block will drive each bit. */
 #else
 	uint64_t ena                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -11309,9 +11309,9 @@ union cvmx_dtx_rst_ctl {
 	uint64_t reserved_5_63                : 59;
 	uint64_t active                       : 1;  /**< Force block's gated clocks on, so that the state of idle signals may be captured. */
 	uint64_t reserved_2_3                 : 2;
-	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block debug data.
-                                                         Not applicable when software directly reads the DAT(0..1) registers.  For diagnostic use
-                                                         only. */
+	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block
+                                                         debug data. Not applicable when software directly reads the DAT(0..1) registers.
+                                                         For diagnostic use only. */
 	uint64_t swap                         : 1;  /**< Swap the high and low 36-bit debug bus outputs. */
 #else
 	uint64_t swap                         : 1;
@@ -11338,8 +11338,8 @@ union cvmx_dtx_rst_datx {
 	struct cvmx_dtx_rst_datx_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the ability to
-                                                         peek into blocks during an OCLA capture without OCLA reconfiguration. */
+	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the
+                                                         ability to peek into blocks during an OCLA capture without OCLA reconfiguration. */
 #else
 	uint64_t raw                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -11362,8 +11362,8 @@ union cvmx_dtx_rst_enax {
 	struct cvmx_dtx_rst_enax_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug buses. Normally
-                                                         only one block will drive each bit. */
+	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug
+                                                         buses. Normally only one block will drive each bit. */
 #else
 	uint64_t ena                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -11544,9 +11544,9 @@ union cvmx_dtx_sli_ctl {
 	uint64_t reserved_5_63                : 59;
 	uint64_t active                       : 1;  /**< Force block's gated clocks on, so that the state of idle signals may be captured. */
 	uint64_t reserved_2_3                 : 2;
-	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block debug data.
-                                                         Not applicable when software directly reads the DAT(0..1) registers.  For diagnostic use
-                                                         only. */
+	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block
+                                                         debug data. Not applicable when software directly reads the DAT(0..1) registers.
+                                                         For diagnostic use only. */
 	uint64_t swap                         : 1;  /**< Swap the high and low 36-bit debug bus outputs. */
 #else
 	uint64_t swap                         : 1;
@@ -11573,8 +11573,8 @@ union cvmx_dtx_sli_datx {
 	struct cvmx_dtx_sli_datx_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the ability to
-                                                         peek into blocks during an OCLA capture without OCLA reconfiguration. */
+	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the
+                                                         ability to peek into blocks during an OCLA capture without OCLA reconfiguration. */
 #else
 	uint64_t raw                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -11597,8 +11597,8 @@ union cvmx_dtx_sli_enax {
 	struct cvmx_dtx_sli_enax_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug buses. Normally
-                                                         only one block will drive each bit. */
+	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug
+                                                         buses. Normally only one block will drive each bit. */
 #else
 	uint64_t ena                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -11764,9 +11764,9 @@ union cvmx_dtx_sriox_ctl {
 	uint64_t reserved_5_63                : 59;
 	uint64_t active                       : 1;  /**< Force block's gated clocks on, so that the state of idle signals may be captured. */
 	uint64_t reserved_2_3                 : 2;
-	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block debug data.
-                                                         Not applicable when software directly reads the DAT(0..1) registers.  For diagnostic use
-                                                         only. */
+	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block
+                                                         debug data. Not applicable when software directly reads the DAT(0..1) registers.
+                                                         For diagnostic use only. */
 	uint64_t swap                         : 1;  /**< Swap the high and low 36-bit debug bus outputs. */
 #else
 	uint64_t swap                         : 1;
@@ -11788,8 +11788,8 @@ union cvmx_dtx_sriox_datx {
 	struct cvmx_dtx_sriox_datx_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the ability to
-                                                         peek into blocks during an OCLA capture without OCLA reconfiguration. */
+	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the
+                                                         ability to peek into blocks during an OCLA capture without OCLA reconfiguration. */
 #else
 	uint64_t raw                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -11807,8 +11807,8 @@ union cvmx_dtx_sriox_enax {
 	struct cvmx_dtx_sriox_enax_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug buses. Normally
-                                                         only one block will drive each bit. */
+	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug
+                                                         buses. Normally only one block will drive each bit. */
 #else
 	uint64_t ena                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -11867,9 +11867,9 @@ union cvmx_dtx_sso_ctl {
 	uint64_t reserved_5_63                : 59;
 	uint64_t active                       : 1;  /**< Force block's gated clocks on, so that the state of idle signals may be captured. */
 	uint64_t reserved_2_3                 : 2;
-	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block debug data.
-                                                         Not applicable when software directly reads the DAT(0..1) registers.  For diagnostic use
-                                                         only. */
+	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block
+                                                         debug data. Not applicable when software directly reads the DAT(0..1) registers.
+                                                         For diagnostic use only. */
 	uint64_t swap                         : 1;  /**< Swap the high and low 36-bit debug bus outputs. */
 #else
 	uint64_t swap                         : 1;
@@ -11894,8 +11894,8 @@ union cvmx_dtx_sso_datx {
 	struct cvmx_dtx_sso_datx_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the ability to
-                                                         peek into blocks during an OCLA capture without OCLA reconfiguration. */
+	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the
+                                                         ability to peek into blocks during an OCLA capture without OCLA reconfiguration. */
 #else
 	uint64_t raw                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -11916,8 +11916,8 @@ union cvmx_dtx_sso_enax {
 	struct cvmx_dtx_sso_enax_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug buses. Normally
-                                                         only one block will drive each bit. */
+	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug
+                                                         buses. Normally only one block will drive each bit. */
 #else
 	uint64_t ena                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -11979,9 +11979,9 @@ union cvmx_dtx_tdec_ctl {
 	uint64_t reserved_5_63                : 59;
 	uint64_t active                       : 1;  /**< Force block's gated clocks on, so that the state of idle signals may be captured. */
 	uint64_t reserved_2_3                 : 2;
-	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block debug data.
-                                                         Not applicable when software directly reads the DAT(0..1) registers.  For diagnostic use
-                                                         only. */
+	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block
+                                                         debug data. Not applicable when software directly reads the DAT(0..1) registers.
+                                                         For diagnostic use only. */
 	uint64_t swap                         : 1;  /**< Swap the high and low 36-bit debug bus outputs. */
 #else
 	uint64_t swap                         : 1;
@@ -12003,8 +12003,8 @@ union cvmx_dtx_tdec_datx {
 	struct cvmx_dtx_tdec_datx_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the ability to
-                                                         peek into blocks during an OCLA capture without OCLA reconfiguration. */
+	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the
+                                                         ability to peek into blocks during an OCLA capture without OCLA reconfiguration. */
 #else
 	uint64_t raw                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -12022,8 +12022,8 @@ union cvmx_dtx_tdec_enax {
 	struct cvmx_dtx_tdec_enax_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug buses. Normally
-                                                         only one block will drive each bit. */
+	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug
+                                                         buses. Normally only one block will drive each bit. */
 #else
 	uint64_t ena                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -12084,9 +12084,9 @@ union cvmx_dtx_tim_ctl {
 	uint64_t reserved_5_63                : 59;
 	uint64_t active                       : 1;  /**< Force block's gated clocks on, so that the state of idle signals may be captured. */
 	uint64_t reserved_2_3                 : 2;
-	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block debug data.
-                                                         Not applicable when software directly reads the DAT(0..1) registers.  For diagnostic use
-                                                         only. */
+	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block
+                                                         debug data. Not applicable when software directly reads the DAT(0..1) registers.
+                                                         For diagnostic use only. */
 	uint64_t swap                         : 1;  /**< Swap the high and low 36-bit debug bus outputs. */
 #else
 	uint64_t swap                         : 1;
@@ -12113,8 +12113,8 @@ union cvmx_dtx_tim_datx {
 	struct cvmx_dtx_tim_datx_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the ability to
-                                                         peek into blocks during an OCLA capture without OCLA reconfiguration. */
+	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the
+                                                         ability to peek into blocks during an OCLA capture without OCLA reconfiguration. */
 #else
 	uint64_t raw                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -12137,8 +12137,8 @@ union cvmx_dtx_tim_enax {
 	struct cvmx_dtx_tim_enax_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug buses. Normally
-                                                         only one block will drive each bit. */
+	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug
+                                                         buses. Normally only one block will drive each bit. */
 #else
 	uint64_t ena                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -12204,9 +12204,9 @@ union cvmx_dtx_ulfe_ctl {
 	uint64_t reserved_5_63                : 59;
 	uint64_t active                       : 1;  /**< Force block's gated clocks on, so that the state of idle signals may be captured. */
 	uint64_t reserved_2_3                 : 2;
-	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block debug data.
-                                                         Not applicable when software directly reads the DAT(0..1) registers.  For diagnostic use
-                                                         only. */
+	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block
+                                                         debug data. Not applicable when software directly reads the DAT(0..1) registers.
+                                                         For diagnostic use only. */
 	uint64_t swap                         : 1;  /**< Swap the high and low 36-bit debug bus outputs. */
 #else
 	uint64_t swap                         : 1;
@@ -12228,8 +12228,8 @@ union cvmx_dtx_ulfe_datx {
 	struct cvmx_dtx_ulfe_datx_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the ability to
-                                                         peek into blocks during an OCLA capture without OCLA reconfiguration. */
+	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the
+                                                         ability to peek into blocks during an OCLA capture without OCLA reconfiguration. */
 #else
 	uint64_t raw                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -12247,8 +12247,8 @@ union cvmx_dtx_ulfe_enax {
 	struct cvmx_dtx_ulfe_enax_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug buses. Normally
-                                                         only one block will drive each bit. */
+	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug
+                                                         buses. Normally only one block will drive each bit. */
 #else
 	uint64_t ena                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -12307,9 +12307,9 @@ union cvmx_dtx_usbdrdx_ctl {
 	uint64_t reserved_5_63                : 59;
 	uint64_t active                       : 1;  /**< Force block's gated clocks on, so that the state of idle signals may be captured. */
 	uint64_t reserved_2_3                 : 2;
-	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block debug data.
-                                                         Not applicable when software directly reads the DAT(0..1) registers.  For diagnostic use
-                                                         only. */
+	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block
+                                                         debug data. Not applicable when software directly reads the DAT(0..1) registers.
+                                                         For diagnostic use only. */
 	uint64_t swap                         : 1;  /**< Swap the high and low 36-bit debug bus outputs. */
 #else
 	uint64_t swap                         : 1;
@@ -12334,8 +12334,8 @@ union cvmx_dtx_usbdrdx_datx {
 	struct cvmx_dtx_usbdrdx_datx_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the ability to
-                                                         peek into blocks during an OCLA capture without OCLA reconfiguration. */
+	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the
+                                                         ability to peek into blocks during an OCLA capture without OCLA reconfiguration. */
 #else
 	uint64_t raw                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -12356,8 +12356,8 @@ union cvmx_dtx_usbdrdx_enax {
 	struct cvmx_dtx_usbdrdx_enax_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug buses. Normally
-                                                         only one block will drive each bit. */
+	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug
+                                                         buses. Normally only one block will drive each bit. */
 #else
 	uint64_t ena                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -12420,9 +12420,9 @@ union cvmx_dtx_usbhx_ctl {
 	uint64_t reserved_5_63                : 59;
 	uint64_t active                       : 1;  /**< Force block's gated clocks on, so that the state of idle signals may be captured. */
 	uint64_t reserved_2_3                 : 2;
-	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block debug data.
-                                                         Not applicable when software directly reads the DAT(0..1) registers.  For diagnostic use
-                                                         only. */
+	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block
+                                                         debug data. Not applicable when software directly reads the DAT(0..1) registers.
+                                                         For diagnostic use only. */
 	uint64_t swap                         : 1;  /**< Swap the high and low 36-bit debug bus outputs. */
 #else
 	uint64_t swap                         : 1;
@@ -12445,8 +12445,8 @@ union cvmx_dtx_usbhx_datx {
 	struct cvmx_dtx_usbhx_datx_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the ability to
-                                                         peek into blocks during an OCLA capture without OCLA reconfiguration. */
+	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the
+                                                         ability to peek into blocks during an OCLA capture without OCLA reconfiguration. */
 #else
 	uint64_t raw                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -12465,8 +12465,8 @@ union cvmx_dtx_usbhx_enax {
 	struct cvmx_dtx_usbhx_enax_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug buses. Normally
-                                                         only one block will drive each bit. */
+	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug
+                                                         buses. Normally only one block will drive each bit. */
 #else
 	uint64_t ena                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -12524,9 +12524,9 @@ union cvmx_dtx_vdec_ctl {
 	uint64_t reserved_5_63                : 59;
 	uint64_t active                       : 1;  /**< Force block's gated clocks on, so that the state of idle signals may be captured. */
 	uint64_t reserved_2_3                 : 2;
-	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block debug data.
-                                                         Not applicable when software directly reads the DAT(0..1) registers.  For diagnostic use
-                                                         only. */
+	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block
+                                                         debug data. Not applicable when software directly reads the DAT(0..1) registers.
+                                                         For diagnostic use only. */
 	uint64_t swap                         : 1;  /**< Swap the high and low 36-bit debug bus outputs. */
 #else
 	uint64_t swap                         : 1;
@@ -12548,8 +12548,8 @@ union cvmx_dtx_vdec_datx {
 	struct cvmx_dtx_vdec_datx_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the ability to
-                                                         peek into blocks during an OCLA capture without OCLA reconfiguration. */
+	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the
+                                                         ability to peek into blocks during an OCLA capture without OCLA reconfiguration. */
 #else
 	uint64_t raw                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -12567,8 +12567,8 @@ union cvmx_dtx_vdec_enax {
 	struct cvmx_dtx_vdec_enax_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug buses. Normally
-                                                         only one block will drive each bit. */
+	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug
+                                                         buses. Normally only one block will drive each bit. */
 #else
 	uint64_t ena                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -12624,9 +12624,9 @@ union cvmx_dtx_wpse_ctl {
 	uint64_t reserved_5_63                : 59;
 	uint64_t active                       : 1;  /**< Force block's gated clocks on, so that the state of idle signals may be captured. */
 	uint64_t reserved_2_3                 : 2;
-	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block debug data.
-                                                         Not applicable when software directly reads the DAT(0..1) registers.  For diagnostic use
-                                                         only. */
+	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block
+                                                         debug data. Not applicable when software directly reads the DAT(0..1) registers.
+                                                         For diagnostic use only. */
 	uint64_t swap                         : 1;  /**< Swap the high and low 36-bit debug bus outputs. */
 #else
 	uint64_t swap                         : 1;
@@ -12648,8 +12648,8 @@ union cvmx_dtx_wpse_datx {
 	struct cvmx_dtx_wpse_datx_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the ability to
-                                                         peek into blocks during an OCLA capture without OCLA reconfiguration. */
+	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the
+                                                         ability to peek into blocks during an OCLA capture without OCLA reconfiguration. */
 #else
 	uint64_t raw                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -12667,8 +12667,8 @@ union cvmx_dtx_wpse_enax {
 	struct cvmx_dtx_wpse_enax_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug buses. Normally
-                                                         only one block will drive each bit. */
+	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug
+                                                         buses. Normally only one block will drive each bit. */
 #else
 	uint64_t ena                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -12724,9 +12724,9 @@ union cvmx_dtx_wrce_ctl {
 	uint64_t reserved_5_63                : 59;
 	uint64_t active                       : 1;  /**< Force block's gated clocks on, so that the state of idle signals may be captured. */
 	uint64_t reserved_2_3                 : 2;
-	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block debug data.
-                                                         Not applicable when software directly reads the DAT(0..1) registers.  For diagnostic use
-                                                         only. */
+	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block
+                                                         debug data. Not applicable when software directly reads the DAT(0..1) registers.
+                                                         For diagnostic use only. */
 	uint64_t swap                         : 1;  /**< Swap the high and low 36-bit debug bus outputs. */
 #else
 	uint64_t swap                         : 1;
@@ -12748,8 +12748,8 @@ union cvmx_dtx_wrce_datx {
 	struct cvmx_dtx_wrce_datx_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the ability to
-                                                         peek into blocks during an OCLA capture without OCLA reconfiguration. */
+	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the
+                                                         ability to peek into blocks during an OCLA capture without OCLA reconfiguration. */
 #else
 	uint64_t raw                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -12767,8 +12767,8 @@ union cvmx_dtx_wrce_enax {
 	struct cvmx_dtx_wrce_enax_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug buses. Normally
-                                                         only one block will drive each bit. */
+	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug
+                                                         buses. Normally only one block will drive each bit. */
 #else
 	uint64_t ena                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -12824,9 +12824,9 @@ union cvmx_dtx_wrde_ctl {
 	uint64_t reserved_5_63                : 59;
 	uint64_t active                       : 1;  /**< Force block's gated clocks on, so that the state of idle signals may be captured. */
 	uint64_t reserved_2_3                 : 2;
-	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block debug data.
-                                                         Not applicable when software directly reads the DAT(0..1) registers.  For diagnostic use
-                                                         only. */
+	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block
+                                                         debug data. Not applicable when software directly reads the DAT(0..1) registers.
+                                                         For diagnostic use only. */
 	uint64_t swap                         : 1;  /**< Swap the high and low 36-bit debug bus outputs. */
 #else
 	uint64_t swap                         : 1;
@@ -12848,8 +12848,8 @@ union cvmx_dtx_wrde_datx {
 	struct cvmx_dtx_wrde_datx_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the ability to
-                                                         peek into blocks during an OCLA capture without OCLA reconfiguration. */
+	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the
+                                                         ability to peek into blocks during an OCLA capture without OCLA reconfiguration. */
 #else
 	uint64_t raw                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -12867,8 +12867,8 @@ union cvmx_dtx_wrde_enax {
 	struct cvmx_dtx_wrde_enax_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug buses. Normally
-                                                         only one block will drive each bit. */
+	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug
+                                                         buses. Normally only one block will drive each bit. */
 #else
 	uint64_t ena                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -12924,9 +12924,9 @@ union cvmx_dtx_wrse_ctl {
 	uint64_t reserved_5_63                : 59;
 	uint64_t active                       : 1;  /**< Force block's gated clocks on, so that the state of idle signals may be captured. */
 	uint64_t reserved_2_3                 : 2;
-	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block debug data.
-                                                         Not applicable when software directly reads the DAT(0..1) registers.  For diagnostic use
-                                                         only. */
+	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block
+                                                         debug data. Not applicable when software directly reads the DAT(0..1) registers.
+                                                         For diagnostic use only. */
 	uint64_t swap                         : 1;  /**< Swap the high and low 36-bit debug bus outputs. */
 #else
 	uint64_t swap                         : 1;
@@ -12948,8 +12948,8 @@ union cvmx_dtx_wrse_datx {
 	struct cvmx_dtx_wrse_datx_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the ability to
-                                                         peek into blocks during an OCLA capture without OCLA reconfiguration. */
+	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the
+                                                         ability to peek into blocks during an OCLA capture without OCLA reconfiguration. */
 #else
 	uint64_t raw                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -12967,8 +12967,8 @@ union cvmx_dtx_wrse_enax {
 	struct cvmx_dtx_wrse_enax_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug buses. Normally
-                                                         only one block will drive each bit. */
+	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug
+                                                         buses. Normally only one block will drive each bit. */
 #else
 	uint64_t ena                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -13024,9 +13024,9 @@ union cvmx_dtx_wtxe_ctl {
 	uint64_t reserved_5_63                : 59;
 	uint64_t active                       : 1;  /**< Force block's gated clocks on, so that the state of idle signals may be captured. */
 	uint64_t reserved_2_3                 : 2;
-	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block debug data.
-                                                         Not applicable when software directly reads the DAT(0..1) registers.  For diagnostic use
-                                                         only. */
+	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block
+                                                         debug data. Not applicable when software directly reads the DAT(0..1) registers.
+                                                         For diagnostic use only. */
 	uint64_t swap                         : 1;  /**< Swap the high and low 36-bit debug bus outputs. */
 #else
 	uint64_t swap                         : 1;
@@ -13048,8 +13048,8 @@ union cvmx_dtx_wtxe_datx {
 	struct cvmx_dtx_wtxe_datx_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the ability to
-                                                         peek into blocks during an OCLA capture without OCLA reconfiguration. */
+	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the
+                                                         ability to peek into blocks during an OCLA capture without OCLA reconfiguration. */
 #else
 	uint64_t raw                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -13067,8 +13067,8 @@ union cvmx_dtx_wtxe_enax {
 	struct cvmx_dtx_wtxe_enax_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug buses. Normally
-                                                         only one block will drive each bit. */
+	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug
+                                                         buses. Normally only one block will drive each bit. */
 #else
 	uint64_t ena                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -13125,9 +13125,9 @@ union cvmx_dtx_xcv_ctl {
 	uint64_t reserved_5_63                : 59;
 	uint64_t active                       : 1;  /**< Force block's gated clocks on, so that the state of idle signals may be captured. */
 	uint64_t reserved_2_3                 : 2;
-	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block debug data.
-                                                         Not applicable when software directly reads the DAT(0..1) registers.  For diagnostic use
-                                                         only. */
+	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block
+                                                         debug data. Not applicable when software directly reads the DAT(0..1) registers.
+                                                         For diagnostic use only. */
 	uint64_t swap                         : 1;  /**< Swap the high and low 36-bit debug bus outputs. */
 #else
 	uint64_t swap                         : 1;
@@ -13150,8 +13150,8 @@ union cvmx_dtx_xcv_datx {
 	struct cvmx_dtx_xcv_datx_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the ability to
-                                                         peek into blocks during an OCLA capture without OCLA reconfiguration. */
+	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the
+                                                         ability to peek into blocks during an OCLA capture without OCLA reconfiguration. */
 #else
 	uint64_t raw                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -13170,8 +13170,8 @@ union cvmx_dtx_xcv_enax {
 	struct cvmx_dtx_xcv_enax_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug buses. Normally
-                                                         only one block will drive each bit. */
+	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug
+                                                         buses. Normally only one block will drive each bit. */
 #else
 	uint64_t ena                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -13229,9 +13229,9 @@ union cvmx_dtx_xsx_ctl {
 	uint64_t reserved_5_63                : 59;
 	uint64_t active                       : 1;  /**< Force block's gated clocks on, so that the state of idle signals may be captured. */
 	uint64_t reserved_2_3                 : 2;
-	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block debug data.
-                                                         Not applicable when software directly reads the DAT(0..1) registers.  For diagnostic use
-                                                         only. */
+	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block
+                                                         debug data. Not applicable when software directly reads the DAT(0..1) registers.
+                                                         For diagnostic use only. */
 	uint64_t swap                         : 1;  /**< Swap the high and low 36-bit debug bus outputs. */
 #else
 	uint64_t swap                         : 1;
@@ -13253,8 +13253,8 @@ union cvmx_dtx_xsx_datx {
 	struct cvmx_dtx_xsx_datx_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the ability to
-                                                         peek into blocks during an OCLA capture without OCLA reconfiguration. */
+	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the
+                                                         ability to peek into blocks during an OCLA capture without OCLA reconfiguration. */
 #else
 	uint64_t raw                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -13272,8 +13272,8 @@ union cvmx_dtx_xsx_enax {
 	struct cvmx_dtx_xsx_enax_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug buses. Normally
-                                                         only one block will drive each bit. */
+	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug
+                                                         buses. Normally only one block will drive each bit. */
 #else
 	uint64_t ena                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -13331,9 +13331,9 @@ union cvmx_dtx_zip_ctl {
 	uint64_t reserved_5_63                : 59;
 	uint64_t active                       : 1;  /**< Force block's gated clocks on, so that the state of idle signals may be captured. */
 	uint64_t reserved_2_3                 : 2;
-	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block debug data.
-                                                         Not applicable when software directly reads the DAT(0..1) registers.  For diagnostic use
-                                                         only. */
+	uint64_t echoen                       : 1;  /**< Drive debug bus with the value in DTX_MIO_ENA(0..1) instead of normal block
+                                                         debug data. Not applicable when software directly reads the DAT(0..1) registers.
+                                                         For diagnostic use only. */
 	uint64_t swap                         : 1;  /**< Swap the high and low 36-bit debug bus outputs. */
 #else
 	uint64_t swap                         : 1;
@@ -13357,8 +13357,8 @@ union cvmx_dtx_zip_datx {
 	struct cvmx_dtx_zip_datx_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the ability to
-                                                         peek into blocks during an OCLA capture without OCLA reconfiguration. */
+	uint64_t raw                          : 36; /**< Raw debug data captured by the DTX before the ENA is applied. This gives the
+                                                         ability to peek into blocks during an OCLA capture without OCLA reconfiguration. */
 #else
 	uint64_t raw                          : 36;
 	uint64_t reserved_36_63               : 28;
@@ -13378,8 +13378,8 @@ union cvmx_dtx_zip_enax {
 	struct cvmx_dtx_zip_enax_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_36_63               : 28;
-	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug buses. Normally
-                                                         only one block will drive each bit. */
+	uint64_t ena                          : 36; /**< Output enable vector of which bits to drive onto the low/high 36-bit debug
+                                                         buses. Normally only one block will drive each bit. */
 #else
 	uint64_t ena                          : 36;
 	uint64_t reserved_36_63               : 28;

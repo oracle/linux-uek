@@ -3393,7 +3393,7 @@ union cvmx_fpa_poolx_cfg {
                                                          0x1 = LDT.
                                                          0x2 = Load with DWB.
                                                          0x3 = Reserved. */
-	uint64_t s_type                       : 1;  /**< Type of store to use when sending pages to L2:
+	uint64_t s_type                       : 1;  /**< Type of store to use when FPA sends stores to L2:
                                                          0 = use STF.
                                                          1 = use STT. */
 	uint64_t nat_align                    : 1;  /**< Returning buffers should be rounded to the nearest natural alignment specified with

@@ -2224,9 +2224,14 @@ union cvmx_sso_err0 {
                                                          SSO_GRP()_IAQ_THR[RSVD_THR] = 0. Throws SSO_INTSN_E::SSO_ERR0_GRPDIS. */
 	uint64_t bfp                          : 1;  /**< Bad-fill-packet error. The WAE VLD_CRC field was incorrect, or the XAQ next address was
                                                          zero. Throws SSO_INTSN_E::SSO_ERR0_BFP. */
-	uint64_t awe                          : 1;  /**< Out-of-memory error. (ADDWQ request is dropped.) Throws SSO_INTSN_E::SSO_ERR0_AWE. */
-	uint64_t fpe                          : 1;  /**< Free-page error. The free page error bit asserts when a new FPA page is requested and FPA
-                                                         indicates there are no remaining free pages. Throws SSO_INTSN_E::SSO_ERR0_FPE. */
+	uint64_t awe                          : 1;  /**< Out-of-memory error. SSO has dropped some add-work as a result, and this should
+                                                         be considered fatal to SSO. Throws SSO_INTSN_E::SSO_ERR0_AWE.
+                                                         This may indicate software did not allocate sufficient FPA buffers to cover all
+                                                         possible outstanding work. */
+	uint64_t fpe                          : 1;  /**< Free-page error. The free page error bit asserts when a new FPA page is
+                                                         requested and FPA indicates there are no remaining free pages. SSO will keep
+                                                         attempting to allocate pages, and if the situation persists the more critical
+                                                         [AWE] error will be indicated. Throws SSO_INTSN_E::SSO_ERR0_FPE. */
 #else
 	uint64_t fpe                          : 1;
 	uint64_t awe                          : 1;
@@ -2625,10 +2630,10 @@ union cvmx_sso_grpx_iaq_thr {
                                                          To ensure full streaming performance to all cores, should be at least 208. Must not be
                                                          changed after traffic is sent to this group. */
 	uint64_t reserved_13_31               : 19;
-	uint64_t rsvd_thr                     : 13; /**< Reserved threshold for this internal group queue. Should be at least 1 for any groups that
-                                                         must make forward progress when other group's work is pending. Updates to this field must
-                                                         also update SSO_AW_ADD[RSVD_FREE]. Must not be changed after traffic is sent to this
-                                                         group. */
+	uint64_t rsvd_thr                     : 13; /**< Threshold for reserved entries for this internal group queue. Should be at least
+                                                         0x1 for any groups that must make forward progress when other group's work is
+                                                         pending. Updates to this field must also update SSO_AW_ADD[RSVD_FREE]. Must not
+                                                         be changed after traffic is sent to this group. */
 #else
 	uint64_t rsvd_thr                     : 13;
 	uint64_t reserved_13_31               : 19;
@@ -2843,9 +2848,10 @@ union cvmx_sso_grpx_taq_thr {
                                                          if persistently backpressured by IOBI. Must not be changed after traffic is sent to this
                                                          group. */
 	uint64_t reserved_11_31               : 21;
-	uint64_t rsvd_thr                     : 11; /**< Reserved threshold for this transitory admission queue, in buffers of 13 entries. Must be
-                                                         at least 3 buffers for any groups that are to be used. Changes to this field must also
-                                                         update SSO_TAQ_ADD[RSVD_FREE]. Must not be changed after traffic is sent to this group. */
+	uint64_t rsvd_thr                     : 11; /**< Threshold for reserved entries for this transitory admission queue, in buffers
+                                                         of 13 entries. Must be at least 3 buffers for any groups that are to be
+                                                         used. Changes to this field must also update SSO_TAQ_ADD[RSVD_FREE]. Must not be
+                                                         changed after traffic is sent to this group. */
 #else
 	uint64_t rsvd_thr                     : 11;
 	uint64_t reserved_11_31               : 21;

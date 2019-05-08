@@ -841,6 +841,7 @@ static int cvmx_pko_setup_macs(int node)
 		unsigned pko_fifo_cnt, fifo_size;
 		unsigned mac_fifo_cnt;
 		unsigned tmp;
+		int saved_fifo_num;
 
 		pko_fifo_cnt = cvmx_pko3_mac_table[mac_num].fifo_cnt;
 		mac_fifo_cnt = cvmx_pko3_mac_table[mac_num].mac_fifo_cnt;
@@ -918,16 +919,34 @@ static int cvmx_pko_setup_macs(int node)
 		tmp = (skid_credit / 256) >> 1; /* valid 0,1,2 */
 		pko_mac_cfg.u64 =
 			cvmx_read_csr_node(node, CVMX_PKO_MACX_CFG(mac_num));
+
+		/* The PKO_MACX_CFG bits cannot be changed unless FIFO_MUM=0x1f (unused fifo) */
+		saved_fifo_num = pko_mac_cfg.s.fifo_num;
+		pko_mac_cfg.s.fifo_num = 0x1f;
 		pko_mac_cfg.s.skid_max_cnt = tmp;
 		cvmx_write_csr_node(node, CVMX_PKO_MACX_CFG(mac_num),
 			pko_mac_cfg.u64);
 
-		if(debug) cvmx_dprintf(
-			"%s: mac %u PKO_MCI0_MAX_CREDX=%u PKO_MCI1_MAX_CREDX=%u PKO_MACX_CFG[SKID_MAX_CNT]=%u\n",
+		pko_mac_cfg.u64 =
+			cvmx_read_csr_node(node, CVMX_PKO_MACX_CFG(mac_num));
+		pko_mac_cfg.s.fifo_num = saved_fifo_num;
+		cvmx_write_csr_node(node, CVMX_PKO_MACX_CFG(mac_num),
+			pko_mac_cfg.u64);
+
+		if (debug) {
+			pko_mci0_max_cred.u64 =
+			     cvmx_read_csr_node(node, CVMX_PKO_MCI0_MAX_CREDX(mac_num));
+			pko_mci1_max_cred.u64 =
+			     cvmx_read_csr_node(node, CVMX_PKO_MCI1_MAX_CREDX(mac_num));
+			pko_mac_cfg.u64 =
+			     cvmx_read_csr_node(node, CVMX_PKO_MACX_CFG(mac_num));
+			cvmx_dprintf(
+			     "%s: mac %u PKO_MCI0_MAX_CREDX=%u PKO_MCI1_MAX_CREDX=%u PKO_MACX_CFG[SKID_MAX_CNT]=%u\n",
 			__FUNCTION__,  mac_num,
 			pko_mci0_max_cred.s.max_cred_lim,
 			pko_mci1_max_cred.s.max_cred_lim,
 			pko_mac_cfg.s.skid_max_cnt);
+		}
 	} /* for mac_num */
 
 	return 0;
