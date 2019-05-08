@@ -926,8 +926,9 @@ static int cvm_oct_probe(struct platform_device *pdev)
 				continue;
 			}
 
+			/* Using transmit queues degrades performance significantly */
 			if (disable_core_queueing)
-				dev->tx_queue_len = 0;
+				dev->priv_flags |= IFF_NO_QUEUE;
 
 			/* Initialize the device private structure. */
 			SET_NETDEV_DEV(dev, &pdev->dev);
