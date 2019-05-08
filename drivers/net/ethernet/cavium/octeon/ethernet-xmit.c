@@ -271,12 +271,12 @@ CVM_OCT_XMIT
 
 	/* Drop this packet if we have too many already queued to the HW */
 	if (unlikely(queue_depth >= MAX_OUT_QUEUE_DEPTH)) {
-		if (dev->tx_queue_len != 0) {
-			netif_stop_queue(dev);
-		} else {
-			/* If not using normal queueing.  */
+		if (dev->priv_flags & IFF_NO_QUEUE) {
+			/* not using normal queueing.  */
 			queue_type = QUEUE_DROP;
 			goto skip_xmit;
+		} else {
+			netif_stop_queue(dev);
 		}
 	}
 
