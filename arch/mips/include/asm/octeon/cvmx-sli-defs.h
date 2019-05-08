@@ -4335,51 +4335,75 @@ union cvmx_sli_ciu_int_sum {
 	struct cvmx_sli_ciu_int_sum_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_51_63               : 13;
-	uint64_t m3_un_wi                     : 1;  /**< Received unsupported N-TLP for window register from MAC 3. This occurs when the window
+	uint64_t m3_un_wi                     : 1;  /**< For CNF73XX, this interrupt should not occur.
+                                                         For CNF75XX, received unsupported N-TLP for window register from MAC 3. This occurs when
+                                                         the window
                                                          registers are disabled and a window register access occurs.
                                                          This can only be set by a PF and not a VF access.
                                                          This bit is set when SLI_MAC()_PF()_INT_SUM[UN_WI]
                                                          Throws SLI_INTSN_E::SLI_INT_M3_UN_WI. */
-	uint64_t m3_un_b0                     : 1;  /**< Received unsupported N-TLP for Bar 0 from MAC 3. This occurs when the BAR 0 address space
+	uint64_t m3_un_b0                     : 1;  /**< For CNF73XX, this interrupt should not occur.
+                                                         For CNF75XX, received unsupported N-TLP for Bar 0 from MAC 3. This occurs when the BAR 0
+                                                         address space
                                                          is disabled.
                                                          This can only be set by a PF and not a VF access.
                                                          This bit is set when SLI_MAC()_PF()_INT_SUM[UN_B0]
                                                          Throws SLI_INTSN_E::SLI_INT_M3_UN_B0. */
-	uint64_t m3_up_wi                     : 1;  /**< Received unsupported P-TLP for window register from MAC 3. This occurs when the window
+	uint64_t m3_up_wi                     : 1;  /**< For CNF73XX, this interrupt should not occur.
+                                                         For CNF75XX, received unsupported P-TLP for window register from MAC 3. This occurs when
+                                                         the window
                                                          registers are disabled and a window register access occurs.
                                                          This can only be set by a PF and not a VF access.
                                                          Throws SLI_INTSN_E::SLI_INT_M3_UP_WI. */
-	uint64_t m3_up_b0                     : 1;  /**< Received unsupported P-TLP for Bar 0 from MAC 3. This occurs when the BAR 0 address space
+	uint64_t m3_up_b0                     : 1;  /**< For CNF73XX, this interrupt should not occur.
+                                                         For CNF75XX, received unsupported P-TLP for Bar 0 from MAC 3. This occurs when the BAR 0
+                                                         address space
                                                          This can only be set by a PF and not a VF access.
                                                          Throws SLI_INTSN_E::SLI_INT_M3_UP_B0. */
-	uint64_t m2_un_wi                     : 1;  /**< Received unsupported N-TLP for window register from MAC 2. This occurs when the window
+	uint64_t m2_un_wi                     : 1;  /**< For CNF73XX, this interrupt should not occur.
+                                                         For CNF75XX, received unsupported N-TLP for window register from MAC 2. This occurs when
+                                                         the window
                                                          registers are disabled and a window register access occurs.
                                                          This can only be set by a PF and not a VF access.
                                                          Throws SLI_INTSN_E::SLI_INT_M2_UN_WI. */
-	uint64_t m2_un_b0                     : 1;  /**< Received unsupported N-TLP for Bar 0 from MAC 2. This occurs when the BAR 0 address space
+	uint64_t m2_un_b0                     : 1;  /**< For CNF73XX, this interrupt should not occur.
+                                                         For CNF75XX, received unsupported N-TLP for Bar 0 from MAC 2. This occurs when the BAR 0
+                                                         address space
                                                          is disabled.
                                                          This can only be set by a PF and not a VF access.
                                                          Throws SLI_INTSN_E::SLI_INT_M2_UN_B0. */
-	uint64_t m2_up_wi                     : 1;  /**< Received unsupported P-TLP for window register from MAC 2. This occurs when the window
+	uint64_t m2_up_wi                     : 1;  /**< For CNF73XX, this interrupt should not occur.
+                                                         For CNF75XX, received unsupported P-TLP for window register from MAC 2. This occurs when
+                                                         the window
                                                          registers are disabled and a window register access occurs.
                                                          This can only be set by a PF and not a VF access.
                                                          Throws SLI_INTSN_E::SLI_INT_M2_UP_WI. */
-	uint64_t m2_up_b0                     : 1;  /**< Received unsupported P-TLP for Bar 0 from MAC 2. This occurs when the BAR 0 address space
+	uint64_t m2_up_b0                     : 1;  /**< For CNF73XX, this interrupt should not occur.
+                                                         For CNF75XX, received unsupported P-TLP for Bar 0 from MAC 2. This occurs when the BAR 0
+                                                         address space
                                                          This can only be set by a PF and not a VF access.
                                                          Throws SLI_INTSN_E::SLI_INT_M2_UP_B0. */
-	uint64_t m1_un_wi                     : 1;  /**< Received unsupported N-TLP for window register from MAC 1. This occurs when the window
+	uint64_t m1_un_wi                     : 1;  /**< For CNF73XX, this interrupt should not occur.
+                                                         For CNF75XX, received unsupported N-TLP for window register from MAC 1. This occurs when
+                                                         the window
                                                          registers are disabled and a window register access occurs.
                                                          This can only be set by a PF and not a VF access.
                                                          Throws SLI_INTSN_E::SLI_INT_M1_UN_WI. */
-	uint64_t m1_un_b0                     : 1;  /**< Received unsupported N-TLP for Bar 0 from MAC 1. This occurs when the BAR 0 address space
+	uint64_t m1_un_b0                     : 1;  /**< For CNF73XX, this interrupt should not occur.
+                                                         For CNF75XX, received unsupported N-TLP for Bar 0 from MAC 1. This occurs when the BAR 0
+                                                         address space
                                                          is disabled.
                                                          This can only be set by a PF and not a VF access.
                                                          Throws SLI_INTSN_E::SLI_INT_M1_UN_B0. */
-	uint64_t m1_up_wi                     : 1;  /**< Received unsupported P-TLP for window register from MAC 1. This occurs when the window
+	uint64_t m1_up_wi                     : 1;  /**< For CNF73XX, this interrupt should not occur.
+                                                         For CNF75XX, received unsupported P-TLP for window register from MAC 1. This occurs when
+                                                         the window
                                                          registers are disabled and a window register access occurs.
                                                          This can only be set by a PF and not a VF access.
                                                          Throws SLI_INTSN_E::SLI_INT_M1_UP_WI. */
-	uint64_t m1_up_b0                     : 1;  /**< Received unsupported P-TLP for Bar 0 from MAC 1. This occurs when the BAR 0 address space
+	uint64_t m1_up_b0                     : 1;  /**< For CNF73XX, this interrupt should not occur.
+                                                         For CNF75XX, received unsupported P-TLP for Bar 0 from MAC 1. This occurs when the BAR 0
+                                                         address space
                                                          This can only be set by a PF and not a VF access.
                                                          Throws SLI_INTSN_E::SLI_INT_M1_UP_B0. */
 	uint64_t m0_un_wi                     : 1;  /**< Received unsupported N-TLP for window register from MAC 0. This occurs when the window
@@ -4397,39 +4421,57 @@ union cvmx_sli_ciu_int_sum {
 	uint64_t m0_up_b0                     : 1;  /**< Received unsupported P-TLP for Bar 0 from MAC 0. This occurs when the BAR 0 address space
                                                          This can only be set by a PF and not a VF access.
                                                          Throws SLI_INTSN_E::SLI_INT_M0_UP_B0. */
-	uint64_t m3p0_pppf_err                : 1;  /**< On SLI_PORT_E::SRIO1 PF0, when an error response is received for a PF PP transaction read,
+	uint64_t m3p0_pppf_err                : 1;  /**< For CNF73XX, this interrupt should not occur.
+                                                         For CNF75XX, on SLI_PORT_E::SRIO1 PF0, when an error response is received for a PF PP
+                                                         transaction read,
                                                          this bit is set.
                                                          Throws SLI_INTSN_E::SLI_INT_M3P0_PPPF_ERR. */
-	uint64_t m3p0_pktpf_err               : 1;  /**< On SLI_PORT_E::SRIO1 PF0, When an error response is received for a PF packet transaction
+	uint64_t m3p0_pktpf_err               : 1;  /**< For CNF73XX, this interrupt should not occur.
+                                                         For CNF75XX, on SLI_PORT_E::SRIO1 PF0, When an error response is received for a PF packet
+                                                         transaction
                                                          read or a doorbell overflow for a ring associated with this PF occurs, this bit is set.
                                                          Throws SLI_INTSN_E::SLI_INT_M3P0_PKTPF_ERR. */
-	uint64_t m3p0_dmapf_err               : 1;  /**< On SLI_PORT_E::SRIO1 PF0, when an error response is received for a PF DMA transaction
+	uint64_t m3p0_dmapf_err               : 1;  /**< For CNF73XX, this interrupt should not occur.
+                                                         For CNF75XX, on SLI_PORT_E::SRIO1 PF0, when an error response is received for a PF DMA
+                                                         transaction
                                                          read,
                                                          this bit is set.
                                                          Throws SLI_INTSN_E::SLI_INT_M3P0_DMAPF_ERR. */
-	uint64_t m2p0_pppf_err                : 1;  /**< On SLI_PORT_E::SRIO0 PF0, when an error response is received for a PF PP transaction read,
+	uint64_t m2p0_pppf_err                : 1;  /**< For CNF73XX, this interrupt should not occur.
+                                                         For CNF75XX, on SLI_PORT_E::SRIO0 PF0, when an error response is received for a PF PP
+                                                         transaction read,
                                                          this bit is set.
                                                          Throws SLI_INTSN_E::SLI_INT_M2P0_PPPF_ERR. */
 	uint64_t m2p0_ppvf_err                : 1;  /**< This interrupt should not occur.
                                                          Throws SLI_INTSN_E::SLI_INT_M2P0_PPVF_ERR. */
-	uint64_t m2p0_pktpf_err               : 1;  /**< On SLI_PORT_E::SRIO0 PF0, When an error response is received for a PF packet transaction
+	uint64_t m2p0_pktpf_err               : 1;  /**< For CNF73XX, this interrupt should not occur.
+                                                         For CNF75XX, on SLI_PORT_E::SRIO0 PF0, When an error response is received for a PF packet
+                                                         transaction
                                                          read or a doorbell overflow for a ring associated with this PF occurs, this bit is set.
                                                          Throws SLI_INTSN_E::SLI_INT_M2P0_PKTPF_ERR. */
 	uint64_t m2p0_pktvf_err               : 1;  /**< This interrupt should not occur.
                                                          Throws SLI_INTSN_E::SLI_INT_M2P0_PKTVF_ERR. */
-	uint64_t m2p0_dmapf_err               : 1;  /**< On SLI_PORT_E::SRIO0 PF0, when an error response is received for a PF DMA transaction
+	uint64_t m2p0_dmapf_err               : 1;  /**< For CNF73XX, this interrupt should not occur.
+                                                         For CNF75XX, on SLI_PORT_E::SRIO0 PF0, when an error response is received for a PF DMA
+                                                         transaction
                                                          read,
                                                          this bit is set.
                                                          Throws SLI_INTSN_E::SLI_INT_M2P0_DMAPF_ERR. */
 	uint64_t m2p0_dmavf_err               : 1;  /**< This interrupt should not occur.
                                                          Throws SLI_INTSN_E::SLI_INT_M2P0_DMAVF_ERR. */
-	uint64_t m1p0_pppf_err                : 1;  /**< On SLI_PORT_E::PEM1 PF0, when an error response is received for a PF PP transaction read,
+	uint64_t m1p0_pppf_err                : 1;  /**< For CNF73XX, this interrupt should not occur.
+                                                         For CNF75XX, on SLI_PORT_E::PEM1 PF0, when an error response is received for a PF PP
+                                                         transaction read,
                                                          this bit is set.
                                                          Throws SLI_INTSN_E::SLI_INT_M1P0_PPPF_ERR. */
-	uint64_t m1p0_pktpf_err               : 1;  /**< On SLI_PORT_E::PEM1 PF0, When an error response is received for a PF packet transaction
+	uint64_t m1p0_pktpf_err               : 1;  /**< For CNF73XX, this interrupt should not occur.
+                                                         For CNF75XX, on SLI_PORT_E::PEM1 PF0, When an error response is received for a PF packet
+                                                         transaction
                                                          read or a doorbell overflow for a ring associated with this PF occurs, this bit is set.
                                                          Throws SLI_INTSN_E::SLI_INT_M1P0_PKTPF_ERR. */
-	uint64_t m1p0_dmapf_err               : 1;  /**< On SLI_PORT_E::PEM1 PF0, when an error response is received for a PF DMA transaction read,
+	uint64_t m1p0_dmapf_err               : 1;  /**< For CNF73XX, this interrupt should not occur.
+                                                         For CNF75XX, on SLI_PORT_E::PEM1 PF0, when an error response is received for a PF DMA
+                                                         transaction read,
                                                          this bit is set.
                                                          Throws SLI_INTSN_E::SLI_INT_M1P0_DMAPF_ERR. */
 	uint64_t m0p1_pppf_err                : 1;  /**< This interrupt cannot occur.
@@ -4721,7 +4763,9 @@ union cvmx_sli_ctl_status {
 	struct cvmx_sli_ctl_status_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_32_63               : 32;
-	uint64_t m2s1_ncbi                    : 4;  /**< Contains the IOBI that traffic (inbound BAR1/BAR2 posted writes, inbound BAR1/BAR2
+	uint64_t m2s1_ncbi                    : 4;  /**< For CNF73XX, this field is reserved.
+                                                         For CNF75XX, contains the IOBI that traffic (inbound BAR1/BAR2 posted writes, inbound
+                                                         BAR1/BAR2
                                                          non-posted reads, outbound BAR1/BAR2 completions, and inbound CPU completions)
                                                          from SLI_PORT_E::SRIO0 and SLI_PORT_E::SRIO1 is placed on. Values 2-15 are reserved. */
 	uint64_t m2s0_ncbi                    : 4;  /**< Contains the IOBI that traffic  (inbound BAR1/BAR2 posted writes, inbound BAR1/BAR2
@@ -4851,9 +4895,12 @@ union cvmx_sli_data_out_cnt {
 	struct cvmx_sli_data_out_cnt_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_44_63               : 20;
-	uint64_t p1_ucnt                      : 16; /**< FIFO1 unload count. This counter is incremented by 1 every time a word is removed from
+	uint64_t p1_ucnt                      : 16; /**< For CNF73XX, reserved.
+                                                         For CNF75XX, FIFO1 unload count. This counter is incremented by 1 every time a word is removed from
                                                          data out FIFO1, whose count is shown in P1_FCNT. */
-	uint64_t p1_fcnt                      : 6;  /**< FIFO1 data out count. Number of address data words presently buffered in the FIFO1. MACs
+	uint64_t p1_fcnt                      : 6;  /**< For CNF73XX, reserved.
+                                                         For CNF75XX, FIFO1 data out count. Number of address data words presently
+                                                         buffered in the FIFO1. MACs
                                                          associated with FIFO1: SRIO0, SRIO1. */
 	uint64_t p0_ucnt                      : 16; /**< FIFO0 unload count. This counter is incremented by 1 every time a word is removed from
                                                          data out FIFO0, whose count is shown in P0_FCNT. */
@@ -8882,7 +8929,7 @@ typedef union cvmx_sli_msix_macx_pf_table_data cvmx_sli_msix_macx_pf_table_data_
  * cvmx_sli_msix_pba0
  *
  * The MSI-X pending bit array cannot be burst read.
- * In SRIO-V mode, a VF will find its pending completion interrupts in bit
+ * In SR-IOV mode, a VF will find its pending completion interrupts in bit
  * positions [(RPVF-1):0]. If RPVF<64, bits [63:RPVF] are returned as zero.
  *
  * Each VF can read their own pending completion interrupts based on the ring/VF
@@ -8909,7 +8956,7 @@ typedef union cvmx_sli_msix_macx_pf_table_data cvmx_sli_msix_macx_pf_table_data_
  * error interrupt in bit position [(TNR+1)]. Bits [63:(TNR+2)] are returned as zero.
  * When SLI_PKT_MAC()_PF()_RINFO[TRS]<63, SLI_MSIX_PBA1 is not used and returns zeros.
  *
- * If SRIO-V Mode is off there is no virtual function support, but the PF can configure up to 65
+ * If SR-IOV Mode is off there is no virtual function support, but the PF can configure up to 65
  * entries (up to 64 DPI Packet Rings plus 1 PF ring) for itself.
  */
 union cvmx_sli_msix_pba0 {
@@ -9400,7 +9447,7 @@ union cvmx_sli_pktx_input_control {
 	uint64_t pbp_dhi                      : 13; /**< Not used by hardware, but may be cleared by hardware when [RST] is set. */
 	uint64_t d_nsr                        : 1;  /**< If [USE_CSR]=1 (DPTR Format 0), [D_NSR] is ADDRTYPE<1> for First Direct and
                                                          Gather DPTR reads. ADDRTYPE<1> is the no-snoop attribute for PCIe.
-                                                         ADDRTYPE<1> helps select an SRIO()_S2M_TYPE() entry with sRIO.
+                                                         For CNF75XXX, ADDRTYPE<1> helps select an SRIO()_S2M_TYPE() entry with sRIO.
                                                          If [USE_CSR]=0 (DPTR Format 1), [D_NSR] is MACADD<61> for First Direct and
                                                          Gather DPTR reads. (ADDRTYPE<1> comes from DPTR<61> in these cases when
                                                          [USE_CSR]=0.) */
@@ -9411,8 +9458,8 @@ union cvmx_sli_pktx_input_control {
                                                          Gather DPTR reads. (ES<1:0> comes from DPTR<63:62> in these cases when
                                                          [USE_CSR]=0.) */
 	uint64_t d_ror                        : 1;  /**< If [USE_CSR]=1 (DPTR Format 0), [D_ROR] is ADDRTYPE<0> for First Direct and
-                                                         Gather DPTR reads. ADDRTYPE<0> is the relaxed-order attribute for PCIe. It helps
-                                                         select an SRIO()_S2M_TYPE() entry with sRIO.
+                                                         Gather DPTR reads. ADDRTYPE<0> is the relaxed-order attribute for PCIe.
+                                                         For CNF75XX, ADDRTYPE<0> helps select an SRIO()_S2M_TYPE() entry with sRIO.
                                                          If [USE_CSR]=0 (DPTR Format 1), [D_NSR] is MACADD<60> for First Direct and
                                                          Gather DPTR reads. (ADDRTYPE<0> comes from DPTR<60> in these cases when
                                                          [USE_CSR]=0.) */

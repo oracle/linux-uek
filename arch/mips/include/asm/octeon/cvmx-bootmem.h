@@ -42,7 +42,7 @@
  * Simple allocate only memory allocator.  Used to allocate memory at application
  * start time.
  *
- * <hr>$Revision: 130285 $<hr>
+ * <hr>$Revision: 169699 $<hr>
  *
  */
 
@@ -211,24 +211,6 @@ extern void *cvmx_bootmem_alloc_node(uint64_t node, uint64_t size, uint64_t alig
  */
 extern void *cvmx_bootmem_alloc_address(uint64_t size, uint64_t address,
 					uint64_t alignment);
-
-/**
- * Allocate a block of memory from the free list that was
- * passed to the application by the bootloader within a specified
- * address range. This is an allocate-only algorithm, so
- * freeing memory is not possible. Allocation will fail if
- * memory cannot be allocated in the requested range.
- *
- * @param size      Size in bytes of block to allocate
- * @param min_addr  defines the minimum address of the range
- * @param max_addr  defines the maximum address of the range
- * @param alignment Alignment required - must be power of 2
- * @param flags     Flags to control options for the allocation.
- * @return pointer to block of memory, NULL on error
- */
-extern void *cvmx_bootmem_alloc_range_flags(uint64_t size, uint64_t alignment,
-					    uint64_t min_addr,
-					    uint64_t max_addr, uint32_t flags);
 
 /**
  * Allocate a block of memory from the free list that was

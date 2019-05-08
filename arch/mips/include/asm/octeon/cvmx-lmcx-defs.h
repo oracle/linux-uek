@@ -2075,7 +2075,7 @@ union cvmx_lmcx_bank_conflict1 {
 	uint64_t u64;
 	struct cvmx_lmcx_bank_conflict1_s {
 #ifdef __BIG_ENDIAN_BITFIELD
-	uint64_t cnt                          : 64; /**< Bank conflict counter. A 64-bit counter that increments at every dclk
+	uint64_t cnt                          : 64; /**< Bank conflict counter. A 64-bit counter that increments at every DCLK
                                                          cycles when LMC could not issue R/W operations to the DRAM due to
                                                          bank conflict. This increments when all 8 In-Flight buffers are not
                                                          utilized. */
@@ -2095,7 +2095,7 @@ union cvmx_lmcx_bank_conflict2 {
 	uint64_t u64;
 	struct cvmx_lmcx_bank_conflict2_s {
 #ifdef __BIG_ENDIAN_BITFIELD
-	uint64_t cnt                          : 64; /**< Bank conflict counter. A 64-bit counter that increments at every dclk
+	uint64_t cnt                          : 64; /**< Bank conflict counter. A 64-bit counter that increments at every DCLK
                                                          cycles when LMC could not issue R/W operations to the DRAM due to
                                                          bank conflict. This increments only when there are less than 4 In-Flight
                                                          buffers occupied. */
@@ -2121,9 +2121,9 @@ union cvmx_lmcx_bist_ctl {
 	uint64_t reserved_5_63                : 59;
 	uint64_t macram_bist_status           : 1;  /**< Maximum Activate Counts RAM BIST status.
                                                          1 means fail. */
-	uint64_t dlcram_bist_status           : 1;  /**< DLC RAM BIST status; 1 means fail. */
+	uint64_t dlcram_bist_status           : 1;  /**< DLC RAM BIST status; one means fail. */
 	uint64_t dlcram_bist_done             : 1;  /**< DLC and MAC RAM BIST complete indication;
-                                                         1 means both RAMs have completed. */
+                                                         One means both RAMs have completed. */
 	uint64_t start_bist                   : 1;  /**< Start BIST on DLC and MAC memory. */
 	uint64_t reserved_0_0                 : 1;
 #else
@@ -2254,21 +2254,17 @@ union cvmx_lmcx_char_ctl {
 	struct cvmx_lmcx_char_ctl_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_54_63               : 10;
-	uint64_t dq_char_byte_check           : 1;  /**< When set, LMC performs loopback pattern check on a byte. The selection of the byte is
-                                                         controlled by the LMC()_CHAR_CTL[CSR DQ_CHAR_BYTE_SEL]. */
-	uint64_t dq_char_check_lock           : 1;  /**< Indicates if a lock has been achieved. Is set to 1 only if a lock is achieved during the
-                                                         LFSR priming period after DQ_CHAR_CHECK_ENABLE is set to 1, and is forced back to 0 when
-                                                         DQ_CHAR_CHECK_ENABLE is set to 0. */
-	uint64_t dq_char_check_enable         : 1;  /**< Enable DQ pattern check. The transition from disabled to enabled clears
-                                                         LMC()_CHAR_DQ_ERR_COUNT. */
-	uint64_t dq_char_bit_sel              : 3;  /**< Select a bit within the byte for DQ characterization pattern check. */
-	uint64_t dq_char_byte_sel             : 4;  /**< Select a byte of data for DQ characterization pattern check. */
-	uint64_t dr                           : 1;  /**< Pattern at data rate (not clock rate). */
-	uint64_t skew_on                      : 1;  /**< Skew adjacent bits. */
-	uint64_t en                           : 1;  /**< Enable characterization. */
-	uint64_t sel                          : 1;  /**< Pattern select: 0 = PRBS, 1 = programmable pattern. */
-	uint64_t prog                         : 8;  /**< Programmable pattern. */
-	uint64_t prbs                         : 32; /**< PRBS polynomial. */
+	uint64_t dq_char_byte_check           : 1;  /**< Reserved. */
+	uint64_t dq_char_check_lock           : 1;  /**< Reserved. */
+	uint64_t dq_char_check_enable         : 1;  /**< Reserved. */
+	uint64_t dq_char_bit_sel              : 3;  /**< Reserved. */
+	uint64_t dq_char_byte_sel             : 4;  /**< Reserved. */
+	uint64_t dr                           : 1;  /**< Reserved. */
+	uint64_t skew_on                      : 1;  /**< Reserved. */
+	uint64_t en                           : 1;  /**< Reserved. */
+	uint64_t sel                          : 1;  /**< Reserved. */
+	uint64_t prog                         : 8;  /**< Reserved. */
+	uint64_t prbs                         : 32; /**< The LFSR polynomials used when generating data sequence. See LMC()_DBTRAIN_CTL[LFSR_PATTERN_SEL]. */
 #else
 	uint64_t prbs                         : 32;
 	uint64_t prog                         : 8;
@@ -2403,8 +2399,8 @@ union cvmx_lmcx_char_mask0 {
 	struct cvmx_lmcx_char_mask0_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t mask                         : 64; /**< Mask for DQ0<63:0>.
-                                                         Before enabling ECC Corrupt generation logic by setting
-                                                         LMC()_ECC_PARITY_TEST[ECC_CORRUPT_ENA], set any the MASK bits to 1 to flip the
+                                                         Before enabling ECC corrupt generation logic by setting
+                                                         LMC()_ECC_PARITY_TEST[ECC_CORRUPT_ENA], set any the MASK bits to one to flip the
                                                          corresponding bits of the lower 64-bit dataword during a write data transfer. */
 #else
 	uint64_t mask                         : 64;
@@ -2472,7 +2468,7 @@ union cvmx_lmcx_char_mask2 {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t mask                         : 64; /**< Mask for DQ1<63:0>.
                                                          Before enabling ECC Corrupt generation logic by setting
-                                                         LMC()_ECC_PARITY_TEST[ECC_CORRUPT_ENA], set any the MASK bits to 1 to flip the
+                                                         LMC()_ECC_PARITY_TEST[ECC_CORRUPT_ENA], set any the MASK bits to one to flip the
                                                          corresponding bits of the upper 64-bit dataword during a write data transfer. */
 #else
 	uint64_t mask                         : 64;
@@ -2819,7 +2815,7 @@ union cvmx_lmcx_comp_ctl2 {
                                                            0x4 = 34 ohm.
                                                            0x5 = 40 ohm.
                                                            0x6 = 48 ohm.
-                                                           _ else = Reserved." */
+                                                           _ else = Reserved. */
 	uint64_t dqx_ctl                      : 4;  /**< Drive strength control for DDR_DQ* /DDR_CB* /DDR_DQS_*_P/N drivers.
                                                          0x1 = 24 ohm.
                                                          0x2 = 26.67 ohm.
@@ -3052,7 +3048,7 @@ typedef union cvmx_lmcx_comp_ctl2 cvmx_lmcx_comp_ctl2_t;
  * * Prior to the self-refresh exit sequence, LMC()_MODEREG_PARAMS0 should be reprogrammed
  * (if needed) to the appropriate values.
  *
- * See LMC Initialization Sequence for the LMC bring-up sequence.
+ * See LMC initialization sequence for the LMC bringup sequence.
  */
 union cvmx_lmcx_config {
 	uint64_t u64;
@@ -3060,9 +3056,9 @@ union cvmx_lmcx_config {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t lrdimm_ena                   : 1;  /**< Reserved. */
 	uint64_t bg2_enable                   : 1;  /**< BG1 enable bit. Only has an effect when LMC()_CONFIG[MODEDDR4] = 1.
-                                                         Set to 1 when using DDR4 x4 or x8 parts.
-                                                         Clear to 0 when using DDR4 x16 parts. */
-	uint64_t mode_x4dev                   : 1;  /**< DDR *4 device mode. */
+                                                         Set to one when using DDR4 x4 or x8 parts.
+                                                         Clear to zero when using DDR4 x16 parts. */
+	uint64_t mode_x4dev                   : 1;  /**< DDR x4 device mode. */
 	uint64_t mode32b                      : 1;  /**< 32-bit datapath mode. When set, only 32 DQ pins are used. */
 	uint64_t scrz                         : 1;  /**< Hide LMC()_SCRAMBLE_CFG0 and LMC()_SCRAMBLE_CFG1 when set. */
 	uint64_t early_unload_d1_r1           : 1;  /**< Reserved, MBZ. */
@@ -3095,7 +3091,7 @@ union cvmx_lmcx_config {
                                                          * DDR#_A<4> is swapped with DDR#_A<3>.
                                                          For CN70XX, MIRRMASK<3:2> MBZ.
                                                          * When RANK_ENA = 0, MIRRMASK<1> MBZ." */
-	uint64_t rankmask                     : 4;  /**< Mask to select rank to be leveled/initialized. To write-level/read-level/initialize rank
+	uint64_t rankmask                     : 4;  /**< Mask to select rank to be leveled/initialized. To write level/read level/initialize rank
                                                          i, set [RANKMASK]<i>:
                                                          <pre>
                                                                        RANK_ENA = 1   RANK_ENA = 0
@@ -3106,14 +3102,13 @@ union cvmx_lmcx_config {
                                                          </pre>
                                                          For read/write leveling, each rank has to be leveled separately, so [RANKMASK] should only
                                                          have one bit set. [RANKMASK] is not used during self-refresh entry/exit and precharge
-                                                         power-
-                                                         down entry/exit instruction sequences. When [RANK_ENA] = 0, [RANKMASK]<1> and
+                                                         power down entry/exit instruction sequences. When [RANK_ENA] = 0, [RANKMASK]<1> and
                                                          [RANKMASK]<3> MBZ. */
 	uint64_t rank_ena                     : 1;  /**< "RANK enable (for use with dual-rank DIMMs).
                                                          * For dual-rank DIMMs, the [RANK_ENA] bit will enable the drive of the DDR#_DIMM*_CS*_L
                                                          and
                                                          ODT_<1:0> pins differently based on the ([PBANK_LSB] - 1) address bit.
-                                                         * Write 0 for SINGLE ranked DIMMs." */
+                                                         * Write zero for SINGLE ranked DIMMs." */
 	uint64_t sref_with_dll                : 1;  /**< Self-refresh entry/exit write mode registers. When set, self-refresh entry sequence writes
                                                          MR2 and MR1 (in this order, in all ranks), and self-refresh exit sequence writes MR1, MR0,
                                                          MR2, and MR3 (in this order, for all ranks). The write operations occur before self-
@@ -3123,7 +3118,7 @@ union cvmx_lmcx_config {
                                                          lines have a larger delay than the CK line. */
 	uint64_t reserved_18_39               : 22;
 	uint64_t reset                        : 1;  /**< Reset one-shot pulse for LMC()_OPS_CNT, LMC()_IFB_CNT, and LMC()_DCLK_CNT.
-                                                         To cause the reset, software writes this to a 1, then rewrites it to a 0. */
+                                                         To cause the reset, software writes this to a one, then rewrites it to a zero. */
 	uint64_t ecc_adr                      : 1;  /**< Include memory reference address in the ECC calculation.
                                                          0 = disabled, 1 = enabled. */
 	uint64_t forcewrite                   : 4;  /**< Force the oldest outstanding write to complete after having waited for 2^[FORCEWRITE] CK
@@ -3171,20 +3166,20 @@ union cvmx_lmcx_config {
                                                          * Number of row bits of the memory part--specified indirectly by [PBANK_LSB].
                                                          * Number of ranks in a DIMM--specified by [RANK_ENA].
                                                          * Number of DIMMs in the system by the register below ([PBANK_LSB]).
-                                                         Column address starts from mem_addr[3] for 64b (8Bytes) DQ width. [ROW_LSB] is
+                                                         Column address starts from mem_addr[3] for 64b (8 bytes) DQ width. [ROW_LSB] is
                                                          mem_adr[15] for 64b mode. Therefore, the [ROW_LSB] parameter should be set to
                                                          0x1 (64b).
                                                          For example, for a DIMM made of Samsung's K4B1G0846C-F7 1GB (16M * 8 bit * 8 bank)
                                                          parts, the column address width = 10, so with 10b of col, 3b of bus, 3b of bank, ROW_LSB =
                                                          16. So, row = mem_adr<29:16>.
-                                                         Refer to Cache-block Read Transaction Example, Cache-block Read Transaction Example. */
-	uint64_t ecc_ena                      : 1;  /**< ECC enable. When set, enables the 8b ECC check/correct logic. Should be 1 when used with
-                                                         DIMMs with ECC; 0, otherwise.
+                                                         Refer to cache-block read transaction example, Cache-block read transaction example. */
+	uint64_t ecc_ena                      : 1;  /**< ECC enable. When set, enables the 8b ECC check/correct logic. Should be one when used with
+                                                         DIMMs with ECC; zero, otherwise.
                                                          * When this mode is turned on, DQ<71:64> on write operations contains the ECC code
                                                          generated for the 64 bits of data which will be written in the memory. Later on read
                                                          operations, will be used to check for single-bit error (which will be auto-corrected) and
                                                          double-bit error (which will be reported).
-                                                         * When not turned on, DQ<71:64> are driven to 0. Please refer to SEC_ERR, DED_ERR,
+                                                         * When not turned on, DQ<71:64> are driven to zero. Please refer to SEC_ERR, DED_ERR,
                                                          LMC()_FADR, and LMC()_ECC_SYND registers for diagnostics information when there is
                                                          an error. */
 	uint64_t init_start                   : 1;  /**< A 0->1 transition starts the DDR memory sequence that is
@@ -4545,7 +4540,7 @@ union cvmx_lmcx_control {
                                                          the bandwidth allocated to DFA reads. [CRM_MAX] is subdivided into two regions with DFA
                                                          reads being preferred over LMC reads/writes when [CRM_CNT] < [CRM_THR]. [CRM_CNT]
                                                          increments by
-                                                         1 when a DFA read is slotted and by 2 when a LMC read/write is slotted, and rolls over
+                                                         one when a DFA read is slotted and by 2 when a LMC read/write is slotted, and rolls over
                                                          when [CRM_MAX] is reached.
                                                          0x0 = Reserved. */
 	uint64_t rodt_bprch                   : 1;  /**< When set, the turn-off time for the ODT pin during a read command is delayed an additional
@@ -5789,8 +5784,8 @@ union cvmx_lmcx_dbtrain_ctl {
 	uint64_t tccd_sel                     : 1;  /**< When set, the sequence uses MODEREG_PARAMS3[TCCD_L] to space out
                                                          back-to-back read commands. Otherwise it will space out back-to-back
                                                          reads with a default value of 4 cycles.
-                                                         While in DRAM MPR mode, reads from Page 0 may use tCCD_S or tCCD_L.
-                                                         Reads from Pages 1, 2 or 3 however must use tCCD_L, thereby requring
+                                                         While in DRAM MPR mode, reads from page 0 may use tCCD_S or tCCD_L.
+                                                         Reads from pages 1, 2 or 3 however must use tCCD_L, thereby requiring
                                                          this bit to be set. */
 	uint64_t rw_train                     : 1;  /**< When set, the sequence will perform a Write to the DRAM
                                                          memory array using burst patern that are set in the CSRs
@@ -5807,7 +5802,7 @@ union cvmx_lmcx_dbtrain_ctl {
 	uint64_t activate                     : 1;  /**< Reserved. */
 	uint64_t prank                        : 2;  /**< Physical rank bits for read/write/activate operation. */
 	uint64_t lrank                        : 3;  /**< Reserved. */
-	uint64_t row_a                        : 18; /**< The row address for the Activate command. */
+	uint64_t row_a                        : 18; /**< The row address for the activate command. */
 	uint64_t bg                           : 2;  /**< The bank group that the R/W commands are directed to. */
 	uint64_t ba                           : 2;  /**< The bank address for the R/W commands are directed to. */
 	uint64_t column_a                     : 13; /**< Column address for the R/W operation. */
@@ -5892,8 +5887,8 @@ union cvmx_lmcx_dbtrain_ctl {
 	uint64_t tccd_sel                     : 1;  /**< When set, the sequence uses MODEREG_PARAMS3[TCCD_L] to space out
                                                          back-to-back read commands. Otherwise it will space out back-to-back
                                                          reads with a default value of 4 cycles.
-                                                         While in DRAM MPR mode, reads from Page 0 may use tCCD_S or tCCD_L.
-                                                         Reads from Pages 1, 2 or 3 however must use tCCD_L, thereby requring
+                                                         While in DRAM MPR mode, reads from page 0 may use tCCD_S or tCCD_L.
+                                                         Reads from pages 1, 2 or 3 however must use tCCD_L, thereby requiring
                                                          this bit to be set. */
 	uint64_t rw_train                     : 1;  /**< When set, the sequence will perform a Write to the DRAM
                                                          memory array using burst patern that are set in the CSRs
@@ -5910,7 +5905,7 @@ union cvmx_lmcx_dbtrain_ctl {
 	uint64_t activate                     : 1;  /**< Reserved. */
 	uint64_t prank                        : 2;  /**< Physical rank bits for read/write/activate operation. */
 	uint64_t lrank                        : 3;  /**< Reserved. */
-	uint64_t row_a                        : 18; /**< The row address for the Activate command. */
+	uint64_t row_a                        : 18; /**< The row address for the activate command. */
 	uint64_t bg                           : 2;  /**< The bank group that the R/W commands are directed to. */
 	uint64_t ba                           : 2;  /**< The bank address for the R/W commands are directed to. */
 	uint64_t column_a                     : 13; /**< Column address for the R/W operation. */
@@ -6370,21 +6365,21 @@ typedef union cvmx_lmcx_ddr4_dimm_ctl cvmx_lmcx_ddr4_dimm_ctl_t;
 /**
  * cvmx_lmc#_ddr_pll_ctl
  *
- * This register controls the DDR_CK frequency. For details, refer to CK Speed Programming. See
- * LMC Initialization Sequence for the initialization sequence.
- * DDR PLL Bringup sequence:
+ * This register controls the DDR_CK frequency. For details, refer to CK speed programming. See
+ * LMC initialization sequence for the initialization sequence.
+ * DDR PLL bringup sequence:
  *
- * 1. Write [CLKF], [DDR_PS_EN], DFM_PS_EN, DIFFAMP, CPS, CPB.
+ * 1. Write [CLKF], [CLKR], [DDR_PS_EN].
  *
- * 2. Wait 128 ref clock cycles (7680 rclk cycles).
+ * 2. Wait 128 ref clock cycles (7680 core-clock cycles).
  *
- * 3. Write 1 to RESET_N.
+ * 3. Write 1 to [RESET_N].
  *
- * 4. Wait 1152 ref clocks (1152*16 rclk cycles).
+ * 4. Wait 1152 ref clocks (1152*16 core-clock cycles).
  *
- * 5. Write 0 to DDR_DIV_RESET and DFM_DIV_RESET.
+ * 5. Write 0 to [DDR_DIV_RESET].
  *
- * 6. Wait 10 ref clock cycles (160 rclk cycles) before bringing up the DDR interface
+ * 6. Wait 10 ref clock cycles (160 core-clock cycles) before bringing up the DDR interface.
  */
 union cvmx_lmcx_ddr_pll_ctl {
 	uint64_t u64;
@@ -6393,7 +6388,7 @@ union cvmx_lmcx_ddr_pll_ctl {
 	uint64_t reserved_45_63               : 19;
 	uint64_t dclk_alt_refclk_sel          : 1;  /**< Select alternate reference clock for DCLK PLL. */
 	uint64_t bwadj                        : 12; /**< Bandwidth control for DCLK PLLs. */
-	uint64_t dclk_invert                  : 1;  /**< Invert dclk that feeds LMC/DDR at the south side of the chip. */
+	uint64_t dclk_invert                  : 1;  /**< Invert DCLK that feeds LMC/DDR at the south side of the chip. */
 	uint64_t phy_dcok                     : 1;  /**< Set to power up PHY logic after setting LMC()_DDR_PLL_CTL[DDR4_MODE]. */
 	uint64_t ddr4_mode                    : 1;  /**< DDR4 mode select: 1 = DDR4, 0 = DDR3. */
 	uint64_t pll_fbslip                   : 1;  /**< PLL FBSLIP indication. */
@@ -6566,7 +6561,7 @@ union cvmx_lmcx_ddr_pll_ctl {
                                                          0xF = Reserved.
                                                          [DDR_PS_EN] is not used when [DDR_DIV_RESET] = 1. */
 	uint64_t reserved_9_17                : 9;
-	uint64_t clkf_ext                     : 1;  /**< A 1-bit extension to the [CLKF] register to support for DDR4-2666. */
+	uint64_t clkf_ext                     : 1;  /**< A 1-bit extension to the [CLKF] register to support for DDR4-2666; effectively [CLKF]<7>. */
 	uint64_t reset_n                      : 1;  /**< PLL reset */
 	uint64_t clkf                         : 7;  /**< Multiply reference by [CLKF]. 31 <= [CLKF] <= 99. LMC PLL frequency = 50 * [CLKF]. min =
                                                          1.6
@@ -6820,7 +6815,7 @@ union cvmx_lmcx_dimm_ctl {
                                                          part. When Par_In is grounded, PARITY should be cleared to 0." */
 	uint64_t tcws                         : 13; /**< LMC waits for this time period before and after a RDIMM control word access during a
                                                          power-up/init SEQUENCE. TCWS is in multiples of 8 CK cycles.
-                                                         Set TCWS (CSR field) = RNDUP[TCWS(ns)/(8 * TCYC(ns))], where TCWS is the desired time
+                                                         Set [TCWS] (CSR field) = RNDUP[TCWS(ns)/(8 * TCYC(ns))], where TCWS is the desired time
                                                          (ns), and TCYC(ns) is the DDR clock frequency (not data rate).
                                                          TYP = 0x4E0 (equivalent to 15 us) when changing clock timing (RC2.DBA1, RC6.DA4, RC10.DA3,
                                                          RC10.DA4, RC11.DA3, and RC11.DA4)
@@ -6894,7 +6889,7 @@ typedef union cvmx_lmcx_dll_ctl cvmx_lmcx_dll_ctl_t;
 /**
  * cvmx_lmc#_dll_ctl2
  *
- * See LMC Initialization Sequence for the initialization sequence.
+ * See LMC initialization sequence for the initialization sequence.
  *
  */
 union cvmx_lmcx_dll_ctl2 {
@@ -7306,11 +7301,11 @@ union cvmx_lmcx_dual_memcfg {
 	uint64_t row_lsb                      : 3;  /**< Encoding used to determine which memory address bit position represents the low order DDR
                                                          ROW address. Refer to
                                                          LMC()_CONFIG[ROW_LSB].
-                                                         Refer to cache-block read transaction example. */
+                                                         Refer to cache block read transaction example. */
 	uint64_t reserved_8_15                : 8;
-	uint64_t cs_mask                      : 8;  /**< Chip-select mask. This mask corresponds to the four chip-select signals for a memory
+	uint64_t cs_mask                      : 8;  /**< Chip select mask. This mask corresponds to the four chip-select signals for a memory
                                                          configuration. Each reference address asserts one of the chip-select signals. If that
-                                                         chip-select signal has its corresponding CS_MASK bit set, then the config1 parameters are
+                                                         chip select signal has its corresponding CS_MASK bit set, then the config1 parameters are
                                                          used, otherwise the config0 parameters are used. */
 #else
 	uint64_t cs_mask                      : 8;
@@ -7383,14 +7378,14 @@ typedef union cvmx_lmcx_dual_memcfg cvmx_lmcx_dual_memcfg_t;
 /**
  * cvmx_lmc#_ecc_parity_test
  *
- * This register has bits to control the generation of ECC and Command Address parity errors.
+ * This register has bits to control the generation of ECC and command address parity errors.
  * ECC error is generated by enabling [CA_PARITY_CORRUPT_ENA] and selecting any of the
  * [ECC_CORRUPT_IDX] index of the dataword from the cacheline to be corrupted.
- * User needs to select which bit of the 128-bits dataword to corrupt by asserting any of the
+ * User needs to select which bit of the 128-bit dataword to corrupt by asserting any of the
  * CHAR_MASK0 and CHAR_MASK2 bits. (CHAR_MASK0 and CHAR_MASK2 corresponds to the lower and upper
  * 64-bit signal that can corrupt any individual bit of the data).
  *
- * Command Address parity error is generated by enabling [CA_PARITY_CORRUPT_ENA] and
+ * Command address parity error is generated by enabling [CA_PARITY_CORRUPT_ENA] and
  * selecting the DDR command that the parity is to be corrupted with through [CA_PARITY_SEL].
  */
 union cvmx_lmcx_ecc_parity_test {
@@ -7399,7 +7394,7 @@ union cvmx_lmcx_ecc_parity_test {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_12_63               : 52;
 	uint64_t ecc_corrupt_ena              : 1;  /**< Enables the ECC data corruption. */
-	uint64_t ecc_corrupt_idx              : 3;  /**< Selects the cacheline index that the dataword is to be corrupted with. */
+	uint64_t ecc_corrupt_idx              : 3;  /**< Selects the cacheline index with which the dataword is to be corrupted. */
 	uint64_t reserved_6_7                 : 2;
 	uint64_t ca_parity_corrupt_ena        : 1;  /**< Enables the CA parity bit corruption. */
 	uint64_t ca_parity_sel                : 5;  /**< Selects the type of DDR command to corrupt the parity bit.
@@ -7516,7 +7511,7 @@ union cvmx_lmcx_ext_config {
                                                          When set, MRS commands are directed to either the A or B
                                                          side of the RCD.
                                                          PDA operation is NOT allowed when this bit is set. In
-                                                         other words, MR_MPR_CTL[MR_WR_PDA_ENABLE]
+                                                         other words, [MR_WR_PDA_ENABLE]
                                                          must be cleared before running MRW sequence with this
                                                          bit turned on. */
 	uint64_t mrs_bside_invert_disable     : 1;  /**< When set, the command decoder cancels the auto inversion of
@@ -7526,14 +7521,14 @@ union cvmx_lmcx_ext_config {
                                                          RC00 DA[0] = 1 so that the output inversion is disabled in
                                                          the DDR4 RCD. */
 	uint64_t dimm_sel_invert_off          : 1;  /**< During coalesce_address_mode, the default logic would be to invert
-                                                         the pbank bit whenever NXM[MEM_MSB_D1_R0] > NXM[MEM_MSB_D0_R0].
-                                                         When this bit is set to 1, it disables this default behaviour.
+                                                         the pbank bit whenever [MEM_MSB_D1_R0] > [MEM_MSB_D0_R0].
+                                                         When this bit is set to one, it disables this default behavior.
                                                          This configuration has lower priority compared to
                                                          [DIMM_SEL_FORCE_INVERT]. */
-	uint64_t dimm_sel_force_invert        : 1;  /**< When set to 1, this bit forces the pbank bit to be inverted
-                                                         when in coalesce_address_mode. That is, pbank value of 0 selects
+	uint64_t dimm_sel_force_invert        : 1;  /**< When set to one, this bit forces the pbank bit to be inverted
+                                                         when in coalesce_address_mode. That is, pbank value of zero selects
                                                          DIMM1 instead of DIMM0.
-                                                         Intended to be use for the case of DIMM1 having bigger rank/s
+                                                         Intended to be used for the case of DIMM1 having bigger rank/s
                                                          than DIMM0. This bit has priority over [DIMM_SEL_INVERT_OFF]. */
 	uint64_t coalesce_address_mode        : 1;  /**< When set to 1, LMC coalesces the L2C+LMC internal address mapping
                                                          to create a uniform memory space that are free from holes in
@@ -7541,10 +7536,10 @@ union cvmx_lmcx_ext_config {
                                                          the higher capacity is mapped to the lower address space. */
 	uint64_t dimm1_cid                    : 2;  /**< Reserved. */
 	uint64_t dimm0_cid                    : 2;  /**< Reserved. */
-	uint64_t rcd_parity_check             : 1;  /**< Enables the one cycle delay of the CA parity output. This MUST be set to 1 when using DDR4
-                                                         RDIMM AND parity checking in RCD is enabled (RC0E DA0 = 1). Set this to 0 otherwise.
-                                                         To enable the parity checking in RCD, set this bit first BEFORE issuing the RCW write RC0E
-                                                         DA0 = 1. */
+	uint64_t rcd_parity_check             : 1;  /**< Enables the one cycle delay of the CA parity output. This MUST be set to one
+                                                         when using DDR4 RDIMM AND parity checking in RCD is enabled (RC0E DA0 = 1). Set
+                                                         this to zero otherwise. To enable the parity checking in RCD, set this bit first
+                                                         BEFORE issuing the RCW write RC0E DA0 = 1. */
 	uint64_t reserved_46_47               : 2;
 	uint64_t error_alert_n_sample         : 1;  /**< Read to get a sample of the DDR*_ERROR_ALERT_L signal. */
 	uint64_t ea_int_polarity              : 1;  /**< Set to invert DDR*_ERROR_ALERT_L interrupt polarity. When clear, interrupt is signaled on
@@ -7565,7 +7560,7 @@ union cvmx_lmcx_ext_config {
                                                          If this bit is clear, select operation where signals other than CS are active before and
                                                          after the CS_N active cycle.
                                                          When this bit is set, select the operation where the other command signals (DDR*_RAS_L,
-                                                         DDR*_CAS_L, DDR*_WE_L, DDR*_A<15:0>, etc) all are active only during the cycle where the
+                                                         DDR*_CAS_L, DDR*_WE_L, DDR*_A<15:0>, etc.) all are active only during the cycle where the
                                                          CS_N is also active. */
 	uint64_t reserved_33_35               : 3;
 	uint64_t invert_data                  : 1;  /**< Set this bit to cause all data to be inverted before writing or reading to/from DRAM. This
@@ -7602,8 +7597,13 @@ union cvmx_lmcx_ext_config {
 	uint64_t dlcram_flip_synd             : 2;  /**< Reserved. */
 	uint64_t dlcram_cor_dis               : 1;  /**< Reserved. */
 	uint64_t dlc_nxm_rd                   : 1;  /**< Reserved. */
-	uint64_t l2c_nxm_rd                   : 1;  /**< When set, enable NXM events for L2C read operations. */
-	uint64_t l2c_nxm_wr                   : 1;  /**< When set, enable NXM events for L2C write operations. */
+	uint64_t l2c_nxm_rd                   : 1;  /**< When set, corresponding LMC()_INT[NXM_WR_ERR] will be set and LMC()_NXM_FADR will be
+                                                         loaded for L2C NXM read operations. NXM read operations may occur during normal operation
+                                                         (due to prefetches), so [L2C_NXM_RD] should not be set during normal operation to allow
+                                                         LMC()_INT[NXM_WR_ERR] to indicate NXM writes. */
+	uint64_t l2c_nxm_wr                   : 1;  /**< When set, corresponding LMC()_INT[NXM_WR_ERR] will be set and LMC()_NXM_FADR will be
+                                                         loaded for L2C NXM write operations. NXM writes are generally an indication of
+                                                         failure, so [L2C_NXM_WR] can generally be set. */
 #else
 	uint64_t l2c_nxm_wr                   : 1;
 	uint64_t l2c_nxm_rd                   : 1;
@@ -7861,7 +7861,7 @@ union cvmx_lmcx_ext_config2 {
 	uint64_t delay_unload_r0              : 1;  /**< Reserved, MBZ. */
 	uint64_t early_dqx2                   : 1;  /**< Similar to LMC()_CONFIG[EARLY_DQX]. This field provides an additional setting to send DQx
                                                          signals one more CK cycle earlier on top of LMC()_CONFIG[EARLY_DQX]. */
-	uint64_t xor_bank_sel                 : 4;  /**< When LMC()_CONTROL[XOR_BANK] is set to 1, this field selects which
+	uint64_t xor_bank_sel                 : 4;  /**< When LMC()_CONTROL[XOR_BANK] is set to one, this field selects which
                                                           L2C-LMC address bits are used to XOR the bank bits with.
                                                           The address selection is as follows:
                                                          - 0:  bank<3:0> = address<10:7> ^ address<15:12>
@@ -7885,7 +7885,7 @@ union cvmx_lmcx_ext_config2 {
                                                          address (bit 5 in 32-bit mode) becomes the low order DDR ROW address bit.
                                                          The upper DDR COLUMN address portion is selected using LMC()_CONFIG[ROW_LSB]
                                                          (and LMC()_DUAL_MEMCFG[ROW_LSB] for dual-memory configuration).
-                                                         It is recommended to set this bit to 1 when TRR_ON is set. */
+                                                         It is recommended to set this bit to one when TRR_ON is set. */
 	uint64_t trr_on                       : 1;  /**< When set, this enables row activates counts of the
                                                          DRAM used in target row refresh mode. This bit can
                                                          be safely set after the LMC()_EXT_CONFIG2[MACRAM_SCRUB_DONE]
@@ -7975,7 +7975,7 @@ union cvmx_lmcx_ext_config2 {
 	uint64_t delay_unload_r0              : 1;  /**< Reserved, MBZ. */
 	uint64_t early_dqx2                   : 1;  /**< Similar to LMC()_CONFIG[EARLY_DQX]. This field provides an additional setting to send DQx
                                                          signals one more CK cycle earlier on top of LMC()_CONFIG[EARLY_DQX]. */
-	uint64_t xor_bank_sel                 : 4;  /**< When LMC()_CONTROL[XOR_BANK] is set to 1, this field selects which
+	uint64_t xor_bank_sel                 : 4;  /**< When LMC()_CONTROL[XOR_BANK] is set to one, this field selects which
                                                           L2C-LMC address bits are used to XOR the bank bits with.
                                                           The address selection is as follows:
                                                          - 0:  bank<3:0> = address<10:7> ^ address<15:12>
@@ -7999,7 +7999,7 @@ union cvmx_lmcx_ext_config2 {
                                                          address (bit 5 in 32-bit mode) becomes the low order DDR ROW address bit.
                                                          The upper DDR COLUMN address portion is selected using LMC()_CONFIG[ROW_LSB]
                                                          (and LMC()_DUAL_MEMCFG[ROW_LSB] for dual-memory configuration).
-                                                         It is recommended to set this bit to 1 when TRR_ON is set. */
+                                                         It is recommended to set this bit to one when TRR_ON is set. */
 	uint64_t trr_on                       : 1;  /**< When set, this enables row activates counts of the
                                                          DRAM used in target row refresh mode. This bit can
                                                          be safely set after the LMC()_EXT_CONFIG2[MACRAM_SCRUB_DONE]
@@ -8346,35 +8346,71 @@ union cvmx_lmcx_int {
 	struct cvmx_lmcx_int_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_14_63               : 50;
-	uint64_t macram_ded_err               : 1;  /**< MAC RAM ECC double error detect (DED). */
-	uint64_t macram_sec_err               : 1;  /**< MAC RAM ECC single error correct (SEC). */
-	uint64_t ddr_err                      : 1;  /**< DDR RAM error alert interrupt. */
+	uint64_t macram_ded_err               : 1;  /**< Reserved. */
+	uint64_t macram_sec_err               : 1;  /**< Reserved. */
+	uint64_t ddr_err                      : 1;  /**< DDR RAM error alert interrupt.
+                                                         Asserts whenever the corresponding DDR*_ERROR_ALERT_L pin (e.g. DDR4 ALERT_n)
+                                                         asserts.
+                                                         If LMC is auto-retrying address parity and/or write CRC errors, i.e. if
+                                                         LMC()_RETRY_CONFIG[RETRY_ENABLE,AUTO_ERROR_CONTINUE]=1,1
+                                                         (LMC()_MODEREG_PARAMS3[CA_PAR_PERS] should also be set - the DRAM should
+                                                         be in persistent parity error mode), then the DDR_ERR interrupt routine
+                                                         should:
+                                                           <pre>
+                                                           X=LMC()_RETRY_STATUS[ERROR_COUNT]
+                                                           do [
+                                                           Y = X
+                                                           Wait approximately 100ns
+                                                           Write a one to [DDR_ERR] to clear it (if set)
+                                                           X = LMC()_RETRY_STATUS[ERROR_COUNT]
+                                                           ] while (X != Y);
+                                                           Write LMC()_RETRY_STATUS[CLEAR_ERROR_COUNT]=1 (to clear
+                                                           LMC()_RETRY_STATUS[ERROR_COUNT])
+                                                           </pre>
+                                                         If X < LMC()_RETRY_CONFIG[MAX_ERRORS] after this sequence, assume that
+                                                         the hardware successfully corrected the error - software may
+                                                         choose to count the number of these errors. Else consider the error
+                                                         to be uncorrected and possibly fatal.
+                                                         Otherwise, if LMC is not auto-retrying, a [DDR_ERR] error may always be
+                                                         considered fatal. */
 	uint64_t dlcram_ded_err               : 1;  /**< DLC RAM ECC double error detect (DED). */
 	uint64_t dlcram_sec_err               : 1;  /**< DLC RAM ECC single error correct (SEC). */
-	uint64_t ded_err                      : 4;  /**< Double error detected (DED) of Rd Data.
+	uint64_t ded_err                      : 4;  /**< Double-bit error detected on a DRAM read. Generally an indication of DRAM
+                                                         corruption and may be considered fatal.
                                                          In 64b mode:
-                                                         _ <5> corresponds to DQ[63:0]_c0_p0
-                                                         _ <6> corresponds to DQ[63:0]_c0_p1
-                                                         _ <7> corresponds to DQ[63:0]_c1_p0
-                                                         _ <8> corresponds to DQ[63:0]_c1_p1
+                                                         _ <5> corresponds to DQ[63:0]_c0_p0.
+                                                         _ <6> corresponds to DQ[63:0]_c0_p1.
+                                                         _ <7> corresponds to DQ[63:0]_c1_p0.
+                                                         _ <8> corresponds to DQ[63:0]_c1_p1.
                                                          _ where _cC_pP denotes cycle C and phase P.
                                                          In 32b mode, each bit corresponds to 2 phases:
-                                                         _ <5> corresponds to DQ[31:0]_c0_p1/0
-                                                         _ <6> corresponds to DQ[31:0]_c1_p1/0
-                                                         _ <7> corresponds to DQ[31:0]_c2_p1/0
-                                                         _ <8> corresponds to DQ[31:0]_c3_p1/0 */
-	uint64_t sec_err                      : 4;  /**< Single error (corrected) of Rd Data.
-                                                         _ <1> corresponds to DQ[63:0]_c0_p0
-                                                         _ <2> corresponds to DQ[63:0]_c0_p1
-                                                         _ <3> corresponds to DQ[63:0]_c1_p0
-                                                         _ <4> corresponds to DQ[63:0]_c1_p1
+                                                         _ <5> corresponds to DQ[31:0]_c0_p1/0.
+                                                         _ <6> corresponds to DQ[31:0]_c1_p1/0.
+                                                         _ <7> corresponds to DQ[31:0]_c2_p1/0.
+                                                         _ <8> corresponds to DQ[31:0]_c3_p1/0. */
+	uint64_t sec_err                      : 4;  /**< Single-bit error detected on a DRAM read.
+                                                         When any of [SEC_ERR<3:0>] are set, hardware corrected the error before using the value,
+                                                         but did not correct any stored value. When any of [SEC_ERR<3:0>] are set, software should
+                                                         scrub the memory location whose address is in LMC()_SCRAMBLED_FADR before clearing the
+                                                         [SEC_ERR<3:0>] bits. Otherwise, hardware may encounter the error again the next time the
+                                                         same memory location is referenced. We recommend that the entire 128-byte cache block be
+                                                         scrubbed via load-exclusive/store-release instructions, but other methods are possible.
+                                                         Software may also choose to count the number of these single-bit errors.
+                                                         In 64b mode:
+                                                         _ <1> corresponds to DQ[63:0]_c0_p0.
+                                                         _ <2> corresponds to DQ[63:0]_c0_p1.
+                                                         _ <3> corresponds to DQ[63:0]_c1_p0.
+                                                         _ <4> corresponds to DQ[63:0]_c1_p1.
                                                          _ where _cC_pP denotes cycle C and phase P.
                                                          In 32b mode, each bit corresponds to 2 phases:
-                                                         <5> corresponds to DQ[31:0]_c0_p1/0
-                                                         <6> corresponds to DQ[31:0]_c1_p1/0
-                                                         <7> corresponds to DQ[31:0]_c2_p1/0
-                                                         <8> corresponds to DQ[31:0]_c3_p1/0 */
-	uint64_t nxm_wr_err                   : 1;  /**< Write to nonexistent memory. */
+                                                         _ <1> corresponds to DQ[31:0]_c0_p1/0.
+                                                         _ <2> corresponds to DQ[31:0]_c1_p1/0.
+                                                         _ <3> corresponds to DQ[31:0]_c2_p1/0.
+                                                         _ <4> corresponds to DQ[31:0]_c3_p1/0. */
+	uint64_t nxm_wr_err                   : 1;  /**< When set, indicates an access to nonexistent memory. Normally only NXM writes,
+                                                         but LMC()_EXT_CONFIG[L2C_NXM_RD,L2C_NXM_WR] actually determine whether NXM reads and
+                                                         writes (respectively) participate in [NXM_WR_ERR]. NXM writes are generally an indication
+                                                         of failure. When [LMC()_NXM_FADR] is set, LMC()_NXM_FADR indicates the NXM address. */
 #else
 	uint64_t nxm_wr_err                   : 1;
 	uint64_t sec_err                      : 4;
@@ -9377,10 +9413,10 @@ union cvmx_lmcx_modereg_params1 {
 	struct cvmx_lmcx_modereg_params1_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_55_63               : 9;
-	uint64_t rtt_wr_11_ext                : 1;  /**< RTT_WR rank 3 extension bit for DDR4. */
-	uint64_t rtt_wr_10_ext                : 1;  /**< RTT_WR rank 2 extension bit for DDR4. */
-	uint64_t rtt_wr_01_ext                : 1;  /**< RTT_WR rank 1 extension bit for DDR4. */
-	uint64_t rtt_wr_00_ext                : 1;  /**< RTT_WR rank 0 extension bit for DDR4. */
+	uint64_t rtt_wr_11_ext                : 1;  /**< RTT_WR rank 3 extension bit for DDR4; effectively [RTT_WR_11]<2>. */
+	uint64_t rtt_wr_10_ext                : 1;  /**< RTT_WR rank 2 extension bit for DDR4; effectively [RTT_WR_10]<2>. */
+	uint64_t rtt_wr_01_ext                : 1;  /**< RTT_WR rank 1 extension bit for DDR4; effectively [RTT_WR_01]<2>. */
+	uint64_t rtt_wr_00_ext                : 1;  /**< RTT_WR rank 0 extension bit for DDR4; effectively [RTT_WR_00]<2>. */
 	uint64_t db_output_impedance          : 3;  /**< Reserved. */
 	uint64_t rtt_nom_11                   : 3;  /**< RTT_NOM rank 3. LMC writes this value to MR1[RTT_NOM] in the rank 3 (i.e. DIMM1_CS1) DDR3
                                                          parts when selected during power-up/init, write-leveling, and, if
@@ -9970,8 +10006,8 @@ union cvmx_lmcx_mpr_data0 {
 	uint64_t u64;
 	struct cvmx_lmcx_mpr_data0_s {
 #ifdef __BIG_ENDIAN_BITFIELD
-	uint64_t mpr_data                     : 64; /**< MPR data bits<63:0>. Bits<7:0> represent the MPR data for the lowest-order *4 device (*4
-                                                         device 0); bits<15:8> represent *4 device 1; ..., bits<63:56> are for *4 device 7.
+	uint64_t mpr_data                     : 64; /**< MPR data bits<63:0>. Bits<7:0> represent the MPR data for the lowest-order x4 device (x4
+                                                         device 0); bits<15:8> represent x4 device 1; ..., bits<63:56> are for x4 device 7.
                                                          This field is also used to store the results after running the general R/W training
                                                          sequence (LMC()_SEQ_CTL[SEQ_SEL] = 0xE).
                                                          The format of the stored results is controlled by LMC()_DBTRAIN_CTL[RW_TRAIN].
@@ -10002,8 +10038,8 @@ union cvmx_lmcx_mpr_data1 {
 	uint64_t u64;
 	struct cvmx_lmcx_mpr_data1_s {
 #ifdef __BIG_ENDIAN_BITFIELD
-	uint64_t mpr_data                     : 64; /**< MPR data bits<127:64>. Bits<7:0> represent the MPR data for *4 device 8; bits<15:8>
-                                                         represent *4 device 9; ...; bits<63:56> are for *4 device 15.
+	uint64_t mpr_data                     : 64; /**< MPR data bits<127:64>. Bits<7:0> represent the MPR data for x4 device 8; bits<15:8>
+                                                         represent x4 device 9; ...; bits<63:56> are for x4 device 15.
                                                          This field is also used to store the results after running the general R/W training
                                                          sequence (LMC()_SEQ_CTL[SEQ_SEL] = 0xE).
                                                          The format of the stored results is controlled by LMC()_DBTRAIN_CTL[RW_TRAIN].
@@ -10036,8 +10072,8 @@ union cvmx_lmcx_mpr_data2 {
 	struct cvmx_lmcx_mpr_data2_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_16_63               : 48;
-	uint64_t mpr_data                     : 16; /**< MPR data bits<143:128>. Bits<7:0> represent the MPR data for *4 device 16; bits<15:8>
-                                                         represent *4 device 17.
+	uint64_t mpr_data                     : 16; /**< MPR data bits<143:128>. Bits<7:0> represent the MPR data for x4 device 16; bits<15:8>
+                                                         represent x4 device 17.
                                                          This field is also used to store the results after running the general R/W training
                                                          sequence (LMC()_SEQ_CTL[SEQ_SEL] = 0xE).
                                                          The format of the stored results is controlled by LMC()_DBTRAIN_CTL[RW_TRAIN].
@@ -10072,7 +10108,7 @@ union cvmx_lmcx_mr_mpr_ctl {
 	uint64_t mr_wr_secure_key_ena         : 1;  /**< When set, this enables the issuing of security key with the
                                                          unique address field A[17:0] set by LMC()_MR_MPR_CTL[MR_WR_ADDR]
                                                          during the MRW sequence.
-                                                         Set this to 1 when executing DRAM post package repair manually
+                                                         Set this to one when executing DRAM post package repair manually
                                                          by using MRW operation. */
 	uint64_t pba_func_space               : 3;  /**< Set the function space selector during PBA mode of the MRW
                                                          sequence. */
@@ -10087,25 +10123,25 @@ union cvmx_lmcx_mr_mpr_ctl {
 	uint64_t mpr_whole_byte_enable        : 1;  /**< Reserved. */
 	uint64_t mpr_byte_select              : 4;  /**< Reserved. */
 	uint64_t mpr_bit_select               : 2;  /**< Select which of four bits to read for each nibble of DRAM data. Typically all four bits
-                                                         from a *4 device, or all eight bits from a *8 device, or all 16 bits from a *16 device
+                                                         from a x4 device, or all eight bits from a x8 device, or all 16 bits from a x16 device
                                                          carry the same data, but this field allows selection of which device bit will be used to
                                                          read the MPR data. */
 	uint64_t mpr_wr                       : 1;  /**< MPR sequence will perform a write operation when set. */
 	uint64_t mpr_loc                      : 2;  /**< MPR location select for MPR sequence. Only makes a difference for DDR4. */
 	uint64_t mr_wr_pda_enable             : 1;  /**< PDA write enable. When set, MRW operations use PDA, enabled by MR_WR_PDA_MASK per device.
                                                          Only available for DDR4 devices. */
-	uint64_t mr_wr_pda_mask               : 18; /**< PDA mask. If MR_WR_PDA_ENABLE = 1 and there is a 1 in the bit for this mask value, then
+	uint64_t mr_wr_pda_mask               : 18; /**< PDA mask. If MR_WR_PDA_ENABLE = 1 and there is a one in the bit for this mask value, then
                                                          the corresponding DRAM device is enabled for the PDA MR write operation.
-                                                         Bit<23> corresponds to the lowest order, *4 device, and bit<40> corresponds to the highest
-                                                         order *4 device, for a total of up to 18 devices. */
+                                                         Bit<23> corresponds to the lowest order, x4 device, and bit<40> corresponds to the highest
+                                                         order x4 device, for a total of up to 18 devices. */
 	uint64_t mr_wr_rank                   : 2;  /**< Selects the DRAM rank for either MRW or MPR sequences. */
 	uint64_t mr_wr_sel                    : 3;  /**< Selects which MR to write with the MR write sequence.
                                                          Which pins to drive and how to drive them is automatically controlled through the DDR3/4
                                                          mode setting. Bits<19:18> are also used to select the MPR page for an MPR sequence.
                                                          A value of 0x7 selects an RCW write for both DDR4 and DDR3 MRW operations. */
-	uint64_t mr_wr_addr                   : 18; /**< Sets a value for A<17:0> for MR write operations. Note that many of these bits must be 0
-                                                         for various MRs. Bits<7:0> are also used for write data on an MPR sequence write
-                                                         operation. */
+	uint64_t mr_wr_addr                   : 18; /**< Sets a value for A<17:0> for MR write operations. Note that many of these bits
+                                                         must be zero for various MRs. Bits<7:0> are also used for write data on an MPR
+                                                         sequence write operation. */
 #else
 	uint64_t mr_wr_addr                   : 18;
 	uint64_t mr_wr_sel                    : 3;
@@ -10188,8 +10224,8 @@ union cvmx_lmcx_ns_ctl {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_26_63               : 38;
 	uint64_t ns_scramble_dis              : 1;  /**< When set, this field disables data scrambling on nonsecure accesses only.
-                                                         When data scrambling is enabled by setting CONTROL[SCRAMBLE_ENA] to 1, this
-                                                         field needs to be cleared to 0 in order to enable data scrambling on
+                                                         When data scrambling is enabled by setting CONTROL[SCRAMBLE_ENA] to one, this
+                                                         field needs to be cleared to zero in order to enable data scrambling on
                                                          nonsecure mode. */
 	uint64_t reserved_18_24               : 7;
 	uint64_t adr_offset                   : 18; /**< Sets the offset to the upper 18 bits of L2C-LMC address when a nonsecure mode
@@ -10335,18 +10371,18 @@ typedef union cvmx_lmcx_nxm cvmx_lmcx_nxm_t;
 /**
  * cvmx_lmc#_nxm_fadr
  *
- * This register captures only the first transaction with a NXM error while an interrupt is
- * pending, and only captures a subsequent event once the interrupt is cleared by writing a 1 to
- * LMC()_INT[NXM_ERR]. It captures the actual L2C-LMC address provided to the LMC that caused
- * the NXM error. A read or write NXM error is captured only if enabled using the NXM event
- * enables.
+ * This register captures only the first transaction with a NXM error while an
+ * interrupt is pending, and only captures a subsequent event once the interrupt is
+ * cleared by writing a one to LMC()_INT[NXM_ERR]. It captures the actual L2C-LMC
+ * address provided to the LMC that caused the NXM error. A read or write NXM error is
+ * captured only if enabled using the NXM event enables.
  */
 union cvmx_lmcx_nxm_fadr {
 	uint64_t u64;
 	struct cvmx_lmcx_nxm_fadr_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_40_63               : 24;
-	uint64_t nxm_faddr_ext                : 1;  /**< Extended bit for the Failing L2C-LMC address (bit 37). */
+	uint64_t nxm_faddr_ext                : 1;  /**< Extended bit for the failing L2C-LMC address (bit 37). */
 	uint64_t nxm_src                      : 1;  /**< Indicates the source of the operation that caused a NXM error:
                                                          0 = L2C.
                                                          1 = Reserved. */
@@ -11096,7 +11132,7 @@ union cvmx_lmcx_ppr_ctl {
 	uint64_t lrank_sel                    : 3;  /**< Selects which logical rank to perform the post package repair sequence.
                                                          Package ranks are selected by LMC()_MR_MPR_CTL[MR_WR_RANK]. */
 	uint64_t skip_issue_security          : 1;  /**< Personality bit for the PPR sequence. When set, this field forces the sequence to skip
-                                                         issuing four consecutive MR0 commands that suppliy the security key. */
+                                                         issuing four consecutive MR0 commands that supply the security key. */
 	uint64_t sppr                         : 1;  /**< Personality bit for the PPR sequence. When set, this field forces the sequence to run
                                                          the soft PPR mode. */
 	uint64_t tpgm                         : 10; /**< Indicates the programming time (tPGM) constraint used when running PPR sequence.
@@ -11106,7 +11142,7 @@ union cvmx_lmcx_ppr_ctl {
                                                          RNDUP[TPGM(ns) / TCYC(ns))].
                                                          [TPGM] is from the JEDEC DDR4 spec, and TCYC(ns) is the DDR clock frequency (not data
                                                          rate). */
-	uint64_t tpgm_exit                    : 5;  /**< Indicates PPR exit time (tPGM_Exit) contrainst used when running PPR sequence.
+	uint64_t tpgm_exit                    : 5;  /**< Indicates PPR exit time (tPGM_Exit) constraint used when running PPR sequence.
                                                          Set this field as follows:
                                                          _ RNDUP[TPGM_EXIT(ns) / TCYC(ns)]
                                                          where [TPGM_EXIT] is from the JEDEC DDR4 spec, and TCYC(ns) is the DDR clock frequency
@@ -11141,7 +11177,7 @@ union cvmx_lmcx_ppr_ctl {
                                                          RNDUP[TPGM(ns) / TCYC(ns))].
                                                          [TPGM] is from the JEDEC DDR4 spec, and TCYC(ns) is the DDR clock frequency (not data
                                                          rate). */
-	uint64_t tpgm_exit                    : 5;  /**< Indicates PPR exit time (tPGM_Exit) contrainst used when running PPR sequence.
+	uint64_t tpgm_exit                    : 5;  /**< Indicates PPR exit time (tPGM_Exit) constraint used when running PPR sequence.
                                                          Set this field as follows:
                                                          _ RNDUP[TPGM_EXIT(ns) / TCYC(ns)]
                                                          where [TPGM_EXIT] is from the JEDEC DDR4 spec, and TCYC(ns) is the DDR clock frequency
@@ -11307,7 +11343,8 @@ union cvmx_lmcx_ref_status {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_4_63                : 60;
 	uint64_t ref_pend_max_clr             : 1;  /**< Indicates that the number of pending refreshes has reached 7, requiring
-                                                         software to clear the flag by setting this field to 1. */
+                                                         software to clear the flag by setting this field to 1.
+                                                         This is only useful when LMC()_EXT_CONFIG[REF_BLOCK] mode is engaged. */
 	uint64_t ref_count                    : 3;  /**< Reads back the number of pending refreshes that LMC has yet to execute. */
 #else
 	uint64_t ref_count                    : 3;
@@ -11410,14 +11447,14 @@ union cvmx_lmcx_retry_config {
 	uint64_t max_errors                   : 24; /**< Maximum number of errors before errors are ignored. */
 	uint64_t reserved_13_31               : 19;
 	uint64_t error_continue               : 1;  /**< If LMC()_RETRY_CONFIG[AUTO_ERROR_CONTINUE] is cleared, LMC will wait
-                                                         for a 1 to be written to LMC()_RETRY_CONFIG[ERROR_CONTINUE] before
+                                                         for a one to be written to LMC()_RETRY_CONFIG[ERROR_CONTINUE] before
                                                          continuing operations after an error. */
 	uint64_t reserved_9_11                : 3;
 	uint64_t auto_error_continue          : 1;  /**< When set, LMC will automatically proceed with error handling and normal
                                                          operation after an error occurs.  If clear, LMC will cease all operations
                                                          except for refresh as soon as possible, and will not continue with error
                                                          handling or normal operation until LMC()_RETRY_CONFIG[ERROR_CONTINUE]
-                                                         is written with a 1. */
+                                                         is written with a one. */
 	uint64_t reserved_5_7                 : 3;
 	uint64_t pulse_count_auto_clr         : 1;  /**< When set, LMC()_RETRY_STATUS[ERROR_PULSE_COUNT_VALID] will clear
                                                          whenever the error interrupt is cleared. */
@@ -11456,14 +11493,14 @@ union cvmx_lmcx_retry_status {
 	uint64_t clear_error_pulse_count      : 1;  /**< Clear the error count, one shot operation. */
 	uint64_t reserved_57_61               : 5;
 	uint64_t error_pulse_count_valid      : 1;  /**< When set and the count is valid, indicates that the counter has saturated,
-                                                         which effectively indicates that a command error has occured and not a CRC
+                                                         which effectively indicates that a command error has occurred and not a CRC
                                                          error. */
 	uint64_t error_pulse_count_sat        : 1;  /**< When set and the count is valid, indicates that the counter has saturated,
-                                                         which effectively indicates that a command error has occured and not a CRC
+                                                         which effectively indicates that a command error has occurred and not a CRC
                                                          error. */
 	uint64_t reserved_52_54               : 3;
 	uint64_t error_pulse_count            : 4;  /**< Count of cycles in last error pulse since clear.  This count will be cleared
-                                                         either by clearing the interrupt or writing a 1 to the pulse count clear bit. */
+                                                         either by clearing the interrupt or writing a one to the pulse count clear bit. */
 	uint64_t reserved_45_47               : 3;
 	uint64_t error_sequence               : 5;  /**< Sequence number for sequence that was running when error occurred. */
 	uint64_t reserved_33_39               : 7;
@@ -11507,17 +11544,17 @@ union cvmx_lmcx_rlevel_ctl {
 	uint64_t tccd_sel                     : 1;  /**< When set, the read leveling sequence uses MODEREG_PARAMS3[TCCD_L] to
                                                          space out back-to-back read commands. Otherwise the back-to-back
                                                          reads commands are spaced out by a default 4 cycles. */
-	uint64_t pattern                      : 8;  /**< Sets the data pattern used to match in read-leveling operations. */
+	uint64_t pattern                      : 8;  /**< Sets the data pattern used to match in read leveling operations. */
 	uint64_t reserved_22_23               : 2;
 	uint64_t delay_unload_3               : 1;  /**< Reserved, must be set. */
 	uint64_t delay_unload_2               : 1;  /**< Reserved, must be set. */
 	uint64_t delay_unload_1               : 1;  /**< Reserved, must be set. */
 	uint64_t delay_unload_0               : 1;  /**< Reserved, must be set. */
-	uint64_t bitmask                      : 8;  /**< Mask to select bit lanes on which read-leveling feedback is returned when [OR_DIS] is set to 1. */
-	uint64_t or_dis                       : 1;  /**< Disable ORing of bits in a byte lane when computing the read-leveling bitmask. [OR_DIS]
+	uint64_t bitmask                      : 8;  /**< Mask to select bit lanes on which read leveling feedback is returned when [OR_DIS] is set to 1. */
+	uint64_t or_dis                       : 1;  /**< Disable ORing of bits in a byte lane when computing the read leveling bitmask. [OR_DIS]
                                                          should normally not be set. */
-	uint64_t offset_en                    : 1;  /**< When set, LMC attempts to select the read-leveling setting that is
-                                                         LMC()_RLEVEL_CTL[OFFSET] settings earlier than the last passing read-leveling setting
+	uint64_t offset_en                    : 1;  /**< When set, LMC attempts to select the read leveling setting that is
+                                                         LMC()_RLEVEL_CTL[OFFSET] settings earlier than the last passing read leveling setting
                                                          in the largest contiguous sequence of passing settings. When clear, or if the setting
                                                          selected by LMC()_RLEVEL_CTL[OFFSET] did not pass, LMC selects the middle setting in
                                                          the largest contiguous sequence of passing settings, rounding earlier when necessary. */
@@ -11660,12 +11697,12 @@ typedef union cvmx_lmcx_rlevel_ctl cvmx_lmcx_rlevel_ctl_t;
 /**
  * cvmx_lmc#_rlevel_dbg
  *
- * A given read of LMC()_RLEVEL_DBG returns the read-leveling pass/fail results for all
+ * A given read of LMC()_RLEVEL_DBG returns the read leveling pass/fail results for all
  * possible delay settings (i.e. the BITMASK) for only one byte in the last rank that
- * the hardware ran read-leveling on. LMC()_RLEVEL_CTL[BYTE] selects the particular
+ * the hardware ran read leveling on. LMC()_RLEVEL_CTL[BYTE] selects the particular
  * byte. To get these pass/fail results for a different rank, you must run the hardware
- * read-leveling again. For example, it is possible to get the [BITMASK] results for
- * every byte of every rank if you run read-leveling separately for each rank, probing
+ * read leveling again. For example, it is possible to get the [BITMASK] results for
+ * every byte of every rank if you run read leveling separately for each rank, probing
  * LMC()_RLEVEL_DBG between each read- leveling.
  */
 union cvmx_lmcx_rlevel_dbg {
@@ -11699,16 +11736,16 @@ typedef union cvmx_lmcx_rlevel_dbg cvmx_lmcx_rlevel_dbg_t;
  *
  * Four of these CSRs exist per LMC, one for each rank. Read level setting is measured
  * in units of 1/4 CK, so the BYTEn values can range over 16 CK cycles. Each CSR is
- * written by hardware during a read-leveling sequence for the rank. (Hardware sets
- * [STATUS] to 3 after hardware read-leveling completes for the rank.)
+ * written by hardware during a read leveling sequence for the rank. (Hardware sets
+ * [STATUS] to 3 after hardware read leveling completes for the rank.)
  *
  * If hardware is unable to find a match per LMC()_RLEVEL_CTL[OFFSET_EN] and
  * LMC()_RLEVEL_CTL[OFFSET], then hardware sets LMC()_RLEVEL_RANK()[BYTEn<5:0>] to
  * 0x0.
  *
- * Each CSR may also be written by software, but not while a read-leveling sequence is
+ * Each CSR may also be written by software, but not while a read leveling sequence is
  * in progress. (Hardware sets [STATUS] to 1 after a CSR write.) Software initiates a
- * hardware read-leveling sequence by programming LMC()_RLEVEL_CTL and writing
+ * hardware read leveling sequence by programming LMC()_RLEVEL_CTL and writing
  * [INIT_START] = 1 with [SEQ_SEL]=1. See LMC()_RLEVEL_CTL.
  *
  * LMC()_RLEVEL_RANKi values for ranks i without attached DRAM should be set such that
@@ -11721,12 +11758,12 @@ union cvmx_lmcx_rlevel_rankx {
 	struct cvmx_lmcx_rlevel_rankx_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_56_63               : 8;
-	uint64_t status                       : 2;  /**< Indicates status of the read-leveling and where the BYTEn programmings in <53:0> came
+	uint64_t status                       : 2;  /**< Indicates status of the read leveling and where the BYTEn programmings in <53:0> came
                                                          from:
                                                          0x0 = BYTEn values are their reset value.
                                                          0x1 = BYTEn values were set via a CSR write to this register.
-                                                         0x2 = read-leveling sequence currently in progress (BYTEn values are unpredictable).
-                                                         0x3 = BYTEn values came from a complete read-leveling sequence. */
+                                                         0x2 = Read leveling sequence currently in progress (BYTEn values are unpredictable).
+                                                         0x3 = BYTEn values came from a complete read leveling sequence. */
 	uint64_t byte8                        : 6;  /**< "Read level setting.
                                                          When ECC DRAM is not present in 64-bit mode (i.e. when DRAM is not attached to chip
                                                          signals DDR#_CBS_0_* and DDR#_CB<7:0>), software should write BYTE8 to a value that does
@@ -12153,9 +12190,8 @@ union cvmx_lmcx_seq_ctl {
 	struct cvmx_lmcx_seq_ctl_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_6_63                : 58;
-	uint64_t seq_complete                 : 1;  /**< Sequence complete. This bit is cleared when [INIT_START] is set to a 1 and then is set to
-                                                         1
-                                                         when the sequence is completed. */
+	uint64_t seq_complete                 : 1;  /**< Sequence complete. This bit is cleared when [INIT_START] is set to a one and
+                                                         then is set to one when the sequence is completed. */
 	uint64_t seq_sel                      : 4;  /**< Selects the sequence that LMC runs after a 0->1 transition on [INIT_START], as
                                                          enumerated by LMC_SEQ_SEL_E.
                                                          LMC writes the LMC()_MODEREG_PARAMS0 and LMC()_MODEREG_PARAMS1 CSR field values
@@ -12209,7 +12245,7 @@ union cvmx_lmcx_slot_ctl0 {
 	struct cvmx_lmcx_slot_ctl0_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_50_63               : 14;
-	uint64_t w2r_l_init_ext               : 1;  /**< A 1-bit extenstion to the [W2R_L_INIT] register. */
+	uint64_t w2r_l_init_ext               : 1;  /**< A 1-bit extension to the [W2R_L_INIT] register. */
 	uint64_t w2r_init_ext                 : 1;  /**< A 1-bit extension to the [W2R_INIT] register. */
 	uint64_t w2w_l_init                   : 6;  /**< Write-to-write spacing control for back-to-back write followed by write cache block
                                                          accesses to the same rank and DIMM, and same BG for DDR4. */
@@ -12452,8 +12488,8 @@ union cvmx_lmcx_slot_ctl3 {
 	struct cvmx_lmcx_slot_ctl3_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_50_63               : 14;
-	uint64_t w2r_l_xrank_init_ext         : 1;  /**< A 1-bit extension to the [W2R_L_XRANK_INIT] register. */
-	uint64_t w2r_xrank_init_ext           : 1;  /**< A 1-bit extension to the [W2R_XRANK_INIT] register. */
+	uint64_t w2r_l_xrank_init_ext         : 1;  /**< A 1-bit extension to [W2R_L_XRANK_INIT]; effectively [W2R_L_XRANK_INIT]<6>. */
+	uint64_t w2r_xrank_init_ext           : 1;  /**< A 1-bit extension to the [W2R_XRANK_INIT]; effectively [W2R_XRANK_INIT]<6>. */
 	uint64_t w2w_l_xrank_init             : 6;  /**< Write-to-write spacing control for back-to-back write followed by write cache block
                                                          accesses to a different logical rank, and same BG for DDR4. */
 	uint64_t w2r_l_xrank_init             : 6;  /**< Write-to-read spacing control for back-to-back write followed by read cache block accesses
@@ -12822,15 +12858,15 @@ union cvmx_lmcx_timing_params1 {
 	struct cvmx_lmcx_timing_params1_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_59_63               : 5;
-	uint64_t txp_ext                      : 1;  /**< A 1-bit extension to the TXP register. */
-	uint64_t trcd_ext                     : 1;  /**< A 1-bit extension to the TRCD register. */
+	uint64_t txp_ext                      : 1;  /**< A 1-bit MSB extension to [TXP], effectively [TXP]<3>. */
+	uint64_t trcd_ext                     : 1;  /**< A 1-bit MSB extension to [TRCD], effectively [TRCD]<4>. */
 	uint64_t tpdm_full_cycle_ena          : 1;  /**< When set, this field enables the addition of a one cycle delay to the
                                                          write/read latency calculation. This is to compensate the case when
                                                          tPDM delay in the RCD of an RDIMM is greater than one-cycle.
                                                          Only valid in RDIMM  (LMC()_CTL[RDIMM_ENA]=1). */
 	uint64_t trfc_dlr                     : 7;  /**< Indicates TRFC_DLR constraints. Set this field as follows:
                                                          _ RNDUP[TRFC_DLR(ns) / (8 * TCYC(ns))]
-                                                         where TRFC_DLR is from the JEDEC 3D Stacked SDRAM spec, and TCYC(ns) is the DDR clock
+                                                         where TRFC_DLR is from the JEDEC 3D stacked SDRAM spec, and TCYC(ns) is the DDR clock
                                                          frequency (not data rate).
                                                          TYP = 90-120 ns.
                                                          0x0 = reserved.
@@ -13188,8 +13224,8 @@ union cvmx_lmcx_timing_params1 {
 	struct cvmx_lmcx_timing_params1_cn73xx {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_59_63               : 5;
-	uint64_t txp_ext                      : 1;  /**< A 1-bit extension to the TXP register. */
-	uint64_t trcd_ext                     : 1;  /**< A 1-bit extension to the TRCD register. */
+	uint64_t txp_ext                      : 1;  /**< A 1-bit MSB extension to [TXP], effectively [TXP]<3>. */
+	uint64_t trcd_ext                     : 1;  /**< A 1-bit MSB extension to [TRCD], effectively [TRCD]<4>. */
 	uint64_t tpdm_full_cycle_ena          : 1;  /**< When set, this field enables the addition of a one cycle delay to the
                                                          write/read latency calculation. This is to compensate the case when
                                                          tPDM delay in the RCD of an RDIMM is greater than one-cycle.
@@ -13331,9 +13367,9 @@ union cvmx_lmcx_timing_params2 {
 	struct cvmx_lmcx_timing_params2_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_16_63               : 48;
-	uint64_t trrd_l_ext                   : 1;  /**< MSB of TWTR_L constraints. Set this field
+	uint64_t trrd_l_ext                   : 1;  /**< Extends [TWTR_L] constraints, effectively [TWTR_L]<4>. Set this field
                                                          when requiring tRRD_L of more than 9 nCK. Otherwise
-                                                         this bit must be 0. */
+                                                         this bit must be zero. */
 	uint64_t trtp                         : 4;  /**< Specifies the TRTP parameter, in cycles. Set this field as follows:
                                                          _ RNDUP[TRTP(ns) / TCYC(ns)] - 1,
                                                          For DDR3, typical = max(4 nCK, 7.5ns).
@@ -13490,12 +13526,12 @@ union cvmx_lmcx_wlevel_ctl {
                                                          0x5 = LMC writes 0x6 (Rsvd) to MR1[Rtt_Nom].
                                                          0x6 = LMC writes 0x7 (Rsvd) to MR1[Rtt_Nom].
                                                          0x7 = LMC writes 0x0 (Disabled) to MR1[Rtt_Nom]. */
-	uint64_t bitmask                      : 8;  /**< Mask to select bit lanes on which write-leveling feedback is returned when OR_DIS is set to 1. */
-	uint64_t or_dis                       : 1;  /**< Disable ORing of bits in a byte lane when computing the write-leveling bitmask. */
-	uint64_t sset                         : 1;  /**< Run write-leveling on the current setting only. */
-	uint64_t lanemask                     : 9;  /**< One-shot mask to select byte lane to be leveled by the write-leveling sequence. Used with
-                                                         *16 parts where the upper and lower byte lanes need to be leveled independently.
-                                                         This field is also used for byte lane masking during read-leveling sequence. */
+	uint64_t bitmask                      : 8;  /**< Mask to select bit lanes on which write leveling feedback is returned when OR_DIS is set to one. */
+	uint64_t or_dis                       : 1;  /**< Disable ORing of bits in a byte lane when computing the write leveling bitmask. */
+	uint64_t sset                         : 1;  /**< Run write leveling on the current setting only. */
+	uint64_t lanemask                     : 9;  /**< One-shot mask to select byte lane to be leveled by the write leveling sequence. Used with
+                                                         x16 parts where the upper and lower byte lanes need to be leveled independently.
+                                                         This field is also used for byte lane masking during read leveling sequence. */
 #else
 	uint64_t lanemask                     : 9;
 	uint64_t sset                         : 1;
@@ -13537,12 +13573,12 @@ typedef union cvmx_lmcx_wlevel_ctl cvmx_lmcx_wlevel_ctl_t;
 /**
  * cvmx_lmc#_wlevel_dbg
  *
- * A given write of LMC()_WLEVEL_DBG returns the write-leveling pass/fail results for all
+ * A given write of LMC()_WLEVEL_DBG returns the write leveling pass/fail results for all
  * possible delay settings (i.e. the BITMASK) for only one byte in the last rank that the
- * hardware write-leveled. LMC()_WLEVEL_DBG[BYTE] selects the particular byte. To get these
- * pass/fail results for a different rank, you must run the hardware write-leveling again. For
+ * hardware write leveled. LMC()_WLEVEL_DBG[BYTE] selects the particular byte. To get these
+ * pass/fail results for a different rank, you must run the hardware write leveling again. For
  * example, it is possible to get the [BITMASK] results for every byte of every rank if you run
- * write-leveling separately for each rank, probing LMC()_WLEVEL_DBG between each write-
+ * write leveling separately for each rank, probing LMC()_WLEVEL_DBG between each write-
  * leveling.
  */
 union cvmx_lmcx_wlevel_dbg {
@@ -13556,7 +13592,7 @@ union cvmx_lmcx_wlevel_dbg {
                                                          passed for
                                                          0 <= n <= 7. [BITMASK] contains the first 8 results of the total 16 collected by LMC
                                                          during
-                                                         the write-leveling sequence.
+                                                         the write leveling sequence.
                                                          If LMC()_WLEVEL_CTL[SSET]=1, [BITMASK]<0>=0 means curr write level setting failed;
                                                          [BITMASK]<0>=1 means curr write level setting passed. */
 	uint64_t byte                         : 4;  /**< 0 <= BYTE <= 8. */
@@ -13587,12 +13623,12 @@ typedef union cvmx_lmcx_wlevel_dbg cvmx_lmcx_wlevel_dbg_t;
  *
  * Four of these CSRs exist per LMC, one for each rank. Write level setting is measured in units
  * of 1/8 CK, so the below BYTEn values can range over 4 CK cycles. Assuming
- * LMC()_WLEVEL_CTL[SSET]=0, the BYTEn<2:0> values are not used during write-leveling, and
- * they are overwritten by the hardware as part of the write-leveling sequence. (Hardware sets
- * [STATUS] to 3 after hardware write-leveling completes for the rank). Software needs to set
+ * LMC()_WLEVEL_CTL[SSET]=0, the BYTEn<2:0> values are not used during write leveling, and
+ * they are overwritten by the hardware as part of the write leveling sequence. (Hardware sets
+ * [STATUS] to 3 after hardware write leveling completes for the rank). Software needs to set
  * BYTEn<4:3> bits.
  *
- * Each CSR may also be written by software, but not while a write-leveling sequence is in
+ * Each CSR may also be written by software, but not while a write leveling sequence is in
  * progress. (Hardware sets [STATUS] to 1 after a CSR write.) Software initiates a hardware
  * write-
  * leveling sequence by programming LMC()_WLEVEL_CTL and writing RANKMASK and INIT_START=1 with
@@ -13601,7 +13637,7 @@ typedef union cvmx_lmcx_wlevel_dbg cvmx_lmcx_wlevel_dbg_t;
  * LMC will then step through and accumulate write leveling results for 8 unique delay settings
  * (twice), starting at a delay of LMC()_WLEVEL_RANK() [BYTEn<4:3>]* 8 CK increasing by
  * 1/8 CK each setting. Hardware will then set LMC()_WLEVEL_RANK()[BYTEn<2:0>] to
- * indicate the first write leveling result of '1' that followed a result of '0' during the
+ * indicate the first write leveling result of 1 that followed a result of 0 during the
  * sequence by searching for a '1100' pattern in the generated bitmask, except that LMC will
  * always write LMC()_WLEVEL_RANK()[BYTEn<0>]=0. If hardware is unable to find a match
  * for a '1100' pattern, then hardware sets LMC()_WLEVEL_RANK() [BYTEn<2:0>] to 0x4. See
@@ -13618,12 +13654,12 @@ union cvmx_lmcx_wlevel_rankx {
 	struct cvmx_lmcx_wlevel_rankx_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_47_63               : 17;
-	uint64_t status                       : 2;  /**< Indicates status of the write-leveling and where the BYTE* programmings in <44:0> came
+	uint64_t status                       : 2;  /**< Indicates status of the write leveling and where the BYTE* programmings in <44:0> came
                                                          from:
                                                          0x0 = BYTE* values are their reset value.
                                                          0x1 = BYTE* values were set via a CSR write to this register.
-                                                         0x2 = write-leveling sequence currently in progress (BYTE* values are unpredictable).
-                                                         0x3 = BYTE* values came from a complete write-leveling sequence, irrespective of which
+                                                         0x2 = Write leveling sequence currently in progress (BYTE* values are unpredictable).
+                                                         0x3 = BYTE* values came from a complete write leveling sequence, irrespective of which
                                                          lanes are masked via LMC()_WLEVEL_CTL[LANEMASK]. */
 	uint64_t byte8                        : 5;  /**< "Write level setting. Bit 0 of BYTE8 must be zero during normal operation. When ECC DRAM
                                                          is not present in 64-bit mode (i.e. when DRAM is not attached to chip signals DDR#_CBS_0_*
@@ -13806,7 +13842,8 @@ typedef union cvmx_lmcx_wodt_ctl1 cvmx_lmcx_wodt_ctl1_t;
  * designers may prefer different combinations of ODT ONs for write operations into different
  * ranks. CNXXXX supports full programmability by way of the mask register below. Each rank
  * position has its own 8-bit programmable field. When the controller does a write to that rank,
- * it sets the 4 ODT pins to the mask pins below. For example, when doing a write into Rank0, a
+ * it sets the four ODT pins to the mask pins below. For example, when doing a write into Rank0,
+ * a
  * system designer may desire to terminate the lines with the resistor on DIMM0/Rank1. The mask
  * [WODT_D0_R0] would then be [00000010].
  *

@@ -334,7 +334,8 @@ union cvmx_rst_boot {
                                                          'ref-clock speed' should always be 50MHz. */
 	uint64_t reserved_21_23               : 3;
 	uint64_t lboot_oci                    : 3;  /**< Reserved. */
-	uint64_t lboot_ext                    : 6;  /**< Last boot cause mask; resets only with DCOK.
+	uint64_t lboot_ext                    : 6;  /**< For CNF73XX, this field is reserved.
+                                                         For CNF75XX, the last boot cause mask; resets only with DCOK.
                                                          <17> = Warm reset due to Cntl3 link-down or hot-reset.
                                                          <16> = Warm reset due to Cntl2 link-down or hot-reset.
                                                          <15> = Cntl3 reset due to PERST3_L pin.
@@ -510,23 +511,28 @@ union cvmx_rst_ctlx {
 	struct cvmx_rst_ctlx_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_10_63               : 54;
-	uint64_t prst_link                    : 1;  /**< Controls whether corresponding controller link-down or hot-reset causes the assertion of
-                                                         RST_SOFT_PRST()[SOFT_PRST].
+	uint64_t prst_link                    : 1;  /**< PEM reset on link down.
+                                                         0 = Link-down or hot-reset will set RST_INT[RST_LINK] for the corresponding
+                                                         controller, and (provided properly configured) the link should come back up
+                                                         automatically.
+                                                         1 = Link-down or hot-reset will set RST_INT[RST_LINK] for the corresponding
+                                                         controller, and set RST_SOFT_PRST()[SOFT_PRST]. This will hold the link in reset
+                                                         until software clears RST_SOFT_PRST()[SOFT_PRST].
                                                          A warm/soft reset does not change this field. On cold reset, this field is initialized to
                                                          0. */
 	uint64_t rst_done                     : 1;  /**< Read-only access to controller reset status. RST_DONE is always zero (i.e. the controller
                                                          is held in reset) when:
                                                          * RST_SOFT_PRST()[SOFT_PRST] = 1, or
                                                          * RST_RCV = 1 and PERST*_L pin is asserted. */
-	uint64_t rst_link                     : 1;  /**< Reset link. Controls whether corresponding controller link-down reset or hot reset causes
-                                                         a warm chip reset. On cold reset, this field is initialized as follows:
+	uint64_t rst_link                     : 1;  /**< Reset on link down. When set, a corresponding controller link-down reset or hot
+                                                         reset causes a warm chip reset.
+                                                         On cold reset, this field is initialized as follows:
                                                          _ 0 when RST_CTL()[HOST_MODE] = 1.
                                                          _ 1 when RST_CTL()[HOST_MODE] = 0.
                                                          Note that a link-down or hot-reset event can never cause a warm chip reset when the
                                                          controller is in reset (i.e. can never cause a warm reset when [RST_DONE] = 0). */
 	uint64_t host_mode                    : 1;  /**< Read-only access to the corresponding PEM()_CFG[HOSTMD] field indicating PEMn is root
-                                                         complex (host). For controllers 0 and 2  the initial value is determined by straps. For
-                                                         controllers 1 and 3 this field is initially set as host. */
+                                                         complex (host). */
 	uint64_t reserved_4_5                 : 2;
 	uint64_t rst_drv                      : 1;  /**< Controls whether PERST*_L is driven. A warm/soft reset does not change this field. On cold
                                                          reset, this field is initialized as follows:
@@ -793,7 +799,9 @@ union cvmx_rst_pp_power {
 	uint64_t gate                         : 48; /**< Powerdown enable. When both a bit and the corresponding CIU_PP_RST bit are set, the core
                                                          has voltage removed to save power. In typical operation these bits are setup during
                                                          initialization and PP resets are controlled through CIU_PP_RST. These bits may only be
-                                                         changed when the corresponding core is in reset using CIU_PP_RST. */
+                                                         changed when the corresponding core is in reset using CIU_PP_RST.
+                                                         The upper bits of this field remain accessible but will have no effect if the cores
+                                                         are disabled. The number of bits cleared in CIU_FUSE[FUSE] indicate the number of cores. */
 #else
 	uint64_t gate                         : 48;
 	uint64_t reserved_48_63               : 16;

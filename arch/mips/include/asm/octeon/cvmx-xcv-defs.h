@@ -1,5 +1,5 @@
 /***********************license start***************
- * Copyright (c) 2003-2015  Cavium Inc. (support@cavium.com). All rights
+ * Copyright (c) 2003-2017  Cavium Inc. (support@cavium.com). All rights
  * reserved.
  *
  *
@@ -179,10 +179,10 @@ union cvmx_xcv_comp_ctl {
 	uint64_t cmp_nctl                     : 5;  /**< NCTL drive strength from the hardware compensation controller. */
 	uint64_t reserved_45_47               : 3;
 	uint64_t drv_pctl                     : 5;  /**< PCTL drive strength to use in bypass mode.
-                                                         Reset value of 13 is for 50 ohm termination. */
+                                                         Value of 11 is for 50 ohm termination. */
 	uint64_t reserved_37_39               : 3;
 	uint64_t drv_nctl                     : 5;  /**< NCTL drive strength to use in bypass mode.
-                                                         Reset value of 12 is for 50 ohm termination. */
+                                                         Value of 14 is for 50 ohm termination. */
 	uint64_t reserved_31_31               : 1;
 	uint64_t pctl_lock                    : 1;  /**< PCTL lock. */
 	uint64_t pctl_sat                     : 1;  /**< PCTL saturate. */

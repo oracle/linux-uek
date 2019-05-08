@@ -3408,11 +3408,11 @@ union cvmx_mio_boot_pin_defs {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_33_63               : 31;
 	uint64_t dlm_supply                   : 1;  /**< DLM Power Supply Setting based on DLMC_VPH_SELECT_18 pin 1 = 1.8V. All others = Reserved. */
-	uint64_t rgm_supply                   : 2;  /**< RGMii Power Supply Setting based on VDD_RGM_SUPPLY_SELECT pin 01 = 1.8V 10 = 2.5V All
+	uint64_t rgm_supply                   : 2;  /**< RGMii Power Supply Setting based on VDD_RGM_SUPPLY_SELECT pin 10 = 2.5V All
                                                          others = Reserved */
-	uint64_t smi_supply                   : 3;  /**< SMI Power Supply Setting based on VDD_SMI_SUPPLY_SELECT pin 001 = 1.8V 010 = 2.5V 100 =
+	uint64_t smi_supply                   : 3;  /**< SMI Power Supply Setting based on VDD_SMI_SUPPLY_SELECT pin 010 = 2.5V 100 =
                                                          3.3V All others = Reserved */
-	uint64_t io_supply                    : 3;  /**< I/O Power Supply Setting based on VDD_IO_SUPPLY_SELECT pin 001 = 1.8V 010 = 2.5V 100 =
+	uint64_t io_supply                    : 3;  /**< I/O Power Supply Setting based on VDD_IO_SUPPLY_SELECT pin 010 = 2.5V 100 =
                                                          3.3V All others = Reserved */
 	uint64_t reserved_17_23               : 7;
 	uint64_t ref_sel                      : 1;  /**< Reference Clock Selection based on UART0_RTS_N pin at powerup 0 = DLM_REF_CLK[1] pins div
@@ -3447,16 +3447,13 @@ union cvmx_mio_boot_pin_defs {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_56_63               : 8;
 	uint64_t rgm_supply                   : 2;  /**< RGMII power supply setting based on VDD_RGM_SUPPLY_SELECT pin:
-                                                         0x1 = 1.8V.
                                                          0x2 = 2.5V.
                                                          _ All other values reserved. */
 	uint64_t smi_supply                   : 3;  /**< SMI power supply setting based on VDD_SMI_SUPPLY_SELECT pin:
-                                                         0x1 = 1.8V.
                                                          0x2 = 2.5V.
                                                          0x4 = 3.3V.
                                                          _ All other values reserved. */
 	uint64_t io_supply                    : 3;  /**< I/O power supply setting based on VDD_IO_SUPPLY_SELECT pin:
-                                                         0x1 = 1.8V.
                                                          0x2 = 2.5V.
                                                          0x4 = 3.3V.
                                                          _ All other values reserved. */
@@ -3507,12 +3504,10 @@ union cvmx_mio_boot_pin_defs {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_54_63               : 10;
 	uint64_t smi_supply                   : 3;  /**< SMI power supply setting based on VDD_SMI_SUPPLY_SELECT pin:
-                                                         0x1 = 1.8V.
                                                          0x2 = 2.5V.
                                                          0x4 = 3.3V.
                                                          _ All other values reserved. */
 	uint64_t io_supply                    : 3;  /**< I/O power supply setting based on VDD_IO_SUPPLY_SELECT pin:
-                                                         0x1 = 1.8V.
                                                          0x2 = 2.5V.
                                                          0x4 = 3.3V.
                                                          _ All other values reserved. */
@@ -3906,8 +3901,8 @@ union cvmx_mio_emm_access_wdog {
 	struct cvmx_mio_emm_access_wdog_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_32_63               : 32;
-	uint64_t clk_cnt                      : 32; /**< Number of coprocessor-clocks to allow for a store operation to the device to complete
-                                                         before hardware will halt the operation.
+	uint64_t clk_cnt                      : 32; /**< Number of coprocessor-clock cycles to allow for a store operation to the device
+                                                         to complete before hardware will halt the operation.
                                                          Hardware will inject an error on the next 512-byte block boundary.   The pending DMA
                                                          operation can be resumed or terminated. A value of zero disables timer. */
 #else
@@ -4005,9 +4000,9 @@ union cvmx_mio_emm_cfg {
 	uint64_t bus_ena                      : 4;  /**< eMMC bus enable mask.
                                                          Setting bits 0..2 enable the corresponding EMMC bus by allowing EMMC_CMD[BUS_ENA]
                                                          operation. Bit 3 is reserved.
-                                                         Clearing all bits of this field will reset the other MIO_EMM_* registers.  It might be
+                                                         Clearing all bits of this field will reset the other MIO_EMM_* registers. It might be
                                                          necessary
-                                                         to set and and clear the bits several times to insure the MIO_EMM_* registers have been
+                                                         to set and and clear the bits several times to ensure the MIO_EMM_* registers have been
                                                          reset properly.
                                                          Setting one or more bits will enable EMMC_CLK operation. */
 #else
@@ -4043,7 +4038,7 @@ union cvmx_mio_emm_cmd {
                                                          0 = Command doesn't complete until card has dropped the BUSY signal.
                                                          1 = Complete command regardless of the BUSY signal. Status of signal can be read in
                                                          MIO_EMM_RSP_STS[RSP_BUSYBIT]. */
-	uint64_t bus_id                       : 2;  /**< Specify the eMMC bus */
+	uint64_t bus_id                       : 2;  /**< Specify the eMMC bus. */
 	uint64_t cmd_val                      : 1;  /**< Request valid. Software writes this bit to a 1. Hardware clears it when the operation completes. */
 	uint64_t reserved_56_58               : 3;
 	uint64_t dbuf                         : 1;  /**< Specify the data buffer to be used for a block transfer. */
@@ -4066,8 +4061,8 @@ union cvmx_mio_emm_cmd {
                                                          0x4 = R4, 48 bits.
                                                          0x5 = R5, 48 bits.
                                                          0x6, 0x7 = Reserved. */
-	uint64_t cmd_idx                      : 6;  /**< eMMC command */
-	uint64_t arg                          : 32; /**< eMMC command argument */
+	uint64_t cmd_idx                      : 6;  /**< eMMC command. */
+	uint64_t arg                          : 32; /**< eMMC command argument. */
 #else
 	uint64_t arg                          : 32;
 	uint64_t cmd_idx                      : 6;
@@ -4152,7 +4147,7 @@ union cvmx_mio_emm_dma {
                                                          0 = DMA doesn't complete until card has dropped the BUSY signal.
                                                          1 = Complete DMA after last transfer regardless of the BUSY signal. Status of signal can
                                                          be read in MIO_EMM_RSP_STS[RSP_BUSYBIT]. */
-	uint64_t bus_id                       : 2;  /**< Specify the eMMC bus */
+	uint64_t bus_id                       : 2;  /**< Specify the eMMC bus. */
 	uint64_t dma_val                      : 1;  /**< Software writes this bit to a 1 to indicate that hardware should perform the DMA transfer.
                                                          Hardware clears this bit when the DMA operation completes or is terminated. */
 	uint64_t sector                       : 1;  /**< Specify CARD_ADDR and eMMC are using sector (512 B) addressing. */
@@ -4162,7 +4157,7 @@ union cvmx_mio_emm_dma {
                                                          block transfer. Zero indicates to wait for the entire block. */
 	uint64_t rel_wr                       : 1;  /**< Set the reliable write parameter when performing CMD23 (SET_BLOCK_COUNT) for a multiple block. */
 	uint64_t rw                           : 1;  /**< Read/write bit (0 = read, 1 = write). */
-	uint64_t multi                        : 1;  /**< Perform operation using a multiple block command instead of a series of single block commands. */
+	uint64_t multi                        : 1;  /**< Perform operation using a multiple-block command instead of a series of single-block commands. */
 	uint64_t block_cnt                    : 16; /**< Number of blocks to read/write. Hardware decrements the block count after each successful
                                                          block transfer. */
 	uint64_t card_addr                    : 32; /**< Data address for media <= 2 GB is a 32-bit byte address, and data address for media > 2 GB
@@ -4271,7 +4266,7 @@ union cvmx_mio_emm_dma_cfg {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t en                           : 1;  /**< DMA engine enable. */
 	uint64_t rw                           : 1;  /**< DMA engine R/W bit: 0 = read, 1 = write. */
-	uint64_t clr                          : 1;  /**< DMA engine abort. When set to 1, DMA is aborted and EN is cleared on completion. */
+	uint64_t clr                          : 1;  /**< DMA engine abort. When set to 1, DMA is aborted and [EN] is cleared on completion. */
 	uint64_t reserved_60_60               : 1;
 	uint64_t swap32                       : 1;  /**< DMA engine 32-bit swap. */
 	uint64_t swap16                       : 1;  /**< DMA engine enable 16-bit swap. */
@@ -4330,7 +4325,7 @@ typedef union cvmx_mio_emm_dma_fifo_adr cvmx_mio_emm_dma_fifo_adr_t;
 /**
  * cvmx_mio_emm_dma_fifo_cfg
  *
- * This register controls DMA FIFO Operations.
+ * This register controls DMA FIFO operations.
  *
  */
 union cvmx_mio_emm_dma_fifo_cfg {
@@ -4338,19 +4333,19 @@ union cvmx_mio_emm_dma_fifo_cfg {
 	struct cvmx_mio_emm_dma_fifo_cfg_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_17_63               : 47;
-	uint64_t clr                          : 1;  /**< DMA FIFO Clear. When set erases all commands in the DMA FIFO. Must be zero for normal operation. */
+	uint64_t clr                          : 1;  /**< DMA FIFO clear. When set, erases all commands in the DMA FIFO. Must be zero for normal operation. */
 	uint64_t reserved_13_15               : 3;
 	uint64_t int_lvl                      : 5;  /**< Interrupt threshold indicating the number of entries remaining in the
                                                          DMA FIFO.  An interrupt occurs if the FIFO is read at the level specified.
-                                                         A value of 0 disables the interrupt.  A value of 17 or greater will cause an
+                                                         A value of 0 disables the interrupt.  A value of 17 or greater causes an
                                                          interrupt only if the FIFO is overflowed.
                                                          See MIO_EMM_DMA_INT[FIFO]. */
 	uint64_t reserved_5_7                 : 3;
-	uint64_t count                        : 5;  /**< Number of entries in the DMA FIFO. This count is incremented by writes to the
-                                                         MIO_EMM_DMA_FIFO_CMD register and decremented each time the internal DMA engine completes
+	uint64_t count                        : 5;  /**< Number of entries in the DMA FIFO. This count is incremented by writes to
+                                                         MIO_EMM_DMA_FIFO_CMD and decremented each time the internal DMA engine completes
                                                          the previous command successfully.
                                                          Up to 16 entries can be placed in the FIFO. Entries written to a full FIFO will
-                                                         potentially corrupt existing entries.  Care must be taken by software to insure
+                                                         potentially corrupt existing entries.  Care must be taken by software to ensure
                                                          that this condition does not occur. */
 #else
 	uint64_t count                        : 5;
@@ -4377,8 +4372,8 @@ typedef union cvmx_mio_emm_dma_fifo_cfg cvmx_mio_emm_dma_fifo_cfg_t;
  * MIO_EMM_DMA_FIFO_ADR contents into the FIFO and increment the MIO_EMM_DMA_FIFO_CFG[COUNT]
  * field.
  *
- * Note: This register has a similar format to the MIO_EMM_DMA_CFG register with the exception
- * that the EN and CLR fields are absent. These are supported in the MIO_EMM_DMA_FIFO_CFG.
+ * Note: This register has a similar format to MIO_EMM_DMA_CFG with the exception
+ * that the EN and CLR fields are absent. These are supported in MIO_EMM_DMA_FIFO_CFG.
  */
 union cvmx_mio_emm_dma_fifo_cmd {
 	uint64_t u64;
@@ -4812,7 +4807,7 @@ union cvmx_mio_emm_rsp_sts {
                                                          MIO_EMM_DMA[DAT_NULL] = 1. Hardware will then clear [DMA_PEND] and perform the DMA
                                                          operation. */
 	uint64_t acc_timeout                  : 1;  /**< The store operation to the device took longer than MIO_EMM_ACCESS_WDOG[CLK_CNT]
-                                                         coprocessor-clocks to complete.
+                                                         coprocessor-clock cycles to complete.
                                                          Valid when [DMA_PEND] is set. */
 	uint64_t reserved_29_54               : 26;
 	uint64_t dbuf_err                     : 1;  /**< For [CMD_TYPE] = 1, indicates that a DMA read data arrived from the card without a free
@@ -5026,7 +5021,7 @@ union cvmx_mio_emm_switch {
 	struct cvmx_mio_emm_switch_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_62_63               : 2;
-	uint64_t bus_id                       : 2;  /**< Specifies the eMMC bus id. */
+	uint64_t bus_id                       : 2;  /**< Specifies the eMMC bus ID. */
 	uint64_t switch_exe                   : 1;  /**< When clear, the operating modes are updated directly without performing any
                                                          SWITCH operations. This allows software to perform the SWITCH operations manually, then
                                                          update the hardware.
@@ -5108,7 +5103,7 @@ union cvmx_mio_emm_wdog {
                                                          it wants to free up buffer space.
                                                          The second case is when the last block of a write or multi write is being transferred and
                                                          the card elects to perform some background tasks. The same stall mechanism with
-                                                         emmc_data<0> is used but this can last for an extend time period. */
+                                                         EMMC_DAT<0> is used, but this can last for an extended time period. */
 #else
 	uint64_t clk_cnt                      : 26;
 	uint64_t reserved_26_63               : 38;
@@ -9985,7 +9980,7 @@ typedef union cvmx_mio_rst_int_en cvmx_mio_rst_int_en_t;
 /**
  * cvmx_mio_tws#_int
  *
- * This register contains the TWSI interrupt-enable mask and the interrupt-source bits.
+ * This register contains the TWSI interrupt-source and SDA/SCL override bits.
  *
  */
 union cvmx_mio_twsx_int {
@@ -10163,7 +10158,7 @@ union cvmx_mio_twsx_sw_twsi {
                                                          is updated in this case.
                                                          When this bit is clear, a write operation initiates either a master-mode operation or a
                                                          TWSI configuration register access. */
-	uint64_t eia                          : 1;  /**< Extended internal address. Sends an additional internal address byte (the MSB of IA is
+	uint64_t eia                          : 1;  /**< Extended internal address. Sends an additional internal address byte (the MSB of [IA] is
                                                          from MIO_TWS()_SW_TWSI_EXT[IA]). */
 	uint64_t op                           : 4;  /**< Opcode field. When the register is written with [SLONLY] = 0, this field initiates one of
                                                          the following read or write operations:
@@ -10201,11 +10196,11 @@ union cvmx_mio_twsx_sw_twsi {
                                                          0x0 = TWSI slave address register (TWSI_SLAVE_ADD).
                                                          0x1 = TWSI data register (TWSI_DATA).
                                                          0x2 = TWSI control register (TWSI_CTL).
-                                                         0x3 = (when R =  0) TWSI clock control register (TWSI_CLKCTL).
-                                                         0x3 = (when R = 1) TWSI status register (TWSI_STAT).
+                                                         0x3 = (when [R] = 0) TWSI clock control register (TWSI_CLKCTL).
+                                                         0x3 = (when [R] = 1) TWSI status register (TWSI_STAT).
                                                          0x4 = TWSI extended slave register (TWSI_SLAVE_ADD_EXT).
                                                          0x7 = TWSI soft reset register (TWSI_RST).
-                                                         Also provides the lower 3 bits of internal address when launching a combined master-mode
+                                                         Also provides the lower three bits of internal address when launching a combined master-mode
                                                          operation. */
 	uint64_t d                            : 32; /**< Data field.
                                                          Used on a write operation when:
@@ -10267,7 +10262,7 @@ typedef union cvmx_mio_twsx_sw_twsi cvmx_mio_twsx_sw_twsi_t;
  * The IA field is sent as the first byte of internal address when performing master-mode
  * combined-read/write-with-IA operations and MIO_TWS()_SW_TWSI[EIA] is set. The D field
  * extends the data field of MIO_TWS()_SW_TWSI for a total of 8 bytes (SOVR must be set to
- * perform operations greater than 4 bytes).
+ * perform operations greater than four bytes).
  */
 union cvmx_mio_twsx_sw_twsi_ext {
 	uint64_t u64;

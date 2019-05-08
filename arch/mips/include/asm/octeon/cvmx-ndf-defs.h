@@ -1,5 +1,5 @@
 /***********************license start***************
- * Copyright (c) 2003-2015  Cavium Inc. (support@cavium.com). All rights
+ * Copyright (c) 2003-2017  Cavium Inc. (support@cavium.com). All rights
  * reserved.
  *
  *
@@ -219,7 +219,7 @@ union cvmx_ndf_bt_pg_info {
 	struct cvmx_ndf_bt_pg_info_s {
 #ifdef __BIG_ENDIAN_BITFIELD
 	uint64_t reserved_11_63               : 53;
-	uint64_t t_mult                       : 4;  /**< The boot-time TIM_MULT field of the SET_TM_PAR command. */
+	uint64_t t_mult                       : 4;  /**< The boot-time TIM_MULT field of the SET_TM_PARAM command. */
 	uint64_t adr_cyc                      : 4;  /**< Number of column-address cycles. Legal values are 0x3 - 0x8. Values written to this field
                                                          smaller than 0x3 are converted to 0x3; values larger than 0x8 are converted to 0x8. */
 	uint64_t size                         : 3;  /**< Number of bytes per page in the NAND flash device = 2^SIZE+1 * 256.
@@ -607,7 +607,7 @@ union cvmx_ndf_misc {
                                                          NDF_CMD queue. Bytes become unfilled as commands complete execution and exit. (FIFO is 256
                                                          bytes when BT_DIS = 0 and 1536 bytes when BT_DIS = 1.) */
 	uint64_t rd_done                      : 1;  /**< Read done. This bit is set to 1 by hardware when it reads the last eight bytes out of the
-                                                         NDF_CMD queue in response to RD_CMD being set to 1 by software. */
+                                                         NDF_CMD queue in response to [RD_CMD] being set to 1 by software. */
 	uint64_t rd_val                       : 1;  /**< This read-only bit is set to 1 by hardware when it reads the next eight bytes from NDF_CMD
                                                          queue in response to RD_CMD being set to 1. A software read of NDF_CMD clears this bit to
                                                          0. */

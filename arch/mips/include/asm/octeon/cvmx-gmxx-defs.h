@@ -1,5 +1,5 @@
 /***********************license start***************
- * Copyright (c) 2003-2015  Cavium Inc. (support@cavium.com). All rights
+ * Copyright (c) 2003-2017  Cavium Inc. (support@cavium.com). All rights
  * reserved.
  *
  *
@@ -8486,7 +8486,7 @@ union cvmx_gmxx_rxx_int_en {
                                                          character /E/ will be included as part of the
                                                          frame and does not cause a frame termination.
                                                          (XAUI Mode only) */
-	uint64_t bad_seq                      : 1;  /**< Reserved Sequence Deteted
+	uint64_t bad_seq                      : 1;  /**< Detected reserved sequence.
                                                          (XAUI Mode only) */
 	uint64_t rem_fault                    : 1;  /**< Remote Fault Sequence Deteted
                                                          (XAUI Mode only) */
@@ -8500,7 +8500,7 @@ union cvmx_gmxx_rxx_int_en {
                                                          (SGMII/1000Base-X half-duplex only) */
 	uint64_t falerr                       : 1;  /**< False carrier error or extend error after slottime
                                                          (SGMII/1000Base-X only) */
-	uint64_t rsverr                       : 1;  /**< Reserved opcodes */
+	uint64_t rsverr                       : 1;  /**< Detected reserved opcode. */
 	uint64_t pcterr                       : 1;  /**< Bad Preamble / Protocol */
 	uint64_t ovrerr                       : 1;  /**< Internal Data Aggregation Overflow
                                                          (SGMII/1000Base-X only) */
@@ -9174,7 +9174,7 @@ union cvmx_gmxx_rxx_int_reg {
                                                          character /E/ will be included as part of the
                                                          frame and does not cause a frame termination.
                                                          (XAUI Mode only) */
-	uint64_t bad_seq                      : 1;  /**< Reserved Sequence Deteted
+	uint64_t bad_seq                      : 1;  /**< Detected reserved sequence.
                                                          (XAUI Mode only) */
 	uint64_t rem_fault                    : 1;  /**< Remote Fault Sequence Deteted
                                                          (XAUI Mode only) */
@@ -9189,7 +9189,7 @@ union cvmx_gmxx_rxx_int_reg {
                                                          (SGMII/1000Base-X half-duplex only) */
 	uint64_t falerr                       : 1;  /**< False carrier error or extend error after slottime
                                                          (SGMII/1000Base-X only) */
-	uint64_t rsverr                       : 1;  /**< Reserved opcodes */
+	uint64_t rsverr                       : 1;  /**< Detected reserved opcode. */
 	uint64_t pcterr                       : 1;  /**< Bad Preamble / Protocol
                                                          In XAUI mode, the column of data that was bad
                                                          will be logged in GMX_RX_XAUI_BAD_COL */

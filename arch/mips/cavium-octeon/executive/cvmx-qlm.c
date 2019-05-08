@@ -42,7 +42,7 @@
  *
  * Helper utilities for qlm.
  *
- * <hr>$Revision: 167267 $<hr>
+ * <hr>$Revision: 169703 $<hr>
  */
 #ifdef CVMX_BUILD_FOR_LINUX_KERNEL
 #include <asm/octeon/cvmx.h>
@@ -2353,16 +2353,16 @@ int __cvmx_qlm_rx_equalization(int node, int qlm, int lane)
 			rx_aeq_out_2.u64 = cvmx_read_csr_node(node, CVMX_GSERX_LANEX_RX_AEQ_OUT_2(l, qlm));
 			rx_vma_status_0.u64 = cvmx_read_csr_node(node, CVMX_GSERX_LANEX_RX_VMA_STATUS_0(l, qlm));
 			cvmx_dprintf("    DFE Tap1:%lu, Tap2:%ld, Tap3:%ld, Tap4:%ld, Tap5:%ld\n",
-					cvmx_bit_extract(rx_aeq_out_1.u64, 0, 5),
-					cvmx_bit_extract_smag(rx_aeq_out_1.u64, 5, 9),
-					cvmx_bit_extract_smag(rx_aeq_out_1.u64, 10, 14),
-					cvmx_bit_extract_smag(rx_aeq_out_0.u64, 0, 4),
-					cvmx_bit_extract_smag(rx_aeq_out_0.u64, 5, 9));
+					(unsigned int long)cvmx_bit_extract(rx_aeq_out_1.u64, 0, 5),
+					(unsigned int long)cvmx_bit_extract_smag(rx_aeq_out_1.u64, 5, 9),
+					(unsigned int long)cvmx_bit_extract_smag(rx_aeq_out_1.u64, 10, 14),
+					(unsigned int long)cvmx_bit_extract_smag(rx_aeq_out_0.u64, 0, 4),
+					(unsigned int long)cvmx_bit_extract_smag(rx_aeq_out_0.u64, 5, 9));
 			cvmx_dprintf("    Pre-CTLE Gain:%lu, Post-CTLE Gain:%lu, CTLE Peak:%lu, CTLE Pole:%lu\n",
-					cvmx_bit_extract(rx_aeq_out_2.u64, 4, 4),
-					cvmx_bit_extract(rx_aeq_out_2.u64, 0, 4),
-					cvmx_bit_extract(rx_vma_status_0.u64, 2, 4),
-					cvmx_bit_extract(rx_vma_status_0.u64, 0, 2));
+					(unsigned int long)cvmx_bit_extract(rx_aeq_out_2.u64, 4, 4),
+					(unsigned int long)cvmx_bit_extract(rx_aeq_out_2.u64, 0, 4),
+					(unsigned int long)cvmx_bit_extract(rx_vma_status_0.u64, 2, 4),
+					(unsigned int long)cvmx_bit_extract(rx_vma_status_0.u64, 0, 2));
 # endif
 #endif
 		}
