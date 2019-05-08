@@ -96,10 +96,16 @@ static void octeon_lmc_edac_poll_o2(struct mem_ctl_info *mci)
 			fadr.cn61xx.frow = pvt->row;
 			fadr.cn61xx.fcol = pvt->col;
 		}
-		snprintf(msg, sizeof(msg),
-			 "DIMM %d rank %d bank %d row %d col %d",
-			 fadr.cn61xx.fdimm, fadr.cn61xx.fbunk,
-			 fadr.cn61xx.fbank, fadr.cn61xx.frow, fadr.cn61xx.fcol);
+		if (OCTEON_IS_OCTEON3())
+			snprintf(msg, sizeof(msg),
+				"DIMM %d rank %d bank %d row %d col %d",
+				fadr.cn70xx.fdimm, fadr.cn70xx.fbunk,
+				fadr.cn70xx.fbank, fadr.cn70xx.frow, fadr.cn70xx.fcol);
+		else
+			snprintf(msg, sizeof(msg),
+				"DIMM %d rank %d bank %d row %d col %d",
+				fadr.cn61xx.fdimm, fadr.cn61xx.fbunk,
+				fadr.cn61xx.fbank, fadr.cn61xx.frow, fadr.cn61xx.fcol);
 	}
 
 	if (int_reg.s.sec_err) {
