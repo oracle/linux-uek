@@ -536,6 +536,12 @@ void octeon_user_io_init(void)
 	 * kernel/debug mode. */
 #if CONFIG_CAVIUM_OCTEON_CVMSEG_SIZE > 0
 	cvmmemctl.s.cvmsegenak = 1;
+	if (OCTEON_IS_MODEL(OCTEON_CN78XX)) {
+		/* Enable LMTDMA */
+		cvmmemctl.s.lmtena = 1;
+		/* Scratch line to use for LMT operation */
+		cvmmemctl.s.lmtline = 2;
+	}
 #else
 	cvmmemctl.s.cvmsegenak = 0;
 #endif
