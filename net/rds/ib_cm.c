@@ -712,6 +712,36 @@ static inline void ibdev_put_vector(struct rds_ib_device *rds_ibdev, int index)
 	mutex_unlock(&rds_ibdev->vector_load_lock);
 }
 
+static void rds_ib_check_cq(struct ib_device *dev, struct rds_ib_device *rds_ibdev,
+			    int *vector, struct ib_cq **cqp, ib_comp_handler comp_handler,
+			    void (*event_handler)(struct ib_event *, void *),
+			    void *ctx, int n, const char str[5])
+{
+	struct ib_wc wc;
+	int spurious_completions = 0;
+
+	if (!*cqp) {
+		struct ib_cq_init_attr cq_attr = {};
+
+		cq_attr.cqe = n;
+		cq_attr.comp_vector = ibdev_get_unused_vector(rds_ibdev);
+		*vector = cq_attr.comp_vector;
+		*cqp = ib_create_cq(dev, comp_handler, event_handler, ctx, &cq_attr);
+		if (IS_ERR(*cqp)) {
+			ibdev_put_vector(rds_ibdev, cq_attr.comp_vector);
+			rdsdebug("ib_create_cq %s failed: %ld\n", str, PTR_ERR(*cqp));
+			return;
+		}
+	}
+
+	while (ib_poll_cq(*cqp, 1, &wc) > 0)
+		++spurious_completions;
+
+	if (spurious_completions)
+		pr_err("RDS/IB: %d spurious completions in %s cq for conn %p. We have memory leak!\n",
+		       spurious_completions, str, ctx);
+}
+
 /*
  * This needs to be very careful to not leave IS_ERR pointers around for
  * cleanup to trip over.
@@ -720,7 +750,6 @@ static int rds_ib_setup_qp(struct rds_connection *conn)
 {
 	struct rds_ib_connection *ic = conn->c_transport_data;
 	struct ib_device *dev = ic->i_cm_id->device;
-	struct ib_cq_init_attr cq_attr;
 	struct ib_qp_init_attr qp_attr;
 	struct rds_ib_device *rds_ibdev;
 	int ret;
@@ -757,41 +786,25 @@ static int rds_ib_setup_qp(struct rds_connection *conn)
 	ic->i_pd = rds_ibdev->pd;
 	ic->i_mr = rds_ibdev->mr;
 
-	ic->i_scq_vector = ibdev_get_unused_vector(rds_ibdev);
-	memset(&cq_attr, 0, sizeof(cq_attr));
-	cq_attr.cqe = ic->i_send_ring.w_nr + 1 + mr_reg;
-	cq_attr.comp_vector = ic->i_scq_vector;
-	ic->i_scq = ib_create_cq(dev, rds_ib_cq_comp_handler_send,
-				 rds_ib_cq_event_handler, conn,
-				 &cq_attr);
+	rds_ib_check_cq(dev, rds_ibdev, &ic->i_scq_vector, &ic->i_scq,
+			rds_ib_cq_comp_handler_send,
+			rds_ib_cq_event_handler, conn,
+			ic->i_send_ring.w_nr + 1 + mr_reg,
+			"send");
 	if (IS_ERR(ic->i_scq)) {
 		ret = PTR_ERR(ic->i_scq);
 		ic->i_scq = NULL;
-		ibdev_put_vector(rds_ibdev, ic->i_scq_vector);
-		rdsdebug("ib_create_cq send failed: %d\n", ret);
 		goto out;
 	}
 
-	ic->i_rcq_vector = ibdev_get_unused_vector(rds_ibdev);
-	memset(&cq_attr, 0, sizeof(cq_attr));
-	if (rds_ib_srq_enabled) {
-		cq_attr.cqe = rds_ib_srq_max_wr - 1;
-		cq_attr.comp_vector = ic->i_rcq_vector;
-		ic->i_rcq = ib_create_cq(dev, rds_ib_cq_comp_handler_recv,
-					 rds_ib_cq_event_handler, conn,
-					 &cq_attr);
-	} else {
-		cq_attr.cqe = ic->i_recv_ring.w_nr;
-		cq_attr.comp_vector = ic->i_rcq_vector;
-		ic->i_rcq = ib_create_cq(dev, rds_ib_cq_comp_handler_recv,
-					 rds_ib_cq_event_handler, conn,
-					 &cq_attr);
-	}
+	rds_ib_check_cq(dev, rds_ibdev, &ic->i_rcq_vector, &ic->i_rcq,
+			rds_ib_cq_comp_handler_recv,
+			rds_ib_cq_event_handler, conn,
+			rds_ib_srq_enabled ? rds_ib_srq_max_wr - 1 : ic->i_recv_ring.w_nr,
+			"recv");
 	if (IS_ERR(ic->i_rcq)) {
 		ret = PTR_ERR(ic->i_rcq);
 		ic->i_rcq = NULL;
-		ibdev_put_vector(rds_ibdev, ic->i_rcq_vector);
-		rdsdebug("ib_create_cq recv failed: %d\n", ret);
 		goto out;
 	}
 
@@ -1482,18 +1495,6 @@ void rds_ib_conn_path_shutdown(struct rds_conn_path *cp)
 		if (ic->i_cm_id->qp)
 			rdma_destroy_qp(ic->i_cm_id);
 
-		if (ic->i_rcq) {
-			if (ic->rds_ibdev)
-				ibdev_put_vector(ic->rds_ibdev, ic->i_rcq_vector);
-			ib_destroy_cq(ic->i_rcq);
-		}
-
-		if (ic->i_scq) {
-			if (ic->rds_ibdev)
-				ibdev_put_vector(ic->rds_ibdev, ic->i_scq_vector);
-			ib_destroy_cq(ic->i_scq);
-		}
-
 		/* then free the resources that ib callbacks use */
 		if (ic->i_send_hdrs)
 			ib_dma_free_coherent(dev,
@@ -1529,8 +1530,6 @@ void rds_ib_conn_path_shutdown(struct rds_conn_path *cp)
 		ic->i_cm_id = NULL;
 		ic->i_pd = NULL;
 		ic->i_mr = NULL;
-		ic->i_scq = NULL;
-		ic->i_rcq = NULL;
 		ic->i_send_hdrs = NULL;
 		ic->i_recv_hdrs = NULL;
 		ic->i_ack = NULL;
@@ -1659,6 +1658,18 @@ void rds_ib_conn_free(void *arg)
 	spin_unlock_irq(lock_ptr);
 
 	rds_ib_recv_free_caches(ic);
+
+	if (ic->i_rcq) {
+		if (ic->rds_ibdev)
+			ibdev_put_vector(ic->rds_ibdev, ic->i_rcq_vector);
+		ib_destroy_cq(ic->i_rcq);
+	}
+
+	if (ic->i_scq) {
+		if (ic->rds_ibdev)
+			ibdev_put_vector(ic->rds_ibdev, ic->i_scq_vector);
+		ib_destroy_cq(ic->i_scq);
+	}
 
 	kfree(ic);
 }
