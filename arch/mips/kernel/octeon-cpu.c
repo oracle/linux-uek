@@ -50,6 +50,7 @@ void octeon_prepare_arch_switch(struct task_struct *next)
 
 #if defined(CONFIG_CAVIUM_OCTEON_USER_IO_PER_PROCESS)
 	cvmmemctl.s.xkioenau = test_tsk_thread_flag(group_leader, TIF_XKPHYS_IO_EN) ? 1 : 0;
+	cvmmemctl.s.cvmsegenau = test_tsk_thread_flag(group_leader, TIF_XKPHYS_IO_EN) ? 1 : 0;
 #endif
 	write_c0_cvmmemctl(cvmmemctl.u64);
 }
