@@ -427,8 +427,6 @@ static inline uint32_t octeon_npi_read32(uint64_t address)
 
 extern struct cvmx_bootinfo *octeon_bootinfo;
 
-extern uint64_t octeon_bootloader_entry_addr;
-
 static inline uint64_t octeon_read_ptp_csr(u64 csr)
 {
 	if (OCTEON_IS_MODEL(OCTEON_CN63XX_PASS1_X)) {
