@@ -502,6 +502,7 @@ octeon_mult_save3_end:
 	.p2align 7
 	.set push
 	.set noreorder
+	.set arch=octeon3
 	LEAF(octeon_mult_restore)
 	jr	ra
 	 nop
@@ -534,28 +535,21 @@ octeon_mult_restore2_end:
 	ld	$13, PT_MPL+(3*8)(sp)	/* read MPL3 */
 	ld	$10, PT_MPL+(1*8)(sp)	/* read MPL1 */
 	ld	$11, PT_MPL+(4*8)(sp)	/* read MPL4 */
-	.word	0x718d0008
-	/* mtm0	$12, $13		   restore MPL0 and MPL3 */
+	mtm0	$12, $13		/* restore MPL0 and MPL3 */
 	ld	$12, PT_MPL+(2*8)(sp)	/* read MPL2 */
-	.word	0x714b000c
-	/* mtm1	$10, $11		   restore MPL1 and MPL4 */
+	mtm1	$10, $11		/* restore MPL1 and MPL4 */
 	ld	$13, PT_MPL+(5*8)(sp)	/* read MPL5 */
 	ld	$10, PT_MTP+(0*8)(sp)	/* read P0 */
 	ld	$11, PT_MTP+(3*8)(sp)	/* read P3 */
-	.word	0x718d000d
-	/* mtm2	$12, $13		   restore MPL2 and MPL5 */
+	mtm2	$12, $13		/* restore MPL2 and MPL5 */
 	ld	$12, PT_MTP+(1*8)(sp)	/* read P1 */
-	.word	0x714b0009
-	/* mtp0	$10, $11		   restore P0 and P3 */
+	mtp0	$10, $11		/* restore P0 and P3 */
 	ld	$13, PT_MTP+(4*8)(sp)	/* read P4 */
 	ld	$10, PT_MTP+(2*8)(sp)	/* read P2 */
 	ld	$11, PT_MTP+(5*8)(sp)	/* read P5 */
-	.word	0x718d000a
-	/* mtp1	$12, $13		   restore P1 and P4 */
+	mtp1	$12, $13		/* restore P1 and P4 */
 	jr	ra
-	.word	0x714b000b
-	/* mtp2	$10, $11		   restore P2 and P5 */
-
+	  mtp2	$10, $11		/* restore P2 and P5 */
 octeon_mult_restore3_end:
 	EXPORT(octeon_mult_restore3_end)
 	END(octeon_mult_restore3)
