@@ -110,6 +110,7 @@ extern void copy_from_user_page(struct vm_area_struct *vma,
 	unsigned long len);
 
 extern void (*flush_icache_all)(void);
+extern void (*local_flush_icache_all)(void);
 extern void (*local_flush_data_cache_page)(void * addr);
 extern void (*flush_data_cache_page)(unsigned long addr);
 
