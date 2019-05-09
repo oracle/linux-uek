@@ -46,6 +46,9 @@
 #define cpu_has_64bits		1
 #define cpu_has_octeon_cache	1
 #define cpu_has_saa		octeon_has_saa()
+#ifdef CONFIG_CAVIUM_OCTEON2
+#define cpu_has_octeon2_isa     1
+#endif
 #define cpu_has_mips32r1	1
 #define cpu_has_mips32r2	1
 #define cpu_has_mips64r1	1
