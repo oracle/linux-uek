@@ -48,6 +48,8 @@
 #include <asm/octeon/cvmx-qlm.h>
 #include <asm/octeon/cvmx-debug.h>
 
+#define SDK_VERSION "3.1.2"
+
 /*
  * TRUE for devices having registers with little-endian byte
  * order, FALSE for registers with native-endian byte order.
@@ -183,16 +185,12 @@ void octeon_crash_smp_send_stop(void)
 
 #endif /* CONFIG_KEXEC */
 
-#ifdef CONFIG_CAVIUM_RESERVE32
-uint64_t octeon_reserve32_memory;
-EXPORT_SYMBOL(octeon_reserve32_memory);
+#ifndef CONFIG_CAVIUM_RESERVE32
+#define	 CONFIG_CAVIUM_RESERVE32	0ULL
 #endif
 
-#ifdef CONFIG_KEXEC
-/* crashkernel cmdline parameter is parsed _after_ memory setup
- * we also parse it here (workaround for EHB5200) */
-static uint64_t crashk_size, crashk_base;
-#endif
+uint64_t octeon_reserve32_memory;
+EXPORT_SYMBOL(octeon_reserve32_memory);
 
 static int octeon_uart;
 
@@ -360,9 +358,12 @@ static void octeon_restart(char *command)
  */
 static void octeon_kill_core(void *arg)
 {
-	if (octeon_is_simulation())
+	if (octeon_is_simulation()) {
+		/* The simulator needs the watchdog to stop for dead cores */
+		cvmx_write_csr(CVMX_CIU_WDOGX(cvmx_get_core_num()), 0);
 		/* A break instruction causes the simulator stop a core */
 		asm volatile ("break" ::: "memory");
+	}
 
 	local_irq_disable();
 	/* Disable watchdog on this core. */
@@ -464,7 +465,11 @@ void octeon_user_io_init(void)
 
 	/* R/W If set (and UX set), user-level loads/stores can use
 	 * XKPHYS addresses with VA<48>==0 */
+#ifdef CONFIG_CAVIUM_OCTEON_USER_MEM
+	cvmmemctl.s.xkmemenau = 1;
+#else
 	cvmmemctl.s.xkmemenau = 0;
+#endif
 
 	/* R/W If set (and SX set), supervisor-level loads/stores can
 	 * use XKPHYS addresses with VA<48>==1 */
@@ -472,7 +477,11 @@ void octeon_user_io_init(void)
 
 	/* R/W If set (and UX set), user-level loads/stores can use
 	 * XKPHYS addresses with VA<48>==1 */
+#ifdef CONFIG_CAVIUM_OCTEON_USER_IO
+	cvmmemctl.s.xkioenau = 1;
+#else
 	cvmmemctl.s.xkioenau = 0;
+#endif
 
 	/* R/W If set, all stores act as SYNCW (NOMERGE must be set
 	 * when this is set) RW, reset to 0. */
@@ -724,9 +733,6 @@ void __init prom_init(void)
 	int i;
 	u64 t;
 	int argc;
-#ifdef CONFIG_CAVIUM_RESERVE32
-	int64_t addr = -1;
-#endif
 	/*
 	 * The bootloader passes a pointer to the boot descriptor in
 	 * $a3, this is available as fw_arg3.
@@ -843,7 +849,6 @@ void __init prom_init(void)
 		cvmx_write_csr(CVMX_LED_UDD_DATX(1), 0);
 		cvmx_write_csr(CVMX_LED_EN, 1);
 	}
-#ifdef CONFIG_CAVIUM_RESERVE32
 	/*
 	 * We need to temporarily allocate all memory in the reserve32
 	 * region. This makes sure the kernel doesn't allocate this
@@ -851,17 +856,22 @@ void __init prom_init(void)
 	 * bootloader. Later, after the memory allocations are
 	 * complete, the reserve32 will be freed.
 	 *
-	 * Allocate memory for RESERVED32 aligned on 2MB boundary. This
+	 * Allocate memory for RESERVE32 aligned on 2MB boundary. This
 	 * is in case we later use hugetlb entries with it.
 	 */
-	addr = cvmx_bootmem_phy_named_block_alloc(CONFIG_CAVIUM_RESERVE32 << 20,
-						0, 0, 2 << 20,
-						"CAVIUM_RESERVE32", 0);
-	if (addr < 0)
-		pr_err("Failed to allocate CAVIUM_RESERVE32 memory area\n");
-	else
-		octeon_reserve32_memory = addr;
-#endif
+	if ( CONFIG_CAVIUM_RESERVE32 > 0 ) {
+		int64_t addr = -1;
+		addr = 
+			cvmx_bootmem_phy_named_block_alloc(
+				CONFIG_CAVIUM_RESERVE32 << 20,
+				0, 0, 2 << 20,
+				"CAVIUM_RESERVE32", 0);
+		if (addr < 0)
+			pr_err("Failed to allocate "
+				"CAVIUM_RESERVE32 memory area\n");
+		else
+			octeon_reserve32_memory = addr;
+	}
 
 	octeon_check_cpu_bist();
 
@@ -934,20 +944,6 @@ void __init prom_init(void)
 			strncpy(rd_name, arg + 8, sizeof(rd_name));
 			rd_name[sizeof(rd_name) - 1] = 0;
 			goto append_arg;
-#ifdef CONFIG_KEXEC
-		} else if (strncmp(arg, "crashkernel=", 12) == 0) {
-			crashk_size = memparse(arg+12, &p);
-			if (*p == '@')
-				crashk_base = memparse(p+1, &p);
-			strcat(arcs_cmdline, " ");
-			strcat(arcs_cmdline, arg);
-			/*
-			 * To do: switch parsing to new style, something like:
-			 * parse_crashkernel(arg, sysinfo->system_dram_size,
-			 *		  &crashk_size, &crashk_base);
-			 */
-			goto append_arg;
-#endif
 		} else {
 append_arg:
 			if (strlen(arcs_cmdline) + strlen(arg) + 1 < sizeof(arcs_cmdline) - 1) {
@@ -989,6 +985,8 @@ append_arg:
 #ifdef CONFIG_CAVIUM_GDB
 	cvmx_debug_init ();
 #endif
+
+	pr_info("Cavium Inc. SDK-" SDK_VERSION "\n");
 }
 
 #ifdef CONFIG_CAVIUM_OCTEON_LOCK_L2
@@ -1081,16 +1079,11 @@ void __init *plat_get_fdt(void)
 void __init plat_mem_setup(void)
 {
 	uint64_t mem_alloc_size;
-	uint64_t total;
-	uint64_t crashk_end;
+	uint64_t total = 0;
 	int64_t memory;
 	const struct cvmx_bootmem_named_block_desc *named_block;
 
-	total = 0;
-	crashk_end = 0;
-
 #ifdef CONFIG_BLK_DEV_INITRD
-
 	if (rd_name[0]) {
 		const struct cvmx_bootmem_named_block_desc *initrd_block;
 
@@ -1188,7 +1181,6 @@ void __init plat_mem_setup(void)
 
 mem_alloc_done:
 
-#ifdef CONFIG_CAVIUM_RESERVE32
 	/*
 	 * Now that we've allocated the kernel memory it is safe to
 	 * free the reserved region. We free it here so that builtin
@@ -1196,7 +1188,6 @@ mem_alloc_done:
 	 */
 	if (octeon_reserve32_memory)
 		cvmx_bootmem_free_named("CAVIUM_RESERVE32");
-#endif /* CONFIG_CAVIUM_RESERVE32 */
 
 	if (total == 0)
 		panic("Unable to allocate memory from "
