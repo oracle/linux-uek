@@ -479,5 +479,18 @@ int unregister_co_cache_error_notifier(struct notifier_block *nb);
 
 extern unsigned long long cache_err_dcache[NR_CPUS];
 
+/* Octeon multiplier save/restore routines from octeon_switch.S */
+void octeon_mult_save(void);
+void octeon_mult_restore(void);
+void octeon_mult_save_end(void);
+void octeon_mult_restore_end(void);
+void octeon_mult_save3(void);
+void octeon_mult_save3_end(void);
+void octeon_mult_save2(void);
+void octeon_mult_save2_end(void);
+void octeon_mult_restore3(void);
+void octeon_mult_restore3_end(void);
+void octeon_mult_restore2(void);
+void octeon_mult_restore2_end(void);
 
 #endif /* __ASM_OCTEON_OCTEON_H */
