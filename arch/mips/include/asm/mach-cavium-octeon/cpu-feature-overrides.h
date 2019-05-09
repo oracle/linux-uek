@@ -45,7 +45,6 @@
 #define cpu_has_ic_fills_f_dc	0
 #define cpu_has_64bits		1
 #define cpu_has_octeon_cache	1
-#define cpu_has_saa		octeon_has_saa()
 #ifdef CONFIG_CAVIUM_OCTEON2
 #define cpu_has_octeon2_isa     1
 #endif
@@ -80,5 +79,7 @@
  * BAR1 hole.
  */
 #define MAX_DMA32_PFN (((1ULL << 32) - (1ULL << 28)) >> PAGE_SHIFT)
+
+#define cpu_has_local_ebase	0
 
 #endif
