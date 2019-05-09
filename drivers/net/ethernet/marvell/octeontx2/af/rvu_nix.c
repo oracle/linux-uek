@@ -3506,7 +3506,7 @@ int rvu_mbox_handler_nix_lf_start_rx(struct rvu *rvu, struct msg_req *req,
 
 	rvu_npc_enable_default_entries(rvu, pcifunc, nixlf);
 
-	return 0;
+	return rvu_cgx_start_stop_io(rvu, pcifunc, true);
 }
 
 int rvu_mbox_handler_nix_lf_stop_rx(struct rvu *rvu, struct msg_req *req,
@@ -3521,7 +3521,7 @@ int rvu_mbox_handler_nix_lf_stop_rx(struct rvu *rvu, struct msg_req *req,
 
 	rvu_npc_disable_default_entries(rvu, pcifunc, nixlf);
 
-	return 0;
+	return rvu_cgx_start_stop_io(rvu, pcifunc, false);
 }
 
 void rvu_nix_lf_teardown(struct rvu *rvu, u16 pcifunc, int blkaddr, int nixlf)
@@ -3539,6 +3539,8 @@ void rvu_nix_lf_teardown(struct rvu *rvu, u16 pcifunc, int blkaddr, int nixlf)
 	nix_interface_deinit(rvu, pcifunc, nixlf);
 	nix_rx_sync(rvu, blkaddr);
 	nix_txschq_free(rvu, pcifunc);
+
+	rvu_cgx_start_stop_io(rvu, pcifunc, false);
 
 	if (pfvf->sq_ctx) {
 		ctx_req.ctype = NIX_AQ_CTYPE_SQ;
