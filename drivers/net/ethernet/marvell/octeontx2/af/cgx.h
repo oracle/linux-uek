@@ -22,6 +22,7 @@
 
 #define CGX_ID_MASK			0x7
 #define MAX_LMAC_PER_CGX		4
+#define MAX_DMAC_ENTRIES_PER_CGX	32
 #define CGX_FIFO_LEN			65536 /* 64K for both Rx & Tx */
 #define CGX_OFFSET(x)			((x) * MAX_LMAC_PER_CGX)
 
@@ -126,7 +127,11 @@ u64 cgx_get_lmac_tx_fifo_status(void *cgxd, int lmac_id);
 int cgx_lmac_rx_tx_enable(void *cgxd, int lmac_id, bool enable);
 int cgx_lmac_tx_enable(void *cgxd, int lmac_id, bool enable);
 int cgx_lmac_addr_set(u8 cgx_id, u8 lmac_id, u8 *mac_addr);
+int cgx_lmac_addr_reset(u8 cgx_id, u8 lmac_id);
 u64 cgx_lmac_addr_get(u8 cgx_id, u8 lmac_id);
+int cgx_lmac_addr_add(u8 cgx_id, u8 lmac_id, u8 *mac_addr);
+int cgx_lmac_addr_del(u8 cgx_id, u8 lmac_id, u8 index);
+int cgx_lmac_addr_max_entries_get(u8 cgx_id, u8 lmac_id);
 void cgx_lmac_promisc_config(int cgx_id, int lmac_id, bool enable);
 void cgx_lmac_ptp_config(void *cgxd, int lmac_id, bool enable);
 void cgx_lmac_enadis_rx_pause_fwding(void *cgxd, int lmac_id, bool enable);
