@@ -475,7 +475,7 @@ static ssize_t reload_store(struct device *dev,
 
 	for_each_online_cpu(cpu) {
 		ret = microcode_ops->request_microcode_fw(cpu, &microcode_pdev->dev, true);
-		if (ret != UCODE_OK) {
+		if (ret == UCODE_ERROR) {
 			ret = -EINVAL;
 			goto out;
 		}
