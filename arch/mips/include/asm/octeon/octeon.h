@@ -189,7 +189,10 @@ union octeon_cvmemctl {
 		__BITFIELD_FIELD(uint64_t wbfltime2:1,
 		__BITFIELD_FIELD(uint64_t wbthresh2:1,
 		__BITFIELD_FIELD(uint64_t cvmsegiodis:1,
+		/* When set, LMTDMA/LMTST operations are permitted */
 		__BITFIELD_FIELD(uint64_t lmtena:1,
+		/* Selects the CVMSEG LM cacheline used by LMTDMA
+		   LMTST and wide atomic store operations */
 		__BITFIELD_FIELD(uint64_t lmtline:6,
 		/* When set, TLB parity errors can occur. */
 		__BITFIELD_FIELD(uint64_t tlbperrena:1,
