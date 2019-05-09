@@ -3,6 +3,7 @@
 #include <linux/interrupt.h>
 #include <asm/octeon/octeon.h>
 #include <asm/octeon/cvmx-ciu-defs.h>
+#include <asm/octeon/cvmx-ciu3-defs.h>
 #include <asm/octeon/cvmx.h>
 #include <linux/debugfs.h>
 #include <linux/kernel.h>
@@ -10,6 +11,9 @@
 #include <linux/seq_file.h>
 
 #define TIMER_NUM 3
+
+static int oct_ilm_irq;
+static u64 ciu_timx_reg;
 
 static bool reset_stats;
 
@@ -94,7 +98,7 @@ static void init_latency_info(struct latency_info *li, int startup)
 }
 
 
-static void start_timer(int timer, u64 interval)
+static void start_timer(u64 interval)
 {
 	union cvmx_ciu_timx timx;
 	unsigned long flags;
@@ -104,9 +108,9 @@ static void start_timer(int timer, u64 interval)
 	timx.s.len = interval;
 	raw_local_irq_save(flags);
 	li.timer_start1 = read_c0_cvmcount();
-	cvmx_write_csr(CVMX_CIU_TIMX(timer), timx.u64);
+	cvmx_write_csr(ciu_timx_reg, timx.u64);
 	/* Read it back to force wait until register is written. */
-	timx.u64 = cvmx_read_csr(CVMX_CIU_TIMX(timer));
+	timx.u64 = cvmx_read_csr(ciu_timx_reg);
 	li.timer_start2 = read_c0_cvmcount();
 	raw_local_irq_restore(flags);
 }
@@ -130,37 +134,50 @@ static irqreturn_t cvm_oct_ciu_timer_interrupt(int cpl, void *dev_id)
 		if (last_latency < li.min_latency)
 			li.min_latency = last_latency;
 	}
-	start_timer(TIMER_NUM, li.io_interval);
+	start_timer(li.io_interval);
 	return IRQ_HANDLED;
 }
 
-static void disable_timer(int timer)
+static void disable_timer(void)
 {
 	union cvmx_ciu_timx timx;
 
 	timx.s.one_shot = 0;
 	timx.s.len = 0;
-	cvmx_write_csr(CVMX_CIU_TIMX(timer), timx.u64);
+	cvmx_write_csr(ciu_timx_reg, timx.u64);
 	/* Read it back to force immediate write of timer register*/
-	timx.u64 = cvmx_read_csr(CVMX_CIU_TIMX(timer));
+	timx.u64 = cvmx_read_csr(ciu_timx_reg);
 }
 
 static __init int oct_ilm_module_init(void)
 {
 	int rc;
-	int irq = OCTEON_IRQ_TIMER0 + TIMER_NUM;
+
+	if (octeon_has_feature(OCTEON_FEATURE_CIU3)) {
+		int intsn = 0x2000 + 0x80 * TIMER_NUM;
+		struct irq_domain *d = octeon_irq_get_block_domain(0, intsn >> 12);
+
+		oct_ilm_irq = irq_create_mapping(d, intsn);
+		irqd_set_trigger_type(irq_get_irq_data(oct_ilm_irq),
+				      IRQ_TYPE_EDGE_RISING);
+
+		ciu_timx_reg = CVMX_CIU3_TIMX(TIMER_NUM);
+	} else {
+		oct_ilm_irq = OCTEON_IRQ_TIMER0 + TIMER_NUM;
+		ciu_timx_reg = CVMX_CIU_TIMX(TIMER_NUM);
+	}
 
 	init_debugfs();
 
-	rc = request_irq(irq, cvm_oct_ciu_timer_interrupt, IRQF_NO_THREAD,
+	rc = request_irq(oct_ilm_irq, cvm_oct_ciu_timer_interrupt, IRQF_NO_THREAD,
 			 "oct_ilm", 0);
 	if (rc) {
-		WARN(1, "Could not acquire IRQ %d", irq);
+		WARN(1, "Could not acquire IRQ %d", oct_ilm_irq);
 		goto err_irq;
 	}
 
 	init_latency_info(&li, 1);
-	start_timer(TIMER_NUM, li.io_interval);
+	start_timer(li.io_interval);
 
 	return 0;
 err_irq:
@@ -170,9 +187,9 @@ err_irq:
 
 static __exit void oct_ilm_module_exit(void)
 {
-	disable_timer(TIMER_NUM);
+	disable_timer();
 	debugfs_remove_recursive(dir);
-	free_irq(OCTEON_IRQ_TIMER0 + TIMER_NUM, 0);
+	free_irq(oct_ilm_irq, 0);
 }
 
 module_exit(oct_ilm_module_exit);
