@@ -288,7 +288,7 @@ static int wait_pko_response;
 module_param(wait_pko_response, int, 0644);
 MODULE_PARM_DESC(use_tx_queues, "Wait for response after each pko command.");
 
-static int num_packet_buffers = 4096;
+static int num_packet_buffers = 768;
 module_param(num_packet_buffers, int, S_IRUGO);
 MODULE_PARM_DESC(num_packet_buffers, "Number of packet buffers to allocate per port.");
 
@@ -1918,7 +1918,7 @@ static int octeon3_eth_ndo_start_xmit(struct sk_buff *skb, struct net_device *ne
 	void **work;
 	bool can_recycle_skb = false;
 	int gaura = 0;
-	void *buffers_needed = NULL;
+	atomic64_t *buffers_needed = NULL;
 	void **buf;
 	unsigned int mss;
 
@@ -1946,12 +1946,15 @@ static int octeon3_eth_ndo_start_xmit(struct sk_buff *skb, struct net_device *ne
 			int		node;
 			int		aura;
 
-			can_recycle_skb = true;
 			gaura = magic & 0xfff;
 			node = gaura >> 10;
 			aura = gaura & 0x3ff;
 			buffers_needed = aura2bufs_needed[node][aura];
-			buf[SKB_AURA_OFFSET] = NULL;
+			/* Only allow aura overfill of up to 5 extra buffers. */
+			if (atomic64_read(buffers_needed) > -5) {
+				can_recycle_skb = true;
+				buf[SKB_AURA_OFFSET] = NULL;
+			}
 		}
 	}
 
@@ -2102,15 +2105,11 @@ static int octeon3_eth_ndo_start_xmit(struct sk_buff *skb, struct net_device *ne
 	if (likely(can_recycle_skb)) {
 		cvmx_pko_send_free_t	send_free;
 
-		/* Subtract 1 from buffers_needed. */
-		send_mem.u64 = 0;
-		send_mem.s.subdc4 = CVMX_PKO_SENDSUBDC_MEM;
-		send_mem.s.dsz = MEMDSZ_B64;
-		send_mem.s.alg = MEMALG_SUB;
-		send_mem.s.offset = 1;
-		send_mem.s.addr = virt_to_phys(buffers_needed);
-		cvmx_scratch_write64(scr_off, send_mem.u64);
-		scr_off += sizeof(buf_ptr);
+		/* Account for the recycled buffer now, so any backlog
+		 * in the PKO doesn't inadvertently increase the total
+		 * number of buffers in flight for the input port.
+		 */
+		atomic64_dec(buffers_needed);
 
 		/* Free buffer when finished with the packet */
 		send_free.u64 = 0;
