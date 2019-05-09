@@ -3,10 +3,12 @@
  * License.  See the file "COPYING" in the main directory of this archive
  * for more details.
  *
- * Copyright (C) 2005-2008 Cavium Networks, Inc
+ * Copyright (C) 2005-2012 Cavium, Inc
  */
 #ifndef __ASM_MACH_CAVIUM_OCTEON_KERNEL_ENTRY_H
 #define __ASM_MACH_CAVIUM_OCTEON_KERNEL_ENTRY_H
+
+#include "asm/octeon/cvmx-asm.h"
 
 #define CP0_CVMCTL_REG $9, 7
 #define CP0_CVMMEMCTL_REG $11,7
@@ -14,6 +16,7 @@
 #define CP0_DCACHE_ERR_REG $27, 1
 #define CP0_PRID_OCTEON_PASS1 0x000d0000
 #define CP0_PRID_OCTEON_CN30XX 0x000d0200
+#define CP0_MDEBUG $22, 0
 
 .macro	kernel_entry_setup
 	# Registers set by bootloader:
@@ -26,9 +29,23 @@
 	# a3 = address of boot descriptor block
 	.set push
 	.set arch=octeon
+#ifdef CONFIG_HOTPLUG_CPU
+	b	7f
+FEXPORT(octeon_hotplug_entry)
+	move	a0, zero
+	move	a1, zero
+	move	a2, zero
+	move	a3, zero
+7:
+#endif	/* CONFIG_HOTPLUG_CPU */
 	mfc0	v0, CP0_STATUS
 	/* Force 64-bit addressing enabled */
 	ori	v0, v0, (ST0_UX | ST0_SX | ST0_KX)
+	/* Clear NMI and SR as they are sometimes restored and 0 -> 1
+	 * transitions are not allowed
+	 */
+	li	v1, ~(ST0_NMI | ST0_SR)
+	and	v0, v1
 	mtc0	v0, CP0_STATUS
 
 	# Clear the TLB.
@@ -132,11 +149,11 @@
 	dsllv	v1, v1, t1
 	daddu	v1, v1, t3
 	sd	v1, 0(v0)
+#endif
 	dla	v0, continue_in_mapped_space
 	jr	v0
 
 continue_in_mapped_space:
-#endif
 	# Read the cavium mem control register
 	dmfc0	v0, CP0_CVMMEMCTL_REG
 	# Clear the lower 6 bits, the CVMSEG size
@@ -180,6 +197,16 @@ continue_in_mapped_space:
 	sync
 	# Flush dcache after config change
 	cache	9, 0($0)
+
+#ifdef	CONFIG_CAVIUM_GDB
+	# Pulse MCD0 signal on CTRL-C to stop all the cores, and set the MCD0
+	# to be not masked by this core so we know the signal is received by
+	# someone
+	dmfc0	v0, CP0_MDEBUG
+	ori	v0, v0, 0x9100
+	dmtc0	v0, CP0_MDEBUG
+#endif
+
 	# Zero all of CVMSEG to make sure parity is correct
 	dli	v0, CONFIG_CAVIUM_OCTEON_CVMSEG_SIZE
 	dsll	v0, 7
