@@ -27,10 +27,10 @@
  * consistent over all CPUs.
  */
 
-static const struct x86_cpu_id *__x86_match_cpu(struct cpuinfo_x86 *c,
-                                                const struct x86_cpu_id *match)
+const struct x86_cpu_id *x86_match_cpu(const struct x86_cpu_id *match)
 {
 	const struct x86_cpu_id *m;
+	struct cpuinfo_x86 *c = &boot_cpu_data;
 
 	for (m = match; m->vendor | m->family | m->model | m->feature; m++) {
 		if (m->vendor != X86_VENDOR_ANY && c->x86_vendor != m->vendor)
@@ -45,16 +45,4 @@ static const struct x86_cpu_id *__x86_match_cpu(struct cpuinfo_x86 *c,
 	}
 	return NULL;
 }
-
-
-const struct x86_cpu_id *x86_match_cpu(const struct x86_cpu_id *match)
-{
-	return __x86_match_cpu(&boot_cpu_data, match);
-}
 EXPORT_SYMBOL(x86_match_cpu);
-
-const struct x86_cpu_id *x86_match_cpu0(const struct x86_cpu_id *match)
-{
-	return __x86_match_cpu(&cpu_data(0), match);
-}
-EXPORT_SYMBOL(x86_match_cpu0);
