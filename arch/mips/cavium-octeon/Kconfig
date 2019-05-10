@@ -1,25 +1,34 @@
 # SPDX-License-Identifier: GPL-2.0
 if CPU_CAVIUM_OCTEON
 
+config CAVIUM_OCTEON2
+       bool "Build the kernel to be used only on OCTEON II processor cores"
+       select CAVIUM_CN63XXP1
+       default "n"
+       help
+	 This option enables the generation of Octeon2 specific
+	 instructions by the compiler, resulting in a kernel that is
+	 more efficient, but that will not run on Octeon and
+	 OcteonPlus processor cores.
+
 config CAVIUM_CN63XXP1
-	bool "Enable CN63XXP1 errata workarounds"
+	bool "Enable CN6XXX DCache prefetch errata workaround"
 	default "n"
 	help
-	  The CN63XXP1 chip requires build time workarounds to
+	  The CN6XXX chips requires build time workarounds to
 	  function reliably, select this option to enable them.  These
 	  workarounds will cause a slight decrease in performance on
-	  non-CN63XXP1 hardware, so it is recommended to select "n"
-	  unless it is known the workarounds are needed.
+	  non-CN6XXX hardware.
 
 config CAVIUM_OCTEON_CVMSEG_SIZE
 	int "Number of L1 cache lines reserved for CVMSEG memory"
-	range 0 54
-	default 1
+	range 2 54
+	default 2
 	help
 	  CVMSEG LM is a segment that accesses portions of the dcache as a
 	  local memory; the larger CVMSEG is, the smaller the cache is.
 	  This selects the size of CVMSEG LM, which is in cache blocks. The
-	  legally range is from zero to 54 cache blocks (i.e. CVMSEG LM is
+	  legally range is from 2 to 54 cache blocks (i.e. CVMSEG LM is
 	  between zero and 6192 bytes).
 
 endif # CPU_CAVIUM_OCTEON
