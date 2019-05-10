@@ -123,8 +123,10 @@ void rds_connect_path_complete(struct rds_conn_path *cp, int curr)
 
 	cp->cp_reconnect_jiffies = 0;
 	set_bit(RCMQ_BITOFF_CONGU_PENDING, &conn->c_map_queued);
-	queue_delayed_work(cp->cp_wq, &cp->cp_send_w, 0);
-	queue_delayed_work(cp->cp_wq, &cp->cp_recv_w, 0);
+	rds_clear_queued_send_work_bit(cp);
+	rds_cond_queue_send_work(cp, 0);
+	rds_clear_queued_recv_work_bit(cp);
+	rds_cond_queue_recv_work(cp, 0);
 	queue_delayed_work(cp->cp_wq, &cp->cp_hb_w, 0);
 	cancel_delayed_work(&cp->cp_reconn_w);
 	cp->cp_hb_start = 0;
@@ -267,24 +269,29 @@ void rds_send_worker(struct work_struct *work)
 	struct rds_conn_path *cp = container_of(work,
 						struct rds_conn_path,
 						cp_send_w.work);
+	unsigned long delay;
 	int ret;
 
 	if (rds_conn_path_state(cp) == RDS_CONN_UP) {
+		rds_clear_queued_send_work_bit(cp);
 		clear_bit(RDS_LL_SEND_FULL, &cp->cp_flags);
 		ret = rds_send_xmit(cp);
 		cond_resched();
 		rds_rtd(RDS_RTD_SND_EXT, "conn %p ret %d\n", cp->cp_conn, ret);
+
 		switch (ret) {
 		case -EAGAIN:
 			rds_stats_inc(s_send_immediate_retry);
-			queue_delayed_work(cp->cp_wq, &cp->cp_send_w, 0);
+			delay = 0;
 			break;
 		case -ENOMEM:
 			rds_stats_inc(s_send_delayed_retry);
-			queue_delayed_work(cp->cp_wq, &cp->cp_send_w, 2);
+			delay = 2;
 		default:
-			break;
+			return;
 		}
+
+		rds_cond_queue_send_work(cp, delay);
 	}
 }
 
@@ -293,22 +300,25 @@ void rds_recv_worker(struct work_struct *work)
 	struct rds_conn_path *cp = container_of(work,
 						struct rds_conn_path,
 						cp_recv_w.work);
+	unsigned long delay;
 	int ret;
 
 	if (rds_conn_path_state(cp) == RDS_CONN_UP) {
+		rds_clear_queued_recv_work_bit(cp);
 		ret = cp->cp_conn->c_trans->recv_path(cp);
 		rds_rtd(RDS_RTD_RCV_EXT, "conn %p ret %d\n", cp->cp_conn, ret);
 		switch (ret) {
 		case -EAGAIN:
 			rds_stats_inc(s_recv_immediate_retry);
-			queue_delayed_work(cp->cp_wq, &cp->cp_recv_w, 0);
+			delay = 0;
 			break;
 		case -ENOMEM:
 			rds_stats_inc(s_recv_delayed_retry);
-			queue_delayed_work(cp->cp_wq, &cp->cp_recv_w, 2);
+			delay = 2;
 		default:
-			break;
+			return;
 		}
+		rds_cond_queue_recv_work(cp, delay);
 	}
 }
 
