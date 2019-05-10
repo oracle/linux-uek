@@ -150,7 +150,7 @@ static void octeon_cf_set_piomode(struct ata_port *ap, struct ata_device *dev)
 		div = 8;
 	T = (int)((1000000000000LL * div) / octeon_get_io_clock_rate());
 
-	BUG_ON(ata_timing_compute(dev, dev->pio_mode, &timing, T, T));
+	WARN_ON(ata_timing_compute(dev, dev->pio_mode, &timing, T, T));
 
 	t2 = timing.active;
 	if (t2)
@@ -567,7 +567,7 @@ static void octeon_cf_dma_start(struct ata_queued_cmd *qc)
 
 	/* Get the scatter list entry we need to DMA into */
 	sg = qc->cursg;
-	BUG_ON(!sg);
+	WARN_ON(!sg);
 
 	/*
 	 * Clear the DMA complete status.
@@ -808,7 +808,7 @@ static unsigned int octeon_cf_qc_issue(struct ata_queued_cmd *qc)
 
 	case ATAPI_PROT_DMA:
 		dev_err(ap->dev, "Error, ATAPI not supported\n");
-		BUG();
+		WARN_ON(true);
 
 	default:
 		return ata_sff_qc_issue(qc);
