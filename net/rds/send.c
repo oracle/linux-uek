@@ -535,7 +535,7 @@ over_batch:
 		     !list_empty(&cp->cp_send_queue)) && !raced) {
 			if (batch_count < send_batch_count)
 				goto restart;
-			queue_delayed_work(cp->cp_wq, &cp->cp_send_w, 1);
+			rds_cond_queue_send_work(cp, 1);
 		} else if (raced) {
 			rds_stats_inc(s_send_lock_queue_raced);
 		}
@@ -1514,7 +1514,7 @@ int rds_sendmsg(struct socket *sock, struct msghdr *msg, size_t payload_len)
 
 	ret = rds_send_xmit(cpath);
 	if (ret == -ENOMEM || ret == -EAGAIN)
-		queue_delayed_work(cpath->cp_wq, &cpath->cp_send_w, 1);
+		rds_cond_queue_send_work(cpath, 1);
 
 	rds_message_put(rm);
 	return payload_len;
@@ -1635,8 +1635,7 @@ int rds_send_internal(struct rds_connection *conn, struct rds_sock *rs,
 		rds_stats_inc(s_send_queue_full);
 
 		/* force a requeue of the work for later */
-		queue_delayed_work(conn->c_path[0].cp_wq,
-				   &conn->c_path[0].cp_send_w, 1);
+		rds_cond_queue_send_work(conn->c_path + 0, 1);
 
 		ret = -EAGAIN;
 		goto out;
@@ -1649,8 +1648,7 @@ int rds_send_internal(struct rds_connection *conn, struct rds_sock *rs,
 	rds_stats_inc(s_send_queued);
 
 	/* always hand the send off to the worker thread */
-	queue_delayed_work(conn->c_path[0].cp_wq,
-			   &conn->c_path[0].cp_send_w, 1);
+	rds_cond_queue_send_work(conn->c_path + 0, 1);
 
 	rdsdebug("message sent for rs %p, conn %p, len %d, %pI6c:%u->%pI6c:%u\n",
 		 rs, conn, skb->len, &dst->saddr, dst->sport, &dst->daddr,
@@ -1732,7 +1730,7 @@ rds_send_probe(struct rds_conn_path *cp, __be16 sport,
 	rds_stats_inc(s_send_pong);
 
 	if (!test_bit(RDS_LL_SEND_FULL, &cp->cp_flags))
-		queue_delayed_work(cp->cp_wq, &cp->cp_send_w, 0);
+		rds_cond_queue_send_work(cp, 0);
 
 	rds_message_put(rm);
 	return 0;

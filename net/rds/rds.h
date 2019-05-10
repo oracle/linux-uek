@@ -160,6 +160,8 @@ static inline const char *conn_state_mnem(int state)
 #define RDS_IN_XMIT		2
 #define RDS_RECV_REFILL		3
 #define RDS_DESTROY_PENDING	4
+#define RDS_SEND_WORK_QUEUED	5
+#define RDS_RECV_WORK_QUEUED	6
 
 #define RDS_RDMA_RESOLVE_TO_MAX_INDEX   5
 #define RDS_ADDR_RES_TM_INDEX_MAX 5
@@ -962,6 +964,40 @@ void rds_for_each_conn_info(struct socket *sock, unsigned int len,
 			  int (*visitor)(struct rds_connection *, void *),
 			  size_t item_len);
 char *conn_drop_reason_str(enum rds_conn_drop_src reason);
+
+static inline void rds_cond_queue_send_work(struct rds_conn_path *cp, unsigned long delay)
+{
+	if (!test_and_set_bit(RDS_SEND_WORK_QUEUED, &cp->cp_flags))
+		queue_delayed_work(cp->cp_wq, &cp->cp_send_w, delay);
+	else
+		rds_rtd(RDS_RTD_SND_EXT, "Avoid queueing superfluous send work\n");
+}
+
+static inline void rds_clear_queued_send_work_bit(struct rds_conn_path *cp)
+{
+	/* clear_bit() does not imply a memory barrier */
+	smp_mb__before_atomic();
+	clear_bit(RDS_SEND_WORK_QUEUED, &cp->cp_flags);
+	/* clear_bit() does not imply a memory barrier */
+	smp_mb__after_atomic();
+}
+
+static inline void rds_cond_queue_recv_work(struct rds_conn_path *cp, unsigned long delay)
+{
+	if (!test_and_set_bit(RDS_RECV_WORK_QUEUED, &cp->cp_flags))
+		queue_delayed_work(cp->cp_wq, &cp->cp_recv_w, delay);
+	else
+		rds_rtd(RDS_RTD_RCV_EXT, "Avoid queueing superfluous recv work\n");
+}
+
+static inline void rds_clear_queued_recv_work_bit(struct rds_conn_path *cp)
+{
+	/* clear_bit() does not imply a memory barrier */
+	smp_mb__before_atomic();
+	clear_bit(RDS_RECV_WORK_QUEUED, &cp->cp_flags);
+	/* clear_bit() does not imply a memory barrier */
+	smp_mb__after_atomic();
+}
 
 static inline int
 rds_conn_path_transition(struct rds_conn_path *cp, int old, int new)

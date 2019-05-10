@@ -481,9 +481,14 @@ static void rds_conn_path_destroy(struct rds_conn_path *cp, int shutdown)
 	if (!cp->cp_transport_data)
 		return;
 
-	/* make sure lingering queued work won't try to ref the conn */
-	cancel_delayed_work_sync(&cp->cp_send_w);
-	cancel_delayed_work_sync(&cp->cp_recv_w);
+	/* make sure lingering queued work won't try to ref the
+	 * conn. If there is work queued, we cancel it (and set the
+	 * bit to avoid any re-queueing)
+	 */
+	if (test_and_set_bit(RDS_SEND_WORK_QUEUED, &cp->cp_flags))
+		cancel_delayed_work_sync(&cp->cp_send_w);
+	if (test_and_set_bit(RDS_RECV_WORK_QUEUED, &cp->cp_flags))
+		cancel_delayed_work_sync(&cp->cp_recv_w);
 
 	rds_conn_path_drop(cp, DR_CONN_DESTROY);
 	flush_work(&cp->cp_down_w);

@@ -765,11 +765,9 @@ release_out:
 	 * if we should requeue.
 	 */
 	if (rds_conn_up(conn) &&
-	   (must_wake || (can_wait && ring_low)
-			|| rds_ib_ring_empty(&ic->i_recv_ring))) {
-		queue_delayed_work(conn->c_path[0].cp_wq,
-				   &conn->c_path[0].cp_recv_w, 1);
-	}
+	   (must_wake || (can_wait && ring_low) ||
+	    rds_ib_ring_empty(&ic->i_recv_ring)))
+		rds_cond_queue_recv_work(conn->c_path + 0, 1);
 	if (can_wait)
 		cond_resched();
 }
