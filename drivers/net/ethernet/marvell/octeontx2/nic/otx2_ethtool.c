@@ -1213,6 +1213,38 @@ static void otx2_get_link_mode_info(u64 link_mode_bmap,
 			    otx2_link_modes);
 }
 
+static int otx2_get_module_info(struct net_device *netdev,
+				struct ethtool_modinfo *modinfo)
+{
+	struct otx2_nic *pfvf = netdev_priv(netdev);
+	struct cgx_fw_data *rsp;
+
+	rsp = otx2_get_fwdata(pfvf);
+	if (IS_ERR(rsp))
+		return PTR_ERR(rsp);
+
+	modinfo->type = rsp->fwdata.sfp_eeprom.sff_id;
+	modinfo->eeprom_len = SFP_EEPROM_SIZE;
+	return 0;
+}
+
+static int otx2_get_module_eeprom(struct net_device *netdev,
+				  struct ethtool_eeprom *ee,
+				  u8 *data)
+{
+	struct otx2_nic *pfvf = netdev_priv(netdev);
+	struct cgx_fw_data *rsp;
+
+	rsp = otx2_get_fwdata(pfvf);
+	if (IS_ERR(rsp))
+		return PTR_ERR(rsp);
+
+	memcpy(data, &rsp->fwdata.sfp_eeprom.buf, ee->len);
+
+	return 0;
+}
+
+
 static int otx2_get_link_ksettings(struct net_device *netdev,
 				   struct ethtool_link_ksettings *cmd)
 {
@@ -1338,6 +1370,8 @@ static const struct ethtool_ops otx2_ethtool_ops = {
 	.set_fecparam		= otx2_set_fecparam,
 	.get_link_ksettings     = otx2_get_link_ksettings,
 	.set_link_ksettings     = otx2_set_link_ksettings,
+	.get_module_info	= otx2_get_module_info,
+	.get_module_eeprom	= otx2_get_module_eeprom,
 };
 
 void otx2_set_ethtool_ops(struct net_device *netdev)
