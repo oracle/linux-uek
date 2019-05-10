@@ -1129,19 +1129,56 @@ static struct cgx_fw_data *otx2_get_fwdata(struct otx2_nic *pfvf)
 {
 	struct cgx_fw_data *rsp = NULL;
 	struct msg_req *req;
+	int err = 0;
 
 	otx2_mbox_lock(&pfvf->mbox);
 	req = otx2_mbox_alloc_msg_cgx_get_aux_link_info(&pfvf->mbox);
 	if (!req) {
 		otx2_mbox_unlock(&pfvf->mbox);
-		return rsp;
+		return ERR_PTR(-ENOMEM);
 	}
-	if (!otx2_sync_mbox_msg(&pfvf->mbox)) {
+
+	err = otx2_sync_mbox_msg(&pfvf->mbox);
+	if (!err) {
 		rsp = (struct cgx_fw_data *)
 			otx2_mbox_get_rsp(&pfvf->mbox.mbox, 0, &req->hdr);
+	} else {
+		rsp = ERR_PTR(err);
 	}
+
 	otx2_mbox_unlock(&pfvf->mbox);
 	return rsp;
+}
+
+static int otx2_get_module_info(struct net_device *netdev,
+				struct ethtool_modinfo *modinfo)
+{
+	struct otx2_nic *pfvf = netdev_priv(netdev);
+	struct cgx_fw_data *rsp;
+
+	rsp = otx2_get_fwdata(pfvf);
+	if (IS_ERR(rsp))
+		return PTR_ERR(rsp);
+
+	modinfo->type = rsp->fwdata.sfp_eeprom.sff_id;
+	modinfo->eeprom_len = SFP_EEPROM_SIZE;
+	return 0;
+}
+
+static int otx2_get_module_eeprom(struct net_device *netdev,
+				  struct ethtool_eeprom *ee,
+				  u8 *data)
+{
+	struct otx2_nic *pfvf = netdev_priv(netdev);
+	struct cgx_fw_data *rsp;
+
+	rsp = otx2_get_fwdata(pfvf);
+	if (IS_ERR(rsp))
+		return PTR_ERR(rsp);
+
+	memcpy(data, &rsp->fwdata.sfp_eeprom.buf, ee->len);
+
+	return 0;
 }
 
 static int otx2_get_link_ksettings(struct net_device *netdev,
@@ -1163,11 +1200,9 @@ static int otx2_get_link_ksettings(struct net_device *netdev,
 	}
 
 	rsp = otx2_get_fwdata(pfvf);
-	if (!rsp) {
-		netdev_info(pfvf->netdev,
-			    "failed to get supported/advertised link info\n");
-		return 0;
-	}
+	if (IS_ERR(rsp))
+		return PTR_ERR(rsp);
+
 	if (rsp->fwdata.supported_an)
 		supported |= SUPPORTED_Autoneg;
 	advertising |= otx2_get_link_mode_info
@@ -1199,10 +1234,9 @@ static int otx2_get_fecparam(struct net_device *netdev,
 		fecparam->active_fec = fec[pfvf->linfo.fec];
 
 	rsp = otx2_get_fwdata(pfvf);
-	if (!rsp) {
-		netdev_info(pfvf->netdev, "failed to get supported FEC info\n");
-		return 0;
-	}
+	if (IS_ERR(rsp))
+		return PTR_ERR(rsp);
+
 	if (rsp->fwdata.supported_fec <= FEC_MAX_INDEX) {
 		if (!rsp->fwdata.supported_fec)
 			fecparam->fec = ETHTOOL_FEC_NONE;
@@ -1284,6 +1318,8 @@ static const struct ethtool_ops otx2_ethtool_ops = {
 	.set_pauseparam		= otx2_set_pauseparam,
 	.get_fecparam		= otx2_get_fecparam,
 	.set_fecparam		= otx2_set_fecparam,
+	.get_module_info	= otx2_get_module_info,
+	.get_module_eeprom	= otx2_get_module_eeprom,
 };
 
 void otx2_set_ethtool_ops(struct net_device *netdev)
