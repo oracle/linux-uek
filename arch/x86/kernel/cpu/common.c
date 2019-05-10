@@ -814,13 +814,6 @@ static bool __init cpu_matches(unsigned long which)
 	return m && !!(m->driver_data & which);
 }
 
-bool cpu0_matches(unsigned long which)
-{
-	const struct x86_cpu_id *m = x86_match_cpu0(cpu_vuln_whitelist);
-
-	return m && !!(m->driver_data & which);
-}
-
 static bool __cpuinit cpu_vulnerable_to_meltdown(struct cpuinfo_x86 *c)
 {
 	u64 ia32_cap = 0;

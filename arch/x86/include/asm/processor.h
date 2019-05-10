@@ -202,7 +202,7 @@ extern void detect_ht(struct cpuinfo_x86 *c);
 #define NO_MDS		BIT(4)
 #define MSBDS_ONLY	BIT(5)
 
-extern bool cpu0_matches(unsigned long which);
+extern bool cpu_matches(unsigned long which);
 
 static inline void native_cpuid(unsigned int *eax, unsigned int *ebx,
 				unsigned int *ecx, unsigned int *edx)

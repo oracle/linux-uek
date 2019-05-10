@@ -142,22 +142,16 @@ static void mds_select_mitigation(void)
 {
 	u64 ia32_cap = 0;
 
-	/*
-	 * Reset MDS mitigation to default value as new microcode may have
-	 * been loaded and we need to re-determine the current status.
-	 */
-	mds_mitigation = MDS_MITIGATION_FULL;
-
-	if (cpu_has(&cpu_data(0), X86_FEATURE_ARCH_CAPABILITIES))
+	if (boot_cpu_has(X86_FEATURE_ARCH_CAPABILITIES))
 		rdmsrl(MSR_IA32_ARCH_CAPABILITIES, ia32_cap);
 
-	if (cpu0_matches(NO_MDS) || (ia32_cap & ARCH_CAP_MDS_NO)) {
+	if (cpu_matches(NO_MDS) || (ia32_cap & ARCH_CAP_MDS_NO)) {
 		mds_mitigation = MDS_MITIGATION_OFF;
 		return;
 	}
 
 	if (mds_mitigation == MDS_MITIGATION_FULL) {
-		if (!cpu_has(&cpu_data(0), X86_FEATURE_MD_CLEAR))
+		if (!boot_cpu_has(X86_FEATURE_MD_CLEAR))
 			mds_mitigation = MDS_MITIGATION_VMWERV;
 	}
 	pr_info("%s\n", mds_strings[mds_mitigation]);
@@ -168,15 +162,12 @@ static void mds_select_mitigation(void)
 #ifdef CONFIG_SYSFS
 static ssize_t mds_show_state(char *buf)
 {
-	/* Select mitigation again in case new microcode has been loaded. */
-	mds_select_mitigation();
-
 	if (cpu_has_hypervisor) {
 		return sprintf(buf, "%s; SMT Host state unknown\n",
 			       mds_strings[mds_mitigation]);
 	}
 
-	if (cpu0_matches(MSBDS_ONLY)) {
+	if (cpu_matches(MSBDS_ONLY)) {
 		return sprintf(buf, "%s; SMT %s\n", mds_strings[mds_mitigation],
 			       (cpumask_weight(cpu_sibling_mask(0)) > 1) ?
 			       "mitigated" : "disabled");
