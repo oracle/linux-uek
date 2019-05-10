@@ -502,11 +502,78 @@ cvmx_nand_onfi_process(cvmx_nand_onfi_param_page_t param_page[3])
 }
 EXPORT_SYMBOL(cvmx_nand_onfi_process);
 
-void __set_onfi_timing_mode(int *tim_par, int clocks_us, int mode)
+/**
+ * Sets the timing parameters
+ *
+ * @param[out]	tim_par		Timing parameter output
+ * @param	clocks_us	clock pulses per microsecond
+ * @param	twp		tWP minimum time in ns
+ * @param	twh		tWH minimum time in ns
+ * @param	twc		tWC minimum time in ns
+ * @param	tclh		tCLH minimum time in ns
+ * @param	tals		tALS minimum time in ns
+ */
+void __set_onfi_timing(int *tim_par, int clocks_us, int twp, int twh,
+		       int twc, int tclh, int tals)
 {
-	const onfi_speed_mode_desc_t *mp = &onfi_speed_modes[mode];	/* use shorter name to fill in timing array */
 	int margin;
 	int pulse_adjust;
+
+	/* Adjust the read/write pulse duty cycle to make it more even.  The
+	 * cycle time requirement is longer than the sum of the high low times,
+	 * so we exend both the high and low times to meet the cycle time
+	 * requirement.
+	 */
+	pulse_adjust = ((twc - twh - twp) / 2 + 1) * clocks_us;
+
+	/* Add a small margin to all timings. */
+	margin = 2 * clocks_us;
+	/* Update timing parameters based on supported mode */
+	tim_par[1] = CVMX_NAND_ROUNDUP(twp * clocks_us + margin + pulse_adjust,
+				       1000);	/* Twp, WE# pulse width */
+	tim_par[2] = CVMX_NAND_ROUNDUP(max(twh, twc - twp) * clocks_us + margin + pulse_adjust, 1000);	/* Tw, WE# pulse width high */
+	tim_par[3] = CVMX_NAND_ROUNDUP(tclh * clocks_us + margin, 1000);	/* Tclh, CLE hold time */
+	tim_par[4] = CVMX_NAND_ROUNDUP(tals * clocks_us + margin, 1000);	/* Tals, ALE setup time */
+	tim_par[5] = tim_par[3];	/* Talh, ALE hold time */
+	tim_par[6] = tim_par[1];	/* Trp, RE# pulse width */
+	tim_par[7] = tim_par[2];	/* Treh, RE# high hold time */
+}
+
+/**
+ * Sets the timing parameters
+ *
+ * @param	chip		NAND chip interface [0-7]
+ * @param	twp		tWP minimum time in ns
+ * @param	twh		tWH minimum time in ns
+ * @param	twc		tWC minimum time in ns
+ * @param	tclh		tCLH minimum time in ns
+ * @param	tals		tALS minimum time in ns
+ */
+void cvmx_nand_set_onfi_timing(int chip, int twp, int twh, int twc, int tclh,
+			       int tals)
+{
+	int clocks_us;
+
+	/* Figure out how many clocks are in one microsecond, rounding up */
+	clocks_us = CVMX_NAND_ROUNDUP(cvmx_clock_get_rate(CVMX_CLOCK_SCLK),
+				      1000000);
+
+	__set_onfi_timing(cvmx_nand_state[chip].tim_par, clocks_us,
+			  twp, twh, twc, tclh, tals);
+}
+EXPORT_SYMBOL(cvmx_nand_set_onfi_timing);
+
+/**
+ * Sets the timing parameters according to mode
+ *
+ * @param[out]	tim_par		Timing parameter values
+ * @param	clocks_us	Clock pulses per microsecond
+ * @param	mode		NAND timing mode
+ */
+void __set_onfi_timing_mode(int *tim_par, int clocks_us, int mode)
+{
+	/* use shorter name to fill in timing array */
+	const onfi_speed_mode_desc_t *mp = &onfi_speed_modes[mode];
 
 	if ((unsigned)mode >= sizeof(onfi_speed_modes)/sizeof(onfi_speed_modes[0])) {
 		nand_debug("%s: invalid ONFI timing mode: %d\n",
@@ -514,23 +581,8 @@ void __set_onfi_timing_mode(int *tim_par, int clocks_us, int mode)
 		return;
 	}
 
-	/* Adjust the read/write pulse duty cycle to make it more even.  The
-	 * cycle time requirement is longer than the sum of the high low times,
-	 * so we exend both the high and low times to meet the cycle time
-	 * requirement.
-	 */
-	pulse_adjust = ((mp->twc - mp->twh - mp->twp) / 2 + 1) * clocks_us;
-
-	/* Add a small margin to all timings. */
-	margin = 2 * clocks_us;
-	/* Update timing parameters based on supported mode */
-	tim_par[1] = CVMX_NAND_ROUNDUP(mp->twp * clocks_us + margin + pulse_adjust, 1000);	/* Twp, WE# pulse width */
-	tim_par[2] = CVMX_NAND_ROUNDUP(max(mp->twh, mp->twc - mp->twp) * clocks_us + margin + pulse_adjust, 1000);	/* Tw, WE# pulse width high */
-	tim_par[3] = CVMX_NAND_ROUNDUP(mp->tclh * clocks_us + margin, 1000);	/* Tclh, CLE hold time */
-	tim_par[4] = CVMX_NAND_ROUNDUP(mp->tals * clocks_us + margin, 1000);	/* Tals, ALE setup time */
-	tim_par[5] = tim_par[3];	/* Talh, ALE hold time */
-	tim_par[6] = tim_par[1];	/* Trp, RE# pulse width */
-	tim_par[7] = tim_par[2];	/* Treh, RE# high hold time */
+	__set_onfi_timing(tim_par, clocks_us,
+			  mp->twp, mp->twh, mp->twc, mp->tclh, mp->tals);
 }
 
 /* Internal helper function to set chip configuration to use default values */
@@ -1590,8 +1642,8 @@ static inline int __cvmx_nand_low_level_read(int chip,
 		goto error;
 	}
 
-	
-	
+
+
 	__cvmx_nand_select(nand_selected);
 	CVMX_NAND_RETURN(bytes);
 
@@ -1815,7 +1867,7 @@ cvmx_nand_status_t cvmx_nand_page_write(int chip, uint64_t nand_address,
 			goto done;
 		}
 	}
-		
+
 	/* Data transfer is done but NDF is not, it is waiting for R/B# */
 	WATCHDOG_RESET();
 	if (CVMX_WAIT_FOR_FIELD64(CVMX_NDF_ST_REG,
@@ -1825,7 +1877,7 @@ cvmx_nand_status_t cvmx_nand_page_write(int chip, uint64_t nand_address,
 		status = CVMX_NAND_TIMEOUT;
 		goto done;
 	}
-	
+
 done:
 	__cvmx_nand_select(nand_selected);
 	CVMX_NAND_RETURN(status);

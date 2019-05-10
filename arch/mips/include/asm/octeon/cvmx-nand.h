@@ -764,6 +764,19 @@ extern cvmx_nand_onfi_param_page_t *
 cvmx_nand_onfi_process(cvmx_nand_onfi_param_page_t param_page[3]);
 
 /**
+ * Sets the timing parameters
+ *
+ * @param	chip		NAND chip interface [0-7]
+ * @param	twp		tWP minimum time in ns
+ * @param	twh		tWH minimum time in ns
+ * @param	twc		tWC minimum time in ns
+ * @param	tclh		tCLH minimum time in ns
+ * @param	tals		tALS minimum time in ns
+ */
+extern void cvmx_nand_set_onfi_timing(int chip, int twp, int twh, int twc,
+				      int tclh, int tals);
+
+/**
  * Get the status of the NAND flash
  *
  * @param chip   Chip select for NAND flash
