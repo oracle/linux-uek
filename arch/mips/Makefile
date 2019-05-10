@@ -185,9 +185,18 @@ cflags-$(CONFIG_CPU_SB1)	+= $(call cc-option,-mno-mdmx)
 cflags-$(CONFIG_CPU_SB1)	+= $(call cc-option,-mno-mips3d)
 cflags-$(CONFIG_CPU_R10000)	+= $(call cc-option,-march=r10000,-march=r8000) \
 			-Wa,--trap
-cflags-$(CONFIG_CPU_CAVIUM_OCTEON) += $(call cc-option,-march=octeon) -Wa,--trap
-ifeq (,$(findstring march=octeon, $(cflags-$(CONFIG_CPU_CAVIUM_OCTEON))))
-cflags-$(CONFIG_CPU_CAVIUM_OCTEON) += -Wa,-march=octeon
+ifdef CONFIG_CPU_CAVIUM_OCTEON
+ifdef CONFIG_CAVIUM_OCTEON2
+cflags-y += $(call cc-option,-march=octeon2) -Wa,--trap
+ifeq (,$(findstring march=octeon2, $(cflags-y)))
+cflags-y += -Wa,-march=octeon2
+endif
+else
+cflags-y += $(call cc-option,-march=octeon) -Wa,--trap
+ifeq (,$(findstring march=octeon, $(cflags-y)))
+cflags-y += -Wa,-march=octeon
+endif
+endif
 endif
 cflags-$(CONFIG_CAVIUM_CN63XXP1) += -Wa,-mfix-cn63xxp1
 cflags-$(CONFIG_CPU_BMIPS)	+= -march=mips32 -Wa,-mips32 -Wa,--trap
