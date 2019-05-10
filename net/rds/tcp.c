@@ -178,8 +178,16 @@ void rds_tcp_reset_callbacks(struct socket *sock,
 	wait_event(cp->cp_waitq, !test_bit(RDS_IN_XMIT, &cp->cp_flags));
 	lock_sock(osock->sk);
 	/* reset receive side state for rds_tcp_data_recv() for osock  */
-	cancel_delayed_work_sync(&cp->cp_send_w);
-	cancel_delayed_work_sync(&cp->cp_recv_w);
+
+	/* make sure lingering queued work won't try to ref the
+	 * conn. If there is work queued, we cancel it (and set the bit
+	 * to avoid any re-queueing)
+	 */
+
+	if (test_and_set_bit(RDS_SEND_WORK_QUEUED, &cp->cp_flags))
+		cancel_delayed_work_sync(&cp->cp_send_w);
+	if (test_and_set_bit(RDS_RECV_WORK_QUEUED, &cp->cp_flags))
+		cancel_delayed_work_sync(&cp->cp_recv_w);
 	if (tc->t_tinc) {
 		rds_inc_put(&tc->t_tinc->ti_inc);
 		tc->t_tinc = NULL;
