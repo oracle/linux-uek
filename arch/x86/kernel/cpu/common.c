@@ -807,7 +807,7 @@ static const __initconst struct x86_cpu_id cpu_vuln_whitelist[] = {
 	{}
 };
 
-static bool __init cpu_matches(unsigned long which)
+bool __cpuinit cpu_matches(unsigned long which)
 {
 	const struct x86_cpu_id *m = x86_match_cpu(cpu_vuln_whitelist);
 
