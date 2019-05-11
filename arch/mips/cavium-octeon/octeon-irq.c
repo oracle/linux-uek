@@ -114,7 +114,7 @@ static int octeon_irq_force_ciu_mapping(struct irq_domain *domain,
 	return irq_domain_associate(domain, irq, line << 6 | bit);
 }
 
-static int octeon_coreid_for_cpu(int cpu)
+int octeon_coreid_for_cpu(int cpu)
 {
 #ifdef CONFIG_SMP
 	return cpu_logical_map(cpu);
@@ -123,7 +123,7 @@ static int octeon_coreid_for_cpu(int cpu)
 #endif
 }
 
-static int octeon_cpu_for_coreid(int coreid)
+int octeon_cpu_for_coreid(int coreid)
 {
 #ifdef CONFIG_SMP
 	return cpu_number_map(coreid);
