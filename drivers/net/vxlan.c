@@ -1268,13 +1268,26 @@ static void vxlan_rcv(struct vxlan_sock *vs, struct sk_buff *skb,
 
 	remote_ip = &vxlan->default_dst.remote_ip;
 	skb_reset_mac_header(skb);
+
+	rcu_read_lock();
+
+	if (unlikely(!(vxlan->dev->flags & IFF_UP))) {
+		rcu_read_unlock();
+		atomic_long_inc(&vxlan->dev->rx_dropped);
+		goto drop;
+	}
+
 	skb_scrub_packet(skb, !net_eq(vxlan->net, dev_net(vxlan->dev)));
 	skb->protocol = eth_type_trans(skb, vxlan->dev);
 	skb_postpull_rcsum(skb, eth_hdr(skb), ETH_HLEN);
 
 	/* Ignore packet loops (and multicast echo) */
-	if (ether_addr_equal(eth_hdr(skb)->h_source, vxlan->dev->dev_addr))
+	if (ether_addr_equal(eth_hdr(skb)->h_source, vxlan->dev->dev_addr)) {
+		rcu_read_unlock();
 		goto drop;
+	}
+
+	rcu_read_unlock();
 
 	/* Re-examine inner Ethernet packet */
 	if (remote_ip->sa.sa_family == AF_INET) {
