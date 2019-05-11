@@ -8,6 +8,7 @@
 #ifndef __ASM_OCTEON_OCTEON_H
 #define __ASM_OCTEON_OCTEON_H
 
+#include <linux/irqflags.h>
 #include <asm/octeon/cvmx.h>
 #include <asm/bitfield.h>
 
@@ -351,6 +352,25 @@ static inline uint32_t octeon_npi_read32(uint64_t address)
 extern struct cvmx_bootinfo *octeon_bootinfo;
 
 extern uint64_t octeon_bootloader_entry_addr;
+
+static inline uint64_t octeon_read_ptp_csr(u64 csr)
+{
+	if (OCTEON_IS_MODEL(OCTEON_CN63XX_PASS1_X)) {
+		u64 result;
+		unsigned long flags;
+		/*
+		 * CN63XX pass 1.x has an errata where you must read
+		 * this register twice to get the correct result.
+		 */
+		local_irq_save(flags);
+		cvmx_read_csr(csr);
+		result = cvmx_read_csr(csr);
+		local_irq_restore(flags);
+		return result;
+	} else {
+		return cvmx_read_csr(csr);
+	}
+}
 
 extern void (*octeon_irq_setup_secondary)(void);
 
