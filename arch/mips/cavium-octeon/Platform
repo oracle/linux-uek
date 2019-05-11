@@ -7,5 +7,5 @@ cflags-$(CONFIG_CAVIUM_OCTEON_SOC)	+=				\
 ifdef CONFIG_MAPPED_KERNEL
 load-$(CONFIG_CAVIUM_OCTEON_SOC)	+= 0xffffffffc0000000
 else
-load-$(CONFIG_CAVIUM_OCTEON_SOC)	+= 0xffffffff80100000
+load-$(CONFIG_CAVIUM_OCTEON_SOC)	+= 0xffffffff80800000
 endif
