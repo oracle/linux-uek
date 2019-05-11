@@ -407,14 +407,14 @@ void __noreturn die(const char *str, struct pt_regs *regs)
 
 	oops_exit();
 
+	if (regs && kexec_should_crash(current))
+		crash_kexec(regs);
+
 	if (in_interrupt())
 		panic("Fatal exception in interrupt");
 
 	if (panic_on_oops)
 		panic("Fatal exception");
-
-	if (regs && kexec_should_crash(current))
-		crash_kexec(regs);
 
 	do_exit(sig);
 }
