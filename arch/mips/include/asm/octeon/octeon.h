@@ -405,4 +405,7 @@ extern void octeon_fixup_irqs(void);
 
 extern struct semaphore octeon_bootbus_sem;
 
+int octeon_coreid_for_cpu(int cpu);
+int octeon_cpu_for_coreid(int coreid);
+
 #endif /* __ASM_OCTEON_OCTEON_H */
