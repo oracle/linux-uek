@@ -930,6 +930,7 @@ static int cvm_oct_probe(struct platform_device *pdev)
 				dev->tx_queue_len = 0;
 
 			/* Initialize the device private structure. */
+			SET_NETDEV_DEV(dev, &pdev->dev);
 			priv = netdev_priv(dev);
 			INIT_LIST_HEAD(&priv->srio_bcast);
 			priv->of_node = cvm_oct_node_for_port(pip, interface, interface_port);
