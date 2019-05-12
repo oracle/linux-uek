@@ -43,7 +43,7 @@
  * Interface to the PCI / PCIe DMA engines. These are only avialable
  * on chips with PCI / PCIe.
  *
- * <hr>$Revision: 121436 $<hr>
+ * <hr>$Revision$<hr>
  */
 
 #ifndef __CVMX_DMA_ENGINES_H__

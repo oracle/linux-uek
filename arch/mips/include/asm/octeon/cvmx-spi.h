@@ -42,7 +42,7 @@
  *
  * This file contains defines for the SPI interface
  *
- * <hr>$Revision: 78888 $<hr>
+ * <hr>$Revision$<hr>
  *
  *
  */

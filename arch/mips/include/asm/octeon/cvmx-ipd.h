@@ -42,7 +42,7 @@
  *
  * Interface to the hardware Input Packet Data unit.
  *
- * <hr>$Revision: 116854 $<hr>
+ * <hr>$Revision$<hr>
  */
 
 #ifndef __CVMX_IPD_H__

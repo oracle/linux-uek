@@ -45,7 +45,7 @@
  * chip errata. For the most part, code doesn't need to call
  * these functions directly.
  *
- * <hr>$Revision: 78972 $<hr>
+ * <hr>$Revision$<hr>
  */
 #ifndef __CVMX_HELPER_ERRATA_H__
 #define __CVMX_HELPER_ERRATA_H__

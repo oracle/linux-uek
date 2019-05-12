@@ -43,7 +43,7 @@
  * Functions for NPI initialization, configuration,
  * and monitoring.
  *
- * <hr>$Revision: 107037 $<hr>
+ * <hr>$Revision$<hr>
  */
 #ifndef __CVMX_HELPER_NPI_H__
 #define __CVMX_HELPER_NPI_H__
