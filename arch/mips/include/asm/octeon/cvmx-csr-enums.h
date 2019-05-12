@@ -41,7 +41,7 @@
  * @file
  * Definitions for enumerations used with Octeon CSRs.
  *
- * <hr>$Revision: 73842 $<hr>
+ * <hr>$Revision$<hr>
  *
  */
 #ifndef __CVMX_CSR_ENUMS_H__

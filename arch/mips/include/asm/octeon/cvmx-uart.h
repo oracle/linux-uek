@@ -42,7 +42,7 @@
  *
  * interface to the serial port UART hardware
  *
- * <hr>$Revision: 106907 $<hr>
+ * <hr>$Revision$<hr>
  *
  */
 

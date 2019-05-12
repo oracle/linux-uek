@@ -42,7 +42,7 @@
  *
  * Interface to the GMX hardware.
  *
- * <hr>$Revision: 112021 $<hr>
+ * <hr>$Revision$<hr>
  */
 
 #ifndef __CVMX_GMX_H__

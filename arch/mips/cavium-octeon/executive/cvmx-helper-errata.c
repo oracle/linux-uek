@@ -45,7 +45,7 @@
  * chip errata. For the most part, code doesn't need to call
  * these functions directly.
  *
- * <hr>$Revision: 95626 $<hr>
+ * <hr>$Revision$<hr>
  */
 #ifdef CVMX_BUILD_FOR_LINUX_KERNEL
 #include <asm/octeon/cvmx.h>

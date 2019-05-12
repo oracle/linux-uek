@@ -42,7 +42,7 @@
  *
  * Module to support operations on core such as TLB config, etc.
  *
- * <hr>$Revision: 96463 $<hr>
+ * <hr>$Revision$<hr>
  *
  */
 

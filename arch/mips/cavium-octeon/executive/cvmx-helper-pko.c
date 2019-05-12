@@ -42,7 +42,7 @@
  *
  * Helper Functions for the PKO
  *
- * $Id: cvmx-helper-pko.c 115744 2015-04-04 04:36:36Z awilliams $
+ * $Id$
  */
 
 #ifdef CVMX_BUILD_FOR_LINUX_KERNEL

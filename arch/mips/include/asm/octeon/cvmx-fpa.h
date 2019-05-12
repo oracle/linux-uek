@@ -42,7 +42,7 @@
  *
  * Interface to the hardware Free Pool Allocator.
  *
- * <hr>$Revision: 120123 $<hr>
+ * <hr>$Revision$<hr>
  *
  */
 

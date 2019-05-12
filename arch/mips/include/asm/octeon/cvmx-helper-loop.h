@@ -43,7 +43,7 @@
  * Functions for LOOP initialization, configuration,
  * and monitoring.
  *
- * <hr>$Revision: 115656 $<hr>
+ * <hr>$Revision$<hr>
  */
 #ifndef __CVMX_HELPER_LOOP_H__
 #define __CVMX_HELPER_LOOP_H__
