@@ -726,8 +726,7 @@ void __init prom_init(void)
 	 * $a3, this is available as fw_arg3.
 	 */
 	octeon_boot_desc_ptr = (struct octeon_boot_descriptor *)fw_arg3;
-	octeon_bootinfo =
-		cvmx_phys_to_ptr(octeon_boot_desc_ptr->cvmx_desc_vaddr);
+	octeon_bootinfo = phys_to_virt(octeon_boot_desc_ptr->cvmx_desc_vaddr);
 	cvmx_bootmem_init(cvmx_phys_to_ptr(octeon_bootinfo->phy_mem_desc_addr));
 
 	sysinfo = cvmx_sysinfo_get();
@@ -922,8 +921,7 @@ void __init prom_init(void)
 	arcs_cmdline[0] = 0;
 	argc = octeon_boot_desc_ptr->argc;
 	for (i = 0; i < argc; i++) {
-		const char *arg =
-			cvmx_phys_to_ptr(octeon_boot_desc_ptr->argv[i]);
+		const char *arg = phys_to_virt(octeon_boot_desc_ptr->argv[i]);
 		if (strncmp(arg, "mem=block:", 10) == 0) {
 			const char *pos = arg + 10;
 			int j;
