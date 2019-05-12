@@ -42,7 +42,7 @@
  *
  * Packet buffer defines.
  *
- * <hr>$Revision: 95816 $<hr>
+ * <hr>$Revision$<hr>
  *
  */
 

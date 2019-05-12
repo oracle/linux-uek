@@ -43,7 +43,7 @@
  * Functions for RGMII/GMII/MII initialization, configuration,
  * and monitoring.
  *
- * <hr>$Revision: 107037 $<hr>
+ * <hr>$Revision$<hr>
  */
 #ifdef CVMX_BUILD_FOR_LINUX_KERNEL
 #include <asm/octeon/cvmx.h>

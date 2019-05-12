@@ -30,9 +30,6 @@
 static int pcie_disable;
 module_param(pcie_disable, int, S_IRUGO);
 
-int cvmx_primary_pcie_bus_number = 1;
-module_param(cvmx_primary_pcie_bus_number, int, S_IRUGO);
-
 static int enable_pcie_14459_war;
 static int enable_pcie_bus_num_war[CVMX_PCIE_MAX_PORTS];
 

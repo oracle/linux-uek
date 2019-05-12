@@ -43,7 +43,7 @@
  * Functions for SPI initialization, configuration,
  * and monitoring.
  *
- * <hr>$Revision: 96176 $<hr>
+ * <hr>$Revision$<hr>
  */
 #ifdef CVMX_BUILD_FOR_LINUX_KERNEL
 #include <linux/export.h>

@@ -42,7 +42,7 @@
  *
  * Support library for the SPI4000 card
  *
- * <hr>$Revision: 78972 $<hr>
+ * <hr>$Revision$<hr>
  */
 #ifdef CVMX_BUILD_FOR_LINUX_KERNEL
 #include <linux/export.h>
