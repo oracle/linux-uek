@@ -586,6 +586,26 @@ void octeon_user_io_init(void)
 	write_c0_derraddr1(0);
 }
 
+static void octeon_soc_scache_init(void)
+{
+	struct cpuinfo_mips *c = &current_cpu_data;
+	unsigned long scache_size = cvmx_l2c_get_cache_size_bytes();
+
+	c->scache.sets = cvmx_l2c_get_num_sets();
+	c->scache.ways = cvmx_l2c_get_num_assoc();
+	c->scache.waybit = ffs(scache_size / c->scache.ways) - 1;
+	c->scache.waysize = scache_size / c->scache.ways;
+	c->scache.linesz = 128;
+	c->scache.flags |= MIPS_CPU_PREFETCH;
+
+	c->tcache.flags |= MIPS_CACHE_NOT_PRESENT;
+
+	if (smp_processor_id() == 0)
+		pr_notice("Secondary unified cache %ldkB, %d-way, %d sets, linesize %d bytes.\n",
+			  scache_size >> 10, c->scache.ways,
+			  c->scache.sets, c->scache.linesz);
+}
+
 /**
  * Early entry point for arch setup
  */
@@ -597,6 +617,8 @@ void __init prom_init(void)
 	int i;
 	u64 t;
 	int argc;
+
+	octeon_scache_init = octeon_soc_scache_init;
 	/*
 	 * The bootloader passes a pointer to the boot descriptor in
 	 * $a3, this is available as fw_arg3.

@@ -305,6 +305,7 @@ static int octeon3_mcheck_handler(struct pt_regs *regs)
 	return MIPS_MC_NOT_HANDLED;
 }
 
+void (*octeon_scache_init)(void);
 /**
  * Probe Octeon's caches
  *
@@ -399,6 +400,8 @@ static void probe_octeon(void)
 			  dcache_size >> 10, c->dcache.ways,
 			  c->dcache.sets, c->dcache.linesz);
 	}
+	if (octeon_scache_init)
+		octeon_scache_init();
 }
 
 static void  octeon_cache_error_setup(void)
