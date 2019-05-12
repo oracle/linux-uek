@@ -43,7 +43,7 @@
  * Functions for XAUI initialization, configuration,
  * and monitoring.
  *
- * <hr>$Revision: 123496 $<hr>
+ * <hr>$Revision$<hr>
  */
 #ifndef __CVMX_HELPER_XAUI_H__
 #define __CVMX_HELPER_XAUI_H__

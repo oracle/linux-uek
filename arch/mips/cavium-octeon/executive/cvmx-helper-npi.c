@@ -43,7 +43,7 @@
  * Functions for NPI initialization, configuration,
  * and monitoring.
  *
- * <hr>$Revision: 120569 $<hr>
+ * <hr>$Revision$<hr>
  */
 #ifdef CVMX_BUILD_FOR_LINUX_KERNEL
 #include <asm/octeon/cvmx.h>

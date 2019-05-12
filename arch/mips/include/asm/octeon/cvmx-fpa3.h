@@ -42,7 +42,7 @@
  *
  * Interface to the CN78XX Free Pool Allocator, a.k.a. FPA3
  *
- * <hr>$Revision: 122227 $<hr>
+ * <hr>$Revision$<hr>
  *
  */
 

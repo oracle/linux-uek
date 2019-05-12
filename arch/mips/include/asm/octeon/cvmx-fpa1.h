@@ -43,7 +43,7 @@
  * Interface to the hardware Free Pool Allocator on Octeon chips.
  * These are the legacy models, i.e. prior to CN78XX/CN76XX.
  *
- * <hr>$Revision: 120123 $<hr>
+ * <hr>$Revision$<hr>
  *
  */
 
