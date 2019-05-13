@@ -1217,9 +1217,8 @@ err_ingress:
 static void esw_prio_tag_acls_cleanup(struct mlx5_eswitch *esw)
 {
 	int i;
-	int nvports = esw->dev->priv.sriov.num_vfs + MLX5_SPECIAL_VPORTS;
 
-	for (i = 1; i < nvports; i++) {
+	for (i = 1; i < esw->dev->priv.sriov.num_vfs; i++) {
 		esw_vport_disable_egress_acl(esw, &esw->vports[i]);
 		esw_vport_disable_ingress_acl(esw, &esw->vports[i]);
 	}
@@ -1230,7 +1229,7 @@ static int esw_offloads_steering_init(struct mlx5_eswitch *esw, int nvports)
 	int err;
 
 	if (MLX5_CAP_GEN(esw->dev, prio_tag_required)) {
-		err = esw_prio_tag_acls_config(esw, nvports);
+		err = esw_prio_tag_acls_config(esw, esw->dev->priv.sriov.num_vfs);
 		if (err)
 			return err;
 	}
