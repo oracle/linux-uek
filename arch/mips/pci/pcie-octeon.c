@@ -132,8 +132,10 @@ static int __init octeon_pcie78xx_pcibios_map_irq(const struct pci_dev *dev,
 
 	irq = irq_create_mapping(d, intsn);
 
-	if (!OCTEON_IS_MODEL(OCTEON_CN78XX_PASS1_X))
+	if (!OCTEON_IS_MODEL(OCTEON_CN78XX_PASS1_X)) {
+		irq_set_irq_type(irq, IRQ_TYPE_LEVEL_HIGH);
 		return irq;
+	}
 
 	WARN_ON(pcie->node >= ARRAY_SIZE(pcie_17400_irqs));
 	WARN_ON(pin >= ARRAY_SIZE(pcie_17400_irqs[0]));
@@ -157,7 +159,7 @@ static int __init octeon_pcie78xx_pcibios_map_irq(const struct pci_dev *dev,
 		goto err;
 	}
 
-	irqd_set_trigger_type(irq_get_irq_data(irq), IRQ_TYPE_EDGE_RISING);
+	irq_set_irq_type(irq, IRQ_TYPE_EDGE_RISING);
 
 	irq_set_status_flags(irq, IRQ_NOAUTOEN);
 	rv = request_irq(irq, pcie_17400_handler, IRQF_NO_THREAD, "inta-war", cd);
