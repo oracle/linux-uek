@@ -72,14 +72,14 @@ static int init_debufs(void)
 		return -1;
 	}
 
-	show_dentry = debugfs_create_file("statistics", 0222, dir, NULL,
+	show_dentry = debugfs_create_file("statistics", 0444, dir, NULL,
 					  &oct_ilm_ops);
 	if (!show_dentry) {
 		pr_err("oct_ilm: failed to create debugfs entry oct_ilm/statistics\n");
 		return -1;
 	}
 
-	show_dentry = debugfs_create_file("reset", 0222, dir, NULL,
+	show_dentry = debugfs_create_file("reset", 0220, dir, NULL,
 					  &reset_statistics_ops);
 	if (!show_dentry) {
 		pr_err("oct_ilm: failed to create debugfs entry oct_ilm/reset\n");
