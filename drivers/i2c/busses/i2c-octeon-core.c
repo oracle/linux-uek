@@ -760,6 +760,8 @@ int octeon_i2c_init_lowlevel(struct octeon_i2c *i2c)
 {
 	u8 status = 0;
 	int tries;
+	u8 ctrl = octeon_i2c_ctl_read(i2c);
+	u8 initial_status = octeon_i2c_stat_read(i2c);
 
 	/* reset controller */
 	octeon_i2c_reg_write(i2c, SW_TWSI_EOP_TWSI_RST, 0);
@@ -777,6 +779,19 @@ int octeon_i2c_init_lowlevel(struct octeon_i2c *i2c)
 		return -EIO;
 	}
 
+	if (!(ctrl & TWSI_CTL_CE) && initial_status != STAT_IDLE) {
+		dev_err(i2c->dev,
+			"Error: initial status: %02x, forcing STOP to bus\n",
+			initial_status);
+		octeon_i2c_ctl_write(i2c, TWSI_CTL_ENAB);
+		octeon_i2c_write_int(i2c, 0);
+		udelay(5);
+		octeon_i2c_write_int(i2c, TWSI_INT_SDA_OVR | TWSI_INT_SCL_OVR);
+		udelay(5);
+		octeon_i2c_write_int(i2c, TWSI_INT_SDA_OVR);
+		udelay(5);
+		octeon_i2c_write_int(i2c, 0);
+	}
 	/* toggle twice to force both teardowns */
 	octeon_i2c_hlc_enable(i2c);
 	octeon_i2c_hlc_disable(i2c);
