@@ -161,8 +161,11 @@ static void octeon_generic_shutdown(void)
 	secondary_kexec_args[2] = 0UL; /* running on secondary cpu */
 	secondary_kexec_args[3] = (unsigned long)octeon_boot_desc_ptr;
 	/* disable watchdogs */
-	for_each_online_cpu(cpu)
-		cvmx_write_csr(CVMX_CIU_WDOGX(cpu_logical_map(cpu)), 0);
+	for_each_online_cpu(cpu) {
+		int node = cpu_to_node(cpu);
+		unsigned int core = cpu_logical_map(cpu) & 0x3f;
+		cvmx_write_csr_node(node, CVMX_CIU_WDOGX(core), 0);
+	}
 #else
 	cvmx_write_csr(CVMX_CIU_WDOGX(cvmx_get_core_num()), 0);
 #endif
@@ -174,6 +177,7 @@ static void octeon_generic_shutdown(void)
 static void octeon_shutdown(void)
 {
 	octeon_generic_shutdown();
+	octeon_error_tree_shutdown();
 #ifdef CONFIG_SMP
 	smp_call_function(octeon_kexec_smp_down, NULL, 0);
 	smp_wmb();
@@ -187,6 +191,7 @@ static void octeon_shutdown(void)
 static void octeon_crash_shutdown(struct pt_regs *regs)
 {
 	octeon_generic_shutdown();
+	octeon_error_tree_shutdown();
 	default_machine_crash_shutdown(regs);
 }
 
@@ -1071,7 +1076,7 @@ void __init plat_mem_setup(void)
 		kernel_end = PFN_UP(__pa_symbol(&_end)) << PAGE_SHIFT;
 
 		for (i = 0;
-		     named_memory_blocks[i][0] && i < ARRAY_SIZE(named_memory_blocks);
+		     i < ARRAY_SIZE(named_memory_blocks) && named_memory_blocks[i][0];
 		     i++) {
 			named_block = cvmx_bootmem_find_named_block(named_memory_blocks[i]);
 			if (!named_block) {
@@ -1114,7 +1119,7 @@ void __init plat_mem_setup(void)
 	if (system_limit > max_memory)
 		system_limit = max_memory;
 	/* Try to get 256MB (or more) of 32-bit memory */
-	mem_32_size = system_limit <= (16ull * (2 << 30)) ? 256 * (1 << 20) : 512 * (1 << 20);
+	mem_32_size = system_limit <= (16ull * (1ull << 30)) ? 256 * (1 << 20) : 512 * (1 << 20);
 
 	cvmx_bootmem_lock();
 	limit_max = 0xffffffffull;
@@ -1394,8 +1399,11 @@ static int __init edac_devinit(void)
 		}
 	}
 
-	num_lmc = OCTEON_IS_MODEL(OCTEON_CN68XX) ? 4 :
-		(OCTEON_IS_MODEL(OCTEON_CN56XX) ? 2 : 1);
+	num_lmc = (OCTEON_IS_MODEL(OCTEON_CN68XX)
+		   || OCTEON_IS_MODEL(OCTEON_CN78XX)) ? 4 :
+		((OCTEON_IS_MODEL(OCTEON_CN56XX)
+		  || OCTEON_IS_MODEL(OCTEON_CN73XX)
+		  || OCTEON_IS_MODEL(OCTEON_CNF75XX)) ? 2 : 1);
 	for (i = 0; i < num_lmc; i++) {
 		dev = platform_device_register_simple("octeon_lmc_edac",
 						      i, NULL, 0);
