@@ -24,6 +24,7 @@
 #include <asm/hypervisor.h>
 #include <asm/e820.h>
 #include <asm/vmx.h>
+#include <xen/xen.h>
 
 /*
  * use_ibrs flags:
@@ -1585,7 +1586,7 @@ static ssize_t cpu_show_common(struct device *dev, struct device_attribute *attr
 		if (boot_cpu_has(X86_FEATURE_PTI))
 			return sprintf(buf, "Mitigation: PTI\n");
 
-		if (x86_hyper == &x86_hyper_xen)
+		if (xen_pv_domain())
 			return sprintf(buf, "Unknown (XEN PV detected, hypervisor mitigation required)\n");
 
 		break;
