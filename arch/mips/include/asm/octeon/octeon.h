@@ -182,8 +182,26 @@ union octeon_cvmemctl {
 		__BITFIELD_FIELD(uint64_t ptgbist:1,
 		/* RO 1 = BIST fail, 0 = BIST pass */
 		__BITFIELD_FIELD(uint64_t wbfbist:1,
-		/* Reserved */
-		__BITFIELD_FIELD(uint64_t reserved:17,
+		__BITFIELD_FIELD(uint64_t utlbbist:1,
+		__BITFIELD_FIELD(uint64_t dutbist:1,
+		__BITFIELD_FIELD(uint64_t disncbpref:1,
+		__BITFIELD_FIELD(uint64_t wbfltime2:1,
+		__BITFIELD_FIELD(uint64_t wbthresh2:1,
+		__BITFIELD_FIELD(uint64_t cvmsegiodis:1,
+		__BITFIELD_FIELD(uint64_t lmtena:1,
+		__BITFIELD_FIELD(uint64_t lmtline:6,
+		/* When set, TLB parity errors can occur. */
+		__BITFIELD_FIELD(uint64_t tlbperrena:1,
+		/* OCTEON II - When set, CVMSET LM parity errors are enabled. */
+		__BITFIELD_FIELD(uint64_t lmemperrena:1,
+		/* OCTEON II - If set, NUDGE/WRITEBACK_INVALIDATE,
+		 * NUDGE_WB, EVICT_SOON, LC, CONT_WRITE_BACK,
+		 * PREPARE_FOR_STORE and PREPARE_FOR_STORE_THROUGH
+		 * prefetch operations become NOPs. */
+		__BITFIELD_FIELD(uint64_t disstpref:1,
+		/* OCTEON II - If set, NORMAL and NOTL2 prefetch
+		 * operations become NOPs. */
+		__BITFIELD_FIELD(uint64_t disldpref:1,
 		/* OCTEON II - TLB replacement policy: 0 = bitmask LRU; 1 = NLU.
 		 * This field selects between the TLB replacement policies:
 		 * bitmask LRU or NLU. Bitmask LRU maintains a mask of
@@ -279,7 +297,7 @@ union octeon_cvmemctl {
 		/* R/W Size of local memory in cache blocks, 54 (6912
 		 * bytes) is max legal value. */
 		__BITFIELD_FIELD(uint64_t lmemsz:6,
-		;)))))))))))))))))))))))))))))))))
+		;))))))))))))))))))))))))))))))))))))))))))))
 	} s;
 };
 
@@ -423,6 +441,7 @@ int unregister_co_cache_error_notifier(struct notifier_block *nb);
 #define CO_CACHE_ERROR_RECOVERABLE 0
 #define CO_CACHE_ERROR_UNRECOVERABLE 1
 #define CO_CACHE_ERROR_WB_PARITY 2
+#define CO_CACHE_ERROR_TLB_PARITY 3
 
 extern unsigned long long cache_err_dcache[NR_CPUS];
 
