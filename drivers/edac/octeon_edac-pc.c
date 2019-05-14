@@ -55,6 +55,12 @@ static int  co_cache_error_event(struct notifier_block *this,
 				   core, cpu);
 		edac_device_handle_ue(p->ed, cpu, 2, "write-buffer");
 		return NOTIFY_STOP;
+	case CO_CACHE_ERROR_TLB_PARITY:
+		edac_device_printk(p->ed, KERN_ERR,
+				   "TLB parity error: core %d/cpu %d\n",
+				   core, cpu);
+		edac_device_handle_ue(p->ed, cpu, 3, "TLB-parity");
+		return NOTIFY_STOP;
 	default:
 		WARN(1, "Unknown event: %lu\n", event);
 		return NOTIFY_BAD;
@@ -99,7 +105,7 @@ static int co_cache_error_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, p);
 
 	p->ed = edac_device_alloc_ctl_info(0, "cpu", num_possible_cpus(),
-					   "cache", 3, 0, NULL, 0,
+					   "cache", 4, 0, NULL, 0,
 					   edac_device_alloc_index());
 	if (!p->ed)
 		goto err;
