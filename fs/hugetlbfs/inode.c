@@ -432,9 +432,7 @@ static void remove_inode_hugepages(struct inode *inode, loff_t lstart,
 			 * mutex.
 			 */
 			if (!truncate_op) {
-				hash = hugetlb_fault_mutex_hash(h, current->mm,
-							&pseudo_vma,
-							mapping, index, 0);
+				hash = hugetlb_fault_mutex_hash(h, mapping, index, 0);
 				mutex_lock(&hugetlb_fault_mutex_table[hash]);
 			}
 
@@ -558,7 +556,6 @@ static long hugetlbfs_fallocate(struct file *file, int mode, loff_t offset,
 	struct address_space *mapping = inode->i_mapping;
 	struct hstate *h = hstate_inode(inode);
 	struct vm_area_struct pseudo_vma;
-	struct mm_struct *mm = current->mm;
 	loff_t hpage_size = huge_page_size(h);
 	unsigned long hpage_shift = huge_page_shift(h);
 	pgoff_t start, index, end;
@@ -621,12 +618,8 @@ static long hugetlbfs_fallocate(struct file *file, int mode, loff_t offset,
 		/* addr is the offset within the file (zero based) */
 		addr = index * hpage_size;
 
-		/*
-		 * mutex taken here for fault path and hole punch.  No need
-		 * to worry about truncation as we are synchronized via inode.
-		 */
-		hash = hugetlb_fault_mutex_hash(h, mm, &pseudo_vma, mapping,
-						index, addr);
+		/* mutex taken here, fault path and hole punch */
+		hash = hugetlb_fault_mutex_hash(h, mapping, index, addr);
 		mutex_lock(&hugetlb_fault_mutex_table[hash]);
 
 		/* See if already present in mapping to avoid alloc/free */
