@@ -523,6 +523,10 @@ void octeon_user_io_init(void)
 	 * mode. */
 	cvmmemctl.s.cvmsegenau = 0;
 
+	/* Enable TLB parity error reporting on OCTEON II */
+	if (OCTEON_IS_OCTEON2())
+		cvmmemctl.s.tlbperrena = 1;
+
 	write_c0_cvmmemctl(cvmmemctl.u64);
 
 	/* Setup of CVMSEG is done in kernel-entry-init.h */

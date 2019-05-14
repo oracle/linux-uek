@@ -476,6 +476,18 @@ NESTED(nmi_handler, PT_SIZE, sp)
 	TRACE_IRQS_OFF
 	.endm
 
+	.macro	__build_clear_mce
+#ifdef CONFIG_CPU_CAVIUM_OCTEON
+	/* Disable TLB Parity checks. */
+	dmfc0	t0, $11, 7
+	dli	t1, (1 << 44)
+	or	t0, t0, t1
+	xor	t0, t0, t1
+	dmtc0	t0, $11, 7
+#endif
+	__build_clear_cli
+	.endm
+
 	.macro	__build_clear_fpe
 	CLI
 	TRACE_IRQS_OFF
@@ -568,7 +580,7 @@ NESTED(nmi_handler, PT_SIZE, sp)
 #else
 	BUILD_HANDLER watch watch sti verbose		/* #23 */
 #endif
-	BUILD_HANDLER mcheck mcheck cli verbose		/* #24 */
+	BUILD_HANDLER mcheck mcheck mce verbose		/* #24 */
 	BUILD_HANDLER mt mt sti silent			/* #25 */
 	BUILD_HANDLER dsp dsp sti silent		/* #26 */
 	BUILD_HANDLER reserved reserved sti verbose	/* others */
