@@ -515,6 +515,12 @@ config VITESSE_PHY
 	---help---
 	  Currently supports the vsc8244
 
+config VSC8490_PHY
+	tristate "Vitesse dual channel 10G PHY"
+	help
+	  Driver for the Vitesse vsc8490 dual 10G PHY device.
+          Currently supports the vsc8490
+
 config XILINX_GMII2RGMII
 	tristate "Xilinx GMII2RGMII converter driver"
 	---help---
