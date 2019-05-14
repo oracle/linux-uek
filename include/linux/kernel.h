@@ -508,6 +508,7 @@ extern int __kernel_text_address(unsigned long addr);
 extern int kernel_text_address(unsigned long addr);
 extern int func_ptr_is_kernel_text(void *ptr);
 
+u64 int_pow(u64 base, unsigned int exp);
 unsigned long int_sqrt(unsigned long);
 
 extern void bust_spinlocks(int yes);
