@@ -55,7 +55,7 @@
 #include <asm/octeon/cvmx-qlm.h>
 #include <asm/octeon/cvmx-debug.h>
 
-#define SDK_VERSION "5.1.0-prerelease"
+#define SDK_VERSION "5.1.0"
 
 /*
  * TRUE for devices having registers with little-endian byte
