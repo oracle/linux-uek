@@ -1377,29 +1377,60 @@ pgoff_t __basepage_index(struct page *page)
 	return (index << compound_order(page_head)) + compound_idx;
 }
 
-static struct page *alloc_fresh_huge_page_node(struct hstate *h, int nid)
+static struct page *alloc_fresh_huge_page_node(struct hstate *h, int nid,
+						nodemask_t *node_alloc_noretry)
 {
 	struct page *page;
+	gfp_t gfp_mask = htlb_alloc_mask(h)|
+				__GFP_COMP|__GFP_THISNODE|__GFP_NOWARN;
+	bool alloc_try_hard = true;
 
-	page = __alloc_pages_node(nid,
-		htlb_alloc_mask(h)|__GFP_COMP|__GFP_THISNODE|
-						__GFP_RETRY_MAYFAIL|__GFP_NOWARN,
-		huge_page_order(h));
+	/*
+	 * By default we always try hard to allocate the page with
+	 * __GFP_RETRY_MAYFAIL flag.  However, if we are allocating pages in
+	 * a loop (to adjust global huge page counts) and previous allocation
+	 * failed, do not continue to try hard on the same node.  Use the
+	 * node_alloc_noretry bitmap to manage this state information.
+	 */
+	if (node_alloc_noretry && node_isset(nid, *node_alloc_noretry))
+		alloc_try_hard = false;
+
+	if (alloc_try_hard)
+		gfp_mask |= __GFP_RETRY_MAYFAIL;
+
+	page = __alloc_pages_node(nid, gfp_mask, huge_page_order(h));
 	if (page) {
 		prep_new_huge_page(h, page, nid);
 	}
 
+	/*
+	 * If we did not specify __GFP_RETRY_MAYFAIL, but still got a page this
+	 * indicates an overall state change.  Clear bit so that we resume
+	 * normal 'try hard' allocations.
+	 */
+	if (node_alloc_noretry && page && !alloc_try_hard)
+		node_clear(nid, *node_alloc_noretry);
+
+	/*
+	 * If we tried hard to get a page but failed, set bit so that
+	 * subsequent attempts will not try as hard until there is an
+	 * overall state change.
+	 */
+	if (node_alloc_noretry && !page && alloc_try_hard)
+		node_set(nid, *node_alloc_noretry);
+
 	return page;
 }
 
-static int alloc_fresh_huge_page(struct hstate *h, nodemask_t *nodes_allowed)
+static int alloc_fresh_huge_page(struct hstate *h, nodemask_t *nodes_allowed,
+					nodemask_t *node_alloc_noretry)
 {
 	struct page *page;
 	int nr_nodes, node;
 	int ret = 0;
 
 	for_each_node_mask_to_alloc(h, nr_nodes, node, nodes_allowed) {
-		page = alloc_fresh_huge_page_node(h, node);
+		page = alloc_fresh_huge_page_node(h, node, node_alloc_noretry);
 		if (page) {
 			ret = 1;
 			break;
@@ -2159,13 +2190,20 @@ static void __init gather_bootmem_prealloc(void)
 static void __init hugetlb_hstate_alloc_pages(struct hstate *h)
 {
 	unsigned long i;
+	NODEMASK_ALLOC(nodemask_t, node_alloc_noretry,
+						GFP_KERNEL | __GFP_NORETRY);
+
+	/* bit mask controlling how hard we retry per-node allocations */
+	if (node_alloc_noretry)
+		nodes_clear(*node_alloc_noretry);
 
 	for (i = 0; i < h->max_huge_pages; ++i) {
 		if (hstate_is_gigantic(h)) {
 			if (!alloc_bootmem_huge_page(h))
 				break;
 		} else if (!alloc_fresh_huge_page(h,
-					 &node_states[N_MEMORY]))
+					 &node_states[N_MEMORY],
+					 node_alloc_noretry))
 			break;
 		cond_resched();
 	}
@@ -2177,6 +2215,9 @@ static void __init hugetlb_hstate_alloc_pages(struct hstate *h)
 			h->max_huge_pages, buf, i);
 		h->max_huge_pages = i;
 	}
+
+	if (node_alloc_noretry)
+		NODEMASK_FREE(node_alloc_noretry);
 }
 
 static void __init hugetlb_init_hstates(void)
@@ -2275,6 +2316,12 @@ static unsigned long set_max_huge_pages(struct hstate *h, unsigned long count,
 						nodemask_t *nodes_allowed)
 {
 	unsigned long min_count, ret;
+	NODEMASK_ALLOC(nodemask_t, node_alloc_noretry,
+						GFP_KERNEL | __GFP_NORETRY);
+
+	/* bit mask controlling how hard we retry per-node allocations */
+	if (node_alloc_noretry)
+		nodes_clear(*node_alloc_noretry);
 
 	if (hstate_is_gigantic(h) && !gigantic_page_supported())
 		return h->max_huge_pages;
@@ -2310,7 +2357,8 @@ static unsigned long set_max_huge_pages(struct hstate *h, unsigned long count,
 		if (hstate_is_gigantic(h))
 			ret = alloc_fresh_gigantic_page(h, nodes_allowed);
 		else
-			ret = alloc_fresh_huge_page(h, nodes_allowed);
+			ret = alloc_fresh_huge_page(h, nodes_allowed,
+							node_alloc_noretry);
 		spin_lock(&hugetlb_lock);
 		if (!ret)
 			goto out;
@@ -2350,6 +2398,10 @@ static unsigned long set_max_huge_pages(struct hstate *h, unsigned long count,
 out:
 	ret = persistent_huge_pages(h);
 	spin_unlock(&hugetlb_lock);
+
+	if (node_alloc_noretry)
+		NODEMASK_FREE(node_alloc_noretry);
+
 	return ret;
 }
 
