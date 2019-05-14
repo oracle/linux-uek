@@ -14,6 +14,7 @@
 #include <linux/ctype.h>
 #include <linux/list.h>
 #include <linux/slab.h>
+#include <linux/kexec.h>
 
 #include "trace.h"
 
@@ -369,3 +370,13 @@ static __init int init_trace_printk(void)
 }
 
 early_initcall(init_trace_printk);
+
+#ifdef CONFIG_KEXEC
+/*
+ * This appends the listed symbol to /proc/vmcore
+ */
+void trace_printk_kexec_setup(void)
+{
+	VMCOREINFO_SYMBOL(trace_bprintk_fmt_list);
+}
+#endif

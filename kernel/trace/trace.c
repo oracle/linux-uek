@@ -41,6 +41,7 @@
 #include <linux/nmi.h>
 #include <linux/fs.h>
 #include <linux/sched/rt.h>
+#include <linux/kexec.h>
 
 #include "trace.h"
 #include "trace_output.h"
@@ -7157,6 +7158,19 @@ out_free_buffer_mask:
 out:
 	return ret;
 }
+
+#ifdef CONFIG_KEXEC
+/*
+ * This appends the listed symbols to /proc/vmcore
+ */
+void trace_kexec_setup(void)
+{
+	VMCOREINFO_SYMBOL(global_trace);
+	VMCOREINFO_SYMBOL(__start___trace_bprintk_fmt);
+	VMCOREINFO_SYMBOL(__stop___trace_bprintk_fmt);
+	VMCOREINFO_SYMBOL(ftrace_trace_arrays);
+}
+#endif
 
 void __init trace_init(void)
 {

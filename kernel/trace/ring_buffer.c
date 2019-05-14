@@ -16,6 +16,7 @@
 #include <linux/module.h>
 #include <linux/percpu.h>
 #include <linux/mutex.h>
+#include <linux/kexec.h>
 #include <linux/delay.h>
 #include <linux/slab.h>
 #include <linux/init.h>
@@ -5012,3 +5013,29 @@ static __init int test_ringbuffer(void)
 
 late_initcall(test_ringbuffer);
 #endif /* CONFIG_RING_BUFFER_STARTUP_TEST */
+
+#ifdef CONFIG_KEXEC
+/*
+ * This appends the listed symbols to /proc/vmcore
+ */
+void ring_buffer_kexec_setup(void)
+{
+	VMCOREINFO_OFFSET(buffer_page, list);
+	VMCOREINFO_OFFSET(buffer_page, read);
+	VMCOREINFO_OFFSET(buffer_page, page);
+
+	VMCOREINFO_OFFSET(ring_buffer_per_cpu, cpu);
+	VMCOREINFO_OFFSET(ring_buffer_per_cpu, nr_pages);
+	VMCOREINFO_OFFSET(ring_buffer_per_cpu, pages);
+	VMCOREINFO_OFFSET(ring_buffer_per_cpu, head_page);
+	VMCOREINFO_OFFSET(ring_buffer_per_cpu, tail_page);
+	VMCOREINFO_OFFSET(ring_buffer_per_cpu, commit_page);
+	VMCOREINFO_OFFSET(ring_buffer_per_cpu, reader_page);
+	VMCOREINFO_OFFSET(ring_buffer_per_cpu, entries);
+	VMCOREINFO_OFFSET(ring_buffer_per_cpu, overrun);
+
+	VMCOREINFO_OFFSET(ring_buffer, flags);
+	VMCOREINFO_OFFSET(ring_buffer, cpus);
+	VMCOREINFO_OFFSET(ring_buffer, buffers);
+}
+#endif

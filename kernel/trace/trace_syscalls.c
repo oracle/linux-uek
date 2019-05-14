@@ -8,6 +8,7 @@
 #include <linux/perf_event.h>
 #include <asm/syscall.h>
 
+#include <linux/kexec.h>
 #include "trace_output.h"
 #include "trace.h"
 
@@ -748,3 +749,13 @@ static int syscall_exit_register(struct ftrace_event_call *event,
 	}
 	return 0;
 }
+
+#ifdef CONFIG_KEXEC
+/*
+ * This appends the listed symbol to /proc/vmcore
+ */
+void trace_syscalls_kexec_setup(void)
+{
+	VMCOREINFO_SYMBOL(syscall_get_enter_fields);
+}
+#endif

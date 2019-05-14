@@ -324,6 +324,12 @@ int parse_crashkernel_low(char *cmdline, unsigned long long system_ram,
 int crash_shrink_memory(unsigned long new_size);
 size_t crash_get_memory_size(void);
 void crash_free_reserved_phys_range(unsigned long begin, unsigned long end);
+void trace_kexec_setup(void);
+void trace_events_kexec_setup(void);
+void trace_printk_kexec_setup(void);
+void trace_syscalls_kexec_setup(void);
+void ring_buffer_kexec_setup(void);
+void trace_extern_kexec_setup(void);
 
 #else /* !CONFIG_KEXEC */
 struct pt_regs;

@@ -19,6 +19,7 @@
 #include <linux/ctype.h>
 #include <linux/slab.h>
 #include <linux/delay.h>
+#include <linux/kexec.h>
 
 #include <asm/setup.h>
 
@@ -2945,4 +2946,15 @@ static __init int event_trace_self_tests_init(void)
 
 late_initcall(event_trace_self_tests_init);
 
+#endif
+
+#ifdef CONFIG_KEXEC
+/*
+ * This appends the listed symbols to /proc/vmcore
+ */
+void trace_events_kexec_setup(void)
+{
+	VMCOREINFO_SYMBOL(ftrace_events);
+	VMCOREINFO_SYMBOL(ftrace_common_fields);
+}
 #endif
