@@ -35,10 +35,10 @@ volatile unsigned long octeon_processor_relocated_kernel_entry;
 static struct cvmx_boot_vector_element *octeon_bootvector;
 static void *octeon_hotplug_entry_raw;
 extern asmlinkage void octeon_hotplug_entry(void);
+#endif
 
 /* State of each CPU. */
 DEFINE_PER_CPU(int, cpu_state);
-#endif
 
 extern void kernel_entry(unsigned long arg1, ...);
 
