@@ -465,7 +465,7 @@ struct cgx_pause_frm_cfg {
 
 struct sfp_eeprom_s {
 #define SFP_EEPROM_SIZE 256
-	u16 valid;	/* to be set to 1 after copying data to buf */
+	u16 sff_id;
 	u8 buf[SFP_EEPROM_SIZE];
 };
 
