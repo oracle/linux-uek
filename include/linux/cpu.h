@@ -279,6 +279,7 @@ static inline int disable_nonboot_cpus(void) { return 0; }
 static inline void enable_nonboot_cpus(void) {}
 #endif /* !CONFIG_PM_SLEEP_SMP */
 
+extern struct rq * __vmcore_ptr_runqueues;
 enum cpuhp_state {
 	CPUHP_OFFLINE,
 	CPUHP_ONLINE,

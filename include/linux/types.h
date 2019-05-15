@@ -201,6 +201,9 @@ struct ustat {
 	char			f_fpack[6];
 };
 
+extern struct hlist_head **__vmcore_ptr_pid_hash;
+extern unsigned int *__vmcore_ptr_pidhash_shift;
+
 /**
  * struct callback_head - callback structure for use with RCU and task_work
  * @next: next update requests in a list

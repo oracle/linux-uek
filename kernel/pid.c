@@ -42,7 +42,9 @@
 #define pid_hashfn(nr, ns)	\
 	hash_long((unsigned long)nr + (unsigned long)ns, pidhash_shift)
 static struct hlist_head *pid_hash;
+struct hlist_head **__vmcore_ptr_pid_hash = &pid_hash;
 static unsigned int pidhash_shift = 4;
+unsigned int *__vmcore_ptr_pidhash_shift = &pidhash_shift;
 struct pid init_struct_pid = INIT_STRUCT_PID;
 
 int pid_max = PID_MAX_DEFAULT;
