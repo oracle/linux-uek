@@ -174,6 +174,17 @@ NESTED(handle_int, PT_SIZE, sp)
 	and	k0, ST0_IE
 	bnez	k0, 1f
 
+	/* Octeon core-16419 errata. */
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+
 #ifdef CONFIG_FAST_ACCESS_TO_THREAD_POINTER
 	LONG_L	k0, FAST_ACCESS_THREAD_OFFSET($0)
 #endif
