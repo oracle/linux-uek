@@ -37,6 +37,9 @@ struct modversion_info {
 };
 
 struct module;
+#ifdef CONFIG_KEXEC
+extern struct list_head *vmcore_modules;
+#endif /* CONFIG_KEXEC */
 
 struct module_kobject {
 	struct kobject kobj;

@@ -113,6 +113,10 @@ struct list_head *kdb_modules = &modules; /* kdb needs the list of modules */
 struct list_head *dtrace_modules = &modules;
 #endif /* CONFIG_DTRACE */
 
+#ifdef CONFIG_KEXEC
+struct list_head *vmcore_modules = &modules;
+#endif /* CONFIG_KEXEC */
+
 #ifdef CONFIG_MODULE_SIG
 #ifdef CONFIG_MODULE_SIG_FORCE
 static bool sig_enforce = true;

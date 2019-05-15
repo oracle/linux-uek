@@ -5,7 +5,9 @@
  */
 #include <asm/processor.h>
 #include <linux/cpu.h>
+#include <linux/elf.h>
 #include <linux/ftrace_event.h>
+#include <linux/kallsyms.h>
 #include <linux/kexec.h>
 #include <linux/kthread.h>
 #include <linux/mm_types.h>
@@ -119,5 +121,22 @@ void trace_extern_kexec_setup(void)
 	VMCOREINFO_STRUCT_SIZE(k_sigaction);
 	VMCOREINFO_OFFSET(siginfo, si_signo);
 	VMCOREINFO_SIZE(cputime_t);
+
+	/*
+	 * The following symbol and offsets are for reading symbols
+	 * defined in dynamically loaded modules.  To dump kallsyms,
+	 * modules need to be processed as well.
+	 */
+	VMCOREINFO_SYMBOL(vmcore_modules);
+	VMCOREINFO_OFFSET(module, state);
+	VMCOREINFO_OFFSET(module, list);
+	VMCOREINFO_OFFSET(module, name);
+	VMCOREINFO_OFFSET(module, num_syms);
+	VMCOREINFO_OFFSET(module, symtab);
+	VMCOREINFO_OFFSET(module, num_symtab);
+	VMCOREINFO_OFFSET(module, strtab);
+	VMCOREINFO_OFFSET(elf64_sym, st_name); 
+	VMCOREINFO_OFFSET(elf64_sym, st_info);
+	VMCOREINFO_OFFSET(elf64_sym, st_value);
 }
 #endif
