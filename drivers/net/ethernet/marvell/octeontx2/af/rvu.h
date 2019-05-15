@@ -371,7 +371,7 @@ struct mbox_wq_info {
 
 struct rvu_fwdata {
 #define RVU_FWDATA_HEADER_MAGIC	0xCFDA	/*Custom Firmware Data*/
-#define RVU_FWDATA_VERSION	0x0000
+#define RVU_FWDATA_VERSION	0x0001
 	u32 header_magic;
 	u32 version;		/* version id */
 
@@ -380,6 +380,12 @@ struct rvu_fwdata {
 #define VF_MACNUM_MAX	256
 	u64 pf_macs[PF_MACNUM_MAX];
 	u64 vf_macs[VF_MACNUM_MAX];
+	u64 sclk;
+	u64 rclk;
+	u64 mcam_addr;
+	u64 mcam_sz;
+#define RESERVED_MEM 1024
+	u64 reserved[RESERVED_MEM];
 #define CGX_MAX         3
 #define CGX_LMACS_MAX   4
 	struct cgx_lmac_fwdata_s cgx_fw_data[CGX_MAX][CGX_LMACS_MAX];
