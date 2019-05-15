@@ -1917,6 +1917,7 @@ static void hv_eject_device_work(struct work_struct *work)
 
 	put_pcichild(hpdev);
 	put_pcichild(hpdev);
+	put_pcichild(hpdev);
 	put_hvpcibus(hpdev->hbus);
 }
 
