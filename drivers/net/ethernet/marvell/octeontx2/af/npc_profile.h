@@ -6645,48 +6645,48 @@ static struct npc_kpu_profile_action kpu1_action_entries[] = {
 	},
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
-		6, 10, 0, 0, 0,
-		NPC_S_KPU2_CTAG2, 14, 1,
+		8, 12, 0, 0, 0,
+		NPC_S_KPU2_CTAG2, 12, 1,
 		NPC_LID_LA, NPC_LT_LA_ETHER,
 		NPC_F_LA_U_HAS_TAG | NPC_F_LA_L_WITH_VLAN,
 		0, 0, 0, 0,
 	},
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
-		2, 6, 0, 0, 0,
-		NPC_S_KPU2_CTAG, 14, 1,
+		4, 8, 0, 0, 0,
+		NPC_S_KPU2_CTAG, 12, 1,
 		NPC_LID_LA, NPC_LT_LA_ETHER,
 		NPC_F_LA_U_HAS_TAG|NPC_F_LA_L_WITH_VLAN,
 		0, 0, 0, 0,
 	},
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
-		2, 6, 20, 0, 0,
-		NPC_S_KPU2_SBTAG, 14, 1,
+		4, 8, 22, 0, 0,
+		NPC_S_KPU2_SBTAG, 12, 1,
 		NPC_LID_LA, NPC_LT_LA_ETHER,
 		NPC_F_LA_U_HAS_TAG|NPC_F_LA_L_WITH_VLAN,
 		0, 0, 0, 0,
 	},
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
-		2, 6, 0, 0, 0,
-		NPC_S_KPU2_QINQ, 14, 1,
+		4, 8, 0, 0, 0,
+		NPC_S_KPU2_QINQ, 12, 1,
 		NPC_LID_LA, NPC_LT_LA_ETHER,
 		NPC_F_LA_U_HAS_TAG|NPC_F_LA_L_WITH_VLAN,
 		0, 0, 0, 0,
 	},
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
-		6, 10, 24, 0, 0,
-		NPC_S_KPU2_ETAG, 14, 1,
+		8, 12, 26, 0, 0,
+		NPC_S_KPU2_ETAG, 12, 1,
 		NPC_LID_LA, NPC_LT_LA_ETHER,
 		NPC_F_LA_U_HAS_TAG|NPC_F_LA_L_WITH_ETAG,
 		0, 0, 0, 0,
 	},
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
-		16, 20, 24, 0, 0,
-		NPC_S_KPU2_ITAG, 14, 1,
+		18, 22, 26, 0, 0,
+		NPC_S_KPU2_ITAG, 12, 1,
 		NPC_LID_LA, NPC_LT_LA_ETHER,
 		NPC_F_LA_U_HAS_TAG|NPC_F_LA_L_WITH_ITAG,
 		0, 0, 0, 0,
@@ -6785,7 +6785,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		8, 0, 6, 2, 0,
-		NPC_S_KPU5_IP, 4, 1,
+		NPC_S_KPU5_IP, 6, 1,
 		NPC_LID_LB, NPC_LT_LB_CTAG,
 		0,
 		0, 0, 0, 0,
@@ -6793,7 +6793,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		6, 0, 0, 2, 0,
-		NPC_S_KPU5_IP6, 4, 1,
+		NPC_S_KPU5_IP6, 6, 1,
 		NPC_LID_LB, NPC_LT_LB_CTAG,
 		0,
 		0, 0, 0, 0,
@@ -6801,7 +6801,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		0, 0, 0, 2, 0,
-		NPC_S_KPU5_ARP, 4, 1,
+		NPC_S_KPU5_ARP, 6, 1,
 		NPC_LID_LB, NPC_LT_LB_CTAG,
 		0,
 		0, 0, 0, 0,
@@ -6809,7 +6809,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		0, 0, 0, 2, 0,
-		NPC_S_KPU5_RARP, 4, 1,
+		NPC_S_KPU5_RARP, 6, 1,
 		NPC_LID_LB, NPC_LT_LB_CTAG,
 		0,
 		0, 0, 0, 0,
@@ -6817,7 +6817,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		0, 0, 0, 2, 0,
-		NPC_S_KPU5_PTP, 4, 1,
+		NPC_S_KPU5_PTP, 6, 1,
 		NPC_LID_LB, NPC_LT_LB_CTAG,
 		0,
 		0, 0, 0, 0,
@@ -6825,7 +6825,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		0, 0, 0, 2, 0,
-		NPC_S_KPU5_FCOE, 4, 1,
+		NPC_S_KPU5_FCOE, 6, 1,
 		NPC_LID_LB, NPC_LT_LB_CTAG,
 		0,
 		0, 0, 0, 0,
@@ -6833,7 +6833,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		2, 6, 10, 1, 0,
-		NPC_S_KPU4_MPLS, 4, 1,
+		NPC_S_KPU4_MPLS, 6, 1,
 		NPC_LID_LB, NPC_LT_LB_CTAG,
 		0,
 		0, 0, 0, 0,
@@ -6841,7 +6841,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		2, 6, 10, 1, 0,
-		NPC_S_KPU4_MPLS, 4, 1,
+		NPC_S_KPU4_MPLS, 6, 1,
 		NPC_LID_LB, NPC_LT_LB_CTAG,
 		0,
 		0, 0, 0, 0,
@@ -6849,7 +6849,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		2, 0, 0, 1, 0,
-		NPC_S_KPU4_NSH, 4, 1,
+		NPC_S_KPU4_NSH, 6, 1,
 		NPC_LID_LB, NPC_LT_LB_CTAG,
 		0,
 		0, 0, 0, 0,
@@ -6865,7 +6865,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		8, 0, 6, 2, 0,
-		NPC_S_KPU5_IP, 8, 1,
+		NPC_S_KPU5_IP, 10, 1,
 		NPC_LID_LB, NPC_LT_LB_STAG,
 		NPC_F_LB_U_MORE_TAG|NPC_F_LB_L_WITH_CTAG,
 		0, 0, 0, 0,
@@ -6873,7 +6873,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		6, 0, 0, 2, 0,
-		NPC_S_KPU5_IP6, 8, 1,
+		NPC_S_KPU5_IP6, 10, 1,
 		NPC_LID_LB, NPC_LT_LB_STAG,
 		NPC_F_LB_U_MORE_TAG|NPC_F_LB_L_WITH_CTAG,
 		0, 0, 0, 0,
@@ -6881,7 +6881,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		0, 0, 0, 2, 0,
-		NPC_S_KPU5_ARP, 8, 1,
+		NPC_S_KPU5_ARP, 10, 1,
 		NPC_LID_LB, NPC_LT_LB_STAG,
 		NPC_F_LB_U_MORE_TAG|NPC_F_LB_L_WITH_CTAG,
 		0, 0, 0, 0,
@@ -6889,7 +6889,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		0, 0, 0, 2, 0,
-		NPC_S_KPU5_RARP, 8, 1,
+		NPC_S_KPU5_RARP, 10, 1,
 		NPC_LID_LB, NPC_LT_LB_STAG,
 		NPC_F_LB_U_MORE_TAG|NPC_F_LB_L_WITH_CTAG,
 		0, 0, 0, 0,
@@ -6897,7 +6897,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		0, 0, 0, 2, 0,
-		NPC_S_KPU5_PTP, 8, 1,
+		NPC_S_KPU5_PTP, 10, 1,
 		NPC_LID_LB, NPC_LT_LB_STAG,
 		NPC_F_LB_U_MORE_TAG|NPC_F_LB_L_WITH_CTAG,
 		0, 0, 0, 0,
@@ -6905,7 +6905,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		0, 0, 0, 2, 0,
-		NPC_S_KPU5_FCOE, 8, 1,
+		NPC_S_KPU5_FCOE, 10, 1,
 		NPC_LID_LB, NPC_LT_LB_STAG,
 		NPC_F_LB_U_MORE_TAG|NPC_F_LB_L_WITH_CTAG,
 		0, 0, 0, 0,
@@ -6913,7 +6913,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		2, 6, 10, 1, 0,
-		NPC_S_KPU4_MPLS, 8, 1,
+		NPC_S_KPU4_MPLS, 10, 1,
 		NPC_LID_LB, NPC_LT_LB_STAG,
 		NPC_F_LB_U_MORE_TAG|NPC_F_LB_L_WITH_CTAG,
 		0, 0, 0, 0,
@@ -6921,7 +6921,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		2, 6, 10, 1, 0,
-		NPC_S_KPU4_MPLS, 8, 1,
+		NPC_S_KPU4_MPLS, 10, 1,
 		NPC_LID_LB, NPC_LT_LB_STAG,
 		NPC_F_LB_U_MORE_TAG|NPC_F_LB_L_WITH_CTAG,
 		0, 0, 0, 0,
@@ -6929,7 +6929,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		2, 0, 0, 1, 0,
-		NPC_S_KPU4_NSH, 8, 1,
+		NPC_S_KPU4_NSH, 10, 1,
 		NPC_LID_LB, NPC_LT_LB_STAG,
 		NPC_F_LB_U_MORE_TAG|NPC_F_LB_L_WITH_CTAG,
 		0, 0, 0, 0,
@@ -6945,7 +6945,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		2, 6, 0, 0, 0,
-		NPC_S_KPU3_CTAG, 8, 1,
+		NPC_S_KPU3_CTAG, 10, 1,
 		NPC_LID_LB, NPC_LT_LB_STAG,
 		NPC_F_LB_U_MORE_TAG|NPC_F_LB_L_WITH_STAG_CTAG,
 		0, 0, 0, 0,
@@ -6953,7 +6953,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		2, 6, 0, 0, 0,
-		NPC_S_KPU3_STAG, 8, 1,
+		NPC_S_KPU3_STAG, 10, 1,
 		NPC_LID_LB, NPC_LT_LB_STAG,
 		NPC_F_LB_U_MORE_TAG|NPC_F_LB_L_WITH_STAG_STAG,
 		0, 0, 0, 0,
@@ -6961,7 +6961,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		8, 0, 6, 2, 0,
-		NPC_S_KPU5_IP, 22, 1,
+		NPC_S_KPU5_IP, 24, 1,
 		NPC_LID_LB, NPC_LT_LB_BTAG,
 		NPC_F_LB_U_MORE_TAG|NPC_F_LB_L_WITH_ITAG,
 		0, 0, 0, 0,
@@ -6969,7 +6969,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		6, 0, 0, 2, 0,
-		NPC_S_KPU5_IP6, 22, 1,
+		NPC_S_KPU5_IP6, 24, 1,
 		NPC_LID_LB, NPC_LT_LB_BTAG,
 		NPC_F_LB_U_MORE_TAG|NPC_F_LB_L_WITH_ITAG,
 		0, 0, 0, 0,
@@ -6977,7 +6977,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		0, 0, 0, 2, 0,
-		NPC_S_KPU5_ARP, 22, 1,
+		NPC_S_KPU5_ARP, 24, 1,
 		NPC_LID_LB, NPC_LT_LB_BTAG,
 		NPC_F_LB_U_MORE_TAG|NPC_F_LB_L_WITH_ITAG,
 		0, 0, 0, 0,
@@ -6985,7 +6985,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		0, 0, 0, 2, 0,
-		NPC_S_KPU5_RARP, 22, 1,
+		NPC_S_KPU5_RARP, 24, 1,
 		NPC_LID_LB, NPC_LT_LB_BTAG,
 		NPC_F_LB_U_MORE_TAG|NPC_F_LB_L_WITH_ITAG,
 		0, 0, 0, 0,
@@ -6993,7 +6993,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		0, 0, 0, 2, 0,
-		NPC_S_KPU5_PTP, 22, 1,
+		NPC_S_KPU5_PTP, 24, 1,
 		NPC_LID_LB, NPC_LT_LB_BTAG,
 		NPC_F_LB_U_MORE_TAG|NPC_F_LB_L_WITH_ITAG,
 		0, 0, 0, 0,
@@ -7001,7 +7001,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		0, 0, 0, 2, 0,
-		NPC_S_KPU5_FCOE, 22, 1,
+		NPC_S_KPU5_FCOE, 24, 1,
 		NPC_LID_LB, NPC_LT_LB_BTAG,
 		NPC_F_LB_U_MORE_TAG|NPC_F_LB_L_WITH_ITAG,
 		0, 0, 0, 0,
@@ -7009,7 +7009,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		2, 6, 10, 1, 0,
-		NPC_S_KPU4_MPLS, 22, 1,
+		NPC_S_KPU4_MPLS, 24, 1,
 		NPC_LID_LB, NPC_LT_LB_BTAG,
 		NPC_F_LB_U_MORE_TAG|NPC_F_LB_L_WITH_ITAG,
 		0, 0, 0, 0,
@@ -7017,7 +7017,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		2, 6, 10, 1, 0,
-		NPC_S_KPU4_MPLS, 22, 1,
+		NPC_S_KPU4_MPLS, 24, 1,
 		NPC_LID_LB, NPC_LT_LB_BTAG,
 		NPC_F_LB_U_MORE_TAG|NPC_F_LB_L_WITH_ITAG,
 		0, 0, 0, 0,
@@ -7025,7 +7025,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		2, 0, 0, 1, 0,
-		NPC_S_KPU4_NSH, 22, 1,
+		NPC_S_KPU4_NSH, 24, 1,
 		NPC_LID_LB, NPC_LT_LB_BTAG,
 		NPC_F_LB_U_MORE_TAG|NPC_F_LB_L_WITH_ITAG,
 		0, 0, 0, 0,
@@ -7033,7 +7033,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		2, 0, 0, 0, 0,
-		NPC_S_KPU3_STAG, 22, 1,
+		NPC_S_KPU3_STAG, 24, 1,
 		NPC_LID_LB, NPC_LT_LB_BTAG,
 		NPC_F_LB_U_MORE_TAG|NPC_F_LB_L_WITH_ITAG_STAG,
 		0, 0, 0, 0,
@@ -7041,7 +7041,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		2, 0, 0, 0, 0,
-		NPC_S_KPU3_CTAG, 22, 1,
+		NPC_S_KPU3_CTAG, 24, 1,
 		NPC_LID_LB, NPC_LT_LB_BTAG,
 		NPC_F_LB_U_MORE_TAG|NPC_F_LB_L_WITH_ITAG_CTAG,
 		0, 0, 0, 0,
@@ -7057,7 +7057,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		8, 0, 6, 2, 0,
-		NPC_S_KPU5_IP, 4, 1,
+		NPC_S_KPU5_IP, 6, 1,
 		NPC_LID_LB, NPC_LT_LB_STAG,
 		0,
 		0, 0, 0, 0,
@@ -7065,7 +7065,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		6, 0, 0, 2, 0,
-		NPC_S_KPU5_IP6, 4, 1,
+		NPC_S_KPU5_IP6, 6, 1,
 		NPC_LID_LB, NPC_LT_LB_STAG,
 		0,
 		0, 0, 0, 0,
@@ -7073,7 +7073,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		0, 0, 0, 2, 0,
-		NPC_S_KPU5_ARP, 4, 1,
+		NPC_S_KPU5_ARP, 6, 1,
 		NPC_LID_LB, NPC_LT_LB_STAG,
 		0,
 		0, 0, 0, 0,
@@ -7081,7 +7081,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		0, 0, 0, 2, 0,
-		NPC_S_KPU5_RARP, 4, 1,
+		NPC_S_KPU5_RARP, 6, 1,
 		NPC_LID_LB, NPC_LT_LB_STAG,
 		0,
 		0, 0, 0, 0,
@@ -7089,7 +7089,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		0, 0, 0, 2, 0,
-		NPC_S_KPU5_PTP, 4, 1,
+		NPC_S_KPU5_PTP, 6, 1,
 		NPC_LID_LB, NPC_LT_LB_STAG,
 		0,
 		0, 0, 0, 0,
@@ -7097,7 +7097,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		0, 0, 0, 2, 0,
-		NPC_S_KPU5_FCOE, 4, 1,
+		NPC_S_KPU5_FCOE, 6, 1,
 		NPC_LID_LB, NPC_LT_LB_STAG,
 		0,
 		0, 0, 0, 0,
@@ -7105,7 +7105,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		2, 6, 10, 1, 0,
-		NPC_S_KPU4_MPLS, 4, 1,
+		NPC_S_KPU4_MPLS, 6, 1,
 		NPC_LID_LB, NPC_LT_LB_STAG,
 		0,
 		0, 0, 0, 0,
@@ -7113,7 +7113,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		2, 6, 10, 1, 0,
-		NPC_S_KPU4_MPLS, 4, 1,
+		NPC_S_KPU4_MPLS, 6, 1,
 		NPC_LID_LB, NPC_LT_LB_STAG,
 		0,
 		0, 0, 0, 0,
@@ -7121,7 +7121,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		2, 0, 0, 1, 0,
-		NPC_S_KPU4_NSH, 4, 1,
+		NPC_S_KPU4_NSH, 6, 1,
 		NPC_LID_LB, NPC_LT_LB_STAG,
 		0,
 		0, 0, 0, 0,
@@ -7137,7 +7137,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		8, 0, 6, 2, 0,
-		NPC_S_KPU5_IP, 8, 1,
+		NPC_S_KPU5_IP, 10, 1,
 		NPC_LID_LB, NPC_LT_LB_QINQ,
 		NPC_F_LB_U_MORE_TAG|NPC_F_LB_L_WITH_CTAG,
 		0, 0, 0, 0,
@@ -7145,7 +7145,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		6, 0, 0, 2, 0,
-		NPC_S_KPU5_IP6, 8, 1,
+		NPC_S_KPU5_IP6, 10, 1,
 		NPC_LID_LB, NPC_LT_LB_QINQ,
 		NPC_F_LB_U_MORE_TAG|NPC_F_LB_L_WITH_CTAG,
 		0, 0, 0, 0,
@@ -7153,7 +7153,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		0, 0, 0, 2, 0,
-		NPC_S_KPU5_ARP, 8, 1,
+		NPC_S_KPU5_ARP, 10, 1,
 		NPC_LID_LB, NPC_LT_LB_QINQ,
 		NPC_F_LB_U_MORE_TAG|NPC_F_LB_L_WITH_CTAG,
 		0, 0, 0, 0,
@@ -7161,7 +7161,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		0, 0, 0, 2, 0,
-		NPC_S_KPU5_RARP, 8, 1,
+		NPC_S_KPU5_RARP, 10, 1,
 		NPC_LID_LB, NPC_LT_LB_QINQ,
 		NPC_F_LB_U_MORE_TAG|NPC_F_LB_L_WITH_CTAG,
 		0, 0, 0, 0,
@@ -7169,7 +7169,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		0, 0, 0, 2, 0,
-		NPC_S_KPU5_PTP, 8, 1,
+		NPC_S_KPU5_PTP, 10, 1,
 		NPC_LID_LB, NPC_LT_LB_QINQ,
 		NPC_F_LB_U_MORE_TAG|NPC_F_LB_L_WITH_CTAG,
 		0, 0, 0, 0,
@@ -7177,7 +7177,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		0, 0, 0, 2, 0,
-		NPC_S_KPU5_FCOE, 8, 1,
+		NPC_S_KPU5_FCOE, 10, 1,
 		NPC_LID_LB, NPC_LT_LB_QINQ,
 		NPC_F_LB_U_MORE_TAG|NPC_F_LB_L_WITH_CTAG,
 		0, 0, 0, 0,
@@ -7185,7 +7185,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		2, 6, 10, 1, 0,
-		NPC_S_KPU4_MPLS, 8, 1,
+		NPC_S_KPU4_MPLS, 10, 1,
 		NPC_LID_LB, NPC_LT_LB_QINQ,
 		NPC_F_LB_U_MORE_TAG|NPC_F_LB_L_WITH_CTAG,
 		0, 0, 0, 0,
@@ -7193,7 +7193,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		2, 6, 10, 1, 0,
-		NPC_S_KPU4_MPLS, 8, 1,
+		NPC_S_KPU4_MPLS, 10, 1,
 		NPC_LID_LB, NPC_LT_LB_QINQ,
 		NPC_F_LB_U_MORE_TAG|NPC_F_LB_L_WITH_CTAG,
 		0, 0, 0, 0,
@@ -7201,7 +7201,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		2, 0, 0, 1, 0,
-		NPC_S_KPU4_NSH, 8, 1,
+		NPC_S_KPU4_NSH, 10, 1,
 		NPC_LID_LB, NPC_LT_LB_QINQ,
 		NPC_F_LB_U_MORE_TAG|NPC_F_LB_L_WITH_CTAG,
 		0, 0, 0, 0,
@@ -7217,7 +7217,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		2, 6, 0, 0, 0,
-		NPC_S_KPU3_CTAG, 8, 1,
+		NPC_S_KPU3_CTAG, 10, 1,
 		NPC_LID_LB, NPC_LT_LB_QINQ,
 		NPC_F_LB_U_MORE_TAG|NPC_F_LB_L_WITH_QINQ_CTAG,
 		0, 0, 0, 0,
@@ -7225,7 +7225,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		2, 6, 0, 0, 0,
-		NPC_S_KPU3_QINQ, 8, 1,
+		NPC_S_KPU3_QINQ, 10, 1,
 		NPC_LID_LB, NPC_LT_LB_QINQ,
 		NPC_F_LB_U_MORE_TAG|NPC_F_LB_L_WITH_QINQ_QINQ,
 		0, 0, 0, 0,
@@ -7233,7 +7233,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		8, 0, 6, 2, 0,
-		NPC_S_KPU5_IP, 4, 1,
+		NPC_S_KPU5_IP, 6, 1,
 		NPC_LID_LB, NPC_LT_LB_QINQ,
 		0,
 		0, 0, 0, 0,
@@ -7241,7 +7241,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		6, 0, 0, 2, 0,
-		NPC_S_KPU5_IP6, 4, 1,
+		NPC_S_KPU5_IP6, 6, 1,
 		NPC_LID_LB, NPC_LT_LB_QINQ,
 		0,
 		0, 0, 0, 0,
@@ -7249,7 +7249,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		0, 0, 0, 2, 0,
-		NPC_S_KPU5_ARP, 4, 1,
+		NPC_S_KPU5_ARP, 6, 1,
 		NPC_LID_LB, NPC_LT_LB_QINQ,
 		0,
 		0, 0, 0, 0,
@@ -7257,7 +7257,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		0, 0, 0, 2, 0,
-		NPC_S_KPU5_RARP, 4, 1,
+		NPC_S_KPU5_RARP, 6, 1,
 		NPC_LID_LB, NPC_LT_LB_QINQ,
 		0,
 		0, 0, 0, 0,
@@ -7265,7 +7265,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		0, 0, 0, 2, 0,
-		NPC_S_KPU5_PTP, 4, 1,
+		NPC_S_KPU5_PTP, 6, 1,
 		NPC_LID_LB, NPC_LT_LB_QINQ,
 		0,
 		0, 0, 0, 0,
@@ -7273,7 +7273,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		0, 0, 0, 2, 0,
-		NPC_S_KPU5_FCOE, 4, 1,
+		NPC_S_KPU5_FCOE, 6, 1,
 		NPC_LID_LB, NPC_LT_LB_QINQ,
 		0,
 		0, 0, 0, 0,
@@ -7281,7 +7281,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		2, 6, 10, 1, 0,
-		NPC_S_KPU4_MPLS, 4, 1,
+		NPC_S_KPU4_MPLS, 6, 1,
 		NPC_LID_LB, NPC_LT_LB_QINQ,
 		0,
 		0, 0, 0, 0,
@@ -7289,7 +7289,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		2, 6, 10, 1, 0,
-		NPC_S_KPU4_MPLS, 4, 1,
+		NPC_S_KPU4_MPLS, 6, 1,
 		NPC_LID_LB, NPC_LT_LB_QINQ,
 		0,
 		0, 0, 0, 0,
@@ -7297,7 +7297,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		2, 0, 0, 1, 0,
-		NPC_S_KPU4_NSH, 4, 1,
+		NPC_S_KPU4_NSH, 6, 1,
 		NPC_LID_LB, NPC_LT_LB_QINQ,
 		0,
 		0, 0, 0, 0,
@@ -7313,7 +7313,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		8, 0, 6, 2, 0,
-		NPC_S_KPU5_IP, 8, 1,
+		NPC_S_KPU5_IP, 10, 1,
 		NPC_LID_LB, NPC_LT_LB_ETAG,
 		0,
 		0, 0, 0, 0,
@@ -7321,7 +7321,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		6, 0, 0, 2, 0,
-		NPC_S_KPU5_IP6, 8, 1,
+		NPC_S_KPU5_IP6, 10, 1,
 		NPC_LID_LB, NPC_LT_LB_ETAG,
 		0,
 		0, 0, 0, 0,
@@ -7329,7 +7329,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		0, 0, 0, 2, 0,
-		NPC_S_KPU5_ARP, 8, 1,
+		NPC_S_KPU5_ARP, 10, 1,
 		NPC_LID_LB, NPC_LT_LB_ETAG,
 		0,
 		0, 0, 0, 0,
@@ -7337,7 +7337,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		0, 0, 0, 2, 0,
-		NPC_S_KPU5_RARP, 8, 1,
+		NPC_S_KPU5_RARP, 10, 1,
 		NPC_LID_LB, NPC_LT_LB_ETAG,
 		0,
 		0, 0, 0, 0,
@@ -7345,7 +7345,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		0, 0, 0, 2, 0,
-		NPC_S_KPU5_PTP, 8, 1,
+		NPC_S_KPU5_PTP, 10, 1,
 		NPC_LID_LB, NPC_LT_LB_ETAG,
 		0,
 		0, 0, 0, 0,
@@ -7353,7 +7353,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		0, 0, 0, 2, 0,
-		NPC_S_KPU5_FCOE, 8, 1,
+		NPC_S_KPU5_FCOE, 10, 1,
 		NPC_LID_LB, NPC_LT_LB_ETAG,
 		0,
 		0, 0, 0, 0,
@@ -7361,7 +7361,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		2, 6, 10, 1, 0,
-		NPC_S_KPU4_MPLS, 8, 1,
+		NPC_S_KPU4_MPLS, 10, 1,
 		NPC_LID_LB, NPC_LT_LB_ETAG,
 		1,
 		0, 0, 0, 0,
@@ -7369,7 +7369,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		2, 6, 10, 1, 0,
-		NPC_S_KPU4_MPLS, 8, 1,
+		NPC_S_KPU4_MPLS, 10, 1,
 		NPC_LID_LB, NPC_LT_LB_ETAG,
 		2,
 		0, 0, 0, 0,
@@ -7377,7 +7377,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		2, 6, 10, 1, 0,
-		NPC_S_KPU4_NSH, 8, 1,
+		NPC_S_KPU4_NSH, 10, 1,
 		NPC_LID_LB, NPC_LT_LB_ETAG,
 		2,
 		0, 0, 0, 0,
@@ -7385,7 +7385,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		2, 0, 0, 0, 0,
-		NPC_S_KPU3_CTAG, 8, 1,
+		NPC_S_KPU3_CTAG, 10, 1,
 		NPC_LID_LB, NPC_LT_LB_ETAG,
 		NPC_F_LB_U_MORE_TAG|NPC_F_LB_L_WITH_CTAG,
 		0, 0, 0, 0,
@@ -7393,7 +7393,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		16, 20, 24, 0, 0,
-		NPC_S_KPU3_ITAG, 12, 1,
+		NPC_S_KPU3_ITAG, 14, 1,
 		NPC_LID_LB, NPC_LT_LB_ETAG,
 		NPC_F_LB_U_MORE_TAG|NPC_F_LB_L_WITH_BTAG_ITAG,
 		0, 0, 0, 0,
@@ -7401,7 +7401,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		2, 6, 0, 0, 0,
-		NPC_S_KPU3_STAG, 8, 1,
+		NPC_S_KPU3_STAG, 10, 1,
 		NPC_LID_LB, NPC_LT_LB_ETAG,
 		NPC_F_LB_U_MORE_TAG|NPC_F_LB_L_WITH_STAG,
 		0, 0, 0, 0,
@@ -7409,7 +7409,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		2, 6, 0, 0, 0,
-		NPC_S_KPU3_QINQ, 8, 1,
+		NPC_S_KPU3_QINQ, 10, 1,
 		NPC_LID_LB, NPC_LT_LB_ETAG,
 		NPC_F_LB_U_MORE_TAG|NPC_F_LB_L_WITH_QINQ,
 		0, 0, 0, 0,
@@ -7417,7 +7417,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		8, 0, 6, 2, 0,
-		NPC_S_KPU5_IP, 26, 1,
+		NPC_S_KPU5_IP, 28, 1,
 		NPC_LID_LB, NPC_LT_LB_ETAG,
 		NPC_F_LB_U_MORE_TAG|NPC_F_LB_L_WITH_ITAG,
 		0, 0, 0, 0,
@@ -7425,7 +7425,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		6, 0, 0, 2, 0,
-		NPC_S_KPU5_IP6, 26, 1,
+		NPC_S_KPU5_IP6, 28, 1,
 		NPC_LID_LB, NPC_LT_LB_ETAG,
 		NPC_F_LB_U_MORE_TAG|NPC_F_LB_L_WITH_ITAG,
 		0, 0, 0, 0,
@@ -7433,7 +7433,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		0, 0, 0, 2, 0,
-		NPC_S_KPU5_ARP, 26, 1,
+		NPC_S_KPU5_ARP, 28, 1,
 		NPC_LID_LB, NPC_LT_LB_ETAG,
 		NPC_F_LB_U_MORE_TAG|NPC_F_LB_L_WITH_ITAG,
 		0, 0, 0, 0,
@@ -7441,7 +7441,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		2, 0, 0, 0, 0,
-		NPC_S_KPU3_STAG, 26, 1,
+		NPC_S_KPU3_STAG, 28, 1,
 		NPC_LID_LB, NPC_LT_LB_ETAG,
 		NPC_F_LB_U_MORE_TAG|NPC_F_LB_L_WITH_ITAG_STAG,
 		0, 0, 0, 0,
@@ -7449,7 +7449,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		2, 0, 0, 0, 0,
-		NPC_S_KPU3_CTAG, 26, 1,
+		NPC_S_KPU3_CTAG, 28, 1,
 		NPC_LID_LB, NPC_LT_LB_ETAG,
 		NPC_F_LB_U_MORE_TAG|NPC_F_LB_L_WITH_ITAG_CTAG,
 		0, 0, 0, 0,
@@ -7473,7 +7473,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		8, 0, 6, 2, 0,
-		NPC_S_KPU5_IP, 18, 1,
+		NPC_S_KPU5_IP, 20, 1,
 		NPC_LID_LB, NPC_LT_LB_ITAG,
 		0,
 		0, 0, 0, 0,
@@ -7481,7 +7481,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		6, 0, 0, 2, 0,
-		NPC_S_KPU5_IP6, 18, 1,
+		NPC_S_KPU5_IP6, 20, 1,
 		NPC_LID_LB, NPC_LT_LB_ITAG,
 		0,
 		0, 0, 0, 0,
@@ -7489,7 +7489,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		0, 0, 0, 2, 0,
-		NPC_S_KPU5_ARP, 18, 1,
+		NPC_S_KPU5_ARP, 20, 1,
 		NPC_LID_LB, NPC_LT_LB_ITAG,
 		0,
 		0, 0, 0, 0,
@@ -7497,7 +7497,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		0, 0, 0, 2, 0,
-		NPC_S_KPU5_RARP, 18, 1,
+		NPC_S_KPU5_RARP, 20, 1,
 		NPC_LID_LB, NPC_LT_LB_ITAG,
 		0,
 		0, 0, 0, 0,
@@ -7505,7 +7505,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		8, 0, 6, 2, 0,
-		NPC_S_KPU5_IP, 26, 1,
+		NPC_S_KPU5_IP, 28, 1,
 		NPC_LID_LB, NPC_LT_LB_ITAG,
 		NPC_F_LB_U_MORE_TAG|NPC_F_LB_L_WITH_STAG_CTAG,
 		0, 0, 0, 0,
@@ -7513,7 +7513,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		6, 0, 0, 2, 0,
-		NPC_S_KPU5_IP6, 26, 1,
+		NPC_S_KPU5_IP6, 28, 1,
 		NPC_LID_LB, NPC_LT_LB_ITAG,
 		NPC_F_LB_U_MORE_TAG|NPC_F_LB_L_WITH_STAG_CTAG,
 		0, 0, 0, 0,
@@ -7521,7 +7521,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		0, 0, 0, 2, 0,
-		NPC_S_KPU5_ARP, 26, 1,
+		NPC_S_KPU5_ARP, 28, 1,
 		NPC_LID_LB, NPC_LT_LB_ITAG,
 		NPC_F_LB_U_MORE_TAG|NPC_F_LB_L_WITH_STAG_CTAG,
 		0, 0, 0, 0,
@@ -7537,7 +7537,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		8, 0, 6, 2, 0,
-		NPC_S_KPU5_IP, 22, 1,
+		NPC_S_KPU5_IP, 24, 1,
 		NPC_LID_LB, NPC_LT_LB_ITAG,
 		NPC_F_LB_U_MORE_TAG|NPC_F_LB_L_WITH_STAG,
 		0, 0, 0, 0,
@@ -7545,7 +7545,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		6, 0, 0, 2, 0,
-		NPC_S_KPU5_IP6, 22, 1,
+		NPC_S_KPU5_IP6, 24, 1,
 		NPC_LID_LB, NPC_LT_LB_ITAG,
 		NPC_F_LB_U_MORE_TAG|NPC_F_LB_L_WITH_STAG,
 		0, 0, 0, 0,
@@ -7553,7 +7553,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		0, 0, 0, 2, 0,
-		NPC_S_KPU5_ARP, 22, 1,
+		NPC_S_KPU5_ARP, 24, 1,
 		NPC_LID_LB, NPC_LT_LB_ITAG,
 		NPC_F_LB_U_MORE_TAG|NPC_F_LB_L_WITH_STAG,
 		0, 0, 0, 0,
@@ -7569,7 +7569,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		8, 0, 6, 2, 0,
-		NPC_S_KPU5_IP, 22, 1,
+		NPC_S_KPU5_IP, 24, 1,
 		NPC_LID_LB, NPC_LT_LB_ITAG,
 		NPC_F_LB_U_MORE_TAG|NPC_F_LB_L_WITH_CTAG,
 		0, 0, 0, 0,
@@ -7577,7 +7577,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		6, 0, 0, 2, 0,
-		NPC_S_KPU5_IP6, 22, 1,
+		NPC_S_KPU5_IP6, 24, 1,
 		NPC_LID_LB, NPC_LT_LB_ITAG,
 		NPC_F_LB_U_MORE_TAG|NPC_F_LB_L_WITH_CTAG,
 		0, 0, 0, 0,
@@ -7585,7 +7585,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		0, 0, 0, 2, 0,
-		NPC_S_KPU5_ARP, 22, 1,
+		NPC_S_KPU5_ARP, 24, 1,
 		NPC_LID_LB, NPC_LT_LB_ITAG,
 		NPC_F_LB_U_MORE_TAG|NPC_F_LB_L_WITH_CTAG,
 		0, 0, 0, 0,
@@ -7609,7 +7609,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		8, 0, 6, 2, 0,
-		NPC_S_KPU5_IP, 8, 1,
+		NPC_S_KPU5_IP, 10, 1,
 		NPC_LID_LB, NPC_LT_LB_QINQ,
 		0,
 		0, 0, 0, 0,
@@ -7617,7 +7617,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		6, 0, 0, 2, 0,
-		NPC_S_KPU5_IP6, 8, 1,
+		NPC_S_KPU5_IP6, 10, 1,
 		NPC_LID_LB, NPC_LT_LB_QINQ,
 		0,
 		0, 0, 0, 0,
@@ -7625,7 +7625,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		0, 0, 0, 2, 0,
-		NPC_S_KPU5_ARP, 8, 1,
+		NPC_S_KPU5_ARP, 10, 1,
 		NPC_LID_LB, NPC_LT_LB_QINQ,
 		0,
 		0, 0, 0, 0,
@@ -7633,7 +7633,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		0, 0, 0, 2, 0,
-		NPC_S_KPU5_RARP, 8, 1,
+		NPC_S_KPU5_RARP, 10, 1,
 		NPC_LID_LB, NPC_LT_LB_QINQ,
 		0,
 		0, 0, 0, 0,
@@ -7641,7 +7641,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		0, 0, 0, 2, 0,
-		NPC_S_KPU5_PTP, 8, 1,
+		NPC_S_KPU5_PTP, 10, 1,
 		NPC_LID_LB, NPC_LT_LB_QINQ,
 		0,
 		0, 0, 0, 0,
@@ -7649,7 +7649,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		0, 0, 0, 2, 0,
-		NPC_S_KPU5_FCOE, 8, 1,
+		NPC_S_KPU5_FCOE, 10, 1,
 		NPC_LID_LB, NPC_LT_LB_QINQ,
 		0,
 		0, 0, 0, 0,
@@ -7657,7 +7657,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		2, 6, 10, 1, 0,
-		NPC_S_KPU4_MPLS, 8, 1,
+		NPC_S_KPU4_MPLS, 10, 1,
 		NPC_LID_LB, NPC_LT_LB_QINQ,
 		0,
 		0, 0, 0, 0,
@@ -7665,7 +7665,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		2, 6, 10, 1, 0,
-		NPC_S_KPU4_MPLS, 8, 1,
+		NPC_S_KPU4_MPLS, 10, 1,
 		NPC_LID_LB, NPC_LT_LB_QINQ,
 		0,
 		0, 0, 0, 0,
@@ -7673,7 +7673,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		2, 0, 0, 1, 0,
-		NPC_S_KPU4_NSH, 8, 1,
+		NPC_S_KPU4_NSH, 10, 1,
 		NPC_LID_LB, NPC_LT_LB_QINQ,
 		0,
 		0, 0, 0, 0,
@@ -7681,7 +7681,7 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		2, 6, 0, 0, 0,
-		NPC_S_KPU3_QINQ, 8, 1,
+		NPC_S_KPU3_QINQ, 10, 1,
 		NPC_LID_LB, NPC_LT_LB_QINQ,
 		NPC_F_LB_U_MORE_TAG | NPC_F_LB_L_WITH_QINQ_QINQ,
 		0, 0, 0, 0,
