@@ -1311,12 +1311,25 @@ static bool vxlan_set_mac(struct vxlan_dev *vxlan,
 	u32 ifindex = skb->dev->ifindex;
 
 	skb_reset_mac_header(skb);
+
+	rcu_read_lock();
+
+	if (unlikely(!(vxlan->dev->flags & IFF_UP))) {
+		rcu_read_unlock();
+		atomic_long_inc(&vxlan->dev->rx_dropped);
+		return false;
+	}
+
 	skb->protocol = eth_type_trans(skb, vxlan->dev);
 	skb_postpull_rcsum(skb, eth_hdr(skb), ETH_HLEN);
 
 	/* Ignore packet loops (and multicast echo) */
-	if (ether_addr_equal(eth_hdr(skb)->h_source, vxlan->dev->dev_addr))
+	if (ether_addr_equal(eth_hdr(skb)->h_source, vxlan->dev->dev_addr)) {
+		rcu_read_unlock();
 		return false;
+	}
+
+	rcu_read_unlock();
 
 	/* Get address from the outer IP header */
 	if (vxlan_get_sk_family(vs) == AF_INET) {
