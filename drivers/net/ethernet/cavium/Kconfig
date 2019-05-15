@@ -116,6 +116,25 @@ config OCTEON_ETHERNET
 	  To compile this driver as a module, choose M here.  The module
 	  will be called octeon-ethernet.
 
+config OCTEON3_ETHERNET
+	tristate "OCTEON III PKI/PKO Ethernet support (not cn70xx)"
+	depends on CAVIUM_OCTEON_SOC
+	select OCTEON_BGX_PORT
+	select OCTEON_FPA3
+	---help---
+	  Support for 'BGX' Ethernet via PKI/PKO units.  No support
+	  for cn70xx chips (use OCTEON_ETHERNET for cn70xx).
+
+config OCTEON3_ETHERNET_SRIO
+	tristate "SRIO support for OCTEON III Ethernet driver"
+	depends on (OCTEON3_ETHERNET && CAVIUM_OCTEON_RAPIDIO)
+	select OCTEON_SRIO_NEXUS
+	---help---
+	  This driver adds 'SRIO' support to the Ethernet driver via PKI/PKO
+	  units. It supports Caviums CNF75XX SOC. To compile this driver as a
+	  module, choose M here. The module will be called
+	  octeon3-ethernet-srio.
+
 config OCTEON_ETHERNET_MEM
 	tristate
 	depends on CAVIUM_OCTEON_SOC
@@ -135,5 +154,21 @@ config OCTEON_POW_ONLY_ETHERNET
 
 config OCTEON_ETHERNET_COMMON
 	tristate
+
+config OCTEON_BGX_NEXUS
+	tristate
+	depends on CAVIUM_OCTEON_SOC
+
+config OCTEON_SRIO_NEXUS
+	tristate
+
+config OCTEON_COMMON_NEXUS
+	tristate
+
+config OCTEON_BGX_PORT
+	tristate
+	depends on CAVIUM_OCTEON_SOC
+	select OCTEON_BGX_NEXUS
+	select OCTEON_COMMON_NEXUS
 
 endif # NET_VENDOR_CAVIUM
