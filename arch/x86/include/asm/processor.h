@@ -986,6 +986,13 @@ enum l1tf_mitigations {
 
 extern enum l1tf_mitigations l1tf_mitigation;
 
+extern void mds_idle_clear_enable(void);
+extern void mds_idle_clear_disable(void);
+extern void mds_user_clear_enable(void);
+extern void mds_user_clear_disable(void);
+extern bool mds_user_clear_enabled(void);
+extern bool mds_idle_clear_enabled(void);
+
 enum mds_mitigations {
 	MDS_MITIGATION_OFF,
 	MDS_MITIGATION_FULL,

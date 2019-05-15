@@ -443,6 +443,51 @@ static void update_mds_branch_idle(void);
 static enum mds_mitigations mds_mitigation __ro_after_init = MDS_MITIGATION_FULL;
 static bool mds_nosmt __ro_after_init = false;
 
+bool mds_user_clear_enabled(void)
+{
+	return static_key_enabled(&mds_user_clear);
+}
+
+void mds_user_clear_enable(void)
+{
+	static_branch_enable(&mds_user_clear);
+
+	mds_mitigation = MDS_MITIGATION_FULL;
+	if (!boot_cpu_has(X86_FEATURE_MD_CLEAR))
+		mds_mitigation = MDS_MITIGATION_VMWERV;
+}
+
+void mds_user_clear_disable(void)
+{
+	static_branch_disable(&mds_user_clear);
+
+	if (static_key_enabled(&mds_idle_clear))
+		mds_mitigation = MDS_MITIGATION_IDLE;
+	else
+		mds_mitigation = MDS_MITIGATION_OFF;
+}
+
+bool mds_idle_clear_enabled(void)
+{
+	return static_key_enabled(&mds_idle_clear);
+}
+
+void mds_idle_clear_enable(void)
+{
+	static_branch_enable(&mds_idle_clear);
+	if (!static_key_enabled(&mds_user_clear)) {
+		mds_mitigation = MDS_MITIGATION_IDLE;
+	}
+}
+
+void mds_idle_clear_disable(void)
+{
+	static_branch_disable(&mds_idle_clear);
+
+	if (!static_key_enabled(&mds_user_clear))
+		mds_mitigation = MDS_MITIGATION_OFF;
+}
+
 static const char * const mds_strings[] = {
 	[MDS_MITIGATION_OFF]	= "Vulnerable",
 	[MDS_MITIGATION_FULL]	= "Mitigation: Clear CPU buffers",
