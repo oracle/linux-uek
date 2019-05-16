@@ -143,10 +143,10 @@
 	STATIC_JUMP_IF_TRUE	.Lmdsverwcall_\@, mds_user_clear, def=0
 	jmp	.Lmdsverwdone_\@
 .Lmdsverwcall_\@:
-	pushw	%cx
-	movw	$__KERNEL_DS, %cx
-	verw	%cx
-	popw	%cx
+	sub	$8, %rsp
+	mov	%ds, (%rsp)
+	verw	(%rsp)
+	add	$8, %rsp
 .Lmdsverwdone_\@:
 .endm
 
