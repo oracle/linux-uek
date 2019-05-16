@@ -2174,6 +2174,7 @@ static void build_r4000_tlb_load_handler(void)
 		 */
 		WARN(cpu_has_tlbex_tlbp_race(), "Unhandled race in RiXi path");
 
+		UASM_i_MFC0(&p, wr.r3, C0_ENTRYHI);
 		uasm_i_tlbr(&p);
 
 		switch (current_cpu_type()) {
@@ -2187,6 +2188,8 @@ static void build_r4000_tlb_load_handler(void)
 				break;
 			}
 		}
+
+		UASM_i_MTC0(&p, wr.r3, C0_ENTRYHI);
 
 		/* Examine  entrylo 0 or 1 based on ptr. */
 		if (use_bbit_insns()) {
@@ -2249,6 +2252,7 @@ static void build_r4000_tlb_load_handler(void)
 		 */
 		WARN(cpu_has_tlbex_tlbp_race(), "Unhandled race in RiXi path");
 
+		UASM_i_MFC0(&p, wr.r3, C0_ENTRYHI);
 		uasm_i_tlbr(&p);
 
 		switch (current_cpu_type()) {
@@ -2262,6 +2266,8 @@ static void build_r4000_tlb_load_handler(void)
 				break;
 			}
 		}
+
+		UASM_i_MTC0(&p, wr.r3, C0_ENTRYHI);
 
 		/* Examine  entrylo 0 or 1 based on ptr. */
 		if (use_bbit_insns()) {
