@@ -46,8 +46,8 @@ static int thunder_mmc_register_interrupts(struct cvm_mmc_host *host,
 	/* register interrupts */
 	for (i = 0; i < nvec; i++) {
 		ret = devm_request_irq(&pdev->dev, pci_irq_vector(pdev, i),
-				       cvm_mmc_interrupt,
-				       0, cvm_mmc_irq_names[i], host);
+				       cvm_mmc_interrupt, IRQF_NO_THREAD,
+				       cvm_mmc_irq_names[i], host);
 		if (ret)
 			return ret;
 	}
