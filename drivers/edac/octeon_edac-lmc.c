@@ -343,8 +343,11 @@ static int octeon_lmc_edac_remove(struct platform_device *pdev)
 {
 	struct mem_ctl_info *mci = platform_get_drvdata(pdev);
 
+	if (mci == NULL)
+		goto out;
 	edac_mc_del_mc(&pdev->dev);
 	edac_mc_free(mci);
+out:
 	return 0;
 }
 
