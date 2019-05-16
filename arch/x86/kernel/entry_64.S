@@ -1597,6 +1597,7 @@ nmi_kernel:
 	jz	nmi_exit_no_switch
 
 	RESTORE_IBRS_CLOBBER save_reg=%r13d
+	MDS_CLEAR_CPU_BUFFERS
 
 	SWITCH_USER_CR3
 nmi_exit_no_switch:
