@@ -768,7 +768,7 @@ static void __cpuinit identify_cpu_without_cpuid(struct cpuinfo_x86 *c)
 #define VULNWL_AMD(family, whitelist)			\
 	VULNWL(AMD, family, X86_MODEL_ANY, whitelist)
 
-static const __initconst struct x86_cpu_id cpu_vuln_whitelist[] = {
+static const __cpuinitconst struct x86_cpu_id cpu_vuln_whitelist[] = {
 	VULNWL(ANY,	4, X86_MODEL_ANY,	NO_SPECULATION),
 	VULNWL(CENTAUR,	5, X86_MODEL_ANY,	NO_SPECULATION),
 	VULNWL(INTEL,	5, X86_MODEL_ANY,	NO_SPECULATION),
