@@ -47,7 +47,7 @@ enum octeon_irq {
 	OCTEON_IRQ_SRIO2,
 	OCTEON_IRQ_SRIO3,
 #ifndef CONFIG_PCI_MSI
-	OCTEON_IRQ_LAST = 127
+	OCTEON_IRQ_LAST = 255
 #endif
 };
 
