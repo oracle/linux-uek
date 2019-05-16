@@ -152,6 +152,14 @@ config CAVIUM_OCTEON_LOCK_L2_MEMCPY
 	help
 	  Lock the kernel's implementation of memcpy() into L2.
 
+config CAVIUM_OCTEON_NAND
+        tristate "Octeon NAND driver"
+        depends on MTD_NAND && !CPU_LITTLE_ENDIAN
+        help
+          This option enables a MTD driver for the NAND controller introduced
+          in the Octeon CN52XX pass 2 processor. It supports up to 8 NAND
+          devices connected directly to Octeon's boot bus.
+
 config CAVIUM_OCTEON_RAPIDIO
 	bool "Enable support for Octeon Serial Rapid IO"
 	depends on !CPU_LITTLE_ENDIAN
