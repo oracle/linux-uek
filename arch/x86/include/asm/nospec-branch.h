@@ -15,10 +15,10 @@
  * instruction is executed.
  */
 .macro MDS_CLEAR_CPU_BUFFERS
-	pushw   %cx
-	movw    $__KERNEL_DS, %cx
-	verw    %cx
-	popw    %cx
+	sub     $8, %rsp
+	mov     %ds, (%rsp)
+	verw    (%rsp)
+	add     $8, %rsp
 .endm
 
 .macro SPEC_RETURN_TO_USER
