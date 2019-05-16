@@ -152,6 +152,21 @@ config CAVIUM_OCTEON_LOCK_L2_MEMCPY
 	help
 	  Lock the kernel's implementation of memcpy() into L2.
 
+config CAVIUM_OCTEON_RAPIDIO
+	bool "Enable support for Octeon Serial Rapid IO"
+	depends on !CPU_LITTLE_ENDIAN
+	depends on PCI
+	select RAPIDIO
+	select OCTEON_ETHERNET_MEM
+	select OCTEON_FPA3
+	help
+	  Connect the SRIO interfaces available in the Octeon II series of
+	  processors to the kernel's RapidIO subsystem. The existence of the
+	  SRIO ports is automatically detected and configured as either a
+	  host or device. Bus enumeration will be performed on host interfaces
+	  as appropriate. After configuring this option, you will likely want
+	  to enable the RapidIO network adapter under the devices menu.
+
 config OCTEON_FPA3
 	tristate "Octeon III fpa driver"
 	default "n"
