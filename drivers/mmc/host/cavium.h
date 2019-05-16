@@ -22,6 +22,7 @@
 #include <linux/pci.h>
 
 #define CAVIUM_MAX_MMC		4
+#define BLKSZ_EXT_CSD		512
 #define MRVL_OCTEONTX2_96XX_PARTNUM 0xB2
 
 /* Subsystem Device ID */
@@ -51,7 +52,7 @@
 #define PS_5000			(5000)
 #define PS_2500			(2500)
 #define PS_400			(400)
-#define MAX_NO_OF_TAPS		(63)
+#define MAX_NO_OF_TAPS		64
 
 
 /* DMA register addresses */
