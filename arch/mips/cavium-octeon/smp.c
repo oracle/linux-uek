@@ -50,6 +50,53 @@ static void (*octeon_message_functions[8])(void) = {
 	octeon_icache_flush,
 };
 
+static  int octeon_message_free_mask = 0xf8;
+static DEFINE_SPINLOCK(octeon_message_functions_lock);
+
+int octeon_request_ipi_handler(octeon_message_fn_t fn)
+{
+	int i;
+	int message;
+
+	spin_lock(&octeon_message_functions_lock);
+
+	for (i = 0; i < ARRAY_SIZE(octeon_message_functions); i++) {
+		message = (1 << i);
+		if (message & octeon_message_free_mask) {
+			/* found a slot. */
+			octeon_message_free_mask ^= message;
+			octeon_message_functions[i] = fn;
+			goto out;
+		}
+	}
+	message = -ENOMEM;
+out:
+	spin_unlock(&octeon_message_functions_lock);
+	return message;
+}
+EXPORT_SYMBOL(octeon_request_ipi_handler);
+
+void octeon_release_ipi_handler(int action)
+{
+	int i;
+	int message;
+
+	spin_lock(&octeon_message_functions_lock);
+
+	for (i = 0; i < ARRAY_SIZE(octeon_message_functions); i++) {
+		message = (1 << i);
+		if (message == action) {
+			octeon_message_functions[i] = NULL;
+			octeon_message_free_mask |= message;
+			goto out;
+		}
+	}
+	pr_err("octeon_release_ipi_handler: Unknown action: %x\n", action);
+out:
+	spin_unlock(&octeon_message_functions_lock);
+}
+EXPORT_SYMBOL(octeon_release_ipi_handler);
+
 static irqreturn_t mailbox_interrupt(int irq, void *dev_id)
 {
 	u64 mbox_clrx = CVMX_CIU_MBOX_CLRX(cvmx_get_core_num());
@@ -99,12 +146,9 @@ static irqreturn_t mailbox_interrupt(int irq, void *dev_id)
 void octeon_send_ipi_single(int cpu, unsigned int action)
 {
 	int coreid = cpu_logical_map(cpu);
-	/*
-	pr_info("SMP: Mailbox send cpu=%d, coreid=%d, action=%u\n", cpu,
-	       coreid, action);
-	*/
 	cvmx_write_csr(CVMX_CIU_MBOX_SETX(coreid), action);
 }
+EXPORT_SYMBOL(octeon_send_ipi_single);
 
 static inline void octeon_send_ipi_mask(const struct cpumask *mask,
 					unsigned int action)
