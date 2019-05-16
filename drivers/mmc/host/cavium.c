@@ -25,6 +25,8 @@
 #include <linux/regulator/consumer.h>
 #include <linux/scatterlist.h>
 #include <linux/time.h>
+#include <linux/iommu.h>
+#include <linux/swiotlb.h>
 
 #include "cavium.h"
 
@@ -1615,6 +1617,7 @@ int cvm_mmc_of_slot_probe(struct device *dev, struct cvm_mmc_host *host)
 {
 	struct cvm_mmc_slot *slot;
 	struct mmc_host *mmc;
+	struct iommu_domain *dom;
 	int ret, id;
 
 	mmc = mmc_alloc_host(sizeof(struct cvm_mmc_slot), dev);
@@ -1660,6 +1663,20 @@ int cvm_mmc_of_slot_probe(struct device *dev, struct cvm_mmc_host *host)
 	mmc->max_blk_size = 512;
 	/* DMA block count field is 15 bits */
 	mmc->max_blk_count = 32767;
+
+	dom = iommu_get_domain_for_dev(dev->parent);
+	if (dom && dom->type == IOMMU_DOMAIN_IDENTITY) {
+		unsigned int max_size = (1 << IO_TLB_SHIFT) * IO_TLB_SEGSIZE;
+
+		if (mmc->max_seg_size > max_size)
+			mmc->max_seg_size = max_size;
+
+		max_size *= mmc->max_segs;
+
+		if (mmc->max_req_size > max_size)
+			mmc->max_req_size = max_size;
+	}
+
 	mmc_can_retune(mmc);
 
 	slot->clock = mmc->f_min;
