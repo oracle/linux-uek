@@ -235,8 +235,7 @@ const char *octeon_get_pci_interrupts(void)
  *		 as it goes through each bridge.
  * Returns Interrupt number for the device
  */
-int __init octeon_pci_pcibios_map_irq(const struct pci_dev *dev,
-				      u8 slot, u8 pin)
+int octeon_pci_pcibios_map_irq(const struct pci_dev *dev, u8 slot, u8 pin)
 {
 	int irq_num;
 	const char *interrupts;
