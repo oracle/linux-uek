@@ -75,4 +75,15 @@ config OCTEONTX2_DPI_PF
 	  DPI (DMA packet interface) provides DMA support for MAC.
 	  This driver intializes dpi PF device and enables VF's for supporting
 	  different types of DMA transfers.
+
+config GTI_WATCHDOG
+       tristate "GTI Watchdog driver"
+	depends on ARM64 && ARM64_VHE
+	---help---
+	GTI Watchdog driver, provides ioctl's for applications to
+	setup and disable the NMI Watchdog and also provides an
+	mmap() interface to map GTI device memory into process
+	address space for the application to directly poke the
+	GTI watchdog without any kernel support and entry.
+
 endmenu
