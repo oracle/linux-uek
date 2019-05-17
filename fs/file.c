@@ -20,6 +20,7 @@
 #include <linux/spinlock.h>
 #include <linux/rcupdate.h>
 #include <linux/close_range.h>
+#include <linux/nospec.h>
 #include <net/sock.h>
 
 #include "internal.h"
@@ -617,6 +618,7 @@ static struct file *pick_file(struct files_struct *files, unsigned fd)
 		file = ERR_PTR(-EINVAL);
 		goto out_unlock;
 	}
+	fd = array_index_nospec(fd, fdt->max_fds);
 	file = fdt->fd[fd];
 	if (!file) {
 		file = ERR_PTR(-EBADF);

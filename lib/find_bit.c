@@ -17,6 +17,7 @@
 #include <linux/export.h>
 #include <linux/math.h>
 #include <linux/minmax.h>
+#include <linux/nospec.h>
 #include <linux/swab.h>
 
 #if !defined(find_next_bit) || !defined(find_next_zero_bit) ||			\
@@ -38,6 +39,7 @@ unsigned long _find_next_bit(const unsigned long *addr1,
 	if (unlikely(start >= nbits))
 		return nbits;
 
+	start = array_index_nospec(start, nbits);
 	tmp = addr1[start / BITS_PER_LONG];
 	if (addr2)
 		tmp &= addr2[start / BITS_PER_LONG];
