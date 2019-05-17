@@ -14,6 +14,7 @@
 #include <linux/sched.h>
 #include <linux/sched/task_stack.h>
 
+#include <asm/processor.h>
 #include <asm/cop2.h>
 #include <asm/current.h>
 #include <asm/mipsregs.h>
@@ -35,10 +36,10 @@ static int is_task_and_current_same(struct task_struct *t)
 	return 1;
 }
 
-static void octeon_prepare_arch_switch(struct task_struct *next)
-{
 #if defined(CONFIG_CAVIUM_OCTEON_USER_MEM_PER_PROCESS) || \
 	defined(CONFIG_CAVIUM_OCTEON_USER_IO_PER_PROCESS)
+void octeon_prepare_arch_switch(struct task_struct *next)
+{
 	struct task_struct *group_leader = next->group_leader;
 	union octeon_cvmemctl cvmmemctl;
 	cvmmemctl.u64 = read_c0_cvmmemctl();
@@ -51,8 +52,12 @@ static void octeon_prepare_arch_switch(struct task_struct *next)
 	cvmmemctl.s.xkioenau = test_tsk_thread_flag(group_leader, TIF_XKPHYS_IO_EN) ? 1 : 0;
 #endif
 	write_c0_cvmmemctl(cvmmemctl.u64);
-#endif
 }
+#else
+static void octeon_prepare_arch_switch(struct task_struct *next)
+{
+}
+#endif
 
 static struct task_struct *xkphys_get_task(pid_t pid)
 {
