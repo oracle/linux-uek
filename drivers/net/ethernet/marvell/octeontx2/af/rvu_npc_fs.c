@@ -724,23 +724,22 @@ static void rvu_mcam_add_counter_to_rule(struct rvu *rvu, u16 pcifunc,
 static int npc_install_flow(struct rvu *rvu, int blkaddr, u16 target,
 			    int nixlf, struct rvu_pfvf *pfvf,
 			    struct npc_install_flow_req *req,
-			    struct npc_install_flow_rsp *rsp)
+			    struct npc_install_flow_rsp *rsp, bool enable)
 {
 	u64 features, installed_features, missing_features = 0;
 	struct rvu_npc_mcam_rule *def_rule = pfvf->def_rule;
 	struct npc_mcam_write_entry_req write_req = { 0 };
-	bool new = false, rule_for_vf, msg_from_vf;
+	bool new = false, msg_from_vf;
 	struct npc_mcam *mcam = &rvu->hw->mcam;
 	struct rvu_npc_mcam_rule dummy = { 0 };
-	u16 requester = req->hdr.pcifunc;
 	struct rvu_npc_mcam_rule *rule;
+	u16 owner = req->hdr.pcifunc;
 	struct nix_rx_action action;
-	struct mcam_entry *entry;
 	struct msg_rsp write_rsp;
+	struct mcam_entry *entry;
 	int entry_index, err;
 
-	msg_from_vf = !!(requester & RVU_PFVF_FUNC_MASK);
-	rule_for_vf = !!(target & RVU_PFVF_FUNC_MASK);
+	msg_from_vf = !!(owner & RVU_PFVF_FUNC_MASK);
 
 	installed_features = req->features;
 	features = req->features;
@@ -812,22 +811,20 @@ static int npc_install_flow(struct rvu *rvu, int blkaddr, u16 target,
 	if (req->default_rule)
 		goto update_rule;
 
-	/* PF allocates mcam entries for its VFs hence use PF pcifunc */
-
 	/* allocate new counter if rule has no counter */
 	if (req->set_cntr && !rule->has_cntr)
-		rvu_mcam_add_counter_to_rule(rvu, requester, rule, rsp);
+		rvu_mcam_add_counter_to_rule(rvu, owner, rule, rsp);
 
 	/* if user wants to delete an existing counter for a rule then
 	 * free the counter
 	 */
 	if (!req->set_cntr && rule->has_cntr)
-		rvu_mcam_remove_counter_from_rule(rvu, requester, rule);
+		rvu_mcam_remove_counter_from_rule(rvu, owner, rule);
 
-	write_req.hdr.pcifunc = requester;
+	write_req.hdr.pcifunc = owner;
 	write_req.entry = req->entry;
 	write_req.intf = req->intf;
-	write_req.enable_entry = 1;
+	write_req.enable_entry = (u8)enable;
 	/* if counter is available then clear and use it */
 	if (req->set_cntr && rule->has_cntr) {
 		rvu_write64(rvu, blkaddr, NPC_AF_MATCH_STATX(rule->cntr), 0x00);
@@ -838,7 +835,7 @@ static int npc_install_flow(struct rvu *rvu, int blkaddr, u16 target,
 	err = rvu_mbox_handler_npc_mcam_write_entry(rvu, &write_req,
 						    &write_rsp);
 	if (err) {
-		rvu_mcam_remove_counter_from_rule(rvu, requester, rule);
+		rvu_mcam_remove_counter_from_rule(rvu, owner, rule);
 		if (new)
 			kfree(rule);
 		return err;
@@ -851,8 +848,8 @@ update_rule:
 	rule->vtag_action = entry->vtag_action;
 	rule->features = installed_features;
 	rule->default_rule = req->default_rule;
-	rule->pcifunc = requester;
-	rule->is_vf = rule_for_vf;
+	rule->owner = owner;
+	rule->enable = enable;
 
 	if (new)
 		rvu_mcam_add_rule(mcam, rule);
@@ -869,6 +866,7 @@ int rvu_mbox_handler_npc_install_flow(struct rvu *rvu,
 	bool from_vf = !!(req->hdr.pcifunc & RVU_PFVF_FUNC_MASK);
 	int blkaddr, nixlf, err;
 	struct rvu_pfvf *pfvf;
+	bool enable = true;
 	u16 target;
 
 	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NPC, 0);
@@ -895,31 +893,33 @@ int rvu_mbox_handler_npc_install_flow(struct rvu *rvu,
 	else
 		target = req->hdr.pcifunc;
 
-	err = nix_get_nixlf(rvu, target, &nixlf);
-	if (err)
-		return err;
-
-	pfvf = rvu_get_pfvf(rvu, target);
-
-	if (!req->default_rule && !pfvf->def_rule) {
-		dev_err(rvu->dev,
-			"Cannot install rule target interface uninitialized\n");
-		return -EINVAL;
-	}
-
 	if (npc_check_unsupported_flows(rvu, req->features))
 		return -ENOTSUPP;
 
 	if (npc_mcam_verify_channel(rvu, target, req->intf, req->channel))
 		return -EINVAL;
 
+	pfvf = rvu_get_pfvf(rvu, target);
+
+	err = nix_get_nixlf(rvu, target, &nixlf);
+
+	/* If interface is uninitialized then do not enable entry */
+	if (err || (!req->default_rule && !pfvf->def_rule))
+		enable = false;
+
+	/* Do not allow requests from uninitialized VFs */
+	if (from_vf && !enable)
+		return -EINVAL;
+
 	/* If message is from VF then its flow should not overlap with
 	 * reserved unicast flow.
 	 */
-	if (from_vf && pfvf->def_rule->features & req->features)
+	if (from_vf && pfvf->def_rule &&
+	    pfvf->def_rule->features & req->features)
 		return -EINVAL;
 
-	return npc_install_flow(rvu, blkaddr, target, nixlf, pfvf, req, rsp);
+	return npc_install_flow(rvu, blkaddr, target, nixlf, pfvf,
+				req, rsp, enable);
 }
 
 static int npc_delete_flow(struct rvu *rvu, u16 entry, u16 pcifunc)
@@ -961,12 +961,11 @@ int rvu_mbox_handler_npc_delete_flow(struct rvu *rvu,
 	u16 pcifunc = req->hdr.pcifunc;
 	int err;
 
-	if (!req->all && !req->all_vfs)
+	if (!req->all)
 		return npc_delete_flow(rvu, req->entry, pcifunc);
 
 	list_for_each_entry_safe(iter, tmp, &mcam->mcam_rules, list) {
-		if (req->all ? iter->pcifunc == pcifunc :
-		    (iter->pcifunc == pcifunc && iter->is_vf)) {
+		if (iter->owner == pcifunc) {
 			err = npc_delete_flow(rvu, iter->entry, pcifunc);
 			if (err)
 				return err;
@@ -974,4 +973,44 @@ int rvu_mbox_handler_npc_delete_flow(struct rvu *rvu,
 	}
 
 	return 0;
+}
+
+void npc_mcam_enable_flows(struct rvu *rvu, u16 target)
+{
+	struct rvu_pfvf *pfvf = rvu_get_pfvf(rvu, target);
+	struct npc_mcam_ena_dis_entry_req ena_req = { 0 };
+	struct npc_mcam *mcam = &rvu->hw->mcam;
+	struct rvu_npc_mcam_rule *rule;
+	int blkaddr, bank, err;
+	struct msg_rsp rsp;
+	u64 def_action;
+
+	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NPC, 0);
+	if (blkaddr < 0) {
+		dev_err(rvu->dev, "%s: NPC block not implemented\n", __func__);
+		return;
+	}
+
+	list_for_each_entry(rule, &mcam->mcam_rules, list) {
+		if (rule->action.pf_func == target && !rule->enable) {
+			if (rule->action.op == NIX_RX_ACTION_DEFAULT) {
+				if (!pfvf->def_rule)
+					continue;
+				/* Use default unicast entry action */
+				rule->action = pfvf->def_rule->action;
+				def_action = *(u64 *)&pfvf->def_rule->action;
+				bank = npc_get_bank(mcam, rule->entry);
+				rvu_write64(rvu, blkaddr,
+					    NPC_AF_MCAMEX_BANKX_ACTION
+					    (rule->entry, bank), def_action);
+			}
+			ena_req.hdr.pcifunc = rule->owner;
+			ena_req.entry = rule->entry;
+			err = rvu_mbox_handler_npc_mcam_ena_entry(rvu, &ena_req,
+								  &rsp);
+			if (err)
+				continue;
+			rule->enable = true;
+		}
+	}
 }

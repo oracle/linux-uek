@@ -253,9 +253,6 @@ static void nix_interface_deinit(struct rvu *rvu, u16 pcifunc, u8 nixlf)
 			pcifunc);
 	}
 
-	/* Free and disable any MCAM entries used by this NIX LF */
-	rvu_npc_disable_mcam_entries(rvu, pcifunc, nixlf);
-
 	/* Free any tx vtag def entries used by this NIX LF */
 	nix_free_tx_vtag_entries(rvu, pcifunc);
 
@@ -1147,7 +1144,7 @@ exit:
 	return rc;
 }
 
-int rvu_mbox_handler_nix_lf_free(struct rvu *rvu, struct msg_req *req,
+int rvu_mbox_handler_nix_lf_free(struct rvu *rvu, struct nix_lf_free_req *req,
 				 struct msg_rsp *rsp)
 {
 	struct rvu_hwinfo *hw = rvu->hw;
@@ -1165,6 +1162,11 @@ int rvu_mbox_handler_nix_lf_free(struct rvu *rvu, struct msg_req *req,
 	nixlf = rvu_get_lf(rvu, block, pcifunc, 0);
 	if (nixlf < 0)
 		return NIX_AF_ERR_AF_LF_INVALID;
+
+	if (req->flags & NIX_LF_DISABLE_FLOWS)
+		rvu_npc_disable_mcam_entries(rvu, pcifunc, nixlf);
+	else
+		rvu_npc_free_mcam_entries(rvu, pcifunc, nixlf);
 
 	nix_interface_deinit(rvu, pcifunc, nixlf);
 
@@ -3506,6 +3508,8 @@ int rvu_mbox_handler_nix_lf_start_rx(struct rvu *rvu, struct msg_req *req,
 
 	rvu_npc_enable_default_entries(rvu, pcifunc, nixlf);
 
+	npc_mcam_enable_flows(rvu, pcifunc);
+
 	return rvu_cgx_start_stop_io(rvu, pcifunc, true);
 }
 
@@ -3536,6 +3540,8 @@ void rvu_nix_lf_teardown(struct rvu *rvu, u16 pcifunc, int blkaddr, int nixlf)
 	ctx_req.hdr.pcifunc = pcifunc;
 
 	/* Cleanup NPC MCAM entries, free Tx scheduler queues being used */
+	rvu_npc_disable_mcam_entries(rvu, pcifunc, nixlf);
+	rvu_npc_free_mcam_entries(rvu, pcifunc, nixlf);
 	nix_interface_deinit(rvu, pcifunc, nixlf);
 	nix_rx_sync(rvu, blkaddr);
 	nix_txschq_free(rvu, pcifunc);

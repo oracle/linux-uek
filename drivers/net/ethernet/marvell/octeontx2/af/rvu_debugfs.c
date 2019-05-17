@@ -1662,19 +1662,28 @@ static int rvu_dbg_npc_mcam_show_rules(struct seq_file *s, void *unused)
 	struct npc_mcam *mcam;
 	int pf, vf = -1;
 	int blkaddr;
-	u16 pf_func;
+	u16 target;
 	u64 hits;
 
 	mcam = &rvu->hw->mcam;
 
 	list_for_each_entry(iter, &mcam->mcam_rules, list) {
-		pf_func = iter->action.pf_func;
+		target = iter->action.pf_func;
 
-		pf = (pf_func >> RVU_PFVF_PF_SHIFT) & RVU_PFVF_PF_MASK;
+		pf = (iter->owner >> RVU_PFVF_PF_SHIFT) & RVU_PFVF_PF_MASK;
 		seq_printf(s, "\n\tPF%d ", pf);
 
-		if (pf_func & RVU_PFVF_FUNC_MASK) {
-			vf = (pf_func & RVU_PFVF_FUNC_MASK) - 1;
+		if (iter->owner & RVU_PFVF_FUNC_MASK) {
+			vf = (iter->owner & RVU_PFVF_FUNC_MASK) - 1;
+			seq_printf(s, "VF%d", vf);
+		}
+		seq_puts(s, "\n");
+
+		pf = (target >> RVU_PFVF_PF_SHIFT) & RVU_PFVF_PF_MASK;
+		seq_printf(s, "\ttarget: PF%d ", pf);
+
+		if (target & RVU_PFVF_FUNC_MASK) {
+			vf = (target & RVU_PFVF_FUNC_MASK) - 1;
 			seq_printf(s, "VF%d", vf);
 		}
 		seq_puts(s, "\n");
@@ -1682,6 +1691,7 @@ static int rvu_dbg_npc_mcam_show_rules(struct seq_file *s, void *unused)
 		seq_printf(s, "\tmcam entry: %d\n", iter->entry);
 		rvu_dbg_npc_mcam_show_flows(s, iter);
 		rvu_dbg_npc_mcam_show_action(s, iter);
+		seq_printf(s, "\tenabled: %s\n", iter->enable ? "yes" : "no");
 
 		if (!iter->has_cntr)
 			continue;

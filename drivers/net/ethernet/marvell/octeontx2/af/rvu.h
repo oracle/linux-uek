@@ -595,6 +595,7 @@ void rvu_npc_enable_promisc_entry(struct rvu *rvu, u16 pcifunc, int nixlf);
 void rvu_npc_install_bcast_match_entry(struct rvu *rvu, u16 pcifunc,
 				       int nixlf, u64 chan);
 void rvu_npc_disable_mcam_entries(struct rvu *rvu, u16 pcifunc, int nixlf);
+void rvu_npc_free_mcam_entries(struct rvu *rvu, u16 pcifunc, int nixlf);
 void rvu_npc_disable_default_entries(struct rvu *rvu, u16 pcifunc, int nixlf);
 void rvu_npc_enable_default_entries(struct rvu *rvu, u16 pcifunc, int nixlf);
 void rvu_npc_update_flowkey_alg_idx(struct rvu *rvu, u16 pcifunc, int nixlf,
@@ -610,6 +611,8 @@ const char *npc_get_field_name(u8 hdr);
 int rvu_npc_write_default_rule(struct rvu *rvu, int blkaddr, int nixlf,
 			       u16 pcifunc, u8 intf, struct mcam_entry *entry);
 int npc_mcam_verify_channel(struct rvu *rvu, u16 pcifunc, u8 intf, u16 channel);
+int npc_get_bank(struct npc_mcam *mcam, int index);
+void npc_mcam_enable_flows(struct rvu *rvu, u16 target);
 
 /* CPT APIs */
 int rvu_cpt_init(struct rvu *rvu);
