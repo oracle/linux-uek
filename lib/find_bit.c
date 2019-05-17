@@ -17,6 +17,7 @@
 #include <linux/export.h>
 #include <linux/math.h>
 #include <linux/minmax.h>
+#include <linux/nospec.h>
 #include <linux/swab.h>
 
 /*
@@ -54,6 +55,7 @@
 	if (unlikely(__start >= sz))						\
 		goto out;							\
 										\
+	__start = array_index_nospec(__start, size);				\
 	mask = MUNGE(BITMAP_FIRST_WORD_MASK(__start));				\
 	idx = __start / BITS_PER_LONG;						\
 										\
