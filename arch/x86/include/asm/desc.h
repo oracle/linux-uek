@@ -15,6 +15,7 @@
 
 static inline void fill_ldt(struct desc_struct *desc, const struct user_desc *info)
 {
+	barrier_nospec();
 	desc->limit0		= info->limit & 0x0ffff;
 
 	desc->base0		= (info->base_addr & 0x0000ffff);
