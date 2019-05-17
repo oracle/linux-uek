@@ -1420,6 +1420,7 @@ exit:
 static void otx2_free_hw_resources(struct otx2_nic *pf)
 {
 	struct otx2_qset *qset = &pf->qset;
+	struct nix_lf_free_req *free_req;
 	struct mbox *mbox = &pf->mbox;
 	struct otx2_snd_queue *sq;
 	struct otx2_cq_queue *cq;
@@ -1475,9 +1476,11 @@ static void otx2_free_hw_resources(struct otx2_nic *pf)
 
 	otx2_mbox_lock(mbox);
 	/* Reset NIX LF */
-	req = otx2_mbox_alloc_msg_nix_lf_free(mbox);
-	if (req)
+	free_req = otx2_mbox_alloc_msg_nix_lf_free(mbox);
+	if (free_req) {
+		free_req->flags = NIX_LF_DISABLE_FLOWS;
 		WARN_ON(otx2_sync_mbox_msg(mbox));
+	}
 	otx2_mbox_unlock(mbox);
 
 	/* Disable NPA Pool and Aura hw context */
