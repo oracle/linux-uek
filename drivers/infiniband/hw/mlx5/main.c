@@ -4596,7 +4596,9 @@ static void *mlx5_ib_add(struct mlx5_core_dev *mdev)
 
 	dev->ib_dev.disassociate_ucontext = mlx5_ib_disassociate_ucontext;
 
+#ifdef CONFIG_INFINIBAND_ON_DEMAND_PAGING
 	mlx5_ib_internal_fill_odp_caps(dev);
+#endif
 
 	dev->umr_fence = mlx5_get_umr_fence(MLX5_CAP_GEN(mdev, umr_fence));
 
