@@ -13,6 +13,7 @@
 #include <linux/delay.h>
 #include <linux/platform_device.h>
 #include <linux/swiotlb.h>
+#include <linux/moduleparam.h>
 
 #include <asm/time.h>
 
@@ -22,6 +23,10 @@
 #include <asm/octeon/pci-octeon.h>
 
 #include <dma-coherence.h>
+
+/* Module parameter to disable PCI probing */
+static int pci_disable;
+module_param(pci_disable, int, S_IRUGO);
 
 #define USE_OCTEON_INTERNAL_ARBITER
 
@@ -567,6 +572,10 @@ static int __init octeon_pci_setup(void)
 {
 	union cvmx_npi_mem_access_subidx mem_access;
 	int index;
+
+	/* Disable PCI if instructed on the command line */
+	if (pci_disable)
+		return 0;
 
 	/* Only these chips have PCI */
 	if (octeon_has_feature(OCTEON_FEATURE_PCIE))
