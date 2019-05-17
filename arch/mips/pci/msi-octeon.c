@@ -108,6 +108,7 @@ void arch_teardown_msi_irq(unsigned int irq)
 
 	if (octeon_has_feature(OCTEON_FEATURE_CIU3)) {
 		struct octeon_ciu_chip_data *cd3 = irq_get_chip_data(irq);
+		node = cd3->ciu_node;
 		msi = cd3->intsn & 0xff;
 	} else {
 		struct msi_chip_data *cd = irq_get_chip_data(irq);
@@ -452,7 +453,7 @@ static int arch_setup_multi_msi_irq(struct pci_dev *dev, struct msi_desc *desc,
 	struct msi_msg msg;
 	int irq_base;
 	int msi_base;
-	int node = 0; /* Must use the correct node. TODO */
+	int node = pcibus_to_node(dev->bus);
 
 	/* Get a free msi interrupt block */
 	msi_base = msi_bitmap_alloc_hwirqs(node, nvec);
@@ -496,7 +497,7 @@ int arch_setup_msi_irq(struct pci_dev *dev, struct msi_desc *desc)
 	struct msi_msg msg;
 	int irq;
 	int msi;
-	int node = 0; /* Must use the correct node. TODO */
+	int node = pcibus_to_node(dev->bus);
 
 	/* Get a free msi interrupt */
 	msi = msi_bitmap_alloc_hwirqs(node, 1);
@@ -592,45 +593,41 @@ OCTEON_MSI_INT_HANDLER_X(1);
 OCTEON_MSI_INT_HANDLER_X(2);
 OCTEON_MSI_INT_HANDLER_X(3);
 
-static void octeon_irq_msi_ciu3_ack(struct irq_data *data)
+
+static void octeon_msi_ciu3_ack_msi(struct irq_data *data)
 {
 	u64 csr_addr;
 	struct octeon_ciu_chip_data *cd;
 	int msi;
 
+	cd = irq_data_get_irq_chip_data(data);
+
+	/* Acknowledge MSI interrupt (get the node from cd) */
+	msi = cd->intsn & 0xff;
+	csr_addr = msi_rcv_reg[msi >> 6];
+	cvmx_write_csr_node(cd->ciu_node, csr_addr, 1 << (msi & 0x3f));
+}
+
+static void octeon_msi_ciu3_ack(struct irq_data *data)
+{
 	octeon_irq_ciu3_ack(data);
+	octeon_msi_ciu3_ack_msi(data);
 
-	cd = irq_data_get_irq_chip_data(data);
-
-	/* Acknowledge lsi (msi) interrupt (get the node from the ciu3 addr) */
-	msi = cd->intsn & 0xff;
-	csr_addr = (cd->ciu3_addr & CVMX_NODE_MASK) | msi_rcv_reg[msi >> 6];
-	cvmx_write_csr(csr_addr, 1 << (msi & 0x3f));
 }
 
-static void octeon_irq_msi_ciu3_mask_ack(struct irq_data *data)
+static void octeon_msi_ciu3_mask_ack(struct irq_data *data)
 {
-	u64 csr_addr;
-	struct octeon_ciu_chip_data *cd;
-	int msi;
-
 	octeon_irq_ciu3_mask_ack(data);
-
-	cd = irq_data_get_irq_chip_data(data);
-
-	/* Acknowledge lsi (msi) interrupt (get the node from the ciu3 addr) */
-	msi = cd->intsn & 0xff;
-	csr_addr = (cd->ciu3_addr & CVMX_NODE_MASK) | msi_rcv_reg[msi >> 6];
-	cvmx_write_csr(csr_addr, 1 << (msi & 0x3f));
+	octeon_msi_ciu3_ack_msi(data);
 }
 
-static void octeon_irq_msi_ciu3_enable(struct irq_data *data)
+static void octeon_msi_ciu3_enable(struct irq_data *data)
 {
 	octeon_irq_ciu3_enable(data);
 	unmask_msi_irq(data);
 }
 
-static void octeon_irq_msi_ciu3_disable(struct irq_data *data)
+static void octeon_msi_ciu3_disable(struct irq_data *data)
 {
 	octeon_irq_ciu3_disable(data);
 	mask_msi_irq(data);
@@ -638,25 +635,25 @@ static void octeon_irq_msi_ciu3_disable(struct irq_data *data)
 
 static struct irq_chip octeon_irq_msi_chip_ciu3 = {
 	.name = "MSI-X",
-	.irq_enable = octeon_irq_msi_ciu3_enable,
-	.irq_disable = octeon_irq_msi_ciu3_disable,
-	.irq_ack = octeon_irq_msi_ciu3_ack,
+	.irq_enable = octeon_msi_ciu3_enable,
+	.irq_disable = octeon_msi_ciu3_disable,
+	.irq_ack = octeon_msi_ciu3_ack,
 	.irq_mask = octeon_irq_ciu3_mask,
-	.irq_mask_ack = octeon_irq_msi_ciu3_mask_ack,
+	.irq_mask_ack = octeon_msi_ciu3_mask_ack,
 	.irq_unmask = octeon_irq_ciu3_enable,
 #ifdef CONFIG_SMP
 	.irq_set_affinity = octeon_irq_ciu3_set_affinity,
 #endif
 };
 
-static int octeon_irq_msi_ciu3_map(struct irq_domain *d,
-				   unsigned int virq, irq_hw_number_t hw)
+static int octeon_msi_ciu3_map(struct irq_domain *d,
+			       unsigned int virq, irq_hw_number_t hw)
 {
 	return octeon_irq_ciu3_mapx(d, virq, hw, &octeon_irq_msi_chip_ciu3);
 }
 
 struct irq_domain_ops octeon_msi_domain_ciu3_ops = {
-	.map = octeon_irq_msi_ciu3_map,
+	.map = octeon_msi_ciu3_map,
 	.unmap = octeon_irq_free_cd,
 	.xlate = octeon_irq_ciu3_xlat,
 };
@@ -669,28 +666,33 @@ int __init octeon_msi_initialize(void)
 	struct irq_domain *domain;
 	u64 msi_map_reg;
 	int i;
-	int node = 0; /* Must use correct node. TODO */
 
 	/* Clear msi irq bitmap */
 	for (i = 0; i < CVMX_MAX_NODES; i++)
 		bitmap_zero(msi_free_irq_bitmap[i], MSI_IRQ_SIZE);
 
 	if (octeon_has_feature(OCTEON_FEATURE_CIU3)) {
+		int	node;
 		int	irq_base;
-
-		/* MSI interrupts use their own domain */
-		irq_base = irq_alloc_descs(-1, 0, MSI_IRQ_SIZE, 0);
-		domain = irq_domain_add_legacy(NULL, MSI_IRQ_SIZE, irq_base,
-					       MSI_BLOCK_NUMBER << 12,
-					       &octeon_msi_domain_ciu3_ops,
-					       octeon_irq_get_ciu3_info(node));
-		octeon_irq_add_block_domain(node, MSI_BLOCK_NUMBER, domain);
 
 		/* Registers to acknowledge msi interrupts */
 		msi_rcv_reg[0] = CVMX_PEXP_SLI_MSI_RCV0;
 		msi_rcv_reg[1] = CVMX_PEXP_SLI_MSI_RCV1;
 		msi_rcv_reg[2] = CVMX_PEXP_SLI_MSI_RCV2;
 		msi_rcv_reg[3] = CVMX_PEXP_SLI_MSI_RCV3;
+
+		for_each_online_node(node) {
+			/* MSI interrupts use their own domain */
+			irq_base = irq_alloc_descs(-1, 0, MSI_IRQ_SIZE, 0);
+			WARN_ON(irq_base < 0);
+			domain = irq_domain_add_legacy(NULL, MSI_IRQ_SIZE, irq_base,
+						       MSI_BLOCK_NUMBER << 12,
+						       &octeon_msi_domain_ciu3_ops,
+						       octeon_irq_get_ciu3_info(node));
+			WARN_ON(!domain);
+			octeon_irq_add_block_domain(node, MSI_BLOCK_NUMBER, domain);
+
+		}
 		return 0;
 	}
 
