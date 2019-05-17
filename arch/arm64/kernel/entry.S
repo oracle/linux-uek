@@ -203,8 +203,25 @@ alternative_cb_end
 	str	x20, [tsk, #TSK_TI_ADDR_LIMIT]
 	/* No need to reset PSTATE.UAO, hardware's already set it to 0 for us */
 	.endif /* \el == 0 */
+
+#ifdef CONFIG_GTI_WATCHDOG
+	.if	\el == 3
+	/*
+	 * load elr, spsr in case of simulated exception return from
+	 * elr_el12, spsr_el12 which are used as scratch registers
+	 * to store interrupted register context by nmi handler in el3,
+	 * as elr_el2 & spsr_el2 will be used for simulated return to
+	 * el1/el2 by el3 nmi handler.
+	 */
+	mrs	x22, S3_5_C4_C0_1
+	mrs	x23, S3_5_C4_C0_0
+	.else
+#endif
 	mrs	x22, elr_el1
 	mrs	x23, spsr_el1
+#ifdef CONFIG_GTI_WATCHDOG
+	.endif	/* \el == 3 */
+#endif
 	stp	lr, x21, [sp, #S_LR]
 
 	/*
@@ -945,6 +962,18 @@ el0_error_naked:
 	b	ret_to_user
 ENDPROC(el0_error)
 
+#ifdef CONFIG_GTI_WATCHDOG
+.globl	el1_nmi_callback
+el1_nmi_callback:
+	/*
+	 * Simulate an exception return at same ELx, for example,
+	 * exception entry and pstate are loaded from ELR_ELx and SPSR_ELx.
+	 */
+	sub     sp, sp, #S_FRAME_SIZE
+	kernel_entry 3
+	mov	x0, sp
+	bl	nmi_kernel_callback
+#endif
 
 /*
  * This is the fast syscall return path.  We do as little as possible here,
