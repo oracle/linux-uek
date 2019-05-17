@@ -931,7 +931,8 @@ int rvu_mbox_handler_npc_install_flow(struct rvu *rvu,
 	pfvf = rvu_get_pfvf(rvu, target);
 
 	if (!req->default_rule && !pfvf->def_rule) {
-		dev_err(rvu->dev, "default rule should be installed first\n");
+		dev_err(rvu->dev,
+			"Cannot install rule target interface uninitialized\n");
 		return -EINVAL;
 	}
 
