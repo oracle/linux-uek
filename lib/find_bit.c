@@ -21,6 +21,8 @@
 #include <linux/export.h>
 #include <linux/kernel.h>
 
+#include <linux/nospec.h>
+
 #if !defined(find_next_bit) || !defined(find_next_zero_bit)
 
 /*
@@ -36,6 +38,7 @@ static unsigned long _find_next_bit(const unsigned long *addr,
 	if (unlikely(start >= nbits))
 		return nbits;
 
+	start = array_index_nospec(start, nbits);
 	tmp = addr[start / BITS_PER_LONG] ^ invert;
 
 	/* Handle 1st word. */
