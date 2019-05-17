@@ -136,7 +136,7 @@ static int npc_get_nixlf_mcam_index(struct npc_mcam *mcam,
 	return (mcam->nixlf_offset + (nixlf * RSVD_MCAM_ENTRIES_PER_NIXLF));
 }
 
-static int npc_get_bank(struct npc_mcam *mcam, int index)
+int npc_get_bank(struct npc_mcam *mcam, int index)
 {
 	int bank = index / mcam->banksize;
 
@@ -783,7 +783,9 @@ void rvu_npc_enable_default_entries(struct rvu *rvu, u16 pcifunc, int nixlf)
 
 void rvu_npc_disable_mcam_entries(struct rvu *rvu, u16 pcifunc, int nixlf)
 {
+	struct rvu_pfvf *pfvf = rvu_get_pfvf(rvu, pcifunc);
 	struct npc_mcam *mcam = &rvu->hw->mcam;
+	struct rvu_npc_mcam_rule *rule;
 	int blkaddr;
 
 	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NPC, 0);
@@ -792,11 +794,48 @@ void rvu_npc_disable_mcam_entries(struct rvu *rvu, u16 pcifunc, int nixlf)
 
 	mutex_lock(&mcam->lock);
 
-	/* Disable and free all MCAM entries mapped to this 'pcifunc' */
+	/* Disable MCAM entries directing traffic to this 'pcifunc' */
+	list_for_each_entry(rule, &mcam->mcam_rules, list) {
+		if (rule->action.pf_func == pcifunc) {
+			npc_enable_mcam_entry(rvu, mcam, blkaddr,
+					      rule->entry, false);
+			rule->enable = false;
+			/* Indicate that default rule is disabled */
+			if (rule->default_rule)
+				pfvf->def_rule = NULL;
+		}
+	}
+
+	mutex_unlock(&mcam->lock);
+
+	rvu_npc_disable_default_entries(rvu, pcifunc, nixlf);
+}
+
+void rvu_npc_free_mcam_entries(struct rvu *rvu, u16 pcifunc, int nixlf)
+{
+	struct npc_mcam *mcam = &rvu->hw->mcam;
+	struct rvu_npc_mcam_rule *rule, *tmp;
+	int blkaddr;
+
+	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NPC, 0);
+	if (blkaddr < 0)
+		return;
+
+	mutex_lock(&mcam->lock);
+
+	/* Disable and free all MCAM entries owned by this 'pcifunc' */
 	npc_mcam_free_all_entries(rvu, mcam, blkaddr, pcifunc);
 
-	/* Free all MCAM counters mapped to this 'pcifunc' */
+	/* Free all MCAM counters owned by this 'pcifunc' */
 	npc_mcam_free_all_counters(rvu, mcam, pcifunc);
+
+	/* Delete MCAM entries owned by this 'pcifunc' from list */
+	list_for_each_entry_safe(rule, tmp, &mcam->mcam_rules, list) {
+		if (rule->owner == pcifunc && !rule->default_rule) {
+			list_del(&rule->list);
+			kfree(rule);
+		}
+	}
 
 	mutex_unlock(&mcam->lock);
 
