@@ -243,7 +243,7 @@ M(NPC_MCAM_READ_ENTRY,	  0x600f, npc_mcam_read_entry,			\
 /* NIX mbox IDs (range 0x8000 - 0xFFFF) */				\
 M(NIX_LF_ALLOC,		0x8000, nix_lf_alloc,				\
 				 nix_lf_alloc_req, nix_lf_alloc_rsp)	\
-M(NIX_LF_FREE,		0x8001, nix_lf_free, msg_req, msg_rsp)		\
+M(NIX_LF_FREE,		0x8001, nix_lf_free, nix_lf_free_req, msg_rsp)	\
 M(NIX_AQ_ENQ,		0x8002, nix_aq_enq, nix_aq_enq_req, nix_aq_enq_rsp)  \
 M(NIX_HWCTX_DISABLE,	0x8003, nix_hwctx_disable,			\
 				 hwctx_disable_req, msg_rsp)		\
@@ -642,6 +642,12 @@ struct nix_lf_alloc_rsp {
 	u8	lf_tx_stats; /* NIX_AF_CONST1::LF_TX_STATS */
 	u16	cints; /* NIX_AF_CONST2::CINTS */
 	u16	qints; /* NIX_AF_CONST2::QINTS */
+};
+
+struct nix_lf_free_req {
+	struct mbox_msghdr hdr;
+#define NIX_LF_DISABLE_FLOWS	0x1
+	u64 flags;
 };
 
 /* NIX AQ enqueue msg */
@@ -1269,7 +1275,6 @@ struct npc_delete_flow_req {
 	struct mbox_msghdr hdr;
 	u16 entry;
 	u8 all; /* PF + VFs */
-	u8 all_vfs; /* VFs */
 };
 
 struct npc_mcam_read_entry_req {
