@@ -8,5 +8,13 @@
 
 #ifndef __MIPS_PERF_EVENT_H__
 #define __MIPS_PERF_EVENT_H__
-/* Leave it empty here. The file is required by linux/perf_event.h */
+
+#include <linux/notifier.h>
+
+/* Allow CPU specific actions on PMU state changes. */
+int mipspmu_notifier_register(struct notifier_block *nb);
+int mipspmu_notifier_unregister(struct notifier_block *nb);
+#define MIPSPMU_ENABLE 0
+#define MIPSPMU_DISABLE 1
+
 #endif /* __MIPS_PERF_EVENT_H__ */
