@@ -10,6 +10,8 @@
 #include <linux/export.h>
 #include <asm/unaligned.h>
 
+#include <linux/nospec.h>
+
 const char hex_asc[] = "0123456789abcdef";
 EXPORT_SYMBOL(hex_asc);
 const char hex_asc_upper[] = "0123456789ABCDEF";
@@ -186,6 +188,7 @@ int hex_dump_to_buffer(const void *buf, size_t len, int rowsize, int groupsize,
 	while (lx < ascii_column) {
 		if (linebuflen < lx + 2)
 			goto overflow2;
+		lx = array_index_nospec(lx, linebuflen-2);
 		linebuf[lx++] = ' ';
 	}
 	for (j = 0; j < len; j++) {
