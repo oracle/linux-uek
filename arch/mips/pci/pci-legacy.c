@@ -292,6 +292,17 @@ int pcibios_enable_device(struct pci_dev *dev, int mask)
 	if ((err = pcibios_enable_resources(dev, mask)) < 0)
 		return err;
 
+	struct pci_dev *_dev = NULL;
+	struct pci_host_bridge *hbrg = NULL;
+	for_each_pci_dev(_dev) {
+		hbrg = pci_find_host_bridge(_dev->bus);
+		hbrg->swizzle_irq = pci_common_swizzle;
+		hbrg->map_irq = pcibios_map_irq;
+		pci_assign_irq(_dev);
+		hbrg->swizzle_irq = NULL;
+		hbrg->map_irq = NULL;
+	}
+
 	return pcibios_plat_dev_init(dev);
 }
 

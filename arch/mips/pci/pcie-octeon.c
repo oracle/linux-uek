@@ -107,8 +107,8 @@ static irqreturn_t pcie_17400_handler(int irq, void *data)
 	return IRQ_HANDLED;
 }
 
-static int __init octeon_pcie78xx_pcibios_map_irq(const struct pci_dev *dev,
-					      u8 slot, u8 pin)
+static int octeon_pcie78xx_pcibios_map_irq(const struct pci_dev *dev,
+					   u8 slot, u8 pin)
 {
 	struct octeon_pcie_interface *pcie;
 	unsigned int intsn;
@@ -209,8 +209,8 @@ EXPORT_SYMBOL(pcibus_to_node);
  *		 as it goes through each bridge.
  * Returns Interrupt number for the device
  */
-static int __init octeon_pcie_pcibios_map_irq(const struct pci_dev *dev,
-					      u8 slot, u8 pin)
+static int octeon_pcie_pcibios_map_irq(const struct pci_dev *dev,
+				       u8 slot, u8 pin)
 {
 	/*
 	 * The EBH5600 board with the PCI to PCIe bridge mistakenly
