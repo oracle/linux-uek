@@ -47,6 +47,10 @@
 #include <asm/bootinfo.h>
 #include <asm/reg.h>
 
+#ifdef CONFIG_CPU_CAVIUM_OCTEON
+#include <asm/octeon/octeon.h>
+#endif
+
 #define CREATE_TRACE_POINTS
 #include <trace/events/syscalls.h>
 
@@ -1212,6 +1216,64 @@ long arch_ptrace(struct task_struct *child, long request,
 	/* when I and D space are separate, these will need to be fixed. */
 	case PTRACE_PEEKTEXT: /* read word at location addr. */
 	case PTRACE_PEEKDATA:
+		ret = -EIO;
+#if defined(CONFIG_CAVIUM_OCTEON_USER_IO_PER_PROCESS) || defined(CONFIG_CAVIUM_OCTEON_USER_IO)
+		/* check whether its a XKPHYS IO addr (we only allow the
+		   0x80xx.. alias) */
+		if (((unsigned long)addr >> 48) == 0x8001) {
+#ifdef CONFIG_CAVIUM_OCTEON_USER_IO_PER_PROCESS
+			struct task_struct *group_leader;
+
+			group_leader = child->group_leader;
+			if (!test_tsk_thread_flag(group_leader, TIF_XKPHYS_IO_EN))
+				break;
+#endif
+			ret = put_user(*(unsigned long *)addr,
+					(unsigned long __user *) data);
+			break;
+		}
+#endif /* !defined(CONFIG_CAVIUM_OCTEON_USER_IO_DISABLED) */
+#if defined(CONFIG_CAVIUM_OCTEON_USER_MEM_PER_PROCESS) || defined(CONFIG_CAVIUM_OCTEON_USER_MEM)
+		/* check whether its a XKPHYS MEM addr */
+		if (((unsigned long)addr >> 48) == 0x8000) {
+			unsigned long tmp;
+#ifdef CONFIG_CAVIUM_OCTEON_USER_MEM_PER_PROCESS
+			struct task_struct *group_leader;
+
+			group_leader = child->group_leader;
+			if (!test_tsk_thread_flag(group_leader, TIF_XKPHYS_MEM_EN))
+				break;
+#endif
+			ret = -EIO;
+			/* ensure that task is 64 bit */
+			if (test_tsk_thread_flag(child, TIF_32BIT_ADDR))
+				break;
+
+			/* extract phy addr from XKPHYS alias */
+			tmp = (unsigned long)addr - 0x8000000000000000ull;
+
+			/* check for boot-bus addr range */
+			if ((tmp >= 0x10000000) && (tmp < 0x20000000))
+				break;
+
+			/* this is for the dram_size comparison below */
+			if (current_cpu_type() == CPU_CAVIUM_OCTEON2) {
+				/* subtract 256MB hole for dram_size comparison */
+				if (tmp >= 0x20000000ull)
+					tmp -= 0x10000000ull;
+			} else {
+				if ((tmp >= 0x410000000ull) && (tmp < 0x420000000ull))
+					tmp -= 0x400000000ull;
+			}
+
+			/* verify that "addr" is within installed dram */
+			if (tmp <= ((octeon_bootinfo->dram_size << 20) - sizeof(tmp)))
+				ret = put_user(*(unsigned long *)addr, (unsigned long __user *) data);
+
+			break;
+		}
+#endif /* !defined(CONFIG_CAVIUM_OCTEON_USER_MEM_PER_PROCESS) */
+
 		ret = generic_ptrace_peekdata(child, addr, data);
 		break;
 
