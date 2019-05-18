@@ -246,6 +246,18 @@ static int octeon_lmc_edac_probe(struct platform_device *pdev)
 
 	if (OCTEON_IS_OCTEON1PLUS()) {
 		union cvmx_lmcx_mem_cfg0 cfg0;
+		cvmx_l2c_cfg_t l2c_cfg;
+		int present = 0;
+
+		l2c_cfg.u64 = cvmx_read_csr(CVMX_L2C_CFG);
+
+		if (mc == 0)
+			present = l2c_cfg.s.dpres0;
+		else
+			present = l2c_cfg.s.dpres1;
+
+		if (!present)
+			return -ENXIO;
 
 		cfg0.u64 = cvmx_read_csr(CVMX_LMCX_MEM_CFG0(0));
 		if (!cfg0.s.ecc_ena) {
