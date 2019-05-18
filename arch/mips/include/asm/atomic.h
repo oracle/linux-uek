@@ -53,7 +53,7 @@ static inline void atomic_add(int i, atomic_t *v)
 {
 	__asm__ __volatile__(
 	".set	push\n\t"
-	".set	arch=octeon\n\t"
+	".set	arch=octeon+\n\t"
 	"saa    %1, (%2)\t# atomic_add (%0)\n\t"
 	".set	pop"
 	: "+m" (v->counter)
@@ -71,7 +71,7 @@ static inline void atomic_sub(int i, atomic_t *v)
 {
 	__asm__ __volatile__(
 	".set	push\n\t"
-	".set	arch=octeon\n\t"
+	".set	arch=octeon+\n\t"
 	"saa    %1, (%2)\t# atomic_sub(%0)\n\t"
 	".set	pop"
 	: "+m" (v->counter)
@@ -544,7 +544,7 @@ static inline void atomic64_add(long i, atomic64_t *v)
 {
 	__asm__ __volatile__(
 	".set	push\n\t"
-	".set	arch=octeon\n\t"
+	".set	arch=octeon+\n\t"
 	"saad   %1, (%2)\t# atomic64_add (%0)\n\t"
 	".set	pop"
 	: "+m" (v->counter)
@@ -562,7 +562,7 @@ static inline void atomic64_sub(long i, atomic64_t *v)
 {
 	__asm__ __volatile__(
 	".set	push\n\t"
-	".set	arch=octeon\n\t"
+	".set	arch=octeon+\n\t"
 	"saad    %1, (%2)\t# atomic64_sub (%0)\n\t"
 	".set	pop"
 	: "+m" (v->counter)
