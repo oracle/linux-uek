@@ -77,6 +77,14 @@
 	PTR_ADDU	t0, $28, _THREAD_SIZE - 32
 	set_saved_sp	t0, t1, t2
 
+#ifdef CONFIG_FAST_ACCESS_TO_THREAD_POINTER
+	/* We need to put the thread pointer in CVMMEM immediately. The
+		kernel will use this value during TLB exceptions even
+		though userspace hasn't accessed CVMMEM */
+	LONG_L	t1, TI_TP_VALUE($28)
+	LONG_S	t1, FAST_ACCESS_THREAD_OFFSET($0)
+#endif
+
 	mfc0	t1, CP0_STATUS		/* Do we really need this? */
 	li	a3, 0xff01
 	and	t1, a3
