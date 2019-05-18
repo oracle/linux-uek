@@ -477,7 +477,7 @@ void octeon_mult_restore3_end(void);
 void octeon_mult_restore2(void);
 void octeon_mult_restore2_end(void);
 
-#if CONFIG_OCTEON_FPA3
+#if IS_ENABLED(CONFIG_OCTEON_FPA3)
 int octeon_fpa3_init(int node);
 int octeon_fpa3_pool_init(int node, int pool_num, cvmx_fpa3_pool_t *pool,
 			  void **pool_stack, int num_ptrs);
