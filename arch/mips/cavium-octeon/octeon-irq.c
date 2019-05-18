@@ -3102,10 +3102,14 @@ static int __init octeon_irq_init_ciu3(struct device_node *ciu_node,
 	u64 base_addr;
 	union cvmx_ciu3_const consts;
 
-	node = of_node_to_nid(ciu_node);
-	if (node >= ARRAY_SIZE(octeon_ciu3_info_per_node))
-		return -EINVAL;
-	
+	if(IS_ENABLED(CONFIG_NUMA)) {
+		node = of_node_to_nid(ciu_node);
+		if (node >= ARRAY_SIZE(octeon_ciu3_info_per_node))
+			return -EINVAL;
+	}
+	else
+		node = 0;
+
 	ciu3_info = kzalloc_node(sizeof(*ciu3_info), GFP_KERNEL, node);
 
 	if (!ciu3_info)
