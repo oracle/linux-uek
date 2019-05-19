@@ -42,6 +42,7 @@
 
 int xkphys_usermem_read(long);
 int xkphys_usermem_write(long, int);
+extern int arm_timer(long, long);
 
 /*
  * For historic reasons the pipe(2) syscall on MIPS has an unusual calling
@@ -240,6 +241,12 @@ SYSCALL_DEFINE3(sysmips, long, cmd, long, arg1, long, arg2)
 
 	case MIPS_CAVIUM_XKPHYS_WRITE:
 		return xkphys_usermem_write(arg1, arg2);
+
+#ifdef CONFIG_CAVIUM_OCTEON_SOC
+	case MIPS_CAVIUM_ARM_TIMER:
+		return arm_timer(arg1, arg2);
+#endif
+
 #endif
 	}
 

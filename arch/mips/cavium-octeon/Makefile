@@ -10,7 +10,7 @@
 #
 
 obj-y := setup.o serial.o octeon-platform.o octeon-irq.o csrc-octeon.o \
-	 octeon-hw-status.o octeon_info.o
+	 octeon-hw-status.o octeon_info.o cavium.o
 obj-y += dma-octeon.o
 obj-y += csrc-octeon-ptp.o
 obj-y += octeon-pci-console.o
