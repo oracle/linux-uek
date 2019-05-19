@@ -315,7 +315,8 @@ void build_clear_page(void)
 	memset(labels, 0, sizeof(labels));
 	memset(relocs, 0, sizeof(relocs));
 
-	if (current_cpu_data.cputype == CPU_CAVIUM_OCTEON2) {
+	if (current_cpu_data.cputype == CPU_CAVIUM_OCTEON2 ||
+	    current_cpu_data.cputype == CPU_CAVIUM_OCTEON3) {
 		const unsigned int wb_nudge = 26;
 
 		pg_addiu(&buf, T0, A0, PAGE_SIZE);
@@ -323,25 +324,19 @@ void build_clear_page(void)
 		UASM_i_ADDIU(&buf, A1, A0, 128);
 		uasm_l_clear_pref(&l, buf);
 		uasm_i_zcbt(&buf, A0);
-		uasm_i_pref(&buf, wb_nudge, 0, A0);
+		UASM_i_ADDIU(&buf, A0, A0, 256);
+		uasm_i_zcbt(&buf, A1);
+		UASM_i_ADDIU(&buf, A1, A1, 256);
+		uasm_i_zcbt(&buf, A0);
 		UASM_i_ADDIU(&buf, A0, A0, 256);
 		uasm_i_zcbt(&buf, A1);
 		uasm_i_pref(&buf, wb_nudge, 0, A1);
 		UASM_i_ADDIU(&buf, A1, A1, 256);
 		uasm_i_zcbt(&buf, A0);
-		uasm_i_pref(&buf, wb_nudge, 0, A0);
 		UASM_i_ADDIU(&buf, A0, A0, 256);
 		uasm_i_zcbt(&buf, A1);
-		uasm_i_pref(&buf, wb_nudge, 0, A1);
 		UASM_i_ADDIU(&buf, A1, A1, 256);
 		uasm_i_zcbt(&buf, A0);
-		uasm_i_pref(&buf, wb_nudge, 0, A0);
-		UASM_i_ADDIU(&buf, A0, A0, 256);
-		uasm_i_zcbt(&buf, A1);
-		uasm_i_pref(&buf, wb_nudge, 0, A1);
-		UASM_i_ADDIU(&buf, A1, A1, 256);
-		uasm_i_zcbt(&buf, A0);
-		uasm_i_pref(&buf, wb_nudge, 0, A0);
 		UASM_i_ADDIU(&buf, A0, A0, 256);
 		uasm_i_zcbt(&buf, A1);
 		uasm_i_pref(&buf, wb_nudge, 0, A1);
