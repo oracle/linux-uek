@@ -46,6 +46,7 @@
 #include <asm/octeon/pci-octeon.h>
 #include <asm/octeon/cvmx-rst-defs.h>
 #include <asm/octeon/cvmx-qlm.h>
+#include <asm/octeon/cvmx-debug.h>
 
 /*
  * TRUE for devices having registers with little-endian byte
@@ -984,6 +985,10 @@ append_arg:
 
 	octeon_user_io_init();
 	octeon_setup_smp();
+
+#ifdef CONFIG_CAVIUM_GDB
+	cvmx_debug_init ();
+#endif
 }
 
 #ifdef CONFIG_CAVIUM_OCTEON_LOCK_L2

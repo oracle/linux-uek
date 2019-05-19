@@ -468,6 +468,8 @@ int octeon_request_ipi_handler(octeon_message_fn_t fn);
 void octeon_send_ipi_single(int cpu, unsigned int action);
 void octeon_release_ipi_handler(int action);
 
+#define OCTEON_DEBUG_UART 1
+
 int register_co_cache_error_notifier(struct notifier_block *nb);
 int unregister_co_cache_error_notifier(struct notifier_block *nb);
 #define CO_CACHE_ERROR_RECOVERABLE 0
