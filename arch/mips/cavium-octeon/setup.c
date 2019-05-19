@@ -504,6 +504,7 @@ void octeon_user_io_init(void)
 	 * between 1x and 2x this interval. For example, with
 	 * DIDTTO=3, expiration interval is between 16K and 32K. */
 	cvmmemctl.s.didtto = 0;
+	cvmmemctl.s.didtto2 = 0;
 	/* R/W If set, the (mem) CSR clock never turns off. */
 	cvmmemctl.s.csrckalwys = 0;
 	/* R/W If set, mclk never turns off. */
