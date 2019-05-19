@@ -792,8 +792,16 @@ irqreturn_t cvm_mmc_interrupt(int irq, void *dev_id)
 		slot = NULL;
 	}
 
-	/* Clear interrupt bits (write 1 clears ). */
 	emm_int = readq(host->base + MIO_EMM_INT(host));
+	/*
+	 * Multiple interrupts are handled here, so it is possible
+	 * that the condition for this invocation was already handled
+	 * by a previous interrupt.  If there is nothing pending, it
+	 * must have previously been handled so just exit.
+	 */
+	if (!emm_int)
+		goto out;
+	/* Clear interrupt bits (write 1 clears ). */
 	writeq(emm_int, host->base + MIO_EMM_INT(host));
 
 	if (emm_int & MIO_EMM_INT_SWITCH_ERR)
@@ -1183,7 +1191,7 @@ static void do_write_request(struct cvm_mmc_slot *slot, struct mmc_request *mrq)
 		}
 
 		while (smi->consumed < smi->length && shift >= 0) {
-			dat |= (u64)((u8 *)smi->addr)[smi->consumed] << shift;
+			dat |= ((u64)((u8 *)smi->addr)[smi->consumed]) << shift;
 			bytes_xfered++;
 			smi->consumed++;
 			shift -= 8;
