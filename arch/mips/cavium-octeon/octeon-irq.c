@@ -147,6 +147,9 @@ int octeon_cpu_for_coreid(int coreid)
 #endif
 }
 
+static DEFINE_PER_CPU(bool, octeon_irq_core_ack_masked[8]);
+static DEFINE_PER_CPU(bool, octeon_irq_core_inhibited[8]);
+
 static void octeon_irq_core_ack(struct irq_data *data)
 {
 	struct octeon_core_chip_data *cd = irq_data_get_irq_chip_data(data);
@@ -158,6 +161,7 @@ static void octeon_irq_core_ack(struct irq_data *data)
 	 * interrupt code.
 	 */
 	clear_c0_status(0x100 << bit);
+	__this_cpu_write(octeon_irq_core_ack_masked[bit], true);
 	/* The two user interrupts must be cleared manually. */
 	if (bit < 2)
 		clear_c0_cause(0x100 << bit);
@@ -166,13 +170,32 @@ static void octeon_irq_core_ack(struct irq_data *data)
 static void octeon_irq_core_eoi(struct irq_data *data)
 {
 	struct octeon_core_chip_data *cd = irq_data_get_irq_chip_data(data);
+	unsigned int bit = cd->bit;
+	bool inhibited = __this_cpu_read(octeon_irq_core_inhibited[bit]);
 
 	/*
 	 * We don't need to disable IRQs to make these atomic since
 	 * they are already disabled earlier in the low level
 	 * interrupt code.
 	 */
-	set_c0_status(0x100 << cd->bit);
+	if (!inhibited)
+		set_c0_status(0x100 << bit);
+	__this_cpu_write(octeon_irq_core_ack_masked[bit], false);
+}
+
+void octeon_irq_core_inhibit_bit(unsigned int bit, bool v)
+{
+	unsigned long flags;
+	bool masked;
+
+	raw_local_irq_save(flags);
+
+	masked = __this_cpu_read(octeon_irq_core_ack_masked[bit]);
+	__this_cpu_write(octeon_irq_core_inhibited[bit], v);
+
+	if (!masked && !v)
+		set_c0_status(0x100 << bit);
+	raw_local_irq_restore(flags);
 }
 
 static void octeon_irq_core_set_enable_local(void *arg)

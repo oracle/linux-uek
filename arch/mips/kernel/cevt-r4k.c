@@ -15,6 +15,15 @@
 #include <asm/time.h>
 #include <asm/cevt-r4k.h>
 
+#ifdef CONFIG_CAVIUM_OCTEON_SOC
+void octeon_irq_core_inhibit_bit(unsigned int bit, bool v);
+#else
+static void octeon_irq_core_inhibit_bit(unsigned int bit, bool v)
+{
+	return;
+}
+#endif
+
 static int mips_next_event(unsigned long delta,
 			   struct clock_event_device *evt)
 {
@@ -25,6 +34,7 @@ static int mips_next_event(unsigned long delta,
 	cnt += delta;
 	write_c0_compare(cnt);
 	res = ((int)(read_c0_count() - cnt) >= 0) ? -ETIME : 0;
+	octeon_irq_core_inhibit_bit(cp0_compare_irq, false);
 	return res;
 }
 
@@ -149,6 +159,7 @@ irqreturn_t c0_compare_interrupt(int irq, void *dev_id)
 	if (!r2 || (read_c0_cause() & CAUSEF_TI)) {
 		/* Clear Count/Compare Interrupt */
 		write_c0_compare(read_c0_compare());
+		octeon_irq_core_inhibit_bit(cp0_compare_irq, true);
 		cd = &per_cpu(mips_clockevent_device, cpu);
 		cd->event_handler(cd);
 
