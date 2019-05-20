@@ -146,4 +146,9 @@ static inline int pci_get_legacy_ide_irq(struct pci_dev *dev, int channel)
 	return channel ? 15 : 14;
 }
 
+#ifdef CONFIG_CAVIUM_OCTEON_SOC
+/* MSI arch hook */
+#define arch_setup_msi_irqs arch_setup_msi_irqs
+#endif
+
 #endif /* _ASM_PCI_H */

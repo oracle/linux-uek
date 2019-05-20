@@ -49,6 +49,52 @@ static DEFINE_SPINLOCK(msi_free_irq_bitmap_lock);
 /* MSI to IRQ lookup */
 static int msi_to_irq[MSI_IRQ_SIZE];
 
+/*
+ * Find a contiguous aligned block of free msi interrupts and allocate
+ * them (set them to one).
+ *
+ * @node:      Node to allocate msi interrupts for.
+ * @nvec:      Number of msi interrupts to allocate.
+ *
+ * Returns:    Zero on success, error otherwise.
+ */
+static int msi_bitmap_alloc_hwirqs(int node, int nvec)
+{
+	unsigned long	flags;
+	int		offset;
+	int		order = get_count_order(nvec);
+
+	spin_lock_irqsave(&msi_free_irq_bitmap_lock, flags);
+	offset = bitmap_find_free_region(msi_free_irq_bitmap[node],
+					 MSI_IRQ_SIZE, order);
+
+	spin_unlock_irqrestore(&msi_free_irq_bitmap_lock, flags);
+
+	if (unlikely(offset < 0)) {
+		WARN(1, "Unable to find a free MSI interrupt");
+		return offset;
+	}
+
+	return offset;
+}
+
+/*
+ * Free a contiguous block of msi interrupts (set them to zero).
+ *
+ * @node:      Node to allocate msi interrupts for.
+ * @offset:    Beginnning of msi interrupts to release.
+ * @nvec:      Number of msi interrupts to release.
+ */
+static void msi_bitmap_free_hwirqs(int node, int offset, int nvec)
+{
+	unsigned long	flags;
+	int		order = get_count_order(nvec);
+
+	spin_lock_irqsave(&msi_free_irq_bitmap_lock, flags);
+	bitmap_release_region(msi_free_irq_bitmap[node], offset, order);
+	spin_unlock_irqrestore(&msi_free_irq_bitmap_lock, flags);
+}
+
 /**
  * Called when a device no longer needs its MSI interrupts. All
  * MSI interrupts for the device are freed.
@@ -57,7 +103,6 @@ static int msi_to_irq[MSI_IRQ_SIZE];
  */
 void arch_teardown_msi_irq(unsigned int irq)
 {
-	int old;
 	int msi;
 	int node = 0; /* Must use node device is in. TODO */
 
@@ -67,16 +112,10 @@ void arch_teardown_msi_irq(unsigned int irq)
 	} else {
 		struct msi_chip_data *cd = irq_get_chip_data(irq);
 		msi = cd->msi;
+		irq_free_descs(irq, 1);
 	}
 
-	spin_lock(&msi_free_irq_bitmap_lock);
-	old = test_and_clear_bit(msi, msi_free_irq_bitmap[node]);
-	spin_unlock(&msi_free_irq_bitmap_lock);
-
-	if (!old) {
-		WARN(1, "arch_teardown_msi_irq: Attempted to teardown MSI "
-		     "interrupt (%d) not in use", irq);
-	}
+	msi_bitmap_free_hwirqs(node, msi, 1);
 }
 
 static DEFINE_RAW_SPINLOCK(octeon_irq_msi_lock);
@@ -263,118 +302,254 @@ static struct irq_chip octeon_irq_chip_msi_pci = {
 #endif
 };
 
-/**
+/*
+ * Update msg with the system specific address where the msi data is to be
+ * written.
+ *
+ * @msg:    Updated with the mis message address.
+ */
+static void setup_msi_msg_address(struct msi_msg *msg)
+{
+	switch (octeon_dma_bar_type) {
+	case OCTEON_DMA_BAR_TYPE_SMALL:
+		/* When not using big bar, Bar 0 is based at 128MB */
+		msg->address_lo =
+			((128ul << 20) + CVMX_PCI_MSI_RCV) & 0xffffffff;
+		msg->address_hi = ((128ul << 20) + CVMX_PCI_MSI_RCV) >> 32;
+		break;
+	case OCTEON_DMA_BAR_TYPE_BIG:
+		/* When using big bar, Bar 0 is based at 0 */
+		msg->address_lo = (0 + CVMX_PCI_MSI_RCV) & 0xffffffff;
+		msg->address_hi = (0 + CVMX_PCI_MSI_RCV) >> 32;
+		break;
+	case OCTEON_DMA_BAR_TYPE_PCIE:
+		/* When using PCIe, Bar 0 is based at 0 */
+		/* FIXME CVMX_NPEI_MSI_RCV* other than 0? */
+		msg->address_lo = (0 + CVMX_NPEI_PCIE_MSI_RCV) & 0xffffffff;
+		msg->address_hi = (0 + CVMX_NPEI_PCIE_MSI_RCV) >> 32;
+		break;
+	case OCTEON_DMA_BAR_TYPE_PCIE2:
+		/* When using PCIe2, Bar 0 is based at 0 */
+		msg->address_lo = (0 + CVMX_SLI_PCIE_MSI_RCV) & 0xffffffff;
+		msg->address_hi = (0 + CVMX_SLI_PCIE_MSI_RCV) >> 32;
+		break;
+	default:
+		panic("setup_msi_msg_address: Invalid octeon_dma_bar_type");
+	}
+}
+
+/*
+ * Allocate and configure multiple irqs for MSI interrupts for OCTEON.
+ *
+ * @node:      Node to configure interrupts for.
+ * @desc:      MSI descriptor.
+ * @msi_base:  First msi number.
+ * @nvec:      Number of MSI interrupts requested.
+ *
+ * Returns:    First irq number.
+ */
+static int arch_setup_msi_irq_ciu(int node, struct msi_desc *desc, int msi_base,
+				  int nvec)
+{
+	int irq_base;
+	struct irq_chip *chip;
+	struct msi_chip_data *cd;
+	int hwmsi;
+	int i;
+
+	irq_base = irq_alloc_descs(-1, 1, nvec, node);
+	if (irq_base < 0) {
+		WARN(1, "Unable to allocate %d irq(s)", nvec);
+		return -ENOSPC;
+	}
+
+	for (i = 0; i < nvec; i++) {
+		cd = kzalloc_node(sizeof(*cd), GFP_KERNEL, node);
+		if (!cd) {
+			for (i--; i >= 0; i--) {
+				cd = irq_get_chip_data(irq_base + i);
+				irq_set_chip_and_handler(irq_base + i, NULL,
+							 NULL);
+				irq_set_chip_data(irq_base + i, NULL);
+				kfree(cd);
+			}
+			irq_free_descs(irq_base, nvec);
+			return -ENOMEM;
+		}
+
+		cd->msi = msi_base + i;
+		hwmsi = octeon_irq_msi_to_hwmsi(msi_base + i);
+		cd->hwmsi = hwmsi;
+		msi_to_irq[msi_base + i] = irq_base + i;
+
+		/* Initialize the irq description */
+		if (octeon_dma_bar_type == OCTEON_DMA_BAR_TYPE_PCIE2)
+			chip = &octeon_irq_chip_msi_pcie;
+		else if (octeon_dma_bar_type == OCTEON_DMA_BAR_TYPE_PCIE)
+			chip = &octeon_irq_chip_msi_pcie;
+		else
+			chip = &octeon_irq_chip_msi_pci;
+
+		irq_set_chip_and_handler(irq_base + i, chip, handle_simple_irq);
+		irq_set_chip_data(irq_base + i, cd);
+		irq_set_msi_desc(irq_base + i, desc);
+	}
+
+	return irq_base;
+}
+
+/*
+ * Allocate and configure multiple irqs for MSI interrupts for OCTEON III.
+ *
+ * @node:      Node to configure interrupts for.
+ * @desc:      MSI descriptor.
+ * @msi_base:  First msi number.
+ * @nvec:      Number of MSI interrupts requested.
+ *
+ * Returns:    First irq number.
+ */
+static int arch_setup_msi_irq_ciu3(int node, struct msi_desc *desc,
+				   int msi_base, int nvec)
+{
+	struct irq_domain *domain;
+	int irq_base = -1;
+	int irq;
+	int hwirq;
+	int i;
+
+	/* Get the domain for the msi interrupts */
+	domain = octeon_irq_get_block_domain(node, MSI_BLOCK_NUMBER);
+
+	for (i = 0; i < nvec; i++) {
+		/* Get a irq for the msi intsn (hardware interrupt) */
+		hwirq = MSI_BLOCK_NUMBER << 12 | (msi_base + i);
+		irq = irq_create_mapping(domain, hwirq);
+		irqd_set_trigger_type(irq_get_irq_data(irq),
+				      IRQ_TYPE_EDGE_RISING);
+		irq_set_msi_desc(irq, desc);
+
+		if (i == 0)
+			irq_base = irq;
+	}
+
+	return irq_base;
+}
+
+/*
  * Called when a driver request MSI interrupts instead of the
- * legacy INT A-D. This routine will allocate multiple interrupts
- * for MSI devices that support them. A device can override this by
- * programming the MSI control bits [6:4] before calling
- * pci_enable_msi().
+ * legacy INT A-D. This routine will allocate multiple MSI interrupts
+ * for MSI devices that support them.
+ *
+ * @dev:       Device requesting MSI interrupts.
+ * @desc:      MSI descriptor.
+ * @nvec:      Number of interrupts requested.
+ *
+ * Returns 0 on success, error otherwise.
+ */
+static int arch_setup_multi_msi_irq(struct pci_dev *dev, struct msi_desc *desc,
+				    int nvec)
+{
+	struct msi_msg msg;
+	int irq_base;
+	int msi_base;
+	int node = 0; /* Must use the correct node. TODO */
+
+	/* Get a free msi interrupt block */
+	msi_base = msi_bitmap_alloc_hwirqs(node, nvec);
+	if (msi_base < 0)
+		return msi_base;
+
+	if (octeon_has_feature(OCTEON_FEATURE_CIU3))
+		irq_base = arch_setup_msi_irq_ciu3(node, desc, msi_base, nvec);
+	else
+		irq_base = arch_setup_msi_irq_ciu(node, desc, msi_base, nvec);
+
+	if (irq_base < 0) {
+		msi_bitmap_free_hwirqs(node, msi_base, 1);
+		return irq_base;
+	}
+
+	/* Set the base of the irqs used by this device */
+	irq_set_msi_desc(irq_base, desc);
+
+	/* Update the config space msi(x) capability structure */
+	desc->msi_attrib.multiple = ilog2(nvec);
+	msg.data = msi_base;
+	setup_msi_msg_address(&msg);
+	write_msi_msg(irq_base, &msg);
+
+	return 0;
+}
+
+/**
+ * Called when a driver request MSI/MSIX interrupts instead of the
+ * legacy INT A-D. This routine will allocate a single MSI/MSIX interrupt
+ * for MSI devices that support them.
  *
  * @dev:    Device requesting MSI interrupts
  * @desc:   MSI descriptor
  *
- * Returns 0 on success.
+ * Returns 0 on success, error otherwise.
  */
 int arch_setup_msi_irq(struct pci_dev *dev, struct msi_desc *desc)
 {
 	struct msi_msg msg;
 	int irq;
-	int hwirq;
 	int msi;
-	struct irq_chip *chip;
-	struct irq_domain *domain;
 	int node = 0; /* Must use the correct node. TODO */
 
-	/*
-	 * We're going to search msi_free_irq_bitmap for zero bits. This
-	 * represents an MSI interrupt number that isn't in use.
-	 */
-	spin_lock(&msi_free_irq_bitmap_lock);
-	msi = find_next_zero_bit(msi_free_irq_bitmap[node], MSI_IRQ_SIZE, 0);
-	if (msi >= MSI_IRQ_SIZE) {
-		spin_unlock(&msi_free_irq_bitmap_lock);
-		WARN(1, "arch_setup_msi_irq: Unable to find a free MSI "
-		     "interrupt");
-		return -ENOSPC;
+	/* Get a free msi interrupt */
+	msi = msi_bitmap_alloc_hwirqs(node, 1);
+	if (msi < 0)
+		return msi;
+
+	if (octeon_has_feature(OCTEON_FEATURE_CIU3))
+		irq = arch_setup_msi_irq_ciu3(node, desc, msi, 1);
+	else
+		irq = arch_setup_msi_irq_ciu(node, desc, msi, 1);
+
+	if (irq < 0) {
+		msi_bitmap_free_hwirqs(node, msi, 1);
+		return irq;
 	}
 
-	set_bit(msi, msi_free_irq_bitmap[node]);
-	spin_unlock(&msi_free_irq_bitmap_lock);
+	/* Update the config space msi(x) capability structure */
+	desc->msi_attrib.multiple = 0;
 	msg.data = msi;
+	setup_msi_msg_address(&msg);
+	write_msi_msg(irq, &msg);
 
-	if (octeon_has_feature(OCTEON_FEATURE_CIU3)) {
-		/* Get the domain for the msi interrupts */
-		domain = octeon_irq_get_block_domain(node, MSI_BLOCK_NUMBER);
+	return 0;
+}
 
-		/* Get a irq for the msi intsn (hardware interrupt) */
-		hwirq = MSI_BLOCK_NUMBER << 12 | msi;
-		irq = irq_create_mapping(domain, hwirq);
-		irqd_set_trigger_type(irq_get_irq_data(irq),
-				      IRQ_TYPE_EDGE_RISING);
+/**
+ * Called when a driver request MSI/MSIX interrupts instead of the
+ * legacy INT A-D. This routine will allocate multiple MSI/MSIX interrupts
+ * for MSI devices that support them.
+ *
+ * @dev:    Device requesting MSI interrupts
+ * @nvec:   Number of MSI interrupts requested.
+ * @type:   Interrupt type, MSI or MSIX.
+ *
+ * Returns 0 on success.
+ */
+int arch_setup_msi_irqs(struct pci_dev *dev, int nvec, int type)
+{
+	struct msi_desc *entry;
+	int rc = -1;
+
+	if (type == PCI_CAP_ID_MSI && nvec > 1) {
+		entry = first_pci_msi_entry(dev);
+		rc = arch_setup_multi_msi_irq(dev, entry, nvec);
 	} else {
-		struct msi_chip_data *cd;
-		int hwmsi = octeon_irq_msi_to_hwmsi(msi);
-
-		/* Reuse the irq if already assigned to the msi */
-		if (msi_to_irq[msi])
-			irq = msi_to_irq[msi];
-		else {
-			cd = kzalloc_node(sizeof(*cd), GFP_KERNEL, node);
-			if (!cd)
-				return -ENOMEM;
-			cd->msi = msi;
-			cd->hwmsi = hwmsi;
-			irq = irq_alloc_descs(-1, 1, 1, node);
-			if (WARN(irq < 0, "arch_setup_msi_irq: Unable to find a free irq\n")) {
-				clear_bit(msi, msi_free_irq_bitmap[node]);
-				kfree(cd);
-				return -ENOSPC;
-			}
-			msi_to_irq[msi] = irq;
-
-			/* Initialize the irq description */
-			if (octeon_dma_bar_type == OCTEON_DMA_BAR_TYPE_PCIE2)
-				chip = &octeon_irq_chip_msi_pcie;
-			else if (octeon_dma_bar_type == OCTEON_DMA_BAR_TYPE_PCIE)
-				chip = &octeon_irq_chip_msi_pcie;
-			else
-				chip = &octeon_irq_chip_msi_pci;
-
-			irq_set_chip_and_handler(irq, chip, handle_simple_irq);
-			irq_set_chip_data(irq, cd);
+		for_each_pci_msi_entry(entry, dev) {
+			rc = arch_setup_msi_irq(dev, entry);
+			if (rc)
+				return rc;
 		}
 	}
 
-	switch (octeon_dma_bar_type) {
-	case OCTEON_DMA_BAR_TYPE_SMALL:
-		/* When not using big bar, Bar 0 is based at 128MB */
-		msg.address_lo =
-			((128ul << 20) + CVMX_PCI_MSI_RCV) & 0xffffffff;
-		msg.address_hi = ((128ul << 20) + CVMX_PCI_MSI_RCV) >> 32;
-		break;
-	case OCTEON_DMA_BAR_TYPE_BIG:
-		/* When using big bar, Bar 0 is based at 0 */
-		msg.address_lo = (0 + CVMX_PCI_MSI_RCV) & 0xffffffff;
-		msg.address_hi = (0 + CVMX_PCI_MSI_RCV) >> 32;
-		break;
-	case OCTEON_DMA_BAR_TYPE_PCIE:
-		/* When using PCIe, Bar 0 is based at 0 */
-		/* FIXME CVMX_NPEI_MSI_RCV* other than 0? */
-		msg.address_lo = (0 + CVMX_NPEI_PCIE_MSI_RCV) & 0xffffffff;
-		msg.address_hi = (0 + CVMX_NPEI_PCIE_MSI_RCV) >> 32;
-		break;
-	case OCTEON_DMA_BAR_TYPE_PCIE2:
-		/* When using PCIe2, Bar 0 is based at 0 */
-		msg.address_lo = (0 + CVMX_SLI_PCIE_MSI_RCV) & 0xffffffff;
-		msg.address_hi = (0 + CVMX_SLI_PCIE_MSI_RCV) >> 32;
-		break;
-	default:
-		panic("arch_setup_msi_irq: Invalid octeon_dma_bar_type");
-	}
-
-	irq_set_msi_desc(irq, desc);
-	write_msi_msg(irq, &msg);
-	return 0;
+	return rc;
 }
 
 /*
@@ -501,9 +676,14 @@ int __init octeon_msi_initialize(void)
 		bitmap_zero(msi_free_irq_bitmap[i], MSI_IRQ_SIZE);
 
 	if (octeon_has_feature(OCTEON_FEATURE_CIU3)) {
+		int	irq_base;
+
 		/* MSI interrupts use their own domain */
-		domain = irq_domain_add_tree(NULL, &octeon_msi_domain_ciu3_ops,
-					     octeon_irq_get_ciu3_info(node));
+		irq_base = irq_alloc_descs(-1, 0, MSI_IRQ_SIZE, 0);
+		domain = irq_domain_add_legacy(NULL, MSI_IRQ_SIZE, irq_base,
+					       MSI_BLOCK_NUMBER << 12,
+					       &octeon_msi_domain_ciu3_ops,
+					       octeon_irq_get_ciu3_info(node));
 		octeon_irq_add_block_domain(node, MSI_BLOCK_NUMBER, domain);
 
 		/* Registers to acknowledge msi interrupts */
