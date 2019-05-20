@@ -266,7 +266,9 @@ static int __cvmx_helper_setup_pki_cluster_groups(int node)
 	int cl_group;
 
 	cl_group = cvmx_pki_cluster_grp_alloc(node, pki_dflt_clgrp[node].grp_num);
-	if (cl_group == -1) {
+	if (cl_group == CVMX_RESOURCE_ALLOC_FAILED)
+		return -1;
+	else if (cl_group == CVMX_RESOURCE_ALREADY_RESERVED) {
 		if (pki_dflt_clgrp[node].grp_num == -1)
 			return -1;
 		else
@@ -1135,9 +1137,9 @@ int cvmx_helper_pki_init_port(int ipd_port, struct cvmx_pki_prt_schd *prtsch)
 		cvmx_dprintf("%s ERROR: style not available\n",
 			__func__);
 		return CVMX_RESOURCE_ALLOC_FAILED;
-	}
+	} else
+		prtsch->style = rs;
 
-	prtsch->style = rs;
 	if (pki_helper_debug)
 		cvmx_dprintf("%s: port %d has style %d\n",
 		__func__, ipd_port, prtsch->style);
