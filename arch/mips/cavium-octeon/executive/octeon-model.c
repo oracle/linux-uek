@@ -43,7 +43,7 @@
  * File defining functions for working with different Octeon
  * models.
  *
- * <hr>$Revision: 144107 $<hr>
+ * <hr>$Revision: 170715 $<hr>
  */
 #ifdef CVMX_BUILD_FOR_LINUX_KERNEL
 #include <asm/octeon/octeon.h>
@@ -484,12 +484,19 @@ const char *octeon_model_get_string_buffer(uint32_t chip_id, char *buffer)
 			family = "72";
 		if (cvmx_fuse_read(76))
 			family = "23";
-		if (cvmx_fuse_read(82)		/* Compression/Decompression */
+		if (cvmx_fuse_read(88)		/* L2c Cripple */
+		    && cvmx_fuse_read(82)	/* Compression/Decompression */
 		    && cvmx_fuse_read(90)	/* HFA */
-		    && cvmx_fuse_read(102)	/* RAID */
 		    && cvmx_fuse_read(134))	/* HNA */ {
 			family = "72";
-			suffix = "CCP";
+			suffix = "AAP";
+		    	if (cvmx_fuse_read(102))	/* RAID */
+				suffix = "CCP";
+			else if (cvmx_fuse_read(80)	/* aes/desh/hash disable */
+			    && cvmx_fuse_read(102)	/* RAID */
+			    && cvmx_fuse_read(81)) {	/* vmul disable */
+				suffix = "CP";
+			}
 		} else if (fus_dat3.cn73xx.nozip
 				&& fus_dat3.cn73xx.nodfa_dte
 				&& fus_dat3.cn73xx.nohna_dte) {
@@ -505,12 +512,11 @@ const char *octeon_model_get_string_buffer(uint32_t chip_id, char *buffer)
 		break;
 	case 0x98:		/* CN75XX */
 		family = "F75";
-	    if(cvmx_fuse_read(1600))
-		{
+		if (cvmx_fuse_read(1601))
+			family = "F73";
+		if (cvmx_fuse_read(1600)) {
 			suffix = "NSP";
-		}
-		else
-		{
+		} else {
 			suffix = "DSP";
 		}
 		break;
