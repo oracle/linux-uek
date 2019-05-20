@@ -2523,7 +2523,8 @@ int nvme_init_identify(struct nvme_ctrl *ctrl)
 	ctrl->crdt[2] = le16_to_cpu(id->crdt3);
 
 	ctrl->oacs = le16_to_cpu(id->oacs);
-	ctrl->oncs = le16_to_cpup(&id->oncs);
+	ctrl->oncs = le16_to_cpu(id->oncs);
+	ctrl->mtfa = le16_to_cpu(id->mtfa);
 	ctrl->oaes = le32_to_cpu(id->oaes);
 	atomic_set(&ctrl->abort_limit, id->acl + 1);
 	ctrl->vwc = id->vwc;
