@@ -8,7 +8,13 @@
 #ifndef __OCTEON_IRQ_H__
 #define __OCTEON_IRQ_H__
 
-#define NR_IRQS OCTEON_IRQ_LAST
+#ifdef CONFIG_NUMA
+	/* We need 256 per node for MSI */
+#define NR_IRQS 767
+#else
+#define NR_IRQS 511
+#endif
+
 #define MIPS_CPU_IRQ_BASE OCTEON_IRQ_SW0
 
 /*
@@ -53,8 +59,7 @@ enum octeon_irq {
 	OCTEON_IRQ_SRIO0,
 	OCTEON_IRQ_SRIO1,
 	OCTEON_IRQ_SRIO2,
-	OCTEON_IRQ_SRIO3,
-	OCTEON_IRQ_LAST = 511
+	OCTEON_IRQ_SRIO3
 };
 
 #endif
