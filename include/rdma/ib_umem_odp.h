@@ -76,6 +76,7 @@ struct ib_umem_odp {
 
 	struct completion	notifier_completion;
 	int			dying;
+	unsigned int		page_shift;
 	struct work_struct	work;
 };
 
@@ -83,6 +84,39 @@ static inline struct ib_umem_odp *to_ib_umem_odp(struct ib_umem *umem)
 {
 	return container_of(umem, struct ib_umem_odp, umem);
 }
+
+
+/* Returns the first page of an ODP umem. */
+static inline unsigned long ib_umem_start(struct ib_umem_odp *umem_odp)
+{
+	return ALIGN_DOWN(umem_odp->umem.address, 1UL << umem_odp->page_shift);
+}
+
+/* Returns the address of the page after the last one of an ODP umem. */
+static inline unsigned long ib_umem_end(struct ib_umem_odp *umem_odp)
+{
+	return ALIGN(umem_odp->umem.address + umem_odp->umem.length,
+		     1UL << umem_odp->page_shift);
+}
+
+static inline size_t ib_umem_odp_num_pages(struct ib_umem_odp *umem_odp)
+{
+	return (ib_umem_end(umem_odp) - ib_umem_start(umem_odp)) >>
+	       umem_odp->page_shift;
+}
+
+/*
+ * The lower 2 bits of the DMA address signal the R/W permissions for
+ * the entry. To upgrade the permissions, provide the appropriate
+ * bitmask to the map_dma_pages function.
+ *
+ * Be aware that upgrading a mapped address might result in change of
+ * the DMA address for the page.
+ */
+#define ODP_READ_ALLOWED_BIT  (1<<0ULL)
+#define ODP_WRITE_ALLOWED_BIT (1<<1ULL)
+
+#define ODP_DMA_ADDR_MASK (~(ODP_READ_ALLOWED_BIT | ODP_WRITE_ALLOWED_BIT))
 
 #ifdef CONFIG_INFINIBAND_ON_DEMAND_PAGING
 
@@ -108,18 +142,6 @@ struct ib_umem_odp *ib_alloc_odp_umem(struct ib_umem_odp *root_umem,
 				      unsigned long addr, size_t size);
 void ib_umem_odp_release(struct ib_umem_odp *umem_odp);
 
-/*
- * The lower 2 bits of the DMA address signal the R/W permissions for
- * the entry. To upgrade the permissions, provide the appropriate
- * bitmask to the map_dma_pages function.
- *
- * Be aware that upgrading a mapped address might result in change of
- * the DMA address for the page.
- */
-#define ODP_READ_ALLOWED_BIT  (1<<0ULL)
-#define ODP_WRITE_ALLOWED_BIT (1<<1ULL)
-
-#define ODP_DMA_ADDR_MASK (~(ODP_READ_ALLOWED_BIT | ODP_WRITE_ALLOWED_BIT))
 
 int ib_umem_odp_map_dma_pages(struct ib_umem_odp *umem_odp, u64 start_offset,
 			      u64 bcnt, u64 access_mask,
