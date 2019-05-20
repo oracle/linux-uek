@@ -374,10 +374,10 @@ do {									       \
 	NPC_SCAN_HDR(NPC_SPORT_TCP, NPC_LID_LD, NPC_LT_LD_TCP, 0, 2);
 	NPC_SCAN_HDR(NPC_DPORT_TCP, NPC_LID_LD, NPC_LT_LD_TCP, 2, 2);
 	NPC_SCAN_HDR(NPC_ETYPE_ETHER, NPC_LID_LA, NPC_LT_LA_ETHER, 12, 2);
-	NPC_SCAN_HDR(NPC_ETYPE_TAG1, NPC_LID_LB, NPC_LT_LB_CTAG, 2, 2);
-	NPC_SCAN_HDR(NPC_ETYPE_TAG2, NPC_LID_LB, NPC_LT_LB_STAG, 6, 2);
-	NPC_SCAN_HDR(NPC_VLAN_TAG1, NPC_LID_LB, NPC_LT_LB_CTAG, 0, 2);
-	NPC_SCAN_HDR(NPC_VLAN_TAG2, NPC_LID_LB, NPC_LT_LB_STAG, 0, 2);
+	NPC_SCAN_HDR(NPC_ETYPE_TAG1, NPC_LID_LB, NPC_LT_LB_CTAG, 4, 2);
+	NPC_SCAN_HDR(NPC_ETYPE_TAG2, NPC_LID_LB, NPC_LT_LB_STAG, 8, 2);
+	NPC_SCAN_HDR(NPC_VLAN_TAG1, NPC_LID_LB, NPC_LT_LB_CTAG, 2, 2);
+	NPC_SCAN_HDR(NPC_VLAN_TAG2, NPC_LID_LB, NPC_LT_LB_STAG, 2, 2);
 }
 
 static bool npc_check_overlap_fields(struct npc_mcam *mcam,
@@ -789,17 +789,17 @@ static int npc_install_flow(struct rvu *rvu, int blkaddr, u16 target,
 		action = pfvf->def_rule->action;
 
 	entry->action = *(u64 *)&action;
-	/* VTAG0 starts at 12th byte of LID_A.
-	 * VTAG1 starts at 2nd byte of LID_B.
+	/* VTAG0 starts at 0th byte of LID_B.
+	 * VTAG1 starts at 4th byte of LID_B.
 	 */
 	entry->vtag_action = FIELD_PREP(VTAG0_VALID_BIT, req->vtag0_valid) |
 			     FIELD_PREP(VTAG0_TYPE_MASK, req->vtag0_type) |
-			     FIELD_PREP(VTAG0_LID_MASK, NPC_LID_LA) |
-			     FIELD_PREP(VTAG0_RELPTR_MASK, 12) |
+			     FIELD_PREP(VTAG0_LID_MASK, NPC_LID_LB) |
+			     FIELD_PREP(VTAG0_RELPTR_MASK, 0) |
 			     FIELD_PREP(VTAG1_VALID_BIT, req->vtag1_valid) |
 			     FIELD_PREP(VTAG1_TYPE_MASK, req->vtag1_type) |
 			     FIELD_PREP(VTAG1_LID_MASK, NPC_LID_LB) |
-			     FIELD_PREP(VTAG1_RELPTR_MASK, 2);
+			     FIELD_PREP(VTAG1_RELPTR_MASK, 4);
 	if (def_rule)
 		missing_features = (def_rule->features ^ features) &
 					def_rule->features;
