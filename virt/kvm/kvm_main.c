@@ -1746,10 +1746,12 @@ static int __kvm_map_gfn(struct kvm_memslots *slots, gfn_t gfn,
 			hva = kmap_atomic(page);
 		else
 			hva = kmap(page);
+#ifdef CONFIG_HAS_IOMEM
 	} else if (!atomic) {
 		hva = memremap(pfn_to_hpa(pfn), PAGE_SIZE, MEMREMAP_WB);
 	} else {
 		return -EINVAL;
+#endif
 	}
 
 	if (!hva)
