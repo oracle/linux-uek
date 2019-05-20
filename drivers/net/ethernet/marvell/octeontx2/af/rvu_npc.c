@@ -858,16 +858,16 @@ static void npc_config_ldata_extract(struct rvu *rvu, int blkaddr)
 
 	/* Layer B: Single VLAN (CTAG) */
 	/* CTAG VLAN[2..3] + Ethertype, 4 bytes, KW0[63:32] */
-	cfg = KEX_LD_CFG(0x03, 0x0, 0x1, 0x0, 0x4);
+	cfg = KEX_LD_CFG(0x03, 0x2, 0x1, 0x0, 0x4);
 	SET_KEX_LD(NIX_INTF_RX, NPC_LID_LB, NPC_LT_LB_CTAG, 0, cfg);
 
 	/* Layer B: Stacked VLAN (STAG|QinQ) */
 	/* Outer VLAN: 2 bytes, KW0[63:48] */
-	cfg = KEX_LD_CFG(0x01, 0x0, 0x1, 0x0, 0x6);
+	cfg = KEX_LD_CFG(0x01, 0x2, 0x1, 0x0, 0x6);
 	SET_KEX_LD(NIX_INTF_RX, NPC_LID_LB, NPC_LT_LB_STAG, 0, cfg);
 	SET_KEX_LD(NIX_INTF_RX, NPC_LID_LB, NPC_LT_LB_QINQ, 0, cfg);
 	/* Ethertype: 2 bytes, KW0[47:32] */
-	cfg = KEX_LD_CFG(0x01, 0x6, 0x1, 0x0, 0x4);
+	cfg = KEX_LD_CFG(0x01, 0x8, 0x1, 0x0, 0x4);
 	SET_KEX_LD(NIX_INTF_RX, NPC_LID_LB, NPC_LT_LB_STAG, 1, cfg);
 	SET_KEX_LD(NIX_INTF_RX, NPC_LID_LB, NPC_LT_LB_QINQ, 1, cfg);
 
