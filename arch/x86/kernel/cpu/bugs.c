@@ -502,9 +502,12 @@ static void __init mds_select_mitigation(void)
 		return;
 	}
 
+	if (!boot_cpu_has(X86_FEATURE_MD_CLEAR)) {
+		mds_mitigation = MDS_MITIGATION_VMWERV;
+		return;
+	}
+
 	if (mds_mitigation == MDS_MITIGATION_FULL) {
-		if (!boot_cpu_has(X86_FEATURE_MD_CLEAR))
-			mds_mitigation = MDS_MITIGATION_VMWERV;
 
 		static_branch_enable(&mds_user_clear);
 
