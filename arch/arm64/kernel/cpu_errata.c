@@ -819,6 +819,31 @@ static const struct arm64_cpu_capabilities erratum_843419_list[] = {
 };
 #endif
 
+static void __maybe_unused
+cpu_enable_trap_zva_access(const struct arm64_cpu_capabilities *__unused)
+{
+	/*
+	 * Clear SCTLR_EL2.DZE or SCTLR_EL1.DZE depending
+	 * on if we are in EL2.
+	 */
+	if (!is_kernel_in_hyp_mode())
+		sysreg_clear_set(sctlr_el1, SCTLR_EL1_DZE, 0);
+	else
+		sysreg_clear_set(sctlr_el2, SCTLR_EL1_DZE, 0);
+}
+
+static const struct midr_range cavium_erratum_36890_cpus[] = {
+	MIDR_ALL_VERSIONS(MIDR_THUNDERX),
+	/* Cavium ThunderX, T81 all passes */
+	MIDR_ALL_VERSIONS(MIDR_THUNDERX_81XX),
+	/* Cavium ThunderX, T83 all passes */
+	MIDR_ALL_VERSIONS(MIDR_THUNDERX_83XX),
+	/* Marvell OcteonTX 2, 96xx pass A0, A1, and B0 */
+	MIDR_RANGE(MIDR_MRVL_OCTEONTX2_96XX, 0, 0, 1, 0),
+	/* Marvell OcteonTX 2, 95 pass A0/A1 */
+	MIDR_RANGE(MIDR_MRVL_OCTEONTX2_95XX, 0, 0, 0, 1),
+};
+
 const struct arm64_cpu_capabilities arm64_errata[] = {
 #ifdef CONFIG_ARM64_WORKAROUND_CLEAN_CACHE
 	{
@@ -999,6 +1024,14 @@ const struct arm64_cpu_capabilities arm64_errata[] = {
 		.matches = has_neoverse_n1_erratum_1542419,
 		.cpu_enable = cpu_enable_trap_ctr_access,
 	},
+#endif
+#ifdef CONFIG_CAVIUM_ERRATUM_36890
+       {
+               .desc = "Cavium erratum 36890",
+               .capability = ARM64_WORKAROUND_CAVIUM_36890,
+               ERRATA_MIDR_RANGE_LIST(cavium_erratum_36890_cpus),
+               .cpu_enable = cpu_enable_trap_zva_access,
+       },
 #endif
 	{
 	}
