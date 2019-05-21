@@ -77,7 +77,6 @@ const bool octeon_should_swizzle_table[256] = {
 EXPORT_SYMBOL(octeon_should_swizzle_table);
 
 static unsigned long long max_memory = ULLONG_MAX;
-static const unsigned long MIN_MEM_32 = 256 << 20;
 static unsigned long long reserve_low_mem;
 
 /*
@@ -1165,8 +1164,8 @@ void __init plat_mem_setup(void)
 
 	if (system_limit > max_memory)
 		system_limit = max_memory;
-	/* Try to get 512MB of 32-bit memory */
-	mem_32_size = 512 * (1 << 20);
+	/* Try to get 1024MB of 32-bit memory */
+	mem_32_size = 1024 * (1 << 20);
 
 	cvmx_bootmem_lock();
 	limit_max = 0xffffffffull;
