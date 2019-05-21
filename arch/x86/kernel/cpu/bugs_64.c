@@ -1386,7 +1386,7 @@ static void mds_select_mitigation(void)
 	char arg[12];
 	int ret;
 
-	if (!boot_cpu_has_bug(X86_BUG_MDS)) {
+	if (!boot_cpu_has_bug(X86_BUG_MDS) || cpu_mitigations_off()) {
 		mds_mitigation = MDS_MITIGATION_OFF;
 		return;
 	}
@@ -1413,7 +1413,8 @@ static void mds_select_mitigation(void)
 
 		static_branch_enable(&mds_user_clear);
 		
-		if (mds_nosmt && !boot_cpu_has(X86_BUG_MSBDS_ONLY))
+		if (!boot_cpu_has(X86_BUG_MSBDS_ONLY) &&
+		   (mds_nosmt || cpu_mitigations_auto_nosmt()))
 			cpu_smt_disable(false);
 
 		if (cpu_smt_control == CPU_SMT_ENABLED &&
