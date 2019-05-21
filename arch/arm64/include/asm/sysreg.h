@@ -750,6 +750,16 @@ static inline void config_sctlr_el1(u32 clear, u32 set)
 	write_sysreg(val, sctlr_el1);
 }
 
+static inline void config_sctlr_el2(u32 clear, u32 set)
+{
+	u32 val;
+
+	val = read_sysreg(sctlr_el2);
+	val &= ~clear;
+	val |= set;
+	write_sysreg(val, sctlr_el2);
+}
+
 #endif
 
 #endif	/* __ASM_SYSREG_H */
