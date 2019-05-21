@@ -77,6 +77,21 @@ cpu_enable_trap_ctr_access(const struct arm64_cpu_capabilities *__unused)
 	config_sctlr_el1(SCTLR_EL1_UCT, 0);
 }
 
+#ifdef CONFIG_CAVIUM_ERRATUM_36890
+static void
+cpu_enable_trap_zva_access(const struct arm64_cpu_capabilities *__unused)
+{
+	/*
+	 * Clear SCTLR_EL2.DZE or SCTLR_EL1.DZE depending
+	 * on if we are in EL2.
+	 */
+	if (!is_kernel_in_hyp_mode())
+		config_sctlr_el1(SCTLR_EL1_DZE, 0);
+	else
+		config_sctlr_el2(SCTLR_EL1_DZE, 0);
+}
+#endif
+
 #include <asm/mmu_context.h>
 #include <asm/cacheflush.h>
 
@@ -687,6 +702,43 @@ const struct arm64_cpu_capabilities arm64_errata[] = {
 		.desc = "Cavium erratum 27456",
 		.capability = ARM64_WORKAROUND_CAVIUM_27456,
 		ERRATA_MIDR_REV(MIDR_OCTEON_T83, 0, 0),
+	},
+#endif
+#ifdef CONFIG_CAVIUM_ERRATUM_36890
+	{
+	/* Cavium ThunderX, T88 all passes */
+		.desc = "Cavium erratum 36890",
+		.capability = ARM64_WORKAROUND_CAVIUM_36890,
+		ERRATA_MIDR_ALL_VERSIONS(MIDR_THUNDERX),
+		.cpu_enable = cpu_enable_trap_zva_access,
+	},
+	{
+	/* Cavium ThunderX, T81 all passes */
+		.desc = "Cavium erratum 36890",
+		.capability = ARM64_WORKAROUND_CAVIUM_36890,
+		ERRATA_MIDR_ALL_VERSIONS(MIDR_OCTEON_T81),
+		.cpu_enable = cpu_enable_trap_zva_access,
+	},
+	{
+	/* Cavium ThunderX, T83 all passes */
+		.desc = "Cavium erratum 36890",
+		.capability = ARM64_WORKAROUND_CAVIUM_36890,
+		ERRATA_MIDR_ALL_VERSIONS(MIDR_OCTEON_T83),
+		.cpu_enable = cpu_enable_trap_zva_access,
+	},
+	{
+	/* Marvell OcteonTX 2, 96xx pass A0, A1, and B0 */
+		.desc = "Cavium erratum 36890",
+		.capability = ARM64_WORKAROUND_CAVIUM_36890,
+		ERRATA_MIDR_RANGE(MIDR_MRVL_OCTEONTX2_96XX, 0, 0, 1, 0),
+		.cpu_enable = cpu_enable_trap_zva_access,
+	},
+	{
+	/* Marvell OcteonTX 2, 95 pass A0/A1 */
+		.desc = "Cavium erratum 36890",
+		.capability = ARM64_WORKAROUND_CAVIUM_36890,
+		ERRATA_MIDR_REV_RANGE(MIDR_MRVL_OCTEONTX2_95XX, 0, 0, 1),
+		.cpu_enable = cpu_enable_trap_zva_access,
 	},
 #endif
 #ifdef CONFIG_CAVIUM_ERRATUM_30115
