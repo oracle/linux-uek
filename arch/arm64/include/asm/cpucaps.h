@@ -48,7 +48,8 @@
 #define ARM64_SSBD				27
 #define ARM64_MISMATCHED_CACHE_TYPE		28
 #define ARM64_RETPOLINE				29
+#define ARM64_WORKAROUND_CAVIUM_36890		30
 
-#define ARM64_NCAPS				30
+#define ARM64_NCAPS				31
 
 #endif /* __ASM_CPUCAPS_H */

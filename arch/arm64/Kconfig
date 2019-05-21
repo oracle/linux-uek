@@ -552,6 +552,18 @@ config CAVIUM_ERRATUM_30115
 
 	  If unsure, say Y.
 
+config CAVIUM_ERRATUM_36890
+	bool "Cavium erratum 36890"
+	default y
+	help
+	  Enable workaround for erratum 36890.  On all ThunderX T88xx and
+	  OcteonTX1 T81/T83 and some OcteonTX2 chips, the "dc zva" instruction
+	  does not work all the time.  This happens when there are two VAs
+	  that match up with one PA; including when the two VAs match but have
+	  different asids.  The fix is to disable "dc zva" in userspace.
+
+	  If unsure, say Y.
+
 config QCOM_FALKOR_ERRATUM_1003
 	bool "Falkor E1003: Incorrect translation due to ASID change"
 	default y

@@ -430,6 +430,7 @@
 #define SCTLR_EL1_UCI		(1 << 26)
 #define SCTLR_EL1_SPAN		(1 << 23)
 #define SCTLR_EL1_UCT		(1 << 15)
+#define SCTLR_EL1_DZE		(1 << 14)
 #define SCTLR_EL1_SED		(1 << 8)
 #define SCTLR_EL1_CP15BEN	(1 << 5)
 
@@ -661,6 +662,16 @@ static inline void config_sctlr_el1(u32 clear, u32 set)
 	val &= ~clear;
 	val |= set;
 	write_sysreg(val, sctlr_el1);
+}
+
+static inline void config_sctlr_el2(u32 clear, u32 set)
+{
+	u32 val;
+
+	val = read_sysreg(sctlr_el2);
+	val &= ~clear;
+	val |= set;
+	write_sysreg(val, sctlr_el2);
 }
 
 #endif
