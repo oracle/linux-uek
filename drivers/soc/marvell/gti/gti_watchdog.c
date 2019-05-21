@@ -177,7 +177,7 @@ static struct miscdevice gti_wdog_miscdevice = {
 	.fops = &gti_wdog_fops,
 };
 
-static int __init gti_wdog_probe(struct platform_device *pdev)
+static int gti_wdog_probe(struct platform_device *pdev)
 {
 	struct resource *r;
 	int ret_val;
@@ -208,7 +208,7 @@ static int __init gti_wdog_probe(struct platform_device *pdev)
 	return 0;
 }
 
-static int __exit gti_wdog_remove(struct platform_device *pdev)
+static int gti_wdog_remove(struct platform_device *pdev)
 {
 	pr_info("gti wdog platform driver exit\n");
 	if (g_gti_devmem)
