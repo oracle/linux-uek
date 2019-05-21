@@ -27,6 +27,7 @@ enum NPC_LID_E {
 enum npc_kpu_la_ltype {
 	NPC_LT_LA_8023 = 1,
 	NPC_LT_LA_ETHER,
+	NPC_LT_LA_IH_NIX_ETHER,
 	NPC_LT_LA_IH_8_ETHER,
 	NPC_LT_LA_IH_4_ETHER,
 	NPC_LT_LA_IH_2_ETHER,
