@@ -323,6 +323,19 @@ static void rdmaip_send_gratuitous_arp(struct net_device *out_dev,
 		RDMAIP_DBG2_PTR("Sending GARP message for adding IP addr %pI4 on %s\n",
 			       (void *)&ip_addr, out_dev->name);
 
+	/*
+	 * If module unload in progress, dont queue the work request to the
+	 * rdmaip_garps_wq.
+	 */
+	mutex_lock(&rdmaip_global_flag_lock);
+	if (rdmaip_is_teardown_flag_set()) {
+		RDMAIP_DBG2("%s: unload inprogress, dont queue GARP send\n",
+			    out_dev->name);
+		mutex_unlock(&rdmaip_global_flag_lock);
+		return;
+	}
+	mutex_unlock(&rdmaip_global_flag_lock);
+
 	if (rdmaip_active_bonding_arps_gap_ms == 0 ||
 	    rdmaip_active_bonding_arps_gap_ms > 100) {
 		pr_warn("arp gap (%d) out of range, using default (%d)\n",
