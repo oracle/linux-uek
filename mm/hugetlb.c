@@ -2190,12 +2190,21 @@ static void __init gather_bootmem_prealloc(void)
 static void __init hugetlb_hstate_alloc_pages(struct hstate *h)
 {
 	unsigned long i;
-	NODEMASK_ALLOC(nodemask_t, node_alloc_noretry,
-						GFP_KERNEL | __GFP_NORETRY);
+	nodemask_t *node_alloc_noretry;
 
-	/* bit mask controlling how hard we retry per-node allocations */
-	if (node_alloc_noretry)
-		nodes_clear(*node_alloc_noretry);
+	if (!hstate_is_gigantic(h)) {
+		/*
+		 * bit mask controlling how hard we retry per-node
+		 * allocations
+		 */
+		node_alloc_noretry = kmalloc(sizeof(*node_alloc_noretry),
+						GFP_KERNEL | __GFP_NORETRY);
+		if (node_alloc_noretry)
+			nodes_clear(*node_alloc_noretry);
+	} else {
+		/* allocations done at boot time */
+		node_alloc_noretry = NULL;
+	}
 
 	for (i = 0; i < h->max_huge_pages; ++i) {
 		if (hstate_is_gigantic(h)) {
@@ -2217,7 +2226,7 @@ static void __init hugetlb_hstate_alloc_pages(struct hstate *h)
 	}
 
 	if (node_alloc_noretry)
-		NODEMASK_FREE(node_alloc_noretry);
+		kfree(node_alloc_noretry);
 }
 
 static void __init hugetlb_init_hstates(void)
