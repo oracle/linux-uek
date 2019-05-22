@@ -42,6 +42,8 @@
 #include <asm/smp-ops.h>
 #include <asm/prom.h>
 
+#include <mach_bootmem.h>
+
 #ifdef CONFIG_MIPS_ELF_APPENDED_DTB
 const char __section(.appended_dtb) __appended_dtb[0x100000];
 #endif /* CONFIG_MIPS_ELF_APPENDED_DTB */
@@ -287,11 +289,16 @@ static unsigned long __init init_initrd(void)
  * Initialize the bootmem allocator. It also setup initrd related data
  * if needed.
  */
-#if defined(CONFIG_SGI_IP27) || (defined(CONFIG_CPU_LOONGSON3) && defined(CONFIG_NUMA))
+#if defined(CONFIG_SGI_IP27) || (defined(CONFIG_CPU_LOONGSON3) && defined(CONFIG_NUMA)) || \
+	(defined(CONFIG_CPU_CAVIUM_OCTEON) && defined(CONFIG_NUMA))
+#ifndef mach_bootmem_init
+static void mach_bootmem_init(void) {}
+#endif
 
 static void __init bootmem_init(void)
 {
 	init_initrd();
+	mach_bootmem_init();
 	finalize_initrd();
 }
 
