@@ -878,10 +878,11 @@ append_arg:
 #ifdef CONFIG_CAVIUM_OCTEON_LOCK_L2
 static int __init octeon_l2_cache_lock(void)
 {
-	int is_octeon2 = (current_cpu_type() == CPU_CAVIUM_OCTEON2);
+	bool is_octeon = !(current_cpu_type() == CPU_CAVIUM_OCTEON2 ||
+			   current_cpu_type() == CPU_CAVIUM_OCTEON3);
 
-	if ((is_octeon2 && (cvmx_read_csr(CVMX_MIO_FUS_DAT3) & (3ull << 32)))
-	    || (!is_octeon2 && (cvmx_read_csr(CVMX_L2D_FUS3) & (3ull << 34)))) {
+	if ((!is_octeon && (cvmx_read_csr(CVMX_MIO_FUS_DAT3) & (3ull << 32)))
+	    || (is_octeon && (cvmx_read_csr(CVMX_L2D_FUS3) & (3ull << 34)))) {
 		pr_info("Skipping L2 locking due to reduced L2 cache size\n");
 	} else {
 		u32 __maybe_unused my_ebase = read_c0_ebase() & 0x3ffff000;
