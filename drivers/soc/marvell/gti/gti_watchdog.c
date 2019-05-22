@@ -218,7 +218,7 @@ static int gti_wdog_remove(struct platform_device *pdev)
 }
 
 static const struct of_device_id gti_wdog_of_ids[] = {
-	{ .compatible = "arm,armv8-timer"},
+	{ .compatible = "marvell,octeontx2-timer"},
 	{},
 };
 
