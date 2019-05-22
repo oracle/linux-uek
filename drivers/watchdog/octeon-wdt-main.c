@@ -62,6 +62,7 @@
 #include <asm/octeon/cvmx-boot-vector.h>
 #include <asm/octeon/cvmx-ciu2-defs.h>
 #include <asm/octeon/cvmx-rst-defs.h>
+#include <asm/octeon/cvmx-gserx-defs.h>
 
 /* Watchdog interrupt major block number (8 MSBs of intsn) */
 #define WD_BLOCK_NUMBER		0x01
