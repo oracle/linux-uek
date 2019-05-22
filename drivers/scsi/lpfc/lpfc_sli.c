@@ -14915,8 +14915,10 @@ lpfc_eq_create(struct lpfc_hba *phba, struct lpfc_queue *eq, uint32_t imax)
 		lpfc_printf_log(phba, KERN_ERR, LOG_SLI,
 				"0360 Unsupported EQ count. (%d)\n",
 				eq->entry_count);
-		if (eq->entry_count < 256)
-			return -EINVAL;
+		if (eq->entry_count < 256) {
+			status = -EINVAL;
+			goto out;
+		}
 		/* fall through - otherwise default to smallest count */
 	case 256:
 		bf_set(lpfc_eq_context_count, &eq_create->u.request.context,
@@ -14969,6 +14971,7 @@ lpfc_eq_create(struct lpfc_hba *phba, struct lpfc_queue *eq, uint32_t imax)
 	eq->hba_index = 0;
 	eq->entry_repost = LPFC_EQ_REPOST;
 
+out:
 	mempool_free(mbox, phba->mbox_mem_pool);
 	return status;
 }
