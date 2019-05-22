@@ -85,7 +85,7 @@ void __init mem_init(void)
 {
 	unsigned long codesize, datasize, initsize, tmp;
 
-	totalram_pages += free_all_bootmem();
+	free_all_bootmem();
 	setup_zero_pages();	/* This comes from node 0 */
 
 	codesize =  (unsigned long) &_etext - (unsigned long) &_text;
