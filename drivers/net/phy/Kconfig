@@ -371,6 +371,11 @@ config DP83867_PHY
 	---help---
 	  Currently supports the DP83867 PHY.
 
+config TLK10232_PHY
+	tristate "Texas Instruments tlk10232 dual 10G PHY"
+	help
+	  Driver for TI tlk10232 dual 10G PHY device.
+
 config FIXED_PHY
 	tristate "MDIO Bus/PHY emulation with fixed speed/link PHYs"
 	depends on PHYLIB
