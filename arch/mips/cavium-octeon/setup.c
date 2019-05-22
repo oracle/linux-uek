@@ -1103,17 +1103,6 @@ void __init plat_mem_setup(void)
 	if (mem_alloc_size > max_memory)
 		mem_alloc_size = max_memory;
 
-/* Crashkernel ignores bootmem list. It relies on mem=X@Y option */
-#ifdef CONFIG_CRASH_DUMP
-	add_memory_region(reserve_low_mem, max_memory, BOOT_MEM_RAM);
-	total += max_memory;
-#else
-#ifdef CONFIG_KEXEC
-	if (crashk_size > 0) {
-		add_memory_region(crashk_base, crashk_size, BOOT_MEM_RAM);
-		crashk_end = crashk_base + crashk_size;
-	}
-#endif
 	cvmx_bootmem_lock();
 	while ((boot_mem_map.nr_map < BOOT_MEM_MAP_MAX)
 		&& (total < max_memory)) {
@@ -1159,8 +1148,9 @@ void __init plat_mem_setup(void)
 		}
 	}
 	cvmx_bootmem_unlock();
-#endif /* CONFIG_CRASH_DUMP */
+
 mem_alloc_done:
+
 #ifdef CONFIG_CAVIUM_RESERVE32
 	/*
 	 * Now that we've allocated the kernel memory it is safe to
