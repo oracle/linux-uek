@@ -18,6 +18,7 @@
 #include <linux/of_irq.h>
 #include <linux/of_mdio.h>
 #include <linux/of_net.h>
+#include <linux/of_platform.h>
 #include <linux/module.h>
 
 #define DEFAULT_GPIO_RESET_DELAY	10	/* in microseconds */
@@ -239,6 +240,11 @@ int of_mdiobus_register(struct mii_bus *mdio, struct device_node *np)
 		addr = of_mdio_parse_addr(&mdio->dev, child);
 		if (addr < 0) {
 			scanphys = true;
+			continue;
+		}
+
+		if (of_device_is_compatible(child, "ethernet-phy-nexus")) {
+			of_platform_device_create(child, NULL, &mdio->dev);
 			continue;
 		}
 
