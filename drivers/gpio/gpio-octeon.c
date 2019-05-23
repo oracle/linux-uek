@@ -89,8 +89,10 @@ static int octeon_gpio_to_irq(struct gpio_chip *chip, unsigned offset)
 	if (offset >= 16)
 		return -ENXIO;
 
-	if (of_irq_parse_one(chip->of_node, offset, &oirq))
-		return -ENXIO;
+	oirq.np = chip->of_node;
+	oirq.args_count = 2;
+	oirq.args[0] = offset;
+	oirq.args[1] = 8; /* Level Low*/
 
 	return irq_create_of_mapping(&oirq);
 }
@@ -103,11 +105,11 @@ struct match_data {
 int octeon_irq_init_gpio(struct device_node *gpio_node, struct device_node *parent);
 int octeon_irq_init_gpio78(struct device_node *gpio_node, struct device_node *parent);
 
-static struct match_data md38 = {
+static const struct match_data md38 = {
 	.bit_cfg = bit_cfg_reg38,
 	.irq_init_gpio = octeon_irq_init_gpio
 };
-static struct match_data md78 = {
+static const struct match_data md78 = {
 	.bit_cfg = bit_cfg_reg78,
 	.irq_init_gpio = octeon_irq_init_gpio78
 };
@@ -132,7 +134,7 @@ static int octeon_gpio_probe(struct platform_device *pdev)
 	void __iomem *reg_base;
 	const struct of_device_id *of_id;
 	struct device_node *irq_parent;
-	struct match_data *md;
+	const struct match_data *md;
 	int err = 0;
 
 	of_id = of_match_device(octeon_gpio_match, &pdev->dev);
