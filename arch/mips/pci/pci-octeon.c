@@ -207,8 +207,7 @@ const char *octeon_get_pci_interrupts(void)
 	if (of_machine_is_compatible("dlink,dsr-500n"))
 		return "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC";
 	switch (octeon_bootinfo->board_type) {
-	case CVMX_BOARD_TYPE_NAO38:
-		/* This is really the NAC38 */
+	case CVMX_BOARD_TYPE_NAC38:
 		return "AAAAADABAAAAAAAAAAAAAAAAAAAAAAAA";
 	case CVMX_BOARD_TYPE_EBH3100:
 	case CVMX_BOARD_TYPE_CN3010_EVB_HS5:
@@ -587,8 +586,7 @@ static int __init octeon_pci_setup(void)
 
 	/* Only use the big bars on chips that support it */
 	if (OCTEON_IS_MODEL(OCTEON_CN31XX) ||
-	    OCTEON_IS_MODEL(OCTEON_CN38XX_PASS2) ||
-	    OCTEON_IS_MODEL(OCTEON_CN38XX_PASS1))
+	    OCTEON_IS_MODEL(OCTEON_CN38XX_PASS2))
 		octeon_dma_bar_type = OCTEON_DMA_BAR_TYPE_SMALL;
 	else
 		octeon_dma_bar_type = OCTEON_DMA_BAR_TYPE_BIG;

@@ -507,7 +507,7 @@ static void __cvmx_pcie_rc_initialize_config_space(int pcie_port)
 		cvmx_write_csr(CVMX_DPI_SLI_PRTX_CFG(pcie_port), prt_cfg.u64);
 
 		sli_s2m_portx_ctl.u64 = cvmx_read_csr(CVMX_PEXP_SLI_S2M_PORTX_CTL(pcie_port));
-		sli_s2m_portx_ctl.s.mrrs = MRRS_CN6XXX;
+		sli_s2m_portx_ctl.cn63xx.mrrs = MRRS_CN6XXX;
 		cvmx_write_csr(CVMX_PEXP_SLI_S2M_PORTX_CTL(pcie_port), sli_s2m_portx_ctl.u64);
 	}
 

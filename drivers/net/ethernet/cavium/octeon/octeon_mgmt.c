@@ -1048,13 +1048,13 @@ static int octeon_mgmt_open(struct net_device *netdev)
 	}
 
 	oring1.u64 = 0;
-	oring1.s.obase = p->tx_ring_handle >> 3;
-	oring1.s.osize = OCTEON_MGMT_TX_RING_SIZE;
+	oring1.cn63xx.obase = p->tx_ring_handle >> 3;
+	oring1.cn63xx.osize = OCTEON_MGMT_TX_RING_SIZE;
 	cvmx_write_csr(p->mix + MIX_ORING1, oring1.u64);
 
 	iring1.u64 = 0;
-	iring1.s.ibase = p->rx_ring_handle >> 3;
-	iring1.s.isize = OCTEON_MGMT_RX_RING_SIZE;
+	iring1.cn63xx.ibase = p->rx_ring_handle >> 3;
+	iring1.cn63xx.isize = OCTEON_MGMT_RX_RING_SIZE;
 	cvmx_write_csr(p->mix + MIX_IRING1, iring1.u64);
 
 	memcpy(sa.sa_data, netdev->dev_addr, ETH_ALEN);
