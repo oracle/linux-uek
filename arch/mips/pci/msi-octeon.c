@@ -600,4 +600,3 @@ int __init octeon_msi_initialize(void)
 	}
 	return 0;
 }
-subsys_initcall(octeon_msi_initialize);

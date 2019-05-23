@@ -536,7 +536,7 @@ void octeon_user_io_init(void)
 	 * kernel/debug mode. */
 #if CONFIG_CAVIUM_OCTEON_CVMSEG_SIZE > 0
 	cvmmemctl.s.cvmsegenak = 1;
-	if (OCTEON_IS_MODEL(OCTEON_CN78XX)) {
+	if (octeon_has_feature(OCTEON_FEATURE_PKO3)) {
 		/* Enable LMTDMA */
 		cvmmemctl.s.lmtena = 1;
 		/* Scratch line to use for LMT operation */
@@ -585,7 +585,7 @@ void octeon_user_io_init(void)
 		/* 4096 cycles */
 		nm_tim.s.nw_tim = 3;
 		cvmx_write_csr(CVMX_SSO_NW_TIM, nm_tim.u64);
-	} else if (!OCTEON_IS_MODEL(OCTEON_CN78XX)){
+	} else {
 		union cvmx_pow_nw_tim nm_tim;
 
 		nm_tim.u64 = 0;
@@ -792,7 +792,7 @@ void __init prom_init(void)
 	if (OCTEON_IS_MODEL(OCTEON_CN38XX_PASS2) ||
 	    OCTEON_IS_MODEL(OCTEON_CN31XX))
 		cvmx_write_csr(CVMX_CIU_SOFT_BIST, 0);
-	else if (!OCTEON_IS_MODEL(OCTEON_CN78XX))
+	else if (!octeon_has_feature(OCTEON_FEATURE_CIU3))
 		cvmx_write_csr(CVMX_CIU_SOFT_BIST, 1);
 
 	/* Default to 64MB in the simulator to speed things up */
