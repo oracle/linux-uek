@@ -144,7 +144,7 @@ static void mds_select_mitigation(void)
 {
 	u64 ia32_cap = 0;
 
-	if (boot_cpu_has(MSR_IA32_ARCH_CAPABILITIES))
+	if (boot_cpu_has(X86_FEATURE_IA32_ARCH_CAPS))
 		rdmsrl(MSR_IA32_ARCH_CAPABILITIES, ia32_cap);
 
 	if (cpu_matches(NO_MDS) || (ia32_cap & ARCH_CAP_MDS_NO)) {
