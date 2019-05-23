@@ -1694,7 +1694,7 @@ config TXX9_WDT
 	  Hardware driver for the built-in watchdog timer on TXx9 MIPS SoCs.
 
 config OCTEON_WDT
-	tristate "Cavium OCTEON SOC family Watchdog Timer"
+	bool "Cavium OCTEON SOC family Watchdog Timer"
 	depends on CAVIUM_OCTEON_SOC
 	default y
 	select WATCHDOG_CORE
