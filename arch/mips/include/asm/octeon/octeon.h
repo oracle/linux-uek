@@ -470,6 +470,14 @@ void octeon_release_ipi_handler(int action);
 
 #define OCTEON_DEBUG_UART 1
 
+#ifdef CONFIG_NUMA
+void octeon_setup_numa(void);
+void octeon_numa_cpu_online(void);
+#else
+static inline void octeon_setup_numa(void) {}
+static inline void octeon_numa_cpu_online(void) {}
+#endif
+
 extern void (*octeon_scache_init)(void);
 int register_co_cache_error_notifier(struct notifier_block *nb);
 int unregister_co_cache_error_notifier(struct notifier_block *nb);
