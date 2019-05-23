@@ -325,7 +325,7 @@ static int octeon_l2c_probe(struct platform_device *pdev)
 		cvmx_write_csr(CVMX_L2T_ERR, l2d_err.u64);
 
 		l2c->edac_check = octeon_l2c_poll_oct1;
-	} else if (current_cpu_type() == CPU_CAVIUM_OCTEON2) {
+	} else if (OCTEON_IS_OCTEON2()) {
 		/* OCTEON II */
 		l2c->edac_check = octeon_l2c_poll_oct2;
 	} else {
