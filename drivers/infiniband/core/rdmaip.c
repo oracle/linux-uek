@@ -2551,13 +2551,11 @@ void rdmaip_destroy_workqs(void)
 
 	if (rdmaip_init_flag & RDMAIP_IP_WQ_CREATED) {
 		cancel_delayed_work_sync(&riif_dlywork);
-		flush_workqueue(rdmaip_wq);
 		destroy_workqueue(rdmaip_wq);
 		rdmaip_init_flag &= ~RDMAIP_IP_WQ_CREATED;
 	}
 
 	if (rdmaip_init_flag & RDMAIP_GARPS_WQ_CREATED) {
-		flush_workqueue(rdmaip_garps_wq);
 		destroy_workqueue(rdmaip_garps_wq);
 		rdmaip_init_flag &= ~RDMAIP_GARPS_WQ_CREATED;
 	}
@@ -2769,16 +2767,16 @@ void rdmaip_cleanup(void)
 
 	rdmaip_destroy_workqs();
 
-	if (rdmaip_init_flag & RDMAIP_IB_REG) {
-		ib_unregister_client(&rdmaip_client);
-		rdmaip_init_flag &= ~RDMAIP_IB_REG;
-	}
-
 	/*
 	 * After this point, no rdmaip callbacks will be called
 	 * by other frameworks. Clean up all the resources.
 	 */
 	rdmaip_restore_ip_addresses();
+
+	if (rdmaip_init_flag & RDMAIP_IB_REG) {
+		ib_unregister_client(&rdmaip_client);
+		rdmaip_init_flag &= ~RDMAIP_IB_REG;
+	}
 
 	if (rdmaip_init_flag & RDMAIP_REG_NET_SYSCTL) {
 		unregister_net_sysctl_table(rdmaip_sysctl_hdr);
@@ -2904,7 +2902,6 @@ int rdmaip_init(void)
 	rdmaip_garps_wq = create_workqueue("rdmaip_garps");
 	if (!rdmaip_garps_wq) {
 		rdmaip_cleanup();
-		destroy_workqueue(rdmaip_wq);
 		return -ENOMEM;
 	}
 	rdmaip_init_flag |= RDMAIP_GARPS_WQ_CREATED;
