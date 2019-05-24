@@ -22,5 +22,7 @@
 #define MIPS_FIXADE		   7	/* control address error fixing	 */
 #define MIPS_RDNVRAM		  10	/* read NVRAM */
 #define MIPS_ATOMIC_SET		2001	/* atomically set variable	 */
+#define MIPS_CAVIUM_XKPHYS_READ  2010	/* XKPHYS */
+#define MIPS_CAVIUM_XKPHYS_WRITE 2011	/* XKPHYS */
 
 #endif /* _ASM_SYSMIPS_H */
