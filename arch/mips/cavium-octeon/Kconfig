@@ -49,6 +49,64 @@ config FAST_ACCESS_TO_THREAD_POINTER
 	  the TLB fault handlers. This CVMSEG address isn't available to user
 	  applications.
 
+choice
+	prompt "Allow User space to access hardware IO directly"
+	default CAVIUM_OCTEON_USER_IO_PER_PROCESS
+	depends on CPU_CAVIUM_OCTEON
+
+config CAVIUM_OCTEON_USER_IO
+	bool "Allowed"
+	depends on CPU_CAVIUM_OCTEON
+	help
+	  Allows user applications to directly access the Octeon hardware
+	  IO addresses (0x1000000000000 - 0x1ffffffffffff). This allows high
+	  performance networking applications to run in user space with minimal
+	  performance penalties. This also means a user application can bring
+	  down the entire system. Only use this option on embedded devices
+	  where all user applications are strictly controlled.
+
+config CAVIUM_OCTEON_USER_IO_PER_PROCESS
+	bool "Per process"
+	help
+	  Allows user applications to use XKPHYS addresses directly to IO.
+	  This option dynamically enable/disable with sysmips syscall,
+	  by a process with root privilege. Without root privilege you can
+	  only remove access.
+
+config CAVIUM_OCTEON_USER_IO_DISABLED
+	bool "Disabled"
+
+endchoice
+
+choice
+	prompt "Allow User space to access memory directly"
+	default CAVIUM_OCTEON_USER_MEM_PER_PROCESS
+	depends on CPU_CAVIUM_OCTEON
+
+config CAVIUM_OCTEON_USER_MEM
+	bool "Allowed"
+	help
+	  Allows user applications to use XKPHYS addresses directly to memory.
+	  This allows user space direct access to shared memory not in use by
+	  Linux. This memory is suitable for use with the Octeon hardware.
+	  Cavium simple executive applications also share this memory. Since
+	  this bypass all of the Linux memory protection, only use this option
+	  on embedded devices where all user applications are strictly
+	  controlled.
+
+config CAVIUM_OCTEON_USER_MEM_PER_PROCESS
+	bool "Per process"
+	help
+	  Allows user applications to use XKPHYS addresses directly to memory.
+	  This option dynamically enable/disable with sysmips syscall,
+	  by a process with root privilege. Without root privilege you can only
+	  remove access.
+
+config CAVIUM_OCTEON_USER_MEM_DISABLED
+	bool "Disabled"
+
+endchoice
+
 config CAVIUM_OCTEON_LOCK_L2
 	bool "Lock often used kernel code in the L2"
 	default "y"
