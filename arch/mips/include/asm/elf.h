@@ -425,6 +425,14 @@ do {									\
 
 #endif /* CONFIG_64BIT */
 
+#ifndef ELF_CORE_COPY_REGS
+struct pt_regs;
+void elf_dump_regs(elf_greg_t *gp, struct pt_regs *regs);
+
+#define ELF_CORE_COPY_REGS(elf_regs, regs)		\
+	elf_dump_regs((elf_greg_t *)&(elf_regs), regs);
+#endif
+
 #define CORE_DUMP_USE_REGSET
 #define ELF_EXEC_PAGESIZE	PAGE_SIZE
 
