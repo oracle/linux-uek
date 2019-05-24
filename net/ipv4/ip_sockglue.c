@@ -354,6 +354,8 @@ int ip_ra_control(struct sock *sk, unsigned char on,
 		return -EINVAL;
 
 	new_ra = on ? kmalloc(sizeof(*new_ra), GFP_KERNEL) : NULL;
+	if (on && !new_ra)
+		return -ENOMEM;
 
 	for (rap = &ip_ra_chain;
 	     (ra = rtnl_dereference(*rap)) != NULL;
