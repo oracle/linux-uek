@@ -40,6 +40,9 @@
 #include <asm/sysmips.h>
 #include <asm/switch_to.h>
 
+int xkphys_usermem_read(long);
+int xkphys_usermem_write(long, int);
+
 /*
  * For historic reasons the pipe(2) syscall on MIPS has an unusual calling
  * convention.	It returns results in registers $v0 / $v1 which means there
@@ -230,6 +233,14 @@ SYSCALL_DEFINE3(sysmips, long, cmd, long, arg1, long, arg2)
 	case FLUSH_CACHE:
 		__flush_cache_all();
 		return 0;
+
+#ifdef CONFIG_CPU_CAVIUM_OCTEON
+	case MIPS_CAVIUM_XKPHYS_READ:
+		return xkphys_usermem_read(arg1);
+
+	case MIPS_CAVIUM_XKPHYS_WRITE:
+		return xkphys_usermem_write(arg1, arg2);
+#endif
 	}
 
 	return -EINVAL;
