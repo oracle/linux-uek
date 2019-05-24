@@ -91,6 +91,8 @@ enum cgx_cmd_id {
 	CGX_CMD_SET_AN,
 	CGX_CMD_GET_ADV_LINK_MODES,
 	CGX_CMD_GET_ADV_FEC,
+	CGX_CMD_GET_PHY_MOD_TYPE, /* line-side modulation type: NRZ or PAM4 */
+	CGX_CMD_SET_PHY_MOD_TYPE,
 };
 
 /* async event ids */
@@ -214,5 +216,11 @@ struct cgx_lnk_sts {
 #define CMDLINKCHANGE_FULLDPLX	BIT_ULL(9)
 #define CMDLINKCHANGE_SPEED	GENMASK_ULL(13, 10)
 #define CMDSETFEC		GENMASK_ULL(9, 8)
+
+/* command argument to be passed for cmd ID - CGX_CMD_SET_PHY_MOD_TYPE */
+#define CMDSETPHYMODTYPE	GENMASK_ULL(8, 8)
+
+/* response to cmd ID - RESP_GETPHYMODTYPE */
+#define RESP_GETPHYMODTYPE	GENMASK_ULL(9, 9)
 
 #endif /* __CGX_FW_INTF_H__ */
