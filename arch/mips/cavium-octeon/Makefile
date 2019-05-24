@@ -23,3 +23,4 @@ obj-$(CONFIG_SMP)		      += smp.o
 obj-$(CONFIG_OCTEON_ILM)	      += oct_ilm.o
 obj-$(CONFIG_USB)		      += octeon-usb.o
 obj-$(CONFIG_SYSFS)                   += octeon-power-throttle.o
+obj-$(CONFIG_OCTEON_ERROR_INJECTOR)	+= octeon-error-injector.o
