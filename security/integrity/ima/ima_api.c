@@ -18,6 +18,7 @@
 #include <linux/fs.h>
 #include <linux/xattr.h>
 #include <linux/evm.h>
+#include <linux/iversion.h>
 
 #include "ima.h"
 
@@ -205,7 +206,7 @@ int ima_collect_measurement(struct integrity_iint_cache *iint,
 	} hash;
 
 	if (!(iint->flags & IMA_COLLECTED)) {
-		u64 i_version = file_inode(file)->i_version;
+		u64 i_version = inode_query_iversion(inode);
 
 		if (file->f_flags & O_DIRECT) {
 			audit_cause = "failed(directio)";
