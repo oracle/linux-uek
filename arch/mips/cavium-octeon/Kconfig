@@ -157,4 +157,10 @@ config OCTEON_ILM
 	  To compile this driver as a module, choose M here.  The module
 	  will be called octeon-ilm
 
+config OCTEON_ERROR_INJECTOR
+	tristate "Module to inject hardware errors into the system"
+	help
+	  Used to test hardware error reporting.  Should never be used
+	  in a normal running system.
+
 endif # CAVIUM_OCTEON_SOC
