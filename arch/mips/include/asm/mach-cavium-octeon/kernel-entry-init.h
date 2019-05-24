@@ -290,6 +290,33 @@ octeon_wait_forever:
 octeon_main_processor:
 	dla	v0, octeon_cvmseg_lines
 	sw	t2, 0(v0)
+#ifdef CONFIG_CAVIUM_OCTEON2
+	mfc0	v1, CP0_PRID_REG
+	andi	v1, 0xff00
+	srl	v1, 8
+	addiu	v1, -0x90
+	bgez	v1, 1f
+	/* Pre-OCTEON II running with CONFIG_CAVIUM_OCTEON2 will not work. */
+	ld	v1, 0x140(a3)
+	dli	v0, 0x8001180000000800 /* UART base */
+	bbit0	v1, 35, 2f /* Check for UART1 */
+	daddiu	v0, 0x400
+2:
+	dla	v1, octeon_not_compatible
+3:
+	lbu	t0, 0(v1)
+	daddiu	v1, 1
+	beqz	t0, 4f
+5:
+	ld	t1, 0x28(v0) /* LSR*/
+	bbit0	t1, 5, 5b
+	sd	t0, 0x40(v0)
+	b	3b
+4:
+	wait
+	b	4b
+1:
+#endif /* CONFIG_CAVIUM_OCTEON2 */
 	.set pop
 .endm
 
