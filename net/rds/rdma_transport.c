@@ -359,10 +359,15 @@ static int rds_rdma_listen_init_common(rdma_cm_event_handler handler,
 				       struct sockaddr *sa,
 				       struct rdma_cm_id **ret_cm_id)
 {
+	struct rds_ib_connection *dummy_ic;
 	struct rdma_cm_id *cm_id;
 	int ret;
 
-	cm_id = rds_ib_rdma_create_id(&init_net, handler, NULL, RDMA_PS_TCP, IB_QPT_RC);
+	dummy_ic = kmalloc(sizeof(*dummy_ic), GFP_KERNEL);
+	if (!dummy_ic)
+		return -ENOMEM;
+
+	cm_id = rds_ib_rdma_create_id(&init_net, handler, dummy_ic, NULL, RDMA_PS_TCP, IB_QPT_RC);
 	if (IS_ERR(cm_id)) {
 		ret = PTR_ERR(cm_id);
 		printk(KERN_ERR "RDS/RDMA: failed to setup listener, rds_ib_rdma_create_id() returned %d\n",
@@ -441,16 +446,25 @@ static int rds_rdma_listen_init(void)
 
 static void rds_rdma_listen_stop(void)
 {
+	struct rds_ib_connection *ic;
+	struct rds_connection *conn;
+
 	if (rds_rdma_listen_id) {
+		conn = rds_ib_get_conn(rds_rdma_listen_id);
+		ic = conn ? conn->c_transport_data : NULL;
 		rdsdebug("cm %p\n", rds_rdma_listen_id);
 		rds_ib_rdma_destroy_id(rds_rdma_listen_id);
 		rds_rdma_listen_id = NULL;
+		kfree(ic);
 	}
 #if IS_ENABLED(CONFIG_IPV6)
 	if (rds6_rdma_listen_id) {
+		conn = rds_ib_get_conn(rds6_rdma_listen_id);
+		ic = conn ? conn->c_transport_data : NULL;
 		rdsdebug("cm %p\n", rds6_rdma_listen_id);
 		rds_ib_rdma_destroy_id(rds6_rdma_listen_id);
 		rds6_rdma_listen_id = NULL;
+		kfree(ic);
 	}
 #endif
 }
