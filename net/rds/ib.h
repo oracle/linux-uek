@@ -7,6 +7,7 @@
 #include <linux/slab.h>
 #include "rds.h"
 #include "rdma_transport.h"
+#include "rds_single_path.h"
 
 #define RDS_FMR_1M_POOL_SIZE		(8192 * 3 / 4)
 #define RDS_FMR_1M_MSG_SIZE		256  /* 1M */
@@ -191,6 +192,7 @@ struct rds_ib_connection {
 
 	/* alphabet soup, IBTA style */
 	struct rdma_cm_id	*i_cm_id;
+	struct rds_connection	*i_cm_id_ctx;
 	struct ib_pd		*i_pd;
 	struct ib_mr		*i_mr;
 	struct ib_cq		*i_scq;
@@ -433,6 +435,8 @@ struct rds_ib_statistics {
 
 extern struct workqueue_struct *rds_ib_wq;
 
+#define RDS_IB_NO_CTX ERR_PTR(ENOENT)
+
 static inline struct rds_connection *rds_ib_map_conn(struct rds_connection *conn)
 {
 	int id;
@@ -449,19 +453,13 @@ static inline struct rds_connection *rds_ib_map_conn(struct rds_connection *conn
 
 static inline struct rdma_cm_id *rds_ib_rdma_create_id(struct net *net,
 						       rdma_cm_event_handler event_handler,
+						       struct rds_ib_connection *ic,
 						       void *context, enum rdma_port_space ps,
 						       enum ib_qp_type qp_type)
 {
-	return rdma_create_id(net, event_handler,
-			      rds_ib_map_conn(context), ps, qp_type);
-}
+	ic->i_cm_id_ctx = rds_ib_map_conn(context);
 
-static inline void rds_ib_rdma_destroy_id(struct rdma_cm_id *cm_id)
-{
-	mutex_lock(&cm_id_map_lock);
-	(void)idr_remove(&cm_id_map, (int)(u64)cm_id->context);
-	mutex_unlock(&cm_id_map_lock);
-	rdma_destroy_id(cm_id);
+	return rdma_create_id(net, event_handler, ic->i_cm_id_ctx, ps, qp_type);
 }
 
 static inline struct rds_connection *rds_ib_get_conn(struct rdma_cm_id *cm_id)
@@ -475,6 +473,23 @@ static inline struct rds_connection *rds_ib_get_conn(struct rdma_cm_id *cm_id)
 	return conn;
 }
 
+static inline void rds_ib_rdma_destroy_id(struct rdma_cm_id *cm_id)
+{
+	struct rds_ib_connection *ic = NULL;
+	struct rds_connection *conn;
+
+	conn = rds_ib_get_conn(cm_id);
+	if (conn)
+		ic = conn->c_transport_data;
+	if (ic)
+		ic->i_cm_id_ctx = RDS_IB_NO_CTX;
+
+	mutex_lock(&cm_id_map_lock);
+	(void)idr_remove(&cm_id_map, (int)(u64)cm_id->context);
+	mutex_unlock(&cm_id_map_lock);
+	rdma_destroy_id(cm_id);
+}
+
 static inline bool rds_ib_same_cm_id(struct rds_ib_connection *ic, struct rdma_cm_id *cm_id)
 {
 	if (ic) {
@@ -484,11 +499,11 @@ static inline bool rds_ib_same_cm_id(struct rds_ib_connection *ic, struct rdma_c
 				    ic->conn, ic->i_cm_id, cm_id);
 			return false;
 		}
-		if (ic->i_cm_id->context != cm_id->context) {
+		if (ic->i_cm_id_ctx != cm_id->context) {
 			rds_rtd_ptr(RDS_RTD_CM_EXT,
 				    "conn %p ic->cm_id %p cm_id %p ctx1 %p NE ctx2 %p\n",
 				    ic->conn, ic->i_cm_id, cm_id,
-				    ic->i_cm_id->context, cm_id->context);
+				    ic->i_cm_id_ctx, cm_id->context);
 			return false;
 		}
 
