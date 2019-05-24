@@ -76,7 +76,7 @@ const bool octeon_should_swizzle_table[256] = {
 };
 EXPORT_SYMBOL(octeon_should_swizzle_table);
 
-static unsigned long long max_memory = ULLONG_MAX;
+static unsigned long long max_memory = 512ull << 20;
 static unsigned long long reserve_low_mem;
 
 /*
