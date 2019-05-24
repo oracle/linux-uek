@@ -18,9 +18,9 @@ OUTPUT_ARCH(mips)
 ENTRY(kernel_entry)
 PHDRS {
 	text PT_LOAD FLAGS(7);	/* RWX */
-#ifndef CONFIG_CAVIUM_OCTEON_SOC
+#ifndef CONFIG_DISABLE_ELF_NOTE_HEADER
 	note PT_NOTE FLAGS(4);	/* R__ */
-#endif /* CAVIUM_OCTEON_SOC */
+#endif /* CONFIG_DISABLE_ELF_NOTE_HEADER */
 }
 
 #ifdef CONFIG_32BIT
@@ -76,11 +76,11 @@ SECTIONS
 		__stop___dbe_table = .;
 	}
 
-#ifdef CONFIG_CAVIUM_OCTEON_SOC
+#ifdef CONFIG_DISABLE_ELF_NOTE_HEADER
 #define NOTES_HEADER
-#else /* CONFIG_CAVIUM_OCTEON_SOC */
+#else /* CONFIG_DISABLE_ELF_NOTE_HEADER */
 #define NOTES_HEADER :note
-#endif /* CONFIG_CAVIUM_OCTEON_SOC */
+#endif /* CONFIG_DISABLE_ELF_NOTE_HEADER */
 	NOTES :text NOTES_HEADER
 	.dummy : { *(.dummy) } :text
 
