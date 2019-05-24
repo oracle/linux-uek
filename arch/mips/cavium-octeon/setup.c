@@ -89,6 +89,10 @@ static struct octeon_boot_descriptor *octeon_boot_desc_ptr;
 struct cvmx_bootinfo *octeon_bootinfo;
 EXPORT_SYMBOL(octeon_bootinfo);
 
+const char octeon_not_compatible[] =
+	"ERROR: CONFIG_CAVIUM_OCTEON2 not compatible with this processor\r\n"
+	"You must rebuild the kernel to be able to use it on this system.\r\n";
+
 #ifdef CONFIG_KEXEC
 #ifdef CONFIG_SMP
 /*
