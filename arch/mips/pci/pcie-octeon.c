@@ -31,7 +31,6 @@ static int pcie_disable;
 module_param(pcie_disable, int, S_IRUGO);
 
 static int enable_pcie_14459_war;
-static int enable_pcie_bus_num_war[CVMX_PCIE_MAX_PORTS];
 
 struct octeon_pcie_interface {
 	struct pci_controller controller;
@@ -277,6 +276,89 @@ static int is_cfg_retry(void)
 	return 0;
 }
 
+static u32 octeon_pcie_pem_read_cfg(int node, int pem, int where_aligned)
+{
+	u64 addr, v;
+
+	addr = where_aligned;
+	if (octeon_has_feature(OCTEON_FEATURE_NPEI)) {
+		cvmx_write_csr(CVMX_PESCX_CFG_RD(pem), addr);
+		v = cvmx_read_csr(CVMX_PESCX_CFG_RD(pem));
+	} else {
+		cvmx_write_csr_node(node, CVMX_PEMX_CFG_RD(pem), addr);
+		v = cvmx_read_csr_node(node, CVMX_PEMX_CFG_RD(pem));
+	}
+	return (u32)(v >> 32);
+}
+
+static void octeon_pcie_pem_write_cfg(int node, int pem, int where_aligned, u32 val)
+{
+	u64 v;
+
+	v = (u32)where_aligned | ((u64)val << 32);
+
+	if (octeon_has_feature(OCTEON_FEATURE_NPEI)) {
+		cvmx_write_csr(CVMX_PESCX_CFG_WR(pem), v);
+	} else {
+		cvmx_write_csr_node(node, CVMX_PEMX_CFG_WR(pem), v);
+	}
+}
+
+static int octeon_pcie_pem_read(struct pci_bus *bus, unsigned int devfn,
+				int where, int size, u32 *val)
+{
+	struct octeon_pcie_interface *pi = octeon_pcie_bus2interface(bus);
+	u64 read_val;
+
+	if (devfn != 0 || where >= 2048) {
+		*val = ~0;
+		return PCIBIOS_DEVICE_NOT_FOUND;
+	}
+
+	/*
+	 * 32-bit accesses only.  Write the address to the low order
+	 * bits of PEM_CFG_RD, then trigger the read by reading back.
+	 * The config data lands in the upper 32-bits of PEM_CFG_RD.
+	 */
+
+	read_val = octeon_pcie_pem_read_cfg(pi->node, pi->pem, where & ~3ull);
+
+	/*
+	 * The config space contains some garbage, fix it up.  Also
+	 * synthesize an EA capability for the BAR used by MSI-X.
+	 */
+	switch (where & ~3) {
+	case 0x08:
+		/* Override class code to be PCI-PCI bridge. */
+		read_val &= 0x000000ff;
+		read_val |= 0x06040000;
+	case 0x40:
+		read_val &= 0xffff00ff;
+		read_val |= 0x00007000; /* Skip MSI CAP */
+		break;
+	case 0x70: /* Express Cap */
+		read_val &= 0xffff00ff; /* Last CAP */
+		break;
+	case 0x100:
+		read_val = 0; /* No PCIe Extended Capabilities. */
+	default:
+		break;
+	}
+	read_val >>= (8 * (where & 3));
+	switch (size) {
+	case 1:
+		read_val &= 0xff;
+		break;
+	case 2:
+		read_val &= 0xffff;
+		break;
+	default:
+		break;
+	}
+	*val = read_val;
+	return PCIBIOS_SUCCESSFUL;
+}
+
 /*
  * Read a value from configuration space
  *
@@ -295,37 +377,9 @@ static int octeon_pcie_read_config(struct pci_bus *bus, unsigned int devfn,
 	int gport = pi->node << 4 | pi->pem;
 
 	cvmmemctl_save.u64 = 0;
-	WARN_ON(pi->pem >= ARRAY_SIZE(enable_pcie_bus_num_war));
-	/*
-	 * For the top level bus make sure our hardware bus number
-	 * matches the software one
-	 */
-	if (bus->parent == NULL) {
-		if (enable_pcie_bus_num_war[pi->pem])
-			bus_number = 0;
-		else {
-			union cvmx_pciercx_cfg006 pciercx_cfg006;
-			pciercx_cfg006.u32 = cvmx_pcie_cfgx_read_node(pi->node, pi->pem,
-					     CVMX_PCIERCX_CFG006(pi->pem));
-			if (pciercx_cfg006.s.pbnum
-			    && pciercx_cfg006.s.pbnum != bus_number) {
-				pciercx_cfg006.s.pbnum = bus_number;
-				pciercx_cfg006.s.sbnum = bus_number;
-				pciercx_cfg006.s.subbnum = bus_number;
-				cvmx_pcie_cfgx_write_node(pi->node, pi->pem,
-					    CVMX_PCIERCX_CFG006(pi->pem),
-					    pciercx_cfg006.u32);
-			}
-		}
-	}
 
-	/*
-	 * PCIe only has a single device connected to Octeon. It is
-	 * always device ID 0. Don't bother doing reads for other
-	 * device IDs on the first segment.
-	 */
-	if ((bus->parent == NULL) && (devfn >> 3 != 0))
-		return PCIBIOS_FUNC_NOT_SUPPORTED;
+	if (bus_number == 0)
+		return octeon_pcie_pem_read(bus, devfn, reg, size, val);
 
 	/*
 	 * The following is a workaround for the CN57XX, CN56XX,
@@ -454,11 +508,124 @@ static int octeon_pcie_read_config(struct pci_bus *bus, unsigned int devfn,
 		write_c0_cvmmemctl(cvmmemctl_save.u64);
 	return PCIBIOS_SUCCESSFUL;
 }
-
-static int octeon_dummy_read_config(struct pci_bus *bus, unsigned int devfn,
-				    int reg, int size, u32 *val)
+/*
+ * Some of the w1c_bits below also include read-only or non-writable
+ * reserved bits, this makes the code simpler and is OK as the bits
+ * are not affected by writing zeros to them.
+ */
+static u32 octeon_pem_bridge_w1c_bits(u64 where_aligned)
 {
-	return PCIBIOS_FUNC_NOT_SUPPORTED;
+	u32 w1c_bits = 0;
+
+	switch (where_aligned) {
+	case 0x04: /* Command/Status */
+	case 0x1c: /* Base and I/O Limit/Secondary Status */
+		w1c_bits = 0xff000000;
+		break;
+	case 0x44: /* Power Management Control and Status */
+		w1c_bits = 0xfffffe00;
+		break;
+	case 0x78: /* Device Control/Device Status */
+	case 0x80: /* Link Control/Link Status */
+	case 0x88: /* Slot Control/Slot Status */
+	case 0x90: /* Root Status */
+	case 0xa0: /* Link Control 2 Registers/Link Status 2 */
+		w1c_bits = 0xffff0000;
+		break;
+	case 0x104: /* Uncorrectable Error Status */
+	case 0x110: /* Correctable Error Status */
+	case 0x130: /* Error Status */
+	case 0x160: /* Link Control 4 */
+		w1c_bits = 0xffffffff;
+		break;
+	default:
+		break;
+	}
+	return w1c_bits;
+}
+
+/* Some bits must be written to one so they appear to be read-only. */
+static u32 octeon_pem_bridge_w1_bits(u64 where_aligned)
+{
+	u32 w1_bits;
+
+	switch (where_aligned) {
+	case 0x1c: /* I/O Base / I/O Limit, Secondary Status */
+		/* Force 32-bit I/O addressing. */
+		w1_bits = 0x0101;
+		break;
+	case 0x24: /* Prefetchable Memory Base / Prefetchable Memory Limit */
+		/* Force 64-bit addressing */
+		w1_bits = 0x00010001;
+		break;
+	default:
+		w1_bits = 0;
+		break;
+	}
+	return w1_bits;
+}
+
+static int octeon_pcie_pem_write(struct pci_bus *bus, unsigned int devfn,
+				 int where, int size, u32 val)
+{
+	struct octeon_pcie_interface *pi = octeon_pcie_bus2interface(bus);
+	u64 read_val;
+	u64 where_aligned = where & ~3ull;
+	u32 mask = 0;
+
+	if (devfn != 0 || where >= 2048)
+		return PCIBIOS_DEVICE_NOT_FOUND;
+
+	/*
+	 * 32-bit accesses only.  If the write is for a size smaller
+	 * than 32-bits, we must first read the 32-bit value and merge
+	 * in the desired bits and then write the whole 32-bits back
+	 * out.
+	 */
+	switch (size) {
+	case 1:
+		read_val = octeon_pcie_pem_read_cfg(pi->node, pi->pem, where_aligned);
+		mask = ~(0xff << (8 * (where & 3)));
+		read_val &= mask;
+		val = (val & 0xff) << (8 * (where & 3));
+		val |= (u32)read_val;
+		break;
+	case 2:
+		read_val = octeon_pcie_pem_read_cfg(pi->node, pi->pem, where_aligned);
+		mask = ~(0xffff << (8 * (where & 3)));
+		read_val &= mask;
+		val = (val & 0xffff) << (8 * (where & 3));
+		val |= (u32)read_val;
+		break;
+	default:
+		break;
+	}
+
+	/*
+	 * By expanding the write width to 32 bits, we may
+	 * inadvertently hit some W1C bits that were not intended to
+	 * be written.  Calculate the mask that must be applied to the
+	 * data to be written to avoid these cases.
+	 */
+	if (mask) {
+		u32 w1c_bits = octeon_pem_bridge_w1c_bits(where);
+
+		if (w1c_bits) {
+			mask &= w1c_bits;
+			val &= ~mask;
+		}
+	}
+
+	/*
+	 * Some bits must be read-only with value of one.  Since the
+	 * access method allows these to be cleared if a zero is
+	 * written, force them to one before writing.
+	 */
+	val |= octeon_pem_bridge_w1_bits(where_aligned);
+
+	octeon_pcie_pem_write_cfg(pi->node, pi->pem, where_aligned, val);
+
+	return PCIBIOS_SUCCESSFUL;
 }
 
 /*
@@ -471,10 +638,9 @@ static int octeon_pcie_write_config(struct pci_bus *bus, unsigned int devfn,
 	struct octeon_pcie_interface *pi = octeon_pcie_bus2interface(bus);
 	int gport = pi->node << 4 | pi->pem;
 
-	WARN_ON(pi->pem >= ARRAY_SIZE(enable_pcie_bus_num_war));
 
-	if ((bus->parent == NULL) && (enable_pcie_bus_num_war[pi->pem]))
-		bus_number = 0;
+	if (bus_number == 0)
+		return octeon_pcie_pem_write(bus, devfn, reg, size, val);
 
 	pr_debug("pcie_cfg_wr port=%d:%d b=%d devfn=0x%03x reg=0x%03x size=%d val=%08x\n",
 		 pi->node, pi->pem, bus_number, devfn,
@@ -500,12 +666,6 @@ static int octeon_pcie_write_config(struct pci_bus *bus, unsigned int devfn,
 	return PCIBIOS_SUCCESSFUL;
 }
 
-static int octeon_dummy_write_config(struct pci_bus *bus, unsigned int devfn,
-				     int reg, int size, u32 val)
-{
-	return PCIBIOS_FUNC_NOT_SUPPORTED;
-}
-
 static struct pci_ops octeon_pcie_ops = {
 	.read	= octeon_pcie_read_config,
 	.write	= octeon_pcie_write_config,
@@ -529,36 +689,6 @@ static void octeon_pcie_interface_init(struct octeon_pcie_interface *iface, unsi
 
 	iface->node = node;
 	iface->pem = pem;
-}
-
-static struct pci_ops octeon_dummy_ops = {
-	.read	= octeon_dummy_read_config,
-	.write	= octeon_dummy_write_config,
-};
-
-static struct resource octeon_dummy_mem_resource = {
-	.name = "Virtual PCIe MEM",
-	.flags = IORESOURCE_MEM,
-};
-
-static struct resource octeon_dummy_io_resource = {
-	.name = "Virtual PCIe IO",
-	.flags = IORESOURCE_IO,
-};
-
-static struct pci_controller octeon_dummy_controller = {
-	.pci_ops = &octeon_dummy_ops,
-	.mem_resource = &octeon_dummy_mem_resource,
-	.io_resource = &octeon_dummy_io_resource,
-};
-
-static int device_needs_bus_num_war(uint32_t deviceid)
-{
-#define IDT_VENDOR_ID 0x111d
-
-	if ((deviceid  & 0xffff) == IDT_VENDOR_ID)
-		return 1;
-	return 0;
 }
 
 static void __init octeon_pcie_setup_port(unsigned int node, unsigned int port)
@@ -619,6 +749,12 @@ static void __init octeon_pcie_setup_port(unsigned int node, unsigned int port)
 		if (result < 0)
 			return;
 
+		/*
+		 * Set bus numbers back to zero to undo any breakage
+		 * caused by cvmx initialization code.
+		 */
+		cvmx_pcie_cfgx_write_node(node, port, 0x18, 0);
+
 		/* Set IO offsets, Memory/IO resource start and end limits */
 		octeon_pcie_interface_init(&octeon_pcie[node][port], node, port);
 		/* Memory offsets are physical addresses */
@@ -666,7 +802,6 @@ static void __init octeon_pcie_setup_port(unsigned int node, unsigned int port)
 		register_pci_controller(&octeon_pcie[node][port].controller);
 
 		device = cvmx_pcie_config_read32(gport, 0, 0, 0, 0);
-		enable_pcie_bus_num_war[port] =	device_needs_bus_num_war(device);
 	} else {
 		pr_notice("PCIe: Port %d:%d in endpoint mode, skipping.\n", node, port);
 		/* CN63XX pass 1_x/2.0 errata PCIe-15205 */
@@ -738,17 +873,6 @@ static int __init octeon_pcie_setup(void)
 	set_io_port_base(CVMX_ADD_IO_SEG(cvmx_pcie_get_io_base_address(0)));
 	ioport_resource.start = 0;
 	ioport_resource.end = (1ull << 37) - 1;
-
-	/*
-	 * Create a dummy PCIe controller to swallow up bus 0. IDT bridges
-	 * don't work if the primary bus number is zero. Here we add a fake
-	 * PCIe controller that the kernel will give bus 0. This allows
-	 * us to not change the normal kernel bus enumeration
-	 */
-	octeon_dummy_controller.io_map_base = -1;
-	octeon_dummy_controller.mem_resource->start = (1ull<<48);
-	octeon_dummy_controller.mem_resource->end = (1ull<<48);
-	register_pci_controller(&octeon_dummy_controller);
 
 	for_each_online_node (node)
 		for (port = 0; port < CVMX_PCIE_PORTS; port++)
