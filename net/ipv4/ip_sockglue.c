@@ -326,6 +326,8 @@ int ip_ra_control(struct sock *sk, unsigned char on,
 		return -EINVAL;
 
 	new_ra = on ? kmalloc(sizeof(*new_ra), GFP_KERNEL) : NULL;
+	if (on && !new_ra)
+		return -ENOMEM;
 
 	spin_lock_bh(&ip_ra_lock);
 	for (rap = &ip_ra_chain;
