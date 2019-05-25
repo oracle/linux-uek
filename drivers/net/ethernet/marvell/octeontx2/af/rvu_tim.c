@@ -36,9 +36,13 @@ static inline u64 get_tenns_clk(void)
 	return tsc;
 }
 
-static void rvu_tim_disable_lf(struct rvu *rvu, int lf, int blkaddr)
+static int rvu_tim_disable_lf(struct rvu *rvu, int lf, int blkaddr)
 {
 	u64 regval;
+
+	regval = rvu_read64(rvu, blkaddr, TIM_AF_RINGX_CTL1(lf));
+	if ((regval & TIM_AF_RINGX_CTL1_ENA) == 0)
+		return TIM_AF_RING_ALREADY_DISABLED;
 
 	/* Clear TIM_AF_RING(0..255)_CTL1[ENA]. */
 	regval = rvu_read64(rvu, blkaddr, TIM_AF_RINGX_CTL1(lf));
@@ -51,6 +55,7 @@ static void rvu_tim_disable_lf(struct rvu *rvu, int lf, int blkaddr)
 	 */
 	rvu_poll_reg(rvu, blkaddr, TIM_AF_RINGX_CTL1(lf),
 			TIM_AF_RINGX_CTL1_RCF_BUSY, true);
+	return 0;
 }
 
 int rvu_lf_lookup_tim_errata(struct rvu *rvu, struct rvu_block *block,
@@ -130,6 +135,8 @@ int rvu_mbox_handler_tim_lf_free(struct rvu *rvu,
 	lf = rvu_get_lf(rvu, &rvu->hw->block[blkaddr], pcifunc, req->ring);
 	if (lf < 0)
 		return TIM_AF_LF_INVALID;
+
+	rvu_tim_lf_teardown(rvu, pcifunc, lf, req->ring);
 
 	return 0;
 }
@@ -270,7 +277,6 @@ int rvu_mbox_handler_tim_disable_ring(struct rvu *rvu,
 {
 	u16 pcifunc = req->hdr.pcifunc;
 	int lf, blkaddr;
-	u64 regval;
 
 	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_TIM, pcifunc);
 	if (blkaddr < 0)
@@ -280,11 +286,21 @@ int rvu_mbox_handler_tim_disable_ring(struct rvu *rvu,
 	if (lf < 0)
 		return TIM_AF_LF_INVALID;
 
-	regval = rvu_read64(rvu, blkaddr, TIM_AF_RINGX_CTL1(lf));
-	if ((regval & TIM_AF_RINGX_CTL1_ENA) == 0)
-		return TIM_AF_RING_ALREADY_DISABLED;
+	return rvu_tim_disable_lf(rvu, lf, blkaddr);
+}
 
+int rvu_tim_lf_teardown(struct rvu *rvu, u16 pcifunc, int lf, int slot)
+{
+	int blkaddr;
+
+	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_TIM, pcifunc);
+	if (blkaddr < 0)
+		return TIM_AF_LF_INVALID;
+
+	/* Ensure TIM ring is disabled prior to clearing the mapping */
 	rvu_tim_disable_lf(rvu, lf, blkaddr);
+
+	rvu_write64(rvu, blkaddr, TIM_AF_RINGX_GMCTL(lf), 0);
 
 	return 0;
 }
