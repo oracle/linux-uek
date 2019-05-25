@@ -930,11 +930,6 @@ void rvu_sso_deinit_xaq_aura(struct rvu *rvu, int blkaddr, int npa_blkaddr,
 			     int aura, int lf);
 void rvu_sso_xaq_aura_write(struct rvu *rvu, int lf, u64 val);
 
-/* TIM APIs */
-int rvu_tim_init(struct rvu *rvu);
-int rvu_lf_lookup_tim_errata(struct rvu *rvu, struct rvu_block *block,
-		u16 pcifunc, int slot);
-
 /* NPA APIs */
 int rvu_npa_init(struct rvu *rvu);
 void rvu_npa_freemem(struct rvu *rvu);
@@ -1079,6 +1074,12 @@ void rvu_nix_block_cn10k_init(struct rvu *rvu, struct nix_hw *nix_hw);
 /* CN10K RVU - LMT*/
 void rvu_reset_lmt_map_tbl(struct rvu *rvu, u16 pcifunc);
 void rvu_apr_block_cn10k_init(struct rvu *rvu);
+
+/* TIM APIs */
+int rvu_tim_init(struct rvu *rvu);
+int rvu_tim_lf_teardown(struct rvu *rvu, u16 pcifunc, int lf, int slot);
+int rvu_lf_lookup_tim_errata(struct rvu *rvu, struct rvu_block *block,
+		u16 pcifunc, int slot);
 
 #ifdef CONFIG_DEBUG_FS
 void rvu_dbg_init(struct rvu *rvu);
