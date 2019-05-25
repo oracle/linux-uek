@@ -618,6 +618,7 @@ void rvu_cpt_unregister_interrupts(struct rvu *rvu);
 
 /* TIM APIs */
 int rvu_tim_init(struct rvu *rvu);
+int rvu_tim_lf_teardown(struct rvu *rvu, u16 pcifunc, int lf, int slot);
 int rvu_lf_lookup_tim_errata(struct rvu *rvu, struct rvu_block *block,
 		u16 pcifunc, int slot);
 
