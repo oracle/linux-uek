@@ -16,27 +16,6 @@
 #include <asm/bitfield.h>
 #include <linux/irq.h>
 
-extern uint64_t octeon_bootmem_alloc_range_phys(uint64_t size,
-						uint64_t alignment,
-						uint64_t min_addr,
-						uint64_t max_addr,
-						int do_locking);
-extern void *octeon_bootmem_alloc(uint64_t size, uint64_t alignment,
-				  int do_locking);
-extern void *octeon_bootmem_alloc_range(uint64_t size, uint64_t alignment,
-					uint64_t min_addr, uint64_t max_addr,
-					int do_locking);
-extern void *octeon_bootmem_alloc_named(uint64_t size, uint64_t alignment,
-					char *name);
-extern void *octeon_bootmem_alloc_named_range(uint64_t size, uint64_t min_addr,
-					      uint64_t max_addr, uint64_t align,
-					      char *name);
-extern void *octeon_bootmem_alloc_named_address(uint64_t size, uint64_t address,
-						char *name);
-extern int octeon_bootmem_free_named(char *name);
-extern void octeon_bootmem_lock(void);
-extern void octeon_bootmem_unlock(void);
-
 extern int octeon_is_simulation(void);
 extern int octeon_is_pci_host(void);
 extern int octeon_usb_is_ref_clk(void);
@@ -44,11 +23,6 @@ extern uint64_t octeon_get_clock_rate(void);
 extern u64 octeon_get_io_clock_rate(void);
 extern const char *octeon_board_type_string(void);
 extern const char *octeon_get_pci_interrupts(void);
-extern int octeon_get_southbridge_interrupt(void);
-extern int octeon_get_boot_coremask(void);
-extern int octeon_get_boot_num_arguments(void);
-extern const char *octeon_get_boot_argument(int arg);
-extern void octeon_hal_setup_reserved32(void);
 extern void octeon_user_io_init(void);
 
 extern void octeon_init_cvmcount(void);
