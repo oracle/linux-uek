@@ -193,6 +193,7 @@ static int octeon_pow_free_work(cvmx_wqe_t *work)
 	union octeon_packet_ptr	packet_ptr;
 	int			segments;
 	void			*buffer_ptr;
+	int			aura;
 
 	segments = cvmx_wqe_get_bufs(work);
 
@@ -202,9 +203,10 @@ static int octeon_pow_free_work(cvmx_wqe_t *work)
 	else
 		buffer_ptr = get_buffer_ptr(packet_ptr);
 
+	aura = cvmx_wqe_get_aura(work);
 	while (segments--) {
 		packet_ptr = octeon_get_next_packet_ptr(packet_ptr);
-		cvmx_fpa_free(buffer_ptr, cvmx_wqe_get_aura(work), 0);
+		cvmx_fpa_free(buffer_ptr, aura, 0);
 		buffer_ptr = get_buffer_ptr(packet_ptr);
 	}
 
