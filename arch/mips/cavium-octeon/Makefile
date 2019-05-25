@@ -14,6 +14,7 @@ obj-y := cpu.o setup.o octeon-platform.o octeon-irq.o csrc-octeon.o \
 obj-y += dma-octeon.o
 obj-y += csrc-octeon-ptp.o
 obj-y += octeon-pci-console.o
+obj-y += perf_counters.o
 obj-y += octeon-memcpy.o
 obj-y += executive/
 obj-y += crypto/
