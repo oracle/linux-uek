@@ -45,6 +45,7 @@
 #include <asm/octeon/octeon.h>
 #include <asm/octeon/pci-octeon.h>
 #include <asm/octeon/cvmx-rst-defs.h>
+#include <asm/octeon/cvmx-sso-defs.h>
 #include <asm/octeon/cvmx-qlm.h>
 #include <asm/octeon/cvmx-debug.h>
 
@@ -546,7 +547,8 @@ void octeon_user_io_init(void)
 			  CONFIG_CAVIUM_OCTEON_CVMSEG_SIZE,
 			  CONFIG_CAVIUM_OCTEON_CVMSEG_SIZE * 128);
 
-	if (octeon_has_feature(OCTEON_FEATURE_FAU)) {
+	if (current_cpu_type() != CPU_CAVIUM_OCTEON3 ||
+	    OCTEON_IS_MODEL(OCTEON_CN70XX)) {
 		union cvmx_iob_fau_timeout fau_timeout;
 
 		/* Set a default for the hardware timeouts */
@@ -557,9 +559,14 @@ void octeon_user_io_init(void)
 		cvmx_write_csr(CVMX_IOB_FAU_TIMEOUT, fau_timeout.u64);
 	}
 
-	if ((!OCTEON_IS_MODEL(OCTEON_CN68XX) &&
-	     !OCTEON_IS_MODEL(OCTEON_CN7XXX)) ||
-	    OCTEON_IS_MODEL(OCTEON_CN70XX)) {
+	if (OCTEON_IS_MODEL(OCTEON_CN68XX) || octeon_has_feature(OCTEON_FEATURE_CIU3)) {
+		union cvmx_sso_nw_tim nm_tim;
+
+		nm_tim.u64 = 0;
+		/* 4096 cycles */
+		nm_tim.s.nw_tim = 3;
+		cvmx_write_csr(CVMX_SSO_NW_TIM, nm_tim.u64);
+	} else {
 		union cvmx_pow_nw_tim nm_tim;
 
 		nm_tim.u64 = 0;
