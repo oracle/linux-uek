@@ -94,14 +94,31 @@ static int octeon_gpio_to_irq(struct gpio_chip *chip, unsigned offset)
 	return irq_create_of_mapping(&oirq);
 }
 
+struct match_data {
+	unsigned int (*bit_cfg)(unsigned int gpio);
+	int (*irq_init_gpio)(struct device_node *n, struct device_node *p);
+};
+
+int octeon_irq_init_gpio(struct device_node *gpio_node, struct device_node *parent);
+int octeon_irq_init_gpio78(struct device_node *gpio_node, struct device_node *parent);
+
+static struct match_data md38 = {
+	.bit_cfg = bit_cfg_reg38,
+	.irq_init_gpio = octeon_irq_init_gpio
+};
+static struct match_data md78 = {
+	.bit_cfg = bit_cfg_reg78,
+	.irq_init_gpio = octeon_irq_init_gpio78
+};
+
 static struct of_device_id octeon_gpio_match[] = {
 	{
 		.compatible = "cavium,octeon-3860-gpio",
-		.data = bit_cfg_reg38,
+		.data = &md38,
 	},
 	{
 		.compatible = "cavium,octeon-7890-gpio",
-		.data = bit_cfg_reg78,
+		.data = &md78,
 	},
 	{},
 };
@@ -114,17 +131,20 @@ static int octeon_gpio_probe(struct platform_device *pdev)
 	struct resource *res_mem;
 	void __iomem *reg_base;
 	const struct of_device_id *of_id;
+	struct device_node *irq_parent;
+	struct match_data *md;
 	int err = 0;
 
 	of_id = of_match_device(octeon_gpio_match, &pdev->dev);
 	if (!of_id)
 		return -EINVAL;
+	md = of_id->data;
 
 	gpio = devm_kzalloc(&pdev->dev, sizeof(*gpio), GFP_KERNEL);
 	if (!gpio)
 		return -ENOMEM;
 	chip = &gpio->chip;
-	gpio->cfg_reg = of_id->data;
+	gpio->cfg_reg = md->bit_cfg;
 
 	res_mem = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	reg_base = devm_ioremap_resource(&pdev->dev, res_mem);
@@ -133,6 +153,13 @@ static int octeon_gpio_probe(struct platform_device *pdev)
 
 	gpio->register_base = (u64)reg_base;
 	pdev->dev.platform_data = chip;
+
+	irq_parent = of_irq_find_parent(pdev->dev.of_node);
+	if (irq_parent) {
+		err = md->irq_init_gpio(pdev->dev.of_node, irq_parent);
+		if (err)
+			dev_err(&pdev->dev, "Error: irq init failed %d\n", err);
+	}
 	chip->label = "octeon-gpio";
 	chip->parent = &pdev->dev;
 	chip->of_node = pdev->dev.of_node;
