@@ -9,7 +9,7 @@
 # Copyright (C) 2005-2009 Cavium Networks
 #
 
-obj-y := cpu.o setup.o octeon-platform.o octeon-irq.o csrc-octeon.o \
+obj-y := cpu.o setup.o serial.o octeon-platform.o octeon-irq.o csrc-octeon.o \
 	 octeon-hw-status.o octeon_info.o
 obj-y += dma-octeon.o
 obj-y += csrc-octeon-ptp.o
