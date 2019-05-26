@@ -57,8 +57,17 @@ static int of_mdiobus_register_phy(struct mii_bus *mdio,
 		phy = phy_device_create(mdio, addr, phy_id, 0, NULL);
 	else
 		phy = get_phy_device(mdio, addr, is_c45);
-	if (IS_ERR(phy))
-		return PTR_ERR(phy);
+
+	if (IS_ERR(phy)) {
+		struct phy_c45_device_ids c45_ids = {0};
+		phy = phy_device_create(mdio, addr, 0, is_c45, &c45_ids);
+		if (IS_ERR(phy)) {
+			dev_err(&mdio->dev,
+				"cannot create PHY at address %i\n",
+				addr);
+			return;
+		}
+	}
 
 	rc = of_irq_get(child, 0);
 	if (rc == -EPROBE_DEFER) {

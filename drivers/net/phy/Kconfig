@@ -340,6 +340,12 @@ config CORTINA_PHY
 	---help---
 	  Currently supports the CS4340 phy.
 
+config CS4318_PHY
+	tristate "Cortina cs4318 quad-10G Ethernet PHY"
+	help
+	  Currently supports only the Cortina cs4318 PHY.  This may be
+	  configured as either a quad-RXAUI or dual-XAUI device.
+
 config DAVICOM_PHY
 	tristate "Davicom PHYs"
 	---help---
