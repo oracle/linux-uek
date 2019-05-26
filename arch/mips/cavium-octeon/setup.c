@@ -1118,8 +1118,8 @@ void __init plat_mem_setup(void)
 
 	if (system_limit > max_memory)
 		system_limit = max_memory;
-	/* Try to get 256MB (or more) of 32-bit memory */
-	mem_32_size = system_limit <= (16ull * (1ull << 30)) ? 256 * (1 << 20) : 512 * (1 << 20);
+	/* Try to get 512MB of 32-bit memory */
+	mem_32_size = 512 * (1 << 20);
 
 	cvmx_bootmem_lock();
 	limit_max = 0xffffffffull;
