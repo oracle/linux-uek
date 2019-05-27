@@ -1797,10 +1797,13 @@ static void __kvm_unmap_gfn(struct kvm_memory_slot *memslot,
 			kunmap_atomic(map->hva);
 		else
 			kunmap(map->page);
-	} else if (!atomic)
+	} 
+#ifdef CONFIG_HAS_IOMEM
+	else if (!atomic)
 		memunmap(map->hva);
 	else
 		WARN_ONCE(1, "Unexpected unmapping in atomic context");
+#endif
 
 	if (dirty)
 		mark_page_dirty_in_slot(memslot, map->gfn);
