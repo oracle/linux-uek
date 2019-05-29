@@ -28,6 +28,7 @@
 /* Subsystem Device ID */
 #define PCI_SUBSYS_DEVID_8XXX	0xA
 #define PCI_SUBSYS_DEVID_9XXX	0xB
+#define PCI_SUBSYS_DEVID_95XX	0xB3
 
 #define KHZ_400 (400000)
 #define MHZ_26  (26000000)
@@ -327,4 +328,13 @@ static inline bool is_mmc_otx2_A0(struct cvm_mmc_host *host)
 	return false;
 #endif
 }
+
+static inline bool is_mmc_95xx(struct cvm_mmc_host *host)
+{
+	struct pci_dev *pdev = host->pdev;
+	u32 chip_id = (pdev->subsystem_device >> 8) & 0xFF;
+
+	return (chip_id == PCI_SUBSYS_DEVID_95XX);
+}
+
 #endif
