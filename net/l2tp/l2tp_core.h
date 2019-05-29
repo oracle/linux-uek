@@ -320,10 +320,21 @@ do {									\
 #define l2tp_session_dec_refcount(s) l2tp_session_dec_refcount_1(s)
 #endif
 
+static inline int l2tp_get_l2specific_len(struct l2tp_session *session)
+{
+	switch (session->l2specific_type) {
+	case L2TP_L2SPECTYPE_DEFAULT:
+		return 4;
+	case L2TP_L2SPECTYPE_NONE:
+	default:
+		return 0;
+	}
+}
+
 static inline int l2tp_v3_ensure_opt_in_linear(struct l2tp_session *session, struct sk_buff *skb,
 					       unsigned char **ptr, unsigned char **optr)
 {
-	int opt_len = session->peer_cookie_len + session->l2specific_len;
+	int opt_len = session->peer_cookie_len + l2tp_get_l2specific_len(session);
 
 	if (opt_len > 0) {
 		int off = *ptr - *optr;

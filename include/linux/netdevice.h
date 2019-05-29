@@ -1372,6 +1372,7 @@ struct net_device_ops {
  * @IFF_FAILOVER: device is a failover master device
  * @IFF_FAILOVER_SLAVE: device is lower dev of a failover master device
  * @IFF_LIVE_RENAME_OK: rename is allowed while device is up and running
+ * @IFF_L3MDEV_RX_HANDLER: only invoke the rx handler of L3 master device
  */
 enum netdev_priv_flags {
 	IFF_802_1Q_VLAN			= 1<<0,
@@ -1403,6 +1404,7 @@ enum netdev_priv_flags {
 	IFF_FAILOVER			= 1<<26,
 	IFF_FAILOVER_SLAVE		= 1<<27,
 	IFF_LIVE_RENAME_OK		= 1<<28,
+	IFF_L3MDEV_RX_HANDLER		= 1<<29,
 };
 
 #define IFF_802_1Q_VLAN			IFF_802_1Q_VLAN
@@ -1433,6 +1435,7 @@ enum netdev_priv_flags {
 #define IFF_FAILOVER			IFF_FAILOVER
 #define IFF_FAILOVER_SLAVE		IFF_FAILOVER_SLAVE
 #define IFF_LIVE_RENAME_OK		IFF_LIVE_RENAME_OK
+#define IFF_L3MDEV_RX_HANDLER		IFF_L3MDEV_RX_HANDLER
 
 /**
  *	struct net_device - The DEVICE structure.
@@ -4232,6 +4235,11 @@ static inline bool netif_is_bond_slave(const struct net_device *dev)
 static inline bool netif_supports_nofcs(struct net_device *dev)
 {
 	return dev->priv_flags & IFF_SUPP_NOFCS;
+}
+
+static inline bool netif_has_l3_rx_handler(const struct net_device *dev)
+{
+	return dev->priv_flags & IFF_L3MDEV_RX_HANDLER;
 }
 
 static inline bool netif_is_l3_master(const struct net_device *dev)
