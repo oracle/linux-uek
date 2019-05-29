@@ -196,12 +196,15 @@ static int cvm_mmc_configure_delay(struct cvm_mmc_slot *slot)
 			break;
 		}
 
-		if (!cvm_is_mmc_timing_ddr(slot))
-			dout = cout;
-		else if (ddr_cmd_taps)
-			cout = dout = cout / 2;
-		else
-			dout = cout / 2;
+		if (!is_mmc_95xx(host)) {
+			if (!cvm_is_mmc_timing_ddr(slot))
+				dout = cout;
+			else if (ddr_cmd_taps)
+				cout = dout = cout / 2;
+			else
+				dout = cout / 2;
+		} else
+			dout = 10;
 
 		slot->taps =
 			FIELD_PREP(MIO_EMM_TIMING_CMD_IN, cin) |
