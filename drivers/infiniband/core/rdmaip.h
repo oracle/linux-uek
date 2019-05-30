@@ -356,7 +356,7 @@ enum {
  *     net_event
  */
 
-struct rdmaip_port_ud_work {
+struct rdmaip_dly_work_req {
 	struct delayed_work	work;
 	struct net_device	*netdev;
 	unsigned int		port;

@@ -1183,8 +1183,8 @@ static void rdmaip_failover(int port)
 
 static void rdmaip_failback(struct work_struct *_work)
 {
-	struct rdmaip_port_ud_work	*work =
-		container_of(_work, struct rdmaip_port_ud_work, work.work);
+	struct rdmaip_dly_work_req	*work =
+		container_of(_work, struct rdmaip_dly_work_req, work.work);
 	u8				i, ip_active_port, port = work->port;
 
 	if (work->queued) {
@@ -1391,7 +1391,7 @@ static void rdmaip_update_port_status_all_layers(u8 port, int event_type,
 static void rdmaip_sched_failover_failback(struct net_device *netdev, u8 port,
 					   int port_transition_to)
 {
-	struct rdmaip_port_ud_work	*work;
+	struct rdmaip_dly_work_req	*work;
 
 	if (port_transition_to == RDMAIP_PORT_TRANSITION_UP) {
 		/*
@@ -1481,8 +1481,8 @@ static void rdmaip_impl_ib_event_handler(struct work_struct *_work)
 	struct rdmaip_device		*rdmaip_dev;
 	u8				port;
 	bool				found = false;
-	struct rdmaip_port_ud_work	*work =
-		container_of(_work, struct rdmaip_port_ud_work, work.work);
+	struct rdmaip_dly_work_req	*work =
+		container_of(_work, struct rdmaip_dly_work_req, work.work);
 
 	rdmaip_dev = work->rdmaip_dev;
 
@@ -1546,7 +1546,7 @@ static void rdmaip_impl_ib_event_handler(struct work_struct *_work)
 static void rdmaip_event_handler(struct ib_event_handler *handler,
 				 struct ib_event *event)
 {
-	struct rdmaip_port_ud_work	*work;
+	struct rdmaip_dly_work_req	*work;
 
 	if (!ip_port_cnt) {
 		RDMAIP_DBG2("No ip_config ports\n");
@@ -2366,8 +2366,8 @@ static int rdmaip_get_port_index(struct net_device *ndev)
 
 static void rdmaip_add_new_rdmaip_port_handler(struct work_struct *_work)
 {
-	struct rdmaip_port_ud_work      *work =
-		container_of(_work, struct rdmaip_port_ud_work, work.work);
+	struct rdmaip_dly_work_req      *work =
+		container_of(_work, struct rdmaip_dly_work_req, work.work);
 	struct net_device *ndev = work->netdev;
 	struct in_device	*in_dev;
 	struct inet6_dev	*in6_dev;
@@ -2429,7 +2429,7 @@ out:
 
 static void rdmaip_add_new_rdmaip_port(struct net_device *netdev)
 {
-	struct rdmaip_port_ud_work *work;
+	struct rdmaip_dly_work_req *work;
 
 	RDMAIP_DBG2("Adding to new netdev %s interface\n", netdev->name);
 
@@ -2455,8 +2455,8 @@ static void rdmaip_add_new_rdmaip_port(struct net_device *netdev)
 static void rdmaip_impl_netdev_callback(struct work_struct *_work)
 {
 	u8 port = 0;
-	struct rdmaip_port_ud_work	*work =
-		container_of(_work, struct rdmaip_port_ud_work, work.work);
+	struct rdmaip_dly_work_req	*work =
+		container_of(_work, struct rdmaip_dly_work_req, work.work);
 	long int event = work->net_event;
 	struct net_device *ndev = work->netdev;
 
@@ -2529,7 +2529,7 @@ static int rdmaip_netdev_callback(struct notifier_block *self,
 				  unsigned long event, void *ctx)
 {
 	struct net_device *ndev = netdev_notifier_info_to_dev(ctx);
-	struct rdmaip_port_ud_work	*work;
+	struct rdmaip_dly_work_req	*work;
 
 	/* Ignore the event if the event is not related to RDMA device */
 	if (ndev->type != ARPHRD_INFINIBAND) {
@@ -2645,7 +2645,7 @@ static void rdmaip_inetaddr_unregister(void)
 static void rdmaip_comm_inetaddr_handler(struct net_device *netdev,
 					 unsigned long event)
 {
-	struct rdmaip_port_ud_work	*work;
+	struct rdmaip_dly_work_req	*work;
 
 	/*
 	 * Only interested on address addition at this time to
@@ -2709,8 +2709,8 @@ static int rdmaip_inet6addr_event(struct notifier_block *this,
 static void rdmaip_impl_inetaddr_event(struct work_struct *_work)
 {
 	int				port;
-	struct rdmaip_port_ud_work	*work =
-		container_of(_work, struct rdmaip_port_ud_work, work.work);
+	struct rdmaip_dly_work_req	*work =
+		container_of(_work, struct rdmaip_dly_work_req, work.work);
 
 	mutex_lock(&rdmaip_global_flag_lock);
 	if (rdmaip_is_teardown_flag_set()) {
@@ -2767,7 +2767,7 @@ static int rdmaip_inetaddr_event(struct notifier_block *this,
  */
 void rdmaip_cleanup(void)
 {
-	struct rdmaip_port_ud_work	*work, *temp;
+	struct rdmaip_dly_work_req	*work, *temp;
 
 	RDMAIP_DBG2("%s Enter rdmaip_init_flag = 0x%x\n", __func__,
 		    rdmaip_init_flag);
