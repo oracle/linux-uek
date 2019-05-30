@@ -74,7 +74,7 @@ static int rdmaip_inet6addr_event(struct notifier_block *,
 static void rdmaip_impl_inetaddr_event(struct work_struct *);
 static void rdmaip_inetaddr_unregister(void);
 
-static DECLARE_DELAYED_WORK(riif_dlywork, rdmaip_initial_failovers);
+static DECLARE_DELAYED_WORK(rdmaip_dlywork, rdmaip_initial_failovers);
 
 static LIST_HEAD(rdmaip_delayed_work_list);
 
@@ -1751,7 +1751,7 @@ static void rdmaip_initial_failovers(struct work_struct *workarg)
 		if (timeout_until_initial_failovers > 0) {
 			timeout_until_initial_failovers -=
 			  msecs_to_jiffies(100);
-			queue_delayed_work(rdmaip_wq, &riif_dlywork,
+			queue_delayed_work(rdmaip_wq, &rdmaip_dlywork,
 					   msecs_to_jiffies(100));
 			initial_failovers_iterations++;
 			return;
@@ -1862,7 +1862,7 @@ rdmaip_sched_initial_failovers(void)
 	timeout_until_initial_failovers =
 		msecs_to_jiffies(rdmaip_trigger_delay_max_msecs);
 
-	queue_delayed_work(rdmaip_wq, &riif_dlywork,
+	queue_delayed_work(rdmaip_wq, &rdmaip_dlywork,
 			   msecs_to_jiffies(rdmaip_trigger_delay_min_msecs));
 }
 
@@ -2569,7 +2569,7 @@ void rdmaip_destroy_workqs(void)
 {
 
 	if (rdmaip_init_flag & RDMAIP_IP_WQ_CREATED) {
-		cancel_delayed_work_sync(&riif_dlywork);
+		cancel_delayed_work_sync(&rdmaip_dlywork);
 		destroy_workqueue(rdmaip_wq);
 		rdmaip_init_flag &= ~RDMAIP_IP_WQ_CREATED;
 	}
