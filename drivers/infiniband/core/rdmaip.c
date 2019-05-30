@@ -75,6 +75,9 @@ static void rdmaip_impl_inetaddr_event(struct work_struct *);
 static void rdmaip_inetaddr_unregister(void);
 
 static DECLARE_DELAYED_WORK(riif_dlywork, rdmaip_initial_failovers);
+
+static LIST_HEAD(rdmaip_delayed_work_list);
+
 /*
  * This structure is registed with IB core. IB core calls
  * rdmaip_device_add() function when ever a new RDMA adpter
@@ -1184,6 +1187,12 @@ static void rdmaip_failback(struct work_struct *_work)
 		container_of(_work, struct rdmaip_port_ud_work, work.work);
 	u8				i, ip_active_port, port = work->port;
 
+	if (work->queued) {
+		list_del(&work->list);
+		work->queued = false;
+		RDMAIP_DBG2("Deleted %p work from the list\n", work);
+	}
+
 	if ((ip_config[port].port_state == RDMAIP_PORT_INIT) ||
 	    (ip_config[port].port_state == RDMAIP_PORT_DOWN)) {
 		pr_err("rdmaip: devname %s failback request with port_state in %s state!",
@@ -1398,9 +1407,12 @@ static void rdmaip_sched_failover_failback(struct net_device *netdev, u8 port,
 		work->netdev = netdev;
 		if (rdmaip_active_bonding_failback) {
 			RDMAIP_DBG2("Schedule failback\n");
+			work->queued = true;
 			INIT_DELAYED_WORK(&work->work, rdmaip_failback);
 			queue_delayed_work(rdmaip_wq, &work->work,
 					   rdmaip_get_failback_sync_jiffies(port));
+			list_add(&work->list, &rdmaip_delayed_work_list);
+			RDMAIP_DBG2("Adding %p work to the list\n", work);
 		} else
 			kfree(work);
 	} else {
@@ -1562,6 +1574,7 @@ static void rdmaip_event_handler(struct ib_event_handler *handler,
 	work->ib_port		= event->element.port_num;
 
 	INIT_DELAYED_WORK(&work->work, rdmaip_impl_ib_event_handler);
+	work->queued = false;
 	queue_delayed_work(rdmaip_wq, &work->work, 0);
 
 	RDMAIP_DBG2("Queued IB event handler to process events : %s\n",
@@ -2363,6 +2376,12 @@ static void rdmaip_add_new_rdmaip_port_handler(struct work_struct *_work)
 	u8                      port = 0;
 	u16 pkey_vid = 0;
 
+	if (work->queued) {
+		list_del(&work->list);
+		work->queued = false;
+		RDMAIP_DBG2("Deleted  %p work from the list\n", work);
+	}
+
 	in_dev = in_dev_get(ndev);
 	if (rdmaip_inet6_socket)
 		in6_dev = in6_dev_get(ndev);
@@ -2421,10 +2440,13 @@ static void rdmaip_add_new_rdmaip_port(struct net_device *netdev)
 		if (work) {
 			work->netdev = netdev;
 			work->timeout = msecs_to_jiffies(10000);
+			work->queued = true;
 			INIT_DELAYED_WORK(&work->work,
 					  rdmaip_add_new_rdmaip_port_handler);
 			queue_delayed_work(rdmaip_wq, &work->work,
 					msecs_to_jiffies(100));
+			list_add(&work->list, &rdmaip_delayed_work_list);
+			RDMAIP_DBG2("Adding %p work to the list\n", work);
 		} else
 			RDMAIP_DBG2("Failed to allocated memory for work\n");
 	}
@@ -2437,6 +2459,12 @@ static void rdmaip_impl_netdev_callback(struct work_struct *_work)
 		container_of(_work, struct rdmaip_port_ud_work, work.work);
 	long int event = work->net_event;
 	struct net_device *ndev = work->netdev;
+
+	if (work->queued) {
+		list_del(&work->list);
+		work->queued = false;
+		RDMAIP_DBG2("Deleted  %p work from the list\n", work);
+	}
 
 	mutex_lock(&rdmaip_global_flag_lock);
 	if (rdmaip_is_busy_flag_set() || rdmaip_is_teardown_flag_set()) {
@@ -2526,6 +2554,7 @@ static int rdmaip_netdev_callback(struct notifier_block *self,
 	work->event_type	= RDMAIP_EVENT_NET;
 	work->net_event		= event;
 	work->netdev		= ndev;
+	work->queued		= false;
 
 	INIT_DELAYED_WORK(&work->work, rdmaip_impl_netdev_callback);
 	queue_delayed_work(rdmaip_wq, &work->work, 0);
@@ -2636,9 +2665,10 @@ static void rdmaip_comm_inetaddr_handler(struct net_device *netdev,
 	work->event_type	= RDMAIP_EVENT_INETADDR;
 	work->net_event		= event;
 	work->netdev		= netdev;
+	work->queued		= false;
 
 	INIT_DELAYED_WORK(&work->work, rdmaip_impl_inetaddr_event);
-	queue_delayed_work(rdmaip_wq, &work->work, RDMAIP_100MSECS);
+	queue_delayed_work(rdmaip_wq, &work->work, 0);
 }
 
 /*
@@ -2681,6 +2711,14 @@ static void rdmaip_impl_inetaddr_event(struct work_struct *_work)
 	int				port;
 	struct rdmaip_port_ud_work	*work =
 		container_of(_work, struct rdmaip_port_ud_work, work.work);
+
+	mutex_lock(&rdmaip_global_flag_lock);
+	if (rdmaip_is_teardown_flag_set()) {
+		RDMAIP_DBG2("Teardown inprogress: skip inetaddr event\n");
+		mutex_unlock(&rdmaip_global_flag_lock);
+		return;
+	}
+	mutex_unlock(&rdmaip_global_flag_lock);
 
 	port = rdmaip_get_port_index(work->netdev);
 	if (!port) {
@@ -2729,6 +2767,8 @@ static int rdmaip_inetaddr_event(struct notifier_block *this,
  */
 void rdmaip_cleanup(void)
 {
+	struct rdmaip_port_ud_work	*work, *temp;
+
 	RDMAIP_DBG2("%s Enter rdmaip_init_flag = 0x%x\n", __func__,
 		    rdmaip_init_flag);
 
@@ -2753,6 +2793,22 @@ void rdmaip_cleanup(void)
 	if (rdmaip_init_flag & RDMAIP_REG_NETDEV_NOTIFIER) {
 		unregister_netdevice_notifier(&rdmaip_nb);
 		rdmaip_init_flag &= ~RDMAIP_REG_NETDEV_NOTIFIER;
+	}
+
+	/*
+	 * Make sure all the queued (except delayed) works
+	 * in rdmaip_wq callbacks run to completion. This
+	 * also ensures that no new work is queued to the
+	 * queue.
+	 */
+	flush_workqueue(rdmaip_wq);
+
+	/* Cancel all the delayed work items */
+	list_for_each_entry_safe(work, temp, &rdmaip_delayed_work_list, list) {
+		list_del(&work->list);
+		RDMAIP_DBG2("Cancelling %p delayed work\n", work);
+		cancel_delayed_work_sync(&work->work);
+		kfree(work);
 	}
 
 	rdmaip_destroy_workqs();
