@@ -126,6 +126,26 @@ static void npc_set_layer_mdata(struct npc_mcam *mcam, enum key_fields type,
 	input->layer_mdata.lid = lid;
 }
 
+static bool npc_check_overlap_fields(struct npc_key_field *input1,
+				     struct npc_key_field *input2)
+{
+	int kwi;
+
+	/* Fields with same layer id and different ltypes are mutually
+	 * exclusive hence they can be overlapped
+	 */
+	if (input1->layer_mdata.lid == input2->layer_mdata.lid &&
+	    input1->layer_mdata.ltype != input2->layer_mdata.ltype)
+		return false;
+
+	for (kwi = 0; kwi < NPC_MAX_KWS_IN_KEY; kwi++) {
+		if (input1->kw_mask[kwi] & input2->kw_mask[kwi])
+			return true;
+	}
+
+	return false;
+}
+
 /* Helper function to check whether given field overlaps with any other fields
  * in the key. Due to limitations on key size and the key extraction profile in
  * use higher layers can overwrite lower layer's header fields. Hence overlap
@@ -136,7 +156,7 @@ static bool npc_check_overlap(struct rvu *rvu, int blkaddr,
 {
 	struct npc_mcam *mcam = &rvu->hw->mcam;
 	struct npc_key_field *dummy, *input;
-	int start_kwi, offset, i;
+	int start_kwi, offset;
 	u8 nr_bits, lid, lt, ld;
 	u64 cfg;
 
@@ -166,11 +186,8 @@ static bool npc_check_overlap(struct rvu *rvu, int blkaddr,
 				/* check any input field bits falls in any
 				 * other field bits.
 				 */
-				for (i = 0; i < NPC_MAX_KWS_IN_KEY; i++) {
-					if (dummy->kw_mask[i] &
-					    input->kw_mask[i])
-						return true;
-				}
+				if (npc_check_overlap_fields(dummy, input))
+					return true;
 			}
 		}
 	}
@@ -380,62 +397,16 @@ do {									       \
 	NPC_SCAN_HDR(NPC_VLAN_TAG2, NPC_LID_LB, NPC_LT_LB_STAG, 2, 2);
 }
 
-static bool npc_check_overlap_fields(struct npc_mcam *mcam,
-				     enum key_fields hdr1, enum key_fields hdr2)
-{
-	struct npc_key_field *input1 = &mcam->key_fields[hdr1];
-	struct npc_key_field *input2 = &mcam->key_fields[hdr2];
-	int kwi;
-
-	for (kwi = 0; kwi < NPC_MAX_KWS_IN_KEY; kwi++) {
-		if (input1->kw_mask[kwi] & input2->kw_mask[kwi])
-			return true;
-	}
-
-	return false;
-}
-
 static void npc_set_features(struct rvu *rvu, int blkaddr)
 {
 	struct npc_mcam *mcam = &rvu->hw->mcam;
 	u64 tcp_udp;
 	int err, hdr;
 
-	/* strict checking */
 	for (hdr = NPC_DMAC; hdr < NPC_HEADER_FIELDS_MAX; hdr++) {
 		err = npc_check_field(rvu, blkaddr, hdr);
 		if (!err)
 			mcam->features |= BIT_ULL(hdr);
-	}
-	/* exceptions: some fields can overlap because they are mutually
-	 * exclusive like tcp/udp, ip4/ipv6 we handle such cases below
-	 */
-	if (npc_check_overlap_fields(mcam, NPC_SPORT_TCP, NPC_SPORT_UDP)) {
-		mcam->features |= BIT_ULL(NPC_SPORT_TCP);
-		mcam->features |= BIT_ULL(NPC_SPORT_UDP);
-	}
-	if (npc_check_overlap_fields(mcam, NPC_DPORT_TCP, NPC_DPORT_UDP)) {
-		mcam->features |= BIT_ULL(NPC_DPORT_TCP);
-		mcam->features |= BIT_ULL(NPC_DPORT_UDP);
-	}
-	/* An ipv6 address is 128 bits so it can overlap with source and
-	 * destination addresses of ipv4
-	 */
-	if (npc_check_overlap_fields(mcam, NPC_SIP_IPV4, NPC_SIP_IPV6)) {
-		mcam->features |= BIT_ULL(NPC_SIP_IPV4);
-		mcam->features |= BIT_ULL(NPC_SIP_IPV6);
-	}
-	if (npc_check_overlap_fields(mcam, NPC_DIP_IPV4, NPC_SIP_IPV6)) {
-		mcam->features |= BIT_ULL(NPC_DIP_IPV4);
-		mcam->features |= BIT_ULL(NPC_SIP_IPV6);
-	}
-	if (npc_check_overlap_fields(mcam, NPC_SIP_IPV4, NPC_DIP_IPV6)) {
-		mcam->features |= BIT_ULL(NPC_SIP_IPV4);
-		mcam->features |= BIT_ULL(NPC_DIP_IPV6);
-	}
-	if (npc_check_overlap_fields(mcam, NPC_DIP_IPV4, NPC_DIP_IPV6)) {
-		mcam->features |= BIT_ULL(NPC_DIP_IPV4);
-		mcam->features |= BIT_ULL(NPC_DIP_IPV6);
 	}
 
 	tcp_udp = BIT_ULL(NPC_SPORT_TCP) | BIT_ULL(NPC_SPORT_UDP) |
