@@ -51,14 +51,6 @@
 
 static struct workqueue_struct *rdmaip_wq;
 static struct workqueue_struct *rdmaip_garps_wq;
-struct rdmaip_send_garps {
-	struct delayed_work work;
-	struct net_device *out_dev;
-	unsigned char *dev_addr;
-	unsigned long delay;
-	__be32 ip_addr;
-	int garps_left;
-};
 
 static void rdmaip_device_add(struct ib_device *device);
 static void rdmaip_device_remove(struct ib_device *device, void *client_data);
@@ -296,25 +288,51 @@ static u8 rdmaip_get_failover_port(u8 port)
 
 static void rdmaip_garp_work_handler(struct work_struct *_work)
 {
-	struct rdmaip_send_garps *garps;
+	struct rdmaip_dly_work_req *garps;
 
-	garps = container_of(_work, struct rdmaip_send_garps,  work.work);
+	garps = container_of(_work, struct rdmaip_dly_work_req,  work.work);
+
+	/*
+	 * If module unload in progress, dont queue the work request to the
+	 * rdmaip_garps_wq.
+	 * Note: Work is not added to the linked list in the
+	 * rdmaip_send_gratuitous_arp() function as there was no
+	 * delay when queueing the delayed work to the queue.
+	 * SO, dont delete it here for that case.
+	 */
+	if (garps->queued) {
+		list_del(&garps->list);
+		garps->queued = false;
+		RDMAIP_DBG2("Deleted  %p GARP work from the list\n", garps);
+	}
+
+	mutex_lock(&rdmaip_global_flag_lock);
+	if (rdmaip_is_teardown_flag_set()) {
+		RDMAIP_DBG2("Teardown inprogress - skip GARP send\n");
+		mutex_unlock(&rdmaip_global_flag_lock);
+		return;
+	}
+	mutex_unlock(&rdmaip_global_flag_lock);
 
 	arp_send(ARPOP_REQUEST, ETH_P_ARP,
-		 garps->ip_addr, garps->out_dev,
+		 garps->ip_addr, garps->netdev,
 		 garps->ip_addr, NULL,
 		 garps->dev_addr, NULL);
 
-	if (--garps->garps_left >= 0)
+	if (--garps->garps_left >= 0) {
+		garps->queued = true;
 		queue_delayed_work(rdmaip_garps_wq, &garps->work, garps->delay);
-	else
+		list_add(&garps->list, &rdmaip_delayed_work_list);
+		RDMAIP_DBG2("Adding %p GARP work to the list\n", garps);
+	} else {
 		kfree(garps);
+	}
 }
 
 static void rdmaip_send_gratuitous_arp(struct net_device *out_dev,
 				       unsigned char *dev_addr, __be32 ip_addr)
 {
-	struct rdmaip_send_garps *garps = kmalloc(sizeof(*garps), GFP_ATOMIC);
+	struct rdmaip_dly_work_req *garps = kmalloc(sizeof(*garps), GFP_ATOMIC);
 
 	if (!garps) {
 		RDMAIP_DBG1_PTR("kmalloc failed. Cannot send garps for %s %pI4\n",
@@ -347,11 +365,12 @@ static void rdmaip_send_gratuitous_arp(struct net_device *out_dev,
 		rdmaip_active_bonding_arps_gap_ms = RDMAIP_DEFAULT_NUM_ARPS_GAP_MS;
 	}
 
-	garps->out_dev = out_dev;
+	garps->netdev = out_dev;
 	garps->dev_addr = dev_addr;
 	garps->delay = msecs_to_jiffies(rdmaip_active_bonding_arps_gap_ms);
 	garps->ip_addr = ip_addr;
 	garps->garps_left = rdmaip_active_bonding_arps;
+	garps->queued = false;
 
 	INIT_DELAYED_WORK(&garps->work, rdmaip_garp_work_handler);
 	queue_delayed_work(rdmaip_garps_wq, &garps->work, 0);
@@ -1413,8 +1432,9 @@ static void rdmaip_sched_failover_failback(struct net_device *netdev, u8 port,
 					   rdmaip_get_failback_sync_jiffies(port));
 			list_add(&work->list, &rdmaip_delayed_work_list);
 			RDMAIP_DBG2("Adding %p work to the list\n", work);
-		} else
+		} else {
 			kfree(work);
+		}
 	} else {
 		RDMAIP_DBG2("Calling rdmaip_failover port %d\n", port);
 		rdmaip_failover(port);
@@ -2802,6 +2822,7 @@ void rdmaip_cleanup(void)
 	 * queue.
 	 */
 	flush_workqueue(rdmaip_wq);
+	flush_workqueue(rdmaip_garps_wq);
 
 	/* Cancel all the delayed work items */
 	list_for_each_entry_safe(work, temp, &rdmaip_delayed_work_list, list) {
