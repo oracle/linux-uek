@@ -53,8 +53,6 @@
 #define RDMAIP_DEFAULT_GIDTBL_LEN	64
 #define	RDMAIP_MAX_NAME_LEN		32
 
-#define RDMAIP_100MSECS			100
-
 #define RDMAIP_DEV_TYPE_IB		0x1
 #define RDMAIP_DEV_TYPE_ETHER		0x2
 
@@ -368,6 +366,8 @@ struct rdmaip_port_ud_work {
 	int			event_type;
 	int			ib_event;
 	int			net_event;
+	bool			queued;
+	struct list_head	list;
 };
 
 enum {
