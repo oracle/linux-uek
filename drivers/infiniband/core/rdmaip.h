@@ -366,6 +366,10 @@ struct rdmaip_dly_work_req {
 	int			event_type;
 	int			ib_event;
 	int			net_event;
+	unsigned char		*dev_addr;
+	unsigned long		delay;
+	__be32			ip_addr;
+	int			garps_left;
 	bool			queued;
 	struct list_head	list;
 };
@@ -374,7 +378,8 @@ enum {
 	RDMAIP_EVENT_NONE,
 	RDMAIP_EVENT_IB,
 	RDMAIP_EVENT_NET,
-	RDMAIP_EVENT_INETADDR
+	RDMAIP_EVENT_INETADDR,
+	RDMAIP_EVENT_GARP
 };
 
 #define ibdev_to_rdmaipdev(ibdev) dev_to_node((ibdev)->dev.parent)
