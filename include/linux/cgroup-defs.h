@@ -257,6 +257,8 @@ struct css_set {
 
 	/* For RCU-protected deletion */
 	struct rcu_head rcu_head;
+
+	UEK_KABI_EXTEND(struct list_head dying_tasks)
 };
 
 /*
