@@ -118,6 +118,102 @@ static struct cvm_mmc_cr_type cvm_mmc_cr_types[] = {
 	{0, 0}		/* CMD63 */
 };
 
+static bool ddr_cmd_taps;
+module_param(ddr_cmd_taps, bool, 0644);
+MODULE_PARM_DESC(ddr_cmd_taps, "reduce cmd_out_taps in DDR modes, as before");
+
+static bool cvm_is_mmc_timing_ddr(struct cvm_mmc_slot *slot)
+{
+	if ((slot->mmc->ios.timing == MMC_TIMING_UHS_DDR50) ||
+	   (slot->mmc->ios.timing == MMC_TIMING_MMC_DDR52) ||
+	   (slot->mmc->ios.timing == MMC_TIMING_MMC_HS400))
+		return true;
+	else
+		return false;
+}
+
+static void cvm_mmc_set_timing(struct cvm_mmc_slot *slot)
+{
+	if (!is_mmc_otx2(slot->host))
+		return;
+
+	writeq(slot->taps, slot->host->base + MIO_EMM_TIMING(slot->host));
+}
+
+static int cvm_mmc_configure_delay(struct cvm_mmc_slot *slot)
+{
+	struct cvm_mmc_host *host = slot->host;
+	struct mmc_host *mmc = slot->mmc;
+
+	if (is_mmc_otx2(host)) {
+		int half = MAX_NO_OF_TAPS / 2;
+		int cin = FIELD_GET(MIO_EMM_TIMING_CMD_IN, slot->taps);
+		int din = FIELD_GET(MIO_EMM_TIMING_DATA_IN, slot->taps);
+		int cout, dout;
+
+		if (!slot->taps)
+			cin = din = half;
+		/*
+		 * EMM_CMD hold time from rising edge of EMMC_CLK.
+		 * Typically 5.0 ns at frequencies < 26 MHz.
+		 * Typically 2.5 ns at frequencies <= 52 MHz.
+		 * Typically 0.4 ns at frequencies > 52 MHz.
+		 */
+		switch (mmc->ios.timing) {
+		case MMC_TIMING_LEGACY:
+		default:
+			cout = 63;
+			if (mmc->card && mmc_card_mmc(mmc->card))
+				cout = 39;
+			break;
+		case MMC_TIMING_UHS_SDR12:
+			cout = 39;
+			break;
+		case MMC_TIMING_MMC_HS:
+			cout = 32;
+			break;
+		case MMC_TIMING_SD_HS:
+		case MMC_TIMING_UHS_SDR25:
+		case MMC_TIMING_UHS_SDR50:
+			cout = 26;
+			break;
+		case MMC_TIMING_UHS_DDR50:
+		case MMC_TIMING_MMC_DDR52:
+			cout = 20;
+			break;
+		case MMC_TIMING_UHS_SDR104:
+		case MMC_TIMING_MMC_HS200:
+		case MMC_TIMING_MMC_HS400:
+			cout = 10;
+			break;
+		}
+
+		if (!cvm_is_mmc_timing_ddr(slot))
+			dout = cout;
+		else if (ddr_cmd_taps)
+			cout = dout = cout / 2;
+		else
+			dout = cout / 2;
+
+		slot->taps =
+			FIELD_PREP(MIO_EMM_TIMING_CMD_IN, cin) |
+			FIELD_PREP(MIO_EMM_TIMING_CMD_OUT, cout) |
+			FIELD_PREP(MIO_EMM_TIMING_DATA_IN, din) |
+			FIELD_PREP(MIO_EMM_TIMING_DATA_OUT, dout);
+
+		pr_debug("taps %llx\n", slot->taps);
+		cvm_mmc_set_timing(slot);
+	} else {
+		/* MIO_EMM_SAMPLE is till T8XXX */
+		u64 emm_sample =
+			FIELD_PREP(MIO_EMM_SAMPLE_CMD_CNT, slot->cmd_cnt) |
+			FIELD_PREP(MIO_EMM_SAMPLE_DAT_CNT, slot->data_cnt);
+		writeq(emm_sample, host->base + MIO_EMM_SAMPLE(host));
+	}
+
+	return 0;
+}
+
 static struct cvm_mmc_cr_mods cvm_mmc_get_cr_mods(struct mmc_command *cmd)
 {
 	struct cvm_mmc_cr_type *cr;
@@ -312,11 +408,11 @@ static void cvm_mmc_switch_to(struct cvm_mmc_slot *slot)
 	host->powered = true;
 
 	emm_sample = FIELD_PREP(MIO_EMM_SAMPLE_CMD_CNT, slot->cmd_cnt) |
-		     FIELD_PREP(MIO_EMM_SAMPLE_DAT_CNT, slot->dat_cnt);
+		     FIELD_PREP(MIO_EMM_SAMPLE_DAT_CNT, slot->data_cnt);
 	writeq(emm_sample, host->base + MIO_EMM_SAMPLE(host));
 
 	emmc_io_drive_setup(slot);
-
+	cvm_mmc_configure_delay(slot);
 	host->last_slot = slot->bus_id;
 }
 
@@ -1065,12 +1161,12 @@ static int cvm_mmc_of_parse(struct device *dev, struct cvm_mmc_slot *slot)
 	of_property_read_u32(node, "cavium,dat-clk-skew", &dat_skew);
 	if (is_mmc_8xxx(slot->host) || is_mmc_otx2(slot->host)) {
 		slot->cmd_cnt = cmd_skew;
-		slot->dat_cnt = dat_skew;
+		slot->data_cnt = dat_skew;
 	} else {
 		u64 clock_period = 1000000000000ull / slot->host->sys_freq;
 
 		slot->cmd_cnt = (cmd_skew + clock_period / 2) / clock_period;
-		slot->dat_cnt = (dat_skew + clock_period / 2) / clock_period;
+		slot->data_cnt = (dat_skew + clock_period / 2) / clock_period;
 	}
 
 	/* Get current drive and clk skew */
