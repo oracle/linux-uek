@@ -29,6 +29,7 @@
 #define PCI_SUBSYS_DEVID_9XXX	0xB
 
 #define KHZ_400 (400000)
+#define MHZ_26  (26000000)
 #define MHZ_52  (52000000)
 #define MHZ_100 (100000000)
 #define MHZ_200 (200000000)
@@ -47,6 +48,11 @@
 #define START_CALIBRATION	(0x1)
 #define TOTAL_NO_OF_TAPS	(512)
 #define PS_10000		(10 * 1000)
+#define PS_5000			(5000)
+#define PS_2500			(2500)
+#define PS_400			(400)
+#define MAX_NO_OF_TAPS		(63)
+
 
 /* DMA register addresses */
 #define MIO_EMM_DMA_FIFO_CFG(x)	(0x00 + x->reg_off_dma)
@@ -138,8 +144,12 @@ struct cvm_mmc_slot {
 	u64 cached_switch;
 	u64 cached_rca;
 
-	unsigned int cmd_cnt;		/* sample delay */
-	unsigned int dat_cnt;		/* sample delay */
+	u64 taps;			/* otx2: MIO_EMM_TIMING */
+	unsigned int cmd_cnt;		/* sample cmd in delay */
+	unsigned int data_cnt;		/* sample data in delay */
+
+	unsigned int cmd_out_tap;	/* sample cmd out delay */
+	unsigned int data_out_tap;	/* sample data out delay */
 
 	int drive;			/* Current drive */
 	int slew;			/* clock skew */
@@ -209,6 +219,11 @@ struct cvm_mmc_cr_mods {
 
 #define MIO_EMM_CALB_START		BIT_ULL(0)
 #define MIO_EMM_TAP_DELAY		GENMASK_ULL(7, 0)
+
+#define MIO_EMM_TIMING_CMD_IN		GENMASK_ULL(53, 48)
+#define MIO_EMM_TIMING_CMD_OUT		GENMASK_ULL(37, 32)
+#define MIO_EMM_TIMING_DATA_IN		GENMASK_ULL(21, 16)
+#define MIO_EMM_TIMING_DATA_OUT		GENMASK_ULL(5, 0)
 
 #define MIO_EMM_INT_NCB_FLT		BIT_ULL(7)
 #define MIO_EMM_INT_SWITCH_ERR		BIT_ULL(6)
