@@ -414,42 +414,11 @@ static int octeon_up_prepare(unsigned int cpu)
 	return 0;
 }
 
-static int octeon_cpu_callback(struct notifier_block *nfb,
-	unsigned long action, void *hcpu)
-{
-	unsigned int cpu = (unsigned long)hcpu;
-	int ret = 0;
-
-	switch (action) {
-	case CPU_UP_PREPARE_FROZEN:
-	case CPU_UP_PREPARE:
-		ret = octeon_up_prepare(cpu);
-		if (ret)
-			return notifier_from_errno(ret);
-		break;
-	case CPU_ONLINE_FROZEN:
-	case CPU_ONLINE:
-		pr_info("Cpu %d online\n", cpu);
-		break;
-	case CPU_DEAD_FROZEN:
-	case CPU_DEAD:
-		pr_info("Cpu %d offline\n", cpu);
-		break;
-	default:
-		/* No action required for other events */
-		break;
-	}
-
-	return NOTIFY_OK;
-}
-
-static struct notifier_block octeon_cpu_notifer = {
-	.notifier_call = octeon_cpu_callback,
-};
-
 static int register_cavium_notifier(void)
 {
-	return register_cpu_notifier(&octeon_cpu_notifer);
+	return cpuhp_setup_state_nocalls(CPUHP_MIPS_SOC_PREPARE,
+									"mips/cavium:prepare",
+									octeon_up_prepare, NULL);
 }
 
 early_initcall(register_cavium_notifier);
