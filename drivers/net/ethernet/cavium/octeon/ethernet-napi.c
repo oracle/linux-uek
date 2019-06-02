@@ -116,7 +116,6 @@ static int CVM_OCT_NAPI_POLL(struct napi_struct *napi, int budget)
 			no_work_count++;
 			continue;
 		}
-		no_work_count = 0;
 
 		packet_ptr = work->packet_ptr;
 		pskb = cvm_oct_packet_to_skb(cvm_oct_get_buffer_ptr(packet_ptr));
