@@ -22,9 +22,20 @@
 
 #include "gti.h"
 
+#define PCI_DEVID_OCTEONTX2_GTI		0xA017
+
+/* PCI BAR nos */
+#define GTI_PF_BAR0			0
+
 #define DRV_NAME        "gti-watchdog"
 #define DRV_VERSION     "1.0"
 
+/* Supported devices */
+static const struct pci_device_id gti_wdog_id_table[] = {
+	{ PCI_DEVICE(PCI_VENDOR_ID_CAVIUM, PCI_DEVID_OCTEONTX2_GTI) },
+	{ 0, }  /* end of table */
+};
+MODULE_DEVICE_TABLE(pci, gti_wdog_id_table);
 MODULE_AUTHOR("Marvell International Ltd.");
 MODULE_DESCRIPTION("Marvell GTI Watchdog Driver");
 MODULE_LICENSE("GPL v2");
@@ -177,59 +188,86 @@ static struct miscdevice gti_wdog_miscdevice = {
 	.fops = &gti_wdog_fops,
 };
 
-static int gti_wdog_probe(struct platform_device *pdev)
+static int gti_wdog_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 {
-	struct resource *r;
-	int ret_val;
+	unsigned long start, end;
+	u16 ctrl;
+	int err;
 
-	pr_info("gti wdog platform driver init\n");
-
-	/* get our first memory resource from the device tree */
-	r = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	if (!r) {
-		pr_err("IORESOURCE_MEM, 0 does not exist\n");
-		return -EINVAL;
-	}
-	pr_info("r->start = 0x%08lx\n", (unsigned long int)r->start);
-	pr_info("r->end = 0x%08lx\n", (unsigned long int)r->end);
-	g_mmio_base = r->start;
-
-	g_gti_devmem = devm_ioremap_resource(&pdev->dev, r);
-	if (IS_ERR(g_gti_devmem))
-		pr_warn("Could not ioremap gti device memory\n");
-
-	ret_val = misc_register(&gti_wdog_miscdevice);
-	if (ret_val != 0) {
-		if (g_gti_devmem)
-			devm_iounmap(&pdev->dev, g_gti_devmem);
-		pr_warn("Could not register gti wdog misc device\n");
+	err = pci_enable_device(pdev);
+	if (err) {
+		dev_err(&pdev->dev, "Failed to enable PCI device\n");
+		goto enable_failed;
 	}
 
+	err = pci_request_regions(pdev, DRV_NAME);
+	if (err) {
+		dev_err(&pdev->dev, "PCI request regions failed 0x%x\n", err);
+		goto map_failed;
+	}
+
+	pci_set_master(pdev);
+
+	/*
+	 * MSIXEN is disabled during Linux PCIe bus probe/enumeration, simply
+	 * enable it here, we don't need to setup any interrupts on Linux, as
+	 * we are delivering secure GTI MSIX interrupts to ATF.
+	 */
+
+	pci_read_config_word(pdev, pdev->msix_cap + PCI_MSIX_FLAGS, &ctrl);
+	ctrl &= ~PCI_MSIX_FLAGS_MASKALL;
+	ctrl |= PCI_MSIX_FLAGS_ENABLE;
+	pci_write_config_word(pdev, pdev->msix_cap + PCI_MSIX_FLAGS, ctrl);
+
+	start = pci_resource_start(pdev, GTI_PF_BAR0);
+	end = pci_resource_end(pdev, GTI_PF_BAR0);
+	g_mmio_base = start;
+
+	g_gti_devmem = pcim_iomap(pdev, GTI_PF_BAR0, 0);
+	if (!g_gti_devmem)
+		dev_warn(&pdev->dev, "Could not ioremap gti device memory\n");
+
+	err = misc_register(&gti_wdog_miscdevice);
+	if (err != 0) {
+		dev_err(&pdev->dev, "Failed to register misc device\n");
+		goto misc_register_fail;
+	}
 	return 0;
+
+misc_register_fail:
+	pci_release_regions(pdev);
+map_failed:
+	pci_disable_device(pdev);
+enable_failed:
+
+	return err;
 }
 
-static int gti_wdog_remove(struct platform_device *pdev)
+static void gti_wdog_remove(struct pci_dev *pdev)
 {
-	pr_info("gti wdog platform driver exit\n");
-	if (g_gti_devmem)
-		devm_iounmap(&pdev->dev, g_gti_devmem);
+	pci_release_regions(pdev);
+	pci_disable_device(pdev);
 	misc_deregister(&gti_wdog_miscdevice);
-	return 0;
 }
 
-static const struct of_device_id gti_wdog_of_ids[] = {
-	{ .compatible = "marvell,octeontx2-timer"},
-	{},
-};
-
-static struct platform_driver gti_wdog_driver = {
+static struct pci_driver gti_wdog_driver = {
+	.name = DRV_NAME,
+	.id_table = gti_wdog_id_table,
 	.probe = gti_wdog_probe,
 	.remove = gti_wdog_remove,
-	.driver = {
-		.name = "gti_watchdog",
-		.of_match_table = gti_wdog_of_ids,
-		.owner = THIS_MODULE,
-	},
 };
 
-module_platform_driver(gti_wdog_driver);
+static int __init gti_wdog_init_module(void)
+{
+	pr_info("%s\n", DRV_NAME);
+
+	return pci_register_driver(&gti_wdog_driver);
+}
+
+static void __exit gti_wdog_cleanup_module(void)
+{
+	pci_unregister_driver(&gti_wdog_driver);
+}
+
+module_init(gti_wdog_init_module);
+module_exit(gti_wdog_cleanup_module);
