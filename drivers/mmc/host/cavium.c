@@ -77,7 +77,7 @@ static struct cvm_mmc_cr_type cvm_mmc_cr_types[] = {
 	{1, 1},		/* CMD18 */
 	{2, 1},		/* CMD19 */
 	{2, 1},		/* CMD20 */
-	{1, 1},		/* CMD21 */
+	{0, 0},		/* CMD21 */
 	{0, 0},		/* CMD22 */
 	{0, 1},		/* CMD23 */
 	{2, 1},		/* CMD24 */
@@ -121,6 +121,10 @@ static struct cvm_mmc_cr_type cvm_mmc_cr_types[] = {
 	{0, 0},		/* CMD62 */
 	{0, 0}		/* CMD63 */
 };
+
+static int tapdance = 2;
+module_param(tapdance, int, 0644);
+MODULE_PARM_DESC(tapdance, "adjust bus-timing: (0=mid-eye, positive=Nth_fastest_tap)");
 
 static bool ddr_cmd_taps;
 module_param(ddr_cmd_taps, bool, 0644);
@@ -308,11 +312,11 @@ static void do_switch(struct cvm_mmc_host *host, u64 emm_switch)
 	 * Modes setting only taken from slot 0. Work around that hardware
 	 * issue by first switching to slot 0.
 	 */
-	bus_id = get_bus_id(emm_switch);
-	clear_bus_id(&emm_switch);
-	writeq(emm_switch, host->base + MIO_EMM_SWITCH(host));
-
-	set_bus_id(&emm_switch, bus_id);
+	if (bus_id) {
+		clear_bus_id(&emm_switch);
+		writeq(emm_switch, host->base + MIO_EMM_SWITCH(host));
+		set_bus_id(&emm_switch, bus_id);
+	}
 	writeq(emm_switch, host->base + MIO_EMM_SWITCH(host));
 
 	/* wait for the switch to finish */
@@ -325,8 +329,9 @@ static void do_switch(struct cvm_mmc_host *host, u64 emm_switch)
 
 	check_switch_errors(host);
 
-	if (slot && (emm_switch & MIO_EMM_SWITCH_CLK)) {
-		slot->cmd6_pending = false;
+	if (slot) {
+		if (emm_switch & MIO_EMM_SWITCH_CLK)
+			slot->cmd6_pending = false;
 		slot->cached_switch = emm_switch;
 	}
 }
@@ -421,10 +426,11 @@ static void cvm_mmc_switch_to(struct cvm_mmc_slot *slot)
 	host->last_slot = slot->bus_id;
 }
 
-static void do_read(struct cvm_mmc_host *host, struct mmc_request *req,
+static void do_read(struct cvm_mmc_slot *slot, struct mmc_request *req,
 		    u64 dbuf)
 {
-	struct sg_mapping_iter *smi = &host->smi;
+	struct cvm_mmc_host *host = slot->host;
+	struct sg_mapping_iter *smi = &slot->smi;
 	int data_len = req->data->blocks * req->data->blksz;
 	int bytes_xfered, shift = -1;
 	u64 dat = 0;
@@ -491,7 +497,7 @@ static void set_cmd_response(struct cvm_mmc_host *host, struct mmc_request *req,
 	}
 }
 
-static int get_dma_dir(struct mmc_data *data)
+static inline int get_dma_dir(struct mmc_data *data)
 {
 	return (data->flags & MMC_DATA_WRITE) ? DMA_TO_DEVICE : DMA_FROM_DEVICE;
 }
@@ -501,8 +507,8 @@ static int finish_dma_single(struct cvm_mmc_host *host, struct mmc_data *data)
 	data->bytes_xfered = data->blocks * data->blksz;
 	data->error = 0;
 
-	/* Clear and disable FIFO */
-	writeq(BIT_ULL(16), host->dma_base + MIO_EMM_DMA_FIFO_CFG(host));
+	writeq(MIO_EMM_DMA_FIFO_CFG_CLR,
+		host->dma_base + MIO_EMM_DMA_FIFO_CFG(host));
 	dma_unmap_sg(host->dev, data->sg, data->sg_len, get_dma_dir(data));
 	return 1;
 }
@@ -511,6 +517,7 @@ static int finish_dma_sg(struct cvm_mmc_host *host, struct mmc_data *data)
 {
 	u64 fifo_cfg;
 	int count;
+	void __iomem *dma_intp = host->dma_base + MIO_EMM_DMA_INT(host);
 
 	/* Check if there are any pending requests left */
 	fifo_cfg = readq(host->dma_base + MIO_EMM_DMA_FIFO_CFG(host));
@@ -521,8 +528,16 @@ static int finish_dma_sg(struct cvm_mmc_host *host, struct mmc_data *data)
 	data->bytes_xfered = data->blocks * data->blksz;
 	data->error = 0;
 
-	/* Clear and disable FIFO */
-	writeq(BIT_ULL(16), host->dma_base + MIO_EMM_DMA_FIFO_CFG(host));
+	writeq(MIO_EMM_DMA_FIFO_CFG_CLR,
+		host->dma_base + MIO_EMM_DMA_FIFO_CFG(host));
+
+	/* on read, wait for internal buffer to flush out to mem */
+	if (get_dma_dir(data) == DMA_FROM_DEVICE) {
+		while (!(readq(dma_intp) & MIO_EMM_DMA_INT_DMA))
+			udelay(10);
+		writeq(MIO_EMM_DMA_INT_DMA, dma_intp);
+	}
+
 	dma_unmap_sg(host->dev, data->sg, data->sg_len, get_dma_dir(data));
 	return 1;
 }
@@ -565,8 +580,8 @@ static void cleanup_dma(struct cvm_mmc_host *host, u64 rsp_sts)
 irqreturn_t cvm_mmc_interrupt(int irq, void *dev_id)
 {
 	struct cvm_mmc_host *host = dev_id;
-	struct mmc_request *req;
-	struct cvm_mmc_slot *slot;
+	struct mmc_request *req = NULL;
+	struct cvm_mmc_slot *slot = NULL;
 	unsigned long flags = 0;
 	u64 emm_int, rsp_sts;
 	bool host_done;
@@ -583,6 +598,12 @@ irqreturn_t cvm_mmc_interrupt(int irq, void *dev_id)
 	if (slot)
 		req = slot->current_req;
 
+	rsp_sts = readq(host->base + MIO_EMM_RSP_STS(host));
+	bus_id = get_bus_id(rsp_sts);
+	slot = host->slot[bus_id];
+	if (slot)
+		req = slot->current_req;
+
 	/* Clear interrupt bits (write 1 clears ). */
 	emm_int = readq(host->base + MIO_EMM_INT(host));
 	writeq(emm_int, host->base + MIO_EMM_INT(host));
@@ -590,7 +611,6 @@ irqreturn_t cvm_mmc_interrupt(int irq, void *dev_id)
 	if (emm_int & MIO_EMM_INT_SWITCH_ERR)
 		check_switch_errors(host);
 
-	req = host->current_req;
 	if (!req)
 		goto out;
 
@@ -598,7 +618,7 @@ irqreturn_t cvm_mmc_interrupt(int irq, void *dev_id)
 	 * dma_pend means DMA has stalled with CRC errs.
 	 * start teardown, get irq on completion, mmc stack retries.
 	 */
-	if ((rsp_sts & MIO_EMM_RSP_STS_DMA_PEND) && host->dma_active) {
+	if ((rsp_sts & MIO_EMM_RSP_STS_DMA_PEND) && slot->dma_active) {
 		cleanup_dma(host, rsp_sts);
 		goto out;
 	}
@@ -608,15 +628,15 @@ irqreturn_t cvm_mmc_interrupt(int irq, void *dev_id)
 	 * the request and wait for the interrupt indicating that
 	 * the DMA is finished.
 	 */
-	if ((rsp_sts & MIO_EMM_RSP_STS_DMA_VAL) && host->dma_active)
+	if ((rsp_sts & MIO_EMM_RSP_STS_DMA_VAL) && slot->dma_active)
 		goto out;
 
-	if (!host->dma_active && req->data &&
+	if (!slot->dma_active && req->data &&
 	    (emm_int & MIO_EMM_INT_BUF_DONE)) {
 		unsigned int type = (rsp_sts >> 7) & 3;
 
 		if (type == 1)
-			do_read(host, req, rsp_sts & MIO_EMM_RSP_STS_DBUF);
+			do_read(slot, req, rsp_sts & MIO_EMM_RSP_STS_DBUF);
 		else if (type == 2)
 			do_write(req);
 	}
@@ -635,7 +655,7 @@ irqreturn_t cvm_mmc_interrupt(int irq, void *dev_id)
 
 	req->cmd->error = check_status(rsp_sts);
 
-	if (host->dma_active && req->data)
+	if (slot->dma_active && req->data)
 		if (!finish_dma(host, req->data))
 			goto no_req_done;
 
@@ -655,7 +675,7 @@ irqreturn_t cvm_mmc_interrupt(int irq, void *dev_id)
 		}
 	}
 
-	host->current_req = NULL;
+	slot->current_req = NULL;
 	req->done(req);
 
 no_req_done:
@@ -770,8 +790,8 @@ static u64 prepare_dma_sg(struct cvm_mmc_host *host, struct mmc_data *data)
 
 error:
 	WARN_ON_ONCE(1);
-	/* Disable FIFO */
-	writeq(BIT_ULL(16), host->dma_base + MIO_EMM_DMA_FIFO_CFG(host));
+	writeq(MIO_EMM_DMA_FIFO_CFG_CLR,
+		host->dma_base + MIO_EMM_DMA_FIFO_CFG(host));
 	dma_unmap_sg(host->dev, data->sg, data->sg_len, get_dma_dir(data));
 	return 0;
 }
@@ -843,9 +863,9 @@ static void cvm_mmc_dma_request(struct mmc_host *mmc,
 	}
 
 	mrq->host = mmc;
-	host->dma_active = true;
-	WARN_ON(host->current_req);
-	host->current_req = mrq;
+	WARN_ON(slot->current_req);
+	slot->current_req = mrq;
+	slot->dma_active = true;
 
 	int_enable_mask = MIO_EMM_INT_CMD_ERR | MIO_EMM_INT_DMA_DONE |
 			MIO_EMM_INT_DMA_ERR;
@@ -878,16 +898,17 @@ error:
 	host->release_bus(host);
 }
 
-static void do_read_request(struct cvm_mmc_host *host, struct mmc_request *mrq)
+static void do_read_request(struct cvm_mmc_slot *slot, struct mmc_request *mrq)
 {
-	sg_miter_start(&host->smi, mrq->data->sg, mrq->data->sg_len,
+	sg_miter_start(&slot->smi, mrq->data->sg, mrq->data->sg_len,
 		       SG_MITER_ATOMIC | SG_MITER_TO_SG);
 }
 
-static void do_write_request(struct cvm_mmc_host *host, struct mmc_request *mrq)
+static void do_write_request(struct cvm_mmc_slot *slot, struct mmc_request *mrq)
 {
+	struct cvm_mmc_host *host = slot->host;
 	unsigned int data_len = mrq->data->blocks * mrq->data->blksz;
-	struct sg_mapping_iter *smi = &host->smi;
+	struct sg_mapping_iter *smi = &slot->smi;
 	unsigned int bytes_xfered;
 	int shift = 56;
 	u64 dat = 0;
@@ -994,22 +1015,22 @@ static void cvm_mmc_request(struct mmc_host *mmc, struct mmc_request *mrq)
 
 	mods = cvm_mmc_get_cr_mods(cmd);
 
-	WARN_ON(host->current_req);
+	WARN_ON(slot->current_req);
 	mrq->host = mmc;
-	host->current_req = mrq;
+	slot->current_req = mrq;
 
 	if (cmd->data) {
 		if (cmd->data->flags & MMC_DATA_READ)
-			do_read_request(host, mrq);
+			do_read_request(slot, mrq);
 		else
-			do_write_request(host, mrq);
+			do_write_request(slot, mrq);
 
 		if (cmd->data->timeout_ns)
 			set_wdog(slot, cmd->data->timeout_ns);
 	} else
 		set_wdog(slot, 0);
 
-	host->dma_active = false;
+	slot->dma_active = false;
 	host->int_enable(host, MIO_EMM_INT_CMD_DONE | MIO_EMM_INT_CMD_ERR);
 
 	if (cmd->opcode == MMC_SWITCH)
@@ -1179,6 +1200,7 @@ struct adj {
 static int adjust_tuning(struct mmc_host *mmc, struct adj *adj, u32 opcode)
 {
 	int err, start_run = -1, best_run = 0, best_start = -1;
+	int last_good = -1;
 	bool prev_ok = false;
 	u64 timing, tap;
 	struct cvm_mmc_slot *slot = mmc_priv(mmc);
@@ -1196,6 +1218,8 @@ static int adjust_tuning(struct mmc_host *mmc, struct adj *adj, u32 opcode)
 			err = adj->test(mmc, NULL, opcode);
 
 			how[tap] = "-+"[!err];
+			if (!err)
+				last_good = tap;
 		} else {
 			/*
 			 * putting the end+1 case in loop simplifies
@@ -1224,13 +1248,17 @@ static int adjust_tuning(struct mmc_host *mmc, struct adj *adj, u32 opcode)
 	}
 
 	if (best_start < 0) {
-		dev_warn(host->dev, "%s tuning %s failed\n",
-			mmc_hostname(mmc), adj->name);
+		dev_warn(host->dev, "%s %lldMHz tuning %s failed\n",
+			mmc_hostname(mmc), slot->clock / 1000000, adj->name);
 		return -EINVAL;
 	}
 
 	tap = best_start + best_run / 2;
 	how[tap] = '@';
+	if (tapdance) {
+		tap = last_good - tapdance;
+		how[tap] = 'X';
+	}
 	dev_dbg(host->dev, "%s/%s %d/%lld/%d %s\n",
 		mmc_hostname(mmc), adj->name,
 		best_start, tap, best_start + best_run,
@@ -1348,17 +1376,17 @@ static void cvm_mmc_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 		break;
 	case MMC_TIMING_MMC_HS:
 	case MMC_TIMING_SD_HS:
-		emm_switch |= FIELD_PREP(MIO_EMM_SWITCH_HS_TIMING, 1);
-		break;
 	case MMC_TIMING_UHS_SDR12:
 	case MMC_TIMING_UHS_SDR25:
 	case MMC_TIMING_UHS_SDR50:
 	case MMC_TIMING_UHS_SDR104:
+	case MMC_TIMING_UHS_DDR50:
+	case MMC_TIMING_MMC_DDR52:
+		emm_switch |= FIELD_PREP(MIO_EMM_SWITCH_HS_TIMING, 1);
+		break;
 	case MMC_TIMING_MMC_HS200:
 		emm_switch |= FIELD_PREP(MIO_EMM_SWITCH_HS200_TIMING, 1);
 		break;
-	case MMC_TIMING_UHS_DDR50:
-	case MMC_TIMING_MMC_DDR52:
 	case MMC_TIMING_MMC_HS400:
 		emm_switch |= FIELD_PREP(MIO_EMM_SWITCH_HS400_TIMING, 1);
 		break;
@@ -1465,6 +1493,13 @@ static int cvm_execute_tuning(struct mmc_host *mmc, u32 opcode)
 	return ret;
 }
 
+static int cvm_prepare_hs400_tuning(struct mmc_host *mmc, struct mmc_ios *ios)
+{
+	struct cvm_mmc_slot *slot = mmc_priv(mmc);
+
+	return cvm_mmc_configure_delay(slot);
+}
+
 static void cvm_mmc_reset(struct mmc_host *mmc)
 {
 	struct cvm_mmc_slot *slot = mmc_priv(mmc);
@@ -1490,6 +1525,7 @@ static const struct mmc_host_ops cvm_mmc_ops = {
 	.get_cd		= mmc_gpio_get_cd,
 	.hw_reset	= cvm_mmc_reset,
 	.execute_tuning = cvm_execute_tuning,
+	.prepare_hs400_tuning = cvm_prepare_hs400_tuning,
 };
 
 static void cvm_mmc_set_clock(struct cvm_mmc_slot *slot, unsigned int clock)
