@@ -1121,6 +1121,7 @@ uint64_t cvmx_l2c_tqdl2d_to_index_7xxx(int node, int tad)
 	 */
 	return cindex;
 }
+EXPORT_SYMBOL(cvmx_l2c_tqdl2d_to_index_7xxx);
 
 /**
  * Decodes TTG tag single and double-bit errors to the appropriate cache index
@@ -1205,6 +1206,7 @@ uint64_t cvmx_l2c_ttgx_to_index_7xxx(int node, int tad, bool remote)
 	 */
 	return cindex;
 }
+EXPORT_SYMBOL(cvmx_l2c_ttgx_to_index_7xxx);
 
 int cvmx_l2c_get_cache_size_bytes(void)
 {
