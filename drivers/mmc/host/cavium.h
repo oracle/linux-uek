@@ -107,9 +107,6 @@ struct cvm_mmc_host {
 	struct clk *clk;
 	int sys_freq;
 
-	struct mmc_request *current_req;
-	struct sg_mapping_iter smi;
-	bool dma_active;
 	bool use_sg;
 
 	bool has_ciu3;
@@ -143,9 +140,13 @@ struct cvm_mmc_slot {
 	struct mmc_request *current_req;
 
 	u64 clock;
+	u32 ecount, gcount;
 
 	u64 cached_switch;
 	u64 cached_rca;
+
+	struct sg_mapping_iter smi;
+	bool dma_active;
 
 	u64 taps;			/* otx2: MIO_EMM_TIMING */
 	unsigned int cmd_cnt;		/* otx: sample cmd in delay */
@@ -236,6 +237,9 @@ struct cvm_mmc_cr_mods {
 #define MIO_EMM_INT_DMA_DONE		BIT_ULL(2)
 #define MIO_EMM_INT_CMD_DONE		BIT_ULL(1)
 #define MIO_EMM_INT_BUF_DONE		BIT_ULL(0)
+
+#define MIO_EMM_DMA_INT_FIFO		BIT_ULL(1)
+#define MIO_EMM_DMA_INT_DMA		BIT_ULL(0)
 
 #define MIO_EMM_RSP_STS_BUS_ID		GENMASK_ULL(61, 60)
 #define MIO_EMM_RSP_STS_CMD_VAL		BIT_ULL(59)
