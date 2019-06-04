@@ -119,6 +119,13 @@
 
 /* #define DEBUG_PCIE */
 
+/* Delay after link up, before issuing first configuration read */
+#define PCIE_DEVICE_READY_WAIT_DELAY_MICROSECONDS   700000
+
+/* Recommended Preset Vector: Drop Preset 10    */
+int pcie_preset_vec[4] = { 0x593, 0x593, 0x593, 0x593 };
+
+
 /* Number of LTSSM transitions to record, must be a power of 2 */
 #define LTSSM_HISTORY_SIZE 64
 #define MAX_RETRIES 2
@@ -635,7 +642,7 @@ static void __cvmx_pcie_rc_initialize_config_space(int node, int pcie_port)
 
 		/* CFG554.PRV default changed from 16'h7ff to 16'h593. */
 		cfg554.u32 = CVMX_PCIE_CFGX_READ(pcie_port, CVMX_PCIERCX_CFG554(pcie_port));
-		cfg554.s.prv = 0x593;
+		cfg554.s.prv = pcie_preset_vec[pcie_port];
 		CVMX_PCIE_CFGX_WRITE(pcie_port, CVMX_PCIERCX_CFG554(pcie_port), cfg554.u32);
 		/* Errata PEM-26189 - Disable the 2ms timer on all chips */
 		cfg554.u32 = CVMX_PCIE_CFGX_READ(pcie_port, CVMX_PCIERCX_CFG554(pcie_port));
@@ -1688,7 +1695,8 @@ static void __cvmx_pcie_sli_config(int node, int pcie_port)
 	   after setting up the link before continuing. PCIe says the devices
 	   may need up to 900ms to come up. 700ms plus 200ms from above gives 
 	   us a total of 900ms */
-	cvmx_wait_usec(700000);
+	if (OCTEON_IS_OCTEON2() && OCTEON_IS_MODEL(OCTEON_CN70XX))
+		cvmx_wait_usec(PCIE_DEVICE_READY_WAIT_DELAY_MICROSECONDS);
 }
 
 /**
@@ -2095,6 +2103,12 @@ retry_speed:
 	cvmx_printf("N%d.PCIe%d: Reading Bus %d device max speed and width\n",
 		    node, pcie_port, bus);
 #endif
+
+	/* Here is the second part of the config retry changes. Wait for 700ms
+	   after setting up the link before continuing. PCIe says the devices
+	   may need up to 900ms to come up. 700ms plus 200ms from above gives 
+	   us a total of 900ms */
+	cvmx_wait_usec(PCIE_DEVICE_READY_WAIT_DELAY_MICROSECONDS);
 
 	/* Read PCI capability pointer at offset 0x34 of target */
 	cap = cvmx_pcie_config_read32_retry(node, pcie_port, bus, 0, 0, 0x34);
