@@ -175,6 +175,12 @@ config CAVIUM_OCTEON_RAPIDIO
 	  as appropriate. After configuring this option, you will likely want
 	  to enable the RapidIO network adapter under the devices menu.
 
+config CAVIUM_PCIE_RESET
+	bool "OCTEON-specific PCIe reset file"
+	depends on PCI
+	help
+	  Adds /proc/pcie_reset
+
 config OCTEON_FPA3
 	tristate "Octeon III fpa driver"
 	default "n"
