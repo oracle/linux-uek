@@ -694,7 +694,7 @@ static void octeon_pcie_interface_init(struct octeon_pcie_interface *iface, unsi
 	iface->pem = pem;
 }
 
-static void octeon_pcie_setup_port(unsigned int node, unsigned int port)
+void octeon_pcie_setup_port(unsigned int node, unsigned int port, bool do_register)
 {
 	int result;
 	int host_mode = 0;
@@ -802,14 +802,15 @@ static void octeon_pcie_setup_port(unsigned int node, unsigned int port)
 		}
 		msleep(100); /* Some devices need extra time */
 		octeon_pcie[node][port].controller.index = gport;
-		register_pci_controller(&octeon_pcie[node][port].controller);
+		if (do_register)
+			register_pci_controller(&octeon_pcie[node][port].controller);
 
 		device = cvmx_pcie_config_read32(gport, 0, 0, 0, 0);
 	} else {
 		pr_notice("PCIe: Port %d:%d in endpoint mode, skipping.\n", node, port);
 		/* CN63XX pass 1_x/2.0 errata PCIe-15205 */
-		if (OCTEON_IS_MODEL(OCTEON_CN63XX_PASS1_X) ||
-		    OCTEON_IS_MODEL(OCTEON_CN63XX_PASS2_0)) {
+		if (do_register && (OCTEON_IS_MODEL(OCTEON_CN63XX_PASS1_X) ||
+				    OCTEON_IS_MODEL(OCTEON_CN63XX_PASS2_0))) {
 			srio_war15205 += 1;
 		}
 	}
@@ -847,7 +848,7 @@ static void octeon_pcie_setup_ports(void)
 
 	for_each_online_node (node)
 		for (port = 0; port < CVMX_PCIE_PORTS; port++)
-			octeon_pcie_setup_port(node, port);
+			octeon_pcie_setup_port(node, port, true);
 }
 
 static int octeon_pcie_suspend(void)
