@@ -334,6 +334,18 @@ static void rdmaip_send_gratuitous_arp(struct net_device *out_dev,
 {
 	struct rdmaip_dly_work_req *garps = kmalloc(sizeof(*garps), GFP_ATOMIC);
 
+	if (rdmaip_active_bonding_arps == 0) {
+		RDMAIP_DBG2("rdmaip_active_bonding_arps is set to zero\n");
+		return;
+	}
+
+	if (rdmaip_active_bonding_arps > RDMAIP_MAX_NUM_ARPS) {
+		pr_warn("rdmaip_active_bonding_arps %d is invalid, (valid range 0 to %d), resetting to default %d\n",
+			rdmaip_active_bonding_arps,
+			RDMAIP_MAX_NUM_ARPS, RDMAIP_DEFAULT_NUM_ARPS);
+		rdmaip_active_bonding_arps = RDMAIP_DEFAULT_NUM_ARPS;
+	}
+
 	if (!garps) {
 		RDMAIP_DBG1_PTR("kmalloc failed. Cannot send garps for %s %pI4\n",
 				out_dev->name, &ip_addr);
@@ -365,6 +377,7 @@ static void rdmaip_send_gratuitous_arp(struct net_device *out_dev,
 		rdmaip_active_bonding_arps_gap_ms = RDMAIP_DEFAULT_NUM_ARPS_GAP_MS;
 	}
 
+	garps->event_type = RDMAIP_EVENT_GARP;
 	garps->netdev = out_dev;
 	garps->dev_addr = dev_addr;
 	garps->delay = msecs_to_jiffies(rdmaip_active_bonding_arps_gap_ms);

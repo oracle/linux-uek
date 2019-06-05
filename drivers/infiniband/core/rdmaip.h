@@ -83,6 +83,7 @@ struct rdmaip_device {
 };
 
 #define RDMAIP_DEFAULT_NUM_ARPS		3
+#define RDMAIP_MAX_NUM_ARPS		100
 #define RDMAIP_DEFAULT_NUM_ARPS_GAP_MS	5
 
 #define RDMAIP_MAX_ALIASES		50
