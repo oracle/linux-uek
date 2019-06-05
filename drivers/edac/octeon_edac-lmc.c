@@ -706,7 +706,7 @@ static int octeon_lmc_edac_probe(struct platform_device *pdev)
 		cvmx_write_csr_node(node, CVMX_LMCX_INT_EN(intf), en.u64);
 #ifdef CONFIG_EDAC_DEBUG
 		if (IS_ENABLED(CONFIG_EDAC_DEBUG)) {
-			ret = octeon_create_debugfs_nodes(mci->debugfs,
+			int ret = octeon_create_debugfs_nodes(mci->debugfs,
 							  lmc_dfs_ents, lmc,
 							  ARRAY_SIZE(lmc_dfs_ents));
 			if (ret != ARRAY_SIZE(lmc_dfs_ents)) {
