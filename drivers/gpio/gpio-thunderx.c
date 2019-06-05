@@ -13,6 +13,7 @@
 #include <linux/irq.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
+#include <linux/of_irq.h>
 #include <linux/pci.h>
 #include <linux/spinlock.h>
 #ifdef CONFIG_MRVL_OCTEONTX_EL0_INTR
@@ -496,6 +497,148 @@ static void thunderx_gpio_set_multiple(struct gpio_chip *chip,
 	}
 }
 
+#ifdef CONFIG_MRVL_OCTEONTX_EL0_INTR
+static void thunderx_gpio_spi_irq_ack(struct irq_data *data)
+{
+	struct gpio_chip *chip = irq_data_get_irq_chip_data(data);
+	struct thunderx_gpio *gpio =
+		container_of(chip, struct thunderx_gpio, chip);
+	unsigned int line = data->hwirq;
+
+	writeq(GPIO_INTR_INTR,
+	       gpio->register_base + intr_reg(line));
+}
+
+static void thunderx_gpio_spi_irq_mask(struct irq_data *data)
+{
+	struct gpio_chip *chip = irq_data_get_irq_chip_data(data);
+	struct thunderx_gpio *gpio =
+		container_of(chip, struct thunderx_gpio, chip);
+	unsigned int line = data->hwirq;
+
+	writeq(GPIO_INTR_ENA_W1C, gpio->register_base + intr_reg(line));
+}
+
+static void thunderx_gpio_spi_irq_mask_ack(struct irq_data *data)
+{
+	struct gpio_chip *chip = irq_data_get_irq_chip_data(data);
+	struct thunderx_gpio *gpio =
+		container_of(chip, struct thunderx_gpio, chip);
+	unsigned int line = data->hwirq;
+
+	writeq(GPIO_INTR_ENA_W1C | GPIO_INTR_INTR,
+	       gpio->register_base + intr_reg(line));
+}
+
+static void thunderx_gpio_spi_irq_unmask(struct irq_data *data)
+{
+	struct gpio_chip *chip = irq_data_get_irq_chip_data(data);
+	struct thunderx_gpio *gpio =
+		container_of(chip, struct thunderx_gpio, chip);
+	unsigned int line = data->hwirq;
+
+	writeq(GPIO_INTR_ENA_W1S, gpio->register_base + intr_reg(line));
+}
+
+/*
+ *  Do not set msix_entries for SPI IRQs.
+ */
+static int thunderx_gpio_spi_irq_request_resources(struct irq_data *data)
+{
+	struct gpio_chip *chip = irq_data_get_irq_chip_data(data);
+	struct thunderx_gpio *gpio =
+		container_of(chip, struct thunderx_gpio, chip);
+	unsigned int line = data->hwirq;
+
+	if (!thunderx_gpio_is_gpio(gpio, line))
+		return -EIO;
+
+	writeq(GPIO_INTR_ENA_W1C, gpio->register_base + intr_reg(line));
+
+	return 0;
+}
+
+static void thunderx_gpio_spi_irq_release_resources(struct irq_data *data)
+{
+	struct gpio_chip *chip = irq_data_get_irq_chip_data(data);
+	struct thunderx_gpio *gpio =
+		container_of(chip, struct thunderx_gpio, chip);
+	unsigned int line = data->hwirq;
+
+	writeq(GPIO_INTR_ENA_W1C, gpio->register_base + intr_reg(line));
+
+}
+
+static int thunderx_gpio_spi_irq_set_type(struct irq_data *data,
+				      unsigned int flow_type)
+{
+	struct gpio_chip *chip = irq_data_get_irq_chip_data(data);
+	struct thunderx_gpio *gpio =
+		container_of(chip, struct thunderx_gpio, chip);
+	unsigned int line = data->hwirq;
+	u64 bit_cfg;
+
+	irqd_set_trigger_type(data, flow_type);
+
+	bit_cfg = GLITCH_FILTER_400NS | GPIO_BIT_CFG_INT_EN;
+
+	if (flow_type & IRQ_TYPE_EDGE_BOTH) {
+		irq_set_handler_locked(data, handle_edge_irq);
+		bit_cfg |= GPIO_BIT_CFG_INT_TYPE;
+	} else {
+		irq_set_handler_locked(data, handle_level_irq);
+	}
+
+	raw_spin_lock(&gpio->lock);
+	if (flow_type & (IRQ_TYPE_EDGE_FALLING | IRQ_TYPE_LEVEL_LOW)) {
+		bit_cfg |= GPIO_BIT_CFG_PIN_XOR;
+		set_bit(line, gpio->invert_mask);
+	} else {
+		clear_bit(line, gpio->invert_mask);
+	}
+	clear_bit(line, gpio->od_mask);
+	writeq(bit_cfg, gpio->register_base + bit_cfg_reg(line));
+	raw_spin_unlock(&gpio->lock);
+
+	return IRQ_SET_MASK_OK;
+}
+
+static void thunderx_gpio_spi_irq_handler(struct irq_desc *desc)
+{
+	unsigned int line;
+	struct gpio_chip *chip = irq_desc_get_handler_data(desc);
+	struct irq_chip *irqchip = irq_desc_get_chip(desc);
+	struct thunderx_gpio *gpio =
+		container_of(chip, struct thunderx_gpio, chip);
+
+	chained_irq_enter(irqchip, desc);
+	for (line = 0; line < chip->ngpio; line++) {
+		if (readq(gpio->register_base + intr_reg(line)) &
+		    GPIO_INTR_INTR) {
+			generic_handle_irq(irq_find_mapping(chip->irqdomain,
+							    line));
+			writeq(GPIO_INTR_INTR,
+			       gpio->register_base + intr_reg(line));
+		}
+	}
+	chained_irq_exit(irqchip, desc);
+}
+
+static struct irq_chip thunderx_gpio_spi_irq_chip = {
+	.name                   = "GPIO",
+	.irq_enable             = thunderx_gpio_spi_irq_unmask,
+	.irq_disable            = thunderx_gpio_spi_irq_mask,
+	.irq_ack                = thunderx_gpio_spi_irq_ack,
+	.irq_mask               = thunderx_gpio_spi_irq_mask,
+	.irq_mask_ack           = thunderx_gpio_spi_irq_mask_ack,
+	.irq_unmask             = thunderx_gpio_spi_irq_unmask,
+	.irq_set_type           = thunderx_gpio_spi_irq_set_type,
+	.irq_request_resources  = thunderx_gpio_spi_irq_request_resources,
+	.irq_release_resources  = thunderx_gpio_spi_irq_release_resources,
+	.flags                  = IRQCHIP_SET_TYPE_MASKED
+};
+#endif
+
 static void thunderx_gpio_irq_ack(struct irq_data *data)
 {
 	struct thunderx_line *txline = irq_data_get_irq_chip_data(data);
@@ -746,9 +889,14 @@ static int thunderx_gpio_probe(struct pci_dev *pdev,
 		goto out;
 	}
 
-	txgpio->line_entries = devm_kzalloc(dev,
-					    sizeof(struct thunderx_line) * ngpio,
-					    GFP_KERNEL);
+#ifdef CONFIG_MRVL_OCTEONTX_EL0_INTR
+	pdev->irq = irq_of_parse_and_map(pdev->dev.of_node, 0);
+#endif
+
+	txgpio->line_entries =
+		devm_kzalloc(dev,
+			     sizeof(struct thunderx_line) * ngpio,
+			     GFP_KERNEL);
 	if (!txgpio->line_entries) {
 		err = -ENOMEM;
 		goto out;
@@ -774,31 +922,32 @@ static int thunderx_gpio_probe(struct pci_dev *pdev,
 			set_bit(i, txgpio->invert_mask);
 	}
 
-
 	/* Enable all MSI-X for interrupts on all possible lines. */
 	err = pci_enable_msix_range(pdev, txgpio->msix_entries, ngpio, ngpio);
 	if (err < 0)
 		goto out;
 
-	/*
-	 * Push GPIO specific irqdomain on hierarchy created as a side
-	 * effect of the pci_enable_msix()
-	 */
-	txgpio->irqd = irq_domain_create_hierarchy(irq_get_irq_data(txgpio->msix_entries[0].vector)->domain,
-						   0, 0, of_node_to_fwnode(dev->of_node),
-						   &thunderx_gpio_irqd_ops, txgpio);
-	if (!txgpio->irqd) {
-		err = -ENOMEM;
-		goto out;
-	}
+	if (pdev->irq == 0) {
+		/*
+		 * Push GPIO specific irqdomain on hierarchy created as a side
+		 * effect of the pci_enable_msix()
+		 */
+		txgpio->irqd = irq_domain_create_hierarchy(irq_get_irq_data(txgpio->msix_entries[0].vector)->domain,
+							   0, 0, of_node_to_fwnode(dev->of_node),
+							   &thunderx_gpio_irqd_ops, txgpio);
+		if (!txgpio->irqd) {
+			err = -ENOMEM;
+			goto out;
+		}
 
-	/* Push on irq_data and the domain for each line. */
-	for (i = 0; i < ngpio; i++) {
-		err = irq_domain_push_irq(txgpio->irqd,
-					  txgpio->msix_entries[i].vector,
-					  &txgpio->line_entries[i]);
-		if (err < 0)
-			dev_err(dev, "irq_domain_push_irq: %d\n", err);
+		/* Push on irq_data and the domain for each line. */
+		for (i = 0; i < ngpio; i++) {
+			err = irq_domain_push_irq(txgpio->irqd,
+						  txgpio->msix_entries[i].vector,
+						  &txgpio->line_entries[i]);
+			if (err < 0)
+				dev_err(dev, "irq_domain_push_irq: %d\n", err);
+		}
 	}
 
 	chip->label = KBUILD_MODNAME;
@@ -824,6 +973,20 @@ static int thunderx_gpio_probe(struct pci_dev *pdev,
 		 ngpio, chip->base);
 
 #ifdef CONFIG_MRVL_OCTEONTX_EL0_INTR
+	if (pdev->irq != 0) {
+		err = gpiochip_irqchip_add(chip, &thunderx_gpio_spi_irq_chip, 0,
+					   handle_bad_irq, IRQ_TYPE_NONE);
+		if (err) {
+			dev_err(dev, "gpiochip_irqchip_add failed: %d\n", err);
+			goto irqchip_out;
+		}
+
+		gpiochip_set_chained_irqchip(chip,
+					     &thunderx_gpio_spi_irq_chip,
+					     pdev->irq,
+					     thunderx_gpio_spi_irq_handler);
+	}
+
 	/* Register task cleanup handler */
 	err = task_cleanup_handler_add(cleanup_el3_irqs);
 	if (err != 0) {
@@ -880,6 +1043,8 @@ cdev_alloc_err:
 alloc_chrdev_err:
 	task_cleanup_handler_remove(cleanup_el3_irqs);
 cleanup_handler_err:
+irqchip_out:
+	gpiochip_remove(chip);
 #endif
 out:
 	pci_set_drvdata(pdev, NULL);
@@ -891,11 +1056,15 @@ static void thunderx_gpio_remove(struct pci_dev *pdev)
 	int i;
 	struct thunderx_gpio *txgpio = pci_get_drvdata(pdev);
 
-	for (i = 0; i < txgpio->chip.ngpio; i++)
-		irq_domain_pop_irq(txgpio->irqd,
-				   txgpio->msix_entries[i].vector);
+	if (pdev->irq == 0) {
+		for (i = 0; i < txgpio->chip.ngpio; i++)
+			irq_domain_pop_irq(txgpio->irqd,
+					   txgpio->msix_entries[i].vector);
 
-	irq_domain_remove(txgpio->irqd);
+		irq_domain_remove(txgpio->irqd);
+	} else {
+		gpiochip_remove(&txgpio->chip);
+	}
 
 	pci_set_drvdata(pdev, NULL);
 
