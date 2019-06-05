@@ -1695,7 +1695,7 @@ static void __cvmx_pcie_sli_config(int node, int pcie_port)
 	   after setting up the link before continuing. PCIe says the devices
 	   may need up to 900ms to come up. 700ms plus 200ms from above gives 
 	   us a total of 900ms */
-	if (OCTEON_IS_OCTEON2() && OCTEON_IS_MODEL(OCTEON_CN70XX))
+	if (OCTEON_IS_OCTEON2() || OCTEON_IS_MODEL(OCTEON_CN70XX))
 		cvmx_wait_usec(PCIE_DEVICE_READY_WAIT_DELAY_MICROSECONDS);
 }
 
