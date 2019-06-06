@@ -212,8 +212,7 @@ void rds_queue_reconnect(struct rds_conn_path *cp)
 		    conn, active, &conn->c_laddr, &conn->c_faddr, conn->c_tos,
 		    delay, cp->cp_reconnect_jiffies);
 
-	set_bit(RDS_RECONNECT_PENDING, &cp->cp_flags);
-	queue_delayed_work(cp->cp_wq, &cp->cp_conn_w, delay);
+	rds_cond_queue_reconnect_work(cp, delay);
 	cp->cp_reconnect_jiffies = min(cp->cp_reconnect_jiffies * 2,
 				       rds_sysctl_reconnect_max_jiffies);
 }
@@ -229,8 +228,7 @@ void rds_connect_worker(struct work_struct *work)
 
 	if (is_tcp && cp->cp_index > 0 &&
 	    rds_addr_cmp(&cp->cp_conn->c_laddr, &cp->cp_conn->c_faddr) > 0)
-		return;
-	clear_bit(RDS_RECONNECT_PENDING, &cp->cp_flags);
+		goto out;
 	ret = rds_conn_path_transition(cp, RDS_CONN_DOWN, RDS_CONN_CONNECTING);
 	if (ret) {
 		/*
@@ -262,6 +260,8 @@ void rds_connect_worker(struct work_struct *work)
 			"conn %p cannot transition from allegedly DOWN(act %s) to CONNECTING state\n",
 			conn, conn_state_mnem(atomic_read(&cp->cp_state)));
 	}
+out:
+	rds_clear_reconnect_pending_work_bit(cp);
 }
 
 void rds_send_worker(struct work_struct *work)
