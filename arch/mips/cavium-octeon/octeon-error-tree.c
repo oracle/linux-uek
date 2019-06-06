@@ -142,6 +142,8 @@ static bool octeon_error_tree_find_print(struct cvmx_error_muxchild *r, u64 reg,
 					pr_err("Error: %s\n", bit->desc);
 				else
 					pr_err("Error: Status bit %016lx:%u\n", (unsigned long)reg, reg_bit);
+				if (bit->flags == CVMX_ERROR_TYPE_DBE)
+					panic("Uncorrectable co-processor double bit error detected!\n");
 				return true;
 			}
 			bit++;
