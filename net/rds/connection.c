@@ -1043,13 +1043,12 @@ void rds_conn_path_connect_if_down(struct rds_conn_path *cp)
 {
 	struct rds_connection *conn = cp->cp_conn;
 
-	if (rds_conn_path_state(cp) == RDS_CONN_DOWN &&
-	    !test_and_set_bit(RDS_RECONNECT_PENDING, &cp->cp_flags)) {
+	if (rds_conn_path_state(cp) == RDS_CONN_DOWN) {
 		rds_rtd_ptr(RDS_RTD_CM_EXT,
-			    "queueing connect work, conn %p, <%pI6c,%pI6c,%d>\n",
+			    "calling rds_queue_reconnect, conn %p, <%pI6c,%pI6c,%d>\n",
 			    conn, &conn->c_laddr, &conn->c_faddr,
 			    conn->c_tos);
-		queue_delayed_work(cp->cp_wq, &cp->cp_conn_w, 0);
+		rds_queue_reconnect(cp);
 	}
 }
 EXPORT_SYMBOL_GPL(rds_conn_path_connect_if_down);
