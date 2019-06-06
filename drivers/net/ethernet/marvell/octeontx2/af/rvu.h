@@ -269,6 +269,9 @@ struct rvu_pfvf {
 	struct kobject	*limits_kobj;
 
 	struct rvu_npc_mcam_rule *def_rule;
+
+	bool	cgx_in_use; /* this PF/VF using CGX? */
+	int	cgx_users;  /* number of cgx users - used only by PFs */
 };
 
 struct nix_txsch {
@@ -427,6 +430,7 @@ struct rvu {
 	struct			workqueue_struct *cgx_evh_wq;
 	spinlock_t		cgx_evq_lock; /* cgx event queue lock */
 	struct list_head	cgx_evq_head; /* cgx event queue head */
+	struct mutex		cgx_cfg_lock; /* serialize cgx configuration */
 
 	char mkex_pfl_name[MKEX_NAME_LEN]; /* Configured MKEX profile name */
 
@@ -539,6 +543,7 @@ void *rvu_cgx_pdata(u8 cgx_id, struct rvu *rvu);
 int rvu_cgx_config_rxtx(struct rvu *rvu, u16 pcifunc, bool start);
 void rvu_cgx_enadis_rx_bp(struct rvu *rvu, int pf, bool enable);
 void rvu_cgx_disable_dmac_entries(struct rvu *rvu, u16 pcifunc);
+int rvu_cgx_start_stop_io(struct rvu *rvu, u16 pcifunc, bool start);
 
 /* SSO APIs */
 int rvu_sso_init(struct rvu *rvu);
