@@ -997,6 +997,21 @@ void rds_for_each_conn_info(struct socket *sock, unsigned int len,
 			    size_t item_len);
 char *conn_drop_reason_str(enum rds_conn_drop_src reason);
 
+static inline void rds_cond_queue_reconnect_work(struct rds_conn_path *cp, unsigned long delay)
+{
+	if (!test_and_set_bit(RDS_RECONNECT_PENDING, &cp->cp_flags))
+		queue_delayed_work(cp->cp_wq, &cp->cp_conn_w, delay);
+}
+
+static inline void rds_clear_reconnect_pending_work_bit(struct rds_conn_path *cp)
+{
+	/* clear_bit() does not imply a memory barrier */
+	smp_mb__before_atomic();
+	clear_bit(RDS_RECONNECT_PENDING, &cp->cp_flags);
+	/* clear_bit() does not imply a memory barrier */
+	smp_mb__after_atomic();
+}
+
 static inline void rds_cond_queue_send_work(struct rds_conn_path *cp, unsigned long delay)
 {
 	if (!test_and_set_bit(RDS_SEND_WORK_QUEUED, &cp->cp_flags))
