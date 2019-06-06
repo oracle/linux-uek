@@ -43,6 +43,9 @@
 #include <linux/inetdevice.h>
 #include <linux/slab.h>
 #include <linux/module.h>
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+#include <linux/sysctl.h>
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 #include <net/route.h>
 
 #include <net/net_namespace.h>
@@ -68,12 +71,53 @@ MODULE_AUTHOR("Sean Hefty");
 MODULE_DESCRIPTION("Generic RDMA CM Agent");
 MODULE_LICENSE("Dual BSD/GPL");
 
+#ifdef WITHOUT_ORACLE_EXTENSIONS
 #define CMA_CM_RESPONSE_TIMEOUT 20
+#endif /* WITHOUT_ORACLE_EXTENSIONS */
 #define CMA_QUERY_CLASSPORT_INFO_TIMEOUT 3000
+#ifdef WITHOUT_ORACLE_EXTENSIONS
 #define CMA_MAX_CM_RETRIES 15
+#endif /* WITHOUT_ORACLE_EXTENSIONS */
 #define CMA_CM_MRA_SETTING (IB_CM_MRA_FLAG_DELAY | 24)
 #define CMA_IBOE_PACKET_LIFETIME 18
 #define CMA_PREFERRED_ROCE_GID_TYPE IB_GID_TYPE_ROCE_UDP_ENCAP
+
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+#define CMA_DFLT_CM_RESPONSE_TIMEOUT 20
+static int cma_cm_response_timeout = CMA_DFLT_CM_RESPONSE_TIMEOUT;
+static int cma_cm_response_timeout_min = 8;
+static int cma_cm_response_timeout_max = 31;
+#undef CMA_DFLT_CM_RESPONSE_TIMEOUT
+
+#define CMA_DFLT_MAX_CM_RETRIES 15
+static int cma_max_cm_retries = CMA_DFLT_MAX_CM_RETRIES;
+static int cma_max_cm_retries_min = 1;
+static int cma_max_cm_retries_max = 100;
+#undef CMA_DFLT_MAX_CM_RETRIES
+
+static struct ctl_table_header *cma_ctl_table_hdr;
+static struct ctl_table cma_ctl_table[] = {
+	{
+		.procname       = "cma_cm_response_timeout",
+		.data	       = &cma_cm_response_timeout,
+		.maxlen	       = sizeof(cma_cm_response_timeout),
+		.mode	       = 0644,
+		.proc_handler   = proc_dointvec_minmax,
+		.extra1	       = &cma_cm_response_timeout_min,
+		.extra2	       = &cma_cm_response_timeout_max,
+	},
+	{
+		.procname       = "cma_max_cm_retries",
+		.data	       = &cma_max_cm_retries,
+		.maxlen	       = sizeof(cma_max_cm_retries),
+		.mode	       = 0644,
+		.proc_handler   = proc_dointvec_minmax,
+		.extra1	       = &cma_max_cm_retries_min,
+		.extra2	       = &cma_max_cm_retries_max,
+	},
+	{ }
+};
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 static const char * const cma_events[] = {
 	[RDMA_CM_EVENT_ADDR_RESOLVED]	 = "address resolved",
@@ -3962,8 +4006,13 @@ static int cma_resolve_ib_udp(struct rdma_id_private *id_priv,
 	req.path = id_priv->id.route.path_rec;
 	req.sgid_attr = id_priv->id.route.addr.dev_addr.sgid_attr;
 	req.service_id = rdma_get_service_id(&id_priv->id, cma_dst_addr(id_priv));
+#ifdef WITHOUT_ORACLE_EXTENSIONS
 	req.timeout_ms = 1 << (CMA_CM_RESPONSE_TIMEOUT - 8);
 	req.max_cm_retries = CMA_MAX_CM_RETRIES;
+#else
+	req.timeout_ms = 1 << (cma_cm_response_timeout - 8);
+	req.max_cm_retries = cma_max_cm_retries;
+#endif /* WITHOUT_ORACLE_EXTENSIONS */
 
 	ret = ib_send_cm_sidr_req(id_priv->cm_id.ib, &req);
 	if (ret) {
@@ -4033,9 +4082,16 @@ static int cma_connect_ib(struct rdma_id_private *id_priv,
 	req.flow_control = conn_param->flow_control;
 	req.retry_count = min_t(u8, 7, conn_param->retry_count);
 	req.rnr_retry_count = min_t(u8, 7, conn_param->rnr_retry_count);
+#ifdef WITHOUT_ORACLE_EXTENSIONS
 	req.remote_cm_response_timeout = CMA_CM_RESPONSE_TIMEOUT;
 	req.local_cm_response_timeout = CMA_CM_RESPONSE_TIMEOUT;
 	req.max_cm_retries = CMA_MAX_CM_RETRIES;
+#else
+	req.remote_cm_response_timeout = cma_cm_response_timeout;
+	req.local_cm_response_timeout = cma_cm_response_timeout;
+	req.max_cm_retries = cma_max_cm_retries;
+#endif /* WITHOUT_ORACLE_EXTENSIONS */
+
 	req.srq = id_priv->srq ? 1 : 0;
 
 	ret = ib_send_cm_req(id_priv->cm_id.ib, &req);
@@ -4982,6 +5038,12 @@ static int __init cma_init(void)
 	if (ret)
 		goto err_ib;
 
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	cma_ctl_table_hdr = register_net_sysctl(&init_net, "net/rdma_cm", cma_ctl_table);
+	if (!cma_ctl_table_hdr)
+		pr_warn("rdma_cm: couldn't register sysctl path, using default values\n");
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
+
 	return 0;
 
 err_ib:
@@ -5001,6 +5063,9 @@ err_wq:
 
 static void __exit cma_cleanup(void)
 {
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	unregister_net_sysctl_table(cma_ctl_table_hdr);
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 	cma_configfs_exit();
 	ib_unregister_client(&cma_client);
 	unregister_netdevice_notifier(&cma_nb);
