@@ -624,6 +624,9 @@ static inline void link_status_user_format(u64 lstat,
 	linfo->link_up = FIELD_GET(RESP_LINKSTAT_UP, lstat);
 	linfo->full_duplex = FIELD_GET(RESP_LINKSTAT_FDUPLEX, lstat);
 	linfo->speed = cgx_speed_mbps[FIELD_GET(RESP_LINKSTAT_SPEED, lstat)];
+	linfo->an = FIELD_GET(RESP_LINKSTAT_AN, lstat);
+	linfo->fec = FIELD_GET(RESP_LINKSTAT_FEC, lstat);
+	linfo->port = FIELD_GET(RESP_LINKSTAT_PORT, lstat);
 	linfo->lmac_type_id = cgx_get_lmac_type(cgx, lmac_id);
 	lmac_string = cgx_lmactype_string[linfo->lmac_type_id];
 	strncpy(linfo->lmac_type, lmac_string, LMACTYPE_STR_LEN - 1);
@@ -847,6 +850,24 @@ int cgx_get_fwdata_base(u64 *base)
 	if (!err)
 		*base = FIELD_GET(RESP_FWD_BASE, resp);
 
+	return err;
+}
+
+int cgx_set_fec(u64 fec, int cgx_id, int lmac_id)
+{
+	u64 req = 0, resp;
+	struct cgx *cgx;
+	int err = 0;
+
+	cgx = cgx_get_pdata(cgx_id);
+	if (!cgx)
+		return -ENXIO;
+
+	req = FIELD_SET(CMDREG_ID, CGX_CMD_SET_FEC, req);
+	req = FIELD_SET(CMDSETFEC, fec, req);
+	err = cgx_fwi_cmd_generic(req, &resp, cgx, lmac_id);
+	if (!err)
+		return FIELD_GET(RESP_LINKSTAT_FEC, resp);
 	return err;
 }
 
