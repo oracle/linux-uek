@@ -1046,6 +1046,20 @@ static int otx2_get_ts_info(struct net_device *netdev,
 	return 0;
 }
 
+static u32 otx2_get_msglevel(struct net_device *netdev)
+{
+	struct otx2_nic *pfvf = netdev_priv(netdev);
+
+	return pfvf->msg_enable;
+}
+
+static void otx2_set_msglevel(struct net_device *netdev, u32 val)
+{
+	struct otx2_nic *pfvf = netdev_priv(netdev);
+
+	pfvf->msg_enable = val;
+}
+
 static void otx2_get_fec_info(u64 index, int mode, struct ethtool_link_ksettings
 			      *link_ksettings)
 {
@@ -1261,6 +1275,8 @@ static const struct ethtool_ops otx2_ethtool_ops = {
 	.get_rxfh		= otx2_get_rxfh,
 	.set_rxfh		= otx2_set_rxfh,
 	.get_ts_info		= otx2_get_ts_info,
+	.get_msglevel		= otx2_get_msglevel,
+	.set_msglevel		= otx2_set_msglevel,
 	.get_link_ksettings     = otx2_get_link_ksettings,
 	.get_pauseparam		= otx2_get_pauseparam,
 	.set_pauseparam		= otx2_set_pauseparam,
