@@ -625,7 +625,7 @@ static int otx2_rq_init(struct otx2_nic *pfvf, u16 qidx, u16 lpb_aura)
 	 * RED accepts pkts if unused CQE > 600 & <= 648.
 	 * Drops pkts if unused CQE <= 600.
 	 */
-	if (is_9xxx_pass1_silicon(pfvf->pdev))
+	if (is_96xx_A0(pfvf->pdev) || is_95xx_A0(pfvf->pdev))
 		skid = RX_CQ_SKID;
 	aq->rq.xqe_pass = RQ_PASS_LVL_CQ(skid, qset->rqe_cnt);
 	aq->rq.xqe_drop = RQ_DROP_LVL_CQ(skid, qset->rqe_cnt);
@@ -765,7 +765,7 @@ static int otx2_cq_init(struct otx2_nic *pfvf, u16 qidx)
 	aq->cq.avg_level = 255;
 
 	if (qidx < pfvf->hw.rx_queues) {
-		if (is_9xxx_pass1_silicon(pfvf->pdev))
+		if (is_96xx_A0(pfvf->pdev) || is_95xx_A0(pfvf->pdev))
 			skid = RX_CQ_SKID;
 		aq->cq.drop = RQ_DROP_LVL_CQ(skid, cq->cqe_cnt);
 		aq->cq.drop_ena = 1;
