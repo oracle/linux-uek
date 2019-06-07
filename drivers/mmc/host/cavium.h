@@ -73,6 +73,7 @@
 
 /* register addresses */
 #define MIO_EMM_CFG(x)		(0x00 + x->reg_off)
+#define MIO_EMM_MODE(x, s)	(0x08 + 8*(s) + (x)->reg_off)
 /* octtx2 specific register */
 #define MIO_EMM_IO_CTL(x)	(0x40 + x->reg_off)
 #define MIO_EMM_SWITCH(x)	(0x48 + x->reg_off)
@@ -145,11 +146,8 @@ struct cvm_mmc_slot {
 	u64 cached_rca;
 
 	u64 taps;			/* otx2: MIO_EMM_TIMING */
-	unsigned int cmd_cnt;		/* sample cmd in delay */
-	unsigned int data_cnt;		/* sample data in delay */
-
-	unsigned int cmd_out_tap;	/* sample cmd out delay */
-	unsigned int data_out_tap;	/* sample data out delay */
+	unsigned int cmd_cnt;		/* otx: sample cmd in delay */
+	unsigned int data_cnt;		/* otx: sample data in delay */
 
 	int drive;			/* Current drive */
 	int slew;			/* clock skew */
@@ -225,6 +223,7 @@ struct cvm_mmc_cr_mods {
 #define MIO_EMM_TIMING_DATA_IN		GENMASK_ULL(21, 16)
 #define MIO_EMM_TIMING_DATA_OUT		GENMASK_ULL(5, 0)
 
+#define MIO_EMM_INT_NCB_RAS		BIT_ULL(8)
 #define MIO_EMM_INT_NCB_FLT		BIT_ULL(7)
 #define MIO_EMM_INT_SWITCH_ERR		BIT_ULL(6)
 #define MIO_EMM_INT_SWITCH_DONE		BIT_ULL(5)
@@ -266,6 +265,8 @@ struct cvm_mmc_cr_mods {
 #define MIO_EMM_SWITCH_ERR1		BIT_ULL(57)
 #define MIO_EMM_SWITCH_ERR2		BIT_ULL(56)
 #define MIO_EMM_SWITCH_HS_TIMING	BIT_ULL(48)
+#define MIO_EMM_SWITCH_HS200_TIMING	BIT_ULL(49)
+#define MIO_EMM_SWITCH_HS400_TIMING	BIT_ULL(50)
 #define MIO_EMM_SWITCH_BUS_WIDTH	GENMASK_ULL(42, 40)
 #define MIO_EMM_SWITCH_POWER_CLASS	GENMASK_ULL(35, 32)
 #define MIO_EMM_SWITCH_CLK_HI		GENMASK_ULL(31, 16)
