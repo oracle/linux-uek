@@ -307,7 +307,7 @@ static int otx2_set_ringparam(struct net_device *netdev,
 	/* Due to HW errata #34934 & #34873 RQ.CQ.size >= 1K
 	 * and SQ.CQ.size >= 4K to avoid CQ overflow.
 	 */
-	if ((is_9xxx_pass1_silicon(pfvf->pdev)) &&
+	if ((is_96xx_A0(pfvf->pdev) || is_95xx_A0(pfvf->pdev)) &&
 	    (tx_size < 0x4 || rx_size < 0x3))
 		return 0;
 
