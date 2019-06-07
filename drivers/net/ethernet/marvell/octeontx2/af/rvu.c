@@ -67,7 +67,7 @@ static void rvu_setup_hw_capabilities(struct rvu *rvu)
 	hw->cap.nix_shaping = true;
 	hw->cap.nix_tx_link_bp = true;
 
-	if ((is_rvu_9xxx_A0(rvu))) {
+	if (is_rvu_96xx_A0(rvu) || is_rvu_95xx_A0(rvu)) {
 		hw->cap.nix_fixed_txschq_mapping = true;
 		hw->cap.nix_txsch_per_cgx_lmac = 4;
 		hw->cap.nix_txsch_per_lbk_lmac = 132;
@@ -1050,7 +1050,7 @@ static int rvu_lookup_rsrc(struct rvu *rvu, struct rvu_block *block,
 {
 	u64 val;
 
-	if (block->type == BLKTYPE_TIM && is_rvu_9xxx_A0(rvu))
+	if (block->type == BLKTYPE_TIM && is_rvu_96xx_A0(rvu))
 		return rvu_lf_lookup_tim_errata(rvu, block, pcifunc, slot);
 
 	val = ((u64)pcifunc << 24) | (slot << 16) | (1ULL << 13);
