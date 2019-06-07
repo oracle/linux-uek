@@ -2213,7 +2213,7 @@ static int otx2_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	if (err)
 		goto err_detach_rsrc;
 
-	if (!is_9xxx_pass1_silicon(pdev))
+	if (!is_96xx_A0(pf->pdev) && !is_95xx_A0(pf->pdev))
 		hw->hw_tso = true;
 
 	pf->cq_time_wait = CQ_TIMER_THRESH_DEFAULT;
