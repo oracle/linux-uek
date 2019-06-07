@@ -127,17 +127,18 @@ int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 		/* Reject incoming connections while we're tearing
 		 * down an existing one.
 		 */
-		if (event->event == RDMA_CM_EVENT_CONNECT_REQUEST)
+		if (event->event == RDMA_CM_EVENT_CONNECT_REQUEST) {
 			ret = 1;
-		rds_rtd(RDS_RTD_CM, "Bailing, conn %p being shut down, ret: %d\n",
-			conn, ret);
-		conn->c_reconnect_racing = 1;
+			conn->c_reconnect_racing = 1;
+		}
 		if (event->event == RDMA_CM_EVENT_ADDR_CHANGE ||
 		    event->event == RDMA_CM_EVENT_DISCONNECTED)
 			/* These events might indicate the IP being moved,
 			 * hence flush the address
 			 */
 			rds_ib_flush_arp_entry(&conn->c_faddr);
+		rds_rtd(RDS_RTD_CM, "Bailing, conn %p being shut down, ret: %d\n",
+			conn, ret);
 		goto out;
 	}
 
