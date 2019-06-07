@@ -126,6 +126,9 @@ struct netns_ipv4 {
 	int sysctl_tcp_sack;
 	int sysctl_tcp_window_scaling;
 	int sysctl_tcp_timestamps;
+#ifndef	__GENKSYMS__
+	int sysctl_tcp_min_snd_mss;
+#endif
 	struct inet_timewait_death_row tcp_death_row;
 	int sysctl_max_syn_backlog;
 
