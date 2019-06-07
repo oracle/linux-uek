@@ -299,6 +299,19 @@ struct octeon_ciu_chip_data {
 	int ciu_node; /* NUMA node number of the CIU */
 	int trigger_type;
 };
+struct octeon_edac_lmc_data {
+	uint8_t node;		/** CPU node number */
+	uint8_t lmc;		/** LMC interface number on node */
+};
+
+struct edac_device_ctl_info;
+
+struct octeon_edac_l2c_data {
+	struct edac_device_ctl_info *ed;
+	struct platform_device *pdev;
+	uint8_t node;		/** CPU node number */
+	uint8_t tad;		/** L2C TAD number */
+};
 
 extern void octeon_check_cpu_bist(void);
 
