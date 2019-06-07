@@ -23,6 +23,7 @@
 #define PCI_DEVID_OCTEONTX2_RVU_AFVF		0xA0F8
 
 #define PCI_SUBSYS_DEVID_96XX_RVU_PFVF		0xB200
+#define PCI_SUBSYS_DEVID_95XX_RVU_PFVF		0xB200
 
 /* PCI BAR nos */
 #define PCI_CFG_REG_BAR_NUM                     2
@@ -202,10 +203,16 @@ struct otx2_nic {
 	struct flr_work		*flr_wrk;
 };
 
-static inline bool is_9xxx_pass1_silicon(struct pci_dev *pdev)
+static inline bool is_96xx_A0(struct pci_dev *pdev)
 {
 	return (pdev->revision == 0x00) &&
 		(pdev->subsystem_device == PCI_SUBSYS_DEVID_96XX_RVU_PFVF);
+}
+
+static inline bool is_95xx_A0(struct pci_dev *pdev)
+{
+	return (pdev->revision == 0x10) &&
+		(pdev->subsystem_device == PCI_SUBSYS_DEVID_95XX_RVU_PFVF);
 }
 
 /* Register read/write APIs */
