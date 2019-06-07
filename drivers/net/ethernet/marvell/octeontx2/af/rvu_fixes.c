@@ -884,7 +884,7 @@ static void rvu_nix_enable_internal_bp(struct rvu *rvu, int blkaddr)
 	 * CQ context. To avoid such condition, enable internal backpressure
 	 * with BP_TEST registers.
 	 */
-	if (is_rvu_9xxx_A0(rvu)) {
+	if (is_rvu_96xx_A0(rvu)) {
 		/* Enable internal backpressure on pipe_stg0 */
 		rvu_write64(rvu, blkaddr, NIX_AF_RQM_BP_TEST,
 			    BIT_ULL(51) | BIT_ULL(23) | BIT_ULL(22) | 0x100ULL);
@@ -899,15 +899,19 @@ int rvu_nix_fixes_init(struct rvu *rvu, struct nix_hw *nix_hw, int blkaddr)
 	int err;
 	u64 cfg;
 
-	if (!is_rvu_9xxx_A0(rvu))
+	if (!is_rvu_96xx_A0(rvu) && !is_rvu_95xx_A0(rvu))
 		return 0;
 
-	/* As per a HW errata in 9xxx A0 silicon, NIX may corrupt
+	/* As per a HW errata in 96xx A0 silicon, NIX may corrupt
 	 * internal state when conditional clocks are turned off.
 	 * Hence enable them.
 	 */
-	rvu_write64(rvu, blkaddr, NIX_AF_CFG,
-		    rvu_read64(rvu, blkaddr, NIX_AF_CFG) | 0x5EULL);
+	if (is_rvu_95xx_A0(rvu))
+		rvu_write64(rvu, blkaddr, NIX_AF_CFG,
+			    rvu_read64(rvu, blkaddr, NIX_AF_CFG) | 0x40ULL);
+	else
+		rvu_write64(rvu, blkaddr, NIX_AF_CFG,
+			    rvu_read64(rvu, blkaddr, NIX_AF_CFG) | 0x5EULL);
 
 	/* Set chan/link to backpressure TL3 instead of TL2 */
 	rvu_write64(rvu, blkaddr, NIX_AF_PSE_CHANNEL_LEVEL, 0x01);
@@ -920,17 +924,21 @@ int rvu_nix_fixes_init(struct rvu *rvu, struct nix_hw *nix_hw, int blkaddr)
 	cfg &= ~BIT_ULL(15);
 	rvu_write64(rvu, blkaddr, NIX_AF_SQM_DBG_CTL_STATUS, cfg);
 
+	rvu_nix_enable_internal_bp(rvu, blkaddr);
+
+	if (!is_rvu_96xx_A0(rvu))
+		return 0;
+
 	err = rvu_nix_tx_stall_workaround_init(rvu, nix_hw, blkaddr);
 	if (err)
 		return err;
 
-	rvu_nix_enable_internal_bp(rvu, blkaddr);
 	return 0;
 }
 
 void rvu_nix_fixes_exit(struct rvu *rvu, struct nix_hw *nix_hw)
 {
-	if (!is_rvu_9xxx_A0(rvu))
+	if (!is_rvu_96xx_A0(rvu))
 		return;
 
 	rvu_nix_tx_stall_workaround_exit(rvu, nix_hw);

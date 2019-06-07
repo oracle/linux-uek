@@ -131,10 +131,10 @@ static void nix_rx_sync(struct rvu *rvu, int blkaddr)
 	if (err)
 		dev_err(rvu->dev, "NIX RX software sync failed\n");
 
-	/* As per a HW errata in 9xxx A0 silicon, HW may clear SW_SYNC[ENA]
+	/* As per a HW errata in 96xx A0 silicon, HW may clear SW_SYNC[ENA]
 	 * bit too early. Hence wait for 50us more.
 	 */
-	if (is_rvu_9xxx_A0(rvu))
+	if (is_rvu_96xx_A0(rvu))
 		usleep_range(50, 60);
 }
 
