@@ -1015,7 +1015,7 @@ static void npc_load_mkex_profile(struct rvu *rvu, int blkaddr)
 			 * parse nibble enable configuration has to be
 			 * identical for both Rx and Tx interfaces.
 			 */
-			if (is_rvu_9xxx_A0(rvu) &&
+			if (is_rvu_96xx_A0(rvu) &&
 			    mcam_kex->keyx_cfg[NIX_INTF_RX] !=
 			    mcam_kex->keyx_cfg[NIX_INTF_TX])
 				goto load_default;
@@ -1379,7 +1379,7 @@ int rvu_npc_init(struct rvu *rvu)
 	/* Due to an errata (35786) in A0 pass silicon, parse nibble enable
 	 * configuration has to be identical for both Rx and Tx interfaces.
 	 */
-	if (!is_rvu_9xxx_A0(rvu))
+	if (!is_rvu_96xx_A0(rvu))
 		nibble_ena = (1ULL << 19) - 1;
 	rvu_write64(rvu, blkaddr, NPC_AF_INTFX_KEX_CFG(NIX_INTF_TX),
 			((keyz & 0x3) << 32) | nibble_ena);
