@@ -1429,7 +1429,9 @@ static int __init edac_devinit(void)
 	struct platform_device *dev;
 	int i, err = 0;
 	int num_lmc;
+	int num_tad;
 	char *name;
+	int node;
 
 	if (disable_octeon_edac_p)
 		return 0;
@@ -1448,12 +1450,42 @@ static int __init edac_devinit(void)
 		((OCTEON_IS_MODEL(OCTEON_CN56XX)
 		  || OCTEON_IS_MODEL(OCTEON_CN73XX)
 		  || OCTEON_IS_MODEL(OCTEON_CNF75XX)) ? 2 : 1);
-	for (i = 0; i < num_lmc; i++) {
-		dev = platform_device_register_simple("octeon_lmc_edac",
-						      i, NULL, 0);
-		if (IS_ERR(dev)) {
-			pr_err("Registration of octeon_lmc_edac %d failed!\n", i);
-			err = PTR_ERR(dev);
+	num_tad = OCTEON_IS_MODEL(OCTEON_CN78XX) ? 8 :
+			(OCTEON_IS_MODEL(OCTEON_CN68XX)
+			 || (OCTEON_IS_OCTEON3()
+			     && !OCTEON_IS_MODEL(OCTEON_CN70XX))) ? 4 : 1;
+
+	for_each_online_node(node) {
+		for (i = 0; i < num_lmc; i++) {
+			struct octeon_edac_lmc_data lmc_data;
+
+			lmc_data.node = node;
+			lmc_data.lmc = i;
+			dev = platform_device_register_data(NULL,
+							    "octeon_lmc_edac",
+							    node * num_lmc + i,
+							    &lmc_data,
+							    sizeof(lmc_data));
+			if (IS_ERR(dev)) {
+				pr_err("Registation of octeon_lmc_edac %d failed!\n", i);
+				err = PTR_ERR(dev);
+			}
+		}
+		for (i = 0; i < num_tad; i++) {
+			struct octeon_edac_l2c_data l2c_data;
+
+			l2c_data.node = node;
+			l2c_data.tad = i;
+			dev = platform_device_register_data(NULL,
+							    "octeon_l2c_edac",
+							    node * num_tad + i,
+							    &l2c_data,
+							    sizeof(l2c_data));
+			if (IS_ERR(dev)) {
+				pr_err("Registration of octeon_l2c_edac %d:%d failed!\n",
+				       node, i);
+				err = PTR_ERR(dev);
+			}
 		}
 	}
 
