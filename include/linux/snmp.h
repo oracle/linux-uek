@@ -231,6 +231,9 @@ enum
 	LINUX_MIB_TCPDEFERACCEPTDROP,
 	LINUX_MIB_IPRPFILTER, /* IP Reverse Path Filter (rp_filter) */
 	LINUX_MIB_TCPTIMEWAITOVERFLOW,		/* TCPTimeWaitOverflow */
+#ifndef        __GENKSYMS__
+	LINUX_MIB_TCPWQUEUETOOBIG,		/* TCPWqueueTooBig */
+#endif
 	__LINUX_MIB_MAX
 };
 
