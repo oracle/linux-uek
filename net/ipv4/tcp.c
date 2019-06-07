@@ -3247,6 +3247,7 @@ void __init tcp_init(void)
 	int i, max_rshare, max_wshare, cnt;
 	unsigned long jiffy = jiffies;
 
+	BUILD_BUG_ON(TCP_MIN_SND_MSS <= MAX_TCP_OPTION_SPACE);
 	BUILD_BUG_ON(sizeof(struct tcp_skb_cb) > sizeof(skb->cb));
 
 	percpu_counter_init(&tcp_sockets_allocated, 0);
