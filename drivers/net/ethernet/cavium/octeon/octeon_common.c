@@ -183,6 +183,9 @@ int cvm_oct_common_change_mtu(struct net_device *dev, int mtu, u64 base_reg,
 		 * multiple of 8 bytes, so round up.
 		 */
 		cvmx_write_csr(base_reg + GMX_RX_JABBER, (max_packet + 7) & ~7u);
+		/* Need to configure AGL_GMX_RX_FRM_MAX for agl interface. */
+		if ((base_reg >> 28 & 0xf) == 0xe)
+			cvmx_write_csr(base_reg + GMX_RX_FRM_MAX, max_packet);
 	}
 
 	return 0;
