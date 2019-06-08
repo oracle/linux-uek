@@ -149,6 +149,14 @@ tcp_adv_win_scale - INTEGER
 	Possible values are [-31, 31], inclusive.
 	Default: 1
 
+tcp_min_snd_mss - INTEGER
+	TCP SYN and SYNACK messages usually advertise an ADVMSS option,
+	as described in RFC 1122 and RFC 6691.
+	If this ADVMSS option is smaller than tcp_min_snd_mss,
+	it is silently capped to tcp_min_snd_mss.
+
+	Default : 48 (at least 8 bytes of payload per segment)
+
 tcp_allowed_congestion_control - STRING
 	Show/set the congestion control choices available to non-privileged
 	processes. The list is a subset of those listed in
