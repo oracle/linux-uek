@@ -91,6 +91,9 @@ struct netns_ipv4 {
 	struct ping_group_range ping_group_range;
 
 	atomic_t dev_addr_genid;
+#ifndef	__GENKSYMS__
+	int sysctl_tcp_min_snd_mss;
+#endif
 
 #ifdef CONFIG_SYSCTL
 	unsigned long *sysctl_local_reserved_ports;
