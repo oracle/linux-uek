@@ -272,11 +272,13 @@ static void _octeon_l2c_poll_oct3(struct edac_device_ctl_info *l2c, int tad)
 		snprintf(buf1, sizeof(buf1),
 			"Read reference past L2C_BIG_CTL[MAXDRAM] occurred:");
 		l2c_reset.cn70xx.bigrd = true;
+		edac_device_handle_ce(l2c, tad, 0, buf1);
 	}
 	if (l2c_err.s.bigwr) {
 		snprintf(buf1, sizeof(buf1),
 			"Write reference past L2C_BIG_CTL[MAXDRAM] occurred:");
 		l2c_reset.cn70xx.bigwr = true;
+		edac_device_handle_ce(l2c, tad, 0, buf1);
 	}
 
 	if (l2c_reset.u64)
