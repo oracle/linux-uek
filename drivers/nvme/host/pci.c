@@ -131,19 +131,6 @@ static int io_queue_depth_set(const char *val, const struct kernel_param *kp)
 	return param_set_int(val, kp);
 }
 
-static int queue_count_set(const char *val, const struct kernel_param *kp)
-{
-	int n, ret;
-
-	ret = kstrtoint(val, 10, &n);
-	if (ret)
-		return ret;
-	if (n > num_possible_cpus())
-		n = num_possible_cpus();
-
-	return param_set_int(val, kp);
-}
-
 static inline unsigned int sq_idx(unsigned int qid, u32 stride)
 {
 	return qid * 2 * stride;
