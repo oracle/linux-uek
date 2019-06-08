@@ -2172,7 +2172,7 @@ static u64 read_pki_stat(int numa_node, u64 csr)
 	return v;
 }
 
-static struct rtnl_link_stats64 *octeon3_eth_ndo_get_stats64(struct net_device *netdev,
+static void octeon3_eth_ndo_get_stats64(struct net_device *netdev,
 							     struct rtnl_link_stats64 *s)
 {
 	struct octeon3_ethernet *priv = netdev_priv(netdev);
@@ -2209,7 +2209,6 @@ static struct rtnl_link_stats64 *octeon3_eth_ndo_get_stats64(struct net_device *
 	s->tx_packets = atomic64_read(&priv->tx_packets);
 	s->tx_bytes = atomic64_read(&priv->tx_octets);
 	s->tx_dropped = atomic64_read(&priv->tx_dropped);
-	return s;
 }
 
 static int octeon3_eth_set_mac_address(struct net_device *netdev, void *addr)
