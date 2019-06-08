@@ -65,6 +65,9 @@ struct netns_ipv4 {
 	long sysctl_tcp_mem[3];
 
 	atomic_t dev_addr_genid;
+#ifndef	__GENKSYMS__
+	int sysctl_tcp_min_snd_mss;
+#endif
 
 #ifdef CONFIG_IP_MROUTE
 #ifndef CONFIG_IP_MROUTE_MULTIPLE_TABLES
