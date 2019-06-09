@@ -2388,6 +2388,10 @@ static inline int secpath_has_nontransport(const struct sec_path *sp, int k, int
 	return 0;
 }
 
+#if defined(CONFIG_CAVIUM_OCTEON_IPSEC) && defined(CONFIG_NET_KEY)
+extern int (*cavium_ipsec_process)(void *, struct sk_buff *, int, int);
+#endif /* defined(CONFIG_CAVIUM_OCTEON_IPSEC) && defined(CONFIG_NET_KEY) */
+
 int __xfrm_policy_check(struct sock *sk, int dir, struct sk_buff *skb,
 			unsigned short family)
 {
@@ -2472,6 +2476,9 @@ int __xfrm_policy_check(struct sock *sk, int dir, struct sk_buff *skb,
 #endif
 
 	if (pol->action == XFRM_POLICY_ALLOW) {
+#if defined(CONFIG_CAVIUM_OCTEON_IPSEC) && defined(CONFIG_NET_KEY)
+		if (!cavium_ipsec_process) {
+#endif /* defined(CONFIG_CAVIUM_OCTEON_IPSEC) && defined(CONFIG_NET_KEY) */
 		struct sec_path *sp;
 		static struct sec_path dummy;
 		struct xfrm_tmpl *tp[XFRM_MAX_DEPTH];
@@ -2524,6 +2531,9 @@ int __xfrm_policy_check(struct sock *sk, int dir, struct sk_buff *skb,
 			goto reject;
 		}
 
+#if defined(CONFIG_CAVIUM_OCTEON_IPSEC) && defined(CONFIG_NET_KEY)
+		}
+#endif /* defined(CONFIG_CAVIUM_OCTEON_IPSEC) && defined(CONFIG_NET_KEY) */
 		xfrm_pols_put(pols, npols);
 		return 1;
 	}
