@@ -2487,6 +2487,10 @@ static int octeon3_eth_probe(struct platform_device *pdev)
 		bgx_port_set_netdev(pdev->dev.parent, netdev);
 	netdev->priv_flags |= IFF_LIVE_ADDR_CHANGE;
 
+	/* MTU range: 64 - 65392 */
+	netdev->min_mtu = 64;
+	netdev->max_mtu = 65392;
+
 	priv = netdev_priv(netdev);
 	priv->netdev = netdev;
 	priv->mac_type = pd->mac_type;
