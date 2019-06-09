@@ -87,4 +87,13 @@ config OCTEON_ILM
 	  To compile this driver as a module, choose M here.  The module
 	  will be called octeon-ilm
 
+config CAVIUM_OCTEON_IPSEC
+	bool "Enable enhancements to the IPSec stack to allow procotol offload."
+	default "n"
+	depends on NET_KEY
+	help
+	  This enables enhancements to the IPSec stack to allow some of the
+	  processing required for IPSec to be performed on another processor
+	  which must be running the ipsec-filter application.
+
 endif # CAVIUM_OCTEON_SOC

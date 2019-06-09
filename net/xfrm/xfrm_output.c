@@ -19,6 +19,18 @@
 #include <net/dst.h>
 #include <net/xfrm.h>
 
+#if defined(CONFIG_CAVIUM_OCTEON_IPSEC) && defined(CONFIG_NET_KEY)
+
+int (*cavium_ipsec_process)(void *, struct sk_buff *, int, int) = NULL;
+
+void set_cavium_ipsec_process(void *func)
+{
+	cavium_ipsec_process = func;
+	return;
+}
+EXPORT_SYMBOL(set_cavium_ipsec_process);
+#endif
+
 static int xfrm_output2(struct net *net, struct sock *sk, struct sk_buff *skb);
 
 static int xfrm_skb_check_space(struct sk_buff *skb)
@@ -112,10 +124,38 @@ static int xfrm_output_one(struct sk_buff *skb, int err)
 		} else {
 			/* Inner headers are invalid now. */
 			skb->encapsulation = 0;
-
-			err = x->type->output(x, skb);
-			if (err == -EINPROGRESS)
-				goto out;
+#if defined(CONFIG_CAVIUM_OCTEON_IPSEC) && defined(CONFIG_NET_KEY)
+			/*
+			 * If Octeon IPSEC Acceleration module has been loaded
+			 * call it, otherwise, follow the software path
+			 */
+			if (cavium_ipsec_process) {
+				if (skb_is_nonlinear(skb) &&
+				    skb_linearize(skb) != 0) {
+					err = -ENOMEM;
+					goto error;
+				}
+				/*
+				 * If Octeon IPSec Acceleration module is not
+				 * able to handle the Cipher at any instance,
+				 * Use the Software Path to handle it
+				 */
+				if (x->sa_handle != NULL) {
+					err = cavium_ipsec_process(x, skb, 0,
+								   1 /*ENCRYPT*/);
+					if (err != 0)
+						err = x->type->output(x, skb);
+				} else {
+					err = x->type->output(x, skb);
+				}
+			} else {
+				err = x->type->output(x, skb);
+			}
+#else
+		err = x->type->output(x, skb);
+#endif
+		if (err == -EINPROGRESS)
+			goto out;
 		}
 
 resume:
