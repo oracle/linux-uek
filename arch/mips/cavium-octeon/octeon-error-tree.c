@@ -20,6 +20,10 @@
 static int disable;
 module_param(disable, int, S_IRUGO);
 
+/* Module parameter to disable co-processor SBE errors */
+static int disable_sbe;
+module_param(disable_sbe, int, S_IRUGO);
+
 static int octeon_78xx_tree_size;
 static struct cvmx_error_78xx *octeon_78xx_error_array;
 
@@ -74,7 +78,12 @@ static void octeon_error_tree_add(struct octeon_hw_status_reg *sr,
 	sr[idx].mask_reg = n->mask_reg;
 
 	while (bit && bit->valid) {
-		if (bit->group == group && (unit < 0 || unit == bit->unit)) {
+		/* Disable co-processor single bit errors */
+		if (disable_sbe
+		    && (group == CVMX_ERROR_GROUP_INTERNAL)
+		    && (bit->flags == CVMX_ERROR_TYPE_SBE))
+			break;
+		else if (bit->group == group && (unit < 0 || unit == bit->unit)) {
 			sr[idx].bit = bit->bit;
 			sr[idx].ack_w1c = bit->w1c;
 			sr[idx].has_child = 0;
@@ -430,8 +439,14 @@ static int __init octeon_error_tree_init78(void)
 		for (i = 0; octeon_78xx_error_array[i].intsn < 0xfffff; i++) {
 			enum cvmx_error_groups group;
 			group = octeon_78xx_error_array[i].error_group;
-			if (group == CVMX_ERROR_GROUP_INTERNAL)
+			if (group == CVMX_ERROR_GROUP_INTERNAL) {
+				/* Don't enable co-processor SBE errors */
+				if (disable_sbe
+				    && (octeon_78xx_error_array[i].flags ==
+					    CVMX_ERROR_TYPE_SBE))
+					continue;
 				octeon_ciu3_errbits_enable_intsn(node, octeon_78xx_error_array[i].intsn);
+			}
 		}
 
 	return 0;
