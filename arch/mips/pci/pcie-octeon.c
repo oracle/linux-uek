@@ -857,7 +857,7 @@ static int octeon_pcie_suspend(void)
 
 	for_each_online_node (node)
 		for (port = 0; port < CVMX_PCIE_PORTS; port++)
-			cvmx_pcie_rc_shutdown((node << 2) | (port & 3));
+			cvmx_pcie_rc_shutdown((node << 4) | (port & 3));
 	return 0;
 }
 
