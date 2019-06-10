@@ -486,7 +486,7 @@ static void octeon_lmc_edac_poll_o3(struct mem_ctl_info *mci)
 		/* Detect four-lmc mode */
 		union cvmx_lmcx_dll_ctl2 ctl2;
 
-		ctl2.u64 = cvmx_read_csr(CVMX_LMCX_DLL_CTL2(3));
+		ctl2.u64 = cvmx_read_csr_node(node, CVMX_LMCX_DLL_CTL2(3));
 		interface_bits = 1 + (ctl2.cn78xx.quad_dll_ena | ctl2.cn78xx.intf_en);
 	} else if (OCTEON_IS_MODEL(OCTEON_CN73XX) || OCTEON_IS_MODEL(OCTEON_CNF75XX)) {
 		/* Detect two-lmc mode */
@@ -547,10 +547,17 @@ static void octeon_lmc_edac_poll_o3(struct mem_ctl_info *mci)
 	if (phase & 1)
 		bit += 64;
 
-	snprintf(msg, sizeof(msg), "DIMM %d rank %d bank %d row %d col %d bit %d address 0x%llx syndrome 0x%x",
-		 fadr.cn73xx.fdimm, fadr.cn73xx.fbunk, fadr.cn73xx.fbank,
-		 fadr.cn73xx.frow & rmask, fadr.cn73xx.fcol & cmask, bit,
-		 (unsigned long long)fadr_physical, syndrome);
+	if (OCTEON_IS_OCTEON3()) {
+		snprintf(msg, sizeof(msg), "DIMM %d rank %d bank %d row %d col %d bit %d address 0x%llx syndrome 0x%x",
+		 	fadr.cn73xx.fdimm, fadr.cn73xx.fbunk, fadr.cn73xx.fbank,
+		 	fadr.cn73xx.frow & rmask, fadr.cn73xx.fcol & cmask, bit,
+		 	(unsigned long long)fadr_physical, syndrome);
+	} else {
+		snprintf(msg, sizeof(msg), "DIMM %d rank %d bank %d row %d col %d bit %d address 0x%llx syndrome 0x%x",
+		 	fadr.cn63xx.fdimm, fadr.cn63xx.fbunk, fadr.cn63xx.fbank,
+		 	fadr.cn63xx.frow & rmask, fadr.cn63xx.fcol & cmask, bit,
+		 	(unsigned long long)fadr_physical, syndrome);
+	}
 
 	/* Re-write the data using atomic add with the value 0 */
 	if (lmc_int.s.sec_err) {
@@ -582,7 +589,7 @@ static void octeon_lmc_edac_poll_o3(struct mem_ctl_info *mci)
 	}
 
 	if (do_clear)
-		cvmx_write_csr(CVMX_LMCX_INT(mci->mc_idx), lmc_int.u64);
+		cvmx_write_csr_node(node, CVMX_LMCX_INT(mci->mc_idx), lmc_int.u64);
 }
 
 static int octeon_lmc_edac_probe(struct platform_device *pdev)
