@@ -29,6 +29,7 @@
 #include "cpuid.h"
 #include "spte.h"
 
+#include <linux/nospec.h>
 #include <linux/kvm_host.h>
 #include <linux/types.h>
 #include <linux/string.h>
@@ -2363,14 +2364,15 @@ static void shadow_walk_init_using_root(struct kvm_shadow_walk_iterator *iterato
 		iterator->level = PT32E_ROOT_LEVEL;
 
 	if (iterator->level == PT32E_ROOT_LEVEL) {
+		u8 index;
 		/*
 		 * prev_root is currently only used for 64-bit hosts. So only
 		 * the active root_hpa is valid here.
 		 */
 		BUG_ON(root != vcpu->arch.mmu->root.hpa);
 
-		iterator->shadow_addr
-			= vcpu->arch.mmu->pae_root[(addr >> 30) & 3];
+		index = array_index_nospec((addr >> 30) & 3, 4);
+		iterator->shadow_addr = vcpu->arch.mmu->pae_root[index];
 		iterator->shadow_addr &= SPTE_BASE_ADDR_MASK;
 		--iterator->level;
 		if (!iterator->shadow_addr)
