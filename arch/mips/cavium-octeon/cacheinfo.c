@@ -686,14 +686,14 @@ static void cacheinfo_sysfs_populate(unsigned int cpu_id,
 	}
 }
 
-void cacheinfo_cpu_online(unsigned int cpu_id)
+int cacheinfo_cpu_online(unsigned int cpu_id)
 {
 	struct cache *cache;
 	struct cache *iter;
 
 	cache = cache_chain_instantiate(cpu_id);
 	if (!cache)
-		return;
+		return 0;
 
 	/* Add all CPUs to the L2 cache for now */
 	list_for_each_entry(iter, &cache_list, list) {
@@ -703,7 +703,7 @@ void cacheinfo_cpu_online(unsigned int cpu_id)
 
 	cacheinfo_sysfs_populate(cpu_id, cache);
 
-
+	return 0;
 }
 
 static void remove_index_dirs(struct cache_dir *cache_dir)
@@ -758,7 +758,7 @@ static void cache_cpu_clear(struct cache *cache, int cpu)
 	}
 }
 
-void cacheinfo_cpu_offline(unsigned int cpu_id)
+int cacheinfo_cpu_offline(unsigned int cpu_id)
 {
 	struct cache_dir *cache_dir;
 	struct cache *cache;
@@ -782,63 +782,20 @@ void cacheinfo_cpu_offline(unsigned int cpu_id)
 	cache = cache_lookup_by_cpuid(cpu_id);
 	if (cache)
 		cache_cpu_clear(cache, cpu_id);
+
+	return 0;
 }
-
-
-
-
-static void register_cpu_online(unsigned int cpu_id)
-{
-	cacheinfo_cpu_online(cpu_id);
-}
-
-static void unregister_cpu_online(unsigned int cpu_id)
-{
-	cacheinfo_cpu_offline(cpu_id);
-}
-
-static int sysfs_cpu_notify(struct notifier_block *self,
-			    unsigned long action, void *hcpu)
-{
-	unsigned int cpu = (unsigned int)(long)hcpu;
-
-	switch (action) {
-	case CPU_ONLINE:
-	case CPU_ONLINE_FROZEN:
-		register_cpu_online(cpu);
-		break;
-
-	case CPU_DEAD:
-	case CPU_DEAD_FROZEN:
-		unregister_cpu_online(cpu);
-		break;
-	}
-	return NOTIFY_OK;
-}
-
-static struct notifier_block sysfs_cpu_nb = {
-	.notifier_call = sysfs_cpu_notify,
-};
 
 static int __init octeon_cacheinfo_init(void)
 {
-	int cpu;
-
-	for_each_online_cpu(cpu) {
-		cacheinfo_cpu_online(cpu);
-	}
-	register_hotcpu_notifier(&sysfs_cpu_nb);
-	return 0;
+	return cpuhp_setup_state(CPUHP_ONLINE,
+					 "mips/cavium:cacheinfo",
+					 cacheinfo_cpu_online, cacheinfo_cpu_offline);
 }
 
 static void __init octeon_cacheinfo_cleanup(void)
 {
-	int cpu;
-
-	for_each_online_cpu(cpu) {
-		cacheinfo_cpu_offline(cpu);
-	}
-	unregister_hotcpu_notifier(&sysfs_cpu_nb);
+	cpuhp_remove_state(CPUHP_ONLINE);
 }
 
 module_init(octeon_cacheinfo_init);
