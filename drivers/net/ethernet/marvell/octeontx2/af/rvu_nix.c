@@ -2587,8 +2587,8 @@ static int set_flowkey_fields(struct nix_rx_flowkey_alg *alg, u32 flow_cfg)
 			field->lid = NPC_LID_LC;
 			field->ltype_match = NPC_LT_LC_IP;
 			if (key_type == NIX_FLOW_KEY_TYPE_INNR_IPV4) {
-				field->lid = NPC_LID_LF;
-				field->ltype_match = NPC_LT_LF_TU_IP;
+				field->lid = NPC_LID_LG;
+				field->ltype_match = NPC_LT_LG_TU_IP;
 			}
 			field->hdr_offset = 12; /* SIP offset */
 			field->bytesm1 = 7; /* SIP + DIP, 8 bytes */
@@ -2600,8 +2600,8 @@ static int set_flowkey_fields(struct nix_rx_flowkey_alg *alg, u32 flow_cfg)
 			field->lid = NPC_LID_LC;
 			field->ltype_match = NPC_LT_LC_IP6;
 			if (key_type == NIX_FLOW_KEY_TYPE_INNR_IPV6) {
-				field->lid = NPC_LID_LF;
-				field->ltype_match = NPC_LT_LF_TU_IP6;
+				field->lid = NPC_LID_LG;
+				field->ltype_match = NPC_LT_LG_TU_IP6;
 			}
 			field->hdr_offset = 8; /* SIP offset */
 			field->bytesm1 = 31; /* SIP + DIP, 32 bytes */
@@ -2625,11 +2625,11 @@ static int set_flowkey_fields(struct nix_rx_flowkey_alg *alg, u32 flow_cfg)
 			 * the lid for inner protocols
 			 */
 			BUILD_BUG_ON((int)NPC_LT_LD_TCP !=
-				     (int)NPC_LT_LG_TU_TCP);
+				     (int)NPC_LT_LH_TU_TCP);
 			BUILD_BUG_ON((int)NPC_LT_LD_UDP !=
-				     (int)NPC_LT_LG_TU_UDP);
+				     (int)NPC_LT_LH_TU_UDP);
 			BUILD_BUG_ON((int)NPC_LT_LD_SCTP !=
-				     (int)NPC_LT_LG_TU_SCTP);
+				     (int)NPC_LT_LH_TU_SCTP);
 
 			if ((key_type == NIX_FLOW_KEY_TYPE_TCP ||
 			     key_type == NIX_FLOW_KEY_TYPE_INNR_TCP) &&
@@ -2663,27 +2663,29 @@ static int set_flowkey_fields(struct nix_rx_flowkey_alg *alg, u32 flow_cfg)
 			}
 			break;
 		case NIX_FLOW_KEY_TYPE_NVGRE:
-		case NIX_FLOW_KEY_TYPE_VXLAN:
-		case NIX_FLOW_KEY_TYPE_GENEVE:
 			field->lid = NPC_LID_LD;
 			field->bytesm1 = 2;
 			field->ltype_mask = 0xF;
 			keyoff_marker = false;
-			if (key_type == NIX_FLOW_KEY_TYPE_NVGRE && valid_key) {
+			if (valid_key) {
 				field->hdr_offset = 4; /* VSID offset */
 				field->ltype_match = NPC_LT_LD_GRE;
 			}
-
+			break;
+		case NIX_FLOW_KEY_TYPE_VXLAN:
+		case NIX_FLOW_KEY_TYPE_GENEVE:
+			field->lid = NPC_LID_LE;
+			field->bytesm1 = 2;
+			field->ltype_mask = 0xF;
+			keyoff_marker = false;
 			if (key_type == NIX_FLOW_KEY_TYPE_VXLAN && valid_key) {
-				/* VNI at UDP header + 4B */
-				field->hdr_offset = 12;
-				field->ltype_match = NPC_LT_LD_UDP_VXLAN;
+				field->hdr_offset = 4;
+				field->ltype_match = NPC_LT_LE_VXLAN;
 			}
 
 			if (key_type == NIX_FLOW_KEY_TYPE_GENEVE && valid_key) {
-				/* VNI at UDP header + 4B */
-				field->hdr_offset = 12;
-				field->ltype_match = NPC_LT_LD_UDP_GENEVE;
+				field->hdr_offset = 4;
+				field->ltype_match = NPC_LT_LE_GENEVE;
 			}
 
 			if (key_type == NIX_FLOW_KEY_TYPE_GENEVE)
@@ -2694,8 +2696,8 @@ static int set_flowkey_fields(struct nix_rx_flowkey_alg *alg, u32 flow_cfg)
 			field->lid = NPC_LID_LA;
 			field->ltype_match = NPC_LT_LA_ETHER;
 			if (key_type == NIX_FLOW_KEY_TYPE_INNR_ETH_DMAC) {
-				field->lid = NPC_LID_LE;
-				field->ltype_match = NPC_LT_LE_TU_ETHER;
+				field->lid = NPC_LID_LF;
+				field->ltype_match = NPC_LT_LF_TU_ETHER;
 			}
 			field->hdr_offset = 0;
 			field->bytesm1 = 5; /* DMAC 6 Byte */
@@ -2709,33 +2711,33 @@ static int set_flowkey_fields(struct nix_rx_flowkey_alg *alg, u32 flow_cfg)
 			field->ltype_mask = 0xF;
 			break;
 		case NIX_FLOW_KEY_TYPE_GTPU:
-			field->lid = NPC_LID_LD;
-			field->hdr_offset = 12; /* UDP + hdr */
+			field->lid = NPC_LID_LE;
+			field->hdr_offset = 0; /* UDP data */
 			field->bytesm1 = 3; /* 4 bytes VNI*/
-			field->ltype_match = NPC_LT_LD_UDP_GTPU;
+			field->ltype_match = NPC_LT_LE_GTPU;
 			field->ltype_mask = 0xF;
 			break;
 		case NIX_FLOW_KEY_TYPE_UDP_VXLAN:
 		case NIX_FLOW_KEY_TYPE_UDP_GENEVE:
-			field->lid = NPC_LID_LD;
+			field->lid = NPC_LID_LE;
 			field->hdr_offset = 0; /* UDP data */
 			field->bytesm1 = 3; /* 4 bytes SPORT +  DPORT*/
 			field->ltype_mask = 0xF;
 			field_marker = false;
 			keyoff_marker = false;
-			BUILD_BUG_ON(NPC_LT_LD_UDP_VXLAN != 12);
-			BUILD_BUG_ON(NPC_LT_LD_UDP_GENEVE != 13);
+			BUILD_BUG_ON(NPC_LT_LE_VXLAN != 1);
+			BUILD_BUG_ON(NPC_LT_LE_GENEVE != 2);
 			/* Only VXLAN enabled */
 			if (key_type == NIX_FLOW_KEY_TYPE_UDP_VXLAN &&
 			    valid_key) {
-				field->ltype_match |= NPC_LT_LD_UDP_VXLAN;
+				field->ltype_match |= NPC_LT_LE_VXLAN;
 				udp_tu_data |= (1 << 0);
 			}
 
 			/* Only GENEVE enabled */
 			if (key_type == NIX_FLOW_KEY_TYPE_UDP_GENEVE &&
 			    valid_key) {
-				field->ltype_match |= NPC_LT_LD_UDP_GENEVE;
+				field->ltype_match |= NPC_LT_LE_GENEVE;
 				udp_tu_data |= (1 << 1);
 			}
 
@@ -2755,7 +2757,7 @@ static int set_flowkey_fields(struct nix_rx_flowkey_alg *alg, u32 flow_cfg)
 			field->lid = NPC_LID_LD;
 			field->hdr_offset = 0; /* UDP data */
 			field->bytesm1 = 3; /* 4 bytes SPORT +  DPORT*/
-			field->ltype_match = NPC_LT_LD_UDP_GTPU;
+			field->ltype_match = NPC_LT_LD_UDP;
 			field->ltype_mask = 0xF;
 			break;
 		}
@@ -3393,23 +3395,23 @@ int rvu_nix_init(struct rvu *rvu)
 		rvu_write64(rvu, blkaddr, NIX_AF_RX_DEF_OIP4,
 			    (NPC_LID_LC << 8) | (NPC_LT_LC_IP << 4) | 0x0F);
 		rvu_write64(rvu, blkaddr, NIX_AF_RX_DEF_IIP4,
-			    (NPC_LID_LF << 8) | (NPC_LT_LF_TU_IP << 4) | 0x0F);
+			    (NPC_LID_LG << 8) | (NPC_LT_LG_TU_IP << 4) | 0x0F);
 		rvu_write64(rvu, blkaddr, NIX_AF_RX_DEF_OIP6,
 			    (NPC_LID_LC << 8) | (NPC_LT_LC_IP6 << 4) | 0x0F);
 		rvu_write64(rvu, blkaddr, NIX_AF_RX_DEF_IIP6,
-			    (NPC_LID_LF << 8) | (NPC_LT_LF_TU_IP6 << 4) | 0x0F);
+			    (NPC_LID_LG << 8) | (NPC_LT_LG_TU_IP6 << 4) | 0x0F);
 		rvu_write64(rvu, blkaddr, NIX_AF_RX_DEF_OTCP,
 			    (NPC_LID_LD << 8) | (NPC_LT_LD_TCP << 4) | 0x0F);
 		rvu_write64(rvu, blkaddr, NIX_AF_RX_DEF_ITCP,
-			    (NPC_LID_LG << 8) | (NPC_LT_LG_TU_TCP << 4) | 0x0F);
+			    (NPC_LID_LH << 8) | (NPC_LT_LH_TU_TCP << 4) | 0x0F);
 		rvu_write64(rvu, blkaddr, NIX_AF_RX_DEF_OUDP,
 			    (NPC_LID_LD << 8) | (NPC_LT_LD_UDP << 4) | 0x0F);
 		rvu_write64(rvu, blkaddr, NIX_AF_RX_DEF_IUDP,
-			    (NPC_LID_LG << 8) | (NPC_LT_LG_TU_UDP << 4) | 0x0F);
+			    (NPC_LID_LH << 8) | (NPC_LT_LH_TU_UDP << 4) | 0x0F);
 		rvu_write64(rvu, blkaddr, NIX_AF_RX_DEF_OSCTP,
 			    (NPC_LID_LD << 8) | (NPC_LT_LD_SCTP << 4) | 0x0F);
 		rvu_write64(rvu, blkaddr, NIX_AF_RX_DEF_ISCTP,
-			    (NPC_LID_LG << 8) | (NPC_LT_LG_TU_SCTP << 4) |
+			    (NPC_LID_LH << 8) | (NPC_LT_LH_TU_SCTP << 4) |
 			    0x0F);
 
 		err = nix_rx_flowkey_alg_cfg(rvu, blkaddr);
@@ -3433,8 +3435,8 @@ int rvu_nix_init(struct rvu *rvu)
 				    (NPC_LT_LD_ESP << 4) | 0x0F);
 
 			rvu_write64(rvu, blkaddr, NIX_AF_RX_DEF_IPSECX(1),
-				    (8 << 12) | (NPC_LID_LG << 8) |
-				    (NPC_LT_LG_TU_ESP << 4) | 0x0F);
+				    (8 << 12) | (NPC_LID_LH << 8) |
+				    (NPC_LT_LH_TU_ESP << 4) | 0x0F);
 		}
 	}
 	return 0;
