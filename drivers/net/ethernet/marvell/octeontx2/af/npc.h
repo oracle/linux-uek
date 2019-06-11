@@ -58,63 +58,61 @@ enum npc_kpu_lc_ltype {
 /* Don't modify Ltypes upto SCTP, otherwise it will
  * effect flow tag calculation and thus RSS.
  */
-/* Dont change values of UDP_VXLAN(12) and UDP_GENEVE(13), otherwise it
- * will effect flow tag calculation and thus RSS
- */
 enum npc_kpu_ld_ltype {
 	NPC_LT_LD_TCP = 1,
 	NPC_LT_LD_UDP,
 	NPC_LT_LD_ICMP,
 	NPC_LT_LD_SCTP,
-	NPC_LT_LD_IGMP,
 	NPC_LT_LD_ICMP6,
-	NPC_LT_LD_TU_MPLS,
+	NPC_LT_LD_IGMP = 8,
 	NPC_LT_LD_ESP,
 	NPC_LT_LD_AH,
 	NPC_LT_LD_GRE,
 	NPC_LT_LD_NVGRE,
-	NPC_LT_LD_UDP_VXLAN,
-	NPC_LT_LD_UDP_GENEVE,
-	NPC_LT_LD_UDP_GTPU,
+	NPC_LT_LD_NSH,
+	NPC_LT_LD_TU_MPLS_IN_NSH,
+	NPC_LT_LD_TU_MPLS_IN_IP,
 };
 
 enum npc_kpu_le_ltype {
-	NPC_LT_LE_TU_ETHER = 1,
-	NPC_LT_LE_TU_PPP,
-	NPC_LT_LE_TU_MPLS_IN_NSH,
-	NPC_LT_LE_TU_3RD_NSH,
+	NPC_LT_LE_VXLAN = 1,
+	NPC_LT_LE_GENEVE,
+	NPC_LT_LE_GTPU = 4,
+	NPC_LT_LE_VXLANGPE,
+	NPC_LT_LE_GTPC,
+	NPC_LT_LE_NSH,
+	NPC_LT_LE_TU_MPLS_IN_GRE,
+	NPC_LT_LE_TU_NSH_IN_GRE,
 };
 
 enum npc_kpu_lf_ltype {
-	NPC_LT_LF_TU_IP = 1,
-	NPC_LT_LF_TU_IP6,
-	NPC_LT_LF_TU_ARP,
-	NPC_LT_LF_TU_MPLS_IP,
-	NPC_LT_LF_TU_MPLS_IP6,
-	NPC_LT_LF_TU_MPLS_ETHER,
+	NPC_LT_LF_TU_ETHER = 1,
+	NPC_LT_LF_TU_PPP,
+	NPC_LT_LF_TU_MPLS_IN_VXLANGPE,
+	NPC_LT_LF_TU_NSH_IN_VXLANGPE,
+	NPC_LT_LF_TU_MPLS_IN_NSH,
+	NPC_LT_LF_TU_3RD_NSH,
+};
+
+enum npc_kpu_lg_ltype {
+	NPC_LT_LG_TU_IP = 1,
+	NPC_LT_LG_TU_IP6,
+	NPC_LT_LG_TU_ARP,
+	NPC_LT_LG_TU_ETHER_IN_NSH,
 };
 
 /* Don't modify Ltypes upto SCTP, otherwise it will
  * effect flow tag calculation and thus RSS.
  */
-enum npc_kpu_lg_ltype {
-	NPC_LT_LG_TU_TCP = 1,
-	NPC_LT_LG_TU_UDP,
-	NPC_LT_LG_TU_ICMP,
-	NPC_LT_LG_TU_SCTP,
-	NPC_LT_LG_TU_IGMP,
-	NPC_LT_LG_TU_ICMP6,
-	NPC_LT_LG_TU_ESP,
-	NPC_LT_LG_TU_AH,
-};
-
 enum npc_kpu_lh_ltype {
-	NPC_LT_LH_TCP_DATA = 1,
-	NPC_LT_LH_HTTP_DATA,
-	NPC_LT_LH_HTTPS_DATA,
-	NPC_LT_LH_PPTP_DATA,
-	NPC_LT_LH_UDP_DATA,
-	NPC_LT_LH_UDP_PTP,
+	NPC_LT_LH_TU_TCP = 1,
+	NPC_LT_LH_TU_UDP,
+	NPC_LT_LH_TU_ICMP,
+	NPC_LT_LH_TU_SCTP,
+	NPC_LT_LH_TU_ICMP6,
+	NPC_LT_LH_TU_IGMP = 8,
+	NPC_LT_LH_TU_ESP,
+	NPC_LT_LH_TU_AH,
 };
 
 struct npc_kpu_profile_cam {

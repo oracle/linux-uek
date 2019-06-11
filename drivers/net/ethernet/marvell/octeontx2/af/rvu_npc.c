@@ -1356,7 +1356,7 @@ int rvu_npc_init(struct rvu *rvu)
 
 	/* Config Inner IPV4 NPC layer info */
 	rvu_write64(rvu, blkaddr, NPC_AF_PCK_DEF_IIP4,
-		    (NPC_LID_LF << 8) | (NPC_LT_LF_TU_IP << 4) | 0x0F);
+		    (NPC_LID_LG << 8) | (NPC_LT_LG_TU_IP << 4) | 0x0F);
 
 	/* Enable below for Rx pkts.
 	 * - Outer IPv4 header checksum validation.
