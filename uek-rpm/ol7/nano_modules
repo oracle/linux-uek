@@ -971,7 +971,6 @@ kernel/net/netfilter/nfnetlink_log.ko
 kernel/net/netfilter/nfnetlink_queue.ko
 kernel/net/netfilter/nf_synproxy_core.ko
 kernel/net/netfilter/nf_tables_inet.ko
-kernel/net/netfilter/nf_tables_netdev.ko
 kernel/net/netfilter/nf_tables.ko
 kernel/net/netfilter/nft_compat.ko
 kernel/net/netfilter/nft_counter.ko
