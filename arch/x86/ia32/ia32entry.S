@@ -191,7 +191,8 @@ sysenter_do_call:
 	movl	%ebx,%edi	/* arg1 */
 	movl	%edx,%edx	/* arg3 (zero extension) */
 sysenter_dispatch:
-	call	*ia32_sys_call_table(,%rax,8)
+	movq ia32_sys_call_table(,%rax,8), %rax
+	CALL_NOSPEC %rax
 	movq	%rax,RAX(%rsp)
 	DISABLE_INTERRUPTS(CLBR_NONE)
 	TRACE_IRQS_OFF
@@ -429,7 +430,8 @@ cstar_do_call:
 	movl	%ebx,%edi	/* arg1 */
 	movl	%edx,%edx	/* arg3 (zero extension) */
 cstar_dispatch:
-	call *ia32_sys_call_table(,%rax,8)
+	movq ia32_sys_call_table(,%rax,8), %rax
+	CALL_NOSPEC %rax
 	movq %rax,RAX(%rsp)
 	DISABLE_INTERRUPTS(CLBR_NONE)
 	TRACE_IRQS_OFF
@@ -577,7 +579,8 @@ ia32_do_call:
 	xchg %ecx,%esi	/* rsi:arg2, rcx:arg4 */
 	movl %ebx,%edi	/* arg1 */
 	movl %edx,%edx	/* arg3 (zero extension) */
-	call *ia32_sys_call_table(,%rax,8) # xxx: rip relative
+	movq ia32_sys_call_table(,%rax,8), %rax
+	CALL_NOSPEC %rax
 ia32_sysret:
 	movq %rax,RAX(%rsp)
 ia32_ret_from_sys_call:
@@ -640,7 +643,7 @@ ia32_ptregs_common:
 	CFI_REL_OFFSET	rsp,RSP
 /*	CFI_REL_OFFSET	ss,SS*/
 	SAVE_EXTRA_REGS 8
-	call *%rax
+	CALL_NOSPEC %rax
 	RESTORE_EXTRA_REGS 8
 	ret
 	CFI_ENDPROC
