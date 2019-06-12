@@ -424,9 +424,9 @@ static struct phy_driver qca833x_driver = {
 #ifdef QCA833X_IRQ
 	.ack_interrupt = qca833x_ack_interrupt,
 	.config_intr = qca833x_config_interrupt,
-	.flags = PHY_HAS_MAGICANEG | PHY_HAS_INTERRUPT,
+	.flags = PHY_IS_INTERNAL| PHY_HAS_INTERRUPT,
 #else /* !QCA833X_IRQ */
-	.flags = PHY_HAS_MAGICANEG,
+	.flags = PHY_IS_INTERNAL,
 #endif /* !QCA833X_IRQ */
 };
 
