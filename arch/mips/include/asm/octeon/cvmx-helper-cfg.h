@@ -157,6 +157,8 @@ struct cvmx_cfg_port_param {
 	int sfp_of_offset;
 	/** Microsemi VSC7224 channel info data structure */
 	struct cvmx_vsc7224_chan *vsc7224_chan;
+	/** Avago AVSP-5410 Phy */
+	struct cvmx_avsp5410 *avsp5410;
 };
 
 /*
@@ -765,6 +767,27 @@ struct cvmx_vsc7224_chan *cvmx_helper_cfg_get_vsc7224_chan_info(int xiface,
  */
 void cvmx_helper_cfg_set_vsc7224_chan_info(int xiface, int index,
 				struct cvmx_vsc7224_chan *vsc7224_chan_info);
+
+/**
+ * Get data structure defining the Avago AVSP5410 phy info
+ * or NULL if not present
+ *
+ * @param xiface        node and interface
+ * @param index         port index
+ *
+ * @return pointer to avsp5410 data structure or NULL if not present
+ */
+struct cvmx_avsp5410 *cvmx_helper_cfg_get_avsp5410_info(int xiface, int index);
+
+/**
+ * Sets the Avago AVSP5410 phy info data structure
+ *
+ * @param       xiface  node and interface
+ * @param       index   port index
+ * @param[in]   avsp5410_info   Avago AVSP5410 data structure
+ */
+void cvmx_helper_cfg_set_avsp5410_info(int xiface, int index,
+                                struct cvmx_avsp5410 *avsp5410_info);
 
 /**
  * Gets the SFP data associated with a port

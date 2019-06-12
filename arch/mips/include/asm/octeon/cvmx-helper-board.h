@@ -43,7 +43,7 @@
  * Helper functions to abstract board specific data about
  * network ports from the rest of the cvmx-helper files.
  *
- * <hr>$Revision: 154327 $<hr>
+ * <hr>$Revision: 171527 $<hr>
  */
 #ifndef __CVMX_HELPER_BOARD_H__
 #define __CVMX_HELPER_BOARD_H__
@@ -197,6 +197,23 @@ struct cvmx_vsc7224 {
 	struct cvmx_fdt_gpio_info *los_gpio;	/** LoS GPIO pin */
 	struct cvmx_fdt_gpio_info *reset_gpio;	/** Reset GPIO pin */
 	int	of_offset;	/** Offset in device tree */
+};
+
+/** Data structure for Avago AVSP5410 gearbox phy */
+struct cvmx_avsp5410 {
+	const char *name;			/** Name */
+	/** I2C bus device is connected to */
+	struct cvmx_fdt_i2c_bus_info	*i2c_bus;
+	/** Address of AVSP5410 on i2c bus */
+	int	i2c_addr;
+	int	of_offset;	/** Offset in device tree */
+	int	ipd_port;	/** IPD port this phy belongs to */
+	int	xiface;		/** xinterface of SFP */
+	int	index;		/** Port index of SFP */
+ 	uint64_t prev_temp;     /** Previous temparature recorded on Phy Core */
+	uint64_t prev_temp_mins; /** Mininutes when the prev temp check is done */
+	/** (Q)SFP attached to this phy */
+	struct cvmx_fdt_sfp_info *sfp_info;
 };
 
 struct cvmx_cs4343_info;
