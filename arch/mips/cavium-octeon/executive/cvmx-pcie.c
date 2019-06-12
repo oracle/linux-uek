@@ -1,5 +1,5 @@
 /***********************license start***************
- * Copyright (c) 2003-2015  Cavium, Inc. <support@cavium.com>.  All rights
+ * Copyright (c) 2003-2018  Cavium, Inc. <support@cavium.com>.  All rights
  * reserved.
  *
  *
@@ -42,7 +42,7 @@
  *
  * Interface to PCIe as a host(RC) or target(EP)
  *
- * <hr>$Revision: 170015 $<hr>
+ * <hr>$Revision: 172055 $<hr>
  */
 #ifdef CVMX_BUILD_FOR_LINUX_KERNEL
 #include <asm/octeon/cvmx.h>
@@ -117,9 +117,17 @@
 #define CVMX_PCIE_CFGX_READ(p,addr)	cvmx_pcie_cfgx_read_node(node,p,addr)
 #define CVMX_PCIE_CFGX_WRITE(p,addr,val)	cvmx_pcie_cfgx_write_node(node,p,addr,val)
 
-bool pcie_link_initialized[CVMX_MAX_NODES][CVMX_PCIE_MAX_PORTS];
+/* #define DEBUG_PCIE */
 
+/* Number of LTSSM transitions to record, must be a power of 2 */
+#define LTSSM_HISTORY_SIZE 64
+#define MAX_RETRIES 2
+
+bool pcie_link_initialized[CVMX_MAX_NODES][CVMX_PCIE_MAX_PORTS];
 int cvmx_primary_pcie_bus_number = 1;
+
+static uint32_t __cvmx_pcie_config_read32(int node, int pcie_port, int bus, int dev,
+	 int func, int reg, int lst);
 
 /**
  * Return the Core virtual base address for PCIe IO access. IOs are
@@ -247,7 +255,7 @@ static int __cvmx_pcie_get_qlm(int node, int pcie_port)
 			else
 				return -1; /* PEM2 is disabled */
 		default:
-			cvmx_dprintf("Invalid %d PCIe port\n", pcie_port);
+			cvmx_printf("Invalid %d PCIe port\n", pcie_port);
 			return -2;
 		}
 	} else if (OCTEON_IS_MODEL(OCTEON_CN78XX)) {
@@ -294,7 +302,7 @@ static int __cvmx_pcie_get_qlm(int node, int pcie_port)
 				}
 			}
 		default:
-			cvmx_dprintf("Invalid %d PCIe port\n", pcie_port);
+			cvmx_printf("Invalid %d PCIe port\n", pcie_port);
 			return -1;
 		}
 	} else if (OCTEON_IS_MODEL(OCTEON_CN70XX)) {
@@ -659,13 +667,6 @@ static void __cvmx_pcie_rc_initialize_config_space(int node, int pcie_port)
 		cfg092.s.l6dtp = 7;
 		cfg092.s.l6utp = 7;
 		CVMX_PCIE_CFGX_WRITE(pcie_port, CVMX_PCIERCX_CFG092(pcie_port), cfg092.u32);
-		if (OCTEON_IS_MODEL(OCTEON_CN78XX_PASS1_0)) {
-			cvmx_pciercx_cfg548_t cfg548;
-			/* Disable phase 2 and phase 3 equalization */
-			cfg548.u32 = CVMX_PCIE_CFGX_READ(pcie_port, CVMX_PCIERCX_CFG548(pcie_port));
-			cfg548.s.ep2p3d = 1;
-			CVMX_PCIE_CFGX_WRITE(pcie_port, CVMX_PCIERCX_CFG548(pcie_port), cfg548.u32);
-		}
 	}
 }
 
@@ -742,11 +743,6 @@ static int __cvmx_pcie_rc_initialize_link_gen1(int pcie_port)
 		cvmx_wait(10000);
 		pciercx_cfg032.u32 = cvmx_pcie_cfgx_read(pcie_port,
 							 CVMX_PCIERCX_CFG032(pcie_port));
-		/* Errata (PEM-31375) PEM RSL accesses to PCLK registers can
-		   timeout during speed change. Check for a temporary hardware
-		   timeout, and retry if one happens */
-		if (pciercx_cfg032.u32 == 0xffffffff)
-			continue;
 	} while ((pciercx_cfg032.s.dlla == 0) || (pciercx_cfg032.s.lt == 1));
 
 	/* Clear all pending errors */
@@ -1308,6 +1304,140 @@ static void __cvmx_pcie_gser_phy_config(int node, int pcie_port, int qlm)
 	}
 }
 
+/* Get the PCIe LTSSM state for the given port
+ *
+ * @param node      Node to query
+ * @param pcie_port PEM to query
+ *
+ * @return LTSSM state
+ */
+static int __cvmx_pcie_rc_get_ltssm_state(int node, int pcie_port)
+{
+	uint64_t debug;
+
+	if (OCTEON_IS_MODEL(OCTEON_CN73XX) && (pcie_port == 0)) {
+
+		CVMX_WRITE_CSR(CVMX_DTX_SPEM_SELX(0), 0);
+		CVMX_READ_CSR(CVMX_DTX_SPEM_SELX(0));
+		CVMX_WRITE_CSR(CVMX_DTX_SPEM_ENAX(0), 0xfffffffffull);
+		CVMX_READ_CSR(CVMX_DTX_SPEM_ENAX(0));
+
+		/* Read the value */
+		debug = CVMX_READ_CSR(CVMX_DTX_SPEM_DATX(0));
+
+		/* Disable the PEM from driving OCLA signals */
+		CVMX_WRITE_CSR(CVMX_DTX_SPEM_ENAX(0), 0);
+		CVMX_READ_CSR(CVMX_DTX_SPEM_ENAX(0));
+	} else {
+		/* LTSSM state is in debug select 0 */
+		CVMX_WRITE_CSR(CVMX_DTX_PEMX_SELX(0, pcie_port), 0);
+		CVMX_READ_CSR(CVMX_DTX_PEMX_SELX(0, pcie_port));
+		CVMX_WRITE_CSR(CVMX_DTX_PEMX_ENAX(0, pcie_port), 0xfffffffffull);
+		CVMX_READ_CSR(CVMX_DTX_PEMX_ENAX(0, pcie_port));
+
+		/* Read the value */
+		debug = CVMX_READ_CSR(CVMX_DTX_PEMX_DATX(0, pcie_port));
+
+
+		/* Disable the PEM from driving OCLA signals */
+		CVMX_WRITE_CSR( CVMX_DTX_PEMX_ENAX(0, pcie_port), 0);
+		CVMX_READ_CSR(CVMX_DTX_PEMX_ENAX(0, pcie_port));
+	}
+
+	/* DBGSEL = 0x0, bits[8:3] */
+	return cvmx_bit_extract(debug, 3, 6);
+}
+
+/**
+ * Get the PCIe LTSSM state for the given port
+ *
+ * @param node      Node to query
+ * @param pcie_port PEM to query
+ *
+ * @return LTSSM state
+ */
+static const char *cvmx_pcie_get_ltssm_string(int ltssm)
+{
+	switch (ltssm) {
+		case 0x00: return "DETECT_QUIET";
+		case 0x01: return "DETECT_ACT";
+		case 0x02: return "POLL_ACTIVE";
+		case 0x03: return "POLL_COMPLIANCE";
+		case 0x04: return "POLL_CONFIG";
+		case 0x05: return "PRE_DETECT_QUIET";
+		case 0x06: return "DETECT_WAIT";
+		case 0x07: return "CFG_LINKWD_START";
+		case 0x08: return "CFG_LINKWD_ACEPT";
+		case 0x09: return "CFG_LANENUM_WAIT";
+		case 0x0A: return "CFG_LANENUM_ACEPT";
+		case 0x0B: return "CFG_COMPLETE";
+		case 0x0C: return "CFG_IDLE";
+		case 0x0D: return "RCVRY_LOCK";
+		case 0x0E: return "RCVRY_SPEED";
+		case 0x0F: return "RCVRY_RCVRCFG";
+		case 0x10: return "RCVRY_IDLE";
+		case 0x11: return "L0";
+		case 0x12: return "L0S";
+		case 0x13: return "L123_SEND_EIDLE";
+		case 0x14: return "L1_IDLE";
+		case 0x15: return "L2_IDLE";
+		case 0x16: return "L2_WAKE";
+		case 0x17: return "DISABLED_ENTRY";
+		case 0x18: return "DISABLED_IDLE";
+		case 0x19: return "DISABLED";
+		case 0x1A: return "LPBK_ENTRY";
+		case 0x1B: return "LPBK_ACTIVE";
+		case 0x1C: return "LPBK_EXIT";
+		case 0x1D: return "LPBK_EXIT_TIMEOUT";
+		case 0x1E: return "HOT_RESET_ENTRY";
+		case 0x1F: return "HOT_RESET";
+		case 0x20: return "RCVRY_EQ0";
+		case 0x21: return "RCVRY_EQ1";
+		case 0x22: return "RCVRY_EQ2";
+		case 0x23: return "RCVRY_EQ3";
+		default:   return "Unknown";
+	}
+}
+
+/**
+ * During PCIe link initialization we need to make config request to the attached
+ * device to verify its speed and width. These config access happen very early
+ * after the device is taken out of reset, so may fail for some amount of time.
+ * This function automatically retries these config accesses. The normal builtin
+ * hardware retry isn't enough for this very early access.
+ *
+ * @param node      Note to read from
+ * @param pcie_port PCIe port to read from
+ * @param bus       PCIe bus number
+ * @param dev       PCIe device
+ * @param func      PCIe function on the device
+ * @param reg       Register to read
+ *
+ * @return Config register value, or all ones on failure
+ */
+static uint32_t cvmx_pcie_config_read32_retry(int node, int pcie_port, int bus, int dev, int func, int reg)
+{
+	/* Read the PCI config register until we get a valid value. Some cards
+	   require time after link up to return data. Wait at most 3 seconds */
+	uint64_t timeout = 300;
+	uint32_t val;
+
+	do {
+		/* Read PCI capability pointer */
+		val = __cvmx_pcie_config_read32(node, pcie_port, bus, dev, func, reg, 0);
+
+		/* Check the read succeeded */
+		if (val != 0xffffffff)
+			return val;
+		/* Failed, wait a little and try again */
+		cvmx_wait_usec(10000);
+	} while (--timeout);
+
+	cvmx_dprintf("N%d.PCIe%d: Config read failed, can't communicate with device\n", node, pcie_port);
+
+	return -1;
+}
+
 /**
  * @INTERNAL
  * Initialize a host mode PCIe gen 2 link. This function takes a PCIe
@@ -1322,12 +1452,9 @@ static void __cvmx_pcie_gser_phy_config(int node, int pcie_port, int qlm)
 static int __cvmx_pcie_rc_initialize_link_gen2(int node, int pcie_port)
 {
 	uint64_t start_cycle;
-	int try_gen3;
 
 	cvmx_pemx_ctl_status_t pem_ctl_status;
 	cvmx_pciercx_cfg032_t pciercx_cfg032;
-	cvmx_pciercx_cfg031_t pciercx_cfg031;
-	cvmx_pciercx_cfg040_t pciercx_cfg040;
 	cvmx_pciercx_cfg448_t pciercx_cfg448;
 
 	if (OCTEON_IS_OCTEON3()) {
@@ -1337,23 +1464,6 @@ static int __cvmx_pcie_rc_initialize_link_gen2(int node, int pcie_port)
 			cvmx_printf("%d:PCIe: Port %d PEM not on, skipping\n", node, pcie_port);
 			return -1;
 		}
-	}
-
-	/* Remember if the link should be Gen3. This is needed for the CN78XX
-	   pass 1.x workaround below */
-	pciercx_cfg031.u32 = CVMX_PCIE_CFGX_READ(pcie_port,
-						 CVMX_PCIERCX_CFG031(pcie_port));
-	try_gen3 = (pciercx_cfg031.s.mls == 3);
-
-	/* Errata (GSER-21178) PCIe gen3 doesn't work */
-	if (OCTEON_IS_MODEL(OCTEON_CN78XX_PASS1_0) && try_gen3) {
-		/* Force Gen1 for initial link bringup. We'll fix it later */
-		pciercx_cfg031.u32 = CVMX_PCIE_CFGX_READ(pcie_port, CVMX_PCIERCX_CFG031(pcie_port));
-		pciercx_cfg031.s.mls = 1;
-		CVMX_PCIE_CFGX_WRITE(pcie_port, CVMX_PCIERCX_CFG031(pcie_port), pciercx_cfg031.u32);
-		pciercx_cfg040.u32 = CVMX_PCIE_CFGX_READ(pcie_port, CVMX_PCIERCX_CFG040(pcie_port));
-		pciercx_cfg040.s.tls = 1;
-		CVMX_PCIE_CFGX_WRITE(pcie_port, CVMX_PCIERCX_CFG040(pcie_port), pciercx_cfg040.u32);
 	}
 
 	/* Bring up the link */
@@ -1371,82 +1481,6 @@ static int __cvmx_pcie_rc_initialize_link_gen2(int node, int pcie_port)
 		pciercx_cfg032.u32 = CVMX_PCIE_CFGX_READ(pcie_port,
 							 CVMX_PCIERCX_CFG032(pcie_port));
 	} while ((pciercx_cfg032.s.dlla == 0) || (pciercx_cfg032.s.lt == 1));
-
-	/* Errata (GSER-21178) PCIe gen3 doesn't work, continued */
-	if (OCTEON_IS_MODEL(OCTEON_CN78XX_PASS1_0) && try_gen3) {
-		cvmx_pciercx_cfg031_t cfg031;
-		cvmx_pciercx_cfg040_t cfg040;
-		cvmx_pciercx_cfg515_t cfg515;
-		cvmx_pemx_cfg_t pem_cfg;
-		int low_qlm, high_qlm;
-		int qlm, lane;
-
-		/* Enable gen3 speed selection */
-		cfg031.u32 = CVMX_PCIE_CFGX_READ(pcie_port, CVMX_PCIERCX_CFG031(pcie_port));
-		cfg031.s.mls = 3;
-		CVMX_PCIE_CFGX_WRITE(pcie_port, CVMX_PCIERCX_CFG031(pcie_port), cfg031.u32);
-		cfg040.u32 = CVMX_PCIE_CFGX_READ(pcie_port, CVMX_PCIERCX_CFG040(pcie_port));
-		cfg040.s.tls = 3;
-		CVMX_PCIE_CFGX_WRITE(pcie_port, CVMX_PCIERCX_CFG040(pcie_port), cfg040.u32);
-		/* Force a demand speed change */
-		cfg515.u32 = CVMX_PCIE_CFGX_READ(pcie_port, CVMX_PCIERCX_CFG515(pcie_port));
-		cfg515.s.dsc = 1;
-		CVMX_PCIE_CFGX_WRITE(pcie_port, CVMX_PCIERCX_CFG515(pcie_port), cfg515.u32);
-		cvmx_wait_usec(500);
-
-		/* Wait up to 10ms for the link speed change to complete */
-		start_cycle = cvmx_get_cycle();
-		do {
-			if (cvmx_get_cycle() - start_cycle > cvmx_clock_get_rate(CVMX_CLOCK_CORE))
-				return -1;
-			cvmx_wait(10000);
-			pciercx_cfg032.u32 = CVMX_PCIE_CFGX_READ(pcie_port,
-							 CVMX_PCIERCX_CFG032(pcie_port));
-		} while (pciercx_cfg032.s.ls != 3);
-
-		pem_cfg.u64 = CVMX_READ_CSR(CVMX_PEMX_CFG(pcie_port));
-		low_qlm = pcie_port;
-		high_qlm = (pem_cfg.cn78xx.lanes8) ? low_qlm+1 : low_qlm;
-
-		/* Toggle cfg_rx_dll_locken_ovvrd_en and rx_resetn_ovrrd_en across
-		   all QM lanes in use */
-		for (qlm = low_qlm; qlm <= high_qlm; qlm++) {
-			for (lane = 0; lane < 4; lane++) {
-				cvmx_gserx_lanex_rx_misc_ovrrd_t misc_ovrrd;
-				cvmx_gserx_lanex_pwr_ctrl_t pwr_ctrl;
-
-				misc_ovrrd.u64 = CVMX_READ_CSR(CVMX_GSERX_LANEX_RX_MISC_OVRRD(lane, qlm));
-				misc_ovrrd.s.cfg_rx_dll_locken_ovrrd_en = 1;
-				CVMX_WRITE_CSR(CVMX_GSERX_LANEX_RX_MISC_OVRRD(lane, qlm), misc_ovrrd.u64);
-				pwr_ctrl.u64 = CVMX_READ_CSR(CVMX_GSERX_LANEX_PWR_CTRL(lane, qlm));
-				pwr_ctrl.s.rx_resetn_ovrrd_en = 1;
-				CVMX_WRITE_CSR(CVMX_GSERX_LANEX_PWR_CTRL(lane, qlm), pwr_ctrl.u64);
-			}
-		}
-		for (qlm = low_qlm; qlm <= high_qlm; qlm++) {
-			for (lane = 0; lane < 4; lane++) {
-				cvmx_gserx_lanex_rx_misc_ovrrd_t misc_ovrrd;
-				cvmx_gserx_lanex_pwr_ctrl_t pwr_ctrl;
-
-				misc_ovrrd.u64 = CVMX_READ_CSR(CVMX_GSERX_LANEX_RX_MISC_OVRRD(lane, qlm));
-				misc_ovrrd.s.cfg_rx_dll_locken_ovrrd_en = 0;
-				CVMX_WRITE_CSR(CVMX_GSERX_LANEX_RX_MISC_OVRRD(lane, qlm), misc_ovrrd.u64);
-				pwr_ctrl.u64 = CVMX_READ_CSR(CVMX_GSERX_LANEX_PWR_CTRL(lane, qlm));
-				pwr_ctrl.s.rx_resetn_ovrrd_en = 0;
-				CVMX_WRITE_CSR(CVMX_GSERX_LANEX_PWR_CTRL(lane, qlm), pwr_ctrl.u64);
-			}
-		}
-
-		/* Wait for the link to come up (hopefully Gen3) and link
-		   training to be complete */
-		start_cycle = cvmx_clock_get_count(CVMX_CLOCK_CORE);
-		do {
-			if (cvmx_clock_get_count(CVMX_CLOCK_CORE) - start_cycle > cvmx_clock_get_rate(CVMX_CLOCK_CORE))
-				return -1;
-			cvmx_wait_usec(1000);
-			pciercx_cfg032.u32 = CVMX_PCIE_CFGX_READ(pcie_port, CVMX_PCIERCX_CFG032(pcie_port));
-		} while ((pciercx_cfg032.s.dlla == 0) || (pciercx_cfg032.s.lt == 1));
-	}
 
 	/* Update the Replay Time Limit.  Empirically, some PCIe devices take a
 	 * little longer to respond than expected under load. As a workaround
@@ -1476,69 +1510,40 @@ static int __cvmx_pcie_rc_initialize_link_gen2(int node, int pcie_port)
 	return 0;
 }
 
-/**
- * Initialize a PCIe gen 2 port for use in host(RC) mode. It doesn't enumerate
- * the bus.
- *
- * @param pcie_port PCIe port to initialize
- *
- * @return Zero on success
- */
-static int __cvmx_pcie_rc_initialize_gen2(int pcie_port)
+static int __cvmx_pcie_check_pcie_port(int node, int pcie_port, enum cvmx_qlm_mode mode)
 {
-	int i;
-	cvmx_ciu_soft_prst_t ciu_soft_prst;
-	cvmx_mio_rst_ctlx_t mio_rst_ctl;
-	cvmx_pemx_bar_ctl_t pemx_bar_ctl;
-	cvmx_pemx_ctl_status_t pemx_ctl_status;
-	cvmx_pemx_bist_status_t pemx_bist_status;
-	cvmx_pemx_bist_status2_t pemx_bist_status2;
-	cvmx_pciercx_cfg032_t pciercx_cfg032;
-	cvmx_pciercx_cfg515_t pciercx_cfg515;
-	cvmx_sli_ctl_portx_t sli_ctl_portx;
-	cvmx_sli_mem_access_ctl_t sli_mem_access_ctl;
-	cvmx_sli_mem_access_subidx_t mem_access_subid;
-	cvmx_pemx_bar1_indexx_t bar1_index;
-	uint64_t ciu_soft_prst_reg, ciu_soft_prst_reg_alt, rst_ctl_reg;
-	int ep_mode;
-	int qlm;
-	int node = (pcie_port >> 4) & 0x3;
-	int connected_pcie_reset = -1;
-	int requires_pem_reset = 0;
-	enum cvmx_qlm_mode mode = CVMX_QLM_MODE_DISABLED;
-#ifndef CVMX_BUILD_FOR_LINUX_KERNEL
-	static void *fdt_addr = 0;
-#endif
-	pcie_port &= 0x3;
-	qlm = __cvmx_pcie_get_qlm(node, pcie_port);
-#ifdef CVMX_BUILD_FOR_LINUX_KERNEL
-	/* Configure PCIe based on device tree. */
-	if ((qlm < 0) &&
-	    (OCTEON_IS_OCTEON3()) &&
-	    (!OCTEON_IS_MODEL(OCTEON_CN70XX))) {
-		cvmx_gserx_cfg_t gserx_cfg;
-
-		gserx_cfg.u64 = cvmx_read_csr_node(node, CVMX_GSERX_CFG(qlm));
-		if (!gserx_cfg.s.pcie) {
-			gserx_cfg.s.pcie = 1;
-			cvmx_write_csr_node(node, CVMX_GSERX_CFG(qlm),
-					    gserx_cfg.u64);
-			gserx_cfg.u64 = cvmx_read_csr_node(node,
-							   CVMX_GSERX_CFG(qlm));
-			if (gserx_cfg.s.pcie) {
-				/* Endpoint was hotplugged, try again */
-				qlm = __cvmx_pcie_get_qlm(node, pcie_port);
-				if (qlm < 0)
-					return -1;
-			}
-		}
-	}
-#endif
-
-	if (pcie_port >= CVMX_PCIE_PORTS) {
-		//cvmx_dprintf("Invalid PCIe%d port\n", pcie_port);
+	if (mode == CVMX_QLM_MODE_SRIO_1X4 ||
+	    mode == CVMX_QLM_MODE_SRIO_2X2 ||
+	    mode == CVMX_QLM_MODE_SRIO_4X1) {
+		cvmx_printf("%d:PCIe: Port %d is SRIO, skipping.\n", node, pcie_port);
+		return -1;
+	} else if (mode == CVMX_QLM_MODE_SGMII) {
+		cvmx_printf("%d:PCIe: Port %d is SGMII, skipping.\n", node, pcie_port);
+		return -1;
+	} else if (mode == CVMX_QLM_MODE_XAUI ||
+		   mode == CVMX_QLM_MODE_RXAUI) {
+		cvmx_printf("%d:PCIe: Port %d is XAUI, skipping.\n", node, pcie_port);
+		return -1;
+	} else if (mode == CVMX_QLM_MODE_ILK) {
+		cvmx_printf("%d:PCIe: Port %d is ILK, skipping.\n", node, pcie_port);
+		return -1;
+	} else if (mode != CVMX_QLM_MODE_PCIE &&
+		   mode != CVMX_QLM_MODE_PCIE_1X8 &&
+		   mode != CVMX_QLM_MODE_PCIE_1X2 &&
+		   mode != CVMX_QLM_MODE_PCIE_2X1 &&
+		   mode != CVMX_QLM_MODE_PCIE_1X1) {
+		cvmx_printf("%d:PCIe: Port %d is unknown, skipping.\n", node, pcie_port);
 		return -1;
 	}
+	return 0;
+}
+
+static int __cvmx_pcie_check_qlm_mode(int node, int pcie_port, int qlm)
+{
+	enum cvmx_qlm_mode mode = CVMX_QLM_MODE_DISABLED;
+
+	if (qlm < 0)
+		return -1;
 
 	/* Make sure this interface is PCIe */
 	if (OCTEON_IS_MODEL(OCTEON_CN70XX)) {
@@ -1547,7 +1552,6 @@ static int __cvmx_pcie_rc_initialize_gen2(int pcie_port)
 				    pcie_port);
 			return -1;
 		}
-		mode = cvmx_qlm_get_mode(qlm);
 	} else if (octeon_has_feature(OCTEON_FEATURE_PCIE)) {
 		/* Requires reading the MIO_QLMX_CFG register to figure
 		   out the port type. */
@@ -1570,378 +1574,22 @@ static int __cvmx_pcie_rc_initialize_gen2(int pcie_port)
 		else if (OCTEON_IS_MODEL(OCTEON_CNF71XX))
 			qlm = 1;
 
-		if (OCTEON_IS_MODEL(OCTEON_CN78XX))
-			mode = cvmx_qlm_get_mode_cn78xx(node, qlm);
-		else
-			mode = cvmx_qlm_get_mode(qlm);
-		if (mode == CVMX_QLM_MODE_SRIO_1X4 ||
-		    mode == CVMX_QLM_MODE_SRIO_2X2 ||
-		    mode == CVMX_QLM_MODE_SRIO_4X1) {
-			cvmx_printf("%d:PCIe: Port %d is SRIO, skipping.\n",
-				    node, pcie_port);
-			return -1;
-		} else if (mode == CVMX_QLM_MODE_SGMII) {
-			cvmx_printf("%d:PCIe: Port %d is SGMII, skipping.\n",
-				    node, pcie_port);
-			return -1;
-		} else if (mode == CVMX_QLM_MODE_XAUI ||
-			   mode == CVMX_QLM_MODE_RXAUI) {
-			cvmx_printf("%d:PCIe: Port %d is XAUI, skipping.\n",
-				    node, pcie_port);
-			return -1;
-		} else if (mode == CVMX_QLM_MODE_ILK) {
-			cvmx_printf("%d:PCIe: Port %d is ILK, skipping.\n",
-				    node, pcie_port);
-			return -1;
-		} else if (mode != CVMX_QLM_MODE_PCIE &&
-			   mode != CVMX_QLM_MODE_PCIE_1X8 &&
-			   mode != CVMX_QLM_MODE_PCIE_1X2 &&
-			   mode != CVMX_QLM_MODE_PCIE_2X1 &&
-			   mode != CVMX_QLM_MODE_PCIE_1X1) {
-			cvmx_printf("%d:PCIe: Port %d is unknown, skipping.\n",
-				    node, pcie_port);
-			return -1;
-		}
+		mode = cvmx_qlm_get_mode(qlm);
+
+		__cvmx_pcie_check_pcie_port(node, pcie_port, mode);
 	}
-#if 0
-	/* This code is so that the PCIe analyzer is able to see 63XX traffic */
-	cvmx_dprintf("PCIE : init for pcie analyzer.\n");
-	cvmx_helper_qlm_jtag_init();
-	cvmx_helper_qlm_jtag_shift_zeros(pcie_port, 85);
-	cvmx_helper_qlm_jtag_shift(pcie_port, 1, 1);
-	cvmx_helper_qlm_jtag_shift_zeros(pcie_port, 300 - 86);
-	cvmx_helper_qlm_jtag_shift_zeros(pcie_port, 85);
-	cvmx_helper_qlm_jtag_shift(pcie_port, 1, 1);
-	cvmx_helper_qlm_jtag_shift_zeros(pcie_port, 300 - 86);
-	cvmx_helper_qlm_jtag_shift_zeros(pcie_port, 85);
-	cvmx_helper_qlm_jtag_shift(pcie_port, 1, 1);
-	cvmx_helper_qlm_jtag_shift_zeros(pcie_port, 300 - 86);
-	cvmx_helper_qlm_jtag_shift_zeros(pcie_port, 85);
-	cvmx_helper_qlm_jtag_shift(pcie_port, 1, 1);
-	cvmx_helper_qlm_jtag_shift_zeros(pcie_port, 300 - 86);
-	cvmx_helper_qlm_jtag_update(pcie_port);
-#endif
+	return 0;
+}
 
-	/* Make sure we aren't trying to setup a target mode interface in host
-	 * mode
-	 */
-	if (OCTEON_IS_OCTEON3()) {
-		ciu_soft_prst_reg = CVMX_RST_SOFT_PRSTX(pcie_port);
-		ciu_soft_prst_reg_alt = CVMX_RST_SOFT_PRSTX(pcie_port ^ 1);
-		rst_ctl_reg = CVMX_RST_CTLX(pcie_port);
-		if (!OCTEON_IS_MODEL(OCTEON_CN70XX))
-			requires_pem_reset = 1;
-	} else {
-		ciu_soft_prst_reg = (pcie_port) ?
-				 CVMX_CIU_SOFT_PRST1 : CVMX_CIU_SOFT_PRST;
-		ciu_soft_prst_reg_alt = (pcie_port ^ 1) ?
-				 CVMX_CIU_SOFT_PRST1 : CVMX_CIU_SOFT_PRST;
-		rst_ctl_reg = CVMX_MIO_RST_CTLX(pcie_port);
-	}
-
-	mio_rst_ctl.u64 = CVMX_READ_CSR(rst_ctl_reg);
-	ep_mode = ((OCTEON_IS_MODEL(OCTEON_CN61XX) ||
-		    OCTEON_IS_MODEL(OCTEON_CNF71XX))
-		? (mio_rst_ctl.s.prtmode != 1) : (!mio_rst_ctl.s.host_mode));
-
-	if (OCTEON_IS_MODEL(OCTEON_CN70XX) && pcie_port) {
-		cvmx_pemx_cfg_t pemx_cfg;
-		pemx_cfg.u64 = cvmx_read_csr(CVMX_PEMX_CFG(0));
-		if ((pemx_cfg.s.md & 3) == 2) {
-			cvmx_printf("PCIe: Port %d in 1x4 mode.\n", pcie_port);
-			return -1;
-		}
-	}
-
-	if (OCTEON_IS_MODEL(OCTEON_CN78XX)) {
-		CVMX_WRITE_CSR(CVMX_DTX_PEMX_SELX(0, pcie_port), 0x17);
-		CVMX_WRITE_CSR(CVMX_DTX_PEMX_SELX(1, pcie_port), 0);
-	}
-
-	if (ep_mode) {
-		cvmx_printf("%d:PCIe: Port %d in endpoint mode.\n", node, pcie_port);
-		return -1;
-	}
-
-#if 0
-	/* Enable this code to force PCIe link for x1 lane card. */
-	__cvmx_qlm_pcie_cfg_rxd_set_tweak(qlm, 0);
-#endif
-
-#if 0
-	/* Enable this code to force PCIe link for x2 lane card. */
-	__cvmx_qlm_pcie_cfg_rxd_set_tweak(qlm, 0);
-	__cvmx_qlm_pcie_cfg_rxd_set_tweak(qlm, 1);
-#endif
-
-#if 0
-	/* Enable this code to force PCIe link for x4 lane card. */
-	__cvmx_qlm_pcie_cfg_rxd_set_tweak(qlm, -1);
-#endif
-
-	/* CN63XX Pass 1.0 errata G-14395 requires the QLM De-emphasis be
-	 * programmed
-	 */
-	if (OCTEON_IS_MODEL(OCTEON_CN63XX_PASS1_0)) {
-		if (pcie_port) {
-			cvmx_ciu_qlm1_t ciu_qlm;
-			ciu_qlm.u64 = cvmx_read_csr(CVMX_CIU_QLM1);
-			ciu_qlm.s.txbypass = 1;
-			ciu_qlm.s.txdeemph = 5;
-			ciu_qlm.s.txmargin = 0x17;
-			cvmx_write_csr(CVMX_CIU_QLM1, ciu_qlm.u64);
-		} else {
-			cvmx_ciu_qlm0_t ciu_qlm;
-			ciu_qlm.u64 = cvmx_read_csr(CVMX_CIU_QLM0);
-			ciu_qlm.s.txbypass = 1;
-			ciu_qlm.s.txdeemph = 5;
-			ciu_qlm.s.txmargin = 0x17;
-			cvmx_write_csr(CVMX_CIU_QLM0, ciu_qlm.u64);
-		}
-	}
-
-	/* On some boards, notably the SFF6100 board, the PCIe reset lines
-	 * are miswired in PCIe 2x1 mode.  In 2x1 mode, the PRST line of
-	 * QLM0 should go to PCIe PEM 0 and the PRST line of QLM1 should
-	 * go to PEM 1.
-	 *
-	 * On the SFF board, the PRST line of QLM1 is wired to both PEM0 and
-	 * PEM1.
-	 */
-#ifndef CVMX_BUILD_FOR_LINUX_KERNEL
-	/* Note that fdr_addr is 'static' */
-	if (fdt_addr == 0 && mode == CVMX_QLM_MODE_PCIE_2X1)
-		fdt_addr = __cvmx_phys_addr_to_ptr(cvmx_sysinfo_get()->fdt_addr,
-						   OCTEON_FDT_MAX_SIZE);
-	if (fdt_addr && mode == CVMX_QLM_MODE_PCIE_2X1) {
-		int offset;
-
-		offset = fdt_path_offset(fdt_addr, "/soc");
-		if (offset >= 0) {
-			connected_pcie_reset =
-				cvmx_fdt_get_int(fdt_addr, offset,
-						 "cavium,connected-pcie-reset-2x1",
-						 -1);
-		}
-	}
-#else
-	if (mode == CVMX_QLM_MODE_PCIE_2X1) {
-		struct device_node *node = of_find_node_by_path("/soc@0");
-		if (node) {
-			if (of_property_read_u32(node,
-						 "cavium,connected-pcie-reset-2x1",
-						 &connected_pcie_reset) != 0)
-				connected_pcie_reset = -1;
-		}
-	}
-#endif
-	/* On SFF6100 board, if QLM1 is configured as 2X1 DLM mode,
-	   the board has mis-wired PCIe reset line, initialize PCIe1
-	   followed by PCIe0. */
-	switch (connected_pcie_reset) {
-	case 0:
-	case 1:
-		if ((pcie_port != connected_pcie_reset) &&
-		    (mode == CVMX_QLM_MODE_PCIE_2X1)) {
-			ciu_soft_prst.u64 = CVMX_READ_CSR(ciu_soft_prst_reg);
-			if (ciu_soft_prst.s.soft_prst == 0) {
-				/* Reset the port */
-				ciu_soft_prst.s.soft_prst = 1;
-				CVMX_WRITE_CSR(ciu_soft_prst_reg,
-					       ciu_soft_prst.u64);
-				CVMX_WRITE_CSR(ciu_soft_prst_reg_alt,
-					       ciu_soft_prst.u64);
-				/* Wait until pcie resets the ports. */
-				cvmx_wait_usec(2000);
-
-			}
-		}
-		ciu_soft_prst.u64 = CVMX_READ_CSR(ciu_soft_prst_reg);
-		ciu_soft_prst.s.soft_prst = 0;
-		CVMX_WRITE_CSR(ciu_soft_prst_reg, ciu_soft_prst.u64);
-		ciu_soft_prst.u64 = CVMX_READ_CSR(ciu_soft_prst_reg_alt);
-		ciu_soft_prst.s.soft_prst = 0;
-		CVMX_WRITE_CSR(ciu_soft_prst_reg_alt, ciu_soft_prst.u64);
-		break;
-	case -1:
-	default:
-		/* Bring the PCIe out of reset */
-		ciu_soft_prst.u64 = CVMX_READ_CSR(ciu_soft_prst_reg);
-		/* After a chip reset the PCIe will also be in reset. If it
-		 * isn't, most likely someone is trying to init it again
-		 * without a proper PCIe reset.
-		 */
-		if (ciu_soft_prst.s.soft_prst == 0) {
-			/* Disable the MAC controller before resetting */
-			if (requires_pem_reset) {
-				__cvmx_pcie_config_pemon(node, pcie_port, 0);
-			}
-
-			/* Reset the port */
-			ciu_soft_prst.s.soft_prst = 1;
-			CVMX_WRITE_CSR(ciu_soft_prst_reg, ciu_soft_prst.u64);
-
-			/* Read to make sure write happens */
-			ciu_soft_prst.u64 = CVMX_READ_CSR(ciu_soft_prst_reg);
-
-			/* Keep PERST asserted for 2 ms */
-			cvmx_wait_usec(2000);
-
-			if (requires_pem_reset) {
-				/* Reset GSER_PHY to put in a clean state */
-				__cvmx_pcie_gser_phy_config(node, pcie_port, qlm);
-				requires_pem_reset = 2;
-
-				/* Enable MAC controller before taking pcie out of reset */
-				__cvmx_pcie_config_pemon(node, pcie_port, 1);
-			}
-		}
-
-		/* Deassert PERST */
-		ciu_soft_prst.u64 = CVMX_READ_CSR(ciu_soft_prst_reg);
-		ciu_soft_prst.s.soft_prst = 0;
-		CVMX_WRITE_CSR(ciu_soft_prst_reg, ciu_soft_prst.u64);
-		ciu_soft_prst.u64 = CVMX_READ_CSR(ciu_soft_prst_reg);
-
-		/* Check if PLLs are locked after GSER_PHY reset. */
-		if (requires_pem_reset == 2) {
-			cvmx_pemx_cfg_t pemx_cfg;
-			pemx_cfg.u64 = cvmx_read_csr(CVMX_PEMX_CFG(pcie_port));
-			if (CVMX_WAIT_FOR_FIELD64(CVMX_GSERX_QLM_STAT(qlm),
-				   cvmx_gserx_qlm_stat_t, rst_rdy, ==, 1, 10000)) {
-				cvmx_warn("QLM%d: Timeout waiting for GSERX_QLM_STAT[rst_rdy]\n", qlm);
-				return -1;
-			}
-			if (pemx_cfg.cn78xx.lanes8
-			    && (CVMX_WAIT_FOR_FIELD64(CVMX_GSERX_QLM_STAT(qlm + 1),
-				cvmx_gserx_qlm_stat_t, rst_rdy, ==, 1, 10000))) {
-				cvmx_warn("QLM%d: Timeout waiting for GSERX_QLM_STAT[rst_rdy]\n", qlm+1);
-				return -1;
-			}
-		}
-	}
-
-	/* Wait 1ms for PCIe reset to complete */
-	cvmx_wait_usec(1000);
-
-	/* Set MPLL multiplier as per Errata 20669. */
-	if (OCTEON_IS_MODEL(OCTEON_CN70XX)) {
-		int qlm = __cvmx_pcie_get_qlm(0, pcie_port);
-		int old_mult;
-		uint64_t meas_refclock = cvmx_qlm_measure_clock(qlm);
-		if (meas_refclock > 99000000 && meas_refclock < 101000000)
-			old_mult = 35;
-		else if (meas_refclock > 124000000 && meas_refclock < 126000000)
-			old_mult = 56;
-		else if (meas_refclock > 156000000 && meas_refclock < 156500000)
-			old_mult = 45;
-		else {
-			cvmx_dprintf("%s: Invalid reference clock for qlm %d\n",
-				     __func__, qlm);
-			return -1;
-		}
-		__cvmx_qlm_set_mult(qlm, 2500, old_mult);
-		/* Adjust mplls for both dlms when configured as pcie 1x4 */
-		if ((mode == CVMX_QLM_MODE_PCIE) && (pcie_port == 0))
-			__cvmx_qlm_set_mult(qlm + 1, 2500, old_mult);
-	}
-
-	/* Check and make sure PCIe came out of reset. If it doesn't the board
-	   probably hasn't wired the clocks up and the interface should be
-	   skipped */
-	if (CVMX_WAIT_FOR_FIELD64_NODE(node, rst_ctl_reg, cvmx_mio_rst_ctlx_t,
-				  rst_done, ==, 1, 10000)) {
-		cvmx_printf("%d:PCIe: Port %d stuck in reset, skipping.\n",
-			    node, pcie_port);
-		return -1;
-	}
-
-	/* Check BIST status */
-	pemx_bist_status.u64 = CVMX_READ_CSR(CVMX_PEMX_BIST_STATUS(pcie_port));
-	if (pemx_bist_status.u64)
-		cvmx_printf("%d:PCIe: BIST FAILED for port %d (0x%016llx)\n",
-			    node, pcie_port, CAST64(pemx_bist_status.u64));
-	/* BIST_STATUS2 is not present on some of Octeon3 models. */
-	if (OCTEON_IS_OCTEON3() && !OCTEON_IS_MODEL(OCTEON_CN70XX))
-		pemx_bist_status2.u64 = 0;
-	else
-		pemx_bist_status2.u64 = CVMX_READ_CSR(CVMX_PEMX_BIST_STATUS2(pcie_port));
-	/* Errata PCIE-14766 may cause the lower 6 bits to be randomly set on CN63XXp1 */
-	if (OCTEON_IS_MODEL(OCTEON_CN63XX_PASS1_X))
-		pemx_bist_status2.u64 &= ~0x3full;
-	if (pemx_bist_status2.u64)
-		cvmx_printf("%d:PCIe: BIST2 FAILED for port %d (0x%016llx)\n",
-			    node, pcie_port, CAST64(pemx_bist_status2.u64));
-
-	/* Initialize the config space CSRs */
-	__cvmx_pcie_rc_initialize_config_space(node, pcie_port);
-
-	/* Enable gen2 speed selection */
-	pciercx_cfg515.u32 = CVMX_PCIE_CFGX_READ(pcie_port,
-						 CVMX_PCIERCX_CFG515(pcie_port));
-	pciercx_cfg515.s.dsc = 1;
-	CVMX_PCIE_CFGX_WRITE(pcie_port, CVMX_PCIERCX_CFG515(pcie_port),
-			     pciercx_cfg515.u32);
-
-	/* Bring the link up */
-	if (__cvmx_pcie_rc_initialize_link_gen2(node, pcie_port)) {
-		/* Some gen1 devices don't handle the gen 2 training correctly.
-		 * Disable gen2 and try again with only gen1
-		 */
-		if (OCTEON_IS_OCTEON3() && !OCTEON_IS_MODEL(OCTEON_CN70XX)) {
-			cvmx_printf("%d:PCIe: Link timeout on port %d, probably the slot is empty\n",
-				    node, pcie_port);
-			return -1;
-		} else {
-			cvmx_pciercx_cfg031_t pciercx_cfg031;
-			pciercx_cfg031.u32 = CVMX_PCIE_CFGX_READ(pcie_port,
-							 CVMX_PCIERCX_CFG031(pcie_port));
-			pciercx_cfg031.s.mls = 1;
-			CVMX_PCIE_CFGX_WRITE(pcie_port, CVMX_PCIERCX_CFG031(pcie_port),
-				     		pciercx_cfg031.u32);
-			if (__cvmx_pcie_rc_initialize_link_gen2(node, pcie_port)) {
-				cvmx_printf("PCIe: Link timeout on port %d, probably the slot is empty\n",
-					    pcie_port);
-				return -1;
-			}
-		}
-	}
-
-	if (OCTEON_IS_MODEL(OCTEON_CN78XX)
-	    || OCTEON_IS_MODEL(OCTEON_CN73XX)
-	    || OCTEON_IS_MODEL(OCTEON_CNF75XX)) {
-		cvmx_pciercx_cfg038_t pciercx_cfg038;
-		cvmx_pciercx_cfg548_t cfg548;
-
-		pciercx_cfg032.u32 = CVMX_PCIE_CFGX_READ(pcie_port,
-					CVMX_PCIERCX_CFG032(pcie_port));
-		/* Errata PEM-28816: Link retrain initiated at GEN1 can cause PCIE
-		   link to hang. For Gen1 links we must disable equalization */
-		if (pciercx_cfg032.s.ls == 1) {
-#if 0
-			cvmx_dprintf("%d:%d:PCIe: Disabling equalization for GEN1 Link\n",
-					node, pcie_port);
-#endif
-			cfg548.u32 = CVMX_PCIE_CFGX_READ(pcie_port,
-					CVMX_PCIERCX_CFG548(pcie_port));
-			cfg548.s.ed = 1;
-			CVMX_PCIE_CFGX_WRITE(pcie_port, CVMX_PCIERCX_CFG548(pcie_port),
-					cfg548.u32);
-		}
-
-		/* Errata PCIE-29440: Atomic operations to work properly */
-		pciercx_cfg038.u32 = CVMX_PCIE_CFGX_READ(pcie_port,
-					CVMX_PCIERCX_CFG038(pcie_port));
-		pciercx_cfg038.s.atom_op_eb = 0;
-		pciercx_cfg038.s.atom_op = 1;
-		CVMX_PCIE_CFGX_WRITE(pcie_port, CVMX_PCIERCX_CFG038(pcie_port),
-					pciercx_cfg038.u32);
-
-		/* Errata PCIE-29566 PEM Link Hangs after going into L1 */
-		cfg548.u32 = CVMX_PCIE_CFGX_READ(pcie_port, CVMX_PCIERCX_CFG548(pcie_port));
-		cfg548.s.grizdnc = 0;
-		CVMX_PCIE_CFGX_WRITE(pcie_port, CVMX_PCIERCX_CFG548(pcie_port), cfg548.u32);
-	}
+static void __cvmx_pcie_sli_config(int node, int pcie_port)
+{
+	cvmx_pemx_bar_ctl_t pemx_bar_ctl;
+	cvmx_pemx_ctl_status_t pemx_ctl_status;
+	cvmx_sli_ctl_portx_t sli_ctl_portx;
+	cvmx_sli_mem_access_ctl_t sli_mem_access_ctl;
+	cvmx_sli_mem_access_subidx_t mem_access_subid;
+	cvmx_pemx_bar1_indexx_t bar1_index;
+	int i;
 
 	/* Store merge control (SLI_MEM_ACCESS_CTL[TIMER,MAX_WORD]) */
 	sli_mem_access_ctl.u64 = CVMX_READ_CSR(CVMX_PEXP_SLI_MEM_ACCESS_CTL);
@@ -2041,12 +1689,781 @@ static int __cvmx_pcie_rc_initialize_gen2(int pcie_port)
 	   may need up to 900ms to come up. 700ms plus 200ms from above gives 
 	   us a total of 900ms */
 	cvmx_wait_usec(700000);
+}
+
+/**
+ * Initialize a PCIe gen 2 port for use in host(RC) mode. It doesn't enumerate
+ * the bus.
+ *
+ * @param pcie_port PCIe port to initialize
+ *
+ * @return Zero on success
+ */
+static int __cvmx_pcie_rc_initialize_gen2(int pcie_port)
+{
+	cvmx_ciu_soft_prst_t ciu_soft_prst;
+	cvmx_mio_rst_ctlx_t mio_rst_ctl;
+	cvmx_pemx_bist_status_t pemx_bist_status;
+	cvmx_pemx_bist_status2_t pemx_bist_status2;
+	cvmx_pciercx_cfg032_t pciercx_cfg032;
+	cvmx_pciercx_cfg515_t pciercx_cfg515;
+	uint64_t ciu_soft_prst_reg, rst_ctl_reg;
+	int ep_mode;
+	int qlm = 0;
+	int node = (pcie_port >> 4) & 0x3;
+
+	pcie_port &= 0x3;
+
+	if (pcie_port >= CVMX_PCIE_PORTS) {
+		//cvmx_dprintf("Invalid PCIe%d port\n", pcie_port);
+		return -1;
+	}
+
+	if (__cvmx_pcie_check_qlm_mode(node, pcie_port, qlm))
+		return -1;
+
+	/* Make sure we aren't trying to setup a target mode interface in host
+	 * mode
+	 */
+	if (OCTEON_IS_OCTEON3()) {
+		ciu_soft_prst_reg = CVMX_RST_SOFT_PRSTX(pcie_port);
+		rst_ctl_reg = CVMX_RST_CTLX(pcie_port);
+	} else {
+		ciu_soft_prst_reg = (pcie_port) ?
+			CVMX_CIU_SOFT_PRST1 : CVMX_CIU_SOFT_PRST;
+		rst_ctl_reg = CVMX_MIO_RST_CTLX(pcie_port);
+	}
+	mio_rst_ctl.u64 = CVMX_READ_CSR(rst_ctl_reg);
+
+	ep_mode = ((OCTEON_IS_MODEL(OCTEON_CN61XX) ||
+		    OCTEON_IS_MODEL(OCTEON_CNF71XX))
+		? (mio_rst_ctl.s.prtmode != 1) : (!mio_rst_ctl.s.host_mode));
+
+	if (OCTEON_IS_MODEL(OCTEON_CN70XX) && pcie_port) {
+		cvmx_pemx_cfg_t pemx_cfg;
+		pemx_cfg.u64 = cvmx_read_csr(CVMX_PEMX_CFG(0));
+		if ((pemx_cfg.s.md & 3) == 2) {
+			cvmx_printf("PCIe: Port %d in 1x4 mode.\n", pcie_port);
+			return -1;
+		}
+	}
+
+	if (ep_mode) {
+		cvmx_printf("%d:PCIe: Port %d in endpoint mode.\n", node, pcie_port);
+		return -1;
+	}
+
+	/* CN63XX Pass 1.0 errata G-14395 requires the QLM De-emphasis be
+	 * programmed
+	 */
+	if (OCTEON_IS_MODEL(OCTEON_CN63XX_PASS1_0)) {
+		if (pcie_port) {
+			cvmx_ciu_qlm1_t ciu_qlm;
+			ciu_qlm.u64 = cvmx_read_csr(CVMX_CIU_QLM1);
+			ciu_qlm.s.txbypass = 1;
+			ciu_qlm.s.txdeemph = 5;
+			ciu_qlm.s.txmargin = 0x17;
+			cvmx_write_csr(CVMX_CIU_QLM1, ciu_qlm.u64);
+		} else {
+			cvmx_ciu_qlm0_t ciu_qlm;
+			ciu_qlm.u64 = cvmx_read_csr(CVMX_CIU_QLM0);
+			ciu_qlm.s.txbypass = 1;
+			ciu_qlm.s.txdeemph = 5;
+			ciu_qlm.s.txmargin = 0x17;
+			cvmx_write_csr(CVMX_CIU_QLM0, ciu_qlm.u64);
+		}
+	}
+
+	/* Bring the PCIe out of reset */
+	ciu_soft_prst.u64 = CVMX_READ_CSR(ciu_soft_prst_reg);
+	/* After a chip reset the PCIe will also be in reset. If it
+	 * isn't, most likely someone is trying to init it again
+	 * without a proper PCIe reset.
+	 */
+	if (ciu_soft_prst.s.soft_prst == 0) {
+		/* Reset the port */
+		ciu_soft_prst.s.soft_prst = 1;
+		CVMX_WRITE_CSR(ciu_soft_prst_reg, ciu_soft_prst.u64);
+
+		/* Read to make sure write happens */
+		ciu_soft_prst.u64 = CVMX_READ_CSR(ciu_soft_prst_reg);
+
+		/* Keep PERST asserted for 2 ms */
+		cvmx_wait_usec(2000);
+	}
+
+	/* Deassert PERST */
+	ciu_soft_prst.u64 = CVMX_READ_CSR(ciu_soft_prst_reg);
+	ciu_soft_prst.s.soft_prst = 0;
+	CVMX_WRITE_CSR(ciu_soft_prst_reg, ciu_soft_prst.u64);
+	ciu_soft_prst.u64 = CVMX_READ_CSR(ciu_soft_prst_reg);
+
+	/* Wait 1ms for PCIe reset to complete */
+	cvmx_wait_usec(1000);
+
+	/* Set MPLL multiplier as per Errata 20669. */
+	if (OCTEON_IS_MODEL(OCTEON_CN70XX)) {
+		int qlm = __cvmx_pcie_get_qlm(0, pcie_port);
+		enum cvmx_qlm_mode mode;
+		int old_mult;
+		uint64_t meas_refclock = cvmx_qlm_measure_clock(qlm);
+		if (meas_refclock > 99000000 && meas_refclock < 101000000)
+			old_mult = 35;
+		else if (meas_refclock > 124000000 && meas_refclock < 126000000)
+			old_mult = 56;
+		else if (meas_refclock > 156000000 && meas_refclock < 156500000)
+			old_mult = 45;
+		else {
+			cvmx_printf("%s: Invalid reference clock for qlm %d\n",
+				     __func__, qlm);
+			return -1;
+		}
+		mode = cvmx_qlm_get_mode(qlm);
+		__cvmx_qlm_set_mult(qlm, 2500, old_mult);
+		/* Adjust mplls for both dlms when configured as pcie 1x4 */
+		if ((mode == CVMX_QLM_MODE_PCIE) && (pcie_port == 0))
+			__cvmx_qlm_set_mult(qlm + 1, 2500, old_mult);
+	}
+
+	/* Check and make sure PCIe came out of reset. If it doesn't the board
+	   probably hasn't wired the clocks up and the interface should be
+	   skipped */
+	if (CVMX_WAIT_FOR_FIELD64_NODE(node, rst_ctl_reg,
+				  cvmx_mio_rst_ctlx_t,
+				  rst_done, ==, 1, 10000)) {
+		cvmx_printf("%d:PCIe: Port %d stuck in reset, skipping.\n",
+			    node, pcie_port);
+		return -1;
+	}
+
+	/* Check BIST status */
+	pemx_bist_status.u64 = CVMX_READ_CSR(CVMX_PEMX_BIST_STATUS(pcie_port));
+	if (pemx_bist_status.u64)
+		cvmx_printf("%d:PCIe: BIST FAILED for port %d (0x%016llx)\n",
+			    node, pcie_port, CAST64(pemx_bist_status.u64));
+	pemx_bist_status2.u64 = CVMX_READ_CSR(CVMX_PEMX_BIST_STATUS2(pcie_port));
+
+	/* Errata PCIE-14766 may cause the lower 6 bits to be randomly set on CN63XXp1 */
+	if (OCTEON_IS_MODEL(OCTEON_CN63XX_PASS1_X))
+		pemx_bist_status2.u64 &= ~0x3full;
+	if (pemx_bist_status2.u64)
+		cvmx_printf("%d:PCIe: BIST2 FAILED for port %d (0x%016llx)\n",
+			    node, pcie_port, CAST64(pemx_bist_status2.u64));
+
+	/* Initialize the config space CSRs */
+	__cvmx_pcie_rc_initialize_config_space(node, pcie_port);
+
+	/* Enable gen2 speed selection */
+	pciercx_cfg515.u32 = CVMX_PCIE_CFGX_READ(pcie_port,
+						 CVMX_PCIERCX_CFG515(pcie_port));
+	pciercx_cfg515.s.dsc = 1;
+	CVMX_PCIE_CFGX_WRITE(pcie_port, CVMX_PCIERCX_CFG515(pcie_port),
+			     pciercx_cfg515.u32);
+
+	/* Bring the link up */
+	if (__cvmx_pcie_rc_initialize_link_gen2(node, pcie_port)) {
+		/* Some gen1 devices don't handle the gen 2 training correctly.
+		 * Disable gen2 and try again with only gen1
+		 */
+		cvmx_pciercx_cfg031_t pciercx_cfg031;
+		pciercx_cfg031.u32 = CVMX_PCIE_CFGX_READ(pcie_port,
+							 CVMX_PCIERCX_CFG031(pcie_port));
+		pciercx_cfg031.s.mls = 1;
+		CVMX_PCIE_CFGX_WRITE(pcie_port, CVMX_PCIERCX_CFG031(pcie_port),
+				     pciercx_cfg031.u32);
+		if (__cvmx_pcie_rc_initialize_link_gen2(node, pcie_port)) {
+			cvmx_printf("PCIe: Link timeout on port %d, probably the slot is empty\n",
+				     pcie_port);
+			return -1;
+		}
+	}
+
+	__cvmx_pcie_sli_config(node, pcie_port);
 
 	/* Display the link status */
 	pciercx_cfg032.u32 = CVMX_PCIE_CFGX_READ(pcie_port,
 						 CVMX_PCIERCX_CFG032(pcie_port));
 	cvmx_printf("PCIe: Port %d link active, %d lanes, speed gen%d \n",
 		    pcie_port, pciercx_cfg032.s.nlw, pciercx_cfg032.s.ls);
+
+	pcie_link_initialized[node][pcie_port] = true;
+	return 0;
+}
+
+/**
+ * @INTERNAL
+ * Initialize a host mode PCIe gen 2 link. This function takes a PCIe
+ * port from reset to a link up state. Software can then begin
+ * configuring the rest of the link.
+ *
+ * @param node	    node
+ * @param pcie_port PCIe port to initialize
+ *
+ * @return Zero on success
+ */
+static int __cvmx_pcie_rc_initialize_link_gen2_v3(int node, int pcie_port)
+{
+	uint8_t ltssm_history[LTSSM_HISTORY_SIZE];
+	int ltssm_history_loc;
+	cvmx_pemx_ctl_status_t pem_ctl_status;
+	cvmx_pciercx_cfg006_t pciercx_cfg006;
+	cvmx_pciercx_cfg031_t pciercx_cfg031;
+	cvmx_pciercx_cfg032_t pciercx_cfg032;
+	cvmx_pciercx_cfg068_t pciercx_cfg068;
+	cvmx_pciercx_cfg448_t pciercx_cfg448;
+	cvmx_pciercx_cfg515_t pciercx_cfg515;
+	int max_gen, max_width;
+	uint64_t clock_rate, hold_time;
+	uint64_t bounce_allow_time;
+	uint64_t timeout, good_time, current_time;
+	int neg_gen, neg_width, bus, dev_gen, dev_width;
+	unsigned int cap, cap_next;
+	int ltssm_state, desired_gen;
+	int desired_width;
+	int i, need_speed_change, need_lane_change;
+	int do_retry_speed = 0;
+	int link_up = 0, is_loop_done = 0;
+
+	if (CVMX_WAIT_FOR_FIELD64_NODE(node, CVMX_PEMX_ON(pcie_port),
+				       cvmx_pemx_on_t, pemoor, ==, 1, 100000)) {
+		cvmx_printf("N%d:PCIe: Port %d PEM not on, skipping\n", node, pcie_port);
+		return -1;
+	}
+
+	/* Record starting LTSSM state for debug */
+	memset(ltssm_history, -1, sizeof(ltssm_history));
+	ltssm_history[0] = __cvmx_pcie_rc_get_ltssm_state(node, pcie_port);
+	ltssm_history_loc = 0;
+
+	pciercx_cfg031.u32 = CVMX_PCIE_CFGX_READ(pcie_port,
+						 CVMX_PCIERCX_CFG031(pcie_port));
+	/* Max speed of PEM from config (1-3) */
+	max_gen = pciercx_cfg031.s.mls;
+	/* Max lane width of PEM (1-3) */
+	max_width = pciercx_cfg031.s.mlw;
+#ifdef DEBUG_PCIE
+	cvmx_printf("N%d.PCIe%d: Link supports up to %d lanes, speed gen%d\n",
+		     node, pcie_port, max_width, max_gen);
+#endif
+
+	/* Bring up the link */
+#ifdef DEBUG_PCIE
+	cvmx_printf("N%d.PCIe%d: Enabling the link\n", node, pcie_port);
+#endif
+	pem_ctl_status.u64 = CVMX_READ_CSR(CVMX_PEMX_CTL_STATUS(pcie_port));
+	pem_ctl_status.s.lnk_enb = 1;
+	CVMX_WRITE_CSR(CVMX_PEMX_CTL_STATUS(pcie_port), pem_ctl_status.u64);
+
+	/* Configure SLI after enabling PCIe link. Is required for reading
+ 	   PCIe card capabilities. */
+	__cvmx_pcie_sli_config(node, pcie_port);
+
+	/* After the link is enabled  no prints until link up or error, Otherwise
+	   will miss link state captures  */
+
+retry_speed:
+	/* Clear RC Correctable Error Status Register */
+	CVMX_PCIE_CFGX_WRITE(pcie_port, CVMX_PCIERCX_CFG068(pcie_port), -1);
+
+	/* Wait for the link to come up and link training to be complete */
+#ifdef DEBUG_PCIE
+	cvmx_printf("N%d.PCIe%d: Waiting for link\n", node, pcie_port);
+#endif
+
+	/* Number of ticks in 1 sec */
+	clock_rate = cvmx_clock_get_rate(CVMX_CLOCK_CORE);
+	/* number of ticks in 200 mS */
+	hold_time = clock_rate / 5;
+	/* Number of ticks for 10 ms */
+	bounce_allow_time = clock_rate / 100;
+	/*  Number of ticks for 2 second */
+	timeout = cvmx_get_cycle() + clock_rate * 2;
+
+	/* Records when the link first went good */
+	good_time = 0;
+
+	do {
+		pciercx_cfg032.u32 = CVMX_PCIE_CFGX_READ(pcie_port,
+							 CVMX_PCIERCX_CFG032(pcie_port));
+		/* Errata PEM-31375 PEM RSL access to PCLK registers can
+  		   timeout during speed change. Check for temporary hardware
+  		   timeout, and rety if happens */
+		if (pciercx_cfg032.u32 == 0xffffffff)
+			continue;
+
+		/* Record LTSSM state for debug */
+		ltssm_state = __cvmx_pcie_rc_get_ltssm_state(node, pcie_port);
+
+		if (ltssm_history[ltssm_history_loc] != ltssm_state) {
+			ltssm_history_loc = (ltssm_history_loc + 1) & (LTSSM_HISTORY_SIZE - 1);
+			ltssm_history[ltssm_history_loc] = ltssm_state;
+		}
+
+		/* Check if the link is up */
+		current_time = cvmx_get_cycle ();
+		link_up = (pciercx_cfg032.s.dlla && !pciercx_cfg032.s.lt);
+
+		if (link_up) {
+			/* Is this the first link up? */
+			if (!good_time) {
+				/* Mark the time when the link transitioned to good */
+				good_time = current_time;
+			} else {
+				/* Check for a link error */
+				pciercx_cfg068.u32 = CVMX_PCIE_CFGX_READ(pcie_port,
+								CVMX_PCIERCX_CFG068(pcie_port));
+				if (pciercx_cfg068.s.res) {
+					/* Ignore errors before we've been stable for bounce_allow_time */
+					if (good_time + bounce_allow_time <= current_time) {
+#ifdef DEBUG_PCIE
+						cvmx_printf("N%d.PCIe%d: Link errors after link up\n", node, pcie_port);
+#endif
+						return 1; /* Link error, signal a retry */
+					} else {
+						/* Clear RC Correctable Error Status Register */
+						CVMX_PCIE_CFGX_WRITE(pcie_port,
+								CVMX_PCIERCX_CFG068(pcie_port), -1);
+#ifdef DEBUG_PCIE
+						cvmx_printf("N%d.PCIe%d: Ignored error during settling time\n",
+							     node, pcie_port);
+#endif
+					}
+				}
+			}
+		} else if (good_time) {
+			if (good_time + bounce_allow_time <= current_time) {
+				/* We allow bounces for bounce_allow_time after the link is good.
+				   Once this time passes any bounce requires a retry */
+#ifdef DEBUG_PCIE
+				cvmx_printf("N%d.PCIe%d: Link bounce detected\n", node, pcie_port);
+#endif
+				return 1; /* Link bounce, signal a retry */
+			} else {
+#ifdef DEBUG_PCIE
+				cvmx_printf("N%d.PCIe%d: Ignored bounce during settling time\n", node, pcie_port);
+#endif
+			}
+		}
+
+		/* Determine if we've hit the timeout */
+		is_loop_done = (current_time >= timeout);
+		/* Determine if we've had a good link for the required hold time */
+		is_loop_done |= link_up && (good_time + hold_time <= current_time);
+	} while (!is_loop_done);
+
+
+	/* Trace the LTSSM state */
+#ifdef DEBUG_PCIE
+	cvmx_printf("N%d.PCIe%d: LTSSM History\n", node, pcie_port);
+#endif
+	for (i = 0; i < LTSSM_HISTORY_SIZE; i++) {
+		ltssm_history_loc = (ltssm_history_loc + 1) & (LTSSM_HISTORY_SIZE - 1);
+#ifdef DEBUG_PCIE
+		if (ltssm_history[ltssm_history_loc] != 0xff)
+			cvmx_printf("N%d.PCIe%d: %s\n", node, pcie_port,
+				     cvmx_pcie_get_ltssm_string(ltssm_history[ltssm_history_loc]));
+#endif
+	}
+
+	if (!link_up) {
+		ltssm_state = __cvmx_pcie_rc_get_ltssm_state(node, pcie_port);
+#ifdef DEBUG_PCIE
+		cvmx_printf ("N%d.PCIe%d: Link down, Data link layer %s(DLLA=%d), Link training %s(LT=%d), LTSSM %s\n",
+				node, pcie_port,
+				pciercx_cfg032.s.dlla ? "active" : "down", pciercx_cfg032.s.dlla,
+				pciercx_cfg032.s.lt ? "active" : "complete", pciercx_cfg032.s.lt,
+				cvmx_pcie_get_ltssm_string(ltssm_state));
+#endif
+		return 1; /* Link down, signal a retry */
+	}
+
+	/* Report the negotiated link speed and width */
+	neg_gen = pciercx_cfg032.s.ls; /* Current speed of PEM (1-3) */
+	neg_width = pciercx_cfg032.s.nlw; /* Current lane width of PEM (1-8) */
+#ifdef DEBUG_PCIE
+	cvmx_printf("N%d.PCIe%d: Link negotiated %d lanes, speed gen%d\n",
+		     node, pcie_port, neg_width, neg_gen);
+#endif
+	/* Determine PCIe bus number the directly attached device uses */
+	pciercx_cfg006.u32 = CVMX_PCIE_CFGX_READ(pcie_port, CVMX_PCIERCX_CFG006(pcie_port));
+	bus = pciercx_cfg006.s.sbnum;
+
+	/* The SLI has to be initialized so we can read the downstream devices     */
+	dev_gen = 1; /* Device max speed (1-3) */
+	dev_width = 1; /* Device max lane width (1-16) */
+#ifdef DEBUG_PCIE
+	cvmx_printf("N%d.PCIe%d: Reading Bus %d device max speed and width\n",
+		    node, pcie_port, bus);
+#endif
+
+	/* Read PCI capability pointer at offset 0x34 of target */
+	cap = cvmx_pcie_config_read32_retry(node, pcie_port, bus, 0, 0, 0x34);
+
+	/* Check if we were able to read capabilities pointer */
+	if (cap == 0xffffffff)
+		return 1; /* Signal retry needed */
+
+	/* Read device max speed and width */
+	cap_next = cap & 0xff;
+	while (cap_next) {
+		cap = cvmx_pcie_config_read32_retry(node, pcie_port, bus, 0, 0, cap_next);
+		if (cap == 0xffffffff)
+			return 1; /* Signal retry needed */
+
+		/* Is this a PCIe capability (0x10)? */
+		if ((cap & 0xff) == 0x10) {
+#ifdef DEBUG_PCIE
+			cvmx_printf("N%d.PCIe%d: Found PCIe capability at offset 0x%x\n",
+				     node, pcie_port, cap_next);
+#endif
+			/* Offset 0xc contains the max link info */
+			cap = cvmx_pcie_config_read32_retry(node, pcie_port, bus, 0, 0, cap_next + 0xc);
+			if (cap == 0xffffffff)
+				return 1; /* Signal retry needed */
+			dev_gen = cap & 0xf; /* Max speed of PEM from config (1-3) */
+			dev_width = (cap >> 4) & 0x3f; /* Max lane width of PEM (1-16) */
+#ifdef DEBUG_PCIE
+			cvmx_printf("N%d.PCIe%d: Device supports %d lanes, speed gen%d\n",
+				     node, pcie_port, dev_width, dev_gen);
+#endif
+			break;
+		}
+		/* Move to next capability */
+		cap_next = (cap >> 8) & 0xff;
+	}
+
+	/* Desired link speed and width is either limited by the device or our PEM
+	   configuration. Choose the most restrictive limit */
+	desired_gen = (dev_gen < max_gen) ? dev_gen : max_gen;
+	desired_width = (dev_width < max_width) ? dev_width : max_width;
+
+	/* We need a change if we don't match the desired speed or width. Note that
+	   we allow better than expected in case the device lied about its
+	   capabilities */
+	need_speed_change = (neg_gen < desired_gen);
+	need_lane_change = (neg_width < desired_width);
+
+	if (need_lane_change) {
+		/* We didn't get the maximum number of lanes */
+#ifdef DEBUG_PCIE
+		cvmx_printf("N%d.PCIe%d: Link width (%d) less that supported (%d)\n",
+			     node, pcie_port, neg_width, desired_width);
+#endif
+		return 2; /* Link wrong width, signal a retry */
+	} else if (need_speed_change) {
+		if (do_retry_speed) {
+#ifdef DEBUG_PCIE
+			cvmx_printf("N%d.PCIe%d: Link speed (gen%d) less that supported (gen%d)\n",
+				     node, pcie_port, neg_gen, desired_gen);
+#endif
+			return 1; /* Link at width, but speed low. Request a retry */
+		} else {
+			/* We didn't get the maximum speed. Request a speed change */
+#ifdef DEBUG_PCIE
+			cvmx_printf("N%d.PCIe%d: Link speed (gen%d) less that supported (gen%d), requesting a speed change\n",
+				     node, pcie_port, neg_gen, desired_gen);
+#endif
+			pciercx_cfg515.u32 = CVMX_PCIE_CFGX_READ(pcie_port, CVMX_PCIERCX_CFG515(pcie_port));
+			pciercx_cfg515.s.dsc = 1;
+			CVMX_PCIE_CFGX_WRITE(pcie_port, CVMX_PCIERCX_CFG515(pcie_port), pciercx_cfg515.u32);
+			cvmx_wait_usec(100000);
+			do_retry_speed = true;
+			goto retry_speed;
+		}
+	} else {
+#ifdef DEBUG_PCIE
+		cvmx_printf("N%d.PCIe%d: Link at best speed and width\n", node, pcie_port);
+#endif
+		/* For gen3 links check if we are getting errors over the link */
+		if (neg_gen == 3) {
+			/* Read RC Correctable Error Status Register */
+			pciercx_cfg068.u32 = CVMX_PCIE_CFGX_READ(pcie_port, CVMX_PCIERCX_CFG068(pcie_port));
+			if (pciercx_cfg068.s.res) {
+#ifdef DEBUG_PCIE
+				cvmx_printf("N%d.PCIe%d: Link reporting error status\n", node, pcie_port);
+#endif
+				return 1; /* Getting receiver errors, request a retry */
+			}
+		}
+		return 0; /* Link at correct speed and width */
+	}
+
+	/* Update the Replay Time Limit.  Empirically, some PCIe devices take a
+	 * little longer to respond than expected under load. As a workaround
+	 * for this we configure the Replay Time Limit to the value expected
+	 * for a 512 byte MPS instead of our actual 256 byte MPS. The numbers
+	 * below are directly from the PCIe spec table 3-4
+	 */
+	pciercx_cfg448.u32 = CVMX_PCIE_CFGX_READ(pcie_port,
+						 CVMX_PCIERCX_CFG448(pcie_port));
+	switch (pciercx_cfg032.s.nlw) {
+	case 1:		/* 1 lane */
+		pciercx_cfg448.s.rtl = 1677;
+		break;
+	case 2:		/* 2 lanes */
+		pciercx_cfg448.s.rtl = 867;
+		break;
+	case 4:		/* 4 lanes */
+		pciercx_cfg448.s.rtl = 462;
+		break;
+	case 8:		/* 8 lanes */
+		pciercx_cfg448.s.rtl = 258;
+		break;
+	}
+	CVMX_PCIE_CFGX_WRITE(pcie_port, CVMX_PCIERCX_CFG448(pcie_port),
+			     pciercx_cfg448.u32);
+
+	return 0;
+}
+
+static int __cvmx_pcie_rc_initialize_gen2_v3(int pcie_port)
+{
+	cvmx_rst_ctlx_t rst_ctl;
+	cvmx_rst_soft_prstx_t rst_soft_prst;
+	cvmx_pciercx_cfg031_t pciercx_cfg031;
+	cvmx_pciercx_cfg032_t pciercx_cfg032;
+	cvmx_pciercx_cfg038_t pciercx_cfg038;
+	cvmx_pciercx_cfg040_t pciercx_cfg040;
+	cvmx_pciercx_cfg515_t pciercx_cfg515;
+	cvmx_pciercx_cfg548_t pciercx_cfg548;
+	cvmx_pemx_bist_status_t pemx_bist_status;
+	uint64_t rst_soft_prst_reg;
+	int qlm;
+	int node = (pcie_port >> 4) & 0x3;
+	bool requires_pem_reset = 0;
+	enum cvmx_qlm_mode mode = CVMX_QLM_MODE_DISABLED;
+	int retry_count = 0;
+	int result = 0;
+
+	pcie_port &= 0x3;
+
+	/* Assume link down until proven up */
+	pcie_link_initialized[node][pcie_port] = false;
+
+	/* Attempt link initialization up to 3 times */
+	while (retry_count <= MAX_RETRIES) {
+
+#ifdef DEBUG_PCIE
+		if (retry_count)
+			cvmx_printf("N%d:PCIE%d: Starting link retry %d\n", node, pcie_port, retry_count);
+#endif
+		if (pcie_port >= CVMX_PCIE_PORTS) {
+#ifdef DEBUG_PCIE
+                	cvmx_printf("Invalid PCIe%d port\n", pcie_port);
+#endif
+			return -1;
+		}
+
+		qlm = __cvmx_pcie_get_qlm(node, pcie_port);
+
+		if (qlm < 0)
+			return -1;
+
+		mode = cvmx_qlm_get_mode(qlm);
+		if (__cvmx_pcie_check_pcie_port(node, pcie_port, mode))
+			return -1;
+
+		rst_soft_prst_reg = CVMX_RST_SOFT_PRSTX(pcie_port);
+		rst_ctl.u64 = CVMX_READ_CSR(CVMX_RST_CTLX(pcie_port));
+
+		if (OCTEON_IS_MODEL(OCTEON_CN78XX)) {
+			CVMX_WRITE_CSR(CVMX_DTX_PEMX_SELX(0, pcie_port), 0x17);
+			CVMX_WRITE_CSR(CVMX_DTX_PEMX_SELX(1, pcie_port), 0);
+		}
+
+		if (!rst_ctl.s.host_mode) {
+			cvmx_printf("N%d:PCIE: Port %d in endpoint mode.\n", node, pcie_port);
+			return -1;
+		}
+
+		/* Bring the PCIe out of reset */
+		rst_soft_prst.u64 = CVMX_READ_CSR(rst_soft_prst_reg);
+		/* After a chip reset the PCIe will also be in reset. If it
+	 	* isn't, most likely someone is trying to init it again
+	 	* without a proper PCIe reset.
+	 	*/
+		if (rst_soft_prst.s.soft_prst == 0) {
+			/* Disable the MAC controller before resetting */
+			__cvmx_pcie_config_pemon(node, pcie_port, 0);
+
+			/* Reset the port */
+			rst_soft_prst.s.soft_prst = 1;
+			CVMX_WRITE_CSR(rst_soft_prst_reg, rst_soft_prst.u64);
+
+			/* Read to make sure write happens */
+			rst_soft_prst.u64 = CVMX_READ_CSR(rst_soft_prst_reg);
+
+			/* Keep PERST asserted for 2 ms */
+			cvmx_wait_usec(2000);
+
+			/* Reset GSER_PHY to put in a clean state */
+			__cvmx_pcie_gser_phy_config(node, pcie_port, qlm);
+			requires_pem_reset = 1;
+
+			/* Enable MAC controller before taking pcie out of reset */
+			__cvmx_pcie_config_pemon(node, pcie_port, 1);
+		}
+
+		/* Deassert PERST */
+		rst_soft_prst.u64 = CVMX_READ_CSR(rst_soft_prst_reg);
+		rst_soft_prst.s.soft_prst = 0;
+		CVMX_WRITE_CSR(rst_soft_prst_reg, rst_soft_prst.u64);
+		rst_soft_prst.u64 = CVMX_READ_CSR(rst_soft_prst_reg);
+
+		/* Check if PLLs are locked after GSER_PHY reset. */
+		if (requires_pem_reset) {
+			cvmx_pemx_cfg_t pemx_cfg;
+			pemx_cfg.u64 = cvmx_read_csr(CVMX_PEMX_CFG(pcie_port));
+			if (CVMX_WAIT_FOR_FIELD64(CVMX_GSERX_QLM_STAT(qlm),
+					cvmx_gserx_qlm_stat_t, rst_rdy, ==, 1, 10000)) {
+				cvmx_warn("QLM%d: Timeout waiting for GSERX_QLM_STAT[rst_rdy]\n", qlm);
+				return -1;
+			}
+			if (pemx_cfg.cn78xx.lanes8
+		    		&& (CVMX_WAIT_FOR_FIELD64(CVMX_GSERX_QLM_STAT(qlm + 1),
+					      cvmx_gserx_qlm_stat_t, rst_rdy, ==, 1, 10000))) {
+				cvmx_warn("QLM%d: Timeout waiting for GSERX_QLM_STAT[rst_rdy]\n", qlm+1);
+				return -1;
+			}
+		}
+
+		/* Wait 1ms for PCIe reset to complete */
+		cvmx_wait_usec(1000);
+
+		/* Check and make sure PCIe came out of reset. If it doesn't the board
+		   probably hasn't wired the clocks up and the interface should be
+		   skipped */
+		if (CVMX_WAIT_FOR_FIELD64_NODE(node, CVMX_RST_CTLX(pcie_port),
+				  cvmx_rst_ctlx_t,
+				  rst_done, ==, 1, 10000)) {
+			cvmx_printf("N%d:PCIE: Port %d stuck in reset, skipping.\n",
+				     node, pcie_port);
+			return -1;
+		}
+
+		/* Check BIST status */
+		pemx_bist_status.u64 = CVMX_READ_CSR(CVMX_PEMX_BIST_STATUS(pcie_port));
+		if (pemx_bist_status.u64)
+			cvmx_printf("N%d:PCIE: BIST FAILED for port %d (0x%016llx)\n",
+				     node, pcie_port, CAST64(pemx_bist_status.u64));
+
+		/* Initialize the config space CSRs */
+#ifdef DEBUG_PCIE
+		cvmx_printf("N%d:PCIE%d Initialize Config Space\n", node, pcie_port);
+#endif
+		__cvmx_pcie_rc_initialize_config_space(node, pcie_port);
+
+		/* Enable gen2 speed selection */
+		pciercx_cfg515.u32 = CVMX_PCIE_CFGX_READ(pcie_port,
+						 CVMX_PCIERCX_CFG515(pcie_port));
+		pciercx_cfg515.s.dsc = 1;
+		CVMX_PCIE_CFGX_WRITE(pcie_port, CVMX_PCIERCX_CFG515(pcie_port),
+			     	pciercx_cfg515.u32);
+
+		/* Do the link retries on the PCIe interface */
+		if (retry_count == MAX_RETRIES) {
+			/* This has to be done AFTER the QLM/PHY interface initialized */
+			pciercx_cfg031.u32 = CVMX_PCIE_CFGX_READ(pcie_port,
+								 CVMX_PCIERCX_CFG031(pcie_port));
+			/* Drop speed to gen2 if link bouncing
+			   Result = -1  PEM in reset
+			   Result = 0:  link speed and width ok no retry needed
+			   Result = 1:  link errors or speed change needed
+			   Result = 2:  lane width error
+			*/
+			if ((pciercx_cfg031.s.mls == 3) && (result != 2)) {
+#ifdef DEBUG_PCIE
+				cvmx_printf("N%d:PCIE%d: Dropping speed to gen2\n",
+					     node, pcie_port);
+#endif
+				pciercx_cfg031.s.mls = 2;
+				CVMX_PCIE_CFGX_WRITE(pcie_port, CVMX_PCIERCX_CFG031(pcie_port),
+						     pciercx_cfg031.u32);
+
+				/* Set the target link speed */
+				pciercx_cfg040.u32 = CVMX_PCIE_CFGX_READ(pcie_port,
+								 CVMX_PCIERCX_CFG040(pcie_port));
+				pciercx_cfg040.s.tls = 2;
+				CVMX_PCIE_CFGX_WRITE(pcie_port, CVMX_PCIERCX_CFG040(pcie_port),
+						     pciercx_cfg040.u32);
+			}
+
+		}
+
+		/* Bring the link up */
+		result = __cvmx_pcie_rc_initialize_link_gen2_v3(node, pcie_port);
+		if (result == 0) {
+#ifdef DEBUG_PCIE
+			cvmx_printf("N%d:PCIE%d: Link does not need a retry\n",
+				    node, pcie_port);
+#endif
+			break;
+		} else if (result > 0) {
+			if (retry_count >= MAX_RETRIES) {
+				int link_up;
+#ifdef DEBUG_PCIE
+				cvmx_printf("N%d:PCIE%d: Link requested a retry, but hit the max retries\n",
+					     node, pcie_port);
+#endif
+				/* If the link is down, report failure */
+				pciercx_cfg032.u32 = CVMX_PCIE_CFGX_READ(pcie_port, CVMX_PCIERCX_CFG032(pcie_port));
+				link_up = (pciercx_cfg032.s.dlla && !pciercx_cfg032.s.lt);
+				if (!link_up)
+					result = -1;
+			}
+#ifdef DEBUG_PCIE
+			else
+				cvmx_printf("N%d.PCIE%d: Link requested a retry\n", node, pcie_port);
+#endif
+		}
+		if (result < 0) {
+			int ltssm_state = __cvmx_pcie_rc_get_ltssm_state(node, pcie_port);
+			cvmx_printf("N%d:PCIE%d: Link timeout, probably the slot is empty (LTSSM %s)\n",
+				      node, pcie_port, cvmx_pcie_get_ltssm_string(ltssm_state));
+			return -1;
+		}
+		retry_count++;
+	}
+
+	pciercx_cfg032.u32 = CVMX_PCIE_CFGX_READ(pcie_port,
+						 CVMX_PCIERCX_CFG032(pcie_port));
+	/* Errata PEM-28816: Link retrain initiated at GEN1 can cause PCIE
+	   link to hang. For Gen1 links we must disable equalization */
+	if (pciercx_cfg032.s.ls == 1) {
+#ifdef DEBUG_PCIE
+			cvmx_printf("N%d:PCIE%d: Disabling equalization for GEN1 Link\n",
+				     node, pcie_port);
+#endif
+		pciercx_cfg548.u32 = CVMX_PCIE_CFGX_READ(pcie_port,
+						 CVMX_PCIERCX_CFG548(pcie_port));
+		pciercx_cfg548.s.ed = 1;
+		CVMX_PCIE_CFGX_WRITE(pcie_port, CVMX_PCIERCX_CFG548(pcie_port),
+				     pciercx_cfg548.u32);
+	}
+
+	/* Errata PCIE-29440: Atomic operations to work properly */
+	pciercx_cfg038.u32 = CVMX_PCIE_CFGX_READ(pcie_port,
+						 CVMX_PCIERCX_CFG038(pcie_port));
+	pciercx_cfg038.s.atom_op_eb = 0;
+	pciercx_cfg038.s.atom_op = 1;
+	CVMX_PCIE_CFGX_WRITE(pcie_port, CVMX_PCIERCX_CFG038(pcie_port),
+			     pciercx_cfg038.u32);
+
+	/* Errata PCIE-29566 PEM Link Hangs after going into L1 */
+	pciercx_cfg548.u32 = CVMX_PCIE_CFGX_READ(pcie_port,
+					 CVMX_PCIERCX_CFG548(pcie_port));
+	pciercx_cfg548.s.grizdnc = 0;
+	CVMX_PCIE_CFGX_WRITE(pcie_port, CVMX_PCIERCX_CFG548(pcie_port),
+			     pciercx_cfg548.u32);
+
+	if (result < 0)
+		return result;
+
+	/* Display the link status */
+	pciercx_cfg032.u32 = CVMX_PCIE_CFGX_READ(pcie_port,
+						 CVMX_PCIERCX_CFG032(pcie_port));
+	cvmx_printf("N%d:PCIe: Port %d link active, %d lanes, speed gen%d \n",
+		    node, pcie_port, pciercx_cfg032.s.nlw, pciercx_cfg032.s.ls);
 
 	pcie_link_initialized[node][pcie_port] = true;
 	return 0;
@@ -2064,8 +2481,10 @@ int cvmx_pcie_rc_initialize(int pcie_port)
 	int result;
 	if (octeon_has_feature(OCTEON_FEATURE_NPEI))
 		result = __cvmx_pcie_rc_initialize_gen1(pcie_port);
-	else
+	else if (OCTEON_IS_OCTEON2() || OCTEON_IS_MODEL(OCTEON_CN70XX))
 		result = __cvmx_pcie_rc_initialize_gen2(pcie_port);
+	else
+		result = __cvmx_pcie_rc_initialize_gen2_v3(pcie_port);
 
 #if !defined(CVMX_BUILD_FOR_LINUX_KERNEL) || defined(CONFIG_CAVIUM_DECODE_RSL)
 	if (result == 0)
@@ -2212,6 +2631,23 @@ uint16_t cvmx_pcie_config_read16(int pcie_port, int bus, int dev,
 		return 0xffff;
 }
 
+static uint32_t __cvmx_pcie_config_read32(int node, int pcie_port, int bus,
+	 int dev, int func, int reg, int lst)
+{
+	uint64_t address;
+	address = __cvmx_pcie_build_config_addr(node, pcie_port, bus, dev,
+							 func, reg);
+	if (lst) {
+		if (address && pcie_link_initialized[node][pcie_port])
+			return cvmx_le32_to_cpu(cvmx_read64_uint32(address));
+		else
+			return 0xffffffff;
+	} else if (address)
+			return cvmx_le32_to_cpu(cvmx_read64_uint32(address));
+	else
+		return 0xffffffff;
+}
+
 /**
  * Read 32bits from a Device's config space
  *
@@ -2226,15 +2662,10 @@ uint16_t cvmx_pcie_config_read16(int pcie_port, int bus, int dev,
 uint32_t cvmx_pcie_config_read32(int pcie_port, int bus, int dev,
 				 int fn, int reg)
 {
-	uint64_t address;
 	int node = (pcie_port >> 4) & 0x3;
 	pcie_port &= 0x3;
-	address = __cvmx_pcie_build_config_addr(node, pcie_port, bus, dev,
-							 fn, reg);
-	if (address && pcie_link_initialized[node][pcie_port])
-		return cvmx_le32_to_cpu(cvmx_read64_uint32(address));
-	else
-		return 0xffffffff;
+	return __cvmx_pcie_config_read32(node, pcie_port, bus, dev, fn, reg,
+					 pcie_link_initialized[node][pcie_port]);
 }
 
 /**

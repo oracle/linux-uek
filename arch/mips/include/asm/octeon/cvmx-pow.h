@@ -2055,10 +2055,17 @@ static inline cvmx_pow_tag_type_t cvmx_pow_work_request_null_rd(void)
 	cvmx_pow_tag_sw_wait();
 
 	ptr.u64 = 0;
-	ptr.snull_rd.mem_region = CVMX_IO_SEG;
-	ptr.snull_rd.is_io = 1;
-	ptr.snull_rd.did = CVMX_OCT_DID_TAG_NULL_RD;
-
+	if (octeon_has_feature(OCTEON_FEATURE_CN78XX_WQE)) {
+		ptr.swork_78xx.mem_region = CVMX_IO_SEG;
+		ptr.swork_78xx.is_io = 1;
+		ptr.swork_78xx.did = CVMX_OCT_DID_TAG_NULL_RD;
+		ptr.swork_78xx.node = cvmx_get_node_num();
+	}
+	else {
+		ptr.snull_rd.mem_region = CVMX_IO_SEG;
+		ptr.snull_rd.is_io = 1;
+		ptr.snull_rd.did = CVMX_OCT_DID_TAG_NULL_RD;
+	}
 	result.u64 = cvmx_read_csr(ptr.u64);
 	return (cvmx_pow_tag_type_t)result.s_null_rd.state;
 }
@@ -2639,6 +2646,118 @@ static inline void cvmx_pow_set_group_mask(uint64_t core_num, uint64_t mask)
 }
 
 /**
+ * This function gets the group mask for a core.  The group mask
+ * indicates which groups each core will accept work from.
+ *
+ * @param core_num   core to apply mask to
+ * @return 	Group mask, one bit for up to 64 groups.
+ *               Each 1 bit in the mask enables the core to accept work from
+ *               the corresponding group.
+ *               The CN68XX supports 64 groups, earlier models only support
+ *               16 groups.
+ *
+ * The CN78XX in backwards compatibility mode allows up to 32 groups,
+ * so the 'mask' argument has one bit for every of the legacy
+ * groups, and a '1' in the mask causes a total of 8 groups
+ * which share the legacy group numbher and 8 qos levels,
+ * to be enabled for the calling processor core.
+ * A '0' in the mask will disable the current core
+ * from receiving work from the associated group.
+ */
+static inline uint64_t cvmx_pow_get_group_mask(uint64_t core_num) 
+{
+	if (octeon_has_feature(OCTEON_FEATURE_CN78XX_WQE)) {
+		cvmx_sso_ppx_sx_grpmskx_t grp_msk;
+		unsigned core, node, i;
+		int rix;	/* Register index */
+		uint64_t mask = 0;
+
+		node = cvmx_coremask_core_to_node(core_num);
+		core = cvmx_coremask_core_on_node(core_num);
+
+		/* 78xx: 256 groups divided into 4 X 64 bit registers */
+		/* 73xx: 64 groups are in one register */
+		for (rix = (cvmx_sso_num_xgrp() >> 6) - 1; rix >= 0; rix-- ) {
+			/* read only mask_set=0 (both 'set' was written same) */
+			grp_msk.u64 = cvmx_read_csr_node(node,
+				CVMX_SSO_PPX_SX_GRPMSKX(core, 0, rix));
+			/* ASSUME: (this is how mask bits got written) */
+			/* grp_mask[7:0]: all bits 0..7 are same */
+			/* grp_mask[15:8]: all bits 8..15 are same, etc */
+			/* DO: mask[7:0] = grp_mask.u64[56,48,40,32,24,16,8,0] */
+			for (i = 0; i < 8; i++)
+				mask |= (grp_msk.u64 & ((uint64_t)1<<(i*8))) >> (7*i);
+			/* we collected 8 MSBs in mask[7:0], <<=8 and continue */
+			if (cvmx_likely(rix != 0))
+				mask <<= 8;
+		}
+		return mask & 0xFFFFFFFF;
+	} else if (octeon_has_feature(OCTEON_FEATURE_CN68XX_WQE)) {
+		cvmx_sso_ppx_grp_msk_t grp_msk;
+		grp_msk.u64 = cvmx_read_csr(CVMX_SSO_PPX_GRP_MSK(core_num));
+		return grp_msk.u64;
+	} else {
+		cvmx_pow_pp_grp_mskx_t grp_msk;
+		grp_msk.u64 = cvmx_read_csr(CVMX_POW_PP_GRP_MSKX(core_num));
+		return grp_msk.u64 & 0xffff;
+	}
+}
+
+/*
+ * Returns 0 if 78xx(73xx,75xx) is not programmed in legacy compatible mode
+ * Returns 1 if 78xx(73xx,75xx) is programmed in legacy compatible mode
+ * Returns 1 if octeon model is not 78xx(73xx,75xx)
+ */
+static inline uint64_t cvmx_pow_is_legacy78mode(uint64_t core_num)
+{
+	if (octeon_has_feature(OCTEON_FEATURE_CN78XX_WQE)) {
+		cvmx_sso_ppx_sx_grpmskx_t grp_msk0, grp_msk1;
+		unsigned core, node, i;
+		int rix;	/* Register index */
+		uint64_t mask = 0;
+
+		node = cvmx_coremask_core_to_node(core_num);
+		core = cvmx_coremask_core_on_node(core_num);
+
+		/* 78xx: 256 groups divided into 4 X 64 bit registers */
+		/* 73xx: 64 groups are in one register */
+		/* 1) in order for the 78_SSO to be in legacy compatible mode
+		 * the both mask_sets should be programmed the same */
+		for (rix = (cvmx_sso_num_xgrp() >> 6) - 1; rix >= 0; rix-- ) {
+			/* read mask_set=0 (both 'set' was written same) */
+			grp_msk0.u64 = cvmx_read_csr_node(node,
+				CVMX_SSO_PPX_SX_GRPMSKX(core, 0, rix));
+			grp_msk1.u64 = cvmx_read_csr_node(node,
+				CVMX_SSO_PPX_SX_GRPMSKX(core, 1, rix));
+			if (grp_msk0.u64 != grp_msk1.u64) {
+//				cvmx_dprintf("\nThe SSO/POW is NOT in legacy compatible mode for ");
+//				cvmx_dprintf("core#%d because: idx=%d: set1:%016llx != set2:%016llx\n",
+//					     core, rix, CAST_ULL(grp_msk0.u64),
+//					     CAST_ULL(grp_msk1.u64) );
+				return 0;
+			}
+			/* (this is how mask bits should be written) */
+			/* grp_mask[7:0]: all bits 0..7 are same */
+			/* grp_mask[15:8]: all bits 8..15 are same, etc */
+			/* 2) in order for the 78_SSO to be in legacy compatible
+			 * mode above should be true (test only mask_set=0 */
+			for (i = 0; i < 8; i++) {
+				mask = (grp_msk0.u64 >> (i<<3)) & 0xFF;
+				if (!(mask == 0 || mask == 0xFF)) {
+//					cvmx_dprintf("\nThe SSO/POW is NOT in legacy compatible mode for ");
+//					cvmx_dprintf("core#%d because: idx=%d, off=%d: mask=%#02x (!= (00 || FF))\n",
+//					     core, rix, i<<3, (unsigned)mask);
+					return 0;
+				}
+			}
+		}
+		/* if we come here, the 78_SSO is in legacy compatible mode */
+	}
+	return 1;	/* the SSO/POW is in legacy (or compatible) mode */
+}
+
+
+/**
  * This function sets POW static priorities for a core. Each input queue has
  * an associated priority value.
  *
@@ -2677,8 +2796,8 @@ static inline void cvmx_pow_set_priority(uint64_t core_num, const uint8_t priori
 		unsigned node = cvmx_get_node_num();
 		cvmx_sso_grpx_pri_t grp_pri;
 
-		grp_pri.s.weight = 0x3f;
-		grp_pri.s.affinity = 0xf;
+		/*grp_pri.s.weight = 0x3f; these will be anyway overwritten */
+		/*grp_pri.s.affinity = 0xf; by the next cvmx_read_csr_node(..), */
 
 		for(group = 0; group < cvmx_sso_num_xgrp(); group ++ ) {
 			grp_pri.u64 = cvmx_read_csr_node(node,
@@ -2718,6 +2837,102 @@ static inline void cvmx_pow_set_priority(uint64_t core_num, const uint8_t priori
 		cvmx_write_csr(CVMX_POW_PP_GRP_MSKX(core_num), grp_msk.u64);
 	}
 }
+
+/**
+ * This function gets POW static priorities for a core. Each input queue has
+ * an associated priority value.
+ *
+ * @param[in]  core_num core to get priorities for
+ * @param[out] priority Pointer to uint8_t[] where to return priorities
+ * 		     	Vector of 8 priorities, one per POW Input Queue (0-7).
+ *                   	Highest priority is 0 and lowest is 7. A priority value
+ *                   	of 0xF instructs POW to skip the Input Queue when
+ *                   	scheduling to this specific core.
+ *                   NOTE: priorities should not have gaps in values, meaning
+ *                         {0,1,1,1,1,1,1,1} is a valid configuration while
+ *                         {0,2,2,2,2,2,2,2} is not.
+ */
+static inline void cvmx_pow_get_priority(uint64_t core_num, uint8_t priority[])
+{
+	if (OCTEON_IS_MODEL(OCTEON_CN3XXX))
+		return;
+
+	if (octeon_has_feature(OCTEON_FEATURE_CN78XX_WQE)) {
+		unsigned group;
+		unsigned node = cvmx_get_node_num();
+		cvmx_sso_grpx_pri_t grp_pri;
+		
+		/* read priority only from the first 8 groups */
+		/* the next groups are programmed the same (periodicaly) */
+		for(group = 0; group < 8/*cvmx_sso_num_xgrp()*/; group ++ ) {
+			grp_pri.u64 = cvmx_read_csr_node(node,
+				CVMX_SSO_GRPX_PRI(group));
+			priority[group/* & 0x7*/] = grp_pri.s.pri; 
+		}
+
+	} else if (octeon_has_feature(OCTEON_FEATURE_CN68XX_WQE)) {
+		cvmx_sso_ppx_qos_pri_t qos_pri;
+
+		qos_pri.u64 = cvmx_read_csr(CVMX_SSO_PPX_QOS_PRI(core_num));
+		priority[0] = qos_pri.s.qos0_pri;
+		priority[1] = qos_pri.s.qos1_pri;
+		priority[2] = qos_pri.s.qos2_pri;
+		priority[3] = qos_pri.s.qos3_pri;
+		priority[4] = qos_pri.s.qos4_pri;
+		priority[5] = qos_pri.s.qos5_pri;
+		priority[6] = qos_pri.s.qos6_pri;
+		priority[7] = qos_pri.s.qos7_pri;
+	} else {
+		/* POW priorities on CN5xxx .. CN66XX */
+		cvmx_pow_pp_grp_mskx_t grp_msk;
+
+		grp_msk.u64 = cvmx_read_csr(CVMX_POW_PP_GRP_MSKX(core_num));
+		priority[0] = grp_msk.s.qos0_pri;
+		priority[1] = grp_msk.s.qos1_pri;
+		priority[2] = grp_msk.s.qos2_pri;
+		priority[3] = grp_msk.s.qos3_pri;
+		priority[4] = grp_msk.s.qos4_pri;
+		priority[5] = grp_msk.s.qos5_pri;
+		priority[6] = grp_msk.s.qos6_pri;
+		priority[7] = grp_msk.s.qos7_pri;
+	}
+	
+	/* Detect gaps between priorities and flag error - (optional) */
+	if (!octeon_has_feature(OCTEON_FEATURE_CN78XX_WQE)) {
+		int i;
+		uint32_t prio_mask = 0;
+
+		for (i = 0; i < 8; i++)
+			if (priority[i] != 0xF)
+				prio_mask |= 1 << priority[i];
+
+		if (prio_mask ^ ((1 << cvmx_pop(prio_mask)) - 1)) {
+			cvmx_dprintf("ERROR:%s: POW static priorities should be contiguous (0x%llx)\n",
+				__func__, (unsigned long long)prio_mask);
+			return;
+		}
+	}
+}
+
+static inline void cvmx_sso_get_group_priority(int node, cvmx_xgrp_t xgrp,
+			int *priority, int *weight, int *affinity)
+{
+	cvmx_sso_grpx_pri_t grp_pri;
+
+	if (!octeon_has_feature(OCTEON_FEATURE_CN78XX_WQE)) {
+		cvmx_dprintf(
+			"ERROR: %s is not supported on this chip)\n",
+			__FUNCTION__);
+		return;
+	}
+
+	grp_pri.u64 = cvmx_read_csr_node(node, CVMX_SSO_GRPX_PRI(xgrp.xgrp));
+	*affinity = grp_pri.s.affinity;
+	*priority = grp_pri.s.pri;
+	*weight = grp_pri.s.weight;
+}
+
+		
 
 /**
  * Performs a tag switch and then an immediate deschedule. This completes
@@ -3157,7 +3372,6 @@ static inline void *cvmx_sso_work_request_grp_sync(unsigned int lgrp,
 static inline void cvmx_pow_set_xgrp_mask( uint64_t core_num,
 		uint8_t mask_set, const uint64_t xgrp_mask[])
 {
-	cvmx_sso_ppx_sx_grpmskx_t grp_msk;
 	unsigned grp, node, core;
 	uint64_t reg_addr;
 
@@ -3178,18 +3392,65 @@ static inline void cvmx_pow_set_xgrp_mask( uint64_t core_num,
 	core = cvmx_coremask_core_on_node(core_num);
 
 	for (grp = 0; grp < (cvmx_sso_num_xgrp() >> 6); grp++) {
-		reg_addr = CVMX_SSO_PPX_SX_GRPMSKX(core, 0, grp),
-		grp_msk.u64 = 0;
 		if (mask_set & 1) {
-			grp_msk.s.grp_msk = xgrp_mask[grp];
-			cvmx_write_csr_node(node, reg_addr, grp_msk.u64);
+			reg_addr = CVMX_SSO_PPX_SX_GRPMSKX(core, 0, grp),
+			cvmx_write_csr_node(node, reg_addr, xgrp_mask[grp]);
 		}
-
-		reg_addr = CVMX_SSO_PPX_SX_GRPMSKX(core, 1, grp),
-		grp_msk.u64 = 0;
 		if (mask_set & 2) {
-			grp_msk.s.grp_msk = xgrp_mask[grp];
-			cvmx_write_csr_node(node, reg_addr, grp_msk.u64);
+			reg_addr = CVMX_SSO_PPX_SX_GRPMSKX(core, 1, grp),
+			cvmx_write_csr_node(node, reg_addr, xgrp_mask[grp]);
+		}
+	}
+}
+
+/**
+ * This function gets the group mask for a core.  The group mask bits
+ * indicate which groups each core will accept work from.
+ *
+ * @param core_num 	Processor core to apply mask to.
+ * @param mask_set	7XXX has 2 sets of masks per core.
+ *     Bit 0 represents the first mask set, bit 1 -- the second.
+ * @param xgrp_mask	Provide pointer to uint64_t mask[8] output array.
+ *     Total number of groups is divided into a number of
+ *     64-bits mask sets. Each bit in the mask represents
+ *     the core accepts work from the corresponding group.
+ *
+ * NOTE: Each core can be configured to accept work in accordance to both
+ * mask sets, with the first having higher precedence over the second,
+ * or to accept work in accordance to just one of the two mask sets.
+ * The 'core_num' argument represents a processor core on any node
+ * in a coherent multi-chip system.
+ */
+static inline void cvmx_pow_get_xgrp_mask( uint64_t core_num,
+		uint8_t mask_set, uint64_t *xgrp_mask)
+{
+	cvmx_sso_ppx_sx_grpmskx_t grp_msk;
+	unsigned grp, node, core;
+	uint64_t reg_addr;
+
+	if (!octeon_has_feature(OCTEON_FEATURE_CN78XX_WQE)) {
+		cvmx_dprintf( "ERROR: %s is not supported on this chip)\n",
+			__FUNCTION__);
+		return;
+	}
+	
+	if (CVMX_ENABLE_POW_CHECKS) {
+		cvmx_warn_if(mask_set != 1 && mask_set != 2, "Invalid mask set");
+	}
+	
+	node = cvmx_coremask_core_to_node(core_num);
+	core = cvmx_coremask_core_on_node(core_num);
+	
+	for (grp = 0; grp < cvmx_sso_num_xgrp() >> 6; grp++) {
+		if (mask_set & 1) {
+			reg_addr = CVMX_SSO_PPX_SX_GRPMSKX(core, 0, grp),
+			grp_msk.u64 = cvmx_read_csr_node(node, reg_addr);
+			xgrp_mask[grp] = grp_msk.s.grp_msk;
+		}
+		if (mask_set & 2) {
+			reg_addr = CVMX_SSO_PPX_SX_GRPMSKX(core, 1, grp),
+			grp_msk.u64 = cvmx_read_csr_node(node, reg_addr);
+			xgrp_mask[grp] = grp_msk.s.grp_msk;
 		}
 	}
 }
@@ -3604,11 +3865,51 @@ int cvmx_sso_release_group_range(int node, int base_group, int count);
 int cvmx_sso_release_group(int node, int group);
 
 /**
- * Show integrated PKI configuration.
+ * Show integrated SSO configuration.
  *
  * @param node	   node number
  */
 int cvmx_sso_config_dump(unsigned node);
+
+/**
+ * Show integrated SSO statistics.
+ *
+ * @param node	   node number
+ */
+int cvmx_sso_stats_dump(unsigned node);
+
+/**
+ * Clear integrated SSO statistics.
+ *
+ * @param node	   node number
+ */
+int cvmx_sso_stats_clear(unsigned node);
+
+/**
+ * Show SSO core-group affinity and priority per node (multi-node systems)
+ */
+extern void cvmx_pow_mask_priority_dump_node(unsigned int node, cvmx_coremask_t *avail_coremask);
+
+/**
+ * Show POW/SSO core-group affinity and priority (legacy, single-node systems)
+ */
+static inline void cvmx_pow_mask_priority_dump(cvmx_coremask_t *avail_coremask)
+{
+	 cvmx_pow_mask_priority_dump_node(0/*node*/, avail_coremask);
+}
+
+/**
+ * Show SSO performance counters (multi-node systems)
+ */
+extern void cvmx_pow_show_perf_counters_node(unsigned int node);
+
+/**
+ * Show POW/SSO performance counters (legacy, single-node systems)
+ */
+static inline void cvmx_pow_show_perf_counters(void)
+{
+	cvmx_pow_show_perf_counters_node(0/*node*/);
+}
 
 #ifdef  __cplusplus
 /* *INDENT-OFF* */

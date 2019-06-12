@@ -1010,6 +1010,8 @@ int __cvmx_helper_init_port_valid(void)
 		rc = __cvmx_helper_parse_bgx_dt(fdt_addr);
 		if (!rc)
 			rc = __cvmx_fdt_parse_vsc7224(fdt_addr);
+		if (!rc)
+			rc = __cvmx_fdt_parse_avsp5410(fdt_addr);
 		if (!rc && octeon_has_feature(OCTEON_FEATURE_BGX_XCV))
 			rc = __cvmx_helper_parse_bgx_rgmii_dt(fdt_addr);
 
@@ -1670,6 +1672,39 @@ void cvmx_helper_cfg_set_vsc7224_chan_info(int xiface, int index,
 		cvmx_init_port_cfg();
 	cvmx_cfg_port[xi.node][xi.interface][index].vsc7224_chan =
 							vsc7224_chan_info;
+}
+
+/**
+ * Get data structure defining the Avago AVSP5410 phy info
+ * or NULL if not present
+ *
+ * @param xiface	node and interface
+ * @param index		port index
+ *
+ * @return pointer to avsp5410 data structure or NULL if not present
+ */
+struct cvmx_avsp5410 *cvmx_helper_cfg_get_avsp5410_info(int xiface, int index)
+{
+	struct cvmx_xiface xi = cvmx_helper_xiface_to_node_interface(xiface);
+	if (!port_cfg_data_initialized)
+		cvmx_init_port_cfg();
+	return cvmx_cfg_port[xi.node][xi.interface][index].avsp5410;
+}
+
+/**
+ * Sets the Avago AVSP5410 phy info data structure
+ *
+ * @param	xiface	node and interface
+ * @param	index	port index
+ * @param[in]	avsp5410_info	Avago AVSP5410 data structure
+ */
+void cvmx_helper_cfg_set_avsp5410_info(int xiface, int index,
+				struct cvmx_avsp5410 *avsp5410_info)
+{
+	struct cvmx_xiface xi = cvmx_helper_xiface_to_node_interface(xiface);
+	if (!port_cfg_data_initialized)
+		cvmx_init_port_cfg();
+	cvmx_cfg_port[xi.node][xi.interface][index].avsp5410 = avsp5410_info;
 }
 
 /**
