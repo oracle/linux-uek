@@ -215,7 +215,10 @@ static int rvu_txsch_count_rsrc(struct rvu *rvu, int lvl, u16 pcifunc,
 		return 0;
 
 	for (schq = 0; schq < txsch->schq.max; schq++) {
-		if ((txsch->pfvf_map[schq] >> rshift) == (pcifunc >> rshift))
+		if (TXSCH_MAP_FLAGS(txsch->pfvf_map[schq]) & NIX_TXSCHQ_FREE)
+			continue;
+		if ((TXSCH_MAP_FUNC(txsch->pfvf_map[schq]) >> rshift) ==
+		    (pcifunc >> rshift))
 			count++;
 	}
 
