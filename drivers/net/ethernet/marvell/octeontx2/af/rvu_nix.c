@@ -1657,7 +1657,7 @@ static int nix_txschq_free(struct rvu *rvu, u16 pcifunc)
 			if (TXSCH_MAP_FUNC(txsch->pfvf_map[schq]) != pcifunc)
 				continue;
 			rvu_free_rsrc(&txsch->schq, schq);
-			txsch->pfvf_map[schq] = 0;
+			txsch->pfvf_map[schq] = TXSCH_MAP(0, NIX_TXSCHQ_FREE);
 		}
 	}
 	mutex_unlock(&rvu->rsrc_lock);
@@ -1714,7 +1714,7 @@ static int nix_txschq_free_one(struct rvu *rvu,
 
 	/* Free the resource */
 	rvu_free_rsrc(&txsch->schq, schq);
-	txsch->pfvf_map[schq] = 0;
+	txsch->pfvf_map[schq] = TXSCH_MAP(0, NIX_TXSCHQ_FREE);
 	mutex_unlock(&rvu->rsrc_lock);
 	return 0;
 err:
@@ -2389,7 +2389,7 @@ static int nix_setup_txschq(struct rvu *rvu, struct nix_hw *nix_hw, int blkaddr)
 {
 	struct nix_txsch *txsch;
 	u64 cfg, reg;
-	int err, lvl;
+	int err, lvl, schq;
 
 	/* Get scheduler queue count of each type and alloc
 	 * bitmap for each for alloc/free/attach operations.
@@ -2427,6 +2427,8 @@ static int nix_setup_txschq(struct rvu *rvu, struct nix_hw *nix_hw, int blkaddr)
 					       sizeof(u32), GFP_KERNEL);
 		if (!txsch->pfvf_map)
 			return -ENOMEM;
+		for (schq = 0; schq < txsch->schq.max; schq++)
+			txsch->pfvf_map[schq] = TXSCH_MAP(0, NIX_TXSCHQ_FREE);
 	}
 	return 0;
 }

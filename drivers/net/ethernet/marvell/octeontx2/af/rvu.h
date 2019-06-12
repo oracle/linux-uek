@@ -277,6 +277,7 @@ struct rvu_pfvf {
 struct nix_txsch {
 	struct rsrc_bmap schq;
 	u8   lvl;
+#define NIX_TXSCHQ_FREE		      BIT_ULL(1)
 #define NIX_TXSCHQ_CFG_DONE	      BIT_ULL(0)
 #define TXSCH_MAP_FUNC(__pfvf_map)    ((__pfvf_map) & 0xFFFF)
 #define TXSCH_MAP_FLAGS(__pfvf_map)   ((__pfvf_map) >> 16)
