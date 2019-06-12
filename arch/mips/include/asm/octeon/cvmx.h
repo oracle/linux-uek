@@ -148,6 +148,40 @@ static inline unsigned int cvmx_get_local_core_num(void)
 }
 
 /**
+ * Extract bits out of a number
+ *
+ * @param input  Number to extract from
+ * @param lsb    Starting bit, least significant (0-63)
+ * @param width  Width in bits (1-64)
+ *
+ * @return Extracted number
+ */
+static inline uint64_t cvmx_bit_extract(uint64_t input, int lsb, int width)
+{
+    uint64_t result = input >> lsb;
+    result &= cvmx_build_mask(width);
+    return result;
+}
+
+/**
+ * Extract a signed magnitude value. Signed magnitude is a value where the MSB
+ * is treated as a sign bit, not like the mornal twos compliment.
+ *
+ * @param input  Number to extract from
+ * @param lsb    Starting bit, least significant (0-63)
+ * @param msb    which is the signed bit
+ *
+ * @return Extracted number
+ */
+static inline int64_t cvmx_bit_extract_smag(uint64_t input, int lsb, int msb)
+{
+    int64_t result = cvmx_bit_extract(input, lsb, msb - lsb);
+    if (input & (1ull << msb))
+        result = -result;
+    return result;
+}
+
+/**
  * Builds a memory address for I/O based on the Major and Sub DID.
  *
  * @major_did: 5 bit major did
@@ -222,6 +256,24 @@ static inline void cvmx_write64_##TYPE(uint64_t addr, TYPE##_t val)	\
     *CASTPTR(volatile TYPE##_t, addr) = val;				\
 }
 
+/**
+ * Insert bits into a number
+ *
+ * @param original Original data, before insert
+ * @param input    Data to insert
+ * @param lsb    Starting bit, least significant (0-63)
+ * @param width  Width in bits (1-64)
+ *
+ * @return Number with inserted bits
+ */
+static inline uint64_t cvmx_bit_insert(uint64_t original, uint64_t input, int lsb, int width) __attribute__((always_inline));
+static inline uint64_t cvmx_bit_insert(uint64_t original, uint64_t input, int lsb, int width)
+{
+    uint64_t mask = cvmx_build_mask(width);
+    uint64_t result = original & ~(mask << lsb);
+    result |= (input & mask) << lsb;
+    return result;
+}
 
 /* The following #if controls the definition of the macro
     CVMX_BUILD_READ64. This macro is used to build a load operation from
