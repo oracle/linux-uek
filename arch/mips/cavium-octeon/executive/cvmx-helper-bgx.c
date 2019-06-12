@@ -921,6 +921,9 @@ int cvmx_helper_set_autonegotiation(int xiface, int index, bool enable)
 		spu_an_adv.u64 =
 		cvmx_read_csr_node(node,
 				   CVMX_BGXX_SPUX_AN_ADV(index, interface));
+		spu_fec_control.u64 =
+		cvmx_read_csr_node(node,
+				   CVMX_BGXX_SPUX_FEC_CONTROL(index, interface));
 		spu_an_adv.s.fec_req = spu_fec_control.s.fec_en;
 		spu_an_adv.s.fec_able = 1;
 		spu_an_adv.s.a100g_cr10 = 0;
