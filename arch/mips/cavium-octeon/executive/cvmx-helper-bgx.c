@@ -3663,24 +3663,21 @@ typedef struct {
 int cvmx_dump_bgx_config_node(unsigned node, unsigned bgx)
 {
 	lmac_config_t lmac[4];
-	cvmx_bgxx_cmr_global_config_t global_config;
 	cvmx_bgxx_cmr_rx_ovr_bp_t cmr_rx_ovr_bp;
 	unsigned ind, N;
 	uint8_t mask_aneg_ovrd, mask_aneg, lmac_type, lmac_gmii;
 	uint8_t lmac_sgmii, lmac_rgmii, lmac_xaui, lmac_rxaui, lmac_10g_r, lmac_40g_r;
 	int ipd_port, qlm, gbaud_mhz;
+	int xiface = cvmx_helper_node_interface_to_xiface(node, bgx);
 
 	lmac_sgmii = lmac_rgmii = lmac_xaui = lmac_rxaui = lmac_10g_r  = lmac_40g_r = 0;
 	mask_aneg_ovrd = mask_aneg = 0;
-
-	global_config.u64 = cvmx_read_csr_node(node,
-		CVMX_BGXX_CMR_GLOBAL_CONFIG(bgx));
 
 	cvmx_dprintf("\n/*===== BGX CONFIG Parameters			BGX%d =====*/\n", bgx);
 	/* just report configured RX/Tx LMACS - don't check return */
 	cvmx_helper_bgx_number_rx_tx_lmacs(node, bgx, &N);
 
-	qlm = bgx<2 ? (global_config.s.pmux_sds_sel==1 ? bgx+2 : bgx) : bgx+2;
+	qlm = cvmx_qlm_lmac(xiface, N - 1);
 	cvmx_dprintf("NODE%d: BGX%d/lmac[0..%d] connected to QLM%d\n",
 		node, bgx, N - 1, qlm);
 
@@ -4067,25 +4064,22 @@ typedef struct {
 int cvmx_dump_bgx_status_node(unsigned node, unsigned bgx)
 {
 	lmac_status_t lmac[4];
-	cvmx_bgxx_cmr_global_config_t global_config;
 	unsigned ind, N;
 	uint8_t lmac_type;
 	uint8_t lmac_sgmii, lmac_rgmii, lmac_xaui, lmac_rxaui, lmac_10g_r, lmac_40g_r;
 	int ipd_port, qlm;
+	int xiface = cvmx_helper_node_interface_to_xiface(node, bgx);
 
 	lmac_sgmii = lmac_rgmii = lmac_xaui = lmac_rxaui = lmac_10g_r  = lmac_40g_r = 0;
-
-	global_config.u64 = cvmx_read_csr_node(node,
-		CVMX_BGXX_CMR_GLOBAL_CONFIG(bgx));
 
 	cvmx_dprintf("\n/*===== BGX Status report			BGX%d =====*/\n", bgx);
 
 	/* just report configured RX/Tx LMACS - don't check return */
 	cvmx_helper_bgx_number_rx_tx_lmacs(node, bgx, &N);
 
-	qlm = bgx<2 ? (global_config.s.pmux_sds_sel==1 ? bgx+2 : bgx) : bgx+2;
+	qlm = cvmx_qlm_lmac(xiface, N - 1);
 	cvmx_dprintf("NODE%d: BGX%d/lmac[0..%d] connected to QLM%d\n",
-		node, bgx, N - 1,qlm);
+		node, bgx, N - 1, qlm);
 
 	for (ind = 0; ind < N; ind++) {
 		lmac[ind].cmr_config.u64 = cvmx_read_csr_node(node,

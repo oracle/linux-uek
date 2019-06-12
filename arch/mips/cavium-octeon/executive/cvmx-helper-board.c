@@ -794,6 +794,47 @@ int cvmx_sfp_vsc7224_mod_abs_changed(struct cvmx_fdt_sfp_info *sfp, int val,
 
 	return err;
 }
+
+/**
+ * Function called whenever mod_abs/mod_prs has changed for Avago AVSP5410
+ *
+ * @param	sfp	pointer to SFP data structure
+ * @param	val	1 if absent, 0 if present, otherwise not set
+ * @param	data	user-defined data
+ *
+ * @return	0 for success, -1 on error
+	 */
+int cvmx_sfp_avsp5410_mod_abs_changed(struct cvmx_fdt_sfp_info *sfp, int val,
+				     void *data)
+{
+	int err;
+	struct cvmx_sfp_mod_info *mod_info;
+	const int dbg = device_tree_dbg;
+
+	if (dbg)
+		cvmx_dprintf("%s(%s, %d, %p): Module %s\n", __func__,
+			     sfp->name, val, data, val ? "absent" : "present");
+	if (val)
+		return 0;
+
+	/* We're here if we detect that the module is now present */
+	err = cvmx_sfp_read_i2c_eeprom(sfp);
+	if (err) {
+		cvmx_dprintf("%s: Error reading the SFP module eeprom for %s\n",
+			     __func__, sfp->name);
+		return err;
+	}
+	mod_info = &sfp->sfp_info;
+
+	if (!mod_info->valid || !sfp->valid) {
+		if (dbg)
+			cvmx_dprintf("%s: Module data is invalid\n", __func__);
+			return -1;
+		}
+
+	return err;
+}
+
 #define CS4224_PP_LINE_SDS_COMMON_STX0_TX_OUTPUT_CTRLA	0x108F
 #define CS4224_PP_LINE_SDS_COMMON_STX0_TX_OUTPUT_CTRLB	0x1090
 #define CS4224_PP_LINE_SDS_DSP_MSEQ_SPARE22_LSB		0x12AC
@@ -1067,6 +1108,7 @@ static int cvmx_is_cortina(const struct cvmx_phy_info *phy_info)
 int cvmx_helper_phy_register_mod_abs_changed(int xiface, int index)
 {
 	struct cvmx_vsc7224_chan *vsc7224_chan;
+	struct cvmx_avsp5410 *avsp5410;
 	struct cvmx_phy_info *phy_info;
 	struct cvmx_fdt_sfp_info *sfp_info;
 	int cortina_type;
@@ -1090,6 +1132,18 @@ int cvmx_helper_phy_register_mod_abs_changed(int xiface, int index)
 				     __func__);
 		cvmx_sfp_register_mod_abs_changed(sfp_info,
 						  &cvmx_sfp_vsc7224_mod_abs_changed,
+						  NULL);
+		return 0;
+	}
+
+	/* See if the Avago AVSP5410 phy has been used */
+	avsp5410 = cvmx_helper_cfg_get_avsp5410_info(xiface, index);
+	if (avsp5410) {
+		if (device_tree_dbg)
+			cvmx_dprintf("%s: Registering AVSP5410 handler\n",
+				     __func__);
+		cvmx_sfp_register_mod_abs_changed(sfp_info,
+						  &cvmx_sfp_avsp5410_mod_abs_changed,
 						  NULL);
 		return 0;
 	}
@@ -1161,6 +1215,10 @@ int __cvmx_helper_78xx_parse_phy(struct cvmx_phy_info *phy_info, int ipd_port)
 		}
 		if (__cvmx_fdt_parse_vsc7224(fdt_addr)) {
 			cvmx_dprintf("Error: could not parse Microsemi VSC7224 in DT\n");
+			return -1;
+		}
+		if (__cvmx_fdt_parse_avsp5410(fdt_addr)) {
+			cvmx_dprintf("Error: could not parse Avago AVSP5410 in DT\n");
 			return -1;
 		}
 		if (octeon_has_feature(OCTEON_FEATURE_BGX_XCV) &&
@@ -1733,7 +1791,6 @@ int __cvmx_helper_parse_bgx_dt(void *fdt_addr)
 					     fdt_phy_node);
 			cvmx_helper_set_port_phy_present(xiface, port_index,
 							 false);
-
 		}
 		gpio_leds = __cvmx_helper_parse_gpio_leds(fdt_addr,
 							  fdt_port_node, false);

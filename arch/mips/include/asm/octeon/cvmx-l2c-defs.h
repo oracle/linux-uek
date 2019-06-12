@@ -244,10 +244,10 @@ static inline uint64_t CVMX_L2C_CBCX_MIBERR(unsigned long offset)
 {
 	switch(cvmx_get_octeon_family()) {
 		case OCTEON_CN78XX & OCTEON_FAMILY_MASK:
-			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
+			if (OCTEON_IS_MODEL(OCTEON_CN78XX_PASS1_X))
 				if (((offset >= 2) && (offset <= 3)))
 					return CVMX_ADD_IO_SEG(0x0001180080E807E0ull) + ((offset) & 3) * 0x40000ull - 262144*2;
-			if (OCTEON_IS_MODEL(OCTEON_CN78XX_PASS1_X))
+			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				if (((offset >= 2) && (offset <= 3)))
 					return CVMX_ADD_IO_SEG(0x0001180080E807E0ull) + ((offset) & 3) * 0x40000ull - 262144*2;
 
@@ -266,9 +266,9 @@ static inline uint64_t CVMX_L2C_CBCX_MIBERR(unsigned long offset)
 {
 	switch(cvmx_get_octeon_family()) {
 		case OCTEON_CN78XX & OCTEON_FAMILY_MASK:
-			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
-				return CVMX_ADD_IO_SEG(0x0001180080E807E0ull) + (offset) * 0x40000ull - 262144*2;
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX_PASS1_X))
+				return CVMX_ADD_IO_SEG(0x0001180080E807E0ull) + (offset) * 0x40000ull - 262144*2;
+			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				return CVMX_ADD_IO_SEG(0x0001180080E807E0ull) + (offset) * 0x40000ull - 262144*2;
 
 		case OCTEON_CNF75XX & OCTEON_FAMILY_MASK:
@@ -545,10 +545,10 @@ static inline uint64_t CVMX_L2C_IOCX_PFC(unsigned long offset)
 		case OCTEON_CNF75XX & OCTEON_FAMILY_MASK:
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 		case OCTEON_CN78XX & OCTEON_FAMILY_MASK:
-			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
+			if (OCTEON_IS_MODEL(OCTEON_CN78XX_PASS1_X))
 				if ((offset == 0))
 					return CVMX_ADD_IO_SEG(0x0001180080800828ull);
-			if (OCTEON_IS_MODEL(OCTEON_CN78XX_PASS1_X))
+			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				if ((offset == 0))
 					return CVMX_ADD_IO_SEG(0x0001180080800828ull);
 			if ((offset == 0))
@@ -574,9 +574,9 @@ static inline uint64_t CVMX_L2C_IOCX_PFC(unsigned long offset __attribute__ ((un
 		case OCTEON_CNF75XX & OCTEON_FAMILY_MASK:
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 		case OCTEON_CN78XX & OCTEON_FAMILY_MASK:
-			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
-				return CVMX_ADD_IO_SEG(0x0001180080800828ull);
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX_PASS1_X))
+				return CVMX_ADD_IO_SEG(0x0001180080800828ull);
+			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				return CVMX_ADD_IO_SEG(0x0001180080800828ull);
 			return CVMX_ADD_IO_SEG(0x0001180080800828ull);
 		case OCTEON_CN66XX & OCTEON_FAMILY_MASK:
@@ -597,10 +597,10 @@ static inline uint64_t CVMX_L2C_IORX_PFC(unsigned long offset)
 		case OCTEON_CNF75XX & OCTEON_FAMILY_MASK:
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 		case OCTEON_CN78XX & OCTEON_FAMILY_MASK:
-			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
+			if (OCTEON_IS_MODEL(OCTEON_CN78XX_PASS1_X))
 				if ((offset == 0))
 					return CVMX_ADD_IO_SEG(0x0001180080800830ull);
-			if (OCTEON_IS_MODEL(OCTEON_CN78XX_PASS1_X))
+			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				if ((offset == 0))
 					return CVMX_ADD_IO_SEG(0x0001180080800830ull);
 			if ((offset == 0))
@@ -626,9 +626,9 @@ static inline uint64_t CVMX_L2C_IORX_PFC(unsigned long offset __attribute__ ((un
 		case OCTEON_CNF75XX & OCTEON_FAMILY_MASK:
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 		case OCTEON_CN78XX & OCTEON_FAMILY_MASK:
-			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
-				return CVMX_ADD_IO_SEG(0x0001180080800830ull);
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX_PASS1_X))
+				return CVMX_ADD_IO_SEG(0x0001180080800830ull);
+			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				return CVMX_ADD_IO_SEG(0x0001180080800830ull);
 			return CVMX_ADD_IO_SEG(0x0001180080800830ull);
 		case OCTEON_CN66XX & OCTEON_FAMILY_MASK:
@@ -915,10 +915,10 @@ static inline uint64_t CVMX_L2C_RSCX_PFC(unsigned long offset)
 				return CVMX_ADD_IO_SEG(0x0001180080800810ull) + ((offset) & 3) * 64;
 			break;
 		case OCTEON_CN78XX & OCTEON_FAMILY_MASK:
-			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
+			if (OCTEON_IS_MODEL(OCTEON_CN78XX_PASS1_X))
 				if ((offset <= 9))
 					return CVMX_ADD_IO_SEG(0x0001180080800810ull) + ((offset) & 15) * 64;
-			if (OCTEON_IS_MODEL(OCTEON_CN78XX_PASS1_X))
+			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				if ((offset <= 9))
 					return CVMX_ADD_IO_SEG(0x0001180080800810ull) + ((offset) & 15) * 64;
 
@@ -948,9 +948,9 @@ static inline uint64_t CVMX_L2C_RSCX_PFC(unsigned long offset)
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			return CVMX_ADD_IO_SEG(0x0001180080800810ull) + (offset) * 64;
 		case OCTEON_CN78XX & OCTEON_FAMILY_MASK:
-			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
-				return CVMX_ADD_IO_SEG(0x0001180080800810ull) + (offset) * 64;
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX_PASS1_X))
+				return CVMX_ADD_IO_SEG(0x0001180080800810ull) + (offset) * 64;
+			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				return CVMX_ADD_IO_SEG(0x0001180080800810ull) + (offset) * 64;
 
 		case OCTEON_CN66XX & OCTEON_FAMILY_MASK:
@@ -978,10 +978,10 @@ static inline uint64_t CVMX_L2C_RSDX_PFC(unsigned long offset)
 				return CVMX_ADD_IO_SEG(0x0001180080800818ull) + ((offset) & 3) * 64;
 			break;
 		case OCTEON_CN78XX & OCTEON_FAMILY_MASK:
-			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
+			if (OCTEON_IS_MODEL(OCTEON_CN78XX_PASS1_X))
 				if ((offset <= 9))
 					return CVMX_ADD_IO_SEG(0x0001180080800818ull) + ((offset) & 15) * 64;
-			if (OCTEON_IS_MODEL(OCTEON_CN78XX_PASS1_X))
+			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				if ((offset <= 9))
 					return CVMX_ADD_IO_SEG(0x0001180080800818ull) + ((offset) & 15) * 64;
 
@@ -1011,9 +1011,9 @@ static inline uint64_t CVMX_L2C_RSDX_PFC(unsigned long offset)
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			return CVMX_ADD_IO_SEG(0x0001180080800818ull) + (offset) * 64;
 		case OCTEON_CN78XX & OCTEON_FAMILY_MASK:
-			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
-				return CVMX_ADD_IO_SEG(0x0001180080800818ull) + (offset) * 64;
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX_PASS1_X))
+				return CVMX_ADD_IO_SEG(0x0001180080800818ull) + (offset) * 64;
+			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				return CVMX_ADD_IO_SEG(0x0001180080800818ull) + (offset) * 64;
 
 		case OCTEON_CN66XX & OCTEON_FAMILY_MASK:
@@ -1584,10 +1584,10 @@ static inline uint64_t CVMX_L2C_XMCX_PFC(unsigned long offset)
 				return CVMX_ADD_IO_SEG(0x0001180080800800ull) + ((offset) & 3) * 64;
 			break;
 		case OCTEON_CN78XX & OCTEON_FAMILY_MASK:
-			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
+			if (OCTEON_IS_MODEL(OCTEON_CN78XX_PASS1_X))
 				if ((offset <= 9))
 					return CVMX_ADD_IO_SEG(0x0001180080800800ull) + ((offset) & 15) * 64;
-			if (OCTEON_IS_MODEL(OCTEON_CN78XX_PASS1_X))
+			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				if ((offset <= 9))
 					return CVMX_ADD_IO_SEG(0x0001180080800800ull) + ((offset) & 15) * 64;
 
@@ -1617,9 +1617,9 @@ static inline uint64_t CVMX_L2C_XMCX_PFC(unsigned long offset)
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			return CVMX_ADD_IO_SEG(0x0001180080800800ull) + (offset) * 64;
 		case OCTEON_CN78XX & OCTEON_FAMILY_MASK:
-			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
-				return CVMX_ADD_IO_SEG(0x0001180080800800ull) + (offset) * 64;
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX_PASS1_X))
+				return CVMX_ADD_IO_SEG(0x0001180080800800ull) + (offset) * 64;
+			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				return CVMX_ADD_IO_SEG(0x0001180080800800ull) + (offset) * 64;
 
 		case OCTEON_CN66XX & OCTEON_FAMILY_MASK:
@@ -1658,10 +1658,10 @@ static inline uint64_t CVMX_L2C_XMDX_PFC(unsigned long offset)
 				return CVMX_ADD_IO_SEG(0x0001180080800808ull) + ((offset) & 3) * 64;
 			break;
 		case OCTEON_CN78XX & OCTEON_FAMILY_MASK:
-			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
+			if (OCTEON_IS_MODEL(OCTEON_CN78XX_PASS1_X))
 				if ((offset <= 9))
 					return CVMX_ADD_IO_SEG(0x0001180080800808ull) + ((offset) & 15) * 64;
-			if (OCTEON_IS_MODEL(OCTEON_CN78XX_PASS1_X))
+			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				if ((offset <= 9))
 					return CVMX_ADD_IO_SEG(0x0001180080800808ull) + ((offset) & 15) * 64;
 
@@ -1691,9 +1691,9 @@ static inline uint64_t CVMX_L2C_XMDX_PFC(unsigned long offset)
 		case OCTEON_CN73XX & OCTEON_FAMILY_MASK:
 			return CVMX_ADD_IO_SEG(0x0001180080800808ull) + (offset) * 64;
 		case OCTEON_CN78XX & OCTEON_FAMILY_MASK:
-			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
-				return CVMX_ADD_IO_SEG(0x0001180080800808ull) + (offset) * 64;
 			if (OCTEON_IS_MODEL(OCTEON_CN78XX_PASS1_X))
+				return CVMX_ADD_IO_SEG(0x0001180080800808ull) + (offset) * 64;
+			if (OCTEON_IS_MODEL(OCTEON_CN78XX))
 				return CVMX_ADD_IO_SEG(0x0001180080800808ull) + (offset) * 64;
 
 		case OCTEON_CN66XX & OCTEON_FAMILY_MASK:
