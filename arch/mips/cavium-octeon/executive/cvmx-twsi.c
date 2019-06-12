@@ -42,7 +42,7 @@
  *
  * Interface to the TWSI / I2C bus
  *
- * <hr>$Revision: 130009 $<hr>
+ * <hr>$Revision: 171527 $<hr>
  *
  */
 #ifdef CVMX_BUILD_FOR_LINUX_KERNEL
@@ -68,6 +68,10 @@
 #define twsi_printf(...)
 #define cvmx_csr_db_decode(...)
 #endif /*PRINT_TWSI_CONFIG */
+
+static int cvmx_twsix_unblock(int twsi_id);
+static int cvmx_twsix_reset(int twsi_id);
+static int cvmx_twsix_stop(int twsi_id);
 
 #if 0
 static int node_bus_to_i2c_bus(int node, int bus)
@@ -111,55 +115,6 @@ struct i2c_adapter *__cvmx_twsix_get_adapter(int twsi_id)
 	return adapter;
 }
 EXPORT_SYMBOL(__cvmx_twsix_get_adapter);
-#endif
-
-#ifndef CVMX_BUILD_FOR_LINUX_KERNEL
-/**
- * Unblock the I2C bus.  This should be done during initialization and if the
- * I2C bus gets stuck due to a device resetting unexpectedly.
- */
-int cvmx_twsix_unblock(int twsi_id)
-{
-	cvmx_mio_tws_sw_twsi_t sw_twsi;
-	cvmx_mio_tws_int_t tws_int;
-	uint64_t old_sw_twsi;
-	int i;
-	int twsi_bus = __i2c_twsi_bus(twsi_id);
-
-	/* Put the bus in low-level mode */
-	old_sw_twsi = cvmx_read_csr_node(i2c_bus_to_node(twsi_id), 
-					 CVMX_MIO_TWSX_SW_TWSI(twsi_bus));
-	sw_twsi.u64 = 0;
-	sw_twsi.s.v = 1;
-	sw_twsi.s.op = 6;
-	sw_twsi.s.eop_ia = TWSI_CTL;
-	sw_twsi.s.d = 0x40;	/* ENAB !CE !AAK */
-	cvmx_write_csr_node(i2c_bus_to_node(twsi_id), 
-			    CVMX_MIO_TWSX_SW_TWSI(twsi_bus), sw_twsi.u64);
-	cvmx_wait_usec(10);
-	tws_int.u64 = cvmx_read_csr_node(i2c_bus_to_node(twsi_id), 
-					 CVMX_MIO_TWSX_INT(twsi_bus));
-	cvmx_wait_usec(10);
-	tws_int.s.scl_ovr = 0;
-	cvmx_write_csr_node(i2c_bus_to_node(twsi_id), 
-			    CVMX_MIO_TWSX_INT(twsi_bus), tws_int.u64);
-	cvmx_wait_usec(10);
-	for (i = 0; i < 9; i++) {
-		tws_int.s.scl_ovr = 1;
-		cvmx_write_csr_node(i2c_bus_to_node(twsi_id), 
-				    CVMX_MIO_TWSX_INT(twsi_bus), tws_int.u64);
-		cvmx_wait_usec(10);
-		tws_int.s.scl_ovr = 0;
-		cvmx_write_csr_node(i2c_bus_to_node(twsi_id), 
-				    CVMX_MIO_TWSX_INT(twsi_bus), tws_int.u64);
-		cvmx_wait_usec(10);
-	}
-	/* Restore back to high level mode */
-	cvmx_write_csr_node(i2c_bus_to_node(twsi_id), 
-			    CVMX_MIO_TWSX_SW_TWSI(twsi_bus), old_sw_twsi);
-	cvmx_wait_usec(10);
-	return 0;
-}
 #endif
 
 /**
@@ -794,37 +749,49 @@ static int cvmx_twsix_wait(int twsi_id)
 
 static int cvmx_twsix_start(int twsi_id)
 {
-	int ret_val;
-	uint8_t tmp;
+	uint8_t stat;
+	static int8_t reset_method = 0;
 
-	cvmx_twsix_write_llc_reg(twsi_id, SW_TWSI_EOP_TWSI_CTL,
-				 TWSI_CTL_ENAB | TWSI_CTL_STA);
+	do {
+		cvmx_twsix_write_llc_reg(twsi_id, SW_TWSI_EOP_TWSI_CTL,
+				 	TWSI_CTL_ENAB | TWSI_CTL_STA);
 
-	ret_val = cvmx_twsix_wait(twsi_id);
-	if (ret_val) {
-		tmp = cvmx_twsix_read_llc_reg(twsi_id, SW_TWSI_EOP_TWSI_STAT);
-		if (tmp == STAT_IDLE) {
-			/*
-			 * Controller refused to send start flag May
-			 * be a client is holding SDA low - let's try
-			 * to free it.
-			 */
-			cvmx_twsix_unblock(twsi_id);
-			cvmx_twsix_write_llc_reg(twsi_id, SW_TWSI_EOP_TWSI_CTL,
-						 TWSI_CTL_ENAB | TWSI_CTL_STA);
+		cvmx_twsix_wait(twsi_id);
 
-			ret_val = cvmx_twsix_wait(twsi_id);
+		stat = cvmx_twsix_read_llc_reg(twsi_id, SW_TWSI_EOP_TWSI_STAT);
+
+		switch (stat) {
+			case STAT_START:
+			case STAT_RSTART:
+				reset_method = 0;
+				return 0;
+
+			default:
+				cvmx_twsix_stop(twsi_id);		
+
+				switch (reset_method++ %4) {
+					case 0:
+						break;
+					case 1:
+						/*
+						 * Controller refused to send start flag May
+						 * be a client is holding SDA low - let's try
+						 * to free it.
+						 */
+						cvmx_twsix_unblock(twsi_id);
+						break;
+					case 2:
+						cvmx_twsix_reset(twsi_id);
+						break;
+					default:
+						reset_method = 0;
+						return -1;
+				}
+
+				break;
 		}
-		if (ret_val)
-			return ret_val;
-	}
 
-	tmp = cvmx_twsix_read_llc_reg(twsi_id, SW_TWSI_EOP_TWSI_STAT);
-	if ((tmp != STAT_START) && (tmp != STAT_RSTART)) {
-		twsi_printf("%s %d: bad status (0x%x)\n", __func__, __LINE__,
-			    tmp);
-		return -1;
-	}
+	} while (true);
 
 	return 0;
 }
@@ -950,6 +917,92 @@ restart:
 		buf[i] = cvmx_twsix_read_llc_reg(twsi_id,
 						 SW_TWSI_EOP_TWSI_DATA);
 	}
+
+	return 0;
+}
+
+/**
+ * Unblock the I2C bus.  This should be done during initialization and if the
+ * I2C bus gets stuck due to a device resetting unexpectedly.
+ */
+int cvmx_twsix_unblock(int twsi_id)
+{
+	cvmx_mio_tws_sw_twsi_t sw_twsi;
+	cvmx_mio_tws_int_t tws_int;
+	uint64_t old_sw_twsi;
+	int i;
+	int twsi_bus = __i2c_twsi_bus(twsi_id);
+
+	/* Put the bus in low-level mode */
+	old_sw_twsi = cvmx_read_csr_node(i2c_bus_to_node(twsi_id), 
+					 CVMX_MIO_TWSX_SW_TWSI(twsi_bus));
+	sw_twsi.u64 = 0;
+	sw_twsi.s.v = 1;
+	sw_twsi.s.op = 6;
+	sw_twsi.s.eop_ia = TWSI_CTL;
+	sw_twsi.s.d = 0x40;	/* ENAB !CE !AAK */
+	cvmx_write_csr_node(i2c_bus_to_node(twsi_id), 
+			    CVMX_MIO_TWSX_SW_TWSI(twsi_bus), sw_twsi.u64);
+	cvmx_wait_usec(10);
+	tws_int.u64 = cvmx_read_csr_node(i2c_bus_to_node(twsi_id), 
+					 CVMX_MIO_TWSX_INT(twsi_bus));
+	cvmx_wait_usec(10);
+	tws_int.s.scl_ovr = 0;
+	cvmx_write_csr_node(i2c_bus_to_node(twsi_id), 
+			    CVMX_MIO_TWSX_INT(twsi_bus), tws_int.u64);
+	cvmx_wait_usec(10);
+	for (i = 0; i < 9; i++) {
+		tws_int.s.scl_ovr = 1;
+		cvmx_write_csr_node(i2c_bus_to_node(twsi_id), 
+				    CVMX_MIO_TWSX_INT(twsi_bus), tws_int.u64);
+		cvmx_wait_usec(10);
+		tws_int.s.scl_ovr = 0;
+		cvmx_write_csr_node(i2c_bus_to_node(twsi_id), 
+				    CVMX_MIO_TWSX_INT(twsi_bus), tws_int.u64);
+		cvmx_wait_usec(10);
+	}
+	/* Restore back to high level mode */
+	cvmx_write_csr_node(i2c_bus_to_node(twsi_id), 
+			    CVMX_MIO_TWSX_SW_TWSI(twsi_bus), old_sw_twsi);
+	cvmx_wait_usec(10);
+	return 0;
+}
+
+/**
+ * Reset the I2C bus.  This should be done during initialization and if the
+ * I2C bus gets stuck due to a device resetting unexpectedly.
+ */
+int cvmx_twsix_reset(int twsi_id)
+{
+	cvmx_mio_tws_sw_twsi_t sw_twsi;
+	cvmx_mio_twsx_sw_twsi_t tmp;
+	int i;
+	uint8_t status = 0;
+	int twsi_bus = __i2c_twsi_bus(twsi_id);
+
+	sw_twsi.u64 = 0;
+	sw_twsi.s.v = 1;
+	sw_twsi.s.r = 0;
+	sw_twsi.s.op = 6;
+	sw_twsi.s.eop_ia = TWSI_RST;
+
+	cvmx_write_csr_node(i2c_bus_to_node(twsi_id), 
+			    CVMX_MIO_TWSX_SW_TWSI(twsi_bus), sw_twsi.u64);
+
+	do {
+		tmp.u64 = cvmx_read_csr_node(i2c_bus_to_node(twsi_id), 
+					     CVMX_MIO_TWSX_SW_TWSI(twsi_bus));
+	} while (tmp.s.v != 0);
+
+	cvmx_wait_io(315);
+
+	for (i = 10; i && status != STAT_IDLE; i--) {
+		status = cvmx_twsix_read_llc_reg(twsi_id, SW_TWSI_EOP_TWSI_STAT);
+		cvmx_wait_usec(1);
+	}
+
+	if (status != STAT_IDLE)
+		return 1;
 
 	return 0;
 }
