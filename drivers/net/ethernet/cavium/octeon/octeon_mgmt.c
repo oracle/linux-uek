@@ -1511,8 +1511,8 @@ static const struct net_device_ops octeon_mgmt_ops = {
 
 static const struct ethtool_ops octeon_mgmt_o3_ethtool_ops = {
 	.get_drvinfo = octeon_mgmt_get_drvinfo,
-	.get_settings = bgx_port_ethtool_get_settings,
-	.set_settings = bgx_port_ethtool_set_settings,
+	.get_link_ksettings = bgx_port_ethtool_get_settings,
+	.set_link_ksettings = bgx_port_ethtool_set_settings,
 	.nway_reset = bgx_port_ethtool_nway_reset,
 	.get_link = ethtool_op_get_link,
 };

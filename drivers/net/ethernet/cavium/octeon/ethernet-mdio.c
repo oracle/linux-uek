@@ -77,7 +77,7 @@ static int cvm_oct_get_settings(struct net_device *dev,
 }
 
 static int cvm_oct_set_settings(struct net_device *dev,
-								struct ethtool_link_ksettings *cmd)
+								const struct ethtool_link_ksettings *cmd)
 {
 	struct octeon_ethernet *priv = netdev_priv(dev);
 
