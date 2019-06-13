@@ -473,6 +473,7 @@ struct sfp_eeprom_s {
 #define SFP_EEPROM_SIZE 256
 	u16 sff_id;
 	u8 buf[SFP_EEPROM_SIZE];
+	u64 reserved;
 };
 
 enum fec_type {
@@ -491,6 +492,8 @@ struct cgx_lmac_fwdata_s {
 	u64 advertised_link_modes;
 	/* Only applicable if SFP/QSFP slot is present */
 	struct sfp_eeprom_s sfp_eeprom;
+#define RESERVED_MEM 1024
+	u64 reserved[RESERVED_MEM];
 };
 
 struct cgx_fw_data {
