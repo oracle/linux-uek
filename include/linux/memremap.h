@@ -116,6 +116,7 @@ typedef void (*dev_page_free_t)(struct page *page, void *data);
  * @res: physical address range covered by @ref
  * @ref: reference count that pins the devm_memremap_pages() mapping
  * @kill: callback to transition @ref to the dead state
+ * @cleanup: callback to wait for @ref to be idle and reap it
  * @dev: host device of the mapping for debug
  * @data: private data pointer for page_free()
  * @type: memory type: see MEMORY_* in memory_hotplug.h
@@ -131,6 +132,7 @@ struct dev_pagemap {
 	void *data;
 	enum memory_type type;
 	UEK_KABI_EXTEND(void (*kill)(struct percpu_ref *ref))
+	UEK_KABI_EXTEND(void (*cleanup)(struct percpu_ref *ref))
 };
 
 #ifdef CONFIG_ZONE_DEVICE
