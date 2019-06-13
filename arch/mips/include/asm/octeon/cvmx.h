@@ -567,6 +567,12 @@ enum cvmx_error_groups {
 	CVMX_ERROR_GROUP_ILA,
 };
 
+typedef enum {
+	CVMX_ERROR_TYPE_NONE = 0,	/* Default, no group */
+	CVMX_ERROR_TYPE_SBE  = 1 << 0,	/* Single bit error for Co-processor blocks */
+	CVMX_ERROR_TYPE_DBE  = 1 << 1,	/* Double bit error for Co-processor blocks */ 
+} cvmx_error_type_t;
+
 struct cvmx_error_regbit {
 	u8 valid:1;
 	u8 w1c:1;
@@ -608,11 +614,12 @@ struct cvmx_error_78xx {
 	u8 block_csr_bitpos;	/* Bit position in the CSR */
 };
 
-extern unsigned int cvmx_error_78xx_array_sizes[3];
+extern unsigned int cvmx_error_78xx_array_sizes[];
 
-extern struct cvmx_error_78xx error_array_cn78xx[2682];
-extern struct cvmx_error_78xx error_array_cn78xxp2[2682];
-extern struct cvmx_error_78xx error_array_cn73xx[1846];
+extern struct cvmx_error_78xx error_array_cn78xx[];
+extern struct cvmx_error_78xx error_array_cn78xxp2[];
+extern struct cvmx_error_78xx error_array_cn73xx[];
+extern struct cvmx_error_78xx error_array_cnf75xx[];
 
 struct cvmx_error_array {
 	struct cvmx_error_78xx *array;
@@ -620,6 +627,6 @@ struct cvmx_error_array {
 	uint32_t prid_val;
 };
 
-extern struct cvmx_error_array octeon_error_arrays[4];
+extern struct cvmx_error_array octeon_error_arrays[];
 
 #endif /*  __CVMX_H__  */

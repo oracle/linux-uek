@@ -1,5 +1,5 @@
 /***********************license start***************
- * Copyright (c) 2003-2015  Cavium Inc. (support@cavium.com). All rights
+ * Copyright (c) 2003-2017  Cavium Inc. (support@cavium.com). All rights
  * reserved.
  *
  *
@@ -41,7 +41,7 @@
 /**
  * @file
  *
- * Interface to the Octeon cn7xxx extended error status.
+ * Automatically generated error messages for 7xxx.
  *
  * This file is auto generated. Do not edit.
  */
@@ -60,9 +60,11 @@ struct cvmx_error_array octeon_error_arrays[] = {
    {(struct cvmx_error_78xx *)&error_array_cn78xx, 0xff00, 0x9500},
    {(struct cvmx_error_78xx *)&error_array_cn78xxp2, 0xfff8, 0x9508},
    {(struct cvmx_error_78xx *)&error_array_cn73xx, 0xff00, 0x9700},
+   {(struct cvmx_error_78xx *)&error_array_cnf75xx, 0xff00, 0x9800},
    {0, 0, 0}};
 
-unsigned int cvmx_error_78xx_array_sizes [3] = {
+unsigned int cvmx_error_78xx_array_sizes [] = {
 	2682,
 	2682,
-	1846};
+	1534,
+	949};
