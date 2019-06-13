@@ -364,6 +364,8 @@ static void octeon_error_tree_handler78(int node, int intsn)
 		snprintf(msg, sizeof(msg), octeon_78xx_error_array[idx].err_mesg,
 			 octeon_78xx_error_array[idx].block_csr, octeon_78xx_error_array[idx].block_csr_bitpos);
 		pr_err("Node-%d: %s\n", node, msg);
+		if (octeon_78xx_error_array[idx].flags == CVMX_ERROR_TYPE_DBE)
+			panic("Uncorrectable co-processor double bit error detected!\n");
 		if (octeon_78xx_error_array[idx].block_csr) {
 			u64 clear_addr;
 			clear_addr = 0x8000000000000000ull | octeon_78xx_error_array[idx].block_csr;
