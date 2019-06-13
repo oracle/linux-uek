@@ -180,6 +180,24 @@ static bool ktask_node_migrate(struct ktask_node *old_kn, struct ktask_node *kn,
 	return true;
 }
 
+static size_t ktask_aligned_size(struct ktask_task *kt, void *position)
+{
+	if (kt->kt_ctl.kc_iter_func == ktask_iter_range) {
+		uintptr_t p = (uintptr_t)position;
+		/*
+		 * Returns a size to pass to the task's iterator such that it
+		 * advances to a chunk-size-aligned boundary.  ktask aligns the
+		 * chunk size to the minimum chunk size in ktask_chunk_size, so
+		 * rounding here allows the user to assume the thread function
+		 * gets ranges aligned to min chunk size.  The only exception is
+		 * that the very beginning of the range may not be aligned.
+		 */
+		return roundup(p + 1, kt->kt_chunk_size) - p;
+	}
+	/* Task doesn't iterate over a range, don't try to align. */
+	return kt->kt_chunk_size;
+}
+
 static void ktask_thread(struct work_struct *work)
 {
 	struct ktask_work  *kw = container_of(work, struct ktask_work, kw_work);
@@ -239,7 +257,9 @@ static void ktask_thread(struct work_struct *work)
 
 		position = kn->kn_position;
 		position_offset = kn->kn_task_size - kn->kn_remaining_size;
-		size = min(kt->kt_chunk_size, kn->kn_remaining_size);
+
+		size = ktask_aligned_size(kt, position);
+		size = min(size, kn->kn_remaining_size);
 		end = kc->kc_iter_func(position, size);
 		kn->kn_position = end;
 		kn->kn_remaining_size -= size;
