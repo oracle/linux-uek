@@ -48,7 +48,7 @@ int bgx_port_change_mtu(struct net_device *netdev, int new_mtu);
 int bgx_port_ethtool_get_settings(struct net_device *netdev,
 				  struct ethtool_link_ksettings *cmd);
 int bgx_port_ethtool_set_settings(struct net_device *netdev,
-				  struct ethtool_link_ksettings *cmd);
+				  const struct ethtool_link_ksettings *cmd);
 int bgx_port_ethtool_nway_reset(struct net_device *netdev);
 int bgx_port_do_ioctl(struct net_device *netdev, struct ifreq *ifr, int cmd);
 

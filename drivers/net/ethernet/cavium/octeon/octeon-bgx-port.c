@@ -107,7 +107,7 @@ int bgx_port_ethtool_get_settings(struct net_device	*netdev,
 EXPORT_SYMBOL(bgx_port_ethtool_get_settings);
 
 int bgx_port_ethtool_set_settings(struct net_device	*netdev,
-				  struct ethtool_link_ksettings	*cmd)
+				  const struct ethtool_link_ksettings	*cmd)
 {
 	struct bgx_port_priv *p = bgx_port_netdev2priv(netdev);
 
