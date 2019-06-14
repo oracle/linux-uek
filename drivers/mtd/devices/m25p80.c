@@ -352,6 +352,18 @@ static const struct spi_device_id m25p_ids[] = {
 	{"m25p64"},	{"m25p128"},
 	{"w25x80"},	{"w25x32"},	{"w25q32"},	{"w25q32dw"},
 	{"w25q80bl"},	{"w25q128"},	{"w25q256"},
+	{ "mt25ql064" },
+	{ "mt25qu064" },
+	{ "mt25ql128" },
+	{ "mt25qu128" },
+	{ "mt25ql256" },
+	{ "mt25qu256" },
+	{ "mt25ql512" },
+	{ "mt25qu512" },
+	{ "mt25ql01g" },
+	{ "mt25qu01g" },
+	{ "mt25ql02g" },
+	{ "mt25qu02g" },
 
 	/* Flashes that can't be detected using JEDEC */
 	{"m25p05-nonjedec"},	{"m25p10-nonjedec"},	{"m25p20-nonjedec"},
