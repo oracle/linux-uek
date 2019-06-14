@@ -1278,8 +1278,10 @@ static void rds_qos_threshold_init(void)
 				"%s is improperly formatted\n", tok);
 		}
 
+		if (!nxt_tok)
+			break;
 		tok = nxt_tok;
-		nxt_tok = strchr(str, ',');
+		nxt_tok = strchr(nxt_tok, ',');
 		if (nxt_tok) {
 			*nxt_tok = '\0';
 			nxt_tok++;
