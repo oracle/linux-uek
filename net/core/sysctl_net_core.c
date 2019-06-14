@@ -530,6 +530,15 @@ static struct ctl_table net_core_table[] = {
 		.proc_handler	= proc_dointvec_minmax,
 		.extra1		= &zero,
 	},
+	{
+		.procname	= "high_order_alloc_disable",
+		.data		= &net_high_order_alloc_disable,
+		.maxlen         = sizeof(net_high_order_alloc_disable),
+		.mode		= 0644,
+		.proc_handler	= proc_dointvec_minmax,
+		.extra1		= &zero,
+		.extra2		= &one,
+	},
 	{ }
 };
 
