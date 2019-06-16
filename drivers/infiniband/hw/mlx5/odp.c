@@ -220,6 +220,10 @@ void mlx5_ib_invalidate_range(struct ib_umem_odp *umem_odp, unsigned long start,
 				blk_start_idx = idx;
 				in_block = 1;
 			}
+
+			/* Count page invalidations */
+			mlx5_update_odp_stats(mr, invalidations,
+					      (idx - blk_start_idx + 1));
 		} else {
 			u64 umr_offset = idx & umr_block_mask;
 
@@ -728,6 +732,19 @@ next_mr:
 		ret = pagefault_mr(dev, mr, io_virt, bcnt, bytes_mapped, flags);
 		if (ret < 0)
 			goto srcu_unlock;
+
+		/*
+		 * When prefetching a page, page fault is generated
+		 * in order to bring the page to the main memory.
+		 * In the current flow, page faults are being counted.
+		 * Prefetched pages counter will be updated as well
+		 * only if the current page fault flow was derived
+		 * from prefetching flow.
+		 */
+		mlx5_update_odp_stats(mr, faults, ret);
+
+		if (prefetch)
+			mlx5_update_odp_stats(mr, prefetched, ret);
 
 		npages += ret;
 		ret = 0;

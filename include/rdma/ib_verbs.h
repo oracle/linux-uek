@@ -2246,6 +2246,12 @@ struct ib_port_pkey_list {
 	struct list_head              pkey_list;
 };
 
+struct ib_odp_counters {
+	atomic64_t faults;
+	atomic64_t invalidations;
+	atomic64_t prefetched;
+};
+
 struct ib_counters {
 	struct ib_device	*device;
 	struct ib_uobject	*uobject;
