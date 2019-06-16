@@ -61,6 +61,7 @@
 #include "mlx5_ib.h"
 #include "cmd.h"
 #include <linux/mlx5/vport.h>
+#include <rdma/ib_umem_odp.h>
 
 #define DRIVER_NAME "mlx5_ib"
 #define DRIVER_VERSION "5.0-0"
@@ -4629,6 +4630,7 @@ static void *mlx5_ib_add(struct mlx5_core_dev *mdev)
 	dev->ib_dev.get_dma_mr		= mlx5_ib_get_dma_mr;
 	dev->ib_dev.reg_user_mr		= mlx5_ib_reg_user_mr;
 	dev->ib_dev.fill_res_entry	= mlx5_ib_fill_res_entry;
+	dev->ib_dev.fill_stat_entry	= mlx5_ib_fill_stat_entry,
 	dev->ib_dev.rereg_user_mr	= mlx5_ib_rereg_user_mr;
 	dev->ib_dev.dereg_mr		= mlx5_ib_dereg_mr;
 	dev->ib_dev.attach_mcast	= mlx5_ib_mcg_attach;

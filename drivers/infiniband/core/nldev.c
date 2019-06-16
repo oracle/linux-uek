@@ -124,8 +124,8 @@ static const struct nla_policy nldev_policy[RDMA_NLDEV_ATTR_MAX] = {
 };
 
 
-static int fill_stat_hwcounter_entry(struct sk_buff *msg,
-				     const char *name, u64 value)
+int fill_stat_hwcounter_entry(struct sk_buff *msg,
+			      const char *name, u64 value)
 {
 	struct nlattr *entry_attr;
 
@@ -147,6 +147,7 @@ err:
 	nla_nest_cancel(msg, entry_attr);
 	return -EMSGSIZE;
 }
+EXPORT_SYMBOL(fill_stat_hwcounter_entry);
 
 static int fill_nldev_handle(struct sk_buff *msg, struct ib_device *device)
 {
@@ -856,6 +857,41 @@ out:
 	return skb->len;
 }
 
+static bool fill_stat_entry(struct ib_device *dev, struct sk_buff *msg,
+			    struct rdma_restrack_entry *res)
+{
+	if (!dev->fill_stat_entry)
+		return false;
+
+	return dev->fill_stat_entry(msg, res);
+}
+
+static int fill_stat_mr_entry(struct sk_buff *msg, struct netlink_callback *cb,
+			      struct rdma_restrack_entry *res, uint32_t port)
+{
+	struct ib_mr *mr = container_of(res, struct ib_mr, res);
+	struct ib_device *dev = mr->pd->device;
+	struct nlattr *entry_attr;
+
+	entry_attr = nla_nest_start(msg, RDMA_NLDEV_ATTR_RES_MR_ENTRY);
+	if (!entry_attr)
+		goto out;
+
+	if (nla_put_u32(msg, RDMA_NLDEV_ATTR_RES_MRN, mr->mrn))
+		goto err;
+
+	if (fill_stat_entry(dev, msg, res))
+		goto err;
+
+	nla_nest_end(msg, entry_attr);
+	return 0;
+
+err:
+	nla_nest_cancel(msg, entry_attr);
+out:
+	return -EMSGSIZE;
+}
+
 static int nldev_res_get_dumpit(struct sk_buff *skb,
 				struct netlink_callback *cb)
 {
@@ -1056,6 +1092,10 @@ static int nldev_stat_get_dumpit(struct sk_buff *skb,
 		return -EINVAL;
 
 	switch (nla_get_u32(tb[RDMA_NLDEV_ATTR_STAT_RES])) {
+	case RDMA_NLDEV_ATTR_RES_MR:
+		ret = res_get_common_dumpit(skb, cb, RDMA_RESTRACK_MR,
+					    fill_stat_mr_entry);
+		break;
 	default:
 		ret = -EINVAL;
 		break;

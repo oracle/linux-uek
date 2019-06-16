@@ -1121,6 +1121,8 @@ void mlx5_ib_put_native_port_mdev(struct mlx5_ib_dev *dev,
 				  u8 port_num);
 int mlx5_ib_fill_res_entry(struct sk_buff *msg,
 			   struct rdma_restrack_entry *res);
+int mlx5_ib_fill_stat_entry(struct sk_buff *msg,
+			    struct rdma_restrack_entry *res);
 
 static inline void init_query_mad(struct ib_smp *mad)
 {

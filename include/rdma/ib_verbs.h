@@ -2480,6 +2480,8 @@ struct ib_device {
 						struct ib_fmr_attr *fmr_attr);
 	int (*fill_res_entry)	   (struct sk_buff *msg,
 				    struct rdma_restrack_entry *res);
+	int (*fill_stat_entry)	   (struct sk_buff *msg,
+				    struct rdma_restrack_entry *entry);
 
 
 #ifndef WITHOUT_ORACLE_EXTENSIONS

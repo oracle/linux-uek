@@ -69,6 +69,9 @@ struct rdma_restrack_root {
 	 */
 	int (*fill_res_entry)(struct sk_buff *msg,
 			      struct rdma_restrack_entry *entry);
+
+	int (*fill_stat_entry)(struct sk_buff *msg,
+			       struct rdma_restrack_entry *entry);
 };
 
 /**
@@ -200,4 +203,6 @@ int rdma_nl_put_driver_string(struct sk_buff *msg, const char *name,
 			      const char *str);
 int put_driver_name_print_type(struct sk_buff *msg, const char *name,
 			       enum rdma_nldev_print_type print_type);
+int fill_stat_hwcounter_entry(struct sk_buff *msg,
+			      const char *name, u64 value);
 #endif /* _RDMA_RESTRACK_H_ */
