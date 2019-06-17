@@ -228,19 +228,21 @@ mlx5e_tc_add_nic_flow(struct mlx5e_priv *priv,
 		      struct mlx5e_tc_flow_parse_attr *parse_attr,
 		      struct mlx5e_tc_flow *flow)
 {
+	struct mlx5_flow_context *flow_context = &parse_attr->spec.flow_context;
 	struct mlx5_nic_flow_attr *attr = flow->nic_attr;
 	struct mlx5_core_dev *dev = priv->mdev;
 	struct mlx5_flow_destination dest = {};
 	struct mlx5_flow_act flow_act = {
 		.action = attr->action,
-		.has_flow_tag = true,
-		.flow_tag = attr->flow_tag,
 		.encap_id = 0,
 	};
 	struct mlx5_fc *counter = NULL;
 	struct mlx5_flow_handle *rule;
 	bool table_created = false;
 	int err;
+
+	flow_context->flags |= FLOW_CONTEXT_HAS_TAG;
+	flow_context->flow_tag = attr->flow_tag;
 
 	if (attr->action & MLX5_FLOW_CONTEXT_ACTION_FWD_DEST) {
 		dest.type = MLX5_FLOW_DESTINATION_TYPE_FLOW_TABLE;
