@@ -409,6 +409,7 @@ void rds_shutdown_worker(struct work_struct *work)
 	if (!restart)
 		queue_delayed_work(cp->cp_wq, &cp->cp_reconn_w,
 				   msecs_to_jiffies(RDS_RECONNECT_RETRY_MS));
+	rds_clear_shutdown_pending_work_bit(cp);
 }
 
 void rds_threads_exit(void)
