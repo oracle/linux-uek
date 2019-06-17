@@ -126,6 +126,13 @@ static void otx2_get_strings(struct net_device *netdev, u32 sset, u8 *data)
 		data += ETH_GSTRING_LEN;
 	}
 	strcpy(data, "reset_count");
+	data += ETH_GSTRING_LEN;
+	if (pfvf->linfo.fec) {
+		sprintf(data, "Fec Corrected Errors: ");
+		data += ETH_GSTRING_LEN;
+		sprintf(data, "Fec Uncorrected Errors: ");
+		data += ETH_GSTRING_LEN;
+	}
 }
 
 static void otx2_get_qset_stats(struct otx2_nic *pfvf,
@@ -176,12 +183,17 @@ static void otx2_get_ethtool_stats(struct net_device *netdev,
 	for (stat = 0; stat < CGX_TX_STATS_COUNT; stat++)
 		*(data++) = pfvf->hw.cgx_tx_stats[stat];
 	*(data++) = pfvf->reset_count;
+	if (pfvf->linfo.fec) {
+		*(data++) = pfvf->hw.cgx_fec_corr_blks;
+		*(data++) = pfvf->hw.cgx_fec_uncorr_blks;
+	}
 }
 
 static int otx2_get_sset_count(struct net_device *netdev, int sset)
 {
 	struct otx2_nic *pfvf = netdev_priv(netdev);
-	int qstats_count;
+	int qstats_count, fec_stats_count = 0;
+	bool if_up = netif_running(netdev);
 
 	if (sset == ETH_SS_PRIV_FLAGS)
 		return ARRAY_SIZE(otx2_priv_flags_strings);
@@ -191,8 +203,16 @@ static int otx2_get_sset_count(struct net_device *netdev, int sset)
 
 	qstats_count = otx2_n_queue_stats *
 		       (pfvf->hw.rx_queues + pfvf->hw.tx_queues);
+
+	if (!if_up || !pfvf->linfo.fec) {
+		return otx2_n_dev_stats + qstats_count +
+			CGX_RX_STATS_COUNT + CGX_TX_STATS_COUNT + 1;
+	}
+	fec_stats_count = 2;
+	otx2_update_lmac_fec_stats(pfvf);
 	return otx2_n_dev_stats + qstats_count +
-		CGX_RX_STATS_COUNT + CGX_TX_STATS_COUNT + 1;
+		CGX_RX_STATS_COUNT + CGX_TX_STATS_COUNT + 1 +
+		fec_stats_count;
 }
 
 /* Get no of queues device supports and current queue count */
@@ -1298,10 +1318,14 @@ static int otx2_set_fecparam(struct net_device *netdev,
 
 	rsp = (struct fec_mode *)otx2_mbox_get_rsp(&pfvf->mbox.mbox,
 						   0, &req->hdr);
-	if (rsp->fec >= 0)
+	if (rsp->fec >= 0) {
 		pfvf->linfo.fec = rsp->fec;
-	else
+		pfvf->hw.cgx_fec_corr_blks = 0;
+		pfvf->hw.cgx_fec_uncorr_blks = 0;
+
+	} else {
 		err = rsp->fec;
+	}
 
 end:	otx2_mbox_unlock(&pfvf->mbox);
 	return err;
