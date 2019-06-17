@@ -1049,7 +1049,7 @@ void rds_conn_path_drop(struct rds_conn_path *cp, int reason)
 		    conn, &conn->c_laddr, &conn->c_faddr,
 		    conn->c_tos);
 
-	queue_work(cp->cp_wq, &cp->cp_down_w);
+	rds_cond_queue_shutdown_work(cp);
 }
 EXPORT_SYMBOL_GPL(rds_conn_path_drop);
 
