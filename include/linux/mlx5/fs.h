@@ -76,10 +76,20 @@ struct mlx5_flow_group;
 struct mlx5_flow_namespace;
 struct mlx5_flow_handle;
 
+enum {
+	FLOW_CONTEXT_HAS_TAG = BIT(0),
+};
+
+struct mlx5_flow_context {
+	u32 flags;
+	u32 flow_tag;
+};
+
 struct mlx5_flow_spec {
 	u8   match_criteria_enable;
 	u32  match_criteria[MLX5_ST_SZ_DW(fte_match_param)];
 	u32  match_value[MLX5_ST_SZ_DW(fte_match_param)];
+	struct mlx5_flow_context flow_context;
 };
 
 struct mlx5_flow_destination {
@@ -153,8 +163,6 @@ struct mlx5_fs_vlan {
 
 struct mlx5_flow_act {
 	u32 action;
-	bool has_flow_tag;
-	u32 flow_tag;
 	u32 encap_id;
 	u32 modify_id;
 	struct mlx5_fs_vlan vlan[MLX5_FS_VLAN_DEPTH];
@@ -162,7 +170,7 @@ struct mlx5_flow_act {
 
 #define MLX5_DECLARE_FLOW_ACT(name) \
 	struct mlx5_flow_act name = {MLX5_FLOW_CONTEXT_ACTION_FWD_DEST,\
-				     MLX5_FS_DEFAULT_FLOW_TAG, 0, 0}
+				     0, 0}
 
 /* Single destination per rule.
  * Group ID is implied by the match criteria.
