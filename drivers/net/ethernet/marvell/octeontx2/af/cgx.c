@@ -462,6 +462,58 @@ int cgx_get_tx_stats(void *cgxd, int lmac_id, int idx, u64 *tx_stat)
 }
 EXPORT_SYMBOL(cgx_get_tx_stats);
 
+int cgx_set_fec_stats_count(struct cgx_link_user_info *linfo)
+{
+	if (linfo->fec) {
+		switch (linfo->lmac_type_id) {
+		case LMAC_MODE_SGMII:
+		case LMAC_MODE_XAUI:
+		case LMAC_MODE_RXAUI:
+		case LMAC_MODE_QSGMII:
+			return 0;
+		case LMAC_MODE_10G_R:
+		case LMAC_MODE_25G_R:
+		case LMAC_MODE_100G_R:
+		case LMAC_MODE_USXGMII:
+			return 1;
+		case LMAC_MODE_40G_R:
+			return 4;
+		case LMAC_MODE_50G_R:
+			if (linfo->fec == OTX2_FEC_BASER)
+				return 2;
+			else
+				return 1;
+		}
+	}
+	return 0;
+}
+
+int cgx_get_fec_stats(void *cgxd, int lmac_id, struct cgx_fec_stats_rsp *rsp)
+{
+	int stats, fec_stats_count = 0;
+	int corr_reg, uncorr_reg;
+	struct cgx *cgx = cgxd;
+
+	if (!cgx || lmac_id >= cgx->lmac_count)
+		return -ENODEV;
+	fec_stats_count =
+		cgx_set_fec_stats_count(&cgx->lmac_idmap[lmac_id]->link_info);
+	if (cgx->lmac_idmap[lmac_id]->link_info.fec == OTX2_FEC_BASER) {
+		corr_reg = CGXX_SPUX_LNX_FEC_CORR_BLOCKS;
+		uncorr_reg = CGXX_SPUX_LNX_FEC_UNCORR_BLOCKS;
+	} else {
+		corr_reg = CGXX_SPUX_RSFEC_CORR;
+		uncorr_reg = CGXX_SPUX_RSFEC_UNCORR;
+	}
+	for (stats = 0; stats < fec_stats_count; stats++) {
+		rsp->fec_corr_blks +=
+			cgx_read(cgx, lmac_id, corr_reg + (stats * 8));
+		rsp->fec_uncorr_blks +=
+			cgx_read(cgx, lmac_id, uncorr_reg + (stats * 8));
+	}
+	return 0;
+}
+
 u64 cgx_get_lmac_tx_fifo_status(void *cgxd, int lmac_id)
 {
 	struct cgx *cgx = cgxd;
@@ -912,8 +964,11 @@ int cgx_set_fec(u64 fec, int cgx_id, int lmac_id)
 	req = FIELD_SET(CMDREG_ID, CGX_CMD_SET_FEC, req);
 	req = FIELD_SET(CMDSETFEC, fec, req);
 	err = cgx_fwi_cmd_generic(req, &resp, cgx, lmac_id);
-	if (!err)
-		return FIELD_GET(RESP_LINKSTAT_FEC, resp);
+	if (!err) {
+		cgx->lmac_idmap[lmac_id]->link_info.fec =
+			FIELD_GET(RESP_LINKSTAT_FEC, resp);
+		return cgx->lmac_idmap[lmac_id]->link_info.fec;
+	}
 	return err;
 }
 
