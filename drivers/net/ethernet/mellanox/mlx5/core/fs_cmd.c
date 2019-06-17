@@ -260,6 +260,9 @@ static int mlx5_cmd_set_fte(struct mlx5_core_dev *dev,
 
 	MLX5_SET(flow_context, in_flow_context, flow_tag,
 		 fte->flow_context.flow_tag);
+	MLX5_SET(flow_context, in_flow_context, flow_source,
+		 fte->flow_context.flow_source);
+
 	MLX5_SET(flow_context, in_flow_context, action, fte->action.action);
 	MLX5_SET(flow_context, in_flow_context, encap_id, fte->action.encap_id);
 	MLX5_SET(flow_context, in_flow_context, modify_header_id,
