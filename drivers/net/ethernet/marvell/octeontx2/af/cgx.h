@@ -56,6 +56,11 @@
 #define CGXX_SCRATCH1_REG		0x1058
 #define CGX_CONST			0x2000
 #define CGXX_SPUX_CONTROL1		0x10000
+#define CGXX_SPUX_LNX_FEC_CORR_BLOCKS	0x10700
+#define CGXX_SPUX_LNX_FEC_UNCORR_BLOCKS	0x10800
+#define CGXX_SPUX_RSFEC_CORR		0x10088
+#define CGXX_SPUX_RSFEC_UNCORR		0x10090
+
 #define CGXX_SPUX_CONTROL1_LBK		BIT_ULL(14)
 #define CGXX_SMUX_RX_FRM_CTL		0x20020
 #define CGX_SMUX_RX_FRM_CTL_PTP_MODE	BIT_ULL(12)
@@ -129,6 +134,7 @@ int cgx_lmac_evh_register(struct cgx_event_cb *cb, void *cgxd, int lmac_id);
 int cgx_lmac_evh_unregister(void *cgxd, int lmac_id);
 int cgx_get_tx_stats(void *cgxd, int lmac_id, int idx, u64 *tx_stat);
 int cgx_get_rx_stats(void *cgxd, int lmac_id, int idx, u64 *rx_stat);
+int cgx_get_fec_stats(void *cgxd, int lmac_id, struct cgx_fec_stats_rsp *rsp);
 u64 cgx_get_lmac_tx_fifo_status(void *cgxd, int lmac_id);
 int cgx_lmac_rx_tx_enable(void *cgxd, int lmac_id, bool enable);
 int cgx_lmac_tx_enable(void *cgxd, int lmac_id, bool enable);
