@@ -83,6 +83,7 @@ enum npc_kpu_le_ltype {
 	NPC_LT_LE_NSH,
 	NPC_LT_LE_TU_MPLS_IN_GRE,
 	NPC_LT_LE_TU_NSH_IN_GRE,
+	NPC_LT_LE_TU_MPLS_IN_UDP,
 };
 
 enum npc_kpu_lf_ltype {

@@ -61,6 +61,7 @@
 #define NPC_UDP_PORT_VXLAN	4789
 #define NPC_UDP_PORT_VXLANGPE	4790
 #define NPC_UDP_PORT_GENEVE	6081
+#define NPC_UDP_PORT_MPLS	6635
 
 #define NPC_VXLANGPE_NP_IP	0x1
 #define NPC_VXLANGPE_NP_IP6	0x2
@@ -184,6 +185,7 @@ enum npc_kpu_parser_state {
 	NPC_S_KPU9_TU_MPLS_IN_GRE,
 	NPC_S_KPU9_TU_MPLS_IN_NSH,
 	NPC_S_KPU9_TU_MPLS_IN_IP,
+	NPC_S_KPU9_TU_MPLS_IN_UDP,
 	NPC_S_KPU9_TU_NSH_IN_GRE,
 	NPC_S_KPU9_VXLAN,
 	NPC_S_KPU9_VXLANGPE,
@@ -4727,6 +4729,15 @@ static struct npc_kpu_profile_cam kpu8_cam_entries[] = {
 	},
 	{
 		NPC_S_KPU8_UDP, 0xff,
+		NPC_UDP_PORT_MPLS,
+		0xffff,
+		0x0000,
+		0x0000,
+		0x0000,
+		0x0000,
+	},
+	{
+		NPC_S_KPU8_UDP, 0xff,
 		0x0000,
 		0x0000,
 		0x0000,
@@ -5672,6 +5683,42 @@ static struct npc_kpu_profile_cam kpu9_cam_entries[] = {
 		0x0000,
 		0x0000,
 		0x0000,
+	},
+	{
+		NPC_S_KPU9_TU_MPLS_IN_UDP, 0xff,
+		NPC_MPLS_S,
+		NPC_MPLS_S,
+		0x0000,
+		0x0000,
+		0x0000,
+		0x0000,
+	},
+	{
+		NPC_S_KPU9_TU_MPLS_IN_UDP, 0xff,
+		0x0000,
+		NPC_MPLS_S,
+		NPC_MPLS_S,
+		NPC_MPLS_S,
+		0x0000,
+		0x0000,
+	},
+	{
+		NPC_S_KPU9_TU_MPLS_IN_UDP, 0xff,
+		0x0000,
+		NPC_MPLS_S,
+		0x0000,
+		NPC_MPLS_S,
+		NPC_MPLS_S,
+		NPC_MPLS_S,
+	},
+	{
+		NPC_S_KPU9_TU_MPLS_IN_UDP, 0xff,
+		0x0000,
+		NPC_MPLS_S,
+		0x0000,
+		NPC_MPLS_S,
+		0x0000,
+		NPC_MPLS_S,
 	},
 	{
 		NPC_S_NA, 0X00,
@@ -10031,10 +10078,18 @@ static struct npc_kpu_profile_action kpu8_action_entries[] = {
 	},
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
+		2, 6, 10, 0, 0,
+		NPC_S_KPU9_TU_MPLS_IN_UDP, 8, 1,
+		NPC_LID_LD, NPC_LT_LD_UDP,
+		0,
+		0, 0, 0, 0,
+	},
+	{
+		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		0, 0, 0, 7, 0,
 		NPC_S_KPU16_UDP_DATA, 8, 1,
 		NPC_LID_LD, NPC_LT_LD_UDP,
-		NPC_F_LD_L_UDP_UNK_PORT,
+		0,
 		0, 0, 0, 0,
 	},
 	{
@@ -10870,6 +10925,38 @@ static struct npc_kpu_profile_action kpu9_action_entries[] = {
 		NPC_S_NA, 0, 1,
 		NPC_LID_LE, NPC_LT_LE_GTPU,
 		NPC_F_LE_L_GTPU_UNK,
+		0, 0, 0, 0,
+	},
+	{
+		NPC_ERRLEV_RE, NPC_EC_NOERR,
+		0, 0, 0, 0, 0,
+		NPC_S_KPU10_TU_MPLS_PL, 4, 1,
+		NPC_LID_LE, NPC_LT_LE_TU_MPLS_IN_UDP,
+		0,
+		0, 0, 0, 0,
+	},
+	{
+		NPC_ERRLEV_RE, NPC_EC_NOERR,
+		0, 0, 0, 0, 0,
+		NPC_S_KPU10_TU_MPLS_PL, 8, 1,
+		NPC_LID_LE, NPC_LT_LE_TU_MPLS_IN_UDP,
+		0,
+		0, 0, 0, 0,
+	},
+	{
+		NPC_ERRLEV_RE, NPC_EC_NOERR,
+		0, 0, 0, 0, 0,
+		NPC_S_KPU10_TU_MPLS_PL, 12, 1,
+		NPC_LID_LE, NPC_LT_LE_TU_MPLS_IN_UDP,
+		0,
+		0, 0, 0, 0,
+	},
+	{
+		NPC_ERRLEV_RE, NPC_EC_NOERR,
+		2, 4, 0, 0, 0,
+		NPC_S_KPU10_TU_MPLS, 12, 1,
+		NPC_LID_LE, NPC_LT_LE_TU_MPLS_IN_UDP,
+		0,
 		0, 0, 0, 0,
 	},
 	{
