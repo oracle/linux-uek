@@ -1126,6 +1126,7 @@ int otx2_sq_aura_pool_init(struct otx2_nic *pfvf)
 
 	return 0;
 fail:
+	otx2_mbox_reset(&pfvf->mbox.mbox, 0);
 	otx2_aura_pool_free(pfvf);
 	return err;
 }
@@ -1177,6 +1178,7 @@ int otx2_rq_aura_pool_init(struct otx2_nic *pfvf)
 
 	return 0;
 fail:
+	otx2_mbox_reset(&pfvf->mbox.mbox, 0);
 	otx2_aura_pool_free(pfvf);
 	return err;
 }
