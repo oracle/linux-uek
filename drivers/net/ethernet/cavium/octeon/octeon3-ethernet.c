@@ -39,6 +39,8 @@
 #include <linux/rio_drv.h>
 #include <linux/rio_ids.h>
 #include <linux/net_tstamp.h>
+#include <linux/timecounter.h>
+#include <linux/clocksource.h>
 #include <linux/ptp_clock_kernel.h>
 
 #include <asm/octeon/octeon.h>
@@ -201,7 +203,11 @@ struct octeon3_ethernet {
 	struct net_device *netdev;
 	enum octeon3_mac_type mac_type;
 	struct octeon3_rx rx_cxt[MAX_RX_CONTEXTS];
+	struct ptp_clock_info ptp_info;
 	struct ptp_clock *ptp_clock;
+	struct cyclecounter cc;
+	struct timecounter tc;
+	spinlock_t ptp_lock;
 	int num_rx_cxt;
 	int pki_laura;
 	int pki_pkind;
@@ -669,14 +675,17 @@ static int octeon3_eth_replenish_all(struct octeon3_ethernet_node *oen)
 	return pending;
 }
 
-static int octeon3_eth_tx_complete_hwtstamp(struct sk_buff *skb)
+static int octeon3_eth_tx_complete_hwtstamp(struct octeon3_ethernet *priv,
+					    struct sk_buff *skb)
 {
 	struct skb_shared_hwtstamps	shts;
-	u64				ts;
+	u64				hwts;
+	u64				ns;
 
-	ts = *((u64 *)(skb->cb) + 1);
+	hwts = *((u64 *)(skb->cb) + 1);
+	ns = timecounter_cyc2time(&priv->tc, hwts);
 	memset(&shts, 0, sizeof(shts));
-	shts.hwtstamp = ns_to_ktime(ts);
+	shts.hwtstamp = ns_to_ktime(ns);
 	skb_tstamp_tx(skb, &shts);
 
 	return 0;
@@ -722,7 +731,7 @@ static int octeon3_eth_tx_complete_worker(void *data)
 				skb = container_of((void *)work, struct sk_buff, cb);
 				if (unlikely(tx_priv->tx_timestamp_hw) && 
 				    unlikely(skb_shinfo(skb)->tx_flags & SKBTX_IN_PROGRESS))
-					    octeon3_eth_tx_complete_hwtstamp(skb);
+					octeon3_eth_tx_complete_hwtstamp(tx_priv, skb);
 				dev_kfree_skb(skb);
 			}
 
@@ -1225,11 +1234,14 @@ static int octeon3_eth_rx_one(struct octeon3_rx *rx, bool is_async,
 		skb_checksum_none_assert(skb);
 		if (unlikely(priv->rx_timestamp_hw)) {
 			/* The first 8 bytes are the timestamp */
-			u64 ts = *(u64 *)skb->data;
+			u64 hwts = *(u64 *)skb->data;
+			u64 ns;
 			struct skb_shared_hwtstamps *shts;
 
+			ns = timecounter_cyc2time(&priv->tc, hwts);
 			shts = skb_hwtstamps(skb);
-			shts->hwtstamp = ns_to_ktime(ts);
+			memset(shts, 0, sizeof(*shts));
+			shts->hwtstamp = ns_to_ktime(ns);
 			__skb_pull(skb, 8);
 		}
 
@@ -2307,6 +2319,16 @@ static int octeon3_eth_set_mac_address(struct net_device *netdev, void *addr)
 	return 0;
 }
 
+static u64 octeon3_cyclecounter_read(const struct cyclecounter *cc)
+{
+	struct octeon3_ethernet	*priv;
+	u64 count;
+
+	priv = container_of(cc, struct octeon3_ethernet, cc);
+	count = cvmx_read_csr_node(priv->numa_node, CVMX_MIO_PTP_CLOCK_HI);
+	return count;
+}
+
 static int octeon3_bgx_hwtstamp(struct net_device *netdev, int en)
 {
 	struct octeon3_ethernet		*priv = netdev_priv(netdev);
@@ -2383,7 +2405,7 @@ static int octeon3_ioctl_hwtstamp(struct net_device *netdev,
 	}
 
 	/* The PTP block should be enabled */
-	ptp.u64 = octeon_read_ptp_csr(CVMX_MIO_PTP_CLOCK_CFG);
+	ptp.u64 = cvmx_read_csr_node(priv->numa_node, CVMX_MIO_PTP_CLOCK_CFG);
 	if (!ptp.s.ptp_en) {
 		netdev_err(netdev, "Error: PTP clock not enabled\n");
 		return -EOPNOTSUPP;
@@ -2435,7 +2457,107 @@ static int octeon3_ioctl_hwtstamp(struct net_device *netdev,
 	octeon3_bgx_hwtstamp(netdev, en);
 	octeon3_pki_hwtstamp(netdev, en);
 
+	priv->cc.read = octeon3_cyclecounter_read;
+	priv->cc.mask = CLOCKSOURCE_MASK(64);
+	/* Ptp counter is always in nsec */
+	priv->cc.mult = 1;
+	priv->cc.shift = 0;
+	timecounter_init(&priv->tc, &priv->cc, ktime_to_ns(ktime_get_real()));
+
 	return 0;
+}
+
+static int octeon3_adjfreq(struct ptp_clock_info *ptp, s32 ppb)
+{
+	struct octeon3_ethernet	*priv;
+	u64			comp;
+	u64			diff;
+	int			neg_ppb = 0;
+	static u64		base_comp;
+
+	priv = container_of(ptp, struct octeon3_ethernet, ptp_info);
+
+	/* Need to save the base frequency */
+	if (!base_comp) {
+		base_comp = cvmx_read_csr_node(priv->numa_node,
+					       CVMX_MIO_PTP_CLOCK_COMP);
+	}
+
+	if (ppb < 0) {
+		ppb = -ppb;
+		neg_ppb = 1;
+	}
+
+	/* The part per billion (ppb) is a delta from the base frequency */
+	comp = base_comp;
+
+	diff = comp;
+	diff *= ppb;
+	diff = div_u64(diff, 1000000000ULL);
+
+	comp = neg_ppb ? comp - diff : comp + diff;
+
+	cvmx_write_csr_node(priv->numa_node, CVMX_MIO_PTP_CLOCK_COMP, comp);
+
+	return 0;
+}
+
+static int octeon3_adjtime(struct ptp_clock_info *ptp, s64 delta)
+{
+	struct octeon3_ethernet	*priv;
+	s64			now;
+	unsigned long		flags;
+
+	priv = container_of(ptp, struct octeon3_ethernet, ptp_info);
+
+	spin_lock_irqsave(&priv->ptp_lock, flags);
+	now = timecounter_read(&priv->tc);
+	now += delta;
+	timecounter_init(&priv->tc, &priv->cc, now);
+	spin_unlock_irqrestore(&priv->ptp_lock, flags);
+
+	return 0;
+}
+
+static int octeon3_gettime(struct ptp_clock_info *ptp, struct timespec64 *ts)
+{
+	struct octeon3_ethernet	*priv;
+	u64			ns;
+	u32			remainder;
+	unsigned long		flags;
+
+	priv = container_of(ptp, struct octeon3_ethernet, ptp_info);
+
+	spin_lock_irqsave(&priv->ptp_lock, flags);
+	ns = timecounter_read(&priv->tc);
+	spin_unlock_irqrestore(&priv->ptp_lock, flags);
+	ts->tv_sec = div_u64_rem(ns, 1000000000ULL, &remainder);
+	ts->tv_nsec = remainder;
+
+	return 0;
+}
+
+static int octeon3_settime(struct ptp_clock_info *ptp,
+			   const struct timespec64 *ts)
+{
+	struct octeon3_ethernet	*priv;
+	u64			ns;
+	unsigned long		flags;
+
+	priv = container_of(ptp, struct octeon3_ethernet, ptp_info);
+	ns = timespec_to_ns(ts);
+
+	spin_lock_irqsave(&priv->ptp_lock, flags);
+	timecounter_init(&priv->tc, &priv->cc, ns);
+	spin_unlock_irqrestore(&priv->ptp_lock, flags);
+
+	return 0;
+}
+
+static int octeon3_enable(struct ptp_clock_info *ptp,
+			  struct ptp_clock_request *rq, int on)
+{
+	return -EOPNOTSUPP;
 }
 
 static int octeon3_ioctl(struct net_device *netdev, struct ifreq *ifr, int cmd)
@@ -2765,6 +2887,22 @@ static int octeon3_eth_probe(struct platform_device *pdev)
 		list_del(&priv->list);
 		free_netdev(netdev);
 	}
+
+	spin_lock_init(&priv->ptp_lock);
+	priv->ptp_info.owner = THIS_MODULE;
+	snprintf(priv->ptp_info.name, 16, "octeon3 ptp");
+	priv->ptp_info.max_adj = 250000000;
+	priv->ptp_info.n_alarm = 0;
+	priv->ptp_info.n_ext_ts = 0;
+	priv->ptp_info.n_per_out = 0;
+	priv->ptp_info.pps = 0;
+	priv->ptp_info.adjfreq = octeon3_adjfreq;
+	priv->ptp_info.adjtime = octeon3_adjtime;
+	priv->ptp_info.gettime64 = octeon3_gettime;
+	priv->ptp_info.settime64 = octeon3_settime;
+	priv->ptp_info.enable = octeon3_enable;
+	priv->ptp_clock = ptp_clock_register(&priv->ptp_info, &pdev->dev);
+
 	netdev_info(netdev, "Registered\n");
 	return 0;
 }
@@ -2837,6 +2975,7 @@ static int octeon3_eth_remove(struct platform_device *pdev)
 	int				node = priv->numa_node;
 	struct octeon3_ethernet_node	*oen = octeon3_eth_node + node;
 
+	ptp_clock_unregister(priv->ptp_clock);
 	unregister_netdev(netdev);
 	bgx_port_set_netdev(pdev->dev.parent, NULL);
 	dev_set_drvdata(&pdev->dev, NULL);
