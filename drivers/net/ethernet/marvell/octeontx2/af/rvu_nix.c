@@ -2534,7 +2534,6 @@ static int set_flowkey_fields(struct nix_rx_flowkey_alg *alg, u32 flow_cfg)
 	struct nix_rx_flowkey_alg *field;
 	struct nix_rx_flowkey_alg tmp;
 	u32 key_type, valid_key;
-	u8 udp_tu_data;
 
 	if (!alg)
 		return -EINVAL;
@@ -2563,7 +2562,6 @@ static int set_flowkey_fields(struct nix_rx_flowkey_alg *alg, u32 flow_cfg)
 
 	keyoff_marker = 0; max_key_off = 0; group_member = 0;
 	nr_field = 0; key_off = 0; field_marker = 1;
-	udp_tu_data = 0;
 	field = &tmp; max_bit_pos = fls(flow_cfg);
 	for (idx = 0;
 	     idx < max_bit_pos && nr_field < FIELDS_PER_ALG &&
@@ -2664,32 +2662,39 @@ static int set_flowkey_fields(struct nix_rx_flowkey_alg *alg, u32 flow_cfg)
 			break;
 		case NIX_FLOW_KEY_TYPE_NVGRE:
 			field->lid = NPC_LID_LD;
+			field->hdr_offset = 4; /* VSID offset */
 			field->bytesm1 = 2;
+			field->ltype_match = NPC_LT_LD_GRE;
 			field->ltype_mask = 0xF;
-			keyoff_marker = false;
-			if (valid_key) {
-				field->hdr_offset = 4; /* VSID offset */
-				field->ltype_match = NPC_LT_LD_GRE;
-			}
 			break;
 		case NIX_FLOW_KEY_TYPE_VXLAN:
 		case NIX_FLOW_KEY_TYPE_GENEVE:
 			field->lid = NPC_LID_LE;
 			field->bytesm1 = 2;
+			field->hdr_offset = 4;
 			field->ltype_mask = 0xF;
+			field_marker = false;
 			keyoff_marker = false;
+
 			if (key_type == NIX_FLOW_KEY_TYPE_VXLAN && valid_key) {
-				field->hdr_offset = 4;
-				field->ltype_match = NPC_LT_LE_VXLAN;
+				field->ltype_match |= NPC_LT_LE_VXLAN;
+				group_member = true;
 			}
 
 			if (key_type == NIX_FLOW_KEY_TYPE_GENEVE && valid_key) {
-				field->hdr_offset = 4;
-				field->ltype_match = NPC_LT_LE_GENEVE;
+				field->ltype_match |= NPC_LT_LE_GENEVE;
+				group_member = true;
 			}
 
-			if (key_type == NIX_FLOW_KEY_TYPE_GENEVE)
-				keyoff_marker = true;
+			if (key_type == NIX_FLOW_KEY_TYPE_GENEVE) {
+				if (group_member) {
+					field->ltype_mask = ~field->ltype_match;
+					field_marker = true;
+					keyoff_marker = true;
+					valid_key = true;
+					group_member = false;
+				}
+			}
 			break;
 		case NIX_FLOW_KEY_TYPE_ETH_DMAC:
 		case NIX_FLOW_KEY_TYPE_INNR_ETH_DMAC:
@@ -2712,52 +2717,9 @@ static int set_flowkey_fields(struct nix_rx_flowkey_alg *alg, u32 flow_cfg)
 			break;
 		case NIX_FLOW_KEY_TYPE_GTPU:
 			field->lid = NPC_LID_LE;
-			field->hdr_offset = 0; /* UDP data */
-			field->bytesm1 = 3; /* 4 bytes VNI*/
+			field->hdr_offset = 4;
+			field->bytesm1 = 3; /* 4 bytes TID*/
 			field->ltype_match = NPC_LT_LE_GTPU;
-			field->ltype_mask = 0xF;
-			break;
-		case NIX_FLOW_KEY_TYPE_UDP_VXLAN:
-		case NIX_FLOW_KEY_TYPE_UDP_GENEVE:
-			field->lid = NPC_LID_LE;
-			field->hdr_offset = 0; /* UDP data */
-			field->bytesm1 = 3; /* 4 bytes SPORT +  DPORT*/
-			field->ltype_mask = 0xF;
-			field_marker = false;
-			keyoff_marker = false;
-			BUILD_BUG_ON(NPC_LT_LE_VXLAN != 1);
-			BUILD_BUG_ON(NPC_LT_LE_GENEVE != 2);
-			/* Only VXLAN enabled */
-			if (key_type == NIX_FLOW_KEY_TYPE_UDP_VXLAN &&
-			    valid_key) {
-				field->ltype_match |= NPC_LT_LE_VXLAN;
-				udp_tu_data |= (1 << 0);
-			}
-
-			/* Only GENEVE enabled */
-			if (key_type == NIX_FLOW_KEY_TYPE_UDP_GENEVE &&
-			    valid_key) {
-				field->ltype_match |= NPC_LT_LE_GENEVE;
-				udp_tu_data |= (1 << 1);
-			}
-
-			if (key_type == NIX_FLOW_KEY_TYPE_UDP_GENEVE) {
-				valid_key = true;
-				field_marker = true;
-				keyoff_marker = true;
-				/* Both VXLAN and GENEVE enabled, just
-				 * update the ltype mask to match both
-				 * VXLAN and GENEVE
-				 */
-				if (udp_tu_data == 0x3)
-					field->ltype_mask = 0xE;
-			}
-			break;
-		case NIX_FLOW_KEY_TYPE_UDP_GTPU:
-			field->lid = NPC_LID_LD;
-			field->hdr_offset = 0; /* UDP data */
-			field->bytesm1 = 3; /* 4 bytes SPORT +  DPORT*/
-			field->ltype_match = NPC_LT_LD_UDP;
 			field->ltype_mask = 0xF;
 			break;
 		}
