@@ -73,6 +73,11 @@ static unsigned long rds_ib_sysctl_max_unsolicited_wr_max =
 unsigned int rds_ib_sysctl_flow_control = 0;
 unsigned int rds_ib_sysctl_disable_unmap_fmr_cpu; /* = 0 */
 
+/* Min/max from IBTA spec C9-140 */
+static int rds_ib_sysctl_min_local_ack_timeout;
+static int rds_ib_sysctl_max_local_ack_timeout = 31;
+int rds_ib_sysctl_local_ack_timeout = 17; /* 0.5 secs */
+
 static struct ctl_table rds_ib_sysctl_table[] = {
 	{
 		.procname       = "max_send_wr",
@@ -130,6 +135,15 @@ static struct ctl_table rds_ib_sysctl_table[] = {
 		.maxlen         = sizeof(rds_ib_sysctl_disable_unmap_fmr_cpu),
 		.mode           = 0644,
 		.proc_handler   = &proc_dointvec,
+	},
+	{
+		.procname       = "local_ack_timeout",
+		.data           = &rds_ib_sysctl_local_ack_timeout,
+		.maxlen         = sizeof(rds_ib_sysctl_local_ack_timeout),
+		.mode           = 0644,
+		.proc_handler   = proc_dointvec_minmax,
+		.extra1		= &rds_ib_sysctl_min_local_ack_timeout,
+		.extra2		= &rds_ib_sysctl_max_local_ack_timeout,
 	},
 	{ }
 };
