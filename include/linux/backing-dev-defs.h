@@ -182,6 +182,7 @@ struct backing_dev_info {
 #ifndef __GENKSYMS__
 #ifdef CONFIG_CGROUP_WRITEBACK
 	struct mutex cgwb_release_mutex;  /* protect shutdown of wb structs */
+	struct rw_semaphore wb_switch_rwsem; /* no cgwb switch while syncing */
 #endif /* CONFIG_CGROUP_WRITEBACK */
 #endif /* !__GENKSYMS__  */
 };
