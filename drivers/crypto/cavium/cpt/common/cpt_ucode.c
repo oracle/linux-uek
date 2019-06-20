@@ -253,22 +253,20 @@ static void print_tar_dbg_info(struct device *dev,
 {
 	struct tar_ucode_info_t *curr;
 
-	dev_info(dev, "Tar archive filename %s", tar_filename);
-	dev_info(dev, "Tar archive pointer %p, size %ld", tar_arch->fw->data,
+	pr_debug("Tar archive filename %s", tar_filename);
+	pr_debug("Tar archive pointer %p, size %ld", tar_arch->fw->data,
 		 tar_arch->fw->size);
 	list_for_each_entry(curr, &tar_arch->ucodes, list) {
-		dev_info(dev, "Ucode filename %s", curr->ucode.filename);
-		dev_info(dev, "Ucode version string %s", curr->ucode.ver_str);
-		dev_info(dev, "Ucode version %d.%d.%d.%d",
+		pr_debug("Ucode filename %s", curr->ucode.filename);
+		pr_debug("Ucode version string %s", curr->ucode.ver_str);
+		pr_debug("Ucode version %d.%d.%d.%d",
 			 curr->ucode.ver_num.nn, curr->ucode.ver_num.xx,
 			 curr->ucode.ver_num.yy, curr->ucode.ver_num.zz);
-		dev_info(dev, "Ucode type (%d) %s", curr->ucode.type,
+		pr_debug("Ucode type (%d) %s", curr->ucode.type,
 			 get_ucode_type_str(curr->ucode.type));
-		dev_info(dev, "Ucode size %d", curr->ucode.size);
-		dev_info(dev, "Ucode ptr %p", curr->ucode_ptr);
-		dev_info(dev, "\n");
+		pr_debug("Ucode size %d", curr->ucode.size);
+		pr_debug("Ucode ptr %p\n", curr->ucode_ptr);
 	}
-	dev_info(dev, "\n");
 }
 
 static struct tar_arch_info_t *load_tar_archive(struct device *dev,
@@ -346,8 +344,7 @@ static struct tar_arch_info_t *load_tar_archive(struct device *dev,
 		tar_blk = (struct tar_blk_t *) &tar_arch->fw->data[tar_offs];
 	}
 
-	if (cpt_is_dbg_level_en(CPT_DBG_ENGINE_GRPS))
-		print_tar_dbg_info(dev, tar_arch, tar_filename);
+	print_tar_dbg_info(dev, tar_arch, tar_filename);
 	return tar_arch;
 err:
 	release_tar_archive(tar_arch);
@@ -450,16 +447,14 @@ static void print_engs_info(struct engine_group_info *eng_grp,
 
 static void print_ucode_dbg_info(struct device *dev, struct microcode *ucode)
 {
-	dev_info(dev, "\n");
-	dev_info(dev, "Ucode info");
-	dev_info(dev, "Ucode version string %s", ucode->ver_str);
-	dev_info(dev, "Ucode version %d.%d.%d.%d", ucode->ver_num.nn,
+	pr_debug("Ucode info");
+	pr_debug("Ucode version string %s", ucode->ver_str);
+	pr_debug("Ucode version %d.%d.%d.%d", ucode->ver_num.nn,
 		 ucode->ver_num.xx, ucode->ver_num.yy, ucode->ver_num.zz);
-	dev_info(dev, "Ucode type %s", get_ucode_type_str(ucode->type));
-	dev_info(dev, "Ucode size %d", ucode->size);
-	dev_info(dev, "Ucode virt address %16.16llx", (u64)ucode->align_va);
-	dev_info(dev, "Ucode phys address %16.16llx", ucode->align_dma);
-	dev_info(dev, "\n");
+	pr_debug("Ucode type %s", get_ucode_type_str(ucode->type));
+	pr_debug("Ucode size %d", ucode->size);
+	pr_debug("Ucode virt address %16.16llx", (u64)ucode->align_va);
+	pr_debug("Ucode phys address %16.16llx\n", ucode->align_dma);
 }
 
 static void print_dbg_info(struct device *dev,
@@ -473,23 +468,21 @@ static void print_dbg_info(struct device *dev,
 	u32 mask[4];
 	int i, j;
 
-	dev_info(dev, "\n");
-	dev_info(dev, "Engine groups global info");
-	dev_info(dev, "max SE %d, max IE %d, max AE %d",
+	pr_debug("Engine groups global info");
+	pr_debug("max SE %d, max IE %d, max AE %d",
 		 eng_grps->avail.max_se_cnt, eng_grps->avail.max_ie_cnt,
 		 eng_grps->avail.max_ae_cnt);
-	dev_info(dev, "free SE %d", eng_grps->avail.se_cnt);
-	dev_info(dev, "free IE %d", eng_grps->avail.ie_cnt);
-	dev_info(dev, "free AE %d", eng_grps->avail.ae_cnt);
-	dev_info(dev, "\n");
+	pr_debug("free SE %d", eng_grps->avail.se_cnt);
+	pr_debug("free IE %d", eng_grps->avail.ie_cnt);
+	pr_debug("free AE %d", eng_grps->avail.ae_cnt);
 
 	for (i = 0; i < CPT_MAX_ENGINE_GROUPS; i++) {
 		grp = &eng_grps->grp[i];
-		dev_info(dev, "engine_group%d, state %s", i, grp->is_enabled ?
+		pr_debug("engine_group%d, state %s", i, grp->is_enabled ?
 			 "enabled" : "disabled");
 		if (grp->is_enabled) {
 			mirrored_grp = &eng_grps->grp[grp->mirror.idx];
-			dev_info(dev, "Ucode0 filename %s, version %s",
+			pr_debug("Ucode0 filename %s, version %s",
 				 grp->mirror.is_ena ?
 				 mirrored_grp->ucode[0].filename :
 				 grp->ucode[0].filename,
@@ -497,12 +490,11 @@ static void print_dbg_info(struct device *dev,
 				 mirrored_grp->ucode[0].ver_str :
 				 grp->ucode[0].ver_str);
 			if (is_2nd_ucode_used(grp))
-				dev_info(dev,
-					 "Ucode1 filename %s, version %s",
+				pr_debug("Ucode1 filename %s, version %s",
 					 grp->ucode[1].filename,
 					 grp->ucode[1].ver_str);
 			else
-				dev_info(dev, "Ucode1 not used");
+				pr_debug("Ucode1 not used");
 		}
 
 		for (j = 0; j < MAX_ENGS_PER_GRP; j++) {
@@ -510,20 +502,19 @@ static void print_dbg_info(struct device *dev,
 			if (engs->type) {
 				print_engs_info(grp, engs_info, 2*NAME_LENGTH,
 						j);
-				dev_info(dev, "Slot%d: %s", j, engs_info);
+				pr_debug("Slot%d: %s", j, engs_info);
 				bitmap_to_u32array(mask, 4, engs->bmap,
 						   eng_grps->engs_num);
-				dev_info(dev, "Mask:  %8.8x %8.8x %8.8x %8.8x",
+				pr_debug("Mask:  %8.8x %8.8x %8.8x %8.8x",
 					 mask[3], mask[2], mask[1], mask[0]);
 			} else
-				dev_info(dev, "Slot%d not used", j);
+				pr_debug("Slot%d not used", j);
 		}
 		if (grp->is_enabled && eng_grps->ops.print_engines_mask) {
 			eng_grps->ops.print_engines_mask(grp, eng_grps->obj,
 						engs_mask, NAME_LENGTH);
-			dev_info(dev, "Cmask: %s", engs_mask);
+			pr_debug("Cmask: %s", engs_mask);
 		}
-		dev_info(dev, "\n");
 	}
 }
 
@@ -820,8 +811,7 @@ static int ucode_load(struct device *dev, struct microcode *ucode,
 	if (ret)
 		goto err;
 
-	if (cpt_is_dbg_level_en(CPT_DBG_ENGINE_GRPS))
-		print_ucode_dbg_info(dev, ucode);
+	print_ucode_dbg_info(dev, ucode);
 err:
 	release_firmware(fw);
 	return ret;
@@ -1468,8 +1458,7 @@ static ssize_t ucode_load_store(struct device *dev,
 	if (ret)
 		goto err_unlock;
 
-	if (cpt_is_dbg_level_en(CPT_DBG_ENGINE_GRPS))
-		print_dbg_info(dev, eng_grps);
+	print_dbg_info(dev, eng_grps);
 err_unlock:
 	mutex_unlock(&eng_grps->lock);
 	return ret ? ret : count;
@@ -1604,8 +1593,7 @@ int cpt_try_create_default_eng_grps(struct pci_dev *pdev,
 			goto err;
 	}
 
-	if (cpt_is_dbg_level_en(CPT_DBG_ENGINE_GRPS))
-		print_dbg_info(&pdev->dev, eng_grps);
+	print_dbg_info(&pdev->dev, eng_grps);
 err:
 	release_tar_archive(tar_arch);
 	mutex_unlock(&eng_grps->lock);
@@ -1743,8 +1731,7 @@ int cpt_init_eng_grps(struct pci_dev *pdev, struct engine_groups *eng_grps,
 		goto err;
 	eng_grps->is_ucode_load_created = true;
 
-	if (cpt_is_dbg_level_en(CPT_DBG_ENGINE_GRPS))
-		print_dbg_info(&pdev->dev, eng_grps);
+	print_dbg_info(&pdev->dev, eng_grps);
 	return ret;
 err:
 	cpt_cleanup_eng_grps(pdev, eng_grps);

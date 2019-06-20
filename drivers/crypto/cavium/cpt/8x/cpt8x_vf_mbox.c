@@ -11,6 +11,66 @@
 #include <linux/delay.h>
 #include "cpt8x_vf.h"
 
+static char *get_mbox_opcode_str(int msg_opcode)
+{
+	char *str = "Unknown";
+
+	switch (msg_opcode) {
+	case CPT_MSG_VF_UP:
+		str = "UP";
+	break;
+
+	case CPT_MSG_VF_DOWN:
+		str = "DOWN";
+	break;
+
+	case CPT_MSG_READY:
+		str = "READY";
+	break;
+
+	case CPT_MSG_QLEN:
+		str = "QLEN";
+	break;
+
+	case CPT_MSG_QBIND_GRP:
+		str = "QBIND_GRP";
+	break;
+
+	case CPT_MSG_VQ_PRIORITY:
+		str = "VQ_PRIORITY";
+	break;
+
+	case CPT_MSG_PF_TYPE:
+		str = "PF_TYPE";
+	break;
+
+	case CPT_MSG_ACK:
+		str = "ACK";
+	break;
+
+	case CPT_MSG_NACK:
+		str = "NACK";
+	break;
+	}
+
+	return str;
+}
+
+static void dump_mbox_msg(struct cpt_mbox *mbox_msg, int vf_id)
+{
+	char raw_data_str[CPT_MAX_MBOX_DATA_STR_SIZE];
+
+	hex_dump_to_buffer(mbox_msg, sizeof(struct cpt_mbox), 16, 8,
+			   raw_data_str, CPT_MAX_MBOX_DATA_STR_SIZE, false);
+	if (vf_id >= 0)
+		pr_debug("MBOX msg %s received from VF%d raw_data %s",
+			 get_mbox_opcode_str(mbox_msg->msg), vf_id,
+			 raw_data_str);
+	else
+		pr_debug("MBOX msg %s received from PF raw_data %s",
+			 get_mbox_opcode_str(mbox_msg->msg), raw_data_str);
+}
+
 static void cptvf_send_msg_to_pf(struct cpt_vf *cptvf, struct cpt_mbox *mbx)
 {
 	/* Writing mbox(1) causes interrupt */
@@ -47,8 +107,7 @@ void cptvf_handle_mbox_intr(struct cpt_vf *cptvf)
 	mbx.msg  = readq(cptvf->reg_base + CPT_VFX_PF_MBOXX(0, 0));
 	mbx.data = readq(cptvf->reg_base + CPT_VFX_PF_MBOXX(0, 1));
 
-	if (cpt_is_dbg_level_en(CPT_DBG_MBOX_MSGS))
-		cpt8x_dump_mbox_msg(&cptvf->pdev->dev, &mbx, -1);
+	dump_mbox_msg(&mbx, -1);
 
 	switch (mbx.msg) {
 	case CPT_MSG_VF_UP:

@@ -16,8 +16,6 @@
 #define DRV_NAME	"octeontx2-cptvf"
 #define DRV_VERSION	"1.0"
 
-DEFINE_CPT_DEBUG_PARM(debug);
-
 static void cptvf_enable_pfvf_mbox_intrs(struct cptvf_dev *cptvf)
 {
 	/* Clear interrupt if any */
@@ -143,7 +141,6 @@ static int cptvf_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 
 	pci_set_drvdata(pdev, cptvf);
 	cptvf->pdev = pdev;
-	cpt_set_dbg_level(debug);
 
 	err = pcim_enable_device(pdev);
 	if (err) {

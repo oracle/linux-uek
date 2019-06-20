@@ -62,6 +62,47 @@ static inline struct free_rsrcs_rsp *get_limits(struct pci_dev *pdev)
 	return &cptvf->limits;
 }
 
+char *cpt_get_mbox_opcode_str(int msg_opcode)
+{
+	char *str = "Unknown";
+
+	switch (msg_opcode) {
+	case MBOX_MSG_READY:
+		str = "READY";
+	break;
+
+	case MBOX_MSG_FREE_RSRC_CNT:
+		str = "FREE_RSRC_CNT";
+	break;
+
+	case MBOX_MSG_ATTACH_RESOURCES:
+		str = "ATTACH_RESOURCES";
+	break;
+
+	case MBOX_MSG_DETACH_RESOURCES:
+		str = "DETACH_RESOURCES";
+	break;
+
+	case MBOX_MSG_MSIX_OFFSET:
+		str = "MSIX_OFFSET";
+	break;
+
+	case MBOX_MSG_CPT_RD_WR_REGISTER:
+		str = "RD_WR_REGISTER";
+	break;
+
+	case MBOX_MSG_CPT_SET_CRYPTO_GRP:
+		str = "SET_CRYPTO_GRP";
+	break;
+
+	case MBOX_MSG_GET_ENG_GRP_NUM:
+		str = "GET_ENG_GRP_NUM";
+	break;
+	}
+
+	return str;
+}
+
 int cpt_send_mbox_msg(struct pci_dev *pdev)
 {
 	struct otx2_mbox *mbox = get_mbox(pdev);

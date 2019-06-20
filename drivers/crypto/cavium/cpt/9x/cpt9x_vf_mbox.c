@@ -12,6 +12,18 @@
 #include "otx2_reg.h"
 #include "rvu_reg.h"
 
+static void dump_mbox_msg(struct mbox_msghdr *msg, int size)
+{
+	u16 pf_id, vf_id;
+
+	pf_id = (msg->pcifunc >> RVU_PFVF_PF_SHIFT) & RVU_PFVF_PF_MASK;
+	vf_id = (msg->pcifunc >> RVU_PFVF_FUNC_SHIFT) & RVU_PFVF_FUNC_MASK;
+
+	pr_debug("MBOX opcode %s received from (PF%d/VF%d), size %d, rc %d",
+		 cpt_get_mbox_opcode_str(msg->id), pf_id, vf_id, size, msg->rc);
+	print_hex_dump_debug("", DUMP_PREFIX_OFFSET, 16, 2, msg, size, false);
+}
+
 irqreturn_t cptvf_pfvf_mbox_intr(int irq, void *arg)
 {
 	struct cptvf_dev *cptvf = (struct cptvf_dev *) arg;
@@ -70,8 +82,7 @@ void cptvf_pfvf_mbox_handler(struct work_struct *work)
 			goto error;
 		}
 
-		if (cpt_is_dbg_level_en(CPT_DBG_MBOX_MSGS))
-			cpt9x_dump_mbox_msg(&cptvf->pdev->dev, msg, size);
+		dump_mbox_msg(msg, size);
 
 		offset = msg->next_msgoff;
 		switch (msg->id) {
