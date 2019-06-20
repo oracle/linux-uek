@@ -482,6 +482,11 @@ enum fec_type {
 	OTX2_FEC_RS,
 };
 
+struct phy_s {
+	u64 can_change_mod_type : 1;
+	u64 mod_type            : 1;
+};
+
 struct cgx_lmac_fwdata_s {
 	u16 rw_valid;
 	u64 supported_fec;
@@ -492,8 +497,9 @@ struct cgx_lmac_fwdata_s {
 	u64 advertised_link_modes;
 	/* Only applicable if SFP/QSFP slot is present */
 	struct sfp_eeprom_s sfp_eeprom;
-#define RESERVED_MEM 1024
-	u64 reserved[RESERVED_MEM];
+	struct phy_s phy;
+#define LMAC_FWDATA_RESERVED_MEM 1023
+	u64 reserved[LMAC_FWDATA_RESERVED_MEM];
 };
 
 struct cgx_fw_data {
