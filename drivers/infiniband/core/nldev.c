@@ -40,6 +40,9 @@
 #include "core_priv.h"
 #include "cma_priv.h"
 
+typedef int (*res_fill_func_t)(struct sk_buff*, struct netlink_callback*,
+			       struct rdma_restrack_entry*, uint32_t);
+
 static const struct nla_policy nldev_policy[RDMA_NLDEV_ATTR_MAX] = {
 	[RDMA_NLDEV_ATTR_DEV_INDEX]     = { .type = NLA_U32 },
 	[RDMA_NLDEV_ATTR_DEV_NAME]	= { .type = NLA_NUL_STRING,
@@ -851,8 +854,6 @@ static int nldev_res_get_dumpit(struct sk_buff *skb,
 }
 
 struct nldev_fill_res_entry {
-	int (*fill_res_func)(struct sk_buff *msg, struct netlink_callback *cb,
-			     struct rdma_restrack_entry *res, u32 port);
 	enum rdma_nldev_attr nldev_attr;
 	enum rdma_nldev_command nldev_cmd;
 	u32 id;
@@ -860,30 +861,25 @@ struct nldev_fill_res_entry {
 
 static const struct nldev_fill_res_entry fill_entries[RDMA_RESTRACK_MAX] = {
 	[RDMA_RESTRACK_QP] = {
-		.fill_res_func = fill_res_qp_entry,
 		.nldev_cmd = RDMA_NLDEV_CMD_RES_QP_GET,
 		.nldev_attr = RDMA_NLDEV_ATTR_RES_QP,
 	},
 	[RDMA_RESTRACK_CM_ID] = {
-		.fill_res_func = fill_res_cm_id_entry,
 		.nldev_cmd = RDMA_NLDEV_CMD_RES_CM_ID_GET,
 		.nldev_attr = RDMA_NLDEV_ATTR_RES_CM_ID,
 		.id = RDMA_NLDEV_ATTR_RES_CM_IDN,
 	},
 	[RDMA_RESTRACK_CQ] = {
-		.fill_res_func = fill_res_cq_entry,
 		.nldev_cmd = RDMA_NLDEV_CMD_RES_CQ_GET,
 		.nldev_attr = RDMA_NLDEV_ATTR_RES_CQ,
 		.id = RDMA_NLDEV_ATTR_RES_CQN,
 	},
 	[RDMA_RESTRACK_MR] = {
-		.fill_res_func = fill_res_mr_entry,
 		.nldev_cmd = RDMA_NLDEV_CMD_RES_MR_GET,
 		.nldev_attr = RDMA_NLDEV_ATTR_RES_MR,
 		.id = RDMA_NLDEV_ATTR_RES_MRN,
 	},
 	[RDMA_RESTRACK_PD] = {
-		.fill_res_func = fill_res_pd_entry,
 		.nldev_cmd = RDMA_NLDEV_CMD_RES_PD_GET,
 		.nldev_attr = RDMA_NLDEV_ATTR_RES_PD,
 		.id = RDMA_NLDEV_ATTR_RES_PDN,
@@ -892,7 +888,8 @@ static const struct nldev_fill_res_entry fill_entries[RDMA_RESTRACK_MAX] = {
 
 static int res_get_common_dumpit(struct sk_buff *skb,
 				 struct netlink_callback *cb,
-				 enum rdma_restrack_type res_type)
+				 enum rdma_restrack_type res_type,
+				 res_fill_func_t fill_func)
 {
 	const struct nldev_fill_res_entry *fe = &fill_entries[res_type];
 	struct nlattr *tb[RDMA_NLDEV_ATTR_MAX];
@@ -977,7 +974,7 @@ static int res_get_common_dumpit(struct sk_buff *skb,
 		filled = true;
 
 		up_read(&device->res.rwsem);
-		ret = fe->fill_res_func(skb, cb, res, port);
+		ret = fill_func(skb, cb, res, port);
 		down_read(&device->res.rwsem);
 		/*
 		 * Return resource back, but it won't be released till
@@ -1028,7 +1025,8 @@ err_index:
 	static int nldev_res_get_##name##_dumpit(struct sk_buff *skb,          \
 						 struct netlink_callback *cb)  \
 	{                                                                      \
-		return res_get_common_dumpit(skb, cb, type);                   \
+		return res_get_common_dumpit(skb, cb, type,		       \
+					     fill_res_##name##_entry);	       \
 	}
 
 RES_GET_FUNCS(qp, RDMA_RESTRACK_QP);
@@ -1036,7 +1034,6 @@ RES_GET_FUNCS(cm_id, RDMA_RESTRACK_CM_ID);
 RES_GET_FUNCS(cq, RDMA_RESTRACK_CQ);
 RES_GET_FUNCS(pd, RDMA_RESTRACK_PD);
 RES_GET_FUNCS(mr, RDMA_RESTRACK_MR);
-RES_GET_FUNCS(counter, RDMA_RESTRACK_COUNTER);
 
 static int nldev_stat_get_dumpit(struct sk_buff *skb,
 				 struct netlink_callback *cb)
