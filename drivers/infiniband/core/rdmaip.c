@@ -1542,16 +1542,20 @@ static void rdmaip_update_ip_addrs(int port)
 	 * all the IP addresses before doing the
 	 * initial failovers.
 	 */
-	in_dev = in_dev_get(ndev);
-	if (in_dev) {
-		rdmaip_init_ip4_addrs(ndev, in_dev, port);
-		in_dev_put(in_dev);
+	if (!RDMAIP_IPV4_ADDR_SET(port)) {
+		in_dev = in_dev_get(ndev);
+		if (in_dev) {
+			rdmaip_init_ip4_addrs(ndev, in_dev, port);
+			in_dev_put(in_dev);
+		}
 	}
 
-	in6_dev = in6_dev_get(ndev);
-	if (in6_dev) {
-		rdmaip_init_ip6_addrs(ndev, in6_dev, port);
-		in6_dev_put(in6_dev);
+	if (!RDMAIP_IPV6_ADDR_SET(port)) {
+		in6_dev = in6_dev_get(ndev);
+		if (in6_dev) {
+			rdmaip_init_ip6_addrs(ndev, in6_dev, port);
+			in6_dev_put(in6_dev);
+		}
 	}
 }
 
@@ -2749,12 +2753,10 @@ static void rdmaip_impl_inetaddr_event(struct work_struct *_work)
 		kfree(work);
 		return;
 	}
-	if (!(RDMAIP_IPV4_ADDR_SET(port)) || !(RDMAIP_IPV6_ADDR_SET(port))) {
-		RDMAIP_DBG2("IPs were not set during init port#%d\n",
-			    port);
-		rdmaip_update_ip_addrs(port);
-		rdmaip_process_async_event(port, RDMAIP_EVENT_NET, NETDEV_UP);
-	}
+
+	rdmaip_update_ip_addrs(port);
+	rdmaip_process_async_event(port, RDMAIP_EVENT_NET, NETDEV_UP);
+
 	remove_inet4_nb = true;
 	remove_inet6_nb = true;
 	for (port = 1; port <= ip_port_cnt; port++) {
