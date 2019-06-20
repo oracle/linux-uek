@@ -746,6 +746,7 @@ static int otx2_cq_init(struct otx2_nic *pfvf, u16 qidx)
 	cq->rbpool = &qset->pool[pool_id];
 
 	cq->cq_idx = qidx;
+	cq->refill_task_sched = false;
 
 	/* Get memory to put this msg */
 	aq = otx2_mbox_alloc_msg_nix_aq_enq(&pfvf->mbox);
@@ -786,6 +787,45 @@ static int otx2_cq_init(struct otx2_nic *pfvf, u16 qidx)
 	return otx2_sync_mbox_msg(&pfvf->mbox);
 }
 
+static void otx2_pool_refill_task(struct work_struct *work)
+{
+	struct otx2_cq_queue *cq;
+	struct otx2_pool *rbpool;
+	struct refill_work *wrk;
+	int qidx, free_ptrs = 0;
+	struct otx2_nic *pfvf;
+	s64 bufptr;
+
+	wrk = container_of(work, struct refill_work, pool_refill_work.work);
+	pfvf = wrk->pf;
+	qidx = wrk - pfvf->refill_wrk;
+	cq = &pfvf->qset.cq[qidx];
+	rbpool = cq->rbpool;
+	free_ptrs = cq->pool_ptrs;
+
+	while (cq->pool_ptrs) {
+		bufptr = otx2_alloc_rbuf(pfvf, rbpool, GFP_KERNEL);
+		if (bufptr <= 0) {
+			/* Schedule a WQ if we fails to free atleast half of the
+			 * pointers else enable napi for this RQ.
+			 */
+			if (!((free_ptrs - cq->pool_ptrs) > free_ptrs / 2)) {
+				struct delayed_work *dwork;
+
+				dwork = &wrk->pool_refill_work;
+				schedule_delayed_work(dwork,
+						      msecs_to_jiffies(100));
+			} else {
+				cq->refill_task_sched = false;
+			}
+			return;
+		}
+		otx2_aura_freeptr(pfvf, qidx, bufptr + OTX2_HEAD_ROOM);
+		cq->pool_ptrs--;
+	}
+	cq->refill_task_sched = false;
+}
+
 int otx2_config_nix_queues(struct otx2_nic *pfvf)
 {
 	int qidx, err;
@@ -815,6 +855,18 @@ int otx2_config_nix_queues(struct otx2_nic *pfvf)
 			return err;
 	}
 
+	/* Initialize work queue for receive buffer refill */
+
+	pfvf->refill_wrk = devm_kcalloc(pfvf->dev, pfvf->qset.cq_cnt,
+					sizeof(struct refill_work), GFP_KERNEL);
+	if (!pfvf->refill_wrk)
+		return -ENOMEM;
+
+	for (qidx = 0; qidx < pfvf->qset.cq_cnt; qidx++) {
+		pfvf->refill_wrk[qidx].pf = pfvf;
+		INIT_DELAYED_WORK(&pfvf->refill_wrk[qidx].pool_refill_work,
+				  otx2_pool_refill_task);
+	}
 	return 0;
 }
 

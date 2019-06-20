@@ -159,6 +159,11 @@ struct flr_work {
 	struct otx2_nic *pf;
 };
 
+struct refill_work {
+	struct delayed_work pool_refill_work;
+	struct otx2_nic *pf;
+};
+
 struct otx2_nic {
 	void __iomem		*reg_base;
 	struct pci_dev		*pdev;
@@ -201,6 +206,7 @@ struct otx2_nic {
 	struct list_head	flows;
 	struct workqueue_struct	*flr_wq;
 	struct flr_work		*flr_wrk;
+	struct refill_work	*refill_wrk;
 };
 
 static inline bool is_96xx_A0(struct pci_dev *pdev)
