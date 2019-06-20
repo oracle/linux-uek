@@ -8,8 +8,67 @@
  * published by the Free Software Foundation.
  */
 
-#include "cpt_debug.h"
 #include "cpt8x_pf.h"
+
+static char *get_mbox_opcode_str(int msg_opcode)
+{
+	char *str = "Unknown";
+
+	switch (msg_opcode) {
+	case CPT_MSG_VF_UP:
+		str = "UP";
+	break;
+
+	case CPT_MSG_VF_DOWN:
+		str = "DOWN";
+	break;
+
+	case CPT_MSG_READY:
+		str = "READY";
+	break;
+
+	case CPT_MSG_QLEN:
+		str = "QLEN";
+	break;
+
+	case CPT_MSG_QBIND_GRP:
+		str = "QBIND_GRP";
+	break;
+
+	case CPT_MSG_VQ_PRIORITY:
+		str = "VQ_PRIORITY";
+	break;
+
+	case CPT_MSG_PF_TYPE:
+		str = "PF_TYPE";
+	break;
+
+	case CPT_MSG_ACK:
+		str = "ACK";
+	break;
+
+	case CPT_MSG_NACK:
+		str = "NACK";
+	break;
+	}
+
+	return str;
+}
+
+static void dump_mbox_msg(struct cpt_mbox *mbox_msg, int vf_id)
+{
+	char raw_data_str[CPT_MAX_MBOX_DATA_STR_SIZE];
+
+	hex_dump_to_buffer(mbox_msg, sizeof(struct cpt_mbox), 16, 8,
+			   raw_data_str, CPT_MAX_MBOX_DATA_STR_SIZE, false);
+	if (vf_id >= 0)
+		pr_debug("MBOX opcode %s received from VF%d raw_data %s",
+			 get_mbox_opcode_str(mbox_msg->msg), vf_id,
+			 raw_data_str);
+	else
+		pr_debug("MBOX opcode %s received from PF raw_data %s",
+			 get_mbox_opcode_str(mbox_msg->msg), raw_data_str);
+}
 
 static void cpt_send_msg_to_vf(struct cpt_device *cpt, int vf,
 			       struct cpt_mbox *mbx)
@@ -125,8 +184,7 @@ static void cpt_handle_mbox_intr(struct cpt_device *cpt, int vf)
 	mbx.msg  = readq(cpt->reg_base + CPT_PF_VFX_MBOXX(vf, 0));
 	mbx.data = readq(cpt->reg_base + CPT_PF_VFX_MBOXX(vf, 1));
 
-	if (cpt_is_dbg_level_en(CPT_DBG_MBOX_MSGS))
-		cpt8x_dump_mbox_msg(&cpt->pdev->dev, &mbx, vf);
+	dump_mbox_msg(&mbx, vf);
 
 	switch (mbx.msg) {
 	case CPT_MSG_VF_UP:
@@ -181,9 +239,7 @@ void cpt_mbox_intr_handler (struct cpt_device *cpt, int mbx)
 	u8  vf;
 
 	intr = readq(cpt->reg_base + CPT_PF_MBOX_INTX(0));
-	if (cpt_is_dbg_level_en(CPT_DBG_MBOX_MSGS))
-		dev_info(&cpt->pdev->dev,
-			 "PF interrupt mbox%d mask 0x%llx\n", mbx, intr);
+	pr_debug("PF interrupt mbox%d mask 0x%llx\n", mbx, intr);
 	for (vf = 0; vf < cpt->max_vfs; vf++) {
 		if (intr & (1ULL << vf)) {
 			cpt_handle_mbox_intr(cpt, vf);

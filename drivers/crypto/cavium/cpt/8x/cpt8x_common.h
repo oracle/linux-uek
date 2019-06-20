@@ -28,6 +28,7 @@
 #define cpt_device_ready(cpt) ((cpt)->flags & CPT_FLAG_DEVICE_READY)
 
 #define CPT_MBOX_MSG_TIMEOUT 2000
+#define CPT_MAX_MBOX_DATA_STR_SIZE 64
 
 /* VF-PF message opcodes */
 enum cpt_mbox_opcode {
@@ -47,8 +48,5 @@ struct cpt_mbox {
 	u64 msg; /* Message type MBOX[0] */
 	u64 data;/* Data         MBOX[1] */
 };
-
-void cpt8x_dump_mbox_msg(struct device *dev, struct cpt_mbox *mbox_msg,
-			 int vf_id);
 
 #endif /* __CPT8X_COMMON_H */

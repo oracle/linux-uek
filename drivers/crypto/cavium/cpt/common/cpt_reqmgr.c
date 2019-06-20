@@ -234,17 +234,12 @@ inline int process_request(struct pci_dev *pdev, struct reqmgr_ops *ops,
 	ops->fill_inst(&cptinst, info, &iq_cmd);
 
 	/* Print debug info if enabled */
-	if (cpt_is_dbg_level_en(CPT_DBG_ENC_DEC_REQS)) {
-		dump_sg_list(pdev, req);
-		dev_info(&pdev->dev, "Cpt_inst_s hexdump (%d bytes)\n",
-			 CPT_INST_SIZE);
-		print_hex_dump(KERN_INFO, "", 0, 16, 1, &cptinst,
-			       CPT_INST_SIZE, false);
-		dev_info(&pdev->dev, "Dptr hexdump (%d bytes)\n",
-			 cpt_req->dlen);
-		print_hex_dump(KERN_INFO, "", 0, 16, 1, info->in_buffer,
-			       cpt_req->dlen, false);
-	}
+	dump_sg_list(pdev, req);
+	pr_debug("Cpt_inst_s hexdump (%d bytes)\n", CPT_INST_SIZE);
+	print_hex_dump_debug("", 0, 16, 1, &cptinst, CPT_INST_SIZE, false);
+	pr_debug("Dptr hexdump (%d bytes)\n", cpt_req->dlen);
+	print_hex_dump_debug("", 0, 16, 1, info->in_buffer,
+			     cpt_req->dlen, false);
 
 	/* Send CPT command */
 	ops->send_cmd(&cptinst, 1, obj);
@@ -270,28 +265,25 @@ void dump_sg_list(struct pci_dev *pdev, struct cpt_request_info *req)
 {
 	int i;
 
-	dev_info(&pdev->dev, "Gather list size %d\n", req->incnt);
+	pr_debug("Gather list size %d\n", req->incnt);
 	for (i = 0; i < req->incnt; i++) {
-		dev_info(&pdev->dev,
-			 "Buffer %d size %d, vptr 0x%p, dmaptr 0x%p\n", i,
+		pr_debug("Buffer %d size %d, vptr 0x%p, dmaptr 0x%p\n", i,
 			 req->in[i].size, req->in[i].vptr,
 			 (void *) req->in[i].dma_addr);
-		dev_info(&pdev->dev, "Buffer hexdump (%d bytes)\n",
+		pr_debug("Buffer hexdump (%d bytes)\n",
 			 req->in[i].size);
-		print_hex_dump(KERN_INFO, "", DUMP_PREFIX_NONE, 16, 1,
-			       req->in[i].vptr, req->in[i].size, false);
+		print_hex_dump_debug("", DUMP_PREFIX_NONE, 16, 1,
+				     req->in[i].vptr, req->in[i].size, false);
 	}
 
-	dev_info(&pdev->dev, "Scatter list size %d\n", req->outcnt);
+	pr_debug("Scatter list size %d\n", req->outcnt);
 	for (i = 0; i < req->outcnt; i++) {
-		dev_info(&pdev->dev,
-			 "Buffer %d size %d, vptr 0x%p, dmaptr 0x%p\n", i,
+		pr_debug("Buffer %d size %d, vptr 0x%p, dmaptr 0x%p\n", i,
 			 req->out[i].size, req->out[i].vptr,
 			 (void *) req->out[i].dma_addr);
-		dev_info(&pdev->dev, "Buffer hexdump (%d bytes)\n",
-			 req->out[i].size);
-		print_hex_dump(KERN_INFO, "", DUMP_PREFIX_NONE, 16, 1,
-			       req->out[i].vptr, req->out[i].size, false);
+		pr_debug("Buffer hexdump (%d bytes)\n", req->out[i].size);
+		print_hex_dump_debug("", DUMP_PREFIX_NONE, 16, 1,
+				     req->out[i].vptr, req->out[i].size, false);
 	}
 }
 EXPORT_SYMBOL_GPL(dump_sg_list);

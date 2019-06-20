@@ -17,8 +17,6 @@
 #define DRV_NAME	"octeontx-cptvf"
 #define DRV_VERSION	"1.0"
 
-DEFINE_CPT_DEBUG_PARM(debug);
-
 static void vq_work_handler(unsigned long data)
 {
 	struct cptvf_wqe_info *cwqe_info = (struct cptvf_wqe_info *) data;
@@ -800,7 +798,6 @@ static int cptvf_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 
 	pci_set_drvdata(pdev, cptvf);
 	cptvf->pdev = pdev;
-	cpt_set_dbg_level(debug);
 
 	err = pci_enable_device(pdev);
 	if (err) {
