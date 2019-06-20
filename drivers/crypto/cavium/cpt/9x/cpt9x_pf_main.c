@@ -15,8 +15,6 @@
 #define DRV_NAME	"octeontx2-cpt"
 #define DRV_VERSION	"1.0"
 
-DEFINE_CPT_DEBUG_PARM(debug);
-
 void cptpf_enable_vf_flr_intrs(struct cptpf_dev *cptpf)
 {
 	/* Clear interrupt if any */
@@ -521,7 +519,6 @@ static int cptpf_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 	cptpf->pdev = pdev;
 	cptpf->crypto_eng_grp = INVALID_CRYPTO_ENG_GRP;
 	cptpf->max_vfs = pci_sriov_get_totalvfs(pdev);
-	cpt_set_dbg_level(debug);
 
 	err = pcim_enable_device(pdev);
 	if (err) {

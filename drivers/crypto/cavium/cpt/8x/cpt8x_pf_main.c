@@ -13,8 +13,6 @@
 #define DRV_NAME	"octeontx-cpt"
 #define DRV_VERSION	"1.0"
 
-DEFINE_CPT_DEBUG_PARM(debug);
-
 DEFINE_MUTEX(octeontx_cpt_devices_lock);
 LIST_HEAD(octeontx_cpt_devices);
 
@@ -226,7 +224,6 @@ static int cpt_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 
 	pci_set_drvdata(pdev, cpt);
 	cpt->pdev = pdev;
-	cpt_set_dbg_level(debug);
 
 	err = pci_enable_device(pdev);
 	if (err) {

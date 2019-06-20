@@ -14,7 +14,6 @@
 #include <linux/pci.h>
 #include <linux/types.h>
 #include <linux/module.h>
-#include "cpt_debug.h"
 
 /* Maximum request size in bytes */
 #define CPT_MAX_REQ_SIZE	65535
