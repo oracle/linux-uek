@@ -9,16 +9,14 @@
  */
 
 #include <linux/kernel.h>
-#include <linux/arm-smccc.h>
 #include <linux/cpu.h>
 #include <linux/nmi.h>
 #include <linux/module.h>
 #include <linux/irq.h>
+#include <linux/interrupt.h>
 #include <linux/sched/debug.h>
 
 #include "gti.h"
-
-#define GTI_CWD_WDOG_POKE(a) (0x50000ll + 8ll * ((a) & 0x3f))
 
 /* Kernel exception simulation wrapper for the NMI callback */
 void nmi_kernel_callback_other_cpus(void *unused)
@@ -60,15 +58,7 @@ void nmi_kernel_callback(struct pt_regs *regs)
 	}
 
 	/*
-	 * FIXME: Add a new SMC interface to clear a per-core watchdog.
-	 * Also, importantly add support for recovery here and return to the
-	 * interrupted state via el3.
+	 * Return to the interrupted state via el3 and attempt
+	 * application recovery.
 	 */
-	for (;;) {
-		/* Poke the Watchdog */
-		if (g_gti_devmem) {
-			writeq(0, g_gti_devmem +
-				GTI_CWD_WDOG_POKE(raw_smp_processor_id()));
-		}
-	}
 }

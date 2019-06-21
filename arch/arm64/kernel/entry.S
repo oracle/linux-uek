@@ -158,7 +158,11 @@ alternative_cb_end
 #endif
 	.endm
 
+#ifdef CONFIG_GTI_WATCHDOG
+	.macro	kernel_entry, el, regsize = 64, exc_el3 = 0
+#else
 	.macro	kernel_entry, el, regsize = 64
+#endif
 	.if	\regsize == 32
 	mov	w0, w0				// zero upper 32 bits of x0
 	.endif
@@ -205,7 +209,10 @@ alternative_cb_end
 	.endif /* \el == 0 */
 
 #ifdef CONFIG_GTI_WATCHDOG
-	.if	\el == 3
+	.if 	\exc_el3 == 0
+	mrs	x22, elr_el1
+	mrs	x23, spsr_el1
+	.else
 	/*
 	 * load elr, spsr in case of simulated exception return from
 	 * elr_el12, spsr_el12 which are used as scratch registers
@@ -215,12 +222,10 @@ alternative_cb_end
 	 */
 	mrs	x22, S3_5_C4_C0_1
 	mrs	x23, S3_5_C4_C0_0
-	.else
-#endif
+	.endif	/* \exc_el3 == 0 */
+#else
 	mrs	x22, elr_el1
 	mrs	x23, spsr_el1
-#ifdef CONFIG_GTI_WATCHDOG
-	.endif	/* \el == 3 */
 #endif
 	stp	lr, x21, [sp, #S_LR]
 
@@ -285,7 +290,11 @@ alternative_else_nop_endif
 	*/
 	.endm
 
+#ifdef CONFIG_GTI_WATCHDOG
+	.macro	kernel_exit, el, fbt_emu = 0, exc_el3 = 0
+#else
 	.macro	kernel_exit, el, fbt_emu = 0
+#endif
 	.if	\el != 0
 	/* Restore the task's original addr_limit. */
 	ldr	x20, [sp, #S_ORIG_ADDR_LIMIT]
@@ -416,14 +425,35 @@ alternative_insn eret, nop, ARM64_UNMAP_KERNEL_AT_EL0
 #ifdef CONFIG_UNMAP_KERNEL_AT_EL0
 	bne	4f
 	msr	far_el1, x30
+#ifdef CONFIG_GTI_WATCHDOG
+	.if	\exc_el3 == 0
 	tramp_alias	x30, tramp_exit_native
+	.else
+	tramp_alias	x30, tramp_exit_native_el3
+	.endif
+#else
+	tramp_alias	x30, tramp_exit_native
+#endif
 	br	x30
 4:
+#ifdef CONFIG_GTI_WATCHDOG
+	.if	\exc_el3 == 0
 	tramp_alias	x30, tramp_exit_compat
+	.else
+	tramp_alias	x30, tramp_exit_compat_el3
+	.endif
+#else
+	tramp_alias	x30, tramp_exit_compat
+#endif
 	br	x30
 #endif
+#ifdef CONFIG_GTI_WATCHDOG
+	.elseif	\exc_el3 == 0
+	eret
+#else
 	.else
 	eret
+#endif
 	.endif
 	.endm
 
@@ -963,6 +993,7 @@ el0_error_naked:
 ENDPROC(el0_error)
 
 #ifdef CONFIG_GTI_WATCHDOG
+
 .globl	el1_nmi_callback
 el1_nmi_callback:
 	/*
@@ -970,9 +1001,36 @@ el1_nmi_callback:
 	 * exception entry and pstate are loaded from ELR_ELx and SPSR_ELx.
 	 */
 	sub     sp, sp, #S_FRAME_SIZE
-	kernel_entry 3
+	mrs	x8, S3_5_C13_C0_1		// contextidr_el12
+	cbnz	x8, el2_context_entry
+	kernel_entry 0, 64, 1
+	b	invoke_callback
+el2_context_entry:
+	kernel_entry 1, 64, 1
+invoke_callback:
 	mov	x0, sp
 	bl	nmi_kernel_callback
+	cbnz	x8, el2_context_exit
+	kernel_exit 0, 0, 1
+	b	ret_back_to_el3
+el2_context_exit:
+	kernel_exit 1, 0, 1
+ret_back_to_el3:
+	/*
+	 * We return back to the interrupted context via EL3,
+	 * as we need to do cleanup in ATF before restoring
+	 * interrupted context such as dropping lock and
+	 * do interrupt completion, etc.
+	 */
+	mov	x0, #0xc04                 	// #0xc2000c04
+	mov	x7, #0x0                   	// #0
+	movk	x0, #0xc200, lsl #16
+	mov	x6, #0x0                   	// #0
+	mov	x5, #0x0                   	// #0
+	mov	x4, #0x0                   	// #0
+	mov	x3, #0x0                   	// #0
+	mov	x1, #0x0                   	// #0
+	smc	#0x0
 #endif
 
 /*
@@ -1175,14 +1233,30 @@ alternative_insn isb, nop, ARM64_WORKAROUND_QCOM_FALKOR_E1003
 	ret
 	.endm
 
+#ifdef CONFIG_GTI_WATCHDOG
+	.macro tramp_exit, regsize = 64, exc_el3 = 0
+#else
 	.macro tramp_exit, regsize = 64
+#endif
 	adr	x30, tramp_vectors
 	msr	vbar_el1, x30
 	tramp_unmap_kernel	x30
 	.if	\regsize == 64
 	mrs	x30, far_el1
 	.endif
+#ifdef CONFIG_GTI_WATCHDOG
+	.if \exc_el3 == 0
 	eret
+	.else
+	/*
+	 * Cannot do an eret here as we have not
+	 * entered from a real exception.
+	 */
+	b	ret_back_to_el3
+	.endif
+#else
+	eret
+#endif
 	.endm
 
 	.align	11
@@ -1207,6 +1281,16 @@ END(tramp_exit_native)
 ENTRY(tramp_exit_compat)
 	tramp_exit	32
 END(tramp_exit_compat)
+
+#ifdef CONFIG_GTI_WATCHDOG
+ENTRY(tramp_exit_native_el3)
+	tramp_exit	64, 1
+END(tramp_exit_native_el3)
+
+ENTRY(tramp_exit_compat_el3)
+	tramp_exit	32, 1
+END(tramp_exit_compat_el3)
+#endif
 
 	.ltorg
 	.popsection				// .entry.tramp.text

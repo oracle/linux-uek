@@ -55,7 +55,6 @@ struct set_watchdog_args {
 };
 
 static unsigned long g_mmio_base;
-void __iomem *g_gti_devmem;
 
 static void cleanup_gti_watchdog(void)
 {
@@ -81,15 +80,12 @@ static int gti_wdog_close(struct inode *inode, struct file *file)
 
 void install_gti_cwd_wdog_secondary_cores(void *arg)
 {
-	struct set_watchdog_args *watchdog_args =
-		(struct set_watchdog_args *)arg;
 	struct arm_smccc_res res;
 
 	pr_info("Installing GTI CWD on CPU %d\n", raw_smp_processor_id());
 
-	arm_smccc_smc(OCTEONTX_INSTALL_WDOG, (uintptr_t)&el1_nmi_callback,
-		smp_processor_id(), watchdog_args->watchdog_timeout_ms,
-		watchdog_args->core_mask, 0, 0, 0, &res);
+	arm_smccc_smc(OCTEONTX_INSTALL_WDOG, smp_processor_id(),
+		 0, 0, 0, 0, 0, 0, &res);
 
 	if (!res.a0)
 		pr_warn("Failed to install watchdog handler on core %d : %ld\n",
@@ -116,11 +112,9 @@ void install_gti_cwd_wdog_all_cores(struct set_watchdog_args *watchdog_args)
 	 * enables the interrupts.
 	 */
 
-	pr_info("Setting and enable wdog timer on core %d\n", nr_cpu_ids);
-
-	arm_smccc_smc(OCTEONTX_INSTALL_WDOG, (uintptr_t)&el1_nmi_callback,
-		nr_cpu_ids, watchdog_args->watchdog_timeout_ms,
-		watchdog_args->core_mask, 0, 0, 0, &res);
+	arm_smccc_smc(OCTEONTX_START_WDOG, (uintptr_t)&el1_nmi_callback,
+		watchdog_args->watchdog_timeout_ms, watchdog_args->core_mask,
+		0, 0, 0, 0, &res);
 
 	if (!res.a0)
 		pr_warn("Failed to install watchdog handler on core %d : %ld\n",
@@ -222,10 +216,6 @@ static int gti_wdog_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	start = pci_resource_start(pdev, GTI_PF_BAR0);
 	end = pci_resource_end(pdev, GTI_PF_BAR0);
 	g_mmio_base = start;
-
-	g_gti_devmem = pcim_iomap(pdev, GTI_PF_BAR0, 0);
-	if (!g_gti_devmem)
-		dev_warn(&pdev->dev, "Could not ioremap gti device memory\n");
 
 	err = misc_register(&gti_wdog_miscdevice);
 	if (err != 0) {
