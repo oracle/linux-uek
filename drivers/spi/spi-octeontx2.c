@@ -331,6 +331,11 @@ static const struct pci_device_id octeontx2_spi_pci_id_table[] = {
 			 PCI_DEVID_OCTEONTX2_SPI,
 			 PCI_VENDOR_ID_CAVIUM,
 			 PCI_SUBSYS_DEVID_OTX2_95XX) },
+	{ PCI_DEVICE_SUB(PCI_VENDOR_ID_CAVIUM,
+			 PCI_DEVID_OCTEONTX2_SPI,
+			 PCI_VENDOR_ID_CAVIUM,
+			 PCI_SUBSYS_DEVID_OTX2_LOKI) },
+
 	{ 0, }
 };
 
