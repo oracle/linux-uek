@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2006, 2017 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2006, 2019 Oracle and/or its affiliates. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -116,12 +116,12 @@ static void rds_ib_cache_xfer_to_ready(struct rds_ib_refill_cache *cache)
 	}
 }
 
-static int rds_ib_recv_alloc_cache(struct rds_ib_refill_cache *cache)
+static int rds_ib_recv_alloc_cache(struct rds_ib_refill_cache *cache, gfp_t gfp)
 {
 	struct rds_ib_cache_head *head;
 	int cpu;
 
-	cache->percpu = alloc_percpu(struct rds_ib_cache_head);
+	cache->percpu = alloc_percpu_gfp(struct rds_ib_cache_head, gfp);
 	if (!cache->percpu)
 		return -ENOMEM;
 
@@ -136,13 +136,13 @@ static int rds_ib_recv_alloc_cache(struct rds_ib_refill_cache *cache)
 	return 0;
 }
 
-int rds_ib_recv_alloc_caches(struct rds_ib_connection *ic)
+int rds_ib_recv_alloc_caches(struct rds_ib_connection *ic, gfp_t gfp)
 {
 	int ret;
 
-	ret = rds_ib_recv_alloc_cache(&ic->i_cache_incs);
+	ret = rds_ib_recv_alloc_cache(&ic->i_cache_incs, gfp);
 	if (!ret) {
-		ret = rds_ib_recv_alloc_cache(&ic->i_cache_frags);
+		ret = rds_ib_recv_alloc_cache(&ic->i_cache_frags, gfp);
 		if (ret)
 			free_percpu(ic->i_cache_incs.percpu);
 	}
@@ -241,7 +241,7 @@ void rds_ib_recv_rebuild_caches(struct rds_ib_connection *ic)
 
 	/* Now re-build the caches */
 	rds_ib_recv_free_caches(ic);
-	rds_ib_recv_alloc_caches(ic);
+	rds_ib_recv_alloc_caches(ic, GFP_KERNEL);
 
 	pr_debug("RDS/IB: Rebuild caches for ic %p i_cm_id %p, frag{%d->%d}\n",
 		 ic, ic->i_cm_id, ic->i_frag_cache_sz, ic->i_frag_sz);
