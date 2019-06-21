@@ -272,10 +272,12 @@ int bpf_prog_test_run(int prog_fd, int repeat, void *data, __u32 size,
 	attr.test.data_in = ptr_to_u64(data);
 	attr.test.data_out = ptr_to_u64(data_out);
 	attr.test.data_size_in = size;
+	if (data_out)
+		attr.test.data_size_out = *size_out;
 	attr.test.repeat = repeat;
 
 	ret = sys_bpf(BPF_PROG_TEST_RUN, &attr, sizeof(attr));
-	if (size_out)
+	if (data_out)
 		*size_out = attr.test.data_size_out;
 	if (retval)
 		*retval = attr.test.retval;

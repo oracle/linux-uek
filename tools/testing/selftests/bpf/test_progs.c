@@ -116,6 +116,40 @@ static void test_pkt_access(void)
 	bpf_object__close(obj);
 }
 
+static void test_output_size_hint(void)
+{
+	const char *file = "./test_pkt_access.o";
+	struct bpf_object *obj;
+	__u32 retval, size, duration;
+	int err, prog_fd;
+	char buf[10];
+
+	err = bpf_prog_load(file, BPF_PROG_TYPE_SCHED_CLS, &obj, &prog_fd);
+	if (err) {
+		error_cnt++;
+		return;
+	}
+
+	memset(buf, 0, sizeof(buf));
+
+	size = 5;
+	err = bpf_prog_test_run(prog_fd, 1, &pkt_v4, sizeof(pkt_v4),
+				buf, &size, &retval, &duration);
+	CHECK(err || retval, "run",
+	      "err %d errno %d retval %d\n",
+	      err, errno, retval);
+
+	CHECK(size != sizeof(pkt_v4), "out_size",
+	      "incorrect output size, want %lu have %u\n",
+	      sizeof(pkt_v4), size);
+
+	CHECK(buf[5] != 0, "overflow",
+	      "prog_test_run ignored size hint\n");
+
+	bpf_object__close(obj);
+}
+
+
 static void test_xdp(void)
 {
 	struct vip key4 = {.protocol = 6, .family = AF_INET};
@@ -142,6 +176,7 @@ static void test_xdp(void)
 	bpf_map_update_elem(map_fd, &key4, &value4, 0);
 	bpf_map_update_elem(map_fd, &key6, &value6, 0);
 
+	size = sizeof(buf);
 	err = bpf_prog_test_run(prog_fd, 1, &pkt_v4, sizeof(pkt_v4),
 				buf, &size, &retval, &duration);
 
@@ -150,6 +185,7 @@ static void test_xdp(void)
 	      "err %d errno %d retval %d size %d\n",
 	      err, errno, retval, size);
 
+	size = sizeof(buf);
 	err = bpf_prog_test_run(prog_fd, 1, &pkt_v6, sizeof(pkt_v6),
 				buf, &size, &retval, &duration);
 	CHECK(err || errno || retval != XDP_TX || size != 114 ||
@@ -214,13 +250,15 @@ static void test_l4lb(void)
 		goto out;
 	bpf_map_update_elem(map_fd, &real_num, &real_def, 0);
 
+	size = sizeof(buf);
 	err = bpf_prog_test_run(prog_fd, NUM_ITER, &pkt_v4, sizeof(pkt_v4),
 				buf, &size, &retval, &duration);
 	CHECK(err || errno || retval != 7/*TC_ACT_REDIRECT*/ || size != 54 ||
 	      *magic != MAGIC_VAL, "ipv4",
 	      "err %d errno %d retval %d size %d magic %x\n",
 	      err, errno, retval, size, *magic);
-
+	
+	size = sizeof(buf);
 	err = bpf_prog_test_run(prog_fd, NUM_ITER, &pkt_v6, sizeof(pkt_v6),
 				buf, &size, &retval, &duration);
 	CHECK(err || errno || retval != 7/*TC_ACT_REDIRECT*/ || size != 74 ||
@@ -502,6 +540,7 @@ int main(void)
 	setrlimit(RLIMIT_MEMLOCK, &rinf);
 
 	test_pkt_access();
+	test_output_size_hint();
 	test_xdp();
 	test_l4lb();
 	test_tcp_estats();
