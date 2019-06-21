@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2006, 2018 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2006, 2019 Oracle and/or its affiliates. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -1594,11 +1594,11 @@ int rds_ib_conn_alloc(struct rds_connection *conn, gfp_t gfp)
 	int ret;
 
 	/* XXX too lazy? */
-	ic = kzalloc(sizeof(struct rds_ib_connection), GFP_KERNEL);
+	ic = kzalloc(sizeof(struct rds_ib_connection), gfp);
 	if (!ic)
 		return -ENOMEM;
 
-	ret = rds_ib_recv_alloc_caches(ic);
+	ret = rds_ib_recv_alloc_caches(ic, gfp);
 	if (ret) {
 		kfree(ic);
 		return ret;
