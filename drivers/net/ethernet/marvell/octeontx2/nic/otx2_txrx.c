@@ -222,8 +222,7 @@ done:
 }
 
 static void otx2_rcv_pkt_handler(struct otx2_nic *pfvf,
-				 struct otx2_cq_queue *cq, void *cqe,
-				 int *pool_ptrs)
+				 struct otx2_cq_queue *cq, void *cqe)
 {
 	struct nix_cqe_hdr_s *cqe_hdr = (struct nix_cqe_hdr_s *)cqe;
 	struct otx2_qset *qset = &pfvf->qset;
@@ -295,7 +294,7 @@ static void otx2_rcv_pkt_handler(struct otx2_nic *pfvf,
 				otx2_skb_add_frag(pfvf, skb, *iova, len);
 			}
 			iova++;
-			(*pool_ptrs)++;
+			cq->pool_ptrs++;
 		}
 
 		/* When SEGS = 1, only one IOVA is followed by NIX_RX_SG_S.
@@ -344,9 +343,9 @@ static void otx2_rcv_pkt_handler(struct otx2_nic *pfvf,
 int otx2_napi_handler(struct otx2_cq_queue *cq,
 		      struct otx2_nic *pfvf, int budget)
 {
-	int tx_pkts = 0, tx_bytes = 0, pool_ptrs = 0;
 	struct otx2_pool *rbpool = cq->rbpool;
 	int processed_cqe = 0, workdone = 0;
+	int tx_pkts = 0, tx_bytes = 0;
 	struct nix_cqe_hdr_s *cqe_hdr;
 	struct netdev_queue *txq;
 	u64 cq_status;
@@ -398,7 +397,7 @@ process_cqe:
 		switch (cqe_hdr->cqe_type) {
 		case NIX_XQE_TYPE_RX:
 			/* Receive packet handler*/
-			otx2_rcv_pkt_handler(pfvf, cq, cqe_hdr, &pool_ptrs);
+			otx2_rcv_pkt_handler(pfvf, cq, cqe_hdr);
 			workdone++;
 			break;
 		case NIX_XQE_TYPE_SEND:
@@ -416,16 +415,28 @@ process_cqe:
 		netdev_tx_completed_queue(txq, tx_pkts, tx_bytes);
 	}
 
-	if (!pool_ptrs)
+	if (!cq->pool_ptrs)
 		return 0;
 
 	/* Refill pool with new buffers */
-	while (pool_ptrs) {
+	while (cq->pool_ptrs) {
 		bufptr = otx2_alloc_rbuf(pfvf, rbpool, GFP_ATOMIC);
-		if (bufptr <= 0)
+		if (bufptr <= 0) {
+			struct refill_work *work;
+			struct delayed_work *dwork;
+
+			work = &pfvf->refill_wrk[cq->cq_idx];
+			dwork = &work->pool_refill_work;
+			/* Schedule a task if no other task is running */
+			if (!cq->refill_task_sched) {
+				cq->refill_task_sched = true;
+				schedule_delayed_work(dwork,
+						      msecs_to_jiffies(100));
+			}
 			break;
+		}
 		otx2_aura_freeptr(pfvf, cq->cq_idx, bufptr + OTX2_HEAD_ROOM);
-		pool_ptrs--;
+		cq->pool_ptrs--;
 	}
 	otx2_get_page(rbpool);
 
@@ -452,6 +463,11 @@ int otx2_poll(struct napi_struct *napi, int budget)
 		cq = &qset->cq[cq_idx];
 		qcount = otx2_read64(pfvf, NIX_LF_CINTX_CNT(cq_poll->cint_idx));
 		qcount = (qcount >> 32) & 0xFFFF;
+		/* If the RQ refill WQ task is running, skip napi
+		 * scheduler for this queue.
+		 */
+		if (cq->refill_task_sched)
+			continue;
 		workdone += otx2_napi_handler(cq, pfvf, budget);
 		if (workdone && qcount == 1)
 			break;

@@ -158,6 +158,11 @@ struct flr_work {
 	struct otx2_nic *pf;
 };
 
+struct refill_work {
+	struct delayed_work pool_refill_work;
+	struct otx2_nic *pf;
+};
+
 struct otx2_nic {
 	void __iomem		*reg_base;
 	struct pci_dev		*pdev;
@@ -195,6 +200,7 @@ struct otx2_nic {
 	struct list_head	flows;
 	struct workqueue_struct	*flr_wq;
 	struct flr_work		*flr_wrk;
+	struct refill_work	*refill_wrk;
 
 	u8			hw_rx_tstamp;
 	u8			hw_tx_tstamp;
