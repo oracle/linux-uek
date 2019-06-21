@@ -626,28 +626,33 @@ void rvu_npc_install_bcast_match_entry(struct rvu *rvu, u16 pcifunc,
 	index = npc_get_nixlf_mcam_index(mcam, pcifunc,
 					 nixlf, NIXLF_BCAST_ENTRY);
 
-	/* Check for L2B bit and LMAC channel
+	/* Check for Broadcast MAC address and LMAC channel
 	 * NOTE: Since MKEX default profile(a reduced version intended to
 	 * accommodate more capability but igoring few bits) a stap-gap
 	 * approach.
-	 * Since we care for L2B which by HRM NPC_PARSE_KEX_S at BIT_POS[25], So
-	 * moved to BIT_POS[13], ignoring ERRCODE, ERRLEV as we'll loose out
+	 * Since we are ignoring ERRCODE, ERRLEV as we'll loose out
 	 * on capability features needed for CoS (/from ODP PoV) e.g: VLAN,
 	 * DSCP.
 	 *
 	 * Reduced layout of MKEX default profile -
-	 * Includes following are (i.e.CHAN, L2/3{B/M}, LA, LB, LC, LD):
+	 * Includes following are (i.e.CHAN, LA, LB, LC, LD, LE):
 	 *
-	 * BIT_POS[31:28] : LD
-	 * BIT_POS[27:24] : LC
-	 * BIT_POS[23:20] : LB
-	 * BIT_POS[19:16] : LA
-	 * BIT_POS[15:12] : L3B, L3M, L2B, L2M
+	 * BIT_POS[31:28] : LE
+	 * BIT_POS[27:24] : LD
+	 * BIT_POS[23:20] : LC
+	 * BIT_POS[19:16] : LB
+	 * BIT_POS[15:12] : LA
 	 * BIT_POS[11:00] : CHAN
 	 *
 	 */
-	entry.kw[0] = BIT_ULL(13) | chan;
-	entry.kw_mask[0] = BIT_ULL(13) | 0xFFFULL;
+	entry.kw[0] = chan;
+	entry.kw_mask[0] = 0xfffull;
+
+	/* Match broadcast mac address, From KEX profile DMAC starts
+	 * at 0B of KW1
+	 */
+	entry.kw[1] = 0xffffffffffffull;
+	entry.kw_mask[1] = 0xffffffffffffull;
 
 	*(u64 *)&action = 0x00;
 #ifdef MCAST_MCE
@@ -1371,9 +1376,9 @@ int rvu_npc_init(struct rvu *rvu)
 		    BIT_ULL(7) | BIT_ULL(6) | BIT_ULL(2) | BIT_ULL(1));
 
 	/* Set RX and TX side MCAM search key size.
-	 * LA..LD (ltype only) + Channel
+	 * LA..LE (ltype only) + Channel
 	 */
-	nibble_ena = 0x49247;
+	nibble_ena = 0x249207;
 	rvu_write64(rvu, blkaddr, NPC_AF_INTFX_KEX_CFG(NIX_INTF_RX),
 			((keyz & 0x3) << 32) | nibble_ena);
 	/* Due to an errata (35786) in A0 pass silicon, parse nibble enable
