@@ -353,12 +353,16 @@ static int dst_fetch_ha(struct dst_entry *dst, struct rdma_dev_addr *dev_addr,
 	if (!n)
 		return -ENODATA;
 
+	read_lock_bh(&n->lock);
 	if (!(n->nud_state & NUD_VALID)) {
-		neigh_event_send(n, NULL);
 		ret = -ENODATA;
 	} else {
 		ret = rdma_copy_addr(dev_addr, dst->dev, n->ha);
 	}
+	read_unlock_bh(&n->lock);
+
+	if (ret)
+		neigh_event_send(n, NULL);
 
 	neigh_release(n);
 
