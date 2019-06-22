@@ -1429,10 +1429,13 @@ static void rvu_dbg_nix_init(struct rvu *rvu)
 	if (!pfile)
 		goto create_failed;
 
-	pfile = debugfs_create_file("tx_stall_hwissue", 0600, rvu->rvu_dbg.nix,
-				    rvu, &rvu_dbg_nix_tx_stall_hwissue_fops);
-	if (!pfile)
-		goto create_failed;
+	if (is_rvu_96xx_A0(rvu)) {
+		pfile = debugfs_create_file("tx_stall_hwissue", 0600,
+					    rvu->rvu_dbg.nix, rvu,
+					    &rvu_dbg_nix_tx_stall_hwissue_fops);
+		if (!pfile)
+			goto create_failed;
+	}
 
 	pfile = debugfs_create_file("qsize", 0600, rvu->rvu_dbg.nix, rvu,
 				    &rvu_dbg_nix_qsize_fops);
