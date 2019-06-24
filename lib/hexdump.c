@@ -217,6 +217,7 @@ int hex_dump_to_buffer(const void *buf, size_t len, int rowsize, int groupsize,
 		if (linebuflen < lx + 2)
 			goto overflow2;
 		ch = ptr[j];
+		lx = array_index_nospec(lx, linebuflen-2);
 		linebuf[lx++] = (isascii(ch) && isprint(ch)) ? ch : '.';
 	}
 nil:
