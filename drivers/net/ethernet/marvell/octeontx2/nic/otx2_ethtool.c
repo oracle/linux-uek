@@ -1478,6 +1478,25 @@ static int otx2vf_get_sset_count(struct net_device *netdev, int sset)
 	       otx2_n_queue_stats * (vf->hw.rx_queues + vf->hw.tx_queues);
 }
 
+static int otx2vf_get_link_ksettings(struct net_device *netdev,
+				     struct ethtool_link_ksettings *cmd)
+{
+	struct otx2_nic *pfvf = netdev_priv(netdev);
+
+	if (pfvf->pdev->device ==  PCI_DEVID_OCTEONTX2_RVU_AFVF) {
+		cmd->base.port = PORT_OTHER;
+		if (!netif_running(netdev)) {
+			cmd->base.duplex = DUPLEX_UNKNOWN;
+			cmd->base.speed = SPEED_UNKNOWN;
+		} else {
+			cmd->base.duplex = DUPLEX_FULL;
+			cmd->base.speed = SPEED_100000;
+		}
+	} else {
+		return	otx2_get_link_ksettings(netdev, cmd);
+	}
+	return 0;
+}
 static const struct ethtool_ops otx2vf_ethtool_ops = {
 	.get_drvinfo		= otx2vf_get_drvinfo,
 	.get_strings		= otx2vf_get_strings,
@@ -1497,6 +1516,7 @@ static const struct ethtool_ops otx2vf_ethtool_ops = {
 	.set_coalesce		= otx2_set_coalesce,
 	.get_pauseparam		= otx2_get_pauseparam,
 	.set_pauseparam		= otx2_set_pauseparam,
+	.get_link_ksettings     = otx2vf_get_link_ksettings,
 };
 
 void otx2vf_set_ethtool_ops(struct net_device *netdev)
