@@ -1062,6 +1062,7 @@ megasas_ioc_init_fusion(struct megasas_instance *instance)
 	u32 scratch_pad_1;
 	ktime_t time;
 	bool cur_fw_64bit_dma_capable;
+	bool cur_intr_coalescing;
 
 	fusion = instance->ctrl_context;
 
@@ -1094,6 +1095,16 @@ megasas_ioc_init_fusion(struct megasas_instance *instance)
 		ret = 1;
 		goto fail_fw_init;
 	}
+
+	cur_intr_coalescing = (scratch_pad_1 & MR_INTR_COALESCING_SUPPORT_OFFSET) ?
+							true : false;
+
+	if ((instance->low_latency_index_start ==
+		MR_HIGH_IOPS_QUEUE_COUNT) && cur_intr_coalescing)
+		instance->balanced_mode = true;
+
+	dev_info(&instance->pdev->dev, "Balanced mode :%s\n",
+		instance->balanced_mode ? "Yes" : "No");
 
 	instance->fw_sync_cache_support = (scratch_pad_1 &
 		MR_CAN_HANDLE_SYNC_CACHE_OFFSET) ? 1 : 0;
