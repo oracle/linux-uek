@@ -251,6 +251,9 @@ static int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 		break;
 
 	case RDMA_CM_EVENT_REJECTED:
+		/* May be due to ARP cache containing an incorrect dmac, hence flush it */
+		rds_ib_flush_arp_entry(&conn->c_faddr);
+
 		err = (int *)event->param.conn.private_data;
 
 		if (event->status == RDS_REJ_CONSUMER_DEFINED &&
