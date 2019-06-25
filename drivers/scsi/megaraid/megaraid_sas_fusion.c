@@ -2070,7 +2070,6 @@ megasas_is_prp_possible(struct megasas_instance *instance,
 			    mega_mod64(sg_dma_address(sg_scmd),
 				       mr_nvme_pg_size)) {
 				build_prp = false;
-				atomic_inc(&instance->sge_holes_type1);
 				break;
 			}
 		}
@@ -2080,7 +2079,6 @@ megasas_is_prp_possible(struct megasas_instance *instance,
 					sg_dma_len(sg_scmd)),
 					mr_nvme_pg_size))) {
 				build_prp = false;
-				atomic_inc(&instance->sge_holes_type2);
 				break;
 			}
 		}
@@ -2089,7 +2087,6 @@ megasas_is_prp_possible(struct megasas_instance *instance,
 			if (mega_mod64(sg_dma_address(sg_scmd),
 				       mr_nvme_pg_size)) {
 				build_prp = false;
-				atomic_inc(&instance->sge_holes_type3);
 				break;
 			}
 		}
@@ -2222,7 +2219,6 @@ megasas_make_prp_nvme(struct megasas_instance *instance, struct scsi_cmnd *scmd,
 	main_chain_element->Length =
 			cpu_to_le32(num_prp_in_chain * sizeof(u64));
 
-	atomic_inc(&instance->prp_sgl);
 	return build_prp;
 }
 
@@ -2297,7 +2293,6 @@ megasas_make_sgl_fusion(struct megasas_instance *instance,
 			memset(sgl_ptr, 0, instance->max_chain_frame_sz);
 		}
 	}
-	atomic_inc(&instance->ieee_sgl);
 }
 
 /**
