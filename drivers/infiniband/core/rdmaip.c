@@ -66,7 +66,7 @@ static void rdmaip_ip_config_init(void);
 static void rdmaip_ip_failover_groups_init(void);
 static void rdmaip_update_port_status_all_layers(u8 port, int event_type,
 						 int event);
-static void rdmaip_update_ip_addrs(int);
+static bool rdmaip_update_ip_addrs(int);
 static int rdmaip_inetaddr_event(struct notifier_block *,
 				 unsigned long, void *);
 static int rdmaip_inet6addr_event(struct notifier_block *,
@@ -679,7 +679,7 @@ out:
 	return ret;
 }
 
-static void rdmaip_init_ip4_addrs(struct net_device *net_dev,
+static bool rdmaip_init_ip4_addrs(struct net_device *net_dev,
 				  struct in_device *in_dev, u8 port)
 {
 	__be32			excl_addr = 0;
@@ -689,6 +689,7 @@ static void rdmaip_init_ip4_addrs(struct net_device *net_dev,
 	__be32			ip_bcast;
 	__be32			ip_mask;
 	struct in_ifaddr	*ifa;
+	bool			ips_updated = false;
 
 	RDMAIP_DBG2("%s: IPv4 addresses are%sconfigured\n", net_dev->name,
 		    in_dev->ifa_list ? " " : " not ");
@@ -717,6 +718,7 @@ static void rdmaip_init_ip4_addrs(struct net_device *net_dev,
 			ip_config[port].ip_addr = ip_addr;
 			ip_config[port].ip_bcast = ip_bcast;
 			ip_config[port].ip_mask = ip_mask;
+			ips_updated = true;
 		} else if (!excl_addr) {
 			for (i = 0; i < ip_config[port].alias_cnt; i++) {
 				if (ip_config[port].aliases[i].ip_addr ==
@@ -734,15 +736,18 @@ static void rdmaip_init_ip4_addrs(struct net_device *net_dev,
 				pr_warn("rdmaip: max number of address alias reached for %s\n",
 				       if_name);
 				ip_config[port].alias_cnt--;
-				return;
+				return ips_updated;
 			}
 
 			strcpy(ip_config[port].aliases[idx].if_name, if_name);
 			ip_config[port].aliases[idx].ip_addr = ip_addr;
 			ip_config[port].aliases[idx].ip_bcast = ip_bcast;
 			ip_config[port].aliases[idx].ip_mask = ip_mask;
+			ips_updated = true;
 		}
 	}
+
+	return ips_updated;
 }
 
 
@@ -750,11 +755,12 @@ static void rdmaip_init_ip4_addrs(struct net_device *net_dev,
  * For the given net_device, populate the specified rdmaip_port (port) with
  * the non-link local IPv6 addresses associated with that device.
  */
-static void rdmaip_init_ip6_addrs(struct net_device *net_dev,
+static bool rdmaip_init_ip6_addrs(struct net_device *net_dev,
 				  struct inet6_dev *in6_dev, u8 port)
 {
 	struct inet6_ifaddr *ifa;
 	u32 idx, i;
+	bool ips_updated = false;
 
 	read_lock_bh(&in6_dev->lock);
 	list_for_each_entry(ifa, &in6_dev->addr_list, if_list) {
@@ -783,6 +789,7 @@ static void rdmaip_init_ip6_addrs(struct net_device *net_dev,
 
 		ip_config[port].ip6_addrs[idx].addr = ifa->addr;
 		ip_config[port].ip6_addrs[idx].prefix_len = ifa->prefix_len;
+		ips_updated = true;
 	}
 	read_unlock_bh(&in6_dev->lock);
 
@@ -790,6 +797,8 @@ static void rdmaip_init_ip6_addrs(struct net_device *net_dev,
 
 	RDMAIP_DBG2("%s: IPv6 addresses are%sconfigured\n", net_dev->name,
 		    ip_config[port].ip6_addrs_cnt ? " " : " not ");
+
+	return ips_updated;
 }
 
 static u8 rdmaip_init_port(struct rdmaip_device	*rdmaip_dev,
@@ -1523,16 +1532,17 @@ static void rdmaip_event_handler(struct ib_event_handler *handler,
 		    ib_event_msg(work->ib_event));
 }
 
-static void rdmaip_update_ip_addrs(int port)
+static bool rdmaip_update_ip_addrs(int port)
 {
 	struct inet6_dev  *in6_dev;
 	struct net_device *ndev;
 	struct in_device *in_dev;
+	bool ips_updated = false;
 
 	ndev = ip_config[port].netdev;
 	if (!ndev) {
 		RDMAIP_DBG2("netdev is NULL\n");
-		return;
+		return ips_updated;
 	}
 
 	/*
@@ -1545,7 +1555,8 @@ static void rdmaip_update_ip_addrs(int port)
 	if (!RDMAIP_IPV4_ADDR_SET(port)) {
 		in_dev = in_dev_get(ndev);
 		if (in_dev) {
-			rdmaip_init_ip4_addrs(ndev, in_dev, port);
+			ips_updated = rdmaip_init_ip4_addrs(ndev,
+							    in_dev, port);
 			in_dev_put(in_dev);
 		}
 	}
@@ -1553,10 +1564,13 @@ static void rdmaip_update_ip_addrs(int port)
 	if (!RDMAIP_IPV6_ADDR_SET(port)) {
 		in6_dev = in6_dev_get(ndev);
 		if (in6_dev) {
-			rdmaip_init_ip6_addrs(ndev, in6_dev, port);
+			ips_updated = rdmaip_init_ip6_addrs(ndev,
+							    in6_dev, port);
 			in6_dev_put(in6_dev);
 		}
 	}
+
+	return ips_updated;
 }
 
 static void rdmaip_do_initial_failovers(void)
@@ -2754,8 +2768,11 @@ static void rdmaip_impl_inetaddr_event(struct work_struct *_work)
 		return;
 	}
 
-	rdmaip_update_ip_addrs(port);
-	rdmaip_process_async_event(port, RDMAIP_EVENT_NET, NETDEV_UP);
+	if (rdmaip_update_ip_addrs(port)) {
+		RDMAIP_DBG2_PTR("New IPs are found: netdev %s\n",
+				ip_config[port].if_name);
+		rdmaip_process_async_event(port, RDMAIP_EVENT_NET, NETDEV_UP);
+	}
 
 	remove_inet4_nb = true;
 	remove_inet6_nb = true;
