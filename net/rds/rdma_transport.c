@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2009, 2018 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2009, 2019 Oracle and/or its affiliates. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -35,7 +35,6 @@
 
 #include "rdma_transport.h"
 #include "ib.h"
-#include "net/arp.h"
 #include "rds_single_path.h"
 
 #include <net/sock.h>
@@ -136,7 +135,7 @@ static int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 			/* These events might indicate the IP being moved,
 			 * hence flush the address
 			 */
-			rds_ib_flush_arp_entry(&conn->c_faddr);
+			rds_ib_flush_neigh(&init_net, conn);
 		rds_rtd(RDS_RTD_CM, "Bailing, conn %p being shut down, ret: %d\n",
 			conn, ret);
 		goto out;
@@ -212,7 +211,7 @@ static int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 
 	case RDMA_CM_EVENT_ROUTE_ERROR:
 		/* IP might have been moved so flush the ARP entry and retry */
-		rds_ib_flush_arp_entry(&conn->c_faddr);
+		rds_ib_flush_neigh(&init_net, conn);
 
 		rds_rtd_ptr(RDS_RTD_ERR,
 			    "ROUTE_ERROR: conn %p, calling rds_conn_drop <%pI6c,%pI6c,%d>\n",
@@ -228,7 +227,8 @@ static int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 
 	case RDMA_CM_EVENT_ADDR_ERROR:
 		/* IP might have been moved so flush the ARP entry and retry */
-		rds_ib_flush_arp_entry(&conn->c_faddr);
+		rds_ib_flush_neigh(&init_net, conn);
+
 		rds_rtd_ptr(RDS_RTD_ERR,
 			    "ADDR_ERROR: conn %p, calling rds_conn_drop <%pI6c,%pI6c,%d>\n",
 			    conn, &conn->c_laddr,
@@ -241,7 +241,8 @@ static int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 	case RDMA_CM_EVENT_UNREACHABLE:
 	case RDMA_CM_EVENT_DEVICE_REMOVAL:
 		/* IP might have been moved so flush the ARP entry and retry */
-		rds_ib_flush_arp_entry(&conn->c_faddr);
+		rds_ib_flush_neigh(&init_net, conn);
+
 		rds_rtd_ptr(RDS_RTD_ERR,
 			    "CONN/UNREACHABLE/RMVAL ERR: conn %p, calling rds_conn_drop <%pI6c,%pI6c,%d>\n",
 			    conn, &conn->c_laddr,
@@ -252,7 +253,7 @@ static int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 
 	case RDMA_CM_EVENT_REJECTED:
 		/* May be due to ARP cache containing an incorrect dmac, hence flush it */
-		rds_ib_flush_arp_entry(&conn->c_faddr);
+		rds_ib_flush_neigh(&init_net, conn);
 
 		err = (int *)event->param.conn.private_data;
 
@@ -298,7 +299,8 @@ static int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 
 	case RDMA_CM_EVENT_ADDR_CHANGE:
 		/* IP might have been moved so flush the ARP entry and retry */
-		rds_ib_flush_arp_entry(&conn->c_faddr);
+		rds_ib_flush_neigh(&init_net, conn);
+
 		rds_rtd_ptr(RDS_RTD_CM_EXT,
 			    "ADDR_CHANGE event <%pI6c,%pI6c>\n",
 			    &conn->c_laddr,
@@ -313,7 +315,8 @@ static int rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 
 	case RDMA_CM_EVENT_DISCONNECTED:
 		/* IP might have been moved so flush the ARP entry and retry */
-		rds_ib_flush_arp_entry(&conn->c_faddr);
+		rds_ib_flush_neigh(&init_net, conn);
+
 		rds_rtd_ptr(RDS_RTD_CM,
 			    "DISCONNECT event - dropping conn %p <%pI6c,%pI6c,%d>\n",
 			    conn, &conn->c_laddr, &conn->c_faddr, conn->c_tos);
