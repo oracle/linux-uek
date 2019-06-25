@@ -127,9 +127,23 @@ int ptp_adjfine(struct ptp *ptp, long scaled_ppm)
 	return 0;
 }
 
-int ptp_get_clock(struct ptp *ptp, u64 *clk)
+static inline u64 get_tsc(bool is_pmu)
 {
-	*clk = readq(ptp->reg_base + PTP_CLOCK_HI);
+	return is_pmu ? read_sysreg(pmccntr_el0) : read_sysreg(cntvct_el0);
+}
+
+int ptp_get_clock(struct ptp *ptp, bool is_pmu, u64 *clk, u64 *tsc)
+{
+	u64 end, start;
+	u8 retries = 0;
+
+	do {
+		start = get_tsc(0);
+		*tsc = get_tsc(is_pmu);
+		*clk = readq(ptp->reg_base + PTP_CLOCK_HI);
+		end = get_tsc(0);
+		retries++;
+	} while (((end - start) > 50) && retries < 5);
 
 	return 0;
 }
