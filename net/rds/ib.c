@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2006, 2018 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2006, 2019 Oracle and/or its affiliates. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -69,7 +69,7 @@ LIST_HEAD(ib_nodev_conns);
 
 struct workqueue_struct *rds_aux_wq;
 
-struct socket	*rds_ib_inet_socket;
+static struct socket *rds_rdma_rtnl_sk;
 
 void rds_ib_nodev_connect(void)
 {
@@ -652,14 +652,12 @@ int rds_ib_init(void)
 
 	INIT_LIST_HEAD(&rds_ib_devices);
 
-	ret = sock_create_kern(&init_net, PF_INET, SOCK_STREAM, IPPROTO_TCP,
-			       &rds_ib_inet_socket);
+	ret = sock_create_kern(&init_net, PF_NETLINK, SOCK_RAW, NETLINK_ROUTE,
+			       &rds_rdma_rtnl_sk);
 	if (ret < 0) {
-		printk(KERN_ERR "RDS/IB: can't create TCP transport socket (%d).\n", -ret);
+		pr_err("RDS/IB: can't create netlink socket (%d).\n", -ret);
 		goto out;
 	}
-
-	sock_net_set(rds_ib_inet_socket->sk, &init_net);
 
 	/* Initialise the RDS IB fragment size */
 	rds_ib_init_frag(RDS_PROTOCOL_VERSION);
@@ -708,8 +706,8 @@ out_sysctl:
 out_fmr_exit:
 	rds_ib_fmr_exit();
 kernel_sock:
-	sock_release(rds_ib_inet_socket);
-	rds_ib_inet_socket = NULL;
+	sock_release(rds_rdma_rtnl_sk);
+	rds_rdma_rtnl_sk = NULL;
 out:
 	return ret;
 }
@@ -729,9 +727,9 @@ void rds_ib_exit(void)
 	rds_trans_unregister(&rds_ib_transport);
 	rds_ib_fmr_exit();
 
-	if (rds_ib_inet_socket) {
-		sock_release(rds_ib_inet_socket);
-		rds_ib_inet_socket = NULL;
+	if (rds_rdma_rtnl_sk) {
+		sock_release(rds_rdma_rtnl_sk);
+		rds_rdma_rtnl_sk = NULL;
 	}
 }
 
@@ -825,124 +823,127 @@ done:
 	return ret;
 }
 
-static void __flush_arp_entry(struct arpreq *r, char name[IFNAMSIZ])
+/* How long the same cache can be flushed again (in msec). */
+static unsigned int neigh_flush_interval = 750;
+
+/* Should be large enough to hold the flush message. */
+static unsigned int flush_buf_len = 48;
+
+/* Given an rds_connection, flush the peer address' neighbor cache entry.
+ * If the peer is not in the same network as us, nothing will be flushed.
+ *
+ * @net: the connection's namespace
+ * @conn: pointer to the connection
+ */
+void rds_ib_flush_neigh(struct net *net,
+			struct rds_connection *conn)
 {
+	struct sockaddr_nl nlsa = { .nl_family = AF_NETLINK };
+	static struct in6_addr last_laddr = { { { 0 } } };
+	static struct in6_addr last_faddr = { { { 0 } } };
+	static DEFINE_SPINLOCK(last_lock);
+	u8 buf[flush_buf_len], *sndbuf;
+	const struct in6_addr *laddr;
+	const struct in6_addr *faddr;
+	static u64 last_jiffies = 1;
+	struct msghdr msg = { 0 };
+	struct nlmsghdr *nlh;
+	unsigned long flags;
+	struct nlattr *nla;
+	struct ndmsg *ndm;
+	bool isv4, alloc;
+	struct kvec vec;
+	size_t buflen;
+	int addrlen;
 	int ret;
+	int idx;
 
-	r->arp_flags = ATF_PERM;
-	((struct sockaddr_in *)&r->arp_netmask)->sin_addr.s_addr = htonl(0);
-	strncpy(r->arp_dev, name, IFNAMSIZ);
-	ret = inet_ioctl(rds_ib_inet_socket, SIOCDARP, (unsigned long)r);
-	if ((ret == -ENOENT) || (ret == -ENXIO)) {
-		r->arp_flags |= ATF_PUBL;
-		((struct sockaddr_in *)&r->arp_netmask)->sin_addr.s_addr = htonl(0xFFFFFFFF);
-		ret = inet_ioctl(rds_ib_inet_socket, SIOCDARP, (unsigned long)r);
-	}
+	laddr = &conn->c_laddr;
+	faddr = &conn->c_faddr;
 
-	if (ret && (ret != -ENOENT) && (ret != -ENXIO))
-		pr_err("SIOCDARP failed, err %d, addr %pI4, flags 0x%x, device %s\n",
-		       ret, &((struct sockaddr_in *)r)->sin_addr.s_addr,
-		       r->arp_flags, r->arp_dev);
-}
-
-static void __flush_eth_arp_entry(struct arpreq *r)
-{
-	struct rds_ib_device *rds_ibdev;
-
-	down_read(&rds_ib_devices_lock);
-	list_for_each_entry(rds_ibdev, &rds_ib_devices, list) {
-		struct ib_device *ibdev = rds_ibdev->dev;
-		u8 port;
-
-		if (!ibdev->get_netdev)
-			continue;
-
-		for (port = 1; port <= ibdev->phys_port_cnt; ++port) {
-			struct net_device *ndev = ibdev->get_netdev(ibdev, port);
-
-			if (ndev)
-				__flush_arp_entry(r, ndev->name);
-		}
-	}
-	up_read(&rds_ib_devices_lock);
-}
-
-static void __flush_ib_arp_entry(struct arpreq *r)
-{
-	const int nmbr_dev_per_realloc = 10;
-	struct net_device *ndev;
-	char *dev_array = NULL;
-	int dev_found = 0;
-	int dev_left = 0;
-	char *ret;
-	int i;
-
-	rcu_read_lock();
-	for_each_netdev_rcu(&init_net, ndev) {
-		if (ndev->type != ARPHRD_INFINIBAND)
-			continue;
-
-		if (!dev_left) {
-			ret = krealloc(dev_array,
-				       (dev_found + nmbr_dev_per_realloc) * IFNAMSIZ,
-				       GFP_ATOMIC);
-			if (!ret) {
-				pr_err("krealloc failed");
-				break;
-			}
-			dev_array = ret;
-			dev_left = nmbr_dev_per_realloc;
-		}
-		strncpy(dev_array + dev_found * IFNAMSIZ, ndev->name, IFNAMSIZ);
-		++dev_found;
-		--dev_left;
-	}
-	rcu_read_unlock();
-
-	for (i = 0; i < dev_found; ++i)
-		__flush_arp_entry(r, dev_array + i * IFNAMSIZ);
-
-	kfree(dev_array);
-}
-
-void rds_ib_flush_arp_entry(struct in6_addr *prot_addr)
-{
-	struct sockaddr_in *sin;
-	struct page *page;
-	struct arpreq *r;
-
-	if (!ipv6_addr_v4mapped(prot_addr)) {
-		/* Addressed by bug 28220027 */
-		pr_err("IPv6 addresses are not flushed from ARP cache");
+	/* Should not flush the same cache again and again.  This can happen
+	 * when an interface is brought down so that all the connections
+	 * (say with different TOS hence same local/peer address pair) using
+	 * that interface are notified.  This is just a small optimization as
+	 * only the last flushed pair is remembered.
+	 */
+	spin_lock_irqsave(&last_lock, flags);
+	if (ipv6_addr_equal(laddr, &last_laddr) &&
+	    ipv6_addr_equal(faddr, &last_faddr) &&
+	    jiffies_to_msecs(get_jiffies_64() - last_jiffies) <
+	    neigh_flush_interval) {
+		spin_unlock_irqrestore(&last_lock, flags);
 		return;
 	}
 
-	page = alloc_page(GFP_HIGHUSER);
-	if (!page) {
-		pr_err("alloc_page failed");
+	last_laddr = *laddr;
+	last_faddr = *faddr;
+	last_jiffies = get_jiffies_64();
+	spin_unlock_irqrestore(&last_lock, flags);
+
+	isv4 = ipv6_addr_v4mapped(faddr);
+	/* Use our local address to find the right interface to flush the
+	 * neighbor address.
+	 */
+	if (isv4) {
+		idx = __rds_find_ifindex_v4(net, laddr->s6_addr32[3]);
+		addrlen = sizeof(faddr->s6_addr32[3]);
+	} else {
+		idx = __rds_find_ifindex_v6(net, laddr);
+		addrlen = sizeof(*faddr);
+	}
+
+	if (!idx) {
+		pr_err_ratelimited("%s: cannot find %pI6c interface\n",
+				   __func__, laddr);
 		return;
 	}
 
-	r = (struct arpreq *)kmap(page);
-	if (!r) {
-		pr_err("kmap failed");
-		goto out_free;
+	buflen = nlmsg_total_size(sizeof(*ndm) +
+				  nla_total_size(addrlen));
+	if (buflen > sizeof(buf)) {
+		flush_buf_len = buflen;
+		sndbuf = kmalloc(buflen, GFP_ATOMIC);
+		if (!sndbuf) {
+			last_jiffies = 1;
+			pr_err("%s: failed: buflen %zd idx %d %pI6c,%pI6c\n",
+			       __func__, buflen, idx, laddr, faddr);
+			return;
+		}
+		alloc = true;
+	} else {
+		sndbuf = buf;
+		alloc = false;
 	}
 
-	memset(r, 0, sizeof(struct arpreq));
-	sin = (struct sockaddr_in *)&r->arp_pa;
-	sin->sin_family = AF_INET;
-	sin->sin_addr.s_addr = prot_addr->s6_addr32[3];
+	nlh = (struct nlmsghdr *)sndbuf;
+	ndm = nlmsg_data(nlh);
+	nla = (struct nlattr *)((u8 *)ndm + NLMSG_ALIGN(sizeof(*ndm)));
+	nlh->nlmsg_len = buflen;
+	nlh->nlmsg_flags = NLM_F_REQUEST;
+	nlh->nlmsg_type = RTM_DELNEIGH;
+	ndm->ndm_family = isv4 ? AF_INET : AF_INET6;
+	ndm->ndm_ifindex = idx;
+	ndm->ndm_state = NUD_PERMANENT;
+	ndm->ndm_flags = 0;
+	nla->nla_type = NDA_DST;
+	nla->nla_len = nla_attr_size(addrlen);
+	if (isv4)
+		memcpy(nla_data(nla), &faddr->s6_addr32[3], addrlen);
+	else
+		memcpy(nla_data(nla), faddr, addrlen);
 
-	if (rds_ib_transport.t_ll_eth_detected)
-		__flush_eth_arp_entry(r);
-	if (rds_ib_transport.t_ll_ib_detected)
-		__flush_ib_arp_entry(r);
+	msg.msg_name = &nlsa;
+	msg.msg_namelen = sizeof(nlsa);
+	vec.iov_base = (void *)sndbuf;
+	vec.iov_len = nlh->nlmsg_len;
 
-	kunmap(page);
+	ret = kernel_sendmsg(rds_rdma_rtnl_sk, &msg, &vec, 1, vec.iov_len);
+	if (ret < 0)
+		pr_err("%s: kernel_sendmsg %d\n", __func__, ret);
 
-out_free:
-	__free_page(page);
+	if (alloc)
+		kfree(sndbuf);
 }
 
 MODULE_LICENSE("GPL");
