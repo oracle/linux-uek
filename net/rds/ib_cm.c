@@ -981,7 +981,7 @@ static u32 rds_ib_protocol_compatible(struct rdma_cm_event *event, bool isv6)
  * the underlying layer gives us the interface which an incoming RDMA connect
  * request comes from.
  */
-static u32 __rds_find_ifindex(struct net *net, const struct in6_addr *addr)
+u32 __rds_find_ifindex_v6(struct net *net, const struct in6_addr *addr)
 {
 	struct net_device *dev;
 	int idx = 0;
@@ -998,6 +998,20 @@ static u32 __rds_find_ifindex(struct net *net, const struct in6_addr *addr)
 	return idx;
 }
 #endif
+
+u32 __rds_find_ifindex_v4(struct net *net, __be32 addr)
+{
+	struct net_device *dev;
+	int idx;
+
+	dev = ip_dev_find(net, addr);
+	if (!dev)
+		return 0;
+	idx = dev->ifindex;
+	dev_put(dev);
+
+	return idx;
+}
 
 int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 			     struct rdma_cm_event *event, bool isv6)
@@ -1044,7 +1058,7 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 			 * link local, we also use our address to find the
 			 * correct index.
 			 */
-			ifindex = __rds_find_ifindex(&init_net, daddr6);
+			ifindex = __rds_find_ifindex_v6(&init_net, daddr6);
 			/* No index found...  Need to bail out. */
 			if (ifindex == 0) {
 				err = -EOPNOTSUPP;
