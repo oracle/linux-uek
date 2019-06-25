@@ -2528,6 +2528,7 @@ struct ptp_req {
 	struct mbox_msghdr hdr;
 	u8 op;
 	s64 scaled_ppm;
+	u8 is_pmu;
 	u64 thresh;
 	u64 period;
 	int pps_on;
