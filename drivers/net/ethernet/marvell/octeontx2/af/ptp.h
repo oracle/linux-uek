@@ -25,7 +25,7 @@ struct ptp *ptp_get(void);
 void ptp_put(struct ptp *ptp);
 
 int ptp_adjfine(struct ptp *ptp, long scaled_ppm);
-int ptp_get_clock(struct ptp *ptp, u64 *clk);
+int ptp_get_clock(struct ptp *ptp, bool is_pmu, u64 *clki, u64 *tsc);
 
 extern struct pci_driver ptp_driver;
 
