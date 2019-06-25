@@ -25,7 +25,8 @@ int rvu_mbox_handler_ptp_op(struct rvu *rvu, struct ptp_req *req,
 		err = ptp_adjfine(rvu->ptp, req->scaled_ppm);
 		break;
 	case PTP_OP_GET_CLOCK:
-		err = ptp_get_clock(rvu->ptp, &rsp->clk);
+		err = ptp_get_clock(rvu->ptp, req->is_pmu, &rsp->clk,
+				    &rsp->tsc);
 		break;
 	default:
 		err = -EINVAL;
