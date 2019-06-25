@@ -552,7 +552,7 @@ extern struct workqueue_struct *rds_aux_wq;
 extern struct rds_transport rds_ib_transport;
 extern void rds_ib_add_one(struct ib_device *device);
 extern void rds_ib_remove_one(struct ib_device *device, void *client_data);
-extern void rds_ib_flush_arp_entry(struct in6_addr *prot_addr);
+extern void rds_ib_flush_neigh(struct net *net, struct rds_connection *conn);
 void rds_ib_srq_exit(struct rds_ib_device *rds_ibdev);
 int rds_ib_srq_init(struct rds_ib_device *rds_ibdev);
 
@@ -594,6 +594,10 @@ struct rds_header **rds_dma_hdrs_alloc(struct ib_device *ibdev,
 				       dma_addr_t **dma_addrs, u32 num_hdrs);
 void rds_dma_hdrs_free(struct dma_pool *pool, struct rds_header **hdrs,
 		       dma_addr_t *dma_addrs, u32 num_hdrs);
+u32 __rds_find_ifindex_v4(struct net *net, __be32 addr);
+#if IS_ENABLED(CONFIG_IPV6)
+u32 __rds_find_ifindex_v6(struct net *net, const struct in6_addr *addr);
+#endif
 
 /* ib_rdma.c */
 struct rds_ib_device *rds_ib_get_device(const struct in6_addr *ipaddr);
