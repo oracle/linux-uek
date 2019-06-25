@@ -495,7 +495,7 @@ struct qede_reload_args {
 /* Datapath functions definition */
 netdev_tx_t qede_start_xmit(struct sk_buff *skb, struct net_device *ndev);
 u16 qede_select_queue(struct net_device *dev, struct sk_buff *skb,
-		      struct net_device *sb_dev,
+		      void *accel_priv,
 		      select_queue_fallback_t fallback);
 netdev_features_t qede_features_check(struct sk_buff *skb,
 				      struct net_device *dev,
