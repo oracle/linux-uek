@@ -1141,6 +1141,8 @@ config SILEAD_DMI
 	  with the OS-image for the device. This option supplies the missing
 	  information. Enable this for x86 tablets with Silead touchscreens.
 
+source "drivers/platform/x86/intel_speed_select_if/Kconfig"
+
 endif # X86_PLATFORM_DEVICES
 
 config PMC_ATOM
