@@ -1261,6 +1261,12 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 		if (ic && cm_seq_check_enable)
 			ic->i_last_rej_seq = cm_req_seq;
 		goto out;
+	} else {
+		/* Cancel any pending reconnect */
+		struct rds_conn_path *cp = &conn->c_path[0];
+
+		cancel_delayed_work_sync(&cp->cp_conn_w);
+		rds_clear_reconnect_pending_work_bit(cp);
 	}
 
 	ic = conn->c_transport_data;
