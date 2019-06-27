@@ -15,6 +15,7 @@
 #include <linux/module.h>
 #include <linux/sched/clock.h>
 #include <linux/sched/idle.h>
+#include <linux/cpuidle_haltpoll.h>
 
 static unsigned int guest_halt_poll_ns __read_mostly = 200000;
 module_param(guest_halt_poll_ns, uint, 0644);
@@ -131,14 +132,21 @@ static struct cpuidle_driver haltpoll_driver = {
 static int __init haltpoll_init(void)
 {
 	struct cpuidle_driver *drv = &haltpoll_driver;
+	int ret;
 
 	cpuidle_poll_state_init(drv);
 
-	return cpuidle_register(drv, NULL);
+	ret = cpuidle_register(drv, NULL);
+
+ 	if (ret == 0)
+ 		arch_haltpoll_enable();
+ 
+ 	return ret;
 }
 
 static void __exit haltpoll_exit(void)
 {
+	arch_haltpoll_disable();
 	cpuidle_unregister(&haltpoll_driver);
 }
 
