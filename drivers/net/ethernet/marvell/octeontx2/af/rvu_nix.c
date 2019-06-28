@@ -2625,7 +2625,7 @@ static int set_flowkey_fields(struct nix_rx_flowkey_alg *alg, u32 flow_cfg)
 			if (key_type == NIX_FLOW_KEY_TYPE_INNR_TCP ||
 			    key_type == NIX_FLOW_KEY_TYPE_INNR_UDP ||
 			    key_type == NIX_FLOW_KEY_TYPE_INNR_SCTP)
-				field->lid = NPC_LID_LG;
+				field->lid = NPC_LID_LH;
 			field->bytesm1 = 3; /* Sport + Dport, 4 bytes */
 
 			/* Enum values for NPC_LID_LD and NPC_LID_LG are same,
