@@ -4744,9 +4744,9 @@ err_cnt:
 err_odp:
 #ifdef CONFIG_INFINIBAND_ON_DEMAND_PAGING
 	mlx5_ib_odp_remove_one(dev);
-#endif
 
 err_rsrc:
+#endif
 	destroy_dev_resources(&dev->devr);
 
 err_disable_eth:
