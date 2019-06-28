@@ -72,6 +72,10 @@ static int cma_response_timeout = CMA_CM_RESPONSE_TIMEOUT;
 module_param_named(cma_response_timeout, cma_response_timeout, int, 0644);
 MODULE_PARM_DESC(cma_response_timeout, "CMA_CM_RESPONSE_TIMEOUT (default=20)");
 
+static int cma_max_cm_retries = CMA_MAX_CM_RETRIES;
+module_param_named(cma_max_cm_retries, cma_max_cm_retries, int, 0644);
+MODULE_PARM_DESC(cma_max_cm_retries, "CMA_MAX_CM_RETRIES (default=15)");
+
 static int debug_level = 0;
 #define cma_pr(level, priv, format, arg...)		\
 	printk(level "CMA: %p: %s: " format, ((struct rdma_id_priv *) priv) , __func__, ## arg)
@@ -2829,7 +2833,7 @@ static int cma_resolve_ib_udp(struct rdma_id_private *id_priv,
 	req.path = id_priv->id.route.path_rec;
 	req.service_id = rdma_get_service_id(&id_priv->id, cma_dst_addr(id_priv));
 	req.timeout_ms = 1 << (cma_response_timeout - 8);
-	req.max_cm_retries = CMA_MAX_CM_RETRIES;
+	req.max_cm_retries = cma_max_cm_retries;
 
 	cma_dbg(id_priv, "sending SIDR\n");
 	ret = ib_send_cm_sidr_req(id_priv->cm_id.ib, &req);
@@ -2899,7 +2903,7 @@ static int cma_connect_ib(struct rdma_id_private *id_priv,
 	req.rnr_retry_count = min_t(u8, 7, conn_param->rnr_retry_count);
 	req.remote_cm_response_timeout = cma_response_timeout;
 	req.local_cm_response_timeout = cma_response_timeout;
-	req.max_cm_retries = CMA_MAX_CM_RETRIES;
+	req.max_cm_retries = cma_max_cm_retries;
 	req.srq = id_priv->srq ? 1 : 0;
 
 	cma_info(id_priv, "sending REQ local_id=%u remote_id=%u qp_num=%u\n",
