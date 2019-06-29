@@ -258,7 +258,7 @@ static int esw_create_legacy_vepa_table(struct mlx5_eswitch *esw)
 	struct mlx5_flow_table *fdb;
 	int err;
 
-	root_ns = mlx5_get_fdb_sub_ns(dev, 0);
+	root_ns = mlx5_get_flow_namespace(dev, MLX5_FLOW_NAMESPACE_FDB);
 	if (!root_ns) {
 		esw_warn(dev, "Failed to get FDB flow namespace\n");
 		return -EOPNOTSUPP;
@@ -294,7 +294,7 @@ static int esw_create_legacy_fdb_table(struct mlx5_eswitch *esw)
 	esw_debug(dev, "Create FDB log_max_size(%d)\n",
 		  MLX5_CAP_ESW_FLOWTABLE_FDB(dev, log_max_ft_size));
 
-	root_ns = mlx5_get_fdb_sub_ns(dev, 0);
+	root_ns = mlx5_get_flow_namespace(dev, MLX5_FLOW_NAMESPACE_FDB);
 	if (!root_ns) {
 		esw_warn(dev, "Failed to get FDB flow namespace\n");
 		return -EOPNOTSUPP;
