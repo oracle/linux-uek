@@ -13,8 +13,4 @@
 
 #define ETH_RESET_AP (1<<8)
 
-#define REG_STATE_REGISTERED	0x1
-
-bool xdp_rxq_info_is_reg(struct xdp_rxq_info *xdp_rxq);
-
 #endif
