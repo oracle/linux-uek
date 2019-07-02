@@ -49,7 +49,8 @@ static struct hlist_head rds_conn_hash[RDS_CONNECTION_HASH_ENTRIES];
 static struct kmem_cache *rds_conn_slab;
 
 static struct hlist_head *rds_conn_bucket(const struct in6_addr *laddr,
-					  const struct in6_addr *faddr)
+					  const struct in6_addr *faddr,
+					  u8 tos)
 {
 	static u32 rds6_hash_secret __read_mostly;
 	static u32 rds_hash_secret __read_mostly;
@@ -65,8 +66,8 @@ static struct hlist_head *rds_conn_bucket(const struct in6_addr *laddr,
 #else
 	fhash = (__force u32)faddr->s6_addr32[3];
 #endif
-	hash = __inet_ehashfn((__force __be32)lhash, 0, (__force __be32)fhash,
-			      0, rds_hash_secret);
+	hash = __inet_ehashfn((__force __be32)lhash, tos,
+			      (__force __be32)fhash, 0, rds_hash_secret);
 
 	return &rds_conn_hash[hash & RDS_CONNECTION_HASH_MASK];
 }
@@ -190,7 +191,7 @@ static struct rds_connection *__rds_conn_create(struct net *net,
 						int dev_if)
 {
 	struct rds_connection *conn, *parent = NULL;
-	struct hlist_head *head = rds_conn_bucket(laddr, faddr);
+	struct hlist_head *head = rds_conn_bucket(laddr, faddr, tos);
 	struct rds_transport *loop_trans;
 	unsigned long flags;
 	int ret, i;
@@ -389,7 +390,7 @@ struct rds_connection *rds_conn_find(struct net *net, struct in6_addr *laddr,
 				     int dev_if)
 {
 	struct rds_connection *conn;
-	struct hlist_head *head = rds_conn_bucket(laddr, faddr);
+	struct hlist_head *head = rds_conn_bucket(laddr, faddr, tos);
 
 	rcu_read_lock();
 	conn = rds_conn_lookup(net, head, laddr, faddr, trans, tos, dev_if);
