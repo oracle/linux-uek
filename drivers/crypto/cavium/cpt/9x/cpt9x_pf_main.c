@@ -353,7 +353,7 @@ static void cpt_destroy_sysfs_vf_limits(struct cptpf_dev *cptpf)
 
 static int cpt_alloc_vf_limits(struct cptpf_dev *cptpf)
 {
-	int avail_lfs, lfs_per_vf;
+	int avail_lfs, lfs_per_vf, kvf_lfs;
 	int i, ret, online_cpus;
 
 	mutex_init(&cptpf->vf_limits.lock);
@@ -371,15 +371,21 @@ static int cpt_alloc_vf_limits(struct cptpf_dev *cptpf)
 	}
 
 	avail_lfs = cptpf->vf_limits.cpt->max_sum;
-	online_cpus = num_online_cpus();
-	if (avail_lfs < online_cpus) {
-		dev_err(&cptpf->pdev->dev,
-			"CPT LFs num %d < than required for kernel crypto %d",
-			avail_lfs, online_cpus);
-		ret = -ENOENT;
-		goto error;
+	if (cptpf->kvf_limits.lfs_num) {
+		avail_lfs -= cptpf->kvf_limits.lfs_num;
+		kvf_lfs = cptpf->kvf_limits.lfs_num;
+	} else {
+		online_cpus = num_online_cpus();
+		if (avail_lfs < online_cpus) {
+			dev_err(&cptpf->pdev->dev,
+				"CPT LFs %d < required for kernel crypto %d",
+				avail_lfs, online_cpus);
+			ret = -ENOENT;
+			goto error;
+		}
+		avail_lfs -= online_cpus;
+		kvf_lfs = online_cpus;
 	}
-	avail_lfs -= online_cpus;
 
 	lfs_per_vf = cptpf->enabled_vfs == 1 ?
 		     1 : avail_lfs / (cptpf->enabled_vfs - 1);
@@ -391,7 +397,7 @@ static int cpt_alloc_vf_limits(struct cptpf_dev *cptpf)
 		goto error;
 	}
 
-	cptpf->vf_limits.cpt->a[0].val = online_cpus;
+	cptpf->vf_limits.cpt->a[0].val = kvf_lfs;
 	for (i = 1; i < cptpf->enabled_vfs; i++)
 		cptpf->vf_limits.cpt->a[i].val = lfs_per_vf;
 	return 0;
@@ -436,6 +442,64 @@ static int cpt_create_sysfs_vf_limits(struct cptpf_dev *cptpf)
 	return 0;
 error:
 	cpt_destroy_sysfs_vf_limits(cptpf);
+	return ret;
+}
+
+static void cpt_destroy_sysfs_kvf_limits(struct pci_dev *pdev)
+{
+	struct cptpf_dev *cptpf = pci_get_drvdata(pdev);
+
+	device_remove_file(&pdev->dev, &cptpf->kvf_limits.kvf_limits_attr);
+}
+static ssize_t cpt_kvf_limits_show(struct device *dev,
+				   struct device_attribute *attr, char *buf)
+{
+	struct cpt_kvf_limits *kvf_limits;
+
+	kvf_limits = container_of(attr, struct cpt_kvf_limits, kvf_limits_attr);
+
+	return sprintf(buf, "%d\n", kvf_limits->lfs_num);
+}
+
+static ssize_t cpt_kvf_limits_store(struct device *dev,
+				    struct device_attribute *attr,
+				    const char *buf, size_t count)
+{
+	struct cptpf_dev *cptpf;
+	int lfs_num;
+
+	cptpf = container_of(attr, struct cptpf_dev,
+			     kvf_limits.kvf_limits_attr);
+	if (kstrtoint(buf, 0, &lfs_num)) {
+		dev_err(&cptpf->pdev->dev,
+			"lfs count %d must be in range [1 - %d]", lfs_num,
+			num_online_cpus());
+		return -EINVAL;
+	}
+	if (lfs_num < 1 || lfs_num > num_online_cpus()) {
+		dev_err(&cptpf->pdev->dev,
+			"lfs count %d must be in range [1 - %d]", lfs_num,
+			num_online_cpus());
+		return -EINVAL;
+	}
+	cptpf->kvf_limits.lfs_num = lfs_num;
+
+	return count;
+}
+
+static int cpt_create_sysfs_kvf_limits(struct pci_dev *pdev)
+{
+	struct cptpf_dev *cptpf = pci_get_drvdata(pdev);
+	int ret;
+
+	cptpf->kvf_limits.kvf_limits_attr.show = cpt_kvf_limits_show;
+	cptpf->kvf_limits.kvf_limits_attr.store = cpt_kvf_limits_store;
+	cptpf->kvf_limits.kvf_limits_attr.attr.name = "kvf_limits";
+	cptpf->kvf_limits.kvf_limits_attr.attr.mode = 0664;
+
+	sysfs_attr_init(&cptpf->kvf_limits.kvf_limits_attr);
+	ret = device_create_file(&pdev->dev,
+				 &cptpf->kvf_limits.kvf_limits_attr);
 	return ret;
 }
 
@@ -632,8 +696,13 @@ static int cptpf_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 	if (err)
 		goto cpt_err_unregister_interrupts;
 
+	err = cpt_create_sysfs_kvf_limits(pdev);
+	if (err)
+		goto cpt_err_cleanup_eng_grps;
 	return 0;
 
+cpt_err_cleanup_eng_grps:
+	cpt_cleanup_eng_grps(pdev, &cptpf->eng_grps);
 cpt_err_unregister_interrupts:
 	cptpf_disable_vfpf_mbox_intrs(cptpf);
 	cptpf_disable_afpf_mbox_intrs(cptpf);
@@ -663,6 +732,8 @@ static void cptpf_remove(struct pci_dev *pdev)
 
 	/* Disable SRIOV */
 	pci_disable_sriov(pdev);
+	/* Delete sysfs entry created for kernel VF limits */
+	cpt_destroy_sysfs_kvf_limits(pdev);
 	/* Cleanup engine groups */
 	cpt_cleanup_eng_grps(pdev, &cptpf->eng_grps);
 	/* Disable VF-PF interrupts */
