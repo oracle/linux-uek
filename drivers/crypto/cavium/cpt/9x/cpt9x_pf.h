@@ -30,6 +30,11 @@ struct cpt_limits {
 	struct quotas *cpt;
 };
 
+struct cpt_kvf_limits {
+	struct device_attribute kvf_limits_attr;
+	int lfs_num; /* Number of LFs allocated for kernel VF driver */
+};
+
 struct cptpf_dev {
 	void __iomem *reg_base;		/* CPT PF registers start address */
 	void __iomem *afpf_mbox_base;	/* PF-AF mbox start address */
@@ -40,6 +45,7 @@ struct cptpf_dev {
 	struct free_rsrcs_rsp limits;   /* Maximum limits for all VFs and PF */
 	struct cpt_limits vf_limits;	/* Limits for each VF */
 	struct engine_groups eng_grps;	/* Engine groups information */
+	struct cpt_kvf_limits kvf_limits; /* Kernel vf limits */
 
 	/* AF <=> PF mbox */
 	struct otx2_mbox	afpf_mbox;
