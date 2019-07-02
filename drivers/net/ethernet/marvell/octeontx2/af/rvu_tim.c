@@ -69,7 +69,8 @@ int rvu_lf_lookup_tim_errata(struct rvu *rvu, struct rvu_block *block,
 		return TIM_AF_LF_INVALID;
 
 	for (i = 0; i < block->lf.max; i++) {
-		val = rvu_read64(rvu, block->addr, block->lfcfg_reg);
+		val = rvu_read64(rvu, block->addr, block->lfcfg_reg |
+				 (i << block->lfshift));
 		if ((((val >> 8) & 0xffff) == pcifunc) &&
 				(val & 0xff) == slot)
 			return i;
