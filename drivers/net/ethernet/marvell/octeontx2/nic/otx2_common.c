@@ -22,59 +22,6 @@ static inline void otx2_nix_rq_op_stats(struct queue_stats *stats,
 static inline void otx2_nix_sq_op_stats(struct queue_stats *stats,
 					struct otx2_nic *pfvf, int qidx);
 
-int otx2_install_rxvlan_offload_flow(struct otx2_nic *pfvf)
-{
-	struct npc_install_flow_req *req;
-	int err;
-
-	if (!pfvf->rxvlan_alloc)
-		return -EINVAL;
-
-	otx2_mbox_lock(&pfvf->mbox);
-	req = otx2_mbox_alloc_msg_npc_install_flow(&pfvf->mbox);
-	if (!req) {
-		otx2_mbox_unlock(&pfvf->mbox);
-		return -ENOMEM;
-	}
-
-	req->entry = pfvf->rxvlan_entry;
-	req->intf = NIX_INTF_RX;
-	req->channel = pfvf->rx_chan_base;
-	req->op = NIX_RX_ACTIONOP_UCAST;
-	req->features = BIT_ULL(NPC_OUTER_VID);
-	req->vtag0_valid = 1;
-	req->vtag0_type = 0;
-
-	/* Send message to AF */
-	err = otx2_sync_mbox_msg(&pfvf->mbox);
-	otx2_mbox_unlock(&pfvf->mbox);
-	return err;
-}
-EXPORT_SYMBOL(otx2_install_rxvlan_offload_flow);
-
-int otx2_delete_rxvlan_offload_flow(struct otx2_nic *pfvf)
-{
-	struct npc_delete_flow_req *req;
-	int err;
-
-	if (!pfvf->rxvlan_alloc)
-		return -EINVAL;
-
-	otx2_mbox_lock(&pfvf->mbox);
-	req = otx2_mbox_alloc_msg_npc_delete_flow(&pfvf->mbox);
-	if (!req) {
-		otx2_mbox_unlock(&pfvf->mbox);
-		return -ENOMEM;
-	}
-
-	req->entry = pfvf->rxvlan_entry;
-	/* Send message to AF */
-	err = otx2_sync_mbox_msg(&pfvf->mbox);
-	otx2_mbox_unlock(&pfvf->mbox);
-	return err;
-}
-EXPORT_SYMBOL(otx2_delete_rxvlan_offload_flow);
-
 void otx2_update_lmac_stats(struct otx2_nic *pfvf)
 {
 	struct msg_req *req;
