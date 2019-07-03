@@ -1651,12 +1651,12 @@ static void __rvu_mbox_handler(struct rvu_work *mwork, int type)
 
 	/* Process received mbox messages */
 	req_hdr = mdev->mbase + mbox->rx_start;
-	if (mw->num_msgs == 0)
+	if (mw->mbox_wrk[devid].num_msgs == 0)
 		return;
 
 	offset = mbox->rx_start + ALIGN(sizeof(*req_hdr), MBOX_MSG_ALIGN);
 
-	for (id = 0; id < mw->num_msgs; id++) {
+	for (id = 0; id < mw->mbox_wrk[devid].num_msgs; id++) {
 		msg = mdev->mbase + offset;
 
 		/* Set which PF/VF sent this message based on mbox IRQ */
@@ -1689,12 +1689,8 @@ static void __rvu_mbox_handler(struct rvu_work *mwork, int type)
 				 err, otx2_mbox_id2name(msg->id),
 				 msg->id, devid);
 	}
-		/* mbox messages in the same direction to be handled by same
-		 * mailbox occurs serially. So write to mw->num_msgs happens
-		 * only after the previous context is done with it.
-		 */
+	mw->mbox_wrk[devid].num_msgs = 0;
 
-	mw->num_msgs = 0;
 	/* Send mbox responses to VF/PF */
 	otx2_mbox_msg_send(mbox, devid);
 }
@@ -1739,14 +1735,14 @@ static void __rvu_mbox_up_handler(struct rvu_work *mwork, int type)
 	mdev = &mbox->dev[devid];
 
 	rsp_hdr = mdev->mbase + mbox->rx_start;
-	if (mw->up_num_msgs == 0) {
+	if (mw->mbox_wrk_up[devid].up_num_msgs == 0) {
 		dev_warn(rvu->dev, "mbox up handler: num_msgs = 0\n");
 		return;
 	}
 
 	offset = mbox->rx_start + ALIGN(sizeof(*rsp_hdr), MBOX_MSG_ALIGN);
 
-	for (id = 0; id < mw->up_num_msgs; id++) {
+	for (id = 0; id < mw->mbox_wrk_up[devid].up_num_msgs; id++) {
 		msg = mdev->mbase + offset;
 
 		if (msg->id >= MBOX_MSG_MAX) {
@@ -1776,11 +1772,7 @@ end:
 		offset = mbox->rx_start + msg->next_msgoff;
 		mdev->msgs_acked++;
 	}
-		/* mbox messages in the same direction to be handled by same
-		 * mailbox occurs serially. So write to mw->up_num_msgs
-		 * happens only after the previous context is done with it.
-		 */
-	mw->up_num_msgs = 0;
+	mw->mbox_wrk_up[devid].up_num_msgs = 0;
 
 	otx2_mbox_reset(mbox, devid);
 }
@@ -1928,7 +1920,7 @@ static void rvu_queue_work(struct mbox_wq_info *mw, int first,
 		 */
 
 		if (hdr->num_msgs) {
-			mw->num_msgs = hdr->num_msgs;
+			mw->mbox_wrk[i].num_msgs = hdr->num_msgs;
 			hdr->num_msgs = 0;
 			queue_work(mw->mbox_wq, &mw->mbox_wrk[i].work);
 		}
@@ -1936,7 +1928,7 @@ static void rvu_queue_work(struct mbox_wq_info *mw, int first,
 		mdev = &mbox->dev[i];
 		hdr = mdev->mbase + mbox->rx_start;
 		if (hdr->num_msgs) {
-			mw->up_num_msgs = hdr->num_msgs;
+			mw->mbox_wrk_up[i].up_num_msgs = hdr->num_msgs;
 			hdr->num_msgs = 0;
 			queue_work(mw->mbox_wq, &mw->mbox_wrk_up[i].work);
 		}
