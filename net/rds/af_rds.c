@@ -53,7 +53,7 @@ module_param(rds_qos_threshold, charp, 0444);
 MODULE_PARM_DESC(rds_qos_threshold, "<tos>:<max_msg_size>[,<tos>:<max_msg_size>]*");
 
 static	int rds_qos_threshold_action = 0;
-module_param(rds_qos_threshold_action, int, 0444);
+module_param(rds_qos_threshold_action, int, 0644);
 MODULE_PARM_DESC(rds_qos_threshold_action,
 	"0=Ignore,1=Error,2=Statistic,3=Error_Statistic");
 
