@@ -1624,8 +1624,10 @@ static int rvu_dbg_npc_mcam_info_display(struct seq_file *filp, void *unsued)
 	seq_printf(filp, "\t\t Available \t: %d\n",
 		   rvu_rsrc_free_count(&mcam->counters));
 
-	if (mcam->bmap_entries == mcam->bmap_fcnt)
+	if (mcam->bmap_entries == mcam->bmap_fcnt) {
+		mutex_unlock(&mcam->lock);
 		return 0;
+	}
 
 	seq_puts(filp, "\n\t\t Current allocation\n");
 	seq_puts(filp, "\t\t====================\n");
