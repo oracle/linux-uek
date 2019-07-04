@@ -136,8 +136,11 @@ kernel/drivers/crypto/qat/qat_c62x/qat_c62x.ko
 kernel/drivers/crypto/qat/qat_c62xvf/qat_c62xvf.ko
 kernel/drivers/crypto/qat/qat_common/intel_qat.ko
 kernel/drivers/crypto/qat/qat_dh895xcc/qat_dh895xcc.ko
-kernel/drivers/dax/dax_pmem.ko
 kernel/drivers/dax/device_dax.ko
+kernel/drivers/dax/kmem.ko
+kernel/drivers/dax/pmem/dax_pmem.ko
+kernel/drivers/dax/pmem/dax_pmem_compat.ko
+kernel/drivers/dax/pmem/dax_pmem_core.ko
 kernel/drivers/dca/dca.ko
 kernel/drivers/dma/ioat/ioatdma.ko
 kernel/drivers/edac/amd64_edac_mod.ko
