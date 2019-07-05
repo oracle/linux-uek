@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2006, 2018 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2006, 2019 Oracle and/or its affiliates. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -39,9 +39,6 @@
 #include "rds_single_path.h"
 
 struct workqueue_struct *rds_ib_fmr_wq;
-
-static DEFINE_PER_CPU(unsigned long, clean_list_grace);
-#define CLEAN_LIST_BUSY_BIT 0
 
 enum rds_ib_fr_state {
 	MR_IS_INVALID,		/* mr ready to be used */
@@ -92,6 +89,9 @@ struct rds_ib_mr_pool {
 	struct xlist_head	drop_list;		/* MRs that have reached their max_maps limit */
 	struct xlist_head	free_list;		/* unused MRs */
 	struct xlist_head	clean_list;		/* global unused & unamapped MRs */
+	/* "clean_list" concurrency */
+	spinlock_t		clean_lock;
+
 	wait_queue_head_t	flush_wait;
 
 	atomic_t		free_pinned;		/* memory pinned by free MRs */
@@ -281,6 +281,7 @@ struct rds_ib_mr_pool *rds_ib_create_mr_pool(struct rds_ib_device *rds_ibdev,
 	INIT_XLIST_HEAD(&pool->free_list);
 	INIT_XLIST_HEAD(&pool->drop_list);
 	INIT_XLIST_HEAD(&pool->clean_list);
+	spin_lock_init(&pool->clean_lock);
 	mutex_init(&pool->flush_lock);
 	init_waitqueue_head(&pool->flush_wait);
 	INIT_DELAYED_WORK(&pool->flush_worker, rds_ib_mr_pool_flush_worker);
@@ -360,35 +361,19 @@ static inline struct rds_ib_mr *rds_ib_reuse_fmr(struct rds_ib_mr_pool *pool)
 {
 	struct rds_ib_mr *ibmr = NULL;
 	struct xlist_head *ret;
-	unsigned long *flag;
+	unsigned long flags;
 
-	preempt_disable();
-	flag = this_cpu_ptr(&clean_list_grace);
-	set_bit(CLEAN_LIST_BUSY_BIT, flag);
+	spin_lock_irqsave(&pool->clean_lock, flags);
 	ret = xlist_del_head(&pool->clean_list);
+	spin_unlock_irqrestore(&pool->clean_lock, flags);
 	if (ret)
 		ibmr = list_entry(ret, struct rds_ib_mr, xlist);
-
-	clear_bit(CLEAN_LIST_BUSY_BIT, flag);
-	preempt_enable();
 	if (ibmr) {
 		spin_lock_bh(&pool->busy_lock);
 		list_add(&ibmr->pool_list, &pool->busy_list);
 		spin_unlock_bh(&pool->busy_lock);
 	}
 	return ibmr;
-}
-
-static inline void wait_clean_list_grace(void)
-{
-	int cpu;
-	unsigned long *flag;
-
-	for_each_online_cpu(cpu) {
-		flag = &per_cpu(clean_list_grace, cpu);
-		while (test_bit(CLEAN_LIST_BUSY_BIT, flag))
-			cpu_relax();
-	}
 }
 
 static int rds_ib_init_fastreg_mr(struct rds_ib_device *rds_ibdev,
@@ -790,6 +775,7 @@ static int rds_ib_flush_mr_pool(struct rds_ib_mr_pool *pool,
 	LIST_HEAD(fmr_list);
 	unsigned long unpinned = 0;
 	unsigned int nfreed = 0, dirty_to_clean = 0, free_goal;
+	unsigned long flags;
 	int ret = 0;
 
 	if (pool->pool_type == RDS_IB_MR_8K_POOL)
@@ -836,8 +822,11 @@ static int rds_ib_flush_mr_pool(struct rds_ib_mr_pool *pool,
 	 */
 	dirty_to_clean = xlist_append_to_list(&pool->drop_list, &unmap_list);
 	dirty_to_clean += xlist_append_to_list(&pool->free_list, &unmap_list);
-	if (free_all)
+	if (free_all) {
+		spin_lock_irqsave(&pool->clean_lock, flags);
 		xlist_append_to_list(&pool->clean_list, &unmap_list);
+		spin_unlock_irqrestore(&pool->clean_lock, flags);
+	}
 
 	free_goal = rds_ib_flush_goal(pool, free_all);
 
@@ -897,15 +886,16 @@ static int rds_ib_flush_mr_pool(struct rds_ib_mr_pool *pool,
 		 * This is pretty unlikely, but just in case  wait for an xlist grace period
 		 * here before adding anything back into the clean list.
 		 */
-		wait_clean_list_grace();
-
 		list_append_to_xlist(pool, &unmap_list, &clean_xlist, &clean_tail);
 		if (ibmr_ret)
 			refill_local(pool, &clean_xlist, ibmr_ret);
 
 		/* refill_local may have emptied our list */
-		if (!xlist_empty(&clean_xlist))
+		if (!xlist_empty(&clean_xlist)) {
+			spin_lock_irqsave(&pool->clean_lock, flags);
 			xlist_add(clean_xlist.next, clean_tail, &pool->clean_list);
+			spin_unlock_irqrestore(&pool->clean_lock, flags);
+		}
 
 	}
 
