@@ -141,6 +141,7 @@ int __init spectre_v2_heuristics_setup(char *p)
 }
 __setup("spectre_v2_heuristics=", spectre_v2_heuristics_setup);
 
+static void __init spectre_v1_select_mitigation(void);
 static void __init spectre_v2_select_mitigation(void);
 static enum ssb_mitigation __init ssb_select_mitigation(void);
 static void __init ssb_init(void);
@@ -230,20 +231,14 @@ void __init check_bugs(void)
 	if (boot_cpu_has(X86_FEATURE_STIBP))
 		x86_spec_ctrl_mask |= SPEC_CTRL_STIBP;
 
-	/*
-	 * Select proper mitigation for any exposure to the Speculative Store
-	 * Bypass vulnerability.  Required by spectre_v2_select_mitigation.
-	 */
+	/* Select the proper CPU mitigations before patching alternatives: */
 	ssb_mode = ssb_select_mitigation();
-
-	/* Select the proper spectre mitigation before patching alternatives */
+	spectre_v1_select_mitigation();
 	spectre_v2_select_mitigation();
 
 	/* Relies on the result of spectre_v2_select_mitigation. */
 	ssb_init();
-
 	l1tf_select_mitigation();
-
 	mds_select_mitigation();
 
 	alternative_instructions();
@@ -275,6 +270,103 @@ static bool is_skylake_era(void)
 		}
 	}
 	return false;
+}
+
+#undef pr_fmt
+#define pr_fmt(fmt)     "Spectre V1 : " fmt
+
+enum spectre_v1_mitigation {
+	SPECTRE_V1_MITIGATION_NONE,
+	SPECTRE_V1_MITIGATION_AUTO,
+};
+
+static enum spectre_v1_mitigation spectre_v1_mitigation __read_mostly =
+	SPECTRE_V1_MITIGATION_AUTO;
+
+static const char * const spectre_v1_strings[] = {
+	[SPECTRE_V1_MITIGATION_NONE] = "Vulnerable: __user pointer sanitization and usercopy barriers only; no swapgs barriers",
+	[SPECTRE_V1_MITIGATION_AUTO] = "Mitigation: usercopy/swapgs barriers and __user pointer sanitization",
+};
+
+static bool is_swapgs_serializing(void)
+{
+	/*
+	 * Technically, swapgs isn't serializing on AMD (despite it previously
+	 * being documented as such in the APM).  But according to AMD, %gs is
+	 * updated non-speculatively, and the issuing of %gs-relative memory
+	 * operands will be blocked until the %gs update completes, which is
+	 * good enough for our purposes.
+	 */
+	return boot_cpu_data.x86_vendor == X86_VENDOR_AMD;
+}
+
+/*
+ * Does SMAP provide full mitigation against speculative kernel access to
+ * userspace?
+ */
+static bool smap_works_speculatively(void)
+{
+	if (!boot_cpu_has(X86_FEATURE_SMAP))
+		return false;
+
+	/*
+	 * On CPUs which are vulnerable to Meltdown, SMAP does not
+	 * prevent speculative access to user data in the L1 cache.
+	 * Consider SMAP to be non-functional as a mitigation on these
+	 * CPUs.
+	 */
+	if (boot_cpu_has(X86_BUG_CPU_MELTDOWN))
+		return false;
+
+	return true;
+}
+
+static void __init spectre_v1_select_mitigation(void)
+{
+	spectre_v1_mitigation = SPECTRE_V1_MITIGATION_AUTO;
+
+	if (!boot_cpu_has_bug(X86_BUG_SPECTRE_V1) || cpu_mitigations_off() ||
+	    cmdline_find_option_bool (boot_command_line, "nospectre_v1")) {
+		spectre_v1_mitigation = SPECTRE_V1_MITIGATION_NONE;
+	}
+
+	if (spectre_v1_mitigation == SPECTRE_V1_MITIGATION_AUTO) {
+		/*
+		 * With Spectre v1, a user can speculatively control either
+		 * path of a conditional swapgs with a user-controlled GS
+		 * value.  The mitigation is to add lfences to both code paths.
+		 *
+		 * If FSGSBASE is enabled, the user can put a kernel address in
+		 * GS, in which case SMAP provides no protection.
+		 *
+		 * [ NOTE: Don't check for X86_FEATURE_FSGSBASE until the
+		 *	   FSGSBASE enablement patches have been merged. ]
+		 *
+		 * If FSGSBASE is disabled, the user can only put a user space
+		 * address in GS.  That makes an attack harder, but still
+		 * possible if there's no SMAP protection.
+		 */
+		if (!smap_works_speculatively()) {
+			/*
+			 * Mitigation can be provided from SWAPGS itself or
+			 * PTI as the CR3 write in the Meltdown mitigation
+			 * is serializing.
+			 *
+			 * If neither is there, mitigate with an LFENCE.
+			 */
+			if (!is_swapgs_serializing() && !boot_cpu_has(X86_FEATURE_PTI))
+				setup_force_cpu_cap(X86_FEATURE_FENCE_SWAPGS_USER);
+
+			/*
+			 * Enable lfences in the kernel entry (non-swapgs)
+			 * paths, to prevent user entry from speculatively
+			 * skipping swapgs.
+			 */
+			setup_force_cpu_cap(X86_FEATURE_FENCE_SWAPGS_KERNEL);
+		}
+	}
+
+	pr_info("%s\n", spectre_v1_strings[spectre_v1_mitigation]);
 }
 
 /* The kernel command line selection */
@@ -1652,7 +1744,7 @@ static ssize_t cpu_show_common(struct device *dev, struct device_attribute *attr
 
 	case X86_BUG_SPECTRE_V1:
 		/* At the moment, a single hard-wired mitigation */
-		return sprintf(buf, "Mitigation: lfence\n");
+		return sprintf(buf, "%s\n", spectre_v1_strings[spectre_v1_mitigation]);
 
 	case X86_BUG_SPECTRE_V2:
 		return sprintf(buf, "%s%s%s\n", spectre_v2_strings[spectre_v2_enabled],
