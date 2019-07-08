@@ -1462,7 +1462,7 @@ static void *fm10k_dfwd_add_station(struct net_device *dev,
 	struct fm10k_l2_accel *old_l2_accel = NULL;
 	struct fm10k_dglort_cfg dglort = { 0 };
 	struct fm10k_hw *hw = &interface->hw;
-	int size = 0, i;
+	int size, i;
 	u16 vid, glort;
 
 	/* allocate l2 accel structure if it is not available */
