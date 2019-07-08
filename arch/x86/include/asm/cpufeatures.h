@@ -211,6 +211,8 @@
 #define X86_FEATURE_MBA			( 7*32+18) /* Memory Bandwidth Allocation */
 #define X86_FEATURE_RSB_CTXSW		( 7*32+19) /* "" Fill RSB on context switches */
 #define X86_FEATURE_SEV			( 7*32+20) /* AMD Secure Encrypted Virtualization */
+#define X86_FEATURE_FENCE_SWAPGS_USER	( 7*32+21) /* "" LFENCE in user entry SWAPGS path */
+#define X86_FEATURE_FENCE_SWAPGS_KERNEL	( 7*32+22) /* "" LFENCE in kernel entry SWAPGS path */
 #define X86_FEATURE_IBRS_ENHANCED	( 7*32+23) /* IBRS all the time */
 #define X86_FEATURE_LS_CFG_SSBD		( 7*32+24)  /* "" AMD SSBD implementation via LS_CFG MSR */
 #define X86_FEATURE_SPEC_STORE_BYPASS_DISABLE	( 7*32+25) /* "" Disable Speculative Store Bypass. */
