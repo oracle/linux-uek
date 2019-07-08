@@ -326,16 +326,21 @@ ENTRY(save_args)
 	testl $3, CS(%rdi)
 	je 1f
 	SWAPGS
+	FENCE_SWAPGS_USER_ENTRY
 	SWITCH_KERNEL_CR3
 	ENABLE_IBRS
+	jmp 2f
+1:
+	FENCE_SWAPGS_KERNEL_ENTRY
+2:
 	/*
 	 * irq_count is used to check if a CPU is already on an interrupt stack
 	 * or not. While this is essentially redundant with preempt_count it is
 	 * a little cheaper to use a separate counter in the PDA (short of
 	 * moving irq_enter into assembly, which would be too much work)
 	 */
-1:	incl PER_CPU_VAR(irq_count)
-	jne 2f
+	incl PER_CPU_VAR(irq_count)
+	jne 3f
 	popq_cfi %rax			/* move return address... */
 	mov PER_CPU_VAR(irq_stack_ptr),%rsp
 	EMPTY_FRAME 0
@@ -344,7 +349,7 @@ ENTRY(save_args)
 	/*
 	 * We entered an interrupt context - irqs are off:
 	 */
-2:	TRACE_IRQS_OFF
+3:	TRACE_IRQS_OFF
 	ret
 	CFI_ENDPROC
 END(save_args)
@@ -403,6 +408,7 @@ ENTRY(save_paranoid)
 	movq	%rax, %cr3
 2:
 #endif
+	FENCE_SWAPGS_KERNEL_ENTRY
 	ENABLE_IBRS_SAVE_AND_CLOBBER save_reg=%r13d
 
 	ret
@@ -1516,6 +1522,7 @@ error_swapgs:
 	SWAPGS
 	ENABLE_IBRS_CLOBBER
 error_sti:
+	FENCE_SWAPGS_KERNEL_ENTRY
 	TRACE_IRQS_OFF
 	ret
 
@@ -1605,6 +1612,7 @@ nmi_exit_no_switch:
 	testl	$1, %ebx		/* swapgs needed? */
 	jnz	nmi_exit_no_swapgs
 	SWAPGS_UNSAFE_STACK
+	FENCE_SWAPGS_USER_ENTRY
 nmi_exit_no_swapgs:
 	RESTORE_ALL 8
 	jmp	irq_return

@@ -177,6 +177,8 @@
 #define X86_FEATURE_PTS		(7*32+ 6) /* Intel Package Thermal Status */
 #define X86_FEATURE_DTS		(7*32+ 7) /* Digital Thermal Sensor */
 #define	X86_FEATURE_INVPCID_SINGLE (7*32+ 8) /* Effectively INVPCID && CR4.PCIDE=1 */
+#define X86_FEATURE_FENCE_SWAPGS_USER	( 7*32+14) /* "" LFENCE in user entry SWAPGS path */
+#define X86_FEATURE_FENCE_SWAPGS_KERNEL	( 7*32+15) /* "" LFENCE in kernel entry SWAPGS path */
 #define X86_FEATURE_IBRS	(7*32+19) /* Control Speculation Control */
 
 /* Keep the bits consistent with upstream.
