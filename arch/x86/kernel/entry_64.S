@@ -740,9 +740,13 @@ END(irq_entries_start)
 	testl $3, CS-RBP(%rsp)
 	je 1f
 	SWAPGS
+	FENCE_SWAPGS_USER_ENTRY
 	SWITCH_KERNEL_CR3
 	ENABLE_IBRS
+	jmp 2f
 1:
+	FENCE_SWAPGS_KERNEL_ENTRY
+2:
 	/*
 	 * Save previous stack pointer, optionally switch to interrupt stack.
 	 * irq_count is used to check if a CPU is already on an interrupt stack
@@ -1515,6 +1519,12 @@ ENTRY(paranoid_entry)
 	movq	%rax, %cr3
 2:
 #endif
+	/*
+	 * The above code doesn't do an unconditional CR3 write, even in the
+	 * PTI case.  So do an lfence to prevent GS speculation, regardless of
+	 * whether PTI is enabled.
+	 */
+	FENCE_SWAPGS_KERNEL_ENTRY
 	ENABLE_IBRS_SAVE_AND_CLOBBER save_reg=%r13d
 	ret
 	CFI_ENDPROC
@@ -1581,6 +1591,7 @@ ENTRY(error_entry)
 	je error_kernelspace
 error_swapgs:
 	SWAPGS
+	FENCE_SWAPGS_USER_ENTRY
 	ENABLE_IBRS_CLOBBER
 error_sti:
 	TRACE_IRQS_OFF
@@ -1612,6 +1623,7 @@ bstep_iret:
 
 error_bad_iret:
 	SWAPGS
+	FENCE_SWAPGS_USER_ENTRY
 	ENABLE_IBRS
 	mov %rsp,%rdi
 	call fixup_bad_iret
@@ -1712,6 +1724,7 @@ ENTRY(nmi)
 	 * stacks lest we corrupt the "NMI executing" variable.
 	 */
 	SWAPGS_UNSAFE_STACK
+	FENCE_SWAPGS_USER_ENTRY
 	/*
 	 * percpu variables are mapped with user CR3, so no need
 	 * to switch CR3 here.
@@ -2002,6 +2015,7 @@ end_repeat_nmi:
 	movq	%rax, %cr3
 2:
 #endif
+	FENCE_SWAPGS_USER_ENTRY
 	DEFAULT_FRAME 0				/* XXX: Do we need this? */
 
 	/* paranoidentry do_nmi, 0; without TRACE_IRQS_OFF */

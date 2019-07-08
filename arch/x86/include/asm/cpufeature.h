@@ -74,6 +74,8 @@
 #define X86_FEATURE_L1TF_PTEINV		( 2*32+0) /* "" L1TF workaround PTE inversion */
 #define X86_FEATURE_FLUSH_L1D		( 2*32+1) /* Flush L1D cache */
 #define X86_FEATURE_MD_CLEAR		( 2*32+2) /* VERW clears CPU buffers */
+#define X86_FEATURE_FENCE_SWAPGS_USER	( 2*32+3) /* "" LFENCE in user entry SWAPGS path */
+#define X86_FEATURE_FENCE_SWAPGS_KERNEL ( 2*32+4) /* "" LFENCE in kernel entry SWAPGS path */
 
 /* Other features, Linux-defined mapping, word 3 */
 /* This range is used for feature bits which conflict or are synthesized */
