@@ -470,18 +470,23 @@ ENDPROC(native_usergs_sysret64)
 	testl $3, CS-RBP(%rsi)
 	je 1f
 	SWAPGS
+	FENCE_SWAPGS_USER_ENTRY
 	SWITCH_KERNEL_CR3
 
 	STUFF_RSB /* We have a working stack. */
 
 	ENABLE_IBRS
+	jmp 2f
+1:
+	FENCE_SWAPGS_KERNEL_ENTRY
+2:
 	/*
 	 * irq_count is used to check if a CPU is already on an interrupt stack
 	 * or not. While this is essentially redundant with preempt_count it is
 	 * a little cheaper to use a separate counter in the PDA (short of
 	 * moving irq_enter into assembly, which would be too much work)
 	 */
-1:	incl PER_CPU_VAR(irq_count)
+	incl PER_CPU_VAR(irq_count)
 	cmovzq PER_CPU_VAR(irq_stack_ptr),%rsp
 	CFI_DEF_CFA_REGISTER	rsi
 
@@ -547,6 +552,7 @@ ENTRY(save_paranoid)
 	movq	%rax, %cr3
 2:
 #endif
+	FENCE_SWAPGS_KERNEL_ENTRY
 	/* For ebx=1, or 3, skip STUFF_RSB (since no user->kernel transition) */
 	testl $1, %ebx
 	jnz 3f
@@ -1662,6 +1668,7 @@ error_swapgs:
 
 	ENABLE_IBRS_CLOBBER
 error_sti:
+	FENCE_SWAPGS_KERNEL_ENTRY
 	TRACE_IRQS_OFF
 	ret
 
@@ -1796,6 +1803,7 @@ ENTRY(nmi)
 	 */
 
 	SWAPGS_UNSAFE_STACK
+	FENCE_SWAPGS_USER_ENTRY
 	/*
 	 * percpu variables are mapped with user CR3, so no need
 	 * to switch CR3 here.
@@ -2088,6 +2096,7 @@ end_repeat_nmi:
 	SWAPGS
 	xorl %ebx,%ebx
 1:
+	FENCE_SWAPGS_USER_ENTRY
 	movq	%rsp,%rdi
 	movq	$-1,%rsi
 #ifdef CONFIG_PAGE_TABLE_ISOLATION
