@@ -4601,7 +4601,7 @@ set_rps_cpu(struct net_device *dev, struct sk_buff *skb,
  * CPU from the RPS map of the receiving queue for a given skb.
  * rcu_read_lock must be held on entry.
  */
-static int get_rps_cpu(struct net_device *dev, struct sk_buff *skb,
+static int __get_rps_cpu(struct net_device *dev, struct sk_buff *skb,
 		       struct rps_dev_flow **rflowp)
 {
 	const struct rps_sock_flow_table *sock_flow_table;
@@ -4696,6 +4696,35 @@ try_rps:
 
 done:
 	return cpu;
+}
+
+static int get_rps_cpu(struct net_device *dev, struct sk_buff *skb,
+		      struct rps_dev_flow **rflowp)
+{
+	/* Check for a vlan device with RPS settings */
+	if (skb_vlan_tag_present(skb)) {
+		struct net_device *vdev;
+		u16 vid;
+
+		vid = skb_vlan_tag_get_id(skb);
+		vdev = __vlan_find_dev_deep_rcu(dev, skb->vlan_proto, vid);
+		if (vdev) {
+			/* recorded queue is not referring to the vlan device.
+			 * Save and restore it
+			 */
+			int cpu;
+			u16 queue_mapping = skb_get_queue_mapping(skb);
+
+			skb_set_queue_mapping(skb, 0);
+			cpu = __get_rps_cpu(vdev, skb, rflowp);
+			skb_set_queue_mapping(skb, queue_mapping);
+			if (cpu != -1)
+				return cpu;
+		}
+	}
+
+	/* Fall back to RPS settings of original device */
+	return __get_rps_cpu(dev, skb, rflowp);
 }
 
 #ifdef CONFIG_RFS_ACCEL
@@ -5184,12 +5213,23 @@ static int netif_rx_internal(struct sk_buff *skb)
 
 		rcu_read_lock();
 
+		/* strip any vlan tag before calling get_rps_cpu() */
+		if (skb->protocol == cpu_to_be16(ETH_P_8021Q) ||
+		    skb->protocol == cpu_to_be16(ETH_P_8021AD)) {
+			skb = skb_vlan_untag(skb);
+			if (unlikely(!skb)) {
+				ret = NET_RX_DROP;
+				goto unlock;
+			}
+		}
+
 		cpu = get_rps_cpu(skb->dev, skb, &rflow);
 		if (cpu < 0)
 			cpu = smp_processor_id();
 
 		ret = enqueue_to_backlog(skb, cpu, &rflow->last_qtail);
 
+unlock:
 		rcu_read_unlock();
 	} else
 #endif
@@ -5857,7 +5897,19 @@ static int netif_receive_skb_internal(struct sk_buff *skb)
 #ifdef CONFIG_RPS
 	if (static_branch_unlikely(&rps_needed)) {
 		struct rps_dev_flow voidflow, *rflow = &voidflow;
-		int cpu = get_rps_cpu(skb->dev, skb, &rflow);
+		int cpu;
+
+		/* strip any vlan tag before calling get_rps_cpu() */
+		if (skb->protocol == cpu_to_be16(ETH_P_8021Q) ||
+		    skb->protocol == cpu_to_be16(ETH_P_8021AD)) {
+			skb = skb_vlan_untag(skb);
+			if (unlikely(!skb)) {
+				ret = NET_RX_DROP;
+				goto out;
+			}
+		}
+
+	cpu = get_rps_cpu(skb->dev, skb, &rflow);
 
 		if (cpu >= 0) {
 			ret = enqueue_to_backlog(skb, cpu, &rflow->last_qtail);
@@ -5867,6 +5919,7 @@ static int netif_receive_skb_internal(struct sk_buff *skb)
 	}
 #endif
 	ret = __netif_receive_skb(skb);
+out:
 	rcu_read_unlock();
 	return ret;
 }
