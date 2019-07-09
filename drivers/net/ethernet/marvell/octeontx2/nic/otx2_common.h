@@ -217,7 +217,7 @@ static inline bool is_96xx_A0(struct pci_dev *pdev)
 
 static inline bool is_95xx_A0(struct pci_dev *pdev)
 {
-	return (pdev->revision == 0x10) &&
+	return ((pdev->revision == 0x10) || (pdev->revision == 0x11)) &&
 		(pdev->subsystem_device == PCI_SUBSYS_DEVID_95XX_RVU_PFVF);
 }
 
