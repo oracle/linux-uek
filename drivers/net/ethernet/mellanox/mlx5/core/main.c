@@ -92,6 +92,10 @@ static bool probe_vf = 1;
 module_param_named(probe_vf, probe_vf, bool, 0644);
 MODULE_PARM_DESC(probe_vf, "probe VFs or not, 0 = not probe, 1 = probe. Default = 1");
 
+#define MODULE_NAME "mlx5_core"
+int unload_allowed __initdata;
+module_param_named(module_unload_allowed, unload_allowed, int, 0);
+
 struct proc_dir_entry *mlx5_core_proc_dir;
 struct proc_dir_entry *mlx5_crdump_dir;
 
@@ -2635,6 +2639,12 @@ static int __init init(void)
 		goto err_debug;
  
 	err = pci_register_driver(&mlx5_core_driver);
+	if (!err && !unload_allowed) {
+		printk(KERN_NOTICE "Module %s locked in memory until next boot\n",
+				MODULE_NAME);
+		__module_get(THIS_MODULE);
+	}
+
 	if (err)
 		goto err_core_dir;
 
