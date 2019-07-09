@@ -485,7 +485,7 @@ static inline bool is_rvu_95xx_A0(struct rvu *rvu)
 {
 	struct pci_dev *pdev = rvu->pdev;
 
-	return (pdev->revision == 0x10) &&
+	return ((pdev->revision == 0x10) || (pdev->revision == 0x11)) &&
 		(pdev->subsystem_device == PCI_SUBSYS_DEVID_95XX);
 }
 
