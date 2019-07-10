@@ -96,6 +96,11 @@ int rvu_npa_aq_enq_inst(struct rvu *rvu, struct npa_aq_enq_req *req,
 	 */
 	inst.res_addr = (u64)aq->res->iova;
 
+	/* Hardware uses same aq->res->base for updating result of
+	 * previous instruction hence wait here till it is done.
+	 */
+	spin_lock(&aq->lock);
+
 	/* Clean result + context memory */
 	memset(aq->res->base, 0, aq->res->entry_sz);
 	/* Context needs to be written at RES_ADDR + 128 */
@@ -140,10 +145,10 @@ int rvu_npa_aq_enq_inst(struct rvu *rvu, struct npa_aq_enq_req *req,
 		break;
 	}
 
-	if (rc)
+	if (rc) {
+		spin_unlock(&aq->lock);
 		return rc;
-
-	spin_lock(&aq->lock);
+	}
 
 	/* Submit the instruction to AQ */
 	rc = npa_aq_enqueue_wait(rvu, block, &inst);
