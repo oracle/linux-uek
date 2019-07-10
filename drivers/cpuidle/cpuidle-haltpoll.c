@@ -16,6 +16,7 @@
 #include <linux/sched/clock.h>
 #include <linux/sched/idle.h>
 #include <linux/cpuidle_haltpoll.h>
+#include <linux/kvm_para.h>
 
 static unsigned int guest_halt_poll_ns __read_mostly = 200000;
 module_param(guest_halt_poll_ns, uint, 0644);
@@ -133,6 +134,9 @@ static int __init haltpoll_init(void)
 {
 	struct cpuidle_driver *drv = &haltpoll_driver;
 	int ret;
+
+	if (!kvm_para_available())
+		return 0;
 
 	cpuidle_poll_state_init(drv);
 
