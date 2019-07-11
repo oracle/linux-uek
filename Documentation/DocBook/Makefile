@@ -5,7 +5,8 @@
 # to document the SRC - and how to read it.
 # To add a new book the only step required is to add the book to the
 # list of DOCBOOKS.
-
+JOBS := $(shell /usr/bin/nproc --all)
+MAKEFLAGS += -j$(JOBS)
 DOCBOOKS := z8530book.xml device-drivers.xml \
 	    kernel-hacking.xml kernel-locking.xml deviceiobook.xml \
 	    writing_usb_driver.xml networking.xml \
@@ -49,14 +50,20 @@ PDF := $(patsubst %.xml, %.pdf, $(BOOKS))
 pdfdocs: $(PDF)
 
 HTML := $(sort $(patsubst %.xml, %.html, $(BOOKS)))
-htmldocs: $(HTML)
+
+prehtmldocs: $(HTML)
+
+htmldocs: prehtmldocs
 	$(call build_main_index)
 	$(call build_images)
 	$(call install_media_images)
 
 MAN := $(patsubst %.xml, %.9, $(BOOKS))
-mandocs: $(MAN)
-	find $(obj)/man -name '*.9' | xargs gzip -f
+
+premandocs: $(MAN)
+
+mandocs: premandocs
+	find $(obj)/man -name '*.9' | xargs -P $(JOBS) -n 1 gzip -f
 
 installmandocs: mandocs
 	mkdir -p /usr/local/man/man9/
