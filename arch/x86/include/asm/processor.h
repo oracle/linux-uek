@@ -172,11 +172,6 @@ extern struct x86_hw_tss	doublefault_tss;
 extern __u32			cpu_caps_cleared[NCAPINTS + NBUGINTS];
 extern __u32			cpu_caps_set[NCAPINTS + NBUGINTS];
 
-enum get_cpu_cap_behavior {
-	GET_CPU_CAP_MINIMUM,
-	GET_CPU_CAP_FULL,
-};
-
 #ifdef CONFIG_SMP
 DECLARE_PER_CPU_READ_MOSTLY(struct cpuinfo_x86, cpu_info);
 #define cpu_data(cpu)		per_cpu(cpu_info, cpu)
@@ -202,10 +197,8 @@ extern void identify_secondary_cpu(struct cpuinfo_x86 *);
 extern void print_cpu_info(struct cpuinfo_x86 *);
 void print_cpu_msr(struct cpuinfo_x86 *);
 extern void init_scattered_cpuid_features(struct cpuinfo_x86 *c);
-extern void init_speculation_control(struct cpuinfo_x86 *c,
-				     enum get_cpu_cap_behavior behavior);
-extern void get_cpu_cap(struct cpuinfo_x86 *c,
-			enum get_cpu_cap_behavior behavior);
+extern void init_speculation_control(struct cpuinfo_x86 *c);
+extern void get_cpu_cap(struct cpuinfo_x86 *c);
 extern u32 get_scattered_cpuid_leaf(unsigned int level,
 				    unsigned int sub_leaf,
 				    enum cpuid_regs_idx reg);

@@ -1257,7 +1257,7 @@ asmlinkage __visible void __init xen_start_kernel(void)
 	xen_setup_gdt(0);
 
 	/* Work out if we support NX */
-	get_cpu_cap(&boot_cpu_data, GET_CPU_CAP_MINIMUM);
+	get_cpu_cap(&boot_cpu_data);
 	x86_configure_nx();
 
 	xen_init_irq_ops();

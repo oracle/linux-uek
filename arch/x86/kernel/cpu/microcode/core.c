@@ -455,7 +455,7 @@ static ssize_t microcode_write(struct file *file, const char __user *buf,
 	if (ret > 0) {
 		perf_check_microcode();
 
-		get_cpu_cap(&cpu_data(0), GET_CPU_CAP_FULL);
+		get_cpu_cap(&cpu_data(0));
 	}
 
 	mutex_unlock(&microcode_mutex);
@@ -615,7 +615,7 @@ static int microcode_reload_late(void)
 	ret = stop_machine_cpuslocked(__reload_late, NULL, cpu_online_mask);
 	if (ret > 0) {
 		if (microcode_check())
-			get_cpu_cap(&cpu_data(0), GET_CPU_CAP_FULL);
+			get_cpu_cap(&cpu_data(0));
 	}
 
 	return ret;
@@ -883,7 +883,7 @@ int __init microcode_init(void)
 		 * mc_device_add will update microcode for all CPUs.
 		 * Probe CPU capabilities.
 		 */
-		get_cpu_cap(&cpu_data(0), GET_CPU_CAP_FULL);
+		get_cpu_cap(&cpu_data(0));
 	}
 
 	mutex_unlock(&microcode_mutex);

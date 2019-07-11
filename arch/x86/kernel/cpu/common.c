@@ -362,7 +362,7 @@ static __always_inline void setup_pku(struct cpuinfo_x86 *c)
 	 * cpuid bit to be set.  We need to ensure that we
 	 * update that bit in this CPU's "cpu_info".
 	 */
-	get_cpu_cap(c, GET_CPU_CAP_FULL);
+	get_cpu_cap(c);
 }
 
 #ifdef CONFIG_X86_INTEL_MEMORY_PROTECTION_KEYS
@@ -729,8 +729,7 @@ static void apply_forced_caps(struct cpuinfo_x86 *c)
 	}
 }
 
-void init_speculation_control(struct cpuinfo_x86 *c,
-			      enum get_cpu_cap_behavior behavior)
+void init_speculation_control(struct cpuinfo_x86 *c)
 {
 	if (cpu_has(c, X86_FEATURE_ARCH_CAPABILITIES)) {
 		u64 cap;
@@ -777,49 +776,9 @@ void init_speculation_control(struct cpuinfo_x86 *c,
 		set_cpu_cap(c, X86_FEATURE_MSR_SPEC_CTRL);
 		clear_cpu_cap(c, X86_FEATURE_VIRT_SSBD);
 	}
-
-	if (behavior == GET_CPU_CAP_MINIMUM)
-		return;
-
-	if (c == &boot_cpu_data) {
-		bool ignore = false;
-
-		if (xen_pv_domain())
-			ignore = true;
-
-		if (cpu_has(c, X86_FEATURE_SPEC_CTRL)) {
-			pr_info_once("FEATURE SPEC_CTRL Present%s\n",
-				     ignore ? " but ignored (Xen)" : "");
-			if (!ignore) {
-				mutex_lock(&spec_ctrl_mutex);
-				set_ibrs_supported();
-				/* Enable enhanced IBRS usage if available */
-				if (cpu_has(c, X86_FEATURE_IBRS_ENHANCED))
-					set_ibrs_enhanced();
-				mutex_unlock(&spec_ctrl_mutex);
-			}
-		} else {
-			pr_info("FEATURE SPEC_CTRL Not Present\n");
-		}
-		if (cpu_has(c, X86_FEATURE_IBPB)) {
-			pr_info_once("FEATURE IBPB Present%s\n",
-				     ignore ? " but ignored (Xen)" : "");
-		} else {
-			pr_info("FEATURE IBPB Not Present\n");
-		}
-	}
-
-	if (!xen_pv_domain()) {
-		mutex_lock(&spec_ctrl_mutex);
-		update_cpu_ibrs(c);
-		update_cpu_spec_ctrl(c->cpu_index);
-		mutex_unlock(&spec_ctrl_mutex);
-	} else {
-		clear_cpu_cap(c, X86_FEATURE_IBPB);
-	}
 }
 
-void get_cpu_cap(struct cpuinfo_x86 *c, enum get_cpu_cap_behavior behavior)
+void get_cpu_cap(struct cpuinfo_x86 *c)
 {
 	u32 eax, ebx, ecx, edx;
 
@@ -918,7 +877,7 @@ void get_cpu_cap(struct cpuinfo_x86 *c, enum get_cpu_cap_behavior behavior)
 	 * MUST be done after we apply the forced CPU flags as the boot_cpu_has
 	 * has been memset so we may re-enable the bits.
 	 */
-	init_speculation_control(c, behavior);
+	init_speculation_control(c);
 }
 
 void get_cpu_address_sizes(struct cpuinfo_x86 *c)
@@ -1097,7 +1056,7 @@ static void __init early_identify_cpu(struct cpuinfo_x86 *c)
 	if (have_cpuid_p()) {
 		cpu_detect(c);
 		get_cpu_vendor(c);
-		get_cpu_cap(c, GET_CPU_CAP_MINIMUM);
+		get_cpu_cap(c);
 		get_cpu_address_sizes(c);
 		setup_force_cpu_cap(X86_FEATURE_CPUID);
 
@@ -1224,7 +1183,7 @@ static void generic_identify(struct cpuinfo_x86 *c)
 
 	get_cpu_vendor(c);
 
-	get_cpu_cap(c, GET_CPU_CAP_FULL);
+	get_cpu_cap(c);
 
 	get_cpu_address_sizes(c);
 
@@ -1903,7 +1862,7 @@ bool microcode_check(void)
 	 */
 	memcpy(&info.x86_capability, &boot_cpu_data.x86_capability, sizeof(info.x86_capability));
 
-	get_cpu_cap(&info, GET_CPU_CAP_MINIMUM);
+	get_cpu_cap(&info);
 
 	if (!memcmp(&info.x86_capability, &boot_cpu_data.x86_capability, sizeof(info.x86_capability)))
 		return false;
