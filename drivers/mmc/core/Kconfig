@@ -80,3 +80,10 @@ config MMC_TEST
 	  This driver is only of interest to those developing or
 	  testing a host driver. Most people should say N here.
 
+config MMC_OOPS
+	tristate "Log panic/oops to a MMC buffer"
+	depends on OF
+	help
+	  This enables panic and oops messages to be logged to a circular
+	  buffer in a MMC sectors where it can be read back at some
+	  later point.
