@@ -961,6 +961,20 @@ int rvu_mbox_handler_npc_delete_flow(struct rvu *rvu,
 	u16 pcifunc = req->hdr.pcifunc;
 	int err;
 
+	if (req->end) {
+		list_for_each_entry_safe(iter, tmp, &mcam->mcam_rules, list) {
+			if (iter->owner == pcifunc &&
+			    iter->entry >= req->start &&
+			    iter->entry <= req->end) {
+				err = npc_delete_flow(rvu, iter->entry,
+						      pcifunc);
+				if (err)
+					return err;
+			}
+		}
+		return 0;
+	}
+
 	if (!req->all)
 		return npc_delete_flow(rvu, req->entry, pcifunc);
 
