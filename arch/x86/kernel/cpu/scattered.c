@@ -67,7 +67,7 @@ static const struct sku_microcode spectre_bad_microcodes[] = {
 	{ INTEL_FAM6_SANDYBRIDGE_X,	0x07,	0x712 },
 };
 
-static bool bad_spectre_microcode(struct cpuinfo_x86 *c)
+bool bad_spectre_microcode(struct cpuinfo_x86 *c)
 {
 	int i;
 
@@ -89,8 +89,7 @@ static bool bad_spectre_microcode(struct cpuinfo_x86 *c)
 	return false;
 }
 
-void init_scattered_cpuid_features(struct cpuinfo_x86 *c,
-				   enum get_cpu_cap_behavior behavior)
+void init_scattered_cpuid_features(struct cpuinfo_x86 *c)
 {
 	u32 max_level;
 	u32 regs[4];
@@ -144,85 +143,5 @@ void init_scattered_cpuid_features(struct cpuinfo_x86 *c,
 
 		if (regs[cb->reg] & (1 << cb->bit))
 			set_cpu_cap(c, cb->feature);
-	}
-
-	if (cpu_has(c, X86_FEATURE_IA32_ARCH_CAPS)) {
-		u64 cap;
-		rdmsrl(MSR_IA32_ARCH_CAPABILITIES, cap);
-		if (cap & 2) /* IBRS all the time */
-			set_cpu_cap(c, X86_FEATURE_IBRS_ENHANCED);
-	}
-
-	if (cpu_has(c, X86_FEATURE_IBRS))
-		set_cpu_cap(c, X86_FEATURE_IBPB);
-
-	if (behavior == GET_CPU_CAP_MINIMUM)
-		return;
-
-	if (!c->cpu_index) {
-		bool ignore = false;
-
-		if (xen_pv_domain())
-			ignore = true;
-
-		if (cpu_has(c, X86_FEATURE_IBRS)) {
-			printk_once(KERN_INFO "FEATURE SPEC_CTRL Present%s\n",
-				    ignore ? " but ignored (Xen)": "");
-		} else {
-			printk(KERN_INFO "FEATURE SPEC_CTRL Not Present\n");
-		}
-		if (cpu_has(c, X86_FEATURE_IBPB)) {
-			printk_once(KERN_INFO "FEATURE IBPB Present%s\n",
-					    ignore ? " but ignored (Xen)": "");
-		} else {
-			printk(KERN_INFO "FEATURE IBPB Not Present\n");
-		}
-		if (ignore)
-			return;
-	}
-
-	if ((cpu_has(c, X86_FEATURE_IBRS) ||
-	     cpu_has(c, X86_FEATURE_STIBP)) && bad_spectre_microcode(c)) {
-		if (c->cpu_index == 0)
-			pr_warn("Intel Spectre v2 broken microcode detected; disabling SPEC_CTRL/IBRS\n");
-		clear_cpu_cap(c, X86_FEATURE_IBRS);
-		clear_cpu_cap(c, X86_FEATURE_IBPB);
-		clear_cpu_cap(c, X86_FEATURE_STIBP);
-		clear_cpu_cap(c, X86_FEATURE_SSBD);
-	}
-
-	if (c->cpu_index == 0) {
-		mutex_lock(&spec_ctrl_mutex);
-		if (cpu_has(c, X86_FEATURE_IBRS)) {
-
-			/*
-			 * Set boot_cpu_data capability. This is only
-			 * needed by late cpu microcode loading.
-			 */
-			setup_force_cpu_cap(X86_FEATURE_IBRS);
-
-			set_ibrs_supported();
-			/* Enable enhanced IBRS usage if available */
-			if (cpu_has(c, X86_FEATURE_IBRS_ENHANCED)) {
-				set_ibrs_enhanced();
-			} else {
-				/*
-				 * Don't do this after disable_ibrs_and_friends
-				 * as we would re-enable it (say if
-				 * spectre_v2=off is used).
-				 */
-				set_ibrs_firmware();
-			}
-		}
-		if (cpu_has(c, X86_FEATURE_IBPB))
-			set_ibpb_supported();
-		mutex_unlock(&spec_ctrl_mutex);
-	}
-
-	if (!xen_pv_domain()) {
-		mutex_lock(&spec_ctrl_mutex);
-		update_cpu_ibrs(c);
-		update_cpu_spec_ctrl(c->cpu_index);
-		mutex_unlock(&spec_ctrl_mutex);
 	}
 }

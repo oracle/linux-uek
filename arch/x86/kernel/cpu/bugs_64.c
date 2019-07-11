@@ -219,6 +219,27 @@ void __init check_bugs(void)
 	 * init code as it is not enumerated and depends on the family.
 	 */
        if (boot_cpu_has(X86_FEATURE_IBRS)) {
+
+		printk_once(KERN_INFO "FEATURE SPEC_CTRL Present%s\n",
+			    xen_pv_domain() ? " but ignored (Xen)": "");
+
+		if (!xen_pv_domain()) {
+			mutex_lock(&spec_ctrl_mutex);
+			set_ibrs_supported();
+			/* Enable enhanced IBRS usage if available */
+			if (boot_cpu_has(X86_FEATURE_IBRS_ENHANCED)) {
+				set_ibrs_enhanced();
+			} else {
+				/*
+				 * Don't do this after disable_ibrs_and_friends
+				 * as we would re-enable it (say if
+				 * spectre_v2=off is used).
+				 */
+				set_ibrs_firmware();
+			}
+			mutex_unlock(&spec_ctrl_mutex);
+		}
+
 		rdmsrl(MSR_IA32_SPEC_CTRL, x86_spec_ctrl_base);
 		if (x86_spec_ctrl_base & (SPEC_CTRL_IBRS | SPEC_CTRL_SSBD)) {
 			pr_warn("SPEC CTRL MSR (0x%16llx) has IBRS and/or "
@@ -228,6 +249,18 @@ void __init check_bugs(void)
 		x86_spec_ctrl_priv = x86_spec_ctrl_base;
 		update_cpu_spec_ctrl_all();
 		microcode_had_ibrs = true;
+	} else {
+		printk(KERN_INFO "FEATURE SPEC_CTRL Not Present\n");
+	}
+
+	if (boot_cpu_has(X86_FEATURE_IBPB)) {
+		mutex_lock(&spec_ctrl_mutex);
+		set_ibpb_supported();
+		mutex_unlock(&spec_ctrl_mutex);
+		printk_once(KERN_INFO "FEATURE IBPB Present%s\n",
+				    xen_pv_domain() ? " but ignored (Xen)": "");
+	} else {
+		printk(KERN_INFO "FEATURE IBPB Not Present\n");
 	}
 
 	/* Allow STIBP in MSR_SPEC_CTRL if supported */
@@ -1754,6 +1787,18 @@ static ssize_t itlb_multihit_show_state(char *buf)
 
 #endif
 
+void update_percpu_mitigations(void)
+{
+	/*
+	 * No need to check for availability of IBRS since the values updated by
+	 * update_cpu_ibrs_all() are based on @use_ibrs which incorporates
+	 * knowledge about IBRS status.
+	 */
+	mutex_lock(&spec_ctrl_mutex);
+	update_cpu_ibrs_all();
+	update_cpu_spec_ctrl_all();
+	mutex_unlock(&spec_ctrl_mutex);
+}
 
 /*
  * This function replicates at runtime what check_bugs would do at init time.

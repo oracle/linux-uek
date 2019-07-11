@@ -89,6 +89,7 @@
 #include <linux/syscore_ops.h>
 #include <xen/xen.h>
 
+#include <asm/bugs.h>
 #include <asm/microcode.h>
 #include <asm/processor.h>
 #include <asm/cpu_device_id.h>
@@ -389,7 +390,7 @@ static int __reload_late(void *info)
 	/* Populate boot_cpu_data with the current info. */
 	if (ret > 0 && cpu == boot_cpu_data.cpu_index) {
 		cpu_clear_bug_bits(c);
-		get_cpu_cap(c, GET_CPU_CAP_FULL);
+		get_cpu_cap(c);
 		memcpy(&boot_cpu_data, c, sizeof(boot_cpu_data));
 		cpu_set_bug_bits(c);
 	}
@@ -408,7 +409,7 @@ wait_for_siblings:
 
 	if (ret > 0 && c->cpu_index != boot_cpu_data.cpu_index) {
 		cpu_clear_bug_bits(c);
-		get_cpu_cap(c, GET_CPU_CAP_FULL);
+		get_cpu_cap(c);
 	}
 
 	return ret;
@@ -467,6 +468,7 @@ static ssize_t reload_store(struct device *dev,
 	if (ret >= 0) {
 		perf_check_microcode();
 		microcode_late_select_mitigation();
+		update_percpu_mitigations();
 	}
 
 out:

@@ -34,7 +34,7 @@ static void early_init_intel(struct cpuinfo_x86 *c)
 		if (msr_clear_bit(MSR_IA32_MISC_ENABLE,
 				  MSR_IA32_MISC_ENABLE_LIMIT_CPUID_BIT) > 0) {
 			c->cpuid_level = cpuid_eax(0);
-			get_cpu_cap(c, GET_CPU_CAP_FULL);
+			get_cpu_cap(c);
 		}
 	}
 

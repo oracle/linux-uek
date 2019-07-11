@@ -44,6 +44,7 @@
 #include <asm/microcode_intel.h>
 #include <asm/intel-family.h>
 #include <asm/cpu_device_id.h>
+#include <asm/spec_ctrl.h>
 
 #ifdef CONFIG_X86_LOCAL_APIC
 #include <asm/uv/uv.h>
@@ -686,7 +687,43 @@ static void apply_forced_caps(struct cpuinfo_x86 *c)
 	}
 }
 
-void get_cpu_cap(struct cpuinfo_x86 *c, enum get_cpu_cap_behavior behavior)
+extern bool bad_spectre_microcode(struct cpuinfo_x86 *c);
+
+void init_speculation_control(struct cpuinfo_x86 *c)
+{
+	if (cpu_has(c, X86_FEATURE_IA32_ARCH_CAPS)) {
+		u64 cap;
+		rdmsrl(MSR_IA32_ARCH_CAPABILITIES, cap);
+		if (cap & ARCH_CAP_IBRS_ALL) /* IBRS all the time */
+			set_cpu_cap(c, X86_FEATURE_IBRS_ENHANCED);
+	}
+
+	if (cpu_has(c, X86_FEATURE_IBRS))
+		set_cpu_cap(c, X86_FEATURE_IBPB);
+
+	if ((cpu_has(c, X86_FEATURE_IBRS) ||
+	     cpu_has(c, X86_FEATURE_STIBP)) && bad_spectre_microcode(c)) {
+		if (c->cpu_index == 0)
+			pr_warn("Intel Spectre v2 broken microcode detected; disabling SPEC_CTRL/IBRS\n");
+		clear_cpu_cap(c, X86_FEATURE_IBRS);
+		clear_cpu_cap(c, X86_FEATURE_IBPB);
+		clear_cpu_cap(c, X86_FEATURE_STIBP);
+		clear_cpu_cap(c, X86_FEATURE_SSBD);
+	}
+
+	if (!xen_pv_domain()) {
+		/*
+		 * Only update percpu mitigation data during CPU bringup. No
+		 * need to grab spec_ctrl_mutex since we are not online yet.
+		 */
+		if (!cpu_online(smp_processor_id())) {
+			update_cpu_ibrs(c);
+			update_cpu_spec_ctrl(c->cpu_index);
+		}
+	}
+}
+
+void get_cpu_cap(struct cpuinfo_x86 *c)
 {
 	u32 tfms, xlvl;
 	u32 ebx;
@@ -782,7 +819,8 @@ void get_cpu_cap(struct cpuinfo_x86 *c, enum get_cpu_cap_behavior behavior)
 	if (c->extended_cpuid_level >= 0x80000007)
 		c->x86_power = cpuid_edx(0x80000007);
 
-	init_scattered_cpuid_features(c, behavior);
+
+	init_scattered_cpuid_features(c);
 
 	/*
 	 * Clear/Set all flags overridden by options, after probe.
@@ -790,6 +828,8 @@ void get_cpu_cap(struct cpuinfo_x86 *c, enum get_cpu_cap_behavior behavior)
 	 * several times during CPU initialization.
 	 */
 	apply_forced_caps(c);
+
+	init_speculation_control(c);
 }
 
 static void identify_cpu_without_cpuid(struct cpuinfo_x86 *c)
@@ -1013,7 +1053,7 @@ static void __init early_identify_cpu(struct cpuinfo_x86 *c)
 
 	cpu_detect(c);
 	get_cpu_vendor(c);
-	get_cpu_cap(c, GET_CPU_CAP_MINIMUM);
+	get_cpu_cap(c);
 	fpu_detect(c);
 
 	if (this_cpu->c_early_init)
@@ -1102,7 +1142,7 @@ static void generic_identify(struct cpuinfo_x86 *c)
 
 	get_cpu_vendor(c);
 
-	get_cpu_cap(c, GET_CPU_CAP_FULL);
+	get_cpu_cap(c);
 
 	if (c->cpuid_level >= 0x00000001) {
 		c->initial_apicid = (cpuid_ebx(1) >> 24) & 0xFF;

@@ -59,8 +59,7 @@ extern void tsx_disable(void);
 static inline void tsx_init(void) { }
 #endif /* CONFIG_CPU_SUP_INTEL */
 
-extern void get_cpu_cap(struct cpuinfo_x86 *c,
-			enum get_cpu_cap_behavior behavior);
+extern void get_cpu_cap(struct cpuinfo_x86 *c);
 extern void cpu_detect_cache_sizes(struct cpuinfo_x86 *c);
 extern int detect_extended_topology_early(struct cpuinfo_x86 *c);
 extern int detect_ht_early(struct cpuinfo_x86 *c);
