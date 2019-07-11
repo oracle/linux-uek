@@ -166,6 +166,12 @@ struct refill_work {
 	struct otx2_nic *pf;
 };
 
+struct otx2_mac_table {
+	u8 addr[ETH_ALEN];
+	u16 mcam_entry;
+	bool inuse;
+};
+
 struct otx2_nic {
 	void __iomem		*reg_base;
 	struct pci_dev		*pdev;
@@ -200,13 +206,19 @@ struct otx2_nic {
 	struct otx2_ptp		*ptp;
 
 	bool			entries_alloc;
-	u32			max_flows;
 	u32			nr_flows;
+	u32                     ntuple_max_flows;
+#define OTX2_NTUPLE_FILTER_CAPABLE		0
+#define OTX2_UNICAST_FILTER_CAPABLE		1
+	unsigned long           priv_flags;
 	u16			entry_list[NPC_MAX_NONCONTIG_ENTRIES];
 	struct list_head	flows;
 	struct workqueue_struct	*flr_wq;
 	struct flr_work		*flr_wrk;
 	struct refill_work	*refill_wrk;
+	struct otx2_mac_table	*mac_table;
+	struct workqueue_struct	*otx2_ndo_wq;
+	struct work_struct	otx2_rx_mode_work;
 };
 
 static inline bool is_96xx_A0(struct pci_dev *pdev)
@@ -531,10 +543,42 @@ int otx2_update_rq_stats(struct otx2_nic *pfvf, int qidx);
 int otx2_update_sq_stats(struct otx2_nic *pfvf, int qidx);
 void otx2_set_ethtool_ops(struct net_device *netdev);
 void otx2vf_set_ethtool_ops(struct net_device *netdev);
-int otx2_destroy_ethtool_flows(struct otx2_nic *pfvf);
 
 int otx2_open(struct net_device *netdev);
 int otx2_stop(struct net_device *netdev);
 int otx2_set_real_num_queues(struct net_device *netdev,
 			     int tx_queues, int rx_queues);
+/* MCAM filter related APIs */
+void otx2_do_set_rx_mode(struct work_struct *work);
+int otx2_add_macfilter(struct net_device *netdev, const u8 *mac);
+int otx2_mcam_flow_init(struct otx2_nic *pf);
+int otx2_del_macfilter(struct net_device *netdev, const u8 *mac);
+void otx2_mcam_flow_del(struct otx2_nic *pf);
+int otx2_destroy_ntuple_flows(struct otx2_nic *pf);
+int otx2_destroy_mcam_flows(struct otx2_nic *pfvf);
+int otx2_get_flow(struct otx2_nic *pfvf,
+		  struct ethtool_rxnfc *nfc, u32 location);
+int otx2_get_all_flows(struct otx2_nic *pfvf,
+		       struct ethtool_rxnfc *nfc, u32 *rule_locs);
+int otx2_add_flow(struct otx2_nic *pfvf,
+		  struct ethtool_rx_flow_spec *fsp);
+int otx2_remove_flow(struct otx2_nic *pfvf, u32 location);
+int otx2_prepare_flow_request(struct ethtool_rx_flow_spec *fsp,
+			      struct npc_install_flow_req *req);
+
+/* OTX2_NIC access priv_flags */
+static inline void otx2_nic_enable_feature(struct otx2_nic *pf,
+					   unsigned long nr) {
+	set_bit(nr, &pf->priv_flags);
+}
+
+static inline void otx2_nic_disable_feature(struct otx2_nic *pf,
+					    unsigned long nr) {
+	clear_bit(nr, &pf->priv_flags);
+}
+
+static inline int otx2_nic_is_feature_enabled(struct otx2_nic *pf,
+					      unsigned long nr) {
+	return test_bit(nr, &pf->priv_flags);
+}
 #endif /* OTX2_COMMON_H */
