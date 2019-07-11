@@ -1286,6 +1286,8 @@ struct npc_install_flow_rsp {
 struct npc_delete_flow_req {
 	struct mbox_msghdr hdr;
 	u16 entry;
+	u16 start;/*Disable range of entries */
+	u16 end;
 	u8 all; /* PF + VFs */
 };
 
