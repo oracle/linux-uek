@@ -2529,6 +2529,10 @@ static int mmc_blk_probe(struct mmc_card *card)
 
 	dev_set_drvdata(&card->dev, md);
 
+#ifdef CONFIG_MMC_OOPS
+	if (mmc_card_mmc(card))
+		mmc_oops_card_set(card);
+#endif
 	if (mmc_add_disk(md))
 		goto out;
 
