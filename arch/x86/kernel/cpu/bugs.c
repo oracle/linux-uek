@@ -197,6 +197,8 @@ EXPORT_SYMBOL_GPL(mds_idle_clear);
 
 void __init check_bugs(void)
 {
+	int cpu;
+
 	identify_boot_cpu();
 
 	/*
@@ -211,11 +213,23 @@ void __init check_bugs(void)
 	}
 
 	/*
+	 * Print the status of SPEC_CTRL feature on this machine.
 	 * Read the SPEC_CTRL MSR to account for reserved bits which may
 	 * have unknown values. AMD64_LS_CFG MSR is cached in the early AMD
 	 * init code as it is not enumerated and depends on the family.
 	 */
 	if (boot_cpu_has(X86_FEATURE_MSR_SPEC_CTRL)) {
+		pr_info_once("FEATURE SPEC_CTRL Present%s\n",
+			     xen_pv_domain() ? " but ignored (Xen)" : "");
+		if (!xen_pv_domain()) {
+			mutex_lock(&spec_ctrl_mutex);
+			set_ibrs_supported();
+			/* Enable enhanced IBRS usage if available */
+			if (boot_cpu_has(X86_FEATURE_IBRS_ENHANCED))
+				set_ibrs_enhanced();
+			mutex_unlock(&spec_ctrl_mutex);
+		}
+
 		rdmsrl(MSR_IA32_SPEC_CTRL, x86_spec_ctrl_base);
 		if (x86_spec_ctrl_base & (SPEC_CTRL_IBRS | SPEC_CTRL_SSBD)) {
 			pr_warn("SPEC CTRL MSR (0x%16llx) has IBRS and/or "
@@ -224,6 +238,26 @@ void __init check_bugs(void)
 		}
 		x86_spec_ctrl_priv = x86_spec_ctrl_base;
 		update_cpu_spec_ctrl_all();
+	} else {
+		pr_info("FEATURE SPEC_CTRL Not Present\n");
+	}
+
+	if (boot_cpu_has(X86_FEATURE_IBPB)) {
+		pr_info_once("FEATURE IBPB Present%s\n",
+			     xen_pv_domain() ? " but ignored (Xen)" : "");
+	} else {
+		pr_info("FEATURE IBPB Not Present\n");
+	}
+
+	for_each_online_cpu(cpu) {
+		if (!xen_pv_domain()) {
+			mutex_lock(&spec_ctrl_mutex);
+			update_cpu_ibrs(&cpu_data(cpu));
+			update_cpu_spec_ctrl(cpu);
+			mutex_unlock(&spec_ctrl_mutex);
+		} else {
+			clear_cpu_cap(&cpu_data(cpu), X86_FEATURE_IBPB);
+		}
 	}
 
 	/* Allow STIBP in MSR_SPEC_CTRL if supported */
