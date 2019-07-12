@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2006 Oracle.  All rights reserved.
+ * Copyright (c) 2006, 2019 Oracle and/or its affiliates. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -58,6 +58,12 @@ static unsigned long rds_ib_sysctl_max_unsolicited_wr_min;
 /* Nmbr frags of 1MB + 256B RDBMS hdr */
 static unsigned long rds_ib_sysctl_max_unsolicited_wr_max =
 	(1 * 1024 * 1024 + RDS_FRAG_SIZE) / RDS_FRAG_SIZE;
+
+/* Default FRWR garbage collection worker wakeup interval, in msec. */
+u32 rds_frwr_wake_intrvl = 5000;
+
+/* Default FRWR ibmr idle time before garbage collection, in msec. */
+u32 rds_frwr_ibmr_gc_time = 1000;
 
 /*
  * This sysctl does nothing.
@@ -144,6 +150,20 @@ static struct ctl_table rds_ib_sysctl_table[] = {
 		.proc_handler   = proc_dointvec_minmax,
 		.extra1		= &rds_ib_sysctl_min_local_ack_timeout,
 		.extra2		= &rds_ib_sysctl_max_local_ack_timeout,
+	},
+	{
+		.procname       = "frwr_gc_interval",
+		.data           = &rds_frwr_wake_intrvl,
+		.maxlen         = sizeof(rds_frwr_wake_intrvl),
+		.mode           = 0644,
+		.proc_handler   = proc_douintvec,
+	},
+	{
+		.procname       = "frwr_ibmr_gc_idle_time",
+		.data           = &rds_frwr_ibmr_gc_time,
+		.maxlen         = sizeof(rds_frwr_ibmr_gc_time),
+		.mode           = 0644,
+		.proc_handler   = proc_douintvec,
 	},
 	{ }
 };
