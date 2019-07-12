@@ -59,7 +59,8 @@ enum {
 	Opt_filestreams, Opt_quota, Opt_noquota, Opt_usrquota, Opt_grpquota,
 	Opt_prjquota, Opt_uquota, Opt_gquota, Opt_pquota,
 	Opt_uqnoenforce, Opt_gqnoenforce, Opt_pqnoenforce, Opt_qnoenforce,
-	Opt_discard, Opt_nodiscard, Opt_dax, Opt_err,
+	Opt_discard, Opt_nodiscard, Opt_dax, Opt_err, Opt_lazytime,
+	Opt_nolazytime,
 };
 
 static const match_table_t tokens = {
@@ -106,6 +107,8 @@ static const match_table_t tokens = {
 	{Opt_discard,	"discard"},	/* Discard unused blocks */
 	{Opt_nodiscard,	"nodiscard"},	/* Do not discard unused blocks */
 	{Opt_dax,	"dax"},		/* Enable direct access to bdev pages */
+	{Opt_lazytime,	"lazytime"},	/* lazy time updates */
+	{Opt_nolazytime, "nolazytime"},
 	{Opt_err,	NULL},
 };
 
@@ -338,6 +341,12 @@ xfs_parseargs(
 			mp->m_flags |= XFS_MOUNT_DAX;
 			break;
 #endif
+		case Opt_lazytime:
+			mp->m_super->s_flags |= SB_LAZYTIME;
+			break;
+		case Opt_nolazytime:
+			mp->m_super->s_flags &= ~SB_LAZYTIME;
+			break;
 		default:
 			xfs_warn(mp, "unknown mount option [%s].", p);
 			return -EINVAL;
@@ -1258,6 +1267,12 @@ xfs_fs_remount(
 		case Opt_inode32:
 			mp->m_flags |= XFS_MOUNT_SMALL_INUMS;
 			mp->m_maxagi = xfs_set_inode_alloc(mp, sbp->sb_agcount);
+			break;
+		case Opt_lazytime:
+			mp->m_super->s_flags |= SB_LAZYTIME;
+			break;
+		case Opt_nolazytime:
+			mp->m_super->s_flags &= ~SB_LAZYTIME;
 			break;
 		default:
 			/*
