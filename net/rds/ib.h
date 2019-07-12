@@ -690,4 +690,7 @@ extern unsigned long rds_ib_sysctl_max_recv_allocation;
 extern unsigned int rds_ib_sysctl_flow_control;
 extern unsigned int rds_ib_sysctl_disable_unmap_fmr_cpu;
 extern int rds_ib_sysctl_local_ack_timeout;
+extern u32 rds_frwr_wake_intrvl;
+extern u32 rds_frwr_ibmr_gc_time;
+
 #endif
