@@ -244,7 +244,7 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 #endif
 
 # don't do debug builds on anything but i686, x86_64, and aarch64
-%ifnarch i686 x86_64 aarch64
+%ifnarch i686 x86_64 aarch64 mips64
 %define with_debug 0
 %endif
 
@@ -386,6 +386,18 @@ BuildRequires: oracle-armtoolset-1 >= 1.0-0
 %define with_tools 1
 %endif
 
+%ifarch mips64
+%define all_arch_configs kernel-%{version}-mips64*.config
+%define image_install_path boot
+%define asmarch mips
+%define hdrarch mips
+%define make_target vmlinux
+%define kernel_image vmlinux
+%define with_headers   1
+%define with_perf 1
+%define with_tools 1
+%endif
+
 %if %{nopatches}
 # XXX temporary until last vdso patches are upstream
 %define vdso_arches ppc ppc64
@@ -486,13 +498,13 @@ Provides: kernel%{?variant}-drm-nouveau = 12\
 Provides: kernel%{?variant}-modeset = 1\
 Provides: kernel%{?variant}-uname-r = %{KVERREL}%{?1:.%{1}}\
 Provides: oracleasm = 2.0.5\
-%ifnarch sparc64 aarch64\
+%ifnarch sparc64 aarch64 mips64\
 Provides: x86_energy_perf_policy = %{KVERREL}%{?1:.%{1}}\
 Provides: turbostat = %{KVERREL}%{?1:.%{1}}\
 %endif\
 Provides: perf = %{KVERREL}%{?1:.%{1}}\
 #Provides: libperf.a = %{KVERREL}%{?1:.%{1}}\
-%ifarch sparc64 aarch64\
+%ifarch sparc64 aarch64 mips64\
 Provides: kernel = %{rpmversion}-%{pkg_release}\
 Provides: kernel-uname-r = %{KVERREL}%{?1:.%{1}}\
 %endif\
@@ -523,7 +535,7 @@ Version: %{rpmversion}
 Release: %{pkg_release}
 # DO NOT CHANGE THE 'ExclusiveArch' LINE TO TEMPORARILY EXCLUDE AN ARCHITECTURE BUILD.
 # SET %%nobuildarches (ABOVE) INSTEAD
-ExclusiveArch: noarch %{all_x86} x86_64 paravirt paravirt-debug ppc ppc64 ia64 sparc sparc64 s390x alpha alphaev56 %{arm} aarch64
+ExclusiveArch: noarch %{all_x86} x86_64 paravirt paravirt-debug ppc ppc64 ia64 sparc sparc64 s390x alpha alphaev56 %{arm} aarch64 mips64
 ExclusiveOS: Linux
 
 %kernel_reqprovconf
@@ -553,7 +565,9 @@ BuildRequires: sparse >= 0.4.1
 %endif
 %if %{signmodules}
 BuildRequires: gnupg
+%ifnarch mips64
 BuildRequires: pesign >= 0.10-4
+%endif #ifnarch mips64
 %endif
 %if %{with_fips}
 BuildRequires: hmaccalc
@@ -599,6 +613,8 @@ Source1000: config-x86_64
 Source1001: config-x86_64-debug
 Source1007: config-aarch64
 Source1008: config-aarch64-debug
+Source1009: config-mips64-embedded
+Source1010: config-mips64-embedded-debug
 
 Source25: Module.kabi_x86_64debug
 Source26: Module.kabi_x86_64
@@ -650,7 +666,7 @@ Patch00: patch-2.6.%{base_sublevel}-git%{gitrev}.bz2
 
 BuildRoot: %{_tmppath}/kernel-%{KVERREL}-root
 
-%ifnarch aarch64
+%ifnarch aarch64 mips64
 # Override find_provides to use a script that provides "kernel(symbol) = hash".
 # Pass path of the RPM temp dir containing kabideps to find-provides script.
 %global _use_internal_dependency_generator 0
@@ -861,7 +877,7 @@ Provides: kernel%{?variant}-devel-%{_target_cpu} = %{version}-%{release}%{?1:.%{
 Provides: kernel%{?variant}-devel = %{version}-%{release}%{?1:.%{1}}\
 Provides: kernel%{?variant}-devel-uname-r = %{KVERREL}%{?1:.%{1}}\
 Provides: dtrace-kernel-headers = 1.2.0\
-%ifarch sparc64 aarch64\
+%ifarch sparc64 aarch64 mips64\
 Provides: kernel-devel = %{version}-%{release}%{?1:.%{1}}\
 Provides: kernel-devel-uname-r = %{KVERREL}%{?1:.%{1}}\
 %endif\
@@ -1152,6 +1168,12 @@ mkdir -p configs
 	cp %{SOURCE1007} configs/config
 %endif #ifarch aarch64
 
+%ifarch mips64
+	cp %{SOURCE1010} configs/config-debug
+	cp %{SOURCE1009} configs/config
+%endif #ifarch mips64
+
+
 %if %{with_dtrace}
 	echo 'CONFIG_DTRACE=y' >> configs/config
 	echo 'CONFIG_DTRACE=y' >> configs/config-debug
@@ -1303,7 +1325,7 @@ hwcap 0 nosegneg"
     %{__install} -D -m 444 ldconfig-kernel.conf \
         $RPM_BUILD_ROOT/etc/ld.so.conf.d/kernel-$KernelVer.conf
 %endif
-%ifarch %{vdso_arches} sparc64 aarch64
+%ifarch %{vdso_arches} sparc64 aarch64 mips64
 %ifnarch noarch
 # build tools/perf:
     if [ -d tools/perf ]; then
@@ -1411,6 +1433,11 @@ fi
     cp -a --parents arch/arm/include/asm/xen $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/
     cp -a --parents arch/arm/include/asm/opcodes.h $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/
 %endif
+%ifarch mips64
+    cp -a --parents arch/%{asmarch}/Kbuild.platforms $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/
+    cp -a --parents arch/%{asmarch}/cavium-octeon/Platform $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/
+    cp -a --parents arch/%{asmarch}/generic/Platform $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/
+%endif
 %ifarch %{arm}
     if [ -d arch/%{asmarch}/mach-${Flavour}/include ]; then
       cp -a --parents arch/%{asmarch}/mach-${Flavour}/include $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/
@@ -1422,7 +1449,7 @@ fi
     cp -a --parents Kbuild $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/
     cp -a --parents kernel/bounds.c $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/
     cp -a --parents arch/%{asmarch}/kernel/asm-offsets.c $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/
-%ifnarch %{sparc} aarch64
+%ifnarch %{sparc} aarch64 mips64
     cp -a --parents arch/%{asmarch}/kernel/asm-offsets_64.c $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/
 %endif
     cp -a --parents security/selinux/include $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/
@@ -2090,7 +2117,7 @@ fi
 %ifarch %{arm} aarch64\
 /%{image_install_path}/dtb-%{KVERREL}%{?2:.%{2}} \
 %endif\
-%ifnarch sparc64 aarch64\
+%ifnarch sparc64 aarch64 mips64\
 /usr/libexec/x86_energy_perf_policy.%{KVERREL}%{?2:.%{2}}\
 /usr/sbin/x86_energy_perf_policy\
 /usr/libexec/turbostat.%{KVERREL}%{?2:.%{2}}\
