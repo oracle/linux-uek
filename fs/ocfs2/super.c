@@ -55,6 +55,7 @@
 #include "super.h"
 #include "sysfile.h"
 #include "uptodate.h"
+#include "ver.h"
 #include "xattr.h"
 #include "quota.h"
 #include "refcounttree.h"
@@ -71,7 +72,6 @@ static struct dentry *ocfs2_debugfs_root;
 
 MODULE_AUTHOR("Oracle");
 MODULE_LICENSE("GPL");
-MODULE_DESCRIPTION("OCFS2 cluster file system");
 
 struct mount_options
 {
@@ -1570,6 +1570,7 @@ static int __init ocfs2_init(void)
 {
 	int status;
 
+	ocfs2_print_version();
 	status = init_ocfs2_uptodate_cache();
 	if (status < 0)
 		goto out1;
