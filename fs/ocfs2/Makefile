@@ -37,6 +37,7 @@ ocfs2-objs := \
 	symlink.o 		\
 	sysfile.o 		\
 	uptodate.o		\
+	ver.o			\
 	quota_local.o		\
 	quota_global.o		\
 	xattr.o			\

@@ -33,6 +33,7 @@
 
 #include "../stackglue.h"
 #include "userdlm.h"
+#include "dlmfsver.h"
 
 #define MLOG_MASK_PREFIX ML_DLMFS
 #include "../cluster/masklog.h"
@@ -575,6 +576,7 @@ static int __init init_dlmfs_fs(void)
 	int status;
 	int cleanup_inode = 0, cleanup_worker = 0;
 
+	dlmfs_print_version();
 	dlmfs_inode_cache = kmem_cache_create("dlmfs_inode_cache",
 				sizeof(struct dlmfs_inode_private),
 				0, (SLAB_HWCACHE_ALIGN|SLAB_RECLAIM_ACCOUNT|
@@ -623,7 +625,6 @@ static void __exit exit_dlmfs_fs(void)
 
 MODULE_AUTHOR("Oracle");
 MODULE_LICENSE("GPL");
-MODULE_DESCRIPTION("OCFS2 DLM-Filesystem");
 
 module_init(init_dlmfs_fs)
 module_exit(exit_dlmfs_fs)
