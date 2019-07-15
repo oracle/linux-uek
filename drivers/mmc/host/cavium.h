@@ -294,7 +294,12 @@ extern const char *cvm_mmc_irq_names[];
 static inline bool is_mmc_8xxx(struct cvm_mmc_host *host)
 {
 	struct pci_dev *pdev = host->pdev;
-	u32 chip_id = (pdev->subsystem_device >> 12) & 0xF;
+	u32 chip_id;
+
+	if (!pdev)
+		return 0;
+
+	chip_id = (pdev->subsystem_device >> 12) & 0xF;
 
 	return (chip_id == PCI_SUBSYS_DEVID_8XXX);
 }
@@ -302,7 +307,12 @@ static inline bool is_mmc_8xxx(struct cvm_mmc_host *host)
 static inline bool is_mmc_otx2(struct cvm_mmc_host *host)
 {
 	struct pci_dev *pdev = host->pdev;
-	u32 chip_id = (pdev->subsystem_device >> 12) & 0xF;
+	u32 chip_id;
+
+	if (!pdev)
+		return 0;
+
+	chip_id = (pdev->subsystem_device >> 12) & 0xF;
 
 	return (chip_id == PCI_SUBSYS_DEVID_9XXX);
 }
@@ -310,7 +320,12 @@ static inline bool is_mmc_otx2(struct cvm_mmc_host *host)
 static inline bool is_mmc_otx2_A0(struct cvm_mmc_host *host)
 {
 	struct pci_dev *pdev = host->pdev;
-	u32 chip_id = (pdev->subsystem_device >> 12) & 0xF;
+	u32 chip_id;
+
+	if (!pdev)
+		return 0;
+
+	chip_id = (pdev->subsystem_device >> 12) & 0xF;
 
 	return (pdev->revision == 0x00) &&
 		(chip_id == PCI_SUBSYS_DEVID_9XXX);
@@ -319,7 +334,12 @@ static inline bool is_mmc_otx2_A0(struct cvm_mmc_host *host)
 static inline bool is_mmc_95xx(struct cvm_mmc_host *host)
 {
 	struct pci_dev *pdev = host->pdev;
-	u32 chip_id = (pdev->subsystem_device >> 8) & 0xFF;
+	u32 chip_id;
+
+	if (!pdev)
+		return 0;
+
+	chip_id = (pdev->subsystem_device >> 8) & 0xFF;
 
 	return (chip_id == PCI_SUBSYS_DEVID_95XX);
 }
