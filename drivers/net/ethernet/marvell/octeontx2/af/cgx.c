@@ -237,8 +237,10 @@ int cgx_lmac_addr_reset(u8 cgx_id, u8 lmac_id)
 	u8 index = 0;
 	u64 cfg;
 
-	/*  Clear the reserved bit for default mac address */
-	clear_bit(0, lmac->mac_to_index_bmap.bmap);
+	/* Restore index 0 to its default init value as done during
+	 * cgx_lmac_init
+	 */
+	set_bit(0, lmac->mac_to_index_bmap.bmap);
 
 	index = lmac_id * lmac->mac_to_index_bmap.max + index;
 	cgx_write(cgx_dev, 0, (CGXX_CMRX_RX_DMAC_CAM0 + (index * 0x8)), 0);
