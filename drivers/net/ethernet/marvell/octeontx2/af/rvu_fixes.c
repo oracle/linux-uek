@@ -19,6 +19,7 @@
 #include "mbox.h"
 #include "rvu.h"
 #include "cgx.h"
+#include "rvu_fixes.h"
 
 #define OTX2_MAX_CQ_CNT 64
 
@@ -996,4 +997,12 @@ bool is_parse_nibble_config_valid(struct rvu *rvu,
 	if (mcam_kex->keyx_cfg[NIX_INTF_RX] != mcam_kex->keyx_cfg[NIX_INTF_TX])
 		return false;
 	return true;
+}
+
+void rvu_smqvf_xmit(struct rvu *rvu)
+{
+	if (is_rvu_95xx_A0(rvu) || is_rvu_96xx_A0(rvu)) {
+		usleep_range(50, 60);
+		otx2smqvf_xmit();
+	}
 }
