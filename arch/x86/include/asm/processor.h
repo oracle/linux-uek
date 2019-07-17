@@ -202,6 +202,7 @@ extern void detect_ht(struct cpuinfo_x86 *c);
 #define NO_L1TF		BIT(3)
 #define NO_MDS		BIT(4)
 #define MSBDS_ONLY	BIT(5)
+#define NO_SWAPGS	BIT(6)
 
 extern bool cpu_matches(unsigned long which);
 
