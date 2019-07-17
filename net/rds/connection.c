@@ -291,8 +291,12 @@ static struct rds_connection *__rds_conn_create(struct net *net,
 
 		__rds_conn_path_init(conn, cp, is_outgoing);
 		cp->cp_index = i;
-		rds_rtd(RDS_RTD_CM_EXT, "using rds_cp_wqs index %d\n", cp_wqs_inx);
-		cp->cp_wq = rds_cp_wqs[cp_wqs_inx];
+		if (conn->c_loopback) {
+			cp->cp_wq = rds_local_wq;
+		} else {
+			rds_rtd(RDS_RTD_CM_EXT, "using rds_cp_wqs index %d\n", cp_wqs_inx);
+			cp->cp_wq = rds_cp_wqs[cp_wqs_inx];
+		}
 	}
 	ret = trans->conn_alloc(conn, gfp);
 	if (ret) {
