@@ -625,6 +625,8 @@ int otx2_add_flow(struct otx2_nic *pfvf,
 int otx2_remove_flow(struct otx2_nic *pfvf, u32 location);
 int otx2_prepare_flow_request(struct ethtool_rx_flow_spec *fsp,
 			      struct npc_install_flow_req *req);
+int otx2smqvf_probe(struct otx2_nic *vf);
+int otx2smqvf_remove(struct otx2_nic *vf);
 
 /* OTX2_NIC access priv_flags */
 static inline void otx2_nic_enable_feature(struct otx2_nic *pf,
