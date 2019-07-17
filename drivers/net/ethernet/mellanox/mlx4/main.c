@@ -154,10 +154,10 @@ static int mlx4_scale_profile = 1;
 module_param_named(scale_profile, mlx4_scale_profile, int, 0644);
 MODULE_PARM_DESC(scale_profile, "Dynamically adjust default profile"
 		 "parameters based on system resources");
-#define MLX4_SCALE_LOG_NUM_QP 20 /* 1 Meg */
+#define MLX4_SCALE_LOG_NUM_QP 18 /* 256K */
 #define MLX4_SCALE_LOG_NUM_SRQ 18 /* 256K */
 #define MLX4_SCALE_LOG_NUM_CQ 18 /* 256K */
-#define MLX4_SCALE_LOG_RDMARC_PER_QP 7 /* 128 */
+#define MLX4_SCALE_LOG_RDMARC_PER_QP 3 /* 8 */
 
 static bool use_prio;
 module_param_named(use_prio, use_prio, bool, 0444);
