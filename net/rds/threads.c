@@ -178,7 +178,7 @@ void rds_queue_reconnect(struct rds_conn_path *cp)
 	struct rds_connection *conn = cp->cp_conn;
 	bool is_tcp = conn->c_trans->t_type == RDS_TRANS_TCP;
 	bool active = rds_conn_is_active_peer(conn);
-	uint64_t delay = 0;
+	uint64_t delay;
 
 	rds_rtd_ptr(RDS_RTD_CM_EXT,
 		    "conn %p:%d <%pI6c,%pI6c,%d> reconnect jiffies %lu\n",
@@ -195,10 +195,12 @@ void rds_queue_reconnect(struct rds_conn_path *cp)
 	if (!active && cp->cp_reconnect_racing)
 		return;
 
-	if (cp->cp_reconnect_jiffies == 0)
+	if (cp->cp_reconnect_jiffies == 0) {
 		cp->cp_reconnect_jiffies = rds_sysctl_reconnect_min_jiffies;
-	else
 		delay = cp->cp_reconnect_jiffies;
+	} else {
+		delay = cp->cp_reconnect_jiffies;
+	}
 
 	if (!active) {
 		delay = max_t(uint64_t,
