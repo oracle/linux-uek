@@ -216,6 +216,10 @@ void rds_queue_reconnect(struct rds_conn_path *cp)
 		    conn, active, &conn->c_laddr, &conn->c_faddr, conn->c_tos,
 		    delay, cp->cp_reconnect_jiffies);
 
+	/* Prioritize local connections by delaying the others by one jiffie */
+	if (!conn->c_loopback)
+		++delay;
+
 	rds_cond_queue_reconnect_work(cp, delay);
 	cp->cp_reconnect_jiffies = min(cp->cp_reconnect_jiffies * 2,
 				       rds_sysctl_reconnect_max_jiffies);
