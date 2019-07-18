@@ -317,7 +317,6 @@ static void add_to_kill(struct task_struct *tsk, struct page *p,
 
 	if (*tkc) {
 		tk = *tkc;
-		*tkc = NULL;
 	} else {
 		tk = kmalloc(sizeof(struct to_kill), GFP_ATOMIC);
 		if (!tk) {
@@ -333,16 +332,21 @@ static void add_to_kill(struct task_struct *tsk, struct page *p,
 		tk->size_shift = compound_order(compound_head(p)) + PAGE_SHIFT;
 
 	/*
-	 * In theory we don't have to kill when the page was
-	 * munmaped. But it could be also a mremap. Since that's
-	 * likely very rare kill anyways just out of paranoia, but use
-	 * a SIGKILL because the error is not contained anymore.
+	 * Indeed a page could be mmapped N times within a process. And it's possible
+	 * that not all of those N VMAs contain valid mapping for the page. In which
+	 * case we don't want to send SIGKILL to the process on behalf of the VMAs
+	 * that don't have the valid mapping, because doing so will eclipse the SIGBUS
+	 * delivered on behalf of the active VMA.
 	 */
 	if (tk->addr == -EFAULT || tk->size_shift == 0) {
 		pr_info("Memory failure: Unable to find user space address %lx in %s\n",
 			page_to_pfn(p), tsk->comm);
-		tk->addr_valid = 0;
+		if (tk != *tkc)
+			kfree(tk);
+		return;
 	}
+	if (tk == *tkc)
+		*tkc = NULL;
 	get_task_struct(tsk);
 	tk->tsk = tsk;
 	list_add_tail(&tk->nd, to_kill);
