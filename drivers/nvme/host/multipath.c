@@ -458,6 +458,8 @@ static int nvme_update_ana_state(struct nvme_ctrl *ctrl,
 
 	down_write(&ctrl->namespaces_rwsem);
 	list_for_each_entry(ns, &ctrl->namespaces, list) {
+		if (test_bit(NVME_NS_REMOVING, &ns->flags))
+			continue;
 		if (ns->head->ns_id != le32_to_cpu(desc->nsids[n]))
 			continue;
 		nvme_update_ns_ana_state(desc, ns);
@@ -465,7 +467,6 @@ static int nvme_update_ana_state(struct nvme_ctrl *ctrl,
 			break;
 	}
 	up_write(&ctrl->namespaces_rwsem);
-	WARN_ON_ONCE(n < nr_nsids);
 	return 0;
 }
 
