@@ -549,6 +549,7 @@ BuildRequires: elfutils-devel
 BuildRequires: bc
 BuildRequires: hostname
 BuildRequires: openssl, openssl-devel
+BuildRequires: rsync
 %if %{with_sparse}
 BuildRequires: sparse >= 0.4.1
 %endif
