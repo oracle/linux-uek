@@ -165,6 +165,8 @@ M(CGX_GET_PHY_MOD_TYPE, 0x215, cgx_get_phy_mod_type, msg_req, \
 M(CGX_SET_PHY_MOD_TYPE, 0x216, cgx_set_phy_mod_type, cgx_phy_mod_type,	\
 				msg_rsp) \
 M(CGX_FEC_STATS,	0x217, cgx_fec_stats, msg_req, cgx_fec_stats_rsp) \
+M(CGX_SET_LINK_MODE,	0x218, cgx_set_link_mode, cgx_set_link_mode_req,\
+			       cgx_set_link_mode_rsp)	\
 /* NPA mbox IDs (range 0x400 - 0x5FF) */				\
 M(NPA_LF_ALLOC,		0x400, npa_lf_alloc,				\
 				npa_lf_alloc_req, npa_lf_alloc_rsp)	\
@@ -529,6 +531,23 @@ struct cgx_phy_mod_type {
 	int mod;
 };
 
+struct cgx_set_link_mode_args {
+	u32 speed;
+	u8 duplex;
+	u8 an;
+	u8 ports;
+	u8 flags;
+};
+
+struct cgx_set_link_mode_req {
+	struct mbox_msghdr hdr;
+	struct cgx_set_link_mode_args args;
+};
+
+struct cgx_set_link_mode_rsp {
+	struct mbox_msghdr hdr;
+	int status;
+};
 /* NPA mbox message formats */
 
 /* NPA mailbox error codes
