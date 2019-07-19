@@ -153,6 +153,8 @@ int cgx_get_link_info(void *cgxd, int lmac_id,
 int cgx_lmac_linkup_start(void *cgxd);
 int cgx_get_fwdata_base(u64 *base);
 int cgx_set_fec(u64 fec, int cgx_id, int lmac_id);
+int cgx_set_link_mode(void *cgxd, struct cgx_set_link_mode_args args,
+		      int cgx_id, int lmac_id);
 int cgx_lmac_get_pause_frm(void *cgxd, int lmac_id,
 			   u8 *tx_pause, u8 *rx_pause);
 int cgx_lmac_set_pause_frm(void *cgxd, int lmac_id,
