@@ -617,7 +617,7 @@ void mmc_wait_for_oops_req(struct mmc_host *host, struct mmc_request *mrq)
 	add_wait_queue_exclusive(&host->wq, &wait);
 	set_current_state(TASK_UNINTERRUPTIBLE);
 
-	mdelay(10);
+	mdelay(mrq->data->timeout_ns / NSEC_PER_MSEC);
 	spin_unlock_irq(&host->wq.lock);
 }
 #endif
