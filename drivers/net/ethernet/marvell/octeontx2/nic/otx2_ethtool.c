@@ -1017,6 +1017,45 @@ static int otx2_get_link_ksettings(struct net_device *netdev,
 	return 0;
 }
 
+static int otx2_set_link_ksettings(struct net_device *netdev,
+				   const struct ethtool_link_ksettings *cmd)
+{
+	struct otx2_nic *pfvf = netdev_priv(netdev);
+	struct cgx_set_link_mode_req *req;
+	struct cgx_set_link_mode_rsp *rsp;
+	int err = 0;
+
+	otx2_mbox_lock(&pfvf->mbox);
+	req = otx2_mbox_alloc_msg_cgx_set_link_mode(&pfvf->mbox);
+	if (!req) {
+		otx2_mbox_unlock(&pfvf->mbox);
+		return -EAGAIN;
+	}
+	req->args.speed = cmd->base.speed;
+	/*The full_duplex variable in linkinfo takes 1 for full duplex and 0
+	 * for half duplex. But the set_link_mode command in atf requires the
+	 * argument to map 1 for half duplex and 0 for full duplex. Toggling to
+	 * the current value in linkinfo for the purpose.
+	 */
+	if (cmd->base.duplex == DUPLEX_UNKNOWN)
+		req->args.duplex = pfvf->linfo.full_duplex ^ 0x1;
+	else
+		req->args.duplex = cmd->base.duplex ^ 0x1;
+	req->args.an =  cmd->base.autoneg;
+	req->args.ports = cmd->base.port;
+	req->args.flags = 0;
+
+	err =  otx2_sync_mbox_msg(&pfvf->mbox);
+	if (!err) {
+		rsp = (struct cgx_set_link_mode_rsp *)
+			otx2_mbox_get_rsp(&pfvf->mbox.mbox, 0, &req->hdr);
+		if (rsp->status)
+			err =  rsp->status;
+	}
+	otx2_mbox_unlock(&pfvf->mbox);
+	return err;
+}
+
 static int otx2_get_fecparam(struct net_device *netdev,
 			     struct ethtool_fecparam *fecparam)
 {
@@ -1116,6 +1155,7 @@ static struct ethtool_ops otx2_ethtool_ops = {
 	.get_msglevel		= otx2_get_msglevel,
 	.set_msglevel		= otx2_set_msglevel,
 	.get_link_ksettings     = otx2_get_link_ksettings,
+	.set_link_ksettings     = otx2_set_link_ksettings,
 	.get_pauseparam		= otx2_get_pauseparam,
 	.set_pauseparam		= otx2_set_pauseparam,
 	.get_fecparam		= otx2_get_fecparam,
