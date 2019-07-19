@@ -93,6 +93,7 @@ static void mmc_panic_write(struct mmcoops_context *cxt,
 	data.sg = &sg;
 	data.sg_len = 1;
 
+	mmc_set_data_timeout(&data, card);
 	mmc_wait_for_oops_req(host, &mrq);
 
 	if (cmd.error)
