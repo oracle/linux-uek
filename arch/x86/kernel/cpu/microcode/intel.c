@@ -810,8 +810,11 @@ out:
 	c->microcode	 = rev;
 
 	/* Update boot_cpu_data's revision too, if we're on the BSP: */
-	if (bsp)
+	if (bsp) {
 		boot_cpu_data.microcode = rev;
+		/* Whitelist/blacklist speculation control features. */
+		check_intel_bad_spectre_microcode(c);
+	}
 
 	return ret;
 }
