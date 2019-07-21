@@ -790,6 +790,8 @@ static int collect_cpu_info(int cpu_num, struct cpu_signature *csig)
 	return 0;
 }
 
+void check_intel_bad_spectre_microcode(struct cpuinfo_x86 *c);
+
 static enum ucode_state apply_microcode_intel(int cpu)
 {
 	struct ucode_cpu_info *uci = ucode_cpu_info + cpu;
@@ -857,6 +859,9 @@ out:
 	/* Update boot_cpu_data's revision too, if we're on the BSP: */
 	if (c->cpu_index == boot_cpu_data.cpu_index)
 		boot_cpu_data.microcode = rev;
+
+	/* Whitelist/blacklist speculation control features. */
+	check_intel_bad_spectre_microcode(c);
 
 	return ret;
 }
