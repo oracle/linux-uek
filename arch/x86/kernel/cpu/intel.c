@@ -161,6 +161,33 @@ static bool bad_spectre_microcode(struct cpuinfo_x86 *c)
 	return false;
 }
 
+/*
+ * check_intel_bad_spectre_microcode verifies if a valid microcode was
+ * loaded and whitelist/blacklist the features related to speculation control.
+ */
+void check_intel_bad_spectre_microcode(struct cpuinfo_x86 *c)
+{
+	if (bad_spectre_microcode(c)) {
+		set_bit(X86_FEATURE_IBRS, (unsigned long *)cpu_caps_cleared);
+		set_bit(X86_FEATURE_IBPB, (unsigned long *)cpu_caps_cleared);
+		set_bit(X86_FEATURE_STIBP, (unsigned long *)cpu_caps_cleared);
+		set_bit(X86_FEATURE_SPEC_CTRL, (unsigned long *)cpu_caps_cleared);
+		set_bit(X86_FEATURE_MSR_SPEC_CTRL, (unsigned long *)cpu_caps_cleared);
+		set_bit(X86_FEATURE_INTEL_STIBP, (unsigned long *)cpu_caps_cleared);
+		set_bit(X86_FEATURE_SSBD, (unsigned long *)cpu_caps_cleared);
+		set_bit(X86_FEATURE_SPEC_CTRL_SSBD, (unsigned long *)cpu_caps_cleared);
+	} else {
+		clear_bit(X86_FEATURE_IBRS, (unsigned long *)cpu_caps_cleared);
+		clear_bit(X86_FEATURE_IBPB, (unsigned long *)cpu_caps_cleared);
+		clear_bit(X86_FEATURE_STIBP, (unsigned long *)cpu_caps_cleared);
+		clear_bit(X86_FEATURE_SPEC_CTRL, (unsigned long *)cpu_caps_cleared);
+		clear_bit(X86_FEATURE_MSR_SPEC_CTRL, (unsigned long *)cpu_caps_cleared);
+		clear_bit(X86_FEATURE_INTEL_STIBP, (unsigned long *)cpu_caps_cleared);
+		clear_bit(X86_FEATURE_SSBD, (unsigned long *)cpu_caps_cleared);
+		clear_bit(X86_FEATURE_SPEC_CTRL_SSBD, (unsigned long *)cpu_caps_cleared);
+	}
+}
+
 static void early_init_intel(struct cpuinfo_x86 *c)
 {
 	u64 misc_enable;
