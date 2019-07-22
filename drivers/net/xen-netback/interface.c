@@ -124,6 +124,18 @@ static int xenvif_poll(struct napi_struct *napi, int budget)
 static irqreturn_t xenvif_rx_interrupt(int irq, void *dev_id)
 {
 	struct xenvif_queue *queue = dev_id;
+	struct net_device *dev = queue->vif->dev;
+
+	/* RX interrupts can come before the interface is fully setup so
+	 * do this only if connected.
+	 */
+	if (skip_guestrx_thread &&
+	    test_bit(VIF_STATUS_CONNECTED, &queue->vif->status)) {
+		spin_lock(&queue->rx_lock);
+		if (unlikely(__netif_subqueue_stopped(dev, queue->id)))
+			netif_wake_subqueue(dev, queue->id);
+		spin_unlock(&queue->rx_lock);
+	}
 
 	xenvif_kick_thread(queue);
 
