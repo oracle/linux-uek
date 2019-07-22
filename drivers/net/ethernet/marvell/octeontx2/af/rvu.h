@@ -119,7 +119,8 @@ struct nix_mce_list {
  * fields present in key structure.
  */
 enum key_fields {
-	NPC_CHAN = NPC_HEADER_FIELDS_MAX,
+	NPC_CHAN = NPC_HEADER_FIELDS_MAX, /* Valid when Rx */
+	NPC_PF_FUNC, /* Valid when Tx */
 	NPC_ERRLEV,
 	NPC_ERRCODE,
 	NPC_LXMB,
@@ -200,8 +201,10 @@ struct npc_mcam {
 	u16	hprio_end;
 	u16	rx_miss_act_cntr; /* Counter for RX MISS action */
 	/* fields present in the generated key */
-	struct npc_key_field	key_fields[NPC_KEY_FIELDS_MAX];
-	u64	features;
+	struct npc_key_field	tx_key_fields[NPC_KEY_FIELDS_MAX];
+	struct npc_key_field	rx_key_fields[NPC_KEY_FIELDS_MAX];
+	u64	tx_features;
+	u64	rx_features;
 	struct list_head mcam_rules;
 };
 
