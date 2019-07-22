@@ -1271,11 +1271,16 @@ struct npc_install_flow_req {
 	u16 match_id;
 	u8 flow_key_alg;
 	u8 op;
-	/* vtag action */
+	/* vtag rx action */
 	u8 vtag0_type;
 	u8 vtag0_valid;
 	u8 vtag1_type;
 	u8 vtag1_valid;
+	/* vtag tx action */
+	u16 vtag0_def;
+	u8  vtag0_op;
+	u16 vtag1_def;
+	u8  vtag1_op;
 };
 
 struct npc_install_flow_rsp {
