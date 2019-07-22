@@ -52,6 +52,12 @@ config CC_DISABLE_WARN_MAYBE_UNINITIALIZED
 	  If this option is enabled, -Wno-maybe-uninitialzed is passed
 	  to the compiler to suppress maybe-uninitialized warnings.
 
+config HAVE_CTF_TOOLCHAIN
+	def_bool $(cc-option,-gt) && $(ld-option,-lctf -lbfd -liberty -lz -ldl)
+	depends on CC_IS_GCC
+	help
+	  GCC and binutils support CTF generation.
+
 config CONSTRUCTORS
 	bool
 

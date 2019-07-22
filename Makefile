@@ -712,6 +712,10 @@ ifdef CONFIG_CC_DISABLE_WARN_MAYBE_UNINITIALIZED
 KBUILD_CFLAGS   += -Wno-maybe-uninitialized
 endif
 
+ifdef CONFIG_CTF_USING_BINUTILS
+KBUILD_CFLAGS	+= $(call cc-option,-gt)
+endif
+
 # Tell gcc to never replace conditional load with a non-conditional one
 KBUILD_CFLAGS	+= $(call cc-option,--param=allow-store-data-races=0)
 
