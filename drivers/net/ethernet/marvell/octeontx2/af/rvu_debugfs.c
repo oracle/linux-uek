@@ -1734,26 +1734,49 @@ static void rvu_dbg_npc_mcam_show_flows(struct seq_file *s,
 static void rvu_dbg_npc_mcam_show_action(struct seq_file *s,
 					 struct rvu_npc_mcam_rule *rule)
 {
-	switch (rule->action.op) {
-	case NIX_RX_ACTIONOP_DROP:
-		seq_puts(s, "\taction: Drop\n");
-		break;
-	case NIX_RX_ACTIONOP_UCAST:
-		seq_printf(s, "\taction: Direct to queue %d\n",
-			   rule->action.index);
-		break;
-	case NIX_RX_ACTIONOP_RSS:
-		seq_puts(s, "\taction: RSS\n");
-		break;
-	case NIX_RX_ACTIONOP_UCAST_IPSEC:
-		seq_puts(s, "\taction: Unicast ipsec\n");
-		break;
-	case NIX_RX_ACTIONOP_MCAST:
-		seq_puts(s, "\taction: Multicast\n");
-		break;
-	default:
-		break;
-	};
+	if (rule->intf == NIX_INTF_TX) {
+		switch (rule->tx_action.op) {
+		case NIX_TX_ACTIONOP_DROP:
+			seq_puts(s, "\taction: Drop\n");
+			break;
+		case NIX_TX_ACTIONOP_UCAST_DEFAULT:
+			seq_puts(s, "\taction: Unicast to default channel\n");
+			break;
+		case NIX_TX_ACTIONOP_UCAST_CHAN:
+			seq_printf(s, "\taction: Unicast to channel %d\n",
+				   rule->tx_action.index);
+			break;
+		case NIX_TX_ACTIONOP_MCAST:
+			seq_puts(s, "\taction: Multicast\n");
+			break;
+		case NIX_TX_ACTIONOP_DROP_VIOL:
+			seq_puts(s, "\taction: Lockdown Violation Drop\n");
+			break;
+		default:
+			break;
+		};
+	} else {
+		switch (rule->rx_action.op) {
+		case NIX_RX_ACTIONOP_DROP:
+			seq_puts(s, "\taction: Drop\n");
+			break;
+		case NIX_RX_ACTIONOP_UCAST:
+			seq_printf(s, "\taction: Direct to queue %d\n",
+				   rule->rx_action.index);
+			break;
+		case NIX_RX_ACTIONOP_RSS:
+			seq_puts(s, "\taction: RSS\n");
+			break;
+		case NIX_RX_ACTIONOP_UCAST_IPSEC:
+			seq_puts(s, "\taction: Unicast ipsec\n");
+			break;
+		case NIX_RX_ACTIONOP_MCAST:
+			seq_puts(s, "\taction: Multicast\n");
+			break;
+		default:
+			break;
+		};
+	}
 }
 
 static int rvu_dbg_npc_mcam_show_rules(struct seq_file *s, void *unused)
@@ -1769,8 +1792,6 @@ static int rvu_dbg_npc_mcam_show_rules(struct seq_file *s, void *unused)
 	mcam = &rvu->hw->mcam;
 
 	list_for_each_entry(iter, &mcam->mcam_rules, list) {
-		target = iter->action.pf_func;
-
 		pf = (iter->owner >> RVU_PFVF_PF_SHIFT) & RVU_PFVF_PF_MASK;
 		seq_printf(s, "\n\tPF%d ", pf);
 
@@ -1780,14 +1801,20 @@ static int rvu_dbg_npc_mcam_show_rules(struct seq_file *s, void *unused)
 		}
 		seq_puts(s, "\n");
 
-		pf = (target >> RVU_PFVF_PF_SHIFT) & RVU_PFVF_PF_MASK;
-		seq_printf(s, "\ttarget: PF%d ", pf);
+		if (iter->intf == NIX_INTF_RX) {
+			seq_puts(s, "\tdirection: RX\n");
+			target = iter->rx_action.pf_func;
+			pf = (target >> RVU_PFVF_PF_SHIFT) & RVU_PFVF_PF_MASK;
+			seq_printf(s, "\ttarget: PF%d ", pf);
 
-		if (target & RVU_PFVF_FUNC_MASK) {
-			vf = (target & RVU_PFVF_FUNC_MASK) - 1;
-			seq_printf(s, "VF%d", vf);
+			if (target & RVU_PFVF_FUNC_MASK) {
+				vf = (target & RVU_PFVF_FUNC_MASK) - 1;
+				seq_printf(s, "VF%d", vf);
+			}
+			seq_puts(s, "\n");
+		} else {
+			seq_puts(s, "\tdirection: TX\n");
 		}
-		seq_puts(s, "\n");
 
 		seq_printf(s, "\tmcam entry: %d\n", iter->entry);
 		rvu_dbg_npc_mcam_show_flows(s, iter);

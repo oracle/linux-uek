@@ -742,7 +742,7 @@ void rvu_npc_update_flowkey_alg_idx(struct rvu *rvu, u16 pcifunc, int nixlf,
 	/* update the action change in default rule */
 	pfvf = rvu_get_pfvf(rvu, pcifunc);
 	if (pfvf->def_rule)
-		pfvf->def_rule->action = action;
+		pfvf->def_rule->rx_action = action;
 
 	index = npc_get_nixlf_mcam_index(mcam, pcifunc,
 					 nixlf, NIXLF_PROMISC_ENTRY);
@@ -824,7 +824,8 @@ void rvu_npc_disable_mcam_entries(struct rvu *rvu, u16 pcifunc, int nixlf)
 
 	/* Disable MCAM entries directing traffic to this 'pcifunc' */
 	list_for_each_entry(rule, &mcam->mcam_rules, list) {
-		if (rule->action.pf_func == pcifunc) {
+		if (rule->intf == NIX_INTF_RX &&
+		    rule->rx_action.pf_func == pcifunc) {
 			npc_enable_mcam_entry(rvu, mcam, blkaddr,
 					      rule->entry, false);
 			rule->enable = false;
