@@ -205,8 +205,9 @@ struct xenvif_queue { /* Per-queue data for xenvif */
 	char rx_irq_name[IRQ_NAME_SIZE]; /* DEVNAME-qN-rx */
 	struct xen_netif_rx_back_ring rx;
 	struct sk_buff_head rx_queue;
-	/* This prevents from have guestrx thread and ndo_start_xmit to race
-	 * over response creation.
+	/* rx_lock is used to eliminate potential RX response race between
+	 * the guestrx thread and ndo_start_xmit. Also, used to enforce ordering
+	 * of netif_stop_queue()/netif_wake_queue() when the RX io_ring is full.
 	 */
 	spinlock_t rx_lock;
 
