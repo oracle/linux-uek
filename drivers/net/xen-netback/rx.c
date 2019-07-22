@@ -438,6 +438,7 @@ int xenvif_rx_one_skb(struct xenvif_queue *queue, struct sk_buff *skb)
 
 	spin_lock_irqsave(&queue->rx_lock, flags);
 	if (!xenvif_rx_ring_slots_available(queue, skb)) {
+		netif_stop_subqueue(queue->vif->dev, queue->id);
 		spin_unlock_irqrestore(&queue->rx_lock, flags);
 		return -ENOSPC;
 	}
