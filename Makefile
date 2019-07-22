@@ -759,6 +759,10 @@ else ifdef CONFIG_CC_OPTIMIZE_FOR_SIZE
 KBUILD_CFLAGS += -Os
 endif
 
+ifdef CONFIG_CTF_USING_BINUTILS
+KBUILD_CFLAGS	+= $(call cc-option,-gctf) $(call cc-option,-gt)
+endif
+
 # Tell gcc to never replace conditional load with a non-conditional one
 ifdef CONFIG_CC_IS_GCC
 # gcc-10 renamed --param=allow-store-data-races=0 to
