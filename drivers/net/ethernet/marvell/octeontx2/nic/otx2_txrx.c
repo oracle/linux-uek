@@ -221,6 +221,83 @@ done:
 	__skb_pull(skb, 8);
 }
 
+static inline bool otx2_check_rcv_errors(struct otx2_nic *pfvf,
+					 struct otx2_cq_queue *cq, void *cqe)
+{
+	struct otx2_drv_stats *stats = &pfvf->hw.drv_stats;
+	struct nix_rx_parse_s *parse;
+	struct nix_rx_sg_s *sg;
+	void *start, *end;
+	u64 *iova;
+	int seg;
+
+	parse = (struct nix_rx_parse_s *)(cqe + sizeof(struct nix_cqe_hdr_s));
+	if (netif_msg_rx_err(pfvf))
+		netdev_err(pfvf->netdev,
+			   "RQ%d: Error pkt with errlev:0x%x errcode:0x%x\n",
+			   cq->cq_idx, parse->errlev, parse->errcode);
+
+	if (parse->errlev == NPC_ERRLVL_RE) {
+		switch (parse->errcode) {
+		case ERRCODE_FCS:
+		case ERRCODE_FCS_RCV:
+			atomic_inc(&stats->rx_fcs_errs);
+			break;
+		case ERRCODE_UNDERSIZE:
+			atomic_inc(&stats->rx_undersize_errs);
+			break;
+		case ERRCODE_OVERSIZE:
+			atomic_inc(&stats->rx_oversize_errs);
+			break;
+		case ERRCODE_OL2_LEN_MISMATCH:
+			atomic_inc(&stats->rx_len_errs);
+			break;
+		default:
+			atomic_inc(&stats->rx_other_errs);
+			break;
+		}
+	} else if (parse->errlev == NPC_ERRLVL_NIX) {
+		switch (parse->errcode) {
+		case ERRCODE_OL3_LEN:
+		case ERRCODE_OL4_LEN:
+		case ERRCODE_IL3_LEN:
+		case ERRCODE_IL4_LEN:
+			atomic_inc(&stats->rx_len_errs);
+			break;
+		case ERRCODE_OL4_CSUM:
+		case ERRCODE_IL4_CSUM:
+			atomic_inc(&stats->rx_csum_errs);
+			break;
+		default:
+			atomic_inc(&stats->rx_other_errs);
+			break;
+		}
+	} else {
+		atomic_inc(&stats->rx_other_errs);
+	}
+
+	start = cqe + sizeof(struct nix_cqe_hdr_s) + sizeof(*parse);
+	end = start + ((parse->desc_sizem1 + 1) * 16);
+	while ((start + sizeof(*sg)) < end) {
+		sg = (struct nix_rx_sg_s *)start;
+		iova = (void *)sg + sizeof(*sg);
+
+		/* If RXALL is enabled pass on packets to stack */
+		if (sg->segs && pfvf->netdev->features & NETIF_F_RXALL)
+			return false;
+
+		for (seg = 0; seg < sg->segs; seg++) {
+			otx2_aura_freeptr(pfvf, cq->cq_idx, *iova & ~0x07ULL);
+			iova++;
+		}
+		if (sg->segs == 1)
+			start += sizeof(*sg) + sizeof(u64);
+		else
+			start += sizeof(*sg) + (3 * sizeof(u64));
+	}
+	return true;
+}
+
 static void otx2_rcv_pkt_handler(struct otx2_nic *pfvf,
 				 struct otx2_cq_queue *cq, void *cqe)
 {
@@ -236,6 +313,10 @@ static void otx2_rcv_pkt_handler(struct otx2_nic *pfvf,
 
 	/* CQE_HDR_S for a Rx pkt is always followed by RX_PARSE_S */
 	parse = (struct nix_rx_parse_s *)(cqe + sizeof(*cqe_hdr));
+	if (parse->errlev || parse->errcode) {
+		if (otx2_check_rcv_errors(pfvf, cq, cqe))
+			return;
+	}
 
 	start = cqe + sizeof(*cqe_hdr) + sizeof(*parse);
 	end = start + ((parse->desc_sizem1 + 1) * 16);
@@ -243,40 +324,10 @@ static void otx2_rcv_pkt_handler(struct otx2_nic *pfvf,
 	/* Run through the each NIX_RX_SG_S subdc and frame the skb */
 	while ((start + sizeof(*sg)) < end) {
 		sg = (struct nix_rx_sg_s *)start;
-		/* For a 128byte size CQE, NIX_RX_IMM_S is never expected */
-		if (sg->subdc != NIX_SUBDC_SG) {
-			if (netif_msg_rx_err(pfvf))
-				netdev_err(pfvf->netdev,
-					   "RQ%d: Unexpected SUBDC %d\n",
-					   cq->cq_idx, sg->subdc);
-			break;
-		}
-
-		if (!sg->segs) {
-			if (netif_msg_rx_err(pfvf))
-				netdev_err(pfvf->netdev,
-					   "RQ%d: Zero segment in NIX_RX_SG_S\n",
-					   cq->cq_idx);
-			break;
-		}
-
 		sg_lens = (void *)sg;
 		iova = (void *)sg + sizeof(*sg);
 
 		for (seg = 0; seg < sg->segs; seg++) {
-			/* Check for errors */
-			if (parse->errlev || parse->errcode) {
-				if (netif_msg_rx_err(pfvf))
-					netdev_err(pfvf->netdev,
-						   "RQ%d: Error pkt received errlev:%x errcode:%x\n",
-						   cq->cq_idx, parse->errlev,
-						   parse->errcode);
-				otx2_aura_freeptr(pfvf, cq->cq_idx,
-						  *iova & ~0x07ULL);
-				iova++;
-				continue;
-			}
-
 			len = sg_lens[frag_num(seg)];
 			/* Starting IOVA's 2:0 bits give alignment
 			 * bytes after which packet data starts.

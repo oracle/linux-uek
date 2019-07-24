@@ -53,6 +53,36 @@ struct otx2_rss_info {
 	u8  key[RSS_HASH_KEY_SIZE];
 };
 
+/* NIX (or NPC) RX errors */
+enum otx2_errlvl {
+	NPC_ERRLVL_RE,
+	NPC_ERRLVL_LID_LA,
+	NPC_ERRLVL_LID_LB,
+	NPC_ERRLVL_LID_LC,
+	NPC_ERRLVL_LID_LD,
+	NPC_ERRLVL_LID_LE,
+	NPC_ERRLVL_LID_LF,
+	NPC_ERRLVL_LID_LG,
+	NPC_ERRLVL_LID_LH,
+	NPC_ERRLVL_NIX = 0x0F,
+};
+
+enum otx2_errcodes_re {
+	/* NPC_ERRLVL_RE errcodes */
+	ERRCODE_FCS = 0x7,
+	ERRCODE_FCS_RCV = 0x8,
+	ERRCODE_UNDERSIZE = 0x10,
+	ERRCODE_OVERSIZE = 0x11,
+	ERRCODE_OL2_LEN_MISMATCH = 0x12,
+	/* NPC_ERRLVL_NIX errcodes */
+	ERRCODE_OL3_LEN = 0x10,
+	ERRCODE_OL4_LEN = 0x11,
+	ERRCODE_OL4_CSUM = 0x12,
+	ERRCODE_IL3_LEN = 0x20,
+	ERRCODE_IL4_LEN = 0x21,
+	ERRCODE_IL4_CSUM = 0x22,
+};
+
 /* NIX TX stats */
 enum nix_stat_lf_tx {
 	TX_UCAST	= 0x0,
@@ -96,6 +126,16 @@ struct  otx2_dev_stats {
 	u64 tx_drops;
 };
 
+/* Driver counted stats */
+struct otx2_drv_stats {
+	atomic_t rx_fcs_errs;
+	atomic_t rx_oversize_errs;
+	atomic_t rx_undersize_errs;
+	atomic_t rx_csum_errs;
+	atomic_t rx_len_errs;
+	atomic_t rx_other_errs;
+};
+
 struct  mbox {
 	struct otx2_mbox	mbox;
 	struct work_struct	mbox_wrk;
@@ -113,6 +153,7 @@ struct otx2_hw {
 	struct pci_dev		*pdev;
 	struct otx2_rss_info	rss_info;
 	struct otx2_dev_stats	dev_stats;
+	struct otx2_drv_stats	drv_stats;
 	u16                     rx_queues;
 	u16                     tx_queues;
 	u16			max_queues;
