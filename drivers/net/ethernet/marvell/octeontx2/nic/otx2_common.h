@@ -264,6 +264,11 @@ struct otx2_nic {
 	struct work_struct	otx2_rx_mode_work;
 };
 
+static inline bool is_otx2_lbkvf(struct pci_dev *pdev)
+{
+	return (pdev->device ==  PCI_DEVID_OCTEONTX2_RVU_AFVF);
+}
+
 static inline bool is_96xx_A0(struct pci_dev *pdev)
 {
 	return (pdev->revision == 0x00) &&
