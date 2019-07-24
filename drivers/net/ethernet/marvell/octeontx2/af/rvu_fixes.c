@@ -899,19 +899,19 @@ int rvu_nix_fixes_init(struct rvu *rvu, struct nix_hw *nix_hw, int blkaddr)
 	int err;
 	u64 cfg;
 
-	if (!is_rvu_96xx_A0(rvu) && !is_rvu_95xx_A0(rvu))
+	if (!is_rvu_96xx_B0(rvu) && !is_rvu_95xx_A0(rvu))
 		return 0;
 
 	/* As per a HW errata in 96xx A0 silicon, NIX may corrupt
 	 * internal state when conditional clocks are turned off.
 	 * Hence enable them.
 	 */
-	if (is_rvu_95xx_A0(rvu))
-		rvu_write64(rvu, blkaddr, NIX_AF_CFG,
-			    rvu_read64(rvu, blkaddr, NIX_AF_CFG) | 0x40ULL);
-	else
+	if (is_rvu_96xx_A0(rvu))
 		rvu_write64(rvu, blkaddr, NIX_AF_CFG,
 			    rvu_read64(rvu, blkaddr, NIX_AF_CFG) | 0x5EULL);
+	else
+		rvu_write64(rvu, blkaddr, NIX_AF_CFG,
+			    rvu_read64(rvu, blkaddr, NIX_AF_CFG) | 0x40ULL);
 
 	/* Set chan/link to backpressure TL3 instead of TL2 */
 	rvu_write64(rvu, blkaddr, NIX_AF_PSE_CHANNEL_LEVEL, 0x01);
@@ -942,4 +942,69 @@ void rvu_nix_fixes_exit(struct rvu *rvu, struct nix_hw *nix_hw)
 		return;
 
 	rvu_nix_tx_stall_workaround_exit(rvu, nix_hw);
+}
+
+int rvu_tim_lookup_rsrc(struct rvu *rvu, struct rvu_block *block,
+			u16 pcifunc, int slot)
+{
+	int lf, blkaddr;
+	u64 val;
+
+	/* Due to a HW issue LF_CFG_DEBUG register cannot be used to
+	 * find PF_FUNC <=> LF mapping, hence scan through LFX_CFG
+	 * registers to find mapped LF for a given PF_FUNC.
+	 */
+	if (is_rvu_96xx_B0(rvu)) {
+		blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_TIM, pcifunc);
+		if (blkaddr < 0)
+			return TIM_AF_LF_INVALID;
+
+		for (lf = 0; lf < block->lf.max; lf++) {
+			val = rvu_read64(rvu, block->addr, block->lfcfg_reg |
+					 (lf << block->lfshift));
+			if ((((val >> 8) & 0xffff) == pcifunc) &&
+			    (val & 0xff) == slot)
+				return lf;
+		}
+		return -1;
+	}
+
+	val = ((u64)pcifunc << 24) | (slot << 16) | (1ULL << 13);
+	rvu_write64(rvu, block->addr, block->lookup_reg, val);
+
+	/* Wait for the lookup to finish */
+	while (rvu_read64(rvu, block->addr, block->lookup_reg) & (1ULL << 13))
+		;
+
+	val = rvu_read64(rvu, block->addr, block->lookup_reg);
+
+	/* Check LF valid bit */
+	if (!(val & (1ULL << 12)))
+		return -1;
+
+	return (val & 0xFFF);
+}
+
+int rvu_npc_get_tx_nibble_cfg(struct rvu *rvu, u64 nibble_ena)
+{
+	/* Due to a HW issue in these silicon versions, parse nibble enable
+	 * configuration has to be identical for both Rx and Tx interfaces.
+	 */
+	if (is_rvu_96xx_B0(rvu))
+		return nibble_ena;
+	return 0;
+}
+
+bool is_parse_nibble_config_valid(struct rvu *rvu,
+				  struct npc_mcam_kex *mcam_kex)
+{
+	if (!is_rvu_96xx_B0(rvu))
+		return true;
+
+	/* Due to a HW issue in above silicon versions, parse nibble enable
+	 * configuration has to be identical for both Rx and Tx interfaces.
+	 */
+	if (mcam_kex->keyx_cfg[NIX_INTF_RX] != mcam_kex->keyx_cfg[NIX_INTF_TX])
+		return false;
+	return true;
 }
