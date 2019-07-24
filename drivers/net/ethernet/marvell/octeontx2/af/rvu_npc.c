@@ -1112,13 +1112,7 @@ static void npc_load_mkex_profile(struct rvu *rvu, int blkaddr)
 		/* Compare with mkex mod_param name string */
 		if (mcam_kex->mkex_sign == MKEX_SIGN &&
 		    !strncmp(mcam_kex->name, mkex_profile, MKEX_NAME_LEN)) {
-			/* Due to an errata (35786) in A0 pass silicon,
-			 * parse nibble enable configuration has to be
-			 * identical for both Rx and Tx interfaces.
-			 */
-			if (is_rvu_96xx_A0(rvu) &&
-			    mcam_kex->keyx_cfg[NIX_INTF_RX] !=
-			    mcam_kex->keyx_cfg[NIX_INTF_TX])
+			if (!is_parse_nibble_config_valid(rvu, mcam_kex))
 				goto load_default;
 
 			/* Program selected mkex profile */
@@ -1477,13 +1471,10 @@ int rvu_npc_init(struct rvu *rvu)
 	nibble_ena = 0x249207;
 	rvu_write64(rvu, blkaddr, NPC_AF_INTFX_KEX_CFG(NIX_INTF_RX),
 			((keyz & 0x3) << 32) | nibble_ena);
-	/* Due to an errata (35786) in A0 pass silicon, parse nibble enable
-	 * configuration has to be identical for both Rx and Tx interfaces.
-	 */
-	/* For A1 silicon onwards, no need to match the channel number for
-	 * Tx side, so match only Ltypes from LA...LE
-	 */
-	if (!is_rvu_96xx_A0(rvu))
+
+	/* Extract Ltypes LID_LA to LID_LE */
+	nibble_ena = rvu_npc_get_tx_nibble_cfg(rvu, nibble_ena);
+	if (!nibble_ena)
 		nibble_ena = 0x249200;
 	rvu_write64(rvu, blkaddr, NPC_AF_INTFX_KEX_CFG(NIX_INTF_TX),
 			((keyz & 0x3) << 32) | nibble_ena);

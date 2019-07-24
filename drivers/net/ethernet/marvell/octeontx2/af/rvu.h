@@ -473,11 +473,20 @@ static inline u64 rvupf_read64(struct rvu *rvu, u64 offset)
 	return readq(rvu->pfreg_base + offset);
 }
 
+/* Silicon revisions */
 static inline bool is_rvu_96xx_A0(struct rvu *rvu)
 {
 	struct pci_dev *pdev = rvu->pdev;
 
 	return (pdev->revision == 0x00) &&
+		(pdev->subsystem_device == PCI_SUBSYS_DEVID_96XX);
+}
+
+static inline bool is_rvu_96xx_B0(struct rvu *rvu)
+{
+	struct pci_dev *pdev = rvu->pdev;
+
+	return ((pdev->revision == 0x00) || (pdev->revision == 0x01)) &&
 		(pdev->subsystem_device == PCI_SUBSYS_DEVID_96XX);
 }
 
@@ -635,8 +644,6 @@ void rvu_cpt_unregister_interrupts(struct rvu *rvu);
 /* TIM APIs */
 int rvu_tim_init(struct rvu *rvu);
 int rvu_tim_lf_teardown(struct rvu *rvu, u16 pcifunc, int lf, int slot);
-int rvu_lf_lookup_tim_errata(struct rvu *rvu, struct rvu_block *block,
-		u16 pcifunc, int slot);
 
 #ifdef CONFIG_DEBUG_FS
 void rvu_dbg_init(struct rvu *rvu);
@@ -647,6 +654,7 @@ static inline void rvu_dbg_exit(struct rvu *rvu) {}
 #endif /* CONFIG_DEBUG_FS*/
 
 /* HW workarounds/fixes */
+#include "npc.h"
 void rvu_nix_txsch_lock(struct nix_hw *nix_hw);
 void rvu_nix_txsch_unlock(struct nix_hw *nix_hw);
 void rvu_nix_update_link_credits(struct rvu *rvu, int blkaddr,
@@ -659,4 +667,9 @@ ssize_t rvu_nix_get_tx_stall_counters(struct rvu *rvu,
 				      char __user *buffer, loff_t *ppos);
 int rvu_nix_fixes_init(struct rvu *rvu, struct nix_hw *nix_hw, int blkaddr);
 void rvu_nix_fixes_exit(struct rvu *rvu, struct nix_hw *nix_hw);
+int rvu_tim_lookup_rsrc(struct rvu *rvu, struct rvu_block *block,
+			u16 pcifunc, int slot);
+int rvu_npc_get_tx_nibble_cfg(struct rvu *rvu, u64 nibble_ena);
+bool is_parse_nibble_config_valid(struct rvu *rvu,
+				  struct npc_mcam_kex *mcam_kex);
 #endif /* RVU_H */
