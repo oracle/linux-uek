@@ -377,7 +377,7 @@ int rvu_sso_lf_teardown(struct rvu *rvu, u16 pcifunc, int lf, int slot)
 	 * TAQ buffer used by HWGRP when HWGRP is reset. Use SW routine to
 	 * drain it manually.
 	 */
-	if (is_rvu_96xx_A0(rvu))
+	if (is_rvu_96xx_B0(rvu))
 		rvu_sso_ggrp_taq_flush(rvu, pcifunc, lf, slot, ssow_lf, blkaddr,
 				       ssow_blkaddr);
 
