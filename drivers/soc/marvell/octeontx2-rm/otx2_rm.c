@@ -321,24 +321,6 @@ check_attach_rsrcs_req(struct rm_dev *rm, struct rvu_vf *vf,
 }
 
 static int
-reply_ready_msg(struct otx2_mbox *mbox, int devid, u16 pcifunc)
-{
-	struct ready_msg_rsp *rsp;
-
-	rsp = (struct ready_msg_rsp *)otx2_mbox_alloc_msg(mbox, devid,
-							  sizeof(*rsp));
-	if (!rsp)
-		return -ENOMEM;
-
-	rsp->hdr.id = MBOX_MSG_READY;
-	rsp->hdr.sig = OTX2_MBOX_RSP_SIG;
-	/* Tell the receiver, his identity */
-	rsp->hdr.pcifunc = pcifunc;
-
-	return 0;
-}
-
-static int
 handle_vf_req(struct rm_dev *rm, struct rvu_vf *vf, struct mbox_msghdr *req,
 	      int size)
 {
@@ -360,9 +342,8 @@ handle_vf_req(struct rm_dev *rm, struct rvu_vf *vf, struct mbox_msghdr *req,
 				req->ver, OTX2_MBOX_VERSION);
 			return -EINVAL;
 		}
-		err = reply_ready_msg(&rm->pfvf_mbox, vf->vf_id, req->pcifunc);
-		if (!err)
-			vf->in_use = true;
+		vf->in_use = true;
+		err = forward_to_mbox(rm, &rm->afpf_mbox, 0, req, size, "AF");
 		break;
 	case MBOX_MSG_FREE_RSRC_CNT:
 		if (req->ver < OTX2_MBOX_VERSION) {
