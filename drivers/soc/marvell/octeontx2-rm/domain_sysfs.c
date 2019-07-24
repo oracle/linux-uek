@@ -74,6 +74,7 @@ struct domain_sysfs {
 	struct list_head	list;
 	struct kobj_attribute	create_domain;
 	struct kobj_attribute	destroy_domain;
+	struct kobj_attribute	pmccntr_el0;
 	/* List of all ports added to all domains. Used for validating if new
 	 * domain creation doesn't want to take an already taken port.
 	 */
@@ -635,6 +636,93 @@ free_mem:
 	dpi_info->dpi_vf = NULL;
 }
 
+
+static void enable_pmccntr_el0(void *data)
+{
+	u64 val;
+	/* Disable cycle counter overflow interrupt */
+	asm volatile("mrs %0, pmintenset_el1" : "=r" (val));
+	val &= ~BIT_ULL(31);
+	asm volatile("msr pmintenset_el1, %0" : : "r" (val));
+	/* Enable cycle counter */
+	asm volatile("mrs %0, pmcntenset_el0" : "=r" (val));
+	val |= BIT_ULL(31);
+	asm volatile("msr pmcntenset_el0, %0" :: "r" (val));
+	/* Enable user-mode access to cycle counters. */
+	asm volatile("mrs %0, pmuserenr_el0" : "=r" (val));
+	val |= BIT(2) | BIT(0);
+	asm volatile("msr pmuserenr_el0, %0" : : "r"(val));
+	/* Start cycle counter */
+	asm volatile("mrs %0, pmcr_el0" : "=r" (val));
+	val |= BIT(0);
+	isb();
+	asm volatile("msr pmcr_el0, %0" : : "r" (val));
+	asm volatile("mrs %0, pmccfiltr_el0" : "=r" (val));
+	val |= BIT(27);
+	asm volatile("msr pmccfiltr_el0, %0" : : "r" (val));
+}
+
+static void disable_pmccntr_el0(void *data)
+{
+	u64 val;
+	/* Disable cycle counter */
+	asm volatile("mrs %0, pmcntenset_el0" : "=r" (val));
+	val &= ~BIT_ULL(31);
+	asm volatile("msr pmcntenset_el0, %0" :: "r" (val));
+	/* Disable user-mode access to counters. */
+	asm volatile("mrs %0, pmuserenr_el0" : "=r" (val));
+	val &= ~(BIT(2) | BIT(0));
+	asm volatile("msr pmuserenr_el0, %0" : : "r"(val));
+}
+
+static ssize_t
+enadis_pmccntr_el0_store(struct kobject *kobj, struct kobj_attribute *attr,
+			 const char *buf, size_t count)
+{
+	struct domain_sysfs *lsfs = container_of(attr, struct domain_sysfs,
+						 pmccntr_el0);
+	struct device *dev = &lsfs->rdev->pdev->dev;
+	char tmp_buf[64];
+	long enable = 0;
+	char *tmp_ptr;
+	ssize_t used;
+
+	strlcpy(tmp_buf, buf, 64);
+	used = strlen(tmp_buf);
+	tmp_ptr = strim(tmp_buf);
+	if (kstrtol(tmp_ptr, 0, &enable)) {
+		dev_err(dev, "Invalid value, expected 1/0\n");
+		return -EIO;
+	}
+
+	if (enable)
+		on_each_cpu(enable_pmccntr_el0, NULL, 1);
+	else
+		on_each_cpu(disable_pmccntr_el0, NULL, 1);
+
+	return count;
+}
+
+static void check_pmccntr_el0(void *data)
+{
+	int *out = data;
+	u64 val;
+
+	asm volatile("mrs %0, pmuserenr_el0" : "=r" (val));
+	*out = *out & !!(val & (BIT(2) | BIT(0)));
+}
+
+static ssize_t
+enadis_pmccntr_el0_show(struct kobject *kobj, struct kobj_attribute *attr,
+			char *buf)
+{
+	int out = 1;
+
+	on_each_cpu(check_pmccntr_el0, &out, 1);
+
+	return snprintf(buf, PAGE_SIZE, "%d\n", out);
+}
+
 int domain_sysfs_create(struct rm_dev *rm)
 {
 	struct domain_sysfs *lsfs;
@@ -674,6 +762,14 @@ int domain_sysfs_create(struct rm_dev *rm)
 	if (res)
 		goto err_destroy_domain;
 
+	lsfs->pmccntr_el0.attr.name = "pmccntr_el0";
+	lsfs->pmccntr_el0.attr.mode = 0644;
+	lsfs->pmccntr_el0.show = enadis_pmccntr_el0_show;
+	lsfs->pmccntr_el0.store = enadis_pmccntr_el0_store;
+	res = sysfs_create_file(&rm->pdev->dev.kobj, &lsfs->pmccntr_el0.attr);
+	if (res)
+		goto err_pmccntr_el0;
+
 	lsfs->parent = &rm->pdev->dev.kobj;
 
 	res = dpivf_sysfs_create(lsfs);
@@ -687,6 +783,8 @@ int domain_sysfs_create(struct rm_dev *rm)
 	return 0;
 
 err_dpivf_sysfs_create:
+	sysfs_remove_file(&rm->pdev->dev.kobj, &lsfs->pmccntr_el0.attr);
+err_pmccntr_el0:
 	sysfs_remove_file(&rm->pdev->dev.kobj, &lsfs->destroy_domain.attr);
 err_destroy_domain:
 	sysfs_remove_file(&rm->pdev->dev.kobj, &lsfs->create_domain.attr);
@@ -722,6 +820,8 @@ void domain_sysfs_destroy(struct rm_dev *rm)
 
 	dpivf_sysfs_destroy(lsfs);
 
+	if (lsfs->pmccntr_el0.attr.mode != 0)
+		sysfs_remove_file(lsfs->parent, &lsfs->pmccntr_el0.attr);
 	if (lsfs->destroy_domain.attr.mode != 0)
 		sysfs_remove_file(lsfs->parent, &lsfs->destroy_domain.attr);
 	if (lsfs->create_domain.attr.mode != 0)
