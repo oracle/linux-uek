@@ -1,6 +1,16 @@
 # SPDX-License-Identifier: GPL-2.0
 if CPU_CAVIUM_OCTEON
 
+config CAVIUM_OCTEON3
+	bool "Build the kernel to be used only on OCTEON III processor cores"
+	default "n"
+	select CAVIUM_OCTEON2
+	help
+	  This option enables the generation of Octeon3 specific
+	  instructions by the compiler, resulting in a kernel that is
+	  more efficient, but that will not run on Octeon, OcteonPlus
+	  and Octeon2 processor cores.
+
 config CAVIUM_OCTEON2
 	bool "Build the kernel to be used only on OCTEON II or OCTEON III processor cores"
 	default "n"
