@@ -35,6 +35,7 @@ struct otx2_stat {
 	unsigned int index;
 };
 
+/* HW device stats */
 #define OTX2_DEV_STAT(stat) { \
 	.name = #stat, \
 	.index = offsetof(struct otx2_dev_stats, stat) / sizeof(u64), \
@@ -56,12 +57,28 @@ static const struct otx2_stat otx2_dev_stats[] = {
 	OTX2_DEV_STAT(tx_drops),
 };
 
+/* Driver level stats */
+#define OTX2_DRV_STAT(stat) { \
+	.name = #stat, \
+	.index = offsetof(struct otx2_drv_stats, stat) / sizeof(atomic_t), \
+}
+
+static const struct otx2_stat otx2_drv_stats[] = {
+	OTX2_DRV_STAT(rx_fcs_errs),
+	OTX2_DRV_STAT(rx_oversize_errs),
+	OTX2_DRV_STAT(rx_undersize_errs),
+	OTX2_DRV_STAT(rx_csum_errs),
+	OTX2_DRV_STAT(rx_len_errs),
+	OTX2_DRV_STAT(rx_other_errs),
+};
+
 static const struct otx2_stat otx2_queue_stats[] = {
 	{ "bytes", 0 },
 	{ "frames", 1 },
 };
 
 static const unsigned int otx2_n_dev_stats = ARRAY_SIZE(otx2_dev_stats);
+static const unsigned int otx2_n_drv_stats = ARRAY_SIZE(otx2_drv_stats);
 static const unsigned int otx2_n_queue_stats = ARRAY_SIZE(otx2_queue_stats);
 
 static void otx2_get_drvinfo(struct net_device *netdev,
@@ -111,6 +128,11 @@ static void otx2_get_strings(struct net_device *netdev, u32 sset, u8 *data)
 
 	for (stats = 0; stats < otx2_n_dev_stats; stats++) {
 		memcpy(data, otx2_dev_stats[stats].name, ETH_GSTRING_LEN);
+		data += ETH_GSTRING_LEN;
+	}
+
+	for (stats = 0; stats < otx2_n_drv_stats; stats++) {
+		memcpy(data, otx2_drv_stats[stats].name, ETH_GSTRING_LEN);
 		data += ETH_GSTRING_LEN;
 	}
 
@@ -176,6 +198,11 @@ static void otx2_get_ethtool_stats(struct net_device *netdev,
 	for (stat = 0; stat < otx2_n_dev_stats; stat++)
 		*(data++) = ((u64 *)&pfvf->hw.dev_stats)
 				[otx2_dev_stats[stat].index];
+
+	for (stat = 0; stat < otx2_n_drv_stats; stat++)
+		*(data++) = atomic_read(&((atomic_t *)&pfvf->hw.drv_stats)
+						[otx2_drv_stats[stat].index]);
+
 	otx2_get_qset_stats(pfvf, stats, &data);
 	otx2_update_lmac_stats(pfvf);
 	for (stat = 0; stat < CGX_RX_STATS_COUNT; stat++)
