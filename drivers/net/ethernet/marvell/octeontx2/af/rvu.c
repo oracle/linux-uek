@@ -1004,6 +1004,8 @@ int rvu_aq_alloc(struct rvu *rvu, struct admin_queue **ad_queue,
 int rvu_mbox_handler_ready(struct rvu *rvu, struct msg_req *req,
 			   struct ready_msg_rsp *rsp)
 {
+	rsp->rclk_freq = rvu->fwdata->rclk;
+	rsp->sclk_freq = rvu->fwdata->sclk;
 	return 0;
 }
 
