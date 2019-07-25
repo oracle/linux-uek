@@ -450,9 +450,105 @@ find_matching_se(struct sched_entity **se, struct sched_entity **pse)
 
 #endif	/* CONFIG_FAIR_GROUP_SCHED */
 
+static inline struct cfs_rq *root_cfs_rq(struct cfs_rq *cfs_rq)
+{
+	return &rq_of(cfs_rq)->cfs;
+}
+
+static inline bool is_root_cfs_rq(struct cfs_rq *cfs_rq)
+{
+	return cfs_rq == root_cfs_rq(cfs_rq);
+}
+
+static inline struct cfs_rq *core_cfs_rq(struct cfs_rq *cfs_rq)
+{
+	return &rq_of(cfs_rq)->core->cfs;
+}
+
 static inline u64 cfs_rq_min_vruntime(struct cfs_rq *cfs_rq)
 {
-	return cfs_rq->min_vruntime;
+	if (!sched_core_enabled(rq_of(cfs_rq)))
+		return cfs_rq->min_vruntime;
+
+	if (is_root_cfs_rq(cfs_rq))
+		return core_cfs_rq(cfs_rq)->min_vruntime;
+	else
+		return cfs_rq->min_vruntime;
+}
+
+static void coresched_adjust_vruntime(struct cfs_rq *cfs_rq, u64 delta)
+{
+	struct sched_entity *se, *next;
+
+	if (!cfs_rq)
+		return;
+
+	cfs_rq->min_vruntime -= delta;
+	rbtree_postorder_for_each_entry_safe(se, next,
+			&cfs_rq->tasks_timeline.rb_root, run_node) {
+		if (se->vruntime > delta)
+			se->vruntime -= delta;
+		if (se->my_q)
+			coresched_adjust_vruntime(se->my_q, delta);
+	}
+}
+
+static void update_core_cfs_rq_min_vruntime(struct cfs_rq *cfs_rq)
+{
+	struct cfs_rq *cfs_rq_core;
+
+	if (!sched_core_enabled(rq_of(cfs_rq)))
+		return;
+
+	if (!is_root_cfs_rq(cfs_rq))
+		return;
+
+	cfs_rq_core = core_cfs_rq(cfs_rq);
+	if (cfs_rq_core != cfs_rq &&
+	    cfs_rq->min_vruntime < cfs_rq_core->min_vruntime) {
+		u64 delta = cfs_rq_core->min_vruntime - cfs_rq->min_vruntime;
+		coresched_adjust_vruntime(cfs_rq_core, delta);
+	}
+}
+
+bool cfs_prio_less(struct task_struct *a, struct task_struct *b)
+{
+	struct sched_entity *sea = &a->se;
+	struct sched_entity *seb = &b->se;
+	bool samecpu = task_cpu(a) == task_cpu(b);
+	struct task_struct *p;
+	s64 delta;
+
+	if (samecpu) {
+		/* vruntime is per cfs_rq */
+		while (!is_same_group(sea, seb)) {
+			int sea_depth = sea->depth;
+			int seb_depth = seb->depth;
+
+			if (sea_depth >= seb_depth)
+				sea = parent_entity(sea);
+			if (sea_depth <= seb_depth)
+				seb = parent_entity(seb);
+		}
+
+		delta = (s64)(sea->vruntime - seb->vruntime);
+		goto out;
+	}
+
+	/* crosscpu: compare root level se's vruntime to decide priority */
+	while (sea->parent)
+		sea = sea->parent;
+	while (seb->parent)
+		seb = seb->parent;
+	delta = (s64)(sea->vruntime - seb->vruntime);
+
+out:
+	p = delta > 0 ? b : a;
+	trace_printk("picked %s/%d %s: %Ld %Ld %Ld\n", p->comm, p->pid,
+			samecpu ? "samecpu" : "crosscpu",
+			sea->vruntime, seb->vruntime, delta);
+
+	return delta > 0;
 }
 
 static __always_inline
@@ -512,6 +608,7 @@ static void update_min_vruntime(struct cfs_rq *cfs_rq)
 
 	/* ensure we never gain time by being placed backwards. */
 	cfs_rq->min_vruntime = max_vruntime(cfs_rq_min_vruntime(cfs_rq), vruntime);
+	update_core_cfs_rq_min_vruntime(cfs_rq);
 #ifndef CONFIG_64BIT
 	smp_wmb();
 	cfs_rq->min_vruntime_copy = cfs_rq->min_vruntime;
