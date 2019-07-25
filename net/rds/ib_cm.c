@@ -1096,9 +1096,10 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 				"cm_id %p conn %p updating ic->i_prev_seq %d cm_req_seq %d\n",
 				cm_id, conn, ic->i_prev_seq, cm_req_seq);
 			ic->i_prev_seq = cm_req_seq;
-		} else if (cm_req_seq == ic->i_prev_seq && ic->i_last_rej_seq == cm_req_seq) {
+		} else if (cm_req_seq == ic->i_prev_seq && ic->i_last_rej_seq == cm_req_seq &&
+			   rds_conn_state(conn) == RDS_CONN_UP) {
 			rds_rtd(RDS_RTD_CM_EXT_P,
-				"duplicated REQ cm_id %p conn %p reject! ic->i_last_rej_seq %d cm_req_seq %d\n",
+				"duplicated REQ in UP state. cm_id %p conn %p reject! ic->i_last_rej_seq %d cm_req_seq %d\n",
 				cm_id, conn, ic->i_last_rej_seq, cm_req_seq);
 			goto out;
 		}
