@@ -1074,7 +1074,9 @@ const char * const vmstat_text[] = {
 	"nr_isolated_file",
 	"workingset_refault",
 	"workingset_activate",
-	"workingset_restore",
+	/* this enum string must be special cased due to kabi workaround
+	 * "workingset_restore",
+	 */
 	"workingset_nodereclaim",
 	"nr_anon_pages",
 	"nr_mapped",
@@ -1496,14 +1498,27 @@ static void zoneinfo_show_print(struct seq_file *m, pg_data_t *pgdat,
 	if (is_zone_first_populated(pgdat, zone)) {
 		seq_printf(m, "\n  per-node stats");
 		for (i = 0; i < NR_VM_NODE_STAT_ITEMS; i++) {
+			int idx = i + NR_VM_ZONE_STAT_ITEMS +
+				  NR_VM_NUMA_STAT_ITEMS;
+
 			/* Skip hidden vmstat items. */
 			if (*vmstat_text[i + NR_VM_ZONE_STAT_ITEMS +
 					 NR_VM_NUMA_STAT_ITEMS] == '\0')
 				continue;
-			seq_printf(m, "\n      %-12s %lu",
-				vmstat_text[i + NR_VM_ZONE_STAT_ITEMS +
-				NR_VM_NUMA_STAT_ITEMS],
-				node_page_state(pgdat, i));
+
+			if (idx == WORKINGSET_RESTORE_AND_NODERECLAIM) {
+				seq_printf(m, "\n      %-12s %lu",
+					   "workingset_restore",
+					   (node_page_state(pgdat, i) >> 16) &
+					   0xffff);
+				seq_printf(m, "\n      %-12s %lu",
+					   vmstat_text[idx],
+					   node_page_state(pgdat, i) & 0xffff);
+			} else {
+				seq_printf(m, "\n      %-12s %lu",
+					   vmstat_text[idx],
+					   node_page_state(pgdat, i));
+			}
 		}
 	}
 	seq_printf(m,
@@ -1677,8 +1692,17 @@ static int vmstat_show(struct seq_file *m, void *arg)
 	if (*vmstat_text[off] == '\0')
 		return 0;
 
-	seq_puts(m, vmstat_text[off]);
-	seq_put_decimal_ull(m, " ", *l);
+	if (off == WORKINGSET_RESTORE_AND_NODERECLAIM + NR_VM_ZONE_STAT_ITEMS +
+		   NR_VM_NUMA_STAT_ITEMS) {
+		seq_puts(m, "workingset_restore");
+		seq_put_decimal_ull(m, " ", (*l >> 16) & 0xffff);
+		seq_putc(m, '\n');
+		seq_puts(m, vmstat_text[off]);
+		seq_put_decimal_ull(m, " ", *l & 0xffff);
+	} else {
+		seq_puts(m, vmstat_text[off]);
+		seq_put_decimal_ull(m, " ", *l);
+	}
 	seq_putc(m, '\n');
 	return 0;
 }
