@@ -155,9 +155,7 @@ static ssize_t rvu_dbg_rsrc_attach_status(struct file *filp,
 
 	/* don't allow partial reads */
 	if (*ppos != 0)
-		return -EINVAL;
-	if (count < buf_size)
-		return -ENOSPC;
+		return 0;
 
 	buf = kzalloc(buf_size, GFP_KERNEL);
 	if (!buf)
