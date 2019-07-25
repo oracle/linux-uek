@@ -29,7 +29,7 @@
 #define MMCOOPS_KERNMSG_HDR	"===="
 #define MMCOOPS_HEADER_SIZE	(5 + sizeof(struct timeval))
 
-#define RECORD_SIZE		4096
+#define RECORD_SIZE		10240UL
 
 static int dump_oops = 1;
 module_param(dump_oops, int, 0600);
