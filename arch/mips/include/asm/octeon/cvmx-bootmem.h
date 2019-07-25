@@ -509,6 +509,18 @@ void cvmx_bootmem_phy_named_block_print(void);
 void cvmx_bootmem_phy_list_print(void);
 
 /**
+ * Saves the initial list of available memory,
+ * so that it can be restored for kexec.
+ */
+void cvmx_bootmem_phy_list_save(void);
+
+/**
+ * Restores the initial list of available memory
+ * that was saved by cvmx_bootmem_phy_list_save()
+ */
+	void cvmx_bootmem_phy_list_restore(void);
+
+/**
  * This function initializes the free memory list used by cvmx_bootmem.
  * This must be called before any allocations can be done.
  *
