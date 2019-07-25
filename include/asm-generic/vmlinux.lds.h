@@ -868,6 +868,7 @@
 	*(.discard)							\
 	*(.discard.*)							\
 	*(.modinfo)							\
+	*(.ctf)								\
 	}
 
 /**

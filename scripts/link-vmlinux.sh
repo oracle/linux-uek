@@ -39,7 +39,9 @@ info()
 	fi
 }
 
-# Link of vmlinux.o used for section mismatch analysis
+# Link of vmlinux.o used for section mismatch analysis: we also strip the CTF
+# section out at this stage, since ctfarchive gets it from the underlying object
+# files  and linking it further is a waste of time.
 # ${1} output file
 modpost_link()
 {
@@ -52,7 +54,15 @@ modpost_link()
 		${KBUILD_VMLINUX_LIBS}				\
 		--end-group"
 
-	${LD} ${KBUILD_LDFLAGS} -r -o ${1} ${objects}
+        ${LD} -r --verbose | awk '
+		BEGIN { discards = 0; p = 0; }
+		/^====/ { p = 1; next; }
+		p && /\.ctf/ { next; }
+		p && !discards && /DISCARD/ { sub(/\} *$/, " *(.ctf) }"); discards = 1 }
+                p && /^\}/ && !discards { print "  /DISCARD/ : { *(.ctf) }"; }
+		p { print $0; }' > .tmp.remove-ctf.lds
+	${LD} ${KBUILD_LDFLAGS} -T .tmp.remove-ctf.lds -r -o ${1} ${objects}
+        rm -f .tmp.remove-ctf.lds
 }
 
 # Link of vmlinux

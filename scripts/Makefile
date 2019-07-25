@@ -28,12 +28,19 @@ HOSTLDLIBS_extract-cert = -lcrypto
 
 always		:= $(hostprogs-y) $(hostprogs-m)
 
+kallsyms-objs	:= kallsyms.o
+ifeq ($(CONFIG_KALLMODSYMS),y)
+kallsyms-objs   += modules_thick.o
+
+HOSTCFLAGS_modules_thick.o := -I$(srctree)/scripts
+HOSTCFLAGS_kallsyms.o := -I$(srctree)/scripts
+endif
 # The following hostprogs-y programs are only build on demand
 hostprogs-y += unifdef
 
 subdir-$(CONFIG_GCC_PLUGINS) += gcc-plugins
 subdir-$(CONFIG_MODVERSIONS) += genksyms
-subdir-$(CONFIG_CTF)         += dwarf2ctf
+subdir-$(CONFIG_CTF)         += ctf
 subdir-$(CONFIG_SECURITY_SELINUX) += selinux
 
 # Let clean descend into subdirs

@@ -40,9 +40,10 @@ quiet_cmd_cc_o_c = CC [M]  $@
 # Generate CTF for the entire kernel, or for the module alone if this is a
 # build of an external module.
 
-# These are overridden below for standalone modules only.
+# These are overridden below.
 module-ctfs-modular-prereq =
 module-ctfs-modular =
+separate-ctf :=
 module-ctf-flags =
 cmd_touch_ctf =
 ctf-dir = ///.nonexistent
@@ -50,22 +51,37 @@ cmd-touch-ctf = @:
 
 ifdef CONFIG_CTF
 
-# This is quite tricky.  If called for non-external-modules, dwarf2ctf needs to
-# be told about all the built-in objects as well as all the external modules --
-# but Makefile.modpost only knows about the latter.  So the toplevel makefile
-# emits the names of the built-in objects into a temporary file, which is
-# then catted and its contents used as prerequisites by this rule.
+# This is quite tricky.  If called for non-external-modules, the CTF machinery
+# needs to be told about all the built-in objects as well as all the external
+# modules -- but Makefile.modfinal only knows about the latter.  So the toplevel
+# makefile emits the names of the built-in objects into a temporary file, which
+# is then catted and its contents used as prerequisites by this rule.
 #
 # We write the names of the object files to be scanned for CTF content into a
 # file, then use that, to avoid hitting command-line length limits.
 
+ifdef CONFIG_CTF_USING_BINUTILS
+CTF_ARCHIVE := scripts/ctf/ctfarchive
+CTF_ARCHIVE_STANDALONE := :
+else
+CTF_ARCHIVE := scripts/ctf/dwarf2ctf
+CTF_ARCHIVE_STANDALONE := scripts/ctf/dwarf2ctf
+endif
+
 ifeq ($(KBUILD_EXTMOD),)
+ifdef CONFIG_CTF_USING_BINUTILS
+separate-ctf := t
+module-ctf-flags := --remove-section .ctf
+ctf-modules := $(shell find . -name '*.ko.ctf' -print)
+else
+ctf-modules := $(shell find . -name '*.ko' -print)
+endif
+ctf-dir :=
 ctf-dir-mk :=
 quiet_cmd_ctf = CTFA
-      cmd_ctf = scripts/dwarf2ctf/dwarf2ctf vmlinux.ctfa $(srctree) objects.builtin modules_thick.builtin $(srctree)/scripts/dwarf2ctf/member.blacklist $(ctf-filelist)
+      cmd_ctf = $(CTF_ARCHIVE) vmlinux.ctfa $(srctree) objects.builtin modules_thick.builtin $(srctree)/scripts/ctf/member.blacklist $(ctf-filelist)
 ctf-builtins := objects.builtin
 ctf-builtins-prereq := $(ctf-builtins)
- ctf-modules := $(shell find . -name '*.ko' -print)
 ctf-filelist := .ctf.filelist
 ctf-filelist-raw := .ctf.filelist.raw
 ctf-stamp :=
@@ -74,7 +90,7 @@ else
 ctf-dir := $(KBUILD_EXTMOD)/.ctf
 ctf-dir-mk := $(ctf-dir)
 quiet_cmd_ctf = CTF
-      cmd_ctf = scripts/dwarf2ctf/dwarf2ctf $(ctf-dir) -e $(ctf-filelist)
+      cmd_ctf = $(CTF_ARCHIVE_STANDALONE) $(ctf-dir) -e $(ctf-filelist)
 ctf-builtins := ////.no-builtins
 ctf-builtins-prereq :=
 ctf-modules := $(modules:.ko=.o)
@@ -122,6 +138,10 @@ vmlinux.ctfa: $(ctf-filelist)
 	$(call if_changed,ctf)
 else
 
+# If libctf is in use, the toolchain has already added everything we need to
+# standalone object files, and we don't need to do anything.
+ifndef CONFIG_CTF_USING_BINUTILS
+
 # The CTF depends on the output CTF file list, and that depends
 # on the .o files for the modules
 $(ctf-stamp): $(ctf-filelist)
@@ -155,6 +175,8 @@ cmd_touch_ctf = @for name in $(filter $(ctf-dir)/%,$(module-ctfs-modular)); do \
 		    test -f $$name || dd if=/dev/zero of=$$name bs=1 count=1 2>/dev/null; \
 		done
 
+endif           # CONFIG_CTF_USING_BINUTILS
+
 endif		# KBUILD_EXTMOD
 
 endif		# !CONFIG_CTF
@@ -168,6 +190,7 @@ quiet_cmd_ld_ko_o = LD [M]  $@
 		$(addprefix -T , $(KBUILD_LDS_MODULE))			\
                  $(LDFLAGS_$(modname)) -o $@.tmp            		\
 		-o $@.tmp $(patsubst $(ctf-dir)/%,,$(filter %.o, $^)) && \
+	$(if $(separate-ctf), $(OBJCOPY) --only-section=.ctf $@.tmp $@.ctf, true) && \
         $(OBJCOPY) $(module-ctf-flags) $@.tmp $@ && rm -f $@.tmp ;	\
 	$(if $(ARCH_POSTLINK), $(MAKE) -f $(ARCH_POSTLINK) $@, true)
 
