@@ -33,7 +33,8 @@
 #include <sys/ctf_api.h>
 #include <glib.h>
 
-#include <eu_simple.h>
+#include "eu_simple.h"
+#include "modules_thick.h"
 
 #ifndef PATH_MAX
 #define PATH_MAX 1024

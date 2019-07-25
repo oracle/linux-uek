@@ -14,7 +14,6 @@
 #ifndef _LINUX_EU_SIMPLE_H
 #define _LINUX_EU_SIMPLE_H
 
-#include <stdio.h>
 #include <stddef.h>
 #include <elfutils/libdwfl.h>
 
@@ -58,34 +57,5 @@ char **simple_dwfl_free_multi(struct simple_dwfl_multi *multi);
  * The converse of simple_dwfl_new().
  */
 void simple_dwfl_free(Dwfl *dwfl);
-
-/*
- * modules_thick.builtin iteration state.
- */
-struct modules_thick_iter {
-	FILE *f;
-	char *line;
-	size_t line_size;
-};
-
-/*
- * Construct a modules_thick.builtin iterator.
- */
-struct modules_thick_iter *
-modules_thick_iter_new(const char *modules_thick_file);
-
-/*
- * Iterate, returning a new null-terminated array of object file names, and a
- * new dynamically-allocated module name.  (The module name passed in is freed.)
- *
- * The array of object file names should be freed by the caller: the strings it
- * points to are owned by the iterator, and should not be freed.
- */
-
-char ** __attribute__((__nonnull__))
-modules_thick_iter_next(struct modules_thick_iter *i, char **module_name);
-
-void
-modules_thick_iter_free(struct modules_thick_iter *i);
 
 #endif
