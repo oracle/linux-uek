@@ -77,7 +77,7 @@ config OCTEONTX2_DPI_PF
 	  different types of DMA transfers.
 
 config GTI_WATCHDOG
-       tristate "GTI Watchdog driver"
+       bool "GTI Watchdog driver"
 	depends on ARM64 && ARM64_VHE
 	---help---
 	GTI Watchdog driver, provides ioctl's for applications to
