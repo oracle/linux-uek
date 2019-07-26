@@ -1264,9 +1264,22 @@ qla24xx_abort_iocb_timeout(void *data)
 {
 	srb_t *sp = data;
 	struct srb_iocb *abt = &sp->u.iocb_cmd;
+	struct qla_qpair *qpair = sp->qpair;
+	u32 handle;
+	unsigned long flags;
+
+	spin_lock_irqsave(qpair->qp_lock_ptr, flags);
+	for (handle = 1; handle < qpair->req->num_outstanding_cmds; handle++) {
+		/* removing the abort */
+		if (qpair->req->outstanding_cmds[handle] == sp) {
+			qpair->req->outstanding_cmds[handle] = NULL;
+			break;
+		}
+	}
+	spin_unlock_irqrestore(qpair->qp_lock_ptr, flags);
 
 	abt->u.abt.comp_status = CS_TIMEOUT;
-	sp->done(sp, QLA_FUNCTION_TIMEOUT);
+	sp->done(sp, QLA_OS_TIMER_EXPIRED);
 }
 
 static void
@@ -1275,7 +1288,9 @@ qla24xx_abort_sp_done(void *ptr, int res)
 	srb_t *sp = ptr;
 	struct srb_iocb *abt = &sp->u.iocb_cmd;
 
-	if (del_timer(&sp->u.iocb_cmd.timer)) {
+	if ((res == QLA_OS_TIMER_EXPIRED) ||
+	    del_timer(&sp->u.iocb_cmd.timer)) {
+
 		if (sp->flags & SRB_WAKEUP_ON_COMP)
 			complete(&abt->u.abt.comp);
 		else
