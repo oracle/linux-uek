@@ -510,7 +510,9 @@ Provides: kernel-uname-r = %{KVERREL}%{?1:.%{1}}\
 %endif\
 Requires(pre): %{kernel_prereq}\
 Requires(pre): %{initrd_prereq}\
+%ifnarch mips64\
 Requires(pre): linux-firmware >= 999:20190627-999.2.git7ae3a09d\
+%endif\
 Requires(pre): system-release\
 Requires(post): %{_sbindir}/new-kernel-pkg\
 Requires(preun): %{_sbindir}/new-kernel-pkg\
