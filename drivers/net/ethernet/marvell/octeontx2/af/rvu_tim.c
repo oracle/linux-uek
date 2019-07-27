@@ -146,27 +146,6 @@ static int rvu_tim_disable_lf(struct rvu *rvu, int lf, int blkaddr)
 	return 0;
 }
 
-int rvu_lf_lookup_tim_errata(struct rvu *rvu, struct rvu_block *block,
-		u16 pcifunc, int slot)
-{
-	int i, blkaddr;
-	u64 val;
-
-	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_TIM, pcifunc);
-	if (blkaddr < 0)
-		return TIM_AF_LF_INVALID;
-
-	for (i = 0; i < block->lf.max; i++) {
-		val = rvu_read64(rvu, block->addr, block->lfcfg_reg |
-				 (i << block->lfshift));
-		if ((((val >> 8) & 0xffff) == pcifunc) &&
-				(val & 0xff) == slot)
-			return i;
-	}
-
-	return -1;
-}
-
 int rvu_mbox_handler_tim_get_min_intvl(struct rvu *rvu,
 				       struct tim_intvl_req *req,
 				       struct tim_intvl_rsp *rsp)
