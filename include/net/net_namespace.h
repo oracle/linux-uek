@@ -33,6 +33,7 @@
 #include <linux/ns_common.h>
 #include <linux/idr.h>
 #include <linux/skbuff.h>
+#include <linux/uek_kabi.h>
 
 struct user_namespace;
 struct proc_dir_entry;
@@ -65,6 +66,7 @@ struct net {
 	struct user_namespace   *user_ns;	/* Owning user namespace */
 	struct ucounts		*ucounts;
 	spinlock_t		nsid_lock;
+	UEK_KABI_FILL_HOLE(u32	hash_mix)
 	struct idr		netns_ids;
 
 	struct ns_common	ns;
