@@ -5,6 +5,7 @@
 #include <linux/rcupdate.h>
 #include <linux/kobject.h>
 #include <linux/mutex.h>
+#include <linux/uek_kabi.h>
 
 /*
  * Core internal functions to deal with irq descriptors
@@ -66,6 +67,7 @@ struct irq_desc {
 	unsigned int		depth;		/* nested irq disables */
 	unsigned int		wake_depth;	/* nested wake enables */
 	unsigned int		irq_count;	/* For detecting broken IRQs */
+	UEK_KABI_FILL_HOLE(unsigned int	tot_count)
 	unsigned long		last_unhandled;	/* Aging timer for unhandled count */
 	unsigned int		irqs_unhandled;
 	atomic_t		threads_handled;
