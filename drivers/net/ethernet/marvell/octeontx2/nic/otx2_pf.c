@@ -1145,14 +1145,11 @@ static irqreturn_t otx2_q_intr_handler(int irq, void *data)
 			continue;
 
 		if (val & BIT_ULL(42)) {
-			dev_err(pf->dev, "CQ%lld: error reading NIX_LF_CQ_OP_INT\n",
-				qidx);
+			dev_err(pf->dev, "CQ%lld: error reading NIX_LF_CQ_OP_INT, NIX_LF_ERR_INT 0x%llx\n",
+				qidx, otx2_read64(pf, NIX_LF_ERR_INT));
 		} else {
 			if (val & BIT_ULL(NIX_CQERRINT_DOOR_ERR))
 				dev_err(pf->dev, "CQ%lld: Doorbell error",
-					qidx);
-			if (val & BIT_ULL(NIX_CQERRINT_WR_FULL))
-				dev_err(pf->dev, "CQ%lld: Write full. A CQE to be added has been dropped because the CQ is full",
 					qidx);
 			if (val & BIT_ULL(NIX_CQERRINT_CQE_FAULT))
 				dev_err(pf->dev, "CQ%lld: Memory fault on CQE write to LLC/DRAM",
@@ -1171,8 +1168,8 @@ static irqreturn_t otx2_q_intr_handler(int irq, void *data)
 			continue;
 
 		if (val & BIT_ULL(42)) {
-			dev_err(pf->dev, "SQ%lld: error reading NIX_LF_SQ_OP_INT\n",
-				qidx);
+			dev_err(pf->dev, "SQ%lld: error reading NIX_LF_SQ_OP_INT, NIX_LF_ERR_INT 0x%llx\n",
+				qidx, otx2_read64(pf, NIX_LF_ERR_INT));
 		} else {
 			if (val & BIT_ULL(NIX_SQINT_LMT_ERR))
 				dev_err(pf->dev, "SQ%lld: LMT store error",
@@ -1181,7 +1178,9 @@ static irqreturn_t otx2_q_intr_handler(int irq, void *data)
 				dev_err(pf->dev, "SQ%lld: Meta-descriptor enqueue error",
 					qidx);
 			if (val & BIT_ULL(NIX_SQINT_SEND_ERR))
-				dev_err(pf->dev, "SQ%lld: Send error", qidx);
+				dev_err(pf->dev, "SQ%lld: Send error, NIX_LF_SEND_ERR_DBG 0x%llx",
+					qidx,
+					otx2_read64(pf, NIX_LF_SEND_ERR_DBG));
 			if (val & BIT_ULL(NIX_SQINT_SQB_ALLOC_FAIL))
 				dev_err(pf->dev, "SQ%lld: SQB allocation failed",
 					qidx);
