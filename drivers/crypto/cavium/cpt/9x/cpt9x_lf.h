@@ -28,17 +28,27 @@
  * "The effective queue size to software is ([SIZE_DIV40]-1)*40 CPT_INST_S's"
  */
 #define DIV40	40
-#define CPT_SIZE_DIV40	((CPT_USER_REQUESTED_QLEN_MSGS + DIV40 - 1)/DIV40 + 1)
+#define CPT_SIZE_DIV40	((CPT_USER_REQUESTED_QLEN_MSGS + DIV40 - 1)/DIV40)
 
 /*
  * CPT instruction and pending queues length in CPT_INST_S messages
  */
-#define CPT_INST_QLEN_MSGS	(CPT_SIZE_DIV40 * DIV40)
+#define CPT_INST_QLEN_MSGS	((CPT_SIZE_DIV40 - 1) * DIV40)
 
 /*
  * CPT instruction queue length in bytes
  */
 #define CPT_INST_QLEN_BYTES	(CPT_SIZE_DIV40 * DIV40 * CPT_INST_SIZE)
+
+/*
+ * CPT instruction group queue length in bytes
+ */
+#define CPT_INST_GRP_QLEN_BYTES (CPT_SIZE_DIV40 * 16)
+
+/*
+ * CPT FC length in bytes
+ */
+#define CPT_Q_FC_LEN  128
 
 /*
  * Mask which selects all engine groups

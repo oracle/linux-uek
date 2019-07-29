@@ -645,7 +645,8 @@ static int alloc_instruction_queues(struct cptlfs_info *lfs)
 
 	for (i = 0; i < lfs->lfs_num; i++) {
 
-		lfs->lf[i].iqueue.size = CPT_INST_QLEN_BYTES +
+		lfs->lf[i].iqueue.size = CPT_INST_QLEN_BYTES + CPT_Q_FC_LEN +
+					 CPT_INST_GRP_QLEN_BYTES +
 					 CPT_INST_Q_ALIGNMENT;
 		lfs->lf[i].iqueue.real_vaddr =
 			(u8 *) dma_zalloc_coherent(&lfs->pdev->dev,
@@ -658,13 +659,17 @@ static int alloc_instruction_queues(struct cptlfs_info *lfs)
 			ret = -ENOMEM;
 			goto error;
 		}
+		lfs->lf[i].iqueue.vaddr = lfs->lf[i].iqueue.real_vaddr +
+					  CPT_INST_GRP_QLEN_BYTES;
+		lfs->lf[i].iqueue.dma_addr = lfs->lf[i].iqueue.real_dma_addr +
+					     CPT_INST_GRP_QLEN_BYTES;
 
 		/* Align pointers */
 		lfs->lf[i].iqueue.vaddr =
-			(uint8_t *) PTR_ALIGN(lfs->lf[i].iqueue.real_vaddr,
+			(uint8_t *) PTR_ALIGN(lfs->lf[i].iqueue.vaddr,
 					      CPT_INST_Q_ALIGNMENT);
 		lfs->lf[i].iqueue.dma_addr =
-			(dma_addr_t) PTR_ALIGN(lfs->lf[i].iqueue.real_dma_addr,
+			(dma_addr_t) PTR_ALIGN(lfs->lf[i].iqueue.dma_addr,
 					       CPT_INST_Q_ALIGNMENT);
 	}
 
