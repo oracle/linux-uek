@@ -989,7 +989,6 @@ static int otx2_get_link_ksettings(struct net_device *netdev,
 				   struct ethtool_link_ksettings *cmd)
 {
 	struct otx2_nic *pfvf = netdev_priv(netdev);
-	bool if_up = netif_running(netdev);
 	u32 supported = 0, advertising = 0;
 	struct cgx_fw_data *rsp = NULL;
 
@@ -997,11 +996,6 @@ static int otx2_get_link_ksettings(struct net_device *netdev,
 	cmd->base.speed = pfvf->linfo.speed;
 	cmd->base.autoneg = pfvf->linfo.an;
 	cmd->base.port = pfvf->linfo.port;
-
-	if (!if_up) {
-		cmd->base.duplex = DUPLEX_UNKNOWN;
-		cmd->base.speed = SPEED_UNKNOWN;
-	}
 
 	rsp = otx2_get_fwdata(pfvf);
 	if (IS_ERR(rsp))
@@ -1255,13 +1249,8 @@ static int otx2vf_get_link_ksettings(struct net_device *netdev,
 
 	if (pfvf->pdev->device ==  PCI_DEVID_OCTEONTX2_RVU_AFVF) {
 		cmd->base.port = PORT_OTHER;
-		if (!netif_running(netdev)) {
-			cmd->base.duplex = DUPLEX_UNKNOWN;
-			cmd->base.speed = SPEED_UNKNOWN;
-		} else {
-			cmd->base.duplex = DUPLEX_FULL;
-			cmd->base.speed = SPEED_100000;
-		}
+		cmd->base.duplex = DUPLEX_FULL;
+		cmd->base.speed = SPEED_100000;
 	} else {
 		return	otx2_get_link_ksettings(netdev, cmd);
 	}
