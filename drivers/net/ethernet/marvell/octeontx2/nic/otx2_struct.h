@@ -401,7 +401,6 @@ enum nix_cqerrint_e {
 };
 
 #define NIX_CQERRINT_BITS (BIT_ULL(NIX_CQERRINT_DOOR_ERR) | \
-			   BIT_ULL(NIX_CQERRINT_WR_FULL) | \
 			   BIT_ULL(NIX_CQERRINT_CQE_FAULT))
 
 enum nix_rqint_e {

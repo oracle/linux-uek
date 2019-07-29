@@ -578,7 +578,6 @@ static int otx2_rq_init(struct otx2_nic *pfvf, u16 qidx, u16 lpb_aura)
 	aq->rq.lpb_sizem1 = (DMA_BUFFER_LEN / 8) - 1;
 	aq->rq.xqe_imm_size = 0; /* Copying of packet to CQE not needed */
 	aq->rq.flow_tagw = 32; /* Copy full 32bit flow_tag to CQE header */
-	aq->rq.rq_int_ena = NIX_RQINT_BITS;
 	aq->rq.qint_idx = 0;
 	aq->rq.lpb_drop_ena = 1; /* Enable RED dropping for AURA */
 	aq->rq.xqe_drop_ena = 1; /* Enable RED dropping for CQ/SSO */
