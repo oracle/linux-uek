@@ -197,11 +197,23 @@ static ssize_t node_read_vmstat(struct device *dev,
 			     sum_zone_numa_state(nid, i));
 #endif
 
-	for (i = 0; i < NR_VM_NODE_STAT_ITEMS; i++)
-		n += sprintf(buf+n, "%s %lu\n",
-			     vmstat_text[i + NR_VM_ZONE_STAT_ITEMS +
-			     NR_VM_NUMA_STAT_ITEMS],
-			     node_page_state(pgdat, i));
+	for (i = 0; i < NR_VM_NODE_STAT_ITEMS; i++) {
+		int idx = i + NR_VM_ZONE_STAT_ITEMS + NR_VM_NUMA_STAT_ITEMS;
+
+		if (idx == WORKINGSET_RESTORE_AND_NODERECLAIM) {
+			n += sprintf(buf + n, "%s %lu\n",
+				     "workingset_restore",
+				     (node_page_state(pgdat, i) >> 16) &
+				     0xffff);
+			n += sprintf(buf + n, "%s %lu\n",
+				     vmstat_text[idx],
+				     node_page_state(pgdat, i) & 0xffff);
+		} else {
+			n += sprintf(buf + n, "%s %lu\n",
+				     vmstat_text[idx],
+				     node_page_state(pgdat, i));
+		}
+	}
 
 	return n;
 }
