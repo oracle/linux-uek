@@ -1188,14 +1188,11 @@ static int cvm_mmc_data_tuning(struct mmc_host *mmc, u32 *statp, u32 opcode)
 	struct mmc_card *card = mmc->card;
 
 	if (!(slot->cached_switch & MIO_EMM_SWITCH_HS400_TIMING)) {
-		struct cvm_mmc_host *host = slot->host;
 		int edetail = -EINVAL;
 		int core_opinion;
 
-		host->release_bus(host);
 		core_opinion =
 			mmc_send_tuning(mmc, opcode, &edetail);
-		host->acquire_bus(host);
 
 		/* only accept mmc/core opinion  when it's happy */
 		if (!core_opinion)
