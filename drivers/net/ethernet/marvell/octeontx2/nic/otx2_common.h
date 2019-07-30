@@ -234,6 +234,7 @@ struct otx2_nic {
 	u16			rx_chan_base;
 	u16			tx_chan_base;
 	u8			cq_time_wait;
+	u16			cq_qcount_wait;
 	u32			cq_ecount_wait;
 	u32			msg_enable;
 	struct work_struct	reset_task;
@@ -280,11 +281,14 @@ static inline void otx2_setup_dev_hw_settings(struct otx2_nic *pfvf)
 
 	pfvf->cq_time_wait = CQ_TIMER_THRESH_DEFAULT;
 	pfvf->cq_ecount_wait = CQ_CQE_THRESH_DEFAULT;
+	pfvf->cq_qcount_wait = CQ_QCOUNT_DEFAULT;
 
 	hw->hw_tso = true;
 
 	if (is_96xx_A0(pfvf->pdev) || is_95xx_A0(pfvf->pdev))
 		hw->hw_tso = false;
+	if (is_96xx_A0(pfvf->pdev))
+		pfvf->cq_qcount_wait = 0x0;
 }
 
 /* Register read/write APIs */

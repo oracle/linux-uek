@@ -34,12 +34,13 @@
 #define OTX2_MAX_GSO_SEGS	255
 #define OTX2_MAX_FRAGS_IN_SQE	9
 
-#define CQ_CQE_THRESH_DEFAULT	0x0ULL /* IRQ triggered when
-					* NIX_LF_CINTX_CNT[QCOUNT]
+#define CQ_CQE_THRESH_DEFAULT	0xAULL /* IRQ triggered when
+					* NIX_LF_CINTX_CNT[ECOUNT]
 					* crosses this value
 					*/
 #define CQ_TIMER_THRESH_DEFAULT	0xAULL /* ~1usec i.e (0xA * 100nsec) */
 #define CQ_TIMER_THRESH_MAX     255
+#define CQ_QCOUNT_DEFAULT	0x1ULL
 
 struct queue_stats {
 	u64	bytes;
