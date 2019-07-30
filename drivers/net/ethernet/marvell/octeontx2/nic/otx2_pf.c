@@ -1251,8 +1251,7 @@ static void otx2_free_sq_res(struct otx2_nic *pf)
 	for (qidx = 0; qidx < pf->hw.tx_queues; qidx++) {
 		sq = &qset->sq[qidx];
 		qmem_free(pf->dev, sq->sqe);
-		if (!pf->hw.hw_tso)
-			qmem_free(pf->dev, sq->tso_hdrs);
+		qmem_free(pf->dev, sq->tso_hdrs);
 		kfree(sq->sg);
 		qmem_free(pf->dev, sq->timestamps);
 	}
@@ -2137,11 +2136,7 @@ static int otx2_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	if (err)
 		goto err_detach_rsrc;
 
-	if (!is_96xx_A0(pf->pdev) && !is_95xx_A0(pf->pdev))
-		hw->hw_tso = true;
-
-	pf->cq_time_wait = CQ_TIMER_THRESH_DEFAULT;
-	pf->cq_ecount_wait = CQ_CQE_THRESH_DEFAULT;
+	otx2_setup_dev_hw_settings(pf);
 
 	/* Don't check for error.  Proceed without ptp */
 	otx2_ptp_init(pf);

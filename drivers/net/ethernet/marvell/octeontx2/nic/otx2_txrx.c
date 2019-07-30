@@ -614,13 +614,24 @@ static void otx2_sqe_add_ext(struct otx2_nic *pfvf, struct otx2_snd_queue *sq,
 	ext->subdc = NIX_SUBDC_EXT;
 	if (skb_shinfo(skb)->gso_size) {
 		ext->lso = 1;
-		/* Is this TSOv4 or TSOv6, other GSO offloads not supported */
-		if (skb_shinfo(skb)->gso_type & SKB_GSO_TCPV4)
-			ext->lso_format = pfvf->hw.lso_tsov4_idx;
-		else
-			ext->lso_format = pfvf->hw.lso_tsov6_idx;
 		ext->lso_sb = skb_transport_offset(skb) + tcp_hdrlen(skb);
 		ext->lso_mps = skb_shinfo(skb)->gso_size;
+
+		/* Only TSOv4 and TSOv6 GSO offloads are supported */
+		if (skb_shinfo(skb)->gso_type & SKB_GSO_TCPV4) {
+			ext->lso_format = pfvf->hw.lso_tsov4_idx;
+
+			/* HW adds payload size to 'ip_hdr->tot_len' while
+			 * sending TSO segment, hence set payload length
+			 * in IP header of the packet to just header length.
+			 */
+			ip_hdr(skb)->tot_len =
+				htons(ext->lso_sb - skb_network_offset(skb));
+		} else {
+			ext->lso_format = pfvf->hw.lso_tsov6_idx;
+			ipv6_hdr(skb)->payload_len =
+				htons(ext->lso_sb - skb_network_offset(skb));
+		}
 	} else if (skb_shinfo(skb)->tx_flags & SKBTX_HW_TSTAMP) {
 		ext->tstmp = 1;
 	}
@@ -849,13 +860,32 @@ static void otx2_sq_append_tso(struct otx2_nic *pfvf, struct otx2_snd_queue *sq,
 	}
 }
 
+static inline bool is_hw_tso_supported(struct otx2_nic *pfvf,
+				       struct sk_buff *skb)
+{
+	int payload_len, last_seg_size;
+
+	if (!pfvf->hw.hw_tso)
+		return false;
+
+	/* HW has an issue due to which when the payload of the last LSO
+	 * segment is shorter than 16 bytes, some header fields may not
+	 * be correctly modified, hence don't offload such TSO segments.
+	 */
+	payload_len = skb->len - (skb_transport_offset(skb) + tcp_hdrlen(skb));
+	last_seg_size = payload_len % skb_shinfo(skb)->gso_size;
+	if (last_seg_size && last_seg_size < 16)
+		return false;
+	return true;
+}
+
 static int otx2_get_sqe_count(struct otx2_nic *pfvf, struct sk_buff *skb)
 {
 	if (!skb_shinfo(skb)->gso_size)
 		return 1;
 
 	/* HW TSO */
-	if (skb_shinfo(skb)->gso_size && pfvf->hw.hw_tso)
+	if (is_hw_tso_supported(pfvf, skb))
 		return 1;
 
 	/* SW TSO */
@@ -908,7 +938,7 @@ bool otx2_sq_append_skb(struct net_device *netdev, struct otx2_snd_queue *sq,
 		num_segs = skb_shinfo(skb)->nr_frags + 1;
 	}
 
-	if (skb_shinfo(skb)->gso_size && !pfvf->hw.hw_tso) {
+	if (skb_shinfo(skb)->gso_size && !is_hw_tso_supported(pfvf, skb)) {
 		otx2_sq_append_tso(pfvf, sq, skb, qidx);
 		return true;
 	}
