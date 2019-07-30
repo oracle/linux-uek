@@ -536,8 +536,7 @@ static int otx2vf_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	if (err)
 		goto err_detach_rsrc;
 
-	if (!is_96xx_A0(vf->pdev) && !is_95xx_A0(vf->pdev))
-		hw->hw_tso = true;
+	otx2_setup_dev_hw_settings(vf);
 
 	/* Assign default mac address */
 	otx2_get_mac_from_af(netdev);

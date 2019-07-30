@@ -274,6 +274,19 @@ static inline bool is_95xx_A0(struct pci_dev *pdev)
 		(pdev->subsystem_device == PCI_SUBSYS_DEVID_95XX_RVU_PFVF);
 }
 
+static inline void otx2_setup_dev_hw_settings(struct otx2_nic *pfvf)
+{
+	struct otx2_hw *hw = &pfvf->hw;
+
+	pfvf->cq_time_wait = CQ_TIMER_THRESH_DEFAULT;
+	pfvf->cq_ecount_wait = CQ_CQE_THRESH_DEFAULT;
+
+	hw->hw_tso = true;
+
+	if (is_96xx_A0(pfvf->pdev) || is_95xx_A0(pfvf->pdev))
+		hw->hw_tso = false;
+}
+
 /* Register read/write APIs */
 static inline void otx2_write64(struct otx2_nic *nic, u64 offset, u64 val)
 {
