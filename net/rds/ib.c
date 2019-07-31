@@ -1383,7 +1383,6 @@ static void rds_ib_do_failover(u8 from_port, u8 to_port, u8 arp_port,
 {
 	bool	v4move, v6move;
 	u8      j;
-	int	ret;
 
 	if (!from_port) {
 		printk(KERN_ERR "RDS/IB: port failover request from invalid port!\n");
