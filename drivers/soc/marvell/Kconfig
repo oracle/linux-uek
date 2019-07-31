@@ -86,4 +86,9 @@ config GTI_WATCHDOG
 	address space for the application to directly poke the
 	GTI watchdog without any kernel support and entry.
 
+config MDIO_DEBUGFS
+       tristate "Stub driver for debugfs support for mdio commands "
+	depends on OCTEONTX2_AF
+	---help---
+	provides debugfs support to initiate mdio commands via smc call
 endmenu
