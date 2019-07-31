@@ -1371,7 +1371,7 @@ fi
 
     mkdir -p $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/include
     cd include
-    cp -a acpi asm-generic clocksource config crypto drm dt-bindings generated keys kvm linux math-emu media memory misc net pcmcia ras rdma scsi soc sound target trace uapi video xen $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/include
+    find ./* -maxdepth 0 -type d -exec cp -a {} $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/include/ \;
     asmdir=../arch/%{asmarch}/include/asm
     cp -a $asmdir $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/include/
     cd $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/include
@@ -1440,11 +1440,6 @@ fi
     rm -f modinfo modnames
 
 %if %{signmodules}
-    # Save off the .tmp_versions/ directory.  We'll use it in the
-    # __debug_install_post macro below to sign the right things
-    # Also save the signing keys so we actually sign the modules with the
-    # right key.
-    cp -r .tmp_versions .tmp_versions.sign${Flavour:+.${Flavour}}
     cp certs/signing_key.pem certs/signing_key.pem.sign${Flavour:+.${Flavour}}
     cp certs/signing_key.x509 certs/signing_key.x509.sign${Flavour:+.${Flavour}}
 %endif
