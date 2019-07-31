@@ -2862,13 +2862,7 @@ CONFIG_JBD2=y
 CONFIG_FS_MBCACHE=y
 # CONFIG_REISERFS_FS is not set
 # CONFIG_JFS_FS is not set
-CONFIG_XFS_FS=m
-# CONFIG_XFS_QUOTA is not set
-CONFIG_XFS_POSIX_ACL=y
-# CONFIG_XFS_RT is not set
-# CONFIG_XFS_ONLINE_SCRUB is not set
-# CONFIG_XFS_WARN is not set
-# CONFIG_XFS_DEBUG is not set
+# CONFIG_XFS_FS is not set
 # CONFIG_GFS2_FS is not set
 # CONFIG_OCFS2_FS is not set
 # CONFIG_BTRFS_FS is not set
