@@ -56,7 +56,7 @@ static int __init pcie_reset_init(void)
 
 	pr_notice("/proc/pcie_reset: Interface loaded\n");
 
-	proc_pcie_reset_entry = proc_create("pcie_reset", 0400, NULL,
+	proc_pcie_reset_entry = proc_create("pcie_reset", 0200, NULL,
 					    &pcie_reset_operations);
 
 	return 0;
